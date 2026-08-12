@@ -10,6 +10,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Select from "@/components/ui/Select";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -49,6 +50,7 @@ import {
   quotationRejectionNotice,
 } from "@/lib/sales/quotationWorkflow";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
+import { docLanguageOf } from "@/lib/sales/quotationMasterTemplate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import styles from "./page.module.css";
@@ -71,6 +73,8 @@ export default function QuotationEditorPage() {
     quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0,
     // ที่อยู่ที่ใบนี้เลือก (0203) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
     billingAddressId: "", shippingAddressId: "",
+    // ภาษาที่ใบนี้จะถูกพิมพ์ (mig 0238) — ตรึงกับใบ ไม่ใช่ค่าที่เลือกตอนกดพิมพ์
+    docLanguage: "th",
   });
   // ทะเบียนลูกค้าสด — โหลดมาเพื่อ "ตัวเลือกที่อยู่" เท่านั้น ตัวเอกสารยังใช้ snapshot บนใบ
   const [customer, setCustomer] = useState(null);
@@ -116,6 +120,8 @@ export default function QuotationEditorPage() {
         vatRate: Number(q.vatRate || 0),
         billingAddressId: q.billingAddressId || "",
         shippingAddressId: q.shippingAddressId || "",
+        // ใบที่ออกก่อน mig 0238 ไม่มีคอลัมน์นี้ → ไทย เหมือนที่เอกสารพิมพ์อยู่จริง
+        docLanguage: docLanguageOf(q.docLanguage),
       });
       const pp = q.paymentPlan;
       setPayment({
@@ -259,6 +265,7 @@ export default function QuotationEditorPage() {
     // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0203)
     billingAddressId: form.billingAddressId || null,
     shippingAddressId: form.shippingAddressId || null,
+    docLanguage: form.docLanguage,
     paymentPlan: paymentPlanPayload(),
     // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
     metadata: {
@@ -786,6 +793,28 @@ export default function QuotationEditorPage() {
                 setF({ validityDays, validUntil: addValidityDays(form.quoteDate, validityDays) });
               }} />
             </label>
+            {/* ภาษาเอกสาร (IS-26080005) — ป้ายบนกระดาษเท่านั้น ข้อความที่คนกรอก
+                (ชื่อลูกค้า สินค้า เงื่อนไข หมายเหตุ) พิมพ์ตามที่พิมพ์ไว้ไม่แปลให้
+                ⚠️ ล็อกด้วย `editable` ตัวเดียวกับช่องเนื้อหาอื่น — ใบที่ยื่น/อนุมัติ/
+                รับแล้วเปลี่ยนภาษาไม่ได้ เพราะนั่นคือการเปลี่ยนเอกสารที่ส่งลูกค้าไปแล้ว */}
+            <div className={styles.docLanguageField}>
+              <span>ภาษาเอกสาร</span>
+              <OptionTiles
+                value={form.docLanguage}
+                onChange={(value) => setF({ docLanguage: value })}
+                disabled={!editable}
+                ariaLabel="ภาษาเอกสาร"
+                options={[
+                  { value: "th", label: "ไทย", description: "ป้ายบนใบเป็นภาษาไทย" },
+                  { value: "en", label: "English", description: "ป้ายบนใบเป็นภาษาอังกฤษ สำหรับลูกค้าต่างชาติ" },
+                ]}
+              />
+              {!editable && (
+                <span className={styles.docLanguageNote}>
+                  ใบที่ยื่น/อนุมัติแล้วเปลี่ยนภาษาไม่ได้ — ต้องออก Rev. แล้วสลับภาษาที่ฉบับใหม่
+                </span>
+              )}
+            </div>
           </section>
 
           {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ (ผู้ดูแล/ผู้ประสานงาน/ผู้ตรวจสอบ) */}

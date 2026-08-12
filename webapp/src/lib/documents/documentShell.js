@@ -79,11 +79,22 @@ export function accentStyle(accentKey) {
 // ต่างจากของเดิมโดยไม่มีเหตุผล (ทำให้ diff เทียบก่อน/หลังรีแฟกเตอร์อ่านไม่รู้เรื่อง)
 const ROW_GAP = '\n          ';
 
+// ป้ายในบล็อกแบรนด์ที่เปลือกเขียนเอง (ไม่ได้มาจาก rows) — ค่าตั้งต้นคือข้อความเดิม
+// ทุกตัวอักษร เอกสารที่ไม่ส่งอะไรมาจึงพิมพ์เหมือนเดิมเป๊ะ · ใบเสนอราคาภาษาอังกฤษ
+// (IS-26080005) ส่งชุดอังกฤษเข้ามาทับ
+const DEFAULT_HEADER_LABELS = Object.freeze({
+  taxId: 'เลขประจำตัวผู้เสียภาษี',
+  phone: 'โทร',
+  line: 'Line',
+});
+
 // หัวเอกสาร: บล็อกแบรนด์ (โลโก้ + บริษัท) | บล็อกตัวตนเอกสาร (รหัสฟอร์ม ชื่อ เลขที่ ฯลฯ)
 // formLine เว้นได้ — รายงานไม่ใช่เอกสารควบคุม ไม่มีรหัสแบบฟอร์ม/Revision ให้พิมพ์
 // rows = [{ label, value }] — แต่ละชนิดเอกสารส่งแถวของตัวเอง (ใบเสนอราคาใช้ เลขที่/
 // วันที่/ยืนราคาถึง · ใบภาษีใช้ เลขที่/วันที่เอกสาร/กำหนดส่งมอบ)
-export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows = [] }) {
+// titleEn เว้นได้ — เอกสารภาษาเดียวมีชื่อบรรทัดเดียว ไม่ต้องมีบรรทัดรองว่างเป็น '-'
+export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows = [], labels = {} }) {
+  const label = { ...DEFAULT_HEADER_LABELS, ...labels };
   return `
     <header class="documentHeader">
       <div class="brandBlock">
@@ -92,14 +103,14 @@ export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows 
           <strong>${val(company.nameTh)}</strong>
           <span>${val(company.nameEn)}</span>
           <p>${val(company.address)}</p>
-          <p>เลขประจำตัวผู้เสียภาษี ${val(company.taxId)}</p>
-          <p>โทร ${val(company.phone)} · Line ${val(company.line)}${company.website ? ` · ${esc(company.website)}` : ''}</p>
+          <p>${esc(label.taxId)} ${val(company.taxId)}</p>
+          <p>${esc(label.phone)} ${val(company.phone)} · ${esc(label.line)} ${val(company.line)}${company.website ? ` · ${esc(company.website)}` : ''}</p>
         </div>
       </div>
       <div class="identityBlock">
         ${formLine ? `<div class="formLine">${val(formLine)}</div>` : ''}
         <h1>${val(titleTh)}</h1>
-        <div class="englishTitle">${val(titleEn)}</div>
+        ${titleEn ? `<div class="englishTitle">${esc(titleEn)}</div>` : ''}
         <dl>
           ${rows.filter(Boolean).map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join(ROW_GAP)}
         </dl>
@@ -367,13 +378,16 @@ export function renderDocumentHTML({
   dataAttrs = '',
   extraCss = '',
   toolbar = null,
+  // ภาษาของ "เนื้อเอกสาร" — มีผลกับการอ่านออกเสียง/การตัดคำของเบราว์เซอร์ตอนพิมพ์
+  // แถบเครื่องมือด้านบนเป็นของคนในบริษัท จึงเป็นไทยเสมอไม่ว่าเอกสารจะภาษาอะไร
+  lang = 'th',
 } = {}) {
   const toolbarHtml = toolbar
     ? `<div class="toolbar no-print"><h1>${esc(toolbar.label)}</h1><button class="btn-print" type="button" onclick="window.print()">${esc(toolbar.button || 'พิมพ์เอกสาร')}</button></div>`
     : '';
   const classes = ['document', variantClass, grayscale ? 'grayscale' : ''].filter(Boolean).join(' ');
   return `<!doctype html>
-<html lang="th">
+<html lang="${esc(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

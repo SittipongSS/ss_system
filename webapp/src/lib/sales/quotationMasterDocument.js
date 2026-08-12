@@ -5,7 +5,7 @@
 // ไฟล์นี้เป็น "แหล่งเดียว" ของหน้าตาเอกสารใบเสนอราคา V4 แล้ว (markup + CSS ฝังใน
 // DOCUMENT_CSS) — component React เดิม (QuotationMasterDocument) ถูกปลดระวางแล้ว
 // (Phase 7C 2026-07-21). ใช้ชื่อคลาสตรง ๆ ได้เพราะเป็นหน้าเดี่ยว self-contained.
-import { buildQuotationMasterModelFromQuote } from '@/lib/sales/quotationMasterTemplate';
+import { buildQuotationMasterModelFromQuote, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
 import { fmtNumber, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
@@ -20,44 +20,67 @@ import {
   watermarkBlock,
 } from '@/lib/documents/documentShell';
 
+/* ป้ายของใบนี้ — ภาษาตรึงอยู่กับตัวใบ (quotations.docLanguage, mig 0238) และเดินทาง
+   มากับ model · ใบสั่งขาย/พรีวิวที่ไม่มีค่านี้ได้ไทยเหมือนเดิมทุกใบ
+   ⚠️ ทุกฟังก์ชันในไฟล์นี้ต้องรับ `L` ต่อกันไป ห้ามอ่านพจนานุกรมตรง ๆ ที่ปลายทาง —
+   ถ้าจุดใดจุดหนึ่งลืมรับ ใบอังกฤษจะมีป้ายไทยโผล่กลางเอกสารโดยไม่มีอะไรฟ้อง */
+const labelsOf = (model) => quotationDocLabels(model.docLanguage);
+
 // หัวเอกสาร/กล่องคู่สัญญา/ท้ายกระดาษ/ลายน้ำ ย้ายไปอยู่ documentShell แล้ว — ที่นี่เหลือ
 // เฉพาะการ "แปลง model ของใบเสนอราคา" เป็นรูปที่เปลือกรับ
-function documentHeader(model) {
+function documentHeader(model, L) {
+  /* บล็อกบริษัท: ใบอังกฤษเอาชื่อ/ที่อยู่อังกฤษขึ้นบรรทัดบน ไทยเป็นบรรทัดรอง — บริษัท
+     เป็นนิติบุคคลไทย ชื่อไทยจึงยังต้องอยู่บนเอกสาร ไม่ใช่ตัดทิ้ง
+     ⚠️ สลับที่ตรงนี้จุดเดียว ไม่ไปสลับค่าใน model — คีย์ nameTh/nameEn ต้องยังหมายถึง
+     ภาษาที่มันบอกจริง ๆ ไม่งั้นที่อื่นที่อ่าน model จะได้ค่าที่ชื่อไม่ตรงเนื้อ */
+  const co = model.company || {};
+  const company = L.isEnglish
+    ? {
+      ...co,
+      nameTh: co.nameEn || co.nameTh,
+      nameEn: co.nameEn ? co.nameTh : '',
+      address: co.addressEn || co.address,
+    }
+    : co;
   return shellHeader({
-    company: model.company,
+    company,
     formLine: model.formLine,
-    titleTh: model.standard.titleTh,
-    titleEn: model.standard.titleEn,
+    // ใบไทยพิมพ์ชื่อไทยตัวใหญ่ + อังกฤษบรรทัดรอง · ใบอังกฤษเหลือชื่ออังกฤษบรรทัดเดียว
+    titleTh: L.isEnglish ? (model.standard.titleEn || model.standard.titleTh) : model.standard.titleTh,
+    titleEn: L.isEnglish ? '' : model.standard.titleEn,
+    labels: { taxId: L.t('companyTaxId'), phone: L.t('companyPhone'), line: L.t('companyLine') },
     rows: [
-      { label: 'เลขที่', value: model.document.number },
+      { label: L.t('number'), value: model.document.number },
       { label: model.document.dateLabel, value: model.document.dateValue },
       { label: model.document.secondaryLabel, value: model.document.secondaryValue },
     ],
   });
 }
 
-function partyGrid(model) {
+function partyGrid(model, L) {
   // ประกอบเองเพื่อคงพฤติกรรมเดิมเป๊ะ: ไม่มีชื่อผู้ติดต่อแต่มีเบอร์ → "- · 08x…"
   // (ถ้าปล่อยให้เปลือกเติม "-" ให้ทั้งช่อง เบอร์จะหายไป)
   const contactName = model.customer.contactName;
   const contact = `${contactName === null || contactName === undefined || contactName === '' ? '-' : contactName}`
     // เบอร์บนกระดาษต้องอ่านเป็นรูปเดียวกับบนจอ — จัดรูปแบบผ่านตัวกลางเสมอ
     + (model.customer.contactPhone ? ` · ${fmtPhone(model.customer.contactPhone)}` : '');
+  const customerHeading = L.pair('customer');
+  const referenceHeading = L.pair('reference');
   return shellPartyGrid({
-    ariaLabel: 'ข้อมูลลูกค้าและข้อมูลอ้างอิง',
+    ariaLabel: L.isEnglish ? 'Customer and reference information' : 'ข้อมูลลูกค้าและข้อมูลอ้างอิง',
     party: {
-      heading: 'ผู้ซื้อ',
-      headingEn: '/ CUSTOMER',
+      heading: customerHeading.text,
+      headingEn: customerHeading.sub,
       name: model.customer.name,
       address: model.customer.address,
       rows: [
-        { label: 'เลขผู้เสียภาษี', value: model.customer.taxId },
+        { label: L.t('customerTaxId'), value: model.customer.taxId },
         // 'สำนักงาน' ของลูกค้าถูกตัดออก (มติผู้ใช้ 2026-08-05) — สาขาอยู่ในที่อยู่อยู่แล้ว
-        { label: 'ที่อยู่จัดส่ง', value: model.customer.shippingAddress || model.customer.address },
-        { label: 'ผู้ติดต่อ', value: contact },
+        { label: L.t('shippingAddress'), value: model.customer.shippingAddress || model.customer.address },
+        { label: L.t('contact'), value: contact },
       ],
     },
-    reference: { heading: 'ข้อมูลอ้างอิง', headingEn: '/ REFERENCE', rows: model.referenceRows || [] },
+    reference: { heading: referenceHeading.text, headingEn: referenceHeading.sub, rows: model.referenceRows || [] },
   });
 }
 
@@ -75,7 +98,7 @@ function discountCell(line) {
   return `<td class="number">${amount > 0 ? `-${money(amount)}` : '-'}</td>`;
 }
 
-function itemTable(lines, startIndex, showDiscount) {
+function itemTable(lines, startIndex, showDiscount, L) {
   const rows = lines.map((line, index) => {
     const identityMeta = [line.fgCode, line.brand].filter(Boolean).map(esc).join(' · ');
     return `
@@ -97,34 +120,40 @@ function itemTable(lines, startIndex, showDiscount) {
     <table class="itemTable${showDiscount ? ' withLineDiscount' : ''}">
       <thead>
         <tr>
-          <th class="center">ลำดับ</th>
-          <th>รายละเอียดสินค้า / บริการ</th>
-          <th class="number">จำนวน</th>
-          <th class="center">หน่วย</th>
-          <th class="number">ราคา/หน่วย</th>
-          ${showDiscount ? '<th class="number">ส่วนลด</th>' : ''}
-          <th class="number">จำนวนเงิน</th>
+          <th class="center">${esc(L.t('lineNo'))}</th>
+          <th>${esc(L.t('lineDescription'))}</th>
+          <th class="number">${esc(L.t('qty'))}</th>
+          <th class="center">${esc(L.t('unit'))}</th>
+          <th class="number">${esc(L.t('unitPrice'))}</th>
+          ${showDiscount ? `<th class="number">${esc(L.t('lineDiscount'))}</th>` : ''}
+          <th class="number">${esc(L.t('amount'))}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
 
-function totalsSection(model) {
+function totalsSection(model, L) {
   const { totals } = model;
   const hasDiscount = Number(totals.discountAmount) > 0;
   return `
-    <section class="totals" aria-label="สรุปยอด">
-      <div><span>รวมสินค้า / บริการ</span><strong>${money(totals.subtotal)}</strong></div>
+    <section class="totals" aria-label="${esc(L.t('totalsAria'))}">
+      <div><span>${esc(L.t('subtotal'))}</span><strong>${money(totals.subtotal)}</strong></div>
       ${hasDiscount ? `
-      <div><span>หัก ส่วนลด${model.discount.type === 'percent' ? ` ${Number(model.discount.value)}%` : ''}</span><strong>-${money(totals.discountAmount)}</strong></div>
-      <div class="afterDiscount"><span>ยอดหลังหักส่วนลด</span><strong>${money(totals.afterDiscount)}</strong></div>` : ''}
-      <div><span>ภาษีมูลค่าเพิ่ม ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
-      <div class="grandTotal"><span>ยอดรวมทั้งสิ้น</span><strong>${money(totals.totalAmount)} บาท</strong></div>
+      <div><span>${esc(L.t('discountLine'))}${model.discount.type === 'percent' ? ` ${Number(model.discount.value)}%` : ''}</span><strong>-${money(totals.discountAmount)}</strong></div>
+      <div class="afterDiscount"><span>${esc(L.t('afterDiscount'))}</span><strong>${money(totals.afterDiscount)}</strong></div>` : ''}
+      <div><span>${esc(L.t('vat'))} ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
+      <div class="grandTotal"><span>${esc(L.t('grandTotal'))}</span><strong>${money(totals.totalAmount)} ${esc(L.t('currency'))}</strong></div>
     </section>`;
 }
 
-function installmentSection(model) {
+// หัวข้อสองบรรทัดของใบไทย ("งวดชำระเงิน / PAYMENT SCHEDULE") — ใบอังกฤษเหลือบรรทัดเดียว
+function dualHeading(L, key) {
+  const { text, sub } = L.pair(key);
+  return `<h2>${esc(text)}${sub ? ` <span>${esc(sub)}</span>` : ''}</h2>`;
+}
+
+function installmentSection(model, L) {
   const rows = model.installments.map((row, index) => `
           <tr>
             <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
@@ -133,43 +162,43 @@ function installmentSection(model) {
           </tr>`).join('');
   return `
       <section class="installmentSection">
-        <h2>งวดชำระเงิน <span>/ PAYMENT SCHEDULE</span></h2>
+        ${dualHeading(L, 'paymentSchedule')}
         <table class="installmentTable">
           <thead>
-            <tr><th>รายละเอียด</th><th class="number">%</th><th class="number">จำนวนเงิน</th></tr>
+            <tr><th>${esc(L.t('installmentDetail'))}</th><th class="number">%</th><th class="number">${esc(L.t('amount'))}</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
       </section>`;
 }
 
-function termsSection(model) {
+function termsSection(model, L) {
   return `
       <section class="termsGrid">
-        <div><h2>วิธีชำระเงิน <span>/ PAYMENT METHOD</span></h2><p>${val(model.paymentMethod)}</p></div>
-        <div><h2>เงื่อนไขการชำระเงิน <span>/ PAYMENT TERMS</span></h2><p>${val(model.paymentTerms)}</p></div>
-        <div class="remarks"><h2>หมายเหตุ <span>/ REMARKS</span></h2><p>${val(model.remarks)}</p></div>
+        <div>${dualHeading(L, 'paymentMethod')}<p>${val(model.paymentMethod)}</p></div>
+        <div>${dualHeading(L, 'paymentTerms')}<p>${val(model.paymentTerms)}</p></div>
+        <div class="remarks">${dualHeading(L, 'remarks')}<p>${val(model.remarks)}</p></div>
       </section>`;
 }
 
-function sectionLead(kind, documentNumber) {
-  const isAcceptance = kind === 'acceptance';
+function sectionLead(kind, documentNumber, L) {
+  const heading = L.pair(kind === 'acceptance' ? 'documentAcceptance' : 'paymentDetails');
   return `
       <div class="sectionLead">
         <div>
-          <strong>${isAcceptance ? 'การยืนยันเอกสาร' : 'รายละเอียดการชำระเงิน'}</strong>
-          <span>${isAcceptance ? '/ DOCUMENT ACCEPTANCE' : '/ PAYMENT DETAILS'}</span>
+          <strong>${esc(heading.text)}</strong>
+          ${heading.sub ? `<span>${esc(heading.sub)}</span>` : ''}
         </div>
         <small>${val(documentNumber)}</small>
       </div>`;
 }
 
-function signBox(signer) {
+function signBox(signer, L) {
   // มีรูปลายเซ็นจริง (data URI base64) → แสดงรูป; ไม่มี → กล่องข้อความ "ลายเซ็นอิเล็กทรอนิกส์"
   // (data URI base64 ไม่มีอักขระ " ‹ › & จึงใส่ใน src ได้ตรง ๆ ไม่ต้อง esc)
   const esigMark = signer.esignature?.imageDataUri
-    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="ลายเซ็น ${esc(signer.esignature.signerName || '')}" />`
-    : '<div class="signaturePreview" aria-label="ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์">ลายเซ็นอิเล็กทรอนิกส์</div>';
+    ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="${esc(L.t('signatureOf'))} ${esc(signer.esignature.signerName || '')}" />`
+    : `<div class="signaturePreview" aria-label="${esc(L.isEnglish ? 'Electronic signature placeholder' : 'ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์')}">${esc(L.t('esignature'))}</div>`;
   // แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
   // มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ ไม่มี Evidence
   const esigMeta = [signer.esignature?.signerRole, signer.esignature?.signedAt].filter(Boolean).map(esc).join(' · ');
@@ -180,31 +209,32 @@ function signBox(signer) {
         ${esigMeta ? `<p>${esigMeta}</p>` : ''}
         ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
     : `
-        <div class="signatureSpace">ลงชื่อ</div>
+        <div class="signatureSpace">${esc(L.t('signHere'))}</div>
         <strong>${signer.name ? `(${esc(signer.name)})` : '(____________________________)'}</strong>
-        <p>วันที่ ______ / ______ / ______</p>`;
+        <p>${esc(L.t('signDateBlank'))}</p>`;
   return `
         <div class="${signer.esignature ? 'signed' : ''}">
           <h2>${esc(signer.label)}${signer.role ? ` <span>${esc(signer.role)}</span>` : ''}</h2>${body}
         </div>`;
 }
 
-function signatures(model) {
+function signatures(model, L) {
   return `
-      <section class="signatures" aria-label="ส่วนลงนาม">${(model.signers || []).map(signBox).join('')}</section>`;
+      <section class="signatures" aria-label="${esc(L.t('signaturesAria'))}">${(model.signers || []).map((signer) => signBox(signer, L)).join('')}</section>`;
 }
 
 // ท้ายกระดาษ: ชื่อบริษัท · รหัสแบบฟอร์ม · เลขหน้า
 // (เว็บไซต์ย้ายขึ้นไปอยู่แถวเดียวกับ โทร/Line บนหัวเอกสารแล้ว — มติผู้ใช้ 2026-07-26)
-function documentFooter(model, pageNumber, pageCount) {
+// ชื่อบริษัทท้ายกระดาษตามภาษาของใบ — ต้องเป็นชื่อเดียวกับบรรทัดบนสุดของหัวเอกสาร
+function documentFooter(model, pageNumber, pageCount, L) {
   return shellFooter({
-    left: model.company.nameTh,
+    left: L.isEnglish ? (model.company.nameEn || model.company.nameTh) : model.company.nameTh,
     center: model.formLine,
-    right: `หน้า ${pageNumber} / ${pageCount}`,
+    right: `${L.t('page')} ${pageNumber} / ${pageCount}`,
   });
 }
 
-function renderPages(model) {
+function renderPages(model, L) {
   let lineOffset = 0;
   // ดูจากบรรทัดที่ถูกพิมพ์จริง (ทุกหน้ารวมกัน) — ใบที่ไม่มีส่วนลดรายบรรทัดเลยไม่ต้องมี
   // คอลัมน์เปล่า ๆ กินความกว้างช่องรายละเอียด
@@ -215,23 +245,23 @@ function renderPages(model) {
     const paymentBlock = (page.showPayment || page.showSignatures)
       ? `
       <div class="paymentContent">
-        ${page.showPayment ? `<div class="paymentDetails">${installmentSection(model)}${termsSection(model)}</div>` : ''}
-        ${page.showSignatures ? signatures(model) : ''}
+        ${page.showPayment ? `<div class="paymentDetails">${installmentSection(model, L)}${termsSection(model, L)}</div>` : ''}
+        ${page.showSignatures ? signatures(model, L) : ''}
       </div>`
       : '';
     return `
-    <article class="sheet" data-page-kind="${esc(page.kind)}" aria-label="ใบเสนอราคา หน้า ${pageIndex + 1}">
+    <article class="sheet" data-page-kind="${esc(page.kind)}" aria-label="${esc(L.t('documentLabel'))} ${esc(L.t('page'))} ${pageIndex + 1}">
       ${watermarkBlock(model.watermark)}
-      ${documentHeader(model)}
+      ${documentHeader(model, L)}
       <div class="sheetContent">
-        ${page.showParty ? partyGrid(model) : ''}
-        ${page.kind === 'items' && pageIndex > 0 ? `<div class="continuation">รายการสินค้าและบริการต่อ · ${val(model.document.number)}</div>` : ''}
-        ${(page.kind === 'payment' || page.kind === 'acceptance') ? sectionLead(page.kind, model.document.number) : ''}
-        ${page.lines.length > 0 ? itemTable(page.lines, startIndex, showDiscount) : ''}
-        ${page.showTotals ? totalsSection(model) : ''}
+        ${page.showParty ? partyGrid(model, L) : ''}
+        ${page.kind === 'items' && pageIndex > 0 ? `<div class="continuation">${esc(L.t('itemsContinued'))} · ${val(model.document.number)}</div>` : ''}
+        ${(page.kind === 'payment' || page.kind === 'acceptance') ? sectionLead(page.kind, model.document.number, L) : ''}
+        ${page.lines.length > 0 ? itemTable(page.lines, startIndex, showDiscount, L) : ''}
+        ${page.showTotals ? totalsSection(model, L) : ''}
         ${paymentBlock}
       </div>
-      ${documentFooter(model, pageIndex + 1, model.pages.length)}
+      ${documentFooter(model, pageIndex + 1, model.pages.length, L)}
     </article>`;
   }).join('');
 }
@@ -246,9 +276,12 @@ export { DOCUMENT_ACCENT_THEMES };
 // สี accent ต่อชนิดเอกสาร: ใบเสนอราคา = terracotta, ใบสั่งขาย = steel
 // (มติผู้ใช้ 2026-07-21 — ดู salesOrderPrint.js)
 export function renderQuotationMasterDocumentHTML(model, options = {}) {
+  // แถบเครื่องมือด้านบน (no-print) เป็นของคนในบริษัท — ไทยเสมอ ไม่ตามภาษาของเอกสาร
   const documentLabel = options.documentLabel || 'ใบเสนอราคา';
   const number = model.document?.number || '';
+  const L = labelsOf(model);
   return renderDocumentHTML({
+    lang: L.language,
     // title = ชื่อไฟล์ที่ต้องการ เพราะเบราว์เซอร์ใช้ document.title ตั้งชื่อไฟล์ตอน
     // "พิมพ์ → บันทึกเป็น PDF" ซึ่งเป็นทางดาวน์โหลดหลักของเอกสารพวกนี้
     title: documentFileName(number, model.customer?.name, model.dealTitle),
@@ -257,7 +290,7 @@ export function renderQuotationMasterDocumentHTML(model, options = {}) {
     variantClass: 'v4',
     dataAttrs: ` data-template-version="${esc(model.templateVersion || '')}"`,
     toolbar: options.toolbar === false ? null : { label: `${documentLabel} ${number}` },
-    pages: renderPages(model),
+    pages: renderPages(model, L),
   });
 }
 

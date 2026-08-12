@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_QUOTATION_DOC_LANGUAGE,
   DEFAULT_QUOTATION_MASTER_VARIANT,
   QUOTATION_MASTER_TEMPLATE_VERSION,
   QUOTATION_MASTER_TEMPLATE_VERSIONS,
@@ -9,7 +10,9 @@ import {
   buildQuotationMasterModelFromQuote,
   buildQuotationMasterPreview,
   controlledFormLine,
+  docLanguageOf,
   paginateQuotationMasterLines,
+  quotationDocLabels,
 } from './quotationMasterTemplate.js';
 
 test('controlled form line preserves the exact ISO punctuation and spacing', () => {
@@ -465,4 +468,83 @@ test('หมายเหตุปกติยังอยู่หน้าเ�
   assert.equal(pages.some((page) => page.kind === 'acceptance'), false);
   const last = pages[pages.length - 1];
   assert.equal(last.showPayment, last.showSignatures, 'กลุ่มท้ายเอกสารต้องอยู่ด้วยกัน');
+});
+
+// ── ภาษาของเอกสาร (IS-26080005 · mig 0238) ─────────────────────────────────
+
+test('docLanguageOf: รับเฉพาะ th/en · ค่าอื่นและใบเก่าที่ไม่มีคอลัมน์ตกไปเป็นไทย', () => {
+  assert.equal(docLanguageOf('th'), 'th');
+  assert.equal(docLanguageOf('en'), 'en');
+  assert.equal(docLanguageOf(undefined), DEFAULT_QUOTATION_DOC_LANGUAGE);
+  assert.equal(docLanguageOf(null), 'th');
+  assert.equal(docLanguageOf('EN'), 'th', 'ไม่เดาให้จากตัวพิมพ์ใหญ่ — DB เก็บตัวเล็กเท่านั้น');
+  assert.equal(docLanguageOf('jp'), 'th');
+});
+
+test('พจนานุกรมป้าย: ทุกคีย์มีครบทั้งสองภาษา ไม่มีช่องว่าง', () => {
+  const th = quotationDocLabels('th');
+  const en = quotationDocLabels('en');
+  // คีย์ที่เอกสารเรียกใช้จริง — ขาดข้างใดข้างหนึ่ง = ป้ายหายไปจากกระดาษเงียบ ๆ
+  for (const key of ['number', 'grandTotal', 'paymentSchedule', 'signHere', 'page', 'lineNo']) {
+    assert.ok(th.t(key), `th ขาดคีย์ ${key}`);
+    assert.ok(en.t(key), `en ขาดคีย์ ${key}`);
+    assert.notEqual(th.t(key), en.t(key), `${key} ต้องแปลจริง ไม่ใช่ค่าเดียวกันสองฝั่ง`);
+  }
+  assert.equal(th.isEnglish, false);
+  assert.equal(en.isEnglish, true);
+});
+
+test('หัวข้อคู่: ใบไทยพิมพ์สองบรรทัด · ใบอังกฤษเหลือบรรทัดเดียว', () => {
+  assert.deepEqual(
+    quotationDocLabels('th').pair('paymentSchedule'),
+    { text: 'งวดชำระเงิน', sub: '/ PAYMENT SCHEDULE' },
+  );
+  assert.deepEqual(
+    quotationDocLabels('en').pair('paymentSchedule'),
+    { text: 'PAYMENT SCHEDULE', sub: '' },
+  );
+});
+
+test('model อ่านภาษาจากตัวใบ — ป้ายอ้างอิง/ช่องลงนาม/วันที่ ตามภาษาที่ใบเลือก', () => {
+  const quote = {
+    quoteNumber: 'QT-2026-0009', quoteDate: '2026-08-12', validUntil: '2026-09-11',
+    customerName: 'ACME PTE LTD', billingAddress: '1 Marina Blvd, Singapore',
+    lines: [], subtotal: 0, vatRate: 7, vatAmount: 0, totalAmount: 0,
+    paymentPlan: { type: 'full' }, approvalStatus: 'not_submitted',
+    docLanguage: 'en',
+    deal: { title: 'Room Diffuser 2026', ownerName: 'Kanti' },
+  };
+  const model = buildQuotationMasterModelFromQuote(quote);
+  assert.equal(model.docLanguage, 'en');
+  assert.equal(model.document.dateLabel, 'Date');
+  assert.equal(model.document.secondaryLabel, 'Valid Until');
+  assert.deepEqual(model.referenceRows.map((row) => row.label), ['Project No.', 'Project', 'Project Type', 'Quoted By']);
+  assert.deepEqual(model.signers.map((row) => row.label), ['Prepared By', 'Approved By', 'Confirmed By']);
+  assert.equal(model.watermark, 'DRAFT');
+  assert.equal(model.customer.branch, 'Head Office');
+
+  // ใบเดียวกันแต่ไม่ระบุภาษา = ใบไทยเดิมทุกป้าย
+  const thai = buildQuotationMasterModelFromQuote({ ...quote, docLanguage: undefined });
+  assert.equal(thai.docLanguage, 'th');
+  assert.equal(thai.document.dateLabel, 'วันที่');
+  assert.deepEqual(thai.referenceRows.map((row) => row.label), ['เลขที่โครงการ', 'โครงการ', 'ประเภทโครงการ', 'ผู้เสนอราคา']);
+  assert.deepEqual(thai.signers.map((row) => row.label), ['ผู้จัดทำ', 'ผู้อนุมัติเสนอราคา', 'ผู้ยืนยันคำสั่งซื้อ']);
+  assert.equal(thai.watermark, 'ฉบับร่าง');
+});
+
+test('ที่อยู่บริษัทภาษาอังกฤษเดินทางมากับ model — ยังไม่ได้กรอกก็ยังมีที่อยู่ไทยให้พิมพ์', () => {
+  const quote = {
+    quoteNumber: 'QT-1', lines: [], subtotal: 0, vatRate: 0, vatAmount: 0, totalAmount: 0,
+    paymentPlan: { type: 'full' }, approvalStatus: 'approved', docLanguage: 'en',
+  };
+  const withEn = buildQuotationMasterModelFromQuote(quote, {
+    company: { legalNameTh: 'บริษัท ทดสอบ จำกัด', legalNameEn: 'TEST CO., LTD.', address: '1 ถนนไทย', addressEn: '1 Thai Road' },
+  });
+  assert.equal(withEn.company.addressEn, '1 Thai Road');
+  assert.equal(withEn.company.address, '1 ถนนไทย', 'คีย์ address ต้องยังเป็นไทยจริง ๆ ไม่ถูกสลับค่า');
+
+  const withoutEn = buildQuotationMasterModelFromQuote(quote, {
+    company: { legalNameTh: 'บริษัท ทดสอบ จำกัด', address: '1 ถนนไทย' },
+  });
+  assert.equal(withoutEn.company.addressEn, '');
 });
