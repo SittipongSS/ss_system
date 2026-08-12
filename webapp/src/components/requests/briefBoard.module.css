@@ -83,7 +83,6 @@
    ⇒ ตั้งใหม่ให้รวมเป็น 100% ตอนมีครบสี่คอลัมน์ ซึ่งเป็นกรณีปกติของจอฝ่ายปลายทาง
    (ไม่มี step = รวม 80% เบราว์เซอร์ยืดตามสัดส่วนเดิม ซึ่งยังได้สัดส่วนที่ตั้งใจ) */
 .colName { width: 42%; }
-.colOutcome { width: 24%; }
 .colStage { width: 14%; }
 
 /* คอลัมน์ "ก้าวถัดไป" ในตารางเอกสาร (ม-94) — ปุ่มติดแถว ไม่ต้องเลื่อนหาท้ายเธรด */
@@ -123,13 +122,6 @@
 
 /* ⚠️ เยื้องด้วย padding ของเซลล์ ไม่ใช่ margin ของเนื้อใน — เส้นตารางต้องยังลากยาว
    เต็มความกว้าง ไม่งั้นแถวรอบแก้จะอ่านเป็นตารางซ้อนตาราง */
-.childCell { padding-left: var(--space-6); position: relative; }
-.childCell::before {
-  content: "↳";
-  position: absolute;
-  left: var(--space-3);
-  color: var(--text-3);
-}
 
 /* แถบท้าย: บรีฟที่ยังไม่มี direction — รวมเป็นบรรทัดเดียว ไม่กางทีละก้อน */
 .restStrip {
@@ -170,12 +162,36 @@
   cursor: pointer;
 }
 .rowToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
-.chev, .chevOpen { flex: 0 0 auto; color: var(--text-3); transition: transform var(--motion-fast); }
-.chevOpen { transform: rotate(90deg); }
 
-/* 🐞 **เคยใช้ `--panel-2` แล้วอ่านเหมือน "พื้นหลังหาย"** (ผู้ใช้ส่งภาพมา) — ในธีมสว่าง
-   `--panel-2` (#f7f4ee) **สว่างกว่า** พื้นหน้า (#efe9dd) ⇒ แถวที่กางออกมาดูขาวโพลน
-   เหมือนหลุดออกจากตาราง แทนที่จะดูเป็นเนื้อที่ยุบอยู่ข้างใน
-   ⇒ `--panel-3` ซึ่งเข้มกว่าพื้นหน้าเล็กน้อย = อ่านเป็น "ชั้นที่จมลงไป" ตามที่ควรเป็น
-   ⚠️ เส้นซ้ายบอกว่าเป็นเนื้อของแถวข้างบน ไม่ใช่แถวใหม่ที่มีสิทธิ์เท่ากัน */
-.detailRow > td { background: var(--panel-2); }
+
+/* ── การ์ดรายแถว (มติผู้ใช้ 2026-08-13 · IS-26080021 แบบ ข) ────────────────
+   แทนตาราง — ใบจริงมี direction 1–3 ตัว ตารางจ่ายค่าหัวคอลัมน์ฟรีแล้วยังบีบเนื้อ
+   ลงช่องแคบจนต้องซ่อนหลังปุ่มกาง · การ์ดเห็นครบโดยไม่ต้องกด
+   ⚠️ ใช้ร่วมกันทั้ง BriefBoard (สายกลิ่น) และ FormulaDevBoard (สายสูตร) — ห้ามโคลน */
+.cardList { display: grid; gap: var(--space-3); }
+
+.itemCard {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+/* ชื่อ · สถานะ · ปุ่มก้าวถัดไป อยู่แถวบนสุดเสมอ — ปุ่มชิดขวาเหมือนที่เคยเป็นคอลัมน์ท้าย */
+.itemTop { display: flex; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.itemName { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.itemName strong { font-weight: var(--fw-semibold); }
+.itemStep { flex: 0 0 auto; }
+
+/* ⭐ ข้อเท็จจริงเรียงแถวเดียว — เดิมกระจายคนละคอลัมน์จนต้องกวาดตาไปมา
+   ⚠️ `flex-wrap` ไม่ใช่ grid: จำนวนข้อเท็จจริงต่างกันรายแถว (บางแถวไม่มีราคา)
+   กริดคอลัมน์ตายตัวจะเหลือรูว่างในแถวที่ข้อมูลน้อย */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin-top: var(--space-2);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+.facts strong { color: var(--text); font-weight: var(--fw-semibold); }

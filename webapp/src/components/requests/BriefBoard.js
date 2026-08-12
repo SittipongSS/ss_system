@@ -11,8 +11,6 @@
 // ⚠️ การจัดกลุ่ม/นับ อยู่ที่ `lib/requests/briefBoard.js` ทั้งหมด — กฎที่ตั้งไว้หลัง
 // บั๊กรางซ้ำ (#1033): ประกอบ array ของแถวใน JSX เมื่อไร CI จะมองไม่เห็น
 import { Fragment, useState } from "react";
-import { ChevronRight } from "lucide-react";
-import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
@@ -43,18 +41,7 @@ export default function BriefBoard({ groups = [], renderStep = null, renderDetai
     active.filter((g) => g.summary?.needsAction).map((g) => g.id || 'orphan'),
   ));
   const [showIdle, setShowIdle] = useState(false);
-  /* แถว direction ที่กางดูรายละเอียดอยู่ — **กางได้หลายแถวพร้อมกัน** (มติผู้ใช้ 2026-08-12)
-     เพราะงานจริงคือเทียบ direction สองตัว ซึ่งต้องเห็นพร้อมกัน ไม่ใช่ accordion
-     ⚠️ ใบที่มี direction เดียวกางให้เลย — ไม่มีอะไรให้เลือก การบังคับกดอีกทีคือขั้นตอนเปล่า */
-  const [openRows, setOpenRows] = useState(() => {
-    const all = groups.flatMap((g) => g.directions || []);
-    return new Set(all.length === 1 ? [all[0].id] : []);
-  });
-  const toggleRow = (id) => setOpenRows((cur) => {
-    const next = new Set(cur);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  // ยุบ/กางระดับ "ก้อนบรีฟ" — สิ่งที่ทำให้ใบ 25 บรีฟไม่กลายเป็นกำแพง (มติ 2026-08-10)
   const toggle = (key) => setOpen((cur) => {
     const next = new Set(cur);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -111,66 +98,45 @@ export default function BriefBoard({ groups = [], renderStep = null, renderDetai
             </button>
 
             {isOpen && (
-              <TableScroll surface="embedded" minWidth={renderStep ? 780 : 640}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th className={styles.colName}>direction</th>
-                      <th className={styles.colOutcome}>ผลลัพธ์</th>
-                      <th className={styles.colStage}>สถานะ</th>
-                      {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.directions.map((d) => (
-                      <Fragment key={d.id}>
-                      <tr>
+              /* ⭐ **การ์ดรายแถว ไม่ใช่ตาราง** (มติผู้ใช้ 2026-08-13 · IS-26080021 แบบ ข)
+                 สเปกเต็ม: docs/request-board-table-options.html หัวข้อ "แบบ ข"
+                 🐞 ตารางเป็นทรงที่ผิดสำหรับข้อมูลชุดนี้ — บรีฟหนึ่งก้อนมี direction
+                 1–3 ตัว ตารางจ่ายค่าหัวคอลัมน์ฟรีแล้วยังบีบเนื้อลงช่องแคบจนต้องซ่อน
+                 สเปก/ไฟล์แนบไว้หลังปุ่มกาง ⇒ การ์ดเห็นครบโดยไม่ต้องกดสักครั้ง
+                 ⚠️ **การยุบ/กางระดับ "ก้อนบรีฟ" ยังอยู่** — นั่นคือสิ่งที่ทำให้ใบ 25 บรีฟ
+                 ไม่กลายเป็นกำแพง (มติ 2026-08-10) · ที่ตัดออกคือการกางรายแถวเท่านั้น */
+              <div className={styles.cardList}>
+                {g.directions.map((d) => (
+                  <article key={d.id} className={styles.itemCard} data-child={d.depth ? "" : undefined}>
+                    <div className={styles.itemTop}>
+                      <div className={styles.itemName}>
                         {/* ⭐ รอบแก้เยื้องใต้ตัวต้นทาง — ใช้สายพันธุ์ที่ฐานเก็บไว้แล้ว
                             (`derivedFromItemId`) ตอบว่า "ตัวนี้แก้มาจากตัวไหน" */}
-                        <td className={d.depth ? styles.childCell : undefined}>
-                          {renderDetail ? (
-                            <button
-                              type="button" className={styles.rowToggle}
-                              aria-expanded={openRows.has(d.id)} onClick={() => toggleRow(d.id)}
-                            >
-                              <ChevronRight size={14} aria-hidden="true"
-                                className={openRows.has(d.id) ? styles.chevOpen : styles.chev} />
-                              <span className={styles.name}>{d.name}</span>
-                            </button>
-                          ) : (
-                            <span className={styles.name}>{d.name}</span>
-                          )}
-                          {d.rework && <span className={styles.rework}>รอบแก้</span>}
-                        </td>
-                        <td>
-                          {d.outcomeLabel ? (
-                            <>
-                              <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
-                              {d.confirmedQty != null && (
-                                <span className={styles.qty}>{qty(d.confirmedQty)}</span>
-                              )}
-                              {d.outcomeNote && (
-                                <ReadableText text={d.outcomeNote} lines={2} className={styles.note} />
-                              )}
-                            </>
-                          ) : (
-                            // ⚠️ ยังไม่ถึงตาลูกค้า ≠ ลูกค้าเงียบ — ขีดเฉย ๆ อ่านเป็นอย่างหลัง
-                            <span className={styles.pending}>ยังไม่ถึงขั้นลูกค้าตอบ</span>
-                          )}
-                        </td>
-                        <td><StatusBadge tone={d.stageTone} label={d.stageLabel} /></td>
-                        {renderStep && <td className={styles.stepCell}>{renderStep(d)}</td>}
-                      </tr>
-                      {renderDetail && openRows.has(d.id) && (
-                        <tr className={styles.detailRow}>
-                          <td colSpan={renderStep ? 4 : 3}>{renderDetail(d)}</td>
-                        </tr>
-                      )}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </TableScroll>
+                        <strong>{d.name}</strong>
+                        {d.rework && <span className={styles.rework}>รอบแก้</span>}
+                      </div>
+                      <StatusBadge tone={d.stageTone} label={d.stageLabel} />
+                      {renderStep && <div className={styles.itemStep}>{renderStep(d)}</div>}
+                    </div>
+
+                    <div className={styles.facts}>
+                      <span>
+                        ผลลัพธ์{" "}
+                        {d.outcomeLabel
+                          ? <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
+                          // ⚠️ ยังไม่ถึงตาลูกค้า ≠ ลูกค้าเงียบ — ขีดเฉย ๆ อ่านเป็นอย่างหลัง
+                          : <strong>ยังไม่ถึงขั้นลูกค้าตอบ</strong>}
+                        {d.confirmedQty != null && ` · คอนเฟิร์ม ${qty(d.confirmedQty)}`}
+                      </span>
+                    </div>
+                    {d.outcomeNote && (
+                      <ReadableText text={d.outcomeNote} lines={2} className={styles.note} />
+                    )}
+
+                    {renderDetail?.(d)}
+                  </article>
+                ))}
+              </div>
             )}
           </Fragment>
         );
