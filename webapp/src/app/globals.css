@@ -4298,6 +4298,10 @@ button.empty-state { width: 100%; font: inherit; }
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
 
 
+/* ป้ายเตือน — สีอำพันบนพื้นอ่อน · เขียน inline ซ้ำอยู่ 4 จุด (Admin Override / สิทธิ์ฉุกเฉิน)
+   จึงยกเป็นคลาสร่วม ทรงมาจาก .ui-badge เหมือนเดิม เปลี่ยนแค่ *สี* ตามกฎชั้นกลาง */
+.ui-badge-warn { color: var(--amber); background: var(--amber-soft); }
+
 /* Progress bar — track + fill. Set fill width inline (style={{ width: pct+'%' }}). */
 .progress {
   height: 6px;

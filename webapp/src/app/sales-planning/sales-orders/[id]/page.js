@@ -632,7 +632,7 @@ export default function SalesOrderDetailPage() {
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span>}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -709,7 +709,7 @@ export default function SalesOrderDetailPage() {
               notices={<>
                 {editable ? <SaveStatus status={saveState} /> : null}
                 {canAdminOverride
-                  ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
+                  ? <span className="ui-badge ui-badge-warn">ไม่มีผู้ตรวจสอบคนที่สอง — ใช้สิทธิ์ฉุกเฉินได้</span>
                   : reviewer && ownSalesOrder && role !== "admin" && order.status === "pending_approval"
                     ? <span className="ui-badge" style={{ color: "var(--text-3)" }}>SO ที่คุณสร้าง/ยื่นเอง ต้องให้ผู้ตรวจสอบคนอื่นอนุมัติ</span>
                     : null}
@@ -875,7 +875,7 @@ export default function SalesOrderDetailPage() {
                   <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
                   <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
                   <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
-                  {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>Admin Override</span></dd></div>}
+                  {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge ui-badge-warn">Admin Override</span></dd></div>}
                   {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
                   {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}
                 </dl>

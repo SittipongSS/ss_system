@@ -886,7 +886,7 @@ export default function QuotationEditorPage() {
               notices={<>
                 {editable ? <SaveStatus status={error ? "error" : ["save", "revise"].includes(busy) ? "saving" : dirty ? "dirty" : "saved"} /> : null}
                 {needsSubmit ? <span className="ui-badge" style={{ color: "var(--text-2)" }}>รอผู้จัดทำยื่นอนุมัติ</span> : null}
-                {awaitingApproval ? <span className="ui-badge" style={{ color: "var(--amber)", background: "var(--amber-soft)" }}>รอเจ้าของดีลอนุมัติ{quote.approvalRequestedByName ? ` · ยื่นโดย ${quote.approvalRequestedByName}` : ""}</span> : null}
+                {awaitingApproval ? <span className="ui-badge ui-badge-warn">รอเจ้าของดีลอนุมัติ{quote.approvalRequestedByName ? ` · ยื่นโดย ${quote.approvalRequestedByName}` : ""}</span> : null}
                 {quote.approvalStatus === "approved" && quote.approvedByName ? <span className="ui-badge" style={{ color: "var(--green)", background: "var(--green-soft)" }}>อนุมัติโดย {quote.approvedByName}</span> : null}
               </>}
               evidence={<>
