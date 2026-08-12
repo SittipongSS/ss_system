@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>การ์ดการชำระบน SO — สามแบบให้เลือก</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css · ตัวพิมพ์ Sarabun ตามระบบ (มติ 2026-08-13) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;--accent-fg:#fff;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-2:10.5px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;--fs-7:13px;--fs-9:15px;--fs-11:18px;--fs-13:22px;--fs-15:27px;
+--font-sans:"Sarabun","IBM Plex Sans Thai",Tahoma,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.14);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.14);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}
+
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-7) var(--space-5) 80px;background:var(--bg);color:var(--text);
+  font-family:var(--font-sans);font-size:14px;line-height:1.55}
+.wrap{max-width:1220px;margin:0 auto;display:grid;gap:44px}
+h1{margin:0;font-size:26px;line-height:1.3}
+h2{margin:0;font-size:20px}
+h3{margin:0;font-size:var(--fs-9)}
+p{margin:0;color:var(--text-2);max-width:80ch}
+.head{display:grid;gap:var(--space-3)}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-4);font-weight:700;letter-spacing:.04em}
+.tag.a{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.g{background:var(--green-soft);color:var(--green)}
+.tag.r{background:var(--red-soft);color:var(--red)}
+.row{display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center}
+.themeBtn{position:fixed;right:16px;top:16px;z-index:9;padding:7px 14px;border:1px solid var(--border-strong);
+  border-radius:var(--radius-full);background:var(--panel);color:var(--text-2);font:inherit;font-size:var(--fs-5);cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-7)}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--text-3);font-size:var(--fs-5);font-weight:700}
+#metrics .num{text-align:right;font-variant-numeric:tabular-nums}
+.panel{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-5);display:grid;gap:var(--space-4)}
+code{font-size:.92em;background:var(--panel-3);padding:1px 5px;border-radius:4px}
+
+/* ── โครงการ์ดร่วม ───────────────────────────────────────────── */
+.card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.cardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4);
+  padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--border)}
+.cardTitle{display:grid;gap:2px}
+.eyebrow{color:var(--accent-ink);font-size:var(--fs-4);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.cardTitle b{font-size:16px}
+.headline{color:var(--text-2);font-size:var(--fs-7);text-align:right;white-space:nowrap}
+.headline b{color:var(--text);font-variant-numeric:tabular-nums}
+.cardBody{padding:var(--space-4);display:grid;gap:var(--space-3)}
+
+.won{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px var(--space-3);
+  padding-bottom:var(--space-3);border-bottom:1px solid var(--border)}
+.wonLab{color:var(--text-3);font-size:var(--fs-4);font-weight:700}
+.wonVal{color:var(--text);font-size:var(--fs-6)}
+.wonVal b{font-weight:700}
+.file{display:inline-flex;align-items:center;gap:4px;color:var(--accent-ink);font-size:var(--fs-5);text-decoration:none}
+
+.badge{display:inline-flex;align-items:center;gap:5px;min-height:22px;padding:1px 9px;border-radius:var(--radius-full);
+  font-size:var(--fs-4);font-weight:700;white-space:nowrap}
+.badge.paid{background:var(--green-soft);color:var(--green)}
+.badge.review{background:var(--blue-soft);color:var(--blue)}
+.badge.wait{background:var(--panel-3);color:var(--text-3)}
+.badge.late{background:var(--red-soft);color:var(--red)}
+.badge.back{background:var(--red-soft);color:var(--red)}
+.badge.ghost{background:transparent;color:var(--text-3);border:1px dashed var(--border-strong)}
+
+.btn{display:inline-flex;align-items:center;min-height:30px;padding:0 11px;border:1px solid var(--border-strong);
+  border-radius:var(--radius);background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-5);font-weight:700}
+.btn.acc{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.money{font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:700}
+.muted{color:var(--text-3);font-size:var(--fs-5)}
+
+/* ── แบบ ก · บล็อกรายการ ─────────────────────────────────────── */
+.aList{display:grid;gap:var(--space-2);margin:0;padding:0;list-style:none}
+.aRow{display:grid;gap:5px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2)}
+.aRow.pv{border-style:dashed;background:transparent}
+.aTop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.aName{flex:1;min-width:0;font-size:var(--fs-7);font-weight:700}
+.aName em{color:var(--text-3);font-size:var(--fs-4);font-style:normal;font-weight:400;margin-left:6px}
+
+/* ── แบบ ข · แถบเงิน + ตารางแน่น ─────────────────────────────── */
+.bar{height:8px;border-radius:var(--radius-full);background:var(--panel-3);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:var(--radius-full);background:var(--green)}
+.barMeta{display:flex;justify-content:space-between;color:var(--text-3);font-size:var(--fs-5)}
+.bScroll{max-width:100%;overflow-x:auto}
+.bTable{width:100%;min-width:340px;border-collapse:collapse;font-size:var(--fs-6)}
+.bTable th{color:var(--text-3);font-size:var(--fs-2);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border-strong);text-align:left}
+.bTable td{padding:9px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.bTable tr:last-child td{border-bottom:0}
+.bTable .num{text-align:right;font-variant-numeric:tabular-nums}
+.bTable tr.active td{background:var(--accent-soft)}
+.bTable .sub{display:block;color:var(--text-3);font-size:var(--fs-2)}
+
+/* ── แบบ ค · โฟกัสงวดที่ถึงคิว ───────────────────────────────── */
+.focus{border:1px solid var(--accent);border-radius:var(--radius);background:var(--accent-soft);padding:12px 14px;display:grid;gap:7px}
+.focus .lab{color:var(--accent-ink);font-size:var(--fs-4);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.focus .line{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:var(--fs-9);font-weight:700}
+.rest{display:grid;gap:0;margin:0;padding:0;list-style:none}
+.rest li{display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);font-size:var(--fs-6)}
+.rest li:last-child{border-bottom:0}
+.rest .mk{width:16px;text-align:center;color:var(--text-3);font-weight:700}
+.rest .mk.ok{color:var(--green)}
+.rest .nm{flex:1;min-width:0;color:var(--text-2)}
+.rest .amt{color:var(--text-2);font-variant-numeric:tabular-nums}
+
+/* ── กริดเทียบ ──────────────────────────────────────────────── */
+.cases{display:grid;gap:var(--space-4)}
+.caseHead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.caseHead b{font-size:var(--fs-9)}
+.caseHead span{color:var(--text-3);font-size:var(--fs-6)}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-4);align-items:start}
+.colHead{position:sticky;top:0;z-index:2;padding:8px 0;background:var(--bg);
+  color:var(--accent-ink);font-size:var(--fs-6);font-weight:700;letter-spacing:.04em}
+.callouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:var(--space-4)}
+.callout{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);
+  background:var(--panel-2);padding:10px 14px;display:grid;gap:4px}
+.callout b{font-size:var(--fs-7)}
+.callout p{font-size:var(--fs-6)}
+.callout.no{border-left-color:var(--red)}
+.callout.ok{border-left-color:var(--green)}
+@media (max-width:1000px){.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<button class="themeBtn" id="themeBtn" type="button">สลับธีม</button>
+<div class="wrap">
+
+<header class="head">
+  <div class="row"><span class="tag a">SALES ORDER · PAYMENT PANEL</span><span class="tag r">รอเลือกแบบ</span></div>
+  <h1>การ์ดการชำระบนใบสั่งขาย — สามแบบให้เลือก</h1>
+  <p>
+    ทั้งสามแบบใช้ข้อมูลชุดเดียวกันและตอบคำถามเดียวกัน — <b>เก็บเงินได้แล้วเท่าไร ค้างเท่าไร
+    งวดไหนถึงคิว ใครต้องทำอะไรต่อ</b> · ต่างกันที่ <b>จัดลำดับความสำคัญยังไงเมื่องวดเยอะขึ้น</b>
+  </p>
+  <p>
+    แต่ละแบบแสดง 5 สถานการณ์: <b>ร่าง (ยังไม่เริ่มติดตาม)</b> · <b>1 งวด</b> · <b>2 งวด</b> ·
+    <b>4 งวด</b> · <b>มีปัญหา</b> (เลยกำหนด + บัญชีตีกลับ)
+  </p>
+</header>
+
+<section class="head">
+  <h2>สิ่งที่เหมือนกันทั้งสามแบบ</h2>
+  <div class="panel">
+    <table>
+      <tbody>
+        <tr><td><b>หัวการ์ด</b></td><td>สรุปหนึ่งบรรทัดชิดขวา — ไม่กินบรรทัดในเนื้อการ์ด</td></tr>
+        <tr><td><b>แถบหลักฐานปิดการขาย</b></td><td>ประเภท · เลขที่ (mig 0246) · วันที่ · ไฟล์ — แถวเดียว</td></tr>
+        <tr><td><b>ร่าง = เส้นประ</b></td><td>แผนจากใบเสนอราคา ยังไม่มีแถวใน DB กดอะไรไม่ได้</td></tr>
+        <tr><td><b>เตือนเฉพาะตอนมีเรื่อง</b></td><td>เลยกำหนด / บัญชีตีกลับ เท่านั้น สถานะปกติอ่านจากป้าย</td></tr>
+        <tr><td><b>งวดเดียวไม่มีพิธี</b></td><td>ไม่ขึ้น &ldquo;งวดที่ 1&rdquo; ไม่ขึ้น &ldquo;100%&rdquo;</td></tr>
+        <tr><td><b>reported ≠ ชำระแล้ว</b></td><td>ยอด &ldquo;เก็บแล้ว&rdquo; นับเฉพาะที่บัญชีคอนเฟิร์ม</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="head">
+  <h2>เทียบสามแบบ ทีละสถานการณ์</h2>
+  <div class="grid3">
+    <div class="colHead">แบบ ก · บล็อกรายการ <span class="muted">(ของตอนนี้ ปรับปรุง)</span></div>
+    <div class="colHead">แบบ ข · แถบเงิน + ตารางแน่น</div>
+    <div class="colHead">แบบ ค · โฟกัสงวดที่ถึงคิว</div>
+  </div>
+  <div id="cases" class="cases"></div>
+</section>
+
+<section class="head">
+  <h2>ข้อแลกของแต่ละแบบ</h2>
+  <div class="callouts">
+    <div class="callout ok"><b>ก · บล็อกรายการ</b>
+      <p>อ่านทีละงวดครบทุกอย่างในที่เดียว ปุ่มอยู่ติดงวดของมัน · <b>แลก:</b> 4 งวดสูง ~380px และตายังต้องกวาดหาว่างวดไหนถึงคิว</p></div>
+    <div class="callout ok"><b>ข · แถบเงิน + ตาราง</b>
+      <p>เห็นสัดส่วนเงินทันทีจากแถบ และเทียบข้ามงวดง่ายสุดเพราะเป็นคอลัมน์ตรง · <b>แลก:</b> ปุ่มอยู่ในเมนู <code>⋯</code> = คลิกเพิ่มหนึ่งครั้ง และแถวเดียวใส่หลักฐานได้ไม่ครบ</p></div>
+    <div class="callout ok"><b>ค · โฟกัสงวดที่ถึงคิว</b>
+      <p>ตอบ &ldquo;ตอนนี้ต้องทำอะไร&rdquo; โดยไม่ต้องกวาดตา งวดที่จบแล้วยุบเหลือบรรทัดเดียว · <b>แลก:</b> ต้องนิยาม &ldquo;งวดที่ถึงคิว&rdquo; ให้ชัด และงวดที่รอในอนาคตดูจางจนอาจถูกมองข้าม</p></div>
+  </div>
+  <div class="panel">
+    <h3>ความสูงที่วัดได้ (สคริปต์วัดจริงตอนโหลดหน้า)</h3>
+    <table id="metrics">
+      <thead><tr><th>สถานการณ์</th><th class="num">แบบ ก</th><th class="num">แบบ ข</th><th class="num">แบบ ค</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted">ยิ่งงวดเยอะ ความต่างยิ่งชัด — เลือกจากงวดที่ของจริงใช้บ่อยที่สุด ไม่ใช่จากเคสที่สวยที่สุด</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ── ข้อมูลจำลอง ─────────────────────────────────────────────
+   ทั้งสามแบบเรนเดอร์จากชุดเดียวกัน เพื่อให้เทียบกันได้จริง ไม่ใช่เทียบข้อมูลคนละชุด */
+const B = (n) => "฿" + n.toLocaleString("th-TH", {minimumFractionDigits:2, maximumFractionDigits:2});
+const WON = {type:"ใบสั่งซื้อ (PO)", no:"PO-2569-00123", date:"07/08/2026", file:"PO_Happa_2569.pdf"};
+const WON_SLIP = {type:"สลิปโอนเงิน", no:null, date:"07/08/2026", file:"slip_07082026.jpg"};
+
+const CASES = [
+  { key:"draft", title:"ใบร่าง / รออนุมัติ", note:"ยังไม่มีงวดจริง — โชว์แผนจากใบเสนอราคา", won:WON, preview:true,
+    rows:[ {seq:1,label:"ชำระยืนยันการสั่งซื้อ",pct:50,amt:260812.5,status:"preview"},
+           {seq:2,label:"ชำระหลังส่งสินค้า ภายใน 3 วัน",pct:50,amt:260812.5,status:"preview"} ] },
+
+  { key:"one", title:"1 งวด · จ่ายครั้งเดียว", note:"เคสที่พบบ่อยที่สุด", won:WON_SLIP,
+    rows:[ {seq:1,label:"ชำระเต็มจำนวน",pct:100,amt:64200,status:"review",paid:"07/08/2026",by:"Supisara",file:"slip.jpg"} ] },
+
+  { key:"two", title:"2 งวด · มัดจำ + ปลายทาง", note:"งวดแรกเก็บได้แล้ว", won:WON,
+    rows:[ {seq:1,label:"มัดจำ",pct:50,amt:32100,status:"paid",paid:"05/08/2026",by:"Supisara",conf:"บัญชี ก"},
+           {seq:2,label:"ก่อนส่งมอบ",pct:50,amt:32100,status:"wait",due:"30/09/2026"} ] },
+
+  { key:"many", title:"4 งวด · แบ่งตามงาน", note:"งวดเยอะ = จุดที่ดีไซน์ต่างกันจริง", won:WON,
+    rows:[ {seq:1,label:"มัดจำ",pct:25,amt:16050,status:"paid",paid:"05/08/2026",conf:"บัญชี ก"},
+           {seq:2,label:"อนุมัติกลิ่น",pct:25,amt:16050,status:"paid",paid:"20/08/2026",conf:"บัญชี ก"},
+           {seq:3,label:"ระหว่างผลิต",pct:25,amt:16050,status:"review",paid:"10/09/2026",by:"Supisara",file:"slip3.jpg",due:"15/09/2026"},
+           {seq:4,label:"ก่อนส่งมอบ",pct:25,amt:16050,status:"wait",due:"30/10/2026"} ] },
+
+  { key:"trouble", title:"มีปัญหา · เลยกำหนด + บัญชีตีกลับ", note:"สถานะที่ต้องเห็นชัดที่สุด", won:WON,
+    rows:[ {seq:1,label:"มัดจำ",pct:30,amt:19260,status:"paid",paid:"05/08/2026",conf:"บัญชี ก"},
+           {seq:2,label:"ระหว่างผลิต",pct:30,amt:19260,status:"back",due:"01/08/2026",late:true,
+            reason:"ยอดในสลิปไม่ตรงกับงวดนี้ — โอนมา 15,000 แต่งวดนี้ 19,260"},
+           {seq:3,label:"ก่อนส่งมอบ",pct:40,amt:25680,status:"wait",due:"30/09/2026"} ] },
+];
+
+const LABEL = {paid:"ชำระแล้ว", review:"รอบัญชีตรวจ", wait:"รอชำระ", back:"บัญชีตีกลับ", preview:"ยังไม่เริ่มติดตาม"};
+const TONE  = {paid:"paid", review:"review", wait:"wait", back:"back", preview:"ghost"};
+
+const sum = (rows, f) => rows.filter(f).reduce((a,r)=>a+r.amt,0);
+const total = (rows) => rows.reduce((a,r)=>a+r.amt,0);
+const paidAmt = (rows) => sum(rows, r=>r.status==="paid");
+
+function headline(c){
+  const t = total(c.rows), p = paidAmt(c.rows), n = c.rows.length;
+  if (c.preview) return `แผนจากใบเสนอราคา${n>1?` · ${n} งวด`:""}`;
+  if (p===t) return `เก็บครบแล้ว <b>${B(t)}</b>`;
+  if (n===1) return `ค้างรับ <b>${B(t-p)}</b>`;
+  return `เก็บแล้ว ${c.rows.filter(r=>r.status==="paid").length}/${n} งวด · ค้างรับ <b>${B(t-p)}</b>`;
+}
+const wonBar = (w) => `<div class="won"><span class="wonLab">ปิดการขายด้วย</span>
+  <span class="wonVal">${w.type}${w.no?` · <b>${w.no}</b>`:""} · ${w.date}</span>
+  <a class="file" href="#">📎 ${w.file}</a></div>`;
+const alertBar = (c) => {
+  const late = c.rows.filter(r=>r.late).length, back = c.rows.filter(r=>r.status==="back").length;
+  if(!late && !back) return "";
+  const msg = [late?`เลยกำหนดแล้ว ${late} งวด`:null, back?`บัญชีตีกลับ ${back} งวด`:null].filter(Boolean).join(" · ");
+  return `<div class="badge late" style="width:100%;justify-content:flex-start;padding:8px 12px;border-radius:var(--radius)">⚠ ${msg}</div>`;
+};
+const nameOf = (r, single) => single ? r.label : `งวดที่ ${r.seq} · ${r.label}`;
+const pctOf  = (r, single) => single ? "" : `<em>${r.pct}%</em>`;
+const metaOf = (r) => [r.due?`กำหนด ${r.due}`:null, r.paid?`จ่าย ${r.paid}`:null,
+  r.by?`แจ้งโดย ${r.by}`:null, r.conf?`รับรองโดย ${r.conf}`:null].filter(Boolean).join(" · ");
+const actsOf = (r) => {
+  if (r.status==="preview") return "";
+  if (r.status==="review") return `<div class="acts"><span class="btn">ดึงกลับ</span><span class="btn acc">บัญชีคอนเฟิร์ม</span><span class="btn">ตีกลับ</span></div>`;
+  if (r.status==="wait" || r.status==="back") return `<div class="acts"><span class="btn">ตั้งกำหนดชำระ</span><span class="btn acc">แจ้งลูกค้าจ่ายแล้ว</span></div>`;
+  return "";
+};
+
+/* ── แบบ ก · บล็อกรายการ ─────────────────────────────────── */
+function renderA(c){
+  const single = c.rows.length===1;
+  const rows = c.rows.map(r=>`
+    <li class="aRow${r.status==="preview"?" pv":""}">
+      <div class="aTop">
+        <span class="badge ${TONE[r.status]}">${LABEL[r.status]}</span>
+        <span class="aName">${nameOf(r,single)}${pctOf(r,single)}</span>
+        <span class="money">${B(r.amt)}</span>
+      </div>
+      ${metaOf(r)||r.late?`<div class="muted">${r.late?'<b style="color:var(--red)">เลยกำหนด</b> · ':""}${metaOf(r)}</div>`:""}
+      ${r.file?`<a class="file" href="#">📎 ${r.file}</a>`:""}
+      ${r.reason?`<div style="padding:7px 10px;border-radius:var(--radius);background:var(--red-soft);color:var(--red);font-size:var(--fs-5)"><b>บัญชีตีกลับ</b> — ${r.reason}</div>`:""}
+      ${actsOf(r)}
+    </li>`).join("");
+  return `<div class="card"><div class="cardHead">
+      <div class="cardTitle"><span class="eyebrow">Payment</span><b>การชำระ</b></div>
+      <div class="headline">${headline(c)}</div></div>
+    <div class="cardBody">${wonBar(c.won)}${alertBar(c)}<ol class="aList">${rows}</ol></div></div>`;
+}
+
+/* ── แบบ ข · แถบเงิน + ตารางแน่น ─────────────────────────── */
+function renderB(c){
+  const single = c.rows.length===1;
+  const t = total(c.rows), p = paidAmt(c.rows);
+  const bar = (c.preview||single) ? "" : `<div>
+      <div class="bar"><i style="width:${Math.round(p/t*100)}%"></i></div>
+      <div class="barMeta"><span>เก็บแล้ว ${B(p)}</span><span>ทั้งใบ ${B(t)}</span></div></div>`;
+  const rows = c.rows.map(r=>`
+    <tr class="${r.status==="review"||r.status==="back"?"active":""}">
+      <td>${single?"—":r.seq}</td>
+      <td>${r.label}${single?"":`<span class="sub">${r.pct}%</span>`}</td>
+      <td>${r.due||"—"}${r.late?'<span class="sub" style="color:var(--red)">เลยกำหนด</span>':""}
+          ${r.paid?`<span class="sub">จ่าย ${r.paid}</span>`:""}</td>
+      <td class="num money">${B(r.amt)}</td>
+      <td><span class="badge ${TONE[r.status]}">${LABEL[r.status]}</span></td>
+      <td class="num">${r.status==="preview"?"":'<span class="btn">⋯</span>'}</td>
+    </tr>`).join("");
+  const back = c.rows.find(r=>r.reason);
+  return `<div class="card"><div class="cardHead">
+      <div class="cardTitle"><span class="eyebrow">Payment</span><b>การชำระ</b></div>
+      <div class="headline">${headline(c)}</div></div>
+    <div class="cardBody">${bar}${wonBar(c.won)}${alertBar(c)}
+      <div class="bScroll"><table class="bTable"><thead><tr><th>งวด</th><th>รายละเอียด</th><th>กำหนด / จ่าย</th><th class="num">ยอด</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      ${back?`<div style="padding:7px 10px;border-radius:var(--radius);background:var(--red-soft);color:var(--red);font-size:var(--fs-5)"><b>งวดที่ ${back.seq} ถูกตีกลับ</b> — ${back.reason}</div>`:""}
+    </div></div>`;
+}
+
+/* ── แบบ ค · โฟกัสงวดที่ถึงคิว ───────────────────────────── */
+function renderC(c){
+  const single = c.rows.length===1;
+  const focusRow = c.rows.find(r=>r.status==="review"||r.status==="back") || c.rows.find(r=>r.status==="wait") || c.rows[0];
+  const rest = c.rows.filter(r=>r!==focusRow);
+  const focus = c.preview ? "" : `<div class="focus">
+      <span class="lab">${focusRow.status==="paid"?"งวดล่าสุด":"ถึงคิวตอนนี้"}</span>
+      <div class="line"><span>${single?focusRow.label:`งวดที่ ${focusRow.seq} · ${focusRow.label}`}</span>
+        <span class="money">${B(focusRow.amt)}</span></div>
+      <div class="muted">${focusRow.late?'<b style="color:var(--red)">เลยกำหนด</b> · ':""}${metaOf(focusRow)||"ยังไม่กำหนดวัน"}</div>
+      ${focusRow.file?`<a class="file" href="#">📎 ${focusRow.file}</a>`:""}
+      ${focusRow.reason?`<div style="color:var(--red);font-size:var(--fs-5)"><b>บัญชีตีกลับ</b> — ${focusRow.reason}</div>`:""}
+      <div class="row" style="gap:8px"><span class="badge ${TONE[focusRow.status]}">${LABEL[focusRow.status]}</span>${actsOf(focusRow)}</div>
+    </div>`;
+  const list = (c.preview?c.rows:rest);
+  const restHtml = list.length?`<ul class="rest">${list.map(r=>`
+      <li><span class="mk ${r.status==="paid"?"ok":""}">${r.status==="paid"?"✓":"○"}</span>
+        <span class="nm">${single?r.label:`งวดที่ ${r.seq} · ${r.label}`}${r.due?` · กำหนด ${r.due}`:""}${r.paid&&r.status==="paid"?` · รับรอง ${r.paid}`:""}</span>
+        <span class="amt">${B(r.amt)}</span></li>`).join("")}</ul>`:"";
+  return `<div class="card"><div class="cardHead">
+      <div class="cardTitle"><span class="eyebrow">Payment</span><b>การชำระ</b></div>
+      <div class="headline">${headline(c)}</div></div>
+    <div class="cardBody">${wonBar(c.won)}${alertBar(c)}${focus}${restHtml}</div></div>`;
+}
+
+const host = document.getElementById("cases");
+host.innerHTML = CASES.map(c=>`
+  <div class="caseHead"><b>${c.title}</b><span>${c.note}</span></div>
+  <div class="grid3" data-case="${c.key}">
+    <div data-opt="a">${renderA(c)}</div>
+    <div data-opt="b">${renderB(c)}</div>
+    <div data-opt="c">${renderC(c)}</div>
+  </div>`).join("");
+
+/* วัดความสูงจริงของแต่ละการ์ด — ตัวเลขในตารางต้องมาจากของที่เรนเดอร์จริง ไม่ใช่ที่เดา */
+function fillMetrics(){
+  const tb = document.querySelector("#metrics tbody");
+  tb.innerHTML = CASES.map(c=>{
+    const box = document.querySelector(`[data-case="${c.key}"]`);
+    const h = (opt)=>Math.round(box.querySelector(`[data-opt="${opt}"] .card`).getBoundingClientRect().height);
+    return `<tr><td>${c.title}</td><td class="num">${h("a")}px</td><td class="num">${h("b")}px</td><td class="num">${h("c")}px</td></tr>`;
+  }).join("");
+}
+fillMetrics();
+// ฟอนต์โหลดเสร็จแล้วความสูงขยับ — วัดซ้ำให้ตัวเลขตรงกับที่ตาเห็นจริง
+if (document.fonts?.ready) document.fonts.ready.then(fillMetrics);
+addEventListener("resize", fillMetrics);
+
+const b = document.getElementById("themeBtn");
+b.addEventListener("click", ()=>{
+  const next = document.documentElement.getAttribute("data-theme")==="dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  b.textContent = next==="dark" ? "ธีมสว่าง" : "ธีมมืด";
+});
+</script>
+</body>
+</html>
