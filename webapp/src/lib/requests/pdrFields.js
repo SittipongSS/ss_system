@@ -175,9 +175,12 @@ export const PDR_SECTIONS = [
       { key: 'contactPhone', no: '1.2', label: 'Phone / Line', type: 'derived', derive: 'contactPhone', from: 'เติมจากทะเบียนลูกค้า' },
       { key: 'customer', no: '1.3', label: 'ชื่อบริษัท', type: 'derived', derive: 'customer', from: 'เติมจาก SO' },
       { key: 'customerBrand', no: '1.4', column: 'pdrCustomerBrand', max: 200, label: 'ชื่อแบรนด์', type: 'text' },
-      { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', max: 500, label: 'Mood & Tone', type: 'text' },
-      { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', max: 500, label: 'ทิศทางการเติบโตของแบรนด์', type: 'text' },
-      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', max: 500, label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'text' },
+      // ⭐ สามช่องนี้เป็นข้อความยาว (IS-26080006 · 2026-08-12) — `type` ที่นี่ไม่ได้
+      // เลือกคอนโทรลให้ฟอร์ม (`PdrForm` เป็นเจ้าของชนิดช่องกรอก) แต่ต้องตรงกับของจริง
+      // ไม่งั้นทะเบียนกลายเป็นเอกสารที่โกหกคนอ่านคนถัดไป
+      { key: 'moodTone', no: '1.5', column: 'pdrMoodTone', max: 500, label: 'Mood & Tone', type: 'textarea' },
+      { key: 'brandDirection', no: '1.6', column: 'pdrBrandDirection', max: 500, label: 'ทิศทางการเติบโตของแบรนด์', type: 'textarea' },
+      { key: 'shipTo', no: '1.7', column: 'pdrShipTo', max: 500, label: 'ที่อยู่จัดส่งตัวอย่าง', type: 'textarea' },
       {
         key: 'customerKind', no: '1.8', column: 'pdrCustomerKind', max: 40, label: 'ประเภทลูกค้า',
         type: 'select', options: PDR_CUSTOMER_KINDS,

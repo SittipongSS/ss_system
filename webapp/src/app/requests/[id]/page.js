@@ -1191,7 +1191,7 @@ export default function RequestDetailPage() {
             <div className="form-group">
               <label htmlFor="resch-why">เหตุผล (ไม่บังคับ)</label>
               <Textarea
-                variant="data" id="resch-why" rows={2} maxLength={500}
+                id="resch-why" rows={2} maxLength={500}
                 value={reschedule.reason} disabled={saving}
                 placeholder="บอกฝ่ายขายว่าทำไมต้องเลื่อน — จะได้ไปคุยกับลูกค้าต่อได้"
                 onChange={(e) => setReschedule({ ...reschedule, reason: e.target.value })}
@@ -1368,7 +1368,7 @@ export default function RequestDetailPage() {
             {hopDraft.hop === "refuse" && (
               <div className="form-group">
                 <label htmlFor="hop-refuse-why">เหตุผลที่ปฏิเสธ</label>
-                <Textarea variant="data"
+                <Textarea
                   id="hop-refuse-why" rows={3} maxLength={2000}
                   value={hopDraft.note} disabled={saving}
                   placeholder="เช่น เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอเอกสารจากเขาโดยตรง"
@@ -1478,7 +1478,7 @@ export default function RequestDetailPage() {
             {hopDraft.hop === "outcome" && (
               <div className="form-group">
                 <label htmlFor="hop-note">สิ่งที่ลูกค้าบอก</label>
-                <Textarea variant="data"
+                <Textarea
                   id="hop-note" rows={3} maxLength={4000}
                   value={hopDraft.note} disabled={saving}
                   placeholder={hopDraft.outcome === "revise"
@@ -1724,7 +1724,7 @@ export default function RequestDetailPage() {
         </p>
         <div className="form-group">
           <label htmlFor="ask-bounce">ต้องแก้อะไร</label>
-          <Textarea variant="data"
+          <Textarea
             id="ask-bounce" rows={3} maxLength={2000}
             value={bounceReason.trim() ? bounceReason : ""} disabled={saving}
             placeholder="เช่น ยังไม่ได้แนบไฟล์อ้างอิง / ใบสั่งขายยังไม่อนุมัติ / ระบุปริมาณที่ต้องการด้วย"
@@ -1748,7 +1748,7 @@ export default function RequestDetailPage() {
       <Modal open={!!cancelReason} onClose={() => setCancelReason("")} title="ยกเลิกคำร้อง" size="sm" dismissible={!saving}>
         <div className="form-group">
           <label htmlFor="ask-cancel">เหตุผลที่ยกเลิก</label>
-          <Textarea variant="data"
+          <Textarea
             id="ask-cancel" rows={3} maxLength={500}
             value={cancelReason.trim() ? cancelReason : ""} disabled={saving}
             onChange={(e) => setCancelReason(e.target.value || " ")}

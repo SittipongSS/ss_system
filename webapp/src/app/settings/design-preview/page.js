@@ -657,8 +657,12 @@ export default function DesignPreviewPage() {
               </datalist>
             </label>
             <label className={`${styles.field} ${styles.fieldWide}`}>
-              ช่องหลายบรรทัด
+              ช่องหลายบรรทัด (พื้นขั้นต่ำ 3 บรรทัด)
               <Textarea defaultValue="" placeholder="รายละเอียดเพิ่มเติม" />
+            </label>
+            <label className={`${styles.field} ${styles.fieldWide}`}>
+              ช่องหลายบรรทัดที่ขอพื้นมากกว่า <code>{"rows={6}"}</code>
+              <Textarea rows={6} defaultValue="" placeholder="พิมพ์ต่อไปเรื่อย ๆ — กล่องโตตามเนื้อหาจนถึงเพดาน แล้วค่อยเลื่อนในกล่อง" />
             </label>
             <label className={`${styles.field} ${styles.fieldWide}`}>
               กล่องวางข้อมูลดิบ <code>variant=&quot;data&quot;</code>
@@ -669,12 +673,14 @@ export default function DesignPreviewPage() {
               />
             </label>
           </div>
-          <StatusNotice tone="info" title="ช่องหลายบรรทัดมีสองงาน อย่าสลับกัน">
-            <code>&lt;Textarea&gt;</code> เปล่า ๆ = <b>ช่องกรอกของฟอร์ม</b> (หน้าตาเดียวกับ
-            ช่องบรรทัดเดียว) ส่วน <code>variant=&quot;data&quot;</code> = <b>กล่องวางข้อมูลดิบ</b>
-            ฟอนต์ mono สูงคงที่ ลากขยายไม่ได้ — สำหรับ JSON/ล็อก/ข้อความที่ก๊อปมาวาง
-            เคยมี <code>&lt;textarea&gt;</code> 3 จุดที่ไม่ใส่คลาสเลย ได้กล่องไม่มีขอบ
-            พื้นโปร่งใส และสีตัวอักษรไม่เปลี่ยนตามธีม
+          <StatusNotice tone="info" title="ช่องหลายบรรทัดมีทรงเดียว ต่างกันแค่ฟอนต์">
+            ขนาดของทั้งสองแบบมาจากกติกาชุดเดียวกัน: <b>พื้นขั้นต่ำ 3 บรรทัด</b> ·{" "}
+            <code>rows</code> ขอพื้นมากกว่านั้นได้แต่ขอให้เตี้ยกว่าไม่ได้ ·{" "}
+            <b>โตตามที่พิมพ์</b>จนถึงเพดาน 40vh · <b>ลากขยายเองได้</b> ทั้งคู่
+            <br />
+            เลือก <code>variant=&quot;data&quot;</code> เมื่อเนื้อในเป็น <b>ข้อมูลดิบ</b>
+            (JSON/ล็อก) ที่ต้องการฟอนต์ mono เท่านั้น — <b>ไม่ใช่เพราะอยากได้กล่องใหญ่กว่า</b>
+            ซึ่งเป็นเหตุผลที่ทำให้ข้อความไทย 21 จุดไปอยู่ในฟอนต์ mono มาก่อน (แก้แล้ว 2026-08-12)
           </StatusNotice>
           <StatusNotice tone="info" title="อย่าเติม w-full / text-xs / h-[32px] ที่ปลายทาง">
             <code>.premium-input</code> ตั้งความกว้าง 100% ความสูง <code>--ctl-h</code> และขนาด

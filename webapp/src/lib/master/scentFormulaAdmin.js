@@ -4,6 +4,7 @@
 // ทิ้ง error ทำให้ schema error กลายเป็น "ไม่พบ X" แล้วไล่หาสาเหตุไม่เจอ
 // (เคยหลุด prod มาแล้ว: คอลัมน์ที่ไม่มีจริงทำให้เปิดใบขอราคาผลิตไม่ได้ทั้งหน้า)
 import { genId } from '@/lib/id';
+import { registryRefTargets } from '@/lib/master/registryRefs';
 import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
   latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
@@ -82,6 +83,25 @@ export async function countRequestItemsProducingScent(supabase, scentId) {
     .eq('producedScentId', scentId);
   if (error) throw error;
   return count || 0;
+}
+
+/**
+ * นับทุก pointer ที่เป็น `RESTRICT` หลัง mig 0232 — ใช้เป็น `linkedCount` ของด่านลบ
+ *
+ * ⭐ **ต้องนับให้ครบทุกช่อง ไม่ใช่เฉพาะช่องที่นึกออก** — ช่องที่ตกหล่นจะผ่านด่านนี้
+ * ไปแล้วไปตายที่ฐานข้อมูลด้วย 23503 ซึ่งขึ้นจอเป็นภาษาอังกฤษที่ผู้ใช้อ่านไม่ออก
+ * ⚠️ รายการต้องตรงกับ `unlinkRegistryRefs()` ใน `lib/forceDelete.js` เสมอ —
+ * นับอย่าง ปลดอีกอย่าง แปลว่าบังคับลบแล้วยังโดนปฏิเสธอยู่ดี
+ */
+export async function countRegistryRefs(supabase, kind, id) {
+  let total = 0;
+  for (const [table, column] of registryRefTargets(kind)) {
+    const { count, error } = await supabase
+      .from(table).select('id', { count: 'exact', head: true }).eq(column, id);
+    if (error) throw error;
+    total += count || 0;
+  }
+  return total;
 }
 
 // ด่านสายพันธุ์ที่ต้องถาม DB — โยน Error เป็นภาษาไทยให้ route ตอบ 400 ตามเดิม
@@ -174,7 +194,7 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
   return attachRegistryPrice(supabase, withUsage, { column: 'formulaId', kind: 'RM_FB' });
 }
 
-// FG ที่ถือสูตรแต่ละตัว (1 สูตร : 1 FG — mig 0231) — ตัวเลือกสูตรบนฟอร์มสินค้า
+// FG ที่ถือสูตรแต่ละตัว (1 สูตร : 1 FG — mig 0232) — ตัวเลือกสูตรบนฟอร์มสินค้า
 // ใช้ตัดสูตรที่มีเจ้าของแล้วออก · null = ยังว่าง
 // พ่วงชื่อกลิ่นของสูตร (`scentName`) ไปด้วย — ฟอร์มสินค้าโชว์ "กลิ่นที่จะได้"
 // ใต้ช่องสูตรโดยไม่ต้องโหลดทะเบียนกลิ่นทั้งก้อนเอง
@@ -365,7 +385,7 @@ export async function updateFormula(supabase, id, patch) {
 // โดยไม่ผูกอะไรเลยแย่กว่า เพราะสินค้าจะโผล่กลับมาเป็น "รอจัดระเบียบ" อีกรอบ
 // ⚠️ ทุกทางที่ผูกสูตรเข้าสินค้า (สร้าง · แก้ · จัดระเบียบ) ผ่านฟังก์ชันนี้ —
 // ด่าน **1 สูตร : 1 FG** (มติผู้ใช้ 2026-08-10) จึงอยู่ที่นี่ที่เดียว ขาดไม่ได้
-// เชิงโครงสร้าง · mig 0231 มี unique index กันชั้น DB อีกชั้น แต่ข้อความไทย
+// เชิงโครงสร้าง · mig 0232 มี unique index กันชั้น DB อีกชั้น แต่ข้อความไทย
 // ที่บอกว่าชนกับ FG ตัวไหน ต้องมาจากด่านนี้
 //
 // `forProductId` = สินค้าที่กำลังบันทึก — แก้สินค้าเดิมที่ถือสูตรนี้อยู่แล้วต้องผ่าน
