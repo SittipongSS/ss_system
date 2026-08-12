@@ -2,6 +2,7 @@
 
 import { useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
+import { scrollToTopOf } from "@/lib/ui/scrollToTopOf";
 
 // แท็บสลับ "ส่วน/มุมมอง" ของหน้า (M3 Tabs — active = เส้นใต้). คู่กับ ViewSwitcher
 // (`.segmented` = ตัวกรอง/สลับโหมด active พื้นส้ม). กติกา: สลับหน้า→Tabs, กรองในหน้า→segmented.
@@ -21,6 +22,14 @@ export default function Tabs({
   const generatedId = useId();
   const rootId = id || `tabs-${generatedId.replaceAll(":", "")}`;
   const buttonsRef = useRef([]);
+  const rootRef = useRef(null);
+
+  /* สลับแท็บตอนไถอยู่กลางหน้า = เนื้อหาของแท็บใหม่เริ่มเหนือขอบจอ คนอ่านต้องไถขึ้นเอง
+     จึงพากลับมาที่แถบแท็บให้ (เลื่อนขึ้นอย่างเดียว — อยู่บนสุดอยู่แล้วจะไม่ขยับ) */
+  const selectTab = (key) => {
+    onChange?.(key);
+    scrollToTopOf(rootRef.current);
+  };
   const visibleTabs = (tabs || []).filter(Boolean);
   const hasSelectedTab = visibleTabs.some((tab) => value === tab.key && !tab.disabled);
   const firstEnabledIndex = visibleTabs.findIndex((tab) => !tab.disabled);
@@ -30,11 +39,12 @@ export default function Tabs({
     if (nextIndex < 0) return;
     event.preventDefault();
     buttonsRef.current[nextIndex]?.focus();
-    if (activationMode === "automatic") onChange?.(visibleTabs[nextIndex].key);
+    if (activationMode === "automatic") selectTab(visibleTabs[nextIndex].key);
   };
 
   return (
     <div
+      ref={rootRef}
       id={rootId}
       className={`tabs-header ${className}`.trim()}
       role="tablist"
@@ -55,7 +65,7 @@ export default function Tabs({
           aria-label={tab.ariaLabel}
           tabIndex={selected || (!hasSelectedTab && index === firstEnabledIndex) ? 0 : -1}
           className={`tab-btn ${selected ? "active" : ""}`}
-          onClick={() => onChange?.(tab.key)}
+          onClick={() => selectTab(tab.key)}
           onKeyDown={(event) => moveFocus(event, index)}
           disabled={tab.disabled}
         >

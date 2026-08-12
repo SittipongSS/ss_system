@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
 import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
-import { Metric as SaMetric, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNEL_LABELS, LEAD_SLA_STAGES, leadSlaNote, slaPendingTone,
 } from "@/lib/sales/leads";
@@ -201,7 +201,10 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
         </p>
         {/* คุณภาพของ funnel ข้างบน — เปอร์เซ็นต์อ่านคู่กับจำนวนดิบในกริดเดียวกันไม่ได้
             (คนละหน่วย) จึงแยกเป็นแถวของตัวเองใต้ส่วนเดียวกัน */}
-        <div className={styles.qualityGrid} aria-busy={loading}>
+        {/* ใช้ `MetricStrip` ไม่ใช่กริดของตัวเอง — แถบกลางมีเส้นคั่น 1px ระหว่างช่องและ
+            กรอบรอบแถบให้อยู่แล้ว (กริดเดิมเป็นการ์ดลอยไม่มีอะไรแบ่ง อ่านไม่ออกว่าเลข
+            ไหนคู่กับป้ายไหนเวลามีหลายใบเรียงกัน) */}
+        <SaMetricStrip className={styles.qualityStrip} aria-busy={loading}>
           {/* "ค้างตอนนี้" ไม่ใช่ "ค้างของเดือนนี้" — ตัวเลขนี้ไม่ผูกกับเดือนที่เลือก
               โดยเจตนา (ลีดที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด) ป้ายจึงต้องบอกให้ชัด */}
           {LEAD_SLA_STAGES.map(({ key, label, pendingLabel }) => {
@@ -217,14 +220,14 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
               />
             );
           })}
-        </div>
-        {/* ผลลัพธ์แยกกริดของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม
-            (ทันเวลาไหม vs ได้ผลเท่าไร) และรวมกริดเดียวแล้วจะตัดบรรทัดค้างเป็นแถวเศษ */}
-        <div className={styles.qualityGrid} aria-busy={loading}>
+        </SaMetricStrip>
+        {/* ผลลัพธ์แยกแถบของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม
+            (ทันเวลาไหม vs ได้ผลเท่าไร) และรวมแถบเดียวแล้วจะตัดบรรทัดค้างเป็นแถวเศษ */}
+        <SaMetricStrip className={styles.qualityStrip} aria-busy={loading}>
           {OUTCOME_CARDS.map(({ key, label, value, note }) => (
             <SaMetric key={key} icon={<CalendarClock />} label={label} value={value(f)} note={note(f)} />
           ))}
-        </div>
+        </SaMetricStrip>
       </SaSection>
 
       {/* Marketing: กรอกรายวัน */}
