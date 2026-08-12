@@ -2,24 +2,19 @@
 
 import { Target, TrendingUp, LineChart, Percent, CalendarClock, ArrowUpRight } from "lucide-react";
 import UiKpiCard from "@/components/ui/KpiCard";
+import { yearSummary } from "@/lib/sales/performanceMath";
 import { money, pctFmt } from "./shared";
 
 // การ์ด KPI 6 ใบของมุมมองที่เลือก (บริษัท/ทีม/คน) — ตัวเลขระดับ "ทั้งปี + YTD".
 // ทบสะสม YTD = Actual YTD − Target YTD (ติดลบ = ต้องทบเข้าเดือนถัดไป);
 // เมื่อปิดโหมดทบยอด ป้ายเปลี่ยนเป็น "ผลต่างสะสมเทียบเป้า" (ตัวเลขเดียวกัน คนละการตีความ).
-
-const sumTo = (arr, n) => arr.slice(0, n).reduce((a, b) => a + Number(b || 0), 0);
+//
+// คณิตอยู่ที่ `yearSummary` ที่เดียว — คอลัมน์โหมดปีของตารางติดตามใช้ตัวเดียวกัน
+// (เคยเขียนสูตรซ้ำในตารางสรุปที่ลบไปแล้ว แล้วเลขสองจุดหลุดจากกันได้เงียบ ๆ)
 
 export default function PerformanceKpiCards({ row, lastYear, label, year, ytdCount, carry }) {
-  const targetYear = sumTo(row.target, 12);
-  const targetYtd = sumTo(row.target, ytdCount);
-  const actualYtd = sumTo(row.actual, ytdCount);
-  const gap = actualYtd - targetYtd;
-  const achv = targetYtd > 0 ? (actualYtd / targetYtd) * 100 : null;
-  const remainMonths = 12 - ytdCount;
-  const needPerMonth = remainMonths > 0 ? Math.max(0, targetYear - actualYtd) / remainMonths : null;
-  const lastYtd = lastYear ? sumTo(lastYear, ytdCount) : 0;
-  const yoy = lastYtd > 0 ? (actualYtd / lastYtd - 1) * 100 : null;
+  const { targetYear, targetYtd, actualYtd, gap, achv, remainMonths, needPerMonth, yoy } =
+    yearSummary(row, { ytdCount, lastYearActual: lastYear });
 
   const gapLabel = carry ? "ยอดทบสะสม (YTD)" : "ผลต่างสะสมเทียบเป้า (YTD)";
   const gapHint = gap >= 0

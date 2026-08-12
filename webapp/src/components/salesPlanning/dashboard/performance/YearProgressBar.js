@@ -1,35 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { Target } from "lucide-react";
 import { windowStat, periodKindOf } from "@/lib/sales/performanceMath";
-import { money, pctFmt, SeriesLegend } from "./shared";
+import { money, pctFmt, periodLabel, SeriesLegend } from "./shared";
 
 // แถบความคืบหน้าเทียบเป้า — ทั้งบริษัท (ส่วนบนสุดของแท็บผลงานขาย).
 // Actual (เขียว) + Forecast (ส้ม) ซ้อนในแถบเดียว เทียบตำแหน่งขีด "เป้า(+ทบ)".
-// สลับหน้าต่างเวลา เดือนนี้/ไตรมาสนี้/ทั้งปี ได้ — ปีอื่นที่ไม่ใช่ปีปัจจุบันมีแต่ "ทั้งปี".
-// สวิตช์ "ทบยอด" อยู่ที่นี่เพราะมีผลทั้งแท็บ (ทุกตาราง/กราฟด้านล่าง).
+//
+// งวดมาจากแถบคุมด้านบน (`PeriodBar`) — การ์ดนี้ไม่มีตัวคุมเวลาของตัวเองแล้ว
+// (2026-08-12) ของเดิมเป็น `useState` แยกที่ล็อกอยู่ที่ "ตอนนี้" และไม่เข้า URL
+// จึงแสดงคนละงวดกับตารางที่อยู่ใต้มันได้โดยไม่มีอะไรบอก
 
-const WINDOWS = [
-  { key: "month", label: "เดือนนี้" },
-  { key: "quarter", label: "ไตรมาสนี้" },
-  { key: "year", label: "ทั้งปี" },
-];
-
-export default function YearProgressBar({ matrix, year, now, closedCount, carryOn, onCarryChange }) {
-  // เริ่มที่ "เดือนนี้" — หน้านี้ถูกเปิดตอนประชุมเช้าเป็นหลัก (มติผู้ใช้ 2026-07-18)
-  const [win, setWin] = useState("month");
-  const isCurrentYear = year === now.year;
-  const activeWin = isCurrentYear ? win : "year";
-
-  const range =
-    activeWin === "month"
-      ? { startIdx: now.monthIdx, endIdx: now.monthIdx }
-      : activeWin === "quarter"
-        ? { startIdx: Math.floor(now.monthIdx / 3) * 3, endIdx: Math.floor(now.monthIdx / 3) * 3 + 2 }
-        : { startIdx: 0, endIdx: 11 };
-
-  const stat = windowStat(matrix.company, { ...range, carryOn, closedCount });
+export default function YearProgressBar({ matrix, year, now, closedCount, carry, win }) {
+  const range = { startIdx: win.startIdx, endIdx: win.endIdx };
+  const stat = windowStat(matrix.company, { ...range, carryOn: carry, closedCount });
   const kind = periodKindOf({ year, ...range }, now);
   const scale = Math.max(stat.mustClose, stat.actual + stat.forecast, 1);
   const w = (v) => `${Math.min(100, (v / scale) * 100)}%`;
@@ -38,7 +22,9 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
     <section className="glass-panel" style={{ padding: 16 }}>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <Target size={17} aria-hidden="true" />
-        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ความคืบหน้าเทียบเป้า — ทั้งบริษัท</h2>
+        <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>
+          ความคืบหน้าเทียบเป้า — ทั้งบริษัท · {periodLabel(win)}
+        </h2>
         <div className="spacer" />
         <SeriesLegend
           items={[
@@ -46,24 +32,6 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
             { label: "Forecast", color: "var(--amber)" },
           ]}
         />
-        <div className="segmented" role="group" aria-label="ช่วงเวลา">
-          {WINDOWS.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              className={activeWin === o.key ? "active" : ""}
-              disabled={!isCurrentYear && o.key !== "year"}
-              onClick={() => setWin(o.key)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-        {/* นโยบายทบยอด: เปิด = เดือนขาดเป้าทบเข้างวดถัดไป (ขีดเป้าเลื่อนตาม) — มีผลทั้งแท็บ */}
-        <div className="segmented" role="group" aria-label="โหมดทบยอด" title="เปิด = ยอดที่ขาดทบเข้างวดถัดไป · ปิด = เทียบเป้าปกติรายงวด">
-          <button type="button" className={carryOn ? "active" : ""} onClick={() => onCarryChange(true)}>ทบยอด</button>
-          <button type="button" className={!carryOn ? "active" : ""} onClick={() => onCarryChange(false)}>เป้าปกติ</button>
-        </div>
       </div>
 
       <div style={{ position: "relative", marginTop: 22 }}>
@@ -81,7 +49,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
         {stat.mustClose > 0 && (
           <span style={{ position: "absolute", top: -5, height: 24, width: 3, left: w(stat.mustClose), transform: "translateX(-50%)", background: "var(--text)", borderRadius: 2 }}>
             <span style={{ position: "absolute", top: -16, left: "50%", transform: "translateX(-50%)", fontSize: "var(--fs-3)", color: "var(--text-2)", whiteSpace: "nowrap" }}>
-              {carryOn && stat.carry > 0 ? "เป้า+ทบ" : "เป้า"}
+              {carry && stat.carry > 0 ? "เป้า+ทบ" : "เป้า"}
             </span>
           </span>
         )}
@@ -89,7 +57,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carryO
 
       <div style={{ marginTop: 10, fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
         Actual {money(stat.actual)} ({pctFmt(stat.pct)}) · Forecast {money(stat.forecast)} · ต้องปิด {money(stat.mustClose)}
-        {carryOn && stat.carry > 0 && <> (เป้า {money(stat.target)} + ทบยกมา {money(stat.carry)})</>}
+        {carry && stat.carry > 0 && <> (เป้า {money(stat.target)} + ทบยกมา {money(stat.carry)})</>}
         {kind !== "past" && stat.projected < stat.mustClose && <> · คาดขาด {money(stat.mustClose - stat.projected)}</>}
       </div>
     </section>

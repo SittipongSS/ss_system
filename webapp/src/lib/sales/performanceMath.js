@@ -157,6 +157,35 @@ export function statusOf(stat, { periodKind }) {
   return { key: 'pending_fc_short', label: 'รอปิด · Forecast ขาด', tone: 'amber', amount: stat.mustClose - stat.forecast };
 }
 
+/* สรุประดับ "ทั้งปี + YTD" ของแถวหนึ่ง — คู่หูของ `windowStat` ที่มองทั้งปีแทนงวด.
+   ใช้ทั้งการ์ด KPI และคอลัมน์โหมดปีของตารางติดตาม **สูตรเดียวกันที่เดียว**
+   ⚠️ เคยเขียนซ้ำสองไฟล์ (PerformanceKpiCards + SummaryTable) แล้วเลขชนกันเอง:
+   การ์ดกับแถวรวมท้ายตารางเป็นตัวเลขชุดเดียวกัน แต่แก้ที่เดียวอีกที่ไม่ตาม
+
+   ⚠️ ระวังนิยาม: `gap` เทียบ **Target YTD** (เป้าเฉพาะเดือนที่ผ่านมา) ไม่ใช่เป้าทั้งปี
+   ต่างจาก `windowStat().diff` ของงวดปีที่เทียบเป้าทั้ง 12 เดือน — สองเลขนี้อยู่ในตาราง
+   เดียวกันได้ แต่ต้องติดป้ายให้ต่างกัน ไม่งั้นอ่านแล้วขัดกันเอง */
+export function yearSummary(row, { ytdCount = 12, lastYearActual = null } = {}) {
+  const targetYear = sumRange(row.target, 0, 11);
+  const targetYtd = sumRange(row.target, 0, ytdCount - 1);
+  const actualYtd = sumRange(row.actual, 0, ytdCount - 1);
+  const remainMonths = 12 - ytdCount;
+  const lastYtd = lastYearActual ? sumRange(lastYearActual, 0, ytdCount - 1) : 0;
+  return {
+    targetYear,
+    fcTotalYear: sumRange(row.fcTotal || [], 0, 11),
+    forecastYear: sumRange(row.forecast, 0, 11),
+    targetYtd,
+    actualYtd,
+    gap: actualYtd - targetYtd,
+    achv: targetYtd > 0 ? (actualYtd / targetYtd) * 100 : null,
+    remainMonths,
+    // เหลือ 0 เดือน = ปีจบแล้ว ไม่มี "ต่อเดือน" ให้พูดถึง (null ⇒ UI แสดง "—")
+    needPerMonth: remainMonths > 0 ? Math.max(0, targetYear - actualYtd) / remainMonths : null,
+    yoy: lastYtd > 0 ? (actualYtd / lastYtd - 1) * 100 : null,
+  };
+}
+
 // ตารางทบยอดรายเดือน (แผง Carry-over): ทบยกมา/ต้องปิด/±เดือน/สะสมหลังเดือน.
 // เดือนที่ยังไม่จบ actual = null (UI แสดง "–"), สะสมหยุดที่เดือนจบล่าสุด.
 export function carryTable(row, { closedCount = 12 } = {}) {
@@ -225,6 +254,25 @@ export function windowForPeriod(period) {
     return { year: Number(m[1]), startIdx: i, endIdx: i, kind: 'month' };
   }
   return null;
+}
+
+/* ผกผันของ `windowForPeriod` — คีย์ `bp` ของหน้าต่างหนึ่ง ๆ
+   ⚠️ ตัวคุมงวดต้องอ่านค่าจากตัวนี้ ไม่ใช่จาก `bp` ดิบใน URL: bp ที่หลุดปี (สลับปีแล้ว
+   พารามิเตอร์เก่าค้าง) ถูกดึงกลับเป็น "ทั้งปี" ตอนคำนวณหน้าต่าง แต่ URL ยังค้างค่าเดิม
+   ⇒ เอา bp ดิบไปเป็น value ของตัวเลือกจะไม่ตรงกับตัวเลือกไหนเลย = ช่องว่าง */
+export function bpOfWindow(win) {
+  if (!win) return '';
+  if (win.kind === 'year') return String(win.year);
+  if (win.kind === 'quarter') return `${win.year}-Q${Math.floor(win.startIdx / 3) + 1}`;
+  return `${win.year}-${String(win.startIdx + 1).padStart(2, '0')}`;
+}
+
+// สลับชนิดงวดโดยคงตำแหน่งเวลาเดิม (เดือน→ไตรมาสที่ครอบเดือนนั้น · ไตรมาส→เดือนแรกของไตรมาส)
+export function toKind(period, kind) {
+  const w = windowForPeriod(period);
+  if (!w) return period;
+  const startIdx = kind === 'quarter' ? Math.floor(w.startIdx / 3) * 3 : w.startIdx;
+  return bpOfWindow({ ...w, kind, startIdx });
 }
 
 function shiftPeriod(period, dir) {

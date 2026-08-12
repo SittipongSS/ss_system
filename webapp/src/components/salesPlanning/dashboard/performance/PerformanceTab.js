@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { buildMatrix, closedMonths, ytdMonths } from "@/lib/sales/performanceMath";
+import { buildMatrix, closedMonths, ytdMonths, windowForPeriod } from "@/lib/sales/performanceMath";
 import { apiCache } from "@/lib/apiCache";
 import { SALES_TEAMS } from "@/components/salesPlanning/ui";
 import DealDrillDownModal from "@/components/salesPlanning/DealDrillDownModal";
+import PeriodBar from "./PeriodBar";
 import YearProgressBar from "./YearProgressBar";
 import MorningBoard from "./MorningBoard";
 import YearHeatmap from "./YearHeatmap";
@@ -190,7 +191,15 @@ export default function PerformanceTab({ year }) {
   // คลิกช่อง Actual ในบอร์ด → modal รายดีลชุดเดียวกับแดชบอร์ดเดิม (กติกา wonMonth ตรงกัน)
   const [dealFilter, setDealFilter] = useState(null);
 
-  const common = { matrix, prevMatrix, year: yearNum, now, closedCount, ytdCount, carry: view.carry, loading };
+  /* งวดของทั้งแท็บ — คำนวณที่เดียวแล้วส่งลงไป (แถบคุม + แถบความคืบหน้า + ตารางติดตาม)
+     งวดต้องอยู่ในปีที่ดูเสมอ (matrix เป็นรายปี) — bp ที่หลุดปี เช่นสลับปีแล้วพารามิเตอร์
+     เก่าค้าง ถูกดึงกลับเป็นทั้งปี */
+  const win = useMemo(() => {
+    const w = windowForPeriod(view.bp);
+    return w && w.year === yearNum ? w : windowForPeriod(String(yearNum));
+  }, [view.bp, yearNum]);
+
+  const common = { matrix, prevMatrix, year: yearNum, now, closedCount, ytdCount, carry: view.carry, win, loading };
 
   return (
     <div className="flex flex-col gap-4" aria-busy={loading}>
@@ -202,15 +211,17 @@ export default function PerformanceTab({ year }) {
 
       {/* ทางเข้าหน้ากรอกยอดย้อนหลังอยู่ที่หน้าวางเป้าที่เดียว (มติผู้ใช้ 2026-07-26) —
           แท็บนี้เป็นหน้าอ่านผล ไม่ใช่หน้ากรอกข้อมูล */}
-      <YearProgressBar {...common} carryOn={view.carry} onCarryChange={(carry) => update({ carry })} />
-
-      <MorningBoard
-        {...common}
-        bp={view.bp}
+      <PeriodBar
+        year={yearNum}
+        win={win}
         onBpChange={(bp) => update({ bp })}
-        onDrill={drillTo}
-        onDealDrill={setDealFilter}
+        carry={view.carry}
+        onCarryChange={(carry) => update({ carry })}
       />
+
+      <YearProgressBar {...common} />
+
+      <MorningBoard {...common} onDrill={drillTo} onDealDrill={setDealFilter} />
 
       <YearHeatmap {...common} onDrill={drillTo} />
 
@@ -222,7 +233,6 @@ export default function PerformanceTab({ year }) {
           person={view.person}
           period={view.period}
           onChange={update}
-          onDrill={drillTo}
         />
       </div>
 
