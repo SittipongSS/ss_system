@@ -224,6 +224,10 @@ export default function QuotationsPage() {
                 <tr>
                   <th>เลขที่</th>
                   <th>ลูกค้า / ดีล</th>
+                  {/* ⭐ ประเภทดีลเป็นคอลัมน์ของตัวเอง (มติผู้ใช้ 2026-08-12) — เดิมป้ายนี้
+                      แทรกหน้าชื่อดีลในเซลเดียวกัน ทำให้กวาดตาหาว่า "ใบไหนเป็น NPD" ไม่ได้
+                      และตัวกรอง "ประเภทดีล" ที่มีอยู่แล้วไม่มีคอลัมน์ให้ยืนยันผลลัพธ์ */}
+                  <th>ประเภท</th>
                   <th>วันที่</th>
                   <th className="num">ยอดรวม</th>
                   <th>สถานะ</th>
@@ -243,10 +247,10 @@ export default function QuotationsPage() {
                       {/* รหัสลูกค้าเป็นบรรทัดเล็กใต้ชื่อ — เหนือบรรทัดดีล (มติ IS-26080003) */}
                       {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        {r.deal && dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type")}
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>
                     </td>
+                    <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">-</span>}</td>
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                     <td className="num mono">{fmtMoney(r.totalAmount)}</td>
                     <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
@@ -289,7 +293,7 @@ export default function QuotationsPage() {
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && (
-                  <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
                 )}
               </tbody>
             </table></TableScroll>
