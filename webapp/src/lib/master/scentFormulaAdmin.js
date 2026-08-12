@@ -169,8 +169,38 @@ export async function loadFormulas(supabase, { status = null, customerId = null 
   const { data, error } = await query.order('name', { ascending: true });
   if (error) throw error;
   const withSource = await attachFormulaSource(supabase, data || []);
+  const withUsage = await attachFormulaUsage(supabase, withSource);
   // ราคา FB ของสูตร — คู่ขนานกับ F ของกลิ่น
-  return attachRegistryPrice(supabase, withSource, { column: 'formulaId', kind: 'RM_FB' });
+  return attachRegistryPrice(supabase, withUsage, { column: 'formulaId', kind: 'RM_FB' });
+}
+
+// FG ที่ถือสูตรแต่ละตัว (1 สูตร : 1 FG — mig 0231) — ตัวเลือกสูตรบนฟอร์มสินค้า
+// ใช้ตัดสูตรที่มีเจ้าของแล้วออก · null = ยังว่าง
+// พ่วงชื่อกลิ่นของสูตร (`scentName`) ไปด้วย — ฟอร์มสินค้าโชว์ "กลิ่นที่จะได้"
+// ใต้ช่องสูตรโดยไม่ต้องโหลดทะเบียนกลิ่นทั้งก้อนเอง
+async function attachFormulaUsage(supabase, rows) {
+  if (!rows.length) return rows;
+  const { data: holders, error } = await supabase
+    .from('products')
+    .select('id, "fgCode", "formulaId"')
+    .in('formulaId', rows.map((r) => r.id));
+  if (error) throw error;
+  const byFormula = new Map((holders || []).map((p) => [p.formulaId, { id: p.id, fgCode: p.fgCode || null }]));
+
+  const scentIds = [...new Set(rows.map((r) => r.scentId).filter(Boolean))];
+  let scentNameById = new Map();
+  if (scentIds.length) {
+    const { data: scents, error: scentError } = await supabase
+      .from('scents').select('id, name').in('id', scentIds);
+    if (scentError) throw scentError;
+    scentNameById = new Map((scents || []).map((s) => [s.id, s.name]));
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    usedByProduct: byFormula.get(r.id) || null,
+    scentName: scentNameById.get(r.scentId) || null,
+  }));
 }
 
 // ── ที่มาของสูตรแต่ละตัว ─────────────────────────────────────────────────
@@ -333,16 +363,39 @@ export async function updateFormula(supabase, id, patch) {
 // prod จึงมี 10 แถวที่เอา *ชื่อกลิ่น* ไปกรอกช่องชื่อสูตร แล้วไม่มีใครกลับมาตรวจ
 // (ดู loadUnsortedProducts) · โยน error เมื่อ id ไม่มีจริง — บันทึกผ่านแบบเงียบ ๆ
 // โดยไม่ผูกอะไรเลยแย่กว่า เพราะสินค้าจะโผล่กลับมาเป็น "รอจัดระเบียบ" อีกรอบ
-export async function productFormulaSnapshot(supabase, formulaId) {
+// ⚠️ ทุกทางที่ผูกสูตรเข้าสินค้า (สร้าง · แก้ · จัดระเบียบ) ผ่านฟังก์ชันนี้ —
+// ด่าน **1 สูตร : 1 FG** (มติผู้ใช้ 2026-08-10) จึงอยู่ที่นี่ที่เดียว ขาดไม่ได้
+// เชิงโครงสร้าง · mig 0231 มี unique index กันชั้น DB อีกชั้น แต่ข้อความไทย
+// ที่บอกว่าชนกับ FG ตัวไหน ต้องมาจากด่านนี้
+//
+// `forProductId` = สินค้าที่กำลังบันทึก — แก้สินค้าเดิมที่ถือสูตรนี้อยู่แล้วต้องผ่าน
+export async function productFormulaSnapshot(supabase, formulaId, { forProductId = null } = {}) {
+  // ⚠️ ตอนล้างสูตร **ไม่แตะ scentId** — สินค้าที่ RD จัดระเบียบว่าเป็น "กลิ่น"
+  // (scentId มีค่า, formulaId ว่าง) ต้องรอดจากการกดบันทึกฟอร์มแก้ทั่วไป
+  // การล้าง scentId ตอนถอดสูตรเป็นหน้าที่ของ PATCH (ซึ่งรู้ค่าเดิมของแถว)
   const empty = { formulaId: null, formulaCode: null, formulaName: null, formulaDate: null };
   if (!formulaId) return empty;
   const formula = await findFormula(supabase, formulaId);
   if (!formula) throw new Error('ไม่พบสูตรที่เลือกในทะเบียนสูตร');
+
+  // 1 สูตร : 1 FG — สูตรที่ FG อื่นถืออยู่แล้ว เลือกซ้ำไม่ได้
+  const { data: holders, error: holderError } = await supabase
+    .from('products').select('id, "fgCode"').eq('formulaId', formulaId);
+  if (holderError) throw holderError;
+  const other = (holders || []).find((p) => p.id !== forProductId);
+  if (other) {
+    throw new Error(
+      `สูตรนี้ผูกกับสินค้า ${other.fgCode || other.id} อยู่แล้ว — 1 สูตรใช้ได้กับ 1 FG เท่านั้น`,
+    );
+  }
+
   return {
     formulaId: formula.id,
     formulaCode: formula.code || null,
     formulaName: formula.name || null,
     formulaDate: formula.formulaDate || null,
+    // กลิ่นของสินค้า derive จากสูตรเสมอ (FG → สูตร → กลิ่น) — ไม่ให้กรอกเอง
+    scentId: formula.scentId || null,
   };
 }
 
@@ -375,7 +428,7 @@ export async function loadUnsortedProducts(supabase) {
 //               (ตัวกลิ่นย้ายไปอยู่ในทะเบียนกลิ่นแล้ว หน้าสินค้าอ่านผ่าน scentId)
 export async function linkProductToRegistry(supabase, productId, { formulaId = null, scentId = null }) {
   const patch = { updatedAt: new Date().toISOString() };
-  if (formulaId) Object.assign(patch, await productFormulaSnapshot(supabase, formulaId));
+  if (formulaId) Object.assign(patch, await productFormulaSnapshot(supabase, formulaId, { forProductId: productId }));
   if (scentId) {
     patch.scentId = scentId;
     patch.formulaName = null; patch.formulaCode = null; patch.formulaDate = null;

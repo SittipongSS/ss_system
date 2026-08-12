@@ -183,9 +183,13 @@ export default function ProductForm({
 
   // สูตรที่เก็บเข้ากรุแล้วไม่ให้เลือกใหม่ แต่ตัวที่สินค้านี้ผูกอยู่ต้องคงอยู่ในลิสต์
   // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
+  // ⭐ 1 สูตร : 1 FG (mig 0231) — สูตรที่ FG อื่นถือแล้ว (`usedByProduct` จาก
+  // loadFormulas) ตัดออกจากลิสต์ · ของตัวเองไม่นับ (productId) · server มีด่านซ้ำ
+  // อีกชั้นใน productFormulaSnapshot — ลิสต์นี้แค่กันเจอ error ตั้งแต่ปลายนิ้ว
   const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
   const formulaOptions = formulas
     .filter((f) => f.status !== "archived" || f.id === form.formulaId)
+    .filter((f) => !f.usedByProduct || f.usedByProduct.id === selfId || f.id === form.formulaId)
     .map((f) => ({
       value: f.id,
       label: `${f.code ? `${f.code} · ` : ""}${f.name}`
@@ -383,8 +387,8 @@ export default function ProductForm({
               {!formulas.length
                 ? "ยังไม่มีสูตรในทะเบียน — เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร ก่อน"
                 : pickedFormula
-                  ? `วันที่สูตร ${pickedFormula.formulaDate || "— ยังไม่ระบุ —"} · ชื่อ/รหัส/วันที่ ดึงจากทะเบียนอัตโนมัติ`
-                  : "ชื่อ · รหัส · วันที่สูตร มาจากทะเบียนสูตรอัตโนมัติ — แก้ตัวสูตรที่ ฐานข้อมูล → ทะเบียนสูตร"}
+                  ? `กลิ่น: ${pickedFormula.scentName || "— สูตรยังไม่ผูกกลิ่น —"} · วันที่สูตร ${pickedFormula.formulaDate || "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
+                  : "1 สูตรผูกได้ 1 FG — สูตรที่มีสินค้าอื่นถือแล้วไม่แสดงในลิสต์ · กลิ่นของสินค้าจะตามสูตรที่เลือก"}
             </span>
           </div>
           {/* สินค้าเก่าที่ยังไม่ผูกทะเบียน (prod เหลือ 1 แถว) — โชว์ค่าเดิมไว้ให้เห็น
