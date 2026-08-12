@@ -35,6 +35,31 @@ test('⭐ ใบของฉันที่ถูกตีกลับต้อ�
   assert.equal(requestsTodoCount([{ ...bounced, status: 'pending' }], ['PC']), 1);
 });
 
+// ── ยอดรวมรายระบบ (การ์ดหน้าแรก + เมนูสลับระบบ) ───────────────────────────
+test('⭐ ทุกเมนูที่มีป้าย ต้องอยู่ในระบบใดระบบหนึ่งเสมอ', async () => {
+  const { NAV_COUNT_KEYS, SYSTEM_COUNT_HREFS } = await import('./useNavCounts.js');
+  // เมนูที่ตกสำรวจ = ป้ายขึ้นบนเมนู แต่การ์ดหน้าแรกยังโล่ง ⇒ คนสรุปว่าระบบนั้นว่าง
+  const claimed = Object.values(SYSTEM_COUNT_HREFS).flat();
+  assert.deepEqual(
+    Object.keys(NAV_COUNT_KEYS).filter((href) => !claimed.includes(href)),
+    [],
+    'มี href ใน NAV_COUNT_KEYS ที่ไม่มีระบบไหนนับ',
+  );
+  // และห้ามนับซ้ำสองระบบ — ยอดรวมจะเกินจริง
+  assert.equal(new Set(claimed).size, claimed.length);
+});
+
+test('ยอดรวมของระบบ = ผลบวกของเมนูในระบบนั้น · ศูนย์/ไม่มีสิทธิ์ = ไม่มีป้าย', async () => {
+  const { navCountForSystem } = await import('./useNavCounts.js');
+  // คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็นไม่ถูกส่งมาเลย (ดู api/nav/counts) — ตัวที่ขาดต้องนับเป็น 0
+  assert.equal(navCountForSystem({ leads: 21, requests: 2 }, 'salesplan'), 23);
+  assert.equal(navCountForSystem({ rdRequests: 16 }, 'rd'), 16);
+  assert.equal(navCountForSystem({ rdRequests: 16 }, 'salesplan'), null);
+  assert.equal(navCountForSystem({}, 'salesplan'), null);
+  // ระบบที่ยังไม่มีเมนูมีป้ายสักตัว — ต้องเงียบ ไม่ใช่ 0
+  assert.equal(navCountForSystem({ leads: 21 }, 'tax'), null);
+});
+
 test('ไม่มีฝ่ายที่ตอบได้ = ไม่มีอะไรรอเรา', () => {
   assert.equal(requestsTodoCount([req({ dept: 'PC' })], []), 0);
 });

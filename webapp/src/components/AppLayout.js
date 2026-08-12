@@ -15,7 +15,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
-import useNavCounts, { navCountFor } from '@/lib/nav/useNavCounts';
+import useNavCounts, { navCountFor, navCountForSystem } from '@/lib/nav/useNavCounts';
 import { isSettingsPathname, systemForPathname } from '@/config/navigation';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -461,14 +461,21 @@ export default function AppLayout({ children }) {
                       </span>
                     );
                   }
+                  /* ⭐ ยอดรวมของทั้งระบบ — เมนูนี้คือจุดที่คนเลือกว่า "จะไปทำอะไรต่อ"
+                     แต่เดิมมันเงียบ ⇒ ต้องเข้าไปในระบบก่อนถึงจะรู้ว่ามีของค้างไหม
+                     ⚠️ ระบบที่กำลังอยู่ก็ยังโชว์ — ตัวเลขคือ "เหลือเท่าไร" ไม่ใช่
+                     "ที่อื่นมีอะไร" · ซ่อนตอน active แล้วเลขจะหายตอนเข้าไปดู */
+                  const systemCount = navCountForSystem(navCounts, g.system);
                   return (
                     <Link
                       key={g.system}
                       href={g.home}
                       role="menuitem"
                       className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
+                      aria-label={systemCount ? `${g.label} ${systemCount} รายการรอคุณ` : undefined}
                     >
                       <SystemIcon size={15} className="ico" /> {g.label}
+                      {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
                     </Link>
                   );
                 })}

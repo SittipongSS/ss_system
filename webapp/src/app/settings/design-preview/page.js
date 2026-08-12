@@ -112,7 +112,7 @@ const BADGE_TONES = STATUS_TONES;
 const BADGE_FAMILIES = [
   { cls: "ui-badge", count: 167 },
   { cls: "status-pill", count: 44 },
-  { cls: "chip", count: 22 },
+  { cls: "chip", count: 23 },
 ];
 
 const ROWS = [
