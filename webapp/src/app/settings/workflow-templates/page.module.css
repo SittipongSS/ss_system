@@ -31,7 +31,6 @@
 .metadataGrid { padding: var(--space-4) var(--space-4-5); border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
 .metadataGrid label, .stepFormGrid label { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }
 .metadataGrid label > span b, .stepFormGrid label > span b, .dependencyBox legend b { color: var(--red); }
-.metadataGrid textarea { min-height: 78px; resize: vertical; }
 .metadataGrid .full, .stepFormGrid .full { grid-column: 1 / -1; }
 .stepsHeader { padding: var(--space-3-5) var(--space-4-5) var(--space-2-5); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .stepsHeader h3 { color: var(--text); font-size: var(--fs-8); font-weight: var(--fw-bold); }

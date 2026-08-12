@@ -468,19 +468,26 @@ export default function PdrForm({
             <Input id="pdr-brand" value={value.customerBrand} disabled={disabled}
               maxLength={cap("customerBrand")} onChange={(e) => set({ customerBrand: e.target.value })} />
           </div>
+          {/* ⭐ สามช่องนี้เป็น **ข้อความยาว ไม่ใช่ช่องบรรทัดเดียว** (มติผู้ใช้
+              2026-08-12 · IS-26080006 "ข้อมูลใน 2 ช่องนี้ค่อนข้างเยอะ")
+              เพดานทั้งสามคือ 500 ตัวอักษร = ~6 บรรทัด แต่เดิมวางเป็น `Input` สูง
+              36px ⇒ พิมพ์ที่อยู่จัดส่งเต็ม ๆ แล้วเห็นทีละท่อน อ่านย้อนไม่ได้เลย
+              ⚠️ `brandDirection` ไม่ได้ถูกร้องมาด้วย แต่มันคั่นกลางสองช่องที่ร้อง
+              และเป็นข้อความพรรณนาเพดาน 500 เท่ากัน — ทิ้งไว้บรรทัดเดียวคือสร้าง
+              ความไม่เหมือนกันใบใหม่ในฟอร์มเดียวกัน */}
           <div className="form-group">
             <label htmlFor="pdr-mood">{label("moodTone")}</label>
-            <Input id="pdr-mood" value={value.moodTone} disabled={disabled}
+            <Textarea id="pdr-mood" rows={3} value={value.moodTone} disabled={disabled}
               maxLength={cap("moodTone")} onChange={(e) => set({ moodTone: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-dir">{label("brandDirection")}</label>
-            <Input id="pdr-dir" value={value.brandDirection} disabled={disabled}
+            <Textarea id="pdr-dir" rows={3} value={value.brandDirection} disabled={disabled}
               maxLength={cap("brandDirection")} onChange={(e) => set({ brandDirection: e.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="pdr-ship">{label("shipTo")}</label>
-            <Input id="pdr-ship" value={value.shipTo} disabled={disabled}
+            <Textarea id="pdr-ship" rows={3} value={value.shipTo} disabled={disabled}
               maxLength={cap("shipTo")} onChange={(e) => set({ shipTo: e.target.value })} />
           </div>
           <div className="form-group">
@@ -673,7 +680,7 @@ export default function PdrForm({
             <div className="form-group">
               <label htmlFor={`brief-body-${i}`}>บรีฟกลิ่น</label>
               <Textarea
-                variant="data" id={`brief-body-${i}`} rows={3} maxLength={4000}
+                id={`brief-body-${i}`} rows={3} maxLength={4000}
                 value={brief.brief || ""} disabled={disabled}
                 placeholder="โทนกลิ่นที่ต้องการ · ตัวอย่างอ้างอิง · ข้อจำกัด"
                 onChange={(e) => setBrief(i, { brief: e.target.value })}
@@ -884,7 +891,7 @@ export default function PdrForm({
         <div className="form-group col-span-2">
           <label htmlFor="pdr-special">{label("specialRequirements")}</label>
           <Textarea
-            variant="data" id="pdr-special" rows={2}
+            id="pdr-special" rows={2}
             value={value.specialRequirements} disabled={disabled}
             placeholder={FIELD.specialRequirements.placeholder}
             maxLength={cap("specialRequirements")} onChange={(e) => set({ specialRequirements: e.target.value })}

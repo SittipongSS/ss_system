@@ -327,7 +327,7 @@ export default function DeliveriesPanel({
         </div>
         <div className="form-group">
           <label htmlFor="mdl-note">หมายเหตุ</label>
-          <Textarea variant="data"
+          <Textarea
             id="mdl-note" rows={2} maxLength={1000} value={form.note}
             onChange={(e) => setForm({ ...form, note: e.target.value })}
           />

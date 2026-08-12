@@ -72,15 +72,15 @@ function PresetFields({ kind, form, setForm }) {
         {kind === "payment" ? (
           <div className={styles.formGrid}>
             <label className={styles.full}>วิธีชำระเงิน <b>*</b><input className="premium-input" required maxLength={COMMERCIAL_PRESET_LIMITS.paymentMethod} value={form.paymentMethod} placeholder="เช่น โอนเงินเข้าบัญชีบริษัท" onChange={(event) => update("paymentMethod", event.target.value)} /></label>
-            <label className={styles.full}>รายละเอียดการชำระ<Textarea variant="data" rows={4} maxLength={COMMERCIAL_PRESET_LIMITS.paymentTerms} value={form.paymentTerms} placeholder="เช่น ธนาคารกสิกรไทย เลขที่บัญชี xxx-x-xxxxx-x · เครดิต 30 วันนับจากวันส่งมอบ" onChange={(event) => update("paymentTerms", event.target.value)} /></label>
+            <label className={styles.full}>รายละเอียดการชำระ<Textarea rows={4} maxLength={COMMERCIAL_PRESET_LIMITS.paymentTerms} value={form.paymentTerms} placeholder="เช่น ธนาคารกสิกรไทย เลขที่บัญชี xxx-x-xxxxx-x · เครดิต 30 วันนับจากวันส่งมอบ" onChange={(event) => update("paymentTerms", event.target.value)} /></label>
           </div>
           ) : (
-          <label>รายละเอียดหมายเหตุ <b>*</b><Textarea variant="data" rows={8} maxLength={COMMERCIAL_PRESET_LIMITS.remarks} value={form.remarks} placeholder="ข้อความที่จะพิมพ์ในช่องหมายเหตุของใบเสนอราคา" onChange={(event) => update("remarks", event.target.value)} /></label>
+          <label>รายละเอียดหมายเหตุ <b>*</b><Textarea rows={8} maxLength={COMMERCIAL_PRESET_LIMITS.remarks} value={form.remarks} placeholder="ข้อความที่จะพิมพ์ในช่องหมายเหตุของใบเสนอราคา" onChange={(event) => update("remarks", event.target.value)} /></label>
         )}
       </section>
       <section className={styles.formSection}>
         <h4>หลักฐานการเปลี่ยนแปลง</h4>
-        <label>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b><Textarea variant="data" maxLength={COMMERCIAL_PRESET_LIMITS.changeNote} value={form.changeNote} placeholder="ระบุเหตุผลหรือสิ่งที่เปลี่ยน" onChange={(event) => update("changeNote", event.target.value)} /></label>
+        <label>หมายเหตุการเปลี่ยนแปลง <b>* ก่อนเผยแพร่</b><Textarea maxLength={COMMERCIAL_PRESET_LIMITS.changeNote} value={form.changeNote} placeholder="ระบุเหตุผลหรือสิ่งที่เปลี่ยน" onChange={(event) => update("changeNote", event.target.value)} /></label>
       </section>
     </>
   );

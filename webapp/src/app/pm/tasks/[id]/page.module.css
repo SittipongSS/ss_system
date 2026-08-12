@@ -9,7 +9,6 @@
 .wide { grid-column: 1 / -1; }
 .field label, .label { display: block; margin-bottom: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .field input, .field textarea, .field select { width: 100%; }
-.field textarea { min-height: 110px; resize: vertical; }
 .value { color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); overflow-wrap: anywhere; }
 .summaryRow { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2-5) 0; border-bottom: 1px solid var(--border); color: var(--text-3); font-size: var(--fs-5); }
 .summaryRow strong { color: var(--text-2); text-align: right; }

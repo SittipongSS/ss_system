@@ -58,7 +58,6 @@ export function RequestTitleBodyFields({ value = {}, onChange, disabled = false,
         <div className="form-group col-span-2">
           <label htmlFor={`${idPrefix}-body`}>{copy.bodyLabel}</label>
           <Textarea
-            variant="data"
             id={`${idPrefix}-body`} rows={4} maxLength={4000}
             value={value.body || ""} disabled={disabled}
             placeholder={copy.bodyPlaceholder}
@@ -116,7 +115,7 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
         <div className="form-group col-span-2">
           <label htmlFor={`${idPrefix}-urgent-why`}>เหตุผลที่เป็นงานด่วน *</label>
           <Textarea
-            variant="data" id={`${idPrefix}-urgent-why`} rows={2} maxLength={500}
+            id={`${idPrefix}-urgent-why`} rows={2} maxLength={500}
             value={value.urgentReason || ""} disabled={disabled}
             placeholder="เช่น ลูกค้าต้องใช้ในงานแสดงสินค้าวันที่ 20 · ล็อตผลิตปิดสิ้นเดือน"
             onChange={(e) => set({ urgentReason: e.target.value })}

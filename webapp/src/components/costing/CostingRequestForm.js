@@ -153,7 +153,7 @@ export default function CostingRequestForm({
 
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label htmlFor="cr-note">หมายเหตุ</label>
-          <Textarea variant="data"
+          <Textarea
             id="cr-note" rows={2} maxLength={2000}
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}

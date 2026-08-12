@@ -36,7 +36,7 @@ export default function ReasonDialog({
         {detail ? <div className={`${styles.detail} ${styles[tone] || styles.warning}`}>{detail}</div> : null}
         <label className="form-group">
           <span>{label} *</span>
-          <Textarea variant="data"
+          <Textarea
             rows={rows}
             required
             minLength={minLength}
