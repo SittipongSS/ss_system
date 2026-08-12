@@ -13,6 +13,8 @@
 import FormulaDevBoard from "@/components/requests/FormulaDevBoard";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
+import { ClipboardList } from "lucide-react";
+import { DetailCard } from "@/components/ui/DetailPage";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
@@ -31,9 +33,25 @@ export default function FormulaDevDetail({
     : null;
   return (
     <>
-      <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
-
-      <FormulaDevBoard rows={board} renderStep={renderStep} />
+      {/* 🐞 **เคยมี `RequestRows` ยืนเดี่ยวตรงนี้เหนือตาราง** ⇒ ไล่แถวชุดเดียวกันสองรอบ
+          ชื่อกลิ่นและป้ายสถานะโผล่ซ้ำ (IS-26080021 — อาการเดียวกับสายกลิ่นเป๊ะ)
+          ⇒ ย้ายเข้าไปเป็นเนื้อของแถวที่กางได้ ไม่ใช่ก้อนแยกข้างบน */}
+      {/* ⭐ ครอบด้วย `DetailCard` ของระบบ ไม่ประกอบการ์ดเอง (มติผู้ใช้ 2026-08-12 ·
+          IS-26080021 "ตารางกับไฟล์ ดีไซน์ไม่เหมือนอันอื่นเลย") — การ์ดอื่นทุกใบบนหน้านี้
+          มีหัวไอคอน+ชื่อ+เส้นคั่นชุดเดียวกัน ส่วนตารางเคยมีหัวเป็นตัวหนาลอย ๆ
+          ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
+      <DetailCard icon={ClipboardList} title="สรุปทั้งใบ">
+      <FormulaDevBoard
+        rows={board}
+        renderStep={renderStep}
+        renderDetail={(boardRow) => {
+          const item = itemsById.get(boardRow.id);
+          return item
+            ? <RequestRows bare rows={[item]} canEditAttachments={canEditAttachments} />
+            : null;
+        }}
+      />
+      </DetailCard>
 
       {/* ⚠️ แถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 — FormulaPanel) — โครง
           หัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำที่นี่อีก */}
