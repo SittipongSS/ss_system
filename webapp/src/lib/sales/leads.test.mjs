@@ -76,6 +76,42 @@ test('slaStage: เวลาผิดลำดับไม่นับเป็�
   assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 1, hit: 0 });
 });
 
+/* ── ตีกลับแล้วคัดใหม่: สามด่านต้องวัดของรอบที่ถูกต้อง (mig 0234) ─────────────
+   🐞 เดิม `screenedAt` เก็บครั้งแรกอย่างเดียว ส่วน `assignedAt` เขียนทับทุกครั้ง ⇒
+   ด่านกระจายวัด "คัดกรองครั้งแรก → มอบครั้งล่าสุด" = กินเวลารอบตีกลับทั้งรอบ
+   Senior AE ที่มอบภายในวันเดียวถูกนับเป็นไม่ทันโดยไม่มีทางแก้ตัว */
+test('ตีกลับแล้วคัดใหม่: ด่านคัดกรองนับครั้งแรก · ด่านกระจายนับรอบปัจจุบัน', () => {
+  const noHolidays = new Set();
+  // ใบที่ผ่านรอบตีกลับมา: คัดกรองครั้งแรก 10 ก.ค. (ทัน) → ตีกลับ → คัดใหม่ 20 ก.ค.
+  // → มอบวันเดียวกัน (ทัน) · คอลัมน์ของรอบปัจจุบันคือ 20 ก.ค. ทั้งคู่
+  const rows = [{
+    createdAt: '2026-07-10',
+    firstScreenedAt: '2026-07-10',
+    screenedAt: '2026-07-20',
+    assignedAt: '2026-07-20',
+  }];
+  assert.deepEqual(slaStage(rows, 'createdAt', 'firstScreenedAt', noHolidays), { checked: 1, hit: 1 },
+    'คัดกรองรอบแรกทัน — rework ไม่ลบผลงานรอบนั้น');
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 1, hit: 1 },
+    'มอบวันเดียวกับที่คัดใหม่ = ทัน · วัดจาก screenedAt รอบก่อนเมื่อไรจะกลายเป็นพลาด 6 วันทำการ');
+  // 🐞 ท่าเดิม: ด่านกระจายเริ่มจาก firstScreenedAt (= screenedAt เดิมของครั้งแรก)
+  assert.deepEqual(slaStage(rows, 'firstScreenedAt', 'assignedAt', noHolidays), { checked: 1, hit: 0 },
+    'ยืนยันว่าคู่ timestamp เดิมให้ผลผิดจริง — ไม่ใช่แค่เปลี่ยนชื่อคอลัมน์เฉย ๆ');
+});
+
+test('ใบที่ถูกตีกลับกลับไปคิวคัดกรอง: หล่นออกจาก checked ของทุกด่าน ไม่ใช่ "พลาด"', () => {
+  const noHolidays = new Set();
+  // สถานะ new หลังตีกลับ — ตีกลับล้าง screenedAt/assignedAt/firstContactAt ครบ
+  // เหลือแค่ firstScreenedAt ไว้เป็นประวัติของด่านแรก
+  const rows = [{
+    createdAt: '2026-07-10', firstScreenedAt: '2026-07-10',
+    screenedAt: null, assignedAt: null, firstContactAt: null,
+  }];
+  assert.deepEqual(slaStage(rows, 'createdAt', 'firstScreenedAt', noHolidays), { checked: 1, hit: 1 });
+  assert.deepEqual(slaStage(rows, 'screenedAt', 'assignedAt', noHolidays), { checked: 0, hit: 0 });
+  assert.deepEqual(slaStage(rows, 'assignedAt', 'firstContactAt', noHolidays), { checked: 0, hit: 0 });
+});
+
 test('slaStage: ไม่มีแถวเลย → checked 0 (ไม่ระเบิด, ไม่หารศูนย์ที่ผู้เรียก)', () => {
   assert.deepEqual(slaStage([], 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
   assert.deepEqual(slaStage(undefined, 'screenedAt', 'assignedAt', new Set()), { checked: 0, hit: 0 });
@@ -413,6 +449,38 @@ test('route ของ transition ต้องคำนวณ meetingAt ผ่า
   assert.match(routeSource, /pickNextMeetingAt\(/);
   assert.doesNotMatch(routeSource, /patch\.meetingAt = body\.eventAt \|\| now/,
     'ทับตรง ๆ = นัดที่บันทึกย้อนหลังจะกลบนัดจริงในอนาคต');
+});
+
+/* ── ตีกลับต้องล้าง "ทั้งรอบ" ไม่ใช่ครึ่งรอบ (mig 0234) ──────────────────────
+   กติกาอยู่ในไฟล์ route ที่ import มารันไม่ได้ (ต้องมี supabase/req) จึงอ่านซอร์ส
+   มาเทียบแบบเดียวกับเทสต์ meetingAt ข้างบนและ leadAssignee.test.mjs */
+test('route ตีกลับ: ล้างคอลัมน์ของรอบก่อนครบทั้งสี่ + เก็บ firstScreenedAt ไว้', () => {
+  const routeSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/[id]/transition/route.js', import.meta.url),
+    'utf8',
+  );
+  const bounceBlock = routeSource.split("action === 'bounce'")[1] || '';
+  for (const field of ['screenedAt', 'assignedAt', 'firstContactAt', 'meetingAt']) {
+    assert.match(bounceBlock, new RegExp(`patch\\.${field} = null`),
+      `ตีกลับไม่ล้าง ${field} ⇒ ซากรอบก่อนทำให้ผัง Funnel และ SLA ของรอบใหม่เพี้ยน`);
+  }
+  assert.doesNotMatch(bounceBlock, /patch\.firstScreenedAt = null/,
+    'firstScreenedAt = ประวัติครั้งแรกตลอดกาล ล้างแล้ว SLA คัดกรองของใบนั้นหายไปทั้งใบ');
+  // คัดกรอง: เขียนสองคอลัมน์คนละกติกา — ครั้งแรกเก็บครั้งเดียว รอบปัจจุบันทับทุกครั้ง
+  assert.match(routeSource, /patch\.firstScreenedAt = lead\.firstScreenedAt \|\| lead\.screenedAt \|\| now/);
+  assert.match(routeSource, /patch\.screenedAt = now/);
+  assert.doesNotMatch(routeSource, /patch\.screenedAt = lead\.screenedAt \|\| now/,
+    'เก็บครั้งแรกไว้ในคอลัมน์เดียวกัน = ด่านกระจายกลับไปกินเวลารอบตีกลับอีก');
+});
+
+test('route KPI: ด่านคัดกรองวัดถึง firstScreenedAt · อีกสองด่านใช้คอลัมน์ของรอบปัจจุบัน', () => {
+  const kpiSource = readFileSync(
+    new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(kpiSource, /slaStage\(rows, 'createdAt', 'firstScreenedAt', holidays\)/);
+  assert.match(kpiSource, /slaStage\(rows, 'screenedAt', 'assignedAt', holidays\)/);
+  assert.match(kpiSource, /slaStage\(rows, 'assignedAt', 'firstContactAt', holidays\)/);
 });
 
 /* ── ด่านมองเห็นต้องเท่ากันทั้งสามเส้นเขียน (ปิดรู 2026-08-08) ────────────────
