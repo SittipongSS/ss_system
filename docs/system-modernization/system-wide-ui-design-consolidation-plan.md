@@ -956,7 +956,7 @@ Representative pages:
 - Material price tiers
 - Forecast/PO forms
 - Target plan/history
-- YearHeatmap, MorningBoard, SummaryTable
+- YearHeatmap, MorningBoard (SummaryTable ถูกยุบรวมเข้า MorningBoard แล้ว 2026-08-12 — ตารางเดียว สลับงวดเป็น "ปี" ได้คอลัมน์ ต้องทำ/เดือน · YoY · สถานะ · ตัวคุมงวดกับสวิตช์ทบยอดย้ายไป `PeriodBar` ระดับแท็บ ใช้ `ui/Segmented` ทั้งหมด)
 
 แยก sub-PR ได้หาก diff ใหญ่
 

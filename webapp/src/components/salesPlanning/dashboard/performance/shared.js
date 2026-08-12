@@ -1,14 +1,44 @@
 "use client";
 
 import { fmtMoney, fmtMoneyCompact, fmtNumber } from "@/lib/format";
+import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 
-// ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้บอร์ดเช้า/ตารางสรุป/
-// แผงทบยอด แสดงแถบความคืบหน้าและรูปแบบตัวเลขหน้าตาเดียวกัน
+// ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้แถบคุมงวด/แถบความคืบหน้า/
+// ตารางติดตาม/แผงทบยอด พูดถึงงวดเดียวกันด้วยคำเดียวกันและฟอร์แมตตัวเลขเหมือนกัน
 
 export const money = (v) => fmtMoney(v);
 export const moneyCompact = (v) => fmtMoneyCompact(v);
 export const pctFmt = (v) =>
   v == null ? "–" : `${fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+/* ---- ภาษาของ "งวด" ---- */
+/* ทั้งแท็บใช้งวดเดียวกัน (URL param `bp`) — เดิมมีตัวคุมเวลาสามชุดคำศัพท์คนละแบบ
+   ("เดือนนี้" ของแถบความคืบหน้า · "เดือน" ของตาราง · "รายเดือน" ของส่วนเจาะ)
+   ที่ไม่ซิงก์กันเลย · เหลือชุดเดียวแล้ว (2026-08-12) — ตัวที่ยังแยกคือ "แกนกราฟ"
+   ของส่วนเจาะ ซึ่งเป็นความถี่ของแกน X ไม่ใช่หน้าต่างเวลา จึงตั้งชื่อไม่ให้ชนกัน */
+
+export const PERIOD_KINDS = [
+  { value: "month", label: "เดือน" },
+  { value: "quarter", label: "ไตรมาส" },
+  { value: "year", label: "ปี" },
+];
+
+export const QUARTER_LABELS = ["Q1", "Q2", "Q3", "Q4"];
+
+export function periodLabel(win) {
+  if (!win) return "";
+  if (win.kind === "year") return `ปี ${win.year}`;
+  if (win.kind === "quarter") return `${QUARTER_LABELS[win.startIdx / 3]} ${win.year}`;
+  return `${MONTH_LABELS[win.startIdx]} ${win.year}`;
+}
+
+// `bpOfWindow` / `toKind` เป็นคณิตล้วน อยู่ที่ lib/sales/performanceMath พร้อมเทสต์
+
+export function periodOptions(kind, year) {
+  if (kind === "year") return [{ value: String(year), label: `ปี ${year}` }];
+  if (kind === "quarter") return QUARTER_LABELS.map((q, i) => ({ value: `${year}-Q${i + 1}`, label: `${q} ${year}` }));
+  return MONTH_LABELS.map((m, i) => ({ value: `${year}-${String(i + 1).padStart(2, "0")}`, label: `${m} ${year}` }));
+}
 
 /* `StatusPill` (ป้ายสถานะงวดจาก `statusOf`) ถูกถอดออกพร้อมคอลัมน์สถานะของ
    ตารางติดตามยอดขาย (มติผู้ใช้ 2026-08-03) — บอร์ดเช้าเป็นผู้ใช้รายเดียวของมัน

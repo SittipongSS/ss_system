@@ -2,7 +2,7 @@ import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { listTasks, newTaskId, appendUpdate } from '@/lib/mgmt/repo';
-import { TASK_STATUSES, TASK_PRIORITIES } from '@/lib/mgmt/constants';
+import { TASK_STATUSES, TASK_PRIORITIES, isMyOpenTask } from '@/lib/mgmt/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +42,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       status: sp.get('status') || undefined,
       priority: sp.get('priority') || undefined,
     });
-    return ok(data);
+    // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-116) — helper ตัวเดียวกัน ติดที่ server
+    // เพื่อให้หน้ารายการกรอง "รอฉันลงมือ" ได้โดยไม่ต้องรู้ว่าใครล็อกอินอยู่
+    return ok(data.map((task) => ({ ...task, _waitingOnMe: isMyOpenTask(task, user.id) })));
   } catch (e) {
     return fail(e.message, 500);
   }
