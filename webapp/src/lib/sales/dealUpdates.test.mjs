@@ -1,17 +1,24 @@
 // เหตุการณ์ระบบของเธรดดีล — ตัวเลขดีลขยับ + งานที่ผูกดีล (ตรรกะล้วน)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dealForecastUpdate, dealTaskUpdate } from './dealUpdates.js';
+import { dealForecastUpdate, dealRequestUpdate, dealTaskUpdate } from './dealUpdates.js';
 import { dealDocumentUpdate } from './documentUpdates.js';
-import { isKnownUpdateKind, isAuthorableKind } from '../master/updateTypes.js';
+import { isKnownUpdateKind, isAuthorableKind, updateKindMeta } from '../master/updateTypes.js';
 
-// ตารางไม่มี CHECK บน kind — ทะเบียนฝั่งโค้ดคือด่านเดียวที่กันชนิดหลุด
+/* ตารางไม่มี CHECK บน kind — ทะเบียนฝั่งโค้ดคือด่านเดียวที่กันชนิดหลุด
+   🐞 เทสต์นี้มีมาก่อนแล้ว **แต่ `dealRequestUpdate` ไม่เคยถูกใส่ในลิสต์** ⇒ ชนิด
+   `request` (มติ 2026-08-03) หลุดทะเบียนไปเงียบ ๆ · ผลคือ `updateKindMeta` ตกไปใช้
+   ชนิดตั้งต้นแล้วป้ายขึ้นว่า "บันทึก" ทั้งในเธรดและบนหัวแจ้งเตือน — เจอ 2026-08-13
+   ตอนไล่ว่าทำไม 55 ใบนี้ไม่มีใครอ่าน (85%)
+   ⚠️ เพิ่มฟังก์ชันที่สร้างเหตุการณ์ของดีลตัวใหม่เมื่อไร ต้องมาต่อท้ายลิสต์นี้ด้วย */
 test('ทุก kind ที่ยิงเข้าเธรดดีลต้องมีในทะเบียน และต้องไม่ใช่ชนิดที่คนพิมพ์เองได้', () => {
+  const request = { id: 'DR-1', kind: 'scent_dev', docNo: 'SB-26080001', dept: 'RD', dealId: 'DL-1' };
   const built = [
     dealForecastUpdate({ projectValue: 100 }, { projectValue: 200 }),
     dealTaskUpdate('created', { id: 'T-1', title: 'ส่งตัวอย่าง' }),
     dealTaskUpdate('done', { id: 'T-1', title: 'ส่งตัวอย่าง' }),
     dealTaskUpdate('late', { id: 'T-1', title: 'ส่งตัวอย่าง' }, { lateReason: 'รอลูกค้าตอบ' }),
+    ...['submit', 'answer', 'close', 'cancel'].map((a) => dealRequestUpdate(a, request)),
     ...['submit', 'approve', 'reject', 'accept', 'revise', 'cancel', 'revoke', 'unaccept']
       .map((a) => dealDocumentUpdate('quotation', a, { id: 'QT-1', quoteNumber: 'QT-26070028-0' })),
   ];
@@ -22,6 +29,16 @@ test('ทุก kind ที่ยิงเข้าเธรดดีลต้�
     assert.equal(isAuthorableKind('deal', event.kind), false, `${event.kind} ต้องไม่ใช่ชนิดที่คนเลือกเองได้`);
     assert.ok(event.body?.trim(), `${event.kind} ต้องมีเนื้อความ`);
   }
+});
+
+/* ⚠️ `isKnownUpdateKind` อย่างเดียวจับไม่ครบ — `updateKindMeta` มี fallback เงียบ ๆ
+   ที่คืนชนิดตั้งต้นให้ชนิดที่ไม่รู้จัก ⇒ ป้ายผิดโดยไม่มีอะไรพัง · ล็อกป้ายที่ผู้ใช้
+   เห็นจริงไว้ด้วย เพราะหัวแจ้งเตือนถูกเก็บเป็นข้อความตายตัวในแถว แก้ย้อนหลังไม่ได้ */
+test('เงาของคำร้องบนดีลต้องขึ้นป้าย "คำร้อง" ไม่ใช่ "บันทึก"', () => {
+  const event = dealRequestUpdate('answer', { id: 'DR-1', kind: 'scent_dev', docNo: 'SB-26080001', dept: 'RD' });
+  assert.equal(event.kind, 'request');
+  assert.equal(updateKindMeta('deal', event.kind).label, 'คำร้อง');
+  assert.notEqual(updateKindMeta('deal', event.kind).label, updateKindMeta('deal', 'note').label);
 });
 
 test('ตัวเลขดีลขยับ: รวมทุกช่องที่เปลี่ยนไว้แถวเดียว · ไม่เปลี่ยน = เงียบ', () => {
