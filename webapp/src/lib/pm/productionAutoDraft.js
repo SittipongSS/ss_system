@@ -24,7 +24,7 @@ export async function autoDraftJobs({ supabase, user, req, salesOrderId = null }
       taken.add(draft.salesOrderLineId);
       payload.push({
         id: genId('PBJ'),
-        // ⚠️ ไม่ใส่ code ตรงนี้ — รหัสออกทีละใบในฟังก์ชัน SQL ตอน insert (mig 0238)
+        // ⚠️ ไม่ใส่ code ตรงนี้ — รหัสออกทีละใบในฟังก์ชัน SQL ตอน insert (mig 0240)
         // ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1 (สองคนเปิดคิวพร้อมกันจะได้รหัสชนกัน)
         // และห้ามจองเลขไว้ก่อนตรงนี้ — ชุดนี้ล้มทั้งชุด เลขที่จองไว้จะหายไปทั้งหมด
         ...draft,
@@ -36,7 +36,7 @@ export async function autoDraftJobs({ supabase, user, req, salesOrderId = null }
   }
   if (!payload.length) return [];
 
-  // ออกรหัสทุกใบ + insert ในทรานแซกชันเดียว — ล้มใบไหนก็คืนเลขทั้งชุด (mig 0238)
+  // ออกรหัสทุกใบ + insert ในทรานแซกชันเดียว — ล้มใบไหนก็คืนเลขทั้งชุด (mig 0240)
   const { data, error } = await insertRowsWithEntityCode(supabase, 'PB', payload);
   if (error) {
     // ชนกันเพราะมีคนกดพร้อมกัน = ของถูกสร้างไปแล้ว ไม่ใช่ความผิดพลาดที่ต้องเด้งใส่ผู้ใช้

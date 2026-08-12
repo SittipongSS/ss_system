@@ -80,7 +80,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const customer = await findCustomer(supabase, value.customerId);
     if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
 
-    // รหัส SS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — insert ล้ม = เลขคืน
+    // รหัส SS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('SVS'),
       ...value,

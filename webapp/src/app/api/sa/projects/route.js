@@ -35,7 +35,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerEmail = cust?.email || '';
   }
   
-  // รหัสโครงการอัตโนมัติออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — ห้ามจองไว้ก่อน
+  // รหัสโครงการอัตโนมัติออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — ห้ามจองไว้ก่อน
   // ตรงนี้: ลูป retry ข้างล่างเคยออกรหัสใหม่ทุกรอบที่ชน ⇒ กินเลขทิ้งรอบละใบ
   const autoCode = !body.code;
   const projectCode = body.code || null;

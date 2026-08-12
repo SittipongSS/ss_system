@@ -68,7 +68,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return badRequest(error);
 
   try {
-    // รหัส PB ออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — insert ล้ม = เลขคืน
+    // รหัส PB ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('PBJ'),
       ...value,

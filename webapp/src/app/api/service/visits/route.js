@@ -52,7 +52,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       if (plan.siteId !== value.siteId) return badRequest('รอบบริการที่เลือกเป็นของไซต์อื่น');
     }
 
-    // รหัส SV ออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — insert ล้ม = เลขคืน
+    // รหัส SV ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('SVV'),
       ...value,

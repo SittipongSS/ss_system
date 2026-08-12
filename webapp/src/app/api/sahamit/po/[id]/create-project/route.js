@@ -81,7 +81,7 @@ export async function POST(request, { params }) {
   const now = new Date().toISOString();
   const startDate = body.startDate || po.receivedDate || po.docDate || todayStr();
   const dueDate = body.dueDate || po.dueDate || null;
-  // รหัสโครงการออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — ห้ามจองไว้ก่อนตรงนี้:
+  // รหัสโครงการออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — ห้ามจองไว้ก่อนตรงนี้:
   // ลูป retry ข้างล่างเคยออกรหัสใหม่ทุกรอบที่ชน ⇒ กินเลขทิ้งรอบละใบ
   let project = null;
   let projectError = null;

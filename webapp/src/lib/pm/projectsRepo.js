@@ -110,5 +110,5 @@ export async function emptyProjectAfterDealDelete(supabase, project) {
 //
 // ⚠️ **ไม่มีฟังก์ชัน "ขอรหัสมาถือไว้ก่อน" อีกแล้ว** (มติผู้ใช้ 2026-08-12) — รหัสออก
 // พร้อม insert ในทรานแซกชันเดียวผ่าน insertRowWithEntityCode(supabase, 'PJ', row)
-// ของ lib/entityCode.js (mig 0238) · ตัวเดิม generateProjectCode() จองเลขคนละคำสั่ง
+// ของ lib/entityCode.js (mig 0240) · ตัวเดิม generateProjectCode() จองเลขคนละคำสั่ง
 // กับ insert ⇒ ทุก insert ที่ล้ม (รวมลูป retry ที่ออกรหัสใหม่ทุกรอบ) กินเลขทิ้ง

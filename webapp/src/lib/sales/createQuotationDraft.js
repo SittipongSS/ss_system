@@ -77,7 +77,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
   const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
 
-  // เลขรันจาก DB (ต่อเดือน — mig 0092) ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240):
+  // เลขรันจาก DB (ต่อเดือน — mig 0092) ออกพร้อม insert ในทรานแซกชันเดียว (mig 0242):
   // QT-YYMMXXXX-0 · ⚠️ ไม่ใส่ quoteNumber/baseNumber ตรงนี้ — ฟังก์ชัน SQL เป็นคนเติม
   // หลังจองเลขสำเร็จ ไม่งั้น insert ที่ล้มจะกินเลขใบเสนอราคาทิ้งทุกครั้ง
   const quoteId = genId('QT');

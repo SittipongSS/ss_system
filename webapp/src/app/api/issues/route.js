@@ -44,7 +44,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return badRequest(error);
 
   try {
-    // รหัส IS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0238) — insert ล้ม = เลขคืน
+    // รหัส IS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = { id: genId('ISS'), ...value };
     const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'IS', row);
     if (insertError) return fail(insertError.message, 500);

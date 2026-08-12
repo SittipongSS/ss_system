@@ -46,7 +46,7 @@ export async function POST(request, { params }) {
   if (resetError) return Response.json({ error: resetError.message }, { status: 500 });
 
   // ออกเลขที่เอกสารครั้งแรกที่ส่งผู้บริหาร (guard 0141 ห้ามเปลี่ยนทีหลัง) — ออกพร้อม
-  // UPDATE ในทรานแซกชันเดียว (mig 0240) ⇒ update ล้ม = เลขที่จองถูกคืน ไม่หายจากระบบ
+  // UPDATE ในทรานแซกชันเดียว (mig 0242) ⇒ update ล้ม = เลขที่จองถูกคืน ไม่หายจากระบบ
   // ใบที่มีเลขแล้ว (ส่งซ้ำหลังถูกตีกลับ) ไม่กินเลขใหม่ — ฟังก์ชันเช็คให้
   const { error } = await assignCostingDocNo(supabase, id, {
     status: 'pending_exec',

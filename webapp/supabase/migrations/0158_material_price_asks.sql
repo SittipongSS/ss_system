@@ -172,7 +172,7 @@ DROP FUNCTION IF EXISTS public.guard_material_price_request();
 DROP FUNCTION IF EXISTS public.force_delete_material_request(text);
 DROP TABLE    IF EXISTS public.material_price_request_items;   -- ลูกก่อน (FK)
 DROP TABLE    IF EXISTS public.material_price_requests;
--- ⚠️ ตั้งแต่ mig 0239 มี trigger กันลบแถวเคาน์เตอร์ (เลขที่ออกแล้วห้ามถูกออกซ้ำ)
+-- ⚠️ ตั้งแต่ mig 0241 มี trigger กันลบแถวเคาน์เตอร์ (เลขที่ออกแล้วห้ามถูกออกซ้ำ)
 -- การล้าง scope ที่เลิกใช้ทั้งตัวชอบธรรม แต่ต้องประกาศเจตนาก่อน — ใบนี้จึงยังรันซ้ำได้
 SET LOCAL app.entity_counter_unlock = 'on';
 DELETE FROM public.entity_number_counters WHERE scope = 'MR';
