@@ -108,7 +108,9 @@ export default function QuotationsPage() {
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
       if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerId || "")) return false;
       if (!q) return true;
-      return [r.quoteNumber, r.customerName, r.deal?.title, ownerNameOf(r)].some((v) => (v || "").toLowerCase().includes(q));
+      // ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
+      return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r)]
+        .some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, awaitingSalesOrderIds, ownerNameOf]);
 
@@ -222,6 +224,10 @@ export default function QuotationsPage() {
                 <tr>
                   <th>เลขที่</th>
                   <th>ลูกค้า / ดีล</th>
+                  {/* ⭐ ประเภทดีลเป็นคอลัมน์ของตัวเอง (มติผู้ใช้ 2026-08-12) — เดิมป้ายนี้
+                      แทรกหน้าชื่อดีลในเซลเดียวกัน ทำให้กวาดตาหาว่า "ใบไหนเป็น NPD" ไม่ได้
+                      และตัวกรอง "ประเภทดีล" ที่มีอยู่แล้วไม่มีคอลัมน์ให้ยืนยันผลลัพธ์ */}
+                  <th>ประเภท</th>
                   <th>วันที่</th>
                   <th className="num">ยอดรวม</th>
                   <th>สถานะ</th>
@@ -237,12 +243,17 @@ export default function QuotationsPage() {
                       {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: "var(--fs-3)" }}>ฉบับแก้ไข R{r.revisionNo}</span>}
                     </td>
                     <td>
+                      {/* ⭐ รหัสลูกค้าอยู่ **เหนือ** ชื่อกิจการในตารางนี้ (มติผู้ใช้ 2026-08-12) —
+                          เซลนี้เรียงจากบนลงล่างเป็น รหัส → ชื่อกิจการ → ชื่อดีล ⇒ กวาดตาลงคอลัมน์
+                          แล้วเจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
+                          ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
+                      {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
                       {r.customerName || "-"}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        {r.deal && dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type")}
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>
                     </td>
+                    <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">-</span>}</td>
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                     <td className="num mono">{fmtMoney(r.totalAmount)}</td>
                     <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
@@ -285,7 +296,7 @@ export default function QuotationsPage() {
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && (
-                  <tr><td colSpan={6} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
+                  <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
                 )}
               </tbody>
             </table></TableScroll>
