@@ -1,0 +1,80 @@
+/* ปฏิทินคำสัญญาหนึ่งสัปดาห์ (แบบ ข · 2026-08-12)
+   ⚠️ ไม่มี primitive กลางสำหรับตารางเจ็ดวัน — บอร์ดผลิต (`/production/board`) มีของ
+   ตัวเองที่เป็นตาราง ไลน์ × วัน ซึ่งคนละโครงกับที่นี่ (วัน × ใบ) ⇒ เขียนใหม่ที่นี่
+   แต่ใช้โทเคนกลางทั้งหมด · ถ้าวันหน้ามีที่สามที่ต้องใช้ ค่อยยกเป็นของกลาง */
+
+.rangeRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2-5);
+}
+
+.range { color: var(--text-2); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
+.overdueNote { color: var(--red); font-size: var(--fs-4); }
+
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1-5);
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 96px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+/* วันหยุดจางลง — ไม่ใช่ซ่อน เพราะงานเร่งถูกวางลงเสาร์ได้จริง */
+.day[data-weekend] { background: var(--panel-2); }
+.day[data-today] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+}
+
+.todayTag { color: var(--accent-ink); font-weight: var(--fw-bold); }
+
+/* ใบหนึ่งใบในวัน — กดแล้วเปิดใบนั้น · ตัดข้อความแทนการดันช่องให้กว้าง */
+.job {
+  overflow: hidden;
+  width: 100%;
+  padding: var(--space-1) var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-2);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.job:hover { border-color: var(--accent); color: var(--accent-ink); }
+.job:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.job[data-overdue] { border-color: var(--red); color: var(--red); }
+.jobLines { color: var(--text-3); }
+.jobUrgent { color: var(--red); font-weight: var(--fw-bold); }
+
+/* จอแคบ: เจ็ดคอลัมน์อ่านไม่ออก — ลงเป็นสองแถวก่อน แล้วค่อยเป็นรายวัน
+   ⚠️ ไม่ยุบเหลือคอลัมน์เดียวที่ ≤900 เพราะจะยาวจนเลื่อนทั้งหน้าเพื่อดูสัปดาห์เดียว */
+@media (max-width: 900px) {
+  .week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .day { min-height: 74px; }
+}

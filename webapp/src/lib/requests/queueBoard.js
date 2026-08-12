@@ -78,6 +78,8 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
      และไม่ใช่ "เลยกำหนด" (ไม่มีวันกำหนดแล้ว เพราะยังไม่ถูกรับเรื่อง) */
   if (key === 'bounced') return !!request?.bouncedAt && request?.status === 'draft';
   if (!REQUEST_OPEN_STATUSES.includes(request?.status)) return false;
+  // ยังไม่ได้ให้วัน — ใบที่ยังเดินอยู่แต่ไม่มีใครรับปากวันไหนไว้เลย
+  if (key === 'undated') return !request?.committedDueDate;
   const next = requestNextStep(request);
 
   if (key === 'unacked') return request.status === 'pending';
@@ -119,6 +121,11 @@ export const QUEUE_COUNT_META = [
      ⚠️ หน้าคิวของ *ฝ่าย* (`/rd/requests`) จะได้ 0 เสมอ เพราะฝ่ายไม่ใช่คนแก้ —
      ตัวเลขนี้มีความหมายบนหน้า `/requests` ของผู้ขอ */
   { key: 'bounced', label: 'ตีกลับ รอคุณแก้', tone: 'danger', requesterOnly: true },
+  /* ⭐ ตัวที่ 6 (2026-08-12 · แบบ ข) — **ใบที่ยังไม่มีใครให้วัน** · เป็นงานของ *ฝ่าย*
+     (ต้องไปกดรับเรื่องแล้วให้วัน) ไม่ใช่ของผู้ขอ ⇒ ไม่โผล่บนหน้า `/requests`
+     ⚠️ ตัวเลขนี้คู่กับปฏิทินคำสัญญาเสมอ — ปฏิทินโชว์เฉพาะใบที่มีวันแล้ว ถ้าไม่มีตัวนี้
+     คนจะอ่านปฏิทินโล่ง ๆ แล้วสรุปว่าสัปดาห์นี้ว่าง (ของจริงตอนทำ: 8 จาก 15 ใบ) */
+  { key: 'undated', label: 'ยังไม่ได้ให้วัน', tone: 'warning', deptOnly: true },
 ];
 
 /**
@@ -129,7 +136,7 @@ export const QUEUE_COUNT_META = [
  * ไม่ใช่ให้แต่ละหน้าพิมพ์รายการคีย์ของตัวเอง (แล้วลืมอัปเดตตอนเพิ่มตัวที่ 6)
  */
 export function queueCountMeta({ scope = 'requester' } = {}) {
-  return scope === 'dept' ? QUEUE_COUNT_META.filter((m) => !m.requesterOnly) : QUEUE_COUNT_META;
+  return QUEUE_COUNT_META.filter((m) => (scope === 'dept' ? !m.requesterOnly : !m.deptOnly));
 }
 
 // ── แท็บ 3 ตัวคงที่ (P6c) ─────────────────────────────────────────────────
