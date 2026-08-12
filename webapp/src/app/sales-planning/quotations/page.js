@@ -243,9 +243,12 @@ export default function QuotationsPage() {
                       {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: "var(--fs-3)" }}>ฉบับแก้ไข R{r.revisionNo}</span>}
                     </td>
                     <td>
-                      {r.customerName || "-"}
-                      {/* รหัสลูกค้าเป็นบรรทัดเล็กใต้ชื่อ — เหนือบรรทัดดีล (มติ IS-26080003) */}
+                      {/* ⭐ รหัสลูกค้าอยู่ **เหนือ** ชื่อกิจการในตารางนี้ (มติผู้ใช้ 2026-08-12) —
+                          เซลนี้เรียงจากบนลงล่างเป็น รหัส → ชื่อกิจการ → ชื่อดีล ⇒ กวาดตาลงคอลัมน์
+                          แล้วเจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
+                          ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
                       {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
+                      {r.customerName || "-"}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                         <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
                       </span>
