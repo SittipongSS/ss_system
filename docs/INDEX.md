@@ -105,7 +105,7 @@
 | [webapp/SAHAMIT_PHASE5B_DESIGN.md](../webapp/SAHAMIT_PHASE5B_DESIGN.md) | Shift/Cut Audit · Locked cells · Coverage |
 | [webapp/SAHAMIT_UI_REVAMP_PLAN.md](../webapp/SAHAMIT_UI_REVAMP_PLAN.md) | รื้อ UI Forecast/PO/Reconciliation |
 | [entity-updates-plan.md](entity-updates-plan.md) | เธรดอัปเดตของกลาง — รอเคาะก่อนเริ่มโค้ด |
-| [notifications-inbox.md](notifications-inbox.md) | กล่องแจ้งเตือนรายคน (mig 0185) — กระดิ่ง + หน้า `/notifications` · วิธีนับ · กติกาอ่านแล้ว · **§5 บันทึกบั๊ก proxy ที่ทำให้ Vercel Cron โดน 401 มาตั้งแต่ 2026-07-15** |
+| [notifications-inbox.md](notifications-inbox.md) | **ช่องทางแจ้งเตือนเดียวของระบบ** (mig 0185) — กระดิ่ง + หน้า `/notifications` · วิธีนับ · กติกาอ่านแล้ว · §5 บั๊ก proxy ที่ทำให้ Vercel Cron โดน 401 · **§6–7 ถอด Google Chat ออกทั้งระบบ (mig 0236) + รายการที่ยอมให้เงียบ** |
 
 ---
 

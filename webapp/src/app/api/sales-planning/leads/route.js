@@ -3,10 +3,9 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, leadBudgetError,
-  LEAD_CHANNEL_LABELS, applyLeadScope, canViewLeads, canCreateLead,
+  applyLeadScope, canViewLeads, canCreateLead,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
-import { sendChat, chatCard } from '@/lib/chat';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
 
@@ -89,9 +88,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   });
 
   /* จุดส่งมอบ 1/3 — เข้ากล่องแจ้งเตือนของ **คนที่ต้องคัดกรอง** ไม่ใช่ห้องรวม
-     ⚠️ ต้องมีคู่กับ sendChat ข้างล่าง ไม่ใช่แทนกัน: webhook = ประกาศให้ฝ่าย ·
-     notifications = งานของคุณคนเดียว (mig 0185) · และถ้าองค์กรยังไม่เปิด webhook
-     ทางนี้คือทางเดียวที่คนได้รู้ว่ามีลีดเข้ามา (ดูเหตุผลเต็มใน leadNotify.js) */
+     🪦 เดิมมีคู่กับ Chat webhook (ประกาศให้ฝ่าย) ซึ่งถูกถอดออก 2026-08-12 ⇒ ตอนนี้
+     ทางนี้คือ**ทางเดียว**ที่คนได้รู้ว่ามีลีดเข้ามา (ดูเหตุผลเต็มใน leadNotify.js) */
   notifyLeadHandoff(supabase, {
     action: 'create',
     lead: data,
@@ -100,18 +98,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   });
 
   // จุดส่งมอบ 1/3: ลีดใหม่เข้าคิว → แจ้งผู้คัดกรอง (Supervisor) ให้เริ่มนับ SLA 1 วันทำการ.
-  // fire-and-forget หลังเขียน DB สำเร็จ — แจ้งเตือนล่มไม่กระทบการรับลีด (กติกา lib/chat).
-  sendChat('leads', chatCard({
-    title: '📥 ลีดใหม่รอคัดกรอง',
-    subtitle: data.company ? `${data.contactName} · ${data.company}` : data.contactName,
-    rows: [
-      { label: 'ช่องทาง', value: LEAD_CHANNEL_LABELS[data.channel] || data.channel },
-      { label: 'ผู้กรอก', value: data.createdByName || '' },
-      { label: 'สิ่งที่ต้องทำ', value: 'AE Supervisor คัดกรอง + เลือกทีม (ภายใน 1 วันทำการ)' },
-    ],
-    linkPath: `/sa/leads`,
-    linkLabel: 'เปิดคิวลีด',
-  }));
 
   return ok(data, 201);
 });

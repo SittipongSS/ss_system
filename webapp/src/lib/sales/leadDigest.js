@@ -91,29 +91,3 @@ export function describeOwners(entries = [], max = DIGEST_MAX_OWNERS) {
   if (rest > 0) shown.push(`อีก ${rest} คน`);
   return shown.join(' · ');
 }
-
-/** แถวของการ์ด Chat — คืน [] ถ้าไม่มีอะไรค้าง (ผู้เรียกจะได้ไม่ส่งการ์ดเปล่า) */
-export function leadDigestRows(summary) {
-  if (!summary?.total) return [];
-  const rows = [];
-  if (summary.screen.count) {
-    rows.push({
-      label: `รอคัดกรอง (${summary.screen.count})`,
-      value: `AE Supervisor คัดกรอง + เลือกทีม${summary.screen.oldest ? ` · ${days(summary.screen.oldest)}` : ''}`,
-    });
-  }
-  if (summary.spread.count) {
-    const teams = summary.spread.teams.map((t) => `${t.label} ${t.count}`).join(' · ');
-    rows.push({
-      label: `รอกระจาย (${summary.spread.count})`,
-      value: `Senior AE มอบให้ AE — ${teams}${summary.spread.oldest ? ` · ${days(summary.spread.oldest)}` : ''}`,
-    });
-  }
-  if (summary.contact.count) {
-    rows.push({
-      label: `รอติดต่อกลับ (${summary.contact.count})`,
-      value: describeOwners(summary.contact.owners) || 'AE ติดต่อลูกค้ากลับ',
-    });
-  }
-  return rows;
-}

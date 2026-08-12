@@ -26,7 +26,6 @@ test('settings surfaces use the global settings context instead of a business sy
     '/settings/company',
     '/settings/workflow-templates',
     '/settings/holidays',
-    '/settings/chat-webhooks',
     '/users',
     '/audit',
   ];

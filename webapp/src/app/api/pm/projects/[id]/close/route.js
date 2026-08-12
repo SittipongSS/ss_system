@@ -2,7 +2,6 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { can, inPmProjectScope } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { recordAudit } from '@/lib/audit';
-import { sendChat, chatCard } from '@/lib/chat';
 import {
   canApproveProjectClose, canProjectCloseTransition, isValidCloseType, PROJECT_CLOSE_TYPE_LABELS,
 } from '@/lib/pm/projectClose';
@@ -80,7 +79,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const now = new Date().toISOString();
   let patch = { updatedAt: now };
   let summary = '';
-  let chat = null;
 
   if (action === 'request') {
     // ผู้ดูแลโครงการ (pm:edit + scope) ขอปิด
@@ -95,7 +93,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       closeRequestedAt: now, closeRequestedBy: user.id || null, closeRequestedByName: user.name || null,
     };
     summary = `ขอปิดโครงการ ${project.code || id} (${PROJECT_CLOSE_TYPE_LABELS[closeType]})`;
-    chat = { space: 'approvals', title: '📋 ขออนุมัติปิดโครงการ', label: 'ประเภท', value: PROJECT_CLOSE_TYPE_LABELS[closeType] };
   } else if (action === 'cancel_request') {
     // ผู้ขอถอนคำขอเอง หรือ approver
     const isRequester = project.closeRequestedBy && project.closeRequestedBy === user.id;
@@ -108,7 +105,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
     patch = { ...patch, closeStatus: 'closed', closedAt: now, closedBy: user.id || null, closedByName: user.name || null };
     summary = `อนุมัติปิดโครงการ ${project.code || id} (${PROJECT_CLOSE_TYPE_LABELS[project.closeType] || project.closeType})`;
-    chat = { space: 'pm', title: '✅ ปิดโครงการแล้ว', label: 'ประเภท', value: PROJECT_CLOSE_TYPE_LABELS[project.closeType] || '' };
   } else if (action === 'reject') {
     if (project.closeRequestedBy && project.closeRequestedBy === user.id) {
       return forbidden('ตีกลับคำขอที่ตัวเองขอไม่ได้');
@@ -121,7 +117,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       closeRequestedAt: null, closeRequestedBy: null, closeRequestedByName: null,
     };
     summary = `ตีกลับคำขอปิดโครงการ ${project.code || id}: ${reason}`;
-    chat = { space: 'pm', title: '↩️ ตีกลับคำขอปิดโครงการ', label: 'เหตุผล', value: reason };
   } else if (action === 'reopen') {
     const reason = String(body.reason || '').trim();
     if (!reason) return badRequest('ระบุเหตุผลที่เปิดโครงการใหม่ (เช่น RE-ORDER)');
@@ -132,7 +127,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       closeRequestedAt: null, closeRequestedBy: null, closeRequestedByName: null,
     };
     summary = `เปิดโครงการใหม่ ${project.code || id}: ${reason}`;
-    chat = { space: 'pm', title: '🔓 เปิดโครงการใหม่', label: 'เหตุผล', value: reason };
   }
 
   const { data, error } = await supabase
@@ -153,19 +147,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
 
   await recordAudit({ user, action: 'update', entityType: 'project', entityId: id, before: project, after: data, summary, request: req });
-
-  if (chat) {
-    sendChat(chat.space, chatCard({
-      title: chat.title,
-      subtitle: `${project.code || ''} ${project.name || ''}`.trim(),
-      rows: [
-        { label: chat.label, value: chat.value },
-        { label: 'โดย', value: user.name || '' },
-      ],
-      linkPath: `/sa/projects/${id}`,
-      linkLabel: 'เปิดโครงการ',
-    }));
-  }
 
   return ok(data);
 });

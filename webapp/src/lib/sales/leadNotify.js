@@ -158,7 +158,7 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
 }
 
 /**
- * ยิงแจ้งเตือนแบบ fire-and-forget — ท่าเดียวกับ `sendChat` (lib/chat.js)
+ * ยิงแจ้งเตือนแบบ fire-and-forget
  * ผู้เรียกอยู่หลังจุดที่ DB เขียนสำเร็จแล้ว จึงห้ามเพิ่ม latency และห้าม throw
  */
 export function notifyLeadHandoff(supabase, { action, lead, directory, actor, previousAssigneeId, reason } = {}) {

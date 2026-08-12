@@ -38,10 +38,10 @@
     },
     "settings": {
       "legacyTable": 8,
-      "legacySurface": 37,
-      "inlineStyle": 97,
-      "rawButtonClass": 92,
-      "rawInputClass": 38
+      "legacySurface": 35,
+      "inlineStyle": 86,
+      "rawButtonClass": 90,
+      "rawInputClass": 37
     },
     "shared": {
       "legacyTable": 3,

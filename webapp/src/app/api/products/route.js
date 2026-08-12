@@ -10,9 +10,7 @@ import {
 } from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
-import { chatCard, sendChat } from '@/lib/chat';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
-import { productDisplayName } from '@/lib/master/productIdentity';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -239,20 +237,6 @@ export async function POST(request) {
   });
   await recordAudit({ user, action: 'create', entityType: 'product', entityId: data.id, after: data, request });
 
-  // แจ้งผู้อนุมัติเมื่อมีสินค้าใหม่ค้างรออนุมัติ (AE Supervisor สร้างเอง = approved ไม่ต้องแจ้ง)
-  if (data.approvalStatus === 'pending') {
-    sendChat('approvals', chatCard({
-      title: '📦 สินค้าใหม่รออนุมัติ',
-      subtitle: productDisplayName(data) || data.fgCode,
-      rows: [
-        { label: 'FG Code', value: data.fgCode },
-        { label: 'ลูกค้า', value: data.customerName },
-        { label: 'ทีม', value: data.team },
-        { label: 'ผู้เพิ่ม', value: data.submittedByName },
-      ],
-      linkPath: '/database/products',
-    }));
-  }
 
   return Response.json(data, { status: 201 });
 }
