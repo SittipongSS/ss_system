@@ -1,0 +1,95 @@
+/* การ์ด "การชำระ" ของใบสั่งขาย — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง (มติ 2026-08-13) */
+
+.wonGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-3) var(--space-5);
+  margin: 0;
+  padding-bottom: var(--space-3-5);
+  border-bottom: 1px solid var(--border);
+}
+.wonGrid > div { display: grid; gap: var(--space-0-5); min-width: 0; }
+.wonGrid dt { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+.wonGrid dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-7);
+  line-height: var(--lh-text);
+}
+
+.empty { color: var(--text-3); font-style: italic; }
+
+.files { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
+.fileLink {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--accent-ink);
+  font-size: var(--fs-6);
+  text-decoration: none;
+}
+.fileLink:hover { text-decoration: underline; }
+.fileLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
+
+.startBlock { display: grid; justify-items: start; gap: var(--space-3); }
+
+.list { display: grid; gap: var(--space-2-5); margin: 0; padding: 0; list-style: none; }
+
+.row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.rowLabel { min-width: 0; flex: 1; color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
+.amount {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ls-tabular);
+}
+
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+.overdue { color: var(--red); font-weight: var(--fw-bold); }
+
+/* เหตุผลที่บัญชีตีกลับ — เป็นข้อความ ไม่ใช่ป้ายเปล่า (กฎเดียวกับใบที่ถูกตีกลับ) */
+.rejected {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: var(--radius);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: var(--fs-5);
+}
+.rejected :global(.readable-text-block) { color: var(--text-2); }
+
+.rowActions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.dialog { display: grid; gap: var(--space-3); padding: var(--space-4); }
+.field { display: grid; gap: var(--space-1); }
+.field > span {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-bold);
+}

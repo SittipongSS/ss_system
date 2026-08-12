@@ -41,39 +41,19 @@
 .revisionLink strong { color: var(--text); font-size: var(--fs-6); }
 .revisionLink small { color: var(--text-3); font-size: var(--fs-3); }
 
-/* ของเข้าที่สั่งเพื่อผลิตใบนี้ (mig 0177) — อ่านอย่างเดียว แก้ที่หน้าโครงการ */
-.deliveryList { display: grid; gap: var(--space-2); }
-.deliveryRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  padding: var(--space-2) var(--space-2-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-2);
-}
-.deliveryRow strong { min-width: 0; flex: 1; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-bold); }
-.deliveryMeta { color: var(--text-3); font-size: var(--fs-4); white-space: nowrap; }
-.deliveryEmpty { color: var(--text-3); font-size: var(--fs-5); margin: 0; }
 
-/* ไฟล์หลักฐาน Won ที่ยืมมาโชว์บนใบสั่งขาย — ลิงก์ออกไป proxy ของ QT
-   ⚠️ ชื่อไฟล์ยาวได้ไม่จำกัด ⇒ ตัดด้วย .cell-ellipsis + title เก็บชื่อเต็ม
-   ไม่งั้นดันการ์ดในคอลัมน์แคบจนเลื่อนหลุดขอบ (บทเรียนจาก IS-26080004) */
-.wonFileList {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-1-5);
-}
 
-.wonFileLink {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--accent-ink);
-  font-size: var(--fs-5);
-  text-decoration: none;
+/* ⭐ การ์ด "ข้อมูลบนเอกสาร" — ที่อยู่ (อ่านอย่างเดียว) กับฟอร์มแก้ไข อยู่ใบเดียวกัน
+   เพราะตอบคำถามเดียวกันว่า "ใบนี้เขียนว่าอะไรบ้าง" (มติผู้ใช้ 2026-08-13)
+   สองคอลัมน์บนจอกว้าง: ที่อยู่ยาวได้ที่ · ช่องกรอกไม่ถูกยืดจนอ่านยาก */
+.docGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
 }
+.docAddress { min-width: 0; display: grid; gap: var(--space-3); }
 
-.wonFileLink:hover { text-decoration: underline; }
+@media (max-width: 900px) {
+  .docGrid { grid-template-columns: 1fr; }
+}
