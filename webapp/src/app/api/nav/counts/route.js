@@ -1,7 +1,8 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
 // GET /api/nav/counts → { requests?, tasks?, rdRequests?, leads?, quotations?,
 //                         salesOrders?, projectCloses?, scents?, formulas?, customers?,
-//                         visits?, mgmtTasks?, taxRegistrations?, taxFilings? }
+//                         visits?, mgmtTasks?, taxRegistrations?, taxFilings?,
+//                         issues?, productionJobs? }
 //
 // คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็น **ไม่ถูกส่งมาเลย** (ไม่ใช่ส่ง 0) — เมนูที่ถูกกรองทิ้ง
 // อยู่แล้วไม่ต้องมีตัวเลข และเลข 0 ที่หลุดมาจะกลายเป็นป้ายเปล่าบนเมนูของคนอื่น
@@ -34,6 +35,8 @@ import { isMyOpenTask } from '@/lib/mgmt/constants';
 import { businessDate } from '@/lib/businessDate';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { deptOf, ownedStages } from '@/lib/excise/workflow';
+import { isSystemAdmin } from '@/lib/issues/access';
+import { canEditProduction } from '@/lib/permissions';
 import {
   LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount, pruneZeroCounts, requestsTodoCount,
 } from '@/lib/nav/navCounts';
@@ -224,6 +227,28 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (can(user.role, 'history:view')) {
     jobs.push(attempt('taxRegistrations', () => taxCount('excise_registrations', 'registration')));
     jobs.push(attempt('taxFilings', () => taxCount('orders', 'payment')));
+  }
+
+  /* ── เฟส 4: แจ้งปัญหาระบบ + วางแผนผลิต ─────────────────────────────────
+     เรื่องแจ้งปัญหามีสองเลนเหมือนคิวคำร้อง (คนดูแลระบบ / คนแจ้ง) — สถานะที่นับ
+     ประกาศไว้ที่ `lib/issues/access.js` ที่เดียว ไม่เขียนซ้ำที่นี่ */
+  jobs.push(attempt('issues', async () => {
+    const query = supabase.from('system_issues').select('id', { count: 'exact', head: true });
+    // แอดมิน = เรื่องที่ยังไม่มีใครรับ (ตรงกับแท็บตั้งต้นของหน้า /support)
+    // คนแจ้ง = เรื่องของตัวเองที่แก้แล้วรอยืนยัน — ฝ่ายปล่อยมือแล้ว ผู้แจ้งมักไม่รู้ตัว
+    const { count } = isSystemAdmin(user)
+      ? await query.eq('status', 'pending')
+      : await query.eq('status', 'resolved').eq('reportedById', String(user.id));
+    return count || 0;
+  }));
+
+  // คิวงานผลิต — งานร่างที่ยังไม่ถูกวางคิว (ระบบกวาดมาจาก SO ที่อนุมัติแล้วให้เอง)
+  if (canEditProduction(user)) {
+    jobs.push(attempt('productionJobs', async () => {
+      const { count } = await supabase
+        .from('production_jobs').select('id', { count: 'exact', head: true }).eq('status', 'draft');
+      return count || 0;
+    }));
   }
 
   await Promise.all(jobs);

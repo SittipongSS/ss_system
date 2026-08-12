@@ -33,6 +33,17 @@ export function canPostIssueUpdate(user, row) {
   return ISSUE_OPEN_STATUSES.includes(String(row?.status || ''));
 }
 
+/* ── "รอฉันลงมือ" ของเรื่องแจ้งปัญหา (ม-118) ─────────────────────────────
+   สองเลนเหมือนคิวคำร้อง: ฝั่งคนดูแลระบบ กับฝั่งคนแจ้ง
+     · แอดมิน  = เรื่องที่ยัง **ไม่มีใครรับ** (`pending`) — ตรงกับแท็บตั้งต้นของหน้า
+     · คนแจ้ง  = เรื่องของตัวเองที่ **แก้แล้วรอยืนยัน** (`resolved`) ซึ่งค้างได้ไม่จำกัด
+       เพราะฝ่ายปล่อยมือไปแล้วและผู้แจ้งมักไม่รู้ตัว (โรคเดียวกับใบตีกลับ ม-112)
+   ⚠️ `acknowledged` (กำลังแก้) ไม่นับทั้งสองฝั่ง — มีคนถืออยู่แล้ว ไม่ได้รอใครเริ่ม */
+export const isIssueWaitingOnAdmin = (row) => String(row?.status || '') === 'pending';
+
+export const isIssueWaitingOnReporter = (user, row) => isIssueReporter(user, row)
+  && String(row?.status || '') === 'resolved';
+
 // เปิดเรื่องใหม่ได้ = ทุกคนที่ล็อกอิน รวม viewer และผู้สังเกตการณ์ (มติ Q2)
 // คนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์น้อยที่สุด — กันไว้แล้วปัญหาจะไม่ถูกรายงานเลย
 export const canReportIssue = (user) => !!user?.id;

@@ -92,3 +92,21 @@ test('ผู้รับแจ้งเตือนของเธรดมี�
   const block = src.slice(start, src.indexOf('\n  },', start));
   assert.match(block, /recipients: \(parent\) => \[parent\?\.reportedById, parent\?\.assigneeId\]/);
 });
+
+// ── ป้ายตัวเลขบนเมนู (ม-118) ─────────────────────────────────────────────
+test('⭐ สองเลนของเรื่องแจ้งปัญหา: แอดมินรอรับเรื่อง · คนแจ้งรอยืนยัน', async () => {
+  const { isIssueWaitingOnAdmin, isIssueWaitingOnReporter } = await import('./access.js');
+  const me = { id: 'USR-ME', role: 'ae' };
+  const mine = (status) => ({ status, reportedById: 'USR-ME' });
+
+  // เลนแอดมิน — เรื่องที่ยังไม่มีใครรับ
+  assert.equal(isIssueWaitingOnAdmin({ status: 'pending' }), true);
+  assert.equal(isIssueWaitingOnAdmin({ status: 'acknowledged' }), false, 'มีคนถืออยู่แล้ว');
+  assert.equal(isIssueWaitingOnAdmin({ status: 'closed' }), false);
+
+  // เลนคนแจ้ง — เรื่องของตัวเองที่แก้แล้วรอยืนยัน
+  assert.equal(isIssueWaitingOnReporter(me, mine('resolved')), true);
+  assert.equal(isIssueWaitingOnReporter(me, mine('pending')), false, 'ยังรอฝ่าย ไม่ใช่รอเรา');
+  assert.equal(isIssueWaitingOnReporter(me, { status: 'resolved', reportedById: 'USR-OTHER' }), false);
+  assert.equal(isIssueWaitingOnReporter(me, null), false);
+});

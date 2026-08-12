@@ -21,6 +21,12 @@ export const JOB_STATUS_LABELS = {
 // งานที่ยัง "กินกำลังผลิต" อยู่จริง — ร่างยังไม่กิน (ยังไม่มีไลน์) · จบ/ยกเลิกไม่กินแล้ว
 export const LIVE_JOB_STATUSES = ['planned', 'in_progress'];
 
+/* "รอฉันลงมือ" ของคิวงานผลิต = งานร่างที่ยังไม่ถูกวางคิว (ม-118)
+   ⚠️ ร่างพวกนี้ระบบกวาดมาจาก SO ที่อนุมัติแล้วให้เอง (autoDraft) ⇒ โผล่มาเรื่อย ๆ
+   โดยไม่มีใครสั่ง · ป้ายจึงมีค่าจริง: บอกว่ามีของใหม่รอวางคิวกี่ใบ
+   ⚠️ `planned`/`in_progress` ไม่นับ — มีคนวางคิวแล้ว ไม่ได้รอใครเริ่ม */
+export const isJobWaitingToSchedule = (job) => job?.status === 'draft';
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const parseDate = (iso) => {
   if (!ISO_DATE.test(String(iso ?? ''))) return null;
