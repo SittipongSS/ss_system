@@ -84,6 +84,20 @@
    ของคอลัมน์คำร้องไปแล้ว (มติ 2026-08-08) */
 .kindCell { font-size: var(--fs-6); }
 .subText { font-size: var(--fs-3); color: var(--text-3); }
+
+/* รหัสลูกค้า (AR) — บรรทัดเล็กคู่ชื่อกิจการ (มติผู้ใช้ IS-26080003: "เลข AR ในตาราง
+   เอาไว้ใต้ชื่อเล็ก ๆ ทุกตารางถ้ามีโชว์")
+   ⚠️ ห้ามตัดกลางรหัส — "AR-1001" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส
+   ⚠️ inline ไม่ใช่ block: ในเซลนี้ชื่อลูกค้าเป็นบรรทัดรองอยู่แล้ว การดันรหัสลงอีก
+   บรรทัดทำให้ทุกแถวในคิวสูงขึ้นทั้งตาราง (คิวหนึ่งหน้ามีได้ 100+ ใบ) */
+.arCode {
+  margin-left: var(--space-1-5);
+  color: var(--text-3);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+  white-space: nowrap;
+}
 .muted { color: var(--text-3); }
 .smallCell { font-size: var(--fs-5); }
 .loadError { padding: var(--space-6); color: var(--red); }

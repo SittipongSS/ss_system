@@ -276,8 +276,11 @@ export default function ProductForm({
         <div className="form-grid cols-2">
           {/* ⭐ ลูกค้าขึ้นก่อนทุกช่อง — เป็นตัวกำหนดทั้ง **ท่อน AAAA ของรหัส** และชุด
               แบรนด์ที่เลือกได้ (กฎ "ตัวกำหนดบริบทอยู่บนสุด") · ของเดิมอยู่ใต้รหัสที่
-              ต้องพิมพ์เอง ทั้งที่รหัสนั้นมีรหัสลูกค้าฝังอยู่ข้างใน */}
-          <div className="form-group col-span-2">
+              ต้องพิมพ์เอง ทั้งที่รหัสนั้นมีรหัสลูกค้าฝังอยู่ข้างใน
+              ⭐ **ลูกค้า | แบรนด์ อยู่แถวเดียวกัน** (มติผู้ใช้ 2026-08-12) — เป็นคู่ที่
+              อ่านคู่กันและขึ้นต่อกัน (แบรนด์มาจากลูกค้าที่เลือก ก่อนเลือกลูกค้าช่องขวา
+              กดไม่ได้) · เอกสารวิธีคิดออกแบบฟอร์ม §1 ยกคู่นี้เป็นตัวอย่างไว้ตรง ๆ */}
+          <div className="form-group">
             <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
             <SearchableSelect
               entity="customer"
@@ -296,6 +299,22 @@ export default function ProductForm({
                 ? "FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก"
                 : "เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ"}
             </span>
+          </div>
+          <div className="form-group">
+            <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
+            <SearchableSelect
+              entity="brand"
+              disabled={!form.customerId}
+              options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+              value={form.brandName || form.brandNameEn || ""}
+              onChange={(v) => {
+                const hit = brandOptions.find((b) => (b.th || b.en) === v || b.en === v);
+                onForm({ brandName: hit ? hit.th || "" : v, brandNameEn: hit ? hit.en || "" : "" });
+              }}
+              placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+              emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
+            />
+            <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
           </div>
           {/* หมวดสินค้า: ตัวเลือกหมวดกลางตัวเดียวกับฟอร์มดีล/โครงการ (TwoPanePicker
               105 หมวด/4 กลุ่ม) — โผล่เฉพาะโหมดระบบใหม่ เพราะโหมดกรอกเองหมวดฝังอยู่ใน
@@ -336,26 +355,6 @@ export default function ProductForm({
             {!duplicateWarning && otherSizeHint && (
               <span className="text-xs text-[var(--text-3)] mt-1">{otherSizeHint}</span>
             )}
-          </div>
-          <div className="form-group col-span-2">
-            <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-            <div className="flex gap-1.5 items-center">
-              <div className="flex-1 min-w-0">
-                <SearchableSelect
-                  entity="brand"
-                  disabled={!form.customerId}
-                  options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-                  value={form.brandName || form.brandNameEn || ""}
-                  onChange={(v) => {
-                    const hit = brandOptions.find((b) => (b.th || b.en) === v || b.en === v);
-                    onForm({ brandName: hit ? hit.th || "" : v, brandNameEn: hit ? hit.en || "" : "" });
-                  }}
-                  placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
-                />
-              </div>
-            </div>
-            <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
           </div>
         </div>
       </div>

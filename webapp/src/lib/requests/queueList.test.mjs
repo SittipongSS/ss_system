@@ -141,3 +141,35 @@ test('ทุกตัวเลือกจัดกลุ่มต้องจ�
     for (const g of groups) assert.ok(g.label, `${option.value} ต้องมีป้ายกลุ่ม`);
   }
 });
+
+// ── รหัสลูกค้า (AR) คู่ชื่อกิจการ (IS-26080003) ────────────────────────────
+// ⭐ มติผู้ใช้: "เลข AR ในตาราง เอาไว้ใต้ชื่อเล็ก ๆ ทุกตารางถ้ามีโชว์" — คิวคำร้อง
+// จัดกลุ่ม/กรองตามลูกค้าได้ แต่เห็นแค่ชื่อกิจการ ⇒ เชื่อมกับรหัสกลิ่น/MU ไม่ได้
+const withAr = (over = {}) => req({ customerArCode: 'AR-1001', ...over });
+
+test('รหัส AR มาเป็น sub ของมิติลูกค้า — ไม่ใช่ส่วนหนึ่งของคีย์', () => {
+  const facet = requestFacet(withAr(), 'customer');
+  assert.equal(facet.sub, 'AR-1001');
+  // ⚠️ ใบเก่าที่โหลดมาก่อนออกรหัส ต้องยังอยู่กลุ่มเดียวกับใบใหม่ของลูกค้ารายเดิม
+  assert.equal(facet.key, requestFacet(req({ customerArCode: null }), 'customer').key);
+  // ลูกค้าที่ยังไม่ได้ออกรหัส = ไม่มีบรรทัดเล็ก (ไม่ใช่ช่องว่างไปวาดบนจอ)
+  assert.equal(requestFacet(req({ customerArCode: '   ' }), 'customer').sub, null);
+  // มิติอื่นไม่มี sub ติดมาด้วย
+  assert.equal(requestFacet(withAr(), 'dept').sub, undefined);
+});
+
+test('หัวกลุ่มลูกค้าพารหัส AR ไปด้วย แม้ใบแรกของกลุ่มจะยังไม่มีรหัส', () => {
+  const [group] = groupRequestRows([
+    req({ id: 'DR-1', customerArCode: null }),
+    withAr({ id: 'DR-2' }),
+  ], 'customer');
+  assert.equal(group.rows.length, 2, 'ต้องเป็นกลุ่มเดียวกัน');
+  assert.equal(group.sub, 'AR-1001');
+});
+
+test('เมนูกรองลูกค้าต่อท้ายรหัส AR — ชื่อบริษัทคล้ายกันจะได้แยกออก', () => {
+  const [option] = requestFacetOptions([withAr(), withAr({ id: 'DR-2' })], 'customer');
+  assert.equal(option.label, 'ลอรีอัล · AR-1001 (2)');
+  // ไม่มีรหัส = ป้ายเหมือนเดิมทุกตัวอักษร
+  assert.equal(requestFacetOptions([req()], 'customer')[0].label, 'ลอรีอัล (1)');
+});

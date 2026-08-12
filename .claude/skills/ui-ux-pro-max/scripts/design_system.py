@@ -434,7 +434,10 @@ def format_markdown(design_system: dict) -> str:
     # Anti-patterns section
     if anti_patterns:
         lines.append("### Avoid (Anti-patterns)")
-        lines.append(f"- {anti_patterns.replace(' + ', '\n- ')}")
+        # Built outside the f-string: backslash escapes in f-string expressions
+        # are only legal on Python 3.12+ (PEP 701).
+        anti_pattern_list = anti_patterns.replace(" + ", "\n- ")
+        lines.append(f"- {anti_pattern_list}")
         lines.append("")
 
     # Pre-Delivery Checklist section

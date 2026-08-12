@@ -352,3 +352,16 @@ test('ไม่ส่งขอบเขตมา = ทำตัวเหมื�
   const rows = [{ id: 'A', status: 'pending', dept: 'RD', _mine: false }];
   assert.equal(visibleQueueRows(rows, { tab: 'mine', myDepts: [] }).length, 0);
 });
+
+// ── ค้นหาในคิว: รหัสลูกค้า (AR) ต้องค้นเจอ (IS-26080003) ───────────────────
+// ⚠️ กฎของ `matchesQueueSearch` คือ "ค้นจากสิ่งที่ตาเห็นในตาราง" — พอรหัส AR ไป
+// โผล่บนแถวแล้ว มันต้องค้นเจอด้วย ไม่งั้นผู้ใช้พิมพ์รหัสที่เห็นอยู่ตรงหน้าแล้วได้ตารางว่าง
+test('ค้นด้วยรหัส AR เจอใบของลูกค้ารายนั้น', async () => {
+  const { matchesQueueSearch } = await import('./useQueueBoard.js');
+  const row = { docNo: 'RQ-26080001', title: 'ขอราคาขวด', customerName: 'ลอรีอัล', customerArCode: 'AR-1001' };
+  assert.equal(matchesQueueSearch(row, 'AR-1001'), true);
+  assert.equal(matchesQueueSearch(row, 'ar-100'), true, 'ไม่แคร์ตัวพิมพ์');
+  assert.equal(matchesQueueSearch(row, 'AR-9999'), false);
+  // ใบที่ยังไม่มีรหัส ยังค้นด้วยชื่อได้ตามเดิม
+  assert.equal(matchesQueueSearch({ ...row, customerArCode: null }, 'ลอรีอัล'), true);
+});

@@ -159,6 +159,21 @@ export async function loadRequests(supabase, {
   }
   const projectById = new Map(projects.map((p) => [p.id, p]));
 
+  /* ⭐ **รหัสลูกค้า (AR) มาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ IS-26080003) — คิวจัดกลุ่ม
+     ตามลูกค้าได้ และแถวโชว์ชื่อกิจการอยู่แล้ว แต่รหัสคือตัวที่เชื่อมกับรหัสกลิ่น/MU
+     ⚠️ **อ่านสดจากทะเบียนเสมอ ไม่ประทับลงแถวคำร้อง** — `customerName` ที่แถวเก็บไว้คือ
+     ชื่อ ณ วันที่ผูก (หลักฐาน) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน
+     ⚠️ รวมเป็น query เดียวเหมือนโครงการ — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
+  const customerIds = [...new Set(asks.map((a) => a.customerId).filter(Boolean))];
+  let customers = [];
+  if (customerIds.length) {
+    const { data, error: customerError } = await supabase
+      .from('customers').select('id, "arCode"').in('id', customerIds);
+    if (customerError) throw customerError;
+    customers = data || [];
+  }
+  const arById = new Map(customers.map((c) => [c.id, String(c.arCode || '').trim() || null]));
+
   // ⚠️ เดิมมีขั้นดึง `dept_request_item_tiers` มาแปะรายแถว — ตารางถูก DROP ใน
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
   return asks.map((a) => ({
@@ -168,6 +183,7 @@ export async function loadRequests(supabase, {
     // ชั้นทำให้ต้องเช็ค null สองชั้นทุกที่ที่อ่าน
     projectCode: projectById.get(a.projectId)?.code ?? null,
     projectName: projectById.get(a.projectId)?.name ?? null,
+    customerArCode: arById.get(a.customerId) ?? null,
   }));
 }
 
