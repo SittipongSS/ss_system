@@ -127,10 +127,14 @@ const DEPARTMENT_ROLES = {
   // (เห็นดีล/ใบเสนอราคา/มูลค่าทั้งทีม) ซึ่งไม่ใช่สิ่งที่ตั้งใจ.
   // ทีม SV (Services) ยังเป็นทีม**ขาย**ธุรกิจบริการเหมือนเดิม — TS คือฝ่ายที่รับงานต่อ.
   TS: ['staff'],
-  // FN = ฝ่ายบัญชีและการเงิน — รับคำร้องขอเอกสารการเงิน (P7)
+  // FN = ฝ่ายบัญชีและการเงิน — รับคำร้องขอเอกสารการเงิน (P7) + คอนเฟิร์มงวดชำระของ SO (mig 0245)
   // ⚠️ **ไม่ได้อยู่ใน COSTING_SOURCE_DEPARTMENTS โดยตั้งใจ** — บัญชีไม่ใช่แหล่งราคา
   // จึงถือ costing:* ระดับ role (จาก staff) แต่ผ่านด่าน canViewCosting ไม่ได้เลย
-  FN: ['staff'],
+  //
+  // ⭐ `finance` เป็น role ของฝ่ายนี้เอง (มติผู้ใช้ 2026-08-13: *"ไม่อยากใช้คำว่า Staff"*)
+  // และจำเป็นทางเทคนิคด้วย — `staff` ไม่มี `salesplan:view` ⇒ บัญชีเปิดใบสั่งขายไม่ได้เลย
+  // จึงคอนเฟิร์มงวดไม่ได้ · คง `staff` ไว้ให้ผู้ใช้ FN เดิมที่ยังไม่ได้ย้าย role
+  FN: ['finance', 'staff'],
 };
 
 // A role's home/default department — used to display legacy users whose
@@ -143,6 +147,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   marketing: 'MK',
   legal: 'LG', executive: 'EX', viewer: 'Viewer',
   rd: 'RD',
+  finance: 'FN',
 };
 
 export function departmentFor(role) {
@@ -158,7 +163,7 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'executive', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'finance', 'executive', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -169,6 +174,7 @@ export const ROLE_LABELS = {
   marketing: 'การตลาด (Marketing)',
   legal: 'ฝ่ายกฎหมาย',
   rd: 'วิจัยและพัฒนา (RD)',
+  finance: 'บัญชีและการเงิน (Finance)',
   executive: 'ผู้บริหาร (Executive)',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
   staff: 'พนักงาน (Staff)',
@@ -289,6 +295,7 @@ const SUPERUSER_CAPS = [
   'costing:view', 'costing:edit', 'costing:quote', 'costing:approve',
   'production:view', 'production:edit',   // ตารางผลิต — วางคิวจริงคือ PC/PD (แคบด้วยฝ่าย)
   'service:view', 'service:edit',         // ตารางเข้า service — ช่างฝ่าย TS + ทีมขาย SV
+  'payments:confirm',                     // คอนเฟิร์มงวดชำระ SO — ของจริงคือฝ่าย FN (แคบด้วยฝ่าย)
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
 ];
 
@@ -376,6 +383,17 @@ const ROLE_CAPS = {
   // ⚠️ cap 'inquiries:respond' ถูกถอดออกใน mig 0174 พร้อมระบบสอบถาม — งานย้ายมา
   // อยู่ใต้ costing:quote ทั้งหมด (ฝ่ายจัดซื้อ PC ก็ใช้ cap เดียวกัน จึงได้คิวของ
   // ตัวเองในหน้า "งานของฉัน" ด้วย ซึ่งของเดิมไม่เคยให้เพราะผูกกับ role rd อย่างเดียว)
+  // finance: ฝ่ายบัญชีและการเงิน (FN) — งานเดียวที่เป็นของเขาคนเดียวคือ **คอนเฟิร์มงวดชำระ**
+  // ของใบสั่งขาย (mig 0245) · `salesplan:view` เพราะต้องเปิดใบมาดูก่อนคอนเฟิร์ม
+  // ⚠️ **ไม่มี `salesplan:edit` และไม่มี `sales:act`** — บัญชีไม่แก้เอกสารขาย ไม่ออกใบยื่น
+  // ⚠️ **ไม่มี costing:* ต่างจาก `staff`** — บัญชีไม่ใช่แหล่งราคา (เหตุผลเดียวกับที่ FN
+  //    ไม่อยู่ใน COSTING_SOURCE_DEPARTMENTS) · ย้ายคน FN จาก staff มา finance แล้ว
+  //    เขาจะ **เสีย** costing:view/quote ที่ไม่เคยใช้ได้จริงอยู่แล้ว (ด่านบล็อกมาตลอด)
+  // `payments:confirm` ถือกว้างระดับ role แล้ว **แคบด้วยฝ่าย** ที่ canConfirmPayment เสมอ
+  finance: [
+    'products:view', 'customers:view', 'salesplan:view', 'history:view',
+    'requests:answer', 'payments:confirm',
+  ],
   rd: [
     'pm:view', 'products:view', 'customers:view', 'salesplan:view',
     'costing:view', 'costing:quote',
@@ -403,6 +421,11 @@ const ROLE_CAPS = {
     'requests:answer',
     'production:view', 'production:edit',
     'service:view', 'service:edit',
+    // ⭐ ให้ผู้ใช้ฝ่าย FN เดิมที่ยังถือ role `staff` คอนเฟิร์มงวดได้ทันทีโดยไม่ต้องรอย้าย role
+    // **แคบด้วยฝ่ายที่ canConfirmPayment เสมอ** (รูปเดียวกับ costing:* / production:*)
+    // ⚠️ staff ฝ่ายอื่นถือ cap นี้แต่ไปไม่ถึงไหน — และเปิดใบสั่งขายไม่ได้อยู่แล้ว
+    //    เพราะไม่มี `salesplan:view` (อีกเหตุผลที่ role `finance` จำเป็น ไม่ใช่แค่ชื่อสวย)
+    'payments:confirm',
   ],
 };
 
@@ -507,6 +530,23 @@ export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
 // ⚠️ ต้องตรงกับ `REQUEST_DEPTS` ใน lib/master/requestTypes.js เสมอ — มีเทสต์คุม
 // (แยกลิสต์เพราะ permissions.js เป็นชั้นล่างสุด ห้าม import ทะเบียนหัวข้อกลับมา)
 export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN'];
+
+// ── คอนเฟิร์ม/ตีกลับงวดชำระของใบสั่งขาย (mig 0245) ──────────────────────
+//
+// ⭐ **แยกหน้าที่: ฝ่ายขายแจ้ง ฝ่ายบัญชีตัดสิน** (มติผู้ใช้ 2026-08-13 · สืบทอดมติ 2026-08-01
+// *"SA ต้องกดว่าลูกค้าจ่ายแล้ว บัญชีต้องคอนเฟิร์ม"*) ⇒ คนที่แจ้งกับคนที่คอนเฟิร์มต้องคนละฝ่าย
+//
+// 🔴 **ห้ามใช้ `isSuperuser` ที่นี่** — `isSuperuser` รวม `ae_supervisor` ซึ่งเป็นหัวหน้า
+// ฝ่ายขาย ถ้าเขาคอนเฟิร์มเงินเข้าได้เอง ด่านนี้ก็ไม่มีความหมาย (เหตุผลเดียวกับที่
+// `isSalesOrderSelfApproval` ห้ามผู้สร้างอนุมัติใบตัวเอง) · admin เท่านั้นที่ break-glass ได้
+//
+// รูปเดียวกับ costing:* — ถือ cap กว้างระดับ role แล้วแคบด้วย **ฝ่าย** ที่นี่
+// (ผู้ใช้ FN เดิมที่ยังถือ role `staff` จึงผ่านได้ทันทีโดยไม่ต้อง migrate ข้อมูลผู้ใช้)
+export function canConfirmPayment(user) {
+  if (user?.role === 'admin') return true;
+  if (!canUser(user, 'payments:confirm')) return false;
+  return departmentOf(user) === 'FN';
+}
 
 // รับคำร้องของฝ่ายนี้ได้ไหม — ใช้ทั้งตอนกรองคิวและตอนกดรับเรื่อง/ตอบ
 export function canAnswerRequestsFor(user, dept) {
