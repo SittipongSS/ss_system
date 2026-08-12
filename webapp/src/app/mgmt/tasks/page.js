@@ -1,4 +1,5 @@
 "use client";
+import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -33,6 +34,14 @@ export default function MgmtTasksPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ q: "", deptCode: "", status: "", priority: "" });
+  /* ⭐ `?count=mgmtTasks` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-116) · ป้ายนับงานที่ยังไม่จบและ
+     มอบหมายให้ฉัน ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่งานทั้งปีของทุกฝ่าย
+     ⚠️ ธง `_waitingOnMe` มาจาก server ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — หน้านี้ไม่รู้
+     ว่าใครล็อกอินอยู่ (มีแต่ role) คำนวณเองไม่ได้
+     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นกดล้างตัวกรองไม่ได้ */
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(
+    () => new URLSearchParams(window.location.search).get("count") === "mgmtTasks",
+  );
 
   const [formOpen, setFormOpen] = useState(false);
   const [formTask, setFormTask] = useState(null);
@@ -62,12 +71,13 @@ export default function MgmtTasksPage() {
 
   const rows = useMemo(() => {
     const q = filters.q.trim().toLowerCase();
-    if (!q) return tasks;
-    return tasks.filter((t) =>
+    const base = waitingOnMeOnly ? tasks.filter((t) => t._waitingOnMe) : tasks;
+    if (!q) return base;
+    return base.filter((t) =>
       (t.title || "").toLowerCase().includes(q) ||
       (t.assigneeName || "").toLowerCase().includes(q) ||
       (t.deptCode || "").toLowerCase().includes(q));
-  }, [tasks, filters.q]);
+  }, [tasks, filters.q, waitingOnMeOnly]);
 
   const upsertRow = (row) => setTasks((prev) => {
     const i = prev.findIndex((t) => t.id === row.id);
@@ -125,6 +135,10 @@ export default function MgmtTasksPage() {
             {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABELS[p]}</option>)}
           </Select>
         </div>
+        {waitingOnMeOnly && (
+          /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
+          <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
+        )}
         <button className="btn" onClick={() => setFilters({ q: "", deptCode: "", status: "", priority: "" })}><RotateCcw size={14} /> ล้าง</button>
       </div>
 

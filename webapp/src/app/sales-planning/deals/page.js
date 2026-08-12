@@ -618,9 +618,10 @@ export default function SalesPlanningPipelinePage() {
             )}
           </strong>
           <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-            {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
-            {/* รหัสลูกค้าขึ้นบรรทัดของตัวเองใต้ชื่อ · แบรนด์ยังเกาะท้ายชื่อเหมือนเดิม */}
+            {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวทุกตาราง QT/SO/ดีล)
+                แบรนด์ยังเกาะท้ายชื่อเหมือนเดิม */}
             {deal.customerId && arIndex.get(deal.customerId) ? <span className="ar-code ar-code-block">{arIndex.get(deal.customerId)}</span> : null}
+            {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
           </span>
         </Link>
       </td>

@@ -7,11 +7,14 @@ import {
   ytdMonths,
   carryIn,
   windowStat,
+  yearSummary,
   statusOf,
   carryTable,
   yoySeries,
   cumulativeSeries,
   windowForPeriod,
+  bpOfWindow,
+  toKind,
   prevPeriod,
   nextPeriod,
   periodKindOf,
@@ -129,6 +132,41 @@ test('windowStat pct is null when mustClose is zero', () => {
   assert.equal(s.pct, null);
 });
 
+/* ---------- yearSummary ---------- */
+
+test('yearSummary: YTD เทียบเฉพาะเดือนที่ผ่านมา แต่ ต้องทำ/เดือน หารจากเป้าทั้งปี', () => {
+  const r = row(fill(10), [12, 8, 0]);
+  const s = yearSummary(r, { ytdCount: 3, lastYearActual: fill(10) });
+  assert.equal(s.targetYear, 120);
+  assert.equal(s.targetYtd, 30);
+  assert.equal(s.actualYtd, 20);
+  assert.equal(s.gap, -10);
+  assert.equal(Math.round(s.achv * 100) / 100, 66.67);
+  assert.equal(s.remainMonths, 9);
+  assert.equal(Math.round(s.needPerMonth * 100) / 100, 11.11); // (120 − 20) / 9
+  assert.equal(Math.round(s.yoy * 10) / 10, -33.3); // 20 เทียบ 30 ของปีก่อน
+});
+
+test('⭐ gap ของ yearSummary ไม่ใช่ diff ของงวดปี — คนละฐาน ห้ามเอามาแทนกัน', () => {
+  const r = row(fill(10), [12, 8, 0]);
+  // งวด "ทั้งปี": Actual ทั้งปี − เป้าทั้ง 12 เดือน = เหลืออีกเท่าไรถึงปิดปี
+  assert.equal(windowStat(r, { startIdx: 0, endIdx: 11, carryOn: false, closedCount: 2 }).diff, -100);
+  // YTD: Actual − เป้าเฉพาะเดือนที่ผ่านมา = ตอนนี้ตามแผนอยู่ไหม
+  assert.equal(yearSummary(r, { ytdCount: 3 }).gap, -10);
+});
+
+test('yearSummary: เกินเป้าทั้งปีแล้ว ต้องทำ/เดือน = 0 ไม่ใช่ค่าติดลบ', () => {
+  const s = yearSummary(row(fill(10), [130]), { ytdCount: 3 });
+  assert.equal(s.needPerMonth, 0);
+});
+
+test('yearSummary: ปีจบแล้วไม่มี "ต่อเดือน" · ไม่มีเป้า/ไม่มีฐานปีก่อน = null ไม่ใช่ 0', () => {
+  assert.equal(yearSummary(row(fill(10), fill(10)), { ytdCount: 12 }).needPerMonth, null);
+  const blank = yearSummary(row(fill(0), fill(5)), { ytdCount: 6, lastYearActual: fill(0) });
+  assert.equal(blank.achv, null); // เป้า 0 → หารไม่ได้
+  assert.equal(blank.yoy, null); // ปีก่อนไม่มียอด → ไม่มี % เติบโต
+});
+
 /* ---------- statusOf — ทุก branch ---------- */
 
 test('past: cleared with and without carry', () => {
@@ -229,6 +267,22 @@ test('windowForPeriod parses year, quarter, month and rejects junk', () => {
   assert.deepEqual(windowForPeriod('2026-07'), { year: 2026, startIdx: 6, endIdx: 6, kind: 'month' });
   assert.equal(windowForPeriod('2026-13'), null);
   assert.equal(windowForPeriod('abc'), null);
+});
+
+test('bpOfWindow เป็นผกผันของ windowForPeriod ทั้งสามชนิด', () => {
+  for (const bp of ['2026', '2026-Q3', '2026-07']) {
+    assert.equal(bpOfWindow(windowForPeriod(bp)), bp);
+  }
+  assert.equal(bpOfWindow(null), '');
+});
+
+test('toKind คงตำแหน่งเวลาเดิมตอนสลับชนิดงวด', () => {
+  assert.equal(toKind('2026-08', 'quarter'), '2026-Q3'); // ส.ค. อยู่ Q3
+  assert.equal(toKind('2026-08', 'year'), '2026');
+  assert.equal(toKind('2026-Q3', 'month'), '2026-07'); // เดือนแรกของไตรมาส
+  assert.equal(toKind('2026-Q4', 'quarter'), '2026-Q4'); // สลับเป็นชนิดเดิม = คงที่
+  assert.equal(toKind('2026', 'month'), '2026-01');
+  assert.equal(toKind('ขยะ', 'month'), 'ขยะ'); // พาร์สไม่ได้ = คืนของเดิม ไม่ throw
 });
 
 test('prev/nextPeriod wrap across year boundaries for all kinds', () => {

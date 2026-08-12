@@ -40,6 +40,9 @@ export function RegsDonutChart({ regs = [] }) {
   return (
     <ChartCanvas><ResponsiveContainer width="100%" height="100%">
       <PieChart>
+        {/* 🐞 Recharts 3.9.2: `<Pie>` ที่เปิดอนิเมชัน (ค่าเริ่มต้น) เรนเดอร์ออกมาเป็น sector
+            เปล่าไม่มี path = วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง — ห้ามลบ prop นี้
+            (ตรวจเจอ 2026-08-12 ตอนทำการ์ดช่องทางของลีด · พังเงียบมาก่อนหน้านั้น) */}
         <Pie
           data={data}
           cx="50%"
@@ -48,6 +51,7 @@ export function RegsDonutChart({ regs = [] }) {
           outerRadius={80}
           paddingAngle={5}
           dataKey="value"
+          isAnimationActive={false}
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
