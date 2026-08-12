@@ -151,7 +151,7 @@ export default function RdOverviewPage() {
           ⚠️ **0 ก็เป็นข้อมูล** — "รอรับเรื่อง 0" บอกว่างานไม่ค้าง ซึ่งเป็นสิ่งที่หัวหน้า
           เปิดมาดูเพื่อจะรู้ · ซ่อนตอนว่างทำให้แยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
       {!loading && !loadError && (
-        <MetricStrip aria-label="สายพานงานของฝ่าย — กดเพื่อเปิดคิว" data-count={pipeline.length}>
+        <MetricStrip aria-label="สายพานงานของฝ่าย — กดเพื่อเปิดคิว">
           {pipeline.map((stage) => {
             const { value, unit } = stageValue(stage);
             return (

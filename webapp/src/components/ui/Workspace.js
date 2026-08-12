@@ -1,5 +1,6 @@
 "use client";
 
+import { Children } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -89,8 +90,27 @@ export function WorkspaceSection({
   );
 }
 
+/* แถบตัวเลขสรุป — **นับจำนวนช่องเอง** ไม่ต้องให้ผู้เรียกบอก
+ *
+ * 🐞 เดิม `.ui-metric-strip` ฮาร์ดโค้ด `repeat(4, …)` ⇒ หน้าไหนอยากได้ 5 ใบก็ทำไม่ได้
+ * ต้องไปรื้อ CSS กลาง (หน้าคิวลีดติดเรื่องนี้อยู่ ใส่ SLA ครบสามด่านไม่ได้เลย) และถ้า
+ * ใครเผลอใส่ 5 ใบ ใบที่ห้าจะไปห้อยเป็นแถวที่สองใบเดียวโดยไม่มีอะไรเตือน
+ *
+ * ⚠️ ใช้ `Children.toArray` ไม่ใช่ `Children.count` — toArray ทิ้ง null/false/undefined
+ * ให้เอง ซึ่งจำเป็นเพราะการ์ดหลายใบเรนเดอร์แบบมีเงื่อนไข (`{canX && <Metric …/>}`)
+ * ถ้านับรวมค่าเท็จเข้าไปด้วยจะได้คอลัมน์ว่างค้างไว้
+ *
+ * ⚠️ ส่งจำนวนผ่าน `data-cols` ไม่ใช่ inline style — `audit:ui` นับ inline style เป็นหนี้
+ * ชั้นเก่าและงบของ "ส่วนกลาง" รูดขึ้นไม่ได้ · แอตทริบิวต์ยัง grep เจอง่ายกว่าด้วย
+ * รองรับ 1–6 ช่อง (กฎอยู่ใน globals.css) เกินนั้นตกมาที่ 4 ให้เห็นว่าผิดทันที
+ */
 export function MetricStrip({ children, className = "", ...props }) {
-  return <section className={`ui-metric-strip ${className}`.trim()} {...props}>{children}</section>;
+  const cols = Children.toArray(children).length || 1;
+  return (
+    <section className={`ui-metric-strip ${className}`.trim()} data-cols={cols} {...props}>
+      {children}
+    </section>
+  );
 }
 
 export function Metric({

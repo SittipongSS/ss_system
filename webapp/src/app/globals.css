@@ -206,6 +206,11 @@
   --page-gutter-tablet: 18px;
   --page-gutter-mobile: 14px;
   --icon-box-md: 32px;
+  /* ความหนาเส้นคั่น — **ไม่ใช่ค่าในชั้นระยะห่าง** (กริด 4px) จึงไม่มีขั้นให้ใช้
+     มีไว้สำหรับที่ที่วาดเส้นด้วย `gap` แทน `border` (ดู .ui-metric-strip) ให้เขียน
+     `gap: var(--rule)` ได้แทนเลข 1px ดิบ ๆ ซึ่งจะไปโผล่ในหนี้ระยะห่างของ audit:ui
+     ทั้งที่มันคือเส้น ไม่ใช่ช่องไฟ */
+  --rule: 1px;
   --radius: 8px;
   /* --radius-md ถูกใช้ใน 5 ที่ (VersionControlCard ฯลฯ) แต่ไม่เคยถูกประกาศ →
      border-radius กลายเป็น 0 มุมเหลี่ยมมาตลอด เพิ่งเจอตอนไล่โทเคน 2026-07-26 */
@@ -5153,25 +5158,34 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-section-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 .ui-section-body { min-width: 0; padding: var(--space-4) 17px; }
 
+/* จำนวนคอลัมน์มาจาก `data-cols` ที่ `MetricStrip` นับใบให้เอง (ดูคอมเมนต์ที่นั่น)
+   ค่าตั้งต้น 4 ไว้เผื่อมีใครใส่คลาสนี้ตรง ๆ โดยไม่ผ่านคอมโพเนนต์
+
+   เส้นคั่นระหว่างช่องเป็น **gap 1px** ไม่ใช่ border รายใบ:
+   🐞 ของเดิมใช้ `border-right` + `:last-child` + `nth-child(2)` ซึ่งผูกกับ "สี่ใบ" ตายตัว
+   พอจำนวนช่องเปลี่ยนหรือแถบตัดบรรทัด เส้นจะค้างผิดที่ทันที (ขอบขวาของใบท้ายแถว ·
+   ขอบล่างของแถวสุดท้าย) และไม่มีสูตร nth-child ไหนถูกทุกจำนวน
+   ⇒ ใช้ gap แทน: พื้นของแถบทาสีเส้นไว้ ช่องทับหมดเหลือแต่ร่อง 1px = เส้นคั่นที่ถูก
+   ทุกจำนวนช่องและทุกจุดตัดบรรทัด โดยไม่ต้องรู้ว่ามีกี่ใบ
+   ⚠️ `background-image` ทับ `background-color` เพื่อให้ร่องได้สี border ผสมบนพื้น panel
+   เหมือนตอนเป็น border จริง (ถ้าใส่แค่ background-color: var(--border) ซึ่งมี alpha
+   ร่องจะไปผสมกับพื้นหน้าเว็บแทน ได้คนละเฉด) */
 .ui-metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--rule);
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--panel);
+  background-color: var(--panel);
+  background-image: linear-gradient(var(--border), var(--border));
   box-shadow: var(--glass-shadow);
 }
-/* แถบที่มี 5 ตัว (คิวคำร้องของผู้ขอ — มีช่อง "ตีกลับ" เพิ่ม) — ไม่งั้นตัวที่ 5
-   ตกไปขึ้นบรรทัดใหม่ตัวเดียวโดด ๆ · ประกาศที่นี่ที่เดียว ไม่ใช่ให้แต่ละหน้าส่ง
-   คลาสมาเอง (แล้วหน้าที่ลืมส่งจะได้แถวกำพร้าเงียบ ๆ) */
-/* ใช้ `data-count` แทน `:has(> :nth-child(5))` — จำนวนช่องเป็นสิ่งที่ผู้เรียกรู้อยู่แล้ว
-   บอกตรง ๆ อ่านง่ายกว่าให้ CSS ไปนับลูกเอง
-   ⚠️ **ไม่ใช่เพราะ `:has` ใช้ไม่ได้** — เคยสรุปแบบนั้นตอนแก้แล้วจอไม่เปลี่ยน แต่ตรวจซ้ำ
-   แล้วต้นเหตุคือ chunk CSS ของ dev server ค้างเก่า (Turbopack คอมไพล์ตอนมี request
-   ไม่ใช่ตอนไฟล์เปลี่ยน) · "กฎ CSS ไม่ทำงาน" บนพรีวิว ให้โหลดหน้าใหม่แล้วเช็ค
+/* 🪤 บทเรียนจากรอบก่อน (ตอนกฎนี้ยังเป็น `data-count` ที่ผู้เรียกส่งมาเอง): เคยสรุปว่า
+   `:has(> :nth-child(5))` "ใช้ไม่ได้" เพราะแก้แล้วจอไม่เปลี่ยน — ตรวจซ้ำแล้วต้นเหตุคือ
+   chunk CSS ของ dev server ค้างเก่า (Turbopack คอมไพล์ตอนมี request ไม่ใช่ตอนไฟล์เปลี่ยน)
+   ⇒ "กฎ CSS ไม่ทำงาน" บนพรีวิว ให้โหลดหน้าใหม่แล้วเช็ค
    `.next/dev/static/chunks/*globals*.css` ก่อนสรุปว่าเครื่องมือตัดทิ้ง */
-.ui-metric-strip[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 .ui-metric {
   display: flex;
@@ -5180,17 +5194,39 @@ button.empty-state { width: 100%; font: inherit; }
   min-width: 0;
   padding: var(--space-3-5) var(--space-4);
   border: 0;
-  border-right: 1px solid var(--border);
-  background: transparent;
+  /* ทึบ 100% เพราะช่องต้องบังพื้นสีเส้นของแถบให้มิด เหลือแต่ร่อง 1px
+     (`--panel-solid` = สีเดียวกับ `--panel` ที่ผสมกับพื้นแล้ว จึงหน้าตาเท่าเดิม) */
+  background: var(--panel-solid);
   color: inherit;
   font: inherit;
   text-align: left;
 }
+/* กฎรายจำนวนอยู่ใน min-width **โดยตั้งใจ** — จำนวนช่องมีความหมายเฉพาะจอกว้าง
+   ⚠️ ถ้าวางไว้นอก media query มันจะชน `@media (max-width: 900px)` ข้างล่างด้วย
+   specificity เท่ากัน (0,2,0 ทั้งคู่) แล้วผลขึ้นกับลำดับหลัง build — เจอจริง: แถบ 5 ช่อง
+   ค้างเป็น 5 คอลัมน์บนจอ 430px บีบจนอ่านไม่ออก
+   ⚠️ ใช้ 900 ไม่ใช่ 901 เพราะ audit:ui จำกัดจำนวน "จุดตัดจอ" ที่ต่างกันทั้งระบบ — ห้ามคิด
+   เลขใหม่ ต้องหยิบจากที่มีอยู่แล้ว · ที่ 900px พอดีทั้งสองบล็อกจะแมตช์ ตัวที่อยู่ทีหลัง
+   (บล็อก max-width) ชนะ = 2 คอลัมน์ ตรงกับพฤติกรรมเดิม
+
+   เกิน 6 ใบไม่มีกฎรองรับ — แถบ KPI ที่ยาวกว่านั้นอ่านไม่ออกแล้ว ควรตัดตัวเลขทิ้งหรือ
+   ย้ายลงตาราง ไม่ใช่ยัดช่องเพิ่ม (ตกมาที่ 4 คอลัมน์จะเห็นว่าผิดทันที) */
+@media (min-width: 900px) {
+  .ui-metric-strip[data-cols="1"] { grid-template-columns: minmax(0, 1fr); }
+  .ui-metric-strip[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-metric-strip[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ui-metric-strip[data-cols="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .ui-metric-strip[data-cols="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* กล่องข้อความในช่อง — ไม่มี min-width:0 แล้ว ellipsis ของ strong/em ไม่ทำงาน
+   ข้อความยาวจะดันช่องให้กว้างเกินแล้วล้นไปทับช่องข้าง ๆ (ยิ่งช่องเยอะยิ่งเจอง่าย) */
+.ui-metric > span { min-width: 0; }
 button.ui-metric { width: 100%; cursor: pointer; appearance: none; }
+/* ผสมบน panel-solid ไม่ใช่ transparent — ไม่งั้นตอน hover พื้นสีเส้นของแถบจะทะลุขึ้นมา */
 button.ui-metric:hover,
-.ui-metric.is-active { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.ui-metric.is-active { background: color-mix(in srgb, var(--accent) 5%, var(--panel-solid)); }
 button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
-.ui-metric:last-child { border-right: 0; }
 .ui-metric-icon {
   width: var(--icon-box-md);
   height: var(--icon-box-md);
@@ -5227,9 +5263,11 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 @media (max-width: 900px) {
   .premium-header { align-items: stretch; flex-direction: column; gap: var(--space-3-5); }
   .ui-workspace-header-actions { width: 100%; margin-left: 0; justify-content: flex-start; }
-  .ui-metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ui-metric:nth-child(2) { border-right: 0; }
-  .ui-metric:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
+  /* บีบเหลือ 2 คอลัมน์ทุกจำนวนช่อง — กฎรายจำนวนอยู่ใน min-width: 900 บล็อกนี้อยู่ทีหลัง
+     และไม่ต้องมีกฎ nth-child ซ่อมเส้นแล้ว เพราะเส้นเป็น gap ซึ่งวางถูกเองทุกจุดตัดบรรทัด
+     ต้องระบุ `[data-cols]` ให้ specificity เท่ากับกฎรายจำนวน ไม่งั้นที่ 900px พอดีจะแพ้ */
+  .ui-metric-strip,
+  .ui-metric-strip[data-cols] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .premium-header { padding: 17px; }

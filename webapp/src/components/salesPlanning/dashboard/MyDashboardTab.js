@@ -118,7 +118,7 @@ export default function MyDashboardTab({ month }) {
       {/* ⭐ **ตัวเลขทุกช่องนับจากคิวเดียวกับตารางข้างล่าง** ยกเว้นช่องเป้าซึ่งเป็น
           ตัวเลขของเดือน ไม่ใช่ของค้าง · กดแล้วกรองในที่ (ไม่พาออกจากหน้า) */}
       {!loading && (
-        <MetricStrip aria-label="ของค้างของฉัน — กดเพื่อกรองคิว" data-count={5}>
+        <MetricStrip aria-label="ของค้างของฉัน — กดเพื่อกรองคิว">
           <Metric
             as="button" type="button" icon={<ListTodo />} label="ค้างทั้งหมด" value={counts.total}
             note={kind ? "กดเพื่อเลิกกรอง" : "ทุกชนิดรวมกัน"}

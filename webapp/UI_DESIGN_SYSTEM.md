@@ -26,6 +26,12 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 
 1. เริ่มหน้าด้วย `Workspace` และส่ง `icon`, `title`, `subtitle`, `headerRight`, `toolbar` หรือ `rail` ผ่าน props
 2. ใช้ `WorkspaceSection`, `MetricStrip` และ `Metric` เมื่อต้องสร้าง section หรือ KPI strip แบบเดียวกับระบบบริหารงานขาย
+   - `MetricStrip` **นับจำนวนช่องเอง** แล้วส่งออกเป็น `data-cols` — ใส่กี่ใบก็ได้ (รองรับ 1–6) ไม่ต้องแตะ CSS กลาง
+     เกิน 6 ตกมาที่ 4 คอลัมน์ให้เห็นว่าผิด · แถบ KPI ที่ยาวกว่านั้นควรตัดตัวเลขทิ้งหรือย้ายลงตาราง
+   - เส้นคั่นระหว่างช่องเป็น `gap: var(--rule)` บนพื้นสีเส้น **ไม่ใช่ `border-right` รายใบ** — เส้นจึงวางถูกเอง
+     ทุกจำนวนช่องและทุกจุดตัดบรรทัด ไม่ต้องมีกฎ `nth-child` มาซ่อม (ของเดิมผูกกับ "สี่ใบ" ตายตัว)
+   - ≤900px บีบเหลือ 2 คอลัมน์เสมอ · **หมายเหตุยาวได้จำกัด** — `.ui-metric em` เป็น nowrap + ellipsis
+     ยิ่งช่องเยอะยิ่งสั้นลง เขียนแบบ `ทัน 35/41 · ค้างตอนนี้ 23` พอ ยาวกว่านั้นโดนตัดกลางคัน
 3. ใช้ `KpiCard`, `Tabs`, `Select`, `SearchableSelect`, `FilterPopover`, `EmptyState`, `SkeletonRows`, `Toast` และ `FormActions` จาก `components/ui`
 4. ครอบตารางทุกชนิดด้วย `TableScroll` และระบุ `family="editable"` หรือ `family="matrix"` เมื่อไม่ใช่ list table
 5. ครอบ Recharts ทุกตัวด้วย `ChartCanvas`; ใช้ `ChartCard`, `ChartTooltip`, `ChartEmptyState` และ `chartTheme` สำหรับโครงและสี
