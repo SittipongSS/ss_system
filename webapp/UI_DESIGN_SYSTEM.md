@@ -29,6 +29,10 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 3. ใช้ `KpiCard`, `Tabs`, `Select`, `SearchableSelect`, `FilterPopover`, `EmptyState`, `SkeletonRows`, `Toast` และ `FormActions` จาก `components/ui`
 4. ครอบตารางทุกชนิดด้วย `TableScroll` และระบุ `family="editable"` หรือ `family="matrix"` เมื่อไม่ใช่ list table
 5. ครอบ Recharts ทุกตัวด้วย `ChartCanvas`; ใช้ `ChartCard`, `ChartTooltip`, `ChartEmptyState` และ `chartTheme` สำหรับโครงและสี
+   - 🪤 **`<Pie>` ต้องใส่ `isAnimationActive={false}` เสมอ** — Recharts 3.9.2 เรนเดอร์ Pie ที่เปิดอนิเมชัน
+     (ค่าเริ่มต้น) ออกมาเป็น sector เปล่าไม่มี `path` = **วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง**
+     พังเงียบอยู่ 3 หน้า (สหมิตร · ภาษีสรรพสามิต · ฐานข้อมูล) จนเจอตอนทำการ์ดช่องทางของลีด 2026-08-12
+     กราฟแท่ง/เส้นไม่มีอาการนี้ — เฉพาะ `Pie` · มีเทสต์กันไหลกลับที่ `pieAnimation.test.mjs`
 6. ใช้ `notifyToast` และ `confirmAction` แทน native `alert`/`confirm`
 7. เอกสารพิมพ์ใช้ `PRINT_FONT_STACK` และ placeholder จาก `printTheme`
 8. ปุ่มทุกตัวมาจาก `Button` หรือ `ActionButton` — ห้ามเขียน `className="btn …"` เองในหน้าใหม่
