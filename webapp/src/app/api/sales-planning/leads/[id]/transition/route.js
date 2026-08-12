@@ -84,7 +84,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (!superuser) return forbidden('คัดกรองลีดได้เฉพาะแอดมินหรือ AE Supervisor');
     if (!TEAMS.includes(body.team)) return badRequest('ต้องเลือกทีม (ODM/KA/SV)');
     patch.team = body.team;
-    patch.screenedAt = lead.screenedAt || now; // SLA นับครั้งแรก — ตีกลับแล้วคัดใหม่ไม่รีเซ็ต
+    // สองคอลัมน์ ไม่ใช่ตัวเดียวรับสองหน้าที่ (mig 0234):
+    //   firstScreenedAt = ครั้งแรกตลอดกาล → ด่าน "คัดกรอง" วัดจากตัวนี้ (ตีกลับแล้วคัดใหม่
+    //     ไม่ลบผลงานรอบแรก — มติเดิม 2026-08-04 คงไว้ทุกประการ)
+    //   screenedAt      = ของรอบปัจจุบัน → เป็น *จุดเริ่ม* ของด่าน "กระจาย" จึงต้องเป็น
+    //     เวลาที่ใบมาถึงมือ Senior AE รอบนี้ ไม่ใช่รอบที่แล้ว
+    patch.firstScreenedAt = lead.firstScreenedAt || lead.screenedAt || now;
+    patch.screenedAt = now;
     event.team = body.team;
   } else if (action === 'assign') {
     // supervisor/admin (superuser) กระจายได้ทุกทีม + senior_ae/ac เฉพาะทีมตัวเอง
@@ -141,6 +147,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // countBusinessDays ติดลบ → slaHit นับเป็น "ทัน" ฟรี ๆ)
     patch.firstContactAt = null;
     patch.meetingAt = null;
+    // ⭐ ล้างต้นรอบด้วย ไม่ใช่แค่ปลายรอบ (mig 0234) — ใบนี้กลับไปนอนคิวคัดกรองแล้ว
+    // ยังไม่ถูกคัดกรอง/มอบหมายในรอบใหม่ สองคอลัมน์นี้จึงต้องว่างตามสถานะ `new`
+    //   · ค้างไว้แล้วผัง Funnel นับ "คัดกรองแล้ว/มอบหมายแล้ว" เกินจริง (ตาราง AE ไม่นับ
+    //     เพราะ assigneeId ว่างไปแล้ว ⇒ สองที่บนจอเดียวกันไม่ตรงกัน)
+    //   · ค้างไว้แล้ว SLA กระจายของรอบใหม่ถูกวัดจาก screenedAt รอบก่อน = กินเวลาตีกลับ
+    //     ทั้งรอบ · ครั้งแรกยังอยู่ที่ firstScreenedAt ไม่ได้หายไปไหน
+    patch.screenedAt = null;
+    patch.assignedAt = null;
     event.reason = body.reason.trim();
   }
 

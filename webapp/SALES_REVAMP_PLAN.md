@@ -194,8 +194,9 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 | KPI | นิยาม | แหล่งข้อมูล |
 |---|---|---|
 | Marketing กรอกลีดรายวัน | จำนวนลีด/วัน ต่อคน ต่อช่องทาง | `sales_leads.createdAt/createdBy/channel` |
-| Supervisor คัดกรองทัน SLA | `screenedAt − createdAt ≤ 1 วันทำการ` (% hit) | `lead_events` + ตาราง `holidays` เดิม (วันทำการ) |
-| AE ติดต่อกลับทัน SLA | `firstContactAt − assignedAt ≤ 1 วันทำการ` (% hit) | `lead_events` |
+| Supervisor คัดกรองทัน SLA | `firstScreenedAt − createdAt ≤ 1 วันทำการ` (% hit) | `sales_leads` + ตาราง `holidays` เดิม (วันทำการ) |
+| Senior AE กระจายทัน SLA | `assignedAt − screenedAt ≤ 1 วันทำการ` (% hit) — **ของรอบปัจจุบัน** | `sales_leads` |
+| AE ติดต่อกลับทัน SLA | `firstContactAt − assignedAt ≤ 1 วันทำการ` (% hit) | `sales_leads` |
 | นัดประชุม | จำนวนนัด onsite/online ต่อ AE + conversion ลีด→นัด→เปิดลูกค้า | `lead_events` (meeting) |
 | ตีกลับทีมผิด | จำนวน + rework time | `lead_events` (bounce) |
 | %ปิดยอด | `Actual ÷ Target` (บริษัท/ทีม/บุคคล ตาม 0075) | targets + deals |
@@ -203,6 +204,23 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 | ดีลค้างเก็บ | ลิสต์ดีลเปิดที่ `forecastMonth` เลยแล้ว | deals |
 
 หน้า **KPI dashboard** (supervisor เห็นหมด · Senior เห็นทีม · AE เห็นตัวเอง — data scope ตาม hierarchy เดิม)
+
+### ⭐ ตีกลับ = เริ่มรอบใหม่ (มติผู้ใช้ 2026-08-12 · mig 0234)
+
+เส้นทางลีดวนกลับได้ ⇒ ใบเดียวมี "รอบ" ได้หลายรอบ กติกาของ timestamp จึงแยกสองชั้น:
+
+- `firstScreenedAt` = **คัดกรองครั้งแรกตลอดกาล** ใช้วัดด่านคัดกรองอย่างเดียว —
+  rework ไม่ลบผลงานรอบแรกของหัวหน้าฝ่ายขาย (คงมติเดิม 2026-08-04)
+- `screenedAt` · `assignedAt` · `firstContactAt` · `meetingAt` = **ของรอบปัจจุบัน**
+  ตีกลับล้างทิ้งทั้งชุด คัดใหม่/มอบใหม่เขียนทับทุกรอบ — คนที่รับใบต่อในรอบใหม่
+  ต้องเริ่มจับเวลาตอนที่ใบมาถึงมือเขา ไม่ใช่รอบที่แล้ว
+- ผัง Funnel อ่านจากชุดรอบปัจจุบัน ⇒ ใบที่ถูกตีกลับหล่นกลับไปนับเป็น "รอคัดกรอง"
+  ตามสถานะจริง ไม่ค้างเป็น "มอบหมายแล้ว"
+
+🐞 ก่อนหน้านี้ `screenedAt` รับสองหน้าที่พร้อมกัน (เก็บครั้งแรก + เป็นจุดเริ่มด่านกระจาย)
+ขณะที่ `assignedAt` เขียนทับทุกครั้ง ⇒ ด่านกระจายวัด "คัดกรองครั้งแรก → มอบครั้งล่าสุด"
+= กินเวลารอบตีกลับทั้งรอบ · และ Funnel นับ "มอบหมายแล้ว" จากซากรอบก่อนจนไม่ตรงกับ
+ตาราง AE บนจอเดียวกัน (ส.ค. 2026: ผัง 56 · ตาราง 54)
 
 ## 4. นิยามตัวเลข (ล็อกสูตร — helper `projectRollup.js` ตัวเดียวทุกหน้า)
 

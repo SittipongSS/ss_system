@@ -121,7 +121,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      เส้นทางลีดมี **สามด่าน** ไม่ใช่สอง — ด่านกลาง "กระจาย" (Senior AE เลือก AE) เคยหายไป
      ทั้งที่การ์ดค้างคิวขึ้นหัวว่า "SLA 1 วันทำการทุกขั้น" และ `screenedAt`/`assignedAt`
      มีอยู่ในแถวแล้ว คำนวณได้ทันที · ของค้างขั้นนี้เป็นอันดับสองของทั้งฝ่ายแต่ไม่มีตัวเลขไหนแตะ */
-  const screen = slaStage(rows, 'createdAt', 'screenedAt', holidays);
+  /* ⚠️ ด่านคัดกรองวัดถึง `firstScreenedAt` (ครั้งแรกตลอดกาล) ส่วนอีกสองด่านวัดด้วย
+     คอลัมน์ **ของรอบปัจจุบัน** ที่ตีกลับล้างทิ้งทุกครั้ง (mig 0234) — ต่างกันโดยเจตนา:
+     rework ไม่ลบผลงานคัดกรองรอบแรก แต่ Senior AE/AE คนใหม่ต้องเริ่มนับจากตอนที่ใบ
+     มาถึงมือเขา ไม่ใช่จากรอบที่แล้ว · เขียน `screenedAt` ตรงนี้เมื่อไรคนที่มอบภายใน
+     วันเดียวหลังตีกลับจะกลับไปถูกนับเป็น "ไม่ทัน" อีก */
+  const screen = slaStage(rows, 'createdAt', 'firstScreenedAt', holidays);
   const assign = slaStage(rows, 'screenedAt', 'assignedAt', holidays);
   const contact = slaStage(rows, 'assignedAt', 'firstContactAt', holidays);
 
@@ -178,6 +183,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     bounceCount += count || 0;
   }
 
+  /* ผัง = **สถานะของรอบปัจจุบัน** ทุกขั้น ไม่ใช่ "เคยไปถึง" — ใบที่ถูกตีกลับกลับไปนอน
+     คิวคัดกรองต้องหล่นออกจาก "คัดกรองแล้ว/มอบหมายแล้ว" เหมือนที่มันหล่นออกจาก
+     "ติดต่อแล้ว/นัด" อยู่แล้ว (ตีกลับล้างครบทั้งสี่คอลัมน์ตั้งแต่ mig 0234)
+     🐞 เดิมสองขั้นบนนับจากซากของรอบก่อนที่ไม่ถูกล้าง ⇒ ส.ค. 2026 ผังขึ้น "มอบหมายแล้ว 56"
+     ขณะที่ตาราง AE ข้างล่างรวมได้ 54 (byAssignee ข้ามใบที่ assigneeId ว่างไปแล้ว)
+     สองตัวเลขบนจอเดียวกันขัดกันเองโดยไม่มีอะไรอธิบาย */
   const funnel = {
     total: rows.length,
     screened: rows.filter((l) => l.screenedAt).length,
