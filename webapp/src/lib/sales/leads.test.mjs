@@ -477,7 +477,9 @@ test('KPI tab: funnel โชว์ "-" เมื่อค่าเป็น null
      ⇒ ค่าที่ null ได้และยังโชว์อยู่จริงคือ "ค้างตอนนี้" ของ SLA — ย้ายด่านมาคุมตรงนั้นแทน
      กฎเดิมไม่เปลี่ยน: null = นับไม่ได้ ต้องขึ้น "-" ห้ามกลบเป็น 0 */
   assert.match(tabSource, /ค้างตอนนี้ \$\{s\.pending \?\? "-"\}/);
-  assert.doesNotMatch(tabSource, /pending \?\? 0/, 'ห้ามกลบ pending ที่นับไม่ได้ให้เป็น 0');
+  // เล็งเฉพาะ `sla.pending` ซึ่งเป็นตัวเดียวที่ null ได้จริง (countLeadsByStatus ล้ม)
+  // ส่วน pending ของตาราง AE การันตีเป็นตัวเลขจาก withAssigneePending — ไม่เข้าข่าย
+  assert.doesNotMatch(tabSource, /s\.pending \?\? 0/, 'ห้ามกลบ SLA pending ที่นับไม่ได้ให้เป็น 0');
   // ชื่อคนต้องอ่านจาก id ไม่ใช่สำเนาชื่อในแถว (prod มีชื่อย่อ/ชื่อเก่าค้างอยู่)
   assert.match(tabSource, /livePersonName\(directory, a\.assigneeId, a\.name\)/);
   assert.match(tabSource, /livePersonName\(directory, c\.createdBy, c\.name\)/);
