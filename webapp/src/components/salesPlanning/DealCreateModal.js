@@ -43,6 +43,9 @@ const firstDeal = (lead, ownerId, defaults) => (lead ? {
   customerId: lead.customerId || "",
   dealType: "SCENT",
   stage: "qualified",
+  /* ⚠️ งบลีดเป็นช่วงได้แล้ว (mig 0233) — ตั้งต้นด้วย **ปลายล่าง** เสมอ
+     มูลค่าดีลไหลเข้า FC/รายงาน การเดาสูงไว้ก่อนคือการปั่นตัวเลขคาดการณ์
+     ทั้งกอง · AE แก้ขึ้นได้เองตอนคุยจบ ซึ่งเป็นตอนที่รู้ตัวเลขจริงแล้ว */
   projectValue: lead.budget || "",
   ...defaults,
 } : { ...initialDealForm, ownerId, ...defaults });
