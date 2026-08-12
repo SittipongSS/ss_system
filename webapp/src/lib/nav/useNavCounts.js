@@ -27,6 +27,9 @@ export const NAV_COUNT_KEYS = {
   "/database/scents": "scents",
   "/database/formulas": "formulas",
   "/database/customers": "customers",
+  // เฟส 2 — บริการ + งานบริหาร
+  "/service/my-visits": "visits",
+  "/mgmt/tasks": "mgmtTasks",
 };
 
 /* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
@@ -43,6 +46,8 @@ export const SYSTEM_COUNT_HREFS = {
   ],
   rd: ["/rd/requests"],
   master: ["/database/scents", "/database/formulas", "/database/customers"],
+  service: ["/service/my-visits"],
+  mgmt: ["/mgmt/tasks"],
 };
 
 export default function useNavCounts(pathname) {

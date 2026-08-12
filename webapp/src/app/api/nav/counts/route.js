@@ -1,6 +1,7 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
 // GET /api/nav/counts → { requests?, tasks?, rdRequests?, leads?, quotations?,
-//                         salesOrders?, projectCloses?, scents?, formulas?, customers? }
+//                         salesOrders?, projectCloses?, scents?, formulas?, customers?,
+//                         visits?, mgmtTasks? }
 //
 // คีย์ที่ผู้ใช้ไม่มีสิทธิ์เห็น **ไม่ถูกส่งมาเลย** (ไม่ใช่ส่ง 0) — เมนูที่ถูกกรองทิ้ง
 // อยู่แล้วไม่ต้องมีตัวเลข และเลข 0 ที่หลุดมาจะกลายเป็นป้ายเปล่าบนเมนูของคนอื่น
@@ -12,7 +13,7 @@
 // กับที่หน้าคิวใช้ ห้ามเขียนเงื่อนไข "รอฉันตอบ" ใหม่ที่นี่ (ดู lib/nav/navCounts.js)
 import { withUser, ok, unauthorized } from '@/lib/http';
 import {
-  can, canAccessRd, canApproveMasterData, canViewRequests, normalizeDepartment,
+  can, canAccessRd, canApproveMasterData, canEditService, canViewRequests, normalizeDepartment,
 } from '@/lib/permissions';
 import { canViewLeads, applyLeadScope } from '@/lib/sales/leads';
 import { loadRequests } from '@/lib/materialPricesAdmin';
@@ -26,6 +27,12 @@ import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/proj
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
 import { isClosedStage } from '@/lib/salesPlanning';
+import { loadVisits } from '@/lib/service/visitsRepo';
+import { waitingOnMeVisitCount } from '@/lib/service/myVisits';
+import { listTasks } from '@/lib/mgmt/repo';
+import { isMyOpenTask } from '@/lib/mgmt/constants';
+import { businessDate } from '@/lib/businessDate';
+import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import {
   LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount, pruneZeroCounts, requestsTodoCount,
 } from '@/lib/nav/navCounts';
@@ -166,6 +173,36 @@ export const GET = withUser(async ({ user, supabase }) => {
         .from('customers').select('id', { count: 'exact', head: true })
         .eq('approvalStatus', 'pending');
       return count || 0;
+    }));
+  }
+
+  /* ── เฟส 2: บริการ + งานบริหาร ─────────────────────────────────────────
+     สองโมดูลนี้มี "คิวของคนคนเดียว" เป็นหน้าอยู่แล้ว ป้ายจึงชี้ตรงเข้าไปได้เลย */
+
+  // นัดของช่าง — ช่วงวันเดียวกับที่หน้า "นัดของฉัน" โหลดเป็นค่าตั้งต้น (back/ahead 14)
+  // ⚠️ ต้องเท่ากัน ไม่งั้นป้ายนับนัดค้างที่เก่ากว่าที่หน้านั้นแสดง แล้วกดเข้าไปไม่เจอ
+  if (canEditService(user)) {
+    jobs.push(attempt('visits', async () => {
+      const today = businessDate();
+      const shift = (days) => {
+        const d = new Date(`${today}T00:00:00`);
+        d.setDate(d.getDate() + days);
+        return toLocalISODate(d);
+      };
+      const visits = await loadVisits(supabase, {
+        from: shift(-14), to: shift(14), assigneeId: String(user.id),
+      });
+      return waitingOnMeVisitCount(visits, today);
+    }));
+  }
+
+  // งานจากที่ประชุม — ⚠️ กรองปีเหมือนหน้ารายการ (ตัวกรองปีของหน้านั้นไม่มีตัวเลือก
+  // "ทั้งหมด") ⇒ ป้ายนับปีปัจจุบันเท่านั้น ไม่งั้นเลขบนเมนูมีของที่หน้าไม่แสดง
+  if (can(user.role, 'mgmt:view')) {
+    jobs.push(attempt('mgmtTasks', async () => {
+      const year = Number(businessDate().slice(0, 4));
+      const tasks = await listTasks(supabase, { year });
+      return tasks.filter((task) => isMyOpenTask(task, user.id)).length;
     }));
   }
 
