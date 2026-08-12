@@ -5,8 +5,8 @@ import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permis
 import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import {
-  CODE_MODE_AUTO, FG_SCOPE, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError,
-  nextMasterNumber,
+  CODE_MODE_AUTO, FG_FIRST_NUMBER, FG_SCOPE, codeModeOf, composeFgCode, customerCodeSegment,
+  fgCodeError, nextMasterNumber,
 } from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
@@ -96,6 +96,9 @@ export async function POST(request) {
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
 
+  // ⚠️ **โหมด auto จองเลขรันท้ายสุด ตรงก่อน insert** (ดูท้ายฟังก์ชัน) — ตรงนี้จึงตรวจ
+  // ได้แค่ "ประกอบรหัสได้หรือยัง" โดยลองประกอบด้วยเลขแรกของ scope เป็นตัวแทน
+  // (ตรวจ preconditions ครบชุดโดยไม่ต้องไล่เดาเงื่อนไขซ้ำกับ composeFgCode)
   let fgCode = String(body.fgCode || '').trim();
   if (codeMode === CODE_MODE_AUTO) {
     if (!customerCodeSegment(customer.arCode)) {
@@ -104,28 +107,27 @@ export async function POST(request) {
         { status: 400 },
       );
     }
-    try {
-      fgCode = composeFgCode({
-        arCode: customer.arCode,
-        categoryCode,
-        runNo: await nextMasterNumber(supabase, FG_SCOPE),
-      });
-    } catch (e) {
-      return Response.json({ error: e.message }, { status: 500 });
+    if (!composeFgCode({ arCode: customer.arCode, categoryCode, runNo: FG_FIRST_NUMBER })) {
+      return Response.json(
+        { error: `หมวดสินค้า "${categoryCode || '—'}" ไม่ใช่รูปแบบ BB-CCC ที่ประกอบรหัสได้ — เลือกหมวดใหม่หรือปิดสวิตช์ระบบใหม่แล้วกรอกรหัสเอง` },
+        { status: 400 },
+      );
     }
-  }
-  const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
-  if (codeError) return Response.json({ error: codeError }, { status: 400 });
+  } else {
+    const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
+    if (codeError) return Response.json({ error: codeError }, { status: 400 });
 
-  // Duplicate FG Code check
-  const { data: dup, error: dupError } = await supabase
-    .from('products')
-    .select('id')
-    .eq('fgCode', fgCode)
-    .maybeSingle();
-  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
-  if (dup) {
-    return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    // Duplicate FG Code check — เฉพาะรหัสที่กรอกเอง (เลขจากเคาน์เตอร์ยังไม่ได้จอง
+    // จึงไม่มีอะไรให้เช็ค · unique index 0035 เป็นตาข่ายท้ายสุดอยู่แล้ว)
+    const { data: dup, error: dupError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('fgCode', fgCode)
+      .maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
+    if (dup) {
+      return Response.json({ error: 'รหัสสินค้า (FG Code) นี้ถูกขึ้นทะเบียนในระบบแล้ว' }, { status: 409 });
+    }
   }
 
   const { volume, costPrice, retailPriceIncVat } = body;
@@ -168,6 +170,22 @@ export async function POST(request) {
   // (admin = sysadmin break-glass). Approvers auto-approve their own.
   const nowIso = new Date().toISOString();
   const autoApprove = canApproveMasterData(user?.role);
+
+  // ── จองเลขรัน (โหมด auto) — ด่านสุดท้ายก่อน insert ────────────────────────
+  // ⚠️ **ห้ามย้ายขึ้นไปไว้ก่อนด่านตรวจใด ๆ** และห้ามเพิ่มด่านที่ตีกลับไว้ใต้บรรทัดนี้:
+  // เลขที่ RPC คืนมาถูก commit ทันทีในตัวมันเอง เอาคืนไม่ได้ ⇒ ทุก return ที่อยู่หลังจุดนี้
+  // = รหัสสินค้าหายไปหนึ่งเลขโดยไม่มีใครรู้ (ก่อนหน้านี้ด่าน "เลือกสูตรผิด" ก็กินเลข)
+  if (codeMode === CODE_MODE_AUTO) {
+    try {
+      fgCode = composeFgCode({
+        arCode: customer.arCode,
+        categoryCode,
+        runNo: await nextMasterNumber(supabase, FG_SCOPE),
+      });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
 
   // Whitelist the catalog fields we accept from the form (don't spread the
   // whole body — keeps stray status values out of the master row).

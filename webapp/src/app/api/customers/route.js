@@ -67,34 +67,30 @@ export async function POST(request) {
   // เปิด (auto) = server ออกเลขให้เอง AR-AAAA เริ่ม 1001 · ปิด (manual) = ใช้รหัสที่
   // กรอกมา (รูปแบบเดิม AR-AAA)
   //
-  // ⚠️ **เลขจองที่นี่ที่เดียว ตอนจะ insert จริง** — ไม่ใช่ตอนเปิดฟอร์ม: เปิดฟอร์มแล้ว
-  // ปิดทิ้งเป็นเรื่องปกติ ถ้าจองตั้งแต่ตอนนั้น เลขจะโหว่เป็นรูทุกครั้งที่มีคนเปลี่ยนใจ
-  // (ฟอร์มจึงได้แค่ "เลขถัดไป" แบบพรีวิวจาก /next-code)
+  // ⚠️ **โหมด auto จองเลขท้ายสุด ตรงก่อน insert** (ดูท้ายฟังก์ชัน) — ตรงนี้ตรวจได้
+  // เฉพาะรหัสที่กรอกเอง · เลขที่จองแล้วเอาคืนไม่ได้ ทุกด่านที่ตีกลับ **หลัง** จอง คือ
+  // เลขที่หายจากระบบถาวร (ที่อยู่ไม่ครบ/taxId ซ้ำ = ความผิดพลาดตอนกรอกซึ่งเจอบ่อย
+  // ⇒ กรอกผิดสามรอบ ลูกค้ารายแรกได้ AR-1004)
   //
   // ⚠️ ค่าที่ client ส่งมาในโหมด auto **ไม่ถูกใช้เลย** — ถือเป็นแค่สิ่งที่หน้าจอโชว์
   // ตอนนั้น ไม่ใช่คำสั่ง (สองคนเปิดฟอร์มพร้อมกันจะเห็นเลขเดียวกัน แต่ต้องได้คนละเลข)
   const codeMode = codeModeOf(body.codeMode);
   let arCode = String(body.arCode || '').trim();
-  if (codeMode === CODE_MODE_AUTO) {
-    try {
-      arCode = formatArCode(await nextMasterNumber(supabase, AR_SCOPE));
-    } catch (e) {
-      return Response.json({ error: e.message }, { status: 500 });
-    }
-  } else {
+  if (codeMode !== CODE_MODE_AUTO) {
     const codeError = arCodeError(arCode, { mode: codeMode });
     if (codeError) return Response.json({ error: codeError }, { status: 400 });
-  }
 
-  // Duplicate AR Code check
-  const { data: dup, error: dupError } = await supabase
-    .from('customers')
-    .select('id')
-    .eq('arCode', arCode)
-    .maybeSingle();
-  if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
-  if (dup) {
-    return Response.json({ error: 'รหัสลูกค้านี้มีในระบบแล้ว' }, { status: 409 });
+    // Duplicate AR Code check — เฉพาะรหัสที่กรอกเอง เลขจากเคาน์เตอร์ไม่ต้องเช็ค
+    // (ยังไม่ได้จอง จึงไม่มีอะไรให้เช็ค · unique index 0031 เป็นตาข่ายท้ายสุดอยู่แล้ว)
+    const { data: dup, error: dupError } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('arCode', arCode)
+      .maybeSingle();
+    if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
+    if (dup) {
+      return Response.json({ error: 'รหัสลูกค้านี้มีในระบบแล้ว' }, { status: 409 });
+    }
   }
 
   // AE / AC / Senior AE creations land as 'pending' — only AE Supervisor approves
@@ -150,6 +146,19 @@ export async function POST(request) {
     const { sameBranch } = splitTaxIdMatches(sameTax, { taxId, branchCode: mirror.branchCode });
     const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: mirror.branchCode });
     if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
+  }
+
+  // ── จองเลขรัน (โหมด auto) — ด่านสุดท้ายก่อน insert ────────────────────────
+  // ⚠️ **ห้ามย้ายขึ้นไปไว้ก่อนด่านตรวจใด ๆ** และห้ามเพิ่มด่านที่ตีกลับไว้ใต้บรรทัดนี้:
+  // เลขที่ RPC คืนมาถูก commit ทันทีในตัวมันเอง เอาคืนไม่ได้ ⇒ ทุก return ที่อยู่หลังจุดนี้
+  // = รหัสลูกค้าหายไปหนึ่งเลขโดยไม่มีใครรู้ (เหลือแค่ insert ที่ยังพลาดได้ ซึ่งเป็นเคส
+  // ที่ตัดไม่ได้ถ้าไม่ยกทั้งก้อนลงไปเป็น SQL function แบบ create_sales_order_draft)
+  if (codeMode === CODE_MODE_AUTO) {
+    try {
+      arCode = formatArCode(await nextMasterNumber(supabase, AR_SCOPE));
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
   }
 
   const newCustomer = {

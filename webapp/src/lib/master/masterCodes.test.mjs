@@ -69,10 +69,24 @@ test('ด่านตรวจรหัสลูกค้าแยกตาม�
   assert.equal(arCodeError('AR-1001', { mode: CODE_MODE_AUTO }), null);
   assert.match(arCodeError('AR-109', { mode: CODE_MODE_AUTO }), /4 หลัก/);
   assert.equal(arCodeError('AR-109', { mode: CODE_MODE_MANUAL }), null);
-  // ปิดสวิตช์แล้วพิมพ์รหัสรูปแบบใหม่กลับเข้าไปได้ (ย้ายข้อมูล/พิมพ์ซ้ำใบที่ลบ)
-  assert.equal(arCodeError('AR-1001', { mode: CODE_MODE_MANUAL }), null);
   assert.match(arCodeError('109', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
   assert.match(arCodeError('', { mode: CODE_MODE_MANUAL }), /กรุณากรอก/);
+});
+
+// เลขรูปแบบใหม่เป็นของเคาน์เตอร์กลาง — พิมพ์เองไปจับจองล่วงหน้าไม่ได้ ไม่งั้นคนที่
+// เปิดสวิตช์จะโดน unique ตีกลับตอนเคาน์เตอร์รันมาถึงเลขนั้น (มติผู้ใช้ 2026-08-12)
+test('โหมดกรอกเอง: ห้ามพิมพ์รหัสรูปแบบที่ระบบออกให้ ทั้งลูกค้าและสินค้า', () => {
+  assert.match(arCodeError('AR-1001', { mode: CODE_MODE_MANUAL }), /เปิดสวิตช์ระบบใหม่/);
+  assert.match(arCodeError('AR-9999', { mode: CODE_MODE_MANUAL }), /เปิดสวิตช์ระบบใหม่/);
+  assert.match(
+    fgCodeError('FG-0109-01-002-10001', { mode: CODE_MODE_MANUAL }),
+    /เปิดสวิตช์ระบบใหม่/,
+  );
+  // จำนวนหลักที่ไม่ใช่ทั้งสองแบบ = ผิดรูปแบบตามเดิม
+  assert.match(arCodeError('AR-10', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
+  assert.match(arCodeError('AR-10001', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
+  assert.match(fgCodeError('FG-109-01-002-100', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
+  assert.match(fgCodeError('FG-109-01-002-100011', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
 });
 
 test('ด่านตรวจรหัสสินค้าแยกตามโหมด และต้องตรงกับหมวดที่เลือก', () => {
