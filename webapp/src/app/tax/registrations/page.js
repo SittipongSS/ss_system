@@ -6,7 +6,7 @@ import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
-import { deptOf, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
+import { deptOf, isTaxWaitingOnMe, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
@@ -35,6 +35,13 @@ export default function RegistrationsPage() {
   const [userName, setUserName] = useState("");
   // LG lands on their queue; everyone else sees all. A ?status= deep-link
   // (from the dashboard) overrides the default after mount.
+  /* เลนของผู้ใช้ (SA / LG) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
+     AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
+  const myDept = deptOf(role);
+  const filterOptions = useMemo(
+    () => REGISTRATION_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "LG"),
+    [myDept],
+  );
   const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "pending_legal" : "all"));
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
@@ -51,14 +58,16 @@ export default function RegistrationsPage() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return regs.filter((r) => {
-      if (filter !== "all" && r.status !== filter) return false;
+      if (filter === "mine") {
+        if (!isTaxWaitingOnMe(r, "registration", myDept)) return false;
+      } else if (filter !== "all" && r.status !== filter) return false;
       if (!q) return true;
       return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [regs, filter, search]);
+  }, [regs, filter, search, myDept]);
 
   // After saving the form: a freshly created draft opens its full detail page so
   // the user lands on the attachment cards and can submit once they're complete.
@@ -126,7 +135,7 @@ export default function RegistrationsPage() {
       loading={loading}
       toolbar={
         <FilterBar
-          filters={REGISTRATION_FILTERS}
+          filters={filterOptions}
           activeFilter={filter}
           onFilter={setFilter}
           search={search}

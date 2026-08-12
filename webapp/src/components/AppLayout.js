@@ -224,10 +224,10 @@ export default function AppLayout({ children }) {
       system: 'tax',
       items: [
         { href: '/tax', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'history:view', match: (p) => p === '/tax' },
-        { href: '/tax/registrations', name: 'การขึ้นทะเบียน', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
+        { href: '/tax/registrations', name: 'การขึ้นทะเบียน', countHref: '/tax/registrations?status=mine', icon: ClipboardCheck, cap: 'history:view', match: (p) => p.startsWith('/tax/registrations') },
         // shortName ไม่ต้องมี — ระบบภาษีมี 4 เมนู ช่องบนแถบล่างจึงกว้าง 93.8px
         // ซึ่งพอดีป้ายนี้ (73.3px) · วัดในแอปจริง 2026-08-02
-        { href: '/tax/filings', name: 'การยื่นชำระภาษี', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
+        { href: '/tax/filings', name: 'การยื่นชำระภาษี', countHref: '/tax/filings?status=mine', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
         { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
       ],
     },

@@ -6,7 +6,7 @@ import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
-import { deptOf, FILING_FILTERS } from "@/lib/excise/workflow";
+import { deptOf, isTaxWaitingOnMe, FILING_FILTERS } from "@/lib/excise/workflow";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
@@ -21,6 +21,13 @@ export default function FilingsPage() {
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
 
+  /* เลนของผู้ใช้ (SA / LG) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
+     AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
+  const myDept = deptOf(role);
+  const filterOptions = useMemo(
+    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "LG"),
+    [myDept],
+  );
   const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -35,11 +42,13 @@ export default function FilingsPage() {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders.filter((o) => {
-      if (filter !== "all" && o.status !== filter) return false;
+      if (filter === "mine") {
+        if (!isTaxWaitingOnMe(o, "payment", myDept)) return false;
+      } else if (filter !== "all" && o.status !== filter) return false;
       if (!q) return true;
       return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [orders, filter, search]);
+  }, [orders, filter, search, myDept]);
 
   const columns = [
     {
@@ -93,7 +102,7 @@ export default function FilingsPage() {
       loading={loading}
       toolbar={
         <FilterBar
-          filters={FILING_FILTERS}
+          filters={filterOptions}
           activeFilter={filter}
           onFilter={setFilter}
           search={search}

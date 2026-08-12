@@ -70,12 +70,30 @@ export function deptOf(role) {
   return null;
 }
 
+/* ── "รอฉันลงมือ" ของโมดูลภาษี — เจ้าของขั้นเป็นตัวตัดสิน (ม-117) ──────────
+   TRACKS ประกาศ `owner` ของทุกขั้นอยู่แล้ว (SA / LG) ⇒ ไม่ต้องมีลิสต์สถานะชุดที่สอง
+   ที่ต้องคอยไล่แก้ให้ตรงกัน · ขั้นที่ `done` ไม่นับ มันจบแล้ว
+   ⚠️ **AD (แอดมิน) ได้ลิสต์ว่างโดยตั้งใจ** — โมดูลนี้ประกาศไว้เองว่าแอดมิน "เห็นทั้งสอง
+   เลนแต่ไม่เป็นเจ้าของอะไร" ⇒ ป้ายที่ขึ้นกับแอดมินคือการทวงงานที่ไม่ใช่ของเขา */
+export function ownedStages(trackKey, dept) {
+  const track = TRACKS[trackKey];
+  if (!track || !dept || dept === "AD") return [];
+  return track.stages.filter((stage) => !stage.done && stage.owner === dept).map((stage) => stage.key);
+}
+
+export function isTaxWaitingOnMe(row, trackKey, dept) {
+  return ownedStages(trackKey, dept).includes(row?.status);
+}
+
 export const seesSA = (dept) => dept === "SA" || dept === "AD";
 export const seesLG = (dept) => dept === "LG" || dept === "AD";
 
 // Filter chip option lists for each track's list page (+ "all").
+export const MINE_FILTER = { key: "mine", label: "รอฉันลงมือ" };
+
 export const REGISTRATION_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
+  MINE_FILTER,
   { key: "draft", label: "ฉบับร่าง" },
   { key: "pending_legal", label: "รออนุมัติ" },
   { key: "approved", label: "ขึ้นทะเบียนแล้ว" },
@@ -83,6 +101,7 @@ export const REGISTRATION_FILTERS = [
 ];
 export const FILING_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
+  MINE_FILTER,
   { key: "draft", label: "เตรียมใบยื่น" },
   { key: "pending", label: "รอรับเงิน" },
   { key: "received", label: "รอยื่น" },
