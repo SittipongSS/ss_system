@@ -53,6 +53,43 @@ export function installmentsFromPaymentPlan(plan, total) {
   }));
 }
 
+/**
+ * งวดพร้อม insert — เท่ากับ `installmentsFromPaymentPlan` แต่ **ยืมหลักฐานจากตอนปิด Won**
+ * มาตั้งงวดแรกให้เมื่อใบนั้นปิดด้วยสลิปโอนเงิน (มติผู้ใช้ 2026-08-13)
+ *
+ * ⭐ เหตุผล: `payment_slip` เป็นหนึ่งใน `WON_DOC_TYPES` ⇒ ใบที่ปิด Won ด้วยสลิป
+ * แปลว่า **จ่ายมาแล้วตั้งแต่ก่อนออกใบสั่งขาย** · ปล่อยให้ทุกงวดเป็น `pending`
+ * แล้วบังคับให้ SA ไปแนบสลิปใบเดิมซ้ำ = ให้คนกรอกของที่ระบบถืออยู่แล้ว
+ *
+ * ⚠️ **ยังต้องผ่านบัญชีเหมือนเดิม** — ตั้งให้แค่ `reported` ไม่ใช่ `confirmed`
+ * ข้ามด่านบัญชีเมื่อไรก็เท่ากับไม่มีด่าน (กติกาเดิมของสายนี้)
+ * ⚠️ ตั้งเฉพาะ **งวดแรก** — สลิปใบเดียวรู้แค่ว่ามีเงินเข้า ไม่รู้ว่าครอบคลุมกี่งวด
+ *    ยอดจริงเป็นเรื่องที่บัญชีตรวจตอนคอนเฟิร์ม
+ */
+export function buildInstallmentsForOrder(plan, total, { wonEvidence = null, actor = null, now = null } = {}) {
+  const rows = installmentsFromPaymentPlan(plan, total);
+  const paidOn = wonEvidence?.docDate || null;
+  const seeded = wonEvidence?.docType === 'payment_slip'
+    && !!paidOn
+    && Array.isArray(wonEvidence?.attachments)
+    && wonEvidence.attachments.length > 0;
+
+  if (!seeded || !rows.length) return rows;
+
+  return rows.map((row, index) => (index === 0
+    ? {
+      ...row,
+      status: 'reported',
+      paidOn,
+      reportedAt: now || new Date().toISOString(),
+      reportedById: actor?.id || null,
+      reportedByName: actor?.name || null,
+      evidence: wonEvidence.attachments,
+      note: row.note || 'หลักฐานจากตอนปิด Won (สลิปโอนเงิน) — ระบบยกมาให้ รอบัญชีตรวจ',
+    }
+    : row));
+}
+
 /** สรุปว่า "ชำระครบยัง" — ตัวเลขทุกตัวที่หน้า SO และรางขวาต้องใช้ */
 export function paymentRollup(rows = [], todayIso = null) {
   const list = Array.isArray(rows) ? rows : [];
@@ -112,6 +149,15 @@ export function paymentState(rollup) {
 export function installmentActionError(row, action, user, options = {}) {
   if (!row) return 'ไม่พบงวดที่ระบุ';
   const status = row.status || 'pending';
+
+  // ตั้ง/แก้วันครบกำหนดรายงวด — QT ไม่มีวันมาให้ (มติผู้ใช้: SA กรอกเองทีละงวด)
+  // แก้ได้เสมอแม้ใบอนุมัติแล้ว เพราะของจริงลูกค้าเลื่อนจ่ายบ่อย · แต่ยอด/% แก้ไม่ได้
+  // (เป็น snapshot ของ QT ที่เซ็นไปแล้ว)
+  if (action === 'schedule') {
+    if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แก้กำหนดชำระ';
+    if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แก้กำหนดชำระไม่ได้';
+    return null;
+  }
 
   if (action === 'report') {
     if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แจ้งการชำระ';

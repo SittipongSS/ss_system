@@ -5,6 +5,7 @@ import {
   INSTALLMENT_STATUS_LABELS,
   INSTALLMENT_STATUS_TONES,
   INSTALLMENT_STATUSES,
+  buildInstallmentsForOrder,
   installmentActionError,
   installmentsFromPaymentPlan,
   paymentLockReason,
@@ -49,6 +50,76 @@ test('งวดที่ไม่ตั้งชื่อได้ชื่อ�
     1000,
   );
   assert.deepEqual(rows.map((r) => r.label), ['งวดที่ 1', 'งวดที่ 2']);
+});
+
+// ── ยืมหลักฐานจากตอนปิด Won ─────────────────────────────────────────────
+const SLIP_EVIDENCE = {
+  docType: 'payment_slip',
+  docDate: '2026-08-05',
+  attachments: [{ fileName: 'slip.jpg', storagePath: 'x/slip.jpg' }],
+};
+const PO_EVIDENCE = {
+  docType: 'po',
+  docDate: '2026-08-05',
+  attachments: [{ fileName: 'po.pdf', storagePath: 'x/po.pdf' }],
+};
+const NOW = '2026-08-13T03:00:00.000Z';
+
+test('ปิด Won ด้วยสลิป — งวดแรกขึ้นรอบัญชีตรวจพร้อมหลักฐานที่ยืมมา', () => {
+  const rows = buildInstallmentsForOrder(
+    { type: 'installment', installments: [{ label: 'มัดจำ', percent: 30 }, { label: 'ที่เหลือ', percent: 70 }] },
+    100000,
+    { wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
+  );
+  assert.equal(rows[0].status, 'reported');
+  assert.equal(rows[0].paidOn, '2026-08-05');
+  assert.equal(rows[0].reportedAt, NOW);
+  assert.equal(rows[0].reportedByName, 'สมชาย');
+  assert.equal(rows[0].evidence.length, 1);
+});
+
+/* 🔴 ยืมหลักฐานมาให้ ≠ ข้ามด่านบัญชี — ตั้งได้แค่ reported เท่านั้น */
+test('งวดที่ยืมหลักฐานมายังต้องรอบัญชี ไม่ใช่ confirmed', () => {
+  const rows = buildInstallmentsForOrder({ type: 'full' }, 64200, {
+    wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
+  });
+  assert.equal(rows[0].status, 'reported');
+  assert.notEqual(rows[0].status, 'confirmed');
+  assert.equal(paymentRollup(rows, '2026-08-13').confirmedAmount, 0);
+});
+
+test('ตั้งให้เฉพาะงวดแรก — สลิปใบเดียวไม่รู้ว่าครอบคลุมกี่งวด', () => {
+  const rows = buildInstallmentsForOrder(
+    { type: 'installment', installments: [{ percent: 30 }, { percent: 30 }, { percent: 40 }] },
+    100000,
+    { wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
+  );
+  assert.deepEqual(rows.map((r) => r.status || 'pending'), ['reported', 'pending', 'pending']);
+});
+
+test('ปิด Won ด้วย PO ไม่ใช่หลักฐานว่าจ่ายเงิน — ทุกงวดยัง pending', () => {
+  const rows = buildInstallmentsForOrder({ type: 'full' }, 64200, {
+    wonEvidence: PO_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
+  });
+  assert.equal(rows[0].status, undefined);
+});
+
+test('สลิปที่ไม่มีไฟล์แนบหรือไม่มีวันที่ ไม่ตั้งงวดให้', () => {
+  const noFiles = buildInstallmentsForOrder({ type: 'full' }, 100, {
+    wonEvidence: { ...SLIP_EVIDENCE, attachments: [] }, now: NOW,
+  });
+  const noDate = buildInstallmentsForOrder({ type: 'full' }, 100, {
+    wonEvidence: { ...SLIP_EVIDENCE, docDate: null }, now: NOW,
+  });
+  assert.equal(noFiles[0].status, undefined);
+  assert.equal(noDate[0].status, undefined);
+});
+
+test('ไม่มีหลักฐาน Won เลย ได้งวดเปล่าเหมือนเดิม', () => {
+  assert.deepEqual(
+    buildInstallmentsForOrder({ type: 'full' }, 500),
+    installmentsFromPaymentPlan({ type: 'full' }, 500),
+  );
 });
 
 // ── สรุปว่าชำระครบยัง ───────────────────────────────────────────────────
@@ -158,6 +229,13 @@ test('ดึงกลับได้เฉพาะผู้แจ้งเอ�
     installmentActionError({ ...row, status: 'confirmed' }, 'withdraw', SA),
     /เฉพาะงวดที่แจ้งแล้ว/,
   );
+});
+
+test('แก้กำหนดชำระได้เสมอ ยกเว้นงวดที่บัญชีคอนเฟิร์มแล้ว', () => {
+  assert.equal(installmentActionError({ status: 'pending' }, 'schedule', SA), null);
+  assert.equal(installmentActionError({ status: 'reported' }, 'schedule', SA), null);
+  assert.match(installmentActionError({ status: 'confirmed' }, 'schedule', SA), /คอนเฟิร์มแล้ว/);
+  assert.match(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), /ไม่มีสิทธิ์/);
 });
 
 test('คำสั่งที่ไม่รู้จักถูกปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', () => {

@@ -109,6 +109,10 @@ export function salesPlanningViewScope(role) {
   // rd (ฝ่ายวิจัยและพัฒนา) ต้องเห็นดีล/โครงการทุกทีมเพื่อมีบริบทเต็มตอนตอบ
   // ข้อสอบถามจากฝ่ายขาย — อ่านอย่างเดียวเหมือน viewer (edit ยัง 'none').
   if (role === 'rd') return 'all';
+  // finance (ฝ่ายบัญชี FN) ต้องเห็นใบสั่งขายทุกทีมเพื่อคอนเฟิร์มงวดชำระ (mig 0245) —
+  // อ่านอย่างเดียวเหมือน rd/viewer (edit ยัง 'none' เพราะไม่มี salesplan:edit)
+  // ⚠️ ไม่มีทีม: บัญชีไม่ได้อยู่ใต้ SA ⇒ scope 'team'/'own' จะแปลว่าเห็นศูนย์ใบ
+  if (role === 'finance') return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
   return 'none';
