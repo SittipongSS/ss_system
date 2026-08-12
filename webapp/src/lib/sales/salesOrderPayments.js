@@ -10,6 +10,13 @@
 //
 // ⚠️ **`reported` ไม่นับว่าชำระแล้ว — นับเมื่อ `confirmed` เท่านั้น**
 // ไม่งั้น SA แจ้งเองนับเอง = เท่ากับไม่มีด่าน
+//
+// 🔴 **งวดชำระไม่แตะยอด Actual เด็ดขาด** (ยืนยันกับผู้ใช้ 2026-08-13)
+// SA ได้ยอด **เต็ม 100%** ตั้งแต่ใบอนุมัติ ต่อให้แบ่งจ่ายกี่งวดก็ตาม —
+// `actualAmount` มาจาก `totalAmount - vatAmount` ตอนสร้างใบ (mig 0107) และ trigger
+// ที่รวมเข้าดีลฟังเฉพาะ `status/actualAmount/orderDate/dealId` ของ `sales_orders`
+// ⇒ ตารางงวดอยู่คนละแกน **ห้ามมีโค้ดไหนเอายอดที่เก็บได้ไปหัก Actual**
+// ไฟล์นี้จึงไม่ export อะไรที่ชื่อ `actual*` เลย และมีเทสต์ล็อกไว้
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
 
