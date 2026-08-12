@@ -3595,7 +3595,19 @@ button.empty-state { width: 100%; font: inherit; }
 /* ── ไฟล์ที่เลือกไว้ก่อนบันทึก (`ui/PendingFiles`) ──────────────────────────
    ปุ่มแนบเป็นปุ่มเงียบ ไม่ใช่กล่องเส้นประเต็มแถว — ตอนสร้างของใหม่ ไฟล์เป็น
    ของเสริม ไม่ใช่คำถามหลักของฟอร์ม (แพตเทิร์นเดียวกับโมดัลงาน) */
+/* ⭐ กล่องรับไฟล์ทุกกล่องในระบบตอบสนองการลากเหมือนกัน (มติผู้ใช้ 2026-08-12 ·
+   IS-26080013) — เดิมมีแค่แผงไฟล์แนบโหมด inline ที่วาดกรอบตอนลาก และวาดด้วย
+   inline style ⇒ จุดอื่นลากไปก็ไม่มีอะไรตอบว่า "วางตรงนี้ได้"
+   ⚠️ กรอบวาดด้วย outline ไม่ใช่ border — border ทำให้กล่องขยับตอนลากเข้า/ออก
+   แล้วของข้างล่างเด้งตาม (เจอมาแล้วกับกล่องที่มีรายการไฟล์ยาว ๆ) */
+[data-file-intake] { border-radius: var(--radius); }
+[data-file-intake][data-drag-over] {
+  outline: 2px dashed var(--accent);
+  outline-offset: var(--space-1);
+}
 .pending-files { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
+/* เหตุผลที่ปุ่มกดไม่ได้ ต้องอยู่ตรงจุดที่เพิ่งกด ไม่ใช่ปล่อยให้ปุ่มจางเฉย ๆ */
+.pending-files-note { margin: 0; color: var(--text-3); font-size: var(--fs-3); }
 .pending-files-add {
   display: inline-flex;
   align-items: center;

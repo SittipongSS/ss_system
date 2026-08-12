@@ -36,24 +36,6 @@
 /* ── แนบไฟล์ + กล่าวถึง ในโมดัลเปิดคำร้อง ─────────────────────────── */
 /* ปุ่มเลือกไฟล์เป็น <label> ครอบ input[type=file] ที่ซ่อนไว้ — input ตัวจริงต้อง
    ยังอยู่ใน DOM (ไม่ใช่ display:none) ไม่งั้นคีย์บอร์ดโฟกัสไม่ถึง */
-.fileDrop {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--ctl-h);
-  padding: 0 var(--space-3);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-2);
-  font-size: var(--fs-6);
-  color: var(--text-2);
-  cursor: pointer;
-}
-.fileInput {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
 .fileList { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
 .fileRow {
   display: flex;
@@ -269,12 +251,6 @@
 .deptOption:focus-visible,
 .tierChip:focus-visible,
 .tierChipOn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* input[type=file] ตัวจริงซ่อนอยู่ใต้ <label> — โฟกัสลงที่ input วงจึงต้องวาดที่ label */
-.fileDrop:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
