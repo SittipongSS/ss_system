@@ -71,7 +71,7 @@ compatibility alias เฉพาะโมดูลถูกถอดแล้ว
 | ความหนาตัวอักษร | `--fw-normal/medium/semibold/bold` | font-weight นอกโทเคน = 0 | `fontWeightScale` |
 | ความสูงบรรทัด | `--lh-none/flat/tight/thai/text/relaxed` | เพดาน `RAW_LINE_HEIGHT_CAP` | `lineHeightScale` |
 | ระยะห่างตัวอักษร | `--ls-heading/tabular/label` | เพดาน `RAW_LETTER_SPACING_CAP` · หน่วยต้องเป็น `em` = บังคับ | `letterSpacingScale` |
-| ชั้นซ้อน | `--z-sticky` → `--z-portal-menu` (14 ชื่อ) | z-index ≥30 นอกโทเคน = 0 | `zIndexScale` |
+| ชั้นซ้อน | `--z-sticky` (30) → `--z-portal-menu` (10050) — เรียงตามค่าใน `:root` | z-index ≥30 นอกโทเคน = 0 | `zIndexScale` |
 | จังหวะ | `--motion-fast/medium/standard/slow` · `--ease-out/standard` | เวลาดิบใน transition/animation = 0 | `motionScale` |
 | ระยะห่าง | `--space-0-5..9` (กริด 4px + ครึ่งขั้น) | เพดาน `RAW_SPACING_CAP` | `spacingScale` |
 | ความมนมุม | `--radius` `--radius-md/lg/xl/full` | เพดาน `RAW_RADIUS_CAP` | `radiusScale` |
