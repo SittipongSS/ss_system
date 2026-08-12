@@ -10,6 +10,7 @@ import { notifyToast } from "@/lib/feedback";
 // Usage:  openGanttPrintWindow(project)  where project.tasks = its tasks.
 
 import { buildWeekColumns, autoCellsForTask, cellKey, weekOfDay } from './weekGrid';
+import { actualVariance } from './stepSchedule';
 import { fmtDateNumeric, fmtDayMonthYear, fmtPhone } from '@/lib/format';
 import { productIdentity } from '@/lib/master/productIdentity';
 import { entityCodeDisplay } from '@/lib/entityCode';
@@ -47,6 +48,33 @@ const STATUS_FILL = {
   Pending: '#8a93a3',     // เทากลาง
 };
 const fillOf = (t) => STATUS_FILL[t.status] || STATUS_FILL.Pending;
+
+/* ── ของจริงบนใบพิมพ์ (มติผู้ใช้ 2026-08-12) ─────────────────────────────────
+   ใบนี้เดิมพิมพ์ "แผน" อย่างเดียว · ของจริงที่ระบบสแตมไว้ (mig 0239) จึงไม่เคยขึ้นกระดาษ
+   เลย ทั้งที่คำถามแรกของคนอ่านใบไทม์ไลน์ย้อนหลังคือ "แล้วทำได้ตามนี้ไหม"
+
+   ⚠️ **ห้ามสื่อความหมายด้วยสีอย่างเดียวบนใบนี้** — ต่างจากบนจอ ใบนี้ถูกถ่ายเอกสารและ
+   พิมพ์ขาวดำเป็นปกติ ช้า/เร็วจึงบอกด้วย **ตัวเลขกำกับ** (+3 / −1) และแถบของจริงเป็น
+   **ลายเส้นทึบขอบล่างช่อง** ที่เห็นได้แม้ไม่มีสี ไม่ใช่แค่เปลี่ยนเป็นแดง/เขียว */
+const actualCellsForTask = (t) => (
+  t.actualStartDate || t.actualFinishDate
+    // ยังทำไม่จบ = ลากถึงวันที่มีข้อมูลล่าสุด ไม่เดาไปข้างหน้า (ใบพิมพ์เป็นภาพนิ่ง ณ วันพิมพ์)
+    ? autoCellsForTask({
+      startDate: t.actualStartDate || t.actualFinishDate,
+      finishDate: t.actualFinishDate || t.actualStartDate,
+    })
+    : new Set()
+);
+
+/** บรรทัดรองใต้วันตามแผน — ว่างเมื่อยังไม่มีของจริง (ไม่เดาว่าจะช้าหรือไม่)
+ *  ทรงเดียวเสมอ = วันที่ + เครื่องหมาย (✓ ตรงแผน · +N ช้า · −N เร็ว) ⇒ ตรงแผนก็ยังต้องมี
+ *  เครื่องหมาย ไม่งั้นบรรทัดจะเป็นวันที่ซ้ำกับข้างบนเฉย ๆ แล้วอ่านเหมือนพิมพ์ผิด */
+const actualSubLine = (plan, actual) => {
+  if (!actual) return '';
+  const diff = actualVariance(plan, actual);
+  const mark = diff === null ? '' : diff === 0 ? ' ✓' : diff > 0 ? ` +${diff}` : ` −${-diff}`;
+  return `<div class="c-act">${fmtShort(actual)}${mark}</div>`;
+};
 
 // ช่องลงชื่อแบบตีกรอบ — โครงเดียวกันทุกช่อง: หัวช่อง (ตำแหน่ง) / พื้นที่เซ็น /
 // ชื่อ (เติมมาให้ หรือเว้นให้เขียน) / วันที่
@@ -140,6 +168,13 @@ const TIMELINE_CSS = `
   .ganttTable .c-team { color: var(--doc-navy); font-size: 6.8pt; font-weight: 700; text-align: center; }
   .ganttTable .c-dur { color: var(--doc-text); font-size: 7.2pt; text-align: center; }
   .ganttTable .c-date { color: var(--doc-text); font-size: 6.6pt; text-align: center; white-space: nowrap; }
+  /* ของจริงใต้วันตามแผน — เส้นบางคั่นให้อ่านออกว่าเป็นคนละชั้น ไม่ใช่วันที่สองบรรทัดเฉย ๆ */
+  .ganttTable .c-act { margin-top: .3mm; padding-top: .3mm; border-top: .2mm dotted var(--doc-muted);
+    color: var(--doc-muted); font-size: 5.8pt; font-weight: 600; line-height: 1.1; }
+  .ganttTable .wk { position: relative; }
+  /* แถบของจริงขอบล่างช่อง — ทึบและสูงพอให้รอดการถ่ายเอกสาร */
+  .ganttTable .act { position: absolute; left: 0; right: 0; bottom: 0; height: 1.1mm;
+    background: var(--doc-navy); }
   .ganttTable td.c-no, .ganttTable td.c-desc, .ganttTable td.c-team,
   .ganttTable td.c-dur, .ganttTable td.c-date { padding: .3mm 1mm; vertical-align: middle; }
   .ganttTable .wk { height: 15px; padding: 0; text-align: center; }
@@ -176,7 +211,9 @@ const TIMELINE_CSS = `
 
   .legend { display: flex; gap: 3.5mm; margin-top: 3mm; flex-wrap: wrap; break-inside: avoid; }
   .leg { display: flex; align-items: center; gap: 1mm; color: var(--doc-muted); font-size: 7.4pt; }
-  .sw { width: 3mm; height: 3mm; border-radius: 1px; }`;
+  .sw { width: 3mm; height: 3mm; border-radius: 1px; }
+  /* ตัวอย่างแถบของจริงใน legend — ทรงเดียวกับที่อยู่ในตาราง (แถบเตี้ยชิดล่าง ไม่ใช่สี่เหลี่ยมทึบ) */
+  .sw.sw-act { height: 1.1mm; align-self: flex-end; margin-bottom: .6mm; background: var(--doc-navy); }`;
 
 // options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (กติกาเดียวกับ renderQuotationMasterDocumentHTML)
 // ใช้ตอนฝังเอกสารเป็นพรีวิวใน iframe ซึ่งปุ่มสั่งพิมพ์ไม่มีความหมาย
@@ -231,15 +268,19 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       </tr>`;
     const taskRows = g.tasks.map(({ task: t, taskIndex: ti }) => {
       const filled = autoCellsForTask(t);
+      const actualFilled = actualCellsForTask(t);
       const fill = fillOf(t);
       const sd = t.startDate ? new Date(t.startDate) : null;
       const startKey = sd && !isNaN(sd.getTime()) ? cellKey(sd.getFullYear(), sd.getMonth(), weekOfDay(sd.getDate())) : null;
       const startDay = sd && !isNaN(sd.getTime()) ? sd.getDate() : '';
       const cells = (nCols ? columns : []).map(c => {
-        if (!filled.has(c.key)) return '<td class="wk"></td>';
+        // แถบของจริงอยู่ขอบล่างของช่อง — วางได้ทั้งช่องที่มีบาร์แผนและช่องที่ไม่มี
+        // (งานที่เลื่อนออกไปเสร็จนอกช่วงแผน ต้องเห็นว่ามันไปโผล่สัปดาห์ไหน)
+        const act = actualFilled.has(c.key) ? '<span class="act"></span>' : '';
+        if (!filled.has(c.key)) return `<td class="wk">${act}</td>`;
         const isStart = c.key === startKey;
-        if (t.isMilestone && !isStart) return '<td class="wk"><span class="dia">◆</span></td>';
-        return `<td class="wk" style="background:${fill}">${isStart ? `<span class="wkd">${startDay}</span>` : ''}</td>`;
+        if (t.isMilestone && !isStart) return `<td class="wk"><span class="dia">◆</span>${act}</td>`;
+        return `<td class="wk" style="background:${fill}">${isStart ? `<span class="wkd">${startDay}</span>` : ''}${act}</td>`;
       }).join('') || (nCols ? '' : '<td class="wk"></td>');
       return `
         <tr>
@@ -247,8 +288,8 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
           <td class="c-desc">${t.isMilestone ? '<span class="ms">◆</span> ' : ''}${esc(t.name)}${t.showNoteInPrint && t.note ? `<div class="note">หมายเหตุ: ${esc(t.note)}</div>` : ''}</td>
           <td class="c-team">${esc(t.role || '')}</td>
           <td class="c-dur">${t.durationDays ?? ''}</td>
-          <td class="c-date">${fmtShort(t.startDate)}</td>
-          <td class="c-date">${fmtShort(t.finishDate)}</td>
+          <td class="c-date">${fmtShort(t.startDate)}${actualSubLine(t.startDate, t.actualStartDate)}</td>
+          <td class="c-date">${fmtShort(t.finishDate)}${actualSubLine(t.finishDate, t.actualFinishDate)}</td>
           ${cells}
         </tr>`;
     }).join('');
@@ -386,6 +427,7 @@ export function buildGanttPrintHTML(project, company, activeStandard = null, opt
       <div class="leg"><span class="sw" style="background:${STATUS_FILL['In Progress']}"></span>กำลังดำเนินการ</div>
       <div class="leg"><span class="sw" style="background:${STATUS_FILL.Pending}"></span>รอดำเนินการ</div>
       <div class="leg"><span class="dia">◆</span> จุดสำคัญ (Milestone)</div>
+      <div class="leg"><span class="sw sw-act"></span> ช่วงที่ทำจริง · ตัวเลขใต้วันที่ = ช้า (+) / เร็ว (−) กี่วันทำการ</div>
     </div>`;
   // แถวบน 3 ช่อง (มติผู้ใช้ 2026-07-18, ปรับคำ 08-05): ผู้ดูแล (AE) / ผู้ประสานงาน (AC) / ผู้ตรวจสอบ
   const signatures = `
