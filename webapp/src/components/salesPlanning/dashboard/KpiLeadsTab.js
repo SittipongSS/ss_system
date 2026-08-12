@@ -285,15 +285,22 @@ export default function KpiLeadsTab({ month, teamFilter }) {
       </SaSection>
 
       {/* AE: SLA ติดต่อ + ผลต่อคน */}
-      <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="SLA และผลลัพธ์แยกตาม AE">
+      <SaSection icon={<PhoneCall size={17} />} title="รายผู้รับผิดชอบ (AE KPI)" subtitle="เรียงตามของค้างมากสุด · คอลัมน์ผลงานเป็นของเดือนที่เลือก ส่วน “ค้างตอนนี้” ไม่ผูกกับเดือน">
         <TableScroll surface="embedded"><table>
-            <thead><tr><th>AE</th><th>ทีม</th><th className="num">รับมอบ</th><th className="num">ติดต่อแล้ว</th><th className="num">SLA ทัน</th><th className="num">นัด</th><th className="num">เปิดลูกค้า</th></tr></thead>
+            {/* "ค้างตอนนี้" อยู่ติดกับ AE เพราะเป็นคอลัมน์ที่ตารางนี้ถูกเรียงตาม —
+                คนอ่านต้องเห็นเหตุผลของลำดับก่อนจะไล่อ่านผลงานทางขวา
+                ⚠️ คนละขอบเขตเวลากับคอลัมน์ที่เหลือ (ของค้างไม่ผูกกับเดือน) เขียนไว้ที่ subtitle */}
+            <thead><tr><th>AE</th><th>ทีม</th><th className="num">ค้างตอนนี้</th><th className="num">รับมอบ</th><th className="num">ติดต่อแล้ว</th><th className="num">SLA ทัน</th><th className="num">นัด</th><th className="num">เปิดลูกค้า</th></tr></thead>
             <tbody>
               {(kpi?.byAssignee || []).map((a) => (
                 <tr key={a.assigneeId} className="premium-row">
                   <td>{livePersonName(directory, a.assigneeId, a.name) || fmtName({ name: a.name })}</td>
                   {/* ป้ายทีมเต็ม ("Key Account") ไม่ใช่รหัสดิบ ("KA") — ที่อื่นในระบบใช้ TEAM_LABELS หมด */}
                   <td>{TEAM_LABELS[a.team] || a.team || "-"}</td>
+                  {/* เน้นเฉพาะคนที่มีของค้างจริง — 0 ปล่อยจาง ไม่งั้นทั้งคอลัมน์แดงไปหมดจนไม่มีความหมาย */}
+                  <td className="num mono" style={a.pending ? { color: "var(--red)", fontWeight: "var(--fw-semibold)" } : undefined}>
+                    {a.pending || "-"}
+                  </td>
                   <td className="num mono">{a.assigned}</td>
                   <td className="num mono">{a.contacted}</td>
                   <td className="num mono">{pct(a.slaHit, a.contacted)}</td>
@@ -301,7 +308,7 @@ export default function KpiLeadsTab({ month, teamFilter }) {
                   <td className="num mono">{a.qualified}</td>
                 </tr>
               ))}
-              {!(kpi?.byAssignee || []).length && <tr><td colSpan={7} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
+              {!(kpi?.byAssignee || []).length && <tr><td colSpan={8} className={styles.emptyCell}>ยังไม่มีข้อมูล</td></tr>}
             </tbody>
           </table></TableScroll>
       </SaSection>

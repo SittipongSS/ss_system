@@ -1,13 +1,41 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelRollup, chunkLeadIds } from '@/lib/sales/leads';
+import { slaHit, slaStage, channelRollup, withAssigneePending, chunkLeadIds } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
 } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
+
+/** ใบที่รอ AE ติดต่อ **ตอนนี้** แยกรายคน (ไม่ผูกกับเดือนที่เลือก เหมือน countLeadsByStatus)
+ *  คืนจำนวนรายคน พร้อม **ชื่อกับทีมสำรอง** ไว้เผื่อคนนั้นไม่มีลีดของเดือนนี้เลย —
+ *  ไม่งั้นแถวที่เติมเข้ามาจะขึ้น "ไม่ระบุ / -" ทั้งที่ข้อมูลอยู่ในใบที่เขาถือค้างอยู่นั่นเอง
+ *  ⚠️ ล้มแล้วคืนก้อนว่าง ไม่ใช่โยน error — ตัวเลขอื่นทั้งหน้ายังใช้ได้ ไม่ควรพังทั้งแท็บ
+ *  เพราะคอลัมน์เดียว (หน้าจอจะโชว์ 0 ซึ่งอ่านว่า "ไม่มีของค้าง" — ยอมรับได้เพราะคอลัมน์นี้
+ *  เป็นตัวช่วยจัดลำดับ ไม่ใช่ตัวเลขประเมินผล ต่างจาก SLA pending ที่ต้องแยก null ให้ชัด)
+ */
+async function pendingContactByAssignee(supabase, team) {
+  let query = supabase
+    .from('sales_leads')
+    .select('assigneeId, assigneeName, team')
+    .eq('status', 'assigned')
+    .not('assigneeId', 'is', null);
+  if (team && team !== 'all') query = query.eq('team', team);
+  const { data, error } = await query;
+  if (error) {
+    console.error('[lead kpi] นับใบที่ AE ค้างติดต่อไม่สำเร็จ:', error.message);
+    return { counts: {}, meta: {} };
+  }
+  const counts = {};
+  const meta = {};
+  for (const row of data || []) {
+    counts[row.assigneeId] = (counts[row.assigneeId] || 0) + 1;
+    if (!meta[row.assigneeId]) meta[row.assigneeId] = { name: row.assigneeName || null, team: row.team || null };
+  }
+  return { counts, meta };
+}
 
 /** จำนวนลีดที่ค้างอยู่ในสถานะหนึ่ง **ตอนนี้** (ไม่ผูกกับเดือนที่เลือก)
  *  นับไม่ได้คืน `null` ไม่ใช่ 0 — หน้าจอจะได้โชว์ "-" แทนที่จะบอกว่า "ไม่มีค้าง" */
@@ -106,10 +134,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ไม่งั้นพอเลือกทีมแล้วจะได้ 0 ทุกครั้งทั้งที่คิวกลางมีของค้างอยู่
      ส่วน "รอกระจาย" (`screened`) กับ "รอติดต่อกลับ" (`assigned`) ถูกคัดเข้าทีมแล้ว
      (action `screen` บังคับเลือกทีม) จึงกรองทีมตามที่ผู้ใช้เลือกได้ทั้งคู่ */
-  const [screenPending, assignPending, contactPending] = await Promise.all([
+  const [screenPending, assignPending, contactPending, aePending] = await Promise.all([
     countLeadsByStatus(supabase, 'new', null),
     countLeadsByStatus(supabase, 'screened', team),
     countLeadsByStatus(supabase, 'assigned', team),
+    pendingContactByAssignee(supabase, team),
   ]);
 
   // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI)
@@ -173,7 +202,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .map((c) => ({ ...c, days: c.days.size, perDay: c.days.size ? +(c.count / c.days.size).toFixed(1) : 0 }))
       .sort((a, b) => b.count - a.count),
     byChannel,
-    byAssignee: Object.values(byAssignee).sort((a, b) => b.assigned - a.assigned),
+    /* เรียงตาม "ค้างตอนนี้" มากสุดก่อน ไม่ใช่ตามจำนวนที่รับมอบ — ตารางนี้ตอบคำถาม
+       "ตอนนี้ต้องไปตามใคร" · withAssigneePending เติมแถวให้คนที่เดือนนี้ไม่มีลีดใหม่
+       แต่ยังกองของเก่าไว้ด้วย ไม่งั้นคนที่ต้องตามที่สุดจะหายจากตาราง */
+    byAssignee: withAssigneePending(Object.values(byAssignee), aePending.counts, aePending.meta),
     byDay,
   });
 });

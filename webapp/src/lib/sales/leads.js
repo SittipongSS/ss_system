@@ -407,6 +407,38 @@ export function channelRollup(rows) {
   return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));
 }
 
+/** รวม "ค้างตอนนี้" รายคนเข้ากับสรุปผลงานรายเดือนของ AE
+ *
+ *  ⚠️ สองชุดนี้ **คนละขอบเขตเวลา** โดยเจตนา:
+ *  · `monthly` = ผลงานของลีดที่เข้ามาในเดือนที่เลือก
+ *  · `pendingByAssignee` = ใบที่ยังรอ AE ติดต่อ **ณ ตอนนี้** ไม่ผูกกับเดือน
+ *    (ใบที่ค้างข้ามเดือนมาคือใบที่ต้องทวงที่สุด ตัดด้วยเดือนแล้วมันหาย)
+ *
+ *  🐞 ถ้าแค่เติมเลขลงแถวที่มีอยู่ จะพลาดเคสสำคัญที่สุด: **AE ที่เดือนนี้ไม่ได้รับลีดใหม่เลย
+ *  แต่ยังกองของเก่าไว้** จะไม่มีแถวใน `monthly` ⇒ หายจากตารางทั้งที่เป็นคนที่ต้องตาม
+ *  ⇒ เติมแถวให้คนกลุ่มนี้ด้วย โดยคอลัมน์ผลงานรายเดือนเป็น 0 ตามจริง
+ *
+ *  เรียงตามของค้างมากสุดก่อน — ตารางนี้มีไว้ตอบ "ตอนนี้ต้องไปตามใคร"
+ */
+export function withAssigneePending(monthly, pendingByAssignee, metaOf = {}) {
+  const pending = pendingByAssignee || {};
+  const meta = metaOf || {};
+  const rows = (monthly || []).map((a) => ({ ...a, pending: pending[a.assigneeId] || 0 }));
+  const seen = new Set(rows.map((a) => a.assigneeId));
+  for (const [assigneeId, count] of Object.entries(pending)) {
+    if (seen.has(assigneeId) || !count) continue;
+    rows.push({
+      assigneeId,
+      // ชื่อ/ทีมมาจากใบที่เขาถือค้างอยู่ — คนกลุ่มนี้ไม่มีแถวของเดือนให้อ่าน
+      name: meta[assigneeId]?.name || 'ไม่ระบุ',
+      team: meta[assigneeId]?.team || null,
+      assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0,
+      pending: count,
+    });
+  }
+  return rows.sort((a, b) => b.pending - a.pending || b.assigned - a.assigned);
+}
+
 /** โทนของการ์ด SLA — ตัดสินจาก "ตอนนี้ค้างกี่ใบ" ไม่ใช่จากเปอร์เซ็นต์ที่ทำได้
  *
  *  ⚠️ `pending == null` = **นับไม่ได้** (countLeadsByStatus ล้ม) ไม่ใช่ "ไม่มีของค้าง"

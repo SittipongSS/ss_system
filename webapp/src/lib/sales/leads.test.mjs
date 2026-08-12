@@ -9,7 +9,7 @@ import {
   canEditLead, canDeleteLead, canWorkLead, canCreateLead,
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
-  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup,
+  sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending,
 } from './leads';
 import { bangkokDate } from './handoffQueue';
 import { businessDayKey } from '../datePeriods';
@@ -144,6 +144,39 @@ test('channelRollup: เรียงจากช่องทางที่เ�
   assert.equal(out[0].count, 2);
   assert.deepEqual(channelRollup([]), []);
   assert.deepEqual(channelRollup(undefined), []);
+});
+
+test('withAssigneePending: AE ที่เดือนนี้ไม่มีลีดใหม่แต่ยังกองของเก่า ต้องไม่หายจากตาราง', () => {
+  const monthly = [
+    { assigneeId: 'a', name: 'AE ก', team: 'ODM', assigned: 10, contacted: 9, slaHit: 8, meetings: 1, qualified: 2 },
+    { assigneeId: 'b', name: 'AE ข', team: 'SV', assigned: 3, contacted: 3, slaHit: 3, meetings: 0, qualified: 0 },
+  ];
+  // 'c' ไม่มีลีดของเดือนนี้เลย แต่ถือของค้างข้ามเดือนมา 7 ใบ — เคสที่ตารางต้องจับให้ได้
+  const pending = { a: 2, c: 7 };
+  const out = withAssigneePending(monthly, pending, { c: { name: 'AE ค', team: 'SV' } });
+
+  assert.deepEqual(out.map((r) => [r.assigneeId, r.pending]), [['c', 7], ['a', 2], ['b', 0]],
+    'เรียงตามของค้างมากสุด และต้องมีแถวของ c ที่ไม่ได้อยู่ใน monthly');
+  const c = out.find((r) => r.assigneeId === 'c');
+  assert.equal(c.name, 'AE ค');
+  assert.equal(c.team, 'SV', 'ทีมต้องมาจากใบที่เขาถือค้างอยู่ ไม่ใช่ค้างเป็น null');
+  // คอลัมน์ผลงานรายเดือนของคนที่ไม่มีลีดเดือนนี้ต้องเป็น 0 ตามจริง ไม่ใช่ undefined
+  assert.deepEqual(
+    { assigned: c.assigned, contacted: c.contacted, qualified: c.qualified },
+    { assigned: 0, contacted: 0, qualified: 0 },
+  );
+  // แถวเดิมต้องไม่ถูกแตะนอกจากเติม pending
+  assert.equal(out.find((r) => r.assigneeId === 'a').qualified, 2);
+});
+
+test('withAssigneePending: ไม่มีของค้างเลย → แถวเดิมครบ pending เป็น 0 · อินพุตว่างไม่ระเบิด', () => {
+  const monthly = [{ assigneeId: 'a', name: 'AE ก', assigned: 5 }];
+  assert.deepEqual(withAssigneePending(monthly, {}).map((r) => r.pending), [0]);
+  assert.deepEqual(withAssigneePending(monthly, null).map((r) => r.pending), [0]);
+  assert.deepEqual(withAssigneePending([], {}), []);
+  assert.deepEqual(withAssigneePending(undefined, undefined), []);
+  // ค่าศูนย์ใน pending ต้องไม่สร้างแถวผีให้คนที่ไม่มีอะไรค้าง
+  assert.deepEqual(withAssigneePending([], { ghost: 0 }), []);
 });
 
 test('slaPendingTone: null = นับไม่ได้ ต้องไม่ขึ้นเขียว · 0 = ไม่มีของค้างจริง ๆ', () => {
