@@ -18,7 +18,9 @@ const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
 
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
 // ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
-export function askActionUpdate(action, ask, { reason = null, previousDueDate = null, assigneeName = null } = {}) {
+export function askActionUpdate(action, ask, {
+  reason = null, previousDueDate = null, assigneeName = null, pdrChanges = null,
+} = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';
   if (action === 'submit') {
@@ -89,8 +91,18 @@ export function askActionUpdate(action, ask, { reason = null, previousDueDate = 
   }
   // แบบฟอร์ม PDR แก้ได้ทั้งก่อนและหลังรับเรื่อง (สิทธิ์สลับมือที่จังหวะนั้น) ⇒
   // อีกฝ่ายอาจอ่านฉบับก่อนหน้าไปแล้ว
+  /* ⭐ **บอกว่าเดิมเป็นอะไร ไม่ใช่แค่ "แก้แล้ว"** (มติผู้ใช้ 2026-08-12 · IS-26080021)
+     พอฝ่ายปลายทางรับเรื่อง สิทธิ์แก้ PDR ย้ายไปเป็นของเขาทั้งใบ ⇒ RD แก้บรีฟที่ SA
+     เขียนมาได้ทุกช่อง แต่เดิมเธรดขึ้นแค่ "แก้แบบฟอร์ม PDR" ⇒ ค่าที่หายไปไม่มีร่องรอย
+     และเพราะแจ้งเตือนรายคนเกาะอยู่กับแถวเธรด ผู้ขอจึงรู้แค่ว่า *มีคนแก้* ไม่รู้ว่าแก้อะไร
+     ⚠️ `pdrChanges` ว่าง = กดบันทึกโดยไม่ได้เปลี่ยนอะไร — ยังลงเธรดตามเดิมเพื่อไม่ให้
+     พฤติกรรมหายไปเงียบ ๆ แต่ไม่ต้องมีรายการเปลี่ยนแปลงต่อท้าย */
   if (action === 'pdr') {
-    return { kind: 'pdr', body: 'แก้แบบฟอร์ม PDR', meta: {} };
+    return {
+      kind: 'pdr',
+      body: 'แก้แบบฟอร์ม PDR' + (clip(pdrChanges, 1800) ? `\n${clip(pdrChanges, 1800)}` : ''),
+      meta: {},
+    };
   }
   if (action === 'close') {
     return { kind: 'close', body: 'ปิดเคส', meta: {} };

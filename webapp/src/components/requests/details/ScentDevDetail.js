@@ -22,11 +22,13 @@ import EmptyState from "@/components/ui/EmptyState";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
+import RequestRows from "./RequestRows";
+import { ClipboardList } from "lucide-react";
+import { DetailCard } from "@/components/ui/DetailPage";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import { PDR_SECTIONS } from "@/lib/requests/pdrFields";
-import RequestRows from "./RequestRows";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
@@ -40,7 +42,12 @@ export default function ScentDevDetail({
      ซึ่งเป็นเนื้อเดียวที่มีจริงในช่วงนั้น · พอ RD ส่งของแล้ว "งาน" กลับมาเป็นตัวตั้งต้น
      ⚠️ ใช้ค่าเริ่มต้นของ useState ไม่ใช่ effect — sync ทีหลังจะเด้งแท็บใต้มือคนที่
      กำลังอ่านอยู่ตอนข้อมูลโหลดเสร็จ */
-  const [view, setView] = useState((request.items || []).length ? "work" : "pdr");
+  /* ⭐ **เข้าแท็บ "งาน" เสมอ** (มติผู้ใช้ 2026-08-12 · IS-26080021) — ทับมติ 2026-08-09
+     ที่ให้ใบยังไม่มี direction เด้งไปแท็บ PDR
+     เหตุผลที่ทับได้: มติเดิมเกิดเพราะแท็บงาน "ว่างเปล่าอ่านเหมือนระบบพัง" ซึ่งจริงตอนนั้น
+     · ตอนนี้แท็บงานมีสถานะรออะไรอยู่บอกชัด (EmptyState ข้างล่าง) ⇒ เข้ามาแล้วรู้เรื่อง
+     และการเด้งแท็บตามข้อมูลทำให้ผู้ใช้เจอหน้าคนละหน้ากันในใบที่ดูเหมือนกัน */
+  const [view, setView] = useState("work");
   const [sectionKey, setSectionKey] = useState(PDR_SECTIONS[0].key);
   // รางของ **ฝั่งแก้** แยกตัวจำจากฝั่งอ่าน — คีย์ชุดเดียวกันแล้ว (ทั้งสองฝั่งมี
   // "บรีฟกลิ่น") แต่คนละ state โดยตั้งใจ: ปิดโหมดแก้แล้วต้องกลับไปที่หมวดที่กำลังอ่าน
@@ -77,16 +84,39 @@ export default function ScentDevDetail({
             </EmptyState>
           )}
           {/* ⚠️ ป้ายกระทบยอด SO กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
-              ScentPanel) — ห้ามวาดซ้ำที่นี่อีก */}
-          <RequestRows rows={request.items || []} canEditAttachments={canEditAttachments} />
+              ScentPanel) — ห้ามวาดซ้ำที่นี่อีก
+              🐞 **เคยมี `RequestRows` ตรงนี้ด้วย แล้วมันซ้ำกับ BriefBoard ข้างล่างเป๊ะ**
+              (IS-26080021 · ผู้ใช้ส่งภาพมา): ทั้งคู่ไล่ direction ชุดเดียวกัน ⇒ ชื่อกลิ่น
+              โผล่ 4 ครั้งในจอเดียว และป้ายสถานะซ้ำสองที่ · ใบที่มี 3 บรีฟ × 2 direction
+              ได้การ์ด 6 ใบแล้วตามด้วยตาราง 6 แถวเดิม
+              ⇒ เหลือ `BriefBoard` ตัวเดียว ซึ่งเป็นมุมที่ตอบได้ทั้งใบ (บรีฟ → กลิ่น →
+              ผลลัพธ์ → สถานะ) ส่วนสเปก/ไฟล์แนบรายแถวไปอยู่ในแถวที่กางได้ของ board
+              ⚠️ หัวข้ออื่น (พัฒนาสูตร/ขอเอกสาร/สอบถาม) ยังใช้ `RequestRows` ตามเดิม —
+              พวกนั้นไม่มีตารางสรุป จึงไม่เคยซ้ำ */}
           {/* ปุ่มก้าวติดแถว direction (ม-94) — แถวของ board ชี้กลับ item ดิบด้วย id */}
-          <BriefBoard
+          {/* ⭐ ครอบด้วย `DetailCard` ของระบบ ไม่ประกอบการ์ดเอง (มติผู้ใช้ 2026-08-12 ·
+          IS-26080021 "ตารางกับไฟล์ ดีไซน์ไม่เหมือนอันอื่นเลย") — การ์ดอื่นทุกใบบนหน้านี้
+          มีหัวไอคอน+ชื่อ+เส้นคั่นชุดเดียวกัน ส่วนตารางเคยมีหัวเป็นตัวหนาลอย ๆ
+          ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
+      <DetailCard icon={ClipboardList} title="สรุปทั้งใบ">
+      <BriefBoard
             groups={board}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
               return item ? <RowStepActions row={item} {...rowStep} /> : null;
             } : null}
+            /* ⭐ สเปก + ไฟล์แนบของ direction — เนื้อที่เคยอยู่ในการ์ด `RequestRows`
+               ที่วางซ้อนเหนือตารางนี้ · ย้ายมาอยู่ในแถวที่มันสังกัด ไม่ใช่ก๊อป
+               ⚠️ ใช้ `RequestRows` ตัวเดิมส่งแถวเดียวเข้าไป — ห้ามวาดกล่องไฟล์แนบเอง
+               (ม-34) ไม่งั้นได้ทรงที่สองของ "ไฟล์แนบรายแถว" ที่จะเพี้ยนจากกัน */
+            renderDetail={(d) => {
+              const item = (request.items || []).find((it) => it.id === d.id);
+              return item
+                ? <RequestRows bare rows={[item]} canEditAttachments={canEditAttachments} />
+                : null;
+            }}
           />
+          </DetailCard>
         </>
       )}
 

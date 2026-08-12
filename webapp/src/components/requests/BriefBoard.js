@@ -11,6 +11,7 @@
 // ⚠️ การจัดกลุ่ม/นับ อยู่ที่ `lib/requests/briefBoard.js` ทั้งหมด — กฎที่ตั้งไว้หลัง
 // บั๊กรางซ้ำ (#1033): ประกอบ array ของแถวใน JSX เมื่อไร CI จะมองไม่เห็น
 import { Fragment, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -25,7 +26,12 @@ const qty = (n) => fmtNumber(n);
  * `briefBoardTotals` จากก้อนเดียวกัน ⇒ ตัวเลขข้างบนกับตารางข้างล่างขัดกันไม่ได้
  * เชิงโครงสร้าง · ประกอบสองรอบเมื่อไรก็เปิดทางให้สองที่นับคนละแบบ
  */
-export default function BriefBoard({ groups = [], renderStep = null }) {
+/* ⭐ `renderDetail` — เนื้อรายแถวที่ตารางไม่รู้จัก (สเปกที่ขอ · ไฟล์แนบของ direction)
+   ⚠️ **รับเป็น prop ไม่ใช่ให้ตารางรู้เรื่องไฟล์แนบเอง** — แพตเทิร์นเดียวกับ `renderStep`
+   ตารางนี้ถูกใช้ซ้ำหลายที่ ผูกไฟล์แนบเข้ามาตรง ๆ เมื่อไรก็ลากของสายอื่นเข้ามาด้วย
+   🐞 ที่มา (IS-26080021): หน้าพัฒนากลิ่นเคยวาง `RequestRows` ไว้เหนือตารางนี้ ⇒ ไล่
+   direction ชุดเดียวกันสองรอบ · ยุบเหลือตารางเดียวแล้วสเปก/ไฟล์แนบต้องมีที่อยู่ */
+export default function BriefBoard({ groups = [], renderStep = null, renderDetail = null }) {
   // ยังไม่มีทั้งบรีฟและ direction = ยังไม่มีอะไรให้สรุป · ตารางหัวเปล่าแย่กว่าไม่มีตาราง
   const active = groups.filter((g) => g.directions.length);
   const idle = groups.filter((g) => !g.directions.length);
@@ -37,6 +43,18 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
     active.filter((g) => g.summary?.needsAction).map((g) => g.id || 'orphan'),
   ));
   const [showIdle, setShowIdle] = useState(false);
+  /* แถว direction ที่กางดูรายละเอียดอยู่ — **กางได้หลายแถวพร้อมกัน** (มติผู้ใช้ 2026-08-12)
+     เพราะงานจริงคือเทียบ direction สองตัว ซึ่งต้องเห็นพร้อมกัน ไม่ใช่ accordion
+     ⚠️ ใบที่มี direction เดียวกางให้เลย — ไม่มีอะไรให้เลือก การบังคับกดอีกทีคือขั้นตอนเปล่า */
+  const [openRows, setOpenRows] = useState(() => {
+    const all = groups.flatMap((g) => g.directions || []);
+    return new Set(all.length === 1 ? [all[0].id] : []);
+  });
+  const toggleRow = (id) => setOpenRows((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const toggle = (key) => setOpen((cur) => {
     const next = new Set(cur);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -51,7 +69,6 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
   if (!active.length) {
     return (
       <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-        <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
         <div className={styles.restStrip}>
           <strong>{idle.length}</strong> บรีฟ · ยังไม่มี direction จากฝ่ายสักตัว
           <Button variant="quiet" size="sm" className={styles.restToggle}
@@ -70,7 +87,6 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
-      <div className={styles.head}><strong>สรุปทั้งใบ</strong></div>
 
       {active.map((g) => {
         const key = g.id || "orphan";
@@ -107,11 +123,23 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
                   </thead>
                   <tbody>
                     {g.directions.map((d) => (
-                      <tr key={d.id}>
+                      <Fragment key={d.id}>
+                      <tr>
                         {/* ⭐ รอบแก้เยื้องใต้ตัวต้นทาง — ใช้สายพันธุ์ที่ฐานเก็บไว้แล้ว
                             (`derivedFromItemId`) ตอบว่า "ตัวนี้แก้มาจากตัวไหน" */}
                         <td className={d.depth ? styles.childCell : undefined}>
-                          <span className={styles.name}>{d.name}</span>
+                          {renderDetail ? (
+                            <button
+                              type="button" className={styles.rowToggle}
+                              aria-expanded={openRows.has(d.id)} onClick={() => toggleRow(d.id)}
+                            >
+                              <ChevronRight size={14} aria-hidden="true"
+                                className={openRows.has(d.id) ? styles.chevOpen : styles.chev} />
+                              <span className={styles.name}>{d.name}</span>
+                            </button>
+                          ) : (
+                            <span className={styles.name}>{d.name}</span>
+                          )}
                           {d.rework && <span className={styles.rework}>รอบแก้</span>}
                         </td>
                         <td>
@@ -133,6 +161,12 @@ export default function BriefBoard({ groups = [], renderStep = null }) {
                         <td><StatusBadge tone={d.stageTone} label={d.stageLabel} /></td>
                         {renderStep && <td className={styles.stepCell}>{renderStep(d)}</td>}
                       </tr>
+                      {renderDetail && openRows.has(d.id) && (
+                        <tr className={styles.detailRow}>
+                          <td colSpan={renderStep ? 4 : 3}>{renderDetail(d)}</td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
