@@ -42,8 +42,8 @@ export default function QueueCountStrip({
 }) {
   const metas = queueCountMeta({ scope });
   return (
-    // จำนวนช่องต่างกันตามมุมมอง — บอก CSS ตรง ๆ ไม่งั้นช่องที่ 5 ตกบรรทัดใหม่ตัวเดียว
-    <MetricStrip aria-label={ariaLabel} data-count={metas.length}>
+    // จำนวนช่องต่างกันตามมุมมอง — `MetricStrip` นับลูกเองแล้ว ผู้เรียกไม่ต้องบอก
+    <MetricStrip aria-label={ariaLabel}>
       {metas.map((meta) => {
         const on = filter && activeKey === meta.key;
         const Icon = ICONS[meta.key];
