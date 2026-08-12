@@ -5,11 +5,19 @@
 //   mode="create" → RD ใส่รหัสได้เลย (= เข้าทะเบียนทันที) · ฝ่ายขายไม่มีช่องรหัส
 //   mode="edit"   → ไม่มีช่องรหัส เพราะ "ใส่รหัส = รับเข้าทะเบียน" เป็นคนละ action
 //                   และลูกค้าล็อก (ตัวตนของกลิ่นผูกกับลูกค้า — มติ 9)
+//
+// จัดระเบียบรอบ 2026-08-12 ตาม docs/form-design-rules.md:
+//   ลำดับ = ตามที่คนคิด: **ลูกค้า (ตัวกำหนดบริบท) มาก่อนชื่อ** — กลิ่นเป็นของ
+//   ลูกค้าเสมอ (มติ 9) และช่องอื่น (แก้มาจากกลิ่น) กรองด้วยลูกค้า
+//   · แบ่งสามโซนด้วย FormZone · คู่ที่อ่านคู่กันอยู่แถวเดียวกัน
+//   · สถานะเริ่มต้น 2 ตัวเลือกตายตัว = OptionTiles ไม่ใช่ dropdown
+//     (มติผู้ใช้ 2026-08-08: ชุดเล็กต้องกางให้เห็นแล้วจิ้มทีเดียวจบ)
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
 import DateInput from "@/components/ui/DateInput";
-import { NEW_SCENT_STATUSES, SCENT_STATUS_LABELS } from "@/lib/master/scents";
+import FormZone from "@/components/ui/FormZone";
+import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -61,15 +69,9 @@ export default function ScentForm({
     }));
 
   return (
-    <div className="form-grid">
-      <div className="form-group col-span-2">
-        <label htmlFor="scent-name">ชื่อกลิ่น</label>
-        <input
-          id="scent-name" className="premium-input" value={value.name} disabled={disabled}
-          placeholder="เช่น Forest night, Walk on beach 01"
-          onChange={(e) => set({ name: e.target.value })}
-        />
-      </div>
+    <div className="form-grid cols-2">
+      {/* ── โซน 1: ตัวตนกลิ่น — ลูกค้ามาก่อน (ตัวกำหนดบริบท) แล้วค่อยชื่อ/รหัส ── */}
+      <FormZone title="ตัวตนกลิ่น" className="col-span-2" />
 
       <div className="form-group col-span-2">
         <label htmlFor="scent-customer">ลูกค้าเจ้าของกลิ่น</label>
@@ -88,11 +90,20 @@ export default function ScentForm({
         </small>
       </div>
 
+      <div className={`form-group ${canSetCode ? "" : "col-span-2"}`.trim()}>
+        <label htmlFor="scent-name">ชื่อกลิ่น</label>
+        <Input
+          id="scent-name" value={value.name} disabled={disabled}
+          placeholder="เช่น Forest night, Walk on beach 01"
+          onChange={(e) => set({ name: e.target.value })}
+        />
+      </div>
+
       {canSetCode && (
-        <div className="form-group col-span-2">
+        <div className="form-group">
           <label htmlFor="scent-code">รหัสกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span></label>
-          <input
-            id="scent-code" className="premium-input" value={value.code} disabled={disabled}
+          <Input
+            id="scent-code" value={value.code} disabled={disabled}
             placeholder="เช่น SC-2026-001"
             onChange={(e) => set({ code: e.target.value })}
           />
@@ -102,14 +113,16 @@ export default function ScentForm({
         </div>
       )}
 
-      {/* ── กลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08) ────────
+      {/* ── โซน 2: กลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08) ────
           ⭐ ทางเพิ่มตรงมีไว้ลงของเก่า ⇒ วันผลิต/วันส่ง/สถานะ เกิดไปแล้วในอดีต
-          · ไม่มีช่องพวกนี้ตอนสร้าง = ต้องบันทึกแล้วกดปุ่มซ้ำอีกรอบ และช่อง
-            "วันที่ผลิต" จะว่างถาวรเพราะไม่มีทางเขียนเลยนอกจากผ่านคำร้อง
-          ⚠️ ขึ้นเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
-            จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ */}
+          ⚠️ ขึ้นเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง */}
       {canSetCode && mode === "create" && (
         <>
+          <FormZone
+            title="ของเดิมก่อนมีระบบ"
+            note="กลิ่นเก่าที่ลงย้อนหลัง — เว้นว่างได้ทั้งโซน"
+            className="col-span-2"
+          />
           <div className="form-group">
             <label htmlFor="scent-produced">
               วันที่ผลิตกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
@@ -129,29 +142,42 @@ export default function ScentForm({
             />
           </div>
           <div className="form-group col-span-2">
-            <label htmlFor="scent-status">สถานะเริ่มต้น</label>
-            <Select
-              id="scent-status" value={value.status} disabled={disabled}
-              onChange={(e) => set({ status: e.target.value })}
-              options={NEW_SCENT_STATUSES.map((s) => ({ value: s, label: SCENT_STATUS_LABELS[s] }))}
+            <label id="scent-status-label">สถานะเริ่มต้น</label>
+            {/* ชุดตายตัว 2 ตัวเลือก = แผ่นเลือก ไม่ใช่ dropdown (กติกาคอนโทรล
+                design v2) — เห็นทั้งคู่พร้อมคำอธิบายก่อนจิ้ม */}
+            <OptionTiles
+              ariaLabel="สถานะเริ่มต้น"
+              value={value.status}
+              disabled={disabled}
+              onChange={(status) => set({ status })}
+              options={[
+                {
+                  value: "developing",
+                  label: SCENT_STATUS_LABELS.developing,
+                  description: "ยังปรับกลิ่นกับลูกค้าอยู่",
+                },
+                {
+                  value: "active",
+                  label: SCENT_STATUS_LABELS.active,
+                  tone: "teal",
+                  description: "ลูกค้าอนุมัติแล้ว ใช้ผลิตได้เลย",
+                },
+              ]}
             />
-            <small className={styles.hint}>
-              กลิ่นเก่าที่ลูกค้าอนุมัติไปแล้วเลือก &ldquo;{SCENT_STATUS_LABELS.active}&rdquo; ได้เลย
-              ไม่ต้องมากดเปลี่ยนทีหลัง
-            </small>
           </div>
         </>
       )}
 
+      {/* ── โซน 3: ข้อมูลเสริม ─────────────────────────────────────────────── */}
+      <FormZone title="ข้อมูลเสริม" className="col-span-2" />
+
       {/* ⭐ ชื่อที่ลูกค้าตั้งเอง — เป็นวิธีที่ลูกค้าโทรมาถามจริง
           ⚠️ ป้ายและ hint ต้องย้ำว่ามัน "เพิ่ม" ไม่ใช่ "แทน" ชื่อของเรา ปล่อยให้แทนกัน
           เมื่อไรจะเข้าโรคเดิมที่ 0171 บันทึกไว้ (ชื่อกลิ่นไปโผล่ในช่องชื่อสูตร) */}
-      <div className="form-group col-span-2">
+      <div className="form-group">
         <label htmlFor="scent-trade-name">
           ชื่อที่ลูกค้าเรียก <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
-        {/* ใช้ primitive กลาง ไม่เขียนคลาสดิบเพิ่ม — ช่องเดิมสองช่องบนฟอร์มนี้ยัง
-            เป็นคลาสดิบอยู่ (หนี้เก่าที่ ratchet คุมยอดไว้) ช่องใหม่ไม่ควรไปเพิ่มยอดนั้น */}
         <Input
           id="scent-trade-name" value={value.customerTradeName}
           disabled={disabled} placeholder="ชื่อทางการค้าที่ลูกค้าตั้งเอง"
@@ -163,7 +189,7 @@ export default function ScentForm({
       </div>
 
       {/* สายพันธุ์ — มาแทน Rev. เพราะ Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ */}
-      <div className="form-group col-span-2">
+      <div className="form-group">
         <label htmlFor="scent-derived-from">
           แก้มาจากกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
