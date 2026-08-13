@@ -14,7 +14,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney } from "@/lib/format";
-import { fgLineBrand, fgLineDescription } from "@/lib/sales/quoteLines";
+import { fgLineBrand, fgLineDescription, masterPriceState } from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
@@ -145,11 +145,10 @@ export default function QuotationLineItems({
     return { code: identity.code, brand: identity.brand, name: identity.detail };
   };
   // ราคาขายในใบ = ราคาผลิต (costPrice) ทั้งระบบ (มติ 2026-07-19) — ตรงกับที่
-  // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น
-  const masterPriceFor = (productId) => {
-    const product = products.find((item) => item.id === productId);
-    return Number(product?.costPrice || 0);
-  };
+  // server enforce ตอนบันทึก; retailPriceIncVat มีไว้คำนวณสรรพสามิตเท่านั้น.
+  // "ไม่เจอในลิสต์" ≠ "ยังไม่ตั้งราคา" — เหตุผลเต็มอยู่ที่ masterPriceState ใน lib
+  const masterPriceStateFor = (productId) =>
+    masterPriceState(products.find((item) => item.id === productId));
 
   const selectLineProduct = (index, productId) => {
     const product = products.find((item) => item.id === productId);
@@ -267,9 +266,10 @@ export default function QuotationLineItems({
                 </td>
                 <td>
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
-                  {/* เตือนเฉพาะตอน master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
-                      ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา */}
-                  {editable && line.productId && !(masterPriceFor(line.productId) > 0) && (
+                  {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
+                      ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา
+                      สินค้าที่ไม่อยู่ในลิสต์ (รออนุมัติ/พักใช้) = ไม่รู้ราคา ไม่ใช่ไม่มีราคา — ดู masterPriceStateFor */}
+                  {editable && line.productId && masterPriceStateFor(line.productId) === "unpriced" && (
                     <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
                       ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
                     </Link>
