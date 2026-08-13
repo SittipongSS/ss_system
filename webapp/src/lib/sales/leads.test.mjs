@@ -228,7 +228,25 @@ test('service detail บังคับเฉพาะ product/other', () => {
   assert.ok(SERVICE_DETAIL_REQUIRED.has('product'));
   assert.ok(SERVICE_DETAIL_REQUIRED.has('other'));
   assert.ok(!SERVICE_DETAIL_REQUIRED.has('diffuser'));
-  assert.equal(LEAD_CHANNELS.length, 8);
+  assert.equal(LEAD_CHANNELS.length, 9);
+});
+
+/* ⭐ เพิ่มช่องทาง "อีเมล" (มติผู้ใช้ 2026-08-13 · IS-26080024)
+   ⚠️ ที่ผูกไว้สามที่เพราะเคยพลาดได้ทีละอย่าง: ลืมทะเบียน = API ตีกลับ · ลืมจัดกลุ่ม =
+   ตกไป onsite เงียบ ๆ แล้วรายงานนับผิด · ลืม CHECK ใน DB = ฟอร์มโชว์ตัวเลือกแต่บันทึกไม่ได้ */
+test('ช่องทางอีเมล: อยู่ในทะเบียน · จัดกลุ่ม online · CHECK ใน migration ยอมรับ', () => {
+  assert.ok(LEAD_CHANNELS.includes('email'));
+  assert.equal(channelGroupOf('email'), 'online');
+
+  const sql = readFileSync(
+    new URL('../../../supabase/migrations/0252_lead_channel_email.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(sql, /sales_leads_channel_check/);
+  // ทุกช่องทางในทะเบียนต้องมีชื่ออยู่ใน CHECK ล่าสุด ไม่ใช่แค่ 'email'
+  for (const channel of LEAD_CHANNELS) {
+    assert.ok(sql.includes(`'${channel}'`), `CHECK ล่าสุดไม่มี '${channel}' — บันทึกลีดช่องทางนี้ไม่ได้`);
+  }
 });
 
 /* ⭐ มติผู้ใช้ 2026-08-08 กลับมติ 2026-07-20 — MKT แก้ใบตัวเองได้จนถึงก่อนเปิดดีล
