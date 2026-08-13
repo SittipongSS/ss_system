@@ -1,4 +1,5 @@
 import { fmtDate } from '@/lib/format';
+import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
@@ -898,7 +899,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       description: line.description || '',
       note: line.metadata?.note || line.note || '',
       qty: Number(line.qty || 0),
-      unit: line.unit || 'ชิ้น',
+      // หน่วยแปลตามภาษาใบ (IS-26080025) — ต่างจากข้อความที่คนกรอกตรงที่มันมาจากลิสต์ปิด
+      // ของ lib/master/units.js จึงแปลได้โดยไม่ต้องให้ใครกรอกเพิ่ม · ค่าที่ไม่อยู่ในลิสต์
+      // (ของเก่า/คนพิมพ์เอง) พิมพ์ตามเดิม ไม่เดาคำแปล
+      unit: saleUnitLabel(line.unit || DEFAULT_SALE_UNIT, language),
       unitPrice: Number(line.unitPrice || 0),
       // ส่วนลดรายบรรทัดต้องไปถึงเอกสาร: lineTotal ที่พิมพ์คือยอด "หลังหักส่วนลดแล้ว"
       // (quoteLineNet) ถ้าไม่โชว์ส่วนลด ลูกค้าคูณ ราคา/หน่วย × จำนวน แล้วไม่ตรงกับ
