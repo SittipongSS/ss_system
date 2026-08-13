@@ -10,7 +10,7 @@ import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions
 import { whereTeamIn } from '@/lib/teamScope';
 
 export const LEAD_CHANNELS = [
-  'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform',
+  'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform', 'email',
   'phone', 'walkin', 'website',
 ];
 export const LEAD_CHANNEL_LABELS = {
@@ -19,15 +19,25 @@ export const LEAD_CHANNEL_LABELS = {
   chatcone_tiktok: 'TikTok',
   chatcone_ig: 'IG',
   typeform: 'Typeform',
+  email: 'อีเมล',
   phone: 'โทรเข้า',
   walkin: 'Walk-in',
   website: 'เว็บไซต์',
 };
 // กลุ่มช่องทาง (Online / Onsite / Website) — derive จาก channel ตอนเขียน
-// (เพิ่ม channel ใหม่ต้องเพิ่มใน CHECK constraint ของ sales_leads ด้วย — ดู mig 0129)
+//
+// 🔴 **เพิ่ม channel ใหม่ต้องแก้ 3 ที่พร้อมกัน** ไม่งั้นพังคนละแบบ:
+//   1. `LEAD_CHANNELS` + `LEAD_CHANNEL_LABELS` ที่นี่ — ไม่เพิ่ม = API ตีกลับ "ช่องทางไม่ถูกต้อง"
+//   2. ฟังก์ชันนี้ — ไม่เพิ่ม = ตกไปกลุ่ม 'onsite' เงียบ ๆ (ค่าตั้งต้นของ `return` ท้ายสุด)
+//      แล้วรายงานแยกกลุ่มจะนับผิดโดยไม่มีอะไรฟ้อง
+//   3. CHECK constraint ของ `sales_leads.channel` (mig 0129 → 0252) — ไม่เพิ่ม = บันทึกไม่ได้
+//      ตอน insert จริง ทั้งที่ฟอร์มโชว์ตัวเลือกให้เลือกแล้ว
 export function channelGroupOf(channel) {
-  if (String(channel || '').startsWith('chatcone_') || channel === 'typeform') return 'online';
-  if (channel === 'website') return 'website';
+  const value = String(channel || '');
+  // 'email' = ลีดที่เข้าทางอีเมล (มติผู้ใช้ 2026-08-13 · IS-26080024) — จัดกลุ่ม online
+  // ตามที่ผู้ใช้สั่ง ไม่ใช่ onsite แม้จะไม่ได้มาจากแพลตฟอร์มโฆษณา
+  if (value.startsWith('chatcone_') || value === 'typeform' || value === 'email') return 'online';
+  if (value === 'website') return 'website';
   return 'onsite'; // phone / walkin
 }
 export const CHANNEL_GROUP_LABELS = { online: 'Online', onsite: 'Onsite', website: 'Website' };
