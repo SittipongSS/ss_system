@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ขั้นบัญชีตรวจใบสั่งขาย — หน้าตาแต่ละสถานะ (mig 0250)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css · ตัวพิมพ์ Sarabun ตามระบบ (มติ 2026-08-13) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;--accent-fg:#fff;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-2:10.5px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;--fs-7:13px;--fs-9:15px;--fs-11:18px;--fs-13:22px;--fs-15:27px;
+--font-sans:"Sarabun","IBM Plex Sans Thai",Tahoma,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.14);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.14);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}
+
+*{box-sizing:border-box}
+body{margin:0;padding:var(--space-7) var(--space-5) 80px;background:var(--bg);color:var(--text);
+  font-family:var(--font-sans);font-size:14px;line-height:1.55}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:44px}
+h1{margin:0;font-size:26px;line-height:1.3}
+h2{margin:0;font-size:20px}
+h3{margin:0;font-size:var(--fs-9)}
+p{margin:0;color:var(--text-2);max-width:84ch}
+.head{display:grid;gap:var(--space-3)}
+.row{display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center}
+.tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-4);font-weight:700;letter-spacing:.04em}
+.tag.a{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.g{background:var(--green-soft);color:var(--green)}
+.themeBtn{position:fixed;right:16px;top:16px;z-index:9;padding:7px 14px;border:1px solid var(--border-strong);
+  border-radius:var(--radius-full);background:var(--panel);color:var(--text-2);font:inherit;font-size:var(--fs-5);cursor:pointer}
+.panel{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);padding:var(--space-5);display:grid;gap:var(--space-4)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-7)}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--text-3);font-size:var(--fs-5);font-weight:700}
+code{font-size:.92em;background:var(--panel-3);padding:1px 5px;border-radius:4px}
+pre{margin:0;padding:var(--space-4);border-radius:var(--radius);background:var(--panel-2);
+  color:var(--text-2);font-size:var(--fs-6);line-height:1.7;overflow-x:auto}
+
+/* ── หัวใบ (ย่อ) ─────────────────────────────────────────── */
+.doc{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md);
+  background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel)}
+.docHead{display:flex;justify-content:space-between;gap:var(--space-5);padding:var(--space-4) 20px;flex-wrap:wrap}
+.docNo{margin:0;font-size:var(--fs-13);font-weight:700;line-height:1.2}
+.eyebrow{color:var(--accent-ink);font-size:var(--fs-4);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.badge{display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-4);font-weight:700;white-space:nowrap;border:1px solid transparent}
+.badge.ok{background:var(--green-soft);color:var(--green)}
+.badge.pending{background:var(--amber-soft);color:var(--amber)}
+.badge.bad{background:var(--red-soft);color:var(--red)}
+.reject{display:flex;gap:10px;margin:0 20px 16px;padding:12px 14px;border-radius:var(--radius);
+  border:1px solid color-mix(in srgb,var(--red) 35%,var(--border));background:color-mix(in srgb,var(--red) 7%,var(--panel));color:var(--red)}
+.reject b{display:block}
+.reject p{color:var(--text-2);font-size:var(--fs-6);margin-top:2px}
+
+/* ── การ์ดจัดการเอกสาร (ราง 330px) ───────────────────────── */
+.ctrl{width:340px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.ctrlHead{padding:var(--space-4);border-bottom:1px solid var(--border);display:grid;gap:2px}
+.ctrlHead b{font-size:16px}
+.ctrlHead small{color:var(--text-3);font-size:var(--fs-6)}
+.state{display:flex;align-items:center;gap:8px;padding:10px var(--space-4);border-bottom:1px solid var(--border);
+  font-size:var(--fs-7);font-weight:700}
+.state i{width:9px;height:9px;border-radius:var(--radius-full);background:var(--green)}
+.steps{margin:0;padding:0;list-style:none}
+.step{display:flex;gap:10px;align-items:flex-start;padding:10px var(--space-4);border-bottom:1px solid var(--border)}
+.step.now{background:var(--accent-soft)}
+.mk{display:grid;flex:none;width:24px;height:24px;place-items:center;border-radius:var(--radius-full);
+  border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text-3);font-size:var(--fs-4);font-weight:700}
+.step.done .mk{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+.step.now .mk{border-color:var(--accent);background:var(--accent);color:var(--accent-fg)}
+.step b{display:block;font-size:var(--fs-7)}
+.step span{color:var(--text-3);font-size:var(--fs-6)}
+.acts{display:grid;gap:8px;padding:var(--space-4)}
+.acts .sep{height:1px;background:var(--border);margin:2px 0}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 14px;
+  border:1px solid var(--border-strong);border-radius:var(--radius);background:transparent;
+  color:var(--text-2);font:inherit;font-size:var(--fs-7);font-weight:700}
+.btn.ghost{border-color:transparent}
+.btn.acc{border-color:var(--accent);color:var(--accent-ink)}
+.btn.dang{border-color:color-mix(in srgb,var(--red) 40%,var(--border));color:var(--red)}
+
+.cases{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--space-5);align-items:start}
+.case{display:grid;gap:var(--space-3);justify-items:start}
+.caseTitle{display:grid;gap:2px}
+.caseTitle b{font-size:var(--fs-9)}
+.caseTitle span{color:var(--text-3);font-size:var(--fs-6)}
+.callouts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--space-4)}
+.callout{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);
+  background:var(--panel-2);padding:10px 14px;display:grid;gap:4px}
+.callout.no{border-left-color:var(--red)}
+.callout b{font-size:var(--fs-7)}
+.callout p{font-size:var(--fs-6)}
+</style>
+</head>
+<body>
+<button class="themeBtn" id="themeBtn" type="button">สลับธีม</button>
+<div class="wrap">
+
+<header class="head">
+  <div class="row"><span class="tag a">SALES ORDER · FINANCE REVIEW</span><span class="tag g">mig 0250 · สร้างแล้ว รอ deploy</span></div>
+  <h1>ขั้นบัญชีตรวจใบสั่งขาย — หน้าตาแต่ละสถานะ</h1>
+  <p>
+    บัญชีตรวจใบ <b>หลัง</b> AE Supervisor อนุมัติ · <b>เป็นคนละแกนกับสถานะเอกสาร</b> —
+    ยอด Actual เข้าตั้งแต่ AE Sup กด บัญชีไม่แตะ และงานกลิ่น/ผลิต/ภาษีเดินต่อได้ทันทีไม่ต้องรอ
+  </p>
+</header>
+
+<section class="head">
+  <h2>สายงาน</h2>
+  <div class="panel">
+<pre>(ใบยังไม่อนุมัติ) = NULL   ← ไม่โผล่ขั้นนี้เลย
+   │ [AE Sup อนุมัติ ⇒ status='approved' · Actual เข้าทันที ไม่รอบัญชี]
+   ▼
+รอบัญชีตรวจใบ ──[บัญชีอนุมัติ]──▶ บัญชีอนุมัติแล้ว ■ จบสาย
+   ▲                 │
+   └─────────────────┴──[บัญชีตีกลับ + เหตุผล ≥10 ตัว]──▶ บัญชีตีกลับใบ
+                                                              │
+   ◀────────────────[AE Sup: ส่งให้บัญชีตรวจใหม่]──────────────┘</pre>
+    <table>
+      <thead><tr><th>สถานะ</th><th>ใครกดได้</th><th>ปุ่มที่โผล่</th></tr></thead>
+      <tbody>
+        <tr><td><b>รอบัญชีตรวจใบ</b></td><td>ฝ่ายบัญชี (FN) + Admin</td><td>บัญชีอนุมัติใบนี้ · บัญชีตีกลับใบนี้</td></tr>
+        <tr><td><b>บัญชีตีกลับใบ</b></td><td>AE Supervisor + Admin</td><td>ส่งให้บัญชีตรวจใหม่</td></tr>
+        <tr><td><b>บัญชีอนุมัติแล้ว</b></td><td>—</td><td>ไม่มี (จบสาย)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="head">
+  <h2>สิ่งที่บัญชีตรวจ — ขึ้นเป็นเช็กลิสต์ในโมดัลก่อนกดอนุมัติ</h2>
+  <div class="panel">
+    <table>
+      <tbody>
+        <tr><td>1</td><td>ข้อมูลลูกค้า · ที่อยู่ออกบิล · เลขผู้เสียภาษี</td></tr>
+        <tr><td>2</td><td>เงื่อนไขการชำระ · งวด · กำหนดชำระ</td></tr>
+        <tr><td>3</td><td>ยอดเงิน · ส่วนลด · VAT</td></tr>
+        <tr><td>4</td><td>เครดิตและวงเงินของลูกค้า</td></tr>
+      </tbody>
+    </table>
+    <p>
+      ⚠️ <b>ต่างจาก &ldquo;คอนเฟิร์มงวดชำระ&rdquo;</b> (mig 0245) ซึ่งตอบว่า <i>เงินงวดนี้เข้าจริงไหม</i> —
+      คนละคำถามแม้จะเป็นฝ่ายเดียวกันกด · อันนี้ตรวจ <b>ตัวเอกสาร</b> ครั้งเดียว อันนั้นตรวจ <b>เงินรายงวด</b>
+    </p>
+  </div>
+</section>
+
+<section class="head">
+  <h2>หน้าตาแต่ละสถานะ</h2>
+  <p>🔴 <b>ความหมายของหมุด</b> — <b>✓ เขียว = ขั้นนั้นเรียบร้อยแล้ว</b> · <b>ตัวเลขส้ม = กำลังอยู่ขั้นนั้น รอดำเนินการ</b> ·
+     ใบที่จบครบทุกขั้นจึงเป็น ✓ ทั้งราง ไม่มีเลขค้าง</p>
+  <div id="cases" class="cases"></div>
+</section>
+
+<section class="head">
+  <h2>กติกาที่ฝังไว้ในโค้ดแล้ว</h2>
+  <div class="callouts">
+    <div class="callout no"><b>ตีกลับไม่ถอน Actual</b>
+      <p>ยอดอยู่บนแกน <code>status</code> ที่บัญชีไม่แตะ · โมดัลตีกลับจึงไม่พูดถึงยอดเลย ไม่งั้นบัญชีเข้าใจว่ากดแล้วยอดขายหลุด</p></div>
+    <div class="callout no"><b>ตอนถูกตีกลับ บัญชีอนุมัติทับไม่ได้</b>
+      <p>ต้องให้ AE Sup กด &ldquo;ส่งให้บัญชีตรวจใหม่&rdquo; ก่อน ไม่งั้นการตีกลับไม่มีความหมาย</p></div>
+    <div class="callout no"><b>บัญชีกด &ldquo;ส่งตรวจใหม่&rdquo; เองไม่ได้</b>
+      <p>ไม่งั้นตีกลับแล้วส่งเข้าคิวตัวเองครบวง = ด่านหายไป · มีเทสต์ล็อกไว้</p></div>
+    <div class="callout no"><b>ฝ่ายขายตรวจแทนบัญชีไม่ได้</b>
+      <p>รวมถึง <code>ae_supervisor</code> ที่เพิ่งอนุมัติใบนี้เอง — ถ้าตรวจซ้ำได้ก็ไม่มีด่านที่สอง</p></div>
+    <div class="callout"><b>ใบเก่าไม่โผล่ขั้นนี้เลย</b>
+      <p>ใบที่อนุมัติก่อน mig 0250 ได้ <code>NULL</code> = &ldquo;ออกก่อนมีขั้นนี้&rdquo; ไม่ใช่ &ldquo;รอบัญชี&rdquo; · ตั้ง pending ย้อนหลังเมื่อไร บัญชีเปิดมาเจอคิวค้างทั้งกอง</p></div>
+    <div class="callout"><b>ไม่แทรกเป็นสถานะกลางทาง</b>
+      <p><code>status='approved'</code> เป็นตัวปลดล็อก 12 จุด (Actual · กลิ่น · ผลิต · ภาษี · handoff · ลายน้ำ · งวดชำระ) แทรกกลางเมื่อไรหยุดรอบัญชีหมด</p></div>
+  </div>
+</section>
+
+</div>
+
+<script>
+const STEPS_BASE = [
+  {t:"จัดทำร่าง", s:"Supisara Sangkaew", st:"done"},
+  {t:"ยื่นอนุมัติ", s:"10/08/2026", st:"done"},
+  {t:"AE Supervisor ตรวจ", s:"Patcharapit Jueajan", st:"done"},
+  {t:"นับ Actual", s:"฿60,000.00", st:"done"},
+];
+
+const CASES = [
+  { key:"null", title:"ใบเก่า · ออกก่อนมี mig 0250", note:"ขั้นบัญชีไม่โผล่เลย ไม่ใช่ขึ้นว่ารอ",
+    badges:[["ok","● อนุมัติแล้ว"],["ok","มีหลักฐานลายเซ็น"]],
+    fin:null, nowIndex:-1,
+    acts:[["","🔓 ยกเลิกอนุมัติ"],["ghost","🖨 ออกเอกสาร"],["sep"],["dang","✕ ยกเลิก SO"]] },
+
+  { key:"pending", title:"รอบัญชีตรวจใบ", note:"ทันทีที่ AE Sup อนุมัติ",
+    badges:[["ok","● อนุมัติแล้ว"],["ok","มีหลักฐานลายเซ็น"],["pending","รอบัญชีตรวจใบ"]],
+    fin:{t:"บัญชีตรวจใบ", s:"รอฝ่ายบัญชีตรวจ", st:"now"}, nowIndex:-1,
+    acts:[["","🔓 ยกเลิกอนุมัติ"],["ghost","🖨 ออกเอกสาร"],["acc","✓ บัญชีอนุมัติใบนี้"],["sep"],["dang","↩ บัญชีตีกลับใบนี้"],["dang","✕ ยกเลิก SO"]] },
+
+  { key:"rejected", title:"บัญชีตีกลับใบ", note:"ส่งกลับให้ AE Supervisor ดูใหม่ · Actual ไม่ขยับ",
+    badges:[["ok","● อนุมัติแล้ว"],["ok","มีหลักฐานลายเซ็น"],["bad","บัญชีตีกลับใบ"]],
+    reject:{by:"สุนิสา (บัญชี)", msg:"ที่อยู่ออกบิลไม่ตรงกับทะเบียนภาษี และงวดที่ 2 ยังไม่ระบุกำหนดชำระ"},
+    fin:{t:"บัญชีตรวจใบ", s:"ตีกลับให้ AE Supervisor ดูใหม่", st:"now"}, nowIndex:-1,
+    acts:[["","🔓 ยกเลิกอนุมัติ"],["ghost","🖨 ออกเอกสาร"],["acc","➤ ส่งให้บัญชีตรวจใหม่"],["sep"],["dang","✕ ยกเลิก SO"]] },
+
+  { key:"approved", title:"บัญชีอนุมัติแล้ว", note:"จบสาย ไม่มีปุ่มของบัญชีอีก",
+    badges:[["ok","● อนุมัติแล้ว"],["ok","มีหลักฐานลายเซ็น"],["ok","บัญชีอนุมัติแล้ว"]],
+    fin:{t:"บัญชีตรวจใบ", s:"สุนิสา (บัญชี)", st:"done"}, nowIndex:-1,
+    acts:[["","🔓 ยกเลิกอนุมัติ"],["ghost","🖨 ออกเอกสาร"],["sep"],["dang","✕ ยกเลิก SO"]] },
+];
+
+/* 🔴 ✓ = เรียบร้อย · ตัวเลข = อยู่ขั้นนั้น รอดำเนินการ (feedback ผู้ใช้ 2026-08-13) */
+const stepHtml = (s, cls, n) => `<li class="step ${cls}"><span class="mk">${cls === "done" ? "✓" : n}</span>
+  <span><b>${s.t}</b><span>${s.s}</span></span></li>`;
+
+document.getElementById("cases").innerHTML = CASES.map((c) => {
+  const steps = STEPS_BASE.map((s, i) => stepHtml(s, i === c.nowIndex ? "now" : "done", i + 1)).join("");
+  const fin = c.fin ? stepHtml(c.fin, c.fin.st, 5) : "";
+  const acts = c.acts.map(([k, label]) =>
+    k === "sep" ? '<div class="sep"></div>' : `<span class="btn ${k}">${label}</span>`).join("");
+  return `<div class="case">
+    <div class="caseTitle"><b>${c.title}</b><span>${c.note}</span></div>
+    <div class="doc" style="width:340px">
+      <div class="docHead">
+        <div><span class="eyebrow">Sale Order</span><h3 class="docNo">SO-26080005-0</h3></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 14px">
+        ${c.badges.map(([k, t]) => `<span class="badge ${k}">${t}</span>`).join("")}
+      </div>
+      ${c.reject ? `<div class="reject">↩<div><b>บัญชีตีกลับโดย ${c.reject.by}</b><p>${c.reject.msg}</p></div></div>` : ""}
+    </div>
+    <div class="ctrl">
+      <div class="ctrlHead"><span class="eyebrow">Document Control</span><b>จัดการเอกสาร</b><small>ยอดถูกนับเป็น Actual แล้ว</small></div>
+      <div class="state"><i></i>อนุมัติแล้ว</div>
+      <ol class="steps">${steps}${fin}</ol>
+      <div class="acts">${acts}</div>
+    </div>
+  </div>`;
+}).join("");
+
+const b = document.getElementById("themeBtn");
+b.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  b.textContent = next === "dark" ? "ธีมสว่าง" : "ธีมมืด";
+});
+</script>
+</body>
+</html>
