@@ -9,7 +9,8 @@ import { ApprovalActions } from "@/components/ApprovalStatus";
 //
 // Props:
 //   items     — pending records the user can approve
-//   onDecide  — (id, "approved"|"rejected") => void
+//   onDecide  — (rec, "approved"|"rejected") => void  ⚠️ ส่ง **ทั้งระเบียน** ไม่ใช่ id
+//               เพราะโมดัลยืนยันต้องเอ่ยชื่อของที่กำลังอนุมัติ (ดู lib/approvalPrompt.js)
 //   primary   — (rec) => string   main line (e.g. arCode / fgCode)
 //   secondary — (rec) => string   sub line (name · team)
 //   onOpen    — optional (rec) => void  row click (open detail)
@@ -38,7 +39,7 @@ export default function ApprovalQueue({ items, onDecide, primary, secondary, onO
               <span className="text-[13px] text-[var(--text)]">{secondary(rec)}</span>
             </div>
             <div onClick={(e) => e.stopPropagation()}>
-              <ApprovalActions onDecide={(status) => onDecide(rec.id, status)} />
+              <ApprovalActions onDecide={(status) => onDecide(rec, status)} />
             </div>
           </div>
         ))}

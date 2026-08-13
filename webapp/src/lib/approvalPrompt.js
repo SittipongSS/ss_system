@@ -52,8 +52,10 @@ export function approvalPrompt({
     .map((line) => String(line || '').trim())
     .filter(Boolean);
 
+  // เว้นบรรทัดหลังคำเตือน — ไม่งั้นบนจอจริงมันไหลติดหัวข้อ "สิ่งที่จะเกิดขึ้นทันที:"
+  // จนคำเตือนกลายเป็นบรรทัดแรกของรายการแทนที่จะเป็นคำเตือน (เห็นตอนกดดูจริง)
   const detail = [
-    ...(irreversible ? [`⚠️ ${IRREVERSIBLE_NOTE}`] : []),
+    ...(irreversible ? [`⚠️ ${IRREVERSIBLE_NOTE}`, ''] : []),
     ...(checks.length ? ['สิ่งที่ต้องตรวจก่อนกด:', ...checks.map((line) => `· ${line}`), ''] : []),
     'สิ่งที่จะเกิดขึ้นทันที:',
     ...lines.map((line) => `· ${line}`),
