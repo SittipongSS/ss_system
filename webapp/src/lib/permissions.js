@@ -390,8 +390,14 @@ const ROLE_CAPS = {
   //    ไม่อยู่ใน COSTING_SOURCE_DEPARTMENTS) · ย้ายคน FN จาก staff มา finance แล้ว
   //    เขาจะ **เสีย** costing:view/quote ที่ไม่เคยใช้ได้จริงอยู่แล้ว (ด่านบล็อกมาตลอด)
   // `payments:confirm` ถือกว้างระดับ role แล้ว **แคบด้วยฝ่าย** ที่ canConfirmPayment เสมอ
+  // ⚠️ **ไม่มี `history:view`** (มติผู้ใช้ 2026-08-13) — cap นั้นเป็นตัวเปิดโมดูล
+  // "ภาษีสรรพสามิต" ทั้งโมดูล ซึ่งไม่ใช่งานของฝ่ายบัญชี · ผู้ใช้สั่งไว้ว่าบัญชีเห็นแค่
+  // **ฐานข้อมูล** กับ **บริหารงานขาย** (บวกบ้านของตัวเอง และ "แจ้งปัญหาระบบ"
+  // ซึ่งทุกคนที่ล็อกอินเห็นเสมอโดยกฎของระบบ)
+  // ผลข้างเคียงที่ยอมรับแล้ว: ไม่เห็นสถานะทะเบียนสรรพสามิตบนหน้าสินค้า/ลูกค้า
+  // (`registrationStatus` แนบมาเฉพาะคนที่ถือ history:view) — งานนั้นเป็นของฝ่ายกฎหมาย
   finance: [
-    'products:view', 'customers:view', 'salesplan:view', 'history:view',
+    'products:view', 'customers:view', 'salesplan:view',
     'requests:answer', 'payments:confirm',
   ],
   rd: [

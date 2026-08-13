@@ -38,6 +38,10 @@ test('system visibility covers every supported role and sales team', () => {
     ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
     // staff ที่ไม่ระบุฝ่าย = ไม่ใช่ PC/PD → ไม่เห็นระบบผลิต (ดูเคส PC/PD ข้างล่าง)
     ['staff', null, ['salesplan', 'master', 'support']],
+    /* ⭐ ฝ่ายบัญชี (มติผู้ใช้ 2026-08-13): *"เปิดระบบให้บัญชีเห็นแค่ฐานข้อมูลกับ
+       บริหารงานขาย"* + บ้านของตัวเอง · **ห้ามมี `tax`** — เคยมีเพราะ role ถือ
+       `history:view` ซึ่งเป็นตัวเปิดโมดูลภาษีทั้งโมดูล ไม่ใช่งานของฝ่ายนี้ */
+    ['finance', null, ['salesplan', 'finance', 'master', 'support']],
     ['senior_ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
     ['senior_ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
     ['senior_ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
