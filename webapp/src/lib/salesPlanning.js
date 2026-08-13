@@ -244,6 +244,8 @@ export function advanceStage(current, target) {
 
 // ประเภทดีล (เฟส A Sales Revamp) — คอลัมน์จริง sales_deals.dealType (migration 0088 + 0247)
 // SCENT = พัฒนากลิ่น · NPD = พัฒนาสินค้า · RE-ORDER = สั่งผลิตซ้ำ · OTHER = อื่นๆ
+// ทั้งสี่ค่าตรงกับ projects.type ของ PM แบบ 1:1 → passthrough ตรงตอนสร้างโครงการ
+// (เลือก template) · 'OTHER' มีแม่แบบไทม์ไลน์ของตัวเองตั้งแต่ mig 0249
 // (transition: ยังเขียน metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/ข้อมูลเก่าอ่านได้)
 export const DEAL_TYPES = ['SCENT', 'NPD', 'RE-ORDER', 'OTHER'];
 export const DEAL_TYPE_LABELS = {
@@ -256,20 +258,13 @@ export function normalizeDealType(value) {
   return DEAL_TYPES.includes(value) ? value : 'NPD';
 }
 
-/* ⚠️ PROJECT_TYPES ≠ DEAL_TYPES — เคยเป็นอาร์เรย์ตัวเดียวกัน แยกตอนเพิ่ม 'OTHER' (mig 0247)
-   สามค่านี้คือ "เส้นทางผลิต": ตรงกับ projects.type แบบ 1:1 (passthrough ตอนสร้างโครงการ)
-   และมีแม่แบบไทม์ไลน์ของตัวเองใน workflow_templates."templateKey" (mig 0121)
-   'OTHER' เป็นประเภทฝั่งขายล้วน — ไม่มีทั้งสองอย่าง จึงต้องไม่หลุดเข้ามาในลิสต์นี้
-   (DB บังคับซ้ำอีกชั้น: projects_type_check ยังเป็น 3 ค่าเท่าเดิม) */
-export const PROJECT_TYPES = ['SCENT', 'NPD', 'RE-ORDER'];
-export function normalizeProjectType(value) {
-  return PROJECT_TYPES.includes(value) ? value : 'NPD';
-}
-/* ดีลประเภทนี้ก่อตั้ง/ต่อโครงการได้ไหม — จุดเดียวที่ตอบคำถามนี้ ใช้ทั้ง route และหน้าจอ
-   ห้ามเขียน `type !== 'OTHER'` กระจายเอง: ประเภทฝั่งขายล้วนใบต่อไปจะหลุดทันที */
-export function dealTypeFoundsProject(type) {
-  return PROJECT_TYPES.includes(normalizeDealType(type));
-}
+/* ประเภทโครงการ = ประเภทดีลชุดเดียวกัน (1:1) — เคยแยกกันช่วงสั้น ๆ ตอน mig 0247 ที่
+   'OTHER' ยังเป็นประเภทฝั่งขายล้วน · มติผู้ใช้ 2026-08-13 ให้ 'OTHER' มีสิทธิ์เท่าอีก
+   สามประเภท (mig 0249 เปิด projects_type_check + แม่แบบไทม์ไลน์ของตัวเอง) จึงยุบกลับ
+   ⚠️ ก่อนเพิ่มประเภทที่ 5: ถ้าประเภทใหม่ **ไม่** ก่อตั้งโครงการ ต้องแยกอาร์เรย์นี้ออก
+   ก่อน ไม่งั้นค่าใหม่หลุดไปถึง projects.type แล้วไปตายที่ CHECK ของฐาน */
+export const PROJECT_TYPES = DEAL_TYPES;
+export const normalizeProjectType = normalizeDealType;
 // อ่านประเภทจาก deal row: คอลัมน์จริงก่อน แล้ว fallback metadata (ข้อมูลก่อน backfill/แคชเก่า)
 export function dealTypeOf(deal) {
   return normalizeDealType(deal?.dealType || deal?.metadata?.projectType);

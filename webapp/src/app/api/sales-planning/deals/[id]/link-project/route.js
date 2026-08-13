@@ -11,7 +11,7 @@ import { loadProject } from '@/lib/pm/projectsRepo';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { dealLinkedUpdate, dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { appendUpdate } from '@/lib/master/updates';
-import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeFoundsProject, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import {
   mirrorCounts, moveDealMirrors, moveSegmentTasks,
@@ -42,12 +42,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesEditScope(user, deal)) return forbidden();
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว ผูกโครงการไม่ได้');
-  /* ประเภทขายล้วน (OTHER — mig 0247) ไม่มีแม่แบบไทม์ไลน์ ⇒ ต่อ segment เข้าโครงการไม่ได้
-     ปล่อยผ่านจะไปตายที่ loadWorkflowTemplateForGeneration พร้อมข้อความ "ไปตั้งค่า template"
-     ซึ่งเป็นคำแนะนำที่ผิด — ประเภทนี้ไม่ควรมี template ตั้งแต่แรก */
-  if (!dealTypeFoundsProject(dealTypeOf(deal))) {
-    return badRequest(`ประเภทดีล ${dealTypeOf(deal)} เป็นงานขายอย่างเดียว ผูกเข้าโครงการไม่ได้ — เปลี่ยนประเภทดีลเป็น SCENT / NPD / RE-ORDER ก่อน`);
-  }
 
   const body = await req.json().catch(() => ({}));
   if (!body.projectId) return badRequest('ต้องระบุโครงการ (projectId)');

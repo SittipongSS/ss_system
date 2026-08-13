@@ -8,7 +8,7 @@ import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
-import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeFoundsProject, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
@@ -41,12 +41,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // /api/sa/projects · ⚠️ ห้าม fallback จาก deal.team: prod มี SDS_…EGCO_HAND GEL
   // อยู่ใต้ทีม SV ทั้งที่เป็นสายสินค้า (ทีมขาย ≠ สายธุรกิจ · มติ #868)
   if (!normalizeBusinessLine(body.line)) return badRequest('ต้องเลือกสายธุรกิจ (PRODUCT หรือ SERVICE)');
-  /* ประเภทขายล้วน (OTHER — mig 0247) ไม่ก่อตั้งโครงการ: projects_type_check รับแค่ 3 ค่า
-     ปล่อยผ่านจะไปตายที่ constraint ของฐานพร้อมข้อความที่ AE อ่านไม่ออก */
-  const projectType = normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType);
-  if (!dealTypeFoundsProject(projectType)) {
-    return badRequest(`ประเภทดีล ${projectType} เป็นงานขายอย่างเดียว สร้างโครงการไม่ได้ — เปลี่ยนประเภทดีลเป็น SCENT / NPD / RE-ORDER ก่อน`);
-  }
   // ตรวจ "หมวดพักใช้" เฉพาะตอนโมดัลเปลี่ยนหมวด (ส่ง productMainCategory ใหม่ที่ต่างจากเดิม)
   // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างโครงการต่อได้ (กติกาเดียวกับ deal PATCH).
   const categoryChanged = body.productMainCategory != null
@@ -79,9 +73,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     customerId: body.customerId || deal.customerId || null,
     customerName: body.customerName || deal.customerName || null,
     // ประเภทมาจาก body (โมดัลไทม์ไลน์) → ตกไปที่ประเภทดีล (dealType คอลัมน์จริง →
-    // fallback metadata เก่า) — SCENT/NPD/RE-ORDER ตรงกับ template ของ PM 1:1
-    // (ค่าคำนวณไว้ข้างบนแล้ว พร้อมด่านกัน OTHER)
-    type: projectType,
+    // fallback metadata เก่า) — ทั้งสี่ค่าตรงกับ template ของ PM 1:1
+    type: normalizeDealType(body.type ?? deal.dealType ?? deal.metadata?.projectType),
     // สายธุรกิจ (mig 0191) — มาจากโมดัลเท่านั้น **ไม่มี fallback โดยเจตนา**
     // ⚠️ ห้ามเดาจาก `deal.team === 'SV'` — prod มี `SDS_…EGCO_HAND GEL` อยู่ใต้ทีม SV
     // (ทีมขาย ≠ สายธุรกิจ · มติ #868) · ไม่เลือก = NULL แล้วไปโผล่ตัวนับ "ยังไม่ระบุสาย"

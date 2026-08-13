@@ -231,10 +231,8 @@ export default function DealFormFields({
     </div>
   );
 
-  // ประเภทดีล — 4 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2)
-  // · ไม่มี default เงียบ ๆ (มติ 2026-07-21)
-  // ⚠️ สามตัวแรกเป็นตัวเลือก template ไทม์ไลน์ด้วย · 'OTHER' (อื่นๆ) เป็นงานขายล้วน
-  //    ไม่มี template ไม่ก่อตั้งโครงการ (mig 0247) — ปุ่มฝั่งโครงการจะหายไปทั้งชุด
+  // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ — 4 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ
+  // ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2) · ไม่มี default เงียบ ๆ (มติ 2026-07-21)
   const dealTypeField = (
     <div className="deal-field" key="dealType">
       <span className="deal-field-label">ประเภทดีล <span className="required-mark">*</span></span>
