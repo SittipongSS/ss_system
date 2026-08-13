@@ -49,17 +49,41 @@ export const AR_MANUAL_RE = /^AR-\d{3}$/;
 export const FG_AUTO_RE = /^FG-\d{4}-\d{2}-\d{3}-\d{5}$/;
 export const FG_MANUAL_RE = /^FG-\d{3}-\d{2}-\d{3}-\d{4}$/;
 
+// ── รหัสที่ไม่มีเลขรัน (มติผู้ใช้ 2026-08-13) ──────────────────────────────
+// **หมวดหลัก 03 (ค่าออกแบบ) และ 04 (รายได้อื่นๆ) ออกรหัสโดยไม่มีท่อน DDDDD**
+// สองหมวดนี้ไม่ใช่ตัวสินค้าแต่เป็น "ค่าบริการ/รายได้" ที่ลูกค้าหนึ่งรายมีได้รายการเดียว
+// ต่อหมวดรอง (เช่น ค่าจดแจ้งเลขเครื่องสำอางค์ของลูกค้า 0109) — เลขรันจึงไม่มีอะไรให้แยก
+//
+// 🔴 **ผลที่ตามมาซึ่งตั้งใจ**: รหัสถูกกำหนดครบตั้งแต่เลือกลูกค้า+หมวด ⇒ สร้างซ้ำ
+// คู่เดิมไม่ได้ (unique index 0035 ตีกลับ) · ถ้าวันหนึ่งต้องการหลายรายการต่อคู่
+// ต้องกลับมาเอาหมวดนั้นออกจากลิสต์นี้ ไม่ใช่ไปปิด unique
+export const FG_NO_RUN_MAIN_CATEGORIES = Object.freeze(['03', '04']);
+export const FG_AUTO_NO_RUN_RE = /^FG-\d{4}-\d{2}-\d{3}$/;
+// รูปแบบเดิมที่มีอยู่จริงในทะเบียน 7 แถวก่อนวันนี้ — กรอกเองได้แล้วอย่างเป็นทางการ
+// (มติผู้ใช้ 2026-08-13) ต่างจากรูปแบบ auto ไร้เลขรันที่ท่อนลูกค้ากว้าง 4 หลัก
+export const FG_MANUAL_NO_RUN_RE = /^FG-\d{3}-\d{2}-\d{3}$/;
+
+/** หมวดนี้ออกรหัสพร้อมเลขรันไหม — รับ 'BB-CCC' หรือ 'BB' */
+export function fgCodeHasRunNo(categoryCode) {
+  const main = digitsOf(categoryCode).slice(0, 2);
+  return !FG_NO_RUN_MAIN_CATEGORIES.includes(main);
+}
+
 export const AR_AUTO_HINT = 'AR-AAAA (4 หลัก)';
 export const AR_MANUAL_HINT = 'AR-AAA (3 หลัก)';
 export const FG_AUTO_HINT = 'FG-AAAA-BB-CCC-DDDDD';
-export const FG_MANUAL_HINT = 'FG-AAA-BB-CCC-DDDD';
+export const FG_AUTO_NO_RUN_HINT = 'FG-AAAA-BB-CCC';
+export const FG_MANUAL_HINT = 'FG-AAA-BB-CCC-DDDD หรือ FG-AAA-BB-CCC';
 
 const digitsOf = (value) => String(value ?? '').trim();
 
 // รหัสนี้ออกโดยระบบหรือเปล่า — ใช้ตัดสินว่า "โมดัลแก้ไข" จะล็อกช่องรหัสไหม
 // (เลขที่ระบบจองไปแล้ว แก้ทิ้งไม่ได้ ไม่งั้นเลขนั้นหายจากระบบโดยไม่มีใครรู้)
 export const isAutoArCode = (code) => AR_AUTO_RE.test(digitsOf(code));
-export const isAutoFgCode = (code) => FG_AUTO_RE.test(digitsOf(code));
+// ท่อนลูกค้า 4 หลัก = ระบบออกให้ ไม่ว่าจะมีเลขรันท้ายหรือไม่ (หมวด 03/04 ไม่มี)
+// รหัสกรอกเองท่อนลูกค้า 3 หลักเสมอ จึงยังแยกจากกันได้ด้วยจำนวนหลักเหมือนเดิม
+export const isAutoFgCode = (code) =>
+  FG_AUTO_RE.test(digitsOf(code)) || FG_AUTO_NO_RUN_RE.test(digitsOf(code));
 
 export const formatArCode = (number) => `${AR_PREFIX}${String(number).padStart(AR_WIDTH, '0')}`;
 
@@ -87,8 +111,12 @@ export function fgCodePrefix({ arCode, categoryCode } = {}) {
 // ทีละท่อนตามที่กรอก ไม่ใช่รอครบแล้วค่อยโผล่ทั้งก้อน)
 export function composeFgCode({ arCode, categoryCode, runNo } = {}) {
   const prefix = fgCodePrefix({ arCode, categoryCode });
+  if (!prefix) return null;
+  // หมวด 03/04 จบที่ CCC — ตัดขีดท้ายของ prefix ทิ้ง และ **ไม่สนใจ runNo ที่ส่งมา**
+  // (ผู้เรียกอาจโหลดเลขพรีวิวไว้อยู่แล้วตอนสลับหมวด ถ้าเผลอใช้จะได้รหัสผิดรูป)
+  if (!fgCodeHasRunNo(categoryCode)) return prefix.slice(0, -1);
   const run = Number(runNo);
-  if (!prefix || !Number.isFinite(run) || run <= 0) return null;
+  if (!Number.isFinite(run) || run <= 0) return null;
   return `${prefix}${String(run).padStart(FG_WIDTH, '0')}`;
 }
 
@@ -98,19 +126,24 @@ export function fgCodeParts({ arCode, categoryCode, runNo } = {}) {
   const customer = customerCodeSegment(arCode);
   const category = digitsOf(categoryCode).match(/^(\d{2})-(\d{3})$/);
   const run = Number(runNo);
-  return [
+  const parts = [
     { key: 'prefix', label: 'คงที่', value: 'FG', tone: 'fixed' },
     { key: 'customer', label: 'ลูกค้า', value: customer, tone: 'from', placeholder: 'AAAA' },
     { key: 'main', label: 'หมวดหลัก', value: category?.[1] ?? null, tone: 'from', placeholder: 'BB' },
     { key: 'sub', label: 'หมวดรอง', value: category?.[2] ?? null, tone: 'from', placeholder: 'CCC' },
-    {
-      key: 'run',
-      label: 'เลขถัดไป',
-      value: Number.isFinite(run) && run > 0 ? String(run).padStart(5, '0') : null,
-      tone: 'new',
-      placeholder: 'DDDDD',
-    },
   ];
+  // หมวด 03/04 ไม่มีท่อนเลขรัน — ต้อง **หายไปจากแถบ** ไม่ใช่โชว์เป็นช่องว่าง DDDDD
+  // ไม่งั้นคนกรอกจะรอให้ท่อนสุดท้ายเติมเองแล้วคิดว่าฟอร์มค้าง
+  // (ยังไม่เลือกหมวด = ยังไม่รู้ว่าหมวดไหน จึงโชว์ท่อนเลขไว้ตามค่าตั้งต้น)
+  if (category && !fgCodeHasRunNo(categoryCode)) return parts;
+  parts.push({
+    key: 'run',
+    label: 'เลขถัดไป',
+    value: Number.isFinite(run) && run > 0 ? String(run).padStart(5, '0') : null,
+    tone: 'new',
+    placeholder: 'DDDDD',
+  });
+  return parts;
 }
 
 export function arCodeParts(number) {
@@ -157,10 +190,17 @@ export function fgCodeError(code, { mode = CODE_MODE_MANUAL, categoryCode = null
   const value = digitsOf(code);
   if (!value) return 'กรุณากรอกรหัสสินค้า (FG Code)';
   if (codeModeOf(mode) === CODE_MODE_AUTO) {
-    if (!FG_AUTO_RE.test(value)) return `รหัสสินค้าอัตโนมัติต้องเป็น ${FG_AUTO_HINT}`;
-  } else if (!FG_MANUAL_RE.test(value)) {
-    return FG_AUTO_RE.test(value)
-      ? `${value} เป็นรหัสรูปแบบที่ระบบออกให้ (${FG_AUTO_HINT}) — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`
+    // รูปแบบที่ถูกต้องขึ้นกับหมวด — 03/04 ไม่มีเลขรัน (มติผู้ใช้ 2026-08-13)
+    // ตรวจแยกกันคนละเส้น ไม่ใช่ยอมรับทั้งสองแบบเสมอ ไม่งั้นหมวดปกติที่หลุดเลขรัน
+    // ไปจะผ่านด่านเงียบ ๆ แล้วชนกันเองในภายหลัง
+    const withRun = fgCodeHasRunNo(categoryCode);
+    const ok = withRun ? FG_AUTO_RE.test(value) : FG_AUTO_NO_RUN_RE.test(value);
+    if (!ok) {
+      return `รหัสสินค้าอัตโนมัติของหมวดนี้ต้องเป็น ${withRun ? FG_AUTO_HINT : FG_AUTO_NO_RUN_HINT}`;
+    }
+  } else if (!FG_MANUAL_RE.test(value) && !FG_MANUAL_NO_RUN_RE.test(value)) {
+    return isAutoFgCode(value)
+      ? `${value} เป็นรหัสรูปแบบที่ระบบออกให้ — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`
       : `รูปแบบรหัสสินค้าไม่ถูกต้อง — ต้องเป็น ${FG_MANUAL_HINT}`;
   }
   // หมวดที่เลือกไว้ต้องตรงกับ BB-CCC ในรหัส — สองค่านี้ถูกเก็บคนละคอลัมน์

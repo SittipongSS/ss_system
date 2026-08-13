@@ -5,8 +5,8 @@ import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permis
 import { registrationStatusOf } from '@/lib/excise/recommendation';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
 import {
-  CODE_MODE_AUTO, codeModeOf, customerCodeSegment, fgCodeError, fgCodePrefix,
-  insertProductWithCode,
+  CODE_MODE_AUTO, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError, fgCodeHasRunNo,
+  fgCodePrefix, insertProductWithCode,
 } from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
@@ -113,6 +113,27 @@ export async function POST(request) {
         { status: 400 },
       );
     }
+    // ── หมวด 03/04: รหัสจบที่ CCC ไม่มีเลขรัน (มติผู้ใช้ 2026-08-13) ────────
+    // ไม่มีเลขให้จอง ⇒ **ไม่เรียกฟังก์ชันออกรหัส** ประกอบรหัสตรงนี้แล้ว insert ปกติ
+    // เหมือนโหมดกรอกเอง · เรียกไปก็ได้รหัสที่มีเลขรันติดท้ายซึ่งผิดรูปแบบที่ตกลงไว้
+    if (!fgCodeHasRunNo(categoryCode)) {
+      fgPrefix = null;
+      fgCode = composeFgCode({ arCode: customer.arCode, categoryCode });
+      // รหัสถูกกำหนดครบตั้งแต่ลูกค้า+หมวด ⇒ คู่เดิมสร้างซ้ำไม่ได้ · ข้อความต้องบอก
+      // ว่าทำไม ไม่ใช่แค่ "รหัสซ้ำ" เพราะคนกรอกไม่ได้พิมพ์รหัสเองจึงไม่รู้ว่าไปชนอะไร
+      const { data: dup, error: dupError } = await supabase
+        .from('products')
+        .select('id')
+        .eq('fgCode', fgCode)
+        .maybeSingle();
+      if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
+      if (dup) {
+        return Response.json(
+          { error: `${fgCode} มีในระบบแล้ว — หมวดนี้ออกรหัสโดยไม่มีเลขรัน ลูกค้าหนึ่งรายจึงมีได้หนึ่งรายการต่อหมวดรอง ถ้าต้องการอีกรายการให้เลือกหมวดรองอื่น` },
+          { status: 409 },
+        );
+      }
+    }
   } else {
     const codeError = fgCodeError(fgCode, { mode: codeMode, categoryCode });
     if (codeError) return Response.json({ error: codeError }, { status: 400 });
@@ -177,9 +198,10 @@ export async function POST(request) {
     // Collision-proof id (was 'PRD-'+last-6-ms, repeated every ~16.7 min with
     // no DB unique). Mirrors customers (migration 0031/0035).
     id: 'PRD-' + randomUUID(),
-    // โหมด auto **ไม่ใส่คีย์ fgCode เลย** — ฟังก์ชัน SQL เติมให้หลังจองเลขในทราน
-    // แซกชันเดียวกับ insert (mig 0237) เหมือนฝั่งลูกค้า
-    ...(codeMode === CODE_MODE_AUTO ? {} : { fgCode }),
+    // โหมด auto ที่มีเลขรัน **ไม่ใส่คีย์ fgCode เลย** — ฟังก์ชัน SQL เติมให้หลังจองเลข
+    // ในทรานแซกชันเดียวกับ insert (mig 0237) เหมือนฝั่งลูกค้า
+    // ส่วนหมวด 03/04 ไม่มีเลขให้จอง รหัสประกอบเสร็จตั้งแต่ด้านบน จึงส่งมาตรง ๆ
+    ...(fgPrefix ? {} : { fgCode }),
     customerId: customer.id,
     customerName: customer.name,
     productDescription: body.productDescription ?? null,
@@ -230,7 +252,9 @@ export async function POST(request) {
   // ⇒ insert ล้มด้วยเหตุใดก็ตาม เลขรันที่จองถูก rollback คืน ไม่มีรหัสหายจากระบบ
   // ⚠️ ห้ามแยกกลับไปเป็น "จองเลขก่อน แล้วค่อย insert" — สองคำสั่ง = เลขข้ามทุกครั้งที่
   // insert ไม่ผ่าน · โหมด manual ไม่มีเลขให้จอง จึง insert ตรงตามเดิม
-  const { data, error } = codeMode === CODE_MODE_AUTO
+  // `fgPrefix` มีค่าเฉพาะโหมด auto ที่ต้องจองเลขรัน — หมวด 03/04 ถูกตั้งเป็น null
+  // ไว้ด้านบนพร้อมประกอบรหัสเสร็จแล้ว จึงเดินทาง insert ปกติเหมือนโหมดกรอกเอง
+  const { data, error } = fgPrefix
     ? await insertProductWithCode(supabase, fgPrefix, newProduct)
     : await supabase.from('products').insert(newProduct).select().single();
   if (error) {
