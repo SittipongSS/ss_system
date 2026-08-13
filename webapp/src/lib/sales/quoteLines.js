@@ -68,6 +68,23 @@ export async function seedLinesFromProject(supabase, deal) {
 // retailPriceIncVat ไม่ใช่ราคาขาย: มีไว้คำนวณภาษีสรรพสามิต (โมดูล tax) เท่านั้น.
 export const QUOTE_PRICE_FIELD = 'costPrice';
 
+// สถานะราคาผลิตของสินค้า **เท่าที่ฝั่ง client รู้** — ใช้ตัดสินว่าจะเตือน
+// "ยังไม่ตั้งราคาในฐานข้อมูล" บนบรรทัดใบเสนอราคาหรือไม่.
+//
+// ลิสต์สินค้าที่หน้าจอโหลด (`GET /api/products`) ไม่ใช่ตาราง products ทั้งตาราง:
+// - ผ่านด่านอนุมัติ — เห็นเฉพาะ approved + isActive
+// - บางบทบาทถูกตัดคอลัมน์ costPrice ทิ้ง (redactProductMargin)
+// **แก้ข้อมูลสินค้าที่อนุมัติแล้วแม้แต่ครั้งเดียว สถานะจะรีเซ็ตเป็น pending**
+// (resetApprovalOnEdit) สินค้าจึงหลุดจากลิสต์ทันทีทั้งที่ราคายังอยู่ครบ — เคยทำให้
+// ใบเสนอราคาที่บันทึกแล้วขึ้นเตือน "ยังไม่ตั้งราคา" ทั้งที่ราคาถูกต้อง.
+// จึงแยก 'unknown' (ไม่มีข้อมูลให้ตัดสิน — เงียบไว้) ออกจาก 'unpriced' (รู้แน่ว่า 0/ว่าง).
+// ราคาในใบไม่ได้พึ่งค่านี้: ตอนบันทึก enforceMasterPrices อ่านตรงจากตาราง products
+// (ไม่ผ่านด่านอนุมัติ) ราคาจึงไม่หายไม่ว่าสถานะอนุมัติจะเป็นอะไร.
+export function masterPriceState(product) {
+  if (!product || product[QUOTE_PRICE_FIELD] === undefined) return 'unknown';
+  return toMoney(product[QUOTE_PRICE_FIELD]) > 0 ? 'priced' : 'unpriced';
+}
+
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
 // productId ถูกทับทั้ง "ราคา" (ราคาผลิต — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
 // (ชื่อสินค้า · ปริมาตร) + snapshot แบรนด์ + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —

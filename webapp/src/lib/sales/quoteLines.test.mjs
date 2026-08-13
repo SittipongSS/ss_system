@@ -4,6 +4,7 @@ import {
   enforceMasterPrices,
   fgLineBrand,
   fgLineDescription,
+  masterPriceState,
   normalizeManualLines,
   refreshFgLinesForDisplay,
 } from './quoteLines.js';
@@ -168,4 +169,24 @@ test('ส่วนลดแบบจำนวนเงินไม่โดน�
   }]);
   assert.equal(line.discountValue, 1500);
   assert.equal(line.lineTotal, 3500);
+});
+
+// ── คำเตือน "ยังไม่ตั้งราคาในฐานข้อมูล" บนบรรทัดใบเสนอราคา ───────────────
+// เคสจริง 2026-08-13: สร้างใบ → ไปแก้ข้อมูลสินค้า (สถานะอนุมัติรีเซ็ตเป็น pending)
+// → กลับมาแก้ใบ แล้วขึ้นเตือนว่ายังไม่ได้ตั้งราคา ทั้งที่ราคาผลิตอยู่ครบ
+test('สินค้าที่หลุดจากลิสต์ (รออนุมัติ/พักใช้) = unknown ไม่ใช่ยังไม่ตั้งราคา', () => {
+  assert.equal(masterPriceState(undefined), 'unknown');
+  assert.equal(masterPriceState(null), 'unknown');
+});
+
+test('บทบาทที่ถูกตัดคอลัมน์ costPrice ทิ้ง (redactProductMargin) = unknown', () => {
+  assert.equal(masterPriceState({ id: 'P1', fgCode: 'FG-001' }), 'unknown');
+});
+
+test('รู้ราคาแน่ค่อยตัดสิน: มีราคา = priced / 0 หรือว่าง = unpriced', () => {
+  assert.equal(masterPriceState({ id: 'P1', costPrice: 3000 }), 'priced');
+  assert.equal(masterPriceState({ id: 'P1', costPrice: '3000' }), 'priced');
+  assert.equal(masterPriceState({ id: 'P1', costPrice: 0 }), 'unpriced');
+  assert.equal(masterPriceState({ id: 'P1', costPrice: null }), 'unpriced');
+  assert.equal(masterPriceState({ id: 'P1', costPrice: '' }), 'unpriced');
 });
