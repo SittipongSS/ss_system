@@ -40,7 +40,7 @@ export function QuotationReadOnlyLineItems({
 }) {
   return (
     <>
-      <TableScroll family="editable">
+      <TableScroll family="editable" minWidth={760} className={styles.linesContainer}>
         <table className={`premium-table ${styles.readOnlyTable}`}>
           <thead>
             <tr>
@@ -171,7 +171,13 @@ export default function QuotationLineItems({
       <div className="premium-glass-table table-responsive">
         {/* cells="stacked": เซลล์รายการซ้อนหลายบรรทัด (SKU+ชื่อ+หมายเหตุ / ช่อง+หน่วย)
             — ค่าตั้งต้น middle ทำคอนโทรลแต่ละคอลัมน์ลอยคนละระดับ (กฎ 5) */}
-        <TableScroll surface="embedded" family="editable" cells="stacked"><table className={`w-full text-sm ${styles.linesTable}`}>
+        {/* minWidth=900 คือพื้นคอลัมน์ของตารางนี้ (เหตุผลอยู่ที่ .linesTable) — ต้องส่ง
+            ผ่าน prop ไม่ใช่ min-width ในคลาส เพราะ `.scroll table` ของ Table.module.css
+            อ่าน --table-min-width ด้วย specificity ที่สูงกว่าคลาสของหน้า
+            container=inline-size ให้กฎ "แคบกว่า 900 = การ์ด" วัดจากความกว้างที่
+            ตารางมีจริง ไม่ใช่ความกว้างจอ (คอลัมน์เอกสารแคบกว่าจอเสมอ และแคบไม่เท่ากัน
+            ตามว่ามีแถบข้างหรือไม่) */}
+        <TableScroll surface="embedded" family="editable" cells="stacked" minWidth={900} className={styles.linesContainer}><table className={`w-full text-sm ${styles.linesTable}`}>
           <thead>
             <tr>
               <th className={styles.rowNumber} style={{ width: 36 }}>#</th>
