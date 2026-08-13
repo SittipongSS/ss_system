@@ -1,7 +1,7 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
+import { TableEmpty, TableScroll } from "@/components/ui/Table";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
@@ -15,7 +15,9 @@ import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
-import { FINANCE_STATUS_LABELS } from "@/lib/sales/salesOrderFinanceApproval";
+import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
+import StatusBadge from "@/components/ui/StatusBadge";
+import styles from "./page.module.css";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
@@ -55,6 +57,9 @@ function paymentCell(payment) {
 
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
+
+// สถานะหมุด → คลาสใน page.module.css (ตรรกะของหมุดอยู่ใน salesOrderListTrack)
+const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", todo: "" };
 
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
@@ -157,60 +162,89 @@ export default function SalesOrdersPage() {
             </Select>
             <div className="spacer" />
           </div>
-          <div className="premium-glass-table table-responsive" aria-busy={loading}>
-            <TableScroll surface="embedded"><table className="w-full text-sm">
-              <thead><tr><th>เลขที่ SO</th><th>ลูกค้า / ดีล</th><th>อ้างอิง QT</th><th>เอกสารอ้างอิง</th><th>วันที่ SO</th><th>กำหนดชำระ</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ</th><th>สถานะ</th></tr></thead>
+          {/* ── ตารางรายการ: รื้อใหม่แบบ ข (มติผู้ใช้ 2026-08-13) ──────────────
+              9 → 5 คอลัมน์ · **ตัดคอลัมน์ที่ไม่มีข้อมูลจริงทิ้ง**:
+                · "เอกสารอ้างอิง" เป็น `-` แทบทุกแถว ⇒ ย้ายไปเป็นบรรทัดรองใต้เลข SO
+                  โผล่เฉพาะใบที่มีจริง (ของที่มีน้อยแต่กินคอลัมน์เต็มคือของที่ควรเป็นบรรทัดรอง)
+                · "วันที่ SO" ตรงกับ "กำหนดชำระ" แทบทุกใบ ⇒ เหลือกำหนดชำระซึ่งเป็นวันที่คนใช้จริง
+                · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
+              ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
+              (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
+          <TableScroll surface="embedded" cells="stacked" minWidth={920} aria-busy={loading}>
+            <table className="w-full text-sm">
+              <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ</th><th className="num">กำหนดชำระ</th></tr></thead>
               <tbody>
-                {pageRows.map((row) => (
+                {pageRows.map((row) => {
+                  const track = salesOrderListTrack(row);
+                  const summary = salesOrderTrackSummary(row);
+                  return (
                   <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
-                    <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
+                    <td>
+                      <Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+                      {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
+                          เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
+                          จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
+                      <span className="cell-sub" title={row.referenceDoc || undefined}>
+                        <span className="cell-ellipsis">
+                          {row.quotation?.quoteNumber || "-"}
+                          {row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
+                        </span>
+                      </span>
+                      {track.cancelled ? (
+                        <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
+                      ) : (
+                        <>
+                          <div className={styles.track} aria-label="ความคืบหน้าของใบ">
+                            {track.steps.map((s, i) => (
+                              <Fragment key={s.key}>
+                                {i > 0 ? <span className={`${styles.bar} ${track.steps[i - 1].state === "done" ? styles.barDone : ""}`.trim()} aria-hidden="true" /> : null}
+                                <span
+                                  className={`${styles.step} ${STEP_CLASS[s.state] ? styles[STEP_CLASS[s.state]] : ""}`.trim()}
+                                  title={s.note || undefined}
+                                >
+                                  <span className={styles.dot} aria-hidden="true" />{s.label}
+                                </span>
+                              </Fragment>
+                            ))}
+                          </div>
+                          {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
+                          <span className={styles.summary}>
+                            <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>
+                          </span>
+                        </>
+                      )}
+                    </td>
                     <td>
                       {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
                       {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
                       {row.customerName || "-"}
-                      <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.deal?.title || "-"}</span>
+                      <span className="cell-sub">{row.deal?.title || "-"}</span>
                     </td>
-                    <td><Link prefetch={false} href={`/sa/quotations/${row.quotationId}`} className="linklike mono">{row.quotation?.quoteNumber || "-"}</Link></td>
-                    {/* เอกสารฝั่งลูกค้า (PO/สัญญา) — วางติดกับอ้างอิง QT เพราะเป็นเรื่อง
-                        เดียวกันคือ "ใบนี้ชี้ไปเอกสารไหน" ต่างกันแค่ของเราหรือของลูกค้า
-                        ⚠️ ยาวได้ 200 ตัวอักษร ⇒ ตัดด้วย ellipsis ไม่ให้ดันคอลัมน์อื่นหลุดขอบ
-                        (บทเรียนจาก IS-26080004) และเก็บข้อความเต็มไว้ใน title */}
-                    <td className="mono" title={row.referenceDoc || undefined}>
-                      <span className="cell-ellipsis">{row.referenceDoc || "-"}</span>
-                    </td>
-                    <td>{fmtDate(row.orderDate)}</td>
-                    <td>{fmtDate(row.paymentDueDate)}</td>
-                    {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า" —
-                        โชว์ยอดจริงแต่หรี่สีลง + บอกเหตุ ว่ายังไม่ถูกนับเป็น Actual */}
-                    <td className="num mono" style={row.status === "approved" ? undefined : { color: "var(--text-3)" }} title={row.status === "approved" ? undefined : "ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ"}>
+                    {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
+                        ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง */}
+                    <td className={`num mono ${row.status === "approved" ? "" : "cell-num-idle"}`.trim()}>
                       {fmtMoney(row.actualAmount)}
+                      {row.status === "approved" ? null : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
                     </td>
-                    {/* ⭐ งวดชำระ (mig 0245) — "เก็บแล้ว x/y" อ่านจบในสายตาเดียว
-                        ⚠️ นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** — reported ไม่นับ (กฎเดียวกับ
-                        ทั้งระบบ) ⇒ เลขนี้คือเงินที่รับมาจริง ไม่ใช่ที่ฝ่ายขายแจ้ง
-                        ⚠️ ใบที่ยังไม่เริ่มติดตามโชว์ y จาก **แผนของใบเสนอราคา** และหรี่สี
-                        ลง — ต่างจาก 0/2 ที่ติดตามแล้วแต่ยังเก็บไม่ได้เลย */}
+                    {/* ⭐ งวดชำระ — นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** (กฎเดียวกับทั้งระบบ)
+                        บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
+                    {/* ⚠️ `paymentCell` วาดบรรทัดสถานะให้ในตัวแล้ว — เติมซ้ำที่นี่จะได้
+                        คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
                     <td className="num mono">{paymentCell(row.payment)}</td>
-                    {/* ⭐ **สถานะเอกสาร + ขั้นบัญชี** (มติผู้ใช้ 2026-08-13) — เดิมบอกแค่สาย
-                        อนุมัติเอกสาร ⇒ ใบที่ "อนุมัติแล้ว" ทุกใบหน้าตาเหมือนกันหมด ทั้งที่
-                        บางใบบัญชีตรวจผ่านแล้วและบางใบยังไม่เข้าคิวด้วยซ้ำ
-                        ⚠️ เป็น **บรรทัดรอง ไม่ใช่ป้ายที่สอง** — สองป้ายในช่องเดียวจะอ่านเหมือน
-                        สองสถานะที่ขัดกัน · ขั้นบัญชีเป็นคนละแกนที่เดินต่อจากเอกสาร ไม่ใช่แทนที่
-                        ⚠️ ใบที่ `financeStatus` ว่าง = ออกก่อนมีขั้นนี้ ไม่ใช่ "รอตรวจ" ⇒ ไม่โชว์อะไร */}
-                    <td>
-                      {statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}
-                      {row.financeStatus ? (
-                        <span className={`cell-sub ${row.financeStatus === "rejected" ? "cell-num-bad" : ""}`.trim()}>
-                          {FINANCE_STATUS_LABELS[row.financeStatus] || row.financeStatus}
-                        </span>
-                      ) : null}
-                    </td>
+                    <td className={`num ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>{fmtDate(row.paymentDueDate)}</td>
                   </DetailRow>
-                ))}
-                {!filtered.length && !loading && <tr><td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}
+                  );
+                })}
+                {!filtered.length && !loading && (
+                  <TableEmpty
+                    colSpan={5}
+                    title="ยังไม่มีใบสั่งขาย"
+                    description="เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"
+                  />
+                )}
               </tbody>
-            </table></TableScroll>
-          </div>
+            </table>
+          </TableScroll>
           {filtered.length > 0 && (
             <Pager
               page={page}

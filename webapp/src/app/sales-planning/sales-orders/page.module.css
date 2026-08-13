@@ -1,0 +1,67 @@
+/* ── รางสามขั้นในตารางรายการใบสั่งขาย (มติผู้ใช้ 2026-08-13 · แบบ ข) ────────
+   สีและระยะมาจากตัวแปรกลางทั้งหมด — ห้ามใส่ค่าดิบ (กฎเดียวกับทั้งระบบ) */
+
+.track {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-1-5);
+}
+
+/* หมุดหนึ่งขั้น — จุด + คำ อยู่บรรทัดเดียวกันเสมอ ไม่ให้คำตกบรรทัด
+   เพราะรางที่หักบรรทัดอ่านไม่ออกว่าอะไรมาก่อนหลัง */
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+}
+
+/* เส้นเชื่อม — ยืดเต็มที่ว่างที่เหลือ ⇒ รางกว้างเท่าคอลัมน์เสมอ ไม่ลอยกลาง */
+.bar {
+  flex: 1;
+  height: 1px;
+  min-width: 12px;
+  margin: 0 var(--space-2);
+  background: var(--border-strong);
+}
+
+/* ⚠️ เส้นที่ "ผ่านแล้ว" ย้อมเขียวด้วย — ไม่ใช่ย้อมแค่หมุด · เส้นคือสิ่งที่ตากวาด
+   ตามไป ถ้าเส้นสีเดียวกันหมดจะแยกไม่ออกว่าเดินมาถึงไหน */
+.barDone { background: var(--green); }
+
+.stepDone { color: var(--green); }
+.stepDone .dot { background: var(--green); }
+
+/* ขั้นที่กำลังรอคนลงมือ — วงแหวนรอบจุดทำให้เห็นก่อนเพื่อนตอนกวาดตาทั้งคอลัมน์ */
+.stepNow { color: var(--amber); font-weight: var(--fw-semibold); }
+.stepNow .dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+
+.stepBad { color: var(--red); font-weight: var(--fw-semibold); }
+.stepBad .dot { background: var(--red); }
+
+/* ── จอแคบ: ยุบรางเป็นป้ายเดียว ──────────────────────────────────────────
+   รางสามขั้นต้องการราว 260px · แคบกว่านั้นคำจะเบียดจนอ่านไม่ออก
+   ⚠️ **ไม่ซ่อนข้อมูลทิ้ง** — สลับไปใช้ป้ายสรุปที่บอกขั้นที่ต้องลงมือแทน
+   (`salesOrderTrackSummary`) ⇒ ยังตอบคำถามเดิมได้ แค่ละเอียดน้อยลง
+   ⚠️ ใช้ **1200px ซึ่งเป็นค่าในชุดแนะนำ** ไม่ใช่ค่าที่พอดีเป๊ะกับรางนี้ —
+   ระบบล็อกจำนวนจุดตัดจอไว้ (`breakpointScale.test.mjs`) เพิ่มค่าใหม่ไม่ได้
+   และค่าที่ต่างกันไม่กี่สิบพิกเซลคือการพิมพ์ต่างกัน ไม่ใช่การตัดสินใจคนละครั้ง */
+.summary { display: none; margin-top: var(--space-1-5); }
+
+@media (max-width: 1200px) {
+  .track { display: none; }
+  .summary { display: block; }
+}
