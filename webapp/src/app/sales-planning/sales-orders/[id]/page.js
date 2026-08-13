@@ -86,7 +86,7 @@ const ACTION_MESSAGE = {
   revise: "ออก Rev. ใหม่แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
-  // ขั้นบัญชี (mig 0249) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
+  // ขั้นบัญชี (mig 0250) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
   finance_approve: "บัญชีอนุมัติใบนี้แล้ว",
   finance_reject: "ส่งกลับให้ AE Supervisor ดูใหม่แล้ว",
   finance_resubmit: "ส่งให้บัญชีตรวจใหม่แล้ว",
@@ -580,9 +580,9 @@ export default function SalesOrderDetailPage() {
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
   ];
-  /* ⭐ ขั้นบัญชีตรวจใบ (mig 0249) — ต่อท้ายรางก้าว **หลัง "นับ Actual"** โดยตั้งใจ
+  /* ⭐ ขั้นบัญชีตรวจใบ (mig 0250) — ต่อท้ายรางก้าว **หลัง "นับ Actual"** โดยตั้งใจ
      เพราะ Actual เข้าไปแล้วตั้งแต่ AE Supervisor กด บัญชีไม่ได้กั้นยอด (มติ 2026-08-13)
-     ⚠️ ใบเก่าที่อนุมัติก่อนมี mig 0249 ไม่มีธง ⇒ ขั้นนี้ไม่โผล่เลย ไม่ใช่ขึ้นว่า "รอ" */
+     ⚠️ ใบเก่าที่อนุมัติก่อนมี mig 0250 ไม่มีธง ⇒ ขั้นนี้ไม่โผล่เลย ไม่ใช่ขึ้นว่า "รอ" */
   const financeStatus = financeStatusOf(order);
   const financeStep = financeWorkflowStep(order);
   if (financeStep) workflow.push({ label: financeStep.label, hint: financeStep.hint });
@@ -634,7 +634,7 @@ export default function SalesOrderDetailPage() {
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
     { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
-    /* ── ขั้นบัญชีตรวจใบ (mig 0249) ────────────────────────────────────────
+    /* ── ขั้นบัญชีตรวจใบ (mig 0250) ────────────────────────────────────────
        ⚠️ **ไม่ใช่ปุ่มหลัก** — ปุ่มหลักของใบยังเป็นสายอนุมัติเอกสาร บัญชีเป็นคนละแกน
        ⚠️ ปุ่มโผล่จาก `financeActionError` ตัวเดียวกับที่ API ใช้ปฏิเสธ ⇒ ขัดกันไม่ได้ */
     {

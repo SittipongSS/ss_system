@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ขั้นบัญชีตรวจใบสั่งขาย — หน้าตาแต่ละสถานะ (mig 0249)</title>
+<title>ขั้นบัญชีตรวจใบสั่งขาย — หน้าตาแต่ละสถานะ (mig 0250)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -125,7 +125,7 @@ pre{margin:0;padding:var(--space-4);border-radius:var(--radius);background:var(-
 <div class="wrap">
 
 <header class="head">
-  <div class="row"><span class="tag a">SALES ORDER · FINANCE REVIEW</span><span class="tag g">mig 0249 · สร้างแล้ว รอ deploy</span></div>
+  <div class="row"><span class="tag a">SALES ORDER · FINANCE REVIEW</span><span class="tag g">mig 0250 · สร้างแล้ว รอ deploy</span></div>
   <h1>ขั้นบัญชีตรวจใบสั่งขาย — หน้าตาแต่ละสถานะ</h1>
   <p>
     บัญชีตรวจใบ <b>หลัง</b> AE Supervisor อนุมัติ · <b>เป็นคนละแกนกับสถานะเอกสาร</b> —
@@ -192,7 +192,7 @@ pre{margin:0;padding:var(--space-4);border-radius:var(--radius);background:var(-
     <div class="callout no"><b>ฝ่ายขายตรวจแทนบัญชีไม่ได้</b>
       <p>รวมถึง <code>ae_supervisor</code> ที่เพิ่งอนุมัติใบนี้เอง — ถ้าตรวจซ้ำได้ก็ไม่มีด่านที่สอง</p></div>
     <div class="callout"><b>ใบเก่าไม่โผล่ขั้นนี้เลย</b>
-      <p>ใบที่อนุมัติก่อน mig 0249 ได้ <code>NULL</code> = &ldquo;ออกก่อนมีขั้นนี้&rdquo; ไม่ใช่ &ldquo;รอบัญชี&rdquo; · ตั้ง pending ย้อนหลังเมื่อไร บัญชีเปิดมาเจอคิวค้างทั้งกอง</p></div>
+      <p>ใบที่อนุมัติก่อน mig 0250 ได้ <code>NULL</code> = &ldquo;ออกก่อนมีขั้นนี้&rdquo; ไม่ใช่ &ldquo;รอบัญชี&rdquo; · ตั้ง pending ย้อนหลังเมื่อไร บัญชีเปิดมาเจอคิวค้างทั้งกอง</p></div>
     <div class="callout"><b>ไม่แทรกเป็นสถานะกลางทาง</b>
       <p><code>status='approved'</code> เป็นตัวปลดล็อก 12 จุด (Actual · กลิ่น · ผลิต · ภาษี · handoff · ลายน้ำ · งวดชำระ) แทรกกลางเมื่อไรหยุดรอบัญชีหมด</p></div>
   </div>
@@ -209,7 +209,7 @@ const STEPS_BASE = [
 ];
 
 const CASES = [
-  { key:"null", title:"ใบเก่า · ออกก่อนมี mig 0249", note:"ขั้นบัญชีไม่โผล่เลย ไม่ใช่ขึ้นว่ารอ",
+  { key:"null", title:"ใบเก่า · ออกก่อนมี mig 0250", note:"ขั้นบัญชีไม่โผล่เลย ไม่ใช่ขึ้นว่ารอ",
     badges:[["ok","● อนุมัติแล้ว"],["ok","มีหลักฐานลายเซ็น"]],
     fin:null, nowIndex:-1,
     acts:[["","🔓 ยกเลิกอนุมัติ"],["ghost","🖨 ออกเอกสาร"],["sep"],["dang","✕ ยกเลิก SO"]] },
