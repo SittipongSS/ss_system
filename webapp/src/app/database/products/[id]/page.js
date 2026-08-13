@@ -23,6 +23,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
+import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
 import { statusMeta } from "@/lib/excise/workflow";
 import { apiCache } from "@/lib/apiCache";
@@ -169,9 +170,15 @@ export default function ProductDetails() {
     }
   };
 
+  // ดูเหตุผลที่ต้องบอกชะตากรรมของเลขตั้งแต่ตอนยืนยัน ที่หน้ารายละเอียดลูกค้า (mig 0248)
   const handleDelete = () => setConfirmBox({
     title: "ลบรหัสสินค้านี้?",
-    message: "ข้อมูลสินค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้",
+    message: "ข้อมูลสินค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้"
+      + (isAutoFgCode(product?.fgCode)
+        ? (isReusableCode(product)
+          ? ` · รหัส ${product.fgCode} ยังไม่เคยผ่านอนุมัติ เลขรันนี้จะกลับไปรอออกให้ใบถัดไป`
+          : ` · รหัส ${product.fgCode} เคยผ่านอนุมัติแล้ว เลขรันนี้จะไม่ถูกออกให้ใบอื่นอีก`)
+        : ""),
     confirmLabel: "ลบสินค้า",
     danger: true,
     onConfirm: async () => {
