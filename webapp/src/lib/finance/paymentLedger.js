@@ -165,3 +165,83 @@ export function ledgerReport(rows = [], { title = 'ทะเบียนกา�
     },
   };
 }
+
+/**
+ * จับงวดของ **ใบเดียวกัน** มารวมเป็นก้อนเดียว (มติผู้ใช้ 2026-08-13)
+ *
+ * > *"อยากกรุป SO เลขเดียวกัน แล้วเปิดขยาย"*
+ *
+ * ⭐ ทะเบียนนี้เรียงตาม **ความด่วนของงวด** ⇒ งวดของใบเดียวกันกระจายอยู่คนละที่ของ
+ * ตารางได้ (งวด 1 เลยกำหนดอยู่บนสุด งวด 2 รอชำระอยู่ล่างสุด) · บัญชีที่กำลังโทรตาม
+ * ลูกค้ารายหนึ่งต้องกวาดตาทั้งหน้าเพื่อประกอบภาพของใบเดียว
+ *
+ * ⚠️ **ความด่วนของก้อน = ความด่วนของงวดที่ด่วนที่สุดในก้อน** ไม่ใช่ค่าเฉลี่ย —
+ * ใบที่มีงวดเลยกำหนดหนึ่งงวดต้องอยู่บนสุด ไม่ว่างวดอื่นจะเรียบร้อยแค่ไหน
+ * ⚠️ จัดกลุ่มด้วย `orderId` ไม่ใช่ `orderNumber` — เลขที่ซ้ำกันได้ข้ามฉบับแก้ (Rev.)
+ * และแถวที่ใบถูกลบไปแล้วจะไม่มีเลขที่เลย
+ */
+export function groupLedgerByOrder(rows = []) {
+  const groups = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row) continue;
+    const key = row.orderId || row.orderNumber || 'unknown';
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        orderId: row.orderId,
+        orderNumber: row.orderNumber,
+        quotationId: row.quotationId,
+        quoteNumber: row.quoteNumber,
+        customerName: row.customerName,
+        customerCode: row.customerCode,
+        rows: [],
+      });
+    }
+    groups.get(key).rows.push(row);
+  }
+
+  return [...groups.values()]
+    .map((group) => {
+      const rowsInOrder = sortLedger(group.rows);
+      const summary = ledgerSummary(rowsInOrder);
+      return {
+        ...group,
+        // ในก้อนเรียงตาม **งวดที่** เพราะคนอ่านคาดว่างวด 1 มาก่อนงวด 2 เสมอ
+        // (ต่างจากลำดับของก้อนซึ่งเรียงตามความด่วน)
+        rows: [...rowsInOrder].sort((a, b) => (a.seq || 0) - (b.seq || 0)),
+        summary,
+        paidCount: rowsInOrder.filter((r) => r.status === 'confirmed').length,
+        count: rowsInOrder.length,
+        overdue: rowsInOrder.some((r) => r.overdue),
+        awaiting: rowsInOrder.filter((r) => r.status === 'reported').length,
+        rejected: rowsInOrder.filter((r) => r.status === 'rejected').length,
+        complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),
+        // งวดที่ด่วนที่สุด — ใช้ทั้งจัดลำดับก้อนและโชว์บนแถวที่ยุบอยู่
+        lead: rowsInOrder[0] || null,
+      };
+    })
+    .sort((a, b) => {
+      const rank = (g) => (g.overdue ? 0 : g.awaiting ? 1 : g.complete ? 3 : 2);
+      const byRank = rank(a) - rank(b);
+      if (byRank) return byRank;
+      // ในระดับเดียวกัน ใบที่มีกำหนดใกล้ที่สุดมาก่อน · ไม่มีกำหนดไปท้าย
+      const aDue = a.lead?.dueDate || null;
+      const bDue = b.lead?.dueDate || null;
+      if (aDue !== bDue) {
+        if (!aDue) return 1;
+        if (!bDue) return -1;
+        return String(aDue) < String(bDue) ? -1 : 1;
+      }
+      return String(a.orderNumber || '') < String(b.orderNumber || '') ? -1 : 1;
+    });
+}
+
+/** ป้ายสรุปของใบที่ยุบอยู่ — เรื่องเดียวที่ด่วนที่สุด (กติกาเดียวกับตารางรายการ SO) */
+export function groupNote(group) {
+  if (!group) return null;
+  if (group.overdue) return { label: 'เลยกำหนด', tone: 'danger' };
+  if (group.rejected) return { label: `ตีกลับ ${group.rejected} งวด`, tone: 'danger' };
+  if (group.awaiting) return { label: `รอรับรอง ${group.awaiting} งวด`, tone: 'warning' };
+  if (group.complete) return { label: 'เก็บครบแล้ว', tone: 'success' };
+  return { label: 'รอลูกค้าชำระ', tone: 'neutral' };
+}

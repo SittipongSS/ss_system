@@ -10,6 +10,7 @@ import {
   installmentsFromPaymentPlan,
   paymentLockReason,
   paymentRollup,
+  salesOrderPaymentNote,
   paymentState,
   previewInstallments,
 } from './salesOrderPayments.js';
@@ -308,4 +309,34 @@ test('preview ไม่มี id และถูกทำเครื่อง�
 test('ใบเสนอราคาไม่มีแผนชำระ = preview ยังได้หนึ่งงวดเต็มจำนวน ไม่ใช่ศูนย์', () => {
   assert.equal(previewInstallments(null, 1000).length, 1);
   assert.equal(previewInstallments(undefined, 1000)[0].percent, 100);
+});
+
+// ── คำอธิบายสถานะการชำระในตารางรายการ SO (มติผู้ใช้ 2026-08-13) ──────────
+/* 🔴 ใบที่ขึ้น 0/2 เหมือนกันเป๊ะ อาจเป็น "ลูกค้ายังไม่จ่าย" หรือ "จ่ายแล้วรอบัญชี
+   รับรอง" ซึ่งเป็นงานคนละฝ่าย — ตัวเลขอย่างเดียวจึงไม่พอ */
+test('บอกเรื่องที่ด่วนที่สุดเรื่องเดียว ตามลำดับ เลยกำหนด > ตีกลับ > รอรับรอง', () => {
+  const cell = (extra) => salesOrderPaymentNote({ tracked: true, paid: 0, count: 2, complete: false, overdue: 0, reviewing: 0, rejected: 0, ...extra });
+  assert.equal(cell({ overdue: 1, rejected: 1, reviewing: 1 }).label, 'เลยกำหนด 1 งวด');
+  assert.equal(cell({ rejected: 1, reviewing: 1 }).label, 'บัญชีตีกลับ 1 งวด');
+  assert.equal(cell({ reviewing: 2 }).label, 'รอบัญชีรับรอง 2 งวด');
+  assert.equal(cell({ paid: 2, complete: true }).label, 'เก็บครบแล้ว');
+  assert.equal(cell({}).label, 'รอลูกค้าชำระ');
+});
+
+test('โทนสีบอกเรื่องเดียว — แดงคือมีคนต้องลงมือแล้ว', () => {
+  const cell = (extra) => salesOrderPaymentNote({ tracked: true, count: 1, ...extra });
+  assert.equal(cell({ overdue: 1 }).tone, 'danger');
+  assert.equal(cell({ rejected: 1 }).tone, 'danger');
+  assert.equal(cell({ reviewing: 1 }).tone, 'warning');
+  assert.equal(cell({ complete: true }).tone, 'success');
+});
+
+/* ⚠️ ใบที่ยังไม่เริ่มติดตาม ตัวเลขมาจาก **แผนใน QT** ไม่ใช่งวดจริง — ต้องบอกให้รู้
+   ไม่งั้น "0/2" อ่านเหมือนติดตามแล้วแต่เก็บไม่ได้เลย */
+test('ใบที่ยังไม่เริ่มติดตามต้องบอกว่าเลขมาจากแผน ไม่ใช่ของจริง', () => {
+  assert.deepEqual(
+    salesOrderPaymentNote({ tracked: false, paid: 0, count: 2, complete: false, overdue: 0, reviewing: 0, rejected: 0 }),
+    { label: 'ยังไม่เริ่มติดตาม', tone: 'idle' },
+  );
+  assert.equal(salesOrderPaymentNote(null), null);
 });
