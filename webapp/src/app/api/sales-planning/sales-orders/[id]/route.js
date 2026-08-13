@@ -661,9 +661,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           financeStatus: 'pending',
         };
 
-    const { data, error } = await supabase
+    /* กันสองคนกดชนกัน — อัปเดตต่อเมื่อสถานะยังเป็นค่าที่เราอ่านมา
+       🐞 `.eq(col, null)` ใช้ไม่ได้: PostgREST แปลเป็น `col = null` ซึ่งไม่จริงเสมอใน SQL
+       ⇒ ใบที่ financeStatus ยังว่าง (อนุมัติก่อนมีขั้นนี้) จะอัปเดตไม่ติดสักครั้ง
+       ต้องใช้ `.is(col, null)` เท่านั้น */
+    const guarded = supabase
       .from('sales_orders').update({ ...patch, updatedAt: now })
-      .eq('id', id).eq('financeStatus', before.financeStatus)
+      .eq('id', id);
+    const { data, error } = await (before.financeStatus == null
+      ? guarded.is('financeStatus', null)
+      : guarded.eq('financeStatus', before.financeStatus))
       .select('*').maybeSingle();
     if (error) return fail(error.message, 500);
     if (!data) return badRequest('สถานะการตรวจของบัญชีเปลี่ยนแล้ว กรุณาโหลดใหม่');

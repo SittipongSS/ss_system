@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUSES, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
-  awaitsFinanceReview, financeActionError, financeStatusOf, financeWorkflowStep,
+  awaitsFinanceReview, financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep,
   salesOrderWorkflowIndex,
 } from './salesOrderFinanceApproval.js';
 
@@ -73,8 +73,20 @@ test('ส่งตรวจใหม่เป็นของฝั่งขา�
   assert.match(financeActionError(row, 'finance_resubmit', FN), /AE Supervisor หรือ Admin/);
 });
 
-test('ส่งตรวจใหม่ได้เฉพาะใบที่ถูกตีกลับ', () => {
-  assert.match(financeActionError(approved(), 'finance_resubmit', AE_SUP), /เฉพาะใบที่บัญชีตีกลับ/);
+/* 🔴 ใบที่อนุมัติไปก่อนมีขั้นนี้ค้าง financeStatus = null · ถ้าไม่เปิดทางส่งเข้าคิว
+   มันจะไม่มีวันถึงมือบัญชีเลย (ตอนเจอ: ทุกใบในระบบเป็นแบบนี้ทั้งหมด) */
+test('ใบที่อนุมัติไปแล้วแต่ยังไม่เข้าแกน ส่งเข้าคิวบัญชีได้', () => {
+  const legacy = approved({ financeStatus: null });
+  assert.equal(financeActionError(legacy, 'finance_resubmit', AE_SUP), null);
+  assert.equal(financeSendLabel(legacy), 'ส่งให้บัญชีตรวจ');
+  assert.equal(financeSendLabel(approved({ financeStatus: 'rejected' })), 'ส่งให้บัญชีตรวจใหม่');
+  // ยังต้องผ่าน AE Supervisor ก่อน — ใบร่างส่งข้ามหัวไปหาบัญชีไม่ได้
+  assert.match(financeActionError({ status: 'draft' }, 'finance_resubmit', AE_SUP), /ยังไม่ผ่าน AE Supervisor/);
+});
+
+test('ส่งเข้าคิวซ้ำไม่ได้ ทั้งใบที่รอตรวจอยู่และใบที่ตรวจผ่านแล้ว', () => {
+  assert.match(financeActionError(approved(), 'finance_resubmit', AE_SUP), /อยู่ในคิวของบัญชีอยู่แล้ว/);
+  assert.match(financeActionError(approved({ financeStatus: 'approved' }), 'finance_resubmit', AE_SUP), /อนุมัติใบนี้ไปแล้ว/);
 });
 
 test('คำสั่งที่ไม่รู้จักถูกปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', () => {
