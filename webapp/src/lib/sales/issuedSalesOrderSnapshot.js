@@ -74,6 +74,14 @@ export function buildIssuedSalesOrderPayload(order = {}, company) {
       approvedByName: trimOrNull(order.approvedByName),
       approvedAt: order.approvedAt || null,
       proposer: trimOrNull(order.createdByName),
+      /* ⭐ ผู้ตรวจฝั่งบัญชี (mig 0251) — อยู่ใน payload **โดยตั้งใจ** เพราะมันคือส่วนหนึ่ง
+         ของเนื้อหาเอกสาร (ช่องลงชื่อที่สาม) · ผลข้างเคียงที่ต้องการ: fingerprint เปลี่ยน
+         ตอนบัญชีเซ็น ⇒ RPC ออกฉบับใหม่ (issueSequence ถัดไป) แทนที่จะคืนฉบับเดิม
+         ตามมติผู้ใช้ "ออกเอกสารใหม่ทับตอนบัญชีเซ็น"
+         ⚠️ ใบเก่าที่ออกก่อนมีขั้นนี้ได้ null ทั้งคู่ ⇒ fingerprint ไม่ขยับ ไม่มีใบไหน
+         ถูกออกซ้ำโดยไม่ได้ตั้งใจ */
+      financeApprovedByName: trimOrNull(order.financeApprovedByName),
+      financeApprovedAt: order.financeApprovedAt || null,
     },
     // บริษัทที่เผยแพร่ ณ เวลาอนุมัติ — คนละชุด = คนละ issue (เหมือน QT)
     company: {
@@ -100,6 +108,15 @@ export function buildIssuedSalesOrderArtifactHtml(order = {}, options = {}) {
         signerName: order.approvedByName || '',
         signedAt: order.approvedAt || null,
         evidenceId: order.signatureEvidenceId || '',
+      }
+      : null,
+    // ช่องลงชื่อที่สาม "ฝ่ายบัญชี" (mig 0251) — ว่างจนกว่าบัญชีจะตรวจใบผ่าน
+    financeSignature: options.financeSignatureImage
+      ? {
+        imageDataUri: options.financeSignatureImage,
+        signerName: order.financeApprovedByName || '',
+        signedAt: order.financeApprovedAt || null,
+        evidenceId: order.financeSignatureEvidenceId || '',
       }
       : null,
     // มีหลักฐานการยื่น (mig 0153) → ฝังวันที่ลงนาม + Evidence id ลงในใบตรึงด้วย
@@ -149,15 +166,29 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
     }
   }
   if (!proposerAsset) proposerAsset = await loadActiveSignatureAsset(supabase, order.createdBy);
-  const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
+  /* ฝ่ายบัญชี = รูปจาก evidence ที่ตรึงตอนบัญชีตรวจใบผ่าน (mig 0251)
+     ⚠️ อ่านจาก evidence เท่านั้น ไม่ fallback ไปลายเซ็น active — ช่องนี้เป็นการรับรอง
+     ต้องมีหลักฐานคู่เสมอ ต่างจากช่องผู้จัดทำที่ใบเก่ายอมให้ stamp เชิงภาพได้ */
+  let financeAsset = null;
+  if (order.financeSignatureEvidenceId) {
+    const { data: fev } = await supabase
+      .from('document_signature_evidence')
+      .select('signatureAssetSnapshot')
+      .eq('id', order.financeSignatureEvidenceId)
+      .maybeSingle();
+    financeAsset = fev?.signatureAssetSnapshot || null;
+  }
+  const [approverSignatureImage, proposerSignatureImage, financeSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),
+    loadSignatureImageDataUri(supabase, financeAsset),
   ]);
   // มาตรฐานเอกสารที่ควบคุมใบนี้ = ค่าที่ RPC ตรึงไว้ใน evidence ตอนอนุมัติ (mig 0125)
   // ไม่ใช่ค่าที่เผยแพร่อยู่ตอนนี้ — ใบที่ออกไปแล้วต้องคงรหัสแบบฟอร์มเดิมเสมอ (ADR 0011)
   const standard = evidence?.controlledFormSnapshot || null;
   const html = buildIssuedSalesOrderArtifactHtml(order, {
     company, standard, approverSignatureImage, proposerSignatureImage, proposerEvidence,
+    financeSignatureImage,
   });
   const { data, error } = await supabase.rpc('capture_issued_sales_order_snapshot_atomic', {
     p_snapshot_id: genId('ISD'),

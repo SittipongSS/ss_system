@@ -155,3 +155,37 @@ test('Sale Order รายการครบทุกบรรทัด + มู
     assert.equal((html.match(new RegExp(`สินค้าทดสอบ ${index}(?!\\d)`, 'g')) || []).length, 1);
   }
 });
+
+// ── ช่องลงชื่อ "ฝ่ายบัญชี" (mig 0251 · มติผู้ใช้ 2026-08-13) ──────────────
+/* ⭐ ช่องที่สามมีอยู่บนใบตั้งแต่มติ 2026-08-05 แต่ว่างมาตลอดเพราะไม่มีใครเซ็น —
+   ขั้นบัญชีตรวจใบเป็นตัวเติม ไม่ใช่การเพิ่มช่องใหม่ */
+test('บัญชียังไม่เซ็น = ช่องฝ่ายบัญชีว่างเหมือนเดิม ไม่หายไปจากเอกสาร', () => {
+  const html = buildSalesOrderPrintHTML(order, null, null);
+  assert.match(html, /ฝ่ายบัญชี/);
+});
+
+test('บัญชีเซ็นแล้ว = ฝังรูปลายเซ็นพร้อมชื่อผู้ตรวจในช่องฝ่ายบัญชี', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    financeApprovedByName: 'Saowalak Muangsri',
+    financeSignature: {
+      imageDataUri: 'data:image/png;base64,AAAA',
+      signerName: 'Saowalak Muangsri',
+      signedAt: '2026-08-13T08:00:00.000Z',
+      evidenceId: 'DSE-fin-1',
+    },
+  }, null, null);
+  assert.match(html, /Saowalak Muangsri/);
+  assert.match(html, /data:image\/png;base64,AAAA/);
+  assert.match(html, /DSE-fin-1/, 'ต้องอ้าง Evidence id เหมือนช่องผู้อนุมัติ');
+});
+
+/* ⚠️ ลายเซ็นบัญชีต้อง **ไม่** ไปโผล่ในช่องผู้อนุมัติหรือผู้จัดทำ — สามช่องคนละคน */
+test('ลายเซ็นบัญชีไม่ทับช่องอื่น', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    financeSignature: { imageDataUri: 'data:image/png;base64,FIN', signerName: 'บัญชี', evidenceId: 'DSE-f' },
+  }, null, null);
+  // มีรูปเดียวในเอกสาร = ของบัญชีเท่านั้น (ช่องอื่นยังไม่มีลายเซ็นในเคสนี้)
+  assert.equal((html.match(/data:image\/png;base64,FIN/g) || []).length, 1);
+});

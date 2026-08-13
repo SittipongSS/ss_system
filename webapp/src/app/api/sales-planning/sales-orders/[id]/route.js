@@ -36,6 +36,7 @@ import {
 } from '@/lib/sales/salesOrderApprovalOverride';
 import {
   approveSalesOrderWithSignatureEvidence,
+  financeApproveSalesOrderWithSignatureEvidence,
   signatureEvidenceErrorResponse,
   submitSalesOrderWithSignatureEvidence,
 } from '@/lib/admin/signatureEvidence';
@@ -640,17 +641,73 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const gate = financeActionError(before, action, user, { reason });
     if (gate) return badRequest(gate);
 
+    /* ⭐ **บัญชีอนุมัติ = การลงนามในช่อง "ฝ่ายบัญชี" ของเอกสาร** (mig 0251 · มติผู้ใช้
+       2026-08-13) — ช่องที่สามมีอยู่บนใบตั้งแต่ต้นแต่ว่างมาตลอดเพราะไม่มีใครเซ็น
+       ⚠️ ตีกลับ/ส่งตรวจใหม่ **ไม่เซ็น** — ลายเซ็นคือการรับรอง ไม่ใช่การบันทึกว่าดูแล้ว
+       ⚠️ RPC ตรึงลายเซ็นกับสถานะในทรานแซกชันเดียว ⇒ ไม่มีทางได้ใบที่ผ่านแล้วแต่ไม่มี
+       ลายเซ็น หรือมีหลักฐานลายเซ็นค้างโดยใบไม่ผ่าน */
+    if (action === 'finance_approve') {
+      let result;
+      try {
+        result = await financeApproveSalesOrderWithSignatureEvidence(supabase, {
+          documentId: id,
+          evidenceId: genId('DSE'),
+          expectedUpdatedAt: before.updatedAt,
+          /* fingerprint ของ **เนื้อหาที่บัญชีเห็นตอนเซ็น** ไม่ใช่ค่าที่ตรึงตอน AE Sup
+             อนุมัติ — ถ้าเนื้อหาถูกแก้ระหว่างทาง สองค่านี้จะต่างกันและเป็นหลักฐานเอง */
+          documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
+          note: String(body.note || '').trim() || null,
+          user,
+        });
+      } catch (signatureError) {
+        return signatureEvidenceErrorResponse(signatureError);
+      }
+      const data = result.document;
+
+      /* ออกเอกสารฉบับใหม่ทับ (มติผู้ใช้ 2026-08-13) — payload มีชื่อ/เวลาของผู้ตรวจ
+         ฝั่งบัญชีอยู่ด้วย ⇒ fingerprint เปลี่ยน ⇒ RPC ออก issueSequence ถัดไปให้เอง
+         ⚠️ ส่ง **evidence ของผู้อนุมัติ** ไม่ใช่ของบัญชี เพราะ RPC ตรวจว่าตรงกับ
+         `sales_orders.signatureEvidenceId` (ใบยังเป็นฉบับที่ AE Sup อนุมัติใบเดิม)
+         ⚠️ best-effort เหมือนตอนอนุมัติ: การตรวจ commit ไปแล้ว ออกเอกสารล้มต้องไม่
+         roll back — RPC idempotent ออกซ้ำได้ภายหลัง */
+      try {
+        const { data: approverEvidence } = await supabase
+          .from('document_signature_evidence').select('*')
+          .eq('id', before.signatureEvidenceId).maybeSingle();
+        if (approverEvidence) {
+          const company = await getPublishedCompanyProfile(supabase).catch(() => null);
+          await captureIssuedSalesOrderSnapshot(getSupabaseAdmin(), {
+            order: {
+              ...before, ...data,
+              lines: before.lines, deal: before.deal, quotation: before.quotation, project: before.project,
+            },
+            evidence: approverEvidence,
+            user,
+            company,
+          });
+        }
+      } catch (reissueError) {
+        console.error('finance re-issue sales order snapshot failed', id, reissueError);
+      }
+
+      await logThread(action, {});
+      await recordAudit({
+        user,
+        action: 'update',
+        entityType: 'sales_order',
+        entityId: id,
+        before,
+        after: data,
+        summary: `บัญชีอนุมัติ ${before.orderNumber} (ลงนามแล้ว)`,
+        request: req,
+      });
+      return ok(data);
+    }
+
     const now = new Date().toISOString();
     const actorName = user.name || null;
-    const patch = action === 'finance_approve'
-      ? {
-        financeStatus: 'approved',
-        financeApprovedBy: user.id, financeApprovedByName: actorName, financeApprovedAt: now,
-        financeNote: String(body.note || '').trim() || null,
-        // ล้างร่องรอยการตีกลับรอบก่อน — ใบนี้ผ่านแล้ว
-        financeRejectedBy: null, financeRejectedByName: null, financeRejectedAt: null, financeRejectReason: null,
-      }
-      : action === 'finance_reject'
+    /* เหลือแค่ตีกลับกับส่งตรวจใหม่ — `finance_approve` แยกไปทาง RPC ลงลายเซ็นข้างบนแล้ว */
+    const patch = action === 'finance_reject'
         ? {
           financeStatus: 'rejected',
           financeRejectedBy: user.id, financeRejectedByName: actorName, financeRejectedAt: now,
@@ -684,7 +741,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       before,
       after: data,
       summary: {
-        finance_approve: `บัญชีอนุมัติ ${before.orderNumber}`,
         finance_reject: `บัญชีตีกลับ ${before.orderNumber}: ${reason}`,
         finance_resubmit: `ส่ง ${before.orderNumber} ให้บัญชีตรวจใหม่`,
       }[action],
