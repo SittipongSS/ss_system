@@ -170,3 +170,23 @@ export function canSalesOrderTransition(status, action, { reviewer = false, admi
   if (action === 'restore') return admin && status === 'cancelled';
   return false;
 }
+
+/**
+ * คำสั่งไหนต้องมี **สิทธิ์แก้งานขาย** และคำสั่งไหนแค่ **อ่านใบได้ก็พอ**
+ *
+ * 🐞 เกิดจากบั๊กจริง 2026-08-13: ด่านบนสุดของ PATCH บังคับ `salesplan:edit` กับทุก
+ * คำสั่งที่ไม่ใช่ `withdraw` ⇒ **ฝ่ายบัญชีโดน 403 ก่อนถึงสาขา action ทุกครั้ง**
+ * ปุ่มขึ้นบนจอปกติแต่กดแล้วไม่สำเร็จ · ที่คอนเฟิร์มงวดรอดเพราะอยู่คนละ route
+ *
+ * ⭐ เกณฑ์: คำสั่งที่ **เปลี่ยนเนื้อหาใบหรือเดินสายอนุมัติเอกสาร** ต้องมีสิทธิ์แก้ ·
+ * คำสั่งที่เป็น **การตัดสินของคนนอกสายขาย** (ขั้นบัญชี) หรือ **การถอยของผู้ยื่นเอง**
+ * (ดึงกลับ) ใช้แค่สิทธิ์อ่าน — ด่านจริงของแต่ละคำสั่งอยู่ที่ตัวมันเอง
+ * (`financeActionError` · `canWithdrawSalesOrderSubmission`) ซึ่งแคบด้วยฝ่าย/ตัวตน
+ */
+export function salesOrderActionNeedsEditScope(action) {
+  const name = String(action || '');
+  if (name === 'withdraw') return false;
+  // ขั้นบัญชีตรวจใบ (mig 0250/0251) — บัญชีไม่มี `salesplan:edit` โดยเจตนา
+  if (name.startsWith('finance_')) return false;
+  return true;
+}

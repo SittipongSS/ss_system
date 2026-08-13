@@ -1,5 +1,5 @@
-import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wrench } from 'lucide-react';
-import { canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
+import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wallet, Wrench } from 'lucide-react';
+import { canAccessFinance, canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -82,6 +82,23 @@ export const SYSTEM_CATALOG = [
     // มีปัญหา" ในหน้าเดียว แล้วค่อยกดต่อไปตาราง · **คนละหน้ากับภาพรวมของวางแผนผลิต**
     // ตามมติแยกทีม (TS ≠ PD) — ไม่มีปฏิทินรวมสองระบบ
     landing: () => '/service',
+  },
+  {
+    // บัญชีและการเงิน — บ้านของฝ่าย FN (มติผู้ใช้ 2026-08-13)
+    // > *"อยากสร้าง Module ของบัญชีและการเงินออกมาแบบวิจัยและพัฒนา · เอาตารางการ
+    // >  ชำระของทุก SO ออกมารวมอยู่ในที่เดียว"*
+    //
+    // ⚠️ **ไม่ใช่ที่เก็บงวดชำระ** — งวดยังเป็นของใบ SO เหมือนเดิม (mig 0245) โมดูลนี้
+    // เอามา **รวมให้อ่านข้ามใบ** และเป็นทางลงมือของฝ่ายบัญชี · แพตเทิร์นเดียวกับที่
+    // ทะเบียนกลิ่นไม่ได้ย้ายเข้าโมดูล RD (ม-30): โมดูลของฝ่าย = งานของฝ่าย
+    // ไม่ใช่ตารางที่ฝ่ายนั้นแตะ
+    key: 'finance',
+    label: 'บัญชีและการเงิน',
+    description: 'ทะเบียนการชำระของทุกใบสั่งขาย พร้อมใบที่รอบัญชีตรวจและยอดที่ค้างรับ',
+    icon: Wallet,
+    // ⭐ ด่านตัวเดียวกับแถบเมนูใน AppLayout — แยกสองที่เมื่อไรได้การ์ดที่กดแล้วเมนูว่าง
+    isVisible: (user) => canAccessFinance(user),
+    landing: () => '/finance',
   },
   {
     key: 'tax',

@@ -79,6 +79,26 @@ export function approveSalesOrderWithSignatureEvidence(supabase, input) {
   });
 }
 
+/* บัญชีตรวจใบผ่าน + ตรึงลายเซ็นในช่อง "ฝ่ายบัญชี" (mig 0251)
+   ⚠️ ทำงานบนแกน `financeStatus` ไม่ใช่ `status` — ไม่แตะสายอนุมัติเอกสารและไม่แตะ
+   `approvalFingerprint` ที่ตรึงไว้ตอน AE Supervisor อนุมัติ
+   ⚠️ ส่ง `department` ไปด้วยเพราะ RPC ตรวจฝ่าย ไม่ใช่ role อย่างเดียว — role `staff`
+   ของฝ่ายอื่นก็ถือ `payments:confirm` ในชั้นแอป */
+export function financeApproveSalesOrderWithSignatureEvidence(supabase, input) {
+  return approveWithEvidence(supabase, 'finance_approve_sales_order_with_signature_evidence_atomic', {
+    p_order_id: input.documentId,
+    p_evidence_id: input.evidenceId,
+    p_expected_updated_at: input.expectedUpdatedAt,
+    p_document_fingerprint: input.documentFingerprint,
+    p_finance_note: input.note || null,
+    p_actor_id: input.user.id,
+    p_actor_name: input.user.name || null,
+    p_actor_role: input.user.role || null,
+    p_actor_team: input.user.team || null,
+    p_actor_department: input.user.department || null,
+  });
+}
+
 export function submitSalesOrderWithSignatureEvidence(supabase, input) {
   return approveWithEvidence(supabase, 'submit_sales_order_with_signature_evidence_atomic', {
     p_order_id: input.documentId,

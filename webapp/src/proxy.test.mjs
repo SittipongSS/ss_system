@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
+import { can } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -373,4 +374,32 @@ test('ฝ่าย R&D เปิดโมดูลของตัวเองไ
     assert.equal(lockedOut(user, '/rd', 'GET', false), false, `${role} /rd`);
     assert.equal(lockedOut(user, '/rd/requests', 'GET', false), false, `${role} /rd/requests`);
   }
+});
+
+/* ── ขั้นของฝ่ายบัญชีบนใบสั่งขาย ────────────────────────────────────────────
+   🐞 บั๊กจริง 2026-08-13: ฝ่ายบัญชี **ไม่มี `salesplan:edit`** โดยเจตนา ⇒ กฎรวม
+   `/api/sales-planning` ตัด PATCH ของเขาทิ้งที่ proxy **ก่อนถึง handler**
+   ปุ่มขึ้นบนจอปกติแต่กดแล้วไม่สำเร็จ · ผู้ใช้แจ้งเข้ามาเองหลังมีบัญชีฝ่าย FN คนแรก
+   เทสต์เดิมจับไม่ได้เพราะทดสอบด้วย admin ซึ่งผ่านตั้งแต่บรรทัดแรกของ lockedOut */
+test('ฝ่ายบัญชีคอนเฟิร์มงวดและตรวจใบได้ ทั้งที่ไม่มี salesplan:edit', () => {
+  const FN = 'finance';
+  assert.equal(can(FN, 'salesplan:edit'), false, 'บัญชีต้องไม่มีสิทธิ์แก้งานขาย');
+
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/installments', FN, []), true);
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', FN, []), true);
+  // คน FN ที่ยังถือ role `staff` (ยังไม่ย้าย role) ต้องผ่านด้วย — ถือ payments:confirm เหมือนกัน
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'staff', []), true);
+});
+
+/* ⚠️ ด่านนี้หยาบโดยตั้งใจ แต่ต้อง **ไม่หยาบเกินขอบเขต** — เปิดแค่ PATCH ของใบเดียว
+   ไม่ใช่ทั้ง namespace งานขาย */
+test('ช่องที่เปิดให้บัญชีต้องแคบแค่ PATCH ของใบสั่งขาย ไม่ลามไปเส้นอื่น', () => {
+  const FN = 'finance';
+  assert.equal(apiWriteAllowed('POST', '/api/sales-planning/sales-orders', FN, []), false, 'สร้างใบไม่ได้');
+  assert.equal(apiWriteAllowed('DELETE', '/api/sales-planning/sales-orders/SOR-1', FN, []), false, 'ลบใบไม่ได้');
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/deals/D1', FN, []), false, 'แก้ดีลไม่ได้');
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/quotations/Q1', FN, []), false, 'แก้ใบเสนอราคาไม่ได้');
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/issued', FN, []), false, 'เส้นลูกอื่นไม่เปิด');
+  // role ที่ไม่มี payments:confirm เลย ต้องไม่ได้อะไรเพิ่มจากบรรทัดใหม่นี้
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'marketing', []), false);
 });

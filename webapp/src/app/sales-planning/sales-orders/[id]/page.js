@@ -61,6 +61,7 @@ import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack"
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
   financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep, salesOrderWorkflowIndex,
@@ -340,11 +341,20 @@ export default function SalesOrderDetailPage() {
 
   async function review(action) {
     if (action === "approve") {
+      /* ⚠️ การกดครั้งนี้ทำ 4 อย่างพร้อมกัน ไม่ใช่แค่ปั๊มสถานะ — เดิมโมดัลบอกแต่ยอด Actual
+         ทั้งที่ตอนเพิ่ม mig 0245/0250 มันเริ่มสร้างงวดชำระและส่งใบเข้าคิวบัญชีไปด้วย */
       setConfirmState({
-        title: "อนุมัติ ใบสั่งขาย",
-        description: `ยืนยันอนุมัติใบสั่งขาย ${order.orderNumber} หรือไม่`,
-        detail: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนับเข้าระบบทันที`,
-        confirmLabel: "อนุมัติและนับ Actual",
+        ...approvalPrompt({
+          title: "อนุมัติ ใบสั่งขาย",
+          subject: `ใบสั่งขาย ${order.orderNumber}`,
+          effects: [
+            `ยอด Actual ${fmtMoney(order.actualAmount)} เข้าดีลทันที`,
+            "สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT",
+            "ส่งใบเข้าคิวบัญชีตรวจอัตโนมัติ",
+            "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
+          ],
+          confirmLabel: "อนุมัติและนับ Actual",
+        }),
         action: () => requestAction("approve"),
       });
       return;
@@ -640,11 +650,21 @@ export default function SalesOrderDetailPage() {
     {
       id: "finance-approve", kind: "approve", label: "บัญชีอนุมัติใบนี้", variant: "outline",
       visible: !financeGate("finance_approve"),
+      /* ⚠️ ขั้นบัญชีเป็นปลายทาง — อนุมัติแล้วบัญชีตีกลับเองไม่ได้ และ AE Sup ส่งตรวจใหม่
+         ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าย้อนไม่ได้ */
       onClick: () => setConfirmState({
-        title: "บัญชีอนุมัติใบสั่งขาย",
-        description: `ยืนยันว่าตรวจ ${order.orderNumber} ครบแล้วหรือไม่`,
-        detail: <span className="pre-line">{`สิ่งที่ต้องตรวจ:\n${FINANCE_REVIEW_POINTS.map((p) => `· ${p}`).join("\n")}\n\nยอด Actual ไม่เปลี่ยนจากการกดนี้`}</span>,
-        confirmLabel: "ยืนยันว่าตรวจแล้ว",
+        ...approvalPrompt({
+          title: "บัญชีอนุมัติใบสั่งขาย",
+          subject: `ใบสั่งขาย ${order.orderNumber}`,
+          irreversible: true,
+          checklist: FINANCE_REVIEW_POINTS,
+          effects: [
+            "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
+            "ขั้น “บัญชีตรวจใบ” บนรางเดินงานขึ้นเครื่องหมายถูก",
+            "ยอด Actual ไม่เปลี่ยนจากการกดนี้",
+          ],
+          confirmLabel: "ยืนยันว่าตรวจแล้ว",
+        }),
         action: () => requestAction("finance_approve"),
       }),
     },

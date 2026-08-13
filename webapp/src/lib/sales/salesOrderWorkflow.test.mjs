@@ -20,6 +20,7 @@ import {
   isValidReversalTarget,
   salesOrderActual,
   salesOrderRevisionChainDeleteBlock,
+  salesOrderActionNeedsEditScope,
 } from './salesOrderWorkflow.js';
 
 test('Actual is counted only after SO approval', () => {
@@ -233,4 +234,29 @@ test('⭐ ใบสั่งขายที่ถูกตีกลับมา�
   // ใบตีกลับของคนอื่นไม่ใช่ของค้างของเรา
   assert.equal(isSalesOrderWaitingOnMe({ status: 'rejected', createdBy: 'USR-OTHER' }, { userId: me }), false);
   assert.equal(isSalesOrderWaitingOnMe(null, { userId: me }), false);
+});
+
+// ── สิทธิ์ที่ต้องมีต่อคำสั่ง (บั๊กจริง 2026-08-13) ────────────────────────
+/* 🔴 ด่านบนสุดของ PATCH เคยบังคับ `salesplan:edit` กับทุกคำสั่งที่ไม่ใช่ `withdraw`
+   ⇒ **ฝ่ายบัญชีโดน 403 ก่อนถึงสาขา action ทุกครั้ง** ปุ่มขึ้นบนจอปกติแต่กดแล้วไม่สำเร็จ
+   ที่คอนเฟิร์มงวดรอดเพราะอยู่คนละ route ซึ่งกั้นด้วยสิทธิ์อ่านเท่านั้น
+   ⇒ อาการ "ปุ่มหนึ่งได้ อีกปุ่มไม่ได้" · ผู้ใช้แจ้งเข้ามาเองหลังมีบัญชีฝ่าย FN คนแรก */
+test('ขั้นบัญชีใช้แค่สิทธิ์อ่านใบ ไม่ต้องมีสิทธิ์แก้งานขาย', () => {
+  for (const action of ['finance_approve', 'finance_reject', 'finance_resubmit']) {
+    assert.equal(salesOrderActionNeedsEditScope(action), false, action);
+  }
+  // ดึงกลับ = การถอยของผู้ยื่นเอง ใช้สิทธิ์อ่านเหมือนกัน (มติ 2026-07-26)
+  assert.equal(salesOrderActionNeedsEditScope('withdraw'), false);
+});
+
+test('คำสั่งที่เปลี่ยนเนื้อหาใบหรือเดินสายอนุมัติ ยังต้องมีสิทธิ์แก้ตามเดิม', () => {
+  for (const action of ['save', 'submit', 'approve', 'reject', 'revoke', 'revise', 'cancel', 'restore']) {
+    assert.equal(salesOrderActionNeedsEditScope(action), true, action);
+  }
+  // คำสั่งที่ไม่รู้จักต้อง **เข้มไว้ก่อน** ไม่ใช่ปล่อยผ่าน
+  assert.equal(salesOrderActionNeedsEditScope('อะไรก็ไม่รู้'), true);
+  assert.equal(salesOrderActionNeedsEditScope(''), true);
+  assert.equal(salesOrderActionNeedsEditScope(undefined), true);
+  // ⚠️ ชื่อที่ขึ้นต้นคล้ายกันแต่ไม่ใช่ขั้นบัญชี ต้องไม่หลุดตาม
+  assert.equal(salesOrderActionNeedsEditScope('finance'), true);
 });

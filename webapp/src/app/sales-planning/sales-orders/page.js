@@ -14,6 +14,8 @@ import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
+import { FINANCE_STATUS_LABELS } from "@/lib/sales/salesOrderFinanceApproval";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
@@ -38,8 +40,21 @@ function paymentCell(payment) {
       : overdue ? `เลยกำหนดแล้ว ${overdue} งวด`
         : rejected ? `บัญชีตีกลับ ${rejected} งวด`
           : "นับเฉพาะงวดที่บัญชีคอนเฟิร์มแล้ว";
-  return <span className={tone} title={why}>{paid}/{count}</span>;
+  /* ⭐ **บรรทัดสถานะใต้ตัวเลข** (มติผู้ใช้ 2026-08-13) — `0/2` เหมือนกันเป๊ะอาจเป็นได้
+     ทั้ง "ลูกค้ายังไม่จ่าย" และ "จ่ายแล้วรอบัญชีรับรอง" ซึ่งเป็นงานคนละฝ่าย
+     ⚠️ ตัวเลขยังเป็นพระเอกของช่อง (ชิดขวา tabular กวาดตาเทียบข้ามแถวได้) บรรทัดสถานะ
+     จึงเล็กและจางกว่า ไม่ใช่ป้ายเต็มตัว — ไม่งั้นคอลัมน์นี้จะแย่งสายตาจากคอลัมน์สถานะเอกสาร */
+  const note = salesOrderPaymentNote(payment);
+  return (
+    <>
+      <span className={tone} title={why}>{paid}/{count}</span>
+      {note ? <span className={`cell-sub ${NOTE_TONE[note.tone] || ""}`.trim()}>{note.label}</span> : null}
+    </>
+  );
 }
+
+// โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
+const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
@@ -176,7 +191,20 @@ export default function SalesOrdersPage() {
                         ⚠️ ใบที่ยังไม่เริ่มติดตามโชว์ y จาก **แผนของใบเสนอราคา** และหรี่สี
                         ลง — ต่างจาก 0/2 ที่ติดตามแล้วแต่ยังเก็บไม่ได้เลย */}
                     <td className="num mono">{paymentCell(row.payment)}</td>
-                    <td>{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
+                    {/* ⭐ **สถานะเอกสาร + ขั้นบัญชี** (มติผู้ใช้ 2026-08-13) — เดิมบอกแค่สาย
+                        อนุมัติเอกสาร ⇒ ใบที่ "อนุมัติแล้ว" ทุกใบหน้าตาเหมือนกันหมด ทั้งที่
+                        บางใบบัญชีตรวจผ่านแล้วและบางใบยังไม่เข้าคิวด้วยซ้ำ
+                        ⚠️ เป็น **บรรทัดรอง ไม่ใช่ป้ายที่สอง** — สองป้ายในช่องเดียวจะอ่านเหมือน
+                        สองสถานะที่ขัดกัน · ขั้นบัญชีเป็นคนละแกนที่เดินต่อจากเอกสาร ไม่ใช่แทนที่
+                        ⚠️ ใบที่ `financeStatus` ว่าง = ออกก่อนมีขั้นนี้ ไม่ใช่ "รอตรวจ" ⇒ ไม่โชว์อะไร */}
+                    <td>
+                      {statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}
+                      {row.financeStatus ? (
+                        <span className={`cell-sub ${row.financeStatus === "rejected" ? "cell-num-bad" : ""}`.trim()}>
+                          {FINANCE_STATUS_LABELS[row.financeStatus] || row.financeStatus}
+                        </span>
+                      ) : null}
+                    </td>
                   </DetailRow>
                 ))}
                 {!filtered.length && !loading && <tr><td colSpan={9} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบสั่งขาย — เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ</td></tr>}

@@ -846,7 +846,9 @@ button, select, input, textarea {
 }
 .confirm-dialog-icon.danger { background: var(--red-soft); color: var(--red); }
 .confirm-dialog-copy p { margin: 0; color: var(--text); }
-.confirm-dialog-detail { margin-top: var(--space-1-5) !important; color: var(--text-3) !important; font-size: var(--fs-6); }
+/* pre-line: ช่อง detail ใช้บอก "สิ่งที่จะเกิดขึ้น" เป็นรายการบรรทัดละข้อ (ดู lib/approvalPrompt.js)
+   ถ้าไม่ตั้งไว้ ทุกข้อจะไหลต่อกันเป็นพืดจนอ่านไม่ออกว่ามีกี่ข้อ */
+.confirm-dialog-detail { margin-top: var(--space-1-5) !important; color: var(--text-3) !important; font-size: var(--fs-6); white-space: pre-line; }
 .confirm-dialog > [role="alert"] { grid-column: 1 / -1; }
 .confirm-dialog-actions {
   grid-column: 1 / -1;
@@ -4744,6 +4746,15 @@ button.empty-state { width: 100%; font: inherit; }
 /* ตัวเลขในตารางที่ใช้ *สี* บอกสถานะ (เช่น "เก็บแล้ว 1/2" ของงวดชำระ)
    ⚠️ บริบทเปลี่ยนได้แค่สี — ห้ามเขียนรูปทรงทับที่นี่ (กฎชั้นกลาง UI_DESIGN_SYSTEM)
    ⚠️ สีไม่ใช่สัญญาณเดียว: ทุกจุดที่ใช้ต้องมี `title` อธิบายด้วยเสมอ (rulebook §A11y) */
+/* บรรทัดรองในเซลล์ตาราง — ของเดิมทุกหน้าเขียน style={{display:"block",color:…,fontSize:…}}
+   ซ้ำกันเอง ซึ่งเป็นก้อนใหญ่ที่สุดของ inlineStyle ที่ ratchet คุมอยู่ · ใช้คลาสนี้แทน */
+.cell-sub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+/* ข้อความหรี่ในเซลล์ที่ไม่ใช่ตัวเลข (`.cell-num-idle` มีไว้สำหรับคอลัมน์ตัวเลข) */
+.cell-quiet { color: var(--text-3); }
 .cell-num-ok { color: var(--green); }
 .cell-num-bad { color: var(--red); }
 .cell-num-idle { color: var(--text-3); }

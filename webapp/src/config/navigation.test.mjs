@@ -15,6 +15,18 @@ test('⭐ วางแผนผลิตเป็นระบบของตั�
   assert.equal(systemForPathname('/production'), 'production');
 });
 
+/* 🔴 โมดูลที่ตกกฎ systemForPathname จะไปโผล่ใต้เปลือกเมนู "ภาษีสรรพสามิต" จาก
+   `return 'tax'` ท้ายฟังก์ชัน — บั๊กที่ `/requests` เคยเป็น และ `/finance` เป็นซ้ำ
+   ตอนกดดูรอบแรก · build กับเทสต์อื่นจับไม่ได้เพราะหน้าเรนเดอร์ปกติทุกอย่าง */
+test('⭐ โมดูลของฝ่ายต้องได้เปลือกเมนูของตัวเอง ไม่ตกไปเป็นระบบภาษี', () => {
+  assert.equal(systemForPathname('/rd'), 'rd');
+  assert.equal(systemForPathname('/rd/requests'), 'rd');
+  assert.equal(systemForPathname('/finance'), 'finance');
+  assert.equal(systemForPathname('/finance/payments'), 'finance');
+  // ทะเบียนการชำระอ่านตารางของฝ่ายขาย แต่ต้องไม่ถูกดูดเข้าเปลือก salesplan
+  assert.notEqual(systemForPathname('/finance/payments'), 'salesplan');
+});
+
 test('sortSystems follows the global navigation order', () => {
   const groups = ['mgmt', 'master', 'tax', 'salesplan', 'sahamit'].map((system) => ({ system }));
   assert.deepEqual(sortSystems(groups).map((group) => group.system), ['salesplan', 'tax', 'sahamit', 'master', 'mgmt']);

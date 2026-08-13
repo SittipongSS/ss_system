@@ -94,13 +94,17 @@ export default function CustomerDirectory() {
     onDone: fetchCustomers,
   });
 
-  const decide = async (id, status) => {
+  // รับ "ทั้งระเบียน" ไม่ใช่แค่ id — โมดัลยืนยันต้องเอ่ยชื่อลูกค้าที่กำลังอนุมัติ
+  const decide = async (customer, status) => {
     let rejectionReason = null;
     if (status === "rejected") {
       rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
       if (rejectionReason === null) return; // ยกเลิก
     }
-    await sendDecision(id, status, { rejectionReason });
+    await sendDecision(customer.id, status, {
+      rejectionReason,
+      subject: [customer.arCode, customer.name].filter(Boolean).join(" · "),
+    });
   };
 
   // เปิดฟอร์ม = เริ่มใหม่ทุกครั้ง (ฟอร์มเปล่า + สวิตช์กลับไปที่ "ระบบใหม่") แล้วถาม
@@ -337,7 +341,7 @@ export default function CustomerDirectory() {
                   <span className="text-[11px] text-[var(--text-3)] truncate max-w-[70%]">{c.address || "—"}</span>
                   {showActions ? (
                     <div onClick={(e) => e.stopPropagation()}>
-                      <ApprovalActions onDecide={(s) => decide(c.id, s)} />
+                      <ApprovalActions onDecide={(s) => decide(c, s)} />
                     </div>
                   ) : <ChevronRight size={16} className="text-[var(--text-3)]" />}
                 </div>
@@ -384,7 +388,7 @@ export default function CustomerDirectory() {
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
-                        <ApprovalActions onDecide={(status) => decide(c.id, status)} />
+                        <ApprovalActions onDecide={(status) => decide(c, status)} />
                       ) : (
                         <div className="flex flex-col gap-1 items-start">
                           <ApprovalBadge status={approvalStatusOf(c)} />

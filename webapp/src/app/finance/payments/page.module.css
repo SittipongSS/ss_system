@@ -1,0 +1,51 @@
+/* ── ทะเบียนการชำระแบบจับกลุ่มตามใบ (มติผู้ใช้ 2026-08-13) ──────────────────
+   สีและระยะทั้งหมดมาจากตัวแปรกลาง — ห้ามใส่ค่าดิบ (กฎเดียวกับทั้งระบบ) */
+
+/* แถวหัวใบ = แถวที่กดได้ ต้องอ่านออกว่ากดได้ก่อนจะเอาเมาส์ไปชี้ */
+.groupRow {
+  cursor: pointer;
+}
+
+.groupRow:hover {
+  background: var(--panel-2);
+}
+
+/* ปุ่มกางในเซลล์แรก — เป็น <button> จริงเพื่อให้คีย์บอร์ด/สกรีนรีดเดอร์ใช้ได้
+   ⚠️ แถวทั้งแถวกดได้ด้วย แต่ปุ่มนี้คือสิ่งที่ประกาศสถานะ (aria-expanded) */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.chevron {
+  transition: transform var(--motion-standard) ease;
+  color: var(--text-3);
+  flex: none;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+/* แถวงวดที่กางออกมา — จมกว่าหัวใบหนึ่งชั้น ให้ตาแยกออกว่าเป็นของใบข้างบน
+   ⚠️ ไม่ใช้เส้นคั่นซ้ายเป็นตัวบอกลำดับชั้น เพราะตารางเลื่อนแนวนอนได้
+   เส้นจะหลุดออกนอกจอไปพร้อมคอลัมน์แรก */
+.childRow > td {
+  background: var(--panel-2);
+}
+
+.childRow:last-of-type > td {
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+/* เยื้องเฉพาะคอลัมน์ "งวด" ซึ่งเป็นคอลัมน์แรกที่มีเนื้อของแถวย่อย */
+.childLead {
+  padding-inline-start: var(--space-4);
+}

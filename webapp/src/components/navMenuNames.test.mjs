@@ -148,3 +148,31 @@ test('เมนูของระบบวิจัยและพัฒนา�
     assert.match(line, /'users:manage'/, line.trim());
   }
 });
+
+/* 🐞 เจอจริง 2026-08-13 ตอนเพิ่มโมดูลบัญชี: เขียนเมนูโดยมีแต่ `visible` ไม่มี `caps`
+   ⇒ ตัวกรองใน AppLayout อ่าน `item.caps || [item.cap]` ได้ `[undefined]` ⇒ ไม่ผ่าน
+   สักข้อ ⇒ กลุ่มเหลือศูนย์รายการ ⇒ `.filter((g) => g.items.length > 0)` ตัดทิ้งทั้งกลุ่ม
+   ผลคือเปลือกขึ้นชื่อระบบถูกต้องแต่ **แถบเมนูว่างเปล่า** — build และเทสต์อื่นจับไม่ได้
+   เพราะทุกอย่างเรนเดอร์ปกติ · อาการเดียวกับที่คอมเมนต์ของกลุ่ม RD เตือนไว้ */
+test('⭐ ทุกเมนูต้องมี cap กำกับ — ไม่งั้นกลุ่มถูกกรองทิ้งจนแถบเมนูว่าง', () => {
+  const menuLines = SOURCE.split(/\r?\n/).filter((row) => /^\s*\{ href: '\//.test(row));
+  assert.ok(menuLines.length > 20, 'อ่านนิยามเมนูจากซอร์สไม่เจอ — โครงไฟล์เปลี่ยนไปแล้ว');
+
+  const missing = menuLines
+    .filter((row) => !/\bcaps?:/.test(row))
+    .map((row) => /href: '([^']+)'/.exec(row)?.[1]);
+
+  assert.deepEqual(missing, [], `เมนูเหล่านี้ไม่มี cap/caps: ${missing.join(', ')}`);
+});
+
+test('เมนูโมดูลบัญชีครอบทั้ง role finance คนฝ่าย FN ที่ยังเป็น staff และ admin', () => {
+  for (const href of ['/finance', '/finance/payments']) {
+    const line = SOURCE.split(/\r?\n/).find((row) => row.includes(`href: '${href}'`));
+    assert.ok(line, `ไม่พบเมนู ${href}`);
+    // payments:confirm = finance + FN staff · users:manage = admin (ซึ่งไม่ถือตัวแรก)
+    assert.match(line, /payments:confirm/);
+    assert.match(line, /users:manage/);
+    // ตัวแคบจริงคือฝ่าย ไม่ใช่ cap — cap กว้างกว่าฝ่ายโดยตั้งใจ
+    assert.match(line, /visible: canAccessFinance/);
+  }
+});

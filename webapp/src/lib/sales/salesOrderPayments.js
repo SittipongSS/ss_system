@@ -257,3 +257,29 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null) {
   if (!planned) return null;
   return { tracked: false, paid: 0, count: planned, complete: false, overdue: 0, reviewing: 0, rejected: 0 };
 }
+
+/**
+ * คำอธิบายสถานะการชำระของ **ทั้งใบ** สำหรับตารางรายการ SO (มติผู้ใช้ 2026-08-13)
+ *
+ * > *"อยากแก้สถานะที่แจ้งให้รายการ SO"* — เดิมคอลัมน์งวดชำระมีแต่ตัวเลข `x/y`
+ * ซึ่งบอกว่าเก็บได้กี่งวด แต่ไม่บอกว่า **ตอนนี้ค้างอยู่ที่ใคร** · ใบที่ขึ้น `0/2`
+ * เหมือนกันเป๊ะ อาจเป็นได้ทั้ง "ลูกค้ายังไม่จ่าย" กับ "จ่ายแล้วรอบัญชีรับรอง"
+ * ซึ่งเป็นงานของคนละฝ่ายกัน
+ *
+ * ⭐ คืน **เรื่องเดียวที่ด่วนที่สุด** ไม่ใช่ทุกเรื่อง — ช่องในตารางมีที่บรรทัดเดียว
+ * และการยัดสองเรื่องลงไปทำให้ไม่มีเรื่องไหนอ่านออก · ลำดับความด่วน:
+ *   เลยกำหนด → บัญชีตีกลับ → รอบัญชีรับรอง → เก็บครบแล้ว
+ *
+ * @returns {{label: string, tone: 'danger'|'warning'|'success'|'idle'}|null}
+ *          null = ไม่มีอะไรต้องบอกเพิ่ม (ตัวเลข x/y พอแล้ว)
+ */
+export function salesOrderPaymentNote(payment) {
+  if (!payment) return null;
+  // ยังไม่เริ่มติดตาม = ตัวเลขที่เห็นมาจาก **แผนใน QT** ไม่ใช่ของจริง ต้องบอกให้รู้
+  if (!payment.tracked) return { label: 'ยังไม่เริ่มติดตาม', tone: 'idle' };
+  if (payment.overdue) return { label: `เลยกำหนด ${payment.overdue} งวด`, tone: 'danger' };
+  if (payment.rejected) return { label: `บัญชีตีกลับ ${payment.rejected} งวด`, tone: 'danger' };
+  if (payment.reviewing) return { label: `รอบัญชีรับรอง ${payment.reviewing} งวด`, tone: 'warning' };
+  if (payment.complete) return { label: 'เก็บครบแล้ว', tone: 'success' };
+  return { label: 'รอลูกค้าชำระ', tone: 'idle' };
+}
