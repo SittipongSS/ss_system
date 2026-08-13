@@ -13,7 +13,7 @@ import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
-import { isAutoArCode } from "@/lib/master/masterCodes";
+import { isAutoArCode, isReusableCode } from "@/lib/master/masterCodes";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -240,9 +240,17 @@ export default function CustomerDetails() {
     }
   };
 
+  // ชะตากรรมของเลขรันต้องบอก **ก่อนกดลบ** ไม่ใช่หลัง — กดยืนยันแล้วหน้าเด้งกลับไปที่
+  // ทะเบียนทันที ข้อความหลังลบจึงไม่มีใครได้อ่าน · และผู้ใช้ไม่ได้เป็นคนตั้งรหัสเอง
+  // จึงไม่มีทางรู้ว่าเลขนั้นจะกลับมาหรือหายถาวร ถ้าไม่เขียนไว้ตรงนี้ (mig 0248)
   const handleDelete = () => setConfirmBox({
     title: "ลบข้อมูลลูกค้ารายนี้?",
-    message: "ข้อมูลลูกค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้",
+    message: "ข้อมูลลูกค้าจะถูกลบออกจากระบบและกู้คืนไม่ได้"
+      + (isAutoArCode(customer?.arCode)
+        ? (isReusableCode(customer)
+          ? ` · รหัส ${customer.arCode} ยังไม่เคยผ่านอนุมัติ เลขนี้จะกลับไปรอออกให้รายถัดไป`
+          : ` · รหัส ${customer.arCode} เคยผ่านอนุมัติแล้ว เลขนี้จะไม่ถูกออกให้รายอื่นอีก`)
+        : ""),
     confirmLabel: "ลบลูกค้า",
     danger: true,
     onConfirm: async () => {

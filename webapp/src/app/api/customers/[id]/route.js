@@ -7,7 +7,7 @@ import {
 } from '@/lib/master/approval';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { normalizeBrands } from '@/lib/master/brands';
-import { CODE_MODE_MANUAL, arCodeError, isAutoArCode } from '@/lib/master/masterCodes';
+import { CODE_MODE_MANUAL, arCodeError, isAutoArCode, isReusableCode } from '@/lib/master/masterCodes';
 import {
   branchKeyOf, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError,
 } from '@/lib/master/customerTaxId';
@@ -409,20 +409,30 @@ export async function DELETE(request, { params }) {
   }
 
   // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
-  // ถ้าลูกค้ารายนี้ยังถูกอ้างใน โครงการ/ออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
-  const [projRef, orderRef, regRef] = await Promise.all([
+  // ถ้าลูกค้ารายนี้ยังถูกอ้างใน โครงการ/ออเดอร์/การขึ้นทะเบียน/สินค้า → ห้ามลบ.
+  //
+  // ⚠️ **สินค้าต้องอยู่ในด่านนี้ด้วย** (เพิ่ม 2026-08-13 พร้อม mig 0248) — รหัสสินค้า
+  // ฝังรหัสลูกค้าไว้ในตัวเอง (`FG-AAAA-…` โดย AAAA = เลขของ AR) ⇒ ลบลูกค้าที่ยังมีสินค้า
+  // แล้วเลข AR กลับเข้ากองไปให้รายอื่น รหัสสินค้าเดิมจะชี้ไปหาลูกค้าคนละคนทันที
+  // โดยไม่มีอะไรฟ้อง · ก่อนหน้านี้ด่านนี้ไม่ได้เช็ค products เลย (สินค้ากลายเป็นกำพร้าเงียบ ๆ)
+  const [projRef, orderRef, regRef, productRef] = await Promise.all([
     supabase.from('projects').select('id').eq('customerId', id),
     supabase.from('orders').select('id').eq('customerId', id),
     supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('customerId', id),
+    supabase.from('products').select('fgCode').eq('customerId', id),
   ]);
-  const refErr = projRef.error || orderRef.error || regRef.error;
+  const refErr = projRef.error || orderRef.error || regRef.error || productRef.error;
   if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
   const refs = [];
   const projIds = (projRef.data || []).map((r) => r.id);
   const orderIds = (orderRef.data || []).map((r) => r.id);
+  const fgCodes = (productRef.data || []).map((r) => r.fgCode).filter(Boolean);
   if (projIds.length) refs.push(`${projIds.length} โครงการ (${projIds.join(', ')})`);
   if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
   if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
+  if (productRef.data?.length) {
+    refs.push(`${productRef.data.length} สินค้า${fgCodes.length ? ` (${fgCodes.slice(0, 5).join(', ')}${fgCodes.length > 5 ? ' …' : ''})` : ''}`);
+  }
   const block = referencedBlock('ลูกค้าราย', refs);
   if (block) return Response.json({ error: block }, { status: 409 });
 
@@ -437,5 +447,13 @@ export async function DELETE(request, { params }) {
   // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
   await purgeUpdates(supabase, 'customer', id);
   await recordAudit({ user, action: 'delete', entityType: 'customer', entityId: id, before: customer, request });
-  return Response.json({ success: true, message: 'ลบข้อมูลลูกค้าเรียบร้อยแล้ว' });
+  // เลขคืนหรือไม่คืนถูกตัดสินที่ trigger ฝั่ง DB ไปแล้ว (mig 0248) — ตรงนี้แค่บอกผลให้ตรง
+  // กับที่เกิดขึ้นจริง ผู้ใช้ไม่ได้เป็นคนตั้งรหัสเอง จึงไม่มีทางรู้ว่าเลขนั้นกลับมาหรือหายไป
+  const reclaimed = isReusableCode(customer) && isAutoArCode(customer.arCode);
+  return Response.json({
+    success: true,
+    message: reclaimed
+      ? `ลบข้อมูลลูกค้าเรียบร้อยแล้ว — รหัส ${customer.arCode} ยังไม่เคยผ่านอนุมัติ เลขนี้กลับไปรอออกให้รายถัดไป`
+      : 'ลบข้อมูลลูกค้าเรียบร้อยแล้ว',
+  });
 }

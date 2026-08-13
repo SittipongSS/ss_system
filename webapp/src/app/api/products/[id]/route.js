@@ -5,7 +5,7 @@ import {
   changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
-import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode } from '@/lib/master/masterCodes';
+import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode, isReusableCode } from '@/lib/master/masterCodes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
@@ -369,5 +369,12 @@ export async function DELETE(request, { params }) {
   // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
   await purgeUpdates(supabase, 'product', id);
   await recordAudit({ user, action: 'delete', entityType: 'product', entityId: id, before: product, request });
-  return Response.json({ success: true, message: 'ลบสินค้าเรียบร้อยแล้ว' });
+  // ดูเหตุผลที่ต้องบอกผลของเลขที่ DELETE ของลูกค้า (mig 0248)
+  const reclaimed = isReusableCode(product) && isAutoFgCode(product.fgCode);
+  return Response.json({
+    success: true,
+    message: reclaimed
+      ? `ลบสินค้าเรียบร้อยแล้ว — รหัส ${product.fgCode} ยังไม่เคยผ่านอนุมัติ เลขรันนี้กลับไปรอออกให้ใบถัดไป`
+      : 'ลบสินค้าเรียบร้อยแล้ว',
+  });
 }

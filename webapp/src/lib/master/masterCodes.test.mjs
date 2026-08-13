@@ -18,7 +18,9 @@ import {
   insertProductWithCode,
   isAutoArCode,
   isAutoFgCode,
+  isReusableCode,
   peekMasterNumber,
+  RECLAIMED_TABLE,
 } from './masterCodes.js';
 
 test('รหัสลูกค้าอัตโนมัติเริ่มที่ 1001 และเป็น 4 หลักเสมอ', () => {
@@ -152,19 +154,68 @@ test('โหมดที่ส่งมาผิด/ไม่ส่ง ถือ
   assert.equal(codeModeOf('อะไรไม่รู้'), CODE_MODE_AUTO);
 });
 
-test('พรีวิวเลขถัดไป: ยังไม่มีแถวเคาน์เตอร์ = เลขแรกของ scope', async () => {
-  const fakeSupabase = (row) => ({
-    from: () => ({
+// เคาน์เตอร์ = { lastNo } · กองเลขคืน = { no } (null = กองว่าง) · reclaimedError = ตารางหาย
+const fakeSupabase = (counterRow, reclaimedRow = null, reclaimedError = null) => ({
+  from: (table) => (table === RECLAIMED_TABLE
+    ? {
       select: () => ({
         eq: () => ({
-          eq: () => ({ maybeSingle: async () => ({ data: row, error: null }) }),
+          order: () => ({
+            limit: () => ({
+              maybeSingle: async () => ({ data: reclaimedRow, error: reclaimedError }),
+            }),
+          }),
+        }),
+      }),
+    }
+    : {
+      select: () => ({
+        eq: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: counterRow, error: null }) }),
         }),
       }),
     }),
-  });
+});
+
+test('พรีวิวเลขถัดไป: ยังไม่มีแถวเคาน์เตอร์ = เลขแรกของ scope', async () => {
   assert.equal(await peekMasterNumber(fakeSupabase(null), 'AR'), 1001);
   assert.equal(await peekMasterNumber(fakeSupabase(null), 'FG'), 10001);
   assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 1000 }), 'AR'), 1001);
   assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 1042 }), 'AR'), 1043);
   assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 10007 }), 'FG'), 10008);
+});
+
+// ── เลขที่ร่างคืนมา (mig 0248) ────────────────────────────────────────────
+test('พรีวิวหยิบจากกองเลขคืนก่อนเคาน์เตอร์ — ลำดับเดียวกับฝั่ง SQL', async () => {
+  // เคาน์เตอร์วิ่งไปถึง 1042 แล้ว แต่ AR-1005 ถูกคืนมา ⇒ ใบถัดไปต้องได้ 1005 ไม่ใช่ 1043
+  assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 1042 }, { no: 1005 }), 'AR'), 1005);
+  assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 10007 }, { no: 10003 }), 'FG'), 10003);
+  // กองว่าง = พฤติกรรมเดิมทุกประการ
+  assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 1042 }, null), 'AR'), 1043);
+});
+
+test('ยังไม่ได้รัน mig 0248 (ไม่มีตารางกองเลขคืน) = อ่านเคาน์เตอร์ตามเดิม ไม่ใช่พัง', async () => {
+  const missing = { code: '42P01', message: 'relation "entity_number_reclaimed" does not exist' };
+  assert.equal(await peekMasterNumber(fakeSupabase({ lastNo: 1042 }, null, missing), 'AR'), 1043);
+  assert.equal(await peekMasterNumber(fakeSupabase(null, null, { code: 'PGRST205' }), 'FG'), 10001);
+  // error อื่นยังต้องดังเหมือนเดิม — ไม่ใช่กลบทุกอย่างที่อ่านไม่ได้
+  await assert.rejects(
+    () => peekMasterNumber(fakeSupabase({ lastNo: 1042 }, null, { code: '42501', message: 'permission denied' }), 'AR'),
+    /อ่านเลขคืน AR ไม่สำเร็จ/,
+  );
+});
+
+test('เลขคืนได้เฉพาะแถวที่ไม่เคยอนุมัติ — ดู firstApprovedAt ไม่ใช่ approvalStatus', () => {
+  assert.equal(isReusableCode({ approvalStatus: 'pending', firstApprovedAt: null }), true);
+  assert.equal(isReusableCode({ approvalStatus: 'rejected', firstApprovedAt: null }), true);
+  assert.equal(isReusableCode({ approvalStatus: 'approved', firstApprovedAt: '2026-08-13T00:00:00Z' }), false);
+  // เคสที่กติกานี้มีอยู่เพื่อกัน: อนุมัติแล้วถูกแก้ → สถานะกลับเป็น pending และ
+  // approvedAt ถูกล้าง (resetApprovalOnEdit) แต่รหัสอยู่บนเอกสารไปแล้ว ⇒ ห้ามคืนเลข
+  assert.equal(
+    isReusableCode({ approvalStatus: 'pending', approvedAt: null, firstApprovedAt: '2026-08-13T00:00:00Z' }),
+    false,
+  );
+  assert.equal(isReusableCode(null), false);   // ไม่มีแถวให้ดู = ไม่สัญญาว่าเลขจะคืน
+  // ยังไม่ได้รัน mig 0248 = แถวไม่มีคีย์นี้เลย ต่างจาก null (มีคอลัมน์ = ยังไม่เคยอนุมัติ)
+  assert.equal(isReusableCode({ approvalStatus: 'pending' }), false);
 });
