@@ -5,6 +5,7 @@ import {
   AR_FIRST_NUMBER,
   CODE_MODE_AUTO,
   CODE_MODE_MANUAL,
+  DEFAULT_CODE_MODE,
   FG_FIRST_NUMBER,
   arCodeError,
   codeModeOf,
@@ -206,7 +207,10 @@ test('แถบรหัสซ่อนท่อนเลขรันเมื�
   assert.deepEqual(keys(''), ['prefix', 'customer', 'main', 'sub', 'run']);
 });
 
-test('โหมดที่ส่งมาผิด/ไม่ส่ง ถือเป็นอัตโนมัติ (ค่าตั้งต้นของสวิตช์)', () => {
+// ⚠️ สองค่านี้ต่างกันโดยตั้งใจ — ผูกเข้าด้วยกันเมื่อไร การเปลี่ยนหน้าตาฟอร์มจะไป
+// เปลี่ยนความหมายของ API พร้อมกันโดยไม่มีใครตั้งใจ (มติ 2026-08-13)
+test('สวิตช์ในฟอร์มตั้งต้นปิด · แต่คำขอที่ไม่ส่ง codeMode ยังถือเป็นอัตโนมัติ', () => {
+  assert.equal(DEFAULT_CODE_MODE, CODE_MODE_MANUAL);
   assert.equal(codeModeOf(undefined), CODE_MODE_AUTO);
   assert.equal(codeModeOf('manual'), CODE_MODE_MANUAL);
   assert.equal(codeModeOf('อะไรไม่รู้'), CODE_MODE_AUTO);
