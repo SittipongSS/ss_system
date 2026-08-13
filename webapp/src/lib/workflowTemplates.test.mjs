@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   EXCISE_CATEGORY_TOKEN,
   WORKFLOW_TEMPLATE_KEYS,
+  WORKFLOW_TEMPLATE_LINES,
   WORKFLOW_TEMPLATE_ROLES,
   findWorkflowTemplate,
   missingWorkflowTemplatePairs,
@@ -228,12 +229,14 @@ test('findWorkflowTemplate: หาไม่เจอคืน null ไม่ต�
   assert.equal(findWorkflowTemplate([], 'PRODUCT', 'NPD'), null);
 });
 
-test('missingWorkflowTemplatePairs: บอกช่องว่างครบ 6 คู่', () => {
-  assert.equal(missingWorkflowTemplatePairs([]).length, 6);
+test('missingWorkflowTemplatePairs: บอกช่องว่างครบทุกคู่ (line × templateKey)', () => {
+  // ผูกกับความยาวจริงของสองลิสต์ ไม่ใช่เลขตายตัว — เลข 6 เดิมแดงตอนเพิ่ม 'OTHER'
+  // เป็นคีย์ที่ 4 (mig 0249) ทั้งที่พฤติกรรมถูก
+  const allPairs = WORKFLOW_TEMPLATE_LINES.length * WORKFLOW_TEMPLATE_KEYS.length;
+  assert.equal(missingWorkflowTemplatePairs([]).length, allPairs);
   const prodOnly = WORKFLOW_TEMPLATE_KEYS.map((templateKey) => ({ line: 'PRODUCT', templateKey }));
-  assert.deepEqual(missingWorkflowTemplatePairs(prodOnly), [
-    { line: 'SERVICE', templateKey: 'SCENT' },
-    { line: 'SERVICE', templateKey: 'NPD' },
-    { line: 'SERVICE', templateKey: 'RE-ORDER' },
-  ]);
+  assert.deepEqual(
+    missingWorkflowTemplatePairs(prodOnly),
+    WORKFLOW_TEMPLATE_KEYS.map((templateKey) => ({ line: 'SERVICE', templateKey })),
+  );
 });

@@ -15,7 +15,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import { DEAL_TYPE_LABELS, PROJECT_TYPES, SALES_FEATURES, STAGE_LABELS, dealTypeFoundsProject, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -334,10 +334,6 @@ export default function DealOverviewPage() {
   const ownerName = livePersonName(directory, deal?.ownerId, deal?.ownerName);
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
-  /* ประเภทขายล้วน (OTHER — mig 0247) ไม่มีแม่แบบไทม์ไลน์และไม่ก่อตั้งโครงการ ⇒ ซ่อนปุ่ม
-     ทั้งสามทาง (gen ไทม์ไลน์ / สร้างโครงการ / ผูกโครงการเดิม) แทนที่จะปล่อยให้กดแล้วเจอ
-     400 · route กันซ้ำอยู่แล้ว ตรงนี้แค่ไม่ให้เห็นทางตัน */
-  const foundsProject = dealTypeFoundsProject(dealTypeOf(deal));
   const role = useRole();
   const alreadyWon = isWonStage(deal?.stage);
   // สายภาษีของแต่ละ SO — 3 กรณีที่ต้องอ่านออกจากตาเดียว:
@@ -1147,7 +1143,7 @@ export default function DealOverviewPage() {
                   onChanged={load}
                   onError={setError}
                 />
-                {canEdit && deal?.stage !== "lost" && foundsProject && (
+                {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                     <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
                       <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
@@ -1160,14 +1156,8 @@ export default function DealOverviewPage() {
               </>
             ) : (
               <Empty>
-                {/* ประเภทขายล้วน: "ยังไม่ได้สร้าง" อ่านเหมือนงานค้างทั้งที่เป็นผลลัพธ์ที่ถูกต้อง
-                    — บอกเหตุผลกับทางออกไปเลย (มติผู้ใช้ 2026-08-13) */}
-                <div style={{ marginBottom: 12 }}>
-                  {foundsProject
-                    ? "ยังไม่ได้สร้างไทม์ไลน์"
-                    : `ดีลประเภท ${DEAL_TYPE_LABELS[dealTypeOf(deal)]} เป็นงานขายอย่างเดียว — ไม่มีไทม์ไลน์และไม่ก่อตั้งโครงการ (เปลี่ยนประเภทดีลได้ที่ปุ่มแก้ไข)`}
-                </div>
-                {canEdit && deal?.stage !== "lost" && foundsProject && (
+                <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
+                {canEdit && deal?.stage !== "lost" && (
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
                     {/* DL1: ไทม์ไลน์ของดีลเอง — สร้างได้ตั้งแต่ยังไม่มีโครงการ (template ตามประเภท+หมวด) */}
                     <button type="button" className="btn btn-primary" onClick={openGenTimeline} disabled={!!actionBusy}
@@ -1356,9 +1346,7 @@ export default function DealOverviewPage() {
               onChange={(e) => setGenType(e.target.value)}
               style={{ color: DEAL_TYPE_COLORS[normalizeDealType(genType)], fontWeight: "var(--fw-semibold)" }}
             >
-              {/* PROJECT_TYPES ไม่ใช่ DEAL_TYPES — ดรอปดาวน์นี้เลือก "template ที่จะใช้"
-                  ประเภทขายล้วน (OTHER) ไม่มี template จึงไม่ควรอยู่ในลิสต์ให้เลือกแล้วพัง */}
-              {PROJECT_TYPES.map((t) => (
+              {DEAL_TYPES.map((t) => (
                 <option key={t} value={t} style={{ color: DEAL_TYPE_COLORS[t], fontWeight: "var(--fw-semibold)" }}>{t} · {DEAL_TYPE_LABELS[t]}</option>
               ))}
             </Select>
