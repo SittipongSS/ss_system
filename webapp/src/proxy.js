@@ -337,6 +337,26 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/sales-planning/leads')) return can(role, 'salesplan:lead');
   // (ระบบสอบถาม /api/sales-planning/inquiries ถูกปลดระวางใน mig 0174 —
   //  งานย้ายไปคำร้องข้ามฝ่าย /api/sa/requests ซึ่งมีกฎของตัวเองด้านล่าง)
+  /* ⭐ **ขั้นของฝ่ายบัญชีบนใบสั่งขาย** (mig 0245 งวดชำระ · mig 0250 บัญชีตรวจใบ) —
+     ต้องมาก่อนกฎ `/api/sales-planning` ด้านล่าง ด้วยเหตุผลเดียวกับที่ `/api/sa/costing`
+     และ `/api/sa/requests` ต้องมีกฎของตัวเอง: **ฝ่ายบัญชีไม่มี `salesplan:edit`
+     โดยเจตนา** เขาไม่ใช่คนแก้งานขาย แต่เป็นคนรับรองเงินและตรวจใบ
+
+     🐞 ไม่มีบรรทัดนี้ = ปุ่ม "บัญชีคอนเฟิร์ม" กับ "บัญชีอนุมัติใบนี้" **ขึ้นบนจอปกติ**
+     (ด่านฝั่งเว็บผ่านหมด) แต่กดแล้วโดน 403 ที่ proxy ก่อนถึง handler ด้วยซ้ำ ⇒ บนจอ
+     เห็นแค่ "ดำเนินการไม่สำเร็จ" โดยไม่มีอะไรบอกว่าถูกตัดที่ชั้นไหน · ผู้ใช้แจ้งเข้ามาเอง
+     หลังสร้างบัญชีฝ่าย FN คนแรก — เทสต์เดิมจับไม่ได้เพราะทดสอบด้วย admin ซึ่งผ่าน
+     `lockedOut` ตั้งแต่บรรทัดแรก (อาการซ้ำรอย `/api/tax/*` และ `/notifications`)
+
+     ⚠️ **ด่านนี้หยาบ** — เปิด PATCH ทั้งเส้นใบสั่งขายให้คนที่ถือ `payments:confirm`
+     ตัวกั้นจริงคือ `financeActionError` / `installmentActionError` ใน handler ซึ่ง
+     ปฏิเสธทุก action ที่ไม่ใช่ของบัญชี (อนุมัติเอกสาร ยกเลิก ออก Rev. ฯลฯ) และแคบ
+     ด้วย **ฝ่าย** อีกชั้นผ่าน `canConfirmPayment` ซึ่ง proxy มองไม่เห็น
+     ⚠️ ครอบเฉพาะ **PATCH ของใบเดียว** ไม่ใช่ทั้ง namespace — POST/DELETE และเส้นอื่น
+     (ดีล ใบเสนอราคา โครงการ) ยังต้อง `salesplan:edit` ตามเดิม */
+  if (method === 'PATCH'
+    && /^\/api\/sales-planning\/sales-orders\/[^/]+(\/installments)?$/.test(path)
+    && canUser({ role, extraCaps }, 'payments:confirm')) return true;
   if (path.startsWith('/api/sales-planning')) return can(role, 'salesplan:edit');
   // ระบบขอราคาผลิต (/api/sa/costing) — ต้องมาก่อนกฎ /api/sa ด้านล่าง เพราะ
   // สามเส้นนี้ถือคนละ cap: ผู้บริหารอนุมัติได้ทั้งที่ไม่มี salesplan:edit, และ
