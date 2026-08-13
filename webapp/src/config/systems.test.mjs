@@ -14,7 +14,8 @@ const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 // เป็นระบบเดียวที่ `isVisible: () => true` เพราะคนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์
 // น้อยที่สุด (มติ Q2) · ถ้าวันหนึ่งมันหายจากเคสไหน แปลว่ามีคนไปใส่เงื่อนไข cap ให้มัน
 test('system catalog keeps the agreed global order and role visibility', () => {
-  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'rd', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']);
+  // 'finance' แทรกหลัง 'service' (มติผู้ใช้ 2026-08-13) — โมดูลของฝ่ายอยู่ติดกัน
+  assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'rd', 'production', 'service', 'finance', 'tax', 'sahamit', 'master', 'mgmt', 'support']);
   assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
   assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'master', 'support']);
   assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']);

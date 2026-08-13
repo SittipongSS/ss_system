@@ -756,6 +756,26 @@ export function canAccessRd(user) {
   return departmentOf(user) === 'RD' && canUser(user, 'requests:answer');
 }
 
+// โมดูล "บัญชีและการเงิน" (/finance) — บ้านของฝ่าย FN (มติผู้ใช้ 2026-08-13)
+//
+// > *"อยากสร้าง Module ของบัญชีและการเงินออกมาแบบวิจัยและพัฒนา"*
+//
+// ⚠️ **ขึ้นกับฝ่าย ไม่ใช่ role** ด้วยเหตุผลเดียวกับ [canAccessRd] เป๊ะ ๆ — ใช้
+// `isSuperuser` เมื่อไร AE Supervisor จะได้โมดูลบัญชีไปด้วย ทั้งที่ทั้งระบบวางไว้ว่า
+// เขาคือ "อีกฝั่ง" ของด่านบัญชี (ดู `canConfirmPayment` ที่จงใจไม่ใช้ isSuperuser
+// ด้วยเหตุผลเดียวกัน) · ให้เขาเห็นทะเบียนการชำระทั้งบริษัทเท่ากับด่านแยกหน้าที่หายไป
+//
+// ⚠️ `staff` ที่อยู่ฝ่าย FN ผ่านด้วย — คนฝ่ายบัญชีเดิมยังถือ role `staff` อยู่จนกว่าจะ
+// ย้ายเป็น `finance` (เหตุผลเดียวกับที่ `DEPARTMENT_ROLES.FN` มีสองค่า) · ด่านที่แคบ
+// กว่าคือ **คำสั่ง** ไม่ใช่การเห็นโมดูล — คอนเฟิร์มงวดยังคุมด้วย `canConfirmPayment`
+//
+// 🛑 ตอนเปิดใช้ **ยังไม่มีผู้ใช้คนไหนอยู่ฝ่าย FN เลยสักคน** (ตรวจ 2026-08-13 · 25 คน)
+// ⇒ ระหว่างนี้มีแต่ admin ที่เห็นโมดูล ซึ่งถูกต้องแล้ว ไม่ใช่บั๊ก
+export function canAccessFinance(user) {
+  if (user?.role === 'admin') return true;
+  return departmentOf(user) === 'FN';
+}
+
 // ── Data scope ────────────────────────────────────────────────────────
 // 'all'  = every team's records
 // 'team' = only records belonging to the user's own team
