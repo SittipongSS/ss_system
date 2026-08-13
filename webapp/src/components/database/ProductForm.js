@@ -25,7 +25,8 @@ import {
 } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
-  CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment, fgCodeParts,
+  CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment,
+  fgCodeHasRunNo, fgCodeParts,
 } from "@/lib/master/masterCodes";
 import {
   productDuplicateWarning, productOtherSizeHint, splitProductMatches,
@@ -229,10 +230,15 @@ export default function ProductForm({
                 })}
                 ariaLabel="รหัสสินค้าที่ระบบจะออกให้"
               />
+              {/* คำกำกับใต้แถบต้องเปลี่ยนตามหมวดด้วย — หมวด 03/04 ไม่มีเลขรัน
+                  ถ้ายังเขียนว่า "เลขรันจองตอนกดบันทึก" คนกรอกจะรอท่อนที่ไม่มีวันมา
+                  และไม่รู้ว่าคู่ลูกค้า+หมวดรองนี้สร้างซ้ำไม่ได้จนกว่าจะโดนตีกลับ */}
               <span className="text-xs text-[var(--text-3)] mt-1">
                 {selectedCustomer && selectedCustomer.arCode && !customerCodeSegment(selectedCustomer.arCode)
                   ? `ลูกค้ารายนี้มีรหัส ${selectedCustomer.arCode} ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์แล้วกรอกรหัสสินค้าเอง`
-                  : "เลือกลูกค้าและหมวดด้านล่างให้ครบ แล้วรหัสจะประกอบเอง · เลขรันจองตอนกดบันทึก"}
+                  : categoryCode && !fgCodeHasRunNo(categoryCode)
+                    ? "หมวดนี้ออกรหัสโดยไม่มีเลขรัน — ลูกค้าหนึ่งรายมีได้หนึ่งรายการต่อหมวดรอง"
+                    : "เลือกลูกค้าและหมวดด้านล่างให้ครบ แล้วรหัสจะประกอบเอง · เลขรันจองตอนกดบันทึก"}
               </span>
             </>
           ) : (

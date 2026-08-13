@@ -11,6 +11,7 @@ import {
   composeFgCode,
   customerCodeSegment,
   fgCodeError,
+  fgCodeHasRunNo,
   fgCodeParts,
   fgCodePrefix,
   formatArCode,
@@ -146,6 +147,63 @@ test('ด่านตรวจรหัสสินค้าแยกตาม�
   );
   assert.equal(isAutoFgCode('FG-0109-01-002-10001'), true);
   assert.equal(isAutoFgCode('FG-109-01-002-1001'), false);
+});
+
+// ── รหัสไม่มีเลขรัน (มติผู้ใช้ 2026-08-13) ────────────────────────────────
+test('กรอกเอง: FG-AAA-BB-CCC ไม่มีท่อน DDDD ก็ผ่าน (มีอยู่จริงในทะเบียน 7 แถว)', () => {
+  assert.equal(fgCodeError('FG-109-01-002', { mode: CODE_MODE_MANUAL }), null);
+  assert.equal(fgCodeError('FG-109-01-002-1001', { mode: CODE_MODE_MANUAL }), null);
+  // หมวดในรหัสยังต้องตรงกับหมวดที่เลือกเหมือนเดิม
+  assert.match(
+    fgCodeError('FG-109-01-002', { mode: CODE_MODE_MANUAL, categoryCode: '02-003' }),
+    /ไม่ตรงกับหมวดที่เลือก/,
+  );
+  // จำนวนหลักอื่นยังผิดรูปแบบ — ไม่ได้เปิดกว้างทั้งหมด
+  assert.match(fgCodeError('FG-1090-01-002', { mode: CODE_MODE_MANUAL }), /เปิดสวิตช์ระบบใหม่/);
+  assert.match(fgCodeError('FG-109-01-02', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
+});
+
+test('หมวดหลัก 03/04 ออกรหัสอัตโนมัติโดยไม่มีเลขรัน', () => {
+  assert.equal(fgCodeHasRunNo('01-002'), true);
+  assert.equal(fgCodeHasRunNo('02-003'), true);
+  assert.equal(fgCodeHasRunNo('03-001'), false);
+  assert.equal(fgCodeHasRunNo('04-005'), false);
+
+  // ประกอบรหัส: หมวดปกติต้องมีเลขรัน · 03/04 จบที่ CCC และ **ไม่สนใจ runNo ที่ส่งมา**
+  assert.equal(
+    composeFgCode({ arCode: 'AR-109', categoryCode: '01-002', runNo: 10001 }),
+    'FG-0109-01-002-10001',
+  );
+  assert.equal(composeFgCode({ arCode: 'AR-109', categoryCode: '01-002' }), null);
+  assert.equal(composeFgCode({ arCode: 'AR-109', categoryCode: '03-001' }), 'FG-0109-03-001');
+  assert.equal(
+    composeFgCode({ arCode: 'AR-1001', categoryCode: '04-005', runNo: 10007 }),
+    'FG-1001-04-005',
+  );
+
+  // ด่านตรวจแยกตามหมวด — หมวดปกติที่หลุดเลขรันต้องไม่ผ่าน และกลับกัน
+  assert.equal(fgCodeError('FG-0109-03-001', { mode: CODE_MODE_AUTO, categoryCode: '03-001' }), null);
+  assert.match(
+    fgCodeError('FG-0109-03-001-10001', { mode: CODE_MODE_AUTO, categoryCode: '03-001' }),
+    /FG-AAAA-BB-CCC$/,
+  );
+  assert.match(
+    fgCodeError('FG-0109-01-002', { mode: CODE_MODE_AUTO, categoryCode: '01-002' }),
+    /FG-AAAA-BB-CCC-DDDDD/,
+  );
+
+  // รหัสไร้เลขรันที่ระบบออกให้ = แก้ไม่ได้เหมือนรหัสอัตโนมัติอื่น (ท่อนลูกค้า 4 หลัก)
+  assert.equal(isAutoFgCode('FG-0109-03-001'), true);
+  assert.equal(isAutoFgCode('FG-109-03-001'), false);
+});
+
+test('แถบรหัสซ่อนท่อนเลขรันเมื่อเลือกหมวด 03/04', () => {
+  const keys = (categoryCode) =>
+    fgCodeParts({ arCode: 'AR-109', categoryCode, runNo: 10001 }).map((p) => p.key);
+  assert.deepEqual(keys('01-002'), ['prefix', 'customer', 'main', 'sub', 'run']);
+  assert.deepEqual(keys('03-001'), ['prefix', 'customer', 'main', 'sub']);
+  // ยังไม่เลือกหมวด = ยังไม่รู้ว่าหมวดไหน ท่อนเลขจึงยังอยู่ตามค่าตั้งต้น
+  assert.deepEqual(keys(''), ['prefix', 'customer', 'main', 'sub', 'run']);
 });
 
 test('โหมดที่ส่งมาผิด/ไม่ส่ง ถือเป็นอัตโนมัติ (ค่าตั้งต้นของสวิตช์)', () => {
