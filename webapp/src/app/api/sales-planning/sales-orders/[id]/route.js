@@ -21,6 +21,7 @@ import {
   isSalesOrderReviewer,
   isValidCancelReasonCode,
   isValidReversalTarget,
+  salesOrderActionNeedsEditScope,
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -236,7 +237,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || '');
   const withdrawing = action === 'withdraw';
-  if (!before.deal || !(withdrawing
+  /* 🐞 **ด่านนี้เคยตัดฝ่ายบัญชีทิ้งทุกครั้ง** — บังคับ `salesplan:edit` กับทุก action
+     ที่ไม่ใช่ "ดึงกลับ" แต่ฝ่ายบัญชีไม่มี cap นั้นโดยเจตนา (เขาไม่ใช่คนแก้งานขาย)
+     ⇒ ปุ่ม "บัญชีอนุมัติใบนี้" ขึ้นบนจอปกติแต่กดแล้ว 403 ก่อนถึงสาขา action
+     ⚠️ ที่ **คอนเฟิร์มงวดรอด** เพราะอยู่คนละ route (`/installments`) ซึ่งกั้นด้วย
+     `canViewSalesPlanning` เท่านั้น — อาการจึงเป็น "ปุ่มหนึ่งได้ อีกปุ่มไม่ได้"
+     ซึ่งชี้ตรงมาที่ด่านนี้ (ผู้ใช้แจ้งเข้ามาเอง 2026-08-13)
+
+     ⭐ **ขั้นบัญชีคือ "อ่านใบแล้วตัดสิน" ไม่ใช่ "แก้ใบ"** — เกณฑ์ที่ถูกคือ view scope
+     เหมือน `withdraw` · ด่านจริงของแต่ละคำสั่งคือ `financeActionError` ซึ่งแคบด้วย
+     **ฝ่าย** อีกชั้น และ RPC ที่ปลายทางก็ตรวจฝ่ายซ้ำอีกที (mig 0251) */
+  const readerAction = !salesOrderActionNeedsEditScope(action);
+  if (!before.deal || !(readerAction
     ? inSalesViewScope(user, before.deal)
     : canEditSalesPlanning(user) && inSalesEditScope(user, before.deal))) return forbidden();
   const reviewer = isSalesOrderReviewer(user.role);
