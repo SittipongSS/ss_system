@@ -187,8 +187,112 @@
   color: var(--red);
 }
 
+/* ── จอแคบ: ตารางรายการกลายเป็นการ์ดต่อรายการ ────────────────────────────
+   ตารางกว้างคงที่ 900px (อ่านเหตุผลที่ .linesTable) — คอนเทนเนอร์แคบกว่านั้น
+   ผู้ใช้จะเห็นแค่ "# + รายการ" ส่วน จำนวน/ราคา/ส่วนลด/ยอด ถูกซ่อนหลังการเลื่อน
+   แนวนอน แถมขอบขวายังโผล่เศษช่องกรอกกับเศษตัวอักษรของคอลัมน์ถัดไปทุกแถว
+   (จอ 375 ซ่อน 587px · จอ 768 ซ่อน 218px — ยอดเงินหลุดจอทั้งคู่)
+   900 คือความกว้างที่ตารางต้องการพอดี จึงใช้เป็นจุดตัด: แคบกว่านี้ = การ์ด
+   ป้ายกำกับมาจาก data-label ของ <td> (หัวตารางถูกซ่อน) — DOM ชุดเดียวกับจอกว้าง
+   ตามกฎ AGENTS.md ไม่แยกมาร์กอัปมือถือเป็นอีกชุด */
+@media (max-width: 900px) {
+  .linesTable,
+  .readOnlyTable {
+    min-width: 0;
+    display: block;
+    table-layout: auto;
+  }
+
+  .linesTable thead,
+  .readOnlyTable thead { display: none; }
+
+  .linesTable tbody,
+  .readOnlyTable tbody { display: block; }
+
+  .linesTable tbody tr,
+  .readOnlyTable tbody tr {
+    display: block;
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-3-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .linesTable tbody td,
+  .readOnlyTable tbody td {
+    display: grid;
+    width: 100%;
+    height: auto !important;
+    padding: var(--space-1) 0 !important;
+    border: 0 !important;
+    grid-template-columns: 104px minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-2-5);
+    text-align: left !important;
+  }
+
+  .linesTable tbody td[data-label]::before,
+  .readOnlyTable tbody td[data-label]::before {
+    content: attr(data-label);
+    grid-column: 1;
+    grid-row: 1;
+    color: var(--text-3);
+    font-family: var(--font-sans);
+    font-size: var(--fs-4);
+  }
+
+  /* ทุกชิ้นในเซลล์อยู่คอลัมน์ค่า — ไม่งั้นชิ้นที่สอง (เช่น "หน่วย: แพ็คเกจ" ใต้ช่อง
+     จำนวน, ลิงก์เตือนราคาใต้ช่องราคา) จะตกไปอยู่ใต้ป้ายกำกับคนละแนวกับช่องกรอก */
+  .linesTable tbody td[data-label] > *,
+  .readOnlyTable tbody td[data-label] > * { grid-column: 2; }
+
+  /* เซลล์ที่ไม่มีป้าย (ลำดับ · รายละเอียด · ปุ่มลบ) กินเต็มความกว้างการ์ด */
+  .linesTable tbody td:not([data-label]),
+  .readOnlyTable tbody td:not([data-label]) { grid-template-columns: minmax(0, 1fr); }
+
+  .linesTable tbody td.rowNumber,
+  .readOnlyTable tbody td.rowNumber {
+    display: block; /* ป้ายกับเลขอยู่บรรทัดเดียวกัน — grid จะดันเลขลงบรรทัดใหม่ */
+    padding-top: 0 !important;
+    padding-bottom: var(--space-1) !important;
+    color: var(--text-3);
+    font-size: var(--fs-4);
+    text-align: left !important;
+  }
+
+  /* "1" ลอย ๆ ไม่มีหัวตารางกำกับแล้ว — บอกให้ครบว่าเป็นรายการที่เท่าไร */
+  .linesTable tbody td.rowNumber::before,
+  .readOnlyTable tbody td.rowNumber::before { content: "รายการที่ "; }
+
+  .linesTable tbody td.lineAmount,
+  .readOnlyTable tbody td.lineAmount {
+    margin-top: var(--space-1);
+    padding-top: var(--space-2) !important;
+    border-top: 1px solid var(--border) !important;
+    font-size: var(--fs-8);
+  }
+
+  .linesTable tbody td.rowActions {
+    padding-top: var(--space-1) !important;
+    justify-items: end;
+  }
+
+  .linesTable tbody td.emptyRows,
+  .readOnlyTable tbody td.emptyRows { text-align: center !important; }
+
+  .linesTable tbody tr:has(td.emptyRows),
+  .readOnlyTable tbody tr:has(td.emptyRows) { border: 0; padding: 0; }
+}
+
 @media (max-width: 640px) {
+  /* ป้าย + ยอดอยู่บรรทัดเดียวกัน ส่วนคอนโทรล (ชนิดส่วนลด/ค่า, VAT) ลงบรรทัดใหม่
+     เต็มความกว้าง — เดิมบีบเป็น 1 คอลัมน์ทำให้ช่องกรอกซ้อนกันใต้ป้ายจนดูเป็น
+     ช่องลอยไม่มีที่มา และตัวเลขยอดลอยไปมุมขวาบนห่างจากป้ายของตัวเอง */
   .totalLine { align-items: flex-start; }
-  .totalControls { grid-template-columns: 1fr; }
-  .totalControls > :last-child:nth-child(2) { grid-column: auto; }
+  .totalControls {
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .totalControls > :first-child { grid-column: 1 / -1; }
+  .totalControls > :last-child:nth-child(2) { grid-column: 1 / -1; }
 }

@@ -30,4 +30,16 @@
   .paymentHeading { align-items: flex-start; }
   .installmentToggle { width: 100%; }
   .paymentTermsGrid { grid-template-columns: minmax(0, 1fr); }
+
+  /* ตารางงวดล้นคอนเทนเนอร์แค่ 15px บนจอ 375 — หัวคอลัมน์สุดท้าย ("หมายเหตุ")
+     เลยโดนตัดกลางคำและมีสกรอลล์แนวนอนที่แทบไม่มีอะไรให้เลื่อน. บีบช่องไฟข้าง
+     เซลล์ลงเท่านั้น (13px → 6px) ทั้งตารางก็พอดีจอ ไม่ต้องแตะโครงคอลัมน์
+     ⚠️ ต้องเกาะ [data-family][data-surface] ให้ specificity ชนะกฎกลาง
+     `.scroll[data-family] th { padding-inline: 13px }` ของ Table.module.css
+     — เขียนแค่ `.installmentScroll th` จะแพ้และไม่มีผลอะไรเลย */
+  .installmentScroll[data-family][data-surface] :global(th),
+  .installmentScroll[data-family][data-surface] :global(td) {
+    padding-right: var(--space-1-5);
+    padding-left: var(--space-1-5);
+  }
 }

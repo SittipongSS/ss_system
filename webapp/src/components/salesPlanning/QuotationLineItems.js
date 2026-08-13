@@ -69,11 +69,12 @@ export function QuotationReadOnlyLineItems({
                     ) : null}
                   </div>
                 </td>
-                <td className="num mono">{line.qty ?? "-"}</td>
-                <td>{line.unit || "-"}</td>
-                <td className="num mono">{fmtMoney(line.unitPrice)}</td>
-                <td className="num mono">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : "-"}</td>
-                <td className="num mono">{fmtMoney(line.lineTotal)}</td>
+                {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
+                <td className="num mono" data-label="จำนวน">{line.qty ?? "-"}</td>
+                <td data-label="หน่วย">{line.unit || "-"}</td>
+                <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
+                <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : "-"}</td>
+                <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
               </tr>
             ))}
             {!lines.length ? <tr><td colSpan={7} className={styles.emptyRows}>{emptyText}</td></tr> : null}
@@ -241,7 +242,7 @@ export default function QuotationLineItems({
                       ))}
                   </div>
                 </td>
-                <td>
+                <td data-label="จำนวน">
                   <MoneyInput min="0" value={line.qty} disabled={!editable} onChange={(value) => setLine(index, { qty: value ?? "" })} aria-label={`จำนวน รายการ ${index + 1}`} />
                   {/* บรรทัดที่ผูกสินค้า: หน่วยล็อกตามฐานข้อมูลสินค้า (เหมือนราคา — มติ 2026-07-23)
                       บรรทัดที่พิมพ์เอง (ค่าบริการ ฯลฯ) ไม่มี master ให้ผูก จึงเลือกเองได้
@@ -264,7 +265,7 @@ export default function QuotationLineItems({
                       )
                       : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
                 </td>
-                <td>
+                <td data-label="ราคา/หน่วย">
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
                   {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
                       ไม่ต้องมีคำอธิบายกำกับ ช่องถูกล็อกอยู่แล้วและมี tooltip บอกที่มา
@@ -275,7 +276,7 @@ export default function QuotationLineItems({
                     </Link>
                   )}
                 </td>
-                <td>
+                <td data-label="ส่วนลดรายการ">
                   <div className={styles.discountControls}>
                     <Select className="premium-select" value={line.discountType || ""} disabled={!editable} onChange={(event) => setLine(index, { discountType: event.target.value || null, discountValue: event.target.value ? line.discountValue : 0 })}>
                       <option value="">ไม่ลด</option>
@@ -285,7 +286,7 @@ export default function QuotationLineItems({
                     <MoneyInput min="0" value={line.discountValue || ""} disabled={!editable || !line.discountType} onChange={(value) => setLine(index, { discountValue: clampDiscount(line.discountType, value) ?? "" })} aria-label={`ส่วนลด รายการ ${index + 1}`} />
                   </div>
                 </td>
-                <td className={`num mono ${styles.lineAmount}`}>{fmtMoney(quoteLineNet(line).lineTotal)}</td>
+                <td className={`num mono ${styles.lineAmount}`} data-label="จำนวนเงิน">{fmtMoney(quoteLineNet(line).lineTotal)}</td>
                 {editable && (
                   <td className={styles.rowActions}><button type="button" className="btn-icon danger" onClick={() => removeLine(index)} aria-label={`ลบรายการ ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
                 )}
