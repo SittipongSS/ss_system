@@ -63,7 +63,7 @@ import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
-  financeActionError, financeStatusOf, financeWorkflowStep, salesOrderWorkflowIndex,
+  financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep, salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
 
 const STATUS = {
@@ -648,8 +648,10 @@ export default function SalesOrderDetailPage() {
         action: () => requestAction("finance_approve"),
       }),
     },
+    /* ปุ่มเดียวสองหน้าที่ — ส่งใบเข้าคิวบัญชีครั้งแรก (ใบที่อนุมัติก่อนมีขั้นนี้)
+       และส่งตรวจใหม่หลังถูกตีกลับ · ป้ายเปลี่ยนตามสถานะ ดู financeSendLabel */
     {
-      id: "finance-resubmit", kind: "submit", label: "ส่งให้บัญชีตรวจใหม่", variant: "outline",
+      id: "finance-resubmit", kind: "submit", label: financeSendLabel(order), variant: "outline",
       visible: !financeGate("finance_resubmit"),
       onClick: () => requestAction("finance_resubmit"),
     },
