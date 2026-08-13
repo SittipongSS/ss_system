@@ -1,0 +1,108 @@
+// ── ขั้นบัญชีตรวจใบสั่งขาย (mig 0247) — logic ล้วน ─────────────────────
+//
+// ⭐ **คนละแกนกับ `status`** (มติผู้ใช้ 2026-08-13) — Actual เข้าตอน AE Supervisor
+// อนุมัติเหมือนเดิม บัญชีไม่แตะ · กลิ่น/ผลิต/ภาษี/งวดชำระ เดินต่อได้ทันทีไม่ต้องรอบัญชี
+//
+//   (ใบยังไม่อนุมัติ) = null
+//     │ [AE Sup อนุมัติ]
+//     ▼
+//   pending ──[บัญชีอนุมัติ]──> approved ■
+//     ▲            │
+//     └────────────┴──[บัญชีตีกลับ + เหตุผล]──> rejected ──[AE Sup ส่งตรวจใหม่]──┘
+//
+// ⚠️ **ตีกลับไม่ถอน Actual** — ยอดอยู่บนแกน `status` ที่บัญชีไม่แตะ
+// ⚠️ ต่างจาก "คอนเฟิร์มงวดชำระ" (0245): อันนั้นตอบว่า *เงินงวดนี้เข้าจริงไหม*
+//    อันนี้ตรวจ **ตัวเอกสาร** ครั้งเดียว (ข้อมูลลูกค้า · เงื่อนไขชำระ · ยอด/VAT · เครดิต)
+import { canConfirmPayment, canUser } from '@/lib/permissions';
+
+export const FINANCE_STATUSES = ['pending', 'approved', 'rejected'];
+
+export const FINANCE_STATUS_LABELS = {
+  pending: 'รอบัญชีตรวจใบ',
+  approved: 'บัญชีอนุมัติแล้ว',
+  rejected: 'บัญชีตีกลับใบ',
+};
+
+// ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (มาตรฐานเดียวกับสถานะอื่นในระบบ)
+export const FINANCE_STATUS_TONES = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+};
+
+export const MIN_FINANCE_REJECT_REASON = 10;
+
+/** สิ่งที่บัญชีต้องตรวจ (มติผู้ใช้ 2026-08-13) — โชว์เป็นเช็กลิสต์บนหน้า ไม่ได้บังคับติ๊ก */
+export const FINANCE_REVIEW_POINTS = [
+  'ข้อมูลลูกค้า · ที่อยู่ออกบิล · เลขผู้เสียภาษี',
+  'เงื่อนไขการชำระ · งวด · กำหนดชำระ',
+  'ยอดเงิน · ส่วนลด · VAT',
+  'เครดิตและวงเงินของลูกค้า',
+];
+
+/**
+ * สถานะบนแกนบัญชีของใบนี้ — คืน `null` เมื่อยังไม่ถึงคิว
+ *
+ * ⚠️ ใบที่อนุมัติไปแล้ว **ก่อน** mig 0247 มี `financeStatus` เป็น NULL ซึ่งแปลว่า
+ * "ออกก่อนมีขั้นนี้" ไม่ใช่ "รอบัญชี" — ตั้งเป็น pending ย้อนหลังเมื่อไร บัญชีจะเปิดมา
+ * เจอคิวค้างทั้งกองที่ไม่มีใครตั้งใจสร้าง (เหตุผลเดียวกับที่ไม่ backfill ใน migration)
+ */
+export function financeStatusOf(order) {
+  const raw = order?.financeStatus;
+  return FINANCE_STATUSES.includes(raw) ? raw : null;
+}
+
+/** ใบนี้อยู่ในขั้นที่บัญชีต้องตรวจไหม (อนุมัติแล้วและยังไม่ผ่านบัญชี) */
+export function awaitsFinanceReview(order) {
+  return order?.status === 'approved' && financeStatusOf(order) === 'pending';
+}
+
+/**
+ * ด่านเดียวที่ทั้งปุ่มบนหน้าเว็บและ API ใช้ร่วมกัน — คืนข้อความไทยเมื่อทำไม่ได้ หรือ null เมื่อผ่าน
+ * (แพตเทิร์นเดียวกับ `installmentActionError`) ⇒ ปุ่มกับ API ขัดกันไม่ได้
+ */
+export function financeActionError(order, action, user, options = {}) {
+  if (!order) return 'ไม่พบใบสั่งขาย';
+  const current = financeStatusOf(order);
+
+  if (action === 'finance_approve' || action === 'finance_reject') {
+    if (!canConfirmPayment(user)) return 'ตรวจใบสั่งขายได้เฉพาะฝ่ายบัญชี';
+    if (order.status !== 'approved') return 'ใบนี้ยังไม่ผ่าน AE Supervisor';
+    if (current === 'approved') return 'บัญชีอนุมัติใบนี้ไปแล้ว';
+    if (current !== 'pending') return 'ใบนี้ยังไม่เข้าคิวตรวจของบัญชี';
+    if (action === 'finance_reject') {
+      const reason = String(options.reason || '').trim();
+      if (reason.length < MIN_FINANCE_REJECT_REASON) {
+        return `ต้องระบุเหตุผลที่ตีกลับอย่างน้อย ${MIN_FINANCE_REJECT_REASON} ตัวอักษร`;
+      }
+    }
+    return null;
+  }
+
+  /* ส่งตรวจใหม่หลังบัญชีตีกลับ — เป็นของ **ผู้ตรวจฝั่งขาย** ไม่ใช่ของบัญชี
+     ⚠️ ห้ามให้บัญชีกดเอง ไม่งั้นตีกลับแล้วส่งเข้าคิวตัวเองได้ครบวง = ด่านไม่มีความหมาย */
+  if (action === 'finance_resubmit') {
+    if (!canUser(user, 'salesplan:review') && user?.role !== 'admin') {
+      return 'ส่งตรวจใหม่ได้เฉพาะ AE Supervisor หรือ Admin';
+    }
+    if (current !== 'rejected') return 'ส่งตรวจใหม่ได้เฉพาะใบที่บัญชีตีกลับ';
+    return null;
+  }
+
+  return 'คำสั่งไม่ถูกต้อง';
+}
+
+/** ขั้นที่ 5 ของรางก้าวบนหน้า SO — คืน null เมื่อใบนี้ยังไม่เข้าแกนบัญชีเลย */
+export function financeWorkflowStep(order) {
+  const current = financeStatusOf(order);
+  if (!current) return null;
+  return {
+    label: 'บัญชีตรวจใบ',
+    hint: current === 'approved'
+      ? `${order.financeApprovedByName || 'ฝ่ายบัญชี'}`
+      : current === 'rejected'
+        ? 'ตีกลับให้ AE Supervisor ดูใหม่'
+        : 'รอฝ่ายบัญชีตรวจ',
+    status: current,
+  };
+}

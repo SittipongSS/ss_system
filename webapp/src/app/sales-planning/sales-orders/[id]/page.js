@@ -49,6 +49,7 @@ import { statusMeta } from "@/lib/excise/workflow";
 import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import styles from "./page.module.css";
 import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { scentCountForOrder, scentDesignLines, scentDesignOrderError } from "@/lib/requests/scentDesignOrders";
 import { productionReadiness } from "@/lib/pm/deliveries";
 import { salesOrderPlanSummary } from "@/lib/pm/productionPlan";
@@ -60,6 +61,10 @@ import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack"
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
+import {
+  FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
+  financeActionError, financeStatusOf, financeWorkflowStep,
+} from "@/lib/sales/salesOrderFinanceApproval";
 
 const STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)", description: "ตรวจสอบข้อมูลและรายการก่อนยื่นอนุมัติ" },
@@ -81,6 +86,10 @@ const ACTION_MESSAGE = {
   revise: "ออก Rev. ใหม่แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
+  // ขั้นบัญชี (mig 0247) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
+  finance_approve: "บัญชีอนุมัติใบนี้แล้ว",
+  finance_reject: "ส่งกลับให้ AE Supervisor ดูใหม่แล้ว",
+  finance_resubmit: "ส่งให้บัญชีตรวจใหม่แล้ว",
 };
 
 export default function SalesOrderDetailPage() {
@@ -356,7 +365,11 @@ export default function SalesOrderDetailPage() {
     if (!action || reason.length < 10) return;
     // ส่งเวอร์ชันที่หน้านี้เห็นไปด้วยเสมอ — ไม่งั้นด่านกันแท็บค้างฝั่ง RPC เป็น no-op
     // (server จะปฏิเสธคำขอที่ไม่มีค่านี้)
-    const result = await requestAction(action, { reason, expectedUpdatedAt: order?.updatedAt });
+    // ⚠️ ขั้นบัญชีไม่ได้ผ่าน RPC และกันแท็บค้างด้วย `.eq('financeStatus', …)` แทน
+    // ⇒ ไม่ต้องส่ง expectedUpdatedAt (ส่งไปก็ไม่มีใครอ่าน แต่ไม่ส่งชัดเจนกว่า)
+    const result = action.startsWith("finance_")
+      ? await requestAction(action, { reason })
+      : await requestAction(action, { reason, expectedUpdatedAt: order?.updatedAt });
     if (result) setWorkflowForm(null);
   }
 
@@ -432,7 +445,7 @@ export default function SalesOrderDetailPage() {
     setConfirmState({
       title: "บังคับลบใบสั่งขายพร้อมหลักฐาน",
       description: `ต้องการบังคับลบ ${order.orderNumber} ถาวรหรือไม่`,
-      detail: <span style={{ whiteSpace: "pre-line" }}>สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{notes ? `\n\n${notes}` : ""}</span>,
+      detail: <span className="pre-line">สิ่งที่จะถูกทำลาย:{"\n"}{lines || "· (ไม่มีข้อมูลพ่วง)"}{notes ? `\n\n${notes}` : ""}</span>,
       confirmLabel: "ยืนยันบังคับลบ",
       tone: "danger",
       action: () => deleteOrder(`/api/sales-planning/sales-orders/${id}?force=1`),
@@ -567,7 +580,18 @@ export default function SalesOrderDetailPage() {
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     { label: "นับ Actual", hint: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
   ];
-  const workflowSteps = workflowStepsFromIndex(workflow, workflowIndex, order.status === "cancelled");
+  /* ⭐ ขั้นบัญชีตรวจใบ (mig 0247) — ต่อท้ายรางก้าว **หลัง "นับ Actual"** โดยตั้งใจ
+     เพราะ Actual เข้าไปแล้วตั้งแต่ AE Supervisor กด บัญชีไม่ได้กั้นยอด (มติ 2026-08-13)
+     ⚠️ ใบเก่าที่อนุมัติก่อนมี mig 0247 ไม่มีธง ⇒ ขั้นนี้ไม่โผล่เลย ไม่ใช่ขึ้นว่า "รอ" */
+  const financeStatus = financeStatusOf(order);
+  const financeStep = financeWorkflowStep(order);
+  if (financeStep) workflow.push({ label: financeStep.label, hint: financeStep.hint });
+  const workflowSteps = workflowStepsFromIndex(
+    workflow,
+    financeStep && financeStatus === "approved" ? workflow.length - 1 : workflowIndex,
+    order.status === "cancelled",
+  );
+  const financeGate = (action, options) => financeActionError(order, action, { id: order.meId, role, department: order.meDepartment }, options);
   const primaryAction = editable
     ? {
         id: "save",
@@ -609,9 +633,33 @@ export default function SalesOrderDetailPage() {
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
     { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
+    /* ── ขั้นบัญชีตรวจใบ (mig 0247) ────────────────────────────────────────
+       ⚠️ **ไม่ใช่ปุ่มหลัก** — ปุ่มหลักของใบยังเป็นสายอนุมัติเอกสาร บัญชีเป็นคนละแกน
+       ⚠️ ปุ่มโผล่จาก `financeActionError` ตัวเดียวกับที่ API ใช้ปฏิเสธ ⇒ ขัดกันไม่ได้ */
+    {
+      id: "finance-approve", kind: "approve", label: "บัญชีอนุมัติใบนี้", variant: "outline",
+      visible: !financeGate("finance_approve"),
+      onClick: () => setConfirmState({
+        title: "บัญชีอนุมัติใบสั่งขาย",
+        description: `ยืนยันว่าตรวจ ${order.orderNumber} ครบแล้วหรือไม่`,
+        detail: <span className="pre-line">{`สิ่งที่ต้องตรวจ:\n${FINANCE_REVIEW_POINTS.map((p) => `· ${p}`).join("\n")}\n\nยอด Actual ไม่เปลี่ยนจากการกดนี้`}</span>,
+        confirmLabel: "ยืนยันว่าตรวจแล้ว",
+        action: () => requestAction("finance_approve"),
+      }),
+    },
+    {
+      id: "finance-resubmit", kind: "submit", label: "ส่งให้บัญชีตรวจใหม่", variant: "outline",
+      visible: !financeGate("finance_resubmit"),
+      onClick: () => requestAction("finance_resubmit"),
+    },
   ];
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
+    {
+      id: "finance-reject", kind: "reject", label: "บัญชีตีกลับใบนี้",
+      visible: !financeGate("finance_reject", { reason: "x".repeat(10) }),
+      onClick: () => setWorkflowForm({ action: "finance_reject", reason: "" }),
+    },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
     { id: "force-delete", kind: "delete", icon: ShieldAlert, label: "บังคับลบพร้อมหลักฐาน", visible: role === "admin" && !canHardDeleteSalesOrder(order), onClick: forceRemove },
     {
@@ -632,7 +680,7 @@ export default function SalesOrderDetailPage() {
           eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -655,6 +703,17 @@ export default function SalesOrderDetailPage() {
           </StatusNotice>
         )}
         {order.rejectionReason && <div className={styles.rejection}><Undo2 size={17} /><div><strong>ตีกลับโดย {order.rejectedByName || "AE Supervisor"}</strong><ReadableText text={order.rejectionReason} lines={4} /></div></div>}
+        {/* ⚠️ บัญชีตีกลับ **ไม่ถอน Actual** — ใบยังอนุมัติอยู่ ป้ายจึงต้องไม่พูดถึงยอด
+            แต่ต้องเห็นชัดเพราะเป็นสิ่งที่ AE Supervisor ต้องแก้ก่อนส่งตรวจใหม่ */}
+        {financeStatus === "rejected" && order.financeRejectReason && (
+          <div className={styles.rejection}>
+            <Undo2 size={17} />
+            <div>
+              <strong>บัญชีตีกลับโดย {order.financeRejectedByName || "ฝ่ายบัญชี"}</strong>
+              <ReadableText text={order.financeRejectReason} lines={4} />
+            </div>
+          </div>
+        )}
 
         {/* ⭐ ลำดับ ลูกค้า › โครงการ › ดีล › QT (มติผู้ใช้ 2026-08-13) — ไล่จาก
             "ใครซื้อ" ไป "งานอยู่ในโครงการไหน" ไป "รอบขายไหน" ไป "ใบไหนเป็นต้นทาง"
@@ -925,25 +984,36 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
+      {/* โมดัลใส่เหตุผลใช้ร่วมสามคำสั่ง — ยกเลิกอนุมัติ · ดึงกลับ · บัญชีตีกลับ
+          ⚠️ **บัญชีตีกลับไม่ถอน Actual** ต่างจากยกเลิกอนุมัติ ⇒ ข้อความต้องไม่พูดถึงยอด
+          ไม่งั้นบัญชีจะเข้าใจว่ากดแล้วยอดขายหลุด (มติ 2026-08-13: คนละแกน) */}
       <ReasonDialog
         open={!!workflowForm}
-        title={workflowForm?.action === "revoke" ? "ยกเลิกอนุมัติ ใบสั่งขาย" : "ดึงกลับ ใบสั่งขาย"}
-        description={workflowForm?.action === "revoke"
-          ? `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`
-          : `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
-        detail={workflowForm?.action === "revoke"
-          ? `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`
-          : "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
+        title={{
+          revoke: "ยกเลิกอนุมัติ ใบสั่งขาย",
+          finance_reject: "บัญชีตีกลับ ใบสั่งขาย",
+        }[workflowForm?.action] || "ดึงกลับ ใบสั่งขาย"}
+        description={{
+          revoke: `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`,
+          finance_reject: `SO ${order.orderNumber} จะถูกส่งกลับให้ AE Supervisor ดูใหม่`,
+        }[workflowForm?.action] || `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
+        detail={{
+          revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+          finance_reject: "ยอด Actual ไม่เปลี่ยน — ใบยังอนุมัติอยู่ นี่เป็นการส่งกลับให้แก้เฉพาะเรื่องที่บัญชีติดใจ",
+        }[workflowForm?.action] || "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
         onChange={(reason) => setWorkflowForm((current) => ({ ...current, reason }))}
         onClose={() => setWorkflowForm(null)}
         onConfirm={submitWorkflowAction}
-        confirmLabel={workflowForm?.action === "revoke" ? "ยืนยันยกเลิกอนุมัติ" : "ยืนยันดึงกลับ"}
+        confirmLabel={{
+          revoke: "ยืนยันยกเลิกอนุมัติ",
+          finance_reject: "ยืนยันตีกลับ",
+        }[workflowForm?.action] || "ยืนยันดึงกลับ"}
         placeholder="ระบุเหตุผลอย่างน้อย 10 ตัวอักษร"
         minLength={10}
         maxLength={500}
-        tone={workflowForm?.action === "revoke" ? "danger" : "warning"}
+        tone={workflowForm?.action === "withdraw" ? "warning" : "danger"}
         busy={busy === workflowForm?.action}
       />
 

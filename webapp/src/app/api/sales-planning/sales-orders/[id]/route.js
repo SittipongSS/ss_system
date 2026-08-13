@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { departmentOf } from '@/lib/permissions';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
@@ -25,6 +26,7 @@ import {
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { ensureInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { paymentLockReason } from '@/lib/sales/salesOrderPayments';
+import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
 import {
@@ -209,7 +211,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   } catch { deliveries = []; }
 
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  return ok({ ...order, meId: user.id || null, approverSignature, proposerSignature, deliveries });
+  // meDepartment ให้ซ่อนปุ่มของขั้นบัญชี (mig 0247) — `canConfirmPayment` ตัดสินด้วย **ฝ่าย**
+  // ไม่ใช่ role ⇒ ส่งมาด้วย ไม่งั้นหน้าเว็บซ่อนปุ่มผิดคนแล้วไปเจอ 400 ตอนกด
+  return ok({
+    ...order,
+    meId: user.id || null,
+    meDepartment: departmentOf(user),
+    approverSignature,
+    proposerSignature,
+    deliveries,
+  });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -470,6 +481,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       console.error('issued sales order snapshot capture failed', id, snapshotError);
     }
 
+    /* ⭐ เข้าคิวบัญชีทันทีที่ AE Supervisor อนุมัติ (mig 0247)
+       ⚠️ **ไม่แตะ Actual** — ยอดเข้าไปแล้วตอน RPC อนุมัติ บัญชีเป็นคนละแกน (มติ 2026-08-13)
+       ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว ตั้งธงล้มต้องไม่ roll back
+       ใบที่ธงไม่ติดจะไม่โผล่ในคิวบัญชี ซึ่งกู้ได้ด้วยการอนุมัติซ้ำหรือแก้มือ */
+    try {
+      await supabase.from('sales_orders')
+        .update({ financeStatus: 'pending' })
+        .eq('id', id)
+        .is('financeStatus', null);
+    } catch (financeFlagError) {
+      console.error('sales order finance queue flag failed', id, financeFlagError);
+    }
+
     /* ⭐ งวดชำระเกิดตอนนี้ ไม่ใช่ตอนสร้างร่าง (mig 0245) — ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว งวดล้มต้องไม่ roll back
        กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ซึ่งเรียก ensureInstallments ตัวเดียวกัน (idempotent) */
@@ -603,6 +627,62 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const summaryReason = cancelReasonLabel(reasonCode) + (note ? ` — ${note}` : '');
     await logThread('cancel', { reason: summaryReason });
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `cancel ${before.orderNumber}: ${summaryReason}`, request: req });
+    return ok(data);
+  }
+
+  /* ── ขั้นบัญชีตรวจใบ (mig 0247) — คนละแกนกับ status ────────────────────
+     ⚠️ **ไม่มี action ไหนในบล็อกนี้แตะ `status` หรือ `actualAmount`** — ยอดขายของ SA
+     ไม่ขยับตามการตัดสินของบัญชี (มติผู้ใช้ 2026-08-13) · ตีกลับ = ส่งกลับให้ AE Sup
+     ดูใหม่ ไม่ใช่ถอยเอกสาร
+     ⭐ ด่านอยู่ที่ `financeActionError` ตัวเดียวกับที่หน้าเว็บใช้ซ่อนปุ่ม */
+  if (action === 'finance_approve' || action === 'finance_reject' || action === 'finance_resubmit') {
+    const reason = String(body.reason || '').trim();
+    const gate = financeActionError(before, action, user, { reason });
+    if (gate) return badRequest(gate);
+
+    const now = new Date().toISOString();
+    const actorName = user.name || null;
+    const patch = action === 'finance_approve'
+      ? {
+        financeStatus: 'approved',
+        financeApprovedBy: user.id, financeApprovedByName: actorName, financeApprovedAt: now,
+        financeNote: String(body.note || '').trim() || null,
+        // ล้างร่องรอยการตีกลับรอบก่อน — ใบนี้ผ่านแล้ว
+        financeRejectedBy: null, financeRejectedByName: null, financeRejectedAt: null, financeRejectReason: null,
+      }
+      : action === 'finance_reject'
+        ? {
+          financeStatus: 'rejected',
+          financeRejectedBy: user.id, financeRejectedByName: actorName, financeRejectedAt: now,
+          financeRejectReason: reason,
+        }
+        : {
+          // ส่งตรวจใหม่ — เก็บเหตุผลรอบก่อนไว้ให้บัญชีอ่านประกอบ ไม่ล้างทิ้ง
+          financeStatus: 'pending',
+        };
+
+    const { data, error } = await supabase
+      .from('sales_orders').update({ ...patch, updatedAt: now })
+      .eq('id', id).eq('financeStatus', before.financeStatus)
+      .select('*').maybeSingle();
+    if (error) return fail(error.message, 500);
+    if (!data) return badRequest('สถานะการตรวจของบัญชีเปลี่ยนแล้ว กรุณาโหลดใหม่');
+
+    await logThread(action, { reason });
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order',
+      entityId: id,
+      before,
+      after: data,
+      summary: {
+        finance_approve: `บัญชีอนุมัติ ${before.orderNumber}`,
+        finance_reject: `บัญชีตีกลับ ${before.orderNumber}: ${reason}`,
+        finance_resubmit: `ส่ง ${before.orderNumber} ให้บัญชีตรวจใหม่`,
+      }[action],
+      request: req,
+    });
     return ok(data);
   }
 
