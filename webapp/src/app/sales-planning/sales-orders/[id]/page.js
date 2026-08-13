@@ -659,6 +659,7 @@ export default function SalesOrderDetailPage() {
           irreversible: true,
           checklist: FINANCE_REVIEW_POINTS,
           effects: [
+            "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
             "ขั้น “บัญชีตรวจใบ” บนรางเดินงานขึ้นเครื่องหมายถูก",
             "ยอด Actual ไม่เปลี่ยนจากการกดนี้",
           ],

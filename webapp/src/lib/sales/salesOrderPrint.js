@@ -72,6 +72,20 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     }
     : null;
 
+  /* ลายเซ็นฝ่ายบัญชี (mig 0251) — ช่องที่สามมีอยู่บนใบตั้งแต่มติ 2026-08-05 แต่ว่าง
+     มาตลอดเพราะไม่มีใครเซ็น · ขั้นบัญชีตรวจใบเป็นตัวเติมช่องนี้
+     ⚠️ evidence-backed เหมือนช่องผู้อนุมัติ ⇒ มีวันที่ลงนาม + Evidence id ครบ */
+  const financeSig = order.financeSignature;
+  const financeEsignature = financeSig?.imageDataUri
+    ? {
+      imageDataUri: financeSig.imageDataUri,
+      signerName: financeSig.signerName || order.financeApprovedByName || '',
+      signerRole: '',
+      signedAt: financeSig.signedAt ? fmtDate(financeSig.signedAt) : '',
+      evidenceId: financeSig.evidenceId || '',
+    }
+    : null;
+
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
     customerName: order.customerName,
@@ -138,7 +152,9 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
       approverEsignature
         ? { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', esignature: approverEsignature }
         : { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', name: order.approvedByName || '' },
-      { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
+      financeEsignature
+        ? { label: 'ฝ่ายบัญชี', role: 'ผู้ตรวจสอบ', esignature: financeEsignature }
+        : { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
     ],
     // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
     watermark: order.status === 'approved' ? ''
