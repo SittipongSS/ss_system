@@ -251,8 +251,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   let timelineWarning = null;
   if (stage !== 'lost') {
     try {
-      const { rows: timelineRows, genType } = await buildDealTimelineRows(supabase, data);
-      if (!timelineRows.length) {
+      const { rows: timelineRows, genType, noTemplate } = await buildDealTimelineRows(supabase, data);
+      if (noTemplate) {
+        // ประเภทขายล้วน (OTHER — mig 0247): ไม่มีไทม์ไลน์คือถูกต้องแล้ว ไม่ใช่ของพัง
+      } else if (!timelineRows.length) {
         timelineWarning = categoryCode
           ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ดีลนี้ยังไม่มีไทม์ไลน์`
           : `Workflow Template ${genType} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ดีลนี้ยังไม่มีไทม์ไลน์`;

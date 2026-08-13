@@ -38,8 +38,8 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABEL
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
-// (SCENT=amber · NPD=blue · RE-ORDER=teal) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
-const DEAL_TYPE_TONES = { SCENT: "amber", NPD: "blue", "RE-ORDER": "teal" };
+// (SCENT=amber · NPD=blue · RE-ORDER=teal · OTHER=violet) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
+const DEAL_TYPE_TONES = { SCENT: "amber", NPD: "blue", "RE-ORDER": "teal", OTHER: "violet" };
 
 // จับช่องเป็นคู่ซ้าย-ขวาเองแทนปล่อยไหลตาม grid แม่ (มติผู้ใช้ 2026-07-17)
 // แถวที่เหลือช่องเดียว (จำนวนคี่/ช่องถูกซ่อน) กินเต็มแถวแทนการทิ้งรูไว้ข้าง ๆ
@@ -231,8 +231,10 @@ export default function DealFormFields({
     </div>
   );
 
-  // ประเภทดีล = ตัวเลือก template ไทม์ไลน์ — 3 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ
-  // ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2) · ไม่มี default เงียบ ๆ (มติ 2026-07-21)
+  // ประเภทดีล — 4 ตัวตายตัว จึงเป็นแผ่นเลือกเห็นครบ ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2)
+  // · ไม่มี default เงียบ ๆ (มติ 2026-07-21)
+  // ⚠️ สามตัวแรกเป็นตัวเลือก template ไทม์ไลน์ด้วย · 'OTHER' (อื่นๆ) เป็นงานขายล้วน
+  //    ไม่มี template ไม่ก่อตั้งโครงการ (mig 0247) — ปุ่มฝั่งโครงการจะหายไปทั้งชุด
   const dealTypeField = (
     <div className="deal-field" key="dealType">
       <span className="deal-field-label">ประเภทดีล <span className="required-mark">*</span></span>

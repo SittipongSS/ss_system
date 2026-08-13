@@ -46,9 +46,10 @@ export const initialDealForm = {
   notes: "",
 };
 
-// ป้ายประเภทดีล 3 ค่า — สีคงที่ทั้งระบบ: SCENT=amber (งานกลิ่น) · NPD=blue (พัฒนาสินค้า)
-// · RE-ORDER=teal (ผลิตซ้ำ). ใช้ทุกหน้า sales ให้อ่านประเภทได้ด้วยตาเดียว.
-export const DEAL_TYPE_COLORS = { SCENT: "var(--amber)", NPD: "var(--blue)", "RE-ORDER": "var(--teal)" };
+// ป้ายประเภทดีล — สีคงที่ทั้งระบบ: SCENT=amber (งานกลิ่น) · NPD=blue (พัฒนาสินค้า)
+// · RE-ORDER=teal (ผลิตซ้ำ) · OTHER=violet (อื่นๆ — ประเภทเดียวที่ไม่ก่อตั้งโครงการ
+// จึงให้สีนอกชุดสามสีของเส้นทางผลิต). ใช้ทุกหน้า sales ให้อ่านประเภทได้ด้วยตาเดียว.
+export const DEAL_TYPE_COLORS = { SCENT: "var(--amber)", NPD: "var(--blue)", "RE-ORDER": "var(--teal)", OTHER: "var(--violet)" };
 /* ป้ายทั้งสามตัวรับ `className` เพิ่มได้ — ตารางส่งคลาสของตัวเองมาคุม **ความกว้าง**
    ให้ป้ายในคอลัมน์เดียวกันเท่ากันหมด (มติผู้ใช้ 2026-08-05: อ่านเป็นคอลัมน์ ไม่ใช่
    ก้อนที่กว้างตามความยาวข้อความของแต่ละแถว)
