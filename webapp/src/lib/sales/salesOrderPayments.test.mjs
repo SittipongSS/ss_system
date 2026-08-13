@@ -340,3 +340,52 @@ test('ใบที่ยังไม่เริ่มติดตามต้�
   );
   assert.equal(salesOrderPaymentNote(null), null);
 });
+
+// ── ถอนคำรับรองของบัญชี (มติผู้ใช้ 2026-08-13) ───────────────────────────
+const confirmedRow = (extra = {}) => ({
+  id: 'SOI-1', seq: 1, status: 'confirmed',
+  reportedById: 'u-ae', reportedAt: '2026-08-10T00:00:00Z',
+  confirmedById: 'u-fn', confirmedAt: '2026-08-12T00:00:00Z', ...extra,
+});
+const FN_USER = { id: 'u-fn', role: 'finance', department: 'FN' };
+const AE_USER = { id: 'u-ae', role: 'ae' };
+const SUP_USER = { id: 'u-sup', role: 'ae_supervisor', department: 'SA' };
+const OK_REASON = 'ธนาคารแจ้งว่ารายการโอนถูกตีกลับ';
+
+test('ถอนคำรับรองได้เฉพาะฝ่ายบัญชี — ฝ่ายขายและหัวหน้าขายถอนแทนไม่ได้', () => {
+  assert.equal(installmentActionError(confirmedRow(), 'unconfirm', FN_USER, { reason: OK_REASON }), null);
+  assert.match(installmentActionError(confirmedRow(), 'unconfirm', AE_USER, { reason: OK_REASON }), /เฉพาะฝ่ายบัญชี/);
+  assert.match(installmentActionError(confirmedRow(), 'unconfirm', SUP_USER, { reason: OK_REASON }), /เฉพาะฝ่ายบัญชี/);
+});
+
+/* ⚠️ กลับคำเรื่องเงินที่เคยรับรองแล้ว และปลดล็อกใบให้ยกเลิกอนุมัติ/ออก Rev. ได้ด้วย
+   ⇒ ต้องมีร่องรอยว่าทำไม ไม่ใช่กดแล้วหายไปเฉย ๆ */
+test('ถอนคำรับรองต้องมีเหตุผลเท่ากับตอนตีกลับ', () => {
+  assert.match(installmentActionError(confirmedRow(), 'unconfirm', FN_USER, {}), /อย่างน้อย 10 ตัวอักษร/);
+  assert.match(installmentActionError(confirmedRow(), 'unconfirm', FN_USER, { reason: 'สั้นไป' }), /อย่างน้อย 10 ตัวอักษร/);
+});
+
+test('ถอนได้เฉพาะงวดที่คอนเฟิร์มไปแล้ว', () => {
+  for (const status of ['pending', 'reported', 'rejected']) {
+    assert.match(
+      installmentActionError(confirmedRow({ status }), 'unconfirm', FN_USER, { reason: OK_REASON }),
+      /เฉพาะงวดที่บัญชีคอนเฟิร์มไปแล้ว/, status,
+    );
+  }
+});
+
+/* 🔴 หัวใจของคำสั่งนี้: ถอนแล้วกลับไป **`reported`** ไม่ใช่ `pending` — คำแจ้งของ
+   ฝ่ายขายและหลักฐานยังอยู่ครบ สิ่งที่ถูกถอนคือคำรับรองของบัญชีเท่านั้น
+   ถอยไป pending เมื่อไรเท่ากับลบงานของฝ่ายขายทิ้ง แล้วเขาต้องแนบหลักฐานใหม่
+   ทั้งที่ไม่ได้ทำอะไรผิด */
+test('ถอนแล้วงวดกลับเข้าคิวตรวจของบัญชีเอง และใบปลดล็อก', () => {
+  // ก่อนถอน: ใบถูกล็อกเพราะมีงวดที่คอนเฟิร์มแล้ว
+  assert.match(paymentLockReason([confirmedRow()]), /คอนเฟิร์มแล้ว 1 งวด/);
+  // หลังถอน (สถานะที่ route เขียน): กลับเป็น reported ⇒ ไม่ล็อกแล้ว
+  const afterUnconfirm = confirmedRow({ status: 'reported', confirmedById: null, confirmedAt: null });
+  assert.equal(paymentLockReason([afterUnconfirm]), null);
+  // และงวดกลับมาให้บัญชีคอนเฟิร์มใหม่ได้
+  assert.equal(installmentActionError(afterUnconfirm, 'confirm', FN_USER), null);
+  // ยอด "เก็บแล้ว" ต้องลดลงตาม — ไม่ค้างนับงวดที่ถอนไปแล้ว
+  assert.equal(paymentRollup([afterUnconfirm]).confirmedCount, 0);
+});

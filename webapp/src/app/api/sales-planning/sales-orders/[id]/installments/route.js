@@ -149,6 +149,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         status: 'rejected',
         rejectedById: user.id, rejectedByName: actorName, rejectedAt: now, rejectedReason: reason,
       };
+    } else if (action === 'unconfirm') {
+      /* ถอนคำรับรองของบัญชี (มติผู้ใช้ 2026-08-13)
+         ⭐ กลับไป `reported` ไม่ใช่ `pending` — คำแจ้งของฝ่ายขายและหลักฐานยังอยู่ครบ
+         สิ่งที่ถูกถอนคือคำรับรองของบัญชี งวดจึงกลับไปอยู่ในคิวตรวจของบัญชีเอง
+         ⚠️ CHECK ของ mig 0245 ยังผ่าน: `reported` ต้องมี `reportedAt` ซึ่งไม่ถูกแตะ
+         ⇒ **ไม่ต้องมี migration ใหม่**
+         ⚠️ เหตุผลลง `note` ให้เห็นบนการ์ด — audit เก็บอีกชั้นพร้อม before/after */
+      patch = {
+        status: 'reported',
+        confirmedById: null, confirmedByName: null, confirmedAt: null,
+        note: `ถอนคำรับรอง (${actorName || 'บัญชี'}): ${reason}`,
+      };
     }
 
     const updated = await updateInstallment(supabase, installmentId, patch);

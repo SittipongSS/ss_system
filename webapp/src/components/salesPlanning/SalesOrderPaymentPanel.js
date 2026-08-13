@@ -40,6 +40,7 @@ export default function SalesOrderPaymentPanel({
   const [reportFor, setReportFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
   const [scheduleFor, setScheduleFor] = useState(null);
+  const [unconfirmFor, setUnconfirmFor] = useState(null);
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -178,6 +179,13 @@ export default function SalesOrderPaymentPanel({
                     id: "reject", icon: XCircle, tone: "danger", label: "ตีกลับให้แก้",
                     onClick: () => setRejectFor({ row, reason: "" }),
                   },
+                  /* ถอนคำรับรอง (มติผู้ใช้ 2026-08-13) — **อยู่ในเมนู `⋯` ไม่ใช่ปุ่มหลัก**
+                     งวดที่คอนเฟิร์มแล้วคือ "จบแล้ว" ปุ่มหลักของแถวจึงต้องไม่มี ·
+                     การถอยเป็นทางออกฉุกเฉิน ไม่ใช่ก้าวถัดไปที่ชวนให้กด */
+                  !gate(row, "unconfirm", { reason: "x".repeat(MIN_REJECT_REASON) }) && {
+                    id: "unconfirm", icon: Undo2, tone: "warning", label: "ถอนคำรับรอง",
+                    onClick: () => setUnconfirmFor({ row, reason: "" }),
+                  },
                 ].filter(Boolean);
 
                 return (
@@ -313,6 +321,28 @@ export default function SalesOrderPaymentPanel({
           </div>
         </Modal>
       ) : null}
+
+      {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว และปลดล็อกใบให้ยกเลิก
+          อนุมัติ/ออก Rev. ได้ด้วย ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
+      <ReasonDialog
+        open={!!unconfirmFor}
+        title="ถอนคำรับรองการชำระ"
+        description="งวดนี้จะกลับไปเป็น “รอบัญชีตรวจ” — หลักฐานและคำแจ้งของฝ่ายขายยังอยู่ครบ และใบนี้จะยกเลิกอนุมัติ/ออก Rev. ได้อีกครั้ง"
+        label="เหตุผลที่ถอนคำรับรอง"
+        value={unconfirmFor?.reason || ""}
+        onChange={(reason) => setUnconfirmFor((f) => ({ ...f, reason }))}
+        onClose={() => setUnconfirmFor(null)}
+        onConfirm={async () => {
+          const done = await onAction(unconfirmFor.row, "unconfirm", { reason: unconfirmFor.reason });
+          if (done) setUnconfirmFor(null);
+        }}
+        confirmLabel="ยืนยันถอนคำรับรอง"
+        placeholder={`ระบุเหตุผลอย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}
+        minLength={MIN_REJECT_REASON}
+        maxLength={500}
+        tone="danger"
+        busy={!!busy}
+      />
 
       <ReasonDialog
         open={!!rejectFor}
