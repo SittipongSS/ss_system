@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รื้อตาราง "รายการใบสั่งขาย" — เลือกแบบ ข แล้ว (2026-08-13)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* โทเคนยกจาก webapp/src/app/globals.css · ฟอนต์ Sarabun ตรงกับของจริงแล้ว (2026-08-13) */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;
+--font-sans:"Sarabun","Noto Sans Thai",Tahoma,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-md:0 4px 16px rgba(0,0,0,.3);}}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:var(--fs-22);margin:0 0 6px}
+.sub{color:var(--text-2);margin:0 0 28px}
+h2{font-size:var(--fs-18);margin:0 0 4px}
+.note{color:var(--text-2);font-size:var(--fs-13);margin:0 0 14px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:34px}
+.card-h{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.tag{font-size:var(--fs-11);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);padding:3px 9px;border-radius:var(--radius-full)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--fs-13)}
+th{text-align:left;font-size:var(--fs-11);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);
+   padding:10px 14px;background:var(--panel-2);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.doc{font-weight:700;letter-spacing:.01em}
+.sub2{display:block;color:var(--text-3);font-size:var(--fs-11);margin-top:2px}
+.ar{display:inline-block;font-size:var(--fs-11);color:var(--text-3);letter-spacing:.04em}
+.badge{display:inline-flex;align-items:center;gap:5px;min-height:24px;padding:2px 10px;border-radius:var(--radius-full);
+  font-size:var(--fs-11);font-weight:600;border:1px solid currentColor;white-space:nowrap}
+.b-green{color:var(--green);background:var(--green-soft)}
+.b-amber{color:var(--amber);background:var(--amber-soft)}
+.b-blue{color:var(--blue);background:var(--blue-soft)}
+.b-red{color:var(--red);background:var(--red-soft)}
+.b-mute{color:var(--text-3);background:transparent;border-color:var(--border-strong)}
+.money{font-weight:600;font-variant-numeric:tabular-nums}
+.money.zero{color:var(--text-3);font-weight:400}
+.bad{color:var(--red)}
+.ok{color:var(--green)}
+.mute{color:var(--text-3)}
+
+/* ── ราง 3 ขั้น (แบบ ข) ── */
+.track{display:flex;align-items:center;gap:0;margin-top:6px}
+.step{display:flex;align-items:center;gap:5px;font-size:var(--fs-11);color:var(--text-3);white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--border-strong);flex:none}
+.step.done .dot{background:var(--green)}
+.step.done{color:var(--green)}
+.step.now .dot{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+.step.now{color:var(--amber);font-weight:600}
+.bar{flex:1;height:1px;background:var(--border-strong);margin:0 7px;min-width:14px}
+.bar.done{background:var(--green)}
+
+/* ── การ์ด (แบบ ค) ── */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;padding:14px}
+.item{border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2);padding:13px 14px}
+.item-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
+.item-rows{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:var(--fs-12)}
+.item-rows dt{color:var(--text-3)}
+.item-rows dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.pros{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 18px 16px}
+.pros>div{font-size:var(--fs-12);line-height:1.5}
+.pros b{display:block;font-size:var(--fs-11);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+.pro b{color:var(--green)} .con b{color:var(--red)}
+.why{background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:var(--radius);padding:12px 14px;margin:0 0 28px;font-size:var(--fs-13);color:var(--text-2)}
+.why b{color:var(--text)}
+.why ul{margin:8px 0 0;padding-left:18px} .why li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>รื้อตาราง “รายการใบสั่งขาย”</h1>
+<p class="sub">หน้า <code>/sa/sales-orders</code> · เทียบสามแบบด้วยข้อมูลจริงจากระบบ (13/08/2026)</p>
+<div class="why" style="border-left-color:var(--green)"><b>สถานะ: เสร็จสมบูรณ์ — ผู้ใช้เลือก <span style="color:var(--green)">แบบ ข</span> และลงโค้ดแล้ว</b><br>ตรรกะรางอยู่ใน <code>lib/sales/salesOrderListTrack.js</code> พร้อมเทสต์ · จอแคบกว่า 1200px ยุบรางเป็นป้ายสรุปตาม <code>salesOrderTrackSummary</code> · คอลัมน์ที่ตัดทิ้ง (เอกสารอ้างอิง · วันที่ SO) ทำตามที่เขียนไว้ในแบบ ก ทั้งคู่</div>
+
+<div class="why">
+<b>ปัญหาที่เห็นจากของจริงตอนนี้ (9 คอลัมน์)</b>
+<ul>
+<li><b>3 คอลัมน์แทบไม่มีข้อมูล</b> — “เอกสารอ้างอิง” เป็น <code>-</code> ทุกแถว · “วันที่ SO” กับ “กำหนดชำระ” ตรงกันทุกแถว ⇒ กินพื้นที่ 3 ช่องเพื่อบอกเรื่องเดียว</li>
+<li><b>สถานะกลายเป็นสองบรรทัดที่แข่งกัน</b> — “อนุมัติแล้ว” กับ “บัญชีอนุมัติแล้ว” อยู่ซ้อนกัน อ่านไม่ออกว่าอันไหนคือขั้นปัจจุบัน</li>
+<li><b>ลูกค้า/ดีล สูง 3 บรรทัด</b> เป็นตัวกำหนดความสูงแถวทั้งตาราง</li>
+<li><b>ยอด ฿0.00 อ่านเหมือน “ใบไม่มีมูลค่า”</b> ทั้งที่แปลว่ายังไม่ได้ตั้งราคา</li>
+<li><b>ไม่มีจุดยึดสายตา</b> — ทุกคอลัมน์น้ำหนักเท่ากันหมด</li>
+</ul>
+</div>
+
+<!-- ══════════════ ก ══════════════ -->
+<div class="card">
+  <div class="card-h"><span class="tag">แบบ ก</span><h2>ตารางแน่น — ตัดคอลัมน์ที่ว่างทิ้ง</h2></div>
+  <p class="note" style="padding:0 18px">9 → 6 คอลัมน์ · เอกสารอ้างอิงย้ายไปเป็นบรรทัดรองใต้เลข SO (โผล่เฉพาะใบที่มี) · วันที่รวมเป็นช่องเดียว · สถานะเหลือป้ายเดียวที่บอก<b>ขั้นปัจจุบัน</b></p>
+  <div class="scroll"><table>
+    <thead><tr><th>เอกสาร</th><th>ลูกค้า</th><th class="num">Actual ก่อน VAT</th><th class="num">งวดชำระ</th><th>กำหนดชำระ</th><th>อยู่ขั้นไหน</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="doc">SO-26080012-0</span><span class="sub2">QT-26080047-0</span></td>
+        <td>คุณญาดา วางชั่ว<span class="sub2">AR-158 · KA_Article_จดแจ้งหมายเลขเครื่องสำอาง</span></td>
+        <td class="num money">9,000.00</td>
+        <td class="num"><span class="ok">1/1</span><span class="sub2">เก็บครบแล้ว</span></td>
+        <td>13/08/2026</td>
+        <td><span class="badge b-green">เสร็จสมบูรณ์</span></td>
+      </tr>
+      <tr>
+        <td><span class="doc">SO-26080009-0</span><span class="sub2">QT-26080032-1</span></td>
+        <td>บริษัท เซนท์ สตูดิโอ แลบอราทอรี่ จำกัด<span class="sub2">AR-108 · SV_ระบบกระจายกลิ่น</span></td>
+        <td class="num money">756,600.00</td>
+        <td class="num"><span class="mute">0/2</span><span class="sub2">รอบัญชีรับรอง 1 งวด</span></td>
+        <td>13/08/2026</td>
+        <td><span class="badge b-amber">รอบัญชีตรวจใบ</span></td>
+      </tr>
+      <tr>
+        <td><span class="doc">SO-26080013-0</span><span class="sub2">QT-26080050-0 · PO-2569/0812</span></td>
+        <td>คุณธีระพงษ์ อัศวะสกุลโชคดี<span class="sub2">AR-790 · ODM_HOMES_Scent Design</span></td>
+        <td class="num money zero">0.00 <span class="sub2" style="display:inline">ยังไม่ตั้งราคา</span></td>
+        <td class="num"><span class="mute">0/1</span><span class="sub2">รอบัญชีรับรอง 1 งวด</span></td>
+        <td>13/08/2026</td>
+        <td><span class="badge b-amber">รอบัญชีตรวจใบ</span></td>
+      </tr>
+      <tr>
+        <td><span class="doc">SO-26080005-0</span><span class="sub2">QT-26080028-0</span></td>
+        <td>บริษัท แฮปป้าเวลเนส จำกัด<span class="sub2">AR-336 · ODM_Happa_Scent Design</span></td>
+        <td class="num money">60,000.00</td>
+        <td class="num"><span class="bad">0/1</span><span class="sub2 bad">เลยกำหนด 1 งวด</span></td>
+        <td class="bad">07/08/2026</td>
+        <td><span class="badge b-amber">รอบัญชีตรวจใบ</span></td>
+      </tr>
+      <tr>
+        <td><span class="doc">SO-26080016-0</span><span class="sub2">QT-26080055-0</span></td>
+        <td>บริษัท วี.เอ็น.อลูมิเนียม จำกัด<span class="sub2">AR-840 · SV_Winmaster</span></td>
+        <td class="num money">30,000.00</td>
+        <td class="num"><span class="mute">0/1</span><span class="sub2">ยังไม่เริ่มติดตาม</span></td>
+        <td>20/08/2026</td>
+        <td><span class="badge b-blue">รอ AE Supervisor</span></td>
+      </tr>
+    </tbody>
+  </table></div>
+  <div class="pros">
+    <div class="pro"><b>ได้อะไร</b>เห็นครบใน 1 หน้าจอไม่ต้องเลื่อนแนวนอน · คอลัมน์ที่เหลือทุกช่องมีข้อมูลจริง · เปลี่ยนน้อยที่สุด ความเสี่ยงต่ำสุด</div>
+    <div class="con"><b>เสียอะไร</b>ยังเป็นตารางหนาแน่นเหมือนเดิม · “อยู่ขั้นไหน” เป็นป้ายเดียวจึงบอกได้แค่จุดปัจจุบัน ไม่เห็นว่าผ่านอะไรมาแล้วบ้าง</div>
+  </div>
+</div>
+
+<!-- ══════════════ ข ══════════════ -->
+<div class="card">
+  <div class="card-h"><span class="tag">แบบ ข</span><h2>แถวสองชั้น — ตัวตนเอกสารบน · ความคืบหน้าล่าง</h2></div>
+  <p class="note" style="padding:0 18px">บรรทัดบนตอบ “ใบไหน ของใคร เท่าไร” · บรรทัดล่างเป็น<b>รางสามขั้น</b> (AE Sup → บัญชีตรวจ → เก็บเงิน) ซึ่งเป็นสายงานจริงของใบ</p>
+  <div class="scroll"><table>
+    <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th class="num">Actual ก่อน VAT</th><th class="num">งวดชำระ</th><th>กำหนดชำระ</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>
+          <span class="doc">SO-26080012-0</span><span class="sub2">QT-26080047-0</span>
+          <div class="track">
+            <span class="step done"><span class="dot"></span>AE Sup</span><span class="bar done"></span>
+            <span class="step done"><span class="dot"></span>บัญชีตรวจ</span><span class="bar done"></span>
+            <span class="step done"><span class="dot"></span>เก็บครบ</span>
+          </div>
+        </td>
+        <td>คุณญาดา วางชั่ว<span class="sub2">AR-158 · KA_Article_จดแจ้งหมายเลขเครื่องสำอาง</span></td>
+        <td class="num money">9,000.00</td>
+        <td class="num ok">1/1</td>
+        <td>13/08/2026</td>
+      </tr>
+      <tr>
+        <td>
+          <span class="doc">SO-26080009-0</span><span class="sub2">QT-26080032-1</span>
+          <div class="track">
+            <span class="step done"><span class="dot"></span>AE Sup</span><span class="bar done"></span>
+            <span class="step now"><span class="dot"></span>บัญชีตรวจ</span><span class="bar"></span>
+            <span class="step"><span class="dot"></span>เก็บเงิน 0/2</span>
+          </div>
+        </td>
+        <td>บริษัท เซนท์ สตูดิโอ แลบอราทอรี่ จำกัด<span class="sub2">AR-108 · SV_ระบบกระจายกลิ่น</span></td>
+        <td class="num money">756,600.00</td>
+        <td class="num mute">0/2</td>
+        <td>13/08/2026</td>
+      </tr>
+      <tr>
+        <td>
+          <span class="doc">SO-26080005-0</span><span class="sub2">QT-26080028-0</span>
+          <div class="track">
+            <span class="step done"><span class="dot"></span>AE Sup</span><span class="bar done"></span>
+            <span class="step now"><span class="dot"></span>บัญชีตรวจ</span><span class="bar"></span>
+            <span class="step"><span class="dot"></span>เก็บเงิน 0/1</span>
+          </div>
+        </td>
+        <td>บริษัท แฮปป้าเวลเนส จำกัด<span class="sub2">AR-336 · ODM_Happa_Scent Design</span></td>
+        <td class="num money">60,000.00</td>
+        <td class="num bad">0/1</td>
+        <td class="bad">07/08/2026 <span class="sub2 bad">เลยกำหนด</span></td>
+      </tr>
+      <tr>
+        <td>
+          <span class="doc">SO-26080016-0</span><span class="sub2">QT-26080055-0</span>
+          <div class="track">
+            <span class="step now"><span class="dot"></span>AE Sup</span><span class="bar"></span>
+            <span class="step"><span class="dot"></span>บัญชีตรวจ</span><span class="bar"></span>
+            <span class="step"><span class="dot"></span>เก็บเงิน</span>
+          </div>
+        </td>
+        <td>บริษัท วี.เอ็น.อลูมิเนียม จำกัด<span class="sub2">AR-840 · SV_Winmaster</span></td>
+        <td class="num money">30,000.00</td>
+        <td class="num mute">0/1</td>
+        <td>20/08/2026</td>
+      </tr>
+    </tbody>
+  </table></div>
+  <div class="pros">
+    <div class="pro"><b>ได้อะไร</b>เห็น<b>ทั้งเส้นทาง</b>ไม่ใช่แค่จุดปัจจุบัน — ตอบ “ค้างที่ใคร” ได้ทันทีโดยไม่ต้องเปิดใบ · ใช้ภาษาเดียวกับเส้นเดินงานในหน้ารายละเอียด SO</div>
+    <div class="con"><b>เสียอะไร</b>แถวสูงขึ้น ~18px เห็นใบต่อหน้าจอน้อยลง · รางสามขั้นต้องมีที่ราว 260px ⇒ จอแคบกว่า 1100px ต้องยุบรางเป็นป้ายเดียวแทน</div>
+  </div>
+</div>
+
+<!-- ══════════════ ค ══════════════ -->
+<div class="card">
+  <div class="card-h"><span class="tag">แบบ ค</span><h2>การ์ดต่อใบ — เลิกใช้ตาราง</h2></div>
+  <p class="note" style="padding:0 18px">ใบละการ์ด ไหลตามความกว้างที่มีจริง · แนวเดียวกับที่ทะเบียนลูกค้า/สินค้าใช้บนจอแคบอยู่แล้ว</p>
+  <div class="grid">
+    <div class="item">
+      <div class="item-h">
+        <div><span class="doc">SO-26080009-0</span><span class="sub2">QT-26080032-1 · 13/08/2026</span></div>
+        <span class="badge b-amber">รอบัญชีตรวจใบ</span>
+      </div>
+      <div style="margin-bottom:9px">บริษัท เซนท์ สตูดิโอ แลบอราทอรี่ จำกัด<span class="sub2">AR-108 · SV_ระบบกระจายกลิ่น</span></div>
+      <dl class="item-rows">
+        <dt>Actual ก่อน VAT</dt><dd class="money">756,600.00</dd>
+        <dt>งวดชำระ</dt><dd>0/2 · <span class="mute">รอบัญชีรับรอง 1 งวด</span></dd>
+        <dt>กำหนดชำระ</dt><dd>13/08/2026</dd>
+      </dl>
+    </div>
+    <div class="item">
+      <div class="item-h">
+        <div><span class="doc">SO-26080005-0</span><span class="sub2">QT-26080028-0 · 07/08/2026</span></div>
+        <span class="badge b-amber">รอบัญชีตรวจใบ</span>
+      </div>
+      <div style="margin-bottom:9px">บริษัท แฮปป้าเวลเนส จำกัด<span class="sub2">AR-336 · ODM_Happa_Scent Design</span></div>
+      <dl class="item-rows">
+        <dt>Actual ก่อน VAT</dt><dd class="money">60,000.00</dd>
+        <dt>งวดชำระ</dt><dd class="bad">0/1 · เลยกำหนด 1 งวด</dd>
+        <dt>กำหนดชำระ</dt><dd class="bad">07/08/2026</dd>
+      </dl>
+    </div>
+    <div class="item">
+      <div class="item-h">
+        <div><span class="doc">SO-26080012-0</span><span class="sub2">QT-26080047-0 · 13/08/2026</span></div>
+        <span class="badge b-green">เสร็จสมบูรณ์</span>
+      </div>
+      <div style="margin-bottom:9px">คุณญาดา วางชั่ว<span class="sub2">AR-158 · KA_Article_จดแจ้งหมายเลขเครื่องสำอาง</span></div>
+      <dl class="item-rows">
+        <dt>Actual ก่อน VAT</dt><dd class="money">9,000.00</dd>
+        <dt>งวดชำระ</dt><dd class="ok">1/1 · เก็บครบแล้ว</dd>
+        <dt>กำหนดชำระ</dt><dd>13/08/2026</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="pros">
+    <div class="pro"><b>ได้อะไร</b>ไม่มีวันล้นแนวนอน ทุกความกว้างอ่านได้เท่ากัน · เพิ่มข้อมูลใหม่ทีหลังไม่ต้องแย่งคอลัมน์</div>
+    <div class="con"><b>เสียอะไร</b><b>เทียบข้ามใบไม่ได้</b> — กวาดตาหาว่า “ใบไหนยอดสูงสุด/เลยกำหนดนานสุด” ไม่ได้อีก ซึ่งเป็นสิ่งที่ตารางทำได้ดีที่สุด · เห็นใบต่อหน้าจอน้อยกว่าตารางมาก</div>
+  </div>
+</div>
+
+<div class="why" style="margin-bottom:0">
+<b>ข้อเสนอของผม: แบบ ข</b> — หน้านี้คนเปิดมาถามว่า <i>“ใบไหนค้างที่ใคร”</i> ซึ่งเป็นคำถามเรื่อง<b>ลำดับขั้น</b> ไม่ใช่เรื่องตัวเลข ·
+รางสามขั้นตอบได้ในสายตาเดียวและพูดภาษาเดียวกับเส้นเดินงานในหน้ารายละเอียด SO ที่มีอยู่แล้ว ·
+ส่วนคอลัมน์ที่ว่าง (เอกสารอ้างอิง · วันที่ซ้ำ) ตัดทิ้งเหมือนแบบ ก ทั้งคู่ ไม่ว่าจะเลือกแบบไหน
+<br><br>
+เลือก <b>ค</b> ก็ต่อเมื่อคนใช้หน้านี้บนมือถือเป็นหลัก — บนเดสก์ท็อปมันเสียความสามารถหลักของตารางไปโดยไม่ได้อะไรกลับมา
+</div>
+
+</div>
+</body>
+</html>
