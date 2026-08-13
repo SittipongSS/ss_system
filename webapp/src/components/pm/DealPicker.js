@@ -7,7 +7,7 @@
 // ⭐ ทุกจุดที่ต้องเลือกดีลต้องเรียกตัวนี้ ห้ามประกอบ dropdown เอง — เดิมมีคู่ช่อง
 // "โครงการ + ดีล" กระจายอยู่ 4 หน้า แต่ละที่กรอง/ค้น/เขียนป้ายไม่เหมือนกัน
 // (มติผู้ใช้ 2026-08-06: ยกเป็นดีไซน์กลางแล้วใช้ทั้งระบบ)
-import { FolderOpen, Layers } from "lucide-react";
+import { FolderKanban, Handshake } from "lucide-react";
 import TwoPanePicker from "@/components/ui/TwoPanePicker";
 import {
   ALL_DEALS_BUCKET, buildDealBuckets, dealSearchText, NO_PROJECT_BUCKET, projectLabelOf,
@@ -42,7 +42,8 @@ export default function DealPicker({
     label: bucket.name || bucket.label,
     meta: [bucket.code, bucket.customerName].filter(Boolean).join(" · "),
     search: bucket.search,
-    icon: bucket.key === ALL_DEALS_BUCKET ? Layers : FolderOpen,
+    // ถังรวม = ไอคอนดีล · ถังอื่นคือโครงการหนึ่งใบ = ไอคอนโครงการ (entityIcon.test.mjs)
+    icon: bucket.key === ALL_DEALS_BUCKET ? Handshake : FolderKanban,
     emptyText: bucket.key === NO_PROJECT_BUCKET
       ? "ไม่มีดีลที่ยังไม่ผูกโครงการ"
       : "โครงการนี้ยังไม่มีดีลที่ผูกงานได้",

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList,
-  ExternalLink, FileCheck2, FileText, FolderKanban, History, MapPin, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -744,10 +744,10 @@ export default function SalesOrderDetailPage() {
             พูดอยู่แล้ว ของเดิมพูดซ้ำสี่ที่ */}
         <ContextGrid>
           <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: order.quotation?.contactName || "-" }]} />
-          <ContextCard icon={Building2} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+          <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
-          <ContextCard icon={FolderKanban} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName) || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
+          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName) || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
           <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={order.quotation?.quoteNumber || "-"} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
         </ContextGrid>
 

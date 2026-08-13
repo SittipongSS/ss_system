@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -746,7 +746,7 @@ export default function DealOverviewPage() {
 
   return (
     <Workspace
-      icon={<FolderKanban size={22} />}
+      icon={<Handshake size={22} />}
       title={deal?.title || "ศูนย์รวมดีล"}
       subtitle={deal ? `${deal.customerName || deal.customer?.name || "ไม่มีลูกค้า"} · ${deal.forecastMonth || "ไม่มีเดือนพยากรณ์"}` : "ศูนย์รวมดีล"}
       back={{ href: "/sa/deals", label: "กลับหน้าดีล" }}
@@ -774,8 +774,8 @@ export default function DealOverviewPage() {
             badges={<>{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
             actions={headerRight}
             facts={[
-              { icon: FolderKanban, label: "ผู้ดูแล (AE)", value: ownerName || "-" },
-              { icon: ClipboardList, label: "ทีม", value: deal.team || "-" },
+              { icon: UserRound, label: "ผู้ดูแล (AE)", value: ownerName || "-" },
+              { icon: Users, label: "ทีม", value: deal.team || "-" },
               { icon: Circle, label: "เดือน Forecast", value: deal.forecastMonth || "-" },
               { icon: Trophy, label: "ประเภท / โอกาส", value: `${dealTypeOf(deal)}${!alreadyWon && deal.stage !== "lost" ? ` · FC ${snapForecastLevel(deal.probability)}%` : ""}` },
             ]}
