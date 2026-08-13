@@ -731,11 +731,15 @@ export default function SalesPlanningPipelinePage() {
   );
   const lostDeals = kpiDeals.filter((d) => d.stage === "lost");
 
+  // ⚠️ ไล่ประเภทจาก DEAL_TYPE_LABELS ไม่ใช่พิมพ์เอง — คำโปรยนี้เคยค้างที่ 3 ประเภท
+  // อยู่รอบหนึ่งหลังเพิ่ม 'อื่นๆ' (mig 0247/0249) โดยไม่มีอะไรเตือน
+  const dealsSubtitle = `จัดการดีลขาย (${DEAL_TYPES.map((t) => DEAL_TYPE_LABELS[t]).join(" / ")}) และส่งต่อโครงการ PM`;
+
   return (
     <SaWorkspace
       icon={<FolderKanban size={22} />}
       title="บริหารงานขาย — ดีล"
-      subtitle="จัดการดีลขาย (พัฒนากลิ่น / พัฒนาสินค้า / สั่งผลิตซ้ำ) และส่งต่อโครงการ PM"
+      subtitle={dealsSubtitle}
       headerRight={headerRight}
     >
       <div className="flex flex-col gap-4">

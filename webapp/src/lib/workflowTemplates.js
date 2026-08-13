@@ -66,9 +66,13 @@ export const WORKFLOW_TEMPLATE_LIMITS = Object.freeze({
   maxDurationDays: 365,
 });
 
+// ⚠️ ต้องมีบรรทัดของทุกคีย์ใน WORKFLOW_TEMPLATE_KEYS — ค่าท้ายสุดเป็น fallback ของ
+// 'NPD' เท่านั้น ไม่ใช่ "ค่าเริ่มต้นของอะไรก็ได้" · เพิ่ม 'OTHER' (mig 0249) แล้วลืม
+// ตรงนี้ ผลคือการ์ด OTHER ที่หน้าตั้งค่าขึ้นป้าย "งานพัฒนาสินค้า" เงียบ ๆ
 export function workflowTemplateKeyLabel(key) {
   if (key === 'SCENT') return 'งานพัฒนากลิ่น';
   if (key === 'RE-ORDER') return 'งานสั่งผลิตซ้ำ';
+  if (key === 'OTHER') return 'งานอื่นๆ';
   return 'งานพัฒนาสินค้า';
 }
 
