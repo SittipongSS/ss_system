@@ -68,6 +68,12 @@
 
 .scroll :global(table) {
   width: 100%;
+  /* 🐞 `minWidth` ของ TableScroll ตั้ง `--table-min-width` มาตั้งแต่ต้น แต่ **ไม่มี CSS
+     ตัวไหนอ่านมันเลย** ⇒ prop ตายมาตลอด · ตารางที่ส่งค่ามา (บอร์ดผลิต 1400 · ตาราง
+     บริการ 900 · การ์ดงวดชำระ 680 · ทะเบียนการชำระ 1080) จึงบีบคอลัมน์จนตัวอักษร
+     ขึ้นบรรทัดละตัวแทนที่จะเลื่อนแนวนอน — เห็นตอนกดดูทะเบียนการชำระบนจอแคบ
+     ⚠️ ไม่ตั้งค่าตั้งต้นเป็นตัวเลข: ตารางที่ไม่ได้ส่ง minWidth ต้องยืดหยุ่นเหมือนเดิม */
+  min-width: var(--table-min-width, auto);
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;

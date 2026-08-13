@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wrench } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, ListTodo, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canAccessRd, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessFinance, canAccessRd, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -314,6 +314,31 @@ export default function AppLayout({ children }) {
         // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
         // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
         { href: '/rd/requests', name: 'คิวคำร้อง', icon: ClipboardList, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') },
+      ],
+    },
+    {
+      // บัญชีและการเงิน — บ้านของฝ่าย FN (มติผู้ใช้ 2026-08-13)
+      //
+      // ⚠️ ด่านเป็น `canAccessFinance` **ตัวเดียวกับที่การ์ดระบบใช้** — บทเรียนจาก
+      // โมดูล RD ที่เคยแยกสองที่แล้วได้การ์ดที่กดเข้าไปเจอแถบเมนูว่าง
+      //
+      // 🐞 **caps ต้องมีเสมอ ห้ามเว้น** — รอบแรกเขียนแต่ `visible` แล้วเมนูหายทั้งกลุ่ม:
+      // ตัวกรองอ่าน `item.caps || [item.cap]` ⇒ ได้ `[undefined]` ⇒ ไม่ผ่านสักข้อ ⇒
+      // `items.length === 0` ⇒ `.filter((g) => g.items.length > 0)` ตัดทั้งกลุ่มทิ้ง
+      // ได้เปลือกที่ขึ้นชื่อ "บัญชีและการเงิน" แต่แถบเมนูว่างเปล่า (อาการเดียวกับที่
+      // คอมเมนต์ของกลุ่ม RD ข้างบนเตือนไว้ · เจอซ้ำเพราะเขียนคนละสาเหตุ)
+      //
+      // ⚠️ ต้องมีสองตัว: `payments:confirm` ครอบทั้ง role `finance` และคน FN ที่ยังถือ
+      // `staff` (ยังไม่ย้าย role) ส่วน `users:manage` ให้ admin ซึ่งไม่ถือ payments:confirm
+      // ⚠️ cap กว้างกว่าฝ่ายจริง (staff ฝ่ายอื่นก็ถือ payments:confirm) — ตัวแคบคือ
+      // `visible: canAccessFinance` ซึ่งเป็น **ด่านเดียวกับที่การ์ดระบบใช้**
+      system: 'finance',
+      items: [
+        { href: '/finance', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p === '/finance' },
+        // ชื่อ "ทะเบียนการชำระ" ไม่ใช่ "การชำระ" — ฝั่ง SO มีการ์ด "การชำระ" ของใบ
+        // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
+        // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)
+        { href: '/finance/payments', name: 'ทะเบียนการชำระ', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
       ],
     },
     {

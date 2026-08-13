@@ -223,7 +223,7 @@ const normalizePath = (path) => normalizeTax(normalizeMaster(path));
 // ทดสอบตอนทำด้วยบัญชี admin จึงไม่เห็น (admin ผ่านตั้งแต่บรรทัดแรกของ lockedOut) —
 // อาการเดียวกับที่ `/rd` เคยเจอ ซึ่งคอมเมนต์ข้างบนเตือนไว้แล้วว่าต้อง smoke test ด้วย
 // บัญชีของฝ่าย · หน้านี้ไม่มีอะไรให้กั้นอยู่แล้ว: API อ่าน userId จาก session เท่านั้น
-const OPEN_PAGES = ['/account', '/home', '/notifications', '/sa', '/pm', '/rd', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
+const OPEN_PAGES = ['/account', '/home', '/notifications', '/sa', '/pm', '/rd', '/finance', '/production', '/service', '/database', '/tax', '/sales-planning', '/sahamit', '/mgmt', '/go', '/requests', '/support'];
 // APIs a non-admin may WRITE to: own account + PM + master-data registries +
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
@@ -246,7 +246,10 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
 // ทางเขียนยังอยู่ที่ /api/organization-settings ซึ่ง gate ด้วย master:manage ตามเดิม
 // /api/thai-address = ทะเบียนจังหวัด/อำเภอ/ตำบล ของกรมการปกครอง — ข้อมูลสาธารณะ
 // ไม่มีของใครอยู่ในนั้น และทุกคนที่กรอกที่อยู่ลูกค้า/ไซต์บริการต้องใช้ ⇒ อ่านได้หมด
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address'];
+// /api/finance = ทะเบียนการชำระรวมทุกใบ (โมดูลบัญชี) — **อ่านอย่างเดียว** ทางเขียน
+// ยังอยู่ที่ /api/sales-planning/.../installments ที่เดิม · ด่านจริงคือ `canAccessFinance`
+// ในตัว route เอง ซึ่งแคบกว่าที่นี่ (proxy เห็นแค่ method+path)
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
