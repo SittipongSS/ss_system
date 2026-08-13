@@ -327,6 +327,32 @@ test('V4 doc: docLanguage=en → ป้ายทั้งใบเป็นอ�
   assert.ok(html.includes('Reed diffuser 100 ml'), 'ชื่อสินค้าพิมพ์ตามที่คนกรอกไว้');
 });
 
+// หน่วยขายเคยเป็นข้อยกเว้นที่หลุดมาเป็นไทยบนใบอังกฤษ เพราะถูกจัดอยู่ฝั่ง "ค่าที่คนกรอก"
+// ทั้งที่จริงมาจากลิสต์ปิดของ lib/master/units.js (IS-26080025 · มติผู้ใช้ 2026-08-13)
+test('V4 doc: หน่วยขายแปลตามภาษาใบ — ไทยบนใบไทย อังกฤษบนใบอังกฤษ', () => {
+  const lines = [
+    lineOf('1', { description: 'Monthly scent service', unit: 'เดือน' }),
+    lineOf('2', { description: 'Refill visit', unit: 'ครั้ง' }),
+  ];
+  const en = printedMarkup(buildQuotationMasterHTML({ ...baseQuote(lines), docLanguage: 'en' }, {}));
+  assert.ok(en.includes('Month'), 'ใบอังกฤษต้องพิมพ์ Month');
+  assert.ok(en.includes('Time'), 'ใบอังกฤษต้องพิมพ์ Time');
+  assert.doesNotMatch(en, /เดือน|ครั้ง/, 'ห้ามมีหน่วยไทยเหลือบนใบอังกฤษ');
+
+  const th = printedMarkup(buildQuotationMasterHTML({ ...baseQuote(lines), docLanguage: 'th' }, {}));
+  assert.ok(th.includes('เดือน'), 'ใบไทยยังพิมพ์หน่วยไทยเหมือนเดิม');
+  assert.ok(th.includes('ครั้ง'));
+});
+
+// ค่าเก่าที่หลุดลิสต์ไปแล้ว — เดาคำแปลแล้วผิดบนเอกสารลูกค้า แย่กว่าปล่อยเป็นไทย
+test('V4 doc: หน่วยนอกลิสต์บนใบอังกฤษพิมพ์ตามเดิม ไม่เดาคำแปล', () => {
+  const html = printedMarkup(buildQuotationMasterHTML({
+    ...baseQuote([lineOf('1', { description: 'Legacy item', unit: 'โหล' })]),
+    docLanguage: 'en',
+  }, {}));
+  assert.ok(html.includes('โหล'), 'หน่วยที่ระบบไม่รู้จักต้องพิมพ์ตามที่เก็บไว้');
+});
+
 test('V4 doc: ใบอังกฤษที่แบ่งงวดเอง — ชื่องวดที่คนตั้งพิมพ์ตามเดิม ไม่ถูกแปล', () => {
   const q = {
     ...baseQuote([lineOf('1')]),

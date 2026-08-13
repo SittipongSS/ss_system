@@ -3,13 +3,45 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_SALE_UNIT,
   SALE_UNITS,
+  SALE_UNIT_EN,
   SALE_UNIT_MAX,
   VOLUME_UNITS,
   formatVolume,
   packagingSummary,
+  saleUnitLabel,
   saleUnitOf,
   unitOptions,
 } from './units.js';
+
+// ── หน่วยขายบนใบภาษาอังกฤษ (มติผู้ใช้ 2026-08-13 · IS-26080025) ───────────
+test('ทุกหน่วยในลิสต์ต้องมีคำอังกฤษ — ลืมเติมคู่ = ใบอังกฤษมีไทยโผล่กลางตาราง', () => {
+  const missing = SALE_UNITS.filter((unit) => !SALE_UNIT_EN[unit]);
+  assert.deepEqual(missing, [], `หน่วยที่ยังไม่มีคำอังกฤษ: ${missing.join(', ')}`);
+});
+
+test('หน่วยที่ AE ขอเพิ่ม อยู่ในลิสต์จริง', () => {
+  assert.ok(SALE_UNITS.includes('เดือน'));
+  assert.ok(SALE_UNITS.includes('ครั้ง'));
+  assert.equal(SALE_UNIT_EN['เดือน'], 'Month');
+  assert.equal(SALE_UNIT_EN['ครั้ง'], 'Time');
+});
+
+test('saleUnitLabel: แปลเฉพาะใบอังกฤษ · ใบไทยคืนค่าเดิมไม่แตะ', () => {
+  assert.equal(saleUnitLabel('ชิ้น', 'en'), 'Piece');
+  assert.equal(saleUnitLabel('เดือน', 'en'), 'Month');
+  assert.equal(saleUnitLabel('ชิ้น', 'th'), 'ชิ้น');
+  assert.equal(saleUnitLabel('ชิ้น'), 'ชิ้น');          // ไม่ระบุภาษา = ไทย
+  assert.equal(saleUnitLabel('Kg', 'en'), 'Kg');        // อังกฤษอยู่แล้ว ไม่เปลี่ยน
+});
+
+// ค่าเก่าที่หลุดลิสต์ ('แพ็ค'/'โหล') หรือคนพิมพ์เอง — เดาคำแปลแล้วผิดบนเอกสารลูกค้า
+// แย่กว่าปล่อยเป็นไทย
+test('saleUnitLabel: หน่วยนอกลิสต์พิมพ์ตามเดิม ไม่เดาคำแปล', () => {
+  assert.equal(saleUnitLabel('โหล', 'en'), 'โหล');
+  assert.equal(saleUnitLabel('แพ็ค', 'en'), 'แพ็ค');
+  assert.equal(saleUnitLabel('', 'en'), '');
+  assert.equal(saleUnitLabel(null, 'en'), '');
+});
 
 test('หน่วยตั้งต้นต้องอยู่ในลิสต์จริง (กันตัวเลือกที่เลือกไม่ได้)', () => {
   assert.ok(SALE_UNITS.includes(DEFAULT_SALE_UNIT));
