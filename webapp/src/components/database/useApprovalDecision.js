@@ -9,6 +9,8 @@
 //  ทำให้ตกเป็น "รออนุมัติ" อัตโนมัติ — ดู lib/master/attachmentTypes)
 import { useState } from "react";
 import ReasonDialog from "@/components/ui/ReasonDialog";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import { notifyToast } from "@/components/ui/Toast";
 import { MIN_OVERRIDE_REASON } from "@/lib/master/attachmentTypes";
 
@@ -28,7 +30,22 @@ export default function useApprovalDecision({ endpoint, onDone }) {
     return { ok: res.ok, status: res.status, data };
   };
 
-  const decide = async (id, status, { rejectionReason = null } = {}) => {
+  /* @param subject ป้ายระเบียนสำหรับโมดัลยืนยัน เช่น "CUS-0012 · บริษัท ก จำกัด"
+     ⚠️ โมดัลอยู่ในฮุกไม่ใช่ในหน้า — หน้าลูกค้ากับหน้าสินค้าเขียน `decide` ของตัวเอง
+     คนละชุดอยู่แล้ว (ดูกฎ "ฟอร์มเดียวสองทางเรียก" ใน AGENTS.md) วางไว้ในหน้าเมื่อไร
+     อีกหน้าจะลืมทันที · การอนุมัติทุกจุดต้องถามก่อน (มติผู้ใช้ 2026-08-13) */
+  const decide = async (id, status, { rejectionReason = null, subject = null } = {}) => {
+    if (status === "approved") {
+      const ok = await confirmAction(approvalPrompt({
+        subject,
+        effects: [
+          "ระเบียนพร้อมใช้ในเอกสารและช่องเลือกทั่วทั้งระบบ",
+          "แก้ไขข้อมูลหลังจากนี้จะทำให้ระเบียนกลับไปรออนุมัติใหม่",
+        ],
+        confirmLabel: "อนุมัติระเบียนนี้",
+      }));
+      if (!ok) return;
+    }
     try {
       const { ok, data } = await patch(id, { approvalStatus: status, rejectionReason });
       if (ok) { onDone?.(); return; }

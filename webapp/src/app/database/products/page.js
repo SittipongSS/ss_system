@@ -105,13 +105,17 @@ export default function ProductRegistry() {
     onDone: fetchProducts,
   });
 
-  const decide = async (id, status) => {
+  // รับ "ทั้งระเบียน" ไม่ใช่แค่ id — โมดัลยืนยันต้องเอ่ยรหัส FG ที่กำลังอนุมัติ
+  const decide = async (product, status) => {
     let rejectionReason = null;
     if (status === "rejected") {
       rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
       if (rejectionReason === null) return; // ยกเลิก
     }
-    await sendDecision(id, status, { rejectionReason });
+    await sendDecision(product.id, status, {
+      rejectionReason,
+      subject: [product.fgCode, product.productDescription].filter(Boolean).join(" · "),
+    });
   };
 
   // Main category (เช่น ODM) + sub-category name for the list — prefers the
@@ -470,7 +474,7 @@ export default function ProductRegistry() {
                 <div className="flex items-center justify-end pt-2 border-t border-[var(--border)]">
                   {showActions ? (
                     <div onClick={(e) => e.stopPropagation()}>
-                      <ApprovalActions onDecide={(s) => decide(p.id, s)} />
+                      <ApprovalActions onDecide={(s) => decide(p, s)} />
                     </div>
                   ) : <ChevronRight size={16} className="text-[var(--text-3)]" />}
                 </div>
@@ -532,7 +536,7 @@ export default function ProductRegistry() {
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         {approvalStatusOf(p) === "pending" && canApproveRow(p) ? (
-                          <ApprovalActions onDecide={(status) => decide(p.id, status)} />
+                          <ApprovalActions onDecide={(status) => decide(p, status)} />
                         ) : (
                           <div className="flex flex-col gap-1 items-start">
                             <ApprovalBadge status={approvalStatusOf(p)} />

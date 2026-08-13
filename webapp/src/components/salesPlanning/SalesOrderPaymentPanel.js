@@ -13,6 +13,8 @@ import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { paymentConfirmPrompt } from "@/lib/approvalPrompt";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -147,7 +149,19 @@ export default function SalesOrderPaymentPanel({
                   ? { label: row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
                       onClick: () => setReportFor({ row, paidOn: todayIso, files: [] }) }
                   : canConfirm
-                    ? { label: "บัญชีคอนเฟิร์ม", onClick: () => onAction(row, "confirm") }
+                    ? {
+                      label: "บัญชีคอนเฟิร์ม",
+                      /* ⚠️ ถอนคืนไม่ได้จริง ๆ — ไม่มี action un-confirm และงวดที่คอนเฟิร์มแล้ว
+                         ล็อกใบไม่ให้ยกเลิกอนุมัติ/ออก Rev. (ดู paymentLockReason)
+                         ⇒ ต้องถามก่อนเสมอ (มติผู้ใช้ 2026-08-13) */
+                      onClick: async () => {
+                        const ok = await confirmAction(paymentConfirmPrompt({
+                          label: rows.length > 1 ? `งวดที่ ${row.seq}` : "ชำระเต็มจำนวน",
+                          amount: fmtMoney(row.amount),
+                        }));
+                        if (ok) await onAction(row, "confirm");
+                      },
+                    }
                     : null;
 
                 const menu = row.preview ? [] : [
