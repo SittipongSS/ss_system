@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUSES, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
   awaitsFinanceReview, financeActionError, financeStatusOf, financeWorkflowStep,
+  salesOrderWorkflowIndex,
 } from './salesOrderFinanceApproval.js';
 
 const FN = { id: 'u-fn', role: 'finance', department: 'FN' };
@@ -15,7 +16,7 @@ const ADMIN = { id: 'u-admin', role: 'admin' };
 const approved = (extra = {}) => ({ status: 'approved', financeStatus: 'pending', ...extra });
 
 // ── ใบที่ยังไม่ถึงคิว ────────────────────────────────────────────────────
-/* 🔴 ใบที่อนุมัติไปแล้ว **ก่อน** mig 0247 มี financeStatus = NULL ซึ่งแปลว่า
+/* 🔴 ใบที่อนุมัติไปแล้ว **ก่อน** mig 0249 มี financeStatus = NULL ซึ่งแปลว่า
    "ออกก่อนมีขั้นนี้" ไม่ใช่ "รอบัญชี" — ถ้าอ่านผิดเป็น pending บัญชีจะเปิดมาเจอคิวค้าง
    ทั้งกองที่ไม่มีใครตั้งใจสร้าง */
 test('ใบเก่าที่ไม่มี financeStatus = ยังไม่เข้าแกนบัญชี ไม่ใช่รอตรวจ', () => {
@@ -103,4 +104,37 @@ test('เช็กลิสต์ที่บัญชีตรวจครบ�
   assert.equal(FINANCE_REVIEW_POINTS.length, 4);
   assert.ok(FINANCE_REVIEW_POINTS.some((p) => p.includes('เลขผู้เสียภาษี')));
   assert.ok(FINANCE_REVIEW_POINTS.some((p) => p.includes('เครดิต')));
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   🔴 หมุดบนรางก้าว: **✓ = เรียบร้อย · ตัวเลข = อยู่ขั้นนั้น รอดำเนินการ**
+   (feedback ผู้ใช้ 2026-08-13 — ทักว่าใบที่บัญชีอนุมัติแล้วยังขึ้นเลข 5)
+   `workflowStepsFromIndex`: index < current = done · === current = current
+   ⇒ ใบที่จบครบต้องชี้ **พ้นท้ายราง** ไม่งั้นขั้นสุดท้ายค้างเป็นเลขตลอด
+   ═══════════════════════════════════════════════════════════════════════ */
+test('ใบที่ยังไม่อนุมัติ ใช้ขั้นของสายเอกสารตามเดิม', () => {
+  assert.equal(salesOrderWorkflowIndex({ status: 'draft' }, { baseIndex: 0, stepCount: 4 }), 0);
+  assert.equal(salesOrderWorkflowIndex({ status: 'pending_approval' }, { baseIndex: 1, stepCount: 4 }), 1);
+});
+
+test('ใบเก่าที่อนุมัติแล้ว (ไม่มีขั้นบัญชี) = ✓ ทั้งราง ไม่มีเลขค้าง', () => {
+  // ชี้พ้นท้าย ⇒ ทุก index < current ⇒ done ทั้งหมด
+  assert.equal(salesOrderWorkflowIndex({ status: 'approved' }, { baseIndex: 3, stepCount: 4 }), 4);
+});
+
+test('รอบัญชีตรวจ / บัญชีตีกลับ = ขั้นก่อนหน้า ✓ ทั้งหมด และค้างที่ขั้นบัญชี', () => {
+  for (const financeStatus of ['pending', 'rejected']) {
+    assert.equal(
+      salesOrderWorkflowIndex({ status: 'approved', financeStatus }, { baseIndex: 3, stepCount: 5 }),
+      4,
+      `${financeStatus} ต้องชี้ที่ขั้นบัญชี (index 4 จาก 5 ขั้น)`,
+    );
+  }
+});
+
+test('บัญชีอนุมัติแล้ว = ✓ ทั้งราง รวมขั้นบัญชี', () => {
+  assert.equal(
+    salesOrderWorkflowIndex({ status: 'approved', financeStatus: 'approved' }, { baseIndex: 3, stepCount: 5 }),
+    5,
+  );
 });

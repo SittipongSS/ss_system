@@ -1,5 +1,5 @@
 -- ============================================================
---  Migration 0247: ขั้นบัญชีตรวจใบสั่งขาย หลัง AE Supervisor อนุมัติ (มติผู้ใช้ 2026-08-13)
+--  Migration 0249: ขั้นบัญชีตรวจใบสั่งขาย หลัง AE Supervisor อนุมัติ (มติผู้ใช้ 2026-08-13)
 --
 --  คำสั่งตั้งต้น: *"ต้องเพิ่มขั้นตอนใน SO ให้บัญชีอนุมัติใบด้วยหลัง AE Sup อนุมัติ"*
 --
@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS sales_orders_finance_pending_idx
   WHERE "financeStatus" = 'pending';
 
 COMMENT ON COLUMN public.sales_orders."financeStatus" IS
-  'ขั้นบัญชีตรวจ (0247) — NULL = ยังไม่ถึงคิว/ออกก่อนมีขั้นนี้ · คนละแกนกับ status ไม่แตะ Actual';
+  'ขั้นบัญชีตรวจ (0249) — NULL = ยังไม่ถึงคิว/ออกก่อนมีขั้นนี้ · คนละแกนกับ status ไม่แตะ Actual';
 
 COMMIT;
 

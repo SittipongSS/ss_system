@@ -211,7 +211,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   } catch { deliveries = []; }
 
   // meId ให้หน้าเว็บซ่อนปุ่มอนุมัติของ SO ที่ตัวเองสร้าง/ยื่น (แบ่งแยกหน้าที่)
-  // meDepartment ให้ซ่อนปุ่มของขั้นบัญชี (mig 0247) — `canConfirmPayment` ตัดสินด้วย **ฝ่าย**
+  // meDepartment ให้ซ่อนปุ่มของขั้นบัญชี (mig 0249) — `canConfirmPayment` ตัดสินด้วย **ฝ่าย**
   // ไม่ใช่ role ⇒ ส่งมาด้วย ไม่งั้นหน้าเว็บซ่อนปุ่มผิดคนแล้วไปเจอ 400 ตอนกด
   return ok({
     ...order,
@@ -481,7 +481,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       console.error('issued sales order snapshot capture failed', id, snapshotError);
     }
 
-    /* ⭐ เข้าคิวบัญชีทันทีที่ AE Supervisor อนุมัติ (mig 0247)
+    /* ⭐ เข้าคิวบัญชีทันทีที่ AE Supervisor อนุมัติ (mig 0249)
        ⚠️ **ไม่แตะ Actual** — ยอดเข้าไปแล้วตอน RPC อนุมัติ บัญชีเป็นคนละแกน (มติ 2026-08-13)
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว ตั้งธงล้มต้องไม่ roll back
        ใบที่ธงไม่ติดจะไม่โผล่ในคิวบัญชี ซึ่งกู้ได้ด้วยการอนุมัติซ้ำหรือแก้มือ */
@@ -630,7 +630,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
-  /* ── ขั้นบัญชีตรวจใบ (mig 0247) — คนละแกนกับ status ────────────────────
+  /* ── ขั้นบัญชีตรวจใบ (mig 0249) — คนละแกนกับ status ────────────────────
      ⚠️ **ไม่มี action ไหนในบล็อกนี้แตะ `status` หรือ `actualAmount`** — ยอดขายของ SA
      ไม่ขยับตามการตัดสินของบัญชี (มติผู้ใช้ 2026-08-13) · ตีกลับ = ส่งกลับให้ AE Sup
      ดูใหม่ ไม่ใช่ถอยเอกสาร
