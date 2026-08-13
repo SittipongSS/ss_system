@@ -51,6 +51,7 @@ import {
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import styles from "./page.module.css";
 
 const money = (v) => fmtMoney(v);
@@ -323,10 +324,16 @@ export default function QuotationEditorPage() {
   const approve = () => {
     if (dirty) { setError("บันทึกการแก้ไขก่อนอนุมัติ"); return; }
     setConfirmState({
-      title: "อนุมัติใบเสนอราคา",
-      description: `ยืนยันอนุมัติ ${quote.quoteNumber} หรือไม่`,
-      detail: "หลังอนุมัติจะส่งลูกค้าได้ เอกสารฉบับนี้จะถูกล็อก และหากต้องแก้ไขให้ใช้ Revision เท่านั้น",
-      confirmLabel: "อนุมัติ",
+      ...approvalPrompt({
+        title: "อนุมัติใบเสนอราคา",
+        subject: `ใบเสนอราคา ${quote.quoteNumber}`,
+        effects: [
+          "ใบพร้อมส่งลูกค้าและออกเอกสารได้",
+          "ตรึงลายเซ็นผู้อนุมัติกับ fingerprint ของเนื้อหา ณ ตอนนี้",
+          "เอกสารถูกล็อก แก้ไขต่อได้เฉพาะการออก Rev. ใหม่",
+        ],
+        confirmLabel: "อนุมัติ",
+      }),
       action: async () => {
         const data = await act("approve", `/api/sales-planning/quotations/${id}/approval`, {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),

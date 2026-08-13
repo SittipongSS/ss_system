@@ -12,7 +12,8 @@ import {
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
@@ -558,9 +559,20 @@ export default function RequestDetailPage() {
           label: "ยืนยันให้ RD ดำเนินการ",
           kind: "approve",
           icon: Check,
-          onClick: () => call("", {
-            method: "PATCH", body: JSON.stringify({ action: "approve" }),
-          }, "ยืนยันแล้ว"),
+          // ประตูหัวหน้าสายงานขายเคยยิงทันทีที่กด — ไม่มีจังหวะทบทวนเลยทั้งที่กดแล้ว
+          // RD เริ่มลงมือจริง (มติ "ทุกการอนุมัติต้องถามก่อน" 2026-08-13)
+          onClick: async () => {
+            const ok = await confirmAction(approvalPrompt({
+              subject: `คำร้อง ${req.docNo || ""}`.trim(),
+              effects: [
+                "RD เริ่มดำเนินการตามคำร้องนี้ได้ทันที",
+                "คำร้องเข้าคิวงานของฝ่ายที่รับผิดชอบ",
+              ],
+              confirmLabel: "ยืนยันให้ดำเนินการ",
+            }));
+            if (!ok) return;
+            await call("", { method: "PATCH", body: JSON.stringify({ action: "approve" }) }, "ยืนยันแล้ว");
+          },
         }
       : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
         ? {
