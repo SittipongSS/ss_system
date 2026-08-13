@@ -67,12 +67,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
-  const { rows, genType, categoryCode, noTemplate } = built;
-  // ประเภทขายล้วน (OTHER — mig 0247) ไม่มีแม่แบบโดยเจตนา — บอกทางออกจริง (เปลี่ยนประเภท)
-  // แทนที่จะชี้ไปหน้าตั้งค่า template ที่ไม่มีอะไรให้ตั้ง
-  if (noTemplate) {
-    return badRequest(`ประเภทดีล ${genType} เป็นงานขายอย่างเดียว ไม่มีไทม์ไลน์และไม่ก่อตั้งโครงการ — ถ้าต้องการไทม์ไลน์ ให้เปลี่ยนประเภทดีลเป็น SCENT / NPD / RE-ORDER ก่อน`);
-  }
+  const { rows, genType, categoryCode } = built;
   // 0 แถว = template หลังกรองหมวดสินค้าไม่เหลือขั้นตอนเลย (หมวดของดีลไม่ตรง step ไหน
   // หรือ published template ของประเภทนี้ว่าง). เดิม insert([]) แล้วตอบ 201 เงียบ ๆ →
   // หน้าโหลดใหม่เจอ 0 task โชว์ปุ่มเดิม = ผู้ใช้เห็นว่า "กดแล้วไม่ขึ้นอะไร". ปฏิเสธพร้อมบอกสาเหตุ

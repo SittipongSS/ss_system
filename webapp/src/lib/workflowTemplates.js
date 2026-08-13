@@ -1,4 +1,7 @@
-export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER']);
+// ⚠️ ต้องตรงกับ CHECK ของ `workflow_templates."templateKey"` เป๊ะ (mig 0121 + 0249)
+// และตรงกับ DEAL_TYPES ของ lib/salesPlanning.js — ระบบเลือกแม่แบบด้วยประเภทดีล
+// ประเภทดีลที่ไม่มีคีย์ตรงนี้ = สร้างโครงการ/ไทม์ไลน์ไม่ได้
+export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER', 'OTHER']);
 
 // ── แม่แบบถูกค้นด้วย **คู่** (line, templateKey) — mig 0193/0194 ─────────
 //
@@ -7,8 +10,8 @@ export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER']
 // วันนี้ `templateKey` เป็น PK ค่าเดียว จึงมี 'NPD' ได้ใบเดียวทั้งระบบ —
 // 0194 จะย้าย PK เป็นคู่ ส่วนตัวช่วยข้างล่างใช้ได้ตั้งแต่ตอนนี้
 //
-// ⚠️ คู่ที่ "มีได้" ไม่เท่ากับคู่ที่ "มีจริง" — ระบบยอมให้ครบทั้ง 6 คู่ แต่บน prod
-// วันนี้มีแค่ 3 ใบสายสินค้า · ผู้เรียกต้องทนกรณีหาไม่เจอเสมอ (คืน null ไม่ใช่เดา
+// ⚠️ คู่ที่ "มีได้" ไม่เท่ากับคู่ที่ "มีจริง" — ระบบยอมให้ครบทั้ง 8 คู่ แต่บน prod
+// วันนี้มีแค่ 4 ใบสายสินค้า · ผู้เรียกต้องทนกรณีหาไม่เจอเสมอ (คืน null ไม่ใช่เดา
 // ให้เป็นสายสินค้า — เดาแล้วจะได้ไทม์ไลน์สายผิดโดยไม่มีอะไรเตือน)
 export const WORKFLOW_TEMPLATE_LINES = Object.freeze(['PRODUCT', 'SERVICE']);
 
