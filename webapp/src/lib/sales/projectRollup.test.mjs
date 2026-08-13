@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { rollupDeals, wonAmt } from './projectRollup';
+import { DEAL_TYPES } from '../salesPlanning';
 
 const deal = (over = {}) => ({ stage: 'qualified', dealType: 'NPD', projectValue: 0, wonValue: null, metadata: {}, ...over });
 
@@ -35,12 +36,15 @@ test('lost ไม่เข้า FC Total/คงเหลือ แต่ถู�
   assert.equal(r.dealCount, 2);
 });
 
-test('byType แยก 3 ประเภทครบ (ประเภทที่ไม่มีดีล = ศูนย์) + fallback metadata เก่า', () => {
+test('byType แยกทุกประเภทครบ (ประเภทที่ไม่มีดีล = ศูนย์) + fallback metadata เก่า', () => {
   const r = rollupDeals([
     // ดีลเก่าก่อน backfill: ไม่มีคอลัมน์ dealType อ่านจาก metadata
     { stage: 'won', projectValue: 10, wonValue: 10, metadata: { projectType: 'RE-ORDER', actualSource: 'sale_order' } },
   ]);
-  assert.equal(r.byType.length, 3);
+  // ผูกกับ DEAL_TYPES ไม่ใช่เลขตายตัว — เพิ่มประเภทที่ 5 แล้วเทสต์นี้ต้องไม่แดงโดยไม่มีเหตุ
+  // (เลข 3 เดิมแดงตอนเพิ่ม 'OTHER' ทั้งที่พฤติกรรมถูก — mig 0247)
+  assert.equal(r.byType.length, DEAL_TYPES.length);
+  assert.equal(r.byType.find((b) => b.type === 'OTHER').actual, 0);
   const re = r.byType.find((b) => b.type === 'RE-ORDER');
   const scent = r.byType.find((b) => b.type === 'SCENT');
   assert.equal(re.actual, 10);

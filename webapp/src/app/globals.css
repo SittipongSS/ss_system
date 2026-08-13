@@ -4122,11 +4122,13 @@ button.empty-state { width: 100%; font: inherit; }
 .option-tile[data-tone="amber"] .option-tile-title { color: var(--amber); }
 .option-tile[data-tone="blue"] .option-tile-title { color: var(--blue); }
 .option-tile[data-tone="teal"] .option-tile-title { color: var(--teal); }
+.option-tile[data-tone="violet"] .option-tile-title { color: var(--violet); }
 .option-tile[data-on] { border-color: var(--accent-ink); background: var(--accent-soft); }
 .option-tile[data-on] .option-tile-sub { color: var(--text-2); }
 .option-tile[data-on][data-tone="amber"] { border-color: var(--amber); background: var(--amber-soft); }
 .option-tile[data-on][data-tone="blue"] { border-color: var(--blue); background: var(--blue-soft); }
 .option-tile[data-on][data-tone="teal"] { border-color: var(--teal); background: var(--teal-soft); }
+.option-tile[data-on][data-tone="violet"] { border-color: var(--violet); background: var(--violet-soft); }
 
 /* แถบขั้น — ตัวเลือกที่เป็นลำดับ เห็นทุกขั้นพร้อมผลของมัน (เช่น FC% ใต้ชื่อขั้น)
    ขั้นปลาย (Won/Lost) คั่นด้วยเส้นหนาผ่าน data-cut — โผล่เฉพาะโหมดดีลเก่า */

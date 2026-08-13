@@ -4,7 +4,7 @@ import { withUser, ok, fail, unauthorized, forbidden, badRequest, conflict } fro
 import { can } from '@/lib/permissions';
 import { todayStr } from '@/lib/pm/schedule';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
-import { normalizeDealType } from '@/lib/salesPlanning';
+import { normalizeProjectType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 
@@ -44,7 +44,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     name: body.name,
     customerId: body.customerId || null,
     customerName: body.customerName || null,
-    type: normalizeDealType(body.type || 'NPD'),
+    // ⚠️ normalizeProjectType ไม่ใช่ normalizeDealType — ประเภทดีลมี 'OTHER' (mig 0247)
+    //    ที่ projects_type_check ไม่รับ · ตัวนี้ตกค่านอกลิสต์เป็น NPD ให้เอง
+    type: normalizeProjectType(body.type || 'NPD'),
     // สายธุรกิจ (mig 0191) — มาจากฟอร์มเท่านั้น **ไม่มี fallback โดยเจตนา**
     // ⚠️ บรรทัดเหนือขึ้นไปคือตัวอย่างของสิ่งที่ห้ามทำซ้ำ: `body.type || 'NPD'`
     //    คือเหตุผลที่โครงการทั้ง 11 ใบบน prod เป็น NPD หมด · ไม่เลือก = NULL
