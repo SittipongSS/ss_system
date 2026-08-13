@@ -2874,7 +2874,26 @@ h1, h2, h3, h4, h5, h6 {
   outline: none;
   padding: 0 var(--space-3);
   font-size: var(--fs-7);
+  /* ⚠️ 600 ไม่ใช่ 400 — ไม่ใช่เรื่องรสนิยม แต่เพราะขีดล่าง `_` หายไปทั้งตัว (IS-26080022)
+     ผู้ใช้พิมพ์ `KA_Artepol` แล้วเห็นเป็น `KA Artepol` (ภาพหน้าจอ 2026-08-13 ธีมมืด)
+
+     เส้นของ `_` ต้อง **หนาอย่างน้อย 1px** ไม่งั้นจอ 1x (โน้ตบุ๊ก Windows ส่วนใหญ่)
+     วาดไม่เต็มพิกเซลเดียว เบราว์เซอร์เกลี่ยเป็นเทาจางพาดสองแถว · ธีมมืดหายสนิท
+     เพราะเส้นสว่างที่ถูกเกลี่ยกลืนกับพื้นเข้ม · จอ Retina มี 2 พิกเซลจริงต่อ CSS
+     พิกเซลจึงไม่เคยเห็นปัญหานี้ตอนพัฒนา
+
+     🔴 เกณฑ์ผูกกับ **ตัวพิมพ์ปัจจุบัน** — เปลี่ยนฟอนต์เมื่อไรต้องวัดใหม่ทุกครั้ง
+     วัดที่ 13px: IBM Plex Sans Thai 400=0.91 · 500=1.22 | Sarabun 400=0.86 ·
+     500=0.99 · 600=1.12 — Sarabun (มติ 2026-08-13) บางกว่าที่น้ำหนักเดียวกัน
+     500 จึงไม่พอแล้ว ทั้งที่เคยพอกับฟอนต์เดิม */
+  font-weight: var(--fw-semibold);
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+/* ข้อความชวนกรอกยังบางเท่าเดิม — ให้ต่างจากค่าที่พิมพ์จริง (ซึ่งตอนนี้หนา 500)
+   ไม่งั้นช่องว่างกับช่องที่กรอกแล้วดูน้ำหนักเท่ากันจนแยกไม่ออกตอนกวาดตา */
+.premium-input::placeholder {
+  font-weight: var(--fw-normal);
 }
 
 /* ช่องที่ถูกล็อก (เช่น ราคาบรรทัด FG — ราคามาจากฐานข้อมูลสินค้าทางเดียว) ต้องดูออก
@@ -3087,9 +3106,17 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text);
   font: inherit;
   font-size: var(--fs-7);
+  /* หนาเท่า `.premium-input` ด้วยเหตุผลเดียวกัน — ค่าที่โชว์ในตัวเลือกคือชื่อดีล/
+     โครงการ/กลิ่น ซึ่งมี `_` คั่น และที่ 400 เส้นบางกว่าหนึ่งพิกเซลจนหายบนจอ 1x */
+  font-weight: var(--fw-semibold);
   text-align: left;
   cursor: pointer;
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+}
+/* ยังไม่ได้เลือก = บางเท่าเดิม ให้ต่างจากค่าจริงที่เลือกแล้ว */
+.ui-select-value.placeholder,
+.ui-select .placeholder {
+  font-weight: var(--fw-normal);
 }
 .ui-select.w-full { width: 100%; }
 /* compact ต้อง *เตี้ยกว่า* ปกติ — เดิมเขียน var(--ctl-h, 32px) ซึ่งพอ --ctl-h
@@ -3153,11 +3180,16 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text);
   font: inherit;
   font-size: var(--fs-7);
+  /* เท่ากับตัวควบคุมที่ปิดอยู่ (`.ui-select`) — รายการที่กางออกมาต้องอ่าน `_` ออก
+     ตอนกวาดตาเลือก ไม่ใช่อ่านออกหลังเลือกไปแล้ว */
+  font-weight: var(--fw-semibold);
   text-align: left;
   cursor: pointer;
 }
 .ui-select-option:hover,
 .ui-select-option.active { background: var(--panel-2); }
+/* ตัวที่เลือกอยู่แยกด้วย **พื้น+สี** ไม่ใช่น้ำหนัก — ทุกตัวเลือกหนา 600 เท่ากันแล้ว
+   (ดูเหตุผลที่ `.ui-select`) น้ำหนักตรงนี้จึงเท่าเดิม เขียนไว้ให้เห็นว่าตั้งใจ */
 .ui-select-option.selected { background: var(--accent-soft); color: var(--accent-ink); font-weight: var(--fw-semibold); }
 .ui-select-option:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .product-option-label {
