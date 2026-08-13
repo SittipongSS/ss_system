@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  LEDGER_COLUMNS, filterLedger, ledgerReport, ledgerRow, ledgerSummary, sortLedger,
+  LEDGER_COLUMNS, filterLedger, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow,
+  ledgerSummary, sortLedger,
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -119,4 +120,72 @@ test('ข้อมูลขาด ๆ ไม่ทำให้ทั้งทะ
   assert.equal(bare.quoteNumber, '');
   assert.equal(bare.amount, 0);
   assert.equal(ledgerSummary().count, 0);
+});
+
+// ── จับกลุ่มตามใบ (มติผู้ใช้ 2026-08-13) ─────────────────────────────────
+const rowFor = (order, seq, extra = {}) => ledgerRow({
+  installment: { id: `SOI-${order}-${seq}`, seq, label: `งวด ${seq}`, percent: 50, amount: 1000, status: 'pending', evidence: [], ...extra },
+  order: { id: `SOR-${order}`, orderNumber: `SO-${order}`, quotationId: `QT-${order}` },
+  quotation: { id: `QT-${order}`, quoteNumber: `QT-${order}-0` },
+  customer: { name: `ลูกค้า ${order}`, arCode: `AR-${order}` },
+  todayIso: TODAY,
+});
+
+test('งวดของใบเดียวกันรวมเป็นก้อนเดียว และในก้อนเรียงตามงวดที่', () => {
+  const groups = groupLedgerByOrder([
+    rowFor('A', 2, { dueDate: '2026-09-01' }),
+    rowFor('B', 1),
+    rowFor('A', 1, { dueDate: '2026-08-30' }),
+  ]);
+  assert.equal(groups.length, 2);
+  const a = groups.find((g) => g.orderNumber === 'SO-A');
+  assert.deepEqual(a.rows.map((r) => r.seq), [1, 2], 'ในก้อนต้องเรียง 1 → 2 ตามที่คนคาด');
+  assert.equal(a.count, 2);
+  assert.equal(a.quoteNumber, 'QT-A-0');
+});
+
+/* 🔴 หัวใจของการจัดกลุ่ม: ทะเบียนเรียงตามความด่วนของ **งวด** ⇒ งวดของใบเดียวกัน
+   กระจายคนละที่ของตาราง · ก้อนจึงต้องเอาความด่วนของงวดที่ด่วนที่สุดมาเป็นของก้อน
+   ไม่งั้นใบที่มีงวดเลยกำหนดจะจมอยู่กลางตาราง */
+test('ใบที่มีงวดเลยกำหนดแม้งวดเดียว ต้องอยู่บนสุด', () => {
+  const groups = groupLedgerByOrder([
+    rowFor('CLEAN', 1, { status: 'confirmed' }),
+    rowFor('WAIT', 1, { status: 'reported' }),
+    rowFor('LATE', 1, { dueDate: '2026-08-01' }),   // เลยกำหนด
+    rowFor('LATE', 2, { status: 'confirmed' }),      // งวดอื่นเรียบร้อย
+  ]);
+  assert.deepEqual(groups.map((g) => g.orderNumber), ['SO-LATE', 'SO-WAIT', 'SO-CLEAN']);
+  assert.equal(groups[0].overdue, true);
+});
+
+test('ก้อนสรุปยอดและจำนวนงวดที่เก็บได้ถูกต้อง', () => {
+  const [g] = groupLedgerByOrder([
+    rowFor('X', 1, { status: 'confirmed', amount: 600 }),
+    rowFor('X', 2, { status: 'reported', amount: 400 }),
+  ]);
+  assert.equal(g.paidCount, 1);
+  assert.equal(g.count, 2);
+  assert.equal(g.awaiting, 1);
+  assert.equal(g.complete, false);
+  assert.equal(g.summary.totalAmount, 1000);
+  assert.equal(g.summary.collectedAmount, 600);   // reported ไม่นับ
+});
+
+test('ป้ายของใบที่ยุบอยู่บอกเรื่องด่วนที่สุดเรื่องเดียว', () => {
+  const of = (rows) => groupNote(groupLedgerByOrder(rows)[0]);
+  assert.equal(of([rowFor('A', 1, { dueDate: '2026-08-01' })]).label, 'เลยกำหนด');
+  assert.equal(of([rowFor('A', 1, { status: 'rejected' })]).label, 'ตีกลับ 1 งวด');
+  assert.equal(of([rowFor('A', 1, { status: 'reported' })]).label, 'รอรับรอง 1 งวด');
+  assert.equal(of([rowFor('A', 1, { status: 'confirmed' })]).label, 'เก็บครบแล้ว');
+  assert.equal(of([rowFor('A', 1)]).label, 'รอลูกค้าชำระ');
+  assert.equal(groupNote(null), null);
+});
+
+/* ⚠️ เลขที่ซ้ำกันได้ข้ามฉบับแก้ (Rev.) และแถวของใบที่ถูกลบจะไม่มีเลขที่เลย
+   ⇒ ต้องจัดกลุ่มด้วย orderId ไม่ใช่เลขที่ */
+test('จัดกลุ่มด้วย id ไม่ใช่เลขที่ — ใบคนละใบที่เลขซ้ำกันต้องไม่ถูกยุบรวม', () => {
+  const a = ledgerRow({ installment: { id: 'i1', seq: 1, amount: 100, status: 'pending' }, order: { id: 'SOR-1', orderNumber: 'SO-DUP' }, todayIso: TODAY });
+  const b = ledgerRow({ installment: { id: 'i2', seq: 1, amount: 100, status: 'pending' }, order: { id: 'SOR-2', orderNumber: 'SO-DUP' }, todayIso: TODAY });
+  assert.equal(groupLedgerByOrder([a, b]).length, 2);
+  assert.equal(groupLedgerByOrder([]).length, 0);
 });
