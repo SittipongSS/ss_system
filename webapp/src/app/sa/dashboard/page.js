@@ -104,8 +104,8 @@ function DashboardContent() {
         )}
 
         {!activeTab && (
-          <StatusNotice tone="warning" title="ไม่มีสิทธิ์เข้าถึงแดชบอร์ดนี้">
-            บัญชีของคุณยังไม่มีสิทธิ์ดูแดชบอร์ดฝ่ายขายสักแท็บ
+          <StatusNotice tone="warning" title="ไม่มีสิทธิ์เข้าถึงภาพรวมนี้">
+            บัญชีของคุณยังไม่มีสิทธิ์ดูภาพรวมฝ่ายขายสักแท็บ
           </StatusNotice>
         )}
 
