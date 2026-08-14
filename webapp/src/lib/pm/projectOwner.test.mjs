@@ -129,6 +129,25 @@ test('PATCH โครงการ: เปลี่ยนผู้ดูแลแ
   assert.doesNotMatch(editable, /'ownerId'/);
 });
 
+/* 🐞 พบตอนเอาไปรันจริง: `projects."ownerId"` เป็น **uuid** (mig 0008 — ตารางเดียวใน
+   ระบบที่เป็น uuid ที่เหลือเป็น text) ส่วน `"aeOwnerId"` เป็น **text** (mig 0190)
+   ⇒ เทียบ/เขียนตรง ๆ ได้ `42883: operator does not exist: uuid = text` แล้ว DO block
+   ล้มทั้งก้อน · เทสต์ตรงนี้ตรึงว่าทุกจุดที่สองช่องนี้มาเจอกันต้องมี cast */
+test('mig 0253: uuid ↔ text ต้อง cast ทุกจุดที่ ownerId เจอ aeOwnerId', () => {
+  const sql = read('../../../supabase/migrations/0253_project_scope_follows_ae.sql')
+    .replace(/--.*$/gm, '');
+  // เขียนลงคอลัมน์ uuid ต้อง ::uuid
+  for (const line of sql.split('\n').filter((l) => /"ownerId"\s*=/.test(l))) {
+    assert.match(line, /::uuid/, `เขียน ownerId ต้อง cast: ${line.trim()}`);
+  }
+  // เทียบสองช่องต้องดึงมาเป็น text ก่อน (บรรทัด SET เป็นการ **เขียน** — กฎข้างบนคุมแล้ว)
+  const compares = sql.split('\n')
+    .filter((l) => /"ownerId"/.test(l) && /"aeOwnerId"/.test(l) && !/\bSET\b/.test(l));
+  for (const line of compares) {
+    assert.match(line, /"ownerId"::text/, `เทียบ ownerId กับ aeOwnerId ต้อง cast: ${line.trim()}`);
+  }
+});
+
 /* กับดักประจำของระบบนี้: แถวที่ **เห็นในลิสต์** แต่กดเข้าไปแล้ว 403 — ลิสต์ยอมรับสอง
    สาขา (ทีม หรือ เป็นเจ้าของ) ส่วนด่านรายตัวเคยดูแค่ทีม */
 test('ด่านเปิดโครงการรายตัว ใช้เงื่อนไขเดียวกับตัวกรองของลิสต์', () => {

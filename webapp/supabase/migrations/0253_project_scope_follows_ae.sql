@@ -18,6 +18,12 @@
 --  ⚠ ไม่มี FK ไป auth.users ตามธรรมเนียมของสคีมานี้ ⇒ `aeOwnerId` ที่จับคู่บัญชีไม่ได้
 --    (คนลาออกแล้ว) ปล่อยไว้เฉย ๆ ไม่เดาแทน — นับไว้ใน NOTICE ให้ตามเก็บด้วยมือ
 --
+--  ⚠⚠ **สองคอลัมน์นี้คนละชนิดกัน** — `projects."ownerId"` เป็น **uuid** (mig 0008 ·
+--    ตารางเดียวในระบบที่เป็น uuid ที่เหลือเป็น text) ส่วน `"aeOwnerId"` เป็น **text**
+--    (mig 0190) ⇒ เทียบ/เขียนตรง ๆ ได้ `42883: operator does not exist: uuid = text`
+--    ต้อง `::uuid` ตอนเขียน และ `::text` ตอนเทียบ ทุกครั้งที่สองช่องนี้มาเจอกัน
+--    (ค่าที่ cast ปลอดภัยเสมอที่นี่ เพราะทุกแถวที่ถูกแตะ JOIN กับ auth.users แล้ว)
+--
 --  รันซ้ำได้ (idempotent) · ไม่แตะโครงสร้าง
 -- ============================================================
 
@@ -61,7 +67,7 @@ BEGIN
   )
   UPDATE public.projects p
      SET team = target.new_team,
-         "ownerId" = target.new_owner
+         "ownerId" = target.new_owner::uuid
     FROM target
    WHERE p.id = target.pid;
   GET DIAGNOSTICS fixed_full = ROW_COUNT;
@@ -85,11 +91,11 @@ BEGIN
      WHERE primary_team IS NULL AND coalesce(array_length(teams, 1), 0) = 0
   )
   UPDATE public.projects p
-     SET "ownerId" = p."aeOwnerId"
+     SET "ownerId" = p."aeOwnerId"::uuid
     FROM teamless t
    WHERE t.uid = p."aeOwnerId"
      AND p."aeOwnerId" IS NOT NULL
-     AND p."ownerId" IS DISTINCT FROM p."aeOwnerId";
+     AND p."ownerId"::text IS DISTINCT FROM p."aeOwnerId";
   GET DIAGNOSTICS fixed_owner = ROW_COUNT;
 
   -- 3) เหลือแถวไร้ทีมที่ไม่มีผู้ดูแลให้ยึด = ต้องเปิดหน้าโครงการแล้วเลือก AE ด้วยมือ
