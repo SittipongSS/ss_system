@@ -63,9 +63,12 @@ const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 // ⚠️ ล้นหน้าแล้ว **เนื้อหาหายเงียบ** เพราะ `.sheet` ของเปลือกเป็น `overflow: hidden`
 // ⇒ ต้นทุนที่ตั้งต่ำเกินจริงไม่ได้แค่ทำให้หน้าดูแน่น แต่กินข้อมูลทิ้ง
 //
-// พื้นที่จริงต่อแผ่น (วัดที่หัวใบ 3 แถว): กล่อง 232.8mm หัก padding ของ
-// `.sheetContent` (บน 5mm + ล่าง 4mm) เหลือ **223.8mm** ⇒ ตั้งงบไว้ 216mm เผื่อ
-// ความคลาดเคลื่อนของการตัดบรรทัดภาษาไทยที่เดาความกว้างไม่ได้แน่นอน
+// ── รอบวัด 2026-08-14 · หัวใบ 2 แถว (ถอด "ลูกค้า" ออก) · line-height 1.65 ──
+// พื้นที่จริงต่อแผ่น: กล่อง `.sheetContent` 222.25mm หัก padding ของมันเอง
+// (บน 5mm + ล่าง 4mm) เหลือ **213.25mm** ⇒ ตั้งงบไว้ 206mm เผื่อความคลาดเคลื่อน
+// ของการตัดบรรทัดภาษาไทยที่เดาความกว้างไม่ได้แน่นอน (ระยะเผื่อ 7.25mm เท่ารอบก่อน)
+//
+// (รอบก่อน · หัวใบ 3 แถว · line-height 1.45-1.5: กล่อง 232.8 เหลือ 223.8 ⇒ งบ 216)
 //
 // ⚠️ **จำนวนแถวบนหัวใบเปลี่ยน = พื้นที่ต่อแผ่นเปลี่ยน** ต้องวัดใหม่ทุกครั้ง ·
 // เคยเพิ่มแถวจนพื้นที่จริงเหลือ 215.4mm ทั้งที่งบยังตั้ง 217 — รอดมาได้เพราะโมเดล
@@ -73,21 +76,25 @@ const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 // ถ้าไม่ปรับกลับ งบที่ต่ำเกินจะกินหน้าเปล่าเพิ่มมาทั้งแผ่น
 // ⚠️ แก้ padding ของ `.sheetContent` ก็ต้องหักเหมือนกัน — ระยะที่ไม่ได้หักคือระยะที่
 // โมเดลไม่รู้ว่ามีอยู่ แล้วแผ่นจะล้นเงียบ ๆ (`.sheet` เป็น overflow: hidden)
-const PAGE_MM = 216;
+const PAGE_MM = 206;
 const COST = {
-  // หัวข้อ 5.3mm + margin บนล่าง 6.6mm
-  heading: 11.9,
-  row: 7.15,
-  // ตัวเลือกแบบติ๊ก — วัดจาก 2 ตัว 11.64mm · 4 ตัว 20.64mm · 6 ตัว 29.37mm
-  optionBase: 2.65,
-  option: 4.5,
-  // ช่อง "ติ๊กแล้วเขียนต่อ" (สามช่องรวมเป็นข้อเดียว วัดได้ 27.52mm)
-  tick: 8.3,
+  // หัวข้อ 6.09mm + margin บนล่าง 6.6mm
+  heading: 12.7,
+  row: 7.95,
+  // ตัวเลือกแบบติ๊ก — วัดจาก 2 ตัว 12.7mm · 4 ตัว 22.49mm · 6 ตัว 37.04mm
+  // (บรรทัดละ 4.76mm · ตัวเลือกที่ป้ายยาวตกบรรทัดจึงเผื่อไว้เกินความสูงหนึ่งบรรทัด)
+  optionBase: 2.7,
+  option: 5,
+  // ช่อง "ติ๊กแล้วเขียนต่อ" (สามช่องรวมเป็นข้อเดียว วัดได้ 29.63mm)
+  tick: 9.9,
   // คำขยายใต้ค่า (โน้ตข้อ 1.11 · hint ของ Target Cost) ดันแถวเป็นสองบรรทัด
-  note: 4.25,
-  brief: 81.3,
-  // ตาราง 60.85mm + หัวข้อของตัวเอง
-  signatures: 72.8,
+  note: 4.8,
+  // กล่องบรีฟกลิ่น — วัดได้ 90mm พอดีที่ข้อความสั้น (บรีฟยาววัดได้ 99.7 แต่ `wrapCost`
+  // บวกให้เกินพออยู่แล้ว) · เผื่ออีก 3mm เพราะคอลัมน์ขวา (2.1.1-2.1.5) สูงขึ้นได้เอง
+  // จากโน้ตของ scentotype ซึ่ง `wrapCost` ฝั่งซ้ายมองไม่เห็น
+  brief: 93,
+  // ตาราง 60.85mm + หัวข้อของตัวเอง 12.7mm
+  signatures: 73.6,
   status: 7.9,
 };
 
@@ -373,14 +380,19 @@ export function renderPdrDocument({
     // เมื่อไรได้ `<dt></dt><dd>-</dd>` คือหัวใบไม่มีทั้งเลขที่เอกสารและชื่อลูกค้า
     //
     // ⚠️ **"โครงการ" อยู่ในเนื้อหา ไม่ใช่หัวใบ** (มติผู้ใช้ 2026-08-09) — หัวใบเก็บไว้
-    // เฉพาะสิ่งที่ใช้ระบุตัวใบ (เลขที่ · ลูกค้า · วันที่) ส่วนโครงการเป็นข้อมูลของงาน
-    // จึงอยู่ในก้อน "1. Customer Information" ต่อจากชื่อบริษัท (ธง `docLabel` ในทะเบียน)
+    // เฉพาะสิ่งที่ใช้ระบุตัวใบ ส่วนโครงการเป็นข้อมูลของงาน จึงอยู่ในก้อน
+    // "1. Customer Information" ต่อจากชื่อบริษัท (ธง `docLabel` ในทะเบียน)
+    //
+    // ⚠️ **"ลูกค้า" ถอดออกจากหัวใบแล้ว** (มติผู้ใช้ 2026-08-14) — ด้วยเหตุผลเดียวกับ
+    // โครงการ: ชื่อลูกค้าเป็นข้อมูลของงาน ไม่ใช่ตัวระบุใบ และมันพิมพ์อยู่แล้วที่ข้อ 1.3
+    // "ชื่อบริษัท" ในก้อน Customer Information ⇒ หัวใบเหลือ เลขที่ · วันที่
+    // 🪤 **ถอดแถวหัวใบ = พื้นที่ต่อแผ่นเปลี่ยน** ต้องปรับ `PAGE_MM` ตามทุกครั้ง
+    // (ดูหมายเหตุที่ `PAGE_MM` — ไม่ปรับกลับ งบที่ต่ำเกินจะกินหน้าเปล่าเพิ่มมาทั้งแผ่น)
     //
     // ⚠️ "วันที่" ถูกถอดออกจากตารางข้างล่างแล้ว (ธง `inHeader`) — พิมพ์สองที่บนแผ่น
     // เดียวกันอ่านแล้วเหมือนคนละค่า
     rows: [
       { label: 'เลขที่เอกสาร', value: request.docNo },
-      { label: 'ลูกค้า', value: request.customerName },
       { label: 'วันที่', value: context.requestedAt },
     ],
   });
@@ -470,14 +482,14 @@ export function renderPdrDocument({
       .pdr table.kv { width: 100%; table-layout: fixed; border-collapse: collapse; }
       .pdr table.kv th, .pdr table.kv td {
         padding: 1.3mm 1.8mm; vertical-align: top; border: .35mm solid var(--doc-line-strong);
-        font-size: 8.4pt; line-height: 1.45; overflow-wrap: anywhere; }
+        font-size: 8.4pt; line-height: 1.65; overflow-wrap: anywhere; }
       .pdr table.kv th { width: 56mm; color: var(--doc-text); text-align: left; font-weight: 500;
         background: var(--doc-neutral-soft); }
       .pdr .note { display: block; margin-top: .6mm; color: var(--doc-accent); font-size: 7.4pt; }
 
       /* ตัวเลือกแบบติ๊ก — พิมพ์ครบทุกตัวเหมือนกระดาษ ตัวที่เลือกเน้นเข้ม */
       .pdr .opts { margin: 0; padding: 0; list-style: none; }
-      .pdr .opts li { display: flex; gap: 1.2mm; color: var(--doc-muted); line-height: 1.5; }
+      .pdr .opts li { display: flex; gap: 1.2mm; color: var(--doc-muted); line-height: 1.65; }
       .pdr .opts li.on { color: var(--doc-text); font-weight: 600; }
 
       /* ช่อง "ติ๊กแล้วเขียนต่อ" (1.10 · 2.9) */
@@ -494,9 +506,9 @@ export function renderPdrDocument({
         background: var(--doc-neutral-soft); }
       .pdr .briefRight { padding: 1.6mm 1.8mm; }
       .pdr .briefBlock h4 { margin: 0 0 1.2mm; color: var(--doc-navy); font-size: 8.6pt; }
-      .pdr .briefText { margin: 0 0 1.6mm; font-size: 8.4pt; line-height: 1.5;
+      .pdr .briefText { margin: 0 0 1.6mm; font-size: 8.4pt; line-height: 1.65;
         white-space: pre-wrap; overflow-wrap: anywhere; }
-      .pdr .sub { margin-bottom: 1.2mm; font-size: 8.4pt; line-height: 1.45; }
+      .pdr .sub { margin-bottom: 1.2mm; font-size: 8.4pt; line-height: 1.65; }
       .pdr .sub:last-child { margin-bottom: 0; }
       .pdr .subHead { display: block; color: var(--doc-navy); font-size: 7.8pt; font-weight: 600; }
       .pdr .subBody { display: block; overflow-wrap: anywhere; }
