@@ -356,31 +356,66 @@ function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
   return best;
 }
 
-// ── V4: โมเดลความสูงที่ calibrate จากการวัด DOM จริง (2026-07-20) ─────────────
-// วัดที่ /settings/document-standards/preview สเกล 1123px = A4 297mm:
-// พื้นที่เนื้อหาใต้หัวเอกสาร 888px · แถวสินค้า 1 บรรทัด 50px · บรรทัดข้อความเพิ่ม
-// +17px · party grid 134px (ที่อยู่ยาว 167) · หัวตาราง 32 · ป้าย "ต่อ" 15 ·
-// มูลค่ารวม 87 · ตารางงวด 27+25/งวด · กล่องเงื่อนไข ~118-175 · ลงชื่อ 145
+// ── V4: โมเดลความสูงที่ calibrate จากการวัด DOM จริง ──────────────────────────
+// 1 หน่วย = 1 บรรทัดข้อความ · โมเดลเดิม (rowUnits ตรง ๆ + ความจุ 14) เหมาว่าทุกหน่วย
+// สูงเท่าแถวเต็ม จึงตัดหน้าเร็วเกินจริงเกือบเท่าตัว (บั๊กที่ผู้ใช้เห็น: "ไม่เต็มหน้าก็ตัดแล้ว")
+// ⇒ ต้องแยกต้นทุนฐานแถวออกจากบรรทัดข้อความ
 //
-// 1 หน่วย = 1 บรรทัดข้อความ = 17px — โมเดลเดิม (rowUnits ตรง ๆ + ความจุ 14)
-// เหมาว่าทุกหน่วยสูงเท่าแถวเต็ม 50px จึงตัดหน้าเร็วเกินจริงเกือบเท่าตัว
-// (บั๊กที่ผู้ใช้เห็น: "ไม่เต็มหน้าก็ตัดแล้ว") ต้องแยกต้นทุนฐานแถวออกจากบรรทัด
-const V4_PAGE_UNITS = 52; // 888px / 17
-const V4_ROW_BASE = 2; // padding+เส้นตารางต่อแถว ~33px
-const V4_THEAD = 2;
-const V4_PARTY = 8; // 134px
-const V4_BANNER = 1; // ป้าย "รายการต่อ" 15px
-const V4_TOTALS = 6; // 87px + ระยะห่าง
+// 🔴 **งบของหน้าคือกล่อง `.sheetContent` เท่านั้น ไม่ใช่กล่องในของแผ่นกระดาษ**
+// แผ่น A4 1123px − padding บน/ล่าง 80px = กล่องใน 1044px แต่ 185px แรกเป็นหัวเอกสาร
+// ซึ่ง pagination ไม่ได้ใช้ · เอา 1044 มาหารเป็นงบเมื่อไร = เกินจริง ~9.5 หน่วย
+// แล้วตารางล้นทุกเคส (กับดักที่เคยทำให้งานยกความสูงบรรทัดของเอกสารค้างไปรอบหนึ่ง)
+//
+// ── รอบวัด 2026-08-14 · line-height เอกสาร 1.65 (docs/typography-system.md) ──
+// วัดที่ /settings/document-standards/preview ครบทุกสถานการณ์ + ใบสังเคราะห์ 111 เคส
+// (1-30 รายการ × มี/ไม่มีส่วนลดรายบรรทัด × ชื่อลูกค้ายาว × หมายเหตุใต้รายการ × ชื่อสินค้ายาว):
+//   1 หน่วย = 19.36px · หัวเอกสาร 185.4 · **พื้นที่เนื้อหา 858.2px = 44.3 หน่วย**
+//   แถว 1 บรรทัด 53.8 (ฐาน 34.4 + บรรทัด 19.4) · party 167.4 (ที่อยู่ยาว 205.7)
+//   หัวตาราง 34.3 · ป้าย "ต่อ" 19 · **มูลค่ารวม 96.9 ปกติ / 155.0 เมื่อมีส่วนลดรายบรรทัด**
+//   ตารางงวด 85.5 (1 งวด) 131.1 (2 งวด) 206.4 (4 งวด) · กล่องเงื่อนไข 166.9-204.3 ·
+//   ลงชื่อ 156.6 · หัวข้อกลุ่มท้าย 38.1
+// (รอบก่อน 2026-07-20 ที่ line-height 1.42-1.5: 1 หน่วย 17px · เนื้อหา 881px = 52 หน่วย)
+//
+// ⚠️ ปัดงบของหน้า **ลง** และปัดความสูงบล็อก **ขึ้น** เสมอ — `.sheet` เป็น overflow:hidden
+// ประเมินขาดแล้วไม่มีอะไรฟ้อง มันตัดเงียบ ๆ กลางตัวเลขเงิน
+const V4_PAGE_UNITS = 44; // 858.2px / 19.36
+const V4_ROW_BASE = 2; // padding+เส้นตารางต่อแถว 34.4px
+const V4_THEAD = 2; // 34.3px
+const V4_PARTY = 9; // 167.4px
+const V4_BANNER = 1; // ป้าย "รายการต่อ" 19px
+// มูลค่ารวมมีสองทรง — ใบที่มีส่วนลดรายบรรทัดมีแถวส่วนลดเพิ่ม สูงกว่ากันเกือบ 60px
+// 🐞 เดิมจองค่าเดียว (6 หน่วย) ทั้งที่ทรงใหญ่กิน 8 ⇒ ใบที่ให้ส่วนลดรายบรรทัดเสี่ยงโดนตัด
+const V4_TOTALS = 5; // 96.9px + ระยะห่าง
+const V4_TOTALS_WITH_LINE_DISCOUNT = 8; // 155.0px + ระยะห่าง
 const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
-const V4_SIGNATURES = 9; // 145px + ระยะห่าง
-const V4_TERMS_BASE = 8; // หัวข้อสองภาษา+padding กล่องเงื่อนไข 3 กล่อง (typography อ่านง่าย)
+const V4_SIGNATURES = 8; // 156.2px
+// 🐞 เดิมจองไว้ 8 หน่วย (155px) ทั้งที่แถวเงื่อนไข "ไม่รวมบรรทัดข้อความ" สูงแค่ 48.6px
+// (คอมเมนต์เดิมเขียนว่า "กล่องเงื่อนไข 3 กล่อง" แต่ของจริงเป็นสองกล่องเรียงข้างกัน
+// แล้วหมายเหตุเต็มแถวอีกหนึ่ง ซึ่งนับแยกอยู่แล้ว) ⇒ จองเกินไป 5.5 หน่วย = 106px
+// ผลคือกลุ่มท้ายเอกสาร "ไม่พอ" ทั้งที่พอ แล้วดันไปเปิดหน้าใหม่ให้เปล่า ๆ
+const V4_TERMS_BASE = 3; // 48.6px (ฐานกล่อง ไม่รวมบรรทัดข้อความ)
 const V4_INSTALLMENT_BASE = 3; // หัวข้อ+หัวตารางงวด
 const V4_INSTALLMENT_ROW = 2; // 25px/งวด
+// 🐞 กล่องหมายเหตุถูกนับเป็น "จำนวนบรรทัด" เฉย ๆ ทั้งที่มันเป็นกล่องมีหัวข้อ+ขอบ+padding
+// วัดจริง 68.4px สำหรับหมายเหตุบรรทัดเดียว = ฐาน 49px + บรรทัด 19.4px ⇒ ขาดไป 2.5 หน่วย
+const V4_REMARKS_BASE = 3; // 49px + ระยะห่าง
 const V4_SECTION_LEAD = 2; // หัวข้อ "รายละเอียดการชำระเงิน" บนหน้าท้ายเอกสาร 34px
 
 // ความจุของ "หน้าท้ายเอกสารทั้งหน้า" — เต็มหน้าลบหัวข้อกลุ่มและเผื่อประเมินพลาด
 // ⚠️ กลุ่มที่สูงเกินค่านี้ **ไม่มีหน้าไหนรับไหว** ต้องผ่า ไม่ใช่ยัดลงหน้าเดียวแล้วปล่อยล้น
 const V4_GROUP_PAGE_CAPACITY = V4_PAGE_UNITS - V4_SECTION_LEAD - V4_SAFETY;
+
+/* ใบที่มีส่วนลดรายบรรทัดจะมีทั้งคอลัมน์ส่วนลดในตารางและแถวส่วนลดในบล็อกมูลค่ารวม
+   ⚠️ ตัดสินจาก **ทั้งใบ** ไม่ใช่รายหน้า — หัวตารางทุกหน้าต้องมีคอลัมน์ชุดเดียวกัน
+   (ตัวสร้างเอกสารใช้ฟังก์ชันตัวเดียวกันนี้ตัดสินว่าจะวาดคอลัมน์ส่วนลดไหม จะได้ไม่มีทาง
+   ที่ "ที่จองไว้ตอนแบ่งหน้า" กับ "ที่วาดจริง" คิดคนละแบบ) */
+export function hasLineDiscount(lines = []) {
+  return lines.some((line) => Number(line.discountAmount || 0) > 0);
+}
+
+function v4TotalsReserve(lines = []) {
+  return hasLineDiscount(lines) ? V4_TOTALS_WITH_LINE_DISCOUNT : V4_TOTALS;
+}
 
 function v4RowCost(line) {
   return V4_ROW_BASE + rowUnits(line);
@@ -407,7 +442,8 @@ function v4GroupUnits({ installments, paymentMethod, paymentTerms, remarks }) {
   const termsLines = estimatedTextLines(paymentTerms, 62);
   const remarksLines = estimatedTextLines(remarks, 112);
   return (installments.length ? V4_INSTALLMENT_BASE + V4_INSTALLMENT_ROW * installments.length : 0)
-    + V4_TERMS_BASE + Math.max(methodLines, termsLines) + remarksLines
+    + V4_TERMS_BASE + Math.max(methodLines, termsLines)
+    + (remarks ? V4_REMARKS_BASE + remarksLines : 0)
     + V4_SIGNATURES;
 }
 
@@ -773,9 +809,11 @@ export function buildQuotationMasterPreview(
   // V1–V3 คงพฤติกรรมเดิมทุกประการ
   const isFilledLayout = selectedTemplate.id === 'v4';
   const firstCapacity = isFilledLayout ? v4FirstCapacity(customer) : firstPageCapacity(customer);
+  const totalsReserve = v4TotalsReserve(lines);
   const linePages = paginateQuotationMasterLines(lines, {
     firstCapacity,
     mode: isFilledLayout ? 'fill' : 'balanced',
+    ...(isFilledLayout ? { totalsReserve } : {}),
   });
   const pages = isFilledLayout
     ? buildGroupedPages({
@@ -786,7 +824,7 @@ export function buildQuotationMasterPreview(
       remarks,
       firstCapacity,
       continuationCapacity: V4_CONTINUATION_CAPACITY,
-      totalsReserve: V4_TOTALS,
+      totalsReserve,
     })
     : buildSemanticPages({
       linePages,
@@ -973,7 +1011,8 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     : ((preparerIsSalesOwner && quote.createdByPhone) || '');
 
   const firstCapacity = v4FirstCapacity(customer);
-  const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill' });
+  const totalsReserve = v4TotalsReserve(lines);
+  const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill', totalsReserve });
   const pages = buildGroupedPages({
     linePages,
     installments,
@@ -982,7 +1021,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     remarks,
     firstCapacity,
     continuationCapacity: V4_CONTINUATION_CAPACITY,
-    totalsReserve: V4_TOTALS,
+    totalsReserve,
   });
 
   // ลายน้ำ: ฉบับร่าง = ยังไม่ยื่น (not_submitted, mig 0155) หรือยื่นแล้วรออนุมัติ (pending)

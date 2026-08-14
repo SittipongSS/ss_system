@@ -242,7 +242,7 @@ export function documentShellCss(orientation = 'portrait') {
        ออฟไลน์ (ไม่พึ่ง Google CDN ที่โหลดไม่ทัน/ไม่ได้แล้วหล่นไป Leelawadee) */
     font-family: ${PRINT_FONT_STACK};
     font-size: 9.5pt;
-    line-height: 1.42;
+    line-height: 1.65;
     font-variant-numeric: tabular-nums;
   }
   .grayscale { filter: grayscale(1); }
@@ -258,12 +258,12 @@ export function documentShellCss(orientation = 'portrait') {
     gap: 8mm; padding-bottom: 4mm; border-bottom: 1.3px solid var(--doc-navy); }
   .brandBlock { display: flex; flex-direction: column; gap: 4.5mm; align-items: flex-start; }
   .brandBlock img { width: 40mm; height: auto; object-fit: contain; }
-  .brandBlock strong { display: block; color: var(--doc-navy); font-size: 9pt; line-height: 1.25; }
+  .brandBlock strong { display: block; color: var(--doc-navy); font-size: 9pt; line-height: 1.65; }
   .brandBlock span { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 6.8pt; letter-spacing: .02em; }
-  .brandBlock p { margin: .6mm 0 0; color: var(--doc-muted); font-size: 6.8pt; line-height: 1.3; }
+  .brandBlock p { margin: .6mm 0 0; color: var(--doc-muted); font-size: 6.8pt; line-height: 1.65; }
   .identityBlock { text-align: right; }
   .formLine { color: var(--doc-navy); font-size: 8.5pt; font-weight: 600; }
-  .identityBlock h1 { margin: 2mm 0 0; color: var(--doc-accent); font-size: 19pt; line-height: 1.05; }
+  .identityBlock h1 { margin: 2mm 0 0; color: var(--doc-accent); font-size: 19pt; line-height: 1.65; }
   .englishTitle { color: var(--doc-muted); font-size: 9pt; font-weight: 600; letter-spacing: .09em; }
   .identityBlock dl { margin: 2.5mm 0 0; }
   .identityBlock dl div { display: grid; grid-template-columns: 22mm 1fr; gap: 2mm; padding-top: .8mm; }
@@ -273,12 +273,12 @@ export function documentShellCss(orientation = 'portrait') {
   .partyGrid > div { min-width: 0; padding: 3mm 3.5mm; background: var(--doc-neutral-soft); border-left: 1.5px solid var(--doc-line-strong); }
   .partyGrid h2, .installmentSection h2, .termsGrid h2 { margin: 0 0 1.5mm; color: var(--doc-navy); font-size: 8.7pt; text-transform: none; }
   .partyGrid h2 span, .installmentSection h2 span, .termsGrid h2 span { color: var(--doc-muted); font-size: 7.2pt; font-weight: 500; }
-  .partyGrid strong { display: block; font-size: 9.4pt; line-height: 1.5; overflow-wrap: anywhere; }
-  .partyGrid p { margin: .8mm 0; color: var(--doc-muted); font-size: 8pt; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .partyGrid strong { display: block; font-size: 9.4pt; line-height: 1.65; overflow-wrap: anywhere; }
+  .partyGrid p { margin: .8mm 0; color: var(--doc-muted); font-size: 8pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .partyGrid dl { margin: 1.2mm 0 0; }
   .partyGrid dl div { display: grid; grid-template-columns: 24mm 1fr; gap: 2mm; margin-top: .5mm; }
   .partyGrid dt { color: var(--doc-muted); font-size: 7.7pt; }
-  .partyGrid dd { min-width: 0; margin: 0; font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .partyGrid dd { min-width: 0; margin: 0; font-size: 8pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .continuation { margin: 3mm 0 1.8mm; color: var(--doc-muted); font-size: 8pt; font-weight: 600; }
   .sectionLead { display: flex; align-items: end; justify-content: space-between; gap: 6mm;
     margin-top: 6mm; padding-bottom: 2.2mm; border-bottom: 1.3px solid var(--doc-navy); }
@@ -300,9 +300,9 @@ export function documentShellCss(orientation = 'portrait') {
   .itemTable.withLineDiscount td:nth-child(5) { width: 21mm; }
   .itemTable.withLineDiscount td:nth-child(6) { width: 19mm; }
   .itemTable.withLineDiscount td:nth-child(7) { width: 23mm; }
-  .itemIdentity { display: block; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .itemName { display: block; margin-top: .35mm; color: var(--doc-text); font-weight: 500; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .itemNote { display: block; margin-top: .7mm; color: var(--doc-muted); font-size: 8pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .itemIdentity { display: block; color: var(--doc-navy); font-size: 7.6pt; font-weight: 600; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .itemName { display: block; margin-top: .35mm; color: var(--doc-text); font-weight: 500; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .itemNote { display: block; margin-top: .7mm; color: var(--doc-muted); font-size: 8pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .center { text-align: center; }
   .number { text-align: right; white-space: nowrap; }
   .totals { width: 74mm; margin: 3.5mm 0 0 auto; border-top: 1.3px solid var(--doc-navy); }
@@ -327,10 +327,10 @@ export function documentShellCss(orientation = 'portrait') {
   .installmentTable th:first-child, .installmentTable td:first-child { width: auto; }
   .installmentTable th:nth-child(2), .installmentTable td:nth-child(2) { width: 18mm; white-space: nowrap; }
   .installmentTable th:nth-child(3), .installmentTable td:nth-child(3) { width: 34mm; white-space: nowrap; }
-  .installmentTable span { display: block; color: var(--doc-muted); font-size: 7.2pt; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .installmentTable span { display: block; color: var(--doc-muted); font-size: 7.2pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .termsGrid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 3mm; margin-top: 3mm; break-inside: avoid; }
   .termsGrid > div { min-width: 0; padding: 2.8mm 3mm; background: var(--doc-neutral-soft); border-top: 1px solid var(--doc-line-strong); }
-  .termsGrid h2 { margin-bottom: 2mm; font-size: 9pt; line-height: 1.25; }
+  .termsGrid h2 { margin-bottom: 2mm; font-size: 9pt; line-height: 1.65; }
   .termsGrid h2 span { display: inline; font-size: 6.9pt; line-height: 1.2; letter-spacing: .04em; white-space: nowrap; }
   .termsGrid p { margin: 0; color: var(--doc-text); font-size: 8.5pt; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
   .termsGrid .remarks { grid-column: 1 / -1; }
