@@ -7,7 +7,7 @@ import DocsPanel from "@/components/mgmt/DocsPanel";
 import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
-import { fmtDate as formatDate, fmtDateTime } from "@/lib/format";
+import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -102,9 +102,9 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: "var(--fs-7)" }}>
           <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันที่</div>{fmtDate(meeting.meetingDate)}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เวลา</div>{meeting.timeText || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{meeting.deptCode || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{meeting.assigneeName || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>เวลา</div>{naText(meeting.timeText)}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{naText(meeting.deptCode)}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{naText(meeting.assigneeName)}</div>
         </div>
         {meeting.summary && (
           <div style={{ fontSize: "var(--fs-7)" }}>

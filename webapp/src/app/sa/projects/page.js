@@ -22,7 +22,7 @@ import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectD
 import styles from "./page.module.css";
 import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtName } from "@/lib/format";
+import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
 
@@ -223,7 +223,7 @@ export default function ProjectsIndexPage() {
                           <span className="mono block text-[12px] text-[var(--accent)]">
                             {p.code || p.id}
                           </span>
-                          <strong>{p.name || "-"}</strong>
+                          <strong>{naText(p.name)}</strong>
                           <span className="block text-[12px] text-[var(--text-3)]">
                             {p.formulaName ? `สูตร ${p.formulaName}` : ""}
                           </span>
@@ -238,8 +238,8 @@ export default function ProjectsIndexPage() {
                         </Link>
                       </td>
                       <td>
-                        <strong style={{ display: "block", fontWeight: "var(--fw-bold)" }}>{p.customerName || "-"}</strong>
-                        <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{projectBrand || "-"}</span>
+                        <strong style={{ display: "block", fontWeight: "var(--fw-bold)" }}>{naText(p.customerName)}</strong>
+                        <span style={{ display: "block", marginTop: 3, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{naText(projectBrand)}</span>
                       </td>
                       <td>
                         {/* โครงการสะสมดีลไปเรื่อย ๆ — คอลัมน์นี้ตอบว่า "ผ่านงานชนิดไหนมาแล้วกี่ครั้ง"
@@ -264,13 +264,13 @@ export default function ProjectsIndexPage() {
                               </Link>
                             ))}
                           </div>
-                        ) : <span style={{ color: "var(--text-3)" }}>-</span>}
+                        ) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}
                       </td>
                       <td className="num mono">{money(r.fcTotal || 0)}</td>
                       <td className="num mono" style={{ color: "var(--green)" }}>{money(r.actual || 0)}</td>
                       <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                       <td>{taskProgress(p)}</td>
-                      <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (p.team || "-")}</td>
+                      <td>{p.aeOwner ? fmtName({ name: p.aeOwner }) : (naText(p.team))}</td>
                     </DetailRow>
                   );
                 })}

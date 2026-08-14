@@ -19,6 +19,7 @@ import { primeCache } from "@/lib/apiCache";
 import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCoverage";
 import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
+import { naText, NA } from "@/lib/format";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -320,8 +321,8 @@ export default function HolidaysPage() {
                         return (
                           <tr key={holiday.date} className={holiday.date < todayISO ? styles.past : undefined}>
                             <td className={styles.dateCell}>{holiday.date}</td>
-                            <td>{dt ? WEEKDAYS_TH[dt.getDay()] : "-"}</td>
-                            <td>{holiday.name || "-"}</td>
+                            <td>{dt ? WEEKDAYS_TH[dt.getDay()] : NA}</td>
+                            <td>{naText(holiday.name)}</td>
                             {canManage && (
                               <td>
                                 <div className={styles.rowActions}>
@@ -341,7 +342,7 @@ export default function HolidaysPage() {
                     <div key={holiday.date} className={`${styles.card} ${holiday.date < todayISO ? styles.cardPast : ""}`.trim()}>
                       <div>
                         <strong>{fmt(holiday.date)}</strong>
-                        <small>{holiday.name || "-"}</small>
+                        <small>{naText(holiday.name)}</small>
                       </div>
                       {canManage && (
                         <button type="button" className="btn-icon danger" onClick={() => setPendingDelete({ date: holiday.date, name: holiday.name })} aria-label={`ลบวันหยุด ${fmtLong(holiday.date)}`} title="ลบ"><Trash2 size={15} /></button>

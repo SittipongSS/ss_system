@@ -24,7 +24,7 @@ import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFie
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
@@ -305,7 +305,7 @@ function NewQuotationInner() {
   );
   const summaryRows = [
     { id: "subtotal", label: "รวมรายการ", value: fmtMoney(totals.subtotal) },
-    { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-" },
+    { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA },
     ...(vatRate > 0 ? [{ id: "vat", label: `VAT ${vatRate}%`, value: fmtMoney(totals.vatAmount) }] : []),
   ];
   const readinessItems = [
@@ -364,7 +364,7 @@ function NewQuotationInner() {
     <Workspace
       icon={<FileText size={22} />}
       title="สร้างใบเสนอราคา"
-      subtitle={selectedDeal ? `${selectedDeal.customerName || "-"} · ${selectedProject?.name || selectedProject?.code || "-"} · ${selectedDeal.title}` : "เลือกที่มาของเอกสารและจัดทำใบเสนอราคาในหน้าเดียว"}
+      subtitle={selectedDeal ? `${naText(selectedDeal.customerName)} · ${selectedProject?.name || naText(selectedProject?.code)} · ${selectedDeal.title}` : "เลือกที่มาของเอกสารและจัดทำใบเสนอราคาในหน้าเดียว"}
       back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
@@ -383,7 +383,7 @@ function NewQuotationInner() {
             badges={<SalesStateBadge label="ฉบับใหม่" color="var(--accent)" />}
             facts={[
               { key: "quote-date", icon: CalendarDays, label: "วันที่ออกใบ", value: fmtDate(quoteDate) },
-              { key: "valid-until", icon: CalendarDays, label: "ยืนราคาถึง", value: validUntil ? fmtDate(validUntil) : "-" },
+              { key: "valid-until", icon: CalendarDays, label: "ยืนราคาถึง", value: validUntil ? fmtDate(validUntil) : NA },
               { key: "tax", icon: CircleDollarSign, label: "ภาษี", value: vatRate > 0 ? `+ VAT ${vatRate}%` : "รวม VAT แล้ว" },
               { key: "items", icon: Package, label: "รายการ", value: `${lines.length} รายการ` },
             ]}
@@ -438,7 +438,7 @@ function NewQuotationInner() {
                         {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                       </Select>
                     : null}
-                  <span className={styles.addressPreview}>{shippingAddress || "-"}</span>
+                  <span className={styles.addressPreview}>{naText(shippingAddress)}</span>
                 </label>
                 {/* สาขา = ของ **ที่อยู่ออกบิล** (มติผู้ใช้ 2026-08-06 กลับมติ 2026-08-05
                     — ดูเหตุผลยาวที่ lib/master/addresses.js) · ที่นี่ยังอ่านช่องระดับลูกค้า
@@ -446,7 +446,7 @@ function NewQuotationInner() {
                     ⚠️ ผ่าน branchLabel — `|| "00000"` เดิมทำให้จอโชว์เลขดิบ ขณะที่หน้า
                     ทะเบียนลูกค้าโชว์ "สำนักงานใหญ่" สำหรับข้อมูลตัวเดียวกัน */}
                 <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchLabel(customer.branchCode)}</span></div>
-                <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={customer.contactPerson || "-"} />}</label>
+                <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
               </div>
             </section>
           )}

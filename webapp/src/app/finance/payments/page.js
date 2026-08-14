@@ -31,7 +31,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import { LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerByOrder, groupNote, pendingConfirmations } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
@@ -337,17 +337,17 @@ export default function FinancePaymentsPage() {
                             {" "}
                             {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบอยู่ที่ปุ่ม "เปิดใบ"
                                 ท้ายแถว · ลิงก์ในเซลล์ที่ทั้งแถวกดกางได้ทำให้กดพลาดกันเอง */}
-                            <span className="mono"><strong>{group.orderNumber || "-"}</strong></span>
+                            <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
                             {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
                                 (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
-                            <span className="cell-sub mono">{group.quoteNumber || "-"}</span>
+                            <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
                             {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
                                 — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
                             {track ? <SalesOrderTrack steps={track.steps} /> : null}
                           </td>
                           <td>
                             {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
-                            {group.customerName || "-"}
+                            {naText(group.customerName)}
                           </td>
                           {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
                           <td className="num mono">
@@ -378,7 +378,7 @@ export default function FinancePaymentsPage() {
                               บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
                               · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
                           <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
-                            {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">—</span>}
+                            {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
                             {note ? <span className="cell-sub">{note.label}</span> : null}
                           </td>
                           <td>

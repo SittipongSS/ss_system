@@ -4,7 +4,7 @@ import { useState } from "react";
 import { suggestCoverage, suggestCoverageTargets } from "@/lib/sahamit/predict";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { casesText } from "@/lib/sahamit/units";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, NA } from "@/lib/format";
 
 const nf = (n) => fmtNumber(n || 0);
 
@@ -108,7 +108,7 @@ export default function CoveragePanel({ fgCode, month, coverages, matrix, pieces
         >
           {need > 0 ? (
             <>
-              เดือนนี้ <b>PO เกิน FC {nf(need)}</b> — <b>ยังไม่มีเดือนอื่นที่ FC เกิน PO</b> ให้ดึง FC มา
+              เดือนนี้ <b>PO เกิน FC {nf(need)}</b> {NA} <b>ยังไม่มีเดือนอื่นที่ FC เกิน PO</b> ให้ดึง FC มา
               <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", marginTop: 4 }}>
                 ระบบจะเสนอ “💡 ดึง FC จากเดือน…” เมื่อมีเดือนที่มี FC แต่ยังไม่มี PO (PO คงที่ ย้ายเฉพาะ FC)
               </div>

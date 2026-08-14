@@ -18,7 +18,7 @@ import {
   Activity, AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, Flame, ListTodo,
   Target, TrendingUp, Undo2,
 } from "lucide-react";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
@@ -153,7 +153,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           />
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
-            value={hasTarget ? fmtPercent(targetPct, 0) : "—"}
+            value={hasTarget ? fmtPercent(targetPct, 0) : NA}
             note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
           />

@@ -21,7 +21,7 @@ import Select from "@/components/ui/Select";
 import EmptyState from "@/components/ui/EmptyState";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, NA } from "@/lib/format";
 
 const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 import {
@@ -201,7 +201,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
                             onChange={(e) => patchLine(idx, { defaultGramsPerUnit: e.target.value })}
                           />
                         ) : (
-                          <span style={{ color: "var(--text-3)" }}>—</span>
+                          <span style={{ color: "var(--text-3)" }}>{NA}</span>
                         )}
                       </td>
                       <td>

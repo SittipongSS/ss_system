@@ -6,6 +6,7 @@ import { Layers } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { carryTable } from "@/lib/sales/performanceMath";
 import { money, moneyCompact } from "./shared";
+import { NA } from "@/lib/format";
 
 // แผงทบยอดย้อนหลัง (Carry-over) — โชว์เมื่อเปิดโหมดทบยอดเท่านั้น.
 // เดือนไหนปิดไม่ถึงเป้า ยอดที่ขาดทบเข้าเดือนถัดไป · "เป้า + ทบ" = ยอดที่ต้องปิด
@@ -92,7 +93,7 @@ export default function CarryPanel({ row, label, closedCount }) {
               <tr key={i} className="premium-row" style={r.actual == null ? { opacity: "var(--op-muted)" } : undefined}>
                 <td>{MONTH_LABELS[i]}</td>
                 <td className="num mono">{money(r.target)}</td>
-                <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : "–"}</td>
+                <td className="num mono" style={{ color: r.carryIn > 0 ? "var(--red)" : "var(--text-3)" }}>{r.carryIn > 0 ? money(r.carryIn) : NA}</td>
                 <td className="num mono" style={{ fontWeight: "var(--fw-semibold)" }}>{money(r.mustClose)}</td>
                 <td className="num mono" style={{ color: "var(--green)" }}>{r.actual == null ? "–" : money(r.actual)}</td>
                 <td className="num mono" style={{ color: r.diff == null ? "var(--text-3)" : r.diff >= 0 ? "var(--green)" : "var(--red)" }}>

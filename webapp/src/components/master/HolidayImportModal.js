@@ -14,6 +14,7 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import styles from "./HolidayImportModal.module.css";
+import { naText } from "@/lib/format";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 // ใช้ป้ายกลาง (.ui-badge) ไม่ทำรูปทรงเอง — สีสื่อความหมายเดียวกับทั้งระบบ
@@ -210,7 +211,7 @@ export default function HolidayImportModal({ open, initialYear, onClose, onDone 
                             }))}
                           />
                         </td>
-                        <td className={styles.currentName}>{row.current ?? "—"}</td>
+                        <td className={styles.currentName}>{naText(row.current)}</td>
                         <td>
                           <div className={styles.tags}>
                             <span className={`ui-badge ${meta.tone}`.trim()}>{meta.label}</span>

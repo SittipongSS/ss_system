@@ -7,7 +7,7 @@ import DocsPanel from "@/components/mgmt/DocsPanel";
 import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
-import { fmtDate as formatDate, fmtDateTime } from "@/lib/format";
+import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -94,8 +94,8 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
 
         {/* fields */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: "var(--fs-7)" }}>
-          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{task.assigneeName || "—"}</div>
-          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{task.deptCode || "—"}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>ผู้รับผิดชอบ</div>{naText(task.assigneeName)}</div>
+          <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>แผนก</div>{naText(task.deptCode)}</div>
           <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันเริ่ม</div>{fmtDate(task.startDate)}</div>
           <div><div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>วันสิ้นสุด</div>{fmtDate(task.dueDate)}</div>
         </div>

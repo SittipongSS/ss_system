@@ -5,7 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer, Cell,
 } from "recharts";
 import { fcEvolution, roundTotals, unitMultiplier } from "@/lib/sahamit/dashboard";
-import { fmtNumber, fmtMoneyCompact, fmtDate } from "@/lib/format";
+import { fmtNumber, fmtMoneyCompact, fmtDate, NA } from "@/lib/format";
 import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 
 // แท็บ "FC แต่ละรอบ" — วิวัฒนาการ FC (เส้นละรอบ) + ยอดรวมต่อรอบ + %เปลี่ยนรอบต่อรอบ.
@@ -88,7 +88,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
               <div key={r.roundNo} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < totals.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div>
                   <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-8)" }}>รอบ #{r.roundNo}</div>
-                  <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>รับ {r.receivedDate ? fmtDate(r.receivedDate) : "—"}</div>
+                  <div style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>รับ {r.receivedDate ? fmtDate(r.receivedDate) : NA}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>

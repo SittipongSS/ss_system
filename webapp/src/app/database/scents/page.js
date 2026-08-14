@@ -41,7 +41,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useDepartment, useRole } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, NA } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
@@ -593,7 +593,7 @@ export default function ScentsPage() {
                         <div>
                           {s.producedAt
                             ? fmtDate(s.producedAt)
-                            : <span className={styles.muted}>—</span>}
+                            : <span className={styles.muted}>{NA}</span>}
                         </div>
                         <div className={styles.sub}>
                           {s.sentAt

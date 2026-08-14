@@ -5,7 +5,7 @@ import Modal from "@/components/Modal";
 import ReadableText from "@/components/ui/ReadableText";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText, NA } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
@@ -123,7 +123,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
             <div className="form-group col-span-2">
               <label>{CUSTOMER_NAME_LABEL} <span style={{ color: "var(--red)" }}>*</span></label>
               {editing ? (
-                <input className="premium-input w-full" value={order.customerName || "-"} disabled />
+                <input className="premium-input w-full" value={naText(order.customerName)} disabled />
               ) : (
                 <SearchableSelect
                   entity="customer"
@@ -189,7 +189,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                     </div>
                     {reg && (
                       <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: 2 }} className="font-mono flex gap-4 flex-wrap">
-                        <span>ราคาขาย/ชิ้น: {priceOf(reg) > 0 ? fmtMoney(priceOf(reg)) : "-"}</span>
+                        <span>ราคาขาย/ชิ้น: {priceOf(reg) > 0 ? fmtMoney(priceOf(reg)) : NA}</span>
                         <span>ภาษี/ชิ้น: {regTax(reg) > 0 ? fmtMoney(regTax(reg)) : "ยกเว้น"}</span>
                       </div>
                     )}

@@ -3,6 +3,7 @@
 import { Edit3, FilePlus2, Save, Send, Trash2 } from "lucide-react";
 import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
 import styles from "./VersionControlCard.module.css";
+import { NA } from "@/lib/format";
 
 export default function VersionControlCard({
   draft,
@@ -119,8 +120,8 @@ export default function VersionControlCard({
       className={className}
     >
       <dl className={styles.meta}>
-        <div><dt>เวอร์ชันร่าง</dt><dd>{draft?.versionNumber ? `V${draft.versionNumber}` : "-"}</dd></div>
-        <div><dt>เวอร์ชันใช้งาน</dt><dd>{published?.versionNumber ? `V${published.versionNumber}` : "-"}</dd></div>
+        <div><dt>เวอร์ชันร่าง</dt><dd>{draft?.versionNumber ? `V${draft.versionNumber}` : NA}</dd></div>
+        <div><dt>เวอร์ชันใช้งาน</dt><dd>{published?.versionNumber ? `V${published.versionNumber}` : NA}</dd></div>
         {current?.changeNote ? <div className={styles.full}><dt>หมายเหตุ</dt><dd>{current.changeNote}</dd></div> : null}
       </dl>
       {draft ? (

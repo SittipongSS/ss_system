@@ -20,7 +20,7 @@ import { LINE_KIND_LABELS, capacityOn } from "@/lib/pm/productionLines";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditProduction } from "@/lib/permissions";
 import styles from "./page.module.css";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, naText } from "@/lib/format";
 
 const todayIso = () => {
   const now = new Date();
@@ -270,7 +270,7 @@ export default function ProductionLinesPage() {
                           ? <span className={styles.closed}>ปิดไลน์</span>
                           : `${fmtNumber(day.capacityPerDay)} ${expandedLine.unit || ""}`}
                       </td>
-                      <td>{day.reason || "-"}</td>
+                      <td>{naText(day.reason)}</td>
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>

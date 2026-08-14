@@ -21,7 +21,7 @@ import { TableShell } from "@/components/ui/Table";
 import ReportIssueModal from "@/components/issues/ReportIssueModal";
 import { notifyToast } from "@/lib/feedback";
 import { describeResponseError } from "@/lib/fetchError";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { isSystemAdmin } from "@/lib/issues/access";
 import {
@@ -193,7 +193,7 @@ export default function SupportPage() {
                       <td>
                         <StatusBadge dot tone={ISSUE_STATUS_TONES[row.status]} label={ISSUE_STATUS_LABELS[row.status]} />
                       </td>
-                      <td className={styles.code}>{row.code || "—"}</td>
+                      <td className={styles.code}>{naText(row.code)}</td>
                       <td>
                         <Link href={`/support/${row.id}`} className={styles.title}>{row.title || "(ไม่มีหัวข้อ)"}</Link>
                         <span className={styles.sub}>
@@ -206,7 +206,7 @@ export default function SupportPage() {
                       <td>
                         {admin ? (
                           <>
-                            {row.reportedByName || "—"}
+                            {naText(row.reportedByName)}
                             <span className={styles.sub}>
                               {[row.reporterRole, row.reporterDepartment, row.reporterTeam].filter(Boolean).join(" · ")}
                             </span>
@@ -242,7 +242,7 @@ export default function SupportPage() {
                   <span className={styles.cardTitle}>{row.title || "(ไม่มีหัวข้อ)"}</span>
                   <span className={styles.cardFoot}>
                     <span>{row.code}</span>
-                    <span>{admin ? (row.reportedByName || "—") : (row.assigneeName || "ยังไม่มีผู้รับ")}</span>
+                    <span>{admin ? (naText(row.reportedByName)) : (row.assigneeName || "ยังไม่มีผู้รับ")}</span>
                     <span>{ageOf(row.createdAt)}</span>
                   </span>
                 </Link>

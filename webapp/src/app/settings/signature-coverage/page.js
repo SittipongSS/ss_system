@@ -18,6 +18,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
+import { naText } from "@/lib/format";
 
 const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 
@@ -202,13 +203,13 @@ export default function SignatureCoveragePage() {
                       {row.email && <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{row.email}</div>}
                     </td>
                     <td>{ROLE_LABELS[row.role] || row.role}</td>
-                    <td>{TEAM_LABELS[row.team] || row.team || "—"}</td>
-                    <td style={{ textAlign: "right" }}>{row.openDeals || "—"}</td>
+                    <td>{TEAM_LABELS[row.team] || naText(row.team)}</td>
+                    <td style={{ textAlign: "right" }}>{naText(row.openDeals)}</td>
                     <td style={{ textAlign: "right", fontWeight: row.pendingQuotations && !row.hasSignature ? 700 : 400, color: row.pendingQuotations && !row.hasSignature ? "var(--red)" : undefined }}>
-                      {row.pendingQuotations || "—"}
+                      {naText(row.pendingQuotations)}
                     </td>
                     <td style={{ textAlign: "right", fontWeight: row.submittableDocs && !row.hasSignature ? 700 : 400, color: row.submittableDocs && !row.hasSignature ? "var(--red)" : undefined }}>
-                      {row.submittableDocs || "—"}
+                      {naText(row.submittableDocs)}
                     </td>
                     <td><span className={`status-pill ${pill.cls}`}>{pill.label}</span></td>
                   </tr>

@@ -18,7 +18,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
-import { fmtDate, fmtMoney, fmtNumber, productNameBoth } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -285,7 +285,7 @@ export default function ProductDetails() {
         eyebrow="PRODUCT MASTER"
         /* รายละเอียด = "รหัส · ชื่อ EN·TH" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
         title={`${product.fgCode ? `${product.fgCode} · ` : ""}${productNameBoth(product) || productDisplayName(product)}`}
-        description={<><span>แบรนด์ {brandBoth(product.brandName, product.brandNameEn) || "-"}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
+        description={<><span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<>
           <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
           {isExciseCat && <SalesStateBadge label="ภาษีสรรพสามิต" color="var(--amber)" />}
@@ -358,7 +358,7 @@ export default function ProductDetails() {
                     {product.customerName || product.customerId}
                   </Link>
                 ) : (
-                  <span className="font-semibold text-[var(--text)] text-sm">{product.customerName || "-"}</span>
+                  <span className="font-semibold text-[var(--text)] text-sm">{naText(product.customerName)}</span>
                 )}
               </div>
               <div>
@@ -383,7 +383,7 @@ export default function ProductDetails() {
                   </Link>
                 ) : (
                   <span className="font-semibold text-[var(--text)] text-sm">
-                    {product.formulaName || "—"}
+                    {naText(product.formulaName)}
                     {product.formulaName && (
                       <span className="ml-2 text-xs font-normal text-[var(--amber)]">ยังไม่ผูกทะเบียนสูตร</span>
                     )}
@@ -405,11 +405,11 @@ export default function ProductDetails() {
               )}
               <div>
                 <span className="text-[var(--text-3)] block mb-1">รหัสสูตร (Formula Code)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaCode || "—"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.formulaCode)}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : "—"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : NA}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
@@ -423,11 +423,11 @@ export default function ProductDetails() {
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">จำนวนต่อลัง (Per Case)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${fmtNumber(product.piecesPerCase)} ${unit}/ลัง` : "—"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${fmtNumber(product.piecesPerCase)} ${unit}/ลัง` : NA}</span>
               </div>
               <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.categoryCode || "-"}</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.categoryCode)}</span>
               </div>
               {showRetailPrice && (
                 <div>
@@ -504,7 +504,7 @@ export default function ProductDetails() {
                   >
                     <div className="min-w-0">
                       <span className="font-semibold font-mono text-[var(--text)]">{o.quotationRef || o.id}</span>
-                      <span className="text-[var(--text-3)] ml-2">{o.customerName || "-"}</span>
+                      <span className="text-[var(--text-3)] ml-2">{naText(o.customerName)}</span>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="font-mono text-[var(--text-3)]">x{o.productQuantity}</span>
@@ -638,7 +638,7 @@ export default function ProductDetails() {
                     onClick={() => router.push(`/tax/registrations?open=${r.id}`)}
                     className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
                   >
-                    <span className="font-medium text-[var(--text-2)]">{r.customerName || "-"}</span>
+                    <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
                     <div className="flex items-center gap-3">
                       {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
                       <ProductStatusPill status={r.status} />

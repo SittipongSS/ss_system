@@ -12,7 +12,7 @@ import { BadgeDollarSign, FlaskConical, Pencil } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import Toast from "@/components/ui/Toast";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentUsable, scentSourceLabel } from "@/lib/master/scents";
@@ -79,7 +79,7 @@ export default function ScentDetailPage() {
       statusTone={TONE_COLOR[SCENT_STATUS_TONES[scent.status]] || "var(--blue)"}
       statusDescription="แก้ข้อมูล ดูที่มา และราคาล่าสุดของกลิ่นนี้"
       facts={[
-        { label: "ลูกค้า", value: scent.customerName || scent.customerId || "-" },
+        { label: "ลูกค้า", value: scent.customerName || naText(scent.customerId) },
         { label: "วันที่ส่งลูกค้า", value: scent.sentAt ? fmtDate(scent.sentAt) : "ยังไม่ส่ง" },
         { label: "เพิ่มเข้าทะเบียน", value: fmtDate(scent.createdAt) },
       ]}

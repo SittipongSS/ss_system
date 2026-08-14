@@ -21,7 +21,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { notifyToast } from "@/lib/feedback";
 import { describeResponseError } from "@/lib/fetchError";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { shortUserAgent } from "@/lib/issues/userAgent";
 import { isSystemAdmin } from "@/lib/issues/access";
@@ -128,7 +128,7 @@ export default function IssueDetailPage() {
               <span className={styles.code}>{issue.code}</span>
               <h1>{issue.title || "(ไม่มีหัวข้อ)"}</h1>
               <p className={styles.meta}>
-                แจ้งโดย {issue.reportedByName || "—"} · {fmtDateTime(issue.createdAt)}
+                แจ้งโดย {naText(issue.reportedByName)} · {fmtDateTime(issue.createdAt)}
               </p>
             </div>
             <div className={styles.headBadges}>
@@ -228,7 +228,7 @@ export default function IssueDetailPage() {
                   {issue.userAgent && <><dt>เบราว์เซอร์</dt><dd className={styles.dim} title={issue.userAgent}>{shortUserAgent(issue.userAgent)}</dd></>}
                   <dt>ผู้แจ้ง</dt>
                   <dd className={styles.dim}>
-                    {[issue.reporterRole, issue.reporterDepartment, issue.reporterTeam].filter(Boolean).join(" · ") || "—"}
+                    {naText([issue.reporterRole, issue.reporterDepartment, issue.reporterTeam].filter(Boolean).join(" · "))}
                   </dd>
                 </dl>
               </section>

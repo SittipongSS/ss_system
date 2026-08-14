@@ -8,7 +8,7 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
@@ -178,7 +178,7 @@ export default function AuditLogPage() {
                     <tr key={r.id}>
                       <td className="text-[var(--text-3)] text-xs whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
                       <td className="text-[var(--text-2)] text-sm">
-                        <div className="font-medium text-[var(--text)]">{r.actorName || "—"}</div>
+                        <div className="font-medium text-[var(--text)]">{naText(r.actorName)}</div>
                         <div className="text-[var(--text-3)] text-xs">
                           {(ROLE_LABELS[r.actorRole] || r.actorRole || "")}{r.actorTeam ? ` · ${TEAM_LABELS[r.actorTeam] || r.actorTeam}` : ""}
                         </div>
@@ -192,7 +192,7 @@ export default function AuditLogPage() {
                         {ENTITY_LABELS[r.entityType] || r.entityType}
                         <span className="text-[var(--text-3)] font-mono text-xs ml-1">{r.entityId}</span>
                       </td>
-                      <td className="text-[var(--text-2)] text-sm">{r.summary || "—"}</td>
+                      <td className="text-[var(--text-2)] text-sm">{naText(r.summary)}</td>
                       <td className="text-center">
                         <button onClick={() => setDetail(r)} className="text-[var(--accent)] hover:opacity-70" title="ดู before/after">
                           <Eye size={16} />
@@ -228,7 +228,7 @@ function AuditDetailModal({ log, onClose }) {
       <div className="space-y-4">
         <div className="text-sm text-[var(--text-2)] space-y-1">
           <div><b>เวลา:</b> {fmtDateTime(log.createdAt)}</div>
-          <div><b>ผู้ทำ:</b> {log.actorName || "—"} ({ROLE_LABELS[log.actorRole] || log.actorRole || "—"}{log.actorTeam ? ` · ${TEAM_LABELS[log.actorTeam] || log.actorTeam}` : ""})</div>
+          <div><b>ผู้ทำ:</b> {naText(log.actorName)} ({ROLE_LABELS[log.actorRole] || naText(log.actorRole)}{log.actorTeam ? ` · ${TEAM_LABELS[log.actorTeam] || log.actorTeam}` : ""})</div>
           <div><b>การกระทำ:</b> {ACTION_LABELS[log.action] || log.action} · {ENTITY_LABELS[log.entityType] || log.entityType} <span className="font-mono text-xs">{log.entityId}</span></div>
           {log.summary && <div><b>สรุป:</b> {log.summary}</div>}
           {log.ipAddress && <div><b>IP:</b> <span className="font-mono text-xs">{log.ipAddress}</span></div>}

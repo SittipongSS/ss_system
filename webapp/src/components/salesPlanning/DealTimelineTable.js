@@ -19,7 +19,7 @@ import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/Ste
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import StatusSelect from "@/components/pm/StatusSelect";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, naText, NA } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { useDepartment } from "@/lib/roleContext";
@@ -515,7 +515,7 @@ export default function TimelineWorkspace({
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                                 <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey)} />
                                 <StepBadge badge={stepBadgeFor?.(task)} />
-                                <span className="timeline-role-text" style={{ color: role.color }}>{task.role || "-"}</span>
+                                <span className="timeline-role-text" style={{ color: role.color }}>{naText(task.role)}</span>
                                 {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
                                 {canEdit && <><button type="button" className="btn-icon" onClick={() => openEdit(task)} title="แก้ไข"><Pencil size={14} /></button><button type="button" className="btn-icon danger" onClick={() => removeTask(task)} title="ลบ"><Trash2 size={14} /></button></>}
                               </div>
@@ -604,7 +604,7 @@ export default function TimelineWorkspace({
                       <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey)} />
                       <StepBadge badge={stepBadgeFor?.(t)} />
                     </td>
-                    <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{t.role || "-"}</span></td>
+                    <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>
                     <td>
                       {canEdit ? (
                         <Select className="premium-select" value={t.assigneeId || ""} disabled={!!busyId} style={{ width: 140, maxWidth: "100%", fontSize: "var(--fs-5)" }}
@@ -616,14 +616,14 @@ export default function TimelineWorkspace({
                           <option value="">{t.assignee ? compactPersonName(t.assignee) : "— ไม่ระบุ —"}</option>
                           {assigneeOptions.map((u) => <option key={u.id} value={u.id}>{compactPersonName(u.name)}</option>)}
                         </Select>
-                      ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : "-"}</span>}
+                      ) : <span title={t.assignee || undefined}>{t.assignee ? compactPersonName(t.assignee) : NA}</span>}
                     </td>
                     <td>
                       {canEdit ? (
                         <StatusSelect value={t.status || "Pending"} disabled={!!busyId} aria-label={`สถานะ ${t.name}`} onChange={(status) => patch(t, { status })} />
                       ) : (
                         <span className="ui-badge" style={{ color: STATUS_META[t.status]?.color || "var(--text-3)" }}>
-                          {STATUS_META[t.status]?.label || t.status || "-"}
+                          {STATUS_META[t.status]?.label || naText(t.status)}
                         </span>
                       )}
                     </td>
@@ -657,12 +657,12 @@ export default function TimelineWorkspace({
                             const v = Math.max(1, Number(e.target.value) || 1);
                             if (v !== (t.durationDays ?? 1)) patch(t, { durationDays: v });
                           }} />
-                      ) : (t.durationDays ?? "-")}
+                      ) : (naText(t.durationDays))}
                     </td>
                     <td>
                       {(t.predecessors || []).length
                         ? t.predecessors.map((p) => <span key={p} className="ui-badge" style={{ color: "var(--amber)", marginRight: 3 }}>{numberOf.get(p) || "?"}</span>)
-                        : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>-</span>}
+                        : <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{NA}</span>}
                     </td>
                     {canEdit && (
                       <td style={{ whiteSpace: "nowrap" }}>

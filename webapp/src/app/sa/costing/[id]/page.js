@@ -35,7 +35,7 @@ import CostingRequestForm, {
 import MaterialPicker from "@/components/materials/MaterialPicker";
 import { kindForMaterial } from "@/lib/master/requestTypes";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import {
   COSTING_STATUS_LABELS, COSTING_STATUS_TONES, ITEM_APPROVAL_LABELS,
   approvalProgress, canDecideItem, canEditCostingRequest, canFeedCostFromRequest,
@@ -480,7 +480,7 @@ export default function CostingDetailPage() {
             {approval.returned > 0 ? ` · ตีกลับ ${approval.returned}` : ""}
           </span>
           <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-            ผู้ขอ {request.requestedByName || "—"}
+            ผู้ขอ {naText(request.requestedByName)}
           </span>
           {/* ลิงก์กลับดีลต้นทาง — เฉพาะใบที่ผูกดีล (ใบสำรวจไม่มีดีล) */}
           {request.dealId && (
@@ -592,7 +592,7 @@ export default function CostingDetailPage() {
                         {/* วัสดุในทะเบียน — ผูกด้วย id ไม่ใช่เทียบชื่อ (0159) */}
                         <td>
                           {internal ? (
-                            <span style={{ color: "var(--text-3)" }}>—</span>
+                            <span style={{ color: "var(--text-3)" }}>{NA}</span>
                           ) : canEdit ? (
                             <MaterialPicker
                               materials={materials}
@@ -621,7 +621,7 @@ export default function CostingDetailPage() {
                         {/* กรัม/ชิ้น — แม่แบบให้แค่ค่าตั้งต้น แก้ได้ตลอด (บั๊ก 3) */}
                         <td>
                           {component.unitBasis !== "per_kg" ? (
-                            <span style={{ color: "var(--text-3)" }}>—</span>
+                            <span style={{ color: "var(--text-3)" }}>{NA}</span>
                           ) : canEdit ? (
                             <input
                               className="premium-input" type="number" min="0" step="0.01"
@@ -636,14 +636,14 @@ export default function CostingDetailPage() {
                               }}
                             />
                           ) : (
-                            component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>—</span>
+                            component.gramsPerUnit ?? <span style={{ color: "var(--text-3)" }}>{NA}</span>
                           )}
                         </td>
 
                         {/* ชั้นราคา — ระบบแนะนำจากจำนวนในใบ แต่เซลตัดสิน (มติ 1+2) */}
                         <td>
                           {internal ? (
-                            <span style={{ color: "var(--text-3)" }}>—</span>
+                            <span style={{ color: "var(--text-3)" }}>{NA}</span>
                           ) : (
                             <>
                               {canEdit && tiers.length > 0 ? (
@@ -703,7 +703,7 @@ export default function CostingDetailPage() {
                             <span style={{ color: "var(--text-3)" }}>ยังไม่ดึงราคา</span>
                           )}
                         </td>
-                        <td>{unit == null ? <span style={{ color: "var(--text-3)" }}>—</span> : money(unit)}</td>
+                        <td>{unit == null ? <span style={{ color: "var(--text-3)" }}>{NA}</span> : money(unit)}</td>
                       </tr>
                     );
                   })}
@@ -856,7 +856,7 @@ export default function CostingDetailPage() {
       <ReasonDialog
         open={!!withdrawForm}
         title="ดึงกลับใบขอราคาผลิต"
-        description={`ใบ ${request.docNo || "-"} จะออกจากคิวผู้บริหารและกลับมาแก้ไขได้`}
+        description={`ใบ ${naText(request.docNo)} จะออกจากคิวผู้บริหารและกลับมาแก้ไขได้`}
         detail="รายการที่ผู้บริหารอนุมัติราคาไปแล้วยังอนุมัติอยู่เหมือนเดิม — ยื่นใหม่แล้วเหลือเฉพาะรายการที่ยังไม่ตัดสิน"
         label="เหตุผลที่ดึงกลับ"
         value={withdrawForm?.reason || ""}

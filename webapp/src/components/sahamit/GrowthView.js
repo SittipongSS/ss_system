@@ -8,7 +8,7 @@ import {
 import { BarChart3, CalendarRange, History, Info, TrendingUp } from "lucide-react";
 import UiKpiCard from "@/components/ui/KpiCard";
 import { poGrowth, unitMultiplier } from "@/lib/sahamit/dashboard";
-import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
+import { fmtNumber, fmtMoneyCompact, naText } from "@/lib/format";
 import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // แท็บ "การเติบโต" — ยอด PO จริงต่อช่วง (เดือน/ไตรมาส/ปี) + %เติบโต. YoY เปิดเมื่อมี
@@ -52,7 +52,7 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
       {singleYear && (
         <div className="glass-panel" style={{ padding: 12, borderLeft: "3px solid var(--blue)", display: "flex", gap: 8, alignItems: "center", fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
           <Info size={16} style={{ color: "var(--blue)" }} />
-          ตอนนี้มีข้อมูลปี {dataYears.join(", ") || "—"} ปีเดียว — %เติบโตเทียบปีก่อน (YoY) และการเทียบปีทับกันจะเปิดเมื่อมีข้อมูลปีก่อนหน้า (backfill 2025 หรือเมื่อถึงปีถัดไป)
+          ตอนนี้มีข้อมูลปี {naText(dataYears.join(", "))} ปีเดียว — %เติบโตเทียบปีก่อน (YoY) และการเทียบปีทับกันจะเปิดเมื่อมีข้อมูลปีก่อนหน้า (backfill 2025 หรือเมื่อถึงปีถัดไป)
         </div>
       )}
 

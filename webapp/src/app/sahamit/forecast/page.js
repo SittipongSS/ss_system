@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
@@ -560,7 +560,7 @@ function ForecastPageInner() {
                         <td style={{ fontWeight: "var(--fw-semibold)" }}>#{r.roundNo}</td>
                         <td>{fmtDate(r.receivedDate)}</td>
                         <td style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-                          {(r.coverMonths || []).length ? `${r.coverMonths[0]} – ${r.coverMonths[r.coverMonths.length - 1]} (${r.coverMonths.length})` : "—"}
+                          {(r.coverMonths || []).length ? `${r.coverMonths[0]} – ${r.coverMonths[r.coverMonths.length - 1]} (${r.coverMonths.length})` : NA}
                         </td>
                         <td style={{ textAlign: "right" }}>{roundSkuCount(r)}</td>
                         <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>{nf(roundTotal(r))}</td>

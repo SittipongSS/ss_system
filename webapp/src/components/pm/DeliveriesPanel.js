@@ -20,7 +20,7 @@ import Modal from "@/components/Modal";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, NA } from "@/lib/format";
 import { MATERIAL_KINDS, MATERIAL_KIND_LABELS } from "@/lib/materialPrices";
 import { deliveryRollup, openDeliveriesToChase } from "@/lib/pm/deliveries";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -208,10 +208,10 @@ export default function DeliveriesPanel({
                     <td className={`mono ${styles.numCol}`}>
                       {/* จำนวนว่าง = ยังไม่รู้ยอด **ห้ามแสดงเป็น 0** */}
                       {row.qty == null
-                        ? <span className={styles.muted}>—</span>
+                        ? <span className={styles.muted}>{NA}</span>
                         : `${fmtNumber(row.qty)} ${row.unit || ""}`}
                     </td>
-                    <td className="mono">{row.poRef || <span className={styles.muted}>—</span>}</td>
+                    <td className="mono">{row.poRef || <span className={styles.muted}>{NA}</span>}</td>
                     {/* ผูก SO = บอกว่าของชุดนี้สั่งมาเพื่อผลิตใบไหน · ว่างได้ เพราะของ
                         long-lead สั่งก่อนออก SO ได้จริง */}
                     <td>
@@ -226,7 +226,7 @@ export default function DeliveriesPanel({
                         />
                       ) : (
                         <span className="mono">
-                          {soLabel(row.salesOrderId) || <span className={styles.muted}>—</span>}
+                          {soLabel(row.salesOrderId) || <span className={styles.muted}>{NA}</span>}
                         </span>
                       )}
                     </td>
@@ -237,7 +237,7 @@ export default function DeliveriesPanel({
                           ariaLabel={`กำหนดถึง ${row.label}`}
                           onChange={(v) => patchRow(row, { dueDate: v || null })}
                         />
-                      ) : (row.dueDate ? fmtDate(row.dueDate) : <span className={styles.muted}>—</span>)}
+                      ) : (row.dueDate ? fmtDate(row.dueDate) : <span className={styles.muted}>{NA}</span>)}
                     </td>
                     <td>
                       {canEdit ? (

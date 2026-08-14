@@ -1,7 +1,7 @@
 "use client";
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fmtNumber, fmtPhone } from "@/lib/format";
+import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { use } from "react";
 import { MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -225,7 +225,7 @@ export default function ServiceSiteDetailPage({ params }) {
     <Workspace
       icon={<MapPin size={20} aria-hidden="true" />}
       title={site.name}
-      subtitle={`${site.customerName || "-"}${site.code ? ` · ${site.code}` : ""}`}
+      subtitle={`${naText(site.customerName)}${site.code ? ` · ${site.code}` : ""}`}
       back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}
       headerRight={canEdit ? (
         <Button tone="neutral" onClick={() => setEditingSite(true)} icon={<Pencil size={15} aria-hidden="true" />}>
@@ -235,14 +235,14 @@ export default function ServiceSiteDetailPage({ params }) {
     >
       <WorkspaceSection title="ข้อมูลไซต์">
         <dl className={styles.info}>
-          <div><dt>โซน</dt><dd>{site.zone || "-"}</dd></div>
-          <div><dt>ที่อยู่</dt><dd>{site.address || "-"}</dd></div>
-          <div><dt>ผู้ติดต่อ</dt><dd>{site.contactName || "-"}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
+          <div><dt>โซน</dt><dd>{naText(site.zone)}</dd></div>
+          <div><dt>ที่อยู่</dt><dd>{naText(site.address)}</dd></div>
+          <div><dt>ผู้ติดต่อ</dt><dd>{naText(site.contactName)}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>
             <dt>ช่วงเวลาที่เข้าได้</dt>
             <dd>{accessText || <span className={styles.muted}>ไม่จำกัด</span>}</dd>
           </div>
-          <div><dt>เงื่อนไขการเข้า</dt><dd>{site.accessNote || "-"}</dd></div>
+          <div><dt>เงื่อนไขการเข้า</dt><dd>{naText(site.accessNote)}</dd></div>
           <div><dt>สถานะ</dt><dd><span className="ui-badge">{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></dd></div>
           {site.mapUrl && (
             <div>
@@ -292,12 +292,12 @@ export default function ServiceSiteDetailPage({ params }) {
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
                       <td>{asset.label}</td>
                       <td>
-                        {asset.model || "-"}
+                        {naText(asset.model)}
                         {asset.serial ? <span className={styles.serial}> · {asset.serial}</span> : null}
                       </td>
-                      <td>{asset.productName || "-"}</td>
+                      <td>{naText(asset.productName)}</td>
                       <td className={styles.numCol}>
-                        {asset.bottleMl ? `${fmtNumber(asset.bottleMl)} ml` : "-"}
+                        {asset.bottleMl ? `${fmtNumber(asset.bottleMl)} ml` : NA}
                         {asset.mlPerDay ? ` / ${fmtNumber(asset.mlPerDay)} ต่อวัน` : ""}
                       </td>
                       {/* ⚠️ ข้อมูลไม่พอ = ไม่เดา · ป้ายที่มั่วจะทำให้ป้ายจริงถูกเมินไปด้วย */}
@@ -392,7 +392,7 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td>{visitTimeText(visit)}</td>
                     <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
                     <td>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
-                    <td className="mono">{visit.code || "-"}</td>
+                    <td className="mono">{naText(visit.code)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -417,9 +417,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     {/* ช่องว่างตรงนี้มีความหมาย: นัดที่เลยวันแล้วแต่ไม่มีวันเข้าจริง = ยังไม่มีใครปิดงาน */}
                     <td>{visit.actualDate || <span className={styles.muted}>ยังไม่ปิดงาน</span>}</td>
                     <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
-                    <td>{visit.assigneeName || "-"}</td>
+                    <td>{naText(visit.assigneeName)}</td>
                     <td><span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span></td>
-                    <td>{visit.summary || "-"}</td>
+                    <td>{naText(visit.summary)}</td>
                   </tr>
                 ))}
               </tbody>

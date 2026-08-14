@@ -4,6 +4,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { CalendarRange } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { moneyCompact } from "./shared";
+import { NA } from "@/lib/format";
 
 // ภาพรวมทั้งปี — ± เทียบเป้ารายเดือน ทุกคนพร้อมกัน (heatmap).
 // เขียว = เกินเป้าเดือนนั้น · แดง = ขาด · เดือนที่ยังไม่จบ/ไม่มีเป้า = จาง.
@@ -55,7 +56,7 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
                   return (
                     <td key={i} className="num mono" style={{ padding: "6px 8px" }}>
                       <span style={{ display: "inline-block", padding: "2px 6px", ...cellStyle(diff, hasTarget, isClosed) }}>
-                        {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${moneyCompact(diff)}` : "–"}
+                        {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${moneyCompact(diff)}` : NA}
                       </span>
                     </td>
                   );

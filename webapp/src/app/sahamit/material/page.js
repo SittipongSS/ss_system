@@ -11,7 +11,7 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { lineStage, STAGE_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 
@@ -21,7 +21,7 @@ const nf = (n) => fmtNumber(n || 0);
 function matCell(dueDate, arrivedAt) {
   if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
-  return <span style={{ color: "var(--text-3)" }}>—</span>;
+  return <span style={{ color: "var(--text-3)" }}>{NA}</span>;
 }
 
 // One PO line: lead-time view (read-only) + PM/RM editor (กำหนดถึง + ปุ่มมาแล้ว).
@@ -72,23 +72,23 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
           {nf(row.qty)}
           {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
         </td>
-        <td>{row.deliveryMonth || "—"}</td>
+        <td>{naText(row.deliveryMonth)}</td>
         <td>
           <span className="ui-badge" style={{ color: row.inForecast ? "var(--green)" : "var(--violet)", borderColor: row.inForecast ? "var(--green)" : "var(--violet)" }}>
             {row.inForecast ? "ตรง FC" : "นอก FC"}
           </span>
           <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginLeft: 4 }}>{row.leadDays} วัน</span>
         </td>
-        <td>{row.receivedDate ? fmtDate(row.receivedDate) : "—"}</td>
+        <td>{row.receivedDate ? fmtDate(row.receivedDate) : NA}</td>
         <td>
-          {row.readyDate ? fmtDate(row.readyDate) : "—"}
+          {row.readyDate ? fmtDate(row.readyDate) : NA}
           {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
         </td>
-        <td>{row.dueDate ? fmtDate(row.dueDate) : "—"}</td>
+        <td>{row.dueDate ? fmtDate(row.dueDate) : NA}</td>
         <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
         <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
         <td>
-          {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
+          {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : NA}
           {row.ourSlip && <div style={{ fontSize: "var(--fs-2)", color: "var(--red)" }}>เราส่งช้า</div>}
         </td>
         <td>{canEdit && <button className="btn-icon" onClick={() => setOpen((v) => !v)} title="แก้สถานะวัสดุ">{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button>}</td>

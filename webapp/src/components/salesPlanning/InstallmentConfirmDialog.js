@@ -17,7 +17,7 @@ import { Paperclip } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import { paymentConfirmPrompt } from "@/lib/approvalPrompt";
 import styles from "./InstallmentConfirmDialog.module.css";
 
@@ -51,12 +51,12 @@ export default function InstallmentConfirmDialog({
         <dl className={styles.facts}>
           {order?.orderNumber ? <><dt>ใบสั่งขาย</dt><dd className="mono">{order.orderNumber}</dd></> : null}
           {order?.customerName ? <><dt>ลูกค้า</dt><dd>{order.customerName}</dd></> : null}
-          <dt>งวด</dt><dd>{row.label || "-"}{row.percent ? ` · ${row.percent}%` : ""}</dd>
+          <dt>งวด</dt><dd>{naText(row.label)}{row.percent ? ` · ${row.percent}%` : ""}</dd>
           <dt>ยอด</dt><dd className="mono">{fmtMoney(row.amount)}</dd>
           <dt>วันที่ลูกค้าจ่าย</dt>
           <dd>{row.paidOn ? fmtDate(row.paidOn) : <span className="cell-quiet">ไม่ได้ระบุ</span>}</dd>
           <dt>ผู้แจ้ง</dt>
-          <dd>{row.reportedByName || <span className="cell-quiet">-</span>}</dd>
+          <dd>{row.reportedByName || <span className="cell-quiet">{NA}</span>}</dd>
         </dl>
 
         {/* 🔴 หลักฐาน — เปิดดูได้ก่อนกด · ไม่มีไฟล์เลยต้องเตือน ไม่ใช่ปล่อยผ่านเงียบ ๆ */}

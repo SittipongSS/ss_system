@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ReceiptText, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import { deptOf, isTaxWaitingOnMe, FILING_FILTERS } from "@/lib/excise/workflow";
 import DataList from "@/components/excise/DataList";
@@ -60,7 +60,7 @@ export default function FilingsPage() {
         </div>
       ),
     },
-    { key: "customerName", label: "ลูกค้า", render: (o) => <span style={{ color: "var(--accent)" }}>{o.customerName || "-"}</span> },
+    { key: "customerName", label: "ลูกค้า", render: (o) => <span style={{ color: "var(--accent)" }}>{naText(o.customerName)}</span> },
     { key: "itemCount", label: "รายการ", align: "center", sortValue: (o) => o.items?.length || 0, render: (o) => o.items?.length || 0 },
     { key: "totalTax", label: "ยอดภาษีรวม", align: "right", sortValue: (o) => o.totalTax || 0, render: (o) => <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{taxText(o)}</span> },
     { key: "status", label: "สถานะ", render: (o) => <StatusBadge status={o.status} /> },
@@ -71,7 +71,7 @@ export default function FilingsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold text-sm">{o.quotationRef}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--accent)" }} className="truncate">{o.customerName || "-"}</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--accent)" }} className="truncate">{naText(o.customerName)}</div>
         </div>
         <StatusBadge status={o.status} />
       </div>

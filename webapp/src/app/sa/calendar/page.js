@@ -26,6 +26,7 @@ import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
 import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
+import { naText } from "@/lib/format";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -263,7 +264,7 @@ export default function SalesCalendarPage() {
                       </span>
                       <span className={styles.cardMeta}>
                         <span>{entry.assigneeName || "ยังไม่มอบหมาย"}</span>
-                        <span>{TEAM_LABELS[entry.team] || entry.team || "-"}</span>
+                        <span>{TEAM_LABELS[entry.team] || naText(entry.team)}</span>
                         <span>{LEAD_STATUS_LABELS[entry.status] || entry.status}</span>
                       </span>
                     </button>

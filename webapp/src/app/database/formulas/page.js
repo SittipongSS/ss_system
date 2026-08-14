@@ -35,7 +35,7 @@ import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useDepartment, useRole } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, NA } from "@/lib/format";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
@@ -435,7 +435,7 @@ export default function FormulasPage() {
                 {unsorted.map((r) => (
                   <tr key={r.productId}>
                     <td className={styles.name}>{r.formulaName}</td>
-                    <td className="mono">{r.formulaDate ? fmtDate(r.formulaDate) : "—"}</td>
+                    <td className="mono">{r.formulaDate ? fmtDate(r.formulaDate) : NA}</td>
                     <td>{r.productName}</td>
                     <td>{customerCell(r, "—")}</td>
                     <td>
@@ -563,7 +563,7 @@ export default function FormulasPage() {
                         )
                         : f.scentId
                           ? <span className={styles.warn}>ยังไม่ระบุหมวด</span>
-                          : <span className={styles.muted}>—</span>}
+                          : <span className={styles.muted}>{NA}</span>}
                     </td>
                     <td>
                       {f.scentId && scentName(f.scentId)
@@ -575,7 +575,7 @@ export default function FormulasPage() {
                             {scentName(f.scentId)}
                           </>
                         )
-                        : <span className={styles.muted}>—</span>}
+                        : <span className={styles.muted}>{NA}</span>}
                     </td>
                     {/* ⭐ ที่มา — กติกาเดียวกับทะเบียนกลิ่น (ม-74) · หลักฐานตามจาก
                         `dept_request_items.producedFormulaId` ไม่ใช่จาก `dealId`
@@ -600,7 +600,7 @@ export default function FormulasPage() {
                         );
                       })()}
                     </td>
-                    <td className="num">{f.formulaDate ? fmtDate(f.formulaDate) : "—"}</td>
+                    <td className="num">{f.formulaDate ? fmtDate(f.formulaDate) : NA}</td>
                     <td>
                       {customerCell(f, <span className={styles.muted}>สูตรกลาง</span>)}
                     </td>

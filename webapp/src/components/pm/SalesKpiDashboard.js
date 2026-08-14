@@ -8,7 +8,7 @@ import { ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis, 
 import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import DateInput from "@/components/ui/DateInput";
-import { fmtPercent } from "@/lib/format";
+import { fmtPercent, naText } from "@/lib/format";
 import { CHART_LINE_TYPE, CHART_SERIES } from "@/lib/chartTheme";
 
 import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -198,8 +198,8 @@ export default function SalesKpiDashboard() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.userId} className="premium-row">
-                      <td style={{ fontWeight: "var(--fw-bold)" }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{r.role || "-"}</div></td>
-                      <td>{r.team || "-"}</td>
+                      <td style={{ fontWeight: "var(--fw-bold)" }}>{r.name}<div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-medium)" }}>{naText(r.role)}</div></td>
+                      <td>{naText(r.team)}</td>
                       <td className="num">{r.total}</td>
                       <td className="num">{r.active}</td>
                       <td className="num" style={{ color: r.overdue ? "var(--red)" : undefined }}>{r.overdue}</td>

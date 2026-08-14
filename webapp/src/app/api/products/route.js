@@ -12,6 +12,7 @@ import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -102,14 +103,14 @@ export async function POST(request) {
   if (codeMode === CODE_MODE_AUTO) {
     if (!customerCodeSegment(customer.arCode)) {
       return Response.json(
-        { error: `ลูกค้ารายนี้มีรหัส "${customer.arCode || '—'}" ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง` },
+        { error: `ลูกค้ารายนี้มีรหัส "${naText(customer.arCode)}" ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง` },
         { status: 400 },
       );
     }
     fgPrefix = fgCodePrefix({ arCode: customer.arCode, categoryCode });
     if (!fgPrefix) {
       return Response.json(
-        { error: `หมวดสินค้า "${categoryCode || '—'}" ไม่ใช่รูปแบบ BB-CCC ที่ประกอบรหัสได้ — เลือกหมวดใหม่หรือปิดสวิตช์ระบบใหม่แล้วกรอกรหัสเอง` },
+        { error: `หมวดสินค้า "${naText(categoryCode)}" ไม่ใช่รูปแบบ BB-CCC ที่ประกอบรหัสได้ — เลือกหมวดใหม่หรือปิดสวิตช์ระบบใหม่แล้วกรอกรหัสเอง` },
         { status: 400 },
       );
     }

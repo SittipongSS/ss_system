@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -49,7 +49,7 @@ const EMPTY_STEP = {
 /* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
    (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
    fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
-const formatDate = (value) => (value ? fmtDateTime(value) : "-");
+const formatDate = (value) => (value ? fmtDateTime(value) : NA);
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
 const statusClass = (status) => status === "published" ? styles.published : status === "draft" ? styles.draft : styles.archived;
 
@@ -402,7 +402,7 @@ export default function WorkflowTemplatesPage() {
               <div className={styles.titleLine}><span className={styles.eyebrow}>PUBLISHED TEMPLATE</span><StatusBadge status="published" /></div>
               <h2 id="published-title">{selected.published?.nameTh || workflowTemplateKeyLabel(selectedKey)}</h2>
               <p>{selected.published?.description || "Template ที่ใช้สร้าง Timeline สำหรับงานใหม่"}</p>
-              <small>Version {selected.published?.versionNumber || "-"} · เผยแพร่ {formatDate(selected.published?.publishedAt)} โดย {actorOf(selected.published)}</small>
+              <small>Version {naText(selected.published?.versionNumber)} · เผยแพร่ {formatDate(selected.published?.publishedAt)} โดย {actorOf(selected.published)}</small>
             </div>
             <div className={styles.summaryGrid}>
               <div><GitBranch size={17} /><span>ขั้นตอน<strong>{publishedSummary.steps}</strong></span></div>
@@ -489,7 +489,7 @@ export default function WorkflowTemplatesPage() {
 
           <section className={`glass-panel ${styles.historyPanel}`} aria-labelledby="history-title">
             <header className={styles.panelHeader}><div><h2 id="history-title">ประวัติเวอร์ชัน</h2><p>เวอร์ชันที่เผยแพร่แล้วลบไม่ได้ — เมื่อถูกแทนที่จะถูกซ่อนและเปิดดูย้อนหลังได้ที่นี่</p></div></header>
-            <div className={styles.historyTableWrap}><TableScroll surface="embedded"><table className={styles.historyTable}><thead><tr><th>Version</th><th>สถานะ</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>เวลา</th><th><span className="sr-only">เปิดดู</span></th></tr></thead><tbody>{selected.versions.map((version) => <tr key={version.id}><td><strong>Version {version.versionNumber}</strong></td><td><StatusBadge status={version.status} /></td><td>{version.changeNote || version.description || "-"}<small>{version.steps?.length || 0} ขั้นตอน</small></td><td>{actorOf(version)}</td><td>{formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</td><td><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดู</button></td></tr>)}</tbody></table></TableScroll></div>
+            <div className={styles.historyTableWrap}><TableScroll surface="embedded"><table className={styles.historyTable}><thead><tr><th>Version</th><th>สถานะ</th><th>รายละเอียด</th><th>ผู้ดำเนินการ</th><th>เวลา</th><th><span className="sr-only">เปิดดู</span></th></tr></thead><tbody>{selected.versions.map((version) => <tr key={version.id}><td><strong>Version {version.versionNumber}</strong></td><td><StatusBadge status={version.status} /></td><td>{version.changeNote || naText(version.description)}<small>{version.steps?.length || 0} ขั้นตอน</small></td><td>{actorOf(version)}</td><td>{formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</td><td><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดู</button></td></tr>)}</tbody></table></TableScroll></div>
             <div className={styles.historyCards}>{selected.versions.map((version) => <article key={version.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {version.versionNumber}</strong><StatusBadge status={version.status} /></div><p>{version.changeNote || version.description || "ไม่มีหมายเหตุ"}</p><small>{version.steps?.length || 0} ขั้นตอน · {formatDate(version.publishedAt || version.archivedAt || version.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setVersionDrawer({ row: version })}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
           </section>
         </main>
@@ -540,13 +540,13 @@ export default function WorkflowTemplatesPage() {
       <RecordDrawer
         open={!!versionDrawer}
         onClose={() => setVersionDrawer(null)}
-        title={`Workflow Template Version ${selectedVersion?.versionNumber || "-"}`}
+        title={`Workflow Template Version ${naText(selectedVersion?.versionNumber)}`}
         subtitle={selectedVersion?.nameTh}
         badge={selectedVersion ? <StatusBadge status={selectedVersion.status} /> : null}
         footer={<button type="button" className="btn ghost" onClick={() => setVersionDrawer(null)}>ปิด</button>}
       >
         {selectedVersion && <div className={styles.versionDetail}>
-          <section><h4>รายละเอียดเวอร์ชัน</h4><dl><div><dt>ประเภท</dt><dd>{selectedVersion.templateKey}</dd></div><div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(selectedVersion)}</dd></div><div className={styles.full}><dt>คำอธิบาย</dt><dd>{selectedVersion.description || "-"}</dd></div><div className={styles.full}><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{selectedVersion.changeNote || "-"}</dd></div></dl></section>
+          <section><h4>รายละเอียดเวอร์ชัน</h4><dl><div><dt>ประเภท</dt><dd>{selectedVersion.templateKey}</dd></div><div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(selectedVersion)}</dd></div><div className={styles.full}><dt>คำอธิบาย</dt><dd>{naText(selectedVersion.description)}</dd></div><div className={styles.full}><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd>{naText(selectedVersion.changeNote)}</dd></div></dl></section>
           <section><h4>ขั้นตอน ({selectedVersion.steps?.length || 0})</h4><ol className={styles.versionSteps}>{(selectedVersion.steps || []).map((step) => <li key={step.stepKey}><span>{step.stepOrder + 1}</span><div><strong>{step.name}</strong><small>{step.stepKey} · {step.role} · {step.durationDays} วัน</small><small><DependencyLabel step={step} steps={selectedVersion.steps} /></small></div></li>)}</ol></section>
         </div>}
       </RecordDrawer>
@@ -554,7 +554,7 @@ export default function WorkflowTemplatesPage() {
       <ConfirmDialog
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่ Workflow Template"
-        description={`Version ${selected?.draft?.versionNumber || "-"} จะถูกใช้สร้าง Timeline ของงาน ${selectedKey} ใหม่หลังจากนี้`}
+        description={`Version ${naText(selected?.draft?.versionNumber)} จะถูกใช้สร้าง Timeline ของงาน ${selectedKey} ใหม่หลังจากนี้`}
         detail="งานและ Timeline ที่สร้างไปแล้วจะคง version เดิมไว้ Published version ก่อนหน้าจะถูกซ่อนและยังเปิดดูย้อนหลังได้"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
@@ -564,7 +564,7 @@ export default function WorkflowTemplatesPage() {
       <ConfirmDialog
         open={confirm?.action === "discard"}
         title="ยกเลิกฉบับร่าง"
-        description={`Version ${selected?.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+        description={`Version ${naText(selected?.draft?.versionNumber)} จะถูกลบถาวรและกู้คืนไม่ได้`}
         detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และ Published version ที่ใช้งานอยู่จะไม่เปลี่ยนแปลง"
         confirmLabel="ยกเลิกร่างถาวร"
         tone="danger"

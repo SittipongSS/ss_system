@@ -27,6 +27,7 @@ import Textarea from "@/components/ui/Textarea";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { genId } from "@/lib/id";
+import { naText } from "@/lib/format";
 import {
   addressText,
   asAddressRow,
@@ -353,7 +354,7 @@ export default function AddressesEditor({ value = [], onChange }) {
                 ) : legacy ? (
                   <span>ที่อยู่นี้ยังเป็นข้อความก้อนเดียว — กด “แยกที่อยู่อัตโนมัติ” แล้วตรวจก่อนบันทึก</span>
                 ) : (
-                  <span className="break-words">บนเอกสารจะพิมพ์ว่า: <b className="text-[var(--text-2)]">{preview || "—"}</b></span>
+                  <span className="break-words">บนเอกสารจะพิมพ์ว่า: <b className="text-[var(--text-2)]">{naText(preview)}</b></span>
                 )}
               </div>
               <div className="flex gap-1.5 items-center shrink-0">

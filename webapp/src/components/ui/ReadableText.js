@@ -2,6 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { NA } from "@/lib/format";
 
 /**
  * Shared presentation for user-entered, potentially long text.
@@ -13,7 +14,9 @@ export default function ReadableText({
   lines = 4,
   className = "",
   style,
-  empty = null,
+  /* ⭐ ว่าง = N/A (มติผู้ใช้ 2026-08-14 · กฎค่าว่างทั้งระบบ ดู `naText` ใน lib/format)
+     ส่งค่าอื่นได้ถ้าที่นั้นมีคำที่มีความหมายเฉพาะจริง ๆ · ส่ง `null` ถ้าตั้งใจให้หายไปเลย */
+  empty = NA,
   defaultExpanded = false,
   // ชิ้นส่วนที่ประกอบไว้แล้ว (RichText ส่งข้อความที่มีลิงก์ในตัวเข้ามา) — ยังต้องส่ง
   // `text` มาด้วยเสมอ เพราะการวัด/ตัดสินว่าว่างเปล่าใช้ข้อความดิบเป็นเกณฑ์

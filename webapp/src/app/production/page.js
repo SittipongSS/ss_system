@@ -30,7 +30,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtDayMonth, fmtNumber } from "@/lib/format";
+import { fmtDayMonth, fmtNumber, naText, NA } from "@/lib/format";
 
 const OPEN_STATUSES = "draft,planned,in_progress";
 const ATTENTION_LIMIT = 8;
@@ -46,7 +46,7 @@ const shiftDays = (iso, days) => {
 
 // "14 ส.ค." — ตัวกลางเดียวกับบอร์ดผลิต/ตารางบริการ (`fmtDayMonth`)
 // ⚠️ ต่อ T00:00:00 ก่อน — สตริง `YYYY-MM-DD` ล้วนถูกอ่านเป็น UTC แล้วเลื่อนวัน
-const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : "—");
+const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : NA);
 
 export default function ProductionOverviewPage() {
   const router = useRouter();
@@ -125,7 +125,7 @@ export default function ProductionOverviewPage() {
     return {
       id: row.job.id,
       tone: REASON_TONE[worst?.kind] || "neutral",
-      title: `${row.job.code || "งานผลิต"} · ${row.job.productName || "—"}`,
+      title: `${row.job.code || "งานผลิต"} · ${naText(row.job.productName)}`,
       subtitle: row.reasons.map((r) => r.message).join(" · "),
       badge: JOB_STATUS_LABELS[row.job.status] || row.job.status,
       cta: canEdit ? "เปิดคิวงาน" : "ดูคิวงาน",
@@ -234,7 +234,7 @@ export default function ProductionOverviewPage() {
                           {row.line.name}
                           <span className={styles.sub}>{row.line.code}</span>
                         </th>
-                        <td className="num">{row.planned ? fmtNumber(row.planned) : "—"}</td>
+                        <td className="num">{row.planned ? fmtNumber(row.planned) : NA}</td>
                         <td className="num">
                           {/* ยังไม่กรอกกำลัง = "—" ไม่ใช่ 0 (ดู capacityOn) */}
                           {row.capacity == null ? "—" : fmtNumber(row.capacity)}
