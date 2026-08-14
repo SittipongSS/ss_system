@@ -7,7 +7,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, Clock3, FileText, FolderKanban, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, Clock3, FileText, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -221,7 +221,7 @@ export default function QuotationsPage() {
                   selected: statusFilter, onChange: setStatusFilter,
                 },
                 {
-                  key: "type", label: "ประเภทดีล", icon: FolderKanban,
+                  key: "type", label: "ประเภทดีล", icon: Handshake,
                   options: DEAL_TYPES.map((t) => ({ value: t, label: DEAL_TYPE_LABELS[t] })),
                   selected: typeFilter, onChange: setTypeFilter,
                 },

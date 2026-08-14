@@ -9,7 +9,7 @@
 // (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList, Plus, Undo2 } from "lucide-react";
+import { MessageCircleQuestion, Plus, Undo2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/ui/ViewSwitcher";
@@ -220,7 +220,7 @@ export default function RequestsPage() {
 
   return (
     <Workspace
-      icon={<ClipboardList size={22} />}
+      icon={<MessageCircleQuestion size={22} />}
       title="คำร้องข้ามฝ่าย"
       subtitle={!roleTabsApply
         ? `ทุกใบใน${SCOPE_LABELS[activeScope]} — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ`

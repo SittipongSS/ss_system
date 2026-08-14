@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Calculator, Pencil, Ban, Send, Check, Undo2, ArrowDownToLine, ExternalLink,
-  Boxes, Copy, MessageSquare,
+  Package, RefreshCw, Copy, MessageSquare,
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -382,7 +382,7 @@ export default function CostingDetailPage() {
         ) : null}
         facts={[
           { key: "moq", icon: Calculator, label: "MOQ", value: `${qty(request.moq)} ชิ้น` },
-          { key: "items", icon: Boxes, label: "สินค้า", value: `${(request.items || []).length} รายการ` },
+          { key: "items", icon: Package, label: "สินค้า", value: `${(request.items || []).length} รายการ` },
           { key: "pricing", label: "ราคาวัสดุ", value: pricing.total ? `${pricing.quoted}/${pricing.total}` : "ไม่ต้องขอราคา" },
           { key: "approval", label: "อนุมัติ", value: `${approval.approved}/${approval.total}` },
         ]}
@@ -421,7 +421,7 @@ export default function CostingDetailPage() {
                   id: "fill-prices",
                   label: "ดึงราคาล่าสุดทุกบรรทัด",
                   kind: "refresh",
-                  icon: Boxes,
+                  icon: RefreshCw,
                   onClick: fillFromLibrary,
                   visible: canEdit && editableStatus,
                 },

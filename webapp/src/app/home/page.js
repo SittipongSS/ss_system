@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Boxes, LogOut, Settings, ShieldCheck, TriangleAlert, UserRound, Users } from "lucide-react";
+import { ArrowRight, LayoutGrid, LogOut, Settings, ShieldCheck, TriangleAlert, UserRound, Users } from "lucide-react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { canUser, userTeams, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
@@ -290,7 +290,7 @@ export default function HomeHubPage() {
               })}
             </div>
           ) : (
-            <EmptyState icon={Boxes}>
+            <EmptyState icon={LayoutGrid}>
               <strong>ยังไม่มีระบบที่บัญชีนี้เข้าถึงได้</strong>
               <span>ติดต่อผู้ดูแลระบบเพื่อตรวจสอบบทบาทและสิทธิ์การใช้งาน</span>
             </EmptyState>

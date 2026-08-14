@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Briefcase, Calendar, Clock, FolderKanban, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, FolderKanban, Handshake, Link2, ListTodo, MessageCircleQuestion, MessageSquare, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -110,9 +110,11 @@ export default function TaskDetailPage() {
 
         <TaskUpdates task={task} onPosted={load} />
 
-        {(task.project || task.deal || task.inquiry) && <DetailCard icon={FolderKanban} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
+        {/* การ์ดรวมของที่ผูกกับงาน — ใช้ไอคอน "ลิงก์" ไม่ใช่ไอคอนโครงการ เพราะข้างในมีทั้ง
+            โครงการ ดีล และคำร้อง (FolderKanban = โครงการอย่างเดียว ดู entityIcon.test.mjs) */}
+        {(task.project || task.deal || task.inquiry) && <DetailCard icon={Link2} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
-          {task.deal && <ContextCard icon={Briefcase} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: livePersonName(directory, task.deal.ownerId, task.deal.ownerName) || "-" }]} />}
+          {task.deal && <ContextCard icon={Handshake} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: livePersonName(directory, task.deal.ownerId, task.deal.ownerName) || "-" }]} />}
           {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/requests/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "คำร้อง"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
         </DetailPageLayout>

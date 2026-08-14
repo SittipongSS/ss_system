@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, GanttChart,
+  ArrowLeft, GanttChart, Handshake,
   ListTodo, Clock, Calendar,
   Edit2, Trash2,
   Printer, User, FolderX,
@@ -692,7 +692,7 @@ export default function ProjectDetailPage() {
             sub: dateRange.target ? `กำหนดส่ง ${dateRange.target}` : null,
           },
           { icon: User, label: "AE / ทีม", value: `${p.aeOwner || "-"} · ${p.team || "-"}` },
-          { icon: GanttChart, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
+          { icon: Handshake, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
         ]}
       />
 

@@ -8,7 +8,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // โชว์ครบบนแถบ KPI ของหน้านี้ · ตัวเลขเชิงลึก (รายช่องทาง · รายคน) อยู่ที่แท็บ "KPI ลีด"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FolderKanban, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -409,7 +409,7 @@ export default function LeadsPage() {
      ห้ามคิดเงื่อนไขซ้ำที่นี่ — ป้ายในแถวใช้ rowLabel (สั้นกว่า label บนการ์ด) */
   const dealActionFor = (lead) => {
     const action = leadDealAction({
-      lead, user: viewer, canCreateDeals, icon: FolderKanban, onClick: () => setDealModal(lead),
+      lead, user: viewer, canCreateDeals, icon: Handshake, onClick: () => setDealModal(lead),
     });
     return { ...action, label: action.rowLabel };
   };

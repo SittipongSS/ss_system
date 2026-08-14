@@ -13,7 +13,7 @@
 import FormulaDevBoard from "@/components/requests/FormulaDevBoard";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import RequestRows from "./RequestRows";
-import { ClipboardList } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
@@ -40,7 +40,7 @@ export default function FormulaDevDetail({
           IS-26080021 "ตารางกับไฟล์ ดีไซน์ไม่เหมือนอันอื่นเลย") — การ์ดอื่นทุกใบบนหน้านี้
           มีหัวไอคอน+ชื่อ+เส้นคั่นชุดเดียวกัน ส่วนตารางเคยมีหัวเป็นตัวหนาลอย ๆ
           ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
-      <DetailCard icon={ClipboardList} title="สรุปทั้งใบ">
+      <DetailCard icon={ListChecks} title="สรุปทั้งใบ">
       <FormulaDevBoard
         rows={board}
         renderStep={renderStep}

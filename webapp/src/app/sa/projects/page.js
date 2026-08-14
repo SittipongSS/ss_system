@@ -11,7 +11,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, ClipboardList, Plus } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Layers, Plus } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
@@ -164,7 +164,7 @@ export default function ProjectsIndexPage() {
           <SaMetric icon={<BarChart3 />} label="FC Total" value={money(totals.fcTotal)} note="แผนทั้งหมดของโครงการที่แสดง" />
           <SaMetric icon={<LineChart />} label="Actual" value={money(totals.actual)} note="ยอดจาก ใบสั่งขายที่อนุมัติแล้ว" tone="good" />
           <SaMetric icon={<Target />} label="FC คงเหลือ" value={money(totals.fcRemaining)} note="ดีลเปิดที่ยังต้องตามปิด" tone={totals.fcRemaining ? "warning" : undefined} />
-          <SaMetric icon={<ClipboardList />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
+          <SaMetric icon={<Layers />} label="โครงการ / ดีล" value={`${filtered.length} / ${totals.deals}`} note="ตามตัวกรองปัจจุบัน" />
           {/* ⚠️ เคยมีตัวนับ "ยังไม่ระบุสาย" อยู่ตรงนี้ — ถอดออก (มติผู้ใช้ 2026-08-05)
               ฟอร์มสร้าง/แก้โครงการบังคับเลือกสายแล้ว ตัวนับจึงเป็น 0 ตลอด และ
               แถบนี้เป็นแถบเงินล้วน · ตัวทวงยังอยู่ที่ป้ายในแถวตารางด้านล่าง

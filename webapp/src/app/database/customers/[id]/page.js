@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Boxes, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
+import { ArrowLeft, Building2, Package, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
@@ -345,7 +345,7 @@ export default function CustomerDetails() {
         badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[
           // ตัวเลขความสัมพันธ์อยู่ที่นี่ที่เดียว — รายการเต็มอยู่ในแท็บด้านล่าง
-          { icon: Boxes, label: "สินค้า", value: `${products.length} รายการ` },
+          { icon: Package, label: "สินค้า", value: `${products.length} รายการ` },
           ...(canViewTax ? [{ icon: ShoppingCart, label: "ใบสั่งซื้อ", value: `${orders.length} รายการ` }] : []),
           { icon: FolderKanban, label: "โครงการ", value: `${projects.length} โครงการ` },
           { icon: Building2, label: "ทีมดูแล", value: teamsLabel },

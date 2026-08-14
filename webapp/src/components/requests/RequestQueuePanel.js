@@ -11,7 +11,7 @@ import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, ChevronRight, ChevronsDownUp,
-  ChevronsUpDown, ClipboardList, FolderKanban, Layers, Search, Tag, User, Users,
+  ChevronsUpDown, FolderKanban, Layers, MessageCircleQuestion, Search, Tag, User, Users,
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import MenuSelect from "@/components/ui/MenuSelect";
@@ -343,7 +343,7 @@ export default function RequestQueuePanel({
       ) : loadError ? (
         <div className={`glass-panel ${styles.loadError}`}>{loadError}</div>
       ) : visibleRows.length === 0 ? (
-        <EmptyState icon={ClipboardList}>
+        <EmptyState icon={MessageCircleQuestion}>
           {/* ⚠️ ว่างเพราะ "ไม่มีงาน" กับว่างเพราะ "ตัวกรองตัดหมด" ต้องอ่านคนละแบบ —
               ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
           {countFilter
@@ -505,7 +505,7 @@ export default function RequestQueuePanel({
   if (!sectionTitle) return body;
   return (
     <WorkspaceSection
-      icon={<ClipboardList size={17} />}
+      icon={<MessageCircleQuestion size={17} />}
       title={sectionTitle}
       subtitle={sectionSubtitle}
       actions={(

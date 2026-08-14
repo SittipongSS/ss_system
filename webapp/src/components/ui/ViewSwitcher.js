@@ -1,13 +1,15 @@
 "use client";
 
-import { BarChart3, CalendarDays, FileText, FolderKanban, LayoutGrid, ListTodo, Table2 } from "lucide-react";
+import { BarChart3, CalendarDays, FileText, LayoutGrid, ListTodo, SquareKanban, Table2 } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
 
 export const VIEW_META = {
   list: { icon: ListTodo, label: "รายการ" },
   table: { icon: Table2, label: "ตาราง" },
   document: { icon: FileText, label: "Gantt" },
-  board: { icon: FolderKanban, label: "บอร์ด" },
+  /* บอร์ดใช้ SquareKanban — ไอคอนโฟลเดอร์-คัมบันถูกจองเป็นไอคอนของ "โครงการ"
+     ทั้งระบบแล้ว (ดู src/lib/entityIcon.test.mjs) ปุ่มมุมมองจึงต้องเลี่ยง */
+  board: { icon: SquareKanban, label: "บอร์ด" },
   calendar: { icon: CalendarDays, label: "ปฏิทิน" },
   matrix: { icon: LayoutGrid, label: "ความสำคัญ" },
   kpi: { icon: BarChart3, label: "KPI" },

@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Boxes, Ruler, Package, CalendarRange } from "lucide-react";
+import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
@@ -76,7 +76,7 @@ export default function SahamitOverview() {
   }, [products]);
 
   const filterGroups = useMemo(() => [
-    { key: "cat", label: "ประเภทสินค้า", icon: Boxes, selected: cats, onChange: setCats,
+    { key: "cat", label: "ประเภทสินค้า", icon: Tags, selected: cats, onChange: setCats,
       options: catOpts.map((c) => ({ value: c, label: c })) },
     { key: "vol", label: "ปริมาตร", icon: Ruler, selected: vols, onChange: setVols,
       options: volOpts.map((v) => ({ value: String(v), label: `${v}${volUnitOf.get(String(v)) || ""}` })) },

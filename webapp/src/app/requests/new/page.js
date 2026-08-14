@@ -16,7 +16,7 @@
 // AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ ⇒ โมดัลในคิวถูกถอดออกพร้อมกับ PR นี้
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardList } from "lucide-react";
+import { MessageCircleQuestion } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentReadinessList } from "@/components/ui/DocumentControlPanel";
@@ -213,7 +213,7 @@ export default function NewRequestPage() {
 
   return (
     <Workspace
-      icon={<ClipboardList size={22} />}
+      icon={<MessageCircleQuestion size={22} />}
       title="เปิดคำร้อง"
       subtitle="คำร้องจะถูกสร้างเป็นร่างก่อน — เลขที่จะออกตอนกดส่ง"
       back={{ href: returnTo, label: "กลับ" }}

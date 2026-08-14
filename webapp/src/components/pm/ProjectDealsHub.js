@@ -7,7 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, FolderKanban, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, Handshake, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -520,9 +520,9 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       {/* ตารางดีล — เทียบข้ามใบได้ในจอเดียว กดขยายดูรายละเอียดทีละใบ */}
       <div className="glass-panel" style={{ padding: "16px 20px" }}>
         <div className={styles.tableHead}>
-          {/* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/dealIcon.test.mjs (เดิมอยู่บนการ์ด
+          {/* ไอคอนดีลตัวเดียวกับเมนูหลัก — ดู src/lib/entityIcon.test.mjs (เดิมอยู่บนการ์ด
               "ดีลในโครงการ" ของหน้าโครงการ ที่ถูกยุบมาเป็นตารางนี้) */}
-          <FolderKanban size={17} aria-hidden="true" />
+          <Handshake size={17} aria-hidden="true" />
           <h3>ดีลในโครงการ ({deals.length})</h3>
           {/* ชนิดของดีลที่โครงการนี้ผ่านมาแล้ว — เดิมเป็น hint ใต้ KPI ที่ถอดไป */}
           {(r?.byType || [])

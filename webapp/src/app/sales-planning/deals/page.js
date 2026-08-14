@@ -5,7 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ClipboardList, ExternalLink, FileText, FolderKanban, Layers, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -515,7 +515,7 @@ export default function SalesPlanningPipelinePage() {
       href: deal.projectId ? `/sa/projects/${deal.projectId}` : undefined, visible: !!deal.projectId,
     },
     {
-      id: "documents", label: "เอกสาร", icon: ClipboardList,
+      id: "documents", label: "เอกสาร", icon: FileText,
       visible: SALES_FEATURES.documents, onClick: () => openDocuments(deal),
     },
     {
@@ -737,7 +737,7 @@ export default function SalesPlanningPipelinePage() {
 
   return (
     <SaWorkspace
-      icon={<FolderKanban size={22} />}
+      icon={<Handshake size={22} />}
       title="บริหารงานขาย — ดีล"
       subtitle={dealsSubtitle}
       headerRight={headerRight}
@@ -777,7 +777,7 @@ export default function SalesPlanningPipelinePage() {
               </div>
 
               <SaMetricStrip>
-                <SaMetric icon={<FolderKanban />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
+                <SaMetric icon={<Handshake />} label="จำนวนดีลทั้งหมด" value={totalDeals} note="ตามขอบเขตและเดือนที่เลือก" />
                 <SaMetric icon={<Trophy />} label="ยอดไปป์ไลน์" value={fmtMoney(pipelineValue)} note="มูลค่าดีลที่กำลังดำเนินการ" tone="warning" />
                 <SaMetric icon={<CheckCircle2 />} label="ปิดสำเร็จ (Won)" value={wonDeals.length} note={wonValue > 0 ? fmtMoney(wonValue) : "ยังไม่มียอด Won"} tone="good" />
                 <SaMetric icon={<Ban />} label="ไม่ไปต่อ (Lost)" value={lostDeals.length} note="ดีลที่ปิดโดยไม่เกิดยอดขาย" tone={lostDeals.length ? "danger" : undefined} />
@@ -796,7 +796,7 @@ export default function SalesPlanningPipelinePage() {
             />
           )}
 
-          <SaSection icon={<FolderKanban size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
+          <SaSection icon={<Handshake size={17} />} title="ไปป์ไลน์ดีล" subtitle="ค้นหา กรอง และติดตามทุกดีลในกระบวนการขาย" actions={<span className="ui-badge">{filteredDeals.length} ดีล</span>}>
           <div className="toolbar">
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
@@ -807,12 +807,12 @@ export default function SalesPlanningPipelinePage() {
               onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); }}
               groups={[
                 {
-                  key: "stage", label: "สถานะ", icon: ClipboardList,
+                  key: "stage", label: "สถานะ", icon: Flag,
                   options: PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
                   selected: stageFilter, onChange: setStageFilter,
                 },
                 {
-                  key: "type", label: "ประเภทดีล", icon: FolderKanban,
+                  key: "type", label: "ประเภทดีล", icon: Handshake,
                   options: DEAL_TYPES.map((t) => ({ value: t, label: DEAL_TYPE_LABELS[t] })),
                   selected: typeFilter, onChange: setTypeFilter,
                 },
