@@ -22,7 +22,7 @@ import { fmtDate } from "@/lib/format";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
-  FileText, Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
+  Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
 } from "lucide-react";
 import Modal from "@/components/Modal";
 import {
@@ -318,7 +318,7 @@ export default function AttachmentsPanel({
           rel="noreferrer"
           className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
         >
-          <FileText size={14} className="shrink-0" />
+          <Paperclip size={14} className="shrink-0" />
           <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
           {!compact && it.sizeBytes != null && (
             <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
@@ -646,7 +646,7 @@ export default function AttachmentsPanel({
                 return (
                   <div key={it.id} className="flex items-start justify-between gap-3 border border-[var(--border)] rounded-lg px-3 py-2">
                     <div className="flex items-start gap-3 min-w-0">
-                      <FileText size={18} className="text-[var(--text-3)] shrink-0 mt-0.5" />
+                      <Paperclip size={18} className="text-[var(--text-3)] shrink-0 mt-0.5" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="status-pill text-[10px]">{attachmentTypeLabel(it.entityType, it.docType)}</span>

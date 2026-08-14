@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileCheck2, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -963,7 +963,7 @@ export default function SalesOrderDetailPage() {
                 </dl>
               </DetailCard>
   {order.revisionHistory?.length > 1 ? (
-                <DetailCard icon={FileText} eyebrow="REVISION HISTORY" title="ประวัติฉบับแก้ไข">
+                <DetailCard icon={FileClock} eyebrow="REVISION HISTORY" title="ประวัติฉบับแก้ไข">
                   <div className={styles.revisionList}>
                     {order.revisionHistory.map((revision) => (
                       <Link

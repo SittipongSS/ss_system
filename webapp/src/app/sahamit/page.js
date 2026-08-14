@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, LineChart, FileText, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
+import { LayoutDashboard, LineChart, ShoppingCart, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
@@ -122,7 +122,7 @@ export default function SahamitOverview() {
         <section>
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
             <KpiCard label={`FC ตามแผน (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.fcTotal)} tone="info" icon={LineChart} hint={latestRound ? `ล่าสุดรอบ #${latestRound}` : "ยังไม่มีรอบ"} onClick={() => router.push("/sahamit/forecast")} />
-            <KpiCard label={`PO สั่งจริง (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.poTotal)} tone="accent" icon={FileText} onClick={() => router.push("/sahamit/po")} />
+            <KpiCard label={`PO สั่งจริง (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.poTotal)} tone="accent" icon={ShoppingCart} onClick={() => router.push("/sahamit/po")} />
             <KpiCard label="ครอบคลุม (PO ÷ FC)" value={`${kpi.coveragePct}%`} tone={kpi.coveragePct >= 90 ? "success" : "warning"} icon={Target} />
             <KpiCard label="จุดที่ต้องตาม" value={kpi.alertCount} tone={kpi.alertCount ? "danger" : "success"} icon={AlertCircle} hint="รอ PO + PO ไม่ครบ + นอกแผน" onClick={() => router.push("/sahamit/reconcile")} />
           </div>

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
+  CalendarClock, FolderKanban, Handshake, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -677,7 +677,7 @@ export default function RequestDetailPage() {
         id: "pdr-document",
         label: "ออกเอกสาร",
         kind: "open",
-        icon: FileText,
+        icon: Printer,
         onClick: () => window.open(`/api/sa/requests/${id}/pdr-document`, "_blank"),
         visible: requestHasPdr(req.kind),
       },
@@ -845,7 +845,7 @@ export default function RequestDetailPage() {
      ที่ที่ปุ่มทุกปุ่มอยู่ · ย้ายลงคอลัมน์ซ้ายแล้วการ์ดขวาเริ่มที่บรรทัดเดียวกับเนื้อเรื่อง
      และความกว้างของบรรทัดลดลงเองตามคอลัมน์ (อ่านง่ายขึ้นด้วย) */
   const requestBodyBlock = (req.body || req.note) ? (
-    <DetailCard icon={FileText} title="รายละเอียดคำร้อง" className={styles.bodyCard}>
+    <DetailCard icon={MessageCircleQuestion} title="รายละเอียดคำร้อง" className={styles.bodyCard}>
       {/* ⭐ RichText ไม่ใช่ ReadableText: ผู้ใช้วาง URL หรือรหัสเอกสารในรายละเอียด
           ได้ (ฟอร์มบอกไว้ว่าได้) ถ้าเรนเดอร์เป็นข้อความเปล่าก็กดไม่ได้ = สัญญาที่
           ฟอร์มให้ไว้ไม่เป็นจริง */}

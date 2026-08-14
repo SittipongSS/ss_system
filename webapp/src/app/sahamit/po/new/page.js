@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import PoForm, { emptyPoHeader, rowsToLines } from "@/components/sahamit/PoForm";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -60,13 +60,13 @@ export default function PoCreatePage() {
   if (!canEdit) {
     return (
       <Workspace
-        icon={<FileText size={22} />}
+        icon={<ShoppingCart size={22} />}
         title="บันทึก PO ใหม่"
         subtitle="กำหนดรับ + สถานที่ส่ง = ทั้ง PO · รายการใส่แค่จำนวน (ลูกค้า AR-109)"
         back={{ href: "/sahamit/po", label: "Purchase Orders" }}
       >
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-          <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
+          <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์สร้าง PO</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
         </div>
@@ -76,7 +76,7 @@ export default function PoCreatePage() {
 
   return (
     <Workspace
-      icon={<FileText size={22} />}
+      icon={<ShoppingCart size={22} />}
       title="บันทึก PO ใหม่"
       subtitle="กำหนดรับ + สถานที่ส่ง = ทั้ง PO · รายการใส่แค่จำนวน (ลูกค้า AR-109)"
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}

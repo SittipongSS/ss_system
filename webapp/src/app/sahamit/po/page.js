@@ -4,7 +4,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
+import { ShoppingCart, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -177,7 +177,7 @@ export default function PoPage() {
 
   return (
     <Workspace
-      icon={<FileText size={22} />}
+      icon={<ShoppingCart size={22} />}
       title="Purchase Orders"
       subtitle="ติดตาม PO รายใบ · ขยายดูรายการ + สถานะผลิต/ส่ง (แก้วัสดุที่เมนู วัสดุ/Lead time)"
       headerRight={
@@ -203,7 +203,7 @@ export default function PoPage() {
         <Spinner />
       ) : error ? null : pos.length === 0 ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-          <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
+          <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ยังไม่มี PO</div>
           <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>เริ่มจากบันทึก PO ที่ลูกค้าส่งมา</div>
           {canEdit && (

@@ -4,7 +4,7 @@
 // เฉพาะหน่วยชิ้น (ค่าใน DB เป็นชิ้น — สลับเป็นลังจะทำให้เลขที่โหลดมาเปลี่ยนความหมาย)
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import PoForm, { emptyPoHeader, poToForm, rowsToLines } from "@/components/sahamit/PoForm";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -93,7 +93,7 @@ export default function PoEditPage() {
 
   const shell = (body) => (
     <Workspace
-      icon={<FileText size={22} />}
+      icon={<ShoppingCart size={22} />}
       title={po ? `แก้ไข PO ${po.poNumber}` : "แก้ไข PO"}
       subtitle="ฟอร์มเดียวกับตอนสร้าง · รายการที่เชื่อมดีล/ผูกวัสดุ/แบ่งส่ง/ส่งของแล้วจะถูกล็อก"
       back={{ href: `/sahamit/po/${id}`, label: "รายละเอียด PO" }}
@@ -105,7 +105,7 @@ export default function PoEditPage() {
   if (!canEdit) {
     return shell(
       <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-        <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
+        <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
         <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์แก้ PO</div>
         <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
       </div>,

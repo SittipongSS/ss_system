@@ -7,9 +7,8 @@ import {
   ArrowLeft, GanttChart, Handshake,
   ListTodo, Clock, Calendar,
   Edit2, Trash2,
-  Printer, User, FolderX,
+  Printer, User, FolderX, Paperclip,
   GitCommit, History, RotateCcw, ShieldCheck, ExternalLink,
-  FileText,
 } from "lucide-react";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import Modal from "@/components/Modal";
@@ -903,7 +902,7 @@ export default function ProjectDetailPage() {
           {/* ใช้ WorkspaceSection ของกลาง — inline style คือชั้นเก่าที่ ratchet
               audit:ui ห้ามเพิ่ม (เพดานลงได้อย่างเดียว) */}
           <SaSection
-            icon={<FileText size={17} />}
+            icon={<Paperclip size={17} />}
             title="ไฟล์เอกสารของโครงการ"
             subtitle="รวมจากทุกดีลในโครงการ — ไฟล์จากคำร้อง · ไฟล์แนบ · ฉบับที่ออกจริง · ของที่ยังรอ"
           >
