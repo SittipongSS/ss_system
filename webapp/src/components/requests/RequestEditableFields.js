@@ -98,7 +98,7 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
             "ธง/โหมดพิเศษ = สวิตช์") — ทรงเดียวกับธง ด่วน/สำคัญ ของโมดัลงาน
             ⚠️ ติ๊กแล้วมีช่องเหตุผลงอกข้างล่าง (บังคับ) — สวิตช์ทำให้ "ติดหรือไม่ติด"
             อ่านออกจากระยะไกลกว่ากล่องติ๊กเล็ก ๆ ซึ่งสำคัญกับธงที่มีผลต่อคิวของฝ่ายอื่น */}
-        <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+        <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
           <button
             type="button" className="ui-switch" disabled={disabled}
             data-on={value.urgent ? "1" : undefined} aria-pressed={!!value.urgent}

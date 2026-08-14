@@ -202,7 +202,32 @@
      ⚠️ audit:ui ล็อก **จำนวนค่าที่ต่างกัน** ไว้แล้ว — เพิ่มค่าใหม่ = ตก */
 
   /* Grid settings */
-  --ctl-h: 36px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
+  /* ⭐ 40px (มติผู้ใช้ 2026-08-14) — เดิม 36px แล้วผู้ใช้ทักจากภาพจริงว่า "ขอเพิ่ม
+     ความสูง มีปัญหาทั้งระบบ" · วัดที่ 36px: พื้นในกล่อง 34px ตัวอักษรกินหมึกจริง
+     16.97px (Sarabun 13px น้ำหนัก 600 ข้อความ `ทดสอบ_บันทึกการประชุม`) ⇒ ที่ว่าง
+     บน 10.0 / ล่าง 7.0 = ไทยที่มีสระล่างอยู่ชิดขอบล่างกว่าขอบบนเกือบเท่าตัว
+     ⚠️ ขึ้นได้ถึง 40 เท่านั้น — สูงกว่านี้ไปชน --ctl-h-touch (44px) จนกฎจอสัมผัส
+     ไม่เหลือความหมาย */
+  --ctl-h: 40px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
+  /* ⭐ **ดันตัวอักษรขึ้นให้กลางที่ "ตาเห็น" ไม่ใช่กลางที่เบราว์เซอร์คิด** (มติเดียวกัน)
+
+     เบราว์เซอร์จัดข้อความกลางกล่องตาม *กล่องฟอนต์* ที่ฟอนต์ประกาศไว้ ซึ่ง Sarabun
+     ที่ 13px = ขึ้น 14px / ลง 3px · แต่ไทยเขียนสระล่างกับขีดล่างเลยเส้นฐานลงไป
+     **4.49px** (วัดด้วย canvas actualBoundingBoxDescent) ⇒ หมึกจริงล้นกล่องฟอนต์
+     ด้านล่าง 1.5px ⇒ ทุกช่องทั้งระบบตัวอักษรนั่งต่ำกว่ากลาง 1.5px = ที่ว่างล่าง
+     น้อยกว่าบน 3px · เห็นชัดสุดกับ `_ ุ ู ญ ฎ ฏ ฤ`
+
+     ⚠️ **เพิ่มความสูงอย่างเดียวไม่แก้อาการนี้** — 40px ได้ บน 12 / ล่าง 9 คือเบี้ยว
+     3px เท่าเดิม แค่มีอากาศมากขึ้น · ต้องหั่นพื้นในกล่องด้านล่างออกเท่าส่วนที่ล้น
+     (padding-bottom 3px ⇒ กล่องบรรทัดถูกจัดกลางใหม่ในพื้นที่ที่เตี้ยลง 3px
+     = ตัวอักษรขยับขึ้น 1.5px พอดี ⇒ บน 8.5 / ล่าง 8.5)
+
+     🔴 ผูกกับ **ตัวพิมพ์ปัจจุบัน** เหมือน `--fw-semibold` ของ .premium-input —
+     เปลี่ยนฟอนต์เมื่อไรต้องวัด descent ใหม่ ไม่ใช่ค่าที่ใช้ได้กับทุกฟอนต์
+     ⚠️ ใช้กับ **ช่องที่คนอ่านข้อความไทยที่พิมพ์เอง** เท่านั้น (ดูบล็อกที่เรียกใช้)
+     ห้ามใส่ให้ `.btn` / `.btn-icon` — ในนั้นเป็นไอคอนที่ต้องกลางกล่องจริง ๆ
+     จะกลายเป็นไอคอนลอยสูงกว่ากลาง 1.5px แทน */
+  --ctl-text-sink: 3px;
   /* จอสัมผัส — นิ้วต้องการเป้าที่ใหญ่กว่าเมาส์ (เกณฑ์ ≥44px ของ WCAG 2.5.5 / HIG)
      ใช้ใน media query จอแคบ ซึ่งเป็นตัวแทนของ "น่าจะใช้นิ้ว" ที่ระบบนี้มีอยู่
      ⚠️ ตัวเลข 44 นี้เคยกระจายอยู่ 4 ที่แบบไม่มีชื่อ ปนกับ 38px ที่เป็น drift จริง ๆ
@@ -697,12 +722,14 @@ button, select, input, textarea {
   box-shadow: var(--shadow-lg);
   color: var(--text);
 }
-.date-calendar-header { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; margin-bottom: var(--space-2); }
+/* ปุ่มเดือนก่อน/ถัดไปเป็นปุ่มไอคอนจัตุรัส = ขนาดเดียวกับ control ทั้งระบบ (--ctl-h)
+   เดิมตรึง 36px ไว้ตอนที่ --ctl-h ยังเป็น 36px ⇒ ขยับโทเคนแล้วปฏิทินไม่ตาม */
+.date-calendar-header { display: grid; grid-template-columns: var(--ctl-h) 1fr var(--ctl-h); align-items: center; margin-bottom: var(--space-2); }
 .date-calendar-header strong { text-align: center; font-size: var(--fs-8); }
 .date-calendar-header button,
 .date-calendar-grid button,
 .date-calendar-footer button { border: 0; background: transparent; color: inherit; cursor: pointer; }
-.date-calendar-header button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--radius); }
+.date-calendar-header button { width: var(--ctl-h); height: var(--ctl-h); display: grid; place-items: center; border-radius: var(--radius); }
 .date-calendar-header button:hover { background: var(--panel-2); }
 .date-calendar-weekdays,
 .date-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -975,7 +1002,9 @@ button, select, input, textarea {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
-  height: 36px;
+  /* control บนแถบบน = สูงเท่าที่ระบบประกาศไว้ (เดิมตรึง 36px ตอนที่ --ctl-h เป็น 36px
+     แล้วขยับโทเคนก็ไม่ตาม ⇒ pill เตี้ยกว่ากระดิ่ง/ปุ่มตั้งค่าที่อยู่แถวเดียวกัน) */
+  height: var(--ctl-h);
   padding: 0 13px;
   border-radius: var(--radius-md);
   /* T2 (มติ 2026-07-18): pill เงียบ — ตัดขอบขาวออก เหลือพื้นจางอย่างเดียว
@@ -1157,7 +1186,7 @@ button, select, input, textarea {
 }
 
 .topnav-global-action {
-  min-height: 36px;
+  min-height: var(--ctl-h);   /* เดิม 36px ดิบ — ดูเหตุผลเดียวกันที่ .topnav-sys-btn */
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1221,8 +1250,9 @@ button, select, input, textarea {
      ถ้าวันหน้ามีคนถอด div นั้นออก กระดิ่งจะหายจากมือถืออีกรอบแบบเงียบ ๆ */
   .topbar-actions .topnav-settings-link,
   .topbar-actions .account-menu { display: none; }
-  /* กระดิ่งเดิมสูง 36px (ขนาดเดสก์ท็อป) — บนมือถือต้องเท่าปุ่ม `…` ที่อยู่ติดกัน
-     ไม่งั้นเป้ากดเล็กกว่าเพื่อนบ้านทั้งที่อยู่คู่กัน */
+  /* กระดิ่งบนมือถือต้องเท่าปุ่ม `…` ที่อยู่ติดกัน (40×40) ไม่งั้นเป้ากดเล็กกว่า
+     เพื่อนบ้านทั้งที่อยู่คู่กัน · ตอนนี้ --ctl-h = 40px เท่ากันพอดี กฎนี้จึงเหลือผล
+     แค่ min-width — คงไว้เพราะถ้าโทเคนขยับอีก ความกว้างต้องยังเท่า `…` */
   .topbar-actions .topnav-global-action { min-height: 40px; min-width: 40px; }
   .mobile-top-more {
     order: 2;
@@ -2862,10 +2892,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ⚠️ เดิมสูง 32px + padding 10px ขณะที่ `--ctl-h` (มาตรฐานที่ประกาศไว้เองว่าเป็น
-   "ความสูงของตัวควบคุมบนแถบเครื่องมือ") = 36px และ `.btn`/`.ui-select` ใช้ 36px จริง
+   "ความสูงของตัวควบคุมบนแถบเครื่องมือ") สูงกว่านั้น และ `.btn`/`.ui-select` ใช้ค่านั้นจริง
    ผลคือ **ช่องกรอกเตี้ยกว่าปุ่มข้าง ๆ 4px** และตัวหนังสือชิดเส้นกรอบกว่าปุ่ม 3px
    (ผู้ใช้ทักจากภาพจริง 2026-07-29 · วัดในเบราว์เซอร์ยืนยันแล้ว)
-   ค่า 32px มาจากตอนที่ --ctl-h ยังเป็น 32px แล้วไม่ได้ตามไปแก้ */
+   ค่า 32px มาจากตอนที่ --ctl-h ยังเป็น 32px แล้วไม่ได้ตามไปแก้
+   ⚠️ ห้ามเขียนตัวเลขความสูงลงที่นี่อีก — มาจาก `--ctl-h` ที่เดียว (ตอนนี้ 40px)
+   และ padding ล่างมาจาก `--ctl-text-sink` ในบล็อกท้ายไฟล์ที่รวมช่องทุกชนิดไว้ */
 .premium-input {
   border: 1px solid var(--border);
   background: var(--bg);
@@ -4029,6 +4061,25 @@ button.empty-state { width: 100%; font: inherit; }
   border-radius: var(--radius);
   font-size: var(--fs-7);
   color: var(--text);
+}
+
+/* ⭐ **ช่องที่คนอ่านข้อความไทยบรรทัดเดียว — ตัวอักษรต้องกลางที่ตาเห็น**
+   เหตุผลและตัวเลขที่วัดมาอยู่ที่ `--ctl-text-sink` (บล็อกโทเคน) · มติ 2026-08-14
+
+   ⚠️ **ต้องอยู่หลังทุกกฎที่ประกาศ `padding` ของสี่ตัวนี้** — `.premium-input`
+   (แบบย่อ `padding: 0 var(--space-3)`) · `.premium-select` · `.ui-select` ·
+   `.deal-derived` ล้วนเขียน padding แบบย่อซึ่งจะล้าง padding-bottom ทิ้ง
+   ถ้ากฎนี้ไปอยู่ก่อนหน้า specificity เท่ากัน ⇒ ตัวที่อยู่ทีหลังชนะ
+
+   ⚠️ `:not(textarea)` ไม่ใช่ของประดับ — `textarea.premium-input` ตั้ง padding
+   แนวตั้ง 8px ของตัวเองไว้ (พื้นที่หลายบรรทัด สระล่างของบรรทัดสุดท้ายไม่ได้อยู่
+   ชิดขอบอยู่แล้ว) กฎนี้อยู่ทีหลังจึงจะทับมันเหลือ 3px ถ้าไม่กัน
+   ⚠️ ปุ่ม (`.btn` / `.btn-icon`) ไม่อยู่ในชุดนี้โดยเจตนา — ดูเหตุผลที่โทเคน */
+.premium-input:not(textarea),
+.premium-select,
+.ui-select,
+.deal-derived {
+  padding-bottom: var(--ctl-text-sink);
 }
 
 /* แถบรหัสที่ระบบประกอบให้ (CodeStrip) — มติผู้ใช้ 2026-08-12 "แบบ A"

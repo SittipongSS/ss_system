@@ -145,7 +145,7 @@ function TickAndWrite({ label, value, onChange, disabled, max }) {
   const on = value != null && value !== "";
   return (
     <div className="form-group">
-      <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+      <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
         <button
           type="button" className="ui-switch" disabled={disabled}
           data-on={on ? "1" : undefined} aria-pressed={on}
@@ -261,7 +261,7 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
               const on = !!row[kind.onField];
               return (
                 <div className="form-group" key={kind.key}>
-                  <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+                  <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
                     <button
                       type="button" className="ui-switch" disabled={disabled}
                       data-on={on ? "1" : undefined} aria-pressed={on}
@@ -816,7 +816,7 @@ export default function PdrForm({
                 ซึ่งกติกาคอนโทรล v2 บอกให้ใช้สวิตช์ · และเปิดแล้ว **บังคับแนบไฟล์**
                 ⚠️ ค่าที่เก็บยังเป็น 'has'/'none' เหมือนเดิม — เอกสารกับจอสรุปอ่าน
                 ค่าเดิมอยู่ ห้ามเปลี่ยนเป็น boolean เพราะแถวเก่าจะอ่านไม่ออก */}
-            <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+            <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
               <button
                 type="button" className="ui-switch" disabled={disabled}
                 data-on={value.packagingArtwork === "has" ? "1" : undefined}
