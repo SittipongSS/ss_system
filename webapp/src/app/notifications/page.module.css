@@ -67,7 +67,7 @@ a.link:hover { background: var(--panel-2); }
   color: var(--text);
   font-size: var(--fs-6);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .body {

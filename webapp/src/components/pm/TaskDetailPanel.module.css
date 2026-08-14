@@ -42,7 +42,7 @@
 .value {
   margin: 0;
   font-size: var(--fs-3);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
   color: var(--text);
   word-break: break-word;
 }

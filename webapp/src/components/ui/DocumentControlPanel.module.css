@@ -31,7 +31,7 @@
   font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .summaryRows {
