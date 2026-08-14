@@ -2571,7 +2571,10 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: var(--space-2);
   min-height: 40px;
-  padding: 3px 7px 3px var(--space-1);
+  /* บน/ล่างยุบจาก 3px เหลือ 2px — สองบรรทัดในพิลสูงขึ้น 5.7px จากการเลิกใช้
+     `--lh-tight` ⇒ 33.3 + 6 + ขอบ 2 = 41.3px คือ **สูงเกินกระดิ่งข้าง ๆ 1.3px**
+     (min-height เอาไม่อยู่เพราะเนื้อในดันเอง) · 2px ⇒ 39.3px ⇒ min-height คุมได้ = 40px เป๊ะ */
+  padding: var(--space-0-5) 7px var(--space-0-5) var(--space-1);
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: transparent;
@@ -2601,13 +2604,24 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--fs-3);
   font-weight: var(--fw-bold);
 }
+/* ⚠️ **`--lh-tight` (1.2) แคบกว่าหมึกไทย** — บรรทัดล่าง (`--fs-2` = 10.5px) ได้กล่อง
+   บรรทัด 12.6px ขณะที่ตัวอักษรไทยกินหมึกจริง ~13.7px (1.31em) ⇒ ล้น 1.1px แล้วโดน
+   `overflow: hidden` ของสองบรรทัดข้างล่างตัดทิ้ง ⇒ **สระล่างของ "ผู้ดูแลระบบ" ขาด**
+   (ผู้ใช้ส่งภาพมา 2026-08-14 · ชื่อภาษาอังกฤษไม่เห็นอาการ เพราะละตินไม่มีสระล่าง)
+
+   `--lh-thai` (1.45) คือขั้นต่ำที่ประกาศไว้เองสำหรับกล่องที่ห่อข้อความไทยแน่น ๆ
+   ⚠️ เกณฑ์จริงคือ **≥ 1.31** (17px ที่ 13px) — `--lh-flat`/`--lh-tight` ต่ำกว่านั้นทั้งคู่
+   ห้ามใช้กับข้อความไทยที่มี `overflow: hidden`
+
+   วัดแล้วแถบบนไม่สูงขึ้น: สองบรรทัดรวม 33.3px ยังต่ำกว่าพื้นในของ `.account-menu-trigger`
+   (40px − padding 6px = 34px) ⇒ `--topbar-h` 52px เท่าเดิม */
 .account-menu-identity {
   display: flex;
   min-width: 0;
   max-width: 220px;
   flex-direction: column;
   align-items: flex-start;
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 .account-menu-identity .user-name {
   max-width: 100%;
