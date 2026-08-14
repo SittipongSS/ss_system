@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  Building2, CalendarDays, CircleDollarSign, ClipboardList,
+  Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
   ExternalLink, FileCheck2, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
@@ -853,7 +853,7 @@ export default function SalesOrderDetailPage() {
             </RelatedDocumentCard>
           </>}
         >
-          <DetailCard icon={ClipboardList} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
+          <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
               summaryRows={[

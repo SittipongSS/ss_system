@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Plus, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Package, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
@@ -724,7 +724,7 @@ export default function QuotationEditorPage() {
               { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : "-" },
               { icon: CalendarDays, label: "ยืนราคาถึง", value: form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ" },
               { icon: CircleDollarSign, label: "ภาษี", value: form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว" },
-              { icon: ClipboardList, label: "รายการ", value: `${lines.length} รายการ` },
+              { icon: Package, label: "รายการ", value: `${lines.length} รายการ` },
             ]}
           >
             <span>ประเภทดีล: {dealType} · {DEAL_TYPE_LABELS[dealType]}</span>
@@ -810,7 +810,7 @@ export default function QuotationEditorPage() {
           {/* รายการ */}
           <section className={styles.card}>
             <div className={styles.sectionHeading}>
-              <ClipboardList size={17} aria-hidden="true" />
+              <Package size={17} aria-hidden="true" />
               <h2>รายการสินค้า/บริการ</h2>
               {editable && (
                 <div className={styles.lineActions}>

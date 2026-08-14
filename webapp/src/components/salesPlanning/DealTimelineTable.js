@@ -10,7 +10,7 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Calendar, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, MessageCircleQuestion, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -83,7 +83,7 @@ function StepPin({ pin }) {
       <StatusBadge
         size="sm"
         tone={pin.open ? "warning" : "neutral"}
-        icon={ClipboardList}
+        icon={MessageCircleQuestion}
         label={pin.open ? `คำร้องค้าง ${pin.open}` : `คำร้อง ${pin.total}`}
       />
     </Link>

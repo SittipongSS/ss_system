@@ -9,7 +9,7 @@
 // ⚠️ ทุกตัวเลขต้องกดต่อไปหางานได้ — ตัวเลขที่กดไม่ได้คือตัวเลขที่ไม่มีใครดูรอบสอง
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarRange, Factory, Gauge, LayoutDashboard, ListChecks, PlayCircle } from "lucide-react";
+import { AlertTriangle, CalendarRange, Factory, Gauge, Hammer, LayoutDashboard, ListChecks, PlayCircle } from "lucide-react";
 import ActionQueue from "@/components/ui/ActionQueue";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -157,7 +157,7 @@ export default function ProductionOverviewPage() {
             <KpiCard
               label="งานร่างรอวางคิว"
               value={counts.draft}
-              icon={Factory}
+              icon={Hammer}
               tone={counts.draft > 0 ? "warning" : "neutral"}
               hint="สร้างจากใบสั่งขายที่อนุมัติแล้ว"
               onClick={() => router.push("/production/jobs")}

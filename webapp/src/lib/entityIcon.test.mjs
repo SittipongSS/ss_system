@@ -119,3 +119,120 @@ test('ตัวสลับมุมมองไม่ยืมไอคอน�
   assert.doesNotMatch(read('src/components/ui/ViewSwitcher.js'), new RegExp(`\\b${projectIcon()}\\b`),
     'ViewSwitcher ต้องไม่ใช้ไอคอนโครงการกับมุมมองบอร์ด');
 });
+
+// ── entity ที่เหลือ: ใบสั่งขาย · คำร้อง · สินค้า · วัสดุ (2026-08-14 รอบสอง) ───
+//
+// รอบเดียวกันตรวจเจอไอคอนอีกสองตัวที่ถูกใช้แทนหลายความหมายพร้อมกัน:
+//   ClipboardList — ใบสั่งขาย + คำร้อง + คิวคำร้อง R&D + คิวงานผลิต + หัวข้อ
+//                   "รายการสินค้า" ในใบเสนอราคา/ใบสั่งขาย + การ์ดควบคุมเอกสาร
+//   Boxes         — ทะเบียนวัสดุ + "สินค้า" ในหน้าลูกค้า/ขอราคาผลิต + ตัวกรอง
+//                   ประเภทสินค้าของสหมิตร ทั้งที่สินค้ามี Package เป็นของตัวเองอยู่แล้ว
+//
+// มติ: ClipboardList = ใบสั่งขาย · คำร้อง = MessageCircleQuestion (ตัวที่หน้างาน PM
+// ใช้อยู่ก่อนแล้ว) · คิวงานผลิต = Hammer · บรรทัดสินค้าในเอกสาร = Package (สินค้า
+// ก็คือสินค้า ไม่ว่าจะอยู่ในทะเบียนหรือในเอกสาร) · Boxes = วัสดุเท่านั้น
+const ENTITIES = [
+  {
+    name: 'ใบสั่งขาย',
+    nav: '/sa/sales-orders',
+    surfaces: [
+      'src/app/sales-planning/sales-orders/page.js',
+      'src/app/sales-planning/sales-orders/[id]/page.js',
+      'src/app/sales-planning/quotations/[id]/page.js',   // การ์ดเอกสารปลายทาง
+    ],
+  },
+  {
+    name: 'คำร้อง',
+    nav: '/requests',
+    surfaces: [
+      'src/app/requests/page.js',
+      'src/app/requests/new/page.js',
+      'src/components/requests/RequestQueuePanel.js',
+      'src/components/salesPlanning/DealTimelineTable.js', // ป้าย "คำร้องค้าง" บนไทม์ไลน์ดีล
+    ],
+    // ไฟล์ที่พูดถึงคำร้องอย่างเดียว ห้ามมีไอคอนของ entity เหล่านี้ปน
+    forbid: ['/sa/sales-orders'],
+    only: [
+      'src/app/requests/page.js',
+      'src/app/requests/new/page.js',
+      'src/components/requests/RequestQueuePanel.js',
+    ],
+  },
+  {
+    name: 'สินค้า',
+    nav: '/database/products',
+    surfaces: [
+      'src/app/database/products/page.js',
+      'src/app/database/products/[id]/page.js',
+      'src/app/database/customers/[id]/page.js',           // facts "สินค้า"
+      'src/app/sa/costing/[id]/page.js',                   // facts "สินค้า"
+      'src/app/sales-planning/quotations/new/page.js',     // หัวข้อ "รายการสินค้า/บริการ"
+      'src/app/sales-planning/quotations/[id]/page.js',
+      'src/app/sales-planning/sales-orders/[id]/page.js',  // การ์ด ORDER LINES
+    ],
+    forbid: ['/database/materials'],
+  },
+  {
+    name: 'วัสดุ',
+    nav: '/database/materials',
+    surfaces: [
+      'src/app/database/materials/page.js',
+      'src/components/materials/MaterialRegistryPanel.js',
+      'src/app/sahamit/material/page.js',                  // "วัสดุ / Lead time" ของสหมิตร
+    ],
+  },
+  {
+    name: 'งานผลิต',
+    nav: '/production/jobs',
+    surfaces: [
+      'src/app/production/jobs/page.js',
+      'src/app/production/page.js',                        // KPI "งานร่างรอวางคิว"
+    ],
+    // ไลน์ผลิตเป็นคนละของกับตัวงาน — หน้าคิวงานเคยใช้ไอคอนไลน์ (Factory) ทั้งใบ
+    // (หน้าภาพรวมผลิตพูดถึงทั้งงานและไลน์ จึงไม่อยู่ใน only)
+    forbid: ['/production/lines'],
+    only: ['src/app/production/jobs/page.js'],
+  },
+];
+
+test('ทุก entity ในตาราง ใช้ไอคอนเดียวกับเมนูของตัวเองทุกหน้า', () => {
+  for (const entity of ENTITIES) {
+    const icon = navIcon(entity.nav);
+    for (const rel of entity.surfaces) {
+      assert.match(read(rel), new RegExp(`\\b${icon}\\b`),
+        `${rel} พูดถึง "${entity.name}" จึงต้องใช้ ${icon}`);
+    }
+  }
+});
+
+test('ไอคอนของ entity ไม่ซ้ำกันข้าม entity', () => {
+  const used = new Map();
+  for (const nav of ['/sa/deals', '/sa/projects', ...ENTITIES.map((e) => e.nav)]) {
+    const icon = navIcon(nav);
+    assert.ok(!used.has(icon), `${nav} ใช้ ${icon} ซ้ำกับ ${used.get(icon)} — คนละของกันต้องคนละรูป`);
+    used.set(icon, nav);
+  }
+});
+
+/* `only` = ไฟล์ที่พูดถึง entity นั้นล้วน ๆ จึงห้ามมีไอคอนของ entity ที่อยู่ใน `forbid`
+   ปน · ไฟล์ที่พูดถึงหลาย entity จริง ๆ (หน้าภาพรวมผลิตที่มีทั้งงานและไลน์ · ไทม์ไลน์
+   ดีลที่มีป้ายคำร้อง) ไม่ต้องใส่ — มันควรมีหลายไอคอนอยู่แล้ว */
+test('ไฟล์ของ entity หนึ่ง ไม่มีไอคอนของ entity อื่นปน', () => {
+  for (const entity of ENTITIES) {
+    for (const nav of entity.forbid || []) {
+      const icon = navIcon(nav);
+      for (const rel of entity.only || entity.surfaces) {
+        assert.doesNotMatch(read(rel), new RegExp(`\\b${icon}\\b`),
+          `${rel} พูดถึง "${entity.name}" แต่ใช้ ${icon} ซึ่งเป็นไอคอนของ ${nav}`);
+      }
+    }
+  }
+});
+
+// เมนู "คิวคำร้อง" ของ R&D คือคำร้องกองเดียวกับเมนู "คำร้อง" ของฝ่ายขาย — คนละหน้า
+// แต่ของสิ่งเดียวกัน จึงต้องเป็นไอคอนเดียวกัน ส่วนคิวงานผลิตเป็นคนละเรื่อง
+test('คิวคำร้อง R&D ใช้ไอคอนเดียวกับคำร้อง และคิวงานผลิตไม่ยืมไปใช้', () => {
+  assert.equal(navIcon('/rd/requests'), navIcon('/requests'));
+  assert.notEqual(navIcon('/production/jobs'), navIcon('/requests'));
+  assert.notEqual(navIcon('/production/jobs'), navIcon('/sa/sales-orders'));
+});

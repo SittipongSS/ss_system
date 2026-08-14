@@ -5,7 +5,7 @@
 // ⭐ ตัวเชื่อมที่สำคัญที่สุด: คอลัมน์ "ของครบ?" มาจาก `productionReadiness()` ของ
 //    ของเข้า PM/RM ที่ PC กรอกไว้แล้ว — โมดูลนี้เป็นปลายทางของข้อมูลชิ้นนั้น
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Factory, Plus } from "lucide-react";
+import { AlertTriangle, Hammer, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -100,7 +100,7 @@ export default function ProductionJobsPage() {
 
   return (
     <Workspace
-      icon={<Factory size={20} aria-hidden="true" />}
+      icon={<Hammer size={20} aria-hidden="true" />}
       title="คิวงานผลิต"
       subtitle="งานที่ต้องผลิต เรียงตามกำหนดส่ง · บอกด้วยว่าของครบพร้อมผลิตหรือยัง"
       headerRight={canEdit ? (
@@ -127,7 +127,7 @@ export default function ProductionJobsPage() {
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
       {loading ? <SkeletonRows rows={5} /> : loadError ? null : visibleJobs.length === 0 ? (
-        <EmptyState icon={Factory}>
+        <EmptyState icon={Hammer}>
           ยังไม่มีงานผลิตในคิว — งานร่างจะถูกสร้างให้เองเมื่อมีใบสั่งขายที่อนุมัติแล้ว
         </EmptyState>
       ) : (

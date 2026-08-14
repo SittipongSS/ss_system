@@ -23,7 +23,7 @@ import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
 import RequestRows from "./RequestRows";
-import { ClipboardList } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
@@ -98,7 +98,7 @@ export default function ScentDevDetail({
           IS-26080021 "ตารางกับไฟล์ ดีไซน์ไม่เหมือนอันอื่นเลย") — การ์ดอื่นทุกใบบนหน้านี้
           มีหัวไอคอน+ชื่อ+เส้นคั่นชุดเดียวกัน ส่วนตารางเคยมีหัวเป็นตัวหนาลอย ๆ
           ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
-      <DetailCard icon={ClipboardList} title="สรุปทั้งใบ">
+      <DetailCard icon={ListChecks} title="สรุปทั้งใบ">
       <BriefBoard
             groups={board}
             renderStep={rowStep ? (d) => {

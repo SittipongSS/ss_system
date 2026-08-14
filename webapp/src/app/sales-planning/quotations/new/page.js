@@ -8,7 +8,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CircleDollarSign, ClipboardList, ExternalLink, FileText, Plus, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CircleDollarSign, ExternalLink, FileText, Package, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
@@ -385,7 +385,7 @@ function NewQuotationInner() {
               { key: "quote-date", icon: CalendarDays, label: "วันที่ออกใบ", value: fmtDate(quoteDate) },
               { key: "valid-until", icon: CalendarDays, label: "ยืนราคาถึง", value: validUntil ? fmtDate(validUntil) : "-" },
               { key: "tax", icon: CircleDollarSign, label: "ภาษี", value: vatRate > 0 ? `+ VAT ${vatRate}%` : "รวม VAT แล้ว" },
-              { key: "items", icon: ClipboardList, label: "รายการ", value: `${lines.length} รายการ` },
+              { key: "items", icon: Package, label: "รายการ", value: `${lines.length} รายการ` },
             ]}
           />
 
@@ -466,7 +466,7 @@ function NewQuotationInner() {
           </section>
 
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><ClipboardList size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
+            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
             <QuotationLineItems
               lines={lines}
               onChange={setLines}

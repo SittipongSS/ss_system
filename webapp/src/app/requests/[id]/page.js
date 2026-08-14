@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, ClipboardList, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
+  CalendarClock, FileText, FolderKanban, Handshake, Paperclip, Pencil, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -818,7 +818,7 @@ export default function RequestDetailPage() {
   // สลับกันใช้ช่องเดียว ⇒ ใบที่มีบรรทัดไม่เคยโชว์ลูกค้าเลย (IS-26080003)
   // ⚠️ ไอคอนอยู่ที่นี่ ไม่ใช่ในไลบรารี — ไลบรารีต้องไม่ import component ของ React
   // (เทสต์รันด้วย node เปล่า) · คีย์ที่ไม่มีไอคอนไม่ต้องประกาศ
-  const FACT_ICONS = { submitted: ClipboardList };
+  const FACT_ICONS = { submitted: CalendarClock };
   const headerFacts = requestHeaderFacts(req, { hasItems, progress })
     .map((fact) => ({ ...fact, icon: FACT_ICONS[fact.key] }));
 

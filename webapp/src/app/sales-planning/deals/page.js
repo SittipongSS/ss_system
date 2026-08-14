@@ -5,7 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Layers, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -515,7 +515,7 @@ export default function SalesPlanningPipelinePage() {
       href: deal.projectId ? `/sa/projects/${deal.projectId}` : undefined, visible: !!deal.projectId,
     },
     {
-      id: "documents", label: "เอกสาร", icon: ClipboardList,
+      id: "documents", label: "เอกสาร", icon: FileText,
       visible: SALES_FEATURES.documents, onClick: () => openDocuments(deal),
     },
     {
@@ -807,7 +807,7 @@ export default function SalesPlanningPipelinePage() {
               onClear={() => { setStageFilter([]); setTypeFilter([]); setDueFilter([]); setReviewFilter([]); }}
               groups={[
                 {
-                  key: "stage", label: "สถานะ", icon: ClipboardList,
+                  key: "stage", label: "สถานะ", icon: Flag,
                   options: PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
                   selected: stageFilter, onChange: setStageFilter,
                 },

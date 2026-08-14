@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ClipboardList, FileText } from "lucide-react";
+import { CheckCircle2, FileCheck2, FileText } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { normalizeDocumentControlActions } from "@/lib/documentControlModel";
@@ -149,7 +149,7 @@ export function DocumentControlCard({
   const hasActions = actions.primaryAction || actions.secondaryActions.length || actions.dangerActions.length;
 
   return (
-    <DetailCard icon={ClipboardList} eyebrow={eyebrow} title={title} meta={statusDescription} className={className}>
+    <DetailCard icon={FileCheck2} eyebrow={eyebrow} title={title} meta={statusDescription} className={className}>
       {status ? (
         <div className={styles.controlStatus}>
           <span className={styles.statusDot} style={{ "--state-color": statusColor }} />
