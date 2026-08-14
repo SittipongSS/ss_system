@@ -7,7 +7,7 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { normalizeProjectType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
-import { resolveProjectAcOwner, resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +46,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // เพราะ `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
   const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, owner?.team ?? user.team);
   if (!coordinator.ok) return badRequest(coordinator.error);
+  // ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ · ชื่อไหลไปขึ้นใบเสนอราคาต่อ
+  // (quotations/new อ่าน project.aeSupervisor) และ id คือปลายทางแจ้งเตือน
+  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId);
+  if (!supervisor.ok) return badRequest(supervisor.error);
 
   const startDate = body.startDate || todayStr();
   const dueDate = body.dueDate || null;
@@ -94,8 +98,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     productCode: '',
     orderQty: '',
     productionQty: '',
-    aeSupervisor: body.aeSupervisor || '',
-    keyAccountExec: '',
+    // ชื่อผู้ตรวจสอบมาจาก server คู่กับ id เสมอ (mig 0256) — ไม่รับชื่อลอย ๆ จาก client
+    aeSupervisor: supervisor.aeSupervisor || '',
+    aeSupervisorId: supervisor.aeSupervisorId,
     customerEmail,
     preparedBy: body.preparedBy || user.name || '',
     reviewedBy: '',
