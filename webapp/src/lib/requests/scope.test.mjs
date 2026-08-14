@@ -56,3 +56,17 @@ test('ชุดขอบเขตตรงกับที่ตัวสลั�
   // ซึ่งเป็นสิ่งที่พังจริงถ้ามันเลื่อนออกจากกัน (ป้ายหายไปตัวหนึ่ง = คีย์ดิบบนจอ)
   assert.deepEqual(REQUEST_SCOPES, ['mine', 'team', 'all']);
 });
+
+/* ── ใบที่คนไม่มีทีมเปิด ต้องเข้าคิวของทีมที่ต้องตามงาน ───────────────────────
+   คิวทีมกรองด้วยคอลัมน์ `team` ของแถว ⇒ ใบที่ admin/หัวหน้าฝ่ายขาย/RD/PC เปิด
+   เคยได้ team = null (attributionTeam คืน null ให้คนที่ไม่สังกัดทีมไหนเลย) แล้ว
+   ไม่โผล่ในคิวทีมไหนเลย ทั้งที่ส่วนใหญ่เปิดคาดีลของทีมใดทีมหนึ่งอยู่ —
+   ถอยไปใช้ทีมของดีลต้นทาง (กติกาเดียวกับโครงการ: ขอบเขตเดินตามงาน ไม่ใช่ตามคนกด) */
+test('POST คำร้อง: ไม่มีทีมของตัวเอง → ใช้ทีมของดีลต้นทาง', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../app/api/sa/requests/route.js', import.meta.url), 'utf8');
+  assert.match(src, /team: attributionTeam\(user, body\.team\) \|\| dealTeam/);
+  // ทีมของดีลต้องถูกอ่านมาจริง ไม่ใช่ค้างเป็น null ตลอด
+  assert.match(src, /\.select\('id, projectId, customerId, customerName, team'\)/);
+  assert.match(src, /dealTeam = dealRow\.team \|\| null/);
+});
