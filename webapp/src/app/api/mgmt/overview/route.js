@@ -2,6 +2,7 @@ import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 import { listTasks, listDepartments } from '@/lib/mgmt/repo';
 import { statusCounts, completionPercent, isOpenStatus } from '@/lib/mgmt/constants';
+import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // ความคืบหน้ารายแผนก: done / (ไม่นับ cancelled) ต่อ deptCode.
     const byDept = {};
     for (const t of tasks) {
-      const code = t.deptCode || '—';
+      const code = naText(t.deptCode);
       (byDept[code] ||= { code, total: 0, done: 0 });
       if (t.status === 'cancelled') continue;
       byDept[code].total += 1;

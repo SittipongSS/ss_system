@@ -23,6 +23,7 @@ import { VISIT_SCOPES, VISIT_SCOPE_LABELS, groupVisits, openCount } from "@/lib/
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { naText } from "@/lib/format";
 
 const SECTIONS = [
   { key: "overdue", title: "ค้างอยู่", tone: "danger" },
@@ -148,8 +149,8 @@ export default function MyVisitsPage() {
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
                     <p className={styles.meta}>
-                      {[site?.zone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
-                        .filter(Boolean).join(" · ") || "—"}
+                      {naText([site?.zone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
+                        .filter(Boolean).join(" · "))}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}
                     {/* ทั้งทีม: ต้องรู้ว่านัดนี้เป็นของใคร ไม่งั้นไปทับงานคนอื่น */}

@@ -37,7 +37,7 @@ import { isExciseCategory } from "@/lib/master/categoryOf";
 import { getComputedStatus, projectDateRange, statusDotColor } from "@/lib/pm/derived";
 import { PROJECT_CLOSE_STATUS_LABELS, PROJECT_CLOSE_TYPE_LABELS } from "@/lib/pm/projectClose";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText, NA } from "@/lib/format";
 import { isWonStage } from "@/lib/salesPlanning";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
@@ -435,7 +435,7 @@ export default function ProjectDetailPage() {
     let taskInPhase = 0;
     
     return tasks.map(task => {
-      const p = task.phase || "—";
+      const p = naText(task.phase);
       if (p !== currentPhase) {
         currentPhase = p;
         phaseNum++;
@@ -462,7 +462,7 @@ export default function ProjectDetailPage() {
   const p = data;
   // โครงการกำพร้า (ไม่มีดีล) ไม่มีอะไรให้ดูในภาพรวม — เข้าไทม์ไลน์ตรงเหมือนเดิม
   const showTimeline = tab === "timeline";
-  const projectBrand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand) || "-";
+  const projectBrand = naText(brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand));
   // "รหัส · ชื่อ" (มติผู้ใช้ 2026-08-12 — รายละเอียดทุก entity ขึ้นรหัสนำ)
   const projectBaseTitle = p.name && projectBrand !== "-" && !p.name.includes("/") ? `${p.name} / ${projectBrand}` : (p.name || "โครงการ");
   const projectTitle = p.code ? `${p.code} · ${projectBaseTitle}` : projectBaseTitle;
@@ -664,8 +664,8 @@ export default function ProjectDetailPage() {
           {/* ลิงก์ลูกค้ามาอยู่ตรงนี้แทนการ์ด "ลูกค้าของโครงการ" ที่ถอดออก (มติ 2026-08-05)
               — การ์ดใบนั้นพูดเรื่องเดียวกับบรรทัดนี้และแถบ facts ด้านล่างทั้งใบ */}
           <span>ลูกค้า: {p.customerId
-            ? <Link href={`/database/customers/${p.customerId}`} className="linklike">{p.customerName || "-"}</Link>
-            : (p.customerName || "-")}</span>
+            ? <Link href={`/database/customers/${p.customerId}`} className="linklike">{naText(p.customerName)}</Link>
+            : (naText(p.customerName))}</span>
           <span>แบรนด์: {projectBrand}</span>
           {p.productMainCategory ? <span>หมวดสินค้า: {`${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}`}</span> : null}
         </>}
@@ -683,14 +683,14 @@ export default function ProjectDetailPage() {
            (projectDateRange — โครงการหลายดีลเคยโชว์วันของดีลใบแรกค้างไว้)
            "กำหนดส่ง" คือเป้าที่คนตั้ง คนละตัวกับวันจบตามแผน จึงแยกบรรทัด */
         facts={[
-          { icon: Calendar, label: "วันเริ่ม", value: dateRange.start || "-" },
+          { icon: Calendar, label: "วันเริ่ม", value: naText(dateRange.start) },
           {
             icon: Clock,
             label: "วันจบตามแผน",
-            value: dateRange.finish || "-",
+            value: naText(dateRange.finish),
             sub: dateRange.target ? `กำหนดส่ง ${dateRange.target}` : null,
           },
-          { icon: User, label: "AE / ทีม", value: `${p.aeOwner || "-"} · ${p.team || "-"}` },
+          { icon: User, label: "AE / ทีม", value: `${naText(p.aeOwner)} · ${naText(p.team)}` },
           { icon: Handshake, label: "จำนวนดีล", value: `${(p.deals || []).length} ดีล` },
         ]}
       />
@@ -938,8 +938,8 @@ export default function ProjectDetailPage() {
                     <td style={{ fontWeight: "var(--fw-bold)" }}>{task.title}{task.note && <ReadableText text={task.note} lines={2} style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-normal)", marginTop: 2 }} />}</td>
                     <td>{deal ? <Link className="linklike" href={`/sales-planning/deals/${deal.id}`}>{deal.title}</Link> : <span style={{ color: "var(--text-3)" }}>งานเดิมของโครงการ</span>}</td>
                     <td><span className="status-pill dot" style={{ "--dot": taskStatusColor(task.status) }}>{TASK_STATUS_META[task.status]?.full || task.status}</span></td>
-                    <td>{assignee?.name || task.assigneeName || task.ownerName || "-"}</td>
-                    <td>{task.dueDate || "-"}</td>
+                    <td>{assignee?.name || task.assigneeName || naText(task.ownerName)}</td>
+                    <td>{naText(task.dueDate)}</td>
                   </tr>;
                 })}</tbody>
               </table></TableScroll>
@@ -1034,7 +1034,7 @@ export default function ProjectDetailPage() {
                   </span>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>
-                      {r.createdAt ? fmtDateTime(r.createdAt) : "-"} · {r.createdByName || "-"}
+                      {r.createdAt ? fmtDateTime(r.createdAt) : NA} · {naText(r.createdByName)}
                     </div>
                     {r.note && <ReadableText text={r.note} lines={4} style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }} />}
                   </div>

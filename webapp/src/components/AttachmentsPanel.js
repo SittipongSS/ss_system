@@ -18,7 +18,7 @@ import DateInput from "@/components/ui/DateInput";
 //  • ฟอร์มรายละเอียด (order — entity ที่มี ATTACHMENT_META_FIELDS) — เก็บ
 //    เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ ลง metadata.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, naText } from "@/lib/format";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
@@ -356,7 +356,7 @@ export default function AttachmentsPanel({
             ariaLabel="วันที่ออกเอกสาร"
           />
         ) : (
-          <span className="text-[10px] text-[var(--text-2)]">{validity.issuedDate || "—"}</span>
+          <span className="text-[10px] text-[var(--text-2)]">{naText(validity.issuedDate)}</span>
         )}
         {validity.unknown ? (
           <span className="status-pill warning text-[10px]" title={`เอกสารนี้ต้องออกไม่เกิน ${validity.months} เดือน — ยังไม่รู้ว่าหมดอายุหรือยัง`}>

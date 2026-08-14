@@ -19,6 +19,7 @@ import Textarea from "@/components/ui/Textarea";
 import OptionTiles from "@/components/ui/OptionTiles";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { NA } from "@/lib/format";
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED, leadBudgetError,
@@ -134,7 +135,7 @@ export default function LeadFormFields({
         <div className="lead-budget-range">
           <MoneyInput value={form.budget} disabled={disabled} aria-label="งบประมาณต่ำสุด"
             onChange={(value) => set("budget")(value ?? "")} />
-          <span className="lead-budget-dash" aria-hidden="true">–</span>
+          <span className="lead-budget-dash" aria-hidden="true">{NA}</span>
           <MoneyInput value={form.budgetMax} disabled={disabled} aria-label="งบประมาณสูงสุด"
             placeholder="สูงสุด"
             onChange={(value) => set("budgetMax")(value ?? "")} />

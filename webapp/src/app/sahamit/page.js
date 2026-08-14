@@ -9,7 +9,7 @@ import Tabs from "@/components/ui/Tabs";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
-import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
+import { fmtNumber, fmtMoneyCompact, naText } from "@/lib/format";
 import { dashboardKpis, categoryOptions, volumeOptions, yearOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
 import DashboardCharts from "@/components/sahamit/DashboardCharts";
 import FcRoundsView from "@/components/sahamit/FcRoundsView";
@@ -176,7 +176,7 @@ export default function SahamitOverview() {
                       {recentFollowUps.map((p) => (
                         <tr key={p.id} onClick={() => router.push(`/sahamit/po?q=${p.poNumber}`)} style={{ cursor: "pointer" }} className="hover-row">
                           <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)", color: "var(--accent)" }}>{p.poNumber}</td>
-                          <td>{p.receivedDate || "-"}</td>
+                          <td>{naText(p.receivedDate)}</td>
                           <td><span className={`status-pill ${poRollupStatus(p) === "open" ? "warning" : "info"}`}>{poRollupStatus(p) === "open" ? "รอผลิต" : "ทยอยส่ง"}</span></td>
                         </tr>
                       ))}
@@ -198,7 +198,7 @@ export default function SahamitOverview() {
                     <div key={fc.id} style={{ display: "flex", flexDirection: "column", gap: "4px", paddingBottom: "12px", borderBottom: "1px dashed var(--border)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <span style={{ fontWeight: "var(--fw-medium)", fontSize: "var(--fs-7)", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
-                        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{fc.receivedDate || "-"}</span>
+                        <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{naText(fc.receivedDate)}</span>
                       </div>
                       <span style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>ครอบคลุม {fc.coverMonths?.length || 0} เดือน</span>
                     </div>

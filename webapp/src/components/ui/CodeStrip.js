@@ -1,4 +1,5 @@
 "use client";
+import { naText } from "@/lib/format";
 // ── แถบรหัส — รหัสที่ระบบประกอบให้ โชว์เป็นท่อน พร้อมป้ายว่าท่อนไหนมาจากไหน ──
 //
 // ⭐ มติผู้ใช้ 2026-08-12 (เลือก "แบบ A" จากม็อก 2/3 ทาง): รหัสลูกค้า/รหัสสินค้าที่
@@ -24,7 +25,7 @@ export default function CodeStrip({
           data-tone={part.tone}
           data-blank={part.value ? undefined : "1"}
         >
-          <span className="code-strip-value">{part.value || part.placeholder || "—"}</span>
+          <span className="code-strip-value">{part.value || naText(part.placeholder)}</span>
           <span className="code-strip-key">{part.label}</span>
         </div>
       ))}

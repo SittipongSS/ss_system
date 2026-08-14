@@ -19,7 +19,7 @@ import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
-import { fmtDateTime, fmtMoney } from "@/lib/format";
+import { fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
 import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
 import styles from "./page.module.css";
@@ -181,7 +181,7 @@ export default function LeadDetailPage() {
     } catch (e) { setError(e.message); setBusy(false); }
   }
 
-  const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{typeof value === "string" ? <ReadableText text={value || "-"} lines={wide ? 5 : 3} /> : value || "-"}</div></div>;
+  const info = (label, value, wide = false) => <div className={`${styles.field} ${wide ? styles.wide : ""}`}><span className={styles.label}>{label}</span><div className={styles.value}>{typeof value === "string" ? <ReadableText text={naText(value)} lines={wide ? 5 : 3} /> : naText(value)}</div></div>;
 
   /* ปุ่มยกเลิก/บันทึก **ระหว่างแก้ไข** ยังอยู่ที่หัวหน้า — ต้องอยู่ใกล้ช่องที่กำลังพิมพ์
      ส่วนปุ่ม "แก้ไขข้อมูล" (ตอนยังไม่แก้) ย้ายไปอยู่บนการ์ดควบคุมแล้ว
@@ -286,9 +286,9 @@ export default function LeadDetailPage() {
             <LeadFormFields form={form} onPatch={(patch) => setForm((v) => ({ ...v, ...patch }))} disabled={busy} compact />
           </div> : <div className={styles.grid}>
             {info("ชื่อผู้ติดต่อ", <><Contact size={14} /> {lead.contactName}</>)}
-            {info("บริษัท", <><Building2 size={14} /> {lead.company || "-"}</>)}
-            {info("โทรศัพท์", <><Phone size={14} /> {lead.phone || "-"}</>)}
-            {info("อีเมล", <><Mail size={14} /> {lead.email || "-"}</>)}
+            {info("บริษัท", <><Building2 size={14} /> {naText(lead.company)}</>)}
+            {info("โทรศัพท์", <><Phone size={14} /> {naText(lead.phone)}</>)}
+            {info("อีเมล", <><Mail size={14} /> {naText(lead.email)}</>)}
             {info("รายละเอียดบริการ", lead.serviceDetail)}
             {info("ช่องทางติดต่อเพิ่มเติม", lead.contactChannel)}
             {info("รายละเอียดเพิ่มเติม", lead.details, true)}
@@ -317,7 +317,7 @@ export default function LeadDetailPage() {
           >
             {lead.relatedDeals?.length ? (
               <ContextGrid>
-                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={Handshake} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: deal.forecastMonth || "-" }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
+                {lead.relatedDeals.map((deal) => <ContextCard key={deal.id} icon={Handshake} href={`/sales-planning/deals/${deal.id}`} eyebrow="ดีลจาก Lead" title={`${deal.code ? `${deal.code} · ` : ""}${deal.title}`} subtitle={deal.customerName || lead.company || lead.contactName} badges={<>{deal.dealType && <span className="ui-badge">{deal.dealType}</span>}<span className="ui-badge" style={{ color: deal.stage === "won" ? "var(--green)" : "var(--accent)" }}>{deal.stage}</span></>} facts={[{ label: "Forecast", value: naText(deal.forecastMonth) }, { label: "มูลค่า", value: fmtMoney(deal.wonValue ?? deal.projectValue ?? 0) }]} />)}
               </ContextGrid>
             ) : (
               <p className="empty">
@@ -365,13 +365,13 @@ function LeadSummary({ lead }) {
   return <DetailCard icon={Inbox} eyebrow="Lead summary" title="สรุปลีด">
     <div className={styles.summaryRow}><span>สถานะ</span><strong>{LEAD_STATUS_LABELS[lead.status] || lead.status}</strong></div>
     <div className={styles.summaryRow}><span>กลุ่มช่องทาง</span><strong style={{ color: CHANNEL_GROUP_COLORS[channelGroupOf(lead.channel)] }}>{LEAD_CHANNEL_LABELS[lead.channel] || lead.channel}</strong></div>
-    <div className={styles.summaryRow}><span>รับลีดโดย</span><strong>{lead.createdByName || "-"}</strong></div>
+    <div className={styles.summaryRow}><span>รับลีดโดย</span><strong>{naText(lead.createdByName)}</strong></div>
     <div className={styles.summaryRow}><span>วันที่รับ</span><strong>{fmtDateTime(lead.createdAt)}</strong></div>
-    <div className={styles.summaryRow}><span>คัดกรองเมื่อ</span><strong>{lead.screenedAt ? fmtDateTime(lead.screenedAt) : "-"}</strong></div>
-    <div className={styles.summaryRow}><span>มอบหมายเมื่อ</span><strong>{lead.assignedAt ? fmtDateTime(lead.assignedAt) : "-"}</strong></div>
-    <div className={styles.summaryRow}><span>ติดต่อครั้งแรก</span><strong>{lead.firstContactAt ? fmtDateTime(lead.firstContactAt) : "-"}</strong></div>
+    <div className={styles.summaryRow}><span>คัดกรองเมื่อ</span><strong>{lead.screenedAt ? fmtDateTime(lead.screenedAt) : NA}</strong></div>
+    <div className={styles.summaryRow}><span>มอบหมายเมื่อ</span><strong>{lead.assignedAt ? fmtDateTime(lead.assignedAt) : NA}</strong></div>
+    <div className={styles.summaryRow}><span>ติดต่อครั้งแรก</span><strong>{lead.firstContactAt ? fmtDateTime(lead.firstContactAt) : NA}</strong></div>
     {/* "นัดถัดไป" ไม่ใช่ "นัดล่าสุด" — ลีดหนึ่งใบมีได้หลายนัดแล้ว คอลัมน์เก็บนัดที่ยังไม่ถึง
         (ดู nextMeetingAt ใน route ของ transition) · นัดทั้งหมดอยู่ในประวัติด้านซ้าย */}
-    <div className={styles.summaryRow}><span>นัดถัดไป</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : "-"}</strong></div>
+    <div className={styles.summaryRow}><span>นัดถัดไป</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : NA}</strong></div>
   </DetailCard>;
 }

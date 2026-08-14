@@ -22,7 +22,7 @@ import {
   jobWarnings,
 } from "@/lib/pm/productionPlan";
 import styles from "./page.module.css";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, naText } from "@/lib/format";
 
 // คิวเปิดมาเห็น "งานที่ยังต้องตัดสินใจ" ก่อน — จบ/ยกเลิกไม่ใช่คิว
 const OPEN_STATUSES = "draft,planned,in_progress";
@@ -157,7 +157,7 @@ export default function ProductionJobsPage() {
                       </button>
                     </td>
                     <td>
-                      {job.productName || job.fgCode || "-"}
+                      {job.productName || naText(job.fgCode)}
                       {job.fgCode && job.productName ? <span className={styles.muted}> · {job.fgCode}</span> : null}
                     </td>
                     <td className={styles.numCol}>

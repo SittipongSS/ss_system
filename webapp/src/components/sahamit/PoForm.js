@@ -11,7 +11,7 @@ import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ReadableText from "@/components/ui/ReadableText";
 import { DestinationToggle } from "@/components/sahamit/destinations";
-import { fmtNumber, productMeta } from "@/lib/format";
+import { fmtNumber, productMeta, NA } from "@/lib/format";
 import { productSelectOptions } from "@/components/master/productOption";
 import { ppcOf, casesText, convertEntryUnit } from "@/lib/sahamit/units";
 import Textarea from "@/components/ui/Textarea";
@@ -255,9 +255,9 @@ export default function PoForm({
                       })()}
                     </td>
                     <td style={{ textAlign: "right", color: masterPrice(r) ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>
-                      {masterPrice(r) ? nfBaht(masterPrice(r)) : "—"}
+                      {masterPrice(r) ? nfBaht(masterPrice(r)) : NA}
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : "—"}</td>
+                    <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{lineValue(r) ? nfBaht(lineValue(r)) : NA}</td>
                     <td style={{ textAlign: "center" }}>
                       {lock
                         ? <Lock size={13} style={{ color: "var(--text-3)" }} aria-label={`ล็อก: ${lock}`} />

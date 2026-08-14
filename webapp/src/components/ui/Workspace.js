@@ -4,6 +4,7 @@ import { Children } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
+import { naText } from "@/lib/format";
 
 // Canonical shell for every application module. Sales management established
 // the visual hierarchy; keeping it here prevents module-specific drift.
@@ -135,7 +136,7 @@ export function Metric({
       {icon ? <span className="ui-metric-icon">{icon}</span> : null}
       <span>
         <small>{label}</small>
-        <strong>{value ?? "-"}</strong>
+        <strong>{naText(value)}</strong>
         {note && <em>{note}</em>}
       </span>
     </Element>

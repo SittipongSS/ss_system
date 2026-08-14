@@ -10,7 +10,7 @@ import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { poTotalQty, poLineCount, poRollupStatus, PO_STATUS_LABEL, lineStage, poStageRollup, STAGE_LABEL, STAGE_COLOR, effectivePoQty } from "@/lib/sahamit/po";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
@@ -37,7 +37,7 @@ const poExVat = (po, priceByFg) => (po.lines || []).reduce((s, l) => {
 function matCell(dueDate, arrivedAt) {
   if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
-  return <span style={{ color: "var(--text-3)" }}>—</span>;
+  return <span style={{ color: "var(--text-3)" }}>{NA}</span>;
 }
 
 // บรรทัดสินค้าใน PO: โชว์วัสดุ (read-only) + สถานะ auto + ปุ่มเดินสถานะ (ผลิต/ส่ง/ปิด).
@@ -77,16 +77,16 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
         {nf(row.qty)}
         {casesText(row.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{casesText(row.qty, ppcOf(product))}</div>}
       </td>
-      <td>{row.deliveryMonth || "—"}</td>
+      <td>{naText(row.deliveryMonth)}</td>
       <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
       <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
       <td>
-        {row.readyDate ? fmtDate(row.readyDate) : "—"}
+        {row.readyDate ? fmtDate(row.readyDate) : NA}
         {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
       </td>
       <td><span className="ui-badge" style={{ color, borderColor: color }}>{STAGE_LABEL[stage]}</span></td>
       <td>
-        {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : "—"}
+        {row.actualDeliveredDate ? fmtDate(row.actualDeliveredDate) : NA}
         {row.ourSlip && <div style={{ fontSize: "var(--fs-2)", color: "var(--red)" }}>เราส่งช้า</div>}
       </td>
       <td style={{ textAlign: "right" }}>{action}</td>
@@ -320,10 +320,10 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
       <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
         <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
         <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{po.poNumber}</td>
-        <td>{po.docDate ? fmtDate(po.docDate) : "—"}</td>
-        <td>{po.receivedDate ? fmtDate(po.receivedDate) : "—"}</td>
-        <td>{po.dueDate ? fmtDate(po.dueDate) : "—"}</td>
-        <td>{destinationLabel(po.destination) || "—"}</td>
+        <td>{po.docDate ? fmtDate(po.docDate) : NA}</td>
+        <td>{po.receivedDate ? fmtDate(po.receivedDate) : NA}</td>
+        <td>{po.dueDate ? fmtDate(po.dueDate) : NA}</td>
+        <td>{naText(destinationLabel(po.destination))}</td>
         <td style={{ textAlign: "right" }}>{poLineCount(po)}</td>
         <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>
           {nf(fullQty)}
@@ -379,7 +379,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
 }
 
 // สถานะบรรทัด PO → ป้ายภาษาไทย (รวมสองชุด stage + rollup)
-const lineStatusLabel = (s) => STAGE_LABEL[s] || PO_STATUS_LABEL[s] || s || "—";
+const lineStatusLabel = (s) => STAGE_LABEL[s] || PO_STATUS_LABEL[s] || naText(s);
 const lineStatusColor = (s) => C[STAGE_COLOR[s]] || (s === "cancelled" ? C["text-3"] : "var(--text-3)");
 
 // มุมมอง "ตาราง (รายบรรทัด)": ทุกบรรทัดสินค้าในทุก PO = 1 แถว (สเปรดชีต) เรียง/รวมมูลค่าได้.
@@ -443,8 +443,8 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
               <tr key={`${r.po.id}-${r.l.id || i}`} className="clickable-row" style={{ cursor: "pointer", opacity: r.cancelled ? 0.55 : 1 }} onClick={() => router.push(`/sahamit/po/${r.po.id}`)}>
                 <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)", color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
                 <td style={{ whiteSpace: "nowrap" }}>
-                  {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : "—")}
-                  <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{r.l.deliveryMonth || "—"}</div>
+                  {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : NA)}
+                  <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{naText(r.l.deliveryMonth)}</div>
                 </td>
                 <td>
                   <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{r.l.fgCode}</span>
@@ -455,8 +455,8 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
                   {nf(r.l.qty)}
                   {casesText(r.l.qty, ppcOf(product)) && <div style={{ fontSize: "var(--fs-2)", fontWeight: "var(--fw-normal)", color: "var(--text-3)" }}>{casesText(r.l.qty, ppcOf(product))}</div>}
                 </td>
-                <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : "—"}</td>
-                <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : "—")}</td>
+                <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : NA}</td>
+                <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : NA)}</td>
                 <td><span className="ui-badge" style={{ color: lineStatusColor(r.l.status), borderColor: lineStatusColor(r.l.status) }}>{lineStatusLabel(r.l.status)}</span></td>
               </tr>
             );

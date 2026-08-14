@@ -12,7 +12,7 @@ import {
   DocumentControlCard, DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
@@ -148,7 +148,7 @@ export default function RegistrationDetailPage() {
     <Workspace
       icon={<ClipboardCheck size={22} />}
       title={s?.fgCode || "..."}
-      subtitle={s ? `${productDisplayName(s)} (${brandLabel(s.metadata?.brandNameTh, s.metadata?.brandNameEn || s.brandName) || "-"})` : ""}
+      subtitle={s ? `${productDisplayName(s)} (${naText(brandLabel(s.metadata?.brandNameTh, s.metadata?.brandNameEn || s.brandName))})` : ""}
       headerRight={headerRight}
       back={back}
       // แก้ไข/ขอแก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
@@ -171,9 +171,9 @@ export default function RegistrationDetailPage() {
                 title="สรุปทะเบียน"
                 total={s.isExciseTaxable === false ? "ยกเว้นภาษี" : fmtMoney(taxPerUnit(s, taxProduct))}
                 rows={[
-                  { id: "fg", label: "รหัสสินค้า", value: s.fgCode || "-" },
-                  { id: "customer", label: "ลูกค้า", value: s.customerName || "-" },
-                  { id: "approval", label: "เลขที่อนุมัติ", value: s.approvalNumber || "-" },
+                  { id: "fg", label: "รหัสสินค้า", value: naText(s.fgCode) },
+                  { id: "customer", label: "ลูกค้า", value: naText(s.customerName) },
+                  { id: "approval", label: "เลขที่อนุมัติ", value: naText(s.approvalNumber) },
                   { id: "documents", label: "เอกสารบังคับ", value: req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : "กำลังตรวจ" },
                 ]}
                 status={status.label}
@@ -245,10 +245,10 @@ export default function RegistrationDetailPage() {
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="grid grid-cols-2 gap-3">
               <Field label="ลูกค้า" full>{s.customerName}</Field>
-              <Field label="เลขผู้เสียภาษี">{s.taxId || "-"}</Field>
+              <Field label="เลขผู้เสียภาษี">{naText(s.taxId)}</Field>
               <Field label="ภาษี/ชิ้น">{s.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(s, taxProduct))}</Field>
-              <Field label="เลขที่อนุมัติ">{s.approvalNumber || "-"}</Field>
-              <Field label="ผู้ยื่น">{s.assignee || "-"}</Field>
+              <Field label="เลขที่อนุมัติ">{naText(s.approvalNumber)}</Field>
+              <Field label="ผู้ยื่น">{naText(s.assignee)}</Field>
             </div>
           </div>
 

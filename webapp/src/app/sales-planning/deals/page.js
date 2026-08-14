@@ -17,7 +17,7 @@ import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
-import { fmtMoney, fmtName, fmtNumber } from "@/lib/format";
+import { fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
@@ -621,7 +621,7 @@ export default function SalesPlanningPipelinePage() {
             {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวทุกตาราง QT/SO/ดีล)
                 แบรนด์ยังเกาะท้ายชื่อเหมือนเดิม */}
             {deal.customerId && arIndex.get(deal.customerId) ? <span className="ar-code ar-code-block">{arIndex.get(deal.customerId)}</span> : null}
-            {deal.customerName || "-"}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
+            {naText(deal.customerName)}{deal.metadata?.brand ? ` · ${brandDisplayFromList(customers.find((c) => c.id === deal.customerId)?.brands, deal.metadata.brand)}` : ""}
           </span>
         </Link>
       </td>
@@ -652,18 +652,18 @@ export default function SalesPlanningPipelinePage() {
             </span>
           </Link>
         ) : (
-          <span className="step-cell-empty">-</span>
+          <span className="step-cell-empty">{NA}</span>
         )}
       </td>
       <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
         {isClosedStage(deal.stage)
-          ? <span style={{ color: "var(--text-3)" }}>-</span>
+          ? <span style={{ color: "var(--text-3)" }}>{NA}</span>
           : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
       </td>
       <td style={{ textAlign: "center" }}>
         {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
       </td>
-      <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (deal.team || "-")}</td>
+      <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (naText(deal.team))}</td>
       <td onClick={(event) => event.stopPropagation()}>
         <ForecastMonthCell
           deal={deal}
@@ -1018,7 +1018,7 @@ export default function SalesPlanningPipelinePage() {
                   <tr key={quote.id} className="premium-row">
                     <td className="mono">{quote.quoteNumber}</td>
                     <td>{quoteStatusBadge(quote.status)}</td>
-                    <td>{quote.quoteDate || "-"}</td>
+                    <td>{naText(quote.quoteDate)}</td>
                     <td className="num mono">{money(quote.totalAmount)}</td>
                     <td>
                       {(quote.lines || []).length ? (
@@ -1031,7 +1031,7 @@ export default function SalesPlanningPipelinePage() {
                             </li>
                           ))}
                         </ul>
-                      ) : "-"}
+                      ) : NA}
                     </td>
                     <td className="num">
                       {["draft", "sent"].includes(quote.status) && (
@@ -1139,8 +1139,8 @@ export default function SalesPlanningPipelinePage() {
                       <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{doc.kind}</span>
                     </td>
                     <td>{stageBadge(doc.status === "received" ? "won" : doc.status === "waived" ? "lost" : "awaiting_confirm")}</td>
-                    <td className="mono">{doc.dueDate || "-"}</td>
-                    <td>{doc.notes || "-"}</td>
+                    <td className="mono">{naText(doc.dueDate)}</td>
+                    <td>{naText(doc.notes)}</td>
                     <td className="num">
                       {docDeal?.canEdit && (
                         <div className="flex items-center gap-2 justify-end">

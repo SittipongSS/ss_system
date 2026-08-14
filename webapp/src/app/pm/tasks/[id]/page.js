@@ -13,7 +13,7 @@ import TaskFormModal from "@/components/pm/TaskFormModal";
 import { DIFFICULTY_LABELS } from "@/lib/pm/tasks";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { assignableUsersFor } from "@/lib/permissions";
-import { fmtDateNumeric, fmtDateTime } from "@/lib/format";
+import { fmtDateNumeric, fmtDateTime, naText } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import styles from "./page.module.css";
@@ -65,7 +65,7 @@ export default function TaskDetailPage() {
     }));
   };
 
-  const person = (userId) => task?.people?.[userId] || "-";
+  const person = (userId) => naText(task?.people?.[userId]);
 
   // ปุ่มแก้ไข = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
   const backActions = task && (task.canManage || task.canChangeStatus) ? (
@@ -98,7 +98,7 @@ export default function TaskDetailPage() {
         <DetailCard icon={ListTodo} eyebrow="Task information" title="ข้อมูลงาน" actions={!task.canManage ? <span className="ui-badge">แก้ได้เฉพาะสถานะ</span> : null}>
           <div className={styles.grid}>
             <div className={styles.field}><span className={styles.label}>หมวดงาน</span><div className={styles.value}><Tag size={14} /> {task.category || "ไม่ระบุ"}</div></div>
-            <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || task.difficulty || "-"}</div></div>
+            <div className={styles.field}><span className={styles.label}>ความยาก</span><div className={styles.value}>{DIFFICULTY_LABELS[task.difficulty] || naText(task.difficulty)}</div></div>
             <div className={`${styles.field} ${styles.wide}`}><span className={styles.label}>รายละเอียด / โน้ต</span><ReadableText className={styles.value} text={task.note} lines={5} empty={<div className={styles.value}>ไม่มีรายละเอียดเพิ่มเติม</div>} /></div>
             {/* ไม่มีช่อง "สาเหตุที่ทำเสร็จช้า" ที่นี่ — อยู่ในเธรดอัปเดตงานแล้ว (มติผู้ใช้
                 2026-07-17). ช่องนี้อ่าน task.lateReason ซึ่งเก็บค่าล่าสุดค่าเดียว และ
@@ -113,8 +113,8 @@ export default function TaskDetailPage() {
         {/* การ์ดรวมของที่ผูกกับงาน — ใช้ไอคอน "ลิงก์" ไม่ใช่ไอคอนโครงการ เพราะข้างในมีทั้ง
             โครงการ ดีล และคำร้อง (FolderKanban = โครงการอย่างเดียว ดู entityIcon.test.mjs) */}
         {(task.project || task.deal || task.inquiry) && <DetailCard icon={Link2} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
-          {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: task.project.team || "-" }, { label: "AE", value: task.project.aeOwner || "-" }]} />}
-          {task.deal && <ContextCard icon={Handshake} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: task.deal.team || "-" }, { label: "เจ้าของดีล", value: livePersonName(directory, task.deal.ownerId, task.deal.ownerName) || "-" }]} />}
+          {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: naText(task.project.team) }, { label: "AE", value: naText(task.project.aeOwner) }]} />}
+          {task.deal && <ContextCard icon={Handshake} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: naText(task.deal.team) }, { label: "เจ้าของดีล", value: naText(livePersonName(directory, task.deal.ownerId, task.deal.ownerName)) }]} />}
           {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/requests/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "คำร้อง"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
         </DetailPageLayout>

@@ -3,12 +3,13 @@
 // ระบบสอบถามใน mig 0174
 import StatusBadge from "@/components/ui/StatusBadge";
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from "@/lib/deptRequests";
+import { naText } from "@/lib/format";
 
 export function RequestStatusBadge({ status }) {
   return (
     <StatusBadge
       tone={REQUEST_STATUS_TONES[status] || "neutral"}
-      label={REQUEST_STATUS_LABELS[status] || status || "-"}
+      label={REQUEST_STATUS_LABELS[status] || naText(status)}
     />
   );
 }

@@ -19,6 +19,7 @@ import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
+import { naText } from "@/lib/format";
 
 export default function ServiceSitesPage() {
   const role = useRole();
@@ -143,12 +144,12 @@ export default function ServiceSitesPage() {
                 const window = accessWindowText(site);
                 return (
                   <tr key={site.id} className={site.isActive === false ? styles.inactive : undefined}>
-                    <td className="mono">{site.code || "-"}</td>
+                    <td className="mono">{naText(site.code)}</td>
                     <td>
                       <Link href={`/service/sites/${site.id}`} className={styles.siteLink}>{site.name}</Link>
                     </td>
-                    <td>{site.customerName || "-"}</td>
-                    <td>{site.zone || "-"}</td>
+                    <td>{naText(site.customerName)}</td>
+                    <td>{naText(site.zone)}</td>
                     <td className={styles.numCol}>
                       {/* เครื่องที่ยังใช้งานคือตัวเลขที่ช่างสนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                       {site.activeAssetCount || 0}

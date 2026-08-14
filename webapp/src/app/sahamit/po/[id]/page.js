@@ -21,7 +21,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoneyCompact, fmtNumber, naText, NA } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
@@ -41,7 +41,7 @@ const nf = (n) => fmtNumber(n || 0);
 function matCell(dueDate, arrivedAt) {
   if (arrivedAt) return <span style={{ color: "var(--green)", fontWeight: "var(--fw-semibold)" }}>✓ มาแล้ว {fmtDate(arrivedAt)}</span>;
   if (dueDate) return <span style={{ color: "var(--text-2)" }}>กำหนด {fmtDate(dueDate)}</span>;
-  return <span style={{ color: "var(--text-3)" }}>—</span>;
+  return <span style={{ color: "var(--text-3)" }}>{NA}</span>;
 }
 
 // One PO line with an inline editor: reschedule (expected date + reason →
@@ -124,9 +124,9 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
             </div>
           )}
         </td>
-        <td>{line.dueDate ? fmtDate(line.dueDate) : "—"}</td>
+        <td>{line.dueDate ? fmtDate(line.dueDate) : NA}</td>
         <td>
-          {line.expectedDate ? fmtDate(line.expectedDate) : "—"}
+          {line.expectedDate ? fmtDate(line.expectedDate) : NA}
           {hist.length > 0 && (
             <button className="btn-icon" title={`เลื่อนมาแล้ว ${hist.length} ครั้ง`} onClick={() => setShowHist((v) => !v)} style={{ marginLeft: 4 }}>
               <History size={13} />
@@ -135,8 +135,8 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
         </td>
         <td>{matCell(tracking?.pmDueDate, tracking?.pmArrivedAt)}</td>
         <td>{matCell(tracking?.rmDueDate, tracking?.rmArrivedAt)}</td>
-        <td>{line.actualDeliveredDate ? fmtDate(line.actualDeliveredDate) : "—"}</td>
-        <td>{destinationLabel(line.destination) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+        <td>{line.actualDeliveredDate ? fmtDate(line.actualDeliveredDate) : NA}</td>
+        <td>{destinationLabel(line.destination) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
         <td><span className="status-pill">{PO_STATUS_LABEL[line.status] || line.status}</span></td>
         <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
           {canEdit && (
@@ -155,7 +155,7 @@ function PoLineRow({ line, tracking, product, onChanged, canEdit }) {
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
               {hist.map((h, i) => (
                 <li key={i}>
-                  <span>เดิม {h.expectedDate ? fmtDate(h.expectedDate) : "—"} <span style={{ color: "var(--text-3)" }}>({h.changedAt ? fmtDate(h.changedAt) : ""})</span></span>
+                  <span>เดิม {h.expectedDate ? fmtDate(h.expectedDate) : NA} <span style={{ color: "var(--text-3)" }}>({h.changedAt ? fmtDate(h.changedAt) : ""})</span></span>
                   {h.reason && <ReadableText text={h.reason} lines={3} style={{ marginTop: 2, color: "var(--text-2)" }} />}
                 </li>
               ))}
@@ -544,7 +544,7 @@ export default function PoDetailPage() {
                 rows={[
                   { id: "lines", label: "จำนวนรายการ", value: `${poLineCount(po)} รายการ` },
                   { id: "qty", label: "ยอดรวม", value: `${nf(poTotalQty(po))} ชิ้น` },
-                  { id: "destination", label: "สถานที่ส่ง", value: destinationLabel(po.destination) || "-" },
+                  { id: "destination", label: "สถานที่ส่ง", value: naText(destinationLabel(po.destination)) },
                   { id: "delivery", label: "ส่งครบแล้ว", value: `${deliveredLines}/${po.lines?.length || 0}` },
                 ]}
                 status={PO_STATUS_LABEL[poStatus] || poStatus}
@@ -706,7 +706,7 @@ export default function PoDetailPage() {
                                 <input type="number" min={0} max={l.qty} className="premium-input" style={{ width: 100, textAlign: "right", height: 30 }}
                                   value={shipped[l.id] ?? ""} onChange={(e) => setShipped({ ...shipped, [l.id]: e.target.value })} />
                               </td>
-                              <td style={{ textAlign: "right", color: rem > 0 ? "var(--blue)" : "var(--text-3)" }}>{rem > 0 ? nf(rem) : "—"}</td>
+                              <td style={{ textAlign: "right", color: rem > 0 ? "var(--blue)" : "var(--text-3)" }}>{rem > 0 ? nf(rem) : NA}</td>
                             </tr>
                           );
                         })}
@@ -953,7 +953,7 @@ export default function PoDetailPage() {
                 </div>
               )}
               <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-                จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {settleData.poReceivedMonth || "—"} สุด)
+                จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {naText(settleData.poReceivedMonth)} สุด)
                 — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b> ผูกเข้าโครงการ
                 แล้วออก<b>ใบเสนอราคา 1 ใบหลายบรรทัด (ราคาตาม master)</b> เข้าคิวอนุมัติเจ้าของดีล
                 — ยอดเก็บเงิน/งวดชำระ/SO จะตรงกับ PO ทั้งใบ · ดีล FC ต้นทางถูกยุบเข้าดีลรวม
@@ -976,7 +976,7 @@ export default function PoDetailPage() {
                         <tr key={ln.poLineId}>
                           <td>
                             <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{ln.fgCode}</span>
-                            <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{ln.productName || "—"}</div>
+                            <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{naText(ln.productName)}</div>
                           </td>
                           <td style={{ textAlign: "right" }}>
                             {nf(ln.qty)}
@@ -997,7 +997,7 @@ export default function PoDetailPage() {
                                 >
                                   {ln.candidates.map((c) => (
                                     <option key={c.id} value={c.id}>
-                                      {c.title} · คาดปิด {c.forecastMonth || "—"} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
+                                      {c.title} · คาดปิด {naText(c.forecastMonth)} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                     </option>
                                   ))}
                                   <option value="new">— ไม่มีดีล FC (สินค้านอก forecast — เข้าดีลรวมเลย) —</option>

@@ -12,7 +12,7 @@ import Modal from "@/components/Modal";
 import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
@@ -94,7 +94,7 @@ export default function SalesOrderPaymentPanel({
       <div className={styles.won}>
         <span className={styles.wonLabel}>ปิดการขายด้วย</span>
         <span className={styles.wonValue}>
-          {WON_DOC_TYPE_LABELS[quotation?.wonDocType] || quotation?.wonDocType || "-"}
+          {WON_DOC_TYPE_LABELS[quotation?.wonDocType] || naText(quotation?.wonDocType)}
           {quotation?.wonDocNo ? <> · <b>{quotation.wonDocNo}</b></> : null}
           {quotation?.wonDocDate ? ` · ${fmtDate(quotation.wonDocDate)}` : ""}
         </span>
@@ -221,7 +221,7 @@ export default function SalesOrderPaymentPanel({
                             </a>
                           ))}
                         </span>
-                      ) : <span className={styles.none}>—</span>}
+                      ) : <span className={styles.none}>{NA}</span>}
                     </td>
                     <td>
                       <StatusBadge

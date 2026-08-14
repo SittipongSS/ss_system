@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText } from "@/lib/format";
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
@@ -64,8 +64,8 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           <div style={{ fontSize: "var(--fs-7)", background: "var(--panel-3)", borderRadius: 8, padding: 12 }} className="flex flex-col gap-1">
-            <span style={{ color: "var(--text-2)" }}>{productDisplayName(registration)} ({brandLabel(registration.metadata?.brandNameTh, registration.metadata?.brandNameEn || registration.brandName) || "-"})</span>
-            <span style={{ color: "var(--text-3)" }}>ลูกค้า: {registration.customerName || "-"}</span>
+            <span style={{ color: "var(--text-2)" }}>{productDisplayName(registration)} ({naText(brandLabel(registration.metadata?.brandNameTh, registration.metadata?.brandNameEn || registration.brandName))})</span>
+            <span style={{ color: "var(--text-3)" }}>ลูกค้า: {naText(registration.customerName)}</span>
             <span style={{ color: "var(--text-3)" }}>
               ภาษี/ชิ้น (ปัจจุบัน): <span className="font-mono">{registration.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit)}</span>
             </span>

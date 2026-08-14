@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, NA } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -102,4 +102,37 @@ test("time helpers enforce the system-wide 24-hour HH:mm rule", () => {
   assert.equal(normalizeTime("24:00"), null);
   assert.equal(normalizeTime("09:60"), null);
   assert.equal(fmtTime("7:05"), "07:05");
+});
+
+/* ── ค่าว่างทั้งระบบพูดคำเดียวกัน: N/A (มติผู้ใช้ 2026-08-14) ────────────────── */
+
+test("isBlank: สิ่งที่ระบบเก่าเขียนแทนคำว่า 'ไม่มี' นับเป็นว่างทั้งหมด", () => {
+  for (const v of [null, undefined, "", "   ", "-", "–", "—", ".", "N/A", "n/a", " N/A "]) {
+    assert.equal(isBlank(v), true, `${JSON.stringify(v)} ควรนับเป็นว่าง`);
+  }
+  assert.equal(isBlank([]), true, "อาร์เรย์เปล่า = ไม่มีรายการ");
+  assert.equal(isBlank(NaN), true, "คำนวณไม่ได้ = ไม่มีคำตอบ");
+});
+
+/* 🔴 หัวใจของกฎนี้ — พลาดตรงนี้แล้วยอด 0 บาทจะหายกลายเป็น N/A ทั้งระบบ */
+test("isBlank: 0 กับ false ไม่ใช่ค่าว่าง — เป็นคำตอบ ไม่ใช่การไม่มีคำตอบ", () => {
+  assert.equal(isBlank(0), false, "ยอด 0 บาท / จำนวน 0 ชิ้น คือคำตอบ");
+  assert.equal(isBlank(false), false, "ไม่อนุมัติ คือคำตอบ");
+  assert.equal(isBlank("0"), false);
+});
+
+test("naText: มีของคืนของเดิม ว่างคืน N/A", () => {
+  assert.equal(naText("ประชุมทั้งที่"), "ประชุมทั้งที่");
+  assert.equal(naText(0), 0, "ต้องคืนเลข 0 ตัวจริง ไม่ใช่สตริง");
+  assert.equal(naText(false), false);
+  assert.equal(naText(""), NA);
+  assert.equal(naText("-"), NA);
+  assert.equal(naText(null), NA);
+  assert.equal(NA, "N/A");
+});
+
+/* ⚠️ กับดักที่กฎนี้มีไว้กัน: `foo || NA` ดูเหมือนแทน `naText(foo)` ได้ แต่ไม่ใช่ */
+test("naText ไม่ใช่ `value || NA` — เลข 0 คือจุดที่ต่างกัน", () => {
+  assert.notEqual(naText(0), 0 || NA);
+  assert.equal(0 || NA, NA, "`||` กลืน 0 ทิ้ง — นี่คือเหตุผลที่ต้องมี naText");
 });

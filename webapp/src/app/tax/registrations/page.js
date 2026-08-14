@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import { deptOf, isTaxWaitingOnMe, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
 import DataList from "@/components/excise/DataList";
@@ -85,7 +85,7 @@ export default function RegistrationsPage() {
       render: (r) => (
         <div>
           <div className="font-semibold font-mono">{r.fgCode}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
         </div>
       ),
     },
@@ -95,7 +95,7 @@ export default function RegistrationsPage() {
       sortValue: (r) => taxPerUnit(r, productOf(r)),
       render: (r) => <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>,
     },
-    { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{r.approvalNumber || "-"}</span> },
+    { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{naText(r.approvalNumber)}</span> },
     { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
   ];
 
@@ -104,7 +104,7 @@ export default function RegistrationsPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold font-mono text-sm">{r.fgCode}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({registrationBrand(r) || "-"})</div>
+          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
         </div>
         <StatusBadge status={r.status} />
       </div>

@@ -17,7 +17,7 @@ import Toast from "@/components/ui/Toast";
 import RecordDrawer from "@/components/excise/RecordDrawer";
 import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
-import { fmtDateTime, fmtNumber } from "@/lib/format";
+import { fmtDateTime, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 
 const ACTION_META = {
@@ -285,10 +285,10 @@ export default function ProductCategoryImportPage() {
                       {visibleRows.map((row) => (
                         <tr key={`${row.rowNumber}-${row.code}`}>
                           <td>{row.rowNumber}</td>
-                          <td><strong className="mono">{row.code || "—"}</strong></td>
+                          <td><strong className="mono">{naText(row.code)}</strong></td>
                           <td><Badge meta={ACTION_META[row.action]} /></td>
-                          <td>{row.after?.mainCategoryName || "—"}</td>
-                          <td><strong>{row.after?.nameTh || row.after?.nameEn || "—"}</strong>{row.after?.nameTh && row.after?.nameEn && <small>{row.after.nameEn}</small>}</td>
+                          <td>{naText(row.after?.mainCategoryName)}</td>
+                          <td><strong>{row.after?.nameTh || naText(row.after?.nameEn)}</strong>{row.after?.nameTh && row.after?.nameEn && <small>{row.after.nameEn}</small>}</td>
                           <td>{row.after?.isActive === false ? "พักใช้งาน" : "ใช้งาน"}</td>
                           <td className={row.errors?.length ? styles.issueText : styles.mutedText}>{row.errors?.join(" · ") || "พร้อม"}</td>
                         </tr>
@@ -347,7 +347,7 @@ function HistoryView({ history, loading, onOpen, onReload }) {
           <thead><tr><th>วันที่</th><th>ไฟล์</th><th>ผู้ดำเนินการ</th><th>สรุป</th><th>สถานะ</th><th style={{ textAlign: "right" }}>รายละเอียด</th></tr></thead>
           <tbody>{history.items.map((run) => (
             <tr key={run.id}>
-              <td>{fmtDateTime(run.createdAt)}</td><td><strong>{run.fileName}</strong><small>{run.templateVersion}</small></td><td>{run.actorName || "—"}</td>
+              <td>{fmtDateTime(run.createdAt)}</td><td><strong>{run.fileName}</strong><small>{run.templateVersion}</small></td><td>{naText(run.actorName)}</td>
               <td>{changeCount(run.summary)} เปลี่ยน · {run.summary?.error || 0} ผิด · {run.summary?.conflict || 0} ขัดแย้ง</td>
               <td><Badge meta={effectiveRunMeta(run)} /></td>
               <td style={{ textAlign: "right" }}><button type="button" className="btn ghost sm" onClick={() => onOpen(run)}><Eye size={14} /> ดู</button></td>
@@ -356,7 +356,7 @@ function HistoryView({ history, loading, onOpen, onReload }) {
         </table>
       </TableScroll>
       <div className={styles.historyCards}>{history.items.map((run) => (
-        <article key={run.id}><div><strong>{run.fileName}</strong><Badge meta={effectiveRunMeta(run)} /></div><p>{fmtDateTime(run.createdAt)} · {run.actorName || "—"}</p><small>{changeCount(run.summary)} เปลี่ยน · {(run.summary?.error || 0) + (run.summary?.conflict || 0)} ต้องแก้</small><button type="button" className="btn" onClick={() => onOpen(run)}><Eye size={14} /> ดูรายละเอียด</button></article>
+        <article key={run.id}><div><strong>{run.fileName}</strong><Badge meta={effectiveRunMeta(run)} /></div><p>{fmtDateTime(run.createdAt)} · {naText(run.actorName)}</p><small>{changeCount(run.summary)} เปลี่ยน · {(run.summary?.error || 0) + (run.summary?.conflict || 0)} ต้องแก้</small><button type="button" className="btn" onClick={() => onOpen(run)}><Eye size={14} /> ดูรายละเอียด</button></article>
       ))}</div>
     </section>
   );
@@ -376,7 +376,7 @@ function ImportDetailDrawer({ detail, loading, onClose }) {
     >
       {loading ? <SkeletonRows rows={5} /> : detail && (
         <div className={styles.detailBody}>
-          <dl><div><dt>ผู้ดำเนินการ</dt><dd>{detail.actorName || "—"}</dd></div><div><dt>เวอร์ชัน</dt><dd>{detail.templateVersion}</dd></div><div><dt>เพิ่มใหม่</dt><dd>{summary.create || summary.created || 0}</dd></div><div><dt>แก้ไข/สถานะ</dt><dd>{(summary.update || summary.updated || 0) + (summary.activate || summary.activated || 0) + (summary.deactivate || summary.deactivated || 0)}</dd></div></dl>
+          <dl><div><dt>ผู้ดำเนินการ</dt><dd>{naText(detail.actorName)}</dd></div><div><dt>เวอร์ชัน</dt><dd>{detail.templateVersion}</dd></div><div><dt>เพิ่มใหม่</dt><dd>{summary.create || summary.created || 0}</dd></div><div><dt>แก้ไข/สถานะ</dt><dd>{(summary.update || summary.updated || 0) + (summary.activate || summary.activated || 0) + (summary.deactivate || summary.deactivated || 0)}</dd></div></dl>
           <h4>หลักฐานรายแถว</h4>
           <div className={styles.detailRows}>{(detail.rows || []).map((row) => (
             <article key={row.id}><div><strong>{row.mainCategoryCode && row.typeCode ? `${row.mainCategoryCode}-${row.typeCode}` : `แถว ${row.rowNumber}`}</strong><Badge meta={ACTION_META[row.action]} /></div><p>{row.after?.nameTh || row.after?.nameEn || row.errors?.join(" · ") || "ไม่มีรายละเอียด"}</p></article>

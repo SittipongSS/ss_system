@@ -25,7 +25,7 @@ import MaterialForm, { emptyMaterialForm, materialToForm } from "@/components/ma
 import PriceTierFields, { emptyTierRow } from "@/components/materials/PriceTierFields";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import {
   MATERIAL_STATE_LABELS,
   canQuoteMaterial, latestRevision, materialPriceState, revisionPriceRange,
@@ -329,7 +329,7 @@ export default function MaterialRegistryPanel({
                             {rev ? ` · ถึง ${revisionValidUntil(rev)}` : ""}
                           </div>
                         </>
-                      ) : "—"}
+                      ) : NA}
                     </td>
                     <td>
                       <span className="ui-badge" style={{ background: tone.bg, color: tone.fg }}>
@@ -481,7 +481,7 @@ export default function MaterialRegistryPanel({
                           </div>
                         ))}
                       </td>
-                      <td style={{ fontSize: "var(--fs-5)" }}>{r.quotedByName || "—"}</td>
+                      <td style={{ fontSize: "var(--fs-5)" }}>{naText(r.quotedByName)}</td>
                       <td style={{ fontSize: "var(--fs-5)" }}>{fmtDate(r.quotedAt)}</td>
                     </tr>
                   ))}

@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import Modal from "@/components/Modal";
 import Tabs from "@/components/ui/Tabs";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, NA } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -112,7 +112,7 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                       <thead><tr><th>รอบที่</th><th>วันที่รับ</th><th style={{ textAlign: "right" }}>จำนวน</th></tr></thead>
                       <tbody>
                         {detail.fcs.map((f, i) => (
-                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : "—"}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}{casesText(f.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> ({casesText(f.qty, ppc)})</span>}</td></tr>
+                          <tr key={i}><td>#{f.roundNo}</td><td>{f.receivedDate ? fmtDate(f.receivedDate) : NA}</td><td style={{ textAlign: "right" }}>{nf(f.qty)}{casesText(f.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> ({casesText(f.qty, ppc)})</span>}</td></tr>
                         ))}
                       </tbody>
                     </table>
@@ -131,12 +131,12 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                         {detail.poLines.map((p, i) => (
                           <tr key={i}>
                             <td className="font-mono">{p.poNumber}</td>
-                            <td>{p.docDate ? fmtDate(p.docDate) : "—"}</td>
-                            <td>{p.receivedDate ? fmtDate(p.receivedDate) : "—"}</td>
+                            <td>{p.docDate ? fmtDate(p.docDate) : NA}</td>
+                            <td>{p.receivedDate ? fmtDate(p.receivedDate) : NA}</td>
                             <td style={{ textAlign: "right" }}>{nf(p.qty)}{casesText(p.qty, ppc) && <span style={{ color: "var(--text-3)", fontSize: "var(--fs-3)" }}> ({casesText(p.qty, ppc)})</span>}</td>
-                            <td>{p.dueDate ? fmtDate(p.dueDate) : "—"}</td>
-                            <td>{p.expectedDate ? fmtDate(p.expectedDate) : "—"}</td>
-                            <td>{p.actualDeliveredDate ? fmtDate(p.actualDeliveredDate) : "—"}</td>
+                            <td>{p.dueDate ? fmtDate(p.dueDate) : NA}</td>
+                            <td>{p.expectedDate ? fmtDate(p.expectedDate) : NA}</td>
+                            <td>{p.actualDeliveredDate ? fmtDate(p.actualDeliveredDate) : NA}</td>
                             <td>{PO_STATUS_LABEL[p.status] || p.status}</td>
                           </tr>
                         ))}

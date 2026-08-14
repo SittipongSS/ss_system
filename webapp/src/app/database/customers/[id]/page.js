@@ -31,7 +31,7 @@ import {
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf, brandBoth } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate } from "@/lib/format";
+import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
@@ -308,11 +308,11 @@ export default function CustomerDetails() {
   const Field = ({ label, value, mono }) => (
     <div>
       <span className="text-[var(--text-3)] block mb-1 text-[11px]">{label}</span>
-      <span className={`font-semibold text-[var(--text)] text-sm ${mono ? "font-mono" : ""}`}>{value || "-"}</span>
+      <span className={`font-semibold text-[var(--text)] text-sm ${mono ? "font-mono" : ""}`}>{naText(value)}</span>
     </div>
   );
 
-  const teamsLabel = (customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", ") || "-";
+  const teamsLabel = naText((customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => TEAM_LABELS[t] || t).join(", "));
 
   // ที่อยู่ (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
   const addresses = customerAddresses(customer);
@@ -403,7 +403,7 @@ export default function CustomerDetails() {
                         <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{a.address}</p>
                         {(a.contactName || a.contactPhone) && (
                           <p className="text-[11px] text-[var(--text-3)] mt-1">
-                            ผู้รับของ: {a.contactName || "—"}
+                            ผู้รับของ: {naText(a.contactName)}
                             {a.contactPhone ? ` · ${fmtPhone(a.contactPhone)}` : ""}
                           </p>
                         )}
@@ -501,7 +501,7 @@ export default function CustomerDetails() {
                                       {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
                                       <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
                                     </div>
-                                  ) : <span className="text-[var(--text-3)]">-</span>}
+                                  ) : <span className="text-[var(--text-3)]">{NA}</span>}
                                 </td>
                               )}
                               <td className="text-center"><ProductStatusPill status={p.status} /></td>
@@ -551,12 +551,12 @@ export default function CustomerDetails() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-semibold text-[var(--text)] font-mono text-sm">{o.quotationRef}</div>
-                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {o.poReference || "-"} · {itemCount} รายการ</div>
+                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {naText(o.poReference)} · {itemCount} รายการ</div>
                           </div>
                           <OrderStatusPill status={o.status} />
                         </div>
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
-                          <span className="text-[var(--text-3)]">กำหนดส่ง: {o.deliveryDate || "-"}</span>
+                          <span className="text-[var(--text-3)]">กำหนดส่ง: {naText(o.deliveryDate)}</span>
                           <span className="font-mono font-bold text-[var(--text)]">
                             {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
                           </span>
@@ -586,12 +586,12 @@ export default function CustomerDetails() {
                           return (
                             <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
                               <td className="font-semibold font-mono text-[var(--text)]">{o.quotationRef}</td>
-                              <td className="font-mono text-xs text-[var(--text-2)]">{o.poReference || "-"}</td>
+                              <td className="font-mono text-xs text-[var(--text-2)]">{naText(o.poReference)}</td>
                               <td className="text-center font-mono font-semibold">{itemCount}</td>
                               <td className="num font-mono font-bold text-[var(--text)]">
                                 {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
                               </td>
-                              <td className="text-center text-xs">{o.deliveryDate || "-"}</td>
+                              <td className="text-center text-xs">{naText(o.deliveryDate)}</td>
                               <td className="text-center"><OrderStatusPill status={o.status} /></td>
                             </tr>
                           );
@@ -749,7 +749,7 @@ export default function CustomerDetails() {
                   <div key={i} className="text-xs border border-[var(--border)] rounded-lg px-3 py-2">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       {c.role && <span className="ui-badge">{c.role}</span>}
-                      <span className="font-medium text-[var(--text)]">{c.name || "-"}</span>
+                      <span className="font-medium text-[var(--text)]">{naText(c.name)}</span>
                       {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(หลัก)</span>}
                     </div>
                     {(c.phone || c.email) && (

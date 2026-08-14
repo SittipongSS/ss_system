@@ -12,6 +12,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
+import { naText, NA } from "@/lib/format";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -166,8 +167,8 @@ export default function MgmtTasksPage() {
                 <tr key={t.id} onClick={() => setSelected(t)} style={{ borderTop: "1px solid var(--border)", cursor: "pointer" }}>
                   <td style={{ padding: "10px 8px", color: "var(--text-3)" }}>{i + 1}</td>
                   <td style={{ padding: "10px 8px" }}>{t.title}</td>
-                  <td style={{ padding: "10px 8px" }}>{t.deptCode ? <span className="pill">{t.deptCode}</span> : "—"}</td>
-                  <td style={{ padding: "10px 8px", color: "var(--text-2)" }}>{t.assigneeName || "—"}</td>
+                  <td style={{ padding: "10px 8px" }}>{t.deptCode ? <span className="pill">{t.deptCode}</span> : NA}</td>
+                  <td style={{ padding: "10px 8px", color: "var(--text-2)" }}>{naText(t.assigneeName)}</td>
                   <td style={{ padding: "10px 8px", color: "var(--text-2)" }}>{fmt(t.dueDate)}</td>
                   <td style={{ padding: "10px 8px" }}><span className={`pill ${STATUS_CLASS[t.status] || ""}`}>{TASK_STATUS_LABELS[t.status] || t.status}</span></td>
                   <td style={{ padding: "10px 8px" }}>{t.priority === "urgent" ? <span className="pill danger">ด่วน</span> : <span style={{ color: "var(--text-3)" }}>ปกติ</span>}</td>

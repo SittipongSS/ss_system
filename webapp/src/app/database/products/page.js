@@ -26,7 +26,7 @@ import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
 import { brandBoth, normalizeBrands } from "@/lib/master/brands";
-import { productNameBoth, fmtMoney } from "@/lib/format";
+import { productNameBoth, fmtMoney, naText, NA } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -216,7 +216,7 @@ export default function ProductRegistry() {
       if (!formData.categoryCode) { notifyToast.error("กรุณาเลือกหมวดสินค้า"); return; }
       const customer = customers.find((c) => c.id === formData.customerId);
       if (!customerCodeSegment(customer?.arCode)) {
-        notifyToast.error(`ลูกค้ารายนี้มีรหัส ${customer?.arCode || "—"} ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง`);
+        notifyToast.error(`ลูกค้ารายนี้มีรหัส ${naText(customer?.arCode)} ซึ่งไม่ใช่รูปแบบ AR ที่ระบบรู้จัก — ปิดสวิตช์ระบบใหม่แล้วกรอกรหัสสินค้าเอง`);
         return;
       }
     } else {
@@ -448,7 +448,7 @@ export default function ProductRegistry() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-2)] truncate">{brandBoth(p.brandName, p.brandNameEn) || "-"}</span>
+                  <span className="text-[var(--text-2)] truncate">{naText(brandBoth(p.brandName, p.brandNameEn))}</span>
                   <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
                 </div>
                 {canSeeCost && (
@@ -519,9 +519,9 @@ export default function ProductRegistry() {
                             <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
                             <div className="text-[var(--text-2)]">{cat.sub}</div>
                           </div>
-                        ) : <span className="text-[var(--text-3)]">-</span>}
+                        ) : <span className="text-[var(--text-3)]">{NA}</span>}
                       </td>
-                      <td className="text-[var(--text-2)]">{brandBoth(p.brandName, p.brandNameEn) || "-"}</td>
+                      <td className="text-[var(--text-2)]">{naText(brandBoth(p.brandName, p.brandNameEn))}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                       {canSeeCost && <td className="num mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</td>}
                       <td className="num mono text-[var(--text-2)]">

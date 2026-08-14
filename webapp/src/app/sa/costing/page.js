@@ -21,7 +21,7 @@ import CostingRequestForm, {
   costingFormFromRequest, costingPayloadFrom,
 } from "@/components/costing/CostingRequestForm";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 import {
   COSTING_STATUSES,
@@ -236,7 +236,7 @@ export default function CostingListPage() {
                       </Link>
                     </td>
                     <td>
-                      <div style={{ fontWeight: "var(--fw-medium)" }}>{row.customerName || "—"}</div>
+                      <div style={{ fontWeight: "var(--fw-medium)" }}>{naText(row.customerName)}</div>
                       <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                         {productNames.length
                           ? productNames.slice(0, 2).join(" · ")
@@ -254,12 +254,12 @@ export default function CostingListPage() {
                     </td>
                     <td>
                       {pricing.total === 0
-                        ? <span style={{ color: "var(--text-3)" }}>—</span>
+                        ? <span style={{ color: "var(--text-3)" }}>{NA}</span>
                         : `${pricing.quoted}/${pricing.total}`}
                     </td>
                     <td>
                       {approval.total === 0
-                        ? <span style={{ color: "var(--text-3)" }}>—</span>
+                        ? <span style={{ color: "var(--text-3)" }}>{NA}</span>
                         : (
                           <span style={{ color: approval.returned > 0 ? "var(--red)" : undefined }}>
                             {approval.approved}/{approval.total}

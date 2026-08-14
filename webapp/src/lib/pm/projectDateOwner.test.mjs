@@ -91,7 +91,10 @@ test('projectDateRange: ยังไม่มีขั้นตอน → ตก
 
 test('หัวโครงการต้องโชว์ช่วงที่คำนวณ ไม่ใช่คอลัมน์สำเนา', () => {
   const src = read('app/sa/projects/[id]/page.js');
-  assert.match(src, /value: dateRange\.start \|\| "-"/);
-  assert.match(src, /value: dateRange\.finish \|\| "-"/);
+  /* ⚠️ เดิมเช็ค `|| "-"` — เปลี่ยนเป็น naText() ตอนรวมค่าว่างทั้งระบบเป็น N/A
+     (มติผู้ใช้ 2026-08-14) · เจตนาของด่านนี้เท่าเดิม: หัวโครงการต้องอ่านจาก
+     `dateRange` ที่คำนวณ ไม่ใช่คอลัมน์สำเนาใน `p` */
+  assert.match(src, /value: naText\(dateRange\.start\)/);
+  assert.match(src, /value: naText\(dateRange\.finish\)/);
   assert.doesNotMatch(src, /label: "วันเริ่ม", value: p\.startDate/, 'ห้ามกลับไปอ่านคอลัมน์สำเนา');
 });

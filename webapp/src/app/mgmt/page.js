@@ -8,6 +8,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
+import { naText } from "@/lib/format";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -136,8 +137,8 @@ export default function MgmtOverviewPage() {
                 {data.urgent.map((t) => (
                   <div key={t.id} onClick={() => router.push("/mgmt/tasks")} style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: "var(--fs-7)", padding: "9px 0", borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
-                    <span style={{ color: "var(--text-2)" }}>{t.deptCode || "—"}</span>
-                    <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.assigneeName || "—"}</span>
+                    <span style={{ color: "var(--text-2)" }}>{naText(t.deptCode)}</span>
+                    <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{naText(t.assigneeName)}</span>
                     <span style={{ textAlign: "right", color: "var(--text-2)" }}>{fmtDue(t.dueDate)}</span>
                   </div>
                 ))}

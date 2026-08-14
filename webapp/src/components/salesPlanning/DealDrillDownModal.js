@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { snapForecastLevel, forecastToneClass, stageBadge, money } from "@/components/salesPlanning/ui";
 import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import { isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, NA } from "@/lib/format";
 
 export default function DealDrillDownModal({ filter, onClose }) {
   const [deals, setDeals] = useState([]);
@@ -235,7 +235,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
                       <td className="fc-detail-chance">
                         {isOpenDeal(deal)
                           ? <span className={`ui-badge ui-badge-cell ui-badge-w-fc ${forecastToneClass(deal.probability)}`}>{deal.probability}%</span>
-                          : <span className="ui-badge-w-fc fc-detail-nochance">—</span>}
+                          : <span className="ui-badge-w-fc fc-detail-nochance">{NA}</span>}
                       </td>
                       <td className="num fc-detail-amount">{money(amountOf(deal))}</td>
                     </tr>

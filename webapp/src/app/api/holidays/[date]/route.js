@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { invalidateCache } from '@/lib/serverCache';
 import { recordAudit } from '@/lib/audit';
+import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function PATCH(request, { params }) {
   invalidateCache('holidays');
   await recordAudit({
     user, action: 'update', entityType: 'holiday', entityId: date, before, after: data,
-    summary: `แก้ชื่อวันหยุด ${date} เป็น "${data.name || '-'}"`, request,
+    summary: `แก้ชื่อวันหยุด ${date} เป็น "${naText(data.name)}"`, request,
   });
   return Response.json(data);
 }

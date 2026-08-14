@@ -17,6 +17,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
+import { naText } from "@/lib/format";
 
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
@@ -142,7 +143,7 @@ export default function DatabaseOverview() {
       if (canApprove && !mine) return;
       q.push({
         id: `c-${x.id}`, tone: "warning", badge: "ลูกค้า",
-        title: `${x.arCode || "-"} · ${x.name || ""}`.trim(),
+        title: `${naText(x.arCode)} · ${x.name || ""}`.trim(),
         subtitle: "รออนุมัติลูกค้า",
         cta: mine ? "อนุมัติ" : "ดู", onClick: () => router.push("/database/customers"),
       });

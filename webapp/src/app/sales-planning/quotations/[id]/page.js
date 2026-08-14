@@ -32,7 +32,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
@@ -557,7 +557,7 @@ export default function QuotationEditorPage() {
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
     closed: { label: "ปิด (ดีลจบด้วยใบอื่น)", color: "var(--text-3)" },
-  }[quote?.status] || { label: quote?.status || "-", color: "var(--text-3)" };
+  }[quote?.status] || { label: naText(quote?.status), color: "var(--text-3)" };
   const approvalWorkflowIndex = ["approved", "not_required"].includes(quote?.approvalStatus)
     ? 3
     : awaitingApproval
@@ -721,7 +721,7 @@ export default function QuotationEditorPage() {
             description={`${quote.customerName || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
             badges={<><SalesStateBadge label={statusMeta.label} color={statusMeta.color} />{quote.revisionNo > 0 ? <span className="ui-badge">Revision {quote.revisionNo}</span> : null}</>}
             facts={[
-              { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : "-" },
+              { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : NA },
               { icon: CalendarDays, label: "ยืนราคาถึง", value: form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ" },
               { icon: CircleDollarSign, label: "ภาษี", value: form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว" },
               { icon: Package, label: "รายการ", value: `${lines.length} รายการ` },
@@ -753,27 +753,27 @@ export default function QuotationEditorPage() {
                     unique (taxId, branchCode) บังคับ not null แล้วตกไป '00000' ⇒ เขียน
                     `สาขา ${...}` ตรง ๆ จะได้ "สาขา 00000" บนใบเกือบทุกใบ ขณะที่หน้าทะเบียน
                     ลูกค้าเรียก branchLabel แล้วขึ้น "สำนักงานใหญ่" = ข้อมูลตัวเดียวกันสองคำ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{quote.customerName || "-"}{quote.branchCode ? ` · ${branchLabel(quote.branchCode)}` : ""}</span></div>
-                <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{[quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") || "-"}</span></div>
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}{quote.branchCode ? ` · ${branchLabel(quote.branchCode)}` : ""}</span></div>
+                <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))}</span></div>
                 {editable && billingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่ออกบิล
                     <Select value={form.billingAddressId} onChange={(e) => setF({ billingAddressId: e.target.value })} aria-label="เลือกที่อยู่ออกบิล">
                       {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                     </Select>
-                    <span className={styles.addressPreview}>{pickedAddresses.snapshot.billingAddress || "-"}</span>
+                    <span className={styles.addressPreview}>{naText(pickedAddresses.snapshot.billingAddress)}</span>
                   </label>
                 ) : (
-                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{quote.billingAddress || "-"}</span></div>
+                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{naText(quote.billingAddress)}</span></div>
                 )}
                 {editable && shippingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่จัดส่ง
                     <Select value={form.shippingAddressId} onChange={(e) => setF({ shippingAddressId: e.target.value })} aria-label="เลือกที่อยู่จัดส่ง">
                       {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                     </Select>
-                    <span className={styles.addressPreview}>{pickedAddresses.snapshot.shippingAddress || "-"}</span>
+                    <span className={styles.addressPreview}>{naText(pickedAddresses.snapshot.shippingAddress)}</span>
                   </label>
                 ) : (
-                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || quote.billingAddress || "-"}</span></div>
+                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || naText(quote.billingAddress)}</span></div>
                 )}
               </div>
             </section>
@@ -876,7 +876,7 @@ export default function QuotationEditorPage() {
               statusColor={statusMeta.color}
               rows={[
                 { id: "subtotal", label: "รวมรายการ", value: money(totals.subtotal) },
-                { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : "-" },
+                { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${money(totals.discountAmount)}` : NA },
                 ...(form.vatRate > 0 ? [{ id: "vat", label: `VAT ${form.vatRate}%`, value: money(totals.vatAmount) }] : []),
               ]}
             />
@@ -931,8 +931,8 @@ export default function QuotationEditorPage() {
                   <h2>หลักฐานการปิด Won</h2>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "var(--fs-7)" }}>
-                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || quote.wonDocType || "-"}</div>
-                  <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : "-"}</div>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || naText(quote.wonDocType)}</div>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : NA}</div>
                   {quote.wonPaymentDueDate && <div><small style={{ color: "var(--text-3)", display: "block" }}>กำหนดชำระ</small>{fmtDate(quote.wonPaymentDueDate)}</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <small style={{ color: "var(--text-3)" }}>ไฟล์แนบ</small>
@@ -1019,7 +1019,7 @@ export default function QuotationEditorPage() {
       <ReasonDialog
         open={!!unacceptForm}
         title="ย้อนการรับใบเสนอราคา"
-        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็น “ส่งลูกค้าแล้ว” และดีลถอยออกจาก Won`}
+        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็น “ส่งลูกค้าแล้ว” และดีลถอยออกจาก Won`}
         detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมีใบสั่งขายโดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
         label="เหตุผลที่ย้อนการรับ"
         value={unacceptForm?.reason || ""}
@@ -1038,7 +1038,7 @@ export default function QuotationEditorPage() {
       <ReasonDialog
         open={!!workflowForm}
         title="ดึงกลับใบเสนอราคา"
-        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับเป็นสถานะยังไม่ยื่นอนุมัติ`}
+        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็นสถานะยังไม่ยื่นอนุมัติ`}
         detail="ผู้ยื่นดึงเอกสารของตัวเองกลับได้ขณะที่ยังรออนุมัติ จากนั้นผู้มีสิทธิ์แก้ไขจึงเปิดแก้เอกสารได้"
         label="เหตุผลที่ดึงกลับ"
         value={workflowForm?.reason || ""}
@@ -1057,7 +1057,7 @@ export default function QuotationEditorPage() {
       <ReasonDialog
         open={!!rejectForm}
         title="ตีกลับให้ผู้จัดทำแก้ไข"
-        description={`ใบ ${quote?.quoteNumber || "-"} จะกลับไปให้ผู้จัดทำแก้ พร้อมเหตุผลที่คุณระบุ`}
+        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับไปให้ผู้จัดทำแก้ พร้อมเหตุผลที่คุณระบุ`}
         detail="ผู้จัดทำจะเห็นเหตุผลนี้บนใบเสนอราคาและได้รับแจ้งเตือน แก้เสร็จต้องยื่นและลงนามใหม่"
         label="เหตุผลที่ตีกลับ"
         value={rejectForm?.reason || ""}
@@ -1077,7 +1077,7 @@ export default function QuotationEditorPage() {
       <ReasonDialog
         open={!!revisionForm}
         title="ออก Rev. ใบเสนอราคา"
-        description={`ระบบจะเก็บ ${quote?.quoteNumber || "-"} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
+        description={`ระบบจะเก็บ ${naText(quote?.quoteNumber)} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
         detail="เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง"
         label="เหตุผลที่ออก Rev."
         value={revisionForm?.reason || ""}

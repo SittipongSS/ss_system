@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText, NA } from "@/lib/format";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2 } from "lucide-react";
@@ -35,7 +35,7 @@ const EMPTY_FORM = {
 /* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
    (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
    fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
-const formatDate = (value) => (value ? fmtDateTime(value) : "-");
+const formatDate = (value) => (value ? fmtDateTime(value) : NA);
 
 function StatusBadge({ status }) {
   const tone = status === "published" ? styles.published : status === "archived" ? styles.archived : styles.draft;
@@ -77,7 +77,7 @@ export default function CompanySettingsPage() {
 
   const publishedContacts = useMemo(() => {
     const row = data.published;
-    return [row?.phone, row?.email, row?.lineId, row?.website].filter(Boolean).join(" · ") || "-";
+    return naText([row?.phone, row?.email, row?.lineId, row?.website].filter(Boolean).join(" · "));
   }, [data.published]);
 
   const openEdit = (row = data.draft) => {
@@ -332,7 +332,7 @@ export default function CompanySettingsPage() {
       <ConfirmDialog
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่ข้อมูลบริษัท"
-        description={`Version ${data.draft?.versionNumber || "-"} จะเป็นข้อมูลบริษัทเวอร์ชันที่ใช้งานอยู่`}
+        description={`Version ${naText(data.draft?.versionNumber)} จะเป็นข้อมูลบริษัทเวอร์ชันที่ใช้งานอยู่`}
         detail="เอกสารที่ออกใหม่จะใช้ข้อมูลชุดนี้ · ใบที่ออกไปแล้วยังคงข้อมูลเดิม"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
@@ -342,7 +342,7 @@ export default function CompanySettingsPage() {
       <ConfirmDialog
         open={confirm?.action === "discard"}
         title="ยกเลิกการแก้ไข"
-        description={`Version ${data.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+        description={`Version ${naText(data.draft?.versionNumber)} จะถูกลบถาวรและกู้คืนไม่ได้`}
         detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และข้อมูลที่ใช้งานอยู่จะไม่เปลี่ยนแปลง"
         confirmLabel="ยกเลิกการแก้ไข"
         tone="danger"

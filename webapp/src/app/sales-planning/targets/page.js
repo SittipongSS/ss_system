@@ -11,7 +11,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
 import { userTeams } from "@/lib/permissions";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
@@ -119,7 +119,7 @@ export default function SalesPlanningTargetsPage() {
         // ชื่อจากบัญชีจริงก่อน — `x.ownerName` ที่ค้างในแถวเป็นชื่อ ณ ตอนวางเป้า
         // (ของจริงบน prod: 12 แถวยังเป็นนามสกุลเดิมของคนที่เปลี่ยนชื่อไปแล้ว)
         const node = buildNode("ae", t, { id, name: still?.name || name });
-        node.ghost = still ? `ย้ายไปทีม ${userTeams(still).join(" + ") || "-"} แล้ว` : "ออกจากระบบแล้ว";
+        node.ghost = still ? `ย้ายไปทีม ${naText(userTeams(still).join(" + "))} แล้ว` : "ออกจากระบบแล้ว";
         return node;
       });
       const node = buildNode("team", t, null);
@@ -393,7 +393,7 @@ export default function SalesPlanningTargetsPage() {
       </td>
       {node.monthAmounts.map((amt, i) => (
         <td key={i} className={`num ${styles.monthCell}`}>
-          <NumCell {...cellProps(node, `m${i}`, amt)} display={amt ? compact(amt) : "–"} />
+          <NumCell {...cellProps(node, `m${i}`, amt)} display={amt ? compact(amt) : NA} />
         </td>
       ))}
       <td className={`fz-cr num ${styles.totalCell}`}>
@@ -464,7 +464,7 @@ export default function SalesPlanningTargetsPage() {
                       <td className={`fz-c1 fz-foot ${styles.nameCell}`}>{r.label}</td>
                       {r.months.map((v, i) => (
                         <td key={i} className={`num mono tabular-nums fz-foot ${styles.monthCell} ${v ? "" : styles.footZero}`}>
-                          {v ? compact(v) : "–"}
+                          {v ? compact(v) : NA}
                         </td>
                       ))}
                       <td className={`fz-cr num mono tabular-nums fz-foot ${styles.totalCell}`}>
