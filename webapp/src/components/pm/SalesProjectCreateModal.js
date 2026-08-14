@@ -168,6 +168,12 @@ export default function SalesProjectCreateModal({
             ? (personIdByName(users, lockPeopleField === "acOwner" ? myName : form.acOwner)
                ?? initialData?.acOwnerId ?? null)
             : null,
+          // ผู้ตรวจสอบก็เดินคู่ชื่อเช่นกัน (mig 0256) — ชื่อนี้ไหลไปตั้งต้นใบเสนอราคาต่อ
+          // และ id คือปลายทางแจ้งเตือน · ล้างชื่อ = ล้าง id ด้วย
+          aeSupervisorId: (lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor)
+            ? (personIdByName(users, lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor)
+               ?? initialData?.aeSupervisorId ?? null)
+            : null,
           customerName: customer?.name || null,
           metadata: { ...(initialData?.metadata || {}), brand: form.brand, containerOnly: true },
         }),

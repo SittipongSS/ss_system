@@ -108,7 +108,7 @@ create table if not exists public.projects (
   "orderQty"            text default '',
   "productionQty"       text default '',
   "aeSupervisor"        text default '',
-  "keyAccountExec"      text default '',
+  -- "keyAccountExec" ปลดระวางที่ mig 0256 (เขียนอย่างเดียว ไม่มีใครอ่าน)
   "customerEmail"       text default '',
   "preparedBy"          text default '',
   "reviewedBy"          text default '',
@@ -248,6 +248,21 @@ ss-cj `ProjectContext.jsx` (1044 บรรทัด, ~40 จุดเรีย�
 ตรงก็ 403 · เปลี่ยนผู้ดูแลทีหลัง (PATCH) ก็ต้องย้ายสองช่องนี้ตามด้วยเสมอ
 กติกาเดียวกับดีล ([dealOwner.js](src/lib/sales/dealOwner.js)) — ต่างกันที่ด่านทีมของ
 โครงการวัดคนสั่งด้วย `pmEditScope` (AE = ระดับทีม) ไม่ใช่ `salesPlanningEditScope`
+
+### คนสามฝ่ายของโครงการ (ต่างจากดีลที่มีเจ้าของคนเดียว)
+
+| ฝ่าย | ชื่อ (เอกสาร) | ตัวตน (สิทธิ์/แจ้งเตือน) | ตำแหน่งที่รับได้ | ผูกทีม | ขยับ `team`/`ownerId` |
+|---|---|---|---|---|---|
+| ผู้ดูแล | `aeOwner` | `aeOwnerId` | ae · senior_ae | ทีมเดียวกับงาน | **ใช่ — งานเดินตามเขา** |
+| ผู้ประสานงาน | `acOwner` | `acOwnerId` | ac | ทีมเดียวกับงาน | ไม่ |
+| ผู้ตรวจสอบ | `aeSupervisor` | `aeSupervisorId` (mig 0256) | ae_supervisor | **ข้ามทีมได้** (viewScope 'all') | ไม่ |
+
+กติกาที่ใช้กับทั้งสามฝ่าย — ตรวจด้วย `lib/pm/projectOwner.js` ตัวเดียว:
+- **ชื่อเขียนจาก server ตาม id เสมอ** · `PATCH` รับเฉพาะ `*Id` ไม่รับชื่อ (ไม่งั้นยิงชื่อ
+  อย่างเดียวได้ แล้วชื่อบนใบกับ id ที่ใช้จริงเป็นคนละคน — กับดักที่ mig 0190 เกิดมาแก้)
+- ผู้ดูแล **บังคับ** ตอนสร้าง · อีกสองฝ่ายไม่บังคับและล้างได้ (ล้าง id = ล้างชื่อด้วย)
+- ทั้งสามอยู่ใน `recipients` ของเธรดโครงการ ([updateAccess](src/lib/master/updateAccess.js))
+- `keyAccountExec` ถูกปลดระวางที่ mig 0256 — เขียนอย่างเดียวมาตลอด ไม่มีใครอ่าน
 
 ⚠️ **ช่อง "ผู้ประสานงาน (AC)" เขียนลง `acOwner`/`acOwnerId` เท่านั้น** (2026-08-14)
 ห้ามกลับไปเขียน `preparedBy` — สองช่องนี้คนละความหมาย:

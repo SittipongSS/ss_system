@@ -90,6 +90,35 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
 }
 
 /**
+ * ตรวจ "ผู้ตรวจสอบ (AE Supervisor)" ที่ฟอร์มเลือก — ช่องไม่บังคับ ว่าง = ถอดคนออก
+ *
+ * ⚠️ **ไม่มีด่านทีม** ต่างจาก AE/AC โดยเจตนา — หัวหน้าฝ่ายขายมี viewScope 'all'
+ * (permissions.js) คุมงานทุกทีมอยู่แล้ว การบังคับให้ทีมตรงกับงานจึงเป็นการกันคนที่
+ * มีสิทธิ์อยู่แล้วเปล่า ๆ · ที่ต้องกันจริงคือ "ไม่ใช่ตำแหน่งผู้ตรวจสอบ"
+ *
+ * @returns {Promise<{ ok: true, aeSupervisorId: string|null, aeSupervisor: string } | { ok: false, error }>}
+ */
+export async function resolveProjectSupervisor(supabase, supervisorId) {
+  const id = String(supervisorId || '').trim();
+  if (!id) return { ok: true, aeSupervisorId: null, aeSupervisor: '' };
+
+  const user = await findAuthUser(supabase, id);
+  if (!user) return { ok: false, error: 'ไม่พบผู้ใช้ที่เลือกเป็นผู้ตรวจสอบ' };
+
+  const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
+  if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ตรวจสอบคนอื่น' };
+
+  if ((user.app_metadata?.role || null) !== 'ae_supervisor') {
+    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (AE Supervisor)' };
+  }
+
+  const name = projectOwnerName(user);
+  if (!name) return { ok: false, error: 'ผู้ใช้รายนี้ยังไม่มีชื่อในระบบ — ตั้งชื่อที่หน้าจัดการผู้ใช้ก่อน' };
+
+  return { ok: true, aeSupervisorId: id, aeSupervisor: name };
+}
+
+/**
  * ตรวจ "ผู้ประสานงาน (AC)" ที่ฟอร์มเลือก — ช่องไม่บังคับ ส่งค่าว่างมา = ถอดคนออก
  *
  * ⚠️ ต่างจากผู้ดูแล: AC **ไม่ใช่เจ้าของงาน** (มติเดิมทั้งระบบ — ดู dealOwner.js) จึงไม่

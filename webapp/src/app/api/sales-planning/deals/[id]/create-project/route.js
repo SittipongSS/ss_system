@@ -10,7 +10,7 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
-import { resolveProjectAcOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
@@ -54,6 +54,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
   const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, deal.team || user.team);
   if (!coordinator.ok) return badRequest(coordinator.error);
+  // ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ · ชื่อคู่ id เสมอ (mig 0256)
+  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId);
+  if (!supervisor.ok) return badRequest(supervisor.error);
 
   // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
@@ -106,8 +109,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     productCode: '',
     orderQty: '',
     productionQty: '',
-    aeSupervisor: body.aeSupervisor || '',
-    keyAccountExec: '',
+    aeSupervisor: supervisor.aeSupervisor || '',
+    aeSupervisorId: supervisor.aeSupervisorId,
     customerEmail,
     preparedBy: body.preparedBy || user.name || '',
     reviewedBy: '',

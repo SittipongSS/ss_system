@@ -106,7 +106,11 @@ export const UPDATE_ENTITIES = {
     //
     // ผลพลอยได้: ไม่ต้องเปิดสมุดรายชื่อ (วนทุกหน้าของ auth) ทุกครั้งที่มีคนพิมพ์
     // ข้อความอีกต่อไป — ด่านนี้กลายเป็นการอ่านฟิลด์ล้วน ๆ
-    recipients: (parent) => [parent?.ownerId, parent?.aeOwnerId, parent?.acOwnerId],
+    // ⭐ สามฝ่ายของโครงการ + เจ้าของแถว (mig 0256 เพิ่มผู้ตรวจสอบเข้ามา — เดิมหัวหน้าที่
+    // ถูกระบุบนหัวโครงการไม่เคยได้รับแจ้งเตือนเลย เพราะช่องนั้นเก็บแค่ "ชื่อ")
+    recipients: (parent) => [
+      parent?.ownerId, parent?.aeOwnerId, parent?.acOwnerId, parent?.aeSupervisorId,
+    ],
   },
 
   // ── ดีล (ฟีดความเคลื่อนไหว ย้ายมาจาก sales_deal_activities, mig 0169) ──

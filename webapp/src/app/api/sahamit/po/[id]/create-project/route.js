@@ -134,7 +134,6 @@ export async function POST(request, { params }) {
     orderQty: String(activeLines.reduce((sum, line) => sum + toQty(line.qty), 0) || ''),
     productionQty: '',
     aeSupervisor: '',
-    keyAccountExec: user.name || '',
     customerEmail: customer.email || '',
     preparedBy: user.name || '',
     reviewedBy: '',

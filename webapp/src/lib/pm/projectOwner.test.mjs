@@ -6,7 +6,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner } from './projectOwner.js';
+import {
+  PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor,
+} from './projectOwner.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 // assertion แบบ "ต้องไม่มี" ต้องดูเฉพาะโค้ดจริง — คอมเมนต์ที่เล่าบั๊กเดิมต้องพูดถึง
@@ -158,6 +160,65 @@ test('ทุกทางที่สร้าง/แก้โครงการ 
   }
   // ชื่อมาจาก server — ไม่รับชื่อลอย ๆ จาก client อีก
   assert.doesNotMatch(codeOnly(read('../../app/api/sa/projects/route.js')), /acOwner: body\.acOwner/);
+});
+
+/* ── ผู้ตรวจสอบ (AE Supervisor) = ฝ่ายที่สามของโครงการ ─────────────────────
+   ดีลมีเจ้าของคนเดียว (AE/Senior) แต่โครงการมีสามฝ่าย · ฝ่ายที่สามเป็น `text` เปล่า ๆ
+   มาตั้งแต่ mig 0008 ⇒ หัวหน้าที่ถูกระบุบนหัวโครงการไม่เคยได้รับแจ้งเตือนเลยสักครั้ง */
+const SUPERVISOR = { app_metadata: { role: 'ae_supervisor' }, user_metadata: { name: 'หัวหน้าฝ่ายขาย' } };
+
+test('ผู้ตรวจสอบ: ว่าง = ถอดคนออก · ต้องเป็นตำแหน่ง ae_supervisor เท่านั้น', async () => {
+  const stub = ownerStub({ 'U-SUP': SUPERVISOR, 'U-AE': AE_ODM, 'U-AC': AC_ODM });
+  const blank = await resolveProjectSupervisor(stub, '');
+  assert.equal(blank.ok, true);
+  assert.equal(blank.aeSupervisorId, null);
+
+  const good = await resolveProjectSupervisor(stub, 'U-SUP');
+  assert.equal(good.ok, true);
+  assert.equal(good.aeSupervisor, 'หัวหน้าฝ่ายขาย', 'ชื่อมาจาก server');
+  for (const id of ['U-AE', 'U-AC']) {
+    assert.equal((await resolveProjectSupervisor(stub, id)).ok, false, `${id} ไม่ใช่ผู้ตรวจสอบ`);
+  }
+  assert.equal((await resolveProjectSupervisor(ownerStub({}), 'U-GHOST')).ok, false);
+});
+
+/* ⚠️ ไม่มีด่านทีมโดยเจตนา — หัวหน้าฝ่ายขายมี viewScope 'all' คุมทุกทีมอยู่แล้ว
+   บังคับให้ทีมตรงกับงาน = กันคนที่มีสิทธิ์อยู่แล้วเปล่า ๆ */
+test('ผู้ตรวจสอบข้ามทีมได้ — ต่างจาก AE/AC ที่ผูกทีม', async () => {
+  const stub = ownerStub({ 'U-SUP': SUPERVISOR });
+  assert.equal((await resolveProjectSupervisor(stub, 'U-SUP')).ok, true);
+});
+
+test('หัวหน้าที่ระบุบนโครงการต้องได้รับแจ้งเตือนด้วย', () => {
+  const access = read('../master/updateAccess.js');
+  assert.match(access, /parent\?\.ownerId, parent\?\.aeOwnerId, parent\?\.acOwnerId, parent\?\.aeSupervisorId/);
+});
+
+/* ชื่อคนของทั้งสามฝ่ายเขียนจาก server เท่านั้น — รับชื่อจาก client เมื่อไรคือเปิดทาง
+   ให้ "ชื่อบนใบบอกว่าเป็นคนหนึ่ง แต่ id ที่ใช้จริงเป็นอีกคน" ซึ่งเป็นกับดักที่ mig 0190
+   เกิดมาเพื่อแก้ · ฟอร์มส่งคู่กันอยู่แล้ว การตัดออกจึงไม่กระทบทางใช้งานจริง */
+test('PATCH รับเฉพาะ id ของสามฝ่าย ไม่รับชื่อ', () => {
+  const patch = read('../../app/api/pm/projects/[id]/route.js');
+  const editable = patch.slice(patch.indexOf('const EDITABLE'), patch.indexOf('];', patch.indexOf('const EDITABLE')));
+  for (const idField of ["'aeOwnerId'", "'acOwnerId'", "'aeSupervisorId'"]) {
+    assert.ok(editable.includes(idField), `${idField} ต้องแก้ได้`);
+  }
+  for (const nameField of ["'aeOwner'", "'acOwner'", "'aeSupervisor'"]) {
+    assert.ok(!editable.includes(nameField), `${nameField} ต้องมาจาก server เท่านั้น`);
+  }
+  // ช่องที่ไม่มีใครอ่านถูกปลดระวางไปกับ mig 0256
+  assert.ok(!editable.includes("'keyAccountExec'"));
+  assert.match(patch, /resolveProjectSupervisor\(supabase, updates\.aeSupervisorId\)/);
+});
+
+test('mig 0256: เพิ่มตัวตนผู้ตรวจสอบ + ตัดคอลัมน์ที่ไม่มีใครอ่าน', () => {
+  const sql = read('../../../supabase/migrations/0256_project_supervisor_id.sql').replace(/--.*$/gm, '');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "aeSupervisorId" text/);
+  assert.match(sql, /raw_app_meta_data->>'role', ''\) = 'ae_supervisor'/, 'จับคู่เฉพาะตำแหน่งผู้ตรวจสอบ');
+  assert.match(sql, /HAVING count\(DISTINCT uid\) = 1/, 'ชื่อกำกวมต้องไม่เดาแทน');
+  assert.match(sql, /DROP COLUMN IF EXISTS "keyAccountExec"/);
+  // ชื่อบนเอกสารห้ามถูกลบ — หน้าออกใบเสนอราคาอ่านช่องนี้ไปตั้งต้น
+  assert.doesNotMatch(sql, /DROP COLUMN IF EXISTS "aeSupervisor"\s*;/);
 });
 
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
