@@ -293,22 +293,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     updates.team = checked.team || project.team || null;
     updates.ownerId = checked.ownerId;
   }
-  /* ผู้ประสานงาน (AC) — ช่องไม่บังคับ ล้างได้ · ตรวจเมื่อค่าเปลี่ยนเท่านั้น เพราะ
-     `acOwnerId` คือปลายทางแจ้งเตือน (updateAccess) ⇒ id ที่ไม่ใช่บัญชี AC ของทีมนี้
-     แปลว่าความเคลื่อนไหวของโครงการวิ่งไปหาคนที่ไม่เกี่ยวข้อง
-     ⚠️ ไม่แตะ `team`/`ownerId` — AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน */
+  /* ผู้ประสานงาน (AC) — ตรวจเมื่อค่าเปลี่ยนเท่านั้น เพราะ `acOwnerId` คือปลายทาง
+     แจ้งเตือน (updateAccess) ⇒ id ที่ไม่ใช่บัญชี AC ของทีมนี้ แปลว่าความเคลื่อนไหว
+     ของโครงการวิ่งไปหาคนที่ไม่เกี่ยวข้อง
+     ⚠️ ไม่แตะ `team`/`ownerId` — AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน
+     ⚠️ **ล้างทิ้งไม่ได้** (มติผู้ใช้ 2026-08-14: โครงการมีครบสามฝ่าย) — แต่ใบเก่าที่
+     ช่องนี้ว่างอยู่แล้วยังแก้ช่องอื่นได้ตามปกติ ด่านนี้ยิงเฉพาะตอน "มีอยู่แล้วแล้วล้าง" */
   if (updates.acOwnerId !== undefined && (updates.acOwnerId || null) !== (project.acOwnerId || null)) {
+    if (!updates.acOwnerId) return badRequest('ล้างผู้ประสานงาน (AC) ไม่ได้ — เลือกคนใหม่แทน');
     const team = updates.team !== undefined ? updates.team : project.team;
     const coordinator = await resolveProjectAcOwner(supabase, updates.acOwnerId, team);
     if (!coordinator.ok) return badRequest(coordinator.error);
     updates.acOwnerId = coordinator.acOwnerId;
-    // ชื่อเดินคู่ id เสมอ — ถอดคนออกก็ต้องล้างชื่อบนใบด้วย ไม่งั้นเหลือชื่อลอยที่ไม่มีตัวตน
+    // ชื่อเดินคู่ id เสมอ — เปลี่ยนคนแล้วชื่อบนใบต้องเปลี่ยนตาม
     updates.acOwner = coordinator.acOwner;
   }
-  /* ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ ล้างได้ · ชื่อไหลต่อไปขึ้นใบเสนอราคา
+  /* ผู้ตรวจสอบ (AE Supervisor) — ล้างทิ้งไม่ได้เช่นกัน · ชื่อไหลต่อไปขึ้นใบเสนอราคา
      (หน้าออกใบอ่าน `project.aeSupervisor` มาตั้งต้น) จึงต้องเป็นชื่อของบัญชีจริง */
   if (updates.aeSupervisorId !== undefined
       && (updates.aeSupervisorId || null) !== (project.aeSupervisorId || null)) {
+    if (!updates.aeSupervisorId) return badRequest('ล้างผู้ตรวจสอบ (AE Supervisor) ไม่ได้ — เลือกคนใหม่แทน');
     const supervisor = await resolveProjectSupervisor(supabase, updates.aeSupervisorId);
     if (!supervisor.ok) return badRequest(supervisor.error);
     updates.aeSupervisorId = supervisor.aeSupervisorId;

@@ -3,7 +3,7 @@ import { monthOf } from '@/lib/sahamit/po';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { can, primaryTeam } from '@/lib/permissions';
-import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
@@ -97,6 +97,16 @@ export async function POST(request, { params }) {
     }, { status: 400 });
   }
 
+  /* ⭐ ครบสามฝ่ายเหมือนโครงการฝั่งขาย (มติผู้ใช้ 2026-08-14) — เดิม route นี้เขียน
+     `acOwner`/`aeSupervisor` เป็นค่าว่างตายตัว ⇒ โครงการที่เกิดจาก PO ไม่มีวันมี
+     ผู้ประสานงานหรือผู้ตรวจสอบเลย ไม่ว่าใครกด */
+  const coordinator = await resolveProjectAcOwner(
+    supabase, body.acOwnerId, owner?.team ?? primaryTeam(user) ?? 'KA', { required: true },
+  );
+  if (!coordinator.ok) return Response.json({ error: coordinator.error }, { status: 400 });
+  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId, { required: true });
+  if (!supervisor.ok) return Response.json({ error: supervisor.error }, { status: 400 });
+
   const now = new Date().toISOString();
   const startDate = body.startDate || po.receivedDate || po.docDate || todayStr();
   const dueDate = body.dueDate || po.dueDate || null;
@@ -122,7 +132,8 @@ export async function POST(request, { params }) {
     // ชื่อมาจาก server เมื่อมีการเลือกผู้ดูแล — ไม่รับชื่อจาก client (กติกาเดียวกับดีล)
     aeOwner: owner?.aeOwner || user.name || '',
     aeOwnerId: owner?.aeOwnerId || user.id || null,   // ตัวตนจริงคู่กับชื่อ snapshot (mig 0190)
-    acOwner: '',
+    acOwner: coordinator.acOwner || '',
+    acOwnerId: coordinator.acOwnerId,
     status: 'New',
     startDate,
     dueDate,
@@ -133,7 +144,8 @@ export async function POST(request, { params }) {
     productCode: knownLines.map((row) => row.line.fgCode).filter(Boolean).join(', '),
     orderQty: String(activeLines.reduce((sum, line) => sum + toQty(line.qty), 0) || ''),
     productionQty: '',
-    aeSupervisor: '',
+    aeSupervisor: supervisor.aeSupervisor || '',
+    aeSupervisorId: supervisor.aeSupervisorId,
     customerEmail: customer.email || '',
     preparedBy: user.name || '',
     reviewedBy: '',

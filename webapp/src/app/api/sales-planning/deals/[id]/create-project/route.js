@@ -52,10 +52,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
   // ผู้ประสานงาน (AC) — ช่องไม่บังคับ · ตรวจว่าเป็นบัญชี AC จริงในทีมของดีล เพราะ
   // `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
-  const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, deal.team || user.team);
+  // ⭐ ครบสามฝ่ายตั้งแต่วันเกิด (มติผู้ใช้ 2026-08-14) — กติกาเดียวกับ /api/sa/projects
+  // ผู้ดูแลของเส้นนี้มาจากเจ้าของดีล จึงเหลือบังคับสองช่องนี้
+  const coordinator = await resolveProjectAcOwner(
+    supabase, body.acOwnerId, deal.team || user.team, { required: true },
+  );
   if (!coordinator.ok) return badRequest(coordinator.error);
-  // ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ · ชื่อคู่ id เสมอ (mig 0256)
-  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId);
+  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId, { required: true });
   if (!supervisor.ok) return badRequest(supervisor.error);
 
   // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
