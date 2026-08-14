@@ -417,7 +417,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
               </ChartCanvas>
               </div>
             </div>
-            <TableScroll surface="embedded"><table>
+            <TableScroll surface="embedded" className={styles.channelTable}><table>
               <thead><tr>
                 <th>ช่องทาง</th><th>กลุ่ม</th>
                 <th className="num">ลีดเข้า</th><th className="num">ติดต่อแล้ว</th>

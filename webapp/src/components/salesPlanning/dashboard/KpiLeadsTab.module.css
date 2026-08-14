@@ -59,6 +59,10 @@
   align-items: start;
 }
 .channelCol { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+/* ตาราง Funnel ใต้กราฟ — ต้องมีระยะหายใจจากคำอธิบายสีข้างบน
+   🐞 เดิมชิดกัน 0px หัวตารางเลยแตะบรรทัด "Onsite 5 (8.20%)" พอดี อ่านเป็นก้อนเดียวกัน
+   (ผู้ใช้ทัก 2026-08-13) · ระยะเท่ากับที่การ์ดอื่นในหน้านี้ใช้คั่นของสองก้อน */
+.channelTable { margin-top: var(--space-4); }
 @media (max-width: 768px) {
   .channelFigure { grid-template-columns: minmax(0, 1fr); }
 }
