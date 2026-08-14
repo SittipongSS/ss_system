@@ -119,6 +119,26 @@ test('ด่านตอนสร้าง: พัฒนากลิ่นส่
   assert.match(requestShapeError('formula_dev', { ...dev, projectId: '', dealId: '' }), /ดีล/);
 });
 
+test('ด่านตอนสร้าง: ขอเอกสารการเงินถามใบเสนอราคาก่อน แล้วยอด แล้วค่อยชื่อเรื่อง', () => {
+  // ⚠️ ลำดับสำคัญ — ทั้งใบเสนอราคาและยอดอยู่แท็บ "งาน" ส่วนชื่อเรื่องอยู่แท็บถัดไป
+  // ตอบชื่อเรื่องก่อนแปลว่าผู้ใช้ถูกส่งไปแก้ผิดแท็บ
+  assert.match(requestShapeError('billing_doc', {}), /ต้องเลือกใบเสนอราคา/);
+  assert.match(requestShapeError('billing_doc', { quotationId: 'QT-1' }), /ต้องระบุยอดที่ขอวางบิล/);
+  assert.match(
+    requestShapeError('billing_doc', { quotationId: 'QT-1', billAmount: 90508.125 }),
+    /ชื่อเรื่อง/,
+  );
+  // ⚠️ ยอด 0 หรือติดลบไม่นับว่ากรอกแล้ว
+  for (const billAmount of [0, -1, null, '']) {
+    assert.match(
+      requestShapeError('billing_doc', { quotationId: 'QT-1', billAmount }),
+      /ต้องระบุยอดที่ขอวางบิล/,
+    );
+  }
+  // ⚠️ หัวข้ออื่นต้องไม่โดนด่านยอดติดมาด้วย
+  assert.match(requestShapeError('info', { dealId: 'D1', projectId: 'P1' }), /ชื่อเรื่อง/);
+});
+
 test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมหัวข้อที่มีบรรทัด', () => {
   // หัวข้อที่มีบรรทัดสื่อความด้วยแถว แต่บนคิวรวมและในเธรดดีล แถวมองไม่เห็น
   assert.match(requestShapeError('formula_dev', {

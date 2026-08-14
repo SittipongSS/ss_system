@@ -11,6 +11,7 @@
 import {
   DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
+import { fmtNumber } from "@/lib/format";
 import styles from "./details.module.css";
 
 export default function DocumentPanel({ request, docBoard: board = [], docTotals: totals }) {
@@ -23,6 +24,19 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
     detail: row.stageLabel || "",
     ready: row.received || row.refused,
   }));
+
+  /* ⭐ **ยอดที่ขอวางบิล** (B-2 · ม-ค) — คำถามแรกที่บัญชีถามเมื่อเปิดใบคือ
+     "ขอเท่าไร" · ตัวเลขนี้อยู่บนใบ ไม่ใช่รายแถว เพราะเอกสารหลายใบขอบนยอดก้อนเดียว
+     ⚠️ โชว์ทั้ง % และฐาน — ยอดลอย ๆ ตอบไม่ได้ว่า 90,508.125 มาจาก 50% ของอะไร */
+  const billRows = Number(request.billAmount) > 0 ? [
+    { id: "billAmount", label: "ยอดที่ขอ", value: `${fmtNumber(request.billAmount, { maximumFractionDigits: 3 })} บาท` },
+    ...(Number(request.billPercent) > 0
+      ? [{ id: "billPercent", label: "สัดส่วน", value: `${fmtNumber(request.billPercent, { maximumFractionDigits: 3 })}%` }]
+      : []),
+    ...(Number(request.billBaseAmount) > 0
+      ? [{ id: "billBase", label: "ยอดเต็มตามใบ", value: `${fmtNumber(request.billBaseAmount, { maximumFractionDigits: 3 })} บาท` }]
+      : []),
+  ] : [];
 
   // อ้างอิงของหัวข้อนี้ (ม-88) — โชว์เฉพาะตัวที่อ้างจริง · ตามกลับไม่เจอ = ใบถูกลบ
   const refs = [
@@ -51,6 +65,9 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
 
   return (
     <>
+      {billRows.length > 0 && (
+        <DocumentSummaryCard title="ยอดที่ขอวางบิล" rows={billRows} />
+      )}
       {totals.asked > 0 && (
         <DocumentSummaryCard
           title="สรุปใบนี้"
