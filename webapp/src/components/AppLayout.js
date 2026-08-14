@@ -16,7 +16,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
-import { isSettingsPathname, systemForPathname } from '@/config/navigation';
+import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -431,9 +431,14 @@ export default function AppLayout({ children }) {
   // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
   const userContext = { role, team, teams, department, extraCaps };
   const activeSystemDefinition = getSystemByKey(activeSystem);
-  const systemSubtitle = activeSystem === 'settings'
-    ? 'การตั้งค่าระบบ'
-    : (activeSystemDefinition?.label || 'ภาษีสรรพสามิต');
+  // หน้าบัญชีของฉันพูดชื่อตัวเอง ไม่ยืมชื่อระบบที่เพิ่งเดินออกมา (มติผู้ใช้ 2026-08-14)
+  // — เปลือกเดียวกับหน้าตั้งค่า: หัวบอกว่าอยู่ไหน แถบเมนูของระบบหายไปทั้งแถบ
+  const isAccountContext = pathname === '/account';
+  const systemSubtitle = isAccountContext
+    ? 'บัญชีของฉัน'
+    : activeSystem === 'settings'
+      ? 'การตั้งค่าระบบ'
+      : (activeSystemDefinition?.label || 'ภาษีสรรพสามิต');
 
   // ระบบที่ผู้ใช้เข้าถึงได้ (ใช้ทั้ง dropdown สลับระบบ และกรองเมนูแถวล่าง).
   // canUser (not can) so a per-user grant — e.g. an SA granted mgmt:view to
@@ -462,14 +467,19 @@ export default function AppLayout({ children }) {
     .filter((g) => g.items.length > 0);
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
-  const menuItems = currentGroup?.items || [];
-  const ActiveSystemIcon = activeSystem === 'settings'
-    ? SettingsIcon
-    : (activeSystemDefinition?.icon || LayoutDashboard);
   const isSettingsContext = isSettingsPathname(pathname);
+  // เปลือกไร้แถบเมนู (ตั้งค่า · บัญชีของฉัน) — ล้างเมนูทิ้งที่จุดเดียวตรงนี้ แล้วทั้ง
+  // แถบบน แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด ไม่ต้องไล่ปิดทีละที่
+  const isBareShell = isBareShellPathname(pathname);
+  const menuItems = isBareShell ? [] : (currentGroup?.items || []);
+  const ActiveSystemIcon = isAccountContext
+    ? UserRound
+    : activeSystem === 'settings'
+      ? SettingsIcon
+      : (activeSystemDefinition?.icon || LayoutDashboard);
 
   return (
-    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}`}>
+    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
       {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
@@ -566,7 +576,7 @@ export default function AppLayout({ children }) {
         </div>
 
         {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
-        {!isSettingsContext && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+        {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = item.match(pathname);
@@ -626,8 +636,8 @@ export default function AppLayout({ children }) {
       </main>
 
       {/* แถบเมนูล่างบนมือถือ — เมนูของระบบครบทุกตัว แบ่งหน้าปัดเอา (มติ 2026-08-02)
-          ไม่โผล่ในบริบทตั้งค่า เพราะที่นั่นไม่มีเมนูของระบบ */}
-      {!isSettingsContext && (
+          ไม่โผล่ในเปลือกไร้เมนู (ตั้งค่า · บัญชีของฉัน) เพราะที่นั่นไม่มีเมนูของระบบ */}
+      {!isBareShell && (
         <MobileBottomNav items={menuItems} pathname={pathname} label={systemSubtitle} counts={navCounts} />
       )}
 
@@ -636,46 +646,21 @@ export default function AppLayout({ children }) {
           <div className="mobile-nav-sheet-header">
             <div>
               <strong>{systemSubtitle}</strong>
-              <span>เมนูงานและการตั้งค่า</span>
+              <span>บัญชีและเครื่องมือ</span>
             </div>
             <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
           </div>
 
-          {menuItems.length > 0 && (
-            <section className="mobile-nav-section">
-              <h2>เมนูของระบบนี้</h2>
-              <div className="mobile-nav-grid">
-                {menuItems.map((item) => {
-                  const Icon = item.icon;
-                  if (item.disabled) {
-                    return (
-                      <span key={item.href} aria-disabled="true" className="mobile-nav-card is-disabled">
-                        <Icon size={20} /><span>{item.name}</span>
-                      </span>
-                    );
-                  }
-                  const count = navCountFor(navCounts, item.href);
-                  return (
-                    <Link
-                      href={navHrefFor(item, count)}
-                      key={item.href}
-                      className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}
-                      aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
-                    >
-                      <Icon size={20} /><span>{item.name}</span>
-                      {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
+          {/* ⭐ ไม่มีหัวข้อ "เมนูของระบบนี้" ที่นี่ (มติผู้ใช้ 2026-08-14) — แถบล่างแบก
+              เมนูของระบบครบทุกตัวอยู่แล้วตั้งแต่มติ 2026-08-02 (แบ่งหน้าปัดเอา)
+              การวางซ้ำในแผ่นนี้คือของเหลือจากกติกาเก่า "4+เพิ่มเติม" ที่ถูกล้มไปแล้ว
+              ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
+              (รวม "วางเป้า" ที่เป็นเมนูเสริมของบริหารงานขาย ไม่ได้อยู่บนแถบล่าง) */}
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
-              {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
+              {!isBareShell && activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
               <Link href="/settings" className={`mobile-nav-card${isSettingsContext ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>

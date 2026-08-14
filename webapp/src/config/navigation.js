@@ -8,6 +8,15 @@ export function isSettingsPathname(pathname) {
   return SETTINGS_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
+/* ⭐ หน้าที่ "ไม่ได้เป็นของระบบไหน" — ตั้งค่า/ผู้ใช้/บันทึกการใช้งาน และบัญชีของฉัน
+   เปลือกของมันไม่มีแถบเมนูของระบบ (AppLayout ยุบ `--topnav-menu-h` เป็น 0 และไม่วาด
+   แถบล่างบนมือถือ) เพราะเมนูที่ค้างอยู่เป็นของระบบที่เพิ่งเดินออกมา ไม่ใช่ของหน้านี้
+   ⚠️ คนละเรื่องกับ `isSettingsPathname` — `/account` **ไม่ใช่** หน้าตั้งค่า
+   (`viewer` เข้าเปลือกตั้งค่าไม่ได้ แต่ต้องเปิดหน้าบัญชีตัวเองได้) */
+export function isBareShellPathname(pathname) {
+  return isSettingsPathname(pathname) || pathname === '/account';
+}
+
 export function sortSystems(groups) {
   return [...groups].sort((a, b) => SYSTEM_ORDER.indexOf(a.system) - SYSTEM_ORDER.indexOf(b.system));
 }
@@ -19,7 +28,14 @@ export function systemForPathname(pathname) {
   // เมื่อค่าเป็น falsy) กดกระดิ่งจากงานขายแล้วกลับออกมา เมนูยังเป็นของงานขายเหมือนเดิม
   // ⚠️ ถ้าไม่ดักตรงนี้ จะตกไป `return 'tax'` ท้ายฟังก์ชัน = หน้าแจ้งเตือนสวมเมนูภาษี
   // สรรพสามิต ซึ่งเป็นบั๊กตัวเดียวกับที่ `/requests` เคยเจอ (ดูหมายเหตุด้านล่าง)
-  if (pathname === '/notifications') return null;
+  // ⭐ หน้าบัญชีของฉันก็ไม่ใช่ของระบบไหนด้วยเหตุผลเดียวกัน — เข้าถึงจากเมนูอวตาร
+  // ที่มีอยู่ทุกหน้า จึงต้องคงเปลือกของระบบที่คนกำลังยืนอยู่ไว้
+  // 🐞 ก่อนแก้: `/account` ตกไป `return 'tax'` ⇒ กด "บัญชีของฉัน" จากระบบไหนก็ตาม
+  // เมนูสลับเป็นภาษีสรรพสามิตทันที · ซ้ำร้าย AppLayout เขียน `ss:last-system=tax`
+  // ทับค่าที่จำไว้ ⇒ กดกระดิ่งต่อ หน้าแจ้งเตือนก็ถอยมาสวมเมนูภาษีตามไปอีก
+  // ⚠️ ไม่ใส่ใน `SETTINGS_PATHS` — เปลือกตั้งค่า `viewer` เข้าไม่ได้ แต่ทุกคนต้อง
+  // เปิดหน้าบัญชีตัวเองได้ (เหตุผลเดียวกับ `/support` ด้านล่าง)
+  if (pathname === '/notifications' || pathname === '/account') return null;
   // ⚠️ ต้องอยู่เหนือ `return 'tax'` ท้ายฟังก์ชัน — บทเรียนจาก `/requests` ที่หลุด
   // กฎนี้ไปแล้วทั้งโมดูลไปโผล่ใต้เปลือกเมนูระบบภาษี โดยที่ build/เทสต์จับไม่ได้เลย
   // เพราะหน้าเรนเดอร์ปกติทุกอย่าง ผิดแค่เปลือกที่ครอบมัน
