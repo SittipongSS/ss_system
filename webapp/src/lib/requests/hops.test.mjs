@@ -60,6 +60,40 @@ test('ก้าวฝั่งผู้ขอที่บันทึกเห�
   assert.match(hopValuesError('ack', { dueAt: 'พรุ่งนี้' }), /วันที่รับปาก/);
 });
 
+test('ส่งเอกสารการเงินต้องมีเลขที่ — วันครบกำหนดไม่บังคับ (B-3 · R-6)', () => {
+  const fn = { lineKind: 'billing_doc' };
+  assert.match(hopValuesError('ready', {}, fn), /ต้องระบุเลขที่เอกสาร/);
+  assert.match(hopValuesError('ready', { docNumber: '   ' }, fn), /ต้องระบุเลขที่เอกสาร/);
+  assert.equal(hopValuesError('ready', { docNumber: 'IV-26080012' }, fn), null);
+  assert.match(hopValuesError('ready', { docNumber: 'X'.repeat(61) }, fn), /ยาวเกิน 60/);
+  // ⭐ ว่างได้ — ใบเสร็จออกหลังรับเงินแล้ว ไม่มีกำหนดชำระ
+  assert.equal(hopValuesError('ready', { docNumber: 'IV-1', docDueDate: '' }, fn), null);
+  assert.equal(hopValuesError('ready', { docNumber: 'IV-1', docDueDate: '2026-09-15' }, fn), null);
+  assert.match(hopValuesError('ready', { docNumber: 'IV-1', docDueDate: '15/09/2026' }, fn), /วันครบกำหนด/);
+
+  // ⚠️ **ห้ามลามไปรูปร่างอื่น** — เอกสารของ RD ไม่มีเลขที่ให้กรอก และบรรทัดพัฒนา
+  // ก็ไม่มี · บังคับหมดเมื่อไร ฝ่ายอื่นกดส่งของไม่ได้เลยสักแถว
+  assert.equal(hopValuesError('ready', {}, { lineKind: 'document' }), null);
+  assert.equal(hopValuesError('ready', {}, { lineKind: 'product_dev' }), null);
+  assert.equal(hopValuesError('ready', {}), null);
+});
+
+test('ส่งเอกสารการเงินเขียนเลขที่ลงแถว — รูปร่างอื่นไม่มีคีย์นั้นเลย (B-3)', () => {
+  const user = { id: 'U1', name: 'บัญชี' };
+  const fn = { lineKind: 'billing_doc' };
+  const patch = hopPatch('ready', { docNumber: ' IV-26080012 ', docDueDate: '2026-09-15' }, user, '2026-08-15', fn);
+  assert.equal(patch.docNumber, 'IV-26080012');
+  assert.equal(patch.docDueDate, '2026-09-15');
+  assert.equal(patch.readyAt, '2026-08-15');
+  // ว่าง = ล้างค่าเดิม ไม่ใช่ข้ามไป (ส่งซ้ำหลังแก้ต้องลบวันเดิมออกได้)
+  assert.equal(hopPatch('ready', { docNumber: 'IV-1' }, user, '2026-08-15', fn).docDueDate, null);
+  // ⚠️ รูปร่างอื่น **ต้องไม่มีคีย์เลย** — PostgREST ปฏิเสธทั้งก้อนถ้า DB ยังไม่มีคอลัมน์
+  const other = hopPatch('ready', { docNumber: 'IV-1' }, user, '2026-08-15', { lineKind: 'document' });
+  assert.equal('docNumber' in other, false);
+  assert.equal('docDueDate' in other, false);
+  assert.equal('docNumber' in hopPatch('ready', {}, user, '2026-08-15'), false);
+});
+
 test('บันทึกคำตอบลูกค้า — ด่านตรงกับ constraint ของ 0202 ทุกข้อ', () => {
   assert.match(hopValuesError('outcome', { at: '2026-08-18' }), /ลูกค้าตอบว่าอย่างไร/);
   assert.match(hopValuesError('outcome', { outcome: 'confirmed' }), /วันที่ลูกค้าตอบ/);

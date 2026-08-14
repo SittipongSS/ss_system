@@ -44,6 +44,10 @@ export function documentBoard(items = []) {
         refused: stage === 'declined',
         settled: isRowSettled(item),
         declineReason: item.declineReason || null,
+        // ⭐ ผลลัพธ์ของแถว (B-3 · R-6) — เอกสารการเงินจบด้วย **เลขที่** ไม่ใช่แค่ไฟล์
+        // ⚠️ ว่างได้เสมอ: แถวที่ยังไม่ถูกส่ง · แถวของ RD ซึ่งไม่มีเลขที่ให้กรอก
+        docNumber: item.docNumber || null,
+        docDueDate: item.docDueDate || null,
       };
     });
 }

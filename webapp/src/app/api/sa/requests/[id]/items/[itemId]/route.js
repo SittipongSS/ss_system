@@ -88,7 +88,9 @@ export async function PATCH(request, { params }) {
   // ── 3) ขั้นตอน + ค่าที่ส่งมา ────────────────────────────────────────────
   const stageError = hopStageError(row, hop);
   if (stageError) return Response.json({ error: stageError }, { status: 409 });
-  const valueError = hopValuesError(hop, body);
+  // ⚠️ `lineKind` มาจาก **แถวจริง** ไม่ใช่ body — กฎของก้าวบางข้อขึ้นกับรูปร่างบรรทัด
+  // (ส่งเอกสารการเงินต้องมีเลขที่ · B-3) · รับจาก client เมื่อไรก็ข้ามด่านได้ทันที
+  const valueError = hopValuesError(hop, body, { lineKind: row.lineKind });
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
 
   // ── ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียวกัน (P4b) ──
@@ -128,7 +130,7 @@ export async function PATCH(request, { params }) {
   const today = businessDate();
 
   try {
-    const patch = { ...hopPatch(hop, body, user, today), updatedAt: nowIso };
+    const patch = { ...hopPatch(hop, body, user, today, { lineKind: row.lineKind }), updatedAt: nowIso };
 
     if (formulaDelivery) {
       // ⚠️ **หมวด × กลิ่นคู่นี้อาจมีสูตรอยู่แล้ว** — เช่นรอบแก้ที่กลับมาที่ของเดิม

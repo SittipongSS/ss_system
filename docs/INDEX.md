@@ -85,7 +85,7 @@
 | [costing-request-plan.md](costing-request-plan.md) | merge ครบ 3 PR · mig 0157/0158/0159 รัน prod แล้ว (ยืนยัน 2026-08-08) · เหลือ UAT ข้อ 1–17 | รอตรวจ |
 | [qt-so-tax-followup-plan.md](qt-so-tax-followup-plan.md) | 6 จุดขัดแผนจาก PR #739 + บั๊กที่ผู้ใช้เจอได้ | รอดำเนินการ |
 | [business-line-vs-project-seam.md](business-line-vs-project-seam.md) · [business-line-level-and-handoff.md](business-line-level-and-handoff.md) | มติเคาะแล้ว ยังไม่เขียนโค้ด | รอดำเนินการ |
-| [billing-request-flow-plan.md](billing-request-flow-plan.md) | สายเอกสารการเงิน QT → SO → คำร้อง → FN · **B-1 · B-2 เสร็จ** (เปิดฝ่าย FN + คิวคำร้องบัญชี + คำร้องยึด QT พร้อมยอดที่ขอ · mig 0257) · เหลือ B-3…B-5 | กำลังดำเนินการ |
+| [billing-request-flow-plan.md](billing-request-flow-plan.md) | สายเอกสารการเงิน QT → SO → คำร้อง → FN · **B-1 · B-2 · B-3 เสร็จ** (เปิดฝ่าย FN + คิวคำร้องบัญชี · คำร้องยึด QT พร้อมยอดที่ขอ · เลขที่เอกสารรายบรรทัด · mig 0257–0258) · เหลือ B-4 (งวดตั้งแต่ร่าง SO) · B-5 (ผูกคำร้องกับงวด) | กำลังดำเนินการ |
 | [service-business-system-plan.md](service-business-system-plan.md) · [service-field-operations.md](service-field-operations.md) | มติเคาะแล้ว · **G-1 เสร็จไปแล้วโดยไม่มีใครอัปเดต** (FN + mig 0212 + mig 0192) · C-3 ลงเป็นงวดชำระ SO (mig 0245) · ส่วนสัญญาบริการยังไม่เขียนโค้ด — ตรวจกับ `billing-request-flow-plan.md` §1 ก่อนหยิบ | กำลังดำเนินการ |
 | [webapp/SALES_REVAMP_PLAN.md](../webapp/SALES_REVAMP_PLAN.md) | แผนแม่บทรื้อสายขาย Lead → ปิดโครงการ | รอดำเนินการ |
 | [webapp/DEAL_PROJECT_RESTRUCTURE_PLAN.md](../webapp/DEAL_PROJECT_RESTRUCTURE_PLAN.md) | มติครบ พร้อมเริ่มเฟส 1 | รอดำเนินการ |
