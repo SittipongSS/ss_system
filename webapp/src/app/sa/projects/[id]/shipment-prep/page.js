@@ -4,7 +4,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, PackageCheck, Printer, RefreshCcw } from "lucide-react";
+import { ArrowLeft, FolderX, PackageCheck, Printer, RefreshCcw } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -76,7 +76,7 @@ export default function ShipmentPrepPage() {
   if (loading) return <SkeletonRows />;
 
   if (!project) {
-    return <EmptyState icon={FileText}>ไม่พบโครงการ</EmptyState>;
+    return <EmptyState icon={FolderX}>ไม่พบโครงการ</EmptyState>;
   }
 
   return (

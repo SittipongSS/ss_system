@@ -7,7 +7,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, Clock3, FileText, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -216,7 +216,7 @@ export default function QuotationsPage() {
               onClear={() => { setStatusFilter([]); setTypeFilter([]); setOwnerFilter([]); }}
               groups={[
                 {
-                  key: "status", label: "สถานะ", icon: FileText,
+                  key: "status", label: "สถานะ", icon: Flag,
                   options: Object.entries(QUOTE_STATUS_LABELS).map(([k, v]) => ({ value: k, label: v })),
                   selected: statusFilter, onChange: setStatusFilter,
                 },

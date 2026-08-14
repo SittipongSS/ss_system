@@ -3,7 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
-import { FileText, FileSpreadsheet, File as FileIcon, Plus, Trash2, ExternalLink, Paperclip, Link2 } from "lucide-react";
+import { FileSpreadsheet, FileType, File as FileIcon, Plus, Trash2, ExternalLink, Paperclip, Link2 } from "lucide-react";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
 import { describeResponseError } from "@/lib/fetchError";
 
@@ -96,7 +96,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
   };
 
   const fileHref = (it) => (it.driveFileId ? `/api/master/attachments/${it.id}/file` : it.fileUrl);
-  const docIcon = (it) => (it.metadata?.kind === "gsheet" ? FileSpreadsheet : FileText);
+  const docIcon = (it) => (it.metadata?.kind === "gsheet" ? FileSpreadsheet : FileType);
 
   const Row = ({ it, href, Icon, external }) => (
     <div className="flex items-center justify-between gap-2 py-1.5" style={{ fontSize: "var(--fs-7)" }}>
@@ -130,7 +130,7 @@ export default function DocsPanel({ entityType, entityId, canEdit }) {
               {canEdit && (
                 <div style={{ display: "flex", gap: 6 }}>
                   <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={linkDoc} disabled={busy}><Link2 size={13} /> ผูกลิงก์</button>
-                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => createDoc("gdoc")} disabled={busy}><FileText size={13} /> Doc</button>
+                  <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => createDoc("gdoc")} disabled={busy}><FileType size={13} /> Doc</button>
                   <button className="btn" style={{ padding: "3px 8px", fontSize: "var(--fs-5)" }} onClick={() => createDoc("gsheet")} disabled={busy}><FileSpreadsheet size={13} /> Sheet</button>
                 </div>
               )}

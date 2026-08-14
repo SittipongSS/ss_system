@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, ListTodo, MessageSquare, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -728,7 +728,7 @@ export default function DealOverviewPage() {
   const dealNotesPinned = deal ? (
     <div className={styles.pinnedNotes}>
       <div className={styles.pinnedHead}>
-        <FileText size={14} aria-hidden="true" />
+        <Handshake size={14} aria-hidden="true" />
         <strong>รายละเอียดดีล</strong>
         {canEdit && (
           <button type="button" className={styles.pinnedEdit} onClick={openEditDeal}>
@@ -1249,7 +1249,7 @@ export default function DealOverviewPage() {
             {tab === "quotations" && SALES_FEATURES.documents && (
             <section className="glass-panel" style={{ padding: 16 }}>
               <div className="flex items-center gap-2 mb-3">
-                <FileText size={17} aria-hidden="true" />
+                <Paperclip size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>เอกสาร</h2>
               </div>
               {(data.documents || []).length ? (

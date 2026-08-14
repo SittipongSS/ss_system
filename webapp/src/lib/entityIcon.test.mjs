@@ -113,11 +113,15 @@ test('ไฟล์ที่พูดถึงดีลอย่างเดี�
   }
 });
 
-// ปุ่มสลับมุมมอง "บอร์ด" ไม่ใช่ entity — ถ้ามันหยิบไอคอนโครงการไปใช้ ผู้ใช้จะเห็น
-// ไอคอนโครงการบนแถบที่ไม่เกี่ยวกับโครงการเลย
-test('ตัวสลับมุมมองไม่ยืมไอคอนของโครงการ', () => {
-  assert.doesNotMatch(read('src/components/ui/ViewSwitcher.js'), new RegExp(`\\b${projectIcon()}\\b`),
-    'ViewSwitcher ต้องไม่ใช้ไอคอนโครงการกับมุมมองบอร์ด');
+// ปุ่มสลับมุมมองไม่ใช่ entity — "บอร์ด" เคยยืมไอคอนโครงการ และ "Gantt" เคยยืมไอคอน
+// ใบเสนอราคา (ป้ายเขียน Gantt แต่รูปเป็นแผ่นกระดาษ) ⇒ แถบนี้ต้องไม่แตะไอคอน entity
+test('ตัวสลับมุมมองไม่ยืมไอคอนของ entity', () => {
+  const viewSwitcher = read('src/components/ui/ViewSwitcher.js');
+  for (const nav of ['/sa/projects', '/sa/quotations']) {
+    const icon = navIcon(nav);
+    assert.doesNotMatch(viewSwitcher, new RegExp(`\\b${icon}\\b`),
+      `ViewSwitcher ต้องไม่ใช้ ${icon} ซึ่งเป็นไอคอนของ ${nav}`);
+  }
 });
 
 // ── entity ที่เหลือ: ใบสั่งขาย · คำร้อง · สินค้า · วัสดุ (2026-08-14 รอบสอง) ───
@@ -179,6 +183,45 @@ const ENTITIES = [
       'src/app/database/materials/page.js',
       'src/components/materials/MaterialRegistryPanel.js',
       'src/app/sahamit/material/page.js',                  // "วัสดุ / Lead time" ของสหมิตร
+    ],
+  },
+  {
+    // FileText เคยแทนทั้งใบเสนอราคา · PO สหมิตร · ไฟล์แนบ · มุมมอง Gantt (2026-08-14 รอบสาม)
+    // ⇒ ใบเสนอราคาถือ FileText ไว้ตัวเดียว ที่เหลือย้ายออก
+    name: 'ใบเสนอราคา',
+    nav: '/sa/quotations',
+    surfaces: [
+      'src/app/sales-planning/quotations/page.js',
+      'src/app/sales-planning/quotations/new/page.js',
+      'src/app/sales-planning/deals/page.js',              // เมนูแถวดีล "ใบเสนอราคา"
+      'src/app/sales-planning/deals/[id]/page.js',         // หัวข้อ "ใบเสนอราคา" ของดีล
+      'src/app/sales-planning/sales-orders/[id]/page.js',  // fact "อ้างอิง QT" + การ์ดบริบท
+      'src/components/pm/ProjectDealsHub.js',              // ใบเสนอราคาของดีล/โครงการ
+      'src/components/salesPlanning/QuotationNotes.js',
+    ],
+    forbid: ['/sahamit/po'],
+    only: [
+      'src/app/sales-planning/quotations/page.js',
+      'src/app/sales-planning/quotations/new/page.js',
+      'src/components/salesPlanning/QuotationNotes.js',
+    ],
+  },
+  {
+    name: 'ใบสั่งซื้อ (PO สหมิตร)',
+    nav: '/sahamit/po',
+    surfaces: [
+      'src/app/sahamit/po/page.js',
+      'src/app/sahamit/po/new/page.js',
+      'src/app/sahamit/po/[id]/page.js',
+      'src/app/sahamit/po/[id]/edit/page.js',
+      'src/app/sahamit/page.js',                           // KPI "PO สั่งจริง"
+    ],
+    forbid: ['/sa/quotations'],
+    only: [
+      'src/app/sahamit/po/page.js',
+      'src/app/sahamit/po/new/page.js',
+      'src/app/sahamit/po/[id]/page.js',
+      'src/app/sahamit/po/[id]/edit/page.js',
     ],
   },
   {
