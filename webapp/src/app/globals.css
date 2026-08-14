@@ -5632,10 +5632,21 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  /* เดิม 7px ดิบ · ยุบเป็น 6px เพราะช่องข้างในสูงขึ้น 3px จาก sink ⇒ 7+7+24.2+2 = 40.2px
-     คือ **สูงเกินปุ่มข้าง ๆ 0.2px** (min-height เอาไม่อยู่เพราะเนื้อในดันเอง)
-     6px ⇒ เนื้อในรวม 38.2px ต่ำกว่า --ctl-h ⇒ min-height คุมได้ = 40px เป๊ะ */
-  padding: var(--space-1-5) var(--space-3);
+  /* 🐞 **แนวตั้งเป็น 0 — `<input>` ข้างในตัดหมึกของตัวเอง** (มติผู้ใช้ 2026-08-14)
+
+     ช่องนี้เป็นโครง **สองกล่อง**: กล่องนี้ถือขอบ/พื้น/ความสูง ส่วน `<input>` ข้างใน
+     ถือข้อความ · `<input>` ที่ไม่ได้ตั้งความสูงจะสูง = กล่องบรรทัดพอดี (23.8px ที่
+     14px/1.7) **และ `<input>` คลิปเนื้อในตัวเองเสมอ** ⇒ วัดได้หมึกสระบนเหลือถึงขอบ
+     แค่ **0.15px** ("เชื้อเพลิงที่ใช้") ⇒ จอ 2x เหลือ 0.3 device pixel แล้วโดน
+     antialiasing กินหัวสระ ผู้ใช้เห็นเป็น "เหมือนมีเลเยอร์บนตัดหัวสระ"
+     (เป็นทั้งตอนยังไม่พิมพ์และตอนพิมพ์ เพราะ placeholder ใช้กล่องเดียวกัน)
+
+     ⚠️ **padding ที่กล่องนี้ช่วยไม่ได้** — ขอบที่ตัดคือขอบของ `<input>` ไม่ใช่ของกล่องนี้
+     นั่นคือเหตุผลที่การไล่ปรับค่านี้ (7px → 6px) ไม่เคยทำให้อาการหาย
+     ⇒ ยกแนวตั้งออก แล้วให้ `<input>` ยืดเต็มกล่อง (`align-self: stretch` ข้างล่าง)
+     วัดหลังแก้: input 38px ในกล่อง 40px ⇒ หมึกเหลือ บน 7.25px ล่าง 8.17px
+     กล่องครอบยังสูง 40px เท่าเดิม (`min-height` คุมอยู่) = ไม่ขยับเทียบปุ่มข้าง ๆ */
+  padding: 0 var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -5656,6 +5667,10 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   background: transparent;
   outline: none;
   width: 100%;
+  /* 🐞 ยืดเต็มความสูงกล่องครอบ ไม่ใช่ปล่อยให้สูงเท่ากล่องบรรทัด — เหตุผลและตัวเลข
+     ที่วัดมาอยู่ที่ `.search-glass` ข้างบน · กล่องครอบเป็น flex + `align-items: center`
+     จึงต้องสั่ง stretch ทับเป็นรายตัว */
+  align-self: stretch;
   color: var(--text);
   font-size: var(--fs-8);
   font-family: inherit;
