@@ -8,6 +8,15 @@ export function isSettingsPathname(pathname) {
   return SETTINGS_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
+/* ⭐ หน้าที่ "ไม่ได้เป็นของระบบไหน" — ตั้งค่า/ผู้ใช้/บันทึกการใช้งาน และบัญชีของฉัน
+   เปลือกของมันไม่มีแถบเมนูของระบบ (AppLayout ยุบ `--topnav-menu-h` เป็น 0 และไม่วาด
+   แถบล่างบนมือถือ) เพราะเมนูที่ค้างอยู่เป็นของระบบที่เพิ่งเดินออกมา ไม่ใช่ของหน้านี้
+   ⚠️ คนละเรื่องกับ `isSettingsPathname` — `/account` **ไม่ใช่** หน้าตั้งค่า
+   (`viewer` เข้าเปลือกตั้งค่าไม่ได้ แต่ต้องเปิดหน้าบัญชีตัวเองได้) */
+export function isBareShellPathname(pathname) {
+  return isSettingsPathname(pathname) || pathname === '/account';
+}
+
 export function sortSystems(groups) {
   return [...groups].sort((a, b) => SYSTEM_ORDER.indexOf(a.system) - SYSTEM_ORDER.indexOf(b.system));
 }

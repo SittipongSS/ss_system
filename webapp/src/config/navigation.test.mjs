@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
+import { isBareShellPathname, isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
 
 test('systemForPathname keeps public and legacy sales routes in one system', () => {
   assert.equal(systemForPathname('/sa/quotations/1'), 'salesplan');
@@ -85,6 +85,19 @@ test('⭐ หน้าบัญชีของฉันต้องคงเป�
   // ⚠️ ห้ามแก้เป็น settings — เปลือกตั้งค่า `viewer` เข้าไม่ได้ แต่ทุก role
   // ต้องเปิดหน้าบัญชีตัวเองได้ (เหตุผลเดียวกับ `/support`)
   assert.equal(isSettingsPathname('/account'), false);
+});
+
+test('⭐ หน้าที่ไม่เป็นของระบบไหนใช้เปลือกไร้แถบเมนู — ตั้งค่าและบัญชีของฉัน', () => {
+  // มติผู้ใช้ 2026-08-14: หน้าบัญชีไม่ยืมเมนูของระบบที่เพิ่งเดินออกมา · เปลือกเดียว
+  // กับหน้าตั้งค่า (หัวบอกชื่อหน้า แถบเมนูของระบบหายทั้งแถบ รวมแถบล่างบนมือถือ)
+  for (const p of ['/account', '/settings', '/settings/company', '/users', '/audit']) {
+    assert.equal(isBareShellPathname(p), true, p);
+  }
+  // หน้าของระบบต้องมีแถบเมนูตามเดิม · `/notifications` ก็ยังมี เพราะมันคงเปลือก
+  // ของระบบที่คนกำลังยืนอยู่ไว้ (คนละกติกากับหน้าบัญชี)
+  for (const p of ['/sa/deals', '/finance/payments', '/notifications', '/support']) {
+    assert.equal(isBareShellPathname(p), false, p);
+  }
 });
 
 test('โมดูลของฝ่ายเป็นระบบของตัวเอง — /rd ต้องไม่ตกไปอยู่เปลือกของฝ่ายขาย', () => {
