@@ -64,6 +64,45 @@ test("audit:ui มีเพดานเลขดิบ และตกทั้�
   assert.match(AUDIT, /rawLineHeightCount < RAW_LINE_HEIGHT_CAP/, "ต้องฟ้องตอนลืมรูดเพดานลง");
 });
 
+/* 🔴 **เกณฑ์ที่ทำให้ "ชนขอบ" กลายเป็น "ขาดหายไป"**: หมึกจริงของข้อความไทยสูง
+   **1.31em** (วัดในเบราว์เซอร์: 17px ที่ 13px · ขึ้น 12.48 / ลง 4.49) ⇒ กล่องบรรทัด
+   ที่แคบกว่านั้น + `overflow: hidden` ที่ไหนก็ได้ในสาย = **สระถูกตัดทิ้ง** ไม่ใช่แค่ชิด
+
+   เคสจริง 2026-08-14: `.account-menu-identity` ตั้ง `--lh-tight` (1.2) ไว้ที่ตัวแม่
+   แล้วสองบรรทัดลูก (`.user-name` · `.topbar-user-role`) มี `overflow: hidden` ของ
+   ตัวเองเพื่อทำ ellipsis ⇒ บรรทัดล่าง 10.5px ได้กล่อง 12.6px ขณะที่ต้องการ 13.8px
+   ⇒ สระล่างของ "ผู้ดูแลระบบ" ขาด (ผู้ใช้ส่งภาพมา) · ชื่อภาษาอังกฤษไม่เห็นอาการ
+
+   ⚠️ **ตัวที่ตัดคือ *ลูก* แต่ตัวที่ตั้งค่าแคบคือ *แม่*** — เทสต์แบบดูบล็อกเดียว
+   จับไม่ได้ จึงล็อกสองชั้น: ชั้นแรกคือกฎที่จับคู่กันในบล็อกเดียว (ดักรูปแบบตรงไปตรงมา)
+   ชั้นสองคือตรึงบล็อกที่เคยพลาดไว้ตรง ๆ */
+const THAI_INK_EM = 1.31;
+
+test("บล็อกที่ตัดข้อความ (overflow/line-clamp) ต้องไม่ใช้ความสูงบรรทัดต่ำกว่าหมึกไทย", () => {
+  const offenders = [];
+  for (const block of GLOBALS.replace(/\/\*[\s\S]*?\*\//g, "").split("}")) {
+    const brace = block.indexOf("{");
+    if (brace === -1) continue;
+    const body = block.slice(brace + 1);
+    const token = body.match(/line-height:\s*var\(--lh-([\w-]+)\)/);
+    if (!token) continue;
+    if (!/overflow:\s*(hidden|clip)|line-clamp/.test(body)) continue;
+    if (tokens[token[1]] >= THAI_INK_EM) continue;
+    offenders.push(`${block.slice(0, brace).trim().replace(/\s+/g, " ")} → --lh-${token[1]}`);
+  }
+  assert.deepEqual(offenders, [],
+    `กล่องที่ตัดข้อความต้องมีกล่องบรรทัด ≥ ${THAI_INK_EM}em ไม่งั้นสระไทยขาด`);
+});
+
+test("พิลผู้ใช้บนแถบระบบใช้ความสูงบรรทัดระดับข้อความ (สระล่างไม่ขาด)", () => {
+  const block = GLOBALS.match(/\.account-menu-identity \{([^}]*)\}/);
+  assert.ok(block, "หา .account-menu-identity ไม่เจอ");
+  const hit = block[1].match(/line-height:\s*var\(--lh-([\w-]+)\)/);
+  assert.ok(hit, "ต้องหยิบขั้นจากโทเคน ไม่ใช่เลขดิบ");
+  assert.ok(tokens[hit[1]] >= THAI_MIN,
+    `ใช้ --lh-${hit[1]} (${tokens[hit[1]]}) — บรรทัด "ผู้ดูแลระบบ" จะถูก overflow ของตัวเองตัดสระล่าง`);
+});
+
 /* กล่องที่ห่อข้อความไทยแน่น ๆ (ป้าย/ชิป) ต้องไม่กลับไปใช้ค่าต่ำ — เคสที่ผู้ใช้เจอจริง */
 test("ป้ายสถานะยังใช้ความสูงบรรทัดระดับข้อความ", () => {
   const badge = src("./Badge.module.css");
