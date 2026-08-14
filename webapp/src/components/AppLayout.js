@@ -344,6 +344,11 @@ export default function AppLayout({ children }) {
         // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
         // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)
         { href: '/finance/payments', name: 'ทะเบียนการชำระ', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
+        /* คิวคำร้องที่ส่งถึงฝ่ายบัญชี (B-1 · ม-ก) — ชื่อ "คิวคำร้อง" ตรงกับของ RD
+           โดยตั้งใจ: เป็นของอย่างเดียวกันคนละฝ่าย · ต้องไม่ชนกับ "คำร้อง" ของฝ่ายขาย
+           ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
+           ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
+        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') },
       ],
     },
     {
