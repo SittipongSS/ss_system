@@ -11,7 +11,7 @@ import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FolderKanban, RefreshCw, Target, LineChart, BarChart3, Layers, Plus } from "lucide-react";
+import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Layers, Plus } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
@@ -25,7 +25,6 @@ import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
-import SearchInput from "@/components/ui/SearchInput";
 
 /* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
    ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
@@ -175,7 +174,10 @@ export default function ProjectsIndexPage() {
 
         <SaSection icon={<FolderKanban size={17} />} title="ทะเบียนโครงการ" subtitle="ค้นหา กรอง และเปิดดูข้อมูลโครงการทั้งหมด" actions={<span className="ui-badge">{filtered.length} โครงการ</span>}>
           <div className="toolbar">
-            <SearchInput width={300} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" ariaLabel="ค้นหาโครงการ" />
+            <div className="search-glass" style={{ width: 300 }}>
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาโครงการ / ลูกค้า / สูตร / ดีล" aria-label="ค้นหาโครงการ" />
+            </div>
             {waitingOnMeOnly && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันเซ็นปิด ×</Button>

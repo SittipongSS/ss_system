@@ -9,7 +9,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Calculator, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Calculator, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -23,7 +23,6 @@ import CostingRequestForm, {
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import SearchInput from "@/components/ui/SearchInput";
 import {
   COSTING_STATUSES,
   COSTING_STATUS_LABELS,
@@ -156,7 +155,17 @@ export default function CostingListPage() {
       </div>
 
       <div className="toolbar">
-        <SearchInput placeholder="ค้นหาเลขที่ ลูกค้า หรือชื่อสินค้า" value={search} onChange={(e) => setSearch(e.target.value)} ariaLabel="ค้นหาใบขอราคา" />
+        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
+        <div className="search-glass">
+          <Search size={18} color="var(--text-3)" aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="ค้นหาเลขที่ ลูกค้า หรือชื่อสินค้า"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="ค้นหาใบขอราคา"
+          />
+        </div>
         <FilterPopover
           count={filterCount}
           onClear={() => { setStatusFilter([]); setTeamFilter([]); }}

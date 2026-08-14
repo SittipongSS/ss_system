@@ -53,14 +53,9 @@ test("ห้ามมี padding hack จัดกลางตัวอักษ
   assert.doesNotMatch(css, /var\(--ctl-text-sink\)/,
     "ยังมีคนเรียกใช้ --ctl-text-sink อยู่");
 
-  /* ช่องค้นหาเคยเป็น "ความสูงที่สาม" (38px) ทั้งที่เอกสารประกาศว่ามีแค่สองค่า
-     ตอนนี้มันคือ `.premium-input` ตัวเดียวกับช่องกรอก (รื้อ 2026-08-14) จึงได้ความสูง
-     จาก `--ctl-h` โดยอัตโนมัติ · สิ่งที่ต้องกันคือ **กล่องครอบงอกความสูงกลับมา**
-     เพราะนั่นแปลว่ากลับไปเป็นโครงสองกล่องที่ `<input>` คลิปสระของตัวเอง */
-  const searchWrap = css.match(/\.search-input \{([^}]*)\}/);
-  assert.ok(searchWrap, "หา .search-input ไม่เจอ");
-  assert.doesNotMatch(searchWrap[1], /(?:min-)?height:|padding:|background:|border:/,
-    ".search-input ต้องไม่มีความสูง/พื้น/ขอบของตัวเอง — ทั้งหมดอยู่ที่ <input> กล่องเดียว");
+  /* ช่องค้นหาเคยเป็น "ความสูงที่สาม" (38px) ทั้งที่เอกสารประกาศว่ามีแค่สองค่า */
+  assert.match(css, /\.search-glass \{[^{}]*min-height:\s*var\(--ctl-h\)/,
+    "ช่องค้นหาต้องสูงเท่า control อื่น ไม่ใช่ 38px ของตัวเอง");
 
 });
 
@@ -75,12 +70,9 @@ test("ช่องกรอก ดรอปดาวน์ และรายก
     assert.match(block[1], /font-size:\s*var\(--fs-8\)/,
       `${sel} ต้องเป็น --fs-8 (14px) เท่าช่องค้นหา ไม่ใช่ 13px`);
   }
-  /* ช่องค้นหาใช้ `.premium-input` ตัวเดียวกันแล้ว (รื้อ 2026-08-14) จึงได้ขนาดนี้
-     มาเองโดยไม่ต้องประกาศซ้ำ — ที่ต้องกันคืออย่ามีใครเขียน font-size ทับที่นั่น */
-  const searchInput = css.match(/\.search-input input \{([^}]*)\}/);
-  assert.ok(searchInput, "หา .search-input input ไม่เจอ");
-  assert.doesNotMatch(searchInput[1], /font-size:|font-weight:|height:/,
-    "ช่องค้นหาต้องรับขนาด/น้ำหนัก/ความสูงจาก .premium-input ไม่ใช่เขียนทับ");
+  const search = css.match(/\.search-glass input \{([^}]*)\}/);
+  assert.ok(search && /font-size:\s*var\(--fs-8\)/.test(search[1]),
+    "ช่องค้นหาคือค่าอ้างอิงของขนาดนี้ — ถ้ามันเปลี่ยน ต้องย้ายทั้งชุดพร้อมกัน");
 });
 
 /* 🐞 `.premium-select.compact` เคยเขียน `height: var(--ctl-h, 32px)` = สูงเท่าตัวปกติ
@@ -109,7 +101,7 @@ test("ดรอปดาวน์ตัวเก่า: ฐานมาจาก
    ผู้ใช้พิมพ์ชื่อที่มี `_` (ดีล/กลิ่น/โครงการ) ต้องอยู่ที่ 600 ทั้งหมด ไม่ใช่บางกล่อง */
 test("ทุกกล่องที่ผู้ใช้พิมพ์ใช้น้ำหนัก 600 — ไม่งั้น `_` หายบนจอ 1x", () => {
   const css = stripComments(GLOBALS);
-  for (const sel of [".premium-input", ".ui-select-search input", ".ui-select"]) {
+  for (const sel of [".premium-input", ".search-glass input", ".ui-select-search input", ".ui-select"]) {
     const block = css.match(new RegExp(`\\${sel} \\{([^}]*)\\}`));
     assert.ok(block, `หา ${sel} ไม่เจอ`);
     assert.match(block[1], /font-weight:\s*var\(--fw-semibold\)/,

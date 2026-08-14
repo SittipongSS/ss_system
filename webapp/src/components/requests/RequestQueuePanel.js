@@ -21,7 +21,6 @@ import Button from "@/components/ui/Button";
 import { WorkspaceSection } from "@/components/ui/Workspace";
 import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { fmtDate } from "@/lib/format";
-import SearchInput from "@/components/ui/SearchInput";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
@@ -273,7 +272,13 @@ export default function RequestQueuePanel({
           ⚠️ ค้นจากสิ่งที่ตาเห็นในตารางเท่านั้น (`matchesQueueSearch`) */}
       {showToolbar && (
       <div className="toolbar">
-        <SearchInput className={styles.searchBox} value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า…" onChange={(e) => setSearch(e.target.value)} />
+        <div className={`search-glass ${styles.searchBox}`}>
+          <Search size={18} color="var(--text-3)" />
+          <input
+            type="text" value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า…"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         {countFilter && (
           /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบหน้างานของฉันใช้ทรงเดียวกัน */
           <Button size="sm" onClick={() => setCountFilter(null)}>

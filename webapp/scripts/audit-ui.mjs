@@ -539,27 +539,10 @@ const deadClasses = DEAD_CLASSES;
    <input> ตรง ๆ → ได้ช่องค้นหาที่ "ไม่มีแว่นขยาย" เพราะ gap ของ flex ไม่มีลูกให้วาง
    ผู้ใช้ส่งภาพมาบอกว่าไอคอนหาย 2026-07-28)
    ต้องตรวจข้ามบรรทัด — ของจริงเขียน <input ขึ้นบรรทัดหนึ่งแล้ว className อีกบรรทัด
-   ([^>]* กินขึ้นบรรทัดใหม่ได้ ต่างจาก .* ที่หยุดที่ท้ายบรรทัด)
-
-   ✅ `.search-glass` ถูกลบทั้งคลาสแล้ว (2026-08-14) — ช่องค้นหาเป็นกล่องเดียวและ
-   ประกอบจาก `components/ui/SearchInput.js` ที่เดียว จึงไม่มีกล่องครอบให้ใส่ผิดอีก
-   ลิสต์นี้เก็บไว้เพราะแพตเทิร์น "คลาสของกล่องครอบ" ยังเกิดใหม่ได้ — เจอเมื่อไหร่เติมเข้ามา */
-const wrapperOnlyClasses = [];
-
-/* ⭐ ช่องค้นหาต้องมาจาก `SearchInput` เท่านั้น (2026-08-14) — เดิมเขียนมือ 25 จุด
-   20 ไฟล์ ทำให้ขนาดไอคอนกระจาย 15/16/18px และทุกจุดมี `style={{width}}` ของตัวเอง
-   ถ้ามีคนประกอบ `.search-input` เองอีก ความพยายามรวมนี้จะรั่วทันที */
-const handRolledSearch = [];
-for (const file of uiFiles) {
-  const rel = relative(file);
-  if (rel.endsWith("components/ui/SearchInput.js")) continue;
-  if (!rel.endsWith(".js")) continue;
-  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
-  for (const match of source.matchAll(/className=(?:"[^"]*\bsearch-input\b|\{`[^`]*\bsearch-input\b)/g)) {
-    const line = source.slice(0, match.index).split(/\r?\n/).length;
-    handRolledSearch.push(`${rel}:${line} ประกอบช่องค้นหาเอง — ใช้ <SearchInput/> แทน`);
-  }
-}
+   ([^>]* กินขึ้นบรรทัดใหม่ได้ ต่างจาก .* ที่หยุดที่ท้ายบรรทัด) */
+const wrapperOnlyClasses = [
+  { name: "search-glass", use: "<div className=\"search-glass\"> ครอบ <Search/> + <input>" },
+];
 
 const wrapperClassViolations = [];
 for (const file of uiFiles) {
@@ -773,7 +756,6 @@ const failures = [
   ...budgetOver.map((item) => `legacy budget exceeded — PR นี้เพิ่มชั้นเก่า: ${item}`),
   ...budgetUnder.map((item) => `legacy budget ลดได้แล้ว — รูดเพดานลงด้วย \`npm run audit:ui -- --update-budget\`: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
-  ...handRolledSearch,
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
   ...removedCompatibilityFiles.map((item) => `removed compatibility file returned: ${item}`),
   ...legacyCompatibilityImports.map((item) => `legacy compatibility import returned: ${item}`),
@@ -805,7 +787,6 @@ console.log(
     ` · module.css ที่ถูกยืมข้ามโฟลเดอร์: ${cssModuleImports.crossDirectory.length} (ต้องเป็น 0 ทั้งคู่)`,
 );
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
-console.log(`ช่องค้นหาที่ประกอบเอง (ต้องเป็น 0 — ใช้ <SearchInput/>): ${handRolledSearch.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
 const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (หนี้ prompt() เก่าที่ยกเว้นไว้ ${nativeFeedbackDebtTotal} จุด)`);

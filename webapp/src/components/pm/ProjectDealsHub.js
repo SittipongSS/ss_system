@@ -7,7 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เพิ่ม/แก้ใบเสนอราคา/อัปเดตงาน ทำที่หน้าดีลตามเดิม.
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, Handshake, MessageSquare, PackageCheck, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FileText, Handshake, MessageSquare, PackageCheck, Plus, Search } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -28,7 +28,6 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { createClient } from "@/lib/supabaseBrowser";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./ProjectDealsHub.module.css";
-import SearchInput from "@/components/ui/SearchInput";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -540,7 +539,10 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           )}
           <div className="spacer" />
           {showSearch && (
-          <SearchInput className={styles.search} value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" ariaLabel="ค้นหาดีลในโครงการ" />
+            <div className={`search-glass ${styles.search}`}>
+              <Search size={15} color="var(--text-3)" aria-hidden="true" />
+              <input value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
+            </div>
           )}
           {/* สองทางเข้าคนละความหมาย: "เพิ่มดีล" = สร้างใบใหม่ในโครงการนี้ (งานที่ทำบ่อยกว่า
               จึงเป็นปุ่มหลัก) · "ผูกดีล" = ดึงใบที่มีอยู่แล้วเข้ามา/ย้ายข้ามโครงการ */}

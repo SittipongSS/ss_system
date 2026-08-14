@@ -8,7 +8,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // โชว์ครบบนแถบ KPI ของหน้านี้ · ตัวเลขเชิงลึก (รายช่องทาง · รายคน) อยู่ที่แท็บ "KPI ลีด"
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Handshake, Inbox, Plus, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -45,7 +45,6 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
-import SearchInput from "@/components/ui/SearchInput";
 
 /* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
 const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
@@ -570,7 +569,10 @@ export default function LeadsPage() {
             "ลีดเข้า 128 · เดือน 2026-08" กับ "743 ลีด" บนจอเดียวกันจะอ่านเป็นความขัดแย้ง */}
         <SaSection icon={<Inbox size={17} />} title="คิวลีด" subtitle="ค้นหา คัดกรอง และติดตามลีดจนพร้อมส่งต่อเป็นดีล — แสดงทุกเดือน ไม่ผูกกับตัวเลือกเดือนด้านบน" actions={<span className="ui-badge">{filtered.length} ลีด · ทุกเดือน</span>}>
           <div className="toolbar" style={{ flexWrap: "wrap" }}>
-            <SearchInput width={260} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" ariaLabel="ค้นหาลีด" />
+            <div className="search-glass" style={{ width: 260 }}>
+              <Search size={16} color="var(--text-3)" aria-hidden="true" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
+            </div>
             <FilterPopover
               count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length}
               onClear={() => { setStatusFilter([]); setTeamFilter([]); setAssigneeFilter([]); setChannelFilter([]); }}

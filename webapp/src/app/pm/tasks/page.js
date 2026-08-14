@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskDetailPanel, { TaskNoteLine } from "@/components/pm/TaskDetailPanel";
@@ -32,7 +32,6 @@ import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 import Textarea from "@/components/ui/Textarea";
-import SearchInput from "@/components/ui/SearchInput";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -687,7 +686,10 @@ export default function TasksPage() {
       {/* ── แถบเครื่องมือ ── */}
       <SaSection icon={<ListTodo size={17} />} title="รายการงาน" subtitle="ค้นหา กรอง และสลับมุมมองเพื่อติดตามงาน" actions={<span className="ui-badge">{visible.length} งาน</span>}>
       <div className="toolbar">
-        <SearchInput width={260} placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
+          <Search size={18} color="var(--text-3)" />
+          <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
             กรอง: {STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>

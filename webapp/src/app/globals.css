@@ -3407,12 +3407,8 @@ button.ui-kpi-card { cursor: pointer; }
 }
 .ui-select-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
 /* ช่องค้นในเมนู — ขนาด/น้ำหนักเท่าช่องค้นหาหลักและรายการที่มันกรอง (`--fs-8` · 600)
-   `_` ต้องอ่านออกตอนพิมพ์ค้น ไม่ใช่แค่ตอนอ่านผลลัพธ์ (เหตุผลเต็มที่ `.premium-input`) */
-/* ⚠️ `align-self: stretch` — ช่องนี้ยังเป็นโครงสองกล่องอยู่ (กล่องครอบ 34px ถือขอบ/พื้น
-   ส่วน `<input>` ข้างในสูงเท่ากล่องบรรทัด 23.8px แล้วคลิปสระของตัวเอง)
-   🪤 ควรรื้อเป็นกล่องเดียวแบบ `.search-input` วันหลัง — ตอนนี้ปะด้วย stretch ไปก่อน
-   เพราะช่องนี้อยู่ในแผงดรอปดาวน์ที่คุมความสูงเอง ไม่ได้ประกอบจากหน้าเพจ */
-.ui-select-search input { min-width: 0; flex: 1; align-self: stretch; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-8); font-weight: var(--fw-semibold); }
+   `_` ต้องอ่านออกตอนพิมพ์ค้น ไม่ใช่แค่ตอนอ่านผลลัพธ์ (เหตุผลเต็มที่ .search-glass input) */
+.ui-select-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-8); font-weight: var(--fw-semibold); }
 .ui-select-options { overflow-y: auto; }
 
 /* 24-hour time input and picker. We intentionally avoid input[type=time]
@@ -3767,6 +3763,7 @@ button.empty-state { width: 100%; font: inherit; }
 /* Unify every control sitting in a toolbar to one height (--ctl-h).
    Scoped to .toolbar so form-page selects/buttons keep their own sizing. */
 .toolbar .premium-select,
+.toolbar .search-glass,
 .toolbar .btn { height: var(--ctl-h); }
 .toolbar .btn-icon { width: var(--ctl-h); height: var(--ctl-h); }
 
@@ -5624,55 +5621,54 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .ui-metric strong { font-size: var(--fs-10); }
 }
 
-/* ⭐ **ช่องค้นหา = กล่องเดียว** (มติผู้ใช้ 2026-08-14 — รื้อจาก `.search-glass`)
-
-   โครงเดิมเป็น **สองกล่อง**: `<div class="search-glass">` ถือขอบ/พื้น/ความสูง ส่วน
-   `<input>` ข้างในถือข้อความ ⇒ สองกล่องต้องตกลงความสูงกันเอง โดยไม่มีอะไรบังคับ
-   นั่นคือต้นเหตุของบั๊กชุดยาว:
-     · `<input>` ที่ไม่ตั้งความสูงจะสูง = กล่องบรรทัดพอดี **และคลิปเนื้อในตัวเองเสมอ**
-       ⇒ สระบนไทยเหลือที่ 0.15px แล้วโดนเฉือน (ผู้ใช้ส่งภาพ "เหมือนมีเลเยอร์ทับ")
-     · คนไปแก้ padding ที่กล่องนอกทุกครั้ง ทั้งที่ขอบที่ตัดคือขอบของ `<input>`
-     · เคยมีคนใส่ `.search-glass` ที่ `<input>` ตรง ๆ จนไอคอนแว่นขยายหายทั้งหน้า
-       (2026-07-28 — ดูคอมเมนต์ที่ `components/ui/Input.js`)
-
-   ตอนนี้ `<input>` **เป็นตัวควบคุมเอง** (ขอบ · พื้น · `--ctl-h` อยู่ที่มัน) ส่วน
-   `.search-input` เหลือหน้าที่เดียวคือเป็นจุดอ้างอิงให้ไอคอนวางทับ — ไม่มีความสูง
-   ไม่มีขอบ ไม่มีพื้นหลังของตัวเอง จึงไม่มีอะไรให้ต้องตกลงกันอีก
-   🪤 ห้ามใส่ `padding`/`height`/`background` กลับเข้ามาที่ `.search-input`
-   ⚠️ ประกอบผ่าน `components/ui/SearchInput.js` เท่านั้น — audit ดักการเขียนคลาสดิบไว้ */
-.search-input {
-  position: relative;
-  display: inline-flex;
+/* Expanding glass search box */
+.search-glass {
+  /* ⚠️ เดิม `min-height: 38px` = **ความสูงที่สาม** ที่เอกสารห้ามไว้เอง (typography-system
+     §ความสูงของตัวควบคุม: มีแค่ --ctl-h กับ --ctl-h-touch) ⇒ ช่องค้นหาเตี้ยกว่าปุ่ม
+     ข้าง ๆ 2px ทุกหน้าที่ไม่ได้อยู่ใน `.toolbar` (ใน .toolbar มีกฎตรึงเป็น --ctl-h
+     อยู่แล้ว = ที่เดียวที่เคยตรง ส่วนหน้าอื่นเบี้ยวมาตลอดโดยไม่มีใครเห็น)
+     ตัวอักษรไทยในช่องนี้ดันขึ้นที่ `input` ข้างใน ไม่ใช่ที่นี่ — ดูเหตุผลที่บล็อก sink */
+  min-height: var(--ctl-h);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  /* เดิม 7px ดิบ · ยุบเป็น 6px เพราะช่องข้างในสูงขึ้น 3px จาก sink ⇒ 7+7+24.2+2 = 40.2px
+     คือ **สูงเกินปุ่มข้าง ๆ 0.2px** (min-height เอาไม่อยู่เพราะเนื้อในดันเอง)
+     6px ⇒ เนื้อในรวม 38.2px ต่ำกว่า --ctl-h ⇒ min-height คุมได้ = 40px เป๊ะ */
+  padding: var(--space-1-5) var(--space-3);
+  display: flex;
   align-items: center;
+  gap: var(--space-2);
+  transition: width var(--motion-slow) ease, border-color var(--motion-standard) ease, box-shadow var(--motion-standard) ease;
   width: min(300px, 100%);
-  transition: width var(--motion-slow) ease;
+  position: relative;
   z-index: 1;
 }
-.search-input:focus-within { width: min(340px, 100%); }
 
-/* ไอคอนลอยทับช่อง ไม่ใช่พี่น้องใน flex — กดทะลุไปโฟกัสช่องได้ */
-.search-input-icon {
-  position: absolute;
-  left: var(--space-3);
-  display: inline-flex;
-  color: var(--text-3);
-  pointer-events: none;
-}
-
-/* พื้น/ขอบของช่องค้นหาต่างจากช่องกรอกในฟอร์มโดยเจตนา — ช่องค้นหาอยู่บนแถบเครื่องมือ
-   (พื้น `--panel-2` มุม `--radius-md`) ส่วนช่องกรอกอยู่ในฟอร์ม (พื้น `--bg`)
-   ที่เหลือ (ความสูง · ขนาด · น้ำหนัก 600 สำหรับ `_`) มาจาก `.premium-input` ทั้งหมด */
-.search-input input {
-  background: var(--panel-2);
-  border-radius: var(--radius-md);
-  /* ซ้าย = ระยะขอบ + ไอคอน 16px + ช่องไฟ ⇒ `--space-3 + --space-4 + --space-2` = 36px
-     (เท่ากับ padding 12px + gap 8px + ไอคอนของโครงเดิมเป๊ะ — ตัวอักษรไม่ขยับ) */
-  padding-left: calc(var(--space-3) + var(--space-4) + var(--space-2));
-}
-.search-input input:focus {
+.search-glass:focus-within {
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
-  background: var(--panel-2);
+  width: min(340px, 100%);
+}
+
+.search-glass input {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-family: inherit;
+  /* ⚠️ 600 ไม่ใช่รสนิยม — เหตุผลเดียวกับ `.premium-input` (IS-26080022): ขีดล่าง `_`
+     ของ Sarabun ที่น้ำหนัก 400 หนา 0.86px ที่ 13px / 0.93px ที่ 14px = ไม่เต็มพิกเซล
+     บนจอ 1x (โน้ตบุ๊ก Windows ส่วนใหญ่) เบราว์เซอร์เกลี่ยเป็นเทาจางแล้ว **หายทั้งเส้น**
+     รอบนั้นแก้เฉพาะช่องกรอก ช่องค้นหาหลุดไป — ค้นชื่อดีล/กลิ่นที่มี `_` คั่นก็อ่านไม่ออก
+     เหมือนกัน (มติผู้ใช้ 2026-08-14) */
+  font-weight: var(--fw-semibold);
+}
+
+.search-glass input::placeholder {
+  color: var(--text-3);
 }
 
 /* Rounded glass table container */
@@ -6082,8 +6078,8 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .premium-header { padding: var(--space-4-5) var(--space-5); }
   .premium-header h1 { font-size: var(--fs-12); }
   .premium-header p { margin-left: 0; }
-  .search-input,
-  .search-input:focus-within { width: 100%; }
+  .search-glass,
+  .search-glass:focus-within { width: 100%; }
 }
 
 /* ชื่อคนที่ถูก @ ในข้อความเธรด — ใช้ <mark> เพราะความหมายคือ "ส่วนที่เกี่ยวข้องกับ

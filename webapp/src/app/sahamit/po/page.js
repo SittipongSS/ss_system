@@ -4,7 +4,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShoppingCart, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, ArrowUp, ArrowDown } from "lucide-react";
+import { ShoppingCart, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -19,7 +19,6 @@ import { useCan } from "@/lib/roleContext";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { businessDate } from "@/lib/businessDate";
-import SearchInput from "@/components/ui/SearchInput";
 
 const nf = (n) => fmtNumber(n || 0);
 // มูลค่า PO โชว์เต็ม 2 ตำแหน่ง (ไม่ย่อ) — formatter กลาง fmtMoney
@@ -216,7 +215,10 @@ export default function PoPage() {
       ) : (
         <>
           <div className="toolbar">
-            <SearchInput width={240} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเลข PO / สินค้า / สถานที่ส่ง..." />
+            <div className="search-glass" style={{ width: 240 }}>
+              <Search size={18} color="var(--text-3)" />
+              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเลข PO / สินค้า / สถานที่ส่ง..." />
+            </div>
             <FilterPopover
               count={filterCount}
               onClear={clearFilters}

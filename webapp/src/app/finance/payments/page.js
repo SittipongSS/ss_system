@@ -21,7 +21,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlarmClock, ChevronRight, CircleDollarSign, ExternalLink, FileSpreadsheet, Wallet } from "lucide-react";
+import { AlarmClock, ChevronRight, CircleDollarSign, ExternalLink, FileSpreadsheet, Search, Wallet } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
@@ -39,7 +39,6 @@ import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConf
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
 import styles from "./page.module.css";
-import SearchInput from "@/components/ui/SearchInput";
 
 export default function FinancePaymentsPage() {
   const router = useRouter();
@@ -268,7 +267,14 @@ export default function FinancePaymentsPage() {
           actions={<span className="ui-badge">{groups.length} ใบ · {rows.length} งวด{filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}</span>}
         >
           <div className="toolbar">
-            <SearchInput defaultValue={q} onChange={(e) => setFilter("q", e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ชื่องวด" />
+            <div className="search-glass">
+              <Search size={16} color="var(--text-3)" />
+              <input
+                defaultValue={q}
+                onChange={(e) => setFilter("q", e.target.value)}
+                placeholder="ค้นหาเลข SO / QT / ลูกค้า / ชื่องวด"
+              />
+            </div>
             <Select value={status} onChange={(e) => setFilter("status", e.target.value)}>
               <option value="">ทุกสถานะ</option>
               {LEDGER_STATUS_KEYS.map((key) => <option key={key} value={key}>{LEDGER_STATUS[key].label}</option>)}

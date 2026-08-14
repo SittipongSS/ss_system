@@ -4,7 +4,7 @@ import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -19,7 +19,6 @@ import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOr
 import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
 import StatusBadge from "@/components/ui/StatusBadge";
 import styles from "./page.module.css";
-import SearchInput from "@/components/ui/SearchInput";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
@@ -152,7 +151,7 @@ export default function SalesOrdersPage() {
 
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar">
-            <SearchInput width={330} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" />
+            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
             {waitingOnMeOnly && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
