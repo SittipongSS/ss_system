@@ -30,7 +30,9 @@ async function collectDealDocuments(supabase, dealId) {
     // ต้องต่อครบ 5 จุดก่อน ดู costingAttachmentAccess.js) ⇒ แหล่งนี้จะว่างจนกว่า
     // จะเปิดใช้ · อ่านไว้ตั้งแต่ตอนนี้เพราะพอเปิดแล้วจะได้ไม่ต้องกลับมาแก้ที่นี่อีก
     const { data: attachments, error: attError } = await supabase
-      .from('attachments').select('id, fileName, docType, createdAt')
+      // metadata + fileUrl: แยก "เอกสารร่วม" (Google Doc/Sheet) ออกจากไฟล์นิ่ง
+      // — เอกสารร่วมเปิดผ่าน fileUrl ตรง ไม่ผ่าน proxy stream (ดู entityDocuments)
+      .from('attachments').select('id, fileName, docType, createdAt, metadata, fileUrl')
       .eq('entityType', 'deal').eq('entityId', dealId);
     raise('อ่านไฟล์แนบของดีลไม่สำเร็จ', attError);
 

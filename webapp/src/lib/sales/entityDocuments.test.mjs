@@ -68,3 +68,50 @@ test('ทุกแถวมี id ไม่ซ้ำข้ามแหล่ง 
   });
   assert.equal(new Set(rows.map((r) => r.id)).size, rows.length);
 });
+
+// ── เอกสารร่วม (Google Doc/Sheet) — แหล่งที่ 8 ────────────────────────────
+test('⭐ เอกสารร่วมแยกจาก "ไฟล์แนบ" — คนละหน้าที่ ปนกันแล้วแยกหลักฐานไม่ออก', () => {
+  // ไฟล์แนบคือ*หลักฐาน*ที่ตรึงแล้ว · เอกสารร่วมคือ*พื้นที่ทำงาน*ที่ยังขยับอยู่
+  const rows = buildEntityDocuments({
+    attachments: [
+      { id: 'A1', fileName: 'po.pdf', createdAt: '2026-08-05' },
+      {
+        id: 'A2',
+        fileName: 'ร่างสเปกกลิ่น',
+        createdAt: '2026-08-06',
+        fileUrl: 'https://docs.google.com/document/d/DOC1/edit',
+        metadata: { kind: 'gdoc', googleFileId: 'DOC1' },
+      },
+    ],
+  });
+  const shared = rows.find((r) => r.source === 'sharedDoc');
+  const plain = rows.find((r) => r.source === 'attachment');
+  assert.equal(shared.title, 'ร่างสเปกกลิ่น');
+  assert.equal(plain.title, 'po.pdf');
+  // เอกสารร่วมอยู่เหนือไฟล์แนบ — ของที่ยังขยับอยู่มาก่อนของที่ตรึงแล้ว
+  assert.ok(rows.indexOf(shared) < rows.indexOf(plain));
+});
+
+test('เอกสารร่วมเปิดผ่านลิงก์ Google ตรง ไม่ผ่าน proxy สตรีมไฟล์', () => {
+  // proxy สตรีมไฟล์ไบนารี ส่วนนี่คือหน้าเว็บของ Google ที่ต้องใช้ session ผู้ใช้เอง
+  const [row] = buildEntityDocuments({
+    attachments: [{
+      id: 'A1',
+      fileName: 'ตารางเทียบราคา',
+      fileUrl: 'https://docs.google.com/spreadsheets/d/SH1/edit',
+      metadata: { kind: 'gsheet', googleFileId: 'SH1' },
+    }],
+  });
+  assert.equal(row.href, 'https://docs.google.com/spreadsheets/d/SH1/edit');
+  assert.equal(row.note, 'Sheet');
+  // ⚠️ ลิงก์ที่ฝัง iframe ได้ต้องเป็น /preview — /edit ถูก X-Frame-Options บล็อก
+  assert.equal(row.previewUrl, 'https://docs.google.com/spreadsheets/d/SH1/preview');
+});
+
+test('แถวเก่าที่ไม่มี googleFileId ไม่ได้ปุ่ม "ดู" — ประกอบลิงก์ฝังไม่ได้', () => {
+  const [row] = buildEntityDocuments({
+    attachments: [{ id: 'A1', fileName: 'เอกสารเก่า', metadata: { kind: 'gdoc' } }],
+  });
+  assert.equal(row.source, 'sharedDoc');
+  assert.equal(row.previewUrl, null);
+});

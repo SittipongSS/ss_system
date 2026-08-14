@@ -30,6 +30,10 @@
 .row[data-awaiting] { border-left: 3px solid var(--amber); }
 
 .main { flex: 1; min-width: 0; }
+
+/* ปุ่มท้ายแถว — เอกสารร่วมมีสองปุ่ม (ดู · แก้) ที่เหลือมีปุ่มเดียว
+   ⚠️ `flex-shrink: 0` กันปุ่มถูกบีบจนตัวอักษรตกบรรทัดเมื่อชื่อเอกสารยาว */
+.actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .title { font-size: var(--fs-7); }
 .meta { margin-top: var(--space-1); font-size: var(--fs-3); color: var(--text-3); }
 

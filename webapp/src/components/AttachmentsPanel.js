@@ -23,7 +23,11 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
+  Eye, FileType, FileSpreadsheet, Link2,
 } from "lucide-react";
+import GoogleDocViewer from "@/components/GoogleDocViewer";
+import ReasonDialog from "@/components/ui/ReasonDialog";
+import { googleDocKindLabel, googleDocPreviewUrl, isGoogleDoc } from "@/lib/master/googleDocView";
 import Modal from "@/components/Modal";
 import {
   ATTACHMENT_TYPES,
@@ -70,6 +74,10 @@ export default function AttachmentsPanel({
   onItemsChange, // (items) => void — แจ้งรายการเอกสารปัจจุบัน (ใช้บังคับแนบก่อนยื่น)
   cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
   inlineUpload = false, // แสดง action แนบไฟล์และรายการไฟล์แบบไม่มีการ์ด
+  // เปิดปุ่มสร้าง/ผูก Google Doc·Sheet (เอกสารมีชีวิต) — เฉพาะ entity ที่มีโฟลเดอร์
+  // ของตัวเองบน Drive · ปุ่ม "ดู" ของแถวเอกสาร Google **ขึ้นเสมอ** ไม่ต้องรอ flag นี้
+  // เพราะการอ่านไม่ใช่การเพิ่มของ (จอที่แค่แสดงผลก็ควรเปิดดูได้)
+  googleDocs = false,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -92,6 +100,12 @@ export default function AttachmentsPanel({
 
   // รูปที่กำลังเปิดดูขยาย (lightbox) — null = ปิดอยู่
   const [preview, setPreview] = useState(null);
+  // เอกสาร Google ที่กำลังเปิดดูในหน้า — null = ปิดอยู่ (คนละกล่องกับ lightbox
+  // เพราะเนื้อในเป็น iframe ข้ามโดเมน ไม่ใช่ <img> ของเราเอง)
+  const [docPreview, setDocPreview] = useState(null);
+  const [addingDoc, setAddingDoc] = useState(false);
+  // กล่องกรอกชื่อ/ลิงก์เอกสารร่วม — { mode: 'create'|'link', type?, value }
+  const [docForm, setDocForm] = useState(null);
 
   const fetchItems = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -122,6 +136,38 @@ export default function AttachmentsPanel({
   useEffect(() => {
     onItemsChange?.(items);
   }, [items, onItemsChange]);
+
+  // ── เอกสารมีชีวิต (Google Doc/Sheet) ────────────────────────────────────
+  // ⚠️ ไม่มีขั้นอัปไฟล์ — server เป็นคนคุยกับ Drive แล้วบันทึกแถวให้ในคำขอเดียว
+  // client ส่งได้แค่ "จะสร้างชนิดไหน" หรือ "จะผูกลิงก์ไหน" (ดู api/attachments)
+  const addGoogleDoc = async (google) => {
+    setAddingDoc(true);
+    try {
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityType, entityId, docType: "other", google }),
+      });
+      if (!res.ok) {
+        notifyToast.error(await describeResponseError(res, "สร้างเอกสารไม่สำเร็จ"));
+        return;
+      }
+      await fetchItems();
+    } catch {
+      notifyToast.error("สร้างเอกสารไม่สำเร็จ — เครือข่ายขัดข้อง");
+    } finally {
+      setAddingDoc(false);
+    }
+  };
+  // ⚠️ ห้ามใช้ prompt() — scripts/audit-ui.mjs ตีกลับ (กล่องของเบราว์เซอร์อยู่นอก
+  // ระบบ feedback ของแอป: ไม่มีธีม ไม่มีโฟกัสแทร็ป และบนมือถือบางตัวถูกบล็อกเงียบ)
+  const submitDocForm = () => {
+    if (!docForm) return;
+    const value = String(docForm.value || "").trim();
+    if (docForm.mode === "link") addGoogleDoc({ mode: "link", url: value });
+    else addGoogleDoc({ mode: "create", type: docForm.type, name: value });
+    setDocForm(null);
+  };
 
   // อัปไฟล์ขึ้น storage แล้วบันทึก metadata row. คืน true ถ้าสำเร็จ.
   // ⚠️ ตัวอัปจริงอยู่ที่ lib/master/attachmentUpload.js — โมดัลเปิดคำร้องใช้ตัวเดียวกัน
@@ -318,23 +364,45 @@ export default function AttachmentsPanel({
           rel="noreferrer"
           className="flex items-center gap-1.5 min-w-0 text-[var(--text-2)] hover:text-[var(--accent)] hover:underline"
         >
-          <Paperclip size={14} className="shrink-0" />
+          {/* เอกสารมีชีวิตได้ไอคอนของตัวเอง — แยกจากไฟล์นิ่งด้วยสายตา ไม่ต้องอ่านชื่อ
+              ⚠️ FileType/FileSpreadsheet ตามที่ DocsPanel ใช้ · **ห้าม FileText**
+              ซึ่งสงวนไว้ให้ใบเสนอราคาตัวเดียวทั้งระบบ (lib/entityIcon.test.mjs) */}
+          {isGoogleDoc(it)
+            ? (it.metadata?.kind === "gsheet"
+              ? <FileSpreadsheet size={14} className="shrink-0 text-[var(--accent)]" />
+              : <FileType size={14} className="shrink-0 text-[var(--accent)]" />)
+            : <Paperclip size={14} className="shrink-0" />}
           <span className="truncate">{it.fileName || "ไฟล์แนบ"}</span>
           {!compact && it.sizeBytes != null && (
             <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
           )}
         </a>
       )}
-      {canEdit && (
-        <button
-          type="button"
-          onClick={() => handleDelete(it.id)}
-          className="text-[var(--red)] shrink-0 p-0.5 hover:opacity-70"
-          title="ลบ"
-        >
-          <Trash2 size={13} />
-        </button>
-      )}
+      <div className="flex items-center gap-1 shrink-0">
+        {/* ⭐ "ดู" = เปิดในหน้า (อ่านอย่างเดียว) · ชื่อไฟล์ด้านซ้ายยังพาไปแก้ที่ Google
+            เหมือนเดิม — สองอย่างนี้ทำคนละเรื่อง ยุบเหลือปุ่มเดียวไม่ได้
+            ⚠️ ไม่โชว์ถ้าประกอบลิงก์ /preview ไม่ได้ (แถวเก่าที่ไม่มี googleFileId) */}
+        {googleDocPreviewUrl(it) && (
+          <button
+            type="button"
+            onClick={() => setDocPreview(it)}
+            className="flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-0.5 text-[11px] text-[var(--text-2)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
+            title={`ดู${googleDocKindLabel(it)}ในหน้านี้`}
+          >
+            <Eye size={13} /> ดู
+          </button>
+        )}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => handleDelete(it.id)}
+            className="text-[var(--red)] p-0.5 hover:opacity-70"
+            title="ลบ"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -459,6 +527,63 @@ export default function AttachmentsPanel({
     </Modal>
   );
 
+  const docViewer = (
+    <>
+      <GoogleDocViewer
+        open={!!docPreview}
+        title={docPreview?.fileName}
+        previewUrl={googleDocPreviewUrl(docPreview)}
+        editUrl={docPreview?.fileUrl}
+        onClose={() => setDocPreview(null)}
+      />
+      {/* กล่องกรอกของระบบแทน prompt() — ReasonDialog คือช่องกรอกข้อความช่องเดียว
+          ที่ audit ยอมรับ (ดูหัวข้อ nativeFeedbackDebt ใน scripts/audit-ui.mjs) */}
+      <ReasonDialog
+        open={!!docForm}
+        title={docForm?.mode === "link" ? "ผูกเอกสาร Google ที่มีอยู่" : `สร้าง ${docForm?.type === "gsheet" ? "Sheet" : "Doc"} ใหม่`}
+        description={docForm?.mode === "link"
+          ? "เอกสารยังอยู่ที่เดิมบน Drive — ระบบเก็บแค่ลิงก์กับชื่อไว้แสดงในหน้านี้"
+          : "ไฟล์เปล่าจะถูกสร้างในโฟลเดอร์ของระเบียนนี้บน Shared Drive ของบริษัท"}
+        label={docForm?.mode === "link" ? "ลิงก์เอกสาร" : "ชื่อเอกสาร"}
+        value={docForm?.value || ""}
+        onChange={(value) => setDocForm((f) => (f ? { ...f, value } : f))}
+        onClose={() => setDocForm(null)}
+        onConfirm={submitDocForm}
+        confirmLabel={docForm?.mode === "link" ? "ผูกเอกสาร" : "สร้าง"}
+        placeholder={docForm?.mode === "link"
+          ? "https://docs.google.com/document/d/..."
+          : "เช่น ร่างสเปกกลิ่น รอบ 2"}
+        rows={1}
+        tone="info"
+        busy={addingDoc}
+      />
+    </>
+  );
+
+  // แถวปุ่มสร้าง/ผูกเอกสารมีชีวิต — คู่กับปุ่มแนบไฟล์ พร้อมคำต่อท้ายที่สอนความต่าง
+  // ⭐ ต้องบอกตรงจุดที่คนกำลังเลือก ไม่ใช่ในเอกสารที่ไม่มีใครอ่าน — ไม่งั้นคนอัป PDF
+  // ที่ตั้งใจจะแก้ต่อ แล้วมาถามทีหลังว่าทำไมแก้ไม่ได้
+  const googleDocActions = googleDocs && canEdit && (
+    <div className="mt-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 border-t border-[var(--border)] pt-1.5">
+      <p className="mr-auto text-[10px] text-[var(--text-3)]">เอกสารร่วม — แก้ได้หลายคน</p>
+      {[
+        { key: "link", label: "ผูกลิงก์", Icon: Link2, onClick: () => setDocForm({ mode: "link", value: "" }) },
+        { key: "gdoc", label: "Doc", Icon: FileType, onClick: () => setDocForm({ mode: "create", type: "gdoc", value: "" }) },
+        { key: "gsheet", label: "Sheet", Icon: FileSpreadsheet, onClick: () => setDocForm({ mode: "create", type: "gsheet", value: "" }) },
+      ].map(({ key, label, Icon, onClick }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={onClick}
+          disabled={addingDoc}
+          className="inline-flex items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Icon size={13} /> {label}
+        </button>
+      ))}
+    </div>
+  );
+
   if (inlineUpload) {
     const inlineType = types[0]?.key || "other";
     const busy = uploadingType === inlineType;
@@ -504,6 +629,8 @@ export default function AttachmentsPanel({
           )}
         </div>
 
+        {googleDocActions}
+
         {!loading && items.length > 0 && (() => {
           const photos = items.filter(isPreviewableImage);
           const files = items.filter((it) => !isPreviewableImage(it));
@@ -529,6 +656,7 @@ export default function AttachmentsPanel({
           />
         )}
         {lightbox}
+        {docViewer}
       </div>
     );
   }
@@ -782,7 +910,9 @@ export default function AttachmentsPanel({
           ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
         </p>
       )}
+      {googleDocActions}
       {lightbox}
+      {docViewer}
     </div>
   );
 }

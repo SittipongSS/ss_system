@@ -6,6 +6,8 @@ import {
 } from '@/lib/master/costingAttachmentAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
+import { GoogleDocError, buildGoogleAttachment, googleDocsEnvError, workspaceEmail } from '@/lib/master/googleDocs';
+import { hasFolderBranch } from '@/lib/master/driveEntityMap';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -15,6 +17,8 @@ import {
 } from '@/lib/sales/dealAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
+// สาขา "เอกสารมีชีวิต" โหลด googleapis (หนัก + อ่าน OIDC token) — ต้อง Node runtime
+export const runtime = 'nodejs';
 
 // Polymorphic attachments (migration 0028). Permission piggybacks on the parent
 // entity: viewing/editing an attachment = viewing/editing its customer/product.
@@ -77,21 +81,41 @@ export async function GET(request) {
   }
 }
 
-// POST /api/attachments — บันทึก metadata หลังอัปโหลดไฟล์ผ่าน /api/upload แล้ว.
+// POST /api/attachments — บันทึก metadata หลังอัปโหลดไฟล์ผ่าน /api/upload แล้ว
+// **หรือ** สร้าง/ผูกเอกสาร Google เมื่อส่ง `google: { mode, ... }` มาแทน fileUrl
+//
+// ⭐ ทางเดียวกันโดยตั้งใจ (มติผู้ใช้ 2026-08-14) — ปลายทางคือแถว `attachments`
+// แถวเดียวกัน ต่างแค่ว่าไฟล์มาจากไหน · แยก route จะต้องเขียนด่านสิทธิ์สองชุด
+// แล้วเพี้ยนหากันภายหลัง ซึ่งเป็นความพังแบบเงียบที่สุดของสายไฟล์แนบ
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
   const body = await request.json();
-  const { entityType, entityId, docType, fileUrl, driveFileId, fileName, mimeType, sizeBytes, metadata } = body;
+  const { entityType, entityId, docType, fileUrl, driveFileId, fileName, mimeType, sizeBytes, metadata, google } = body;
 
   if (!ATTACHMENT_ENTITY_TYPES.includes(entityType) || !entityId) {
     return Response.json({ error: 'entityType/entityId ไม่ถูกต้อง' }, { status: 400 });
   }
-  // ที่อยู่ไฟล์ต้องเป็นของ storage เราเท่านั้น — client ส่ง fileUrl อะไรมาก็ได้ และตั้ง
-  // driveFileId เป็น null เองได้ ซึ่งทำให้แถวนั้นถูก render เป็น <a href> ดิบ ๆ และทำให้
-  // proxy ดาวน์โหลดกลายเป็น open redirect จากโดเมนของแอปเราเอง (ดู attachmentStorage)
-  const urlError = attachmentUrlErrorForEnv(fileUrl);
-  if (urlError) return Response.json({ error: urlError }, { status: 400 });
+
+  if (google) {
+    // ⚠️ ต้องมีสาขาโฟลเดอร์ของตัวเอง ไม่งั้นไฟล์ตกถัง "_รอจัดที่" แล้วหาไม่เจอ
+    // บน Drive โดยไม่มี error ให้เห็น (บั๊กที่เคยเกิดกับเธรดทะเบียนภาษี)
+    if (!hasFolderBranch(entityType)) {
+      return Response.json({ error: 'entity นี้ยังไม่มีที่เก็บบน Drive — สร้างเอกสารร่วมไม่ได้' }, { status: 400 });
+    }
+    const envError = googleDocsEnvError();
+    if (envError) return Response.json({ error: envError }, { status: 400 });
+  } else {
+    // ที่อยู่ไฟล์ต้องเป็นของ storage เราเท่านั้น — client ส่ง fileUrl อะไรมาก็ได้ และตั้ง
+    // driveFileId เป็น null เองได้ ซึ่งทำให้แถวนั้นถูก render เป็น <a href> ดิบ ๆ และทำให้
+    // proxy ดาวน์โหลดกลายเป็น open redirect จากโดเมนของแอปเราเอง (ดู attachmentStorage)
+    //
+    // ⚠️ สาขา google ข้ามด่านนี้ได้เพราะที่อยู่ **มาจาก Drive ไม่ใช่จาก client** —
+    // client ส่งได้แค่ "สร้างชนิดไหน" กับ "ลิงก์ไหนที่จะผูก" ซึ่งถูกแปลงเป็น fileId
+    // แล้วอ่าน metadata กลับมาจาก Drive อีกที
+    const urlError = attachmentUrlErrorForEnv(fileUrl);
+    if (urlError) return Response.json({ error: urlError }, { status: 400 });
+  }
 
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
@@ -128,22 +152,49 @@ export async function POST(request) {
   const allowed = (ATTACHMENT_TYPES[entityType] || []).map((t) => t.key);
   const safeDocType = allowed.includes(docType) ? docType : 'other';
 
+  // เอกสารมีชีวิต: คุยกับ Drive **หลังผ่านด่านสิทธิ์แล้วเท่านั้น** — ไม่งั้นคนที่แนบ
+  // ไม่ได้ยังสร้างไฟล์ค้างไว้บน Shared Drive ได้ทุกครั้งที่กด
+  let googleFile = null;
+  if (google) {
+    try {
+      googleFile = await buildGoogleAttachment({
+        entityType,
+        entityId,
+        mode: google.mode,
+        type: google.type,
+        url: google.url,
+        name: google.name,
+        grantEmail: await workspaceEmail(supabase, user?.id),
+      });
+    } catch (err) {
+      if (err instanceof GoogleDocError) return Response.json({ error: err.message }, { status: err.status });
+      throw err;
+    }
+  }
+
   const row = {
     entityType,
     entityId,
     docType: safeDocType,
-    fileUrl,
+    fileUrl: googleFile ? googleFile.fileUrl : fileUrl,
     // Drive backend: id ไฟล์บน Drive (null = ไฟล์เก่าบน Supabase — hybrid).
-    driveFileId: driveFileId || null,
-    fileName: fileName || null,
-    mimeType: mimeType || null,
-    sizeBytes: typeof sizeBytes === 'number' ? sizeBytes : null,
+    driveFileId: googleFile ? googleFile.driveFileId : (driveFileId || null),
+    fileName: googleFile ? googleFile.fileName : (fileName || null),
+    mimeType: googleFile ? googleFile.mimeType : (mimeType || null),
+    // เอกสาร Google ไม่มีขนาดที่มีความหมาย (Drive คืน 1 KB เสมอ) — เก็บ null
+    sizeBytes: !googleFile && typeof sizeBytes === 'number' ? sizeBytes : null,
     uploadedBy: user?.id ?? null,
     uploadedByName: user?.name ?? null,
     // รายละเอียด/แท็คเพิ่มเติม (เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ).
     // รับเฉพาะ plain object — ป้องกัน array/ค่าแปลกปลอม.
-    metadata:
-      metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {},
+    //
+    // ⚠️ `kind`/`googleFileId` ของเอกสารมีชีวิตต้องมาจาก Drive เท่านั้น — วางทับ
+    // ของที่ client ส่งมา ไม่งั้นตั้ง kind ปลอมให้แถวไฟล์ธรรมดาแล้วหน้าเว็บจะ
+    // เอาไปประกอบเป็นลิงก์ /preview ของ Google ตามค่าที่ client บอก
+    metadata: {
+      ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+      ...(googleFile ? googleFile.metadata : {}),
+    },
   };
 
   const { data, error } = await supabase.from('attachments').insert(row).select().single();
