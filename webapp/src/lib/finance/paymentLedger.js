@@ -224,6 +224,14 @@ export function groupLedgerByOrder(rows = []) {
         complete: rowsInOrder.length > 0 && rowsInOrder.every((r) => r.status === 'confirmed'),
         // งวดที่ด่วนที่สุด — ใช้ทั้งจัดลำดับก้อนและโชว์บนแถวที่ยุบอยู่
         lead: rowsInOrder[0] || null,
+        /* กำหนดชำระที่ต้องตามต่อไป = งวดที่ **ยังเก็บไม่ได้** และมีวันใกล้ที่สุด
+           ⚠️ ข้ามงวดที่ confirmed แล้ว — วันของงวดที่จบไปแล้วไม่ใช่สิ่งที่ต้องตาม
+           ⚠️ ทั้งใบเก็บครบ หรือทุกงวดที่เหลือยังไม่มีกำหนด ⇒ null (หน้าเว็บโชว์ขีด)
+           มีไว้เพราะแถวที่ยุบอยู่เคยปล่อยคอลัมน์กำหนดชำระว่างทั้งคอลัมน์ */
+        nextDue: rowsInOrder
+          .filter((r) => r.status !== 'confirmed' && r.dueDate)
+          .map((r) => r.dueDate)
+          .sort()[0] || null,
       };
     })
     .sort((a, b) => {

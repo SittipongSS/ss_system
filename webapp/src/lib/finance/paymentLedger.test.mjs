@@ -213,3 +213,21 @@ test('งวดที่เลยกำหนดในก้อน ส่งต�
   const [g] = groupLedgerByOrder([rowFor('Y', 1, { dueDate: '2026-08-01' })]);
   assert.equal(groupAsOrder(g).payment.overdue, 1);
 });
+
+/* แถวที่ยุบอยู่เคยปล่อยคอลัมน์กำหนดชำระว่างทั้งคอลัมน์ — ใบหนึ่งมีหลายวัน
+   สิ่งที่ตอบคำถาม "ต้องตามใบนี้เมื่อไร" คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด */
+test('กำหนดชำระของก้อนคือวันที่ใกล้ที่สุดของงวดที่ยังเก็บไม่ได้', () => {
+  const [g] = groupLedgerByOrder([
+    rowFor('D', 1, { status: 'confirmed', dueDate: '2026-08-01' }), // จบแล้ว ไม่นับ
+    rowFor('D', 2, { dueDate: '2026-09-10' }),
+    rowFor('D', 3, { dueDate: '2026-08-25' }),
+  ]);
+  assert.equal(g.nextDue, '2026-08-25');
+});
+
+test('เก็บครบแล้ว หรือยังไม่มีใครกำหนดวัน ⇒ ไม่มีกำหนดให้ตาม', () => {
+  const [done] = groupLedgerByOrder([rowFor('E', 1, { status: 'confirmed', dueDate: '2026-08-01' })]);
+  assert.equal(done.nextDue, null);
+  const [undated] = groupLedgerByOrder([rowFor('F', 1, { dueDate: null })]);
+  assert.equal(undated.nextDue, null);
+});

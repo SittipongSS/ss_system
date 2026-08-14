@@ -240,7 +240,7 @@ export default function FinancePaymentsPage() {
                               href={`/sa/sales-orders/${group.orderId}#payment`}
                               target="_blank"
                               rel="noreferrer"
-                              className="linklike mono"
+                              className={`linklike mono ${styles.openLink}`}
                               title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -269,9 +269,18 @@ export default function FinancePaymentsPage() {
                             {fmtMoney(group.summary.totalAmount)}
                             <span className="cell-sub">เก็บแล้ว {fmtMoney(group.summary.collectedAmount)}</span>
                           </td>
-                          <td colSpan={2} />
-                          <td>{note ? <StatusBadge tone={note.tone}>{note.label}</StatusBadge> : null}</td>
+                          {/* ⚠️ เคยเป็น `colSpan={2}` ว่างเปล่า — ใบหนึ่งมีหลายงวดจึงมีหลายวัน
+                              สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร" คือวันของงวดที่ **ยังเก็บไม่ได้**
+                              ที่ใกล้ที่สุด (`nextDue`) · "จ่ายจริง" ยังว่างโดยตั้งใจ เพราะเป็น
+                              ของรายงวด ยุบเป็นค่าเดียวของทั้งใบไม่ได้ */}
+                          <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
+                            {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">—</span>}
+                          </td>
                           <td />
+                          <td>{note ? <StatusBadge tone={note.tone}>{note.label}</StatusBadge> : null}</td>
+                          {/* ผู้รับรองของทั้งใบมีความหมายเฉพาะตอนเก็บครบ — ระหว่างทางแต่ละงวด
+                              อาจคนละคน ยุบเป็นชื่อเดียวจะกลายเป็นข้อมูลผิด */}
+                          <td>{group.complete ? (group.rows.find((r) => r.confirmedByName)?.confirmedByName || null) : null}</td>
                         </tr>
 
                         {open ? group.rows.map((row) => (
