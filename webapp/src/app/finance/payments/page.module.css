@@ -6,6 +6,47 @@
    ⚠️ แถวไม่กดได้อีกต่อไป ⇒ **ห้ามใส่ `cursor: pointer` คืนให้แถว** ถ้าไม่มี
    อะไรให้กดจริง — เมาส์บอกว่ากดได้แล้วกดไม่เกิดอะไรคืออาการ "ระบบค้าง" */
 
+/* ── หัวกลุ่มในตาราง (โหมด "จัดกลุ่ม" มติผู้ใช้ 2026-08-15) ────────────────
+   ทรงเดียวกับหัวกลุ่มของตารางไปป์ไลน์ดีล แต่เขียนที่นี่เพราะกฎกลางของหัวกลุ่ม
+   (`tr.group-row` ใน globals.css) ผูกกับเปลือกตารางเก่า `.premium-glass-table`
+   ซึ่งตารางนี้ไม่ได้ใช้ — ลอกสไตล์มา ไม่ได้ลอกตรรกะ */
+.bucketRow > td {
+  background: var(--panel-2);
+  padding: 0;
+}
+
+/* ปุ่มกินเต็มแถบ ⇒ กดตรงไหนของหัวกลุ่มก็ย่อ/ขยายได้ และเป็น <button> จริง
+   เพื่อให้คีย์บอร์ดกับสกรีนรีดเดอร์ได้ aria-expanded ไปด้วย */
+.bucketToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.bucketToggle:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.bucketToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ยอดค้างรับของกลุ่มชิดขวาสุด ⇒ ไล่สายตาลงมาเทียบระหว่างกลุ่มได้ */
+.bucketTotal {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
 /* 🐞 ลิงก์เลขที่ SO กินเต็มความกว้างเซลล์ ⇒ ไอคอน "เปิดแท็บใหม่" ตกไปอยู่บรรทัดใหม่
    ดูเหมือนไอคอนลอยอยู่เฉย ๆ ใต้เลขที่ (เห็นตอนกดดูหลัง deploy)
    ⇒ บังคับให้เลขที่กับไอคอนอยู่บรรทัดเดียวกันเสมอ */

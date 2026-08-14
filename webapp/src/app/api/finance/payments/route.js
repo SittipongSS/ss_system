@@ -10,7 +10,7 @@
 // ⚠️ exceljs ต้องใช้ Node runtime — ห้ามเป็น edge
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canAccessFinance } from '@/lib/permissions';
-import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, sortLedger } from '@/lib/finance/paymentLedger';
+import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 
@@ -84,12 +84,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const todayIso = businessDate();
   try {
     const all = await loadLedger(supabase, todayIso);
+    /* ⚠️ ดัชนีสถานะระดับใบคิดจาก **ก่อนกรอง** — ดูเหตุผลที่ `orderStateIndex` */
+    const orderStates = orderStateIndex(all);
     const filtered = sortLedger(filterLedger(all, {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,
       to: url.searchParams.get('to') || null,
       q: url.searchParams.get('q') || '',
       overdueOnly: url.searchParams.get('overdue') === '1',
+      orderState: listParam(url.searchParams.get('orderState')),
+      orderStates,
     }));
 
     if (url.searchParams.get('format') === 'xlsx') {
