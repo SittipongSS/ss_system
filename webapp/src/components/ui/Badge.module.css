@@ -13,9 +13,9 @@
   min-height: 24px;
   gap: 5px;
   /* ⚠️ ต้องตรงกับบล็อกรวม `.ui-badge, .status-pill, .chip` ใน globals.css เป๊ะ
-     (badgeFamilies.test.mjs เทียบสองฝั่งไว้) — บน `--space-0-5` · ล่าง +sink
-     คือการดันตัวอักษรไทยขึ้นให้กลางที่ตาเห็น (ดู typography-system §--ctl-text-sink) */
-  padding: var(--space-0-5) var(--space-2-5) calc(var(--space-0-5) + var(--ctl-text-sink));
+     (badgeFamilies.test.mjs เทียบสองฝั่งไว้) · เคยเป็น "บน 2px + sink ที่ล่าง"
+     ในรอบแรกของ 2026-08-14 แล้วถอยกลับมา 3px เท่ากันสองด้าน */
+  padding: 3px var(--space-2-5);
   border: 1px solid var(--badge-border);
   border-radius: var(--radius);
   background: var(--badge-bg);

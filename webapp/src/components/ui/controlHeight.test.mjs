@@ -32,58 +32,79 @@ test("มาตรฐานความสูงตัวควบคุมม�
    ฟอนต์ (Sarabun 13px = ขึ้น 14 / ลง 3) แต่สระล่าง+ขีดล่างของไทยลงจริง 4.49px
    ⇒ ทุกกล่องนั่งต่ำกว่ากลาง 1.5px ถ้าไม่หั่นพื้นล่างออก
 
-   รอบสอง (2026-08-14): ป้ายบนปุ่ม · ช่องค้นหา · แท็บ · เม็ด segmented · ชิป ·
-   พิลบนแถบบน เข้าชุดด้วย — วัดในเบราว์เซอร์แล้วทุกตัวอยู่ในช่วง ±0.7px
+   🔴 **รอบสอง (2026-08-14): sink ใช้กับ "กล่องที่ผู้ใช้พิมพ์" เท่านั้น**
+   รอบแรกใส่ให้ป้ายคงที่ด้วย (ปุ่ม · แท็บ · segmented · ชิป · พิลแถบบน) แล้ววัดด้วย
+   **ป้ายจริง** พบว่าแย่ลง เพราะป้ายไทยในระบบส่วนใหญ่ไม่มีสระล่างให้เผื่อ:
+   "ยกเลิก" −0.8 → −3.5 · "อีเมล" −1.8 → −4.7 · "รอคัดกรอง" ~−1.4 → −4.2
+   (ลบ = ลอยสูง) ⇒ ถอยออกทั้งชุด เหลือเฉพาะช่องกรอก/ดรอปดาวน์/ช่องค้นหา
 
-   ⚠️ ด่านนี้กันสองทิศ: หายไปจากช่อง (อาการเดิมกลับมา) และงอกใส่ของที่เป็นไอคอน/
-   เลขล้วน (`.btn-icon` · กระดิ่ง · เลขหน้า) ซึ่งต้องกลางกล่องจริง ๆ */
-test("กล่องความสูงคงที่ดันตัวอักษรขึ้นด้วยโทเคน ไม่ใช่เลขดิบ", () => {
-  assert.match(GLOBALS, /--ctl-text-sink:\s*0\.23em;/,
-    "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ และต้องเป็น em — ตัวควบคุมมีตั้งแต่ 11.5px ถึง 14px "
-    + "ตรึงเป็น px จะดันเกินที่ตัวเล็ก (วัดจริง: .btn.sm กับ .chip ลอยเกิน 1.1px)");
+   ⚠️ ด่านนี้กันสองทิศ: **หายไปจากช่องที่ผู้ใช้พิมพ์** (อาการเดิมกลับมา) และ
+   **งอกใส่ป้ายคงที่/ไอคอน/เลขล้วนอีก** (ลอยสูง) */
+const LABEL_CONTROLS = [".btn", ".btn-icon", ".ui-pager-page", ".tab-btn", ".chip", ".ui-badge", ".status-pill"];
+
+test("เฉพาะกล่องที่ผู้ใช้พิมพ์ที่ได้ sink — ป้ายคงที่ต้องไม่ได้", () => {
+  assert.match(GLOBALS, /--ctl-text-sink:\s*0\.18em;/,
+    "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ และต้องเป็น em — ช่องกรอกใช้ 14px ช่องอื่นเล็กกว่า "
+    + "ตรึงเป็น px จะดันเกินที่ตัวเล็ก · 0.18em คือจุดที่ค่าผิดสุดต่ำสุด (±3px) — หมึกไทยสูงไม่เท่ากันทุกคำ");
 
   const css = stripComments(GLOBALS);
   const rule = css.match(/([^{}]*)\{[^{}]*padding-bottom:\s*var\(--ctl-text-sink\)[^{}]*\}/);
-  assert.ok(rule, "ไม่มีใครใช้ --ctl-text-sink เลย — ตัวอักษรกลับไปนั่งต่ำกว่ากลาง 1.5px");
+  assert.ok(rule, "ไม่มีใครใช้ --ctl-text-sink เลย — ช่องกรอกกลับไปนั่งต่ำ");
 
-  /* ชุด "padding บนเป็น 0" — เขียนรวมกฎเดียวได้ */
   const selector = rule[1].replace(/\s+/g, " ").trim();
   for (const field of [".premium-input:not(textarea)", ".premium-select", ".ui-select",
-    ".deal-derived", ".topnav-sys-btn", ".topnav-settings-link",
-    ".search-glass input", ".ui-select-search input"]) {
+    ".deal-derived", ".search-glass input", ".ui-select-search input"]) {
     assert.ok(selector.includes(field), `${field} หลุดจากชุดที่ดันตัวอักษรขึ้น`);
   }
-  assert.match(selector, /\.btn:not\(\.btn-icon\):not\(\.ui-pager-page\)/,
-    "ป้ายบนปุ่มต้องดันขึ้นด้วย (มติ 2026-08-14) แต่ต้องกัน .btn-icon และเลขหน้าไว้");
   assert.ok(selector.includes(":not(textarea)"),
     "textarea ต้องถูกกัน — มี padding แนวตั้ง 8px ของตัวเองอยู่แล้ว");
 
-  /* ชุด "มี padding บนของตัวเอง" — ต้องเป็น บน + sink ในกฎของตัวเอง ไม่ใช่ sink เปล่า
-     (sink เปล่าจะ *ลด* padding ล่างจนตัวอักษรตกต่ำกว่าเดิม) */
-  for (const [name, re] of [
-    [".chip", /\.chip \{[^{}]*padding:[^;]*var\(--space-0-5\)[^;]*calc\(var\(--space-0-5\) \+ var\(--ctl-text-sink\)\)/],
-    [".tab-btn", /\.tab-btn \{[^{}]*padding:[^;]*var\(--ctl-text-sink\) \/ 2\)/],
-    [".segmented > button", /\.segmented > button \{[^{}]*padding: 5px var\(--space-3\) var\(--space-2\)/],
-  ]) {
-    assert.match(css, re, `${name} ต้องบวก sink ต่อจาก padding บนของตัวเอง`);
+  /* ป้ายคงที่ต้องไม่มี sink ที่ไหนเลย — ตัด `:not(...)` ก่อนตรวจ เพราะชื่อที่อยู่ใน
+     `:not()` คือการ *กัน* ไม่ใช่การ *เล็ง* */
+  for (const block of css.split("}")) {
+    const brace = block.indexOf("{");
+    if (brace === -1) continue;
+    if (!block.slice(brace + 1).includes("var(--ctl-text-sink)")) continue;
+    const targeted = block.slice(0, brace).replace(/:not\([^)]*\)/g, "");
+    for (const label of LABEL_CONTROLS) {
+      assert.ok(!new RegExp(`\\${label}(?![\\w-])`).test(targeted),
+        `${label} เป็นป้ายคงที่ (ข้อความรู้ล่วงหน้า ไม่มีสระล่างให้เผื่อ) — ห้ามใส่ sink`);
+    }
   }
 
   /* ช่องค้นหาเคยเป็น "ความสูงที่สาม" (38px) ทั้งที่เอกสารประกาศว่ามีแค่สองค่า */
   assert.match(css, /\.search-glass \{[^{}]*min-height:\s*var\(--ctl-h\)/,
     "ช่องค้นหาต้องสูงเท่า control อื่น ไม่ใช่ 38px ของตัวเอง");
 
-  /* ไอคอน/เลขล้วนต้องไม่ถูกดัน
-     ⚠️ ต้องตัด `:not(...)` ออกก่อนตรวจ — ชุดข้างบนเขียนชื่อพวกนี้ไว้ใน `:not()`
-     ซึ่งคือการ *กัน* ไม่ใช่การ *เล็ง* ถ้าค้นดิบ ๆ จะเจอชื่อแล้วตกทั้งที่ถูกอยู่ */
-  for (const block of css.split("}")) {
-    const brace = block.indexOf("{");
-    if (brace === -1) continue;
-    if (!block.slice(brace + 1).includes("var(--ctl-text-sink)")) continue;
-    const targeted = block.slice(0, brace).replace(/:not\([^)]*\)/g, "");
-    for (const iconOnly of [".btn-icon", ".ui-pager-page"]) {
-      assert.ok(!targeted.includes(iconOnly),
-        `${iconOnly} ไม่ต้องดันขึ้น — ในนั้นเป็นไอคอน/เลขล้วนที่ต้องกลางกล่องจริง`);
-    }
+});
+
+/* ช่องกรอกกับดรอปดาวน์ต้องขนาดเดียวกัน และเท่าช่องค้นหา — ผู้ใช้ชี้เองว่าช่องค้นหา
+   "ไม่เป็น" แล้ววัดได้ว่าการจัดกลางเท่ากันเป๊ะ ต่างแค่ขนาดตัวอักษร (14 vs 13px)
+   ⇒ มติ 2026-08-14: ยกช่องกรอก/ดรอปดาวน์เป็น `--fs-8` ให้เท่าช่องค้นหา */
+test("ช่องกรอก ดรอปดาวน์ และรายการในเมนู ใช้ขนาดตัวอักษรเดียวกับช่องค้นหา", () => {
+  const css = stripComments(GLOBALS);
+  for (const sel of [".premium-input", ".premium-select", ".ui-select", ".deal-derived", ".ui-select-option"]) {
+    const block = css.match(new RegExp(`\\${sel} \\{([^}]*)\\}`));
+    assert.ok(block, `หา ${sel} ไม่เจอ`);
+    assert.match(block[1], /font-size:\s*var\(--fs-8\)/,
+      `${sel} ต้องเป็น --fs-8 (14px) เท่าช่องค้นหา ไม่ใช่ 13px`);
+  }
+  const search = css.match(/\.search-glass input \{([^}]*)\}/);
+  assert.ok(search && /font-size:\s*var\(--fs-8\)/.test(search[1]),
+    "ช่องค้นหาคือค่าอ้างอิงของขนาดนี้ — ถ้ามันเปลี่ยน ต้องย้ายทั้งชุดพร้อมกัน");
+});
+
+/* 🔴 ขีดล่าง `_` ต้องหนาพอวาดเต็มพิกเซลบนจอ 1x — Sarabun น้ำหนัก 400 หนา 0.86px
+   ที่ 13px / 0.93px ที่ 14px ⇒ เบราว์เซอร์เกลี่ยเป็นเทาจางแล้วหายทั้งเส้น (IS-26080022)
+   ⚠️ ช่องค้นหาเคยหลุดจากการแก้รอบนั้น (ยังเป็น 400 อยู่จนถึง 2026-08-14) — ทุกกล่องที่
+   ผู้ใช้พิมพ์ชื่อที่มี `_` (ดีล/กลิ่น/โครงการ) ต้องอยู่ที่ 600 ทั้งหมด ไม่ใช่บางกล่อง */
+test("ทุกกล่องที่ผู้ใช้พิมพ์ใช้น้ำหนัก 600 — ไม่งั้น `_` หายบนจอ 1x", () => {
+  const css = stripComments(GLOBALS);
+  for (const sel of [".premium-input", ".search-glass input", ".ui-select-search input", ".ui-select"]) {
+    const block = css.match(new RegExp(`\\${sel} \\{([^}]*)\\}`));
+    assert.ok(block, `หา ${sel} ไม่เจอ`);
+    assert.match(block[1], /font-weight:\s*var\(--fw-semibold\)/,
+      `${sel} ต้องเป็น --fw-semibold — ที่ 400 ขีดล่างจะหายบนจอ 1x (IS-26080022)`);
   }
 });
 
