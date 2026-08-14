@@ -5528,9 +5528,20 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 .ui-metric-icon svg { width: 16px; }
 .ui-metric small { display: block; color: var(--text-3); font-size: var(--fs-2); }
+/* ⚠️ `line-height: 1.25` แคบกว่าหมึกไทย (1.31em) และตัวนี้ตัดของตัวเองเพื่อทำ ellipsis
+   ⇒ ค่าที่เป็นข้อความไทยมีสระซ้อน (เช่น "รอผู้จัดการอนุมัติ") จะถูกเฉือนหัว/ท้าย
+   ตัวเลขกับหน่วยสั้น ๆ ("6 ใบ" · "6 งวด") ยังพอดีอยู่ จึงยังไม่มีใครเห็นอาการ
+
+   เลือก `overflow: clip` + `overflow-clip-margin` แทนการดัน line-height เป็น
+   `--lh-thai` เพราะที่ 18px นั้นคือ **+3.6px ต่อช่อง** = แถบ KPI ทุกหน้าสูงขึ้น
+   ทั้งที่ยังไม่มีอาการจริง · clip-margin ปล่อยให้หมึกวาดล้นได้ 2px แต่ยังตัดข้อความยาว
+   และ ellipsis ยังทำงาน (ทดสอบในเบราว์เซอร์แล้วด้วยค่าไทยยาว ๆ)
+   ⚠️ Safari ยังไม่รู้จัก `overflow-clip-margin` — ที่นั่นจะได้พฤติกรรมเดิม (ตัดที่ขอบ)
+   ไม่ใช่แย่ลง · ระบบนี้ใช้ Chrome/Edge/PWA เป็นหลัก */
 .ui-metric strong {
   display: block;
-  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: var(--space-0-5);
   margin-top: 1px;
   color: var(--text);
   font-size: var(--fs-11);
