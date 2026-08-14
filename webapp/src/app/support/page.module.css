@@ -89,7 +89,7 @@
 .cardTitle {
   font-size: var(--fs-7);
   font-weight: var(--fw-semibold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .cardFoot {

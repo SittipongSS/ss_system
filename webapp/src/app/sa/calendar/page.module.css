@@ -49,7 +49,7 @@
   width: 100%;
   text-align: start;
   font-size: var(--fs-2);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
   border: 0;
   border-radius: var(--radius);
   padding: var(--space-0-5) var(--space-1);
@@ -106,7 +106,7 @@
   margin-block-end: var(--space-0-5);
 }
 .cardTime { font-size: var(--fs-5); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
-.cardName { display: block; font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+.cardName { display: block; font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
 .cardMeta {
   display: flex;
   gap: var(--space-3);

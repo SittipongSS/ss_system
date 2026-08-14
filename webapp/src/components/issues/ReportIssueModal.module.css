@@ -23,7 +23,7 @@
   margin: 0;
   font-size: var(--fs-3);
   color: var(--text-3);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 /* แถบบริบทอัตโนมัติ — จาง ๆ อ่านอย่างเดียว แต่ **ไม่ซ่อน**: ผู้ใช้ต้องรู้ว่าระบบ
@@ -37,7 +37,7 @@
   background: var(--panel-2);
   font-size: var(--fs-3);
   color: var(--text-3);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .context b {
@@ -124,5 +124,5 @@
   min-width: 0;
   color: var(--text-3);
   font-size: var(--fs-3);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }

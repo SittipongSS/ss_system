@@ -140,10 +140,19 @@ const BREAKPOINT_CAP = 13;
    (เกณฑ์ 1.45 ที่ #794 ตั้งไว้ด้วยตา จึงถูกต้องเชิงประจักษ์ — แต่เป็น *ขั้นต่ำจริง ๆ*
    ถ้าอยากสบายตากว่านี้ใช้ --lh-text 1.5 ซึ่งได้ช่องว่าง 1.0px)
 
-   ⚠️ เหลือ 2 จุดที่ยังต่ำกว่า 1.45 โดยตั้งใจ — ทั้งคู่ `white-space: nowrap`
-   จึงไม่มีบรรทัดที่สองให้ชน: `.ui-kpi-value` (1.1 ตัวเลข KPI) · `.ui-metric strong` (1.25)
-   ที่เหลือในเพดานเป็นค่า ≥1.45 ที่อยู่ระหว่างขั้น (1.55 · 1.65 · 1.7 …) ซึ่งไม่เสี่ยง */
-const RAW_LINE_HEIGHT_CAP = 17;
+   ✅ 2026-08-14 (รอบสาม, มติผู้ใช้): ยกเกณฑ์ไทย 1.45 → **1.65** และรูดเพดาน 17 → 9
+
+   เกณฑ์ 1.45 ของรอบสองวัดจากคำว่า "ที่ญุ" ซึ่ง**ไม่ใช่กรณีแย่สุด** วัดใหม่แยกสองฝั่ง
+   บน Sarabun: สระบนสูงสุด 1.250em ("เชื้อเพลิงที่ใช้") + สระล่างลึกสุด 0.332em
+   ("ผู้ปฏิบัติหน้าที่") = **1.582em** ⇒ ที่ 1.45 หมึกสองบรรทัดยังทับกัน 1.72px
+   และในกล่องที่มี overflow ยังโดนตัด — วัดจริง 14 จอเจอรอยขาด 80 จุด
+   **34 ใน 35 จุดแรกขาดที่ขอบบน** = ฝั่งสระบน ซึ่งรอบก่อน ๆ ไม่ได้ดู
+
+   ⚠️ เหลือ 1 จุดที่ยังต่ำกว่าเกณฑ์โดยตั้งใจ: `.ui-kpi-value` (1.1) — ตัวเลข KPI ล้วน
+   (`tabular-nums` + `white-space: nowrap`) ไม่มีสระไทยและไม่มีบรรทัดที่สองให้ชน
+   ส่วน `.ui-metric strong` (เดิม 1.25) ย้ายขึ้น --lh-thai แล้วเพราะค่าเป็นไทยได้จริง
+   ที่เหลือในเพดานเป็นค่า ≥1.65 ที่อยู่ระหว่างขั้น กับ lineHeight ใน JSX */
+const RAW_LINE_HEIGHT_CAP = 9;
 
 /* ความมนมุมที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -328,7 +337,15 @@ for (const file of uiFiles) {
      ⚠️ เอกสารพิมพ์ (`components/documents/`, `lib/`) ยกเว้น — ประกอบ HTML เองและ
      ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น */
   if (!rel.startsWith("src/components/documents/")) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
+       เขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
+       นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ fontWeightScale.test.mjs อ่านจากตรงนั้น
+       เพื่อเช็คว่าโทเคน --fw-* ทุกตัวมีน้ำหนักที่โหลดมาจริงรองรับ */
+    let inFontFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFontFace = true;
+      else if (inFontFace && line.trim() === "}") inFontFace = false;
+      if (inFontFace) return;
       const cssHit = line.match(/font-weight:\s*(\d+)/);
       if (cssHit) {
         fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
@@ -354,7 +371,14 @@ for (const file of uiFiles) {
        (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์ */
   const FONT_FAMILY_PRINT_EXEMPT = /^src\/(components\/documents\/|lib\/(printTheme|sales\/quotation(Document|Master)))/;
   if (!FONT_FAMILY_PRINT_EXEMPT.test(rel)) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — เป็นที่ **ประกาศ** ชื่อฟอนต์ ไม่ใช่ที่ *ใช้*
+       ต้องเขียนชื่อจริงตามสเปก (`var()` ใน @font-face ไม่ทำงาน)
+       ที่ใช้จริงยังต้องผ่าน `var(--font-sans)` เหมือนเดิมทุกจุด */
+    let inFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFace = true;
+      else if (inFace && line.trim() === "}") inFace = false;
+      if (inFace) return;
       for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
         const value = hit[1].trim();
         if (/^var\(--font-/.test(value)) continue;
@@ -687,7 +711,7 @@ const failures = [
     ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
   ...(rawLineHeightCount > RAW_LINE_HEIGHT_CAP
-    ? [`ความสูงบรรทัดเลขดิบเพิ่มขึ้น: ${rawLineHeightCount} > เพดาน ${RAW_LINE_HEIGHT_CAP} — หยิบขั้นจาก --lh-* (ข้อความไทยต้อง ≥ 1.45)`]
+    ? [`ความสูงบรรทัดเลขดิบเพิ่มขึ้น: ${rawLineHeightCount} > เพดาน ${RAW_LINE_HEIGHT_CAP} — หยิบขั้นจาก --lh-* (ข้อความไทยต้อง ≥ 1.65)`]
     : []),
   ...(rawLineHeightCount < RAW_LINE_HEIGHT_CAP
     ? [`ความสูงบรรทัดเลขดิบลดได้แล้ว: เหลือ ${rawLineHeightCount} แต่ RAW_LINE_HEIGHT_CAP ยังเขียน ${RAW_LINE_HEIGHT_CAP} (รูดเพดานลง)`]

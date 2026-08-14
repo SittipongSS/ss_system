@@ -316,7 +316,7 @@
   margin: 3px 0 0;
   color: var(--text-2);
   font-size: var(--fs-4);
-  line-height: 1.55;
+  line-height: var(--lh-text);
 }
 
 .confirmPanel {

@@ -26,7 +26,7 @@
   margin: var(--space-0-5) 0 0;
   font-size: var(--fs-11);
   font-weight: var(--fw-bold);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
   text-wrap: balance;
 }
 
@@ -74,7 +74,7 @@
   margin: var(--space-1) 0 0;
   color: var(--text-2);
   font-size: var(--fs-5);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .resolvedActions {
@@ -104,7 +104,7 @@
   margin: 0 0 var(--space-3);
   color: var(--text-3);
   font-size: var(--fs-5);
-  line-height: var(--lh-tight);
+  line-height: var(--lh-thai);
 }
 
 .modalFoot {
