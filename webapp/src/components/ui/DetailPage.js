@@ -15,8 +15,13 @@ export function ContextGrid({ children, className = "" }) {
   return <div className={`${styles.contextGrid} ${className}`.trim()}>{children}</div>;
 }
 
-export function DetailCard({ icon: Icon, eyebrow, title, meta, actions, children, className = "" }) {
-  return <section className={`${styles.card} ${className}`.trim()}>
+/* `id` ใช้ทำ anchor ไปการ์ดใดการ์ดหนึ่งบนหน้ารายละเอียด (เช่น `#payment`) —
+   ทะเบียนการชำระของฝ่ายบัญชีลิงก์มาที่การ์ดการชำระโดยตรง คนกดจะได้ไม่ต้อง
+   เลื่อนหาเองทุกครั้งที่เปิดใบ (มติผู้ใช้ 2026-08-13 "ทำให้ลงมือได้เร็วขึ้น")
+   ⚠️ `scroll-margin-top` อยู่ที่ `.card` ใน DetailPage.module.css — ไม่งั้นหัวการ์ด
+   จะไปอยู่ใต้แถบเมนูที่ปักอยู่ด้านบน */
+export function DetailCard({ id, icon: Icon, eyebrow, title, meta, actions, children, className = "" }) {
+  return <section id={id} className={`${styles.card} ${className}`.trim()}>
     {(title || eyebrow || actions) ? <header className={styles.cardHeader}>
       <div className={styles.heading}>{Icon ? <Icon size={17} aria-hidden="true" /> : null}<div>{eyebrow ? <small>{eyebrow}</small> : null}{title ? <h2>{title}</h2> : null}{meta ? <p>{meta}</p> : null}</div></div>
       {actions ? <div className={styles.actions}>{actions}</div> : null}

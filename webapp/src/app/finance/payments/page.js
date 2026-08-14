@@ -13,7 +13,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlarmClock, ChevronRight, CircleDollarSign, FileSpreadsheet, Search, Wallet } from "lucide-react";
+import { AlarmClock, ChevronRight, CircleDollarSign, ExternalLink, FileSpreadsheet, Search, Wallet } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
@@ -24,7 +24,9 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { LEDGER_STATUS, LEDGER_STATUS_KEYS, groupLedgerByOrder, groupNote } from "@/lib/finance/paymentLedger";
+import { LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerByOrder, groupNote } from "@/lib/finance/paymentLedger";
+import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
+import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
 import styles from "./page.module.css";
 
 export default function FinancePaymentsPage() {
@@ -205,6 +207,8 @@ export default function FinancePaymentsPage() {
                   {pageRows.map((group) => {
                     const open = expanded.has(group.key);
                     const note = groupNote(group);
+                    const shaped = groupAsOrder(group);
+                    const track = shaped ? salesOrderListTrack(shaped) : null;
                     return (
                       <Fragment key={group.key}>
                         {/* ── หัวใบ: ยุบอยู่โดยตั้งต้น (มติผู้ใช้ 2026-08-13) ──
@@ -226,14 +230,26 @@ export default function FinancePaymentsPage() {
                               <ChevronRight size={15} className={`${styles.chevron} ${open ? styles.chevronOpen : ""}`.trim()} aria-hidden="true" />
                             </button>
                             {" "}
+                            {/* ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
+                                บัญชีทำงานเป็นชุด ไล่ทีละใบจากคิวนี้ · เด้งออกไปแล้วกดย้อนกลับ
+                                ทุกครั้งคือเสียตำแหน่งในคิวและตัวกรองที่ตั้งไว้
+                                ⚠️ ลิงก์ชี้ที่ `#payment` = การ์ดการชำระบนใบ ไม่ใช่หัวหน้า ⇒ ลงไป
+                                ยืนตรงจุดที่ต้องกดพอดี ไม่ต้องเลื่อนหาเอง */}
                             <Link
                               prefetch={false}
-                              href={`/sa/sales-orders/${group.orderId}`}
+                              href={`/sa/sales-orders/${group.orderId}#payment`}
+                              target="_blank"
+                              rel="noreferrer"
                               className="linklike mono"
+                              title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <strong>{group.orderNumber || "-"}</strong>
+                              <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
                             </Link>
+                            {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
+                                — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
+                            {track ? <SalesOrderTrack steps={track.steps} /> : null}
                           </td>
                           <td>
                             {group.quotationId

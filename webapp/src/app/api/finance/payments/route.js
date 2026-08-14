@@ -32,7 +32,9 @@ async function loadLedger(supabase, todayIso) {
     /* 🐞 เคยใส่ team/ownerName ไว้ด้วย แล้ว PostgREST ตอบ 500 ทั้งหน้า:
        `column sales_orders.team does not exist` — ทีมกับเจ้าของงานอยู่ที่ **ดีล**
        ไม่ใช่ที่ใบ · ทะเบียนนี้ไม่มีคอลัมน์ทีมอยู่แล้ว จึงไม่ต้องไล่ join ดีลมาเพิ่ม */
-    .select('id, "orderNumber", "quotationId", "customerId", "customerName", status')
+    /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
+       ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
+    .select('id, "orderNumber", "quotationId", "customerId", "customerName", status, "financeStatus"')
     .in('id', orderIds);
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));

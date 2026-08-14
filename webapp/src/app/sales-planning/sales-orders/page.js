@@ -1,7 +1,7 @@
 "use client";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
@@ -16,6 +16,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
+import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
 import StatusBadge from "@/components/ui/StatusBadge";
 import styles from "./page.module.css";
 
@@ -58,8 +59,6 @@ function paymentCell(payment) {
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
-// สถานะหมุด → คลาสใน page.module.css (ตรรกะของหมุดอยู่ใน salesOrderListTrack)
-const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", todo: "" };
 
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
@@ -194,19 +193,8 @@ export default function SalesOrdersPage() {
                         <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
                       ) : (
                         <>
-                          <div className={styles.track} aria-label="ความคืบหน้าของใบ">
-                            {track.steps.map((s, i) => (
-                              <Fragment key={s.key}>
-                                {i > 0 ? <span className={`${styles.bar} ${track.steps[i - 1].state === "done" ? styles.barDone : ""}`.trim()} aria-hidden="true" /> : null}
-                                <span
-                                  className={`${styles.step} ${STEP_CLASS[s.state] ? styles[STEP_CLASS[s.state]] : ""}`.trim()}
-                                  title={s.note || undefined}
-                                >
-                                  <span className={styles.dot} aria-hidden="true" />{s.label}
-                                </span>
-                              </Fragment>
-                            ))}
-                          </div>
+                          {/* จอกว้างเห็นรางเต็ม · จอแคบสลับเป็นป้ายสรุปข้างล่าง (page.module.css) */}
+                          <span className={styles.trackWrap}><SalesOrderTrack steps={track.steps} /></span>
                           {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
                           <span className={styles.summary}>
                             <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>

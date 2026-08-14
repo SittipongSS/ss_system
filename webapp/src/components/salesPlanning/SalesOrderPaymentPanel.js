@@ -72,7 +72,7 @@ export default function SalesOrderPaymentPanel({
   const pct = rollup.totalAmount > 0 ? Math.round((rollup.confirmedAmount / rollup.totalAmount) * 100) : 0;
 
   return (
-    <DetailCard icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}>
+    <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}>
       {/* แถบสัดส่วนเงิน — เฉพาะใบที่แบ่งงวดจริง ใบงวดเดียวไม่มีอะไรให้เทียบ */}
       {!isPreview && !single ? (
         <div className={styles.progress}>
