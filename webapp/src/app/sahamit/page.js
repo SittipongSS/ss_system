@@ -107,7 +107,7 @@ export default function SahamitOverview() {
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
-      title="ภาพรวม (Dashboard)"
+      title="ภาพรวม"
       subtitle="ติดตาม FC / PO และการเติบโต · ลูกค้า บจก.สหมิตรโปรดักส์ (AR-109) — เฉพาะทีม Key Account"
       loading={l1 || l2 || l3 || l4}
       headerRight={
@@ -149,7 +149,7 @@ export default function SahamitOverview() {
         <Tabs
           value={tab}
           onChange={setTab}
-          ariaLabel="มุมมองแดชบอร์ด"
+          ariaLabel="มุมมองภาพรวม"
           tabs={TABS.map(({ key, label, icon: Icon }) => ({
             key,
             label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon size={15} /> {label}</span>,

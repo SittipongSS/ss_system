@@ -63,10 +63,10 @@ export default function MyDashboardTab({ month, allMonths = false }) {
       if (allMonths) query.set("year", yearOfMonth(month) || "");
       const response = await fetch(`/api/sales-planning/my-dashboard?${query.toString()}`);
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "ไม่สามารถโหลดแดชบอร์ดส่วนตัวได้");
+      if (!response.ok) throw new Error(payload.error || "ไม่สามารถโหลดภาพรวมส่วนตัวได้");
       setData(payload);
     } catch (loadError) {
-      setError(loadError.message || "ไม่สามารถโหลดแดชบอร์ดส่วนตัวได้");
+      setError(loadError.message || "ไม่สามารถโหลดภาพรวมส่วนตัวได้");
     } finally {
       setLoading(false);
     }
@@ -123,7 +123,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   // ⇒ ป้ายยาวใบเดียวดันทั้งแถบสูงตาม ("เป้า ส.ค. 2026" ไม่ใช่ "เป้าเดือน ส.ค. 2026")
   const scopeShort = periodScopeLabel(month, allMonths, { short: true });
 
-  if (error) return <StatusNotice tone="error" title="โหลดแดชบอร์ดไม่สำเร็จ">{error}</StatusNotice>;
+  if (error) return <StatusNotice tone="error" title="โหลดภาพรวมไม่สำเร็จ">{error}</StatusNotice>;
 
   return (
     <div className="flex flex-col gap-4" aria-busy={loading}>

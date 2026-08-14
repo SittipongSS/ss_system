@@ -247,7 +247,7 @@ export default function AppLayout({ children }) {
     {
       system: 'salesplan',
       items: [
-        { href: '/sa/dashboard', name: 'แดชบอร์ด', icon: LayoutDashboard, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
+        { href: '/sa/dashboard', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
         /* ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด

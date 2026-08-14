@@ -13,7 +13,7 @@ import { canSeeDealKpi, canSeeLeadKpi, canSeeTaskKpi } from '@/lib/permissions';
 export const DASHBOARD_TABS = [
   // ⚠️ **ทุก role ต้องเห็นแท็บนี้** — มันเป็นแดชบอร์ดของ *คนที่เปิด* ไม่ใช่ของฝ่ายขาย
   // จึงเป็นตาข่ายที่ทำให้ไม่มี role ไหนเหลือศูนย์แท็บ (ดูเทสต์ประกอบ)
-  { key: 'my', label: 'แดชบอร์ดของฉัน' },
+  { key: 'my', label: 'ภาพรวมของฉัน' },
   { key: 'lead_kpi', label: 'KPI ลีด' },
   { key: 'performance', label: 'ผลงานขาย' },
   { key: 'task_kpi', label: 'KPI งาน' },
