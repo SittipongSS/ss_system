@@ -1,9 +1,10 @@
-import { viewScope, inScope, inPmProjectScope, canDeleteRecord, can, redactProductMargin } from '@/lib/permissions';
+import { viewScope, inPmProjectScope, canDeleteRecord, can, redactProductMargin } from '@/lib/permissions';
 import { mergeTemplateTasks, recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
+import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
 import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
@@ -48,7 +49,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const project = await loadProject(supabase, id).catch((e) => { throw e; });
   if (!project) return notFound('ไม่พบโครงการ');
-  if (viewScope(user?.role) === 'team' && !inScope('team', user, project)) {
+  /* ⚠️ ต้องเป็นเงื่อนไขเดียวกับตัวกรองของลิสต์ (`or(team.in.(…),ownerId.eq.ฉัน)`)
+     ไม่งั้นได้กับดักเดิมของระบบนี้: แถวที่ **เห็นในลิสต์** แต่กดเข้าไปเจอ 403 —
+     `inScope('team')` ตัดทีมของคนกับทีมของแถว ซึ่งได้ชุดว่างเสมอเมื่อแถวไม่มีทีม
+     (เจ้าของงานที่บัญชียังไม่ถูกจัดทีม) · `inPmProjectScope` = ทีม **หรือ** เป็นเจ้าของ
+     ซึ่งตรงกับสองสาขาของลิสต์พอดี และเป็นด่านเดียวกับที่ PATCH ใช้อยู่แล้ว */
+  if (viewScope(user?.role) === 'team' && !inPmProjectScope(user, project)) {
     return forbidden();
   }
 
@@ -261,6 +267,27 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   ) {
     const categoryError = await activeProductTypeError(updates.productMainCategory || null);
     if (categoryError) return badRequest(categoryError);
+  }
+  /* ── เปลี่ยนผู้ดูแล (AE) = ย้ายขอบเขตของโครงการตามไปด้วย ────────────────────
+     `team` + `ownerId` คือสองช่องที่ลิสต์ใช้กรอง (ไม่ใช่ `aeOwnerId`) ⇒ ปล่อยให้ค้าง
+     ของเจ้าของเดิม = ผู้ดูแลคนใหม่ไม่เห็นโครงการที่เพิ่งรับมาในลิสต์ตัวเอง ซึ่งเป็น
+     บั๊กเดียวกับตอนสร้าง (ดู lib/pm/projectOwner.js)
+     ⚠️ สองช่องนี้ **ไม่อยู่ใน EDITABLE โดยเจตนา** — server เป็นคนเขียนจาก id ที่ตรวจแล้ว
+     เท่านั้น ห้ามเปิดให้ client ส่งมาเอง (ไม่งั้นยกโครงการเข้าทีมที่ตัวเองไม่ได้อยู่ได้)
+     ด่านทีมของ resolveProjectAeOwner กันคนสั่งระดับทีมไม่ให้ยกข้ามทีมอยู่แล้ว
+     จึงไม่ต้องตรวจ inPmProjectScope ซ้ำหลังแก้ */
+  if (updates.aeOwnerId !== undefined && (updates.aeOwnerId || null) !== (project.aeOwnerId || null)) {
+    if (!updates.aeOwnerId) return badRequest('ล้างผู้ดูแลโครงการไม่ได้ — เลือก AE คนใหม่แทน');
+    const checked = await resolveProjectAeOwner(supabase, updates.aeOwnerId, user, project.team);
+    if (!checked.ok) return badRequest(checked.error);
+    updates.aeOwnerId = checked.aeOwnerId;
+    // ชื่อเดินคู่ id เสมอ — คนละคนแล้ว ไม่ใช่ "คนเดิมเปลี่ยนชื่อ" (กติกาห้ามซิงก์ชื่อ
+    // ใน personNameFanOut.js พูดถึงการ **เปลี่ยนชื่อบัญชี** ไม่ใช่การเปลี่ยนตัวคน)
+    updates.aeOwner = checked.aeOwner;
+    // ผู้ดูแลคนใหม่ที่บัญชียังไม่ถูกจัดทีม → **คงทีมเดิมไว้** ห้ามล้างเป็น null:
+    // ทีมเดิมคือคนที่ทำงานใบนี้อยู่จริง และ null จะพาโครงการหายจากลิสต์ของทั้งทีม
+    updates.team = checked.team || project.team || null;
+    updates.ownerId = checked.ownerId;
   }
   updates.updatedAt = new Date().toISOString();
 

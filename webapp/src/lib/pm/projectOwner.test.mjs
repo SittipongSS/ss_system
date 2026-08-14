@@ -1,0 +1,140 @@
+// ── ขอบเขตของโครงการเดินตามผู้ดูแล (AE) ไม่ใช่คนกดสร้าง ─────────────────────
+//
+// บั๊กจริง (ผู้ใช้เจอเองบนจอ 2026-08-14): Admin สร้างโครงการแล้วเลือก AE ผู้ดูแลให้
+// → AE คนนั้นไม่เห็นโครงการในลิสต์ตัวเองเลย เพราะลิสต์กรองด้วย `team` + `ownerId`
+// ซึ่งตอนนั้นเขียนจากคนกดสร้าง (admin ไม่มีทีม ⇒ team = null · ownerId = admin)
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { PROJECT_OWNER_ROLES, resolveProjectAeOwner } from './projectOwner.js';
+
+const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+// assertion แบบ "ต้องไม่มี" ต้องดูเฉพาะโค้ดจริง — คอมเมนต์ที่เล่าบั๊กเดิมต้องพูดถึง
+// สูตรเก่าได้โดยไม่ทำให้เทสต์แดงเอง (แพตเทิร์นเดียวกับ registrationRoute.test.mjs)
+const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+// stub auth admin: id -> user (รูปเดียวกับ dealOwner.test.mjs / leadAssignee.test.mjs)
+const ownerStub = (users) => ({
+  auth: {
+    admin: {
+      async getUserById(id) {
+        const user = users[id];
+        return user
+          ? { data: { user: { id, banned_until: null, ...user } }, error: null }
+          : { data: { user: null }, error: { message: 'User not found' } };
+      },
+    },
+  },
+});
+
+const AE_ODM = { app_metadata: { role: 'ae', team: 'ODM', teams: ['ODM'] }, user_metadata: { name: 'เอ ทีมโอดีเอ็ม' } };
+const AE_DUAL = { app_metadata: { role: 'ae', team: 'ODM', teams: ['ODM', 'SV'] }, user_metadata: { name: 'ดูอัล' } };
+const AC_ODM = { app_metadata: { role: 'ac', team: 'ODM' }, user_metadata: { name: 'ซี หลังบ้าน' } };
+const AE_NO_TEAM = { app_metadata: { role: 'ae' }, user_metadata: { name: 'ยังไม่จัดทีม' } };
+const ADMIN = { id: 'U-ADMIN', role: 'admin', team: null, teams: [] };
+
+test('Admin สร้างให้ AE — ทีม/เจ้าของของแถวเป็นของ AE ไม่ใช่ของ Admin', async () => {
+  const got = await resolveProjectAeOwner(ownerStub({ 'U-AE': AE_ODM }), 'U-AE', ADMIN);
+  assert.equal(got.ok, true);
+  assert.equal(got.team, 'ODM', 'ทีมต้องมาจากผู้ดูแล — team ของ admin เป็น null เสมอ');
+  assert.equal(got.ownerId, 'U-AE', 'เจ้าของแถว = ผู้ดูแล ไม่ใช่คนกดสร้าง');
+  assert.equal(got.aeOwner, 'เอ ทีมโอดีเอ็ม', 'ชื่อมาจาก server ไม่ใช่จาก client');
+});
+
+test('ผู้ดูแลอยู่หลายทีม — ฟอร์มเลือกทีมได้ แต่ต้องเป็นทีมที่เขาสังกัดจริง', async () => {
+  const stub = ownerStub({ 'U-D': AE_DUAL });
+  assert.equal((await resolveProjectAeOwner(stub, 'U-D', ADMIN, 'SV')).team, 'SV');
+  // ทีมที่เขาไม่ได้สังกัด → ถอยเป็นทีมหลักของเขา (ยอดไม่เข้าทีมที่ไม่เกี่ยว)
+  assert.equal((await resolveProjectAeOwner(stub, 'U-D', ADMIN, 'KA')).team, 'ODM');
+  // ไม่ระบุ → ทีมหลัก
+  assert.equal((await resolveProjectAeOwner(stub, 'U-D', ADMIN)).team, 'ODM');
+});
+
+test('ผู้ดูแลโครงการ = AE / Senior AE เท่านั้น (ชุดเดียวกับคนถือดีล)', async () => {
+  assert.deepEqual(PROJECT_OWNER_ROLES, ['ae', 'senior_ae']);
+  const bad = await resolveProjectAeOwner(ownerStub({ 'U-AC': AC_ODM }), 'U-AC', ADMIN);
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /AE \/ Senior AE/);
+});
+
+test('บัญชีที่ถูกระงับ / ไม่มีตัวตน รับเป็นผู้ดูแลไม่ได้', async () => {
+  const banned = { ...AE_ODM, banned_until: '2999-01-01T00:00:00Z' };
+  assert.equal((await resolveProjectAeOwner(ownerStub({ 'U-X': banned }), 'U-X', ADMIN)).ok, false);
+  assert.equal((await resolveProjectAeOwner(ownerStub({}), 'U-GHOST', ADMIN)).ok, false);
+  assert.equal((await resolveProjectAeOwner(ownerStub({}), '', ADMIN)).ok, false);
+});
+
+/* ⭐ เหตุผลที่ไฟล์นี้ไม่เรียก validateDealOwner มาใช้ซ้ำ: ด่านทีมของดีลวัดคนสั่งด้วย
+   `salesPlanningEditScope` ซึ่ง AE = 'own' ⇒ ด่านไม่ทำงานเลยเมื่อคนสั่งเป็น AE
+   แต่ PM ให้ AE แก้งานได้ทั้งทีม (pmEditScope 'team') ⇒ AE ยกโครงการข้ามทีมได้
+   แล้วตัวเองมองไม่เห็นอีกเลย ถ้าไม่กันตรงนี้ */
+test('คนสั่งระดับทีม (รวม AE) ยกโครงการข้ามทีมไม่ได้ — ผู้กำกับดูแลข้ามได้', async () => {
+  const stub = ownerStub({ 'U-AE': AE_ODM });
+  for (const actor of [
+    { id: 'A', role: 'ae', team: 'KA', teams: ['KA'] },
+    { id: 'B', role: 'ac', team: 'KA', teams: ['KA'] },
+    { id: 'C', role: 'senior_ae', team: 'KA', teams: ['KA'] },
+  ]) {
+    const got = await resolveProjectAeOwner(stub, 'U-AE', actor);
+    assert.equal(got.ok, false, `${actor.role} ต้องยกข้ามทีมไม่ได้`);
+  }
+  // มีทีมร่วมกันก็พอ (คนหนึ่งคนอยู่หลายทีมได้)
+  const svLead = { id: 'D', role: 'senior_ae', team: 'SV', teams: ['SV'] };
+  assert.equal((await resolveProjectAeOwner(ownerStub({ 'U-D': AE_DUAL }), 'U-D', svLead)).ok, true);
+  // admin / หัวหน้าฝ่ายขาย (scope 'all') กำกับข้ามทีมได้ตามเดิม
+  assert.equal((await resolveProjectAeOwner(stub, 'U-AE', ADMIN)).ok, true);
+  assert.equal((await resolveProjectAeOwner(stub, 'U-AE', { id: 'E', role: 'ae_supervisor' })).ok, true);
+});
+
+/* ผู้ดูแลที่บัญชียังไม่ถูกจัดทีม = บัญชีที่ตั้งค่าไม่ครบ ไม่ใช่เหตุให้บล็อกงาน —
+   ทีมเดาไม่ได้ (null) แต่ `ownerId` ยังพาให้เขาเห็นงานตัวเองผ่านสาขา ownerId.eq */
+test('ผู้ดูแลที่ยังไม่มีทีม — ผ่านได้ ทีมเป็น null แต่ต้องได้เป็นเจ้าของแถว', async () => {
+  const got = await resolveProjectAeOwner(ownerStub({ 'U-N': AE_NO_TEAM }), 'U-N', ADMIN);
+  assert.equal(got.ok, true);
+  assert.equal(got.team, null);
+  assert.equal(got.ownerId, 'U-N');
+});
+
+// ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
+test('POST /api/sa/projects เขียนทีม/เจ้าของตามผู้ดูแล และบังคับให้เลือก AE', () => {
+  const post = read('../../app/api/sa/projects/route.js');
+  assert.match(post, /resolveProjectAeOwner\(supabase, body\.aeOwnerId, user, body\.team\)/);
+  assert.match(post, /team: owner\?\.team \|\| attributionTeam\(user, body\.team\)/);
+  assert.match(post, /ownerId: owner\?\.ownerId \|\| user\.id/);
+  // ac / ae_supervisor / admin ปล่อยว่างไม่ได้ — โครงการจะไม่โผล่ในลิสต์ของ AE คนไหนเลย
+  assert.match(post, /else if \(!ownerLockedToSelf\(user\.role\)\)/);
+  // 🐞 ของเดิม: สองช่องนี้มาจากคนกดสร้างตรง ๆ
+  assert.doesNotMatch(codeOnly(post), /team: user\.team \|\| null/, 'ห้ามกลับไปใช้ทีมของคนกด');
+  assert.doesNotMatch(codeOnly(post), /^\s*ownerId: user\.id \|\| null,/m, 'ห้ามกลับไปใช้คนกดเป็นเจ้าของ');
+});
+
+/* ด่านฝั่งฟอร์มต้องบอกตั้งแต่ก่อนกดบันทึก (docs/form-design-rules.md §2) — ไม่ใช่
+   ปล่อยให้ยิงแล้วเจอ 400 · แต่บังคับเฉพาะตอนสร้าง โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ได้ */
+test('ฟอร์มสร้างโครงการบังคับช่องผู้ดูแล (AE) สำหรับคนที่เลือกชื่อได้', () => {
+  const modal = read('../../components/pm/SalesProjectCreateModal.js');
+  assert.match(modal, /\[!editingId && !lockPeopleField && !form\.aeOwner, "ผู้ดูแลโครงการ \(AE\)"\]/);
+});
+
+test('PATCH โครงการ: เปลี่ยนผู้ดูแลแล้วทีม/เจ้าของย้ายตาม', () => {
+  const patch = read('../../app/api/pm/projects/[id]/route.js');
+  assert.match(patch, /if \(updates\.aeOwnerId !== undefined && \(updates\.aeOwnerId \|\| null\) !== \(project\.aeOwnerId \|\| null\)\)/);
+  assert.match(patch, /resolveProjectAeOwner\(supabase, updates\.aeOwnerId, user, project\.team\)/);
+  assert.match(patch, /updates\.ownerId = checked\.ownerId/);
+  // ผู้ดูแลใหม่ที่ยังไม่มีทีม ต้องไม่ล้างทีมเดิมของแถวทิ้ง (ทั้งทีมจะมองไม่เห็นงาน)
+  assert.match(patch, /updates\.team = checked\.team \|\| project\.team \|\| null/);
+  // สองช่องนี้ต้องมาจาก server เท่านั้น — เปิดใน EDITABLE เมื่อไรคือยกโครงการเข้าทีม
+  // ที่ตัวเองไม่ได้อยู่ได้ผ่าน body ดิบ ๆ
+  const editable = patch.slice(patch.indexOf('const EDITABLE'), patch.indexOf('];', patch.indexOf('const EDITABLE')));
+  assert.doesNotMatch(editable, /'team'/);
+  assert.doesNotMatch(editable, /'ownerId'/);
+});
+
+/* กับดักประจำของระบบนี้: แถวที่ **เห็นในลิสต์** แต่กดเข้าไปแล้ว 403 — ลิสต์ยอมรับสอง
+   สาขา (ทีม หรือ เป็นเจ้าของ) ส่วนด่านรายตัวเคยดูแค่ทีม */
+test('ด่านเปิดโครงการรายตัว ใช้เงื่อนไขเดียวกับตัวกรองของลิสต์', () => {
+  const list = read('../../app/api/pm/projects/route.js');
+  assert.match(list, /\.or\(`\$\{teamInClause\(user\)\},ownerId\.eq\.\$\{own\}`\)/);
+  const detail = read('../../app/api/pm/projects/[id]/route.js');
+  assert.match(detail, /viewScope\(user\?\.role\) === 'team' && !inPmProjectScope\(user, project\)/);
+  assert.doesNotMatch(codeOnly(detail), /!inScope\('team', user, project\)/, 'ด่านที่ดูแค่ทีมห้ามกลับมา');
+});

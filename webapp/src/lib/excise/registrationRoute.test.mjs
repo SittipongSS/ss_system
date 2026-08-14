@@ -113,3 +113,14 @@ test('ทุกจอที่โชว์ภาษี/ชิ้น อ่าน
   assert.doesNotMatch(customersRoute, /r\.exciseTax|r\.localTax/);
   assert.match(customersRoute, /\? p\.exciseTax : 0/);
 });
+
+/* ทะเบียนไร้ทีม = "ของกลาง" — `canViewRecord` ถือแบบนั้นมาตั้งแต่ TEAMLESS_SHARED_RESOURCES
+   แต่ตัวกรองของลิสต์ยังเป็น `.in('team', ทีมของฉัน)` เฉย ๆ ซึ่งไม่มีวันแมตช์ NULL ⇒
+   ทะเบียนที่คนไม่มีทีม (admin/legal/staff) สร้าง หายจากลิสต์ของทุกทีม ทั้งที่เปิดรายตัวได้
+   — เคสจริงที่คอมเมนต์ของ canViewRecord เล่าไว้ (ค้าง "รออนุมัติ" 6 วันโดยไม่มีใครเห็น) */
+test('ลิสต์ทะเบียนโชว์แถวไร้ทีมให้ทุกทีม — กฎเดียวกับใบยื่น (/api/orders)', () => {
+  assert.match(listRoute, /team\.is\.null/, 'ต้องมีสาขาแถวไร้ทีม');
+  assert.match(listRoute, /viewScopeUser\(user\) === 'team' && userTeams\(user\)\.length/,
+    'คนที่ scope ทีมแต่ยังไม่มีทีม = ไม่กรอง (เหมือน /api/orders) ไม่ใช่ได้ลิสต์ว่าง');
+  assert.doesNotMatch(codeOnly(listRoute), /whereTeamIn\(query, user\)/, 'ตัวกรองที่ตัดแถวไร้ทีมห้ามกลับมา');
+});
