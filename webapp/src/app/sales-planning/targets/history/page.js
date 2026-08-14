@@ -14,7 +14,7 @@ import {
   buildHistoryRows, historyRowKey, historySaveItems,
   historyYearOptions, isMonthEditable, resolveYearTotal,
 } from "@/lib/sales/historyEntry";
-import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtMoney, fmtMoneyCompact, naText } from "@/lib/format";
 import styles from "./page.module.css";
 
 // บันทึกยอดขายจริงย้อนหลัง → sales_history · ใช้เติมเส้น Actual และกราฟเทียบการเติบโต
@@ -177,7 +177,7 @@ export default function SalesHistoryMonthlyPage() {
     if (row.scope === "company") return { title: "ทั้งบริษัท", sub: "รวมทุกทีม" };
     if (row.scope === "team") return { title: `ทีม ${TEAM_LABELS[row.team] || row.team}`, sub: "รวมทั้งทีม" };
     if (row.detached?.gone) return { title: row.ownerName, sub: "ออกจากระบบแล้ว" };
-    if (row.detached) return { title: row.ownerName, sub: `ย้ายไปทีม ${TEAM_LABELS[row.detached.movedTo] || row.detached.movedTo || "-"} แล้ว` };
+    if (row.detached) return { title: row.ownerName, sub: `ย้ายไปทีม ${TEAM_LABELS[row.detached.movedTo] || naText(row.detached.movedTo)} แล้ว` };
     return { title: row.ownerName, sub: null };
   };
 

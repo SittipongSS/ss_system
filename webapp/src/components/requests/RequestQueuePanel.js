@@ -20,7 +20,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { WorkspaceSection } from "@/components/ui/Workspace";
 import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
@@ -180,7 +180,7 @@ export default function RequestQueuePanel({
               </div>
             )}
           </>
-        ) : <span className={styles.muted}>—</span>;
+        ) : <span className={styles.muted}>{NA}</span>;
       /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
          ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
       case "doc":
@@ -244,7 +244,7 @@ export default function RequestQueuePanel({
             {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" */}
             <div className={styles.subText}>{requestLineNoun(ask.kind)}</div>
           </>
-        ) : <span className={styles.muted}>—</span>;
+        ) : <span className={styles.muted}>{NA}</span>;
       case "status":
         return <RequestStatusBadge status={ask.status} />;
       default:

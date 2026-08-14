@@ -16,13 +16,13 @@ import {
 import { TEAM_LABELS } from "@/lib/permissions";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
-import { fmtName, fmtPercent } from "@/lib/format";
+import { fmtName, fmtPercent, naText, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { leadDailyBuckets, leadDailyTotals } from "@/lib/sales/leadDailyBuckets";
 import { fmtDate } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
 
-const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
+const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : NA);
 
 /* สามด่านของเส้นทางลีด วัดด้วยกติกาเดียวกัน (≤1 วันทำการ) ต่างกันแค่คู่ timestamp —
    ประกาศเป็นลิสต์เพื่อให้เพิ่ม/ลดด่านแล้วไม่ต้องไล่แก้ JSX ทีละใบ
@@ -72,7 +72,7 @@ const STATUS_SERIES = [
  * (ไม่มี min-width:0) ข้อความยาวจะล้นไปทับการ์ดข้าง ๆ
  */
 const OUTCOME_CARDS = [
-  { key: "in", label: "ลีดเข้า", value: (f) => f.total ?? "-", note: () => "ตัวหารของทุกอัตราในแถวนี้" },
+  { key: "in", label: "ลีดเข้า", value: (f) => naText(f.total), note: () => "ตัวหารของทุกอัตราในแถวนี้" },
   { key: "meet", label: "นัดประชุมได้", value: (f) => pct(f.meeting, f.total), note: (f) => `${f.meeting ?? 0} จาก ${f.total ?? 0} ใบ` },
   { key: "won", label: "เปิดลูกค้า", value: (f) => pct(f.qualified, f.total), note: (f) => `${f.qualified ?? 0} จาก ${f.total ?? 0} ใบ` },
   { key: "lost", label: "ไม่ไปต่อ", value: (f) => pct(f.disqualified, f.total), note: (f) => `${f.disqualified ?? 0} จาก ${f.total ?? 0} ใบ` },
@@ -461,7 +461,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                 <tr key={a.assigneeId} className="premium-row">
                   <td>{livePersonName(directory, a.assigneeId, a.name) || fmtName({ name: a.name })}</td>
                   {/* ป้ายทีมเต็ม ("Key Account") ไม่ใช่รหัสดิบ ("KA") — ที่อื่นในระบบใช้ TEAM_LABELS หมด */}
-                  <td>{TEAM_LABELS[a.team] || a.team || "-"}</td>
+                  <td>{TEAM_LABELS[a.team] || naText(a.team)}</td>
                   <td className="num mono">{a.assigned}</td>
                   <td className="num mono">{a.contacted}</td>
                   {/* 🐞 % เปล่า ๆ โกหกได้เต็มปาก — ตัวหารคือ "ใบที่ติดต่อแล้ว" ไม่ใช่ "ใบที่รับมอบ"
@@ -474,7 +474,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                   </td>
                   <td className="num mono">{a.meetings}</td>
                   <td className="num mono">{a.qualified}</td>
-                  {/* 🐞 ห้ามเขียน `a.pending || "-"` — 0 คือ "ไม่มีของค้าง" ซึ่งเป็นคำตอบจริง
+                  {/* naText(🐞 ห้ามเขียน `a.pending)` — 0 คือ "ไม่มีของค้าง" ซึ่งเป็นคำตอบจริง
                       ส่วน "-" ในระบบนี้แปลว่า "นับไม่ได้" (ดู slaPendingTone) · เขียนแบบนั้น
                       แล้วคนที่เคลียร์งานหมดจะดูเหมือนไม่มีข้อมูล และไม่ตรงกับคอลัมน์ข้าง ๆ
                       ที่โชว์ 0 ตามปกติ · เน้นสีเฉพาะคนที่มีของค้างจริงพอ

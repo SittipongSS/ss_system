@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, FileSpreadsheet, Printer, FolderArchive, CircleDot, Building2, ChevronDown, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import DataList from "@/components/excise/DataList";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -170,7 +170,7 @@ export default function ReportsPage() {
       if (c.date) return fmtDate(v);
       if (c.num) return <span className="font-mono">{v == null ? "-" : fmtNumber(v)}</span>;
       if (c.multiline) {
-        const [main, ...rest] = String(v ?? "-").split("\n");
+        const [main, ...rest] = String(naText(v)).split("\n");
         return (
           <div>
             <div>{main}</div>
@@ -180,7 +180,7 @@ export default function ReportsPage() {
           </div>
         );
       }
-      return v ?? "-";
+      return naText(v);
     },
   }))];
 

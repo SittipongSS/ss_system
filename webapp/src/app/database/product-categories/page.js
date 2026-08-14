@@ -15,6 +15,7 @@ import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { NA } from "@/lib/format";
 
 const EMPTY_FORM = {
   mainSelection: "",
@@ -458,7 +459,7 @@ function CategoryGroupRows({ group, onEdit, onToggle }) {
             <CompliancePills row={row} />
             {row.note && <small className={styles.cellNote}>{row.note}</small>}
           </td>
-          <td>{row.nameEn || <span className={styles.muted}>—</span>}</td>
+          <td>{row.nameEn || <span className={styles.muted}>{NA}</span>}</td>
           <td><strong>{row.usage?.total || 0} รายการ</strong><small className={styles.cellNote}>{usageText(row.usage)}</small></td>
           <td><StatusBadge active={row.isActive !== false} /></td>
           <td>

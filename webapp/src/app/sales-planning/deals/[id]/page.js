@@ -16,7 +16,7 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
-import { fmtDate, fmtDateTime, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -94,7 +94,7 @@ function stageBadge(stage) {
   }[stage] || "var(--text-3)";
   return (
     <span className="ui-badge" style={{ color, borderColor: "color-mix(in srgb, currentColor 25%, transparent)" }}>
-      {stage === "accepted" ? "Won" : STAGE_LABELS[stage] || stage || "-"}
+      {stage === "accepted" ? "Won" : STAGE_LABELS[stage] || naText(stage)}
     </span>
   );
 }
@@ -120,7 +120,7 @@ const TASK_STATUS_META = {
 };
 
 function TaskStatusBadge({ status }) {
-  const meta = TASK_STATUS_META[status] || { label: status || "-", color: "var(--text-3)" };
+  const meta = TASK_STATUS_META[status] || { label: naText(status), color: "var(--text-3)" };
   return <span className="ui-badge" style={{ color: meta.color }}>{meta.label}</span>;
 }
 
@@ -360,7 +360,7 @@ export default function DealOverviewPage() {
     if (awaitingFilingIds.has(salesOrderId)) {
       return <UiStatusBadge label="รอออกใบยื่น" tone="warning" showIcon={false} />;
     }
-    return <span className="muted">—</span>;
+    return <span className="muted">{NA}</span>;
   };
   // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
   const [categories, setCategories] = useState([]);
@@ -774,9 +774,9 @@ export default function DealOverviewPage() {
             badges={<>{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
             actions={headerRight}
             facts={[
-              { icon: UserRound, label: "ผู้ดูแล (AE)", value: ownerName || "-" },
-              { icon: Users, label: "ทีม", value: deal.team || "-" },
-              { icon: Circle, label: "เดือน Forecast", value: deal.forecastMonth || "-" },
+              { icon: UserRound, label: "ผู้ดูแล (AE)", value: naText(ownerName) },
+              { icon: Users, label: "ทีม", value: naText(deal.team) },
+              { icon: Circle, label: "เดือน Forecast", value: naText(deal.forecastMonth) },
               { icon: Trophy, label: "ประเภท / โอกาส", value: `${dealTypeOf(deal)}${!alreadyWon && deal.stage !== "lost" ? ` · FC ${snapForecastLevel(deal.probability)}%` : ""}` },
             ]}
           >
@@ -828,7 +828,7 @@ export default function DealOverviewPage() {
               badges={<>{deal.team && <span className="ui-badge">ทีม {deal.team}</span>}{ownerName && <span className="ui-badge" style={{ color: "var(--accent)" }}>{ownerName}</span>}</>}
               facts={[
                 { label: "ประเภทดีล", value: DEAL_TYPE_LABELS[dealTypeOf(deal)] || dealTypeOf(deal) },
-                { label: "Forecast", value: deal.forecastMonth || "-" },
+                { label: "Forecast", value: naText(deal.forecastMonth) },
               ]}
             />
             <ContextCard
@@ -839,8 +839,8 @@ export default function DealOverviewPage() {
               subtitle={data.project ? "เปิดเพื่อดูไทม์ไลน์ งาน และเอกสารโครงการ" : "เชื่อมโครงการเพื่อส่งต่องานหลังการขาย"}
               badges={data.project?.status ? <span className="ui-badge" style={{ color: "var(--green)" }}>{data.project.status}</span> : null}
               facts={data.project ? [
-                { label: "วันเริ่ม", value: data.project.startDate ? fmtDate(data.project.startDate) : "-" },
-                { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : "-" },
+                { label: "วันเริ่ม", value: data.project.startDate ? fmtDate(data.project.startDate) : NA },
+                { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : NA },
               ] : []}
             />
           </ContextGrid>}
@@ -890,7 +890,7 @@ export default function DealOverviewPage() {
             )}
             <Stat
               label="คาดปิด"
-              value={deal.expectedCloseDate || "-"}
+              value={naText(deal.expectedCloseDate)}
               hint={daysToClose == null ? "ยังไม่กำหนด" : daysToClose >= 0 ? `อีก ${daysToClose} วัน` : `เลยกำหนด ${Math.abs(daysToClose)} วัน`}
             />
             <Stat
@@ -900,11 +900,11 @@ export default function DealOverviewPage() {
             />
             <Stat
               label="ไทม์ไลน์คืบหน้า"
-              value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : "-"}
-              hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : !deal.projectId ? "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)" : "-"}
+              value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : NA}
+              hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : !deal.projectId ? "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)" : NA}
             />
             {SALES_FEATURES.quotations && (
-              <Stat label="ใบเสนอราคา Won" value={acceptedQuote ? money(Number(acceptedQuote.totalAmount || 0) - Number(acceptedQuote.vatAmount || 0)) : "-"} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอราคา Won"} />
+              <Stat label="ใบเสนอราคา Won" value={acceptedQuote ? money(Number(acceptedQuote.totalAmount || 0) - Number(acceptedQuote.vatAmount || 0)) : NA} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอราคา Won"} />
             )}
             {SALES_FEATURES.documents && (
               <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
@@ -936,9 +936,9 @@ export default function DealOverviewPage() {
                           {task.note && <ReadableText text={task.note} lines={2} style={{ marginTop: 2, color: "var(--text-3)", fontSize: "var(--fs-5)", fontWeight: "var(--fw-medium)" }} />}
                         </td>
                         <td><TaskStatusBadge status={task.status} /></td>
-                        <td>{task.assigneeName || task.ownerName || "-"}</td>
-                        <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>-</span>}</td>
-                        <td>{task.category || <span style={{ color: "var(--text-3)" }}>-</span>}</td>
+                        <td>{task.assigneeName || naText(task.ownerName)}</td>
+                        <td>{task.dueDate ? fmtDate(task.dueDate) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
+                        <td>{task.category || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1053,12 +1053,12 @@ export default function DealOverviewPage() {
                 </div>
               )}
               <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={data.project.status || "-"} />
-                <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : "-"} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : "-"} />
-                <Stat label="ประเภท" value={data.project.type || "-"} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
-                <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={(data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", ") || "-"} />
+                <Stat label="โครงการ" value={data.project.code || data.project.id} hint={naText(data.project.status)} />
+                <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : NA} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : NA} />
+                <Stat label="ประเภท" value={naText(data.project.type)} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
+                <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={naText((data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", "))} />
                 {SALES_FEATURES.shipment && (
-                  <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : "-"} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
+                  <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : NA} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
                 )}
               </div>
               {/* DL2: ตารางขั้นตอน segment ของดีลนี้ (รวมงานกลางที่ไม่ผูกดีล) —
@@ -1263,7 +1263,7 @@ export default function DealOverviewPage() {
                         <tr key={doc.id} className="premium-row">
                           <td>{doc.title}<span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{doc.kind}</span></td>
                           <td>{stageBadge(doc.status)}</td>
-                          <td className="mono">{doc.dueDate || "-"}</td>
+                          <td className="mono">{naText(doc.dueDate)}</td>
                         </tr>
                       ))}
                     </tbody>

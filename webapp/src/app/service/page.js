@@ -34,7 +34,7 @@ import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtDayMonth } from "@/lib/format";
+import { fmtDayMonth, naText, NA } from "@/lib/format";
 
 // ⚠️ ต้องย้อนหลังพอที่จะเห็น **นัดค้าง** ทั้งหมด ไม่ใช่แค่สัปดาห์ที่แล้ว —
 // นัดที่ค้างมา 2 เดือนคือนัดที่เจ็บที่สุด ถ้าช่วงที่ดึงสั้นไปมันจะหายไปเงียบ ๆ
@@ -52,7 +52,7 @@ const shiftDays = (iso, days) => {
 
 // "14 ส.ค." — ตัวกลางเดียวกับบอร์ดผลิต/ตารางบริการ (`fmtDayMonth`)
 // ⚠️ ต่อ T00:00:00 ก่อน — สตริง `YYYY-MM-DD` ล้วนถูกอ่านเป็น UTC แล้วเลื่อนวัน
-const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : "—");
+const fmtDate = (iso) => (iso ? fmtDayMonth(`${iso}T00:00:00`) : NA);
 
 export default function ServiceOverviewPage() {
   const router = useRouter();
@@ -225,7 +225,7 @@ export default function ServiceOverviewPage() {
                           <span className={styles.visitList}>
                             {row.visits.map((v) => {
                               const time = visitTimeText(v);
-                              const name = sitesById.get(v.siteId)?.name || v.siteName || "—";
+                              const name = sitesById.get(v.siteId)?.name || naText(v.siteName);
                               return time ? `${time} ${name}` : name;
                             }).join(" · ")}
                           </span>
@@ -273,7 +273,7 @@ export default function ServiceOverviewPage() {
                           </button>
                           <span className={styles.sub}>{site.code}{site.zone ? ` · ${site.zone}` : ""}</span>
                         </th>
-                        <td>{site.customerName || "—"}</td>
+                        <td>{naText(site.customerName)}</td>
                         <td className="num">
                           {site.refill?.needsAttention || 0}
                           {site.refill?.overdue > 0 && <span className={styles.over}>หมดแล้ว {site.refill.overdue}</span>}

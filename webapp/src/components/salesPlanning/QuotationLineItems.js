@@ -13,7 +13,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText, NA } from "@/lib/format";
 import { fgLineBrand, fgLineDescription, masterPriceState } from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
@@ -60,7 +60,7 @@ export function QuotationReadOnlyLineItems({
                 <td>
                   <div className={styles.readOnlyDescription}>
                     {line.fgCode ? <small>{line.fgCode}</small> : null}
-                    <ReadableText text={line.description} lines={3} empty="-" />
+                    <ReadableText text={line.description} lines={3} />
                     {line.metadata?.note ? (
                       <span className={styles.noteReadonly}>
                         <strong>หมายเหตุ:</strong>
@@ -70,10 +70,10 @@ export function QuotationReadOnlyLineItems({
                   </div>
                 </td>
                 {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
-                <td className="num mono" data-label="จำนวน">{line.qty ?? "-"}</td>
-                <td data-label="หน่วย">{line.unit || "-"}</td>
+                <td className="num mono" data-label="จำนวน">{naText(line.qty)}</td>
+                <td data-label="หน่วย">{naText(line.unit)}</td>
                 <td className="num mono" data-label="ราคาต่อหน่วย">{fmtMoney(line.unitPrice)}</td>
-                <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : "-"}</td>
+                <td className="num mono" data-label="ส่วนลด">{Number(line.discountAmount || 0) > 0 ? fmtMoney(line.discountAmount) : NA}</td>
                 <td className={`num mono ${styles.lineAmount}`} data-label="รวม">{fmtMoney(line.lineTotal)}</td>
               </tr>
             ))}
@@ -87,7 +87,7 @@ export function QuotationReadOnlyLineItems({
           {summaryRows.map((row, index) => (
             <div key={row.id || row.label || index} className={styles.totalLine}>
               <span>{row.label}</span>
-              <strong className="mono">{row.value ?? "-"}</strong>
+              <strong className="mono">{naText(row.value)}</strong>
             </div>
           ))}
           {grandTotal !== undefined && grandTotal !== null ? (
@@ -99,7 +99,7 @@ export function QuotationReadOnlyLineItems({
           {highlightRows.map((row, index) => (
             <div key={row.id || row.label || index} className={`${styles.highlightTotal} ${row.tone === "danger" ? styles.dangerTotal : styles.successTotal}`}>
               <span>{row.label}</span>
-              <strong className="mono">{row.value ?? "-"}</strong>
+              <strong className="mono">{naText(row.value)}</strong>
             </div>
           ))}
         </div>
@@ -216,7 +216,7 @@ export default function QuotationLineItems({
                           <div className={styles.fgInfo} title="ข้อมูลจากฐานข้อมูลสินค้า — แก้ที่ฐานข้อมูลสินค้า">
                             <span className={styles.fgInfoMeta}><strong>{fg.code || "FG"}</strong>{fg.brand && <> · {fg.brand}</>}</span>
                             <div className={styles.fgInfoName}>
-                              {editable ? (fg.name || "-") : <ReadableText text={fg.name} lines={3} empty="-" />}
+                              {editable ? (naText(fg.name)) : <ReadableText text={fg.name} lines={3} />}
                             </div>
                           </div>
                         );
@@ -318,7 +318,7 @@ export default function QuotationLineItems({
               </Select>
               <MoneyInput min="0" value={discountValue || ""} disabled={!editable || !discountType} onChange={(value) => onDiscountChange?.({ type: discountType, value: clampDiscount(discountType, value) ?? "" })} aria-label="ส่วนลดท้ายใบ" />
             </span>
-            <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : "-"}</strong>
+            <strong className="mono" style={{ color: totals.discountAmount > 0 ? "var(--red)" : "inherit" }}>{totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA}</strong>
           </div>
           {totals.discountAmount > 0 && (
             <div className={styles.totalLine}><span>ยอดหลังหักส่วนลด</span><strong className="mono">{fmtMoney(totals.subtotal - totals.discountAmount)}</strong></div>
@@ -331,7 +331,7 @@ export default function QuotationLineItems({
                 <option value="7">+ VAT 7% ท้ายใบ</option>
               </Select>
             </span>
-            <strong className="mono">{vatRate > 0 ? fmtMoney(totals.vatAmount) : "-"}</strong>
+            <strong className="mono">{vatRate > 0 ? fmtMoney(totals.vatAmount) : NA}</strong>
           </div>
           <div className={styles.totalGrand}>
             <strong>ยอดรวมทั้งสิ้น</strong><strong className="mono">{fmtMoney(totals.totalAmount)}</strong>

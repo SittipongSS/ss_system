@@ -1,5 +1,6 @@
 import { Children } from "react";
 import styles from "./DetailOverview.module.css";
+import { naText } from "@/lib/format";
 
 export function DetailStateBadge({ label, color = "var(--accent)" }) {
   if (!label) return null;
@@ -25,7 +26,7 @@ export default function DetailOverview({
       <div className={styles.overviewHeading}>
         <div className={styles.titleBlock}>
           {eyebrow ? <span className={styles.eyebrow}>{eyebrow}</span> : null}
-          <h1>{title || "-"}</h1>
+          <h1>{naText(title)}</h1>
           {description ? <div className={styles.description}>{description}</div> : null}
           {meta ? <div className={styles.meta}>{meta}</div> : null}
         </div>
@@ -46,7 +47,7 @@ export default function DetailOverview({
                 <span>
                   <small>{fact.label}</small>
                   <strong title={typeof fact.value === "string" ? fact.value : undefined}>
-                    {fact.value ?? "-"}
+                    {naText(fact.value)}
                   </strong>
                   {/* บรรทัดรอง — ของที่อ่านคู่กับค่าหลักเสมอ (รหัสลูกค้าใต้ชื่อลูกค้า ·
                       เบอร์ใต้ชื่อผู้ติดต่อ) · ไม่ใช่ที่เก็บของที่ไม่มีช่องว่าง

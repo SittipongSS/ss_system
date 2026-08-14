@@ -6,6 +6,7 @@ import { usePagination, DEFAULT_PAGE_SIZE } from "@/lib/usePagination";
 import EmptyState from "@/components/ui/EmptyState";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
+import { naText } from "@/lib/format";
 
 // Core responsive list used by both excise tracks AND the reports page.
 //   • landscape → sortable .premium-table
@@ -76,7 +77,7 @@ export default function DataList({
                 >
                   {columns.map((c) => (
                     <td key={c.key} style={{ textAlign: c.align, ...c.tdStyle }}>
-                      {c.render ? c.render(r) : r[c.key] ?? "-"}
+                      {c.render ? c.render(r) : naText(r[c.key])}
                     </td>
                   ))}
                 </tr>
@@ -98,7 +99,7 @@ export default function DataList({
                   {columns.map((c) => (
                     <div key={c.key} className="flex justify-between gap-3" style={{ fontSize: "var(--fs-7)" }}>
                       <span style={{ color: "var(--text-3)" }}>{c.label}</span>
-                      <span>{c.render ? c.render(r) : r[c.key] ?? "-"}</span>
+                      <span>{c.render ? c.render(r) : naText(r[c.key])}</span>
                     </div>
                   ))}
                 </div>

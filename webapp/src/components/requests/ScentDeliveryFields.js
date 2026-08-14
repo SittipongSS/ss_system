@@ -17,6 +17,7 @@ import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { businessDate } from "@/lib/businessDate";
 import styles from "./scentDelivery.module.css";
+import { naText } from "@/lib/format";
 
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
 //   · `producedAt` = RD ผลิตกลิ่นตัวนี้เสร็จวันไหน → ไปอยู่บน **ตัวกลิ่น** ในทะเบียน
@@ -154,7 +155,7 @@ export default function ScentDeliveryFields({
                 <div className="form-group">
                   <span className="toolbar-label">แก้มาจากกลิ่น</span>
                   <p className={styles.locked}>
-                    {row._sourceLabel || "—"}
+                    {naText(row._sourceLabel)}
                     <span className={styles.hint}> · ผูกให้อัตโนมัติ พร้อมบรีฟก้อนเดิม</span>
                   </p>
                 </div>

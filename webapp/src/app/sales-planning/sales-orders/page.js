@@ -13,7 +13,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
 import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
@@ -32,7 +32,7 @@ function statusBadge(status, className = "") {
    ⚠️ ไม่ใช้ป้าย (badge) เพราะเป็น **ตัวเลขที่คนกวาดตาเทียบข้ามแถว** ⇒ ต้องชิดขวา
    และเป็น tabular (กฎ 3 · UI_DESIGN_SYSTEM §ป้ายในตาราง) */
 function paymentCell(payment) {
-  if (!payment) return <span className="cell-num-idle">-</span>;
+  if (!payment) return <span className="cell-num-idle">{NA}</span>;
   const { tracked, paid, count, complete, overdue, rejected } = payment;
   const tone = !tracked ? "cell-num-idle"
     : complete ? "cell-num-ok"
@@ -185,7 +185,7 @@ export default function SalesOrdersPage() {
                           จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
                       <span className="cell-sub" title={row.referenceDoc || undefined}>
                         <span className="cell-ellipsis">
-                          {row.quotation?.quoteNumber || "-"}
+                          {naText(row.quotation?.quoteNumber)}
                           {row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
                         </span>
                       </span>
@@ -205,8 +205,8 @@ export default function SalesOrdersPage() {
                     <td>
                       {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
                       {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
-                      {row.customerName || "-"}
-                      <span className="cell-sub">{row.deal?.title || "-"}</span>
+                      {naText(row.customerName)}
+                      <span className="cell-sub">{naText(row.deal?.title)}</span>
                     </td>
                     {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
                         ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง */}

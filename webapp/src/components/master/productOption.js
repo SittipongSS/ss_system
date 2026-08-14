@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { productIdentity } from "@/lib/master/productIdentity";
+import { naText } from "@/lib/format";
 
 // มาตรฐาน dropdown สินค้าทั้งระบบ:
 // รหัส · แบรนด์ (รอง) / ชื่อสินค้า · ปริมาตร (หลัก)
@@ -18,7 +19,7 @@ export function productOptionDisplay(p) {
       identity.meta
         ? createElement("span", { className: "product-option-meta" }, identity.meta)
         : null,
-      createElement("span", { className: "product-option-name" }, identity.detail || "-"),
+      createElement("span", { className: "product-option-name" }, naText(identity.detail)),
     ),
   };
 }

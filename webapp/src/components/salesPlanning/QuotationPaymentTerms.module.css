@@ -5,7 +5,7 @@
 .installmentToggle { display: flex; align-items: center; gap: 9px; padding: var(--space-1-5) var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-2); color: var(--text-2); cursor: pointer; text-align: left; }
 .installmentToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .installmentToggle:disabled { cursor: not-allowed; opacity: var(--op-disabled); }
-.installmentToggle > span:last-child { display: flex; flex-direction: column; line-height: var(--lh-tight); }
+.installmentToggle > span:last-child { display: flex; flex-direction: column; line-height: var(--lh-thai); }
 .installmentToggle strong { font-size: var(--fs-4); }
 .installmentToggle small { margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-1); }
 

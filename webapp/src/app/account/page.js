@@ -9,7 +9,7 @@ import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
 import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS, userTeams } from "@/lib/permissions";
-import { fmtDateTime, fmtName } from "@/lib/format";
+import { fmtDateTime, fmtName, naText, NA } from "@/lib/format";
 import styles from "./page.module.css";
 
 const EMPTY_FORM = { firstName: "", lastName: "", phone: "" };
@@ -26,7 +26,7 @@ function initialsOf(profile) {
 /* ⚠️ locale "th-TH" ใช้ปฏิทินพุทธเป็นค่าตั้งต้น — ปีที่ออกมาจะเป็น พ.ศ. เงียบ ๆ
    ทั้งระบบเป็น ค.ศ. (มติผู้ใช้ 2026-08-05) จึงใช้ fmtDateTime กลางแทน */
 function formatDateTime(value) {
-  return value ? fmtDateTime(value) : "—";
+  return value ? fmtDateTime(value) : NA;
 }
 
 export default function AccountPage() {
@@ -100,10 +100,10 @@ export default function AccountPage() {
     }
   };
 
-  const roleLabel = ROLE_LABELS[profile?.role] || profile?.role || "—";
+  const roleLabel = ROLE_LABELS[profile?.role] || naText(profile?.role);
   // อยู่ได้หลายทีม — โชว์ครบ ทีมหลักขึ้นก่อน (ยอดของใหม่เข้าทีมแรก)
-  const teamLabel = userTeams(profile).map((t) => TEAM_LABELS[t] || t).join(" + ") || "—";
-  const departmentCode = profile?.department ? (DEPARTMENT_LABELS[profile.department] || profile.department) : "—";
+  const teamLabel = naText(userTeams(profile).map((t) => TEAM_LABELS[t] || t).join(" + "));
+  const departmentCode = profile?.department ? (DEPARTMENT_LABELS[profile.department] || profile.department) : NA;
   const departmentName = profile?.department ? DEPARTMENT_NAMES_TH[profile.department] : "";
   const displayName = profile ? (fmtName(profile) || profile.email) : "";
 

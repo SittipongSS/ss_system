@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, NA } from "@/lib/format";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
@@ -36,7 +36,7 @@ const STATE_LABELS = {
 /* ⚠️ locale "th-TH" ใช้ปฏิทินพุทธเป็นค่าตั้งต้น — ปีที่ออกมาจะเป็น พ.ศ. เงียบ ๆ
    ทั้งระบบเป็น ค.ศ. (มติผู้ใช้ 2026-08-05) จึงใช้ fmtDateTime กลางแทน */
 function fmtDate(value) {
-  return value ? fmtDateTime(value) : "—";
+  return value ? fmtDateTime(value) : NA;
 }
 
 function fmtBytes(value) {

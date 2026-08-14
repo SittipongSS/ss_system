@@ -140,10 +140,19 @@ const BREAKPOINT_CAP = 13;
    (เกณฑ์ 1.45 ที่ #794 ตั้งไว้ด้วยตา จึงถูกต้องเชิงประจักษ์ — แต่เป็น *ขั้นต่ำจริง ๆ*
    ถ้าอยากสบายตากว่านี้ใช้ --lh-text 1.5 ซึ่งได้ช่องว่าง 1.0px)
 
-   ⚠️ เหลือ 2 จุดที่ยังต่ำกว่า 1.45 โดยตั้งใจ — ทั้งคู่ `white-space: nowrap`
-   จึงไม่มีบรรทัดที่สองให้ชน: `.ui-kpi-value` (1.1 ตัวเลข KPI) · `.ui-metric strong` (1.25)
-   ที่เหลือในเพดานเป็นค่า ≥1.45 ที่อยู่ระหว่างขั้น (1.55 · 1.65 · 1.7 …) ซึ่งไม่เสี่ยง */
-const RAW_LINE_HEIGHT_CAP = 17;
+   ✅ 2026-08-14 (รอบสาม, มติผู้ใช้): ยกเกณฑ์ไทย 1.45 → **1.65** และรูดเพดาน 17 → 9
+
+   เกณฑ์ 1.45 ของรอบสองวัดจากคำว่า "ที่ญุ" ซึ่ง**ไม่ใช่กรณีแย่สุด** วัดใหม่แยกสองฝั่ง
+   บน Sarabun: สระบนสูงสุด 1.250em ("เชื้อเพลิงที่ใช้") + สระล่างลึกสุด 0.332em
+   ("ผู้ปฏิบัติหน้าที่") = **1.582em** ⇒ ที่ 1.45 หมึกสองบรรทัดยังทับกัน 1.72px
+   และในกล่องที่มี overflow ยังโดนตัด — วัดจริง 14 จอเจอรอยขาด 80 จุด
+   **34 ใน 35 จุดแรกขาดที่ขอบบน** = ฝั่งสระบน ซึ่งรอบก่อน ๆ ไม่ได้ดู
+
+   ⚠️ เหลือ 1 จุดที่ยังต่ำกว่าเกณฑ์โดยตั้งใจ: `.ui-kpi-value` (1.1) — ตัวเลข KPI ล้วน
+   (`tabular-nums` + `white-space: nowrap`) ไม่มีสระไทยและไม่มีบรรทัดที่สองให้ชน
+   ส่วน `.ui-metric strong` (เดิม 1.25) ย้ายขึ้น --lh-thai แล้วเพราะค่าเป็นไทยได้จริง
+   ที่เหลือในเพดานเป็นค่า ≥1.65 ที่อยู่ระหว่างขั้น กับ lineHeight ใน JSX */
+const RAW_LINE_HEIGHT_CAP = 9;
 
 /* ความมนมุมที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -215,6 +224,18 @@ const RAW_OPACITY_CAP = 15;
      ตั้งใจให้เงียบกว่าชื่อ การคลี่ตัวอักษรจะสวนเจตนา
    - `.totalAmount` (-0.04em) — ตัวเลขใหญ่พิเศษ คนละบทบาทกับ --ls-tabular */
 const RAW_LETTER_SPACING_CAP = 4;
+
+/* ⭐ **ค่าว่างต้องพูดคำเดียวกันทั้งระบบ: N/A** (มติผู้ใช้ 2026-08-14)
+
+   เดิม "ไม่มีค่า" ถูกเขียนกระจายเป็น `-` `—` `.` แล้วแต่คนเขียน (355 จุด 114 ไฟล์)
+   ⇒ คนอ่านตารางเดียวกันเห็นหลายแบบในแถวเดียว และแยกไม่ออกว่า "ยังไม่กรอก" กับ
+   "กรอกขีดมา" ต่างกันไหม · ตอนนี้ทุกที่ที่แสดงผลต้องผ่าน `naText()` จาก lib/format
+
+   ⚠️ ตรวจเฉพาะ `src/app` กับ `src/components` (ชั้นที่แสดงผล) — `src/lib` ไม่นับ
+   เพราะเป็นฟังก์ชันข้อมูลกับตัวประกอบเอกสาร: ใส่ N/A ลงไปจะกลายเป็น *ข้อมูล* ไม่ใช่
+   การแสดงผล (เช่น `scope.js` คืน id, `quotationMasterTemplate` แตะแล้วกระทบ
+   ลายเซ็นอนุมัติของใบเสนอราคา) ⇒ ที่นั่นตัดสินทีละจุดด้วยมือเท่านั้น */
+const naFallbackViolations = [];
 
 const rawColorViolations = [];
 const typeScaleViolations = [];
@@ -328,7 +349,15 @@ for (const file of uiFiles) {
      ⚠️ เอกสารพิมพ์ (`components/documents/`, `lib/`) ยกเว้น — ประกอบ HTML เองและ
      ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น */
   if (!rel.startsWith("src/components/documents/")) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
+       เขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
+       นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ fontWeightScale.test.mjs อ่านจากตรงนั้น
+       เพื่อเช็คว่าโทเคน --fw-* ทุกตัวมีน้ำหนักที่โหลดมาจริงรองรับ */
+    let inFontFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFontFace = true;
+      else if (inFontFace && line.trim() === "}") inFontFace = false;
+      if (inFontFace) return;
       const cssHit = line.match(/font-weight:\s*(\d+)/);
       if (cssHit) {
         fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
@@ -354,7 +383,14 @@ for (const file of uiFiles) {
        (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์ */
   const FONT_FAMILY_PRINT_EXEMPT = /^src\/(components\/documents\/|lib\/(printTheme|sales\/quotation(Document|Master)))/;
   if (!FONT_FAMILY_PRINT_EXEMPT.test(rel)) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — เป็นที่ **ประกาศ** ชื่อฟอนต์ ไม่ใช่ที่ *ใช้*
+       ต้องเขียนชื่อจริงตามสเปก (`var()` ใน @font-face ไม่ทำงาน)
+       ที่ใช้จริงยังต้องผ่าน `var(--font-sans)` เหมือนเดิมทุกจุด */
+    let inFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFace = true;
+      else if (inFace && line.trim() === "}") inFace = false;
+      if (inFace) return;
       for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
         const value = hit[1].trim();
         if (/^var\(--font-/.test(value)) continue;
@@ -430,6 +466,26 @@ for (const file of uiFiles) {
         if (Number(hit[1]) > 0) rawSpacingCount += 1;
       }
     }
+  }
+
+  /* ค่าว่างที่ยังเขียนเป็นขีด/จุดดิบในชั้นแสดงผล — ต้องเป็น 0 เสมอ ใช้ `naText()` แทน
+     ⚠️ ไม่นับในคอมเมนต์ (บางคอมเมนต์อธิบายกับดัก `x || "-"` ไว้โดยเจตนา) */
+  if (rel.startsWith("src/app/") || rel.startsWith("src/components/")) {
+    source.split(/\r?\n/).forEach((line, index) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+      /* สองรูปที่เจอจริงในโค้ดนี้: `x || "-"` กับ `cond ? y : "-"` */
+      if (/(?:\|\||\?\?)\s*(?:"(?:-|—|–|\.)"|'(?:-|—|–|\.)')/.test(line)) {
+        naFallbackViolations.push(`${rel}:${index + 1} ค่าว่างต้องผ่าน naText() ไม่ใช่ขีดดิบ`);
+      }
+      if (/:\s*(?:"(?:-|—|–)"|'(?:-|—|–)')(?=\s*[),;}\]])/.test(line)) {
+        naFallbackViolations.push(`${rel}:${index + 1} ค่าว่างใน ternary ต้องเป็น NA ไม่ใช่ขีดดิบ`);
+      }
+      /* ขีดที่เขียนเป็นข้อความใน JSX ตรง ๆ — `<span>-</span>` */
+      if (/>\s*(?:-|—|–)\s*</.test(line)) {
+        naFallbackViolations.push(`${rel}:${index + 1} ขีดใน JSX ต้องเป็น {NA}`);
+      }
+    });
   }
 
   /* นับความสูงบรรทัดที่ยังเป็นเลขดิบ (ดู RAW_LINE_HEIGHT_CAP) — ทั้ง CSS และ JSX
@@ -687,7 +743,7 @@ const failures = [
     ? [`ระยะห่างเลขดิบลดได้แล้ว: เหลือ ${rawSpacingCount} แต่ RAW_SPACING_CAP ยังเขียน ${RAW_SPACING_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
   ...(rawLineHeightCount > RAW_LINE_HEIGHT_CAP
-    ? [`ความสูงบรรทัดเลขดิบเพิ่มขึ้น: ${rawLineHeightCount} > เพดาน ${RAW_LINE_HEIGHT_CAP} — หยิบขั้นจาก --lh-* (ข้อความไทยต้อง ≥ 1.45)`]
+    ? [`ความสูงบรรทัดเลขดิบเพิ่มขึ้น: ${rawLineHeightCount} > เพดาน ${RAW_LINE_HEIGHT_CAP} — หยิบขั้นจาก --lh-* (ข้อความไทยต้อง ≥ 1.65)`]
     : []),
   ...(rawLineHeightCount < RAW_LINE_HEIGHT_CAP
     ? [`ความสูงบรรทัดเลขดิบลดได้แล้ว: เหลือ ${rawLineHeightCount} แต่ RAW_LINE_HEIGHT_CAP ยังเขียน ${RAW_LINE_HEIGHT_CAP} (รูดเพดานลง)`]
@@ -747,6 +803,7 @@ const failures = [
   ...budgetOver.map((item) => `legacy budget exceeded — PR นี้เพิ่มชั้นเก่า: ${item}`),
   ...budgetUnder.map((item) => `legacy budget ลดได้แล้ว — รูดเพดานลงด้วย \`npm run audit:ui -- --update-budget\`: ${item}`),
   ...forbiddenMaterialPackages.map((item) => `forbidden Material dependency: ${item}`),
+  ...naFallbackViolations,
   ...(legacySalesModule ? ["sales-only workspace stylesheet still exists"] : []),
   ...removedCompatibilityFiles.map((item) => `removed compatibility file returned: ${item}`),
   ...legacyCompatibilityImports.map((item) => `legacy compatibility import returned: ${item}`),
@@ -778,6 +835,7 @@ console.log(
     ` · module.css ที่ถูกยืมข้ามโฟลเดอร์: ${cssModuleImports.crossDirectory.length} (ต้องเป็น 0 ทั้งคู่)`,
 );
 console.log(`Wrapper-only class on a control: ${wrapperClassViolations.length}`);
+console.log(`ค่าว่างที่ยังเป็นขีดดิบในชั้นแสดงผล (ต้องเป็น 0 — ใช้ naText): ${naFallbackViolations.length}`);
 console.log(`Direct smoothed-line violations: ${smoothedLineViolations.length}`);
 const nativeFeedbackDebtTotal = Object.values(nativeFeedbackDebt).reduce((sum, n) => sum + n, 0);
 console.log(`Native feedback violations: ${nativeFeedbackViolations.length} (หนี้ prompt() เก่าที่ยกเว้นไว้ ${nativeFeedbackDebtTotal} จุด)`);

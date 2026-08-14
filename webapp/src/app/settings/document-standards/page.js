@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -59,7 +59,7 @@ const NUMBERING_TOKENS = [
 /* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
    (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
    fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
-const formatDateTime = (value) => (value ? fmtDateTime(value) : "-");
+const formatDateTime = (value) => (value ? fmtDateTime(value) : NA);
 const formatEffectiveDate = formatDocumentStandardEffectiveDate;
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
 const statusClass = (status) => status === "published" ? styles.publishedBadge : status === "draft" ? styles.draftBadge : styles.archivedBadge;
@@ -167,7 +167,7 @@ function DocumentStandardFields({ form, setForm }) {
           <li>ต้องมี {"{MM}"} และ {"{YY}"} หรือ {"{YYYY}"} เพราะตัวนับเลขรันรีเซ็ตทุกเดือน</li>
           <li><strong>เผยแพร่แล้วมีผลกับใบที่ออกใหม่เท่านั้น</strong> เลขของใบเดิมไม่ถูกเขียนทับ</li>
         </ul>
-        <div className={styles.numberExample}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(form.numberingPattern, "0") || "-"}</strong></div>
+        <div className={styles.numberExample}><span>ตัวอย่าง</span><strong className="mono">{naText(numberingPatternExample(form.numberingPattern, "0"))}</strong></div>
       </section>
       <section className={styles.formSection}>
         <h4>หลักฐานการเปลี่ยนแปลง</h4>
@@ -388,7 +388,7 @@ export default function DocumentStandardsPage() {
                 <ChevronDown size={16} aria-hidden="true" />
                 <span className={styles.controlSummary}>
                   <strong>{shown.titleTh || DOCUMENT_STANDARD_LABELS[selectedKey]}</strong>
-                  <small>Version {shown.versionNumber} · <span className="mono">{shown.formCode || "-"} · Rev.{shown.revision || "-"}</span> · มีผล {formatEffectiveDate(shown.effectiveDate)}{dirty ? " · ยังไม่บันทึก" : ""}</small>
+                  <small>Version {shown.versionNumber} · <span className="mono">{naText(shown.formCode)} · Rev.{naText(shown.revision)}</span> · มีผล {formatEffectiveDate(shown.effectiveDate)}{dirty ? " · ยังไม่บันทึก" : ""}</small>
                 </span>
                 <StatusBadge status={editing || draft ? "draft" : "published"} />
               </button>
@@ -427,15 +427,15 @@ export default function DocumentStandardsPage() {
             {detailsOpen ? (
               <div id="standard-details" className={styles.details}>
                 <div className={styles.detailsHead}>
-                  <p className={styles.english}>{shown.titleEn || "-"}</p>
+                  <p className={styles.english}>{naText(shown.titleEn)}</p>
                   <AccentMark accentKey={resolveDocumentAccentKey(shown, selectedKey)} />
                 </div>
                 <div className={styles.metaGrid}>
-                  <div><span>รหัสแบบฟอร์ม</span><strong className="mono">{shown.formCode || "-"}</strong></div>
-                  <div><span>Revision</span><strong className="mono">{shown.revision || "-"}</strong></div>
+                  <div><span>รหัสแบบฟอร์ม</span><strong className="mono">{naText(shown.formCode)}</strong></div>
+                  <div><span>Revision</span><strong className="mono">{naText(shown.revision)}</strong></div>
                   <div><span>วันที่มีผล</span><strong>{formatEffectiveDate(shown.effectiveDate)}</strong></div>
-                  <div><span>เลขที่ตัวอย่าง</span><strong className="mono">{numberingPatternExample(shown.numberingPattern, "0") || "-"}</strong></div>
-                  <div className={styles.full}><span>รูปแบบเลขที่</span><strong className="mono">{shown.numberingPattern || "-"}</strong></div>
+                  <div><span>เลขที่ตัวอย่าง</span><strong className="mono">{naText(numberingPatternExample(shown.numberingPattern, "0"))}</strong></div>
+                  <div className={styles.full}><span>รูปแบบเลขที่</span><strong className="mono">{naText(shown.numberingPattern)}</strong></div>
                   <div className={styles.full}><span>{shown.publishedAt ? "เผยแพร่เมื่อ" : "แก้ไขล่าสุด"}</span><strong>{formatDateTime(shown.publishedAt || shown.updatedAt)}</strong></div>
                   {published && shown !== published ? <div className={styles.full}><span>เวอร์ชันที่ใช้งานอยู่ตอนนี้</span><strong>Version {published.versionNumber} · <span className="mono">{published.formCode}</span> (เผยแพร่ {formatDateTime(published.publishedAt)})</strong></div> : null}
                 </div>
@@ -481,7 +481,7 @@ export default function DocumentStandardsPage() {
             </header>
             <TableScroll surface="embedded" className={styles.historyTableWrap}>
               <table className={`premium-table ${styles.historyTable}`}><thead><tr><th>Version</th><th>สถานะ</th><th>แบบฟอร์ม</th><th>Accent</th><th>หมายเหตุ</th><th>ผู้ดำเนินการ</th><th>วันที่</th><th aria-label="การทำงาน" /></tr></thead><tbody>
-                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} empty="-" /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => setViewRow(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
+                {versions.map((row) => <tr key={row.id}><td><strong>Version {row.versionNumber}</strong><small>{row.id}</small></td><td><StatusBadge status={row.status} /></td><td><span className="mono">{row.formCode}</span><small>Rev.{row.revision}</small></td><td><AccentMark accentKey={row.accentKey} label={false} /></td><td><ReadableText text={row.changeNote} lines={3} /></td><td>{actorOf(row)}</td><td>{formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</td><td><button type="button" className="btn ghost sm" onClick={() => setViewRow(row)}><Eye size={14} /> ดูรายละเอียด</button></td></tr>)}
               </tbody></table>
             </TableScroll>
             <div className={styles.historyCards}>{versions.map((row) => <article key={row.id} className={styles.historyCard}><div className={styles.cardHead}><strong>Version {row.versionNumber} · {row.formCode}</strong><StatusBadge status={row.status} /></div><ReadableText text={row.changeNote} lines={3} empty="ไม่มีหมายเหตุ" style={{ margin: "10px 0", color: "var(--text-2)", fontSize: "var(--fs-6)" }} /><small>{actorOf(row)} · {formatDateTime(row.publishedAt || row.archivedAt || row.updatedAt)}</small><button type="button" className="btn ghost" onClick={() => setViewRow(row)}><Eye size={15} /> ดูรายละเอียด</button></article>)}</div>
@@ -489,19 +489,19 @@ export default function DocumentStandardsPage() {
         </>
       )}
 
-      <RecordDrawer open={!!viewRow} onClose={() => setViewRow(null)} title={`${viewRow?.titleTh || "มาตรฐานเอกสาร"} Version ${viewRow?.versionNumber || "-"}`} badge={viewRow ? <StatusBadge status={viewRow.status} /> : null} footer={<button type="button" className="btn" onClick={() => setViewRow(null)}>ปิด</button>}>
+      <RecordDrawer open={!!viewRow} onClose={() => setViewRow(null)} title={`${viewRow?.titleTh || "มาตรฐานเอกสาร"} Version ${naText(viewRow?.versionNumber)}`} badge={viewRow ? <StatusBadge status={viewRow.status} /> : null} footer={<button type="button" className="btn" onClick={() => setViewRow(null)}>ปิด</button>}>
         {viewRow ? (
           <div className={styles.drawerBody}>
             <LiveDocumentPreview documentKey={viewRow.documentKey || selectedKey} standard={viewRow} className={styles.previewInDrawer} />
-            <section className={styles.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={styles.detailGrid}><div className={styles.full}><span>ชื่อภาษาไทย</span><strong>{viewRow.titleTh}</strong></div><div className={styles.full}><span>ชื่อภาษาอังกฤษ</span><strong>{viewRow.titleEn || "-"}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{viewRow.formCode}</strong></div><div><span>Revision</span><strong className="mono">{viewRow.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(viewRow.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><AccentMark accentKey={viewRow.accentKey} /></strong></div></div></section>
+            <section className={styles.drawerSection}><h4>ตัวตนของเอกสารควบคุม</h4><div className={styles.detailGrid}><div className={styles.full}><span>ชื่อภาษาไทย</span><strong>{viewRow.titleTh}</strong></div><div className={styles.full}><span>ชื่อภาษาอังกฤษ</span><strong>{naText(viewRow.titleEn)}</strong></div><div><span>รหัสแบบฟอร์ม</span><strong className="mono">{viewRow.formCode}</strong></div><div><span>Revision</span><strong className="mono">{viewRow.revision}</strong></div><div><span>วันที่มีผล</span><strong>{formatEffectiveDate(viewRow.effectiveDate)}</strong></div><div><span>สี Accent</span><strong><AccentMark accentKey={viewRow.accentKey} /></strong></div></div></section>
             <section className={styles.drawerSection}><h4>เลขที่เอกสาร</h4><div className={styles.detailGrid}><div className={styles.full}><span>Numbering pattern</span><strong className="mono">{viewRow.numberingPattern}</strong></div><div className={styles.full}><span>ตัวอย่าง</span><strong className="mono">{numberingPatternExample(viewRow.numberingPattern, "0")}</strong></div></div></section>
-            <section className={styles.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={styles.detailGrid}><div className={styles.full}><span>หมายเหตุ</span><ReadableText text={viewRow.changeNote} lines={4} empty="-" /></div><div><span>สร้างโดย</span><strong>{viewRow.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(viewRow.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(viewRow)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(viewRow.publishedAt || viewRow.archivedAt || viewRow.updatedAt)}</strong></div></div></section>
+            <section className={styles.drawerSection}><h4>ประวัติเวอร์ชัน</h4><div className={styles.detailGrid}><div className={styles.full}><span>หมายเหตุ</span><ReadableText text={viewRow.changeNote} lines={4} /></div><div><span>สร้างโดย</span><strong>{viewRow.createdByName || "ระบบ"}</strong></div><div><span>สร้างเมื่อ</span><strong>{formatDateTime(viewRow.createdAt)}</strong></div><div><span>ดำเนินการล่าสุดโดย</span><strong>{actorOf(viewRow)}</strong></div><div><span>เวลาล่าสุด</span><strong>{formatDateTime(viewRow.publishedAt || viewRow.archivedAt || viewRow.updatedAt)}</strong></div></div></section>
           </div>
         ) : null}
       </RecordDrawer>
 
-      <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่มาตรฐานเอกสาร" description={`Version ${draft?.versionNumber || "-"} จะเป็นมาตรฐานของ ${DOCUMENT_STANDARD_LABELS[selectedKey]} ที่ใช้งานอยู่`} detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน)" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
-      <ConfirmDialog open={confirm?.action === "discard"} title="ยกเลิกฉบับร่าง" description={`Version ${draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`} detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และมาตรฐานเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="ยกเลิกร่างถาวร" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
+      <ConfirmDialog open={confirm?.action === "publish"} title="ยืนยันเผยแพร่มาตรฐานเอกสาร" description={`Version ${naText(draft?.versionNumber)} จะเป็นมาตรฐานของ ${DOCUMENT_STANDARD_LABELS[selectedKey]} ที่ใช้งานอยู่`} detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน)" confirmLabel="เผยแพร่เวอร์ชัน" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
+      <ConfirmDialog open={confirm?.action === "discard"} title="ยกเลิกฉบับร่าง" description={`Version ${naText(draft?.versionNumber)} จะถูกลบถาวรและกู้คืนไม่ได้`} detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และมาตรฐานเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง" confirmLabel="ยกเลิกร่างถาวร" tone="danger" busy={busy} onClose={() => setConfirm(null)} onConfirm={transitionDraft} />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );

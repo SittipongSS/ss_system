@@ -1,7 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import Modal from "@/components/Modal";
-import { fmtMoney, fmtDate, fmtDateNumeric } from "@/lib/format";
+import { fmtMoney, fmtDate, fmtDateNumeric, naText } from "@/lib/format";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ReadableText from "@/components/ui/ReadableText";
@@ -31,19 +31,19 @@ export default function OrderDetailModal({ order, open, onClose }) {
           <div>
             <div className="text-[var(--text-3)] text-xs">เลขที่ใบเสนอราคา</div>
             <div className="font-mono font-semibold text-[var(--text)]">
-              {order.quotationRef || "-"}
+              {naText(order.quotationRef)}
             </div>
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">ลูกค้า</div>
             <div className="text-[var(--text)] font-medium">
-              {order.customerName || order.items?.[0]?.registration?.customerName || "-"}
+              {order.customerName || naText(order.items?.[0]?.registration?.customerName)}
             </div>
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">PO Reference</div>
             <div className="font-mono text-[var(--text-2)]">
-              {order.poReference || "-"}
+              {naText(order.poReference)}
             </div>
           </div>
           <div>
@@ -52,7 +52,7 @@ export default function OrderDetailModal({ order, open, onClose }) {
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">ผู้รับผิดชอบ</div>
-            <div className="text-[var(--text-2)]">{order.assignee || "-"}</div>
+            <div className="text-[var(--text-2)]">{naText(order.assignee)}</div>
           </div>
           <div>
             <div className="text-[var(--text-3)] text-xs">สถานะ</div>
@@ -141,10 +141,10 @@ export default function OrderDetailModal({ order, open, onClose }) {
                 items.map((it) => (
                   <tr key={it.id}>
                     <td className="font-mono font-semibold text-[var(--text)]">
-                      {it.product?.fgCode || "-"}
+                      {naText(it.product?.fgCode)}
                     </td>
                     <td className="text-xs text-[var(--text-2)]">
-                      <ReadableText text={productDisplayName(it.product)} lines={3} empty="-" />
+                      <ReadableText text={productDisplayName(it.product)} lines={3} />
                     </td>
                     <td className="text-center font-mono font-semibold">{it.quantity}</td>
                     <td className="num font-mono font-bold text-[var(--text)]">

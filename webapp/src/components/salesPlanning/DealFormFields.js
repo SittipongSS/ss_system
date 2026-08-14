@@ -36,6 +36,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import Textarea from "@/components/ui/Textarea";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
+import { naText } from "@/lib/format";
 
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
 // (SCENT=amber · NPD=blue · RE-ORDER=teal · OTHER=violet) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
@@ -373,7 +374,7 @@ export default function DealFormFields({
         {legacyWon
           ? `วันที่ปิดจริงในระบบเดิม (ย้อนหลังได้) — ยอด Won เข้าเดือน ${monthKey(form.expectedCloseDate) || "ของวันที่นี้"}`
           : form.expectedCloseDate
-            ? `เดือน FC: ${monthKey(form.expectedCloseDate) || "-"} (จากวันที่คาดปิด)`
+            ? `เดือน FC: ${naText(monthKey(form.expectedCloseDate))} (จากวันที่คาดปิด)`
             : "เดือน FC มาจากวันที่คาดปิด — ช่องนี้บังคับกรอก"}
       </small>
     </label>

@@ -12,7 +12,7 @@ import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
@@ -174,9 +174,9 @@ export default function FilingDetailPage() {
                 rows={[
                   { id: "tax-before-vat", label: "ค่าภาษี (ก่อน VAT)", value: taxText(o) },
                   { id: "items", label: "รายการสินค้า", value: `${o.items?.length || 0} รายการ` },
-                  { id: "due", label: "กำหนดยื่น", value: o.taxDueDate ? fmtDate(o.taxDueDate) : "-" },
-                  { id: "invoice", label: "ใบกำกับภาษี", value: o.taxInvoiceNumber || "-" },
-                  { id: "receipt", label: "ใบเสร็จสรรพสามิต", value: o.exciseReceiptNumber || "-" },
+                  { id: "due", label: "กำหนดยื่น", value: o.taxDueDate ? fmtDate(o.taxDueDate) : NA },
+                  { id: "invoice", label: "ใบกำกับภาษี", value: naText(o.taxInvoiceNumber) },
+                  { id: "receipt", label: "ใบเสร็จสรรพสามิต", value: naText(o.exciseReceiptNumber) },
                 ]}
                 status={status.label}
                 statusColor={toneColor(status.tone)}
@@ -243,11 +243,11 @@ export default function FilingDetailPage() {
           <div className="flex flex-col gap-5">
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="PO Reference">{o.poReference || "-"}</Field>
-              <Field label="วันที่คาดว่าจะส่ง">{o.deliveryDate && o.deliveryDate !== "-" ? o.deliveryDate : "-"}</Field>
+              <Field label="PO Reference">{naText(o.poReference)}</Field>
+              <Field label="วันที่คาดว่าจะส่ง">{o.deliveryDate && o.deliveryDate !== "-" ? o.deliveryDate : NA}</Field>
               <Field label="ยอดภาษีรวม">{taxText(o)}</Field>
-              <Field label="เลขที่ใบกำกับภาษี">{o.taxInvoiceNumber || "-"}</Field>
-              <Field label="ใบเสร็จสรรพสามิต">{o.exciseReceiptNumber || "-"}</Field>
+              <Field label="เลขที่ใบกำกับภาษี">{naText(o.taxInvoiceNumber)}</Field>
+              <Field label="ใบเสร็จสรรพสามิต">{naText(o.exciseReceiptNumber)}</Field>
               {o.taxPaidDate && <Field label="วันที่ชำระจริง">{fmtDate(o.taxPaidDate)}</Field>}
               {o.taxFormRef && <Field label="แบบ ภส.">{o.taxFormRef}</Field>}
             </div>
@@ -278,7 +278,7 @@ export default function FilingDetailPage() {
                   return (
                     <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 0", verticalAlign: "top" }}>
-                        <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{p.fgCode || "-"}</div>
+                        <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{naText(p.fgCode)}</div>
                         <div>{productDisplayName(p)}</div>
                       </td>
                       <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtNumber((it.quantity || 0))}</td>

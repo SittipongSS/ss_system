@@ -7,7 +7,7 @@ import { matchReport } from "@/lib/sahamit/dashboard";
 import { cellDetail } from "@/lib/sahamit/reconcileClient";
 import { indexProducts, productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtNumber, fmtMoney, fmtDate } from "@/lib/format";
+import { fmtNumber, fmtMoney, fmtDate, NA } from "@/lib/format";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 
 // แท็บ "PO เทียบ FC" — ยุบงานจากหน้า /report เดิมเข้ามา: ตารางมูลค่า/จำนวนต่อสินค้า
@@ -162,8 +162,8 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                       <span style={{ color: s.productName ? "var(--text-3)" : "var(--amber)", fontSize: "var(--fs-5)" }}> · {s.productName || "ไม่รู้จัก"}</span>
                     </td>
                     <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)" }}>{qtyCell(s.qty, ppcOf(prodIdx.get(String(s.fgCode).trim().toLowerCase())))}</td>
-                    <td>{s.deliveryMonth ? shortM(s.deliveryMonth) : "—"}</td>
-                    <td>{s.expectedDate ? fmtDate(s.expectedDate) : (s.dueDate ? fmtDate(s.dueDate) : "—")}</td>
+                    <td>{s.deliveryMonth ? shortM(s.deliveryMonth) : NA}</td>
+                    <td>{s.expectedDate ? fmtDate(s.expectedDate) : (s.dueDate ? fmtDate(s.dueDate) : NA)}</td>
                     <td><span className="status-pill">{PO_STATUS_LABEL[s.status] || s.status}</span></td>
                   </tr>
                 ))}
@@ -202,7 +202,7 @@ function MonthDrill({ rounds, pos, fgCode, cells, ppc }) {
               </td>
               <td style={{ textAlign: "right", padding: "7px 12px" }}>{fmtNumber(c.poQty)}</td>
               <td style={{ padding: "7px 12px" }}><StatusPill st={c.status} /></td>
-              <td style={{ padding: "7px 12px", color: poNos.length ? "var(--text-2)" : "var(--text-3)" }}>{poNos.length ? poNos.join(", ") : "—"}</td>
+              <td style={{ padding: "7px 12px", color: poNos.length ? "var(--text-2)" : "var(--text-3)" }}>{poNos.length ? poNos.join(", ") : NA}</td>
             </tr>
           );
         })}

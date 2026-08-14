@@ -11,7 +11,7 @@
 .kindTab.active { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: var(--accent-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .notice { display: flex; align-items: flex-start; gap: 9px; margin-bottom: var(--space-4); padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--border)); border-radius: var(--radius-lg); color: var(--text-2); background: var(--amber-soft); }
 .notice svg { flex: 0 0 auto; margin-top: 1px; color: var(--amber); }
-.notice p { margin: 0; font-size: var(--fs-6); line-height: 1.55; }
+.notice p { margin: 0; font-size: var(--fs-6); line-height: var(--lh-text); }
 .notice strong { color: var(--text); }
 .listPanel { padding: 0; overflow: hidden; }
 .panelHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-4-5); border-bottom: 1px solid var(--border); }

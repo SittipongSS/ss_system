@@ -27,7 +27,23 @@ const KNOWN_DEBT = new Set(["--doc-accent-soft", "--doc-accent-watermark"]);
    grep ไม่เจอ แล้วมุมของ 8 จุดหดจาก 16px เหลือ 12px เงียบ ๆ — จับได้ตอนวัดใน
    เบราว์เซอร์เท่านั้น (ค่ายังไม่ว่างหลังลบ = มีอีกชั้นประกาศไว้)
    ⚠️ เติมชื่อเข้าลิสต์นี้ได้เฉพาะเมื่อ **ยืนยันในเบราว์เซอร์แล้ว** ว่าเป็นของ Tailwind */
-const TAILWIND_CONSUMED = new Set(["--radius-xl"]);
+/* ชื่อที่ **Tailwind อ่านเอง** ไม่มี `var(--x)` ในรีโปให้เจอ — Tailwind ประกอบ utility
+   จากชื่อพวกนี้ตอน build ⇒ ตัวตรวจ "โทเคนตายแล้ว" จับไม่ได้ ต้องยกเว้นให้
+
+   `--text-*--line-height` (2026-08-14): ทับค่าตั้งต้นของ Tailwind ที่จูนมาเพื่อละติน
+   ทุกขั้นต่ำกว่าเกณฑ์ไทย ⇒ `text-sm` บน `<table>` ส่งอัตรา 1.4286 ให้ลูกทั้งต้นไม้
+   สืบทอดแล้วสระบนถูกตัด · ดูเหตุผลเต็มที่บล็อก `@theme` ใน globals.css */
+const TAILWIND_CONSUMED = new Set([
+  "--radius-xl",
+  "--text-xs--line-height",
+  "--text-sm--line-height",
+  "--text-base--line-height",
+  "--text-lg--line-height",
+  "--text-xl--line-height",
+  "--text-2xl--line-height",
+  "--text-3xl--line-height",
+  "--text-4xl--line-height",
+]);
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

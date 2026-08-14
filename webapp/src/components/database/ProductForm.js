@@ -40,7 +40,7 @@ import {
   packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, naText } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 
 export const EMPTY_PRODUCT = {
@@ -404,7 +404,7 @@ export default function ProductForm({
             <div className="form-group col-span-2">
               <label>ข้อมูลสูตรเดิม (ยังไม่ผูกทะเบียน)</label>
               <div className="text-sm text-[var(--text-2)]">
-                {form.formulaName || "—"}
+                {naText(form.formulaName)}
                 {form.formulaCode ? ` · ${form.formulaCode}` : ""}
                 {form.formulaDate ? ` · ${form.formulaDate}` : ""}
               </div>

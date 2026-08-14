@@ -1,5 +1,6 @@
 import { isValidElement } from "react";
 import styles from "./ChartCard.module.css";
+import { naText } from "@/lib/format";
 
 /* `title` = หัวกำกับของชุดสี — จำเป็นเมื่อการ์ดหนึ่งมีคำอธิบายมากกว่าหนึ่งชุด
    🐞 การ์ด "ช่องทางที่ลีดเข้ามา" เคยต่อสองชุดเป็นแถวเดียว (กลุ่มช่องทางของวงกลม +
@@ -61,7 +62,7 @@ export function ChartSummary({ items = [] }) {
       {items.map((item) => (
         <div key={item.key || item.label}>
           <small>{item.label}</small>
-          <strong>{item.value ?? "-"}</strong>
+          <strong>{naText(item.value)}</strong>
         </div>
       ))}
     </div>

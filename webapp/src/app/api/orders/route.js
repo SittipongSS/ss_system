@@ -5,6 +5,7 @@ import { teamInClause } from '@/lib/teamScope';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
+import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
 
@@ -158,10 +159,10 @@ export async function POST(request) {
     customerTaxId: customer.taxId,
     // ตรึงที่อยู่ลงใบ (mig 0167) — เอกสารต้องพิมพ์เหมือนกันไม่ว่าใครกด
     customerAddress: customer.address || null,
-    quotationRef: quotationRef || '-',
+    quotationRef: naText(quotationRef),
     poReference: body.poReference || null,
-    deliveryDate: body.deliveryDate || '-',
-    remarks: body.remarks || '-',
+    deliveryDate: naText(body.deliveryDate),
+    remarks: naText(body.remarks),
     assignee: body.assignee || user?.name || 'Sales',
     team: orderTeam,
     ownerId: user?.id ?? null,

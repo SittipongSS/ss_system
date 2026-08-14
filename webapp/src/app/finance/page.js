@@ -20,7 +20,7 @@ import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText } from "@/lib/format";
 
 export default function FinanceOverviewPage() {
   const router = useRouter();
@@ -127,9 +127,9 @@ export default function FinanceOverviewPage() {
                       <td><Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link></td>
                       <td>
                         {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
-                        {row.customerName || "-"}
+                        {naText(row.customerName)}
                       </td>
-                      <td className="mono">{row.quotation?.quoteNumber || "-"}</td>
+                      <td className="mono">{naText(row.quotation?.quoteNumber)}</td>
                       <td>{fmtDate(row.orderDate)}</td>
                       <td className="num mono">{fmtMoney(row.actualAmount)}</td>
                     </DetailRow>

@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -42,7 +42,7 @@ const EMPTY_FORM = Object.freeze({
 /* ⚠️ เคยเป็น `new Intl.DateTimeFormat("th-TH", …)` ซึ่ง **ให้ปี พ.ศ. เงียบ ๆ**
    (locale ไทยใช้ปฏิทินพุทธเป็นค่าตั้งต้น) ทั้งที่ทั้งระบบเป็น ค.ศ. — ตอนนี้ใช้
    fmtDateTime กลางตามกฎที่หัว lib/format.js เขียนไว้อยู่แล้ว */
-const formatDateTime = (value) => (value ? fmtDateTime(value) : "-");
+const formatDateTime = (value) => (value ? fmtDateTime(value) : NA);
 const actorOf = (row) => row?.publishedByName || row?.archivedByName || row?.updatedByName || row?.createdByName || "ระบบ";
 
 function StatusBadge({ status }) {
@@ -90,17 +90,17 @@ function PresetPreview({ kind, row }) {
   return (
     <div className={styles.preview}>
       <header>
-        <span>{COMMERCIAL_PRESET_KIND_LABELS[kind]?.toUpperCase()} · VERSION {row?.versionNumber || "-"}</span>
+        <span>{COMMERCIAL_PRESET_KIND_LABELS[kind]?.toUpperCase()} · VERSION {naText(row?.versionNumber)}</span>
         <strong>{row?.title || "ยังไม่ระบุชื่อ"}</strong>
         <small>{commercialPresetStatusLabel(row?.status)}</small>
       </header>
       {kind === "payment" ? (
         <dl>
-          <div><dt>วิธีชำระเงิน</dt><dd><ReadableText text={row?.paymentMethod} lines={3} empty="-" /></dd></div>
-          <div><dt>รายละเอียดการชำระ</dt><dd><ReadableText text={row?.paymentTerms} lines={5} empty="-" /></dd></div>
+          <div><dt>วิธีชำระเงิน</dt><dd><ReadableText text={row?.paymentMethod} lines={3} /></dd></div>
+          <div><dt>รายละเอียดการชำระ</dt><dd><ReadableText text={row?.paymentTerms} lines={5} /></dd></div>
         </dl>
       ) : (
-        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd><ReadableText text={row?.remarks} lines={5} empty="-" /></dd></div></dl>
+        <dl><div><dt>รายละเอียดหมายเหตุ</dt><dd><ReadableText text={row?.remarks} lines={5} /></dd></div></dl>
       )}
     </div>
   );
@@ -354,7 +354,7 @@ export default function CommercialPresetsPage() {
                 <div><dt>สถานะ</dt><dd>{commercialPresetStatusLabel(drawerRow.status)}</dd></div>
                 <div><dt>ผู้ดำเนินการ</dt><dd>{actorOf(drawerRow)}</dd></div>
                 <div><dt>เวลาล่าสุด</dt><dd>{formatDateTime(drawerRow.publishedAt || drawerRow.archivedAt || drawerRow.updatedAt)}</dd></div>
-                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd><ReadableText text={drawerRow.changeNote} lines={4} empty="-" /></dd></div>
+                <div><dt>หมายเหตุการเปลี่ยนแปลง</dt><dd><ReadableText text={drawerRow.changeNote} lines={4} /></dd></div>
               </dl>
             </section>
             <section className={styles.historySection}>
@@ -378,7 +378,7 @@ export default function CommercialPresetsPage() {
               onEditDraft={drawerPreset.draft ? () => openEdit(drawerPreset, drawerPreset.draft) : undefined}
               onPublish={drawerPreset.draft ? () => setConfirm({ action: "publish", preset: drawerPreset, draft: drawerPreset.draft }) : undefined}
               onDiscard={drawerPreset.draft ? () => setConfirm({ action: "discard", preset: drawerPreset, draft: drawerPreset.draft }) : undefined}
-              title={`ควบคุม “${drawerPreset.title || drawerRow.title || "-"}”`}
+              title={`ควบคุม “${drawerPreset.title || naText(drawerRow.title)}”`}
             />
           </div>
         ) : null}
@@ -387,7 +387,7 @@ export default function CommercialPresetsPage() {
       <ConfirmDialog
         open={confirm?.action === "publish"}
         title="ยืนยันเผยแพร่"
-        description={`Version ${confirm?.draft?.versionNumber || "-"} จะเป็นเวอร์ชันใช้งานของ “${confirm?.draft?.title || "-"}”`}
+        description={`Version ${naText(confirm?.draft?.versionNumber)} จะเป็นเวอร์ชันใช้งานของ “${naText(confirm?.draft?.title)}”`}
         detail="เวอร์ชันที่เผยแพร่อยู่เดิมจะถูกซ่อน (ดูย้อนหลังได้ในประวัติเวอร์ชัน) · ใบเสนอราคาที่สร้างหลังจากนี้จะเลือกชุดนี้ได้ ส่วนใบที่ออกไปแล้วไม่เปลี่ยน"
         confirmLabel="เผยแพร่เวอร์ชัน"
         busy={busy}
@@ -398,8 +398,8 @@ export default function CommercialPresetsPage() {
         open={confirm?.action === "discard"}
         title="ยกเลิกฉบับร่าง"
         description={confirm?.preset && !confirm.preset.publishedVersionId
-          ? `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวร และชุด “${confirm?.draft?.title || "-"}” ที่ยังไม่เคยเผยแพร่จะถูกลบทั้งตัว`
-          : `Version ${confirm?.draft?.versionNumber || "-"} จะถูกลบถาวรและกู้คืนไม่ได้`}
+          ? `Version ${naText(confirm?.draft?.versionNumber)} จะถูกลบถาวร และชุด “${naText(confirm?.draft?.title)}” ที่ยังไม่เคยเผยแพร่จะถูกลบทั้งตัว`
+          : `Version ${naText(confirm?.draft?.versionNumber)} จะถูกลบถาวรและกู้คืนไม่ได้`}
         detail="ร่างที่ไม่เคยเผยแพร่ไม่ใช่หลักฐาน — การยกเลิกจะถูกบันทึกในประวัติการใช้งาน (Audit log) และเวอร์ชันที่เผยแพร่อยู่จะไม่เปลี่ยนแปลง"
         confirmLabel="ยกเลิกร่างถาวร"
         tone="danger"

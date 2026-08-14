@@ -9,7 +9,7 @@ import {
   paymentScheduleRows,
 } from "@/lib/sales/paymentPlan";
 import ReadableText from "@/components/ui/ReadableText";
-import { fmtMoney } from "@/lib/format";
+import { fmtMoney, NA } from "@/lib/format";
 import styles from "./QuotationPaymentTerms.module.css";
 
 const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
@@ -132,9 +132,9 @@ export default function QuotationInstallments({
                   <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
                   <td>{split
                     ? disabled
-                      ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">—</span>} /></div>
+                      ? <div className="readable-field is-compact"><ReadableText text={row.note} lines={3} empty={<span className="readable-field-empty">{NA}</span>} /></div>
                       : <input className="premium-input" value={row.note} placeholder="เช่น ก่อนเริ่มงาน" onChange={(event) => updateInstallment(index, { note: event.target.value })} />
-                    : <span className={styles.readonlyValue}>-</span>}</td>
+                    : <span className={styles.readonlyValue}>{NA}</span>}</td>
                   {split && !disabled && (
                     <td><button type="button" className="btn-icon danger" disabled={rows.length <= 2} onClick={() => removeInstallment(index)} aria-label={`ลบงวด ${index + 1}`}><Trash2 size={14} aria-hidden="true" /></button></td>
                   )}

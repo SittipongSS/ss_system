@@ -13,7 +13,7 @@
 .titleLine { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .eyebrow { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
 .identity h2 { margin-top: var(--space-1-5); color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
-.identity > p { margin-top: var(--space-1); color: var(--text-2); font-size: var(--fs-7); line-height: 1.55; }
+.identity > p { margin-top: var(--space-1); color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-text); }
 .identity > small { display: block; margin-top: 11px; color: var(--text-3); font-size: var(--fs-4); }
 .summaryGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .summaryGrid > div { min-width: 0; padding: var(--space-2-5) 11px; border-radius: var(--radius); display: flex; align-items: center; gap: 9px; color: var(--accent-ink); background: var(--panel-2); }

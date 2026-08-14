@@ -5,6 +5,7 @@ import { ActionButton } from "@/components/ui/ActionButtons";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { normalizeDocumentControlActions } from "@/lib/documentControlModel";
 import styles from "./DocumentControlPanel.module.css";
+import { naText } from "@/lib/format";
 
 function DocumentAction({ action, slot, busy }) {
   if (!action || action.visible === false) return null;
@@ -93,7 +94,7 @@ export function DocumentSummaryCard({
           {rows.map((row, index) => (
             <div key={row.id || row.label || index}>
               <dt>{row.label}</dt>
-              <dd>{row.value ?? "-"}</dd>
+              <dd>{naText(row.value)}</dd>
             </div>
           ))}
         </dl>

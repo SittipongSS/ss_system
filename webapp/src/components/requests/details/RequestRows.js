@@ -25,6 +25,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, rowStage } from "@/lib/requests/rowStage";
 import styles from "./details.module.css";
+import { naText } from "@/lib/format";
 
 // attachLabel/attachHint — สายเอกสารใช้การ์ดนี้ "ดูไฟล์" อย่างเดียว (ม-90: แนบผ่าน
 // โมดัลส่งเอกสารทางเดียว) จึงต้องเปลี่ยนหัวข้อกับคำอธิบายได้โดยไม่โคลนการ์ด (ม-34)
@@ -93,7 +94,7 @@ export default function RequestRows({
             <strong>{item.label}</strong>
             <StatusBadge
               tone={ROW_STAGE_TONES[rowStage(item)] || "neutral"}
-              label={ROW_STAGE_LABELS[rowStage(item)] || "—"}
+              label={naText(ROW_STAGE_LABELS[rowStage(item)])}
             />
           </span>
         </button>

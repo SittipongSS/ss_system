@@ -7,6 +7,7 @@ import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
 import { dealTypeOf } from "@/lib/salesPlanning";
+import { NA } from "@/lib/format";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
 // (dealTypeOf คืน "-" เมื่อดีลไม่มีประเภท)
@@ -256,7 +257,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     projectCode: refOrNull(salesOrder.project?.code),
     dealTitle: refOrNull(salesOrder.deal?.title),
     dealType: refOrNull(dealTypeOf(salesOrder.deal)),
-    deliveryDate: "-",
+    deliveryDate: NA,
     remarks: `สร้างจาก ใบสั่งขาย ${salesOrder.orderNumber}`,
     assignee: user.name || salesOrder.createdByName || "Sales",
     // ทีมเจ้าภาพของใบยื่น: ดีลแม่มาก่อน (แหล่งที่ตรงที่สุด) แล้วถอยมาที่ทีมที่ดูแลลูกค้า

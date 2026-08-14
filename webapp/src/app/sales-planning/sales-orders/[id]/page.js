@@ -37,7 +37,7 @@ import {
   isCustomerCancelReason,
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
-import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -710,7 +710,7 @@ export default function SalesOrderDetailPage() {
             // (ที่นั่นมี "Actual ก่อน VAT" พร้อมสถานะ "ยังไม่นับ" อยู่แล้ว) — วันครบกำหนด
             // เป็นสิ่งที่คนเปิดใบอยากรู้ทันทีมากกว่า
             { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
-            { icon: FileText, label: "อ้างอิง QT", value: order.quotation?.quoteNumber || "-" },
+            { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
           ]}
         >
@@ -743,12 +743,12 @@ export default function SalesOrderDetailPage() {
             ⚠️ การ์ดลูกค้าไม่พูดสถานะ SO ซ้ำแล้ว — ป้ายบนหัวใบกับการ์ดจัดการเอกสาร
             พูดอยู่แล้ว ของเดิมพูดซ้ำสี่ที่ */}
         <ContextGrid>
-          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={order.customerName || "-"} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: order.quotation?.contactName || "-" }]} />
-          <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || order.project?.code || "-"} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={naText(order.customerName)} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: naText(order.quotation?.contactName) }]} />
+          <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
-          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={order.deal?.title || "-"} subtitle={`${order.deal?.team || "-"} · ${livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName) || "-"}`} facts={[{ label: "Stage", value: order.deal?.stage || "-" }]} />
-          <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={order.quotation?.quoteNumber || "-"} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
+          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "Stage", value: naText(order.deal?.stage) }]} />
+          <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
         </ContextGrid>
 
         <SalesOrderWorkTrack track={workTrack} />
@@ -858,7 +858,7 @@ export default function SalesOrderDetailPage() {
               lines={sortedLines}
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
-                { id: "discount", label: "ส่วนลดท้ายใบ", value: Number(order.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : "-" },
+                { id: "discount", label: "ส่วนลดท้ายใบ", value: Number(order.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : NA },
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
               ]}
               grandTotal={fmtMoney(order.totalAmount)}
@@ -877,7 +877,7 @@ export default function SalesOrderDetailPage() {
             icon={MapPin}
             eyebrow="ON THIS DOCUMENT"
             title="ข้อมูลบนเอกสาร"
-            meta={`ที่อยู่และผู้ติดต่อยึดตามใบเสนอราคา ${order.quotation?.quoteNumber || "-"}`}
+            meta={`ที่อยู่และผู้ติดต่อยึดตามใบเสนอราคา ${naText(order.quotation?.quoteNumber)}`}
           >
             <div className={styles.docGrid}>
               <div className={styles.docAddress}>
@@ -887,19 +887,19 @@ export default function SalesOrderDetailPage() {
                   {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขสาขาที่ต้องอ่าน
                       (ดู lib/master/thaiAddress.js · หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว) */}
                   <dt>ที่อยู่ออกบิล{order.quotation?.branchCode ? ` · ${branchLabel(order.quotation.branchCode)}` : ""}</dt>
-                  <dd>{order.quotation?.billingAddress || "-"}</dd>
+                  <dd>{naText(order.quotation?.billingAddress)}</dd>
                 </div>
                 <div>
                   <dt>ที่อยู่จัดส่ง</dt>
-                  <dd>{order.quotation?.shippingAddress || order.quotation?.billingAddress || "-"}</dd>
+                  <dd>{order.quotation?.shippingAddress || naText(order.quotation?.billingAddress)}</dd>
                 </div>
                 <div>
                   <dt>ผู้ติดต่อ</dt>
-                  <dd>{[order.quotation?.contactName, order.quotation?.contactPhone].filter(Boolean).join(" · ") || "-"}</dd>
+                  <dd>{naText([order.quotation?.contactName, order.quotation?.contactPhone].filter(Boolean).join(" · "))}</dd>
                 </div>
               </dl>
               <p className={styles.snapshotNote}>
-                ตามใบเสนอราคา {order.quotation?.quoteNumber || "-"} — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)
+                ตามใบเสนอราคา {naText(order.quotation?.quoteNumber)} — แก้ที่นี่ไม่ได้ ต้องแก้ที่ใบเสนอราคา (ใบที่อนุมัติแล้วต้องออก Rev.)
               </p>
               </div>
               <div className={styles.formStack}>
@@ -954,9 +954,9 @@ export default function SalesOrderDetailPage() {
               จึงอยู่ท้ายคอลัมน์ ของเดิมอยู่กลางรางขวาที่ระยะ 2537px */}
   <DetailCard icon={History} eyebrow="AUDIT TRAIL" title="ใครทำอะไรกับใบนี้">
                 <dl className={styles.auditList}>
-                  <div><dt>ผู้จัดทำ</dt><dd>{order.createdByName || "-"}</dd></div>
-                  <div><dt>ผู้ยื่น</dt><dd>{order.submittedByName || "-"}</dd></div>
-                  <div><dt>ผู้อนุมัติ</dt><dd>{order.approvedByName || "-"}</dd></div>
+                  <div><dt>ผู้จัดทำ</dt><dd>{naText(order.createdByName)}</dd></div>
+                  <div><dt>ผู้ยื่น</dt><dd>{naText(order.submittedByName)}</dd></div>
+                  <div><dt>ผู้อนุมัติ</dt><dd>{naText(order.approvedByName)}</dd></div>
                   {order.approvalMode === "admin_override" && <div><dt>รูปแบบอนุมัติ</dt><dd><span className="ui-badge ui-badge-warn">Admin Override</span></dd></div>}
                   {order.approvalOverrideReason && <div><dt>เหตุผล Override</dt><dd><ReadableText text={order.approvalOverrideReason} lines={3} /></dd></div>}
                   {order.status === "cancelled" && <div><dt>เหตุยกเลิก</dt><dd><ReadableText text={`${cancelReasonLabel(order.cancelReasonCode)}${order.cancelReason ? ` — ${order.cancelReason}` : ""}`} lines={3} /></dd></div>}

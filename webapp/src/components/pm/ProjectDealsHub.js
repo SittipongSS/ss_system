@@ -18,7 +18,7 @@ import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtDate, fmtMoney, fmtMoneyCompact } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtMoneyCompact, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
@@ -51,7 +51,7 @@ const localToday = () => {
 
 const stageBadge = (stage) => (
   <span className="ui-badge" style={{ color: STAGE_COLORS[stage] || "var(--text-3)" }}>
-    {STAGE_LABELS[stage] || stage || "-"}
+    {STAGE_LABELS[stage] || naText(stage)}
   </span>
 );
 
@@ -107,7 +107,7 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
           {fmtMoney(value)}
           <div className={styles.valueNote}>{closed ? "ปิดจริง" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
         </td>
-        <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>-</span>}</td>
+        <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>{NA}</span>}</td>
         <td>
           {seg.total ? (
             <div className={styles.progressCell}>
@@ -196,8 +196,8 @@ export function ProjectQuotationsCard({ project: p }) {
               return (
                 <tr key={quote.id} className="premium-row">
                   <td><Link prefetch={false} href={`/sa/quotations/${quote.id}`} className="linklike mono">{quote.quoteNumber}</Link></td>
-                  <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
-                  <td><span className="ui-badge" style={{ color: status?.color || "var(--text-3)" }}>{status?.label || quote.status || "-"}</span></td>
+                  <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : NA}</td>
+                  <td><span className="ui-badge" style={{ color: status?.color || "var(--text-3)" }}>{status?.label || naText(quote.status)}</span></td>
                   <td className="num mono tabular-nums">{fmtMoney(quote.totalAmount)}</td>
                 </tr>
               );
@@ -224,7 +224,7 @@ export function ProjectQuotationsCard({ project: p }) {
               const deal = dealById.get(order.dealId);
               return <tr key={order.id} className="premium-row">
                 <td><Link prefetch={false} href={`/sa/sales-orders/${order.id}`} className="linklike mono">{order.orderNumber}</Link></td>
-                <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : "-"}</td>
+                <td>{deal ? <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike">{deal.title}</Link> : NA}</td>
                 <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{({ draft: "ร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" })[order.status] || order.status}</span></td>
                 <td className="num mono tabular-nums">{fmtMoney(order.status === "approved" ? order.actualAmount : 0)}</td>
               </tr>;

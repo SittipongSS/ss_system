@@ -15,7 +15,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/database/ApprovalQueue";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId } from "@/lib/format";
+import { fmtPhone, fmtNationalId, naText, NA } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -327,7 +327,7 @@ export default function CustomerDirectory() {
                   </div>
                 </div>
                 <div className="text-[11px] text-[var(--text-3)] font-mono">
-                  Tax {c.taxId ? fmtNationalId(c.taxId) : "-"}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
+                  Tax {c.taxId ? fmtNationalId(c.taxId) : NA}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
                 </div>
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -338,7 +338,7 @@ export default function CustomerDirectory() {
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-                  <span className="text-[11px] text-[var(--text-3)] truncate max-w-[70%]">{c.address || "—"}</span>
+                  <span className="text-[11px] text-[var(--text-3)] truncate max-w-[70%]">{naText(c.address)}</span>
                   {showActions ? (
                     <div onClick={(e) => e.stopPropagation()}>
                       <ApprovalActions onDecide={(s) => decide(c, s)} />
@@ -373,7 +373,7 @@ export default function CustomerDirectory() {
                       {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว) */}
                       <div className="font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</div>
                       <div className="font-medium text-[var(--text)] mt-0.5">{c.name}</div>
-                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : "-"}</div>
+                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</div>
                       {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
                     </td>
                     <td className="text-[var(--text-2)]">

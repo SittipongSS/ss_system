@@ -18,7 +18,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
@@ -265,12 +265,12 @@ export default function QuotationsPage() {
                           แล้วเจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
                           ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
                       {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
-                      {r.customerName || "-"}
+                      {naText(r.customerName)}
                       <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{r.deal?.title || "-"}</Link>
+                        <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{naText(r.deal?.title)}</Link>
                       </span>
                     </td>
-                    <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">-</span>}</td>
+                    <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">{NA}</span>}</td>
                     <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                     <td className="num mono">{fmtMoney(r.totalAmount)}</td>
                     <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>

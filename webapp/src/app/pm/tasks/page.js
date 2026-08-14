@@ -24,7 +24,7 @@ import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, Workspac
 import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
-import { fmtDateNumeric as fmtDate } from "@/lib/format";
+import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
 import { daysToDue, isUrgent } from "@/lib/pm/derived";
 import { DIFFICULTY_LABELS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
@@ -278,7 +278,7 @@ export default function TasksPage() {
   // งานตัวเอง (เช่น senior AE) หลุดจากตัวกรองแม้ชื่อจะโชว์ในตาราง.
   const assigneeOptions = useMemo(() => {
     const ids = Array.from(new Set(personalTasks.map((t) => t.assigneeId || t.ownerId).filter(Boolean)));
-    return ids.map((id) => ({ id, name: usersMap[id] || "—" })).sort((a, b) => a.name.localeCompare(b.name, "th"));
+    return ids.map((id) => ({ id, name: naText(usersMap[id]) })).sort((a, b) => a.name.localeCompare(b.name, "th"));
   }, [personalTasks, usersMap]);
 
   const categoryOptions = useMemo(
@@ -533,7 +533,7 @@ export default function TasksPage() {
     const manage = canManageTask(t);
     const done = t.status === "Completed";
     const activeAssignee = t.assigneeId || t.ownerId;
-    const assigneeName = activeAssignee ? (usersMap[activeAssignee] || "—") : null;
+    const assigneeName = activeAssignee ? (naText(usersMap[activeAssignee])) : null;
     const proxyAction = proxyActions(t);
     const showFooter = manage || canSetStatus(t) || proxyAction;
     return (
@@ -660,7 +660,7 @@ export default function TasksPage() {
                   <Link href={`/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}
                   </Link>
-                  <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {q.requesterName || "-"}</span>
+                  <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {naText(q.requesterName)}</span>
                   {q.dueDate && (
                     <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--fs-5)", color: due?.color || "var(--text-3)" }}>
                       กำหนดตอบ {fmtDate(q.dueDate)}{due ? ` · ${due.label}` : ""}
@@ -743,7 +743,7 @@ export default function TasksPage() {
                   <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{quad.sub}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
-                  {items.length === 0 ? <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>—</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
+                  {items.length === 0 ? <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>{NA}</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
                   {items.length > MATRIX_MAX && (
                     <button type="button" className="linklike" style={{ alignSelf: "center", fontSize: "var(--fs-5)" }} onClick={() => setView("table")}>
                       +{items.length - MATRIX_MAX} งาน — ดูทั้งหมดในตาราง
@@ -841,10 +841,10 @@ export default function TasksPage() {
                       </div>
                     </td>
                     {scope === "mine" && <td>{relationshipBadge(t)}</td>}
-                    <td>{t.category ? <span style={{ fontSize: "var(--fs-3)", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+                    <td>{t.category ? <span style={{ fontSize: "var(--fs-3)", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                     {scope !== "mine" && <td style={{ fontSize: "var(--fs-7)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span>{(t.assigneeId || t.ownerId) ? (usersMap[t.assigneeId || t.ownerId] || "—") : <span style={{ color: "var(--text-3)" }}>—</span>}</span>
+                        <span>{(t.assigneeId || t.ownerId) ? (naText(usersMap[t.assigneeId || t.ownerId])) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</span>
                         {proxyBadge(t)}
                       </div>
                     </td>}
@@ -855,9 +855,9 @@ export default function TasksPage() {
                           <div style={{ fontSize: "var(--fs-7)" }}>{fmtDate(t.dueDate)}</div>
                           <div style={{ fontSize: "var(--fs-3)", color: u.color, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>{u.icon} {u.label}</div>
                         </>
-                      ) : <span style={{ color: "var(--text-3)" }}>—</span>}
+                      ) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}
                     </td>
-                    <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+                    <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
                       <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
                         {proxyActions(t)}
@@ -886,7 +886,7 @@ export default function TasksPage() {
             const u = getUrgencyInfo(t);
             const done = t.status === "Completed";
             const manage = canManageTask(t);
-            const assigneeName = t.assigneeId ? (usersMap[t.assigneeId] || "—") : null;
+            const assigneeName = t.assigneeId ? (naText(usersMap[t.assigneeId])) : null;
             return (
               <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>

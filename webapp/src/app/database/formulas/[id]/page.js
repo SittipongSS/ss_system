@@ -9,7 +9,7 @@ import { BadgeDollarSign, Beaker, Pencil } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import Toast from "@/components/ui/Toast";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, NA } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
@@ -81,7 +81,7 @@ export default function FormulaDetailPage() {
       statusDescription="แก้ข้อมูล ดูที่มา และราคาล่าสุดของสูตรนี้"
       facts={[
         { label: "ลูกค้า", value: formula.customerName || "สูตรฐาน" },
-        { label: "วันที่ของสูตร", value: formula.formulaDate ? fmtDate(formula.formulaDate) : "-" },
+        { label: "วันที่ของสูตร", value: formula.formulaDate ? fmtDate(formula.formulaDate) : NA },
         { label: "เพิ่มเข้าทะเบียน", value: fmtDate(formula.createdAt) },
       ]}
       price={formula.price}

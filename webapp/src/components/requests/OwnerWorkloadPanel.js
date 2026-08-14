@@ -17,6 +17,7 @@ import { WorkspaceSection } from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import { UNASSIGNED } from "@/lib/requests/deptOverview";
 import styles from "./requestForm.module.css";
+import { NA } from "@/lib/format";
 
 export default function OwnerWorkloadPanel({
   rows = [],
@@ -71,11 +72,11 @@ export default function OwnerWorkloadPanel({
                 </td>
                 <td className="num">{row.requests}</td>
                 {/* ใบที่ไม่มีบรรทัด (สอบถาม/ขอเอกสาร) รวมกันได้ 0 กลิ่น — ขีดอ่านง่ายกว่าเลขศูนย์ */}
-                <td className="num">{row.lines || <span className={styles.muted}>—</span>}</td>
+                <td className="num">{row.lines || <span className={styles.muted}>{NA}</span>}</td>
                 <td className="num">
                   {row.overdue
                     ? <span className={`ui-badge ${styles.overdue}`}>{row.overdue}</span>
-                    : <span className={styles.muted}>—</span>}
+                    : <span className={styles.muted}>{NA}</span>}
                 </td>
               </tr>
             ))}

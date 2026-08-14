@@ -26,7 +26,7 @@ import {
 import OptionTiles from "@/components/ui/OptionTiles";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import Modal from "@/components/Modal";
-import { fmtDate, fmtNumber, fmtPhone } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
@@ -295,9 +295,9 @@ export default function UserManagement() {
                 ) : (
                   pageRows.map((u) => (
                     <tr key={u.id}>
-                      <td className="font-medium text-[var(--text)]">{u.firstName || "-"}</td>
-                      <td className="font-medium text-[var(--text)]">{u.lastName || "-"}</td>
-                      <td className="text-[var(--text-2)] text-xs whitespace-nowrap">{u.phone ? fmtPhone(u.phone) : "-"}</td>
+                      <td className="font-medium text-[var(--text)]">{naText(u.firstName)}</td>
+                      <td className="font-medium text-[var(--text)]">{naText(u.lastName)}</td>
+                      <td className="text-[var(--text-2)] text-xs whitespace-nowrap">{u.phone ? fmtPhone(u.phone) : NA}</td>
                       <td className="text-[var(--text-2)] font-mono text-xs">
                         {u.email}
                         {u.disabled && (

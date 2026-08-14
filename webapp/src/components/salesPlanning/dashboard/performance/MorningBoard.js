@@ -5,6 +5,7 @@ import { Fragment, useMemo } from "react";
 import { Sun } from "lucide-react";
 import { windowStat, yearSummary } from "@/lib/sales/performanceMath";
 import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar } from "./shared";
+import { NA } from "@/lib/format";
 
 // ☀️ บอร์ดประชุมเช้า — ทุกคน ทุกทีม ในตารางเดียว ตามยอดของงวดที่เลือก.
 // "ต้องปิด" = เป้างวด + ยอดทบยกมา (ปิดโหมดทบ = เป้าปกติ คอลัมน์ทบหาย).
@@ -113,7 +114,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
           )}
         </td>
         <td className={cellClass("num mono")}>{money(s.target)}</td>
-        {carry && <td className={cellClass("num mono")} style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : "—"}</td>}
+        {carry && <td className={cellClass("num mono")} style={{ color: s.carry > 0 ? "var(--red)" : "var(--text-3)" }}>{s.carry > 0 ? money(s.carry) : NA}</td>}
         {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
         <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
@@ -141,7 +142,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {y && (
           <td className={cellClass()}>
             {y.targetYear <= 0 && y.actualYtd <= 0 ? (
-              <span style={{ color: "var(--text-3)" }}>–</span>
+              <span style={{ color: "var(--text-3)" }}>{NA}</span>
             ) : y.gap >= 0 ? (
               <span className="ui-badge" style={{ color: "var(--green)", borderColor: "color-mix(in srgb, currentColor 30%, transparent)" }}>
                 ✓ ตามแผน {pctFmt(y.achv)}

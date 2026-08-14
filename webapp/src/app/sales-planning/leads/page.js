@@ -38,7 +38,7 @@ import {
 import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import { addDays, businessDayKey } from "@/lib/datePeriods";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
@@ -429,7 +429,7 @@ export default function LeadsPage() {
   const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
   const canDeleteRow = (lead) => canDeleteLead({ role, id: meId, team }, lead);
 
-  const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : "-");
+  const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : NA);
 
   /* ตัวเลือกเดือนคุม **แถบตัวเลขด้านบนเท่านั้น** ไม่ได้กรองตารางข้างล่าง
      🐞 มันอยู่หัวหน้าข้างปุ่ม "รับลีดใหม่" จึงอ่านเป็นตัวกรองทั้งหน้า แล้วคนเห็น
@@ -526,7 +526,7 @@ export default function LeadsPage() {
               ระบบพัง ทั้งที่ตั้งใจไม่ให้เห็น (ลิงก์ "ดู KPI เต็ม" ข้างบนกันด่านนี้อยู่แล้ว) */}
           {showKpi && (
           <SaMetricStrip aria-busy={loading}>
-            <SaMetric icon={<Inbox />} label="ลีดเข้า" value={kpi?.funnel?.total ?? "-"} note={periodNote} />
+            <SaMetric icon={<Inbox />} label="ลีดเข้า" value={naText(kpi?.funnel?.total)} note={periodNote} />
             {/* "ค้างตอนนี้" ไม่ผูกกับเดือนที่เลือกโดยเจตนา — ลีดที่ค้างข้ามเดือนมาคือใบที่
                 ต้องทวงที่สุด ถ้าตัดด้วยเดือนมันจะหายไปทั้งที่ยังไม่มีใครแตะ
                 ⚠️ ป้ายมาจาก `LEAD_SLA_STAGES` ที่เดียวร่วมกับแท็บ "KPI ลีด" — เคยสะกดเอง
@@ -547,7 +547,7 @@ export default function LeadsPage() {
                 ⚠️ โน้ตสั้นแค่นี้เพราะแถบมี 5 ช่องแล้ว — ยาวกว่านี้โดน ellipsis ตัดกลางคัน
                 (ก่อนหน้านี้เขียนโซ่ "เข้า → ติดต่อ → เปิดลูกค้า" แล้วโดนตัดจริง)
                 รายละเอียดว่าหล่นตรงไหนอยู่ที่แท็บ "KPI ลีด" ซึ่งมีที่พอ */}
-            <SaMetric icon={<CalendarClock />} label="อัตราปิด (เปิดลูกค้า)" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : "-"} note={`${kpi?.funnel?.qualified ?? 0} จาก ${kpi?.funnel?.total ?? 0} ใบ`} />
+            <SaMetric icon={<CalendarClock />} label="อัตราปิด (เปิดลูกค้า)" value={kpi?.funnel?.total ? fmtPercent((kpi.funnel.qualified / kpi.funnel.total) * 100) : NA} note={`${kpi?.funnel?.qualified ?? 0} จาก ${kpi?.funnel?.total ?? 0} ใบ`} />
           </SaMetricStrip>
           )}
 
@@ -642,7 +642,7 @@ export default function LeadsPage() {
                       <Link prefetch={false} href={`/sa/leads/${lead.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดลีด">
                         <strong>{lead.contactName}</strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                          {[lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · ") || "-"}
+                          {naText([lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · "))}
                         </span>
                       </Link>
                     </td>
@@ -653,7 +653,7 @@ export default function LeadsPage() {
                     </td>
                     <td className="num mono">{leadBudgetText(lead, fmtMoney, "-")}</td>
                     <td>
-                      {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : "-"}
+                      {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : NA}
                       {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
                     </td>
                     <td style={{ textAlign: "center" }}>

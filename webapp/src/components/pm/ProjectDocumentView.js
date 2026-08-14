@@ -13,7 +13,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { businessDate } from "@/lib/businessDate";
 import { PredecessorPopover } from "@/components/pm/PredecessorPicker";
 import { useIsPortrait } from "@/lib/useResponsiveView";
-import { fmtPhone, fmtDateNumeric as fmtDate } from "@/lib/format";
+import { fmtPhone, fmtDateNumeric as fmtDate, naText } from "@/lib/format";
 import Select from "@/components/ui/Select";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -231,14 +231,14 @@ export default function ProjectDocumentView({ project, canEdit, canEditProjectFi
         ? (deal ? `${deal.title}${deal.dealType ? ` · ${deal.dealType}` : ""}` : "งานทั่วไปของโครงการ")
         : null;
       const order = [];
-      segTasks.forEach((t) => { const p = t.phase || "—"; if (!order.includes(p)) order.push(p); });
+      segTasks.forEach((t) => { const p = naText(t.phase); if (!order.includes(p)) order.push(p); });
       order.forEach((phase, i) => {
         groups.push({
           key: `${segId || "none"}|${phase}`,
           phase,
           segLabel: i === 0 ? segLabel : null, // ป้ายดีลเฉพาะกลุ่มแรกของ segment
           phaseNum: groups.length + 1,
-          tasks: segTasks.filter((t) => (t.phase || "—") === phase),
+          tasks: segTasks.filter((t) => (naText(t.phase)) === phase),
         });
       });
     }

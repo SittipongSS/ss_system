@@ -35,7 +35,7 @@ import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/req
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, naText, NA } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
 import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
@@ -828,8 +828,8 @@ export default function RequestDetailPage() {
      ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้** — เคยลองทำเป็นชิปคู่ แล้วผู้ใช้เลือกบรรทัด
      "รับเรื่องโดย …" ใต้หัวใบแทน (ม-101.2) · มีที่เดียวพอ */
   const people = requestHeaderPeople(req, { mine: !!req._opener });
-  const initials = (name) => String(name || "")
-    .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "—";
+  const initials = (name) => naText(String(name || "")
+    .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase());
   const peopleRow = people ? (
     <span className={`${styles.person} ${people.requester.mine ? styles.personSelf : styles.personTeam}`}>
       <span className={styles.personAvatar}>{initials(people.requester.name)}</span>
@@ -1204,7 +1204,7 @@ export default function RequestDetailPage() {
                 onChange={(v) => setReschedule({ ...reschedule, date: v })}
               />
               <small className={styles.hint}>
-                เดิมรับปากไว้ {req.committedDueDate ? fmtDate(req.committedDueDate) : "—"}
+                เดิมรับปากไว้ {req.committedDueDate ? fmtDate(req.committedDueDate) : NA}
               </small>
             </div>
             <div className="form-group">

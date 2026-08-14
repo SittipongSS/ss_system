@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+import { naText } from "@/lib/format";
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -119,7 +120,7 @@ export function Field({ label, children, full = false }) {
   return (
     <div style={{ gridColumn: full ? "1 / -1" : undefined }}>
       <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: "var(--fs-7)", color: "var(--text)" }}>{children ?? "-"}</div>
+      <div style={{ fontSize: "var(--fs-7)", color: "var(--text)" }}>{naText(children)}</div>
     </div>
   );
 }

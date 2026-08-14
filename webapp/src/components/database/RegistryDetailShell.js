@@ -8,6 +8,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import styles from "./registryForm.module.css";
+import { NA } from "@/lib/format";
 
 /* ── เปลือกหน้ารายละเอียดของทะเบียนกลิ่น/สูตร ──────────────────────────────
  *
@@ -101,7 +102,7 @@ export function RegistryFactCard({ icon, eyebrow, title, rows = [], children }) 
           <div key={row.label} className={row.wide ? styles.factWide : undefined}>
             <dt>{row.label}</dt>
             {/* ⚠️ ค่าว่างต้องอ่านเป็น "ยังไม่มี" ไม่ใช่ช่องหาย — ขีดกลางบอกว่าตรวจแล้ว */}
-            <dd>{row.value ?? <span className={styles.muted}>—</span>}</dd>
+            <dd>{row.value ?? <span className={styles.muted}>{NA}</span>}</dd>
           </div>
         ))}
       </dl>

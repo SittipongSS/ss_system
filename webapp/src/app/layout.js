@@ -1,4 +1,3 @@
-import { Sarabun } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
@@ -18,13 +17,14 @@ export const dynamic = "force-dynamic";
 
    ⭐ **ตัวพิมพ์คือ Sarabun** (มติผู้ใช้ 2026-08-13) — เปลี่ยนจาก IBM Plex Sans Thai
    ทั้งระบบรวมเอกสารพิมพ์ เหตุผลและตัวเลขที่วัดก่อนเปลี่ยนอยู่ที่
-   `docs/typography-system.md` · น้ำหนักที่โหลดต้องตรงกับโทเคน `--fw-*` ใน
-   globals.css เสมอ (`fontWeightScale.test.mjs` ผูกสองที่นี้ไว้ด้วยกัน) */
-const appSans = Sarabun({
-  weight: ['400', '500', '600', '700'],
-  subsets: ["thai", "latin"],
-  variable: "--font-app-sans",
-});
+   `docs/typography-system.md`
+
+   ⭐ **เลิกใช้ `next/font/google` แล้ว (2026-08-14)** — ย้ายไปประกาศ `@font-face`
+   เองใน globals.css เพราะต้อง override `ascent`/`descent` ให้คลุมหมึกไทย ไม่งั้น
+   `<input>` เฉือนสระทิ้ง และ next/font/google ไม่เปิดให้ตั้งค่านั้น
+   (`declarations` มีเฉพาะ next/font/local ซึ่งรับ unicode-range รายไฟล์ไม่ได้)
+   ⚠️ น้ำหนักที่โหลดต้องตรงกับโทเคน `--fw-*` เสมอ — ตอนนี้ทั้งสองอยู่ในไฟล์เดียวกัน
+   แล้ว (`fontWeightScale.test.mjs` ยังผูกไว้) */
 
 export const metadata = {
   title: "ระบบ Scent and Sense",
@@ -33,7 +33,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th" className={appSans.variable} suppressHydrationWarning>
+    <html lang="th" suppressHydrationWarning>
       <body className="font-sans antialiased transition-colors duration-300">
         {/* Anti-FOUC theme script. next/script with beforeInteractive is injected
             into <head> and runs before hydration, so the theme is set before

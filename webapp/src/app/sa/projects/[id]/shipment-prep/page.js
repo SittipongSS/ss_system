@@ -13,7 +13,7 @@ import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
 import { PageShell as SaPageShell } from "@/components/ui/Workspace";
 
@@ -158,7 +158,7 @@ export default function ShipmentPrepPage() {
               <div>
                 <div className="shipment-print-kicker">Shipment Preparation</div>
                 <h1 id={pageIndex === 0 ? "shipment-title" : undefined}>{title}</h1>
-                <p>{project.name || "-"} · ลูกค้า: {prep.customerName || project.customerName || "-"}</p>
+                <p>{naText(project.name)} · ลูกค้า: {prep.customerName || naText(project.customerName)}</p>
               </div>
             </div>
             <div className="shipment-print-meta">
@@ -170,9 +170,9 @@ export default function ShipmentPrepPage() {
 
           {pageIndex === 0 && <section className="shipment-print-info" aria-label="ข้อมูลโครงการ">
             <div><span>Project</span><strong>{project.code || project.id}</strong></div>
-            <div><span>AE</span><strong>{project.aeOwner || "-"}</strong></div>
-            <div><span>PO</span><strong>{project.metadata?.poNumber || prep.metadata?.poNumber || "-"}</strong></div>
-            <div><span>Quotation</span><strong>{project.metadata?.quotationNumber || prep.metadata?.quotationNumber || "-"}</strong></div>
+            <div><span>AE</span><strong>{naText(project.aeOwner)}</strong></div>
+            <div><span>PO</span><strong>{project.metadata?.poNumber || naText(prep.metadata?.poNumber)}</strong></div>
+            <div><span>Quotation</span><strong>{project.metadata?.quotationNumber || naText(prep.metadata?.quotationNumber)}</strong></div>
           </section>}
 
           <section>
@@ -192,8 +192,8 @@ export default function ShipmentPrepPage() {
                   return (
                   <tr key={line.id}>
                     <td>{index + 1}</td>
-                    <td className="shipment-mono">{line.fgCode || "-"}</td>
-                    <td>{line.description || "-"}</td>
+                    <td className="shipment-mono">{naText(line.fgCode)}</td>
+                    <td>{naText(line.description)}</td>
                     <td className="shipment-num">{num(line.qty)}</td>
                     <td>{line.note || ""}</td>
                   </tr>
