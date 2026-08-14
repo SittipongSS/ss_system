@@ -8,28 +8,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  DEAL_ATTACHMENT_TABLE, canAttachToDeal, canViewDealAttachment, isDealAttachment,
-} from './dealAttachmentAccess.js';
+  SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment,
+} from './salesAttachmentAccess.js';
 
 const admin = { id: 'u-admin', role: 'admin' };
 const viewer = { id: 'u-viewer', role: 'viewer' };
 const deal = { id: 'D-1', ownerId: 'u-admin', team: 'KA' };
 
 test('ดีลถูกจำแนกเป็น entity แนบไฟล์ของสายงานขาย', () => {
-  assert.equal(isDealAttachment('deal'), true);
-  assert.equal(isDealAttachment('customer'), false);
-  assert.equal(DEAL_ATTACHMENT_TABLE.deal, 'sales_deals');
+  assert.equal(isSalesAttachment('deal'), true);
+  assert.equal(isSalesAttachment('customer'), false);
+  assert.equal(SALES_ATTACHMENT_TABLE.deal, 'sales_deals');
 });
 
 test('ดีลที่ไม่มีอยู่ = ไม่มีสิทธิ์ ไม่ใช่ผ่านเพราะไม่มีอะไรให้เทียบ', () => {
-  assert.equal(canViewDealAttachment(null, admin), false);
-  assert.equal(canAttachToDeal(null, admin), false);
+  assert.equal(canViewSalesAttachment(null, admin), false);
+  assert.equal(canAttachToSalesEntity(null, admin), false);
 });
 
 test('ผู้อ่านอย่างเดียวแนบไม่ได้ — แนบ = แก้ดีลได้ ไม่ใช่แค่เห็น', () => {
   // คนที่เห็นดีลของทีมอื่นได้ (หัวหน้าสาย/ผู้บริหาร) ต้องอ่านได้แต่ไม่ควรไปเพิ่ม
   // หรือลบเอกสารในดีลที่ไม่ใช่ของตัวเอง
-  assert.equal(canAttachToDeal(deal, viewer), false);
+  assert.equal(canAttachToSalesEntity(deal, viewer), false);
 });
 
 // ── ⚠️ ด่านกันลืมต่อ 5 จุด ────────────────────────────────────────────────
@@ -39,18 +39,18 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
 test('จุด 1–2: GET/POST /api/attachments รู้จัก parent ของดีลและมีด่านของตัวเอง', () => {
   const src = read('../../app/api/attachments/route.js');
   // ขาด → loadParent คืน null → GET ตอบ [] เสมอ · POST 404 "ไม่พบระเบียนที่จะแนบ"
-  assert.match(src, /DEAL_ATTACHMENT_TABLE\[entityType\]/);
-  assert.match(src, /canViewDealAttachment/);
-  assert.match(src, /canAttachToDeal/);
+  assert.match(src, /SALES_ATTACHMENT_TABLE\[entityType\]/);
+  assert.match(src, /canViewSalesAttachment/);
+  assert.match(src, /canAttachToSalesEntity/);
 });
 
 test('จุด 3: DELETE ต้องดักดีล **นอก** บล็อก `if (table)` ไม่งั้นใครก็ลบได้', () => {
   const src = read('../../app/api/attachments/[id]/route.js');
-  assert.match(src, /isDealAttachment\(att\.entityType\)/);
+  assert.match(src, /isSalesAttachment\(att\.entityType\)/);
   // ต้องมาก่อน `const table = PARENT_TABLE[...]` — บล็อกข้างล่างถูกข้ามทั้งก้อน
   // เมื่อ entityType ไม่อยู่ใน PARENT_TABLE ของไฟล์นั้น
   assert.ok(
-    src.indexOf('isDealAttachment(att.entityType)') < src.indexOf('const table = PARENT_TABLE'),
+    src.indexOf('isSalesAttachment(att.entityType)') < src.indexOf('const table = PARENT_TABLE'),
     'ด่านของดีลต้องอยู่ก่อนบล็อกที่ถูกข้าม',
   );
 });
@@ -70,4 +70,43 @@ test('ชนิดเอกสารของดีลตรงกับ sales_d
   for (const kind of ['customer_brief', 'quotation', 'deposit_proof', 'po', 'tax_docs', 'other']) {
     assert.ok(keys.includes(kind), `${kind} ต้องมีในชุดของดีล`);
   }
+});
+
+// ── โครงการ (เฟส 2) — เดินเช็กลิสต์ 5 จุดชุดเดียวกัน ─────────────────────
+const project = { id: 'PRJ-1', ownerId: 'u-admin', team: 'KA' };
+
+test('โครงการใช้กฎเดียวกับดีล — ทั้งสองตารางมี team/ownerId ที่ inScope ต้องการ', () => {
+  assert.equal(isSalesAttachment('project'), true);
+  assert.equal(SALES_ATTACHMENT_TABLE.project, 'projects');
+  assert.equal(canViewSalesAttachment(project, admin), true);
+  assert.equal(canAttachToSalesEntity(project, admin), true);
+  // ผู้อ่านอย่างเดียวเห็นได้แต่แนบไม่ได้ — เหมือนดีลทุกประการ
+  assert.equal(canViewSalesAttachment(project, viewer), true);
+  assert.equal(canAttachToSalesEntity(project, viewer), false);
+});
+
+test('จุด 4 ของโครงการ: มีสาขาโฟลเดอร์บน Drive ไม่งั้นไฟล์ตกถัง "_รอจัดที่"', () => {
+  // โครงการไม่มี `type === 'project'` ของตัวเอง — มันเดินผ่าน SALES_THREAD_FOLDER
+  assert.match(read('../drive.js'), /project: \{ folder: FOLDER\.salesProjects/);
+  // และต้องอยู่ในทะเบียน entity ที่มีสาขาจริง ไม่งั้น hasFolderBranch() ปฏิเสธ
+  assert.match(read('../master/driveEntityMap.js'), /'project',/);
+});
+
+test('จุด 5 ของโครงการ: PARENT_TABLE กลางต้องรู้จัก', () => {
+  assert.match(read('../master/attachments.js'), /project: 'projects'/);
+});
+
+test('proxy ไฟล์แนบต้องมีสาขาของสายงานขาย — ไม่งั้น "แนบได้แต่เปิดดูไม่ได้"', () => {
+  // ⚠️ ATTACHMENT_RESOURCE ไม่มีคีย์ของ deal/project ⇒ ถ้าตกไป canViewRecord
+  // จะถูกปฏิเสธทุกใบ ทั้งที่ไฟล์อยู่ครบ
+  const src = read('../../app/api/master/attachments/[id]/file/route.js');
+  assert.match(src, /isSalesAttachment\(att\.entityType\)/);
+  assert.match(src, /canViewSalesAttachment/);
+});
+
+test('ลิงก์เปิดไฟล์ในลิสต์รวมต้องชี้ route ที่มีอยู่จริง', async () => {
+  // 🐞 เดิมชี้ /api/attachments/<id>/file ซึ่งไม่มี route นั้น ⇒ 404 ทุกใบ
+  const src = read('./entityDocuments.js');
+  assert.doesNotMatch(src, /`\/api\/attachments\/\$\{/);
+  assert.match(src, /`\/api\/master\/attachments\/\$\{/);
 });

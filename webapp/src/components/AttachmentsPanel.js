@@ -78,6 +78,11 @@ export default function AttachmentsPanel({
   // ของตัวเองบน Drive · ปุ่ม "ดู" ของแถวเอกสาร Google **ขึ้นเสมอ** ไม่ต้องรอ flag นี้
   // เพราะการอ่านไม่ใช่การเพิ่มของ (จอที่แค่แสดงผลก็ควรเปิดดูได้)
   googleDocs = false,
+  // ปิดทางอัปไฟล์นิ่ง (ปุ่ม · ลากมาวาง · Ctrl+V) เหลือแต่เอกสารร่วม — ใช้กับโครงการ
+  // ซึ่งเป็นที่รวมของหลายดีล: ไฟล์หลักฐานต้องผูกดีลรายใบ ไม่งั้นไม่รู้ว่าของดีลไหน
+  // ⚠️ ไม่ใช่แค่ซ่อนปุ่ม — ถอด zoneProps ด้วย ไม่งั้นลากไฟล์มาวางแล้วอัปขึ้นจริง
+  // ทั้งที่ไม่มีปุ่มให้กด (ทางลับที่ไม่มีใครตั้งใจเปิด)
+  fileUploads = true,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
@@ -589,7 +594,7 @@ export default function AttachmentsPanel({
     const busy = uploadingType === inlineType;
 
     return (
-      <div className="mt-1" {...intake.zoneProps}>
+      <div className="mt-1" {...(fileUploads ? intake.zoneProps : {})}>
         {/* ⭐ **คำใบ้อยู่แถวเดียวกับปุ่ม** (มติผู้ใช้ 2026-08-13 · IS-26080021)
             🐞 เดิมคำใบ้เป็น <p> ใต้แถวปุ่ม ⇒ กล่องไฟล์กินสองบรรทัดโดยที่บรรทัดบนมีแต่
             ปุ่มลอยชิดขวา และที่ว่างกลางแถวไม่มีอะไรเลย · ผู้ใช้ส่งภาพมาว่าโล่งทั้งสองจุด
@@ -599,12 +604,12 @@ export default function AttachmentsPanel({
           {/* ⚠️ คำสั้น "ลากมาวาง · Ctrl+V" ไม่ใช่ประโยคเต็ม — กล่องนี้ไปโผล่ในรางขวา
               ที่กว้างแค่ 292px ด้วย · ประโยคเต็ม 40 ตัวอักษรบวกปุ่มแล้วตกบรรทัด
               ⇒ กล่องเดียวกันสูงไม่เท่ากันสองที่ในหน้าเดียว (ผู้ใช้ทักเอง) */}
-          {canEdit && (
+          {canEdit && fileUploads && (
             <p className="mr-auto text-[10px] text-[var(--text-3)]">
               ลากมาวาง · Ctrl+V
             </p>
           )}
-          {canEdit && (
+          {canEdit && fileUploads && (
             <button
               type="button"
               onClick={() => pickForType(inlineType)}

@@ -194,13 +194,31 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const collected = await Promise.all(
       visible.map((deal) => collectDealDocuments(supabase, deal.id).then((raw) => ({ deal, raw }))),
     );
-    const rows = collected.flatMap(({ deal, raw }) => buildEntityDocuments(raw)
+    const dealRows = collected.flatMap(({ deal, raw }) => buildEntityDocuments(raw)
       // บอกด้วยว่าแถวนี้มาจากดีลไหน — โครงการมีหลายดีล แถวลอย ๆ อ่านไม่ออกว่าของใคร
       .map((row) => ({
         ...row,
         id: `${deal.id}:${row.id}`,
         note: [row.note, deal.title].filter(Boolean).join(' · '),
       })));
+
+    // ⭐ เอกสารร่วมของ **ตัวโครงการเอง** (เฟส 2) — ไม่ได้ผูกดีลใบไหน จึงไม่มีทาง
+    // โผล่จากการวนอ่านดีลข้างบน · แถวพวกนี้ไม่มีชื่อดีลต่อท้ายโดยตั้งใจ: มันเป็นของ
+    // ทั้งโครงการ ไม่ใช่ของดีลใดใบหนึ่ง
+    // ⚠️ อ่านได้ก็ต่อเมื่อเห็นตัวโครงการ — ไม่พ่วงกับสิทธิ์ของดีลข้างใน
+    const { data: project, error: projectError } = await supabase
+      .from('projects').select('*').eq('id', projectId).maybeSingle();
+    raise('อ่านโครงการไม่สำเร็จ', projectError);
+    let projectRows = [];
+    if (project && inSalesViewScope(user, project)) {
+      const { data: projectAttachments, error: projectAttError } = await supabase
+        .from('attachments').select('id, fileName, docType, createdAt, metadata, fileUrl')
+        .eq('entityType', 'project').eq('entityId', projectId);
+      raise('อ่านเอกสารร่วมของโครงการไม่สำเร็จ', projectAttError);
+      projectRows = buildEntityDocuments({ attachments: projectAttachments || [] });
+    }
+
+    const rows = [...projectRows, ...dealRows];
     return ok({ rows, progress: entityDocumentProgress(rows) });
   } catch (e) {
     return fail(e.message, 500);
