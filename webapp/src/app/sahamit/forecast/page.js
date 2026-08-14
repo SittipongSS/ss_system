@@ -355,7 +355,7 @@ function ForecastPageInner() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>รอบ:</label>
-                <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
+                <Select className="premium-select" style={{ minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
@@ -441,7 +441,7 @@ function ForecastPageInner() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ fontSize: "var(--fs-7)", color: "var(--text-2)" }}>รอบ:</label>
-                <Select className="premium-select" style={{ height: 32, minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
+                <Select className="premium-select" style={{ minWidth: 220 }} value={selectedNo ?? ""} onChange={(e) => setSelectedNo(Number(e.target.value))}>
                   {[...rounds].reverse().map((r) => (
                     <option key={r.id} value={r.roundNo}>#{r.roundNo} · รับ {fmtDate(r.receivedDate)} · {nf(roundTotal(r))} ชิ้น</option>
                   ))}
@@ -604,7 +604,7 @@ function ForecastPageInner() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             ผู้ดูแล (AE)
-            <Select className="premium-select" style={{ height: "var(--ctl-h)" }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
+            <Select className="premium-select" value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
               {!aeList.length && <option value="">— ไม่มี AE —</option>}
               {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
             </Select>
@@ -612,7 +612,7 @@ function ForecastPageInner() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             เดือนคาดได้รับ PO
-            <Select className="premium-select" style={{ height: "var(--ctl-h)" }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
+            <Select className="premium-select" value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
           </label>

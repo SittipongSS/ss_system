@@ -3106,10 +3106,14 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* ⚠️ เดิมตรึง `height: 32px` ไว้ตั้งแต่ตอนที่ `--ctl-h` ยังเป็น 32px แล้วไม่ได้ตามไปแก้
+   (แบบเดียวกับที่ `.premium-input` กับ `.ui-select` เคยเจอ) ⇒ พอโทเคนขยับเป็น 40px
+   `<select>` ตัวเก่านี้เตี้ยกว่าปุ่ม/ช่องกรอกที่วางข้างกัน **8px** ทุกแถบเครื่องมือที่ยังใช้มัน
+   (มติผู้ใช้ 2026-08-14) */
 .premium-select {
   background: var(--panel);
   border: 1px solid var(--border);
-  height: 32px;
+  height: var(--ctl-h);
   color: var(--text);
   border-radius: var(--radius);
   cursor: pointer;
@@ -3135,8 +3139,12 @@ input[type="number"] {
   color: var(--text);
 }
 
-/* Select กลาง (component <Select>) — variant ที่เลิกเขียน inline style ซ้ำ ๆ */
-.premium-select.compact { height: var(--ctl-h, 32px); font-size: var(--fs-5); width: auto; }
+/* Select กลาง (component <Select>) — variant ที่เลิกเขียน inline style ซ้ำ ๆ
+   🐞 เดิมเขียน `height: var(--ctl-h, 32px)` = **compact สูงเท่าตัวปกติเป๊ะ** (ค่า fallback
+   32 ไม่เคยถูกใช้เพราะโทเคนมีค่าอยู่แล้ว) ⇒ variant นี้ไม่มีผลอะไรเลยมาตลอด · พอฐาน
+   ขยับเป็น 40px มันยิ่งกลับหัว: "compact" จะสูงกว่าตัวปกติถ้าไม่แก้
+   ⇒ ตรึง 32px เท่ากับ `.ui-select.compact` ที่เตี้ยจริง (มติผู้ใช้ 2026-08-14) */
+.premium-select.compact { height: 32px; font-size: var(--fs-5); width: auto; }
 .premium-select.tone {
   height: 30px; font-size: var(--fs-5); font-weight: var(--fw-semibold);
   min-width: 118px; padding: 0 26px 0 var(--space-2-5); width: auto;

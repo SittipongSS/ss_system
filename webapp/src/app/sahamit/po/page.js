@@ -235,7 +235,7 @@ export default function PoPage() {
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>เรียงตาม</span>
-                  <Select className="premium-select" style={{ height: 32 }} value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
+                  <Select className="premium-select" value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
                     <option value="">— ไม่เรียง —</option>
                     {fields.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
                   </Select>
