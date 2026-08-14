@@ -3,21 +3,21 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8");
-const layout = readFileSync(new URL("../../app/layout.js", import.meta.url), "utf8");
 const audit = readFileSync(new URL("../../../scripts/audit-ui.mjs", import.meta.url), "utf8");
 
 const tokens = Object.fromEntries(
   [...css.matchAll(/--fw-([\w-]+):\s*(\d+);/g)].map((m) => [m[1], Number(m[2])]),
 );
 
-/** น้ำหนักที่ next/font โหลดมาจริง — อ่านชื่อฟอนต์จาก import ไม่ผูกกับชื่อใดชื่อหนึ่ง
-    (ของเดิมฮาร์ดโค้ด `IBM_Plex_Sans_Thai(` แล้วพังตอนเปลี่ยนเป็น Sarabun 2026-08-13) */
+/** น้ำหนักที่โหลดมาจริง — อ่านจาก `@font-face` ใน globals.css
+    ⚠️ ย้ายมาจาก layout.js เมื่อ 2026-08-14 ตอนเลิกใช้ `next/font/google` และประกาศ
+    `@font-face` เองเพื่อ override ascent/descent ให้คลุมหมึกไทย (ดูคอมเมนต์ที่หัว
+    globals.css) — เจตนาของด่านนี้เท่าเดิม: CSS ห้ามสั่งน้ำหนักที่ไม่ได้โหลด
+    เพราะเบราว์เซอร์จะปัดไปน้ำหนักอื่นเงียบ ๆ */
 function loadedWeights() {
-  const imported = layout.match(/import\s*\{\s*([\w]+)\s*\}\s*from\s*["']next\/font\/google["']/);
-  assert.ok(imported, "อ่านชื่อฟอนต์จาก layout.js ไม่ได้ — เช็ค selector ของเทสต์");
-  const block = layout.slice(layout.indexOf(`${imported[1]}(`));
-  const list = block.slice(block.indexOf("weight:"), block.indexOf("]", block.indexOf("weight:")));
-  return [...list.matchAll(/'(\d+)'|"(\d+)"/g)].map((m) => Number(m[1] ?? m[2]));
+  const faces = [...css.matchAll(/@font-face \{[^}]*?font-weight:\s*(\d+)/gs)];
+  assert.ok(faces.length > 0, "อ่าน @font-face จาก globals.css ไม่ได้ — เช็ค selector ของเทสต์");
+  return [...new Set(faces.map((m) => Number(m[1])))];
 }
 
 test("มีโทเคนน้ำหนักครบและเป็นตัวเลขล้วน", () => {
@@ -37,14 +37,21 @@ test("ทุกโทเคนต้องเป็นน้ำหนักท�
     assert.ok(
       loaded.includes(value),
       `--fw-${name}: ${value} ไม่อยู่ในน้ำหนักที่โหลด (${loaded.join(", ")}) — ` +
-        "เบราว์เซอร์จะปัดไปน้ำหนักอื่นเงียบ ๆ ต้องเพิ่มใน layout.js ก่อน",
+        "เบราว์เซอร์จะปัดไปน้ำหนักอื่นเงียบ ๆ ต้องเพิ่ม @font-face ใน globals.css ก่อน",
     );
   }
 });
 
+/* ⚠️ บล็อก `@font-face` ยกเว้น — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
+   จะเขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
+   นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ `loadedWeights()` ก็อ่านจากตรงนี้ */
 test("ไม่มีน้ำหนักเลขดิบหลงเหลือใน CSS ของแอป", () => {
   const offenders = [];
+  let inFontFace = false;
   css.split(/\r?\n/).forEach((line, index) => {
+    if (/@font-face\s*\{/.test(line)) inFontFace = true;
+    else if (inFontFace && line.trim() === "}") inFontFace = false;
+    if (inFontFace) return;
     const hit = line.match(/font-weight:\s*(\d+)/);
     if (hit) offenders.push(`globals.css:${index + 1} → ${hit[0]}`);
   });

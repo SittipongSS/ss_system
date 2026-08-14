@@ -337,7 +337,15 @@ for (const file of uiFiles) {
      ⚠️ เอกสารพิมพ์ (`components/documents/`, `lib/`) ยกเว้น — ประกอบ HTML เองและ
      ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น */
   if (!rel.startsWith("src/components/documents/")) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
+       เขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
+       นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ fontWeightScale.test.mjs อ่านจากตรงนั้น
+       เพื่อเช็คว่าโทเคน --fw-* ทุกตัวมีน้ำหนักที่โหลดมาจริงรองรับ */
+    let inFontFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFontFace = true;
+      else if (inFontFace && line.trim() === "}") inFontFace = false;
+      if (inFontFace) return;
       const cssHit = line.match(/font-weight:\s*(\d+)/);
       if (cssHit) {
         fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
@@ -363,7 +371,14 @@ for (const file of uiFiles) {
        (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์ */
   const FONT_FAMILY_PRINT_EXEMPT = /^src\/(components\/documents\/|lib\/(printTheme|sales\/quotation(Document|Master)))/;
   if (!FONT_FAMILY_PRINT_EXEMPT.test(rel)) {
+    /* ⚠️ ข้ามบล็อก `@font-face` — เป็นที่ **ประกาศ** ชื่อฟอนต์ ไม่ใช่ที่ *ใช้*
+       ต้องเขียนชื่อจริงตามสเปก (`var()` ใน @font-face ไม่ทำงาน)
+       ที่ใช้จริงยังต้องผ่าน `var(--font-sans)` เหมือนเดิมทุกจุด */
+    let inFace = false;
     source.split(/\r?\n/).forEach((line, index) => {
+      if (/@font-face\s*\{/.test(line)) inFace = true;
+      else if (inFace && line.trim() === "}") inFace = false;
+      if (inFace) return;
       for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
         const value = hit[1].trim();
         if (/^var\(--font-/.test(value)) continue;

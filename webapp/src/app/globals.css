@@ -5,6 +5,132 @@
    in sync with the [data-theme] CSS-variable theming below. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ⭐ **ตัวพิมพ์ประกาศเองที่นี่ ไม่ผ่าน `next/font/google` แล้ว** (มติผู้ใช้ 2026-08-14)
+
+   🐞 **`<input>` คลิปข้อความที่ "กล่องที่ฟอนต์ประกาศ" ไม่ใช่ที่ขอบกล่องของมัน**
+   วัดที่ Sarabun 14px/600: กล่องที่ฟอนต์ประกาศคือ ขึ้น 15px / ลง 3px แต่หมึกไทยจริง
+   ลงถึง **4.82px** ("ผู้ปฏิบัติ") ⇒ ล้น 1.82px แล้วโดนเฉือน — ทั้งข้อความที่พิมพ์
+   และ placeholder (ผู้ใช้ส่งภาพว่า "เหมือนมีเลเยอร์บนตัดหัวสระ")
+
+   พิสูจน์แล้วว่าไม่ใช่เรื่องขนาดกล่อง: `<div class="premium-input">` ข้อความเดียวกัน
+   **สระครบ** · เปลี่ยนความสูง input เป็น 38/48/60px หรือ line-height 1.7/2.2/2.8
+   **ขาดเท่าเดิมทุกค่า** ⇒ ตัวที่ตัดคือ metric ของฟอนต์ ไม่มี CSS ตัวไหนแตะได้
+   ⇒ ทางแก้เดียวคือ **ประกาศ metric ใหม่ให้คลุมหมึกไทย** ซึ่ง `next/font/google`
+   ไม่เปิดให้ทำ (`declarations` ใช้ได้เฉพาะ next/font/local) จึงย้ายมาโฮสต์เอง
+
+   ไฟล์มาจาก Google Fonts (OFL) ชุด subset thai + latin 4 น้ำหนัก = 8 ไฟล์ 83KB
+   ⚠️ **น้ำหนักที่ประกาศที่นี่ต้องตรงกับโทเคน `--fw-*` เสมอ** — `fontWeightScale.test.mjs`
+   ผูกสองที่นี้ไว้ด้วยกัน (CSS สั่งน้ำหนักที่ไม่ได้โหลด = เบราว์เซอร์ปัดทิ้งเงียบ ๆ)
+   ⚠️ เปลี่ยนฟอนต์เมื่อไร **ต้องวัด ascent/descent ของหมึกไทยใหม่** ทั้งชุด
+   ดู `docs/typography-system.md` */
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/Sarabun-400-latin.woff2') format('woff2');
+  /* 🔴 กล่องที่ฟอนต์ประกาศมาเดิม (ขึ้น 107.1% / ลง 21.4%) **แคบกว่าหมึกไทยจริง**
+     (ขึ้นถึง 127.7% · ลงถึง 35.3%) ⇒ `<input>` เฉือนสระทิ้ง · ค่าใหม่เผื่อไว้เล็กน้อย
+     ⚠️ ผลข้างเคียง: กล่องบรรทัด `normal` โตจาก 1.29em เป็น 1.64em และการจัดกลาง
+     ในกล่องความสูงคงที่ขยับ — วัดใหม่ทั้งระบบแล้วเมื่อ 2026-08-14 */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/Sarabun-400-thai.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/Sarabun-500-latin.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/Sarabun-500-thai.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/Sarabun-600-latin.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/Sarabun-600-thai.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/Sarabun-700-latin.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Sarabun';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/Sarabun-700-thai.woff2') format('woff2');
+  /* ค่า override เหตุผลเดียวกับ face แรก */
+  ascent-override: 128%;
+  descent-override: 36%;
+  line-gap-override: 0%;
+  unicode-range: U+02D7, U+0303, U+0331, U+0E01-0E5B, U+200C-200D, U+25CC;
+}
+
 /* ⭐ **utility `text-*` ของ Tailwind พาความสูงบรรทัดของตัวเองมาด้วย** (2026-08-14)
 
    Tailwind v4 ผูก line-height ติดมากับขนาดตัวอักษรทุกขั้น (`theme.css`) และค่าพวกนั้น
@@ -33,7 +159,7 @@
 
 :root {
   /* ── ตัวพิมพ์ของระบบ = **ฟอนต์เดียว** (มติผู้ใช้ 2026-08-09) ──────────────
-     Sarabun — โหลดผ่าน next/font (--font-app-sans บน <html>)
+     Sarabun — ประกาศ @font-face เองที่หัวไฟล์นี้ (ไม่ผ่าน next/font แล้ว)
      กติกาการใช้ (ขนาด/ความหนา/ระยะห่าง) อยู่ที่ `docs/typography-system.md`
 
      ⭐ **เปลี่ยนจาก IBM Plex Sans Thai มาเป็น Sarabun** (มติผู้ใช้ 2026-08-13)
@@ -61,7 +187,7 @@
      ⚠️ ข้อยกเว้นเดียวคือกล่องวางข้อมูลดิบ `.textarea-premium` (JSON/ล็อก) ที่ต้อง
      เรียงคอลัมน์จริง — เขียนสแตกของ **ระบบปฏิบัติการ** ไว้ตรงนั้น ไม่โหลดเว็บฟอนต์
      ตัวที่สองกลับเข้ามา */
-  --font-sans: var(--font-app-sans), "Sarabun", "Noto Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Sarabun", "Noto Sans Thai", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-sans);
   --font-numeric: var(--font-sans);
 
