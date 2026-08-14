@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-/* ความสูงตัวควบคุม — `--ctl-h` 36px คือมาตรฐานของปุ่ม/ช่องกรอก/ดรอปดาวน์ทุกชนิด
+/* ความสูงตัวควบคุม — `--ctl-h` คือมาตรฐานของปุ่ม/ช่องกรอก/ดรอปดาวน์ทุกชนิด
    (ตั้งไว้ตั้งแต่ #791→#793 ตอนที่ช่องกรอกเคยตรึง 32px แล้วเตี้ยกว่าปุ่มแถวเดียวกัน)
+   ⭐ 2026-08-14: 36px → **40px** (มติผู้ใช้ จากภาพจริง "ขอเพิ่มความสูง มีปัญหาทั้งระบบ")
+   พร้อมโทเคนคู่กัน `--ctl-text-sink` ที่ดันตัวอักษรขึ้นให้กลางที่ตาเห็น — เหตุผลและ
+   ตัวเลขที่วัดมาอยู่ในคอมเมนต์ของโทเคนใน globals.css
 
    ตรวจ 2026-07-29: `.form-action-bar .btn` เขียน `min-height: 38px` ทับไว้ = ปุ่มใน
    แถบท้ายฟอร์มสูงกว่าปุ่มที่อื่น 2px โดยไม่มีเหตุผลด้านดีไซน์รองรับ — drift แบบ
@@ -18,11 +21,35 @@ const GLOBALS = fs.readFileSync(path.join(process.cwd(), "src", "app", "globals.
 const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "");
 
 test("มาตรฐานความสูงตัวควบคุมมีสองค่า และทั้งคู่มีชื่อ", () => {
-  assert.match(GLOBALS, /--ctl-h:\s*36px;/);
+  assert.match(GLOBALS, /--ctl-h:\s*40px;/);
   assert.match(GLOBALS, /--ctl-h-touch:\s*44px;/,
     "ความสูงสำหรับจอสัมผัสต้องมีชื่อ ไม่งั้นเลข 44 จะแยกไม่ออกจากเลขที่หลุดมา");
   assert.match(GLOBALS, /^\.btn \{[^}]*min-height:\s*var\(--ctl-h\)/ms,
     ".btn ต้องรับความสูงจาก --ctl-h");
+});
+
+/* ⭐ ตัวอักษรไทยในกล่องบรรทัดเดียวต้องกลาง "ที่ตาเห็น" — เบราว์เซอร์จัดกลางตามกล่อง
+   ฟอนต์ (Sarabun 13px = ขึ้น 14 / ลง 3) แต่สระล่าง+ขีดล่างของไทยลงจริง 4.49px
+   ⇒ ทุกช่องนั่งต่ำกว่ากลาง 1.5px ถ้าไม่หั่นพื้นล่างออก
+   ⚠️ ด่านนี้กันสองทิศ: หายไปจากช่อง (อาการเดิมกลับมา) และงอกใส่ปุ่ม (ไอคอนลอยสูง) */
+test("ช่องบรรทัดเดียวดันตัวอักษรขึ้นด้วยโทเคน ไม่ใช่เลขดิบ", () => {
+  assert.match(GLOBALS, /--ctl-text-sink:\s*3px;/,
+    "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ ไม่งั้นเลข 3 จะแยกไม่ออกจาก padding ที่หลุดมา");
+
+  const css = stripComments(GLOBALS);
+  const rule = css.match(/([^{}]*)\{[^{}]*padding-bottom:\s*var\(--ctl-text-sink\)[^{}]*\}/);
+  assert.ok(rule, "ไม่มีใครใช้ --ctl-text-sink เลย — ตัวอักษรกลับไปนั่งต่ำกว่ากลาง 1.5px");
+
+  const selector = rule[1].replace(/\s+/g, " ").trim();
+  for (const field of [".premium-input:not(textarea)", ".premium-select", ".ui-select", ".deal-derived"]) {
+    assert.ok(selector.includes(field), `${field} หลุดจากชุดช่องที่ดันตัวอักษรขึ้น`);
+  }
+  assert.ok(selector.includes(":not(textarea)"),
+    "textarea ต้องถูกกัน — มี padding แนวตั้ง 8px ของตัวเองอยู่แล้ว");
+
+  /* ปุ่มไม่อยู่ในชุดนี้: ในปุ่มเป็นไอคอนที่ต้องกลางกล่องจริง ๆ */
+  assert.doesNotMatch(css, /\.btn(?:-icon)?[^{}]*\{[^{}]*var\(--ctl-text-sink\)/,
+    "ปุ่มไม่ต้องดันขึ้น — ไอคอนจะลอยสูงกว่ากลาง 1.5px");
 });
 
 /* **variant ของขนาด** — ผู้เรียกเลือกเองว่าจะใช้ปุ่มเล็ก/ปุ่มไอคอน ต่างจาก descendant
