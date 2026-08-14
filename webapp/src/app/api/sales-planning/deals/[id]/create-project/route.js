@@ -10,6 +10,7 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { resolveProjectAcOwner } from '@/lib/pm/projectOwner';
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
@@ -49,6 +50,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const categoryError = await activeProductTypeError(body.productMainCategory || null);
     if (categoryError) return badRequest(categoryError);
   }
+  // ผู้ประสานงาน (AC) — ช่องไม่บังคับ · ตรวจว่าเป็นบัญชี AC จริงในทีมของดีล เพราะ
+  // `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
+  const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, deal.team || user.team);
+  if (!coordinator.ok) return badRequest(coordinator.error);
+
   // วันที่ต้องซิงค์กับดีล: โมดัลไม่ระบุ → ใช้วันเริ่ม/สิ้นสุดของดีล (mig 0095) ก่อนตกไปวันนี้
   const startDate = body.startDate || deal.startDate || todayStr();
   const dueDate = body.dueDate || deal.endDate || deal.expectedCloseDate || null;
@@ -87,8 +93,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // ⚠️ ตกไปหา `deal.ownerId` ได้เฉพาะตอน**ไม่ได้เลือกชื่อเอง**: เลือกชื่อคนอื่น
     // แล้วยังใส่ id ของเจ้าของดีล = แจ้งเตือนไปผิดคนแบบเงียบ ๆ
     aeOwnerId: body.aeOwnerId || (body.aeOwner ? null : (deal.ownerId || user.id)) || null,
-    acOwner: body.acOwner || '',
-    acOwnerId: body.acOwnerId || null,
+    // ผู้ประสานงาน (AC) — ตรวจแล้วที่ด่านข้างบน ชื่อมาจาก server ไม่ใช่จาก client
+    acOwner: coordinator.acOwner || '',
+    acOwnerId: coordinator.acOwnerId,
     status: 'New',
     startDate,
     dueDate,

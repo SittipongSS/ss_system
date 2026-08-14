@@ -4,7 +4,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
-import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectAeOwner } from '@/lib/pm/projectOwner';
 import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
@@ -288,6 +288,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // ทีมเดิมคือคนที่ทำงานใบนี้อยู่จริง และ null จะพาโครงการหายจากลิสต์ของทั้งทีม
     updates.team = checked.team || project.team || null;
     updates.ownerId = checked.ownerId;
+  }
+  /* ผู้ประสานงาน (AC) — ช่องไม่บังคับ ล้างได้ · ตรวจเมื่อค่าเปลี่ยนเท่านั้น เพราะ
+     `acOwnerId` คือปลายทางแจ้งเตือน (updateAccess) ⇒ id ที่ไม่ใช่บัญชี AC ของทีมนี้
+     แปลว่าความเคลื่อนไหวของโครงการวิ่งไปหาคนที่ไม่เกี่ยวข้อง
+     ⚠️ ไม่แตะ `team`/`ownerId` — AC เป็นผู้ประสานงาน ไม่ใช่เจ้าของงาน */
+  if (updates.acOwnerId !== undefined && (updates.acOwnerId || null) !== (project.acOwnerId || null)) {
+    const team = updates.team !== undefined ? updates.team : project.team;
+    const coordinator = await resolveProjectAcOwner(supabase, updates.acOwnerId, team);
+    if (!coordinator.ok) return badRequest(coordinator.error);
+    updates.acOwnerId = coordinator.acOwnerId;
+    // ชื่อเดินคู่ id เสมอ — ถอดคนออกก็ต้องล้างชื่อบนใบด้วย ไม่งั้นเหลือชื่อลอยที่ไม่มีตัวตน
+    updates.acOwner = coordinator.acOwner;
   }
   updates.updatedAt = new Date().toISOString();
 

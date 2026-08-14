@@ -88,3 +88,40 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
     team: attributionTeam(user.app_metadata, requestedTeam),
   };
 }
+
+/**
+ * ตรวจ "ผู้ประสานงาน (AC)" ที่ฟอร์มเลือก — ช่องไม่บังคับ ส่งค่าว่างมา = ถอดคนออก
+ *
+ * ⚠️ ต่างจากผู้ดูแล: AC **ไม่ใช่เจ้าของงาน** (มติเดิมทั้งระบบ — ดู dealOwner.js) จึงไม่
+ * แตะ `team`/`ownerId` ของแถวเลย · ที่ต้องตรวจคือ "เป็นบัญชี AC จริงและอยู่ทีมเดียวกับงาน"
+ * เพราะ `acOwnerId` คือปลายทางแจ้งเตือน (lib/master/updateAccess.js) — ยัด id มั่วได้
+ * เมื่อไร ความเคลื่อนไหวของโครงการจะวิ่งไปหาคนที่ไม่เกี่ยวข้อง
+ *
+ * @param projectTeam ทีมของโครงการ (หลังตัดสินจากผู้ดูแลแล้ว) — ว่าง = ข้ามด่านทีม
+ * @returns {Promise<{ ok: true, acOwnerId: string|null, acOwner: string } | { ok: false, error }>}
+ */
+export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = null) {
+  const id = String(acOwnerId || '').trim();
+  if (!id) return { ok: true, acOwnerId: null, acOwner: '' };
+
+  const user = await findAuthUser(supabase, id);
+  if (!user) return { ok: false, error: 'ไม่พบผู้ใช้ที่เลือกเป็นผู้ประสานงาน' };
+
+  const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
+  if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ประสานงานคนอื่น' };
+
+  if ((user.app_metadata?.role || null) !== 'ac') {
+    return { ok: false, error: 'ผู้ประสานงานโครงการต้องเป็นตำแหน่ง AC (Account Coordinate)' };
+  }
+
+  const acTeams = userTeams(user.app_metadata);
+  const wanted = userTeams(projectTeam);
+  if (wanted.length && acTeams.length && !acTeams.some((t) => wanted.includes(t))) {
+    return { ok: false, error: `ผู้ประสานงานที่เลือกอยู่ทีม ${acTeams.join('/')} แต่โครงการนี้เป็นของทีม ${wanted.join('/')}` };
+  }
+
+  const name = projectOwnerName(user);
+  if (!name) return { ok: false, error: 'ผู้ใช้รายนี้ยังไม่มีชื่อในระบบ — ตั้งชื่อที่หน้าจัดการผู้ใช้ก่อน' };
+
+  return { ok: true, acOwnerId: id, acOwner: name };
+}

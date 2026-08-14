@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PROJECT_OWNER_ROLES, resolveProjectAeOwner } from './projectOwner.js';
+import { PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner } from './projectOwner.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 // assertion แบบ "ต้องไม่มี" ต้องดูเฉพาะโค้ดจริง — คอมเมนต์ที่เล่าบั๊กเดิมต้องพูดถึง
@@ -93,6 +93,71 @@ test('ผู้ดูแลที่ยังไม่มีทีม — ผ่
   assert.equal(got.ok, true);
   assert.equal(got.team, null);
   assert.equal(got.ownerId, 'U-N');
+});
+
+/* ── ผู้ประสานงาน (AC) ──────────────────────────────────────────────────────
+   🐞 ช่อง "ผู้ประสานงานโครงการ (AC)" บนฟอร์มเคยเขียนลง `preparedBy` (คอลัมน์
+   "ผู้จัดทำ" ของหัว ISO) ส่วน `acOwner`/`acOwnerId` ที่ PDR (pdrFields → coordinator)
+   และระบบแจ้งเตือน (updateAccess) อ่านจริง ว่างทั้ง 90 ใบบน prod ⇒ ช่องผู้ประสานงาน
+   บนใบ PDR ว่างตลอดกาล ไม่ใช่เพราะไม่มีคนกรอก แต่กรอกไปคนละช่อง */
+test('AC: ช่องไม่บังคับ — ว่าง = ถอดคนออก ไม่ใช่ error', async () => {
+  const got = await resolveProjectAcOwner(ownerStub({}), '', 'ODM');
+  assert.equal(got.ok, true);
+  assert.equal(got.acOwnerId, null);
+  assert.equal(got.acOwner, '');
+});
+
+test('AC: ต้องเป็นตำแหน่ง AC จริง และอยู่ทีมเดียวกับงาน', async () => {
+  const stub = ownerStub({ 'U-AC': AC_ODM, 'U-AE': AE_ODM });
+  const good = await resolveProjectAcOwner(stub, 'U-AC', 'ODM');
+  assert.equal(good.ok, true);
+  assert.equal(good.acOwner, 'ซี หลังบ้าน', 'ชื่อมาจาก server');
+  // AE ไม่ใช่ผู้ประสานงาน — คนละหน้าที่ (AC เป็นหลังบ้าน ไม่ใช่เจ้าของงาน)
+  assert.equal((await resolveProjectAcOwner(stub, 'U-AE', 'ODM')).ok, false);
+  // คนละทีมกับงาน = ตีกลับ (แจ้งเตือนจะวิ่งไปหาคนที่ไม่เกี่ยว)
+  assert.equal((await resolveProjectAcOwner(stub, 'U-AC', 'KA')).ok, false);
+  // งานที่ยังไม่มีทีม = ข้ามด่านทีม
+  assert.equal((await resolveProjectAcOwner(stub, 'U-AC', null)).ok, true);
+});
+
+test('AC: บัญชีที่ถูกระงับ / ไม่มีตัวตน รับไม่ได้', async () => {
+  const banned = { ...AC_ODM, banned_until: '2999-01-01T00:00:00Z' };
+  assert.equal((await resolveProjectAcOwner(ownerStub({ 'U-B': banned }), 'U-B', 'ODM')).ok, false);
+  assert.equal((await resolveProjectAcOwner(ownerStub({}), 'U-GHOST', 'ODM')).ok, false);
+});
+
+test('ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId ไม่ใช่ preparedBy', () => {
+  const modal = codeOnly(read('../../components/pm/SalesProjectCreateModal.js'));
+  assert.match(modal, /role === "ac" \? "acOwner"/, 'AC สร้างโครงการ = ล็อกเป็นผู้ประสานงาน');
+  assert.match(modal, /onChange=\{\(acOwner\) => setForm/);
+  assert.match(modal, /acOwnerId: \(lockPeopleField === "acOwner" \? myName : form\.acOwner\)/);
+  // preparedBy = "ผู้จัดทำ" ของหัว ISO — server ตั้งเป็นผู้สร้าง ฟอร์มไม่ยุ่งอีก
+  assert.doesNotMatch(modal, /form\.preparedBy/, 'ช่อง AC ห้ามกลับไปเขียน preparedBy');
+});
+
+/* mig 0255 ย้ายผู้ประสานงานที่เคยไปกองใน preparedBy กลับเข้า acOwner/acOwnerId
+   ⚠️ ต้องย้ายเฉพาะชื่อที่เป็นบัญชี role 'ac' จริง — ชื่อ AE/แอดมินใน preparedBy คือ
+   ค่า default "ผู้จัดทำ = ผู้สร้าง" ที่ server เติมให้ ไม่ใช่การเลือกผู้ประสานงาน */
+test('mig 0255: ย้ายเฉพาะบัญชี AC และไม่ล้างช่องผู้จัดทำ', () => {
+  const sql = read('../../../supabase/migrations/0255_project_ac_owner_from_prepared_by.sql')
+    .replace(/--.*$/gm, '');
+  assert.match(sql, /raw_app_meta_data->>'role', ''\) = 'ac'/, 'ต้องกรองเฉพาะ role ac');
+  assert.match(sql, /HAVING count\(DISTINCT uid\) = 1/, 'ชื่อที่ตรงหลายบัญชีต้องไม่เดาแทน');
+  assert.match(sql, /WHERE p\."acOwnerId" IS NULL/, 'ห้ามทับค่าที่มีอยู่แล้ว');
+  // หัวเอกสารที่พิมพ์ไปแล้วห้ามกลายเป็นช่องว่าง
+  assert.doesNotMatch(sql, /SET[\s\S]{0,80}"preparedBy"\s*=/, 'ห้ามล้าง preparedBy');
+});
+
+test('ทุกทางที่สร้าง/แก้โครงการ ตรวจผู้ประสานงานด้วยตัวกลางตัวเดียว', () => {
+  for (const rel of [
+    '../../app/api/sa/projects/route.js',
+    '../../app/api/sales-planning/deals/[id]/create-project/route.js',
+    '../../app/api/pm/projects/[id]/route.js',
+  ]) {
+    assert.match(read(rel), /resolveProjectAcOwner\(supabase,/, `${rel} ต้องเรียกด่านกลาง`);
+  }
+  // ชื่อมาจาก server — ไม่รับชื่อลอย ๆ จาก client อีก
+  assert.doesNotMatch(codeOnly(read('../../app/api/sa/projects/route.js')), /acOwner: body\.acOwner/);
 });
 
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
