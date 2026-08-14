@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ลีดรายวัน + ตัวกรองช่วงวัน — ต้นแบบกดได้ (IS-26080023)</title>
+<style>
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-ink:#9c5228;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--teal:#2f7d78;--teal-soft:#dcefed;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-lg:0 12px 32px rgba(41,35,27,.16);
+--radius:8px;--radius-lg:12px;--radius-full:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;
+--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;
+--font-sans:"Sarabun","Noto Sans Thai","Leelawadee UI",Tahoma,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.14);--accent-ink:#d38a61;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#5aa7a1;--teal-soft:rgba(47,125,120,.2);
+--shadow-sm:0 1px 2px rgba(0,0,0,.28);--shadow-lg:0 12px 32px rgba(0,0,0,.45);}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:var(--fs-14);line-height:1.55}
+.wrap{max-width:1060px;margin:0 auto;padding:var(--space-6) var(--space-4) var(--space-7)}
+h1{font-size:var(--fs-22);margin:0 0 var(--space-2)}
+.lede{color:var(--text-2);margin:0 0 var(--space-4)}
+.why{margin:0 0 var(--space-4);padding:var(--space-3) var(--space-4);background:var(--panel);
+  border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;font-size:var(--fs-13)}
+.why b{color:var(--accent-ink)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);margin-bottom:var(--space-5)}
+.cardHead{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.cardHead h3{margin:0;font-size:var(--fs-16)}
+.sub{color:var(--text-3);font-size:var(--fs-12);width:100%;margin-top:2px}
+.ico{color:var(--accent);font-size:var(--fs-16)}
+.body{padding:var(--space-5)}
+.small{color:var(--text-3);font-size:var(--fs-12)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius);border:1px solid var(--border-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-13);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--panel-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{filter:brightness(1.05)}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:var(--radius-full);font-size:var(--fs-12);font-weight:600;background:var(--panel-3);color:var(--text-2)}
+
+/* แถบช่วงเวลา */
+.period{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;width:100%}
+.seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:var(--radius);overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-13);padding:6px 14px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:600}
+.rangeBtn{display:inline-flex;align-items:center;gap:var(--space-2);padding:6px 12px;border:1px solid var(--border-strong);
+  border-radius:var(--radius);background:var(--panel-2);font:inherit;font-size:var(--fs-13);color:var(--text);cursor:pointer}
+.rangeBtn b{font-weight:600}
+.quick{display:flex;gap:var(--space-1);flex-wrap:wrap;margin-left:auto}
+.chip{padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--border);background:transparent;
+  color:var(--text-2);font:inherit;font-size:var(--fs-12);cursor:pointer}
+.chip:hover{background:var(--panel-2)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.monthRow{display:flex;align-items:center;gap:var(--space-2)}
+.monthRow select{padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);font:inherit;font-size:var(--fs-13)}
+
+/* ปฏิทิน */
+.pop{position:relative}
+.calWrap{display:none;position:absolute;z-index:20;top:calc(100% + 6px);left:0;background:var(--panel);
+  border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:var(--space-4)}
+.calWrap.open{display:block}
+.cals{display:flex;gap:var(--space-5)}
+.cal{width:238px}
+.calHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2);font-weight:600;font-size:var(--fs-13)}
+.calNav{border:0;background:transparent;color:var(--text-2);font:inherit;font-size:var(--fs-16);cursor:pointer;padding:0 8px;border-radius:var(--radius)}
+.calNav:hover{background:var(--panel-2)}
+.grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
+.dow{text-align:center;font-size:var(--fs-11);color:var(--text-3);padding:2px 0}
+.day{height:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border:0;background:transparent;
+  color:var(--text);font:inherit;font-size:var(--fs-12);border-radius:var(--radius);cursor:pointer}
+.day i{width:4px;height:4px;border-radius:50%;background:var(--accent);opacity:.6}
+.day.blank{visibility:hidden}
+.day.out{color:var(--text-3);opacity:.45}
+.day:hover:not(.edge){background:var(--panel-3)}
+.day.in{background:var(--accent-soft);border-radius:0}
+.day.edge{background:var(--accent);color:#fff;font-weight:600}
+.day.edge i{background:#fff;opacity:.85}
+.day.start{border-radius:var(--radius) 0 0 var(--radius)}
+.day.end{border-radius:0 var(--radius) var(--radius) 0}
+.calFoot{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border)}
+
+/* กราฟ */
+.bars{display:flex;align-items:flex-end;gap:5px;height:160px}
+.barCol{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;min-width:0;height:100%;cursor:default}
+.barVal{font-size:var(--fs-11);font-weight:600;color:var(--text-2)}
+.barVal.zero{color:var(--text-3);font-weight:400}
+.bar{width:100%;max-width:36px;border-radius:4px 4px 0 0;background:var(--accent);min-height:2px;transition:height .18s}
+.bar.peak{background:var(--accent-ink)}
+.bar.empty{background:var(--panel-3);border:1px solid var(--border)}
+.barLbl{font-size:var(--fs-11);color:var(--text-3);text-align:center;line-height:1.2}
+.barLbl b{display:block;color:var(--text-2)}
+.axis{display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:var(--space-2);padding-top:var(--space-2)}
+
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:var(--fs-11);letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);font-weight:600;padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--border)}
+td{padding:var(--space-2) var(--space-4)}
+tbody tr+tr>td{border-top:1px solid var(--border)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tfoot td{border-top:2px solid var(--border-strong);font-weight:600}
+.chanBar{display:inline-flex;height:8px;border-radius:var(--radius-full);overflow:hidden;width:130px;background:var(--panel-3);vertical-align:middle}
+.chanBar i{display:block;height:100%}
+.legend{display:flex;gap:var(--space-3);flex-wrap:wrap;font-size:var(--fs-12);color:var(--text-2);margin-top:var(--space-3)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+.note{margin-top:var(--space-3);font-size:var(--fs-12);color:var(--text-3)}
+.csvBox{display:none;margin-top:var(--space-3)}
+.csvBox.open{display:block}
+.csvBox textarea{width:100%;min-height:120px;font-family:ui-monospace,Menlo,monospace;font-size:var(--fs-12);
+  padding:var(--space-3);border-radius:var(--radius);border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);resize:vertical}
+.empty{padding:var(--space-6);text-align:center;color:var(--text-3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ลีดรายวัน + ตัวกรองช่วงวัน</h1>
+<p class="lede">IS-26080023 · ต้นแบบกดได้จริง — เลือกช่วงวันในปฏิทิน กดชิปทางลัด สลับ วัน/สัปดาห์ แล้วตัวเลขขยับตาม</p>
+
+<div class="why">
+  <b>ข้อมูลจริงจาก production</b> — ลีด 134 ใบ ช่วง 20/07–13/08/2026 พร้อมช่องทางรายวัน ·
+  วันนี้ในต้นแบบตรึงไว้ที่ <b>13/08/2026</b> เพื่อให้ชิป "สัปดาห์นี้" คงที่
+</div>
+
+<div class="card">
+  <div class="cardHead">
+    <span class="ico">📅</span>
+    <div class="period">
+      <div class="seg" role="group" aria-label="โหมดช่วงเวลา">
+        <button type="button" id="modeMonth" aria-pressed="false">รายเดือน</button>
+        <button type="button" id="modeRange" aria-pressed="true">ช่วงวัน</button>
+      </div>
+
+      <div class="pop" id="rangeWrap">
+        <button type="button" class="rangeBtn" id="rangeBtn">🗓 <b id="rangeText">—</b> <span class="small" id="rangeDays"></span> ▾</button>
+        <div class="calWrap" id="calWrap">
+          <div class="cals">
+            <div class="cal">
+              <div class="calHead"><button class="calNav" id="prevMonth">‹</button><span id="calTitleA"></span><span style="width:24px"></span></div>
+              <div class="grid7" id="calA"></div>
+            </div>
+            <div class="cal">
+              <div class="calHead"><span style="width:24px"></span><span id="calTitleB"></span><button class="calNav" id="nextMonth">›</button></div>
+              <div class="grid7" id="calB"></div>
+            </div>
+          </div>
+          <div class="calFoot">
+            <span class="small">จุดใต้วันที่ = วันที่มีลีดเข้า · <span id="pickHint">เลือกวันแรก</span></span>
+            <span style="margin-left:auto"></span>
+            <button class="btn" id="calClear">ล้าง</button>
+            <button class="btn primary" id="calApply">ใช้ช่วงนี้</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="monthRow" id="monthRow" style="display:none">
+        <select id="monthSel">
+          <option value="2026-07">กรกฎาคม 2026</option>
+          <option value="2026-08" selected>สิงหาคม 2026</option>
+        </select>
+      </div>
+
+      <div class="quick" id="quick">
+        <button type="button" class="chip" data-q="7">7 วันล่าสุด</button>
+        <button type="button" class="chip" data-q="14">14 วัน</button>
+        <button type="button" class="chip" data-q="thisWeek">สัปดาห์นี้</button>
+        <button type="button" class="chip" data-q="lastWeek">สัปดาห์ก่อน</button>
+        <button type="button" class="chip" data-q="thisMonth">เดือนนี้</button>
+        <button type="button" class="chip" data-q="all" aria-pressed="true">ทั้งหมด</button>
+      </div>
+    </div>
+    <div class="sub">โหมดรายเดือนยังเป็นค่าตั้งต้นของหน้าจริง — คนที่ไม่ได้ทำงานรายวันไม่ต้องเจออะไรใหม่</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="cardHead">
+    <span class="ico">📊</span>
+    <h3 id="chartTitle">ลีดเข้ารายวัน</h3>
+    <div class="seg" role="group" aria-label="หน่วยเวลา" style="margin-left:auto">
+      <button type="button" id="unitDay" aria-pressed="true">รายวัน</button>
+      <button type="button" id="unitWeek" aria-pressed="false">รายสัปดาห์</button>
+    </div>
+    <button class="btn" id="csvBtn">⬇ CSV</button>
+    <div class="sub" id="summary"></div>
+  </div>
+  <div class="body">
+    <div id="chartHost"></div>
+    <div class="axis"><span class="small" id="axisL"></span><span class="small" id="axisR"></span></div>
+    <p class="note" id="chartNote"></p>
+    <div class="csvBox" id="csvBox">
+      <textarea id="csvText" readonly></textarea>
+      <p class="note">ในของจริงปุ่มนี้โหลดไฟล์ .csv ลงเครื่อง — ในต้นแบบโชว์เนื้อไฟล์ให้ดูแทน กด Ctrl+A แล้ว Ctrl+C ไปวางใน sheet ได้เลย</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="cardHead"><span class="ico">🔀</span><h3>แยกตามช่องทาง</h3>
+    <span class="badge" style="margin-left:auto" id="tableScope"></span>
+  </div>
+  <div class="body">
+    <div id="tableHost"></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--blue)"></i>Typeform</span>
+      <span><i class="sw" style="background:var(--accent)"></i>LINE / Meta / TikTok / IG</span>
+      <span><i class="sw" style="background:var(--teal)"></i>เว็บไซต์</span>
+      <span><i class="sw" style="background:var(--amber)"></i>โทรเข้า</span>
+    </div>
+  </div>
+</div>
+
+<div class="why">
+  <b>สิ่งที่ยังไม่มีในนี้</b> — ยอด Spending Ads ระบบไม่ได้เก็บ จึงเทียบให้ในจอไม่ได้ · CSV คือทางที่เอาไปวางข้างยอดแอดใน sheet เดิมของ Marketing ได้เลย
+</div>
+
+<script>
+/* ── ข้อมูลจริงจาก production (นับด้วยวันไทย ไม่ใช่วัน UTC) ───────────────── */
+const DATA = {
+  '2026-07-20': { typeform:9, chatcone_meta:2, chatcone_line:2 },
+  '2026-07-21': { phone:2, typeform:5, chatcone_line:4 },
+  '2026-07-22': { website:1, chatcone_line:6, chatcone_meta:3, typeform:1, phone:1 },
+  '2026-07-23': { typeform:3, chatcone_meta:2, chatcone_tiktok:1 },
+  '2026-07-24': { typeform:2, chatcone_meta:1 },
+  '2026-07-27': { chatcone_meta:4, chatcone_line:3, website:1, typeform:4 },
+  '2026-07-29': { website:1, typeform:6 },
+  '2026-07-30': { typeform:3, website:1, chatcone_meta:1 },
+  '2026-07-31': { chatcone_line:1, chatcone_meta:3, chatcone_tiktok:1 },
+  '2026-08-03': { typeform:2, chatcone_line:1, chatcone_meta:1, website:1 },
+  '2026-08-04': { chatcone_line:1, chatcone_ig:1, chatcone_meta:1 },
+  '2026-08-05': { typeform:2, chatcone_line:1, chatcone_meta:1 },
+  '2026-08-06': { typeform:2, phone:1, chatcone_meta:1, chatcone_line:2 },
+  '2026-08-07': { typeform:4, website:10, phone:2, chatcone_meta:1, chatcone_line:1 },
+  '2026-08-10': { typeform:10, website:2, phone:2, chatcone_line:3 },
+  '2026-08-11': { chatcone_line:3 },
+  '2026-08-13': { chatcone_line:3, typeform:1 },
+};
+const TODAY = '2026-08-13';           // ตรึงไว้ให้ชิปทางลัดคงที่
+const FIRST = '2026-07-20';
+const GROUP = { typeform:'blue', website:'teal', phone:'amber', walkin:'amber', email:'blue' };
+const GROUP_COLOR = { blue:'var(--blue)', accent:'var(--accent)', teal:'var(--teal)', amber:'var(--amber)' };
+const groupOf = (ch) => ch.startsWith('chatcone_') ? 'accent' : (GROUP[ch] || 'accent');
+const DOW_TH = ['จ','อ','พ','พฤ','ศ','ส','อา'];
+const MONTH_TH = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+
+/* วันที่เป็นสตริง YYYY-MM-DD ล้วน — ไม่แตะ Date เพื่อคำนวณวัน
+   (ในโค้ดจริงกับดักคือใช้ getUTCDay() กับเวลา +07 แล้วลีดวันจันทร์ตกไปสัปดาห์ก่อน) */
+const toNum = (d) => Number(d.replace(/-/g, ''));
+const addDays = (d, n) => { const [y,m,dd] = d.split('-').map(Number); const t = new Date(Date.UTC(y, m-1, dd + n)); return t.toISOString().slice(0,10); };
+const dowOf = (d) => { const [y,m,dd] = d.split('-').map(Number); return (new Date(Date.UTC(y, m-1, dd)).getUTCDay() + 6) % 7; }; // 0=จันทร์
+const mondayOf = (d) => addDays(d, -dowOf(d));
+const fmtTH = (d) => { const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
+const fmtShort = (d) => { const [,m,dd] = d.split('-'); return `${Number(dd)}/${Number(m)}`; };
+
+const state = { mode:'range', unit:'day', from:FIRST, to:TODAY, pick:null, calFrom:'2026-07-01' };
+
+const daysBetween = (a, b) => { const out = []; let d = a; while (toNum(d) <= toNum(b)) { out.push(d); d = addDays(d, 1); } return out; };
+const countOf = (d) => Object.values(DATA[d] || {}).reduce((n, v) => n + v, 0);
+
+/* ── ปฏิทิน ─────────────────────────────────────────────────────────────── */
+function renderCal(hostId, titleId, monthStart) {
+  const [y, m] = monthStart.split('-').map(Number);
+  document.getElementById(titleId).textContent = `${MONTH_TH[m-1]} ${y}`;
+  const host = document.getElementById(hostId);
+  host.innerHTML = DOW_TH.map((d) => `<div class="dow">${d}</div>`).join('');
+  const first = `${monthStart.slice(0,7)}-01`;
+  const lead = dowOf(first);
+  for (let i = 0; i < lead; i++) host.insertAdjacentHTML('beforeend', '<button class="day blank"></button>');
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  for (let dd = 1; dd <= last; dd++) {
+    const iso = `${monthStart.slice(0,7)}-${String(dd).padStart(2,'0')}`;
+    const has = countOf(iso) > 0;
+    const cls = ['day'];
+    const a = state.pick || state.from, b = state.pick ? state.pick : state.to;
+    if (state.pick) { if (iso === state.pick) cls.push('edge','start','end'); }
+    else {
+      if (iso === state.from) cls.push('edge','start');
+      else if (iso === state.to) cls.push('edge','end');
+      else if (toNum(iso) > toNum(state.from) && toNum(iso) < toNum(state.to)) cls.push('in');
+    }
+    host.insertAdjacentHTML('beforeend',
+      `<button class="${cls.join(' ')}" data-day="${iso}">${dd}${has ? '<i></i>' : ''}</button>`);
+  }
+}
+function paintCal() {
+  renderCal('calA','calTitleA', state.calFrom);
+  const [y,m] = state.calFrom.split('-').map(Number);
+  const next = `${m === 12 ? y+1 : y}-${String(m === 12 ? 1 : m+1).padStart(2,'0')}-01`;
+  renderCal('calB','calTitleB', next);
+  document.getElementById('pickHint').textContent = state.pick ? 'เลือกวันสุดท้าย' : 'เลือกวันแรก';
+  document.querySelectorAll('#calWrap .day[data-day]').forEach((b) => {
+    b.onclick = () => {
+      const d = b.dataset.day;
+      if (!state.pick) { state.pick = d; }
+      else {
+        const [a, z] = toNum(d) < toNum(state.pick) ? [d, state.pick] : [state.pick, d];
+        state.from = a; state.to = z; state.pick = null;
+        setActiveChip(null);
+      }
+      paintCal(); paintRangeLabel();
+    };
+  });
+}
+function paintRangeLabel() {
+  document.getElementById('rangeText').textContent = `${fmtTH(state.from)} – ${fmtTH(state.to)}`;
+  document.getElementById('rangeDays').textContent = `(${daysBetween(state.from, state.to).length} วัน)`;
+}
+
+/* ── กราฟ + ตาราง ───────────────────────────────────────────────────────── */
+function buckets() {
+  const days = daysBetween(state.from, state.to);
+  if (state.unit === 'day') {
+    return days.map((d) => ({
+      key: d, label: `<b>${Number(d.slice(8))}</b>${DOW_TH[dowOf(d)]}`,
+      count: countOf(d), days: [d], name: fmtTH(d),
+    }));
+  }
+  const map = new Map();
+  for (const d of days) {
+    const w = mondayOf(d);
+    if (!map.has(w)) map.set(w, { key:w, days:[], count:0 });
+    const b = map.get(w); b.days.push(d); b.count += countOf(d);
+  }
+  return [...map.values()].map((b) => {
+    const end = addDays(b.key, 6);
+    return { ...b, label: `<b>${fmtShort(b.key)}</b>–${fmtShort(end)}`, name: `${fmtShort(b.key)}–${fmtShort(end)}` };
+  });
+}
+function paintChart() {
+  const list = buckets();
+  const host = document.getElementById('chartHost');
+  if (!list.length) { host.innerHTML = '<div class="empty">ไม่มีวันในช่วงที่เลือก</div>'; return; }
+  const max = Math.max(...list.map((b) => b.count), 1);
+  host.innerHTML = `<div class="bars">${list.map((b) => {
+    const h = b.count ? Math.max(4, Math.round(b.count / max * 100)) : 0;
+    const cls = !b.count ? 'bar empty' : (b.count === max ? 'bar peak' : 'bar');
+    return `<div class="barCol" title="${b.name} · ${b.count} ลีด">
+      <span class="barVal${b.count ? '' : ' zero'}">${b.count}</span>
+      <div class="${cls}" style="height:${b.count ? h + '%' : '2px'}"></div>
+      <span class="barLbl">${b.label}</span></div>`;
+  }).join('')}</div>`;
+
+  const withLeads = list.reduce((n, b) => n + b.days.filter((d) => countOf(d) > 0).length, 0);
+  const total = list.reduce((n, b) => n + b.count, 0);
+  const avg = withLeads ? (total / withLeads).toFixed(1) : '0.0';
+  document.getElementById('summary').textContent =
+    `${fmtTH(state.from)} – ${fmtTH(state.to)} · ${total} ลีด · เฉลี่ย ${avg} ต่อวันที่มีลีดเข้า (${withLeads} วันจาก ${daysBetween(state.from, state.to).length} วัน)`;
+  document.getElementById('chartTitle').textContent = state.unit === 'day' ? 'ลีดเข้ารายวัน' : 'ลีดเข้ารายสัปดาห์';
+  document.getElementById('axisL').textContent = MONTH_TH[Number(state.from.slice(5,7)) - 1];
+  document.getElementById('axisR').textContent = MONTH_TH[Number(state.to.slice(5,7)) - 1];
+  document.getElementById('chartNote').textContent = state.unit === 'day'
+    ? 'วันที่ไม่มีลีดเข้ายังโชว์เป็นแท่งเปล่า — ไม่ยุบทิ้ง เพราะ "วันที่ยิงแอดแล้วไม่มีลีด" คือข้อมูลที่ Marketing ต้องเห็น'
+    : 'สัปดาห์ที่ยังไม่จบจะมีจำนวนวันน้อยกว่าเพื่อน — ดูคอลัมน์ "วันที่มีลีด" ก่อนสรุปว่าลีดตก';
+  paintTable(list, total);
+  paintCsv(list);
+}
+function paintTable(list, total) {
+  const rows = list.map((b) => {
+    const chans = {};
+    for (const d of b.days) for (const [c, n] of Object.entries(DATA[d] || {})) {
+      const g = groupOf(c); chans[g] = (chans[g] || 0) + n;
+    }
+    const withLeads = b.days.filter((d) => countOf(d) > 0).length;
+    const seg = Object.entries(chans).sort((x, y) => y[1] - x[1])
+      .map(([g, n]) => `<i style="width:${(n / (b.count || 1) * 100).toFixed(1)}%;background:${GROUP_COLOR[g]}"></i>`).join('');
+    return `<tr><td>${b.name}${state.unit === 'week' ? `<span class="small"> · ${withLeads} วันที่มีลีด</span>` : ''}</td>
+      <td class="num">${b.count}</td>
+      <td class="num">${withLeads ? (b.count / withLeads).toFixed(1) : '—'}</td>
+      <td><span class="chanBar">${seg}</span></td></tr>`;
+  }).join('');
+  document.getElementById('tableHost').innerHTML = `<table>
+    <thead><tr><th>${state.unit === 'day' ? 'วัน' : 'สัปดาห์ (จ.–อา.)'}</th><th class="num">ลีด</th><th class="num">เฉลี่ย/วัน</th><th>ช่องทาง</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody>
+    <tfoot><tr><td>รวม ${list.length} ${state.unit === 'day' ? 'วัน' : 'สัปดาห์'}</td><td class="num">${total}</td><td class="num"></td><td></td></tr></tfoot></table>`;
+  document.getElementById('tableScope').textContent = state.unit === 'day' ? 'รายวัน' : 'จันทร์–อาทิตย์';
+}
+function paintCsv(list) {
+  const head = state.unit === 'day' ? 'วันที่,ลีด' : 'สัปดาห์เริ่ม,ลีด,วันที่มีลีด';
+  const body = list.map((b) => state.unit === 'day'
+    ? `${b.key},${b.count}`
+    : `${b.key},${b.count},${b.days.filter((d) => countOf(d) > 0).length}`).join('\n');
+  document.getElementById('csvText').value = `${head}\n${body}`;
+}
+
+/* ── ชิปทางลัด ──────────────────────────────────────────────────────────── */
+function setActiveChip(q) {
+  document.querySelectorAll('#quick .chip').forEach((c) => {
+    if (q && c.dataset.q === q) c.setAttribute('aria-pressed', 'true'); else c.removeAttribute('aria-pressed');
+  });
+}
+const QUICK = {
+  '7': () => [addDays(TODAY, -6), TODAY],
+  '14': () => [addDays(TODAY, -13), TODAY],
+  thisWeek: () => [mondayOf(TODAY), addDays(mondayOf(TODAY), 6)],
+  lastWeek: () => { const m = addDays(mondayOf(TODAY), -7); return [m, addDays(m, 6)]; },
+  thisMonth: () => [`${TODAY.slice(0,7)}-01`, TODAY],
+  all: () => [FIRST, TODAY],
+};
+
+/* ── ผูกปุ่ม ────────────────────────────────────────────────────────────── */
+document.getElementById('rangeBtn').onclick = () => {
+  const w = document.getElementById('calWrap');
+  w.classList.toggle('open');
+  if (w.classList.contains('open')) { state.calFrom = `${state.from.slice(0,7)}-01`; paintCal(); }
+};
+document.getElementById('calApply').onclick = () => { document.getElementById('calWrap').classList.remove('open'); paintChart(); };
+document.getElementById('calClear').onclick = () => { state.pick = null; state.from = FIRST; state.to = TODAY; setActiveChip('all'); paintCal(); paintRangeLabel(); paintChart(); };
+document.getElementById('prevMonth').onclick = () => { const [y,m] = state.calFrom.split('-').map(Number); state.calFrom = `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}-01`; paintCal(); };
+document.getElementById('nextMonth').onclick = () => { const [y,m] = state.calFrom.split('-').map(Number); state.calFrom = `${m === 12 ? y+1 : y}-${String(m === 12 ? 1 : m+1).padStart(2,'0')}-01`; paintCal(); };
+document.querySelectorAll('#quick .chip').forEach((c) => {
+  c.onclick = () => { const [a, b] = QUICK[c.dataset.q](); state.from = a; state.to = b; state.pick = null; setActiveChip(c.dataset.q); paintRangeLabel(); paintCal(); paintChart(); };
+});
+document.getElementById('unitDay').onclick = () => { state.unit = 'day'; document.getElementById('unitDay').setAttribute('aria-pressed','true'); document.getElementById('unitWeek').setAttribute('aria-pressed','false'); paintChart(); };
+document.getElementById('unitWeek').onclick = () => { state.unit = 'week'; document.getElementById('unitWeek').setAttribute('aria-pressed','true'); document.getElementById('unitDay').setAttribute('aria-pressed','false'); paintChart(); };
+document.getElementById('csvBtn').onclick = () => document.getElementById('csvBox').classList.toggle('open');
+document.getElementById('modeMonth').onclick = () => {
+  state.mode = 'month';
+  document.getElementById('modeMonth').setAttribute('aria-pressed','true');
+  document.getElementById('modeRange').setAttribute('aria-pressed','false');
+  document.getElementById('rangeWrap').style.display = 'none';
+  document.getElementById('calWrap').classList.remove('open');
+  document.getElementById('monthRow').style.display = '';
+  const m = document.getElementById('monthSel').value;
+  state.from = `${m}-01`;
+  state.to = m === TODAY.slice(0,7) ? TODAY : `${m}-31`;
+  setActiveChip(null); paintRangeLabel(); paintChart();
+};
+document.getElementById('modeRange').onclick = () => {
+  state.mode = 'range';
+  document.getElementById('modeRange').setAttribute('aria-pressed','true');
+  document.getElementById('modeMonth').setAttribute('aria-pressed','false');
+  document.getElementById('rangeWrap').style.display = '';
+  document.getElementById('monthRow').style.display = 'none';
+  paintRangeLabel(); paintChart();
+};
+document.getElementById('monthSel').onchange = (e) => {
+  const m = e.target.value;
+  state.from = `${m}-01`;
+  state.to = m === TODAY.slice(0,7) ? TODAY : `${m}-31`;
+  paintRangeLabel(); paintChart();
+};
+document.addEventListener('click', (e) => {
+  const w = document.getElementById('calWrap');
+  if (w.classList.contains('open') && !e.target.closest('#rangeWrap')) w.classList.remove('open');
+});
+
+paintRangeLabel(); paintCal(); paintChart();
+</script>
+</div>
+</body>
+</html>

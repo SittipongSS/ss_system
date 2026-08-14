@@ -7,6 +7,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer, Tooltip as RTooltip,
 } from "recharts";
 import { ChartCanvas, ChartLegend, ChartTooltip, ChartEmptyState } from "@/components/ui/ChartCard";
+import Segmented from "@/components/ui/Segmented";
 import { CHART_CATEGORICAL, CHART_AXIS_TICK } from "@/lib/chartTheme";
 import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import {
@@ -17,6 +18,8 @@ import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtName, fmtPercent } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
+import { leadDailyBuckets, leadDailyTotals } from "@/lib/sales/leadDailyBuckets";
+import { fmtDate } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : "-");
@@ -75,7 +78,7 @@ const OUTCOME_CARDS = [
   { key: "lost", label: "ไม่ไปต่อ", value: (f) => pct(f.disqualified, f.total), note: (f) => `${f.disqualified ?? 0} จาก ${f.total ?? 0} ใบ` },
 ];
 
-export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
+export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rangeFrom = null, rangeTo = null }) {
   /* ชื่อคน — อ่านจาก id ไม่ใช่สำเนาชื่อที่ค้างอยู่ในแถว (ท่าเดียวกับหน้าคิวลีด)
      🐞 ตารางสองใบนี้เคยโชว์ `assigneeName` / `createdByName` ตรง ๆ ซึ่งเป็น snapshot
      ตอนที่บันทึก — prod มี 64 แถวที่เป็นชื่อย่อ/ชื่อเก่าที่ไม่ตรงบัญชีใครเลย ⇒ ตาราง
@@ -92,7 +95,11 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
     try {
       /* ติ๊ก "ทุกเดือน" ⇒ ส่ง `year` ไม่ใช่ `month=all` — `all` แปลว่า *ทุกปีตั้งแต่
          เปิดระบบ* ซึ่งไม่ตรงกับปีที่ค้างอยู่บนปุ่มเลือกงวด (มติ 2026-07-29) */
-      const q = allMonths ? new URLSearchParams({ year: yearOfMonth(month) || "" }) : new URLSearchParams({ month });
+      /* โหมดช่วงวัน (IS-26080023) มาก่อน month/year — ลำดับเดียวกับฝั่ง route
+         ไม่งั้นหน้าจอโชว์ช่วงวันแต่ตัวเลขเป็นของทั้งเดือน โดยไม่มีอะไรฟ้อง */
+      const q = rangeFrom && rangeTo ? new URLSearchParams({ from: rangeFrom, to: rangeTo })
+        : allMonths ? new URLSearchParams({ year: yearOfMonth(month) || "" })
+          : new URLSearchParams({ month });
       if (teamFilter && teamFilter !== "all") q.set("team", teamFilter);
       const res = await fetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลด KPI ลีดไม่สำเร็จ");
@@ -102,7 +109,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
     } finally {
       setLoading(false);
     }
-  }, [month, allMonths, teamFilter]);
+  }, [month, allMonths, rangeFrom, rangeTo, teamFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -112,7 +119,9 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
   const sla = kpi?.sla || {};
   /* ป้ายงวดคิดจากค่าที่หน้าจอถืออยู่ ไม่ใช่ `kpi.month` ที่ตอบกลับมา — โหมดทั้งปี
      route ไม่ได้ใช้ `month` แต่ยังคืนค่าถอย (เดือนปัจจุบัน) ติดมาด้วย */
-  const scopeLabel = periodScopeLabel(month, allMonths);
+  const scopeLabel = rangeFrom && rangeTo
+    ? `${fmtDate(rangeFrom)} – ${fmtDate(rangeTo)}`
+    : periodScopeLabel(month, allMonths);
 
   // ป้ายไทยเติมที่นี่ครั้งเดียว ทั้งแท่งและตารางใช้ตัวเดียวกัน จะได้ไม่หลุดกันคนละชื่อ
   const channels = useMemo(
@@ -151,6 +160,32 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
     const days = Object.keys(kpi?.byDay || {}).length;
     return { count, days, perDay: days ? +(count / days).toFixed(1) : 0 };
   }, [kpi]);
+
+  /* ── ลีดเข้ารายวัน/รายสัปดาห์ (IS-26080023) ───────────────────────────────
+     Marketing นับลีดรายสัปดาห์เทียบยอด Spending Ads · ตัวเลขรายวันคำนวณอยู่แล้วที่
+     route (`byDay`) แต่ไม่เคยมีที่ให้ดู — เดิมถูกใช้แค่หา "มีลีดกี่วัน" ไปหารค่าเฉลี่ย
+
+     ⚠️ `byDay` มีเฉพาะวันที่ **มีลีด** ⇒ ต้องกางเป็นทุกวันของงวดจาก `kpi.days` ที่ route
+     ส่งมาให้ ไม่งั้นกราฟจะยุบวันว่างทิ้งแล้ว "วันที่ยิงแอดแล้วไม่มีลีด" หายไปจากสายตา
+     ซึ่งเป็นข้อมูลที่คนดูต้องเห็นที่สุด (มติผู้ใช้ 2026-08-13)
+
+     🔴 ถังรายสัปดาห์เริ่ม **วันจันทร์** (`weekStartOf`) ตามที่ Marketing นับจริง —
+     คนละเรื่องกับตารางปฏิทินที่ขึ้นต้นวันอาทิตย์ (มติ 2026-07-15) · และห้ามหาวันใน
+     สัปดาห์ด้วย `new Date(...).getUTCDay()` เพราะ timestamp มี offset +07 แล้ววันจันทร์
+     จะตกไปสัปดาห์ก่อนทั้งก้อน */
+  const [dayUnit, setDayUnit] = useState("day");
+  const dayBuckets = useMemo(
+    () => leadDailyBuckets({ byDay: kpi?.byDay, days: kpi?.days, unit: dayUnit })
+      .map((b) => ({
+        ...b,
+        // ชื่อใน tooltip เป็นวันไทยอ่านออก — lib คืนคีย์ดิบเพื่อให้เทสต์ทาบง่าย
+        name: b.name.includes('..')
+          ? b.name.split('..').map((d) => fmtDate(d)).join(' – ')
+          : fmtDate(b.name),
+      })),
+    [kpi, dayUnit],
+  );
+  const dayTotals = useMemo(() => leadDailyTotals(dayBuckets, kpi?.days), [dayBuckets, kpi]);
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -254,6 +289,78 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter }) {
                 </tr></tfoot>
               ) : null}
             </table></TableScroll>
+      </SaSection>
+
+      {/* ── ลีดเข้ารายวัน (IS-26080023) ────────────────────────────────────────
+          Marketing นับลีดรายสัปดาห์เทียบยอด Spending Ads — ระบบไม่ได้เก็บยอดแอด
+          จึงเทียบให้ในจอไม่ได้ ปุ่มคัดลอกคือทางที่เอาไปวางข้าง sheet เดิมของเขา */}
+      <SaSection
+        icon={<CalendarClock size={17} />}
+        title={dayUnit === "day" ? "ลีดเข้ารายวัน" : "ลีดเข้ารายสัปดาห์"}
+        subtitle={dayTotals.count
+          ? `${scopeLabel} · ${dayTotals.count} ลีด · เฉลี่ย ${dayTotals.perDay} ต่อวันที่มีลีดเข้า (${dayTotals.withLeads} วันจาก ${dayTotals.spanDays} วัน)`
+          : `${scopeLabel} · ยังไม่มีลีดในงวดนี้`}
+        actions={(
+          <Segmented
+            ariaLabel="หน่วยเวลาของกราฟ"
+            value={dayUnit}
+            onChange={setDayUnit}
+            options={[{ value: "day", label: "รายวัน" }, { value: "week", label: "รายสัปดาห์" }]}
+          />
+        )}
+      >
+        {dayBuckets.length ? (
+          <>
+            <ChartCanvas height={200} aria-busy={loading}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dayBuckets} margin={{ top: 16, right: 8, bottom: 4, left: 4 }}>
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} interval="preserveStartEnd" />
+                  <YAxis width={30} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} allowDecimals={false} />
+                  <RTooltip
+                    cursor={{ fill: "var(--panel-3)" }}
+                    content={<ChartTooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""} valueFormatter={(v) => `${v} ใบ`} />}
+                  />
+                  <Bar dataKey="count" name="ลีดเข้า" fill={CHART_CATEGORICAL[0]} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                    <LabelList dataKey="count" position="top" fill="var(--text-2)" fontSize={11} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCanvas>
+            {/* ⚠️ ข้อความนี้ต้องอยู่ **บนจอ** ไม่ใช่ในคอมเมนต์ — คนเห็นแท่งศูนย์เรียงกัน
+                แล้วจะคิดว่ากราฟพัง ทั้งที่วันว่างคือข้อมูลที่เขาต้องการเห็น */}
+            <p className={styles.chartNote}>
+              {dayUnit === "day"
+                ? "วันที่ไม่มีลีดยังโชว์เป็นแท่งศูนย์ — “วันที่ยิงแอดแล้วไม่มีลีด” คือข้อมูลที่ต้องเห็น ไม่ใช่ช่องว่างที่ยุบทิ้ง"
+                : "สัปดาห์เริ่มวันจันทร์ · สัปดาห์ที่ยังไม่จบจะมีวันน้อยกว่าเพื่อน ดูคอลัมน์ “วันที่มีลีด” ก่อนสรุปว่าลีดตก"}
+            </p>
+            <TableScroll><table>
+              <thead><tr>
+                <th>{dayUnit === "day" ? "วัน" : "สัปดาห์ (จ.–อา.)"}</th>
+                <th className="num">ลีดเข้า</th>
+                <th className="num">วันที่มีลีด</th>
+                <th className="num">เฉลี่ย/วัน</th>
+              </tr></thead>
+              <tbody>
+                {dayBuckets.map((b) => (
+                  <tr key={b.key}>
+                    <td>{b.name}</td>
+                    <td className="num mono">{b.count}</td>
+                    <td className="num mono">{b.withLeads}</td>
+                    <td className="num mono">{b.withLeads ? (b.count / b.withLeads).toFixed(1) : "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr>
+                <td><strong>รวม {dayBuckets.length} {dayUnit === "day" ? "วัน" : "สัปดาห์"}</strong></td>
+                <td className="num mono"><strong>{dayTotals.count}</strong></td>
+                <td className="num mono"><strong>{dayTotals.withLeads}</strong></td>
+                <td className="num mono"><strong>{dayTotals.perDay}</strong></td>
+              </tr></tfoot>
+            </table></TableScroll>
+          </>
+        ) : (
+          <ChartEmptyState>ยังไม่มีลีดในงวดนี้ — เลือกช่วงวันอื่น หรือเปลี่ยนไปดูรายเดือน</ChartEmptyState>
+        )}
       </SaSection>
 
       {/* ช่องทาง — วงกลม (สัดส่วนระดับกลุ่ม) · แท่ง (สถานะปัจจุบันรายช่องทาง) · ตาราง (Funnel)

@@ -3,11 +3,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  addDays,
   addMonths,
   businessDayKey,
   businessMonthKey,
+  dateRangeOfBusinessDays,
   dateRangeOfBusinessMonth,
   dateRangeOfBusinessYear,
+  dayOfWeek,
+  daysInRange,
+  isDayValue,
+  lastDayOfMonth,
+  weekStartOf,
   clampMonth,
   compareMonths,
   currentMonth,
@@ -115,4 +122,74 @@ test('route KPI ต้องเทียบขอบด้วยเวลาไ�
   assert.match(src, /countLeadsByStatus\(supabase, 'new', null\)/);
   assert.match(src, /countLeadsByStatus\(supabase, 'assigned', team\)/);
   assert.doesNotMatch(src, /rows\.filter\(\(l\) => l\.status === 'new'\)/);
+});
+
+/* ── ช่วงวัน (IS-26080023) ────────────────────────────────────────────────
+   🔴 กับดักที่เจอจริงตอนสำรวจข้อมูลก่อนทำใบนี้: หาวันในสัปดาห์ด้วย
+   `new Date('2026-07-20T00:00:00+07:00').getUTCDay()` แล้วลีดวันจันทร์ตกไปอยู่
+   สัปดาห์ก่อนหน้าทั้งก้อน — ยอดรายสัปดาห์เพี้ยนทุกสัปดาห์โดยไม่มีอะไรฟ้อง */
+test('วันในสัปดาห์: จันทร์ = 0 และคำนวณจากสตริงวันล้วน ไม่ผ่าน timezone', () => {
+  assert.equal(dayOfWeek('2026-07-20'), 0);   // จันทร์
+  assert.equal(dayOfWeek('2026-07-24'), 4);   // ศุกร์
+  assert.equal(dayOfWeek('2026-07-26'), 6);   // อาทิตย์
+  assert.equal(dayOfWeek('ไม่ใช่วัน'), null);
+});
+
+test('ต้นสัปดาห์ = วันจันทร์ · วันจันทร์เป็นต้นสัปดาห์ของตัวเอง', () => {
+  assert.equal(weekStartOf('2026-07-20'), '2026-07-20');
+  assert.equal(weekStartOf('2026-07-26'), '2026-07-20');
+  assert.equal(weekStartOf('2026-07-27'), '2026-07-27');
+  // ข้ามเดือน/ปี ต้องไม่พัง
+  assert.equal(weekStartOf('2026-08-02'), '2026-07-27');
+  assert.equal(weekStartOf('2026-01-01'), '2025-12-29');
+});
+
+test('addDays / daysInRange ทำงานบนสตริงวัน ข้ามเดือนและปีอธิกสุรทิน', () => {
+  assert.equal(addDays('2026-07-31', 1), '2026-08-01');
+  assert.equal(addDays('2026-01-01', -1), '2025-12-31');
+  assert.equal(addDays('2028-02-28', 1), '2028-02-29');   // ปีอธิกสุรทิน
+  assert.deepEqual(daysInRange('2026-08-01', '2026-08-03'), ['2026-08-01', '2026-08-02', '2026-08-03']);
+  assert.equal(daysInRange('2026-07-20', '2026-08-13').length, 25);
+  // ส่งกลับหัวต้องสลับให้เอง ไม่ใช่คืนอาเรย์ว่างเงียบ ๆ
+  assert.deepEqual(daysInRange('2026-08-03', '2026-08-01'), ['2026-08-01', '2026-08-02', '2026-08-03']);
+  assert.deepEqual(daysInRange('2026-08-01', 'พัง'), []);
+});
+
+test('ขอบช่วงวันเป็นครึ่งเปิดถึงต้นวันถัดไป — ลีดของวันสุดท้ายต้องถูกนับครบทั้งวัน', () => {
+  assert.deepEqual(dateRangeOfBusinessDays('2026-08-03', '2026-08-07'), {
+    from: '2026-08-03T00:00:00+07:00',
+    until: '2026-08-08T00:00:00+07:00',
+  });
+  // วันเดียวก็ต้องได้ทั้งวัน ไม่ใช่ช่วงว่าง
+  assert.deepEqual(dateRangeOfBusinessDays('2026-08-13', '2026-08-13'), {
+    from: '2026-08-13T00:00:00+07:00',
+    until: '2026-08-14T00:00:00+07:00',
+  });
+  assert.equal(dateRangeOfBusinessDays('2026-08-13', ''), null);
+});
+
+test('วันสุดท้ายของเดือนคิดจากปฏิทินจริง', () => {
+  assert.equal(lastDayOfMonth('2026-08'), '2026-08-31');
+  assert.equal(lastDayOfMonth('2026-02'), '2026-02-28');
+  assert.equal(lastDayOfMonth('2028-02'), '2028-02-29');
+  assert.equal(lastDayOfMonth('2026-13'), null);
+});
+
+test('isDayValue รับเฉพาะ YYYY-MM-DD ที่เป็นไปได้', () => {
+  assert.equal(isDayValue('2026-08-13'), true);
+  assert.equal(isDayValue('2026-8-13'), false);
+  assert.equal(isDayValue('2026-13-01'), false);
+  assert.equal(isDayValue('2026-08-32'), false);
+  assert.equal(isDayValue(''), false);
+});
+
+test('route KPI: โหมดช่วงวันมาก่อนเดือน/ปี และส่งรายชื่อวันให้กราฟวาดวันว่างได้', () => {
+  const src = readFileSync(new URL('../app/api/sales-planning/leads/kpi/route.js', import.meta.url), 'utf8');
+  assert.match(src, /dateRangeOfBusinessDays\(dayRange\.from, dayRange\.to\)/);
+  // ลำดับ: ช่วงวัน → ปี → เดือน (ถ้าเดือนมาก่อน ช่วงวันจะไม่มีวันถูกใช้)
+  assert.ok(
+    src.indexOf('dayRange ? dateRangeOfBusinessDays') < src.indexOf(': year ? dateRangeOfBusinessYear'),
+    'ช่วงวันต้องถูกตรวจก่อน year/month',
+  );
+  assert.match(src, /days: dayRange \? daysInRange/);
 });

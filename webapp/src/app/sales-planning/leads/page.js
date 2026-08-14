@@ -36,7 +36,9 @@ import {
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone,
 } from "@/lib/sales/leads";
 import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
-import { fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
+import DayRangePicker from "@/components/ui/DayRangePicker";
+import { addDays, businessDayKey } from "@/lib/datePeriods";
+import { fmtDate, fmtDateTime, fmtMoney, fmtPercent } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
@@ -160,6 +162,13 @@ export default function LeadsPage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />; // open = ยังไม่ปิด
   const [month, setMonth] = useState(thisMonth());
   const [allMonths, setAllMonths] = useState(false);
+  /* โหมดช่วงเวลา (IS-26080023) — Marketing นับลีดรายวัน/สัปดาห์เทียบยอด Spending Ads
+     ⚠️ ค่าตั้งต้นยังเป็น "รายเดือน" · คนที่ไม่ได้ทำงานรายวันต้องไม่เจออะไรใหม่
+     วันนี้คิดจาก **วันไทย** ไม่ใช่ `new Date()` ของเบราว์เซอร์ ไม่งั้นช่วง "สัปดาห์นี้"
+     ของคนที่ตั้งเครื่องเป็น timezone อื่นจะเลื่อนไปคนละสัปดาห์กับตัวเลขที่ server นับ */
+  const todayTh = businessDayKey(new Date().toISOString());
+  const [periodMode, setPeriodMode] = useState("month");
+  const [range, setRange] = useState(() => ({ from: addDays(todayTh, -13), to: todayTh }));
   const [busy, setBusy] = useState("");
 
   // modals
@@ -178,10 +187,13 @@ export default function LeadsPage() {
       const [leadsRes, kpiRes] = await Promise.all([
         fetch("/api/sales-planning/leads"),
         // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
+        // โหมดช่วงวันส่ง from/to ซึ่ง API ให้มาก่อน month/year (IS-26080023)
         showKpi
-          ? fetch(allMonths
-            ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
-            : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`)
+          ? fetch(periodMode === "range"
+            ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
+            : allMonths
+              ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
+              : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`)
           : null,
       ]);
       if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
@@ -192,7 +204,7 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [month, allMonths, showKpi]);
+  }, [month, allMonths, periodMode, range.from, range.to, showKpi]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -427,7 +439,9 @@ export default function LeadsPage() {
      ⚠️ **ไม่กรองตารางตามเดือน** โดยเจตนา — คิวงานต้องโชว์ทุกใบที่ยังไม่ปิดไม่ว่าจะ
      เข้ามาเดือนไหน ตัดด้วยเดือนแล้วลีดที่ค้างข้ามเดือน (ใบที่ต้องทวงที่สุด) จะหายจากคิว
      ⇒ แก้ด้วยการเขียนขอบเขตของแต่ละส่วนให้ชัด ไม่ใช่ย้ายพฤติกรรมของตาราง */
-  const periodNote = allMonths ? `ทั้งปี ${yearOfMonth(month) || ""}`.trim() : `เดือน ${month}`;
+  const periodNote = periodMode === "range"
+    ? `${fmtDate(range.from)} – ${fmtDate(range.to)}`
+    : allMonths ? `ทั้งปี ${yearOfMonth(month) || ""}`.trim() : `เดือน ${month}`;
 
   if (!canLead && !canView) {
     return (
@@ -444,7 +458,25 @@ export default function LeadsPage() {
       subtitle="Marketing กรอกลีดรายวัน → คัดกรองส่งทีมใน 1 วันทำการ → AE ติดต่อกลับใน 1 วันทำการ"
       headerRight={
         <>
-          <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+          {/* สลับหน่วยของงวด — รายเดือนคือค่าตั้งต้นเดิม ช่วงวันเพิ่มมาให้ Marketing
+              (IS-26080023) · ใช้ `Segmented` ตัวกลาง ไม่ก๊อปแถบปุ่มขึ้นมาเอง */}
+          <Segmented
+            ariaLabel="หน่วยของงวด"
+            value={periodMode}
+            onChange={setPeriodMode}
+            options={[{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }]}
+          />
+          {periodMode === "range" ? (
+            <DayRangePicker
+              from={range.from}
+              to={range.to}
+              today={todayTh}
+              markedDays={Object.keys(kpi?.byDay || {})}
+              onChange={setRange}
+            />
+          ) : (
+            <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+          )}
           {canCreate && (
             <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setPendingFiles([]); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่

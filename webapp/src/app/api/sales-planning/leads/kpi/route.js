@@ -4,7 +4,8 @@ import { canSeeLeadKpi } from '@/lib/permissions';
 import { slaHit, slaStage, channelRollup, withAssigneePending } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
-  businessDayKey, businessMonthKey, dateRangeOfBusinessMonth, dateRangeOfBusinessYear, isYearValue,
+  businessDayKey, businessMonthKey, dateRangeOfBusinessDays, dateRangeOfBusinessMonth,
+  dateRangeOfBusinessYear, daysInRange, isDayValue, isYearValue, lastDayOfMonth,
 } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // year=YYYY = "ทุกเดือนของปีนั้น" (ติ๊ก "ทุกเดือน" บน MonthPicker)
   // month=all ยังรับไว้เพื่อความเข้ากันได้ แต่หน้าจอไม่ส่งมาแล้ว
   const year = isYearValue(params.get('year')) ? params.get('year') : null;
+  /* โหมดช่วงวัน (IS-26080023) — Marketing นับลีดรายวัน/สัปดาห์เทียบยอด Spending Ads
+     ⚠️ ต้องมาก่อน month/year ในลำดับความสำคัญ แต่ **ไม่ลบทั้งสองตัวทิ้ง** เพราะหน้าจอ
+     ยังเปิดมาที่โหมดรายเดือนเป็นค่าตั้งต้น และลิงก์เก่าที่คนบุ๊กมาร์กไว้ยังต้องใช้ได้ */
+  const fromDay = isDayValue(params.get('from')) ? params.get('from') : null;
+  const toDay = isDayValue(params.get('to')) ? params.get('to') : null;
+  const dayRange = fromDay && toDay ? { from: fromDay, to: toDay } : null;
   // ฟิลเตอร์ทีม (ODM/KA/SV) — เดิม client ส่ง team มาแต่ server ไม่อ่าน = ฟิลเตอร์ไม่ทำงาน
   const team = params.get('team');
   const holidays = await holidaySet().catch(() => new Set());
@@ -89,9 +96,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // อ่านเป็น 00:00 UTC = 07:00 กรุงเทพ ⇒ ลีดที่เข้ามาตอนดึกตกไปนับเป็นเดือนก่อน
   // (ดูเหตุผลเต็มที่ lib/datePeriods.js · แก้ 2026-08-08)
   let query = supabase.from('sales_leads').select('*');
-  const range = year ? dateRangeOfBusinessYear(year)
-    : month !== 'all' ? dateRangeOfBusinessMonth(month)
-      : null;
+  const range = dayRange ? dateRangeOfBusinessDays(dayRange.from, dayRange.to)
+    : year ? dateRangeOfBusinessYear(year)
+      : month !== 'all' ? dateRangeOfBusinessMonth(month)
+        : null;
   if (range) query = query.gte('createdAt', range.from).lt('createdAt', range.until);
   if (team && team !== 'all') query = query.eq('team', team);
   const { data: leads, error } = await query;
@@ -202,6 +210,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        แต่ยังกองของเก่าไว้ด้วย ไม่งั้นคนที่ต้องตามที่สุดจะหายจากตาราง */
     byAssignee: withAssigneePending(Object.values(byAssignee), aePending.counts, aePending.meta),
     byDay,
+    /* รายชื่อวันของงวดที่เลือก — **รวมวันที่ไม่มีลีดด้วย** (`byDay` มีเฉพาะวันที่มีลีด)
+       กราฟรายวันต้องวาดวันว่างเป็นแท่งเปล่า ไม่ใช่ยุบทิ้ง เพราะ "วันที่ยิงแอดแล้วไม่มี
+       ลีด" คือข้อมูลที่ Marketing ต้องเห็น (มติผู้ใช้ 2026-08-13 · IS-26080023)
+       ส่งจาก server เพื่อไม่ให้ฝั่งจอต้องคำนวณขอบเดือน/ปีซ้ำอีกชุดแล้วเพี้ยนกันเอง
+       · โหมด "ทุกเดือน/ทั้งปี" ไม่ส่ง (365 แท่งอ่านไม่ออกอยู่แล้ว) */
+    days: dayRange ? daysInRange(dayRange.from, dayRange.to)
+      : (!year && month !== 'all' ? daysInRange(`${month}-01`, lastDayOfMonth(month)) : null),
   });
 });
 

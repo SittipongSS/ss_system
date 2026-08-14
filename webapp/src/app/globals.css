@@ -209,6 +209,11 @@
      ⚠️ ขึ้นได้ถึง 40 เท่านั้น — สูงกว่านี้ไปชน --ctl-h-touch (44px) จนกฎจอสัมผัส
      ไม่เหลือความหมาย */
   --ctl-h: 40px;   /* standard height for toolbar controls: search / select / toolbar buttons / ปุ่ม */
+  /* ความกว้างแผงตัวเลือกช่วงวัน = ปฏิทินสองเดือนเรียงกัน — ต้องตรงกับ PANEL_WIDTH
+     ใน components/ui/DayRangePicker.js ที่ใช้คำนวณตำแหน่งแผง ไม่งั้นแผงวางเลยขอบจอ
+     ⚠️ ประกาศที่ :root เพราะแผงถูก render ผ่าน portal ไปที่ body — ตัวแปรที่ตั้งไว้
+     บนตัวปุ่มจะไม่ตกทอดไปถึงมัน */
+  --dayrange-panel-w: 560px;
   /* ⭐ **ดันตัวอักษรขึ้นให้กลางที่ "ตาเห็น" ไม่ใช่กลางที่เบราว์เซอร์คิด** (มติเดียวกัน)
 
      เบราว์เซอร์จัดข้อความกลางกล่องตาม *กล่องฟอนต์* ที่ฟอนต์ประกาศไว้ ซึ่ง Sarabun
@@ -756,6 +761,43 @@ button, select, input, textarea {
 .date-calendar-footer button { min-height: 32px; padding: 0 var(--space-2-5); border-radius: 7px; color: var(--accent-ink); font-weight: var(--fw-semibold); }
 .date-calendar-footer button:hover { background: var(--accent-soft); }
 .date-calendar-footer button:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+
+/* ── ตัวเลือกช่วงวัน (DayRangePicker · IS-26080023) ────────────────────────
+   ต่อยอดชั้นปฏิทินข้างบนทั้งหมด — เพิ่มเฉพาะสิ่งที่ปฏิทินวันเดียวไม่มี:
+   สองเดือนเรียงกัน · แถบไฮไลต์ระหว่างวันแรกกับวันสุดท้าย · จุดบอกวันที่มีข้อมูล */
+.dayrange { position: relative; display: inline-flex; }
+.dayrange-count { color: var(--text-3); font-size: var(--fs-3); }
+/* กว้าง = ปฏิทินสองเดือนเรียงกัน (ค่าเดียวกับที่ PANEL_WIDTH ในคอมโพเนนต์ใช้จัดตำแหน่ง
+   ทั้งสองที่ต้องตรงกัน ไม่งั้นแผงวางเลยขอบจอ) */
+.dayrange-panel { width: var(--dayrange-panel-w); }
+.dayrange-months { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.dayrange-month { min-width: 0; }
+.dayrange-quick { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); }
+.dayrange-chip {
+  padding: var(--space-1) var(--space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-3);
+  cursor: pointer;
+}
+.dayrange-chip:hover { background: var(--panel-2); }
+.dayrange-chip.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); font-weight: var(--fw-semibold); }
+/* วันที่อยู่ "ระหว่าง" ปลายทั้งสอง — พื้นอ่อนต่อกันเป็นแถบ จึงต้องไม่มีมุมโค้ง
+   ยกเว้นสองปลายซึ่งโค้งด้านนอกด้านเดียว ให้อ่านออกว่าช่วงเริ่มและจบตรงไหน */
+.date-calendar-grid button.dayrange-in { background: var(--accent-soft); color: var(--accent-ink); border-radius: 0; }
+.date-calendar-grid button.dayrange-start { border-radius: var(--radius) 0 0 var(--radius); }
+.date-calendar-grid button.dayrange-end { border-radius: 0 var(--radius) var(--radius) 0; }
+.dayrange-grid button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-0-5); }
+/* จุดบอกวันที่มีข้อมูล — ใช้โทเคนความจาง ไม่ใช่เลขดิบ (audit:ui คุมไว้) */
+.dayrange-dot { width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--accent); opacity: var(--op-muted); }
+.date-calendar-grid button.selected .dayrange-dot { background: var(--accent-fg); opacity: var(--op-muted); }
+@media (max-width: 640px) {
+  .dayrange-panel { width: auto; }
+  .dayrange-months { grid-template-columns: 1fr; }
+}
 .datetime-input { display: grid; grid-template-columns: minmax(150px, 1fr) 108px; gap: var(--space-2); }
 .datetime-time { width: 108px; font-variant-numeric: tabular-nums lining-nums; }
 @media (max-width: 480px) {
