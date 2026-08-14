@@ -7,7 +7,7 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { normalizeProjectType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
-import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectAeOwner } from '@/lib/pm/projectOwner';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   } else if (!ownerLockedToSelf(user.role)) {
     return badRequest('ต้องเลือกผู้ดูแลโครงการ (AE) — โครงการที่ไม่มีผู้ดูแลจะไม่โผล่ในลิสต์ของ AE คนไหนเลย');
   }
+
+  // ผู้ประสานงาน (AC) — ช่องไม่บังคับ · ตรวจว่าเป็นบัญชี AC จริงในทีมเดียวกับงาน
+  // เพราะ `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
+  const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, owner?.team ?? user.team);
+  if (!coordinator.ok) return badRequest(coordinator.error);
 
   const startDate = body.startDate || todayStr();
   const dueDate = body.dueDate || null;
@@ -76,8 +81,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ตัวตนจริงของผู้ดูแล (mig 0190) — ชื่อข้างบนเป็น snapshot สำหรับพิมพ์เอกสาร
     // ไม่ได้เลือกชื่อเอง = ผู้สร้างเป็นผู้ดูแลเอง จึงใส่ id ของตัวเองให้ตรงกัน
     aeOwnerId: owner?.aeOwnerId || (body.aeOwner ? null : user.id) || null,
-    acOwner: body.acOwner || '',
-    acOwnerId: body.acOwnerId || null,
+    // ชื่อผู้ประสานงานมาจาก server เช่นเดียวกับผู้ดูแล — ไม่รับชื่อลอย ๆ จาก client
+    acOwner: coordinator.acOwner || '',
+    acOwnerId: coordinator.acOwnerId,
     status: 'New',
     startDate,
     dueDate,

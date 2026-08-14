@@ -74,9 +74,13 @@ export default function SalesProjectCreateModal({
     () => personFullName(users.find((u) => u.id === myId)) || fallbackName,
     [users, myId, fallbackName],
   );
+  /* 🐞 AC เคยล็อกลง `preparedBy` — ช่องบนจอเขียนว่า "ผู้ประสานงานโครงการ (AC)" แต่ค่า
+     ไปกองที่คอลัมน์ "ผู้จัดทำ" ของหัว ISO ส่วน `acOwner`/`acOwnerId` ที่ PDR
+     (pdrFields → coordinator) และระบบแจ้งเตือน (updateAccess) อ่านจริง ว่างทั้ง 90 ใบ
+     ⇒ ช่องผู้ประสานงานบนใบ PDR ว่างตลอดกาล ไม่ใช่เพราะไม่มีคนกรอก แต่กรอกไปคนละช่อง */
   const lockPeopleField = (!editingId && myName)
     ? ((role === "ae" || role === "senior_ae") ? "aeOwner"
-      : role === "ac" ? "preparedBy"
+      : role === "ac" ? "acOwner"
       : role === "ae_supervisor" ? "aeSupervisor" : null)
     : null;
   const [submitting, setSubmitting] = useState(false);
@@ -84,7 +88,9 @@ export default function SalesProjectCreateModal({
   const [form, setForm] = useState({
     name: "", customerId: "", brand: "", line: "", mainCode: "", typeCode: "",
     productMainCategory: "", productSubCategory: "", startDate: today(), dueDate: "",
-    aeOwner: "", preparedBy: "", aeSupervisor: "",
+    // `preparedBy` (ผู้จัดทำ — หัว ISO) ไม่ใช่ช่องของฟอร์มนี้แล้ว: server ตั้งเป็นผู้สร้าง
+    // ตอน POST และ PATCH ไม่แตะเมื่อไม่ได้ส่งมา — ฟอร์มถามเฉพาะ "ใครรับผิดชอบงาน"
+    aeOwner: "", acOwner: "", aeSupervisor: "",
   });
 
   useEffect(() => {
@@ -96,7 +102,7 @@ export default function SalesProjectCreateModal({
       name: initialData?.name || "", customerId: initialData?.customerId || "", brand: initialData?.metadata?.brand || "", line: initialData?.line || "",
       mainCode, typeCode, productMainCategory: categoryCode, productSubCategory: initialData?.productSubCategory || "",
       startDate: initialData?.startDate || today(), dueDate: initialData?.dueDate || "", aeOwner: initialData?.aeOwner || "",
-      preparedBy: initialData?.preparedBy || "", aeSupervisor: initialData?.aeSupervisor || "",
+      acOwner: initialData?.acOwner || "", aeSupervisor: initialData?.aeSupervisor || "",
     });
     cachedFetchJson("/api/pm/assignable-users")
       .then((rows) => setUsers(rows || []))
@@ -156,6 +162,12 @@ export default function SalesProjectCreateModal({
           // จับคู่ไม่ได้ (ใบเก่าที่เก็บชื่อย่อ) = คง id เดิมไว้ ห้ามล้างเป็น null
           aeOwnerId: personIdByName(users, lockPeopleField === "aeOwner" ? myName : form.aeOwner)
             ?? initialData?.aeOwnerId ?? null,
+          // ผู้ประสานงานก็เดินคู่ชื่อเหมือนกัน — ต่างจากผู้ดูแลตรงที่ **ล้างได้**:
+          // AC เป็นช่องไม่บังคับ ถอดคนออกแล้วต้องไม่มี id ค้างไว้แจ้งเตือนคนที่ไม่เกี่ยวแล้ว
+          acOwnerId: (lockPeopleField === "acOwner" ? myName : form.acOwner)
+            ? (personIdByName(users, lockPeopleField === "acOwner" ? myName : form.acOwner)
+               ?? initialData?.acOwnerId ?? null)
+            : null,
           customerName: customer?.name || null,
           metadata: { ...(initialData?.metadata || {}), brand: form.brand, containerOnly: true },
         }),
@@ -260,8 +272,10 @@ export default function SalesProjectCreateModal({
             <PersonSelect by="name" users={ownerUsers} value={currentOwner} disabled={lockPeopleField === "aeOwner"} ariaLabel="ผู้ดูแลโครงการ (AE / Senior AE)" onChange={(aeOwner) => setForm((f) => ({ ...f, aeOwner }))} />
           </div>
           <div className="form-group">
-            <label>ผู้ประสานงานโครงการ (AC){lockPeopleField === "preparedBy" ? " · ล็อกเป็นคุณ" : ""}</label>
-            <PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "preparedBy" ? myName : form.preparedBy} disabled={lockPeopleField === "preparedBy"} ariaLabel="ผู้ประสานงานโครงการ (AC)" onChange={(preparedBy) => setForm((f) => ({ ...f, preparedBy }))} />
+            <label>ผู้ประสานงานโครงการ (AC){lockPeopleField === "acOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
+            {/* เขียนลง acOwner + acOwnerId — คู่เดียวกับผู้ดูแล (mig 0190) ที่ PDR และ
+                ระบบแจ้งเตือนอ่าน · ไม่ใช่ preparedBy ซึ่งเป็น "ผู้จัดทำ" ของหัว ISO */}
+            <PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "acOwner" ? myName : form.acOwner} disabled={lockPeopleField === "acOwner"} ariaLabel="ผู้ประสานงานโครงการ (AC)" onChange={(acOwner) => setForm((f) => ({ ...f, acOwner }))} />
           </div>
           <div className="form-group">
             <label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
