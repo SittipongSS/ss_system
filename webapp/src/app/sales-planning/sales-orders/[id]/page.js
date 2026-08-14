@@ -321,6 +321,8 @@ export default function SalesOrderDetailPage() {
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",
           schedule: "บันทึกกำหนดชำระแล้ว",
+          link: "แนบคำร้องขอเอกสารกับงวดนี้แล้ว",
+          unlink: "ถอดคำร้องออกจากงวดแล้ว",
         }[action] || "อัปเดตเรียบร้อยแล้ว",
       });
       return true;

@@ -257,14 +257,20 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
-  // ⚠️ โหมดของช่องยอดที่ขอเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ
-  // `billPercent`/`billAmount` ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
-  const [billMode, setBillMode] = useState("percent");
+  /* ⚠️ โหมดของช่องยอดที่ขอเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ
+     `billPercent`/`billAmount` ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
+     ⭐ มาจากปุ่ม "ขอใบวางบิลงวดนี้" (B-5) = รู้ **จำนวนเงินของงวด** มาแล้ว ไม่ใช่ %
+     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount */
+  const [billMode, setBillMode] = useState(
+    value?.billAmount != null && value?.billPercent == null ? "amount" : "percent",
+  );
   /* 🐞 **ตัวเลขที่พิมพ์ต้องค้างอยู่แม้ค่าไม่ผ่านด่าน** — รอบแรกช่องนี้อ่านค่าจาก
      `value.billAmount` ตรง ๆ ⇒ พิมพ์ยอดที่เกินยอดใบแล้วตัวเลขหายไปทั้งช่องพร้อมกับ
      ข้อความอธิบาย (เพราะ error คิดจากค่าที่ถูกล้างเป็น null ไปแล้ว) ⇒ ผู้ใช้เห็นแค่
      ช่องว่างกับปุ่มจาง · เก็บ "สิ่งที่พิมพ์" แยกจาก "ค่าที่ผ่านแล้ว" */
-  const [billInput, setBillInput] = useState("");
+  const [billInput, setBillInput] = useState(
+    value?.billAmount != null ? String(value.billAmount) : "",
+  );
   // ไฟล์ใหญ่เกินเพดาน — ด่านอยู่ใน PendingFiles ที่เดียว ที่นี่แค่รับข้อความมาโชว์
   const [fileError, setFileError] = useState("");
   const formTabs = requestFormTabs(value, { optionalRefs });

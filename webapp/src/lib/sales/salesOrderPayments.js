@@ -271,6 +271,20 @@ export function installmentActionError(row, action, user, options = {}) {
     return null;
   }
 
+  /* ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ────────────────────
+     ⭐ **ของฝ่ายขาย ไม่ใช่ของบัญชี** — คนที่รู้ว่าใบวางบิลใบไหนครอบงวดไหนคือคนที่
+     เปิดคำร้องนั้น · บัญชีเห็นความเชื่อมโยงได้แต่ไม่ต้องมากดให้
+     ⚠️ **แนบได้แม้งวดคอนเฟิร์มแล้ว** ต่างจาก `schedule` — ของจริงขอใบเสร็จ *หลัง*
+     เงินเข้าเป็นเรื่องปกติ ปิดตรงนี้เมื่อไรใบเสร็จจะไม่มีที่ให้แขวน */
+  if (action === 'link' || action === 'unlink') {
+    if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แก้การผูกคำร้อง';
+    if (action === 'link' && !String(options.billingRequestId || '').trim()) {
+      return 'ต้องเลือกคำร้องที่จะผูก';
+    }
+    if (action === 'unlink' && !row.billingRequestId) return 'งวดนี้ยังไม่ได้ผูกคำร้อง';
+    return null;
+  }
+
   if (action === 'confirm' || action === 'reject') {
     if (!canConfirmPayment(user)) return 'คอนเฟิร์มได้เฉพาะฝ่ายบัญชี';
     if (status !== 'reported') {

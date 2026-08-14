@@ -302,6 +302,39 @@ test('แก้กำหนดชำระได้เสมอ ยกเว้�
   assert.match(installmentActionError({ status: 'pending' }, 'schedule', FN_ROLE), /ไม่มีสิทธิ์/);
 });
 
+// ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ───────────────────────
+test('ผูกคำร้องเป็นงานของฝ่ายขาย และต้องเลือกคำร้องจริง', () => {
+  const row = frozen({ status: 'pending' });
+  assert.match(installmentActionError(row, 'link', SA, {}), /ต้องเลือกคำร้อง/);
+  assert.equal(installmentActionError(row, 'link', SA, { billingRequestId: 'DR-1' }), null);
+  // บัญชีเห็นความเชื่อมโยงได้ แต่ไม่ใช่คนกด — เขาไม่มี salesplan:edit
+  assert.match(installmentActionError(row, 'link', FN_ROLE, { billingRequestId: 'DR-1' }), /ไม่มีสิทธิ์/);
+});
+
+/* ⭐ ของจริงขอใบเสร็จ **หลัง** เงินเข้าเป็นเรื่องปกติ — ปิดตรงนี้เมื่อไร
+   ใบเสร็จจะไม่มีที่ให้แขวน (ต่างจาก `schedule` ที่ล็อกเมื่อคอนเฟิร์มแล้ว) */
+test('แนบคำร้องได้แม้งวดคอนเฟิร์มไปแล้ว', () => {
+  const done = frozen({ status: 'confirmed' });
+  assert.equal(installmentActionError(done, 'link', SA, { billingRequestId: 'DR-1' }), null);
+  assert.match(installmentActionError(done, 'schedule', SA), /คอนเฟิร์มแล้ว/);
+});
+
+test('ถอดคำร้องได้เฉพาะงวดที่ผูกไว้แล้ว', () => {
+  assert.match(installmentActionError(frozen({ status: 'pending' }), 'unlink', SA), /ยังไม่ได้ผูก/);
+  assert.equal(
+    installmentActionError(frozen({ status: 'pending', billingRequestId: 'DR-1' }), 'unlink', SA),
+    null,
+  );
+});
+
+/* ⚠️ งวดร่างก็แนบคำร้องได้ — คำร้องเกิดตั้งแต่ตอนมีแค่ QT ("50% ก่อนผลิต")
+   ซึ่งมักเกิด**ก่อน**ใบสั่งขายอนุมัติด้วยซ้ำ · บล็อกตรงนี้ = บังคับให้รอโดยไม่มีเหตุผล */
+test('งวดร่างแนบคำร้องได้ ต่างจากการแจ้งชำระ', () => {
+  const draft = { status: 'pending' };
+  assert.equal(installmentActionError(draft, 'link', SA, { billingRequestId: 'DR-1' }), null);
+  assert.match(installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }), /ยังไม่อนุมัติ/);
+});
+
 test('คำสั่งที่ไม่รู้จักถูกปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', () => {
   assert.match(installmentActionError({ status: 'reported' }, 'approve', ADMIN), /ไม่ถูกต้อง/);
   assert.match(installmentActionError(null, 'confirm', ADMIN), /ไม่พบงวด/);

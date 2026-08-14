@@ -96,8 +96,26 @@ async function loadOrder(supabase, id) {
     .eq('baseNumber', order.baseNumber || order.orderNumber)
     .order('revisionNo', { ascending: false });
   if (revisionHistoryError) throw revisionHistoryError;
+
+  /* ⭐ คำร้องขอเอกสารการเงินของ **ใบเสนอราคาเดียวกัน** (B-5) — คำร้องเกิดก่อนงวดเสมอ
+     (ของจริงขอใบวางบิล "50% ก่อนผลิต" ตั้งแต่ยังไม่มีใบสั่งขาย) ⇒ หน้าใบต้องโชว์ว่ามี
+     คำร้องอะไรรออยู่บ้าง แล้วให้ SA กดแนบเข้ากับงวดเอง — **ไม่เดาจับคู่ให้**
+     ⚠️ อ่านด้วย service-role ด้วยเหตุผลเดียวกับคำร้องพัฒนากลิ่นข้างบน — ที่คืนออกไป
+     มีแค่เลขที่/สถานะ/ยอด/เลขเอกสารที่บัญชีออกให้ ซึ่งเป็นข้อมูลของงานใบนี้อยู่แล้ว */
+  let billingRequests = [];
+  if (order.quotationId) {
+    const { data: reqRows } = await supabase
+      .from('dept_requests')
+      .select('id, docNo, status, title, "billAmount", "billPercent", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
+      .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
+      .neq('status', 'cancelled')
+      .order('createdAt', { ascending: true });
+    billingRequests = reqRows || [];
+  }
+
   return {
     ...order,
+    billingRequests,
     deal: deal || null,
     quotation: quotation || null,
     project: project || null,

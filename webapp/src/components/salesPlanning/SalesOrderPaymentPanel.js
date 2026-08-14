@@ -1,8 +1,9 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, Paperclip, Undo2, Wallet, XCircle } from "lucide-react";
+import { CalendarClock, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import PendingFiles from "@/components/ui/PendingFiles";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -41,6 +42,7 @@ export default function SalesOrderPaymentPanel({
   const [scheduleFor, setScheduleFor] = useState(null);
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
+  const [linkFor, setLinkFor] = useState(null);
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -56,6 +58,26 @@ export default function SalesOrderPaymentPanel({
   const drift = installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
   // ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ของงวดใช้
   const canTrackPayments = !["cancelled", "rejected"].includes(order?.status);
+
+  /* ── คำร้องขอเอกสารการเงินของใบเสนอราคาเดียวกัน (B-5) ────────────────────
+     ⚠️ **ไม่จับคู่ให้อัตโนมัติ** — คำร้องเกิดตั้งแต่ตอนมีแค่ QT ส่วนงวดเกิดจาก SO
+     เดาจาก % ที่ใกล้เคียงเมื่อไร ใบวางบิลจะไปแขวนผิดงวดโดยไม่มีใครรู้ (ม-ค) */
+  const billingRequests = Array.isArray(order?.billingRequests) ? order.billingRequests : [];
+  const requestById = new Map(billingRequests.map((r) => [r.id, r]));
+  const linkedIds = new Set(saved.map((r) => r.billingRequestId).filter(Boolean));
+  const linkableRequests = billingRequests.filter((r) => !linkedIds.has(r.id));
+  /* ลิงก์เปิดคำร้องใหม่แบบเติมค่าให้แล้ว — ⚠️ **เติมค่าไม่ใช่ปลดด่าน** ฟอร์มกับ POST
+     ยังตรวจครบทุกข้อ (ใบต้องอนุมัติแล้ว · ยอดต้องไม่เกินใบ) เหมือนเปิดเองจาก /requests */
+  const newBillingRequestHref = (row) => {
+    const params = new URLSearchParams({
+      kind: "billing_doc",
+      quotationId: order?.quotationId || "",
+      salesOrderId: order?.id || "",
+      billAmount: String(row?.amount ?? ""),
+      returnTo: `/sales-planning/sales-orders/${order?.id || ""}`,
+    });
+    return `/requests/new?${params.toString()}`;
+  };
 
   const quotation = order?.quotation;
   const wonFiles = Array.isArray(quotation?.wonAttachments) ? quotation.wonAttachments : [];
@@ -211,6 +233,24 @@ export default function SalesOrderPaymentPanel({
                     id: "unconfirm", icon: Undo2, tone: "warning", label: "ถอนคำรับรอง",
                     onClick: () => setUnconfirmFor({ row, reason: "" }),
                   },
+                  /* ── คำร้องขอเอกสารการเงิน (B-5) ────────────────────────────
+                     ⭐ **สองทางเข้า คนละสถานการณ์** — ยังไม่เคยขอ = เปิดใบใหม่ ·
+                     ขอไปแล้วตั้งแต่ตอนมีแค่ QT = แนบใบที่มีอยู่ (คำร้องเกิดก่อนงวดเสมอ)
+                     ⚠️ ทั้งคู่อยู่ในเมนู `⋯` ไม่ใช่ปุ่มหลัก — ก้าวถัดไปของงวดคือเรื่องเงิน
+                     ส่วนเอกสารเป็นแกนคู่ขนานที่ไม่ได้ทำให้งวดเดินหน้า */
+                  !row.billingRequestId && !gate(row, "link", { billingRequestId: "x" }) && {
+                    id: "ask-doc", icon: Receipt, label: "ขอใบวางบิลงวดนี้",
+                    href: newBillingRequestHref(row),
+                  },
+                  !row.billingRequestId && linkableRequests.length > 0
+                    && !gate(row, "link", { billingRequestId: "x" }) && {
+                    id: "link-doc", icon: Link2, label: "แนบคำร้องที่ขอไว้แล้ว",
+                    onClick: () => setLinkFor({ row, billingRequestId: "" }),
+                  },
+                  !gate(row, "unlink") && {
+                    id: "unlink-doc", icon: Unlink, tone: "warning", label: "ถอดคำร้องออกจากงวด",
+                    onClick: () => onAction(row, "unlink"),
+                  },
                 ].filter(Boolean);
 
                 return (
@@ -220,6 +260,23 @@ export default function SalesOrderPaymentPanel({
                     <td>
                       <strong>{row.label}</strong>
                       {single ? null : <small>{row.percent}%</small>}
+                      {/* ⭐ คำร้องขอเอกสารที่ครอบงวดนี้ (B-5) — โชว์ **เลขที่เอกสารที่บัญชี
+                          ออกให้จริง** ไม่ใช่แค่เลขคำร้อง เพราะสิ่งที่ SA เอาไปคุยกับลูกค้า
+                          คือเลขใบวางบิล · ตามกลับไม่เจอ = คำร้องถูกลบ ต้องบอกตรง ๆ */}
+                      {row.billingRequestId ? (() => {
+                        const linked = requestById.get(row.billingRequestId);
+                        if (!linked) return <small className={styles.overdue}>คำร้องขอเอกสารถูกลบไปแล้ว</small>;
+                        const issued = (linked.items || [])
+                          .map((it) => it.docNumber).filter(Boolean);
+                        return (
+                          <small>
+                            <a className="linklike" href={`/requests/${linked.id}`}>
+                              {linked.docNo || "คำร้องขอเอกสาร"}
+                            </a>
+                            {issued.length ? ` · ${issued.join(" · ")}` : " · รอบัญชีออกเอกสาร"}
+                          </small>
+                        );
+                      })() : null}
                     </td>
                     <td>
                       <span className={overdue ? styles.overdue : undefined}>
@@ -350,6 +407,43 @@ export default function SalesOrderPaymentPanel({
                   const done = await onAction(scheduleFor.row, "schedule", { dueDate: scheduleFor.dueDate || null });
                   if (done) setScheduleFor(null);
                 }}>บันทึก</Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* ⭐ แนบคำร้องที่ขอไว้แล้ว (B-5) — โชว์ **ยอดของคำร้อง** คู่กับยอดของงวดเสมอ
+          เพราะสองอย่างนี้ไม่จำเป็นต้องเท่ากัน (ขอวางบิลรวมสองงวดก็มี) ⇒ คนกดต้องเห็น
+          ทั้งคู่ก่อนตัดสิน ไม่ใช่ให้ระบบเดาว่าอันไหนคู่กัน */}
+      {linkFor ? (
+        <Modal open onClose={() => setLinkFor(null)} title="แนบคำร้องขอเอกสารการเงิน" size="sm" dismissible={!busy}>
+          <div className={styles.dialog}>
+            <p className="form-note">
+              งวดที่ {linkFor.row.seq} · {fmtMoney(linkFor.row.amount)} — เลือกคำร้องของใบเสนอราคาเดียวกันนี้
+            </p>
+            <label className={styles.field}>
+              <span>คำร้อง</span>
+              <SearchableSelect
+                value={linkFor.billingRequestId}
+                onChange={(v) => setLinkFor((f) => ({ ...f, billingRequestId: v }))}
+                options={linkableRequests.map((r) => ({
+                  value: r.id,
+                  label: [r.docNo || "ร่าง", r.title, r.billAmount ? fmtMoney(r.billAmount) : null]
+                    .filter(Boolean).join(" · "),
+                  search: `${r.docNo || ""} ${r.title || ""}`,
+                }))}
+                placeholder="เลือกคำร้อง"
+                emptyText="ไม่มีคำร้องที่ยังไม่ถูกแนบ"
+                ariaLabel="คำร้องขอเอกสารการเงินที่จะแนบ"
+              />
+            </label>
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setLinkFor(null)} disabled={!!busy}>ยกเลิก</Button>
+              <Button tone="accent" disabled={!!busy || !linkFor.billingRequestId}
+                onClick={async () => {
+                  const done = await onAction(linkFor.row, "link", { billingRequestId: linkFor.billingRequestId });
+                  if (done) setLinkFor(null);
+                }}>แนบ</Button>
             </div>
           </div>
         </Modal>
