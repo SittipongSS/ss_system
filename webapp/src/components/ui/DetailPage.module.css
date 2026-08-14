@@ -30,6 +30,10 @@
 .card {
   min-width: 0;
   overflow: hidden;
+  /* การ์ดที่ถูกลิงก์ถึงด้วย anchor (`#payment`) ต้องไม่ไปนอนใต้แถบเมนูที่ปักอยู่ด้านบน
+     ⚠️ ตั้งที่ `.card` ทุกใบ ไม่ใช่เฉพาะใบที่มี id — ใบที่ไม่มี anchor ไม่ได้รับผลอะไร
+     และตั้งเฉพาะบางใบจะกลายเป็นกฎที่คนถัดไปไม่รู้ว่ามีอยู่ */
+  scroll-margin-top: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--panel);

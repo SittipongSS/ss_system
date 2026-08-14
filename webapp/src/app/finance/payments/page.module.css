@@ -49,3 +49,10 @@
 .childLead {
   padding-inline-start: var(--space-4);
 }
+
+/* ไอคอน "เปิดแท็บใหม่" ท้ายเลขที่ SO — บอกล่วงหน้าว่ากดแล้วไม่เสียตำแหน่งในคิว */
+.openIcon {
+  margin-inline-start: var(--space-1);
+  vertical-align: -1px;
+  color: var(--text-3);
+}

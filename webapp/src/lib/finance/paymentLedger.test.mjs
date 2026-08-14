@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  LEDGER_COLUMNS, filterLedger, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow,
+  LEDGER_COLUMNS, filterLedger, groupAsOrder, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow,
   ledgerSummary, sortLedger,
 } from './paymentLedger.js';
 
@@ -188,4 +188,28 @@ test('จัดกลุ่มด้วย id ไม่ใช่เลขที�
   const b = ledgerRow({ installment: { id: 'i2', seq: 1, amount: 100, status: 'pending' }, order: { id: 'SOR-2', orderNumber: 'SO-DUP' }, todayIso: TODAY });
   assert.equal(groupLedgerByOrder([a, b]).length, 2);
   assert.equal(groupLedgerByOrder([]).length, 0);
+});
+
+/* ⭐ "ให้พูดภาษาเดียวกับตาราง SO" (มติผู้ใช้ 2026-08-13) — ทะเบียนกับตารางรายการ SO
+   ตอบคำถามเดียวกัน จึงต้องใช้ `salesOrderListTrack` ตัวเดียวกัน ไม่ใช่วาดรางอีกชุด */
+test('ก้อนแปลงเป็นรูปที่รางสามขั้นกินได้ และขั้นเก็บเงินนับจากงวดในก้อนเอง', () => {
+  const [g] = groupLedgerByOrder([
+    rowFor('Z', 1, { status: 'confirmed' }),
+    rowFor('Z', 2, { status: 'reported' }),
+  ]);
+  g.orderStatus = 'approved';
+  g.financeStatus = 'pending';
+  const shaped = groupAsOrder(g);
+  assert.equal(shaped.status, 'approved');
+  assert.equal(shaped.financeStatus, 'pending');
+  assert.deepEqual(
+    { paid: shaped.payment.paid, count: shaped.payment.count, reviewing: shaped.payment.reviewing },
+    { paid: 1, count: 2, reviewing: 1 },
+  );
+  assert.equal(groupAsOrder(null), null);
+});
+
+test('งวดที่เลยกำหนดในก้อน ส่งต่อเป็นธงแดงให้ราง', () => {
+  const [g] = groupLedgerByOrder([rowFor('Y', 1, { dueDate: '2026-08-01' })]);
+  assert.equal(groupAsOrder(g).payment.overdue, 1);
 });

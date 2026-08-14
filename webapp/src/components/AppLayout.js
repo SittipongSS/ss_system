@@ -334,7 +334,12 @@ export default function AppLayout({ children }) {
       // `visible: canAccessFinance` ซึ่งเป็น **ด่านเดียวกับที่การ์ดระบบใช้**
       system: 'finance',
       items: [
-        { href: '/finance', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p === '/finance' },
+        /* ⚠️ `disabled: true` = **จางและกดไม่ได้ ไม่ใช่ถอดออก** (แพตเทิร์นเดียวกับ
+           "ทะเบียนวัสดุ" และ "ขอราคาผลิต") — มติผู้ใช้ 2026-08-13:
+           *"หน้าภาพรวมเทาไว้ก่อนก็ได้ เดี๋ยวรอโมดูลเสร็จค่อยทำ เพราะมันคือภาพรวมของทั้งหมด"*
+           ⇒ ตอนนี้โมดูลมีของจริงอยู่หน้าเดียว ภาพรวมจึงเป็นภาพรวมของตัวเอง ซึ่งไม่มีค่า
+           ⚠️ ซ่อนทิ้งไม่ได้ — คนที่เคยเห็นจะนึกว่าสิทธิ์ตัวเองหาย (เหตุผลเดียวกับการ์ดระบบ) */
+        { href: '/finance', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, disabled: true, match: (p) => p === '/finance' },
         // ชื่อ "ทะเบียนการชำระ" ไม่ใช่ "การชำระ" — ฝั่ง SO มีการ์ด "การชำระ" ของใบ
         // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
         // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)

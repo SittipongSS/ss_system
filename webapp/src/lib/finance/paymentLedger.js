@@ -41,6 +41,10 @@ export function ledgerRow({ installment, order, quotation, customer, todayIso = 
     quoteNumber: quotation?.quoteNumber || '',
     customerName: customer?.name || order.customerName || '',
     customerCode: customer?.arCode || '',
+    /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
+       ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
+    orderStatus: order.status || null,
+    financeStatus: order.financeStatus || null,
     team: order.team || null,
     ownerName: order.ownerName || '',
 
@@ -194,6 +198,8 @@ export function groupLedgerByOrder(rows = []) {
         quoteNumber: row.quoteNumber,
         customerName: row.customerName,
         customerCode: row.customerCode,
+        orderStatus: row.orderStatus,
+        financeStatus: row.financeStatus,
         rows: [],
       });
     }
@@ -234,6 +240,33 @@ export function groupLedgerByOrder(rows = []) {
       }
       return String(a.orderNumber || '') < String(b.orderNumber || '') ? -1 : 1;
     });
+}
+
+/**
+ * แปลงก้อนหนึ่งใบให้อยู่ในรูปที่ `salesOrderListTrack` กิน (มติผู้ใช้ 2026-08-13)
+ *
+ * ⭐ *"ให้พูดภาษาเดียวกับตาราง SO ที่เพิ่งรื้อ"* — ทะเบียนนี้กับตารางรายการ SO ตอบ
+ * คำถามเดียวกัน ("ใบนี้ค้างที่ใคร") ⇒ ต้องใช้ **ฟังก์ชันเดียวกัน** ไม่ใช่วาดรางอีกชุด
+ * ที่หน้าตาเหมือนแต่ตรรกะแยก ซึ่งจะเพี้ยนหากันในสามเดือน
+ *
+ * ⚠️ ขั้นที่สาม (เก็บเงิน) ประกอบจากงวด **ในก้อนนี้เอง** ไม่ใช่จาก `salesOrderPaymentCell`
+ * ของฝั่ง API ⇒ ตัวเลขตรงกับที่ตาเห็นบนแถวเสมอ แม้ตัวกรองจะตัดบางงวดออกไป
+ */
+export function groupAsOrder(group) {
+  if (!group) return null;
+  return {
+    status: group.orderStatus,
+    financeStatus: group.financeStatus,
+    payment: {
+      tracked: true,
+      paid: group.paidCount,
+      count: group.count,
+      complete: group.complete,
+      overdue: group.rows.filter((r) => r.overdue).length,
+      reviewing: group.awaiting,
+      rejected: group.rejected,
+    },
+  };
 }
 
 /** ป้ายสรุปของใบที่ยุบอยู่ — เรื่องเดียวที่ด่วนที่สุด (กติกาเดียวกับตารางรายการ SO) */
