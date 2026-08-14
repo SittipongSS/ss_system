@@ -2,7 +2,7 @@ import { canUser } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest, notFound } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/mgmt/repo';
-import { driveEnvStatus } from '@/lib/drive';
+import { GoogleDocError, buildGoogleAttachment, googleDocsEnvError, workspaceEmail } from '@/lib/master/googleDocs';
 
 // googleapis (Drive) ต้อง Node runtime.
 export const runtime = 'nodejs';
@@ -19,10 +19,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // 🐞 เดิมเช็ค STORAGE_BACKEND ที่ prod ตั้งไว้แต่ที่อื่นไม่ตั้ง → ปุ่มสร้าง/ผูกเอกสาร
   // Google ตอบ 400 ทั้งที่ Drive ใช้งานได้ · ตอนนี้ไฟล์แนบอยู่บน Drive ที่เดียวเสมอ
   // ด่านที่เหลือคือ "ตั้งค่า env ครบไหม" ซึ่งเป็นเรื่องของการ deploy ไม่ใช่ของ backend
-  const env = driveEnvStatus();
-  if (!env.ok) {
-    return fail(`ยังตั้งค่า Google Drive ไม่ครบ (ขาด ${env.missing.join(', ')}) — ดูได้ที่ ตั้งค่า → ที่เก็บไฟล์`, 400);
-  }
+  const envError = googleDocsEnvError();
+  if (envError) return fail(envError, 400);
 
   const body = await req.json().catch(() => ({}));
   const { entityType, entityId, mode } = body;
@@ -33,55 +31,40 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (parentError) return fail(parentError.message, 500);
   if (!parent) return notFound('ไม่พบระเบียนที่จะแนบเอกสาร');
 
-  let file; // { id, name, mimeType, webViewLink }
+  // ⚠️ ตรรกะการคุยกับ Drive อยู่ที่ `lib/master/googleDocs` ที่เดียว — route นี้กับ
+  // `/api/attachments` เรียกตัวเดียวกัน ต่างกันแค่ route นี้เขียนเธรดอัปเดตของ
+  // โมดูลงานบริหารต่อท้ายให้ด้วย
+  let file;
   try {
-    const drive = await import('@/lib/drive');
-    if (mode === 'link') {
-      const fileId = drive.parseDriveId(body.url);
-      if (!fileId) return badRequest('ลิงก์ Google Drive ไม่ถูกต้อง');
-      file = await drive.getFileMeta(fileId);
-    } else if (mode === 'create') {
-      if (!drive.GOOGLE_NATIVE_MIME[body.type]) return badRequest('ชนิดเอกสารไม่รองรับ (gdoc/gsheet)');
-      const name = (body.name || '').trim() || (body.type === 'gsheet' ? 'ตารางงานใหม่' : 'เอกสารใหม่');
-      const folderId = await drive.resolveFolderForEntity(entityType, entityId);
-      file = await drive.createGoogleFile(folderId, name, body.type);
-    } else {
-      return badRequest('mode ไม่ถูกต้อง (link/create)');
-    }
-
-    // best-effort: ให้สิทธิ์ writer แก่อีเมล Workspace ของผู้ใช้ (นอกเหนือสมาชิก Shared Drive).
-    if (user?.id) {
-      try {
-        const { data: authUser } = await supabase.auth.admin.getUserById(user.id);
-        const email = authUser?.user?.email;
-        if (email) await drive.grantWriter(file.id, email);
-      } catch { /* ignore */ }
-    }
-
-    const kind = drive.kindFromMime(file.mimeType) || 'link';
-    const row = {
+    file = await buildGoogleAttachment({
       entityType,
       entityId,
-      docType: 'other',
-      fileUrl: file.webViewLink,
-      driveFileId: null, // เอกสาร native เปิดผ่าน webViewLink ตรง ไม่ผ่าน proxy stream
-      fileName: file.name || null,
-      mimeType: file.mimeType || null,
-      uploadedBy: user?.id ?? null,
-      uploadedByName: user?.name ?? null,
-      metadata: { kind, googleFileId: file.id },
-    };
-    const { data, error } = await supabase.from('attachments').insert(row).select().single();
-    if (error) return fail(error.message, 500);
-
-    await recordAudit({ user, action: 'create', entityType: `${entityType}_doc`, entityId: data.id, after: data, request: req });
-    await appendUpdate(supabase, {
-      entityType: FEED_ENTITY[entityType], entityId, kind: 'link',
-      body: `${mode === 'create' ? 'สร้าง' : 'ผูก'}เอกสาร: ${file.name || file.webViewLink}`, user,
+      mode,
+      type: body.type,
+      url: body.url,
+      name: body.name,
+      grantEmail: await workspaceEmail(supabase, user?.id),
     });
-    return ok(data, 201);
   } catch (err) {
-    console.error('[mgmt/docs] failed', err?.message);
-    return fail('ดำเนินการกับ Google Drive ไม่สำเร็จ', 500);
+    if (err instanceof GoogleDocError) return fail(err.message, err.status);
+    throw err;
   }
+
+  const row = {
+    entityType,
+    entityId,
+    docType: 'other',
+    ...file,
+    uploadedBy: user?.id ?? null,
+    uploadedByName: user?.name ?? null,
+  };
+  const { data, error } = await supabase.from('attachments').insert(row).select().single();
+  if (error) return fail(error.message, 500);
+
+  await recordAudit({ user, action: 'create', entityType: `${entityType}_doc`, entityId: data.id, after: data, request: req });
+  await appendUpdate(supabase, {
+    entityType: FEED_ENTITY[entityType], entityId, kind: 'link',
+    body: `${mode === 'create' ? 'สร้าง' : 'ผูก'}เอกสาร: ${file.fileName || file.fileUrl}`, user,
+  });
+  return ok(data, 201);
 });

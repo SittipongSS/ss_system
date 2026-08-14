@@ -204,7 +204,9 @@ function storageRootId() {
 
 // เดิน path ทีละชั้นจาก root — สร้างชั้นที่ยังไม่มี. ชั้นที่มี cache (ลูกค้า/สินค้า)
 // ใช้ id เดิมถ้ายังมีชีวิตอยู่ เพื่อให้ "คนเปลี่ยนชื่อโฟลเดอร์บน Drive" ไม่ทำให้ไฟล์แตกเป็นสองที่
-async function ensureFolderPath(segments, ctx) {
+// export: ผู้เรียกที่อยาก**แยกขั้น** "คิด path จากฐานข้อมูล" ออกจาก "สร้างจริงบน Drive"
+// ได้ — เพื่อแยก error ของข้อมูลไม่ครบ ออกจาก error ที่ Drive ปฏิเสธ (ดู master/googleDocs)
+export async function ensureFolderPath(segments, ctx) {
   let parentId = storageRootId();
   for (const seg of segments) {
     if (seg.cachedId && await folderAlive(seg.cachedId)) {

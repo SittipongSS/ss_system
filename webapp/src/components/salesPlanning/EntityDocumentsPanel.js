@@ -7,7 +7,8 @@
 // ⚠️ วางใน `components/salesPlanning/` **ไม่ใช่ dir ใหม่** — scripts/uiLegacyBudget.mjs
 // map dir → module ⇒ dir ใหม่จะได้งบชั้นเก่าของตัวเองที่ไม่มีใครดูแล
 import { useCallback, useEffect, useState } from "react";
-import { Paperclip, ExternalLink } from "lucide-react";
+import { Paperclip, ExternalLink, Eye } from "lucide-react";
+import GoogleDocViewer from "@/components/GoogleDocViewer";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -23,6 +24,8 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // แถวเอกสารร่วมที่กำลังเปิดดูในหน้า — null = ปิดอยู่
+  const [viewing, setViewing] = useState(null);
 
   const reload = useCallback(() => {
     if (!dealId && !projectId) return;
@@ -50,7 +53,15 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
     reload();
   }, [seeded, reload]);
 
-  if (loading) return <SkeletonRows rows={4} />;
+  // 🐞 **ลูปยิง API ไม่หยุด** (เจอ 2026-08-14 · มีมาก่อนงานเอกสารร่วม) — เดิมเป็น
+  // `if (loading)` เฉย ๆ ⇒ ทุกครั้งที่ reload() ตั้ง loading=true แผงนี้คืน skeleton
+  // แล้ว `AttachmentsPanel` ข้างล่าง **ถูกถอดออกจากต้นไม้** · พอโหลดเสร็จมันติดตั้ง
+  // ใหม่ → ยิง onItemsChange ตอน mount → parent reload() → loading=true → ถอดอีก
+  // วนไม่จบ (วัดได้ ~500 request/วินาที ค้างไว้ตลอดเวลาที่เปิดแท็บนี้)
+  //
+  // ⇒ skeleton เฉพาะ**รอบแรก**ที่ยังไม่มีข้อมูลเลย · รอบถัดไปคงลิสต์เดิมไว้ให้อ่าน
+  // ระหว่างโหลด ซึ่งทั้งตัดลูปและอ่านง่ายกว่าจอกระพริบเป็น skeleton ทุกครั้งที่แนบไฟล์
+  if (loading && !data) return <SkeletonRows rows={4} />;
   if (error) return <StatusNotice tone="error">{error}</StatusNotice>;
 
   const rows = data?.rows || [];
@@ -82,18 +93,33 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
                 {row.at ? ` · ${fmtDate(row.at)}` : ""}
               </div>
             </div>
-            {row.href && (
-              <Button
-                as="a" href={row.href} size="sm" variant="quiet"
-                target={row.source === "awaiting" ? undefined : "_blank"}
-                icon={<ExternalLink size={13} aria-hidden="true" />}
-              >
-                {/* ⚠️ ฉบับที่ออกจริงเป็น HTML ไม่ใช่ PDF — ห้ามเขียน "ดาวน์โหลด"
-                    ผู้ใช้จะรอไฟล์ที่ไม่มีวันมา · ของที่ยังไม่มาพาไปดูคำร้อง
-                    ไม่ใช่ให้เปิดใบใหม่ (คำร้องเปิดไปแล้ว จะได้ใบซ้ำ) */}
-                {row.source === "awaiting" ? "ดูคำร้อง" : "เปิดดู"}
-              </Button>
-            )}
+            <div className={styles.actions}>
+              {/* ⭐ เอกสารร่วมได้ปุ่มเพิ่มมาหนึ่งตัว เพราะมันทำได้สองอย่างจริง ๆ:
+                  ดูในหน้า (อ่าน) กับไปแก้ที่ Google · แถวอื่นทำได้อย่างเดียวคือเปิด
+                  ⚠️ ปุ่ม "ดู" เป็นการ**อ่าน** จึงอยู่ในลิสต์นี้ได้ ไม่ขัดกับกติกาว่า
+                  ลิสต์บนไม่มีปุ่มทำลาย — ปุ่มลบยังอยู่ในกล่องล่างที่เดียว */}
+              {row.previewUrl && (
+                <Button
+                  size="sm" variant="quiet"
+                  onClick={() => setViewing(row)}
+                  icon={<Eye size={13} aria-hidden="true" />}
+                >
+                  ดู
+                </Button>
+              )}
+              {row.href && (
+                <Button
+                  as="a" href={row.href} size="sm" variant="quiet"
+                  target={row.source === "awaiting" ? undefined : "_blank"}
+                  icon={<ExternalLink size={13} aria-hidden="true" />}
+                >
+                  {/* ⚠️ ฉบับที่ออกจริงเป็น HTML ไม่ใช่ PDF — ห้ามเขียน "ดาวน์โหลด"
+                      ผู้ใช้จะรอไฟล์ที่ไม่มีวันมา · ของที่ยังไม่มาพาไปดูคำร้อง
+                      ไม่ใช่ให้เปิดใบใหม่ (คำร้องเปิดไปแล้ว จะได้ใบซ้ำ) */}
+                  {row.source === "awaiting" ? "ดูคำร้อง" : row.previewUrl ? "แก้" : "เปิดดู"}
+                </Button>
+              )}
+            </div>
           </li>
         ))}
       </ul>
@@ -111,6 +137,11 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
           entityId={dealId}
           canEdit
           inlineUpload
+          // เอกสารร่วม (Google Doc/Sheet) — ร่างสเปก ตารางเทียบราคา ที่หลายคนแก้พร้อมกัน
+          // ⚠️ ปุ่มสร้างอยู่ที่นี่ที่เดียว แม้เอกสารจะไปโผล่ในลิสต์รวมด้านบนด้วย —
+          // ลิสต์บนตั้งใจให้อ่านอย่างเดียวทั้งแถบ (ของส่วนใหญ่ในนั้นลบไม่ได้อยู่แล้ว
+          // เช่นใบเสนอราคาที่ออกไปแล้ว) ⇒ ปุ่มลบอยู่กล่องนี้ที่เดียวเหมือนไฟล์แนบ
+          googleDocs
           // ⚠️ `onItemsChange` คือ callback จริงของแผงนี้ (ไม่ใช่ onChanged) — แจ้ง
           // รายการปัจจุบันทุกครั้งที่เปลี่ยน ⇒ ใช้เป็นสัญญาณให้ดึงยอดรวมใหม่
           // ขาดไปแล้วคนจะกดแนบซ้ำเพราะลิสต์ด้านบนยังไม่ขยับ (นึกว่าไม่ติด)
@@ -118,6 +149,14 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
         />
       </div>
       )}
+
+      <GoogleDocViewer
+        open={!!viewing}
+        title={viewing?.title}
+        previewUrl={viewing?.previewUrl}
+        editUrl={viewing?.href}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 }
