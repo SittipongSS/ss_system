@@ -4,7 +4,7 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { loadProject, deleteProjectDeep } from '@/lib/pm/projectsRepo';
-import { resolveProjectAcOwner, resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { isForceRequest, canForceDelete, forceDeleteProjectExcise } from '@/lib/forceDelete';
 import { genId } from '@/lib/id';
 import { pickFields } from '@/lib/validate';
@@ -28,12 +28,16 @@ const EDITABLE = [
   // สายธุรกิจ (mig 0191) — แก้ได้ตลอด เพราะโครงการเก่าเป็น NULL ทั้งหมดและ
   // ต้องมีคนมาเลือกทีหลัง · ต่างจาก `type` ที่ล็อกหลังสร้าง (แม่แบบ gen ไปแล้ว)
   'line',
-  // คู่ ชื่อ+id ของผู้ดูแล (mig 0190): ชื่อไว้พิมพ์ลงเอกสาร · id คือตัวตนจริง
-  // ⚠️ ต้องแก้มาคู่กันเสมอ — ฟอร์มส่งทั้งสองค่าจากตัวเลือกเดียวกัน
-  'aeOwner', 'aeOwnerId', 'acOwner', 'acOwnerId', 'status', 'startDate', 'dueDate',
+  /* ⭐ **สามฝ่ายของโครงการรับมาแค่ `id`** — ชื่อ (`aeOwner`/`acOwner`/`aeSupervisor`)
+     ถูกเขียนจาก server ตามบัญชีที่ id ชี้ ไม่อยู่ในลิสต์นี้โดยเจตนา
+     🐞 ของเดิมรับชื่อจาก client ด้วย ⇒ ยิงชื่ออย่างเดียวโดยไม่ส่ง id ก็ผ่าน แล้วชื่อ
+     บนใบจะบอกว่าเป็นคนหนึ่ง ส่วน id (ตัวที่ใช้จริงกับสิทธิ์/แจ้งเตือน) ยังเป็นอีกคน —
+     กับดักเดิมของบ้านนี้ที่ mig 0190 เกิดมาเพื่อแก้ · ฟอร์มส่งคู่กันอยู่แล้ว
+     ⚠️ `team`/`ownerId` ก็ไม่อยู่ในลิสต์เช่นกัน — เดินตามผู้ดูแล (ดูบล็อกใน PATCH) */
+  'aeOwnerId', 'acOwnerId', 'aeSupervisorId', 'status', 'startDate', 'dueDate',
   'productMainCategory', 'productSubCategory',
   'docNumber', 'productName', 'productCode', 'orderQty', 'productionQty',
-  'aeSupervisor', 'keyAccountExec', 'customerEmail', 'preparedBy', 'reviewedBy',
+  'customerEmail', 'preparedBy', 'reviewedBy',
   'metadata',
 ];
 
@@ -300,6 +304,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     updates.acOwnerId = coordinator.acOwnerId;
     // ชื่อเดินคู่ id เสมอ — ถอดคนออกก็ต้องล้างชื่อบนใบด้วย ไม่งั้นเหลือชื่อลอยที่ไม่มีตัวตน
     updates.acOwner = coordinator.acOwner;
+  }
+  /* ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ ล้างได้ · ชื่อไหลต่อไปขึ้นใบเสนอราคา
+     (หน้าออกใบอ่าน `project.aeSupervisor` มาตั้งต้น) จึงต้องเป็นชื่อของบัญชีจริง */
+  if (updates.aeSupervisorId !== undefined
+      && (updates.aeSupervisorId || null) !== (project.aeSupervisorId || null)) {
+    const supervisor = await resolveProjectSupervisor(supabase, updates.aeSupervisorId);
+    if (!supervisor.ok) return badRequest(supervisor.error);
+    updates.aeSupervisorId = supervisor.aeSupervisorId;
+    updates.aeSupervisor = supervisor.aeSupervisor;
   }
   updates.updatedAt = new Date().toISOString();
 
