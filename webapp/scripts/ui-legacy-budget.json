@@ -31,9 +31,9 @@
     },
     "mgmt": {
       "legacyTable": 1,
-      "legacySurface": 13,
-      "inlineStyle": 184,
-      "rawButtonClass": 28,
+      "legacySurface": 12,
+      "inlineStyle": 163,
+      "rawButtonClass": 23,
       "rawInputClass": 22
     },
     "settings": {

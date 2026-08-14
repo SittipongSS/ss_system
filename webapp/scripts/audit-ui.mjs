@@ -56,7 +56,8 @@ const colorAllowList = [
 const nativeFeedbackDebt = {
   "src/app/database/customers/page.js": 1, // เหตุผลไม่อนุมัติลูกค้า (ยังไม่บังคับกรอก)
   "src/app/database/products/page.js": 1, // เหตุผลไม่อนุมัติสินค้า (ยังไม่บังคับกรอก)
-  "src/components/mgmt/DocsPanel.js": 2, // ลิงก์ + ชื่อ Google Doc/Sheet (โมดูลงานบริหารที่พักไว้)
+  // (ลบ src/components/mgmt/DocsPanel.js ออกแล้ว — แผงนั้นถูกยุบเข้า AttachmentsPanel
+  //  ซึ่งใช้ ReasonDialog อยู่แล้ว จึงไม่เหลือ prompt() ให้ยกเว้น)
 };
 
 /* ระยะห่างที่ยังเป็นเลขดิบ — เพดานรวม ไม่ใช่รายไฟล์ (ตรวจ 2026-07-29: ระยะห่างใน

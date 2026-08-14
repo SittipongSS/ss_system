@@ -3,7 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
-import DocsPanel from "@/components/mgmt/DocsPanel";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
@@ -26,6 +26,15 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
   }, [task?.id]);
 
   useEffect(() => { if (open) loadUpdates(); }, [open, loadUpdates]);
+
+  // แนบเอกสารแล้วเธรดต้องขยับทันที — server เขียนบรรทัด "แนบเอกสาร: …" ให้ทุกครั้ง
+  // ⚠️ ข้ามครั้งแรก: AttachmentsPanel แจ้งรายการตอน mount ด้วย ไม่งั้นดึงซ้ำเปล่า ๆ
+  // ทุกครั้งที่เปิด drawer
+  const [docsSeeded, setDocsSeeded] = useState(false);
+  const onDocsChange = useCallback(() => {
+    if (!docsSeeded) { setDocsSeeded(true); return; }
+    loadUpdates();
+  }, [docsSeeded, loadUpdates]);
 
   const changeStatus = async (status) => {
     if (!task || status === task.status) return;
@@ -106,8 +115,18 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
           </div>
         )}
 
-        {/* ไฟล์ static (PDF) + Google Doc/Sheet (มีชีวิต) */}
-        <DocsPanel entityType="mgmt_task" entityId={task.id} canEdit={canEdit} />
+        {/* ไฟล์แนบ + เอกสารร่วม (Google Doc/Sheet) — แผงเดียวกับทั้งระบบ
+            ⚠️ เดิมเป็น `DocsPanel` ของโมดูลนี้เอง ซึ่งทำเรื่องเดียวกันคนละชุด
+            (ยุบทิ้งแล้ว · ดูกฎ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md) */}
+        <div className="toolbar-label">ไฟล์ &amp; เอกสาร</div>
+        <AttachmentsPanel
+          entityType="mgmt_task"
+          entityId={task.id}
+          canEdit={canEdit}
+          inlineUpload
+          googleDocs
+          onItemsChange={onDocsChange}
+        />
 
         {/* updates feed */}
         <div>
