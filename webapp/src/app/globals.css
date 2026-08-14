@@ -222,12 +222,18 @@
      (padding-bottom 3px ⇒ กล่องบรรทัดถูกจัดกลางใหม่ในพื้นที่ที่เตี้ยลง 3px
      = ตัวอักษรขยับขึ้น 1.5px พอดี ⇒ บน 8.5 / ล่าง 8.5)
 
+     🔴 **หน่วยเป็น `em` ไม่ใช่ px — จงใจ** ส่วนที่ล้นแปรตามขนาดตัวอักษร
+     (1.5px ที่ 13px = 0.115em) แต่ตัวควบคุมของระบบนี้ใช้ตั้งแต่ 11.5px ถึง 14px
+     ⇒ ตรึง 3px ไว้จะ **ดันเกิน** ที่ตัวเล็ก: วัดจริงตอนใช้ 3px ดิบ `.btn.sm` กับ
+     `.chip` ลอยสูงเกินไป 1.1px และช่องค้นหา (14px) ยังต่ำอยู่ 0.4px
+     0.23em = 2×0.115em ให้ทุกขนาดพอดีเอง (วัดหลังเปลี่ยน: ทุกตัวอยู่ในช่วง ±0.4px)
+
      🔴 ผูกกับ **ตัวพิมพ์ปัจจุบัน** เหมือน `--fw-semibold` ของ .premium-input —
      เปลี่ยนฟอนต์เมื่อไรต้องวัด descent ใหม่ ไม่ใช่ค่าที่ใช้ได้กับทุกฟอนต์
-     ⚠️ ใช้กับ **ช่องที่คนอ่านข้อความไทยที่พิมพ์เอง** เท่านั้น (ดูบล็อกที่เรียกใช้)
-     ห้ามใส่ให้ `.btn` / `.btn-icon` — ในนั้นเป็นไอคอนที่ต้องกลางกล่องจริง ๆ
-     จะกลายเป็นไอคอนลอยสูงกว่ากลาง 1.5px แทน */
-  --ctl-text-sink: 3px;
+     ⚠️ ใช้กับ **กล่องความสูงคงที่ที่มีข้อความไทย** เท่านั้น (ดูบล็อกที่เรียกใช้)
+     ห้ามใส่ให้ `.btn-icon` / กระดิ่ง / เลขหน้า — ในนั้นเป็นไอคอนหรือเลขล้วนที่ต้อง
+     กลางกล่องจริง ๆ จะกลายเป็นของลอยสูงกว่ากลาง 1.5px แทน */
+  --ctl-text-sink: 0.23em;
   /* จอสัมผัส — นิ้วต้องการเป้าที่ใหญ่กว่าเมาส์ (เกณฑ์ ≥44px ของ WCAG 2.5.5 / HIG)
      ใช้ใน media query จอแคบ ซึ่งเป็นตัวแทนของ "น่าจะใช้นิ้ว" ที่ระบบนี้มีอยู่
      ⚠️ ตัวเลข 44 นี้เคยกระจายอยู่ 4 ที่แบบไม่มีชื่อ ปนกับ 38px ที่เป็น drift จริง ๆ
@@ -1971,7 +1977,10 @@ h1, h2, h3, h4, h5, h6 {
   gap: 5px;
   min-height: 24px;
   max-width: 100%;
-  padding: 3px var(--space-2-5);
+  /* บน `--space-0-5` (2px) · ล่าง 2px + sink — ดันตัวอักษรไทยขึ้นให้กลางที่ตาเห็น
+     (เดิมบน/ล่าง 3px เท่ากัน ⇒ ที่ว่างล่าง 3.2px เทียบกับบน 6.7px)
+     เลือกยุบบนเหลือ 2px แทนที่จะบวกล่างเป็น 6px เพื่อไม่ให้ชิปทั้งระบบสูงขึ้น 3px */
+  padding: var(--space-0-5) var(--space-2-5) calc(var(--space-0-5) + var(--ctl-text-sink));
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
   border-radius: var(--radius);
   background: color-mix(in srgb, currentColor 12%, transparent);
@@ -4074,11 +4083,33 @@ button.empty-state { width: 100%; font: inherit; }
    ⚠️ `:not(textarea)` ไม่ใช่ของประดับ — `textarea.premium-input` ตั้ง padding
    แนวตั้ง 8px ของตัวเองไว้ (พื้นที่หลายบรรทัด สระล่างของบรรทัดสุดท้ายไม่ได้อยู่
    ชิดขอบอยู่แล้ว) กฎนี้อยู่ทีหลังจึงจะทับมันเหลือ 3px ถ้าไม่กัน
-   ⚠️ ปุ่ม (`.btn` / `.btn-icon`) ไม่อยู่ในชุดนี้โดยเจตนา — ดูเหตุผลที่โทเคน */
+
+   ⭐ **รอบสอง (มติผู้ใช้ 2026-08-14): ป้ายบนปุ่ม · ช่องค้นหา · พิลบนแถบบน**
+   เข้าชุดนี้ด้วย เพราะวัดแล้วเบี้ยวแบบเดียวกันเป๊ะ (ที่ว่างล่างน้อยกว่าที่ควร ~2.7px
+   ที่ตัวอักษร 12px) — ในชุดนี้ต้องเป็นตัวที่ **padding ด้านบนเป็น 0** เท่านั้น
+   ตัวที่มี padding บนของตัวเอง (`.chip` · `.tab-btn` · `.segmented > button` ·
+   `.search-glass`) เขียนไว้ในกฎของตัวเองแบบ "บน + sink" ไม่ใช่ที่นี่
+   ไม่งั้นจะกลายเป็น *ลด* padding ล่างจนตัวอักษรตกลงไปกว่าเดิม
+
+   ⚠️ **ที่ไม่เอาเข้าชุด และเพราะอะไร**
+   - `.btn-icon` · กระดิ่ง (`.topnav-global-action` เปล่า ๆ) = ในกล่องเป็นไอคอนล้วน
+     ต้องกลางกล่องจริง ๆ ดันขึ้นแล้วจะลอยสูงกว่ากลาง 1.5px
+   - `.ui-pager-page` = เลขหน้าล้วน ไม่มีสระล่างให้ชน
+   - `.ui-switch` = ไม่มีกล่องความสูงคงที่ (โตตามเนื้อ) ⇒ ไม่มีอะไรให้จัดกลางใหม่
+     ใส่ไปจะได้แค่ตัวสวิตช์สูงขึ้น 3px เฉย ๆ
+   - `.search-glass` / `.ui-select-search` ใส่ที่ **`input` ข้างใน** ไม่ใช่กล่องครอบ:
+     ช่องข้างในสูงเท่ากล่องบรรทัดพอดี (21px) หมึกของ `_` ล้นขอบล่างของตัว input เอง
+     0.1px ⇒ ถ้าไปบีบที่กล่องครอบ ช่องข้างในยังคลิปขีดล่างอยู่ · ใส่ที่ input
+     ทำให้ input สูงขึ้น 3px มีที่ให้ `_` และตัวหนังสือขยับขึ้น 1.5px ในกล่องครอบพร้อมกัน */
 .premium-input:not(textarea),
 .premium-select,
 .ui-select,
-.deal-derived {
+.deal-derived,
+.btn:not(.btn-icon):not(.ui-pager-page),
+.topnav-sys-btn,
+.topnav-settings-link,
+.search-glass input,
+.ui-select-search input {
   padding-bottom: var(--ctl-text-sink);
 }
 
@@ -4320,7 +4351,10 @@ button.empty-state { width: 100%; font: inherit; }
   align-items: center;
   justify-content: center;
   gap: var(--space-1-5);
-  padding: 5px var(--space-3);
+  /* ล่าง = บน (5px) + sink · ความสูงไม่ขยับเพราะ `height: 26px` ตรึงไว้ padding
+     แค่บีบพื้นในกล่อง ⇒ ตัวอักษรขยับขึ้น 1.5px · `.icon` ด้านล่างล้าง padding เป็น 0
+     อยู่แล้ว = เม็ดที่มีไอคอนล้วนไม่โดนดัน ตามที่ควรเป็น */
+  padding: 5px var(--space-3) var(--space-2);
   height: 26px;
   font-family: inherit;
   font-size: var(--fs-5);
@@ -4532,7 +4566,10 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: var(--fw-medium);
   font-size: var(--fs-7);
   line-height: var(--lh-flat);
-  padding: var(--space-2-5) var(--space-3-5);
+  /* แท็บโตตามเนื้อ (ไม่มี height ตรึง) ⇒ ถ้าบวก sink ที่ล่างเฉย ๆ แถบแท็บทั้งแถบ
+     จะสูงขึ้น 3px · แบ่งครึ่งจากบนไปล่างแทน (บน −1.5 / ล่าง +1.5) = ตัวอักษรขยับ
+     ขึ้น 1.5px เท่ากัน แต่ความสูงรวมเท่าเดิมเป๊ะ */
+  padding: calc(var(--space-2-5) - var(--ctl-text-sink) / 2) var(--space-3-5) calc(var(--space-2-5) + var(--ctl-text-sink) / 2);
   cursor: pointer;
   position: relative;
   white-space: nowrap;
@@ -5477,11 +5514,19 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 
 /* Expanding glass search box */
 .search-glass {
-  min-height: 38px;
+  /* ⚠️ เดิม `min-height: 38px` = **ความสูงที่สาม** ที่เอกสารห้ามไว้เอง (typography-system
+     §ความสูงของตัวควบคุม: มีแค่ --ctl-h กับ --ctl-h-touch) ⇒ ช่องค้นหาเตี้ยกว่าปุ่ม
+     ข้าง ๆ 2px ทุกหน้าที่ไม่ได้อยู่ใน `.toolbar` (ใน .toolbar มีกฎตรึงเป็น --ctl-h
+     อยู่แล้ว = ที่เดียวที่เคยตรง ส่วนหน้าอื่นเบี้ยวมาตลอดโดยไม่มีใครเห็น)
+     ตัวอักษรไทยในช่องนี้ดันขึ้นที่ `input` ข้างใน ไม่ใช่ที่นี่ — ดูเหตุผลที่บล็อก sink */
+  min-height: var(--ctl-h);
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 7px var(--space-3);
+  /* เดิม 7px ดิบ · ยุบเป็น 6px เพราะช่องข้างในสูงขึ้น 3px จาก sink ⇒ 7+7+24.2+2 = 40.2px
+     คือ **สูงเกินปุ่มข้าง ๆ 0.2px** (min-height เอาไม่อยู่เพราะเนื้อในดันเอง)
+     6px ⇒ เนื้อในรวม 38.2px ต่ำกว่า --ctl-h ⇒ min-height คุมได้ = 40px เป๊ะ */
+  padding: var(--space-1-5) var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);

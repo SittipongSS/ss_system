@@ -28,28 +28,63 @@ test("มาตรฐานความสูงตัวควบคุมม�
     ".btn ต้องรับความสูงจาก --ctl-h");
 });
 
-/* ⭐ ตัวอักษรไทยในกล่องบรรทัดเดียวต้องกลาง "ที่ตาเห็น" — เบราว์เซอร์จัดกลางตามกล่อง
+/* ⭐ ตัวอักษรไทยในกล่องความสูงคงที่ต้องกลาง "ที่ตาเห็น" — เบราว์เซอร์จัดกลางตามกล่อง
    ฟอนต์ (Sarabun 13px = ขึ้น 14 / ลง 3) แต่สระล่าง+ขีดล่างของไทยลงจริง 4.49px
-   ⇒ ทุกช่องนั่งต่ำกว่ากลาง 1.5px ถ้าไม่หั่นพื้นล่างออก
-   ⚠️ ด่านนี้กันสองทิศ: หายไปจากช่อง (อาการเดิมกลับมา) และงอกใส่ปุ่ม (ไอคอนลอยสูง) */
-test("ช่องบรรทัดเดียวดันตัวอักษรขึ้นด้วยโทเคน ไม่ใช่เลขดิบ", () => {
-  assert.match(GLOBALS, /--ctl-text-sink:\s*3px;/,
-    "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ ไม่งั้นเลข 3 จะแยกไม่ออกจาก padding ที่หลุดมา");
+   ⇒ ทุกกล่องนั่งต่ำกว่ากลาง 1.5px ถ้าไม่หั่นพื้นล่างออก
+
+   รอบสอง (2026-08-14): ป้ายบนปุ่ม · ช่องค้นหา · แท็บ · เม็ด segmented · ชิป ·
+   พิลบนแถบบน เข้าชุดด้วย — วัดในเบราว์เซอร์แล้วทุกตัวอยู่ในช่วง ±0.7px
+
+   ⚠️ ด่านนี้กันสองทิศ: หายไปจากช่อง (อาการเดิมกลับมา) และงอกใส่ของที่เป็นไอคอน/
+   เลขล้วน (`.btn-icon` · กระดิ่ง · เลขหน้า) ซึ่งต้องกลางกล่องจริง ๆ */
+test("กล่องความสูงคงที่ดันตัวอักษรขึ้นด้วยโทเคน ไม่ใช่เลขดิบ", () => {
+  assert.match(GLOBALS, /--ctl-text-sink:\s*0\.23em;/,
+    "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ และต้องเป็น em — ตัวควบคุมมีตั้งแต่ 11.5px ถึง 14px "
+    + "ตรึงเป็น px จะดันเกินที่ตัวเล็ก (วัดจริง: .btn.sm กับ .chip ลอยเกิน 1.1px)");
 
   const css = stripComments(GLOBALS);
   const rule = css.match(/([^{}]*)\{[^{}]*padding-bottom:\s*var\(--ctl-text-sink\)[^{}]*\}/);
   assert.ok(rule, "ไม่มีใครใช้ --ctl-text-sink เลย — ตัวอักษรกลับไปนั่งต่ำกว่ากลาง 1.5px");
 
+  /* ชุด "padding บนเป็น 0" — เขียนรวมกฎเดียวได้ */
   const selector = rule[1].replace(/\s+/g, " ").trim();
-  for (const field of [".premium-input:not(textarea)", ".premium-select", ".ui-select", ".deal-derived"]) {
-    assert.ok(selector.includes(field), `${field} หลุดจากชุดช่องที่ดันตัวอักษรขึ้น`);
+  for (const field of [".premium-input:not(textarea)", ".premium-select", ".ui-select",
+    ".deal-derived", ".topnav-sys-btn", ".topnav-settings-link",
+    ".search-glass input", ".ui-select-search input"]) {
+    assert.ok(selector.includes(field), `${field} หลุดจากชุดที่ดันตัวอักษรขึ้น`);
   }
+  assert.match(selector, /\.btn:not\(\.btn-icon\):not\(\.ui-pager-page\)/,
+    "ป้ายบนปุ่มต้องดันขึ้นด้วย (มติ 2026-08-14) แต่ต้องกัน .btn-icon และเลขหน้าไว้");
   assert.ok(selector.includes(":not(textarea)"),
     "textarea ต้องถูกกัน — มี padding แนวตั้ง 8px ของตัวเองอยู่แล้ว");
 
-  /* ปุ่มไม่อยู่ในชุดนี้: ในปุ่มเป็นไอคอนที่ต้องกลางกล่องจริง ๆ */
-  assert.doesNotMatch(css, /\.btn(?:-icon)?[^{}]*\{[^{}]*var\(--ctl-text-sink\)/,
-    "ปุ่มไม่ต้องดันขึ้น — ไอคอนจะลอยสูงกว่ากลาง 1.5px");
+  /* ชุด "มี padding บนของตัวเอง" — ต้องเป็น บน + sink ในกฎของตัวเอง ไม่ใช่ sink เปล่า
+     (sink เปล่าจะ *ลด* padding ล่างจนตัวอักษรตกต่ำกว่าเดิม) */
+  for (const [name, re] of [
+    [".chip", /\.chip \{[^{}]*padding:[^;]*var\(--space-0-5\)[^;]*calc\(var\(--space-0-5\) \+ var\(--ctl-text-sink\)\)/],
+    [".tab-btn", /\.tab-btn \{[^{}]*padding:[^;]*var\(--ctl-text-sink\) \/ 2\)/],
+    [".segmented > button", /\.segmented > button \{[^{}]*padding: 5px var\(--space-3\) var\(--space-2\)/],
+  ]) {
+    assert.match(css, re, `${name} ต้องบวก sink ต่อจาก padding บนของตัวเอง`);
+  }
+
+  /* ช่องค้นหาเคยเป็น "ความสูงที่สาม" (38px) ทั้งที่เอกสารประกาศว่ามีแค่สองค่า */
+  assert.match(css, /\.search-glass \{[^{}]*min-height:\s*var\(--ctl-h\)/,
+    "ช่องค้นหาต้องสูงเท่า control อื่น ไม่ใช่ 38px ของตัวเอง");
+
+  /* ไอคอน/เลขล้วนต้องไม่ถูกดัน
+     ⚠️ ต้องตัด `:not(...)` ออกก่อนตรวจ — ชุดข้างบนเขียนชื่อพวกนี้ไว้ใน `:not()`
+     ซึ่งคือการ *กัน* ไม่ใช่การ *เล็ง* ถ้าค้นดิบ ๆ จะเจอชื่อแล้วตกทั้งที่ถูกอยู่ */
+  for (const block of css.split("}")) {
+    const brace = block.indexOf("{");
+    if (brace === -1) continue;
+    if (!block.slice(brace + 1).includes("var(--ctl-text-sink)")) continue;
+    const targeted = block.slice(0, brace).replace(/:not\([^)]*\)/g, "");
+    for (const iconOnly of [".btn-icon", ".ui-pager-page"]) {
+      assert.ok(!targeted.includes(iconOnly),
+        `${iconOnly} ไม่ต้องดันขึ้น — ในนั้นเป็นไอคอน/เลขล้วนที่ต้องกลางกล่องจริง`);
+    }
+  }
 });
 
 /* **variant ของขนาด** — ผู้เรียกเลือกเองว่าจะใช้ปุ่มเล็ก/ปุ่มไอคอน ต่างจาก descendant

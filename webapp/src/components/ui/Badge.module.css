@@ -12,7 +12,10 @@
      ต่างจากภาษาอังกฤษที่ 1.25 พอ · ผู้ใช้ส่งภาพมา 2026-07-29 */
   min-height: 24px;
   gap: 5px;
-  padding: 3px var(--space-2-5);
+  /* ⚠️ ต้องตรงกับบล็อกรวม `.ui-badge, .status-pill, .chip` ใน globals.css เป๊ะ
+     (badgeFamilies.test.mjs เทียบสองฝั่งไว้) — บน `--space-0-5` · ล่าง +sink
+     คือการดันตัวอักษรไทยขึ้นให้กลางที่ตาเห็น (ดู typography-system §--ctl-text-sink) */
+  padding: var(--space-0-5) var(--space-2-5) calc(var(--space-0-5) + var(--ctl-text-sink));
   border: 1px solid var(--badge-border);
   border-radius: var(--radius);
   background: var(--badge-bg);
