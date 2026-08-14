@@ -176,3 +176,25 @@ test('เมนูโมดูลบัญชีครอบทั้ง role fi
     assert.match(line, /visible: canAccessFinance/);
   }
 });
+
+/* ── กฎสามชั้น §ข้อ 5 (docs/module-ownership-rules.md · มติผู้ใช้ 2026-08-13) ──
+   เมนู = "งานที่ฝ่ายนี้ทำ" ไม่ใช่ "ทุกอย่างที่เขาอ่านได้" · ฝ่ายบัญชีเคยเห็นเมนูงานขาย
+   ครบทั้งชุดเพราะถือ `salesplan:view` ซึ่งไม่เคยมีใครตัดสิน — มันติดมากับ cap
+   ⚠️ ตัดที่ `visible` ไม่ใช่ที่ `cap` เพราะ cap คุม **สิทธิ์อ่าน** ซึ่งยังต้องเปิด
+      (FN กดลิงก์จากใบไปดีล/โครงการยังต้องเข้าได้) */
+test('⭐ เมนูงานขายที่เป็นงานของฝ่ายขายล้วน ๆ ต้องกันฝ่ายบัญชีออก', () => {
+  for (const href of ['/sa/dashboard', '/sa/deals', '/sa/projects', '/sa/tasks']) {
+    const line = SOURCE.split(/\r?\n/).find((row) => row.includes(`href: '${href}'`));
+    assert.ok(line, `ไม่พบเมนู ${href}`);
+    assert.match(line, /visible: worksInSalesPipeline/, `${href} ต้องกัน FN ออกจากเมนู`);
+  }
+});
+
+test('⭐ เอกสารที่ฝ่ายบัญชีต้องเปิดจริง ต้องยังอยู่ในเมนูเขา', () => {
+  // ใบสั่งขาย = ที่ตั้งของขั้นบัญชี · ใบเสนอราคา = ที่อยู่ของแผนชำระ/ยอด/VAT ที่ต้องตรวจ
+  for (const href of ['/sa/sales-orders', '/sa/quotations']) {
+    const line = SOURCE.split(/\r?\n/).find((row) => row.includes(`href: '${href}'`));
+    assert.ok(line, `ไม่พบเมนู ${href}`);
+    assert.doesNotMatch(line, /visible: worksInSalesPipeline/, `${href} ต้องไม่กัน FN ออก`);
+  }
+});
