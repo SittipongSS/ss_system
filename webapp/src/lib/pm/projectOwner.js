@@ -98,9 +98,15 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
  *
  * @returns {Promise<{ ok: true, aeSupervisorId: string|null, aeSupervisor: string } | { ok: false, error }>}
  */
-export async function resolveProjectSupervisor(supabase, supervisorId) {
+export async function resolveProjectSupervisor(supabase, supervisorId, { required = false } = {}) {
   const id = String(supervisorId || '').trim();
-  if (!id) return { ok: true, aeSupervisorId: null, aeSupervisor: '' };
+  // ตอน **สร้าง** บังคับครบสามฝ่าย (มติผู้ใช้ 2026-08-14) — ตอนแก้ไม่บังคับ ใบเก่าที่
+  // ช่องนี้ว่างต้องแก้ช่องอื่นได้ตามปกติ · ล้างทิ้งไม่ได้ (ดู PATCH)
+  if (!id) {
+    return required
+      ? { ok: false, error: 'ต้องเลือกผู้ตรวจสอบ (AE Supervisor)' }
+      : { ok: true, aeSupervisorId: null, aeSupervisor: '' };
+  }
 
   const user = await findAuthUser(supabase, id);
   if (!user) return { ok: false, error: 'ไม่พบผู้ใช้ที่เลือกเป็นผู้ตรวจสอบ' };
@@ -129,9 +135,14 @@ export async function resolveProjectSupervisor(supabase, supervisorId) {
  * @param projectTeam ทีมของโครงการ (หลังตัดสินจากผู้ดูแลแล้ว) — ว่าง = ข้ามด่านทีม
  * @returns {Promise<{ ok: true, acOwnerId: string|null, acOwner: string } | { ok: false, error }>}
  */
-export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = null) {
+export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = null, { required = false } = {}) {
   const id = String(acOwnerId || '').trim();
-  if (!id) return { ok: true, acOwnerId: null, acOwner: '' };
+  // บังคับเฉพาะตอนสร้าง — เหตุผลเดียวกับผู้ตรวจสอบ (ดู resolveProjectSupervisor)
+  if (!id) {
+    return required
+      ? { ok: false, error: 'ต้องเลือกผู้ประสานงาน (AC)' }
+      : { ok: true, acOwnerId: null, acOwner: '' };
+  }
 
   const user = await findAuthUser(supabase, id);
   if (!user) return { ok: false, error: 'ไม่พบผู้ใช้ที่เลือกเป็นผู้ประสานงาน' };

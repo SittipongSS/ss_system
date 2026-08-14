@@ -30,7 +30,10 @@ test('ทีม/เจ้าของ/ชื่อผู้ดูแล มา�
 });
 
 test('หน้าจอ PO ถามผู้ดูแลก่อนสร้าง และส่ง id ไปกับคำขอ', () => {
-  assert.match(page, /body: JSON\.stringify\(\{ aeOwnerId \}\)/);
+  // ⭐ ครบสามฝ่ายตั้งแต่วันเกิด (มติผู้ใช้ 2026-08-14) — PO ก็ต้องถามครบเหมือนฝั่งขาย
+  assert.match(page, /body: JSON\.stringify\(\{ aeOwnerId, acOwnerId: projectAcId, aeSupervisorId: projectSupervisorId \}\)/);
+  assert.match(page, /\[!projectAcId, "ผู้ประสานงาน \(AC\)"\]/);
+  assert.match(page, /\[!projectSupervisorId, "ผู้ตรวจสอบ \(AE Supervisor\)"\]/);
   // ล็อกไม่ใช่ซ่อน — ae/senior_ae เห็นชื่อตัวเองค้างไว้ ไม่ใช่ช่องหายไปเฉย ๆ
   assert.match(page, /lockedOwner \? \(/);
   // รายชื่อมาจาก hook กลาง ห้ามกรอง role เองซ้ำในหน้านี้

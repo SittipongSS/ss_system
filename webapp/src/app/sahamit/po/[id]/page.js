@@ -27,6 +27,7 @@ import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
 import useDealOwners from "@/lib/sales/useDealOwners";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { createClient } from "@/lib/supabaseBrowser";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
@@ -243,6 +244,17 @@ export default function PoDetailPage() {
   }, []);
   const { owners: aeOwners, lockedOwner } = useDealOwners(meId);
   const [projectAeId, setProjectAeId] = useState("");
+  /* โครงการต้องมีครบสามฝ่ายตั้งแต่วันเกิด (มติผู้ใช้ 2026-08-14) — เดิม route ของ PO
+     เขียนผู้ประสานงาน/ผู้ตรวจสอบเป็นค่าว่างตายตัว ⇒ โครงการจาก PO ไม่มีสองฝ่ายนี้เลย
+     รายชื่อกรองด้วย role เดียวกับที่ server ตรวจ (resolveProjectAcOwner / Supervisor) */
+  const directory = usePeopleDirectory();
+  const acUsers = useMemo(() => directory.filter((u) => u.role === "ac" && !u.disabled), [directory]);
+  const supervisorUsers = useMemo(
+    () => directory.filter((u) => u.role === "ae_supervisor" && !u.disabled),
+    [directory],
+  );
+  const [projectAcId, setProjectAcId] = useState("");
+  const [projectSupervisorId, setProjectSupervisorId] = useState("");
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleData, setSettleData] = useState(null); // { poReceivedMonth, projectId, lines } | null=กำลังโหลด
@@ -339,8 +351,14 @@ export default function PoDetailPage() {
   const createProject = async () => {
     // ล็อกชื่อตัวเอง (ae/senior_ae) = ไม่ต้องเลือก · นอกนั้นต้องเลือกก่อน ไม่งั้น API ตีกลับ
     const aeOwnerId = lockedOwner?.id || projectAeId;
-    if (!aeOwnerId) {
-      setToast({ kind: "error", msg: "เลือกผู้ดูแลโครงการ (AE) ก่อน" });
+    // ด่านรวมข้อความเดียว (docs/form-design-rules.md §2) — บอกทุกช่องที่ขาดในครั้งเดียว
+    const missing = [
+      [!aeOwnerId, "ผู้ดูแลโครงการ (AE)"],
+      [!projectAcId, "ผู้ประสานงาน (AC)"],
+      [!projectSupervisorId, "ผู้ตรวจสอบ (AE Supervisor)"],
+    ].filter(([absent]) => absent).map(([, label]) => label);
+    if (missing.length) {
+      setToast({ kind: "error", msg: `เลือก ${missing.join(" · ")} ก่อน` });
       return;
     }
     setProjectBusy(true);
@@ -348,7 +366,7 @@ export default function PoDetailPage() {
       const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aeOwnerId }),
+        body: JSON.stringify({ aeOwnerId, acOwnerId: projectAcId, aeSupervisorId: projectSupervisorId }),
       });
       setProjectConfirmOpen(false);
       const project = payload.project;
@@ -754,7 +772,7 @@ export default function PoDetailPage() {
         footer={(
           <>
             <Button variant="quiet" onClick={() => setProjectConfirmOpen(false)} disabled={projectBusy}>ยกเลิก</Button>
-            <Button tone="primary" onClick={createProject} disabled={projectBusy || (!lockedOwner && !projectAeId)}>
+            <Button tone="primary" onClick={createProject} disabled={projectBusy || (!lockedOwner && !projectAeId) || !projectAcId || !projectSupervisorId}>
               {projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
             </Button>
           </>
@@ -783,6 +801,37 @@ export default function PoDetailPage() {
               </Select>
             )}
             <p className="form-note">โครงการจะเข้าลิสต์และทีมของผู้ดูแลคนนี้ — ไม่ใช่ของคนกดสร้าง</p>
+          </div>
+          {/* อีกสองฝ่ายของโครงการ — บังคับเท่ากับผู้ดูแล (มติผู้ใช้ 2026-08-14)
+              เดิม route เขียนสองช่องนี้เป็นค่าว่างตายตัว ⇒ โครงการจาก PO ไม่มีผู้ประสานงาน
+              และไม่มีผู้ตรวจสอบเลยสักใบ */}
+          <div className="form-group col-span-2">
+            <label>ผู้ประสานงาน (AC) <span className="required-mark">*</span></label>
+            <Select
+              className="w-full"
+              value={projectAcId}
+              onChange={(e) => setProjectAcId(e.target.value)}
+              aria-label="ผู้ประสานงาน (AC)"
+            >
+              <option value="">— เลือกผู้ประสานงาน —</option>
+              {acUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.team ? `${u.name} · ${u.team}` : u.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="form-group col-span-2">
+            <label>ผู้ตรวจสอบ (AE Supervisor) <span className="required-mark">*</span></label>
+            <Select
+              className="w-full"
+              value={projectSupervisorId}
+              onChange={(e) => setProjectSupervisorId(e.target.value)}
+              aria-label="ผู้ตรวจสอบ (AE Supervisor)"
+            >
+              <option value="">— เลือกผู้ตรวจสอบ —</option>
+              {supervisorUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </Select>
           </div>
         </div>
       </Modal>

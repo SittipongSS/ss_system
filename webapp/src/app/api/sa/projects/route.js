@@ -42,13 +42,18 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('ต้องเลือกผู้ดูแลโครงการ (AE) — โครงการที่ไม่มีผู้ดูแลจะไม่โผล่ในลิสต์ของ AE คนไหนเลย');
   }
 
-  // ผู้ประสานงาน (AC) — ช่องไม่บังคับ · ตรวจว่าเป็นบัญชี AC จริงในทีมเดียวกับงาน
-  // เพราะ `acOwnerId` เป็นปลายทางแจ้งเตือนของโครงการ (lib/master/updateAccess.js)
-  const coordinator = await resolveProjectAcOwner(supabase, body.acOwnerId, owner?.team ?? user.team);
+  /* ⭐ **โครงการต้องมีครบสามฝ่ายตั้งแต่วันเกิด** (มติผู้ใช้ 2026-08-14) — ผู้ดูแล (AE) ·
+     ผู้ประสานงาน (AC) · ผู้ตรวจสอบ (AE Supervisor) · ตรงกับของจริงที่ทำกันอยู่แล้ว
+     (ตรวจ prod: AC กรอก 89/90 ใบ · ผู้ตรวจสอบ 92/93) ที่ขาดคือคนลืม ไม่ใช่ไม่มีคน
+     ⚠️ บังคับเฉพาะ **ตอนสร้าง** — PATCH ไม่บังคับ (ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้)
+     แต่ล้างของที่มีอยู่แล้วไม่ได้ ดูบล็อกใน PATCH */
+  const coordinator = await resolveProjectAcOwner(
+    supabase, body.acOwnerId, owner?.team ?? user.team, { required: true },
+  );
   if (!coordinator.ok) return badRequest(coordinator.error);
-  // ผู้ตรวจสอบ (AE Supervisor) — ช่องไม่บังคับ · ชื่อไหลไปขึ้นใบเสนอราคาต่อ
-  // (quotations/new อ่าน project.aeSupervisor) และ id คือปลายทางแจ้งเตือน
-  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId);
+  // ชื่อผู้ตรวจสอบไหลไปขึ้นใบเสนอราคาต่อ (quotations/new อ่าน project.aeSupervisor)
+  // และ id คือปลายทางแจ้งเตือน
+  const supervisor = await resolveProjectSupervisor(supabase, body.aeSupervisorId, { required: true });
   if (!supervisor.ok) return badRequest(supervisor.error);
 
   const startDate = body.startDate || todayStr();

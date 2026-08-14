@@ -102,11 +102,38 @@ test('ผู้ดูแลที่ยังไม่มีทีม — ผ่
    "ผู้จัดทำ" ของหัว ISO) ส่วน `acOwner`/`acOwnerId` ที่ PDR (pdrFields → coordinator)
    และระบบแจ้งเตือน (updateAccess) อ่านจริง ว่างทั้ง 90 ใบบน prod ⇒ ช่องผู้ประสานงาน
    บนใบ PDR ว่างตลอดกาล ไม่ใช่เพราะไม่มีคนกรอก แต่กรอกไปคนละช่อง */
-test('AC: ช่องไม่บังคับ — ว่าง = ถอดคนออก ไม่ใช่ error', async () => {
-  const got = await resolveProjectAcOwner(ownerStub({}), '', 'ODM');
-  assert.equal(got.ok, true);
-  assert.equal(got.acOwnerId, null);
-  assert.equal(got.acOwner, '');
+/* ⭐ มติผู้ใช้ 2026-08-14: **โครงการมีครบสามฝ่ายตั้งแต่วันเกิด** — ตอนสร้างบังคับ
+   (`required: true`) ส่วนตอนแก้ไม่บังคับ เพราะใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้
+   (ล้างของที่มีอยู่แล้วไม่ได้ — ด่านนั้นอยู่ที่ PATCH ไม่ใช่ที่ตัว resolver) */
+test('AC/ผู้ตรวจสอบ: ว่างได้เฉพาะตอนแก้ — ตอนสร้างตีกลับ', async () => {
+  const stub = ownerStub({});
+  const acEdit = await resolveProjectAcOwner(stub, '', 'ODM');
+  assert.equal(acEdit.ok, true);
+  assert.equal(acEdit.acOwnerId, null);
+  assert.equal(acEdit.acOwner, '');
+  assert.equal((await resolveProjectAcOwner(stub, '', 'ODM', { required: true })).ok, false);
+
+  const supEdit = await resolveProjectSupervisor(stub, '');
+  assert.equal(supEdit.ok, true);
+  assert.equal(supEdit.aeSupervisorId, null);
+  assert.equal((await resolveProjectSupervisor(stub, '', { required: true })).ok, false);
+});
+
+test('ทุกทางที่ **สร้าง** โครงการ บังคับครบสามฝ่ายที่ server', () => {
+  for (const rel of [
+    '../../app/api/sa/projects/route.js',
+    '../../app/api/sales-planning/deals/[id]/create-project/route.js',
+    '../../app/api/sahamit/po/[id]/create-project/route.js',
+  ]) {
+    const src = read(rel);
+    assert.match(src, /resolveProjectAcOwner\([\s\S]{0,160}?\{ required: true \}/, `${rel} AC ต้องบังคับ`);
+    assert.match(src, /resolveProjectSupervisor\([\s\S]{0,120}?\{ required: true \}/, `${rel} ผู้ตรวจสอบต้องบังคับ`);
+  }
+  // PATCH ห้ามบังคับ (ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้) แต่ล้างของที่มีอยู่ไม่ได้
+  const patch = read('../../app/api/pm/projects/[id]/route.js');
+  assert.doesNotMatch(patch, /resolveProjectAcOwner\([\s\S]{0,120}?required: true/);
+  assert.match(patch, /if \(!updates\.acOwnerId\) return badRequest\('ล้างผู้ประสานงาน/);
+  assert.match(patch, /if \(!updates\.aeSupervisorId\) return badRequest\('ล้างผู้ตรวจสอบ/);
 });
 
 test('AC: ต้องเป็นตำแหน่ง AC จริง และอยู่ทีมเดียวกับงาน', async () => {
@@ -156,7 +183,7 @@ test('ทุกทางที่สร้าง/แก้โครงการ 
     '../../app/api/sales-planning/deals/[id]/create-project/route.js',
     '../../app/api/pm/projects/[id]/route.js',
   ]) {
-    assert.match(read(rel), /resolveProjectAcOwner\(supabase,/, `${rel} ต้องเรียกด่านกลาง`);
+    assert.match(read(rel), /resolveProjectAcOwner\(\s*supabase,/, `${rel} ต้องเรียกด่านกลาง`);
   }
   // ชื่อมาจาก server — ไม่รับชื่อลอย ๆ จาก client อีก
   assert.doesNotMatch(codeOnly(read('../../app/api/sa/projects/route.js')), /acOwner: body\.acOwner/);
@@ -236,9 +263,16 @@ test('POST /api/sa/projects เขียนทีม/เจ้าของตา
 
 /* ด่านฝั่งฟอร์มต้องบอกตั้งแต่ก่อนกดบันทึก (docs/form-design-rules.md §2) — ไม่ใช่
    ปล่อยให้ยิงแล้วเจอ 400 · แต่บังคับเฉพาะตอนสร้าง โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ได้ */
-test('ฟอร์มสร้างโครงการบังคับช่องผู้ดูแล (AE) สำหรับคนที่เลือกชื่อได้', () => {
+test('ฟอร์มสร้างโครงการบังคับครบสามฝ่าย (ตอนสร้างเท่านั้น)', () => {
   const modal = read('../../components/pm/SalesProjectCreateModal.js');
-  assert.match(modal, /\[!editingId && !lockPeopleField && !form\.aeOwner, "ผู้ดูแลโครงการ \(AE\)"\]/);
+  /* ⭐ มติผู้ใช้ 2026-08-14: โครงการมีครบสามฝ่ายตั้งแต่วันเกิด — ช่องที่ถูกล็อกเป็นชื่อ
+     ผู้สร้างถือว่ากรอกแล้ว จึงเทียบกับ lockPeopleField **ของช่องนั้น** ไม่ใช่ "ไม่มีล็อกเลย"
+     (ของเดิมเทียบ `!lockPeopleField` ⇒ AC ที่ถูกล็อกช่องตัวเองจะติดด่านช่อง AE ไปด้วย) */
+  assert.match(modal, /\[!editingId && lockPeopleField !== "aeOwner" && !form\.aeOwner, "ผู้ดูแลโครงการ \(AE\)"\]/);
+  assert.match(modal, /\[!editingId && lockPeopleField !== "acOwner" && !form\.acOwner, "ผู้ประสานงาน \(AC\)"\]/);
+  assert.match(modal, /\[!editingId && lockPeopleField !== "aeSupervisor" && !form\.aeSupervisor, "ผู้ตรวจสอบ \(AE Supervisor\)"\]/);
+  // ตอนแก้ไม่บังคับ — ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้ (ทั้งสามเงื่อนไขขึ้นต้นด้วย !editingId)
+  assert.doesNotMatch(modal, /\[!lockPeopleField && !form\.(aeOwner|acOwner|aeSupervisor)/);
 });
 
 test('PATCH โครงการ: เปลี่ยนผู้ดูแลแล้วทีม/เจ้าของย้ายตาม', () => {

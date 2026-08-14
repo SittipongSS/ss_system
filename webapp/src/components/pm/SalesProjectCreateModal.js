@@ -145,7 +145,15 @@ export default function SalesProjectCreateModal({
          เว้นว่างไว้ = โครงการไม่โผล่ในลิสต์ของ AE คนไหนเลย ⇒ API ตีกลับอยู่แล้ว
          ด่านตรงนี้แค่บอกตั้งแต่ในฟอร์ม ไม่ใช่ให้ไปเจอ error หลังกดบันทึก
          ⚠️ ไม่บังคับตอนแก้ — โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ช่องอื่นได้ตามปกติ */
-      [!editingId && !lockPeopleField && !form.aeOwner, "ผู้ดูแลโครงการ (AE)"],
+      /* ⭐ **โครงการต้องมีครบสามฝ่ายตั้งแต่วันเกิด** (มติผู้ใช้ 2026-08-14) —
+         ผู้ดูแล (AE) · ผู้ประสานงาน (AC) · ผู้ตรวจสอบ (AE Supervisor)
+         ตรงกับของจริงที่ทำกันอยู่แล้ว (prod: AC 89/90 ใบ · ผู้ตรวจสอบ 92/93) ที่ขาด
+         คือคนลืม ไม่ใช่ไม่มีคน · ช่องที่ถูกล็อกเป็นชื่อผู้สร้างถือว่ากรอกแล้ว
+         ⚠️ ไม่บังคับตอนแก้ — ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้ตามปกติ (ล้างของที่มี
+         อยู่แล้วไม่ได้ ด่านอยู่ที่ PATCH) */
+      [!editingId && lockPeopleField !== "aeOwner" && !form.aeOwner, "ผู้ดูแลโครงการ (AE)"],
+      [!editingId && lockPeopleField !== "acOwner" && !form.acOwner, "ผู้ประสานงาน (AC)"],
+      [!editingId && lockPeopleField !== "aeSupervisor" && !form.aeSupervisor, "ผู้ตรวจสอบ (AE Supervisor)"],
     ].filter(([absent]) => absent).map(([, label]) => label);
     if (missing.length) return setError(`กรุณากรอก ${missing.join(" · ")} ให้ครบ`);
     setSubmitting(true);
@@ -274,17 +282,17 @@ export default function SalesProjectCreateModal({
           {/* ทีมงาน 3 ช่องบรรทัดเดียว (มติผู้ใช้ 2026-08-08) — จอแคบพับเป็นคอลัมน์เดียว */}
           <div className="col-span-2 grid grid-cols-1 md:grid-cols-3 gap-[18px]">
           <div className="form-group">
-            <label>ผู้ดูแลโครงการ (AE / Senior AE){lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <label>ผู้ดูแลโครงการ (AE / Senior AE){!editingId && <span className="required-mark">*</span>}{lockPeopleField === "aeOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
             <PersonSelect by="name" users={ownerUsers} value={currentOwner} disabled={lockPeopleField === "aeOwner"} ariaLabel="ผู้ดูแลโครงการ (AE / Senior AE)" onChange={(aeOwner) => setForm((f) => ({ ...f, aeOwner }))} />
           </div>
           <div className="form-group">
-            <label>ผู้ประสานงานโครงการ (AC){lockPeopleField === "acOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <label>ผู้ประสานงานโครงการ (AC){!editingId && <span className="required-mark">*</span>}{lockPeopleField === "acOwner" ? " · ล็อกเป็นคุณ" : ""}</label>
             {/* เขียนลง acOwner + acOwnerId — คู่เดียวกับผู้ดูแล (mig 0190) ที่ PDR และ
                 ระบบแจ้งเตือนอ่าน · ไม่ใช่ preparedBy ซึ่งเป็น "ผู้จัดทำ" ของหัว ISO */}
             <PersonSelect by="name" users={users.filter((u) => u.role === "ac")} value={lockPeopleField === "acOwner" ? myName : form.acOwner} disabled={lockPeopleField === "acOwner"} ariaLabel="ผู้ประสานงานโครงการ (AC)" onChange={(acOwner) => setForm((f) => ({ ...f, acOwner }))} />
           </div>
           <div className="form-group">
-            <label>ผู้ตรวจสอบ (AE Supervisor){lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
+            <label>ผู้ตรวจสอบ (AE Supervisor){!editingId && <span className="required-mark">*</span>}{lockPeopleField === "aeSupervisor" ? " · ล็อกเป็นคุณ" : ""}</label>
             <PersonSelect by="name" users={users.filter((u) => u.role === "ae_supervisor")} value={lockPeopleField === "aeSupervisor" ? myName : form.aeSupervisor} disabled={lockPeopleField === "aeSupervisor"} ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" onChange={(aeSupervisor) => setForm((f) => ({ ...f, aeSupervisor }))} />
           </div>
           </div>
