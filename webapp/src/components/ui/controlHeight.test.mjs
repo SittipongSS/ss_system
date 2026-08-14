@@ -94,6 +94,26 @@ test("ช่องกรอก ดรอปดาวน์ และรายก
     "ช่องค้นหาคือค่าอ้างอิงของขนาดนี้ — ถ้ามันเปลี่ยน ต้องย้ายทั้งชุดพร้อมกัน");
 });
 
+/* 🐞 `.premium-select.compact` เคยเขียน `height: var(--ctl-h, 32px)` = สูงเท่าตัวปกติ
+   เป๊ะ (ค่า fallback ไม่เคยถูกใช้) ⇒ variant "compact" ไม่มีผลอะไรเลยมาตลอด และพอฐาน
+   ขยับเป็น 40px มันจะกลับหัวเป็น "compact สูงกว่าปกติ" — ด่านนี้ตรึงทั้งสองข้อไว้ */
+test("ดรอปดาวน์ตัวเก่า: ฐานมาจากโทเคน · compact ต้องเตี้ยกว่าฐานจริง", () => {
+  const css = stripComments(GLOBALS);
+  const base = css.match(/\.premium-select \{([^}]*)\}/);
+  assert.ok(base, "หา .premium-select ไม่เจอ");
+  assert.match(base[1], /height:\s*var\(--ctl-h\)/,
+    "ฐานต้องมาจาก --ctl-h ไม่ใช่เลขดิบ — ไม่งั้นเตี้ยกว่าปุ่มข้างกันเวลาโทเคนขยับ");
+
+  const compact = css.match(/\.premium-select\.compact \{([^}]*)\}/);
+  assert.ok(compact, "หา .premium-select.compact ไม่เจอ");
+  const px = compact[1].match(/height:\s*(\d+)px/);
+  assert.ok(px, "compact ต้องตรึงเป็นเลขจริง — เขียน var(--ctl-h, …) แล้วมันเท่าฐานเสมอ");
+  assert.ok(Number(px[1]) < 40,
+    `compact สูง ${px[1]}px ไม่เตี้ยกว่าฐาน (--ctl-h 40px) = variant ไม่มีความหมาย`);
+  assert.doesNotMatch(compact[1], /var\(--ctl-h/,
+    "ห้ามกลับไปอ้าง --ctl-h ที่ compact — นั่นคือบั๊กเดิม");
+});
+
 /* 🔴 ขีดล่าง `_` ต้องหนาพอวาดเต็มพิกเซลบนจอ 1x — Sarabun น้ำหนัก 400 หนา 0.86px
    ที่ 13px / 0.93px ที่ 14px ⇒ เบราว์เซอร์เกลี่ยเป็นเทาจางแล้วหายทั้งเส้น (IS-26080022)
    ⚠️ ช่องค้นหาเคยหลุดจากการแก้รอบนั้น (ยังเป็น 400 อยู่จนถึง 2026-08-14) — ทุกกล่องที่
