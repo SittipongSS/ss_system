@@ -311,7 +311,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
       >
         {dayBuckets.length ? (
           <>
-            <ChartCanvas height={200} aria-busy={loading}>
+            <ChartCanvas className={styles.dailyChart} aria-busy={loading}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dayBuckets} margin={{ top: 16, right: 8, bottom: 4, left: 4 }}>
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} interval="preserveStartEnd" />
@@ -320,7 +320,9 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                     cursor={{ fill: "var(--panel-3)" }}
                     content={<ChartTooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""} valueFormatter={(v) => `${v} ใบ`} />}
                   />
-                  <Bar dataKey="count" name="ลีดเข้า" fill={CHART_CATEGORICAL[0]} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                  {/* `minPointSize` = วันที่ได้ศูนย์ยังได้ตอขีดบาง ๆ ไม่ใช่หายไปจากผัง
+                      (recharts ไม่วาดสี่เหลี่ยมสูงศูนย์) — วันว่างคือข้อมูลที่ต้องเห็น */}
+                  <Bar dataKey="count" name="ลีดเข้า" fill={CHART_CATEGORICAL[0]} radius={[3, 3, 0, 0]} minPointSize={2} isAnimationActive={false}>
                     <LabelList dataKey="count" position="top" fill="var(--text-2)" fontSize={11} />
                   </Bar>
                 </BarChart>
@@ -343,7 +345,12 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
               <tbody>
                 {dayBuckets.map((b) => (
                   <tr key={b.key}>
-                    <td>{b.name}</td>
+                    <td>
+                      {b.name}
+                      {/* สัปดาห์ที่ไม่เต็มเจ็ดวัน (หัว/ท้ายงวด หรือสัปดาห์ที่ยังไม่จบ)
+                          ต้องบอกให้เห็น ไม่งั้นเอาไปเทียบกับสัปดาห์เต็มแล้วสรุปผิด */}
+                      {b.partial && <span className="ui-badge ui-badge-cell">ไม่เต็มสัปดาห์</span>}
+                    </td>
                     <td className="num mono">{b.count}</td>
                     <td className="num mono">{b.withLeads}</td>
                     <td className="num mono">{b.withLeads ? (b.count / b.withLeads).toFixed(1) : "-"}</td>

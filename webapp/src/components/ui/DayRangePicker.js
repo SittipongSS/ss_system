@@ -206,7 +206,12 @@ export default function DayRangePicker({
         {renderMonth(shiftMonth(view, 1), "right")}
       </div>
       <span className="date-calendar-footer">
-        <span>จุดใต้วันที่ = วันที่มีลีดเข้า · {pending ? "เลือกวันสุดท้าย" : "เลือกวันแรก"}</span>
+        {/* ผู้เรียกที่ไม่ได้ส่ง `markedDays` มา (เช่นแถบหัวหน้าภาพรวมซึ่งยังไม่มีข้อมูล
+            ตอนวาดปุ่ม) ต้องไม่โฆษณาจุดที่ไม่มีอยู่จริง */}
+        <span>
+          {marked.size ? "จุดใต้วันที่ = วันที่มีลีดเข้า · " : ""}
+          {pending ? "เลือกวันสุดท้าย" : "เลือกวันแรก"}
+        </span>
         {pending && <button type="button" onClick={() => setPending(null)}>ยกเลิกที่เลือกค้าง</button>}
       </span>
     </div>

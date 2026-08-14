@@ -3,6 +3,10 @@
 
 /* ผังลดหลั่น — สูงพอให้แท่ง 6 แถวไม่ถูกบีบจนอ่านชื่อไม่ออก */
 .funnelChart { height: 210px; }
+/* กราฟลีดรายวัน — ⚠️ ความสูงต้องมาจากคลาสตรงนี้ ไม่ใช่ prop `height` ของ ChartCanvas
+   (ตัวนั้นเป็น div `height: 100%` · prop จะกลายเป็น attribute ที่ div ไม่รู้จัก
+   แล้วกล่องสูง 0 → recharts ไม่วาดอะไรเลยแบบเงียบ ๆ เจอจริงตอนตรวจ 2026-08-13) */
+.dailyChart { height: 220px; }
 /* คุณภาพของ funnel (SLA / Conversion) — ตัวแถบเป็น `.ui-metric-strip` กลาง
    ที่นี่เติมแค่ระยะห่างจากของที่อยู่เหนือมัน */
 .qualityStrip { margin-top: var(--space-3); }

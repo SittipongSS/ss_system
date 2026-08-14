@@ -38,17 +38,24 @@ export function leadDailyBuckets({ byDay = {}, days = null, unit = 'day' } = {})
   for (const day of list) {
     const start = weekStartOf(day);
     if (!start) continue;
-    if (!weeks.has(start)) weeks.set(start, { key: start, count: 0, withLeads: 0 });
+    if (!weeks.has(start)) weeks.set(start, { key: start, count: 0, withLeads: 0, first: day, last: day });
     const bucket = weeks.get(start);
     bucket.count += countOf(day);
     if (countOf(day) > 0) bucket.withLeads += 1;
+    if (day < bucket.first) bucket.first = day;
+    if (day > bucket.last) bucket.last = day;
   }
   return [...weeks.values()]
     .sort((a, b) => (a.key < b.key ? -1 : 1))
     .map((bucket) => ({
       ...bucket,
-      label: shortLabel(bucket.key),
-      name: `${bucket.key}..${addDays(bucket.key, 6)}`,
+      /* 🐞 ช่วงในป้ายต้องเป็น **วันที่อยู่ในงวดจริง** ไม่ใช่จันทร์–อาทิตย์เต็มสัปดาห์:
+         โหมดรายเดือน สัปดาห์หัวท้ายคาบเกี่ยวเดือนอื่นเสมอ · ป้าย "27/07 – 02/08" ที่ขึ้น
+         0 ทำให้อ่านว่าสัปดาห์นั้นไม่มีลีดเลย ทั้งที่ 29–31 ก.ค. มี แต่อยู่นอกงวดที่เลือก
+         (เจอตอนตรวจด้วยตา 2026-08-13) · `partial` บอกว่าถังนี้ไม่เต็มสัปดาห์ */
+      partial: bucket.first !== bucket.key || bucket.last !== addDays(bucket.key, 6),
+      label: shortLabel(bucket.first),
+      name: `${bucket.first}..${bucket.last}`,
     }));
 }
 

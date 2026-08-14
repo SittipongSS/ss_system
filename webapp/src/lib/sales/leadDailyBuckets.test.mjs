@@ -46,6 +46,10 @@ test('รายสัปดาห์: จันทร์–อาทิตย์
   // ผลรวมต้องเท่าจำนวนลีดจริงเป๊ะ ไม่มีใบไหนตกหล่นหรือถูกนับซ้ำ
   assert.equal(buckets.reduce((n, b) => n + b.count, 0), 134);
   assert.equal(buckets[0].name, '2026-07-20..2026-07-26');
+  assert.equal(buckets[0].partial, false);
+  // สัปดาห์สุดท้ายจบที่ 13 ส.ค. ไม่ใช่ 16 — ป้ายต้องบอกช่วงที่อยู่ในงวดจริง
+  assert.equal(buckets[3].name, '2026-08-10..2026-08-13');
+  assert.equal(buckets[3].partial, true);
 });
 
 test('รายสัปดาห์: สัปดาห์ที่ยังไม่จบนับเฉพาะวันที่มีจริง ไม่เติมให้ครบเจ็ด', () => {
@@ -68,6 +72,18 @@ test('งวดว่าง = ไม่มีถัง (หน้าจอโช
   assert.deepEqual(leadDailyBuckets({ byDay: {}, days: [], unit: 'day' }), []);
   assert.deepEqual(leadDailyBuckets({}), []);
   assert.deepEqual(leadDailyTotals([], []), { count: 0, withLeads: 0, spanDays: 0, perDay: 0 });
+});
+
+/* 🐞 เจอตอนตรวจด้วยตา: โหมดรายเดือน สัปดาห์หัวเดือนคาบเกี่ยวเดือนก่อนเสมอ
+   ป้ายเต็มสัปดาห์ทำให้แถวที่ขึ้น 0 อ่านว่า "สัปดาห์นั้นไม่มีลีด" ทั้งที่ลีดอยู่นอกงวด */
+test('รายสัปดาห์: สัปดาห์ที่คาบเกี่ยวขอบงวด ป้ายบอกเฉพาะวันที่อยู่ในงวด', () => {
+  const days = daysInRange('2026-08-01', '2026-08-31');
+  const buckets = leadDailyBuckets({ byDay: BY_DAY, days, unit: 'week' });
+  assert.equal(buckets[0].name, '2026-08-01..2026-08-02');
+  assert.equal(buckets[0].partial, true);
+  assert.equal(buckets[1].name, '2026-08-03..2026-08-09');
+  assert.equal(buckets[1].partial, false);
+  assert.equal(buckets[1].count, 36);
 });
 
 test('ช่วงวันเดียว ทำงานได้ทั้งสองหน่วย', () => {
