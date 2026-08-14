@@ -3358,7 +3358,9 @@ button.ui-kpi-card { cursor: pointer; }
   color: var(--text-3);
 }
 .ui-select-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
-.ui-select-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-7); }
+/* ช่องค้นในเมนู — ขนาด/น้ำหนักเท่าช่องค้นหาหลักและรายการที่มันกรอง (`--fs-8` · 600)
+   `_` ต้องอ่านออกตอนพิมพ์ค้น ไม่ใช่แค่ตอนอ่านผลลัพธ์ (เหตุผลเต็มที่ .search-glass input) */
+.ui-select-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-8); font-weight: var(--fw-semibold); }
 .ui-select-options { overflow-y: auto; }
 
 /* 24-hour time input and picker. We intentionally avoid input[type=time]
@@ -5649,6 +5651,12 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   color: var(--text);
   font-size: var(--fs-8);
   font-family: inherit;
+  /* ⚠️ 600 ไม่ใช่รสนิยม — เหตุผลเดียวกับ `.premium-input` (IS-26080022): ขีดล่าง `_`
+     ของ Sarabun ที่น้ำหนัก 400 หนา 0.86px ที่ 13px / 0.93px ที่ 14px = ไม่เต็มพิกเซล
+     บนจอ 1x (โน้ตบุ๊ก Windows ส่วนใหญ่) เบราว์เซอร์เกลี่ยเป็นเทาจางแล้ว **หายทั้งเส้น**
+     รอบนั้นแก้เฉพาะช่องกรอก ช่องค้นหาหลุดไป — ค้นชื่อดีล/กลิ่นที่มี `_` คั่นก็อ่านไม่ออก
+     เหมือนกัน (มติผู้ใช้ 2026-08-14) */
+  font-weight: var(--fw-semibold);
 }
 
 .search-glass input::placeholder {
