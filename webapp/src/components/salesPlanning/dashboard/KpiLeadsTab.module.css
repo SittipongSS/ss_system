@@ -45,12 +45,20 @@
    วงกลมกว้างคงที่เพราะโตไปก็ไม่ได้ข้อมูลเพิ่ม ส่วนแท่งกินที่เหลือทั้งหมด
    ⚠️ ต้องมี minmax(0, …) ไม่งั้นคอลัมน์แท่งไม่ยอมหด แล้ว ResponsiveContainer
    วัดความกว้างได้เกินจริงจนกราฟล้นออกนอกการ์ด */
+/* วงกลม | แท่ง — คำอธิบายสีของกราฟไหนอยู่ในคอลัมน์ของกราฟนั้น
+   🐞 เดิมคำอธิบายสองชุดกองอยู่ใต้กราฟทั้งคู่ ต้องอ่านหัวข้อในวงเล็บ ("(วงกลม)" /
+   "(แท่ง)") ถึงจะรู้ว่าชุดไหนของใคร และสองชุดใช้สีชนกันพอดี (`--chart-cat-1` = `--blue`,
+   `--chart-cat-3` = `--green`) ⇒ สวอตช์สีเดียวกันสองความหมายในสายตาเดียว
+   (ผู้ใช้ส่งภาพมา 2026-08-13) · แยกคอลัมน์แล้วสีที่ซ้ำไม่เคยอยู่ในสายตาเดียวกันอีก
+   ⚠️ `align-items: start` ไม่ใช่ center — สองคอลัมน์สูงไม่เท่ากันโดยธรรมชาติ
+   จัดกึ่งกลางแล้วหัวคอลัมน์เหลื่อมกัน */
 .channelFigure {
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: center;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
 }
+.channelCol { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 @media (max-width: 768px) {
   .channelFigure { grid-template-columns: minmax(0, 1fr); }
 }

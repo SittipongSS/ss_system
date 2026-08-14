@@ -365,6 +365,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
         {channels.length ? (
           <>
             <div className={styles.channelFigure}>
+              <div className={styles.channelCol}>
               <ChartCanvas className={styles.donut}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -380,6 +381,18 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                   </PieChart>
                 </ResponsiveContainer>
               </ChartCanvas>
+              <ChartLegend
+                items={groups.map((g, i) => ({
+                  key: `g-${g.key}`,
+                  label: `${g.label} ${g.value} (${pct(g.value, f.total)})`,
+                  color: GROUP_COLORS[i % GROUP_COLORS.length],
+                }))}
+              />
+              </div>
+              <div className={styles.channelCol}>
+              <ChartLegend
+                items={STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color }))}
+              />
               <ChartCanvas className={styles.channelBars}>
                 <ResponsiveContainer width="100%" height="100%">
                   {/* แท่งซ้อน = สถานะ ณ ตอนนี้ ใบหนึ่งอยู่ได้ช่องเดียว ความยาวรวมจึงเท่าจำนวนลีด
@@ -402,23 +415,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCanvas>
+              </div>
             </div>
-            {/* 🐞 สองชุดนี้เคยต่อกันเป็นแถวเดียว แล้วสีชนกันพอดีเพราะชุดจำแนกประเภทกับ
-                ชุดสถานะใช้ค่าสีตัวเดียวกัน: `--chart-cat-1` = `--blue` = #466990 และ
-                `--chart-cat-3` = `--green` = #357558 ⇒ ในแถวเดียว "Online" กับ "คุยอยู่"
-                สวอตช์สีเดียวกัน · "Onsite" กับ "เปิดลูกค้า" ก็สีเดียวกัน (ตรวจ 2026-08-12)
-                ⚠️ ห้ามแก้ด้วยการเปลี่ยนสี — ชุด CHART_CATEGORICAL ผ่านตัวตรวจ CVD มาแล้ว
-                ปัญหาคือเอาสองชุดที่คนละความหมายมาเรียงเป็นแถวเดียว ไม่ใช่ตัวสี */}
-            <ChartLegend
-              title="กลุ่มช่องทาง (วงกลม)"
-              items={groups.map((g, i) => ({
-                key: `g-${g.key}`, label: `${g.label} ${g.value}`, color: GROUP_COLORS[i % GROUP_COLORS.length],
-              }))}
-            />
-            <ChartLegend
-              title="สถานะตอนนี้ (แท่ง)"
-              items={STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color }))}
-            />
             <TableScroll surface="embedded"><table>
               <thead><tr>
                 <th>ช่องทาง</th><th>กลุ่ม</th>
