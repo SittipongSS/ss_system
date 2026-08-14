@@ -11,6 +11,7 @@
 // ⚠️ นับจาก `rowStage.js` ที่เดียวเหมือนทุกหัวข้อ ⇒ ขัดกับคิวและปุ่มท้ายเธรดไม่ได้
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, isRowSettled, rowStage } from '@/lib/requests/rowStage';
 import { DOC_LINE_KINDS, docTypeLabel } from '@/lib/requests/docTypes';
+import { lineShapeVocab } from '@/lib/requests/kinds/lineShapes';
 
 // ⭐ ป้ายขั้นฉบับสายเอกสาร (ม-85) — ชุดกลาง (`ROW_STAGE_LABELS`) เล่าสายพัฒนา
 // ("รอไปรับ" · "เสร็จ" · "ไม่ได้ใช้") ซึ่งอ่านผิดความหมายกับเอกสาร:
@@ -30,9 +31,14 @@ export function documentBoard(items = []) {
       return {
         id: item.id,
         docType: item.docType || null,
-        // ⚠️ ป้ายมาจากทะเบียนคำศัพท์ ไม่ใช่ `label` ที่ประทับไว้ตอนเปิด — ชนิดที่
-        // ไม่รู้จักคืนค่าดิบ (ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก)
-        name: item.docType ? docTypeLabel(item.docType) : (item.label || '—'),
+        /* ⚠️ ป้ายมาจากทะเบียนคำศัพท์ ไม่ใช่ `label` ที่ประทับไว้ตอนเปิด — ชนิดที่
+           ไม่รู้จักคืนค่าดิบ (ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก)
+           🐞 **ต้องถามทะเบียนของรูปร่างนั้น** — เดิมใช้ `docTypeLabel` ซึ่งรู้จักเฉพาะ
+           ชุดของ RD ⇒ บรรทัดของบัญชีขึ้นเป็นค่าดิบ `billing_note` บนตารางสรุป
+           ทั้งที่การ์ดรายแถวข้างล่างแสดง "ใบวางบิล" ถูกต้อง (เจอตอน UAT ของ B-5) */
+        name: item.docType
+          ? (lineShapeVocab(item.lineKind)?.label(item.docType) ?? docTypeLabel(item.docType))
+          : (item.label || '—'),
         spec: item.spec || null,
         stage,
         stageLabel: DOC_STAGE_LABELS[stage] || ROW_STAGE_LABELS[stage] || stage,

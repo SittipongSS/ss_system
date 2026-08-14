@@ -40,7 +40,7 @@ import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
-  PLANNED_REQUEST_DEPTS, requestOptionalRefs,
+  PLANNED_REQUEST_DEPTS, requestOptionalRefs, defaultRequestDept,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, lineShapeForKind, requestHasItems,
   requestHasPdr,
@@ -77,12 +77,10 @@ function DerivedField({ label, value, from }) {
 
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
 //
-// ⭐ **ฝ่ายเลือกให้เลยเมื่อเปิดใช้จริงอยู่ฝ่ายเดียว** (มติผู้ใช้ 2026-08-08:
-// *"การขอเอกสาร มันเป็นคำร้องไป RD นิ จะมีฝ่ายทำไม"*) — ตอนนี้ `REQUEST_DEPTS`
-// เหลือ RD ตัวเดียว ⇒ ขั้น "เลือกฝ่าย" ไม่ได้ตัดสินใจอะไร แค่คลิกทิ้งเปล่า ๆ
-// ⚠️ **ไม่ได้ซ่อนแถวฝ่าย** — จัดซื้อ/บัญชียังโชว์แบบจางเพื่อบอกว่า "มีอยู่ แต่ยัง
-// ไม่เปิด" · เปิดฝ่ายที่สองเมื่อไร บรรทัดนี้จะกลับไปเป็นค่าว่างเองโดยอัตโนมัติ
-const onlyDept = () => (REQUEST_DEPTS.length === 1 ? REQUEST_DEPTS[0] : "");
+// ⭐ **ฝ่ายเลือกให้เลยเมื่อเปิดใช้จริงอยู่ฝ่ายเดียว** (มติผู้ใช้ 2026-08-08)
+// ⚠️ **ไม่ได้ซ่อนแถวฝ่าย** — ฝ่ายที่ยังไม่เปิดโชว์แบบจางเพื่อบอกว่า "มีอยู่ แต่ยังไม่เปิด"
+// ⚠️ ตรรกะอยู่ที่ทะเบียน (`defaultRequestDept`) ไม่ใช่ที่ฟอร์ม — server กับเทสต์
+// ต้องอ่านกฎเดียวกันได้ และไฟล์นี้มี JSX จึง import เข้าเทสต์ node ตรง ๆ ไม่ได้
 
 export const emptyRequestForm = (over = {}) => ({
   // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้)
@@ -96,7 +94,7 @@ export const emptyRequestForm = (over = {}) => ({
   billAmount: null,
   productIds: [],     // FG หลายรายการ (ไม่บังคับ · ม-89)
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
-  dept: onlyDept(),
+  dept: defaultRequestDept(over?.kind),
   kind: "",
   title: "",
   body: "",

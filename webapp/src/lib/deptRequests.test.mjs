@@ -32,6 +32,7 @@ import { OUTCOME_REGISTRY_BY_KIND } from './requests/outcomes.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
   REQUEST_KIND_LIST,
+  defaultRequestDept,
   deptForRequest,
   isRequestKind,
   kindsForDept,
@@ -164,6 +165,20 @@ test('ฝ่ายที่เลือกต้องเข้ากับห�
   assert.equal(requestDeptError('info', 'RD'), null);
   assert.match(requestDeptError('info', ''), /ต้องระบุฝ่าย/);
   assert.match(requestDeptError('info', 'PD'), /ต้องระบุฝ่าย/);
+});
+
+/* 🐞 **ลิงก์ที่เติมหัวข้อมาให้ต้องได้ฝ่ายมาด้วย** (เจอตอน UAT ของ B-5)
+   เดิมฟอร์มพึ่ง "มีฝ่ายเดียวก็เลือกให้เลย" ล้วน ⇒ พอ B-1 เปิด FN เป็นฝ่ายที่สอง
+   ลิงก์เติมค่าทุกอันพังพร้อมกัน รวม "เปิดคำร้องพัฒนากลิ่น" จากหน้าใบสั่งขาย:
+   ฟอร์มกางครบ กรอกได้หมด แต่ปุ่มบันทึกค้างที่ "เลือกฝ่ายและหัวข้อก่อน" */
+test('ฝ่ายตั้งต้นมาจากหัวข้อที่ล็อกฝ่ายไว้ ไม่ต้องให้ลิงก์ส่งมา', () => {
+  assert.equal(defaultRequestDept('billing_doc'), 'FN');
+  assert.equal(defaultRequestDept('scent_dev'), 'RD');
+  assert.equal(defaultRequestDept('document'), 'RD');
+  // ⚠️ หัวข้อของกลางห้ามเดาให้ — เดาเมื่อไรใบไปโผล่คิวฝ่ายที่ผู้ขอไม่ได้ตั้งใจส่งถึง
+  assert.equal(defaultRequestDept('info'), '');
+  assert.equal(defaultRequestDept(''), '');
+  assert.equal(defaultRequestDept('ไม่มีหัวข้อนี้'), '');
 });
 
 test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
