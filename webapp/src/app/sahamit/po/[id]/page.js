@@ -26,6 +26,8 @@ import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
+import useDealOwners from "@/lib/sales/useDealOwners";
+import { createClient } from "@/lib/supabaseBrowser";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
@@ -230,6 +232,17 @@ export default function PoDetailPage() {
   const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
   const [projectConfirmOpen, setProjectConfirmOpen] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
+  /* ผู้ดูแล (AE) ของโครงการที่จะสร้างจาก PO — เดิม route ตรึงเป็นคนกดปุ่มเสมอ
+     ⇒ Admin/หัวหน้าฝ่ายขายกดแล้วโครงการตกเป็นของคนที่ไม่ใช่ AE (ชื่อผิดบนเอกสาร
+     ISO ด้วย) · ae/senior_ae ยังกดแล้วเป็นของตัวเอง ช่องจึงล็อกไม่ใช่ซ่อน
+     ⚠️ รายชื่อมาจาก hook กลางตัวเดียวกับฟอร์มดีล — คนถือดีลกับผู้ดูแลโครงการเป็น
+     ชุด role เดียวกัน (PROJECT_OWNER_ROLES = DEAL_HOLDER_ROLES) ห้ามกรองเองซ้ำ */
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
+  }, []);
+  const { owners: aeOwners, lockedOwner } = useDealOwners(meId);
+  const [projectAeId, setProjectAeId] = useState("");
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
   const [settleData, setSettleData] = useState(null); // { poReceivedMonth, projectId, lines } | null=กำลังโหลด
@@ -324,9 +337,19 @@ export default function PoDetailPage() {
   };
 
   const createProject = async () => {
+    // ล็อกชื่อตัวเอง (ae/senior_ae) = ไม่ต้องเลือก · นอกนั้นต้องเลือกก่อน ไม่งั้น API ตีกลับ
+    const aeOwnerId = lockedOwner?.id || projectAeId;
+    if (!aeOwnerId) {
+      setToast({ kind: "error", msg: "เลือกผู้ดูแลโครงการ (AE) ก่อน" });
+      return;
+    }
     setProjectBusy(true);
     try {
-      const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, { method: "POST" });
+      const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aeOwnerId }),
+      });
       setProjectConfirmOpen(false);
       const project = payload.project;
       if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
@@ -721,15 +744,48 @@ export default function PoDetailPage() {
         confirmLabel={deleteBusy ? "กำลังลบ..." : "ลบ PO"}
         danger
       />
-      <ConfirmDialog
+      {/* ⚠️ ไม่ใช่ ConfirmDialog แล้ว — โมดัลนี้ถามค่าที่ต้องบันทึกจริง (ผู้ดูแล AE)
+          ไม่ใช่แค่ยืนยัน · ทีม/เจ้าของของโครงการเดินตามช่องนี้ (mig 0253) */}
+      <Modal
         open={projectConfirmOpen}
         onClose={() => !projectBusy && setProjectConfirmOpen(false)}
-        onConfirm={createProject}
         title="สร้าง RE-ORDER Project จาก PO นี้?"
-        message={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโครงการเดิม ไม่สร้างซ้ำ`}
-        confirmLabel={projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
-        danger={false}
-      />
+        size="sm"
+        footer={(
+          <>
+            <Button variant="quiet" onClick={() => setProjectConfirmOpen(false)} disabled={projectBusy}>ยกเลิก</Button>
+            <Button tone="primary" onClick={createProject} disabled={projectBusy || (!lockedOwner && !projectAeId)}>
+              {projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
+            </Button>
+          </>
+        )}
+      >
+        <div className="pm-form-grid gap-[12px]">
+          <div className="form-group col-span-2">
+            <ReadableText text={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโครงการเดิม ไม่สร้างซ้ำ`} />
+          </div>
+          <div className="form-group col-span-2">
+            <label>ผู้ดูแลโครงการ (AE) <span className="required-mark">*</span></label>
+            {lockedOwner ? (
+              /* ล็อกไม่ใช่ซ่อน (docs/form-design-rules.md §2) — คนต้องเห็นว่าใบนี้จะเป็นของใคร */
+              <div className="deal-derived">{lockedOwner.name} (คุณ)</div>
+            ) : (
+              <Select
+                className="w-full"
+                value={projectAeId}
+                onChange={(e) => setProjectAeId(e.target.value)}
+                aria-label="ผู้ดูแลโครงการ (AE)"
+              >
+                <option value="">— เลือกผู้ดูแล —</option>
+                {aeOwners.map((u) => (
+                  <option key={u.id} value={u.id}>{u.team ? `${u.name} · ${u.team}` : u.name}</option>
+                ))}
+              </Select>
+            )}
+            <p className="form-note">โครงการจะเข้าลิสต์และทีมของผู้ดูแลคนนี้ — ไม่ใช่ของคนกดสร้าง</p>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={linkOpen} onClose={() => !linkBusy && setLinkOpen(false)} title="เลือกโครงการเดิมมาเชื่อม PO">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>

@@ -175,9 +175,11 @@ export async function POST(request) {
   let projectId = null;
   let customerId = null;
   let customerName = null;
+  // ทีมของดีลต้นทาง — ใช้เป็นทีมของคำร้องเมื่อคนเปิดไม่มีทีมของตัวเอง (ดูตอนเขียนแถว)
+  let dealTeam = null;
   if (dealId) {
     const { data: dealRow, error: dealError } = await supabase
-      .from('sales_deals').select('id, projectId, customerId, customerName')
+      .from('sales_deals').select('id, projectId, customerId, customerName, team')
       .eq('id', dealId).maybeSingle();
     if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
     if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
@@ -193,6 +195,7 @@ export async function POST(request) {
     // ใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
     customerId = dealRow.customerId || null;
     customerName = dealRow.customerName || null;
+    dealTeam = dealRow.team || null;
   }
 
   // ── อ้างอิงเพิ่มแบบไม่บังคับ: QT · SO · FG (ม-88) ───────────────────────
@@ -398,9 +401,16 @@ export async function POST(request) {
       requestedById: user?.id ?? null,
       requestedByName: user?.name ?? null,
       requestedDueDate: body.requestedDueDate || null,
-      // ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
-      // (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
-      team: attributionTeam(user, body.team),
+      /* ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
+         (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
+         ⭐ คนที่ **ไม่มีทีมเลย** (admin/หัวหน้าฝ่ายขาย/RD/PC) เปิดใบแล้วเคยได้ team = null
+         ⇒ ใบนั้นไม่โผล่ในคิวทีมไหนเลย เห็นได้แค่คิวของฝ่ายที่ต้องตอบกับตัวคนเปิดเอง
+         ทั้งที่ใบส่วนใหญ่ของกลุ่มนี้เปิดคาดีลของทีมใดทีมหนึ่งอยู่แล้ว ⇒ ถอยไปใช้
+         **ทีมของดีลต้นทาง** ซึ่งคือทีมที่ต้องตามงานใบนี้จริง (กติกาเดียวกับโครงการ:
+         ขอบเขตเดินตามงาน ไม่ใช่ตามคนกด — mig 0253 / lib/pm/projectOwner.js)
+         ⚠️ ไม่ผูกดีล + คนเปิดไม่มีทีม = null เหมือนเดิม (ไม่มีอะไรให้เดา และใบแบบนั้น
+         เป็นงานระหว่างคนเปิดกับฝ่ายที่ตอบ ไม่ใช่งานของทีมขายทีมใดทีมหนึ่ง) */
+      team: attributionTeam(user, body.team) || dealTeam,
       // ⚠️ เลิกเขียน `note` (มติผู้ใช้ 2026-08-03: "ไม่ต้องมีหมายเหตุ") — คำร้องมี
       // "รายละเอียด" (body) ที่ทำงานเดียวกันอยู่แล้ว สองช่องข้อความอิสระบนเรื่อง
       // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่

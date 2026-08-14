@@ -2,7 +2,9 @@ import { getSahamitContext, sahamitError, loadSahamitProducts, indexByFgCode } f
 import { monthOf } from '@/lib/sahamit/po';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { can } from '@/lib/permissions';
+import { can, primaryTeam } from '@/lib/permissions';
+import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { buildProjectTasks, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
@@ -78,6 +80,23 @@ export async function POST(request, { params }) {
   }
 
   const body = await request.json().catch(() => ({}));
+
+  /* ── ผู้ดูแล (AE) ของโครงการที่กำลังจะเกิด ─────────────────────────────────
+     เดิมตรึงเป็น **คนกดปุ่ม** เสมอ ⇒ Admin/หัวหน้าฝ่ายขายกดสร้างเมื่อไร โครงการ
+     ตกเป็นของคนที่ไม่ใช่ AE (ชื่อผิดบนเอกสาร ISO ด้วย) และทีมถอยไปค่าคงที่ 'KA'
+     แทนที่จะเป็นทีมจริงของผู้ดูแล — อาการเดียวกับโครงการฝั่งขาย (mig 0253)
+     ae/senior_ae ยังกดแล้วเป็นของตัวเองเหมือนเดิม (ฟอร์มล็อกชื่อไว้ให้แล้ว) */
+  let owner = null;
+  if (body.aeOwnerId) {
+    const checked = await resolveProjectAeOwner(supabase, body.aeOwnerId, user, body.team);
+    if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
+    owner = checked;
+  } else if (!ownerLockedToSelf(user.role)) {
+    return Response.json({
+      error: 'ต้องเลือกผู้ดูแลโครงการ (AE) — โครงการที่ไม่มีผู้ดูแลจะไม่โผล่ในลิสต์ของ AE คนไหนเลย',
+    }, { status: 400 });
+  }
+
   const now = new Date().toISOString();
   const startDate = body.startDate || po.receivedDate || po.docDate || todayStr();
   const dueDate = body.dueDate || po.dueDate || null;
@@ -100,8 +119,9 @@ export async function POST(request, { params }) {
     // (คอลัมน์ไม่มี default โดยเจตนา — ดูหัว mig 0191)
     line: 'PRODUCT',
     urgency: body.urgency || 'Schedule',
-    aeOwner: user.name || '',
-    aeOwnerId: user.id || null,   // ตัวตนจริงคู่กับชื่อ snapshot (mig 0190)
+    // ชื่อมาจาก server เมื่อมีการเลือกผู้ดูแล — ไม่รับชื่อจาก client (กติกาเดียวกับดีล)
+    aeOwner: owner?.aeOwner || user.name || '',
+    aeOwnerId: owner?.aeOwnerId || user.id || null,   // ตัวตนจริงคู่กับชื่อ snapshot (mig 0190)
     acOwner: '',
     status: 'New',
     startDate,
@@ -118,8 +138,10 @@ export async function POST(request, { params }) {
     customerEmail: customer.email || '',
     preparedBy: user.name || '',
     reviewedBy: '',
-    team: user.team || 'KA',
-    ownerId: user.id || null,
+    // ทีม/เจ้าของตามผู้ดูแล ไม่ใช่ตามคนกด · โมดูลนี้เป็นลูกค้าของทีม KA ทีมเดียว
+    // จึงยังถอยไป 'KA' เมื่อทั้งผู้ดูแลและคนกดไม่มีทีม (ค่าเดิมของ route นี้)
+    team: owner?.team || primaryTeam(user) || 'KA',
+    ownerId: owner?.ownerId || user.id || null,
     metadata: {
       source: 'sahamit-po',
       sahamitPoId: po.id,
