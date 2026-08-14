@@ -213,21 +213,27 @@ test('V4 อัดหน้าได้แน่นกว่า V3 โดยไ�
       `${scenario.id}: V4 ใช้ ${v4.pages.length} หน้า ต้องไม่มากกว่า V3 ที่ ${v3.pages.length}`,
     );
   }
-  // เคสจริงที่ fill-first ช่วยได้: multipage ลดจาก 4 เหลือ 3 หน้า
-  assert.equal(buildQuotationMasterPreview('multipage', 'approved', 'v3').pages.length, 4);
-  assert.equal(buildQuotationMasterPreview('multipage', 'approved', 'v4').pages.length, 3);
+  // เคสจริงที่ fill-first ช่วยได้: ข้อความยาวลดจาก 3 เหลือ 2 หน้า
+  // (multipage เคยลด 4→3 ตอน line-height 1.42-1.5 · พอยกเป็น 1.65 ตามกฎ typography
+  //  แถวสูงขึ้น 7% ทั้งสองแบบจึงกลับไปเท่ากันที่ 4 หน้า — วัด DOM ยืนยันแล้วว่าไม่ล้น)
+  assert.equal(buildQuotationMasterPreview('long-content', 'approved', 'v3').pages.length, 3);
+  assert.equal(buildQuotationMasterPreview('long-content', 'approved', 'v4').pages.length, 2);
 });
 
 test('V4 px-calibrated: หน้าแรกอัดเต็มจริง — แก้บั๊ก "ไม่เต็มหน้าก็ตัดแล้ว" (2026-07-20)', () => {
   // การกระจายหน้าชุดนี้ยืนยันด้วยการวัด DOM จริงแล้วว่าไม่ล้นหน้า (overflow = 0
-  // ทุก scenario) และหน้า items เหลือที่ว่างน้อย — ถ้าเทสต์นี้แตกเพราะไปลดความจุ
+  // ทุก scenario × ทั้งสามสถานะ + ใบสังเคราะห์ 128 เคส) — ถ้าเทสต์นี้แตกเพราะไปลดความจุ
   // ให้กลับไปอ่านคอมเมนต์ V4_PAGE_UNITS ก่อน: ค่าพวกนี้มาจากการวัด ไม่ใช่เดา
+  //
+  // ⭐ ตัวเลขชุดนี้ **วัดใหม่ทั้งชุด 2026-08-14** ตอนยก line-height เอกสารเป็น 1.65
+  // แถวสูงขึ้น 50→53.8px และพื้นที่เนื้อหาหดจาก 881 เหลือ 858 ⇒ แถวต่อหน้าน้อยลง
+  // (หน้าแรก 12→9 · หน้าต่อ 14→12) แต่ **ใบสั้นยังอยู่หน้าเดียวเหมือนเดิม**
   const expected = {
     compact: [['combined', 1]],
     standard: [['items', 4], ['payment', 0]],
-    dense: [['items', 10], ['combined', 1]], // เดิมตัดที่ 6 แถวทั้งที่ใส่ได้ 10
-    multipage: [['items', 12], ['items', 14], ['combined', 1]],
-    'long-content': [['items', 6], ['payment', 0]], // เดิมผ่าเป็น 3+3 สองหน้า
+    dense: [['items', 7], ['items', 4], ['payment', 0]],
+    multipage: [['items', 9], ['items', 12], ['items', 6], ['payment', 0]],
+    'long-content': [['items', 5], ['combined', 1]], // เดิมผ่าเป็น 3+3 สองหน้า
     installments: [['items', 5], ['payment', 0]],
   };
   for (const [scenarioId, distribution] of Object.entries(expected)) {

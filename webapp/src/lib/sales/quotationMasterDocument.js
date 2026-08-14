@@ -9,6 +9,9 @@ import {
   QUOTATION_DOC_LANGUAGES,
   buildQuotationMasterModelFromQuote,
   docLanguageOf,
+  // ตัวเดียวกับที่ pagination ใช้จองที่ให้บล็อกมูลค่ารวม — ห้ามมีสำเนาที่นี่ ไม่งั้น
+  // "ที่จองไว้" กับ "ที่วาดจริง" หลุดจากกันได้เงียบ ๆ แล้วตารางโดนตัด
+  hasLineDiscount,
   quotationDocLabels,
 } from '@/lib/sales/quotationMasterTemplate';
 import { fmtNumber, fmtPhone } from '@/lib/format';
@@ -87,12 +90,6 @@ function partyGrid(model, L) {
     },
     reference: { heading: referenceHeading.text, headingEn: referenceHeading.sub, rows: model.referenceRows || [] },
   });
-}
-
-// มีบรรทัดไหนถูกลดราคาบ้าง — ตัดสินจากทั้งใบ ไม่ใช่ทีละหน้า เพราะหัวตารางทุกหน้า
-// ต้องมีจำนวนคอลัมน์เท่ากัน (ใบหลายหน้าไม่งั้นสลับหน้าละแบบ)
-function hasLineDiscount(lines = []) {
-  return lines.some((line) => Number(line.discountAmount || 0) > 0);
 }
 
 // ช่องส่วนลดของบรรทัด: **ยอดเงินอย่างเดียว** ไม่กำกับอัตรา % (มติผู้ใช้ 2026-08-11) —
