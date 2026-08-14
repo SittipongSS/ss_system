@@ -43,9 +43,9 @@ test("มาตรฐานความสูงตัวควบคุมม�
 const LABEL_CONTROLS = [".btn", ".btn-icon", ".ui-pager-page", ".tab-btn", ".chip", ".ui-badge", ".status-pill"];
 
 test("เฉพาะกล่องที่ผู้ใช้พิมพ์ที่ได้ sink — ป้ายคงที่ต้องไม่ได้", () => {
-  assert.match(GLOBALS, /--ctl-text-sink:\s*0\.31em;/,
+  assert.match(GLOBALS, /--ctl-text-sink:\s*0\.18em;/,
     "ค่าที่ดันตัวอักษรขึ้นต้องมีชื่อ และต้องเป็น em — ช่องกรอกใช้ 14px ช่องอื่นเล็กกว่า "
-    + "ตรึงเป็น px จะดันเกินที่ตัวเล็ก · 0.31em คือจุดที่ไม่มีคำไหนเบี้ยวเกิน ~1px");
+    + "ตรึงเป็น px จะดันเกินที่ตัวเล็ก · 0.18em คือจุดที่ค่าผิดสุดต่ำสุด (±3px) — หมึกไทยสูงไม่เท่ากันทุกคำ");
 
   const css = stripComments(GLOBALS);
   const rule = css.match(/([^{}]*)\{[^{}]*padding-bottom:\s*var\(--ctl-text-sink\)[^{}]*\}/);
