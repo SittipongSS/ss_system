@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wallet, Wrench } from 'lucide-react';
-import { canAccessFinance, canAccessMgmt, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
+import { canAccessFinance, canAccessMgmt, worksInSalesPipeline, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -21,6 +21,10 @@ export const SYSTEM_CATALOG = [
     icon: CircleDollarSign,
     isVisible: (user) => ['salesplan:view', 'salesplan:lead', 'pm:view'].some((cap) => canUser(user, cap)),
     landing: (user) => {
+      /* ⚠️ ปลายทางต้องเป็นหน้าที่ **อยู่ในเมนูของคนคนนั้น** — ไม่งั้นกดการ์ดระบบแล้วไป
+         ยืนบนหน้าที่แถบเมนูไม่ไฮไลต์อะไรเลย · ฝ่ายบัญชีไม่มีแดชบอร์ดยอดขายในเมนู
+         (มติ 2026-08-13 · กฎสามชั้น) เอกสารที่เขาเปิดจริงคือใบสั่งขาย */
+      if (!worksInSalesPipeline(user) && canUser(user, 'salesplan:view')) return '/sa/sales-orders';
       if (canUser(user, 'salesplan:view')) return '/sa';
       if (canUser(user, 'salesplan:lead')) return '/sa/leads';
       return '/sa/tasks';
