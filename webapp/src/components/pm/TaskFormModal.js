@@ -338,7 +338,7 @@ export default function TaskFormModal({
             </div>
             <div className="form-group">
               <label>ธงของงาน</label>
-              <div className="flex flex-wrap gap-[14px] min-h-[36px] items-center">
+              <div className="flex flex-wrap gap-[14px] min-h-[var(--ctl-h)] items-center">
                 <button type="button" className="ui-switch" disabled={!canManage}
                   data-on={form.important ? "1" : undefined} aria-pressed={form.important}
                   onClick={() => set({ important: !form.important })}>

@@ -604,7 +604,7 @@ function ForecastPageInner() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             ผู้ดูแล (AE)
-            <Select className="premium-select" style={{ height: 36 }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
+            <Select className="premium-select" style={{ height: "var(--ctl-h)" }} value={dealOwnerId} onChange={(e) => setDealOwnerId(e.target.value)}>
               {!aeList.length && <option value="">— ไม่มี AE —</option>}
               {aeList.map((u) => <option key={u.id} value={u.id}>{u.name}{u.team ? ` (${u.team})` : ""}</option>)}
             </Select>
@@ -612,7 +612,7 @@ function ForecastPageInner() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)", color: "var(--text-2)" }}>
             เดือนคาดได้รับ PO
-            <Select className="premium-select" style={{ height: 36 }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
+            <Select className="premium-select" style={{ height: "var(--ctl-h)" }} value={dealMonth} onChange={(e) => setDealMonth(e.target.value)}>
               {closeMonthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
           </label>

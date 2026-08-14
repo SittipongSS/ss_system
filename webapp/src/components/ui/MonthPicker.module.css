@@ -43,9 +43,12 @@
   color: var(--text);
 }
 
+/* หัวแผงเดือน = ปุ่มไอคอนจัตุรัสสองข้าง ขนาดเดียวกับ control ทั้งระบบ (--ctl-h)
+   เดิมตรึง 36px ไว้ตอนที่โทเคนเป็น 36px แล้วขยับโทเคนก็ไม่ตาม (แบบเดียวกับ
+   .date-calendar-header ใน globals.css) */
 .panelHeader {
   display: grid;
-  grid-template-columns: 36px 1fr 36px;
+  grid-template-columns: var(--ctl-h) 1fr var(--ctl-h);
   align-items: center;
   margin-bottom: var(--space-2);
 }
@@ -59,8 +62,8 @@
 .panelHeader button {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
   border: 0;
   border-radius: var(--radius);
   background: transparent;
