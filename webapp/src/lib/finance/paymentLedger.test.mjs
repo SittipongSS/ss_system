@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   LEDGER_COLUMNS, filterLedger, groupAsOrder, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow,
-  ledgerSummary, sortLedger,
+  ledgerSummary, pendingConfirmations, sortLedger,
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -230,4 +230,40 @@ test('เก็บครบแล้ว หรือยังไม่มีใ�
   assert.equal(done.nextDue, null);
   const [undated] = groupLedgerByOrder([rowFor('F', 1, { dueDate: null })]);
   assert.equal(undated.nextDue, null);
+});
+
+// ── คิวงานของบัญชี (มติผู้ใช้ 2026-08-13 · แบบ ข บน + ก ล่าง) ─────────────
+/* ⭐ คิวตอบ "ทำอันไหนก่อน" ไม่ใช่ "ใบไหนเป็นยังไง" ⇒ เรียงคนละแบบกับทะเบียนข้างล่าง */
+test('คิวเอาเฉพาะงวดที่รอบัญชีรับรอง เรียงเลยกำหนดก่อน แล้วยอดมากก่อน', () => {
+  const rows = [
+    make({ seq: 1, status: 'reported', amount: 5000 }),
+    make({ seq: 2, status: 'confirmed', amount: 99999 }),   // จบแล้ว ไม่เข้าคิว
+    make({ seq: 3, status: 'pending', amount: 88888 }),     // ลูกค้ายังไม่จ่าย ไม่ใช่งานบัญชี
+    make({ seq: 4, status: 'reported', amount: 200 , dueDate: '2026-08-01' }), // เลยกำหนด
+    make({ seq: 5, status: 'reported', amount: 90000 }),
+    make({ seq: 6, status: 'rejected', amount: 1 }),        // ตีกลับแล้ว รอฝ่ายขายแก้
+  ];
+  assert.deepEqual(
+    pendingConfirmations(rows).map((r) => r.amount),
+    [200, 90000, 5000],
+    'เลยกำหนดขึ้นก่อนแม้ยอดน้อยสุด',
+  );
+});
+
+/* 🔴 คนกดคอนเฟิร์มต้องเห็นสิ่งที่กำลังรับรอง — คิวจึงต้องพกชื่อไฟล์หลักฐานมาด้วย
+   ⚠️ ส่งแค่ชื่อ ไม่ส่ง path — ทางเปิดไฟล์คือ route ที่ตรวจสิทธิ์เอง */
+test('แถวพกชื่อไฟล์หลักฐานมาให้โมดัลโชว์ก่อนกด', () => {
+  const r = make({ status: 'reported', evidence: [{ fileName: 'slip.pdf', storagePath: 'ห้ามหลุด' }, {}] });
+  assert.equal(r.evidenceCount, 2);
+  assert.deepEqual(r.evidence, [
+    { index: 0, fileName: 'slip.pdf' },
+    { index: 1, fileName: 'ไฟล์ 2' },
+  ]);
+  assert.ok(!JSON.stringify(r.evidence).includes('ห้ามหลุด'), 'ต้องไม่ส่ง path ออกไป');
+});
+
+test('ไม่มีงวดรอรับรอง = คิวว่าง ไม่ใช่พัง', () => {
+  assert.deepEqual(pendingConfirmations([]), []);
+  assert.deepEqual(pendingConfirmations(), []);
+  assert.deepEqual(pendingConfirmations([make({ status: 'confirmed' })]), []);
 });

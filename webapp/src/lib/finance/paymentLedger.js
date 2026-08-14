@@ -66,7 +66,33 @@ export function ledgerRow({ installment, order, quotation, customer, todayIso = 
     confirmedByName: installment.confirmedByName || '',
     rejectedReason: installment.rejectedReason || '',
     evidenceCount: Array.isArray(installment.evidence) ? installment.evidence.length : 0,
+    /* ⭐ ชื่อไฟล์หลักฐาน — คิวรับรองบนหน้าทะเบียนต้อง **โชว์หลักฐานก่อนให้กด**
+       (มติผู้ใช้ 2026-08-13) ไม่งั้นคนกดคอนเฟิร์มโดยไม่เห็นสิ่งที่กำลังรับรอง
+       ⚠️ เอาแค่ชื่อไฟล์ ไม่ส่ง path/URL — ทางเปิดไฟล์คือ route ที่ตรวจสิทธิ์เอง
+       (`/api/sales-planning/sales-orders/[id]/payment-file?installment=&i=`) */
+    evidence: (Array.isArray(installment.evidence) ? installment.evidence : [])
+      .map((file, index) => ({ index, fileName: file?.fileName || `ไฟล์ ${index + 1}` })),
   };
+}
+
+/**
+ * งวดที่ **รอบัญชีรับรอง** — คิวงานที่ฝ่ายบัญชีเปิดหน้ามาเพื่อทำ (มติผู้ใช้ 2026-08-13)
+ *
+ * ⭐ *"คิวงาน ข อยู่บน ทะเบียน ก อยู่ล่าง"* — หน้านี้ถูกใช้เป็นคิวมาตลอดทั้งที่ชื่อ
+ * "ทะเบียน" · แยกของที่ **ต้องทำวันนี้** ออกมาไว้บนสุด ส่วนทะเบียนเต็มไว้ค้นและดาวน์โหลด
+ *
+ * ⚠️ เรียง **เลยกำหนดก่อน แล้วยอดมากก่อน** — ต่างจากทะเบียนข้างล่างที่เรียงตามใบ
+ * เพราะคิวตอบคำถาม "ทำอันไหนก่อน" ไม่ใช่ "ใบไหนเป็นยังไง"
+ * ⚠️ นับจาก **แถวที่กรองแล้ว** เสมอ — ตัวกรองบนหน้าคุมทั้งคิวและทะเบียน ไม่งั้น
+ * คนกรองดูลูกค้ารายเดียวแล้วคิวยังโชว์ของคนอื่นอยู่ = สองส่วนบนหน้าเดียวพูดคนละเรื่อง
+ */
+export function pendingConfirmations(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && row.status === 'reported')
+    .sort((a, b) => {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+    });
 }
 
 /**

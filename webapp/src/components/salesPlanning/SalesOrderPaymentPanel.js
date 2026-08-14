@@ -13,8 +13,7 @@ import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { paymentConfirmPrompt } from "@/lib/approvalPrompt";
+import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
@@ -41,6 +40,7 @@ export default function SalesOrderPaymentPanel({
   const [rejectFor, setRejectFor] = useState(null);
   const [scheduleFor, setScheduleFor] = useState(null);
   const [unconfirmFor, setUnconfirmFor] = useState(null);
+  const [confirmFor, setConfirmFor] = useState(null);
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -155,13 +155,10 @@ export default function SalesOrderPaymentPanel({
                       /* ⚠️ ถอนคืนไม่ได้จริง ๆ — ไม่มี action un-confirm และงวดที่คอนเฟิร์มแล้ว
                          ล็อกใบไม่ให้ยกเลิกอนุมัติ/ออก Rev. (ดู paymentLockReason)
                          ⇒ ต้องถามก่อนเสมอ (มติผู้ใช้ 2026-08-13) */
-                      onClick: async () => {
-                        const ok = await confirmAction(paymentConfirmPrompt({
-                          label: rows.length > 1 ? `งวดที่ ${row.seq}` : "ชำระเต็มจำนวน",
-                          amount: fmtMoney(row.amount),
-                        }));
-                        if (ok) await onAction(row, "confirm");
-                      },
+                      /* ⭐ โมดัลตัวเดียวกับคิวบนทะเบียนการชำระ (มติผู้ใช้ 2026-08-13) —
+                         และมัน **โชว์หลักฐานก่อนกด** ซึ่งของเดิมไม่มี ทั้งที่หน้านี้เป็น
+                         ที่ที่หลักฐานอยู่ · เขียนสองชุดเมื่อไรมันเพี้ยนหากัน (AGENTS.md) */
+                      onClick: () => setConfirmFor({ row }),
                     }
                     : null;
 
@@ -324,6 +321,19 @@ export default function SalesOrderPaymentPanel({
 
       {/* ⚠️ ถอนคำรับรอง = กลับคำเรื่องเงินที่เคยบอกว่ารับแล้ว และปลดล็อกใบให้ยกเลิก
           อนุมัติ/ออก Rev. ได้ด้วย ⇒ ต้องมีเหตุผลเท่ากับตอนตีกลับ ไม่ใช่กดแล้วจบ */}
+      <InstallmentConfirmDialog
+        open={!!confirmFor}
+        row={confirmFor?.row}
+        order={order}
+        multi={rows.length > 1}
+        busy={!!busy}
+        onClose={() => setConfirmFor(null)}
+        onConfirm={async (target) => {
+          const done = await onAction(target, "confirm");
+          if (done) setConfirmFor(null);
+        }}
+      />
+
       <ReasonDialog
         open={!!unconfirmFor}
         title="ถอนคำรับรองการชำระ"

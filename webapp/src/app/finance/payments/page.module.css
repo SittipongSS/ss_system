@@ -65,3 +65,83 @@
   vertical-align: -1px;
   color: var(--text-3);
 }
+
+/* ── คิวงานด้านบน (มติผู้ใช้ 2026-08-13) ────────────────────────────────
+   ไม่ใช่ตาราง — เป็น **รายการงาน** ทีละใบ ⇒ เป็นบล็อกที่ปุ่มอยู่ในสายตา
+   ไม่ต้องเลื่อนแนวนอนหา ต่างจากทะเบียนข้างล่างที่เป็นของไว้ค้น */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.qrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+/* เลยกำหนด = ขีดแดงหัวแถว ไม่ใช่พื้นแดงทั้งแถว — พื้นแดงอ่านเหมือน "ข้อมูลผิด"
+   ทั้งที่ข้อมูลถูก แค่ช้า (กติกาเดียวกับตารางข้างล่างที่ย้อมเฉพาะช่องวันที่) */
+.qrowLate {
+  border-inline-start: 3px solid var(--red);
+}
+
+.qmain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.qsep {
+  margin-inline: var(--space-2);
+  color: var(--text-3);
+}
+
+.qlate {
+  margin-inline-start: var(--space-2);
+  font-size: var(--fs-6);
+  color: var(--red);
+}
+
+/* ยอดเงินชิดขวาและกว้างเท่ากันทุกแถว ⇒ ไล่สายตาลงมาเทียบตัวเลขได้ */
+.qamt {
+  flex: none;
+  min-width: 7.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+}
+
+.qmore {
+  display: flex;
+  justify-content: center;
+}
+
+/* แถบสัดส่วนเก็บเงิน — อ่าน "ไปถึงไหนแล้ว" ด้วยตาเดียวโดยไม่ต้องเทียบเลขสองตัว
+   ⚠️ ประดับล้วน (aria-hidden) ตัวเลขจริงอยู่บรรทัดบนแล้ว */
+.mbar {
+  appearance: none;
+  display: block;
+  /* กว้างเท่ากันทุกแถวและชิดขวาตามเซลล์ตัวเลข ⇒ ไล่สายตาลงมาเทียบความคืบหน้าได้
+     ถ้าปล่อยเต็มเซลล์ แถบจะยาวไม่เท่ากันตามความกว้างคอลัมน์แล้วเทียบกันไม่ได้ */
+  width: 8rem;
+  margin-inline-start: auto;
+  height: 3px;
+  margin-top: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+/* <progress> ต้องย้อมผ่าน pseudo-element ของแต่ละเอนจิน — ไม่มีทางกลาง */
+.mbar::-webkit-progress-bar { background: var(--border); }
+.mbar::-webkit-progress-value { background: var(--green); }
+.mbar::-moz-progress-bar { background: var(--green); }
