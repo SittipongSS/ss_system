@@ -646,41 +646,16 @@ export default function AppLayout({ children }) {
           <div className="mobile-nav-sheet-header">
             <div>
               <strong>{systemSubtitle}</strong>
-              <span>เมนูงานและการตั้งค่า</span>
+              <span>บัญชีและเครื่องมือ</span>
             </div>
             <button type="button" className="btn-icon" onClick={() => setMobileMoreOpen(false)} aria-label="ปิดเมนู"><X size={20} /></button>
           </div>
 
-          {menuItems.length > 0 && (
-            <section className="mobile-nav-section">
-              <h2>เมนูของระบบนี้</h2>
-              <div className="mobile-nav-grid">
-                {menuItems.map((item) => {
-                  const Icon = item.icon;
-                  if (item.disabled) {
-                    return (
-                      <span key={item.href} aria-disabled="true" className="mobile-nav-card is-disabled">
-                        <Icon size={20} /><span>{item.name}</span>
-                      </span>
-                    );
-                  }
-                  const count = navCountFor(navCounts, item.href);
-                  return (
-                    <Link
-                      href={navHrefFor(item, count)}
-                      key={item.href}
-                      className={`mobile-nav-card${item.match(pathname) ? ' active' : ''}`}
-                      aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
-                    >
-                      <Icon size={20} /><span>{item.name}</span>
-                      {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
+          {/* ⭐ ไม่มีหัวข้อ "เมนูของระบบนี้" ที่นี่ (มติผู้ใช้ 2026-08-14) — แถบล่างแบก
+              เมนูของระบบครบทุกตัวอยู่แล้วตั้งแต่มติ 2026-08-02 (แบ่งหน้าปัดเอา)
+              การวางซ้ำในแผ่นนี้คือของเหลือจากกติกาเก่า "4+เพิ่มเติม" ที่ถูกล้มไปแล้ว
+              ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
+              (รวม "วางเป้า" ที่เป็นเมนูเสริมของบริหารงานขาย ไม่ได้อยู่บนแถบล่าง) */}
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
