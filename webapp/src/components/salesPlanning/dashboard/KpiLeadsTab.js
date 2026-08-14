@@ -388,9 +388,16 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                     <XAxis type="number" hide />
                     <YAxis type="category" dataKey="label" width={78} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
                     <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
+                    {/* 🐞 `isAnimationActive={false}` **จำเป็น** เหมือน `<Pie>` ข้างบน — recharts 3.9.2
+                        ทำอนิเมชันของ `<Bar>` ที่ซ้อนกอง (stackId) ไม่จบ: เปิดหน้ามาแท่งไม่ขึ้นเลย
+                        สักอัน (path 0 ชิ้น) พอเลื่อนจอให้กราฟเข้ามาในสายตาถึงโผล่ แต่ค้างกลางทาง
+                        — ค่าสูงสุด 21 ใบวาดยาวแค่ ~55px บนผืนกว้าง 963px และไม่มี error อะไรฟ้อง
+                        ⚠️ พิสูจน์แล้วว่าไม่ใช่เรื่องขนาด: ตรึง `width={800}` ตัด ResponsiveContainer
+                        ออกก็ยังไม่ขึ้น · กราฟอื่นทุกอันในไฟล์นี้ปิดอนิเมชันไว้ตั้งแต่แรกจึงไม่เคยเจอ
+                        (เจอตอนตรวจด้วยตา 2026-08-13 · ผู้ใช้ทักว่ากราฟหน้าตาแปลก) */}
                     {STATUS_SERIES.map((st, i) => (
                       <Bar key={st.key} dataKey={st.key} name={st.label} stackId="s" fill={st.color}
-                        radius={i === STATUS_SERIES.length - 1 ? [0, 3, 3, 0] : 0} />
+                        radius={i === STATUS_SERIES.length - 1 ? [0, 3, 3, 0] : 0} isAnimationActive={false} />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>
