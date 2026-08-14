@@ -134,6 +134,12 @@ export default function SalesProjectCreateModal({
       [!form.customerId, "ลูกค้า"],
       // วันเริ่มที่มาจากดีลไม่ใช่ช่องที่คนกรอก จึงไม่ใช่ช่องบังคับของฟอร์มนี้
       [!startDateFrom && !form.startDate, "วันที่เริ่มโครงการ"],
+      /* ผู้ดูแล (AE) บังคับ **เฉพาะตอนสร้าง** และเฉพาะคนที่ไม่ได้ถูกล็อกชื่อตัวเอง
+         (ac/ae_supervisor/admin) — ทีม/เจ้าของของโครงการเดินตามช่องนี้ (mig 0253)
+         เว้นว่างไว้ = โครงการไม่โผล่ในลิสต์ของ AE คนไหนเลย ⇒ API ตีกลับอยู่แล้ว
+         ด่านตรงนี้แค่บอกตั้งแต่ในฟอร์ม ไม่ใช่ให้ไปเจอ error หลังกดบันทึก
+         ⚠️ ไม่บังคับตอนแก้ — โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ช่องอื่นได้ตามปกติ */
+      [!editingId && !lockPeopleField && !form.aeOwner, "ผู้ดูแลโครงการ (AE)"],
     ].filter(([absent]) => absent).map(([, label]) => label);
     if (missing.length) return setError(`กรุณากรอก ${missing.join(" · ")} ให้ครบ`);
     setSubmitting(true);

@@ -240,6 +240,15 @@ ss-cj `ProjectContext.jsx` (1044 บรรทัด, ~40 จุดเรีย�
 - scope: ใช้ `viewScope`/`editScope`/`inScope` เดิม (projects มี `team`/`ownerId`)
 - proxy.js: เพิ่ม gate `/api/pm/*` → write ต้อง `pm:edit`
 
+⚠️ **`team`/`ownerId` ของโครงการเดินตาม "ผู้ดูแล (AE)" ไม่ใช่คนกดสร้าง**
+(mig 0253 + [projectOwner.js](src/lib/pm/projectOwner.js) — บั๊กจริง 2026-08-14)
+ลิสต์กรองด้วยสองช่องนี้เท่านั้น **ไม่ได้กรองด้วย `aeOwnerId`** ⇒ ตอนที่ POST เขียน
+สองช่องนี้จากคนกดสร้าง โครงการที่ Admin (ไม่มีทีมเลย) เปิดให้ AE จะเกิดมาพร้อม
+`team = null` · `ownerId = admin` แล้ว AE เจ้าของงานไม่เห็นในลิสต์ตัวเอง เปิดลิงก์
+ตรงก็ 403 · เปลี่ยนผู้ดูแลทีหลัง (PATCH) ก็ต้องย้ายสองช่องนี้ตามด้วยเสมอ
+กติกาเดียวกับดีล ([dealOwner.js](src/lib/sales/dealOwner.js)) — ต่างกันที่ด่านทีมของ
+โครงการวัดคนสั่งด้วย `pmEditScope` (AE = ระดับทีม) ไม่ใช่ `salesPlanningEditScope`
+
 ---
 
 ## 11. เมนู Sidebar
