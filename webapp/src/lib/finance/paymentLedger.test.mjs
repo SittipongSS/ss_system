@@ -425,3 +425,69 @@ test('ลำดับถังตามลำดับที่ใบแรก�
 test('ตัวเลือกจัดกลุ่มมี "ไม่จัดกลุ่ม" เป็นตัวแรกเสมอ', () => {
   assert.equal(LEDGER_GROUP_OPTIONS[0].value, 'none');
 });
+
+// ── ผู้ดูแล (AE) มาจากดีล ไม่ใช่จากใบ ────────────────────────────────────
+/* 🐞 `sales_orders` ไม่มีคอลัมน์ team/ownerName — เคย select แล้วได้ 500 ทั้งหน้า
+   ⇒ ทะเบียนต้องรับผู้ดูแลผ่าน `deal` ที่ join มา */
+test('ผู้ดูแลและทีมมาจากดีลที่ join มา', () => {
+  const row = ledgerRow({
+    installment: { id: 'i', seq: 1, amount: 100, status: 'pending', evidence: [] },
+    order: { id: 'SOR-1', orderNumber: 'SO-1' },
+    deal: { id: 'D-1', ownerId: 'U-9', ownerName: 'Patcharapit Jueajan', team: 'SV' },
+    todayIso: TODAY,
+  });
+  assert.equal(row.ownerId, 'U-9');
+  assert.equal(row.ownerName, 'Patcharapit Jueajan');
+  assert.equal(row.team, 'SV');
+});
+
+test('ใบที่ไม่ได้มาจากดีล ต้องไม่พัง แค่ไม่มีผู้ดูแล', () => {
+  const row = ledgerRow({
+    installment: { id: 'i', seq: 1, amount: 100, status: 'pending', evidence: [] },
+    order: { id: 'SOR-2', orderNumber: 'SO-2' },
+    todayIso: TODAY,
+  });
+  assert.equal(row.ownerName, '');
+  assert.equal(row.ownerId, null);
+});
+
+const rowWithOwner = (order, deal) => ledgerRow({
+  installment: { id: `SOI-${order}`, seq: 1, label: 'เต็มจำนวน', percent: 100, amount: 1000, status: 'pending', evidence: [] },
+  order: { id: `SOR-${order}`, orderNumber: `SO-${order}`, quotationId: `QT-${order}` },
+  quotation: { id: `QT-${order}`, quoteNumber: `QT-${order}-0` },
+  customer: { name: `ลูกค้า ${order}`, arCode: `AR-${order}` },
+  deal,
+  todayIso: TODAY,
+});
+
+test('ก้อนใบพกผู้ดูแลติดมาด้วย ⇒ จัดกลุ่มตาม AE ได้', () => {
+  const [group] = groupLedgerByOrder([rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' })]);
+  assert.equal(group.ownerId, 'U-1');
+  assert.equal(group.ownerName, 'Nida Promthep');
+  assert.equal(group.team, 'SV');
+});
+
+test('จัดกลุ่มตามผู้ดูแล: ชื่อย่อบนหัวกลุ่ม ทีมเป็นบรรทัดรอง ไม่ระบุไปท้ายสุด', () => {
+  const groups = groupLedgerByOrder([
+    rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' }),
+    rowWithOwner('B', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' }),
+    rowWithOwner('C', null),
+    rowWithOwner('D', { ownerId: 'U-2', ownerName: 'Patcharapit Jueajan', team: 'AE' }),
+  ]);
+  const buckets = groupLedgerBuckets(groups, 'owner');
+  const nida = buckets.find((b) => b.label === 'Nida P.');
+  assert.equal(nida.count, 2, 'สองใบของ AE คนเดียวกันต้องอยู่ถังเดียว');
+  assert.equal(nida.sub, 'SV');
+  assert.equal(buckets.at(-1).label, 'ไม่ระบุผู้ดูแล');
+  assert.ok(buckets.at(-1).missing);
+  assert.equal(buckets.reduce((sum, b) => sum + b.count, 0), 4);
+});
+
+/* ⚠️ ชื่อซ้ำกันได้ — กุญแจต้องเป็น id ไม่ใช่ชื่อ ไม่งั้น AE สองคนชื่อเหมือนกันถูกยุบรวม */
+test('AE ชื่อเดียวกันแต่คนละคน ต้องไม่ถูกยุบเป็นถังเดียว', () => {
+  const groups = groupLedgerByOrder([
+    rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Somchai Sri', team: 'SV' }),
+    rowWithOwner('B', { ownerId: 'U-2', ownerName: 'Somchai Sri', team: 'AE' }),
+  ]);
+  assert.equal(groupLedgerBuckets(groups, 'owner').length, 2);
+});

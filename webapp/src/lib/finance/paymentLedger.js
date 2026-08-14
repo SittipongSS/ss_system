@@ -12,7 +12,7 @@
 // ⚠️ **`reported` ไม่นับว่าเก็บเงินได้** — นับเฉพาะ `confirmed` (กติกาจาก mig 0245:
 // SA แจ้งเองนับเอง = ไม่มีด่าน) · ยอด "เก็บได้" ทุกตัวในไฟล์นี้จึงนับจาก confirmed เท่านั้น
 
-import { fmtMonthYear } from '@/lib/format';
+import { fmtMonthYear, fmtName } from '@/lib/format';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -30,7 +30,7 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
  * ⚠️ ทุกอย่างที่มาจาก QT เป็น **snapshot ตอนอนุมัติใบ** (`label` `percent` `amount`)
  * ห้ามคำนวณใหม่จาก QT ปัจจุบัน — ใบที่เซ็นไปแล้วต้องอ่านได้เท่าเดิมตลอดไป
  */
-export function ledgerRow({ installment, order, quotation, customer, todayIso = null }) {
+export function ledgerRow({ installment, order, quotation, customer, deal = null, todayIso = null }) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
   const due = installment.dueDate || null;
@@ -47,8 +47,12 @@ export function ledgerRow({ installment, order, quotation, customer, todayIso = 
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
     financeStatus: order.financeStatus || null,
-    team: order.team || null,
-    ownerName: order.ownerName || '',
+    /* ⚠️ **ผู้ดูแล (AE) กับทีม อยู่ที่ "ดีล" ไม่ใช่ที่ใบ** — `sales_orders` ไม่มี
+       สองคอลัมน์นี้ (เคยใส่ใน select แล้วได้ 500 ทั้งหน้า) ⇒ ต้อง join ดีลมาส่งเป็น
+       `deal` · รับจากใบไว้ด้วยเผื่อผู้เรียกที่ประกอบ order มาเองแล้ว */
+    team: deal?.team || order.team || null,
+    ownerId: deal?.ownerId || order.ownerId || null,
+    ownerName: deal?.ownerName || order.ownerName || '',
 
     // ── ตัวงวด (snapshot จาก QT) ──
     seq: installment.seq,
@@ -273,6 +277,10 @@ export function groupLedgerByOrder(rows = []) {
         customerCode: row.customerCode,
         orderStatus: row.orderStatus,
         financeStatus: row.financeStatus,
+        // ผู้ดูแลมาจากดีลของใบ (ดู `ledgerRow`) — ใช้จัดกลุ่ม "ผู้ดูแล (AE)"
+        ownerId: row.ownerId || null,
+        ownerName: row.ownerName || '',
+        team: row.team || null,
         rows: [],
       });
     }
@@ -421,6 +429,7 @@ export function sortLedgerGroups(groups = [], key = LEDGER_SORT_DEFAULT, dir = n
 export const LEDGER_GROUP_OPTIONS = [
   { value: 'none', label: 'ไม่จัดกลุ่ม' },
   { value: 'customer', label: 'ลูกค้า' },
+  { value: 'owner', label: 'ผู้ดูแล (AE)' },
   { value: 'dueMonth', label: 'เดือนที่ต้องเก็บ' },
   { value: 'state', label: 'สถานะการเก็บ' },
 ];
@@ -454,6 +463,15 @@ export function groupLedgerBuckets(groups = [], groupBy = 'none') {
       key = group.customerCode || String(group.customerName || '').trim() || '__none';
       label = group.customerName || 'ไม่ระบุลูกค้า';
       sub = group.customerCode || null;
+      missing = key === '__none';
+    } else if (groupBy === 'owner') {
+      /* ⚠️ กุญแจใช้ `ownerId` ก่อน — ชื่อซ้ำกันได้ และดีลเก่าบางใบเก็บชื่อไว้เฉย ๆ
+         โดยไม่มี id · ใบที่ไม่ได้มาจากดีล (หรือดีลไม่มีเจ้าของ) ไปถัง "ไม่ระบุ" ท้ายสุด
+         ⚠️ ชื่อย่อผ่าน `fmtName` ชุดเดียวกับที่ตารางดีลใช้ ⇒ หัวกลุ่มอ่านเหมือนกันทั้งระบบ */
+      const name = String(group.ownerName || '').trim();
+      key = group.ownerId || name || '__none';
+      label = name ? fmtName(name) : 'ไม่ระบุผู้ดูแล';
+      sub = group.team || null;
       missing = key === '__none';
     } else if (groupBy === 'dueMonth') {
       const month = group.nextDue ? String(group.nextDue).slice(0, 7) : null;
