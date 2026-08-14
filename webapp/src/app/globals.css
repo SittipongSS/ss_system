@@ -1114,7 +1114,11 @@ button, select, input, textarea {
   min-height: calc(100vh / var(--ui-scale));
 }
 
-.app-container.settings-context {
+/* เปลือกไร้แถบเมนู — หน้าที่ไม่ได้เป็นของระบบไหน (ตั้งค่า · บัญชีของฉัน)
+   แถบเมนูของระบบไม่ถูกวาด ความสูงที่กันไว้ให้มันจึงต้องเป็น 0 ด้วย ไม่งั้นเหลือ
+   ช่องว่างใต้หัวเป็นแถบเปล่า */
+.app-container.settings-context,
+.app-container.account-context {
   --topnav-menu-h: 0px;
 }
 
