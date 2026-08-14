@@ -20,8 +20,12 @@ export const dynamic = 'force-dynamic';
 /* ดึงทีละก้อนด้วย `.in()` ไม่ใช่ไล่ยิงต่อแถว — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ
    (ใบละ 1–4 งวด) ยิงต่อแถวเมื่อไรหน้าเดียวก็หลายร้อยรีเควสต์ */
 async function loadLedger(supabase, todayIso) {
+  /* ⭐ **เฉพาะงวดที่ยอดหยุดแล้ว** (B-4 · mig 0259) — งวดของใบร่างมีตัวตนใน DB แล้ว
+     แต่ยอดยังเดินตามแผนของ QT ⇒ ปล่อยเข้าทะเบียนเมื่อไร บัญชีเปิดมาเจอ **คิวเงินที่
+     ยังไม่มีอยู่จริง** และยอดรวมทั้งหน้าผิดทันที
+     ⚠️ กรองที่ query ไม่ใช่หลังโหลด — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ */
   const { data: installments, error } = await supabase
-    .from('sales_order_installments').select('*');
+    .from('sales_order_installments').select('*').not('frozenAt', 'is', null);
   if (error) throw error;
   const rows = installments || [];
   if (!rows.length) return [];

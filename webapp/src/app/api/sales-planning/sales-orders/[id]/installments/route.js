@@ -2,7 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { sanitizeWonAttachments } from '@/lib/sales/quotationWonEvidence';
-import { installmentActionError } from '@/lib/sales/salesOrderPayments';
+import { installmentActionError, withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import {
   ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
@@ -46,14 +46,22 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const { order, error } = await loadOrderForUser(supabase, user, id);
     if (error) return error;
-    return ok({ installments: await loadInstallments(supabase, order.id) });
+    /* ยอดของงวดร่างมาจากแผนของ QT สด ๆ (B-4) — ที่เก็บไว้เป็นค่าตอนกด "เริ่มติดตาม"
+       ซึ่งอาจไม่ตรงกับแผนวันนี้ · ทับตอนอ่าน ไม่ใช่เขียนทับใน DB (write-on-read) */
+    return ok({
+      installments: withLiveAmounts(
+        await loadInstallments(supabase, order.id),
+        order.quotation?.paymentPlan, order.totalAmount,
+      ),
+    });
   } catch (loadError) {
     return fail(loadError.message, 500);
   }
 });
 
 /* POST — เริ่มติดตามการชำระของใบนี้
-   ใช้สองทาง: เรียกอัตโนมัติหลังอนุมัติ · และปุ่มบนใบเก่าที่อนุมัติไปก่อนมีระบบนี้
+   ใช้สามทาง: กดตั้งแต่ใบยังเป็นร่าง (B-4) · ปุ่มบนใบเก่าที่อนุมัติไปก่อนมีระบบนี้ ·
+   เรียกอัตโนมัติตอนอนุมัติสำหรับใบที่ไม่เคยกด
    (มติผู้ใช้ 2026-08-13: ไม่ generate ย้อนหลังทั้งระบบ ให้เปิดทีละใบ) */
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
@@ -62,8 +70,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   try {
     const { order, error } = await loadOrderForUser(supabase, user, id);
     if (error) return error;
-    // ⚠️ ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ — สร้างงวดก่อนหน้านั้นยอดต่องวดจะผิดเงียบ ๆ
-    if (order.status !== 'approved') return badRequest('เริ่มติดตามการชำระได้หลังใบสั่งขายอนุมัติแล้ว');
+    /* ⭐ **ด่าน "ต้องอนุมัติก่อน" ถูกถอดแล้ว** (B-4 · มติผู้ใช้ 2026-08-15) —
+       เหตุผลเดิม ("ยอดยังเปลี่ยนได้") ย้ายไปอยู่ที่ `freezeInstallments` ซึ่งเขียนยอด
+       ทับครั้งสุดท้ายตอนอนุมัติ · แถวที่สร้างตอนนี้ยังไม่ freeze ⇒ ยังแจ้งชำระไม่ได้
+       และยังไม่เข้าทะเบียนของบัญชี · สิ่งที่ได้คือ **ช่องกำหนดชำระให้ SA กรอกตอนที่
+       กำลังคุยเงื่อนไขกับลูกค้าอยู่พอดี** แทนที่จะต้องรอใบผ่านอนุมัติแล้วย้อนกลับมา
+       ⚠️ ใบที่ยกเลิกแล้วไม่ต้องมีอะไรให้ติดตาม */
+    if (['cancelled', 'rejected'].includes(order.status)) {
+      return badRequest('ใบสั่งขายนี้ถูกยกเลิก/ตีกลับแล้ว — ไม่มีอะไรให้ติดตาม');
+    }
 
     const { rows, created } = await ensureInstallments(supabase, { order, user });
     if (!rows.length) return badRequest('ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา');
@@ -174,7 +189,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `${action} งวด ${row.seq} ของ ${order.orderNumber}`,
       request: req,
     });
-    return ok({ installment: updated, installments: await loadInstallments(supabase, order.id) });
+    return ok({
+      installment: updated,
+      installments: withLiveAmounts(
+        await loadInstallments(supabase, order.id),
+        order.quotation?.paymentPlan, order.totalAmount,
+      ),
+    });
   } catch (patchError) {
     return fail(patchError.message, 500);
   }

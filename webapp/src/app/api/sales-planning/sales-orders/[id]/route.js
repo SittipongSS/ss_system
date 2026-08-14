@@ -25,7 +25,8 @@ import {
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
-import { ensureInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import { freezeInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import { paymentLockReason } from '@/lib/sales/salesOrderPayments';
 import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -104,7 +105,11 @@ async function loadOrder(supabase, id) {
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
     scentRequest: scentRequest || null,
     // งวดชำระ (mig 0245) — โหลดมากับใบเลยเพื่อไม่ให้การ์ด "การชำระ" ต้องยิงรอบสอง
-    installments: await loadInstallments(supabase, order.id).catch(() => []),
+    // ⭐ งวดร่างเดินตามแผนของ QT สด ๆ (B-4) — ทับตอนอ่านที่เดียวกับ route ของงวด
+    installments: withLiveAmounts(
+      await loadInstallments(supabase, order.id).catch(() => []),
+      quotation?.paymentPlan, order.totalAmount,
+    ),
   };
 }
 
@@ -507,16 +512,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       console.error('sales order finance queue flag failed', id, financeFlagError);
     }
 
-    /* ⭐ งวดชำระเกิดตอนนี้ ไม่ใช่ตอนสร้างร่าง (mig 0245) — ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ
+    /* ⭐ **จุดที่ยอดต่องวดหยุดเดิน** (B-4 · mig 0259) — เดิมงวด "เกิด" ตรงนี้ (0245)
+       ตอนนี้งวดเกิดได้ตั้งแต่ใบยังเป็นร่าง ⇒ ตรงนี้เปลี่ยนหน้าที่เป็น **เขียนยอดทับ
+       ครั้งสุดท้ายจากแผนของ QT + ยอดจริงของใบ แล้วประทับ `frozenAt`**
+       · ใบที่ไม่เคยกด "เริ่มติดตาม" ยังได้งวดสร้างให้ตรงนี้เหมือนพฤติกรรมเดิม
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว งวดล้มต้องไม่ roll back
-       กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ซึ่งเรียก ensureInstallments ตัวเดียวกัน (idempotent) */
+       กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" + อนุมัติซ้ำ (freezeInstallments idempotent) */
     try {
-      await ensureInstallments(supabase, {
+      await freezeInstallments(supabase, {
         order: { ...before, ...data, quotation: before.quotation },
         user,
       });
     } catch (installmentError) {
-      console.error('sales order installment seed failed', id, installmentError);
+      console.error('sales order installment freeze failed', id, installmentError);
     }
 
     await logThread('approve', { overrideReason });

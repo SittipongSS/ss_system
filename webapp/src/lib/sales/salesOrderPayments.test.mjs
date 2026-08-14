@@ -7,13 +7,21 @@ import {
   INSTALLMENT_STATUSES,
   buildInstallmentsForOrder,
   installmentActionError,
+  installmentPlanDrift,
   installmentsFromPaymentPlan,
+  isInstallmentFrozen,
   paymentLockReason,
   paymentRollup,
   salesOrderPaymentNote,
   paymentState,
   previewInstallments,
+  withLiveAmounts,
 } from './salesOrderPayments.js';
+
+/* ⭐ งวดที่ **ยอดหยุดแล้ว** (B-4 · mig 0259) — ทุกแถวที่เดินสายแจ้ง/คอนเฟิร์มได้
+   ต้องผ่านจุดนี้มาก่อนเสมอ · fixture ที่ลืมใส่จะติดด่าน "ใบยังไม่อนุมัติ" ซึ่งถูกแล้ว */
+const FROZEN = '2026-08-14T03:00:00.000Z';
+const frozen = (row) => ({ frozenAt: FROZEN, ...row });
 
 const SA = { id: 'u-sa', role: 'ae' };
 const SA_OTHER = { id: 'u-sa2', role: 'ae' };
@@ -174,15 +182,69 @@ test('สถานะรวมเรียงความสำคัญ: เล
   assert.equal(paymentState(paymentRollup(rowsFixture, '2026-07-15')).state, 'reviewing');
 });
 
+// ── งวดร่าง vs งวดที่ยอดหยุดแล้ว (B-4 · mig 0259) ───────────────────────
+const DRAFT_PLAN = {
+  type: 'installment',
+  installments: [{ label: 'มัดจำ', percent: 30 }, { label: 'ที่เหลือ', percent: 70 }],
+};
+
+test('งวดร่างเดินตามแผนของ QT — กำหนดชำระที่ SA กรอกไว้ต้องรอด', () => {
+  const stored = [
+    { id: 'a', seq: 1, label: 'มัดจำ', percent: 30, amount: 3000, dueDate: '2026-09-01', note: 'โอนก่อน' },
+    { id: 'b', seq: 2, label: 'ที่เหลือ', percent: 70, amount: 7000, dueDate: '2026-10-01' },
+  ];
+  // ยอดใบเปลี่ยนจาก 10,000 เป็น 20,000 หลังกด "เริ่มติดตาม"
+  const live = withLiveAmounts(stored, DRAFT_PLAN, 20000);
+  assert.deepEqual(live.map((r) => r.amount), [6000, 14000]);
+  // ⭐ ของที่ SA กรอกห้ามหาย
+  assert.deepEqual(live.map((r) => r.dueDate), ['2026-09-01', '2026-10-01']);
+  assert.equal(live[0].note, 'โอนก่อน');
+});
+
+test('งวดที่ freeze แล้วห้ามขยับตามใบอีก — ยอดที่เซ็นไปแล้วคือของจริง', () => {
+  const stored = [frozen({ id: 'a', seq: 1, percent: 30, amount: 3000 })];
+  assert.equal(withLiveAmounts(stored, DRAFT_PLAN, 20000)[0].amount, 3000);
+  assert.equal(isInstallmentFrozen(stored[0]), true);
+  assert.equal(isInstallmentFrozen({ id: 'b' }), false);
+});
+
+test('จำนวนงวดไม่ตรงแผน = เรื่องที่ทับยอดอย่างเดียวแก้ไม่ได้ ต้องบอกผู้ใช้', () => {
+  const two = [{ seq: 1, amount: 1 }, { seq: 2, amount: 1 }];
+  assert.equal(installmentPlanDrift(two, DRAFT_PLAN, 10000), null);
+  assert.deepEqual(
+    installmentPlanDrift([{ seq: 1, amount: 1 }], DRAFT_PLAN, 10000),
+    { planned: 2, tracked: 1 },
+  );
+  // freeze แล้วไม่ตามแผนอีก — ใบที่อนุมัติไปแล้วไม่ใช่เรื่องของแผนวันนี้
+  assert.equal(installmentPlanDrift([frozen({ seq: 1, amount: 1 })], DRAFT_PLAN, 10000), null);
+  // ยังไม่มีงวด = ไม่มีอะไรให้เตือน
+  assert.equal(installmentPlanDrift([], DRAFT_PLAN, 10000), null);
+  /* ⚠️ QT ที่ไม่มีแผนชำระ = **หนึ่งงวดเต็มจำนวน** ไม่ใช่ศูนย์งวด (กติกาของ
+     `installmentsFromPaymentPlan`) ⇒ ใบที่ตั้งไว้ 2 งวดแล้วแผนหายไปก็ยังเป็น drift จริง */
+  assert.deepEqual(installmentPlanDrift(two, null, 10000), { planned: 1, tracked: 2 });
+});
+
+/* 🔴 หัวใจของ B-4 — งวดร่างมีตัวตนจริงเพื่อ **กรอกกำหนดชำระ** เท่านั้น
+   แจ้งชำระบนยอดที่ยังขยับได้ = หลักฐานผูกกับตัวเลขที่กำลังจะถูกเขียนทับ */
+test('แจ้งชำระบนงวดร่างไม่ได้ — ต้องรอใบอนุมัติก่อน', () => {
+  const draft = { status: 'pending' };
+  assert.match(
+    installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }),
+    /ยังไม่อนุมัติ/,
+  );
+  // ⭐ แต่ **ตั้งกำหนดชำระได้** — นี่คือเหตุผลทั้งหมดที่งวดร่างมีตัวตน
+  assert.equal(installmentActionError(draft, 'schedule', SA), null);
+});
+
 // ── ด่านของแต่ละคำสั่ง ──────────────────────────────────────────────────
 test('SA แจ้งชำระได้ แต่ต้องระบุวันที่ลูกค้าจ่าย', () => {
-  const row = { status: 'pending' };
+  const row = frozen({ status: 'pending' });
   assert.match(installmentActionError(row, 'report', SA, {}), /วันที่ลูกค้าชำระ/);
   assert.equal(installmentActionError(row, 'report', SA, { paidOn: '2026-08-10' }), null);
 });
 
 test('แจ้งซ้ำงวดที่คอนเฟิร์มแล้วไม่ได้', () => {
-  const row = { status: 'confirmed' };
+  const row = frozen({ status: 'confirmed' });
   assert.match(installmentActionError(row, 'report', SA, { paidOn: '2026-08-10' }), /คอนเฟิร์มแล้ว/);
 });
 
@@ -219,7 +281,7 @@ test('ตีกลับต้องมีเหตุผลอย่างน�
 });
 
 test('งวดที่ถูกตีกลับกลับมาแจ้งใหม่ได้', () => {
-  assert.equal(installmentActionError({ status: 'rejected' }, 'report', SA, { paidOn: '2026-08-12' }), null);
+  assert.equal(installmentActionError(frozen({ status: 'rejected' }), 'report', SA, { paidOn: '2026-08-12' }), null);
 });
 
 test('ดึงกลับได้เฉพาะผู้แจ้งเอง และเฉพาะตอนบัญชียังไม่ตัดสิน', () => {

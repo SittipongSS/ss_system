@@ -17,7 +17,7 @@ import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
-  installmentActionError, paymentRollup, previewInstallments,
+  installmentActionError, installmentPlanDrift, paymentRollup, previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
@@ -47,6 +47,15 @@ export default function SalesOrderPaymentPanel({
   const isPreview = !saved.length;
   const single = rows.length === 1;
   const rollup = paymentRollup(saved, todayIso);
+  /* ⭐ **งวดร่าง** (B-4) — มีตัวตนจริง กรอกกำหนดชำระได้ แต่ยอดยังเดินตามแผนของ QT
+     ⇒ ยังแจ้งชำระไม่ได้ และยังไม่เข้าทะเบียนการชำระของบัญชี
+     ⚠️ ต่างจาก `isPreview` ซึ่งคือ "ยังไม่มีแถวเลย" — สองสถานะนี้หน้าตาใกล้กันมาก
+     แต่กดได้คนละอย่าง จึงต้องแยกชื่อให้ชัดตั้งแต่ตัวแปร */
+  const draftRows = saved.filter((r) => !r.frozenAt);
+  const isDraftPlan = saved.length > 0 && draftRows.length === saved.length;
+  const drift = installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+  // ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ของงวดใช้
+  const canTrackPayments = !["cancelled", "rejected"].includes(order?.status);
 
   const quotation = order?.quotation;
   const wonFiles = Array.isArray(quotation?.wonAttachments) ? quotation.wonAttachments : [];
@@ -54,7 +63,9 @@ export default function SalesOrderPaymentPanel({
 
   const headline = isPreview
     ? `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`
-    : rollup.complete
+    : isDraftPlan
+      ? `ร่างกำหนดชำระ${single ? "" : ` · ${rows.length} งวด`} — ยอดยืนยันตอนใบอนุมัติ`
+      : rollup.complete
       ? `เก็บครบแล้ว ${fmtMoney(rollup.totalAmount)}`
       : single
         ? `ค้างรับ ${fmtMoney(rollup.outstandingAmount)}`
@@ -112,6 +123,23 @@ export default function SalesOrderPaymentPanel({
       </div>
 
       {alert ? <StatusNotice tone="error">{alert}</StatusNotice> : null}
+
+      {/* ⭐ บอกให้ตรงว่างวดร่างทำอะไรได้/ไม่ได้ — ไม่งั้นคนจะหาปุ่ม "แจ้งลูกค้าจ่ายแล้ว"
+          ที่หายไปแล้วสรุปเองว่าระบบพัง (ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม) */}
+      {isDraftPlan ? (
+        <StatusNotice tone="info">
+          กรอกกำหนดชำระได้เลยตั้งแต่ตอนนี้ — ยอดต่องวดยังเดินตามใบเสนอราคา
+          และจะถูกยืนยันตอนใบสั่งขายอนุมัติ · แจ้งการชำระได้หลังจากนั้น
+        </StatusNotice>
+      ) : null}
+
+      {/* ⚠️ จำนวนงวดไม่ตรงแผนล่าสุด — ทับยอดอย่างเดียวแก้ไม่ได้ ต้องบอกว่าจะเกิดอะไร */}
+      {drift ? (
+        <StatusNotice tone="warning">
+          ใบเสนอราคาถูกแก้เป็น {drift.planned} งวด แต่ที่ตั้งไว้มี {drift.tracked} งวด —
+          ตอนใบอนุมัติ ระบบจะตั้งงวดใหม่ตามแผนล่าสุด (กำหนดชำระที่กรอกไว้จะหายไป)
+        </StatusNotice>
+      ) : null}
 
       {!rows.length ? (
         <p className="form-note">ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ — ไม่มีงวดให้ติดตาม</p>
@@ -262,12 +290,20 @@ export default function SalesOrderPaymentPanel({
         </TableScroll>
       )}
 
-      {/* ใบเก่าที่อนุมัติก่อนมีระบบนี้ (หรือรอบ seed ตอนอนุมัติล้ม) ต้องมีทางกู้
-          ⚠️ ใบใหม่ไม่เห็นปุ่มนี้เลย — อนุมัติแล้วระบบสร้างงวดให้เอง */}
-      {isPreview && canStart && order?.status === "approved" ? (
-        <Button tone="accent" size="sm" className={styles.start} onClick={onStart} disabled={!!busy}>
-          {busy === "start-payments" ? "กำลังสร้าง…" : "เริ่มติดตามการชำระ"}
-        </Button>
+      {/* ⭐ **กดได้ตั้งแต่ใบยังเป็นร่าง** (B-4 · มติผู้ใช้ 2026-08-15) — เดิมขึ้นเฉพาะ
+          ใบที่อนุมัติแล้ว ซึ่งแปลว่า `dueDate` ไม่มีที่ให้กรอกจนกว่าใบจะผ่านอนุมัติ
+          ⚠️ ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ใช้ */}
+      {isPreview && canStart && canTrackPayments ? (
+        <>
+          <Button tone="accent" size="sm" className={styles.start} onClick={onStart} disabled={!!busy}>
+            {busy === "start-payments" ? "กำลังสร้าง…" : "เริ่มติดตามการชำระ"}
+          </Button>
+          {order?.status !== "approved" ? (
+            <p className="form-note">
+              กดได้เลยตั้งแต่ใบยังไม่อนุมัติ — จะได้ช่องกำหนดชำระรายงวดไว้กรอกตอนคุยกับลูกค้า
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       {reportFor ? (
