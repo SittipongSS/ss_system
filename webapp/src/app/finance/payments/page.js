@@ -18,16 +18,15 @@
 //
 // ⚠️ ตัวกรองเก็บใน URL — บัญชีส่งลิงก์ "งวดที่เลยกำหนดของเดือนนี้" ให้กันได้ และ
 // ปุ่มดาวน์โหลดใช้ query ชุดเดียวกัน ⇒ ไฟล์ที่ได้ตรงกับที่เห็นบนจอเสมอ
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlarmClock, ChevronRight, CircleDollarSign, ExternalLink, FileSpreadsheet, Search, Wallet } from "lucide-react";
+import { AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Search, Wallet } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
-import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
@@ -88,24 +87,12 @@ export default function FinancePaymentsPage() {
   const summary = data.summary;
 
   /* ⭐ **จับกลุ่มตามใบ แล้วแบ่งหน้าที่ระดับ "ใบ" ไม่ใช่ระดับ "งวด"** (มติผู้ใช้ 2026-08-13)
-     แบ่งหน้าที่ระดับงวดเมื่อไร ใบที่มี 3 งวดจะถูกหั่นคาหน้า — กางแล้วเห็นไม่ครบ
-     โดยไม่มีอะไรบนจอบอกว่าที่เหลืออยู่หน้าถัดไป */
+     ⭐ **หนึ่งใบ = หนึ่งแถว ไม่มีแถวย่อย** (มติผู้ใช้ 2026-08-15) — ทะเบียนตอบคำถาม
+     "ใบไหนต้องตามบ้าง" ซึ่งอ่านจบที่แถวหัวใบแล้ว · รายละเอียดรายงวด (ชื่องวด %
+     ผู้รับรอง วันจ่ายจริง สถานะรายงวด) อยู่ที่ **การ์ดการชำระบนใบ SO** ซึ่งเป็น
+     ที่เดียวที่ลงมือกับงวดได้ และอยู่ในไฟล์ Excel ที่ดาวน์โหลดจากหน้านี้ */
   const groups = useMemo(() => groupLedgerByOrder(rows), [rows]);
   const { page, setPage, pageCount, pageSize, setPageSize, pageRows, total } = usePagination(groups);
-
-  /* ยุบทั้งหมดตอนเปิดหน้า (มติผู้ใช้) — คนเปิดมาถามว่า "ใบไหนต้องตามบ้าง" ก่อน
-     แล้วค่อยเจาะดูงวด · เก็บเป็น Set ของ key ที่ "กางอยู่" ไม่ใช่ที่ยุบอยู่
-     ⚠️ รีเซ็ตเมื่อผลลัพธ์เปลี่ยน — ไม่งั้นกางใบหนึ่งไว้ พอกรองใหม่แล้ว key ค้างอยู่
-     จะกางใบที่คนไม่ได้สั่งกาง */
-  const [expanded, setExpanded] = useState(() => new Set());
-  useEffect(() => { setExpanded(new Set()); }, [query]);
-  const toggle = useCallback((key) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }, []);
 
   /* ⚠️ ดาวน์โหลดผ่าน blob ไม่ใช่เปิดแท็บใหม่ — endpoint ต้องการ cookie เซสชัน
      และแท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง */
@@ -263,7 +250,7 @@ export default function FinancePaymentsPage() {
         <WorkspaceSection
           icon={<Wallet size={17} />}
           title="งวดชำระทั้งหมด"
-          subtitle="รวมงวดของใบเดียวกันไว้ด้วยกัน กดที่แถวเพื่อกางดูรายงวด — เรียงใบที่ต้องตามก่อน"
+          subtitle="หนึ่งใบหนึ่งแถว รวมทุกงวดของใบนั้นไว้ด้วยกัน — เรียงใบที่ต้องตามก่อน · รายงวดดูที่ใบหรือในไฟล์ Excel"
           actions={<span className="ui-badge">{groups.length} ใบ · {rows.length} งวด{filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}</span>}
         >
           <div className="toolbar">
@@ -297,7 +284,8 @@ export default function FinancePaymentsPage() {
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
                       · "งวด" กับ "ยอดงวด" เคยพูดเรื่องเดียวกันสองครั้ง ⇒ ยุบเป็นช่องเดียว
                         ที่ **ยอดค้างรับเป็นตัวเด่น** ซึ่งเป็นเลขที่บัญชีตามจริง
-                      · "จ่ายจริง" กับ "ผู้รับรอง" เป็นของ **รายงวด** ⇒ อยู่ในแถวที่กางเท่านั้น
+                      · "จ่ายจริง" กับ "ผู้รับรอง" เป็นของ **รายงวด** ⇒ ไม่อยู่บนหน้านี้เลย
+                        (มติผู้ใช้ 2026-08-15 ถอดแถวย่อย) อยู่ที่ใบ SO และในไฟล์ Excel
                       · ตัดคอลัมน์ "สถานะ" — สเตจบอกอยู่แล้ว สองอย่างซ้อนกันอ่านเหมือนขัดกัน */}
                   <tr>
                     <th>เอกสาร / ความคืบหน้า</th>
@@ -310,112 +298,70 @@ export default function FinancePaymentsPage() {
                 </thead>
                 <tbody>
                   {pageRows.map((group) => {
-                    const open = expanded.has(group.key);
                     const note = groupNote(group);
                     const shaped = groupAsOrder(group);
                     const track = shaped ? salesOrderListTrack(shaped) : null;
                     return (
-                      <Fragment key={group.key}>
-                        {/* ── หัวใบ: ยุบอยู่โดยตั้งต้น (มติผู้ใช้ 2026-08-13) ──
-                            ⚠️ ทั้งแถวกดเพื่อกาง **ไม่ใช่ลิงก์ไปใบ** — ปุ่มกางกับลิงก์
-                            ในแถวเดียวกันจะแย่งการคลิกกัน · ทางไปใบอยู่ที่เลขที่ SO
-                            ซึ่งเป็นลิงก์จริงและหยุด event ไม่ให้กางตาม */}
-                        <tr
-                          className={styles.groupRow}
-                          onClick={() => toggle(group.key)}
-                        >
-                          <td>
-                            <button
-                              type="button"
-                              className={styles.toggle}
-                              aria-expanded={open}
-                              aria-label={`${open ? "ยุบ" : "กาง"}งวดของ ${group.orderNumber}`}
-                              onClick={(e) => { e.stopPropagation(); toggle(group.key); }}
-                            >
-                              <ChevronRight size={15} className={`${styles.chevron} ${open ? styles.chevronOpen : ""}`.trim()} aria-hidden="true" />
-                            </button>
-                            {" "}
-                            {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบอยู่ที่ปุ่ม "เปิดใบ"
-                                ท้ายแถว · ลิงก์ในเซลล์ที่ทั้งแถวกดกางได้ทำให้กดพลาดกันเอง */}
-                            <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
-                            {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
-                                (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
-                            <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
-                            {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
-                                — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
-                            {track ? <SalesOrderTrack steps={track.steps} /> : null}
-                          </td>
-                          <td>
-                            {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
-                            {naText(group.customerName)}
-                          </td>
-                          {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
-                          <td className="num mono">
-                            {group.paidCount}/{group.count}
-                            <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
-                          </td>
-                          {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
-                              ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
-                          <td className="num mono">
-                            {group.complete
-                              ? <span className="cell-num-ok">เก็บครบ</span>
-                              : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
-                            <span className="cell-sub">
-                              {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
-                            </span>
-                            {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
-                                สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
-                                ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
-                                ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
-                            {group.summary.totalAmount > 0 ? (
-                              <progress className={styles.mbar} aria-hidden="true"
-                                value={group.summary.collectedAmount} max={group.summary.totalAmount} />
-                            ) : null}
-                          </td>
-                          {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
-                              คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`)
-                              ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
-                              บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
-                              · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
-                          <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
-                            {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
-                            {note ? <span className="cell-sub">{note.label}</span> : null}
-                          </td>
-                          <td>
-                            <Link
-                              prefetch={false}
-                              href={`/sa/sales-orders/${group.orderId}#payment`}
-                              target="_blank" rel="noreferrer"
-                              className={`linklike ${styles.openLink}`}
-                              title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              เปิดใบ<ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-                            </Link>
-                          </td>
-                        </tr>
-
-                        {open ? group.rows.map((row) => (
-                          <tr key={row.id} className={styles.childRow}>
-                            <td colSpan={2} />
-                            <td className={`num ${styles.childLead}`.trim()}>
-                              {row.label || `งวดที่ ${row.seq}`}
-                              <span className="cell-sub">งวดที่ {row.seq} · {row.percent}%</span>
-                            </td>
-                            <td className="num mono">
-                              {fmtMoney(row.amount)}
-                              <span className="cell-sub">{row.confirmedByName || (row.reportedByName ? `แจ้งโดย ${row.reportedByName}` : "")}</span>
-                            </td>
-                            {/* เลยกำหนดย้อมที่ **ช่องวันที่** ไม่ใช่ทั้งแถว — ทั้งแถวแดงอ่านเหมือน
-                                ข้อมูลผิด ส่วนช่องเดียวบอกว่า "วันนี้แหละที่มีปัญหา" */}
-                            <td className={`num ${row.overdue ? "cell-num-bad" : ""}`.trim()} title={row.overdue ? "เลยกำหนดแล้วและยังไม่ถูกคอนเฟิร์ม" : undefined}>
-                              {row.dueDate ? fmtDate(row.dueDate) : <span className="cell-quiet">ยังไม่กำหนด</span>}
-                              <span className="cell-sub">{row.paidOn ? `จ่าย ${fmtDate(row.paidOn)}` : ""}</span>
-                            </td>
-                            <td><StatusBadge tone={LEDGER_STATUS[row.status]?.tone} size="sm">{row.statusLabel}</StatusBadge></td>
-                          </tr>
-                        )) : null}
-                      </Fragment>
+                      <tr key={group.key}>
+                        <td>
+                          {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบมีทางเดียวคือปุ่ม
+                              "เปิดใบ" ท้ายแถว · สองทางไปที่เดียวกันในแถวเดียวกดพลาดกันเอง */}
+                          <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
+                          {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
+                              (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
+                          <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
+                          {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
+                              — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
+                          {track ? <SalesOrderTrack steps={track.steps} /> : null}
+                        </td>
+                        <td>
+                          {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
+                          {naText(group.customerName)}
+                        </td>
+                        {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
+                        <td className="num mono">
+                          {group.paidCount}/{group.count}
+                          <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
+                        </td>
+                        {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
+                            ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
+                        <td className="num mono">
+                          {group.complete
+                            ? <span className="cell-num-ok">เก็บครบ</span>
+                            : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
+                          <span className="cell-sub">
+                            {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
+                          </span>
+                          {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
+                              สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
+                              ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
+                              ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
+                          {group.summary.totalAmount > 0 ? (
+                            <progress className={styles.mbar} aria-hidden="true"
+                              value={group.summary.collectedAmount} max={group.summary.totalAmount} />
+                          ) : null}
+                        </td>
+                        {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
+                            คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`)
+                            ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
+                            บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
+                            · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
+                        <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
+                          {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
+                          {note ? <span className="cell-sub">{note.label}</span> : null}
+                        </td>
+                        <td>
+                          <Link
+                            prefetch={false}
+                            href={`/sa/sales-orders/${group.orderId}#payment`}
+                            target="_blank" rel="noreferrer"
+                            className={`linklike ${styles.openLink}`}
+                            title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
+                          >
+                            เปิดใบ<ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
+                          </Link>
+                        </td>
+                      </tr>
                     );
                   })}
                   {!rows.length && !loading && (
