@@ -318,7 +318,21 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                   <YAxis width={30} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} allowDecimals={false} />
                   <RTooltip
                     cursor={{ fill: "var(--panel-3)" }}
-                    content={<ChartTooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""} valueFormatter={(v) => `${v} ใบ`} />}
+                    content={(
+                      <ChartTooltip
+                        /* ตารางตัวเลขถูกถอดออกตามที่ผู้ใช้สั่ง (2026-08-13) — ข้อมูลที่เคย
+                           อยู่ในคอลัมน์ "วันที่มีลีด" กับป้าย "ไม่เต็มสัปดาห์" จึงต้องย้าย
+                           มาอยู่ในทูลทิป ไม่ใช่หายไปเฉย ๆ */
+                        labelFormatter={(_, payload) => {
+                          const row = payload?.[0]?.payload;
+                          if (!row) return "";
+                          return dayUnit === "week" && row.partial ? `${row.name} (ไม่เต็มสัปดาห์)` : row.name;
+                        }}
+                        valueFormatter={(v, _n, entry) => (dayUnit === "week"
+                          ? `${v} ใบ · มีลีด ${entry?.payload?.withLeads ?? 0} วัน`
+                          : `${v} ใบ`)}
+                      />
+                    )}
                   />
                   {/* `minPointSize` = วันที่ได้ศูนย์ยังได้ตอขีดบาง ๆ ไม่ใช่หายไปจากผัง
                       (recharts ไม่วาดสี่เหลี่ยมสูงศูนย์) — วันว่างคือข้อมูลที่ต้องเห็น */}
@@ -333,37 +347,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
             <p className={styles.chartNote}>
               {dayUnit === "day"
                 ? "วันที่ไม่มีลีดยังโชว์เป็นแท่งศูนย์ — “วันที่ยิงแอดแล้วไม่มีลีด” คือข้อมูลที่ต้องเห็น ไม่ใช่ช่องว่างที่ยุบทิ้ง"
-                : "สัปดาห์เริ่มวันจันทร์ · สัปดาห์ที่ยังไม่จบจะมีวันน้อยกว่าเพื่อน ดูคอลัมน์ “วันที่มีลีด” ก่อนสรุปว่าลีดตก"}
+                : "สัปดาห์เริ่มวันจันทร์ · สัปดาห์หัวท้ายงวดไม่ครบเจ็ดวัน — ชี้ที่แท่งเพื่อดูช่วงวันจริงก่อนสรุปว่าลีดตก"}
             </p>
-            <TableScroll><table>
-              <thead><tr>
-                <th>{dayUnit === "day" ? "วัน" : "สัปดาห์ (จ.–อา.)"}</th>
-                <th className="num">ลีดเข้า</th>
-                <th className="num">วันที่มีลีด</th>
-                <th className="num">เฉลี่ย/วัน</th>
-              </tr></thead>
-              <tbody>
-                {dayBuckets.map((b) => (
-                  <tr key={b.key}>
-                    <td>
-                      {b.name}
-                      {/* สัปดาห์ที่ไม่เต็มเจ็ดวัน (หัว/ท้ายงวด หรือสัปดาห์ที่ยังไม่จบ)
-                          ต้องบอกให้เห็น ไม่งั้นเอาไปเทียบกับสัปดาห์เต็มแล้วสรุปผิด */}
-                      {b.partial && <span className="ui-badge ui-badge-cell">ไม่เต็มสัปดาห์</span>}
-                    </td>
-                    <td className="num mono">{b.count}</td>
-                    <td className="num mono">{b.withLeads}</td>
-                    <td className="num mono">{b.withLeads ? (b.count / b.withLeads).toFixed(1) : "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot><tr>
-                <td><strong>รวม {dayBuckets.length} {dayUnit === "day" ? "วัน" : "สัปดาห์"}</strong></td>
-                <td className="num mono"><strong>{dayTotals.count}</strong></td>
-                <td className="num mono"><strong>{dayTotals.withLeads}</strong></td>
-                <td className="num mono"><strong>{dayTotals.perDay}</strong></td>
-              </tr></tfoot>
-            </table></TableScroll>
           </>
         ) : (
           <ChartEmptyState>ยังไม่มีลีดในงวดนี้ — เลือกช่วงวันอื่น หรือเปลี่ยนไปดูรายเดือน</ChartEmptyState>
