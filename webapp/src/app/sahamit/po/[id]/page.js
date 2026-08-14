@@ -9,7 +9,7 @@ import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { FileText, MessagesSquare, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, PackageCheck, ExternalLink } from "lucide-react";
+import { ShoppingCart, MessagesSquare, Pencil, Save, Trash2, History, Truck, ChevronDown, ChevronRight, PackageCheck, ExternalLink } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -475,7 +475,7 @@ export default function PoDetailPage() {
 
   return (
     <Workspace
-      icon={<FileText size={22} />}
+      icon={<ShoppingCart size={22} />}
       title={po ? `PO ${po.poNumber}` : "PO"}
       subtitle="รายละเอียดใบสั่งซื้อ (ลูกค้า AR-109)"
       back={{ href: "/sahamit/po", label: "Purchase Orders" }}
@@ -489,7 +489,7 @@ export default function PoDetailPage() {
         <Spinner />
       ) : error ? null : !po ? (
         <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-          <FileText size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
+          <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
           <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่พบ PO นี้</div>
         </div>
       ) : (

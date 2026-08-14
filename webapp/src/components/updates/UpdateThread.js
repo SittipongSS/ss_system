@@ -14,7 +14,7 @@
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Pencil, Reply, Trash2, FileText, Check, Eye, EyeOff } from "lucide-react";
+import { Send, Paperclip, X, Pencil, Reply, Trash2, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -697,7 +697,7 @@ function ThreadAttachments({ row, onOpen }) {
         <div className={styles.files}>
           {files.map(({ a, i }) => (
             <a key={i} className={styles.fileLink} href={fileHref(row, i)} target="_blank" rel="noreferrer">
-              <FileText size={13} /> <span className="truncate">{a.fileName || "ไฟล์แนบ"}</span>
+              <Paperclip size={13} /> <span className="truncate">{a.fileName || "ไฟล์แนบ"}</span>
             </a>
           ))}
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileCheck2, FileText } from "lucide-react";
+import { CheckCircle2, FileCheck2, FileStack } from "lucide-react";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { normalizeDocumentControlActions } from "@/lib/documentControlModel";
@@ -183,7 +183,7 @@ export function DocumentControlCard({
 }
 
 export function RelatedDocumentCard({
-  icon = FileText,
+  icon = FileStack,
   eyebrow = "RELATED DOCUMENT",
   title,
   meta,

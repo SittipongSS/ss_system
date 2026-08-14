@@ -7,7 +7,7 @@
 // ⚠️ วางใน `components/salesPlanning/` **ไม่ใช่ dir ใหม่** — scripts/uiLegacyBudget.mjs
 // map dir → module ⇒ dir ใหม่จะได้งบชั้นเก่าของตัวเองที่ไม่มีใครดูแล
 import { useCallback, useEffect, useState } from "react";
-import { FileText, ExternalLink } from "lucide-react";
+import { Paperclip, ExternalLink } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -66,7 +66,7 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
       </div>
 
       {!rows.length && (
-        <EmptyState icon={FileText}>
+        <EmptyState icon={Paperclip}>
           {dealId ? "ดีลนี้" : "โครงการนี้"}ยังไม่มีเอกสารและไม่มีรายการที่รออยู่
         </EmptyState>
       )}

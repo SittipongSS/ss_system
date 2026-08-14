@@ -10,7 +10,7 @@
 //
 // ⭐ ทางเข้าไฟล์ (กด · ลาก · Ctrl+V) และด่านขนาดไฟล์อยู่ที่ `lib/ui/useFileIntake`
 // ที่เดียวทั้งระบบ (มติผู้ใช้ 2026-08-12 · IS-26080013) — ที่นี่เหลือแค่หน้าตา
-import { FileText, Paperclip, X } from "lucide-react";
+import { Paperclip, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { MAX_UPLOAD_MB, UPLOAD_ACCEPT_ATTR } from "@/lib/master/attachmentTypes";
@@ -63,7 +63,7 @@ export default function PendingFiles({
         <ul className="pending-files-list">
           {files.map((file) => (
             <li key={keyOf(file)} className="pending-files-row">
-              <FileText size={14} aria-hidden="true" />
+              <Paperclip size={14} aria-hidden="true" />
               <span className="pending-files-name">{file.name}</span>
               <span className="pending-files-size">{(file.size / 1024 / 1024).toFixed(1)} MB</span>
               {/* ปุ่มไอคอนผ่าน <Button> กลาง — ห้ามเขียนคลาส btn เองในของใหม่
