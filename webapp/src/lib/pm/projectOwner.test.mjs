@@ -135,6 +135,19 @@ test('ฟอร์มเขียนผู้ประสานงานลง a
   assert.doesNotMatch(modal, /form\.preparedBy/, 'ช่อง AC ห้ามกลับไปเขียน preparedBy');
 });
 
+/* mig 0255 ย้ายผู้ประสานงานที่เคยไปกองใน preparedBy กลับเข้า acOwner/acOwnerId
+   ⚠️ ต้องย้ายเฉพาะชื่อที่เป็นบัญชี role 'ac' จริง — ชื่อ AE/แอดมินใน preparedBy คือ
+   ค่า default "ผู้จัดทำ = ผู้สร้าง" ที่ server เติมให้ ไม่ใช่การเลือกผู้ประสานงาน */
+test('mig 0255: ย้ายเฉพาะบัญชี AC และไม่ล้างช่องผู้จัดทำ', () => {
+  const sql = read('../../../supabase/migrations/0255_project_ac_owner_from_prepared_by.sql')
+    .replace(/--.*$/gm, '');
+  assert.match(sql, /raw_app_meta_data->>'role', ''\) = 'ac'/, 'ต้องกรองเฉพาะ role ac');
+  assert.match(sql, /HAVING count\(DISTINCT uid\) = 1/, 'ชื่อที่ตรงหลายบัญชีต้องไม่เดาแทน');
+  assert.match(sql, /WHERE p\."acOwnerId" IS NULL/, 'ห้ามทับค่าที่มีอยู่แล้ว');
+  // หัวเอกสารที่พิมพ์ไปแล้วห้ามกลายเป็นช่องว่าง
+  assert.doesNotMatch(sql, /SET[\s\S]{0,80}"preparedBy"\s*=/, 'ห้ามล้าง preparedBy');
+});
+
 test('ทุกทางที่สร้าง/แก้โครงการ ตรวจผู้ประสานงานด้วยตัวกลางตัวเดียว', () => {
   for (const rel of [
     '../../app/api/sa/projects/route.js',
