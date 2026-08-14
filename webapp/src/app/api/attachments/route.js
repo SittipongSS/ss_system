@@ -13,8 +13,8 @@ import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachme
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 
 import {
-  DEAL_ATTACHMENT_TABLE, canAttachToDeal, canViewDealAttachment, isDealAttachment,
-} from '@/lib/sales/dealAttachmentAccess';
+  SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment,
+} from '@/lib/sales/salesAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
 // สาขา "เอกสารมีชีวิต" โหลด googleapis (หนัก + อ่าน OIDC token) — ต้อง Node runtime
@@ -37,7 +37,7 @@ async function loadParent(supabase, entityType, entityId) {
   const table = PARENT_TABLE[entityType]
     || MGMT_TABLE[entityType]
     || COSTING_ATTACHMENT_TABLE[entityType]
-    || DEAL_ATTACHMENT_TABLE[entityType];
+    || SALES_ATTACHMENT_TABLE[entityType];
   if (!table) return null;
   const { data } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
   return data || null;
@@ -63,8 +63,8 @@ export async function GET(request) {
       : isCostingAttachment(entityType)
         ? await canViewCostingAttachment(supabase, entityType, parent, user)
         // ดีลคุมด้วยขอบเขตของสายงานขาย (ทีม/เจ้าของดีล) ไม่ใช่ทีมเจ้าของลูกค้า
-        : isDealAttachment(entityType)
-          ? canViewDealAttachment(parent, user)
+        : isSalesAttachment(entityType)
+          ? canViewSalesAttachment(parent, user)
           : canViewRecord(user, RESOURCE[entityType], parent);
   if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -127,8 +127,8 @@ export async function POST(request) {
         ? await canAttachToCosting(supabase, entityType, parent, user)
       // ⚠️ แนบ = **แก้ดีลได้** ไม่ใช่แค่เห็น · คนที่เห็นดีลของทีมอื่นได้
       // (หัวหน้าสาย/ผู้บริหาร) ต้องอ่านได้แต่ไม่ควรไปเพิ่มเอกสารในดีลที่ไม่ใช่ของตัวเอง
-      : isDealAttachment(entityType)
-        ? canAttachToDeal(parent, user)
+      : isSalesAttachment(entityType)
+        ? canAttachToSalesEntity(parent, user)
       // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
       // 2026-07-20/21) — resolve it so this matches the product detail page.
       : canEditRecord(

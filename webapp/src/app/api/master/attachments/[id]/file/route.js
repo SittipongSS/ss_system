@@ -12,6 +12,7 @@ import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
 import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
 import { canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
+import { canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 const MGMT_ENTITIES = ['mgmt_task', 'mgmt_meeting'];
@@ -35,7 +36,12 @@ export async function GET(request, { params }) {
       ? canUser(user, 'mgmt:view')
       : isCostingAttachment(att.entityType)
         ? await canViewCostingAttachment(getSupabaseAdmin(), att.entityType, parent, user)
-        : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
+        // ดีล/โครงการคุมด้วยขอบเขตสายงานขาย (ทีม/เจ้าของ) ไม่ใช่ทีมของ customer/product
+        // ⚠️ จุดที่ 5 ของเช็กลิสต์ — ขาดสาขานี้แล้ว `ATTACHMENT_RESOURCE` ไม่มีคีย์ของ
+        // สองชนิดนี้ ⇒ canViewRecord ตกไปทางปฏิเสธ = "แนบได้แต่เปิดดูไม่ได้สักไฟล์"
+        : isSalesAttachment(att.entityType)
+          ? canViewSalesAttachment(parent, user)
+          : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
   if (!parent || !allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }

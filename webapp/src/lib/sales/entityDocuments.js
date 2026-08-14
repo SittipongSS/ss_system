@@ -55,7 +55,7 @@ export function buildEntityDocuments({
       source: 'requestFile',
       title: f.docType ? docTypeLabel(f.docType) : (f.fileName || 'เอกสารจากคำร้อง'),
       note: [f.fileName, f.requestDocNo].filter(Boolean).join(' · ') || null,
-      href: `/api/attachments/${f.id}/file`,
+      href: `/api/master/attachments/${f.id}/file`,
       at: f.createdAt || null,
     });
   }
@@ -103,7 +103,11 @@ export function buildEntityDocuments({
       source: 'attachment',
       title: a.fileName || a.docType || 'ไฟล์แนบ',
       note: a.docType || null,
-      href: `/api/attachments/${a.id}/file`,
+      // 🐞 เดิมชี้ `/api/attachments/<id>/file` ซึ่ง **ไม่มี route นั้นอยู่จริง** (มีแต่
+      // `/api/master/attachments/<id>/file`) ⇒ ปุ่ม "เปิดดู" ของไฟล์แนบและเอกสาร
+      // จากคำร้องได้ 404 ทุกใบ · AttachmentsPanel ใช้ path ที่ถูกอยู่แล้ว จึงไม่มีใคร
+      // สังเกตจากกล่องล่าง — เห็นเฉพาะตอนกดจากลิสต์รวมด้านบน
+      href: `/api/master/attachments/${a.id}/file`,
       at: a.createdAt || null,
     });
   }
@@ -149,7 +153,7 @@ export function buildEntityDocuments({
       source: 'checklist',
       title: doc.title,
       note: doc.status === 'waived' ? 'ยกเว้นแล้ว' : null,
-      href: doc.attachmentId ? `/api/attachments/${doc.attachmentId}/file` : null,
+      href: doc.attachmentId ? `/api/master/attachments/${doc.attachmentId}/file` : null,
       at: doc.createdAt || null,
       // รายการ checklist ที่ยังไม่มีไฟล์ก็คือ "รอ" เหมือนกัน — แต่คนละแหล่งกับ
       // บรรทัดคำร้อง จึงนับรวมในตัวเลขแต่ไม่ย้ายกลุ่ม

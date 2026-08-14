@@ -56,6 +56,10 @@ export const PARENT_TABLE = {
   // ดีล (P5c) — ⚠️ บรรทัดนี้คือจุดที่ 5 ของเช็กลิสต์ ขาดไปแล้วจะ "แนบได้แต่เปิดดู
   // ไม่ได้สักไฟล์" เหมือนที่หัวคำร้องเคยโดนมาแล้ว
   deal: 'sales_deals',
+  // โครงการ — วันนี้มีได้แค่เอกสารร่วม (Google Doc/Sheet) ซึ่งเปิดผ่าน fileUrl ตรง
+  // ไม่ผ่าน proxy · ใส่ไว้ให้ครบเพราะถ้าวันหน้าเปิดให้อัปไฟล์นิ่ง บรรทัดที่หายไป
+  // จะทำให้ "แนบได้แต่เปิดดูไม่ได้" แบบเดิมอีก และไม่มีใครนึกถึงไฟล์นี้
+  project: 'projects',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 

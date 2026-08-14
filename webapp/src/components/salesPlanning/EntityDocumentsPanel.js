@@ -125,10 +125,29 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
       </ul>
 
       {/* ⭐ ที่แนบไฟล์เข้าดีลโดยตรง (P5c) — แหล่งที่ 1 ของแผงนี้
-          ⚠️ ต่อครบ 5 จุดแล้ว (ดู lib/sales/dealAttachmentAccess.js) · ขาดจุดไหนก็
+          ⚠️ ต่อครบ 5 จุดแล้ว (ดู lib/sales/salesAttachmentAccess.js) · ขาดจุดไหนก็
           หลุดเงียบจุดนั้น: ไฟล์ไม่ขึ้น · อัปไม่ได้ · ใครก็ลบได้ · พรีวิวไม่ขึ้น
           ⚠️ โหมดโครงการ (ม-88) ไม่มีกล่องนี้ — ไฟล์แนบเข้า **ดีล** รายใบ
           โครงการเป็นแค่ที่รวม แนบตรงนี้จะไม่รู้ว่าเข้าดีลไหน */}
+      {/* ⭐ โครงการแนบ **เอกสารร่วมอย่างเดียว** (เฟส 2) — ร่างสเปก โน้ตประชุม ตาราง
+          เทียบราคา ที่เป็นของทั้งโครงการจริง ๆ · ไม่เปิดอัปไฟล์นิ่งเพราะไฟล์หลักฐาน
+          (PO · มัดจำ) ต้องผูกดีลรายใบ ไม่งั้นไม่รู้ว่าเป็นหลักฐานของดีลไหน
+          — เหตุผลเดียวกับที่โหมดนี้ไม่เคยมีกล่องแนบไฟล์มาก่อน */}
+      {projectId && (
+      <div className={styles.upload}>
+        <div className="toolbar-label">เอกสารร่วมของโครงการ</div>
+        <AttachmentsPanel
+          entityType="project"
+          entityId={projectId}
+          canEdit
+          inlineUpload
+          googleDocs
+          fileUploads={false}
+          onItemsChange={onAttachmentsChange}
+        />
+      </div>
+      )}
+
       {dealId && (
       <div className={styles.upload}>
         <div className="toolbar-label">แนบเอกสารเข้าดีลนี้</div>
