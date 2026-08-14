@@ -2,7 +2,7 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
+import { Package, Plus, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -27,6 +27,7 @@ import {
 } from "@/lib/master/masterCodes";
 import { brandBoth, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney } from "@/lib/format";
+import SearchInput from "@/components/ui/SearchInput";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -345,10 +346,7 @@ export default function ProductRegistry() {
 
   const toolbar = (
     <div className="toolbar">
-      <div className="search-glass" style={{ width: "240px" }}>
-        <Search size={18} color="var(--text-3)" />
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." />
-      </div>
+      <SearchInput width={240} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." />
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
       <FilterPopover

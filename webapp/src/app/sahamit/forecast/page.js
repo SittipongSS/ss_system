@@ -5,7 +5,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2, Search } from "lucide-react";
+import { LineChart, Plus, Trash2, Pencil, AlertCircle, Download, Send, X, CheckCircle2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Tabs from "@/components/ui/Tabs";
@@ -19,6 +19,7 @@ import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import { useCan } from "@/lib/roleContext";
+import SearchInput from "@/components/ui/SearchInput";
 
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
@@ -298,10 +299,7 @@ function ForecastPageInner() {
           {/* ค้นหา + กรองหมวด — มีผลกับแท็บที่เป็นรายการสินค้า (ไม่รวมประวัติ/เทียบรอบ) */}
           {tab !== "history" && (
             <div className="toolbar">
-              <div className="search-glass" style={{ width: 240 }}>
-                <Search size={18} color="var(--text-3)" />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
-              </div>
+              <SearchInput width={240} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
               <FilterPopover
                 count={filterCount}
                 onClear={() => setCatSel([])}

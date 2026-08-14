@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState, useEffect } from "react";
-import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download, Search } from "lucide-react";
+import { Boxes, AlertCircle, ChevronRight, ChevronDown, Save, Download } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -14,6 +14,7 @@ import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
+import SearchInput from "@/components/ui/SearchInput";
 
 const nf = (n) => fmtNumber(n || 0);
 
@@ -211,10 +212,7 @@ export default function MaterialPage() {
           </div>
 
           <div className="toolbar">
-            <div className="search-glass" style={{ width: 240 }}>
-              <Search size={18} color="var(--text-3)" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />
-            </div>
+            <SearchInput width={240} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />
             <FilterPopover
               count={filterCount}
               onClear={clearFilters}

@@ -1,7 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState, useEffect } from "react";
-import { ClipboardCheck, AlertCircle, Download, Search, Maximize2, Minimize2 } from "lucide-react";
+import { ClipboardCheck, AlertCircle, Download, Maximize2, Minimize2 } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import CellDetailModal from "@/components/sahamit/CellDetailModal";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -12,6 +12,7 @@ import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { deliveryMonthOf } from "@/lib/sahamit/po";
 import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
+import SearchInput from "@/components/ui/SearchInput";
 
 // token → CSS var
 const C = {
@@ -286,10 +287,7 @@ export default function ReconcilePage() {
       {/* ตัวกรองอยู่ในเนื้อหา (ไม่ใช่ในหัว) เพราะหัว premium-header เป็น overflow:hidden จะตัด dropdown */}
       {!loading && !error && matrix.rows.length > 0 && (
         <div className="toolbar">
-          <div className="search-glass" style={{ width: 240 }}>
-            <Search size={18} color="var(--text-3)" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
-          </div>
+          <SearchInput width={240} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
           <FilterPopover
             count={filterCount}
             onClear={() => { setBrands([]); setVolumes([]); setCategories([]); }}

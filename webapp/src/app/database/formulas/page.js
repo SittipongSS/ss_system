@@ -9,9 +9,7 @@
 // ไม่มีที่เก็บกลิ่น — migration ตั้งใจไม่เดาแทน RD จึงยกมาให้ตัดสินทีละแถวที่นี่
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
-} from "lucide-react";
+import { Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Trash2, Wand2 } from "lucide-react";
 import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -40,6 +38,7 @@ import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/maste
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
+import SearchInput from "@/components/ui/SearchInput";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
   formulaSourceLabel, isFormulaRegistrar, isFormulaUsable, matchesFormulaSource,
@@ -462,14 +461,7 @@ export default function FormulasPage() {
       )}
 
       <div className="toolbar">
-        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (ดูคอมเมนต์เดียวกันที่หน้าทะเบียนกลิ่น) */}
-        <div className="search-glass">
-          <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
-            type="text" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า"
-            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาสูตร"
-          />
-        </div>
+        <SearchInput placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า" value={search} onChange={(e) => setSearch(e.target.value)} ariaLabel="ค้นหาสูตร" />
         <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[

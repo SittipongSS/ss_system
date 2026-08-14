@@ -13,9 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-  Check, Coins, FlaskConical, Pencil, Plus, RefreshCw, Search, Send, Trash2, Archive, ArchiveRestore,
-} from "lucide-react";
+import { Check, Coins, FlaskConical, Pencil, Plus, RefreshCw, Send, Trash2, Archive, ArchiveRestore } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
@@ -44,6 +42,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import SearchInput from "@/components/ui/SearchInput";
 import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
   isScentRegistrar, isScentUsable, matchesScentSource, scentSourceLabel,
@@ -385,15 +384,7 @@ export default function ScentsPage() {
       )}
 
       <div className="toolbar">
-        {/* .search-glass เป็น "กล่องครอบ" (flex + gap ไว้วางไอคอน) ไม่ใช่คลาสของ input —
-            ใส่ที่ input ตรง ๆ จะได้ช่องที่ไม่มีแว่นขยาย เหมือนหน้าลูกค้า/สินค้าที่ทำถูก */}
-        <div className="search-glass">
-          <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
-            type="text" placeholder="ค้นชื่อกลิ่น · รหัส · ลูกค้า"
-            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหากลิ่น"
-          />
-        </div>
+        <SearchInput placeholder="ค้นชื่อกลิ่น · รหัส · ลูกค้า" value={search} onChange={(e) => setSearch(e.target.value)} ariaLabel="ค้นหากลิ่น" />
         <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[

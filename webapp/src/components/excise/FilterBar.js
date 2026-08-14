@@ -1,5 +1,5 @@
 "use client";
-import { Search } from "lucide-react";
+import SearchInput from "@/components/ui/SearchInput";
 
 // Unified toolbar: segmented status filter + search + caller extras (export
 // buttons, date pickers, …). Lives in the Workspace `toolbar` slot.
@@ -34,15 +34,7 @@ export default function FilterBar({
       )}
 
       {onSearch && (
-        <div className="search-glass" style={{ width: 240 }}>
-          <Search size={18} color="var(--text-3)" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder={searchPlaceholder}
-          />
-        </div>
+      <SearchInput width={240} value={search} onChange={(e) => onSearch(e.target.value)} placeholder={searchPlaceholder} />
       )}
 
       <div className="spacer" />

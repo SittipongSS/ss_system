@@ -10,10 +10,7 @@ import { TableScroll } from "@/components/ui/Table";
 // (เดิมเป็นแท็บหนึ่งของ /sa/materials คู่กับคิวเคสขอราคา ซึ่งแยกไปเป็นเมนู
 //  "คำร้อง" แล้ว ตัวทะเบียนจึงย้ายไปอยู่กับข้อมูลหลักตัวอื่นใต้ "ฐานข้อมูล")
 import { useMemo, useState } from "react";
-import {
-  Boxes, RefreshCw, History, Pencil, Plus, Check, Archive,
-  ArchiveRestore, Search, Trash2, Coins,
-} from "lucide-react";
+import { Boxes, RefreshCw, History, Pencil, Plus, Check, Archive, ArchiveRestore, Trash2, Coins } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -33,6 +30,7 @@ import {
 } from "@/lib/materialPrices";
 import { pmTypeLabel } from "@/lib/master/materialTypes";
 import { businessDate } from "@/lib/businessDate";
+import SearchInput from "@/components/ui/SearchInput";
 
 const money = (v) => (v == null ? "—" : fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const qtyText = (v) => (v == null ? "ทุกจำนวน" : `≥ ${fmtNumber(v)}`);
@@ -238,14 +236,7 @@ export default function MaterialRegistryPanel({
       )}
 
       <div className="toolbar">
-        {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
-        <div className="search-glass">
-          <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
-            type="text" placeholder="ค้นชื่อวัสดุ · สูตร · ลูกค้า · ผู้ขาย"
-            value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาวัสดุ"
-          />
-        </div>
+        <SearchInput placeholder="ค้นชื่อวัสดุ · สูตร · ลูกค้า · ผู้ขาย" value={search} onChange={(e) => setSearch(e.target.value)} ariaLabel="ค้นหาวัสดุ" />
         <Select
           value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           options={[
