@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { attributionTeam, canDeleteRecord, viewScopeUser } from '@/lib/permissions';
-import { whereTeamIn } from '@/lib/teamScope';
+import { attributionTeam, canDeleteRecord, userTeams, viewScopeUser } from '@/lib/permissions';
+import { teamInClause } from '@/lib/teamScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
@@ -23,7 +23,18 @@ export async function GET(request) {
     .from('excise_registrations')
     .select(slim ? REGISTRATION_SELECT_SLIM : '*')
     .order('createdAt', { ascending: false });
-  if (viewScopeUser(user) === 'team') query = whereTeamIn(query, user);
+  /* ทะเบียนที่ไม่มีทีม (team = null) เป็น "ของกลาง" ทุกทีมเห็น — กฎเดียวกับใบยื่น
+     (/api/orders) และกับ `canViewRecord` ที่ถือว่า registrations ไร้ทีม = shared
+     (TEAMLESS_SHARED_RESOURCES) อยู่แล้ว
+     🐞 ของเดิม `.in('team', ทีมของฉัน)` เฉย ๆ ⇒ ซ่อนแถว team = null จาก **ทุกทีม**
+     ซึ่งเกิดทุกครั้งที่คนไม่มีทีม (admin/legal/staff) เป็นคนสร้าง เพราะ POST เขียน
+     `attributionTeam(user, …)` ซึ่งคืน null ให้คนที่ไม่สังกัดทีมไหนเลย — ตรงกับที่
+     คอมเมนต์ของ canViewRecord เล่าไว้ว่าทะเบียนที่ Admin สร้างค้าง "รออนุมัติ" 6 วัน
+     โดยไม่มีใครในทีมเห็น (ด่านรายแถวถูกแก้ไปแล้ว ตัวกรองของลิสต์ยังค้างของเดิม)
+     · คนที่ scope 'team' แต่ยังไม่มีทีม = ไม่ต้องกรอง (เหมือน /api/orders) */
+  if (viewScopeUser(user) === 'team' && userTeams(user).length) {
+    query = query.or(`${teamInClause(user)},team.is.null`);
+  }
 
   const { data, error } = await query;
   if (error) return Response.json({ error: error.message }, { status: 500 });

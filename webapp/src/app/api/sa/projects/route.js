@@ -1,12 +1,14 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, unauthorized, forbidden, badRequest, conflict } from '@/lib/http';
-import { can } from '@/lib/permissions';
+import { attributionTeam, can } from '@/lib/permissions';
 import { todayStr } from '@/lib/pm/schedule';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { normalizeProjectType } from '@/lib/salesPlanning';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
+import { resolveProjectAeOwner } from '@/lib/pm/projectOwner';
+import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +26,21 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!normalizeBusinessLine(body.line)) return badRequest('ต้องเลือกสายธุรกิจ (PRODUCT หรือ SERVICE)');
   const categoryError = await activeProductTypeError(body.productMainCategory || null);
   if (categoryError) return badRequest(categoryError);
+
+  /* ── ผู้ดูแล (AE) เป็นตัวกำหนดขอบเขตของโครงการ ─────────────────────────────
+     ลิสต์โครงการกรองด้วย `team` + `ownerId` ไม่ใช่ `aeOwnerId` ⇒ เขียนสองช่องนั้นจาก
+     **คนกดสร้าง** เมื่อไร โครงการที่ Admin (ไม่มีทีม) เปิดให้ AE จะเกิดมาพร้อม
+     team=null · ownerId=admin แล้ว AE เจ้าของงานไม่เห็นในลิสต์ตัวเองเลย (ดู
+     lib/pm/projectOwner.js) · ae/senior_ae ถือโครงการเอง ฟอร์มล็อกชื่อตัวเองอยู่แล้ว
+     ส่วน ac / ae_supervisor / admin **ปล่อยว่างไม่ได้** — กติกาเดียวกับดีลทุกตัวอักษร */
+  let owner = null;
+  if (body.aeOwnerId) {
+    const checked = await resolveProjectAeOwner(supabase, body.aeOwnerId, user, body.team);
+    if (!checked.ok) return badRequest(checked.error);
+    owner = checked;
+  } else if (!ownerLockedToSelf(user.role)) {
+    return badRequest('ต้องเลือกผู้ดูแลโครงการ (AE) — โครงการที่ไม่มีผู้ดูแลจะไม่โผล่ในลิสต์ของ AE คนไหนเลย');
+  }
 
   const startDate = body.startDate || todayStr();
   const dueDate = body.dueDate || null;
@@ -53,10 +70,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     line: normalizeBusinessLine(body.line) ?? null,
     formulaName: body.formulaName || null,
     urgency: body.urgency || 'Schedule',
-    aeOwner: body.aeOwner || user.name || '',
+    // ชื่อมาจาก server เสมอเมื่อมีการเลือกผู้ดูแล — ไม่รับ body.aeOwner อีก (กติกา
+    // เดียวกับ ownerName ของดีล) · ชื่อยังเป็น snapshot สำหรับพิมพ์เอกสารเหมือนเดิม
+    aeOwner: owner?.aeOwner || body.aeOwner || user.name || '',
     // ตัวตนจริงของผู้ดูแล (mig 0190) — ชื่อข้างบนเป็น snapshot สำหรับพิมพ์เอกสาร
     // ไม่ได้เลือกชื่อเอง = ผู้สร้างเป็นผู้ดูแลเอง จึงใส่ id ของตัวเองให้ตรงกัน
-    aeOwnerId: body.aeOwnerId || (body.aeOwner ? null : user.id) || null,
+    aeOwnerId: owner?.aeOwnerId || (body.aeOwner ? null : user.id) || null,
     acOwner: body.acOwner || '',
     acOwnerId: body.acOwnerId || null,
     status: 'New',
@@ -74,8 +93,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerEmail,
     preparedBy: body.preparedBy || user.name || '',
     reviewedBy: '',
-    team: user.team || null,
-    ownerId: user.id || null,
+    // ทีม/เจ้าของตามผู้ดูแล ไม่ใช่ตามคนกด — ไม่งั้นโครงการที่ Admin หรือ AC เปิดให้
+    // AE ทีมอื่นจะติดทีมของคนกด แล้วผู้ดูแลมองไม่เห็นงานตัวเอง (แพตเทิร์นเดียวกับดีล)
+    // ผู้ดูแลที่บัญชียังไม่ถูกจัดทีม → ถอยไปทีมของคนกด (ownerId ยังเป็นผู้ดูแลอยู่ดี)
+    team: owner?.team || attributionTeam(user, body.team),
+    ownerId: owner?.ownerId || user.id || null,
     metadata: {
       ...(body.metadata || {}),
       brand: body.brand || '',
