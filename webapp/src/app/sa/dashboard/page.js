@@ -6,6 +6,9 @@ import { LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import { useRole } from "@/lib/roleContext";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
+import DayRangePicker from "@/components/ui/DayRangePicker";
+import Segmented from "@/components/ui/Segmented";
+import { addDays, businessDayKey } from "@/lib/datePeriods";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
 import { TAB_PERIOD, resolveDashboardTab } from "@/lib/salesPlanning/dashboardTabs";
@@ -48,6 +51,13 @@ function DashboardContent() {
      แท็บที่กินเดือน (`TAB_PERIOD === "month"`) ต้องรับไปใช้ทุกตัว ไม่งั้นติ๊กแล้ว
      ตัวเลขไม่ขยับ = ตัวคุมที่โกหก */
   const [allMonths, setAllMonths] = useState(false);
+  /* งวดของแท็บ "KPI ลีด" เลือกเป็นช่วงวันได้ (IS-26080023) — แท็บอื่นยังรายเดือน/รายปี
+     เหมือนเดิม เพราะตัวเลขของมัน (FC/Actual/เป้า) เป็นของรายเดือนโดยธรรมชาติ
+     ⚠️ วันนี้คิดจากวันไทย ไม่ใช่ `new Date()` ของเบราว์เซอร์ — ไม่งั้น "สัปดาห์นี้"
+     ของเครื่องที่ตั้ง timezone อื่นจะคนละสัปดาห์กับที่ server นับ */
+  const todayTh = businessDayKey(new Date().toISOString());
+  const [leadPeriodMode, setLeadPeriodMode] = useState("month");
+  const [leadRange, setLeadRange] = useState(() => ({ from: addDays(todayTh, -13), to: todayTh }));
   /* ปีของแท็บผลงานขายเป็น state แยก ไม่ได้เฉือนมาจาก `month` — ของเดิมใช้
      month.slice(0,4) ทำให้ตัวเลือกเดือนกลายเป็นตัวเลือกปีที่พาเดือนติดไปด้วย
      แยกกันแล้ว สลับแท็บไปกลับจึงไม่ลากค่าของอีกฝั่งเปลี่ยนตาม */
@@ -76,7 +86,19 @@ function DashboardContent() {
       title="บริหารงานขาย — ภาพรวม"
       subtitle="คาดการณ์มูลค่าดีล เพื่อผลักไปสู่ Won — โครงการ PM อาจเกิดก่อนหรือหลัง Won ได้"
       headerRight={
-        period === "month" ? <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+        activeTab === "lead_kpi" ? (
+          <>
+            <Segmented
+              ariaLabel="หน่วยของงวด"
+              value={leadPeriodMode}
+              onChange={setLeadPeriodMode}
+              options={[{ value: "month", label: "รายเดือน" }, { value: "range", label: "ช่วงวัน" }]}
+            />
+            {leadPeriodMode === "range"
+              ? <DayRangePicker from={leadRange.from} to={leadRange.to} today={todayTh} onChange={setLeadRange} />
+              : <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />}
+          </>
+        ) : period === "month" ? <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
           : period === "year" ? (
             <Select
               className={styles.yearSelect}
@@ -113,7 +135,14 @@ function DashboardContent() {
         {activeTab === "my" && <MyDashboardTab month={month} allMonths={allMonths} />}
 
 
-        {activeTab === "lead_kpi" && <KpiLeadsTab month={month} allMonths={allMonths} />}
+        {activeTab === "lead_kpi" && (
+          <KpiLeadsTab
+            month={month}
+            allMonths={allMonths}
+            rangeFrom={leadPeriodMode === "range" ? leadRange.from : null}
+            rangeTo={leadPeriodMode === "range" ? leadRange.to : null}
+          />
+        )}
 
         {activeTab === "task_kpi" && <SalesKpiDashboard />}
 

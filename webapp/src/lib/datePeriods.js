@@ -195,6 +195,64 @@ export function dateRangeOfBusinessMonth(month) {
   };
 }
 
+/* ── ช่วงวัน (IS-26080023) ────────────────────────────────────────────────
+   Marketing นับลีดรายวัน/รายสัปดาห์เทียบยอด Spending Ads · ทุกอย่างข้างล่างทำงานกับ
+   **สตริง YYYY-MM-DD ล้วน** ไม่แปลงเป็น Date ก่อน
+
+   🔴 เหตุผลที่ห้ามใช้ `new Date(iso).getDay()` หาวันในสัปดาห์: `new Date('2026-07-20')`
+   ถูกอ่านเป็นเที่ยงคืน **UTC** = เจ็ดโมงเช้าไทย แต่พอเรียก `getUTCDay()` กับ timestamp
+   ที่มี offset +07 จะได้วันก่อนหน้า ⇒ ลีดวันจันทร์ตกไปอยู่สัปดาห์ก่อนทั้งก้อน
+   (เจอจริงตอนสำรวจข้อมูลก่อนทำใบนี้ — ยอดรายสัปดาห์เพี้ยนทุกสัปดาห์โดยไม่มีอะไรฟ้อง) */
+const DAY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+export function isDayValue(value) {
+  return DAY_PATTERN.test(String(value || ''));
+}
+
+/** บวก/ลบวันบนสตริงวัน — คำนวณที่เที่ยงคืน UTC ล้วน ไม่มี timezone เข้ามาเกี่ยว */
+export function addDays(day, amount) {
+  if (!isDayValue(day)) return null;
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + Number(amount || 0))).toISOString().slice(0, 10);
+}
+
+/** 0 = จันทร์ … 6 = อาทิตย์ (สัปดาห์ไทยเริ่มวันจันทร์) */
+export function dayOfWeek(day) {
+  if (!isDayValue(day)) return null;
+  const [y, m, d] = day.split('-').map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+}
+
+/** วันจันทร์ของสัปดาห์ที่วันนั้นอยู่ — คีย์ของถังรายสัปดาห์ */
+export function weekStartOf(day) {
+  const dow = dayOfWeek(day);
+  return dow === null ? null : addDays(day, -dow);
+}
+
+/** วันสุดท้ายของงวดเดือน (YYYY-MM → YYYY-MM-DD) — คิดจากปฏิทินจริง ไม่ใช่ตาราง 30/31 */
+export function lastDayOfMonth(month) {
+  if (!isMonthValue(month)) return null;
+  const [y, m] = String(month).split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+/** รายการวันทั้งหมดในช่วง (รวมปลายทั้งสองข้าง) — สลับให้เองถ้าส่งกลับหัว */
+export function daysInRange(from, to) {
+  if (!isDayValue(from) || !isDayValue(to)) return [];
+  const [a, b] = from <= to ? [from, to] : [to, from];
+  const out = [];
+  for (let d = a; d <= b; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
+/** ขอบเขตของช่วงวันแบบครึ่งเปิด [from, until) — `until` = วันถัดจากวันสุดท้าย
+ *  เพื่อให้ลีดที่เข้ามาระหว่างวันสุดท้ายถูกนับครบทั้งวัน ไม่ใช่ตัดที่เที่ยงคืน */
+export function dateRangeOfBusinessDays(from, to) {
+  if (!isDayValue(from) || !isDayValue(to)) return null;
+  const [a, b] = from <= to ? [from, to] : [to, from];
+  return { from: businessDayStart(a), until: businessDayStart(addDays(b, 1)) };
+}
+
 /** ขอบเขตของทั้งปีแบบครึ่งเปิด [from, until) — นับตามวันไทย ไม่ใช่ UTC */
 export function dateRangeOfBusinessYear(year) {
   if (!isYearValue(year)) return null;
