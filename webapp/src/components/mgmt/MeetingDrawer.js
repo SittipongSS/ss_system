@@ -3,7 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/Modal";
-import DocsPanel from "@/components/mgmt/DocsPanel";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
@@ -24,6 +24,14 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
     } catch { /* ignore */ }
   }, [meeting?.id]);
   useEffect(() => { if (open) loadUpdates(); }, [open, loadUpdates]);
+
+  // แนบเอกสารแล้วเธรดต้องขยับทันที (server เขียนบรรทัดให้) · ข้ามครั้งแรกที่แผง
+  // แจ้งรายการตอน mount ไม่งั้นดึงซ้ำเปล่า ๆ ทุกครั้งที่เปิด drawer
+  const [docsSeeded, setDocsSeeded] = useState(false);
+  const onDocsChange = useCallback(() => {
+    if (!docsSeeded) { setDocsSeeded(true); return; }
+    loadUpdates();
+  }, [docsSeeded, loadUpdates]);
 
   const addComment = async () => {
     const text = comment.trim();
@@ -113,7 +121,16 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
           </div>
         )}
 
-        <DocsPanel entityType="mgmt_meeting" entityId={meeting.id} canEdit={canEdit} />
+        {/* แผงเดียวกับทั้งระบบ — `DocsPanel` ของโมดูลนี้ถูกยุบทิ้งแล้ว */}
+        <div className="toolbar-label">ไฟล์ &amp; เอกสาร</div>
+        <AttachmentsPanel
+          entityType="mgmt_meeting"
+          entityId={meeting.id}
+          canEdit={canEdit}
+          inlineUpload
+          googleDocs
+          onItemsChange={onDocsChange}
+        />
 
         <div>
           <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", marginBottom: 8 }}>ประวัติ &amp; อัพเดท</div>

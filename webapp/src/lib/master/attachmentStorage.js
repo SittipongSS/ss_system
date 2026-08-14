@@ -10,7 +10,7 @@
 
 // โดเมนของ Google Drive/Docs ที่ backend Drive คืนมาเป็น webViewLink
 //   drive.google.com — ไฟล์ที่อัปผ่าน uploadFile()
-//   docs.google.com  — เอกสาร Google native (mgmt/docs สร้าง/ผูก) ซึ่งตั้งใจให้
+//   docs.google.com  — เอกสาร Google native (เอกสารร่วม สร้าง/ผูก) ซึ่งตั้งใจให้
 //                      เปิดผ่านลิงก์ตรง ไม่ผ่าน proxy stream
 const GOOGLE_FILE_HOSTS = ['drive.google.com', 'docs.google.com'];
 

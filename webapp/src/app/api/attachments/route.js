@@ -11,6 +11,7 @@ import { hasFolderBranch } from '@/lib/master/driveEntityMap';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
+import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
 import {
   SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment,
@@ -31,6 +32,8 @@ const RESOURCE = { customer: 'customers', product: 'products', order: 'orders', 
 // ว่า row มีจริง (ไม่ถูกลบ) เพื่อไม่ให้แนบกับ id ลอย.
 const MGMT_TABLE = { mgmt_task: 'mgmt_tasks', mgmt_meeting: 'mgmt_meetings' };
 const isMgmt = (entityType) => !!MGMT_TABLE[entityType];
+// ชื่อ entity ที่เธรด "ประวัติ & อัพเดท" ของงานบริหารใช้ (คนละชุดกับชื่อ entity ของไฟล์แนบ)
+const MGMT_FEED_ENTITY = { mgmt_task: 'task', mgmt_meeting: 'meeting' };
 const isPersonalTask = (entityType) => entityType === 'personal_task';
 
 async function loadParent(supabase, entityType, entityId) {
@@ -204,6 +207,20 @@ export async function POST(request) {
   // เดียวกับตอนลบไฟล์ ดู attachments/[id]/route.js. เดิมการแนบไฟล์ทำให้ลูกค้าที่อนุมัติแล้ว
   // หลุดจากลิสต์ออกใบเสนอราคาทันที ซึ่งเป็นหนึ่งในเหตุที่ "ค้นลูกค้าไม่เจอ" แบบไม่มีคำอธิบาย
   // (ทะเบียนสรรพสามิตยังล็อกตามเดิมด้วยด่านข้างบน — กติกาเข้มกว่าโดยเจตนา)
+
+  // งานบริหารมี "ประวัติ & อัพเดท" ต่อระเบียน — การแนบเอกสารคือความเคลื่อนไหว
+  // ⚠️ ย้ายมาจาก `/api/mgmt/docs` ที่ถูกยุบทิ้ง · เดิมเขียนฟีดเฉพาะตอนสร้าง/ผูก
+  // เอกสาร Google ส่วนการอัปไฟล์เงียบ — ตอนนี้เขียนทั้งสองทางเพราะเป็น code path
+  // เดียวกันแล้ว และ "ใครแนบอะไรเมื่อไหร่" มีค่าเท่ากันไม่ว่าไฟล์มาจากไหน
+  if (isMgmt(entityType)) {
+    await appendMgmtUpdate(supabase, {
+      entityType: MGMT_FEED_ENTITY[entityType],
+      entityId,
+      kind: 'link',
+      body: `${google ? (google.mode === 'link' ? 'ผูก' : 'สร้าง') : 'แนบ'}เอกสาร: ${data.fileName || data.fileUrl}`,
+      user,
+    });
+  }
 
   return Response.json(data, { status: 201 });
 }

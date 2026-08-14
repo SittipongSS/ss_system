@@ -69,7 +69,6 @@ const ALLOWED = new Set([
   "components/AttachmentsPanel.js",
   "components/updates/UpdateThread.js",
   "components/service/CloseVisitSheet.js",
-  "components/mgmt/DocsPanel.js",
   "components/sahamit/ForecastForm.js",
   "app/database/product-categories/import/page.js",
 ]);
@@ -92,7 +91,6 @@ test("จุดที่ยังถือ input เอง ต้องผูก
     "components/AttachmentsPanel.js",
     "components/updates/UpdateThread.js",
     "components/service/CloseVisitSheet.js",
-    "components/mgmt/DocsPanel.js",
   ];
   for (const rel of mustWire) {
     const text = readFileSync(path.join(srcRoot, rel), "utf8");
