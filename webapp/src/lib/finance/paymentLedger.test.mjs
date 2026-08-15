@@ -395,7 +395,7 @@ test('จัดกลุ่มตามลูกค้า: หนึ่งถั
   const b = buckets.find((bucket) => bucket.label === 'ลูกค้า ข');
   assert.equal(b.sub, 'AR-002');
   assert.equal(b.count, 1);
-  assert.equal(b.outstanding, 5000);
+  assert.equal(b.total, 5000);
 });
 
 test('จัดกลุ่มตามเดือนที่ต้องเก็บ: ใบที่ยังไม่มีกำหนดไปถังท้ายสุด', () => {

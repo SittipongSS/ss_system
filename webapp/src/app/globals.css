@@ -6000,6 +6000,48 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   font-variant-numeric: tabular-nums;
 }
 
+/* ── แถวหัวกลุ่มของ design system — ใช้กับตารางทุกเปลือก (มติผู้ใช้ 2026-08-15) ──
+   วาดผ่าน <TableGroupRow> ใน components/ui/Table.js ที่เดียว ห้ามเขียน markup เอง
+   ⚠️ **ไม่ผูกกับ `.premium-glass-table`** ต่างจากกฎ `tr.group-row` ข้างล่างซึ่งเป็นของ
+   เปลือกตารางเก่า — ตารางที่ย้ายเข้า design system แล้ว (ทะเบียนการชำระ · ใบสั่งขาย)
+   ไม่มีคลาสนั้นครอบ กฎเก่าจึงไม่มีผลกับมันเลย และหัวกลุ่มจะกลายเป็นแถวเปล่า ๆ */
+.ui-group-row > td {
+  background: var(--panel-2);
+  padding: 0;
+}
+
+/* ปุ่มกินเต็มแถบ ⇒ กดตรงไหนของหัวกลุ่มก็ย่อ/ขยายได้ · เป็น <button> จริงเพื่อให้
+   คีย์บอร์ดและสกรีนรีดเดอร์ได้ aria-expanded ไปด้วย */
+.ui-group-row button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.ui-group-row button:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.ui-group-row button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ยอดรวมของกลุ่มชิดขวาสุด ⇒ ไล่สายตาลงมาเทียบระหว่างกลุ่มได้ */
+.ui-group-row .ui-group-total {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
 /* ── แถวหัวกลุ่มในตาราง (จัดกลุ่มรายการตามลูกค้า/โครงการ/แบรนด์ ฯลฯ) ──────────
    ใช้คู่กับ tbody ที่สลับ กลุ่ม→แถวลูก: <tr class="group-row"><td colSpan=N><button>
    ปุ่มกินเต็มแถบเพื่อให้กดย่อ/ขยายได้ทั้งแถว · .group-total ดันยอดรวมไปชิดขวา */

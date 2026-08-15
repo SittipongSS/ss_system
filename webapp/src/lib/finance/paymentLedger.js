@@ -13,6 +13,7 @@
 // SA แจ้งเองนับเอง = ไม่มีด่าน) · ยอด "เก็บได้" ทุกตัวในไฟล์นี้จึงนับจาก confirmed เท่านั้น
 
 import { fmtMonthYear, fmtName } from '@/lib/format';
+import { bucketList } from '@/lib/listGrouping';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -446,17 +447,14 @@ const STATE_BUCKETS = [
 /**
  * ยุบก้อนใบเป็น "ถัง" ตามหัวข้อที่เลือก — คืน `null` เมื่อไม่จัดกลุ่ม
  *
- * ⭐ **ลำดับของถัง = ลำดับที่ใบแรกของถังโผล่ในรายการที่เรียงไว้แล้ว** ไม่ใช่เรียง
- * ตามชื่อถัง — ผู้ใช้เพิ่งเลือกวิธีเรียงไป ถ้าจัดกลุ่มแล้วลำดับพลิกเป็นอย่างอื่น
- * เท่ากับปุ่ม "เรียง" ถูกยกเลิกเงียบ ๆ · ในถังก็คงลำดับเดิมด้วยเหตุผลเดียวกัน
- * ⚠️ ถัง "ไม่ระบุ" (ไม่มีลูกค้า / ยังไม่มีกำหนด) ไปท้ายเสมอ
+ * ลำดับถังและกติกา "ไม่ระบุไปท้ายสุด" อยู่ที่ `bucketList` (`lib/listGrouping.js`)
+ * ซึ่งเป็นตัวจัดถังชุดเดียวของทั้งเว็บ
  */
 export function groupLedgerBuckets(groups = [], groupBy = 'none') {
   if (!groupBy || groupBy === 'none') return null;
-  const list = Array.isArray(groups) ? groups : [];
-  const buckets = new Map();
-
-  for (const group of list) {
+  /* ตัวจัดถังเป็นของกลาง (`lib/listGrouping.js`) — ไฟล์นี้บอกแค่ "หน้าตาของถัง"
+     ของทะเบียนการชำระ · ยอดของถังคือ **ค้างรับ** ซึ่งเป็นเลขที่บัญชีตามจริง */
+  return bucketList(groups, (group) => {
     let key; let label; let sub = null; let missing = false;
     if (groupBy === 'customer') {
       // กุญแจใช้รหัส AR ก่อน (ชื่อซ้ำกันได้) · ใบที่ยังไม่มีรหัสจับด้วยชื่อ
@@ -484,13 +482,6 @@ export function groupLedgerBuckets(groups = [], groupBy = 'none') {
       label = bucket.label;
     }
 
-    const current = buckets.get(key) || { key, label, sub, missing, groups: [], outstanding: 0 };
-    if (!current.sub && sub) current.sub = sub;
-    current.groups.push(group);
-    current.outstanding += group.summary?.outstandingAmount || 0;
-    buckets.set(key, current);
-  }
-
-  const ordered = [...buckets.values()].map((bucket) => ({ ...bucket, count: bucket.groups.length }));
-  return ordered.sort((a, b) => (a.missing === b.missing ? 0 : a.missing ? 1 : -1));
+    return { key, label, sub, missing, weight: group.summary?.outstandingAmount || 0 };
+  });
 }

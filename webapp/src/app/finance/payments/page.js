@@ -22,18 +22,17 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlarmClock, ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight,
-  ChevronsDownUp, ChevronsUpDown, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag,
-  Layers, Receipt, Search, Wallet,
+  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag, Receipt, Search, Wallet,
 } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
-import { TableEmpty, TableScroll } from "@/components/ui/Table";
+import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
-import MenuSelect from "@/components/ui/MenuSelect";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
+import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
@@ -151,14 +150,8 @@ export default function FinancePaymentsPage() {
      ของถังเก่าค้างอยู่แล้วไปย่อถังที่คนไม่ได้สั่งย่อ (บทเรียนเดียวกับ Set ของแถวที่กาง) */
   const [collapsed, setCollapsed] = useState(() => new Set());
   useEffect(() => { setCollapsed(new Set()); }, [groupBy, query]);
-  const toggleBucket = useCallback((key) => {
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }, []);
-  const allCollapsed = Boolean(buckets?.length) && buckets.every((bucket) => collapsed.has(bucket.key));
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   /* ⚠️ ดาวน์โหลดผ่าน blob ไม่ใช่เปิดแท็บใหม่ — endpoint ต้องการ cookie เซสชัน
      และแท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง */
@@ -433,22 +426,16 @@ export default function FinancePaymentsPage() {
               </Button>
             )}
 
-            <MenuSelect
-              icon={Layers}
-              label="จัดกลุ่ม"
+            <GroupMenu
               title="จัดกลุ่มใบตามหัวข้อ"
               value={groupBy}
               onChange={(value) => setParam("group", value === "none" ? "" : value)}
               options={LEDGER_GROUP_OPTIONS}
-              isActive={(value) => value !== "none"}
             />
             {!!buckets?.length && (
-              <Button
-                iconOnly
-                onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
-                title={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                aria-label={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                icon={allCollapsed ? <ChevronsUpDown size={15} /> : <ChevronsDownUp size={15} />}
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
               />
             )}
 
@@ -456,11 +443,10 @@ export default function FinancePaymentsPage() {
             {/* ⚠️ เปลี่ยนแบบเรียง = ตั้งทิศทางตั้งต้นของแบบนั้นให้ด้วย — ยอดเงินคนอ่าน
                 คาดหวังมากไปน้อย ส่วนวันคาดหวังใกล้ไปไกล การคงทิศเดิมข้ามแบบทำให้
                 กดครั้งแรกได้ลำดับที่ไม่มีใครอยากได้เกือบทุกครั้ง */}
-            <MenuSelect
-              icon={ArrowUpDown}
-              label="เรียง"
+            <SortMenu
               title="เรียงลำดับใบ"
               value={sortKey}
+              defaultValue={LEDGER_SORT_DEFAULT}
               onChange={(value) => {
                 const sp = new URLSearchParams(params.toString());
                 if (value === LEDGER_SORT_DEFAULT) sp.delete("sort"); else sp.set("sort", value);
@@ -468,17 +454,8 @@ export default function FinancePaymentsPage() {
                 router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
               }}
               options={LEDGER_SORT_OPTIONS}
-              showValue
-              isActive={(value) => value !== LEDGER_SORT_DEFAULT}
             />
-            <Button
-              iconOnly
-              className="ui-sort-direction"
-              onClick={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")}
-              title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
-              aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
-              icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-            />
+            <SortDirButton dir={sortDir} onToggle={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")} />
           </div>
 
           <TableScroll surface="embedded" cells="stacked" minWidth={1080} aria-busy={loading}>
@@ -507,29 +484,19 @@ export default function FinancePaymentsPage() {
                     const bucketCollapsed = collapsed.has(bucket.key);
                     return (
                       <Fragment key={bucket.key}>
-                        <tr className={styles.bucketRow}>
-                          <td colSpan={6}>
-                            <button
-                              type="button"
-                              className={styles.bucketToggle}
-                              onClick={() => toggleBucket(bucket.key)}
-                              aria-expanded={!bucketCollapsed}
-                            >
-                              {bucketCollapsed
-                                ? <ChevronRight size={15} aria-hidden="true" />
-                                : <ChevronDown size={15} aria-hidden="true" />}
-                              <strong>{bucket.label}</strong>
-                              {bucket.sub ? <span className="ar-code">{bucket.sub}</span> : null}
-                              <span className="ui-badge">{bucket.count} ใบ</span>
-                              {/* ยอดของถัง = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่
-                                  เป็นตัวเด่นในแถวใบ ⇒ หัวถังกับแถวข้างในพูดเรื่องเดียวกัน */}
-                              <span className={`${styles.bucketTotal} mono`} title="ยอดค้างรับรวมของกลุ่มนี้">
-                                {fmtMoney(bucket.outstanding)}
-                              </span>
-                            </button>
-                          </td>
-                        </tr>
-                        {!bucketCollapsed && bucket.groups.map(orderRow)}
+                        {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
+                            ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
+                        <TableGroupRow
+                          colSpan={6}
+                          label={bucket.label}
+                          sub={bucket.sub}
+                          badge={`${bucket.count} ใบ`}
+                          total={fmtMoney(bucket.total)}
+                          totalTitle="ยอดค้างรับรวมของกลุ่มนี้"
+                          collapsed={bucketCollapsed}
+                          onToggle={() => toggleBucket(bucket.key)}
+                        />
+                        {!bucketCollapsed && bucket.items.map(orderRow)}
                       </Fragment>
                     );
                   }) : pageRows.map(orderRow)}
