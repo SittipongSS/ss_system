@@ -67,21 +67,34 @@ test('🔴 สายเอกสารแนบไฟล์ทางเดีย
     'DocumentDetail ต้องไม่รับสิทธิ์แนบจากเปลือก — สิทธิ์อยู่ที่โมดัลส่งเอกสารคนเดียว');
 });
 
-test('🔴 ปุ่มหลักอยู่ที่เดียวเสมอ — หัวใบ · ท้ายเธรด · หรือการ์ด panel ไม่ใช่สองที่ (P6)', () => {
-  // ⚠️ สามโครง หนึ่งที่เสมอ: หัวข้อธง `detailControlPanel` = ปุ่มทั้งชุดอยู่การ์ดขวา
-  // (หัวใบ+ท้ายเธรดต้องเงียบ) · หัวข้อไม่มีแถว = ท้ายเธรด · ที่เหลือ = หัวใบ
-  // ต้อง **ย้าย ไม่ใช่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแล
-  // ให้ตรงกัน (โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้)
-  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '');
-  // โครง panel ปิดทางท้ายเธรดและหัวใบตั้งแต่ต้นทาง — ไม่ใช่ไปซ่อนตอน render
-  assert.match(code, /const threadStep = !usePanel && !hasItems && primaryAction/);
-  assert.match(code, /const headerAction = \(threadStep \|\| usePanel\) \? null : primaryAction/);
-  // ตัวรวมกติกา `visible` ตัวเดียว — panel ได้ปุ่มหลักตรง ส่วนโครงเดิมได้ผ่าน headerAction
-  assert.match(code, /primaryAction: usePanel \? primaryAction : headerAction/);
-  assert.match(code, /requestStep=\{threadStep\}/);
-  // ⚠️ ยังต้องมีที่เดียว — `headerAction` ห้ามโผล่ในสาขาอื่นนอกจากตัวรวมนี้
-  assert.equal((code.match(/headerAction/g) || []).length, 2,
-    'headerAction ต้องปรากฏแค่ ตอนนิยาม กับ ตอนส่งเข้าตัวรวม action เท่านั้น');
-  // หัวใบเงียบทั้งแผงเมื่อเป็นโครง panel (ปุ่ม+เมนู … คุมด้วยธงเดียวกัน)
-  assert.match(code, /const hasHeaderActions = !usePanel &&/);
+test('🔴 ปุ่มระดับใบอยู่ที่เดียวเสมอ — บาร์บนสุดของเนื้อ ไม่ใช่สามที่ตามโครง (งวด 1)', () => {
+  // ⚠️ เดิมที่วางเปลี่ยนตามโครงของหัวข้อ (การ์ดขวา · หัวใบ · ท้ายเธรด) — สามที่ที่
+  // คนสลับหัวข้อต้องเรียนรู้ · ตอนนี้เหลือบาร์ `RequestActionBar` ที่เดียวทุกหัวข้อ
+  // ⚠️ **ย้าย ไม่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(code, /<RequestActionBar/, 'เปลือกต้องเรนเดอร์บาร์ก้าวถัดไป');
+  assert.match(code, /primaryAction=\{requestActions\.primaryAction\}/,
+    'ปุ่มหลักต้องผ่านตัวรวมกติกา visible ตัวเดิมก่อนถึงบาร์');
+  assert.match(code, /menuItems=\{barMenuItems\}/, 'ของรอง/อันตรายอยู่ในเมนูของบาร์');
+
+  // ทางเก่าทั้งสามต้องตายจริง ไม่ใช่ซ่อนตอน render
+  for (const gone of ['threadStep', 'headerAction', 'hasHeaderActions', 'requestStep']) {
+    assert.ok(!code.includes(gone), `${gone} ต้องไม่เหลือในเปลือก — ปุ่มระดับใบมีที่เดียว`);
+  }
+
+  // การ์ดขวาเหลือข้อเท็จจริงล้วน — ห้ามรับปุ่มกลับเข้าไปอีก
+  const panelStart = code.indexOf('<DocumentControlCard');
+  const panelCall = code.slice(panelStart, code.indexOf('/>', panelStart));
+  for (const prop of ['primaryAction', 'secondaryActions', 'dangerActions']) {
+    assert.ok(!panelCall.includes(prop), `การ์ดจัดการต้องไม่รับ ${prop} — ปุ่มอยู่ที่บาร์`);
+  }
+
+  // หัวใบก็ต้องไม่มีแผงปุ่ม
+  const headCall = code.slice(code.indexOf('<SalesDetailOverview'), code.indexOf('facts={headerFacts}'));
+  assert.ok(!/\bactions=/.test(headCall), 'หัวใบต้องไม่มีปุ่มระดับใบ');
+
+  // แถบท้ายเธรดเหลือหน้าที่เดียว: ก้าวรายแถว
+  const nextBar = readFileSync('src/components/requests/NextStepBar.js', 'utf8');
+  assert.ok(!nextBar.includes('requestStep'),
+    'NextStepBar ต้องไม่รับก้าวระดับใบอีก — ย้ายไปบาร์บนสุดแล้ว');
 });

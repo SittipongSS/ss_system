@@ -117,30 +117,14 @@ export default function NextStepBar({
   //
   // ⚠️ **รับ object เดียวกับที่หัวใบใช้** ไม่ประกอบเอง — สองที่ประกอบเองเมื่อไรก็
   // เพี้ยนกันเมื่อนั้น · หน้าแม่เป็นคนตัดสินว่าจะโชว์ที่ไหน (ดู `primaryAction`)
-  requestStep = null,
 }) {
   const pending = rows
     .map((row) => ({ row, stage: rowStage(row) }))
     .map(({ row, stage }) => ({ row, stage, hop: hopAtStage(row, stage) }))
     .filter((r) => r.hop);
 
-  // ใบที่ไม่มีแถว (สอบถามข้อมูล) — ก้าวถัดไปเป็นของทั้งใบ ไม่ใช่ของแถวไหน
-  if (!pending.length && requestStep) {
-    return (
-      <div className={styles.bar}>
-        <div className="toolbar-label">ก้าวถัดไป</div>
-        <div className={styles.row}>
-          <div className={styles.label}><strong>{requestStep.hint}</strong></div>
-          <div className={styles.actions}>
-            <Button tone="primary" disabled={busy} onClick={requestStep.onClick}>
-              {requestStep.label}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // ⚠️ **ก้าวระดับใบไม่อยู่ที่นี่แล้ว** (งวด 1 ของรอบรื้อ) — ย้ายไปบาร์บนสุดของเนื้อ
+  // (`RequestActionBar`) ที่เดียวทุกหัวข้อ · แถบนี้เหลือหน้าที่เดียว: ก้าว **รายแถว**
   if (!pending.length) return null;
 
   return (
