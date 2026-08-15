@@ -646,7 +646,10 @@ export default function RequestForm({
                   {bill.amount != null && ` · ขอ ${money(bill.percent)}% = ${money(bill.amount)} บาท`}
                 </small>
               )}
-              {bill.error && <small className={styles.hint}>{bill.error}</small>}
+              {/* 🐞 **เงียบจนกว่าจะเลือกใบ** — ฐานเป็น 0 ตอนยังไม่เลือก ⇒ ตัวคำนวณ
+                  คืน "ไม่มียอดให้วางบิล" ตั้งแต่เปิดฟอร์ม ซึ่งอ่านเหมือนใบที่ยังไม่ได้
+                  เลือกมีปัญหา · ของที่ขาดตอนนั้นคือ **ใบ** ซึ่งแถบ "ยังขาด" บอกอยู่แล้ว */}
+              {picked && bill.error && <small className={styles.hint}>{bill.error}</small>}
             </div>
           </div>
         );

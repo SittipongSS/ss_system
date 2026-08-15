@@ -140,7 +140,8 @@ export async function POST(request) {
   if (requestNeedsRef(kind, 'quotation')) {
     const { data: qtRow, error: qtRowError } = await supabase
       .from('quotations')
-      .select('id, "dealId", status, "approvalStatus", "totalAmount"')
+      // ⚠️ ต้องมี `subtotal` ด้วย — ด่านใช้แยก "ให้ฟรี (ลดเต็ม)" ออกจาก "ใบยังไม่มีของ"
+      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal"')
       .eq('id', body.quotationId).maybeSingle();
     if (qtRowError) return Response.json({ error: qtRowError.message }, { status: 500 });
     if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาที่เลือก' }, { status: 400 });
