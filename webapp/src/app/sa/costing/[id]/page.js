@@ -18,6 +18,9 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import StatusNotice from "@/components/ui/StatusNotice";
+import styles from "./costingApproval.module.css";
+import { costingPriceApprovalEffects } from "@/lib/approvalPrompt";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import ReadableText from "@/components/ui/ReadableText";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -947,6 +950,19 @@ export default function CostingDetailPage() {
                       />
                     </div>
                   ))}
+                  {/* ⭐ **โมดัลอนุมัติต้องบอกว่ากดแล้วเกิดอะไรขึ้น** (กฎใน lib/approvalPrompt)
+                      — เดิมมีแต่ช่องกรอกราคากับปุ่ม "อนุมัติ" ⇒ ผู้บริหารกดโดยไม่รู้ว่า
+                      ตัวเลขนี้ไปโผล่บนใบเสนอราคาที่ลูกค้าเห็น · ข้อความมาจากตัวกลาง
+                      ตัวเดียวกับโมดัลยืนยันที่อื่น จะได้ไม่เพี้ยนกันเอง
+                      ⚠️ ที่นี่เป็นโมดัลกรอกข้อมูลอยู่แล้ว จึงแสดงผลลัพธ์ **ในโมดัลเดียวกัน**
+                      ไม่ซ้อนโมดัลยืนยันอีกชั้น (สองชั้นติดกันคนกดผ่านโดยไม่อ่านทั้งคู่) */}
+                  <StatusNotice tone="info" title="สิ่งที่จะเกิดขึ้นทันทีเมื่อกดอนุมัติ">
+                    <ul className={styles.effectList}>
+                      {costingPriceApprovalEffects({ tierCount: (item.tiers || []).length }).map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </StatusNotice>
                   <small style={{ color: "var(--text-3)" }}>
                     ต้องกรอกครบทุกชั้น — การอนุมัติจะถูกบันทึกพร้อมลายเซ็นอิเล็กทรอนิกส์ของคุณ
                   </small>
