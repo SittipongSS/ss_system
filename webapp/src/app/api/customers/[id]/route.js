@@ -14,6 +14,7 @@ import {
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
+import { findCustomerReferences } from '@/lib/master/customerReferences';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
@@ -408,31 +409,20 @@ export async function DELETE(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
-  // ถ้าลูกค้ารายนี้ยังถูกอ้างใน โครงการ/ออเดอร์/การขึ้นทะเบียน/สินค้า → ห้ามลบ.
-  //
-  // ⚠️ **สินค้าต้องอยู่ในด่านนี้ด้วย** (เพิ่ม 2026-08-13 พร้อม mig 0248) — รหัสสินค้า
-  // ฝังรหัสลูกค้าไว้ในตัวเอง (`FG-AAAA-…` โดย AAAA = เลขของ AR) ⇒ ลบลูกค้าที่ยังมีสินค้า
-  // แล้วเลข AR กลับเข้ากองไปให้รายอื่น รหัสสินค้าเดิมจะชี้ไปหาลูกค้าคนละคนทันที
-  // โดยไม่มีอะไรฟ้อง · ก่อนหน้านี้ด่านนี้ไม่ได้เช็ค products เลย (สินค้ากลายเป็นกำพร้าเงียบ ๆ)
-  const [projRef, orderRef, regRef, productRef] = await Promise.all([
-    supabase.from('projects').select('id').eq('customerId', id),
-    supabase.from('orders').select('id').eq('customerId', id),
-    supabase.from('excise_registrations').select('id', { count: 'exact', head: true }).eq('customerId', id),
-    supabase.from('products').select('fgCode').eq('customerId', id),
-  ]);
-  const refErr = projRef.error || orderRef.error || regRef.error || productRef.error;
+  /* ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า
+     ⚠️ FK ของหลายตารางเป็น `ON DELETE SET NULL` ⇒ ฐานข้อมูล **ไม่ได้กัน** ให้ มันแค่
+     ลบสายเชื่อมทิ้งเงียบ ๆ · ด่านจริงคือที่นี่
+     ⚠️ **สินค้าต้องอยู่ในด่านนี้ด้วย** (เพิ่ม 2026-08-13 พร้อม mig 0248) — รหัสสินค้า
+     ฝังรหัสลูกค้าไว้ในตัวเอง (`FG-AAAA-…`) ⇒ ลบลูกค้าที่ยังมีสินค้าแล้วเลข AR กลับเข้ากอง
+     ไปให้รายอื่น รหัสสินค้าเดิมจะชี้ไปหาลูกค้าคนละคนทันทีโดยไม่มีอะไรฟ้อง
+
+     ⭐ 2026-08-16: ยกลิสต์ออกไปเป็นทะเบียนกลาง (`lib/master/customerReferences`)
+     เพราะลิสต์ที่เขียนมือในนี้ตรวจแค่ 4 ตาราง ทั้งที่บนฐานจริงมี 25 ตารางถือ `customerId`
+     ⇒ ลูกค้าที่มีแค่ลีด/ดีล/ใบเสนอราคา (ต้นทางท่อ = สถานะปกติ) ลบผ่านด่านไปได้
+     และเอกสารเหล่านั้นเสียสายเชื่อมถาวร · `npm run check:refs` คอยเทียบทะเบียนกับ
+     ฐานจริงไม่ให้ตกหล่นอีก */
+  const { refs, error: refErr } = await findCustomerReferences(supabase, id);
   if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
-  const refs = [];
-  const projIds = (projRef.data || []).map((r) => r.id);
-  const orderIds = (orderRef.data || []).map((r) => r.id);
-  const fgCodes = (productRef.data || []).map((r) => r.fgCode).filter(Boolean);
-  if (projIds.length) refs.push(`${projIds.length} โครงการ (${projIds.join(', ')})`);
-  if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
-  if (regRef.count) refs.push(`${regRef.count} การขึ้นทะเบียน`);
-  if (productRef.data?.length) {
-    refs.push(`${productRef.data.length} สินค้า${fgCodes.length ? ` (${fgCodes.slice(0, 5).join(', ')}${fgCodes.length > 5 ? ' …' : ''})` : ''}`);
-  }
   const block = referencedBlock('ลูกค้าราย', refs);
   if (block) return Response.json({ error: block }, { status: 409 });
 
