@@ -37,11 +37,20 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 test('จุด 1–2: GET/POST /api/attachments รู้จัก parent ของดีลและมีด่านของตัวเอง', () => {
-  const src = read('../../app/api/attachments/route.js');
   // ขาด → loadParent คืน null → GET ตอบ [] เสมอ · POST 404 "ไม่พบระเบียนที่จะแนบ"
-  assert.match(src, /SALES_ATTACHMENT_TABLE\[entityType\]/);
-  assert.match(src, /canViewSalesAttachment/);
-  assert.match(src, /canAttachToSalesEntity/);
+  assert.match(read('../../app/api/attachments/route.js'), /SALES_ATTACHMENT_TABLE\[entityType\]/);
+
+  // ⚠️ ตัวบันไดสิทธิ์ย้ายไป `lib/master/attachmentAccess.js` แล้ว (2026-08-15) ตอนที่
+  // มีผู้ใช้รายที่สาม — route เรียก helper กลางแทนการเขียนบันไดเอง · เทสต์จึงตาม
+  // ไปดูที่นั่น ไม่ใช่ปล่อยผ่านเพราะหาชื่อในไฟล์เดิมไม่เจอ
+  const ladder = read('../master/attachmentAccess.js');
+  assert.match(ladder, /canViewSalesAttachment/);
+  assert.match(ladder, /canAttachToSalesEntity/);
+
+  // และ route ต้องเรียกบันไดนั้นจริงทั้งสองทาง ไม่ใช่ import ทิ้งไว้เฉย ๆ
+  const route = read('../../app/api/attachments/route.js');
+  assert.match(route, /canViewAttachmentParent\(/);
+  assert.match(route, /canEditAttachmentParent\(/);
 });
 
 test('จุด 3: DELETE ต้องดักดีล **นอก** บล็อก `if (table)` ไม่งั้นใครก็ลบได้', () => {

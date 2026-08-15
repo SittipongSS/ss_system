@@ -9,10 +9,24 @@
 // ดีลนี้ได้ ไม่ได้แปลว่าเห็นคำร้องของฝ่ายอื่นได้ · ที่นี่ยอมให้เห็นเพราะสิ่งที่แสดง
 // คือ "ยังไม่มีเอกสารชนิดนี้" ซึ่งเป็นข้อมูลของดีล ไม่ใช่เนื้อในคำร้อง
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { buildEntityDocuments, entityDocumentProgress } from '@/lib/sales/entityDocuments';
+import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
+import { workspaceEmail } from '@/lib/master/googleDocs';
 
 export const dynamic = 'force-dynamic';
+// ให้สิทธิ์เอกสารร่วมบน Drive ต้องโหลด googleapis — ต้อง Node runtime
+export const runtime = 'nodejs';
+
+// ⭐ แท็บนี้เป็นทางเดียวที่คนเห็นเอกสารร่วม **ของดีลอื่นในโครงการเดียวกัน** —
+// กล่องไฟล์แนบด้านล่างโหลดเฉพาะของใบที่เปิดอยู่ ⇒ ถ้าไม่ให้สิทธิ์ตรงนี้ด้วย คนกด
+// "ดู" จากลิสต์รวมของโครงการจะได้กรอบว่างทั้งที่ระบบบอกว่าเขาเห็นเอกสารนั้นได้
+async function grantDocAccess(supabase, attachments, user, canEdit) {
+  await ensureGoogleDocAccess(supabase, attachments || [], {
+    email: await workspaceEmail(supabase, user?.id),
+    role: canEdit ? 'writer' : 'reader',
+  });
+}
 
 // query ที่พังต้อง **ดังทันที** ไม่ใช่คืน [] เงียบ ๆ — แผงที่ว่างเปล่าอ่านเหมือน
 // "ดีลนี้ไม่มีเอกสาร" ทั้งที่จริง ๆ คืออ่านไม่สำเร็จ (บทเรียน mig 0174)
@@ -180,7 +194,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       raise('อ่านดีลไม่สำเร็จ', dealError);
       if (!deal) return notFound('ไม่พบดีล');
       if (!inSalesViewScope(user, deal)) return forbidden();
-      const rows = buildEntityDocuments(await collectDealDocuments(supabase, dealId));
+      const raw = await collectDealDocuments(supabase, dealId);
+      await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
+      const rows = buildEntityDocuments(raw);
       return ok({ rows, progress: entityDocumentProgress(rows) });
     }
 
@@ -194,6 +210,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const collected = await Promise.all(
       visible.map((deal) => collectDealDocuments(supabase, deal.id).then((raw) => ({ deal, raw }))),
     );
+    for (const { deal, raw } of collected) {
+      await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
+    }
     const dealRows = collected.flatMap(({ deal, raw }) => buildEntityDocuments(raw)
       // บอกด้วยว่าแถวนี้มาจากดีลไหน — โครงการมีหลายดีล แถวลอย ๆ อ่านไม่ออกว่าของใคร
       .map((row) => ({
@@ -215,6 +234,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         .from('attachments').select('id, fileName, docType, createdAt, metadata, fileUrl')
         .eq('entityType', 'project').eq('entityId', projectId);
       raise('อ่านเอกสารร่วมของโครงการไม่สำเร็จ', projectAttError);
+      await grantDocAccess(supabase, projectAttachments, user, inSalesEditScope(user, project));
       projectRows = buildEntityDocuments({ attachments: projectAttachments || [] });
     }
 
