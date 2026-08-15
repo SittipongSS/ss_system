@@ -1,21 +1,17 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canUser, canEditRecord, canViewRecord } from '@/lib/permissions';
-import {
-  COSTING_ATTACHMENT_TABLE, canAttachToCosting, canViewCostingAttachment, isCostingAttachment,
-} from '@/lib/master/costingAttachmentAccess';
+import { can } from '@/lib/permissions';
+import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
+import { canEditAttachmentParent, canViewAttachmentParent } from '@/lib/master/attachmentAccess';
+import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
 import { GoogleDocError, buildGoogleAttachment, googleDocsEnvError, workspaceEmail } from '@/lib/master/googleDocs';
 import { hasFolderBranch } from '@/lib/master/driveEntityMap';
-import { productCaretakerTeams } from '@/lib/master/productScope';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
-import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
 
-import {
-  SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment,
-} from '@/lib/sales/salesAttachmentAccess';
+import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
 
 export const dynamic = 'force-dynamic';
 // สาขา "เอกสารมีชีวิต" โหลด googleapis (หนัก + อ่าน OIDC token) — ต้อง Node runtime
@@ -59,24 +55,26 @@ export async function GET(request) {
   const user = await getCurrentUser();
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json([]); // ไม่มี entity → ไม่มีเอกสาร
-  const allowed = isMgmt(entityType)
-    ? canUser(user, 'mgmt:view')
-    : isPersonalTask(entityType)
-      ? await canViewPersonalTask(supabase, parent, user)
-      : isCostingAttachment(entityType)
-        ? await canViewCostingAttachment(supabase, entityType, parent, user)
-        // ดีลคุมด้วยขอบเขตของสายงานขาย (ทีม/เจ้าของดีล) ไม่ใช่ทีมเจ้าของลูกค้า
-        : isSalesAttachment(entityType)
-          ? canViewSalesAttachment(parent, user)
-          : canViewRecord(user, RESOURCE[entityType], parent);
+  const allowed = await canViewAttachmentParent(supabase, entityType, parent, user);
   if (!allowed) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
   try {
+    const items = await listAttachments(entityType, entityId);
+
+    // ⭐ ให้สิทธิ์เปิดเอกสารร่วมบน Drive **ตอนคนเห็นรายการ** ไม่ใช่ตอนคนกดเปิด —
+    // ปุ่ม "แก้ใน Google" เป็นลิงก์เปิดแท็บใหม่ ถ้ารอ Drive ตอบก่อนเปิดจะโดน
+    // popup blocker กินไปทั้งคลิก · ทำตรงนี้แทน คลิกจึงเปิดได้ทันทีเสมอ
+    // ⚠️ ยิง Drive เฉพาะคู่ (คน × ไฟล์) ที่ยังไม่เคยให้ — ครั้งต่อไปไม่มีต้นทุนเลย
+    await ensureGoogleDocAccess(supabase, items, {
+      email: await workspaceEmail(supabase, user?.id),
+      role: (await canEditAttachmentParent(supabase, entityType, parent, user)) ? 'writer' : 'reader',
+    });
+
     // no-store: รายการไฟล์แนบเปลี่ยนได้ตลอด — กันเบราว์เซอร์ cache คำตอบเก่า (เช่น []
     // ก่อนแนบไฟล์) แล้วแสดงผิดหลัง refresh
-    return Response.json(await listAttachments(entityType, entityId), {
+    return Response.json(items, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (e) {
@@ -122,24 +120,7 @@ export async function POST(request) {
 
   const parent = await loadParent(supabase, entityType, entityId);
   if (!parent) return Response.json({ error: 'ไม่พบระเบียนที่จะแนบเอกสาร' }, { status: 404 });
-  const allowedEdit = isMgmt(entityType)
-    ? canUser(user, 'mgmt:edit')
-    : isPersonalTask(entityType)
-      ? await canAttachToPersonalTask(supabase, parent, user)
-      : isCostingAttachment(entityType)
-        ? await canAttachToCosting(supabase, entityType, parent, user)
-      // ⚠️ แนบ = **แก้ดีลได้** ไม่ใช่แค่เห็น · คนที่เห็นดีลของทีมอื่นได้
-      // (หัวหน้าสาย/ผู้บริหาร) ต้องอ่านได้แต่ไม่ควรไปเพิ่มเอกสารในดีลที่ไม่ใช่ของตัวเอง
-      : isSalesAttachment(entityType)
-        ? canAttachToSalesEntity(parent, user)
-      // product: edit scope follows the OWNING CUSTOMER's caretaker team (มติ
-      // 2026-07-20/21) — resolve it so this matches the product detail page.
-      : canEditRecord(
-          user,
-          RESOURCE[entityType],
-          parent,
-          entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
-        );
+  const allowedEdit = await canEditAttachmentParent(supabase, entityType, parent, user);
   if (!allowedEdit) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }

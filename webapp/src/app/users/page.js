@@ -5,7 +5,7 @@ import Select from "@/components/ui/Select";
 import Workspace from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
-import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
@@ -176,6 +176,25 @@ export default function UserManagement() {
       else notifyToast.error(data.error || "ลบไม่สำเร็จ");
     } catch {
       notifyToast.error("เกิดข้อผิดพลาด");
+    }
+  };
+
+  // ถอนสิทธิ์เอกสารร่วมบน Drive ของคนนี้ — ยืนยันก่อนเพราะเป็นของที่ถอนแล้วต้องให้ใหม่
+  // (ระบบให้คืนเองตอนเขาเปิดเอกสารที่ยังมีสิทธิ์เห็น จึงไม่ใช่ของที่พังถาวร)
+  const handleRevokeDocAccess = async (u) => {
+    if (!(await confirmAction(
+      `ถอนสิทธิ์เอกสารร่วมทั้งหมดของ ${u.email}?\n\nเขาจะเปิดเอกสาร Google ที่เคยเข้าถึงไม่ได้อีก จนกว่าจะเปิดจากในระบบใหม่ (ถ้ายังมีสิทธิ์เห็นใบนั้นอยู่)`,
+    ))) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}/revoke-doc-access`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "ถอนสิทธิ์ไม่สำเร็จ");
+      // ⚠️ บอกตัวเลขจริงเสมอ — "สำเร็จ" ลอย ๆ ปิดบังกรณีที่ยังค้างบางใบ
+      if (!data.files) notifyToast.success(`${u.email} ไม่มีสิทธิ์เอกสารร่วมค้างอยู่`);
+      else if (data.failed) notifyToast.error(`ถอนได้ ${data.revoked}/${data.files} เอกสาร — ยังค้าง ${data.failed} ใบ กดซ้ำอีกครั้ง`);
+      else notifyToast.success(`ถอนสิทธิ์แล้ว ${data.revoked} เอกสาร`);
+    } catch (err) {
+      notifyToast.error(err.message || "ถอนสิทธิ์ไม่สำเร็จ");
     }
   };
 
@@ -357,6 +376,18 @@ export default function UserManagement() {
                               title="โอนงาน (ดีลเปิด + เป้าเดือนอนาคต) ให้คนอื่น"
                             >
                               <ArrowRightLeft size={16} />
+                            </button>
+                            {/* ⭐ ถอนสิทธิ์เอกสารร่วมบน Drive — เคสที่ต้องกดจริงคือ
+                                **ย้ายทีมทั้งที่ยังทำงานอยู่**: ระบบตัดสิทธิ์เห็นดีลเก่า
+                                ทันที แต่ไฟล์ที่เคยเปิดยังเปิดได้ผ่านลิงก์เดิม
+                                (ตอนลาออกบริษัทปิดบัญชีอีเมลอยู่แล้ว สิทธิ์ที่ค้างจึง
+                                ล็อกอินไม่ได้ — กดก็ดี ไม่กดก็ไม่ได้เปิดช่องให้ใคร) */}
+                            <button
+                              onClick={() => handleRevokeDocAccess(u)}
+                              className="text-[var(--text-2)] hover:opacity-70"
+                              title="ถอนสิทธิ์เอกสารร่วมบน Google Drive ของคนนี้"
+                            >
+                              <ShieldOff size={16} />
                             </button>
                             <button
                               onClick={() => handleToggleDisabled(u)}

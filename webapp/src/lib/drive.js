@@ -690,13 +690,64 @@ export function kindFromMime(mimeType) {
 export async function grantWriter(fileId, email) {
   if (!fileId || !email) return;
   try {
-    await getDrive().permissions.create({
-      fileId,
-      requestBody: { type: 'user', role: 'writer', emailAddress: email },
-      sendNotificationEmail: false,
-      supportsAllDrives: true,
-    });
+    await grantFileRole(fileId, email, 'writer');
   } catch (err) {
     console.error('[drive] grantWriter failed', fileId, email, err?.message);
   }
+}
+
+// ให้สิทธิ์ **รายไฟล์** แก่อีเมลหนึ่งราย — คนที่ได้จะเห็นไฟล์นั้นใน "แชร์กับฉัน"
+// โดยไม่ได้เป็นสมาชิก Shared Drive จึงเดินดูโครงสร้างโฟลเดอร์ไม่ได้ (มติผู้ใช้ 2026-08-15)
+//
+// ⚠️ **โยน error ต่อ** ต่างจาก grantWriter ที่กลืนไว้ — ผู้เรียกที่ให้สิทธิ์ตอนคนกำลัง
+// จะเปิดไฟล์ต้องรู้ว่าพลาด (ไม่งั้นได้กรอบว่างโดยไม่มีใครรู้สาเหตุ)
+//
+// ⚠️ ถ้าอีเมลนั้นมี permission อยู่แล้ว Drive ตอบ 400 — จับแล้ว **อัปเดต role แทน**
+// ไม่ใช่ปล่อยผ่าน เพราะคนที่เคยได้ reader แล้วต่อมาได้สิทธิ์แก้ ต้องถูกยกเป็น writer
+export async function grantFileRole(fileId, email, role = 'reader') {
+  if (!fileId || !email) return;
+  const drive = getDrive();
+  try {
+    await drive.permissions.create({
+      fileId,
+      requestBody: { type: 'user', role, emailAddress: email },
+      sendNotificationEmail: false,
+      supportsAllDrives: true,
+    });
+    return;
+  } catch (err) {
+    if (!/already has access|duplicate|cannotShare/i.test(String(err?.message || ''))) throw err;
+  }
+  // มีอยู่แล้ว — หา permission ของอีเมลนี้แล้วยก role ให้ตรง (ลดสิทธิ์ก็ผ่านทางเดียวกัน)
+  const { data } = await drive.permissions.list({
+    fileId,
+    fields: 'permissions(id, emailAddress, role)',
+    supportsAllDrives: true,
+  });
+  const existing = (data?.permissions || []).find((p) => p.emailAddress === email);
+  if (!existing || existing.role === role) return;
+  await drive.permissions.update({
+    fileId,
+    permissionId: existing.id,
+    requestBody: { role },
+    supportsAllDrives: true,
+  });
+}
+
+// ถอนสิทธิ์รายไฟล์ของอีเมลหนึ่ง — คืน true ถ้าถอนจริง, false ถ้าไม่มีอะไรให้ถอน
+//
+// ⚠️ ถอนได้เฉพาะ permission ที่ให้ไว้**รายไฟล์** · ถ้าคนนั้นเป็นสมาชิก Shared Drive
+// อยู่แล้ว เขายังเปิดได้อยู่ดี ซึ่งถูกต้อง — สิทธิ์นั้นมาจากคนละทาง ไม่ใช่ของที่เราให้
+export async function revokeFileRole(fileId, email) {
+  if (!fileId || !email) return false;
+  const drive = getDrive();
+  const { data } = await drive.permissions.list({
+    fileId,
+    fields: 'permissions(id, emailAddress)',
+    supportsAllDrives: true,
+  });
+  const existing = (data?.permissions || []).find((p) => p.emailAddress === email);
+  if (!existing) return false;
+  await drive.permissions.delete({ fileId, permissionId: existing.id, supportsAllDrives: true });
+  return true;
 }
