@@ -110,15 +110,22 @@ export default function RequestQueuePanel({
     [rows, countFilter, search, today, filters, sortKey, sortDir, showTools],
   );
 
-  /* ⭐ **สองโหมดจัดกลุ่ม รูปร่างเดียวกัน** — เลือกมิติเอง (ฝ่าย/ชนิด/ลูกค้า/ผู้รับเรื่อง)
-     หรือปล่อยไว้ให้จัดตามความเร่ง (`groupQueueRows` ของเดิม ซึ่งเป็นสิ่งที่ทำให้ใบ
-     ตีกลับกับใบที่ยังไม่มีใครรับขึ้นบนสุด) · ทั้งสองโหมดคืน `{ key, label, rows }`
-     เหมือนกัน ⇒ ตารางกับการ์ดวาดโค้ดชุดเดียว ไม่ใช่สองสำเนา */
-  const groups = useMemo(() => (
-    (showTools && groupRequestRows(visibleRows, groupBy))
-    || groupQueueRows(visibleRows, { todayIso: today })
-      .map((g) => ({ key: g.group, label: g.label, rows: g.rows }))
-  ), [visibleRows, groupBy, today, showTools]);
+  /* ⭐ **"ไม่จัดกลุ่ม" = ไม่มีหัวกลุ่มจริง ๆ** (มติผู้ใช้ 2026-08-15) — ของเดิมพอเลือก
+     "ไม่จัดกลุ่ม" ยังตกไปหา `groupQueueRows` ซึ่งแทรกแถบความเร่ง (ยังไม่มีใครรับ /
+     ตีกลับ / เลยกำหนด …) ให้อยู่ดี ⇒ ปุ่มบอกว่าไม่จัดกลุ่มแต่จอยังมีหัวข้อคั่น
+     ซึ่งขัดกับตารางอื่นทั้งระบบที่ "ไม่จัดกลุ่ม" แปลว่าแบนราบ
+     ⚠️ **การ์ดที่ฝังในหน้าดีล/โครงการ (`showTools` เท็จ) ยังจัดตามความเร่งเหมือนเดิม**
+     — ที่นั่นไม่มีปุ่มให้เปิดกลุ่มคืน และแถบความเร่งคือสิ่งเดียวที่บอกว่าใบไหนต้องรีบ
+     ⚠️ ลำดับความเร่งไม่ได้หายไปด้วย — ยังเรียงด้วย `compareRequestUrgency` ตามเดิม
+     (ถ้าหน้านั้นตั้งต้นด้วย `urgency`) แค่ไม่มีเส้นคั่นให้เห็นเป็นบล็อก */
+  const groups = useMemo(() => {
+    if (showTools) {
+      return groupRequestRows(visibleRows, groupBy)
+        || [{ key: "__flat", label: "", rows: visibleRows, flat: true }];
+    }
+    return groupQueueRows(visibleRows, { todayIso: today })
+      .map((g) => ({ key: g.group, label: g.label, rows: g.rows }));
+  }, [visibleRows, groupBy, today, showTools]);
 
   /* ⚠️ **หัวกลุ่มหายเมื่อมีกลุ่มเดียวและเปลี่ยนการจัดกลุ่มไม่ได้** — การ์ดบนหน้าดีล
      มักมี 1-3 ใบ · หัวข้อ "ยังไม่มีใครรับเรื่อง · 1" เหนือแถวเดียวคือเส้นที่ไม่ได้
@@ -126,7 +133,9 @@ export default function RequestQueuePanel({
   const collapsedSet = collapsed instanceof Set ? collapsed : new Set();
   const isCollapsed = (key) => collapsedSet.has(key);
   const allCollapsed = groups.length > 0 && groups.every((g) => collapsedSet.has(g.key));
-  const showGroupHeads = showTools || groups.length > 1;
+  // แบนราบ (ไม่จัดกลุ่ม) = ไม่มีหัวกลุ่มให้กด · การ์ดฝังยังโชว์เมื่อมีมากกว่าหนึ่งกลุ่ม
+  const flatMode = groups.length === 1 && groups[0]?.flat;
+  const showGroupHeads = !flatMode && (showTools || groups.length > 1);
   const filterCount = requestFilterCount(filters);
   // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
   // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
@@ -196,6 +205,9 @@ export default function RequestQueuePanel({
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
                 ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                /* ⭐ **วันที่ร้องขอ** (มติผู้ใช้ 2026-08-15) — คิวเรียงตามวันนี้ได้แล้ว
+                   ต้องมีอะไรบนแถวให้ยืนยันลำดับ ไม่งั้นเรียงแล้วอ่านไม่ออกว่าเรียงจริงไหม */
+                ask.createdAt ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
               ].filter(Boolean).join(" · ")}
               {/* รหัสลูกค้าเกาะท้ายชื่อกิจการเสมอ ไม่ว่าชื่อจะอยู่บรรทัดหลัก
                   (ใบที่ไม่มีเรื่อง) หรือบรรทัดรอง — ตัวเชื่อมกับรหัสกลิ่น/MU */}
@@ -391,6 +403,8 @@ export default function RequestQueuePanel({
                         requestKindLabel(ask.kind),
                         ask.title && ask.customerName ? ask.customerName : null,
                         ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                        // วันที่ร้องขอ — ชุดเดียวกับตาราง (การ์ดกับตารางต้องพูดตรงกัน)
+                        ask.createdAt ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
                       ].filter(Boolean).join(" · ")}
                       {ask.customerArCode ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
                       {` → ${ask.dept}`}

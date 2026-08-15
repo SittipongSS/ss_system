@@ -12,7 +12,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { useResponsiveView } from '@/lib/useResponsiveView';
 import { requestSortDefaultDir } from '@/lib/requests/queueList';
 
-export function useQueueBoard() {
+/* `sortKey` = แบบเรียงตั้งต้นของหน้านั้น (ดูคำเตือนที่ `REQUEST_SORT_OPTIONS`)
+   ⚠️ หน้าไหนส่งค่าอื่นมา **คำโปรยของหน้านั้นต้องพูดตรงกับลำดับที่เห็นจริง** */
+export function useQueueBoard({ sortKey: initialSortKey = 'urgency' } = {}) {
   // ⭐ ตาราง 4 คอลัมน์บนจอตั้งเลื่อนซ้ายขวาอย่างเดียว — สลับเป็นการ์ดเหมือนอีก 9 หน้า
   // ของระบบ · `useResponsiveView` เก็บ override ของผู้ใช้ไว้จนกว่าจะพลิกจอ
   const [view, setView] = useResponsiveView({ portrait: 'list', landscape: 'table' });
@@ -27,8 +29,8 @@ export function useQueueBoard() {
   const [filters, setFilters] = useState({});
   const [groupBy, setGroupBy] = useState('none');
   const [collapsed, setCollapsed] = useState(() => new Set());
-  const [sortKey, setSortKey] = useState('urgency');
-  const [sortDir, setSortDir] = useState(() => requestSortDefaultDir('urgency'));
+  const [sortKey, setSortKey] = useState(initialSortKey);
+  const [sortDir, setSortDir] = useState(() => requestSortDefaultDir(initialSortKey));
 
   const setFilter = useCallback((dimension, values) => {
     setFilters((prev) => ({ ...prev, [dimension]: values }));
@@ -45,7 +47,7 @@ export function useQueueBoard() {
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   }), []);
-  // ทิศตั้งต้นมาจากคีย์ — เลือก "เปิดล่าสุด" แล้วต้องได้ใหม่ก่อนโดยไม่ต้องกดสลับเอง
+  // ทิศตั้งต้นมาจากคีย์ — เลือก "วันที่ร้องขอ" แล้วต้องได้ใหม่ก่อนโดยไม่ต้องกดสลับเอง
   const chooseSort = useCallback((key) => {
     setSortKey(key);
     setSortDir(requestSortDefaultDir(key));
