@@ -201,8 +201,13 @@
   }
 }
 @media (max-width: 680px) {
+  /* 🐞 **เคยสั่ง `grid-template-columns: 1fr` ซึ่งไม่มีผลเลย** — ที่ ≤1050px รางขวา
+     ถูกเปลี่ยนเป็น `display: block` + `columns: 2` ไปแล้ว (บล็อกข้างบน) ⇒ คุณสมบัติ
+     ของ **กริด** ใช้กับ **multi-column** ไม่ได้ · ผลคือจอแคบยังถูกบีบเป็นสองคอลัมน์
+     การ์ดจัดการ/สรุปเลยแคบจนอ่านไม่ออกและหลุดจากทรงของ control panel
+     (ผู้ใช้ส่งภาพมา 2026-08-15) ⇒ ต้องสั่ง `columns` ให้ตรงกับโหมดที่ใช้อยู่จริง */
   .aside {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
   .cardHeader {
     align-items: stretch;
