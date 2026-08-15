@@ -12,6 +12,9 @@
 // ⚠️ **`reported` ไม่นับว่าเก็บเงินได้** — นับเฉพาะ `confirmed` (กติกาจาก mig 0245:
 // SA แจ้งเองนับเอง = ไม่มีด่าน) · ยอด "เก็บได้" ทุกตัวในไฟล์นี้จึงนับจาก confirmed เท่านั้น
 
+import { fmtMonthYear, fmtName } from '@/lib/format';
+import { bucketList } from '@/lib/listGrouping';
+
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
   pending: { label: 'รอชำระ', tone: 'neutral' },
@@ -28,7 +31,7 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
  * ⚠️ ทุกอย่างที่มาจาก QT เป็น **snapshot ตอนอนุมัติใบ** (`label` `percent` `amount`)
  * ห้ามคำนวณใหม่จาก QT ปัจจุบัน — ใบที่เซ็นไปแล้วต้องอ่านได้เท่าเดิมตลอดไป
  */
-export function ledgerRow({ installment, order, quotation, customer, todayIso = null }) {
+export function ledgerRow({ installment, order, quotation, customer, deal = null, todayIso = null }) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
   const due = installment.dueDate || null;
@@ -45,8 +48,12 @@ export function ledgerRow({ installment, order, quotation, customer, todayIso = 
        ได้โดยไม่ต้องยิง API ซ้ำ · ขั้นที่สามคำนวณจากงวดในก้อนเอง */
     orderStatus: order.status || null,
     financeStatus: order.financeStatus || null,
-    team: order.team || null,
-    ownerName: order.ownerName || '',
+    /* ⚠️ **ผู้ดูแล (AE) กับทีม อยู่ที่ "ดีล" ไม่ใช่ที่ใบ** — `sales_orders` ไม่มี
+       สองคอลัมน์นี้ (เคยใส่ใน select แล้วได้ 500 ทั้งหน้า) ⇒ ต้อง join ดีลมาส่งเป็น
+       `deal` · รับจากใบไว้ด้วยเผื่อผู้เรียกที่ประกอบ order มาเองแล้ว */
+    team: deal?.team || order.team || null,
+    ownerId: deal?.ownerId || order.ownerId || null,
+    ownerName: deal?.ownerName || order.ownerName || '',
 
     // ── ตัวงวด (snapshot จาก QT) ──
     seq: installment.seq,
@@ -137,6 +144,43 @@ export function ledgerSummary(rows = []) {
   };
 }
 
+/* ── สถานะการเก็บเงินระดับ "ใบ" ───────────────────────────────────────────
+   คำถามแรกของบัญชีคือ *"ใบไหนยังเก็บไม่ครบ"* ซึ่งเป็นคุณสมบัติของ **ใบ** ไม่ใช่ของงวด
+   ⇒ กรองด้วยสถานะงวดตอบไม่ได้ (ใบที่เก็บครบแล้วยังมีงวดสถานะ confirmed อยู่ดี)
+
+   ⭐ **กรองที่ API ไม่ใช่ที่หน้าเว็บ** — ทะเบียนนี้สัญญาไว้ว่าไฟล์ Excel ที่ดาวน์โหลด
+   คือของที่เห็นบนจอ · กรองระดับใบไว้ฝั่งหน้าเว็บอย่างเดียวเมื่อไร ไฟล์กับจอจะคนละชุด
+   ทันที และตัวเลขสรุปด้านบนก็จะนับของที่ตาไม่เห็น */
+export const ORDER_STATE_OPEN = 'open';
+export const ORDER_STATE_DONE = 'done';
+
+export const LEDGER_ORDER_STATES = {
+  [ORDER_STATE_OPEN]: 'ยังเก็บไม่ครบ',
+  [ORDER_STATE_DONE]: 'เก็บครบแล้ว',
+};
+
+/**
+ * ดัชนี id ใบ → สถานะการเก็บเงินของทั้งใบ
+ *
+ * ⚠️ ต้องคิดจากงวด **ทั้งหมดก่อนกรอง** เสมอ · เก็บครบ = ทุกงวดของใบ `confirmed`
+ * (กติกา mig 0245 — `reported` ยังไม่นับว่าเก็บได้)
+ */
+export function orderStateIndex(rows = []) {
+  const tally = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row?.orderId) continue;
+    const current = tally.get(row.orderId) || { total: 0, confirmed: 0 };
+    current.total += 1;
+    if (row.status === 'confirmed') current.confirmed += 1;
+    tally.set(row.orderId, current);
+  }
+  const states = new Map();
+  for (const [orderId, { total, confirmed }] of tally) {
+    states.set(orderId, total > 0 && confirmed === total ? ORDER_STATE_DONE : ORDER_STATE_OPEN);
+  }
+  return states;
+}
+
 /**
  * กรองทะเบียน — ทุกตัวกรองว่าง = ไม่กรอง
  *
@@ -144,11 +188,19 @@ export function ledgerSummary(rows = []) {
  * "เดือนนี้ต้องเก็บอะไรบ้าง" · งวดที่ยังไม่มีกำหนดจะหลุดช่วงเสมอ ซึ่งถูกแล้ว —
  * มันยังไม่ถูกนัดว่าจะเก็บเมื่อไร (ต้องไปตามที่ใบ ไม่ใช่ในรายงานรอบเดือน)
  */
-export function filterLedger(rows = [], { status = [], from = null, to = null, q = '', overdueOnly = false } = {}) {
+export function filterLedger(rows = [], {
+  status = [], from = null, to = null, q = '', overdueOnly = false,
+  orderState = [], orderStates = null,
+} = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
+  const wantedOrders = Array.isArray(orderState) ? orderState.filter(Boolean) : [];
   const needle = String(q || '').trim().toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((r) => {
     if (wanted.length && !wanted.includes(r.status)) return false;
+    /* ⚠️ สถานะระดับ **ใบ** ต้องมาจากดัชนีที่คิดจากงวดทั้งหมดของใบ (`orderStateIndex`)
+       ไม่ใช่จากงวดที่เหลือหลังกรอง — กรองสถานะงวดเป็น "รอชำระ" เมื่อไร ทุกใบจะดู
+       เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
+    if (wantedOrders.length && !wantedOrders.includes(orderStates?.get(r.orderId) || ORDER_STATE_OPEN)) return false;
     if (overdueOnly && !r.overdue) return false;
     if (from && (!r.dueDate || String(r.dueDate) < String(from))) return false;
     if (to && (!r.dueDate || String(r.dueDate) > String(to))) return false;
@@ -226,6 +278,10 @@ export function groupLedgerByOrder(rows = []) {
         customerCode: row.customerCode,
         orderStatus: row.orderStatus,
         financeStatus: row.financeStatus,
+        // ผู้ดูแลมาจากดีลของใบ (ดู `ledgerRow`) — ใช้จัดกลุ่ม "ผู้ดูแล (AE)"
+        ownerId: row.ownerId || null,
+        ownerName: row.ownerName || '',
+        team: row.team || null,
         rows: [],
       });
     }
@@ -311,4 +367,121 @@ export function groupNote(group) {
   if (group.awaiting) return { label: `รอรับรอง ${group.awaiting} งวด`, tone: 'warning' };
   if (group.complete) return { label: 'เก็บครบแล้ว', tone: 'success' };
   return { label: 'รอลูกค้าชำระ', tone: 'neutral' };
+}
+
+/* ══ มุมมองของทะเบียน: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ═══════════════
+   ทั้งสองอย่างทำงานที่ระดับ **ใบ** (ผลลัพธ์ของ `groupLedgerByOrder`) ไม่ใช่ระดับงวด
+   — หน่วยที่บัญชีลงมือคือใบ ("โทรตามใบนี้") ⇒ เรียง/จัดกลุ่มระดับงวดจะหั่นใบเดียว
+   ไปคนละที่ของตาราง ซึ่งเป็นอาการเดิมที่ `groupLedgerByOrder` ถูกสร้างมาแก้
+
+   ⚠️ อยู่ในไฟล์นี้ ไม่ใช่ในหน้าเว็บ เพราะเป็นตรรกะของทะเบียนที่ต้องมีเทสต์คุม
+   หน้าเว็บเป็นแค่คนวาด (กฎเดียวกับ `LEDGER_COLUMNS` ที่ประกาศครั้งเดียว) */
+
+/** ตัวเลือกการเรียง + ทิศทางตั้งต้นของแต่ละแบบ (ป้ายบนปุ่ม "เรียง") */
+export const LEDGER_SORT_OPTIONS = [
+  { value: 'urgent', label: 'ความด่วน', dir: 'asc' },
+  { value: 'due', label: 'กำหนดถัดไป', dir: 'asc' },
+  { value: 'outstanding', label: 'ยอดค้างรับ', dir: 'desc' },
+  { value: 'customer', label: 'ลูกค้า', dir: 'asc' },
+  { value: 'order', label: 'เลขที่ใบ', dir: 'desc' },
+];
+
+export const LEDGER_SORT_DEFAULT = 'urgent';
+
+/** ทิศทางตั้งต้นของแบบเรียงหนึ่ง ๆ — ยอดเงินเริ่มจากมากไปน้อย วันเริ่มจากใกล้ก่อน */
+export const ledgerSortDir = (key) =>
+  LEDGER_SORT_OPTIONS.find((option) => option.value === key)?.dir || 'asc';
+
+/**
+ * เรียงก้อนใบตามที่ผู้ใช้เลือก
+ *
+ * ⚠️ `urgent` = **ลำดับที่ `groupLedgerByOrder` จัดมาแล้ว** (เลยกำหนด → รอรับรอง →
+ * ค้าง → เก็บครบ) ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกาความด่วนสองชุดที่เพี้ยนหากันได้
+ * ⚠️ **ใบที่ยังไม่มีกำหนดอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
+ * `sortLedger`: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ · สลับทิศแล้วมันโผล่ขึ้น
+ * หัวตารางเมื่อไร คนจะอ่านว่า "ด่วนที่สุด" ซึ่งตรงข้ามกับความจริง
+ */
+export function sortLedgerGroups(groups = [], key = LEDGER_SORT_DEFAULT, dir = null) {
+  const list = [...(Array.isArray(groups) ? groups : [])];
+  const direction = dir === 'desc' ? -1 : 1;
+  if (key === 'urgent') return direction === 1 ? list : list.reverse();
+
+  const text = (value) => String(value || '');
+  return list.sort((a, b) => {
+    if (key === 'due') {
+      const aDue = a.nextDue || null;
+      const bDue = b.nextDue || null;
+      if (!aDue !== !bDue) return aDue ? -1 : 1;   // ไม่มีกำหนด = ท้ายเสมอ
+      if (aDue !== bDue) return (String(aDue) < String(bDue) ? -1 : 1) * direction;
+    } else if (key === 'outstanding') {
+      const diff = (a.summary?.outstandingAmount || 0) - (b.summary?.outstandingAmount || 0);
+      if (diff) return diff * direction;
+    } else if (key === 'customer') {
+      const byName = text(a.customerName).localeCompare(text(b.customerName), 'th');
+      if (byName) return byName * direction;
+    }
+    // ตัวตัดสินสุดท้ายเหมือนกันทุกแบบ: เลขที่ใบ ⇒ ลำดับนิ่ง ไม่สลับเองระหว่างโหลด
+    const byOrder = text(a.orderNumber).localeCompare(text(b.orderNumber), 'th');
+    return key === 'order' ? byOrder * direction : byOrder;
+  });
+}
+
+/** ตัวเลือกการจัดกลุ่ม (ป้ายบนปุ่ม "จัดกลุ่ม") */
+export const LEDGER_GROUP_OPTIONS = [
+  { value: 'none', label: 'ไม่จัดกลุ่ม' },
+  { value: 'customer', label: 'ลูกค้า' },
+  { value: 'owner', label: 'ผู้ดูแล (AE)' },
+  { value: 'dueMonth', label: 'เดือนที่ต้องเก็บ' },
+  { value: 'state', label: 'สถานะการเก็บ' },
+];
+
+/** ป้ายของกลุ่ม "สถานะการเก็บ" — ชุดเดียวกับ `groupNote` ย่อให้เหลือ 5 หมวด */
+const STATE_BUCKETS = [
+  { key: 'overdue', label: 'เลยกำหนด', match: (g) => g.overdue },
+  { key: 'rejected', label: 'มีงวดถูกตีกลับ', match: (g) => g.rejected > 0 },
+  { key: 'awaiting', label: 'รอบัญชีรับรอง', match: (g) => g.awaiting > 0 },
+  { key: 'complete', label: 'เก็บครบแล้ว', match: (g) => g.complete },
+  { key: 'waiting', label: 'รอลูกค้าชำระ', match: () => true },
+];
+
+/**
+ * ยุบก้อนใบเป็น "ถัง" ตามหัวข้อที่เลือก — คืน `null` เมื่อไม่จัดกลุ่ม
+ *
+ * ลำดับถังและกติกา "ไม่ระบุไปท้ายสุด" อยู่ที่ `bucketList` (`lib/listGrouping.js`)
+ * ซึ่งเป็นตัวจัดถังชุดเดียวของทั้งเว็บ
+ */
+export function groupLedgerBuckets(groups = [], groupBy = 'none') {
+  if (!groupBy || groupBy === 'none') return null;
+  /* ตัวจัดถังเป็นของกลาง (`lib/listGrouping.js`) — ไฟล์นี้บอกแค่ "หน้าตาของถัง"
+     ของทะเบียนการชำระ · ยอดของถังคือ **ค้างรับ** ซึ่งเป็นเลขที่บัญชีตามจริง */
+  return bucketList(groups, (group) => {
+    let key; let label; let sub = null; let missing = false;
+    if (groupBy === 'customer') {
+      // กุญแจใช้รหัส AR ก่อน (ชื่อซ้ำกันได้) · ใบที่ยังไม่มีรหัสจับด้วยชื่อ
+      key = group.customerCode || String(group.customerName || '').trim() || '__none';
+      label = group.customerName || 'ไม่ระบุลูกค้า';
+      sub = group.customerCode || null;
+      missing = key === '__none';
+    } else if (groupBy === 'owner') {
+      /* ⚠️ กุญแจใช้ `ownerId` ก่อน — ชื่อซ้ำกันได้ และดีลเก่าบางใบเก็บชื่อไว้เฉย ๆ
+         โดยไม่มี id · ใบที่ไม่ได้มาจากดีล (หรือดีลไม่มีเจ้าของ) ไปถัง "ไม่ระบุ" ท้ายสุด
+         ⚠️ ชื่อย่อผ่าน `fmtName` ชุดเดียวกับที่ตารางดีลใช้ ⇒ หัวกลุ่มอ่านเหมือนกันทั้งระบบ */
+      const name = String(group.ownerName || '').trim();
+      key = group.ownerId || name || '__none';
+      label = name ? fmtName(name) : 'ไม่ระบุผู้ดูแล';
+      sub = group.team || null;
+      missing = key === '__none';
+    } else if (groupBy === 'dueMonth') {
+      const month = group.nextDue ? String(group.nextDue).slice(0, 7) : null;
+      key = month || '__none';
+      label = month ? fmtMonthYear(`${month}-01`, { locale: 'th' }) : 'ยังไม่มีกำหนด';
+      missing = !month;
+    } else {
+      const bucket = STATE_BUCKETS.find((candidate) => candidate.match(group));
+      key = bucket.key;
+      label = bucket.label;
+    }
+
+    return { key, label, sub, missing, weight: group.summary?.outstandingAmount || 0 };
+  });
 }

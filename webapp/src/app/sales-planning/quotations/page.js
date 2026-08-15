@@ -1,10 +1,10 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
+import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
@@ -12,6 +12,7 @@ import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, Workspac
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -24,11 +25,53 @@ import { livePersonName } from "@/lib/ui/personName";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { quotesAwaitingSalesOrder } from "@/lib/sales/handoffQueue";
 import { isEditableQuotation } from "@/lib/sales/quotationWorkflow";
+import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
 const statusBadge = (s, className) => quoteStatusBadge(s, className);
+
+/* ── มุมมองของตาราง: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────────────
+   ปุ่มอยู่ใน `ui/ViewMenus` ตัวจัดถังอยู่ใน `lib/listGrouping` — ที่นี่ประกาศแค่
+   หัวข้อของหน้านี้ · ทรงเดียวกับทะเบียนการชำระและตารางไปป์ไลน์ดีล */
+const SORT_OPTIONS = [
+  { value: "recent", label: "ล่าสุด", dir: "asc" },
+  { value: "number", label: "เลขที่ QT", dir: "desc" },
+  { value: "customer", label: "ลูกค้า", dir: "asc" },
+  { value: "amount", label: "ยอดรวม", dir: "desc" },
+  { value: "date", label: "วันที่", dir: "desc" },
+];
+const SORT_DEFAULT = "recent";
+const sortDirOf = (key) => SORT_OPTIONS.find((option) => option.value === key)?.dir || "asc";
+
+const GROUP_OPTIONS = [
+  { value: "none", label: "ไม่จัดกลุ่ม" },
+  { value: "customer", label: "ลูกค้า" },
+  { value: "owner", label: "ผู้ดูแล (AE)" },
+  { value: "status", label: "สถานะ" },
+  { value: "type", label: "ประเภทดีล" },
+];
+
+/* ⚠️ ใบที่ยังไม่มีวันที่อยู่ท้ายเสมอทั้งสองทิศ — กติกาเดียวกับทุกตารางในระบบ */
+function compareQuotes(a, b, key, dir) {
+  const mul = dir === "desc" ? -1 : 1;
+  const text = (value) => String(value || "");
+  if (key === "date") {
+    const aDate = a.quoteDate || null;
+    const bDate = b.quoteDate || null;
+    if (!aDate !== !bDate) return aDate ? -1 : 1;
+    if (aDate !== bDate) return (String(aDate) < String(bDate) ? -1 : 1) * mul;
+  } else if (key === "amount") {
+    const diff = (Number(a.totalAmount) || 0) - (Number(b.totalAmount) || 0);
+    if (diff) return diff * mul;
+  } else if (key === "customer") {
+    const byName = text(a.customerName).localeCompare(text(b.customerName), "th");
+    if (byName) return byName * mul;
+  }
+  const byNumber = text(a.quoteNumber).localeCompare(text(b.quoteNumber), "th");
+  return key === "number" ? byNumber * mul : byNumber;
+}
 
 export default function QuotationsPage() {
   const canEdit = useCan("salesplan:edit");
@@ -59,6 +102,10 @@ export default function QuotationsPage() {
      ใครเป็นผู้อนุมัติ (ต้องรู้เจ้าของดีล + ดีลปิดยัง) คำนวณเองเมื่อไรเลขก็ไม่ตรงกัน
      ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นผู้ใช้กดล้างตัวกรองไม่ได้ */
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "quotations");
+  const [groupBy, setGroupBy] = useState("none");
+  const [sortKey, setSortKey] = useState(SORT_DEFAULT);
+  const [sortDir, setSortDir] = useState(sortDirOf(SORT_DEFAULT));
+  const [collapsed, setCollapsed] = useState(() => new Set());
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
@@ -140,9 +187,43 @@ export default function QuotationsPage() {
       .sort((a, b) => a[1].localeCompare(b[1], "th"))
       .map(([id, name]) => ({ value: id, label: name }));
   }, [rows, ownerNameOf]);
+  /* `recent` = ลำดับที่ API ส่งมา — ไม่คิดใหม่ที่นี่ · สลับทิศคือกลับลำดับเดิม */
+  const sorted = useMemo(() => {
+    if (sortKey === SORT_DEFAULT) return sortDir === "desc" ? [...filtered].reverse() : filtered;
+    return [...filtered].sort((a, b) => compareQuotes(a, b, sortKey, sortDir));
+  }, [filtered, sortKey, sortDir]);
+
+  const buckets = useMemo(() => {
+    if (groupBy === "none") return null;
+    return bucketList(sorted, (r) => {
+      const weight = Number(r.totalAmount) || 0;
+      if (groupBy === "customer") {
+        return {
+          key: r.customerArCode || String(r.customerName || "").trim(),
+          label: r.customerName || "ไม่ระบุลูกค้า",
+          sub: r.customerArCode || null,
+          weight,
+        };
+      }
+      if (groupBy === "owner") {
+        // ⚠️ กุญแจเป็น ownerId ไม่ใช่ชื่อ — เหตุผลเดียวกับตัวกรองผู้ดูแลด้านบน
+        const name = ownerNameOf(r);
+        return { key: r.deal?.ownerId || name, label: name || "ไม่ระบุผู้ดูแล", weight };
+      }
+      if (groupBy === "type") {
+        const type = r.deal ? dealTypeOf(r.deal) : null;
+        return { key: type, label: type ? DEAL_TYPE_LABELS[type] || type : "ไม่ระบุประเภท", weight };
+      }
+      return { key: r.status, label: QUOTE_STATUS_LABELS[r.status] || r.status, weight };
+    });
+  }, [sorted, groupBy, ownerNameOf]);
+
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const allCollapsed = allBucketsCollapsed(buckets, collapsed);
+
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, {
-      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}`,
+    usePagination(sorted, {
+      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}|${sortKey}|${sortDir}`,
     });
   const summary = useMemo(() => ({
     total: rows.length,
@@ -150,6 +231,69 @@ export default function QuotationsPage() {
     accepted: rows.filter((row) => ["accepted", "won"].includes(row.status)).length,
     value: rows.reduce((sum, row) => sum + (Number(row.totalAmount) || 0), 0),
   }), [rows]);
+
+  /* ── แถวของใบเสนอราคาหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ──────────
+     ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
+  const quoteRow = (r) => (
+                <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
+                  <td>
+                    {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
+                    <Link prefetch={false} href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
+                    {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: "var(--fs-3)" }}>ฉบับแก้ไข R{r.revisionNo}</span>}
+                  </td>
+                  <td>
+                    {/* ⭐ รหัสลูกค้าอยู่ **เหนือ** ชื่อกิจการในตารางนี้ (มติผู้ใช้ 2026-08-12) —
+                        เซลนี้เรียงจากบนลงล่างเป็น รหัส → ชื่อกิจการ → ชื่อดีล ⇒ กวาดตาลงคอลัมน์
+                        แล้วเจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
+                        ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
+                    {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
+                    {naText(r.customerName)}
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
+                      <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{naText(r.deal?.title)}</Link>
+                    </span>
+                  </td>
+                  <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">{NA}</span>}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
+                  <td className="num mono">{fmtMoney(r.totalAmount)}</td>
+                  <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
+                  <td className="num">
+                    <div style={{ display: "inline-flex", gap: 2 }}>
+                      <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
+                        onClick={async () => {
+                          const printWindow = prepareQuotePrintWindow();
+                          if (!printWindow) return;
+                          try {
+                            const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
+                            await openQuotePrintWindowPreferIssued(data, printWindow);
+                          } catch (error) {
+                            showQuotePrintError(printWindow, error.message);
+                          }
+                        }}>
+                        <Printer size={15} aria-hidden="true" />
+                      </button>
+                      {/* ⚠️ ด่านเดียวกับหน้ารายละเอียดและ PATCH ของ API (`isEditableQuotation`)
+                          — ใบอื่นใช้ "ออก Rev." ที่หน้าใบ
+                          🐞 เดิมเช็คแค่ `status` ⇒ ใบที่อนุมัติแล้ว (ซึ่ง mig 0165 ตั้งเป็น
+                          'sent' ให้เอง) ก็ได้ดินสอ ⇒ กดแล้วตกไปอยู่ในโหมดแก้ไขของใบที่แก้
+                          ไม่ได้ ซึ่งซ่อนปุ่มทั้งการ์ดจนเหลือ "Won" ปุ่มเดียว (IS-26080011) */}
+                      {canEdit && isEditableQuotation(r) && (
+                        <Link prefetch={false} href={`/sa/quotations/${r.id}?edit=1`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
+                          <Pencil size={15} aria-hidden="true" />
+                        </Link>
+                      )}
+                      {/* ลบ: draft ทุกคนที่แก้ได้ / superuser ลบสถานะอื่น / admin บังคับลบได้ทุกสถานะ (รวม accepted) */}
+                      {(role === "admin" || (canEdit && r.status !== "accepted" && (r.status === "draft" || isSuperuser(role)))) && (
+                        <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
+                          onClick={() => deleteQuote(r)}>
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </DetailRow>
+  );
 
   if (!canView) {
     return (
@@ -232,7 +376,27 @@ export default function QuotationsPage() {
                 }] : []),
               ]}
             />
+            <GroupMenu
+              title="จัดกลุ่มใบเสนอราคา"
+              value={groupBy}
+              onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
+              options={GROUP_OPTIONS}
+            />
+            {!!buckets?.length && (
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
+              />
+            )}
             <div className="spacer" />
+            <SortMenu
+              title="เรียงลำดับใบเสนอราคา"
+              value={sortKey}
+              defaultValue={SORT_DEFAULT}
+              onChange={(value) => { setSortKey(value); setSortDir(sortDirOf(value)); }}
+              options={SORT_OPTIONS}
+            />
+            <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
           </div>
 
           <div className="premium-glass-table table-responsive" aria-busy={loading}>
@@ -252,66 +416,25 @@ export default function QuotationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((r) => (
-                  <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
-                    <td>
-                      {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
-                      <Link prefetch={false} href={`/sa/quotations/${r.id}`} className="linklike"><strong className="mono">{r.quoteNumber}</strong></Link>
-                      {r.revisionNo > 0 && <span style={{ display: "block", color: "var(--amber)", fontSize: "var(--fs-3)" }}>ฉบับแก้ไข R{r.revisionNo}</span>}
-                    </td>
-                    <td>
-                      {/* ⭐ รหัสลูกค้าอยู่ **เหนือ** ชื่อกิจการในตารางนี้ (มติผู้ใช้ 2026-08-12) —
-                          เซลนี้เรียงจากบนลงล่างเป็น รหัส → ชื่อกิจการ → ชื่อดีล ⇒ กวาดตาลงคอลัมน์
-                          แล้วเจอรหัสที่ตำแหน่งเดียวกันทุกแถว ไม่ต้องอ่านชื่อยาว ๆ ให้จบก่อน
-                          ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
-                      {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
-                      {naText(r.customerName)}
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                        <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{naText(r.deal?.title)}</Link>
-                      </span>
-                    </td>
-                    <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">{NA}</span>}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
-                    <td className="num mono">{fmtMoney(r.totalAmount)}</td>
-                    <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
-                    <td className="num">
-                      <div style={{ display: "inline-flex", gap: 2 }}>
-                        <button type="button" className="btn-icon" title="พิมพ์" aria-label={`พิมพ์ ${r.quoteNumber}`}
-                          onClick={async () => {
-                            const printWindow = prepareQuotePrintWindow();
-                            if (!printWindow) return;
-                            try {
-                              const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
-                              const data = await res.json().catch(() => ({}));
-                              if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
-                              await openQuotePrintWindowPreferIssued(data, printWindow);
-                            } catch (error) {
-                              showQuotePrintError(printWindow, error.message);
-                            }
-                          }}>
-                          <Printer size={15} aria-hidden="true" />
-                        </button>
-                        {/* ⚠️ ด่านเดียวกับหน้ารายละเอียดและ PATCH ของ API (`isEditableQuotation`)
-                            — ใบอื่นใช้ "ออก Rev." ที่หน้าใบ
-                            🐞 เดิมเช็คแค่ `status` ⇒ ใบที่อนุมัติแล้ว (ซึ่ง mig 0165 ตั้งเป็น
-                            'sent' ให้เอง) ก็ได้ดินสอ ⇒ กดแล้วตกไปอยู่ในโหมดแก้ไขของใบที่แก้
-                            ไม่ได้ ซึ่งซ่อนปุ่มทั้งการ์ดจนเหลือ "Won" ปุ่มเดียว (IS-26080011) */}
-                        {canEdit && isEditableQuotation(r) && (
-                          <Link prefetch={false} href={`/sa/quotations/${r.id}?edit=1`} className="btn-icon" style={{ color: "var(--blue)" }} title="แก้ไข" aria-label={`แก้ไข ${r.quoteNumber}`}>
-                            <Pencil size={15} aria-hidden="true" />
-                          </Link>
-                        )}
-                        {/* ลบ: draft ทุกคนที่แก้ได้ / superuser ลบสถานะอื่น / admin บังคับลบได้ทุกสถานะ (รวม accepted) */}
-                        {(role === "admin" || (canEdit && r.status !== "accepted" && (r.status === "draft" || isSuperuser(role)))) && (
-                          <button type="button" className="btn-icon danger" title={r.status === "draft" ? "ลบฉบับร่าง" : "ลบ (สิทธิ์ผู้ดูแลระบบ)"} aria-label={`ลบ ${r.quoteNumber}`}
-                            onClick={() => deleteQuote(r)}>
-                            <Trash2 size={15} aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </DetailRow>
-                ))}
+                {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `quoteRow` ตัวเดียวกับโหมดปกติ */}
+                {buckets ? buckets.map((bucket) => {
+                  const bucketCollapsed = collapsed.has(bucket.key);
+                  return (
+                    <Fragment key={bucket.key}>
+                      <TableGroupRow
+                        colSpan={7}
+                        label={bucket.label}
+                        sub={bucket.sub}
+                        badge={`${bucket.count} ใบ`}
+                        total={fmtMoney(bucket.total)}
+                        totalTitle="ยอดรวมของใบในกลุ่มนี้"
+                        collapsed={bucketCollapsed}
+                        onToggle={() => toggleBucket(bucket.key)}
+                      />
+                      {!bucketCollapsed && bucket.items.map(quoteRow)}
+                    </Fragment>
+                  );
+                }) : pageRows.map(quoteRow)}
                 {!filtered.length && !loading && (
                   <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--text-3)" }}>ยังไม่มีใบเสนอราคา {canEdit ? "— เริ่มจากปุ่มสร้างด้านบน" : ""}</td></tr>
                 )}
@@ -319,7 +442,8 @@ export default function QuotationsPage() {
             </table></TableScroll>
           </div>
 
-          {filtered.length > 0 && (
+          {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มคาหน้าแล้วยอดหัวกลุ่มไม่ตรงกับแถว */}
+          {filtered.length > 0 && !buckets && (
             <Pager
               page={page}
               pageCount={pageCount}

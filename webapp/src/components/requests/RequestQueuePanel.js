@@ -10,11 +10,11 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, ChevronRight, ChevronsDownUp,
-  ChevronsUpDown, FolderKanban, Layers, MessageCircleQuestion, Search, Tag, User, Users,
+  Building2, ChevronDown, ChevronRight,
+  FolderKanban, MessageCircleQuestion, Search, Tag, User, Users,
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
-import MenuSelect from "@/components/ui/MenuSelect";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
@@ -296,43 +296,28 @@ export default function RequestQueuePanel({
               onClear={() => clearFilters?.()}
               groups={facetGroups}
             />
-            <MenuSelect
-              icon={Layers}
-              label="จัดกลุ่ม"
+            {/* ปุ่มจัดกลุ่ม/เรียงมาจากชุดกลาง `ui/ViewMenus` (ยกมารวม 2026-08-15) —
+                เดิมประกอบเองที่นี่ ซึ่งแปลว่าไอคอน/ป้าย/tooltip จะเพี้ยนจากตารางอื่นทีละนิด */}
+            <GroupMenu
               title="จัดกลุ่มรายการคำร้อง"
               value={groupBy}
               onChange={(value) => setGroupBy?.(value)}
               options={REQUEST_GROUP_OPTIONS}
-              isActive={(value) => value !== "none"}
             />
             {groups.length > 1 && (
-              <Button
-                iconOnly
-                onClick={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
-                title={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                aria-label={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                icon={allCollapsed ? <ChevronsUpDown size={15} /> : <ChevronsDownUp size={15} />}
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
               />
             )}
             <div className="spacer" />
-            <MenuSelect
-              icon={ArrowUpDown}
-              label="เรียง"
-              title="เรียงลำดับ"
+            <SortMenu
               value={sortKey}
+              defaultValue="urgency"
               onChange={(key) => setSort?.(key)}
               options={REQUEST_SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
-              showValue
-              isActive={(key) => key !== "urgency"}
             />
-            <Button
-              iconOnly
-              className="ui-sort-direction"
-              onClick={() => toggleSortDir?.()}
-              title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
-              aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
-              icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-            />
+            <SortDirButton dir={sortDir} onToggle={() => toggleSortDir?.()} />
           </>
         )}
       </div>

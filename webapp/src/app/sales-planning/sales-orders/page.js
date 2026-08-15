@@ -1,19 +1,21 @@
 "use client";
-import { TableEmpty, TableScroll } from "@/components/ui/Table";
+import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Search } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
+import FilterPopover from "@/components/ui/FilterPopover";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
+import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
 import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
@@ -59,6 +61,56 @@ function paymentCell(payment) {
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
+/* ── มุมมองของตาราง: เรียง · จัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────────────
+   ทรงเดียวกับทะเบียนการชำระและตารางไปป์ไลน์ดีล — ปุ่มอยู่ใน `ui/ViewMenus`
+   ตัวจัดถังอยู่ใน `lib/listGrouping` · ที่นี่ประกาศแค่ "หัวข้อของหน้านี้" */
+const SORT_OPTIONS = [
+  { value: "recent", label: "ล่าสุด", dir: "asc" },
+  { value: "order", label: "เลขที่ใบ", dir: "desc" },
+  { value: "customer", label: "ลูกค้า", dir: "asc" },
+  { value: "actual", label: "Actual", dir: "desc" },
+  { value: "due", label: "กำหนดชำระ", dir: "asc" },
+];
+const SORT_DEFAULT = "recent";
+const sortDirOf = (key) => SORT_OPTIONS.find((option) => option.value === key)?.dir || "asc";
+
+const GROUP_OPTIONS = [
+  { value: "none", label: "ไม่จัดกลุ่ม" },
+  { value: "customer", label: "ลูกค้า" },
+  { value: "owner", label: "ผู้ดูแล (AE)" },
+  { value: "status", label: "สถานะเอกสาร" },
+];
+
+/* สถานะการชำระของใบ — คำถามที่ตารางสถานะเอกสารตอบไม่ได้ ("ใบไหนเงินยังไม่ครบ")
+   ⚠️ `tracked` เท็จ = ยังไม่เริ่มติดตาม ไม่ใช่ "ยังไม่จ่าย" — คนละเรื่องกัน */
+const PAYMENT_FILTERS = {
+  complete: { label: "เก็บเงินครบแล้ว", match: (row) => row.payment?.complete },
+  overdue: { label: "มีงวดเลยกำหนด", match: (row) => (row.payment?.overdue || 0) > 0 },
+  rejected: { label: "มีงวดถูกตีกลับ", match: (row) => (row.payment?.rejected || 0) > 0 },
+  untracked: { label: "ยังไม่เริ่มติดตาม", match: (row) => !row.payment?.tracked },
+};
+
+/* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
+   ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้ */
+function compareOrders(a, b, key, dir) {
+  const mul = dir === "desc" ? -1 : 1;
+  const text = (value) => String(value || "");
+  if (key === "due") {
+    const aDue = a.paymentDueDate || null;
+    const bDue = b.paymentDueDate || null;
+    if (!aDue !== !bDue) return aDue ? -1 : 1;
+    if (aDue !== bDue) return (String(aDue) < String(bDue) ? -1 : 1) * mul;
+  } else if (key === "actual") {
+    const diff = (Number(a.actualAmount) || 0) - (Number(b.actualAmount) || 0);
+    if (diff) return diff * mul;
+  } else if (key === "customer") {
+    const byName = text(a.customerName).localeCompare(text(b.customerName), "th");
+    if (byName) return byName * mul;
+  }
+  const byOrder = text(a.orderNumber).localeCompare(text(b.orderNumber), "th");
+  return key === "order" ? byOrder * mul : byOrder;
+}
+
 
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
@@ -66,7 +118,10 @@ export default function SalesOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("all");
+  /* ตัวกรองรวมในปุ่มเดียว (FilterPopover) — เลือกได้หลายค่าต่อหมวด ต่างจาก
+     dropdown เดิมที่เลือกสถานะได้ทีละค่า ("รออนุมัติ + ตีกลับ" คือคำถามจริงของ AE Sup) */
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [paymentFilter, setPaymentFilter] = useState([]);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
@@ -103,20 +158,67 @@ export default function SalesOrdersPage() {
     return () => { alive = false; };
   }, []);
 
+  const [groupBy, setGroupBy] = useState("none");
+  const [sortKey, setSortKey] = useState(SORT_DEFAULT);
+  const [sortDir, setSortDir] = useState(sortDirOf(SORT_DEFAULT));
+  const [collapsed, setCollapsed] = useState(() => new Set());
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (waitingOnMeOnly && !row._waitingOnMe) return false;
-      if (status !== "all" && row.status !== status) return false;
+      if (statusFilter.length && !statusFilter.includes(row.status)) return false;
+      // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
+      if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, status, waitingOnMeOnly]);
+  }, [query, rows, statusFilter, paymentFilter, waitingOnMeOnly]);
+
+  /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
+     "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
+  const sorted = useMemo(() => {
+    if (sortKey === SORT_DEFAULT) return sortDir === "desc" ? [...filtered].reverse() : filtered;
+    return [...filtered].sort((a, b) => compareOrders(a, b, sortKey, sortDir));
+  }, [filtered, sortKey, sortDir]);
+
+  const buckets = useMemo(() => {
+    if (groupBy === "none") return null;
+    return bucketList(sorted, (row) => {
+      if (groupBy === "customer") {
+        return {
+          key: row.customerArCode || String(row.customerName || "").trim(),
+          label: row.customerName || "ไม่ระบุลูกค้า",
+          sub: row.customerArCode || null,
+          weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+        };
+      }
+      if (groupBy === "owner") {
+        // ⚠️ ผู้ดูแลอยู่ที่ **ดีล** ของใบ · กุญแจใช้ id ก่อนชื่อ (ชื่อซ้ำกันได้)
+        const name = String(row.deal?.ownerName || "").trim();
+        return {
+          key: row.deal?.ownerId || name,
+          label: name ? fmtName(name) : "ไม่ระบุผู้ดูแล",
+          sub: row.deal?.team || null,
+          weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+        };
+      }
+      return {
+        key: row.status,
+        label: STATUS[row.status] || row.status,
+        weight: row.status === "approved" ? Number(row.actualAmount) || 0 : 0,
+      };
+    });
+  }, [sorted, groupBy]);
+
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const allCollapsed = allBucketsCollapsed(buckets, collapsed);
+  const filterCount = statusFilter.length + paymentFilter.length + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, { resetKey: `${query}|${status}|${waitingOnMeOnly}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${sortKey}|${sortDir}` });
 
   const summary = useMemo(() => ({
     total: rows.length,
@@ -124,6 +226,59 @@ export default function SalesOrdersPage() {
     approved: rows.filter((row) => row.status === "approved").length,
     actual: rows.reduce((sum, row) => sum + (row.status === "approved" ? Number(row.actualAmount) || 0 : 0), 0),
   }), [rows]);
+
+  /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
+     ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
+  const orderRow = (row) => {
+    const track = salesOrderListTrack(row);
+    const summary = salesOrderTrackSummary(row);
+    return (
+                <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
+                  <td>
+                    <Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+                    {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
+                        เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
+                        จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
+                    <span className="cell-sub" title={row.referenceDoc || undefined}>
+                      <span className="cell-ellipsis">
+                        {naText(row.quotation?.quoteNumber)}
+                        {row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
+                      </span>
+                    </span>
+                    {track.cancelled ? (
+                      <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
+                    ) : (
+                      <>
+                        {/* จอกว้างเห็นรางเต็ม · จอแคบสลับเป็นป้ายสรุปข้างล่าง (page.module.css) */}
+                        <span className={styles.trackWrap}><SalesOrderTrack steps={track.steps} /></span>
+                        {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
+                        <span className={styles.summary}>
+                          <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>
+                        </span>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
+                    {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
+                    {naText(row.customerName)}
+                    <span className="cell-sub">{naText(row.deal?.title)}</span>
+                  </td>
+                  {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
+                      ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง */}
+                  <td className={`num mono ${row.status === "approved" ? "" : "cell-num-idle"}`.trim()}>
+                    {fmtMoney(row.actualAmount)}
+                    {row.status === "approved" ? null : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
+                  </td>
+                  {/* ⭐ งวดชำระ — นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** (กฎเดียวกับทั้งระบบ)
+                      บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
+                  {/* ⚠️ `paymentCell` วาดบรรทัดสถานะให้ในตัวแล้ว — เติมซ้ำที่นี่จะได้
+                      คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
+                  <td className="num mono">{paymentCell(row.payment)}</td>
+                  <td className={`num ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>{fmtDate(row.paymentDueDate)}</td>
+                </DetailRow>
+    );
+  };
 
   if (!canView) return <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></SaWorkspace>;
 
@@ -150,16 +305,53 @@ export default function SalesOrdersPage() {
         </SaMetricStrip>
 
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
+          {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
           <div className="toolbar">
             <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
-            {waitingOnMeOnly && (
-              /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
-              <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
+            <FilterPopover
+              count={filterCount}
+              onClear={() => { setStatusFilter([]); setPaymentFilter([]); setWaitingOnMeOnly(false); }}
+              groups={[
+                {
+                  key: "status", label: "สถานะเอกสาร", icon: Flag,
+                  options: Object.entries(STATUS).map(([value, label]) => ({ value, label })),
+                  selected: statusFilter, onChange: setStatusFilter,
+                },
+                {
+                  key: "payment", label: "การชำระ", icon: Wallet,
+                  options: Object.entries(PAYMENT_FILTERS).map(([value, { label }]) => ({ value, label })),
+                  selected: paymentFilter, onChange: setPaymentFilter,
+                },
+                {
+                  key: "mine", label: "งานของฉัน", icon: UserRound,
+                  options: [{ value: "waiting", label: "รอฉันลงมือ" }],
+                  selected: waitingOnMeOnly ? ["waiting"] : [],
+                  onChange: (values) => setWaitingOnMeOnly(values.length > 0),
+                },
+              ]}
+            />
+            <GroupMenu
+              title="จัดกลุ่มใบสั่งขาย"
+              value={groupBy}
+              onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
+              options={GROUP_OPTIONS}
+            />
+            {!!buckets?.length && (
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
+              />
             )}
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="premium-select" style={{ width: 170 }}>
-              <option value="all">ทุกสถานะ</option>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </Select>
             <div className="spacer" />
+            {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (เงินมากไปน้อย · วันใกล้ไปไกล) */}
+            <SortMenu
+              title="เรียงลำดับใบสั่งขาย"
+              value={sortKey}
+              defaultValue={SORT_DEFAULT}
+              onChange={(value) => { setSortKey(value); setSortDir(sortDirOf(value)); }}
+              options={SORT_OPTIONS}
+            />
+            <SortDirButton dir={sortDir} onToggle={() => setSortDir((dir) => (dir === "asc" ? "desc" : "asc"))} />
           </div>
           {/* ── ตารางรายการ: รื้อใหม่แบบ ข (มติผู้ใช้ 2026-08-13) ──────────────
               9 → 5 คอลัมน์ · **ตัดคอลัมน์ที่ไม่มีข้อมูลจริงทิ้ง**:
@@ -173,56 +365,26 @@ export default function SalesOrdersPage() {
             <table className="w-full text-sm">
               <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ</th><th className="num">กำหนดชำระ</th></tr></thead>
               <tbody>
-                {pageRows.map((row) => {
-                  const track = salesOrderListTrack(row);
-                  const summary = salesOrderTrackSummary(row);
+                {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `orderRow` ตัวเดียว
+                    กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
+                {buckets ? buckets.map((bucket) => {
+                  const bucketCollapsed = collapsed.has(bucket.key);
                   return (
-                  <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
-                    <td>
-                      <Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
-                      {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
-                          เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
-                          จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
-                      <span className="cell-sub" title={row.referenceDoc || undefined}>
-                        <span className="cell-ellipsis">
-                          {naText(row.quotation?.quoteNumber)}
-                          {row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
-                        </span>
-                      </span>
-                      {track.cancelled ? (
-                        <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
-                      ) : (
-                        <>
-                          {/* จอกว้างเห็นรางเต็ม · จอแคบสลับเป็นป้ายสรุปข้างล่าง (page.module.css) */}
-                          <span className={styles.trackWrap}><SalesOrderTrack steps={track.steps} /></span>
-                          {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
-                          <span className={styles.summary}>
-                            <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>
-                          </span>
-                        </>
-                      )}
-                    </td>
-                    <td>
-                      {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
-                      {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
-                      {naText(row.customerName)}
-                      <span className="cell-sub">{naText(row.deal?.title)}</span>
-                    </td>
-                    {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
-                        ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง */}
-                    <td className={`num mono ${row.status === "approved" ? "" : "cell-num-idle"}`.trim()}>
-                      {fmtMoney(row.actualAmount)}
-                      {row.status === "approved" ? null : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
-                    </td>
-                    {/* ⭐ งวดชำระ — นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** (กฎเดียวกับทั้งระบบ)
-                        บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
-                    {/* ⚠️ `paymentCell` วาดบรรทัดสถานะให้ในตัวแล้ว — เติมซ้ำที่นี่จะได้
-                        คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
-                    <td className="num mono">{paymentCell(row.payment)}</td>
-                    <td className={`num ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>{fmtDate(row.paymentDueDate)}</td>
-                  </DetailRow>
+                    <Fragment key={bucket.key}>
+                      <TableGroupRow
+                        colSpan={5}
+                        label={bucket.label}
+                        sub={bucket.sub}
+                        badge={`${bucket.count} ใบ`}
+                        total={fmtMoney(bucket.total)}
+                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว)"
+                        collapsed={bucketCollapsed}
+                        onToggle={() => toggleBucket(bucket.key)}
+                      />
+                      {!bucketCollapsed && bucket.items.map(orderRow)}
+                    </Fragment>
                   );
-                })}
+                }) : pageRows.map(orderRow)}
                 {!filtered.length && !loading && (
                   <TableEmpty
                     colSpan={5}
@@ -233,7 +395,8 @@ export default function SalesOrdersPage() {
               </tbody>
             </table>
           </TableScroll>
-          {filtered.length > 0 && (
+          {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มคาหน้าแล้วยอดหัวกลุ่มไม่ตรงกับแถวที่เห็น */}
+          {filtered.length > 0 && !buckets && (
             <Pager
               page={page}
               pageCount={pageCount}
@@ -248,3 +411,4 @@ export default function SalesOrdersPage() {
     </SaWorkspace>
   );
 }
+

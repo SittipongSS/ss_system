@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  LEDGER_COLUMNS, filterLedger, groupAsOrder, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow,
-  ledgerSummary, pendingConfirmations, sortLedger,
+  LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
+  groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
+  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups,
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -266,4 +267,227 @@ test('ไม่มีงวดรอรับรอง = คิวว่าง �
   assert.deepEqual(pendingConfirmations([]), []);
   assert.deepEqual(pendingConfirmations(), []);
   assert.deepEqual(pendingConfirmations([make({ status: 'confirmed' })]), []);
+});
+
+// ── ตัวกรองระดับ "ใบ" · การเรียง · การจัดกลุ่ม (มติผู้ใช้ 2026-08-15) ────────
+
+/* ใบสามใบ: SOR-A เก็บครบ · SOR-B ค้างครึ่ง · SOR-C ยังไม่เก็บเลย */
+const ledgerFixture = () => [
+  ledgerRow({
+    installment: { id: 'A1', seq: 1, label: 'เต็มจำนวน', percent: 100, amount: 10000, status: 'confirmed', evidence: [] },
+    order: { id: 'SOR-A', orderNumber: 'SO-26080001-0', quotationId: 'QT-A' },
+    quotation: { id: 'QT-A', quoteNumber: 'QT-26080001-0' },
+    customer: { name: 'ลูกค้า ก', arCode: 'AR-001' },
+    todayIso: TODAY,
+  }),
+  ledgerRow({
+    installment: { id: 'B1', seq: 1, label: 'มัดจำ', percent: 50, amount: 5000, status: 'confirmed', dueDate: '2026-08-01', evidence: [] },
+    order: { id: 'SOR-B', orderNumber: 'SO-26080002-0', quotationId: 'QT-B' },
+    quotation: { id: 'QT-B', quoteNumber: 'QT-26080002-0' },
+    customer: { name: 'ลูกค้า ข', arCode: 'AR-002' },
+    todayIso: TODAY,
+  }),
+  ledgerRow({
+    installment: { id: 'B2', seq: 2, label: 'งวดท้าย', percent: 50, amount: 5000, status: 'pending', dueDate: '2026-09-30', evidence: [] },
+    order: { id: 'SOR-B', orderNumber: 'SO-26080002-0', quotationId: 'QT-B' },
+    quotation: { id: 'QT-B', quoteNumber: 'QT-26080002-0' },
+    customer: { name: 'ลูกค้า ข', arCode: 'AR-002' },
+    todayIso: TODAY,
+  }),
+  ledgerRow({
+    installment: { id: 'C1', seq: 1, label: 'เต็มจำนวน', percent: 100, amount: 90000, status: 'pending', dueDate: null, evidence: [] },
+    order: { id: 'SOR-C', orderNumber: 'SO-26080003-0', quotationId: 'QT-C' },
+    quotation: { id: 'QT-C', quoteNumber: 'QT-26080003-0' },
+    customer: { name: 'ลูกค้า ค', arCode: 'AR-003' },
+    todayIso: TODAY,
+  }),
+];
+
+/* 🔴 คำถามแรกของบัญชีคือ "ใบไหนยังเก็บไม่ครบ" ซึ่งเป็นคุณสมบัติของใบ ไม่ใช่ของงวด */
+test('สถานะระดับใบ: เก็บครบเมื่อทุกงวด confirmed เท่านั้น', () => {
+  const states = orderStateIndex(ledgerFixture());
+  assert.equal(states.get('SOR-A'), 'done');
+  assert.equal(states.get('SOR-B'), 'open');   // มีงวดที่ยังไม่ confirmed
+  assert.equal(states.get('SOR-C'), 'open');
+});
+
+test('reported ยังไม่นับว่าเก็บครบ (กติกา mig 0245)', () => {
+  const rows = [make({ seq: 1, status: 'reported' })];
+  assert.equal(orderStateIndex(rows).get('SOR-1'), 'open');
+});
+
+/* ⚠️ ดัชนีต้องคิดจากงวดทั้งหมด **ก่อนกรอง** — ถ้าคิดจากงวดที่เหลือหลังกรองสถานะ
+   ใบที่เก็บครบแล้วจะกลายเป็น "ยังเก็บไม่ครบ" ทันทีที่กรองดูเฉพาะงวดรอชำระ */
+test('กรองใบที่ยังเก็บไม่ครบ ใช้ดัชนีจากก่อนกรอง ไม่ใช่จากงวดที่เหลือ', () => {
+  const all = ledgerFixture();
+  const states = orderStateIndex(all);
+  const open = filterLedger(all, { orderState: ['open'], orderStates: states });
+  assert.deepEqual([...new Set(open.map((r) => r.orderNumber))], ['SO-26080002-0', 'SO-26080003-0']);
+
+  const done = filterLedger(all, { orderState: ['done'], orderStates: states });
+  assert.deepEqual(done.map((r) => r.orderNumber), ['SO-26080001-0']);
+
+  // กรองสถานะงวดพร้อมกัน: ใบที่เก็บครบต้องยังถูกนับว่า done อยู่
+  const doneConfirmedOnly = filterLedger(all, { orderState: ['done'], orderStates: states, status: ['confirmed'] });
+  assert.equal(doneConfirmedOnly.length, 1);
+});
+
+test('ไม่เลือกสถานะใบ = ไม่กรอง', () => {
+  const all = ledgerFixture();
+  assert.equal(filterLedger(all, { orderState: [], orderStates: orderStateIndex(all) }).length, all.length);
+});
+
+// ── การเรียงระดับใบ ──────────────────────────────────────────────────────
+test('เรียงตั้งต้นคือความด่วน — ใช้ลำดับที่ groupLedgerByOrder จัดมาแล้ว', () => {
+  const groups = groupLedgerByOrder(ledgerFixture());
+  assert.deepEqual(
+    sortLedgerGroups(groups, 'urgent').map((g) => g.orderNumber),
+    groups.map((g) => g.orderNumber),
+  );
+  // สลับทิศ = กลับลำดับเดิม ไม่ใช่คิดความด่วนใหม่
+  assert.deepEqual(
+    sortLedgerGroups(groups, 'urgent', 'desc').map((g) => g.orderNumber),
+    [...groups].reverse().map((g) => g.orderNumber),
+  );
+});
+
+test('เรียงตามยอดค้างรับ มากไปน้อยเป็นค่าตั้งต้นของแบบนี้', () => {
+  const groups = groupLedgerByOrder(ledgerFixture());
+  assert.equal(ledgerSortDir('outstanding'), 'desc');
+  assert.deepEqual(
+    sortLedgerGroups(groups, 'outstanding', 'desc').map((g) => g.orderNumber),
+    ['SO-26080003-0', 'SO-26080002-0', 'SO-26080001-0'],
+  );
+});
+
+/* 🔴 ใบที่ยังไม่มีกำหนดต้องอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง — โผล่ขึ้นหัวตาราง
+   เมื่อไร คนอ่านว่า "ด่วนที่สุด" ซึ่งตรงข้ามกับความจริง (กติกาเดียวกับ sortLedger) */
+test('เรียงตามกำหนดถัดไป: ใบที่ยังไม่มีกำหนดอยู่ท้ายทั้งสองทิศ', () => {
+  const groups = groupLedgerByOrder(ledgerFixture());
+  assert.equal(sortLedgerGroups(groups, 'due', 'asc').at(-1).orderNumber, 'SO-26080003-0');
+  assert.equal(sortLedgerGroups(groups, 'due', 'desc').at(-1).orderNumber, 'SO-26080003-0');
+});
+
+test('เรียงตามลูกค้าและเลขที่ใบ', () => {
+  const groups = groupLedgerByOrder(ledgerFixture());
+  assert.deepEqual(sortLedgerGroups(groups, 'customer', 'asc').map((g) => g.customerName), ['ลูกค้า ก', 'ลูกค้า ข', 'ลูกค้า ค']);
+  assert.deepEqual(sortLedgerGroups(groups, 'order', 'desc').map((g) => g.orderNumber), ['SO-26080003-0', 'SO-26080002-0', 'SO-26080001-0']);
+});
+
+test('ทุกตัวเลือกการเรียงมีทิศทางตั้งต้นประกาศไว้', () => {
+  for (const option of LEDGER_SORT_OPTIONS) {
+    assert.ok(['asc', 'desc'].includes(option.dir), `${option.value} ไม่มีทิศทางตั้งต้น`);
+    assert.equal(ledgerSortDir(option.value), option.dir);
+  }
+  assert.equal(ledgerSortDir('ไม่มีแบบนี้'), 'asc');   // ค่าที่ไม่รู้จัก = ไม่พัง
+});
+
+// ── การจัดกลุ่ม ──────────────────────────────────────────────────────────
+test('ไม่จัดกลุ่ม = คืน null ไม่ใช่ถังเดียวที่มีทุกใบ', () => {
+  const groups = groupLedgerByOrder(ledgerFixture());
+  assert.equal(groupLedgerBuckets(groups, 'none'), null);
+  assert.equal(groupLedgerBuckets(groups), null);
+});
+
+test('จัดกลุ่มตามลูกค้า: หนึ่งถังต่อหนึ่งลูกค้า พร้อมรหัสและยอดค้างรับรวม', () => {
+  const buckets = groupLedgerBuckets(groupLedgerByOrder(ledgerFixture()), 'customer');
+  assert.equal(buckets.length, 3);
+  const b = buckets.find((bucket) => bucket.label === 'ลูกค้า ข');
+  assert.equal(b.sub, 'AR-002');
+  assert.equal(b.count, 1);
+  assert.equal(b.total, 5000);
+});
+
+test('จัดกลุ่มตามเดือนที่ต้องเก็บ: ใบที่ยังไม่มีกำหนดไปถังท้ายสุด', () => {
+  const buckets = groupLedgerBuckets(groupLedgerByOrder(ledgerFixture()), 'dueMonth');
+  assert.equal(buckets.at(-1).label, 'ยังไม่มีกำหนด');
+  assert.ok(buckets.at(-1).missing);
+  assert.ok(buckets.some((bucket) => bucket.label === 'ก.ย. 26'));
+});
+
+test('จัดกลุ่มตามสถานะการเก็บ: ใบเก็บครบแยกออกจากใบที่ยังค้าง', () => {
+  const buckets = groupLedgerBuckets(groupLedgerByOrder(ledgerFixture()), 'state');
+  const labels = buckets.map((bucket) => bucket.label);
+  assert.ok(labels.includes('เก็บครบแล้ว'));
+  assert.equal(buckets.find((bucket) => bucket.label === 'เก็บครบแล้ว').count, 1);
+  // ทุกใบต้องอยู่ถังใดถังหนึ่งเสมอ ไม่มีใบตกหล่น
+  assert.equal(buckets.reduce((sum, bucket) => sum + bucket.count, 0), 3);
+});
+
+/* 🔴 ผู้ใช้เพิ่งเลือกวิธีเรียงไป — ถ้าจัดกลุ่มแล้วลำดับพลิกเป็นอย่างอื่น
+   เท่ากับปุ่ม "เรียง" ถูกยกเลิกเงียบ ๆ */
+test('ลำดับถังตามลำดับที่ใบแรกของถังโผล่ในรายการที่เรียงไว้', () => {
+  const sorted = sortLedgerGroups(groupLedgerByOrder(ledgerFixture()), 'outstanding', 'desc');
+  const buckets = groupLedgerBuckets(sorted, 'customer');
+  assert.deepEqual(buckets.map((bucket) => bucket.label), ['ลูกค้า ค', 'ลูกค้า ข', 'ลูกค้า ก']);
+});
+
+test('ตัวเลือกจัดกลุ่มมี "ไม่จัดกลุ่ม" เป็นตัวแรกเสมอ', () => {
+  assert.equal(LEDGER_GROUP_OPTIONS[0].value, 'none');
+});
+
+// ── ผู้ดูแล (AE) มาจากดีล ไม่ใช่จากใบ ────────────────────────────────────
+/* 🐞 `sales_orders` ไม่มีคอลัมน์ team/ownerName — เคย select แล้วได้ 500 ทั้งหน้า
+   ⇒ ทะเบียนต้องรับผู้ดูแลผ่าน `deal` ที่ join มา */
+test('ผู้ดูแลและทีมมาจากดีลที่ join มา', () => {
+  const row = ledgerRow({
+    installment: { id: 'i', seq: 1, amount: 100, status: 'pending', evidence: [] },
+    order: { id: 'SOR-1', orderNumber: 'SO-1' },
+    deal: { id: 'D-1', ownerId: 'U-9', ownerName: 'Patcharapit Jueajan', team: 'SV' },
+    todayIso: TODAY,
+  });
+  assert.equal(row.ownerId, 'U-9');
+  assert.equal(row.ownerName, 'Patcharapit Jueajan');
+  assert.equal(row.team, 'SV');
+});
+
+test('ใบที่ไม่ได้มาจากดีล ต้องไม่พัง แค่ไม่มีผู้ดูแล', () => {
+  const row = ledgerRow({
+    installment: { id: 'i', seq: 1, amount: 100, status: 'pending', evidence: [] },
+    order: { id: 'SOR-2', orderNumber: 'SO-2' },
+    todayIso: TODAY,
+  });
+  assert.equal(row.ownerName, '');
+  assert.equal(row.ownerId, null);
+});
+
+const rowWithOwner = (order, deal) => ledgerRow({
+  installment: { id: `SOI-${order}`, seq: 1, label: 'เต็มจำนวน', percent: 100, amount: 1000, status: 'pending', evidence: [] },
+  order: { id: `SOR-${order}`, orderNumber: `SO-${order}`, quotationId: `QT-${order}` },
+  quotation: { id: `QT-${order}`, quoteNumber: `QT-${order}-0` },
+  customer: { name: `ลูกค้า ${order}`, arCode: `AR-${order}` },
+  deal,
+  todayIso: TODAY,
+});
+
+test('ก้อนใบพกผู้ดูแลติดมาด้วย ⇒ จัดกลุ่มตาม AE ได้', () => {
+  const [group] = groupLedgerByOrder([rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' })]);
+  assert.equal(group.ownerId, 'U-1');
+  assert.equal(group.ownerName, 'Nida Promthep');
+  assert.equal(group.team, 'SV');
+});
+
+test('จัดกลุ่มตามผู้ดูแล: ชื่อย่อบนหัวกลุ่ม ทีมเป็นบรรทัดรอง ไม่ระบุไปท้ายสุด', () => {
+  const groups = groupLedgerByOrder([
+    rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' }),
+    rowWithOwner('B', { ownerId: 'U-1', ownerName: 'Nida Promthep', team: 'SV' }),
+    rowWithOwner('C', null),
+    rowWithOwner('D', { ownerId: 'U-2', ownerName: 'Patcharapit Jueajan', team: 'AE' }),
+  ]);
+  const buckets = groupLedgerBuckets(groups, 'owner');
+  const nida = buckets.find((b) => b.label === 'Nida P.');
+  assert.equal(nida.count, 2, 'สองใบของ AE คนเดียวกันต้องอยู่ถังเดียว');
+  assert.equal(nida.sub, 'SV');
+  assert.equal(buckets.at(-1).label, 'ไม่ระบุผู้ดูแล');
+  assert.ok(buckets.at(-1).missing);
+  assert.equal(buckets.reduce((sum, b) => sum + b.count, 0), 4);
+});
+
+/* ⚠️ ชื่อซ้ำกันได้ — กุญแจต้องเป็น id ไม่ใช่ชื่อ ไม่งั้น AE สองคนชื่อเหมือนกันถูกยุบรวม */
+test('AE ชื่อเดียวกันแต่คนละคน ต้องไม่ถูกยุบเป็นถังเดียว', () => {
+  const groups = groupLedgerByOrder([
+    rowWithOwner('A', { ownerId: 'U-1', ownerName: 'Somchai Sri', team: 'SV' }),
+    rowWithOwner('B', { ownerId: 'U-2', ownerName: 'Somchai Sri', team: 'AE' }),
+  ]);
+  assert.equal(groupLedgerBuckets(groups, 'owner').length, 2);
 });
