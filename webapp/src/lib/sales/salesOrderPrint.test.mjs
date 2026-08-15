@@ -189,3 +189,35 @@ test('ลายเซ็นบัญชีไม่ทับช่องอื�
   // มีรูปเดียวในเอกสาร = ของบัญชีเท่านั้น (ช่องอื่นยังไม่มีลายเซ็นในเคสนี้)
   assert.equal((html.match(/data:image\/png;base64,FIN/g) || []).length, 1);
 });
+
+// ── อัตรา VAT บนกระดาษต้องตรงกับใบเสนอราคาต้นทาง (แก้ 2026-08-16) ──────────
+test('ใบยอดศูนย์/ให้ฟรี: พิมพ์อัตราของใบเสนอราคา ไม่ใช่ 0% จากการคิดย้อน', () => {
+  /* 🐞 เดิมคิดย้อน `vat ÷ (total − vat)` ⇒ ฐานภาษี 0 → ตัวหาร 0 → พิมพ์ "VAT 0%"
+     ขณะที่ใบเสนอราคาต้นทางพิมพ์ "VAT 7%" · วัดกับข้อมูลจริง 10 จาก 18 ใบเป็นแบบนี้ */
+  const html = buildSalesOrderPrintHTML({
+    ...order,
+    subtotal: 3000, discountAmount: 3000, vatAmount: 0, totalAmount: 0,
+    quotation: { ...order.quotation, vatRate: 7 },
+  });
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%/);
+  assert.doesNotMatch(html, /ภาษีมูลค่าเพิ่ม 0%/);
+});
+
+test('ใบปกติ: อัตราของใบเสนอราคาชนะการคิดย้อน (ได้เลขเดียวกันอยู่แล้ว)', () => {
+  const html = buildSalesOrderPrintHTML({ ...order, quotation: { ...order.quotation, vatRate: 7 } });
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%/);
+});
+
+test('ใบเก่าที่ไม่มีอัตราบนใบเสนอราคา: ยังคิดย้อนได้เหมือนเดิม ไม่ตกเป็น 0%', () => {
+  // 1070 − 70 = 1000 ฐาน · 70/1000 = 7%
+  const html = buildSalesOrderPrintHTML(order); // quotation ไม่มี vatRate
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 7%/);
+});
+
+test('ใบเก่าไม่มีอัตรา + ฐานภาษีเป็น 0: ยังพิมพ์ได้ ไม่พัง (0%)', () => {
+  const html = buildSalesOrderPrintHTML({
+    ...order, subtotal: 0, discountAmount: 0, vatAmount: 0, totalAmount: 0,
+  });
+  assert.match(html, /ภาษีมูลค่าเพิ่ม 0%/);
+  assert.doesNotMatch(html, /NaN/);
+});
