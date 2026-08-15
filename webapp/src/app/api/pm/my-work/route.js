@@ -5,8 +5,27 @@ import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
 import { whereTeamIn } from '@/lib/teamScope';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
+
+/* ── ตัวช่วยของไฟล์นี้: อ่านงานให้ครบทุกแถว ─────────────────────────────────
+   🐞 เพดาน Max rows = 1000 ของ PostgREST ตัดผลลัพธ์เงียบ ๆ และ `project_tasks`
+   เกินเพดานไปแล้ว (2,820 แถว เมื่อ 2026-08-16) ⇒ scope ทีม/ทั้งหมด และงานที่
+   assign ทั้งฝ่าย เคยได้คืนมาแค่ 1,000 งานแรกตาม `stepOrder` โดยไม่มี error
+   ⚠️ `stepOrder` ซ้ำกันได้ทั้งตาราง — ต้องพ่วง `id` ให้ลำดับนิ่ง ไม่งั้นการไล่ทีละหน้า
+   จะได้แถวซ้ำและแถวหายพร้อมกัน (ดู lib/supabaseFetchAll)
+   ⚠️ คืน `{ data, error }` เหมือน query เดิม — ผู้เรียกในไฟล์นี้ยอมให้ error เงียบแล้ว
+   ปล่อยลิสต์ว่าง ซึ่งเป็นพฤติกรรมเดิมที่ไม่ได้ตั้งใจเปลี่ยนในงานนี้ */
+const allTasks = (supabase, where = (q) => q) => fetchAllResult(() => where(
+  supabase.from('project_tasks').select('*'),
+).order('stepOrder', { ascending: true }).order('id', { ascending: true }));
+
+/* งานส่วนตัวเรียงตาม `createdAt` (ไม่มี `stepOrder`) — พ่วง `id` ด้วยเหตุผลเดียวกัน
+   `personal_tasks` = 1,045 แถวตอนพบบั๊ก จึงเกินเพดานแล้วเช่นกัน */
+const allPersonal = (supabase, where = (q) => q) => fetchAllResult(() => where(
+  supabase.from('personal_tasks').select('*'),
+).order('createdAt', { ascending: false }).order('id', { ascending: true }));
 
 // GET /api/pm/my-work?scope=mine|team|all
 // คืน { scope, projectTasks, personalTasks, projects } — scope ถูกบังคับตาม role
@@ -27,17 +46,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // งานของฉัน = แมตช์ทั้ง assigneeId (มอบหมายผ่าน dropdown) และ assignee (ชื่อ —
     // ที่ template gen ให้ AE owner โดยไม่ตั้ง assigneeId). ใช้ 2 query แล้ว merge
     // กันชื่อที่มี comma/วงเล็บทำ .or() พัง + กันแมตช์ทั้งหมดเมื่อชื่อว่าง.
-    const byId = supabase
-      .from('project_tasks').select('*').eq('assigneeId', user.id)
-      .order('stepOrder', { ascending: true });
+    const byId = allTasks(supabase, (q) => q.eq('assigneeId', user.id));
     const byName = user.name
-      ? supabase.from('project_tasks').select('*').eq('assignee', user.name).order('stepOrder', { ascending: true })
+      ? allTasks(supabase, (q) => q.eq('assignee', user.name))
       : Promise.resolve({ data: [] });
     // staff/rd (ฝ่ายจัดซื้อ/ผลิต/คลัง/วิจัย/QC) ไม่ได้ถูก assign รายคนเสมอ — รวมงานที่
     // "assign ให้ฝ่าย" คือขั้นตอนที่ role === ฝ่ายของเขา เข้ามาในงานของฉันด้วย.
     const dept = normalizeDepartment(user.department);
     const byDept = ((user.role === 'staff' || user.role === 'rd') && dept)
-      ? supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true })
+      ? allTasks(supabase, (q) => q.eq('role', dept))
       : Promise.resolve({ data: [] });
     const [{ data: a }, { data: b }, { data: c }] = await Promise.all([byId, byName, byDept]);
     const seen = new Set();
@@ -45,20 +62,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   } else if (scope === 'team') {
     const dept = normalizeDepartment(user.department);
     if (user.role === 'rd' && dept) {
-      const { data } = await supabase.from('project_tasks').select('*').eq('role', dept).order('stepOrder', { ascending: true });
+      const { data } = await allTasks(supabase, (q) => q.eq('role', dept));
       projectTasks = data || [];
     } else {
       const ids = await teamProjectIds(supabase, user.teams);
       if (ids.length) {
-      const { data } = await supabase
-        .from('project_tasks').select('*').in('projectId', ids)
-        .order('stepOrder', { ascending: true });
+      const { data } = await allTasks(supabase, (q) => q.in('projectId', ids));
       projectTasks = data || [];
       }
     }
   } else { // all
-    const { data } = await supabase
-      .from('project_tasks').select('*').order('stepOrder', { ascending: true });
+    const { data } = await allTasks(supabase);
     projectTasks = data || [];
   }
 
@@ -71,27 +85,27 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // งานของฉัน = เป็นเจ้าของ, ถูกมอบหมายให้, หรือ "ดึงมาทำแทน" (proxyBy) — งานที่ดึง
   // มาทำต้องอยู่ในรายการของฉันด้วย เพราะฉันเป็นคนทำจริง (และได้เครดิต KPI).
   const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }, { data: byAssigner }] = await Promise.all([
-    supabase.from('personal_tasks').select('*').eq('ownerId', user.id).order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('*').eq('assigneeId', user.id).order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('*').eq('proxyBy', user.id).order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('*').eq('assignedBy', user.id).order('createdAt', { ascending: false }),
+    allPersonal(supabase, (q) => q.eq('ownerId', user.id)),
+    allPersonal(supabase, (q) => q.eq('assigneeId', user.id)),
+    allPersonal(supabase, (q) => q.eq('proxyBy', user.id)),
+    allPersonal(supabase, (q) => q.eq('assignedBy', user.id)),
   ]);
   const minePersonal = [...(byOwner || []), ...(byAssignee || []), ...(byProxy || []), ...(byAssigner || [])];
 
   let extraPersonal = [];
   if (scope === 'all') {
-    const { data } = await supabase.from('personal_tasks').select('*').order('createdAt', { ascending: false });
+    const { data } = await allPersonal(supabase);
     extraPersonal = data || [];
   } else if (scope === 'team') {
     const dept = normalizeDepartment(user.department);
     if (user.role === 'rd' && dept) {
       const deptIds = await departmentUserIds(supabase, dept);
       const queries = deptIds.length ? [
-        supabase.from('personal_tasks').select('*').in('ownerId', deptIds),
-        supabase.from('personal_tasks').select('*').in('assigneeId', deptIds),
-        supabase.from('personal_tasks').select('*').in('proxyBy', deptIds),
+        (q) => q.in('ownerId', deptIds),
+        (q) => q.in('assigneeId', deptIds),
+        (q) => q.in('proxyBy', deptIds),
       ] : [];
-      const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
+      const results = await Promise.all(queries.map((where) => allPersonal(supabase, where)));
       extraPersonal = results.flatMap((r) => r.data || []);
     } else {
     const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
@@ -101,14 +115,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     ]);
     const teamDealIds = (teamDeals || []).map((d) => d.id);
     const queries = [];
-    if (teamProjIds.length) queries.push(supabase.from('personal_tasks').select('*').in('projectId', teamProjIds));
-    if (teamDealIds.length) queries.push(supabase.from('personal_tasks').select('*').in('dealId', teamDealIds));
+    if (teamProjIds.length) queries.push((q) => q.in('projectId', teamProjIds));
+    if (teamDealIds.length) queries.push((q) => q.in('dealId', teamDealIds));
     if (teamIds.length) {
-      queries.push(supabase.from('personal_tasks').select('*').in('assigneeId', teamIds));
-      queries.push(supabase.from('personal_tasks').select('*').in('ownerId', teamIds));
-      queries.push(supabase.from('personal_tasks').select('*').in('proxyBy', teamIds));
+      queries.push((q) => q.in('assigneeId', teamIds));
+      queries.push((q) => q.in('ownerId', teamIds));
+      queries.push((q) => q.in('proxyBy', teamIds));
     }
-    const results = await Promise.all(queries.map((q) => q.order('createdAt', { ascending: false })));
+    const results = await Promise.all(queries.map((where) => allPersonal(supabase, where)));
     extraPersonal = results.flatMap((r) => r.data || []);
     }
   }

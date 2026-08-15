@@ -2,6 +2,7 @@
 // (/api/sales-planning/task-kpi) · ฝั่ง RD เคยเรียกตัวนี้ด้วย แต่แดชบอร์ด RD ถูกลบแล้ว
 // เพื่อให้สูตรคะแนนไม่ drift: เสร็จ 40 + ตรงเวลา 40 + ความยาก 20 ──
 import { taskCreditId } from '@/lib/permissions';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 
 export const TASK_KPI_WEIGHTS = { completion: 40, onTime: 40, difficulty: 20 };
 
@@ -95,23 +96,26 @@ export function aggregateGroup(label, rows) {
 
 // รวมงานที่ผูกกับ ids ทั้ง 3 ทาง: เจ้าของ, ผู้รับมอบ, ผู้ดึงไปทำแทน (proxyBy)
 // — งานที่ถูกดึงไปทำแทนต้องนับให้ผู้ทำแทน (taskCreditId) แม้เจ้าของเดิมอยู่คนละทีม.
+/* 🐞 เพดาน Max rows = 1000 ของ PostgREST ตัดผลลัพธ์เงียบ ๆ และ `personal_tasks`
+   เกินเพดานไปแล้ว (1,045 แถว เมื่อ 2026-08-16) ⇒ KPI **ที่ใช้วัดผลคน** เคยคิดจาก
+   งานไม่ครบโดยไม่มีใครดูออก เพราะผลลัพธ์เป็นตัวเลขสรุป ไม่ใช่รายการที่ตาเห็นว่าสั้นไป
+   ⚠️ พ่วง `id` ท้าย `createdAt` ให้ลำดับนิ่ง — เวลาสร้างซ้ำกันได้ (นำเข้าทีเดียวหลายงาน)
+   และลำดับที่ไม่นิ่งทำให้ไล่ทีละหน้าแล้วได้แถวซ้ำ+แถวหายพร้อมกัน */
+const allPersonalTasks = (supabase, where = (q) => q) => fetchAll(() => where(
+  supabase.from('personal_tasks').select('*'),
+).order('createdAt', { ascending: false }).order('id', { ascending: true }));
+
 export async function loadTasksForUsers(supabase, ids) {
-  if (!ids?.length) {
-    const { data, error } = await supabase.from('personal_tasks').select('*').order('createdAt', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  }
+  if (!ids?.length) return allPersonalTasks(supabase);
+
   const [byOwner, byAssignee, byProxy] = await Promise.all([
-    supabase.from('personal_tasks').select('*').in('ownerId', ids).order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('*').in('assigneeId', ids).order('createdAt', { ascending: false }),
-    supabase.from('personal_tasks').select('*').in('proxyBy', ids).order('createdAt', { ascending: false }),
+    allPersonalTasks(supabase, (q) => q.in('ownerId', ids)),
+    allPersonalTasks(supabase, (q) => q.in('assigneeId', ids)),
+    allPersonalTasks(supabase, (q) => q.in('proxyBy', ids)),
   ]);
-  if (byOwner.error) throw byOwner.error;
-  if (byAssignee.error) throw byAssignee.error;
-  if (byProxy.error) throw byProxy.error;
 
   const seen = new Set();
-  return [...(byOwner.data || []), ...(byAssignee.data || []), ...(byProxy.data || [])]
+  return [...byOwner, ...byAssignee, ...byProxy]
     .filter((task) => (seen.has(task.id) ? false : seen.add(task.id)));
 }
 

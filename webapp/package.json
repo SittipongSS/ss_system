@@ -15,7 +15,8 @@
     "db:bootstrap": "npm run check:migrations && node scripts/build-db-bootstrap.mjs",
     "test": "node --import ./scripts/test-loader.mjs --test \"src/**/*.test.mjs\"",
     "check:users": "node scripts/check-user-access.mjs",
-    "gen:document-fonts": "node scripts/generate-document-fonts.mjs"
+    "gen:document-fonts": "node scripts/generate-document-fonts.mjs",
+    "check:rowcap": "node scripts/check-row-cap.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
