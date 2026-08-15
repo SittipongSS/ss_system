@@ -369,7 +369,7 @@ export default function RequestDetailPage() {
       setToast({ kind: "error", msg: `ส่งแล้ว ${sent} รายการ · ติด ${failed.length} รายการ — แก้แล้วกดส่งซ้ำได้` });
     } else {
       setBulkReady(null);
-      setToast({ kind: "success", msg: `ส่งของ ${sent} รายการ — สูตรเข้าทะเบียนแล้ว` });
+      setToast({ kind: "success", msg: `ส่งงาน ${sent} รายการ — สูตรเข้าทะเบียนแล้ว` });
     }
   };
 
@@ -556,7 +556,9 @@ export default function RequestDetailPage() {
       : req._canApprove
         ? {
           id: "approve",
-          label: "ยืนยันให้ RD ดำเนินการ",
+          // ⚠️ **ไม่ฮาร์ดโค้ดชื่อฝ่าย** (2026-08-15) — ประตูนี้ใช้กับหัวข้อของฝ่ายอื่น
+          // ได้ด้วย และ eyebrow บนหัวใบบอก "ถึงฝ่าย …" อยู่แล้ว
+          label: "ยืนยันให้ดำเนินการ",
           kind: "approve",
           icon: Check,
           // ประตูหัวหน้าสายงานขายเคยยิงทันทีที่กด — ไม่มีจังหวะทบทวนเลยทั้งที่กดแล้ว
@@ -577,7 +579,9 @@ export default function RequestDetailPage() {
       : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
         ? {
           id: "deliver",
-          label: "ส่งกลิ่น",
+          // ⭐ คำเดียวกับก้าวรายแถว (2026-08-15) — เดิมปุ่มระดับใบเรียก "ส่งกลิ่น"
+          // ส่วนปุ่มในตารางเรียก "ส่งของ" ทั้งที่เป็นการส่งงานชิ้นเดียวกัน
+          label: "ส่งงาน",
           kind: "submit",
           icon: Send,
           // ⭐ **รอบแก้ที่ค้างอยู่ขึ้นมาก่อนเสมอ** — ลูกค้าสั่งแก้ไว้แล้ว แถวรออยู่แล้ว
@@ -660,7 +664,7 @@ export default function RequestDetailPage() {
         // ⚠️ โผล่เมื่อมีแถวพร้อมส่ง ≥ 2 — แถวเดียวใช้ปุ่มรายแถวท้ายเธรดตามเดิม
         // (สองทางเข้าเดินเข้ากติกาเดียวกันที่ server · ไม่มีด่านของตัวเอง)
         id: "bulk-ready",
-        label: "ส่งของหลายรายการ",
+        label: "ส่งงานหลายรายการ",
         kind: "submit",
         icon: Send,
         visible: canAnswer && bulkReadyRows(req.items || []).length >= 2,
@@ -1010,7 +1014,9 @@ export default function RequestDetailPage() {
           · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
             การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
       <DetailPageLayout
-        className={usePanel ? styles.panelLayout : ""}
+        /* ⚠️ ระยะหัวใบ → เนื้อ เป็นของ **หน้า** ไม่ใช่ของธง (ม-96) — เดิมผูกกับ
+           `usePanel` ⇒ หัวข้อโครงเดิมหัวใบชนการ์ดแรก 0px */
+        className={styles.detailLayout}
         asideLabel="จัดการคำร้อง"
         aside={usePanel ? (
           <>
@@ -1074,7 +1080,9 @@ export default function RequestDetailPage() {
         ) : null}
       >
         {requestBodyBlock}
-        <div>
+        {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-96) — เดิมเป็น `<div>` เปล่า
+            ⇒ `gap` ของ `.main` ตกไม่ถึงลูก การ์ดทุกใบชนกัน 0px */}
+        <div className={styles.stack}>
 
       {/* ⭐ **เนื้อของหน้าเลือกตามหัวข้อ** (ม-34) — หน้านี้เหลือหน้าที่ "เปลือก":
           หัวใบ · เธรด · โมดัลของแต่ละก้าว · ส่วนที่ต่างกันรายหัวข้อ (PDR · ตารางสรุป ·
@@ -1290,7 +1298,7 @@ export default function RequestDetailPage() {
           รายแถว ⇒ สามทางเข้าตรวจเหมือนกันเป๊ะ */}
       <Modal
         open={!!bulkReady} onClose={() => setBulkReady(null)} size="lg" dismissible={!saving}
-        title={bulkReady ? `ส่งของ ${bulkReady.rows.length} รายการ — สูตรเข้าทะเบียนทันที` : ""}
+        title={bulkReady ? `ส่งงาน ${bulkReady.rows.length} รายการ — สูตรเข้าทะเบียนทันที` : ""}
       >
         {bulkReady && (
           <>
@@ -1353,7 +1361,7 @@ export default function RequestDetailPage() {
             <div className="form-actions-buttons">
               <Button variant="quiet" disabled={saving} onClick={() => setBulkReady(null)}>ยกเลิก</Button>
               <Button tone="accent" disabled={saving || !!bulkReadyBlocker} onClick={submitBulkReady}>
-                {saving ? "กำลังส่ง…" : `ส่งของ ${bulkReady.rows.length} รายการ`}
+                {saving ? "กำลังส่ง…" : `ส่งงาน ${bulkReady.rows.length} รายการ`}
               </Button>
             </div>
           </>

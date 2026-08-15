@@ -58,8 +58,9 @@ test('⭐ received/refused นับจากสายที่เดินไ�
 test('ป้ายขั้นฉบับเอกสาร — ready/done/declined อ่านความหมายเอกสาร ไม่ใช่สายพัฒนา', async () => {
   const { documentBoard } = await import('./documentBoard.js');
   const label = (row) => documentBoard([{ id: 'X', docType: 'coa', ...row }])[0].stageLabel;
-  assert.equal(label({ lineKind: 'document', ackAt: 'x', readyAt: 'y' }), 'ส่งเอกสารแล้ว'); // เดิม "รอไปรับ"
-  assert.equal(label({ lineKind: 'document', answerStatus: 'done' }), 'ได้รับแล้ว');        // เดิม "เสร็จ"
-  assert.equal(label({ lineKind: 'document', answerStatus: 'declined', declineReason: 'r' }), 'ปฏิเสธ'); // เดิม "ไม่ได้ใช้"
+  // ป้ายตามคำของก้าวที่ทำให้เกิด — ก้าวส่งชื่อ "ส่งงาน" ทุกสายแล้ว (2026-08-15)
+  assert.equal(label({ lineKind: 'document', ackAt: 'x', readyAt: 'y' }), 'ส่งงานแล้ว');   // เดิม "ส่งเอกสารแล้ว"
+  assert.equal(label({ lineKind: 'document', answerStatus: 'done' }), 'ได้รับแล้ว');        // เดิม "เสร็จแล้ว"
+  assert.equal(label({ lineKind: 'document', answerStatus: 'declined', declineReason: 'r' }), 'ปฏิเสธ'); // เดิม "ไม่ถูกเลือก"
   assert.equal(label({ lineKind: 'document', ackAt: 'x' }), 'กำลังทำ');                     // ชุดกลางตามเดิม
 });

@@ -55,9 +55,11 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
         <DocumentSummaryCard
           title="สรุปใบนี้"
           rows={[
-            { id: "received", label: "มาแล้ว", value: String(totals.received) },
+            // ⚠️ **คำเดียวกับป้ายขั้นของแถว** (ม-95) — เดิมการ์ดนับว่า "มาแล้ว"
+            // ส่วนแถวในตารางเดียวกันเขียน "ได้รับแล้ว" ⇒ ตัวเลขกับแถวพูดคนละคำ
+            { id: "received", label: "ได้รับแล้ว", value: String(totals.received) },
             { id: "waiting", label: "รอเอกสาร", value: String(totals.waiting) },
-            // "ปฏิเสธ" แยกจาก "มาแล้ว" เสมอ (ม-89) — จบเหมือนกันแต่คนละความหมาย
+            // "ปฏิเสธ" แยกจาก "ได้รับแล้ว" เสมอ (ม-89) — จบเหมือนกันแต่คนละความหมาย
             { id: "refused", label: "ปฏิเสธ", value: String(totals.refused) },
             { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
           ]}

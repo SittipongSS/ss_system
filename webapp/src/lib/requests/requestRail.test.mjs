@@ -78,8 +78,9 @@ test('index ของขั้นหลังประตูต้องเล�
 test('⭐ ขั้นกลางสรุปจากแถว — "รอใส่ราคา" ต้องเห็นเป็นพิเศษ (กับดักข้อ 11)', () => {
   const at = '2026-08-06';
   const base = { status: 'acknowledged', approvedAt: 'x' };
-  // ยังไม่มีแถว = ยังไม่ได้ส่งของ — เฉพาะหัวข้อที่ฝ่ายส่งของจริง (deliversRows)
-  assert.match(requestRailSteps(scent(base)).steps[3].label, /รอฝ่าย RD ส่งของ/);
+  // ยังไม่มีแถว = ยังไม่ได้ส่งงาน — เฉพาะหัวข้อที่ฝ่ายส่งของจริง (deliversRows)
+  // ⚠️ คำต้องตรงกับปุ่ม (ม-95: "ส่งงาน" ทุกสาย) — รางเล่าก้าวเดียวกับที่ปุ่มกด
+  assert.match(requestRailSteps(scent(base)).steps[3].label, /รอฝ่าย RD ส่งงาน/);
   // ⭐ หัวข้อไม่มีแถวเลย (สอบถามข้อมูล) ไม่มี "ของ" ในสาย — รอ "คำตอบ" (มติผู้ใช้
   // 2026-08-09: "แก้เป็น รอฝ่าย RD ตอบ")
   assert.match(requestRailSteps(info({ status: 'acknowledged' })).steps[2].label,

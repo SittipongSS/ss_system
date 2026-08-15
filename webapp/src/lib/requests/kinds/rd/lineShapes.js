@@ -10,13 +10,13 @@ import { normalizeProductDevItems } from '../../lines';
 // ⇒ ไม่มี `normalize` — ไม่ใช่ลืม แต่ไม่มีทางเข้าให้ normalize
 const scentDevLine = {
   key: 'scent_dev',
-  labels: { pending: 'รอส่ง', done: 'เสร็จแล้ว', declined: 'ไม่ได้ใช้' },
+  labels: { pending: 'รอส่ง', done: 'เสร็จแล้ว', declined: 'ไม่ถูกเลือก' },
   normalize: null,
 };
 
 const productDevLine = {
   key: 'product_dev',
-  labels: { pending: 'รอส่ง', done: 'เสร็จแล้ว', declined: 'ไม่ได้ใช้' },
+  labels: { pending: 'รอส่ง', done: 'เสร็จแล้ว', declined: 'ไม่ถูกเลือก' },
   normalize: (input) => normalizeProductDevItems(input),
 };
 
