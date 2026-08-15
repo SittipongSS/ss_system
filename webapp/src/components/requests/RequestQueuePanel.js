@@ -232,6 +232,12 @@ export default function RequestQueuePanel({
       /* ⭐ สองฝั่งของการปิดเรื่อง: บน = ฝ่ายผู้รับตอบเสร็จ · ล่าง = ผู้ขอกดปิด
          ⚠️ ใบที่ยังไม่จบต้องอ่านออกว่า "ยังไม่ปิด" ไม่ใช่ช่องว่างที่อ่านได้ว่าข้อมูลหาย */
       case "closed": {
+        /* 🐞 ใบยกเลิกเก็บเวลาไว้ที่ `cancelledAt` ไม่ใช่ `closedAt` ⇒ เคยขึ้น "ยังไม่ปิด"
+           ทั้งที่ใบจบไปแล้ว (เจอตอนไล่ดูแท็บประวัติ 2026-08-15) · ยกเลิกไม่มีสองฝั่ง
+           ให้แยก — ไม่มีใครตอบ ไม่มีใครปิด มีแค่วันที่ยกเลิก */
+        if (ask.cancelledAt) {
+          return <span className={styles.smallCell}>ยกเลิก {fmtDate(ask.cancelledAt)}</span>;
+        }
         if (!ask.answeredAt && !ask.closedAt) return <span className={styles.muted}>ยังไม่ปิด</span>;
         return (
           <>
