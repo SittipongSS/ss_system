@@ -105,6 +105,15 @@ export default function FinancePaymentsPage() {
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
+  /* ⚠️ ล้างสองคีย์พร้อมกันต้องเป็น **replace เดียว** — เรียก `setFilter` สองครั้งติดกัน
+     ไม่ได้ผล เพราะทั้งสองครั้งอ่าน `params` ก้อนเดิมของ render นี้ ⇒ ครั้งหลังเขียนทับ
+     ครั้งแรก (เจอตอนกดปุ่มจริงบนหน้า: กดแล้วช่วงวันไม่หายสักช่อง) */
+  const clearDateRange = useCallback(() => {
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("from"); sp.delete("to");
+    router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+  }, [params, router]);
+
   const clearFilters = useCallback(() => {
     const sp = new URLSearchParams(params.toString());
     FILTER_KEYS.forEach((key) => sp.delete(key));
@@ -328,7 +337,7 @@ export default function FinancePaymentsPage() {
             เหลือ ⇒ ถ้าไม่บอก บัญชีจะเชื่อว่ายอดค้างมีเท่าที่เห็น · งวดไม่มีกำหนดเป็น
             สถานะปกติ (QT ไม่มีวันมาให้ SA กรอกเองทีละงวด) ไม่ใช่ข้อมูลเสีย */}
         {undatedHidden?.count > 0 && (
-          <StatusNotice tone="info" action={<Button size="sm" variant="ghost" onClick={() => { setFilter("from", ""); setFilter("to", ""); }}>ล้างช่วงวัน</Button>}>
+          <StatusNotice tone="info" action={<Button size="sm" variant="ghost" onClick={clearDateRange}>ล้างช่วงวัน</Button>}>
             ตัวกรองช่วงวันซ่อนงวดที่ยังไม่กำหนดวันชำระไว้ {undatedHidden.count} งวด · {fmtMoney(undatedHidden.amount)} — ยอดสรุปด้านบนยังไม่รวมส่วนนี้
           </StatusNotice>
         )}
