@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ ข้อเสนอรื้อหน้ารายละเอียดคำร้อง RD รอบที่สาม (โจทย์ผู้ใช้ 2026-08-15)
+     อาการที่ผู้ใช้ระบุ: เปิดมาแล้วอ่านไม่ออก · ไม่รู้ว่าต้องทำอะไรต่อ ·
+     โครงสองแบบชนกัน · ตาราง/แถวกินที่
+
+     ⚠️ ยังเป็น **ข้อเสนอ** ยังไม่ลงมือ — รอเคาะก่อน
+     ⚠️ ข้อเสนอนี้ไม่มีสี/ขนาด/ระยะใหม่สักค่า — ทุกค่ามาจากโทเคนใน globals.css
+        (UI_DESIGN_SYSTEM.md) และ audit:ui มี ratchet ที่ขึ้นไม่ได้
+        สิ่งที่เปลี่ยนคือ *อะไรอยู่ตรงไหน* · *อะไรควรหายไป* · *อะไรควรมีที่เดียว*
+     ⚠️ ข้อเสนอนี้ **ทับมติเดิมสามข้อ** (ม-49 · ม-76 · ม-94) — ดูส่วน 06 -->
+<title>รื้อหน้ารายละเอียดคำร้อง RD — ข้อเสนอ (2026-08-15)</title>
+<style>
+  :root {
+    --ground:#F7F4EE; --card:#FFFFFF; --card-2:#F2EDE4; --card-3:#E8E1D5;
+    --line:#DCD3C4; --line-strong:#C3B8A4;
+    --ink:#23201C; --ink-2:#5C554B; --ink-3:#8A8074;
+    --accent:#B85A34; --accent-soft:#F3E2D9;
+    --navy:#24344E; --navy-soft:#DDE3EC;
+    --ok:#3F7A54; --ok-soft:#DDEBE1;
+    --warn:#9A6B18; --warn-soft:#F5E9CF;
+    --stop:#A33F35; --stop-soft:#F4DFDC;
+    --r:10px;
+    --shadow:0 1px 2px rgba(35,32,28,.06), 0 8px 24px -12px rgba(35,32,28,.18);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  } }
+  :root[data-theme="dark"] {
+    --ground:#17181B; --card:#202226; --card-2:#26282D; --card-3:#2E3036;
+    --line:#34373D; --line-strong:#4A4E56;
+    --ink:#EDE9E2; --ink-2:#B3ADA3; --ink-3:#857F76;
+    --accent:#DD8560; --accent-soft:#3A2A22;
+    --navy:#A8BBD8; --navy-soft:#232C3A;
+    --ok:#7DBB92; --ok-soft:#1F2E24;
+    --warn:#D4A64A; --warn-soft:#322A18;
+    --stop:#DF8B80; --stop-soft:#382320;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink);
+    font-family:"IBM Plex Sans Thai","Noto Sans Thai","Sarabun",system-ui,sans-serif;
+    font-size:15px; line-height:1.65; }
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 20px 90px; }
+  .eyebrow { font-family:ui-monospace,Menlo,monospace; font-size:12px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1 { font-size:clamp(28px,4.5vw,40px); line-height:1.2; margin:0 0 12px; text-wrap:balance; }
+  .lede { color:var(--ink-2); max-width:66ch; margin:0 0 8px; }
+  h2 { font-size:21px; margin:58px 0 6px; padding-top:22px; border-top:1px solid var(--line); }
+  h2 .num { font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--accent); margin-right:10px; }
+  h2 + .lede { margin-bottom:22px; }
+  h3 { font-size:15.5px; margin:24px 0 9px; }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.88em;
+    background:var(--card-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px; }
+
+  .screen { background:var(--card); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; margin-bottom:16px; }
+  .screen > header { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; background:var(--card-2); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .screen > header .path { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--ink-3); }
+  .screen > .body { padding:16px; }
+  .screen.now { border-color:color-mix(in srgb,var(--stop) 35%,var(--line)); }
+  .screen.next { border-color:color-mix(in srgb,var(--ok) 40%,var(--line)); }
+  .pair { display:grid; gap:16px; }
+  @media (min-width:1000px) { .pair { grid-template-columns:1fr 1fr; align-items:start; } }
+
+  .badge { display:inline-block; font-size:11.5px; font-weight:600; border-radius:999px;
+    padding:2px 9px; border:1px solid transparent; white-space:nowrap; }
+  .badge.r { background:var(--stop-soft); color:var(--stop); border-color:color-mix(in srgb,var(--stop) 30%,transparent); }
+  .badge.g { background:var(--ok-soft); color:var(--ok); border-color:color-mix(in srgb,var(--ok) 30%,transparent); }
+  .badge.w { background:var(--warn-soft); color:var(--warn); border-color:color-mix(in srgb,var(--warn) 30%,transparent); }
+  .badge.n { background:var(--card-3); color:var(--ink-2); border-color:var(--line); }
+  .badge.b { background:var(--navy-soft); color:var(--navy); border-color:color-mix(in srgb,var(--navy) 25%,transparent); }
+
+  .btn { display:inline-block; font-size:12.5px; font-weight:600; border-radius:8px;
+    padding:5px 12px; border:1px solid var(--line-strong); color:var(--ink-2); background:var(--card); }
+  .btn.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.sm { padding:3px 9px; font-size:12px; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.t th { text-align:left; font-weight:600; color:var(--ink-3); font-size:11.5px;
+    padding:6px 8px; border-bottom:1px solid var(--line-strong); }
+  table.t td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t tr:last-child td { border-bottom:0; }
+  table.t tr.group th { background:var(--card-2); color:var(--ink); font-size:12px; padding:6px 8px; }
+  .scroll { overflow-x:auto; }
+  .two { font-size:11.5px; color:var(--ink-3); margin-top:2px; }
+
+  .note { border-radius:var(--r); padding:11px 14px; font-size:13.5px; margin:12px 0 16px;
+    border:1px solid var(--line); background:var(--card-2); }
+  .note.ok { background:var(--ok-soft); border-color:color-mix(in srgb,var(--ok) 30%,transparent); }
+  .note.warn { background:var(--warn-soft); border-color:color-mix(in srgb,var(--warn) 30%,transparent); }
+  .note.stop { background:var(--stop-soft); border-color:color-mix(in srgb,var(--stop) 30%,transparent); }
+
+  .sym { display:grid; gap:12px; margin:18px 0 8px; }
+  @media (min-width:820px) { .sym { grid-template-columns:1fr 1fr; } }
+  .symcard { border:1px solid var(--line); border-radius:var(--r); padding:13px 15px; background:var(--card); }
+  .symcard h4 { margin:0 0 6px; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .symcard p { margin:0; font-size:13px; color:var(--ink-2); }
+
+  /* ── โครงจำลองของหน้า ─────────────────────────────────────────── */
+  .layout { display:grid; gap:10px; }
+  @media (min-width:760px) { .layout.two-col { grid-template-columns:minmax(0,1fr) 250px; align-items:start; } }
+  .blk { border:1px dashed var(--line-strong); border-radius:var(--r); padding:9px 11px;
+    background:var(--card-2); font-size:12.5px; }
+  .blk b { display:block; font-size:12.5px; }
+  .blk .two { margin-top:1px; }
+  .blk.solid { background:var(--card); border-style:solid; }
+  .blk.hot { border-color:var(--accent); background:var(--accent-soft); }
+  .blk.dead { opacity:.55; text-decoration:line-through; text-decoration-color:var(--stop); }
+  .stack { display:grid; gap:8px; }
+
+  .actionbar { border:1px solid var(--accent); background:var(--accent-soft); border-radius:var(--r);
+    padding:11px 14px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+  .actionbar .what { font-size:13.5px; }
+  .actionbar .what b { font-size:14px; }
+
+  .rowx { border:1px solid var(--line); border-radius:var(--r); background:var(--card); margin-bottom:7px; }
+  .rowx > .head { display:flex; gap:10px; align-items:center; justify-content:space-between;
+    padding:8px 11px; font-size:13px; flex-wrap:wrap; }
+  .rowx > .open { border-top:1px solid var(--line); padding:9px 11px; background:var(--card-2); font-size:12.5px; }
+
+  ul.tight { margin:6px 0 0; padding-left:19px; font-size:13.5px; color:var(--ink-2); }
+  ul.tight li { margin:3px 0; }
+  .foot { margin-top:56px; padding-top:18px; border-top:1px solid var(--line);
+    font-size:12.5px; color:var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<p class="eyebrow">ข้อเสนอ · 2026-08-15 · ยังไม่ลงมือ</p>
+<h1>รื้อหน้ารายละเอียดคำร้อง RD</h1>
+<p class="lede">
+  หน้าเดียวกันทั้งสามหัวข้อของ RD — <code>พัฒนากลิ่น</code> · <code>พัฒนาสูตร</code> ·
+  <code>ขอเอกสาร</code> — บวกเปลือกที่ทุกหัวข้อใช้ร่วมกัน
+  (<code>src/app/requests/[id]/page.js</code> 1513 บรรทัด)
+</p>
+<p class="lede">
+  <b>อาการที่ผู้ใช้ชี้:</b> เปิดมาแล้วอ่านไม่ออก · ไม่รู้ว่าต้องทำอะไรต่อ ·
+  โครงสองแบบชนกัน · ตาราง/แถวกินที่
+</p>
+
+
+<h2><span class="num">00</span>วินิจฉัย — สี่อาการ สามสาเหตุ</h2>
+<p class="lede">
+  ไล่โค้ดจริงแล้ว อาการทั้งสี่ไม่ได้มาจาก "ดีไซน์ยังไม่สวย" แต่มาจาก
+  <b>ของชิ้นเดียวถูกวางไว้สองที่</b> สามชั้นซ้อนกัน — ชั้นแถว ชั้นปุ่ม ชั้นโครง
+</p>
+
+<div class="sym">
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 4</span> ตาราง/แถวกินที่</h4>
+    <p><b>ทุกแถวถูกวาดสองรอบ</b> — การ์ดรายแถว (<code>RequestRows</code>) แล้ววาดซ้ำ
+      เป็นแถวในตารางสรุป ทั้งสามหัวข้อ · การ์ดแต่ละใบยัด <code>AttachmentsPanel</code>
+      ของตัวเอง ⇒ ใบ 6 แถว = 6 การ์ด + 6 แถว + ยิง API ไฟล์แนบ 6 ครั้ง</p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 2</span> ไม่รู้ว่าต้องทำอะไรต่อ</h4>
+    <p>ปุ่มกระจายสามชั้น: ระดับใบอยู่การ์ดขวา · ระดับแถวอยู่คอลัมน์ในตาราง ·
+      แถบท้ายเธรดถูกปิดเงียบ (<code>rows={usePanel ? [] : …}</code>) ⇒
+      <b>แถบปักหมุด ม-76 ที่ทำมาแก้อาการนี้โดยตรง ใช้ไม่ได้กับหัวข้อ RD ทั้งสาม</b></p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 3</span> โครงสองแบบชนกัน</h4>
+    <p>เปลือกถือสองทางตลอดผ่าน <code>usePanel</code> — RD สามหัวข้อ + สอบถามข้อมูล
+      ใช้โครง Control Panel ส่วน <b>PC ติดตามของเข้า</b> กับ <b>FN ใบวางบิล</b>
+      ยังโครงเดิม ⇒ สาขาเก่ายังตัดทิ้งไม่ได้ และทุกก้าวที่เพิ่มต้องคิดสองรอบ</p>
+  </div>
+  <div class="symcard">
+    <h4><span class="badge r">อาการ 1</span> เปิดมาแล้วอ่านไม่ออก</h4>
+    <p>ใบพัฒนากลิ่นใบเดียวมีพื้นผิว <b>12 ก้อน</b>: หัวใบ 8 ส่วน → การ์ดขวา 5 ใบ →
+      แท็บ → การ์ดรายแถว N ใบ → ตารางสรุป → เธรด → แถบล่าง ·
+      ไม่มีก้อนไหนบอกว่า "อ่านตรงนี้ก่อน"</p>
+  </div>
+</div>
+
+<div class="note stop">
+  🐞 <b>บั๊กที่เจอระหว่างไล่ (ไม่ได้ตั้งใจหา)</b> — <code>billing_doc</code> ของ FN
+  ลงทะเบียนไว้ใน <code>panelForKind</code> แล้ว แต่ตัวหัวข้อไม่มีธง
+  <code>detailControlPanel</code> ⇒ การ์ด panel ไม่เคยถูกเรนเดอร์ ขณะที่
+  <code>DocumentDetail</code> ถอดแถบตัวเลขกับแถบอ้างอิงออกไปอยู่บน panel แล้ว
+  ⇒ <b>ใบวางบิลของ FN ตอนนี้ไม่เหลือทั้งสรุปและอ้างอิง</b>
+  (หัวข้อ RD ไม่กระทบ เพราะเปิดธงครบ)
+</div>
+
+<div class="note ok">
+  <b>ยาสามตัว</b> — (1) <b>หนึ่งแถว หนึ่งที่</b>: ตารางเป็นเจ้าของแถว การ์ดรายแถวหายไป ·
+  (2) <b>ก้าวถัดไปอยู่บนสุดของเนื้อ</b>: บาร์เดียว ประโยคเดียว ปุ่มเดียว ·
+  (3) <b>โครงเดียวทั้งระบบ</b>: ย้าย PC/FN เข้าโครงเดียวกันแล้วลบสาขา <code>usePanel</code> ทิ้ง
+</div>
+
+
+<h2><span class="num">01</span>เปลือกร่วม — ลำดับของหน้าใหม่ทั้งใบ</h2>
+<p class="lede">
+  ทุกหัวข้อใช้เปลือกตัวนี้ร่วมกัน แก้ที่นี่ครั้งเดียวได้ทั้งสี่หัวข้อของ RD/PC/FN
+</p>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">12 ก้อน · ปุ่ม 3 ชั้น</span></header>
+    <div class="body">
+      <div class="layout two-col">
+        <div class="stack">
+          <div class="blk solid"><b>หัวใบ</b>
+            <div class="two">ชนิด·ถึงฝ่าย / เลขที่ / คำอธิบาย / 4 facts / รางแนวนอน (ปิดอยู่)
+              / เนื้อคำร้องเต็ม / note เก่า / บรรทัดผู้รับเรื่อง / ไฟล์แนบหัวใบ</div></div>
+          <div class="blk"><b>แท็บ [งาน | แบบฟอร์ม PDR]</b><div class="two">เฉพาะพัฒนากลิ่น · ลอยกลางเนื้อ</div></div>
+          <div class="blk hot"><b>การ์ดรายแถว × N</b>
+            <div class="two">ชื่อ + ป้ายขั้น + สเปก + AttachmentsPanel — <b>ทุกใบยิง API แยก</b></div></div>
+          <div class="blk hot"><b>ตารางสรุปทั้งใบ</b><div class="two">แถวเดียวกันกับข้างบน + คอลัมน์ "ก้าวถัดไป"</div></div>
+          <div class="blk solid"><b>เธรดพูดคุย</b></div>
+          <div class="blk dead"><b>แถบก้าวถัดไป (ปักหมุดล่าง)</b><div class="two">โครง panel ส่งมา rows=[] ⇒ เงียบทั้งใบ</div></div>
+        </div>
+        <div class="stack">
+          <div class="blk solid"><b>การ์ดจัดการคำร้อง</b><div class="two">สถานะ + รางแนวตั้ง + <b>ปุ่มระดับใบทั้งชุด</b></div></div>
+          <div class="blk"><b>การ์ดโครงการ</b></div>
+          <div class="blk"><b>การ์ดดีล</b></div>
+          <div class="blk"><b>การ์ดสรุปตัวเลข</b><div class="two">6 บรรทัด</div></div>
+          <div class="blk"><b>เช็คลิสต์ความพร้อม</b></div>
+        </div>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        จอ ≤1050px การ์ดขวาไหลลงล่างสุด ⇒ <b>ปุ่มหลักไปอยู่ใต้เธรด</b> —
+        ผู้ใช้บนมือถือต้องเลื่อนผ่านทั้งใบก่อนจะเจอสิ่งที่ต้องกด
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">7 ก้อน · ปุ่ม 2 ชั้น</span></header>
+    <div class="body">
+      <div class="layout two-col">
+        <div class="stack">
+          <div class="blk solid"><b>หัวใบ (ผอมลง)</b>
+            <div class="two">ชนิด·ถึงฝ่าย / เลขที่ / คำอธิบาย / 4 facts
+              / <b>แถบเดียว</b>: รายละเอียดคำร้อง + ไฟล์แนบ (กางเมื่อกด)</div></div>
+          <div class="blk hot"><b>บาร์ "ต้องทำอะไรต่อ"</b>
+            <div class="two">ประโยคเดียว + ปุ่มหลักเดียว + เมนู ⋯ · ปักบนขณะเลื่อน</div></div>
+          <div class="blk"><b>แท็บ [งาน | แบบฟอร์ม PDR]</b><div class="two">เฉพาะพัฒนากลิ่น · ติดใต้บาร์</div></div>
+          <div class="blk hot"><b>ตารางของใบ — เจ้าของแถวที่เดียว</b>
+            <div class="two">กดแถวเพื่อกางดูสเปก + ไฟล์แนบ (โหลดตอนกาง) · ก้าวถัดไปอยู่ท้ายแถว</div></div>
+          <div class="blk solid"><b>เธรดพูดคุย</b></div>
+        </div>
+        <div class="stack">
+          <div class="blk solid"><b>การ์ดสถานะของใบ</b>
+            <div class="two">สถานะ + รางแนวตั้ง + สรุปตัวเลข + เช็คลิสต์ — <b>ไม่มีปุ่ม</b></div></div>
+          <div class="blk"><b>การ์ดอ้างอิง</b><div class="two">โครงการ · ดีล · QT/SO/FG รวมเป็นก้อนเดียว</div></div>
+        </div>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        <b>ปุ่มอยู่ในสายที่คนอ่าน</b> — จอแคบบาร์ยังอยู่บนสุดเหมือนเดิม
+        การ์ดขวาไหลลงล่างได้โดยไม่พาปุ่มไปด้วย เพราะไม่มีปุ่มให้พาแล้ว
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>บาร์ "ต้องทำอะไรต่อ" — หน้าตาจริง</h3>
+<div class="screen next">
+  <div class="body">
+    <div class="actionbar">
+      <div class="what">
+        <b>รับเรื่องแล้ว — ถึงตาฝ่ายคุณส่งกลิ่น</b>
+        <div class="two">2 บรีฟยังไม่มี direction · รับปากส่ง 18/08 (อีก 3 วัน)</div>
+      </div>
+      <div><span class="btn pri">ส่งกลิ่น</span> <span class="btn sm">⋯</span></div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="actionbar" style="border-color:var(--line-strong); background:var(--card-2)">
+      <div class="what">
+        <b>ส่งของแล้ว — รอฝ่ายขายส่งให้ลูกค้า</b>
+        <div class="two">ไม่ใช่ตาของคุณ · ผู้ขอคือ ณัฐพงศ์</div>
+      </div>
+      <div><span class="btn sm">⋯</span></div>
+    </div>
+    <div class="note ok" style="margin-bottom:0">
+      <b>บาร์เดียวสองสถานะ</b> — ตาเรา = ปุ่มหลักติดสี · ไม่ใช่ตาเรา = ประโยคบอกว่ารอใคร
+      ไม่มีปุ่มหลัก แต่เมนู ⋯ ยังเปิดของรอง (เลื่อนวัน · ยกเลิก · ตีกลับ) ได้
+      <br>⚠️ ก้อนเดียวกับ <code>primaryAction</code> ที่เปลือกประกอบอยู่แล้ว —
+      <b>ย้ายที่วาง ไม่ก๊อป</b> · การ์ดขวาเลิกถือปุ่ม
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">02</span>พัฒนากลิ่น — <code>scent_dev</code></h2>
+<p class="lede">หัวข้อที่หนักที่สุด: PDR · ประตูหัวหน้าสายงานขาย · กระทบยอด SO · แถวเกิดตอน RD ส่งของ</p>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">ScentDevDetail.js</span></header>
+    <div class="body">
+      <div class="rowx">
+        <div class="head"><b>เทียนหอม × Citrus Dawn</b><span class="badge w">รอส่ง</span></div>
+        <div class="open">สเปกที่ขอ: ขนาด 200g · เทียนถ้วยแก้ว<br>
+          <span class="two">รูป / สเปกแนบ — [กล่องอัปโหลด + รายการไฟล์]</span></div>
+      </div>
+      <div class="rowx">
+        <div class="head"><b>เทียนหอม × Ocean Salt</b><span class="badge g">เสร็จแล้ว</span></div>
+        <div class="open">สเปกที่ขอ: ขนาด 200g<br>
+          <span class="two">รูป / สเปกแนบ — [กล่องอัปโหลด + รายการไฟล์]</span></div>
+      </div>
+      <div class="scroll" style="margin-top:12px">
+        <table class="t">
+          <thead><tr><th>กลิ่น</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
+          <tbody>
+            <tr class="group"><th colspan="4">บรีฟ 1 · กลิ่นส้มสดชื่น</th></tr>
+            <tr><td>Citrus Dawn</td><td>—</td><td>รอส่ง</td><td><span class="btn sm">ส่งของ</span></td></tr>
+            <tr><td>Ocean Salt</td><td>ลูกค้ายืนยัน 500 ชิ้น</td><td>เสร็จแล้ว</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note stop" style="margin-bottom:0">
+        <b>ข้อมูลชุดเดียวกันสองรอบ</b> — การ์ดข้างบนกับแถวข้างล่างคือ item ตัวเดียวกัน ·
+        ยิ่งใบใหญ่ยิ่งบาน (3 บรีฟ × 2 direction = 6 การ์ด + 6 แถว)
+      </div>
+    </div>
+  </div>
+
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">ตารางเดียว · กางในแถว</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr><th>กลิ่น</th><th>ผลลัพธ์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
+          <tbody>
+            <tr class="group"><th colspan="4">บรีฟ 1 · กลิ่นส้มสดชื่น <span class="badge n">2 direction</span></th></tr>
+            <tr><td><b>Citrus Dawn</b><div class="two">▾ สเปก · 2 ไฟล์</div></td>
+              <td>—</td><td><span class="badge w">รอส่ง</span></td>
+              <td><span class="btn sm">ส่งของ</span></td></tr>
+            <tr><td colspan="4" style="background:var(--card-2)">
+              <b style="font-size:12.5px">สเปกที่ขอ</b> ขนาด 200g · เทียนถ้วยแก้ว
+              <div class="two">ไฟล์แนบของแถวนี้ — โหลดตอนกางเท่านั้น · [ref-01.jpg] [spec.pdf] &nbsp; <span class="btn sm">แนบไฟล์</span></div>
+            </td></tr>
+            <tr><td><b>Ocean Salt</b><div class="two">▸ สเปก · ไม่มีไฟล์</div></td>
+              <td>ลูกค้ายืนยัน 500 ชิ้น</td><td><span class="badge g">เสร็จแล้ว</span></td><td>—</td></tr>
+            <tr class="group"><th colspan="4">บรีฟ 2 · กลิ่นไม้อุ่น <span class="badge r">ยังไม่ลงมือ</span></th></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        <b>การ์ดรายแถวหายไปทั้งชุด</b> — สเปกกับไฟล์แนบย้ายเข้าแถวที่กางได้ ·
+        <code>AttachmentsPanel</code> ถูก mount เฉพาะแถวที่กาง ⇒ ใบ 6 แถวยิง API 0 ครั้งตอนเปิด
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>แท็บ PDR</h3>
+<div class="note">
+  แท็บ <b>[งาน | แบบฟอร์ม PDR]</b> คงไว้ทั้งชุด (สองชั้นด้านข้าง + ตัวนับครบต่อหมวด
+  ตามมติ ม-94 งวด 2) — เปลี่ยนแค่ <b>ตำแหน่ง</b>: จากลอยกลางเนื้อ ขึ้นไปติดใต้บาร์
+  ก้าวถัดไป ⇒ สลับมุมมองได้โดยไม่ต้องเลื่อนหา
+</div>
+
+
+<h2><span class="num">03</span>พัฒนาสูตร — <code>formula_dev</code></h2>
+<p class="lede">โครงเดียวกับพัฒนากลิ่นแต่ไม่มีชั้นบรีฟ — 1 แถว = หมวด × กลิ่น = สูตร 1 ตัวในทะเบียน</p>
+
+<div class="pair">
+  <div class="screen now">
+    <header><span class="badge r">วันนี้</span><span class="path">FormulaDevDetail.js</span></header>
+    <div class="body">
+      <ul class="tight" style="margin-top:0">
+        <li><code>RequestRows</code> การ์ด N ใบ (สเปก + ไฟล์แนบ)</li>
+        <li><code>FormulaDevBoard</code> ตารางที่มีแถวชุดเดียวกัน + คอลัมน์ก้าวถัดไป</li>
+        <li>การ์ดสรุป 6 ตัวเลขอยู่ขวา · ปุ่ม "ส่งของหลายรายการ" อยู่ขวา</li>
+      </ul>
+      <div class="note stop" style="margin-bottom:0">
+        ปุ่มรวบส่งของอยู่การ์ดขวา แต่ปุ่มส่งรายแถวอยู่ในตาราง ⇒
+        <b>งานเดียวกันมีสองที่กด ห่างกันคนละคอลัมน์</b>
+      </div>
+    </div>
+  </div>
+  <div class="screen next">
+    <header><span class="badge g">เสนอ</span><span class="path">ตารางเดียว + บาร์บน</span></header>
+    <div class="body">
+      <div class="scroll">
+        <table class="t">
+          <thead><tr><th>รายการ</th><th>สูตรที่ได้</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
+          <tbody>
+            <tr><td><b>เทียนหอม × Citrus Dawn</b><div class="two">▸ สเปก · 1 ไฟล์</div></td>
+              <td>—</td><td><span class="badge w">รอส่ง</span></td><td><span class="btn sm">ส่งของ</span></td></tr>
+            <tr><td><b>ก้านไม้หอม × Ocean Salt</b><div class="two">▸ สเปก</div></td>
+              <td>PF638010202-P1</td><td><span class="badge b">รอลูกค้าตอบ</span></td><td><span class="btn sm">บันทึกผล</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note ok" style="margin-bottom:0">
+        ปุ่ม <b>"ส่งของหลายรายการ"</b> ย้ายขึ้นบาร์บนสุด (โผล่เมื่อมีแถวพร้อมส่ง ≥ 2
+        ตามกติกาเดิม) ⇒ งานระดับใบกับงานระดับแถวอยู่คนละชั้นแต่<b>สายตาเดียวกัน</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">04</span>ขอเอกสาร — <code>document</code> <span class="badge n">ใช้ร่วมกับ FN</span></h2>
+<p class="lede">
+  หัวข้อนี้ถามคำถามคนละข้อกับสองหัวข้อพัฒนา: ไม่ใช่ "ของออกมาหรือยัง" แต่คือ
+  <b>"ได้ไฟล์แล้วกี่ชิ้น ยังขาดอะไร"</b>
+</p>
+
+<div class="screen next">
+  <header><span class="badge g">เสนอ</span><span class="path">DocumentBoard เจ้าของแถวคนเดียว</span></header>
+  <div class="body">
+    <div class="scroll">
+      <table class="t">
+        <thead><tr><th>เอกสารที่ขอ</th><th>ไฟล์</th><th>สถานะ</th><th>ก้าวถัดไป</th></tr></thead>
+        <tbody>
+          <tr><td><b>IFRA Certificate</b><div class="two">▾ 2 ไฟล์</div></td>
+            <td>ได้รับ 12/08</td><td><span class="badge g">มาแล้ว</span></td><td>—</td></tr>
+          <tr><td colspan="4" style="background:var(--card-2)">
+            <div class="two">[IFRA-2608.pdf] [annex.pdf] — ดู/ดาวน์โหลดอย่างเดียว ·
+              แนบทำที่โมดัล "ส่งเอกสาร" ที่เดียวตามเดิม (ม-90)</div></td></tr>
+          <tr><td><b>COA</b></td><td>—</td><td><span class="badge w">รอเอกสาร</span></td>
+            <td><span class="btn sm">ส่งเอกสาร</span> <span class="btn sm">ปฏิเสธ</span></td></tr>
+          <tr><td><b>MSDS</b></td><td>—</td><td><span class="badge r">ปฏิเสธ</span>
+            <div class="two">ซื้อจากซัพพลายเออร์ ต้องขอจากเขาโดยตรง</div></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note ok">
+      เช็คลิสต์รายแถวบนการ์ดขวา (<code>DocumentReadinessList</code>) <b>ตัดทิ้ง</b> —
+      มันคือแถวชุดเดียวกับตารางพูดซ้ำอีกรอบ · การ์ดขวาเหลือ <b>ตัวเลขสรุป</b>
+      (มาแล้ว / รอ / ปฏิเสธ / จากที่ขอ) ซึ่งตารางตอบไม่ได้ในสายตาเดียว
+    </div>
+    <div class="note warn" style="margin-bottom:0">
+      ⚠️ <b>ไฟล์นี้ใช้ร่วมกับใบวางบิลของ FN</b> และมีเซสชันอื่นแก้
+      <code>billingDoc.js</code> อยู่ตอนนี้ (แบรนช์ <code>claude/billing-doc-fn</code>) ⇒
+      งวดที่แตะ <code>DocumentDetail</code>/<code>DocumentBoard</code> ต้องรอสายนั้นลงก่อน
+      หรือแยกทำทีหลัง — เลือกได้ตอนเคาะ
+    </div>
+  </div>
+</div>
+
+
+<h2><span class="num">05</span>โครงเดียวทั้งระบบ — ลบสาขา <code>usePanel</code></h2>
+<p class="lede">อาการ "โครงสองแบบชนกัน" หายจริงต่อเมื่อเหลือโครงเดียว ไม่ใช่แค่ทำโครงใหม่ให้สวยขึ้น</p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:190px">หัวข้อ</th><th style="width:110px">ฝ่าย</th>
+      <th style="width:150px">โครงวันนี้</th><th>ต้องทำอะไร</th></tr></thead>
+    <tbody>
+      <tr><td>พัฒนากลิ่น</td><td>RD</td><td><span class="badge g">Control Panel</span></td>
+        <td>รื้อตามส่วน 02</td></tr>
+      <tr><td>พัฒนาสูตร</td><td>RD</td><td><span class="badge g">Control Panel</span></td>
+        <td>รื้อตามส่วน 03</td></tr>
+      <tr><td>ขอเอกสาร</td><td>RD</td><td><span class="badge g">Control Panel</span></td>
+        <td>รื้อตามส่วน 04</td></tr>
+      <tr><td>สอบถามข้อมูล</td><td>RD/PC</td><td><span class="badge g">Control Panel</span></td>
+        <td>ไม่มีแถว — ได้บาร์บนสุดฟรีจากเปลือก</td></tr>
+      <tr><td>ติดตามของเข้า</td><td>PC</td><td><span class="badge r">โครงเดิม</span></td>
+        <td>ย้ายเข้าโครงเดียวกัน (ไม่มีแถว งานน้อย)</td></tr>
+      <tr><td>ใบวางบิล</td><td>FN</td><td><span class="badge r">โครงเดิม</span></td>
+        <td>ย้าย + <b>ปิดบั๊กสรุป/อ้างอิงหาย</b> ⚠️ ชนกับเซสชันอื่น</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note ok">
+  ปลายทาง: <code>requestUsesControlPanel()</code> กับธง <code>detailControlPanel</code>
+  <b>ถูกลบทิ้งทั้งคู่</b> · เปลือกเหลือทางเดียว · ประโยคแบบ
+  <code>rows={usePanel ? [] : (req.items || [])}</code> หายไปจากไฟล์
+</div>
+
+
+<h2><span class="num">06</span>มติเดิมที่ข้อเสนอนี้ทับ</h2>
+<p class="lede">เขียนไว้ตรง ๆ เพราะทั้งสามข้อเป็นมติที่ตัดสินไปแล้วและมีเหตุผลของมัน</p>
+
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:76px">มติ</th><th style="width:250px">เดิมว่าอะไร</th>
+      <th>ข้อเสนอนี้เปลี่ยนเป็น</th></tr></thead>
+    <tbody>
+      <tr><td><b>ม-49</b></td>
+        <td>เธรดเป็นแกนของหน้า · ก้าวถัดไปอยู่ท้ายเธรด</td>
+        <td>เธรด<b>ยังเป็นแกนของประวัติ</b> แต่ไม่ใช่แกนของ <i>การลงมือ</i> —
+          ก้าวถัดไปขึ้นบนสุด เพราะคนเปิดใบมาเพื่อทำงาน ไม่ได้มาเพื่ออ่านประวัติ</td></tr>
+      <tr><td><b>ม-76</b></td>
+        <td>แถบก้าวถัดไป "ปักหมุดล่างจอ" ไม่ใช่ย้าย</td>
+        <td>ย้ายขึ้นบน + ปักบน · เหตุผลเดิม ("ต้องเลื่อนผ่าน 20 ข้อความกว่าจะเจอปุ่ม")
+          ยิ่งชัดขึ้น เพราะบนโครง panel แถบล่าง<b>ถูกปิดเงียบไปแล้ว</b>
+          <br>⚠️ ข้อจำกัดเดิมยังอยู่: จอแคบห้ามปักล่าง (ทับ <code>MobileBottomNav</code>) ·
+          ต้องอยู่นอก <code>DetailCard</code> (<code>overflow:hidden</code> ตัด sticky)</td></tr>
+      <tr><td><b>ม-94</b></td>
+        <td>ปุ่มระดับใบอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป)</td>
+        <td><b>ย้ายอีกที ยังไม่ก๊อป</b> — ปุ่มไปอยู่บาร์บนสุด การ์ดขวาเหลือข้อเท็จจริงล้วน ·
+          กติกา "ที่เดียวเสมอ" ไม่เปลี่ยน เปลี่ยนแค่ว่าที่นั้นอยู่ตรงไหน</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h3>สิ่งที่ไม่แตะ</h3>
+<ul class="tight">
+  <li><b>กติกาปุ่ม</b> — ยังผ่าน <code>normalizeDocumentControlActions</code> ตัวเดิม (<code>visible:false</code> ตัดให้)</li>
+  <li><b>กติกาก้าวของแถว</b> — <code>RowStepActions</code> · <code>hopValuesError</code> ·
+    <code>normalizeFormulaDelivery</code> ก้อนเดิมทั้งหมด ไม่โคลน</li>
+  <li><b>ตัวเลขทุกตัว</b> — <code>briefBoard</code> · <code>formulaDevBoard</code> ·
+    <code>documentBoard</code> · <code>soReconcile</code> นับที่ lib เหมือนเดิม</li>
+  <li><b>โมดัลทุกก้าว</b> — รับเรื่อง/ส่งของ/ปฏิเสธ/รวบส่ง/เลื่อนวัน ไม่แตะสักตัว</li>
+  <li><b>ม-90</b> — ไฟล์ของสายเอกสารแนบที่โมดัล "ส่งเอกสาร" ทางเดียวเหมือนเดิม</li>
+</ul>
+
+
+<h2><span class="num">07</span>ลำดับงวด</h2>
+<div class="scroll">
+  <table class="t">
+    <thead><tr><th style="width:60px">งวด</th><th style="width:280px">ได้อะไร</th><th>ไฟล์หลัก</th></tr></thead>
+    <tbody>
+      <tr><td><b>1</b></td><td>บาร์ "ต้องทำอะไรต่อ" บนสุด + การ์ดขวาเลิกถือปุ่ม
+        <div class="two">ได้ทั้งสี่หัวข้อพร้อมกัน เพราะอยู่ในเปลือก</div></td>
+        <td><code>requests/[id]/page.js</code> · <code>NextStepBar.js</code> ·
+          <code>DocumentControlPanel.js</code></td></tr>
+      <tr><td><b>2</b></td><td>แถวกางได้ + ลบ <code>RequestRows</code> ออกจากพัฒนากลิ่น/พัฒนาสูตร
+        <div class="two">ไฟล์แนบโหลดตอนกาง</div></td>
+        <td><code>BriefBoard.js</code> · <code>FormulaDevBoard.js</code> ·
+          <code>details/*.js</code></td></tr>
+      <tr><td><b>3</b></td><td>หัวใบผอม (รายละเอียด + ไฟล์แนบเป็นแถบกางได้) + แท็บ PDR ขึ้นบน</td>
+        <td><code>DetailOverview.js</code> · <code>ScentDevDetail.js</code></td></tr>
+      <tr><td><b>4</b></td><td>ขอเอกสาร: แถวกางได้ + ตัดเช็คลิสต์ซ้ำ <span class="badge w">รอสาย FN</span></td>
+        <td><code>DocumentBoard.js</code> · <code>DocumentDetail.js</code> · <code>DocumentPanel.js</code></td></tr>
+      <tr><td><b>5</b></td><td>ย้าย PC/FN เข้าโครงเดียวกัน + <b>ลบสาขา <code>usePanel</code> ทิ้ง</b>
+        + ปิดบั๊กสรุป/อ้างอิงของ FN</td>
+        <td><code>kinds/pc/*</code> · <code>kinds/fn/*</code> · <code>requestTypes.js</code> · เปลือก</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note warn">
+  ⚠️ <b>ด่านก่อน push ทุกงวด</b> — <code>npm test</code> · <code>npm run check:migrations</code> ·
+  <code>npm run audit:ui</code> (ratchet ขึ้นไม่ได้ · inline style โดนตีกลับ) ·
+  <code>registry.test.mjs</code> คุมทะเบียนหัวข้อ · <code>entityIcon.test.mjs</code> คุมไอคอน
+</div>
+
+<div class="note stop">
+  ⚠️ <b>ความเสี่ยงที่รู้ตัวแล้ว</b>
+  <ul class="tight" style="margin-bottom:0">
+    <li><b>sticky บน</b> — <code>.main-content</code> ใช้ <code>overflow-x: clip</code>
+      (ม-77) ห้ามกลับไปเป็น <code>hidden</code> ไม่งั้น sticky ทั้งระบบตายเงียบ ·
+      ต้องวัดด้วย <code>getBoundingClientRect()</code> ไม่ใช่ <code>getComputedStyle</code></li>
+    <li><b>ไฟล์แนบในแถวที่กาง</b> — <code>AttachmentsPanel</code> ต้อง mount ตอนกางจริง
+      ไม่ใช่ render แล้วซ่อนด้วย CSS (ซ่อนแล้วยังยิง API ครบทุกแถวเหมือนเดิม)</li>
+    <li><b>สายเอกสารใช้ร่วมกับ FN</b> — งวด 4 กับ 5 ชนกับ <code>claude/billing-doc-fn</code></li>
+  </ul>
+</div>
+
+<p class="foot">
+  ข้อเสนอ · 2026-08-15 · <b>ยังไม่ลงมือ</b> — เคาะแล้วค่อยเขียนโค้ด และบันทึกมติลง
+  <code>docs/requests-rd-decision-log.md</code> ในคอมมิตเดียวกับโค้ด
+</p>
+
+</div>
+</body></html>

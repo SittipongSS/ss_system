@@ -118,7 +118,8 @@ export async function PATCH(request, { params }) {
     if (fileError) return Response.json({ error: fileError.message }, { status: 500 });
     if (!count) {
       return Response.json({
-        error: 'ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง — แนบได้หลายไฟล์ในหน้าต่างส่งเอกสาร',
+        // ชื่อหน้าต่างต้องตรงกับปุ่มจริง — ก้าวส่งชื่อ "ส่งงาน" ทุกสายแล้ว (ม-120)
+        error: 'ต้องแนบไฟล์เอกสารบนรายการนี้ก่อนกดส่ง — แนบได้หลายไฟล์ในหน้าต่างส่งงาน',
       }, { status: 400 });
     }
   }

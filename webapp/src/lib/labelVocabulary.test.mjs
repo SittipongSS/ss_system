@@ -44,8 +44,10 @@ test('⭐ B · ขั้นของแถว — ตัดคำที่บอ
     sent: 'ส่งลูกค้าแล้ว',          // เดิม "ส่งให้ลูกค้าแล้ว" 94px
     revised: 'ลูกค้าขอให้แก้',
     awaiting_price: 'รอใส่ราคา',
-    done: 'เสร็จ',
-    declined: 'ไม่ได้ใช้',
+    // รอบไล่คำ 2026-08-15 — "เสร็จ" ขัดกับป้ายบรรทัดที่เขียน "เสร็จแล้ว" ·
+    // "ไม่ได้ใช้" เปลี่ยนเป็น "ไม่ถูกเลือก" (แถวจบเพราะลูกค้าเลือกตัวอื่น)
+    done: 'เสร็จแล้ว',
+    declined: 'ไม่ถูกเลือก',
   });
 });
 
@@ -54,7 +56,9 @@ test('⭐ C · ปุ่มก้าวถัดไปต้องไม่ย�
   const stepOf = (row) => nextStepForRow(row, { dept: 'RD' }, { role: 'ae' })?.label;
   assert.equal(stepOf({ sentAt: '2026-08-08' }), 'บันทึกคำตอบ');
   assert.equal(stepOf({}), 'รับเรื่อง');
-  assert.equal(stepOf({ ackAt: '2026-08-08' }), 'ส่งของ');
+  // "ส่งงาน" คำเดียวทุกสาย (2026-08-15) — เดิมสายพัฒนา "ส่งของ" สายเอกสาร "ส่งเอกสาร"
+  assert.equal(stepOf({ ackAt: '2026-08-08' }), 'ส่งงาน');
+  assert.equal(stepOf({ ackAt: '2026-08-08', lineKind: 'document' }), 'ส่งงาน');
   assert.equal(stepOf({ readyAt: '2026-08-08' }), 'รับของ');
   assert.equal(stepOf({ pickedUpAt: '2026-08-08' }), 'ส่งให้ลูกค้า');
   assert.equal(stepOf({ outcome: 'confirmed' }), 'ใส่ราคา');

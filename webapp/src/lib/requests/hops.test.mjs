@@ -312,11 +312,12 @@ test('receive/refuse ลงทะเบียนเป็นเหตุกา�
   assert.ok(registered[hopUpdateKind('refuse')], 'refused ยังไม่ลงทะเบียน');
   assert.equal(hopLabel('receive'), 'ได้รับแล้ว');
   assert.equal(hopLabel('refuse'), 'ปฏิเสธ');
-  // ⭐ ม-89: สายเอกสารเรียกก้าวส่งว่า "ส่งเอกสาร" — สายพัฒนายัง "ส่งของ"
+  // ⭐ **"ส่งงาน" คำเดียวทุกสาย** (มติผู้ใช้ 2026-08-15 — ทับ ม-89 ที่เคยแยก
+  // "ส่งเอกสาร" กับ "ส่งของ") · ล็อกไว้ว่าไม่มีสายไหนแตกคำกลับไปอีก
   const { hopLabelFor } = await import('./hops.js');
-  assert.equal(hopLabelFor({ lineKind: 'document' }, 'ready'), 'ส่งเอกสาร');
-  assert.equal(hopLabelFor({ lineKind: 'billing_doc' }, 'ready'), 'ส่งเอกสาร');
-  assert.equal(hopLabelFor({ lineKind: 'scent_dev' }, 'ready'), 'ส่งของ');
+  for (const lineKind of ['document', 'billing_doc', 'scent_dev', 'product_dev']) {
+    assert.equal(hopLabelFor({ lineKind }, 'ready'), 'ส่งงาน', lineKind);
+  }
 });
 
 test('🔴 route: ส่งเอกสารต้องเช็คไฟล์แนบก่อน — และปิดเรื่องเป็นของผู้ขอเท่านั้น (ม-89)', () => {

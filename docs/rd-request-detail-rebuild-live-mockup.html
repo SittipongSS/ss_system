@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="th" data-theme="light"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- ⭐ ม็อกอัพเสมือนจริงของข้อเสนอรื้อหน้ารายละเอียดคำร้อง RD (2026-08-15)
+     คู่กับ rd-request-detail-rebuild-mockup.html (ฉบับอธิบายเหตุผล)
+
+     ⚠️ ยังเป็น **ข้อเสนอ** ยังไม่ลงมือ
+     ⚠️ โทเคนสี/ระยะ/ขนาดตัวอักษรทั้งไฟล์ยกมาจาก `webapp/src/app/globals.css` ตรง ๆ
+        ฟอนต์ชี้ไปที่ไฟล์จริงของระบบ (`webapp/src/app/fonts/`) พร้อม metric override
+        ชุดเดียวกัน ⇒ สิ่งที่เห็นในไฟล์นี้คือสิ่งที่จะได้จริงเมื่อเขียนเป็น component
+     ⚠️ ไฟล์นี้เป็น HTML ล้วนเพื่อดูหน้าตา — ของจริงต้องประกอบจาก primitive เดิม
+        (Workspace · SalesDetailOverview · DocumentControlCard · TableScroll · UpdateThread)
+        ห้ามเขียนคลาสดิบชุดนี้ลงในแอป (audit:ui มี ratchet คุมอยู่) -->
+<title>รื้อหน้ารายละเอียดคำร้อง RD — ม็อกอัพเสมือนจริง</title>
+
+<style>
+/* ── ฟอนต์จริงของระบบ ─────────────────────────────────────────────────── */
+@font-face { font-family:'Sarabun'; font-weight:400; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-400-thai.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+@font-face { font-family:'Sarabun'; font-weight:400; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-400-latin.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+@font-face { font-family:'Sarabun'; font-weight:500; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-500-thai.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+@font-face { font-family:'Sarabun'; font-weight:600; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-600-thai.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+@font-face { font-family:'Sarabun'; font-weight:600; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-600-latin.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+@font-face { font-family:'Sarabun'; font-weight:700; font-display:swap;
+  src:url('../webapp/src/app/fonts/Sarabun-700-thai.woff2') format('woff2');
+  ascent-override:128%; descent-override:36%; line-gap-override:0%; }
+
+/* ── โทเคนจริง (globals.css) ──────────────────────────────────────────── */
+:root {
+  --bg:#efe9dd; --panel:rgba(255,255,255,.94); --panel-2:#f7f4ee; --panel-3:#eee9e0;
+  --panel-float:#fffdf9; --panel-solid:#fefefd;
+  --border:rgba(49,55,69,.13); --border-strong:rgba(49,55,69,.24);
+  --glass-shadow:0 4px 16px 0 rgba(41,35,27,.07);
+  --text:#171d29; --text-2:#596170; --text-3:#6c7382;
+  --accent:#c9794d; --accent-soft:#f7e8df; --accent-fg:#fff; --accent-ink:#9c5228;
+  --navy:#243b63; --navy-ink:#243b63; --navy-fg:#fff;
+  --green:#357558; --green-soft:#e2f1e9;
+  --red:#a74747;   --red-soft:#f7e4e2;
+  --amber:#926024; --amber-soft:#f8eddc;
+  --blue:#466990;  --blue-soft:#e3ebf5;
+  --violet:#6f5e9f;--violet-soft:#eee9f6;
+  --shadow-sm:0 2px 7px rgba(41,35,27,.07); --shadow-md:0 12px 30px rgba(41,35,27,.10);
+
+  --space-1:4px; --space-1-5:6px; --space-2:8px; --space-2-5:10px; --space-3:12px;
+  --space-3-5:14px; --space-4:16px; --space-4-5:18px; --space-5:20px; --space-6:24px;
+  --radius:8px; --radius-md:10px; --radius-lg:13px; --radius-full:9999px;
+  --fs-1:9.5px; --fs-2:10.5px; --fs-3:11px; --fs-4:11.5px; --fs-5:12px; --fs-6:12.5px;
+  --fs-7:13px; --fs-8:14px; --fs-9:15px; --fs-10:16px; --fs-11:18px; --fs-12:20px;
+  --fs-14:24px; --fs-15:27px;
+  --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+  --lh-thai:1.65; --ls-label:.06em; --ctl-h:40px;
+}
+[data-theme="dark"] {
+  --bg:#121726; --panel:rgba(27,34,56,.96); --panel-2:#232b44; --panel-3:#2b3550;
+  --panel-float:#1a213a; --panel-solid:#1b2237;
+  --border:rgba(225,230,241,.12); --border-strong:rgba(225,230,241,.24);
+  --glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+  --text:#f4f6fb; --text-2:#bdc5d4; --text-3:#8e99ad;
+  --accent:#d38a61; --accent-soft:rgba(211,138,97,.12); --accent-fg:#121726; --accent-ink:#d38a61;
+  --navy:#20365d; --navy-ink:#8fadde;
+  --green:#4fad82; --green-soft:rgba(63,138,104,.18);
+  --red:#cc8787;   --red-soft:rgba(183,85,85,.18);
+  --amber:#d08f41; --amber-soft:rgba(183,120,45,.18);
+  --blue:#809ec1;  --blue-soft:rgba(82,122,168,.18);
+  --violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+  --shadow-sm:0 2px 7px rgba(0,0,0,.18); --shadow-md:0 12px 30px rgba(0,0,0,.24);
+}
+
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font-family:'Sarabun','Noto Sans Thai',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:var(--fs-8); line-height:var(--lh-thai); }
+
+/* ── แถบเครื่องมือของม็อกอัพ (ไม่ใช่ของแอป) ───────────────────────────── */
+.mockbar { position:sticky; top:0; z-index:60; display:flex; gap:10px; align-items:center;
+  flex-wrap:wrap; padding:10px 18px; background:var(--panel-solid);
+  border-bottom:1px solid var(--border); font-size:var(--fs-6); color:var(--text-3); }
+.mockbar b { color:var(--text); font-size:var(--fs-7); }
+.mockbar .sp { flex:1; }
+.tgl { border:1px solid var(--border-strong); background:var(--panel-float); color:var(--text-2);
+  border-radius:var(--radius); padding:5px 12px; font:inherit; font-size:var(--fs-5);
+  font-weight:var(--fw-semibold); cursor:pointer; }
+.tgl[aria-pressed="true"] { background:var(--navy); border-color:var(--navy); color:var(--navy-fg); }
+
+.sheet { max-width:1180px; margin:0 auto; padding:26px 18px 70px; }
+.sheet.narrow { max-width:430px; }
+.caption { margin:44px 0 14px; padding-top:20px; border-top:1px solid var(--border);
+  font-size:var(--fs-11); font-weight:var(--fw-bold); }
+.caption span { display:block; margin-top:2px; font-size:var(--fs-6); font-weight:400; color:var(--text-3); }
+.backlink { display:inline-block; margin-bottom:12px; color:var(--text-3); font-size:var(--fs-6);
+  text-decoration:none; }
+
+/* ── หัวใบ (SalesDetailOverview) ──────────────────────────────────────── */
+.overview { overflow:hidden; border:1px solid var(--border); border-radius:var(--radius-lg);
+  background:radial-gradient(circle at 100% 0, color-mix(in srgb,var(--accent) 12%,transparent), transparent 42%), var(--panel);
+  box-shadow:var(--glass-shadow); }
+.ovHead { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-5);
+  padding:var(--space-5) 22px var(--space-4-5); flex-wrap:wrap; }
+.eyebrow { display:block; margin-bottom:var(--space-1-5); color:var(--accent-ink);
+  font-size:var(--fs-2); font-weight:var(--fw-bold); letter-spacing:var(--ls-label); text-transform:uppercase; }
+.ovHead h1 { margin:0; font-size:var(--fs-15); font-weight:var(--fw-bold); line-height:var(--lh-thai);
+  letter-spacing:-.02em; }
+.ovDesc { margin:7px 0 0; color:var(--text-3); font-size:var(--fs-7); }
+.facts { display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid var(--border); }
+.facts > div { padding:12px 22px; border-right:1px solid var(--border); min-width:0; }
+.facts > div:last-child { border-right:0; }
+.facts dt { margin:0 0 1px; color:var(--text-3); font-size:var(--fs-2); font-weight:var(--fw-bold);
+  letter-spacing:var(--ls-label); text-transform:uppercase; }
+.facts dd { margin:0; color:var(--text); font-size:var(--fs-8); font-weight:var(--fw-semibold);
+  font-variant-numeric:tabular-nums; }
+@media (max-width:720px) { .facts { grid-template-columns:1fr 1fr; }
+  .facts > div:nth-child(2n) { border-right:0; }
+  .facts > div:nth-child(-n+2) { border-bottom:1px solid var(--border); } }
+
+/* แถบกางเดียวใต้ facts — รายละเอียดคำร้อง + ไฟล์แนบ */
+details.strip { border-top:1px solid var(--border); }
+details.strip > summary { display:flex; gap:10px; align-items:center; padding:11px 22px; cursor:pointer;
+  color:var(--text-2); font-size:var(--fs-6); list-style:none; }
+details.strip > summary::-webkit-details-marker { display:none; }
+details.strip > summary::before { content:"▸"; color:var(--text-3); font-size:var(--fs-5); }
+details.strip[open] > summary::before { content:"▾"; }
+details.strip > summary b { color:var(--text); font-weight:var(--fw-semibold); }
+details.strip .stripBody { padding:0 22px 16px; color:var(--text-2); font-size:var(--fs-7); }
+.files { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
+.file { display:inline-flex; gap:6px; align-items:center; border:1px solid var(--border);
+  background:var(--panel-2); border-radius:var(--radius); padding:4px 9px; font-size:var(--fs-5);
+  color:var(--text-2); }
+
+/* ── ชิปไฟล์ในแถวตาราง ────────────────────────────────────────────────────
+   ⭐ ไฟล์อยู่บรรทัดเดียวกับชื่อ — ไม่ต้องกางก่อนถึงจะเห็นว่ามีอะไรแนบอยู่
+   ⚠️ สูงสุด 2 ชิป ที่เหลือยุบเป็น `+N` — แถวที่มี 5 ไฟล์ทำให้ความสูงแถวเพี้ยน
+      ทั้งตาราง และดันคอลัมน์สถานะจนขอบขวาไม่ตรงกัน
+   ⚠️ ชื่อไฟล์ตัด **กลาง** ไม่ใช่ท้าย — นามสกุลบอกชนิดไฟล์ ตัดท้ายทิ้งคือทิ้งของสำคัญ */
+/* ⚠️ ชิปไม่ยอมหด — ที่ยอมหดคือ **ชื่อรายการ** (`.grow`) · ปล่อยให้ชิปหดแล้วจะได้
+   "s… .pdf" ซึ่งอ่านไม่ออก · ไฟล์ที่สามขึ้นไปยุบเป็น +N เสมอ ไม่ว่าจะมีที่เหลือแค่ไหน */
+.chip { display:inline-flex; gap:5px; align-items:center; max-width:190px; flex:0 0 auto;
+  border:1px solid var(--border); background:var(--panel-2); border-radius:var(--radius);
+  padding:2px 7px; font-size:var(--fs-4); color:var(--text-2); text-decoration:none;
+  overflow:hidden; white-space:nowrap; }
+.chip .nm { overflow:hidden; text-overflow:ellipsis; }
+/* นามสกุลติดกับชื่อที่ถูกตัด — เว้นวรรคทำให้ "ref-cit… .jpg" อ่านเหมือนสองก้อน */
+.chip .nm + .ext { margin-left:-5px; }
+.chip .ext { flex:0 0 auto; color:var(--text-3); }
+.chip.more { color:var(--text-3); }
+.chip.none { border-style:dashed; color:var(--text-3); background:transparent; }
+
+/* ── บาร์ "ต้องทำอะไรต่อ" ─────────────────────────────────────────────── */
+.actionbar { position:sticky; top:52px; z-index:30; display:flex; gap:var(--space-4); align-items:center;
+  justify-content:space-between; flex-wrap:wrap; margin:12px 0; padding:13px 18px;
+  border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));
+  border-left:3px solid var(--accent);
+  border-radius:var(--radius-lg); background:var(--panel-float); box-shadow:var(--shadow-sm); }
+.actionbar.idle { border-color:var(--border); border-left-color:var(--border-strong); }
+.abWhat strong { display:block; font-size:var(--fs-9); font-weight:var(--fw-bold); }
+.abWhat small { display:block; margin-top:1px; color:var(--text-3); font-size:var(--fs-6); }
+.abBtns { display:flex; gap:8px; align-items:center; }
+
+.btn { display:inline-flex; align-items:center; gap:7px; height:var(--ctl-h); padding:0 16px;
+  border:1px solid var(--border-strong); border-radius:var(--radius); background:var(--panel-float);
+  color:var(--text-2); font:inherit; font-size:var(--fs-5); font-weight:var(--fw-semibold); cursor:pointer; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.btn.icon { width:var(--ctl-h); padding:0; justify-content:center; }
+.btn.sm { height:30px; padding:0 11px; font-size:var(--fs-4); }
+.btn.sm.icon { width:30px; padding:0; }
+
+/* ── แท็บมุมมอง ───────────────────────────────────────────────────────── */
+.tabs { display:inline-flex; gap:3px; padding:3px; margin-bottom:12px;
+  border:1px solid var(--border); border-radius:var(--radius-full); background:var(--panel-2); }
+.tabs button { border:0; background:transparent; color:var(--text-2); border-radius:var(--radius-full);
+  padding:6px 16px; font:inherit; font-size:var(--fs-5); font-weight:var(--fw-semibold); cursor:pointer; }
+.tabs button[aria-selected="true"] { background:var(--navy); color:var(--navy-fg); }
+
+/* ── โครงสองคอลัมน์ ───────────────────────────────────────────────────── */
+.layout { display:grid; gap:var(--space-4); align-items:start; }
+@media (min-width:1050px) { .layout { grid-template-columns:minmax(0,1fr) 330px; } }
+.card { border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--panel);
+  box-shadow:var(--glass-shadow); overflow:hidden; }
+.cardHead { display:flex; gap:10px; align-items:center; justify-content:space-between;
+  padding:13px 18px; border-bottom:1px solid var(--border); }
+.cardHead small { display:block; color:var(--text-3); font-size:var(--fs-2);
+  letter-spacing:var(--ls-label); text-transform:uppercase; font-weight:var(--fw-bold); }
+.cardHead h2 { margin:0; font-size:var(--fs-9); font-weight:var(--fw-bold); }
+.cardBody { padding:16px 18px; }
+.aside { display:flex; flex-direction:column; gap:var(--space-4); }
+.panelCard { position:relative; padding:var(--space-5); border:1px solid var(--border);
+  border-radius:var(--radius-lg); background:var(--panel); box-shadow:var(--glass-shadow); overflow:hidden; }
+.panelCard::before { position:absolute; inset:0 0 auto; height:4px; content:"";
+  background:linear-gradient(90deg,var(--accent),var(--navy)); }
+.panelLabel { margin:3px 0 0; color:var(--text-3); font-size:var(--fs-4); font-weight:var(--fw-bold); }
+.panelStatus { margin:4px 0 15px; font-size:var(--fs-12); font-weight:var(--fw-bold); }
+
+/* รางแนวตั้ง */
+.rail { display:flex; flex-direction:column; margin:0 -18px var(--space-3-5);
+  border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.step { display:flex; gap:var(--space-2-5); align-items:center; padding:11px var(--space-4-5);
+  border-bottom:1px solid var(--border); }
+.step:last-child { border-bottom:0; }
+.marker { display:grid; width:27px; height:27px; flex:0 0 auto; place-items:center;
+  border:1px solid var(--border); border-radius:var(--radius-full);
+  color:var(--text-3); font-size:var(--fs-3); font-weight:var(--fw-bold); }
+.step.done .marker { background:var(--green-soft); border-color:color-mix(in srgb,var(--green) 40%,transparent); color:var(--green); }
+.step.now .marker { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.step strong { display:block; font-size:var(--fs-6); font-weight:var(--fw-semibold); }
+.step small { display:block; color:var(--text-3); font-size:var(--fs-4); }
+.step.wait strong { color:var(--text-3); font-weight:500; }
+
+.sumRows { display:flex; flex-direction:column; gap:var(--space-2-5); margin:0;
+  padding:15px 0 17px; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.sumRows > div { display:flex; justify-content:space-between; gap:var(--space-3); }
+.sumRows dt { color:var(--text-3); font-size:var(--fs-5); }
+.sumRows dd { margin:0; color:var(--text-2); font-size:var(--fs-5); font-weight:var(--fw-bold);
+  font-variant-numeric:tabular-nums; text-align:right; }
+.ready { margin:14px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:9px; }
+.ready li { display:flex; gap:9px; align-items:flex-start; font-size:var(--fs-6); }
+.ready .tick { flex:0 0 auto; width:17px; height:17px; margin-top:2px; display:grid; place-items:center;
+  border-radius:var(--radius-full); font-size:var(--fs-2); font-weight:var(--fw-bold);
+  background:var(--panel-3); color:var(--text-3); border:1px solid var(--border); }
+.ready li.ok .tick { background:var(--green-soft); border-color:color-mix(in srgb,var(--green) 40%,transparent); color:var(--green); }
+.ready small { display:block; color:var(--text-3); font-size:var(--fs-4); }
+.refRow { display:flex; justify-content:space-between; gap:10px; padding:8px 0;
+  border-bottom:1px solid var(--border); font-size:var(--fs-6); }
+.refRow:last-child { border-bottom:0; }
+.refRow span { color:var(--text-3); }
+.refRow a { color:var(--navy-ink); font-weight:var(--fw-semibold); text-decoration:none; }
+
+/* ── ตาราง ────────────────────────────────────────────────────────────── */
+/* ⭐ สามคอลัมน์ + รางเปิด/ปิดต้นแถว — "ผลลัพธ์" ยุบเข้า "สถานะ" เพราะคนอ่าน
+   เป็นก้อนเดียว (ผลลัพธ์คือรายละเอียดของสถานะ) · ก้าวถัดไปชิดขวาความกว้าง
+   คงที่ ⇒ ปุ่มทุกแถวเรียงเป็นเส้นตั้งเดียว ตาเกาะได้ */
+.tableWrap { overflow-x:auto; }
+table.t { width:100%; border-collapse:collapse; table-layout:fixed; }
+table.t th { text-align:left; padding:9px 14px; border-bottom:1px solid var(--border-strong);
+  color:var(--text-3); font-size:var(--fs-1); font-weight:var(--fw-bold);
+  letter-spacing:var(--ls-label); text-transform:uppercase; white-space:nowrap; }
+/* ⭐ **หนึ่งรายการ = หนึ่งแถว สองบรรทัด** — ไม่มีแถวย่อย ไม่มีการกาง
+   บรรทัดบน = ชื่อ · บรรทัดล่าง = สเปกที่ขอ (ตัดบรรทัดเดียวด้วย ellipsis
+   ตัวเต็มอยู่ในโมดัลของแถว) · คอลัมน์อื่นบรรทัดเดียวจัดกึ่งกลางแนวตั้ง */
+table.t td { padding:0 14px; height:60px; border-bottom:1px solid var(--border);
+  font-size:var(--fs-3); vertical-align:middle; color:var(--text-2);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+table.t tbody tr:last-child td { border-bottom:0; }
+table.t td b { color:var(--text); font-size:var(--fs-7); font-weight:var(--fw-semibold); }
+/* ⭐ ไฟล์แนบเป็น **คอลัมน์สุดท้าย** — ก้าวถัดไปกับไฟล์ต่างเป็นคอลัมน์กว้างคงที่
+   ชิดซ้ายทั้งคู่ ⇒ ปุ่มเรียงเป็นเส้นตั้งหนึ่ง ชิปไฟล์เรียงเป็นอีกเส้นหนึ่ง */
+table.t .colStep { width:172px; }
+table.t .colFiles { width:150px; }
+/* ⚠️ **ไม่มีคอลัมน์สเปก** — บรรทัดเดียวเหลือที่ให้สเปกราว 20 ตัวอักษร
+   ("เทียนถ้วยแก้ว 2…") ซึ่งอ่านไม่ได้อยู่ดี · สเปกเต็มกับเหตุผลปฏิเสธอยู่ในโมดัล
+   ของแถว (กดที่แถว) — ที่เดียว ไม่ใช่ครึ่งเดียวบนตารางอีกครึ่งในโมดัล */
+table.t tbody tr.clickrow:hover td { background:var(--panel-2); cursor:pointer; }
+
+/* เซลล์ที่มีหลายก้อนในบรรทัดเดียว — ก้อนแรกยอมหด ก้อนหลังคงขนาดจริง
+   ⚠️ **ชื่อรายการต้องไม่หายไปเลย** — `min-width:0` เปล่า ๆ ทำให้ชิปไฟล์เบียดชื่อ
+   จนเหลือศูนย์ (เจอตอนวัดจริง: แถวขึ้นแต่ชิปกับ +1 ไม่มีชื่อกลิ่น) ⇒ ล็อกพื้นที่
+   ขั้นต่ำของชื่อไว้ ที่เหลือค่อยเป็นของชิป */
+.cellLine { display:flex; gap:8px; align-items:center; min-width:0; }
+.cellLine > .grow { flex:1 1 auto; min-width:104px; overflow:hidden; text-overflow:ellipsis; }
+/* ⚠️ บรรทัดล่างเป็น **บรรทัดเดียวเสมอ** — ปล่อยให้ห่อสองบรรทัดเมื่อไร ความสูงแถว
+   จะไม่เท่ากันทั้งตาราง แล้วเส้นแนวนอนจะเดินไม่เป็นจังหวะ (โรคเดิมของแถวย่อย) */
+.cellStack { display:block; min-width:0; }
+.cellStack .sub { display:block; margin-top:1px; color:var(--text-3); font-size:var(--fs-4);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cellStack .sub.empty { font-style:italic; }
+.muted { color:var(--text-3); overflow:hidden; text-overflow:ellipsis; }
+.linktext { color:var(--navy-ink); text-decoration:none; border-bottom:1px dotted var(--border-strong); }
+
+/* แถบกลุ่ม — แถบบาง ไม่ใช่แถวข้อมูลตัวหนา */
+table.t tr.grouprow th { background:var(--panel-2); color:var(--text-2); font-size:var(--fs-4);
+  font-weight:var(--fw-bold); letter-spacing:var(--ls-label); text-transform:uppercase;
+  padding:7px 14px; border-bottom:1px solid var(--border); }
+table.t tr.grouprow .groupInner { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+
+tr.emptyrow td { color:var(--text-3); font-style:italic; }
+.stepcell { display:inline-flex; gap:6px; align-items:center; justify-content:flex-end; }
+.dash { color:var(--text-3); }
+
+.badge { display:inline-block; border-radius:var(--radius-full); padding:2px 10px;
+  font-size:var(--fs-4); font-weight:var(--fw-semibold); border:1px solid transparent; white-space:nowrap; }
+.badge.amber { background:var(--amber-soft); color:var(--amber); border-color:color-mix(in srgb,var(--amber) 30%,transparent); }
+.badge.green { background:var(--green-soft); color:var(--green); border-color:color-mix(in srgb,var(--green) 30%,transparent); }
+.badge.blue  { background:var(--blue-soft);  color:var(--blue);  border-color:color-mix(in srgb,var(--blue) 30%,transparent); }
+.badge.red   { background:var(--red-soft);   color:var(--red);   border-color:color-mix(in srgb,var(--red) 30%,transparent); }
+.badge.grey  { background:var(--panel-3);    color:var(--text-3);border-color:var(--border); }
+
+/* ── เธรด ─────────────────────────────────────────────────────────────── */
+.msg { display:flex; gap:11px; padding:12px 0; border-bottom:1px solid var(--border); }
+.msg:last-of-type { border-bottom:0; }
+.ava { flex:0 0 auto; width:31px; height:31px; display:grid; place-items:center; border-radius:var(--radius-full);
+  background:var(--navy); color:var(--navy-fg); font-size:var(--fs-4); font-weight:var(--fw-bold); }
+.msg.sys .ava { background:var(--panel-3); color:var(--text-3); }
+.msg .who { font-size:var(--fs-6); font-weight:var(--fw-semibold); }
+.msg .who span { color:var(--text-3); font-weight:400; font-size:var(--fs-4); margin-left:7px; }
+.msg p { margin:2px 0 0; font-size:var(--fs-7); color:var(--text-2); }
+.composer { margin-top:13px; border:1px solid var(--border); border-radius:var(--radius-md);
+  background:var(--panel-2); padding:11px 13px; color:var(--text-3); font-size:var(--fs-7); }
+.composer .hint { margin-top:8px; font-size:var(--fs-4); color:var(--text-3); }
+
+.pdrSplit { display:grid; gap:14px; }
+@media (min-width:760px) { .pdrSplit { grid-template-columns:230px minmax(0,1fr); } }
+.pdrNav { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius-md);
+  overflow:hidden; }
+.pdrNav button { display:flex; justify-content:space-between; gap:8px; border:0; text-align:left;
+  border-bottom:1px solid var(--border); background:var(--panel-2); color:var(--text-2);
+  padding:9px 12px; font:inherit; font-size:var(--fs-6); cursor:pointer; }
+.pdrNav button:last-child { border-bottom:0; }
+.pdrNav button[aria-selected="true"] { background:var(--navy); color:var(--navy-fg); }
+.pdrNav em { font-style:normal; font-size:var(--fs-4); opacity:.8; font-variant-numeric:tabular-nums; }
+.pdrPane dl { margin:0; display:grid; gap:10px; }
+.pdrPane dt { color:var(--text-3); font-size:var(--fs-2); font-weight:var(--fw-bold);
+  letter-spacing:var(--ls-label); text-transform:uppercase; }
+.pdrPane dd { margin:2px 0 0; font-size:var(--fs-7); color:var(--text); }
+
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+/* ── มุมมองการ์ด (จอตั้ง / กว้าง < 820px) ─────────────────────────────────
+   ⭐ กลไกเดิมของระบบ: `useResponsiveView({ portrait:'list', landscape:'table' })`
+   — ตัวเดียวกับที่คิวคำร้องและอีก 9 หน้าใช้ · ผู้ใช้กด ViewSwitcher ทับได้
+   ⚠️ **ข้อมูลชุดเดียวกับตาราง ลำดับเดียวกับตาราง** — การ์ดที่เลือกฟิลด์เองจะเพี้ยน
+   จากตารางทันทีที่มีคนเพิ่มคอลัมน์ (บทเรียนจาก RequestQueuePanel) */
+.qcards { display:flex; flex-direction:column; gap:9px; }
+.qgroup { display:flex; gap:7px; align-items:center; padding:6px 2px 0; color:var(--text-3);
+  font-size:var(--fs-4); font-weight:var(--fw-bold); letter-spacing:var(--ls-label); text-transform:uppercase; }
+.qgroup .badge { text-transform:none; letter-spacing:0; }
+.qcard { display:flex; flex-direction:column; gap:5px; width:100%; text-align:left;
+  border:1px solid var(--border); border-radius:var(--radius-md); background:var(--panel-solid);
+  padding:11px 13px; font:inherit; cursor:pointer; }
+.qcard .top { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+.qcard .name { color:var(--text); font-size:var(--fs-8); font-weight:var(--fw-semibold); }
+.qcard .spec { color:var(--text-3); font-size:var(--fs-5); }
+.qcard .bottom { display:flex; gap:8px; align-items:center; justify-content:space-between;
+  margin-top:3px; padding-top:9px; border-top:1px solid var(--border); }
+.qempty { border:1px dashed var(--border-strong); border-radius:var(--radius-md);
+  padding:11px 13px; color:var(--text-3); font-size:var(--fs-6); font-style:italic; }
+.note { border:1px solid var(--border); background:var(--panel-2); border-radius:var(--radius-md);
+  padding:10px 13px; font-size:var(--fs-6); color:var(--text-2); margin:14px 0 0; }
+.note b { color:var(--text); }
+.frame { border:1px solid var(--border-strong); border-radius:22px; padding:10px;
+  background:var(--panel-3); box-shadow:var(--shadow-md); }
+.frame > .inner { background:var(--bg); border-radius:14px; padding:14px 12px 22px; overflow:hidden; }
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <b>ม็อกอัพเสมือนจริง</b> · รื้อหน้ารายละเอียดคำร้อง RD · <span>ข้อเสนอ 2026-08-15 — ยังไม่ลงมือ</span>
+  <span class="sp"></span>
+  <button class="tgl" id="themeBtn" aria-pressed="false">ธีมมืด</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     จอ 1 · พัฒนากลิ่น (scent_dev)
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="sheet">
+  <p class="caption">จอ 1 · พัฒนากลิ่น
+    <span><code>/requests/SB-2608-003</code> — หัวข้อที่หนักที่สุด: PDR · ประตูหัวหน้า · กระทบยอด SO</span></p>
+
+  <a class="backlink" href="#">← กลับรายการคำร้อง</a>
+
+  <section class="overview">
+    <div class="ovHead">
+      <div>
+        <span class="eyebrow">พัฒนากลิ่น · ถึงฝ่าย RD</span>
+        <h1>SB-2608-003</h1>
+        <p class="ovDesc">บรีฟกลิ่น Reed Diffuser ชุดปลายปี · บริษัท ตัวอย่างจำกัด</p>
+      </div>
+    </div>
+
+    <dl class="facts">
+      <div><dt>วันที่สร้าง</dt><dd>08/08/2026</dd></div>
+      <div><dt>ผู้ขอ</dt><dd>ณัฐพงศ์ ก.</dd></div>
+      <div><dt>ลูกค้า</dt><dd>ตัวอย่างจำกัด</dd></div>
+      <div><dt>รับปากส่ง</dt><dd>18/08/2026</dd></div>
+    </dl>
+
+    <details class="strip">
+      <summary><b>รายละเอียดคำร้อง</b> · ไฟล์แนบ 2 ไฟล์</summary>
+      <div class="stripBody">
+        ขอ direction กลิ่นสำหรับ Reed Diffuser ชุดปลายปี 2 ทิศทาง — โทนส้มสดชื่นสำหรับล็อบบี้
+        และโทนไม้อุ่นสำหรับห้องพัก · ลูกค้าเคยใช้ SC-0388 แล้วบอกว่าหวานเกินไป
+        <div class="files">
+          <span class="file">📎 brief-reed-2026.pdf</span>
+          <span class="file">📎 moodboard.jpg</span>
+        </div>
+        <p style="margin:9px 0 0; color:var(--text-3); font-size:var(--fs-5)">
+          รับเรื่องโดย ปิยะดา ส. · 09/08/2026</p>
+      </div>
+    </details>
+  </section>
+
+  <div class="actionbar">
+    <div class="abWhat">
+      <strong>รับเรื่องแล้ว — ถึงตาฝ่ายคุณส่งงาน</strong>
+      <small>2 บรีฟยังไม่มี direction · รับปากส่ง 18/08 (อีก 3 วัน)</small>
+    </div>
+    <div class="abBtns">
+      <button class="btn primary">ส่งงาน</button>
+      <button class="btn icon" aria-label="การจัดการของ SB-2608-003">⋯</button>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="มุมมองของใบ">
+    <button role="tab" aria-selected="true">งาน</button>
+    <button role="tab" aria-selected="false">แบบฟอร์ม PDR</button>
+  </div>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <div class="cardHead">
+          <div><small>รายการของใบนี้</small><h2>บรีฟและ direction</h2></div>
+          <button class="btn sm">กางทุกแถว</button>
+        </div>
+        <div class="tableWrap">
+          <table class="t">
+            <thead><tr>
+              <th>กลิ่น</th><th style="width:30%">สถานะ</th>
+              <th class="colStep">ก้าวถัดไป</th><th class="colFiles">ไฟล์</th>
+            </tr></thead>
+            <tbody>
+              <tr class="grouprow"><th colspan="4"><span class="groupInner">
+                <span>บรีฟ 1 · โทนส้มสดชื่น (ล็อบบี้)</span>
+                <span class="badge grey">2 direction</span></span></th></tr>
+
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>Citrus Dawn</b>
+                  <span class="sub" title="ขนาด 200 มล. · ก้านไม้ 8 ก้าน · ต้องการโทนส้มที่ไม่หวานเท่า SC-0388">ขนาด 200 มล. · ก้านไม้ 8 ก้าน · ต้องการโทนส้มที่ไม่หวานเท่า SC-0388</span></span></td>
+                <td><span class="badge amber">กำลังทำ</span></td>
+                <td class="colStep"><span class="stepcell"><button class="btn sm">ส่งงาน</button></span></td>
+                <td class="colFiles"><a class="chip more" href="#">📎 2 ไฟล์</a></td>
+              </tr>
+
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>Ocean Salt</b>
+                  <span class="sub">ขนาด 200 มล. · โทนทะเลอ่อน ไม่ใส่มัสก์</span></span></td>
+                <td><span class="cellLine"><span class="badge green">เสร็จแล้ว</span>
+                  <span class="muted">ยืนยัน 500 ชิ้น</span></span></td>
+                <td class="colStep"><span class="dash">—</span></td>
+                <td class="colFiles"><span class="dash">—</span></td>
+              </tr>
+
+              <tr class="grouprow"><th colspan="4"><span class="groupInner">
+                <span>บรีฟ 2 · โทนไม้อุ่น (ห้องพัก)</span>
+                <span class="badge red">ยังไม่ลงมือ</span></span></th></tr>
+              <tr class="emptyrow">
+                <td colspan="4">ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:16px">
+        <div class="cardHead"><div><small>Discussion</small><h2>พูดคุยในคำร้องนี้</h2></div></div>
+        <div class="cardBody">
+          <div class="msg sys">
+            <span class="ava">•</span>
+            <div><div class="who">ระบบ<span>09/08 09:12</span></div>
+              <p>ปิยะดา ส. รับเรื่อง — รับปากส่ง 18/08/2026</p></div>
+          </div>
+          <div class="msg">
+            <span class="ava">ณ</span>
+            <div><div class="who">ณัฐพงศ์ ก.<span>09/08 10:04</span></div>
+              <p>ลูกค้าขอให้เลี่ยงโทนหวาน เพราะ SC-0388 รอบก่อนโดนติว่าเลี่ยน</p></div>
+          </div>
+          <div class="msg">
+            <span class="ava">ป</span>
+            <div><div class="who">ปิยะดา ส.<span>11/08 14:31</span></div>
+              <p>รับทราบ กำลังลองสองทิศทาง จะส่งตัวแรกภายในวันศุกร์</p></div>
+          </div>
+          <div class="composer">ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม…
+            <div class="hint">จะแจ้งเตือนถึง ณัฐพงศ์ ก. (ผู้เปิดคำร้อง)</div></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="aside">
+      <div class="panelCard">
+        <p class="panelLabel">สถานะของใบ</p>
+        <p class="panelStatus">รับเรื่องแล้ว</p>
+        <div class="rail">
+          <div class="step done"><span class="marker">✓</span>
+            <div><strong>ส่งคำร้อง</strong><small>08/08 · ณัฐพงศ์ ก.</small></div></div>
+          <div class="step done"><span class="marker">✓</span>
+            <div><strong>หัวหน้ายืนยัน</strong><small>08/08 · วรพล ต.</small></div></div>
+          <div class="step now"><span class="marker">3</span>
+            <div><strong>รอฝ่าย RD ส่งงาน</strong><small>รับปากส่ง 18/08</small></div></div>
+          <div class="step wait"><span class="marker">4</span>
+            <div><strong>ผู้ขอปิดเรื่อง</strong></div></div>
+        </div>
+        <dl class="sumRows">
+          <div><dt>บรีฟ</dt><dd>2</dd></div>
+          <div><dt>กลิ่นตาม SO</dt><dd>3</dd></div>
+          <div><dt>direction ส่งแล้ว</dt><dd>2</dd></div>
+          <div><dt>บรีฟยังไม่ลงมือ</dt><dd>1</dd></div>
+          <div><dt>รอลูกค้าตอบ</dt><dd>0</dd></div>
+          <div><dt>รอใส่ราคา</dt><dd>1</dd></div>
+        </dl>
+        <ul class="ready">
+          <li class="ok"><span class="tick">✓</span>
+            <div>หัวหน้าสายงานขายยืนยัน<small>วรพล ต. · 08/08</small></div></li>
+          <li><span class="tick"></span>
+            <div>ทุกบรีฟมี direction<small>เหลือ 1 ก้อนที่ยังไม่ได้ลงมือ</small></div></li>
+        </ul>
+        <div class="note" style="margin-top:15px">
+          <b>กระทบยอด SO:</b> ส่งแล้ว 2 จาก 3 กลิ่นที่สั่งไว้ใน SO-2608-0004
+        </div>
+      </div>
+
+      <div class="panelCard" style="padding-top:var(--space-5)">
+        <p class="panelLabel" style="margin-bottom:8px">อ้างอิงของใบนี้</p>
+        <div class="refRow"><span>โครงการ</span><a href="#">PJ-2608-002 · Reed ปลายปี</a></div>
+        <div class="refRow"><span>ดีล</span><a href="#">DL-2608-011 · ตัวอย่างจำกัด</a></div>
+        <div class="refRow"><span>ใบสั่งขาย</span><a href="#">SO-2608-0004</a></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="note">
+    <b>อะไรหายไปจากของเดิม</b> — การ์ดรายแถว <code>RequestRows</code> ทั้งชุด (สเปก+ไฟล์แนบย้ายเข้าแถวที่กางได้) ·
+    ปุ่มระดับใบบนการ์ดขวา (ย้ายขึ้นบาร์บนสุด) · แถบก้าวถัดไปที่ปักหมุดล่างจอ (เงียบอยู่แล้วบนโครง panel)
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     จอ 2 · พัฒนาสูตร
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="sheet">
+  <p class="caption">จอ 2 · พัฒนาสูตร
+    <span><code>/requests/FD-2608-001</code> — ไม่มีชั้นบรีฟ · 1 แถว = หมวด × กลิ่น = สูตร 1 ตัวในทะเบียน</span></p>
+
+  <section class="overview">
+    <div class="ovHead">
+      <div>
+        <span class="eyebrow">พัฒนาสูตร · ถึงฝ่าย RD</span>
+        <h1>FD-2608-001</h1>
+        <p class="ovDesc">ขอตัวอย่างเทียนหอม 3 กลิ่น · บริษัท ตัวอย่างจำกัด</p>
+      </div>
+    </div>
+    <dl class="facts">
+      <div><dt>วันที่สร้าง</dt><dd>10/08/2026</dd></div>
+      <div><dt>ผู้ขอ</dt><dd>ณัฐพงศ์ ก.</dd></div>
+      <div><dt>ตอบแล้ว</dt><dd>1/3 รายการ</dd></div>
+      <div><dt>รับปากส่ง</dt><dd>20/08/2026</dd></div>
+    </dl>
+    <details class="strip">
+      <summary><b>บรีฟผลิตภัณฑ์</b> · ไฟล์แนบ 1 ไฟล์</summary>
+      <div class="stripBody">เทียนถ้วยแก้ว 200g ฝาไม้ · ขอเนื้อเทียนถั่วเหลือง ไม่ใส่สีสังเคราะห์
+        <div class="files"><span class="file">📎 pack-spec.pdf</span></div></div>
+    </details>
+  </section>
+
+  <div class="actionbar">
+    <div class="abWhat">
+      <strong>รับเรื่องแล้ว — มี 2 รายการพร้อมส่งงาน</strong>
+      <small>ส่งพร้อมกันได้ในครั้งเดียว · สูตรจะเข้าทะเบียนทันทีที่บันทึก</small>
+    </div>
+    <div class="abBtns">
+      <button class="btn primary">ส่งงานหลายรายการ</button>
+      <button class="btn icon" aria-label="การจัดการของ FD-2608-001">⋯</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <div class="cardHead"><div><small>รายการของใบนี้</small><h2>สรุปทั้งใบ</h2></div></div>
+        <div class="tableWrap">
+          <table class="t">
+            <thead><tr>
+              <th>รายการ</th><th style="width:32%">สถานะ</th>
+              <th class="colStep">ก้าวถัดไป</th><th class="colFiles">ไฟล์</th>
+            </tr></thead>
+            <tbody>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>เทียนหอม × Citrus Dawn</b>
+                  <span class="sub">เทียนถ้วยแก้ว 200g · ไส้ฝ้าย · เผาไหม้ ≥ 40 ชม.</span></span></td>
+                <td><span class="badge amber">กำลังทำ</span></td>
+                <td class="colStep"><span class="stepcell"><button class="btn sm">ส่งงาน</button></span></td>
+                <td class="colFiles"><a class="chip" href="#"><span>📎</span><span class="nm">ref-jar</span><span class="ext">.jpg</span></a></td>
+              </tr>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>เทียนหอม × Ocean Salt</b>
+                  <span class="sub empty">ผู้ขอไม่ได้ระบุสเปก</span></span></td>
+                <td><span class="badge amber">กำลังทำ</span></td>
+                <td class="colStep"><span class="stepcell"><button class="btn sm">ส่งงาน</button></span></td>
+                <td class="colFiles"><span class="dash">—</span></td>
+              </tr>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>ก้านไม้หอม × Warm Cedar</b>
+                  <span class="sub">ก้านไม้ 8 ก้าน · ขวดแก้ว 200 มล. · ฉลากติดเอง</span></span></td>
+                <td><span class="cellLine"><span class="badge blue">ส่งลูกค้าแล้ว</span>
+                  <span class="muted">PF638010202-P1 · ส่ง 12/08</span></span></td>
+                <td class="colStep"><span class="stepcell"><button class="btn sm">บันทึกคำตอบ</button></span></td>
+                <td class="colFiles"><a class="chip more" href="#">📎 4 ไฟล์</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card" style="margin-top:16px">
+        <div class="cardHead"><div><small>Discussion</small><h2>พูดคุยในคำร้องนี้</h2></div></div>
+        <div class="cardBody">
+          <div class="msg sys"><span class="ava">•</span>
+            <div><div class="who">ระบบ<span>12/08 16:20</span></div>
+              <p>ปิยะดา ส. ส่งงาน "ก้านไม้หอม × Warm Cedar" — สูตร PF638010202-P1 เข้าทะเบียนแล้ว</p></div></div>
+          <div class="composer">ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม…
+            <div class="hint">จะแจ้งเตือนถึง ณัฐพงศ์ ก. (ผู้เปิดคำร้อง)</div></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="aside">
+      <div class="panelCard">
+        <p class="panelLabel">สถานะของใบ</p>
+        <p class="panelStatus">รับเรื่องแล้ว</p>
+        <div class="rail">
+          <div class="step done"><span class="marker">✓</span>
+            <div><strong>ส่งคำร้อง</strong><small>10/08 · ณัฐพงศ์ ก.</small></div></div>
+          <div class="step now"><span class="marker">2</span>
+            <div><strong>รอฝ่าย RD ส่งงาน</strong><small>รับปากส่ง 20/08</small></div></div>
+          <div class="step wait"><span class="marker">3</span>
+            <div><strong>ผู้ขอปิดเรื่อง</strong></div></div>
+        </div>
+        <dl class="sumRows">
+          <div><dt>รายการที่ขอ</dt><dd>3</dd></div>
+          <div><dt>ได้สูตรแล้ว</dt><dd>1</dd></div>
+          <div><dt>ยังไม่ได้ส่ง</dt><dd>2</dd></div>
+          <div><dt>รอลูกค้าตอบ</dt><dd>1</dd></div>
+          <div><dt>รอใส่ราคา</dt><dd>0</dd></div>
+          <div><dt>ลูกค้าขอให้แก้</dt><dd>0</dd></div>
+        </dl>
+      </div>
+      <div class="panelCard">
+        <p class="panelLabel" style="margin-bottom:8px">อ้างอิงของใบนี้</p>
+        <div class="refRow"><span>โครงการ</span><a href="#">PJ-2608-004 · เทียนหอม NPD</a></div>
+        <div class="refRow"><span>ดีล</span><a href="#">DL-2608-019 · ตัวอย่างจำกัด</a></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     จอ 3 · ขอเอกสาร
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="sheet">
+  <p class="caption">จอ 3 · ขอเอกสาร
+    <span><code>/requests/RQ-2608-014</code> — คำถามของหัวข้อนี้คือ "ได้ไฟล์แล้วกี่ชิ้น ยังขาดอะไร"</span></p>
+
+  <section class="overview">
+    <div class="ovHead">
+      <div>
+        <span class="eyebrow">ขอเอกสาร · ถึงฝ่าย RD</span>
+        <h1>RQ-2608-014</h1>
+        <p class="ovDesc">ขอ IFRA / COA / MSDS ของกลิ่น SC-0413 · ลูกค้าขอก่อนออกใบสั่งซื้อ</p>
+      </div>
+    </div>
+    <dl class="facts">
+      <div><dt>วันที่สร้าง</dt><dd>12/08/2026</dd></div>
+      <div><dt>ผู้ขอ</dt><dd>สุภาพร ว.</dd></div>
+      <div><dt>ตอบแล้ว</dt><dd>2/3 รายการ</dd></div>
+      <div><dt>รับปากส่ง</dt><dd>16/08/2026</dd></div>
+    </dl>
+    <details class="strip">
+      <summary><b>รายละเอียดคำร้อง</b> · ไม่มีไฟล์แนบ</summary>
+      <div class="stripBody">ลูกค้าต้องใช้ประกอบการขึ้นทะเบียนก่อนออก PO — ขอฉบับภาษาอังกฤษ</div>
+    </details>
+  </section>
+
+  <div class="actionbar idle">
+    <div class="abWhat">
+      <strong>เหลือ 1 รายการรอฝ่ายส่ง — ไม่ใช่ตาของคุณ</strong>
+      <small>ผู้ขอคือ สุภาพร ว. · ปิดเรื่องได้เมื่อได้ครบหรือฝ่ายปฏิเสธครบทุกแถว</small>
+    </div>
+    <div class="abBtns">
+      <button class="btn icon" aria-label="การจัดการของ RQ-2608-014">⋯</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <section class="card">
+        <div class="cardHead"><div><small>รายการของใบนี้</small><h2>เอกสารที่ขอ</h2></div></div>
+        <div class="tableWrap">
+          <table class="t">
+            <thead><tr>
+              <th>เอกสารที่ขอ</th><th style="width:36%">สถานะ</th>
+              <th class="colStep">ก้าวถัดไป</th><th class="colFiles">ไฟล์</th>
+            </tr></thead>
+            <tbody>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>COA</b>
+                  <span class="sub">ของกลิ่น SC-0413 · ฉบับภาษาอังกฤษ</span></span></td>
+                <td><span class="badge amber">กำลังทำ</span></td>
+                <td class="colStep"><span class="stepcell">
+                  <button class="btn sm">ส่งงาน</button><button class="btn sm">ปฏิเสธ</button></span></td>
+                <td class="colFiles"><span class="dash">—</span></td>
+              </tr>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>IFRA Certificate</b>
+                  <span class="sub">ของกลิ่น SC-0413 · ฉบับภาษาอังกฤษ</span></span></td>
+                <td><span class="cellLine"><span class="badge green">ได้รับแล้ว</span>
+                  <span class="muted">13/08 · ปิยะดา ส.</span></span></td>
+                <td class="colStep"><span class="dash">—</span></td>
+                <td class="colFiles"><a class="chip more" href="#">📄 2 ไฟล์</a></td>
+              </tr>
+              <tr class="clickrow">
+                <td><span class="cellStack"><b>MSDS</b>
+                  <span class="sub" title="ปฏิเสธ: เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอเอกสารจากเขาโดยตรง">ปฏิเสธ: เนื้อสารตัวนี้ซื้อจากซัพพลายเออร์ ต้องขอเอกสารจากเขาโดยตรง</span></span></td>
+                <td><span class="cellLine"><span class="badge red">ปฏิเสธ</span>
+                  <span class="muted">13/08 · ปิยะดา ส.</span></span></td>
+                <td class="colStep"><span class="dash">—</span></td>
+                <td class="colFiles"><span class="dash">—</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card" style="margin-top:16px">
+        <div class="cardHead"><div><small>Discussion</small><h2>พูดคุยในคำร้องนี้</h2></div></div>
+        <div class="cardBody">
+          <div class="msg sys"><span class="ava">•</span>
+            <div><div class="who">ระบบ<span>13/08 11:05</span></div>
+              <p>ปิยะดา ส. ปฏิเสธรายการ "MSDS" — เนื้อสารซื้อจากซัพพลายเออร์</p></div></div>
+          <div class="composer">ถามสเปก / แจ้งข้อมูลเพิ่ม…
+            <div class="hint">จะแจ้งเตือนถึงฝ่าย RD ที่ถือเรื่องนี้อยู่</div></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="aside">
+      <div class="panelCard">
+        <p class="panelLabel">สถานะของใบ</p>
+        <p class="panelStatus">รับเรื่องแล้ว</p>
+        <div class="rail">
+          <div class="step done"><span class="marker">✓</span>
+            <div><strong>ส่งคำร้อง</strong><small>12/08 · สุภาพร ว.</small></div></div>
+          <div class="step now"><span class="marker">2</span>
+            <div><strong>รอฝ่าย RD ส่งเอกสาร</strong><small>เหลือ 1 จาก 3 รายการ</small></div></div>
+          <div class="step wait"><span class="marker">3</span>
+            <div><strong>ผู้ขอปิดเรื่อง</strong></div></div>
+        </div>
+        <dl class="sumRows">
+          <div><dt>มาแล้ว</dt><dd>1</dd></div>
+          <div><dt>รอเอกสาร</dt><dd>1</dd></div>
+          <div><dt>ปฏิเสธ</dt><dd>1</dd></div>
+          <div><dt>จากที่ขอ</dt><dd>3</dd></div>
+        </dl>
+        <div class="note" style="margin-top:15px">
+          เช็คลิสต์รายแถวเดิมถูกตัดทิ้ง — มันคือแถวชุดเดียวกับตารางพูดซ้ำ
+        </div>
+      </div>
+      <div class="panelCard">
+        <p class="panelLabel" style="margin-bottom:8px">อ้างอิงของใบนี้</p>
+        <div class="refRow"><span>โครงการ</span><a href="#">PJ-2608-002 · Reed ปลายปี</a></div>
+        <div class="refRow"><span>ดีล</span><a href="#">DL-2608-011 · ตัวอย่างจำกัด</a></div>
+        <div class="refRow"><span>ใบเสนอราคา</span><a href="#">IS-2608-0005</a></div>
+        <div class="refRow"><span>สินค้า (FG)</span><a href="#">FG-0204 · Reed 200ml</a></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     จอ 4 · แท็บแบบฟอร์ม PDR
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="sheet">
+  <p class="caption">จอ 4 · แท็บแบบฟอร์ม PDR (พัฒนากลิ่น)
+    <span>โครงสองชั้นด้านข้างตามมติ ม-94 งวด 2 — เปลี่ยนแค่ตำแหน่งแท็บ ขึ้นมาติดใต้บาร์ก้าวถัดไป</span></p>
+
+  <div class="actionbar">
+    <div class="abWhat">
+      <strong>รับเรื่องแล้ว — ถึงตาฝ่ายคุณส่งงาน</strong>
+      <small>2 บรีฟยังไม่มี direction · รับปากส่ง 18/08 (อีก 3 วัน)</small>
+    </div>
+    <div class="abBtns">
+      <button class="btn primary">ส่งงาน</button>
+      <button class="btn icon" aria-label="การจัดการ">⋯</button>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="มุมมองของใบ">
+    <button role="tab" aria-selected="false">งาน</button>
+    <button role="tab" aria-selected="true">แบบฟอร์ม PDR</button>
+  </div>
+
+  <section class="card">
+    <div class="cardBody">
+      <div class="pdrSplit">
+        <div class="pdrNav" role="tablist" aria-label="หมวดของแบบฟอร์ม">
+          <button role="tab" aria-selected="true"><span>1 ข้อมูลลูกค้า</span><em>6/6 ✓</em></button>
+          <button role="tab" aria-selected="false"><span>2 โจทย์กลิ่น</span><em>4/7</em></button>
+          <button role="tab" aria-selected="false"><span>3 ผลิตภัณฑ์</span><em>3/5</em></button>
+          <button role="tab" aria-selected="false"><span>4 ข้อจำกัด</span><em>0/4</em></button>
+          <button role="tab" aria-selected="false"><span>5 กำหนดเวลา</span><em>2/2 ✓</em></button>
+        </div>
+        <div class="pdrPane">
+          <dl>
+            <div><dt>ชื่อลูกค้า</dt><dd>บริษัท ตัวอย่างจำกัด</dd></div>
+            <div><dt>ผู้ติดต่อ</dt><dd>คุณมณีรัตน์ (ฝ่ายจัดซื้อ)</dd></div>
+            <div><dt>แบรนด์</dt><dd>Sense Living</dd></div>
+            <div><dt>ช่องทางจำหน่าย</dt><dd>โรงแรม · ร้านค้าปลีกในเครือ</dd></div>
+            <div><dt>Scentotype</dt><dd>ADMIRER · DISCOVERER</dd></div>
+            <div><dt>คุณสมบัติกลิ่น</dt><dd>กลิ่นติดทน · กลิ่นฟุ้งกระจาย</dd></div>
+          </dl>
+          <div style="display:flex; gap:8px; margin-top:16px; justify-content:flex-end">
+            <button class="btn">ดูฉบับที่ออกจริง</button>
+            <button class="btn">แก้แบบฟอร์ม PDR</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     จอ 5 · มือถือ
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="sheet narrow">
+  <p class="caption">จอ 5 · มือถือ (390px)
+    <span>บาร์ก้าวถัดไปอยู่บนสุดเหมือนเดิม — การ์ดขวาไหลลงล่างได้โดยไม่พาปุ่มไปด้วย</span></p>
+
+  <div class="frame"><div class="inner">
+    <section class="overview">
+      <div class="ovHead" style="padding:16px 15px 13px">
+        <div>
+          <span class="eyebrow">พัฒนากลิ่น · ถึงฝ่าย RD</span>
+          <h1 style="font-size:var(--fs-12)">SB-2608-003</h1>
+          <p class="ovDesc">บรีฟกลิ่น Reed Diffuser ชุดปลายปี</p>
+        </div>
+      </div>
+      <dl class="facts">
+        <div style="padding:10px 15px"><dt>ผู้ขอ</dt><dd>ณัฐพงศ์ ก.</dd></div>
+        <div style="padding:10px 15px"><dt>รับปากส่ง</dt><dd>18/08</dd></div>
+        <div style="padding:10px 15px"><dt>ลูกค้า</dt><dd>ตัวอย่างจำกัด</dd></div>
+        <div style="padding:10px 15px"><dt>สร้าง</dt><dd>08/08</dd></div>
+      </dl>
+      <details class="strip"><summary style="padding:10px 15px"><b>รายละเอียดคำร้อง</b> · 2 ไฟล์</summary>
+        <div class="stripBody" style="padding:0 15px 13px">ขอ direction กลิ่นสำหรับ Reed Diffuser ชุดปลายปี 2 ทิศทาง</div>
+      </details>
+    </section>
+
+    <div class="actionbar" style="position:static; padding:12px 14px">
+      <div class="abWhat">
+        <strong>ถึงตาฝ่ายคุณส่งงาน</strong>
+        <small>2 บรีฟยังไม่มี direction · อีก 3 วัน</small>
+      </div>
+      <div class="abBtns" style="width:100%">
+        <button class="btn primary" style="flex:1">ส่งงาน</button>
+        <button class="btn icon" aria-label="การจัดการ">⋯</button>
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:10px">
+      <button aria-selected="true">งาน</button><button aria-selected="false">แบบฟอร์ม PDR</button>
+    </div>
+
+    <section class="card">
+      <div class="cardHead" style="padding:11px 14px">
+        <div><small>รายการของใบนี้</small><h2>บรีฟและ direction</h2></div>
+        <div class="tabs" style="margin:0; padding:2px">
+          <button aria-selected="false" style="padding:4px 10px">ตาราง</button>
+          <button aria-selected="true" style="padding:4px 10px">การ์ด</button>
+        </div>
+      </div>
+      <div class="cardBody" style="padding:12px 13px">
+        <div class="qcards">
+          <div class="qgroup">บรีฟ 1 · โทนส้มสดชื่น <span class="badge grey">2 direction</span></div>
+
+          <button class="qcard">
+            <span class="top"><span class="badge amber">กำลังทำ</span></span>
+            <span class="name">Citrus Dawn</span>
+            <span class="spec">ขนาด 200 มล. · ก้านไม้ 8 ก้าน · ต้องการโทนส้มที่ไม่หวานเท่า SC-0388</span>
+            <span class="bottom">
+              <span class="btn sm">ส่งงาน</span>
+              <span class="chip more">📎 2 ไฟล์</span>
+            </span>
+          </button>
+
+          <button class="qcard">
+            <span class="top"><span class="badge green">เสร็จแล้ว</span>
+              <span class="muted" style="font-size:var(--fs-5)">ยืนยัน 500 ชิ้น</span></span>
+            <span class="name">Ocean Salt</span>
+            <span class="spec">ขนาด 200 มล. · โทนทะเลอ่อน ไม่ใส่มัสก์</span>
+          </button>
+
+          <div class="qgroup">บรีฟ 2 · โทนไม้อุ่น <span class="badge red">ยังไม่ลงมือ</span></div>
+          <div class="qempty">ยังไม่มี direction ที่ส่งจากบรีฟก้อนนี้</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="panelCard" style="margin-top:14px; padding:16px 15px">
+      <p class="panelLabel">สถานะของใบ</p>
+      <p class="panelStatus" style="font-size:var(--fs-11)">รับเรื่องแล้ว</p>
+      <div class="rail" style="margin:0 -15px 12px">
+        <div class="step done"><span class="marker">✓</span><div><strong>ส่งคำร้อง</strong></div></div>
+        <div class="step done"><span class="marker">✓</span><div><strong>หัวหน้ายืนยัน</strong></div></div>
+        <div class="step now"><span class="marker">3</span><div><strong>รอฝ่าย RD ส่งงาน</strong><small>รับปากส่ง 18/08</small></div></div>
+        <div class="step wait"><span class="marker">4</span><div><strong>ผู้ขอปิดเรื่อง</strong></div></div>
+      </div>
+      <dl class="sumRows">
+        <div><dt>บรีฟ</dt><dd>2</dd></div>
+        <div><dt>direction ส่งแล้ว</dt><dd>2</dd></div>
+        <div><dt>บรีฟยังไม่ลงมือ</dt><dd>1</dd></div>
+      </dl>
+    </div>
+  </div></div>
+
+  <div class="note">
+    ⭐ <b>ตารางกลายเป็นการ์ดเอง</b> — <code>useResponsiveView({ portrait:'list', landscape:'table' })</code>
+    ตัวเดียวกับคิวคำร้องและอีก 9 หน้าของระบบ · สลับที่ <b>จอตั้ง หรือ กว้าง &lt; 820px</b> ·
+    ผู้ใช้กดตัวสลับทับได้ และ override ถูกล้างเมื่อพลิกจอ
+    <br>⚠️ <b>การ์ดอ่านข้อมูลชุดเดียวกับตาราง เรียงลำดับเดียวกับตาราง</b> — สถานะขึ้นก่อน
+    เหมือนคอลัมน์ที่สองของตาราง · การ์ดที่เลือกฟิลด์เองจะเพี้ยนทันทีที่มีคนเพิ่มคอลัมน์
+    <br>⚠️ จอแคบ <b>ไม่ปักหมุดบาร์</b> — ขอบล่างเป็นของ <code>MobileBottomNav</code> ·
+    บาร์อยู่ในสายที่คนอ่านอยู่แล้วตั้งแต่ต้นหน้า
+  </div>
+</div>
+
+<script>
+  const btn = document.getElementById('themeBtn');
+  btn.addEventListener('click', () => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+    btn.setAttribute('aria-pressed', String(!dark));
+    btn.textContent = dark ? 'ธีมมืด' : 'ธีมสว่าง';
+  });
+</script>
+</body></html>
