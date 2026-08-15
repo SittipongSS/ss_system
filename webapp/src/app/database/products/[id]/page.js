@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban, AlertTriangle, Clock, MessagesSquare, Send } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
 import { DEFAULT_SALE_UNIT, formatVolume } from "@/lib/master/units";
@@ -225,6 +226,15 @@ export default function ProductDetails() {
   const showRetailPrice = showsRetailPrice(product.fgCode, productTypes)
     || product.retailPriceIncVat != null;
 
+  /* ⚠️ **สินค้าที่ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก = ภาษีคิดออกมา 0**
+     ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%) ⇒ ไม่มีราคา = ยื่นภาษีขาด
+     · ราคานี้กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้ มันมาทีหลัง ระบบจึงบล็อกที่ "ยื่นขึ้นทะเบียน"
+     (lib/tax/requirements.js) — ที่นี่คือให้คนที่เปิดสินค้ามาเห็นก่อนว่าต้องเติม
+     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่ายกฎหมายยกเว้นรายตัวไว้ */
+  const needsRetailPrice = catFlags.isExcise
+    && product.isExciseTaxable !== false
+    && !(Number(product.retailPriceIncVat) > 0);
+
   // แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต — เฉพาะผู้เห็นระบบภาษี; helper คืน null เอง
   // เมื่อไม่เข้าข่าย (หมวดอื่น/พักใช้/ยกเว้นรายตัว/approved แล้ว — rail ขวาโชว์อยู่)
   const exciseRec = canViewTax ? exciseRecommendationState(product, catFlags, regs) : null;
@@ -309,6 +319,18 @@ export default function ProductDetails() {
           <Archive size={16} className="text-[var(--text-3)]" />
           สินค้านี้ถูกพักใช้งาน — ไม่แสดงในรายการเลือกของระบบอื่น (กด “เปิดใช้อีกครั้ง” เพื่อนำกลับมา)
         </div>
+      )}
+
+      {/* ⚠️ ขาดราคาขายปลีก = ภาษีคิดออกมา 0 — ขึ้นก่อนแบนเนอร์ทะเบียน เพราะไม่มีราคา
+          ก็ยื่นขึ้นทะเบียนไม่ผ่านอยู่ดี (ด่านที่ lib/tax/requirements.js) */}
+      {needsRetailPrice && (
+        <StatusNotice
+          tone="warning"
+          title="ยังไม่มีราคาขายปลีก — ภาษีสรรพสามิตจะคิดออกมาเป็น 0"
+          className="my-[18px]"
+        >
+          ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT แล้วคูณ 8.8%) · ต้องเติมราคาก่อน จึงจะยื่นขึ้นทะเบียนได้
+        </StatusNotice>
       )}
 
       {/* แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต (ช่องเดียวกับ callout พักใช้งาน) —

@@ -20,6 +20,7 @@ import { TEAM_LABELS } from '@/lib/permissions';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
+import { isExciseCategory } from '@/lib/master/categoryOf';
 
 const inRange = (value, from, to) => {
   if (!value) return false;
@@ -64,6 +65,14 @@ async function fetchProductMap() {
   const m = new Map();
   for (const p of data || []) m.set(p.id, p);
   return m;
+}
+
+// ทะเบียนหมวดสินค้า — ใช้ตัดสินว่าหมวดไหนติ๊ก "ต้องเสียภาษีสรรพสามิต"
+async function fetchProductTypes() {
+  const { data, error } = await getSupabaseAdmin()
+    .from('product_types').select('"mainCategoryCode", "typeCode", "isExcise"');
+  if (error) throw error;
+  return data || [];
 }
 
 // 1) รายงานการขึ้นทะเบียน — one row per registration.
@@ -180,9 +189,70 @@ export async function filingReport(filter = {}) {
   };
 }
 
+/* 3) สินค้าที่ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก — ที่รวมให้ตามไปเติม
+ *
+ * 🐞 **พบตอนตรวจระบบ 2026-08-16:** ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%)
+ * ⇒ สินค้าที่ยังไม่มีราคาจะได้ `exciseTax` = 0 · ตอนพบมี 17 จาก 94 ตัวในหมวดที่ต้อง
+ * เสียภาษี และทั้งหมดอนุมัติ+ใช้งานอยู่ ⇒ ขายเมื่อไรยื่นภาษีขาดโดยไม่มีอะไรฟ้อง
+ *
+ * ⚠️ ราคาขายปลีก **กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้** (มันมาทีหลัง) ⇒ ระบบบล็อกที่
+ * "ยื่นขึ้นทะเบียน" แทน (ดู lib/tax/requirements.js) · รายงานนี้คือฝั่งมองเห็น: ให้คน
+ * ที่ดูแลภาษีเห็นทั้งกองว่าเหลือกี่ตัว แล้วส่งไฟล์ไปให้คนเติมราคาได้เลย
+ */
+export async function missingRetailPriceReport(filter = {}) {
+  const supabase = getSupabaseAdmin();
+  const [{ data: products, error }, types] = await Promise.all([
+    supabase.from('products')
+      .select('id, "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn", "categoryCode", "retailPriceIncVat", "isExciseTaxable", "isActive", "approvalStatus", "customerName", assignee, team'),
+    fetchProductTypes(),
+  ]);
+  if (error) throw error;
+
+  const rows = (products || [])
+    .filter((p) => {
+      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่ายกฎหมายบังคับรายตัว
+      const taxable = p.isExciseTaxable === true
+        || (p.isExciseTaxable !== false && isExciseCategory(p.categoryCode, types));
+      if (!taxable) return false;
+      const retail = Number(p.retailPriceIncVat);
+      return !Number.isFinite(retail) || retail <= 0;
+    })
+    .map((p) => ({
+      id: p.id,
+      product: [p.fgCode || '-', brandLabel(p.brandName, p.brandNameEn)].filter(Boolean).join(' · ')
+        + '\n' + (productDisplayName(p) || ''),
+      customer: p.customerName || '',
+      category: p.categoryCode || '',
+      owner: [p.assignee, p.team].filter(Boolean).join('\n'),
+      state: [p.approvalStatus === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ',
+        p.isActive === false ? 'เลิกใช้' : 'ใช้งาน'].join(' · '),
+    }))
+    .sort((a, b) => a.product.localeCompare(b.product));
+
+  return {
+    type: 'missingRetailPrice',
+    title: 'สินค้าที่ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก',
+    columns: [
+      { key: 'product', label: 'รหัส FG / แบรนด์ / สินค้า', multiline: true },
+      { key: 'customer', label: 'ลูกค้า' },
+      { key: 'category', label: 'หมวด' },
+      { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
+      { key: 'state', label: 'สถานะสินค้า' },
+    ],
+    rows,
+    summary: {
+      _label: `รวม ${rows.length} รายการ`,
+      status: rows.length
+        ? 'ยื่นขึ้นทะเบียนไม่ได้จนกว่าจะเติมราคาขายปลีก — ภาษีจะคิดออกมาเป็น 0'
+        : 'ครบทุกตัวแล้ว',
+    },
+  };
+}
+
 export const REPORTS = {
   registration: registrationReport,
   filing: filingReport,
+  missingRetailPrice: missingRetailPriceReport,
 };
 
 export async function buildReport(type, filter = {}) {

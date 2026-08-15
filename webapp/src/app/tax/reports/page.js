@@ -99,6 +99,9 @@ function ZipDownloadButton({ disabled, selectedTypes, onChange, onDownload }) {
 const REPORT_TABS = [
   { key: "registration", label: "การขึ้นทะเบียน" },
   { key: "filing", label: "การยื่นภาษี" },
+  // 🐞 สินค้าที่ไม่มีราคาขายปลีก = ภาษีคิดออกมา 0 (พบ 17 ตัวตอนตรวจระบบ 2026-08-16)
+  // — ที่รวมให้ตามไปเติมราคา ก่อนที่ใบยื่นจะออกไปพร้อมยอดที่ขาด
+  { key: "missingRetailPrice", label: "ขาดราคาขายปลีก" },
 ];
 
 export default function ReportsPage() {
@@ -114,7 +117,10 @@ export default function ReportsPage() {
   const [selected, setSelected] = useState(() => new Set()); // row ids to download
   const [zipDocTypes, setZipDocTypes] = useState(() => new Set(ZIP_ALL_KEYS)); // doc types to include in ZIP
 
-  const statusFilters = type === "registration" ? REGISTRATION_FILTERS : FILING_FILTERS;
+  // รายงาน "ขาดราคาขายปลีก" ไม่มีสถานะเอกสารให้กรอง (เป็นทะเบียนสินค้า ไม่ใช่ใบ)
+  const statusFilters = type === "missingRetailPrice"
+    ? []
+    : (type === "registration" ? REGISTRATION_FILTERS : FILING_FILTERS);
 
   const query = useMemo(() => {
     const p = new URLSearchParams({ type });

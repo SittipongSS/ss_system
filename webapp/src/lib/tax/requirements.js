@@ -15,16 +15,58 @@
 import { listAttachments } from '@/lib/master/attachments';
 import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
 
+/**
+ * ทะเบียนใบนี้ขาดราคาขายปลีกหรือไม่ — คืนรายการที่ขาด หรือ null เมื่อครบ
+ * (แยกเป็นฟังก์ชันบริสุทธิ์เพื่อให้เทสต์ได้ — ตัวหลักผูกกับ supabase/attachments)
+ */
+export function missingRetailPriceEntry(registration, product) {
+  if (!registration?.productId) return null;
+  // ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
+  if (registration.isExciseTaxable === false) return null;
+  const retail = Number(product?.retailPriceIncVat);
+  if (Number.isFinite(retail) && retail > 0) return null;
+  return {
+    entity: 'product',
+    docType: 'retailPriceIncVat',
+    label: `ราคาขายปลีก (รวม VAT) ของสินค้า${product?.fgCode ? ` ${product.fgCode}` : ''} — ฐานคิดภาษีสรรพสามิต`,
+  };
+}
+
 export async function registrationRequirements(supabase, regId) {
   // query พังต้องดัง — ไม่งั้นด่าน "แนบเอกสารครบไหม" จะตอบว่าไม่พบทะเบียน
   // แล้วผู้ใช้จะไล่หาว่าทะเบียนหายไปไหน ทั้งที่ปัญหาอยู่ที่ DB/schema
   const { data: reg, error: regError } = await supabase
-    .from('excise_registrations').select('id, customerId').eq('id', regId).maybeSingle();
+    .from('excise_registrations')
+    .select('id, customerId, productId, "isExciseTaxable"')
+    .eq('id', regId).maybeSingle();
   if (regError) throw regError;
   if (!reg) return { ready: false, missing: [], warnings: [], notFound: true };
 
   const missing = [];
   const warnings = [];
+
+  /* ── ราคาขายปลีกของสินค้า — ฐานของภาษีทั้งก้อน ────────────────────────────
+     🐞 **พบตอนตรวจระบบ 2026-08-16:** สินค้าในหมวดที่ต้องเสียภาษี 17 จาก 94 ตัว
+     ไม่มี `retailPriceIncVat` ⇒ `exciseTax` = 0 ⇒ ถ้าขายแล้วยื่น จะ **ยื่นภาษีขาด
+     โดยไม่มีอะไรฟ้อง** (คอมเมนต์ใน lib/master/categoryOf.js เตือนอาการนี้ไว้เองแล้ว)
+
+     ⭐ **ด่านอยู่ตรงนี้ ไม่ใช่ตอนสร้าง/อนุมัติสินค้า** (มติผู้ใช้ 2026-08-16) —
+     ราคาขายปลีกยังกรอกไม่ได้ตั้งแต่ตอนเปิดสินค้า มันมาทีหลัง · บังคับตอนนั้นเท่ากับ
+     บล็อกงานด้วยข้อมูลที่ยังไม่มีอยู่จริง
+     ⇒ จุดที่ถูกคือ **ตอนยื่นขึ้นทะเบียน** เพราะทะเบียนคือใบที่ประกาศราคาขายปลีก
+     ต่อสรรพสามิต — ไม่มีราคา = ยื่นไม่ได้อยู่แล้วโดยธรรมชาติของเอกสาร
+     และเมื่อทะเบียนผ่าน ราคาก็มีครบก่อนถึงขั้นขาย/ยื่นชำระเสมอ
+
+     ⚠️ ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ (`isExciseTaxable === false`) ไม่ต้องมีราคา
+     — ภาษีเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด */
+  if (reg.productId && reg.isExciseTaxable !== false) {
+    const { data: product, error: productError } = await supabase
+      .from('products').select('"fgCode", "retailPriceIncVat"').eq('id', reg.productId).maybeSingle();
+    // query พังต้องดัง — เงียบแล้วด่านนี้หายไปทั้งข้อ (เหตุผลเดียวกับ identity gate ข้างล่าง)
+    if (productError) throw productError;
+    const entry = missingRetailPriceEntry(reg, product);
+    if (entry) missing.push(entry);
+  }
 
   // เอกสาร required ระดับทะเบียน (ฉลาก/Artwork).
   const regPresent = new Set((await listAttachments('registration', regId)).map((a) => a.docType));
