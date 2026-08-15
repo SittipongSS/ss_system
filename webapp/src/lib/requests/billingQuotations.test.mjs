@@ -26,9 +26,17 @@ test('ใบที่ตายแล้วขอเอกสารไม่ไ�
   assert.equal(billingQuotationError(qt({ status: 'accepted' })), null);
 });
 
-test('ยอดศูนย์บอกตรง ๆ ไม่ใช่ปล่อยให้กรอก 50% แล้วได้ 0 บาท', () => {
-  assert.match(billingQuotationError(qt({ totalAmount: 0 })), /ยอดเป็นศูนย์/);
-  assert.match(billingQuotationError(qt({ totalAmount: null })), /ยอดเป็นศูนย์/);
+/* ⭐ **ยอดสุทธิศูนย์ = ของจริงของธุรกิจ ไม่ใช่ข้อมูลพัง** (มติผู้ใช้ 2026-08-15:
+   *"บางทีตั้งใจให้ actual เป็น 0 เพราะบางทีเราให้ลูกค้าฟรี"*) — ตรวจ prod แล้ว
+   ใบยอดสุทธิ 0 ทุกใบมีส่วนลดเท่ากับยอดก่อนภาษีพอดี ⇒ คำนวณถูกต้อง
+   ⚠️ กันไว้เหมือนเดิมทั้งสองแบบ แต่ **บอกคนละเหตุผล** — คำที่ชวนให้คนไปตามแก้ของที่
+   ถูกอยู่แล้วคือคำที่ผิด */
+test('ให้ฟรี กับ ใบยังไม่มียอด — กันเหมือนกันแต่บอกคนละคำ', () => {
+  // ลดเต็มจำนวน = ให้ฟรี · ไม่ใช่ความผิดพลาดที่ต้องไปตามแก้
+  assert.match(billingQuotationError(qt({ subtotal: 750000, totalAmount: 0 })), /ให้ฟรี/);
+  // ไม่มียอดก่อนภาษีเลย = ใบยังไม่ได้ใส่ของ — อันนี้ต้องไปทำต่อจริง
+  assert.match(billingQuotationError(qt({ subtotal: 0, totalAmount: 0 })), /ยังไม่มียอด/);
+  assert.match(billingQuotationError(qt({ totalAmount: null })), /ยังไม่มียอด/);
 });
 
 test('ไม่มีใบเลย = ข้อความ "ต้องเลือก" ไม่ใช่พัง', () => {
@@ -47,12 +55,17 @@ test('เหตุผลที่ซ่อน — นับข้อแรกท
     qt(),
     qt({ id: 'A', approvalStatus: 'pending', status: 'cancelled', totalAmount: 0 }),
     qt({ id: 'B', status: 'cancelled' }),
-    qt({ id: 'C', totalAmount: 0 }),
+    qt({ id: 'C', subtotal: 30000, totalAmount: 0 }),   // ลดเต็ม = ให้ฟรี
+    qt({ id: 'D', subtotal: 0, totalAmount: 0 }),       // ใบยังไม่มีของ
   ]);
-  assert.equal(skips.total, 3);
-  assert.equal(skips.notApproved + skips.dead + skips.zeroAmount, skips.total);
-  assert.deepEqual(skips, { notApproved: 1, dead: 1, zeroAmount: 1, total: 3 });
-  assert.match(billingQuotationSkipHint(skips), /ยังไม่อนุมัติ 1 ใบ/);
+  assert.equal(skips.total, 4);
+  assert.equal(skips.notApproved + skips.dead + skips.free + skips.noAmount, skips.total);
+  assert.deepEqual(skips, { notApproved: 1, dead: 1, free: 1, noAmount: 1, total: 4 });
+  /* ⭐ "ให้ฟรี" ต้องอ่านไม่เหมือนความผิดพลาด — ยุบรวมกับ "ยังไม่มียอด" เมื่อไร
+     คนอ่านจะนึกว่าระบบพังทั้งกอง ทั้งที่ส่วนใหญ่คือของที่ตั้งใจให้ฟรี */
+  const hint = billingQuotationSkipHint(skips);
+  assert.match(hint, /ให้ฟรี 1 ใบ/);
+  assert.match(hint, /ยังไม่มียอด 1 ใบ/);
   assert.equal(billingQuotationSkipHint(billingQuotationSkips([qt()])), '');
 });
 
@@ -90,7 +103,7 @@ test('ยอดที่ขอ: ยังกรอกไม่ครบ = ไม
 });
 
 test('ยอดที่ขอ: ฐานเป็นศูนย์ตอบด้วยข้อความเดียวกับด่านของใบ', () => {
-  assert.match(billAmountFor({ mode: 'percent', percent: 50, baseAmount: 0 }).error, /ยอดเป็นศูนย์/);
+  assert.match(billAmountFor({ mode: 'percent', percent: 50, baseAmount: 0 }).error, /ไม่มียอดให้วางบิล/);
 });
 
 test('ฝั่ง server: ยอดเป็นตัวจริง ฐานมาจากแถวจริง', () => {
@@ -112,7 +125,7 @@ test('ฝั่ง server: ด่านตรวจที่ยอด ไม่�
   assert.match(resolveBillAmount({ amount: 0, baseAmount: 100 }).error, /ต้องระบุยอด/);
   assert.match(resolveBillAmount({ amount: null, baseAmount: 100 }).error, /ต้องระบุยอด/);
   assert.match(resolveBillAmount({ amount: 101, baseAmount: 100 }).error, /เกินยอด/);
-  assert.match(resolveBillAmount({ amount: 50, baseAmount: 0 }).error, /ยอดเป็นศูนย์/);
+  assert.match(resolveBillAmount({ amount: 50, baseAmount: 0 }).error, /ไม่มียอดให้วางบิล/);
   // เต็มจำนวนได้ — ขอใบกำกับเต็มยอดเป็นเรื่องปกติ
   assert.equal(resolveBillAmount({ percent: 100, amount: 100, baseAmount: 100 }).percent, 100);
 });

@@ -28,10 +28,21 @@ export function billingQuotationError(quotation) {
   if (DEAD_QUOTATION_STATUSES.has(quotation.status)) {
     return 'ใบเสนอราคานี้ถูกตีกลับหรือยกเลิกไปแล้ว — ขอเอกสารการเงินจากใบนี้ไม่ได้';
   }
-  // ⚠️ ยอด 0 ไม่ใช่ข้อมูลไม่ครบ แต่เป็นใบที่คำนวณ % ไม่ได้ ⇒ บอกตรง ๆ ดีกว่าให้
-  // ผู้ใช้กรอก 50% แล้วได้ 0 บาทโดยไม่มีอะไรเตือน
+  /* ⭐ **ยอดสุทธิศูนย์ = ของจริงของธุรกิจ ไม่ใช่ข้อมูลพัง** (มติผู้ใช้ 2026-08-15:
+     *"บางทีตั้งใจให้ actual เป็น 0 เพราะบางทีเราให้ลูกค้าฟรี"*)
+     ตรวจบน prod แล้ว: ใบที่ยอดสุทธิ 0 ทุกใบมีส่วนลด **เท่ากับยอดก่อนภาษีพอดี**
+     (ส่วนลดเป็นจำนวนเงินเต็ม หรือ 100%) ⇒ `total = subtotal − discount = 0` ถูกต้อง
+
+     ⚠️ **สองกรณีคนละเรื่อง ต้องบอกคนละคำ** — เดิมพูดรวมว่า "ยอดเป็นศูนย์" ซึ่งอ่าน
+     เหมือนระบบพัง ทั้งที่ส่วนใหญ่คือของที่ตั้งใจ:
+       · มียอดก่อนภาษี แต่ลดเต็ม  = **ให้ฟรี** — ไม่มีอะไรให้วางบิล (ถูกต้องแล้ว)
+       · ไม่มียอดก่อนภาษีเลย      = ใบยังไม่มีรายการ — ต้องไปใส่ของก่อน
+     ⚠️ ทั้งคู่ยัง**กันไว้เหมือนกัน** — วางบิล 0 บาทไม่มีความหมาย และคิด % จากศูนย์ไม่ได้
+     ที่เปลี่ยนคือ *เหตุผลที่บอก* ไม่ใช่กติกา */
   if (!(Number(quotation.totalAmount) > 0)) {
-    return 'ใบเสนอราคานี้ยอดเป็นศูนย์ — คิดยอดที่ขอวางบิลไม่ได้';
+    return Number(quotation.subtotal) > 0
+      ? 'ใบนี้ให้ฟรี (ส่วนลดเต็มจำนวน) — ไม่มียอดให้วางบิล'
+      : 'ใบเสนอราคานี้ยังไม่มียอด — ใส่รายการและราคาก่อนจึงขอวางบิลได้';
   }
   return null;
 }
@@ -57,13 +68,16 @@ export function billingQuotationOptions(quotations = [], { keepId = null } = {})
  * หลายข้อ นับทุกข้อแล้วผลรวมจะเกินจำนวนใบที่ซ่อนจริง
  */
 export function billingQuotationSkips(quotations = []) {
-  const out = { notApproved: 0, dead: 0, zeroAmount: 0, total: 0 };
+  // ⚠️ `free` แยกจาก `noAmount` — สองอย่างนี้ทางแก้คนละทาง (ให้ฟรีคือจบแล้ว ไม่ต้องแก้
+  // อะไร · ใบว่างคือยังไม่ได้ใส่ของ) ⇒ รวมเป็นตัวเลขเดียวเมื่อไร คนอ่านจะนึกว่าพัง 12 ใบ
+  const out = { notApproved: 0, dead: 0, free: 0, noAmount: 0, total: 0 };
   for (const qt of Array.isArray(quotations) ? quotations : []) {
     if (billingQuotationError(qt) === null) continue;
     out.total += 1;
     if (qt?.approvalStatus !== 'approved') out.notApproved += 1;
     else if (DEAD_QUOTATION_STATUSES.has(qt?.status)) out.dead += 1;
-    else out.zeroAmount += 1;
+    else if (Number(qt?.subtotal) > 0) out.free += 1;
+    else out.noAmount += 1;
   }
   return out;
 }
@@ -73,7 +87,9 @@ export function billingQuotationSkipHint(skips = {}) {
   const parts = [];
   if (skips.notApproved) parts.push(`ยังไม่อนุมัติ ${skips.notApproved} ใบ`);
   if (skips.dead) parts.push(`ตีกลับ/ยกเลิก ${skips.dead} ใบ`);
-  if (skips.zeroAmount) parts.push(`ยอดเป็นศูนย์ ${skips.zeroAmount} ใบ`);
+  // ⭐ "ให้ฟรี" ไม่ใช่ความผิดพลาด — คำที่ใช้ต้องไม่ชวนให้คนไปตามแก้ของที่ถูกอยู่แล้ว
+  if (skips.free) parts.push(`ให้ฟรี ${skips.free} ใบ`);
+  if (skips.noAmount) parts.push(`ยังไม่มียอด ${skips.noAmount} ใบ`);
   if (!parts.length) return '';
   return `ซ่อนไว้ ${skips.total || parts.length} ใบ — ${parts.join(' · ')}`;
 }
@@ -106,7 +122,9 @@ const num = (v) => {
  */
 export function billAmountFor({ mode = 'percent', percent, amount, baseAmount } = {}) {
   const base = num(baseAmount);
-  if (!(base > 0)) return { percent: null, amount: null, error: 'ใบเสนอราคานี้ยอดเป็นศูนย์ — คิดยอดที่ขอวางบิลไม่ได้' };
+  // ⚠️ ตัวคำนวณไม่เห็น `subtotal` ⇒ แยกไม่ออกว่าให้ฟรีหรือใบว่าง — ใช้คำกลางที่จริง
+  // ทั้งสองแบบ · เหตุผลที่ละเอียดกว่ามาจาก `billingQuotationError` ซึ่งเห็นทั้งแถว
+  if (!(base > 0)) return { percent: null, amount: null, error: 'ใบเสนอราคานี้ไม่มียอดให้วางบิล' };
 
   if (mode === 'amount') {
     const value = num(amount);
@@ -140,7 +158,9 @@ export function billAmountFor({ mode = 'percent', percent, amount, baseAmount } 
 export function resolveBillAmount({ percent, amount, baseAmount } = {}) {
   const base = num(baseAmount);
   const value = num(amount);
-  if (!(base > 0)) return { percent: null, amount: null, error: 'ใบเสนอราคานี้ยอดเป็นศูนย์ — คิดยอดที่ขอวางบิลไม่ได้' };
+  // ⚠️ ตัวคำนวณไม่เห็น `subtotal` ⇒ แยกไม่ออกว่าให้ฟรีหรือใบว่าง — ใช้คำกลางที่จริง
+  // ทั้งสองแบบ · เหตุผลที่ละเอียดกว่ามาจาก `billingQuotationError` ซึ่งเห็นทั้งแถว
+  if (!(base > 0)) return { percent: null, amount: null, error: 'ใบเสนอราคานี้ไม่มียอดให้วางบิล' };
   if (value == null || value <= 0) return { percent: null, amount: null, error: 'ต้องระบุยอดที่ขอวางบิล' };
   if (value > base) return { percent: null, amount: null, error: 'ยอดที่ขอเกินยอดของใบเสนอราคา' };
 
