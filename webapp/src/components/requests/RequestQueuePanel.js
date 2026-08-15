@@ -200,7 +200,8 @@ export default function RequestQueuePanel({
           <>
             <div className={styles.docCell}>
               {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
-              {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
+              {/* ป้ายด่วนอยู่ตรงนี้เฉพาะตอน **ไม่มีคอลัมน์ "ด่วน"** (การ์ดบนหน้าดีล) */}
+              {ask.urgent && !cols.includes("urgent") && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
             </div>
             <div className={styles.subText}>
               {[
@@ -208,9 +209,8 @@ export default function RequestQueuePanel({
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
                 ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
-                /* ⭐ **วันที่ร้องขอ** (มติผู้ใช้ 2026-08-15) — คิวเรียงตามวันนี้ได้แล้ว
-                   ต้องมีอะไรบนแถวให้ยืนยันลำดับ ไม่งั้นเรียงแล้วอ่านไม่ออกว่าเรียงจริงไหม */
-                ask.createdAt ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
+                /* วันที่ร้องขออยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (การ์ดบนหน้าดีล) */
+                ask.createdAt && !cols.includes("created") ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
               ].filter(Boolean).join(" · ")}
               {/* รหัสลูกค้าเกาะท้ายชื่อกิจการเสมอ ไม่ว่าชื่อจะอยู่บรรทัดหลัก
                   (ใบที่ไม่มีเรื่อง) หรือบรรทัดรอง — ตัวเชื่อมกับรหัสกลิ่น/MU */}
@@ -221,6 +221,29 @@ export default function RequestQueuePanel({
         );
       case "kind":
         return <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>;
+      /* ⚠️ ช่องว่างเมื่อไม่ด่วน ไม่ใช่ขีดหรือคำว่า "ปกติ" — คอลัมน์นี้มีไว้ให้ **สะดุดตา**
+         ตอนกวาดลงมา · เติมอะไรทุกแถวเท่ากับกลบสิ่งที่ตั้งใจให้เห็น */
+      case "urgent":
+        return ask.urgent ? <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span> : null;
+      case "created":
+        return ask.createdAt
+          ? <span className={styles.smallCell}>{fmtDate(ask.createdAt)}</span>
+          : <span className={styles.muted}>{NA}</span>;
+      /* ⭐ สองฝั่งของการปิดเรื่อง: บน = ฝ่ายผู้รับตอบเสร็จ · ล่าง = ผู้ขอกดปิด
+         ⚠️ ใบที่ยังไม่จบต้องอ่านออกว่า "ยังไม่ปิด" ไม่ใช่ช่องว่างที่อ่านได้ว่าข้อมูลหาย */
+      case "closed": {
+        if (!ask.answeredAt && !ask.closedAt) return <span className={styles.muted}>ยังไม่ปิด</span>;
+        return (
+          <>
+            <div className={styles.smallCell}>
+              {ask.answeredAt ? `ฝ่ายตอบ ${fmtDate(ask.answeredAt)}` : "ฝ่ายยังไม่ตอบ"}
+            </div>
+            <div className={styles.subText}>
+              {ask.closedAt ? `ผู้ขอปิด ${fmtDate(ask.closedAt)}` : "ผู้ขอยังไม่ปิด"}
+            </div>
+          </>
+        );
+      }
       case "dept":
         return <span className={styles.smallCell}>{ask.dept}</span>;
       case "owner": {
