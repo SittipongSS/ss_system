@@ -53,8 +53,12 @@ test('หัวข้อของกลางอยู่ในลิสต์�
   // ⚠️ **ขอเอกสารล็อกที่ RD แล้ว** (มติผู้ใช้ 2026-08-08) — เดิมเป็นของกลาง
   assert.ok(kindsForDept('RD').includes('document'));
   assert.ok(!kindsForDept('RD').includes('material_eta'));
+  // ⭐ **FN เปิดแล้ว** (มติผู้ใช้ 2026-08-15 · ม-ก) — ต้องมีหัวข้อของตัวเองอย่างน้อยหนึ่ง
+  // ไม่งั้นเลือกฝ่ายแล้วเจอลิสต์ว่าง ซึ่งเป็นทางตันที่ไม่มีข้อความอธิบาย
+  assert.ok(kindsForDept('FN').includes('billing_doc'));
+  assert.ok(!kindsForDept('FN').includes('document'), 'ขอเอกสารของ RD ต้องไม่ปนมาที่บัญชี');
   // ฝ่ายที่ปิดเก็บไว้ก่อนต้องไม่มีหัวข้อให้เปิดใบใหม่เลย — ไม่ใช่มีแต่กดแล้วตกที่ server
-  for (const parked of ['PC', 'FN']) {
+  for (const parked of ['PC']) {
     assert.deepEqual(kindsForDept(parked), [], `${parked} ปิดอยู่ ต้องไม่มีหัวข้อ`);
   }
 });

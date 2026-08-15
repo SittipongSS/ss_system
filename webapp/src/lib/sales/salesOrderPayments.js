@@ -64,14 +64,59 @@ export function installmentsFromPaymentPlan(plan, total) {
  * งวดที่ **ยังไม่ถูกสร้างจริง** — คำนวณสดจากแผนของ QT ทุกครั้งที่เรนเดอร์ เพื่อโชว์ให้ดู
  * ตั้งแต่ใบยังเป็นร่าง (มติผู้ใช้ 2026-08-13: *"แค่สร้างก็โชว์งวดให้ดูได้แล้ว"*)
  *
- * ⭐ ที่ไม่เขียนลง DB ตั้งแต่ตอนร่างเพราะ **ยอดยังเปลี่ยนได้จนกว่าจะอนุมัติ** —
- * เขียนไว้ก่อนแล้วยอดต่องวดจะค้างของเก่าเงียบ ๆ · preview ไม่มีปัญหานั้นเพราะ
- * คำนวณใหม่จาก `totalAmount` ปัจจุบันทุกครั้ง
  * ⚠️ **ห้ามนับ preview เป็นงวดจริง** — ไม่มี id ไม่มีสถานะ กดอะไรไม่ได้ทั้งสิ้น
+ * ⭐ ตั้งแต่ B-4 นี่เป็นแค่จอเปล่าก่อนกด "เริ่มติดตามการชำระ" — กดแล้วได้ **แถวจริง**
+ * ที่กรอกกำหนดชำระได้ทันทีตั้งแต่ใบยังเป็นร่าง (ดู `withLiveAmounts`)
  */
 export function previewInstallments(plan, total) {
   const rows = installmentsFromPaymentPlan(plan, total);
   return rows.map((row) => ({ ...row, preview: true, status: 'pending', id: null }));
+}
+
+// ── งวดร่าง vs งวดที่หยุดยอดแล้ว (B-4 · mig 0259) ────────────────────────
+//
+// ⭐ **ย้ายจุดที่หยุดยอด ไม่ใช่จุดที่สร้างแถว** — เหตุผลเดิมของ 0245 ("ยอดยังเปลี่ยน
+// ได้จนกว่าจะอนุมัติ") ถูก แต่ปัญหาจริงคือ *snapshot ครั้งเดียวแล้วไม่มีใครมาทับ*
+// ⇒ งวดเกิดได้ตั้งแต่ร่าง (SA กรอก `dueDate` ได้ตอนที่กำลังคุยเงื่อนไขกับลูกค้าพอดี)
+// แล้วยอดถูกเขียนทับครั้งสุดท้าย + `frozenAt` ตอนอนุมัติ
+export const isInstallmentFrozen = (row) => !!row?.frozenAt;
+
+/**
+ * ยอดที่ควรแสดง — งวดร่างเดินตามแผนของ QT สด ๆ · งวดที่ freeze แล้วใช้ค่าที่เก็บไว้
+ *
+ * ⚠️ **จอต้องไม่โกหกแม้แผนเปลี่ยนระหว่างร่าง** — QT แก้ได้ ⇒ ยอดที่เขียนไว้ตอนกด
+ * "เริ่มติดตาม" อาจไม่ตรงกับแผนวันนี้ · ที่นี่ทับให้ตอน *อ่าน* ส่วนการเขียนจริง
+ * เกิดครั้งเดียวตอนอนุมัติ (`freezeInstallments`) ⇒ ไม่มี write-on-read
+ *
+ * ⚠️ จับคู่ด้วย `seq` — `dueDate`/`note`/สถานะเป็นของ SA ต้องรอดจากการทับเสมอ
+ */
+export function withLiveAmounts(rows = [], plan = null, total = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return list;
+  const live = new Map(installmentsFromPaymentPlan(plan, total).map((r) => [r.seq, r]));
+  return list.map((row) => {
+    if (isInstallmentFrozen(row)) return row;
+    const fresh = live.get(row.seq);
+    if (!fresh) return row;
+    return { ...row, percent: fresh.percent, amount: fresh.amount, label: fresh.label };
+  });
+}
+
+/**
+ * แผนใน QT ต่างจากงวดที่ตั้งไว้ไหม — คืน `{ planned, tracked }` หรือ null เมื่อตรงกัน
+ *
+ * ⭐ เกิดจริงเมื่อ QT ถูกแก้หลังกด "เริ่มติดตาม" · `withLiveAmounts` แก้ยอดให้ได้
+ * แต่ **จำนวนงวดที่ต่างกันแก้ด้วยการทับยอดไม่ได้** ⇒ ต้องบอกผู้ใช้ตรง ๆ
+ * ⚠️ ตอนอนุมัติ `freezeInstallments` จะตั้งงวดใหม่ทั้งชุดให้เอง — ข้อความบนจอต้อง
+ * บอกแบบนั้น ไม่ใช่ปล่อยให้คนเดาว่าจะเกิดอะไรขึ้น
+ */
+export function installmentPlanDrift(rows = [], plan = null, total = 0) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return null;
+  if (list.some(isInstallmentFrozen)) return null; // freeze แล้วไม่ตามแผนอีก
+  const planned = installmentsFromPaymentPlan(plan, total).length;
+  if (!planned || planned === list.length) return null;
+  return { planned, tracked: list.length };
 }
 
 /**
@@ -182,6 +227,13 @@ export function installmentActionError(row, action, user, options = {}) {
 
   if (action === 'report') {
     if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แจ้งการชำระ';
+    /* ⭐ **แจ้งชำระบนงวดร่างไม่ได้** (B-4) — ยอดของงวดร่างยังเดินตามใบ ⇒ หลักฐาน
+       ที่แนบไว้จะผูกกับตัวเลขที่กำลังจะถูกเขียนทับตอนอนุมัติ
+       ⚠️ ด่านนี้ซ้ำกับ CHECK ของ 0259 โดยตั้งใจ — DB กันของที่หลุดมาทางอื่น
+       ส่วนที่นี่ให้ **ข้อความที่อ่านรู้เรื่อง** แทน error ดิบของ constraint */
+    if (!isInstallmentFrozen(row)) {
+      return 'ใบสั่งขายยังไม่อนุมัติ — แจ้งการชำระได้เมื่อยอดต่องวดถูกยืนยันแล้ว';
+    }
     if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แจ้งซ้ำไม่ได้';
     if (status === 'reported') return 'งวดนี้แจ้งไปแล้ว รอบัญชีตรวจ';
     if (!options.paidOn) return 'ต้องระบุวันที่ลูกค้าชำระ';
@@ -216,6 +268,20 @@ export function installmentActionError(row, action, user, options = {}) {
     if (reason.length < MIN_REJECT_REASON) {
       return `ต้องระบุเหตุผลที่ถอนอย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`;
     }
+    return null;
+  }
+
+  /* ── ผูก/ถอดคำร้องขอเอกสารการเงิน (B-5 · mig 0260) ────────────────────
+     ⭐ **ของฝ่ายขาย ไม่ใช่ของบัญชี** — คนที่รู้ว่าใบวางบิลใบไหนครอบงวดไหนคือคนที่
+     เปิดคำร้องนั้น · บัญชีเห็นความเชื่อมโยงได้แต่ไม่ต้องมากดให้
+     ⚠️ **แนบได้แม้งวดคอนเฟิร์มแล้ว** ต่างจาก `schedule` — ของจริงขอใบเสร็จ *หลัง*
+     เงินเข้าเป็นเรื่องปกติ ปิดตรงนี้เมื่อไรใบเสร็จจะไม่มีที่ให้แขวน */
+  if (action === 'link' || action === 'unlink') {
+    if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์แก้การผูกคำร้อง';
+    if (action === 'link' && !String(options.billingRequestId || '').trim()) {
+      return 'ต้องเลือกคำร้องที่จะผูก';
+    }
+    if (action === 'unlink' && !row.billingRequestId) return 'งวดนี้ยังไม่ได้ผูกคำร้อง';
     return null;
   }
 

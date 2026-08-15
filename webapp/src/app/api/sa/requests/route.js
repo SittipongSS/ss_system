@@ -18,6 +18,7 @@ import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
+import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { requestOptionalRefs } from '@/lib/master/requestTypes';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import {
@@ -130,6 +131,36 @@ export async function POST(request) {
   let salesOrderId = null;
   let scentCount = null;
   let dealId = body.dealId || null;
+
+  // ⭐ **ขอเอกสารการเงินยึดใบเสนอราคา** (ม-ค) แล้ว derive ดีลจากใบ — รูปเดียวกับที่
+  // บรีฟกลิ่นยึด SO เป๊ะ ๆ · `body.dealId` ที่ฟอร์มเติมไว้ให้ดูถูก **ทับทิ้ง** ตรงนี้
+  // ไม่ใช่เอามาเทียบ (เชื่อ client เมื่อไรก็เปิดทางให้ใบเกาะดีลที่ไม่ใช่ของ QT)
+  let billBaseAmount = null;
+  let bill = null;
+  if (requestNeedsRef(kind, 'quotation')) {
+    const { data: qtRow, error: qtRowError } = await supabase
+      .from('quotations')
+      .select('id, "dealId", status, "approvalStatus", "totalAmount"')
+      .eq('id', body.quotationId).maybeSingle();
+    if (qtRowError) return Response.json({ error: qtRowError.message }, { status: 500 });
+    if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาที่เลือก' }, { status: 400 });
+    // ด่านตัวเดียวกับที่ฟอร์มใช้กรองลิสต์ — ป้ายช่องกับของที่ผ่านจริงต้องตรงกันเสมอ
+    const qtGate = billingQuotationError(qtRow);
+    if (qtGate) return Response.json({ error: qtGate }, { status: 400 });
+    if (!qtRow.dealId) {
+      return Response.json({
+        error: 'ใบเสนอราคานี้ไม่ได้ผูกดีล — ขอเอกสารการเงินจากใบนี้ไม่ได้',
+      }, { status: 400 });
+    }
+    dealId = qtRow.dealId;
+    billBaseAmount = Number(qtRow.totalAmount);
+    // ยอดที่ขอ — คิดจาก **ฐานของแถวจริง** ไม่ใช่ `billBaseAmount` ที่ฟอร์มแนบมา
+    bill = resolveBillAmount({
+      percent: body.billPercent, amount: body.billAmount, baseAmount: billBaseAmount,
+    });
+    if (bill.error) return Response.json({ error: bill.error }, { status: 400 });
+  }
+
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
       .from('sales_orders').select('id, dealId, status').eq('id', body.salesOrderId).maybeSingle();
@@ -206,7 +237,9 @@ export async function POST(request) {
   //
   // ⚠️ ไม่ใช่ด่านธุรกิจเต็มชุดของบรีฟกลิ่น (อนุมัติแล้ว · 1SO:1PDR) — ที่นี่แค่
   // "แนบป้ายอ้างอิงให้ตามกลับได้" ไม่ได้เปิดสิทธิ์อะไรจากใบที่อ้าง
-  let quotationId = null;
+  // ⚠️ หัวข้อที่ **ต้อง** อ้าง QT ผ่านด่านของตัวเองไปแล้วข้างบน (ม-ค) — เก็บค่าไว้
+  // ตรงนี้ด้วย ไม่งั้นแถวจะบันทึกโดยไม่มี `quotationId` ทั้งที่เป็นต้นทางของทั้งใบ
+  let quotationId = requestNeedsRef(kind, 'quotation') ? body.quotationId : null;
   let optionalSalesOrderId = null;
   let refProduct = null;
   const optionalRefs = requestOptionalRefs(kind);
@@ -380,6 +413,13 @@ export async function POST(request) {
       // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
       // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้
       ...(quotationId ? { quotationId } : {}),
+      // ยอดที่ขอวางบิล (mig 0257) — ใส่คีย์เฉพาะหัวข้อที่ยึด QT ด้วยเหตุผลเดียวกับ
+      // บรรทัดบน: migration ยังไม่รัน = หัวข้ออื่นต้องยังเปิดใบได้ตามปกติ
+      ...(bill ? {
+        billPercent: bill.percent,
+        billAmount: bill.amount,
+        billBaseAmount,
+      } : {}),
       // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
       // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
       // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)

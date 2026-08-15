@@ -40,7 +40,7 @@ import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
-  PLANNED_REQUEST_DEPTS, requestOptionalRefs,
+  PLANNED_REQUEST_DEPTS, requestOptionalRefs, defaultRequestDept,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
   kindsForDept, lineShapeForKind, requestHasItems,
   requestHasPdr,
@@ -51,6 +51,10 @@ import { requestFormTabs } from "@/lib/requests/formTabs";
 import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
+import {
+  billAmountFor, billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
+} from "@/lib/requests/billingQuotations";
+import { fmtNumber } from "@/lib/format";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
@@ -73,12 +77,10 @@ function DerivedField({ label, value, from }) {
 
 // ค่าเริ่มต้น: **ไม่เดาหัวข้อให้** — หัวข้อขึ้นกับฝ่ายซึ่งยังไม่ได้เลือก
 //
-// ⭐ **ฝ่ายเลือกให้เลยเมื่อเปิดใช้จริงอยู่ฝ่ายเดียว** (มติผู้ใช้ 2026-08-08:
-// *"การขอเอกสาร มันเป็นคำร้องไป RD นิ จะมีฝ่ายทำไม"*) — ตอนนี้ `REQUEST_DEPTS`
-// เหลือ RD ตัวเดียว ⇒ ขั้น "เลือกฝ่าย" ไม่ได้ตัดสินใจอะไร แค่คลิกทิ้งเปล่า ๆ
-// ⚠️ **ไม่ได้ซ่อนแถวฝ่าย** — จัดซื้อ/บัญชียังโชว์แบบจางเพื่อบอกว่า "มีอยู่ แต่ยัง
-// ไม่เปิด" · เปิดฝ่ายที่สองเมื่อไร บรรทัดนี้จะกลับไปเป็นค่าว่างเองโดยอัตโนมัติ
-const onlyDept = () => (REQUEST_DEPTS.length === 1 ? REQUEST_DEPTS[0] : "");
+// ⭐ **ฝ่ายเลือกให้เลยเมื่อเปิดใช้จริงอยู่ฝ่ายเดียว** (มติผู้ใช้ 2026-08-08)
+// ⚠️ **ไม่ได้ซ่อนแถวฝ่าย** — ฝ่ายที่ยังไม่เปิดโชว์แบบจางเพื่อบอกว่า "มีอยู่ แต่ยังไม่เปิด"
+// ⚠️ ตรรกะอยู่ที่ทะเบียน (`defaultRequestDept`) ไม่ใช่ที่ฟอร์ม — server กับเทสต์
+// ต้องอ่านกฎเดียวกันได้ และไฟล์นี้มี JSX จึง import เข้าเทสต์ node ตรง ๆ ไม่ได้
 
 export const emptyRequestForm = (over = {}) => ({
   // ทีมเจ้าของคำร้อง — ว่าง = ทีมหลักของคนเปิด (server เติมให้)
@@ -87,10 +89,12 @@ export const emptyRequestForm = (over = {}) => ({
   projectId: "",
   dealId: "",
   salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
-  quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
+  quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88) · **ต้นทาง**ของขอเอกสารการเงิน (ม-ค)
+  billPercent: null,  // ยอดที่ขอวางบิล (B-2) — เก็บคู่กันเสมอ ไม่ใช่เก็บอันที่พิมพ์
+  billAmount: null,
   productIds: [],     // FG หลายรายการ (ไม่บังคับ · ม-89)
   productTypeId: "",  // หมวดสินค้าที่จะขึ้นตัวอย่าง
-  dept: onlyDept(),
+  dept: defaultRequestDept(over?.kind),
   kind: "",
   title: "",
   body: "",
@@ -173,6 +177,8 @@ export default function RequestForm({
   // (ธงเพี้ยนจาก server ไม่ได้ เพราะอ่านตัวเดียวกัน)
   const needsProject = requestNeedsRef(kind, "project");
   const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
+  // ⭐ หัวข้อที่ยึด **ใบเสนอราคา** เป็นต้นทาง (ม-ค) — ไม่มีช่องดีลให้เลือก
+  const needsQuotation = requestNeedsRef(kind, "quotation");
   // อ้างอิงเพิ่มไม่บังคับ (ม-88) — QT/SO/FG ของหัวข้อขอเอกสาร
   const optionalRefs = requestOptionalRefs(kind);
   const needsScent = requestNeedsRef(kind, "scent");
@@ -249,6 +255,20 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
+  /* ⚠️ โหมดของช่องยอดที่ขอเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ
+     `billPercent`/`billAmount` ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
+     ⭐ มาจากปุ่ม "ขอใบวางบิลงวดนี้" (B-5) = รู้ **จำนวนเงินของงวด** มาแล้ว ไม่ใช่ %
+     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount */
+  const [billMode, setBillMode] = useState(
+    value?.billAmount != null && value?.billPercent == null ? "amount" : "percent",
+  );
+  /* 🐞 **ตัวเลขที่พิมพ์ต้องค้างอยู่แม้ค่าไม่ผ่านด่าน** — รอบแรกช่องนี้อ่านค่าจาก
+     `value.billAmount` ตรง ๆ ⇒ พิมพ์ยอดที่เกินยอดใบแล้วตัวเลขหายไปทั้งช่องพร้อมกับ
+     ข้อความอธิบาย (เพราะ error คิดจากค่าที่ถูกล้างเป็น null ไปแล้ว) ⇒ ผู้ใช้เห็นแค่
+     ช่องว่างกับปุ่มจาง · เก็บ "สิ่งที่พิมพ์" แยกจาก "ค่าที่ผ่านแล้ว" */
+  const [billInput, setBillInput] = useState(
+    value?.billAmount != null ? String(value.billAmount) : "",
+  );
   // ไฟล์ใหญ่เกินเพดาน — ด่านอยู่ใน PendingFiles ที่เดียว ที่นี่แค่รับข้อความมาโชว์
   const [fileError, setFileError] = useState("");
   const formTabs = requestFormTabs(value, { optionalRefs });
@@ -280,6 +300,9 @@ export default function RequestForm({
     productTypeId: "",
     salesOrderId: "",
     quotationId: "",
+    // ยอดที่ขอเป็นของหัวข้อที่ยึด QT เท่านั้น — ค้างไว้แล้วจะถูกส่งไปกับหัวข้ออื่น
+    billPercent: null,
+    billAmount: null,
     productIds: [],
     formulaCode: "",
     formulaName: "",
@@ -498,6 +521,136 @@ export default function RequestForm({
       {/* ── แท็บ "งาน" — ของที่หัวข้อนั้นต้องอ้าง ─────────────────────────
           → ช่องที่โผล่มาจากธง `needs` ที่เดียว ไม่ใช่ if เขียนตายตัวในฟอร์ม */}
       {activeTab === "work" && (<>
+      {/* ── ขอเอกสารการเงิน: ใบเสนอราคาเป็นต้นทาง (ม-ค · ม-ง) ──────────────
+          ⭐ ของจริงในแชทอ้าง `ใบเสนอราคา : Q#260731-0006` แล้วขอ "50% ก่อนผลิต"
+          ⇒ ใบคือสิ่งแรกที่คนเลือก · ดีล/ลูกค้า/AE/AC เติมตามมาให้ดู ไม่ใช่ช่องกรอก
+          ⚠️ **ไม่มีช่องดีล** โดยตั้งใจ — เลือกสองที่แล้วขัดกันเองได้ (โรคเดียวกับที่
+          บรีฟกลิ่นกันไว้ด้วยการยึด SO อย่างเดียว) */}
+      {needsQuotation && (() => {
+        const options = billingQuotationOptions(quotations, { keepId: value.quotationId || null });
+        const skipHint = billingQuotationSkipHint(billingQuotationSkips(quotations));
+        const picked = quotations.find((q) => q.id === value.quotationId) || null;
+        const base = Number(picked?.totalAmount) || 0;
+        // คิดจาก **สิ่งที่พิมพ์** ไม่ใช่ค่าที่ผ่านด่านแล้ว — ไม่งั้นค่าที่ไม่ผ่านจะไม่มี
+        // ทั้งตัวเลขและเหตุผลเหลืออยู่บนจอ
+        const bill = billAmountFor({
+          mode: billMode,
+          percent: billMode === "percent" ? billInput : null,
+          amount: billMode === "amount" ? billInput : null,
+          baseAmount: base,
+        });
+        /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
+           ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
+           (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
+        const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
+        const dealOfQt = deals.find((d) => d.id === picked?.dealId) || null;
+        const projectOfDeal = projects.find((p) => p.id === dealOfQt?.projectId) || null;
+        /* เขียนค่าคู่เสมอ — ช่องที่ผู้ใช้ไม่ได้พิมพ์ก็ต้องมีค่า ไม่งั้น payload ส่งไป
+           ครึ่งเดียวแล้ว server คิดกลับได้ไม่ตรงกับที่จอโชว์
+           ⚠️ ค่าที่ไม่ผ่านด่านเขียนเป็น null ลงฟอร์ม (ปุ่มจึงจางถูกต้อง) แต่ตัวเลข
+           ที่พิมพ์ยังอยู่ใน `billInput` ให้แก้ต่อได้ */
+        const setBill = (raw) => {
+          setBillInput(raw);
+          const out = billAmountFor({
+            mode: billMode,
+            percent: billMode === "percent" ? raw : null,
+            amount: billMode === "amount" ? raw : null,
+            baseAmount: base,
+          });
+          set({ billPercent: out.percent ?? null, billAmount: out.amount ?? null });
+        };
+        /* สลับโหมด = เริ่มพิมพ์ใหม่จากค่าที่ผ่านแล้วของโหมดนั้น — ไม่ใช่ล้างทิ้ง
+           (พิมพ์ 50% แล้วอยากดูเป็นบาท ต้องเห็นยอดที่คิดได้ ไม่ใช่ช่องว่าง) */
+        const switchMode = (next) => {
+          setBillMode(next);
+          const carried = next === "percent" ? value.billPercent : value.billAmount;
+          setBillInput(carried == null ? "" : String(carried));
+        };
+        return (
+          <div className="form-grid cols-2">
+            <div className="form-group col-span-2">
+              <span className={styles.fieldLabel}>ใบเสนอราคา (QT)</span>
+              <SearchableSelect
+                value={value.quotationId} disabled={disabled}
+                /* เลือกใบ = เติมดีลให้ด้วย — ค่านี้เป็นของที่ server จะ derive เองอีกที
+                   จากแถวจริง ที่เก็บไว้ในฟอร์มเพื่อให้บล็อกลูกค้า/AE ข้างล่างมีของอ่าน */
+                onChange={(v) => {
+                  const qt = quotations.find((q) => q.id === v) || null;
+                  set({
+                    quotationId: v,
+                    dealId: qt?.dealId || "",
+                    projectId: deals.find((d) => d.id === qt?.dealId)?.projectId || "",
+                    // ใบเปลี่ยน = ฐานเปลี่ยน ⇒ ยอดเดิมไม่มีความหมายอีกต่อไป
+                    billPercent: null, billAmount: null,
+                  });
+                  setBillInput("");
+                }}
+                /* ⚠️ `SearchableSelect` ไม่มีบรรทัดรอง — ยอดกับชื่อลูกค้าจึงอยู่ในป้าย
+                   เดียวกัน · เลือกใบผิดเพราะเลขที่ใกล้กันคือความผิดพลาดที่แพงที่สุด
+                   ของหัวข้อนี้ (ออกใบวางบิลผิดลูกค้า) ⇒ ยอมให้ป้ายยาว */
+                options={options.map((q) => ({
+                  value: q.id,
+                  label: [q.quoteNumber || q.id, q.customerName || q.deal?.customerName, `${money(q.totalAmount)} บาท`]
+                    .filter(Boolean).join(" · "),
+                  search: `${q.quoteNumber || ""} ${q.customerName || ""} ${q.deal?.customerName || ""}`,
+                }))}
+                placeholder="เลือกใบเสนอราคาที่อนุมัติแล้ว"
+                emptyText="ยังไม่มีใบเสนอราคาที่อนุมัติแล้ว"
+                ariaLabel="ใบเสนอราคาของคำร้อง"
+              />
+              {/* ⚠️ ตอบคำถาม "ทำไมใบของฉันไม่อยู่ในลิสต์" — ซ่อนแล้วไม่บอกเหตุผล
+                  คือด่านที่คนหาทางอ้อม (กฎเดียวกับใบสั่งขายของบรีฟกลิ่น) */}
+              {skipHint && <small className={styles.hint}>{skipHint}</small>}
+            </div>
+
+            <DerivedField label="ลูกค้า" from="เติมจากใบเสนอราคา"
+              value={picked?.customerName || dealOfQt?.customerName || ""} />
+            <DerivedField label="ดีล" from="เติมจากใบเสนอราคา"
+              value={dealOfQt?.title || ""} />
+            {/* ⭐ AE/AC **ห้ามพิมพ์เอง** (ม-ค) — ในข้อความแชทเขียนมือทุกครั้งแล้วสะกด
+                ไม่ตรงกัน · AE = เจ้าของดีล · AC = ผู้ประสานงานโครงการ (mig 0255)
+                ⚠️ AC ว่างได้ — ดีลที่ยังไม่ผูกโครงการไม่มีผู้ประสานงาน และหัวข้อนี้
+                **ไม่บังคับโครงการ** ⇒ ช่องว่างคือคำตอบที่ถูก ไม่ใช่ของที่ต้องไปตาม */}
+            <DerivedField label="AE (เจ้าของดีล)" from="เติมจากดีลของใบ"
+              value={dealOfQt?.ownerName || ""} />
+            <DerivedField label="AC (ผู้ประสานงาน)" from="เติมจากโครงการของดีล"
+              value={projectOfDeal?.acOwner || ""} />
+
+            <div className="form-group col-span-2">
+              <span className={styles.fieldLabel}>ยอดที่ขอวางบิล</span>
+              <OptionTiles
+                value={billMode} disabled={disabled || !picked}
+                onChange={switchMode}
+                ariaLabel="วิธีระบุยอดที่ขอ"
+                options={[
+                  { value: "percent", label: "คิดเป็น %", description: "เช่น 50% ก่อนผลิต" },
+                  { value: "amount", label: "ระบุจำนวนเงิน", description: "พิมพ์ยอดตรง ๆ" },
+                ]}
+              />
+              <div className={styles.pickAdd}>
+                <input
+                  type="number" step="any" min="0"
+                  className="form-control"
+                  disabled={disabled || !picked}
+                  value={billInput}
+                  onChange={(e) => setBill(e.target.value)}
+                  placeholder={billMode === "percent" ? "50" : "90508.125"}
+                  aria-label={billMode === "percent" ? "สัดส่วนที่ขอ (%)" : "ยอดที่ขอ (บาท)"}
+                />
+                <span className={styles.hint}>{billMode === "percent" ? "%" : "บาท"}</span>
+              </div>
+              {/* ⭐ โชว์ทั้งฐานและผลลัพธ์ — คนกดต้องเห็นว่า 50% ของอะไร ก่อนส่งให้บัญชี */}
+              {picked && (
+                <small className={styles.hint}>
+                  ยอดเต็มตามใบ {money(base)} บาท
+                  {bill.amount != null && ` · ขอ ${money(bill.percent)}% = ${money(bill.amount)} บาท`}
+                </small>
+              )}
+              {bill.error && <small className={styles.hint}>{bill.error}</small>}
+            </div>
+          </div>
+        );
+      })()}
       {needsProject && (
       <div className="form-grid cols-2">
       <div className="form-group col-span-2">

@@ -328,9 +328,15 @@ export async function findRequest(supabase, id) {
 
   // ── ป้ายอ้างอิง QT/SO (ม-88) — จอโชว์ **เลขที่** ไม่ใช่ id ────────────────
   // โหลดเฉพาะตอนเปิดใบเดียว · ตามกลับไม่เจอ (ใบถูกลบ) = คืน null แล้วจอบอกตรง ๆ
+  /* ⭐ **ตัวตนสำหรับออกบิลเดินมากับ QT** (ม-96) — หัวข้อขอเอกสารการเงินเปิดใบมา
+     เพื่อ *ออกบิล* ⇒ ชื่อ/ที่อยู่ออกบิล · เลขผู้เสียภาษี · สาขา คือของที่บัญชีต้องใช้
+     ก่อนพิมพ์เอกสาร · ไม่ส่งมาด้วย = ต้องเปิดใบเสนอราคาอีกแท็บทุกครั้ง
+     ⚠️ อ่านจาก **QT** ไม่ใช่ทะเบียนลูกค้า — QT เป็น snapshot ที่ลูกค้าเซ็นรับแล้ว
+     ส่วนทะเบียนแก้ทีหลังได้ ⇒ ออกบิลตามทะเบียนวันนี้อาจไม่ตรงกับที่ตกลงกันไว้ */
   const [refQuotation, refSalesOrder] = await Promise.all([
     withBriefs.quotationId
-      ? supabase.from('quotations').select('id, "quoteNumber"')
+      ? supabase.from('quotations')
+        .select('id, "quoteNumber", "customerName", "customerTaxId", "billingAddress", "branchCode", "totalAmount"')
         .eq('id', withBriefs.quotationId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.salesOrderId
@@ -339,10 +345,27 @@ export async function findRequest(supabase, id) {
       : null,
   ]);
 
+  /* ⭐ **งวดชำระที่ใบนี้ถูกแขวนไว้** (ม-96 · ฝั่งกลับของ B-5) — B-5 ทำลิงก์ไว้ทางเดียว
+     (จากใบสั่งขายเห็นคำร้อง) ⇒ บัญชีที่เปิดใบจากคิวไม่รู้เลยว่าใบนี้ผูกกับงวดไหน
+     ⚠️ ค้นด้วย `billingRequestId` ซึ่งไม่มี FK (โดยเจตนา · 0260) — ไม่เจอ = ยังไม่ผูก
+     ไม่ใช่ข้อมูลเสีย */
+  let linkedInstallment = null;
+  if (withBriefs.kind === 'billing_doc') {
+    const { data: inst } = await supabase
+      .from('sales_order_installments')
+      .select('id, seq, label, amount, "dueDate", status, "salesOrderId"')
+      .eq('billingRequestId', withBriefs.id).maybeSingle();
+    if (inst) {
+      const { data: order } = await supabase
+        .from('sales_orders').select('id, "orderNumber"').eq('id', inst.salesOrderId).maybeSingle();
+      linkedInstallment = { ...inst, orderNumber: order?.orderNumber || null };
+    }
+  }
+
   // การ์ดบริบทบน panel (ม-94) — โครงการ/ดีลที่ใบนี้เกาะอยู่ พร้อมป้ายชื่อจริง
   // (จอทำลิงก์เอง — id อย่างเดียวกดไปได้แต่บอกไม่ได้ว่าคือใบไหน)
   return {
-    ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder,
+    ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder, linkedInstallment,
     refProject: project ? { id: project.id, code: project.code, name: project.name } : null,
     refDeal: deal,
     // ⚠️ เลือกฟิลด์ทีละตัว ไม่ส่ง `customer` ทั้งแถว — ทะเบียนลูกค้ามีที่อยู่ เครดิต

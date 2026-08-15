@@ -7,6 +7,7 @@ import { BILLING_DOC_VOCABULARY } from './billingDocTypes';
 const billingDocLine = {
   key: 'billing_doc',
   labels: { pending: 'รอเอกสาร', done: 'ออกให้แล้ว', declined: 'ออกให้ไม่ได้' },
+  vocab: BILLING_DOC_VOCABULARY,
   normalize: (input) => normalizeDocLines(input, BILLING_DOC_VOCABULARY),
 };
 

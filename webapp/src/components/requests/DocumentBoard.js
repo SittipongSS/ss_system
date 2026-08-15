@@ -13,6 +13,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
+import { fmtDate } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 
 export default function DocumentBoard({ rows = [], renderStep = null }) {
@@ -36,6 +37,15 @@ export default function DocumentBoard({ rows = [], renderStep = null }) {
                 <td>
                   <div className={styles.name}>{r.name}</div>
                   {r.spec && <ReadableText text={r.spec} lines={2} className={styles.note} />}
+                  {/* ⭐ ผลลัพธ์ของแถว (B-3 · R-6) — เลขที่เอกสารคือของที่ตกผลึกจาก
+                      คำร้องใบนี้ · ต้องอยู่ติดแถวเดียวกับชนิด ไม่ใช่ให้ไปหาในเธรด
+                      (เหตุผลเดียวกับเหตุผลที่ให้ไม่ได้ข้างล่าง) */}
+                  {r.docNumber && (
+                    <div className={styles.note}>
+                      เลขที่ <strong>{r.docNumber}</strong>
+                      {r.docDueDate && ` · ครบกำหนด ${fmtDate(r.docDueDate)}`}
+                    </div>
+                  )}
                   {/* เหตุผลที่ให้ไม่ได้ต้องอยู่ติดแถวนั้น ไม่ใช่ให้ไปหาในเธรด */}
                   {r.declineReason && (
                     <ReadableText text={r.declineReason} lines={2} className={styles.note} />
