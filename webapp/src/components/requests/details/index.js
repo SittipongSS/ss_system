@@ -11,6 +11,7 @@
 // ⚠️ เพิ่มหัวข้อใหม่ **ไม่ต้องแก้หน้า `/requests/[id]`** — ลงทะเบียนที่นี่พอ
 import DocumentDetail from './DocumentDetail';
 import DocumentPanel from './DocumentPanel';
+import BillingDocPanel from './BillingDocPanel';
 import FormulaPanel from './FormulaPanel';
 import ScentPanel from './ScentPanel';
 import FormulaDevDetail from './FormulaDevDetail';
@@ -30,9 +31,12 @@ const BY_KIND = {
 // หัวข้อที่ไม่มีของตัวเอง = ไม่มีการ์ดเพิ่ม (การ์ด control กลาง + การ์ดบริบท
 // โครงการ/ดีล มาจากเปลือกอยู่แล้ว) · ลงทะเบียนคู่กับ BY_KIND — ที่เดียวกัน
 // เพื่อไม่ให้มีทะเบียนที่สามงอกมา drift
+// ⚠️ **panel แยกฝ่าย ต่างจาก BY_KIND ข้างบนที่ใช้จอเดียวกัน** (ม-96) — เนื้อกลางหน้า
+// ตอบ "บรรทัดเดินถึงไหน" ซึ่งกฎเหมือนกันทุกข้อ · ส่วน panel ตอบ "คนเปิดใบต้องใช้อะไร
+// ถึงจะลงมือได้" ซึ่ง RD กับบัญชีคนละเรื่องกันจริง ๆ (บัญชีต้องมีตัวตนสำหรับออกบิล)
 const PANEL_BY_KIND = {
   document: DocumentPanel,
-  billing_doc: DocumentPanel,
+  billing_doc: BillingDocPanel,
   formula_dev: FormulaPanel,
   scent_dev: ScentPanel,
 };
