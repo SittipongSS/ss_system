@@ -25,7 +25,7 @@ import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
   QUEUE_COUNT_META, bouncedDaysText, groupQueueRows, matchesQueueCount, queueCounts,
-  requestDueText, requestNextStep,
+  requestDueText, requestQueueStatus,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import {
@@ -35,6 +35,7 @@ import {
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
 import { requestAssignee } from "@/lib/requests/assign";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
+import StatusBadge from "@/components/ui/StatusBadge";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
@@ -157,7 +158,6 @@ export default function RequestQueuePanel({
      เช็คไว้ · ขาดไปแล้วคอลัมน์นั้นจะเป็นช่องว่างเงียบ ๆ ไม่มี error ให้เห็น */
   const cols = requestColumns(columns);
   const cell = (key, ask) => {
-    const next = requestNextStep(ask);
     const due = requestDueText(ask, { todayIso: today });
     // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
     const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -166,30 +166,33 @@ export default function RequestQueuePanel({
       /* ⚠️ สองโทน: ตาฝ่าย / รออีกฝั่ง — **สีสงวนให้เจ้าของก้าว** ไม่ใช่ให้ชนิดคำร้อง
          ⭐ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็นเส้นตรงลงมา
          ตากวาดคอลัมน์ได้เป็นแนว (กฎ 1 · UI_DESIGN_SYSTEM.md) */
-      case "next":
-        return next ? (
+      /* ⭐ **ช่องสถานะช่องเดียว มีทั้งคำและสี** (มติผู้ใช้ 2026-08-15) — คำมาจาก
+         `requestQueueStatus` (ก้าวถัดไป + สถานะจริงของใบที่จบแล้ว) · โทนบอกว่า
+         **ใครค้าง**: ฟ้า = ตาฝ่ายเรา · เทา = รอฝั่งอื่น · เหลือง = ยังไม่มีใครรับ ·
+         แดง = ตีกลับ ⇒ กวาดตาลงคอลัมน์แล้วรู้ทันทีว่าใบไหนเป็นงานเรา
+         ⚠️ ใช้ `<StatusBadge>` กลาง ไม่ใช่ `.ui-badge` + สีเองแบบเดิม — โทนสี
+         ประกาศที่ Badge.module.css ที่เดียวทั้งระบบ */
+      case "next": {
+        const queueStatus = requestQueueStatus(ask);
+        return (
           <>
-            <span
-              className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
-              data-owner={next.owner}
-            >
-              {next.label}
-            </span>
+            <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
             {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
                 ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
                 ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย และเฉพาะตอนไม่มีคอลัมน์ "ผู้รับเรื่อง"
                 แยกอยู่แล้ว — ไม่งั้นชื่อเดียวกันขึ้นสองช่องในแถวเดียว */}
-            {next.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+            {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
               <div className={styles.subText}>{requestAssignee(ask).name}</div>
             )}
             {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
-            {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
+            {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
               <div className={`${styles.subText} ${styles.overdue}`}>
                 {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
               </div>
             )}
           </>
-        ) : <span className={styles.muted}>{NA}</span>;
+        );
+      }
       /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
          ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
       case "doc":
@@ -372,7 +375,7 @@ export default function RequestQueuePanel({
               )}
               {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
-                const next = requestNextStep(ask);
+                const cardStatus = requestQueueStatus(ask);
                 const due = requestDueText(ask, { todayIso: today });
                 // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
                 const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -384,14 +387,9 @@ export default function RequestQueuePanel({
                     {/* ⭐ ก้าวถัดไปขึ้นก่อน — เหมือนคอลัมน์แรกของตาราง · การ์ดกับตาราง
                         ต้องตอบคำถามเดียวกันด้วยลำดับเดียวกัน ไม่งั้นคนที่สลับมุมมอง
                         ต้องเรียนรู้สองแบบ */}
+                    {/* การ์ดใช้ป้ายสถานะชุดเดียวกับตาราง — สองมุมมองต้องพูดตรงกัน */}
                     <span className={styles.cardTop}>
-                      {next
-                        ? (
-                          <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
-                            {next.label}
-                          </span>
-                        )
-                        : <span className={styles.muted}>จบแล้ว</span>}
+                      <StatusBadge tone={cardStatus.tone} size="sm">{cardStatus.label}</StatusBadge>
                       {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
                     </span>
                     <span className={styles.cardTitle}>
