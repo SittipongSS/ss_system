@@ -28,6 +28,7 @@ import PendingFiles from "@/components/ui/PendingFiles";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import Input from "@/components/ui/Input";
 import DealPicker from "@/components/pm/DealPicker";
 import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
@@ -627,17 +628,24 @@ export default function RequestForm({
                   { value: "amount", label: "ระบุจำนวนเงิน", description: "พิมพ์ยอดตรง ๆ" },
                 ]}
               />
-              <div className={styles.pickAdd}>
-                <input
-                  type="number" step="any" min="0"
-                  className="form-control"
+              {/* 🐞 **เคยเป็น `<input className="form-control">` ซึ่งเป็นคลาสที่ไม่มีอยู่จริง
+                  ในระบบนี้** ⇒ ช่องไม่มีกรอบ ไม่มีความสูงมาตรฐาน หลุดธีมทั้งช่อง ·
+                  ช่องกรอกของระบบมี primitive เดียวคือ `Input` (`.premium-input`)
+                  ⚠️ และเคยห่อด้วย `.pickAdd` ซึ่งเป็นทรงของ "ดรอปดาวน์ + ปุ่มเพิ่ม"
+                  (`flex: 1` บนลูกตัวแรก) ⇒ หน่วยถูกดันไปติดขอบขวาสุดของการ์ด
+                  ห่างจากตัวเลขครึ่งจอ · ที่ถูกคือช่องสั้นแล้วหน่วยชิดขวาของช่อง */}
+              <div className={styles.amountField}>
+                <Input
+                  type="number" step="any" min="0" mono
                   disabled={disabled || !picked}
                   value={billInput}
                   onChange={(e) => setBill(e.target.value)}
                   placeholder={billMode === "percent" ? "50" : "90508.125"}
                   aria-label={billMode === "percent" ? "สัดส่วนที่ขอ (%)" : "ยอดที่ขอ (บาท)"}
                 />
-                <span className={styles.hint}>{billMode === "percent" ? "%" : "บาท"}</span>
+                <span className={styles.amountUnit} aria-hidden="true">
+                  {billMode === "percent" ? "%" : "บาท"}
+                </span>
               </div>
               {/* ⭐ โชว์ทั้งฐานและผลลัพธ์ — คนกดต้องเห็นว่า 50% ของอะไร ก่อนส่งให้บัญชี */}
               {picked && (
