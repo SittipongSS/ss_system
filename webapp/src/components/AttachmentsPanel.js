@@ -23,7 +23,7 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2,
+  Eye, FileType, FileSpreadsheet, Link2, ImageOff,
 } from "lucide-react";
 import GoogleDocViewer from "@/components/GoogleDocViewer";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -108,6 +108,13 @@ export default function AttachmentsPanel({
   // เอกสาร Google ที่กำลังเปิดดูในหน้า — null = ปิดอยู่ (คนละกล่องกับ lightbox
   // เพราะเนื้อในเป็น iframe ข้ามโดเมน ไม่ใช่ <img> ของเราเอง)
   const [docPreview, setDocPreview] = useState(null);
+  /* รูปที่โหลดไม่ขึ้น — ช่องภาพย่อของมันต้องบอกว่า "เปิดไม่ได้" ไม่ใช่ปล่อยเป็นกล่องเปล่า
+     🐞 ที่มา: ไฟล์อยู่บน Google Drive · โทเคนหมดอายุ/สิทธิ์หลุดเมื่อไร `/file` ตอบ 502
+     แล้ว `<img>` ที่พังจะเหลือกรอบว่างสูงเท่าช่องเต็ม ๆ ซึ่งอ่านเหมือนระบบค้าง */
+  const [brokenPhotos, setBrokenPhotos] = useState(() => new Set());
+  const markPhotoBroken = useCallback((id) => {
+    setBrokenPhotos((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
   const [addingDoc, setAddingDoc] = useState(false);
   // กล่องกรอกชื่อ/ลิงก์เอกสารร่วม — { mode: 'create'|'link', type?, value }
   const [docForm, setDocForm] = useState(null);
@@ -452,9 +459,14 @@ export default function AttachmentsPanel({
   const PhotoGrid = ({ photos }) => (
     <div
       className="mt-2"
+      /* 🐞 **เดิม `minmax(148px, 1fr)`** — พอกล่องแม่กว้างพอดีหนึ่งช่อง (การ์ดขวา
+         กว้าง 292px) ช่องเดียวนั้นยืดเป็น 1fr ⇒ **รูปแนบใบเดียวได้สี่เหลี่ยม
+         292×292** กินความสูงการ์ดทั้งใบ (ผู้ใช้ส่งภาพมา 2026-08-15) · ยิ่งจอกว้าง
+         ยิ่งบานเพราะ aspect-ratio 1/1 ผูกความสูงกับความกว้าง
+         ⇒ `minmax(0, 148px)` = ช่องโตได้ไม่เกิน 148px แต่ยังหดลงได้บนจอแคบมาก */
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(0, 148px))",
         gap: 8,
       }}
     >
@@ -470,15 +482,35 @@ export default function AttachmentsPanel({
               background: "var(--panel-2)", cursor: "pointer",
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={fileHref(it)}
-              alt={it.fileName || "รูปแนบ"}
-              loading="lazy"
-              /* IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
-                 จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */
-              style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
-            />
+            {brokenPhotos.has(it.id) ? (
+              /* ⚠️ **ช่องที่เปิดรูปไม่ได้ต้องพูด** — ปล่อยเป็น `<img>` ที่พังจะได้กรอบ
+                 ว่างที่อ่านเหมือนระบบกำลังโหลดค้าง · สาเหตุที่พบจริงคือไฟล์อยู่บน
+                 Google Drive แล้วโทเคนหมดอายุ (`/file` ตอบ 502) */
+              /* ⚠️ คลาสยูทิลิตี้ ไม่ใช่ inline style — เพดานชั้นเก่าของ `audit:ui`
+                 นับ inline style ทั้งระบบและรูดลงอย่างเดียว */
+              <span className="flex h-full w-full flex-col items-center justify-center gap-1 p-2 text-center text-[var(--text-3)]">
+                <ImageOff size={18} aria-hidden="true" />
+                <span className="text-[11px]">เปิดรูปไม่ได้</span>
+              </span>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={fileHref(it)}
+                alt={it.fileName || "รูปแนบ"}
+                loading="lazy"
+                onError={() => markPhotoBroken(it.id)}
+                /* ⚠️ **`onError` อย่างเดียวไม่พอ** — หน้านี้เรนเดอร์จากเซิร์ฟเวอร์
+                   ⇒ รูปเริ่มโหลด (และพัง) ตั้งแต่ก่อน React ผูก handler · เหตุการณ์
+                   error ผ่านไปแล้วตอน hydrate ⇒ ต้องถามสภาพจริงตอนผูก ref ด้วย
+                   (`complete` = จบแล้ว · `naturalWidth === 0` = จบแบบพัง) */
+                ref={(el) => {
+                  if (el?.complete && el.naturalWidth === 0) markPhotoBroken(it.id);
+                }}
+                /* IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
+                   จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */
+                style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+              />
+            )}
           </button>
           {canEdit && (
             <button
