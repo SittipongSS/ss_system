@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals, orderAmountToCollect,
   exciseTaxLine, exciseTaxLineForRegistration, exciseTaxTotals, resolveProductTaxable, round2,
+  EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, EXCISE_TOTAL_RATE, productTaxRates,
 } from "./exciseBilling.js";
 import { buildBillPrintHTML } from "./billPrint.js";
 
@@ -188,4 +189,31 @@ test('override ของฝ่ายกฎหมายชนะธงของ�
   assert.equal(resolveProductTaxable({ taxableOverride: false, autoTaxable: true }), false);
   // บังคับให้เสียภาษีทั้งที่หมวดไม่ได้ติ๊ก
   assert.equal(resolveProductTaxable({ taxableOverride: true, autoTaxable: false }), true);
+});
+
+// ── อัตราภาษี: ที่เดียวของระบบ (แก้ 2026-08-16) ─────────────────────────────
+test('อัตราต้องเป็นค่าที่ธุรกิจยืนยัน — 8% + 10% ของ 8% = 8.8% · VAT 7%', () => {
+  // 🪤 ล็อกค่าไว้เหมือน ADMIN_LOCKDOWN: เปลี่ยนอัตราต้องมาแก้เทสต์ด้วย = มีร่องรอยใน PR
+  assert.equal(EXCISE_RATE, 0.08);
+  assert.equal(LOCAL_TAX_RATE_OF_EXCISE, 0.1);
+  assert.equal(EXCISE_VAT_RATE, 0.07);
+  assert.equal(round2(EXCISE_TOTAL_RATE * 100), 8.8);
+});
+
+test('productTaxRates: เดินเลขตามตัวอย่างที่ผู้ใช้ยืนยัน 107 → 8.80 → 9.42', () => {
+  const r = productTaxRates(107);
+  assert.equal(round2(r.retailPriceExVat), 100);
+  assert.equal(round2(r.exciseTax), 8);
+  assert.equal(round2(r.localTax), 0.8);
+  assert.equal(round2(r.exciseTax + r.localTax), 8.8);
+  // ยอดที่เก็บจากลูกค้า = ภาษี + VAT 7%
+  const { amountToCollect } = billedTaxTotals([{ quantity: 1, totalTax: round2(r.exciseTax + r.localTax) }]);
+  assert.equal(amountToCollect, 9.42);
+});
+
+test('productTaxRates: ไม่มีราคา / ยกเว้นภาษี → 0 ทั้งชุด ไม่ใช่ NaN', () => {
+  for (const v of [null, undefined, 0, '', -1]) {
+    assert.deepEqual(productTaxRates(v), { retailPriceExVat: 0, exciseTax: 0, localTax: 0 });
+  }
+  assert.deepEqual(productTaxRates(107, { taxable: false }), { retailPriceExVat: 0, exciseTax: 0, localTax: 0 });
 });

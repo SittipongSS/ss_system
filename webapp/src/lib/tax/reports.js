@@ -21,6 +21,7 @@ import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
 import { isExciseCategory } from '@/lib/master/categoryOf';
+import { EXCISE_VAT_RATE, round2 } from '@/lib/tax/exciseBilling';
 
 const inRange = (value, from, to) => {
   if (!value) return false;
@@ -163,6 +164,12 @@ export async function filingReport(filter = {}) {
         deliveryDate: o.deliveryDate && /^\d{4}-\d{2}-\d{2}/.test(o.deliveryDate) ? o.deliveryDate : null,
         qty: Number(it.quantity) || 0,
         tax: Number(it.totalTax) || 0,
+        /* ⚠️ **ยอดที่เรียกเก็บจากลูกค้า = ภาษี + VAT 7%** — คนละยอดกับที่ยื่นสรรพสามิต
+           เดิมรายงานมีแต่คอลัมน์ "ยอดภาษี" ⇒ ใครดึงไปกระทบยอดกับเงินที่เก็บจริงจะได้
+           ตัวเลขน้อยกว่า 7% ทุกบรรทัด (อาการเดียวกับบั๊กที่แก้ไปแล้ว 2026-07-26 —
+           จอกับเอกสารต่างกัน 7% — แต่ตกค้างที่รายงาน)
+           ⚠️ คิดด้วย billedTaxLine ตัวเดิม **ห้ามคูณ 1.07 เองในไฟล์นี้** */
+        amountToCollect: round2((Number(it.totalTax) || 0) * (1 + EXCISE_VAT_RATE)),
         status: statusLabel(o.status),
       });
     }
@@ -177,7 +184,8 @@ export async function filingReport(filter = {}) {
       { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
       { key: 'deliveryDate', label: 'วันที่จัดส่ง', date: true },
       { key: 'qty', label: 'จำนวน', num: true },
-      { key: 'tax', label: 'ยอดภาษี', money: true },
+      { key: 'tax', label: 'ยอดที่ยื่นสรรพสามิต', money: true },
+      { key: 'amountToCollect', label: 'ยอดเรียกเก็บลูกค้า (รวม VAT)', money: true },
       { key: 'status', label: 'สถานะ' },
     ],
     rows,
@@ -185,6 +193,7 @@ export async function filingReport(filter = {}) {
       _label: `รวม ${rows.length} รายการ`,
       qty: sum(rows, (r) => r.qty),
       tax: sum(rows, (r) => r.tax),
+      amountToCollect: sum(rows, (r) => r.amountToCollect),
     },
   };
 }

@@ -1,5 +1,5 @@
 import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
-import { billedTaxTotals, exciseTaxLine } from "@/lib/tax/exciseBilling";
+import { billedTaxTotals, exciseTaxLine, resolveProductTaxable } from "@/lib/tax/exciseBilling";
 
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
@@ -25,7 +25,22 @@ export function resolveSoFiling({
     const product = productById.get(line.productId) || productByFg.get(normalizedKey(line.fgCode));
     const fgCode = line.fgCode || product?.fgCode || "";
     const flags = categoryFlags(categoryOf(fgCode), productTypes);
-    if (!flags.isExcise || product?.isExciseTaxable === false) continue;
+    /* 🐞 **แก้ 2026-08-16:** เดิมเขียน `!flags.isExcise || product?.isExciseTaxable === false`
+       ซึ่งเอาธงของ **หมวด** เป็นตัวตั้ง ⇒ override ของฝ่ายกฎหมายทำงานทางเดียว:
+       "ยกเว้น" ได้ แต่ **"บังคับเก็บ" ไม่ได้** — สินค้าที่ LG สั่งเก็บภาษีบนหมวดที่ไม่ได้
+       ติ๊ก isExcise ถูกข้ามทั้งบรรทัด ทั้งที่ product.exciseTax มีค่าอยู่จริง
+       ⇒ ใบยื่นจาก SO ตกรายการที่กฎหมายสั่งให้เก็บ ขัดกับกฎที่ exciseBilling เขียนไว้เอง
+       ว่า override **ชนะเสมอ**
+
+       ⚠️ ตัดสินด้วย `product.isExciseTaxable` ซึ่งเป็น **ธงที่ resolve แล้ว** ตอนบันทึก
+       สินค้า (`resolveProductTaxable` รวม override เข้าไปแล้วทั้งสองทาง) — ไม่ใช่
+       `taxableOverride` ดิบ ๆ ที่แถวเก่าจำนวนมากไม่มีค่า · ไม่มีธง (แถวก่อน mig 0131)
+       จึงถอยไปใช้ธงของหมวดตามเดิม */
+    const taxable = resolveProductTaxable({
+      taxableOverride: product?.isExciseTaxable,
+      autoTaxable: flags.isExcise,
+    });
+    if (!taxable) continue;
 
     const quantity = Number(line.qty || 0);
     if (!product || !Number.isFinite(quantity) || quantity <= 0) {
