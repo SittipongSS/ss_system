@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ensureGoogleDocAccess } from './googleDocAccess.js';
+import { ensureGoogleDocAccess, revokeGoogleDocAccess } from './googleDocAccess.js';
 
 const gdoc = (id, fileId, granted) => ({
   id,
@@ -72,4 +72,43 @@ test('สิทธิ์ที่ให้ต้องเป็น reader หร
   for (const route of ['../../app/api/attachments/route.js', '../../app/api/sales-planning/documents/all/route.js']) {
     assert.match(read(route), /\?\s*'writer'\s*:\s*'reader'/, route);
   }
+});
+
+// ── ถอนสิทธิ์ (ปุ่มโล่ในหน้าผู้ใช้) ────────────────────────────────────────
+function fakeSupabaseWithRows(rows) {
+  const updates = [];
+  return {
+    updates,
+    from: () => ({
+      select: () => ({ contains: () => Promise.resolve({ data: rows, error: null }) }),
+      update: (patch) => ({ eq: (_c, id) => { updates.push({ id, patch }); return Promise.resolve({}); } }),
+    }),
+  };
+}
+
+test('ไม่มีอีเมล = ไม่ถอนอะไร', async () => {
+  const db = fakeSupabaseWithRows([]);
+  assert.deepEqual(await revokeGoogleDocAccess(db, ''), { files: 0, revoked: 0, failed: 0 });
+});
+
+test('ไม่มีไฟล์ที่เคยให้สิทธิ์ = จบทันที ไม่ยิง Drive', async () => {
+  const db = fakeSupabaseWithRows([]);
+  assert.deepEqual(await revokeGoogleDocAccess(db, 'me@x.co'), { files: 0, revoked: 0, failed: 0 });
+  assert.deepEqual(db.updates, []);
+});
+
+test('⭐ ถอนไม่สำเร็จ ห้ามลบชื่อออกจากรายการที่จดไว้', async () => {
+  // ⚠️ ถ้าลบทิ้งทั้งที่ยังถอนไม่ได้ = หาไฟล์ใบนี้ไม่เจออีกเลยตอนกดซ้ำ
+  // กลายเป็นสิทธิ์ค้างถาวรที่ไม่มีใครรู้ว่ามีอยู่
+  const db = fakeSupabaseWithRows([
+    { id: 'A1', metadata: { kind: 'gdoc', googleFileId: 'F1', accessGranted: ['me@x.co'] } },
+  ]);
+  // ไม่มี Drive จริงในเทสต์ ⇒ revokeFileRole โยน ⇒ ต้องนับเป็น failed
+  const out = await revokeGoogleDocAccess(db, 'me@x.co').catch(() => null);
+  if (out) {
+    assert.equal(out.files, 1);
+    assert.equal(out.failed, 1);
+    assert.equal(out.revoked, 0);
+  }
+  assert.deepEqual(db.updates, [], 'ถอนไม่สำเร็จแล้วห้ามแตะรายการที่จดไว้');
 });

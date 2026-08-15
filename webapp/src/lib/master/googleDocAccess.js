@@ -9,9 +9,9 @@
 // ที่ได้ลิงก์ไปก็เปิดได้ แม้จะไม่มีสิทธิ์เห็นดีลใบนั้นในระบบ · ผู้ใช้เลือกว่า
 // **ต้องเห็นใบนั้นในระบบก่อน** จึงต้องเป็นรายคน
 //
-// ⚠️ **หนี้ที่ยังไม่ได้ใช้คืน: สิทธิ์ที่ให้ไปแล้วไม่หายเอง** — คนย้ายทีม/ลาออก ระบบ
-// ตัดสิทธิ์ในแอปได้ทันที แต่ permission บนไฟล์ยังค้าง เขายังเปิดลิงก์เก่าได้
-// ต้องมีตัวถอนคืนตอนปิดบัญชี ซึ่ง **ยังไม่ได้ทำในรอบนี้**
+// ⚠️ **สิทธิ์ที่ให้ไปแล้วไม่หายเอง** — ต้องถอนด้วย `revokeGoogleDocAccess()` ข้างล่าง
+// (มีปุ่มในหน้าผู้ใช้) · เคสที่ต้องกดจริงคือ **ย้ายทีมทั้งที่ยังทำงานอยู่** เพราะพอ
+// ลาออกแล้วบัญชีถูกปิด permission ที่ค้างก็เป็นบรรทัดตายที่ล็อกอินไม่ได้อยู่แล้ว
 //
 // ⚠️ server-only + Node runtime — โหลด lib/drive แบบ dynamic
 import { isGoogleDoc } from '@/lib/master/googleDocView';
@@ -73,4 +73,51 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
     }
   }
   return granted;
+}
+
+// ถอนสิทธิ์เอกสารร่วมทั้งหมดของอีเมลหนึ่ง — ใช้ตอนคนย้ายทีมหรือปิดบัญชี
+//
+// ⭐ หาไฟล์เจอเพราะเราจดไว้ใน `metadata.accessGranted` — ไม่ต้องไล่ถาม Drive ทีละใบ
+// ว่าใครมีสิทธิ์อยู่บ้าง (แพงและช้า) · แถวที่จดไว้คือทุกใบที่ระบบเคยให้สิทธิ์คนนี้
+//
+// ⚠️ ถอนเฉพาะสิทธิ์ที่ **ระบบเป็นคนให้** — ถ้าคนนั้นเป็นสมาชิก Shared Drive หรือมีคน
+// ไปแชร์ให้เองใน Google เขายังเปิดได้อยู่ ซึ่งถูกแล้ว มันคนละทางกัน
+//
+// คืน { files, revoked, failed } — `failed > 0` แปลว่าบางใบยังค้าง ต้องกดซ้ำ
+export async function revokeGoogleDocAccess(supabase, email) {
+  const result = { files: 0, revoked: 0, failed: 0 };
+  if (!email) return result;
+
+  const { data: rows, error } = await supabase
+    .from('attachments')
+    .select('id, metadata')
+    .contains('metadata', { [GRANTED_KEY]: [email] });
+  if (error) throw error;
+  result.files = (rows || []).length;
+  if (!result.files) return result;
+
+  const drive = await import('@/lib/drive');
+  for (const att of rows) {
+    const fileId = att.metadata?.googleFileId;
+    try {
+      if (fileId) await drive.revokeFileRole(fileId, email);
+      result.revoked += 1;
+    } catch (err) {
+      // ⚠️ ล้มแล้ว **ห้ามลบชื่อออกจาก accessGranted** — ไม่งั้นจะหาไฟล์ใบนี้ไม่เจออีก
+      // เลยตอนกดซ้ำ กลายเป็นสิทธิ์ค้างถาวรที่ไม่มีใครรู้
+      console.error('[googleDocAccess] ถอนสิทธิ์ไม่สำเร็จ', att.id, email, err?.message);
+      result.failed += 1;
+      continue;
+    }
+    const next = grantedList(att).filter((x) => x !== email);
+    try {
+      await supabase
+        .from('attachments')
+        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next } })
+        .eq('id', att.id);
+    } catch (err) {
+      console.error('[googleDocAccess] ล้างรายชื่อที่ถอนแล้วไม่สำเร็จ', att.id, err?.message);
+    }
+  }
+  return result;
 }

@@ -733,3 +733,21 @@ export async function grantFileRole(fileId, email, role = 'reader') {
     supportsAllDrives: true,
   });
 }
+
+// ถอนสิทธิ์รายไฟล์ของอีเมลหนึ่ง — คืน true ถ้าถอนจริง, false ถ้าไม่มีอะไรให้ถอน
+//
+// ⚠️ ถอนได้เฉพาะ permission ที่ให้ไว้**รายไฟล์** · ถ้าคนนั้นเป็นสมาชิก Shared Drive
+// อยู่แล้ว เขายังเปิดได้อยู่ดี ซึ่งถูกต้อง — สิทธิ์นั้นมาจากคนละทาง ไม่ใช่ของที่เราให้
+export async function revokeFileRole(fileId, email) {
+  if (!fileId || !email) return false;
+  const drive = getDrive();
+  const { data } = await drive.permissions.list({
+    fileId,
+    fields: 'permissions(id, emailAddress)',
+    supportsAllDrives: true,
+  });
+  const existing = (data?.permissions || []).find((p) => p.emailAddress === email);
+  if (!existing) return false;
+  await drive.permissions.delete({ fileId, permissionId: existing.id, supportsAllDrives: true });
+  return true;
+}
