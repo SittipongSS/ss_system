@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt } from './approvalPrompt.js';
+import { IRREVERSIBLE_NOTE, approvalPrompt, paymentConfirmPrompt, costingPriceApprovalEffects, costingPriceApprovalPrompt
+} from './approvalPrompt.js';
 
 test('โมดัลบอก "สิ่งที่จะเกิดขึ้น" เป็นบรรทัดละข้อ ไม่ใช่ถามลอย ๆ ว่าแน่ใจไหม', () => {
   const p = approvalPrompt({
@@ -46,4 +47,27 @@ test('งวดที่ไม่มีป้าย/ยอด ยังสร้
   assert.ok(!p.description.includes('undefined'));
   assert.equal(p.description, 'ยืนยันการรับชำระหรือไม่');
   assert.equal(approvalPrompt({ effects: ['ก'] }).description, 'ยืนยันอนุมัติหรือไม่');
+});
+
+// ── อนุมัติราคาผลิต (แก้ 2026-08-16) ───────────────────────────────────────
+test('costingPriceApprovalEffects: บอกครบทั้งลายเซ็น ขั้นป้อนต้นทุน และปลายทางที่ใบเสนอราคา', () => {
+  const lines = costingPriceApprovalEffects({ tierCount: 3 });
+  assert.ok(lines.length >= 4);
+  assert.ok(lines.some((l) => l.includes('3 ชั้น')), 'ต้องบอกจำนวนชั้นที่กำลังอนุมัติ');
+  assert.ok(lines.some((l) => l.includes('ลายเซ็น')));
+  // ⚠️ ต้องไม่โกหกว่าราคาสินค้าเปลี่ยนทันที — มีขั้น "ป้อนต้นทุนเข้า FG" คั่นอยู่
+  assert.ok(lines.some((l) => l.includes('ป้อนต้นทุนเข้า FG')));
+  assert.ok(lines.some((l) => l.includes('ใบเสนอราคา')), 'ต้องบอกปลายทางว่าไปเป็นราคาขาย');
+});
+
+test('costingPriceApprovalEffects: ชั้นเดียวไม่ต้องพูดจำนวนชั้น', () => {
+  const lines = costingPriceApprovalEffects({ tierCount: 1 });
+  assert.ok(!lines.some((l) => l.includes('1 ชั้น')));
+});
+
+test('costingPriceApprovalPrompt: ผ่านด่าน effects บังคับของ approvalPrompt', () => {
+  const prompt = costingPriceApprovalPrompt({ subject: 'FG-0119-001', tierCount: 2 });
+  assert.match(prompt.description, /FG-0119-001/);
+  assert.match(prompt.detail, /สิ่งที่จะเกิดขึ้นทันที:/);
+  assert.match(prompt.detail, /ป้อนต้นทุนเข้า FG/);
 });
