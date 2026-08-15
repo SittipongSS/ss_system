@@ -14,7 +14,7 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
+import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
@@ -264,9 +264,8 @@ export async function PATCH(request, { params }) {
     autoTaxable: (await categoryFlagsOf(updated.categoryCode)).isExcise,
   });
   updated.isExciseTaxable = isExciseTaxable;
-  updated.retailPriceExVat = isExciseTaxable ? updated.retailPriceIncVat / 1.07 : 0;
-  updated.exciseTax = isExciseTaxable ? updated.retailPriceExVat * 0.08 : 0;
-  updated.localTax = isExciseTaxable ? updated.exciseTax * 0.1 : 0;
+  // อัตราภาษีคิดที่เดียว (lib/tax/exciseBilling) — ต้องเป็นสูตรเดียวกับตอนสร้าง
+  Object.assign(updated, productTaxRates(updated.retailPriceIncVat, { taxable: isExciseTaxable }));
 
   const factoryPrice = updated.costPrice;
   updated.laborCost = updated.volume >= 30 ? 5 : 2;

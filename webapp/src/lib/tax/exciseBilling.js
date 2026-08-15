@@ -11,7 +11,46 @@
 
 export const EXCISE_VAT_RATE = 0.07;
 
+// ── อัตราภาษี: ที่เดียวของทั้งระบบ ──────────────────────────────────────────
+//
+// 🐞 **พบตอนตรวจระบบ 2026-08-16:** อัตราพวกนี้เคยเป็นเลขดิบเขียนซ้ำ 4 จุด
+// (`app/api/products/route.js` · `app/api/products/[id]/route.js` · `lib/tax/reports.js` ×2)
+// อัตราภาษีสรรพสามิตเปลี่ยนได้ด้วยกฎหมาย ⇒ วันที่ต้องเปลี่ยน ต้องไล่หาเองทุกจุด
+// พลาดจุดเดียว = สินค้าที่แก้หลังจากนั้นคิดคนละอัตรากับของเก่า โดยไม่มีอะไรเตือน
+//
+// ⚠️ **ธุรกิจพูดกันด้วยเลข "8.8%" ซึ่งไม่ใช่ตัวแปรตัวไหนในนี้** — มันคือผลรวมของ
+// สองอัตราข้างล่าง (8% + 10% ของ 8% = 8.8%) · ใครได้รับแจ้งว่า "อัตราเปลี่ยนเป็น 9%"
+// แล้วแก้ `EXCISE_RATE` เป็น 0.09 จะได้ **9.9% ไม่ใช่ 9%** ⇒ ดู EXCISE_TOTAL_RATE
+//
+// ตัวอย่างเดินเลข (ยืนยันกับผู้ใช้ 2026-08-16):
+//   ราคาขายปลีกรวม VAT 107 → ถอด VAT 100 → สรรพสามิต 8.00 + ท้องถิ่น 0.80
+//   → ยื่นสรรพสามิต 8.80 → เก็บจากลูกค้า 9.42 (บวก VAT 7%)
+export const EXCISE_RATE = 0.08;             // สรรพสามิต — % ของราคาขายปลีกถอด VAT
+export const LOCAL_TAX_RATE_OF_EXCISE = 0.1; // ท้องถิ่น — % ของ "ค่าสรรพสามิต" ไม่ใช่ของราคา
+
+/** อัตรารวมที่ยื่นจริง (8.8%) — เลขที่ธุรกิจใช้คุยกัน · derived ห้ามพิมพ์เอง */
+export const EXCISE_TOTAL_RATE = EXCISE_RATE * (1 + LOCAL_TAX_RATE_OF_EXCISE);
+
 export const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/**
+ * อัตราภาษีต่อหน่วยของสินค้าหนึ่งตัว จากราคาขายปลีก — **สูตรเดียวของทั้งระบบ**
+ *
+ * ⚠️ ไม่ปัดเศษที่นี่ · เก็บลง `products.exciseTax`/`localTax` เต็มความละเอียด แล้วให้
+ * `exciseTaxLine` ปัดตอนคิดต่อหน่วยบนใบยื่น (ปัดสองรอบ = เศษเดินหนีจากเอกสาร)
+ *
+ * @param retailPriceIncVat ราคาขายปลีกรวม VAT · ไม่มี/0 = ยังไม่มีฐานภาษี → คืน 0 ทั้งชุด
+ *   (ด่านที่กันไม่ให้ยื่นทะเบียนด้วยฐานว่างอยู่ที่ lib/tax/requirements.js)
+ */
+export function productTaxRates(retailPriceIncVat, { taxable = true } = {}) {
+  const incVat = Number(retailPriceIncVat);
+  if (!taxable || !Number.isFinite(incVat) || incVat <= 0) {
+    return { retailPriceExVat: 0, exciseTax: 0, localTax: 0 };
+  }
+  const retailPriceExVat = incVat / (1 + EXCISE_VAT_RATE);
+  const exciseTax = retailPriceExVat * EXCISE_RATE;
+  return { retailPriceExVat, exciseTax, localTax: exciseTax * LOCAL_TAX_RATE_OF_EXCISE };
+}
 
 // ── บรรทัดภาษีของใบยื่น: ตัวคิดตัวเดียวของทั้งระบบ ────────────────────────────
 //

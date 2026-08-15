@@ -9,7 +9,7 @@ import {
   fgCodePrefix, insertProductWithCode,
 } from '@/lib/master/masterCodes';
 import { recordAudit } from '@/lib/audit';
-import { resolveProductTaxable } from '@/lib/tax/exciseBilling';
+import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { naText } from "@/lib/format";
@@ -178,9 +178,10 @@ export async function POST(request) {
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
   const isExciseTaxable = resolveProductTaxable({ taxableOverride, autoTaxable });
 
-  const retailPriceExVat = isExciseTaxable ? retailPriceIncVatNum / 1.07 : 0;
-  const exciseTax = isExciseTaxable ? retailPriceExVat * 0.08 : 0;
-  const localTax = isExciseTaxable ? exciseTax * 0.1 : 0;
+  // อัตราภาษีคิดที่เดียว (lib/tax/exciseBilling) — เคยเป็นเลขดิบซ้ำ 4 จุด
+  const { retailPriceExVat, exciseTax, localTax } = productTaxRates(
+    retailPriceIncVatNum, { taxable: isExciseTaxable },
+  );
 
   const factoryPrice = costPriceNum;
   const laborCost = volume >= 30 ? 5 : 2;
