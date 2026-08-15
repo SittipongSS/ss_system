@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   recentSystemForUser,
   SYSTEM_CATALOG,
@@ -162,4 +163,29 @@ test('⭐ ฝ่ายบัญชีกดการ์ดงานขายแ�
   assert.equal(systemLandingForUser('salesplan', { role: 'ae', team: 'SV', extraCaps: [] }), '/sa');
   assert.equal(systemLandingForUser('salesplan', { role: 'rd', team: null, extraCaps: [] }), '/sa');
   assert.equal(systemLandingForUser('salesplan', { role: 'admin', team: null, extraCaps: [] }), '/sa');
+});
+
+// ── landing ต้องไม่ชี้หน้าที่เมนูเทาไว้ ────────────────────────────────────
+// 🐞 กับดักที่เทสต์นี้กันไว้: การ์ดระบบกับแถบเมนูเป็นคนละไฟล์ (systems.js กับ
+// AppLayout.js) — เทาเมนู "ภาพรวม" แล้วลืมแก้ landing = กดการ์ดแล้วเด้งเข้าหน้าที่
+// ระบบเพิ่งบอกว่ายังไม่เปิด ซึ่งอ่านแล้วขัดกันเอง และ build/eslint จับไม่ได้เลย
+// (เกิดกับ /finance มาก่อน แก้ทันตอนทำ · /rd ตามมาอีกใบ 2026-08-15)
+test('⭐ ไม่มีระบบไหน landing ลงหน้าที่เมนูของมันเทาไว้', () => {
+  const nav = readFileSync(new URL('../components/AppLayout.js', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  // เก็บ href ของทุกเมนูที่ตั้ง disabled: true ไว้ในบรรทัดเดียวกัน
+  const disabledHrefs = new Set(
+    [...nav.matchAll(/\{\s*href:\s*'([^']+)'[^}]*disabled:\s*true/g)].map((m) => m[1]),
+  );
+  assert.ok(disabledHrefs.size > 0, 'อ่านเมนูที่เทาไว้ไม่เจอสักอัน — เทสต์นี้จะกลายเป็นเทสต์เปล่า');
+
+  const admin = { role: 'admin', team: null, extraCaps: [] };
+  for (const system of SYSTEM_CATALOG) {
+    const landing = systemLandingForUser(system, admin);
+    assert.ok(
+      !disabledHrefs.has(landing),
+      `ระบบ "${system.key}" ลงที่ ${landing} ซึ่งเมนูเทาไว้ — แก้ landing ให้ชี้หน้าที่กดได้จริง`,
+    );
+  }
 });

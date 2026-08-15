@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
 import styles from "./Table.module.css";
 
 export function TableToolbar({ children, className = "", ...props }) {
@@ -53,6 +54,30 @@ export function TableEmpty({
     </div>
   );
   return colSpan ? <tr><td colSpan={colSpan}>{content}</td></tr> : content;
+}
+
+/* ── หัวกลุ่มในตาราง (โหมด "จัดกลุ่ม" บน toolbar · มติผู้ใช้ 2026-08-15) ──────
+   ⭐ **markup ชุดเดียวของทั้งเว็บ** — ทุกหน้าที่มีปุ่มจัดกลุ่มเรียกตัวนี้ ไม่เขียน
+   `<tr class="group-row">` เอง · สไตล์อยู่ที่ `.ui-group-row` ใน globals.css
+   ⚠️ ต้องส่ง `colSpan` เท่าจำนวนคอลัมน์จริงของตาราง ไม่งั้นหัวกลุ่มไม่เต็มแถว
+   props: label = ชื่อกลุ่ม · sub = บรรทัดรอง (รหัสลูกค้า/ทีม) · badge = "n ใบ"
+          total = ยอดรวมชิดขวา (ส่งเป็นข้อความที่ format แล้ว) */
+export function TableGroupRow({ colSpan, label, sub, badge, total, totalTitle, collapsed, onToggle }) {
+  return (
+    <tr className="ui-group-row">
+      <td colSpan={colSpan}>
+        <button type="button" onClick={onToggle} aria-expanded={!collapsed}>
+          {collapsed
+            ? <ChevronRight size={15} aria-hidden="true" />
+            : <ChevronDown size={15} aria-hidden="true" />}
+          <strong>{label}</strong>
+          {sub ? <span className="ar-code">{sub}</span> : null}
+          {badge ? <span className="ui-badge">{badge}</span> : null}
+          {total ? <span className="ui-group-total mono" title={totalTitle}>{total}</span> : null}
+        </button>
+      </td>
+    </tr>
+  );
 }
 
 export function TableShell({
