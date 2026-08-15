@@ -54,7 +54,7 @@ const FILTER_KEYS = ["status", "orderState", "from", "to", "q", "overdue"];
 export default function FinancePaymentsPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0 });
+  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -105,6 +105,15 @@ export default function FinancePaymentsPage() {
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
+  /* ⚠️ ล้างสองคีย์พร้อมกันต้องเป็น **replace เดียว** — เรียก `setFilter` สองครั้งติดกัน
+     ไม่ได้ผล เพราะทั้งสองครั้งอ่าน `params` ก้อนเดิมของ render นี้ ⇒ ครั้งหลังเขียนทับ
+     ครั้งแรก (เจอตอนกดปุ่มจริงบนหน้า: กดแล้วช่วงวันไม่หายสักช่อง) */
+  const clearDateRange = useCallback(() => {
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("from"); sp.delete("to");
+    router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+  }, [params, router]);
+
   const clearFilters = useCallback(() => {
     const sp = new URLSearchParams(params.toString());
     FILTER_KEYS.forEach((key) => sp.delete(key));
@@ -117,7 +126,10 @@ export default function FinancePaymentsPage() {
       const res = await fetch(`/api/finance/payments?${query}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนการชำระไม่สำเร็จ");
-      setData({ rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0 });
+      setData({
+        rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0,
+        undatedHidden: body.undatedHidden || null,
+      });
     } catch (loadError) { setError(loadError.message); }
     setLoading(false);
   }, [query]);
@@ -126,6 +138,7 @@ export default function FinancePaymentsPage() {
 
   const rows = data.rows;
   const summary = data.summary;
+  const undatedHidden = data.undatedHidden;
 
   /* ⭐ **จับกลุ่มตามใบ แล้วแบ่งหน้าที่ระดับ "ใบ" ไม่ใช่ระดับ "งวด"** (มติผู้ใช้ 2026-08-13)
      ⭐ **หนึ่งใบ = หนึ่งแถว ไม่มีแถวย่อย** (มติผู้ใช้ 2026-08-15) — ทะเบียนตอบคำถาม
@@ -317,6 +330,16 @@ export default function FinancePaymentsPage() {
               onClick={() => setFilter("overdue", overdue ? "" : "1")}
             />
           </MetricStrip>
+        )}
+
+        {/* ⚠️ **ตัวเลขที่หายต้องมีที่อยู่** — ตัวกรองช่วงวันตัดงวดที่ยังไม่กำหนดวันชำระ
+            ออกตามความหมายของมัน ("ครบกำหนดในช่วงนี้") แต่ยอดสรุปด้านบนคิดจากแถวที่
+            เหลือ ⇒ ถ้าไม่บอก บัญชีจะเชื่อว่ายอดค้างมีเท่าที่เห็น · งวดไม่มีกำหนดเป็น
+            สถานะปกติ (QT ไม่มีวันมาให้ SA กรอกเองทีละงวด) ไม่ใช่ข้อมูลเสีย */}
+        {undatedHidden?.count > 0 && (
+          <StatusNotice tone="info" action={<Button size="sm" variant="ghost" onClick={clearDateRange}>ล้างช่วงวัน</Button>}>
+            ตัวกรองช่วงวันซ่อนงวดที่ยังไม่กำหนดวันชำระไว้ {undatedHidden.count} งวด · {fmtMoney(undatedHidden.amount)} — ยอดสรุปด้านบนยังไม่รวมส่วนนี้
+          </StatusNotice>
         )}
 
         {/* ── คิวงาน: สิ่งที่ต้องทำวันนี้ (มติผู้ใช้ 2026-08-13 · แบบ ข) ──────────

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
-  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups,
+  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups, undatedHiddenBy
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -490,4 +490,38 @@ test('AE ชื่อเดียวกันแต่คนละคน ต้�
     rowWithOwner('B', { ownerId: 'U-2', ownerName: 'Somchai Sri', team: 'AE' }),
   ]);
   assert.equal(groupLedgerBuckets(groups, 'owner').length, 2);
+});
+
+// ── งวดที่ยังไม่มีกำหนดชำระ vs ตัวกรองช่วงวัน (แก้ 2026-08-16) ───────────────
+test('undatedHiddenBy: ไม่ได้กรองช่วงวัน = ไม่มีอะไรถูกซ่อน', () => {
+  const rows = [
+    { orderId: 'SO-1', status: 'pending', amount: 100, dueDate: null },
+    { orderId: 'SO-1', status: 'pending', amount: 200, dueDate: '2026-08-20' },
+  ];
+  assert.deepEqual(undatedHiddenBy(rows, {}), { count: 0, amount: 0 });
+});
+
+test('undatedHiddenBy: กรองช่วงวันแล้ว งวดไม่มีกำหนดถูกนับแยกไว้ให้บอกผู้ใช้', () => {
+  const rows = [
+    { orderId: 'SO-1', status: 'pending', amount: 100, dueDate: null },
+    { orderId: 'SO-1', status: 'pending', amount: 50.5, dueDate: null },
+    { orderId: 'SO-1', status: 'pending', amount: 200, dueDate: '2026-08-20' },
+  ];
+  const filters = { from: '2026-08-01', to: '2026-08-31' };
+  // ตารางเห็นเฉพาะงวดที่มีวันกำหนดในช่วง
+  assert.equal(filterLedger(rows, filters).length, 1);
+  // และส่วนที่หายไปถูกรายงานครบ
+  assert.deepEqual(undatedHiddenBy(rows, filters), { count: 2, amount: 150.5 });
+});
+
+test('undatedHiddenBy: นับเฉพาะแถวที่ผ่านตัวกรองอื่น — ไม่ลากของที่ถูกกรองด้วยเหตุอื่นมารวม', () => {
+  const rows = [
+    { orderId: 'SO-1', status: 'pending', amount: 100, dueDate: null, customerName: 'ก' },
+    { orderId: 'SO-2', status: 'pending', amount: 900, dueDate: null, customerName: 'ข' },
+  ];
+  // กรองด้วยคำค้น "ก" → งวดของลูกค้า ข ต้องไม่ถูกนับเป็นของที่ถูกซ่อนโดยช่วงวัน
+  assert.deepEqual(
+    undatedHiddenBy(rows, { from: '2026-08-01', q: 'ก' }),
+    { count: 1, amount: 100 },
+  );
 });

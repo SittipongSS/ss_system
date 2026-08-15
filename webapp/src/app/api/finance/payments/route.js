@@ -10,7 +10,7 @@
 // ⚠️ exceljs ต้องใช้ Node runtime — ห้ามเป็น edge
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canAccessFinance } from '@/lib/permissions';
-import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger } from '@/lib/finance/paymentLedger';
+import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, undatedHiddenBy } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 
@@ -102,7 +102,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const all = await loadLedger(supabase, todayIso);
     /* ⚠️ ดัชนีสถานะระดับใบคิดจาก **ก่อนกรอง** — ดูเหตุผลที่ `orderStateIndex` */
     const orderStates = orderStateIndex(all);
-    const filtered = sortLedger(filterLedger(all, {
+    const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,
       to: url.searchParams.get('to') || null,
@@ -110,7 +110,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       overdueOnly: url.searchParams.get('overdue') === '1',
       orderState: listParam(url.searchParams.get('orderState')),
       orderStates,
-    }));
+    };
+    const filtered = sortLedger(filterLedger(all, filters));
+    /* ⭐ งวดที่ยังไม่มีกำหนดชำระถูกตัดออกโดยตัวกรองช่วงวัน (ถูกต้องตามความหมายของ
+       ตัวกรอง) — แต่ยอดสรุปคิดจากแถวที่เหลือ ⇒ ต้องบอกด้วยว่าซ่อนไปเท่าไร
+       ไม่งั้นบัญชีกรองดูเดือนหนึ่งแล้วเชื่อว่ายอดค้างมีเท่าที่เห็น */
+    const undatedHidden = undatedHiddenBy(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -132,6 +137,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       summary: ledgerSummary(filtered),
       // สรุปของ **ทั้งทะเบียน** ไว้ให้หน้าภาพรวมบอกได้ว่ากรองอยู่เห็นไม่ครบ
       totalRows: all.length,
+      undatedHidden,
       todayIso,
     });
   } catch (loadError) {

@@ -202,6 +202,12 @@ export function filterLedger(rows = [], {
        เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
     if (wantedOrders.length && !wantedOrders.includes(orderStates?.get(r.orderId) || ORDER_STATE_OPEN)) return false;
     if (overdueOnly && !r.overdue) return false;
+    /* ⚠️ **งวดที่ยังไม่มีกำหนดชำระถูกตัดออกเมื่อกรองช่วงวัน** — และนั่นถูกต้องตาม
+       ความหมายของตัวกรอง ("ครบกำหนดในช่วงนี้") แต่มัน **เงียบ** ไม่ได้: `ledgerSummary`
+       คิดจากแถวที่เหลือ ⇒ ยอดค้างบนหัวจอลดลงตามโดยไม่มีอะไรบอก และงวดไม่มีวันกำหนด
+       คือสถานะปกติ ไม่ใช่ข้อมูลเสีย (QT ไม่มีวันมาให้ SA กรอกเองทีละงวด)
+       ⇒ ผู้เรียกต้องรายงานส่วนที่ถูกซ่อนด้วย `undatedHiddenBy()` (ดูข้างล่าง)
+       🐞 คลาสเดียวกับตัวกรองปีของ /mgmt ที่เคยกลืนแถวไม่มีวันที่ (#1257) */
     if (from && (!r.dueDate || String(r.dueDate) < String(from))) return false;
     if (to && (!r.dueDate || String(r.dueDate) > String(to))) return false;
     if (needle) {
@@ -211,6 +217,28 @@ export function filterLedger(rows = [], {
     }
     return true;
   });
+}
+
+/**
+ * งวดที่ **หายไปเพราะตัวกรองช่วงวัน** ทั้งที่ผ่านตัวกรองอื่นครบ — คือกลุ่มที่ยังไม่มี
+ * กำหนดชำระ (`dueDate` ว่าง)
+ *
+ * ⭐ มีไว้ให้หน้าจอบอกผู้ใช้ว่า "ยังมีอีก N งวด ยอด X ที่ไม่ได้นับเพราะยังไม่กำหนดวัน"
+ * — ตัวเลขที่หายต้องมีที่อยู่ ไม่งั้นบัญชีกรองดูเดือนหนึ่งแล้วเชื่อว่ายอดค้างมีเท่านั้น
+ *
+ * ⚠️ คิดจาก **ตัวกรองชุดเดียวกันแต่ถอดช่วงวันออก** ไม่ใช่จากทั้งทะเบียน — ไม่งั้น
+ * ตอนกรองลูกค้ารายเดียวจะไปนับงวดของลูกค้ารายอื่นมารวมด้วย
+ *
+ * @returns {{count: number, amount: number}} 0/0 = ไม่ได้กรองช่วงวัน หรือไม่มีอะไรถูกซ่อน
+ */
+export function undatedHiddenBy(rows = [], filters = {}) {
+  if (!filters.from && !filters.to) return { count: 0, amount: 0 };
+  const withoutRange = filterLedger(rows, { ...filters, from: null, to: null })
+    .filter((r) => !r.dueDate);
+  return {
+    count: withoutRange.length,
+    amount: Math.round(withoutRange.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) * 100) / 100,
+  };
 }
 
 /**
