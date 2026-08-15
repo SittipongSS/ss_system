@@ -61,6 +61,18 @@ export function requiredChecks(form = {}) {
       tab: 'work', label: 'ดีล',
       applies: requestNeedsRef(kind, 'deal'), ok: hasDeal,
     },
+    // ⭐ ใบเสนอราคาเป็น **ต้นทาง** ของขอเอกสารการเงิน (ม-ค) — หัวข้อนั้นไม่มีช่องดีล
+    // เพราะดีลเติมมาจากใบที่เลือก · หัวข้อที่อ้าง QT แบบ "ถ้ามี" ไม่เข้าข้อนี้
+    {
+      tab: 'work', label: 'ใบเสนอราคา',
+      applies: requestNeedsRef(kind, 'quotation'), ok: filled(form.quotationId),
+    },
+    // ⚠️ ยอดที่ขอนับเป็นช่องบังคับของแท็บนี้ด้วย — ไม่งั้นเกจเต็มทั้งที่ยังกรอกยอด
+    // ไม่ครบ แล้วปุ่มบันทึกจางโดยไม่มีอะไรบนจอชี้ว่าติดตรงไหน
+    {
+      tab: 'work', label: 'ยอดที่ขอวางบิล',
+      applies: requestNeedsRef(kind, 'quotation'), ok: Number(form.billAmount) > 0,
+    },
     // โครงการไม่มีช่องให้เลือก — มันมาจากดีล (มติ 2026-08-06) · ดีลที่ยังไม่ผูก
     // โครงการจึงเป็นของที่ขาดของแท็บนี้ (ข้อความเต็มอยู่ที่ `requestFormBlocker`)
     {

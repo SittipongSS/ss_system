@@ -28,8 +28,10 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
 // ⚠️ ห้ามเปลี่ยนเป็น "ข้ามหัวข้อที่ผิดแล้วเดินต่อ" — หัวข้อที่หายไปเงียบ ๆ คือใบที่
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
 const VALID_DEPTS = ['RD', 'PC', 'FN'];
-const VALID_REFS = ['project', 'deal', 'salesOrder', 'scent', 'formula'];
+const VALID_REFS = ['project', 'deal', 'salesOrder', 'quotation', 'scent', 'formula'];
 // อ้างอิงเพิ่มแบบไม่บังคับ (ม-88) — คนละชุดกับ needs: ของพวกนี้ **ว่างได้เสมอ**
+// ⚠️ `quotation` อยู่ได้ทั้งสองชุด — เป็นอ้างอิงเสริมของขอเอกสาร RD (ม-88) แต่เป็น
+// **ต้นทาง** ของขอเอกสารการเงิน (ม-ค) · หัวข้อเดียวประกาศได้ข้างเดียว (ด่านข้างล่าง)
 const VALID_OPTIONAL_REFS = ['quotation', 'salesOrder', 'product'];
 // ⚠️ `material` ถูกถอดใน mig 0219 พร้อมหัวข้อขอราคา (มติ ม-28) — ห้ามเพิ่มกลับ
 // โดยไม่มีหัวข้อที่ใช้จริง รูปร่างที่ไม่มีหัวข้อไหนใช้คือโค้ดที่ไม่มีทางเดินถึง
@@ -52,6 +54,11 @@ export function assertKind(kind, seen = new Set()) {
   for (const ref of kind.optionalRefs || []) {
     if (!VALID_OPTIONAL_REFS.includes(ref)) {
       throw new Error(`${at}: optionalRefs "${ref}" ไม่รู้จัก`);
+    }
+    // ⚠️ ของชิ้นเดียวเป็นทั้ง "ต้องมี" และ "ถ้ามี" พร้อมกันไม่ได้ — ฟอร์มจะวาดช่อง
+    // เดียวกันสองรอบ (บล็อกบังคับ + บล็อกอ้างอิงเพิ่ม) และเกจจะนับซ้ำ
+    if ((kind.needs || []).includes(ref)) {
+      throw new Error(`${at}: "${ref}" อยู่ทั้ง needs และ optionalRefs — เลือกข้างเดียว`);
     }
   }
   // หัวข้อที่มีบรรทัดต้องบอกด้วยว่าบรรทัดหน้าตาแบบไหน — ไม่บอก = ตกไปเป็น

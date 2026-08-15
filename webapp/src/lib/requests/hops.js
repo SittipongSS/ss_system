@@ -96,7 +96,11 @@ export function hopStageError(row, hop) {
 }
 
 // ── ด่านค่าที่ส่งมา — ต้องครอบทุกข้อที่ constraint ของ 0202 บังคับ ────────
-export function hopValuesError(hop, values = {}) {
+//
+// `lineKind` มาจาก **แถวจริง** ไม่ใช่จาก body — บางก้าวมีกฎต่างกันตามรูปร่างบรรทัด
+// (ส่งเอกสารการเงินต้องมีเลขที่ · ส่งเอกสาร RD ไม่ต้อง) · ผู้เรียกฝั่ง server อ่านจาก
+// แถวที่โหลดมาแล้ว ฝั่งจออ่านจาก `hopDraft.item` ⇒ สองที่ใช้ด่านตัวเดียวกันจริง
+export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
   const at = String(values.at ?? '').trim();
   if (at && !ISO_DATE.test(at)) return 'วันที่ไม่ถูกต้อง';
 
@@ -109,7 +113,20 @@ export function hopValuesError(hop, values = {}) {
   // ⭐ ก้าวส่ง (ready) ไม่ถามวันแล้ว (ม-92: "ไม่จำเป็นต้องใส่วันที่ ใช้ stamp
   // วันเวลา") — ว่าง = hopPatch ประทับวันไทยของวันที่กดให้เอง · เส้น lead time
   // ยังครบเพราะช่องวันไม่เคยว่างจริง แค่ย้ายจากมือคนไปเป็นตราประทับ
-  if (hop === 'ready') return null;
+  if (hop === 'ready') {
+    // ⭐ **ผลลัพธ์ของบรรทัดเอกสารการเงิน** (B-3 · R-6) — บัญชีออกเอกสารแล้วต้องทิ้ง
+    // เลขที่ไว้ในระบบ ไม่งั้นปิดคำร้องแล้วไม่มีอะไรตกผลึก และตามกลับไม่ได้ว่า
+    // ใบวางบิลของงานนี้คือเลขไหน (ที่เดียวที่เชื่อมกับระบบบัญชีข้างนอกได้)
+    if (lineKind === 'billing_doc') {
+      const docNumber = String(values.docNumber ?? '').trim();
+      if (!docNumber) return 'ต้องระบุเลขที่เอกสารที่ออกให้';
+      if (docNumber.length > 60) return 'เลขที่เอกสารยาวเกิน 60 ตัวอักษร';
+      // ⚠️ **วันครบกำหนดไม่บังคับ** — ใบเสร็จออกหลังรับเงินแล้ว ไม่มีกำหนดชำระ
+      const due = String(values.docDueDate ?? '').trim();
+      if (due && !ISO_DATE.test(due)) return 'วันครบกำหนดไม่ถูกต้อง';
+    }
+    return null;
+  }
   // ⚠️ ก้าวฝั่งผู้ขอ (pickup/send/receive) ยังถาม — พวกนั้นบันทึกเหตุการณ์นอกระบบ
   // (ของถึงมือลูกค้าเมื่อไร) ที่มักเกิดก่อนวันกดบันทึก
   if (['pickup', 'send', 'receive'].includes(hop)) {
@@ -149,7 +166,7 @@ export function hopValuesError(hop, values = {}) {
 
 // ── แปลงเป็น patch ที่เขียนลงแถวได้เลย ───────────────────────────────────
 // ⚠️ ที่เดียวที่รู้ว่าก้าวไหนเขียนช่องไหน — handler ไม่ประกอบเอง ไม่งั้นกฎจะกระจาย
-export function hopPatch(hop, values = {}, user = null, today = null) {
+export function hopPatch(hop, values = {}, user = null, today = null, { lineKind = null } = {}) {
   const at = String(values.at ?? '').trim() || today;
   const by = { id: user?.id ?? null, name: user?.name ?? null };
 
@@ -160,7 +177,20 @@ export function hopPatch(hop, values = {}, user = null, today = null) {
       ...(due ? { dueAt: due } : {}),
     };
   }
-  if (hop === 'ready') return { readyAt: at, readyById: by.id, readyByName: by.name };
+  if (hop === 'ready') {
+    const base = { readyAt: at, readyById: by.id, readyByName: by.name };
+    // ผลลัพธ์ของบรรทัดเอกสารการเงิน (B-3) — ⚠️ ใส่คีย์เฉพาะรูปร่างที่ใช้จริง
+    // ด้วยเหตุผลเดียวกับ `quotationId` ตอนเปิดใบ: PostgREST ปฏิเสธ **ทั้งก้อน**
+    // เมื่อ body มีคอลัมน์ที่ DB ยังไม่มี ⇒ mig 0258 ยังไม่รัน = แถวอื่นต้องยังส่งได้
+    if (lineKind !== 'billing_doc') return base;
+    const due = String(values.docDueDate ?? '').trim();
+    return {
+      ...base,
+      docNumber: String(values.docNumber ?? '').trim(),
+      // ว่าง = ล้างค่าเดิม ไม่ใช่ข้ามไป (ส่งซ้ำหลังแก้ต้องลบวันเดิมออกได้)
+      docDueDate: due || null,
+    };
+  }
   if (hop === 'pickup') return { pickedUpAt: at, pickedUpById: by.id, pickedUpByName: by.name };
   if (hop === 'send') return { sentAt: at, sentById: by.id, sentByName: by.name };
 

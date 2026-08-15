@@ -41,11 +41,17 @@ export default function NewRequestPage() {
   // ใบสั่งขาย คนที่เพิ่งอนุมัติเสร็จจึงกดต่อได้เลย ไม่ต้องจำเลขที่มาไล่หาใน dropdown
   // ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — `scentDesignOrderError` ที่ POST ยังตรวจ
   // ครบทุกข้อ (อนุมัติแล้ว · มีบรรทัดออกแบบกลิ่น · ยังไม่เคยเปิดใบ) เหมือนตอนเลือกเอง
+  // ⭐ `quotationId` + `billAmount` มาจากปุ่ม "ขอใบวางบิลงวดนี้" บนการ์ดการชำระของ SO
+  // (B-5) — คนที่เพิ่งดูงวดอยู่กดต่อได้เลย ไม่ต้องมาไล่หาใบเสนอราคาใน dropdown ซ้ำ
+  // ⚠️ **เติมค่าไม่ใช่ปลดด่าน** — ใบต้องอนุมัติแล้ว (ม-ง) และยอดต้องไม่เกินใบ ยังตรวจ
+  // ครบทั้งที่ฟอร์มและ POST เหมือนเปิดเองจาก /requests
   const defaults = useMemo(() => ({
     kind: searchParams.get("kind") || "",
     dealId: searchParams.get("dealId") || "",
     projectId: searchParams.get("projectId") || "",
     salesOrderId: searchParams.get("salesOrderId") || "",
+    quotationId: searchParams.get("quotationId") || "",
+    billAmount: searchParams.get("billAmount") ? Number(searchParams.get("billAmount")) : null,
   }), [searchParams]);
   // ⚠️ กลับไปที่เดิมหลังบันทึก — แพตเทิร์นเดียวกับ pm/tasks · ค่าที่ไม่ใช่เส้นทาง
   // ภายในถูกทิ้ง (open redirect จากโดเมนของเราเองคือของจริงที่เคยหลุดมาแล้ว)

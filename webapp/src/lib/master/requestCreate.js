@@ -70,6 +70,14 @@ export function requestFormBlocker(form) {
   if (requestNeedsRef(form.kind, 'project') && form.dealId && !form.projectId) {
     return 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้';
   }
+
+  // ⚠️ ด่าน "ยอดที่ขอวางบิล" อยู่ใน `requestShapeError` (ที่เดียวกับของที่หัวข้อต้องมี)
+  // เพื่อให้ **ลำดับการถามตรงกับลำดับช่องบนฟอร์ม** — ถามชื่อเรื่องก่อนยอดทั้งที่ยอด
+  // อยู่แท็บแรก แปลว่าผู้ใช้ถูกส่งไปแก้ผิดแท็บ
+  // ⚠️ ด่าน "ใบต้องอนุมัติแล้ว" (ม-ง) **ไม่ได้อยู่ฝั่งจอ** เพราะ blocker เห็นแต่ค่าใน
+  // ฟอร์ม ไม่เห็นแถวใบเสนอราคา ⇒ กันด้วยการ**กรองลิสต์**ให้เลือกได้เฉพาะใบที่ผ่าน
+  // (`billingQuotationOptions`) แล้วตรวจซ้ำที่ handler ด้วยฟังก์ชันตัวเดียวกัน
+  // — แพตเทิร์นเดียวกับใบสั่งขายของบรีฟกลิ่น (`scentDesignOrderOptions`)
   return null;
 }
 
@@ -88,7 +96,13 @@ export function requestPayload(form, extra = {}) {
     dealId: form.dealId || null,
     salesOrderId: form.salesOrderId || null,
     // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — ว่างได้ · server ตรวจว่าเป็นของดีลเดียวกัน
+    // ⭐ หัวข้อขอเอกสารการเงินใช้ช่องนี้เป็น **ต้นทาง** (ม-ค) — server derive ดีล
+    // และลูกค้าจากใบนี้ ไม่ใช่จาก `dealId` ที่ฟอร์มเติมไว้ให้ดูเฉย ๆ
     quotationId: form.quotationId || null,
+    // ยอดที่ขอวางบิล (B-2) — `billAmount` คือค่าที่บัญชีเอาไปออกเอกสาร ส่วนอีกสองค่า
+    // ตอบว่ามันมาจากไหน · ⚠️ server คิดใหม่จากยอดจริงของใบเสมอ ไม่เชื่อ base ที่ส่งมา
+    billPercent: form.billPercent === '' || form.billPercent == null ? null : Number(form.billPercent),
+    billAmount: form.billAmount === '' || form.billAmount == null ? null : Number(form.billAmount),
     // FG หลายรายการ (ม-89) — server ตรวจทุกตัวว่ามีจริง แล้วเก็บ snapshot เอง
     productIds: (form.productIds || []).filter(Boolean),
     title: form.title || null,

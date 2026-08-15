@@ -32,6 +32,7 @@ import { OUTCOME_REGISTRY_BY_KIND } from './requests/outcomes.js';
 import { requestFormBlocker, requestPayload } from './master/requestCreate.js';
 import {
   REQUEST_KIND_LIST,
+  defaultRequestDept,
   deptForRequest,
   isRequestKind,
   kindsForDept,
@@ -119,6 +120,26 @@ test('ด่านตอนสร้าง: พัฒนากลิ่นส่
   assert.match(requestShapeError('formula_dev', { ...dev, projectId: '', dealId: '' }), /ดีล/);
 });
 
+test('ด่านตอนสร้าง: ขอเอกสารการเงินถามใบเสนอราคาก่อน แล้วยอด แล้วค่อยชื่อเรื่อง', () => {
+  // ⚠️ ลำดับสำคัญ — ทั้งใบเสนอราคาและยอดอยู่แท็บ "งาน" ส่วนชื่อเรื่องอยู่แท็บถัดไป
+  // ตอบชื่อเรื่องก่อนแปลว่าผู้ใช้ถูกส่งไปแก้ผิดแท็บ
+  assert.match(requestShapeError('billing_doc', {}), /ต้องเลือกใบเสนอราคา/);
+  assert.match(requestShapeError('billing_doc', { quotationId: 'QT-1' }), /ต้องระบุยอดที่ขอวางบิล/);
+  assert.match(
+    requestShapeError('billing_doc', { quotationId: 'QT-1', billAmount: 90508.125 }),
+    /ชื่อเรื่อง/,
+  );
+  // ⚠️ ยอด 0 หรือติดลบไม่นับว่ากรอกแล้ว
+  for (const billAmount of [0, -1, null, '']) {
+    assert.match(
+      requestShapeError('billing_doc', { quotationId: 'QT-1', billAmount }),
+      /ต้องระบุยอดที่ขอวางบิล/,
+    );
+  }
+  // ⚠️ หัวข้ออื่นต้องไม่โดนด่านยอดติดมาด้วย
+  assert.match(requestShapeError('info', { dealId: 'D1', projectId: 'P1' }), /ชื่อเรื่อง/);
+});
+
 test('ด่านตอนสร้าง: ชื่อเรื่องบังคับทุกหัวข้อ รวมหัวข้อที่มีบรรทัด', () => {
   // หัวข้อที่มีบรรทัดสื่อความด้วยแถว แต่บนคิวรวมและในเธรดดีล แถวมองไม่เห็น
   assert.match(requestShapeError('formula_dev', {
@@ -131,23 +152,46 @@ test('ฝ่ายที่เลือกต้องเข้ากับห�
   assert.equal(requestDeptError('scent_dev', 'RD'), null);
   // ⭐ ขอเอกสารล็อกที่ RD แล้ว (มติผู้ใช้ 2026-08-08) — เดิมส่งถึงฝ่ายไหนก็ได้
   assert.equal(requestDeptError('document', 'RD'), null);
-  // ⚠️ ฝ่ายที่ปิดเก็บไว้ก่อน (PC/FN) ตกที่ด่านแรก — "ต้องระบุฝ่าย" ไม่ใช่ "เป็นงานของ
+  // ⭐ FN เปิดแล้ว (ม-ก) — หัวข้อของบัญชีส่งถึงบัญชีได้
+  assert.equal(requestDeptError('billing_doc', 'FN'), null);
+  // ⚠️ ฝ่ายที่ปิดเก็บไว้ก่อน (PC) ตกที่ด่านแรก — "ต้องระบุฝ่าย" ไม่ใช่ "เป็นงานของ
   // ฝ่าย RD" เพราะมันไม่ใช่ฝ่ายที่เปิดใบได้เลย ไม่ใช่แค่ฝ่ายผิด
   assert.match(requestDeptError('scent_dev', 'PC'), /ต้องระบุฝ่าย/);
-  assert.match(requestDeptError('document', 'FN'), /ต้องระบุฝ่าย/);
+  // ⚠️ ฝ่ายที่เปิดแล้วแต่ **ผิดหัวข้อ** ต้องได้ข้อความที่บอกฝ่ายที่ถูก ไม่ใช่ "ต้องระบุฝ่าย"
+  // ซึ่งอ่านเหมือนยังไม่ได้เลือกทั้งที่เลือกแล้ว
+  assert.match(requestDeptError('document', 'FN'), /เป็นงานของฝ่าย RD/);
+  assert.match(requestDeptError('billing_doc', 'RD'), /เป็นงานของฝ่าย FN/);
   // หัวข้อที่ไม่ล็อกฝ่ายยังต้องเลือกฝ่ายเสมอ
   assert.equal(requestDeptError('info', 'RD'), null);
   assert.match(requestDeptError('info', ''), /ต้องระบุฝ่าย/);
   assert.match(requestDeptError('info', 'PD'), /ต้องระบุฝ่าย/);
 });
 
+/* 🐞 **ลิงก์ที่เติมหัวข้อมาให้ต้องได้ฝ่ายมาด้วย** (เจอตอน UAT ของ B-5)
+   เดิมฟอร์มพึ่ง "มีฝ่ายเดียวก็เลือกให้เลย" ล้วน ⇒ พอ B-1 เปิด FN เป็นฝ่ายที่สอง
+   ลิงก์เติมค่าทุกอันพังพร้อมกัน รวม "เปิดคำร้องพัฒนากลิ่น" จากหน้าใบสั่งขาย:
+   ฟอร์มกางครบ กรอกได้หมด แต่ปุ่มบันทึกค้างที่ "เลือกฝ่ายและหัวข้อก่อน" */
+test('ฝ่ายตั้งต้นมาจากหัวข้อที่ล็อกฝ่ายไว้ ไม่ต้องให้ลิงก์ส่งมา', () => {
+  assert.equal(defaultRequestDept('billing_doc'), 'FN');
+  assert.equal(defaultRequestDept('scent_dev'), 'RD');
+  assert.equal(defaultRequestDept('document'), 'RD');
+  // ⚠️ หัวข้อของกลางห้ามเดาให้ — เดาเมื่อไรใบไปโผล่คิวฝ่ายที่ผู้ขอไม่ได้ตั้งใจส่งถึง
+  assert.equal(defaultRequestDept('info'), '');
+  assert.equal(defaultRequestDept(''), '');
+  assert.equal(defaultRequestDept('ไม่มีหัวข้อนี้'), '');
+});
+
 test('หัวข้อถูกกรองด้วยฝ่าย — ฟอร์มถามฝ่ายก่อนหัวข้อ (มติ 2026-08-03)', () => {
   const rd = kindsForDept('RD');
-  // ⚠️ PC/FN ปิดเก็บไว้ก่อน (มติผู้ใช้ 2026-08-08) ⇒ ลิสต์ว่างทั้งคู่
+  // ⚠️ PC ยังปิดเก็บไว้ (ม-87) ⇒ ลิสต์ว่าง · FN เปิดแล้ว (ม-ก) ⇒ ต้องมีหัวข้อของตัวเอง
   const pc = kindsForDept('PC');
+  const fn = kindsForDept('FN');
   assert.ok(rd.includes('scent_dev') && rd.includes('formula_dev'));
   assert.ok(!rd.includes('material_eta'));
   assert.deepEqual(pc, []);
+  assert.ok(fn.includes('billing_doc'));
+  // ⚠️ หัวข้อของกลาง (`info`) อยู่ทุกฝ่ายที่เปิด — แต่หัวข้อที่ล็อกฝ่ายห้ามข้ามฝ่าย
+  assert.ok(!fn.includes('document') && !rd.includes('billing_doc'));
   // ⚠️ ม-28: หัวข้อขอราคาไม่มีอยู่ในทะเบียนอีกแล้ว ไม่ใช่แค่ซ่อนจากลิสต์
   for (const gone of ['price_f', 'price_fb', 'price_pm']) {
     assert.equal(isRequestKind(gone), false, `${gone} ต้องหายจากทะเบียนทั้งตัว`);

@@ -173,3 +173,24 @@ test('เมนูกรองลูกค้าต่อท้ายรหั�
   // ไม่มีรหัส = ป้ายเหมือนเดิมทุกตัวอักษร
   assert.equal(requestFacetOptions([req()], 'customer')[0].label, 'ลอรีอัล (1)');
 });
+
+/* 🔴 คิวฝ่ายวิจัยและพัฒนาเรียงตาม "วันที่ร้องขอ" เป็นค่าตั้งต้น (มติผู้ใช้ 2026-08-15)
+   ⚠️ ป้ายต้องเป็นชื่อของ **ข้อมูล** ไม่ใช่ชื่อของทิศทาง — มีปุ่มสลับทิศแยกอยู่แล้ว */
+test('ตัวเลือกเรียง "วันที่ร้องขอ" มีจริง และตั้งต้นใหม่ก่อน', () => {
+  const created = REQUEST_SORT_OPTIONS.find((o) => o.key === 'created');
+  assert.equal(created.label, 'วันที่ร้องขอ');
+  assert.equal(requestSortDefaultDir('created'), 'desc');
+  assert.equal(requestSortDefaultDir('urgency'), 'asc');
+});
+
+test('เรียงตามวันที่ร้องขอ: ใหม่ก่อนเมื่อ desc และใบที่ไม่มีวันไปท้ายทั้งสองทิศ', () => {
+  const rows = [
+    { id: 'old', createdAt: '2026-08-01T03:00:00Z' },
+    { id: 'none' },
+    { id: 'new', createdAt: '2026-08-14T03:00:00Z' },
+  ];
+  assert.deepEqual(sortRequestRows(rows, { key: 'created', dir: 'desc' }).map((r) => r.id),
+    ['new', 'old', 'none']);
+  assert.deepEqual(sortRequestRows(rows, { key: 'created', dir: 'asc' }).map((r) => r.id),
+    ['old', 'new', 'none']);
+});

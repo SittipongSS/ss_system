@@ -1,6 +1,6 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
-import { Fragment, useState, useEffect, useMemo, useRef } from "react";
+import { TableGroupRow, TableScroll } from "@/components/ui/Table";
+import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
@@ -8,8 +8,8 @@ import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskDetailPanel, { TaskNoteLine } from "@/components/pm/TaskDetailPanel";
 import Button from "@/components/ui/Button";
-import SortControl from "@/components/ui/SortControl";
 import FilterPopover from "@/components/ui/FilterPopover";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusSelect from "@/components/pm/StatusSelect";
 import Segmented from "@/components/ui/Segmented";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
@@ -19,6 +19,7 @@ import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Pager from "@/components/ui/Pager";
+import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
@@ -92,6 +93,16 @@ const SORT_OPTIONS = [
   { key: "name", label: "ชื่องาน" },
 ];
 
+/* ── จัดกลุ่ม (มติผู้ใช้ 2026-08-15) — เฉพาะ **มุมมองตาราง** ────────────────
+   มุมมองเมทริกซ์/ปฏิทินจัดกลุ่มด้วยแกนของตัวเองอยู่แล้ว (สำคัญ×ด่วน · วันที่)
+   ⇒ ซ้อนอีกชั้นไม่ได้แปลว่าอะไร ปุ่มจึงโผล่เฉพาะตอนดูตาราง */
+const GROUP_OPTIONS = [
+  { value: "none", label: "ไม่จัดกลุ่ม" },
+  { value: "assignee", label: "ผู้รับมอบหมาย" },
+  { value: "category", label: "หมวด" },
+  { value: "status", label: "สถานะ" },
+];
+
 // (มุมมองบอร์ด Kanban ถูกถอดออก — มติผู้ใช้ 2026-07-17: ซ้ำกับตัวกรองสถานะ
 // บนตาราง และเป็นมุมมองเดียวที่ไล่โชว์ทุกงานโดยไม่ตัด)
 
@@ -152,6 +163,8 @@ export default function TasksPage() {
   const [categoryFilter, setCategoryFilter] = useState([]);
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("asc");
+  const [groupBy, setGroupBy] = useState("none");
+  const [collapsed, setCollapsed] = useState(() => new Set());
   // แถวที่กางดูรายละเอียดอยู่ — กางได้หลายใบพร้อมกันเพื่อ "เทียบกัน" ซึ่งเป็นเหตุผล
   // เดียวที่คนอยากอ่านในหน้ารายการแทนที่จะเปิดหน้างานทีละใบ
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -325,6 +338,26 @@ export default function TasksPage() {
       .sort(comparator),
     [pool, statusFilter, comparator],
   );
+
+  /* จัดกลุ่มเฉพาะมุมมองตาราง (ดู GROUP_OPTIONS) — จัดจากรายการที่เรียงแล้ว
+     ⚠️ งานไม่มียอดเงิน ⇒ หัวกลุ่มโชว์แค่จำนวนงาน ไม่มีคอลัมน์ยอดรวม */
+  const buckets = useMemo(() => {
+    if (groupBy === "none" || view !== "table") return null;
+    return bucketList(visible, (t) => {
+      if (groupBy === "assignee") {
+        const id = t.assigneeId || t.ownerId || "";
+        return { key: id, label: id ? naText(usersMap[id]) : "ยังไม่มอบหมาย", missing: !id };
+      }
+      if (groupBy === "category") {
+        const category = String(t.category || "").trim();
+        return { key: category, label: category || "ไม่ระบุหมวด", missing: !category };
+      }
+      return { key: t.status, label: TASK_STATUS_TH[t.status] || t.status };
+    });
+  }, [visible, groupBy, view, usersMap]);
+
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
@@ -595,6 +628,64 @@ export default function TasksPage() {
     return { y: d.getFullYear(), m: d.getMonth() };
   });
 
+  /* ── แถวของงานหนึ่งงาน (มุมมองตาราง) — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────
+     ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
+  const taskRow = (t) => {
+            const u = getUrgencyInfo(t);
+            const manage = canManageTask(t);
+            return (
+              <Fragment key={t.id}>
+              <tr className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
+                <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
+                <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
+                  <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
+                      {expandButton(t)}
+                      {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
+                      {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
+                      <span style={{ flex: 1 }}>{t.title}</span>
+                    </div>
+                    {/* กางแล้วแผงด้านล่างมีโน้ตเต็ม — บรรทัดย่อตรงนี้จะซ้ำเปล่า ๆ */}
+                    {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
+                  </div>
+                </td>
+                {scope === "mine" && <td>{relationshipBadge(t)}</td>}
+                <td>{t.category ? <span style={{ fontSize: "var(--fs-3)", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
+                {scope !== "mine" && <td style={{ fontSize: "var(--fs-7)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span>{(t.assigneeId || t.ownerId) ? (naText(usersMap[t.assigneeId || t.ownerId])) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</span>
+                    {proxyBadge(t)}
+                  </div>
+                </td>}
+                <td style={{ fontSize: "var(--fs-7)" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
+                <td>
+                  {t.dueDate ? (
+                    <>
+                      <div style={{ fontSize: "var(--fs-7)" }}>{fmtDate(t.dueDate)}</div>
+                      <div style={{ fontSize: "var(--fs-3)", color: u.color, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>{u.icon} {u.label}</div>
+                    </>
+                  ) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}
+                </td>
+                <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
+                <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
+                  <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
+                    {proxyActions(t)}
+                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
+                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
+                  </div>
+                </td>
+              </tr>
+              {/* ⚠️ colSpan = 8 เสมอ — คอลัมน์ "บทบาทของฉัน" กับ "ผู้รับมอบหมาย"
+                  สลับกันตามสโคป ไม่ได้บวกกัน (ผิดแล้วแถวจะกินเกินตารางเงียบ ๆ) */}
+              {expandedIds.has(t.id) && (
+                <tr className="premium-row" onClick={(e) => e.stopPropagation()}>
+                  <td colSpan={8}>{detailPanel(t)}</td>
+                </tr>
+              )}
+              </Fragment>
+            );
+  };
+
   return (
     <SaWorkspace
       icon={<ListTodo size={22} />}
@@ -715,15 +806,33 @@ export default function TasksPage() {
             ]}
           />
         )}
-        <div className="spacer">
-          <SortControl
-            value={sortKey}
-            onChange={(event) => { setSortKey(event.target.value); setSortDir("asc"); }}
-            options={SORT_OPTIONS}
-            direction={sortDir}
-            onDirectionChange={setSortDir}
-          />
-        </div>
+        {/* จัดกลุ่ม/เรียง = ปุ่มทรงเดียวกับปุ่มตัวกรอง (ui/ViewMenus) — ชุดเดียวกับ
+            ทุกตารางในระบบ · ปุ่มจัดกลุ่มโผล่เฉพาะมุมมองตาราง */}
+        {view === "table" && (
+          <>
+            <GroupMenu
+              title="จัดกลุ่มงาน"
+              value={groupBy}
+              onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
+              options={GROUP_OPTIONS}
+            />
+            {!!buckets?.length && (
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
+              />
+            )}
+          </>
+        )}
+        <div className="spacer" />
+        <SortMenu
+          title="เรียงลำดับงาน"
+          value={sortKey}
+          defaultValue="created"
+          onChange={(value) => { setSortKey(value); setSortDir("asc"); }}
+          options={SORT_OPTIONS.map((option) => ({ value: option.key, label: option.label }))}
+        />
+        <SortDirButton dir={sortDir} onToggle={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} />
         </div>
 
       {loading ? (
@@ -821,61 +930,23 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((t) => {
-                const u = getUrgencyInfo(t);
-                const manage = canManageTask(t);
+              {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวงานข้างในเป็น `taskRow` ตัวเดียวกับโหมดปกติ
+                  ⚠️ colSpan = 8 เท่าจำนวนคอลัมน์จริง (สองคอลัมน์สลับกันตามสโคป ไม่ได้บวกกัน) */}
+              {buckets ? buckets.map((bucket) => {
+                const bucketCollapsed = collapsed.has(bucket.key);
                 return (
-                  <Fragment key={t.id}>
-                  <tr className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
-                    <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
-                    <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
-                      <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
-                          {expandButton(t)}
-                          {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
-                          {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
-                          <span style={{ flex: 1 }}>{t.title}</span>
-                        </div>
-                        {/* กางแล้วแผงด้านล่างมีโน้ตเต็ม — บรรทัดย่อตรงนี้จะซ้ำเปล่า ๆ */}
-                        {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
-                      </div>
-                    </td>
-                    {scope === "mine" && <td>{relationshipBadge(t)}</td>}
-                    <td>{t.category ? <span style={{ fontSize: "var(--fs-3)", background: "var(--panel-2)", padding: "2px 8px", borderRadius: "12px" }}>{t.category}</span> : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
-                    {scope !== "mine" && <td style={{ fontSize: "var(--fs-7)" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span>{(t.assigneeId || t.ownerId) ? (naText(usersMap[t.assigneeId || t.ownerId])) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}</span>
-                        {proxyBadge(t)}
-                      </div>
-                    </td>}
-                    <td style={{ fontSize: "var(--fs-7)" }}>{DIFFICULTY_LABELS[t.difficulty] || DIFFICULTY_LABELS[2]}</td>
-                    <td>
-                      {t.dueDate ? (
-                        <>
-                          <div style={{ fontSize: "var(--fs-7)" }}>{fmtDate(t.dueDate)}</div>
-                          <div style={{ fontSize: "var(--fs-3)", color: u.color, display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>{u.icon} {u.label}</div>
-                        </>
-                      ) : <span style={{ color: "var(--text-3)" }}>{NA}</span>}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
-                        {proxyActions(t)}
-                        {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
-                        {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
-                      </div>
-                    </td>
-                  </tr>
-                  {/* ⚠️ colSpan = 8 เสมอ — คอลัมน์ "บทบาทของฉัน" กับ "ผู้รับมอบหมาย"
-                      สลับกันตามสโคป ไม่ได้บวกกัน (ผิดแล้วแถวจะกินเกินตารางเงียบ ๆ) */}
-                  {expandedIds.has(t.id) && (
-                    <tr className="premium-row" onClick={(e) => e.stopPropagation()}>
-                      <td colSpan={8}>{detailPanel(t)}</td>
-                    </tr>
-                  )}
+                  <Fragment key={bucket.key}>
+                    <TableGroupRow
+                      colSpan={8}
+                      label={bucket.label}
+                      badge={`${bucket.count} งาน`}
+                      collapsed={bucketCollapsed}
+                      onToggle={() => toggleBucket(bucket.key)}
+                    />
+                    {!bucketCollapsed && bucket.items.map(taskRow)}
                   </Fragment>
                 );
-              })}
+              }) : pageRows.map(taskRow)}
             </tbody>
           </table></TableScroll>
         </div>

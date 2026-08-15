@@ -6,7 +6,7 @@
 //
 // ⚠️ อ่านขั้นของแถวจาก `rowStage.js` ที่เดียว — ตัวเดียวกับที่รางบนหน้ารายละเอียดใช้
 // ⇒ คิวกับหน้ารายละเอียดขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
-import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
+import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from '@/lib/requests/statuses';
 import { requestRowSummary } from '@/lib/requests/rowStage';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
@@ -58,6 +58,43 @@ export function requestNextStep(request) {
   }
   // ทุกแถวจบแล้วแต่ใบยังไม่ปิด — คนที่ต้องกดปิดคือผู้ขอ
   return { owner: 'requester', label: 'รอปิดเรื่อง' };
+}
+
+/* ── สถานะของใบในคิว = ป้ายเดียวที่มีทั้งคำและสี (มติผู้ใช้ 2026-08-15) ──────
+ *
+ * ⭐ **คิวมีคอลัมน์สถานะช่องเดียว** — ของเดิมมีสองภาษาปนกัน: คอลัมน์ "ต้องทำอะไร"
+ * (`requestNextStep`) กับคอลัมน์ "สถานะ" (`request.status` ดิบ) ซึ่งพูดเรื่องเดียวกัน
+ * คนละคำและคนละสี · ผู้ใช้อ่านแล้วไม่รู้ว่าต้องเชื่อช่องไหน
+ *
+ * ⚠️ **ข้อความยังมาจาก `requestNextStep` ไม่ใช่ `status` ดิบ** — status ดิบทำข้อมูล
+ * หายสองอย่างที่เคยเป็นบั๊กมาแล้ว:
+ *   · ใบตีกลับมี `status === 'draft'` ⇒ อ่านเป็น "ร่าง" เหมือนใบที่ไม่เคยส่ง
+ *     (🐞 "ตีกลับอยู่ไหน" ผู้ใช้ถามเอง 2026-08-11 — ดูคำเตือนใน `requestNextStep`)
+ *   · รอรับเรื่อง / รอฝ่ายเริ่ม / รอฝ่ายทำต่อ / รอผู้ขอทำต่อ ยุบเหลือ "กำลังดำเนินการ"
+ *     คำเดียว ทั้งที่สี่อย่างนี้คนละคนต้องลงมือ
+ *
+ * ⚠️ **โทนต้องบอก "ใครค้าง" ไม่ใช่ระดับความรุนแรง** — ฟ้า = ตาฝ่ายเรา · เทา = รอฝั่งอื่น
+ * · เหลือง = ยังไม่มีใครรับ (นาฬิกาเริ่มเดินแล้วแต่ยังไม่มีเจ้าของ) · แดง = ตีกลับ
+ * ⇒ กวาดตาลงคอลัมน์แล้วเห็นทันทีว่าใบไหนเป็นงานเรา
+ */
+export function requestQueueStatus(request) {
+  const next = requestNextStep(request);
+  if (next) {
+    const tone = next.bounced ? 'danger'
+      : next.label === 'รอรับเรื่อง' ? 'warning'
+        : next.owner === 'dept' ? 'info'
+          : 'neutral';
+    return { label: next.label, tone, owner: next.owner, bounced: Boolean(next.bounced) };
+  }
+  /* ใบที่ไม่มีก้าวถัดไปแล้ว (ปิด/ยกเลิก/ตอบแล้ว) — ใช้คำและโทนของสถานะจริง
+     ⚠️ ต้องมีคำเสมอ ห้ามคืนช่องว่าง · แท็บ "ประวัติ" มีแต่ใบพวกนี้ทั้งแท็บ */
+  const status = request?.status;
+  return {
+    label: REQUEST_STATUS_LABELS[status] || 'จบแล้ว',
+    tone: REQUEST_STATUS_TONES[status] || 'neutral',
+    owner: null,
+    bounced: false,
+  };
 }
 
 // ── แถบตัวเลข 4 ตัว ──────────────────────────────────────────────────────

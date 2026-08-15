@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  requestQueueStatus,
   QUEUE_COUNT_META, matchesQueueCount, queueCounts, requestNextStep, visibleQueueRows,
 } from './queueBoard.js';
 
@@ -395,4 +396,33 @@ test('ค้นด้วยรหัส AR เจอใบของลูกค�
   assert.equal(matchesQueueSearch(row, 'AR-9999'), false);
   // ใบที่ยังไม่มีรหัส ยังค้นด้วยชื่อได้ตามเดิม
   assert.equal(matchesQueueSearch({ ...row, customerArCode: null }, 'ลอรีอัล'), true);
+});
+
+// ── สถานะช่องเดียวของคิว (มติผู้ใช้ 2026-08-15) ──────────────────────────
+/* 🔴 คอลัมน์ "ต้องทำอะไร" กับ "สถานะ" เคยพูดเรื่องเดียวกันคนละคำคนละสี ⇒ ยุบเหลือ
+   ช่องเดียวที่มีทั้งคำและโทน · โทนบอก **ใครค้าง** ไม่ใช่ระดับความรุนแรง */
+test('ใบตีกลับได้โทนแดงและคำว่าตีกลับ ไม่ใช่ "ร่าง"', () => {
+  const got = requestQueueStatus({ status: 'draft', bouncedAt: '2026-08-14T03:00:00Z' });
+  assert.equal(got.tone, 'danger');
+  assert.match(got.label, /ตีกลับ/);
+  assert.equal(got.bounced, true);
+});
+
+test('ยังไม่มีใครรับ = เหลือง · เป็นตาฝ่าย = ฟ้า · รอฝั่งอื่น = เทา', () => {
+  assert.equal(requestQueueStatus({ status: 'pending', items: [] }).tone, 'warning');
+  assert.equal(requestQueueStatus({ status: 'acknowledged', items: [] }).tone, 'info');
+  const waitingRequester = requestQueueStatus({ status: 'draft' });
+  assert.equal(waitingRequester.tone, 'neutral');
+  assert.equal(waitingRequester.label, 'ยังไม่ได้ส่ง');
+});
+
+/* ⚠️ แท็บ "ประวัติ" มีแต่ใบที่ไม่มีก้าวถัดไปแล้ว — ต้องมีคำเสมอ ห้ามเป็นช่องว่าง */
+test('ใบที่จบแล้วใช้คำและโทนของสถานะจริง', () => {
+  assert.deepEqual(
+    ['closed', 'cancelled', 'answered'].map((status) => requestQueueStatus({ status }).label),
+    ['ปิดเรื่อง', 'ยกเลิก', 'ตอบแล้ว'],
+  );
+  assert.equal(requestQueueStatus({ status: 'answered' }).tone, 'success');
+  assert.equal(requestQueueStatus({ status: 'ไม่รู้จัก' }).label, 'จบแล้ว');
+  assert.equal(requestQueueStatus(null).label, 'จบแล้ว');
 });

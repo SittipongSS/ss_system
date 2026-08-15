@@ -24,6 +24,9 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
     ready: row.received || row.refused,
   }));
 
+  // ⚠️ **ยอดที่ขอวางบิลย้ายไป `BillingDocPanel` แล้ว** (ม-96) — การ์ดนี้เหลือของ RD
+  // ล้วน · เอากลับมาเมื่อไรจะได้ยอดสองที่ที่ต้องคอยดูแลให้ตรงกัน
+
   // อ้างอิงของหัวข้อนี้ (ม-88) — โชว์เฉพาะตัวที่อ้างจริง · ตามกลับไม่เจอ = ใบถูกลบ
   const refs = [
     request.quotationId && {
@@ -55,7 +58,7 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
         <DocumentSummaryCard
           title="สรุปใบนี้"
           rows={[
-            // ⚠️ **คำเดียวกับป้ายขั้นของแถว** (ม-95) — เดิมการ์ดนับว่า "มาแล้ว"
+            // ⚠️ **คำเดียวกับป้ายขั้นของแถว** (ม-120) — เดิมการ์ดนับว่า "มาแล้ว"
             // ส่วนแถวในตารางเดียวกันเขียน "ได้รับแล้ว" ⇒ ตัวเลขกับแถวพูดคนละคำ
             { id: "received", label: "ได้รับแล้ว", value: String(totals.received) },
             { id: "waiting", label: "รอเอกสาร", value: String(totals.waiting) },

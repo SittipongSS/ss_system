@@ -64,3 +64,20 @@ test('ป้ายขั้นฉบับเอกสาร — ready/done/decl
   assert.equal(label({ lineKind: 'document', answerStatus: 'declined', declineReason: 'r' }), 'ปฏิเสธ'); // เดิม "ไม่ถูกเลือก"
   assert.equal(label({ lineKind: 'document', ackAt: 'x' }), 'กำลังทำ');                     // ชุดกลางตามเดิม
 });
+
+/* 🐞 **ชื่อชนิดต้องมาจากทะเบียนของรูปร่างนั้น** (เจอตอน UAT ของ B-5)
+   เดิมอ่านจากชุดของ RD อย่างเดียว ⇒ บรรทัดของบัญชีขึ้นเป็นค่าดิบ `billing_note`
+   บนตารางสรุป ทั้งที่การ์ดรายแถวข้างล่างแสดง "ใบวางบิล" ถูกต้อง — จอเดียวเรียกของ
+   สิ่งเดียวกันสองชื่อ */
+test('ชื่อชนิดเอกสารอ่านจากทะเบียนของฝ่ายนั้น ไม่ใช่ของ RD เสมอ', () => {
+  const [fn] = documentBoard([{ id: 'i1', lineKind: 'billing_doc', docType: 'billing_note' }]);
+  assert.equal(fn.name, 'ใบวางบิล');
+  const [tax] = documentBoard([{ id: 'i2', lineKind: 'billing_doc', docType: 'tax_invoice' }]);
+  assert.equal(tax.name, 'ใบกำกับภาษี');
+  // ชุดของ RD ต้องไม่เพี้ยนตาม
+  const [rd] = documentBoard([{ id: 'i3', lineKind: 'document', docType: 'ifra' }]);
+  assert.equal(rd.name, 'IFRA Certificate');
+  // ⚠️ ชนิดที่ไม่รู้จักยังคืนค่าดิบ — ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก
+  const [old] = documentBoard([{ id: 'i4', lineKind: 'billing_doc', docType: 'ของเก่า' }]);
+  assert.equal(old.name, 'ของเก่า');
+});

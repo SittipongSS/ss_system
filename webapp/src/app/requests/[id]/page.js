@@ -279,7 +279,7 @@ export default function RequestDetailPage() {
   // ⚠️ สองด่านคนละชั้น — `hopValuesError` คุมค่าของก้าว · ของสูตรมีด่านของตัวเอง
   // ที่ server ใช้ตัวเดียวกัน (normalizeFormulaDelivery) ⇒ ปุ่มกับ API ไม่เพี้ยนกัน
   const hopError = hopDraft
-    ? (hopValuesError(hopDraft.hop, hopDraft)
+    ? (hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
         ? normalizeFormulaDelivery(hopDraft).error
         : null))
@@ -298,6 +298,9 @@ export default function RequestDetailPage() {
     dueAt: "",
     confirmedQty: "",
     note: "",
+    // ผลลัพธ์ของบรรทัดเอกสารการเงิน (B-3) — เติมค่าเดิมกลับมาเมื่อส่งซ้ำหลังแก้
+    docNumber: item.docNumber || "",
+    docDueDate: item.docDueDate || "",
   });
   const submitHop = async () => {
     const { item, hop, outcome } = hopDraft;
@@ -312,6 +315,11 @@ export default function RequestDetailPage() {
           formulaName: hopDraft.formulaName,
           formulaCode: hopDraft.formulaCode,
           formulaDate: hopDraft.formulaDate || null,
+        } : {}),
+        // เลขที่เอกสาร + วันครบกำหนดของบรรทัดเอกสารการเงิน (B-3)
+        ...(hop === "ready" && item.lineKind === "billing_doc" ? {
+          docNumber: hopDraft.docNumber,
+          docDueDate: hopDraft.docDueDate || null,
         } : {}),
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
         // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
@@ -1014,7 +1022,7 @@ export default function RequestDetailPage() {
           · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
             การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
       <DetailPageLayout
-        /* ⚠️ ระยะหัวใบ → เนื้อ เป็นของ **หน้า** ไม่ใช่ของธง (ม-96) — เดิมผูกกับ
+        /* ⚠️ ระยะหัวใบ → เนื้อ เป็นของ **หน้า** ไม่ใช่ของธง (ม-121) — เดิมผูกกับ
            `usePanel` ⇒ หัวข้อโครงเดิมหัวใบชนการ์ดแรก 0px */
         className={styles.detailLayout}
         asideLabel="จัดการคำร้อง"
@@ -1080,7 +1088,7 @@ export default function RequestDetailPage() {
         ) : null}
       >
         {requestBodyBlock}
-        {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-96) — เดิมเป็น `<div>` เปล่า
+        {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-121) — เดิมเป็น `<div>` เปล่า
             ⇒ `gap` ของ `.main` ตกไม่ถึงลูก การ์ดทุกใบชนกัน 0px */}
         <div className={styles.stack}>
 
@@ -1425,6 +1433,34 @@ export default function RequestDetailPage() {
                   และแท็บเอกสารของดีล/โครงการ
                 </p>
               </div>
+            )}
+
+            {/* ⭐ ผลลัพธ์ของบรรทัดเอกสารการเงิน (B-3 · R-6) — บัญชีออกเอกสารจาก
+                ระบบบัญชีข้างนอกแล้วทิ้งเลขที่ไว้ตรงนี้ · เลขที่คือสิ่งเดียวที่เชื่อม
+                คำร้องกับเอกสารจริงได้ ⇒ ไม่มีเลข = ปิดใบแล้วตามกลับไม่เจอ */}
+            {hopDraft.hop === "ready" && hopDraft.item.lineKind === "billing_doc" && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="hop-doc-number">เลขที่เอกสารที่ออกให้</label>
+                  <Input
+                    id="hop-doc-number" mono value={hopDraft.docNumber} disabled={saving}
+                    placeholder="เช่น IV-26080012"
+                    onChange={(e) => setHopDraft({ ...hopDraft, docNumber: e.target.value })}
+                  />
+                  <p className={styles.fieldHint}>
+                    เลขที่จากระบบบัญชี — ผู้ขอใช้เลขนี้ตามเอกสารกลับ และค้นย้อนได้
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="hop-doc-due">วันครบกำหนดชำระ</label>
+                  <DateInput
+                    id="hop-doc-due" value={hopDraft.docDueDate} disabled={saving}
+                    onChange={(v) => setHopDraft({ ...hopDraft, docDueDate: v })}
+                  />
+                  {/* ⚠️ ไม่บังคับ — ใบเสร็จออกหลังรับเงินแล้ว ไม่มีกำหนดชำระ */}
+                  <p className={styles.fieldHint}>ว่างได้ — ใบเสร็จไม่มีกำหนดชำระ</p>
+                </div>
+              </>
             )}
 
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (

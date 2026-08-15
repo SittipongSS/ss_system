@@ -10,7 +10,7 @@
 // ⚠️ exceljs ต้องใช้ Node runtime — ห้ามเป็น edge
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canAccessFinance } from '@/lib/permissions';
-import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, sortLedger } from '@/lib/finance/paymentLedger';
+import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 
@@ -20,8 +20,12 @@ export const dynamic = 'force-dynamic';
 /* ดึงทีละก้อนด้วย `.in()` ไม่ใช่ไล่ยิงต่อแถว — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ
    (ใบละ 1–4 งวด) ยิงต่อแถวเมื่อไรหน้าเดียวก็หลายร้อยรีเควสต์ */
 async function loadLedger(supabase, todayIso) {
+  /* ⭐ **เฉพาะงวดที่ยอดหยุดแล้ว** (B-4 · mig 0259) — งวดของใบร่างมีตัวตนใน DB แล้ว
+     แต่ยอดยังเดินตามแผนของ QT ⇒ ปล่อยเข้าทะเบียนเมื่อไร บัญชีเปิดมาเจอ **คิวเงินที่
+     ยังไม่มีอยู่จริง** และยอดรวมทั้งหน้าผิดทันที
+     ⚠️ กรองที่ query ไม่ใช่หลังโหลด — ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ */
   const { data: installments, error } = await supabase
-    .from('sales_order_installments').select('*');
+    .from('sales_order_installments').select('*').not('frozenAt', 'is', null);
   if (error) throw error;
   const rows = installments || [];
   if (!rows.length) return [];
@@ -30,14 +34,25 @@ async function loadLedger(supabase, todayIso) {
   const { data: orders, error: orderError } = await supabase
     .from('sales_orders')
     /* 🐞 เคยใส่ team/ownerName ไว้ด้วย แล้ว PostgREST ตอบ 500 ทั้งหน้า:
-       `column sales_orders.team does not exist` — ทีมกับเจ้าของงานอยู่ที่ **ดีล**
-       ไม่ใช่ที่ใบ · ทะเบียนนี้ไม่มีคอลัมน์ทีมอยู่แล้ว จึงไม่ต้องไล่ join ดีลมาเพิ่ม */
+       `column sales_orders.team does not exist` — ทีมกับผู้ดูแลอยู่ที่ **ดีล** ไม่ใช่ที่ใบ
+       ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
     /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
        ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
-    .select('id, "orderNumber", "quotationId", "customerId", "customerName", status, "financeStatus"')
+    .select('id, "orderNumber", "quotationId", "dealId", "customerId", "customerName", status, "financeStatus"')
     .in('id', orderIds);
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));
+
+  /* ดีลของใบ — เอาแค่ผู้ดูแลกับทีม ไม่ลากทั้งแถวมา (ทะเบียนนี้โตตามจำนวนงวดทั้งระบบ)
+     ⚠️ ใบที่ไม่ได้มาจากดีลมี `dealId` ว่างได้ ⇒ ต้องรอดโดยไม่มีผู้ดูแล ไม่ใช่พัง */
+  const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
+  const dealById = new Map();
+  if (dealIds.length) {
+    const { data: deals, error: dealError } = await supabase
+      .from('sales_deals').select('id, "ownerId", "ownerName", team').in('id', dealIds);
+    if (dealError) throw dealError;
+    (deals || []).forEach((d) => dealById.set(d.id, d));
+  }
 
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
   const quoteById = new Map();
@@ -66,6 +81,7 @@ async function loadLedger(supabase, todayIso) {
         order,
         quotation: quoteById.get(order.quotationId) || null,
         customer: customerById.get(order.customerId) || null,
+        deal: dealById.get(order.dealId) || null,
         todayIso,
       });
     })
@@ -84,12 +100,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const todayIso = businessDate();
   try {
     const all = await loadLedger(supabase, todayIso);
+    /* ⚠️ ดัชนีสถานะระดับใบคิดจาก **ก่อนกรอง** — ดูเหตุผลที่ `orderStateIndex` */
+    const orderStates = orderStateIndex(all);
     const filtered = sortLedger(filterLedger(all, {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,
       to: url.searchParams.get('to') || null,
       q: url.searchParams.get('q') || '',
       overdueOnly: url.searchParams.get('overdue') === '1',
+      orderState: listParam(url.searchParams.get('orderState')),
+      orderStates,
     }));
 
     if (url.searchParams.get('format') === 'xlsx') {

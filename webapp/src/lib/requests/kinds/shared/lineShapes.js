@@ -6,10 +6,13 @@
 // ใบเดิมที่ขั้นสุดท้าย ไม่มีบรรทัดวัสดุอีกแล้ว ⇒ ตัวตรวจ `normalizeRequestItems`
 // และ `normalizeRequestTiers` ถูกลบตามไปด้วย ไม่ใช่แค่เลิกเรียก
 import { normalizeDocumentItems } from '../../lines';
+import { REQUEST_DOC_VOCABULARY } from '../../docTypes';
 
 const documentLine = {
   key: 'document',
   labels: { pending: 'รอเอกสาร', done: 'ได้รับแล้ว', declined: 'ปฏิเสธ' },
+  // ⭐ ทะเบียนคำศัพท์ต้องเดินมากับรูปร่าง — จอสรุปอ่านชื่อชนิดจากที่นี่ ไม่ใช่เดาเอง
+  vocab: REQUEST_DOC_VOCABULARY,
   normalize: (input) => normalizeDocumentItems(input),
 };
 

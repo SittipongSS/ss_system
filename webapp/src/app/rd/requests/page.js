@@ -25,8 +25,11 @@ import { compareRequestUrgency } from "@/lib/deptRequests";
 
 const DEPT = "RD";
 
+/* ⚠️ คำโปรยต้องพูดตรงกับลำดับที่เห็นจริง — คิวนี้ตั้งต้นเรียง **วันที่ร้องขอ**
+   (มติผู้ใช้ 2026-08-15) ไม่ใช่ความเร่งแล้ว ⇒ ประโยค "เรื่องที่ยังไม่มีใครรับขึ้นก่อน
+   เสมอ" ถูกถอดออก · ความเร่งยังเลือกได้จากปุ่ม "เรียง" */
 const TAB_BLURB = {
-  todo: "งานที่รอฝ่ายเราทำต่อ — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ",
+  todo: "งานที่รอฝ่ายเราทำต่อ — ใบใหม่สุดอยู่บนสุด สลับเป็นเรียงตามความเร่งได้ที่ปุ่มเรียง",
   waiting: "ส่งของไปแล้ว รอฝ่ายขายรับ/ส่งลูกค้า/ตอบกลับ — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
   history: "เรื่องที่จบแล้วทั้งหมดของฝ่าย",
 };
@@ -34,7 +37,9 @@ const TAB_BLURB = {
 export default function RdRequestsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const board = useQueueBoard();
+  /* ⭐ ตั้งต้นเรียงตาม **วันที่ร้องขอ** ใหม่ก่อน (มติผู้ใช้ 2026-08-15) — ต่างจากคิวรวม
+     `/requests` ที่ยังตั้งต้นด้วยความเร่ง · ผู้ใช้เปลี่ยนเป็นแบบอื่นได้ตลอดจากปุ่มเรียง */
+  const board = useQueueBoard({ sortKey: "created" });
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -79,6 +84,9 @@ export default function RdRequestsPage() {
     if (countParam) setCountFilter(countParam);
   }, [countParam, setCountFilter]);
 
+  /* ⚠️ เรียงความเร่งไว้เป็น **ลำดับตั้งต้นของข้อมูล** เท่านั้น — ตัวที่ตัดสินลำดับบนจอ
+     คือปุ่ม "เรียง" ในพาเนล (`sortRequestRows`) · ที่ยังเรียงตรงนี้เพราะ `queueCounts`
+     และการ์ดอื่นที่กินชุดนี้คาดหวังลำดับความเร่ง */
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),
     [requests, tab],

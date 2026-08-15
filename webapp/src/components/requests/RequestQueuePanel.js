@@ -10,11 +10,11 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, ChevronRight, ChevronsDownUp,
-  ChevronsUpDown, FolderKanban, Layers, MessageCircleQuestion, Search, Tag, User, Users,
+  Building2, ChevronDown, ChevronRight,
+  FolderKanban, MessageCircleQuestion, Search, Tag, User, Users,
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
-import MenuSelect from "@/components/ui/MenuSelect";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import SkeletonRows from "@/components/ui/Skeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
@@ -25,7 +25,7 @@ import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
   QUEUE_COUNT_META, bouncedDaysText, groupQueueRows, matchesQueueCount, queueCounts,
-  requestDueText, requestNextStep,
+  requestDueText, requestQueueStatus,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
 import {
@@ -35,6 +35,7 @@ import {
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
 import { requestAssignee } from "@/lib/requests/assign";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
+import StatusBadge from "@/components/ui/StatusBadge";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
@@ -110,15 +111,22 @@ export default function RequestQueuePanel({
     [rows, countFilter, search, today, filters, sortKey, sortDir, showTools],
   );
 
-  /* ⭐ **สองโหมดจัดกลุ่ม รูปร่างเดียวกัน** — เลือกมิติเอง (ฝ่าย/ชนิด/ลูกค้า/ผู้รับเรื่อง)
-     หรือปล่อยไว้ให้จัดตามความเร่ง (`groupQueueRows` ของเดิม ซึ่งเป็นสิ่งที่ทำให้ใบ
-     ตีกลับกับใบที่ยังไม่มีใครรับขึ้นบนสุด) · ทั้งสองโหมดคืน `{ key, label, rows }`
-     เหมือนกัน ⇒ ตารางกับการ์ดวาดโค้ดชุดเดียว ไม่ใช่สองสำเนา */
-  const groups = useMemo(() => (
-    (showTools && groupRequestRows(visibleRows, groupBy))
-    || groupQueueRows(visibleRows, { todayIso: today })
-      .map((g) => ({ key: g.group, label: g.label, rows: g.rows }))
-  ), [visibleRows, groupBy, today, showTools]);
+  /* ⭐ **"ไม่จัดกลุ่ม" = ไม่มีหัวกลุ่มจริง ๆ** (มติผู้ใช้ 2026-08-15) — ของเดิมพอเลือก
+     "ไม่จัดกลุ่ม" ยังตกไปหา `groupQueueRows` ซึ่งแทรกแถบความเร่ง (ยังไม่มีใครรับ /
+     ตีกลับ / เลยกำหนด …) ให้อยู่ดี ⇒ ปุ่มบอกว่าไม่จัดกลุ่มแต่จอยังมีหัวข้อคั่น
+     ซึ่งขัดกับตารางอื่นทั้งระบบที่ "ไม่จัดกลุ่ม" แปลว่าแบนราบ
+     ⚠️ **การ์ดที่ฝังในหน้าดีล/โครงการ (`showTools` เท็จ) ยังจัดตามความเร่งเหมือนเดิม**
+     — ที่นั่นไม่มีปุ่มให้เปิดกลุ่มคืน และแถบความเร่งคือสิ่งเดียวที่บอกว่าใบไหนต้องรีบ
+     ⚠️ ลำดับความเร่งไม่ได้หายไปด้วย — ยังเรียงด้วย `compareRequestUrgency` ตามเดิม
+     (ถ้าหน้านั้นตั้งต้นด้วย `urgency`) แค่ไม่มีเส้นคั่นให้เห็นเป็นบล็อก */
+  const groups = useMemo(() => {
+    if (showTools) {
+      return groupRequestRows(visibleRows, groupBy)
+        || [{ key: "__flat", label: "", rows: visibleRows, flat: true }];
+    }
+    return groupQueueRows(visibleRows, { todayIso: today })
+      .map((g) => ({ key: g.group, label: g.label, rows: g.rows }));
+  }, [visibleRows, groupBy, today, showTools]);
 
   /* ⚠️ **หัวกลุ่มหายเมื่อมีกลุ่มเดียวและเปลี่ยนการจัดกลุ่มไม่ได้** — การ์ดบนหน้าดีล
      มักมี 1-3 ใบ · หัวข้อ "ยังไม่มีใครรับเรื่อง · 1" เหนือแถวเดียวคือเส้นที่ไม่ได้
@@ -126,7 +134,9 @@ export default function RequestQueuePanel({
   const collapsedSet = collapsed instanceof Set ? collapsed : new Set();
   const isCollapsed = (key) => collapsedSet.has(key);
   const allCollapsed = groups.length > 0 && groups.every((g) => collapsedSet.has(g.key));
-  const showGroupHeads = showTools || groups.length > 1;
+  // แบนราบ (ไม่จัดกลุ่ม) = ไม่มีหัวกลุ่มให้กด · การ์ดฝังยังโชว์เมื่อมีมากกว่าหนึ่งกลุ่ม
+  const flatMode = groups.length === 1 && groups[0]?.flat;
+  const showGroupHeads = !flatMode && (showTools || groups.length > 1);
   const filterCount = requestFilterCount(filters);
   // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
   // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
@@ -148,7 +158,6 @@ export default function RequestQueuePanel({
      เช็คไว้ · ขาดไปแล้วคอลัมน์นั้นจะเป็นช่องว่างเงียบ ๆ ไม่มี error ให้เห็น */
   const cols = requestColumns(columns);
   const cell = (key, ask) => {
-    const next = requestNextStep(ask);
     const due = requestDueText(ask, { todayIso: today });
     // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
     const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -157,30 +166,33 @@ export default function RequestQueuePanel({
       /* ⚠️ สองโทน: ตาฝ่าย / รออีกฝั่ง — **สีสงวนให้เจ้าของก้าว** ไม่ใช่ให้ชนิดคำร้อง
          ⭐ `ui-badge-cell` ทำให้ป้ายทุกแถวกว้างเท่ากัน ⇒ ขอบเรียงเป็นเส้นตรงลงมา
          ตากวาดคอลัมน์ได้เป็นแนว (กฎ 1 · UI_DESIGN_SYSTEM.md) */
-      case "next":
-        return next ? (
+      /* ⭐ **ช่องสถานะช่องเดียว มีทั้งคำและสี** (มติผู้ใช้ 2026-08-15) — คำมาจาก
+         `requestQueueStatus` (ก้าวถัดไป + สถานะจริงของใบที่จบแล้ว) · โทนบอกว่า
+         **ใครค้าง**: ฟ้า = ตาฝ่ายเรา · เทา = รอฝั่งอื่น · เหลือง = ยังไม่มีใครรับ ·
+         แดง = ตีกลับ ⇒ กวาดตาลงคอลัมน์แล้วรู้ทันทีว่าใบไหนเป็นงานเรา
+         ⚠️ ใช้ `<StatusBadge>` กลาง ไม่ใช่ `.ui-badge` + สีเองแบบเดิม — โทนสี
+         ประกาศที่ Badge.module.css ที่เดียวทั้งระบบ */
+      case "next": {
+        const queueStatus = requestQueueStatus(ask);
+        return (
           <>
-            <span
-              className={`ui-badge ui-badge-cell ui-badge-w-nextstep ${styles.nextStep}`}
-              data-owner={next.owner}
-            >
-              {next.label}
-            </span>
+            <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
             {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
                 ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
                 ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย และเฉพาะตอนไม่มีคอลัมน์ "ผู้รับเรื่อง"
                 แยกอยู่แล้ว — ไม่งั้นชื่อเดียวกันขึ้นสองช่องในแถวเดียว */}
-            {next.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+            {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
               <div className={styles.subText}>{requestAssignee(ask).name}</div>
             )}
             {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
-            {next.bounced && (ask.bouncedByName || ask.bounceReason) && (
+            {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
               <div className={`${styles.subText} ${styles.overdue}`}>
                 {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
               </div>
             )}
           </>
-        ) : <span className={styles.muted}>{NA}</span>;
+        );
+      }
       /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
          ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
       case "doc":
@@ -188,7 +200,8 @@ export default function RequestQueuePanel({
           <>
             <div className={styles.docCell}>
               {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
-              {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
+              {/* ป้ายด่วนอยู่ตรงนี้เฉพาะตอน **ไม่มีคอลัมน์ "ด่วน"** (การ์ดบนหน้าดีล) */}
+              {ask.urgent && !cols.includes("urgent") && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
             </div>
             <div className={styles.subText}>
               {[
@@ -196,6 +209,8 @@ export default function RequestQueuePanel({
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
                 ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                /* วันที่ร้องขออยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (การ์ดบนหน้าดีล) */
+                ask.createdAt && !cols.includes("created") ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
               ].filter(Boolean).join(" · ")}
               {/* รหัสลูกค้าเกาะท้ายชื่อกิจการเสมอ ไม่ว่าชื่อจะอยู่บรรทัดหลัก
                   (ใบที่ไม่มีเรื่อง) หรือบรรทัดรอง — ตัวเชื่อมกับรหัสกลิ่น/MU */}
@@ -206,6 +221,35 @@ export default function RequestQueuePanel({
         );
       case "kind":
         return <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>;
+      /* ⚠️ ช่องว่างเมื่อไม่ด่วน ไม่ใช่ขีดหรือคำว่า "ปกติ" — คอลัมน์นี้มีไว้ให้ **สะดุดตา**
+         ตอนกวาดลงมา · เติมอะไรทุกแถวเท่ากับกลบสิ่งที่ตั้งใจให้เห็น */
+      case "urgent":
+        return ask.urgent ? <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span> : null;
+      case "created":
+        return ask.createdAt
+          ? <span className={styles.smallCell}>{fmtDate(ask.createdAt)}</span>
+          : <span className={styles.muted}>{NA}</span>;
+      /* ⭐ สองฝั่งของการปิดเรื่อง: บน = ฝ่ายผู้รับตอบเสร็จ · ล่าง = ผู้ขอกดปิด
+         ⚠️ ใบที่ยังไม่จบต้องอ่านออกว่า "ยังไม่ปิด" ไม่ใช่ช่องว่างที่อ่านได้ว่าข้อมูลหาย */
+      case "closed": {
+        /* 🐞 ใบยกเลิกเก็บเวลาไว้ที่ `cancelledAt` ไม่ใช่ `closedAt` ⇒ เคยขึ้น "ยังไม่ปิด"
+           ทั้งที่ใบจบไปแล้ว (เจอตอนไล่ดูแท็บประวัติ 2026-08-15) · ยกเลิกไม่มีสองฝั่ง
+           ให้แยก — ไม่มีใครตอบ ไม่มีใครปิด มีแค่วันที่ยกเลิก */
+        if (ask.cancelledAt) {
+          return <span className={styles.smallCell}>ยกเลิก {fmtDate(ask.cancelledAt)}</span>;
+        }
+        if (!ask.answeredAt && !ask.closedAt) return <span className={styles.muted}>ยังไม่ปิด</span>;
+        return (
+          <>
+            <div className={styles.smallCell}>
+              {ask.answeredAt ? `ฝ่ายตอบ ${fmtDate(ask.answeredAt)}` : "ฝ่ายยังไม่ตอบ"}
+            </div>
+            <div className={styles.subText}>
+              {ask.closedAt ? `ผู้ขอปิด ${fmtDate(ask.closedAt)}` : "ผู้ขอยังไม่ปิด"}
+            </div>
+          </>
+        );
+      }
       case "dept":
         return <span className={styles.smallCell}>{ask.dept}</span>;
       case "owner": {
@@ -296,43 +340,28 @@ export default function RequestQueuePanel({
               onClear={() => clearFilters?.()}
               groups={facetGroups}
             />
-            <MenuSelect
-              icon={Layers}
-              label="จัดกลุ่ม"
+            {/* ปุ่มจัดกลุ่ม/เรียงมาจากชุดกลาง `ui/ViewMenus` (ยกมารวม 2026-08-15) —
+                เดิมประกอบเองที่นี่ ซึ่งแปลว่าไอคอน/ป้าย/tooltip จะเพี้ยนจากตารางอื่นทีละนิด */}
+            <GroupMenu
               title="จัดกลุ่มรายการคำร้อง"
               value={groupBy}
               onChange={(value) => setGroupBy?.(value)}
               options={REQUEST_GROUP_OPTIONS}
-              isActive={(value) => value !== "none"}
             />
             {groups.length > 1 && (
-              <Button
-                iconOnly
-                onClick={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
-                title={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                aria-label={allCollapsed ? "ขยายทุกกลุ่ม" : "ย่อทุกกลุ่ม"}
-                icon={allCollapsed ? <ChevronsUpDown size={15} /> : <ChevronsDownUp size={15} />}
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed?.(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
               />
             )}
             <div className="spacer" />
-            <MenuSelect
-              icon={ArrowUpDown}
-              label="เรียง"
-              title="เรียงลำดับ"
+            <SortMenu
               value={sortKey}
+              defaultValue="urgency"
               onChange={(key) => setSort?.(key)}
               options={REQUEST_SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
-              showValue
-              isActive={(key) => key !== "urgency"}
             />
-            <Button
-              iconOnly
-              className="ui-sort-direction"
-              onClick={() => toggleSortDir?.()}
-              title={sortDir === "asc" ? "น้อย → มาก" : "มาก → น้อย"}
-              aria-label={sortDir === "asc" ? "เรียงจากน้อยไปมาก" : "เรียงจากมากไปน้อย"}
-              icon={sortDir === "asc" ? <ArrowUp size={15} /> : <ArrowDown size={15} />}
-            />
+            <SortDirButton dir={sortDir} onToggle={() => toggleSortDir?.()} />
           </>
         )}
       </div>
@@ -375,7 +404,7 @@ export default function RequestQueuePanel({
               )}
               {!isCollapsed(g.key) && g.rows.map((ask) => {
                 const p = requestProgress(ask.items || []);
-                const next = requestNextStep(ask);
+                const cardStatus = requestQueueStatus(ask);
                 const due = requestDueText(ask, { todayIso: today });
                 // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
                 const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -387,14 +416,9 @@ export default function RequestQueuePanel({
                     {/* ⭐ ก้าวถัดไปขึ้นก่อน — เหมือนคอลัมน์แรกของตาราง · การ์ดกับตาราง
                         ต้องตอบคำถามเดียวกันด้วยลำดับเดียวกัน ไม่งั้นคนที่สลับมุมมอง
                         ต้องเรียนรู้สองแบบ */}
+                    {/* การ์ดใช้ป้ายสถานะชุดเดียวกับตาราง — สองมุมมองต้องพูดตรงกัน */}
                     <span className={styles.cardTop}>
-                      {next
-                        ? (
-                          <span className={`ui-badge ${styles.nextStep}`} data-owner={next.owner}>
-                            {next.label}
-                          </span>
-                        )
-                        : <span className={styles.muted}>จบแล้ว</span>}
+                      <StatusBadge tone={cardStatus.tone} size="sm">{cardStatus.label}</StatusBadge>
                       {ask.urgent && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
                     </span>
                     <span className={styles.cardTitle}>
@@ -406,6 +430,8 @@ export default function RequestQueuePanel({
                         requestKindLabel(ask.kind),
                         ask.title && ask.customerName ? ask.customerName : null,
                         ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
+                        // วันที่ร้องขอ — ชุดเดียวกับตาราง (การ์ดกับตารางต้องพูดตรงกัน)
+                        ask.createdAt ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
                       ].filter(Boolean).join(" · ")}
                       {ask.customerArCode ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
                       {` → ${ask.dept}`}

@@ -21,24 +21,35 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlarmClock, ChevronRight, CircleDollarSign, ExternalLink, FileSpreadsheet, Search, Wallet } from "lucide-react";
+import {
+  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag, Receipt, Search, Wallet,
+} from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
-import { TableEmpty, TableScroll } from "@/components/ui/Table";
+import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
-import StatusBadge from "@/components/ui/StatusBadge";
+import FilterPopover from "@/components/ui/FilterPopover";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
+import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
-import { LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerByOrder, groupNote, pendingConfirmations } from "@/lib/finance/paymentLedger";
+import {
+  LEDGER_GROUP_OPTIONS, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
+  LEDGER_STATUS, LEDGER_STATUS_KEYS, groupAsOrder, groupLedgerBuckets, groupLedgerByOrder,
+  groupNote, ledgerSortDir, pendingConfirmations, sortLedgerGroups,
+} from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
 import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
 import styles from "./page.module.css";
+
+/* คีย์ที่เป็น "ตัวกรองของข้อมูล" — ชุดนี้ตัวเดียวที่ส่งขึ้น API และที่ปุ่มล้างจะลบ
+   (ที่เหลือ `group` `sort` `dir` เป็นมุมมองบนจอ ล้างตัวกรองแล้วต้องยังอยู่) */
+const FILTER_KEYS = ["status", "orderState", "from", "to", "q", "overdue"];
 
 export default function FinancePaymentsPage() {
   const router = useRouter();
@@ -48,28 +59,57 @@ export default function FinancePaymentsPage() {
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
 
-  // ── ตัวกรองอยู่ใน URL ─────────────────────────────────────────────────
+  /* ── ตัวกรองอยู่ใน URL ─────────────────────────────────────────────────
+     ⭐ **สองชั้นแยกกัน** (มติผู้ใช้ 2026-08-15)
+     · `FILTER_KEYS` = ตัวกรองของข้อมูล ⇒ ส่งขึ้น API ⇒ **ไฟล์ Excel ได้ชุดเดียวกัน**
+     · `group` `sort` `dir` = มุมมองบนจอเท่านั้น ⇒ **ห้ามหลุดเข้า query ของ API**
+       ไม่งั้นทุกครั้งที่สลับการเรียง หน้าจะยิงโหลดใหม่ทั้งชุดโดยได้ข้อมูลเท่าเดิม
+     ทั้งสองชั้นอยู่ใน URL เหมือนกัน — ลิงก์ที่บัญชีส่งให้กันจึงเปิดมาเห็นภาพเดียวกัน */
   const status = params.get("status") || "";
+  const orderState = params.get("orderState") || "";
   const from = params.get("from") || "";
   const to = params.get("to") || "";
   const q = params.get("q") || "";
   const overdue = params.get("overdue") === "1";
+  const groupBy = params.get("group") || "none";
+  const sortKey = params.get("sort") || LEDGER_SORT_DEFAULT;
+  const sortDir = params.get("dir") || ledgerSortDir(sortKey);
+
+  const statusFilter = useMemo(() => (status ? status.split(",").filter(Boolean) : []), [status]);
+  const orderStateFilter = useMemo(() => (orderState ? orderState.split(",").filter(Boolean) : []), [orderState]);
 
   const query = useMemo(() => {
     const sp = new URLSearchParams();
     if (status) sp.set("status", status);
+    if (orderState) sp.set("orderState", orderState);
     if (from) sp.set("from", from);
     if (to) sp.set("to", to);
     if (q) sp.set("q", q);
     if (overdue) sp.set("overdue", "1");
     return sp;
-  }, [status, from, to, q, overdue]);
+  }, [status, orderState, from, to, q, overdue]);
 
-  const setFilter = useCallback((key, value) => {
-    const sp = new URLSearchParams(query);
+  /* เขียนกลับจาก **params ทั้งชุด** ไม่ใช่จาก `query` — เขียนจาก query เมื่อไร
+     การกดตัวกรองหนึ่งครั้งจะลบ group/sort/dir ทิ้งเงียบ ๆ */
+  const setParam = useCallback((key, value) => {
+    const sp = new URLSearchParams(params.toString());
     if (value) sp.set(key, value); else sp.delete(key);
     router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
-  }, [query, router]);
+  }, [params, router]);
+
+  const setFilter = setParam;
+  const setListFilter = useCallback((key, values) => setParam(key, values.join(",")), [setParam]);
+
+  const filtering = FILTER_KEYS.some((key) => params.get(key));
+  const filterCount = statusFilter.length + orderStateFilter.length + (overdue ? 1 : 0);
+
+  /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
+     ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
+  const clearFilters = useCallback(() => {
+    const sp = new URLSearchParams(params.toString());
+    FILTER_KEYS.forEach((key) => sp.delete(key));
+    router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+  }, [params, router]);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -88,24 +128,30 @@ export default function FinancePaymentsPage() {
   const summary = data.summary;
 
   /* ⭐ **จับกลุ่มตามใบ แล้วแบ่งหน้าที่ระดับ "ใบ" ไม่ใช่ระดับ "งวด"** (มติผู้ใช้ 2026-08-13)
-     แบ่งหน้าที่ระดับงวดเมื่อไร ใบที่มี 3 งวดจะถูกหั่นคาหน้า — กางแล้วเห็นไม่ครบ
-     โดยไม่มีอะไรบนจอบอกว่าที่เหลืออยู่หน้าถัดไป */
+     ⭐ **หนึ่งใบ = หนึ่งแถว ไม่มีแถวย่อย** (มติผู้ใช้ 2026-08-15) — ทะเบียนตอบคำถาม
+     "ใบไหนต้องตามบ้าง" ซึ่งอ่านจบที่แถวหัวใบแล้ว · รายละเอียดรายงวด (ชื่องวด %
+     ผู้รับรอง วันจ่ายจริง สถานะรายงวด) อยู่ที่ **การ์ดการชำระบนใบ SO** ซึ่งเป็น
+     ที่เดียวที่ลงมือกับงวดได้ และอยู่ในไฟล์ Excel ที่ดาวน์โหลดจากหน้านี้ */
   const groups = useMemo(() => groupLedgerByOrder(rows), [rows]);
-  const { page, setPage, pageCount, pageSize, setPageSize, pageRows, total } = usePagination(groups);
 
-  /* ยุบทั้งหมดตอนเปิดหน้า (มติผู้ใช้) — คนเปิดมาถามว่า "ใบไหนต้องตามบ้าง" ก่อน
-     แล้วค่อยเจาะดูงวด · เก็บเป็น Set ของ key ที่ "กางอยู่" ไม่ใช่ที่ยุบอยู่
-     ⚠️ รีเซ็ตเมื่อผลลัพธ์เปลี่ยน — ไม่งั้นกางใบหนึ่งไว้ พอกรองใหม่แล้ว key ค้างอยู่
-     จะกางใบที่คนไม่ได้สั่งกาง */
-  const [expanded, setExpanded] = useState(() => new Set());
-  useEffect(() => { setExpanded(new Set()); }, [query]);
-  const toggle = useCallback((key) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }, []);
+  /* เรียงตามที่ผู้ใช้เลือก แล้วค่อยยุบเป็นถัง — ตรรกะทั้งสองอยู่ใน
+     `lib/finance/paymentLedger.js` (มีเทสต์คุม) หน้านี้เป็นคนวาดอย่างเดียว */
+  const sortedGroups = useMemo(() => sortLedgerGroups(groups, sortKey, sortDir), [groups, sortKey, sortDir]);
+  const buckets = useMemo(() => groupLedgerBuckets(sortedGroups, groupBy), [sortedGroups, groupBy]);
+
+  /* ⚠️ แบ่งหน้าเฉพาะตอน **ไม่จัดกลุ่ม** — แบ่งหน้าทับการจัดกลุ่มจะหั่นถังคาหน้า
+     แล้วยอดที่หัวถังไม่ตรงกับแถวที่เห็น (กติกาเดียวกับตารางไปป์ไลน์ดีล)
+     ⇒ โหมดจัดกลุ่มใช้ย่อ/ขยายถังคุมความยาวแทน */
+  const { page, setPage, pageCount, pageSize, setPageSize, pageRows, total } = usePagination(sortedGroups, {
+    resetKey: `${query}|${sortKey}|${sortDir}`,
+  });
+
+  /* ถังที่ย่ออยู่ · รีเซ็ตเมื่อเปลี่ยนหัวข้อจัดกลุ่มหรือผลลัพธ์เปลี่ยน — ไม่งั้นกุญแจ
+     ของถังเก่าค้างอยู่แล้วไปย่อถังที่คนไม่ได้สั่งย่อ (บทเรียนเดียวกับ Set ของแถวที่กาง) */
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  useEffect(() => { setCollapsed(new Set()); }, [groupBy, query]);
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   /* ⚠️ ดาวน์โหลดผ่าน blob ไม่ใช่เปิดแท็บใหม่ — endpoint ต้องการ cookie เซสชัน
      และแท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง */
@@ -160,10 +206,80 @@ export default function FinancePaymentsPage() {
     }
   }, [load]);
 
-  const filtering = Boolean(status || from || to || q || overdue);
   const QUEUE_PREVIEW = 3;
   const queueShown = queueOpen ? queue : queue.slice(0, QUEUE_PREVIEW);
   const queueTotal = queue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+
+  /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
+     ⚠️ ยกออกมาเป็นฟังก์ชันตัวเดียว ไม่ใช่เขียนซ้ำในสองสาขาของ tbody
+     (AGENTS.md: สองสำเนาของสิ่งเดียวกันจะเพี้ยนหากันเสมอ) */
+  const orderRow = (group) => {
+    const note = groupNote(group);
+    const shaped = groupAsOrder(group);
+    const track = shaped ? salesOrderListTrack(shaped) : null;
+    return (
+      <tr key={group.key}>
+        <td>
+          {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบมีทางเดียวคือปุ่ม
+              "เปิดใบ" ท้ายแถว · สองทางไปที่เดียวกันในแถวเดียวกดพลาดกันเอง */}
+          <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
+          {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
+              (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
+          <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
+          {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
+              — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
+          {track ? <SalesOrderTrack steps={track.steps} /> : null}
+        </td>
+        <td>
+          {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
+          {naText(group.customerName)}
+        </td>
+        {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
+        <td className="num mono">
+          {group.paidCount}/{group.count}
+          <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
+        </td>
+        {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
+            ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
+        <td className="num mono">
+          {group.complete
+            ? <span className="cell-num-ok">เก็บครบ</span>
+            : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
+          <span className="cell-sub">
+            {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
+          </span>
+          {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
+              สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
+              ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
+              ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
+          {group.summary.totalAmount > 0 ? (
+            <progress className={styles.mbar} aria-hidden="true"
+              value={group.summary.collectedAmount} max={group.summary.totalAmount} />
+          ) : null}
+        </td>
+        {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
+            คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`)
+            ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
+            บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
+            · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
+        <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
+          {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
+          {note ? <span className="cell-sub">{note.label}</span> : null}
+        </td>
+        <td>
+          <Link
+            prefetch={false}
+            href={`/sa/sales-orders/${group.orderId}#payment`}
+            target="_blank" rel="noreferrer"
+            className={`linklike ${styles.openLink}`}
+            title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
+          >
+            เปิดใบ<ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
+          </Link>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <Workspace
@@ -263,9 +379,13 @@ export default function FinancePaymentsPage() {
         <WorkspaceSection
           icon={<Wallet size={17} />}
           title="งวดชำระทั้งหมด"
-          subtitle="รวมงวดของใบเดียวกันไว้ด้วยกัน กดที่แถวเพื่อกางดูรายงวด — เรียงใบที่ต้องตามก่อน"
+          subtitle="หนึ่งใบหนึ่งแถว รวมทุกงวดของใบนั้นไว้ด้วยกัน — ตั้งต้นเรียงใบที่ต้องตามก่อน · รายงวดดูที่ใบหรือในไฟล์ Excel"
           actions={<span className="ui-badge">{groups.length} ใบ · {rows.length} งวด{filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}</span>}
         >
+          {/* ── แถบควบคุม: ค้นหา · ตัวกรอง · ช่วงวัน · จัดกลุ่ม | เรียง ────────────
+              ⭐ ทรงเดียวกับตารางไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-08) — ปุ่มตัวกรองยุบ
+              ทุกหมวดไว้ในปุ่มเดียว · จัดกลุ่ม/เรียงเป็นปุ่มทรงเดียวกัน ชื่ออยู่ในปุ่ม
+              ⚠️ ช่วงวันอยู่นอกปุ่มตัวกรอง เพราะเป็นช่วงค่าต่อเนื่อง ไม่ใช่ชุดตัวเลือก */}
           <div className="toolbar">
             <div className="search-glass">
               <Search size={16} color="var(--text-3)" />
@@ -275,20 +395,67 @@ export default function FinancePaymentsPage() {
                 placeholder="ค้นหาเลข SO / QT / ลูกค้า / ชื่องวด"
               />
             </div>
-            <Select value={status} onChange={(e) => setFilter("status", e.target.value)}>
-              <option value="">ทุกสถานะ</option>
-              {LEDGER_STATUS_KEYS.map((key) => <option key={key} value={key}>{LEDGER_STATUS[key].label}</option>)}
-            </Select>
+            <FilterPopover
+              count={filterCount}
+              onClear={clearFilters}
+              groups={[
+                {
+                  key: "orderState", label: "สถานะของใบ", icon: Receipt,
+                  options: Object.entries(LEDGER_ORDER_STATES).map(([value, label]) => ({ value, label })),
+                  selected: orderStateFilter, onChange: (values) => setListFilter("orderState", values),
+                },
+                {
+                  key: "status", label: "สถานะงวด", icon: Flag,
+                  options: LEDGER_STATUS_KEYS.map((key) => ({ value: key, label: LEDGER_STATUS[key].label })),
+                  selected: statusFilter, onChange: (values) => setListFilter("status", values),
+                },
+                {
+                  key: "overdue", label: "ความด่วน", icon: AlarmClock,
+                  options: [{ value: "1", label: `เฉพาะงวดที่เลยกำหนด${summary?.overdueCount ? ` (${summary.overdueCount})` : ""}` }],
+                  selected: overdue ? ["1"] : [], onChange: (values) => setFilter("overdue", values.length ? "1" : ""),
+                },
+              ]}
+            />
             {/* ⚠️ ช่วงวันกรองที่ **กำหนดชำระ** ไม่ใช่วันจ่ายจริง — คำถามของบัญชีคือ
                 "เดือนนี้ต้องเก็บอะไรบ้าง" · ป้ายจึงต้องบอกให้ชัดว่ากรองอะไรอยู่ */}
             <DateInput value={from} onChange={(v) => setFilter("from", v)} ariaLabel="กำหนดชำระตั้งแต่" title="กรองที่กำหนดชำระ — ตั้งแต่" />
             <DateInput value={to} onChange={(v) => setFilter("to", v)} ariaLabel="กำหนดชำระถึง" title="กรองที่กำหนดชำระ — ถึง" />
             {filtering && (
-              <Button size="sm" variant="quiet" onClick={() => router.replace("/finance/payments", { scroll: false })}>
+              <Button size="sm" variant="quiet" onClick={clearFilters}>
                 ล้างตัวกรอง ×
               </Button>
             )}
+
+            <GroupMenu
+              title="จัดกลุ่มใบตามหัวข้อ"
+              value={groupBy}
+              onChange={(value) => setParam("group", value === "none" ? "" : value)}
+              options={LEDGER_GROUP_OPTIONS}
+            />
+            {!!buckets?.length && (
+              <CollapseAllButton
+                collapsed={allCollapsed}
+                onToggle={() => setCollapsed(allCollapsed ? new Set() : new Set(buckets.map((bucket) => bucket.key)))}
+              />
+            )}
+
             <div className="spacer" />
+            {/* ⚠️ เปลี่ยนแบบเรียง = ตั้งทิศทางตั้งต้นของแบบนั้นให้ด้วย — ยอดเงินคนอ่าน
+                คาดหวังมากไปน้อย ส่วนวันคาดหวังใกล้ไปไกล การคงทิศเดิมข้ามแบบทำให้
+                กดครั้งแรกได้ลำดับที่ไม่มีใครอยากได้เกือบทุกครั้ง */}
+            <SortMenu
+              title="เรียงลำดับใบ"
+              value={sortKey}
+              defaultValue={LEDGER_SORT_DEFAULT}
+              onChange={(value) => {
+                const sp = new URLSearchParams(params.toString());
+                if (value === LEDGER_SORT_DEFAULT) sp.delete("sort"); else sp.set("sort", value);
+                sp.delete("dir");
+                router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+              }}
+              options={LEDGER_SORT_OPTIONS}
+            />
+            <SortDirButton dir={sortDir} onToggle={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")} />
           </div>
 
           <TableScroll surface="embedded" cells="stacked" minWidth={1080} aria-busy={loading}>
@@ -297,7 +464,8 @@ export default function FinancePaymentsPage() {
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
                       · "งวด" กับ "ยอดงวด" เคยพูดเรื่องเดียวกันสองครั้ง ⇒ ยุบเป็นช่องเดียว
                         ที่ **ยอดค้างรับเป็นตัวเด่น** ซึ่งเป็นเลขที่บัญชีตามจริง
-                      · "จ่ายจริง" กับ "ผู้รับรอง" เป็นของ **รายงวด** ⇒ อยู่ในแถวที่กางเท่านั้น
+                      · "จ่ายจริง" กับ "ผู้รับรอง" เป็นของ **รายงวด** ⇒ ไม่อยู่บนหน้านี้เลย
+                        (มติผู้ใช้ 2026-08-15 ถอดแถวย่อย) อยู่ที่ใบ SO และในไฟล์ Excel
                       · ตัดคอลัมน์ "สถานะ" — สเตจบอกอยู่แล้ว สองอย่างซ้อนกันอ่านเหมือนขัดกัน */}
                   <tr>
                     <th>เอกสาร / ความคืบหน้า</th>
@@ -309,115 +477,29 @@ export default function FinancePaymentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((group) => {
-                    const open = expanded.has(group.key);
-                    const note = groupNote(group);
-                    const shaped = groupAsOrder(group);
-                    const track = shaped ? salesOrderListTrack(shaped) : null;
+                  {/* โหมดจัดกลุ่ม: หัวถังเป็นแถวเต็มความกว้าง กดที่แถบเพื่อย่อ/ขยาย
+                      แถวใบข้างในเป็น `orderRow` ตัวเดียวกับโหมดปกติ — ห้ามก๊อปสองสำเนา
+                      (AGENTS.md: ของที่ควรเป็นชุดเดียวกันแต่เขียนสองที่จะเพี้ยนหากัน) */}
+                  {buckets ? buckets.map((bucket) => {
+                    const bucketCollapsed = collapsed.has(bucket.key);
                     return (
-                      <Fragment key={group.key}>
-                        {/* ── หัวใบ: ยุบอยู่โดยตั้งต้น (มติผู้ใช้ 2026-08-13) ──
-                            ⚠️ ทั้งแถวกดเพื่อกาง **ไม่ใช่ลิงก์ไปใบ** — ปุ่มกางกับลิงก์
-                            ในแถวเดียวกันจะแย่งการคลิกกัน · ทางไปใบอยู่ที่เลขที่ SO
-                            ซึ่งเป็นลิงก์จริงและหยุด event ไม่ให้กางตาม */}
-                        <tr
-                          className={styles.groupRow}
-                          onClick={() => toggle(group.key)}
-                        >
-                          <td>
-                            <button
-                              type="button"
-                              className={styles.toggle}
-                              aria-expanded={open}
-                              aria-label={`${open ? "ยุบ" : "กาง"}งวดของ ${group.orderNumber}`}
-                              onClick={(e) => { e.stopPropagation(); toggle(group.key); }}
-                            >
-                              <ChevronRight size={15} className={`${styles.chevron} ${open ? styles.chevronOpen : ""}`.trim()} aria-hidden="true" />
-                            </button>
-                            {" "}
-                            {/* เลขที่ SO เป็นข้อความ ไม่ใช่ลิงก์ — ทางไปใบอยู่ที่ปุ่ม "เปิดใบ"
-                                ท้ายแถว · ลิงก์ในเซลล์ที่ทั้งแถวกดกางได้ทำให้กดพลาดกันเอง */}
-                            <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
-                            {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
-                                (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
-                            <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
-                            {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
-                                — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
-                            {track ? <SalesOrderTrack steps={track.steps} /> : null}
-                          </td>
-                          <td>
-                            {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
-                            {naText(group.customerName)}
-                          </td>
-                          {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
-                          <td className="num mono">
-                            {group.paidCount}/{group.count}
-                            <span className="cell-sub">{group.count === 1 ? "ชำระครั้งเดียว" : `แบ่ง ${group.count} งวด`}</span>
-                          </td>
-                          {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
-                              ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
-                          <td className="num mono">
-                            {group.complete
-                              ? <span className="cell-num-ok">เก็บครบ</span>
-                              : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
-                            <span className="cell-sub">
-                              {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
-                            </span>
-                            {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
-                                สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
-                                ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
-                                ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
-                            {group.summary.totalAmount > 0 ? (
-                              <progress className={styles.mbar} aria-hidden="true"
-                                value={group.summary.collectedAmount} max={group.summary.totalAmount} />
-                            ) : null}
-                          </td>
-                          {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
-                              คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`)
-                              ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
-                              บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
-                              · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
-                          <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
-                            {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
-                            {note ? <span className="cell-sub">{note.label}</span> : null}
-                          </td>
-                          <td>
-                            <Link
-                              prefetch={false}
-                              href={`/sa/sales-orders/${group.orderId}#payment`}
-                              target="_blank" rel="noreferrer"
-                              className={`linklike ${styles.openLink}`}
-                              title="เปิดใบในแท็บใหม่ ไปที่การ์ดการชำระ"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              เปิดใบ<ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-                            </Link>
-                          </td>
-                        </tr>
-
-                        {open ? group.rows.map((row) => (
-                          <tr key={row.id} className={styles.childRow}>
-                            <td colSpan={2} />
-                            <td className={`num ${styles.childLead}`.trim()}>
-                              {row.label || `งวดที่ ${row.seq}`}
-                              <span className="cell-sub">งวดที่ {row.seq} · {row.percent}%</span>
-                            </td>
-                            <td className="num mono">
-                              {fmtMoney(row.amount)}
-                              <span className="cell-sub">{row.confirmedByName || (row.reportedByName ? `แจ้งโดย ${row.reportedByName}` : "")}</span>
-                            </td>
-                            {/* เลยกำหนดย้อมที่ **ช่องวันที่** ไม่ใช่ทั้งแถว — ทั้งแถวแดงอ่านเหมือน
-                                ข้อมูลผิด ส่วนช่องเดียวบอกว่า "วันนี้แหละที่มีปัญหา" */}
-                            <td className={`num ${row.overdue ? "cell-num-bad" : ""}`.trim()} title={row.overdue ? "เลยกำหนดแล้วและยังไม่ถูกคอนเฟิร์ม" : undefined}>
-                              {row.dueDate ? fmtDate(row.dueDate) : <span className="cell-quiet">ยังไม่กำหนด</span>}
-                              <span className="cell-sub">{row.paidOn ? `จ่าย ${fmtDate(row.paidOn)}` : ""}</span>
-                            </td>
-                            <td><StatusBadge tone={LEDGER_STATUS[row.status]?.tone} size="sm">{row.statusLabel}</StatusBadge></td>
-                          </tr>
-                        )) : null}
+                      <Fragment key={bucket.key}>
+                        {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
+                            ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
+                        <TableGroupRow
+                          colSpan={6}
+                          label={bucket.label}
+                          sub={bucket.sub}
+                          badge={`${bucket.count} ใบ`}
+                          total={fmtMoney(bucket.total)}
+                          totalTitle="ยอดค้างรับรวมของกลุ่มนี้"
+                          collapsed={bucketCollapsed}
+                          onToggle={() => toggleBucket(bucket.key)}
+                        />
+                        {!bucketCollapsed && bucket.items.map(orderRow)}
                       </Fragment>
                     );
-                  })}
+                  }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
                       colSpan={6}
@@ -426,7 +508,7 @@ export default function FinancePaymentsPage() {
                         ? "ลองขยายช่วงวันหรือล้างตัวกรอง"
                         : "งวดเกิดขึ้นเองตอน AE Supervisor อนุมัติใบสั่งขาย"}
                       action={filtering
-                        ? <Button size="sm" onClick={() => router.replace("/finance/payments", { scroll: false })}>ล้างตัวกรอง</Button>
+                        ? <Button size="sm" onClick={clearFilters}>ล้างตัวกรอง</Button>
                         : undefined}
                     />
                   )}
@@ -434,7 +516,8 @@ export default function FinancePaymentsPage() {
               </table>
           </TableScroll>
 
-          {rows.length > 0 && (
+          {/* โหมดจัดกลุ่มไม่แบ่งหน้า — เหตุผลอยู่ที่ `usePagination` ด้านบน */}
+          {rows.length > 0 && !buckets && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
         </WorkspaceSection>
