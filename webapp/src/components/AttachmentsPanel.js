@@ -23,7 +23,7 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2, ImageOff,
+  Eye, FileType, FileSpreadsheet, Link2, ImageOff, Lock,
 } from "lucide-react";
 import GoogleDocViewer from "@/components/GoogleDocViewer";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -346,8 +346,16 @@ export default function AttachmentsPanel({
 
   const FileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">
-      {/* รูปแสดงเป็นภาพย่อ คลิกแล้วขยายในหน้า — ไม่ต้องเปิดแท็บใหม่เพื่อดูว่าคือรูปอะไร */}
-      {isPreviewableImage(it) ? (
+      {/* ⭐ เอกสารส่วนบุคคลของลูกค้าที่คนนอกทีมผู้ดูแลไม่มีสิทธิ์เปิด (มติผู้ใช้ 2026-08-16)
+          — API ส่งแถวมาแบบปิดเนื้อหาไว้ (`restricted`) เพื่อให้การ์ด "เอกสารบังคับ" ยัง
+          นับได้ถูกว่ามีแล้ว · ที่นี่จึงต้องเป็น **ข้อความ ไม่ใช่ลิงก์** ไม่งั้นคนกดแล้วเจอ
+          403 เปล่า ๆ โดยไม่รู้ว่าเพราะอะไร */}
+      {it.restricted ? (
+        <span className="flex items-center gap-1.5 min-w-0 text-[var(--text-3)]" title="เปิดได้เฉพาะทีมผู้ดูแลลูกค้ารายนี้">
+          <Lock size={14} className="shrink-0" />
+          <span className="truncate">{it.fileName || "เอกสารส่วนบุคคล"}</span>
+        </span>
+      ) : isPreviewableImage(it) ? (
         <button
           type="button"
           onClick={() => setPreview(it)}
@@ -404,7 +412,9 @@ export default function AttachmentsPanel({
             <Eye size={13} /> ดู
           </button>
         )}
-        {canEdit && (
+        {/* แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
+            (API ก็ปฏิเสธอยู่แล้วผ่าน canEditAttachmentParent · ที่นี่คือไม่ยื่นปุ่มให้กด) */}
+        {canEdit && !it.restricted && (
           <button
             type="button"
             onClick={() => handleDelete(it.id)}

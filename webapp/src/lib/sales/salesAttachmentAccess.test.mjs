@@ -108,9 +108,24 @@ test('จุด 5 ของโครงการ: PARENT_TABLE กลางต�
 test('proxy ไฟล์แนบต้องมีสาขาของสายงานขาย — ไม่งั้น "แนบได้แต่เปิดดูไม่ได้"', () => {
   // ⚠️ ATTACHMENT_RESOURCE ไม่มีคีย์ของ deal/project ⇒ ถ้าตกไป canViewRecord
   // จะถูกปฏิเสธทุกใบ ทั้งที่ไฟล์อยู่ครบ
+  //
+  // 2026-08-16: เดิมข้อนี้ตรวจว่า route เขียนสาขา `isSalesAttachment(att.entityType)`
+  // ไว้ในตัวเอง — ซึ่งเป็นการ **ก๊อปบันไดสิทธิ์เป็นชุดที่สอง** ตรงกับสิ่งที่หัวไฟล์
+  // attachmentAccess.js เตือนไว้เองว่าจะเพี้ยนหากัน · ตอนนี้ route เรียกบันไดกลาง
+  // ตัวเดียวกับ GET /api/attachments แล้ว ⇒ ตรวจว่ามัน **เรียกตัวกลาง** แทน
+  // (สาขาของสายงานขายมีอยู่จริงในตัวกลาง — ตรวจไว้ที่ข้อ "จุด 2" ข้างบนแล้ว)
   const src = read('../../app/api/master/attachments/[id]/file/route.js');
-  assert.match(src, /isSalesAttachment\(att\.entityType\)/);
-  assert.match(src, /canViewSalesAttachment/);
+  assert.match(src, /canViewAttachmentParent\(/);
+  assert.doesNotMatch(src, /isSalesAttachment\(/,
+    'ห้ามเขียนบันไดสาขาซ้ำในตัว route — ให้เรียก canViewAttachmentParent ตัวเดียว');
+});
+
+test('proxy ไฟล์แนบต้องผ่านด่านรายใบด้วย — เอกสารส่วนบุคคลของลูกค้าแคบกว่าตัวระเบียน', () => {
+  const src = read('../../app/api/master/attachments/[id]/file/route.js');
+  assert.match(src, /canViewAttachmentRow\(/);
+  // และต้องลง audit ว่าใครเปิดเอกสารส่วนบุคคล (มติผู้ใช้ 2026-08-16)
+  assert.match(src, /isPersonalDoc\(/);
+  assert.match(src, /recordAudit\(/);
 });
 
 test('ลิงก์เปิดไฟล์ในลิสต์รวมต้องชี้ route ที่มีอยู่จริง', async () => {

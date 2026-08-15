@@ -1,21 +1,18 @@
 // Proxy ดาวน์โหลด/แสดงไฟล์แนบ (Drive backend, ระดับ A — ไฟล์ private).
-// เช็กสิทธิ์ผ่าน entity แม่ (canViewRecord) ก่อน stream bytes จาก Drive.
+// เช็กสิทธิ์ผ่าน entity แม่ + ด่านรายใบ ก่อน stream bytes จาก Drive.
 // ไฟล์เก่า (driveFileId == null) → redirect ไป Supabase public URL เดิม (hybrid).
 //
 // gating: proxy.js ปล่อย GET /api/(master/)attachments ให้ผู้ล็อกอินทุกคน —
-// การคุมสิทธิ์จริงคือ canViewRecord ในนี้ (เหมือน GET /api/attachments เดิม).
+// การคุมสิทธิ์จริงคือสองด่านในนี้ ซึ่งเป็นตัวเดียวกับ GET /api/attachments
+// (`canViewAttachmentParent` + `canViewAttachmentRow` ใน lib/master/attachmentAccess).
 import { Readable } from 'node:stream';
 import { getCurrentUser } from '@/lib/authUser';
-import { canUser, canViewRecord } from '@/lib/permissions';
-import { getAttachment, loadAttachmentParent, ATTACHMENT_RESOURCE } from '@/lib/master/attachments';
+import { recordAudit } from '@/lib/audit';
+import { getAttachment, loadAttachmentParent } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
-import { attachmentFileHeaders } from '@/lib/master/attachmentTypes';
-import { canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
-import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
-import { canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
+import { attachmentFileHeaders, isPersonalDoc } from '@/lib/master/attachmentTypes';
+import { canViewAttachmentParent, canViewAttachmentRow } from '@/lib/master/attachmentAccess';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-
-const MGMT_ENTITIES = ['mgmt_task', 'mgmt_meeting'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,23 +24,36 @@ export async function GET(request, { params }) {
   const att = await getAttachment(id);
   if (!att) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
 
-  // สิทธิ์ดูไฟล์ = สิทธิ์ดู entity แม่ — ต้องตรงกับ GET /api/attachments ทุกสาขา
-  // (โมดูลที่คุมด้วย cap ของตัวเอง ไม่ได้คุมด้วยทีมของ customer/product)
+  /* สิทธิ์ดูไฟล์ = สิทธิ์ดู entity แม่ + ด่านรายใบ (เอกสารส่วนบุคคล)
+     ⚠️ **เรียกตัวกลางตัวเดียวกับ GET /api/attachments** — เดิมบันไดสาขาถูกเขียนซ้ำ
+     ในไฟล์นี้เป็น ternary ห้าชั้น ทั้งที่ `lib/master/attachmentAccess.js` ถูกยกออกมา
+     เพื่อรวมมันไว้ที่เดียวโดยเฉพาะ (คอมเมนต์หัวไฟล์นั้นเตือนไว้เองว่าสองชุดที่ต้องแก้
+     พร้อมกันด้วยมือคือของที่เพี้ยนหากันแน่นอน และความเพี้ยนของด่านสิทธิ์ = คนเห็นของ
+     ที่ไม่ควรเห็นโดยไม่มีใครสังเกต) · ที่นี่คือด่านที่ **สตรีมไบต์จริง** จึงเป็นชุดที่
+     ผิดพลาดไม่ได้ที่สุดในสองชุด */
+  const supabase = getSupabaseAdmin();
   const parent = await loadAttachmentParent(att);
-  const allowed = att.entityType === 'personal_task'
-    ? await canViewPersonalTask(getSupabaseAdmin(), parent, user)
-    : MGMT_ENTITIES.includes(att.entityType)
-      ? canUser(user, 'mgmt:view')
-      : isCostingAttachment(att.entityType)
-        ? await canViewCostingAttachment(getSupabaseAdmin(), att.entityType, parent, user)
-        // ดีล/โครงการคุมด้วยขอบเขตสายงานขาย (ทีม/เจ้าของ) ไม่ใช่ทีมของ customer/product
-        // ⚠️ จุดที่ 5 ของเช็กลิสต์ — ขาดสาขานี้แล้ว `ATTACHMENT_RESOURCE` ไม่มีคีย์ของ
-        // สองชนิดนี้ ⇒ canViewRecord ตกไปทางปฏิเสธ = "แนบได้แต่เปิดดูไม่ได้สักไฟล์"
-        : isSalesAttachment(att.entityType)
-          ? canViewSalesAttachment(parent, user)
-          : canViewRecord(user, ATTACHMENT_RESOURCE[att.entityType], parent);
-  if (!parent || !allowed) {
+  if (!parent || !(await canViewAttachmentParent(supabase, att.entityType, parent, user))) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  if (!canViewAttachmentRow(att, parent, user)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  /* ⭐ ลงบันทึกว่าใครเปิดเอกสารส่วนบุคคล (มติผู้ใช้ 2026-08-16) — เฉพาะกลุ่มนี้
+     ไม่ใช่ทุกไฟล์ · ก่อนหน้านี้เส้นสตรีมไฟล์ไม่เคยลง audit เลย ⇒ ถ้าข้อมูลรั่ว
+     จะสืบไม่ได้ว่าใครเปิด
+     ⚠️ best-effort: `recordAudit` กลืน error ในตัวอยู่แล้ว และห้ามให้การบันทึกทำให้
+     คนที่มีสิทธิ์เปิดไฟล์ไม่ได้ */
+  if (isPersonalDoc(att.entityType, att.docType)) {
+    await recordAudit({
+      user,
+      action: 'view',
+      entityType: 'attachment',
+      entityId: att.id,
+      summary: `เปิดเอกสารส่วนบุคคล ${att.docType} ของลูกค้า ${parent.name || parent.arCode || att.entityId}`,
+      request,
+    });
   }
 
   // ไฟล์เก่าบน Supabase (ก่อนย้าย Drive) + เอกสาร Google native ของงานบริหาร —

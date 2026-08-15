@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
-import { canEditAttachmentParent, canViewAttachmentParent } from '@/lib/master/attachmentAccess';
+import { canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow } from '@/lib/master/attachmentAccess';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
@@ -61,7 +61,32 @@ export async function GET(request) {
   }
 
   try {
-    const items = await listAttachments(entityType, entityId);
+    /* ⭐ เอกสารส่วนบุคคลของลูกค้าแคบกว่าตัวระเบียน (มติผู้ใช้ 2026-08-16 · ดู
+       canViewAttachmentRow) — คนนอกทีมผู้ดูแลได้ **แถวที่ปิดเนื้อหาไว้** ไม่ใช่ลิสต์ที่
+       หายไปเฉย ๆ
+       ⭐ ทำไมไม่กรองทิ้งทั้งแถว: การ์ด "เอกสารบังคับ" บนหน้าลูกค้านับจากลิสต์นี้ ⇒ กรอง
+       ทิ้งแล้วคนนอกทีมจะเห็นว่า "ยังไม่แนบบัตรประชาชน" ทั้งที่แนบครบแล้ว แล้วไปทวง
+       เอกสารจากลูกค้าซ้ำ · แถวที่ปิดเนื้อหาบอกความจริง ("มีแล้ว") โดยไม่ปล่อยของ
+       ⚠️ ตัดทุกช่องที่พาไปถึงไฟล์ **รวมชื่อไฟล์** — ชื่อไฟล์มักมีชื่อเจ้าของบัตรอยู่ในนั้น
+       ⚠️ ตัด `metadata.googleFileId` ด้วย ไม่งั้น `ensureGoogleDocAccess` ข้างล่างจะ
+       ไปให้สิทธิ์ Drive กับคนที่ไม่ควรเห็นทันทีตั้งแต่เปิดหน้า */
+    const items = (await listAttachments(entityType, entityId))
+      .map((item) => (canViewAttachmentRow(item, parent, user) ? item : {
+        id: item.id,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        docType: item.docType,
+        createdAt: item.createdAt,
+        fileName: 'เอกสารส่วนบุคคล — ไม่มีสิทธิ์เปิด',
+        fileUrl: null,
+        driveFileId: null,
+        mimeType: null,
+        sizeBytes: null,
+        // วันที่ออกเอกสารคงไว้: การ์ด "หนังสือรับรองอายุไม่เกิน 6 เดือน" ใช้ตัดสินว่า
+        // เอกสารหมดอายุหรือยัง ซึ่งไม่ได้เปิดเผยเนื้อหาอะไร
+        metadata: item.metadata?.issuedDate ? { issuedDate: item.metadata.issuedDate } : {},
+        restricted: true,
+      }));
 
     // ⭐ ให้สิทธิ์เปิดเอกสารร่วมบน Drive **ตอนคนเห็นรายการ** ไม่ใช่ตอนคนกดเปิด —
     // ปุ่ม "แก้ใน Google" เป็นลิงก์เปิดแท็บใหม่ ถ้ารอ Drive ตอบก่อนเปิดจะโดน
