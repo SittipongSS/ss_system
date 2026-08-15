@@ -8,6 +8,7 @@ import { genId } from '@/lib/id';
 import { withUser, ok, fail, forbidden, notFound, badRequest, conflict, unauthorized } from '@/lib/http';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { businessDate } from '@/lib/businessDate';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,22 +41,29 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // Cross-project list — limit to the team's projects when team-scoped.
+  //
+  // ⚠️ ทั้งสองสาขาข้างล่างดึง "งานหลายโครงการพร้อมกัน" ⇒ ทะลุเพดาน 1,000 แถวของ
+  // PostgREST ได้จริง (project_tasks = 2,820 แถวตอนพบบั๊ก 2026-08-16) และการถูกตัด
+  // ไม่มี error ให้เห็น · เรียงด้วย `stepOrder` ซึ่งซ้ำกันได้ทั้งตาราง จึงต้องพ่วง `id`
+  // เป็นตัวตัดสินท้ายเพื่อให้ลำดับนิ่งพอจะไล่ทีละหน้าได้ (ดู lib/supabaseFetchAll)
   if (viewScope(user?.role) === 'team') {
     const ids = await teamProjectIds(supabase, user?.teams);
     if (!ids.length) return ok([]);
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllResult(() => supabase
       .from('project_tasks')
       .select('*')
       .in('projectId', ids)
-      .order('stepOrder', { ascending: true });
+      .order('stepOrder', { ascending: true })
+      .order('id', { ascending: true }));
     if (error) return fail(error.message, 500);
     return ok(data);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await fetchAllResult(() => supabase
     .from('project_tasks')
     .select('*')
-    .order('stepOrder', { ascending: true });
+    .order('stepOrder', { ascending: true })
+    .order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
   return ok(data);
 });
