@@ -28,8 +28,7 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
-import { ActionButton, kindMeta } from "@/components/ui/ActionButtons";
-import RowActionMenu from "@/components/ui/RowActionMenu";
+import { kindMeta } from "@/components/ui/ActionButtons";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/requests/RequestEditableFields";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -56,6 +55,7 @@ import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import NextStepBar from "@/components/requests/NextStepBar";
+import RequestActionBar from "@/components/requests/RequestActionBar";
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
@@ -622,20 +622,16 @@ export default function RequestDetailPage() {
           }
           : null;
 
-  // ⭐ **หัวข้อที่ไม่มีแถวเอาปุ่มหลักไปไว้ท้ายเธรด** (P6) — ทั้งหน้าคือเธรด ปุ่มอยู่
-  // บนหัวใบอย่างเดียวแปลว่าอ่านจนจบแล้วต้องเงยหน้ากลับขึ้นไปหา ⇒ ขัดกับ ม-49
+  // ⭐ **ปุ่มระดับใบอยู่บาร์บนสุดของเนื้อ ที่เดียวทุกหัวข้อ** (งวด 1 ของรอบรื้อ) —
+  // เดิมที่วางเปลี่ยนไปตามโครงของหัวข้อ: การ์ด control ขวา (ธง Control Panel) ·
+  // หัวใบ (โครงเดิม) · แถบท้ายเธรด (หัวข้อที่ไม่มีแถว) ⇒ สามที่ที่ต้องเรียนรู้
   //
-  // ⚠️ **ที่เดียวเสมอ ไม่โชว์สองที่** — `primaryAction` ตัวเดียวกัน ย้ายที่วาง ไม่ใช่
-  // ก๊อป · โชว์ทั้งหัวใบและท้ายเธรดเมื่อไร ก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
-  // ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้
-  // ⭐ โครง Control Panel (มติผู้ใช้ 2026-08-09) — หัวข้อที่เปิดธง ปุ่มระดับใบ
-  // **ทั้งชุด**อยู่การ์ดขวาที่เดียว: ไม่มีปุ่มบนหัวใบ และไม่มีแถบท้ายเธรด
-  // (ยังคงกติกา "ที่เดียวเสมอ" — แค่ที่นั้นเปลี่ยนเป็น panel)
+  // ⚠️ **ย้าย ไม่ก๊อป** — กติกา "ที่เดียวเสมอ" (ม-49 · ม-57 · ม-94) ไม่เปลี่ยน
+  // เปลี่ยนแค่ว่าที่นั้นอยู่ตรงไหน ⇒ หัวใบ/การ์ดขวา/ท้ายเธรด **ต้องไม่มีปุ่มระดับใบ**
+  //
+  // ⚠️ `usePanel` ยังคุมอยู่สองเรื่องที่ไม่เกี่ยวกับปุ่ม — การ์ดขวามีไหม และก้าวรายแถว
+  // อยู่ในตารางหรือท้ายเธรด (ดูที่ `NextStepBar` ข้างล่าง)
   const usePanel = requestUsesControlPanel(req.kind);
-  const threadStep = !usePanel && !hasItems && primaryAction
-    ? { ...primaryAction, hint: THREAD_STEP_HINT[primaryAction.id] || "รอดำเนินการ" }
-    : null;
-  const headerAction = (threadStep || usePanel) ? null : primaryAction;
 
   // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
   //
@@ -654,8 +650,8 @@ export default function RequestDetailPage() {
   const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
 
   const requestActions = normalizeDocumentControlActions({
-    // โครง panel: ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรด — เข้า normalize ตรงเพื่อไปโผล่ที่การ์ดขวา
-    primaryAction: usePanel ? primaryAction : headerAction,
+    // ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรดแล้ว — เข้า normalize ตรงเพื่อไปโผล่ที่บาร์บนสุด
+    primaryAction,
     secondaryActions: editing ? [
       {
         id: "edit-cancel",
@@ -799,15 +795,26 @@ export default function RequestDetailPage() {
       },
     ],
   });
-  // โครง panel: หัวใบไม่มีปุ่มเลย — ทุกปุ่มระดับใบอยู่การ์ดขวาที่เดียว
-  const hasHeaderActions = !usePanel && (!!requestActions.primaryAction
-    || requestActions.secondaryActions.length > 0
-    || requestActions.dangerActions.length > 0);
+  /* ⭐ **ประโยคบนบาร์มาจากรางของใบ** — `requestRailSteps` ก้อนเดียวกับที่การ์ดขวา
+     วาด ⇒ บาร์กับรางขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
+     ⚠️ **คำใบ้ของรางมาก่อน** — `THREAD_STEP_HINT` เขียนไว้ตอนแถบอยู่ท้ายเธรดและไม่มี
+     ป้ายขั้นอยู่ข้าง ๆ ⇒ หลายตัวพูดซ้ำกับป้าย (ขั้น "รอหัวหน้ายืนยัน" ได้คำใบ้ว่า
+     "รอหัวหน้าสายงานขายยืนยัน") · บนบาร์มีป้ายอยู่แล้ว คำใบ้จึงต้องเพิ่มข้อมูล
+     ⚠️ ซ้ำกับป้ายเมื่อไรตัดทิ้ง — บรรทัดที่พูดเรื่องเดิมสองรอบแย่กว่าไม่มีบรรทัดนั้น */
+  /* ⚠️ ใบที่จบแล้วอ่านจากสถานะ ไม่ใช่จากราง — ราง `index` ของใบปิด/ยกเลิกชี้ขั้น
+     สุดท้าย ⇒ ใบที่ **ยกเลิก** จะได้พาดหัวว่า "ปิดเรื่อง" ซึ่งผิดคนละเรื่อง */
+  const settledStatus = ["closed", "cancelled"].includes(req.status);
+  const barStep = settledStatus ? null : (railSteps[workflowIndex] || null);
+  const barTitle = barStep?.label || REQUEST_STATUS_LABELS[req.status] || req.status;
+  const barHintRaw = barStep?.hint
+    || (primaryAction ? THREAD_STEP_HINT[primaryAction.id] : null)
+    || null;
+  const barHint = barHintRaw && barHintRaw !== barTitle ? barHintRaw : null;
 
-  // รายการในเมนู "…" ของหัวใบ — secondary + danger ชุดเดิมทั้งหมด
+  // รายการในเมนู "…" ของบาร์ — secondary + danger ชุดเดิมทั้งหมด
   // ⚠️ ลำดับ: เดินหน้ารอง → เส้นคั่น → อันตราย (แพตเทิร์นเดียวกับ RecordActionMenu)
   //    สี/ไอคอนมาจาก `kindMeta` ตัวเดียวกับที่ปุ่มใช้ ไม่ใช่ทาเองตามกลุ่ม
-  const headerMenuItems = [
+  const barMenuItems = [
     ...requestActions.secondaryActions.map((action) => ({
       id: action.id,
       label: action.label,
@@ -923,26 +930,8 @@ export default function RequestDetailPage() {
           // โครง panel: สถานะอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรก)
           ? null
           : <SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
-        actions={hasHeaderActions ? (
-          <>
-            {requestActions.primaryAction ? (
-              <ActionButton
-                kind={requestActions.primaryAction.kind}
-                label={requestActions.primaryAction.label}
-                icon={requestActions.primaryAction.icon}
-                variant="filled" disabled={saving}
-                onClick={requestActions.primaryAction.onClick}
-              />
-            ) : null}
-            {headerMenuItems.length > 0 && (
-              <RowActionMenu
-                label={`การจัดการของ ${req.docNo || "คำร้อง"}`}
-                items={headerMenuItems}
-                busy={saving}
-              />
-            )}
-          </>
-        ) : null}
+        /* ⚠️ **หัวใบไม่มีปุ่มระดับใบแล้วทุกหัวข้อ** (งวด 1) — ทั้งชุดอยู่บาร์
+           "ต้องทำอะไรต่อ" บนสุดของเนื้อที่เดียว */
         facts={headerFacts}
       >
         {/* รางก้าว — โครงเดิมวางแนวนอนบนหัวใบ · โครง panel ย้ายไปการ์ดขวาแนวตั้ง
@@ -1033,9 +1022,10 @@ export default function RequestDetailPage() {
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
               workflowSteps={workflowSteps}
-              primaryAction={requestActions.primaryAction}
-              secondaryActions={requestActions.secondaryActions}
-              dangerActions={requestActions.dangerActions}
+              /* ⚠️ **ไม่ส่งปุ่มเข้าการ์ดนี้แล้ว** (งวด 1) — ปุ่มระดับใบทั้งชุดอยู่บาร์
+                 บนสุดของเนื้อ · การ์ดขวาเหลือข้อเท็จจริงล้วน (สถานะ + ราง)
+                 ⚠️ ตัว component ยังรับ props ปุ่มเหมือนเดิม เพราะหน้า QT/SO/บัญชี
+                 ใช้ร่วมกันและยังวางปุ่มไว้บนการ์ด — ห้ามถอด props ออกจากของกลาง */
               busy={saving}
             />
             {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
@@ -1087,6 +1077,16 @@ export default function RequestDetailPage() {
           </>
         ) : null}
       >
+        {/* ⭐ **บาร์ "ต้องทำอะไรต่อ" อยู่บนสุดของเนื้อ** (งวด 1) — คนเปิดใบมาเพื่อ
+            ลงมือ ไม่ได้มาอ่านประวัติ · ปักบนขณะเลื่อนอ่าน (จอแคบไม่ปัก) */}
+        <RequestActionBar
+          title={barTitle}
+          hint={barHint}
+          primaryAction={requestActions.primaryAction}
+          menuItems={barMenuItems}
+          busy={saving}
+          docNo={req.docNo}
+        />
         {requestBodyBlock}
         {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-121) — เดิมเป็น `<div>` เปล่า
             ⇒ `gap` ของ `.main` ตกไม่ถึงลูก การ์ดทุกใบชนกัน 0px */}
@@ -1165,7 +1165,6 @@ export default function RequestDetailPage() {
         busy={saving}
         onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
         onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
-        requestStep={threadStep}
       />
         </div>
       </DetailPageLayout>

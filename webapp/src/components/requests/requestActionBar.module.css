@@ -1,0 +1,56 @@
+/* ── บาร์ "ต้องทำอะไรต่อ" ของทั้งใบ ─────────────────────────────────────
+   ⚠️ **ปักบน ไม่ใช่ปักล่าง** — แถบเดิมปักขอบล่าง (ม-76) เพื่อให้คนที่อ่านเธรดยาว ๆ
+   ยังเห็นปุ่ม · พอย้ายขึ้นบนสุดของเนื้อแล้ว ปักล่างไม่มีความหมายอีก และขอบล่างของ
+   จอแคบเป็นของ `MobileBottomNav` อยู่แล้ว
+   ⚠️ `top` ต้องเผื่อแถบเมนูสองชั้นที่ตรึงอยู่ — ใช้โทเคนเดียวกับ scroll anchor
+   ของทั้งระบบ ไม่ใช่ตัวเลขที่เดาเอง */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4-5);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--panel-float);
+  box-shadow: var(--shadow-sm);
+}
+
+.bar[data-idle] {
+  border-color: var(--border);
+  border-left-color: var(--border-strong);
+}
+
+.what { min-width: 0; }
+
+.what strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.what small {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+  .bar {
+    position: sticky;
+    top: var(--scroll-anchor-top);
+    z-index: var(--z-sticky);
+  }
+}
