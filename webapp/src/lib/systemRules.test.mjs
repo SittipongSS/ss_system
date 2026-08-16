@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import {
   QUOTATION_APPROVAL_INVALIDATING_FIELDS, QUOTATION_NON_CONTENT_FIELDS,
 } from './sales/quotationDocumentFields.js';
+import { SCOPED_TABLES } from './scopedRow.js';
 
 const SRC = join(process.cwd(), 'src');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -180,4 +181,42 @@ test('กฎ 5ข: การล้างการอนุมัติต้อ�
   const src = stripComments(read('app/api/sales-planning/quotations/[id]/route.js'));
   assert.match(src, /patch\.approvalStatus = 'not_submitted';/);
   assert.match(src, /patch\.approvalFingerprint = null;/);
+});
+
+// ── 6. "โหลดแถวแล้วลืมตรวจ" ต้องลดลงอย่างเดียว ─────────────────────────────
+//
+// 🐞 ตรวจระบบ 2026-08-16 (audit/11-row-guards.md): ทุก handler เขียนด่านรายแถวด้วยรูป
+// ของตัวเอง — บางที่ตรวจแถวที่โหลด บางที่ตรวจ entity แม่ บางที่ตรวจ payload ⇒ **สแกน
+// ด้วยเครื่องแยกถูก/ผิดไม่ได้** (ลองมาแล้วสองวิธี ให้ false positive ทั้งคู่)
+//
+// ⭐ `loadScoped()` ทำให้ "ถือแถวไว้โดยยังไม่ผ่านด่าน" เขียนไม่ออก · ข้อนี้เป็น **ratchet**
+// (กติกาเดียวกับ audit:ui / check:rowcap): จุดที่ยังโหลดเองได้ **ลดได้อย่างเดียว**
+// ห้ามเพิ่ม ⇒ ของใหม่ต้องใช้ loadScoped ส่วนของเก่าค่อยทยอยย้าย
+
+/* เพดานจำนวนจุดที่ยัง `.from(<ตารางในทะเบียน>).select().eq('id', …)` เอง
+   2026-08-16 — ตั้งเพดานครั้งแรกที่ 107 (นับของจริงหลังย้าย sales-planning/documents/[id]
+   เป็นตัวอย่างแรก) · ตัวเลขนี้ **รวมทั้ง GET และ POST** และรวมจุดที่ตรวจสิทธิ์ถูกต้อง
+   อยู่แล้วด้วย — มันวัด "รูปแบบที่ตรวจสอบด้วยเครื่องไม่ได้" ไม่ใช่ "จุดที่ผิด"
+   ⇒ เป้าหมายคือรูดลงเรื่อย ๆ ตอนที่ไปแตะไฟล์นั้นอยู่แล้ว ไม่ใช่รื้อทีเดียว */
+const SELF_LOAD_CAP = 107;
+
+test('กฎ 6: การโหลดแถวเองบนตารางที่มีทะเบียนขอบเขต ต้องไม่เพิ่ม (ratchet)', () => {
+  const tables = Object.keys(SCOPED_TABLES);
+  const hits = [];
+  for (const rel of listFiles('app/api', 'route.js')) {
+    const text = stripComments(read(rel));
+    for (const t of tables) {
+      // นับเฉพาะ "โหลดแถวเดียวด้วย id" — ลิสต์/ตัวกรองไม่เกี่ยว
+      const re = new RegExp(`from\\(\\s*['"]${t}['"]\\s*\\)[\\s\\S]{0,220}?\\.eq\\(\\s*['"]id['"]`, 'g');
+      const n = (text.match(re) || []).length;
+      for (let i = 0; i < n; i++) hits.push(`${rel}  (${t})`);
+    }
+  }
+  assert.ok(hits.length <= SELF_LOAD_CAP,
+    `โหลดแถวเองเพิ่มขึ้นเป็น ${hits.length} จุด (เพดาน ${SELF_LOAD_CAP})\n`
+    + 'ของใหม่ให้ใช้ loadScoped(supabase, table, id, user, mode) จาก @/lib/scopedRow\n'
+    + hits.slice(0, 12).join('\n'));
+  if (hits.length < SELF_LOAD_CAP) {
+    console.log(`  ⭐ กฎ 6: เหลือ ${hits.length}/${SELF_LOAD_CAP} — รูดเพดานลงใน systemRules.test.mjs`);
+  }
 });

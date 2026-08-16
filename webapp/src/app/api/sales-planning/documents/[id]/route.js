@@ -1,6 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning } from '@/lib/salesPlanning';
+import { loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +14,6 @@ async function loadDocument(supabase, id) {
   return data;
 }
 
-async function loadDeal(supabase, id) {
-  const { data, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -27,9 +22,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadDocument(supabase, id);
   if (!before) return notFound('document not found');
 
-  const deal = await loadDeal(supabase, before.dealId);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
+  // โหลดดีล + ตรวจขอบเขตในจังหวะเดียว — ไม่มีช่วงที่ถือแถวไว้โดยยังไม่ผ่านด่าน
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', before.dealId, user, 'edit');
+  if (response) return response;
 
   const body = await req.json();
   const patch = { updatedAt: new Date().toISOString() };
@@ -65,9 +60,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const before = await loadDocument(supabase, id);
   if (!before) return notFound('document not found');
 
-  const deal = await loadDeal(supabase, before.dealId);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
+  // โหลดดีล + ตรวจขอบเขตในจังหวะเดียว — ไม่มีช่วงที่ถือแถวไว้โดยยังไม่ผ่านด่าน
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', before.dealId, user, 'edit');
+  if (response) return response;
 
   const { error } = await supabase.from('sales_deal_documents').delete().eq('id', id);
   if (error) return fail(error.message, 500);
