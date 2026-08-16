@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, isWonStage, monthKey, normalizeTargetPeriod, toMoney, yearKey } from '@/lib/salesPlanning';
+import { canEditSalesTarget, canViewSalesPlanning, isWonStage, monthKey, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
 import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
 
 export const dynamic = 'force-dynamic';
@@ -95,9 +95,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const normalized = normalizeTargetPeriod(item.period, item.periodType === 'month' ? 'month' : 'year');
     if (!normalized) return badRequest('ระบุงวดไม่ถูกต้อง (YYYY หรือ YYYY-MM)');
     const { period, periodType } = normalized;
-    const team = item.team || null;
-    const ownerId = item.ownerId || null;
-    if (ownerId && !team) return badRequest('ประวัติรายบุคคลต้องมีทีม');
+    // ขอบเขตทีม — กติกาเดียวกับ targets/bulk (ดู resolveTargetRowScope)
+    const scope = resolveTargetRowScope(user, item, { label: 'ประวัติ' });
+    if (scope.error) {
+      return scope.status === 403 ? forbidden() : badRequest(scope.error);
+    }
+    const { team, ownerId } = scope;
 
     // เขียนทับเฉพาะยอดที่ผู้เรียก "ส่งมาจริง" — ไม่ส่ง = ไม่แตะ ไม่ใช่ตั้งเป็น 0
     // (หน้ายอดขายย้อนหลังส่งแค่ actual ของแถวรายปี ถ้าเหมาว่าไม่ส่ง = 0 เป้าที่ตัวช่วย
