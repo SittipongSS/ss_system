@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { REQUEST_KIND_LIST } from '../../../lib/master/requestTypes.js';
+import { REQUEST_KIND_LIST, REQUEST_KINDS } from '../../../lib/master/requestTypes.js';
 
 const SRC = readFileSync('src/components/requests/details/index.js', 'utf8');
 const PAGE = readFileSync('src/app/requests/[id]/page.js', 'utf8');
@@ -67,26 +67,31 @@ test('🔴 สายเอกสารแนบไฟล์ทางเดีย
     'DocumentDetail ต้องไม่รับสิทธิ์แนบจากเปลือก — สิทธิ์อยู่ที่โมดัลส่งเอกสารคนเดียว');
 });
 
-test('🔴 ปุ่มระดับใบอยู่ที่เดียวเสมอ — บาร์บนสุดของเนื้อ ไม่ใช่สามที่ตามโครง (งวด 1)', () => {
+test('🔴 ปุ่มระดับใบอยู่ที่เดียวเสมอ — การ์ดจัดการ (มติผู้ใช้ 2026-08-16 ทับงวด 1)', () => {
   // ⚠️ เดิมที่วางเปลี่ยนตามโครงของหัวข้อ (การ์ดขวา · หัวใบ · ท้ายเธรด) — สามที่ที่
-  // คนสลับหัวข้อต้องเรียนรู้ · ตอนนี้เหลือบาร์ `RequestActionBar` ที่เดียวทุกหัวข้อ
-  // ⚠️ **ย้าย ไม่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
+  // คนสลับหัวข้อต้องเรียนรู้ · งวด 1 ยุบเหลือบาร์บนสุดของเนื้อ · **มติ 2026-08-16
+  // ย้ายกลับขึ้นการ์ดจัดการ** ให้ทรงเดียวกับ QT/SO/บัญชีที่ใช้ `DocumentControlCard`
+  // ตัวเดียวกันอยู่แล้ว ⇒ ทั้งเว็บวางปุ่มระดับเอกสารที่เดียวกัน
+  //
+  // ⚠️ **ข้อที่เทสต์นี้คุมจริงคือ "ที่เดียว" ไม่ใช่ "ที่ไหน"** — ย้ายได้ ก๊อปไม่ได้
   const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  assert.match(code, /<RequestActionBar/, 'เปลือกต้องเรนเดอร์บาร์ก้าวถัดไป');
-  assert.match(code, /primaryAction=\{requestActions\.primaryAction\}/,
-    'ปุ่มหลักต้องผ่านตัวรวมกติกา visible ตัวเดิมก่อนถึงบาร์');
-  assert.match(code, /menuItems=\{barMenuItems\}/, 'ของรอง/อันตรายอยู่ในเมนูของบาร์');
+
+  // การ์ดจัดการถือปุ่มทั้งสามกลุ่ม ผ่านตัวรวมกติกา visible ตัวเดิม
+  const panelStart = code.indexOf('<DocumentControlCard');
+  const panelCall = code.slice(panelStart, code.indexOf('/>', panelStart));
+  for (const prop of ['primaryAction', 'secondaryActions', 'dangerActions']) {
+    assert.match(panelCall, new RegExp(`${prop}=\\{requestActions\\.${prop}\\}`),
+      `การ์ดจัดการต้องรับ ${prop} จาก requestActions ตัวเดียว`);
+  }
+
+  // ⚠️ บาร์ยังอยู่ได้ **เฉพาะหลังด่าน `!usePanel`** — หัวข้อที่ยังไม่มีการ์ด
+  // (material_eta) ต้องมีที่วางปุ่ม · ปล่อยให้เรนเดอร์คู่การ์ดเมื่อไรคือสองที่
+  assert.match(code, /\{!usePanel && \(\s*<RequestActionBar/,
+    'บาร์ต้องอยู่หลังด่าน !usePanel — หัวข้อที่มีการ์ดห้ามได้ปุ่มสองที่');
 
   // ทางเก่าทั้งสามต้องตายจริง ไม่ใช่ซ่อนตอน render
   for (const gone of ['threadStep', 'headerAction', 'hasHeaderActions', 'requestStep']) {
     assert.ok(!code.includes(gone), `${gone} ต้องไม่เหลือในเปลือก — ปุ่มระดับใบมีที่เดียว`);
-  }
-
-  // การ์ดขวาเหลือข้อเท็จจริงล้วน — ห้ามรับปุ่มกลับเข้าไปอีก
-  const panelStart = code.indexOf('<DocumentControlCard');
-  const panelCall = code.slice(panelStart, code.indexOf('/>', panelStart));
-  for (const prop of ['primaryAction', 'secondaryActions', 'dangerActions']) {
-    assert.ok(!panelCall.includes(prop), `การ์ดจัดการต้องไม่รับ ${prop} — ปุ่มอยู่ที่บาร์`);
   }
 
   // หัวใบก็ต้องไม่มีแผงปุ่ม
@@ -96,5 +101,17 @@ test('🔴 ปุ่มระดับใบอยู่ที่เดียว
   // แถบท้ายเธรดเหลือหน้าที่เดียว: ก้าวรายแถว
   const nextBar = readFileSync('src/components/requests/NextStepBar.js', 'utf8');
   assert.ok(!nextBar.includes('requestStep'),
-    'NextStepBar ต้องไม่รับก้าวระดับใบอีก — ย้ายไปบาร์บนสุดแล้ว');
+    'NextStepBar ต้องไม่รับก้าวระดับใบอีก — ปุ่มระดับใบอยู่การ์ดจัดการ');
+});
+
+test('🔴 ทุกหัวข้อต้องมีที่วางปุ่มระดับใบ — การ์ด หรือ บาร์ อย่างใดอย่างหนึ่ง', () => {
+  // 🐞 กับดักของการย้ายขึ้นการ์ด: หัวข้อที่ไม่มีการ์ดจะเงียบสนิท ไม่มีปุ่มสักตัว
+  // และไม่มีอะไรพัง — ใบแค่กดอะไรไม่ได้ · ด่านนี้จับตอนเพิ่มหัวข้อใหม่ ไม่ใช่ตอนผู้ใช้เจอ
+  const kinds = Object.entries(REQUEST_KINDS);
+  const noPanel = kinds.filter(([, k]) => !k.detailControlPanel).map(([key]) => key);
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  if (noPanel.length) {
+    assert.match(code, /<RequestActionBar/,
+      `หัวข้อที่ยังไม่มีการ์ด (${noPanel.join(' · ')}) ต้องมีบาร์รองรับ — ห้ามถอดทิ้ง`);
+  }
 });

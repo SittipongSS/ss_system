@@ -985,15 +985,22 @@ export default function RequestDetailPage() {
         asideLabel="จัดการคำร้อง"
         aside={usePanel ? (
           <>
+            {/* ⭐ **ปุ่มระดับใบกลับมาอยู่บนการ์ดจัดการ** (มติผู้ใช้ 2026-08-16) — ทับ
+                งวด 1 ที่ย้ายไปบาร์บนสุดของเนื้อ · ทรงเดียวกับหน้า QT/SO/บัญชีที่ใช้
+                `DocumentControlCard` ตัวเดียวกันอยู่แล้ว ⇒ ทั้งเว็บวางปุ่มที่เดียวกัน
+                ⚠️ **ยังเป็น "ที่เดียว" เหมือนเดิม ไม่ใช่สองที่** — บาร์ถูกถอดออกจาก
+                หัวข้อที่มีการ์ด · หัวข้อที่ยังไม่มีการ์ด (`material_eta`) ใช้บาร์ต่อ
+                ไม่งั้นปุ่มระดับใบของมันหายทั้งชุด (ดูสาขา `!usePanel` ในเนื้อหน้า)
+                ⚠️ ไม่ส่ง title/hint ของบาร์ตามมา — รางในการ์ดพูดประโยคเดียวกันอยู่แล้ว
+                (บั๊กเดิมของรางขวารุ่นแรก: การ์ดพูดซ้ำทุกบรรทัดจนต้องยุบทิ้ง) */}
             <DocumentControlCard
               title="จัดการคำร้อง"
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
               workflowSteps={workflowSteps}
-              /* ⚠️ **ไม่ส่งปุ่มเข้าการ์ดนี้แล้ว** (งวด 1) — ปุ่มระดับใบทั้งชุดอยู่บาร์
-                 บนสุดของเนื้อ · การ์ดขวาเหลือข้อเท็จจริงล้วน (สถานะ + ราง)
-                 ⚠️ ตัว component ยังรับ props ปุ่มเหมือนเดิม เพราะหน้า QT/SO/บัญชี
-                 ใช้ร่วมกันและยังวางปุ่มไว้บนการ์ด — ห้ามถอด props ออกจากของกลาง */
+              primaryAction={requestActions.primaryAction}
+              secondaryActions={requestActions.secondaryActions}
+              dangerActions={requestActions.dangerActions}
               busy={saving}
             />
             {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
@@ -1045,16 +1052,20 @@ export default function RequestDetailPage() {
           </>
         ) : null}
       >
-        {/* ⭐ **บาร์ "ต้องทำอะไรต่อ" อยู่บนสุดของเนื้อ** (งวด 1) — คนเปิดใบมาเพื่อ
-            ลงมือ ไม่ได้มาอ่านประวัติ · ปักบนขณะเลื่อนอ่าน (จอแคบไม่ปัก) */}
-        <RequestActionBar
-          title={barTitle}
-          hint={barHint}
-          primaryAction={requestActions.primaryAction}
-          menuItems={barMenuItems}
-          busy={saving}
-          docNo={req.docNo}
-        />
+        {/* ⭐ บาร์ "ต้องทำอะไรต่อ" — **เหลือเฉพาะหัวข้อที่ยังไม่มีการ์ดจัดการ**
+            (มติผู้ใช้ 2026-08-16) · หัวข้อที่มีการ์ดวางปุ่มบนการ์ดแทน
+            ⚠️ ตัดสาขานี้ทิ้งไม่ได้จนกว่าทุกหัวข้อจะมีการ์ด — `material_eta` ยังไม่มี
+            และถ้าไม่มีทั้งบาร์ทั้งการ์ด ใบของมันจะไม่มีปุ่มระดับใบเลยสักตัว */}
+        {!usePanel && (
+          <RequestActionBar
+            title={barTitle}
+            hint={barHint}
+            primaryAction={requestActions.primaryAction}
+            menuItems={barMenuItems}
+            busy={saving}
+            docNo={req.docNo}
+          />
+        )}
         {requestBodyBlock}
         {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-121) — เดิมเป็น `<div>` เปล่า
             ⇒ `gap` ของ `.main` ตกไม่ถึงลูก การ์ดทุกใบชนกัน 0px */}
