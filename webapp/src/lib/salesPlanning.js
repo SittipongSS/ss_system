@@ -1,4 +1,4 @@
-import { can, inScope, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { can, hasTeam, inScope, isReadOnlyObserver, isSuperuser, primaryTeam } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberSlots, publishedNumberingPattern } from '@/lib/documentStandards';
@@ -143,6 +143,45 @@ export function canEditSalesPlanning(user) {
 // และ server ต้องตรวจว่าคนที่ถูกเลือกอยู่ทีมเดียวกันจริง (lib/sales/dealOwner.js)
 export function canCreateDeal(user) {
   return !!user && (user.role === 'ae' || user.role === 'senior_ae' || user.role === 'ac' || isSuperuser(user.role));
+}
+
+/**
+ * ขอบเขตทีมของแถว "เป้าหมาย / ยอดย้อนหลัง" — **ที่เดียวของทั้งสองเส้นทาง**
+ *
+ * 🐞 **พบตอนตรวจระบบ 2026-08-16:** `POST /api/sales-planning/targets/bulk` คุมทีมไว้
+ * (`hasTeam`) แต่ `POST /api/sales-planning/history` ซึ่งรับ payload หน้าตาเดียวกันและ
+ * เปิดด้วย cap เดียวกัน **เอา `item.team` จาก payload ตรง ๆ ไม่คุมอะไรเลย**
+ *
+ * วันนี้ยังไม่เป็นช่องโหว่ — ผู้ถือ `salesplan:target` มีแค่ `admin` กับ `ae_supervisor`
+ * ซึ่ง `isSuperuser` ทั้งคู่ (เห็นทุกทีมอยู่แล้ว) · แต่ระบบ cap แจกรายบทบาทได้ง่าย
+ * วันที่ให้ cap นี้กับหัวหน้าทีม เส้น `history` จะเปิดให้เขียนยอดย้อนหลังของทุกทีมทันที
+ * และยอดย้อนหลังคือฐานที่เอาไปเทียบผลงาน — แก้แล้วสังเกตยาก
+ *
+ * ⚠️ ยกมาเป็นตัวช่วยตัวเดียวแทนการก๊อปกติกาไปอีกที่ — "สองที่ที่ต้องแก้พร้อมกันด้วยมือ"
+ * คือรูปแบบที่ระบบนี้เจ็บมาหลายรอบแล้ว (ดูหัวไฟล์ attachmentAccess / exciseBilling)
+ *
+ * @param label คำที่ใช้ในข้อความ เช่น "เป้า" / "ประวัติ" — ข้อความเดิมของแต่ละหน้าไม่เปลี่ยน
+ * @returns {{team: string|null, ownerId: string|null} | {error: string, status: number}}
+ */
+export function resolveTargetRowScope(user, item = {}, { label = 'เป้า' } = {}) {
+  const isSuper = isSuperuser(user?.role);
+  if (isSuper) {
+    const team = item.team || null;
+    if (item.ownerId && !team) return { error: `${label}รายบุคคลต้องมีทีม`, status: 400 };
+    return { team, ownerId: item.ownerId || null };
+  }
+
+  /* ⚠️ **ระบุทีมอื่นมา = ปฏิเสธ ไม่ใช่เงียบ ๆ เปลี่ยนให้เป็นทีมตัวเอง**
+     โค้ดเดิมของ targets/bulk เขียนว่า `hasTeam(...) ? item.team : primaryTeam(user)`
+     แล้วค่อยเช็ค `!hasTeam(user, team)` ทีหลัง — ซึ่ง **ไปไม่ถึงบรรทัดนั้นเลย** เพราะ
+     ค่าที่ตกมาคือทีมของตัวเองเสมอ ⇒ ด่าน 403 เป็นโค้ดตาย และคนที่ส่งทีมอื่นมาจะได้
+     "สำเร็จ" กลับไป ทั้งที่ยอดไปลงทีมตัวเอง = ตัวเลขของทีมตัวเองเพี้ยนโดยไม่มีใครรู้
+     ⇒ แยกสองกรณีให้ชัด: ไม่ส่งทีมมา = ทีมหลัก (เจตนาเดิม) · ส่งทีมที่ไม่ได้สังกัด = 403 */
+  if (item.team && !hasTeam(user, item.team)) return { error: 'forbidden', status: 403 };
+  const team = item.team || primaryTeam(user);
+  if (!team) return { error: 'ต้องระบุทีม', status: 400 };
+  if (item.ownerId && !team) return { error: `${label}รายบุคคลต้องมีทีม`, status: 400 };
+  return { team, ownerId: item.ownerId || null };
 }
 
 export function canEditSalesTarget(user) {

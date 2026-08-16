@@ -1,8 +1,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { hasTeam, isSuperuser, primaryTeam } from '@/lib/permissions';
-import { canEditSalesTarget, normalizeTargetPeriod, toMoney } from '@/lib/salesPlanning';
+import { canEditSalesTarget, normalizeTargetPeriod, resolveTargetRowScope, toMoney } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +18,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!items.length) return badRequest('ไม่มีรายการเป้าหมาย');
   if (items.length > 24) return badRequest('รายการมากเกินไป');
 
-  const isSuper = isSuperuser(user.role);
   const results = [];
 
   for (const item of items) {
@@ -27,14 +25,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!normalized) return badRequest('ต้องระบุช่วงเวลาเป้าหมาย');
     const { period, periodType } = normalized;
 
-    // คนอยู่หลายทีมได้ ⇒ ตั้งเป้าให้ทีมไหนก็ได้ที่ตัวเองสังกัด (ไม่ส่งมา = ทีมหลัก)
-    const team = isSuper ? (item.team || null) : (hasTeam(user, item.team) ? item.team : primaryTeam(user));
-    if (!team && !isSuper) return badRequest('ต้องระบุทีม');
-    if (item.ownerId && !team) return badRequest('เป้ารายบุคคลต้องมีทีม');
-    // Team-scoped editors cannot touch another team's rows.
-    if (!isSuper && !hasTeam(user, team)) return forbidden();
-
-    const ownerId = item.ownerId || null;
+    // ขอบเขตทีม — ตัวช่วยตัวเดียวกับ /history (ดู resolveTargetRowScope)
+    const scope = resolveTargetRowScope(user, item, { label: 'เป้า' });
+    if (scope.error) {
+      return scope.status === 403 ? forbidden() : badRequest(scope.error);
+    }
+    const { team, ownerId } = scope;
     const targetAmount = toMoney(item.targetAmount);
 
     let find = supabase
