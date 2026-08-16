@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { loadScoped } from '@/lib/scopedRow';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
@@ -11,7 +12,7 @@ import { loadProject } from '@/lib/pm/projectsRepo';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { dealLinkedUpdate, dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { appendUpdate } from '@/lib/master/updates';
-import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf, inSalesEditScope } from '@/lib/salesPlanning';
+import { advanceStage, canEditSalesPlanning, dealAuditLabel, dealTypeOf } from '@/lib/salesPlanning';
 import { hasCompatibleProjectCustomer } from '@/lib/sales/projectLink';
 import {
   mirrorCounts, moveDealMirrors, moveSegmentTasks,
@@ -37,10 +38,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canEditSalesPlanning(user) || !can(user.role, 'pm:edit')) return forbidden();
 
   const { id } = await ctx.params;
-  const { data: deal, error: dealErr } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
-  if (dealErr) return fail(dealErr.message, 500);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', id, user, 'edit');
+  if (response) return response;
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว ผูกโครงการไม่ได้');
 
   const body = await req.json().catch(() => ({}));

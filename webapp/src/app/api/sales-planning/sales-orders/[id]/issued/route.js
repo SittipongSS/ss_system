@@ -1,5 +1,6 @@
 import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { loadScoped } from '@/lib/scopedRow';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,17 +17,8 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
 
   // สิทธิ์คุมด้วย view-scope ของดีลเจ้าของ (pattern เดียวกับ QT issued) — เอกสารตรึงมีราคา/
   // ลูกค้าครบ ห้ามให้ AE ข้ามทีมดึงตาม id
-  const { data: order, error: orderError } = await supabase
-    .from('sales_orders')
-    .select('id, dealId, status')
-    .eq('id', id)
-    .maybeSingle();
-  if (orderError) return fail(orderError.message, 500);
-  if (!order) return notFound('ไม่พบใบสั่งขาย');
-  const { data: deal, error: dealError } = await supabase
-    .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
-  if (dealError) return fail(dealError.message, 500);
-  if (!deal || !inSalesViewScope(user, deal)) return forbidden();
+  const { row: order, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
+  if (response) return response;
 
   const { data: snapshots, error } = await supabase
     .from('issued_documents')
