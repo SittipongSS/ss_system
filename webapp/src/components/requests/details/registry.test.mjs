@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { REQUEST_KIND_LIST } from '../../../lib/master/requestTypes.js';
+import { REQUEST_KIND_LIST, REQUEST_KINDS } from '../../../lib/master/requestTypes.js';
 
 const SRC = readFileSync('src/components/requests/details/index.js', 'utf8');
 const PAGE = readFileSync('src/app/requests/[id]/page.js', 'utf8');
@@ -67,26 +67,27 @@ test('🔴 สายเอกสารแนบไฟล์ทางเดีย
     'DocumentDetail ต้องไม่รับสิทธิ์แนบจากเปลือก — สิทธิ์อยู่ที่โมดัลส่งเอกสารคนเดียว');
 });
 
-test('🔴 ปุ่มระดับใบอยู่ที่เดียวเสมอ — บาร์บนสุดของเนื้อ ไม่ใช่สามที่ตามโครง (งวด 1)', () => {
+test('🔴 ปุ่มระดับใบอยู่ที่เดียวเสมอ — การ์ดจัดการ ทุกหัวข้อ (ม-122 · ม-123)', () => {
   // ⚠️ เดิมที่วางเปลี่ยนตามโครงของหัวข้อ (การ์ดขวา · หัวใบ · ท้ายเธรด) — สามที่ที่
-  // คนสลับหัวข้อต้องเรียนรู้ · ตอนนี้เหลือบาร์ `RequestActionBar` ที่เดียวทุกหัวข้อ
-  // ⚠️ **ย้าย ไม่ก๊อป** — โชว์สองที่เมื่อไรก็ได้ทางเข้าสองทางที่ต้องคอยดูแลให้ตรงกัน
+  // คนสลับหัวข้อต้องเรียนรู้ · งวด 1 ยุบเหลือบาร์บนสุดของเนื้อ · ม-122 ย้ายกลับขึ้น
+  // การ์ดจัดการให้ทรงเดียวกับ QT/SO/บัญชี · ม-123 ทำให้ทุกหัวข้อใช้โครงนี้ ⇒ **ไม่มี
+  // สาขาที่สองเหลือให้พลาดอีก**
+  //
+  // ⚠️ **ข้อที่เทสต์นี้คุมจริงคือ "ที่เดียว" ไม่ใช่ "ที่ไหน"** — ย้ายได้ ก๊อปไม่ได้
   const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  assert.match(code, /<RequestActionBar/, 'เปลือกต้องเรนเดอร์บาร์ก้าวถัดไป');
-  assert.match(code, /primaryAction=\{requestActions\.primaryAction\}/,
-    'ปุ่มหลักต้องผ่านตัวรวมกติกา visible ตัวเดิมก่อนถึงบาร์');
-  assert.match(code, /menuItems=\{barMenuItems\}/, 'ของรอง/อันตรายอยู่ในเมนูของบาร์');
 
-  // ทางเก่าทั้งสามต้องตายจริง ไม่ใช่ซ่อนตอน render
-  for (const gone of ['threadStep', 'headerAction', 'hasHeaderActions', 'requestStep']) {
-    assert.ok(!code.includes(gone), `${gone} ต้องไม่เหลือในเปลือก — ปุ่มระดับใบมีที่เดียว`);
-  }
-
-  // การ์ดขวาเหลือข้อเท็จจริงล้วน — ห้ามรับปุ่มกลับเข้าไปอีก
+  // การ์ดจัดการถือปุ่มทั้งสามกลุ่ม ผ่านตัวรวมกติกา visible ตัวเดิม
   const panelStart = code.indexOf('<DocumentControlCard');
   const panelCall = code.slice(panelStart, code.indexOf('/>', panelStart));
   for (const prop of ['primaryAction', 'secondaryActions', 'dangerActions']) {
-    assert.ok(!panelCall.includes(prop), `การ์ดจัดการต้องไม่รับ ${prop} — ปุ่มอยู่ที่บาร์`);
+    assert.match(panelCall, new RegExp(`${prop}=\\{requestActions\\.${prop}\\}`),
+      `การ์ดจัดการต้องรับ ${prop} จาก requestActions ตัวเดียว`);
+  }
+
+  // ทางเก่าต้องตายจริง ไม่ใช่ซ่อนตอน render — รวมบาร์และธงโครงที่สอง
+  for (const gone of ['threadStep', 'headerAction', 'hasHeaderActions', 'requestStep',
+    'RequestActionBar', 'usePanel']) {
+    assert.ok(!code.includes(gone), `${gone} ต้องไม่เหลือในเปลือก — ปุ่มระดับใบมีที่เดียว`);
   }
 
   // หัวใบก็ต้องไม่มีแผงปุ่ม
@@ -96,5 +97,15 @@ test('🔴 ปุ่มระดับใบอยู่ที่เดียว
   // แถบท้ายเธรดเหลือหน้าที่เดียว: ก้าวรายแถว
   const nextBar = readFileSync('src/components/requests/NextStepBar.js', 'utf8');
   assert.ok(!nextBar.includes('requestStep'),
-    'NextStepBar ต้องไม่รับก้าวระดับใบอีก — ย้ายไปบาร์บนสุดแล้ว');
+    'NextStepBar ต้องไม่รับก้าวระดับใบอีก — ปุ่มระดับใบอยู่การ์ดจัดการ');
+});
+
+test('🔴 การ์ดจัดการต้องขึ้นทุกหัวข้อ — ไม่มีเงื่อนไขให้หัวข้อไหนตกขบวน (ม-123)', () => {
+  // 🐞 กับดักที่ปิดด้วยเทสต์นี้: ตอนย้ายทีละหัวข้อ หัวข้อที่ยังไม่เปิดธงจะไม่มีการ์ด
+  // ⇒ **ไม่มีปุ่มระดับใบเลยสักตัว โดยไม่มีอะไรพัง** — ใบแค่กดอะไรไม่ได้เงียบ ๆ
+  // ตอนนี้ทุกหัวข้อใช้โครงเดียว ด่านนี้กันไม่ให้มีใครใส่เงื่อนไขกลับเข้าไป
+  assert.ok(Object.keys(REQUEST_KINDS).length > 0);
+  const code = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(code, /aside=\{\(/, 'คอลัมน์ขวาต้องไม่มีเงื่อนไข — ทุกหัวข้อได้การ์ดเท่ากัน');
+  assert.ok(!/aside=\{\w+ \?/.test(code), 'คอลัมน์ขวาต้องไม่ผูกกับธงของหัวข้อ');
 });

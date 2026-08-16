@@ -11,19 +11,15 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 
 export default function ScentPanel({
-  request, briefSummary, reconcile, reconcileTone, reconcileText,
+  briefSummary, reconcile, reconcileTone, reconcileText,
 }) {
   if (!briefSummary) return null;
   // เช็คลิสต์ความพร้อมก่อนส่ง — คำตอบของ "ทำไมยังส่งไม่ได้ / เหลืออะไร"
+  //
+  // ⚠️ แถว "หัวหน้าสายงานขายยืนยัน" เคยอยู่บนสุด — ถอดพร้อมขั้นทั้งขั้น (มติผู้ใช้
+  // 2026-08-16) · ทิ้งไว้จะเป็นแถวที่ไม่มีวันติ๊กเขียวเพราะไม่มีใครเขียน `approvedAt`
+  // อีกแล้ว ⇒ เช็คลิสต์จะบอกว่า "ยังไม่พร้อม" ตลอดกาล
   const readiness = [
-    {
-      id: "approve",
-      label: "หัวหน้าสายงานขายยืนยัน",
-      detail: request.approvedAt
-        ? (request.approvedByName || "ยืนยันแล้ว")
-        : "ต้องยืนยันก่อน RD ลงมือ",
-      ready: !!request.approvedAt,
-    },
     {
       id: "briefs",
       label: "ทุกบรีฟมี direction",

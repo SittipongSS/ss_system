@@ -31,9 +31,6 @@
   color: var(--red);
 }
 
-/* บล็อกไฟล์แนบระดับหัวคำร้อง */
-.attachBlock { margin-top: var(--space-3); }
-
 /* คำอธิบายใต้ช่องกรอกในโมดัลปิดบรีฟ */
 .fieldHint {
   font-size: var(--fs-6);

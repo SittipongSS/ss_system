@@ -21,10 +21,6 @@ const formulaDev = {
   key: 'formula_dev',
   label: 'พัฒนาสูตร',
   dept: 'RD', scope: 'FD', hasItems: true, lineShape: 'product_dev',
-  // ⭐ โครง Control Panel (ม-94 · ตัวที่สาม) — การ์ดขวาถือ สถานะ/ราง/ปุ่มระดับใบ
-  // (รวม "ส่งของหลายรายการ" ที่เดิมซ่อนในเมนู ⋯ — บน panel เป็นปุ่มเห็น ๆ) +
-  // การ์ดสรุปรายหัวข้อ (details/FormulaPanel) · ก้าวรายแถวอยู่ในตารางสรุปทั้งใบ
-  detailControlPanel: true,
   // ⚠️ ธง `requiresCommittedDueDate` เคยอยู่ตรงนี้ — ถอดออกเมื่อวันกำหนดส่งกลายเป็น
   // กติกาทั้งระบบ (มติผู้ใช้ 2026-08-08 · `requestRequiresCommittedDue` คืน true เสมอ)
   // กลิ่นอยู่ **รายแถว** — ใบเดียวขอได้หลายกลิ่นหลายหมวด

@@ -96,10 +96,8 @@ export function requestHasPdr(kind) {
   return !!REQUEST_KINDS[kind]?.hasPdr;
 }
 
-// หัวข้อนี้ต้องผ่านหัวหน้าสายงานขายก่อนฝ่ายปลายทางลงมือไหม (mig 0216)
-export function requestNeedsApprovalKind(kind) {
-  return !!REQUEST_KINDS[kind]?.needsSupervisorApproval;
-}
+// ⚠️ `requestNeedsApprovalKind` เคยอยู่ตรงนี้ (mig 0216) — ถอดพร้อมขั้น "ยืนยันให้
+// ดำเนินการ" ทั้งขั้นตามมติผู้ใช้ 2026-08-16 · ทะเบียนตีกลับธงนี้ตั้งแต่ตอนโหลดแล้ว
 
 // วันกำหนดส่งตอนรับเรื่อง — **บังคับทุกหัวข้อ** (มติผู้ใช้ 2026-08-08 ยกระดับจาก
 // รายชนิดของ 2026-08-06: "วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับใส่เสมอ
@@ -127,12 +125,9 @@ export function requestHasItems(kind) {
   return !!REQUEST_KINDS[kind]?.hasItems;
 }
 
-// โครงหน้ารายละเอียดแบบ Control Panel (มติผู้ใช้ 2026-08-09) — หัวข้อเปิดธงนี้
-// ทีละตัว: สถานะ/ราง/ปุ่มระดับใบ **ย้าย**จากหัวใบไปการ์ดขวา (ไม่ก๊อป — บทเรียน
-// รางขวารุ่นแรกที่ถูกยุบเพราะพูดซ้ำหัวใบทุกบรรทัด)
-export function requestUsesControlPanel(kind) {
-  return !!REQUEST_KINDS[kind]?.detailControlPanel;
-}
+// ⚠️ `requestUsesControlPanel` เคยอยู่ตรงนี้ — ธง `detailControlPanel` เป็นธง
+// **ย้ายทีละหัวข้อ** (มติผู้ใช้ 2026-08-09) ไม่ใช่ตัวเลือกถาวร · ครบทุกหัวข้อแล้ว
+// จึงถอดทั้งธงและตัวอ่าน (ม-123) ⇒ หน้ารายละเอียดมีโครงเดียว ไม่มีสาขาที่สอง
 
 // ของที่หัวข้อนี้ต้องอ้างถึง — คืนรายชื่อคีย์ของ REQUEST_NEEDS
 export function requestNeeds(kind) {

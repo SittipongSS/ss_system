@@ -12,7 +12,6 @@ import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
 import { randomUUID } from 'crypto';
-import { approveRequestError } from '@/lib/requests/approval';
 import { assignPatch, assignRequestError } from '@/lib/requests/assign';
 import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
@@ -96,8 +95,6 @@ export async function GET(request, { params }) {
     // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
     // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ
     return Response.json(
-      // ⚠️ `_canApprove` คำนวณที่ **server** เหมือน `_mine` — หน้าจอมีแค่ role/ฝ่าย
-      // ไม่มี user.id ⇒ ตัดสินเองไม่ได้ · เคยพลาดมาแล้วตอนแยกด่านคำร้อง (#1016)
       {
         ...row,
         // ⚠️ **ที่นี่ `_mine` = "จัดการใบนี้ได้"** (เจ้าของใบ · เพื่อนร่วมทีม · admin)
@@ -108,7 +105,6 @@ export async function GET(request, { params }) {
         // "ผู้ยื่น <ชื่อ>" (ม-101) · ใช้ `_mine` ไม่ได้เพราะเพื่อนร่วมทีมก็จัดการได้แล้ว
         // ⇒ ป้าย "ใบของฉัน" จะไปขึ้นบนใบของเพื่อน ซึ่งเป็นการโกหกหน้าจอ
         _opener: !!user?.id && row.requestedById === user.id,
-        _canApprove: !approveRequestError(row, user),
         _canEditPdr: canEditPdr(user, row),
       },
       { headers: { 'Cache-Control': 'no-store' } },
@@ -359,23 +355,9 @@ export async function PATCH(request, { params }) {
       summary = patch.assigneeId || patch.assigneeName
         ? `มอบหมายให้ ${patch.assigneeName || patch.assigneeId}`
         : `ถอนการมอบหมาย${before.assigneeName ? ` (เดิม ${before.assigneeName})` : ''}`;
-    } else if (action === 'approve') {
-      // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — RD รับเรื่องแล้ว แต่ลงมือไม่ได้จนกว่า
-      // หัวหน้าจะยืนยัน · ด่านทั้งชุดอยู่ที่ lib/requests/approval.js ที่เดียว
-      // (สิทธิ์ + ลำดับขั้น + ห้ามยืนยันใบตัวเอง) — route ไม่คิดกฎเอง
-      const err = approveRequestError(before, user);
-      if (err) {
-        // 403 เมื่อเป็นเรื่องสิทธิ์ · 409 เมื่อเป็นเรื่องลำดับขั้น — ผู้เรียกแยกได้ว่า
-        // "ไม่ใช่ตาคุณ" กับ "ยังไม่ถึงขั้นนี้" คนละเรื่อง
-        const denied = /หัวหน้าสายงานขาย|ใบของตัวเอง/.test(err);
-        return Response.json({ error: err }, { status: denied ? 403 : 409 });
-      }
-      // ⚠️ **ไม่แตะ status** — ใบยังเป็น `acknowledged` เหมือนเดิม · ขั้น "รอยืนยัน"
-      // เป็นของ derive ไม่ใช่ค่าที่เก็บ (ดูคอมเมนต์ใน 0216)
-      patch.approvedAt = nowIso;
-      patch.approvedById = user?.id ?? null;
-      patch.approvedByName = user?.name ?? null;
-      summary = `ยืนยันให้ ${before.dept} ดำเนินการ ${before.docNo || id}`;
+    // ⚠️ action `approve` (ประตูหัวหน้าสายงานขาย · mig 0216) เคยอยู่ตรงนี้ — ถอดออก
+    // ทั้งขั้นตามมติผู้ใช้ 2026-08-16 · RD รับเรื่องแล้วลงมือได้เลย · ผู้เรียกที่ยังยิง
+    // `action: 'approve'` มาจะตกท้าย else เป็น 400 "action ไม่ถูกต้อง" ซึ่งถูกแล้ว
     } else if (action === 'bounce') {
       // ⭐ ตีกลับ = ผู้รับเรื่องส่งคืนผู้ยื่น ⇒ สิทธิ์เป็นของ **ฝ่ายปลายทาง** ไม่ใช่ผู้ขอ
       // (ผู้ขอเอาใบคืนเองเรียก "ดึงกลับ" ซึ่งเป็นคนละเรื่องและยังไม่มีในรอบนี้)
@@ -493,7 +475,6 @@ export async function PATCH(request, { params }) {
     return Response.json({
       ...after,
       _mine: canManageRequest(user, after),
-      _canApprove: !approveRequestError(after, user),
       _canEditPdr: canEditPdr(user, after),
     });
   } catch (e) {

@@ -123,8 +123,8 @@ export default function NextStepBar({
     .map(({ row, stage }) => ({ row, stage, hop: hopAtStage(row, stage) }))
     .filter((r) => r.hop);
 
-  // ⚠️ **ก้าวระดับใบไม่อยู่ที่นี่แล้ว** (งวด 1 ของรอบรื้อ) — ย้ายไปบาร์บนสุดของเนื้อ
-  // (`RequestActionBar`) ที่เดียวทุกหัวข้อ · แถบนี้เหลือหน้าที่เดียว: ก้าว **รายแถว**
+  // ⚠️ **ก้าวระดับใบไม่อยู่ที่นี่แล้ว** — อยู่บนการ์ดจัดการ (`DocumentControlCard`)
+  // ที่เดียวทุกหัวข้อ (ม-122) · แถบนี้เหลือหน้าที่เดียว: ก้าว **รายแถว**
   if (!pending.length) return null;
 
   return (

@@ -13,7 +13,6 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
-import { approvalPrompt } from "@/lib/approvalPrompt";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
@@ -28,7 +27,6 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
-import { kindMeta } from "@/components/ui/ActionButtons";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/requests/RequestEditableFields";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -36,7 +34,6 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
-import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
@@ -54,8 +51,6 @@ import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
-import NextStepBar from "@/components/requests/NextStepBar";
-import RequestActionBar from "@/components/requests/RequestActionBar";
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
@@ -64,7 +59,7 @@ import ScentDeliveryFields, {
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestDeliversRows, requestHasItems, requestKindLabel, requestUsesControlPanel } from "@/lib/master/requestTypes";
+import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -80,17 +75,6 @@ const STATUS_TONE = {
   closed: "var(--text-3)",
   cancelled: "var(--text-3)",
 };
-// ป้ายบอกว่า "ตอนนี้รออะไร" คู่กับปุ่มท้ายเธรดของหัวข้อที่ไม่มีแถว (P6)
-// ⚠️ ผูกกับ `primaryAction.id` ที่หน้านี้ประกอบเอง — เพิ่มก้าวใหม่แล้วลืมป้าย
-// จะได้คำว่า "รอดำเนินการ" กลาง ๆ ซึ่งไม่ผิด แต่ไม่ได้บอกอะไร
-const THREAD_STEP_HINT = {
-  submit: "ยังไม่ได้ส่ง — ส่งแล้วเลขที่จะออกและฝ่ายปลายทางจะเห็น",
-  acknowledge: "รอฝ่ายปลายทางรับเรื่อง",
-  approve: "รอหัวหน้าสายงานขายยืนยัน",
-  answer: "รับเรื่องแล้ว — ตอบในเธรดแล้วกดว่าตอบครบ",
-  close: "ตอบแล้ว — ผู้ขอกดปิดเมื่อพอใจกับคำตอบ",
-};
-
 // ⚠️ เดิมมี `isFlowRow` แยก **แถววัสดุ** (ตอบราคาจบในที่) ออกจากแถวที่เดินราง
 // ห้าก้าว · บรรทัดวัสดุถูกถอดใน mig 0219 (ม-28) ⇒ ทุกแถวที่เหลือเดินรางทั้งหมด
 // ไม่มีสาขาที่สองอีกแล้ว
@@ -231,8 +215,6 @@ export default function RequestDetailPage() {
   // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
   // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
   const owner = canAnswerRequestsFor(me, req.dept);
-  // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
-  const awaitingApproval = isAwaitingApproval(req);
   const showPdr = requestHasPdr(req.kind);
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -256,7 +238,6 @@ export default function RequestDetailPage() {
   const docBoard = documentBoard(req.items || []);
   const docTotals = documentTotals(docBoard);
   const briefSummary = briefBoardTotals(board);
-  const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
   // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/พัฒนากลิ่น/ติดตามของเข้า
@@ -559,32 +540,7 @@ export default function RequestDetailPage() {
       }
       // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
       // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
-      // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — วางก่อน "ส่งกลิ่น" เพราะระหว่างรอยืนยัน
-      // ปุ่มหลักของหน้าคือของหัวหน้า ไม่ใช่ของ RD · `_canApprove` มาจาก server
-      : req._canApprove
-        ? {
-          id: "approve",
-          // ⚠️ **ไม่ฮาร์ดโค้ดชื่อฝ่าย** (2026-08-15) — ประตูนี้ใช้กับหัวข้อของฝ่ายอื่น
-          // ได้ด้วย และ eyebrow บนหัวใบบอก "ถึงฝ่าย …" อยู่แล้ว
-          label: "ยืนยันให้ดำเนินการ",
-          kind: "approve",
-          icon: Check,
-          // ประตูหัวหน้าสายงานขายเคยยิงทันทีที่กด — ไม่มีจังหวะทบทวนเลยทั้งที่กดแล้ว
-          // RD เริ่มลงมือจริง (มติ "ทุกการอนุมัติต้องถามก่อน" 2026-08-13)
-          onClick: async () => {
-            const ok = await confirmAction(approvalPrompt({
-              subject: `คำร้อง ${req.docNo || ""}`.trim(),
-              effects: [
-                "RD เริ่มดำเนินการตามคำร้องนี้ได้ทันที",
-                "คำร้องเข้าคิวงานของฝ่ายที่รับผิดชอบ",
-              ],
-              confirmLabel: "ยืนยันให้ดำเนินการ",
-            }));
-            if (!ok) return;
-            await call("", { method: "PATCH", body: JSON.stringify({ action: "approve" }) }, "ยืนยันแล้ว");
-          },
-        }
-      : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
+      : canAnswer && requestDeliversRows(req.kind)
         ? {
           id: "deliver",
           // ⭐ คำเดียวกับก้าวรายแถว (2026-08-15) — เดิมปุ่มระดับใบเรียก "ส่งกลิ่น"
@@ -628,10 +584,6 @@ export default function RequestDetailPage() {
   //
   // ⚠️ **ย้าย ไม่ก๊อป** — กติกา "ที่เดียวเสมอ" (ม-49 · ม-57 · ม-94) ไม่เปลี่ยน
   // เปลี่ยนแค่ว่าที่นั้นอยู่ตรงไหน ⇒ หัวใบ/การ์ดขวา/ท้ายเธรด **ต้องไม่มีปุ่มระดับใบ**
-  //
-  // ⚠️ `usePanel` ยังคุมอยู่สองเรื่องที่ไม่เกี่ยวกับปุ่ม — การ์ดขวามีไหม และก้าวรายแถว
-  // อยู่ในตารางหรือท้ายเธรด (ดูที่ `NextStepBar` ข้างล่าง)
-  const usePanel = requestUsesControlPanel(req.kind);
 
   // ── ปุ่มของใบทั้งใบ ─────────────────────────────────────────────────────
   //
@@ -795,43 +747,6 @@ export default function RequestDetailPage() {
       },
     ],
   });
-  /* ⭐ **ประโยคบนบาร์มาจากรางของใบ** — `requestRailSteps` ก้อนเดียวกับที่การ์ดขวา
-     วาด ⇒ บาร์กับรางขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
-     ⚠️ **คำใบ้ของรางมาก่อน** — `THREAD_STEP_HINT` เขียนไว้ตอนแถบอยู่ท้ายเธรดและไม่มี
-     ป้ายขั้นอยู่ข้าง ๆ ⇒ หลายตัวพูดซ้ำกับป้าย (ขั้น "รอหัวหน้ายืนยัน" ได้คำใบ้ว่า
-     "รอหัวหน้าสายงานขายยืนยัน") · บนบาร์มีป้ายอยู่แล้ว คำใบ้จึงต้องเพิ่มข้อมูล
-     ⚠️ ซ้ำกับป้ายเมื่อไรตัดทิ้ง — บรรทัดที่พูดเรื่องเดิมสองรอบแย่กว่าไม่มีบรรทัดนั้น */
-  /* ⚠️ ใบที่จบแล้วอ่านจากสถานะ ไม่ใช่จากราง — ราง `index` ของใบปิด/ยกเลิกชี้ขั้น
-     สุดท้าย ⇒ ใบที่ **ยกเลิก** จะได้พาดหัวว่า "ปิดเรื่อง" ซึ่งผิดคนละเรื่อง */
-  const settledStatus = ["closed", "cancelled"].includes(req.status);
-  const barStep = settledStatus ? null : (railSteps[workflowIndex] || null);
-  const barTitle = barStep?.label || REQUEST_STATUS_LABELS[req.status] || req.status;
-  const barHintRaw = barStep?.hint
-    || (primaryAction ? THREAD_STEP_HINT[primaryAction.id] : null)
-    || null;
-  const barHint = barHintRaw && barHintRaw !== barTitle ? barHintRaw : null;
-
-  // รายการในเมนู "…" ของบาร์ — secondary + danger ชุดเดิมทั้งหมด
-  // ⚠️ ลำดับ: เดินหน้ารอง → เส้นคั่น → อันตราย (แพตเทิร์นเดียวกับ RecordActionMenu)
-  //    สี/ไอคอนมาจาก `kindMeta` ตัวเดียวกับที่ปุ่มใช้ ไม่ใช่ทาเองตามกลุ่ม
-  const barMenuItems = [
-    ...requestActions.secondaryActions.map((action) => ({
-      id: action.id,
-      label: action.label,
-      icon: action.icon || kindMeta(action.kind)?.Icon,
-      tone: kindMeta(action.kind)?.tone || "neutral",
-      onClick: action.onClick,
-    })),
-    ...requestActions.dangerActions.map((action, index) => ({
-      id: action.id || `danger-${index}`,
-      label: action.label,
-      icon: action.icon || kindMeta(action.kind)?.Icon,
-      tone: kindMeta(action.kind)?.tone || "danger",
-      separatorBefore: index === 0 && requestActions.secondaryActions.length > 0,
-      onClick: action.onClick,
-    })),
-  ];
-
   // ⭐ **กติกา "ช่องไหนขึ้นเมื่อไร" อยู่ที่ `lib/requests/headerFacts.js`** พร้อมเทสต์
   // (ม-98 · ม-101) — ของเดิมประกอบตรงนี้กลาง JSX แล้วให้ "ลูกค้า" กับ "ตอบแล้ว"
   // สลับกันใช้ช่องเดียว ⇒ ใบที่มีบรรทัดไม่เคยโชว์ลูกค้าเลย (IS-26080003)
@@ -878,18 +793,6 @@ export default function RequestDetailPage() {
   /* ไฟล์แนบระดับหัวคำร้อง — เพิ่งมีที่แนบตั้งแต่ 2026-08-03 (เดิมแนบได้เฉพาะรายบรรทัด
      ของหัวข้อขอราคา → พัฒนากลิ่น/พัฒนาสูตร ที่ต้องมีรูปอ้างอิงมากที่สุดแนบไม่ได้เลย
      ต้องส่งกันทาง LINE) · ประกาศครั้งเดียวแล้ววางได้สองที่ตามโครงของหัวข้อ */
-  const attachmentsBlock = (
-    <div className={styles.attachBlock}>
-      <div className="toolbar-label">ไฟล์แนบของคำร้อง</div>
-      <AttachmentsPanel
-        entityType="dept_request"
-        entityId={req.id}
-        canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-        inlineUpload
-      />
-    </div>
-  );
-
   return (
     <Workspace hideHeader back={back}>
       {/* หัวเรื่องพูดภาษาของชนิดคำร้อง — หน้านี้เคยเขียนว่า "เคสขอราคาวัสดุ" ทุกจุด
@@ -898,14 +801,6 @@ export default function RequestDetailPage() {
           ⭐ **หัวใบเดียวจบ** — สถานะ · รางก้าว · ข้อเท็จจริง · เนื้อคำร้อง · ไฟล์แนบ ·
           ปุ่ม เรียงตามลำดับที่คนอ่านจริง · ฝ่ายผู้ตอบขึ้นไปอยู่กับชนิดบน eyebrow
           เพราะสองอย่างนี้คือ "ใบนี้คืออะไร ส่งไปไหน" ซึ่งอ่านคู่กันเสมอ */}
-      {/* ⭐ **ปุ่มหลัก 1 ปุ่ม + เมนู "…"** ที่ `actions` (มติผู้ใช้ 2026-08-08) — ของเดิม
-          เรียงปุ่มเส้นขอบได้ถึง 4 ปุ่ม (เลื่อนวัน · ลบ · ตีกลับ · ยกเลิก) ต่อท้ายด้วย
-          ปุ่มหลัก ⇒ หัวใบเป็นแถวปุ่มยาวที่อ่านไม่ออกว่าอันไหนคือสิ่งที่ต้องทำ
-          ⚠️ **กติกาปุ่มไม่เปลี่ยน** — ยังผ่าน `normalizeDocumentControlActions` ตัวเดิม
-          (`visible: false` ตัดออกให้แล้ว) · ที่เปลี่ยนคือที่วางเท่านั้น
-          ⚠️ ไอคอน/สีของรายการมาจาก `kindMeta` ชุดเดียวกับปุ่ม ⇒ เมนูกับปุ่มพูดเรื่อง
-          เดียวกันเสมอ (บทเรียนจาก RecordActionMenu: เมนูทา "ตีกลับ" เป็นแดง แต่การ์ด
-          โชว์เทา ทั้งที่เป็น action เดียวกัน) */}
       <SalesDetailOverview
         eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
@@ -926,20 +821,10 @@ export default function RequestDetailPage() {
           </span>
         }
         meta={peopleRow}
-        badges={usePanel
-          // โครง panel: สถานะอยู่การ์ดขวาที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรก)
-          ? null
-          : <SalesStateBadge label={REQUEST_STATUS_LABELS[req.status] || req.status} color={STATUS_TONE[req.status]} />}
-        /* ⚠️ **หัวใบไม่มีปุ่มระดับใบแล้วทุกหัวข้อ** (งวด 1) — ทั้งชุดอยู่บาร์
-           "ต้องทำอะไรต่อ" บนสุดของเนื้อที่เดียว */
+        /* ⚠️ **หัวใบไม่มีทั้งป้ายสถานะและปุ่มระดับใบ** — ทั้งสองอย่างอยู่การ์ด
+           จัดการที่เดียว (ย้าย ไม่ก๊อป — บทเรียนรางขวารุ่นแรกที่พูดซ้ำหัวใบทุกบรรทัด) */
         facts={headerFacts}
       >
-        {/* รางก้าว — โครงเดิมวางแนวนอนบนหัวใบ · โครง panel ย้ายไปการ์ดขวาแนวตั้ง
-            (WorkflowRail ตัวเดียวกัน ต่างแค่ orientation — ห้ามมีสองชุด) */}
-        {!usePanel && (
-          <WorkflowRail steps={workflowSteps} orientation="row" label="เส้นทางของคำร้อง" />
-        )}
-
 
         {/* ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้แล้ว** — ย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นบนหัวใบ (ม-101)
             บรรทัดนี้เคยพูดซ้ำกับชิปคำต่อคำ (ผู้ใช้ทัก 2026-08-11) · เหลือไว้เฉพาะรหัสสูตร
@@ -978,8 +863,7 @@ export default function RequestDetailPage() {
             เหมือนปุ่มระดับใบ · วางเป็นแถบกว้างใต้หัวใบทำให้จอแรกเป็นกล่องว่างเปล่า
             ครึ่งจอ ทั้งที่ส่วนใหญ่ไม่มีไฟล์ · ท้ายเธรดก็ไม่ใช่ที่ของมัน — เธรดมีที่แนบ
             ของตัวเองรายข้อความอยู่แล้ว (ของสองอันนี้คนละความหมาย: ของใบ vs ของบทสนทนา)
-            ⚠️ หัวข้อที่ยังไม่เปิดโครง panel ยังใช้ที่เดิม — ไม่มีคอลัมน์ขวาให้ย้ายไป */}
-        {!usePanel && attachmentsBlock}
+            ⚠️ **ที่เดียวแล้วทุกหัวข้อ** — คอลัมน์ขวามีครบทุกใบตั้งแต่ ม-123 */}
       </SalesDetailOverview>
 
       {/* ── โหมดแก้: หัวใบ ─────────────────────────────────────────────────
@@ -1005,27 +889,28 @@ export default function RequestDetailPage() {
         </DetailCard>
       )}
 
-      {/* ⭐ โครงสองแบบ (มติผู้ใช้ 2026-08-09 — รีดีไซน์ทีละหัวข้อ):
-          · หัวข้อธง `detailControlPanel` — การ์ดขวา DOCUMENT CONTROL ถือ สถานะ+ราง
-            แนวตั้ง+ปุ่มระดับใบ **ที่เดียว** (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป)
-          · หัวข้อที่ยังไม่เปิดธง — คอลัมน์เดียวแบบเดิม (รางขวารุ่นแรกเคยถูกยุบเพราะ
-            การ์ดพูดซ้ำหัวใบทุกบรรทัด — ธงนี้คือรอบแก้ที่ย้ายจริง ไม่ใช่วาดซ้ำ) */}
+      {/* ⭐ **โครงเดียวทุกหัวข้อ** (ม-123 — จบการย้ายทีละหัวข้อที่เริ่มไว้ 2026-08-09):
+          การ์ดขวา DOCUMENT CONTROL ถือ สถานะ + รางแนวตั้ง + ปุ่มระดับใบ **ที่เดียว**
+          (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป · บทเรียนรางขวารุ่นแรกที่ถูกยุบเพราะ
+          การ์ดพูดซ้ำหัวใบทุกบรรทัด) */}
       <DetailPageLayout
-        /* ⚠️ ระยะหัวใบ → เนื้อ เป็นของ **หน้า** ไม่ใช่ของธง (ม-121) — เดิมผูกกับ
-           `usePanel` ⇒ หัวข้อโครงเดิมหัวใบชนการ์ดแรก 0px */
         className={styles.detailLayout}
         asideLabel="จัดการคำร้อง"
-        aside={usePanel ? (
+        aside={(
           <>
+            {/* ⭐ **ปุ่มระดับใบอยู่บนการ์ดจัดการ** (ม-122) — ทรงเดียวกับหน้า QT/SO/
+                บัญชีที่ใช้ `DocumentControlCard` ตัวเดียวกันอยู่แล้ว ⇒ ทั้งเว็บวางปุ่ม
+                ระดับเอกสารที่เดียวกัน
+                ⚠️ ไม่มีหัวข้อ/คำใบ้แยกบนการ์ด — รางข้างบนพูดประโยคเดียวกันอยู่แล้ว
+                (บั๊กเดิมของรางขวารุ่นแรก: การ์ดพูดซ้ำทุกบรรทัดจนต้องยุบทิ้ง) */}
             <DocumentControlCard
               title="จัดการคำร้อง"
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
               workflowSteps={workflowSteps}
-              /* ⚠️ **ไม่ส่งปุ่มเข้าการ์ดนี้แล้ว** (งวด 1) — ปุ่มระดับใบทั้งชุดอยู่บาร์
-                 บนสุดของเนื้อ · การ์ดขวาเหลือข้อเท็จจริงล้วน (สถานะ + ราง)
-                 ⚠️ ตัว component ยังรับ props ปุ่มเหมือนเดิม เพราะหน้า QT/SO/บัญชี
-                 ใช้ร่วมกันและยังวางปุ่มไว้บนการ์ด — ห้ามถอด props ออกจากของกลาง */
+              primaryAction={requestActions.primaryAction}
+              secondaryActions={requestActions.secondaryActions}
+              dangerActions={requestActions.dangerActions}
               busy={saving}
             />
             {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
@@ -1075,18 +960,8 @@ export default function RequestDetailPage() {
               />
             </DetailCard>
           </>
-        ) : null}
+        )}
       >
-        {/* ⭐ **บาร์ "ต้องทำอะไรต่อ" อยู่บนสุดของเนื้อ** (งวด 1) — คนเปิดใบมาเพื่อ
-            ลงมือ ไม่ได้มาอ่านประวัติ · ปักบนขณะเลื่อนอ่าน (จอแคบไม่ปัก) */}
-        <RequestActionBar
-          title={barTitle}
-          hint={barHint}
-          primaryAction={requestActions.primaryAction}
-          menuItems={barMenuItems}
-          busy={saving}
-          docNo={req.docNo}
-        />
         {requestBodyBlock}
         {/* ⭐ สแต็กเดียวคุมระยะของทุกก้อนในคอลัมน์นี้ (ม-121) — เดิมเป็น `<div>` เปล่า
             ⇒ `gap` ของ `.main` ตกไม่ถึงลูก การ์ดทุกใบชนกัน 0px */}
@@ -1100,20 +975,20 @@ export default function RequestDetailPage() {
           — เลือกให้ที่นี่ต้องรู้ว่าหัวข้อไหนใช้ก้อนไหน ซึ่งเป็นความรู้ของหัวข้อ ไม่ใช่
           ของเปลือก (ม-34) · เคยเขียนเป็น `docBoard.length ? … : …` ซึ่งเดาจากข้อมูล
           ⇒ ใบร่างที่ยังไม่มีแถวจะตกไปใช้ก้อนของหัวข้ออื่นเงียบ ๆ */}
-      {/* `rowStep` = ปุ่มก้าวติดแถวในตาราง (มติผู้ใช้ 2026-08-09) — ชุด callback
-          เดียวกับแถบท้ายเธรดเป๊ะ · ส่งเฉพาะโครง panel: โครงเดิมยังใช้แถบท้ายเธรด */}
+      {/* `rowStep` = ปุ่มก้าวติดแถวในตาราง (มติผู้ใช้ 2026-08-09) — ก้าวรายแถว
+          อยู่ในตารางของหัวข้อที่เดียว แถบท้ายเธรดไม่รับก้าวระดับใบแล้ว */}
       <KindDetail
         request={req}
         categories={productTypes}
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-        rowStep={usePanel ? {
+        rowStep={{
           canDept: canAnswer,
           canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
           busy: saving,
           onHop: (row, hop, outcome) => openHop(row, hop, outcome),
           onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
-        } : null}
+        }}
         saving={saving}
         board={board}
         briefSummary={briefSummary}
@@ -1155,17 +1030,6 @@ export default function RequestDetailPage() {
           เปลี่ยนแค่ว่ามันติดจออยู่ตลอดระหว่างเลื่อนอ่าน
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
-      <NextStepBar
-        // ⭐ ย้าย ไม่ก๊อป (มติผู้ใช้ 2026-08-09): โครง panel ปุ่มก้าวรายแถวอยู่ใน
-        // ตารางของหัวข้อ (เอกสารที่ขอ · สรุปทั้งใบ) — แถบท้ายเธรดเงียบทั้งใบ
-        // (สองที่เมื่อไรก็เพี้ยนกันเมื่อนั้น) · หัวข้อโครงเดิมไม่กระทบ
-        rows={usePanel ? [] : (req.items || [])}
-        canDept={canAnswer}
-        canRequester={!!req._mine && REQUEST_OPEN_STATUSES.includes(req.status)}
-        busy={saving}
-        onHop={(row, hop, outcome) => openHop(row, hop, outcome)}
-        onPrice={(row) => setPricing({ item: row, price: "", validUntil: "", note: "" })}
-      />
         </div>
       </DetailPageLayout>
 
