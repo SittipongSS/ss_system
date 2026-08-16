@@ -269,6 +269,17 @@ test('ปิดเรื่อง: ใบที่มีแถวต้องจ
   assert.match(closeRequestError(req({ kind: 'info', status: 'pending' }), []), /ยกเลิกแทน/);
 });
 
+test('🐞 ปิดร่างที่ยังไม่ส่งไม่ได้ — ปิดแล้วลบไม่ได้ตลอดกาล (รอบ 12 · ค-1)', () => {
+  // `deleteRequestError` บังคับ `status === 'draft'` ⇒ ร่างที่ถูกปิดจะลบไม่ได้อีกเลย
+  // ทางออกเหลือแค่ RPC ของ service role · ยิงได้ทาง API เท่านั้น (ปุ่มบนจอไม่โผล่)
+  // แต่ API คือขอบเขต ไม่ใช่ปุ่ม
+  assert.match(closeRequestError(req({ kind: 'info', status: 'draft' }), []), /ร่างที่ยังไม่ส่ง/);
+  assert.match(closeRequestError(req({ kind: 'formula_dev', status: 'draft' }), []), /ร่างที่ยังไม่ส่ง/);
+  // ทางที่ถูกยังเปิดอยู่ทั้งสองทาง — ลบร่าง หรือยกเลิกใบ
+  assert.equal(deleteRequestError(req({ status: 'draft', submittedAt: null })), null);
+  assert.equal(cancelRequestError(req({ status: 'draft' })), null);
+});
+
 test('รับเรื่องได้ครั้งเดียว และต้องส่งก่อน', () => {
   // ⚠️ ใบตัวอย่างกลางเป็น `formula_dev` ซึ่งบังคับวันกำหนดส่ง (Q39) ⇒ ส่งวันมาด้วย
   // ไม่งั้นเทสต์นี้จะวัดด่านวันที่แทนที่จะวัดด่านสถานะ
@@ -782,5 +793,35 @@ test('🔴 ทุกปุ่มที่ตั้ง saving ต้องคื�
       finallys >= setsSaving,
       `${file}: setSaving(true) ${setsSaving} จุด แต่มี finally คืนค่าแค่ ${finallys}`,
     );
+  }
+});
+
+// ── ด่านของ "ใบ" ต้องครอบทุกทางเข้าที่แตะใบ (ผลตรวจรอบ 12) ──────────────
+//
+// ⭐ **รูปแบบเดียวกันทั้งสองข้อ: กฎถูกข้ามที่ทางเข้าที่สอง ไม่ใช่กฎผิด** — route
+// ระดับแถวสองตัวอยู่ข้างกัน แต่ด่านไม่เท่ากัน · เขียนเป็นเทสต์เพราะมันเป็นเรื่องของ
+// **การเดินสาย** ไม่ใช่ตรรกะ ⇒ unit test ของฟังก์ชันจับไม่ได้เลย
+const ITEM_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/route.js';
+const PRICE_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/price/route.js';
+
+test('🔴 ก้าว ack รายแถวที่ดันใบทั้งใบ ต้องผ่านด่านของใบ ไม่ใช่เขียนสถานะเอง (ค-2)', () => {
+  // 🐞 เดิม route เขียน `headPatch.status = 'acknowledged'` เองโดยไม่ผ่านด่าน ⇒ ได้ใบ
+  // ที่รับเรื่องแล้วแต่ **ไม่มีวันที่รับปาก** ทั้งที่ปุ่มระดับใบบังคับทุกหัวข้อ
+  // (`requestRequiresCommittedDue` คืน true เสมอ) ⇒ รายงาน "เลยกำหนด" นับใบนั้นไม่ได้
+  const src = readFileSync(ITEM_ROUTE, 'utf8');
+  assert.match(src, /acknowledgeRequestError\(before, \{ committedDueDate/,
+    'ก้าว ack ต้องเรียกด่านของใบตัวเดียวกับปุ่มระดับใบ');
+  assert.match(src, /headPatch\.committedDueDate = committedDueDate/,
+    'วันที่ผ่านด่านแล้วต้องถูกเขียนลงใบ ไม่ใช่ตรวจแล้วทิ้ง');
+});
+
+test('🔴 route รายแถวสองตัวต้องมีด่านสถานะใบเท่ากัน (ค-5)', () => {
+  // 🐞 `price/route.js` เคยไม่มีด่านนี้ ⇒ ใบที่ปิด/ยกเลิกไปแล้วยังยิงราคาเข้าได้
+  // และ route นั้น **สร้างวัสดุ `RM_F` เข้าทะเบียนกลาง** ⇒ ของกลางได้แถวจากใบที่ยกเลิก
+  // ⚠️ `canPriceRow` ไม่ช่วย — มันอ่าน `rowStage(row)` จากแถวล้วน ไม่รู้จักสถานะใบเลย
+  for (const file of [ITEM_ROUTE, PRICE_ROUTE]) {
+    const src = readFileSync(file, 'utf8');
+    assert.match(src, /if \(!REQUEST_OPEN_STATUSES\.includes\(before\.status\)\)/,
+      `${file}: ขาดด่าน "ใบต้องเปิดอยู่"`);
   }
 });

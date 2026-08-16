@@ -15,6 +15,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
+import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
@@ -42,6 +43,20 @@ export async function POST(request, { params }) {
   }
   if (!canAnswerRequest(user, before)) {
     return Response.json({ error: `ใส่ราคาได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+  }
+
+  // ⚠️ **ใบต้องเปิดอยู่** — ด่านชุดเดียวกับ route ก้าวรายแถวที่อยู่ข้าง ๆ
+  // (`items/[itemId]/route.js`) · เส้นนี้เคยขาดไปเส้นเดียวในสองพี่น้อง (ผลตรวจรอบ 12 · ค-5)
+  //
+  // 🐞 `canPriceRow` ข้างล่างอ่านจาก **แถวล้วน** (`rowStage(row)`) ไม่รู้จักสถานะใบเลย ⇒
+  // ใบที่ปิดหรือถูกยกเลิกไปแล้ว ถ้ามีแถวค้างที่ `outcome === 'confirmed'` ยังยิงราคาเข้าได้
+  // · สถานะใบไม่ขยับ (`deriveRequestStatusAfterAnswer` กัน closed/cancelled ไว้) แต่
+  // **ราคาถูกเขียนจริง และ route นี้สร้างวัสดุ `RM_F` เข้าทะเบียนกลาง** ⇒ ของกลางได้แถว
+  // ที่มีต้นทางเป็นใบที่ยกเลิกไปแล้ว ซึ่งตามกลับไม่ได้ว่าทำไมถึงมีราคานี้
+  if (!REQUEST_OPEN_STATUSES.includes(before.status)) {
+    return Response.json({
+      error: `คำร้องอยู่สถานะ "${REQUEST_STATUS_LABELS[before.status] || before.status}" — ใส่ราคาไม่ได้`,
+    }, { status: 409 });
   }
 
   const row = (before.items || []).find((i) => i.id === itemId);
