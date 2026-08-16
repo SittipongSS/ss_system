@@ -45,6 +45,7 @@ import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
+  acknowledgeRequestError,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
@@ -259,8 +260,14 @@ export default function RequestDetailPage() {
   // ไม่งั้นสองชั้นจะเลื่อนออกจากกัน แล้วปุ่มที่กดได้จะได้ 400 กลับมา
   // ⚠️ สองด่านคนละชั้น — `hopValuesError` คุมค่าของก้าว · ของสูตรมีด่านของตัวเอง
   // ที่ server ใช้ตัวเดียวกัน (normalizeFormulaDelivery) ⇒ ปุ่มกับ API ไม่เพี้ยนกัน
+  // ก้าว `ack` ที่ดันใบจาก `pending` = รับเรื่องทั้งใบ ⇒ วันบังคับ (ค-2)
+  const ackDueRequired = hopDraft?.hop === "ack" && req?.status === "pending";
   const hopError = hopDraft
     ? (hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
+      // ⚠️ เรียกด่านของ **ใบ** ตัวเดียวกับ server ไม่เขียนเงื่อนไขเองที่นี่
+      || (ackDueRequired
+        ? acknowledgeRequestError(req, { committedDueDate: hopDraft.dueAt || null })
+        : null)
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
         ? normalizeFormulaDelivery(hopDraft).error
         : null))
@@ -1374,15 +1381,25 @@ export default function RequestDetailPage() {
               </>
             )}
 
+            {/* ⭐ **ก้าวนี้บังคับวันเมื่อมันคือการรับเรื่องของทั้งใบ** (ผลตรวจรอบ 12 · ค-2) —
+                ใบที่ยัง `pending` อยู่ การกดรับเรื่องที่แถวคือการรับเรื่องทั้งใบ ⇒ ต้องผูก
+                วันเหมือนปุ่มระดับใบ · ใบที่รับเรื่องไปแล้วมีวันของใบอยู่แล้ว วันของแถว
+                จึงเป็นของเสริม ไม่บังคับ
+                ⚠️ ป้ายกับด่านต้องพูดตรงกัน — server ตีกลับด้วย `acknowledgeRequestError`
+                ตัวเดียวกับปุ่มระดับใบ ⇒ จางปุ่มไว้ก่อนดีกว่าปล่อยให้กดแล้วเด้ง 409 */}
             {hopDraft.hop === "ack" && (
               <div className="form-group">
-                <label htmlFor="hop-due">รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)</label>
+                <label htmlFor="hop-due">
+                  {ackDueRequired ? "รับปากว่าจะส่งวันไหน" : "รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)"}
+                </label>
                 <DateInput
                   id="hop-due" value={hopDraft.dueAt} disabled={saving}
                   onChange={(v) => setHopDraft({ ...hopDraft, dueAt: v })}
                 />
                 <p className={styles.fieldHint}>
-                  ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง
+                  {ackDueRequired
+                    ? "กดที่แถวนี้ = รับเรื่องทั้งใบ — ต้องผูกวันเหมือนกดรับเรื่องที่ใบ"
+                    : "ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง"}
                 </p>
               </div>
             )}

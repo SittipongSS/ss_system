@@ -28,6 +28,7 @@ import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
+import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
@@ -92,6 +93,22 @@ export async function PATCH(request, { params }) {
   // (ส่งเอกสารการเงินต้องมีเลขที่ · B-3) · รับจาก client เมื่อไรก็ข้ามด่านได้ทันที
   const valueError = hopValuesError(hop, body, { lineKind: row.lineKind });
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
+
+  // ── ก้าว `ack` ที่ทำให้ทั้งใบเปลี่ยนเป็น "รับเรื่องแล้ว" ต้องผ่านกฎของใบ ──────
+  //
+  // 🐞 **กฎที่เคยถูกข้ามทางแถว** (ผลตรวจรอบ 12 · ค-2) — ปุ่มระดับใบบังคับวันกำหนดส่ง
+  // ทุกหัวข้อ (`requestRequiresCommittedDue` คืน true เสมอ · เหตุผลเขียนไว้ที่
+  // `stages.js`: *"ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า"*) แต่ก้าวรายแถวเขียนสถานะเอง
+  // โดยไม่ผ่านด่านนั้น ⇒ ได้ใบ `acknowledged` ที่ไม่มีวันที่รับปาก ซึ่งเป็นตัวเลขที่
+  // ทุกรายงาน "เลยกำหนด" ยืนอยู่บนมัน
+  //
+  // ⚠️ **บังคับเฉพาะก้าวที่ดันใบจาก `pending`** — แถวของใบที่รับเรื่องไปแล้วยังใส่
+  // `dueAt` เป็นวันของแถวได้ตามเดิม (ไม่บังคับ) เพราะใบมีวันที่รับปากอยู่แล้ว
+  const committedDueDate = String(body.dueAt ?? '').trim() || null;
+  if (hop === 'ack' && before.status === 'pending') {
+    const ackError = acknowledgeRequestError(before, { committedDueDate });
+    if (ackError) return Response.json({ error: ackError }, { status: 409 });
+  }
 
   // ── ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียวกัน (P4b) ──
   //
@@ -215,6 +232,9 @@ export async function PATCH(request, { params }) {
       headPatch.acknowledgedById = user?.id ?? null;
       headPatch.acknowledgedByName = user?.name ?? null;
       headPatch.acknowledgedAt = nowIso;
+      // ⭐ **วันของแถวกลายเป็นวันที่รับปากของทั้งใบ** — ก้าวนี้คือ "รับเรื่อง" ของใบ
+      // จริง ๆ ⇒ ต้องผ่านกฎชุดเดียวกับปุ่มระดับใบ ไม่ใช่กฎที่ก๊อปมาไว้ตรงนี้
+      headPatch.committedDueDate = committedDueDate;
     }
     // ตอบครบทุกแถว → ใบเป็น answered เอง (กลไกเดิม ไม่แก้)
     const after = await findRequest(supabase, id);
