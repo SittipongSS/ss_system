@@ -14,13 +14,16 @@
 }
 
 /* หลักฐานปิดการขาย — แถวเดียว ไม่ใช่ตาราง 4 ช่อง */
+/* 🪤 **ห้ามใส่ `border-bottom` ที่นี่** — กล่องตารางข้างล่างมีขอบ 1px มุมมน 13px
+   ของตัวเองอยู่แล้ว (`.scroll[data-surface]` ของ Table.module.css) และขอบล่างของ
+   แถวนี้ตกลงตรงขอบบนของกล่องพอดี ⇒ เส้นซ้อนกันเป็น 2px แล้วเส้นตรงพาดข้ามมุมมน
+   หัวตารางเลยอ่านเหมือนถูกกดชิดเส้นหนา · เว้นที่ด้วย padding อย่างเดียวพอ */
 .won {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-1-5) var(--space-3);
   padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
 }
 .wonLabel { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
 .wonValue { min-width: 0; color: var(--text); font-size: var(--fs-6); }
