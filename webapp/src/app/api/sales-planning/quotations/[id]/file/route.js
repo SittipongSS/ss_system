@@ -4,9 +4,10 @@
 // public Supabase Storage ยัง redirect URL เดิมเพื่อ backward compatibility.
 // ?i=<index> ชี้ไฟล์ในอาเรย์ wonAttachments (default 0).
 import { Readable } from 'node:stream';
+import { loadScoped } from '@/lib/scopedRow';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
 
 export const runtime = 'nodejs';
@@ -20,17 +21,10 @@ export async function GET(request, { params }) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: quote, error: quoteError } = await supabase
-    .from('quotations')
-    .select('id, dealId, wonAttachments')
-    .eq('id', id)
-    .maybeSingle();
-  if (quoteError) return Response.json({ error: quoteError.message }, { status: 500 });
-  if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
-
-  const { data: deal, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
-  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-  if (!deal || !inSalesViewScope(user, deal)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  // ⭐ โหลดใบ + ดีลเจ้าของ + ตรวจ view-scope ในคำสั่งเดียว (`loadScoped` join ดีลมาให้)
+  // — เดิมยิงสองรอบแล้วตรวจทีหลัง ซึ่งเป็นรูปที่ "โหลดแล้วลืมตรวจ" เขียนออกได้
+  const { row: quote, response } = await loadScoped(supabase, 'quotations', id, user, 'view');
+  if (response) return response;
 
   const list = Array.isArray(quote.wonAttachments) ? quote.wonAttachments : [];
   const idx = Number(new URL(request.url).searchParams.get('i')) || 0;
