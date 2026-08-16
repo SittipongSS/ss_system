@@ -20,7 +20,8 @@ test('ทะเบียนครอบคลุมคอลัมน์ pdr* �
   // 29 ช่องของ 0214/0218 + 5 ชื่อผู้เซ็นของ 0221 (ม-45)
   // + 3 ของ 0227: หมวดสินค้าหลายรายการ · "อื่น ๆ" ของบรรจุภัณฑ์และเอกสาร
   // + 1 ของ 0228: หัวน้ำหอมนำไปใช้กับอะไร
-  assert.equal(PDR_COLUMNS.length, 38);
+  // + 1 ของ 0261: AE Supervisor ย้ายจาก `approvedByName` มาเป็นชื่อบนกระดาษ (ม-124)
+  assert.equal(PDR_COLUMNS.length, 39);
 });
 
 test('ชื่อผู้เซ็นเป็นช่องบนกระดาษ ไม่ใช่ role — ป้ายตรงกับตารางลายเซ็นของ FM-RD-01', () => {
@@ -28,7 +29,11 @@ test('ชื่อผู้เซ็นเป็นช่องบนกระ�
   // แล้วฟอร์ม จอ และกระดาษเปลี่ยนพร้อมกัน (สะกดซ้ำเมื่อไรก็เพี้ยนกันเมื่อนั้น)
   const signers = PDR_SECTIONS.find((s) => s.key === 'signers');
   assert.ok(signers, 'ต้องมีหมวดผู้เซ็น');
+  // ⚠️ **ลำดับนี้คือลำดับแถวบนกระดาษ** — `SIGN_ROWS` ต่อท้าย AE ด้วยชุดนี้ตรง ๆ
+  // ⭐ AE Supervisor อยู่หัวชุด (ม-124) — เดิมเป็นแถวที่ระบบเติมจาก `approvedByName`
+  // ซึ่งตายไปกับประตูหัวหน้า (ม-121) แล้วพิมพ์ `N/A` ค้างทุกใบโดยกรอกไม่ได้
   assert.deepEqual(signers.fields.map((f) => f.label), [
+    'Account Executive Supervisor',
     'Sale & Marketing Manager',
     'Perfumer',
     'Product Development Chemist',
@@ -233,6 +238,29 @@ test('⭐ ไม่มีจอไหนเขียนป้ายของต�
     const src = readFileSync(file, 'utf8');
     for (const text of DRIFTED) assert.ok(!src.includes(text), `${file}: ยังมี "${text}"`);
   }
+});
+
+test('🐞 แถวลายเซ็น AE Supervisor อ่านจากช่องที่กรอกได้ ไม่ใช่คอลัมน์ที่ตายแล้ว (ม-124)', () => {
+  // 🐞 **ของจริงที่เกิดแล้ว** — แถวนี้เคยผูกกับ `approvedByName` ของประตูหัวหน้า
+  // (mig 0216) · ถอดขั้นนั้นทั้งขั้นใน ม-121 แล้วไม่มีใครเขียนคอลัมน์นั้นอีก ⇒
+  // `cell()` เจอค่าว่างแล้วพิมพ์ `N/A` **ค้างทุกใบ** และไม่มีช่องไหนบนฟอร์มกรอกได้
+  // ⇒ ด่านนี้กันไม่ให้แถวลายเซ็นถูกผูกกลับไปหาคอลัมน์ที่ระบบไม่ได้เขียนแล้ว
+  const doc = (request) => renderPdrDocument({ request, briefs: [], company: {}, form: {} });
+
+  // กรอกแล้วต้องขึ้นชื่อที่กรอก
+  const filled = doc({
+    docNo: 'SB-26080001', status: 'acknowledged',
+    pdrSignAeSupervisor: 'สมชาย ทดสอบ',
+    // ⚠️ ค่าเก่าของประตูที่ถอดไปแล้ว — ต้อง **ไม่** ถูกหยิบมาใช้
+    approvedByName: 'หัวหน้าคนเก่า',
+  });
+  assert.ok(filled.includes('สมชาย ทดสอบ'), 'ชื่อที่กรอกต้องขึ้นบนกระดาษ');
+  assert.ok(!filled.includes('หัวหน้าคนเก่า'),
+    'กระดาษต้องไม่อ่าน approvedByName อีก — ขั้นนั้นถูกถอดไปแล้ว (ม-121)');
+
+  // ไม่กรอก = N/A เหมือนแถวผู้เซ็นอื่นที่เว้นว่าง (ไม่ใช่ค้างเพราะไม่มีที่กรอก)
+  const blank = doc({ docNo: 'SB-26080002', status: 'acknowledged' });
+  assert.ok(blank.includes('Account Executive Supervisor'), 'แถวต้องยังอยู่บนกระดาษ');
 });
 
 test('เอกสารพิมพ์ป้ายไทยของ enum ไม่ใช่รหัสในระบบ', () => {
