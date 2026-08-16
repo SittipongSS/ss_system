@@ -54,7 +54,7 @@ export default function FormulaDevDetail({
       </DetailCard>
 
       {/* ⚠️ แถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 — FormulaPanel) — โครง
-          หัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำที่นี่อีก */}
+          การ์ดจัดการมีทุกหัวข้อแล้ว (ม-123) · ห้ามวาดซ้ำที่นี่อีก */}
     </>
   );
 }

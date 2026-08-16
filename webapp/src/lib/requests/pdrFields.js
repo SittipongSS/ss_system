@@ -334,8 +334,15 @@ export const PDR_SECTIONS = [
     // ── ผู้เซ็นบนเอกสาร (ม-45 · mig 0221) ────────────────────────────────
     //
     // ⭐ **ชื่อบนกระดาษ ไม่ใช่ role ในระบบ** (มติผู้ใช้: "ตำแหน่งบนเอกสารก่อน
-    // ยังไม่ต้องเป็น role จริง") — ตารางลายเซ็นของ FM-RD-01 มี 7 แถว ระบบรู้จริง
-    // แค่ AE (คนเปิดใบ) กับ AE Supervisor (ประตูหัวหน้า) อีก 5 แถวพิมพ์เป็นเส้นว่าง
+    // ยังไม่ต้องเป็น role จริง") — ตารางลายเซ็นของ FM-RD-01 มี 7 แถว
+    //
+    // ⚠️ **AE Supervisor ย้ายมาอยู่ชุดนี้แล้ว** (ม-124 · mig 0261) — เดิมอ่านจาก
+    // `approvedByName` ของประตูหัวหน้า (mig 0216) ซึ่งถูกถอดทั้งขั้นใน ม-121 ⇒
+    // คอลัมน์นั้นไม่มีใครเขียนอีก แถวเลยพิมพ์ `N/A` ค้างทุกใบและกรอกไม่ได้เลย
+    // ⇒ ระบบรู้จริงเหลือแถวเดียว: AE (คนเปิดใบ) · ที่เหลือเป็นชื่อบนกระดาษทั้งหมด
+    //
+    // ⚠️ **ลำดับในอาร์เรย์นี้คือลำดับแถวบนกระดาษ** — `SIGN_ROWS` ใน pdrDocument.js
+    // ต่อท้าย AE ด้วยชุดนี้ตรง ๆ ⇒ สลับที่นี่แล้วกระดาษสลับตาม
     //
     // ⚠️ **ไม่มีช่องไหนบังคับ และไม่บล็อกการปิดเรื่อง** — ใครยังไม่เซ็นก็เว้นไว้
     // แล้วเซ็นมือบนกระดาษได้เหมือนเดิม
@@ -343,6 +350,7 @@ export const PDR_SECTIONS = [
     title: 'ผู้เซ็นบนเอกสาร',
     note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
     fields: [
+      { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', type: 'text' },
       { key: 'signSalesManager', column: 'pdrSignSalesManager', max: 200, label: 'Sale & Marketing Manager', type: 'text' },
       { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', type: 'text' },
       { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', type: 'text' },

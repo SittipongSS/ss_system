@@ -35,7 +35,7 @@ export default function DocumentDetail({
   return (
     <>
       {/* ⚠️ แถบอ้างอิง QT/SO/FG กับแถบตัวเลข **ย้ายไปการ์ด panel ขวา** (ม-94 —
-          DocumentPanel) — โครงหัวข้อนี้เปิดธง detailControlPanel · ห้ามวาดซ้ำ
+          DocumentPanel) — การ์ดจัดการมีทุกหัวข้อแล้ว (ม-123) · ห้ามวาดซ้ำ
           ที่นี่อีก (บทเรียนรางขวารุ่นแรก: ของซ้ำสองที่คือเหตุที่มันถูกยุบ) */}
       <DocumentBoard rows={board} renderStep={renderStep} />
 

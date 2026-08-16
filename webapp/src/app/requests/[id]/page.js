@@ -12,7 +12,7 @@ import {
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
-import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
@@ -27,7 +27,7 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
-import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
+import SalesDetailOverview from "@/components/ui/DetailOverview";
 import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/requests/RequestEditableFields";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
