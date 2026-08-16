@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { stripDriveMetadata } from '@/lib/master/googleDocs';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
 import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
@@ -144,7 +145,13 @@ export async function PATCH(request, { params }) {
 
   // merge ไม่ทับทั้งก้อน — ฝั่งจอส่งมาทีละช่อง (เช่นแก้เฉพาะวันที่) ไม่ควรลบแท็ค
   // อื่นที่คนอื่นกรอกไว้ทิ้งไปด้วย
-  const merged = { ...(att.metadata || {}), ...metadata };
+  //
+  // ⚠️ **ตัดคีย์ของ Drive ออกจากฝั่ง client ก่อน merge** (ผลตรวจรอบ 13 · ค-1) — เส้นนี้
+  // อันตรายกว่า POST ด้วยซ้ำ: แถวที่มีอยู่แล้วยังไม่ใช่เอกสารมีชีวิต แต่ PATCH ยัด
+  // `kind`/`googleFileId` เข้าไปทีหลังได้ ⇒ ครั้งถัดไปที่มีคนเปิดรายการไฟล์แนบ ระบบจะ
+  // ไปแชร์ไฟล์ Drive ตาม id ที่ยัดไว้ · ของเดิมบนแถว (`att.metadata`) ไม่ถูกแตะ
+  // เพราะมันมาจาก Drive ตอนสร้าง ไม่ได้มาจากคำขอนี้
+  const merged = { ...(att.metadata || {}), ...stripDriveMetadata(metadata) };
   const { data, error } = await supabase
     .from('attachments').update({ metadata: merged }).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });

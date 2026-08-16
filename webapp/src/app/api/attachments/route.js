@@ -6,7 +6,9 @@ import { canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow 
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { attachmentUrlErrorForEnv } from '@/lib/master/attachmentStorage';
-import { GoogleDocError, buildGoogleAttachment, googleDocsEnvError, workspaceEmail } from '@/lib/master/googleDocs';
+import {
+  GoogleDocError, buildGoogleAttachment, googleDocsEnvError, stripDriveMetadata, workspaceEmail,
+} from '@/lib/master/googleDocs';
 import { hasFolderBranch } from '@/lib/master/driveEntityMap';
 import { ATTACHMENT_ENTITY_TYPES, ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { appendUpdate as appendMgmtUpdate } from '@/lib/mgmt/repo';
@@ -197,11 +199,15 @@ export async function POST(request) {
     // รายละเอียด/แท็คเพิ่มเติม (เลขใบเสร็จ/วันที่/ยอด/อ้างอิงออเดอร์ ฯลฯ).
     // รับเฉพาะ plain object — ป้องกัน array/ค่าแปลกปลอม.
     //
-    // ⚠️ `kind`/`googleFileId` ของเอกสารมีชีวิตต้องมาจาก Drive เท่านั้น — วางทับ
-    // ของที่ client ส่งมา ไม่งั้นตั้ง kind ปลอมให้แถวไฟล์ธรรมดาแล้วหน้าเว็บจะ
-    // เอาไปประกอบเป็นลิงก์ /preview ของ Google ตามค่าที่ client บอก
+    // ⚠️ `kind`/`googleFileId` ของเอกสารมีชีวิตต้องมาจาก Drive เท่านั้น
+    //
+    // 🐞 **เดิมวางทับด้วย spread ซึ่งกันได้แค่ครึ่งเดียว (ผลตรวจรอบ 13 · ค-1)** —
+    // การวางทับเกิดเฉพาะตอน `googleFile` มีค่า คือเฉพาะสาขาที่สร้าง/ผูกผ่าน Drive จริง ·
+    // สาขาไฟล์ธรรมดา `googleFile` เป็น null ⇒ **ไม่มีอะไรมาทับ ค่าจาก client อยู่ครบ**
+    // แล้วแถวไฟล์ธรรมดากลายเป็น "เอกสารมีชีวิต" ปลอมที่พาให้ระบบไปแชร์ไฟล์ Drive
+    // ตาม id ที่ client เลือก ⇒ ตัดทิ้งก่อนเสมอ ไม่พึ่งการวางทับ
     metadata: {
-      ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+      ...stripDriveMetadata(metadata),
       ...(googleFile ? googleFile.metadata : {}),
     },
   };
