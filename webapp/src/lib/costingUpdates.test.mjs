@@ -26,6 +26,25 @@ test('คำร้อง: ทุก action คืน kind ที่ประก�
   assert.equal(askActionUpdate('submit', null), null);
 });
 
+// 🐞 หัวข้อที่ **ฝ่ายปลายทางสร้างแถวตอนส่งงาน** (พัฒนากลิ่น) ไม่มีแถวตอนยื่น ⇒ บรรทัด
+// แรกของเธรดเคยขึ้นว่า "ส่งเคสถึงฝ่าย RD — 0 รายการ" ทุกใบ ซึ่งอ่านเหมือนข้อมูลหาย
+// ไม่ใช่ชนิดที่ยังไม่มีแถวตั้งแต่แรก · หัวข้อที่ผู้ขอกรอกแถวเองต้องยังนับรายการเหมือนเดิม
+test('บรรทัดแรกของเธรดต้องเล่าของที่ส่งไปจริง ไม่ใช่ "0 รายการ"', () => {
+  const scent = askActionUpdate('submit', {
+    dept: 'RD', kind: 'scent_dev', items: [], briefs: [{ brief: 'a' }, { brief: 'b' }],
+  });
+  assert.match(scent.body, /บรีฟ 2 ก้อน/);
+  assert.doesNotMatch(scent.body, /0 รายการ/);
+
+  // ยังไม่มีบรีฟเลย = ไม่ต้องมีเลข ดีกว่าเลขศูนย์
+  const bare = askActionUpdate('submit', { dept: 'RD', kind: 'scent_dev', items: [], briefs: [] });
+  assert.doesNotMatch(bare.body, /\d/);
+
+  // หัวข้อที่ผู้ขอกรอกแถวเอง (ขอราคาวัสดุ) นับรายการตามเดิม
+  const priced = askActionUpdate('submit', { dept: 'PC', kind: 'info', items: [{}, {}, {}] });
+  assert.match(priced.body, /3 รายการ/);
+});
+
 // ── ทุก action ของ PATCH คำร้องต้องมีที่ลงในเธรด ──────────────────────
 //
 // 🐞 ตรวจ 2026-08-09: `reschedule` · `approve` · `update` · `pdr` **ไม่มีแถวลงเธรด

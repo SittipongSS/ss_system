@@ -8,8 +8,10 @@ import { readFileSync } from 'node:fs';
 import {
   PDR_COLUMNS, PDR_FIELDS, PDR_FRAGRANCE_OIL_CODE, PDR_SECTIONS,
   pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrIsArrayField,
+  pdrRailSections, pdrRailSectionsFromRequest,
   pdrSectionGroups, pdrSectionRows, pdrValuesFrom,
 } from './pdrFields.js';
+import { pdrTargetValuesFrom } from './pdrTargets.js';
 import { normalizePdr } from './pdr.js';
 import { renderPdrDocument } from './pdrDocument.js';
 
@@ -531,4 +533,59 @@ test('⭐ เลือกหมวดหัวน้ำหอมแล้วช�
   // เลือกหลายหมวดโดยมีหัวน้ำหอมอยู่ด้วย ก็ต้องโผล่
   assert.equal(pdrFieldVisible(field, { productKinds: ['01-003', PDR_FRAGRANCE_OIL_CODE] }), true);
   assert.equal(pdrFieldVisible(field, {}), false);
+});
+
+// ── รางหมวด: เกจอันเดียว เลขชุดเดียว ─────────────────────────────────────
+//
+// 🐞 ตรวจ 2026-08-17 (SB-26080002): รางฝั่งอ่านกับฝั่งแก้เป็นคนละฟังก์ชัน นับคนละแบบ
+// ⇒ กดปุ่ม "แก้ไข" แล้วเลขเปลี่ยนใต้ตาคน — ข้อมูลคำขอ 6/8 → 1/1 · ลูกค้า 14/18 → 9/12
+// · สเปก 6/13 → 4/10 · และป้ายหมวดก็คนละชุด (ฝั่งอ่านมีเลขนำ ฝั่งแก้ไม่มี)
+test('⭐ รางหมวด PDR: โหมดอ่านกับโหมดแก้ต้องได้ป้ายและเลขชุดเดียวกัน', () => {
+  const row = {
+    pdrRequestType: 'new_product',
+    pdrCustomerKind: 'existing',
+    pdrSignPerfumer: 'คุณเอ',
+    targets: [{ categoryCode: '01-003', fOn: true, fPricePerKg: '1200' }],
+  };
+  const briefs = [{ brief: 'สดชื่น' }, { brief: '' }];
+
+  const read = pdrRailSectionsFromRequest(row, briefs, row.targets);
+  // ปุ่ม "แก้ไข" เปิดโหมดแก้ด้วยตัวแปลงชุดนี้เป๊ะ (ดู /requests/[id] · action `edit`)
+  const edit = pdrRailSections(
+    pdrValuesFrom(row), briefs, row.targets.map(pdrTargetValuesFrom),
+  );
+  assert.deepEqual(read, edit);
+});
+
+test('⭐ ตัวหารของเกจต้องไม่นับช่องที่คนกรอกแตะไม่ได้', () => {
+  // ใบ New Product: "รหัสสินค้า/ลูกค้าก่อนหน้า" ซ่อนตาม `showFor` ⇒ กรอกไม่ได้ตลอดกาล
+  // และช่อง `derived` ระบบเติมให้เอง ⇒ ทั้งสองอย่างอยู่ในตัวหารไม่ได้ ไม่งั้นหมวดนี้
+  // ค้างที่ 6/8 ตลอดไปและจุดสีไม่มีวันเขียว ทั้งที่ผู้ใช้กรอกครบทุกช่องของตัวเองแล้ว
+  const section = pdrRailSectionsFromRequest({ pdrRequestType: 'new_product' }, [], [])
+    .find((s) => s.key === 'request');
+  assert.equal(section.count.total, 1);
+  assert.equal(section.count.filled, 1);
+
+  // เปลี่ยนเป็น Product Modification แล้วช่องนั้นถึงจะนับ
+  const modified = pdrRailSectionsFromRequest({ pdrRequestType: 'modification' }, [], [])
+    .find((s) => s.key === 'request');
+  assert.equal(modified.count.total, 2);
+});
+
+test('หมวดที่ไม่มีช่องบังคับต้องประกาศ `optional` — รางจะได้ไม่ขึ้น 0/6 เหมือนงานค้าง', () => {
+  const signers = pdrRailSectionsFromRequest({}, [], []).find((s) => s.key === 'signers');
+  assert.equal(signers.count.optional, true);
+  // หมวดที่มีช่องบังคับจริงต้องไม่ติดธงนี้
+  const spec = pdrRailSectionsFromRequest({}, [], []).find((s) => s.key === 'request');
+  assert.ok(!spec.count.optional);
+});
+
+test('เลขนำหน้าหมวดมาจากลำดับใน PDR_SECTIONS — บรีฟกลิ่นไม่มีเลข', () => {
+  const rail = pdrRailSectionsFromRequest({}, [], []);
+  assert.deepEqual(rail.map((s) => s.key), [
+    'request', 'customer', 'briefs', 'spec', 'regulatory', 'signers',
+  ]);
+  assert.equal(rail[0].label, `1 ${PDR_SECTIONS[0].title}`);
+  assert.equal(rail[2].label, 'บรีฟกลิ่น');
+  assert.equal(rail[5].label, `5 ${PDR_SECTIONS[4].title}`);
 });

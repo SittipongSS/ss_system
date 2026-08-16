@@ -37,7 +37,8 @@ import DocumentLines from "@/components/requests/DocumentLines";
 import { RequestDueUrgentFields, RequestTitleBodyFields } from "./RequestEditableFields";
 import TeamPickerField from "@/components/ui/TeamPickerField";
 import { userTeams } from "@/lib/permissions";
-import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
+import PdrForm from "@/components/requests/PdrForm";
+import { pdrRailSections } from "@/lib/requests/pdrFields";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
