@@ -32,11 +32,29 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
 // ฝั่ง server ตอนตรึง snapshot ส่งค่าที่ตรึงไว้ใน evidence มา; ไม่ส่ง = ใช้ค่าสำรอง
 export function buildSalesOrderPrintHTML(order, company = null, standard = null) {
   const quotation = order.quotation || {};
+  /* อัตรา VAT ที่พิมพ์บนใบ — **เอาของใบเสนอราคาต้นทางก่อนเสมอ**
+     (กติกาเดียวกับ discountType/discountValue ข้างล่างที่ดึงจาก quotation ด้วยเหตุผลเดียวกัน:
+     sales_orders ไม่เก็บช่องนี้ แต่ป้ายบนกระดาษต้องตรงกับใบที่ลูกค้าถือคู่กัน)
+
+     🐞 **พบตอนตรวจระบบ 2026-08-16:** เดิมคิดย้อนจากยอดเงินอย่างเดียว
+     (`vatAmount ÷ (total − vat)`) ⇒ ใบที่ฐานภาษีเป็น 0 — ใบยอดศูนย์ และใบที่ให้ฟรีด้วย
+     ส่วนลดเต็มจำนวน ซึ่งเป็นสถานะที่ระบบรองรับโดยตั้งใจ (มติ 2026-08-03 · #1271) —
+     ตัวหารเป็น 0 แล้วตกไปทาง `: 0` ⇒ **พิมพ์ "VAT 0%" ขณะที่ใบเสนอราคาพิมพ์ "VAT 7%"**
+     วัดกับข้อมูลจริงตอนพบ: 10 จาก 18 ใบสั่งขายอยู่ในสภาพนี้
+
+     ยอดเงินไม่เคยผิด (ทั้งคู่พิมพ์ VAT 0.00) — ที่ขัดกันคือป้ายอัตรา ซึ่งอยู่บนเอกสารที่
+     ส่งถึงลูกค้า · ของฟรีก็ยังเป็น "7% ของ 0 บาท" ไม่ใช่ "0%"
+
+     ⚠️ ยังคงทางคิดย้อนไว้เป็นตัวสำรอง — ใบเก่าที่ไม่ได้ผูกใบเสนอราคา (หรือ quotation
+     โหลดมาไม่ครบ) ต้องพิมพ์ได้เหมือนเดิม ไม่ใช่ตกไปเป็น 0% */
   const taxableAmount = Math.max(0, Number(order.totalAmount || 0) - Number(order.vatAmount || 0));
-  // อัตรา VAT คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
-  const vatRate = taxableAmount > 0
-    ? Math.round((Number(order.vatAmount || 0) / taxableAmount) * 10000) / 100
-    : 0;
+  const quotedVatRate = Number(quotation.vatRate);
+  const vatRate = Number.isFinite(quotedVatRate) && quotation.vatRate != null
+    ? quotedVatRate
+    // คิดย้อนจากยอดเงิน (ปัดเป็นสตางค์แล้ว) — ปัด 2 ตำแหน่งกัน float noise
+    : (taxableAmount > 0
+      ? Math.round((Number(order.vatAmount || 0) / taxableAmount) * 10000) / 100
+      : 0);
   const statusLabel = STATUS_LABELS[order.status] || order.status || '-';
   const notes = [order.notes, order.approvalNote ? `หมายเหตุการอนุมัติ: ${order.approvalNote}` : null]
     .filter(Boolean)
