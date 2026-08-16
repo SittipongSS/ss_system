@@ -334,7 +334,16 @@ export async function POST(request, { params }) {
   // เขียนพลาดจุดไหนเก็บเป็น warning ส่งกลับ (ไม่มี transaction — แนวเดียวกับ route
   // สหมิตรอื่น แต่ต้องไม่เงียบ ให้ผู้ใช้/แอดมินรู้ว่าต้องตามเก็บอะไร)
   const writeWarnings = [];
-  const chk = (res, what) => { if (res?.error) writeWarnings.push(`${what}: ${res.error.message}`); };
+  /* 🐞 **แก้ 2026-08-16:** `chk` เดิมแค่ *บันทึกคำเตือน* แล้วโค้ดเดินต่อเหมือนเขียนสำเร็จ
+     ⇒ ตัวนับ `movedQty` บวกไปแม้ย้าย junction ล้ม แล้วเอาไปตัดสิน `closeAsMerged`
+     ⇒ **ดีลต้นทางถูกปิดทั้งที่ allocation ยังผูกอยู่กับมัน** ⇒ ยอดพยากรณ์ก้อนนั้นหายจาก
+     ท่อ (ดีลรวมไม่มี ต้นทางปิดแล้ว) · คำเตือนบอกว่ามีอะไรล้ม แต่มาช้าไปหนึ่งจังหวะ
+     — ปิดไปแล้ว คนอ่านต้องไปตามแก้ข้อมูล ไม่ใช่แค่กดใหม่
+     ⇒ ตอนนี้คืน true/false ให้ผู้เรียกตัดสินใจได้ว่าจะเดินต่อหรือไม่ */
+  const chk = (res, what) => {
+    if (res?.error) { writeWarnings.push(`${what}: ${res.error.message}`); return false; }
+    return true;
+  };
   const byCreated = (a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id));
   const mergedSourceIds = [];
   const partialSourceIds = [];
@@ -343,13 +352,20 @@ export async function POST(request, { params }) {
     const rowsAll = [...op.links].sort(byCreated);
 
     let closeAsMerged = false;
+    // ⚠️ มีแถวไหนย้ายไม่สำเร็จ = **ห้ามปิดดีลต้นทาง** — allocation ยังอยู่กับมัน
+    // ปล่อยเปิดไว้พร้อมคำเตือน แล้วให้คนกดยืนยันซ้ำ (route นี้ข้ามบรรทัดที่ settle แล้ว
+    // อยู่แล้ว) ดีกว่าปิดทิ้งแล้วยอดหายไปจากท่อโดยไม่มีใครเห็น
+    let allMoved = true;
     if (op.whole) {
       // 'ทั้งดีล' = ยุบทั้งดีล → junction ทุกแถว (ทุก fg เต็มจำนวน) ตามไปดีลรวม
       // ไม่ทิ้ง allocation ค้างบนดีลที่ปิด
       for (const row of rowsAll) {
-        chk(await supabase.from('sales_deal_forecast_lines').update({ dealId: merged.id }).eq('id', row.id), `ย้าย junction ${row.id}`);
+        if (!chk(await supabase.from('sales_deal_forecast_lines').update({ dealId: merged.id }).eq('id', row.id), `ย้าย junction ${row.id}`)) {
+          allMoved = false;
+        }
       }
-      closeAsMerged = true;
+      if (!allMoved) writeWarnings.push(`ดีล "${d.title}" ยังเปิดอยู่ (ย้ายพยากรณ์ไม่ครบ) — กดยืนยันซ้ำอีกครั้ง`);
+      closeAsMerged = allMoved;
     } else {
       // 'แบ่ง': ย้ายเท่าที่ PO ครอบ (ต่อ fg, first-come ตามลำดับสร้าง)
       let movedQty = 0;
@@ -362,11 +378,15 @@ export async function POST(request, { params }) {
           const alloc = Number(row.qtyAllocated || 0);
           const take = Math.min(alloc, need);
           if (take <= 0) continue;
+          let rowMoved;
           if (take >= alloc) {
-            chk(await supabase.from('sales_deal_forecast_lines').update({ dealId: merged.id }).eq('id', row.id), `ย้าย junction ${row.id}`);
+            rowMoved = chk(await supabase.from('sales_deal_forecast_lines').update({ dealId: merged.id }).eq('id', row.id), `ย้าย junction ${row.id}`);
           } else {
-            chk(await supabase.from('sales_deal_forecast_lines').update({ qtyAllocated: alloc - take }).eq('id', row.id), `ลด junction ${row.id}`);
-            chk(await supabase.from('sales_deal_forecast_lines').insert({
+            /* แบ่งแถว = ลดของเดิม + เพิ่มแถวใหม่ให้ดีลรวม · **ต้องสำเร็จทั้งคู่**
+               ⚠️ ลดสำเร็จแต่เพิ่มล้ม = จำนวนหายไปจากระบบทั้งก้อน (ต้นทางถูกหักแล้ว
+               ดีลรวมไม่ได้รับ) — ร้ายกว่าย้ายไม่สำเร็จเฉย ๆ จึงต้องนับเป็นล้มด้วย */
+            const cut = chk(await supabase.from('sales_deal_forecast_lines').update({ qtyAllocated: alloc - take }).eq('id', row.id), `ลด junction ${row.id}`);
+            const add = chk(await supabase.from('sales_deal_forecast_lines').insert({
               id: genId('SDF'),
               dealId: merged.id,
               forecastLineId: row.forecastLineId,
@@ -377,8 +397,10 @@ export async function POST(request, { params }) {
               createdById: user.id || null,
               createdByName: user.name || null,
             }), `เพิ่ม junction ดีลรวม (${row.fgCode})`);
+            rowMoved = cut && add;
           }
           need -= take;
+          if (!rowMoved) { allMoved = false; continue; } // ล้ม = ไม่นับว่าย้ายแล้ว
           movedQty += take;
           movedValue += take * priceOf(row.fgCode);
         }
@@ -386,9 +408,14 @@ export async function POST(request, { params }) {
       // ปิดต้นทางเฉพาะเมื่อไม่เหลือ allocation "สักสินค้าเดียว" — ดีล multi-fg ที่
       // สินค้าอื่นยังมี demand ค้างต้องเปิดต่อ ไม่ใช่โดนปิดทั้งดีล
       const totalAllocAll = rowsAll.reduce((sum, r) => sum + Number(r.qtyAllocated || 0), 0);
-      if (movedQty >= totalAllocAll) {
+      // `movedQty` นับเฉพาะแถวที่ย้ายสำเร็จจริงแล้ว (ดู rowMoved) ⇒ ตัวเลขนี้เชื่อได้
+      if (allMoved && movedQty >= totalAllocAll) {
         closeAsMerged = true;
       } else {
+        /* ⚠️ เหลือ allocation จริง ๆ (ดีลหลายสินค้า) กับ "ย้ายไม่สำเร็จ" ต่างกันคนละเรื่อง
+           — กรณีหลังต้องบอกตรง ๆ ว่าดีลนี้ถูกปล่อยเปิดไว้ *เพราะเขียนล้ม* ไม่งั้นคนอ่าน
+           คำเตือนจะไม่รู้ว่าต้องกดยืนยันซ้ำ */
+        if (!allMoved) writeWarnings.push(`ดีล "${d.title}" ยังเปิดอยู่ (ย้ายพยากรณ์ไม่ครบ) — กดยืนยันซ้ำอีกครั้ง`);
         const newValue = Math.max(0, toMoney(Number(d.projectValue || 0) - movedValue));
         chk(await supabase.from('sales_deals').update({
           projectValue: newValue,
