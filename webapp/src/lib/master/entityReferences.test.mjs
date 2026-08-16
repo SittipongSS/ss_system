@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   CUSTOMER_REFERENCE_TABLES, CUSTOMER_REFERENCE_TABLE_NAMES, findCustomerReferences,
-} from './customerReferences.js';
+  REFERENCE_REGISTRY, referenceTableNames, findEntityReferences,
+} from './entityReferences.js';
 
 // supabase ปลอม: rows = { ตาราง: [แถว...] }
 function fakeDb(rows, { failOn = null } = {}) {
@@ -96,4 +97,50 @@ test('ยิงครบทุกตารางในทะเบียน — 
   const db = fakeDb({});
   await findCustomerReferences(db, 'CUS-1');
   assert.deepEqual([...db.seen].sort(), [...CUSTOMER_REFERENCE_TABLE_NAMES].sort());
+});
+
+// ── สินค้า (เพิ่ม 2026-08-16) ──────────────────────────────────────────────
+test('ทะเบียนสินค้าต้องครอบตารางที่เคยตกหล่นจนบรรทัดเอกสารเสียสายเชื่อม', () => {
+  const names = referenceTableNames('product');
+  for (const t of [
+    // สามตัวที่ด่านเดิมตรวจ
+    'project_products', 'order_items', 'excise_registrations',
+    // ที่ตกหล่น — ทุกตัวมีข้อมูลจริงอยู่บนฐาน
+    'quotation_lines', 'sales_order_lines', 'dept_requests',
+    'sahamit_forecast_lines', 'sahamit_po_lines', 'production_jobs',
+  ]) {
+    assert.ok(names.includes(t), `ทะเบียนสินค้าขาด ${t}`);
+  }
+});
+
+test('สมุดประวัติราคาต้องอยู่ในลิสต์ยกเว้น พร้อมเหตุผล — ไม่ใช่ตัวบล็อกการลบ', () => {
+  /* 🪤 แถวแรกเขียนตั้งแต่ตอน **สร้าง** สินค้า ⇒ ถ้านับเป็นการอ้างอิง จะลบสินค้าไม่ได้
+     เลยสักตัว และทำลายกติกา "ลบร่างที่ไม่เคยอนุมัติ = เลขกลับมาใช้ได้" (mig 0248) */
+  const ignored = REFERENCE_REGISTRY.product.ignored;
+  assert.ok(ignored.product_price_history, 'ต้องประกาศไว้ในลิสต์ยกเว้น');
+  assert.ok(ignored.product_price_history.length > 10, 'ต้องเขียนเหตุผลกำกับ');
+  assert.ok(!referenceTableNames('product').includes('product_price_history'),
+    'ห้ามอยู่ในลิสต์ที่บล็อกการลบพร้อมกัน');
+});
+
+test('findEntityReferences ใช้คอลัมน์ของ entity นั้น (productId ไม่ใช่ customerId)', async () => {
+  const seen = [];
+  const db = {
+    from(table) {
+      const b = {
+        select() { return b; },
+        eq(col, val) { seen.push(`${table}.${col}=${val}`); return b; },
+        limit() { return b; },
+        then(resolve) { return resolve({ data: [], count: 0, error: null }); },
+      };
+      return b;
+    },
+  };
+  await findEntityReferences(db, 'product', 'PRD-1');
+  assert.ok(seen.every((s) => s.includes('.productId=PRD-1')), 'ต้องกรองด้วย productId ทุกตาราง');
+  assert.equal(seen.length, referenceTableNames('product').length, 'ต้องยิงครบทุกตารางในทะเบียน');
+});
+
+test('entity ที่ไม่รู้จัก → โยน error ไม่ใช่คืนว่าง (ว่าง = ลบผ่าน)', async () => {
+  await assert.rejects(() => findEntityReferences({}, 'scent', 'X'), /ไม่รู้จัก entity/);
 });
