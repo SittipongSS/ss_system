@@ -14,7 +14,7 @@ import {
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { referencedBlock } from '@/lib/deletion';
-import { findCustomerReferences } from '@/lib/master/customerReferences';
+import { findEntityReferences } from '@/lib/master/entityReferences';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
@@ -421,7 +421,7 @@ export async function DELETE(request, { params }) {
      ⇒ ลูกค้าที่มีแค่ลีด/ดีล/ใบเสนอราคา (ต้นทางท่อ = สถานะปกติ) ลบผ่านด่านไปได้
      และเอกสารเหล่านั้นเสียสายเชื่อมถาวร · `npm run check:refs` คอยเทียบทะเบียนกับ
      ฐานจริงไม่ให้ตกหล่นอีก */
-  const { refs, error: refErr } = await findCustomerReferences(supabase, id);
+  const { refs, error: refErr } = await findEntityReferences(supabase, 'customer', id);
   if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
   const block = referencedBlock('ลูกค้าราย', refs);
   if (block) return Response.json({ error: block }, { status: 409 });

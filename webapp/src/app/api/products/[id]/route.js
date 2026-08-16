@@ -9,6 +9,8 @@ import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode, isReusableCode } from '@/l
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { findEntityReferences } from '@/lib/master/entityReferences';
+import { purgeProductPriceHistory } from '@/lib/master/priceHistory';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recordUpdates';
 import { recordAudit } from '@/lib/audit';
@@ -344,21 +346,17 @@ export async function DELETE(request, { params }) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  // ข้อ 3: guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า (live DB ไม่มี FK constraint จริง).
-  // ถ้าสินค้านี้ยังถูกอ้างใน โครงการ/รายการออเดอร์/การขึ้นทะเบียน → ห้ามลบ.
-  const [ppRef, itemRef, regRef] = await Promise.all([
-    supabase.from('project_products').select('projectId').eq('productId', id),
-    supabase.from('order_items').select('orderId').eq('productId', id),
-    supabase.from('excise_registrations').select('id').eq('productId', id),
-  ]);
-  const refErr = ppRef.error || itemRef.error || regRef.error;
+  /* guard ก่อนลบ — กันไม่ให้เกิด record กำพร้า
+     ⚠️ FK ของหลายตารางเป็น `ON DELETE SET NULL` ⇒ ฐานข้อมูล **ไม่ได้กัน** ให้ มันแค่ลบ
+     สายเชื่อมทิ้งเงียบ ๆ · ด่านจริงคือที่นี่
+
+     ⭐ 2026-08-16: เดิมตรวจแค่ 3 ตาราง (โครงการ · รายการออเดอร์ · การขึ้นทะเบียน)
+     ทั้งที่บนฐานจริงมี **15 ตารางถือ `productId`** ⇒ ลบสินค้าที่ยังอยู่บนบรรทัดใบเสนอราคา
+     167 บรรทัด / ใบสั่งขาย 26 / พยากรณ์สหมิตร 331 ได้เงียบ ๆ · ยกลิสต์ไปเป็นทะเบียนกลาง
+     (`lib/master/entityReferences`) ตัวเดียวกับฝั่งลูกค้า และมี `npm run check:refs`
+     เทียบกับฐานจริงไม่ให้ตกหล่นอีก */
+  const { refs, error: refErr } = await findEntityReferences(supabase, 'product', id);
   if (refErr) return Response.json({ error: refErr.message }, { status: 500 });
-  const refs = [];
-  const projIds = [...new Set((ppRef.data || []).map((r) => r.projectId))];
-  const orderIds = [...new Set((itemRef.data || []).map((r) => r.orderId))];
-  if (projIds.length) refs.push(`${projIds.length} โครงการ (${projIds.join(', ')})`);
-  if (orderIds.length) refs.push(`${orderIds.length} ออเดอร์ (${orderIds.join(', ')})`);
-  if (regRef.data?.length) refs.push(`${regRef.data.length} การขึ้นทะเบียน`);
   const block = referencedBlock('สินค้า', refs);
   if (block) return Response.json({ error: block }, { status: 409 });
 
@@ -368,6 +366,9 @@ export async function DELETE(request, { params }) {
   // Cascade: purge attachments (rows + storage/Drive files) so deleting a
   // product never orphans its documents.
   await purgeAttachments('product', id);
+  /* สมุดประวัติราคาไม่มี FK และ `productId` เป็น NOT NULL ⇒ ไม่มีใครกวาดให้
+     (ไม่นับเป็นการอ้างอิงที่บล็อกการลบ — มีตั้งแต่ตอนสร้างสินค้า ดู entityReferences) */
+  await purgeProductPriceHistory(id);
   // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
   await purgeUpdates(supabase, 'product', id);
   await recordAudit({ user, action: 'delete', entityType: 'product', entityId: id, before: product, request });

@@ -13,7 +13,7 @@
  * รัน: npm run check:refs
  */
 import { readFileSync } from 'node:fs';
-import { CUSTOMER_REFERENCE_TABLE_NAMES, CUSTOMER_REFERENCE_IGNORED } from '../src/lib/master/customerReferences.js';
+import { REFERENCE_REGISTRY, referenceTableNames } from '../src/lib/master/entityReferences.js';
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,31 +27,35 @@ if (!res.ok) {
   console.error(`อ่านสคีมาจากฐานไม่สำเร็จ: HTTP ${res.status}`);
   process.exit(1);
 }
-const spec = await res.json();
+const openApi = await res.json();
+const spec2def = (entitySpec) => Object.fromEntries(
+  Object.entries(openApi.definitions || {}).filter(([, def]) => def?.properties?.[entitySpec.column]),
+);
 
-// ตารางที่ถือคอลัมน์ `customerId` บนฐานจริง
-const live = Object.entries(spec.definitions || {})
-  .filter(([, def]) => def?.properties?.customerId)
-  .map(([name]) => name)
-  .sort();
+let failed = false;
+for (const [entity, spec] of Object.entries(REFERENCE_REGISTRY)) {
+  const live = Object.entries(spec2def(spec)).map(([name]) => name).sort();
+  const declared = new Set([...referenceTableNames(entity), ...Object.keys(spec.ignored)]);
+  const missing = live.filter((t) => !declared.has(t));
+  const stale = referenceTableNames(entity).filter((t) => !live.includes(t));
 
-const declared = new Set([...CUSTOMER_REFERENCE_TABLE_NAMES, ...Object.keys(CUSTOMER_REFERENCE_IGNORED)]);
-const missing = live.filter((t) => !declared.has(t));
-const stale = CUSTOMER_REFERENCE_TABLE_NAMES.filter((t) => !live.includes(t));
-
-if (missing.length) {
-  console.error(`\n❌ มี ${missing.length} ตารางที่อ้างถึงลูกค้าแต่ไม่อยู่ในทะเบียน — ลบลูกค้าแล้วแถวพวกนี้จะเสียสายเชื่อมเงียบ ๆ\n`);
-  for (const t of missing) console.error(`   ${t}`);
-  console.error(`
-เพิ่มลง CUSTOMER_REFERENCE_TABLES ใน src/lib/master/customerReferences.js พร้อม label ภาษาไทย
-ถ้าตารางนั้นไม่ควรกันการลบจริง ๆ ให้ใส่ CUSTOMER_REFERENCE_IGNORED พร้อมเหตุผล\n`);
-  process.exit(1);
+  if (missing.length) {
+    console.error(`\n❌ [${entity}] มี ${missing.length} ตารางที่อ้างถึง แต่ไม่อยู่ในทะเบียน — ลบแล้วแถวพวกนี้จะเสียสายเชื่อมเงียบ ๆ\n`);
+    for (const t of missing) console.error(`   ${t}`);
+    console.error(`
+เพิ่มลง REFERENCE_REGISTRY.${entity}.tables ใน src/lib/master/entityReferences.js พร้อม label ภาษาไทย
+ถ้าตารางนั้นไม่ควรกันการลบจริง ๆ ให้ใส่ .ignored พร้อมเหตุผล`);
+    failed = true;
+  }
+  if (stale.length) {
+    console.error(`\n❌ [${entity}] ทะเบียนอ้างตารางที่ไม่มีบนฐานแล้ว ${stale.length} ตัว — ด่านลบจะพังทั้งเส้นเพราะ query ล้ม\n`);
+    for (const t of stale) console.error(`   ${t}`);
+    failed = true;
+  }
+  if (!missing.length && !stale.length) {
+    console.log(`  [${entity}] ${live.length} ตารางที่ถือ ${spec.column} อยู่ในทะเบียนครบ`);
+  }
 }
+if (failed) process.exit(1);
 
-if (stale.length) {
-  console.error(`\n❌ ทะเบียนอ้างตารางที่ไม่มีบนฐานแล้ว ${stale.length} ตัว — ด่านลบจะพังทั้งเส้นเพราะ query ล้ม\n`);
-  for (const t of stale) console.error(`   ${t}`);
-  process.exit(1);
-}
-
-console.log(`check:refs ผ่าน — ${live.length} ตารางที่ถือ customerId อยู่ในทะเบียนครบ`);
+console.log('check:refs ผ่าน');
