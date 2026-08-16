@@ -7,9 +7,26 @@ export function ContextualRightRail({ children, label = "ข้อมูลส�
 }
 
 /* ไม่มี aside = ต้องยุบเหลือคอลัมน์เดียวด้วย ไม่งั้น grid ยังกันที่ 330px ไว้ให้ช่องว่าง
-   (หน้าที่สลับการ์ดเข้า-ออกตามแท็บ เช่นหน้าโครงการ จะเสียความกว้างไปเปล่า ๆ) */
-export function DetailPageLayout({ children, aside, asideLabel, className = "" }) {
-  return <div className={`${styles.layout} ${aside ? "" : styles.layoutSolo} ${className}`.trim()}><main className={styles.main}>{children}</main>{aside ? <ContextualRightRail label={asideLabel}>{aside}</ContextualRightRail> : null}</div>;
+   (หน้าที่สลับการ์ดเข้า-ออกตามแท็บ เช่นหน้าโครงการ จะเสียความกว้างไปเปล่า ๆ)
+
+   ⭐ `controlFirst` — **จอแคบให้รางขวาขึ้นก่อนเนื้อ** (ผลตรวจ 2026-08-17)
+   ที่ ≤1050px รางขวาเลิก sticky แล้วไหลลงไปต่อท้ายเนื้อ ⇒ หน้าที่เอาปุ่มระดับใบไป
+   ไว้ในการ์ด control ที่รางขวา **ปุ่มเดียวของทั้งใบจะไปอยู่ก้นหน้า** · วัดจริงบนใบ
+   คำร้องที่เบาที่สุด (0 direction · 3 ข้อความ) ที่ 1024px: ปุ่มอยู่ที่ y=1843 ในหน้าสูง
+   2269 = เลื่อนสองหน้าจอกว่าจะเจอ · ใบที่คุยกัน 20 ข้อความยิ่งกว่านั้น
+   ⚠️ **เป็นโหมด ไม่ใช่ค่าตั้งต้น** — ลำดับอ่านของจอแคบกลายเป็น หัวใบ → สถานะ+ปุ่ม →
+   บริบท/สรุป → เนื้อ ซึ่งเหมาะกับหน้าที่ "สถานะกับก้าวถัดไป" คือคำถามแรก · หน้าที่
+   เนื้อคือคำถามแรก (เช่น รายการสินค้าในใบ) ต้องไม่เปิดโหมดนี้จนกว่าจะไล่ดูเองแล้ว
+   ⚠️ ห้ามแก้ด้วยการวาดปุ่มซ้ำอีกชุดตอนจอแคบ — ม-49/ม-57 บังคับว่าปุ่มระดับใบ
+   อยู่ที่เดียว · ที่ย้ายคือ *ที่วาง* ไม่ใช่การก๊อป */
+export function DetailPageLayout({ children, aside, asideLabel, controlFirst = false, className = "" }) {
+  /* ⚠️ **สลับลำดับ DOM จริง ไม่ใช่ `order` อย่างเดียว** — `order` ขยับแค่ภาพ ส่วน Tab
+     กับ screen reader ยังเดินตาม DOM ⇒ จอแคบจะเห็นปุ่มอยู่บนสุดแต่กด Tab แล้วโฟกัส
+     ไปโผล่ท้ายหน้า (WCAG 2.4.3) · โหมดนี้จึงวางรางไว้ก่อนใน DOM แล้วดัน**กลับไป
+     ขวา**ด้วย `order` เฉพาะตอนจอกว้าง ซึ่งเป็นจังหวะที่สองคอลัมน์อยู่ข้างกัน
+     ลำดับอ่านจึงไม่มีความหมายอยู่แล้ว */
+  const rail = aside ? <ContextualRightRail label={asideLabel}>{aside}</ContextualRightRail> : null;
+  return <div className={`${styles.layout} ${aside ? "" : styles.layoutSolo} ${controlFirst ? styles.controlFirst : ""} ${className}`.trim()}>{controlFirst ? rail : null}<main className={styles.main}>{children}</main>{controlFirst ? null : rail}</div>;
 }
 
 export function ContextGrid({ children, className = "" }) {

@@ -106,6 +106,12 @@ export async function GET(request, { params }) {
         // ⇒ ป้าย "ใบของฉัน" จะไปขึ้นบนใบของเพื่อน ซึ่งเป็นการโกหกหน้าจอ
         _opener: !!user?.id && row.requestedById === user.id,
         _canEditPdr: canEditPdr(user, row),
+        // ⭐ **เหตุผลที่แก้ไม่ได้ ไม่ใช่แค่ว่าแก้ไม่ได้** — `editPdrError` บอกว่า
+        // "ตอนนี้เป็นของใคร" (ผู้ขอ ก่อนรับเรื่อง · ฝ่ายปลายทาง หลังรับเรื่อง)
+        // 🐞 ประโยคนี้มีมาตั้งแต่ mig 0216 แต่ถูกเรียกที่ route เท่านั้น ⇒ **จอไม่เคย
+        // แสดง** · ปุ่มแก้หายไปเฉย ๆ แล้วคนกดต้องเดาเองว่าต้องไปบอกใคร
+        // (บทเรียนเดียวกับ `requestFormBlocker` ที่คอมเมนต์ของ pdrEdit.js อ้างถึง)
+        _editPdrBlocker: editPdrError(row, user),
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );
@@ -476,6 +482,9 @@ export async function PATCH(request, { params }) {
       ...after,
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
+      // ต้องคืนคู่กับ `_canEditPdr` เสมอ — สองอันนี้มาจากด่านเดียวกัน ขาดตัวใดตัวหนึ่ง
+      // แล้วหน้าจอหลัง PATCH จะรู้ว่า "กดไม่ได้" แต่ไม่รู้ว่าทำไม
+      _editPdrBlocker: editPdrError(after, user),
     });
   } catch (e) {
     // guard ระดับ DB โยนรหัสดิบ — แปลก่อนส่งขึ้นจอ ไม่งั้นผู้ใช้เห็นแต่ชื่อ exception
