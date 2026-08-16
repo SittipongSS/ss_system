@@ -1,11 +1,6 @@
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import {
-  canEditSalesPlanning,
-  canViewSalesPlanning,
-  inSalesEditScope,
-  inSalesViewScope,
-  isWonStage,
-} from '@/lib/salesPlanning';
+import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { loadScoped } from '@/lib/scopedRow';
+import { canEditSalesPlanning, canViewSalesPlanning, isWonStage } from '@/lib/salesPlanning';
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
@@ -15,20 +10,14 @@ export const dynamic = 'force-dynamic';
 
 const quoteSelect = '*, lines:quotation_lines(*)';
 
-async function loadDeal(supabase, id) {
-  const { data, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data;
-}
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
   const { id } = await ctx.params;
-  const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesViewScope(user, deal)) return forbidden();
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', id, user, 'view');
+  if (response) return response;
 
   const { data, error } = await supabase
     .from('quotations')
@@ -45,9 +34,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canEditSalesPlanning(user)) return forbidden();
 
   const { id } = await ctx.params;
-  const deal = await loadDeal(supabase, id);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', id, user, 'edit');
+  if (response) return response;
   if (deal.stage === 'lost') return badRequest('ไม่สามารถสร้างใบเสนอราคาจากโครงการที่ Lost แล้ว');
   // ดีลปิด Won แล้ว = ใบเสนอราคาถูกล็อกทั้งชุด (เพิ่ม/แก้/ลบไม่ได้ — มติผู้ใช้ 2026-07-15)
   if (isWonStage(deal.stage)) {

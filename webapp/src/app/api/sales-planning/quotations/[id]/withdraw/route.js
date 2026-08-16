@@ -1,10 +1,7 @@
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import {
-  canViewSalesPlanning,
-  dealAuditLabel,
-  inSalesViewScope,
-} from '@/lib/salesPlanning';
+import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { loadScoped } from '@/lib/scopedRow';
+import { canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
 import { canWithdrawQuotationSubmission } from '@/lib/sales/quotationWorkflow';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
@@ -25,14 +22,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const expected = resolveExpectedUpdatedAt(body);
   if (!expected.ok) return badRequest(expected.error);
 
-  const { data: quote, error } = await supabase
-    .from('quotations')
-    .select('*, deal:sales_deals(id, title, code, ownerId, ownerName, team, stage, customerName)')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) return fail(error.message, 500);
-  if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  const { row: quote, response } = await loadScoped(supabase, 'quotations', id, user, 'view');
+  if (response) return response;
 
   // ดึงกลับเป็นการกระทำของผู้ยื่นเท่านั้น (มติ 2026-07-26) — ผู้อนุมัติใช้ /reject แทน
   if (!canWithdrawQuotationSubmission(quote, { userId: user.id })) {
