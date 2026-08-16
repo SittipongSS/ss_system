@@ -13,7 +13,6 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
-import { approvalPrompt } from "@/lib/approvalPrompt";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
@@ -36,7 +35,6 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { canAnswerRequestsFor } from "@/lib/permissions";
-import { isAwaitingApproval, requestNeedsApproval } from "@/lib/requests/approval";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
@@ -86,7 +84,6 @@ const STATUS_TONE = {
 const THREAD_STEP_HINT = {
   submit: "ยังไม่ได้ส่ง — ส่งแล้วเลขที่จะออกและฝ่ายปลายทางจะเห็น",
   acknowledge: "รอฝ่ายปลายทางรับเรื่อง",
-  approve: "รอหัวหน้าสายงานขายยืนยัน",
   answer: "รับเรื่องแล้ว — ตอบในเธรดแล้วกดว่าตอบครบ",
   close: "ตอบแล้ว — ผู้ขอกดปิดเมื่อพอใจกับคำตอบ",
 };
@@ -231,8 +228,6 @@ export default function RequestDetailPage() {
   // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
   // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
   const owner = canAnswerRequestsFor(me, req.dept);
-  // รอหัวหน้ายืนยันอยู่ไหม — ขั้นนี้ derive ไม่ได้เก็บ (ดู lib/requests/approval.js)
-  const awaitingApproval = isAwaitingApproval(req);
   const showPdr = requestHasPdr(req.kind);
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -256,7 +251,6 @@ export default function RequestDetailPage() {
   const docBoard = documentBoard(req.items || []);
   const docTotals = documentTotals(docBoard);
   const briefSummary = briefBoardTotals(board);
-  const needsApproval = requestNeedsApproval(req);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
   // ⚠️ ชนิดที่ไม่มีบรรทัด (สอบถาม/พัฒนากลิ่น/ติดตามของเข้า
@@ -559,32 +553,7 @@ export default function RequestDetailPage() {
       }
       // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
       // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
-      // ⭐ ประตูหัวหน้าสายงานขาย (mig 0216) — วางก่อน "ส่งกลิ่น" เพราะระหว่างรอยืนยัน
-      // ปุ่มหลักของหน้าคือของหัวหน้า ไม่ใช่ของ RD · `_canApprove` มาจาก server
-      : req._canApprove
-        ? {
-          id: "approve",
-          // ⚠️ **ไม่ฮาร์ดโค้ดชื่อฝ่าย** (2026-08-15) — ประตูนี้ใช้กับหัวข้อของฝ่ายอื่น
-          // ได้ด้วย และ eyebrow บนหัวใบบอก "ถึงฝ่าย …" อยู่แล้ว
-          label: "ยืนยันให้ดำเนินการ",
-          kind: "approve",
-          icon: Check,
-          // ประตูหัวหน้าสายงานขายเคยยิงทันทีที่กด — ไม่มีจังหวะทบทวนเลยทั้งที่กดแล้ว
-          // RD เริ่มลงมือจริง (มติ "ทุกการอนุมัติต้องถามก่อน" 2026-08-13)
-          onClick: async () => {
-            const ok = await confirmAction(approvalPrompt({
-              subject: `คำร้อง ${req.docNo || ""}`.trim(),
-              effects: [
-                "RD เริ่มดำเนินการตามคำร้องนี้ได้ทันที",
-                "คำร้องเข้าคิวงานของฝ่ายที่รับผิดชอบ",
-              ],
-              confirmLabel: "ยืนยันให้ดำเนินการ",
-            }));
-            if (!ok) return;
-            await call("", { method: "PATCH", body: JSON.stringify({ action: "approve" }) }, "ยืนยันแล้ว");
-          },
-        }
-      : canAnswer && requestDeliversRows(req.kind) && !awaitingApproval
+      : canAnswer && requestDeliversRows(req.kind)
         ? {
           id: "deliver",
           // ⭐ คำเดียวกับก้าวรายแถว (2026-08-15) — เดิมปุ่มระดับใบเรียก "ส่งกลิ่น"
@@ -798,8 +767,7 @@ export default function RequestDetailPage() {
   /* ⭐ **ประโยคบนบาร์มาจากรางของใบ** — `requestRailSteps` ก้อนเดียวกับที่การ์ดขวา
      วาด ⇒ บาร์กับรางขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
      ⚠️ **คำใบ้ของรางมาก่อน** — `THREAD_STEP_HINT` เขียนไว้ตอนแถบอยู่ท้ายเธรดและไม่มี
-     ป้ายขั้นอยู่ข้าง ๆ ⇒ หลายตัวพูดซ้ำกับป้าย (ขั้น "รอหัวหน้ายืนยัน" ได้คำใบ้ว่า
-     "รอหัวหน้าสายงานขายยืนยัน") · บนบาร์มีป้ายอยู่แล้ว คำใบ้จึงต้องเพิ่มข้อมูล
+     ป้ายขั้นอยู่ข้าง ๆ ⇒ หลายตัวพูดซ้ำกับป้าย · บนบาร์มีป้ายอยู่แล้ว คำใบ้จึงต้องเพิ่มข้อมูล
      ⚠️ ซ้ำกับป้ายเมื่อไรตัดทิ้ง — บรรทัดที่พูดเรื่องเดิมสองรอบแย่กว่าไม่มีบรรทัดนั้น */
   /* ⚠️ ใบที่จบแล้วอ่านจากสถานะ ไม่ใช่จากราง — ราง `index` ของใบปิด/ยกเลิกชี้ขั้น
      สุดท้าย ⇒ ใบที่ **ยกเลิก** จะได้พาดหัวว่า "ปิดเรื่อง" ซึ่งผิดคนละเรื่อง */

@@ -96,10 +96,8 @@ export function requestHasPdr(kind) {
   return !!REQUEST_KINDS[kind]?.hasPdr;
 }
 
-// หัวข้อนี้ต้องผ่านหัวหน้าสายงานขายก่อนฝ่ายปลายทางลงมือไหม (mig 0216)
-export function requestNeedsApprovalKind(kind) {
-  return !!REQUEST_KINDS[kind]?.needsSupervisorApproval;
-}
+// ⚠️ `requestNeedsApprovalKind` เคยอยู่ตรงนี้ (mig 0216) — ถอดพร้อมขั้น "ยืนยันให้
+// ดำเนินการ" ทั้งขั้นตามมติผู้ใช้ 2026-08-16 · ทะเบียนตีกลับธงนี้ตั้งแต่ตอนโหลดแล้ว
 
 // วันกำหนดส่งตอนรับเรื่อง — **บังคับทุกหัวข้อ** (มติผู้ใช้ 2026-08-08 ยกระดับจาก
 // รายชนิดของ 2026-08-06: "วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับใส่เสมอ
