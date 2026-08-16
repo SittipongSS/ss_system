@@ -3,8 +3,9 @@
 // ⚠️ ฝ่ายบัญชีต้องเปิดไฟล์นี้ได้ (scope 'all' ของ role finance) ไม่งั้นคอนเฟิร์มโดยไม่เห็นสลิป
 // ?installment=<id>&i=<index> ชี้ไฟล์ในอาเรย์ evidence ของงวดนั้น (default 0).
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
 
 export const runtime = 'nodejs';
@@ -18,15 +19,8 @@ export async function GET(request, { params }) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: order, error: orderError } = await supabase
-    .from('sales_orders').select('id, dealId').eq('id', id).maybeSingle();
-  if (orderError) return Response.json({ error: orderError.message }, { status: 500 });
-  if (!order) return Response.json({ error: 'ไม่พบใบสั่งขาย' }, { status: 404 });
-
-  const { data: deal, error: dealError } = await supabase
-    .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
-  if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-  if (!deal || !inSalesViewScope(user, deal)) return Response.json({ error: 'forbidden' }, { status: 403 });
+  const { row: order, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
+  if (response) return response;
 
   const url = new URL(request.url);
   const installmentId = url.searchParams.get('installment');

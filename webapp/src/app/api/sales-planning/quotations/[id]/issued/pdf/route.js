@@ -1,6 +1,7 @@
 import { documentFileName } from '@/lib/documents/documentShell';
+import { loadScoped } from '@/lib/scopedRow';
 import { withUser, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import {
   captureIssuedQuotationPdf,
   downloadIssuedQuotationPdf,
@@ -21,17 +22,9 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canViewSalesPlanning(user)) return forbidden();
   const { id } = await ctx.params;
 
-  const { data: quote, error: quoteError } = await supabase
-    .from('quotations')
-    .select('id, dealId, approvalStatus')
-    .eq('id', id)
-    .maybeSingle();
-  if (quoteError) return fail(quoteError.message, 500);
-  if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  const { data: deal, error: dealError } = await supabase
-    .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
-  if (dealError) return fail(dealError.message, 500);
-  if (!deal || !inSalesViewScope(user, deal)) return forbidden();
+  // ⭐ โหลดใบ + ดีลเจ้าของ + ตรวจ view-scope ในคำสั่งเดียว (`loadScoped` join ดีลมาให้)
+  const { row: quote, response } = await loadScoped(supabase, 'quotations', id, user, 'view');
+  if (response) return response;
 
   const { data: snapshots, error } = await supabase
     .from('issued_documents')

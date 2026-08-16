@@ -1,18 +1,13 @@
 import { genId } from '@/lib/id';
+import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 
 export const dynamic = 'force-dynamic';
 
 const DOC_KINDS = new Set(['customer_brief', 'quotation', 'deposit_proof', 'po', 'tax_docs', 'other']);
 const DOC_STATUSES = new Set(['pending', 'received', 'waived']);
-
-async function loadDeal(supabase, id) {
-  const { data, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data;
-}
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -21,9 +16,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const dealId = new URL(req.url).searchParams.get('dealId');
   if (!dealId) return badRequest('dealId is required');
 
-  const deal = await loadDeal(supabase, dealId);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesViewScope(user, deal)) return forbidden();
+  const { response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
+  if (response) return response;
 
   const { data, error } = await supabase
     .from('sales_deal_documents')
@@ -42,9 +36,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (!body.dealId) return badRequest('dealId is required');
   if (!body.title?.trim()) return badRequest('title is required');
 
-  const deal = await loadDeal(supabase, body.dealId);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', body.dealId, user, 'edit');
+  if (response) return response;
 
   const row = {
     id: genId('SDOC'),
