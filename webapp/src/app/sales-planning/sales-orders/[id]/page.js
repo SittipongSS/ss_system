@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileCheck2, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
+  ExternalLink, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
+import AlertBanner from "@/components/ui/AlertBanner";
 import Workspace from "@/components/ui/Workspace";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -20,7 +21,7 @@ import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
-  DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
+  DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { QuotationReadOnlyLineItems } from "@/components/salesPlanning/QuotationLineItems";
@@ -37,6 +38,7 @@ import {
   isCustomerCancelReason,
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
+import { dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -45,7 +47,6 @@ import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openSalesOrderPrintWindowPreferIssued, prepareSalesOrderPrintWindow, showSalesOrderPrintError } from "@/lib/sales/salesOrderPrint";
 import { getCompanyProfileForPrint } from "@/lib/companyProfile";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
-import { statusMeta } from "@/lib/excise/workflow";
 import { orderAmountToCollect } from "@/lib/tax/exciseBilling";
 import styles from "./page.module.css";
 import Button from "@/components/ui/Button";
@@ -123,6 +124,8 @@ export default function SalesOrderDetailPage() {
     filing: null,
     eligible: false,
     schemaReady: true,
+    // บรรทัดสรรพสามิตของใบนี้พร้อมสถานะทะเบียนราย FG — เส้นเดินงานวาดจุดจากตรงนี้
+    lines: [],
     warnings: [],
     amountToCollect: 0,
     error: "",
@@ -143,6 +146,7 @@ export default function SalesOrderDetailPage() {
         filing: filingData.filing || null,
         eligible: !!filingData.eligible,
         schemaReady: filingData.schemaReady !== false,
+        lines: filingData.lines || [],
         warnings: filingData.warnings || [],
         // ยอดเรียกเก็บรวม VAT 7% แล้ว (มติ 2026-07-26) — ตรงกับยอดสุทธิบนเอกสาร
         amountToCollect: filingData.filing
@@ -155,6 +159,7 @@ export default function SalesOrderDetailPage() {
         filing: null,
         eligible: false,
         schemaReady: true,
+        lines: [],
         warnings: [],
         amountToCollect: 0,
         error: filingData.error || "ตรวจสอบใบยื่นสรรพสามิตไม่สำเร็จ",
@@ -186,15 +191,18 @@ export default function SalesOrderDetailPage() {
       setError(data.error || "สร้างใบยื่นสรรพสามิตไม่สำเร็จ");
       return false;
     }
-    setFilingState({
+    setFilingState((prev) => ({
       loading: false,
       filing: data,
       eligible: false,
       schemaReady: true,
+      // บรรทัดสรรพสามิตไม่ได้เปลี่ยนเพราะสร้างใบยื่น — ทิ้งไปแล้วจุด "ขึ้นทะเบียน" บนเส้นเดินงาน
+      // จะหายทั้งช่วงทันทีที่กดสร้าง ทั้งที่ทะเบียนอาจยังค้างอยู่
+      lines: prev.lines,
       warnings: data.warnings || [],
       amountToCollect: orderAmountToCollect(data),
       error: "",
-    });
+    }));
     setBusy("");
     setToast({ kind: "success", msg: "สร้างใบยื่นสรรพสามิตจากใบสั่งขายเรียบร้อยแล้ว" });
     return true;
@@ -542,20 +550,36 @@ export default function SalesOrderDetailPage() {
   }, [order]);
 
   /* ── เส้นเดินงานของใบนี้ (มติผู้ใช้ 2026-08-13) ────────────────────────
-     ⭐ **เส้นเดียวสามช่วง** แทนการ์ดเต็มสามใบ — บรีฟกลิ่นจบก่อนถึงสั่งของ
+     ⭐ **เส้นเดียว** แทนการ์ดเต็มหลายใบ — บรีฟกลิ่นจบก่อนถึงสั่งของ
      ของครบก่อนถึงผลิต ⇒ มันต่อกัน ไม่ได้เดินพร้อมกัน · วัดจากหน้าจริงก่อนรื้อ:
      สามการ์ดเดิมกิน ~600px เพื่อบอกสิ่งที่อ่านจบได้ในแถบเดียว
-     ⚠️ ช่วงที่ไม่เกี่ยวกับใบนี้เลยต้อง **หายไปทั้งช่วง** ไม่ใช่ขึ้นว่า "ไม่มี" */
+     ⚠️ ช่วงที่ไม่เกี่ยวกับใบนี้เลยต้อง **หายไปทั้งช่วง** ไม่ใช่ขึ้นว่า "ไม่มี"
+
+     ⭐ **สรรพสามิตเข้ามาอยู่บนเส้นเดียวกันด้วย** (มติผู้ใช้ 2026-08-17) — เดิมเป็นการ์ด
+     แยกล่างสุดของหน้า ทั้งที่ตอบคำถามเดียวกับเส้นนี้คือ "ใบนี้ติดอยู่ตรงไหน"
+     และเรื่องทะเบียนถูกยุบเหลือตัวนับในบรรทัดเทาบรรทัดเดียวที่ไม่บอกว่า FG ตัวไหนค้าง */
+  const exciseTrack = useMemo(() => ({
+    ...filingState,
+    onCreateFiling: createFiling,
+    createLabel: busy === "filing" ? "กำลังสร้าง…" : "สร้างใบยื่นชำระ",
+    createDisabled: busy === "filing" || !canCreateFiling,
+    createDisabledReason: canCreateFiling ? null : "ต้องมีสิทธิ์งานขายจึงสร้างใบยื่นได้",
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- createFiling ประกาศเป็น function ธรรมดา อ้างอิงคงที่ต่อ render
+  }), [filingState, busy, canCreateFiling]);
+
   const workTrack = useMemo(
     () => salesOrderWorkTrack({
       scent: scentBrief,
       readiness,
       plan,
+      excise: exciseTrack,
       orderId: order?.id || id,
       projectId: order?.projectId || null,
+      // ⭐ รูปของเส้นมาจากประเภทดีลแม่ — SCENT ไม่มีของเข้า/ผลิต · OTHER ยังไม่นิยามสาย
+      dealType: order?.deal ? dealTypeOf(order.deal) : null,
       approved: order?.status === "approved",
     }),
-    [scentBrief, readiness, plan, order?.id, id, order?.projectId, order?.status],
+    [scentBrief, readiness, plan, exciseTrack, order?.id, id, order?.projectId, order?.deal, order?.status],
   );
 
   const installments = useMemo(() => order?.installments || [], [order?.installments]);
@@ -755,6 +779,14 @@ export default function SalesOrderDetailPage() {
 
         <SalesOrderWorkTrack track={workTrack} />
 
+        {/* 🪤 เส้นเดินงานซ่อนช่วงสรรพสามิตเมื่อระบบเชื่อมเอกสารไม่พร้อม/โหลดพัง —
+            เงียบไปเฉย ๆ จะอ่านเหมือน "ใบนี้ไม่มีสินค้าสรรพสามิต" ⇒ ต้องดังตรงนี้แทน */}
+        {filingState.error || (!filingState.loading && !filingState.schemaReady) ? (
+          <AlertBanner tone="danger" icon={ShieldAlert}>
+            {filingState.error || "ระบบเชื่อมเอกสารสรรพสามิตยังไม่พร้อมใช้งาน — ช่วงสรรพสามิตบนเส้นเดินงานจึงยังไม่ขึ้น"}
+          </AlertBanner>
+        ) : null}
+
         <DetailPageLayout
           asideLabel="สรุปและจัดการ ใบสั่งขาย"
           aside={<>
@@ -807,52 +839,9 @@ export default function SalesOrderDetailPage() {
             />
 
 
-            <RelatedDocumentCard
-              icon={FileCheck2}
-              title="การยื่นชำระสรรพสามิต"
-              meta={filingState.filing
-                ? `${statusMeta(filingState.filing.status).label} · ${fmtMoney(filingState.amountToCollect)} (รวม VAT)`
-                : filingState.loading
-                  ? "กำลังตรวจสอบเอกสารปลายทาง"
-                  : filingState.eligible
-                    ? `ยอดที่ต้องเรียกเก็บ ${fmtMoney(filingState.amountToCollect)} (รวม VAT 7%)`
-                    : "ยังไม่มีใบยื่นที่เชื่อมกับ ใบสั่งขายนี้"}
-              actions={filingState.filing ? (
-                <Link href={`/tax/filings/${filingState.filing.id}`} className="btn ghost sm">
-                  <ExternalLink size={13} /> เปิดใบยื่น
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className="btn ghost sm"
-                  disabled={
-                    filingState.loading
-                    || !filingState.schemaReady
-                    || !filingState.eligible
-                    || !canCreateFiling
-                    || busy === "filing"
-                  }
-                  onClick={createFiling}
-                >
-                  <FileCheck2 size={13} />
-                  {busy === "filing" ? "กำลังสร้าง…" : "สร้างใบยื่นชำระ"}
-                </button>
-              )}
-            >
-              {filingState.error
-                ? filingState.error
-                : !filingState.schemaReady
-                  ? "ระบบเชื่อมเอกสารยังไม่พร้อมใช้งาน"
-                  : filingState.filing
-                    ? "ใบยื่นนี้สร้างและดูแลโดยโมดูลภาษี รายการและยอดภาษีถูก snapshot จาก SO ตอนสร้าง"
-                    : order.status !== "approved"
-                      ? "สร้างได้หลังใบสั่งขายอนุมัติแล้ว"
-                      : !filingState.eligible
-                        ? "ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น"
-                        : filingState.warnings.length
-                          ? `${filingState.warnings.length} รายการควรตรวจทะเบียนสรรพสามิตเพิ่มเติม แต่ยังสร้างใบยื่นได้`
-                          : "พร้อมสร้างใบยื่นจากรายการสินค้าสรรพสามิตใน ใบสั่งขาย"}
-            </RelatedDocumentCard>
+            {/* 🪤 การ์ด "การยื่นชำระสรรพสามิต" ถอดออกแล้ว (มติผู้ใช้ 2026-08-17) —
+                ทั้งสถานะ ยอดเรียกเก็บ ปุ่มสร้าง และลิงก์เปิดใบยื่น ย้ายขึ้นไปเป็นช่วงบนเส้นเดินงาน
+                ⚠️ อย่าเอากลับมา จะกลายเป็นสองที่ที่ตอบคำถามเดียวกันแล้วเพี้ยนหากัน */}
           </>}
         >
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>

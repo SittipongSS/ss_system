@@ -27,17 +27,22 @@
 .now { color: var(--text-2); font-size: var(--fs-5); }
 .now b { color: var(--text); font-weight: var(--fw-bold); }
 
+/* ⚠️ ห่อเองด้วย auto-fit ไม่ใช่ตรึงเป็นคอลัมน์ — จำนวนช่วงไม่คงที่ (3–5 ช่วง แล้วแต่ว่า
+   ใบนี้เป็นงานกลิ่นไหม/มีสินค้าสรรพสามิตไหม) ตรึง `grid-auto-flow: column` ไว้แปลว่า
+   ใบที่ครบทุกช่วงจะบีบจนป้ายจุดแตกบรรทัดละคำ */
 .segments {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--space-4);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.seg { display: grid; gap: var(--space-2); min-width: 0; align-content: start; }
+/* ⚠️ ต้องมีเพดานความกว้าง — ตั้งแต่รูปของเส้นมาจากประเภทดีล ใบ SCENT เหลือช่วงเดียว
+   แล้วช่วงนั้นยืดเต็มบรรทัด (1292px) จน 5 จุดกางห่างกันจนอ่านไม่ออกว่าเป็นรางเดียวกัน
+   460px ≈ ความกว้างที่ช่วงบรีฟกลิ่นเคยได้ตอนเป็นสามคอลัมน์ — ความหนาแน่นเท่าเดิม */
+.seg { display: grid; gap: var(--space-2); min-width: 0; max-width: 460px; align-content: start; }
 
 .segLabel {
   display: flex;
@@ -138,15 +143,62 @@
 }
 .connect span { color: var(--text-3); font-size: var(--fs-5); }
 
+/* ── ของที่ค้างอยู่ในช่วงนั้น (เช่น FG ที่ยังไม่ผ่านทะเบียน) ────────────────
+   จัดเป็นกลุ่มตามสาเหตุ: หัวกลุ่ม + จำนวน แล้วรหัสอยู่บรรทัดของตัวเอง */
+.notes {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+.noteGroup { display: grid; gap: var(--space-1); }
+
+.noteLabel {
+  color: var(--red);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.noteCount { color: var(--text-3); font-weight: var(--fw-normal); }
+
+.noteCodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+}
+
+/* 🪤 **`white-space: nowrap` ห้ามหาย** — ของเดิมใช้ `overflow-wrap: anywhere` บนก้อน
+   ข้อความรวม รหัสจึงถูกหักกลางคำ ("FG-" ขึ้นบรรทัดใหม่เป็น "108-01-002-1983")
+   ซึ่งอ่านเป็นคนละรหัส · ให้ห่อ *ระหว่าง* รหัสด้วย flex-wrap แทน ไม่ใช่ห่อในรหัส
+   ⚠️ ไม่ใช่ฟอนต์ mono — mono สงวนไว้ให้ JSON เท่านั้น */
+.fg {
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: var(--fs-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ls-tabular);
+  line-height: var(--lh-thai);
+  white-space: nowrap;
+}
+
+.noteMore { color: var(--text-3); font-size: var(--fs-3); line-height: var(--lh-thai); }
+
+/* ใช้ได้ทั้ง <a> และ <button> — ปุ่มต้องถอดทรง native ให้เหมือนลิงก์ทุกประการ
+   ไม่งั้นช่วงที่กดสร้างเอกสารจะหน้าตาไม่เหมือนช่วงที่กดไปหน้าอื่น */
 .link {
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--accent-ink);
+  font: inherit;
   font-size: var(--fs-5);
   font-weight: var(--fw-bold);
+  text-align: start;
   text-decoration: none;
+  cursor: pointer;
 }
 .link:hover { text-decoration: underline; }
 .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
-
-@media (max-width: 900px) {
-  .segments { grid-auto-flow: row; }
-}
+.link:disabled { opacity: var(--op-disabled); cursor: not-allowed; text-decoration: none; }
