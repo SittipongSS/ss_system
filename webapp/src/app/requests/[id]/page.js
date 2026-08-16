@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, FolderKanban, Handshake, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
+  CalendarClock, FileText, FolderKanban, Handshake, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -855,21 +855,14 @@ export default function RequestDetailPage() {
         facts={headerFacts}
       >
 
-        {/* ⚠️ **ผู้รับเรื่องไม่อยู่ตรงนี้แล้ว** — ย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นบนหัวใบ (ม-101)
-            บรรทัดนี้เคยพูดซ้ำกับชิปคำต่อคำ (ผู้ใช้ทัก 2026-08-11) · เหลือไว้เฉพาะรหัสสูตร
-            ซึ่งยังไม่มีที่อยู่อื่นบนหัวใบ */}
-        {/* ⭐ **ผู้รับเรื่องอยู่ตรงนี้ ไม่ใช่ในชิปบนหัวใบ** (มติผู้ใช้ ม-101.2) —
-            เคยย้ายขึ้นไปเป็นชิปคู่กับผู้ยื่นตามที่สั่ง แล้วผู้ใช้เลือกกลับมาบรรทัดนี้
-            ⚠️ มีที่เดียวเท่านั้น — ตอนที่มีทั้งชิปและบรรทัด มันพูดซ้ำคำต่อคำ
-            (ชื่อเดียวกัน วันที่เดียวกัน) ผู้ใช้ทักทันที */}
-        {(req.acknowledgedByName || req.formulaCode) && (
-          <p className={styles.headMeta}>
-            {req.acknowledgedByName
-              ? `รับเรื่องโดย ${req.acknowledgedByName} · ${fmtDate(req.acknowledgedAt)}`
-              : ""}
-            {req.acknowledgedByName && req.formulaCode ? " · " : ""}
-            {req.formulaCode ? `สูตร ${req.formulaCode}` : ""}
-          </p>
+        {/* ⭐ **ผู้รับเรื่องย้ายไปอยู่บนราง** (แผน scent-dev-detail-fix-plan งวด 3) —
+            ขั้น "รอรับเรื่อง" จบลงตอนมีคนรับ ⇒ ชื่อกับวันที่คือหลักฐานของขั้นนั้น
+            ทรงเดียวกับรางของใบสั่งขายที่ทุกขั้นพกค่าจริงของใบ
+            ⚠️ **ย้าย ไม่ก๊อป** — เคยมีทั้งชิปบนหัวใบและบรรทัดนี้พร้อมกัน แล้วมันพูดซ้ำ
+            คำต่อคำ (ชื่อเดียวกัน วันที่เดียวกัน) ผู้ใช้ทักทันที (ม-101.2) · รอบนี้ก็เหมือนกัน
+            บรรทัดนี้จึงเหลือเฉพาะ **รหัสสูตร** ซึ่งยังไม่มีที่อยู่อื่นบนหัวใบ */}
+        {req.formulaCode && (
+          <p className={styles.headMeta}>สูตร {req.formulaCode}</p>
         )}
 
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
@@ -960,9 +953,12 @@ export default function RequestDetailPage() {
                 <span className="ui-badge">{editBlocker}</span>
               ) : null}
             />
-            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
+            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีล/ใบสั่งขายไหน กดแล้วไปหน้านั้นได้เลย
                 (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
-                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
+                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า
+                ⭐ **แต่ละใบพก `facts` ของตัวเอง** (ทรงเดียวกับหน้าใบสั่งขาย) — ของเดิม
+                มีแค่ชื่อกับบรรทัดรอง ⇒ ต้องกดเข้าไปดูถึงจะรู้ว่าอีกฝั่งอยู่สถานะไหน
+                ทั้งที่ค่าพวกนี้โหลดมากับใบอยู่แล้ว */}
             {req.refProject && (
               <ContextCard
                 href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
@@ -970,6 +966,7 @@ export default function RequestDetailPage() {
                 eyebrow="โครงการ"
                 title={req.refProject.name || req.refProject.code || req.refProject.id}
                 subtitle={req.refProject.code || undefined}
+                facts={[{ label: "ลูกค้า", value: req.customerName }]}
               />
             )}
             {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
@@ -980,7 +977,23 @@ export default function RequestDetailPage() {
                 icon={Handshake}
                 eyebrow="ดีล"
                 title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
-                subtitle={req.customerName || undefined}
+                subtitle={req.refDeal.code || undefined}
+              />
+            )}
+            {/* ⭐ **ใบสั่งขายที่หายไปทั้งใบ** (ผลตรวจ 2026-08-17) — `refSalesOrder`
+                มากับ payload อยู่แล้วแต่ไม่เคยถูกเรนเดอร์ ⇒ ลิงก์เดินทางเดียว:
+                หน้าใบสั่งขายชี้มาที่คำร้อง (เลน "บรีฟกลิ่น") แต่กลับไม่ได้
+                ⚠️ ยิ่งขัดกันเพราะการ์ดสรุปข้าง ๆ พูดถึง "กลิ่นตาม SO" อยู่แล้ว —
+                เห็นตัวเลขแต่กดไปดูที่มาไม่ได้
+                ⚠️ **ไม่ใส่ `facts` จำนวนกลิ่นที่นี่** — การ์ดสรุปข้าง ๆ บอกไปแล้ว
+                ใส่ซ้ำก็ได้ตัวเลขเดียวกันสองที่ที่ต้องคอยดูแลให้ตรงกัน · การ์ดนี้ตอบแค่
+                "ใบไหน กดไปดูได้" */}
+            {req.refSalesOrder && (
+              <ContextCard
+                href={`/sa/sales-orders/${req.refSalesOrder.id}`}
+                icon={FileText}
+                eyebrow="ใบสั่งขาย"
+                title={req.refSalesOrder.orderNumber || req.refSalesOrder.id}
               />
             )}
             {/* การ์ดรายหัวข้อ — ส่งก้อนชุดเดียวกับ KindDetail แล้วให้หัวข้อหยิบ

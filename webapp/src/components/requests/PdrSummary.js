@@ -58,7 +58,7 @@ function Facts({ rows }) {
   if (!rows.length) return <small className={styles.hint}>ยังไม่ได้กรอกส่วนนี้</small>;
   return (
     <dl className={styles.pdrFacts}>
-      {rows.map(([label, value]) => {
+      {rows.map(([label, value, source]) => {
         const text = value == null ? "" : String(value).trim();
         return (
           <div key={label} className={styles.pdrFact}>
@@ -67,6 +67,11 @@ function Facts({ rows }) {
               {text
                 ? <ReadableText text={text} lines={4} />
                 : <span className={styles.naValue}>N/A</span>}
+              {/* ⭐ **ที่มาของค่าที่ระบบเติมให้** — ช่องพวกนี้คนกรอกแตะไม่ได้
+                  ⇒ ถ้าไม่บอก คนอ่านจะแยกไม่ออกระหว่าง "ระบบเติมให้แล้ว" กับ
+                  "คนกรอกลืม" ซึ่งทางแก้คนละทางกันสิ้นเชิง (ไปแก้ที่ต้นทาง vs ไปตามถาม)
+                  ⚠️ ข้อความมาจากทะเบียน (`field.from`) ไม่ได้เขียนใหม่ที่จอ */}
+              {source ? <small className={styles.pdrSource}>{source}</small> : null}
             </dd>
           </div>
         );
@@ -145,7 +150,7 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
           <Facts rows={[
             ...(section_.key === "spec" ? targetFacts(request) : []),
             ...pdrSectionRows(section_, request, {
-              includeEmpty: true,
+              includeEmpty: true, withSource: true,
               context: { ...(request.pdrContext || {}), briefs },
             }),
           ]} />
@@ -159,7 +164,7 @@ export default function PdrSummary({ request, briefs = [], section = null }) {
             <Facts rows={[
               ...(section_.key === "spec" ? targetFacts(request) : []),
               ...pdrSectionRows(section_, request, {
-                includeEmpty: true,
+                includeEmpty: true, withSource: true,
                 context: { ...(request.pdrContext || {}), briefs },
               }),
             ]} />

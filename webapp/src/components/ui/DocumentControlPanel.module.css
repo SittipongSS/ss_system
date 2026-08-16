@@ -208,10 +208,20 @@
   font-size: var(--fs-5);
 }
 
+/* ⭐ บรรทัดรองของรางแนวตั้งได้สองบรรทัด — ตั้งแต่มันพก **ชื่อคนกับวันที่จริง**
+   แทนคำอธิบายสั้น ๆ ("รับโดย ProjectCo.Krapook Project Management, R&D · 14/08/2026"
+   ยาว 300px ในรางกว้าง 255px) การตัดบรรทัดเดียวจะกินวันที่ทิ้งเสมอ ซึ่งเป็นครึ่งที่
+   สำคัญที่สุดของหลักฐาน
+   ⚠️ ยังจำกัดที่ 2 บรรทัด — ราง 5 ขั้นที่ปล่อยยาวอิสระจะดันปุ่มลงไปอีก
+   ⚠️ แถวแนวนอน (`workflowRailRow`) ไม่แตะ — ที่นั่นบรรทัดรองถูกซ่อนตั้งแต่ 1100px */
 .stepCopy small {
   margin-top: var(--space-0-5);
   color: var(--text-3);
   font-size: var(--fs-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .done .stepMarker {

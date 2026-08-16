@@ -93,3 +93,56 @@ test('⭐ ขั้นกลางสรุปจากแถว — "รอใ�
   const atSa = scent({ ...base, items: [{ ackAt: at, readyAt: at }] });
   assert.equal(requestRailSteps(atSa).steps[2].label, 'รอฝ่ายขายทำต่อ');
 });
+
+// ── บรรทัดใต้ชื่อขั้น = หลักฐานของใบนี้ ไม่ใช่นิยามของกระบวนการ ──────────
+//
+// 🐞 ผลตรวจ 2026-08-17: ทุกขั้นเขียนคำอธิบายตายตัว ("ระบุเรื่องที่ต้องการ" ·
+// "ส่งถึงฝ่าย RD" · "ผู้ตอบยืนยันว่าตอบครบ") ⇒ รางบอกว่าขั้นนี้แปลว่าอะไร แต่ไม่บอก
+// อะไรเกี่ยวกับ *ใบนี้* เลย ทั้งที่ชื่อคนและวันที่อยู่บนแถวแล้ว
+// เทียบกับรางของใบสั่งขายที่ทุกขั้นพกค่าจริง (ผู้จัดทำ · วันที่ยื่น · ผู้อนุมัติ · ยอด)
+test('⭐ ขั้นที่เกิดขึ้นแล้วต้องพกชื่อคน/วันที่ ไม่ใช่คำอธิบายลอย ๆ', () => {
+  const request = scent({
+    status: 'closed',
+    requestedByName: 'Supisara',
+    submittedAt: '2026-08-10T07:44:00Z',
+    acknowledgedByName: 'Krapook',
+    acknowledgedAt: '2026-08-14T02:07:00Z',
+    answeredAt: '2026-08-20T03:00:00Z',
+    closedByName: 'Supisara',
+    closedAt: '2026-08-21T04:00:00Z',
+  });
+  const by = Object.fromEntries(
+    requestRailSteps(request, { hasItems: false }).steps.map((s) => [s.id, s.hint]),
+  );
+  assert.match(by.draft, /Supisara/);
+  // ขั้น "รอรับเรื่อง" จบลงตอนมีคนรับ ⇒ หลักฐานคือใครรับ เมื่อไร
+  assert.match(by.pending, /Krapook/);
+  assert.match(by.pending, /14\/08\/2026/);
+  assert.match(by.answered, /20\/08\/2026/);
+  assert.match(by.closed, /Supisara/);
+});
+
+test('ขั้นที่ยังไม่ถึงต้องบอกว่ารออะไร — ห้ามว่างเปล่า', () => {
+  // ใบร่างยังไม่ยื่น: ไม่มีหลักฐานของขั้นไหนเลยนอกจากผู้เปิดใบ
+  const { steps } = requestRailSteps(scent({ status: 'draft', requestedByName: 'Supisara' }), {});
+  for (const step of steps) assert.ok(step.hint, `ขั้น ${step.id} ไม่มีบรรทัดรอง`);
+  const pending = steps.find((s) => s.id === 'pending');
+  assert.match(pending.hint, /ส่งถึงฝ่าย RD/);
+  // ยื่นแล้วแต่ยังไม่มีใครรับ = โชว์วันที่ยื่น
+  const sent = requestRailSteps(scent({ status: 'pending', submittedAt: '2026-08-10T07:44:00Z' }), {});
+  assert.match(sent.steps.find((s) => s.id === 'pending').hint, /ยื่นเมื่อ 10\/08\/2026/);
+});
+
+// ⚠️ ขั้นกลางเป็นสถานะงานที่กำลังเดิน ไม่ใช่หลักฐานของอดีต — ตัวเลขความคืบหน้า
+// ต้องไม่ถูกหลักฐานทับ ไม่งั้น "เสร็จแล้ว 2/5" หายไปจากจอ
+test('ขั้นกลางยังเล่าความคืบหน้าของงาน ไม่ถูกชื่อผู้รับเรื่องทับ', () => {
+  const request = scent({
+    status: 'acknowledged',
+    acknowledgedByName: 'Krapook',
+    acknowledgedAt: '2026-08-14T02:07:00Z',
+    items: [{ ackAt: 'x' }, { ackAt: 'x', readyAt: 'x', outcome: 'confirmed', confirmedQty: 1, pricedAt: 'x' }],
+  });
+  const middle = requestRailSteps(request, { hasItems: true }).steps[2];
+  assert.doesNotMatch(middle.hint, /Krapook/);
+  assert.match(middle.hint, /\d+\/\d+|รายการ/);
+});

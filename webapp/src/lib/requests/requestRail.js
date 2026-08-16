@@ -9,6 +9,21 @@
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestDeliversRows } from '@/lib/master/requestTypes';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
+import { fmtDate } from '@/lib/format';
+
+/**
+ * บรรทัดใต้ชื่อขั้น = **หลักฐานว่าเกิดอะไรขึ้นแล้ว** ถ้ามี · ไม่มีค่อยบอกว่ารออะไร
+ *
+ * 🐞 เดิมทุกขั้นเขียนคำอธิบายตายตัวว่า "ขั้นนี้แปลว่าอะไร" ("ระบุเรื่องที่ต้องการ" ·
+ * "ส่งถึงฝ่าย RD" · "ผู้ตอบยืนยันว่าตอบครบ") ⇒ รางบอกนิยามของกระบวนการ ไม่ได้บอก
+ * อะไรเกี่ยวกับ *ใบนี้* เลย · ของจริงมีอยู่บนแถวแล้วทั้งชื่อคนและวันที่ แต่ถูกโยนไป
+ * เป็นบรรทัดจิ๋วใต้หัวใบ ("รับเรื่องโดย … · 14/08/2026") ซึ่งไม่มีใครมองหา
+ * ⇒ ยกมาไว้บนราง ทรงเดียวกับรางของใบสั่งขาย (`sales-orders/[id]` — `workflow`)
+ *
+ * ⚠️ **ย้าย ไม่ก๊อป** — บรรทัดใต้หัวใบถูกถอดพร้อมกัน ไม่งั้นข้อเท็จจริงเดียวกัน
+ * อยู่สองที่แล้วต้องคอยดูแลให้ตรงกัน
+ */
+const evidence = (...parts) => parts.filter(Boolean).join(' · ') || null;
 
 // ขั้นกลาง — สรุปจากแถวข้างใน ไม่ใช่คำตายตัว
 function middleStep(request, hasItems) {
@@ -51,11 +66,41 @@ function middleStep(request, hasItems) {
  */
 export function requestRailSteps(request, { hasItems = false } = {}) {
   const steps = [
-    { id: 'draft', label: 'จัดทำคำร้อง', hint: hasItems ? 'ระบุวัสดุและชั้นจำนวน' : 'ระบุเรื่องที่ต้องการ' },
-    { id: 'pending', label: 'รอรับเรื่อง', hint: `ส่งถึงฝ่าย ${request.dept}` },
+    {
+      id: 'draft',
+      label: 'จัดทำคำร้อง',
+      // ใครเป็นคนเปิดใบ — รู้ตั้งแต่ร่างแล้ว จึงมีหลักฐานเสมอ
+      hint: evidence(request.requestedByName)
+        || (hasItems ? 'ระบุวัสดุและชั้นจำนวน' : 'ระบุเรื่องที่ต้องการ'),
+    },
+    {
+      id: 'pending',
+      label: 'รอรับเรื่อง',
+      /* ⭐ ขั้นนี้ **จบลงตอนมีคนรับเรื่อง** ⇒ หลักฐานของมันคือ "ใครรับ เมื่อไร"
+         (ทรงเดียวกับขั้น "AE Supervisor ตรวจ" ของใบสั่งขายที่โชว์ชื่อผู้อนุมัติ)
+         · ยังไม่มีใครรับ = โชว์วันที่ยื่นแทน · ยังไม่ยื่น = บอกว่าจะส่งไปไหน */
+      hint: evidence(
+        request.acknowledgedByName && `รับโดย ${request.acknowledgedByName}`,
+        request.acknowledgedAt && fmtDate(request.acknowledgedAt),
+      )
+        || (request.submittedAt ? `ยื่นเมื่อ ${fmtDate(request.submittedAt)}` : `ส่งถึงฝ่าย ${request.dept}`),
+    },
+    // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
+    // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม
     { id: 'acknowledged', ...middleStep(request, hasItems) },
-    { id: 'answered', label: 'ตอบแล้ว', hint: 'ผู้ตอบยืนยันว่าตอบครบ' },
-    { id: 'closed', label: 'ปิดเรื่อง', hint: 'งานนี้สิ้นสุด' },
+    {
+      id: 'answered',
+      label: 'ตอบแล้ว',
+      hint: evidence(request.answeredAt && fmtDate(request.answeredAt)) || 'ผู้ตอบยืนยันว่าตอบครบ',
+    },
+    {
+      id: 'closed',
+      label: 'ปิดเรื่อง',
+      hint: evidence(
+        request.closedByName && `ปิดโดย ${request.closedByName}`,
+        request.closedAt && fmtDate(request.closedAt),
+      ) || 'งานนี้สิ้นสุด',
+    },
   ];
 
   const index = request.status === 'draft'

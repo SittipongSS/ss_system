@@ -606,7 +606,20 @@ export function pdrRailSectionsFromRequest(request = {}, briefs = [], targets = 
   );
 }
 
-export function pdrSectionRows(section, request = {}, { includeEmpty = false, context = {} } = {}) {
+/**
+ * `withSource: true` — ต่อองค์ประกอบที่สามเป็น "ค่านี้มาจากไหน" สำหรับช่องที่ระบบ
+ * เติมให้เอง (`derived`) · จอแสดงใช้บอกว่าช่องนี้ไม่ใช่ของที่คนกรอกลืม
+ *
+ * 🐞 ข้อความ `from` ("เติมจากผู้ดูแลโครงการ" · "เติมจากทะเบียนลูกค้า" · "เติมจาก SO")
+ * ประกาศอยู่ในทะเบียนมาตั้งแต่ต้น แต่ **ไม่มีที่ไหนเรนเดอร์เลย** ⇒ ช่องที่ระบบเติม
+ * กับช่องที่คนลืมกรอกหน้าตาเหมือนกันเป๊ะบนจอ
+ * (หน้าใบสั่งขายทำถูกอยู่แล้ว — พิมพ์กำกับว่า "ตามใบเสนอราคา QT-… แก้ที่นี่ไม่ได้")
+ *
+ * ⚠️ ปิดไว้เป็นค่าตั้งต้น — ผู้เรียกอื่น (และเทสต์) ยังได้คู่ [ป้าย, ค่า] เหมือนเดิม
+ */
+export function pdrSectionRows(section, request = {}, {
+  includeEmpty = false, context = {}, withSource = false,
+} = {}) {
   return (section?.fields || [])
     // ⚠️ ช่อง `legacy` โผล่เฉพาะใบที่มีค่าจริง — ใบใหม่ไม่เขียนลงช่องนี้แล้ว ปล่อยให้
     // `includeEmpty` ลากมาด้วยจะได้บรรทัด "ประเภทสินค้า (บันทึกไว้เดิม): N/A" ติดทุกใบ
@@ -614,7 +627,14 @@ export function pdrSectionRows(section, request = {}, { includeEmpty = false, co
     // ⚠️ ข้อ 2.2/2.3 ไม่ใช่คู่ป้าย/ค่า แต่เป็น **ตารางรายสินค้า** (mig 0229) — ผู้เรียก
     // วาดเองจาก `request.targets` · ลากมาเป็นแถวว่างที่นี่จะได้บรรทัดที่ไม่มีวันมีค่า
     .filter((f) => f.type !== 'targets')
-    .map((f) => [f.label, pdrFieldText(f, request, context)])
+    .map((f) => {
+      const value = pdrFieldText(f, request, context);
+      if (!withSource) return [f.label, value];
+      const from = f.type === 'derived' ? f.from || null : null;
+      // ⚠️ บางช่องระบบเติมค่าคงที่ (แผนก = "การขายและบริการ") แล้ว `from` ก็เขียนคำ
+      // เดียวกัน ⇒ จะได้บรรทัดเดียวกันสองครั้งติดกัน · ที่มาที่พูดซ้ำกับค่าไม่ได้บอกอะไร
+      return [f.label, value, from && String(from).trim() === String(value ?? '').trim() ? null : from];
+    })
     .filter(([, v]) => includeEmpty || (v != null && String(v).trim() !== ''));
 }
 
