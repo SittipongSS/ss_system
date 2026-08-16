@@ -391,6 +391,16 @@ export default function RequestDetailPage() {
   // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
   // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
   const reconcile = soReconcile({ lines: req.salesOrderLines, items: req.items });
+  // ⭐ **ก้อนเดียว กระจายสองที่** — เนื้อกลางหน้า (`KindDetail`) กับการ์ดขวา
+  // (`KindPanel`) ต้องได้ชุดเดียวกัน
+  // 🐞 เดิมประกอบสามบรรทัดนี้ไว้ที่ `KindDetail` ที่เดียว แล้ว `KindPanel` ไม่ได้รับเลย
+  // ⇒ `ScentPanel` รับ prop ครบแต่เป็น undefined ทั้งชุด · แถว "กลิ่นตาม SO" กับ
+  // บรรทัดกระทบยอด **ไม่เคยขึ้นบนจอ** ทั้งที่ `soReconcile` คำนวณไว้แล้ว
+  const reconcileProps = {
+    reconcile,
+    reconcileTone: reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined,
+    reconcileText: reconcile ? soReconcileText(reconcile) : null,
+  };
 
   // ⭐ บอกปลายทางตอนกำลังจะพิมพ์ — "ใครกำลังถือขั้นนี้อยู่" เปลี่ยนว่าคนจะพิมพ์อะไร
   // (มติผู้ใช้: ฝั่งที่ไม่ใช่ตาตัวเองต้องพิมพ์ได้ทันทีตรงนั้น ไม่ใช่ปุ่มที่เด้งไปที่อื่น)
@@ -954,6 +964,7 @@ export default function RequestDetailPage() {
                 formulaTotals={formulaTotals}
                 board={board}
                 briefSummary={briefSummary}
+                {...reconcileProps}
               />
             )}
             {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
@@ -1003,9 +1014,7 @@ export default function RequestDetailPage() {
         formulaTotals={formulaTotals}
         docBoard={docBoard}
         docTotals={docTotals}
-        reconcile={reconcile}
-        reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}
-        reconcileText={reconcile ? soReconcileText(reconcile) : null}
+        {...reconcileProps}
         pdrDraft={pdrDraft}
         onPdrDraftChange={setPdrDraft}
       />
@@ -1582,10 +1591,12 @@ export default function RequestDetailPage() {
         )}
       </Modal>
 
-      {/* ส่งกลิ่น — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว */}
+      {/* ส่งงาน — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว
+          ⚠️ หัวโมดัลใช้คำเดียวกับปุ่มที่กดมา (ม-120 รวมคำ "ส่งกลิ่น"/"ส่งของ" เป็น
+          "ส่งงาน") — กดปุ่มชื่อหนึ่งแล้วเจอหัวกล่องอีกชื่อ คนจะไม่แน่ใจว่ากดถูกกล่องไหม */}
       <Modal
         open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
-        title="ส่งกลิ่นให้ฝ่ายขาย"
+        title="ส่งงานให้ฝ่ายขาย — กลิ่นเข้าทะเบียนทันที"
       >
         {delivery && (
           <>

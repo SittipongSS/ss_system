@@ -14,7 +14,7 @@ import { useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 
 export default function SectionRail({
-  sections,          // [{ key, label, count?: {filled,total} }]
+  sections,          // [{ key, label, count?: {filled,total,optional?} }]
   value,
   onChange,
   ariaLabel = "ส่วนของแบบฟอร์ม",
@@ -38,9 +38,15 @@ export default function SectionRail({
       <div className="section-rail-nav" role="tablist" aria-label={ariaLabel} aria-orientation="vertical">
         {items.map((item, index) => {
           const on = item.key === value;
-          const { filled = 0, total = 0 } = item.count || {};
+          const { filled = 0, total = 0, optional = false } = item.count || {};
+          /* ⭐ `optional` = ส่วนที่ **ไม่มีช่องไหนบังคับเลย** (เช่น ตารางลายเซ็นของ PDR)
+             ⇒ ตัวหารไม่มีความหมาย · โชว์จำนวนที่กรอกเฉย ๆ และไม่มีสถานะ "ยังไม่ครบ"
+             🐞 เดิมส่วนพวกนี้ขึ้น "0/6" กับจุดเทาเหมือนงานค้าง ทั้งที่เว้นว่างได้ตามตั้งใจ
+                ⇒ อ่านเป็นหนี้ที่ไม่มีวันเคลียร์ */
           // จุดสีบอก "แตะแล้วหรือยัง" — เขียวเมื่อครบ, เหลืองเมื่อเริ่มแล้ว, เทาเมื่อยังว่าง
-          const tone = total > 0 && filled >= total ? "full" : filled > 0 ? "some" : "none";
+          const tone = optional
+            ? (filled > 0 ? "full" : "none")
+            : total > 0 && filled >= total ? "full" : filled > 0 ? "some" : "none";
           return (
             <button
               key={item.key}
@@ -58,7 +64,9 @@ export default function SectionRail({
             >
               <span className="section-rail-dot" data-tone={tone} aria-hidden="true" />
               <span className="section-rail-label">{item.label}</span>
-              {total > 0 && <span className="section-rail-count">{filled}/{total}</span>}
+              {optional
+                ? filled > 0 && <span className="section-rail-count">กรอก {filled}</span>
+                : total > 0 && <span className="section-rail-count">{filled}/{total}</span>}
             </button>
           );
         })}

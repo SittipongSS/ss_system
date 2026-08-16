@@ -28,7 +28,7 @@ import { fmtNumber } from "@/lib/format";
 import EmptyState from "@/components/ui/EmptyState";
 import EditableLineList from "@/components/ui/EditableLineList";
 import {
-  PDR_TARGET_KINDS, emptyPdrTarget, pdrTargetFilled, pdrTargetsProgress,
+  PDR_TARGET_KINDS, emptyPdrTarget, pdrTargetFilled,
 } from "@/lib/requests/pdrTargets";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { SCENTOTYPES, SCENT_PERFORMANCE } from "@/lib/requests/kinds/rd/scentBriefTypes";
@@ -309,36 +309,10 @@ function PdrTargetList({ targets, onChange, productKinds, categories, disabled }
   );
 }
 
-/* รายการส่วนสำหรับรางเลือกส่วน — ลำดับตรงกับที่ฟอร์มเรนเดอร์เป๊ะ
-   ⚠️ "บรีฟกลิ่น" ไม่ได้อยู่ใน `PDR_SECTIONS` (มันไม่ใช่ช่องบนกระดาษ FM-RD-01
-   แต่เป็นก้อนของระบบ) จึงต้องแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก */
-export function pdrRailSections(value = {}, briefs = [], targets = []) {
-  const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
-  const count = (key) => pdrFormProgress(of(key), value);
-  // ⚠️ หมวดสเปกมีทั้งช่องธรรมดาและ **แถวรายสินค้า** (ข้อ 2.2/2.3 · mig 0229) ที่อยู่
-  // คนละตาราง ⇒ บวกสองตัวนับเข้าด้วยกัน ไม่งั้นเลข "กรอกแล้ว/ทั้งหมด" บนหัวหมวด
-  // จะไม่รวมของที่ผู้ใช้เพิ่งกรอกไป
-  const specCount = () => {
-    const base = count("spec");
-    const rows = pdrTargetsProgress(targets);
-    return { total: base.total + rows.total, filled: base.filled + rows.filled };
-  };
-  return [
-    { key: "request", label: of("request").title, count: count("request") },
-    { key: "customer", label: of("customer").title, count: count("customer") },
-    {
-      key: "briefs",
-      label: "บรีฟกลิ่น",
-      // ⚠️ นับ **ก้อนที่มีเนื้อบรีฟ** ไม่ใช่ก้อนที่มีชื่อ — ชื่อเรียกที่เว้นว่างไว้จะถูก
-      // เติม "กลิ่นที่ N" ให้ตอนบันทึก (scentBriefs.js) ⇒ ถ้านับชื่อ เกจจะเด้งเป็น
-      // เต็มทันทีที่กดบันทึกครั้งแรก ทั้งที่ยังไม่ได้เขียนบรีฟสักตัว
-      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.brief || "").trim()).length },
-    },
-    { key: "spec", label: of("spec").title, count: specCount() },
-    { key: "regulatory", label: of("regulatory").title, count: count("regulatory") },
-    { key: "signers", label: of("signers").title, count: count("signers") },
-  ];
-}
+/* ⚠️ **`pdrRailSections` ย้ายไป `lib/requests/pdrFields.js` แล้ว** — ที่นั่นเป็นที่เดียว
+   ของทั้งสามจอ (เปิดคำร้อง · อ่าน · แก้) · ผู้เรียกเดิมที่ import จากไฟล์นี้ต้องย้ายไป
+   import จากลิบแทน · ปล่อยให้มีสองตัวเมื่อไร เกจของโหมดอ่านกับโหมดแก้จะให้เลข
+   คนละชุดอีก (เหตุผลเต็มอยู่ที่ doc ของ `pdrFormProgress`) */
 
 export default function PdrForm({
   value = {}, onChange, briefs = [], onBriefsChange, disabled = false,

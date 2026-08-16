@@ -25,10 +25,14 @@ import BriefBoard from "@/components/requests/BriefBoard";
 import RequestRows from "./RequestRows";
 import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
-import PdrForm, { pdrRailSections } from "@/components/requests/PdrForm";
-import PdrSummary, { pdrReadRailSections } from "@/components/requests/PdrSummary";
+import PdrForm from "@/components/requests/PdrForm";
+import PdrSummary from "@/components/requests/PdrSummary";
 import { RowStepActions } from "@/components/requests/NextStepBar";
-import { PDR_SECTIONS } from "@/lib/requests/pdrFields";
+// ⚠️ รางหมวดของทั้งสองโหมดมาจากตัวเดียวกัน — โหมดแก้ส่งค่าฟอร์ม โหมดอ่านส่งแถวคำร้อง
+// แล้วตัวลิบแปลงให้เอง ⇒ เลขบนรางก่อนกด "แก้ไข" กับหลังกดต้องตรงกันเสมอ
+import {
+  PDR_SECTIONS, pdrRailSections, pdrRailSectionsFromRequest,
+} from "@/lib/requests/pdrFields";
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
@@ -158,10 +162,10 @@ export default function ScentDevDetail({
             </>
           ) : (
             <SectionRail
-              // ⭐ รายชื่อหมวดมาจากที่เดียว (`pdrReadRailSections`) และมี "บรีฟกลิ่น"
+              // ⭐ รายชื่อหมวดมาจากที่เดียว (`pdrRailSections`) และมี "บรีฟกลิ่น"
               // เป็นหมวดของตัวเองเหมือนฝั่งกรอก — เดิมบรีฟถูกวาดค้างไว้บนสุดนอกราง
               // ⇒ เลือกหมวด 4 แล้วยังเห็นบรีฟอยู่ข้างบน อ่านเหมือนสองหน้ามาต่อกัน
-              sections={pdrReadRailSections(request, request.briefs || [], context)}
+              sections={pdrRailSectionsFromRequest(request, request.briefs || [], request.targets || [])}
               value={sectionKey}
               onChange={setSectionKey}
               ariaLabel="หมวดของแบบฟอร์ม"
