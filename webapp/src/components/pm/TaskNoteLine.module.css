@@ -1,0 +1,9 @@
+/* บรรทัดเดียวจริง ๆ — การ์ดในมุมมองเมทริกซ์ต้องสูงเท่ากันทั้งช่อง ไม่งั้นนับใบด้วยตาไม่ได้ */
+.miniNote {
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
