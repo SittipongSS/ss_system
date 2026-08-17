@@ -63,10 +63,12 @@ function sharedDriveParams() {
 }
 
 let _drive = null;
-// google drive client (cache ต่อ instance). Auth ผ่าน WIF + Vercel OIDC token supplier.
-export function getDrive() {
-  if (_drive) return _drive;
-  const authClient = ExternalAccountClient.fromJSON({
+let _auth = null;
+// auth client ของ Drive (cache ต่อ instance) — แยกออกมาเพราะทางอัปแบบ resumable
+// คุยกับ endpoint upload ตรง ๆ ด้วย fetch จึงต้องได้ access token ดิบ ไม่ผ่าน googleapis
+function getDriveAuth() {
+  if (_auth) return _auth;
+  _auth = ExternalAccountClient.fromJSON({
     type: 'external_account',
     audience: process.env.GOOGLE_WIF_AUDIENCE,
     subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
@@ -77,7 +79,13 @@ export function getDrive() {
     subject_token_supplier: { getSubjectToken: async () => getVercelOidcToken() },
     scopes: [DRIVE_SCOPE],
   });
-  _drive = google.drive({ version: 'v3', auth: authClient });
+  return _auth;
+}
+
+// google drive client (cache ต่อ instance). Auth ผ่าน WIF + Vercel OIDC token supplier.
+export function getDrive() {
+  if (_drive) return _drive;
+  _drive = google.drive({ version: 'v3', auth: getDriveAuth() });
   return _drive;
 }
 
@@ -560,6 +568,12 @@ export async function uploadForEntity({ entityType, entityId, buffer, name, mime
     return attempt();
   }
 }
+
+// 🐞 เคยมี `createResumableUpload()` ตรงนี้ (เปิด session แล้วให้เบราว์เซอร์ PUT ขึ้น
+// Drive เอง) — **ถอดออกเพราะใช้ไม่ได้จริง**: googleapis.com ไม่ตอบ CORS ให้ session URL
+// (prod 2026-08-17 — session สร้างสำเร็จ แต่ PUT ตาย `TypeError: Failed to fetch`)
+// ทางที่ใช้อยู่คือพักไฟล์ที่ staging bucket แล้ว `/api/upload/commit` เรียก
+// `uploadForEntity()` ข้างบนนี้ให้ (ดู lib/upload/staging.js)
 
 // ล้าง driveFolderId ที่ cache ไว้ของ entity (และของลูกค้าเจ้าของ) เพื่อให้รอบถัดไป
 // สร้างโฟลเดอร์ใหม่แทนการยิงเข้า id ที่ตายแล้ว

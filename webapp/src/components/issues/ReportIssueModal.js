@@ -20,6 +20,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { notifyToast } from "@/lib/feedback";
 import { shortUserAgent } from "@/lib/issues/userAgent";
 import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import {
   ISSUE_IMPACTS, ISSUE_IMPACT_LABELS, ISSUE_KINDS, ISSUE_KIND_LABELS,
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
@@ -201,13 +202,10 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
 async function attachToThread(issueId, files) {
   const attachments = [];
   for (const file of files) {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("entityType", "system_issue");
-    fd.append("entityId", issueId);
-    const up = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
-    const payload = await up.json();
+    // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
+    const payload = await uploadFileForEntity({
+      file, entityType: "system_issue", entityId: issueId,
+    });
     attachments.push({
       fileUrl: payload.url,
       driveFileId: payload.driveFileId || null,

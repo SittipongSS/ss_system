@@ -6,6 +6,7 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
 
@@ -46,15 +47,10 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
       let receiptUrl = null;
       let receiptDriveFileId = null;
       if (file && !isExempt) {
-        const fd = new FormData();
-        fd.append("file", file);
-        fd.append("customerName", `order-${order.id}`);
-        fd.append("entityType", "order");
-        fd.append("entityId", order.id);
-        const up = await fetch("/api/upload", { method: "POST", body: fd });
-        // คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON — เก็บ status ไว้เป็นเบาะแส
-        if (!up.ok) throw new Error(await describeResponseError(up, "อัปโหลดไฟล์ไม่สำเร็จ"));
-        const uploaded = await up.json();
+        // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
+        const uploaded = await uploadFileForEntity({
+          file, entityType: "order", entityId: order.id,
+        });
         receiptUrl = uploaded.url;
         receiptDriveFileId = uploaded.driveFileId || null;
       }

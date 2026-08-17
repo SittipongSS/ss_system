@@ -34,10 +34,30 @@ Requirement = เป็นของแต่ละโมดูล     → "actio
 ### API
 - `listAttachments(entityType, entityId)` → array (ใหม่สุดก่อน)
 - `getAttachment(id)` → record \| null
-- Upload: `POST /api/master/attachments` (+ `/api/upload` สำหรับ binary) — gating + ตรวจประเภท/ขนาดที่ server
+- Upload: `POST /api/master/attachments` (metadata) + ไบต์ขึ้นที่เก็บผ่าน `lib/master/uploadFile.js` — gating + ตรวจประเภท/ขนาดที่ server
+
+### เส้นทางของไบต์ (เปลี่ยน 2026-08-17)
+เบราว์เซอร์ **อัปไฟล์ขึ้น Supabase Storage ตรง** ไม่ผ่าน API ของเราอีก:
+1. `POST /api/upload/session` — ตรวจสิทธิ์/ขนาด/ชนิด แล้วคืน signed URL ที่เขียนได้ไฟล์เดียว
+2. เบราว์เซอร์ PUT ไบต์ขึ้น URL นั้น (XHR ⇒ มี progress)
+3. ปลายทางต่างกันตาม `kind` ที่ session คืนมา
+   - `supabase` — หลักฐาน Won/การชำระ อยู่ใน bucket ส่วนตัวแล้วจบ
+   - `drive-staged` — ไฟล์แนบทั่วไป ขึ้น `upload-staging` (mig 0263) แล้วเรียก
+     `POST /api/upload/commit` ให้ server ย้ายเข้า Drive + ลบไฟล์ที่พัก
+4. บันทึก metadata ตามปกติ (`/api/master/attachments` · `/api/updates` · accept ของใบเสนอราคา)
+
+**ทำไมไม่ยิงเข้า Drive ตรง** — googleapis.com ไม่ตอบ CORS ให้ resumable session URL
+(ลองบน prod 2026-08-17: session สร้างได้ แต่ PUT ตาย `TypeError: Failed to fetch` ทุกครั้ง
+และเลี่ยงไม่ได้เพราะ PUT ข้ามโดเมนต้องผ่าน preflight เสมอ) · ขา commit เป็น fetch **ออก**
+จาก function ไม่ใช่ request body จึงไม่ติดเพดาน 4.5 MB ที่ Vercel ตัด
+
+`POST /api/upload` เหลือเป็น **เส้นสำรองของไฟล์ ≤ 4 MB** เท่านั้นเมื่ออัปตรงไม่สำเร็จ —
+ทางเดียวที่ client เรียกได้คือ `uploadFileForEntity()` (มี ratchet test คุม)
 
 ### Upload constraints (ค่ากลางใน `attachmentTypes.js`)
-- ขนาดสูงสุด `MAX_UPLOAD_MB = 10` (override ได้ด้วย env `SUPABASE_MAX_UPLOAD_MB`)
+- ขนาดสูงสุด `MAX_UPLOAD_MB = 25` (override ได้ด้วย env `SUPABASE_MAX_UPLOAD_MB`)
+  · bucket ที่รับไบต์ตรงมี `file_size_limit` เท่ากัน — `sales-evidence` (mig 0262) และ
+  `upload-staging` (mig 0263) · ขยับเพดานต้องขยับทั้งสามที่ ไม่งั้น Storage ปฏิเสธไฟล์ที่ UI บอกว่ารับได้
 - ชนิดไฟล์: **PDF เท่านั้น** (`ACCEPTED_UPLOAD_MIME = ["application/pdf"]`)
 - บังคับจริงที่ server ไม่พึ่ง UI
 
