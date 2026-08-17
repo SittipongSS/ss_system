@@ -1,0 +1,73 @@
+/* log ของระบบ — เส้นเวลาบาง ๆ ไม่ใช่บทสนทนา จึงไม่มีกล่องข้อความ ไม่มีอวาตาร์ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2-5);
+  align-items: flex-start;
+}
+
+/* จุดคั่นแถว — สีกลาง ไม่ไล่ตามชนิด (กล่องนี้ตั้งใจให้เงียบ ดูคอมเมนต์ใน UpdateLog)
+   ⚠️ ระยะเยื้องลงมาให้ตรงกับบรรทัดแรกของข้อความ ต้องหยิบขั้นจาก --space-* */
+.mark {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+}
+
+.copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.head strong {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+
+.head time {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* เนื้อเหตุการณ์ยาวได้ (เช่น "ตีกลับ — …") แต่ไม่ใช่พระเอกของกล่องนี้ */
+.body {
+  margin: var(--space-0-5) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+
+.copy small {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+.peek {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}

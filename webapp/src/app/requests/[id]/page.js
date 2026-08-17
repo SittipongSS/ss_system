@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, FileText, FolderKanban, Handshake, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
+  CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -24,6 +24,7 @@ import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/Detai
 import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
 import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
+import UpdateLog from "@/components/updates/UpdateLog";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
@@ -153,6 +154,9 @@ export default function RequestDetailPage() {
   const [allScents, setAllScents] = useState([]);
   // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
   const [pricing, setPricing] = useState(null);
+  // แถวเธรดก้อนดิบ — เธรดโหลดมาแล้วส่งต่อให้การ์ด log บนรางขวาใช้ก้อนเดียวกัน
+  // (ห้ามให้การ์ดนั้นยิง `/api/updates` เอง — ดูคอมเมนต์ที่ `UpdateThread`)
+  const [threadItems, setThreadItems] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
@@ -1010,6 +1014,18 @@ export default function RequestDetailPage() {
                 {...reconcileProps}
               />
             )}
+            {/* ⭐ log ของระบบ — ครึ่งที่ไม่ใช่บทสนทนาของเธรดเดียวกัน (มติผู้ใช้ 2026-08-17)
+                วางท้ายคอลัมน์เพราะเป็นข้อมูล "เย็น" ที่ไม่ใช่คำถามแรกของใคร — เหตุผล
+                เดียวกับที่หน้าใบสั่งขายวาง AUDIT TRAIL ไว้ท้ายสุด
+                ⚠️ ทรงต่างจากใบสั่งขายโดยตั้งใจ: ที่นั่นเป็นสามบรรทัด "ใครทำอะไร" ไม่มีเวลา
+                ซึ่งพอสำหรับเอกสารที่มีการตัดสินใจของคนสามจุด · คำร้องมีเหตุการณ์ 20+ ชนิด
+                ที่ *ลำดับ* คือเนื้อหา ⇒ ต้องเป็นเส้นเวลา */}
+            <UpdateLog
+              entityType="dept_request"
+              items={threadItems}
+              icon={History}
+              title="ประวัติการทำรายการ"
+            />
             {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
                 สรุป → หลักฐาน · การ์ดทรงเดียวกับที่อื่นในคอลัมน์ (`DetailCard`) */}
             <DetailCard icon={Paperclip} title="ไฟล์แนบของคำร้อง">
@@ -1071,9 +1087,21 @@ export default function RequestDetailPage() {
             **ไม่เห็นทั้งเหตุการณ์ของระบบและข้อความเก่า** และข้อความใหม่ตกไปอยู่คีย์
             ที่ไม่มีใครอ่าน (ไฟล์แนบพลาดคู่กัน) · เทสต์กันไว้แล้วที่
             lib/master/entityTypeUsage.test.mjs */}
+        {/* ⭐ **เธรดเหลือเฉพาะบทสนทนา** (มติผู้ใช้ 2026-08-17) — เหตุการณ์ระบบไปอยู่
+            การ์ด "ประวัติการทำรายการ" บนรางขวา
+            🐞 นับจริงทั้งระบบ: 132 แถว = ข้อความคน 33 (25%) เหตุการณ์ระบบ 99 (75%)
+            และ **16 ใบจาก 32 ไม่มีข้อความคนสักแถว** ⇒ การ์ดที่พาดหัวว่า "พูดคุย"
+            เป็น log ล้วนบนครึ่งหนึ่งของใบทั้งระบบ
+            ⚠️ **ย้าย ไม่ก๊อป** — แถวหนึ่งโผล่ได้กล่องเดียว (คัดด้วยฟังก์ชันตัวเดียวกัน
+            กลับด้าน) · และยังเขียนลง `entity_updates` ครบทุกชนิดเหมือนเดิม เพราะ
+            แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด
+            ⚠️ ยิง `/api/updates` **ครั้งเดียว** — การ์ด log อ่านก้อนเดิมผ่าน
+            `onItemsChange` ไม่ยิงซ้ำ (การเปิดเธรดมาร์คแจ้งเตือนว่าอ่านแล้วด้วย) */}
         <UpdateThread
           entityType="dept_request"
           entityId={req.id}
+          splitSystem
+          onItemsChange={setThreadItems}
           placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
           emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
           composeHint={composeHint}

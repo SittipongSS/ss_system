@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  authorableKinds, isAuthorableKind, isSystemUpdateItem, UPDATE_KINDS,
+  authorableKinds, isAuthorableKind, isNarrativeUpdateItem, isSystemUpdateItem, UPDATE_KINDS,
 } from './updateTypes.js';
 
 const own = (kind, extra = {}) => ({ kind: 'own', row: { id: 'u1', kind, ...extra } });
@@ -58,4 +58,47 @@ test('ข้อมูลไม่ครบ = ถือว่าข้อคว�
   assert.equal(isSystemUpdateItem(TYPE, undefined), false);
   assert.equal(isSystemUpdateItem(TYPE, { kind: 'own', row: { id: 'u1' } }), false); // ไม่มี kind
   assert.equal(isSystemUpdateItem(TYPE, { kind: 'own' }), false);                    // ไม่มี row
+});
+
+// ── บทสนทนา vs log ของระบบ (isNarrativeUpdateItem) ─────────────────────
+//
+// ⭐ คนละคำถามกับ `isSystemUpdateItem` — ตัวนั้นถามว่า "คนเลือกชนิดนี้ตอนโพสต์ได้ไหม"
+// ตัวนี้ถามว่า **"แถวนี้มีข้อความที่คนพิมพ์อยู่ในนั้นไหม"** ⇒ เหตุการณ์ที่ระบบเขียน
+// แต่พกเหตุผลของคน (ตีกลับ · ยกเลิก · เลื่อนวัน) นับเป็นบทสนทนา ทั้งที่ไม่ authorable
+//
+// ⚠️ ตัวนี้ตัดสินว่าแถวไหนไปอยู่กล่องไหน — ตัดผิดฝั่งคือเหตุผลที่คนพิมพ์ไปจมอยู่ใน
+// log ที่พับไว้ ซึ่งเป็นสิ่งที่ ม-49 ตั้งกฎขึ้นมากันตั้งแต่แรก
+test('⭐ เหตุการณ์ที่พกเหตุผลของคน = บทสนทนา แม้ระบบจะเป็นคนเขียนแถว', () => {
+  for (const kind of ['comment', 'bounce', 'cancel', 'reschedule', 'no_quote', 'refused', 'revise']) {
+    assert.equal(isNarrativeUpdateItem('dept_request', own(kind)), true, kind);
+  }
+});
+
+test('⭐ เหตุการณ์เปลี่ยนสถานะล้วน = log ของระบบ', () => {
+  for (const kind of ['submit', 'acknowledge', 'assign', 'update', 'pdr', 'close', 'ready', 'pickup']) {
+    assert.equal(isNarrativeUpdateItem('dept_request', own(kind)), false, kind);
+  }
+});
+
+// สองกล่องต้องกินแถวครบพอดี ไม่ทับกันและไม่มีแถวไหนตกหล่น — แถวหนึ่งโผล่ที่เดียว
+// (ครึ่งที่ยังถูกของ ม-49) และไม่มีแถวไหนหายจากจอทั้งสองกล่อง
+test('⭐ ทุกชนิดของคำร้องต้องตกกล่องใดกล่องหนึ่งพอดี ไม่ทับ ไม่ตกหล่น', () => {
+  for (const kind of Object.keys(UPDATE_KINDS.dept_request)) {
+    const item = own(kind);
+    const narrative = isNarrativeUpdateItem('dept_request', item);
+    // กล่อง log คัดด้วยตัวเดียวกันกลับด้าน ⇒ นิยามนี้เป็น partition โดยโครงสร้าง
+    assert.equal(typeof narrative, 'boolean', kind);
+  }
+  // ชนิดที่ authorable ต้องเป็นบทสนทนาเสมอ — คนพิมพ์เองอยู่แล้ว
+  for (const kind of authorableKinds('dept_request')) {
+    assert.equal(isNarrativeUpdateItem('dept_request', own(kind)), true, kind);
+  }
+});
+
+test('ชนิดที่ไม่รู้จัก/ข้อมูลไม่ครบ = บทสนทนา (หายจากจอแย่กว่าอยู่ผิดกล่อง)', () => {
+  assert.equal(isNarrativeUpdateItem('dept_request', own('ชนิดที่ถูกถอดไปแล้ว')), true);
+  assert.equal(isNarrativeUpdateItem('dept_request', { kind: 'own', row: { id: 'u1' } }), true);
+  assert.equal(isNarrativeUpdateItem('dept_request', null), false);
+  // แถวอ่านอย่างเดียวจากแหล่งอื่นไม่ใช่บทสนทนา
+  assert.equal(isNarrativeUpdateItem('dept_request', { kind: 'extra', id: 'e1' }), false);
 });
