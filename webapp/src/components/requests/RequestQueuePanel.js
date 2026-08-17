@@ -231,19 +231,26 @@ export default function RequestQueuePanel({
                   คอลัมน์ "ลูกค้า" แทนเมื่อคอลัมน์นั้นมีอยู่ */}
               {!cols.includes("customer") && ask.customerArCode
                 ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
-              {cols.includes("dept") ? "" : ` → ${ask.dept}`}
+              {/* ฝ่ายปลายทางอยู่ท้ายบรรทัดรองเฉพาะตอนไม่มีที่อื่นให้อยู่ — คอลัมน์
+                  "ถึงฝ่าย" ของตัวเอง (ชุด linked) หรือใต้ชนิด (ชุด queue) */}
+              {cols.includes("dept") || cols.includes("kind") ? "" : ` → ${ask.dept}`}
             </div>
           </>
         );
-      /* ⭐ ด่วนบน · ชนิดล่าง (มติผู้ใช้ 2026-08-17) — ช่องว่างเมื่อไม่ด่วน ไม่ใช่คำว่า
-         "ปกติ" · ป้ายนี้มีไว้ให้สะดุดตาตอนกวาดลงมา เติมอะไรทุกแถวเท่ากับกลบมันทิ้ง */
+      /* ⭐ ด่วนบน · ชนิดกลาง · ฝ่ายปลายทางล่าง (มติผู้ใช้ 2026-08-17) — ช่องว่างเมื่อ
+         ไม่ด่วน ไม่ใช่คำว่า "ปกติ" · ป้ายนี้มีไว้ให้สะดุดตาตอนกวาดลงมา เติมอะไรทุกแถว
+         เท่ากับกลบมันทิ้ง
+         ⚠️ ฝ่ายอยู่ที่นี่เฉพาะตอนไม่มีคอลัมน์ "ถึงฝ่าย" แยก — ไม่งั้นฝ่ายเดียวกัน
+         ขึ้นสองช่องในแถวเดียว (กติกาเดียวกับที่เซลล์ `doc` ใช้กับชนิด/ลูกค้า) */
       case "kind":
         return (
           <>
             {ask.urgent && !cols.includes("urgent") && (
               <div><span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span></div>
             )}
-            <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>
+            <div className={styles.kindCell}>{requestKindLabel(ask.kind)}</div>
+            {!cols.includes("dept") && ask.dept
+              ? <div className={styles.subText}>→ {ask.dept}</div> : null}
           </>
         );
       /* ⭐ รหัส AR บน · ชื่อกิจการ · แบรนด์ล่าง — ทรงเดียวกับเซลล์ลูกค้าของตาราง QT
