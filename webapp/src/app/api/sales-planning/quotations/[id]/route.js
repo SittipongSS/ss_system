@@ -18,7 +18,7 @@ import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPl
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { QT_PEOPLE_FIELDS, QT_PEOPLE_RETIRED_FIELDS, validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
@@ -170,38 +170,35 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     patch.docLanguage = body.docLanguage;
   }
-  // ผู้รับผิดชอบเอกสาร (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ) — ต้องเป็นผู้ใช้จริง + role ตรง.
-  // ตรวจเมื่อมีการแก้ people หรือเมื่อกำลังส่งใบ (บังคับครบ+ถูก role ย้อนหลังกับใบเก่า).
+  // ผู้รับผิดชอบเอกสาร (ผู้ดูแล/ผู้ประสานงาน) — ต้องเป็นผู้ใช้จริง + role ตรง.
   // ค่าอื่นใน metadata merge ตามเดิม ไม่ทับทั้งก้อน.
-  const willSend = body.status === 'sent';
+  //
+  // ⚠️ ที่นี่ **ไม่บังคับให้ครบ** — ด่านนั้นอยู่ที่ขั้น "ยื่นอนุมัติ" (submit/route.js).
+  // เดิมผูกไว้กับ `body.status === 'sent'` ซึ่งไม่มีผู้เรียกเหลือแล้วตั้งแต่ mig 0165
+  // (RPC อนุมัติตั้ง status='sent' ให้เอง ปุ่ม "ส่งให้ลูกค้า" ถูกถอด) ⇒ ด่านนั้นตายสนิท
+  // ใบจึงออกถึงลูกค้าได้โดยไม่มีผู้ประสานงานเลย
   const hasMetaPatch = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata);
-  if (hasMetaPatch || willSend) {
-    const src = hasMetaPatch ? body.metadata : {};
-    const effectivePeople = {
-      aeOwner: 'aeOwner' in src ? src.aeOwner : before.metadata?.aeOwner,
-      preparedBy: 'preparedBy' in src ? src.preparedBy : before.metadata?.preparedBy,
-      aeSupervisor: 'aeSupervisor' in src ? src.aeSupervisor : before.metadata?.aeSupervisor,
-    };
-    const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: willSend });
+  if (hasMetaPatch) {
+    const src = body.metadata;
+    const effectivePeople = Object.fromEntries(QT_PEOPLE_FIELDS.map(
+      (field) => [field, field in src ? src[field] : before.metadata?.[field]],
+    ));
+    const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: false });
     if (!peoplePick.ok) return badRequest(peoplePick.error);
     const {
-      aeOwner: _o, preparedBy: _p, aeSupervisor: _s,
       // ชุดเงื่อนไขการค้าเป็นหลักฐาน — ห้ามรับค่าจาก client ตรง ๆ ต้องผ่านการตรวจก่อน
       paymentPresetVersionId: _pay, remarksPresetVersionId: _rem,
-      ...editableMeta
+      ...rest
     } = src;
-    const pinnedPresets = hasMetaPatch
-      ? await resolvePinnedPresetVersionIds(supabase, src)
-      : {
-        payment: before.metadata?.paymentPresetVersionId || null,
-        remarks: before.metadata?.remarksPresetVersionId || null,
-      };
+    // ช่องผู้รับผิดชอบเขียนจากค่าที่ผ่าน validate เท่านั้น ไม่ใช่ค่าดิบจาก client ·
+    // คีย์ที่เลิกใช้ (ผู้ดูแล/ผู้ตรวจสอบ) ตัดทิ้งเสมอ ไม่งั้นมันกลับมาเป็น free-text
+    const editableMeta = { ...rest };
+    for (const field of [...QT_PEOPLE_FIELDS, ...QT_PEOPLE_RETIRED_FIELDS]) delete editableMeta[field];
+    const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, src);
     patch.metadata = {
       ...(before.metadata || {}),
       ...editableMeta,
-      aeOwner: peoplePick.people.aeOwner || null,
-      preparedBy: peoplePick.people.preparedBy || null,
-      aeSupervisor: peoplePick.people.aeSupervisor || null,
+      ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, peoplePick.people[field] || null])),
       paymentPresetVersionId: pinnedPresets.payment,
       remarksPresetVersionId: pinnedPresets.remarks,
     };

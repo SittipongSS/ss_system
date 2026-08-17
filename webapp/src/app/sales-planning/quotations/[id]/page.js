@@ -92,7 +92,7 @@ export default function QuotationEditorPage() {
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [], presetVersionId: null });
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
-  const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
+  const [people, setPeople] = useState(() => quotationPeopleFromMetadata(null));
 
   useUnsavedChanges(dirty);
 
@@ -802,9 +802,10 @@ export default function QuotationEditorPage() {
                 ห้ามเพิ่มช่องซ้ำที่นี่ — สองที่เมื่อไรก็เพี้ยนหากันเมื่อนั้น */}
           </section>
 
-          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ (ผู้ดูแล/ผู้ประสานงาน/ผู้ตรวจสอบ) */}
+          {/* ผู้รับผิดชอบเอกสาร — เหลือช่องเดียว: ผู้ประสานงาน (AC) · ผู้ดูแล = เจ้าของดีล
+              ผู้จัดทำ = คนกดยื่น (ระบบรู้เอง — ราง workflow ด้านบนเล่าทั้งสองอยู่แล้ว) */}
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} aria-hidden="true" /><h2>ผู้รับผิดชอบเอกสาร</h2></div>
+            <div className={styles.sectionHeading}><UserRound size={17} aria-hidden="true" /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนที่กดยื่นอนุมัติ</span></div>
             <div className={styles.documentMeta}>
               <QuotationPeopleFields value={people} disabled={!editable} onChange={(next) => { setPeople(next); setDirty(true); }} />
             </div>

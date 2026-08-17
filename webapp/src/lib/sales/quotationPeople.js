@@ -1,18 +1,33 @@
-// ผู้รับผิดชอบเอกสารใบเสนอราคา — บังคับให้ทั้งสามช่องเป็น "ผู้ใช้จริง + role ตรง"
+// ผู้รับผิดชอบเอกสารใบเสนอราคา — บังคับให้ทุกช่องเป็น "ผู้ใช้จริง + role ตรง"
 // (มติผู้ใช้ 2026-07-16). แทนที่ของเดิมที่เก็บชื่อ free-text ใน metadata โดยไม่ตรวจ
-// ฝั่ง server (ปลอมชื่อผู้ตรวจสอบ/ผู้ดูแลได้). คงเก็บเป็น "ชื่อ" ใน metadata เพื่อให้
+// ฝั่ง server (ปลอมชื่อผู้ดูแลได้). คงเก็บเป็น "ชื่อ" ใน metadata เพื่อให้
 // เอกสาร/พิมพ์ใช้ค่าเดิมได้ แต่ตอนบันทึกต้องผ่านการ validate ว่าเป็นชื่อของผู้ใช้จริง
 // ที่ถือ role ที่กำหนดของช่องนั้น.
 //
-//   ผู้ดูแล (aeOwner)      = AE / Senior AE
-//   ผู้ประสานงาน (preparedBy) = AC
-//   ผู้ตรวจสอบ (aeSupervisor) = AE Supervisor
+//   ผู้ประสานงาน (preparedBy) = AC   ← ช่องเดียวที่ใบเสนอราคายังต้องให้คนเลือก
 //
-// เพราะ role ของสามช่องไม่ทับกัน การแยกหน้าที่ (ผู้ตรวจสอบ ≠ ผู้จัดทำ ≠ ผู้ดูแล) จึง
-// ถูกบังคับโดยอัตโนมัติ — คนละ role = คนละคน.
+// บทบาทอีกสามอันบนใบ **ไม่ใช่ช่องที่เลือก** — มันมีคำตอบอยู่แล้วที่อื่น:
+//
+//   ผู้ดูแล / ผู้เสนอราคา = เจ้าของดีล (`deal.ownerId` / `ownerName`) อ่านสด
+//     มติผู้ใช้ 2026-08-17 · เดิมเป็นดรอปดาวน์อิสระ ตั้งต้นจาก `project.aeOwner`
+//     ⇒ ค่าที่กรอกกับคนที่อนุมัติจริงเป็นคนละคนได้ (โครงการหนึ่งมีหลายดีล + ดีลย้ายมือได้)
+//     และไม่มีใครอ่านค่าที่กรอกเลย — เอกสารพิมพ์ `deal.ownerName` มาตลอด
+//   ผู้จัดทำ = คนที่กดยื่นอนุมัติ (`approvalRequestedByName` ที่ mig 0156 เขียนให้)
+//   ผู้ตรวจสอบ = **ไม่มีบนใบเสนอราคา** ขั้นตรวจอยู่ที่ใบสั่งขาย ซึ่งมีสองด่านของตัวเอง:
+//     ฝ่ายขาย (`isSalesOrderReviewer`) + ฝ่ายบัญชี (`finance_*`) ดู salesOrderWorkflow.js
+//
+// ⚠️ คีย์ aeOwner / aeSupervisor ยังอยู่ในตารางข้างล่าง เพราะ **เอกสารโครงการ** มีสอง
+// บทบาทนี้จริงและอ่าน role จากตารางนี้ (components/pm/ProjectDocumentView.js) —
+// แค่ไม่ได้อยู่ใน QT_PEOPLE_FIELDS · metadata ของใบเก่ามีคีย์ค้างได้ ไม่มีใครอ่าน
 
-export const QT_PEOPLE_FIELDS = ['aeOwner', 'preparedBy', 'aeSupervisor'];
+export const QT_PEOPLE_FIELDS = ['preparedBy'];
 
+// คีย์ metadata ที่เคยเป็นช่องของใบเสนอราคา — route ปอกทิ้งก่อนเขียนทุกครั้ง ไม่งั้น
+// มันกลับมาเป็น free-text ที่ไม่มีใคร validate หลังถอดออกจาก QT_PEOPLE_FIELDS
+export const QT_PEOPLE_RETIRED_FIELDS = ['aeOwner', 'aeSupervisor'];
+
+// ตารางกลาง role ของแต่ละบทบาท — ใช้ทั้งใบเสนอราคาและเอกสารโครงการ
+// (aeOwner/aeSupervisor เหลือไว้ให้เอกสารโครงการ ไม่ได้อยู่ใน QT_PEOPLE_FIELDS แล้ว)
 export const QT_PEOPLE_ROLES = {
   aeOwner: ['ae', 'senior_ae'],
   preparedBy: ['ac'],
@@ -71,9 +86,10 @@ async function loadRoleDirectory(supabase) {
   return byName;
 }
 
-// ตรวจ + normalize ชื่อผู้รับผิดชอบสามช่องกับผู้ใช้จริง/role.
-//   people: { aeOwner, preparedBy, aeSupervisor } (ชื่อ, อาจเป็น "")
-//   opts.require = true → ทั้งสามช่องต้องมีค่า (ใช้ตอนส่งใบ/ออกฉบับที่ลูกค้าเห็น)
+// ตรวจ + normalize ชื่อผู้รับผิดชอบกับผู้ใช้จริง/role.
+//   people: { preparedBy } (ชื่อ, อาจเป็น "")
+//   opts.require = true → ทุกช่องต้องมีค่า (ใช้ตอน "ยื่นอนุมัติ" — จุดที่เอกสาร
+//   ออกจากมือผู้จัดทำไปเข้าคิวเจ้าของดีล ดู api/.../[id]/submit/route.js)
 // คืน { ok, error, people } (people = ชื่อที่ผ่านการตรวจ, ค่าว่าง = "")
 export async function validateQuotationPeople(supabase, people, opts = {}) {
   const want = {};
@@ -82,7 +98,7 @@ export async function validateQuotationPeople(supabase, people, opts = {}) {
   if (opts.require) {
     const missing = QT_PEOPLE_FIELDS.filter((f) => !want[f]);
     if (missing.length) {
-      return { ok: false, error: `ต้องระบุ ${missing.map((f) => QT_PEOPLE_LABELS[f]).join(', ')} ก่อนส่งใบเสนอราคา` };
+      return { ok: false, error: `ต้องระบุ ${missing.map((f) => QT_PEOPLE_LABELS[f]).join(', ')} ก่อนยื่นอนุมัติ` };
     }
   }
 

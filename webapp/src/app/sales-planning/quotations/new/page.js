@@ -20,7 +20,7 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
-import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
+import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
@@ -71,8 +71,10 @@ function NewQuotationInner() {
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
+  // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
+  const [referenceNote, setReferenceNote] = useState("");
   // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
-  const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
+  const [people, setPeople] = useState(() => quotationPeopleFromMetadata(null));
 
   // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก) + ทะเบียนลูกค้าไว้ตอบว่า
   // "ลูกค้าที่ค้นมีในทะเบียนแต่ออกใบไม่ได้เพราะอะไร" (ลิสต์นี้กรองทีมอยู่แล้วตามกติกา)
@@ -169,11 +171,15 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, [dealId, customerId]);
 
-  // ตั้งต้นผู้ดูแล/ผู้ตรวจสอบจากโครงการที่เลือก (แก้ทับได้ก่อนสร้างใบ) —
-  // ผู้ประสานงาน (AC) เลือกเองจากผู้ใช้จริง ไม่ตั้งต้นจากโครงการ
+  // ตั้งต้นผู้ประสานงานจาก **ผู้ประสานงานของโครงการ** (`acOwner`, mig 0190 — ค่าเดียวกับที่
+  // PDR ใช้เป็น coordinator) แก้ทับได้ก่อนสร้างใบ · /api/pm/projects select * อยู่แล้ว
+  // จึงไม่ต้องยิงเพิ่ม · เดิมตั้ง "" ตายตัว ทั้งที่คำตอบอยู่บนโครงการแล้ว และช่องนี้
+  // กลายเป็นช่องบังคับตอนยื่นอนุมัติ ⇒ ต้องเลือกเองซ้ำทุกใบ
+  // ผู้ดูแล/ผู้ตรวจสอบไม่ใช่ช่องของใบแล้ว (มติผู้ใช้ 2026-08-17): ผู้ดูแล = เจ้าของดีล
+  // อ่านสด · ผู้ตรวจสอบอยู่ที่ใบสั่งขาย
   useEffect(() => {
     const p = projectId ? projectsById[projectId] : null;
-    setPeople({ aeOwner: p?.aeOwner || "", preparedBy: "", aeSupervisor: p?.aeSupervisor || "" });
+    setPeople({ ...quotationPeopleFromMetadata(null), preparedBy: p?.acOwner || "" });
   }, [projectId, projectsById]);
 
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];

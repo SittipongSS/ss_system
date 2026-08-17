@@ -91,16 +91,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const now = new Date().toISOString();
 
   // ผู้รับผิดชอบเอกสาร: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise — ต้องเป็นผู้ใช้จริง
-  // + role ตรง (ฉบับ revise เป็น draft จึงยังไม่บังคับครบ; บังคับตอนกดส่งใบ). ผู้จัดทำ
-  // ไม่ล็อกเป็นผู้ออก revision อีกต่อไป — เลือก AC จริง (มติผู้ใช้ 2026-07-16).
+  // + role ตรง (ฉบับ revise เป็น draft จึงยังไม่บังคับครบ; บังคับตอนกดยื่นอนุมัติ).
+  // ผู้จัดทำไม่ใช่ช่องในนี้ — มันคือคนที่กดยื่นฉบับ Rev. (มติผู้ใช้ 2026-08-17).
   const revBody = (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) ? body.metadata : {};
-  const revPeople = {
-    aeOwner: 'aeOwner' in revBody ? revBody.aeOwner : quote.metadata?.aeOwner,
-    preparedBy: 'preparedBy' in revBody ? revBody.preparedBy : quote.metadata?.preparedBy,
-    aeSupervisor: 'aeSupervisor' in revBody ? revBody.aeSupervisor : quote.metadata?.aeSupervisor,
-  };
+  const revPeople = Object.fromEntries(QT_PEOPLE_FIELDS.map(
+    (field) => [field, field in revBody ? revBody[field] : quote.metadata?.[field]],
+  ));
   const revPick = await validateQuotationPeople(supabase, revPeople, { require: false });
   if (!revPick.ok) return badRequest(revPick.error);
+  // ช่องผู้รับผิดชอบเขียนจากค่าที่ผ่าน validate เท่านั้น — ตัดค่าดิบจาก client ออกก่อน merge
+  const revEditableMeta = { ...revBody };
+  for (const field of [...QT_PEOPLE_FIELDS, ...QT_PEOPLE_RETIRED_FIELDS]) delete revEditableMeta[field];
 
   // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
   const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
@@ -164,10 +165,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         // เจ้าของดีลอาจเปลี่ยนไปตั้งแต่ Rev. ก่อน — อ่านเบอร์ใหม่ทุกครั้ง ไม่สืบทอด
         salesOwnerId: ownerContact?.id || null,
         salesOwnerPhone: ownerContact?.phone || null,
-        ...revBody,
-        aeOwner: revPick.people.aeOwner || null,
-        preparedBy: revPick.people.preparedBy || null,
-        aeSupervisor: revPick.people.aeSupervisor || null,
+        ...revEditableMeta,
+        ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, revPick.people[field] || null])),
+        // ผู้ดูแล/ผู้ตรวจสอบไม่ใช่ช่องของใบเสนอราคาแล้ว (มติ 2026-08-17) —
+        // ฉบับ Rev. เป็นเอกสารใหม่ ไม่สืบทอดคีย์ที่เลิกใช้ (ผู้ดูแล = เจ้าของดีล อ่านสด)
+        ...Object.fromEntries(QT_PEOPLE_RETIRED_FIELDS.map((field) => [field, null])),
         revisedFrom: quote.quoteNumber,
       },
       createdBy: user.id || null,

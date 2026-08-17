@@ -91,7 +91,15 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) 
       dealTitle: trimOrNull(quote.deal?.title || quote.dealTitle),
       // โครงการผูกผ่านดีล (deal.project แนบจาก route ตอนโหลดใบ) — chain เดิมคงไว้เผื่อ caller เก่า
       projectName: trimOrNull(quote.deal?.project?.name || quote.project?.name || quote.projectName),
-      aeOwner: trimOrNull(quote.metadata?.aeOwner),
+      // ผู้ดูแล = เจ้าของดีล อ่านสด (มติผู้ใช้ 2026-08-17) — เดิมอ่าน metadata.aeOwner
+      // ซึ่งเป็นดรอปดาวน์อิสระที่ตั้งต้นจาก `project.aeOwner` ⇒ ไม่ผูกกับดีลใบนี้เลย
+      // ⚠️ คนละช่องกับ approval.approvedByName ข้างล่าง: ผู้กำกับดูแล (admin/หัวหน้าขาย)
+      // อนุมัติแทนได้ ⇒ คนอนุมัติจริงอาจไม่ใช่เจ้าของดีล ต้องเก็บทั้งสองค่า
+      aeOwner: trimOrNull(quote.deal?.ownerName || quote.metadata?.aeOwner),
+      // เอกสารอ้างอิงที่พิมพ์เอง (mig 0267) — ขึ้นบนเอกสารจริง จึงต้องอยู่ในหลักฐาน
+      // ที่ตรึงด้วย · คีย์ใหม่เปลี่ยน contentFingerprint ของ **ฉบับที่จะตรึงต่อจากนี้**
+      // เท่านั้น (เหตุผลเดียวกับ docLanguage ด้านบน) — คนละตัวกับ approvalFingerprint
+      referenceNote: trimOrNull(quote.referenceNote),
     },
     approval: {
       approvedByName: trimOrNull(quote.approvedByName || quote.deal?.ownerName),

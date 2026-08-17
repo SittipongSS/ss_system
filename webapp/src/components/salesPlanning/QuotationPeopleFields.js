@@ -1,25 +1,26 @@
 "use client";
 
-// เลือกผู้รับผิดชอบเอกสารใบเสนอราคา — ทั้งสามช่องเลือกจากผู้ใช้จริง filter ตาม role
-// (มติผู้ใช้): ผู้ดูแล=AE/Senior AE, ผู้ประสานงาน=AC, ผู้ตรวจสอบ=AE Supervisor.
+// เลือกผู้รับผิดชอบเอกสารใบเสนอราคา — ทุกช่องเลือกจากผู้ใช้จริง filter ตาม role
+// (มติผู้ใช้): ผู้ดูแล=AE/Senior AE, ผู้ประสานงาน=AC.
 // ดึงรายชื่อจาก /api/pm/assignable-users เก็บเป็น "ชื่อ" ใน quotations.metadata และ
 // server ตรวจซ้ำว่าชื่อที่ส่งมาเป็นผู้ใช้จริงที่ถือ role นั้น (lib/sales/quotationPeople).
+// ⚠️ ไม่มีช่อง "ผู้ตรวจสอบ" — ขั้นตรวจอยู่ที่ใบสั่งขาย (มติผู้ใช้ 2026-08-17)
+// รายการช่อง derive จาก QT_PEOPLE_FIELDS ที่เดียว: ฟอร์มกับด่าน validate ฝั่ง server
+// ต้องเห็นชุดช่องเดียวกันเสมอ ไม่งั้นเพิ่ม/ถอดช่องแล้วสองฝั่งเถียงกัน
 import { useEffect, useState } from "react";
 import Select from "@/components/ui/Select";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { assignableUserName as userName, QT_PEOPLE_LABELS, QT_PEOPLE_ROLES, qtRoleText, quotationPersonAllowed } from "@/lib/sales/quotationPeople";
+import { assignableUserName as userName, QT_PEOPLE_FIELDS, QT_PEOPLE_LABELS, QT_PEOPLE_ROLES, qtRoleText, quotationPersonAllowed } from "@/lib/sales/quotationPeople";
 
-export const quotationPeopleFromMetadata = (metadata) => ({
-  aeOwner: metadata?.aeOwner || "",
-  preparedBy: metadata?.preparedBy || "",
-  aeSupervisor: metadata?.aeSupervisor || "",
-});
+export const quotationPeopleFromMetadata = (metadata) => Object.fromEntries(
+  QT_PEOPLE_FIELDS.map((field) => [field, metadata?.[field] || ""]),
+);
 
-const PICKER_FIELDS = [
-  { key: "aeOwner", label: QT_PEOPLE_LABELS.aeOwner, roles: QT_PEOPLE_ROLES.aeOwner },
-  { key: "preparedBy", label: QT_PEOPLE_LABELS.preparedBy, roles: QT_PEOPLE_ROLES.preparedBy },
-  { key: "aeSupervisor", label: QT_PEOPLE_LABELS.aeSupervisor, roles: QT_PEOPLE_ROLES.aeSupervisor },
-];
+const PICKER_FIELDS = QT_PEOPLE_FIELDS.map((key) => ({
+  key,
+  label: QT_PEOPLE_LABELS[key],
+  roles: QT_PEOPLE_ROLES[key],
+}));
 
 export default function QuotationPeopleFields({ value, onChange, disabled = false }) {
   const [users, setUsers] = useState([]);

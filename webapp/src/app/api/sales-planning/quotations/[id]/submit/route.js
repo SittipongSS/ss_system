@@ -3,6 +3,7 @@ import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, inSalesEditScope, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
+import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   submitQuotationWithSignatureEvidence,
@@ -40,6 +41,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.approvalStatus === 'not_required') {
     return badRequest('ใบเสนอราคาฉบับนี้ออกก่อนระบบอนุมัติ — ส่งลูกค้าได้เลยโดยไม่ต้องยื่น');
   }
+
+  // ผู้รับผิดชอบเอกสารต้องครบ **ที่ขั้นนี้** — การกดยื่นคือจุดที่เอกสารออกจากมือผู้จัดทำ
+  // ไปเข้าคิวเจ้าของดีล และ RPC ตรึงหลักฐานลายเซ็นทันที ⇒ ถ้าปล่อยผ่านจะได้เอกสารที่มี
+  // ลายเซ็นแต่ไม่มีชื่อผู้รับผิดชอบ.
+  // เดิมด่านนี้อยู่ที่ PATCH ผูกกับ `status='sent'` ซึ่งตายไปตั้งแต่ mig 0165 (การอนุมัติ
+  // ตั้ง status ให้เอง ปุ่ม "ส่งให้ลูกค้า" ถูกถอด) ⇒ ไม่เคยมีใบไหนถูกตรวจเลย
+  const peoplePick = await validateQuotationPeople(supabase, quote.metadata || {}, { require: true });
+  if (!peoplePick.ok) return badRequest(peoplePick.error);
 
   let result;
   try {
