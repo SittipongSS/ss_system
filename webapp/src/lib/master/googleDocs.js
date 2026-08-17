@@ -86,8 +86,37 @@ export async function buildGoogleAttachment({
     driveFileId: null,
     fileName: file.name || null,
     mimeType: file.mimeType || null,
-    metadata: { kind: drive.kindFromMime(file.mimeType) || 'link', googleFileId: file.id },
+    metadata: driveMetadata(drive.kindFromMime(file.mimeType) || 'link', file.id),
   };
+}
+
+// ── metadata ที่ "เป็นของ Drive" — client แตะไม่ได้ ────────────────────────
+//
+// 🐞 **ช่องที่ปิดด้วยก้อนนี้ (ผลตรวจรอบ 13 · ค-1)** — `POST /api/attachments` รับ
+// `metadata` จาก client แล้วให้ของจาก Drive วางทับ · **แต่วางทับเกิดเฉพาะตอนสร้าง
+// ผ่านสาขา Google** ⇒ สาขาไฟล์ธรรมดาไม่มีอะไรมาทับ ค่าจาก client อยู่ครบ
+//
+// `isGoogleDoc()` ตัดสินจาก `metadata.kind` และตัวให้สิทธิ์อ่าน `metadata.googleFileId`
+// ⇒ ตั้งสองค่านี้เองได้ = สั่งให้ **service account** แชร์ไฟล์ Drive id ไหนก็ได้ให้ตัวเอง
+// ระดับ writer เพียงแค่แนบไฟล์เข้าระเบียนที่ตัวเองแก้ได้แล้วเปิดหน้านั้น
+//
+// ⚠️ **allowlist ไม่ใช่ blocklist** — ที่นี่เป็นแหล่งเดียวที่ผลิตสองคีย์นี้ ⇒ เพิ่มคีย์
+// ใหม่ที่นี่แล้ว `stripDriveMetadata` ตัดตามเองโดยไม่ต้องไปจำอีกที่
+export const DRIVE_OWNED_METADATA_KEYS = Object.freeze(['kind', 'googleFileId']);
+
+const driveMetadata = (kind, googleFileId) => ({ kind, googleFileId });
+
+/**
+ * ล้างคีย์ที่เป็นของ Drive ออกจาก metadata ที่ client ส่งมา
+ *
+ * ⚠️ ต้องเรียก **ทุกเส้นที่รับ metadata จากผู้ใช้** ไม่ใช่เฉพาะเส้นที่นึกออก —
+ * ค่าที่หลุดเข้าไปไม่ได้ทำอะไรตอนเขียน มันไปออกฤทธิ์ตอน **อ่าน** ครั้งถัดไป
+ */
+export function stripDriveMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const safe = { ...metadata };
+  for (const key of DRIVE_OWNED_METADATA_KEYS) delete safe[key];
+  return safe;
 }
 
 // อีเมล Workspace ของผู้ใช้ (ใช้ตอน grantWriter) — แยกออกมาเพราะทั้งสอง route

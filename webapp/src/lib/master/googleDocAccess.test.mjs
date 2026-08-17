@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ensureGoogleDocAccess, revokeGoogleDocAccess } from './googleDocAccess.js';
+import { stripDriveMetadata } from './googleDocs.js';
 
 const gdoc = (id, fileId, granted) => ({
   id,
@@ -111,4 +112,39 @@ test('⭐ ถอนไม่สำเร็จ ห้ามลบชื่ออ
     assert.equal(out.revoked, 0);
   }
   assert.deepEqual(db.updates, [], 'ถอนไม่สำเร็จแล้วห้ามแตะรายการที่จดไว้');
+});
+
+// ── ค-1 (ตรวจระบบรอบ 13) · คีย์ของ Drive ต้องไม่มาจาก client ────────────────
+//
+// 🐞 **ช่องจริงที่เดินพิสูจน์แล้ว** — `POST /api/attachments` เคยเก็บ `metadata` ที่
+// client ส่งมาแล้วให้ของจาก Drive วางทับ · การวางทับเกิดเฉพาะสาขาที่สร้างผ่าน Drive จริง
+// ⇒ สาขาไฟล์ธรรมดา ค่าจาก client อยู่ครบ · `isGoogleDoc()` ดู `metadata.kind` และตัวให้
+// สิทธิ์อ่าน `metadata.googleFileId` ⇒ ตั้งสองค่านี้เอง = สั่ง service account แชร์ไฟล์
+// Drive id ไหนก็ได้ให้ตัวเองระดับ writer เพียงแค่แนบไฟล์เข้าระเบียนที่ตัวเองแก้ได้
+test('🔴 stripDriveMetadata ตัดคีย์ของ Drive ทิ้ง เก็บแท็คของผู้ใช้ไว้ครบ', () => {
+  const dirty = {
+    issuedDate: '2026-08-01', note: 'ของผู้ใช้',
+    kind: 'gdoc', googleFileId: 'FILE-ที่ไม่ใช่ของตัวเอง',
+  };
+  assert.deepEqual(stripDriveMetadata(dirty), { issuedDate: '2026-08-01', note: 'ของผู้ใช้' });
+  // ของแปลกปลอมกลายเป็น {} ไม่ใช่ throw — ผู้เรียก spread ต่อได้เสมอ
+  for (const bad of [null, undefined, 'x', 42, ['a']]) assert.deepEqual(stripDriveMetadata(bad), {});
+  // ⚠️ ต้องไม่แก้ของเดิมในที่ — ผู้เรียกบางเส้น merge กับ metadata เดิมของแถวต่อ
+  assert.equal(dirty.kind, 'gdoc', 'ห้ามแก้ object ที่รับมา');
+});
+
+test('🔴 ทุกเส้นที่เขียน metadata ของไฟล์แนบ ต้องผ่าน stripDriveMetadata (ratchet)', () => {
+  // ⚠️ ด่านนี้คุม **การเดินสาย** ไม่ใช่ตรรกะ — unit test ของตัวช่วยจับไม่ได้ว่ามีเส้นที่สาม
+  // ที่ลืมเรียกมัน · ค่าที่หลุดเข้าไปไม่ออกฤทธิ์ตอนเขียน แต่ไปออกตอน **อ่าน** ครั้งถัดไป
+  for (const file of [
+    'src/app/api/attachments/route.js',        // POST — แนบใหม่
+    'src/app/api/attachments/[id]/route.js',   // PATCH — แก้แท็คของแถวเดิม
+  ]) {
+    const src = readFileSync(file, 'utf8');
+    assert.match(src, /stripDriveMetadata\(/, `${file}: metadata จาก client ไม่ได้ถูกล้าง`);
+    // ห้ามกลับไปใช้ spread ดิบของ body อีก
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    assert.ok(!/\.\.\.\(metadata && typeof metadata === 'object'/.test(code),
+      `${file}: ยังมี spread ดิบของ metadata จาก client`);
+  }
 });
