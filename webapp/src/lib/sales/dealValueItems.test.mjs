@@ -66,9 +66,36 @@ test('รหัสหมวดต้องเป็นรูป MM-TTT เท่
   assert.match(normalizeDealValueItems([row({ categoryCode: 'AB-CDE' })]).error, /หมวดสินค้า/);
 });
 
-test('หน่วยต้องมีและไม่ยาวเกิน 20 (ตรงกับ CHECK ของ mig 0264)', () => {
-  assert.match(normalizeDealValueItems([row({ unit: '  ' })]).error, /หน่วย/);
-  assert.match(normalizeDealValueItems([row({ unit: 'ก'.repeat(21) })]).error, /หน่วย/);
+test('หน่วยขายต้องมีและไม่ยาวเกิน 20 (ตรงกับ CHECK ของ mig 0264)', () => {
+  assert.match(normalizeDealValueItems([row({ unit: '  ' })]).error, /หน่วยขาย/);
+  assert.match(normalizeDealValueItems([row({ unit: 'ก'.repeat(21) })]).error, /หน่วยขาย/);
+});
+
+/* ── ปริมาตร = ขนาดของหนึ่งหน่วยขาย (mig 0265) ─────────────────────────────
+   ⚠️ คนละช่องกับ `unit` — ห้ามเข้าสูตรคิดเงินเด็ดขาด (4 ชิ้น × 100 ml ไม่ใช่ยอดขาย) */
+
+test('ปริมาตรไม่เข้าสูตรคิดเงิน', () => {
+  const { items, total } = normalizeDealValueItems([row({ volume: 100, volumeUnit: 'ml' })]);
+  assert.equal(items[0].volume, 100);
+  assert.equal(items[0].volumeUnit, 'ml');
+  assert.equal(items[0].amount, 300);   // qty 2 × 150 เท่าเดิม
+  assert.equal(total, 300);
+});
+
+test('ปริมาตรไม่บังคับ — งานบริการไม่มีขนาด', () => {
+  const { items, error } = normalizeDealValueItems([row(), row({ volume: '', volumeUnit: '' })]);
+  assert.equal(error, null);
+  assert.deepEqual(items.map((item) => item.volume), [null, null]);
+  assert.deepEqual(items.map((item) => item.volumeUnit), [null, null]);
+});
+
+test('กรอกปริมาตรแล้วต้องมีหน่วย และต้องมากกว่า 0', () => {
+  assert.match(normalizeDealValueItems([row({ volume: 100 })]).error, /หน่วยของปริมาตร/);
+  assert.match(normalizeDealValueItems([row({ volume: 0, volumeUnit: 'ml' })]).error, /ปริมาตร/);
+  assert.match(normalizeDealValueItems([row({ volume: -1, volumeUnit: 'ml' })]).error, /ปริมาตร/);
+  // หน่วยลอย ๆ ที่ไม่มีตัวเลข = ทิ้งทั้งคู่ (CHECK ของ mig 0265 บังคับให้ไปด้วยกัน)
+  const { items } = normalizeDealValueItems([row({ volume: '', volumeUnit: 'ml' })]);
+  assert.equal(items[0].volumeUnit, null);
 });
 
 test('จำกัดจำนวนแถว และรับเฉพาะลิสต์', () => {
@@ -88,12 +115,17 @@ test('ลำดับแถวถูกเก็บเป็น seq และแ
 
 test('แถวจากฐานแปลงกลับเป็นร่างของฟอร์มตามลำดับ seq', () => {
   const form = dealValueItemsToForm([
-    { seq: 2, categoryCode: '02-001', qty: 1, unit: 'ลัง', unitPrice: 20, note: null },
-    { seq: 1, categoryCode: '01-002', qty: 2, unit: 'ชิ้น', unitPrice: 10, note: 'ด่วน' },
+    { seq: 2, categoryCode: '02-001', qty: 1, unit: 'ลัง', unitPrice: 20, note: null, volume: null, volumeUnit: null },
+    { seq: 1, categoryCode: '01-002', qty: 2, unit: 'ชิ้น', unitPrice: 10, note: 'ด่วน', volume: 100, volumeUnit: 'ml' },
   ]);
   assert.deepEqual(form.map((item) => item.categoryCode), ['01-002', '02-001']);
   assert.equal(form[0].note, 'ด่วน');
+  assert.equal(form[0].volume, 100);
+  assert.equal(form[0].volumeUnit, 'ml');
   assert.equal(form[1].note, '');
+  // แถวที่ไม่มีขนาด ต้องกลายเป็นช่องว่างของฟอร์ม ไม่ใช่ null (React controlled input)
+  assert.equal(form[1].volume, '');
+  assert.equal(form[1].volumeUnit, '');
 });
 
 /* ── ด่านโครงสร้าง: ยอดรวมต้องไม่มีทางถูกพิมพ์ทับ ────────────────────────── */

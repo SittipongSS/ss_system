@@ -61,6 +61,9 @@ export async function saveDealValueItems(supabase, dealId, items) {
       qty: item.qty,
       unit: item.unit,
       unitPrice: item.unitPrice,
+      // ขนาดของหนึ่งหน่วยขาย (mig 0265) — ไม่เข้าสูตรคิดเงิน
+      volume: item.volume,
+      volumeUnit: item.volumeUnit,
       amount: item.amount,
       note: item.note,
       createdAt: now,

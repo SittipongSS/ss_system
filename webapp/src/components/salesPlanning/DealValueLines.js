@@ -23,12 +23,14 @@ import Textarea from "@/components/ui/Textarea";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney } from "@/lib/format";
-import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
+import {
+  DEFAULT_SALE_UNIT, DEFAULT_VOLUME_UNIT, SALE_UNITS, VOLUME_UNITS, packagingSummary, unitOptions,
+} from "@/lib/master/units";
 import { DEAL_VALUE_ITEMS_MAX, dealValueLineAmount, dealValueTotal } from "@/lib/sales/dealValueItems";
 import styles from "./DealValueLines.module.css";
 
 export const newDealValueLine = () => ({
-  categoryCode: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: "", note: "",
+  categoryCode: "", volume: "", volumeUnit: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: "", note: "",
 });
 
 export default function DealValueLines({
@@ -84,8 +86,10 @@ export default function DealValueLines({
               <tr>
                 <th className={styles.rowNumber}>#</th>
                 <th>หมวดสินค้า</th>
-                <th className={`${styles.numHeader} ${styles.colQty}`}>จำนวน</th>
-                <th className={styles.colUnit}>หน่วย</th>
+                {/* ⚠️ ป้ายต้องแยก "ปริมาตร (ขนาดต่อหน่วยขาย)" ออกจาก "หน่วยขาย" ให้ชัด
+                    — สองช่องนี้สลับกันได้ง่ายมาก (คำเตือนใน lib/master/units.js) */}
+                <th className={styles.colVolume}>ปริมาตร / ขนาด</th>
+                <th className={`${styles.numHeader} ${styles.colQty}`}>จำนวน · หน่วยขาย</th>
                 <th className={`${styles.numHeader} ${styles.colPrice}`}>ราคา/หน่วย</th>
                 <th className={`num ${styles.colAmount}`}>มูลค่า</th>
                 {!disabled && <th className={styles.colActions} />}
@@ -126,26 +130,68 @@ export default function DealValueLines({
                           ))}
                     </div>
                   </td>
-                  <td data-label="จำนวน">
-                    <MoneyInput
-                      min="0"
-                      value={row.qty}
-                      disabled={disabled}
-                      onChange={(value) => setRow(index, { qty: value ?? "" })}
-                      aria-label={`จำนวน รายการ ${index + 1}`}
-                    />
+                  {/* ปริมาตร = ขนาดของ **หนึ่งหน่วยขาย** ไม่เข้าสูตรคิดเงิน · ไม่บังคับ
+                      (งานบริการไม่มีขนาด) แต่กรอกตัวเลขแล้วต้องมีหน่วย — ช่องหน่วย
+                      จึงเริ่มว่างและบังคับเลือกเฉพาะตอนมีตัวเลข */}
+                  <td data-label="ปริมาตร / ขนาด">
+                    <div className={styles.volumeCell}>
+                      <MoneyInput
+                        min="0"
+                        value={row.volume ?? ""}
+                        disabled={disabled}
+                        placeholder="ไม่ระบุ"
+                        onChange={(value) => setRow(index, {
+                          volume: value ?? "",
+                          // ใส่ขนาดครั้งแรก = เติมหน่วยที่ใช้บ่อยที่สุดให้ ไม่ต้องกดสองที
+                          ...(value != null && value !== "" && !row.volumeUnit
+                            ? { volumeUnit: DEFAULT_VOLUME_UNIT }
+                            : {}),
+                        })}
+                        aria-label={`ปริมาตรต่อหน่วย รายการ ${index + 1}`}
+                      />
+                      <Select
+                        value={row.volumeUnit || ""}
+                        disabled={disabled}
+                        onChange={(event) => setRow(index, { volumeUnit: event.target.value })}
+                        aria-label={`หน่วยปริมาตร รายการ ${index + 1}`}
+                      >
+                        {/* ป้ายสั้น — คอลัมน์กว้าง ~116px ข้อความยาวกว่านี้โดนตัดเป็น "— หน่..." */}
+                        <option value="">หน่วย</option>
+                        {unitOptions(VOLUME_UNITS, row.volumeUnit).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </Select>
+                      {/* ประโยคสรุปบรรจุภัณฑ์ตัวเดียวกับฝั่งสินค้า — กรอกสลับช่องเมื่อไร
+                          บรรทัดนี้จะอ่านแล้วผิดทันที ("1 ml = 100 ชิ้น") */}
+                      {row.volume !== "" && row.volume != null && (
+                        <span className={styles.packaging}>
+                          {packagingSummary({ volume: row.volume, volumeUnit: row.volumeUnit, saleUnit: row.unit })}
+                        </span>
+                      )}
+                    </div>
                   </td>
-                  <td data-label="หน่วย">
-                    <Select
-                      value={row.unit || DEFAULT_SALE_UNIT}
-                      disabled={disabled}
-                      onChange={(event) => setRow(index, { unit: event.target.value })}
-                      aria-label={`หน่วย รายการ ${index + 1}`}
-                    >
-                      {unitOptions(SALE_UNITS, row.unit).map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </Select>
+                  {/* จำนวนกับหน่วยขายอยู่เซลล์เดียวกัน (ท่าเดียวกับตารางใบเสนอราคา) —
+                      ตารางนี้อยู่ในโมดัล ถ้าแตกเป็นคอลัมน์ที่ 8 จะเลื่อนแนวนอนทุกครั้ง */}
+                  <td data-label="จำนวน · หน่วยขาย">
+                    <div className={styles.qtyCell}>
+                      <MoneyInput
+                        min="0"
+                        value={row.qty}
+                        disabled={disabled}
+                        onChange={(value) => setRow(index, { qty: value ?? "" })}
+                        aria-label={`จำนวน รายการ ${index + 1}`}
+                      />
+                      <Select
+                        value={row.unit || DEFAULT_SALE_UNIT}
+                        disabled={disabled}
+                        onChange={(event) => setRow(index, { unit: event.target.value })}
+                        aria-label={`หน่วยขาย รายการ ${index + 1}`}
+                      >
+                        {unitOptions(SALE_UNITS, row.unit).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </Select>
+                    </div>
                   </td>
                   <td data-label="ราคา/หน่วย">
                     <MoneyInput

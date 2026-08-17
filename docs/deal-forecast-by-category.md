@@ -12,12 +12,18 @@
 | คำถาม | มติ |
 |---|---|
 | ยอดรวมพิมพ์ทับได้ไหม | **ล็อก คิดจากแถวเท่านั้น** |
-| แต่ละแถวกรอกอะไร | หมวด · จำนวน · **หน่วย** · ราคา/หน่วย · **หมายเหตุรายแถว** |
+| แต่ละแถวกรอกอะไร | หมวด · **ปริมาตร + หน่วยปริมาตร** (mig 0265) · จำนวน · **หน่วยขาย** · ราคา/หน่วย · **หมายเหตุรายแถว** |
 | หมวดหลักของดีลมาจากไหน | ผู้ใช้ทักว่า *"workflow template มาจากประเภทดีลนิ"* — ถูกต้อง: template เลือกจาก **ประเภทดีล** (`lib/sales/dealTimelineGen.js`) ส่วน `deals.categoryCode` เป็นแค่ตัว **กรองขั้นตอน** (`categoryOnly` / `categoryExclude` / `flag:excise`) ⇒ ให้ `categoryCode` = **หมวดของแถวแรก** และ server sync ให้เอง ไม่มีช่องหมวดเดี่ยวบนฟอร์มอีก |
 
 ## โครงข้อมูล
 
-- `sales_deal_value_items` (mig 0264) — `dealId · seq · categoryCode · qty · unit · unitPrice · amount · note`
+- `sales_deal_value_items` (mig 0264 · +`volume`/`volumeUnit` ใน mig 0265) —
+  `dealId · seq · categoryCode · volume · volumeUnit · qty · unit · unitPrice · amount · note`
+  - 🪤 **`unit` กับ `volumeUnit` คนละเรื่องและสลับกันได้ง่ายมาก** (คำเตือนเดียวกับ `lib/master/units.js`):
+    `unit` = หน่วย**นับขาย** (ชิ้น · ขวด) ที่คูณกับราคา · `volume`+`volumeUnit` = **ขนาดของหนึ่งหน่วยขาย**
+    (100 ml) ซึ่ง **ไม่เข้าสูตรคิดเงิน** ⇒ ฟอร์มโชว์ประโยค `1 ชิ้น = 100 ml` (`packagingSummary`)
+    ใต้ช่อง กรอกสลับเมื่อไรอ่านแล้วผิดทันที
+  - ปริมาตรไม่บังคับ (งานบริการไม่มีขนาด) แต่กรอกตัวเลขแล้วต้องมีหน่วยเสมอ — CHECK ที่ DB ด้วย
   - CASCADE ตามดีล · unique `(dealId, seq)` · CHECK: `qty > 0` · `unitPrice >= 0` · หมวดเป็นรูป `MM-TTT`
   - **ตารางแถว ไม่ใช่ jsonb** เพราะต้องรวมยอดคาดการณ์ตามหมวดข้ามดีลได้ และ CHECK ระดับคอลัมน์เขียนได้
 - `sales_deals.projectValue` **ยังเป็นยอดรวมเหมือนเดิม** — ทั้งระบบ (FC · แดชบอร์ด · ความแม่นยำ FC vs Actual)

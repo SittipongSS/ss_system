@@ -934,8 +934,9 @@ export default function DealOverviewPage() {
                   <thead>
                     <tr>
                       <th>หมวดสินค้า</th>
+                      <th>ปริมาตร / ขนาด</th>
                       <th className="num">จำนวน</th>
-                      <th>หน่วย</th>
+                      <th>หน่วยขาย</th>
                       <th className="num">ราคา/หน่วย</th>
                       <th className="num">มูลค่า</th>
                     </tr>
@@ -947,6 +948,8 @@ export default function DealOverviewPage() {
                           <strong>{item.categoryCode}</strong>
                           {item.note && <ReadableText text={item.note} lines={2} className="soft" />}
                         </td>
+                        {/* ขนาดต่อหนึ่งหน่วยขาย (mig 0265) — ไม่เข้าสูตรคิดเงิน */}
+                        <td>{item.volume ? `${fmtNumber(item.volume)} ${item.volumeUnit || ""}`.trim() : NA}</td>
                         <td className="num mono">{fmtNumber(item.qty)}</td>
                         <td>{item.unit}</td>
                         <td className="num mono">{money(item.unitPrice)}</td>

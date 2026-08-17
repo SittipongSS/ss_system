@@ -73,8 +73,23 @@ export function normalizeDealValueItems(raw) {
     }
 
     const unit = String(row.unit ?? '').trim();
-    if (!unit) return { items: [], total: 0, error: `${at}: กรุณาระบุหน่วย` };
-    if (unit.length > UNIT_MAX) return { items: [], total: 0, error: `${at}: หน่วยยาวเกิน ${UNIT_MAX} ตัวอักษร` };
+    if (!unit) return { items: [], total: 0, error: `${at}: กรุณาระบุหน่วยขาย` };
+    if (unit.length > UNIT_MAX) return { items: [], total: 0, error: `${at}: หน่วยขายยาวเกิน ${UNIT_MAX} ตัวอักษร` };
+
+    /* ปริมาตร = **ขนาดของหนึ่งหน่วยขาย** ("1 ชิ้น = 100 ml") ไม่เข้าสูตรคิดเงิน
+       — คนละช่องกับ `unit` ข้างบนที่เป็นหน่วยนับขาย (กับดักที่ lib/master/units.js เตือน)
+       ไม่บังคับ (งานบริการไม่มีปริมาตร) แต่กรอกขนาดแล้วต้องมีหน่วยเสมอ */
+    const volumeRaw = row.volume === '' || row.volume == null ? null : Number(row.volume);
+    if (volumeRaw !== null && (!Number.isFinite(volumeRaw) || volumeRaw <= 0)) {
+      return { items: [], total: 0, error: `${at}: ปริมาตรต้องมากกว่า 0` };
+    }
+    const volumeUnit = String(row.volumeUnit ?? '').trim();
+    if (volumeUnit.length > UNIT_MAX) {
+      return { items: [], total: 0, error: `${at}: หน่วยปริมาตรยาวเกิน ${UNIT_MAX} ตัวอักษร` };
+    }
+    if (volumeRaw !== null && !volumeUnit) {
+      return { items: [], total: 0, error: `${at}: กรุณาเลือกหน่วยของปริมาตร` };
+    }
 
     const note = String(row.note ?? '').trim();
     if (note.length > DEAL_VALUE_ITEM_NOTE_MAX) {
@@ -89,6 +104,9 @@ export function normalizeDealValueItems(raw) {
       qty,
       unit,
       unitPrice,
+      volume: volumeRaw,
+      // ปริมาตรว่าง = ไม่มีหน่วยด้วย (CHECK ของ mig 0265 บังคับให้ไปด้วยกัน)
+      volumeUnit: volumeRaw === null ? null : volumeUnit,
       amount: dealValueLineAmount(qty, unitPrice),
       note: note || null,
     });
@@ -112,6 +130,8 @@ export function dealValueItemsToForm(rows = []) {
     .sort((a, b) => (a.seq || 0) - (b.seq || 0))
     .map((row) => ({
       categoryCode: row.categoryCode || '',
+      volume: row.volume ?? '',
+      volumeUnit: row.volumeUnit || '',
       qty: row.qty ?? '',
       unit: row.unit || '',
       unitPrice: row.unitPrice ?? '',
