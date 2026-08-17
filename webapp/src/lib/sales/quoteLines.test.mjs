@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  customerMismatchMessage,
+  customerMismatchedLines,
   enforceMasterPrices,
   fgLineBrand,
   fgLineDescription,
@@ -189,4 +191,45 @@ test('รู้ราคาแน่ค่อยตัดสิน: มีรา
   assert.equal(masterPriceState({ id: 'P1', costPrice: 0 }), 'unpriced');
   assert.equal(masterPriceState({ id: 'P1', costPrice: null }), 'unpriced');
   assert.equal(masterPriceState({ id: 'P1', costPrice: '' }), 'unpriced');
+});
+
+// ── FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) ───────────────────
+// กรองดรอปดาวน์อย่างเดียวไม่พอ — ยิง API ตรงก็ยังใส่ FG ของลูกค้ารายอื่นได้
+const mismatchLine = (productId) => normalizeManualLines([{
+  productId, fgCode: `FG-${productId}`, description: 'x', qty: 1, unitPrice: 0,
+}])[0];
+
+test('บรรทัด FG ของลูกค้ารายอื่น = ถูกจับได้ พร้อมชื่อเจ้าของ', async () => {
+  const sb = fakeSupabase([{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-อื่น', customerName: 'ลูกค้าบี' }]);
+  const bad = await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' });
+  assert.equal(bad.length, 1);
+  assert.equal(bad[0].fgCode, 'FG-P1');
+  assert.match(customerMismatchMessage(bad), /ลูกค้าบี/);
+});
+
+test('บรรทัด FG ของลูกค้ารายนี้เอง = ผ่าน', async () => {
+  const sb = fakeSupabase([{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-เรา' }]);
+  assert.deepEqual(await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' }), []);
+});
+
+// ⭐ ใบเก่าที่มีของข้ามลูกค้าค้างอยู่ต้อง **ยังบันทึกได้** — ไม่งั้นมาแก้แค่หมายเหตุ
+// ก็ติดด่าน กลายเป็นใบที่แตะอะไรไม่ได้เลย
+test('สินค้าที่ใบถืออยู่ก่อนแล้ว = ไม่โดนด่านย้อนหลัง', async () => {
+  const sb = fakeSupabase([{ id: 'P1', fgCode: 'FG-P1', customerId: 'C-อื่น', customerName: 'ลูกค้าบี' }]);
+  const bad = await customerMismatchedLines(sb, [mismatchLine('P1')], {
+    customerId: 'C-เรา',
+    previousLines: [{ productId: 'P1' }],
+  });
+  assert.deepEqual(bad, []);
+});
+
+test('เคสที่ตัดสินไม่ได้ปล่อยผ่าน: ใบไม่มีลูกค้า · บรรทัดพิมพ์เอง · สินค้าไม่มีเจ้าของ', async () => {
+  const sb = fakeSupabase([{ id: 'P1', fgCode: 'FG-P1', customerId: null }]);
+  // ใบไม่มีลูกค้า → เทียบกับอะไรไม่ได้
+  assert.deepEqual(await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: '' }), []);
+  // สินค้าทะเบียนเก่าที่ customerId ว่าง
+  assert.deepEqual(await customerMismatchedLines(sb, [mismatchLine('P1')], { customerId: 'C-เรา' }), []);
+  // บรรทัดพิมพ์เอง (ไม่มี productId) ไม่ผูกลูกค้า — ไม่ยิง query ด้วยซ้ำ
+  const manual = normalizeManualLines([{ description: 'ค่าบริการ', qty: 1, unitPrice: 500 }]);
+  assert.deepEqual(await customerMismatchedLines(null, manual, { customerId: 'C-เรา' }), []);
 });

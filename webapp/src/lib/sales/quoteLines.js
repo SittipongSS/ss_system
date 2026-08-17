@@ -85,6 +85,53 @@ export function masterPriceState(product) {
   return toMoney(product[QUOTE_PRICE_FIELD]) > 0 ? 'priced' : 'unpriced';
 }
 
+// ── FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) ──────────────────────
+//
+// FG ผูกกับลูกค้าเสมอ (`products.customerId` — POST /api/products บังคับ) แต่ตัวเลือก
+// ในใบเสนอราคาเคยดึง `/api/products` ทั้งทะเบียน ⇒ หยิบ FG ของลูกค้ารายอื่นมาใส่ได้
+// เงียบ ๆ. กรองดรอปดาวน์อย่างเดียวไม่พอ — ยิง API ตรงก็ยังใส่ได้ จึงต้องมีด่านที่นี่
+//
+// ⚠️ **ตรวจเฉพาะบรรทัดที่เพิ่ง (เพิ่ม/เปลี่ยน) สินค้า** ไม่ใช่ทุกบรรทัด: ใบเก่าที่มี
+// บรรทัดข้ามลูกค้าค้างอยู่แล้ว ถ้าโดนด่านย้อนหลังจะกลายเป็นใบที่ **บันทึกไม่ได้เลย**
+// แม้จะมาแก้หมายเหตุเฉย ๆ — ข้อมูลที่เสียไปแล้วต้องแก้ที่ทะเบียนสินค้า ไม่ใช่ล็อกใบทิ้ง
+//
+// เคสที่ตัดสินไม่ได้ = ปล่อยผ่าน (ไม่ใช่ปฏิเสธ): ใบไม่มีลูกค้า · บรรทัดพิมพ์เอง
+// (ไม่มี productId) · สินค้าหายจาก master · สินค้าทะเบียนเก่าที่ `customerId` ว่าง
+export async function customerMismatchedLines(supabase, lines = [], {
+  customerId,
+  previousLines = [],
+} = {}) {
+  if (!customerId) return [];
+  const known = new Set(previousLines.filter((l) => l?.productId).map((l) => l.productId));
+  const ids = [...new Set(
+    lines.filter((l) => l?.productId && !known.has(l.productId)).map((l) => l.productId),
+  )];
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, fgCode, customerId, customerName, productDescription')
+    .in('id', ids);
+  if (error) throw error;
+  return (data || [])
+    .filter((product) => product.customerId && product.customerId !== customerId)
+    .map((product) => ({
+      productId: product.id,
+      fgCode: product.fgCode || null,
+      name: product.productDescription || product.fgCode || product.id,
+      ownerName: product.customerName || null,
+    }));
+}
+
+// ข้อความบอกผู้ใช้ว่าบรรทัดไหนผิดและทำไม — ใช้ร่วมทุก route ที่บันทึกบรรทัดใบเสนอราคา
+export function customerMismatchMessage(mismatched = []) {
+  const detail = mismatched
+    .map((row) => `${row.fgCode || row.name}${row.ownerName ? ` (ของ ${row.ownerName})` : ''}`)
+    .join(', ');
+  return `สินค้าที่เลือกไม่ใช่ของลูกค้ารายนี้: ${detail} — FG ผูกกับลูกค้าเจ้าของสินค้า `
+    + 'เลือกได้เฉพาะ FG ของลูกค้าที่ออกใบให้ (ถ้าเป็นสินค้าของลูกค้ารายนี้จริง '
+    + 'ให้แก้เจ้าของสินค้าที่ฐานข้อมูลสินค้าก่อน)';
+}
+
 // ข้อมูลบรรทัด FG มาจากฐานข้อมูลสินค้าเท่านั้น (มติผู้ใช้ 2026-07-15): บรรทัดที่มี
 // productId ถูกทับทั้ง "ราคา" (ราคาผลิต — QUOTE_PRICE_FIELD) และ "คำอธิบาย"
 // (ชื่อสินค้า · ปริมาตร) + snapshot แบรนด์ + รหัส FG ด้วยค่าปัจจุบันจาก master เสมอ —

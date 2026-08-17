@@ -10,7 +10,10 @@ import {
   advanceStage, dealAuditLabel, insertQuotationWithNumber, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
-import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import {
+  customerMismatchMessage, customerMismatchedLines,
+  enforceMasterPrices, normalizeManualLines, seedLinesFromProject,
+} from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
@@ -26,6 +29,12 @@ export class QuotationDraftError extends Error {
 }
 
 export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
+  // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ใบใหม่ไม่มีบรรทัดเดิม
+  // ให้ยกเว้น จึงตรวจทุกบรรทัดที่ผูกสินค้า
+  const mismatched = await customerMismatchedLines(supabase, normalizeManualLines(body.lines || []), {
+    customerId: deal.customerId,
+  });
+  if (mismatched.length) throw new QuotationDraftError(customerMismatchMessage(mismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
   let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));

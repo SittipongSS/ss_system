@@ -13,7 +13,10 @@ import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
   inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
+import {
+  customerMismatchMessage, customerMismatchedLines,
+  enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
+} from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
@@ -236,6 +239,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     newLines = 'lines' in body
       ? normalizeManualLines(body.lines || [])
       : (before.lines || []).map((l) => ({ ...l }));
+    // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ตรวจเฉพาะสินค้าที่
+    // "เพิ่งใส่เข้ามา" เทียบกับบรรทัดเดิมของใบ ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่
+    // จะบันทึกไม่ได้เลย แม้จะมาแก้แค่ VAT/หมายเหตุ
+    const mismatched = await customerMismatchedLines(supabase, newLines, {
+      customerId: before.customerId,
+      previousLines: before.lines || [],
+    });
+    if (mismatched.length) return badRequest(customerMismatchMessage(mismatched));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || []);

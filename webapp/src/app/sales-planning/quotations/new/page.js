@@ -83,10 +83,9 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productData, customerData, registryData] = await Promise.all([
+        const [dRes, pRes, customerData, registryData] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
-          cachedFetchJson("/api/products").catch(() => []),
           cachedFetchJson("/api/customers").catch(() => []),
           // ทะเบียนทั้งหมด — ใช้ตอบ "ทำไมลูกค้ารายนี้ไม่โผล่ในลิสต์เลย" เท่านั้น
           // (รออนุมัติ/พักใช้/ทีมอื่นดูแล) **ห้ามใช้เป็นตัวเลือกให้เลือก**
@@ -99,7 +98,6 @@ function NewQuotationInner() {
         const map = {};
         (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
         setProjectsById(map);
-        setProducts(Array.isArray(productData) ? productData : []);
         setCustomers(Array.isArray(customerData) ? customerData : []);
         setRegistryCustomers(Array.isArray(registryData) ? registryData : []);
       } catch (e) {
@@ -110,6 +108,19 @@ function NewQuotationInner() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // FG ของ **ลูกค้าที่เลือก** เท่านั้น (มติผู้ใช้ 2026-08-17) — เดิมดึงทั้งทะเบียน
+  // แล้วดรอปดาวน์โชว์สินค้าของลูกค้าทุกราย หยิบข้ามรายได้เงียบ ๆ
+  // ?customerId= ตั้งใจข้าม team scope ฝั่ง API (FG ของลูกค้ารายนี้อาจถูกขึ้นทะเบียน
+  // โดยทีมอื่น) — ด่านอนุมัติ/พักใช้/redact กำไร ยังทำงานเหมือนเดิม
+  useEffect(() => {
+    if (!customerId) { setProducts([]); return; }
+    let alive = true;
+    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}`)
+      .then((rows) => { if (alive) setProducts(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) setProducts([]); });
+    return () => { alive = false; };
+  }, [customerId]);
 
   // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด (won/lost = ล็อก) + แก้ไขได้
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — ไม่กรองดีลที่มีใบแล้ว
@@ -216,9 +227,25 @@ function NewQuotationInner() {
     );
   }, [customers, registryCustomers, deals]);
 
-  const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
+  // เปลี่ยนลูกค้า = บรรทัดที่ผูก FG ของลูกค้าเดิมใช้ต่อไม่ได้ (server ตีกลับตอนบันทึก)
+  // ⇒ ทิ้งเฉพาะบรรทัดที่ผูกสินค้า แล้วบอกให้รู้ว่าทิ้งไปกี่บรรทัด · บรรทัดที่พิมพ์เอง
+  // (ค่าบริการ ฯลฯ) ไม่ผูกลูกค้า เก็บไว้ — ลบงานที่คนพิมพ์เองทิ้งเงียบ ๆ ไม่ได้
+  const onCustomer = (v) => {
+    setCustomerId(v);
+    setProjectId("");
+    setDealId("");
+    setCustomer(null);
+    setLines((current) => {
+      const kept = current.filter((line) => !line.productId && !line.fgCode);
+      const dropped = current.length - kept.length;
+      setError(dropped
+        ? `เปลี่ยนลูกค้าแล้ว — เอารายการสินค้าของลูกค้าเดิมออก ${dropped} รายการ (เลือก FG ของลูกค้าใหม่อีกครั้ง)`
+        : "");
+      return kept;
+    });
+  };
   // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหลายที่
-  // ในหน้านี้อ่านมัน: ตั้งต้น AE/ผู้ตรวจสอบ, payload ตอนสร้างใบ)
+  // ในหน้านี้อ่านมัน: ตั้งต้นผู้ประสานงานจากโครงการ, payload ตอนสร้างใบ)
   const onDeal = (v, deal) => { setDealId(v); setProjectId(deal?.projectId || ""); };
 
   const totals = useMemo(() => quoteTotals(lines, {
@@ -472,7 +499,9 @@ function NewQuotationInner() {
           </section>
 
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
+            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" />{/* ลิสต์ FG ผูกกับลูกค้าแล้ว (มติ 2026-08-17) — ยังไม่เลือกลูกค้า = ดรอปดาวน์ว่าง
+                ปิดปุ่มพร้อมบอกเหตุ ดีกว่าให้กดแล้วเจอช่องเปล่า · "เพิ่มรายการเอง" ไม่ผูกลูกค้า กดได้ตลอด */}
+            <div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine} disabled={!customerId} title={!customerId ? "เลือกลูกค้าก่อน — รายการสินค้าเป็นของลูกค้าแต่ละราย" : undefined}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
             <QuotationLineItems
               lines={lines}
               onChange={setLines}

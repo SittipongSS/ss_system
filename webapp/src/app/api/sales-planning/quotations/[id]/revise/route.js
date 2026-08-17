@@ -7,8 +7,10 @@ import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
-import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import {
+  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
+} from '@/lib/sales/quoteLines';
+import { QT_PEOPLE_FIELDS, QT_PEOPLE_RETIRED_FIELDS, validateQuotationPeople } from '@/lib/sales/quotationPeople';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
@@ -54,12 +56,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
+  const revLines = normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []);
+  // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ยกเว้นบรรทัดที่สืบทอด
+  // มาจากใบเดิม ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่จะออก Rev. ไม่ได้เลย
+  const revMismatched = await customerMismatchedLines(supabase, revLines, {
+    customerId: quote.customerId,
+    previousLines: quote.lines || [],
+  });
+  if (revMismatched.length) return badRequest(customerMismatchMessage(revMismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
-  body.lines = await enforceMasterPrices(
-    supabase,
-    normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []),
-    quote.lines || [],
-  );
+  body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || []);
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);
   const {

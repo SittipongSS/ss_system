@@ -163,9 +163,17 @@ export default function QuotationEditorPage() {
     })();
     return () => { alive = false; };
   }, [quote?.customerId]);
+  // FG ของ **ลูกค้าบนใบนี้** เท่านั้น (มติผู้ใช้ 2026-08-17) — กติกาเดียวกับหน้าสร้าง
+  // ⚠️ บรรทัดเดิมที่ผูก FG ของลูกค้ารายอื่น (ใบเก่าก่อนมีด่านนี้) จะไม่อยู่ในลิสต์แล้ว
+  // แต่ยังแสดง/บันทึกได้ปกติ: ตารางอ่านคำอธิบายจาก snapshot ในบรรทัดเอง และด่าน
+  // ฝั่ง server ยกเว้นสินค้าที่ใบนี้ถืออยู่ก่อนแล้ว
   useEffect(() => {
-    cachedFetchJson("/api/products").then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
-  }, []);
+    const customerId = quote?.customerId;
+    if (!customerId) { setProducts([]); return; }
+    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}`)
+      .then((d) => setProducts(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [quote?.customerId]);
 
   // ด่าน "เอกสารเปิดให้แก้ไหม" อยู่ที่ `lib/sales/quotationWorkflow.js` ที่เดียว —
   // หน้ารายการใช้ตัวเดียวกันตัดสินว่าจะโชว์ดินสอไหม (เดิมเขียนแยกกันแล้วหลุดจากกัน)
