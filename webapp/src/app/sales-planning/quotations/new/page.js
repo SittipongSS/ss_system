@@ -328,42 +328,45 @@ function NewQuotationInner() {
     { id: "discount", label: "ส่วนลด", value: totals.discountAmount > 0 ? `-${fmtMoney(totals.discountAmount)}` : NA },
     ...(vatRate > 0 ? [{ id: "vat", label: `VAT ${vatRate}%`, value: fmtMoney(totals.vatAmount) }] : []),
   ];
+  // เช็คลิสต์เก็บเฉพาะ "เงื่อนไขที่บล็อกการบันทึกจริง" — เดิมมีแถว "เพิ่มรายการสินค้า"
+  // ที่ตัวมันเองเขียนว่ายังไม่ต้องทำก็บันทึกได้ ⇒ เป็นวงกลมว่างที่ไม่มีวันต้องติ๊ก
+  // อ่านแล้วเหมือนงานค้างทั้งที่ไม่ใช่ · ข้อความนั้นย้ายไปอยู่คำอธิบายใต้หัวการ์ดแทน
+  // ⚠️ "โครงการ" ไม่ใช่ขั้นให้เลือกแล้วตั้งแต่ยุบเข้า DealPicker (มติ 2026-08-06) —
+  // เดิมเขียน "เลือกลูกค้า โครงการ และดีลตามลำดับ" ซึ่งเถียงกับหัวข้อฝั่งซ้ายของหน้าเอง
   const readinessItems = [
     {
       id: "source",
       label: "เลือกดีล",
-      detail: dealId ? selectedDeal?.title : "เลือกลูกค้า โครงการ และดีลตามลำดับ",
+      detail: dealId ? selectedDeal?.title : "เลือกลูกค้า แล้วเลือกดีล",
       ready: Boolean(dealId),
-    },
-    {
-      id: "items",
-      label: "เพิ่มรายการสินค้า/บริการ",
-      detail: lines.length ? `${lines.length} รายการ` : "ยังบันทึกฉบับร่างได้ และเพิ่มรายการภายหลังได้",
-      ready: Boolean(lines.length),
     },
   ];
   const rightRail = (
     <>
+      {/* ⚠️ ไม่ส่ง `status` ให้การ์ดยอด — หน้านี้สถานะเป็น "ฉบับใหม่" ตายตัว เปลี่ยนไม่ได้
+          ⇒ สองการ์ดในรางขวาเคยขึ้นคำเดียวกันติดกัน (บวกป้ายบนหัวใบอีก = 3 ที่ในหน้าเดียว)
+          หน้ารายละเอียดใบ ([id]) ยังส่งเหมือนเดิม — ที่นั่นสถานะเปลี่ยนได้จริงและเป็น
+          แพตเทิร์นเดียวกับ SO/ภาษี/ต้นทุน ถอดที่นั่นจะทำให้ใบเสนอราคาแปลกกว่าโมดูลอื่น */}
       <DocumentSummaryCard
         title="ยอดสุทธิใบเสนอราคา"
         total={fmtMoney(totals.totalAmount)}
         rows={summaryRows}
-        status="ฉบับใหม่"
-        statusColor="var(--accent)"
       />
       <DocumentControlCard
         eyebrow="QUOTATION CONTROL"
         title="จัดการใบเสนอราคา"
         status="ฉบับใหม่"
         statusColor="var(--accent)"
-        statusDescription="ตรวจความพร้อมและบันทึกเป็นฉบับร่าง"
+        statusDescription="บันทึกเป็นฉบับร่างได้เลย — รายการสินค้าเพิ่มภายหลังได้"
         notices={<DocumentReadinessList items={readinessItems} />}
         primaryAction={{
           id: "save",
           kind: "save",
           label: creating ? "กำลังบันทึก…" : "บันทึก",
           disabled: !dealId,
-          disabledReason: !dealId ? "เลือกดีลก่อนบันทึก" : undefined,
+          // ⚠️ ไม่ส่ง `disabledReason` ที่นี่โดยเจตนา — การ์ดนี้มีเช็คลิสต์อยู่เหนือปุ่มแล้ว
+          // ซึ่งบอกเหตุเดียวกัน ("เลือกดีล") ห่างกันสามบรรทัด · กติกาของ component ที่ว่า
+          // เหตุผลต้องเป็นตัวหนังสือไม่ใช่ tooltip ยังอยู่ครบสำหรับการ์ดที่ไม่มีเช็คลิสต์
           onClick: create,
         }}
         secondaryActions={[{
