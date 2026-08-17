@@ -36,7 +36,8 @@ const STAGE_COLORS = {
 };
 const QUOTE_STATUS = {
   draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
-  sent: { label: "ส่งลูกค้าแล้ว", color: "var(--blue)" },
+  // sent = "อนุมัติแล้ว" (มติผู้ใช้ 2026-08-17) — ดูเหตุผลที่ QUOTE_STATUS_LABELS
+  sent: { label: "อนุมัติแล้ว", color: "var(--blue)" },
   accepted: { label: "รับแล้ว", color: "var(--green)" },
   rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
   cancelled: { label: "ยกเลิก", color: "var(--red)" },

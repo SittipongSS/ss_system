@@ -551,7 +551,8 @@ export default function QuotationEditorPage() {
 
   const statusMeta = {
     draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
-    sent: { label: "ส่งลูกค้าแล้ว", color: "var(--blue)" },
+    // sent = "อนุมัติแล้ว" (มติผู้ใช้ 2026-08-17) — ดูเหตุผลที่ QUOTE_STATUS_LABELS
+    sent: { label: "อนุมัติแล้ว", color: "var(--blue)" },
     accepted: { label: "Won", color: "var(--green)" },
     rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
@@ -577,7 +578,7 @@ export default function QuotationEditorPage() {
     : awaitingApproval
       ? "ยื่นอนุมัติแล้ว เอกสารถูกล็อกจนกว่าจะดึงกลับหรือได้รับอนุมัติ"
       : quote?.approvalStatus === "approved"
-        ? "อนุมัติแล้ว — ถือว่าส่งให้ลูกค้าแล้ว รอลูกค้าตอบรับแล้วปิด Won · หากต้องแก้ไขให้ออก Rev. ใหม่"
+        ? "อนุมัติแล้ว — ส่งให้ลูกค้าได้ รอลูกค้าตอบรับแล้วปิด Won · หากต้องแก้ไขให้ออก Rev. ใหม่"
         : "เอกสารฉบับเดิมที่ออกก่อนระบบอนุมัติ — แก้ทับฉบับเดิมไม่ได้ หากต้องแก้ไขให้ออก Rev. ใหม่";
   const primaryAction = editable
     ? {
@@ -1021,7 +1022,7 @@ export default function QuotationEditorPage() {
       <ReasonDialog
         open={!!unacceptForm}
         title="ย้อนการรับใบเสนอราคา"
-        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็น “ส่งลูกค้าแล้ว” และดีลถอยออกจาก Won`}
+        description={`ใบ ${naText(quote?.quoteNumber)} จะกลับเป็น “อนุมัติแล้ว” และดีลถอยออกจาก Won`}
         detail="ใช้สำหรับแก้กรณีรับใบผิดก่อนมีใบสั่งขายโดยหลักฐานการรับเดิมยังคงอยู่ในประวัติ"
         label="เหตุผลที่ย้อนการรับ"
         value={unacceptForm?.reason || ""}
