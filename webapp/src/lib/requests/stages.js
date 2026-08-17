@@ -2,7 +2,9 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import { requestHasItems, requestRequiresCommittedDue } from '@/lib/master/requestTypes';
+import {
+  requestDeliversRows, requestHasItems, requestRequiresCommittedDue,
+} from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 
@@ -149,6 +151,23 @@ export function closeRequestError(request, items = []) {
   }
   if (!rows.length && request.status === 'pending') {
     return 'ยังไม่มีใครรับเรื่องเลย — ยกเลิกแทนการปิด';
+  }
+
+  /* 🐞 **ใบที่ฝ่ายยังไม่ส่งอะไรเลย ปิดได้** (ผลตรวจ 2026-08-17 — เดินฟังก์ชันจริง:
+     `scent_dev` · `acknowledged` · 0 แถว ⇒ คืน null)
+     ด่านข้างบนกันเฉพาะกรณี **มีแถวแล้วเดินไม่จบ** · หัวข้อที่ฝ่ายปลายทางเป็นคน
+     สร้างแถวตอนกด "ส่งงาน" (`deliversRows`) จะมี 0 แถวตลอดช่วงที่ RD ยังไม่ส่ง
+     ⇒ ผ่านทุกด่าน · ผู้ขอกดปิดได้ตั้งแต่วันที่ RD เพิ่งรับเรื่อง แล้วงานที่ค้างอยู่
+     หายไปเงียบ ๆ — ซึ่งเป็นอาการเดียวกับที่คอมเมนต์ข้างบนบอกว่าแก้ไปแล้ว
+     (รอบนั้นแก้ครึ่งเดียว: เปลี่ยนจากถามทะเบียนมาถามแถวจริง แต่ไม่ได้กันกรณี 0 แถว)
+
+     ⚠️ **ยกเว้นใบที่ฝ่ายกด "ตอบแล้ว" เอง** — นั่นคือฝ่ายประกาศว่าจบงานของตัวแล้ว
+     (เช่น ตอบในเธรดจนพอ ไม่มีของต้องส่ง) · ไม่ยกเว้นไว้ ใบพวกนั้นจะปิดไม่ลงตลอดกาล
+     ซึ่งเป็นกับดักเดียวกับที่ทำให้ต้องมีด่าน `draft` ข้างบน
+     ⚠️ ทางออกของใบที่ฝ่ายส่งอะไรไม่ได้จริง ๆ คือ **ยกเลิก** ไม่ใช่ปิด — คำเดียวกับ
+     ด่าน `pending` ข้างบน */
+  if (!rows.length && requestDeliversRows(request.kind) && request.status !== 'answered') {
+    return `ฝ่าย ${request.dept || 'ปลายทาง'} ยังไม่ได้ส่งงานสักรายการ — ยกเลิกแทนการปิด`;
   }
   return null;
 }
