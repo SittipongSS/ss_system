@@ -57,10 +57,17 @@ export default function Button({
   // ตอนกดปุ่มที่ตั้งใจให้เปิดโมดัล จึงบังคับ type="button" ให้เมื่อไม่ได้ส่งมา
   const typeProp = Component === "button" && props.type === undefined ? { type: "button" } : {};
 
+  /* 🐞 `iconOnly` เคยทิ้ง children ทิ้งเงียบ ๆ — คนเขียนที่ส่งไอคอนเป็น children
+     (`<Button iconOnly><Pencil/></Button>` ซึ่งเป็นวิธีที่นึกออกก่อนเพื่อน) จะได้
+     **ปุ่มว่างเปล่าที่กดได้แต่มองไม่เห็น** ไม่มี error ไม่มีอะไรฟ้อง · อยู่บน main
+     มาหลายเดือนกับปุ่ม "กางรายละเอียด" ในหน้างาน จนไปโผล่ซ้ำกับปุ่มงานต่อเนื่อง
+     ⇒ ไม่มี `icon` = ใช้ children เป็นไอคอนแทน · ส่ง `icon` มาแล้วยังทิ้ง children
+     ตามเดิม (นั่นคือป้ายข้อความที่ตั้งใจซ่อน เหลือชื่อไว้ที่ aria-label) */
+  const body = iconOnly ? (icon ?? children) : <>{icon}{children}</>;
+
   return (
     <Component className={classes} {...typeProp} {...props}>
-      {icon}
-      {iconOnly ? null : children}
+      {body}
     </Component>
   );
 }

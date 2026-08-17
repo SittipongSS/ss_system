@@ -125,9 +125,7 @@ export default function TaskDetailPage() {
   const backActions = task ? (
     <>
       {canCreateTasks && (
-        <Button iconOnly style={CHAIN_ACTION} onClick={openFollowUp} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้">
-          <CornerDownRight size={16} aria-hidden="true" />
-        </Button>
+        <Button iconOnly style={CHAIN_ACTION} onClick={openFollowUp} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้" icon={<CornerDownRight size={16} aria-hidden="true" />} />
       )}
       {(task.canManage || task.canChangeStatus) && (
         <button type="button" className="btn-icon" style={{ color: "var(--blue)" }} onClick={openEdit} aria-label="แก้ไขงาน" title="แก้ไข">

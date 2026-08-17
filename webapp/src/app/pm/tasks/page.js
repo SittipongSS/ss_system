@@ -582,9 +582,7 @@ export default function TasksPage() {
      จึงไม่ผูกกับ canManageTask: คนที่เห็นงานของทีมและมีสิทธิ์สร้างงาน ต่องานจากมันได้ */
   const canWriteTasks = canEdit || role === "rd";
   const followUpButton = (t) => canWriteTasks ? (
-    <Button iconOnly onClick={(e) => { e.stopPropagation(); openFollowUp(t); }} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้">
-      <CornerDownRight size={14} />
-    </Button>
+    <Button iconOnly onClick={(e) => { e.stopPropagation(); openFollowUp(t); }} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้" icon={<CornerDownRight size={14} />} />
   ) : null;
 
   const deletePersonal = async (t) => {
@@ -652,9 +650,8 @@ export default function TasksPage() {
       aria-label={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
       title={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
       onClick={(e) => { e.stopPropagation(); toggleExpanded(t.id); }}
-    >
-      {expandedIds.has(t.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-    </Button>
+      icon={expandedIds.has(t.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+    />
   );
 
   const relationshipBadge = (task, compact = false) => {
