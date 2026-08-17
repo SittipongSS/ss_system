@@ -88,7 +88,9 @@ export default function RequestQueuePanel({
 
   /* ความกว้างตายตัวของคอลัมน์ที่เนื้อคงที่ — ที่เหลือปล่อยให้ยืดตามเนื้อ
      (คลาสอยู่ใน requestForm.module.css ตามด่าน audit:ui ห้าม inline style) */
-  const COL_WIDTH = { next: styles.colNext, due: styles.colDue, progress: styles.colProgress };
+  const COL_WIDTH = {
+    next: styles.colNext, docNo: styles.colDocNo, due: styles.colDue, progress: styles.colProgress,
+  };
   // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
   const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
   const showTools = toolLevel === "full";
@@ -193,6 +195,14 @@ export default function RequestQueuePanel({
           </>
         );
       }
+      /* ⭐ เลขที่คำร้อง — ทรงเดียวกับเลขที่ QT/SO ในตารางอื่น (`mono` ตัวหนา) ⇒ ตัวเลข
+         ตรงกันทุกแถว กวาดตาลงคอลัมน์แล้วเทียบได้
+         ⚠️ ใบร่างยังไม่มีเลข — เขียน "ร่าง" ไม่ใช่ขีด · เลขออกตอนกดส่ง (trigger ทำให้
+         `docNo` แก้ไม่ได้อีก) ⇒ ช่องว่างที่นี่อ่านได้ว่าข้อมูลหาย ทั้งที่ยังไม่มีเลขจริง */
+      case "docNo":
+        return ask.docNo
+          ? <strong className={`mono ${styles.docNoCell}`}>{ask.docNo}</strong>
+          : <span className={styles.muted}>ร่าง</span>;
       /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
          ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
       case "doc":
@@ -205,7 +215,8 @@ export default function RequestQueuePanel({
             </div>
             <div className={styles.subText}>
               {[
-                ask.docNo || "ร่าง",
+                /* เลขที่อยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (ชุด "linked") */
+                cols.includes("docNo") ? null : (ask.docNo || "ร่าง"),
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
                 ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
