@@ -38,7 +38,9 @@ import {
   isCustomerCancelReason,
 } from "@/lib/sales/salesOrderWorkflow";
 import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride";
-import { dealTypeOf } from "@/lib/salesPlanning";
+// ⚠️ ป้ายขั้นดีลมาจาก STAGE_LABELS ที่เดียว — ของเดิมพิมพ์ค่าดิบจาก DB ("won")
+// ลงจอ ทั้งที่หน้าดีล/คิวใช้ป้ายไทยกันหมด (ดู lib/salesPlanning.js)
+import { STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -583,6 +585,17 @@ export default function SalesOrderDetailPage() {
   );
 
   const installments = useMemo(() => order?.installments || [], [order?.installments]);
+
+  /* 🪤 **ส่วนลดท้ายใบมีที่แสดงสองที่บนหน้าเดียว** — การ์ดสรุปข้างและท้ายตารางรายการ
+     ของเดิมเขียนแยกกันแล้วเพี้ยน: ข้างเป็น `฿1.00` ท้ายตารางเป็น `-฿1.00` และมีแต่
+     ท้ายตารางที่ขึ้น N/A ตอนไม่มีส่วนลด ⇒ ตัวเลขเดียวกันอ่านได้สองความหมาย
+     ⚠️ ส่วนลดคือยอด **หัก** เครื่องหมายลบจึงเป็นความหมาย ไม่ใช่การตกแต่ง
+     ⇒ ประกอบที่นี่ที่เดียว แล้วสองที่ spread ไปใช้ ห้ามเขียนค่าเองซ้ำ */
+  const discountRow = useMemo(() => ({
+    id: "discount",
+    label: "ส่วนลดท้ายใบ",
+    value: Number(order?.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : NA,
+  }), [order?.discountAmount]);
   const paymentSummary = useMemo(
     () => paymentRollup(installments, todayIso),
     [installments, todayIso],
@@ -726,7 +739,7 @@ export default function SalesOrderDetailPage() {
     <Workspace hideHeader back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }}>
       <div className={styles.page}>
         <SalesDetailOverview
-          eyebrow="SALE ORDER · COMMERCIAL APPROVAL"
+          eyebrow="SALES ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
           description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
           badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
@@ -773,7 +786,7 @@ export default function SalesOrderDetailPage() {
           <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
-          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "Stage", value: naText(order.deal?.stage) }]} />
+          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />
           <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
         </ContextGrid>
 
@@ -797,7 +810,7 @@ export default function SalesOrderDetailPage() {
               statusColor={status.color}
               rows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
-                { id: "discount", label: "ส่วนลดท้ายใบ", value: fmtMoney(order.discountAmount) },
+                discountRow,
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
                 { id: "actual", label: "Actual ก่อน VAT", value: approved ? fmtMoney(order.actualAmount) : "ยังไม่นับ" },
                 /* 🔴 บรรทัดนี้คือ **ยอดที่เก็บเงินได้** ไม่ใช่ Actual — Actual เป็นยอดเต็ม
@@ -849,7 +862,7 @@ export default function SalesOrderDetailPage() {
               lines={sortedLines}
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
-                { id: "discount", label: "ส่วนลดท้ายใบ", value: Number(order.discountAmount || 0) > 0 ? `-${fmtMoney(order.discountAmount)}` : NA },
+                discountRow,
                 { id: "vat", label: "VAT", value: fmtMoney(order.vatAmount) },
               ]}
               grandTotal={fmtMoney(order.totalAmount)}
