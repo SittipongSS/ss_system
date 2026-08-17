@@ -22,6 +22,7 @@ import QuotationInstallments from "@/components/salesPlanning/QuotationInstallme
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
+import { customerSelectOptions } from "@/components/master/customerOption";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
@@ -126,11 +127,29 @@ function NewQuotationInner() {
   // "ทำไมลูกค้าไม่อยู่ในลิสต์" ต้องใช้เงื่อนไขชุดเดียวกันเป๊ะ ไม่งั้นสองฝั่งเถียงกัน
   const eligible = useMemo(() => eligibleQuotationDeals(deals), [deals]);
 
+  // ตัวเลือกลูกค้าโชว์ "รหัส · ชื่อ" และค้นเจอทั้งรหัสและชื่อ (มติผู้ใช้ 2026-08-18 —
+  // ทรงเดียวกับ entity อื่นทั้งระบบ) · ลิสต์นี้ derive จาก **ดีล** ซึ่งมีแต่ชื่อลูกค้า
+  // จึงต้อง join กับทะเบียนลูกค้าที่หน้านี้โหลดไว้อยู่แล้วเพื่อเอา arCode (ไม่ยิงเพิ่ม)
+  // ลูกค้าที่ไม่อยู่ในทะเบียนที่มองเห็น (เช่นเพิ่งตกไปรออนุมัติ) = โชว์ชื่อจากดีลไปก่อน
+  const customerById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(customers) ? customers : []).forEach((c) => { if (c?.id) map.set(c.id, c); });
+    return map;
+  }, [customers]);
+
   const customerOptions = useMemo(() => {
     const seen = new Map();
-    eligible.forEach((d) => { if (!seen.has(d.customerId)) seen.set(d.customerId, d.customerName || "ไม่มีชื่อลูกค้า"); });
-    return [...seen].map(([value, label]) => ({ value, label, search: label }));
-  }, [eligible]);
+    eligible.forEach((deal) => {
+      if (seen.has(deal.customerId)) return;
+      const master = customerById.get(deal.customerId);
+      seen.set(deal.customerId, {
+        id: deal.customerId,
+        arCode: master?.arCode || "",
+        name: master?.name || deal.customerName || "ไม่มีชื่อลูกค้า",
+      });
+    });
+    return customerSelectOptions([...seen.values()]);
+  }, [eligible, customerById]);
 
   // ดีลของลูกค้าที่เลือก + รายชื่อโครงการ — ป้อนให้ DealPicker (ตัวเลือกกลางสองชั้น)
   // แทนคู่ช่อง "โครงการ → ดีล" เดิม
