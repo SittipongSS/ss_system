@@ -54,3 +54,19 @@
 .stepBad { color: var(--red); font-weight: var(--fw-semibold); }
 .stepBad .dot { background: var(--red); }
 
+
+/* ขั้นที่ใบนี้ไม่มี (มติผู้ใช้ 2026-08-18) — หมุดกลวง + เส้นประ
+   ⚠️ สีเดียวกับ todo ไม่ได้ ต้องแยกด้วย **รูป** เพราะ todo เป็นจุดทึบเหมือนกัน
+   ⇒ กลวง = "ไม่มีขั้นนี้" · ทึบเทา = "ยังไม่ถึง" */
+.stepSkip { color: var(--text-3); }
+.stepSkip .dot {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+  border: 1.5px solid var(--border-strong);
+}
+.barSkip {
+  height: 0;
+  background: none;
+  border-top: 1px dashed var(--border-strong);
+}

@@ -21,7 +21,10 @@
 import { Fragment } from "react";
 import styles from "./StepTrack.module.css";
 
-const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", todo: "" };
+/* `skip` = **ขั้นที่ใบนี้ไม่มี** (เช่นใบยอด 0 ไม่มีขั้นเก็บเงิน — มติผู้ใช้ 2026-08-18)
+   ⚠️ คนละเรื่องกับ `todo` (ยังไม่ถึงคิว) และ `done` (ผ่านมาแล้ว) — หมุดจึงเป็น
+   **วงกลมกลวง** ซึ่งเป็นรูปเดียวที่ยังไม่ถูกใช้ ⇒ อ่านออกจากรูปก่อนอ่านจากสี */
+const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", skip: "stepSkip", todo: "" };
 
 export default function StepTrack({ steps, className = "", ariaLabel = "ความคืบหน้าของใบ" }) {
   const list = Array.isArray(steps) ? steps : [];
@@ -33,8 +36,14 @@ export default function StepTrack({ steps, className = "", ariaLabel = "คว�
           {/* ⚠️ เส้นที่ "ผ่านแล้ว" ย้อมเขียวด้วย ไม่ใช่ย้อมแค่หมุด — เส้นคือสิ่งที่ตากวาด
               ตามไป ถ้าเส้นสีเดียวกันหมดจะแยกไม่ออกว่าเดินมาถึงไหน */}
           {index > 0 ? (
+            /* ⚠️ เส้นที่นำไปสู่ขั้นที่ข้าม = **เส้นประ** ไม่ใช่เขียว — เขียวแปลว่า
+               "เดินผ่านมาแล้ว" แต่ช่วงนี้ไม่ได้เดินผ่าน มันไม่มีอยู่ */
             <span
-              className={`${styles.bar} ${list[index - 1].state === "done" ? styles.barDone : ""}`.trim()}
+              className={`${styles.bar} ${
+                list[index].state === "skip"
+                  ? styles.barSkip
+                  : list[index - 1].state === "done" ? styles.barDone : ""
+              }`.trim()}
               aria-hidden="true"
             />
           ) : null}

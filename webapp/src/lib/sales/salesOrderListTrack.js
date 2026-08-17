@@ -1,3 +1,5 @@
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+
 // ── รางสามขั้นบนตารางรายการใบสั่งขาย (มติผู้ใช้ 2026-08-13 · แบบ ข) ─────────
 //
 // > *"อยากรื้อดีไซน์การแสดงข้อมูลตารางรายการในหน้าใบสั่งขาย"* → เลือกแบบ ข
@@ -15,7 +17,8 @@
 // ห่างกันคลิกเดียว ถ้าคำหรือลำดับไม่ตรงกันจะอ่านเหมือนคนละเรื่อง
 
 /** สถานะของหมุดแต่ละขั้น — เรียงจากยังไม่ถึง ไปถึงแล้ว */
-export const TRACK_STATES = ['todo', 'now', 'done', 'bad'];
+// `skip` = ขั้นที่ใบนี้ไม่มี (ไม่ใช่ยังไม่ถึง และไม่ใช่ผ่านแล้ว)
+export const TRACK_STATES = ['todo', 'now', 'done', 'bad', 'skip'];
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
 
@@ -69,7 +72,13 @@ export function salesOrderListTrack(order = {}) {
   const paid = payment?.paid ?? 0;
   const count = payment?.count ?? 0;
   const money = count ? `เก็บเงิน ${paid}/${count}` : 'เก็บเงิน';
-  const moneyStep = !approved || !payment
+  /* ⭐ **ใบยอด 0 จบที่ขั้นบัญชีตรวจ** (มติผู้ใช้ 2026-08-18) — ไม่มีเงินให้เก็บ
+     ⇒ ขั้นนี้ต้องเป็น `done` ไม่ใช่ `todo` ค้างตลอดกาล
+     🐞 ถ้าปล่อยเป็น todo: ใบยอด 0 จะไม่มีวันขึ้น "เสร็จสมบูรณ์" ใน
+     `salesOrderTrackSummary` และค้างเป็น "รอเก็บเงิน" ทั้งที่ไม่มีอะไรให้รอ */
+  const moneyStep = approved && paymentNotRequired(order?.totalAmount)
+    ? step('money', 'ไม่เก็บเงิน', 'skip', 'ยอด 0 — ไม่มีขั้นนี้')
+    : !approved || !payment
     ? step('money', money, 'todo')
     : payment.overdue
       ? step('money', money, 'bad', `เลยกำหนด ${payment.overdue} งวด`)
@@ -97,7 +106,10 @@ export function salesOrderTrackSummary(order = {}) {
   if (bad) return { label: bad.note || `ติดที่ ${bad.label}`, tone: 'danger' };
   const now = steps.find((s) => s.state === 'now');
   if (now) return { label: `รอ ${now.label}`, tone: 'warning' };
-  if (steps.every((s) => s.state === 'done')) return { label: 'เสร็จสมบูรณ์', tone: 'success' };
+  // ขั้นที่ข้าม (`skip`) ไม่บล็อกความจบ — ใบยอด 0 ที่บัญชีตรวจผ่านแล้วคือใบที่จบจริง
+  if (steps.every((s) => ['done', 'skip'].includes(s.state))) {
+    return { label: 'เสร็จสมบูรณ์', tone: 'success' };
+  }
   // ไม่มีขั้นไหนกำลังเดินและยังไม่จบ = ค้างอยู่ที่ขั้นแรกที่ยังไม่ถึง
   const next = steps.find((s) => s.state === 'todo');
   return { label: next?.note || `ยังไม่ถึง ${next?.label || 'ขั้นถัดไป'}`, tone: 'neutral' };

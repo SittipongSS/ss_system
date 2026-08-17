@@ -99,3 +99,37 @@ test('ใบเก่าที่ไม่มีใครลงมือ ป้�
   assert.equal(s.label, 'ยังไม่ส่งให้บัญชี');
   assert.equal(s.tone, 'neutral');
 });
+
+// ── ใบยอด 0 จบที่ขั้นบัญชี (มติผู้ใช้ 2026-08-18) ────────────────────────────
+// 🐞 ถ้าขั้น "เก็บเงิน" ยังเป็น todo ใบยอด 0 จะค้างเป็น "รอเก็บเงิน" ตลอดกาล
+// และไม่มีวันขึ้น "เสร็จสมบูรณ์" ทั้งที่ไม่มีอะไรให้รอ
+test('ใบยอด 0 ที่อนุมัติแล้ว — ขั้นเก็บเงินเป็น skip ไม่ใช่ค้าง และไม่ใช่เขียว', () => {
+  const { steps } = salesOrderListTrack({
+    status: 'approved', financeStatus: 'approved', totalAmount: 0, payment: null,
+  });
+  const money = steps.find((s) => s.key === 'money');
+  // ⚠️ ต้องไม่ใช่ `done` — เขียวแปลว่า "ผ่านขั้นนี้มาแล้ว" ซึ่งไม่จริง (มติผู้ใช้)
+  assert.equal(money.state, 'skip');
+  assert.equal(money.label, 'ไม่เก็บเงิน');
+});
+
+test('ใบยอด 0 ที่บัญชีอนุมัติแล้ว = เสร็จสมบูรณ์ ไม่หายไปไหน', () => {
+  assert.equal(salesOrderTrackSummary({
+    status: 'approved', financeStatus: 'approved', totalAmount: 0, payment: null,
+  }).label, 'เสร็จสมบูรณ์');
+});
+
+// ใบยอด 0 ที่บัญชียังไม่ตรวจ ต้องยังค้างที่ขั้นบัญชี ไม่ใช่กระโดดจบ
+test('ใบยอด 0 ที่บัญชียังไม่ตรวจ — ยังค้างที่ขั้นบัญชี', () => {
+  assert.equal(salesOrderTrackSummary({
+    status: 'approved', financeStatus: 'pending', totalAmount: 0, payment: null,
+  }).label, 'รอ บัญชีตรวจ');
+});
+
+// ⚠️ ใบที่ไม่ได้ส่งยอดมา (fixture เก่า/แถวที่ยังโหลดไม่เสร็จ) ต้องไม่ถูกตัดสินว่ายอด 0
+test('ไม่รู้ยอด ≠ ยอด 0 — รางยังเดินตามงวดตามปกติ', () => {
+  const { steps } = salesOrderListTrack({
+    status: 'approved', financeStatus: 'approved', payment: { tracked: true, paid: 1, count: 2 },
+  });
+  assert.equal(steps.find((s) => s.key === 'money').label, 'เก็บเงิน 1/2');
+});

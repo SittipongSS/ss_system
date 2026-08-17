@@ -18,7 +18,8 @@ import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
-  installmentActionError, installmentPlanDrift, paymentRollup, previewInstallments,
+  installmentActionError, installmentPlanDrift, installmentReportOutcome,
+  paymentNotRequired, paymentRollup, previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
@@ -81,7 +82,11 @@ export default function SalesOrderPaymentPanel({
 
   const quotation = order?.quotation;
   const wonFiles = Array.isArray(quotation?.wonAttachments) ? quotation.wonAttachments : [];
-  const gate = (row, action, options) => installmentActionError(row, action, user, options);
+  // ⚠️ ส่ง `rows` เข้าไปด้วยเสมอ — ด่าน "งวดต้องไล่ลำดับ" (2026-08-18) ต้องเห็นงวดอื่น
+  // ไม่ส่ง = ปุ่มบนจอจะเปิดให้กดงวดที่ API จะตีกลับ
+  const gate = (row, action, options) => installmentActionError(row, action, user, {
+    ...options, rows, orderTotal: order?.totalAmount,
+  });
 
   const headline = isPreview
     ? `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`
@@ -103,6 +108,21 @@ export default function SalesOrderPaymentPanel({
     : null;
 
   const pct = rollup.totalAmount > 0 ? Math.round((rollup.confirmedAmount / rollup.totalAmount) * 100) : 0;
+
+  /* ── ใบยอด 0 จบที่อนุมัติใบ (มติผู้ใช้ 2026-08-18) ────────────────────────
+     ไม่มีเงินให้เก็บ ⇒ ไม่มีงวด ไม่มีการแจ้ง/ยืนยัน · การ์ดยังอยู่เพื่อ **บอกว่าทำไม
+     ไม่มีอะไรให้ทำ** ไม่ใช่ซ่อนทั้งการ์ด — การ์ดที่หายไปเฉย ๆ อ่านเหมือนระบบลืม
+     ⚠️ ใบเก่าที่มีงวดค้างอยู่แล้ว (สร้างก่อนมติ) ยังโชว์ตารางตามเดิม ไม่กลืนของเดิมทิ้ง */
+  const noPaymentStep = paymentNotRequired(order?.totalAmount);
+  if (noPaymentStep && !saved.length) {
+    return (
+      <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta="ยอด 0 — ไม่ต้องยืนยันการชำระ">
+        <StatusNotice tone="info">
+          ใบนี้ยอดรวม 0 บาท จึงไม่มีงวดชำระให้ติดตาม — จบที่ขั้นอนุมัติใบสั่งขาย
+        </StatusNotice>
+      </DetailCard>
+    );
+  }
 
   return (
     <DetailCard id="payment" icon={Wallet} eyebrow="PAYMENT" title="การชำระ" meta={headline}>
@@ -143,6 +163,16 @@ export default function SalesOrderPaymentPanel({
           </a>
         ))}
       </div>
+
+      {/* ⭐ ใบยอด 0 ที่ออกก่อนมติ 2026-08-18 ยังมีงวดค้างอยู่ — **ไม่ลบประวัติทิ้ง**
+          แต่ปุ่มทุกตัวถูกปิดที่ `installmentActionError` แล้ว ⇒ ต้องบอกว่าทำไมกดอะไรไม่ได้
+          ไม่งั้นคนจะคิดว่าสิทธิ์ตัวเองหาย */}
+      {noPaymentStep ? (
+        <StatusNotice tone="info">
+          ใบนี้ยอดรวม 0 บาท — ไม่มีขั้นยืนยันการชำระแล้ว (จบที่การอนุมัติใบ)
+          · งวดด้านล่างเก็บไว้เป็นประวัติของใบที่ออกก่อนหน้านี้
+        </StatusNotice>
+      ) : null}
 
       {alert ? <StatusNotice tone="error">{alert}</StatusNotice> : null}
 
@@ -196,8 +226,13 @@ export default function SalesOrderPaymentPanel({
                    เอามาเป็นปุ่มเด่นจะกลายเป็นชวนให้ถอย */
                 const canReport = !row.preview && !gate(row, "report", { paidOn: "placeholder" });
                 const canConfirm = !row.preview && !gate(row, "confirm");
+                /* บัญชีกดปุ่มเดียวกันแต่จบในก้าวเดียว (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
+                   ⇒ คำบนปุ่มต้องบอกผลจริง ไม่ใช่ "แจ้ง" ที่แปลว่ารอคนอื่นมาตรวจ */
+                const reportsAsConfirmed = installmentReportOutcome(user) === "confirmed";
                 const primary = canReport
-                  ? { label: row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
+                  ? { label: reportsAsConfirmed
+                        ? "บันทึกการรับชำระ"
+                        : row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
                       onClick: () => setReportFor({ row, paidOn: todayIso, files: [] }) }
                   : canConfirm
                     ? {

@@ -410,17 +410,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   if (action === 'save') {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('แก้ไขได้เฉพาะ SO ร่างหรือรายการที่ถูกตีกลับ');
-    const orderDate = String(body.orderDate || '').trim();
-    const paymentDueDate = String(body.paymentDueDate || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) return badRequest('วันที่ SO ไม่ถูกต้อง');
-    if (paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDate)) return badRequest('วันที่กำหนดชำระไม่ถูกต้อง');
+    /* ⚠️ **ไม่รับ `orderDate` / `paymentDueDate` จาก client อีกแล้ว** (มติผู้ใช้ 2026-08-18)
+       - วันที่ SO = วันที่สร้างใบ แก้ไม่ได้ (เดิมเป็นช่องกรอกที่แก้ย้อนหลังได้ ⇒ เลขที่ใบ
+         กับวันที่บนใบเดินคนละทางได้)
+       - กำหนดชำระย้ายไปอยู่ที่ **งวด** ทั้งหมด (action `schedule` รายงวด) ค่าระดับใบ
+         มาจากหลักฐานตอนปิด Won และเป็นค่าอ้างอิงของฝ่ายผลิต ไม่ใช่ช่องให้แก้บนเอกสาร
+       แก้ได้เหลือ **หมายเหตุ + เอกสารอ้างอิง** เท่านั้น */
     // ⚠️ เพดาน 200 = ด่านเดียวกับ CHECK ของ mig 0235 — ตัดที่นี่ก่อนถึง DB เพื่อไม่ให้
     // คนกรอกเจอ error ภาษาอังกฤษของ Postgres · ยาวกว่านี้แปลว่ากำลังใช้ช่องนี้เป็น
     // ช่องหมายเหตุ ซึ่งมี `notes` อยู่แล้วข้างล่าง
     const referenceDoc = String(body.referenceDoc || '').trim().slice(0, 200);
     const patch = {
-      orderDate,
-      paymentDueDate: paymentDueDate || null,
       referenceDoc: referenceDoc || null,
       notes: String(body.notes || '').trim() || null,
       updatedAt: new Date().toISOString(),

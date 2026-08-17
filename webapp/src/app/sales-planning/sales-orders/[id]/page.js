@@ -18,7 +18,6 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Toast from "@/components/ui/Toast";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
-import DateInput from "@/components/ui/DateInput";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard,
@@ -108,7 +107,9 @@ export default function SalesOrderDetailPage() {
   const reviewer = ["admin", "ae_supervisor"].includes(role);
   const [order, setOrder] = useState(null);
   const directory = usePeopleDirectory(); // แปลง ownerId ของดีล → ชื่อปัจจุบัน
-  const [form, setForm] = useState({ orderDate: "", paymentDueDate: "", referenceDoc: "", notes: "" });
+  /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง
+     และกำหนดชำระย้ายไปอยู่ที่งวดทั้งหมด */
+  const [form, setForm] = useState({ referenceDoc: "", notes: "" });
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
   const [toast, setToast] = useState(null);
@@ -172,7 +173,7 @@ export default function SalesOrderDetailPage() {
       return false;
     }
     setOrder(data);
-    setForm({ orderDate: data.orderDate || "", paymentDueDate: data.paymentDueDate || "", referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
+    setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
     setDirty(false);
     return true;
   }, [id]);
@@ -347,7 +348,7 @@ export default function SalesOrderDetailPage() {
   }
 
   function leaveEditMode() {
-    setForm({ orderDate: order.orderDate || "", paymentDueDate: order.paymentDueDate || "", referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
+    setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
     setDirty(false);
     setSaveState("idle");
     setEditMode(false);
@@ -909,8 +910,13 @@ export default function SalesOrderDetailPage() {
               </p>
               </div>
               <div className={styles.formStack}>
-                <label><span>วันที่ SO</span><DateInput value={form.orderDate} disabled={!editable} ariaLabel="วันที่ SO" onChange={(iso) => updateField("orderDate", iso)} /></label>
-                <label><span>กำหนดชำระ</span><DateInput value={form.paymentDueDate} disabled={!editable} ariaLabel="กำหนดชำระ" onChange={(iso) => updateField("paymentDueDate", iso)} /></label>
+                {/* ⚠️ วันที่ SO ไม่ใช่ช่องกรอก — เป็นวันที่สร้างใบ แก้ไม่ได้ (มติ 2026-08-18)
+                    กำหนดชำระย้ายไปอยู่ที่งวดในการ์ด "การชำระ" ทั้งหมด · ทั้งสองค่ายังโชว์
+                    อยู่ที่แถบหัวใบ จึงไม่ได้หายไปจากสายตา แค่ไม่มีใครแก้ได้ */}
+                <label>
+                  <span>วันที่ SO</span>
+                  <div className="readable-field is-compact">{fmtDate(order.orderDate)}</div>
+                </label>
                 {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
                     จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง
                     ส่วนหมายเหตุเป็นข้อความอิสระที่พิมพ์ลงเอกสาร · ปนกันเมื่อไรก็ค้นเจอขยะ

@@ -123,6 +123,7 @@ export const GET = withUser(async ({ user, supabase }) => {
         installmentsByOrder.get(row.id) || [],
         quoteById.get(row.quotationId)?.paymentPlan,
         todayIso,
+        row.totalAmount,
       ),
       // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
       // ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
