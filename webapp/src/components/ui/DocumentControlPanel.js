@@ -151,6 +151,16 @@ export function DocumentControlCard({
 
   return (
     <DetailCard icon={FileCheck2} eyebrow={eyebrow} title={title} meta={statusDescription} className={className}>
+      {/* ⭐ ห่อเนื้อการ์ดไว้ก้อนเดียวเพื่อให้ **จอแคบสลับลำดับได้** — ที่ ≤1050px รางขวา
+          เลิกปักหมุดแล้วไหลไปต่อท้าย ⇒ ปุ่มระดับใบซึ่งอยู่ท้ายการ์ดตกไปอยู่ก้นหน้า
+          (วัดจริงบนใบคำร้อง: การ์ดสูง 848px โดยเป็นราง 317 + ปุ่ม 345 ⇒ ปุ่มเริ่มหลัง
+          เนื้อการ์ดไปแล้วราว 460px)
+          ⚠️ **จอกว้างไม่เปลี่ยนอะไรเลย** — กล่องนี้เป็น block ตามเดิม สลับลำดับเฉพาะ
+          ในมีเดียแคบ · การ์ดนี้มีผู้ใช้หลายหน้า (QT · SO · ดีล · โครงการ · คำร้อง)
+          การเปลี่ยนลำดับบนจอกว้างคือการตัดสินใจเชิงดีไซน์ ไม่ใช่การแก้ปัญหาที่วัดได้
+          ⚠️ ใช้ `order` ได้เพราะ **รางไม่มีอะไรที่โฟกัสได้เลย** (div/span ล้วน) ⇒ ลำดับ
+          Tab ไม่เพี้ยนจากภาพ · ถ้าวันไหนรางมีปุ่ม ต้องกลับมาสลับ DOM จริงแทน */}
+      <div className={styles.controlBody}>
       {status ? (
         <div className={styles.controlStatus}>
           <span className={styles.statusDot} style={{ "--state-color": statusColor }} />
@@ -179,6 +189,7 @@ export function DocumentControlCard({
         </div>
       ) : null}
       {footer ? <div className={styles.footer}>{footer}</div> : null}
+      </div>
     </DetailCard>
   );
 }
