@@ -73,6 +73,11 @@ const CHIP_CHAIN_LINK = { ...CHIP_CHAIN, cursor: "pointer" };
 const CHIP_ICON = { flexShrink: 0 };
 const CHIP_TEXT = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const CHIP_SUFFIX = { flexShrink: 0, opacity: 0.75 };
+/* คอลัมน์เชื่อมโยง: โครงการบน · ดีลล่าง — ชื่อดีลยาวได้ จึงตัดด้วย ellipsis
+   แล้วบอกชื่อเต็มผ่าน title แทนการปล่อยให้ดันความกว้างคอลัมน์ */
+const LINK_STACK = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 };
+const LINK_PROJECT = { cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" };
+const LINK_DEAL = { cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, maxWidth: 200, fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: 4, color: "var(--purple)" };
 const ROW_CHIPS = { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, fontSize: "var(--fs-2)" };
 const MODAL_BODY = { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 };
 const MODAL_LEAD = { fontSize: "var(--fs-7)", color: "var(--text-3)" };
@@ -616,14 +621,35 @@ export default function TasksPage() {
   ];
 
   // ป้ายกำกับ (โครงการ/ไทม์ไลน์) ใช้ซ้ำทั้ง card + table
+  /* คอลัมน์ "เชื่อมโยง" — **โครงการบน · ดีลล่าง** (มติผู้ใช้ 2026-08-17)
+     เรียงบนล่างไม่ใช่ต่อกันในบรรทัดเดียว เพราะเป็นของคนละชั้น (โครงการคือภาชนะ
+     ดีลอยู่ข้างใน) และชื่อดีลยาวจนดันคอลัมน์อื่นเมื่อวางต่อท้ายรหัสโครงการ */
   const linkChip = (t) => {
     const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
     if (!proj && !deal) return null;
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
-        {proj && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>}
-        {deal && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Handshake size={10} /> {deal.title}</span>}
+      <span style={LINK_STACK}>
+        {proj && (
+          <span
+            onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }}
+            title={`โครงการ ${proj.code || ""}${proj.name ? ` · ${proj.name}` : ""}`.trim()}
+            className="font-mono"
+            style={LINK_PROJECT}
+          >
+            {proj.code}
+          </span>
+        )}
+        {deal && (
+          <span
+            onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }}
+            title={`ดีล ${deal.title}`}
+            style={LINK_DEAL}
+          >
+            <Handshake size={10} style={CHIP_ICON} />
+            <span style={CHIP_TEXT}>{deal.title}</span>
+          </span>
+        )}
       </span>
     );
   };
