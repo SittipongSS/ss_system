@@ -22,7 +22,7 @@ import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
-import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import Textarea from "@/components/ui/Textarea";
 
 export const TASK_BLANK = {
@@ -55,15 +55,12 @@ export const taskToForm = (t) => ({
 });
 
 async function uploadTaskAttachment(taskId, file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("customerName", `personal_task-${taskId}`);
-  fd.append("entityType", "personal_task");
-  fd.append("entityId", taskId);
-  const res = await fetch("/api/upload", { method: "POST", body: fd });
-  // ต้องเช็ก ok ก่อนอ่าน body: คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON
-  if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
-  return res.json();
+  // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ — ไม่ผ่าน function จึงไม่ติดเพดาน 4.5 MB
+  try {
+    return await uploadFileForEntity({ file, entityType: "personal_task", entityId: taskId });
+  } catch (err) {
+    throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+  }
 }
 
 export default function TaskFormModal({

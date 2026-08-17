@@ -253,8 +253,23 @@ export const ATTACHMENT_ENTITY_TYPES = Object.keys(ATTACHMENT_TYPES);
 // ── ขนาดไฟล์สูงสุดต่อการอัปโหลด (คุมการใช้ storage/ค่าใช้จ่าย) ──────────
 // ค่ากลางชุดเดียว ใช้ทั้ง client (เช็คก่อนอัป) และ server (บังคับจริง).
 // ฝั่ง server override ได้ด้วย env SUPABASE_MAX_UPLOAD_MB.
-export const MAX_UPLOAD_MB = 10;
+export const MAX_UPLOAD_MB = 25;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// ── เพดานของ "ชั้นโฮสติ้ง" — คนละเรื่องกับเพดานข้างบน ────────────────────
+// Vercel ตัด **request body ของ function ที่ 4.5 MB** แล้วตอบ 413
+// FUNCTION_PAYLOAD_TOO_LARGE เอง คำขอไปไม่ถึงโค้ดเรา (ตอบเป็น HTML ไม่ใช่ JSON)
+//
+// 🐞 ของจริงที่เคยเป็น: MAX_UPLOAD_MB = 10 แต่ไฟล์ 5–10 MB ตายที่ขอบ Vercel ทุกใบ
+// = ป้ายในฟอร์มบอก 10 MB แต่แนบได้จริงแค่ 4.5 MB และข้อความที่ผู้ใช้เห็นก็ไม่ใช่
+// ของแอป · ทางแก้ไม่ใช่การลดเลข แต่คือ **ไม่ส่งไบต์ผ่าน function อีกต่อไป**:
+// เบราว์เซอร์ยิงไฟล์ขึ้น Drive/Storage ตรง ๆ ด้วย URL ที่ server ออกให้
+// (ดู lib/master/uploadFile.js + /api/upload/session)
+//
+// เส้น `/api/upload` เดิมยังอยู่เป็น **ทางสำรอง** ของไฟล์เล็กเท่านั้น (เผื่อทางตรง
+// ถูกบล็อกด้วย CORS/เน็ตองค์กร) — ไฟล์ใหญ่กว่านี้ผ่านทางนั้นไม่ได้แน่นอน
+export const HOST_REQUEST_BODY_MB = 4.5;
+export const LEGACY_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 
 // ── ชนิดไฟล์ที่อนุญาต ────────────────────────────────────────────────
 // ค่ากลางชุดเดียว: server ใช้บังคับจริง (กัน .exe/.html), client ใช้เป็น accept.
@@ -345,6 +360,35 @@ export function resolveUploadMime(fileName, clientType) {
   if (byExt) return byExt;
   if (clientType && ACCEPTED_UPLOAD_MIME.includes(clientType)) return clientType;
   return "application/octet-stream";
+}
+
+// ── ด่านตรวจไฟล์ก่อนอัป (ขนาด + ชนิด) ────────────────────────────────────
+// ชุดเดียวใช้ทั้ง client (บอกก่อนเสียเวลาอัป) และ server (บังคับจริง) — และตอนนี้มี
+// สอง route ที่ต้องตรวจเหมือนกัน (`/api/upload` ทางสำรอง กับ `/api/upload/session`
+// ทางตรง) จึงต้องไม่ก๊อปเงื่อนไขไว้สองที่
+// คืน { ok:true } หรือ { ok:false, error, status } — status ตรงกับที่ API ตอบกลับ
+export function checkUploadCandidate({ fileName, mimeType, sizeBytes, maxBytes = MAX_UPLOAD_BYTES }) {
+  if (!fileName) return { ok: false, error: "ไม่พบไฟล์ที่ส่งมา", status: 400 };
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return { ok: false, error: "ไฟล์ว่างเปล่า", status: 400 };
+  }
+  if (sizeBytes > maxBytes) {
+    const maxMb = Math.round(maxBytes / (1024 * 1024));
+    return { ok: false, error: `ไฟล์ใหญ่เกินกำหนด (สูงสุด ${maxMb} MB)`, status: 413 };
+  }
+  // ผ่านถ้า mime อยู่ในลิสต์ หรือ (mime ว่าง/กว้าง) แต่นามสกุลถูกต้อง
+  const ext = fileExt(fileName);
+  const mimeOk = mimeType && ACCEPTED_UPLOAD_MIME.includes(mimeType);
+  if (!mimeOk && !ACCEPTED_UPLOAD_EXT.includes(ext)) {
+    // บอกให้ตรงว่าไฟล์ไหนและนามสกุลอะไรที่ไม่ผ่าน — ข้อความรวม ๆ ทำให้ผู้ใช้เดาไม่ออก
+    return {
+      ok: false,
+      status: 415,
+      error: `ชนิดไฟล์ไม่รองรับ: ${fileName}${ext ? ` (.${ext})` : ""} — `
+        + `รองรับ ${ACCEPTED_UPLOAD_EXT.map((e) => `.${e}`).join(" ")}`,
+    };
+  }
+  return { ok: true };
 }
 
 // ชนิดที่ปล่อยให้เบราว์เซอร์เปิดในหน้าได้ (inline) — นอกลิสต์นี้บังคับดาวน์โหลด

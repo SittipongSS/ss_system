@@ -1,4 +1,4 @@
-import { describeResponseError } from '@/lib/fetchError';
+import { uploadFileForEntity } from '@/lib/master/uploadFile';
 
 // ── ส่งอัปเดตหนึ่งข้อความพร้อมไฟล์แนบ ────────────────────────────────────
 //
@@ -9,24 +9,18 @@ import { describeResponseError } from '@/lib/fetchError';
 // ⚠️ ลำดับสองสเต็ปเปลี่ยนไม่ได้: อัปไฟล์ขึ้น Drive ให้ครบก่อน แล้วค่อยส่งข้อความ
 // พร้อม ref · สลับลำดับเมื่อไรจะได้ข้อความที่อ้างไฟล์ซึ่งยังไม่มีอยู่จริง
 //
-// ⚠️ **ไม่กลืน error ของ server** — ข้อความจริงบอกได้ว่าติดชนิดไฟล์ ขนาด หรือท่อ Drive
-// ซึ่งแก้คนละทาง · คำขอที่ตายก่อนถึง handler ไม่มี JSON ให้อ่าน จึงต้องเหลือ status
-// ไว้เป็นเบาะแส (หน้าที่ของ describeResponseError)
+// ⚠️ **ไม่กลืน error ของชั้นอัป** — ข้อความจริงบอกได้ว่าติดชนิดไฟล์ ขนาด หรือท่อ Drive
+// ซึ่งแก้คนละทาง
 
 /** อัปไฟล์ทีละใบขึ้น Drive แล้วคืน ref ที่พร้อมแนบไปกับข้อความ */
 export async function uploadUpdateFiles({ entityType, entityId, files = [] }) {
   const attachments = [];
   for (const file of files) {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('entityType', entityType);   // Drive: resolve โฟลเดอร์ปลายทาง
-    fd.append('entityId', entityId);
-    const up = await fetch('/api/upload', { method: 'POST', body: fd });
-    if (!up.ok) throw new Error(await describeResponseError(up, 'อัปโหลดไฟล์ไม่สำเร็จ'));
-    const payload = await up.json();
+    // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
+    const ref = await uploadFileForEntity({ file, entityType, entityId });
     attachments.push({
-      fileUrl: payload.url,
-      driveFileId: payload.driveFileId || null,
+      fileUrl: ref.url,
+      driveFileId: ref.driveFileId || null,
       fileName: file.name,
       mimeType: file.type,
       sizeBytes: file.size,

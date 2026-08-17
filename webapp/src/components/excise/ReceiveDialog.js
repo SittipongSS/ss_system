@@ -4,6 +4,7 @@ import Modal from "@/components/Modal";
 import PendingFiles from "@/components/ui/PendingFiles";
 import { fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
@@ -31,14 +32,10 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
       // หลักฐานการชำระจากลูกค้า → เก็บเข้า attachments ของออเดอร์ (best-effort)
       if (file) {
         try {
-          const fd = new FormData();
-          fd.append("file", file);
-          fd.append("customerName", `order-${order.id}`);
-          fd.append("entityType", "order");
-          fd.append("entityId", order.id);
-          const up = await fetch("/api/upload", { method: "POST", body: fd });
-          if (!up.ok) throw new Error(await describeResponseError(up, "แนบหลักฐานการชำระไม่สำเร็จ"));
-          const { url, driveFileId } = await up.json();
+          // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
+          const { url, driveFileId } = await uploadFileForEntity({
+            file, entityType: "order", entityId: order.id,
+          });
           const sv = await fetch("/api/master/attachments", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),

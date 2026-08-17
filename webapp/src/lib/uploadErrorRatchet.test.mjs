@@ -1,4 +1,4 @@
-// ── ทุกจุดที่ยิง /api/upload ต้องรายงานสาเหตุจริง ไม่ใช่ข้อความตายตัว ────────
+// ── ทุกจุดที่ยิงคำขออัปโหลดต้องรายงานสาเหตุจริง ไม่ใช่ข้อความตายตัว ────────
 //
 // 🐞 ที่มา: แพตเทิร์นนี้ถูกก๊อปไป 7 จุดโดยไม่มีใครสังเกต
 //     const data = await res.json().catch(() => ({}));
@@ -11,8 +11,9 @@
 // ไม่สำเร็จ" ซึ่งตามต่อไม่ได้ทั้งฝั่งผู้ใช้และคนดูแลระบบ — ต้องมานั่งไล่โค้ดถึงจะรู้ว่า
 // ข้อความนั้นแปลว่า "คำขอไปไม่ถึงแอปเลย"
 //
-// เทสต์นี้กันไม่ให้มันงอกกลับมา: เพิ่มจุดอัปโหลดใหม่แล้วลืม describeResponseError
-// = แดงทันที ไม่ต้องรอผู้ใช้เจอเอง
+// ⭐ รอบขยายเพดานเป็น 25 MB: จุดอัปโหลดทั้ง 9 จุดถูกยุบเหลือ **ทางเดียว**
+// (`lib/master/uploadFile.js` — ขอทางที่ /api/upload/session แล้วยิงไบต์ขึ้นที่เก็บตรง)
+// เทสต์นี้จึงคุมสองอย่าง: ทางอัปต้องมีที่เดียว และทางนั้นต้องไม่กลืนสาเหตุจริง
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -20,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const SRC = fileURLToPath(new URL('../', import.meta.url));
+const UPLOAD_ENTRY = 'lib/master/uploadFile.js';
 
 function jsFiles(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -30,18 +32,24 @@ function jsFiles(dir, out = []) {
   return out;
 }
 
-// ไฟล์ที่ "อัปโหลดจริง" = ยิง POST ไป /api/upload · การเรียกแบบ DELETE (rollback
-// ไฟล์กำพร้า) ไม่นับ เพราะเป็น best-effort ที่ตั้งใจเงียบ
-const uploaders = jsFiles(SRC).filter((f) => {
-  const src = readFileSync(f, 'utf8');
-  return /fetch\(\s*["']\/api\/upload["']\s*,\s*\{\s*method:\s*["']POST["']/.test(src);
+// ไฟล์ที่ "อัปโหลดจริง" = ยิง POST ไป /api/upload (เส้นสำรอง) หรือ /api/upload/session
+// (ขอทางอัปตรง) · การเรียกแบบ DELETE (rollback ไฟล์กำพร้า) ไม่นับ เพราะเป็น
+// best-effort ที่ตั้งใจเงียบ
+const UPLOAD_FETCH = /fetch\(\s*["']\/api\/upload(\/session)?["']\s*,\s*\{\s*method:\s*["']POST["']/;
+
+const uploaders = jsFiles(SRC).filter((f) => UPLOAD_FETCH.test(readFileSync(f, 'utf8')));
+
+test('⭐ ทางอัปไฟล์มีที่เดียว — ห้ามก๊อปการยิง /api/upload ไปไว้ในหน้า/โมดัลอีก', () => {
+  const rel = uploaders.map((f) => path.relative(SRC, f)).sort();
+  assert.deepEqual(
+    rel,
+    [UPLOAD_ENTRY],
+    'จุดที่ยิงคำขออัปโหลดเองแทนที่จะเรียก uploadFileForEntity():\n  '
+      + `${rel.filter((r) => r !== UPLOAD_ENTRY).join('\n  ')}`,
+  );
 });
 
-test('มีจุดอัปโหลดให้ตรวจจริง (กันเทสต์ผ่านเพราะ regex ไม่แมตช์อะไรเลย)', () => {
-  assert.ok(uploaders.length >= 5, `เจอจุดอัปโหลดแค่ ${uploaders.length} จุด — regex น่าจะเพี้ยน`);
-});
-
-test('⭐ ทุกจุดที่อัปโหลดต้องใช้ describeResponseError อ่านสาเหตุจาก response', () => {
+test('⭐ ทางอัปต้องใช้ describeResponseError อ่านสาเหตุจาก response', () => {
   const missing = uploaders
     .filter((f) => !readFileSync(f, 'utf8').includes('describeResponseError'))
     .map((f) => path.relative(SRC, f));
@@ -55,19 +63,19 @@ test('⭐ ทุกจุดที่อัปโหลดต้องใช้ 
 
 // ดูเฉพาะโค้ดถัดจากบรรทัด fetch ของการอัปโหลดจริง — ไฟล์เดียวกันมี fetch อื่นอีกหลาย
 // ตัวที่ไม่เกี่ยว (ถ้าสแกนทั้งไฟล์จะฟ้องผิดตัว)
-const AFTER_UPLOAD = /fetch\(\s*["']\/api\/upload["']\s*,\s*\{\s*method:\s*["']POST["'][\s\S]{0,600}/;
+const AFTER_UPLOAD = new RegExp(`${UPLOAD_FETCH.source}[\\s\\S]{0,600}`, 'g');
 
 test('ห้ามอ่าน body ก่อนเช็ก .ok ในจุดอัปโหลด — body ของ error ไม่ใช่ JSON', () => {
   const bad = [];
   for (const f of uploaders) {
-    const block = AFTER_UPLOAD.exec(readFileSync(f, 'utf8'))?.[0];
-    if (!block) continue;
-    const readsBody = block.indexOf('.json()');
-    const checksOk = block.search(/!\w+\.ok|\w+\.ok\s*\?/);
-    // อ่าน body ก่อนเช็กสถานะ = แพตเทิร์นเดิมที่ทำให้สาเหตุจริงหายไป
-    if (readsBody !== -1 && (checksOk === -1 || readsBody < checksOk)) {
-      bad.push(path.relative(SRC, f));
+    for (const block of readFileSync(f, 'utf8').match(AFTER_UPLOAD) || []) {
+      const readsBody = block.indexOf('.json()');
+      const checksOk = block.search(/!\w+\.ok|\w+\.ok\s*\?/);
+      // อ่าน body ก่อนเช็กสถานะ = แพตเทิร์นเดิมที่ทำให้สาเหตุจริงหายไป
+      if (readsBody !== -1 && (checksOk === -1 || readsBody < checksOk)) {
+        bad.push(path.relative(SRC, f));
+      }
     }
   }
-  assert.deepEqual(bad, [], `ต้องเช็ก .ok ก่อนแล้วค่อยอ่าน body:\n  ${bad.join('\n  ')}`);
+  assert.deepEqual([...new Set(bad)], [], `ต้องเช็ก .ok ก่อนแล้วค่อยอ่าน body:\n  ${bad.join('\n  ')}`);
 });

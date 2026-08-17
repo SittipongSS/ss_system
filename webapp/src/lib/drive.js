@@ -63,10 +63,12 @@ function sharedDriveParams() {
 }
 
 let _drive = null;
-// google drive client (cache ต่อ instance). Auth ผ่าน WIF + Vercel OIDC token supplier.
-export function getDrive() {
-  if (_drive) return _drive;
-  const authClient = ExternalAccountClient.fromJSON({
+let _auth = null;
+// auth client ของ Drive (cache ต่อ instance) — แยกออกมาเพราะทางอัปแบบ resumable
+// คุยกับ endpoint upload ตรง ๆ ด้วย fetch จึงต้องได้ access token ดิบ ไม่ผ่าน googleapis
+function getDriveAuth() {
+  if (_auth) return _auth;
+  _auth = ExternalAccountClient.fromJSON({
     type: 'external_account',
     audience: process.env.GOOGLE_WIF_AUDIENCE,
     subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
@@ -77,7 +79,13 @@ export function getDrive() {
     subject_token_supplier: { getSubjectToken: async () => getVercelOidcToken() },
     scopes: [DRIVE_SCOPE],
   });
-  _drive = google.drive({ version: 'v3', auth: authClient });
+  return _auth;
+}
+
+// google drive client (cache ต่อ instance). Auth ผ่าน WIF + Vercel OIDC token supplier.
+export function getDrive() {
+  if (_drive) return _drive;
+  _drive = google.drive({ version: 'v3', auth: getDriveAuth() });
   return _drive;
 }
 
@@ -550,6 +558,65 @@ export async function uploadForEntity({ entityType, entityId, buffer, name, mime
       ? await resolveFolderForEntity(entityType, entityId)
       : await ensureUnsortedFolder();
     return uploadFile(folderId, { buffer, name: finalName, mimeType });
+  };
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    console.error('[drive] โฟลเดอร์ปลายทางหาย — ล้าง cache แล้วสร้างใหม่', entityType, entityId);
+    await clearFolderCache(entityType, entityId);
+    return attempt();
+  }
+}
+
+// ── อัปตรงจากเบราว์เซอร์: เปิด session แบบ resumable แล้วคืน URL ให้ client ─────
+// ทำไมต้องมี: ไบต์ที่วิ่งผ่าน function ตายที่เพดาน request body ของ Vercel (4.5 MB)
+// จึงให้ server ทำแค่ส่วนที่ต้องมีสิทธิ์ — resolve โฟลเดอร์ + ตั้งชื่อ + ขอ session —
+// แล้วเบราว์เซอร์ PUT ไบต์ขึ้น Drive เอง (ดู lib/master/uploadFile.js)
+//
+// ⚠️ URL ที่คืนไปเขียนได้ **เฉพาะไฟล์ใบนั้นใบเดียว** ในโฟลเดอร์ที่ server เลือก —
+// client กำหนดโฟลเดอร์ปลายทางเองไม่ได้ และหมดอายุตามที่ Drive กำหนด (~1 สัปดาห์)
+// ⚠️ ขนาดที่ client ประกาศมาเชื่อไม่ได้ 100% ⇒ ขั้น confirm วัดขนาดจริงจาก Drive
+// แล้วลบไฟล์ที่เกินเพดานทิ้ง (ดู /api/upload/session)
+const RESUMABLE_ENDPOINT = 'https://www.googleapis.com/upload/drive/v3/files'
+  + '?uploadType=resumable&supportsAllDrives=true&fields=id%2CwebViewLink';
+
+async function initResumableSession(folderId, { name, mimeType, sizeBytes }) {
+  const { token } = await getDriveAuth().getAccessToken();
+  if (!token) throw new Error('ขอ access token ของ Drive ไม่ได้');
+  const res = await fetch(RESUMABLE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      // บอก Drive ล่วงหน้าว่าไบต์ที่จะตามมาเป็นชนิดอะไรและใหญ่เท่าไร — Drive ปฏิเสธ
+      // ตอน PUT ถ้าไบต์จริงไม่ตรงกับที่ประกาศ
+      'X-Upload-Content-Type': mimeType || 'application/octet-stream',
+      'X-Upload-Content-Length': String(sizeBytes),
+    },
+    body: JSON.stringify({ name, parents: [folderId] }),
+  });
+  if (!res.ok) {
+    const detail = String(await res.text().catch(() => '')).slice(0, 300);
+    // ให้ isNotFound จับได้ (โฟลเดอร์ถูกลบ = 404) ⇒ ชั้นบนล้าง cache แล้วลองใหม่
+    const err = new Error(`เปิด session อัปโหลดกับ Drive ไม่สำเร็จ (${res.status})${detail ? ` — ${detail}` : ''}`);
+    err.status = res.status;
+    throw err;
+  }
+  const uploadUrl = res.headers.get('location');
+  if (!uploadUrl) throw new Error('Drive ไม่คืน URL ของ session อัปโหลด');
+  return { uploadUrl };
+}
+
+export async function createResumableUpload({ entityType, entityId, name, mimeType, sizeBytes }) {
+  const finalName = await prefixedName(entityType, entityId, name);
+  const attempt = async () => {
+    const folderId = (entityType && entityId)
+      ? await resolveFolderForEntity(entityType, entityId)
+      : await ensureUnsortedFolder();
+    return initResumableSession(folderId, {
+      name: safeName(finalName, 'file'), mimeType, sizeBytes,
+    });
   };
   try {
     return await attempt();
