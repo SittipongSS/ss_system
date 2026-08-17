@@ -22,7 +22,6 @@ import { DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard } from "@
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
-import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
@@ -94,8 +93,6 @@ export default function QuotationEditorPage() {
   const [products, setProducts] = useState([]);
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [], presetVersionId: null });
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
-  // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
-  const [people, setPeople] = useState(() => quotationPeopleFromMetadata(null));
 
   useUnsavedChanges(dirty);
 
@@ -133,7 +130,6 @@ export default function QuotationEditorPage() {
         presetVersionId: q.metadata?.paymentPresetVersionId || null,
       });
       setNotesPresetVersionId(q.metadata?.remarksPresetVersionId || null);
-      setPeople(quotationPeopleFromMetadata(q.metadata));
       setDirty(false);
     } catch (e) {
       setError(e.message || "โหลดใบเสนอราคาไม่สำเร็จ");
@@ -276,7 +272,6 @@ export default function QuotationEditorPage() {
     paymentPlan: paymentPlanPayload(),
     // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
     metadata: {
-      ...people,
       paymentPresetVersionId: payment.presetVersionId || null,
       remarksPresetVersionId: notesPresetVersionId || null,
     },
@@ -502,7 +497,6 @@ export default function QuotationEditorPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(quotationPayload({
           metadata: {
-            ...people,
             paymentPresetVersionId: payment.presetVersionId || null,
             remarksPresetVersionId: notesPresetVersionId || null,
             revisionReason,
@@ -580,8 +574,8 @@ export default function QuotationEditorPage() {
   const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
     ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Rev.", state: "done" }]
     : workflowStepsFromIndex([
-        // ⚠️ ห้ามถอยไป people.preparedBy — ช่องนั้นคือ "ผู้ประสานงาน (AC)" คนละบทบาท
-        // กับผู้จัดทำ (มติผู้ใช้ 2026-08-17: ผู้จัดทำ = คนที่กดยื่น = ขั้นถัดไป)
+        // รางนี้คือที่เดียวที่บอกว่า "ใครทำอะไรกับใบนี้" — ใบไม่มีบล็อกผู้รับผิดชอบแล้ว
+        // (มติผู้ใช้ 2026-08-18) · ผู้จัดทำ = คนที่กดยื่น = ขั้นถัดไป ไม่ใช่คนเปิดร่าง
         { id: "prepare", label: "เปิดร่าง", hint: quote?.createdByName || "ผู้เปิดร่าง" },
         { id: "submit", label: "ผู้จัดทำยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
         { id: "approve", label: "เจ้าของดีลอนุมัติ", hint: quote?.approvedByName || "รออนุมัติ" },
@@ -824,15 +818,6 @@ export default function QuotationEditorPage() {
                 ของหน้าพรีวิว/พิมพ์ (มติผู้ใช้ 2026-08-12: คนนึกถึงภาษาตอนกำลังจะส่งเอกสาร
                 ไม่ใช่ตอนกรอกหัวใบ) · สวิตช์ตรงนั้นสลับมุมมองแล้วบันทึกกลับลงใบเอง
                 ห้ามเพิ่มช่องซ้ำที่นี่ — สองที่เมื่อไรก็เพี้ยนหากันเมื่อนั้น */}
-          </section>
-
-          {/* ผู้รับผิดชอบเอกสาร — เหลือช่องเดียว: ผู้ประสานงาน (AC) · ผู้ดูแล = เจ้าของดีล
-              ผู้จัดทำ = คนกดยื่น (ระบบรู้เอง — ราง workflow ด้านบนเล่าทั้งสองอยู่แล้ว) */}
-          <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} aria-hidden="true" /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนที่กดยื่นอนุมัติ</span></div>
-            <div className={styles.documentMeta}>
-              <QuotationPeopleFields value={people} disabled={!editable} onChange={(next) => { setPeople(next); setDirty(true); }} />
-            </div>
           </section>
 
           {/* รายการ */}

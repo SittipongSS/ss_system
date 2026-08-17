@@ -21,7 +21,6 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
-import QuotationPeopleFields, { quotationPeopleFromMetadata } from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
@@ -74,8 +73,6 @@ function NewQuotationInner() {
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
   // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
   const [referenceNote, setReferenceNote] = useState("");
-  // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
-  const [people, setPeople] = useState(() => quotationPeopleFromMetadata(null));
 
   // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก) + ทะเบียนลูกค้าไว้ตอบว่า
   // "ลูกค้าที่ค้นมีในทะเบียนแต่ออกใบไม่ได้เพราะอะไร" (ลิสต์นี้กรองทีมอยู่แล้วตามกติกา)
@@ -183,17 +180,6 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, [dealId, customerId]);
 
-  // ตั้งต้นผู้ประสานงานจาก **ผู้ประสานงานของโครงการ** (`acOwner`, mig 0190 — ค่าเดียวกับที่
-  // PDR ใช้เป็น coordinator) แก้ทับได้ก่อนสร้างใบ · /api/pm/projects select * อยู่แล้ว
-  // จึงไม่ต้องยิงเพิ่ม · เดิมตั้ง "" ตายตัว ทั้งที่คำตอบอยู่บนโครงการแล้ว และช่องนี้
-  // กลายเป็นช่องบังคับตอนยื่นอนุมัติ ⇒ ต้องเลือกเองซ้ำทุกใบ
-  // ผู้ดูแล/ผู้ตรวจสอบไม่ใช่ช่องของใบแล้ว (มติผู้ใช้ 2026-08-17): ผู้ดูแล = เจ้าของดีล
-  // อ่านสด · ผู้ตรวจสอบอยู่ที่ใบสั่งขาย
-  useEffect(() => {
-    const p = projectId ? projectsById[projectId] : null;
-    setPeople({ ...quotationPeopleFromMetadata(null), preparedBy: p?.acOwner || "" });
-  }, [projectId, projectsById]);
-
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   // ตัวเลือกที่อยู่ของลูกค้ารายนี้ — แยกตามหน้าที่ (ที่อยู่ "จัดส่งอย่างเดียว" ต้องไม่
   // โผล่ในช่องออกบิล และกลับกัน) · ลูกค้าที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม
@@ -245,8 +231,8 @@ function NewQuotationInner() {
       return kept;
     });
   };
-  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหลายที่
-  // ในหน้านี้อ่านมัน: ตั้งต้นผู้ประสานงานจากโครงการ, payload ตอนสร้างใบ)
+  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหัวใบ
+  // แสดงชื่อ/รหัสโครงการของดีลที่เลือก)
   const onDeal = (v, deal) => { setDealId(v); setProjectId(deal?.projectId || ""); };
 
   const totals = useMemo(() => quoteTotals(lines, {
@@ -302,7 +288,6 @@ function NewQuotationInner() {
           paymentPlan,
           // ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
           metadata: {
-            ...people,
             paymentPresetVersionId: payment.presetVersionId || null,
             remarksPresetVersionId: notesPresetVersionId || null,
           },
@@ -320,7 +305,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, people, router]);
+  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
   if (!canEdit) {
     return (
@@ -430,7 +415,7 @@ function NewQuotationInner() {
               <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} emptyText={customerEmptyText} /></label>
               {/* โครงการ+ดีล ยุบเป็นตัวเลือกกลางตัวเดียว (มติผู้ใช้ 2026-08-06) —
                   โครงการเป็นหัวข้อฝั่งซ้ายในแผง ไม่ใช่ช่องที่ต้องเลือกก่อน · projectId
-                  ยังถูกเก็บเหมือนเดิม (ตั้งต้น AE/ผู้ตรวจสอบจากโครงการ) แค่มาจากดีล */}
+                  ยังถูกเก็บไว้ให้หัวใบแสดงชื่อโครงการ แค่มาจากดีลแทนการเลือกเอง */}
               <label className={styles.dealSource}>ดีล *
                 <DealPicker
                   deals={dealsOfCustomer}
@@ -500,15 +485,6 @@ function NewQuotationInner() {
                 onChange={(event) => setReferenceNote(event.target.value)}
               />
             </label>
-          </section>
-
-          {/* ผู้รับผิดชอบเอกสาร — เหลือช่องเดียว: ผู้ประสานงาน (AC) ตั้งต้นจากโครงการ
-              ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนกดยื่น (ทั้งคู่ระบบรู้เอง ไม่มีช่องให้เลือก) */}
-          <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนที่กดยื่นอนุมัติ</span></div>
-            <div className={styles.documentMeta}>
-              <QuotationPeopleFields value={people} onChange={setPeople} />
-            </div>
           </section>
 
           <section className={styles.card}>

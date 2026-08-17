@@ -17,7 +17,7 @@ import {
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
-import { QT_PEOPLE_FIELDS, QT_PEOPLE_RETIRED_FIELDS, validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 
 // ความผิดพลาดเชิงกติกา (ไม่ใช่บั๊ก) — route แปลงเป็น HTTP response ตาม status
@@ -79,13 +79,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   // ใบใหม่เริ่มเป็น "ร่าง + รออนุมัติ" เสมอ (มติ 2026-07-18): ส่งลูกค้าตอนสร้างไม่ได้
   // เพราะต้องให้เจ้าของดีลอนุมัติก่อน (flow: ร่าง → อนุมัติ → ส่ง). ไม่รับ status='sent'.
-  // ผู้รับผิดชอบเอกสารตรวจตอนสร้างแบบไม่บังคับ (บังคับครบตอนกดยื่นอนุมัติ — submit route).
-  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
-  if (!peoplePick.ok) throw new QuotationDraftError(peoplePick.error);
-  // ช่องผู้รับผิดชอบเขียนจากค่าที่ผ่าน validate เท่านั้น — ตัดค่าดิบจาก client ออกก่อน merge
-  // (QT_PEOPLE_RETIRED_FIELDS = ผู้ดูแล/ผู้ตรวจสอบ ที่ไม่ใช่ช่องของใบแล้ว มติ 2026-08-17)
-  const draftEditableMeta = { ...(body.metadata || {}) };
-  for (const field of [...QT_PEOPLE_FIELDS, ...QT_PEOPLE_RETIRED_FIELDS]) delete draftEditableMeta[field];
+  // ใบไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — คีย์ที่ปลดระวาง
+  // ปอกทิ้งก่อน merge เสมอ ดูเหตุผลเต็มที่ lib/sales/quotationMetadata.js
+  const draftEditableMeta = stripRetiredPeople(body.metadata);
 
   // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
   const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
@@ -134,11 +130,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       notes: body.notes || null,
       // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระที่คนทำใบพิมพ์เอง ไม่ผูกเอกสารจริง
       referenceNote: (body.referenceNote || '').trim() || null,
-      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้ประสานงาน = ผู้ใช้จริง+role ตรง)
       // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจเองว่ามีจริง+เผยแพร่+ชนิดตรง
       metadata: {
         ...draftEditableMeta,
-        ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, peoplePick.people[field] || null])),
         // เบอร์ "ผู้เสนอราคา" บนเอกสาร = เบอร์เจ้าของดีล (คนเดียวกับผู้อนุมัติใบ) —
         // ตรึงคู่กับ id ไว้ เอกสารจะได้รู้ว่าเบอร์นี้ยังเป็นของเจ้าของดีลคนปัจจุบันไหม
         salesOwnerId: ownerContact?.id || null,

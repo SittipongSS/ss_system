@@ -17,14 +17,13 @@ import { fmtPhone, fmtDateNumeric as fmtDate, naText } from "@/lib/format";
 import Select from "@/components/ui/Select";
 import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { QT_PEOPLE_ROLES } from "@/lib/sales/quotationPeople";
+import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
 
-// ผู้ดูแล/ผู้ประสานงาน/ผู้ตรวจสอบ ของโครงการถูกคัดลอกไปเป็นผู้รับผิดชอบใบเสนอราคา
-// ซึ่ง validate role ฝั่ง server — อ้าง QT_PEOPLE_ROLES ตรง ๆ ไม่เขียนรายการซ้ำ
-// ไม่งั้นสองที่ drift แล้วชื่อที่เลือกที่นี่จะบันทึกใบเสนอราคาไม่ผ่าน (เคยเกิดมาแล้ว)
-const AE_OWNER_ROLES = QT_PEOPLE_ROLES.aeOwner;
-const AC_ROLES = QT_PEOPLE_ROLES.preparedBy;
-const SUPERVISOR_ROLES = QT_PEOPLE_ROLES.aeSupervisor;
+// role ที่แต่ละช่องลงนามรับได้ — อ้างตารางกลาง ไม่เขียนรายการซ้ำที่นี่
+// (ตารางเคยอยู่ฝั่งใบเสนอราคา ย้ายมาอยู่กับเจ้าของจริงเมื่อใบเสนอราคาเลิกมีบล็อกนี้)
+const AE_OWNER_ROLES = PROJECT_PEOPLE_ROLES.aeOwner;
+const AC_ROLES = PROJECT_PEOPLE_ROLES.preparedBy;
+const SUPERVISOR_ROLES = PROJECT_PEOPLE_ROLES.aeSupervisor;
 
 const DAY_MS = 86400000;
 const ROW_H = 34;       // ความสูงแถวงาน (ให้บาร์ align กับช่องซ้าย)

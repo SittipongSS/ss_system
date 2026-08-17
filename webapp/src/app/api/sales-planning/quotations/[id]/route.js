@@ -21,7 +21,7 @@ import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPl
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
-import { QT_PEOPLE_FIELDS, QT_PEOPLE_RETIRED_FIELDS, validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
@@ -175,35 +175,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     patch.docLanguage = body.docLanguage;
   }
-  // ผู้รับผิดชอบเอกสาร (ผู้ดูแล/ผู้ประสานงาน) — ต้องเป็นผู้ใช้จริง + role ตรง.
-  // ค่าอื่นใน metadata merge ตามเดิม ไม่ทับทั้งก้อน.
-  //
-  // ⚠️ ที่นี่ **ไม่บังคับให้ครบ** — ด่านนั้นอยู่ที่ขั้น "ยื่นอนุมัติ" (submit/route.js).
-  // เดิมผูกไว้กับ `body.status === 'sent'` ซึ่งไม่มีผู้เรียกเหลือแล้วตั้งแต่ mig 0165
-  // (RPC อนุมัติตั้ง status='sent' ให้เอง ปุ่ม "ส่งให้ลูกค้า" ถูกถอด) ⇒ ด่านนั้นตายสนิท
-  // ใบจึงออกถึงลูกค้าได้โดยไม่มีผู้ประสานงานเลย
+  // metadata ของใบ — merge ทีละคีย์ ไม่ทับทั้งก้อน
+  // ⚠️ ไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — คีย์ที่ปลดระวาง
+  // ถูกปอกทิ้งทุกครั้ง ดูเหตุผลเต็มที่ lib/sales/quotationMetadata.js
   const hasMetaPatch = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata);
   if (hasMetaPatch) {
     const src = body.metadata;
-    const effectivePeople = Object.fromEntries(QT_PEOPLE_FIELDS.map(
-      (field) => [field, field in src ? src[field] : before.metadata?.[field]],
-    ));
-    const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: false });
-    if (!peoplePick.ok) return badRequest(peoplePick.error);
     const {
       // ชุดเงื่อนไขการค้าเป็นหลักฐาน — ห้ามรับค่าจาก client ตรง ๆ ต้องผ่านการตรวจก่อน
       paymentPresetVersionId: _pay, remarksPresetVersionId: _rem,
       ...rest
     } = src;
-    // ช่องผู้รับผิดชอบเขียนจากค่าที่ผ่าน validate เท่านั้น ไม่ใช่ค่าดิบจาก client ·
-    // คีย์ที่เลิกใช้ (ผู้ดูแล/ผู้ตรวจสอบ) ตัดทิ้งเสมอ ไม่งั้นมันกลับมาเป็น free-text
-    const editableMeta = { ...rest };
-    for (const field of [...QT_PEOPLE_FIELDS, ...QT_PEOPLE_RETIRED_FIELDS]) delete editableMeta[field];
+    const editableMeta = stripRetiredPeople(rest);
     const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, src);
     patch.metadata = {
       ...(before.metadata || {}),
       ...editableMeta,
-      ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, peoplePick.people[field] || null])),
       paymentPresetVersionId: pinnedPresets.payment,
       remarksPresetVersionId: pinnedPresets.remarks,
     };

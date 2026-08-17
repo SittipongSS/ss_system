@@ -10,7 +10,7 @@ import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
-import { QT_PEOPLE_FIELDS, QT_PEOPLE_RETIRED_FIELDS, validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
@@ -97,18 +97,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const revSeparator = revisionSeparatorOf(quote.quoteNumber, base);
   const now = new Date().toISOString();
 
-  // ผู้รับผิดชอบเอกสาร: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise — ต้องเป็นผู้ใช้จริง
-  // + role ตรง (ฉบับ revise เป็น draft จึงยังไม่บังคับครบ; บังคับตอนกดยื่นอนุมัติ).
-  // ผู้จัดทำไม่ใช่ช่องในนี้ — มันคือคนที่กดยื่นฉบับ Rev. (มติผู้ใช้ 2026-08-17).
+  // metadata ของฉบับ Rev.: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise
+  // ⚠️ ไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — ดู quotationMetadata.js
   const revBody = (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) ? body.metadata : {};
-  const revPeople = Object.fromEntries(QT_PEOPLE_FIELDS.map(
-    (field) => [field, field in revBody ? revBody[field] : quote.metadata?.[field]],
-  ));
-  const revPick = await validateQuotationPeople(supabase, revPeople, { require: false });
-  if (!revPick.ok) return badRequest(revPick.error);
-  // ช่องผู้รับผิดชอบเขียนจากค่าที่ผ่าน validate เท่านั้น — ตัดค่าดิบจาก client ออกก่อน merge
-  const revEditableMeta = { ...revBody };
-  for (const field of [...QT_PEOPLE_FIELDS, ...QT_PEOPLE_RETIRED_FIELDS]) delete revEditableMeta[field];
+  const revEditableMeta = stripRetiredPeople(revBody);
 
   // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
   const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
@@ -167,17 +159,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedByName: null,
       notes,
       referenceNote,
-      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise; ผู้รับผิดชอบ validate แล้ว
+      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise
       metadata: {
         ...(quote.metadata || {}),
         // เจ้าของดีลอาจเปลี่ยนไปตั้งแต่ Rev. ก่อน — อ่านเบอร์ใหม่ทุกครั้ง ไม่สืบทอด
         salesOwnerId: ownerContact?.id || null,
         salesOwnerPhone: ownerContact?.phone || null,
         ...revEditableMeta,
-        ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, revPick.people[field] || null])),
-        // ผู้ดูแล/ผู้ตรวจสอบไม่ใช่ช่องของใบเสนอราคาแล้ว (มติ 2026-08-17) —
-        // ฉบับ Rev. เป็นเอกสารใหม่ ไม่สืบทอดคีย์ที่เลิกใช้ (ผู้ดูแล = เจ้าของดีล อ่านสด)
-        ...Object.fromEntries(QT_PEOPLE_RETIRED_FIELDS.map((field) => [field, null])),
+        // ล้างคีย์ผู้รับผิดชอบที่ปลดระวางแล้ว — ฉบับ Rev. สืบทอด metadata ทั้งก้อน
+        // ไม่ล้างคือค่าที่เลิกใช้เดินตามไปทุกฉบับไม่จบ
+        ...RETIRED_PEOPLE_CLEARED,
         revisedFrom: quote.quoteNumber,
       },
       createdBy: user.id || null,
