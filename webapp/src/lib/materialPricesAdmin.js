@@ -5,6 +5,7 @@ import {
   materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
 } from '@/lib/materialPrices';
 import { normalizePmType } from '@/lib/master/materialTypes';
+import { brandDisplayFromList } from '@/lib/master/brands';
 
 // โหลดวัสดุในทะเบียนพร้อมรุ่นราคา + ชั้นราคาของแต่ละรุ่น (ก้อนเดียว กัน N+1)
 // status: undefined = ที่ใช้งานได้จริง (active) · null = ทุกสถานะ · array = ตามที่ระบุ
@@ -231,11 +232,29 @@ export async function loadRequests(supabase, {
   let customers = [];
   if (customerIds.length) {
     const { data, error: customerError } = await supabase
-      .from('customers').select('id, "arCode"').in('id', customerIds);
+      // `brands` = ทะเบียนแบรนด์ของลูกค้า — ใช้แปลงรหัสแบรนด์ที่ดีลเก็บไว้เป็นชื่อ
+      // สองภาษา (`brandDisplayFromList`) · ดีลเก็บแค่ข้อความที่ผู้ใช้เลือกตอนนั้น
+      .from('customers').select('id, "arCode", brands').in('id', customerIds);
     if (customerError) throw customerError;
     customers = data || [];
   }
   const arById = new Map(customers.map((c) => [c.id, String(c.arCode || '').trim() || null]));
+  const brandsById = new Map(customers.map((c) => [c.id, c.brands]));
+
+  /* ⭐ **แบรนด์มาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ 2026-08-17) — ตารางคำร้องโชว์
+     รหัส AR / ชื่อกิจการ / แบรนด์ เป็นก้อนเดียวเหมือนตาราง QT/SO · แบรนด์ไม่ได้อยู่
+     บนคำร้อง มันเป็นของ **ดีลต้นทาง** (`metadata.brand` — ที่เดียวกับที่หน้ารายการ
+     ดีลอ่าน) ⇒ ใบที่ไม่ผูกดีลไม่มีแบรนด์ ซึ่งถูกแล้ว
+     ⚠️ query เดียวเหมือนโครงการ/ลูกค้า — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
+  const dealIds = lean ? [] : [...new Set(asks.map((a) => a.dealId).filter(Boolean))];
+  let deals = [];
+  if (dealIds.length) {
+    const { data, error: dealError } = await supabase
+      .from('sales_deals').select('id, metadata').in('id', dealIds);
+    if (dealError) throw dealError;
+    deals = data || [];
+  }
+  const brandByDeal = new Map(deals.map((d) => [d.id, String(d.metadata?.brand || '').trim()]));
 
   // ⚠️ เดิมมีขั้นดึง `dept_request_item_tiers` มาแปะรายแถว — ตารางถูก DROP ใน
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
@@ -247,6 +266,8 @@ export async function loadRequests(supabase, {
     projectCode: projectById.get(a.projectId)?.code ?? null,
     projectName: projectById.get(a.projectId)?.name ?? null,
     customerArCode: arById.get(a.customerId) ?? null,
+    // ชื่อแบรนด์ที่คนอ่านออก (TH · EN) — ดีลเก็บข้อความดิบ ทะเบียนของลูกค้าเป็นตัวแปล
+    customerBrand: brandDisplayFromList(brandsById.get(a.customerId), brandByDeal.get(a.dealId)) || null,
   }));
 }
 

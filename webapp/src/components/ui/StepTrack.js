@@ -1,5 +1,5 @@
 "use client";
-// ── รางสามขั้นของใบสั่งขาย — ใช้ร่วมทุกที่ที่ต้องบอก "ใบนี้ค้างที่ใคร" ────────
+// ── รางขั้นของใบ — ใช้ร่วมทุกที่ที่ต้องบอก "ใบนี้ค้างที่ใคร" ─────────────────
 //
 // มติผู้ใช้ 2026-08-13: *"ให้พูดภาษาเดียวกับตาราง SO ที่เพิ่งรื้อ"*
 //
@@ -8,15 +8,22 @@
 // ทางที่ง่ายกว่าคือก๊อป CSS ไปอีกไฟล์ ซึ่งคือจุดเริ่มของ "สองอันที่เพี้ยนหากัน"
 // ที่ AGENTS.md เตือนไว้ (เคสฟอร์มสร้าง/แก้) ⇒ ยกออกมาก่อนที่มันจะแตกตัว
 //
+// ⭐ **ย้ายมา `components/ui` ตอนใช้ที่สาม** (2026-08-17) — ตารางคำร้องต้องการรางเดียวกัน
+// แต่คำร้องไม่ใช่เรื่องของฝ่ายขาย · ชื่อเดิม (`salesPlanning/SalesOrderTrack`) จะทำให้
+// หน้าอื่น "ไม่กล้าใช้" แล้วก๊อป CSS ไปอีกไฟล์ ซึ่งคือสิ่งที่คอมเมนต์บนกันไว้พอดี
+// ⚠️ จำนวนขั้นไม่ตายตัว — SO เดินสามขั้น (AE Sup · บัญชีตรวจ · เก็บเงิน) คำร้องเดินสี่
+// (ส่ง · รับเรื่อง · ตอบ · ปิด) · คอมโพเนนต์นี้ไม่รู้จักขั้นไหนเลย มันวาดตามที่ส่งมา
+//
 // ⚠️ **ตรรกะไม่ได้อยู่ที่นี่** — คอมโพเนนต์นี้วาดอย่างเดียว · การตัดสินว่าขั้นไหน
-// `done`/`now`/`bad`/`todo` อยู่ที่ `lib/sales/salesOrderListTrack.js` พร้อมเทสต์
+// `done`/`now`/`bad`/`todo` อยู่ที่ `lib/sales/salesOrderListTrack.js` (SO) และ
+// `lib/requests/queueTrack.js` (คำร้อง) พร้อมเทสต์ของตัวเอง
 // (แยกเพราะตรรกะต้องทดสอบได้โดยไม่ต้องเรนเดอร์ และมีที่เรียกที่ไม่ได้วาดราง เช่นป้ายสรุป)
 import { Fragment } from "react";
-import styles from "./SalesOrderTrack.module.css";
+import styles from "./StepTrack.module.css";
 
 const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", todo: "" };
 
-export default function SalesOrderTrack({ steps, className = "", ariaLabel = "ความคืบหน้าของใบ" }) {
+export default function StepTrack({ steps, className = "", ariaLabel = "ความคืบหน้าของใบ" }) {
   const list = Array.isArray(steps) ? steps : [];
   if (!list.length) return null;
   return (

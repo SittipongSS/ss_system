@@ -18,7 +18,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
-import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
+import StepTrack from "@/components/ui/StepTrack";
 import StatusBadge from "@/components/ui/StatusBadge";
 import styles from "./page.module.css";
 
@@ -250,7 +250,7 @@ export default function SalesOrdersPage() {
                     ) : (
                       <>
                         {/* จอกว้างเห็นรางเต็ม · จอแคบสลับเป็นป้ายสรุปข้างล่าง (page.module.css) */}
-                        <span className={styles.trackWrap}><SalesOrderTrack steps={track.steps} /></span>
+                        <span className={styles.trackWrap}><StepTrack steps={track.steps} /></span>
                         {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
                         <span className={styles.summary}>
                           <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>

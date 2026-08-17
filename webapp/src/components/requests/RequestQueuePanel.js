@@ -33,9 +33,12 @@ import {
   requestFacetOptions, requestFilterCount, sortRequestRows,
 } from "@/lib/requests/queueList";
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
+import { requestQueueTrack } from "@/lib/requests/queueTrack";
 import { requestAssignee } from "@/lib/requests/assign";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
 import StatusBadge from "@/components/ui/StatusBadge";
+// รางขั้นตัวเดียวกับตารางใบสั่งขาย/ทะเบียนการชำระ — คำร้องเดินสี่ขั้น (queueTrack)
+import StepTrack from "@/components/ui/StepTrack";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabel, requestLineNoun } from "@/lib/master/requestTypes";
@@ -88,9 +91,7 @@ export default function RequestQueuePanel({
 
   /* ความกว้างตายตัวของคอลัมน์ที่เนื้อคงที่ — ที่เหลือปล่อยให้ยืดตามเนื้อ
      (คลาสอยู่ใน requestForm.module.css ตามด่าน audit:ui ห้าม inline style) */
-  const COL_WIDTH = {
-    next: styles.colNext, docNo: styles.colDocNo, due: styles.colDue, progress: styles.colProgress,
-  };
+  const COL_WIDTH = { next: styles.colNext, due: styles.colDue, progress: styles.colProgress };
   // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
   const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
   const showTools = toolLevel === "full";
@@ -195,43 +196,68 @@ export default function RequestQueuePanel({
           </>
         );
       }
-      /* ⭐ เลขที่คำร้อง — ทรงเดียวกับเลขที่ QT/SO ในตารางอื่น (`mono` ตัวหนา) ⇒ ตัวเลข
-         ตรงกันทุกแถว กวาดตาลงคอลัมน์แล้วเทียบได้
+      /* ⭐ **เลขที่บน · เรื่องล่าง** (มติผู้ใช้ 2026-08-17) — ทรงเดียวกับเซลล์แรกของ
+         ตาราง QT/SO · เลขที่เป็น `mono` ตัวหนา ⇒ ตัวเลขตรงกันทุกแถว กวาดตาเทียบได้
          ⚠️ ใบร่างยังไม่มีเลข — เขียน "ร่าง" ไม่ใช่ขีด · เลขออกตอนกดส่ง (trigger ทำให้
-         `docNo` แก้ไม่ได้อีก) ⇒ ช่องว่างที่นี่อ่านได้ว่าข้อมูลหาย ทั้งที่ยังไม่มีเลขจริง */
-      case "docNo":
-        return ask.docNo
-          ? <strong className={`mono ${styles.docNoCell}`}>{ask.docNo}</strong>
-          : <span className={styles.muted}>ร่าง</span>;
-      /* ⭐ "ใบนี้คือใบอะไร" — เรื่องเป็นตัวหลัก · เลขที่/ชนิด/ลูกค้า/ฝ่ายเป็นบรรทัดรอง
-         ⚠️ บรรทัดรองตัดชนิด/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked") */
+         `docNo` แก้ไม่ได้อีก) ⇒ ช่องว่างที่นี่อ่านได้ว่าข้อมูลหาย ทั้งที่ยังไม่มีเลขจริง
+         ⚠️ บรรทัดรองตัดชนิด/ลูกค้า/ฝ่ายออกเมื่อมีคอลัมน์ของมันเองอยู่แล้ว (ชุด "linked"
+         ไม่มีคอลัมน์พวกนั้น จึงต้องได้ครบในเซลล์เดียว) */
       case "doc":
         return (
           <>
+            <div className={styles.docNoCell}>
+              {ask.docNo
+                ? <strong className="mono">{ask.docNo}</strong>
+                : <span className={styles.muted}>ร่าง</span>}
+              {/* ป้ายด่วนอยู่ตรงนี้เฉพาะตอนไม่มีทั้งคอลัมน์ "ด่วน" และ "ชนิด"
+                  (การ์ดบนหน้าดีล) — ไม่งั้นป้ายเดียวกันขึ้นสองช่องในแถวเดียว */}
+              {ask.urgent && !cols.includes("urgent") && !cols.includes("kind") && (
+                <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
+              )}
+            </div>
             <div className={styles.docCell}>
               {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
-              {/* ป้ายด่วนอยู่ตรงนี้เฉพาะตอน **ไม่มีคอลัมน์ "ด่วน"** (การ์ดบนหน้าดีล) */}
-              {ask.urgent && !cols.includes("urgent") && <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>}
             </div>
             <div className={styles.subText}>
               {[
-                /* เลขที่อยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (ชุด "linked") */
-                cols.includes("docNo") ? null : (ask.docNo || "ร่าง"),
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
-                ask.title && ask.customerName ? ask.customerName : null,
+                /* ลูกค้าอยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (ชุด "linked") */
+                !cols.includes("customer") && ask.title && ask.customerName ? ask.customerName : null,
                 ask.formulaCode ? `สูตร ${ask.formulaCode}` : null,
                 /* วันที่ร้องขออยู่ในบรรทัดรองเฉพาะตอนไม่มีคอลัมน์ของตัวเอง (การ์ดบนหน้าดีล) */
                 ask.createdAt && !cols.includes("created") ? `ร้องขอ ${fmtDate(ask.createdAt)}` : null,
               ].filter(Boolean).join(" · ")}
-              {/* รหัสลูกค้าเกาะท้ายชื่อกิจการเสมอ ไม่ว่าชื่อจะอยู่บรรทัดหลัก
-                  (ใบที่ไม่มีเรื่อง) หรือบรรทัดรอง — ตัวเชื่อมกับรหัสกลิ่น/MU */}
-              {ask.customerArCode ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
+              {/* รหัสลูกค้าเกาะท้ายชื่อกิจการ — ตัวเชื่อมกับรหัสกลิ่น/MU · ย้ายไปอยู่
+                  คอลัมน์ "ลูกค้า" แทนเมื่อคอลัมน์นั้นมีอยู่ */}
+              {!cols.includes("customer") && ask.customerArCode
+                ? <span className={styles.arCode}>{ask.customerArCode}</span> : null}
               {cols.includes("dept") ? "" : ` → ${ask.dept}`}
             </div>
           </>
         );
+      /* ⭐ ด่วนบน · ชนิดล่าง (มติผู้ใช้ 2026-08-17) — ช่องว่างเมื่อไม่ด่วน ไม่ใช่คำว่า
+         "ปกติ" · ป้ายนี้มีไว้ให้สะดุดตาตอนกวาดลงมา เติมอะไรทุกแถวเท่ากับกลบมันทิ้ง */
       case "kind":
-        return <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>;
+        return (
+          <>
+            {ask.urgent && !cols.includes("urgent") && (
+              <div><span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span></div>
+            )}
+            <span className={styles.kindCell}>{requestKindLabel(ask.kind)}</span>
+          </>
+        );
+      /* ⭐ รหัส AR บน · ชื่อกิจการ · แบรนด์ล่าง — ทรงเดียวกับเซลล์ลูกค้าของตาราง QT
+         (มติ "รหัสบน · ชื่อล่าง" 2026-08-12) · แบรนด์มาจากดีลต้นทาง ⇒ ใบที่ไม่ผูกดีล
+         ไม่มีแบรนด์ ซึ่งถูกแล้ว ไม่ใช่ข้อมูลหาย */
+      case "customer":
+        if (!ask.customerName && !ask.customerArCode) return <span className={styles.muted}>{NA}</span>;
+        return (
+          <>
+            {ask.customerArCode ? <span className="ar-code ar-code-block">{ask.customerArCode}</span> : null}
+            <div className={styles.customerCell}>{ask.customerName || <span className={styles.muted}>{NA}</span>}</div>
+            {ask.customerBrand ? <div className={styles.subText}>{ask.customerBrand}</div> : null}
+          </>
+        );
       /* ⚠️ ช่องว่างเมื่อไม่ด่วน ไม่ใช่ขีดหรือคำว่า "ปกติ" — คอลัมน์นี้มีไว้ให้ **สะดุดตา**
          ตอนกวาดลงมา · เติมอะไรทุกแถวเท่ากับกลบสิ่งที่ตั้งใจให้เห็น */
       case "urgent":
@@ -292,14 +318,38 @@ export default function RequestQueuePanel({
           );
         }
         return <span className={styles.muted}>ยังไม่ให้วัน</span>;
-      case "progress":
-        return p.total > 0 ? (
+      /* ⭐ **สถานะ + รางสี่ขั้น + ตัวเลขรายบรรทัด อยู่ช่องเดียวกัน** (มติผู้ใช้ 2026-08-17) —
+         ป้ายตอบว่า "ตอนนี้ค้างที่ใคร" · รางตอบว่า "ผ่านอะไรมาแล้วและเหลืออะไร" ·
+         ตัวเลขตอบว่า "ของในใบเสร็จไปกี่ชิ้น" ⇒ สามคำถามที่คนกวาดคิวถามต่อกันเป็นชุด
+         ⚠️ ตรรกะของรางอยู่ที่ `lib/requests/queueTrack.js` (มีเทสต์) — ที่นี่วาดอย่างเดียว
+         ⚠️ ใบยกเลิกไม่มีราง — ป้ายอย่างเดียว (รางที่ตายแล้วอ่านเหมือนใบยังเดินอยู่) */
+      case "progress": {
+        const queueStatus = requestQueueStatus(ask);
+        const track = requestQueueTrack(ask);
+        return (
           <>
-            <div>{p.done} / {p.total}</div>
-            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" */}
-            <div className={styles.subText}>{requestLineNoun(ask.kind)}</div>
+            <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
+            {/* ใครถืออยู่ (มติ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
+                ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง */}
+            {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+              <div className={styles.subText}>{requestAssignee(ask).name}</div>
+            )}
+            {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
+            {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
+              <div className={`${styles.subText} ${styles.overdue}`}>
+                {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+              </div>
+            )}
+            {!track.cancelled && <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />}
+            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" ·
+                ใบที่ไม่มีบรรทัด (สอบถาม) ไม่มีตัวเลขให้นับ ⇒ ไม่เขียนอะไรเลย
+                ดีกว่าเขียน N/A ซ้ำทุกแถวใต้ราง */}
+            {p.total > 0 && (
+              <div className={styles.subText}>{p.done} / {p.total} {requestLineNoun(ask.kind)}</div>
+            )}
           </>
-        ) : <span className={styles.muted}>{NA}</span>;
+        );
+      }
       case "status":
         return <RequestStatusBadge status={ask.status} />;
       default:

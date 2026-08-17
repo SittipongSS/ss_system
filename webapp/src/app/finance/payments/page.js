@@ -41,7 +41,7 @@ import {
   groupNote, ledgerSortDir, pendingConfirmations, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
-import SalesOrderTrack from "@/components/salesPlanning/SalesOrderTrack";
+import StepTrack from "@/components/ui/StepTrack";
 import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
@@ -241,7 +241,7 @@ export default function FinancePaymentsPage() {
           <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
           {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
               — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
-          {track ? <SalesOrderTrack steps={track.steps} /> : null}
+          {track ? <StepTrack steps={track.steps} /> : null}
         </td>
         <td>
           {group.customerCode ? <span className="ar-code ar-code-block">{group.customerCode}</span> : null}
