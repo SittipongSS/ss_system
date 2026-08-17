@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
+  MAX_INSTALLMENTS,
   evenPercents, computeInstallments, paymentScheduleRows, validatePaymentPlan, normalizePaymentPlan,
 } from './paymentPlan.js';
 
@@ -9,8 +10,10 @@ test('evenPercents: รวมได้ 100 พอดี (เศษไปงว�
   assert.deepEqual(evenPercents(2), [50, 50]);
   assert.equal(evenPercents(3).reduce((a, b) => a + b, 0), 100);
   assert.equal(evenPercents(6).reduce((a, b) => a + b, 0), 100);
+  // เพดาน 12 (มติผู้ใช้ 2026-08-17) — 100/12 ลงตัวไม่ได้ เศษต้องไปกองงวดสุดท้าย
+  assert.equal(evenPercents(12).reduce((a, b) => a + b, 0), 100);
   assert.equal(evenPercents(1).length, 2); // บังคับขั้นต่ำ 2
-  assert.equal(evenPercents(9).length, 6); // เพดาน 6
+  assert.equal(evenPercents(99).length, MAX_INSTALLMENTS); // เพดาน
 });
 
 test('computeInstallments: ยอดรวมทุกงวด = total พอดี (งวดท้ายซับเศษ)', () => {
@@ -22,7 +25,7 @@ test('computeInstallments: ยอดรวมทุกงวด = total พอ�
   assert.equal(r2.reduce((s, r) => s + r.amount, 0), 100);
 });
 
-test('validatePaymentPlan: full ผ่านเสมอ / installment ต้องรวม 100 + 1–6 งวด', () => {
+test('validatePaymentPlan: full ผ่านเสมอ / installment ต้องรวม 100 + 1–12 งวด', () => {
   assert.equal(validatePaymentPlan(null).ok, true);
   assert.equal(validatePaymentPlan({ type: 'full' }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 50 }, { percent: 50 }] }).ok, true);
@@ -31,6 +34,13 @@ test('validatePaymentPlan: full ผ่านเสมอ / installment ต้อ
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: 100 }] }).ok, true);
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [] }).ok, false); // ไม่มีงวดเลย
   assert.equal(validatePaymentPlan({ type: 'installment', installments: [{ percent: -10 }, { percent: 110 }] }).ok, false); // ติดลบ
+  // เพดาน 12 งวด: ครบ 12 ต้องผ่าน · เกินไปหนึ่งต้องตก
+  const evenRows = (n) => evenPercents(n).map((percent) => ({ percent }));
+  assert.equal(validatePaymentPlan({ type: 'installment', installments: evenRows(12) }).ok, true);
+  assert.equal(validatePaymentPlan({
+    type: 'installment',
+    installments: [...evenRows(12), { percent: 0 }],
+  }).ok, false);
   assert.equal(validatePaymentPlan({ type: 'weird' }).ok, false);
 });
 
