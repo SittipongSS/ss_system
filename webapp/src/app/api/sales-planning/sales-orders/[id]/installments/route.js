@@ -2,7 +2,9 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { sanitizeWonAttachments } from '@/lib/sales/quotationWonEvidence';
-import { installmentActionError, withLiveAmounts } from '@/lib/sales/salesOrderPayments';
+import {
+  installmentActionError, installmentReportOutcome, withLiveAmounts,
+} from '@/lib/sales/salesOrderPayments';
 import {
   ensureInstallments, loadInstallment, loadInstallments, updateInstallment,
 } from '@/lib/sales/salesOrderInstallmentsStore';
@@ -125,7 +127,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const reason = String(body.reason || '').trim();
 
     const billingRequestId = String(body.billingRequestId || '').trim();
-    const gate = installmentActionError(row, action, user, { paidOn, reason, billingRequestId });
+    /* งวดอื่นของใบเดียวกัน — ด่าน "ไล่ลำดับงวด" ต้องเห็นทั้งใบ ไม่ใช่แค่แถวที่กด
+       (อ่านสดที่นี่ ไม่เชื่อค่าที่ client ส่งมา) */
+    const siblings = await loadInstallments(supabase, order.id);
+    const gate = installmentActionError(row, action, user, {
+      paidOn, reason, billingRequestId, rows: siblings, orderTotal: order.totalAmount,
+    });
     if (gate) return badRequest(gate);
 
     const now = new Date().toISOString();
@@ -140,13 +147,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       // หลักฐานผ่าน sanitize ตัวเดียวกับหลักฐาน Won — รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว
       const evidence = sanitizeWonAttachments(body.evidence);
       if (!evidence.length) return badRequest('ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์');
+      /* ⭐ ปลายทางขึ้นกับว่าใครกด (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
+         ฝ่ายขายแจ้ง → `reported` เข้าคิวบัญชี · **บัญชีแจ้งเอง → `confirmed` เลย**
+         ⇒ คิว `reported` เหลือเฉพาะของที่ฝ่ายขายแจ้ง = บัญชีรู้ทันทีว่าอันไหนต้องมาตรวจ
+         ⚠️ เก็บ `reportedBy*` ไว้ด้วยแม้บัญชีจะกดเอง — ต้องรู้ว่าใครเป็นคนบันทึก
+         ไม่ใช่เห็นแต่ชื่อผู้รับรองแล้วเดาว่าหลักฐานมาจากไหน */
+      const outcome = installmentReportOutcome(user);
       patch = {
-        status: 'reported',
+        status: outcome,
         paidOn,
         evidence,
         reportedById: user.id,
         reportedByName: actorName,
         reportedAt: now,
+        ...(outcome === 'confirmed'
+          ? { confirmedById: user.id, confirmedByName: actorName, confirmedAt: now }
+          : {}),
         // เคลียร์ร่องรอยการตีกลับรอบก่อน — งวดนี้กลับเข้าคิวตรวจใหม่แล้ว
         rejectedById: null, rejectedByName: null, rejectedAt: null, rejectedReason: null,
       };
