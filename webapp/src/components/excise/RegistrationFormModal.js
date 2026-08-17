@@ -7,6 +7,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 import TeamPickerField from "@/components/ui/TeamPickerField";
 import { useTeam, useTeams } from "@/lib/roleContext";
+import { customerSelectOptions } from "@/components/master/customerOption";
 
 // Create or edit an excise registration (master FG product × customer).
 // ลำดับกรอก = ลูกค้า → FG (มติผู้ใช้ 2026-07-22): ผู้ใช้คิดจาก "ขึ้นทะเบียนให้ลูกค้า
@@ -127,11 +128,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
               value={customerId}
               onChange={handleCustomer}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-              options={customers.map((c) => ({
-                value: c.id,
-                label: `${c.arCode} : ${c.name}`,
-                search: `${c.arCode} ${c.name}`,
-              }))}
+              options={customerSelectOptions(customers)}
               emptyText="ไม่พบลูกค้า — สร้างที่ฐานข้อมูลก่อน"
             />
           </div>

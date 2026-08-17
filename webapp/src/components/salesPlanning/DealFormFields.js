@@ -39,6 +39,7 @@ import Textarea from "@/components/ui/Textarea";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { naText } from "@/lib/format";
+import { customerSelectOptions } from "@/components/master/customerOption";
 
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
 // (SCENT=amber · NPD=blue · RE-ORDER=teal · OTHER=violet) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
@@ -113,11 +114,7 @@ export default function DealFormFields({
         emptyText={CUSTOMER_PICKER_EMPTY_HINT}
         options={[
           { value: "", label: "— ยังไม่ผูกลูกค้า —" },
-          ...customers.map((customer) => ({
-            value: customer.id,
-            label: customer.arCode ? `${customer.arCode} — ${customer.name}` : customer.name,
-            search: `${customer.arCode || ""} ${customer.name || ""}`,
-          })),
+          ...customerSelectOptions(customers),
         ]}
       />
     </label>

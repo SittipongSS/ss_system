@@ -42,6 +42,7 @@ import {
 } from "@/lib/master/units";
 import { fmtMoney, naText } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { customerSelectOptions } from "@/components/master/customerOption";
 
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
@@ -299,11 +300,7 @@ export default function ProductForm({
               onChange={onCustomerChange}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
               emptyText="ไม่พบลูกค้า"
-              options={customers.map((c) => ({
-                value: c.id,
-                label: c.arCode ? `${c.arCode} — ${c.name}` : c.name,
-                search: `${c.arCode || ""} ${c.name}`,
-              }))}
+              options={customerSelectOptions(customers)}
             />
             <span className="text-xs text-[var(--text-3)] mt-1">
               {creatorName

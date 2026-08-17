@@ -10,6 +10,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
 import Textarea from "@/components/ui/Textarea";
+import { customerSelectOptions } from "@/components/master/customerOption";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 
@@ -130,7 +131,7 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
                   value={customerId}
                   onChange={(v) => { setCustomerId(v); setItems([blankItem()]); }}
                   placeholder="ค้นหารหัส / ชื่อลูกค้า..."
-                  options={customers.map((c) => ({ value: c.id, label: `${c.arCode} : ${c.name}`, search: `${c.arCode} ${c.name}` }))}
+                  options={customerSelectOptions(customers)}
                 />
               )}
             </div>
