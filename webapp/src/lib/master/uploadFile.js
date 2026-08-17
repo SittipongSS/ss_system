@@ -6,10 +6,17 @@ import {
 
 // ── ทางเดียวของ "อัปไฟล์หนึ่งใบขึ้นที่เก็บ" ฝั่งเบราว์เซอร์ ────────────────────
 //
-// ไบต์ **ไม่วิ่งผ่าน API ของเราแล้ว**: server ออก URL ที่เขียนได้ไฟล์เดียวให้
-// (`/api/upload/session`) แล้วเบราว์เซอร์ยิงขึ้น Drive/Storage ตรง ๆ
+// ไบต์ **ไม่วิ่งผ่าน API ของเราแล้ว**: server ออก signed URL ที่เขียนได้ไฟล์เดียวให้
+// (`/api/upload/session`) แล้วเบราว์เซอร์ PUT ขึ้น Supabase Storage ตรง ๆ
 // เหตุผล: Vercel ตัด request body ของ function ที่ 4.5 MB — ทางเดิมจึงแนบไฟล์ใหญ่
 // ไม่ได้เลย ทั้งที่ป้ายในฟอร์มบอกเพดานที่ใหญ่กว่านั้น (ดู attachmentTypes.js)
+//
+// ไฟล์แนบทั่วไปมี **ขาที่สอง**: ขึ้น staging bucket แล้วเรียก `/api/upload/commit`
+// ให้ server ย้ายเข้า Drive
+// 🐞 ห้ามเปลี่ยนกลับไปให้เบราว์เซอร์ยิงเข้า Drive ตรง — ลองแล้วบน prod (2026-08-17)
+// googleapis.com ไม่ตอบ CORS ให้ resumable session URL: session สร้างสำเร็จแต่ PUT ตาย
+// `TypeError: Failed to fetch` ทุกครั้ง · เลี่ยงไม่ได้เพราะ PUT ข้ามโดเมนต้องผ่าน
+// preflight เสมอ (ไม่ใช่ simple request เหมือน GET/POST)
 //
 // คืน ref รูปแบบเดียวกับที่ `/api/upload` เคยคืน — `{ url, driveFileId,
 // storageBucket, storagePath, mimeType }` — ผู้เรียกจึงส่งต่อให้ endpoint metadata
@@ -99,13 +106,26 @@ export async function uploadFileForEntity({ file, entityType, entityId, onProgre
       };
     }
 
-    const uploaded = await putWithProgress(session.uploadUrl, file, session.contentType, onProgress);
+    // ปลายทาง Drive — ขาแรกขึ้นที่พัก, ขาสอง server ย้ายเข้า Drive แล้วลบที่พักให้
+    // progress นับแค่ขาแรก (ขาสองเป็นงานฝั่ง server ที่ผู้ใช้รอเฉย ๆ) ⇒ ตรึงไว้ที่ 1
+    // เมื่อไบต์ขึ้นครบ ไม่ให้แถบค้างที่ 99% ระหว่างรอ commit
+    await putWithProgress(session.signedUrl, file, session.contentType, onProgress);
+    onProgress?.(1);
+    const commit = await fetch('/api/upload/commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityType, entityId, storagePath: session.storagePath, fileName: file.name,
+      }),
+    });
+    if (!commit.ok) throw new Error(await describeResponseError(commit, 'ย้ายไฟล์เข้าที่เก็บไม่สำเร็จ'));
+    const moved = await commit.json();
     return {
-      url: uploaded.webViewLink || null,
-      driveFileId: uploaded.id || null,
+      url: moved.url || null,
+      driveFileId: moved.driveFileId || null,
       storageBucket: null,
       storagePath: null,
-      mimeType: session.contentType,
+      mimeType: moved.mimeType || session.contentType,
     };
   } catch (err) {
     // ทางตรงล้ม → ไฟล์ที่เล็กพอยังไปทางเดิมได้ (เส้นสำรองผ่าน function)
