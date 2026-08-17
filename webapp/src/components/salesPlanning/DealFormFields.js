@@ -1,6 +1,6 @@
 "use client";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import DealValueLines from "@/components/salesPlanning/DealValueLines";
 import OptionTiles from "@/components/ui/OptionTiles";
 import StageSteps from "@/components/ui/StageSteps";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -13,8 +13,11 @@ import { TEAM_LABELS } from "@/lib/permissions";
 //   ประเภทดีล (แผ่นเลือก บนสุด — ตัวเลือกแรกที่กำหนดทุกอย่างถัดไป) → ชื่อดีล
 //   → ลูกค้า | แบรนด์ (ดรอปดาวน์คู่กันซ้าย-ขวา ขนาดเท่ากัน — มติ 2026-08-08 รอบสี่:
 //     กลับจากชิปเป็นดรอปดาวน์)
-//   → โครงการ → หมวดสินค้า → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
-//   → มูลค่า|วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
+//   → โครงการ → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
+//   → **มูลค่าคาดการณ์แยกตามหมวดสินค้า** (ตาราง — มติผู้ใช้ 2026-08-17 · mig 0264:
+//     หมวดเลือกได้หลายรายการ แต่ละแถวมีจำนวน/ราคาต่อหน่วย ยอดรวมล็อกคิดให้เอง
+//     ⇒ ช่อง "หมวดสินค้า" เดี่ยว และช่องเงินช่องเดียวถูกถอดออกทั้งคู่)
+//   → วันที่คาดปิด (+ชิปลัด) → เริ่ม|สิ้นสุด → รายละเอียด
 //   → ผู้รับผิดชอบ (AE) **ล่างสุด บังคับเสมอ**: ae/senior_ae = ล็อกชื่อตัวเอง
 //     (ดีลเป็นหน้าที่ของ AE/Senior AE) · ac/ae_supervisor/admin = ต้องเลือก
 //   → ทีมเจ้าของงาน — โผล่เฉพาะตอนเจ้าของที่เลือกอยู่หลายทีม (มติ 2026-08-11)
@@ -32,7 +35,6 @@ import { TEAM_LABELS } from "@/lib/permissions";
 import { brandSelectOptions } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels";
 import DateInput from "@/components/ui/DateInput";
-import MoneyInput from "@/components/ui/MoneyInput";
 import Textarea from "@/components/ui/Textarea";
 import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABELS, monthKey } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
@@ -335,17 +337,26 @@ export default function DealFormFields({
   /* ดีลเก่าที่สร้างเป็น Won (มติผู้ใช้ 2026-08-08 รอบสี่): ไม่ถาม "คาดการณ์" —
      ช่องเดียวกันเปลี่ยนความหมายเป็นของจริงจากระบบเดิม: มูลค่าที่ปิด (→ wonValue
      = ยอด Won ทันที) และวันที่ปิด (→ confirmedAt = เดือนที่ยอดตกย้อนหลัง)
-     คีย์ในฟอร์มคงเดิม (projectValue/expectedCloseDate) — server เป็นคน map */
+     คีย์ในฟอร์มคงเดิม (valueItems/expectedCloseDate) — server เป็นคน map */
   const legacyWon = legacyOn && form.stage === "won";
+  /* มูลค่าคาดการณ์ = ตารางรายหมวด (มติผู้ใช้ 2026-08-17 — mig 0264) แทนช่องเงิน
+     ช่องเดียว + ช่องหมวดสินค้าช่องเดียวที่เคยอยู่เหนือสถานะ:
+       · หมวดสินค้าเลือกได้หลายรายการ แต่ละรายการมีจำนวน/ราคาต่อหน่วย/หมายเหตุ
+       · ยอดรวมล็อก คิดจากแถวเท่านั้น (`projectValue` ฝั่ง server คิดใหม่ทุกครั้ง)
+       · หมวดของ **แถวแรก** = หมวดของดีล (ตัวกรองขั้นตอนไทม์ไลน์) — server sync ให้ */
   const valueField = (
-    <label className="deal-field" key="value">
-      <span className="deal-field-label">
-        {legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์"} <span className="required-mark">*</span>
-        {alreadyWon ? <span className="soft">(ล็อกหลังปิด Won)</span> : null}
-      </span>
-      <MoneyInput value={form.projectValue} disabled={alreadyWon} onChange={(value) => set("projectValue")(value ?? "")} />
-      {legacyWon && <small>ยอดปิดจริงจากระบบเดิม — เข้าเป็นยอด Won (Actual) ทันที · ถ้ามีใบสั่งขายมาผูกภายหลัง ยอดจากใบจริงจะแทนที่</small>}
-    </label>
+    <DealValueLines
+      key="value"
+      items={form.valueItems || []}
+      onChange={(valueItems) => onPatch({ valueItems })}
+      categories={categories}
+      disabled={alreadyWon}
+      legacyValue={form.projectValue}
+      label={legacyWon ? "มูลค่าที่ปิด (แยกตามหมวดสินค้า)" : "มูลค่าคาดการณ์ (แยกตามหมวดสินค้า)"}
+      hint={legacyWon
+        ? "ยอดปิดจริงจากระบบเดิม — เข้าเป็นยอด Won (Actual) ทันที · ถ้ามีใบสั่งขายมาผูกภายหลัง ยอดจากใบจริงจะแทนที่"
+        : null}
+    />
   );
 
   const closeDateField = (
@@ -408,18 +419,14 @@ export default function DealFormFields({
       {pairRows([customerField, brandField])}
       {pairRows([projectField])}
 
-      {/* หมวดสินค้ามาก่อนสถานะ (มติผู้ใช้ 2026-08-08 รอบสอง) —
-          กินเต็มแถวเองอยู่แล้ว (grid-column: 1/-1 ใน globals.css) */}
-      <ProductCategorySelect
-        categories={categories}
-        value={form.categoryCode || ""}
-        mainValue={form.categoryMainCode ?? String(form.categoryCode || "").split("-")[0] ?? ""}
-        onChange={(categoryCode, meta) => onPatch({ categoryCode, categoryMainCode: meta.mainCode })}
-      />
-
       {pairRows([stageField])}
       {pairRows([fcField])}
-      {pairRows([valueField, closeDateField])}
+
+      {/* หมวดสินค้ายุบเข้าตารางมูลค่าคาดการณ์แล้ว (มติผู้ใช้ 2026-08-17) — ช่องหมวด
+          เดี่ยวที่เคยอยู่เหนือสถานะถูกถอดออก: ดีลขายได้หลายหมวดพร้อมกัน และหมวดที่
+          ไม่มีจำนวน/ราคาไม่ได้บอกอะไรกับใครเลย · ตารางกินเต็มแถวเองผ่าน .block */}
+      {valueField}
+      {pairRows([closeDateField])}
       {pairRows([startField, endField])}
       {pairRows([notesField])}
       {pairRows([ownerField])}

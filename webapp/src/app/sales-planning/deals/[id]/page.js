@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -32,6 +32,7 @@ import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
+import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
@@ -540,14 +541,21 @@ export default function DealOverviewPage() {
   // แก้ไขดีล (โมดัล)
   const openEditDeal = () => {
     if (!deal) return;
+    /* อ่านแถวมูลค่ารายหมวดไม่สำเร็จ (overview คืน null ไม่ใช่ []) = ห้ามเปิดฟอร์ม:
+       ฟอร์มส่งรายการกลับไปทั้งชุด กดบันทึกทีเดียวแถวจริงหายทั้งใบ */
+    if (!deal.valueItems) {
+      setError("โหลดรายการมูลค่าคาดการณ์ของดีลนี้ไม่สำเร็จ — รีเฟรชหน้าแล้วลองใหม่ (ยังแก้ไม่ได้ตอนนี้)");
+      return;
+    }
     setDealForm({
       title: deal.title || "",
       customerId: deal.customerId || "",
       stage: deal.stage || "lead",
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
-      categoryCode: deal.categoryCode || "",
-      categoryMainCode: String(deal.categoryCode || "").split("-")[0] || "",
+      // มูลค่าคาดการณ์รายหมวด (mig 0264) — GET ของดีลส่ง valueItems มาด้วยแล้ว
+      // (หมวดของดีล/ยอดรวมไม่ใช่ช่องกรอกอีกต่อไป — server คิดจากแถวพวกนี้)
+      valueItems: dealValueItemsToForm(deal.valueItems || []),
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -910,6 +918,46 @@ export default function DealOverviewPage() {
               <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
             )}
           </section>
+
+          {/* ที่มาของมูลค่าคาดการณ์ (mig 0264) — ยอดบน KPI คือผลบวกของตารางนี้
+              ดีลเก่าที่ยังไม่แตกหมวดไม่มีแถว ⇒ ไม่ต้องขึ้นการ์ดเปล่าให้รก */}
+          {!!(deal.valueItems || []).length && (
+            <DetailCard
+              icon={Layers} eyebrow="Forecast breakdown"
+              title="มูลค่าคาดการณ์แยกตามหมวดสินค้า"
+              meta={`${deal.valueItems.length} หมวด · รวม ${money(deal.projectValue)}`}
+            >
+              {/* ตารางชั้นใหม่: TableScroll วาดพื้นเอง ไม่มี premium-glass-table/premium-table
+                  ครอบ (สองคลาสนั้นเป็นชั้นเก่าที่ audit:ui รูดเพดานลงอยู่) */}
+              <TableScroll surface="embedded" cells="stacked">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th>หมวดสินค้า</th>
+                      <th className="num">จำนวน</th>
+                      <th>หน่วย</th>
+                      <th className="num">ราคา/หน่วย</th>
+                      <th className="num">มูลค่า</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deal.valueItems.map((item) => (
+                      <tr key={item.id} className="premium-row">
+                        <td>
+                          <strong>{item.categoryCode}</strong>
+                          {item.note && <ReadableText text={item.note} lines={2} className="soft" />}
+                        </td>
+                        <td className="num mono">{fmtNumber(item.qty)}</td>
+                        <td>{item.unit}</td>
+                        <td className="num mono">{money(item.unitPrice)}</td>
+                        <td className="num mono">{money(item.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            </DetailCard>
+          )}
 
           </>
           )}

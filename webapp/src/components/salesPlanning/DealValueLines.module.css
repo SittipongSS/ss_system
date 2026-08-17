@@ -1,0 +1,89 @@
+/* ตารางมูลค่าคาดการณ์รายหมวดของดีล — โครงเดียวกับตารางรายการใบเสนอราคา
+   (QuotationLineItems.module.css) แต่คอลัมน์น้อยกว่าเพราะไม่มีส่วนลด/VAT:
+   ประมาณการดีลไม่ใช่ใบเสนอราคา */
+
+/* กินเต็มแถวของ form-grid เสมอ — ตารางที่ถูกบีบครึ่งแถวอ่านไม่ได้เลย
+   (เหมือน ProductCategorySelect เดิมที่ประกาศ grid-column: 1/-1 ไว้ใน globals) */
+.block {
+  grid-column: 1 / -1;
+}
+
+/* ตัววัดของกฎ "แคบกว่าพื้นตาราง = การ์ด" — ความกว้างที่ตารางมีจริง ไม่ใช่ของจอ */
+.container {
+  container-type: inline-size;
+}
+
+/* พื้น 760 อยู่ที่ prop `minWidth` ของ TableScroll ไม่ใช่ที่นี่ — `.scroll table`
+   ของ Table.module.css specificity สูงกว่าคลาสของหน้า เขียนที่นี่จะถูกทับเงียบ ๆ
+   คอลัมน์ตายตัวรวม 584 (34+110+120+140+140+40) ที่เหลือเป็นของ "หมวดสินค้า" */
+.table {
+  table-layout: fixed;
+}
+
+/* ความกว้างคอลัมน์อยู่ที่นี่ ไม่ใช่ `style={{ width }}` บน <th> — inline style เป็น
+   ชั้นเก่าที่ audit:ui รูดเพดานลงอยู่ */
+/* คอลัมน์ตายตัวรวม 480 (34+90+96+120+100+40) — พื้นตาราง 640 จึงเหลือให้ "หมวดสินค้า"
+   160px และ **พอดีความกว้างของโมดัลสร้างดีล (size lg)** โดยไม่ขึ้นสกรอลล์แนวนอน
+   ⚠️ อย่าเผลอตั้งกว้างกว่านี้: ฟอร์มนี้อยู่ในโมดัลเสมอ ไม่ใช่หน้าเต็มอย่างใบเสนอราคา */
+.colQty { width: 90px; }
+.colUnit { width: 96px; }
+.colPrice { width: 120px; }
+.colAmount { width: 100px; }
+.colActions { width: 40px; }
+.table th.rowNumber { width: 34px; }
+
+/* แถวสูงไม่เท่ากันในแต่ละคอลัมน์ (หมวด 1–2 บรรทัด + หมายเหตุ) — ชิดบนแล้วดัน
+   เฉพาะเซลล์ข้อความให้ตรงแนวคอนโทรลแถวแรก (เหมือนตารางใบเสนอราคา) */
+.table tbody td {
+  vertical-align: top;
+}
+
+.rowNumber {
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* ⚠️ ใช้โทเคนระยะห่างเท่านั้น (spacingScale.test.mjs — เพดานเลขดิบรูดลงได้อย่างเดียว)
+   ตารางใบเสนอราคาใช้ 17/13/25px ดิบเพราะเขียนก่อนมีชั้นนี้ ห้ามลอกตามมา */
+.table th.rowNumber { text-align: center; }
+.table tbody td.rowNumber { padding-top: var(--space-4); }
+.table tbody td.lineAmount { padding-top: var(--space-4); }
+.table tbody td.rowActions { padding-top: var(--space-3); }
+
+/* หัวคอลัมน์ตัวเลขชิดขวา + เผื่อ padding ของ input และเส้นขอบ ให้ตัวอักษรหัวตาราง
+   ตรงแนวกับตัวเลขในช่องกรอก */
+.table th.numHeader {
+  padding-right: var(--space-6);
+  text-align: right;
+}
+
+.categoryCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.noteReadonly {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.emptyRows {
+  padding: var(--space-6) !important;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* ยอดรวมล็อก — ไม่มีช่องกรอก จึงเป็นแถบสรุปบรรทัดเดียว ไม่ใช่แผงสรุปหลายชั้น
+   แบบใบเสนอราคา (ที่นั่นมีส่วนลด/VAT ให้ตั้งค่า) */
+.totalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3-5);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2-5);
+  border-top: 2px solid var(--border);
+  font-size: var(--fs-10);
+}
