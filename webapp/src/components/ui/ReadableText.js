@@ -14,7 +14,7 @@ export default function ReadableText({
   lines = 4,
   className = "",
   style,
-  /* ⭐ ว่าง = N/A (มติผู้ใช้ 2026-08-14 · กฎค่าว่างทั้งระบบ ดู `naText` ใน lib/format)
+  /* ⭐ ว่าง = ขีด `—` (มติผู้ใช้ 2026-08-17 · กฎค่าว่างทั้งระบบ ดู `naText` ใน lib/format)
      ส่งค่าอื่นได้ถ้าที่นั้นมีคำที่มีความหมายเฉพาะจริง ๆ · ส่ง `null` ถ้าตั้งใจให้หายไปเลย */
   empty = NA,
   defaultExpanded = false,
