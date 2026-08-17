@@ -13,7 +13,7 @@
 // ไม่บังคับ ⇒ แสดงช่องว่างครบทุกช่องจะกลบของที่กรอกจริงจนหาไม่เจอ
 // (เอกสารทำกลับกัน — ที่นั่นช่องว่างต้องพิมพ์เป็นเส้นให้เขียนมือ)
 import { scentPerformanceLabel, scentotypeLabel } from "@/lib/requests/kinds/rd/scentBriefTypes";
-import { PDR_SECTIONS, pdrSectionProgress, pdrSectionRows } from "@/lib/requests/pdrFields";
+import { PDR_SECTIONS, pdrSectionRows } from "@/lib/requests/pdrFields";
 import { PDR_TARGET_KINDS } from "@/lib/requests/pdrTargets";
 import { categoryLabel } from "@/lib/master/categoryOf";
 import ReadableText from "@/components/ui/ReadableText";
@@ -88,38 +88,11 @@ function Chips({ label, values, textOf }) {
   );
 }
 
-/**
- * หมวดของ **ฝั่งอ่าน** สำหรับรางเลือกส่วน — ชุดเดียวกับฝั่งกรอก (`pdrRailSections`)
- *
- * ⭐ **บรีฟกลิ่นเป็นหมวดของตัวเอง คั่นระหว่าง "ข้อมูลลูกค้า" กับ "ข้อกำหนดผลิตภัณฑ์"**
- * เหมือนฝั่งกรอกเป๊ะ ๆ (มติผู้ใช้ 2026-08-09) — เดิมฝั่งอ่านยัดบรีฟไว้บนสุด*นอกราง*
- * ⇒ กดเลือกหมวด 4 แล้วยังเห็นบรีฟค้างอยู่ข้างบน อ่านเหมือนหน้าคนละส่วนมาต่อกัน
- *
- * ⚠️ เลขนำหน้าใส่เฉพาะห้าหมวดที่ตรงกับกระดาษ FM-RD-01 หนึ่งต่อหนึ่ง (RD อ้างกันทาง
- * โทรศัพท์ด้วยเลขข้อ) · บรีฟไม่มีเลขเพราะบนกระดาษมันอยู่ในข้อ 2.1 ของหมวดถัดไป
- */
-export function pdrReadRailSections(request, briefs = [], context = {}) {
-  const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
-  const numbered = (key, no) => ({
-    key,
-    label: `${no} ${of(key).title}`,
-    count: pdrSectionProgress(of(key), request, context),
-  });
-  return [
-    numbered("request", 1),
-    numbered("customer", 2),
-    {
-      key: "briefs",
-      label: "บรีฟกลิ่น",
-      // นับ "ก้อนที่มีเนื้อบรีฟ" ชุดเดียวกับฝั่งกรอก — ตัวเลขสองฝั่งต้องตรงกัน
-      // (ชื่อเรียกใช้นับไม่ได้ ระบบเติมให้เองเมื่อเว้นว่าง — ดู scentBriefs.js)
-      count: { total: briefs.length, filled: briefs.filter((b) => String(b?.brief || "").trim()).length },
-    },
-    numbered("spec", 3),
-    numbered("regulatory", 4),
-    numbered("signers", 5),
-  ];
-}
+/* ⚠️ **`pdrReadRailSections` ถูกถอดออกแล้ว** — รางฝั่งอ่านกับฝั่งกรอกเป็นตัวเดียวกัน
+   ที่ `lib/requests/pdrFields.js` (`pdrRailSections` · `pdrRailSectionsFromRequest`)
+   เหตุผลเต็มอยู่ใน doc ของ `pdrFormProgress` ที่นั่น: สองตัวทำให้เกจอันเดียวกันให้เลข
+   คนละชุดระหว่างโหมดอ่านกับโหมดแก้ (SB-26080002: 6/8 → 1/1) และป้ายหมวดคนละชุด
+   ⇒ ผู้เรียกทั้งสามจอ import จากที่นั่นที่เดียว */
 
 export default function PdrSummary({ request, briefs = [], section = null }) {
   // โหมดราง — ผู้เรียกเลือกหมวดให้แล้ว (ท่าเดียวกับ `PdrForm`) · ไม่ส่ง = ลิ้นชักครบทุกหมวด

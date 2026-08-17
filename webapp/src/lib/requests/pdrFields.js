@@ -23,6 +23,8 @@
 import { scentCountForOrder } from '@/lib/requests/scentDesignOrders';
 import { categoryLabel } from '@/lib/master/categoryOf';
 import { fmtDate, fmtNumber } from '@/lib/format';
+// แถวข้อ 2.2/2.3 อยู่คนละตาราง — รางต้องบวกตัวนับของมันเข้ามาเอง (ดู `pdrRailSections`)
+import { pdrTargetValuesFrom, pdrTargetsProgress } from '@/lib/requests/pdrTargets';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -348,6 +350,12 @@ export const PDR_SECTIONS = [
     // แล้วเซ็นมือบนกระดาษได้เหมือนเดิม
     key: 'signers',
     title: 'ผู้เซ็นบนเอกสาร',
+    // ⭐ `optional` = หมวดที่ **ไม่มีช่องไหนบังคับเลย** ⇒ รางแสดงจำนวนที่กรอกเฉย ๆ
+    // ไม่ใช่ x/y · เขียนคู่กับบรรทัด "ไม่มีช่องไหนบังคับ" ข้างบนเพื่อไม่ให้สองอย่างนี้
+    // เดินออกจากกัน
+    // 🐞 เดิมรางขึ้น "0/6" เหมือนหมวดที่กรอกไม่ครบ ทั้งที่ตั้งใจให้เว้นว่างได้ ⇒ อ่านเป็น
+    // หนี้ค้างที่ไม่มีวันเคลียร์ และจุดสีไม่มีวันเขียว
+    optional: true,
     note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
     fields: [
       { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', type: 'text' },
@@ -477,13 +485,13 @@ export function pdrFieldVisible(field, values = {}) {
  * ⭐ มติผู้ใช้ 2026-08-09 (รีดีไซน์ฟอร์มคำร้อง): ส่วนพับ `<details>` เดิมโชว์แค่ชื่อ
  * ⇒ ต้องกางทุกลิ้นชักถึงจะรู้ว่ากรอกครบยัง · ตัวเลขนี้ไปอยู่บนหัวส่วนและบนรางข้าง
  *
- * ⚠️ **คนละคำถามกับ `pdrSectionProgress`** ซึ่งเป็นฝั่งอ่าน — อย่ายุบเป็นตัวเดียว:
- *   · ฝั่งอ่าน  ถามว่า "ส่วนนี้มีข้อมูลให้อ่านกี่ช่อง" ⇒ นับจาก **แถวคำร้องที่บันทึกแล้ว**
- *     (คอลัมน์ `pdr*`) และ **รวมช่องที่ระบบเติม** เพราะคนอ่านต้องเห็นมันด้วย
- *   · ฝั่งกรอก (ตัวนี้) ถามว่า "เหลืออีกกี่ช่องที่ฉันต้องพิมพ์" ⇒ นับจาก **ค่าในฟอร์ม**
- *     (คีย์สั้น) และ **ตัดช่องที่ระบบเติมทิ้ง** เพราะมันไม่ใช่งานของคนกรอก
- *   เอาฝั่งอ่านมาใช้กับฟอร์มเมื่อไร ตัวหารจะบวกช่องที่คนกรอกแตะไม่ได้เข้าไปด้วย
- *   แล้วเกจจะเดินเองโดยที่ผู้ใช้ไม่ได้ทำอะไร
+ * ⚠️ **ตัวนับของเกจมีตัวเดียว และคือตัวนี้** — ฝั่งอ่านเคยมี `pdrSectionProgress`
+ * ของตัวเองที่นับจากแถวในฐาน (รวมช่องที่ระบบเติม) ⇒ เกจอันเดียวกันให้เลขคนละชุด
+ * ระหว่างโหมดอ่านกับโหมดแก้ · ถอดทิ้งแล้ว ฝั่งอ่านแปลงแถวเป็นค่าฟอร์มก่อนเข้าตัวนี้
+ * (`pdrRailSectionsFromRequest`)
+ *
+ * ⚠️ "แสดงช่องที่ระบบเติม" กับ "นับช่องที่ระบบเติม" คนละเรื่อง — จอแสดงยังโชว์ครบ
+ * ผ่าน `pdrSectionRows` เหมือนเดิม ที่ตัดออกคือ **ตัวหารของเกจ** เท่านั้น
  *
  * ⚠️ ช่องที่ซ่อนตามประเภทคำขอ (`showFor`) ไม่นับ — นับเมื่อไรตัวหารจะเปลี่ยนไปมา
  * ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
@@ -526,13 +534,76 @@ export function pdrArtworkError(values = {}, { attachmentCount = 0, stage = null
  * · ค่าเริ่มต้นตัดช่องว่างทิ้ง สำหรับบนจอ (21 ช่องส่วนใหญ่ไม่บังคับ ⇒ แสดงครบ
  *   จะกลบของที่กรอกจริงจนหาไม่เจอ)
  */
-// ความครบของหมวด **ฝั่งอ่าน** — นับช่องที่มีค่าจริง (ตัวเลขชุดเดียวที่แถบหมวดสองชั้น ·
-// การ์ด panel · เช็คลิสต์พร้อมส่ง ใช้ร่วมกัน — ม-94 ทาง ก ฉบับด้านข้าง)
-// ⚠️ ฝั่ง **กรอก** ใช้ `pdrFormProgress` คนละตัว — เหตุผลอยู่ที่ doc ของตัวนั้น
-export function pdrSectionProgress(section, request = {}, context = {}) {
-  const rows = pdrSectionRows(section, request, { includeEmpty: true, context });
-  const filled = pdrSectionRows(section, request, { includeEmpty: false, context });
-  return { filled: filled.length, total: rows.length };
+/**
+ * รางหมวดของแบบฟอร์ม PDR — **ที่เดียวของทั้งสามจอ** (เปิดคำร้อง · อ่าน · แก้)
+ *
+ * 🐞 เดิมมีสองตัว: ฝั่งกรอก/แก้ใช้ `pdrRailSections` (อยู่ใน PdrForm) นับด้วย
+ * `pdrFormProgress` · ฝั่งอ่านใช้ `pdrReadRailSections` (อยู่ใน PdrSummary) นับด้วย
+ * `pdrSectionProgress` ⇒ **ใบเดียวกันกดปุ่มแก้แล้วเลขเปลี่ยนใต้ตาคน**
+ * (SB-26080002: ข้อมูลคำขอ 6/8 → 1/1 · ข้อมูลลูกค้า 14/18 → 9/12 · สเปก 6/13 → 4/10)
+ * และป้ายหมวดก็คนละชุด (ฝั่งอ่านมีเลขนำ ฝั่งแก้ไม่มี) — โรคเดียวกับที่หัวไฟล์นี้
+ * บอกว่าไฟล์นี้มีอยู่เพื่อกัน
+ *
+ * ⚠️ **เกจถามคำถามเดียวเสมอ: "เหลืออีกกี่ช่องที่คนต้องพิมพ์"** ⇒ นับด้วย
+ * `pdrFormProgress` ทั้งสองฝั่ง · ฝั่งอ่านจึงแปลงแถวเป็นค่าฟอร์มก่อนด้วย
+ * `pdrValuesFrom` (ดู `pdrRailSectionsFromRequest`)
+ *
+ * ⚠️ ช่องที่ระบบเติมให้ (`derived`) **แสดงบนจอ แต่ไม่เข้าตัวหาร** — สองอย่างนี้คนละ
+ * เรื่อง · การนับมันเข้าไปคือเหตุที่หมวด "ข้อมูลคำขอ" ค้าง 6/8 ตลอดกาลและจุดสี
+ * ไม่มีวันเขียว ทั้งที่ผู้ใช้กรอกครบทุกช่องที่ตัวเองแตะได้แล้ว
+ *
+ * ⚠️ "บรีฟกลิ่น" ไม่ได้อยู่ใน `PDR_SECTIONS` (ไม่ใช่ช่องบนกระดาษ FM-RD-01 แต่เป็น
+ * ก้อนของระบบ) จึงแทรกด้วยมือตรงตำแหน่งเดิม — ระหว่างลูกค้ากับสเปก · เลขหมวด
+ * จึงข้ามมันไป ตรงกับเลขข้อบนกระดาษ
+ */
+export function pdrRailSections(values = {}, briefs = [], targets = []) {
+  const of = (key) => PDR_SECTIONS.find((s) => s.key === key);
+  // เลขหมวด = ลำดับใน `PDR_SECTIONS` ที่เดียว — เขียนเลขในป้ายด้วยมือเมื่อไร
+  // แทรกหมวดใหม่แล้วเลขจะเพี้ยนเงียบ ๆ
+  const labelOfSection = (key) => `${PDR_SECTIONS.findIndex((s) => s.key === key) + 1} ${of(key).title}`;
+  const count = (key) => ({ ...pdrFormProgress(of(key), values), optional: !!of(key).optional });
+  // ⚠️ หมวดสเปกมีทั้งช่องธรรมดาและ **แถวรายสินค้า** (ข้อ 2.2/2.3 · mig 0229) ที่อยู่
+  // คนละตาราง ⇒ บวกสองตัวนับเข้าด้วยกัน ไม่งั้นเลข "กรอกแล้ว/ทั้งหมด" บนหัวหมวด
+  // จะไม่รวมของที่ผู้ใช้เพิ่งกรอกไป
+  const specCount = () => {
+    const base = count('spec');
+    const rows = pdrTargetsProgress(targets);
+    return { total: base.total + rows.total, filled: base.filled + rows.filled };
+  };
+  const section = (key) => ({ key, label: labelOfSection(key), count: count(key) });
+  return [
+    section('request'),
+    section('customer'),
+    {
+      key: 'briefs',
+      label: 'บรีฟกลิ่น',
+      // ⚠️ นับ **ก้อนที่มีเนื้อบรีฟ** ไม่ใช่ก้อนที่มีชื่อ — ชื่อเรียกที่เว้นว่างไว้จะถูก
+      // เติม "กลิ่นที่ N" ให้ตอนบันทึก (scentBriefs.js) ⇒ ถ้านับชื่อ เกจจะเด้งเป็น
+      // เต็มทันทีที่กดบันทึกครั้งแรก ทั้งที่ยังไม่ได้เขียนบรีฟสักตัว
+      count: {
+        total: briefs.length,
+        filled: briefs.filter((b) => String(b?.brief || '').trim()).length,
+      },
+    },
+    { key: 'spec', label: labelOfSection('spec'), count: specCount() },
+    section('regulatory'),
+    section('signers'),
+  ];
+}
+
+/**
+ * รางหมวดฝั่ง **อ่าน** — แถวคำร้องจากฐาน ไม่ใช่ค่าฟอร์ม
+ *
+ * ⚠️ แปลงเป็นค่าฟอร์มก่อนแล้วเข้าตัวเดียวกับฝั่งกรอก — ห้ามนับเองที่นี่
+ * (ตัวแปลงเป็นตัวเดียวกับที่ปุ่ม "แก้ไข" ใช้เปิดโหมดแก้ ⇒ เลขก่อนกดกับหลังกดตรงกัน
+ * โดยโครงสร้าง ไม่ใช่เพราะบังเอิญเขียนเหมือนกัน)
+ */
+export function pdrRailSectionsFromRequest(request = {}, briefs = [], targets = []) {
+  return pdrRailSections(
+    pdrValuesFrom(request),
+    briefs,
+    (targets || []).map(pdrTargetValuesFrom),
+  );
 }
 
 export function pdrSectionRows(section, request = {}, { includeEmpty = false, context = {} } = {}) {

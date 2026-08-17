@@ -391,6 +391,16 @@ export default function RequestDetailPage() {
   // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
   // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
   const reconcile = soReconcile({ lines: req.salesOrderLines, items: req.items });
+  // ⭐ **ก้อนเดียว กระจายสองที่** — เนื้อกลางหน้า (`KindDetail`) กับการ์ดขวา
+  // (`KindPanel`) ต้องได้ชุดเดียวกัน
+  // 🐞 เดิมประกอบสามบรรทัดนี้ไว้ที่ `KindDetail` ที่เดียว แล้ว `KindPanel` ไม่ได้รับเลย
+  // ⇒ `ScentPanel` รับ prop ครบแต่เป็น undefined ทั้งชุด · แถว "กลิ่นตาม SO" กับ
+  // บรรทัดกระทบยอด **ไม่เคยขึ้นบนจอ** ทั้งที่ `soReconcile` คำนวณไว้แล้ว
+  const reconcileProps = {
+    reconcile,
+    reconcileTone: reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined,
+    reconcileText: reconcile ? soReconcileText(reconcile) : null,
+  };
 
   // ⭐ บอกปลายทางตอนกำลังจะพิมพ์ — "ใครกำลังถือขั้นนี้อยู่" เปลี่ยนว่าคนจะพิมพ์อะไร
   // (มติผู้ใช้: ฝั่งที่ไม่ใช่ตาตัวเองต้องพิมพ์ได้ทันทีตรงนั้น ไม่ใช่ปุ่มที่เด้งไปที่อื่น)
@@ -607,6 +617,9 @@ export default function RequestDetailPage() {
        (pdrEdit.js) ⇒ RD หลังรับเรื่องกด "แก้ไข" แล้วได้เฉพาะแบบฟอร์ม ไม่ได้หัวใบ */
   const canEditInfo = (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status);
   const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
+  // ⭐ ประโยค "ทำไมแก้ไม่ได้ตอนนี้" — server ตัดสินมาให้แล้ว (`editPdrError`) หน้าจอ
+  // ไม่คิดเอง · ใบที่ไม่มี PDR ไม่มีประโยคนี้ (ปุ่มแก้ของมันคุมด้วย `canEditInfo` ล้วน)
+  const editBlocker = requestHasPdr(req.kind) ? (req._editPdrBlocker || null) : null;
 
   const requestActions = normalizeDocumentControlActions({
     // ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรดแล้ว — เข้า normalize ตรงเพื่อไปโผล่ที่บาร์บนสุด
@@ -684,7 +697,16 @@ export default function RequestDetailPage() {
         },
         // ⚠️ ฝั่งจอไม่มี `user.id` (context เก็บแค่ role/department) จึงถามด้วย
         // `_mine` ที่ server คำนวณมาให้ + ขั้นชุดเดียวกับ lib · ด่านจริงอยู่ที่ API
-        visible: (canEditInfo || canEditPdrNow) && !editing,
+        //
+        // ⭐ **แก้ไม่ได้ตอนนี้ ≠ ไม่ใช่ปุ่มของคุณ** (ผลตรวจ 2026-08-17) — ใบที่มี
+        // แบบฟอร์ม PDR สลับมือคนแก้ตอน "รับเรื่อง" ⇒ อีกฝั่งเห็นปุ่มหายไปเฉย ๆ แล้ว
+        // ไม่รู้ว่าต้องไปบอกใคร · โชว์ปุ่มแบบกดไม่ได้พร้อมเหตุผลจาก server แทน
+        // ⚠️ ซ่อนจริงเฉพาะใบที่ **ไม่มีอะไรให้แก้เลย** (ไม่มี PDR และไม่ใช่ใบของเรา)
+        // — ปุ่มที่ไม่มีวันกดได้ไม่ควรกินที่บนแผง
+        visible: (canEditInfo || canEditPdrNow || (requestHasPdr(req.kind) && !!editBlocker))
+          && !editing,
+        disabled: !canEditInfo && !canEditPdrNow,
+        disabledReason: editBlocker,
       },
       {
         // ⭐ **เลื่อนวันกำหนดส่ง** (มติผู้ใช้ 2026-08-06) — RD ขอให้แก้ได้ เผื่อ
@@ -903,6 +925,12 @@ export default function RequestDetailPage() {
       <DetailPageLayout
         className={styles.detailLayout}
         asideLabel="จัดการคำร้อง"
+        /* ⭐ จอแคบให้การ์ดจัดการขึ้นก่อนเนื้อ — หน้านี้ปุ่มระดับใบ **ทั้งชุด** อยู่บน
+           การ์ดนั้นที่เดียว (ม-122) และไม่มีแถบก้าวท้ายเธรดเป็นทางเข้าสำรองแล้ว
+           ⇒ ที่ ≤1050px ปุ่มเดียวของใบเคยไปอยู่ก้นหน้า (วัดจริง y=1843 จาก 2269)
+           ⚠️ หน้าที่ "เนื้อ" คือคำถามแรกไม่ควรเปิดโหมดนี้ตามไปเฉย ๆ — ดูคอมเมนต์
+           ที่ `DetailPageLayout` ก่อน */
+        controlFirst
         aside={(
           <>
             {/* ⭐ **ปุ่มระดับใบอยู่บนการ์ดจัดการ** (ม-122) — ทรงเดียวกับหน้า QT/SO/
@@ -910,15 +938,27 @@ export default function RequestDetailPage() {
                 ระดับเอกสารที่เดียวกัน
                 ⚠️ ไม่มีหัวข้อ/คำใบ้แยกบนการ์ด — รางข้างบนพูดประโยคเดียวกันอยู่แล้ว
                 (บั๊กเดิมของรางขวารุ่นแรก: การ์ดพูดซ้ำทุกบรรทัดจนต้องยุบทิ้ง) */}
+            {/* ⭐ `statusDescription` + `notices` — สองช่องที่การ์ดกลางมีให้อยู่แล้ว
+                แต่หน้านี้ปล่อยว่างมาตลอด (หน้าใบสั่งขายใช้ครบ) · ผลคือใบที่ไม่มีปุ่มให้
+                คนคนนี้กด จะเห็นแค่การ์ดเปล่า ไม่มีอะไรบอกว่ารออะไรหรือต้องไปบอกใคร
+                · statusDescription = ก้าวปัจจุบันบนราง (ก้อนเดียวกับที่รางวาด — ไม่ได้
+                  เขียนประโยคใหม่ให้ต้องคอยดูแลให้ตรงกัน)
+                · notices = อุปสรรคที่เป็นของ "คนที่กำลังดูอยู่" ณ ตอนนี้ */}
             <DocumentControlCard
               title="จัดการคำร้อง"
               status={REQUEST_STATUS_LABELS[req.status] || req.status}
               statusColor={STATUS_TONE[req.status]}
+              statusDescription={workflowSteps[workflowIndex]?.hint}
               workflowSteps={workflowSteps}
               primaryAction={requestActions.primaryAction}
               secondaryActions={requestActions.secondaryActions}
               dangerActions={requestActions.dangerActions}
               busy={saving}
+              /* ⚠️ ป้ายเปล่า ไม่ทาสีเอง — โทนตั้งต้นของป้ายเป็นกลางอยู่แล้ว และนี่คือ
+                 ข้อเท็จจริง (ตอนนี้เป็นของฝ่ายไหน) ไม่ใช่คำเตือน */
+              notices={editBlocker && !canEditInfo && !canEditPdrNow ? (
+                <span className="ui-badge">{editBlocker}</span>
+              ) : null}
             />
             {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีลไหน กดแล้วไปหน้านั้นได้เลย
                 (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
@@ -954,6 +994,7 @@ export default function RequestDetailPage() {
                 formulaTotals={formulaTotals}
                 board={board}
                 briefSummary={briefSummary}
+                {...reconcileProps}
               />
             )}
             {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
@@ -1003,9 +1044,7 @@ export default function RequestDetailPage() {
         formulaTotals={formulaTotals}
         docBoard={docBoard}
         docTotals={docTotals}
-        reconcile={reconcile}
-        reconcileTone={reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined}
-        reconcileText={reconcile ? soReconcileText(reconcile) : null}
+        {...reconcileProps}
         pdrDraft={pdrDraft}
         onPdrDraftChange={setPdrDraft}
       />
@@ -1582,10 +1621,12 @@ export default function RequestDetailPage() {
         )}
       </Modal>
 
-      {/* ส่งกลิ่น — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว */}
+      {/* ส่งงาน — สร้างแถวคำร้อง + เข้าทะเบียนกลิ่นในจังหวะเดียว
+          ⚠️ หัวโมดัลใช้คำเดียวกับปุ่มที่กดมา (ม-120 รวมคำ "ส่งกลิ่น"/"ส่งของ" เป็น
+          "ส่งงาน") — กดปุ่มชื่อหนึ่งแล้วเจอหัวกล่องอีกชื่อ คนจะไม่แน่ใจว่ากดถูกกล่องไหม */}
       <Modal
         open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
-        title="ส่งกลิ่นให้ฝ่ายขาย"
+        title="ส่งงานให้ฝ่ายขาย — กลิ่นเข้าทะเบียนทันที"
       >
         {delivery && (
           <>

@@ -49,3 +49,16 @@ test('⚠️ ข้อความบอกว่าตอนนี้เป็�
   assert.match(editPdrError(req({ status: 'draft' }), rd), /เฉพาะผู้เปิดคำร้อง/);
   assert.match(editPdrError(req({ status: 'acknowledged' }), ae), /เฉพาะฝ่าย RD/);
 });
+
+// ⭐ ประโยคนี้มีมาตั้งแต่ mig 0216 แต่ถูกเรียกที่ route เท่านั้น ⇒ **จอไม่เคยแสดง**
+// (ผลตรวจ 2026-08-17): ปุ่ม "แก้ไข" ของอีกฝั่งหายไปเฉย ๆ แล้วคนกดต้องเดาเองว่าต้อง
+// ไปบอกใคร · เทสต์นี้ล็อกว่า route ส่งเหตุผลขึ้นจอคู่กับสิทธิ์ **ทุกจุดที่ตอบกลับ**
+// — ตอบแค่ `_canEditPdr` เมื่อไร หน้าจอจะรู้ว่า "กดไม่ได้" แต่ไม่รู้ว่าทำไม
+test('⭐ route ส่ง `_editPdrBlocker` คู่กับ `_canEditPdr` ทุกจุดที่ตอบกลับ', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('src/app/api/sa/requests/[id]/route.js', 'utf8');
+  const grants = (src.match(/_canEditPdr:/g) || []).length;
+  const reasons = (src.match(/_editPdrBlocker:/g) || []).length;
+  assert.ok(grants > 0, 'route ต้องคืนสิทธิ์แก้ PDR');
+  assert.equal(reasons, grants, 'ทุกจุดที่คืนสิทธิ์ ต้องคืนเหตุผลด้วย');
+});

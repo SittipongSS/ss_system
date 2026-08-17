@@ -13,6 +13,9 @@
 .layoutSolo {
   grid-template-columns: minmax(0, 1fr);
 }
+/* โหมด `controlFirst` วางรางไว้ก่อนเนื้อใน DOM (เหตุผลอยู่ที่ `DetailPageLayout`) —
+   จอกว้างจึงต้องดันมันกลับไปคอลัมน์ขวาให้เหมือนหน้าอื่นทุกประการ */
+.controlFirst > .aside { order: 2; }
 .main {
   min-width: 0;
   display: flex;
@@ -199,6 +202,10 @@
     break-inside: avoid;
     margin-bottom: var(--space-4);
   }
+  /* ⭐ โหมด `controlFirst`: จอแคบ = ตามลำดับ DOM (รางมาก่อน) ⇒ คืน `order` เป็นกลาง
+     🐞 ที่ความกว้างนี้รางเลิก sticky แล้วไหลไปต่อท้าย ⇒ หน้าที่ปุ่มระดับใบทั้งชุด
+     อยู่ในการ์ด control จะไม่มีทางเข้าถึงปุ่มเลยจนกว่าจะเลื่อนผ่านทั้งเธรด */
+  .controlFirst > .aside { order: 0; }
 }
 @media (max-width: 680px) {
   /* 🐞 **เคยสั่ง `grid-template-columns: 1fr` ซึ่งไม่มีผลเลย** — ที่ ≤1050px รางขวา

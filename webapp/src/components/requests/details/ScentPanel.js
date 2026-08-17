@@ -9,6 +9,7 @@
 import {
   DocumentReadinessList, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
+import { toneColor } from "@/lib/ui/tone";
 
 export default function ScentPanel({
   briefSummary, reconcile, reconcileTone, reconcileText,
@@ -42,9 +43,13 @@ export default function ScentPanel({
           { id: "price", label: "รอใส่ราคา", value: String(briefSummary.awaitingPrice) },
         ]}
         // ป้ายกระทบยอด — ประโยคเดียวกับที่เคยเป็น StatusNotice กลางหน้า
+        // ⚠️ สีมาจาก `toneColor` ที่เดียวของระบบ (lib/ui/tone.js) — **ห้ามเทียบสตริง
+        // โทนเองที่นี่**
+        // 🐞 เดิมเขียน `reconcileTone === "danger" ? … : reconcileTone === "warn" ? …`
+        // แต่ `SO_RECONCILE_TONE` ปล่อยแค่ neutral · success · warning ⇒ ไม่ตรงสักตัว
+        // และทุกสถานะตกไปที่กิ่ง else = เขียว · "ขาด 2 กลิ่น" จึงทาเขียวว่าเรียบร้อย
         status={reconcile && reconcileText ? reconcileText : undefined}
-        statusColor={reconcileTone === "danger" ? "var(--red)"
-          : reconcileTone === "warn" ? "var(--amber)" : "var(--green)"}
+        statusColor={toneColor(reconcileTone)}
       >
         <DocumentReadinessList items={readiness} label="ความพร้อมของใบนี้" />
       </DocumentSummaryCard>
