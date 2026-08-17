@@ -75,6 +75,54 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
   return granted;
 }
 
+// ถอนสิทธิ์ของ **ไฟล์ใบเดียว** ทุกคนที่ระบบเคยให้ — ใช้ตอนแถวไฟล์แนบกำลังจะหายไป
+//
+// 🐞 **ช่องที่ปิดด้วยฟังก์ชันนี้ (ผลตรวจรอบ 13 · ค-2)** — แถวเอกสารมีชีวิตไม่มี
+// `driveFileId` ⇒ `releaseAttachmentFile` เดิมออกตั้งแต่บรรทัดแรกโดยไม่ทำอะไร
+// (ถูกแล้วสำหรับ *ตัวไฟล์* — ลบแถว = เลิกผูก ไม่ใช่ลบเอกสาร) · **แต่แถวนั้นคือแถว
+// เดียวกับที่ถือ `accessGranted`** ⇒ ลบแถวแล้ว:
+//   · เอกสารบน Drive อยู่ต่อ (ตั้งใจ)
+//   · permission ที่ระบบให้ไปอยู่ต่อด้วย (ไม่ตั้งใจ)
+//   · **บันทึกว่าเคยให้ใครหายไปพร้อมแถว** ⇒ `revokeGoogleDocAccess` หาไฟล์ใบนี้ไม่เจอ
+//     อีกเลย เพราะมันค้นจาก `attachments.metadata.accessGranted` ทางเดียว
+// ⇒ ปุ่มโล่ในหน้าผู้ใช้ (ทางถอนทางเดียวของระบบ) ใช้กับไฟล์ใบนั้นไม่ได้ตลอดกาล
+//
+// ⚠️ **best-effort เหมือนการทิ้งไฟล์** — ถอนไม่ได้ต้องไม่บล็อกการลบแถว · แต่ต้องดัง
+// เพราะสิทธิ์ที่ค้างหลังแถวหายคือของที่ไม่มีใครตามเก็บได้อีก
+//
+// คืนจำนวนที่ถอนสำเร็จจริง (ไม่ใช่จำนวนอีเมลที่วนผ่าน)
+//
+// ⚠️ `deps.drive` มีไว้ให้เทสต์ยัดตัวปลอมเข้ามา — โค้ดจริงไม่เคยส่ง · เส้นนี้เป็น
+// "ของที่ถ้าพลาดแล้วไม่มีทางแก้" จึงต้องพิสูจน์ด้วยเทสต์ได้ ไม่ใช่ตรวจด้วยตาอย่างเดียว
+export async function revokeAttachmentGrants(att, deps = {}) {
+  const fileId = att?.metadata?.googleFileId;
+  const emails = grantedList(att);
+  if (!fileId || !emails.length) return 0;
+
+  let drive = deps.drive;
+  if (!drive) {
+    try {
+      drive = await import('@/lib/drive');
+    } catch (err) {
+      console.error('[googleDocAccess] โหลด lib/drive ไม่ได้ตอนถอนสิทธิ์ก่อนลบแถว', err?.message);
+      return 0;
+    }
+  }
+
+  let revoked = 0;
+  for (const email of emails) {
+    try {
+      if (await drive.revokeFileRole(fileId, email)) revoked += 1;
+    } catch (err) {
+      // ⚠️ ดังให้สุด — แถวกำลังจะหาย ถ้าพลาดตรงนี้คือ **ไม่มีทางถอนอีกแล้ว**
+      // ข้อความต้องมี fileId กับอีเมล เพราะนั่นคือทุกอย่างที่เหลือให้ตามเก็บด้วยมือ
+      console.error('[googleDocAccess] ⚠️ ถอนสิทธิ์ก่อนลบแถวไม่สำเร็จ — สิทธิ์จะค้างถาวร',
+        `file=${fileId}`, `email=${email}`, err?.message);
+    }
+  }
+  return revoked;
+}
+
 // ถอนสิทธิ์เอกสารร่วมทั้งหมดของอีเมลหนึ่ง — ใช้ตอนคนย้ายทีมหรือปิดบัญชี
 //
 // ⭐ หาไฟล์เจอเพราะเราจดไว้ใน `metadata.accessGranted` — ไม่ต้องไล่ถาม Drive ทีละใบ

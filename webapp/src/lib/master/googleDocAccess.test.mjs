@@ -5,7 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ensureGoogleDocAccess, revokeGoogleDocAccess } from './googleDocAccess.js';
+import {
+  ensureGoogleDocAccess, revokeAttachmentGrants, revokeGoogleDocAccess,
+} from './googleDocAccess.js';
 import { stripDriveMetadata } from './googleDocs.js';
 
 const gdoc = (id, fileId, granted) => ({
@@ -147,4 +149,53 @@ test('🔴 ทุกเส้นที่เขียน metadata ของไ�
     assert.ok(!/\.\.\.\(metadata && typeof metadata === 'object'/.test(code),
       `${file}: ยังมี spread ดิบของ metadata จาก client`);
   }
+});
+
+// ── ค-2 (ตรวจระบบรอบ 13) · ลบแถวแล้วต้องถอนสิทธิ์ก่อน ──────────────────────
+//
+// 🐞 แถวเอกสารมีชีวิตไม่มี `driveFileId` ⇒ ตัวปล่อยของเดิมออกตั้งแต่บรรทัดแรก ·
+// ถูกสำหรับ *ไฟล์* แต่แถวพวกนั้นคือแถวเดียวกับที่ถือ `accessGranted` ⇒ ลบแถวแล้ว
+// permission ค้างบน Drive **และบันทึกว่าเคยให้ใครหายไปพร้อมแถว** ⇒ `revokeGoogleDocAccess`
+// (ปุ่มโล่ · ทางถอนทางเดียวของระบบ) หาไฟล์ใบนั้นไม่เจออีกเลย
+test('🔴 revokeAttachmentGrants ถอนทุกอีเมลที่แถวนั้นเคยให้ และนับเฉพาะที่ถอนได้จริง', async () => {
+  const calls = [];
+  const drive = {
+    // อีเมลที่สองไม่มี permission บนไฟล์แล้ว — revokeFileRole คืน false
+    revokeFileRole: async (fileId, email) => { calls.push([fileId, email]); return email !== 'b@x.co'; },
+  };
+  const att = { id: 'A1', metadata: { kind: 'gdoc', googleFileId: 'F1', accessGranted: ['a@x.co', 'b@x.co'] } };
+  const revoked = await revokeAttachmentGrants(att, { drive });
+  assert.deepEqual(calls, [['F1', 'a@x.co'], ['F1', 'b@x.co']], 'ต้องยิงครบทุกอีเมล');
+  assert.equal(revoked, 1, 'นับเฉพาะที่ถอนได้จริง ไม่ใช่จำนวนที่วนผ่าน');
+});
+
+test('revokeAttachmentGrants: แถวที่ไม่เกี่ยวข้องต้องไม่ยิง Drive เลย', async () => {
+  const drive = { revokeFileRole: async () => { throw new Error('ไม่ควรถูกเรียก'); } };
+  for (const att of [
+    null,
+    { id: 'A', metadata: {} },                                    // ไม่ใช่เอกสารร่วม
+    { id: 'B', metadata: { googleFileId: 'F1' } },                 // ยังไม่เคยให้ใคร
+    { id: 'C', metadata: { accessGranted: ['a@x.co'] } },          // ไม่มี fileId ให้ถอน
+  ]) {
+    assert.equal(await revokeAttachmentGrants(att, { drive }), 0);
+  }
+});
+
+test('🔴 ทุกเส้นที่ลบไฟล์แนบต้องปล่อยสิทธิ์ก่อน — ถอนสิทธิ์ก่อนทิ้งไฟล์ (ratchet)', () => {
+  const src = readFileSync('src/lib/master/attachments.js', 'utf8');
+  assert.match(src, /revokeAttachmentGrants\(att\)/, 'ตัวปล่อยของต้องถอนสิทธิ์ด้วย');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  // ⚠️ **ต้องถอนสิทธิ์ก่อนด่าน `if (!att?.driveFileId) return;`** — นี่คือหัวใจของ ค-2:
+  // แถวเอกสารมีชีวิตไม่มี `driveFileId` ⇒ วางถอนสิทธิ์ไว้หลังด่านนั้นเมื่อไร บั๊กเดิม
+  // กลับมาทันทีแบบเงียบ (เทสต์ที่เทียบแค่ "revoke มาก่อน deleteFile" จับไม่ได้ —
+  // พิสูจน์แล้วด้วยการกลายพันธุ์)
+  const revokeAt = code.indexOf('revokeAttachmentGrants');
+  const bailAt = code.indexOf('if (!att?.driveFileId) return;');
+  assert.ok(revokeAt >= 0 && bailAt >= 0 && revokeAt < bailAt,
+    'ต้องถอนสิทธิ์ก่อนด่าน driveFileId — ไม่งั้นเอกสารมีชีวิตไม่ถูกถอนเลย');
+  // และต้องมาก่อนการทิ้งไฟล์ด้วย (ทิ้งก่อนแล้ว permissions.list อาจตอบ 404)
+  assert.ok(revokeAt < code.indexOf('deleteFile'), 'ต้องถอนสิทธิ์ก่อนทิ้งไฟล์');
+  // เส้นลบเป็นก้อน (ลบ entity แม่) ต้องใช้ตัวเดียวกัน ไม่ใช่ลบแถวตรง ๆ
+  assert.match(code, /for \(const att of list\) await releaseAttachmentFile\(att\)/,
+    'purgeAttachments ต้องปล่อยของทีละแถวผ่านตัวเดียวกัน');
 });

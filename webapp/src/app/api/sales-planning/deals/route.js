@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
 import { autoProbability } from '@/lib/sales/dealProbability';
@@ -44,19 +45,31 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // ตัดตัวกรองทิ้งทั้งก้อนแล้วดึงมาทุกปี ตัวเลขจึงไม่ตรงกับปีที่ค้างบนปุ่ม
   const year = isYearValue(params.get('year')) ? params.get('year') : null;
 
-  let query = supabase
-    .from('sales_deals')
-    .select(selectDeal)
-    .order('updatedAt', { ascending: false });
-  query = applyDealScope(query, user);
-  if (stage && stage !== 'all') query = query.eq('stage', normalizeStage(stage));
-  if (month) query = query.eq('forecastMonth', month);
-  else if (year) {
-    const range = monthRangeOfYear(year);
-    query = query.gte('forecastMonth', range.first).lte('forecastMonth', range.last);
-  }
+  /* ⚠️ **อ่านทุกหน้า ไม่ใช่หน้าแรก** — Supabase ตั้ง Max rows = 1000 และ PostgREST
+     ตัดผลลัพธ์ **โดยไม่มี error** ⇒ วันที่ดีลเกินพันใบ ลิสต์นี้จะหายไปเงียบ ๆ พร้อม
+     ตัวเลขสรุปทุกตัวที่หน้าจอคำนวณจากมัน (prod วันนี้ 297 ใบ — ยังไม่ถึง แต่เป็น
+     ตารางที่โตตามงานขายทุกวัน)
 
-  const { data, error } = await query;
+     ⚠️ **ต้องส่งเป็น factory** ไม่ใช่ตัว builder — builder ของ supabase-js ยิงซ้ำ
+     ไม่ได้ (ยิงแล้วจบ) `fetchAllResult` จึงต้องประกอบคำสั่งใหม่ทุกหน้า
+     ⚠️ **ลำดับต้องนิ่ง** — `updatedAt` ซ้ำกันได้ ⇒ พ่วง `id` เป็นตัวตัดสิน ไม่งั้น
+     แถวเดียวกันโผล่สองหน้าและอีกแถวหายไปเลย (บทเรียน #1276) */
+  // ตัวกรองแยกออกมาเพื่อให้คำสั่งอ่านทั้งหน้าเหลือหนึ่ง statement (ดูด้านล่าง)
+  const applyFilters = (q0) => {
+    let q = applyDealScope(q0, user);
+    if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
+    if (month) q = q.eq('forecastMonth', month);
+    else if (year) {
+      const range = monthRangeOfYear(year);
+      q = q.gte('forecastMonth', range.first).lte('forecastMonth', range.last);
+    }
+    return q;
+  };
+
+  const { data, error } = await fetchAllResult(() => applyFilters(supabase.from('sales_deals')
+    .select(selectDeal)
+    .order('updatedAt', { ascending: false })
+    .order('id', { ascending: true })));
   if (error) return fail(error.message, 500);
 
   // Per-row edit flag so the UI hides actions that would 403 (AE sees the whole
