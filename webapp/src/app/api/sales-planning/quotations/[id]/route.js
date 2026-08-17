@@ -164,6 +164,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('validUntil' in body) patch.validUntil = body.validUntil || null;
   if ('paymentTerms' in body) patch.paymentTerms = (body.paymentTerms || '').trim() || null;
   if ('notes' in body) patch.notes = (body.notes || '').trim() || null;
+  // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
+  if ('referenceNote' in body) patch.referenceNote = (body.referenceNote || '').trim() || null;
   // ภาษาเอกสาร (mig 0238) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น เหมือนช่องเนื้อหาอื่น
   // (ด่านหัว PATCH คุมไว้แล้ว: approvalStatus ต้องเป็น not_submitted)
   // ค่านอกลิสต์ทิ้งไปเงียบ ๆ ไม่ได้ — DB มี CHECK อยู่ ปล่อยผ่านคือ 500 ที่อ่านไม่รู้เรื่อง
@@ -284,7 +286,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ภาษาเอกสารนับเป็นเนื้อหาด้วย — เปลี่ยนภาษา = ใบที่ลูกค้าได้รับหน้าตาคนละใบ
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body || addressPicked
-    || 'docLanguage' in body;
+    || 'docLanguage' in body || 'referenceNote' in body;
   // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
   // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
   // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว

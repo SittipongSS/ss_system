@@ -579,3 +579,20 @@ test('ที่อยู่บริษัทภาษาอังกฤษเ�
   });
   assert.equal(withoutEn.company.addressEn, '');
 });
+
+// ── เอกสารอ้างอิง (mig 0267) ────────────────────────────────────────────────
+// ข้อความอิสระที่คนทำใบพิมพ์เอง — ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้ 2026-08-17)
+test('เอกสารอ้างอิง: กรอกแล้วขึ้นเป็นแถวในบล็อกอ้างอิง', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    referenceNote: 'อ้างถึง PO-1234 ลว. 5 ส.ค. 69',
+  });
+  assert.equal(refRow(model, 'เอกสารอ้างอิง'), 'อ้างถึง PO-1234 ลว. 5 ส.ค. 69');
+});
+
+// ไม่กรอก = ไม่มีแถว ไม่ใช่แถวที่ค่าเป็น '-' — บล็อกอ้างอิงมีที่จำกัด อย่าใส่แถวเปล่า
+test('เอกสารอ้างอิง: ไม่กรอก (หรือเว้นวรรคล้วน) = ตัดแถวทิ้ง', () => {
+  assert.equal(refRow(buildQuotationMasterModelFromQuote(QUOTE_WITH_PROJECT), 'เอกสารอ้างอิง'), undefined);
+  const blank = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, referenceNote: '   ' });
+  assert.equal(refRow(blank, 'เอกสารอ้างอิง'), undefined);
+});

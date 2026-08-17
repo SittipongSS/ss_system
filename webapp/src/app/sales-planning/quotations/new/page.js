@@ -16,6 +16,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
+import Input from "@/components/ui/Input";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
@@ -297,6 +298,7 @@ function NewQuotationInner() {
           vatRate,
           paymentTerms: payment.paymentTerms,
           notes,
+          referenceNote,
           paymentPlan,
           // ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
           metadata: {
@@ -318,7 +320,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
+  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, people, router]);
 
   if (!canEdit) {
     return (
@@ -488,11 +490,22 @@ function NewQuotationInner() {
             <label>วันที่ออกใบ<DateInput className={styles.documentDateInput} value={quoteDate} onChange={(value) => { setQuoteDate(value); setValidUntil(addValidityDays(value, validityDays)); }} required /></label>
             <label>ยืนราคาถึง<DateInput className={styles.documentDateInput} value={validUntil} onChange={(value) => { setValidUntil(value); setValidityDays(validityDaysBetween(quoteDate, value)); }} min={quoteDate || undefined} /></label>
             <label>กำหนดยืนราคา (จำนวนวัน)<input type="number" min="1" step="1" className={`premium-input ${styles.documentDateInput}`} value={validityDays} onChange={(event) => { const days = event.target.value; setValidityDays(days); setValidUntil(addValidityDays(quoteDate, days)); }} /></label>
+            {/* เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ขึ้นเป็นแถวหนึ่งในบล็อกอ้างอิงบน
+                เอกสาร · บรรทัดเดียวโดยเจตนา: เอกสารเรนเดอร์เป็นแถว label/value แถวเดียว
+                ช่องหลายบรรทัดจะสัญญาสิ่งที่เอกสารทำไม่ได้ */}
+            <label className={styles.referenceField}>เอกสารอ้างอิง
+              <Input
+                value={referenceNote}
+                placeholder="เช่น อ้างถึง PO-1234 ลว. 5 ส.ค. 69"
+                onChange={(event) => setReferenceNote(event.target.value)}
+              />
+            </label>
           </section>
 
-          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ ตั้งต้นจากโครงการที่เลือก */}
+          {/* ผู้รับผิดชอบเอกสาร — เหลือช่องเดียว: ผู้ประสานงาน (AC) ตั้งต้นจากโครงการ
+              ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนกดยื่น (ทั้งคู่ระบบรู้เอง ไม่มีช่องให้เลือก) */}
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>เลือกจากผู้ใช้จริง · ผู้ดูแล/ผู้ตรวจสอบตั้งต้นจากโครงการ</span></div>
+            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>ผู้ดูแล = เจ้าของดีล · ผู้จัดทำ = คนที่กดยื่นอนุมัติ</span></div>
             <div className={styles.documentMeta}>
               <QuotationPeopleFields value={people} onChange={setPeople} />
             </div>

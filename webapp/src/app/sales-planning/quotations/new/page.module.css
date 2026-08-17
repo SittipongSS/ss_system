@@ -53,6 +53,9 @@
 
 .documentMeta { display: grid; grid-template-columns: repeat(3, minmax(190px, 280px)); align-items: end; gap: var(--space-4-5); }
 .documentDateInput { width: 100%; }
+/* เอกสารอ้างอิงกินเต็มแถว — ข้อความอ้างอิงยาวกว่าช่องวันที่มาก
+   (เช่น "อ้างถึง PO-1234 ลว. 5 ส.ค. 69") ยัดลงคอลัมน์ 280px แล้วอ่านไม่ออก */
+.referenceField { grid-column: 1 / -1; }
 
 .lineActions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-left: auto; flex-wrap: wrap; }
 /* ตารางรายการ + สรุปท้ายใบย้ายไป QuotationLineItems.module.css (component กลาง) */

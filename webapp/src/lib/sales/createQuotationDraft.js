@@ -132,13 +132,13 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       approvedBy: null,
       approvedByName: null,
       notes: body.notes || null,
-      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
+      // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระที่คนทำใบพิมพ์เอง ไม่ผูกเอกสารจริง
+      referenceNote: (body.referenceNote || '').trim() || null,
+      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้ประสานงาน = ผู้ใช้จริง+role ตรง)
       // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจเองว่ามีจริง+เผยแพร่+ชนิดตรง
       metadata: {
-        ...(body.metadata || {}),
-        aeOwner: peoplePick.people.aeOwner || null,
-        preparedBy: peoplePick.people.preparedBy || null,
-        aeSupervisor: peoplePick.people.aeSupervisor || null,
+        ...draftEditableMeta,
+        ...Object.fromEntries(QT_PEOPLE_FIELDS.map((field) => [field, peoplePick.people[field] || null])),
         // เบอร์ "ผู้เสนอราคา" บนเอกสาร = เบอร์เจ้าของดีล (คนเดียวกับผู้อนุมัติใบ) —
         // ตรึงคู่กับ id ไว้ เอกสารจะได้รู้ว่าเบอร์นี้ยังเป็นของเจ้าของดีลคนปัจจุบันไหม
         salesOwnerId: ownerContact?.id || null,

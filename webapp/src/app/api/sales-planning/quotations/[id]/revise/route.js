@@ -78,6 +78,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     paymentTerms,
     validUntil,
     notes,
+    referenceNote,
   } = revision;
 
   // เลข R ถัดไปของเลขฐานเดียวกัน (กันช่องโหว่ revise ใบเก่าซ้ำ → เลขชน unique)
@@ -165,6 +166,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedBy: null,
       approvedByName: null,
       notes,
+      referenceNote,
       // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise; ผู้รับผิดชอบ validate แล้ว
       metadata: {
         ...(quote.metadata || {}),

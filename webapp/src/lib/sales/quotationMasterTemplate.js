@@ -101,6 +101,7 @@ const DOC_LABEL_PAIRS = Object.freeze({
   projectType: ['ประเภทโครงการ', 'Project Type'],
   salesOwner: ['ผู้เสนอราคา', 'Quoted By'],
   phone: ['โทร', 'Tel.'],
+  referenceNote: ['เอกสารอ้างอิง', 'Reference'],
   // ตารางรายการ
   lineNo: ['ลำดับ', 'No.'],
   lineDescription: ['รายละเอียดสินค้า / บริการ', 'Description'],
@@ -987,6 +988,8 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const paymentMethod = paymentPlan.paymentMethod || '-';
   const paymentTerms = quote.paymentTerms || '-';
   const remarks = quote.notes || '-';
+  // เอกสารอ้างอิงที่คนทำใบพิมพ์เอง (mig 0267) — ว่าง = ตัดแถวทิ้ง ไม่โชว์ '-'
+  const referenceNote = String(quote.referenceNote || '').trim();
   // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
   // (มติผู้ใช้ 2026-08-05): ผู้เสนอราคา = AE เจ้าของดีล — เอกสารไม่มีบทบาท "ผู้จัดทำ" แล้ว
   const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || '-';
@@ -1093,6 +1096,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       { label: L.t('projectType'), value: quotationDealType(quote) },
       { label: L.t('salesOwner'), value: salesOwner },
       ...(salesOwnerPhone ? [{ label: L.t('phone'), value: salesOwnerPhone }] : []),
+      // เอกสารอ้างอิง (มติผู้ใช้ 2026-08-17) — ข้อความอิสระที่คนทำใบพิมพ์เอง เช่น
+      // "อ้างถึง PO-1234 ลว. 5 ส.ค. 69" · ไม่กรอก = ไม่มีแถวนี้ ไม่ใช่แถวว่าง
+      ...(referenceNote ? [{ label: L.t('referenceNote'), value: referenceNote }] : []),
     ],
     signers: options.signers || [
       // ช่องแรก = "ผู้จัดทำ" คนที่ลงมือทำใบนี้จริง (มติผู้ใช้ 2026-08-05) — คนละคนกับ

@@ -11,6 +11,7 @@ import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList,
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
+import Input from "@/components/ui/Input";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -70,6 +71,8 @@ export default function QuotationEditorPage() {
   const [lines, setLines] = useState([]);
   const [form, setForm] = useState({
     quoteDate: "", validUntil: "", validityDays: "", notes: "", discountType: "", discountValue: "", vatRate: 0,
+    // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
+    referenceNote: "",
     // ที่อยู่ที่ใบนี้เลือก (0203) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
     billingAddressId: "", shippingAddressId: "",
   });
@@ -112,6 +115,7 @@ export default function QuotationEditorPage() {
         validUntil: q.validUntil || "",
         validityDays: validityDaysBetween(q.quoteDate, q.validUntil),
         notes: q.notes || "",
+        referenceNote: q.referenceNote || "",
         discountType: q.discountType || "",
         discountValue: q.discountValue ?? "",
         vatRate: Number(q.vatRate || 0),
@@ -262,6 +266,7 @@ export default function QuotationEditorPage() {
     validUntil: form.validUntil || null,
     paymentTerms: payment.paymentTerms,
     notes: form.notes,
+    referenceNote: form.referenceNote,
     discountType: form.discountType || null,
     discountValue: form.discountValue || 0,
     vatRate: form.vatRate,
@@ -803,6 +808,17 @@ export default function QuotationEditorPage() {
                 const validityDays = event.target.value;
                 setF({ validityDays, validUntil: addValidityDays(form.quoteDate, validityDays) });
               }} />
+            </label>
+            {/* เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ขึ้นเป็นแถวหนึ่งในบล็อกอ้างอิงบน
+                เอกสาร · บรรทัดเดียวโดยเจตนา: เอกสารเรนเดอร์เป็นแถว label/value แถวเดียว
+                ช่องหลายบรรทัดจะสัญญาสิ่งที่เอกสารทำไม่ได้ */}
+            <label className={styles.referenceField}>เอกสารอ้างอิง
+              <Input
+                value={form.referenceNote || ""}
+                disabled={!editable}
+                placeholder="เช่น อ้างถึง PO-1234 ลว. 5 ส.ค. 69"
+                onChange={(event) => setF({ referenceNote: event.target.value })}
+              />
             </label>
             {/* ⚠️ ภาษาเอกสาร (IS-26080005) **ไม่ได้อยู่ในฟอร์มนี้** — อยู่ที่แถบเครื่องมือ
                 ของหน้าพรีวิว/พิมพ์ (มติผู้ใช้ 2026-08-12: คนนึกถึงภาษาตอนกำลังจะส่งเอกสาร
