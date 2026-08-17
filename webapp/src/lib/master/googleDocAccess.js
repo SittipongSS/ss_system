@@ -15,6 +15,7 @@
 //
 // ⚠️ server-only + Node runtime — โหลด lib/drive แบบ dynamic
 import { isGoogleDoc } from '@/lib/master/googleDocView';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 
 // ชื่อคีย์ใน metadata ที่จำว่าให้สิทธิ์ใครไปแล้ว — กันยิง Drive ซ้ำทุกครั้งที่เปิดหน้า
 const GRANTED_KEY = 'accessGranted';
@@ -132,24 +133,38 @@ export async function revokeAttachmentGrants(att, deps = {}) {
 // ไปแชร์ให้เองใน Google เขายังเปิดได้อยู่ ซึ่งถูกแล้ว มันคนละทางกัน
 //
 // คืน { files, revoked, failed } — `failed > 0` แปลว่าบางใบยังค้าง ต้องกดซ้ำ
-export async function revokeGoogleDocAccess(supabase, email) {
-  const result = { files: 0, revoked: 0, failed: 0 };
+export async function revokeGoogleDocAccess(supabase, email, deps = {}) {
+  /* ⭐ **สี่ตัวเลข ไม่ใช่สาม** (ผลตรวจรอบ 13 · ค-3)
+     files       — แถวที่ระบบจดว่าเคยให้สิทธิ์คนนี้
+     revoked     — permission ที่ **ถูกลบบน Drive จริง**
+     alreadyGone — ไม่มีอะไรให้ถอน (แถวไม่มี fileId หรือ Drive ไม่มี permission ของอีเมลนี้)
+                   ⇒ ล้างชื่อออกจากบันทึกได้เลย ถือว่าเรียบร้อย
+     failed      — Drive ตอบ error ⇒ **คงชื่อไว้** ให้กดซ้ำได้
+
+     🐞 เดิม `result.revoked += 1` อยู่นอกเงื่อนไข `if (fileId)` และไม่อ่านค่าที่
+     `revokeFileRole` คืน (มันคืน `false` เมื่อไม่เจอ permission) ⇒ ตัวเลขบนจอนับ
+     "ถอนแล้ว" รวมแถวที่ไม่ได้ทำอะไรเลย · จอเขียนคอมเมนต์ไว้เองว่า "บอกตัวเลขจริงเสมอ
+     — สำเร็จลอย ๆ ปิดบังกรณีที่ยังค้าง" ซึ่งเป็นเจตนาที่ถูก แต่ตัวเลขที่ป้อนให้มันผิด */
+  const result = { files: 0, revoked: 0, alreadyGone: 0, failed: 0 };
   if (!email) return result;
 
-  const { data: rows, error } = await supabase
-    .from('attachments')
+  /* ⚠️ **อ่านทุกหน้า** — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ ⇒ คนที่เคยเปิด
+     เอกสารร่วมเกินพันไฟล์ กดโล่แล้วจะถอนได้แค่พันใบแรกโดยไม่มีอะไรบอก และนั่นคือ
+     ความล้มเหลวที่เงียบที่สุดของปุ่มที่มีไว้เพื่อความปลอดภัย
+     ⚠️ ต้องส่งเป็น factory + ลำดับนิ่ง (`id`) ด้วยเหตุผลเดียวกับที่อื่น (#1276) */
+  const rows = await fetchAll(() => supabase.from('attachments')
     .select('id, metadata')
-    .contains('metadata', { [GRANTED_KEY]: [email] });
-  if (error) throw error;
-  result.files = (rows || []).length;
+    .contains('metadata', { [GRANTED_KEY]: [email] })
+    .order('id', { ascending: true }));
+  result.files = rows.length;
   if (!result.files) return result;
 
-  const drive = await import('@/lib/drive');
+  const drive = deps.drive || await import('@/lib/drive');
   for (const att of rows) {
     const fileId = att.metadata?.googleFileId;
     try {
-      if (fileId) await drive.revokeFileRole(fileId, email);
-      result.revoked += 1;
+      if (fileId && await drive.revokeFileRole(fileId, email)) result.revoked += 1;
+      else result.alreadyGone += 1;
     } catch (err) {
       // ⚠️ ล้มแล้ว **ห้ามลบชื่อออกจาก accessGranted** — ไม่งั้นจะหาไฟล์ใบนี้ไม่เจออีก
       // เลยตอนกดซ้ำ กลายเป็นสิทธิ์ค้างถาวรที่ไม่มีใครรู้
