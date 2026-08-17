@@ -29,6 +29,7 @@ import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { loadDealValueItems, prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
@@ -56,7 +57,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!deal) return notFound('ไม่พบดีล');
   if (!inSalesViewScope(user, deal)) return forbidden();
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
-  return ok({ ...deal, forecastDrift });
+  /* รายการมูลค่าคาดการณ์รายหมวด (mig 0264) — มากับใบเสมอ เพราะฟอร์มแก้ต้องได้ของ
+     ชุดเดียวกับที่บันทึกไว้ · ดีลเก่าคืน [] ตามจริง
+     ⚠️ ห้ามกลืน error เป็น [] — ฟอร์มจะเปิดมาว่างแล้วกดบันทึกทับแถวจริงทิ้ง */
+  let valueItems = [];
+  try {
+    valueItems = await loadDealValueItems(supabase, id);
+  } catch (itemsError) {
+    return fail(itemsError.message, 500);
+  }
+  return ok({ ...deal, forecastDrift, valueItems });
 });
 
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -106,8 +116,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;
-  // projectValue = มูลค่าคาดการณ์ — freeze เมื่อปิด Won แล้ว (แก้ไม่ได้อีก); ก่อน Won แก้ได้
-  if ('projectValue' in body && !alreadyWon) patch.projectValue = toMoney(body.projectValue);
+  /* มูลค่าคาดการณ์ (mig 0264): ฟอร์มส่ง `valueItems` มาทั้งชุด — ยอดรวมกับหมวดของดีล
+     คิดจากแถวเท่านั้น (ช่องยอดรวมล็อก) · ผู้เรียกเก่าที่ยังส่ง projectValue ดิบ ๆ
+     ยังใช้ได้ แต่ถ้าส่ง valueItems มาด้วย แถวชนะเสมอ ไม่งั้นจะมียอดสองความจริง
+     freeze เมื่อปิด Won แล้ว เหมือนเดิม (ยอดของดีล Won คือ Actual ไม่ใช่ประมาณการ) */
+  const wantsValueItems = 'valueItems' in body && !alreadyWon;
+  let preparedItems = null;
+  if (wantsValueItems) {
+    const prepared = await prepareDealValueItems(body.valueItems);
+    if (prepared.error) return badRequest(prepared.error);
+    preparedItems = prepared.items;
+    patch.projectValue = prepared.projectValue;
+    // แถวแรก = หมวดของดีล (ตัวกรองขั้นตอนไทม์ไลน์) · ไม่มีแถว = ไม่มีหมวด
+    patch.categoryCode = prepared.categoryCode;
+  } else if ('projectValue' in body && !alreadyWon) {
+    patch.projectValue = toMoney(body.projectValue);
+  }
   // FC% — freeze เมื่อปิด Won แล้ว เหมือน projectValue บรรทัดบน: 100 ของดีล Won คือ
   // "ยอดจริง (Actual)" ไม่ใช่ FC (มติผู้ใช้ 2026-07-29) และ 100 ไม่ใช่ตัวเลือกในฟอร์มแล้ว
   // — ฟอร์มแก้ดีลส่ง probability ที่ผ่าน snapForecastLevel มาทั้งก้อนทุกครั้ง ถ้าไม่กันไว้
@@ -155,8 +179,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('formulaName' in body) {
     patch.formulaName = (body.formulaName || '').trim() || null;
   }
-  // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด
-  if ('categoryCode' in body) {
+  // หมวดสินค้า (DL1 — mig 0094): ใช้กรองขั้นตอนของ timeline template ตามหมวด
+  // ⚠️ ส่ง valueItems มาแล้ว = หมวดมาจากแถวแรก (ข้างบน) — ช่อง categoryCode ดิบ
+  // ที่ตามมาทีหลังต้องไม่ทับ ไม่งั้นหมวดของดีลจะไม่ตรงกับแถวของตัวเอง
+  if ('categoryCode' in body && !wantsValueItems) {
     patch.categoryCode = (body.categoryCode || '').trim() || null;
     if (patch.categoryCode !== (before.categoryCode || null)) {
       const categoryError = await activeProductTypeError(patch.categoryCode);
@@ -189,6 +215,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!data) return conflict('ดีลถูกแก้ไขพร้อมกัน (สถานะเปลี่ยนระหว่างบันทึก) — รีเฟรชหน้าแล้วลองใหม่');
+
+  /* แถวมูลค่ารายหมวด — เขียนทับทั้งชุดหลังแถวดีลผ่าน optimistic lock แล้ว
+     ⚠️ ล้มตรงนี้ = ยอดรวมในแถวดีลเป็นของใหม่แต่แถวยังเป็นของเก่า ⇒ ต้องตอบ error
+     ให้ผู้ใช้กดบันทึกซ้ำ (เขียนทับทั้งชุด กดซ้ำจึงปลอดภัยเสมอ) */
+  if (preparedItems) {
+    const { error: itemsError } = await saveDealValueItems(supabase, id, preparedItems);
+    if (itemsError) return fail(`บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ: ${itemsError}`, 500);
+  }
 
   /* ประเภทดีล/หมวดสินค้าเปลี่ยน = template ของไทม์ไลน์เปลี่ยน → gen ชุดขั้นตอนใหม่
      ให้เอง (มติผู้ใช้ 2026-08-08 "แก้ดีลแล้วไทม์ไลน์อัปเดตตาม") เงื่อนไขปลอดภัย:

@@ -43,10 +43,11 @@ const firstDeal = (lead, ownerId, defaults) => (lead ? {
   customerId: lead.customerId || "",
   dealType: "SCENT",
   stage: "qualified",
-  /* ⚠️ งบลีดเป็นช่วงได้แล้ว (mig 0233) — ตั้งต้นด้วย **ปลายล่าง** เสมอ
-     มูลค่าดีลไหลเข้า FC/รายงาน การเดาสูงไว้ก่อนคือการปั่นตัวเลขคาดการณ์
-     ทั้งกอง · AE แก้ขึ้นได้เองตอนคุยจบ ซึ่งเป็นตอนที่รู้ตัวเลขจริงแล้ว */
-  projectValue: lead.budget || "",
+  /* ⚠️ **ไม่ดึงงบจากลีดมาเป็นมูลค่าตั้งต้นแล้ว** (มติผู้ใช้ 2026-08-17 · mig 0264):
+     มูลค่าคาดการณ์เป็นแถวรายหมวด (หมวด · จำนวน · ราคา/หน่วย) — งบก้อนเดียวจากลีด
+     ตอบไม่ได้ว่าหมวดไหน กี่ชิ้น ราคาเท่าไร การแปลงให้เองคือการปั้นตัวเลขที่ไม่มีใคร
+     เคยบอก (เหตุผลเดียวกับที่ mig 0264 ไม่ backfill ดีลเก่า)
+     งบลีดยังอ่านได้ที่หน้าลีด และ AE พิมพ์เป็นแถวเองตอนที่รู้ของจริง */
   ...defaults,
 } : { ...initialDealForm, ownerId, ...defaults });
 
@@ -57,7 +58,6 @@ const nextDeal = (lead, ownerId, defaults) => (lead ? {
   customerId: lead.customerId || "",
   dealType: "NPD",
   stage: "qualified",
-  projectValue: "",
   ...defaults,
 } : { ...initialDealForm, ownerId, ...defaults });
 
@@ -148,16 +148,26 @@ export default function DealCreateModal({
         // ดีลเก่าที่สร้างเป็น Won: ช่องเดียวกันเปลี่ยนป้ายเป็นของจริง (มูลค่าที่ปิด/
         // วันที่ปิด) — ข้อความ error ต้องเรียกชื่อเดียวกับที่ตาเห็นบนฟอร์ม
         const legacyWon = draft.legacy && draft.stage === "won";
+        const valueLabel = legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์";
         const missing = [
           // สถานะไม่มี default แล้ว (มติ 2026-08-08 "สถานะต้องบังคับเลือก") — ต้องจิ้มเอง
           [!draft.stage, "สถานะ"],
-          [!String(draft.projectValue ?? "").trim(), legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์"],
+          // มูลค่ามาจากแถวรายหมวด (mig 0264) — "ยังไม่มีแถว" คือช่องที่ขาด ไม่ใช่ยอดว่าง
+          [!(draft.valueItems || []).length, `${valueLabel} (อย่างน้อย 1 หมวดสินค้า)`],
           [!draft.expectedCloseDate, legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"],
           [!draft.startDate, "วันที่เริ่ม"],
           [!draft.endDate, "วันที่สิ้นสุด"],
         ].filter(([absent]) => absent).map(([, name]) => name);
         if (missing.length) {
           throw new Error(`กรุณากรอก ${missing.join(" · ")} ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
+        /* แถวที่กรอกไม่ครบ — บอกตั้งแต่ฝั่งจอว่าแถวไหน (server ตรวจซ้ำด้วยสูตรเดียวกัน
+           ที่ lib/sales/dealValueItems.js แต่เสียเที่ยวยิงก่อนไม่มีประโยชน์) */
+        const badRow = (draft.valueItems || []).findIndex(
+          (row) => !row.categoryCode || !(Number(row.qty) > 0),
+        );
+        if (badRow >= 0) {
+          throw new Error(`${valueLabel} แถวที่ ${badRow + 1}: ต้องเลือกหมวดสินค้าและใส่จำนวนมากกว่า 0${draft.title ? ` — "${draft.title}"` : ""}`);
         }
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ

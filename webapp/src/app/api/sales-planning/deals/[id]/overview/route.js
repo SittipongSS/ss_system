@@ -47,6 +47,16 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     safe('inquiries', supabase.from('dept_requests').select('*').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
   ]);
 
+  /* มูลค่าคาดการณ์แยกตามหมวดสินค้า (mig 0264) — ที่มาของ `projectValue`
+     ⚠️ ฟอร์มแก้ดีลของหน้านี้อ่านจากตรงนี้ แล้วส่งกลับไปทั้งชุดตอนบันทึก ⇒ โหลดพลาด
+     ต้องขึ้น warning ให้เห็น ไม่ใช่เงียบ ๆ เป็นลิสต์ว่าง (จะกลายเป็นล้างแถวทิ้ง)
+     🪤 **แยกเป็นคำสั่งของตัวเอง ไม่ยัดเข้า Promise.all ข้างบน** — check:rowcap อ่านทีละ
+     คำสั่งด้วยหน้าต่าง 14 บรรทัด การเติมบรรทัดที่มี `.limit()` เข้าไปในอาร์เรย์เดียวกัน
+     ทำให้คำสั่งข้างเคียงที่ยัง **ไม่มีขอบเขตจริง** ถูกนับว่าปลอดภัยไปด้วย (ตัวเลขหนี้
+     ลดลงเองทั้งที่ไม่มีใครแก้อะไร) */
+  const valueItems = await safe('deal value items', supabase.from('sales_deal_value_items')
+    .select('*').eq('dealId', deal.id).order('seq', { ascending: true }).limit(200), []);
+
   // ── สายภาษี: ปลายทางของ SO ที่เดิมหน้าดีลมองไม่เห็น ────────────────────────
   // ใบยื่นชำระสรรพสามิตผูก SO ตัวต่อตัว (unique 1 SO = 1 ใบยื่น — mig 0160) แต่หน้าดีล
   // จบที่ SO มาตลอด คนดูดีลจึงไม่รู้ว่าภาษีเดินถึงไหน ต้องไปเปิดหน้า SO ก่อนทุกครั้ง
@@ -121,6 +131,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // เทียบทุกตัวที่ใช้ `.data` ว่ามี `.warning` คู่กันครบไหม
     inquiries.warning,
     siblingDeals.warning,
+    valueItems.warning,
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
@@ -169,7 +180,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   return ok({
     taskUpdates,
     hiddenTaskFeeds,
-    deal,
+    /* แถวมูลค่ารายหมวดไปกับดีลเลย — หน้าเดียวใช้ทั้งโชว์และเปิดฟอร์มแก้
+       ⚠️ อ่านไม่สำเร็จ = `null` ไม่ใช่ `[]` — ฟอร์มแก้ส่งรายการกลับไปทั้งชุดตอนบันทึก
+       ลิสต์ว่างจึงแปลว่า "ลบทุกแถว" หน้าเว็บต้องแยกสองกรณีนี้ออกจากกันได้ */
+    deal: { ...deal, valueItems: valueItems.warning ? null : (valueItems.data || []) },
     canEdit,
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),

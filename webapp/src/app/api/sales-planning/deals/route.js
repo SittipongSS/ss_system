@@ -26,6 +26,7 @@ import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,9 +112,22 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json();
   if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
-  const categoryCode = (body.categoryCode || '').trim() || null;
-  const categoryError = await activeProductTypeError(categoryCode);
-  if (categoryError) return badRequest(categoryError);
+
+  /* มูลค่าคาดการณ์แยกตามหมวดสินค้า (mig 0264 — มติผู้ใช้ 2026-08-17)
+     ส่ง valueItems มาเมื่อไร = ยอดรวมและหมวดของดีลมาจากแถวเท่านั้น
+     (ช่องยอดรวมบนฟอร์ม **ล็อก** — ยอมรับ body.projectValue ต่อไปจะเปิดทางให้เกิด
+     ดีลที่ยอดไม่ตรงกับผลบวกของแถวตัวเอง)
+     ไม่ส่งมา = ทางเดิมทั้งดุ้น (ผู้เรียกเก่า/ดีลที่ยังไม่แตกหมวด) */
+  const hasValueItems = Array.isArray(body.valueItems) && body.valueItems.length > 0;
+  const prepared = hasValueItems ? await prepareDealValueItems(body.valueItems) : null;
+  if (prepared?.error) return badRequest(prepared.error);
+
+  const categoryCode = hasValueItems ? prepared.categoryCode : ((body.categoryCode || '').trim() || null);
+  if (!hasValueItems) {
+    const categoryError = await activeProductTypeError(categoryCode);
+    if (categoryError) return badRequest(categoryError);
+  }
+  const projectValue = hasValueItems ? prepared.projectValue : toMoney(body.projectValue);
 
   /* ผู้รับผิดชอบ (AE) — ดีลเป็นหน้าที่ของ ae/senior_ae (มติผู้ใช้ 2026-08-08)
      ⚠️ ห้ามเชื่อ body: `ownerName` เป็นสตริงอิสระที่ถูกเก็บเป็น snapshot แล้วโชว์บน
@@ -168,11 +182,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     customerName,
     title: body.title.trim(),
     stage,
-    projectValue: toMoney(body.projectValue),
+    projectValue,
     // ดีลเก่าที่สร้างเป็น Won (ผ่านธง legacy เท่านั้น — ด่านข้างบน): ฟอร์มส่งช่อง
-    // "มูลค่าที่ปิด" มาในคีย์ projectValue เดิม → เข้า wonValue เป็นยอดจริงทันที
-    // (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่านค่านี้)
-    wonValue: stage === 'won' ? toMoney(body.projectValue) : null,
+    // "มูลค่าที่ปิด" มาเป็นแถวมูลค่ารายหมวดชุดเดียวกัน → ยอดรวมเข้า wonValue เป็น
+    // ยอดจริงทันที (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่าน)
+    wonValue: stage === 'won' ? projectValue : null,
     // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
     // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
     // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
@@ -254,6 +268,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { data: joined } = await supabase
     .from('sales_deals').select(selectDeal).eq('id', created.id).maybeSingle();
   const data = joined || created;
+
+  /* แถวมูลค่ารายหมวด (mig 0264) — เขียนหลังดีลเกิดแล้วเพราะต้องมี dealId
+     ⚠️ ยอดรวมในแถวดีลถูกเขียนไปแล้วตั้งแต่ insert ⇒ เขียนแถวไม่สำเร็จ = ยอดกับที่มา
+     ไม่ตรงกัน ต้องบอกผู้ใช้ให้เข้าไปแก้ที่หน้าดีล (ล้มทั้งคำขอไม่ได้ — ดีลเกิดจริงแล้ว
+     และการกด "สร้าง" ซ้ำจะได้ดีลซ้ำ ตามที่ DealCreateModal เตือนไว้) */
+  let valueItemsWarning = null;
+  if (hasValueItems) {
+    const { error: itemsError } = await saveDealValueItems(supabase, data.id, prepared.items);
+    if (itemsError) valueItemsWarning = `บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ: ${itemsError} — ยอดรวม ${projectValue} บาทถูกบันทึกแล้ว แต่รายการแยกหมวดยังไม่ครบ แก้ได้ที่หน้าดีล`;
+  }
 
   /* ไทม์ไลน์เกิดพร้อมดีลเสมอ ไม่ต้องกดสร้างเอง (มติผู้ใช้ 2026-08-08) — ฟอร์มสร้าง
      มีครบทุกอย่างที่ template ใช้แล้ว (ประเภทดีล/หมวดสินค้า/วันที่เริ่ม/เจ้าของ)
@@ -349,6 +373,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     }
   }
 
-  // timelineWarning: ดีลสร้างสำเร็จแต่ไทม์ไลน์ไม่เกิด — โมดัลใช้แจ้งต่อ (ไม่ใช่ error)
-  return ok(timelineWarning ? { ...data, timelineWarning } : data, 201);
+  // timelineWarning / valueItemsWarning: ดีลสร้างสำเร็จแต่ของประกอบไม่ครบ —
+  // โมดัลใช้แจ้งต่อ (ไม่ใช่ error: ดีลเกิดจริงแล้ว กดสร้างซ้ำจะได้ดีลซ้ำ)
+  return ok({
+    ...data,
+    ...(timelineWarning ? { timelineWarning } : {}),
+    ...(valueItemsWarning ? { valueItemsWarning } : {}),
+  }, 201);
 });

@@ -24,6 +24,7 @@ import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
+import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import MenuSelect from "@/components/ui/MenuSelect";
 import Segmented from "@/components/ui/Segmented";
@@ -334,7 +335,20 @@ export default function SalesPlanningPipelinePage() {
 
   const openNewDeal = () => setCreateModal(true);
 
-  const openEditDeal = (deal) => {
+  /* async: แถวในตารางไม่มีรายการมูลค่ารายหมวดติดมาด้วย (mig 0264 — ลิสต์ทั้งหน้า
+     ไม่ควรลากลูกของทุกใบมา) ⇒ เปิดฟอร์มแก้ = อ่านใบเดียวก่อนหนึ่งครั้ง
+     ⚠️ อ่านไม่สำเร็จ = เปิดฟอร์มด้วยรายการว่าง ซึ่งกดบันทึกแล้วจะ **ล้างแถวเดิมทิ้ง**
+     จึงต้องไม่เปิดฟอร์มเลย ให้ผู้ใช้ลองใหม่แทน */
+  const openEditDeal = async (deal) => {
+    let valueItems = [];
+    try {
+      const res = await fetch(`/api/sales-planning/deals/${deal.id}`);
+      if (!res.ok) throw new Error();
+      valueItems = dealValueItemsToForm((await res.json()).valueItems || []);
+    } catch {
+      setError("โหลดรายการมูลค่าคาดการณ์ของดีลนี้ไม่สำเร็จ — ลองใหม่อีกครั้ง");
+      return;
+    }
     setDealForm({
       id: deal.id,
       title: deal.title || "",
@@ -343,8 +357,7 @@ export default function SalesPlanningPipelinePage() {
       stage: deal.stage || "lead",
       dealType: dealTypeOf(deal),
       formulaName: deal.formulaName || "",
-      categoryCode: deal.categoryCode || "",
-      categoryMainCode: String(deal.categoryCode || "").split("-")[0] || "",
+      valueItems,
       brand: deal.metadata?.brand || "",
       projectValue: deal.projectValue ?? "",
       wonValue: deal.wonValue ?? "",
@@ -955,8 +968,11 @@ export default function SalesPlanningPipelinePage() {
           onClose={() => setCreateModal(false)}
           onCreated={(created) => {
             setCreateModal(false);
-            // ดีลเกิดแต่ไทม์ไลน์ไม่เกิด (template ไม่พร้อม) — บอกทันที ไม่ปล่อยเงียบ
-            const warnings = (created || []).map((d) => d?.timelineWarning).filter(Boolean);
+            // ดีลเกิดแต่ของประกอบไม่ครบ (ไทม์ไลน์ไม่เกิด / แถวมูลค่ารายหมวดเขียนไม่ลง)
+            // — บอกทันที ไม่ปล่อยเงียบ
+            const warnings = (created || [])
+              .flatMap((d) => [d?.timelineWarning, d?.valueItemsWarning])
+              .filter(Boolean);
             if (warnings.length) setError(warnings.join(" · "));
             load();
           }}
