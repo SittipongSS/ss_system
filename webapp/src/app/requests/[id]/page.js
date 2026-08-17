@@ -252,7 +252,10 @@ export default function RequestDetailPage() {
   const hasItems = requestHasItems(req.kind);
   // ⭐ ปิดสองฝ่าย (ม-89) — ปุ่มปิดเป็นของ **ผู้ขอ** เท่านั้น · ฝ่ายปลายทางจบงาน
   // ของตัวผ่านรายการ (ส่งเอกสาร/ปฏิเสธ) ไปแล้ว การปิดคือผู้ขอยืนยันรับงานทั้งใบ
-  const canClose = !closeRequestError(req, req.items || []) && req._mine;
+  // ⚠️ เก็บ **ประโยค** ไว้ด้วย ไม่ใช่แค่ true/false — ผู้ขอที่กดปิดไม่ได้ต้องรู้ว่า
+  // ติดอะไร (ปุ่มหายไปเฉย ๆ คือสิ่งที่งวด 2 เพิ่งเลิกทำ)
+  const closeBlocker = closeRequestError(req, req.items || []);
+  const canClose = !closeBlocker && req._mine;
   // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
   const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
@@ -597,7 +600,22 @@ export default function RequestDetailPage() {
               ? setOutcome({ mode: scentOptions.length ? "link" : "create", scentId: "", scentName: "", code: "" })
               : setConfirm({ kind: "close" })),
           }
-          : null;
+          /* ⭐ **ผู้ขอที่ปิดยังไม่ได้ ต้องเห็นว่าติดอะไร** — ไม่ใช่การ์ดที่ไม่มีปุ่มเลย
+             (แพตเทิร์นเดียวกับปุ่ม "แก้ไข" ในงวด 2) · `closeBlocker` เป็นประโยคจาก
+             lib ตัวเดียวกับที่ API ใช้ ⇒ สิ่งที่จอบอกกับสิ่งที่ server บังคับตรงกันเสมอ
+             ⚠️ เฉพาะใบที่ยังเดินอยู่ — ใบที่ปิด/ยกเลิกไปแล้วจบของมันแล้ว ไม่ต้องมีปุ่ม
+             ค้างไว้ให้เข้าใจผิดว่ายังทำอะไรได้ */
+          : req._mine && REQUEST_OPEN_STATUSES.includes(req.status) && closeBlocker
+            ? {
+              id: "close",
+              label: "ปิดเรื่อง",
+              kind: "approve",
+              icon: CheckCheck,
+              disabled: true,
+              disabledReason: closeBlocker,
+              onClick: () => {},
+            }
+            : null;
 
   // ⭐ **ปุ่มระดับใบอยู่บาร์บนสุดของเนื้อ ที่เดียวทุกหัวข้อ** (งวด 1 ของรอบรื้อ) —
   // เดิมที่วางเปลี่ยนไปตามโครงของหัวข้อ: การ์ด control ขวา (ธง Control Panel) ·
