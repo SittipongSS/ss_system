@@ -8,8 +8,8 @@ import {
   checkPrivateEvidenceScope,
   privateEvidenceObjectPath,
 } from '@/lib/upload/privateEvidence';
+import { UPLOAD_STAGING_BUCKET, stagingObjectPath } from '@/lib/upload/staging';
 
-// googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
 
 // ── POST /api/upload/session — ขอ "ทางอัปตรง" ให้เบราว์เซอร์ ────────────────
@@ -21,11 +21,16 @@ export const runtime = 'nodejs';
 //
 // ไบต์ไม่ผ่าน function ⇒ ไม่มีเพดาน 4.5 MB · เพดานจริงเหลือชั้นเดียวคือ MAX_BYTES
 //
-// ⚠️ ขนาดที่ client ประกาศมาคือค่าที่ใช้ตรวจ — ปลายทางบังคับซ้ำให้อีกชั้น:
-//   • Drive: session ผูก X-Upload-Content-Length ไว้ ไบต์จริงไม่ตรงกับที่ประกาศ = Drive ปฏิเสธ
-//   • Storage: bucket ตั้ง file_size_limit ไว้ (mig 0262) Storage ปฏิเสธเอง
-//   ⇒ ไม่มีขั้น "confirm" ที่ฝั่งเราลบไฟล์ทีหลัง (ซึ่งจะกลายเป็นปุ่มลบไฟล์ Drive ใบไหน
-//     ก็ได้สำหรับใครที่รู้ fileId) — ปลายทางเป็นคนปฏิเสธตั้งแต่ตอนรับไบต์
+// ปลายทางของ URL ที่คืนไปมีสองแบบ (client ดูที่ `kind`):
+//   • `supabase`      — หลักฐาน Won/การชำระ ขึ้น bucket ส่วนตัวแล้วจบ
+//   • `drive-staged`  — ไฟล์แนบทั่วไป ขึ้น staging bucket ก่อน แล้วเรียก
+//                       `/api/upload/commit` ให้ server ย้ายเข้า Drive (Drive ไม่รับ
+//                       PUT ตรงจากเบราว์เซอร์ — ไม่มี CORS ดูคอมเมนต์ท้าย handler)
+//
+// ⚠️ ขนาดที่ client ประกาศมาเชื่อไม่ได้ — ด่านจริงอยู่ที่ Storage (`file_size_limit`
+// ของ bucket: mig 0262/0263 ตั้งเท่า MAX_UPLOAD_MB) และที่ commit ซึ่งวัดขนาดไบต์จริง
+// ก่อนย้ายเข้า Drive ⇒ ไม่ต้องมีขั้น "confirm" ที่ฝั่งเราลบไฟล์ Drive ทีหลัง (ซึ่งจะ
+// กลายเป็นปุ่มลบไฟล์ใบไหนก็ได้สำหรับใครที่รู้ fileId)
 export async function POST(request) {
   try {
     // ต้องล็อกอินก่อน (กัน upload สาธารณะ) — ด่านเดียวกับ `/api/upload`
@@ -70,24 +75,28 @@ export async function POST(request) {
       });
     }
 
-    // ── ไฟล์แนบทั่วไป: Google Drive (ที่เก็บเดียวของระบบ) ────────────────────
-    // dynamic import: โหลด googleapis เฉพาะตอนอัปจริง ไม่ถ่วง route อื่น
-    try {
-      const { createResumableUpload } = await import('@/lib/drive');
-      const { uploadUrl } = await createResumableUpload({
-        entityType, entityId, name: fileName, mimeType: contentType, sizeBytes,
-      });
-      return Response.json({ kind: 'drive', uploadUrl, contentType });
-    } catch (err) {
-      console.error('[upload/session] Google Drive session failed:', err);
-      // ส่งสาเหตุจริงกลับไป — "ขอทางอัปไม่สำเร็จ" ลอย ๆ ทำให้ตามต่อไม่ได้ว่าติด env,
-      // ติดสิทธิ์ Shared Drive หรือโฟลเดอร์หาย (ตรวจได้ที่ ตั้งค่า → ที่เก็บไฟล์)
-      const detail = String(err?.errors?.[0]?.message || err?.message || '').slice(0, 200);
-      return Response.json(
-        { error: `ขอทางอัปขึ้น Google Drive ไม่สำเร็จ${detail ? ` — ${detail}` : ''}` },
-        { status: 502 },
-      );
+    // ── ไฟล์แนบทั่วไป (ปลายทาง Drive): พักที่ staging bucket ก่อน ───────────────
+    // 🐞 รอบแรกให้เบราว์เซอร์ PUT ขึ้น **Drive resumable session URL** ตรง ๆ ซึ่ง
+    // **ใช้ไม่ได้จริง**: googleapis.com ไม่ตอบ CORS ให้ขานั้น (prod 2026-08-17 —
+    // session สร้างสำเร็จ แต่ PUT ตาย `TypeError: Failed to fetch` ทุกครั้ง)
+    // Supabase Storage รับ PUT ตรงจากเบราว์เซอร์ได้ (ทดสอบ 6 MB ผ่าน 200) ⇒ ไบต์ขึ้น
+    // staging ก่อน แล้ว `/api/upload/commit` ย้ายเข้า Drive (mig 0263)
+    const storagePath = stagingObjectPath(user.id, fileName);
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.storage
+      .from(UPLOAD_STAGING_BUCKET)
+      .createSignedUploadUrl(storagePath);
+    if (error) {
+      console.error('[upload/session] createSignedUploadUrl (staging) failed:', error);
+      return Response.json({ error: `ขอทางอัปไฟล์ไม่สำเร็จ — ${error.message}` }, { status: 502 });
     }
+    return Response.json({
+      kind: 'drive-staged',
+      signedUrl: data.signedUrl,
+      storageBucket: UPLOAD_STAGING_BUCKET,
+      storagePath,
+      contentType,
+    });
   } catch (error) {
     console.error('[upload/session] error:', error);
     const detail = String(error?.message || '').slice(0, 200);
