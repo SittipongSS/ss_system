@@ -88,3 +88,27 @@ export const isUrgent = (t) => {
   const dd = daysToDue(t);
   return dd !== null && dd <= 3;
 };
+
+/* ป้ายกำหนดเสร็จของงานติดตาม — ตรรกะล้วน (สี/ไอคอนประกอบที่หน้าจอ)
+   🐞 บั๊กที่ตัวนี้ปิด (แก้ 2026-08-17): เวอร์ชันเดิมอยู่ในหน้า /pm/tasks และตัดจบ
+   ตั้งแต่ `status === "Pending"` ⇒ งานที่ยังไม่เริ่มและเลยกำหนดไปแล้ว โชว์เทา ๆ ว่า
+   "ยังไม่เริ่ม" ต้องกดเป็น "กำลังทำ" ก่อนถึงจะเห็นว่าเลยกำหนด ทั้งที่การ์ด "ต้องรีบ"
+   (isUrgent) และ KPI (taskKpi.tallyTask) นับมันมาตั้งแต่ต้น — ตัวเลขกับแถวขัดกันเอง
+   ⇒ กติกาใหม่: **ทุกสถานะที่ยังไม่ปิด อ่านวันกำหนดเสมอ**
+
+   tone: done | overdue | soon | waiting | idle | active
+     - overdue/soon = อยู่ในมือเรา (แดง/เหลือง)
+     - waiting = รอคนอื่นอยู่ (ม่วง) — นาฬิกาเดินต่อ แต่แยกสี/แยกยอดตามมติผู้ใช้ */
+export const taskUrgency = (task, { waiting = false } = {}) => {
+  if (task.status === "Completed") return { tone: "done", label: "เสร็จแล้ว", overdue: false };
+  const dd = daysToDue(task);
+  if (dd === null) {
+    if (waiting) return { tone: "waiting", label: "รอคนอื่น", overdue: false };
+    if (task.status === "Pending") return { tone: "idle", label: "ยังไม่เริ่ม", overdue: false };
+    return { tone: "active", label: "กำลังทำ", overdue: false };
+  }
+  const suffix = waiting ? " · รอคนอื่น" : "";
+  if (dd < 0) return { tone: waiting ? "waiting" : "overdue", label: `เลยกำหนด ${Math.abs(dd)} วัน${suffix}`, overdue: true };
+  if (dd <= 3) return { tone: waiting ? "waiting" : "soon", label: `เหลือ ${dd} วัน${suffix}`, overdue: false };
+  return { tone: waiting ? "waiting" : "active", label: `เหลือ ${dd} วัน${suffix}`, overdue: false };
+};

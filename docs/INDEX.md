@@ -87,6 +87,7 @@
 
 | เอกสาร | ค้างอะไร | สถานะ |
 |---|---|---|
+| [task-waiting-and-chain.md](task-waiting-and-chain.md) | งานติดตาม: สถานะ "รอคนอื่น" + งานต่อเนื่อง (mig 0266) · โค้ดครบ · **ยังไม่รัน migration บนฐานจริง** และยังไม่ UAT | รอตรวจ |
 | [timeline-dates-plan.md](timeline-dates-plan.md) | ครบทุกข้อแล้ว — เฟส 1–5 (PR #1198) · ของจริงบนใบพิมพ์ FM-PD-05 (PR #1200) · จุดสำคัญบน Gantt (รอ merge) · mig 0239 รันบนฐานจริงแล้ว | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |
 | [system-issue-reporting-plan.md](system-issue-reporting-plan.md) | merge แล้ว (PR #1068) · mig 0223 (เดิม 0219) รันแล้ว · เหลือ smoke test ด้วยบัญชีของฝ่าย · **ข้าม webhook ตามมติผู้ใช้ — เรื่องใหม่ยังไม่มีสัญญาณถึงใคร** | รอตรวจ |

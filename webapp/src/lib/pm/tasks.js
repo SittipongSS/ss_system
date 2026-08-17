@@ -13,6 +13,38 @@ export const TASK_CATEGORIES = [
   'อื่น ๆ',
 ];
 
+/* ── สถานะงานติดตาม (personal_tasks) ────────────────────────────────────────
+   4 ค่า — 'Blocked' ("รอคนอื่น") เพิ่มเมื่อ 2026-08-17 ตามมติผู้ใช้: งานที่ส่งออกไป
+   แล้วรอฝ่ายอื่น/ลูกค้าตอบ ไม่ใช่ทั้ง "กำลังทำ" (ไม่มีอะไรอยู่ในมือเรา) และไม่ใช่
+   "รอดำเนินการ" (ซึ่งแปลว่ายังไม่ได้เริ่ม) — เดิมต้องเลือกผิดสักทางเสมอ
+
+   ⚠️ ค่านี้ใช้กับ **งานติดตามเท่านั้น** ขั้นตอนไทม์ไลน์ (project_tasks) ยังมี 3 ค่า
+   เพราะสถานะของมันถูกไล่อัตโนมัติจากกราฟ predecessor (lib/pm/status.js) ซึ่งไม่รู้จัก
+   'Blocked' — StatusSelect จึงรับชุดสถานะเข้ามาเป็น prop แทนที่จะฮาร์ดโค้ดชุดเดียว */
+export const TASK_STATUS_PENDING = 'Pending';
+export const TASK_STATUS_IN_PROGRESS = 'In Progress';
+export const TASK_STATUS_BLOCKED = 'Blocked';
+export const TASK_STATUS_COMPLETED = 'Completed';
+
+// เรียงตามลำดับเวลาที่งานเดินจริง: ยังไม่เริ่ม → ลงมือ → ส่งออกไปรอคนอื่น → ปิด
+export const PERSONAL_TASK_STATUSES = [
+  TASK_STATUS_PENDING, TASK_STATUS_IN_PROGRESS, TASK_STATUS_BLOCKED, TASK_STATUS_COMPLETED,
+];
+export const PROJECT_TASK_STATUSES = [
+  TASK_STATUS_PENDING, TASK_STATUS_IN_PROGRESS, TASK_STATUS_COMPLETED,
+];
+
+export const TASK_STATUS_TH = {
+  [TASK_STATUS_PENDING]: 'รอดำเนินการ',
+  [TASK_STATUS_IN_PROGRESS]: 'กำลังทำ',
+  [TASK_STATUS_BLOCKED]: 'รอคนอื่น',
+  [TASK_STATUS_COMPLETED]: 'เสร็จแล้ว',
+};
+
+// งานที่ "ไม่ได้อยู่ในมือเรา" — นาฬิกาเกินกำหนดยังเดินต่อ (มติผู้ใช้: เดดไลน์คือ
+// เดดไลน์ ไม่ว่าเหตุใด) แต่หน้าจอต้องแยกสีและแยกยอด ไม่ให้ปนกับงานที่เราดองเอง
+export const isWaitingStatus = (status) => status === TASK_STATUS_BLOCKED;
+
 // ระดับความยาก 1-3 (เทมเพลตมี 5 ระดับ — ละเอียดเกินการใช้จริง). ใช้ถ่วงน้ำหนัก KPI.
 export const DIFFICULTY_LABELS = { 1: 'ง่าย', 2: 'ปานกลาง', 3: 'ยาก' };
 export const DIFFICULTY_OPTIONS = [1, 2, 3];
@@ -22,9 +54,11 @@ export function normalizeDifficulty(v) {
 }
 
 // % ความคืบหน้าอนุมานจากสถานะ (แบบเดียวกับตรรกะเทมเพลต: ยังไม่เริ่ม/กำลังทำ/เสร็จ).
+// 'Blocked' = 50 เท่ากับ "กำลังทำ" โดยตั้งใจ — งานที่รอคนอื่นคืองานที่เดินไปแล้วครึ่งทาง
+// ไม่ใช่งานที่ถอยหลัง (ถ้าให้ต่ำกว่านี้ ความคืบหน้าโครงการจะลดลงตอนส่งงานออกไปรอ)
 export function taskProgressPct(status) {
   if (status === 'Completed') return 100;
-  if (status === 'In Progress') return 50;
+  if (status === 'In Progress' || status === 'Blocked') return 50;
   return 0;
 }
 
