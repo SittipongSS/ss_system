@@ -7,8 +7,10 @@ import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
-import { enforceMasterPrices, normalizeManualLines } from '@/lib/sales/quoteLines';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import {
+  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
+} from '@/lib/sales/quoteLines';
+import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
@@ -54,12 +56,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
+  const revLines = normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []);
+  // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ยกเว้นบรรทัดที่สืบทอด
+  // มาจากใบเดิม ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่จะออก Rev. ไม่ได้เลย
+  const revMismatched = await customerMismatchedLines(supabase, revLines, {
+    customerId: quote.customerId,
+    previousLines: quote.lines || [],
+  });
+  if (revMismatched.length) return badRequest(customerMismatchMessage(revMismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
-  body.lines = await enforceMasterPrices(
-    supabase,
-    normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []),
-    quote.lines || [],
-  );
+  body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || []);
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);
   const {
@@ -72,6 +78,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     paymentTerms,
     validUntil,
     notes,
+    referenceNote,
   } = revision;
 
   // เลข R ถัดไปของเลขฐานเดียวกัน (กันช่องโหว่ revise ใบเก่าซ้ำ → เลขชน unique)
@@ -90,17 +97,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const revSeparator = revisionSeparatorOf(quote.quoteNumber, base);
   const now = new Date().toISOString();
 
-  // ผู้รับผิดชอบเอกสาร: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise — ต้องเป็นผู้ใช้จริง
-  // + role ตรง (ฉบับ revise เป็น draft จึงยังไม่บังคับครบ; บังคับตอนกดส่งใบ). ผู้จัดทำ
-  // ไม่ล็อกเป็นผู้ออก revision อีกต่อไป — เลือก AC จริง (มติผู้ใช้ 2026-07-16).
+  // metadata ของฉบับ Rev.: สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise
+  // ⚠️ ไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — ดู quotationMetadata.js
   const revBody = (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) ? body.metadata : {};
-  const revPeople = {
-    aeOwner: 'aeOwner' in revBody ? revBody.aeOwner : quote.metadata?.aeOwner,
-    preparedBy: 'preparedBy' in revBody ? revBody.preparedBy : quote.metadata?.preparedBy,
-    aeSupervisor: 'aeSupervisor' in revBody ? revBody.aeSupervisor : quote.metadata?.aeSupervisor,
-  };
-  const revPick = await validateQuotationPeople(supabase, revPeople, { require: false });
-  if (!revPick.ok) return badRequest(revPick.error);
+  const revEditableMeta = stripRetiredPeople(revBody);
 
   // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
   const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
@@ -158,16 +158,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       approvedBy: null,
       approvedByName: null,
       notes,
-      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise; ผู้รับผิดชอบ validate แล้ว
+      referenceNote,
+      // metadata สืบทอดจากใบเดิม + ทับด้วยค่าที่แก้ตอน revise
       metadata: {
         ...(quote.metadata || {}),
         // เจ้าของดีลอาจเปลี่ยนไปตั้งแต่ Rev. ก่อน — อ่านเบอร์ใหม่ทุกครั้ง ไม่สืบทอด
         salesOwnerId: ownerContact?.id || null,
         salesOwnerPhone: ownerContact?.phone || null,
-        ...revBody,
-        aeOwner: revPick.people.aeOwner || null,
-        preparedBy: revPick.people.preparedBy || null,
-        aeSupervisor: revPick.people.aeSupervisor || null,
+        ...revEditableMeta,
+        // ล้างคีย์ผู้รับผิดชอบที่ปลดระวางแล้ว — ฉบับ Rev. สืบทอด metadata ทั้งก้อน
+        // ไม่ล้างคือค่าที่เลิกใช้เดินตามไปทุกฉบับไม่จบ
+        ...RETIRED_PEOPLE_CLEARED,
         revisedFrom: quote.quoteNumber,
       },
       createdBy: user.id || null,

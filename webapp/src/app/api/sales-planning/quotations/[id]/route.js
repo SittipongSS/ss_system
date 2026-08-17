@@ -13,12 +13,15 @@ import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
   inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
-import { enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
+import {
+  customerMismatchMessage, customerMismatchedLines,
+  enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
+} from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
@@ -71,7 +74,9 @@ async function loadProposerSignature(supabase, quote) {
   if (!imageDataUri) return null;
   return {
     imageDataUri,
-    signerName: ev.signerName || quote.createdByName || '',
+    // ผู้จัดทำ = คนที่กดยื่น (มติผู้ใช้ 2026-08-17) — ชื่อจากหลักฐานมาก่อนเสมอ
+    // ค่าสำรองจึงต้องเป็นผู้ยื่น ไม่ใช่ผู้สร้างร่าง (createdByName เหลือไว้ให้ใบเก่า)
+    signerName: ev.signerName || quote.approvalRequestedByName || quote.createdByName || '',
     signedAt: ev.signedAt || quote.approvalRequestedAt || null,
     evidenceId: ev.id,
   };
@@ -159,6 +164,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('validUntil' in body) patch.validUntil = body.validUntil || null;
   if ('paymentTerms' in body) patch.paymentTerms = (body.paymentTerms || '').trim() || null;
   if ('notes' in body) patch.notes = (body.notes || '').trim() || null;
+  // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
+  if ('referenceNote' in body) patch.referenceNote = (body.referenceNote || '').trim() || null;
   // ภาษาเอกสาร (mig 0238) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น เหมือนช่องเนื้อหาอื่น
   // (ด่านหัว PATCH คุมไว้แล้ว: approvalStatus ต้องเป็น not_submitted)
   // ค่านอกลิสต์ทิ้งไปเงียบ ๆ ไม่ได้ — DB มี CHECK อยู่ ปล่อยผ่านคือ 500 ที่อ่านไม่รู้เรื่อง
@@ -168,38 +175,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     patch.docLanguage = body.docLanguage;
   }
-  // ผู้รับผิดชอบเอกสาร (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ) — ต้องเป็นผู้ใช้จริง + role ตรง.
-  // ตรวจเมื่อมีการแก้ people หรือเมื่อกำลังส่งใบ (บังคับครบ+ถูก role ย้อนหลังกับใบเก่า).
-  // ค่าอื่นใน metadata merge ตามเดิม ไม่ทับทั้งก้อน.
-  const willSend = body.status === 'sent';
+  // metadata ของใบ — merge ทีละคีย์ ไม่ทับทั้งก้อน
+  // ⚠️ ไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — คีย์ที่ปลดระวาง
+  // ถูกปอกทิ้งทุกครั้ง ดูเหตุผลเต็มที่ lib/sales/quotationMetadata.js
   const hasMetaPatch = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata);
-  if (hasMetaPatch || willSend) {
-    const src = hasMetaPatch ? body.metadata : {};
-    const effectivePeople = {
-      aeOwner: 'aeOwner' in src ? src.aeOwner : before.metadata?.aeOwner,
-      preparedBy: 'preparedBy' in src ? src.preparedBy : before.metadata?.preparedBy,
-      aeSupervisor: 'aeSupervisor' in src ? src.aeSupervisor : before.metadata?.aeSupervisor,
-    };
-    const peoplePick = await validateQuotationPeople(supabase, effectivePeople, { require: willSend });
-    if (!peoplePick.ok) return badRequest(peoplePick.error);
+  if (hasMetaPatch) {
+    const src = body.metadata;
     const {
-      aeOwner: _o, preparedBy: _p, aeSupervisor: _s,
       // ชุดเงื่อนไขการค้าเป็นหลักฐาน — ห้ามรับค่าจาก client ตรง ๆ ต้องผ่านการตรวจก่อน
       paymentPresetVersionId: _pay, remarksPresetVersionId: _rem,
-      ...editableMeta
+      ...rest
     } = src;
-    const pinnedPresets = hasMetaPatch
-      ? await resolvePinnedPresetVersionIds(supabase, src)
-      : {
-        payment: before.metadata?.paymentPresetVersionId || null,
-        remarks: before.metadata?.remarksPresetVersionId || null,
-      };
+    const editableMeta = stripRetiredPeople(rest);
+    const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, src);
     patch.metadata = {
       ...(before.metadata || {}),
       ...editableMeta,
-      aeOwner: peoplePick.people.aeOwner || null,
-      preparedBy: peoplePick.people.preparedBy || null,
-      aeSupervisor: peoplePick.people.aeSupervisor || null,
       paymentPresetVersionId: pinnedPresets.payment,
       remarksPresetVersionId: pinnedPresets.remarks,
     };
@@ -237,6 +228,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     newLines = 'lines' in body
       ? normalizeManualLines(body.lines || [])
       : (before.lines || []).map((l) => ({ ...l }));
+    // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ตรวจเฉพาะสินค้าที่
+    // "เพิ่งใส่เข้ามา" เทียบกับบรรทัดเดิมของใบ ไม่งั้นใบเก่าที่มีของข้ามลูกค้าค้างอยู่
+    // จะบันทึกไม่ได้เลย แม้จะมาแก้แค่ VAT/หมายเหตุ
+    const mismatched = await customerMismatchedLines(supabase, newLines, {
+      customerId: before.customerId,
+      previousLines: before.lines || [],
+    });
+    if (mismatched.length) return badRequest(customerMismatchMessage(mismatched));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || []);
@@ -274,7 +273,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ภาษาเอกสารนับเป็นเนื้อหาด้วย — เปลี่ยนภาษา = ใบที่ลูกค้าได้รับหน้าตาคนละใบ
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body || addressPicked
-    || 'docLanguage' in body;
+    || 'docLanguage' in body || 'referenceNote' in body;
   // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
   // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
   // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว

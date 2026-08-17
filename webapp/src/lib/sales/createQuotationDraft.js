@@ -10,11 +10,14 @@ import {
   advanceStage, dealAuditLabel, insertQuotationWithNumber, normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
-import { enforceMasterPrices, normalizeManualLines, seedLinesFromProject } from '@/lib/sales/quoteLines';
+import {
+  customerMismatchMessage, customerMismatchedLines,
+  enforceMasterPrices, normalizeManualLines, seedLinesFromProject,
+} from '@/lib/sales/quoteLines';
 import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
-import { validateQuotationPeople } from '@/lib/sales/quotationPeople';
+import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 
 // ความผิดพลาดเชิงกติกา (ไม่ใช่บั๊ก) — route แปลงเป็น HTTP response ตาม status
@@ -26,6 +29,12 @@ export class QuotationDraftError extends Error {
 }
 
 export async function createQuotationDraft({ supabase, user, deal, body = {}, request }) {
+  // FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) — ใบใหม่ไม่มีบรรทัดเดิม
+  // ให้ยกเว้น จึงตรวจทุกบรรทัดที่ผูกสินค้า
+  const mismatched = await customerMismatchedLines(supabase, normalizeManualLines(body.lines || []), {
+    customerId: deal.customerId,
+  });
+  if (mismatched.length) throw new QuotationDraftError(customerMismatchMessage(mismatched));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
   let lines = await enforceMasterPrices(supabase, normalizeManualLines(body.lines || []));
@@ -70,9 +79,9 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   const paymentPlan = normalizePaymentPlan(body.paymentPlan, totals.totalAmount);
   // ใบใหม่เริ่มเป็น "ร่าง + รออนุมัติ" เสมอ (มติ 2026-07-18): ส่งลูกค้าตอนสร้างไม่ได้
   // เพราะต้องให้เจ้าของดีลอนุมัติก่อน (flow: ร่าง → อนุมัติ → ส่ง). ไม่รับ status='sent'.
-  // ผู้รับผิดชอบเอกสารตรวจตอนสร้างแบบไม่บังคับ (บังคับครบตอนกดส่งจริงใน PATCH).
-  const peoplePick = await validateQuotationPeople(supabase, body.metadata || {}, { require: false });
-  if (!peoplePick.ok) throw new QuotationDraftError(peoplePick.error);
+  // ใบไม่มีบล็อก "ผู้รับผิดชอบเอกสาร" แล้ว (มติผู้ใช้ 2026-08-18) — คีย์ที่ปลดระวาง
+  // ปอกทิ้งก่อน merge เสมอ ดูเหตุผลเต็มที่ lib/sales/quotationMetadata.js
+  const draftEditableMeta = stripRetiredPeople(body.metadata);
 
   // ชุดเงื่อนไขการค้าที่คนทำใบเลือก — ตรวจฝั่ง server ก่อนตรึง (client ส่งอะไรมาก็ได้)
   const pinnedPresets = await resolvePinnedPresetVersionIds(supabase, body.metadata || {});
@@ -119,13 +128,11 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       approvedBy: null,
       approvedByName: null,
       notes: body.notes || null,
-      // ผู้รับผิดชอบเอกสาร validate แล้ว (ผู้ดูแล/ผู้จัดทำ/ผู้ตรวจสอบ = ผู้ใช้จริง+role ตรง)
+      // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระที่คนทำใบพิมพ์เอง ไม่ผูกเอกสารจริง
+      referenceNote: (body.referenceNote || '').trim() || null,
       // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจเองว่ามีจริง+เผยแพร่+ชนิดตรง
       metadata: {
-        ...(body.metadata || {}),
-        aeOwner: peoplePick.people.aeOwner || null,
-        preparedBy: peoplePick.people.preparedBy || null,
-        aeSupervisor: peoplePick.people.aeSupervisor || null,
+        ...draftEditableMeta,
         // เบอร์ "ผู้เสนอราคา" บนเอกสาร = เบอร์เจ้าของดีล (คนเดียวกับผู้อนุมัติใบ) —
         // ตรึงคู่กับ id ไว้ เอกสารจะได้รู้ว่าเบอร์นี้ยังเป็นของเจ้าของดีลคนปัจจุบันไหม
         salesOwnerId: ownerContact?.id || null,

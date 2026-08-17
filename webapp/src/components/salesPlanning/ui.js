@@ -130,8 +130,12 @@ export function stageBadge(stage, className = "") {
 }
 
 // สถานะใบเสนอราคา (คนละชุดกับ stage ของดีล) — closed = ถูกปิดเพราะดีลจบด้วยใบอื่น (mig 0102)
+// ⚠️ `sent` = "อนุมัติแล้ว" (มติผู้ใช้ 2026-08-17): ใบเสนอราคาไม่มีสถานะ "ส่งลูกค้า"
+// ของตัวเองแล้ว — RPC อนุมัติเป็นคนตั้งค่านี้ (mig 0165) คอลัมน์จึงเป็นแค่ธงภายใน
+// คำที่ผู้ใช้เห็นต้องเล่าสี่สถานะเท่านั้น: ร่าง · รออนุมัติ · อนุมัติ · ตีกลับ
+// 🔁 ป้ายชุดนี้ยังถูกก๊อปไว้อีก 2 ที่ (quotations/[id]/page.js · pm/ProjectDealsHub.js)
 export const QUOTE_STATUS_LABELS = {
-  draft: "ฉบับร่าง", sent: "ส่งลูกค้าแล้ว", accepted: "Won", rejected: "ถูกปฏิเสธ",
+  draft: "ฉบับร่าง", sent: "อนุมัติแล้ว", accepted: "Won", rejected: "ถูกปฏิเสธ",
   cancelled: "ยกเลิก", revised: "ถูกแก้ไข (มีฉบับใหม่)", closed: "ปิด (ดีลจบด้วยใบอื่น)",
 };
 export const QUOTE_STATUS_COLORS = {

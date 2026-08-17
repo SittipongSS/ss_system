@@ -16,11 +16,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
+import Input from "@/components/ui/Input";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
-import QuotationPeopleFields from "@/components/salesPlanning/QuotationPeopleFields";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
@@ -71,8 +71,8 @@ function NewQuotationInner() {
   const [payment, setPayment] = useState({ type: "full", paymentMethod: "", paymentTerms: "", installments: [] });
   const [notes, setNotes] = useState("");
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
-  // ผู้รับผิดชอบเอกสาร (เหมือนไทม์ไลน์ — มติผู้ใช้ 2026-07-15) เก็บใน metadata
-  const [people, setPeople] = useState({ aeOwner: "", preparedBy: "", aeSupervisor: "" });
+  // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
+  const [referenceNote, setReferenceNote] = useState("");
 
   // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก) + ทะเบียนลูกค้าไว้ตอบว่า
   // "ลูกค้าที่ค้นมีในทะเบียนแต่ออกใบไม่ได้เพราะอะไร" (ลิสต์นี้กรองทีมอยู่แล้วตามกติกา)
@@ -81,10 +81,9 @@ function NewQuotationInner() {
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, productData, customerData, registryData] = await Promise.all([
+        const [dRes, pRes, customerData, registryData] = await Promise.all([
           fetch("/api/sales-planning/deals").catch(() => null),
           fetch("/api/pm/projects").catch(() => null),
-          cachedFetchJson("/api/products").catch(() => []),
           cachedFetchJson("/api/customers").catch(() => []),
           // ทะเบียนทั้งหมด — ใช้ตอบ "ทำไมลูกค้ารายนี้ไม่โผล่ในลิสต์เลย" เท่านั้น
           // (รออนุมัติ/พักใช้/ทีมอื่นดูแล) **ห้ามใช้เป็นตัวเลือกให้เลือก**
@@ -97,7 +96,6 @@ function NewQuotationInner() {
         const map = {};
         (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
         setProjectsById(map);
-        setProducts(Array.isArray(productData) ? productData : []);
         setCustomers(Array.isArray(customerData) ? customerData : []);
         setRegistryCustomers(Array.isArray(registryData) ? registryData : []);
       } catch (e) {
@@ -108,6 +106,19 @@ function NewQuotationInner() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // FG ของ **ลูกค้าที่เลือก** เท่านั้น (มติผู้ใช้ 2026-08-17) — เดิมดึงทั้งทะเบียน
+  // แล้วดรอปดาวน์โชว์สินค้าของลูกค้าทุกราย หยิบข้ามรายได้เงียบ ๆ
+  // ?customerId= ตั้งใจข้าม team scope ฝั่ง API (FG ของลูกค้ารายนี้อาจถูกขึ้นทะเบียน
+  // โดยทีมอื่น) — ด่านอนุมัติ/พักใช้/redact กำไร ยังทำงานเหมือนเดิม
+  useEffect(() => {
+    if (!customerId) { setProducts([]); return; }
+    let alive = true;
+    cachedFetchJson(`/api/products?customerId=${encodeURIComponent(customerId)}`)
+      .then((rows) => { if (alive) setProducts(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) setProducts([]); });
+    return () => { alive = false; };
+  }, [customerId]);
 
   // ดีลที่ออกใบได้: ผูกโครงการ + มีลูกค้า + สถานะยังเปิด (won/lost = ล็อก) + แก้ไขได้
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — ไม่กรองดีลที่มีใบแล้ว
@@ -169,13 +180,6 @@ function NewQuotationInner() {
     return () => { alive = false; };
   }, [dealId, customerId]);
 
-  // ตั้งต้นผู้ดูแล/ผู้ตรวจสอบจากโครงการที่เลือก (แก้ทับได้ก่อนสร้างใบ) —
-  // ผู้ประสานงาน (AC) เลือกเองจากผู้ใช้จริง ไม่ตั้งต้นจากโครงการ
-  useEffect(() => {
-    const p = projectId ? projectsById[projectId] : null;
-    setPeople({ aeOwner: p?.aeOwner || "", preparedBy: "", aeSupervisor: p?.aeSupervisor || "" });
-  }, [projectId, projectsById]);
-
   const contacts = Array.isArray(customer?.contacts) ? customer.contacts : [];
   // ตัวเลือกที่อยู่ของลูกค้ารายนี้ — แยกตามหน้าที่ (ที่อยู่ "จัดส่งอย่างเดียว" ต้องไม่
   // โผล่ในช่องออกบิล และกลับกัน) · ลูกค้าที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม
@@ -210,9 +214,25 @@ function NewQuotationInner() {
     );
   }, [customers, registryCustomers, deals]);
 
-  const onCustomer = (v) => { setCustomerId(v); setProjectId(""); setDealId(""); setCustomer(null); };
-  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหลายที่
-  // ในหน้านี้อ่านมัน: ตั้งต้น AE/ผู้ตรวจสอบ, payload ตอนสร้างใบ)
+  // เปลี่ยนลูกค้า = บรรทัดที่ผูก FG ของลูกค้าเดิมใช้ต่อไม่ได้ (server ตีกลับตอนบันทึก)
+  // ⇒ ทิ้งเฉพาะบรรทัดที่ผูกสินค้า แล้วบอกให้รู้ว่าทิ้งไปกี่บรรทัด · บรรทัดที่พิมพ์เอง
+  // (ค่าบริการ ฯลฯ) ไม่ผูกลูกค้า เก็บไว้ — ลบงานที่คนพิมพ์เองทิ้งเงียบ ๆ ไม่ได้
+  const onCustomer = (v) => {
+    setCustomerId(v);
+    setProjectId("");
+    setDealId("");
+    setCustomer(null);
+    setLines((current) => {
+      const kept = current.filter((line) => !line.productId && !line.fgCode);
+      const dropped = current.length - kept.length;
+      setError(dropped
+        ? `เปลี่ยนลูกค้าแล้ว — เอารายการสินค้าของลูกค้าเดิมออก ${dropped} รายการ (เลือก FG ของลูกค้าใหม่อีกครั้ง)`
+        : "");
+      return kept;
+    });
+  };
+  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหัวใบ
+  // แสดงชื่อ/รหัสโครงการของดีลที่เลือก)
   const onDeal = (v, deal) => { setDealId(v); setProjectId(deal?.projectId || ""); };
 
   const totals = useMemo(() => quoteTotals(lines, {
@@ -264,10 +284,10 @@ function NewQuotationInner() {
           vatRate,
           paymentTerms: payment.paymentTerms,
           notes,
+          referenceNote,
           paymentPlan,
           // ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
           metadata: {
-            ...people,
             paymentPresetVersionId: payment.presetVersionId || null,
             remarksPresetVersionId: notesPresetVersionId || null,
           },
@@ -285,7 +305,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, notesPresetVersionId, people, router]);
+  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
   if (!canEdit) {
     return (
@@ -395,7 +415,7 @@ function NewQuotationInner() {
               <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} emptyText={customerEmptyText} /></label>
               {/* โครงการ+ดีล ยุบเป็นตัวเลือกกลางตัวเดียว (มติผู้ใช้ 2026-08-06) —
                   โครงการเป็นหัวข้อฝั่งซ้ายในแผง ไม่ใช่ช่องที่ต้องเลือกก่อน · projectId
-                  ยังถูกเก็บเหมือนเดิม (ตั้งต้น AE/ผู้ตรวจสอบจากโครงการ) แค่มาจากดีล */}
+                  ยังถูกเก็บไว้ให้หัวใบแสดงชื่อโครงการ แค่มาจากดีลแทนการเลือกเอง */}
               <label className={styles.dealSource}>ดีล *
                 <DealPicker
                   deals={dealsOfCustomer}
@@ -455,18 +475,22 @@ function NewQuotationInner() {
             <label>วันที่ออกใบ<DateInput className={styles.documentDateInput} value={quoteDate} onChange={(value) => { setQuoteDate(value); setValidUntil(addValidityDays(value, validityDays)); }} required /></label>
             <label>ยืนราคาถึง<DateInput className={styles.documentDateInput} value={validUntil} onChange={(value) => { setValidUntil(value); setValidityDays(validityDaysBetween(quoteDate, value)); }} min={quoteDate || undefined} /></label>
             <label>กำหนดยืนราคา (จำนวนวัน)<input type="number" min="1" step="1" className={`premium-input ${styles.documentDateInput}`} value={validityDays} onChange={(event) => { const days = event.target.value; setValidityDays(days); setValidUntil(addValidityDays(quoteDate, days)); }} /></label>
+            {/* เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ขึ้นเป็นแถวหนึ่งในบล็อกอ้างอิงบน
+                เอกสาร · บรรทัดเดียวโดยเจตนา: เอกสารเรนเดอร์เป็นแถว label/value แถวเดียว
+                ช่องหลายบรรทัดจะสัญญาสิ่งที่เอกสารทำไม่ได้ */}
+            <label className={styles.referenceField}>เอกสารอ้างอิง
+              <Input
+                value={referenceNote}
+                placeholder="เช่น อ้างถึง PO-1234 ลว. 5 ส.ค. 69"
+                onChange={(event) => setReferenceNote(event.target.value)}
+              />
+            </label>
           </section>
 
-          {/* ผู้รับผิดชอบเอกสาร — ชุดเดียวกับไทม์ไลน์ ตั้งต้นจากโครงการที่เลือก */}
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><UserRound size={17} /><h2>ผู้รับผิดชอบเอกสาร</h2><span>เลือกจากผู้ใช้จริง · ผู้ดูแล/ผู้ตรวจสอบตั้งต้นจากโครงการ</span></div>
-            <div className={styles.documentMeta}>
-              <QuotationPeopleFields value={people} onChange={setPeople} />
-            </div>
-          </section>
-
-          <section className={styles.card}>
-            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" /><div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
+            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการสินค้า/บริการ</h2><div className="spacer" />{/* ลิสต์ FG ผูกกับลูกค้าแล้ว (มติ 2026-08-17) — ยังไม่เลือกลูกค้า = ดรอปดาวน์ว่าง
+                ปิดปุ่มพร้อมบอกเหตุ ดีกว่าให้กดแล้วเจอช่องเปล่า · "เพิ่มรายการเอง" ไม่ผูกลูกค้า กดได้ตลอด */}
+            <div className={styles.lineActions}><button type="button" className="btn btn-primary sm" onClick={addProductLine} disabled={!customerId} title={!customerId ? "เลือกลูกค้าก่อน — รายการสินค้าเป็นของลูกค้าแต่ละราย" : undefined}><Plus size={13} /> เพิ่มสินค้า</button><button type="button" className="btn ghost sm" onClick={addManualLine}><Plus size={13} /> เพิ่มรายการเอง</button></div></div>
             <QuotationLineItems
               lines={lines}
               onChange={setLines}

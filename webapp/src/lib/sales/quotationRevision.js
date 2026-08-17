@@ -39,5 +39,9 @@ export function buildQuotationRevisionContent(quote, body = {}) {
     paymentTerms,
     validUntil: 'validUntil' in body ? body.validUntil || null : quote.validUntil,
     notes: 'notes' in body ? (body.notes || '').trim() || null : quote.notes,
+    // เอกสารอ้างอิง (mig 0267) — สืบทอดจากใบเดิม ทับได้ตอนออก Rev. เหมือน notes
+    referenceNote: 'referenceNote' in body
+      ? (body.referenceNote || '').trim() || null
+      : quote.referenceNote,
   };
 }

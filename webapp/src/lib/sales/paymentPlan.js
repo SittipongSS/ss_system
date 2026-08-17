@@ -1,7 +1,9 @@
 // งวดการชำระใบเสนอราคา: เต็มจำนวน / แบ่งงวด.
 // pure ทั้งหมด (แถวแสดงผล + คำนวณ + validate) ใช้ทั้ง client และ server.
 
-export const MAX_INSTALLMENTS = 6;
+// เพดานงวด 12 (มติผู้ใช้ 2026-08-17 — เดิม 6) · ค่าเดียวคุมทั้งปุ่ม "เพิ่มงวด" ฝั่งฟอร์ม
+// และด่าน validate ฝั่ง server ห้ามสะกดเลขนี้ซ้ำที่อื่น
+export const MAX_INSTALLMENTS = 12;
 const EPS = 0.01; // เพดานคลาดเคลื่อน % รวม
 
 const money = (v) => {
