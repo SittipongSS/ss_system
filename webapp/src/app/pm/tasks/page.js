@@ -8,6 +8,7 @@ import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskNoteLine from "@/components/pm/TaskNoteLine";
 import Button from "@/components/ui/Button";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -564,12 +565,29 @@ export default function TasksPage() {
     );
   };
 
-  // ปุ่มดึงงานจะถามยืนยันก่อน แล้วเปลี่ยนผู้รับผิดชอบจริงทันที
-  const proxyActions = (t) => {
-    if (canPull(t)) return <button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); takeResponsibility(t); }} title="ดึงงานและย้ายผู้รับผิดชอบมาเป็นฉัน"><HandHelping size={14} /> ดึงงาน</button>;
-    if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); releaseLegacyProxy(t); }} title="คืนงานทำแทนเดิม"><Undo2 size={14} /></button>;
-    return null;
+  /* เมนู "…" ท้ายแถว — มติผู้ใช้ 2026-08-01 (RowActionMenu): แถวเหลือ **ปุ่มก้าวถัดไป
+     1 ปุ่ม + เมนูรวมที่เหลือ** · ที่นี่ก้าวถัดไปคือ "ต่องาน" (มติผู้ใช้ 2026-08-17)
+     ส่วนแก้ไข/ลบ/ดึงงาน เป็นการจัดการตัวงาน ไม่ใช่สิ่งที่คนกวาดตาหาในคิว */
+  const rowMenu = (t) => {
+    const manage = canManageTask(t);
+    return [
+      canPull(t) && {
+        id: "pull", label: "ดึงงานมาเป็นของฉัน", icon: HandHelping,
+        onClick: () => takeResponsibility(t),
+      },
+      // ข้อมูลเก่าที่ยังมี proxyBy — งานใหม่ย้าย assignee จริงแล้วไม่เข้าเส้นนี้
+      t.proxyBy && canRelease(t) && {
+        id: "release", label: "คืนงานทำแทนเดิม", icon: Undo2,
+        onClick: () => releaseLegacyProxy(t),
+      },
+      manage && { id: "edit", label: "แก้ไขงาน", icon: Pencil, onClick: () => openEdit(t) },
+      manage && {
+        id: "delete", label: "ลบงาน", icon: Trash2, tone: "danger", separatorBefore: true,
+        onClick: () => deletePersonal(t),
+      },
+    ].filter(Boolean);
   };
+
   /* ปุ่มสร้างงานต่อเนื่อง — เงื่อนไขเดียวกับปุ่ม "เพิ่มงาน" (สร้างงานใหม่ ไม่ใช่แก้ใบนี้)
      จึงไม่ผูกกับ canManageTask: คนที่เห็นงานของทีมและมีสิทธิ์สร้างงาน ต่องานจากมันได้ */
   const canWriteTasks = canEdit || role === "rd";
@@ -631,12 +649,10 @@ export default function TasksPage() {
   // การ์ดย่อ — ใช้ในมุมมองบอร์ด (Kanban) และเมทริกซ์ (Eisenhower)
   const miniCard = (t) => {
     const u = getUrgencyInfo(t);
-    const manage = canManageTask(t);
     const done = t.status === "Completed";
     const activeAssignee = t.assigneeId || t.ownerId;
     const assigneeName = activeAssignee ? (naText(usersMap[activeAssignee])) : null;
-    const proxyAction = proxyActions(t);
-    const showFooter = manage || canSetStatus(t) || proxyAction || canWriteTasks;
+    const showFooter = canSetStatus(t) || canWriteTasks || rowMenu(t).length > 0;
     return (
       <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
         <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
@@ -660,10 +676,8 @@ export default function TasksPage() {
           <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
             <div>{canSetStatus(t) && statusSelect(t)}</div>
             <div style={{ display: "flex", gap: "2px" }}>
-              {proxyAction}
               {followUpButton(t)}
-              {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>}
-              {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>}
+              <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
             </div>
           </div>
         )}
@@ -703,7 +717,6 @@ export default function TasksPage() {
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
   const taskRow = (t) => {
             const u = getUrgencyInfo(t);
-            const manage = canManageTask(t);
             return (
               <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
                 <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
@@ -743,10 +756,8 @@ export default function TasksPage() {
                 <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                 <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
                   <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
-                    {proxyActions(t)}
                     {followUpButton(t)}
-                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
-                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
+                    <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
                   </div>
                 </td>
               </tr>
@@ -955,7 +966,6 @@ export default function TasksPage() {
                     <div style={{ fontSize: "var(--fs-3)", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : "var(--text-3)", textAlign: "right", padding: "0 2px" }}>{d.getDate()}</div>
                     {items.slice(0, 3).map((t) => {
                       const u = getUrgencyInfo(t);
-                      const manage = canManageTask(t);
                       return (
                         <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "var(--fs-2)", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
@@ -1025,7 +1035,6 @@ export default function TasksPage() {
           {pageRows.map((t) => {
             const u = getUrgencyInfo(t);
             const done = t.status === "Completed";
-            const manage = canManageTask(t);
             const assigneeName = t.assigneeId ? (naText(usersMap[t.assigneeId])) : null;
             return (
               <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
@@ -1040,10 +1049,8 @@ export default function TasksPage() {
                     {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                    {proxyActions(t)}
                     {followUpButton(t)}
-                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
-                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
+                    <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
