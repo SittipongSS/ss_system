@@ -78,12 +78,15 @@ test('สิทธิ์ที่ให้ต้องเป็น reader หร
 });
 
 // ── ถอนสิทธิ์ (ปุ่มโล่ในหน้าผู้ใช้) ────────────────────────────────────────
+// ⚠️ ต้องรองรับ `.order().range()` ด้วย — ตัวถอนสิทธิ์อ่านผ่าน `fetchAll` แล้ว (ค-3)
+// `range` คืนทั้งชุดในหน้าเดียว: `fetchAll` เห็นว่าได้น้อยกว่า pageSize แล้วหยุดเอง
 function fakeSupabaseWithRows(rows) {
   const updates = [];
+  const page = { range: () => Promise.resolve({ data: rows, error: null }) };
   return {
     updates,
     from: () => ({
-      select: () => ({ contains: () => Promise.resolve({ data: rows, error: null }) }),
+      select: () => ({ contains: () => ({ order: () => page }) }),
       update: (patch) => ({ eq: (_c, id) => { updates.push({ id, patch }); return Promise.resolve({}); } }),
     }),
   };
@@ -91,12 +94,12 @@ function fakeSupabaseWithRows(rows) {
 
 test('ไม่มีอีเมล = ไม่ถอนอะไร', async () => {
   const db = fakeSupabaseWithRows([]);
-  assert.deepEqual(await revokeGoogleDocAccess(db, ''), { files: 0, revoked: 0, failed: 0 });
+  assert.deepEqual(await revokeGoogleDocAccess(db, ''), { files: 0, revoked: 0, alreadyGone: 0, failed: 0 });
 });
 
 test('ไม่มีไฟล์ที่เคยให้สิทธิ์ = จบทันที ไม่ยิง Drive', async () => {
   const db = fakeSupabaseWithRows([]);
-  assert.deepEqual(await revokeGoogleDocAccess(db, 'me@x.co'), { files: 0, revoked: 0, failed: 0 });
+  assert.deepEqual(await revokeGoogleDocAccess(db, 'me@x.co'), { files: 0, revoked: 0, alreadyGone: 0, failed: 0 });
   assert.deepEqual(db.updates, []);
 });
 
@@ -198,4 +201,51 @@ test('🔴 ทุกเส้นที่ลบไฟล์แนบต้อง
   // เส้นลบเป็นก้อน (ลบ entity แม่) ต้องใช้ตัวเดียวกัน ไม่ใช่ลบแถวตรง ๆ
   assert.match(code, /for \(const att of list\) await releaseAttachmentFile\(att\)/,
     'purgeAttachments ต้องปล่อยของทีละแถวผ่านตัวเดียวกัน');
+});
+
+// ── ค-3 (ตรวจระบบรอบ 13) · ปุ่มโล่ต้องรายงานตัวเลขจริง ────────────────────
+//
+// 🐞 เดิม `result.revoked += 1` อยู่นอกเงื่อนไข `if (fileId)` และไม่อ่านค่าที่
+// `revokeFileRole` คืน (คืน `false` เมื่อไม่เจอ permission) ⇒ ตัวเลขบนจอนับ "ถอนแล้ว"
+// รวมแถวที่ไม่ได้ทำอะไรเลย · จอเขียนคอมเมนต์ไว้เองว่า "บอกตัวเลขจริงเสมอ" ซึ่งเป็น
+// เจตนาที่ถูก แต่ตัวเลขที่ป้อนให้มันผิด
+test('🔴 ปุ่มโล่แยก revoked / alreadyGone / failed ตามผลจริงของแต่ละแถว', async () => {
+  const rows = [
+    { id: 'A', metadata: { googleFileId: 'F-ok', accessGranted: ['u@x.co'] } },      // ถอนได้จริง
+    { id: 'B', metadata: { googleFileId: 'F-none', accessGranted: ['u@x.co'] } },    // Drive ไม่มี permission
+    { id: 'C', metadata: { accessGranted: ['u@x.co'] } },                            // ไม่มี fileId เลย
+    { id: 'D', metadata: { googleFileId: 'F-boom', accessGranted: ['u@x.co'] } },    // Drive ตอบ error
+  ];
+  const cleared = [];
+  const supabase = {
+    from: () => ({
+      select: () => ({ contains: () => ({ order: () => ({ range: async () => ({ data: rows, error: null }) }) }) }),
+      update: (patch) => ({ eq: async (_c, id) => { cleared.push([id, patch.metadata.accessGranted]); return { error: null }; } }),
+    }),
+  };
+  const drive = {
+    revokeFileRole: async (fileId) => {
+      if (fileId === 'F-boom') throw new Error('Drive ล่ม');
+      return fileId === 'F-ok';
+    },
+  };
+
+  const r = await revokeGoogleDocAccess(supabase, 'u@x.co', { drive });
+  assert.equal(r.files, 4);
+  assert.equal(r.revoked, 1, 'นับเฉพาะที่ Drive ลบ permission จริง');
+  assert.equal(r.alreadyGone, 2, 'ไม่มีอะไรให้ถอน = แยกออกมา ไม่ใช่นับเป็นถอนแล้ว');
+  assert.equal(r.failed, 1);
+
+  // ⚠️ แถวที่ล้ม (D) ต้อง **ไม่ถูกล้างชื่อ** — ล้างแล้วจะหาไฟล์ใบนั้นไม่เจออีกเลยตอนกดซ้ำ
+  assert.deepEqual(cleared.map(([id]) => id).sort(), ['A', 'B', 'C']);
+  for (const [, next] of cleared) assert.deepEqual(next, [], 'ชื่อที่ถอนแล้วต้องหลุดจากบันทึก');
+});
+
+test('🔴 ปุ่มโล่ต้องอ่านทุกหน้า ไม่ติดเพดาน 1,000 แถว (ratchet)', () => {
+  const src = readFileSync('src/lib/master/googleDocAccess.js', 'utf8');
+  // ⚠️ ตัวสแกน check:rowcap อ่านหน้าต่างนับจากบรรทัดที่เจอ `.from(` **ไปข้างหน้า**
+  // ⇒ `fetchAll(` ต้องอยู่บรรทัดเดียวกัน ไม่ใช่บรรทัดก่อนหน้า (กับดักที่เจอตอนแก้ #1308)
+  assert.match(src, /fetchAll\(\(\) => supabase\.from\('attachments'\)/,
+    'ต้องอ่านผ่าน fetchAll และวางไว้บรรทัดเดียวกับ .from()');
+  assert.match(src, /\.order\('id', \{ ascending: true \}\)/, 'ต้องมีลำดับที่นิ่ง');
 });
