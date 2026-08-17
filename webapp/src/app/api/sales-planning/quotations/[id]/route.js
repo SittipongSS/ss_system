@@ -71,7 +71,9 @@ async function loadProposerSignature(supabase, quote) {
   if (!imageDataUri) return null;
   return {
     imageDataUri,
-    signerName: ev.signerName || quote.createdByName || '',
+    // ผู้จัดทำ = คนที่กดยื่น (มติผู้ใช้ 2026-08-17) — ชื่อจากหลักฐานมาก่อนเสมอ
+    // ค่าสำรองจึงต้องเป็นผู้ยื่น ไม่ใช่ผู้สร้างร่าง (createdByName เหลือไว้ให้ใบเก่า)
+    signerName: ev.signerName || quote.approvalRequestedByName || quote.createdByName || '',
     signedAt: ev.signedAt || quote.approvalRequestedAt || null,
     evidenceId: ev.id,
   };

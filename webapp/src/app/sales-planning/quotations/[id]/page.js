@@ -566,8 +566,10 @@ export default function QuotationEditorPage() {
   const approvalWorkflowSteps = quote?.approvalStatus === "not_required"
     ? [{ id: "legacy", label: "เอกสารเดิม", hint: "ออกก่อนระบบอนุมัติ — แก้ไขผ่าน Rev.", state: "done" }]
     : workflowStepsFromIndex([
-        { id: "prepare", label: "จัดทำเอกสาร", hint: quote?.createdByName || people.preparedBy || "ผู้จัดทำ" },
-        { id: "submit", label: "ยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
+        // ⚠️ ห้ามถอยไป people.preparedBy — ช่องนั้นคือ "ผู้ประสานงาน (AC)" คนละบทบาท
+        // กับผู้จัดทำ (มติผู้ใช้ 2026-08-17: ผู้จัดทำ = คนที่กดยื่น = ขั้นถัดไป)
+        { id: "prepare", label: "เปิดร่าง", hint: quote?.createdByName || "ผู้เปิดร่าง" },
+        { id: "submit", label: "ผู้จัดทำยื่นอนุมัติ", hint: quote?.approvalRequestedByName || "รอผู้จัดทำ" },
         { id: "approve", label: "เจ้าของดีลอนุมัติ", hint: quote?.approvedByName || "รออนุมัติ" },
       ], approvalWorkflowIndex);
   const controlDescription = needsSubmit

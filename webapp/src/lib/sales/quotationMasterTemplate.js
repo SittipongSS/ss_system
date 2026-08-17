@@ -990,14 +990,21 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
   // (มติผู้ใช้ 2026-08-05): ผู้เสนอราคา = AE เจ้าของดีล — เอกสารไม่มีบทบาท "ผู้จัดทำ" แล้ว
   const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || '-';
-  // ผู้จัดทำ = คนที่กดสร้าง/แก้ใบ ตรึงไว้ตอนสร้างร่าง (createQuotationDraft + revise)
-  // metadata.preparedBy คือค่าที่ตรึงในฉบับ snapshot (issuedQuotationSnapshot ใช้คู่เดียวกัน)
-  const preparedBy = quote.createdByName || quote.metadata?.preparedBy || '';
+  // ผู้จัดทำ = **คนที่กดยื่นอนุมัติ** (มติผู้ใช้ 2026-08-17) — การกดยื่นคือจุดที่ผู้จัดทำ
+  // ลงนาม (mig 0155/0156 เขียน approvalRequestedByName ให้ตอนนั้น) ไม่ใช่คนที่กดสร้างร่าง:
+  // ร่างเปิดค้างได้ทั้งทีม (submit gate = inSalesEditScope) คนสร้างกับคนยื่นจึงคนละคนได้
+  // ⚠️ ห้ามถอยไป metadata.preparedBy — ช่องนั้นคือ "ผู้ประสานงาน (AC)" คนละบทบาทกัน
+  // (เคยเป็นค่าสำรองที่นี่ แล้วชื่อ AC ไปยืนช่องเซ็นผู้จัดทำแทนคนที่ทำจริง)
+  // createdByName เหลือไว้รองรับใบก่อน mig 0156 ที่ไม่มีขั้นยื่นเท่านั้น
+  const preparedBy = quote.approvalRequestedByName || quote.createdByName || '';
   // คนทำใบ = AE เจ้าของดีลหรือเปล่า — เทียบ id ก่อนเพราะชื่อซ้ำกันได้; ฉบับตรึง/ใบเก่าที่
   // ไม่มี id ครบค่อยถอยไปเทียบชื่อ (สองค่านั้นมาจาก snapshot ชุดเดียวกัน จึงเทียบกันได้)
+  // ⚠️ ตัวนี้ถามถึง **ผู้สร้างร่าง** ไม่ใช่ผู้จัดทำบนเอกสาร — มันคุมว่าจะเอา
+  // `createdByPhone` (เบอร์ผู้สร้าง) มาโชว์คู่ "ผู้เสนอราคา" ได้ไหม จึงต้องเทียบกับ
+  // createdBy/createdByName เสมอ ห้ามใช้ตัวแปร preparedBy ที่ตอนนี้เป็นชื่อผู้ยื่น
   const preparerIsSalesOwner = quote.createdBy && quote.deal?.ownerId
     ? quote.createdBy === quote.deal.ownerId
-    : Boolean(preparedBy) && preparedBy === salesOwner;
+    : Boolean(quote.createdByName) && quote.createdByName === salesOwner;
   /* เบอร์ที่โชว์คู่กับ "ผู้เสนอราคา" ต้องเป็นเบอร์ของเจ้าของดีล (= ผู้อนุมัติใบ)
      1. เบอร์ที่ตรึงไว้ตอนออกใบ — ใช้ได้เมื่อ id ที่ตรึงคู่มายังตรงกับเจ้าของดีลปัจจุบัน
         (ชื่อผู้เสนอราคาอ่านสดจากดีล เปลี่ยนมือแล้วชื่อขยับแต่เบอร์ที่ตรึงไว้ไม่ขยับ)

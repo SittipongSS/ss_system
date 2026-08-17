@@ -96,7 +96,11 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) 
     approval: {
       approvedByName: trimOrNull(quote.approvedByName || quote.deal?.ownerName),
       approvedAt: quote.approvedAt || null,
-      proposer: trimOrNull(quote.createdByName || quote.metadata?.preparedBy),
+      // ผู้จัดทำ = คนที่กดยื่น (มติผู้ใช้ 2026-08-17) — กติกาเดียวกับ preparedBy ใน
+      // quotationMasterTemplate ต้องตรงกัน ไม่งั้นฉบับตรึงกับฉบับพิมพ์สดชื่อคนละคน
+      // ⚠️ ค่าที่เปลี่ยนกระทบ contentFingerprint ของ **ฉบับที่จะตรึงต่อจากนี้** เท่านั้น
+      // (เหตุผลเดียวกับ docLanguage ด้านบน — ของเก่าเก็บค่าไว้ในตารางแล้ว ไม่คำนวณซ้ำ)
+      proposer: trimOrNull(quote.approvalRequestedByName || quote.createdByName),
       proposerPhone: trimOrNull(quote.createdByPhone),
     },
     // คงรูป payload.company เดิม (fingerprint semantics ไม่เปลี่ยน) แต่ค่าดึงจากบริษัท
@@ -219,7 +223,13 @@ export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence
       proposerEvidence = ev;
     }
   }
-  if (!proposerAsset) proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
+  // fallback: ลายเซ็น active ของ **ผู้ยื่น** ก่อน (คนเดียวกับชื่อที่ขึ้นช่องผู้จัดทำ) แล้ว
+  // ค่อยถอยไปผู้สร้างร่างสำหรับใบเก่าที่ไม่มีขั้นยื่น — สลับลำดับนี้ไม่ได้ ไม่งั้นได้
+  // "รูปลายเซ็นคนหนึ่ง ชื่อกำกับอีกคน" บนช่องเดียวกัน
+  if (!proposerAsset) {
+    proposerAsset = await loadActiveSignatureAsset(supabase, filledQuote.approvalRequestedBy)
+      || await loadActiveSignatureAsset(supabase, filledQuote.createdBy);
+  }
   const [approverSignatureImage, proposerSignatureImage] = await Promise.all([
     loadSignatureImageDataUri(supabase, evidence?.signatureAssetSnapshot),
     loadSignatureImageDataUri(supabase, proposerAsset),

@@ -355,11 +355,13 @@ test('โทร: เปลี่ยนเจ้าของดีลแล้ว
 });
 
 // ฉบับตรึง/ใบเก่าไม่มี id ครบ → เทียบชื่อแทน (สองค่ามาจาก snapshot ชุดเดียวกัน)
-test('โทร: ไม่มี id ให้เทียบ ก็ถอยไปเทียบชื่อผู้จัดทำกับผู้เสนอราคา', () => {
-  const meta = { preparedBy: 'คนเดียวกัน', salesOwner: 'คนเดียวกัน' };
+// ⚠️ เบอร์ที่ยกมาคือ `createdByPhone` = เบอร์ **ผู้สร้างร่าง** ⇒ ชื่อที่เอามาเทียบต้องเป็น
+// createdByName ไม่ใช่ชื่อบนช่องผู้จัดทำ (ซึ่งตอนนี้คือผู้ยื่น — มติผู้ใช้ 2026-08-17)
+test('โทร: ไม่มี id ให้เทียบ ก็ถอยไปเทียบชื่อผู้สร้างร่างกับผู้เสนอราคา', () => {
+  const meta = { salesOwner: 'คนเดียวกัน' };
   const pinned = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
-    createdByName: null,
+    createdByName: 'คนเดียวกัน',
     createdByPhone: '081-234-5678',
     deal: null,
     metadata: meta,
@@ -368,22 +370,45 @@ test('โทร: ไม่มี id ให้เทียบ ก็ถอยไ�
 
   const mismatched = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
-    createdByName: null,
+    createdByName: 'อีกคน',
     createdByPhone: '081-234-5678',
     deal: null,
-    metadata: { ...meta, preparedBy: 'อีกคน' },
+    metadata: meta,
   });
   assert.equal(refRow(mismatched, 'โทร'), undefined);
 });
 
-// ฉบับที่ตรึงแล้วเก็บชื่อผู้จัดทำไว้ใน metadata (issuedQuotationSnapshot) ไม่มี createdByName
-test('ไม่มี createdByName → ผู้จัดทำถอยไปใช้ metadata.preparedBy ของฉบับตรึง', () => {
+// มติผู้ใช้ 2026-08-17: ผู้จัดทำ = **คนที่กดยื่นอนุมัติ** (approvalRequestedByName ที่
+// mig 0156 เขียนให้) ไม่ใช่คนเปิดร่าง — ร่างเปิดค้างได้ทั้งทีม สองคนนี้คนละคนได้
+test('ผู้จัดทำ = คนที่กดยื่น ไม่ใช่คนเปิดร่าง', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: 'AC คนเปิดร่าง',
+    approvalRequestedByName: 'Senior AE คนยื่น',
+  });
+  assert.equal(model.signers[0].name, 'Senior AE คนยื่น');
+});
+
+// ใบก่อน mig 0156 ไม่มีขั้นยื่น — ยังต้องมีชื่อขึ้นเอกสาร ไม่ปล่อยช่องว่าง
+test('ใบเก่าที่ไม่มีขั้นยื่น → ผู้จัดทำถอยไปใช้ผู้เปิดร่าง', () => {
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT,
+    createdByName: 'คนทำใบเก่า',
+    approvalRequestedByName: null,
+  });
+  assert.equal(model.signers[0].name, 'คนทำใบเก่า');
+});
+
+// ⚠️ metadata.preparedBy = "ผู้ประสานงาน (AC)" คนละบทบาทกับผู้จัดทำ — เคยเป็นค่าสำรอง
+// ของช่องนี้ แล้วชื่อ AC ไปยืนคู่ลายเซ็นผู้จัดทำแทนคนที่ทำจริง
+test('ผู้จัดทำต้องไม่ถอยไปใช้ metadata.preparedBy (นั่นคือผู้ประสานงาน)', () => {
   const model = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
     createdByName: null,
-    metadata: { ...QUOTE_WITH_PROJECT.metadata, preparedBy: 'คนทำใบฉบับตรึง' },
+    approvalRequestedByName: null,
+    metadata: { ...QUOTE_WITH_PROJECT.metadata, preparedBy: 'AC ผู้ประสานงาน' },
   });
-  assert.equal(model.signers[0].name, 'คนทำใบฉบับตรึง');
+  assert.equal(model.signers[0].name, '');
 });
 
 // ลายเซ็นต้องเป็นของคนที่เซ็นจริง ห้ามเอาชื่อในระบบไปแปะทับ
