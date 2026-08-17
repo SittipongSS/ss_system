@@ -29,6 +29,7 @@ import { CUSTOMER_NAME_LABEL, CUSTOMER_PICKER_EMPTY_HINT } from "@/lib/uiLabels"
 import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
+import { customerSelectOptions } from "@/components/master/customerOption";
 
 const today = () => {
   const now = new Date();
@@ -232,7 +233,7 @@ export default function SalesProjectCreateModal({
               entity="customer"
               value={form.customerId}
               onChange={(customerId) => setForm((f) => ({ ...f, customerId, brand: "" }))}
-              options={customers.map((c) => ({ value: c.id, label: c.arCode ? `${c.arCode} — ${c.name}` : c.name, search: `${c.arCode || ""} ${c.name}` }))}
+              options={customerSelectOptions(customers)}
               placeholder="ค้นหารหัส / ชื่อลูกค้า..."
               emptyText={CUSTOMER_PICKER_EMPTY_HINT}
             />
