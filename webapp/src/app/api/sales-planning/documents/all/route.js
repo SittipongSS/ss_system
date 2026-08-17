@@ -8,7 +8,8 @@
 // ⚠️ **สิทธิ์ของบรรทัดขอเอกสารอิงด่านของ *คำร้อง* ไม่ใช่ด่านของไฟล์** — คนที่เห็น
 // ดีลนี้ได้ ไม่ได้แปลว่าเห็นคำร้องของฝ่ายอื่นได้ · ที่นี่ยอมให้เห็นเพราะสิ่งที่แสดง
 // คือ "ยังไม่มีเอกสารชนิดนี้" ซึ่งเป็นข้อมูลของดีล ไม่ใช่เนื้อในคำร้อง
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { loadScoped } from '@/lib/scopedRow';
 import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { buildEntityDocuments, entityDocumentProgress } from '@/lib/sales/entityDocuments';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
@@ -189,11 +190,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   try {
     // ── โหมดดีลเดียว (แท็บเอกสารบนหน้าดีล) ────────────────────────────────
     if (dealId) {
-      const { data: deal, error: dealError } = await supabase
-        .from('sales_deals').select('*').eq('id', dealId).maybeSingle();
-      raise('อ่านดีลไม่สำเร็จ', dealError);
-      if (!deal) return notFound('ไม่พบดีล');
-      if (!inSalesViewScope(user, deal)) return forbidden();
+      const { row: deal, response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
+      if (response) return response;
       const raw = await collectDealDocuments(supabase, dealId);
       await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
       const rows = buildEntityDocuments(raw);

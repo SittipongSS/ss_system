@@ -1,5 +1,6 @@
-import { withUser, ok, fail, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { withUser, ok, forbidden, unauthorized } from '@/lib/http';
+import { loadScoped } from '@/lib/scopedRow';
+import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
@@ -24,10 +25,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!canViewSalesPlanning(user)) return forbidden();
 
   const { id } = await ctx.params;
-  const { data: deal, error } = await supabase.from('sales_deals').select(dealSelect).eq('id', id).maybeSingle();
-  if (error) return fail(error.message, 500);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesViewScope(user, deal)) return forbidden();
+  // โหลด + ตรวจขอบเขตในจังหวะเดียว — `loadScoped` เลือก `*` ซึ่งครอบ `dealSelect` อยู่แล้ว
+  const { row: deal, response } = await loadScoped(supabase, 'sales_deals', id, user, 'view');
+  if (response) return response;
 
   const [quotations, salesOrders, documents, stageHistory, forecasts, dealTasks, inquiries] = await Promise.all([
     safe('quotations', supabase.from('quotations').select('*, lines:quotation_lines(*)').eq('dealId', deal.id).order('createdAt', { ascending: false }), []),
