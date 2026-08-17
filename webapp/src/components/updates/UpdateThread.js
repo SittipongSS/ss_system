@@ -24,7 +24,8 @@ import Select from "@/components/ui/Select";
 import { fmtDateTime, fmtDayTime } from "@/lib/format";
 import { DEPARTMENT_LABELS } from "@/lib/permissions";
 import {
-  authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind, isSystemUpdateItem,
+  authorableKinds, DELETED_UPDATE_TEXT, defaultAuthorableKind,
+  isNarrativeUpdateItem, isSystemUpdateItem,
   kindAcceptsDueDate, MAX_UPDATE_ATTACHMENTS, updateKindMeta,
 } from "@/lib/master/updateTypes";
 import {
@@ -60,6 +61,15 @@ export default function UpdateThread({
      เปลี่ยนว่าคนจะพิมพ์อะไร · ผู้เรียกเป็นคนรู้ว่าใครกำลังถือขั้นนี้อยู่ เธรดกลาง
      ไม่รู้เรื่องสายงานของแต่ละ entity */
   composeHint = null,
+  /* ⭐ `splitSystem` — เธรดเหลือเฉพาะ **บทสนทนา** ส่วนเหตุการณ์ระบบไปอยู่กล่อง log
+     ที่หน้าเป็นคนวาง (`UpdateLog`) โดยอ่านจาก `onItemsChange` ก้อนเดียวกัน
+     ⚠️ **opt-in รายชนิดเอกสาร** — component นี้มีผู้ใช้ 13 หน้า และ "อะไรคือบทสนทนา"
+     เป็นเรื่องของแต่ละสาย · เปิดเมื่อทะเบียนของ entity นั้นประกาศธง `narrative`
+     ครบแล้วเท่านั้น ไม่งั้นทุกแถวจะตกไปกล่อง log
+     ⚠️ **ยิงครั้งเดียว ใช้สองที่** — ไม่ให้กล่อง log ยิง `/api/updates` ซ้ำ เพราะ
+     การเปิดเธรดมีผลข้างเคียง (มาร์คแจ้งเตือนว่าอ่านแล้ว) ที่ต้องเกิดครั้งเดียว */
+  splitSystem = false,
+  onItemsChange,
   onPosted,
 }) {
   const [items, setItems] = useState([]);
@@ -89,6 +99,12 @@ export default function UpdateThread({
   const showKindPicker = kinds.length > 1;
   const showDueDate = kindAcceptsDueDate(entityType, kind);
 
+  /* ⚠️ **ผ่าน ref ไม่ใช่ dep ของ `load`** — ผู้เรียกส่ง arrow function ใหม่ทุกเรนเดอร์
+     ถ้าเอาเข้า dependency array ของ `useCallback` จะได้ `load` ตัวใหม่ทุกรอบ แล้ว
+     `useEffect(() => load())` จะยิง `/api/updates` ซ้ำไม่รู้จบ */
+  const onItemsChangeRef = useRef(onItemsChange);
+  onItemsChangeRef.current = onItemsChange;
+
   const load = useCallback(async () => {
     if (!entityType || !entityId) return;
     try {
@@ -97,7 +113,12 @@ export default function UpdateThread({
         { cache: "no-store" },
       );
       const d = await res.json().catch(() => null);
-      if (res.ok) { setItems(d?.items || []); setCanPost(!!d?.canPost); }
+      if (res.ok) {
+        setItems(d?.items || []);
+        setCanPost(!!d?.canPost);
+        // ส่งก้อนดิบให้หน้าแม่ไปวาดกล่อง log — ห้ามให้กล่องนั้นยิง API เอง
+        onItemsChangeRef.current?.(d?.items || []);
+      }
     } catch { /* เธรดพังต้องไม่ทำหน้าพัง — แสดงเป็นว่าง */ }
     setLoading(false);
   }, [entityType, entityId]);
@@ -155,7 +176,11 @@ export default function UpdateThread({
   );
   // โชว์สวิตช์เฉพาะตอนที่มีทั้งสองอย่างจริง: ไม่มีเหตุการณ์ระบบ = ไม่มีอะไรให้ซ่อน ·
   // มีแต่เหตุการณ์ระบบ (เธรดลีดที่อ่านอย่างเดียว) = กดแล้วเธรดว่างเปล่า
-  const canFilterSystem = systemCount > 0 && systemCount < timeline.length;
+  /* 🐞 สวิตช์นี้ **ไม่โผล่ตรงที่แย่ที่สุด** — ใบที่มีแต่เหตุการณ์ระบบล้วน (นับจริง
+     2026-08-17: 16 ใบจาก 32 ของคำร้อง) เข้าเงื่อนไข `systemCount === timeline.length`
+     ⇒ ไม่มีอะไรให้กด และไม่มีอะไรบอกว่าการ์ดที่พาดหัวว่า "พูดคุย" ไม่ใช่บทสนทนา
+     ⇒ entity ที่เปิด `splitSystem` เลิกใช้สวิตช์ไปเลย (แยกกล่องแทนการซ่อน) */
+  const canFilterSystem = !splitSystem && systemCount > 0 && systemCount < timeline.length;
 
   // ── คำตอบซ้อนใต้ข้อความที่ถูกตอบ (มติผู้ใช้ 2026-08-01) ─────────────────
   //
@@ -176,7 +201,13 @@ export default function UpdateThread({
   // กรองเหตุการณ์ระบบทีหลังเสมอ — และถ้าต้นเรื่องถูกซ่อนแต่คำตอบยังอยู่
   // ให้คำตอบเลื่อนขึ้นมาเป็นระดับบนสุด ไม่ใช่หายตามแม่ไปด้วย
   const visibleGroups = useMemo(() => {
-    const pass = (item) => !(hideSystem && canFilterSystem) || !isSystemUpdateItem(entityType, item);
+    /* ⭐ `splitSystem` = เหลือเฉพาะแถวที่ **มีคนพิมพ์อะไรลงไป** (ดู `isNarrativeUpdateItem`)
+       ที่เหลือไปอยู่กล่อง log ที่หน้าเป็นคนวาง (`UpdateLog`) — **ย้าย ไม่ก๊อป**
+       ⚠️ กรองตอนวาดเท่านั้น ทุกแถวยังลง `entity_updates` เหมือนเดิม ไม่งั้นแจ้งเตือน
+       รายคนซึ่งเกาะอยู่กับแถวเธรดจะตายไปด้วย */
+    const pass = (item) => (splitSystem
+      ? isNarrativeUpdateItem(entityType, item)
+      : !(hideSystem && canFilterSystem) || !isSystemUpdateItem(entityType, item));
     const out = [];
     for (const root of roots) {
       const replies = (repliesOf.get(root.id) || []).filter(pass);
@@ -184,7 +215,7 @@ export default function UpdateThread({
       else if (replies.length) out.push({ root: null, replies });
     }
     return out;
-  }, [roots, repliesOf, hideSystem, canFilterSystem, entityType]);
+  }, [roots, repliesOf, hideSystem, canFilterSystem, splitSystem, entityType]);
   const visibleCount = visibleGroups.reduce((n, g) => n + (g.root ? 1 : 0) + g.replies.length, 0);
 
   // รายชื่อที่ @ ได้ — โหลดครั้งแรกที่ผู้ใช้พิมพ์ @ เท่านั้น (server ต้องวนเช็ค
