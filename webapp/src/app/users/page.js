@@ -190,9 +190,14 @@ export default function UserManagement() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "ถอนสิทธิ์ไม่สำเร็จ");
       // ⚠️ บอกตัวเลขจริงเสมอ — "สำเร็จ" ลอย ๆ ปิดบังกรณีที่ยังค้างบางใบ
+      // ⚠️ บอกตัวเลขจริงเสมอ — "สำเร็จ" ลอย ๆ ปิดบังกรณีที่ยังค้างบางใบ
+      // ⭐ `alreadyGone` = ไม่มีอะไรให้ถอน (ถอนไปแล้ว หรือแชร์มาจากทางอื่น) — ต้องแยก
+      // จาก `revoked` ไม่งั้นแอดมินอ่านว่า "ถอนไป 5 ใบ" ทั้งที่แตะจริงใบเดียว (ค-3)
       if (!data.files) notifyToast.success(`${u.email} ไม่มีสิทธิ์เอกสารร่วมค้างอยู่`);
       else if (data.failed) notifyToast.error(`ถอนได้ ${data.revoked}/${data.files} เอกสาร — ยังค้าง ${data.failed} ใบ กดซ้ำอีกครั้ง`);
-      else notifyToast.success(`ถอนสิทธิ์แล้ว ${data.revoked} เอกสาร`);
+      else if (data.alreadyGone) {
+        notifyToast.success(`ถอนสิทธิ์แล้ว ${data.revoked} เอกสาร · อีก ${data.alreadyGone} ใบไม่มีสิทธิ์ค้างอยู่แล้ว`);
+      } else notifyToast.success(`ถอนสิทธิ์แล้ว ${data.revoked} เอกสาร`);
     } catch (err) {
       notifyToast.error(err.message || "ถอนสิทธิ์ไม่สำเร็จ");
     }

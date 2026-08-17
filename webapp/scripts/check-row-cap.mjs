@@ -44,7 +44,7 @@ const CAPS = {
   sales_deals: 37,              // 277
   dept_requests: 14,            // 33
   sales_orders: 12,             // 18
-  attachments: 11,              // 50
+  attachments: 10,              // 50
   sahamit_po_lines: 11,         // 126
   sahamit_forecast_lines: 10,   // 331
   quotations: 9,                // 77
