@@ -13,6 +13,7 @@ import {
   MAX_WON_DOC_NO, wonDocNoRule,
 } from "@/lib/sales/quotationWonEvidence";
 import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import { businessDate } from "@/lib/businessDate";
 
 // ฟอร์มยืนยัน Won จากใบเสนอราคา (บังคับหลักฐาน — feedback ผู้ใช้ 2026-07-15):
@@ -49,20 +50,21 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   };
 
   const uploadOne = async (file) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("entityType", "quotation_won_evidence");
-    fd.append("entityId", quote.id);
-    if (customerName) fd.append("customerName", customerName);
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    // ต้องเช็ก ok ก่อนอ่าน body: คำขอที่ตายก่อนถึง handler ตอบเป็น HTML ไม่ใช่ JSON
-    if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
-    const payload = await res.json();
+    // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ด้วย signed URL ที่ server ออกให้ —
+    // ไม่ผ่าน function จึงไม่ติดเพดาน request body 4.5 MB ของโฮสติ้ง
+    let ref;
+    try {
+      ref = await uploadFileForEntity({
+        file, entityType: "quotation_won_evidence", entityId: quote.id,
+      });
+    } catch (err) {
+      throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+    }
     return {
-      fileUrl: payload.url || null,
-      driveFileId: payload.driveFileId || null,
-      storageBucket: payload.storageBucket || null,
-      storagePath: payload.storagePath || null,
+      fileUrl: ref.url || null,
+      driveFileId: ref.driveFileId || null,
+      storageBucket: ref.storageBucket || null,
+      storagePath: ref.storagePath || null,
       fileName: file.name,
       mimeType: file.type,
       sizeBytes: file.size,

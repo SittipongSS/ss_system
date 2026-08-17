@@ -1,24 +1,24 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
-import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
+import { checkUploadCandidate, resolveUploadMime } from '@/lib/master/attachmentTypes';
+import { MAX_BYTES } from '@/lib/upload/limits';
 import {
-  MAX_UPLOAD_BYTES, MAX_UPLOAD_MB,
-  ACCEPTED_UPLOAD_MIME, ACCEPTED_UPLOAD_EXT,
-  fileExt, resolveUploadMime,
-} from '@/lib/master/attachmentTypes';
+  PRIVATE_EVIDENCE_BUCKET,
+  isPrivateEvidence,
+  checkPrivateEvidenceScope,
+  privateEvidenceObjectPath,
+  privateEvidencePrefix,
+} from '@/lib/upload/privateEvidence';
 
 // googleapis (Drive backend) ต้อง Node runtime — กันถูก bundle เป็น edge.
 export const runtime = 'nodejs';
 
-const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
-
-// ขนาดสูงสุดต่อไฟล์ — ค่ากลางจาก attachmentTypes (env override ได้).
-const MAX_BYTES = Number(process.env.SUPABASE_MAX_UPLOAD_MB) > 0
-  ? Number(process.env.SUPABASE_MAX_UPLOAD_MB) * 1024 * 1024
-  : MAX_UPLOAD_BYTES;
-const MAX_MB = Math.round(MAX_BYTES / (1024 * 1024));
-
+// ── POST /api/upload — **เส้นสำรอง** ของไฟล์เล็กเท่านั้น ─────────────────────
+// ทางหลักคือ `/api/upload/session` (เบราว์เซอร์ยิงไบต์ขึ้นที่เก็บตรง ๆ) เพราะไบต์ที่
+// วิ่งผ่าน function ตายที่เพดาน request body ของ Vercel (4.5 MB) — คำขอไปไม่ถึงโค้ดนี้
+// เลยและผู้ใช้ได้ error ของ Vercel ไม่ใช่ของแอป
+// เส้นนี้เหลือไว้ให้ client ถอยมาใช้เมื่ออัปตรงไม่สำเร็จ (CORS/พร็อกซีองค์กร) และ
+// ไฟล์เล็กพอจะรอด — ดู LEGACY_UPLOAD_MAX_BYTES ใน attachmentTypes.js
 export async function POST(request) {
   try {
     // ต้องล็อกอินก่อนจึงอัปไฟล์ได้ (กัน upload สาธารณะ). สิทธิ์รายเอกสาร
@@ -31,70 +31,31 @@ export async function POST(request) {
     // entity context — ใช้ resolve โฟลเดอร์ปลายทางบน Drive
     const entityType = formData.get('entityType');
     const entityId = formData.get('entityId');
-    const isWonEvidence = entityType === 'quotation_won_evidence';
-    // หลักฐานการชำระรายงวดของใบสั่งขาย (mig 0245) — bucket เดียวกับหลักฐาน Won
-    // แต่คนละโฟลเดอร์ ⇒ proxy อ่านไฟล์ของแต่ละเอกสารแยกด่านกันได้
-    const isPaymentEvidence = entityType === 'sales_order_payment_evidence';
 
     if (!file) {
       return Response.json({ error: 'ไม่พบไฟล์ที่ส่งมา' }, { status: 400 });
     }
 
-    // จำกัดขนาดไฟล์ก่อนอ่านลง buffer (กันไฟล์ใหญ่ถมพื้นที่/ค่าใช้จ่าย).
-    if (typeof file.size === 'number' && file.size > MAX_BYTES) {
-      return Response.json(
-        { error: `ไฟล์ใหญ่เกินกำหนด (สูงสุด ${MAX_MB} MB)` },
-        { status: 413 },
-      );
-    }
-
-    // รับเฉพาะเอกสาร/รูปที่ใช้ทำงานจริง — กันไฟล์อันตราย (.exe/.html) ที่ยิง API ตรง.
-    // ผ่านถ้า mime อยู่ในลิสต์ หรือ (mime ว่าง/กว้าง) แต่นามสกุลถูกต้อง.
-    const ext = fileExt(file.name);
-    const mimeOk = file.type && ACCEPTED_UPLOAD_MIME.includes(file.type);
-    const extOk = ACCEPTED_UPLOAD_EXT.includes(ext);
-    if (!mimeOk && !extOk) {
-      // บอกให้ตรงว่าไฟล์ไหนและนามสกุลอะไรที่ไม่ผ่าน — ข้อความรวม ๆ ทำให้ผู้ใช้เดาไม่ออก
-      return Response.json(
-        {
-          error: `ชนิดไฟล์ไม่รองรับ: ${file.name || 'ไฟล์นี้'}${ext ? ` (.${ext})` : ''} — `
-            + `รองรับ ${ACCEPTED_UPLOAD_EXT.map((e) => `.${e}`).join(' ')}`,
-        },
-        { status: 415 },
-      );
-    }
+    // ด่านขนาด/ชนิดชุดเดียวกับทางอัปตรง (attachmentTypes.checkUploadCandidate) —
+    // เงื่อนไขต้องไม่แตกกันสองที่ ไม่งั้นไฟล์ที่ทางหนึ่งรับอีกทางปฏิเสธโดยไม่มีเหตุผล
+    const verdict = checkUploadCandidate({
+      fileName: file.name, mimeType: file.type, sizeBytes: file.size, maxBytes: MAX_BYTES,
+    });
+    if (!verdict.ok) return Response.json({ error: verdict.error }, { status: verdict.status });
 
     // Content-Type ตัดสินฝั่ง server จากนามสกุล ไม่เชื่อค่าที่ client ประกาศมา
     const contentType = resolveUploadMime(file.name, file.type);
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // ── Won evidence: private Supabase bucket, regardless of the global backend ──
-    // Validate the quotation/deal scope before storing bytes. The returned ref has
-    // no public URL; clients download through the scoped quotation file proxy.
-    if (isWonEvidence) {
-      if (!entityId || !canEditSalesPlanning(user)) {
-        return Response.json({ error: 'forbidden' }, { status: 403 });
-      }
-      const supabase = getSupabaseAdmin();
-      const { data: quote, error: quoteError } = await supabase
-        .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
-      if (quoteError) return Response.json({ error: quoteError.message }, { status: 500 });
-      if (!quote) return Response.json({ error: 'ไม่พบใบเสนอราคา' }, { status: 404 });
-      if (!['draft', 'sent'].includes(quote.status)) {
-        return Response.json({ error: 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้' }, { status: 409 });
-      }
-      const { data: deal, error: dealError } = await supabase
-        .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
-      if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-      if (!deal || !inSalesEditScope(user, deal)) {
-        return Response.json({ error: 'forbidden' }, { status: 403 });
-      }
+    // ── หลักฐาน Won / หลักฐานการชำระ: bucket ส่วนตัว ไม่ขึ้น Drive ─────────
+    // ด่านสิทธิ์ + รูปแบบ path อยู่ที่ lib/upload/privateEvidence (ที่เดียวกับทางอัปตรง)
+    // ref ที่คืนไปไม่มี public URL — ดาวน์โหลดผ่าน proxy ที่ตรวจสิทธิ์รายใบ
+    if (isPrivateEvidence(entityType)) {
+      const scope = await checkPrivateEvidenceScope(user, entityType, entityId);
+      if (!scope.ok) return Response.json({ error: scope.error }, { status: scope.status });
 
-      const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
-      const safeName = (file.name || 'file')
-        .replace(/[^a-zA-Z0-9.\-_]+/g, '_')
-        .replace(/^_+/, '') || 'file';
-      const objectPath = `quotations/${safeQuoteId}/won/${Date.now()}_${crypto.randomUUID()}_${safeName}`;
+      const objectPath = privateEvidenceObjectPath(entityType, entityId, file.name);
+      const supabase = getSupabaseAdmin();
       const { error: uploadError } = await supabase.storage
         .from(PRIVATE_EVIDENCE_BUCKET)
         .upload(objectPath, buffer, {
@@ -103,50 +64,8 @@ export async function POST(request) {
           upsert: false,
         });
       if (uploadError) {
-        console.error('[upload] private Won evidence failed:', uploadError);
-        return Response.json({ error: 'อัปโหลดหลักฐาน Won ไม่สำเร็จ' }, { status: 500 });
-      }
-      return Response.json({
-        url: null,
-        storageBucket: PRIVATE_EVIDENCE_BUCKET,
-        storagePath: objectPath,
-      });
-    }
-
-    // ── หลักฐานการชำระของใบสั่งขาย: private bucket เหมือนหลักฐาน Won ──────
-    // ⚠️ ด่านเป็น **edit-scope ของดีลเจ้าของใบ** เหมือนกัน — คนที่แนบสลิปคือ SA/AC
-    //    ที่ดูแลดีลนั้น ไม่ใช่ใครก็ได้ที่เห็นใบ
-    // ⚠️ อนุญาตเฉพาะใบที่อนุมัติแล้ว: งวดเกิดตอนอนุมัติ ก่อนหน้านั้นไม่มีอะไรให้แนบ
-    if (isPaymentEvidence) {
-      if (!entityId || !canEditSalesPlanning(user)) {
-        return Response.json({ error: 'forbidden' }, { status: 403 });
-      }
-      const supabase = getSupabaseAdmin();
-      const { data: order, error: orderError } = await supabase
-        .from('sales_orders').select('id, dealId, status').eq('id', entityId).maybeSingle();
-      if (orderError) return Response.json({ error: orderError.message }, { status: 500 });
-      if (!order) return Response.json({ error: 'ไม่พบใบสั่งขาย' }, { status: 404 });
-      if (order.status !== 'approved') {
-        return Response.json({ error: 'แนบหลักฐานการชำระได้หลังใบสั่งขายอนุมัติแล้ว' }, { status: 409 });
-      }
-      const { data: deal, error: dealError } = await supabase
-        .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
-      if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-      if (!deal || !inSalesEditScope(user, deal)) {
-        return Response.json({ error: 'forbidden' }, { status: 403 });
-      }
-
-      const safeOrderId = String(order.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
-      const safeName = (file.name || 'file')
-        .replace(/[^a-zA-Z0-9.\-_]+/g, '_')
-        .replace(/^_+/, '') || 'file';
-      const objectPath = `sales-orders/${safeOrderId}/payments/${Date.now()}_${crypto.randomUUID()}_${safeName}`;
-      const { error: uploadError } = await supabase.storage
-        .from(PRIVATE_EVIDENCE_BUCKET)
-        .upload(objectPath, buffer, { contentType, upsert: false });
-      if (uploadError) {
-        console.error('[upload] private payment evidence failed:', uploadError);
-        return Response.json({ error: 'อัปโหลดหลักฐานการชำระไม่สำเร็จ' }, { status: 500 });
+        console.error('[upload] private evidence failed:', entityType, uploadError);
+        return Response.json({ error: `อัปโหลดหลักฐานไม่สำเร็จ — ${uploadError.message}` }, { status: 500 });
       }
       return Response.json({
         url: null,
@@ -208,26 +127,19 @@ export async function DELETE(request) {
   // open. After accept, the quote becomes the Actual source and its evidence is
   // immutable through this endpoint.
   if (storagePath) {
+    // ⚠️ ลบได้เฉพาะ **หลักฐาน Won ที่ยังอยู่ระหว่างกด Won** — หลักฐานการชำระของใบสั่งขาย
+    // ถอนผ่านเส้นของงวดชำระ ไม่ใช่ทางนี้ (ทางนี้ไม่รู้ว่างวดไหนอ้างไฟล์อยู่)
     if (entityType !== 'quotation_won_evidence' || !entityId || storageBucket !== PRIVATE_EVIDENCE_BUCKET) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
-    const safeQuoteId = String(entityId).replace(/[^a-zA-Z0-9_-]+/g, '_');
-    if (!String(storagePath).startsWith(`quotations/${safeQuoteId}/won/`)) {
+    const prefix = privateEvidencePrefix(entityType, entityId);
+    if (!prefix || !String(storagePath).startsWith(prefix)) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
+    // ด่านเดียวกับตอนอัป (สิทธิ์ฝ่ายขาย + ขอบเขตดีล + ใบต้องยังเปิด)
+    const scope = await checkPrivateEvidenceScope(user, entityType, entityId);
+    if (!scope.ok) return Response.json({ error: 'forbidden' }, { status: 403 });
     const supabase = getSupabaseAdmin();
-    const { data: quote, error: quoteLoadError } = await supabase
-      .from('quotations').select('id, dealId, status').eq('id', entityId).maybeSingle();
-    if (quoteLoadError) return Response.json({ error: quoteLoadError.message }, { status: 500 });
-    if (!quote || !['draft', 'sent'].includes(quote.status) || !canEditSalesPlanning(user)) {
-      return Response.json({ error: 'forbidden' }, { status: 403 });
-    }
-    const { data: deal, error: dealError } = await supabase
-      .from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
-    if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
-    if (!deal || !inSalesEditScope(user, deal)) {
-      return Response.json({ error: 'forbidden' }, { status: 403 });
-    }
     await supabase.storage.from(PRIVATE_EVIDENCE_BUCKET).remove([storagePath]);
     return Response.json({ ok: true });
   }

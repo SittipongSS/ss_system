@@ -254,7 +254,9 @@ system_issue: {
   ข้อยกเว้นเดียวคือ `quotation_won_evidence` ที่ยังลง private Supabase bucket
 - entityType ที่ยังไม่ map โฟลเดอร์ **ตกถัง `_รอจัดที่` เงียบ ๆ** (`src/lib/drive.js:460`)
   — เคยเป็นบั๊กจริงกับเธรดสรรพสามิต ตอนนี้มี `driveEntityMap.test.mjs` บังคับไว้แล้ว
-- เพดาน **10 MB ต่อไฟล์** (`MAX_UPLOAD_MB`) · รับทั้งเอกสารและรูป (`ACCEPTED_UPLOAD_EXT`)
+- เพดาน **25 MB ต่อไฟล์** (`MAX_UPLOAD_MB` — ขยายจาก 10 MB เมื่อ 2026-08-17) · รับทั้งเอกสารและรูป
+  (`ACCEPTED_UPLOAD_EXT`) · ไบต์ขึ้น Drive **ตรงจากเบราว์เซอร์** ผ่าน `/api/upload/session`
+  เพราะ Vercel ตัด request body ของ function ที่ 4.5 MB (ดู `ATTACHMENT_REQUIREMENT_SPEC.md`)
 
 ### Q15 · โฟลเดอร์ปลายทาง `แจ้งปัญหาระบบ / <YYYY-MM>`
 

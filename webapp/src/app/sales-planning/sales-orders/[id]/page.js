@@ -59,7 +59,7 @@ import { salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import Textarea from "@/components/ui/Textarea";
 import Input from "@/components/ui/Input";
 import { businessDate } from "@/lib/businessDate";
-import { describeResponseError } from "@/lib/fetchError";
+import { uploadFileForEntity } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
@@ -274,17 +274,19 @@ export default function SalesOrderDetailPage() {
      ⚠️ ยังเป็นการ **ยืมมาโชว์ ไม่ย้ายข้อมูล** — `wonAttachments` เป็น audit trail
      ของการกด Won ซึ่งเป็นของ QT (mig 0138 เก็บไว้แม้ถูก unaccept) */
   async function uploadPaymentEvidence(file) {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("entityType", "sales_order_payment_evidence");
-    fd.append("entityId", id);
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!res.ok) throw new Error(await describeResponseError(res, `อัปโหลด ${file.name} ไม่สำเร็จ`));
-    const payload = await res.json();
+    // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ (signed URL จาก /api/upload/session)
+    let ref;
+    try {
+      ref = await uploadFileForEntity({
+        file, entityType: "sales_order_payment_evidence", entityId: id,
+      });
+    } catch (err) {
+      throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
+    }
     return {
-      fileUrl: payload.url || null,
-      storageBucket: payload.storageBucket || null,
-      storagePath: payload.storagePath || null,
+      fileUrl: ref.url || null,
+      storageBucket: ref.storageBucket || null,
+      storagePath: ref.storagePath || null,
       fileName: file.name,
       mimeType: file.type,
       sizeBytes: file.size,
