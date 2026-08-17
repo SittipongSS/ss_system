@@ -44,8 +44,10 @@ export function TaskNoteLine({ text }) {
  * @param nameOf  (id) => ชื่อคน — หน้ารายการมี usersMap อยู่แล้ว
  * @param links   ต้นทางที่กดไปแก้ได้ [{ label, href }] — ดีล/โครงการ/คำร้อง
  * @param href    หน้ารายละเอียดของงานใบนี้
+ * @param chain   สายงาน { predecessor, followers } — คำนวณจากรายการที่โหลดมาแล้ว
+ *                (mig 0266) ไม่ใช่ยิง API เพิ่มตอนกาง
  */
-export default function TaskDetailPanel({ task, nameOf = () => "", links = [], href }) {
+export default function TaskDetailPanel({ task, nameOf = () => "", links = [], href, chain = null }) {
   if (!task) return null;
   const flags = [task.urgent && "ด่วน", task.important && "สำคัญ"].filter(Boolean).join(" · ");
   // ผู้สั่ง: งานที่กรอกเองไม่มี assignedBy — บอกตรง ๆ ว่า "สร้างเอง" ดีกว่าขีดกลาง
@@ -73,6 +75,17 @@ export default function TaskDetailPanel({ task, nameOf = () => "", links = [], h
             รายละเอียดเท่านั้น ทั้งที่เป็นข้อมูลชิ้นเดียวที่อธิบายว่างานสะดุดตรงไหน */}
         {task.lateReason && (
           <Field label="สาเหตุที่เสร็จช้า" className={styles.late}>{task.lateReason}</Field>
+        )}
+        {/* งานที่รอคนอื่น: เหตุผลสำคัญพอ ๆ กับสาเหตุที่เสร็จช้า — คนตรวจงานอ่านสองอันนี้
+            เพื่อตอบคำถามเดียวกันคือ "ทำไมงานยังไม่ขยับ" */}
+        {task.blockedReason && (
+          <Field label="รออะไรอยู่">{task.blockedReason}{task.blockedSince ? ` (ตั้งแต่ ${fmtDate(task.blockedSince)})` : ""}</Field>
+        )}
+        {chain?.predecessor && (
+          <Field label="ต่อจากงาน"><Value text={chain.predecessor.title} /></Field>
+        )}
+        {!!chain?.followers?.length && (
+          <Field label="งานต่อเนื่อง">{chain.followers.map((f) => f.title).join(" · ")}</Field>
         )}
       </div>
 

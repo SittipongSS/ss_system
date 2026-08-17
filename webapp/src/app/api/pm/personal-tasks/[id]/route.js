@@ -2,7 +2,8 @@ import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, c
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
-import { normalizeDifficulty } from '@/lib/pm/tasks';
+import { PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, TASK_STATUS_COMPLETED, normalizeDifficulty } from '@/lib/pm/tasks';
+import { UNLOCK_PATCH, chainBlockReason, chainStatusOnLink, followersToUnlock } from '@/lib/pm/taskChain';
 import { canManagePersonalTask, canViewPersonalTask, personalTaskResponsibleIdentity } from '@/lib/pm/personalTaskAccess';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
@@ -16,7 +17,13 @@ export const dynamic = 'force-dynamic';
 const EDITABLE = [
   'title', 'note', 'startDate', 'dueDate', 'status', 'category',
   'important', 'urgent', 'difficulty', 'projectId', 'dealId', 'assigneeId',
+  'predecessorId', 'blockedReason',
 ];
+
+// ฟิลด์ที่ "ผู้รับผิดชอบแต่ไม่ใช่ผู้ดูแลงาน" แก้ได้ — blockedReason ต้องมาคู่กับ status
+// เสมอ (เข้าสถานะรอคนอื่นต้องบอกว่ารออะไร) ถ้าไม่นับรวม คนที่แก้ได้แค่สถานะจะเลือก
+// "รอคนอื่น" ไม่ได้เลยทั้งที่เป็นคนที่รู้ว่าติดอะไรอยู่
+const STATUS_FIELDS = ['status', 'blockedReason'];
 
 const today = () => businessDate();
 
@@ -51,6 +58,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .select('id, docNo, kind, title, status').eq('id', task.inquiryId).maybeSingle();
     linkedInquiry = data || null;
   }
+  // สายงาน (mig 0266) — ใบก่อนหน้า 1 ใบ + ใบที่ต่อจากงานนี้กี่ใบก็ได้
+  // เอาแค่ 4 ฟิลด์: การ์ดสายงานโชว์แค่ชื่อ/สถานะ/กำหนด ไม่ต้องดึงทั้งแถว
+  let predecessor = null;
+  if (task.predecessorId) {
+    const { data } = await supabase.from('personal_tasks')
+      .select('id, title, status, dueDate').eq('id', task.predecessorId).maybeSingle();
+    predecessor = data || null;
+  }
+  const { data: followerRows } = await supabase.from('personal_tasks')
+    .select('id, title, status, dueDate').eq('predecessorId', id).order('createdAt', { ascending: true });
+
   const userIds = [...new Set([task.ownerId, task.assigneeId, task.proxyBy, task.assignedBy].filter(Boolean))];
   const people = {};
   await Promise.all(userIds.map(async (userId) => {
@@ -64,6 +82,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     project: linkedProject,
     deal: linkedDeal,
     inquiry: linkedInquiry,
+    predecessor,
+    followers: followerRows || [],
     people,
     canManage: !!manage,
     canChangeStatus: canChangeTaskStatus(user, task, manage),
@@ -126,13 +146,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const manage = await canManagePersonalTask(supabase, task, user);
   const updates = pickFields(body, EDITABLE, {
-    nullable: ['startDate', 'dueDate', 'projectId', 'dealId', 'assigneeId', 'category'],
+    nullable: ['startDate', 'dueDate', 'projectId', 'dealId', 'assigneeId', 'category', 'predecessorId', 'blockedReason'],
   });
 
   // สิทธิ์แบบ 2 ระดับ: เปลี่ยน "สถานะ" อย่างเดียว → ผู้ทำแทน/ผู้รับผิดชอบ/หัวหน้าก็ได้;
   // แก้ฟิลด์อื่นใด ๆ → ต้องมี full authority.
   const keys = Object.keys(updates);
-  const statusOnly = keys.length > 0 && keys.every((k) => k === 'status');
+  const statusOnly = keys.length > 0 && keys.every((k) => STATUS_FIELDS.includes(k)) && keys.includes('status');
   if (statusOnly) {
     if (!canChangeTaskStatus(user, task, manage)) return forbidden('ต้องดึงงานมาทำแทนก่อนจึงปรับสถานะได้');
   } else if (!manage) {
@@ -142,6 +162,64 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('difficulty' in updates) updates.difficulty = normalizeDifficulty(updates.difficulty);
   if ('important' in updates) updates.important = !!updates.important;
   if ('urgent' in updates) updates.urgent = !!updates.urgent;
+  if ('status' in updates && !PERSONAL_TASK_STATUSES.includes(updates.status)) {
+    return badRequest('สถานะงานไม่ถูกต้อง');
+  }
+
+  // ── งานก่อนหน้าในสาย (mig 0266) ────────────────────────────────────────
+  // ต้องเห็นงานนั้นจริง + ห้ามผูกวน (งานรอตัวเอง = ไม่มีทางปลดล็อกได้เลย)
+  /* ⚠️ ต้องเทียบว่า **ลิงก์เปลี่ยนจริงไหม** ไม่ใช่แค่ "มีคีย์นี้ในคำขอ" — client ที่
+     ส่งทั้งแถวกลับมา (ค่าเดิมเป๊ะ) จะทำให้กติกา "ผูกกับใบที่ยังไม่ปิด = ล็อก" ทำงานซ้ำ
+     แล้วดึงงานที่คนปลดไปทำแล้วกลับเข้าสถานะ "รอคนอื่น" เงียบ ๆ พร้อมรีเซ็ตวันเริ่มรอ */
+  const predecessorChanged = 'predecessorId' in updates
+    && (updates.predecessorId || null) !== (task.predecessorId || null);
+  let predecessor = null;
+  if (predecessorChanged && updates.predecessorId) {
+    if (updates.predecessorId === id) return badRequest('ผูกงานให้ต่อจากตัวเองไม่ได้');
+    const { data: prev, error: prevError } = await supabase
+      .from('personal_tasks').select('*').eq('id', updates.predecessorId).maybeSingle();
+    if (prevError) return fail(prevError.message, 500);
+    if (!prev) return badRequest('ไม่พบงานก่อนหน้า');
+    if (!(await canViewPersonalTask(supabase, prev, user))) return forbidden('ไม่มีสิทธิ์ผูกกับงานก่อนหน้านี้');
+    // ไล่สายขึ้นไปกันวงรอบ — สายงานจริงสั้น เพดาน 20 ชั้นเหลือเฟือและกัน loop ไม่รู้จบ
+    let cursor = prev;
+    for (let hop = 0; cursor?.predecessorId && hop < 20; hop += 1) {
+      if (cursor.predecessorId === id) return badRequest('ผูกแล้วสายงานจะวนกลับมาที่งานนี้');
+      const { data: up } = await supabase
+        .from('personal_tasks').select('id, predecessorId').eq('id', cursor.predecessorId).maybeSingle();
+      cursor = up || null;
+    }
+    predecessor = prev;
+  }
+
+  // ── สถานะ "รอคนอื่น": ต้องรู้ว่ารออะไร และรู้ว่าเริ่มรอเมื่อไร ──────────
+  const nextStatus = 'status' in updates ? updates.status : task.status;
+  const statusChanged = nextStatus !== task.status;
+  // ผูกงานก่อนหน้าที่ยังไม่เสร็จ = ล็อกให้เองทันที (ผู้ใช้ไม่ต้องกดสถานะเอง)
+  const chain = predecessor ? chainStatusOnLink(nextStatus, predecessor, today()) : null;
+  if (chain) {
+    updates.status = chain.status;
+    updates.blockedReason = updates.blockedReason || chain.blockedReason;
+    updates.blockedSince = chain.blockedSince;
+  } else if (nextStatus === TASK_STATUS_BLOCKED) {
+    // ครอบทั้ง "เพิ่งเข้าสถานะนี้" และ "อยู่ในสถานะนี้แล้วแก้เหตุผล" — สายหลังเคยหลุด
+    // ทุกด่าน (ไม่ตัดช่องว่าง ไม่ตัดความยาว และลบเหตุผลทิ้งด้วยสตริงว่างได้)
+    const reason = (('blockedReason' in updates ? updates.blockedReason : task.blockedReason) || '').trim();
+    if (!reason) return badRequest('งานที่รอคนอื่น ต้องระบุว่ารออะไร/รอใคร');
+    updates.blockedReason = reason.slice(0, 1000);
+    updates.blockedSince = task.blockedSince || today();
+  } else if (statusChanged && task.status === TASK_STATUS_BLOCKED) {
+    // ออกจากสถานะรอ = ล้างของที่ค้าง ไม่งั้นงานที่เดินต่อแล้วยังโชว์ว่ารออะไรอยู่
+    updates.blockedReason = null;
+    updates.blockedSince = null;
+  } else if (predecessorChanged && !updates.predecessorId && task.status === TASK_STATUS_BLOCKED) {
+    /* ปลดสายงานทิ้งทั้งที่งานยังติดล็อกอยู่ — ถ้าเหตุผลที่ค้างคือเหตุผลของสายงาน
+       (ระบบเขียนเอง) ต้องปลดตามไปด้วย ไม่งั้นงานค้างรอ "งานที่ไม่ได้ผูกแล้ว" ตลอดไป
+       เทียบข้อความตรง ๆ เพื่อไม่ไปแตะงานที่คนพิมพ์เหตุผลของตัวเองไว้ (เช่น รอลูกค้า) */
+    const { data: oldPrev } = await supabase
+      .from('personal_tasks').select('id, title').eq('id', task.predecessorId).maybeSingle();
+    if ((task.blockedReason || '') === chainBlockReason(oldPrev?.title)) Object.assign(updates, UNLOCK_PATCH);
+  }
 
   // เปลี่ยนผู้รับมอบ → ตรวจสิทธิ์มอบหมายตามลำดับชั้น (canAssignTask) + เซ็ต assignedBy.
   if ('assigneeId' in updates) {
@@ -238,9 +316,34 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
 
-  // เล่าให้ทีมฟังในเธรดงาน: เปลี่ยนสถานะ / เลื่อนกำหนด / สาเหตุที่เสร็จช้า
+  // ── ปิดงานใบนี้ = ปลดล็อกงานที่ต่อจากมัน (mig 0266) ────────────────────
+  // ปลดเฉพาะใบที่ยังติดล็อกอยู่ และคืนเป็น "รอดำเนินการ" ไม่ใช่ "กำลังทำ" — คนต้อง
+  // กดเริ่มเอง (กติกาเดียวกับ lib/pm/status.js ของขั้นตอนไทม์ไลน์)
+  // ไม่เช็ค error โดยตั้งใจ: ปลดล็อกพลาดต้องไม่ทำให้การปิดงานที่สำเร็จแล้วตีกลับ
+  if (task.status !== TASK_STATUS_COMPLETED && data.status === TASK_STATUS_COMPLETED) {
+    const { data: followers } = await supabase
+      .from('personal_tasks').select('id, title, status').eq('predecessorId', id);
+    for (const next of followersToUnlock(followers)) {
+      const { data: unlocked, error: unlockError } = await supabase.from('personal_tasks')
+        .update({ ...UNLOCK_PATCH, updatedBy: user.id, updatedAt: new Date().toISOString() })
+        .eq('id', next.id).select().single();
+      if (unlockError || !unlocked) {
+        // ตั้งใจไม่ตีกลับ: การปิดงานสำเร็จไปแล้ว ปลดล็อกใบถัดไปเป็นของเสริม
+        console.error('[personal-tasks] ปลดล็อกงานต่อเนื่องไม่สำเร็จ', next.id, unlockError?.message);
+        continue;
+      }
+      await appendUpdate(supabase, {
+        entityType: 'personal_task', entityId: next.id, kind: 'status',
+        body: `ปลดล็อกอัตโนมัติ — งานก่อนหน้า “${data.title}” เสร็จแล้ว เริ่มงานนี้ได้`,
+        meta: { field: 'status', from: TASK_STATUS_BLOCKED, to: unlocked.status, predecessorId: id },
+        user,
+      });
+    }
+  }
+
+  // เล่าให้ทีมฟังในเธรดงาน: เปลี่ยนสถานะ / เลื่อนกำหนด / สาเหตุที่เสร็จช้า / รออะไรอยู่
   // (คนละหน้าที่กับ audit — audit คือใครแก้อะไร supervisor อ่าน)
-  for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason })) {
+  for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason, blockedReason: statusChanged && data.status === TASK_STATUS_BLOCKED ? data.blockedReason : null })) {
     // ไม่เช็ค error โดยตั้งใจ — ฟีดพลาดต้องไม่ทำให้การบันทึกงานพังตาม
     await appendUpdate(supabase, { entityType: 'personal_task', entityId: id, ...u, user });
   }
@@ -266,6 +369,19 @@ export const DELETE = withUser(async ({ user, supabase, ctx, req }) => {
   const task = await loadTask(supabase, id);
   if (!task) return notFound('ไม่พบงาน');
   if (!(await canManagePersonalTask(supabase, task, user))) return forbidden();
+
+  /* งานที่ต่อจากใบนี้ต้องไม่ค้างรอ "งานที่ไม่มีอยู่แล้ว" (ลิงก์เป็น logical ไม่มี FK)
+     — ปลดล็อกใบที่ยังติดอยู่ แล้วตัดสายให้ทุกใบ ก่อนลบตัวมันเอง */
+  const { data: followers } = await supabase
+    .from('personal_tasks').select('id, title, status').eq('predecessorId', id);
+  for (const next of followersToUnlock(followers)) {
+    await supabase.from('personal_tasks')
+      .update({ ...UNLOCK_PATCH, updatedBy: user.id, updatedAt: new Date().toISOString() })
+      .eq('id', next.id);
+  }
+  if (followers?.length) {
+    await supabase.from('personal_tasks').update({ predecessorId: null }).eq('predecessorId', id);
+  }
 
   await purgeAttachments('personal_task', id);
   // entity_updates ไม่มี FK (polymorphic) — ต้องเก็บกวาดเอง ไม่งั้นเธรดค้างเป็นขยะ

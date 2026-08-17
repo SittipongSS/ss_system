@@ -3,7 +3,7 @@ import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, Undo2, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskDetailPanel, { TaskNoteLine } from "@/components/pm/TaskDetailPanel";
@@ -26,8 +26,9 @@ import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChange
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
-import { daysToDue, isUrgent } from "@/lib/pm/derived";
-import { DIFFICULTY_LABELS, eisenhowerQuadrant, QUADRANT_LABELS } from "@/lib/pm/tasks";
+import { daysToDue, isUrgent, taskUrgency } from "@/lib/pm/derived";
+import { DIFFICULTY_LABELS, PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, eisenhowerQuadrant, isWaitingStatus, QUADRANT_LABELS } from "@/lib/pm/tasks";
+import { daysWaiting } from "@/lib/pm/taskChain";
 import { MINE_TASK_VIEWS, matchesMineTaskView, taskRelationship } from "@/lib/pm/taskViews";
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -38,7 +39,7 @@ import Textarea from "@/components/ui/Textarea";
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
 // อีกต่อไป — งานเหล่านั้นดู/แก้ที่หน้าไทม์ไลน์โดยตรง.
 
-const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Completed: "เสร็จ" };
+const TASK_STATUS_TH = { Pending: "รอ", "In Progress": "ทำอยู่", Blocked: "รอคนอื่น", Completed: "เสร็จ" };
 const SCOPE_TH = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
 const MINE_VIEW_TH = {
   [MINE_TASK_VIEWS.RESPONSIBLE]: "ต้องทำ",
@@ -46,29 +47,52 @@ const MINE_VIEW_TH = {
   [MINE_TASK_VIEWS.ALL]: "ทั้งหมดของฉัน",
 };
 
+/* ป้ายกำหนดเสร็จข้างวันที่ — ตรรกะอยู่ที่ `taskUrgency` (lib/pm/derived.js) ที่นี่
+   ทำแค่แปลง tone เป็นสี/ไอคอน · กติกาสี: แดง = เลยกำหนดและงานอยู่ในมือเรา ·
+   ม่วง = รอคนอื่นอยู่ (นาฬิกาเดินต่อ แต่แยกสี/แยกยอดตามมติผู้ใช้ 2026-08-17) */
+const URGENCY_TONE = {
+  done: { color: "var(--green)", icon: <CheckCircle2 size={12} /> },
+  overdue: { color: "var(--red)", icon: <AlertTriangle size={12} /> },
+  soon: { color: "var(--amber)", icon: <Clock size={12} /> },
+  waiting: { color: "var(--purple)", icon: <PauseCircle size={12} /> },
+  idle: { color: "var(--text-3)", icon: <Clock size={12} /> },
+  active: { color: "var(--text-2)", icon: <Clock size={12} /> },
+};
 const getUrgencyInfo = (task) => {
-  if (task.status === "Completed") return { color: "var(--green)", label: "เสร็จแล้ว", icon: <CheckCircle2 size={12} /> };
-  if (task.status === "Pending") return { color: "var(--text-3)", label: "ยังไม่เริ่ม", icon: <Clock size={12} /> };
-  const dd = daysToDue(task);
-  if (dd === null) return { color: "var(--text-2)", label: "กำลังทำ", icon: <Clock size={12} /> };
-  if (dd < 0) return { color: "var(--red)", label: `เลยกำหนด ${Math.abs(dd)} วัน`, icon: <AlertTriangle size={12} /> };
-  if (dd <= 3) return { color: "var(--amber)", label: `เหลือ ${dd} วัน`, icon: <Clock size={12} /> };
-  return { color: "var(--text-2)", label: `เหลือ ${dd} วัน`, icon: <Clock size={12} /> };
+  const u = taskUrgency(task, { waiting: isWaitingStatus(task.status) });
+  const tone = URGENCY_TONE[u.tone] || URGENCY_TONE.active;
+  // เลยกำหนดใช้ไอคอนเตือนเสมอ แม้จะรอคนอื่นอยู่ (สีบอกว่าใครถือ ไอคอนบอกว่าเลยแล้ว)
+  return { color: tone.color, label: u.label, icon: u.overdue ? <AlertTriangle size={12} /> : tone.icon };
 };
 
-const statusDot = (s) => s === "Completed" ? "var(--green)" : s === "In Progress" ? "var(--accent)" : "var(--text-3)";
-const statusIcon = (s, size = 18) => s === "Completed" ? <CheckCircle2 size={size} /> : s === "In Progress" ? <Clock size={size} /> : <CircleDashed size={size} />;
+const CHIP_BASE = { display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 7px", borderRadius: 9 };
+const CHIP_WAIT = { ...CHIP_BASE, maxWidth: 260, background: "color-mix(in srgb, var(--purple) 12%, transparent)", color: "var(--purple)" };
+const CHIP_CHAIN = { ...CHIP_BASE, maxWidth: 220, background: "var(--panel-2)", color: "var(--text-2)", cursor: "default" };
+const CHIP_CHAIN_LINK = { ...CHIP_CHAIN, cursor: "pointer" };
+const CHIP_ICON = { flexShrink: 0 };
+const CHIP_TEXT = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const CHIP_SUFFIX = { flexShrink: 0, opacity: 0.75 };
+const ROW_CHIPS = { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, fontSize: "var(--fs-2)" };
+const MODAL_BODY = { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 };
+const MODAL_LEAD = { fontSize: "var(--fs-7)", color: "var(--text-3)" };
+const MODAL_STRONG = { color: "var(--text)" };
+
+const statusDot = (s) => s === "Completed" ? "var(--green)" : s === "In Progress" ? "var(--accent)" : isWaitingStatus(s) ? "var(--purple)" : "var(--text-3)";
+const statusIcon = (s, size = 18) => s === "Completed" ? <CheckCircle2 size={size} /> : s === "In Progress" ? <Clock size={size} /> : isWaitingStatus(s) ? <PauseCircle size={size} /> : <CircleDashed size={size} />;
 
 // ตัวกรองสถานะ — ตรงกับการ์ดสรุปด้านบน
+// "ต้องรีบ" = งานที่ **อยู่ในมือเรา** และใกล้/เลยกำหนด — งานที่รอคนอื่นมีการ์ดของตัวเอง
+// (แยกยอดตามมติผู้ใช้ 2026-08-17 ไม่งั้นการ์ดสั่งให้รีบกับงานที่เร่งเองไม่ได้ปนกัน)
 const matchStatus = (t, filter) => {
   if (filter === "all") return true;
   if (filter === "progress") return t.status === "In Progress";
-  if (filter === "urgent") return isUrgent(t);
+  if (filter === "waiting") return isWaitingStatus(t.status);
+  if (filter === "urgent") return isUrgent(t) && !isWaitingStatus(t.status);
   if (filter === "done") return t.status === "Completed";
   return true;
 };
 
-const STATUS_ORDER = { "In Progress": 0, Pending: 1, Completed: 2 };
+const STATUS_ORDER = { "In Progress": 0, Blocked: 1, Pending: 2, Completed: 3 };
 const makeComparator = (sortKey, dir = "asc") => {
   const mul = dir === "desc" ? -1 : 1;
   if (sortKey === "due") return (a, b) => {
@@ -132,6 +156,7 @@ export default function TasksPage() {
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
   const [lateModal, setLateModal] = useState(null); // {task, reason} — กรอกสาเหตุตอนปิดงานเลยกำหนด
+  const [blockModal, setBlockModal] = useState(null); // {task, reason} — กรอก "รออะไร" ตอนเข้าสถานะรอคนอื่น
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
@@ -182,6 +207,7 @@ export default function TasksPage() {
   const [form, setForm] = useState(TASK_BLANK);
   const [saving, setSaving] = useState(false);
   const [inquirySource, setInquirySource] = useState(null);
+  const [chainSource, setChainSource] = useState(null); // {id, title} — งานก่อนหน้าตอนสร้างงานต่อเนื่อง
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
   const loadSeq = useRef(0);
@@ -326,7 +352,11 @@ export default function TasksPage() {
     // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
     all: pool.filter((t) => t.status !== "Completed").length,
     progress: pool.filter((t) => t.status === "In Progress").length,
-    urgent: pool.filter(isUrgent).length,
+    // แยกยอดตามมติผู้ใช้ 2026-08-17: งานที่รอคนอื่นไม่ปนกับ "ต้องรีบ" เพราะเร่งเองไม่ได้
+    // — แต่ยอดเลยกำหนดของมันยังต้องเห็น (ขึ้นเป็นบรรทัดรองบนการ์ด)
+    waiting: pool.filter((t) => isWaitingStatus(t.status)).length,
+    waitingOverdue: pool.filter((t) => isWaitingStatus(t.status) && (daysToDue(t) ?? 0) < 0).length,
+    urgent: pool.filter((t) => isUrgent(t) && !isWaitingStatus(t.status)).length,
     done: pool.filter((t) => t.status === "Completed").length,
   }), [pool]);
 
@@ -374,7 +404,27 @@ export default function TasksPage() {
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
 
   // ── CRUD ──
-  const openAdd = () => { setEditingId(null); setInquirySource(null); setForm(TASK_BLANK); setShowModal(true); };
+  const openAdd = () => { setEditingId(null); setInquirySource(null); setChainSource(null); setForm(TASK_BLANK); setShowModal(true); };
+
+  /* งานต่อเนื่อง (mig 0266) — "จบใบนี้แล้วต่อใบไหน"
+     ก๊อปบริบทของใบก่อนหน้ามาให้ (ดีล/โครงการ/หมวด/ผู้รับผิดชอบ) เพราะงานที่ต่อกัน
+     เป็นสายเดียวกันแทบทุกครั้งอยู่ในดีลเดียวกัน — คนกรอกซ้ำทุกช่องคือค่าใช้จ่ายเปล่า
+     สถานะเริ่มต้นปล่อยเป็น Pending แล้วให้ **ฝั่ง API** เป็นคนตัดสินว่าต้องล็อกเป็น
+     "รอคนอื่น" ไหม (ใบก่อนหน้ายังไม่ปิด) — ตรรกะอยู่ที่เดียวคือ chainStatusOnLink */
+  const openFollowUp = (t) => {
+    setEditingId(null);
+    setInquirySource(null);
+    setChainSource({ id: t.id, title: t.title });
+    setForm({
+      ...TASK_BLANK,
+      predecessorId: t.id,
+      dealId: t.dealId || "",
+      projectId: t.projectId || "",
+      category: t.category || "",
+      assigneeId: t.assigneeId || "",
+    });
+    setShowModal(true);
+  };
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const inquiryId = params.get("inquiryId");
@@ -432,12 +482,21 @@ export default function TasksPage() {
   const openEdit = (t) => {
     setEditingId(t.id);
     setInquirySource(null);
+    setChainSource(null);
     setShowModal(true);
   };
-  const applyStatus = async (t, status, lateReason) => {
+  const applyStatus = async (t, status, { lateReason, blockedReason } = {}) => {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lateReason ? { status, lateReason } : { status }) });
+      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          ...(lateReason ? { lateReason } : {}),
+          ...(blockedReason ? { blockedReason } : {}),
+        }),
+      });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.error || "");
@@ -456,15 +515,50 @@ export default function TasksPage() {
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       if (String(t.dueDate) < today) { setLateModal({ task: t, reason: "" }); return; }
     }
+    // เข้าสถานะ "รอคนอื่น" → ต้องบอกว่ารออะไร (ด่านเดียวกับฝั่ง API) ไม่งั้นคิวจะเต็มไปด้วย
+    // งานที่ไม่มีใครรู้ว่าค้างอยู่ที่ใคร แล้วไม่มีใครตามได้
+    if (status === TASK_STATUS_BLOCKED) { setBlockModal({ task: t, reason: t.blockedReason || "" }); return; }
     applyStatus(t, status);
   };
   const statusSelect = (t) => (
-    <StatusSelect value={t.status} variant="short" onClick={(e) => e.stopPropagation()} onChange={(v) => setTaskStatus(t, v)} title="เปลี่ยนสถานะ" />
+    <StatusSelect value={t.status} variant="short" statuses={PERSONAL_TASK_STATUSES} onClick={(e) => e.stopPropagation()} onChange={(v) => setTaskStatus(t, v)} title="เปลี่ยนสถานะ" />
   );
   // สถานะ: แก้ได้ (ผู้รับผิดชอบ/ผู้ทำแทน/หัวหน้า) → dropdown, ไม่งั้น → ป้ายอ่านอย่างเดียว
   const statusCell = (t) => canSetStatus(t)
     ? statusSelect(t)
     : <span className={`status-pill dot ${t.status === "Completed" ? "success" : ""}`} style={{ "--dot": statusDot(t.status) }}>{TASK_STATUS_TH[t.status] || t.status}</span>;
+
+  /* ป้าย "รออะไรอยู่" + "ต่อจากงานไหน" — ต้องอ่านได้จากแถวโดยไม่ต้องกางรายละเอียด
+     เพราะสองอย่างนี้คือคำตอบของคำถามที่คนเปิดหน้านี้มาถามจริง ๆ ("ทำไมยังไม่เสร็จ")
+     ⚠️ ชื่องานก่อนหน้าอ่านจากรายการที่โหลดมาแล้วเท่านั้น — ห้ามยิง API รายแถว
+     (ใบก่อนหน้าอยู่นอกสโคปที่โหลดมาได้ เช่นงานของทีมอื่น → โชว์แบบไม่มีชื่อ) */
+  const taskById = useMemo(() => new Map(personalTasks.map((t) => [t.id, t])), [personalTasks]);
+  const waitingBadge = (t) => {
+    if (!isWaitingStatus(t.status)) return null;
+    const days = daysWaiting(t, todayISO);
+    const label = t.blockedReason || "รอคนอื่น";
+    return (
+      <span title={`${label}${days !== null ? ` · รอมาแล้ว ${days} วัน` : ""}`} style={CHIP_WAIT}>
+        <PauseCircle size={10} style={CHIP_ICON} />
+        <span style={CHIP_TEXT}>{label}</span>
+        {days !== null && days > 0 && <span style={CHIP_SUFFIX}>· {days} วัน</span>}
+      </span>
+    );
+  };
+  const chainBadge = (t) => {
+    if (!t.predecessorId) return null;
+    const prev = taskById.get(t.predecessorId);
+    return (
+      <span
+        title={prev ? `ต่อจากงาน “${prev.title}”` : "ต่อจากงานก่อนหน้า (อยู่นอกรายการที่กำลังดู)"}
+        onClick={prev ? (e) => { e.stopPropagation(); router.push(`/sa/tasks/${prev.id}`); } : undefined}
+        style={prev ? CHIP_CHAIN_LINK : CHIP_CHAIN}
+      >
+        <CornerDownRight size={10} style={CHIP_ICON} />
+        <span style={CHIP_TEXT}>ต่อจาก {prev ? prev.title : "งานก่อนหน้า"}</span>
+      </span>
+    );
+  };
 
   // ป้ายสำหรับข้อมูลเก่าที่ยังมี proxyBy (งานใหม่จะย้าย assignee จริง)
   const proxyBadge = (t) => {
@@ -484,6 +578,15 @@ export default function TasksPage() {
     if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); releaseLegacyProxy(t); }} title="คืนงานทำแทนเดิม"><Undo2 size={14} /></button>;
     return null;
   };
+  /* ปุ่มสร้างงานต่อเนื่อง — เงื่อนไขเดียวกับปุ่ม "เพิ่มงาน" (สร้างงานใหม่ ไม่ใช่แก้ใบนี้)
+     จึงไม่ผูกกับ canManageTask: คนที่เห็นงานของทีมและมีสิทธิ์สร้างงาน ต่องานจากมันได้ */
+  const canWriteTasks = canEdit || role === "rd";
+  const followUpButton = (t) => canWriteTasks ? (
+    <Button iconOnly onClick={(e) => { e.stopPropagation(); openFollowUp(t); }} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้">
+      <CornerDownRight size={14} />
+    </Button>
+  ) : null;
+
   const deletePersonal = async (t) => {
     if (!(await askConfirm({ title: "ลบงาน", message: `ลบงาน "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
     const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
@@ -494,7 +597,13 @@ export default function TasksPage() {
   const STAT_CARDS = [
     { key: "all", label: "งานทั้งหมด", count: stats.all, color: "var(--accent)", icon: <ListTodo size={18} /> },
     { key: "progress", label: "กำลังทำ", count: stats.progress, color: "var(--blue)", icon: <Clock size={18} /> },
+    // ต้องรีบ = งานที่อยู่ในมือเรา · รอคนอื่น = งานที่เร่งเองไม่ได้ (บรรทัดรองบอกว่า
+    // ในนั้นเลยกำหนดไปกี่ใบ — ต้องเห็น ไม่งั้นงานที่รอเงียบ ๆ จนเลยเดดไลน์ไม่มีใครทวง)
     { key: "urgent", label: "ต้องรีบ", count: stats.urgent, color: "var(--red)", icon: <Flame size={18} /> },
+    {
+      key: "waiting", label: "รอคนอื่น", count: stats.waiting, color: "var(--purple)", icon: <PauseCircle size={18} />,
+      overrideNote: stats.waitingOverdue > 0 ? `เลยกำหนดแล้ว ${stats.waitingOverdue} งาน` : null,
+    },
     { key: "done", label: "เสร็จแล้ว", count: stats.done, color: "var(--green)", icon: <CheckCircle2 size={18} /> },
   ];
 
@@ -525,6 +634,12 @@ export default function TasksPage() {
           deal && { label: `ดีล: ${deal.title}`, href: `/sa/deals/${deal.id}` },
           proj && { label: `โครงการ: ${proj.code || proj.name}`, href: `/sa/projects/${proj.code || t.projectId}` },
         ].filter(Boolean)}
+        /* สายงานคำนวณจากรายการที่โหลดมาแล้ว — ใบที่อยู่นอกสโคปจะไม่โผล่ ซึ่งถูกต้อง
+           ตามสิทธิ์อยู่แล้ว (หน้ารายละเอียดงานดึงสายเต็มจาก API อีกที) */
+        chain={{
+          predecessor: t.predecessorId ? taskById.get(t.predecessorId) || null : null,
+          followers: personalTasks.filter((x) => x.predecessorId === t.id),
+        }}
       />
     );
   };
@@ -568,7 +683,7 @@ export default function TasksPage() {
     const activeAssignee = t.assigneeId || t.ownerId;
     const assigneeName = activeAssignee ? (naText(usersMap[activeAssignee])) : null;
     const proxyAction = proxyActions(t);
-    const showFooter = manage || canSetStatus(t) || proxyAction;
+    const showFooter = manage || canSetStatus(t) || proxyAction || canWriteTasks;
     return (
       <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
         <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
@@ -584,6 +699,8 @@ export default function TasksPage() {
             <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "1px 6px", borderRadius: "9px", color: "var(--accent)" }}><User size={9} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
           )}
           {proxyBadge(t)}
+          {waitingBadge(t)}
+          {chainBadge(t)}
           {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
         </div>
         {showFooter && (
@@ -591,6 +708,7 @@ export default function TasksPage() {
             <div>{canSetStatus(t) && statusSelect(t)}</div>
             <div style={{ display: "flex", gap: "2px" }}>
               {proxyAction}
+              {followUpButton(t)}
               {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>}
               {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>}
             </div>
@@ -647,6 +765,12 @@ export default function TasksPage() {
                     </div>
                     {/* กางแล้วแผงด้านล่างมีโน้ตเต็ม — บรรทัดย่อตรงนี้จะซ้ำเปล่า ๆ */}
                     {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
+                    {(isWaitingStatus(t.status) || t.predecessorId) && (
+                      <div style={ROW_CHIPS}>
+                        {waitingBadge(t)}
+                        {chainBadge(t)}
+                      </div>
+                    )}
                   </div>
                 </td>
                 {scope === "mine" && <td>{relationshipBadge(t)}</td>}
@@ -670,6 +794,7 @@ export default function TasksPage() {
                 <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
                   <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
                     {proxyActions(t)}
+                    {followUpButton(t)}
                     {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
                     {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
                   </div>
@@ -769,7 +894,9 @@ export default function TasksPage() {
         {STAT_CARDS.map((c) => {
           const active = statusFilter === c.key;
           return (
-            <SaMetric key={c.key} as="button" type="button" onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} active={active} icon={c.icon} label={c.label} value={c.count} note={active ? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ"} tone={c.key === "done" ? "good" : c.key === "overdue" ? "danger" : c.key === "pending" ? "warning" : undefined} aria-pressed={active} />
+            /* บรรทัดรอง: การ์ดที่มีตัวเลขซ่อนอยู่ข้างใน (เช่น "รอคนอื่น" ที่เลยกำหนดแล้ว)
+               ต้องพูดออกมา — สำคัญกว่าคำใบ้ว่ากดได้ ซึ่งการ์ดอื่นบอกอยู่แล้ว */
+            <SaMetric key={c.key} as="button" type="button" onClick={() => setStatusFilter(active && c.key !== "all" ? "all" : c.key)} active={active} icon={c.icon} label={c.label} value={c.count} note={c.overrideNote || (active ? "กำลังใช้ตัวกรองนี้" : "กดเพื่อกรองรายการ")} tone={c.key === "done" ? "good" : c.key === "urgent" ? "danger" : c.key === "waiting" ? "warning" : undefined} aria-pressed={active} />
           );
         })}
       </SaMetricStrip>
@@ -973,6 +1100,7 @@ export default function TasksPage() {
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
                     {expandButton(t)}
                     {proxyActions(t)}
+                    {followUpButton(t)}
                     {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
                     {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
                   </div>
@@ -985,6 +1113,8 @@ export default function TasksPage() {
                     <span style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)", padding: "2px 7px", borderRadius: "10px", color: "var(--accent)" }}><User size={10} style={{ display: "inline", verticalAlign: "-1px" }} /> {assigneeName}</span>
                   )}
                   {proxyBadge(t)}
+                  {waitingBadge(t)}
+                  {chainBadge(t)}
                 </div>
                 <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "var(--fs-3)", flexWrap: "wrap" }}>
                   {statusCell(t)}
@@ -1016,6 +1146,7 @@ export default function TasksPage() {
         task={editingId ? personalTasks.find((t) => t.id === editingId) || null : null}
         initialForm={editingId ? null : form}
         inquirySource={inquirySource}
+        chainSource={chainSource}
         deals={allDeals}
         projects={allProjects}
         assignableUsers={assignableUsers}
@@ -1054,9 +1185,31 @@ export default function TasksPage() {
             <div className="form-action-inline">
               <button type="button" className="btn ghost sm" onClick={() => setLateModal(null)}>ยกเลิก</button>
               <button type="button" className="btn btn-primary sm" disabled={!lateModal.reason.trim()}
-                onClick={() => { const m = lateModal; setLateModal(null); applyStatus(m.task, "Completed", m.reason.trim()); }}>
+                onClick={() => { const m = lateModal; setLateModal(null); applyStatus(m.task, "Completed", { lateReason: m.reason.trim() }); }}>
                 ปิดงาน
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {/* เข้าสถานะ "รอคนอื่น" ต้องบอกว่ารออะไร — ข้อความนี้ไปโผล่ในคิวของคนอื่นด้วย
+          จึงต้องอ่านรู้เรื่องโดยไม่ต้องรู้จักงานนี้มาก่อน (ด่านเดียวกันอยู่ฝั่ง API) */}
+      {blockModal && (
+        <Modal open onClose={() => setBlockModal(null)} title="พักงานไว้รอคนอื่น" size="sm">
+          <div style={MODAL_BODY}>
+            <div style={MODAL_LEAD}>
+              งาน <strong style={MODAL_STRONG}>{blockModal.task.title}</strong> — รออะไร/รอใครอยู่?
+              กำหนดเสร็จยังเดินต่อตามเดิม แต่งานจะถูกแยกออกจากยอด “ต้องรีบ”
+            </div>
+            <Textarea rows={3} value={blockModal.reason}
+              onChange={(e) => setBlockModal((v) => ({ ...v, reason: e.target.value }))}
+              placeholder="เช่น รอลูกค้ายืนยันกลิ่น / รอฝ่ายผลิตตอบราคา / รอเอกสารจากบัญชี..." autoFocus />
+            <div className="form-action-inline">
+              <Button variant="quiet" size="sm" onClick={() => setBlockModal(null)}>ยกเลิก</Button>
+              <Button tone="primary" size="sm" disabled={!blockModal.reason.trim()}
+                onClick={() => { const m = blockModal; setBlockModal(null); applyStatus(m.task, TASK_STATUS_BLOCKED, { blockedReason: m.reason.trim() }); }}>
+                พักไว้รอ
+              </Button>
             </div>
           </div>
         </Modal>

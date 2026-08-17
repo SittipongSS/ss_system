@@ -18,7 +18,7 @@ import Select from "@/components/ui/Select";
 import DealPicker from "@/components/pm/DealPicker";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import PendingFiles from "@/components/ui/PendingFiles";
-import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, TASK_CATEGORIES, taskProgressPct } from "@/lib/pm/tasks";
+import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, PERSONAL_TASK_STATUSES, TASK_CATEGORIES, TASK_STATUS_BLOCKED, TASK_STATUS_TH, taskProgressPct } from "@/lib/pm/tasks";
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
@@ -29,14 +29,14 @@ export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
   projectId: "", dealId: "", assigneeId: "",
   category: "", important: false, urgent: false, difficulty: 2,
-  status: "Pending",
+  status: "Pending", blockedReason: "", predecessorId: "",
 };
 
-export const STATUS_OPTIONS = [
-  ["Pending", "รอดำเนินการ"],
-  ["In Progress", "กำลังทำ"],
-  ["Completed", "เสร็จแล้ว"],
-];
+// แถบขั้นของสถานะ — เรียงตามลำดับที่งานเดินจริง (ดู PERSONAL_TASK_STATUSES)
+export const STATUS_OPTIONS = PERSONAL_TASK_STATUSES.map((value) => [value, TASK_STATUS_TH[value]]);
+
+// สีป้าย "ต่อจากงาน" — ค่าคงที่ระดับโมดูล (ไม่ใช่ inline object ใหม่ทุก render)
+const CHAIN_BADGE = { color: "var(--purple)" };
 
 // วันที่วันนี้ตามเครื่องผู้ใช้ (ไทย = ICT) — ใช้เทียบ "เลยกำหนด" ฝั่ง client
 const todayLocal = () => {
@@ -52,6 +52,7 @@ export const taskToForm = (t) => ({
   projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
   category: t.category || "", important: !!t.important, urgent: !!t.urgent,
   difficulty: t.difficulty ?? 2, status: t.status || "Pending",
+  blockedReason: t.blockedReason || "", predecessorId: t.predecessorId || "",
 });
 
 async function uploadTaskAttachment(taskId, file) {
@@ -69,6 +70,7 @@ export default function TaskFormModal({
   task = null,               // null = สร้างใหม่
   initialForm = null,        // ค่าตั้งต้นตอนสร้าง (เช่น preset ดีล / มาจากเรื่องสอบถาม)
   inquirySource = null,      // { inquiryId, code, messageId?, returnTo? }
+  chainSource = null,        // { id, title } — งานก่อนหน้าตอนกด "สร้างงานต่อเนื่อง"
   deals = [],
   projects = [],
   assignableUsers = [],
@@ -129,6 +131,11 @@ export default function TaskFormModal({
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
   const willComplete = editing && form.status === "Completed" && task.status !== "Completed";
   const needLateReason = willComplete && !!form.dueDate && form.dueDate < todayLocal();
+  /* เลือก "รอคนอื่น" → ต้องบอกว่ารออะไร (ด่านเดียวกับฝั่ง API)
+     ยกเว้นงานที่ต่อจากงานอื่นซึ่งยังไม่เสร็จ — เหตุผลของมันคือ "รองาน X ให้เสร็จก่อน"
+     ที่ระบบเขียนให้เอง คนกรอกไม่ต้องพิมพ์ซ้ำ */
+  const isBlocked = form.status === TASK_STATUS_BLOCKED;
+  const needBlockedReason = isBlocked && !chainSource;
 
   // เรียกได้ทั้งจาก onSubmit ของฟอร์ม (กด Enter) และจากปุ่มในแถบท้ายโมดัล
   // ซึ่งอยู่นอก <form> — ปุ่มนั้นส่ง event ที่ไม่มี preventDefault ก็ยังทำงานได้
@@ -138,13 +145,15 @@ export default function TaskFormModal({
     if (canManage && !form.title.trim()) { setError("ต้องระบุชื่องาน"); return; }
     if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกโครงการแล้วเลือกดีลก่อนบันทึก"); return; }
     if (needLateReason && !lateReason.trim()) { setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน"); return; }
+    if (needBlockedReason && !(form.blockedReason || "").trim()) { setError("งานที่รอคนอื่น ต้องระบุว่ารออะไร/รอใคร"); return; }
 
     setSaving(true);
     try {
       // ไม่มีสิทธิ์เต็ม = ส่งแค่ status (API บังคับ statusOnly — ส่งฟิลด์อื่นปนไปจะโดน 403)
       let payload;
       if (!canManage) {
-        payload = { status: form.status };
+        // แก้ได้แค่สถานะ = ส่ง blockedReason ไปด้วยได้ (API นับเป็นชุดเดียวกับ status)
+        payload = { status: form.status, ...(isBlocked ? { blockedReason: (form.blockedReason || "").trim() } : {}) };
       } else {
         const { projectId, dealId } = resolvePersonalTaskLink(form, deals);
         payload = {
@@ -160,6 +169,9 @@ export default function TaskFormModal({
           important: !!form.important, urgent: !!form.urgent,
           difficulty: form.difficulty,
           ...(editing ? { status: form.status } : {}),
+          ...(isBlocked ? { blockedReason: (form.blockedReason || "").trim() } : {}),
+          // งานต่อเนื่อง: ผูกได้ตอนสร้างเท่านั้น (mig 0266) — ปลด/ย้ายสายทำที่หน้ารายละเอียด
+          ...(editing || !form.predecessorId ? {} : { predecessorId: form.predecessorId }),
           ...(editing ? {} : {
             inquiryId: inquirySource?.inquiryId || null,
             inquiryMessageId: inquirySource?.messageId || null,
@@ -254,6 +266,32 @@ export default function TaskFormModal({
                   tone: value === "Completed" ? "win" : undefined,
                 }))}
               />
+            </div>
+          )}
+
+          {/* งานต่อเนื่อง (mig 0266) — บอกให้ชัดว่าใบนี้ต่อจากใบไหน และจะถูกล็อกไว้ก่อน
+              ถ้าใบก่อนหน้ายังไม่ปิด (ระบบปลดให้เองตอนใบนั้นเสร็จ) */}
+          {!editing && chainSource && (
+            <div className="form-group">
+              <label>งานก่อนหน้า</label>
+              <div className="ui-badge" style={CHAIN_BADGE}>ต่อจาก “{chainSource.title}”</div>
+              <div className="text-[11px] text-[var(--text-3)] mt-1">
+                ถ้างานก่อนหน้ายังไม่เสร็จ งานนี้จะเริ่มที่สถานะ “รอคนอื่น” และปลดล็อกอัตโนมัติเมื่อใบนั้นถูกปิด
+              </div>
+            </div>
+          )}
+
+          {isBlocked && (
+            <div className="form-group">
+              <label className={needBlockedReason ? "text-[var(--purple)]" : undefined}>
+                รออะไร/รอใครอยู่ {needBlockedReason && <span className="text-[var(--red)]">*</span>}
+              </label>
+              <Textarea className="w-full" rows={2} value={form.blockedReason || ""}
+                onChange={(e) => set({ blockedReason: e.target.value })}
+                placeholder="เช่น รอลูกค้ายืนยันกลิ่น / รอฝ่ายผลิตตอบราคา / รอเอกสารจากบัญชี..." />
+              <div className="text-[11px] text-[var(--text-3)] mt-1">
+                กำหนดเสร็จยังเดินต่อตามเดิม — งานจะถูกแยกออกจากยอด “ต้องรีบ” และขึ้นสีม่วงแทน
+              </div>
             </div>
           )}
 

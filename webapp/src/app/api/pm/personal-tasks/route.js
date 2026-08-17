@@ -2,7 +2,9 @@ import { withUser, ok, fail, unauthorized, badRequest, forbidden } from '@/lib/h
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { can, canAssignTask, isReadOnlyObserver, userTeams } from '@/lib/permissions';
-import { normalizeDifficulty } from '@/lib/pm/tasks';
+import { PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, normalizeDifficulty } from '@/lib/pm/tasks';
+import { chainStatusOnLink } from '@/lib/pm/taskChain';
+import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canViewRequest } from '@/lib/deptRequests';
 import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { appendUpdate } from '@/lib/master/updates';
@@ -125,7 +127,38 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('ทุกงานต้องผูกดีล — เลือกดีล หรือกด "ไม่ผูกดีล" ถ้างานนี้ไม่ได้เกิดจากดีล');
   }
 
-  const status = body.status || 'Pending';
+  let status = body.status || 'Pending';
+  if (!PERSONAL_TASK_STATUSES.includes(status)) return badRequest('สถานะงานไม่ถูกต้อง');
+
+  // ── งานต่อเนื่อง (mig 0266): งานใหม่ต่อจากงานเดิมได้ ──────────────────────
+  // ต้องเห็นงานก่อนหน้าจริง ไม่งั้นจะผูกสายไปยังงานทีมอื่นที่ตัวเองไม่มีสิทธิ์ดู
+  // แล้วชื่อของมันจะรั่วออกมาทางเหตุผล "รองาน X ให้เสร็จก่อน"
+  let predecessorId = null;
+  let predecessor = null;
+  if (body.predecessorId) {
+    const { data: prev, error: prevError } = await supabase
+      .from('personal_tasks').select('*').eq('id', body.predecessorId).maybeSingle();
+    if (prevError) return fail(prevError.message, 500);
+    if (!prev) return badRequest('ไม่พบงานก่อนหน้า');
+    if (!(await canViewPersonalTask(supabase, prev, user))) return forbidden('ไม่มีสิทธิ์ผูกกับงานก่อนหน้านี้');
+    predecessorId = prev.id;
+    predecessor = prev;
+  }
+
+  // รอคนอื่นต้องบอกว่ารออะไร — ยกเว้นงานที่ติดล็อกเพราะสายงาน ซึ่งระบบเขียนเหตุผลให้เอง
+  let blockedReason = (body.blockedReason || '').trim().slice(0, 1000) || null;
+  let blockedSince = null;
+  const chain = chainStatusOnLink(status, predecessor, today());
+  if (chain) {
+    ({ status, blockedSince } = chain);
+    blockedReason = blockedReason || chain.blockedReason;
+  } else if (status === TASK_STATUS_BLOCKED) {
+    if (!blockedReason) return badRequest('งานที่รอคนอื่น ต้องระบุว่ารออะไร/รอใคร');
+    blockedSince = today();
+  } else {
+    blockedReason = null;
+  }
+
   const row = {
     id: genId('PST'),
     ownerId: user.id,
@@ -142,6 +175,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     dealId,
     inquiryId,
     inquiryMessageId,
+    predecessorId,
+    blockedReason,
+    blockedSince,
     completedAt: status === 'Completed' ? today() : null,
   };
   if (assigneeId) { row.assigneeId = assigneeId; row.assignedBy = assignedBy; }

@@ -9,6 +9,7 @@
 // (ตัว query อยู่ที่ app/api/nav/counts/route.js · แยกเพื่อให้เทสต์เข้าถึงได้)
 import { waitingOnMeRows, deptQueueRows } from '@/lib/requests/queueBoard';
 import { MINE_TASK_VIEWS, matchesMineTaskView } from '@/lib/pm/taskViews';
+import { isWaitingStatus } from '@/lib/pm/tasks';
 
 /** เมนู "คำร้อง" — ใบที่รอฝ่ายฉันตอบ · รอฉันในฐานะผู้ขอลงมือต่อ · และใบของฉันที่ถูกตีกลับ
  *
@@ -27,7 +28,10 @@ export function deptRequestsTodoCount(rows = [], dept) {
 /** เมนู "งานของฉัน" — งานที่ยังไม่เสร็จและฉันเป็นผู้รับผิดชอบ
  *  ชุดเดียวกับตัวเลขบนแท็บ "ต้องทำ" ที่ /sa/tasks */
 export function myTasksTodoCount(tasks = [], userId) {
-  return tasks.filter((task) => task.status !== 'Completed'
+  // ⚠️ ไม่นับงานที่ "รอคนอื่น" (mig 0266) — ป้ายบนเมนูคือ **งานที่รอฉันทำ** ส่วนงานที่
+  // ติดอยู่ที่ฝ่ายอื่น/ลูกค้า กดเข้าไปก็ทำอะไรไม่ได้ (เหตุผลเดียวกับที่ป้ายลีดไม่นับ
+  // 'new'/'screened' ด้านล่าง) · ยอดของมันดูได้ที่การ์ด "รอคนอื่น" ในหน้างาน
+  return tasks.filter((task) => task.status !== 'Completed' && !isWaitingStatus(task.status)
     && matchesMineTaskView(task, userId, MINE_TASK_VIEWS.RESPONSIBLE)).length;
 }
 

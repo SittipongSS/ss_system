@@ -146,6 +146,10 @@
 .quickFacts > div[data-tone="ok"] strong,
 .quickFacts > div[data-tone="ok"] .factSub { color: var(--green); }
 .quickFacts > div[data-tone="muted"] strong { color: var(--text-3); }
+/* "wait" = เลยกำหนด/ใกล้ครบ แต่งานรอคนอื่นอยู่ — ม่วงชุดเดียวกับสถานะ "รอคนอื่น"
+   (mig 0266) แยกจาก late สีแดงที่แปลว่างานค้างอยู่ในมือเรา */
+.quickFacts > div[data-tone="wait"] strong,
+.quickFacts > div[data-tone="wait"] .factSub { color: var(--purple); }
 
 /* บรรทัดรองใต้ค่า — จางกว่าค่าหลัก แต่ยังอ่านออกในระยะกวาดสายตา
    ⚠️ **ต้องเขียน `.quickFacts .factSub`** ไม่ใช่ `.factSub` เดี่ยว — ป้ายหัวช่องใช้

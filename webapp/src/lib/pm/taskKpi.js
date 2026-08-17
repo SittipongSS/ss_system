@@ -2,6 +2,7 @@
 // (/api/sales-planning/task-kpi) · ฝั่ง RD เคยเรียกตัวนี้ด้วย แต่แดชบอร์ด RD ถูกลบแล้ว
 // เพื่อให้สูตรคะแนนไม่ drift: เสร็จ 40 + ตรงเวลา 40 + ความยาก 20 ──
 import { taskCreditId } from '@/lib/permissions';
+import { isWaitingStatus } from '@/lib/pm/tasks';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 
 export const TASK_KPI_WEIGHTS = { completion: 40, onTime: 40, difficulty: 20 };
@@ -43,7 +44,9 @@ export function emptyPerson(user) {
     total: 0,
     completed: 0,
     active: 0,
+    waiting: 0,
     overdue: 0,
+    overdueWaiting: 0,
     completedOnTime: 0,
     completedWithDue: 0,
     completedDifficulty: 0,
@@ -73,7 +76,9 @@ export function aggregateGroup(label, rows) {
     total: 0,
     completed: 0,
     active: 0,
+    waiting: 0,
     overdue: 0,
+    overdueWaiting: 0,
     completedOnTime: 0,
     completedWithDue: 0,
     completedDifficulty: 0,
@@ -86,7 +91,9 @@ export function aggregateGroup(label, rows) {
     seed.total += row.total;
     seed.completed += row.completed;
     seed.active += row.active;
+    seed.waiting += row.waiting;
     seed.overdue += row.overdue;
+    seed.overdueWaiting += row.overdueWaiting;
     seed.completedOnTime += row.completedOnTime;
     seed.completedWithDue += row.completedWithDue;
     seed.completedDifficulty += row.completedDifficulty;
@@ -132,7 +139,14 @@ export function tallyTask(row, task, today) {
     }
   } else {
     row.active += 1;
-    if (ymd(task.dueDate) && ymd(task.dueDate) < today) row.overdue += 1;
+    // งานที่รอคนอื่น (mig 0266) ยังนับเป็น active และยัง **นับเกินกำหนดตามปกติ**
+    // (มติผู้ใช้: เดดไลน์ไม่หยุดเดินไม่ว่ารออะไร) — แต่แยกยอดออกมาให้เห็นด้วยว่า
+    // ในจำนวนที่เกินกำหนด มีกี่ใบที่เจ้าตัวเร่งเองไม่ได้ ไม่งั้นคะแนนอ่านผิดคน
+    if (isWaitingStatus(task.status)) row.waiting += 1;
+    if (ymd(task.dueDate) && ymd(task.dueDate) < today) {
+      row.overdue += 1;
+      if (isWaitingStatus(task.status)) row.overdueWaiting += 1;
+    }
   }
 }
 
