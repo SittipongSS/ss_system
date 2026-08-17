@@ -57,6 +57,41 @@ test("approved registration is advisory and removes only its warning", () => {
   assert.equal(withRegistration.eligible, true);
 });
 
+/* 🔴 "ยังไม่เคยยื่นขึ้นทะเบียน" กับ "ยื่นแล้วรอนิติกรรมตรวจ" คนละงานคนละคนทำ —
+   ยุบเป็น boolean เมื่อไร เส้นเดินงานของ SO จะบอกไม่ได้ว่าติดอยู่ที่ใคร (2026-08-17) */
+test("registration state keeps unapproved rows instead of collapsing to a boolean", () => {
+  const lines = [{ id: "L-1", productId: "P-1", qty: 1 }];
+  const state = (registrations) =>
+    resolveSoFiling({ salesOrder, productTypes, products, lines, registrations }).lines[0].registrationState;
+
+  assert.equal(state([]), "none");
+  assert.equal(state([{ id: "R-1", productId: "P-1", customerId: "C-1", status: "draft" }]), "draft");
+  assert.equal(state([{ id: "R-1", productId: "P-1", customerId: "C-1", status: "pending_legal" }]), "pending");
+  assert.equal(state([{ id: "R-1", productId: "P-1", customerId: "C-1", status: "rejected" }]), "rejected");
+  assert.equal(state([{ id: "R-1", productId: "P-1", customerId: "C-1", status: "approved" }]), "approved");
+});
+
+test("registration state ignores another customer's registration for the same FG", () => {
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products,
+    lines: [{ id: "L-1", productId: "P-1", qty: 1 }],
+    registrations: [{ id: "R-9", productId: "P-1", customerId: "C-OTHER", status: "approved" }],
+  });
+  assert.equal(result.lines[0].registrationState, "none");
+  assert.equal(result.lines[0].needsRegistration, true);
+});
+
+test("registration gap warning names the FG and says who it is stuck on", () => {
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products,
+    lines: [{ id: "L-1", productId: "P-1", qty: 1 }],
+    registrations: [{ id: "R-1", productId: "P-1", customerId: "C-1", status: "pending_legal" }],
+  });
+  assert.equal(result.warnings[0].registrationState, "pending");
+  assert.match(result.warnings[0].message, /FG-X-01-002-0001/);
+  assert.match(result.warnings[0].message, /รอนิติกรรมตรวจ/);
+});
+
 test("an unapproved SO is never eligible even when it has excise lines", () => {
   const result = resolveSoFiling({
     salesOrder: { ...salesOrder, status: "pending_approval" },

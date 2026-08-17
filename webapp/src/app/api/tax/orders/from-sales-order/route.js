@@ -203,8 +203,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (!existing.schemaReady) {
       return ok({ filing: null, eligible: false, schemaReady: false, warnings: [] });
     }
-    if (existing.filing) return ok({ filing: existing.filing, eligible: false, schemaReady: true, warnings: [] });
+    /* ⚠️ ใบที่ยื่นแล้วก็ยัง resolve บริบท — เส้นเดินงานของ SO ต้องวาดจุด "ขึ้นทะเบียน"
+       ให้ถูกต่อให้ใบยื่นเกิดแล้ว (ระบบยอมให้สร้างใบยื่นทั้งที่ทะเบียนยังไม่อนุมัติ)
+       คืนลิสต์เปล่าเหมือนเดิมเท่ากับบอกว่า "ใบนี้ไม่มีสินค้าสรรพสามิต" ซึ่งตรงข้ามกับความจริง
+       ⚠️ `eligible` ต้องเป็น false เสมอเมื่อมีใบยื่นแล้ว — คิวส่งต่อ (handoffQueue) กรองด้วยค่านี้ */
     const resolved = await resolveContext(supabase, salesOrder);
+    if (existing.filing) return ok({ ...resolved, filing: existing.filing, eligible: false, schemaReady: true });
     return ok({ filing: null, schemaReady: true, ...resolved });
   } catch (error) {
     return fail(`ตรวจการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);

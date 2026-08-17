@@ -51,13 +51,46 @@ export default function SalesOrderWorkTrack({ track }) {
               /* ⚠️ "ยังไม่เชื่อม" ต้องบอกว่าต้องทำอะไรต่อ — จุดเปล่าไม่ได้บอกอะไรเลย */
               <div className={styles.connect}>
                 <span>{segment.connect?.message}</span>
+                {/* ปุ่มสร้างเอกสารปลายทางกดได้จากตรงนี้ (แบบเดียวกับ "เปิดคำร้องพัฒนากลิ่น")
+                    — ลิงก์เมื่อปลายทางมีอยู่แล้ว · ปุ่มเมื่อยังต้องสร้าง */}
                 {segment.connect?.actionLabel && segment.connect?.href ? (
                   <Link href={segment.connect.href} className={styles.link}>
                     {segment.connect.actionLabel} →
                   </Link>
+                ) : segment.connect?.actionLabel && segment.connect?.onClick ? (
+                  <button
+                    type="button"
+                    className={styles.link}
+                    onClick={segment.connect.onClick}
+                    disabled={!!segment.connect.disabled}
+                    title={segment.connect.disabledReason || undefined}
+                  >
+                    {segment.connect.actionLabel} →
+                  </button>
                 ) : null}
               </div>
             )}
+
+            {/* ⚠️ ช่วงที่ค้างเพราะของบางตัว ต้องบอกว่า **ตัวไหน** — รางจุดบอกได้แค่ว่าค้าง
+                แล้วคนอ่านต้องไปไล่หาเองว่า FG ไหนยังไม่ผ่าน
+                จัดเป็นกลุ่ม: หัวกลุ่มบอกสาเหตุ + จำนวน แล้วรหัสอยู่บรรทัดของตัวเอง
+                ⚠️ อย่ายุบกลับเป็นข้อความก้อนเดียว — คั่นด้วยตัวอักษรเมื่อไร ตัวคั่นระหว่าง
+                รหัสกับตัวคั่นระหว่างกลุ่มจะหน้าตาเหมือนกันจนอ่านไม่ออกว่ากลุ่มจบตรงไหน */}
+            {segment.notes?.length ? (
+              <dl className={styles.notes}>
+                {segment.notes.map((note) => (
+                  <div key={note.state} className={styles.noteGroup}>
+                    <dt className={styles.noteLabel}>
+                      {note.label} <span className={styles.noteCount}>{note.count} FG</span>
+                    </dt>
+                    <dd className={styles.noteCodes}>
+                      {note.codes.map((code) => <code key={code} className={styles.fg}>{code}</code>)}
+                      {note.more ? <span className={styles.noteMore}>+อีก {note.more}</span> : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
 
             {segment.steps && segment.link ? (
               <Link href={segment.link.href} className={styles.link}>{segment.link.label} →</Link>

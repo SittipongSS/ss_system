@@ -4,6 +4,29 @@ import { billedTaxTotals, exciseTaxLine, resolveProductTaxable } from "@/lib/tax
 const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
 
+/* สถานะทะเบียนของ FG หนึ่งตัวเท่าที่ใบนี้มองเห็น — เรียงตาม "ใกล้ยื่นได้ที่สุดชนะ"
+   approved → pending (ยื่นแล้วรอนิติกรรม) → rejected (ต้องแก้) → draft (ร่างค้าง) → none
+
+   ⚠️ อย่ายุบกลับเป็น boolean — "ยังไม่เคยยื่นขึ้นทะเบียน" กับ "ยื่นแล้วรอนิติกรรมตรวจ"
+   คนละงานคนละคนทำ เส้นเดินงานของ SO ต้องบอกให้ตรงว่าติดอยู่ที่ใคร
+   คำเดียวกับ lib/excise/recommendation.js ตั้งใจให้ตรงกัน */
+/* ข้อความต่อท้ายรหัส FG ใน warning — บอก **ติดที่ใคร** ไม่ใช่แค่ว่ายังไม่ครบ */
+const REGISTRATION_GAP_TEXT = {
+  none: "ยังไม่ได้ขึ้นทะเบียนสรรพสามิต",
+  draft: "มีร่างทะเบียนค้างอยู่ ยังไม่ได้ยื่นให้นิติกรรม",
+  pending: "ยื่นขึ้นทะเบียนแล้ว รอนิติกรรมตรวจ",
+  rejected: "ทะเบียนถูกตีกลับ ต้องแก้ก่อน",
+};
+
+export function registrationStateOf(regs) {
+  const list = regs || [];
+  if (!list.length) return "none";
+  if (list.some((row) => row?.status === "approved")) return "approved";
+  if (list.some((row) => row?.status === "pending_legal")) return "pending";
+  if (list.some((row) => row?.status === "rejected")) return "rejected";
+  return "draft";
+}
+
 export function resolveSoFiling({
   salesOrder,
   lines = [],
@@ -13,11 +36,23 @@ export function resolveSoFiling({
 } = {}) {
   const productById = new Map(products.filter((row) => row?.id).map((row) => [row.id, row]));
   const productByFg = new Map(products.filter((row) => row?.fgCode).map((row) => [normalizedKey(row.fgCode), row]));
+  // ทะเบียนของลูกค้าเจ้าของใบนี้เท่านั้น — ทะเบียนเป็นของคู่ (สินค้า × ลูกค้า)
+  const ownRegistration = (row) => !!row && (!salesOrder?.customerId || row.customerId === salesOrder.customerId);
   const approvedRegistrationByProduct = new Map(
     registrations
-      .filter((row) => row?.status === "approved" && (!salesOrder?.customerId || row.customerId === salesOrder.customerId))
+      .filter((row) => row?.status === "approved" && ownRegistration(row))
       .map((row) => [row.productId, row]),
   );
+  /* ⭐ เก็บทะเบียน **ทุกสถานะ** ไว้ด้วย ไม่ใช่เฉพาะที่อนุมัติแล้ว (2026-08-17) —
+     ของเดิมทิ้งแถวที่ยังไม่อนุมัติตั้งแต่บรรทัดนี้ ปลายทางจึงบอกได้แค่ "ไม่มีทะเบียน"
+     ทั้งที่ฝ่ายกฎหมายอาจกำลังตรวจอยู่ · ตัวเลข eligible/ภาษี ไม่ขยับ เพิ่มแต่ข้อมูลอ่าน */
+  const registrationsByProduct = new Map();
+  for (const row of registrations) {
+    if (!row?.productId || !ownRegistration(row)) continue;
+    const list = registrationsByProduct.get(row.productId) || [];
+    list.push(row);
+    registrationsByProduct.set(row.productId, list);
+  }
 
   const filingLines = [];
   const warnings = [];
@@ -62,10 +97,16 @@ export function resolveSoFiling({
     });
     const registration = approvedRegistrationByProduct.get(product.id) || null;
     const needsRegistration = !registration;
+    const productRegistrations = registrationsByProduct.get(product.id) || [];
+    const registrationState = registrationStateOf(productRegistrations);
 
     filingLines.push({
       salesOrderLineId: line.id,
       registrationId: registration?.id || null,
+      // ปลายทางของลิงก์ "ไปดูทะเบียน" — ใบที่อนุมัติแล้วก่อน ไม่มีก็ใบที่ค้างอยู่
+      // (null = ยังไม่เคยเปิดทะเบียนเลย ⇒ ผู้เรียกพาไปหน้าสร้างแทน)
+      registrationLinkId: registration?.id || productRegistrations[0]?.id || null,
+      registrationState,
       productId: product.id,
       fgCode,
       description: line.description || product.name || product.productName || fgCode,
@@ -78,7 +119,8 @@ export function resolveSoFiling({
         salesOrderLineId: line.id,
         productId: product.id,
         fgCode,
-        message: `${fgCode || line.description} ยังไม่มีทะเบียนสรรพสามิตที่อนุมัติ`,
+        registrationState,
+        message: `${fgCode || line.description} ${REGISTRATION_GAP_TEXT[registrationState] || REGISTRATION_GAP_TEXT.none}`,
       });
     }
   }

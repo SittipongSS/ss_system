@@ -226,14 +226,24 @@
   .linesTable tbody,
   .readOnlyTable tbody { display: block; }
 
+  /* 🪤 **ระยะต้องเท่ากันทั้งสี่ด้าน ไม่ใช่ margin-bottom ข้างเดียว** — กล่องนอก
+     (`TableScroll surface="embedded"`) มีขอบ 1px มุมมน 13px ของตัวเอง · ของเดิม
+     เว้นแต่ด้านล่าง ⇒ การ์ดชิดขอบกล่องทั้งบน/ซ้าย/ขวา (เส้นทับกันเป็น 2px และมุมมน
+     10px ของการ์ดซ้อนกับมุม 13px ของกล่อง) เหลือแถบว่าง 13px ข้างล่างข้างเดียว
+     จนอ่านเป็นเส้นขอบที่งอกออกมาเกิน · เว้นเท่ากันแล้วกรอบนอกอ่านเป็น "กล่องของตาราง"
+     ตามที่ Table.module.css ตั้งใจ ไม่ใช่การ์ดซ้อนการ์ด */
   .linesTable tbody tr,
   .readOnlyTable tbody tr {
     display: block;
-    margin-bottom: var(--space-3);
+    margin: var(--space-3);
     padding: var(--space-3) var(--space-3-5);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
   }
+
+  /* แถวถัดไปเว้นจากแถวบนแค่ระยะเดียว ไม่ใช่ margin บนบวกล่างของสองการ์ด */
+  .linesTable tbody tr + tr,
+  .readOnlyTable tbody tr + tr { margin-top: 0; }
 
   .linesTable tbody td,
   .readOnlyTable tbody td {
