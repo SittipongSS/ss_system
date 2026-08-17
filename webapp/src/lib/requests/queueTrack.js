@@ -1,0 +1,77 @@
+// ── รางสี่ขั้นบนตารางคำร้อง (มติผู้ใช้ 2026-08-17) ────────────────────────
+//
+// ⭐ **คนเปิดคิวถามว่า "ใบไหนค้างที่ใคร"** ซึ่งเป็นคำถามเรื่อง **ลำดับขั้น** ไม่ใช่
+// เรื่องคำเดียว · ป้ายสถานะบอกได้แค่จุดปัจจุบัน แต่ไม่บอกว่าผ่านอะไรมาแล้วและ
+// เหลืออะไรอีก ⇒ รางตอบทั้งสามอย่างในสายตาเดียว (ทรงเดียวกับรางของใบสั่งขาย —
+// `lib/sales/salesOrderListTrack.js` · มติ 2026-08-13)
+//
+// ⚠️ **สี่ขั้นนี้คือสายชีวิตของใบจริง ๆ** — ส่ง (ผู้ขอ) → รับเรื่อง (ฝ่ายผู้รับ) →
+// ตอบ/ส่งงาน (ฝ่ายผู้รับ) → ปิด (ผู้ขอ) · สองขั้นแรกกับสองขั้นหลังคนละคนลงมือ
+// จึงยุบรวมกันไม่ได้ · ใบตีกลับ = ธงแดงที่ขั้น "ส่ง" เพราะคนที่ต้องลงมือคือผู้ขอ
+//
+// ⚠️ **ตรรกะอยู่ที่นี่ ตัววาดอยู่ที่ `components/ui/StepTrack`** — แยกเพราะเทสต์
+// node import JSX ไม่ได้ และป้ายสรุปบนจอแคบก็อ่านผลชุดเดียวกันโดยไม่วาดราง
+import { requestProgress } from '@/lib/requests/stages';
+
+const step = (key, label, state, note = null) => ({ key, label, state, note });
+
+/**
+ * รางสี่ขั้นของคำร้องหนึ่งใบ
+ *
+ * @param request แถวจาก `/api/sa/requests` — ใช้ `status` · `submittedAt` ·
+ *                `acknowledgedAt`/`acknowledgedByName` · `answeredAt` · `closedAt` ·
+ *                `bouncedAt`/`bounceReason` · `items` (นับคืบหน้าไว้ใต้ขั้น "ตอบ")
+ * @returns {{cancelled: boolean, steps: Array<{key,label,state,note}>}}
+ *          `cancelled: true` = ใบถูกยกเลิก **ไม่มีรางให้เดิน** — หน้าเว็บโชว์ป้ายแทน
+ *          (ลากรางที่ตายแล้วมาแสดงทำให้อ่านเหมือนใบยังเดินอยู่ — กติกาเดียวกับ SO)
+ */
+export function requestQueueTrack(request = {}) {
+  const status = request?.status || 'draft';
+  if (status === 'cancelled') return { cancelled: true, steps: [] };
+
+  /* ── ขั้น 1 · ผู้ขอส่งใบ ────────────────────────────────────────────────
+     ⚠️ ใบตีกลับกลับไปเป็น `draft` พร้อม `bouncedAt` (ดู `requestNextStep`) ⇒ อ่าน
+     `bouncedAt` ไม่ใช่ `status` เฉย ๆ ไม่งั้นใบตีกลับดูเหมือนใบที่ยังไม่เคยส่ง */
+  const bounced = status === 'draft' && !!request?.bouncedAt;
+  const sent = status !== 'draft';
+  const sendStep = bounced
+    ? step('send', 'ส่ง', 'bad', request?.bounceReason || 'ถูกตีกลับให้แก้')
+    : sent
+      ? step('send', 'ส่ง', 'done')
+      // ร่างที่ยังไม่เคยส่ง — คนที่ต้องลงมือคือผู้ขอ ⇒ `now` ไม่ใช่ `todo`
+      : step('send', 'ส่ง', 'now', 'ยังไม่ได้ส่ง');
+
+  /* ── ขั้น 2 · ฝ่ายผู้รับรับเรื่อง ───────────────────────────────────────
+     ⚠️ `acknowledgedAt` เป็นหลักฐานที่ไม่ถอยกลับ — ใบที่เดินไปไกลแล้วต้องขึ้น
+     `done` ที่ขั้นนี้เสมอ แม้ `status` จะเลยไปเป็น `answered`/`closed` แล้ว */
+  const acked = !!request?.acknowledgedAt || ['acknowledged', 'answered', 'closed'].includes(status);
+  const ackStep = acked
+    ? step('ack', 'รับเรื่อง', 'done', request?.acknowledgedByName || null)
+    : sent
+      ? step('ack', 'รับเรื่อง', 'now', 'ยังไม่มีใครรับ')
+      : step('ack', 'รับเรื่อง', 'todo');
+
+  /* ── ขั้น 3 · ฝ่ายผู้รับตอบ/ส่งงาน ──────────────────────────────────────
+     โน้ตใต้ขั้นบอก **คืบหน้ารายบรรทัด** ของใบที่มีบรรทัด — ตัวเลขเดียวกับที่
+     คอลัมน์คืบหน้าโชว์ ไม่ได้คิดใหม่ (`requestProgress` ที่เดียวทั้งระบบ) */
+  const answered = !!request?.answeredAt || ['answered', 'closed'].includes(status);
+  const progress = requestProgress(request?.items || []);
+  const progressNote = progress.total ? `${progress.done}/${progress.total} รายการ` : null;
+  const answerStep = answered
+    ? step('answer', 'ตอบ', 'done')
+    : acked
+      ? step('answer', 'ตอบ', 'now', progressNote)
+      : step('answer', 'ตอบ', 'todo', progressNote);
+
+  /* ── ขั้น 4 · ผู้ขอปิดเรื่อง ────────────────────────────────────────────
+     ⚠️ ปิดเป็นคนละก้าวกับตอบ และเป็นคนละคนกด (มติ "วันที่ปิดเรื่องมีสองฝั่ง" ·
+     2026-08-15) — ยุบสองขั้นนี้เมื่อไร ใบที่ฝ่ายตอบครบแล้วแต่ผู้ขอยังไม่ปิด
+     จะหายไปจากสายตาทันที ทั้งที่นั่นคือกองงานค้างของฝั่งผู้ขอ */
+  const closeStep = request?.closedAt || status === 'closed'
+    ? step('close', 'ปิด', 'done')
+    : answered
+      ? step('close', 'ปิด', 'now', 'รอผู้ขอปิดเรื่อง')
+      : step('close', 'ปิด', 'todo');
+
+  return { cancelled: false, steps: [sendStep, ackStep, answerStep, closeStep] };
+}
