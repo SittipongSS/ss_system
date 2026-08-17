@@ -74,12 +74,33 @@ export async function loadAttachmentParent(attachment) {
 
 // ── File deletion (Drive) ─────────────────────────────────────────────
 
-// ทิ้งไฟล์จริงของ attachment หนึ่งตัวลงถังขยะของ Shared Drive — best-effort:
-// ไม่ throw เพื่อไม่ให้ block การลบ row ถ้าไฟล์หายไปแล้ว
-//
-// แถวที่ไม่มี driveFileId = เอกสาร Google native (Doc/Sheet ของงานบริหาร) ซึ่งเป็น
-// "ไฟล์มีชีวิต" ที่คนยังใช้ร่วมกันอยู่ใน Drive — ลบแถวคือเลิกผูกกับระเบียน ไม่ใช่ลบเอกสาร
-export async function deleteAttachmentFile(att) {
+/**
+ * ปล่อยทุกอย่างที่แถวไฟล์แนบนี้ถืออยู่บน Drive ก่อนแถวจะหาย — best-effort ทั้งคู่
+ * (ไม่ throw เพื่อไม่ให้ block การลบ row)
+ *
+ * สองอย่างคนละเรื่องกัน และ **ต้องทำทั้งคู่**:
+ *
+ * 1. **สิทธิ์ที่ระบบเคยให้** (`metadata.accessGranted`) — ถอนก่อนเสมอ ไม่ว่าแถวนั้นจะ
+ *    เป็นไฟล์นิ่งหรือเอกสารมีชีวิต
+ * 2. **ตัวไฟล์** — ทิ้งลงถังขยะเฉพาะแถวที่มี `driveFileId` · แถวที่ไม่มี = เอกสาร
+ *    Google native ที่คนยังใช้ร่วมกันอยู่ ⇒ ลบแถวคือเลิกผูกกับระเบียน ไม่ใช่ลบเอกสาร
+ *
+ * 🐞 **ชื่อเดิม `deleteAttachmentFile` และทำแค่ข้อ 2** (ผลตรวจรอบ 13 · ค-2) —
+ * `if (!att?.driveFileId) return;` อยู่บรรทัดแรก ⇒ เอกสารมีชีวิตออกตั้งแต่ยังไม่ทำอะไร
+ * ซึ่งถูกสำหรับ *ไฟล์* แต่แถวพวกนั้นคือแถวเดียวกับที่ถือ `accessGranted` ⇒ สิทธิ์ค้าง
+ * และบันทึกว่าเคยให้ใครหายไปพร้อมแถว = ถอนไม่ได้อีกเลย
+ *
+ * ⚠️ **ลำดับสำคัญ: ถอนสิทธิ์ก่อนทิ้งไฟล์** — ทิ้งไฟล์ก่อนแล้ว `permissions.list`
+ * ของ Drive อาจตอบ 404 ⇒ ถอนไม่ได้ทั้งที่ยังมี permission ค้างบนไฟล์ในถังขยะ
+ */
+export async function releaseAttachmentFile(att) {
+  try {
+    const { revokeAttachmentGrants } = await import('@/lib/master/googleDocAccess');
+    await revokeAttachmentGrants(att);
+  } catch (err) {
+    console.error('[attachments] ถอนสิทธิ์ก่อนลบแถวไม่สำเร็จ', att?.id, err?.message);
+  }
+
   if (!att?.driveFileId) return;
   try {
     const { deleteFile } = await import('@/lib/drive');
@@ -97,7 +118,7 @@ export async function purgeAttachments(entityType, entityId) {
   if (!entityType || !entityId) return 0;
   const list = await listAttachments(entityType, entityId);
   if (!list.length) return 0;
-  for (const att of list) await deleteAttachmentFile(att);
+  for (const att of list) await releaseAttachmentFile(att);
   await getSupabaseAdmin()
     .from('attachments').delete().eq('entityType', entityType).eq('entityId', entityId);
   return list.length;

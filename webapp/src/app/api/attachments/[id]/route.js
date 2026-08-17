@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { stripDriveMetadata } from '@/lib/master/googleDocs';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, canEditRecord, canViewCosting } from '@/lib/permissions';
-import { getAttachment, deleteAttachmentFile } from '@/lib/master/attachments';
+import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
 import { ISSUED_DATE_FIELD } from '@/lib/master/attachmentTypes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -105,8 +105,9 @@ export async function DELETE(request, { params }) {
   // ทันที (GET คืนเฉพาะ approved) ซึ่งแพงเกินกว่าเหตุ. ทะเบียนสรรพสามิตยังล็อกตามเดิม
   // (ด่านข้างบน) เพราะเป็นกติกาที่เข้มกว่าโดยเจตนา
 
-  // ลบไฟล์จริงใน storage/Drive ด้วย (best-effort — ไม่ให้ block การลบ row ถ้าพลาด).
-  await deleteAttachmentFile(att);
+  // ปล่อยของบน Drive ที่แถวนี้ถืออยู่ — **สิทธิ์ที่เคยให้** แล้วค่อยทิ้งตัวไฟล์
+  // (best-effort ทั้งคู่ ไม่ให้ block การลบ row ถ้าพลาด · ดู releaseAttachmentFile)
+  await releaseAttachmentFile(att);
 
   return Response.json({ success: true });
 }
