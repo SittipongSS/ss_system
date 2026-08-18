@@ -5,6 +5,7 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
+import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -143,7 +144,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
@@ -168,5 +169,26 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }
   await recordAudit({ user, action: 'create', entityType: 'sales_order', entityId: orderId, before: null, after: order, summary: `create SO draft from ${quote.quoteNumber}`, request: req });
+
+  /* ── งวดชำระเกิดพร้อมใบ ไม่ต้องรอใครกดปุ่ม (มติผู้ใช้ 2026-08-19) ─────────
+     เดิม B-4 ปลดด่าน "ต้องอนุมัติก่อน" แล้ว แต่ยังต้องกด "เริ่มติดตามการชำระ" ก่อน
+     ถึงจะมีแถวให้กรอกกำหนดชำระ · ปุ่มนั้นไม่รับ input และไม่มีการตัดสินใจอยู่ข้างหลัง
+     (`ensureInstallments` idempotent · ด่านเดียวคือใบต้องไม่ถูกยกเลิก ซึ่งใบที่เพิ่งเกิด
+     เป็นไปไม่ได้) ⇒ เป็นก้าวที่ไม่ได้ถามอะไรผู้ใช้ ยกมาทำให้ตรงนี้เลย
+
+     ⚠️ **ไม่ส่ง `frozenAt`** — แถวที่ได้เป็นงวดร่าง ยอดยังเดินตามแผนของ QT
+     ไม่เข้าทะเบียนการชำระของบัญชี และแจ้งชำระไม่ได้จนกว่าใบจะอนุมัติ (กติกาเดิมของ 0259)
+     ⚠️ **ล้มแล้วไม่ล้มทั้งคำขอ** — ใบเกิดแล้วใน RPC ที่ commit ไปแล้ว ตอบ error กลับไป
+     เท่ากับผู้ใช้เห็น "สร้างไม่สำเร็จ" ทั้งที่ใบมีอยู่จริง · งวดเป็นของที่ derive จาก QT
+     กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ที่ยังอยู่บนการ์ด และตอนอนุมัติก็สร้างให้อยู่ดี */
+  try {
+    await ensureInstallments(supabase, {
+      order: { ...order, quotation: { paymentPlan: quote.paymentPlan } },
+      user,
+    });
+  } catch (installmentError) {
+    console.error('create SO: ensureInstallments failed', orderId, installmentError);
+  }
+
   return ok(order, 201);
 });
