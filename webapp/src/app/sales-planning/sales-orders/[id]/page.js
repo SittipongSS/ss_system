@@ -28,6 +28,7 @@ import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import {
   SALES_ORDER_CANCEL_REASONS,
+  canCancelSalesOrder,
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
   canRevokeSalesOrderApproval,
@@ -670,7 +671,16 @@ export default function SalesOrderDetailPage() {
       ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: () => setConfirmState({
           title: "ออก Rev. ใหม่",
           description: `ระบบจะสร้างร่าง Rev. ใหม่จาก ${order.orderNumber} และเก็บฉบับนี้เป็นประวัติ`,
-          detail: order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนยกเลิกอนุมัติ: ${order.revisionReason}` : undefined,
+          /* ⭐ ชี้ทางตั้งแต่ก่อนกด (มติผู้ใช้ 2026-08-18) — Rev. ของใบสั่งขาย **คัดลอก
+             รายการมาทั้งดุ้น** (`revise_approved_sales_order_atomic` INSERT ... SELECT
+             จากบรรทัดใบเดิม) และหน้า SO ไม่มีที่ให้แก้ `qty`/ราคาเลยสักจุด
+             ⇒ คนที่กดเพราะคิดว่าจะแก้จำนวนได้ จะไปเจอใบใหม่ที่แก้อะไรไม่ได้
+             ยอดต้องแก้ที่ต้นทางคือใบเสนอราคา (บรรทัด SO ผูก `quotationLineId` ไว้) */
+          detail: [
+            "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
+            "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
+            order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนยกเลิกอนุมัติ: ${order.revisionReason}` : null,
+          ].filter(Boolean).join(" · "),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           action: () => requestAction("revise", { expectedUpdatedAt: order?.updatedAt }),
         }) }
@@ -731,7 +741,9 @@ export default function SalesOrderDetailPage() {
       id: "cancel",
       kind: "cancel",
       label: "ยกเลิก SO",
-      visible: approved && reviewer,
+      // ปุ่มพูดเรื่องเดียวกับ API แล้ว (มติผู้ใช้ 2026-08-18) — เดิม `approved && reviewer`
+      // ทำให้ใบที่ถอนอนุมัติแล้ว/ใบร่าง/ใบตีกลับ ไม่มีทางยกเลิกจากหน้าจอเลย
+      visible: canCancelSalesOrder(order, { reviewer, canEdit }),
       disabled: !!filingState.filing,
       disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined,
       onClick: openCancel,

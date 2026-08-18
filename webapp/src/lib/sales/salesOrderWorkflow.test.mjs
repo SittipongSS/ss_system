@@ -6,6 +6,7 @@ import {
   canEditSalesOrderContent,
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
+  canCancelSalesOrder,
   canRevokeSalesOrderApproval,
   canSalesOrderTransition,
   canSubmitSalesOrder,
@@ -259,4 +260,30 @@ test('คำสั่งที่เปลี่ยนเนื้อหาใ�
   assert.equal(salesOrderActionNeedsEditScope(undefined), true);
   // ⚠️ ชื่อที่ขึ้นต้นคล้ายกันแต่ไม่ใช่ขั้นบัญชี ต้องไม่หลุดตาม
   assert.equal(salesOrderActionNeedsEditScope('finance'), true);
+});
+
+// ── ปุ่มยกเลิก SO ต้องพูดเรื่องเดียวกับ API (มติผู้ใช้ 2026-08-18) ────────────
+// 🐞 เดิมปุ่มโผล่เฉพาะ `approved && reviewer` ⇒ ใบที่ถอนอนุมัติแล้วเหลือทางเดียวคือ
+// ออก Rev. · ใบร่าง/ใบตีกลับ ก็ยกเลิกจากหน้าจอไม่ได้เลย
+test('ยกเลิก SO: ใบที่ถอนอนุมัติแล้ว/ร่าง/ตีกลับ ยกเลิกได้ด้วยสิทธิ์แก้งานขาย', () => {
+  for (const status of ['draft', 'rejected', 'approval_revoked']) {
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true }), true, status);
+  }
+});
+
+test('ยกเลิก SO: ใบที่รออนุมัติ/อนุมัติแล้ว ต้องเป็นผู้ตรวจสอบ', () => {
+  for (const status of ['pending_approval', 'approved']) {
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true }), false, `${status} (ไม่ใช่ reviewer)`);
+    assert.equal(canCancelSalesOrder({ status }, { canEdit: true, reviewer: true }), true, status);
+  }
+});
+
+// ใบที่ถูกแทนที่ไปแล้วเป็นประวัติของสายโซ่ Rev. — ยกเลิกย้อนหลังคือแก้ประวัติ
+test('ยกเลิก SO: ใบที่ยกเลิก/ถูกแทนที่แล้ว ไม่มีปุ่ม', () => {
+  assert.equal(canCancelSalesOrder({ status: 'cancelled' }, { canEdit: true, reviewer: true }), false);
+  assert.equal(canCancelSalesOrder({ status: 'revised' }, { canEdit: true, reviewer: true }), false);
+});
+
+test('ยกเลิก SO: ไม่มีสิทธิ์แก้งานขาย = ไม่มีปุ่ม แม้เป็นผู้ตรวจสอบ', () => {
+  assert.equal(canCancelSalesOrder({ status: 'draft' }, { canEdit: false, reviewer: true }), false);
 });
