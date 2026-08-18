@@ -83,14 +83,17 @@ export default function TaskFormModal({
   const editing = !!task;
   const [form, setForm] = useState(TASK_BLANK);
   const [lateReason, setLateReason] = useState("");
-  /* ⭐ "ไม่ผูกดีล" — ทางออกที่ **ต้องกดเอง** (มติผู้ใช้ 2026-08-08 ผ่อนมติ 2026-08-06)
-     ค่าตั้งต้นคือ *ผูกดีล* เสมอ (false) เพราะเหตุผลเดิมยังจริง: งานที่ไม่ผูกดีล
-     หน้าดีล/หน้าโครงการมองไม่เห็น และ KPI รายดีลนับไม่ครบ — แต่เดิมบังคับ 100%
-     ทำให้งานที่ไม่ได้เกิดจากดีลจริง ๆ (งานดูแลระบบ/งานภายใน) ต้องยัดดีลมั่ว ๆ
-     ⇒ เปิดทางออกไว้แต่ให้เห็นชัดว่าเลือกเอง ไม่ใช่ลืมเลือก
-     งานเก่าที่ไม่มีดีล (ก่อนกติกา 2026-08-06) เปิดมาแล้วสวิตช์ติดเอง — ไม่งั้น
-     แค่แก้ชื่องานก็โดนด่านตีกลับ */
-  const [noDealLink, setNoDealLink] = useState(false);
+  /* ⭐ สวิตช์ "ผูกดีล" — เปิด = ผูกดีล และ **ค่าตั้งต้นคือเปิด** (มติผู้ใช้ 2026-08-19
+     กลับขั้วจากสวิตช์เดิม "ไม่ผูกดีล" ที่ปิดไว้เสมอ — ความหมายของค่าตั้งต้นเท่าเดิม
+     เปลี่ยนแค่ให้สวิตช์อ่านเป็นบวก คือสิ่งที่จะเกิดขึ้นเมื่อเปิด)
+     เหตุผลของค่าตั้งต้นยังจริงทุกข้อ: งานที่ไม่ผูกดีล หน้าดีล/หน้าโครงการมองไม่เห็น
+     และ KPI รายดีลนับไม่ครบ — แต่การบังคับ 100% ทำให้งานที่ไม่ได้เกิดจากดีลจริง ๆ
+     (งานดูแลระบบ/งานภายใน) ต้องยัดดีลมั่ว ๆ ⇒ ปิดสวิตช์เองได้ แต่ต้องเป็นการเลือก
+     ไม่ใช่ลืมเลือก. งานเก่าที่ไม่มีดีล (ก่อนกติกา 2026-08-06) เปิดมาแล้วสวิตช์ปิดเอง
+     — ไม่งั้นแค่แก้ชื่องานก็โดนด่านตีกลับ
+     ⚠️ ธงที่ส่งให้ API ยังชื่อ `noDealLink` (ขั้วตรงข้าม) — สัญญากับ route ไม่เปลี่ยน */
+  const [linkDeal, setLinkDeal] = useState(true);
+  const noDealLink = !linkDeal;
   const [pendingFiles, setPendingFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -100,7 +103,7 @@ export default function TaskFormModal({
   useEffect(() => {
     if (!open) return;
     setForm(task ? taskToForm(task) : { ...TASK_BLANK, ...(initialForm || {}) });
-    setNoDealLink(!!task && !task.dealId && !task.inquiryId);
+    setLinkDeal(!(task && !task.dealId && !task.inquiryId));
     setLateReason("");
     setPendingFiles([]);
     setError("");
@@ -309,19 +312,20 @@ export default function TaskFormModal({
               — ช่องบังคับ จึงห้ามซ่อนท้ายฟอร์มให้คนกรอกจนจบแล้วค่อยเจอด่าน) →
               วันที่ → ลักษณะงาน (หมวด/ธง/ความยาก) → รายละเอียด → มอบหมายให้ (ท้ายสุด
               ตามกติกา "ความรับผิดชอบอยู่ท้าย" เหมือนช่อง AE ของฟอร์มดีล) */}
-          {/* ผูกดีล — ไม่มีตัวสลับ "ไม่ผูก/ดีล" อีกแล้ว (มติผู้ใช้ 2026-08-05) และ
-              ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย —
-              ช่อง "ไม่ผูกดีล" จึงเหลือไว้ให้เฉพาะกรณีที่ไม่ถูกบังคับ (superuser/จากคำร้อง) */}
+          {/* ผูกดีล — ตั้งแต่ 2026-08-06 บังคับผูกดีล**ทุกฝ่าย** ไม่ใช่เฉพาะฝ่ายขาย
+              สวิตช์ "ผูกดีล" (เปิดเป็นค่าตั้งต้น) จึงเป็นทางออกของกรณีที่ไม่ถูกบังคับ
+              เท่านั้น (superuser/จากคำร้อง) — ปิดสวิตช์ = ตั้งใจไม่ผูก */}
           {showDealLink && (
             <div className="form-group">
               <label className="flex items-center justify-between gap-2">
-                <span>ผูกกับดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</span>
-                {/* ทางออกที่ต้องกดเอง — ค่าตั้งต้นคือผูกดีล (สวิตช์ปิด) */}
+                <span>ดีล {dealRequired && <span className="text-[var(--red)]">*</span>}</span>
+                {/* ค่าตั้งต้นคือ *เปิด* = ผูกดีล · ปิดเองได้ แต่ต้องตั้งใจปิด
+                    ปิดแล้วล้างดีลที่เลือกไว้ทิ้ง ไม่งั้นค่าค้างจะถูกส่งไปเงียบ ๆ */}
                 {canManage && !inquirySource && (
-                  <button type="button" className="ui-switch" data-on={noDealLink ? "1" : undefined}
-                    aria-pressed={noDealLink}
-                    onClick={() => { setNoDealLink((on) => !on); if (!noDealLink) set({ dealId: "" }); }}>
-                    <i aria-hidden="true" />ไม่ผูกดีล
+                  <button type="button" className="ui-switch" data-on={linkDeal ? "1" : undefined}
+                    aria-pressed={linkDeal}
+                    onClick={() => { const next = !linkDeal; setLinkDeal(next); if (!next) set({ dealId: "" }); }}>
+                    <i aria-hidden="true" />ผูกดีล
                   </button>
                 )}
               </label>
