@@ -3,11 +3,12 @@ import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, ChevronDown, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
-import TaskDetailPanel, { TaskNoteLine } from "@/components/pm/TaskDetailPanel";
+import TaskNoteLine from "@/components/pm/TaskNoteLine";
 import Button from "@/components/ui/Button";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -72,6 +73,11 @@ const CHIP_CHAIN_LINK = { ...CHIP_CHAIN, cursor: "pointer" };
 const CHIP_ICON = { flexShrink: 0 };
 const CHIP_TEXT = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const CHIP_SUFFIX = { flexShrink: 0, opacity: 0.75 };
+/* คอลัมน์เชื่อมโยง: โครงการบน · ดีลล่าง — ชื่อดีลยาวได้ จึงตัดด้วย ellipsis
+   แล้วบอกชื่อเต็มผ่าน title แทนการปล่อยให้ดันความกว้างคอลัมน์ */
+const LINK_STACK = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 };
+const LINK_PROJECT = { cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" };
+const LINK_DEAL = { cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, maxWidth: 200, fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: 4, color: "var(--purple)" };
 const ROW_CHIPS = { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, fontSize: "var(--fs-2)" };
 const MODAL_BODY = { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 };
 const MODAL_LEAD = { fontSize: "var(--fs-7)", color: "var(--text-3)" };
@@ -190,14 +196,6 @@ export default function TasksPage() {
   const [sortDir, setSortDir] = useState("asc");
   const [groupBy, setGroupBy] = useState("none");
   const [collapsed, setCollapsed] = useState(() => new Set());
-  // แถวที่กางดูรายละเอียดอยู่ — กางได้หลายใบพร้อมกันเพื่อ "เทียบกัน" ซึ่งเป็นเหตุผล
-  // เดียวที่คนอยากอ่านในหน้ารายการแทนที่จะเปิดหน้างานทีละใบ
-  const [expandedIds, setExpandedIds] = useState(() => new Set());
-  const toggleExpanded = (id) => setExpandedIds((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
   // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
   const [calRef, setCalRef] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
@@ -572,12 +570,29 @@ export default function TasksPage() {
     );
   };
 
-  // ปุ่มดึงงานจะถามยืนยันก่อน แล้วเปลี่ยนผู้รับผิดชอบจริงทันที
-  const proxyActions = (t) => {
-    if (canPull(t)) return <button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); takeResponsibility(t); }} title="ดึงงานและย้ายผู้รับผิดชอบมาเป็นฉัน"><HandHelping size={14} /> ดึงงาน</button>;
-    if (t.proxyBy && canRelease(t)) return <button className="btn-icon" onClick={(e) => { e.stopPropagation(); releaseLegacyProxy(t); }} title="คืนงานทำแทนเดิม"><Undo2 size={14} /></button>;
-    return null;
+  /* เมนู "…" ท้ายแถว — มติผู้ใช้ 2026-08-01 (RowActionMenu): แถวเหลือ **ปุ่มก้าวถัดไป
+     1 ปุ่ม + เมนูรวมที่เหลือ** · ที่นี่ก้าวถัดไปคือ "ต่องาน" (มติผู้ใช้ 2026-08-17)
+     ส่วนแก้ไข/ลบ/ดึงงาน เป็นการจัดการตัวงาน ไม่ใช่สิ่งที่คนกวาดตาหาในคิว */
+  const rowMenu = (t) => {
+    const manage = canManageTask(t);
+    return [
+      canPull(t) && {
+        id: "pull", label: "ดึงงานมาเป็นของฉัน", icon: HandHelping,
+        onClick: () => takeResponsibility(t),
+      },
+      // ข้อมูลเก่าที่ยังมี proxyBy — งานใหม่ย้าย assignee จริงแล้วไม่เข้าเส้นนี้
+      t.proxyBy && canRelease(t) && {
+        id: "release", label: "คืนงานทำแทนเดิม", icon: Undo2,
+        onClick: () => releaseLegacyProxy(t),
+      },
+      manage && { id: "edit", label: "แก้ไขงาน", icon: Pencil, onClick: () => openEdit(t) },
+      manage && {
+        id: "delete", label: "ลบงาน", icon: Trash2, tone: "danger", separatorBefore: true,
+        onClick: () => deletePersonal(t),
+      },
+    ].filter(Boolean);
   };
+
   /* ปุ่มสร้างงานต่อเนื่อง — เงื่อนไขเดียวกับปุ่ม "เพิ่มงาน" (สร้างงานใหม่ ไม่ใช่แก้ใบนี้)
      จึงไม่ผูกกับ canManageTask: คนที่เห็นงานของทีมและมีสิทธิ์สร้างงาน ต่องานจากมันได้ */
   const canWriteTasks = canEdit || role === "rd";
@@ -606,53 +621,38 @@ export default function TasksPage() {
   ];
 
   // ป้ายกำกับ (โครงการ/ไทม์ไลน์) ใช้ซ้ำทั้ง card + table
+  /* คอลัมน์ "เชื่อมโยง" — **โครงการบน · ดีลล่าง** (มติผู้ใช้ 2026-08-17)
+     เรียงบนล่างไม่ใช่ต่อกันในบรรทัดเดียว เพราะเป็นของคนละชั้น (โครงการคือภาชนะ
+     ดีลอยู่ข้างใน) และชื่อดีลยาวจนดันคอลัมน์อื่นเมื่อวางต่อท้ายรหัสโครงการ */
   const linkChip = (t) => {
     const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
     if (!proj && !deal) return null;
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
-        {proj && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }} className="font-mono" style={{ cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)" }}>{proj.code}</span>}
-        {deal && <span onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }} style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: "4px", color: "var(--purple)" }}><Handshake size={10} /> {deal.title}</span>}
+      <span style={LINK_STACK}>
+        {proj && (
+          <span
+            onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }}
+            title={`โครงการ ${proj.code || ""}${proj.name ? ` · ${proj.name}` : ""}`.trim()}
+            className="font-mono"
+            style={LINK_PROJECT}
+          >
+            {proj.code}
+          </span>
+        )}
+        {deal && (
+          <span
+            onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }}
+            title={`ดีล ${deal.title}`}
+            style={LINK_DEAL}
+          >
+            <Handshake size={10} style={CHIP_ICON} />
+            <span style={CHIP_TEXT}>{deal.title}</span>
+          </span>
+        )}
       </span>
     );
   };
-
-  // แผงรายละเอียดแบบกางในที่ — ใช้ชุดเดียวกันทั้งตารางและการ์ด (ตัวเดียวจริง ๆ
-  // ไม่ใช่สองชุดที่ต้องตามแก้ให้ตรงกันทุกครั้งที่เพิ่มช่อง)
-  const detailPanel = (t) => {
-    const proj = t.projectId ? resolveProj(t.projectId) : null;
-    const deal = t.dealId ? resolveDeal(t.dealId) : null;
-    return (
-      <TaskDetailPanel
-        task={t}
-        nameOf={(id) => (id ? usersMap[id] || "" : "")}
-        href={`/sa/tasks/${t.id}`}
-        links={[
-          deal && { label: `ดีล: ${deal.title}`, href: `/sa/deals/${deal.id}` },
-          proj && { label: `โครงการ: ${proj.code || proj.name}`, href: `/sa/projects/${proj.code || t.projectId}` },
-        ].filter(Boolean)}
-        /* สายงานคำนวณจากรายการที่โหลดมาแล้ว — ใบที่อยู่นอกสโคปจะไม่โผล่ ซึ่งถูกต้อง
-           ตามสิทธิ์อยู่แล้ว (หน้ารายละเอียดงานดึงสายเต็มจาก API อีกที) */
-        chain={{
-          predecessor: t.predecessorId ? taskById.get(t.predecessorId) || null : null,
-          followers: personalTasks.filter((x) => x.predecessorId === t.id),
-        }}
-      />
-    );
-  };
-
-  // ปุ่มกาง/พับ — อยู่ในแถวที่คลิกแล้วเปิดหน้างาน จึงต้องกันคลิกไม่ให้ทะลุ
-  const expandButton = (t) => (
-    <Button
-      iconOnly
-      aria-expanded={expandedIds.has(t.id)}
-      aria-label={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
-      title={expandedIds.has(t.id) ? "ซ่อนรายละเอียด" : "ดูรายละเอียด"}
-      onClick={(e) => { e.stopPropagation(); toggleExpanded(t.id); }}
-      icon={expandedIds.has(t.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-    />
-  );
 
   const relationshipBadge = (task, compact = false) => {
     if (scope !== "mine" || !me?.id) return null;
@@ -675,12 +675,10 @@ export default function TasksPage() {
   // การ์ดย่อ — ใช้ในมุมมองบอร์ด (Kanban) และเมทริกซ์ (Eisenhower)
   const miniCard = (t) => {
     const u = getUrgencyInfo(t);
-    const manage = canManageTask(t);
     const done = t.status === "Completed";
     const activeAssignee = t.assigneeId || t.ownerId;
     const assigneeName = activeAssignee ? (naText(usersMap[activeAssignee])) : null;
-    const proxyAction = proxyActions(t);
-    const showFooter = manage || canSetStatus(t) || proxyAction || canWriteTasks;
+    const showFooter = canSetStatus(t) || canWriteTasks || rowMenu(t).length > 0;
     return (
       <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
         <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
@@ -704,10 +702,8 @@ export default function TasksPage() {
           <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
             <div>{canSetStatus(t) && statusSelect(t)}</div>
             <div style={{ display: "flex", gap: "2px" }}>
-              {proxyAction}
               {followUpButton(t)}
-              {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={13} /></button>}
-              {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={13} /></button>}
+              <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
             </div>
           </div>
         )}
@@ -747,21 +743,17 @@ export default function TasksPage() {
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
   const taskRow = (t) => {
             const u = getUrgencyInfo(t);
-            const manage = canManageTask(t);
             return (
-              <Fragment key={t.id}>
-              <tr className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
+              <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
                 <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
                 <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
                   <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
-                      {expandButton(t)}
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                       {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                       <span style={{ flex: 1 }}>{t.title}</span>
                     </div>
-                    {/* กางแล้วแผงด้านล่างมีโน้ตเต็ม — บรรทัดย่อตรงนี้จะซ้ำเปล่า ๆ */}
-                    {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
+                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
                     {(isWaitingStatus(t.status) || t.predecessorId) && (
                       <div style={ROW_CHIPS}>
                         {waitingBadge(t)}
@@ -790,21 +782,11 @@ export default function TasksPage() {
                 <td onClick={(e) => e.stopPropagation()}>{linkChip(t) || <span style={{ color: "var(--text-3)" }}>{NA}</span>}</td>
                 <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
                   <div style={{ display: "flex", gap: "4px", justifyContent: "flex-end" }}>
-                    {proxyActions(t)}
                     {followUpButton(t)}
-                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
-                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} title="ลบ"><Trash2 size={14} /></button>}
+                    <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
                   </div>
                 </td>
               </tr>
-              {/* ⚠️ colSpan = 8 เสมอ — คอลัมน์ "บทบาทของฉัน" กับ "ผู้รับมอบหมาย"
-                  สลับกันตามสโคป ไม่ได้บวกกัน (ผิดแล้วแถวจะกินเกินตารางเงียบ ๆ) */}
-              {expandedIds.has(t.id) && (
-                <tr className="premium-row" onClick={(e) => e.stopPropagation()}>
-                  <td colSpan={8}>{detailPanel(t)}</td>
-                </tr>
-              )}
-              </Fragment>
             );
   };
 
@@ -1010,7 +992,6 @@ export default function TasksPage() {
                     <div style={{ fontSize: "var(--fs-3)", fontWeight: isToday ? 700 : 500, color: isToday ? "var(--accent)" : "var(--text-3)", textAlign: "right", padding: "0 2px" }}>{d.getDate()}</div>
                     {items.slice(0, 3).map((t) => {
                       const u = getUrgencyInfo(t);
-                      const manage = canManageTask(t);
                       return (
                         <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "var(--fs-2)", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
@@ -1080,7 +1061,6 @@ export default function TasksPage() {
           {pageRows.map((t) => {
             const u = getUrgencyInfo(t);
             const done = t.status === "Completed";
-            const manage = canManageTask(t);
             const assigneeName = t.assigneeId ? (naText(usersMap[t.assigneeId])) : null;
             return (
               <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
@@ -1092,14 +1072,11 @@ export default function TasksPage() {
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}
                     </div>
-                    {t.note && !expandedIds.has(t.id) && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
+                    {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
-                    {expandButton(t)}
-                    {proxyActions(t)}
                     {followUpButton(t)}
-                    {manage && <button className="btn-icon" onClick={() => openEdit(t)} title="แก้ไข"><Pencil size={14} /></button>}
-                    {manage && <button className="btn-icon danger" onClick={() => deletePersonal(t)} aria-label="ลบงาน" title="ลบ"><Trash2 size={14} /></button>}
+                    <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
@@ -1118,7 +1095,6 @@ export default function TasksPage() {
                   {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                   {linkChip(t)}
                 </div>
-                {expandedIds.has(t.id) && <div onClick={(e) => e.stopPropagation()}>{detailPanel(t)}</div>}
               </div>
             );
           })}

@@ -30,12 +30,12 @@ test('ของที่ถอนคืนไม่ได้ต้องขึ�
   assert.ok(!approvalPrompt({ subject: 'x', effects: ['ก'] }).detail.includes(IRREVERSIBLE_NOTE));
 });
 
-/* บัญชีคอนเฟิร์มไม่มี action ถอนคืน และล็อกใบไม่ให้ยกเลิกอนุมัติ/ออก Rev.
+/* บัญชีคอนเฟิร์มไม่มี action ถอนคืน และล็อกใบไม่ให้ย้อนการอนุมัติ/ออก Rev.
    (ดู paymentLockReason) ⇒ สองเรื่องนี้ต้องอยู่ในโมดัลเสมอ */
 test('คอนเฟิร์มการชำระเตือนทั้งเรื่องถอนไม่ได้และเรื่องใบถูกล็อก', () => {
   const p = paymentConfirmPrompt({ label: 'งวดที่ 2', amount: '฿16,050.00' });
   assert.match(p.detail, new RegExp(IRREVERSIBLE_NOTE));
-  assert.match(p.detail, /ยกเลิกอนุมัติหรือออก Rev\. ใหม่ไม่ได้/);
+  assert.match(p.detail, /ย้อนการอนุมัติหรือออก Rev\. ใหม่ไม่ได้/);
   // ไม่ใช่การอนุมัติเอกสาร ประโยคจึงต้องไม่ใช่ "ยืนยันอนุมัติ ชำระเต็มจำนวน"
   assert.equal(p.description, 'ยืนยันการรับชำระ งวดที่ 2 · ฿16,050.00 หรือไม่');
   // ยอด Actual ไม่ขยับตามการคอนเฟิร์ม — มติผู้ใช้ ต้องไม่มีใครเข้าใจผิดตรงนี้

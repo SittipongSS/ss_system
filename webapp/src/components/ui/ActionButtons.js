@@ -40,10 +40,10 @@ const KINDS = {
   // revise = ออกฉบับใหม่จากใบที่อนุมัติแล้ว — ฉบับเดิมยังอยู่ครบ ไม่ใช่การทำลาย
   withdraw: { tone: "neutral", Icon: Undo2, label: "ดึงกลับมาแก้ไข" },
   revise: { tone: "neutral", Icon: Copy, label: "ออก Rev." },
-  // ยกเลิกอนุมัติ (mig 0166) = ปลดล็อกเอกสารที่อนุมัติแล้วเพื่อออกฉบับใหม่ **ยอด Actual
+  // ย้อนการอนุมัติ (mig 0166) = ปลดล็อกเอกสารที่อนุมัติแล้วเพื่อออกฉบับใหม่ **ยอด Actual
   // หลุดที่ปุ่มนี้** จึงเป็น warning ไม่ใช่ secondary — แต่ไม่ใช่ danger เพราะไม่ได้ทำลาย
   // อะไร (คนละปุ่มกับ "ยกเลิก SO" ที่จบเอกสารทางธุรกิจ ซึ่งเป็น cancel/danger)
-  revoke: { tone: "warning", Icon: Unlock, label: "ยกเลิกอนุมัติ" },
+  revoke: { tone: "warning", Icon: Unlock, label: "ย้อนการอนุมัติ" },
 
   // ── kind ของ record ที่มี lifecycle (ลีด/ดีล/โครงการ) ──────────────────────
   // 🐞 5 ตัวนี้อยู่ใน BACKWARD_KINDS ของ lib/recordLifecycle.js มาตั้งแต่ต้น แต่ **ไม่เคย

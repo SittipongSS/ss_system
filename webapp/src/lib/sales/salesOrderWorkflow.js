@@ -7,7 +7,7 @@ export const SALES_ORDER_STATUS_LABELS = {
   approved: 'อนุมัติแล้ว',
   rejected: 'ตีกลับ',
   revised: 'ออกฉบับแก้ไขแล้ว',
-  approval_revoked: 'ยกเลิกอนุมัติแล้ว',
+  approval_revoked: 'ย้อนการอนุมัติแล้ว',
   cancelled: 'ยกเลิก',
 };
 
@@ -65,7 +65,7 @@ export function canEditSalesOrderContent(
     && (order.status === 'draft' || order.status === 'rejected');
 }
 
-// สองขั้นแยกกัน (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
+// สองขั้นแยกกัน (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
 // เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved';
@@ -188,5 +188,31 @@ export function salesOrderActionNeedsEditScope(action) {
   if (name === 'withdraw') return false;
   // ขั้นบัญชีตรวจใบ (mig 0250/0251) — บัญชีไม่มี `salesplan:edit` โดยเจตนา
   if (name.startsWith('finance_')) return false;
+  return true;
+}
+
+/* ── ยกเลิกใบสั่งขาย — ปุ่มบนจอต้องพูดเรื่องเดียวกับ API (มติผู้ใช้ 2026-08-18) ──
+ *
+ * 🐞 เดิมปุ่มบนหน้า SO ตั้ง `visible: approved && reviewer` ⇒ **โผล่เฉพาะใบที่อนุมัติ
+ * แล้ว** ทั้งที่ API ยอมให้ยกเลิกได้เกือบทุกสถานะ · ผลคือใบที่ **ถอนอนุมัติแล้ว**
+ * (`approval_revoked`) เหลือปุ่มเดียวคือ "ออก Rev." ⇒ ทางเดียวออกจากสถานะนั้นคือ
+ * เดินหน้าไปสร้างฉบับใหม่ · เคสจริงที่ตัน: ถอนอนุมัติเพราะจะแก้ยอด แล้วรู้ทีหลังว่า
+ * ต้องกลับไปแก้ที่ใบเสนอราคา ⇒ อยากทิ้งใบนี้แต่ไม่มีปุ่มให้กด
+ * ใบร่าง/ใบที่ถูกตีกลับก็ไม่มีปุ่มเหมือนกัน (เดิมเหลือทางเดียวคือให้ admin ลบถาวร)
+ *
+ * ⚠️ `revised` ไม่ให้ยกเลิก — ใบที่ถูกแทนที่ไปแล้วเป็น **ประวัติ** ของสายโซ่ Rev.
+ * (`supersededById` ชี้อยู่) ยกเลิกย้อนหลังคือแก้ประวัติ ไม่ใช่หยุดงานที่กำลังเดิน
+ *
+ * ⚠️ สิทธิ์ตรงกับที่ route บังคับอยู่แล้ว: `pending_approval` / `approved` ต้องเป็น
+ * ผู้ตรวจสอบ (ยกเลิกใบที่อนุมัติแล้ว = ถอนยอด Actual ⇒ สมมาตรกับตอนอนุมัติ) ·
+ * สถานะที่เหลือใช้สิทธิ์แก้งานขายตามขอบเขตปกติ
+ * ⚠️ ตัวบล็อกอื่น (งวดที่บัญชีคอนเฟิร์มแล้ว · ใบยื่นสรรพสามิต) อยู่ที่ route ตามเดิม —
+ * ที่นี่ตอบแค่ "ปุ่มควรโผล่ไหม" ไม่ใช่ "กดแล้วจะผ่านไหม"
+ */
+export function canCancelSalesOrder(order, { reviewer = false, canEdit = false } = {}) {
+  const status = order?.status;
+  if (!order || !canEdit) return false;
+  if (['cancelled', 'revised'].includes(status)) return false;
+  if (['pending_approval', 'approved'].includes(status)) return reviewer;
   return true;
 }

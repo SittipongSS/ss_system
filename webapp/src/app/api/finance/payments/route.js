@@ -13,6 +13,7 @@ import { canAccessFinance } from '@/lib/permissions';
 import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, undatedHiddenBy } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,7 @@ async function loadLedger(supabase, todayIso) {
        ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
     /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
        ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
-    .select('id, "orderNumber", "quotationId", "dealId", "customerId", "customerName", status, "financeStatus"')
+    .select('id, "orderNumber", "quotationId", "dealId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
     .in('id', orderIds);
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));
@@ -76,6 +77,10 @@ async function loadLedger(supabase, todayIso) {
     .map((installment) => {
       const order = orderById.get(installment.salesOrderId);
       if (!order) return null; // ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
+      /* ใบยอด 0 ไม่มีขั้นยืนยันการชำระแล้ว (มติผู้ใช้ 2026-08-18) ⇒ ไม่ต้องเข้าทะเบียน
+         ของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์
+         เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ */
+      if (paymentNotRequired(order.totalAmount)) return null;
       return ledgerRow({
         installment,
         order,

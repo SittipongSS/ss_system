@@ -8,8 +8,10 @@ import {
   buildInstallmentsForOrder,
   installmentActionError,
   installmentPlanDrift,
+  installmentReportOutcome,
   installmentsFromPaymentPlan,
   isInstallmentFrozen,
+  paymentNotRequired,
   paymentLockReason,
   paymentRollup,
   salesOrderPaymentNote,
@@ -453,7 +455,7 @@ test('ถอนคำรับรองได้เฉพาะฝ่ายบ�
   assert.match(installmentActionError(confirmedRow(), 'unconfirm', SUP_USER, { reason: OK_REASON }), /เฉพาะฝ่ายบัญชี/);
 });
 
-/* ⚠️ กลับคำเรื่องเงินที่เคยรับรองแล้ว และปลดล็อกใบให้ยกเลิกอนุมัติ/ออก Rev. ได้ด้วย
+/* ⚠️ กลับคำเรื่องเงินที่เคยรับรองแล้ว และปลดล็อกใบให้ย้อนการอนุมัติ/ออก Rev. ได้ด้วย
    ⇒ ต้องมีร่องรอยว่าทำไม ไม่ใช่กดแล้วหายไปเฉย ๆ */
 test('ถอนคำรับรองต้องมีเหตุผลเท่ากับตอนตีกลับ', () => {
   assert.match(installmentActionError(confirmedRow(), 'unconfirm', FN_USER, {}), /อย่างน้อย 10 ตัวอักษร/);
@@ -483,4 +485,48 @@ test('ถอนแล้วงวดกลับเข้าคิวตรว�
   assert.equal(installmentActionError(afterUnconfirm, 'confirm', FN_USER), null);
   // ยอด "เก็บแล้ว" ต้องลดลงตาม — ไม่ค้างนับงวดที่ถอนไปแล้ว
   assert.equal(paymentRollup([afterUnconfirm]).confirmedCount, 0);
+});
+
+// ── มติผู้ใช้ 2026-08-18: บัญชีแจ้งเอง · งวดไล่ลำดับ · ยอด 0 ไม่ต้องยืนยัน ────
+const salesUser = { id: 'u-ae', role: 'ae' };
+const financeUser = { id: 'u-fn', role: 'finance' };
+const seqRow = (over = {}) => ({ seq: 1, status: 'pending', frozenAt: '2026-08-18T00:00:00Z', ...over });
+
+test('บัญชีแจ้งชำระเองได้ และจบในก้าวเดียว (ทางเลือก ก.)', () => {
+  assert.equal(installmentActionError(seqRow(), 'report', financeUser, { paidOn: '2026-08-18' }), null);
+  assert.equal(installmentReportOutcome(financeUser), 'confirmed');
+  // ฝ่ายขายแจ้ง → เข้าคิวบัญชี ⇒ คิว reported เหลือเฉพาะของฝ่ายขาย
+  assert.equal(installmentReportOutcome(salesUser), 'reported');
+});
+
+test('งวดต้องไล่ลำดับ — ข้ามงวดที่ยังไม่แจ้งไม่ได้', () => {
+  const rows = [seqRow({ seq: 1 }), seqRow({ seq: 2 })];
+  const err = installmentActionError(rows[1], 'report', salesUser, { paidOn: '2026-08-18', rows });
+  assert.match(err, /งวดที่ 1/);
+});
+
+// แบบ "หลวม" — งวดก่อนหน้าแค่ **แจ้งแล้ว** ก็พอ ไม่ต้องรอบัญชีคอนเฟิร์ม
+// (เข้มกว่านี้จะเอางานฝ่ายขายไปผูกกับคิวบัญชี ดูเหตุผลเต็มที่ installmentSequenceError)
+test('งวดก่อนหน้าแค่ reported ก็แจ้งงวดถัดไปได้', () => {
+  const rows = [seqRow({ seq: 1, status: 'reported' }), seqRow({ seq: 2 })];
+  assert.equal(installmentActionError(rows[1], 'report', salesUser, { paidOn: '2026-08-18', rows }), null);
+});
+
+test('งวดก่อนหน้าถูกตีกลับ = ยังไม่จบ ข้ามไม่ได้', () => {
+  const rows = [seqRow({ seq: 1, status: 'rejected' }), seqRow({ seq: 2 })];
+  assert.match(installmentActionError(rows[1], 'report', salesUser, { paidOn: '2026-08-18', rows }), /งวดที่ 1/);
+});
+
+test('ใบยอด 0 ไม่มีงวดเลย — จบที่อนุมัติใบ', () => {
+  assert.equal(paymentNotRequired(0), true);
+  assert.equal(paymentNotRequired(1), false);
+  assert.deepEqual(buildInstallmentsForOrder({ type: 'full' }, 0), []);
+  assert.deepEqual(previewInstallments({ type: 'full' }, 0), []);
+  assert.equal(paymentState(paymentRollup([]), { notRequired: true }).state, 'not_required');
+});
+
+// งวดยอด 0 ใน **ใบที่มียอดจริง** (ของแถม) ยังต้องเดินตามปกติ
+test('งวดยอด 0 ในใบที่มียอด ยังสร้างตามแผนเดิม', () => {
+  const rows = buildInstallmentsForOrder({ type: 'installment', installments: [{ percent: 100 }, { percent: 0 }] }, 1000);
+  assert.equal(rows.length, 2);
 });
