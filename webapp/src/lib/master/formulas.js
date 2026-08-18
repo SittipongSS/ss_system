@@ -142,9 +142,15 @@ export function archiveFormulaError(formula) {
 // บรรทัดที่ผลิตสูตรนี้ · ทะเบียนราคา) · แยกจาก `productCount` เพราะสินค้ายังเป็น
 // SET NULL ตามมติ (สินค้ามีตัวตนของตัวเอง สูตรของมันเปลี่ยนได้) แต่ด่านนี้ยังกันไว้
 // เหมือนเดิมเพื่อไม่ให้ลบสูตรที่มีสินค้าใช้อยู่โดยไม่ตั้งใจ
+/* ⭐ **ลบได้ถึงขั้น "กำลังพัฒนา"** (มติผู้ใช้ 2026-08-18) — เหตุผลเดียวกับทะเบียนกลิ่น
+   (ดู `deleteScentError`) · สองทะเบียนนี้ต้องมีกติกาเดียวกันเสมอ */
+const DELETABLE_FORMULA_STATUS = new Set(['draft', 'developing']);
+
 export function deleteFormulaError(formula, { productCount = 0, linkedCount = 0 } = {}) {
   if (!formula) return 'ไม่พบสูตร';
-  if (formula.status !== 'draft') return 'ลบได้เฉพาะร่าง — สูตรในทะเบียนให้เปลี่ยนเป็น "เลิกใช้" แทน';
+  if (!DELETABLE_FORMULA_STATUS.has(formula.status)) {
+    return 'ลบได้เฉพาะร่างหรือสูตรที่ยังกำลังพัฒนา — สูตรที่ใช้งานแล้วให้เปลี่ยนเป็น "เลิกใช้" แทน';
+  }
   if (productCount > 0) return `มีสินค้า ${productCount} รายการอ้างสูตรนี้อยู่ ลบไม่ได้`;
   if (linkedCount > 0) return `สูตรนี้ถูกอ้างอยู่ ${linkedCount} ที่ (คำร้อง/ทะเบียนราคา) ลบไม่ได้`;
   return null;

@@ -5,16 +5,15 @@
 // กับปุ่ม · เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎ AGENTS.md)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BadgeDollarSign, Beaker, Pencil } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import Toast from "@/components/ui/Toast";
 import { fmtDate, NA } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
-import {
-  FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaSourceLabel, isFormulaUsable,
-} from "@/lib/master/formulas";
+import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable } from "@/lib/master/formulas";
 
 const TONE_COLOR = {
   success: "var(--green)", danger: "var(--red)", warn: "var(--amber)", neutral: "var(--text-3)",
@@ -32,6 +31,25 @@ export default function FormulaDetailPage() {
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
   const [toast, setToast] = useState(null);
+
+  /* ⭐ **ปุ่มลบบนการ์ดจัดการ** (มติผู้ใช้ 2026-08-18) — ลบได้ถึงขั้น "กำลังพัฒนา"
+     (ด่านจริงอยู่ที่ `deleteFormulaError` ฝั่ง server) · ที่นี่แค่ถามยืนยัน
+     ⚠️ ปุ่มโผล่เฉพาะสถานะที่ลบได้จริง — ปุ่มที่กดแล้วเด้ง error ทุกครั้งคือปุ่มหลอก */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const removeFormula = async () => {
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/master/formulas/${formula.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });
+        setConfirmDelete(false);
+        return;
+      }
+      router.push("/database/formulas");
+    } finally { setRemoving(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -70,6 +88,8 @@ export default function FormulaDetailPage() {
   // ปุ่มใส่ราคา FB — กติกาเดียวกับราคา F บนหน้ากลิ่น (ดูหมายเหตุที่นั่น)
   const canPrice = canQuoteMaterial(me, "RM_FB") && isFormulaUsable(formula);
   const hasPrice = formula.price?.unitPrice != null;
+
+
   return (
     <RegistryDetailShell
       back={back}
@@ -99,6 +119,14 @@ export default function FormulaDetailPage() {
         icon: BadgeDollarSign,
         onClick: () => setPricing(true),
       }] : []}
+      /* ⚠️ **ลบอยู่ในกลุ่ม danger ของการ์ดจัดการ** — ที่เดียวกับทุกเอกสารในระบบ
+         · โผล่เฉพาะขั้นที่ลบได้จริง (ร่าง / กำลังพัฒนา) และเฉพาะคนที่คุมทะเบียน */
+      dangerActions={["draft", "developing"].includes(formula.status) && isFormulaRegistrar(me) ? [{
+        id: "delete",
+        label: "ลบสูตรนี้",
+        icon: Trash2,
+        onClick: () => setConfirmDelete(true),
+      }] : []}
     >
       <RegistryFactCard
         icon={Beaker}
@@ -126,6 +154,18 @@ export default function FormulaDetailPage() {
           setToast({ kind: "success", msg });
           load();
         }}
+      />
+      {/* ⚠️ เนื้อความอยู่ที่ `description` — `ConfirmDialog` ไม่เรนเดอร์ children */}
+      <ConfirmDialog
+        open={confirmDelete}
+        tone="danger"
+        title={`ลบสูตร ${formula.code || formula.name}`}
+        description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
+        detail="ถ้ามีคำร้องหรือทะเบียนราคาอ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
+        confirmLabel="ลบ"
+        busy={removing}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={removeFormula}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </RegistryDetailShell>

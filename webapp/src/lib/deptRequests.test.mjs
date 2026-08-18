@@ -269,6 +269,36 @@ test('ปิดเรื่อง: ใบที่มีแถวต้องจ
   assert.match(closeRequestError(req({ kind: 'info', status: 'pending' }), []), /ยกเลิกแทน/);
 });
 
+test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเฟิร์มครบตามจำนวนใน SO (มติผู้ใช้ 2026-08-18)', () => {
+  // SO สั่ง 3 · ส่งไป 1 · ลูกค้าคอนเฟิร์ม 1 ⇒ ทุกแถวจบแล้วก็จริง แต่ของยังขาด 2
+  const so = { salesOrderLines: [{ qty: 3 }] };
+  const oneConfirmed = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }];
+  assert.match(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }), oneConfirmed),
+    /คอนเฟิร์ม 1 จาก 3/,
+  );
+  // ครบตามจำนวน ⇒ ปิดได้
+  assert.equal(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
+      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 3 }]),
+    null,
+  );
+  // ส่งเกิน (แถมให้ลูกค้าเลือก) ไม่ใช่เหตุให้ปิดไม่ได้ — มติเดิม "เกินได้จริง"
+  assert.equal(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
+      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 4 }]),
+    null,
+  );
+  // ⚠️ ลูกค้าไม่เอาสักตัว = ปิดไม่ได้โดยตั้งใจ ทางออกคือยกเลิก
+  assert.match(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
+      [{ answerStatus: 'declined', outcome: 'rejected' }]),
+    /ยกเลิกใบ/,
+  );
+  // ใบที่ไม่ผูก SO (พัฒนาสูตร/ขอเอกสาร) ไม่มีอะไรให้เทียบ ⇒ ด่านเดิมล้วน
+  assert.equal(closeRequestError(req({ kind: 'formula_dev' }), [{ answerStatus: 'done' }]), null);
+});
+
 test('🐞 ปิดร่างที่ยังไม่ส่งไม่ได้ — ปิดแล้วลบไม่ได้ตลอดกาล (รอบ 12 · ค-1)', () => {
   // `deleteRequestError` บังคับ `status === 'draft'` ⇒ ร่างที่ถูกปิดจะลบไม่ได้อีกเลย
   // ทางออกเหลือแค่ RPC ของ service role · ยิงได้ทาง API เท่านั้น (ปุ่มบนจอไม่โผล่)

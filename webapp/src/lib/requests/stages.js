@@ -7,6 +7,7 @@ import {
 } from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
+import { soReconcile } from '@/lib/requests/soReconcile';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
@@ -168,6 +169,25 @@ export function closeRequestError(request, items = []) {
      ด่าน `pending` ข้างบน */
   if (!rows.length && requestDeliversRows(request.kind) && request.status !== 'answered') {
     return `ฝ่าย ${request.dept || 'ปลายทาง'} ยังไม่ได้ส่งงานสักรายการ — ยกเลิกแทนการปิด`;
+  }
+
+  /* ⭐ **ปิดได้เมื่อลูกค้าคอนเฟิร์มครบตามจำนวนที่สั่ง** (มติผู้ใช้ 2026-08-18)
+     "เงื่อนไขพัฒนากลิ่นคือ ส่ง direction และลูกค้าคอนเฟิร์ม ครบ ตามจำนวน"
+
+     ⚠️ **ทับมติเดิม "เตือน ไม่บล็อก" เฉพาะที่ปุ่มปิด** — การกระทบยอด SO ยังไม่บล็อก
+     การส่งงานหรือการตอบ (เหตุผลเดิมยังจริง: บล็อกตอนส่ง คนจะเลี่ยงด้วยการไม่บันทึก
+     จำนวน ซึ่งแย่กว่าตัวเลขไม่ตรง) · ที่บล็อกคือ **การประกาศว่าจบ** ซึ่งเป็นคนละเรื่อง
+     🐞 ก่อนหน้านี้: SO สั่ง 3 กลิ่น · RD ส่ง 1 · ลูกค้าคอนเฟิร์ม 1 ⇒ ทุกแถว settled
+     ⇒ ปิดใบได้ ทั้งที่อีก 2 กลิ่นไม่มีใครทำ และไม่มีอะไรบนระบบบอกว่าค้าง
+
+     ⚠️ นับ **เฉพาะแถวที่ลูกค้าคอนเฟิร์ม** (`soReconcile` ที่เดียวของระบบ — ตัวเลข
+     เดียวกับที่การ์ดสรุปด้านขวาโชว์) ⇒ จอกับด่านพูดตรงกันเสมอ
+     ⚠️ ใบที่ลูกค้าไม่เอาสักตัว **ปิดไม่ได้โดยตั้งใจ** — ทางออกคือยกเลิก (คำเดียวกับ
+     ด่าน `pending`/0 แถว ข้างบน) ไม่งั้นใบที่ล้มทั้งใบจะถูกปิดแล้วนับเป็นงานที่สำเร็จ */
+  const reconcile = soReconcile({ lines: request.salesOrderLines, items: rows });
+  if (reconcile && (reconcile.state === 'pending' || reconcile.state === 'short')) {
+    return `ลูกค้าคอนเฟิร์ม ${reconcile.confirmed} จาก ${reconcile.ordered} ในใบสั่งขาย`
+      + ' — ส่งให้ครบก่อน หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว';
   }
   return null;
 }

@@ -31,8 +31,11 @@ import { reworkHopError } from '@/lib/requests/rework';
 import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
-import { appendUpdate } from '@/lib/master/updates';
+import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { canAnswerRequestsFor } from '@/lib/permissions';
+import { deleteRequestRowError, registryOwnedByRow } from '@/lib/requests/rowDelete';
+import { countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -264,6 +267,85 @@ export async function PATCH(request, { params }) {
     });
 
     return Response.json(await findRequest(supabase, id));
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
+}
+
+/* ── DELETE /api/sa/requests/[id]/items/[itemId] ──────────────────────────
+   ลบรายการในคำร้อง **พร้อมของที่รายการนั้นสร้างไว้ในทะเบียน** (มติผู้ใช้ 2026-08-18)
+
+   ⭐ ทำไมต้องลบสองอย่างในคำสั่งเดียว: 1 แถว = 1 direction = กลิ่น 1 ตัว ⇒ ลบอย่างเดียว
+   จะเหลือของค้างเสมอ (แถวชี้ที่ว่าง หรือกลิ่นลอยไม่มีที่มา) · ด่านของ "ลบได้ไหม" อยู่ที่
+   `lib/requests/rowDelete.js` ที่เดียว (มีเทสต์) จอกับ API จึงพูดตรงกัน
+
+   ⚠️ **ลบแถวก่อน แล้วค่อยลบทะเบียน** — `producedScentId` เป็น RESTRICT (mig 0232)
+   ลบทะเบียนก่อนจะชนที่ฐานข้อมูล
+   ⚠️ **ทะเบียนลบเฉพาะตอนไม่มีใครอ้างต่อและยังไม่ `active`** — ใช้ด่านเดียวกับปุ่มลบ
+   ในหน้าทะเบียน · ลบไม่ได้ก็ไม่ล้มทั้งคำสั่ง แค่บอกกลับว่าของยังอยู่ในทะเบียน */
+export async function DELETE(request, { params }) {
+  const supabase = getSupabaseAdmin();
+  const user = await getCurrentUser();
+  const { id, itemId } = await params;
+
+  if (!canViewRequests(user)) return Response.json({ error: 'forbidden' }, { status: 403 });
+
+  const before = await findRequest(supabase, id);
+  if (!before) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+  if (!canReadRequestRow(user, before)) {
+    return Response.json({ error: 'คำร้องนี้ไม่ใช่ของคุณ และไม่ได้ส่งถึงฝ่ายของคุณ' }, { status: 403 });
+  }
+  // ⚠️ ลบเป็นสิทธิ์ของ **ฝ่ายปลายทาง** — แถวเกิดจากการที่ฝ่ายกดส่งงาน คนที่พิมพ์ผิด
+  // คือฝ่ายเดียวกันนั้น · ผู้ขอมีทางของตัวเอง (ตีกลับ / ยกเลิกใบ)
+  if (!canAnswerRequestsFor(user, before.dept)) {
+    return Response.json({ error: `ลบรายการได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+  }
+
+  const row = (before.items || []).find((i) => i.id === itemId);
+  const gate = deleteRequestRowError(before, row);
+  if (gate) return Response.json({ error: gate }, { status: 409 });
+
+  try {
+    const { error: rowError } = await supabase.from('dept_request_items').delete().eq('id', itemId);
+    if (rowError) throw rowError;
+
+    // ของในทะเบียนที่แถวนี้เป็นคนสร้าง — ลบตามเมื่อไม่มีใครอ้างต่อแล้ว
+    let registryRemoved = null;
+    let registryKept = null;
+    const owned = registryOwnedByRow(row);
+    if (owned) {
+      const table = owned.kind === 'formula' ? 'formulas' : 'scents';
+      const { data: entity } = await supabase
+        .from(table).select('id, code, name, status').eq('id', owned.id).maybeSingle();
+      const refs = await countRegistryRefs(supabase, owned.kind, owned.id);
+      const deletable = entity && refs === 0 && ['draft', 'developing'].includes(entity.status);
+      if (deletable) {
+        const { error: regError } = await supabase.from(table).delete().eq('id', owned.id);
+        if (regError) throw regError;
+        await purgeUpdates(supabase, owned.kind, owned.id);
+        registryRemoved = entity.code || entity.name || owned.id;
+      } else if (entity) {
+        registryKept = entity.code || entity.name || owned.id;
+      }
+    }
+
+    /* ลงเธรดเสมอ — แถวที่หายไปจากตารางโดยไม่มีร่องรอยคือสิ่งที่ทำให้คนถามว่า
+       "ของที่ส่งมาเมื่อวานหายไปไหน" · ชนิด `update` = เนื้อในของใบเปลี่ยน */
+    await appendUpdate(supabase, {
+      entityType: 'dept_request',
+      entityId: id,
+      kind: 'update',
+      body: `ลบรายการ ${row.label || itemId}`
+        + (registryRemoved ? ` · ลบออกจากทะเบียนด้วย (${registryRemoved})` : '')
+        + (registryKept ? ` · ${registryKept} ยังอยู่ในทะเบียน (ถูกอ้างที่อื่นแล้ว)` : ''),
+      user,
+    });
+    await recordAudit({
+      user, action: 'delete', entityType: 'dept_request_item', entityId: itemId,
+      before: row, request,
+      summary: `ลบรายการในคำร้อง ${before.docNo || id}`,
+    });
+    return Response.json({ ok: true, registryRemoved, registryKept });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

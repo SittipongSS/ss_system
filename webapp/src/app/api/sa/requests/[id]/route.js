@@ -31,6 +31,7 @@ import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
+import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
@@ -38,6 +39,26 @@ import { purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
+
+// ── เติมค่าสดของทะเบียนให้แถวคำร้อง ──────────────────────────────────────
+// ⚠️ สอง query ต่อใบ (กลิ่น + สูตร) และยิงเฉพาะเมื่อมีแถวที่ผูกจริง — ใบสอบถาม/
+// ขอเอกสารไม่มีลิงก์เลย จึงไม่ต้องจ่ายอะไรเพิ่ม
+async function withRegistryLinks(supabase, items = []) {
+  const { scentIds, formulaIds } = registryIdsFromItems(items);
+  if (!scentIds.length && !formulaIds.length) return items;
+  const [scentRes, formulaRes] = await Promise.all([
+    scentIds.length
+      ? supabase.from('scents').select('id, code, name, status').in('id', scentIds)
+      : Promise.resolve({ data: [] }),
+    formulaIds.length
+      ? supabase.from('formulas').select('id, code, name, status').in('id', formulaIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+  return attachRegistryLinks(items, {
+    scents: scentRes.data || [],
+    formulas: formulaRes.data || [],
+  });
+}
 
 // ผลลัพธ์ของบรีฟกลิ่นตอนปิดเรื่อง → id ของกลิ่นในทะเบียน (หรือ null ถ้า "ไม่ได้กลิ่น")
 //
@@ -84,6 +105,11 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const row = await findRequest(getSupabaseAdmin(), id);
     if (!row) return Response.json({ error: 'ไม่พบคำร้อง' }, { status: 404 });
+    // ⭐ ค่าสดจากทะเบียนกลิ่น/สูตร (มติผู้ใช้ 2026-08-18) — แถวคำร้องเก็บแต่ id
+    // ส่วนชื่อ/รหัสที่โชว์ต้องมาจากทะเบียนเสมอ ดู `lib/requests/registryLinks.js`
+    // ⚠️ เติม **เฉพาะหน้ารายละเอียด** ไม่ใช่ใน `findRequest` — คิวโหลดทีละหลายสิบใบ
+    // การเพิ่ม query ให้ทุกใบเพื่อค่าที่คิวไม่ได้โชว์คือจ่ายฟรี
+    row.items = await withRegistryLinks(getSupabaseAdmin(), row.items);
     // ด่านรายแถว — ให้ตรงกับที่ GET /api/sa/requests กรองไว้อยู่แล้ว ไม่งั้นรายการ
     // ซ่อนใบของคนอื่น แต่เปิดตรงด้วย id อ่านได้หมด (id หลุดทางลิงก์แจ้งเตือน/ /go/)
     if (!canReadRequestRow(user, row)) {

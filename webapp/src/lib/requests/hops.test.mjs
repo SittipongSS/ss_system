@@ -219,10 +219,18 @@ test('ขอแก้ = แถวใหม่ที่ยกของที่�
 // นี้มีอยู่จริงจากข้อความ error ที่ต่างกัน · เทสต์นี้อ่านซอร์สเพราะ handler แตะ DB
 // จึงรันตรง ๆ ไม่ได้ — มันจับ "ด่านถูกลบ/ถูกสลับที่" ซึ่งคือความพังที่เงียบที่สุด
 test('route ของก้าว: ด่านครบและเรียงถูกลำดับ', () => {
-  const src = readFileSync(
+  const file = readFileSync(
     new URL('../../app/api/sa/requests/[id]/items/[itemId]/route.js', import.meta.url),
     'utf8',
   ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  /* ⚠️ **ตัดเอาเฉพาะตัว PATCH** — ไฟล์นี้มี handler ที่สองแล้ว (DELETE รายการ ·
+     2026-08-18) ซึ่งมีด่านของตัวเองคนละชุด · เทสต์นี้วัด "ลำดับด่านของก้าว" ซึ่งเป็น
+     เรื่องของ PATCH ล้วน ⇒ ไม่ตัดก่อน `lastIndexOf` จะไปเจอด่านของ DELETE แทน
+     แล้วฟ้องว่าเรียงผิดทั้งที่ของจริงถูก */
+  const patchStart = file.indexOf('export async function PATCH');
+  const patchEnd = file.indexOf('export async function DELETE');
+  assert.ok(patchStart !== -1, 'route ต้องมี PATCH');
+  const src = patchEnd > patchStart ? file.slice(patchStart, patchEnd) : file.slice(patchStart);
 
   const order = [
     'canReadRequestRow',      // 1 อ่านใบนี้ได้ไหม

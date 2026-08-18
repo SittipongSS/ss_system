@@ -61,20 +61,35 @@ export function TableEmpty({
    `<tr class="group-row">` เอง · สไตล์อยู่ที่ `.ui-group-row` ใน globals.css
    ⚠️ ต้องส่ง `colSpan` เท่าจำนวนคอลัมน์จริงของตาราง ไม่งั้นหัวกลุ่มไม่เต็มแถว
    props: label = ชื่อกลุ่ม · sub = บรรทัดรอง (รหัสลูกค้า/ทีม) · badge = "n ใบ"
-          total = ยอดรวมชิดขวา (ส่งเป็นข้อความที่ format แล้ว) */
-export function TableGroupRow({ colSpan, label, sub, badge, total, totalTitle, collapsed, onToggle }) {
+          total = ยอดรวมชิดขวา (ส่งเป็นข้อความที่ format แล้ว)
+          actions = ปุ่มลงมือ **ของกลุ่มนั้น** ชิดขวาสุด (มติผู้ใช้ 2026-08-18)
+
+   ⭐ `actions` เกิดจากคำร้องพัฒนากลิ่น: บรีฟหนึ่งก้อนคือสิ่งที่ฝ่ายส่งงานตอบ ⇒ ปุ่ม
+   "ส่งงาน" ต้องอยู่ในแถวของบรีฟนั้น ไม่ใช่ปุ่มระดับใบที่ไม่รู้ว่าหมายถึงก้อนไหน
+   ⚠️ **ปุ่มอยู่นอก `<button>` ของหัวกลุ่ม** — ปุ่มซ้อนปุ่มเป็น HTML ที่ผิด และคลิก
+   จะทะลุไปพับกลุ่มด้วย · toggle จึงมีคลาสของตัวเอง (`ui-group-toggle`) แล้วสไตล์
+   ใน globals ผูกกับคลาสนั้น ไม่ใช่กับ `button` ทุกตัวในแถว */
+export function TableGroupRow({
+  colSpan, label, sub, badge, total, totalTitle, collapsed, onToggle, actions = null,
+}) {
   return (
     <tr className="ui-group-row">
       <td colSpan={colSpan}>
-        <button type="button" onClick={onToggle} aria-expanded={!collapsed}>
-          {collapsed
-            ? <ChevronRight size={15} aria-hidden="true" />
-            : <ChevronDown size={15} aria-hidden="true" />}
-          <strong>{label}</strong>
-          {sub ? <span className="ar-code">{sub}</span> : null}
-          {badge ? <span className="ui-badge">{badge}</span> : null}
-          {total ? <span className="ui-group-total mono" title={totalTitle}>{total}</span> : null}
-        </button>
+        <div className="ui-group-line">
+          <button
+            type="button" className="ui-group-toggle"
+            onClick={onToggle} aria-expanded={!collapsed}
+          >
+            {collapsed
+              ? <ChevronRight size={15} aria-hidden="true" />
+              : <ChevronDown size={15} aria-hidden="true" />}
+            <strong>{label}</strong>
+            {sub ? <span className="ar-code">{sub}</span> : null}
+            {badge ? <span className="ui-badge">{badge}</span> : null}
+            {total ? <span className="ui-group-total mono" title={totalTitle}>{total}</span> : null}
+          </button>
+          {actions ? <div className="ui-group-actions">{actions}</div> : null}
+        </div>
       </td>
     </tr>
   );
