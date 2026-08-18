@@ -1,7 +1,8 @@
 // ── เลขที่คำร้อง — ของกลาง ────────────────────────────────────────────────
 // ออกตอนกดส่งเท่านั้น (ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง — บทเรียนใบขอราคาผลิต)
 //
-// scope มาจากหัวข้อ (requestDocScope) ไม่ใช่จากฝ่ายล้วน — ดู lib/master/requestTypes.js
+// scope มาจากทะเบียนหัวข้อที่เดียว (`requestDocScope`) — ไม่มีค่าเดาจากฝ่ายแล้ว
+// (ถอด `RM-`/`PM-` ออก 2026-08-18 · ทะเบียนบังคับให้ทุกหัวข้อประกาศ scope เอง)
 import { businessMonthKey } from '@/lib/businessDate';
 import { requestDocScope } from '@/lib/master/requestTypes';
 
@@ -9,7 +10,10 @@ export const REQUEST_RUNNING_WIDTH = 4;
 
 // ชิ้นส่วนของเลขที่สำหรับส่งให้ฟังก์ชัน SQL — ที่นี่ยังเป็นที่เดียวที่รู้รูปแบบเลข
 export function requestDocNoParts(kind, dept, now = new Date()) {
-  const scope = requestDocScope(kind, dept);
+  const scope = requestDocScope(kind);
+  // ⚠️ ไม่มี scope = ทะเบียนหัวข้อผิด (registry.js กันไว้ตั้งแต่ตอนโหลด) · ตายที่นี่
+  // ดีกว่าปล่อยไปให้ SQL โยน `request_scope_invalid` ตอนผู้ใช้กดส่ง
+  if (!scope) throw new Error(`หัวข้อ "${kind}" ไม่มี scope ของเลขที่`);
   const month = businessMonthKey(now);
   return { scope, month, prefix: `${scope}-${month}`, width: REQUEST_RUNNING_WIDTH };
 }
