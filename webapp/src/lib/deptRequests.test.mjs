@@ -63,13 +63,15 @@ const req = (over = {}) => ({
 });
 
 // ── ชนิดคำร้อง ───────────────────────────────────────────────────────────
-test('เลขที่: พัฒนากลิ่น SB- · พัฒนาสูตร FD- · ที่เหลือรวม RQ-', () => {
+test('เลขที่: SB- · FD- · DC- · BL- แยกกัน · RQ- เหลือของสอบถาม', () => {
   // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
   // หัวข้อเก่าของ RD (0220) ⇒ เหลือสาม scope ที่มีหัวข้อจริงใช้อยู่
   assert.equal(requestDocScope('scent_dev'), 'SB');
   assert.equal(requestDocScope('formula_dev'), 'FD');
   assert.equal(requestDocScope('info'), 'RQ');
-  assert.equal(requestDocScope('document'), 'RQ');
+  // ⭐ แยกจากสอบถาม (มติผู้ใช้ 2026-08-18) — เดิมทั้งคู่เป็น RQ- จนแยกไม่ออกในคิว
+  assert.equal(requestDocScope('document'), 'DC');
+  assert.equal(requestDocScope('billing_doc'), 'BL');
   assert.equal(requestDocScope('material_eta'), 'RQ');
 });
 
