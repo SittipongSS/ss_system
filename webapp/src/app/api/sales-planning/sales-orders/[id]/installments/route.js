@@ -152,8 +152,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ฝ่ายขายแจ้ง → `reported` เข้าคิวบัญชี · **บัญชีแจ้งเอง → `confirmed` เลย**
          ⇒ คิว `reported` เหลือเฉพาะของที่ฝ่ายขายแจ้ง = บัญชีรู้ทันทีว่าอันไหนต้องมาตรวจ
          ⚠️ เก็บ `reportedBy*` ไว้ด้วยแม้บัญชีจะกดเอง — ต้องรู้ว่าใครเป็นคนบันทึก
-         ไม่ใช่เห็นแต่ชื่อผู้รับรองแล้วเดาว่าหลักฐานมาจากไหน */
-      const outcome = installmentReportOutcome(user);
+         ไม่ใช่เห็นแต่ชื่อผู้รับรองแล้วเดาว่าหลักฐานมาจากไหน
+
+         ⭐ **งวดร่างจอดที่ `pending`** (มติผู้ใช้ 2026-08-19) — วันจ่ายและสลิปถูกเก็บ
+         ครบเหมือนกัน ต่างแค่ยังไม่เข้าคิวบัญชีเพราะยอดยังลอย · `freezeInstallments`
+         เลื่อนให้เป็น `reported` ตอนอนุมัติใบ ⇒ ไม่มีใครต้องถือสลิปไว้เองอีก */
+      const outcome = installmentReportOutcome(user, row);
       patch = {
         status: outcome,
         paidOn,

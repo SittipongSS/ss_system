@@ -14,7 +14,7 @@ import {
   DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
-import { INSTALLMENT_STATUS_LABELS } from "@/lib/sales/salesOrderPayments";
+import { INSTALLMENT_STATUS_LABELS, installmentDisplayStatus } from "@/lib/sales/salesOrderPayments";
 import styles from "./details.module.css";
 
 const baht = (v) => `${fmtNumber(v, { maximumFractionDigits: 3 })} บาท`;
@@ -106,7 +106,10 @@ export default function BillingDocPanel({ request, docBoard: board = [], docTota
           </p>
           <p className={styles.panelRef}>
             <span className={styles.panelRefLabel}>สถานะงวด </span>
-            <strong>{INSTALLMENT_STATUS_LABELS[inst.status] || inst.status}</strong>
+            {/* ⚠️ ผ่าน `installmentDisplayStatus` เหมือนการ์ดการชำระของใบสั่งขาย —
+                งวดร่างที่บันทึกเงินไว้ยังเป็น `pending` ใน DB (CHECK ของ 0259)
+                อ่าน `inst.status` ตรง ๆ ที่นี่ที่เดียวเมื่อไร สองจอก็บอกคนละเรื่อง */}
+            <strong>{INSTALLMENT_STATUS_LABELS[installmentDisplayStatus(inst)] || inst.status}</strong>
           </p>
         </RelatedDocumentCard>
       )}
