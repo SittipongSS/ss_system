@@ -153,7 +153,7 @@ test('foreign key violations are recognised from either the code or the message'
   assert.equal(isForeignKeyViolation(null), false);
 });
 
-// mig 0166: ยกเลิกอนุมัติ กับ ออก Rev. เป็นสองขั้นแยกกัน โดยมีสถานะกลางที่แก้ไม่ได้คั่น
+// mig 0166: ย้อนการอนุมัติ กับ ออก Rev. เป็นสองขั้นแยกกัน โดยมีสถานะกลางที่แก้ไม่ได้คั่น
 // เดิมเป็นปุ่มเดียว approved → revised ในคลิกเดียว
 test('SO revision is two steps with a locked intermediate state between them', () => {
   const reviewer = { reviewer: true };

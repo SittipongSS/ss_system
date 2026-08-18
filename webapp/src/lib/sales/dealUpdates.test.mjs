@@ -80,7 +80,7 @@ test('งานที่ผูกดีล: สร้าง/เสร็จ/เ�
 
 // ⚠️ เดิมดึงกลับ/กู้ร่างไม่ขึ้นดีล (ถือเป็นการบ้านภายในของคนทำใบ) เพราะยังอ่านได้
 // ในเธรดของใบ — พอใบไม่มีเธรดแล้ว (มติ 2026-08-04) ไม่ส่งขึ้น = เหตุผลหายถาวร
-test('เอกสาร → เธรดดีล: ครบทุก action รวมดึงกลับ/กู้ร่าง · ย้อนการรับ/ยกเลิกอนุมัติ', () => {
+test('เอกสาร → เธรดดีล: ครบทุก action รวมดึงกลับ/กู้ร่าง · ย้อนการรับ/ย้อนการอนุมัติ', () => {
   const quote = { id: 'QT-1', quoteNumber: 'QT-26070028-0' };
   const withdraw = dealDocumentUpdate('quotation', 'withdraw', quote, { reason: 'ราคายังไม่นิ่ง' });
   assert.equal(withdraw.kind, 'doc_withdraw');
@@ -95,7 +95,7 @@ test('เอกสาร → เธรดดีล: ครบทุก action �
 
   const revoke = dealDocumentUpdate('sales_order', 'revoke', { id: 'SO-1', orderNumber: 'SO-26070001-0' });
   assert.match(revoke.body, /ยอดหลุดจาก Actual/);
-  // ⚠️ คำต้องห้ามของ workflow เอกสาร — ต้องใช้ "ยกเลิกอนุมัติ" ไม่ใช่ "เพิกถอน"
+  // ⚠️ คำต้องห้ามของ workflow เอกสาร — ต้องใช้ "ย้อนการอนุมัติ" ไม่ใช่ "เพิกถอน"
   assert.doesNotMatch(revoke.body, /เพิกถอน|ถอน|ถอด/);
 });
 

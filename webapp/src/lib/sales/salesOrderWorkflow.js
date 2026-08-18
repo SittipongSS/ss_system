@@ -7,7 +7,7 @@ export const SALES_ORDER_STATUS_LABELS = {
   approved: 'อนุมัติแล้ว',
   rejected: 'ตีกลับ',
   revised: 'ออกฉบับแก้ไขแล้ว',
-  approval_revoked: 'ยกเลิกอนุมัติแล้ว',
+  approval_revoked: 'ย้อนการอนุมัติแล้ว',
   cancelled: 'ยกเลิก',
 };
 
@@ -65,7 +65,7 @@ export function canEditSalesOrderContent(
     && (order.status === 'draft' || order.status === 'rejected');
 }
 
-// สองขั้นแยกกัน (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
+// สองขั้นแยกกัน (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
 // เหตุผลกรอกครั้งเดียวที่ขั้นแรก เพราะเป็นเจตนาเดียวที่ถูกแบ่งเป็นสองคลิก
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
   return Boolean(order) && reviewer && order.status === 'approved';

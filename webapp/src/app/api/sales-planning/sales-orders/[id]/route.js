@@ -324,10 +324,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
-  // ขั้นที่ 1 (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
+  // ขั้นที่ 1 (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
   if (action === 'revoke') {
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
-      return forbidden('ยกเลิกอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
+      return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
     // ⚠️ เงินที่บัญชีคอนเฟิร์มแล้วคือเงินที่รับมาจริง — ถอยใบทับมันเงียบ ๆ ไม่ได้
     // (กติกาเดียวกับที่ใบยื่นสรรพสามิตบล็อกปุ่มนี้อยู่แล้ว)
@@ -356,14 +356,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: id,
       before,
       after: data,
-      summary: `ยกเลิกอนุมัติ ${before.orderNumber} (Actual ${soAmount(before)} หลุดจากยอด): ${reason}`,
+      summary: `ย้อนการอนุมัติ ${before.orderNumber} (Actual ${soAmount(before)} หลุดจากยอด): ${reason}`,
       request: req,
     });
     // แจ้งทีมขาย: Actual หายไปจากยอด ต้องไม่เงียบ
     return ok(data);
   }
 
-  // ขั้นที่ 2: ออก Rev. จากใบที่ยกเลิกอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
+  // ขั้นที่ 2: ออก Rev. จากใบที่ย้อนการอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
   if (action === 'revise') {
     // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
     const closedProject = projectWriteBlockedError(before.project)
@@ -372,8 +372,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (closedProject) return badRequest(closedProject);
     if (!canIssueSalesOrderRevision(before, { reviewer })) {
       return forbidden(before.status === 'approved'
-        ? 'ต้องกด "ยกเลิกอนุมัติ" ก่อนจึงจะออก Rev. ได้'
-        : 'ออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin บน SO ที่ยกเลิกอนุมัติแล้ว');
+        ? 'ต้องกด "ย้อนการอนุมัติ" ก่อนจึงจะออก Rev. ได้'
+        : 'ออก Rev. ได้เฉพาะ AE Supervisor หรือ Admin บน SO ที่ย้อนการอนุมัติแล้ว');
     }
     const reason = String(body.reason || '').trim() || before.revisionReason || '';
     const expected = resolveExpectedUpdatedAt(body);
@@ -598,7 +598,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (filingError && !filingSchemaMissing) return fail(filingError.message, 500);
     if (filing) {
       // บอกทางออกด้วย ไม่ใช่แค่บอกว่าไม่ได้ — ปุ่มอื่นทุกปุ่มที่แก้ใบนี้ก็ถูกใบยื่นบล็อก
-      // เหมือนกัน (ยกเลิกอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
+      // เหมือนกัน (ย้อนการอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
       return badRequest(
         `ยกเลิกใบสั่งขายไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
         + ' — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิก SO ได้',
