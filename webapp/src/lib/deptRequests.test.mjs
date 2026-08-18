@@ -262,6 +262,21 @@ test('ตอบครบทุกรายการ → answered เอง (ช�
   assert.equal(deriveRequestStatusAfterAnswer([{ answerStatus: 'pending' }], 'acknowledged'), 'acknowledged');
 });
 
+/* ── ส่งของเพิ่มหลังใบขึ้น "ตอบแล้ว" (ผลตรวจ 2026-08-18) ────────────────────
+   🐞 `answered` เป็นสถานะที่ระบบ **derive เอง** เมื่อทุกแถวเดินจบ ไม่ใช่คำประกาศของ
+   ฝ่ายว่างานจบ ⇒ พัฒนากลิ่นที่ RD ส่ง 2 กลิ่น · ลูกค้าคอนเฟิร์ม 1 ปฏิเสธ 1 จะกลาย
+   เป็น answered ทันที แล้ว POST /items ปฏิเสธเพราะสถานะไม่อยู่ในชุด "ใบเปิดอยู่"
+   ⇒ RD ส่งกลิ่นตัวใหม่ไม่ได้อีกเลย · ที่นี่ล็อกครึ่งหลังของทางแก้: เพิ่มแถวแล้ว
+   สถานะต้องถอยกลับเอง ไม่ค้างเป็น "ตอบแล้ว" ทั้งที่มีแถวใหม่รอเดิน */
+test('เพิ่มแถวใหม่ในใบที่ตอบแล้ว → สถานะถอยกลับเป็น acknowledged', () => {
+  const settled = [{ answerStatus: 'done' }, { answerStatus: 'declined' }];
+  assert.equal(deriveRequestStatusAfterAnswer(settled, 'acknowledged'), 'answered');
+  assert.equal(
+    deriveRequestStatusAfterAnswer([...settled, { answerStatus: 'pending' }], 'answered'),
+    'acknowledged',
+  );
+});
+
 test('ยกเลิก/ปิดแล้ว สถานะไม่ถูก derive ทับ', () => {
   const items = [{ answerStatus: 'done' }];
   assert.equal(deriveRequestStatusAfterAnswer(items, 'cancelled'), 'cancelled');

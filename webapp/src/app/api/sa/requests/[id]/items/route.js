@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
-import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
+import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -48,7 +48,18 @@ export async function POST(request, { params }) {
   if (before.kind !== 'scent_dev') {
     return Response.json({ error: 'หัวข้อนี้ไม่ได้ส่งของเป็นรายการ' }, { status: 400 });
   }
-  if (!REQUEST_OPEN_STATUSES.includes(before.status)) {
+  /* ⭐ **ส่งเพิ่มได้แม้ใบขึ้น "ตอบแล้ว"** (ผลตรวจ 2026-08-18)
+     🐞 `answered` เป็นสถานะที่ระบบ *derive* ให้เองเมื่อทุกแถวเดินจบ ไม่ใช่คำประกาศ
+     ของฝ่ายว่างานจบ ⇒ พัฒนากลิ่นที่ RD ส่ง 2 กลิ่น · ลูกค้าคอนเฟิร์ม 1 ปฏิเสธ 1
+     จะกลายเป็น `answered` ทันที แล้ว **RD ส่งกลิ่นเพิ่มไม่ได้อีกเลย** ทั้งที่งานยัง
+     ไม่จบ · ทางออกเดิมคือปิดใบแล้วเปิดใหม่ ซึ่งตัดสายงานขาดจากบรีฟเดิม
+     ⚠️ สาย "ลูกค้าขอแก้" ไม่เคยติดกับดักนี้เพราะ `revise` สร้างแถวต่อให้ในทรานแซกชัน
+     เดียวกับตอน outcome — ที่ติดคือการส่งกลิ่น **ตัวใหม่** หลังลูกค้าตอบครบ
+     ⚠️ `closed` / `cancelled` ยังปิดตามเดิม — สองอันนั้นคนกดเอง ไม่ใช่ derive
+     ⚠️ เพิ่มแถวแล้วใบไม่ครบอีกต่อไป ⇒ ต้องดึงสถานะกลับเป็น `acknowledged`
+     (ดูท้าย handler) ไม่งั้นใบค้างเป็น "ตอบแล้ว" ทั้งที่มีแถวใหม่รอเดิน */
+  const DELIVERABLE_STATUSES = [...REQUEST_OPEN_STATUSES, 'answered'];
+  if (!DELIVERABLE_STATUSES.includes(before.status)) {
     return Response.json({
       error: `คำร้องอยู่สถานะ "${REQUEST_STATUS_LABELS[before.status] || before.status}" — ส่งของไม่ได้`,
     }, { status: 409 });
@@ -151,6 +162,18 @@ export async function POST(request, { params }) {
       await supabase.from('scents').delete().eq('id', scent.id).catch(() => {});
     }
     return Response.json({ error: e.message }, { status: 400 });
+  }
+
+  /* ⭐ ใบที่เคยขึ้น "ตอบแล้ว" ต้องถอยกลับเป็น "รับเรื่องแล้ว" เมื่อมีแถวใหม่
+     ใช้ตัวเดิมที่ route ก้าวรายแถวใช้ (`deriveRequestStatusAfterAnswer`) ⇒ กติกา
+     "ครบทุกแถว = answered" อยู่ที่เดียว ไม่มีใครคิดเองสองที่
+     ⚠️ ตัวนั้นกัน `closed`/`cancelled` ไว้ให้แล้ว จึงไม่ต้องเช็คซ้ำ */
+  const afterAdd = await findRequest(supabase, id);
+  const derivedStatus = deriveRequestStatusAfterAnswer(afterAdd.items || [], afterAdd.status);
+  if (derivedStatus !== afterAdd.status) {
+    await supabase.from('dept_requests')
+      .update({ status: derivedStatus, updatedAt: new Date().toISOString() })
+      .eq('id', id);
   }
 
   // 3) ร่องรอย — หนึ่งเหตุการณ์ต่อการส่งหนึ่งครั้ง ไม่ใช่ต่อแถว (คนอ่านเธรดสนใจ
