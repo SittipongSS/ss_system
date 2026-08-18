@@ -262,7 +262,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // (statusOnly) ต้องผ่านได้เสมอ ไม่งั้นคนที่แก้ได้แค่สถานะจะติดกับงานเก่าที่ไม่มีดีล
     // ผ่อนเป็น "ทางออกที่ต้องกดเอง" 2026-08-08 — เหมือนตอนสร้าง (ดู POST route)
     if (!nextDealId && !task.inquiryId && !body.noDealLink && requiresDealLink(user)) {
-      return badRequest('ทุกงานต้องผูกดีล — เลือกดีล หรือกด "ไม่ผูกดีล" ถ้างานนี้ไม่ได้เกิดจากดีล');
+      return badRequest('ทุกงานต้องผูกดีล — เลือกดีล หรือปิดสวิตช์ "ผูกดีล" ถ้างานนี้ไม่ได้เกิดจากดีล');
     }
     if (nextDealId) {
       const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
