@@ -4,7 +4,7 @@
 // เพื่อให้ด่าน/การคำนวณทดสอบได้โดยไม่ต้องมีฐานข้อมูล
 import { genId } from '@/lib/id';
 import {
-  buildInstallmentsForOrder, installmentsFromPaymentPlan, isInstallmentFrozen,
+  buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
 } from '@/lib/sales/salesOrderPayments';
 
 const TABLE = 'sales_order_installments';
@@ -100,9 +100,20 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
  * ⇒ ไม่มีทาง drift เพราะทุกครั้งที่อนุมัติจะทับใหม่เสมอ
  *
  * ⚠️ **จำนวนงวดต่างกันแก้ด้วยการทับยอดไม่ได้** — QT ถูกแก้หลังกด "เริ่มติดตาม" ได้
- * ⇒ ตั้งใหม่ทั้งชุด (ลบของเดิมแล้วสร้างจากแผนล่าสุด) · ปลอดภัยเพราะงวดที่ยังไม่
- * freeze **บังคับเป็น `pending` โดย CHECK ของ 0259** จึงไม่มีหลักฐานหรือคำแจ้งให้ทำหาย
+ * ⇒ ตั้งใหม่ทั้งชุด (ลบของเดิมแล้วสร้างจากแผนล่าสุด)
  * ⚠️ แลกกับ `dueDate` ที่ SA กรอกไว้ — จอเตือนไว้ก่อนแล้ว (`installmentPlanDrift`)
+ *
+ * 🛑 **แต่ห้ามลบทิ้งถ้ามีเงินบันทึกไว้แล้ว** (มติผู้ใช้ 2026-08-19) — ตั้งแต่งวดร่างเก็บ
+ * `paidOn` + หลักฐานได้ ข้อความเดิมที่ว่า *"ปลอดภัยเพราะงวดร่างเป็น pending จึงไม่มี
+ * หลักฐานให้ทำหาย"* **ไม่จริงอีกต่อไป** · แผนที่เปลี่ยนทีหลังต้องไม่ทำลายสลิปของลูกค้า
+ * ⇒ ใบที่มีงวดบันทึกเงินไว้ freeze ของเดิมตามที่เป็น แล้วปล่อยให้ธงเตือนแผนไม่ตรง
+ * ค้างอยู่บนจอ ให้คนแก้เอง — ผิดแบบเห็นได้ ดีกว่าถูกแบบลบหลักฐานเงียบ ๆ
+ *
+ * ⚠️ **เส้นนี้แทบไปไม่ถึงอยู่แล้ว** — QT ที่ออก SO แล้วแก้ไม่ได้ (`accepted` ไม่อยู่ใน
+ * `EDITABLE_STATUSES`) · `unaccept` ติด `sales_order_exists` ของ 0138 · SO ร่างแก้ได้แค่
+ * `referenceDoc`/`notes` ⇒ เหลือทางเดียวคือ ยกเลิก SO → unaccept → แก้แผน → รับใบใหม่
+ * → admin กด restore ใบที่ยกเลิก · เก็บด่านนี้ไว้เพราะราคาเท่ากับ `filter` หนึ่งบรรทัด
+ * แต่ราคาของการพลาดคือหลักฐานการเงินของลูกค้าหายไปทั้งแถว
  *
  * ⚠️ **idempotent** — อนุมัติซ้ำ/กู้ธงที่ล้ม เรียกซ้ำได้ แถวที่ freeze แล้วไม่ถูกแตะ
  */
@@ -118,8 +129,9 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
   const plan = installmentsFromPaymentPlan(order.quotation?.paymentPlan, order.totalAmount);
   const draft = existing.filter((row) => !isInstallmentFrozen(row));
 
-  // จำนวนไม่ตรงแผนล่าสุด ⇒ ตั้งใหม่ทั้งชุด (ดูเหตุผลข้างบน)
-  if (draft.length && plan.length && draft.length !== plan.length) {
+  // จำนวนไม่ตรงแผนล่าสุด ⇒ ตั้งใหม่ทั้งชุด — **เว้นใบที่มีเงินบันทึกไว้แล้ว** (ดูเหตุผลข้างบน)
+  const prepaidDraft = draft.filter(installmentPrepaid);
+  if (draft.length && plan.length && draft.length !== plan.length && !prepaidDraft.length) {
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
     const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp });
@@ -150,8 +162,9 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
 
   for (const row of draft) {
     const fresh = bySeq.get(row.seq);
-    // ⚠️ ยืมให้เฉพาะแถวที่ยังไม่มีใครแตะ — SA แจ้งเองไว้แล้วต้องไม่ถูกทับ
-    const seed = row.status === 'pending' ? seedBySeq.get(row.seq) : null;
+    const prepaid = installmentPrepaid(row);
+    // ⚠️ ยืมให้เฉพาะแถวที่ยังไม่มีใครแตะ — SA บันทึกเงินไว้เองแล้วต้องไม่ถูกทับ
+    const seed = row.status === 'pending' && !prepaid ? seedBySeq.get(row.seq) : null;
     const { error } = await supabase.from(TABLE).update({
       ...(fresh ? { percent: fresh.percent, amount: fresh.amount, label: fresh.label } : {}),
       ...(seed ? {
@@ -163,6 +176,13 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
         evidence: seed.evidence,
         note: row.note || seed.note,
       } : {}),
+      /* ⭐ **เงินที่บันทึกไว้ตอนร่าง เข้าคิวบัญชีตรงนี้** (มติผู้ใช้ 2026-08-19)
+         งวดร่างจอดที่ `pending` เพราะงานถึงบัญชีได้ต่อเมื่อ AE Supervisor อนุมัติใบ
+         · ผ่านด่านนั้นแล้วมันคือคำแจ้งที่สมบูรณ์ ไม่ต้องให้ใครมากดซ้ำ
+         ⚠️ `reportedAt` ต้องมีค่า ไม่งั้นชน CHECK `..._state_sane` ของ 0245
+         (reported ต้องมี reportedAt) — แถวที่บันทึกผ่าน API มีอยู่แล้ว ที่ fallback ไว้
+         เผื่อแถวที่ถูกเขียนมาทางอื่น ไม่ใช่ให้ API เลิกกรอก */
+      ...(prepaid ? { status: 'reported', reportedAt: row.reportedAt || stamp } : {}),
       frozenAt: stamp,
       updatedAt: stamp,
     }).eq('id', row.id);

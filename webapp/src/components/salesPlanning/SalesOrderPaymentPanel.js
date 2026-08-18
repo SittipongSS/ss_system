@@ -18,8 +18,8 @@ import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
-  installmentActionError, installmentPlanDrift, installmentReportOutcome,
-  paymentNotRequired, paymentRollup, previewInstallments,
+  installmentActionError, installmentDisplayStatus, installmentPlanDrift, installmentPrepaid,
+  installmentReportOutcome, paymentNotRequired, paymentRollup, previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
@@ -50,13 +50,16 @@ export default function SalesOrderPaymentPanel({
   const isPreview = !saved.length;
   const single = rows.length === 1;
   const rollup = paymentRollup(saved, todayIso);
-  /* ⭐ **งวดร่าง** (B-4) — มีตัวตนจริง กรอกกำหนดชำระได้ แต่ยอดยังเดินตามแผนของ QT
-     ⇒ ยังแจ้งชำระไม่ได้ และยังไม่เข้าทะเบียนการชำระของบัญชี
+  /* ⭐ **งวดร่าง** (B-4) — มีตัวตนจริง กรอกกำหนดชำระได้ และ **บันทึกเงินที่ลูกค้าจ่าย
+     มาแล้วได้** (มติผู้ใช้ 2026-08-19) ⇒ สิ่งเดียวที่ยังทำไม่ได้คือส่งให้บัญชีตรวจ
+     เพราะงานถึงบัญชีต่อเมื่อ AE Supervisor อนุมัติใบแล้วเท่านั้น
      ⚠️ ต่างจาก `isPreview` ซึ่งคือ "ยังไม่มีแถวเลย" — สองสถานะนี้หน้าตาใกล้กันมาก
      แต่กดได้คนละอย่าง จึงต้องแยกชื่อให้ชัดตั้งแต่ตัวแปร */
   const draftRows = saved.filter((r) => !r.frozenAt);
   const isDraftPlan = saved.length > 0 && draftRows.length === saved.length;
   const drift = installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+  // มีเงินบันทึกไว้แล้ว = freeze จะไม่ตั้งงวดใหม่ทับ (ดู `freezeInstallments`) ⇒ คำเตือนคนละใจความ
+  const hasPrepaid = saved.some(installmentPrepaid);
   // ใบที่ยกเลิก/ตีกลับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route ของงวดใช้
   const canTrackPayments = !["cancelled", "rejected"].includes(order?.status);
 
@@ -87,6 +90,10 @@ export default function SalesOrderPaymentPanel({
   const gate = (row, action, options) => installmentActionError(row, action, user, {
     ...options, rows, orderTotal: order?.totalAmount,
   });
+  /* งวดร่าง = บันทึกเก็บไว้ ยังไม่ส่งให้บัญชี (มติผู้ใช้ 2026-08-19)
+     ⚠️ ตัดสินจากฟังก์ชันเดียวกับที่ route ใช้เขียนสถานะจริง — เขียนเงื่อนไข
+     `!row.frozenAt` ซ้ำที่นี่เมื่อไร คำบนจอกับผลของ API แยกกันเดินทันที */
+  const prepayMode = (row) => installmentReportOutcome(user, row) === "pending";
 
   const headline = isPreview
     ? `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`
@@ -180,8 +187,9 @@ export default function SalesOrderPaymentPanel({
           ที่หายไปแล้วสรุปเองว่าระบบพัง (ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม) */}
       {isDraftPlan ? (
         <StatusNotice tone="info">
-          กรอกกำหนดชำระได้เลยตั้งแต่ตอนนี้ — ยอดต่องวดยังเดินตามใบเสนอราคา
-          และจะถูกยืนยันตอนใบสั่งขายอนุมัติ · แจ้งการชำระได้หลังจากนั้น
+          กรอกกำหนดชำระและบันทึกเงินที่ลูกค้าจ่ายมาแล้วได้เลยตั้งแต่ตอนนี้ —
+          ยอดต่องวดยังเดินตามใบเสนอราคาและจะถูกยืนยันตอนใบสั่งขายอนุมัติ ·
+          ที่บันทึกไว้จะถูกส่งให้บัญชีตรวจเองตอนนั้น
         </StatusNotice>
       ) : null}
 
@@ -189,7 +197,9 @@ export default function SalesOrderPaymentPanel({
       {drift ? (
         <StatusNotice tone="warning">
           ใบเสนอราคาถูกแก้เป็น {drift.planned} งวด แต่ที่ตั้งไว้มี {drift.tracked} งวด —
-          ตอนใบอนุมัติ ระบบจะตั้งงวดใหม่ตามแผนล่าสุด (กำหนดชำระที่กรอกไว้จะหายไป)
+          {hasPrepaid
+            ? " มีงวดที่บันทึกการจ่ายไว้แล้ว ระบบจะไม่ตั้งงวดใหม่ทับ (ไม่ทำหลักฐานหาย) ⇒ ต้องแก้จำนวนงวดให้ตรงกันเอง ก่อนอนุมัติใบ"
+            : " ตอนใบอนุมัติ ระบบจะตั้งงวดใหม่ตามแผนล่าสุด (กำหนดชำระที่กรอกไว้จะหายไป)"}
         </StatusNotice>
       ) : null}
 
@@ -226,13 +236,20 @@ export default function SalesOrderPaymentPanel({
                    เอามาเป็นปุ่มเด่นจะกลายเป็นชวนให้ถอย */
                 const canReport = !row.preview && !gate(row, "report", { paidOn: "placeholder" });
                 const canConfirm = !row.preview && !gate(row, "confirm");
+                const rowStatus = installmentDisplayStatus(row);
                 /* บัญชีกดปุ่มเดียวกันแต่จบในก้าวเดียว (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
-                   ⇒ คำบนปุ่มต้องบอกผลจริง ไม่ใช่ "แจ้ง" ที่แปลว่ารอคนอื่นมาตรวจ */
-                const reportsAsConfirmed = installmentReportOutcome(user) === "confirmed";
+                   ⇒ คำบนปุ่มต้องบอกผลจริง ไม่ใช่ "แจ้ง" ที่แปลว่ารอคนอื่นมาตรวจ
+                   ⭐ งวดร่างจอดที่ `pending` ไม่ว่าใครกด (มติผู้ใช้ 2026-08-19) ⇒ คำบนปุ่ม
+                   ต้องไม่สัญญาว่าส่งให้บัญชีแล้ว มันแค่ **บันทึกไว้** รอใบอนุมัติ */
+                const outcome = installmentReportOutcome(user, row);
+                const reportsAsConfirmed = outcome === "confirmed";
+                const parksAsDraft = outcome === "pending";
                 const primary = canReport
-                  ? { label: reportsAsConfirmed
-                        ? "บันทึกการรับชำระ"
-                        : row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
+                  ? { label: parksAsDraft
+                        ? "บันทึกว่าลูกค้าจ่ายแล้ว"
+                        : reportsAsConfirmed
+                          ? "บันทึกการรับชำระ"
+                          : row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
                       onClick: () => setReportFor({ row, paidOn: todayIso, files: [] }) }
                   : canConfirm
                     ? {
@@ -254,7 +271,9 @@ export default function SalesOrderPaymentPanel({
                     onClick: () => setScheduleFor({ row, dueDate: row.dueDate || "" }),
                   },
                   !gate(row, "withdraw") && {
-                    id: "withdraw", icon: Undo2, tone: "warning", label: "ดึงกลับการแจ้งชำระ",
+                    id: "withdraw", icon: Undo2, tone: "warning",
+                    // งวดร่างยังไม่ได้ส่งให้ใคร ⇒ "ดึงกลับ" ไม่ตรงกับสิ่งที่เกิดจริง
+                    label: installmentPrepaid(row) ? "ลบบันทึกการจ่าย" : "ดึงกลับการแจ้งชำระ",
                     onClick: () => onAction(row, "withdraw"),
                   },
                   !gate(row, "reject", { reason: "x".repeat(MIN_REJECT_REASON) }) && {
@@ -344,10 +363,13 @@ export default function SalesOrderPaymentPanel({
                       ) : <span className={styles.none}>{NA}</span>}
                     </td>
                     <td>
+                      {/* ⚠️ อ่านจาก `installmentDisplayStatus` ไม่ใช่ `row.status` ตรง ๆ —
+                          งวดร่างที่บันทึกเงินไว้แล้วยังเป็น `pending` ใน DB (CHECK ของ 0259)
+                          ป้าย "รอชำระ" บนงวดที่มีสลิปแนบอยู่คือจอที่โกหก */}
                       <StatusBadge
                         size="sm"
-                        tone={row.preview ? "neutral" : (INSTALLMENT_STATUS_TONES[row.status] || "neutral")}
-                        label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[row.status] || row.status)}
+                        tone={row.preview ? "neutral" : (INSTALLMENT_STATUS_TONES[rowStatus] || "neutral")}
+                        label={row.preview ? "ยังไม่เริ่มติดตาม" : (INSTALLMENT_STATUS_LABELS[rowStatus] || rowStatus)}
                       />
                     </td>
                     <td className={styles.actionCell}>
@@ -403,9 +425,19 @@ export default function SalesOrderPaymentPanel({
       ) : null}
 
       {reportFor ? (
-        <Modal open onClose={() => setReportFor(null)} title={single ? "แจ้งลูกค้าจ่ายแล้ว" : `แจ้งชำระ งวดที่ ${reportFor.row.seq}`} size="sm" dismissible={!busy}>
+        <Modal open onClose={() => setReportFor(null)}
+          title={prepayMode(reportFor.row)
+            ? (single ? "บันทึกว่าลูกค้าจ่ายแล้ว" : `บันทึกการจ่าย งวดที่ ${reportFor.row.seq}`)
+            : (single ? "แจ้งลูกค้าจ่ายแล้ว" : `แจ้งชำระ งวดที่ ${reportFor.row.seq}`)}
+          size="sm" dismissible={!busy}>
           <div className={styles.dialog}>
-            <p className="form-note">ยอด {fmtMoney(reportFor.row.amount)} — บัญชีจะตรวจหลักฐานก่อนรับรอง</p>
+            {/* ⭐ งวดร่างต้องบอกให้ครบว่า "เก็บไว้แล้วเกิดอะไรต่อ" — ไม่งั้นคนกดจะรอคิว
+                บัญชีที่ยังไม่มี แล้วโทรตามว่าทำไมบัญชีไม่ตรวจสักที (มติผู้ใช้ 2026-08-19) */}
+            <p className="form-note">
+              {prepayMode(reportFor.row)
+                ? `ยอด ${fmtMoney(reportFor.row.amount)} (ยังไม่ยืนยันจนกว่าใบจะอนุมัติ) — เก็บวันจ่ายกับหลักฐานไว้ก่อน ระบบจะส่งให้บัญชีตรวจเองตอนใบสั่งขายอนุมัติ`
+                : `ยอด ${fmtMoney(reportFor.row.amount)} — บัญชีจะตรวจหลักฐานก่อนรับรอง`}
+            </p>
             <label className={styles.field}>
               <span>วันที่ลูกค้าชำระ *</span>
               <DateInput value={reportFor.paidOn} ariaLabel="วันที่ลูกค้าชำระ"
@@ -423,7 +455,7 @@ export default function SalesOrderPaymentPanel({
                   const done = await onAction(reportFor.row, "report", { paidOn: reportFor.paidOn, files: reportFor.files });
                   if (done) setReportFor(null);
                 }}>
-                {busy ? "กำลังส่ง…" : "ส่งให้บัญชีตรวจ"}
+                {busy ? "กำลังบันทึก…" : (prepayMode(reportFor.row) ? "บันทึกไว้" : "ส่งให้บัญชีตรวจ")}
               </Button>
             </div>
           </div>

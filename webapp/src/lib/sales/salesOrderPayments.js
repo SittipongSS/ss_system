@@ -22,8 +22,18 @@ import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPla
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
+/* สถานะที่ **แสดงบนจอ** = สถานะใน DB + `prepaid` ที่คำนวณเอา (มติผู้ใช้ 2026-08-19)
+   ⚠️ อย่าเติม `prepaid` เข้า `INSTALLMENT_STATUSES` — ตัวนั้นต้องตรงกับ CHECK ของ 0245
+   เป๊ะ ๆ (แถวที่เขียนค่านี้ลง DB จะถูกปฏิเสธ) */
+export const INSTALLMENT_DISPLAY_STATUSES = [...INSTALLMENT_STATUSES, 'prepaid'];
+
+/* ⭐ `prepaid` **ไม่ใช่ค่าใน DB** — เป็นสถานะที่คำนวณจากงวดร่างที่มีวันจ่าย+หลักฐานแล้ว
+   (มติผู้ใช้ 2026-08-19) เงินเข้าทะเบียนของบัญชี **ต่อเมื่อ AE Supervisor อนุมัติใบแล้ว
+   เท่านั้น** งวดร่างจึงยังส่งให้บัญชีตรวจไม่ได้ แต่ต้องต่างจาก "รอชำระ" ให้เห็นด้วยตา
+   ไม่งั้นคนดูจะไม่รู้ว่าเงินเข้าแล้ว · ดู `installmentDisplayStatus` */
 export const INSTALLMENT_STATUS_LABELS = {
   pending: 'รอชำระ',
+  prepaid: 'จ่ายแล้ว รอใบอนุมัติ',
   reported: 'รอบัญชีตรวจ',
   confirmed: 'ชำระแล้ว',
   rejected: 'บัญชีตีกลับ',
@@ -32,6 +42,7 @@ export const INSTALLMENT_STATUS_LABELS = {
 // ชื่อโทนของ <StatusBadge> ไม่ใช่ค่าสี (มาตรฐานเดียวกับ REQUEST_STATUS_TONES)
 export const INSTALLMENT_STATUS_TONES = {
   pending: 'neutral',
+  prepaid: 'info',
   reported: 'info',
   confirmed: 'success',
   rejected: 'danger',
@@ -98,6 +109,35 @@ export function paymentNotRequired(total) {
 // ⇒ งวดเกิดได้ตั้งแต่ร่าง (SA กรอก `dueDate` ได้ตอนที่กำลังคุยเงื่อนไขกับลูกค้าพอดี)
 // แล้วยอดถูกเขียนทับครั้งสุดท้าย + `frozenAt` ตอนอนุมัติ
 export const isInstallmentFrozen = (row) => !!row?.frozenAt;
+
+/* ── เงินที่เข้ามาก่อนใบอนุมัติ (มติผู้ใช้ 2026-08-19 — ทางเลือก ก.) ─────────
+   ของจริง: ลูกค้าโอนมัดจำเพื่อ *ให้เริ่มงาน* ⇒ เงินเข้าก่อนการอนุมัติภายในเป็นเรื่องปกติ
+   ก่อนหน้านี้ไม่มีที่ให้ลง SA ต้องถือสลิปไว้รอใบผ่านอนุมัติ — หลักฐานที่ค้างในมือคนคือ
+   หลักฐานที่หายได้ (เหตุผลเดียวกับที่ด่าน "ไล่ลำดับงวด" เลือกแบบหลวม)
+
+   ⭐ **บันทึกได้ แต่ยังไม่ใช่การแจ้ง** — งวดร่างเก็บ `paidOn` + หลักฐานได้เลย โดย
+   `status` ยังถูกบังคับเป็น `pending` ตาม CHECK `sales_order_installments_draft_pending`
+   ของ 0259 (ไม่ต้องมี migration ใหม่ — CHECK นั้นคุมแค่ `status` ไม่ได้คุมหลักฐาน)
+   แล้ว `freezeInstallments` เลื่อนให้เป็น `reported` ตอนอนุมัติ ด้วยกลไกเดียวกับที่
+   ยืมหลักฐานตอนปิด Won อยู่แล้ว
+
+   🛑 **กติกาที่คุมเรื่องนี้จริง ๆ คือ "เงินเข้าบัญชีต่อเมื่อ AE Supervisor อนุมัติใบ"**
+   (มติผู้ใช้ 2026-08-19) ไม่ใช่ "ยอดยังลอย" อย่างที่ 0259 เขียนไว้ — ของจริงยอดนิ่ง
+   ตั้งแต่ออกใบ: QT ที่ออก SO แล้วเป็น `accepted` ⇒ แก้ไม่ได้ (`EDITABLE_STATUSES`)
+   · `unaccept` ติด `sales_order_exists` ที่ระดับ DB (0138) · และ SO ร่างแก้ได้แค่
+   `referenceDoc`/`notes` ⇒ **ยอดต่องวดเปลี่ยนไม่ได้ผ่านหน้าจอเลย**
+   ⇒ อย่าย้อนกลับไปอธิบายด่านนี้ด้วยเหตุผลเรื่องยอดอีก ถ้าจะปลดต้องถามว่า
+   "ให้บัญชีเห็นเงินก่อน AE Sup อนุมัติได้ไหม" ซึ่งคำตอบวันนี้คือไม่ */
+export function installmentPrepaid(row) {
+  return !isInstallmentFrozen(row)
+    && !!row?.paidOn
+    && Array.isArray(row?.evidence) && row.evidence.length > 0;
+}
+
+/** สถานะที่ **แสดงบนจอ** — ต่างจาก `status` ใน DB เฉพาะงวดร่างที่บันทึกเงินไว้แล้ว */
+export function installmentDisplayStatus(row) {
+  return installmentPrepaid(row) ? 'prepaid' : (row?.status || 'pending');
+}
 
 /**
  * ยอดที่ควรแสดง — งวดร่างเดินตามแผนของ QT สด ๆ · งวดที่ freeze แล้วใช้ค่าที่เก็บไว้
@@ -243,13 +283,17 @@ export function paymentState(rollup, { notRequired = false } = {}) {
    ของอยู่ในมือ · หลักฐานที่ค้างในมือคนคือหลักฐานที่หายได้
 
    ⚠️ `rejected` ของงวดก่อนหน้า **ไม่ผ่าน** — บัญชีตีกลับแปลว่างวดนั้นยังไม่จบ
-   ⚠️ ไม่ส่ง `rows` มา = ข้ามด่านนี้ (ผู้เรียกที่ไม่มีบริบทงวดอื่น เช่นเช็คสิทธิ์ล้วน) */
+   ⚠️ ไม่ส่ง `rows` มา = ข้ามด่านนี้ (ผู้เรียกที่ไม่มีบริบทงวดอื่น เช่นเช็คสิทธิ์ล้วน)
+   ⚠️ **งวดร่างที่บันทึกเงินไว้แล้วผ่านด่านนี้ด้วย** (2026-08-19) — สถานะมันยังเป็น
+   `pending` ตาม CHECK ของ 0259 ถ้านับเป็น "ยังไม่แจ้ง" งวดถัดไปจะกรอกไม่ได้ทั้งที่
+   งวดก่อนหน้ามีสลิปอยู่แล้ว ⇒ ผู้ใช้เจอทางตันตั้งแต่งวด 2 ของทุกใบที่ยังไม่อนุมัติ */
 export function installmentSequenceError(row, rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
   const seq = Number(row?.seq) || 0;
   const blocking = rows
     .filter((r) => (Number(r?.seq) || 0) < seq)
     .filter((r) => !['reported', 'confirmed'].includes(r?.status || 'pending'))
+    .filter((r) => !installmentPrepaid(r))
     .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0));
   if (!blocking.length) return null;
   const names = blocking.map((r) => `งวดที่ ${r.seq}`).join(', ');
@@ -263,8 +307,16 @@ export function installmentSequenceError(row, rows) {
 
    ⭐ ผลพลอยได้ที่ตั้งใจ: คิว `reported` เหลือ **เฉพาะของที่ฝ่ายขายแจ้ง** ⇒ บัญชี
    แยกออกทันทีว่าอันไหนต้องมาตรวจ โดยไม่ต้องเพิ่มสถานะหรือฟิลด์ใหม่เลย
-   (นี่คือคำตอบของคำถาม "จะให้บัญชีรู้ได้ยังไงว่าอันไหน SA แจ้งไว้") */
-export function installmentReportOutcome(user) {
+   (นี่คือคำตอบของคำถาม "จะให้บัญชีรู้ได้ยังไงว่าอันไหน SA แจ้งไว้")
+
+   ⭐ **งวดร่างจอดที่ `pending` เสมอ ไม่ว่าใครกด** (มติผู้ใช้ 2026-08-19) — งานจะถึงมือ
+   บัญชีต่อเมื่อ **AE Supervisor อนุมัติใบแล้ว** เท่านั้น (ดู `installmentPrepaid`)
+   แม้แต่บัญชีกดเองก็ยังไม่ `confirmed`: ใบที่ยังไม่ผ่านด่านอนุมัติไม่ควรมีเงินรับรอง
+   แขวนอยู่ ไม่งั้นคำรับรองจะล็อกใบไม่ให้ย้อน/ออก Rev. ตั้งแต่ยังไม่มีใครอนุมัติสักคน
+   ⇒ `freezeInstallments` เลื่อนให้เป็น `reported` ตอนอนุมัติ แล้วบัญชีค่อยกดรับรอง
+   ⚠️ ไม่ส่ง `row` มา = ตัดสินแบบเดิม (ผู้เรียกที่ถามแค่ "คนนี้กดแล้วได้อะไร") */
+export function installmentReportOutcome(user, row = null) {
+  if (row && !isInstallmentFrozen(row)) return 'pending';
   return canConfirmPayment(user) ? 'confirmed' : 'reported';
 }
 
@@ -297,12 +349,16 @@ export function installmentActionError(row, action, user, options = {}) {
     if (!canUser(user, 'salesplan:edit') && !canConfirmPayment(user)) {
       return 'ไม่มีสิทธิ์แจ้งการชำระ';
     }
-    /* ⭐ **แจ้งชำระบนงวดร่างไม่ได้** (B-4) — ยอดของงวดร่างยังเดินตามใบ ⇒ หลักฐาน
-       ที่แนบไว้จะผูกกับตัวเลขที่กำลังจะถูกเขียนทับตอนอนุมัติ
-       ⚠️ ด่านนี้ซ้ำกับ CHECK ของ 0259 โดยตั้งใจ — DB กันของที่หลุดมาทางอื่น
-       ส่วนที่นี่ให้ **ข้อความที่อ่านรู้เรื่อง** แทน error ดิบของ constraint */
-    if (!isInstallmentFrozen(row)) {
-      return 'ใบสั่งขายยังไม่อนุมัติ — แจ้งการชำระได้เมื่อยอดต่องวดถูกยืนยันแล้ว';
+    /* ⭐ **งวดร่างบันทึกเงินได้แล้ว แต่ยังไม่ส่งให้บัญชี** (มติผู้ใช้ 2026-08-19)
+       เดิมบล็อกทั้งก้าว โดยอ้างว่ายอดของงวดร่างยังเดินตามใบ · ข้ออ้างนั้นไม่ตรงกับของจริง
+       (ยอดนิ่งตั้งแต่ออกใบ — ดู `installmentPrepaid`) และมันห้ามผิดอย่างด้วย: สิ่งที่ต้อง
+       รอการอนุมัติคือ **การส่งให้บัญชีตรวจ** ไม่ใช่การบันทึกว่าเงินเข้า
+       ⇒ ปลายทางไปจอดที่ `pending` แทน (ดู `installmentReportOutcome`) แล้วเลื่อนให้เอง
+       ตอนอนุมัติ · กติกา "เงินถึงบัญชีหลัง AE Sup อนุมัติ" ไม่ถูกแตะสักนิด
+       ⚠️ CHECK `sales_order_installments_draft_pending` ของ 0259 ยังอยู่ครบและยัง
+       เป็นด่านสุดท้าย — มันคุมแค่ `status` จึงไม่ขวางการเก็บ `paidOn`/หลักฐาน */
+    if (installmentPrepaid(row)) {
+      return 'งวดนี้บันทึกการจ่ายไว้แล้ว — จะส่งให้บัญชีตรวจเองเมื่อใบสั่งขายอนุมัติ';
     }
     if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แจ้งซ้ำไม่ได้';
     if (status === 'reported') return 'งวดนี้แจ้งไปแล้ว รอบัญชีตรวจ';
@@ -313,8 +369,12 @@ export function installmentActionError(row, action, user, options = {}) {
   }
 
   // ดึงกลับ — ของผู้แจ้งเองเท่านั้น และต้องยังไม่มีใครตัดสิน (รูปเดียวกับ "ดึงกลับ" ของ SO)
+  // ⚠️ **งวดร่างที่บันทึกเงินไว้ก็ดึงกลับได้** (2026-08-19) — สถานะมันยัง `pending`
+  // ถ้ายึดตาม status อย่างเดียว คนที่แนบสลิปผิดใบจะลบทิ้งไม่ได้จนกว่าใบจะอนุมัติ
   if (action === 'withdraw') {
-    if (status !== 'reported') return 'ดึงกลับได้เฉพาะงวดที่แจ้งแล้วและบัญชียังไม่ตรวจ';
+    if (status !== 'reported' && !installmentPrepaid(row)) {
+      return 'ดึงกลับได้เฉพาะงวดที่แจ้งแล้วและบัญชียังไม่ตรวจ';
+    }
     if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์ดึงกลับ';
     if (row.reportedById && row.reportedById !== user?.id && user?.role !== 'admin') {
       return 'ดึงกลับได้เฉพาะผู้ที่แจ้งงวดนี้';

@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  INSTALLMENT_DISPLAY_STATUSES,
   INSTALLMENT_STATUS_LABELS,
   INSTALLMENT_STATUS_TONES,
   INSTALLMENT_STATUSES,
   buildInstallmentsForOrder,
   installmentActionError,
+  installmentDisplayStatus,
   installmentPlanDrift,
+  installmentPrepaid,
   installmentReportOutcome,
   installmentsFromPaymentPlan,
   isInstallmentFrozen,
@@ -226,16 +229,41 @@ test('จำนวนงวดไม่ตรงแผน = เรื่อง�
   assert.deepEqual(installmentPlanDrift(two, null, 10000), { planned: 1, tracked: 2 });
 });
 
-/* 🔴 หัวใจของ B-4 — งวดร่างมีตัวตนจริงเพื่อ **กรอกกำหนดชำระ** เท่านั้น
-   แจ้งชำระบนยอดที่ยังขยับได้ = หลักฐานผูกกับตัวเลขที่กำลังจะถูกเขียนทับ */
-test('แจ้งชำระบนงวดร่างไม่ได้ — ต้องรอใบอนุมัติก่อน', () => {
+/* 🔴 หัวใจของ B-4 + มติ 2026-08-19 — งวดร่างกรอกกำหนดชำระได้ **และบันทึกเงินได้**
+   สิ่งที่ต้องรอยอดนิ่งคือการส่งให้บัญชีตรวจ ไม่ใช่การบันทึกว่าเงินเข้า */
+test('งวดร่างบันทึกการจ่ายได้ แต่ปลายทางจอดที่ pending ไม่เข้าคิวบัญชี', () => {
   const draft = { status: 'pending' };
-  assert.match(
-    installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }),
-    /ยังไม่อนุมัติ/,
-  );
-  // ⭐ แต่ **ตั้งกำหนดชำระได้** — นี่คือเหตุผลทั้งหมดที่งวดร่างมีตัวตน
+  assert.equal(installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }), null);
+  assert.equal(installmentReportOutcome(SA, draft), 'pending');
+  // แม้แต่บัญชีกดเอง ก็ยังไม่ confirmed — คำรับรองต้องอยู่บนยอดที่นิ่งแล้ว
+  assert.equal(installmentReportOutcome(FN_ROLE, draft), 'pending');
+  // ⭐ ตั้งกำหนดชำระได้เหมือนเดิม
   assert.equal(installmentActionError(draft, 'schedule', SA), null);
+});
+
+test('งวดร่างที่บันทึกเงินไว้แล้ว บันทึกซ้ำไม่ได้ แต่ลบทิ้งได้', () => {
+  const prepaid = { status: 'pending', paidOn: '2026-08-10', evidence: [{ name: 'slip.pdf' }] };
+  assert.equal(installmentPrepaid(prepaid), true);
+  assert.equal(installmentDisplayStatus(prepaid), 'prepaid');
+  assert.match(installmentActionError(prepaid, 'report', SA, { paidOn: '2026-08-11' }), /บันทึกการจ่ายไว้แล้ว/);
+  // ⚠️ สถานะยัง pending ⇒ ถ้ายึด status อย่างเดียว คนแนบสลิปผิดจะลบไม่ได้
+  assert.equal(installmentActionError(prepaid, 'withdraw', SA), null);
+});
+
+test('งวดร่างที่บันทึกเงินไว้ นับเป็น "แจ้งแล้ว" ของด่านไล่ลำดับ', () => {
+  const rows = [
+    { seq: 1, status: 'pending', paidOn: '2026-08-10', evidence: [{ name: 'slip.pdf' }] },
+    { seq: 2, status: 'pending' },
+  ];
+  // ไม่งั้นใบที่ยังไม่อนุมัติจะตันตั้งแต่งวด 2 ทั้งที่งวด 1 มีสลิปแล้ว
+  assert.equal(installmentActionError(rows[1], 'report', SA, { paidOn: '2026-08-12', rows }), null);
+});
+
+test('งวดที่ freeze แล้วไม่ใช่ prepaid — ปลายทางกลับไปตามสิทธิ์ของคนกด', () => {
+  const row = frozen({ status: 'pending', paidOn: '2026-08-10', evidence: [{ name: 'slip.pdf' }] });
+  assert.equal(installmentPrepaid(row), false);
+  assert.equal(installmentReportOutcome(SA, row), 'reported');
+  assert.equal(installmentReportOutcome(FN_ROLE, row), 'confirmed');
 });
 
 // ── ด่านของแต่ละคำสั่ง ──────────────────────────────────────────────────
@@ -331,10 +359,11 @@ test('ถอดคำร้องได้เฉพาะงวดที่ผ�
 
 /* ⚠️ งวดร่างก็แนบคำร้องได้ — คำร้องเกิดตั้งแต่ตอนมีแค่ QT ("50% ก่อนผลิต")
    ซึ่งมักเกิด**ก่อน**ใบสั่งขายอนุมัติด้วยซ้ำ · บล็อกตรงนี้ = บังคับให้รอโดยไม่มีเหตุผล */
-test('งวดร่างแนบคำร้องได้ ต่างจากการแจ้งชำระ', () => {
+test('งวดร่างแนบคำร้องได้ และบันทึกการจ่ายได้ — ต่างกันที่ปลายทางของสถานะ', () => {
   const draft = { status: 'pending' };
   assert.equal(installmentActionError(draft, 'link', SA, { billingRequestId: 'DR-1' }), null);
-  assert.match(installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }), /ยังไม่อนุมัติ/);
+  assert.equal(installmentActionError(draft, 'report', SA, { paidOn: '2026-08-10' }), null);
+  assert.equal(installmentReportOutcome(SA, draft), 'pending');
 });
 
 test('คำสั่งที่ไม่รู้จักถูกปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', () => {
@@ -379,11 +408,16 @@ test('มีงวดที่คอนเฟิร์มแล้ว = ล็�
 
 // ── ทะเบียนสถานะครบ ─────────────────────────────────────────────────────
 test('ทุกสถานะมีป้ายและโทนครบ', () => {
-  for (const status of INSTALLMENT_STATUSES) {
+  for (const status of INSTALLMENT_DISPLAY_STATUSES) {
     assert.ok(INSTALLMENT_STATUS_LABELS[status], `ขาดป้ายของ ${status}`);
     assert.ok(INSTALLMENT_STATUS_TONES[status], `ขาดโทนของ ${status}`);
   }
-  assert.deepEqual(Object.keys(INSTALLMENT_STATUS_LABELS).sort(), [...INSTALLMENT_STATUSES].sort());
+  assert.deepEqual(
+    Object.keys(INSTALLMENT_STATUS_LABELS).sort(),
+    [...INSTALLMENT_DISPLAY_STATUSES].sort(),
+  );
+  // ⚠️ `prepaid` เป็นของจอเท่านั้น — หลุดเข้ารายการสถานะจริงเมื่อไร DB ปฏิเสธแถวนั้น
+  assert.ok(!INSTALLMENT_STATUSES.includes('prepaid'));
 });
 
 /* ── preview: โชว์งวดตั้งแต่ใบยังเป็นร่าง (มติผู้ใช้ 2026-08-13) ─────────── */
