@@ -16,12 +16,18 @@
 // สองทรงและรางสองทรงพร้อมกัน ซึ่งเป็นสิ่งที่ `audit:ui` กับกฎ "primitive อยู่ที่
 // components/ui เท่านั้น" ห้ามไว้ · ตอนนี้ฝั่งกรอกกับฝั่งอ่านหน้าตาเหมือนกันจริง
 import { useEffect, useState } from "react";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, Send } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import BriefBoard from "@/components/requests/BriefBoard";
+// ⭐ แก้ทะเบียนกลิ่นจากในใบ (มติผู้ใช้ 2026-08-18) — โมดัลใช้ฟอร์มเดียวกับหน้าทะเบียน
+import RegistryEditModal from "@/components/requests/RegistryEditModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import StatusNotice from "@/components/ui/StatusNotice";
+import { isScentRegistrar } from "@/lib/master/scents";
+import { useRole } from "@/lib/roleContext";
 import RequestRows from "./RequestRows";
 import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -36,7 +42,7 @@ import {
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
-  request, board, canEditAttachments, saving, rowStep,
+  request, board, canEditAttachments, saving, rowStep, onReload, onDeliver,
   // ทะเบียนหมวดสินค้า — ฟอร์ม PDR ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
   categories = [],
   pdrDraft, onPdrDraftChange,
@@ -57,6 +63,30 @@ export default function ScentDevDetail({
   // "บรีฟกลิ่น") แต่คนละ state โดยตั้งใจ: ปิดโหมดแก้แล้วต้องกลับไปที่หมวดที่กำลังอ่าน
   // ค้างไว้ ไม่ใช่กระโดดไปหมวดที่เพิ่งแก้เสร็จ
   const [draftSection, setDraftSection] = useState("request");
+  /* ⭐ ทะเบียนที่กำลังแก้อยู่ — ค่าคือก้อน `registry` ของแถวนั้น (id + kind)
+     ⚠️ **ด่านจริงอยู่ที่ API** ที่นี่แค่ไม่โชว์ปุ่มให้คนที่แก้ไม่ได้ (รหัสกลิ่น = RD เท่านั้น) */
+  const [editRegistry, setEditRegistry] = useState(null);
+  const role = useRole();
+  const registrar = isScentRegistrar({ role });
+  const [error, setError] = useState("");
+  /* ⭐ ลบรายการ + ของที่มันสร้างไว้ในทะเบียน (มติผู้ใช้ 2026-08-18) — ด่านจริงอยู่ที่
+     `DELETE /api/sa/requests/[id]/items/[itemId]` (lib `rowDelete.js` มีเทสต์)
+     ⚠️ **ต้องมีโมดัลยืนยันเสมอ** — ปุ่มนี้ลบของสองที่ในคลิกเดียว คนกดต้องอ่านออกก่อนว่า
+     ทะเบียนจะถูกลบตามไปด้วย (กฎ approvalPrompt: ทุกการกระทำที่มีผลต่อของอื่นต้องบอกผล) */
+  const [deleteRow, setDeleteRow] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const removeRow = async () => {
+    if (!deleteRow) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/sa/requests/${request.id}/items/${deleteRow.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(data.error || "ลบรายการไม่สำเร็จ"); return; }
+      setDeleteRow(null);
+      await onReload?.();
+    } finally { setDeleting(false); }
+  };
+
 
   // ⚠️ ปุ่ม "แก้แบบฟอร์ม PDR" อยู่ที่แผงจัดการ (นอก component นี้) — กดตอนอยู่แท็บ
   // "งาน" แล้วต้องพาไปแท็บที่แก้ได้เอง ไม่ใช่เปิดโหมดแก้ทิ้งไว้ในแท็บที่มองไม่เห็น
@@ -105,6 +135,18 @@ export default function ScentDevDetail({
       <DetailCard icon={ListChecks} title="สรุปทั้งใบ">
       <BriefBoard
             groups={board}
+            canEditRegistry={registrar}
+            onEditRegistry={(registry) => setEditRegistry(registry)}
+            onDeleteRow={(row) => setDeleteRow(row)}
+            /* ⭐ **ปุ่มส่งงานอยู่ในแถวของบรีฟ** (มติผู้ใช้ 2026-08-18) — ย้ายมาจาก
+               Control Panel · กดที่ก้อนไหน โมดัลผูกบรีฟก้อนนั้นให้เลย ไม่ต้องเลือกซ้ำ
+               ⚠️ เงื่อนไขเดียวกับปุ่มเดิมเป๊ะ (`rowStep.canDept` = ฝ่ายปลายทางที่รับเรื่อง
+               แล้ว) — ที่ย้ายคือ *ที่วาง* ไม่ใช่ด่าน */
+            renderGroupStep={rowStep?.canDept && onDeliver ? (g) => (
+              <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
+                <Send size={14} /> ส่งงาน
+              </Button>
+            ) : null}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
               return item ? <RowStepActions row={item} {...rowStep} /> : null;
@@ -177,6 +219,34 @@ export default function ScentDevDetail({
             </SectionRail>
           )}
         </div>
+      )}
+      {/* ⚠️ บอกผลลัพธ์ให้ครบก่อนกด — ลบทีเดียวหายสองที่ */}
+      {/* ⚠️ บอกผลลัพธ์ให้ครบก่อนกด — ลบทีเดียวหายสองที่
+          ⚠️ เนื้อความส่งทาง `description` ไม่ใช่ children — `ConfirmDialog` ไม่ได้
+             เรนเดอร์ children (เจอจริงตอนเดินบนจอ: โมดัลขึ้นแต่หัวเรื่องกับปุ่ม) */}
+      <ConfirmDialog
+        open={!!deleteRow}
+        tone="danger"
+        title={`ลบ ${deleteRow?.registry?.code || deleteRow?.name || "directionนี้"}`}
+        description={`${deleteRow?.registry
+          ? `ลบออกจากคำร้อง และลบ ${deleteRow.registry.code || deleteRow.registry.name} ออกจากทะเบียนด้วย`
+          : "ลบรายการนี้ออกจากคำร้อง"} · ย้อนกลับไม่ได้`}
+        detail="ถ้าของในทะเบียนถูกอ้างที่อื่นแล้ว ระบบจะลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"
+        confirmLabel="ลบ"
+        busy={deleting}
+        onClose={() => setDeleteRow(null)}
+        onConfirm={removeRow}
+      />
+      {error && <StatusNotice tone="error" onClose={() => setError("")}>{error}</StatusNotice>}
+
+      {/* ⚠️ ปิดโมดัลแล้ว **ต้องรีโหลดใบ** — ตารางอ่านค่าทะเบียนจาก payload ของใบ */}
+      {editRegistry && (
+        <RegistryEditModal
+          target={editRegistry}
+          canSetCode={registrar}
+          onClose={() => setEditRegistry(null)}
+          onSaved={onReload}
+        />
       )}
     </>
   );

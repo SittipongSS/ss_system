@@ -1,5 +1,7 @@
 // ── API สูตรรายตัว (mig 0171) — แก้ / รับเข้าทะเบียน / เลิกใช้ / ลบ ───────
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+// ⭐ ชื่อ/รหัสเปลี่ยน = คำร้องทุกใบที่อ้างถึงต้องมีบรรทัดในประวัติ (มติผู้ใช้ 2026-08-18)
+import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 import { recordAudit } from '@/lib/audit';
 import {
   acceptFormulaError, archiveFormulaError, canEditFormula, canViewFormulas,
@@ -70,6 +72,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       // ที่สูตรใช้แล้วลูกค้าไม่ตามไปด้วย = สูตรของลูกค้า A ที่ใช้กลิ่นของลูกค้า B
       // ซึ่งคือรูที่ 0207 ตั้งใจปิด
       const data = await editFormula(supabase, id, editable);
+      await logRegistryChangeToRequests(supabase, {
+        kind: 'formula', id, before: formula, after: data, user,
+      });
       await recordAudit({
         user, action: 'update', entityType: 'formula', entityId: id,
         before: formula, after: data, request: req,

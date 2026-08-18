@@ -33,35 +33,12 @@
 .counts span[data-tone="warn"] { color: var(--amber); }
 .counts span[data-tone="ok"] { color: var(--green); }
 
-/* แถวคั่นกลุ่ม = หัวบรีฟ · ใช้ th scope=rowgroup ให้ screen reader อ่านออกว่าเป็นหัว */
-.groupRow th {
-  text-align: left;
-  background: var(--panel-3);
-  font-size: var(--fs-5);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--ls-label);
-  color: var(--text-2);
-}
-
-/* บรีฟย่อขึ้นบรรทัดเดียวต่อท้ายหัวกลุ่ม — เห็นว่าขออะไรโดยไม่ต้องเลื่อนไปดู PDR */
-.groupBrief {
-  margin-left: var(--space-2);
-  font-weight: var(--fw-normal);
-  color: var(--text-3);
-}
-
 .name { font-weight: var(--fw-semibold); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 .rework {
   margin-left: var(--space-2);
   font-size: var(--fs-3);
   color: var(--text-3);
-}
-
-.qty {
-  margin-left: var(--space-2);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-2);
 }
 
 .note {
@@ -71,8 +48,7 @@
 }
 
 /* ⚠️ ข้อความ ไม่ใช่ขีด — "ยังไม่ถึงตาลูกค้า" กับ "ลูกค้าเงียบ" คนละเรื่อง */
-.pending,
-.untouched {
+.pending {
   font-size: var(--fs-5);
   color: var(--text-3);
 }
@@ -82,69 +58,36 @@
    เบียดกันอยู่ขวาสุด (IS-26080021 · เห็นในภาพที่ผู้ใช้ส่งมา)
    ⇒ ตั้งใหม่ให้รวมเป็น 100% ตอนมีครบสี่คอลัมน์ ซึ่งเป็นกรณีปกติของจอฝ่ายปลายทาง
    (ไม่มี step = รวม 80% เบราว์เซอร์ยืดตามสัดส่วนเดิม ซึ่งยังได้สัดส่วนที่ตั้งใจ) */
-.colName { width: 42%; }
+/* ⚠️ สัดส่วนตั้งให้รวม ~100% ตอนมีคอลัมน์ครบ — เดิมชื่อกิน 42% แล้วดันคอลัมน์ที่เหลือ
+   ไปกองอยู่ขวาสุด อ่านเป็นสามก้อนที่ไม่เกี่ยวกัน (ผู้ใช้ทัก 2026-08-18 "จัด align หน่อย") */
+.colName { width: 34%; }
 .colStage { width: 14%; }
 
 /* คอลัมน์ "ก้าวถัดไป" ในตารางเอกสาร (ม-94) — ปุ่มติดแถว ไม่ต้องเลื่อนหาท้ายเธรด */
-.colStep { width: 20%; }
-.stepCell { white-space: nowrap; }
+/* ⚠️ `min-width` กันคอลัมน์ปุ่มถูกบีบจนปุ่มซ้อนกัน — 22% ของตารางแคบ ๆ ไม่พอ
+   สำหรับปุ่มก้าว + ปุ่มแก้ที่อยู่บรรทัดเดียวกัน */
+.colStep { width: 22%; min-width: 170px; }
 
-/* ── แถบสรุปต่อบรีฟ (พับ/กางได้) — ทางเลือก ก+ มติผู้ใช้ 2026-08-10 ────────
-   ⭐ ใบ 25 บรีฟที่เดินครบสองรอบมีได้ ~150 แถว · กางทุกก้อนพร้อมกันคือหน้าที่
-   เลื่อนไม่จบ ⇒ ก้อนที่ยังต้องลงมือกางไว้ ก้อนที่จบแล้วพับ อ่านสรุปได้จากแถบ */
-.rollBtn {
+/* ปุ่มก้าว + ปุ่มแก้ อยู่บรรทัดเดียวกัน ชิดซ้ายให้ตรงหัวคอลัมน์
+   🐞 เดิมเป็น `white-space: nowrap` เฉย ๆ ⇒ ปุ่มดินสอตกไปบรรทัดที่สองใต้ปุ่มก้าว
+   เพราะทั้งคู่เป็น inline-flex คนละก้อน (ผู้ใช้ส่งภาพมา 2026-08-18) */
+.stepCell {
   display: flex;
-  width: 100%;
-  align-items: center;
-  gap: var(--space-2-5);
-  flex-wrap: wrap;
-  padding: var(--space-2) var(--space-3);
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel-3);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-5);
-  text-align: left;
-  cursor: pointer;
+  /* ⚠️ ชิดบน ไม่ใช่กึ่งกลาง — ตารางนี้ประกาศ `cells="stacked"` (บรรทัดแรกของทุก
+     คอลัมน์ต้องอยู่ระดับเดียวกัน) · กึ่งกลางทำให้ปุ่มลอยต่ำกว่าชื่อเมื่อเซลล์ชื่อสองบรรทัด */
+  align-items: flex-start;
+  gap: var(--space-2);
+  /* 🐞 เคยใส่ `flex-wrap: wrap` ⇒ พอคอลัมน์แคบ ปุ่มดินสอตกไปบรรทัดสองใต้ปุ่มก้าว
+     (ผู้ใช้ส่งภาพมารอบสอง) · ปล่อยให้ตารางเลื่อนแนวนอนดีกว่าปุ่มสองแถวเหลื่อมกัน */
+  flex-wrap: nowrap;
 }
 
-.rollBtn:hover { background: var(--panel-2); }
-
-.rollBtn strong { font-weight: var(--fw-bold); }
-
-/* ลูกศรกว้างคงที่ — ป้ายชื่อของทุกก้อนจึงเริ่มตรงกันไม่ว่าพับหรือกาง */
-.caret {
-  width: 12px;
-  flex: 0 0 auto;
-  color: var(--text-3);
-}
+/* ก้อนปุ่มก้าว (`NextStepBar.actions`) พกระยะของตัวเองมา ⇒ บังคับให้อยู่ระดับเดียว
+   กับปุ่มแก้ ไม่งั้นสองก้อนเหลื่อมกันไม่กี่ px ซึ่งอ่านออกว่าไม่ตรง */
+.stepCell > * { margin: 0; }
 
 /* ⚠️ เยื้องด้วย padding ของเซลล์ ไม่ใช่ margin ของเนื้อใน — เส้นตารางต้องยังลากยาว
    เต็มความกว้าง ไม่งั้นแถวรอบแก้จะอ่านเป็นตารางซ้อนตาราง */
-
-/* แถบท้าย: บรีฟที่ยังไม่มี direction — รวมเป็นบรรทัดเดียว ไม่กางทีละก้อน */
-.restStrip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  flex-wrap: wrap;
-  padding: var(--space-2-5) var(--space-3);
-  color: var(--text-2);
-  font-size: var(--fs-5);
-}
-
-.restStrip strong { color: var(--text); }
-
-/* ดันปุ่มไปชิดขวาโดยไม่ต้องใส่ style ดิบที่ JSX (ชั้นเก่าที่ ratchet คุมอยู่) */
-.restToggle { margin-left: auto; }
-
-.restNames {
-  display: flex;
-  gap: var(--space-1-5);
-  flex-wrap: wrap;
-  padding: 0 var(--space-3) var(--space-2-5);
-}
 
 /* ── แถวรายละเอียดของ direction (IS-26080021) ────────────────────────────
    สเปกที่ขอ + ไฟล์แนบของแถวนั้น — ย้ายมาจากการ์ด `RequestRows` ที่เคยวางซ้อนอยู่
@@ -163,35 +106,48 @@
 }
 .rowToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }
 
+/* คอลัมน์ผลลัพธ์ — ป้ายผล + จำนวนคอนเฟิร์มใต้ป้าย (เซลล์สองบรรทัด) */
+.colOutcome { width: 20%; }
 
-/* ── การ์ดรายแถว (มติผู้ใช้ 2026-08-13 · IS-26080021 แบบ ข) ────────────────
-   แทนตาราง — ใบจริงมี direction 1–3 ตัว ตารางจ่ายค่าหัวคอลัมน์ฟรีแล้วยังบีบเนื้อ
-   ลงช่องแคบจนต้องซ่อนหลังปุ่มกาง · การ์ดเห็นครบโดยไม่ต้องกด
-   ⚠️ ใช้ร่วมกันทั้ง BriefBoard (สายกลิ่น) และ FormulaDevBoard (สายสูตร) — ห้ามโคลน */
-.cardList { display: grid; gap: var(--space-3); }
+/* จำนวน/ราคาอยู่คอลัมน์เดียวกัน ⇒ กว้างพอสำหรับ "1,200 กก." + บรรทัดราคาใต้มัน */
+.colQty { width: 12%; }
 
-.itemCard {
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
+/* ⚠️ เยื้องรอบแก้ที่ **เซลล์** ไม่ใช่ที่เนื้อใน — เส้นตารางต้องลากยาวเต็มความกว้าง
+   ไม่งั้นแถวรอบแก้จะอ่านเป็นตารางซ้อนตาราง */
+.childCell { padding-left: var(--space-6); }
+
+/* ── แถวขยายของรายการ (มติผู้ใช้ 2026-08-18) ─────────────────────────────
+   สเปก · หมายเหตุผลลัพธ์ · ไฟล์แนบของแถวนั้น — เต็มความกว้างใต้แถวหลัก
+   ⭐ ทรงเดียวกับแถว "เหตุผลที่บัญชีตีกลับ" ของการ์ดการชำระในใบสั่งขาย
+   ⚠️ **ไม่มีปุ่มกาง** — ที่มติ 2026-08-13 ไม่ยอมคือการซ่อนสเปก/ไฟล์แนบไว้หลังปุ่ม
+   ไม่ใช่ตัวตาราง · แถวนี้จึงขึ้นเสมอเมื่อมีเนื้อ */
+.detailRow > td {
+  padding-top: 0;
+  border-top: 0;
+  background: var(--panel-2);
 }
 
-/* ชื่อ · สถานะ · ปุ่มก้าวถัดไป อยู่แถวบนสุดเสมอ — ปุ่มชิดขวาเหมือนที่เคยเป็นคอลัมน์ท้าย */
-.itemTop { display: flex; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
-.itemName { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.itemName strong { font-weight: var(--fw-semibold); }
-.itemStep { flex: 0 0 auto; }
+/* แถวขยายเยื้องให้ตรงกับเนื้อของแถวที่มันสังกัด — ไม่งั้นอ่านเป็นบล็อกลอยคั่นตาราง */
+.detailRow > td { padding-left: var(--space-4); }
 
-/* ⭐ ข้อเท็จจริงเรียงแถวเดียว — เดิมกระจายคนละคอลัมน์จนต้องกวาดตาไปมา
-   ⚠️ `flex-wrap` ไม่ใช่ grid: จำนวนข้อเท็จจริงต่างกันรายแถว (บางแถวไม่มีราคา)
-   กริดคอลัมน์ตายตัวจะเหลือรูว่างในแถวที่ข้อมูลน้อย */
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-5);
-  margin-top: var(--space-2);
+.detailRow > td > * + * { margin-top: var(--space-2); }
+
+/* ทั้งก้อน "รหัส + ชื่อ" เป็นทางเข้าหน้ารายละเอียดของทะเบียน (มติผู้ใช้ 2026-08-18)
+   ⚠️ ไม่ใช้ `.linklike` — ตัวนั้นทาสีลิงก์ทั้งก้อนรวมชื่อด้วย ซึ่งทำให้ตารางกลายเป็น
+   ทะเลตัวหนังสือสีลิงก์ · ที่นี่รหัสอ่านเป็นตัวเข้ม ชื่อเป็นบรรทัดรอง แล้วให้ทั้งก้อน
+   กดได้และขีดเส้นใต้ตอน hover ⇒ อ่านง่ายเท่าเดิมแต่กดได้ทั้งชิ้น */
+.registryLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.registryLink span {
+  display: block;
+  margin-top: var(--space-1);
   font-size: var(--fs-5);
-  color: var(--text-2);
+  color: var(--text-3);
 }
-.facts strong { color: var(--text); font-weight: var(--fw-semibold); }
+
+.registryLink:hover strong { text-decoration: underline; }
+.registryLink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius); }

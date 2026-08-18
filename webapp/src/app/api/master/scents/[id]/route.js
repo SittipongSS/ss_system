@@ -12,6 +12,8 @@ import {
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, unlinkRegistryRefs, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
+// ⭐ ชื่อ/รหัสเปลี่ยน = คำร้องทุกใบที่อ้างถึงต้องมีบรรทัดในประวัติ (มติผู้ใช้ 2026-08-18)
+import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +79,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         editable.code = code;
       }
       const data = await updateScent(supabase, id, editable);
+      await logRegistryChangeToRequests(supabase, {
+        kind: 'scent', id, before: scent, after: data, user,
+      });
       await recordAudit({
         user, action: 'update', entityType: 'scent', entityId: id,
         before: scent, after: data, request: req,

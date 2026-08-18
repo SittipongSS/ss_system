@@ -6012,7 +6012,26 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 
 /* ปุ่มกินเต็มแถบ ⇒ กดตรงไหนของหัวกลุ่มก็ย่อ/ขยายได้ · เป็น <button> จริงเพื่อให้
    คีย์บอร์ดและสกรีนรีดเดอร์ได้ aria-expanded ไปด้วย */
-.ui-group-row button {
+/* ⭐ บรรทัดของหัวกลุ่ม = toggle (ยืดเต็ม) + ปุ่มลงมือของกลุ่มชิดขวา (2026-08-18) */
+.ui-group-row .ui-group-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-3);
+}
+
+.ui-group-row .ui-group-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* ⚠️ ผูกกับคลาสของ toggle ไม่ใช่ `button` ทุกตัว — ไม่งั้นปุ่มลงมือในหัวกลุ่มจะโดน
+   ยืดเต็มแถบและกลืนพื้นหลังไปด้วย */
+.ui-group-row .ui-group-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -6026,11 +6045,11 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   text-align: left;
 }
 
-.ui-group-row button:hover {
+.ui-group-row .ui-group-toggle:hover {
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
-.ui-group-row button:focus-visible {
+.ui-group-row .ui-group-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

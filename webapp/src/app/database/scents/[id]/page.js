@@ -8,14 +8,15 @@
 // เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎเดียวกับฟอร์มสร้าง/แก้ใน AGENTS.md)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BadgeDollarSign, FlaskConical, Pencil } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import Toast from "@/components/ui/Toast";
 import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
-import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentUsable, scentSourceLabel } from "@/lib/master/scents";
+import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable, scentSourceLabel } from "@/lib/master/scents";
 
 // โทนของ StatusBadge → สีจริง (การ์ดจัดการรับเป็นค่า CSS ไม่ใช่ชื่อโทน)
 const TONE_COLOR = {
@@ -33,6 +34,25 @@ export default function ScentDetailPage() {
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
   const [toast, setToast] = useState(null);
+
+  /* ⭐ **ปุ่มลบบนการ์ดจัดการ** (มติผู้ใช้ 2026-08-18) — ลบได้ถึงขั้น "กำลังพัฒนา"
+     (ด่านจริงอยู่ที่ `deleteScentError` ฝั่ง server) · ที่นี่แค่ถามยืนยัน
+     ⚠️ ปุ่มโผล่เฉพาะสถานะที่ลบได้จริง — ปุ่มที่กดแล้วเด้ง error ทุกครั้งคือปุ่มหลอก */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const removeScent = async () => {
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/master/scents/${scent.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });
+        setConfirmDelete(false);
+        return;
+      }
+      router.push("/database/scents");
+    } finally { setRemoving(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -69,6 +89,8 @@ export default function ScentDetailPage() {
        (rev เดิม immutable — แก้ราคาคือการต่อ rev ไม่ใช่ทับ) */
   const canPrice = canQuoteMaterial(me, "RM_F") && isScentUsable(scent);
   const hasPrice = scent.price?.unitPrice != null;
+
+
   return (
     <RegistryDetailShell
       back={back}
@@ -100,6 +122,14 @@ export default function ScentDetailPage() {
         icon: BadgeDollarSign,
         onClick: () => setPricing(true),
       }] : []}
+      /* ⚠️ **ลบอยู่ในกลุ่ม danger ของการ์ดจัดการ** — ที่เดียวกับทุกเอกสารในระบบ
+         · โผล่เฉพาะขั้นที่ลบได้จริง (ร่าง / กำลังพัฒนา) และเฉพาะคนที่คุมทะเบียน */
+      dangerActions={["draft", "developing"].includes(scent.status) && isScentRegistrar(me) ? [{
+        id: "delete",
+        label: "ลบกลิ่นนี้",
+        icon: Trash2,
+        onClick: () => setConfirmDelete(true),
+      }] : []}
     >
       <RegistryFactCard
         icon={FlaskConical}
@@ -126,6 +156,18 @@ export default function ScentDetailPage() {
           setToast({ kind: "success", msg });
           load(); // ราคาบนการ์ดจัดการมาจาก GET เดิม — โหลดใหม่ให้เห็น rev ล่าสุด
         }}
+      />
+      {/* ⚠️ เนื้อความอยู่ที่ `description` — `ConfirmDialog` ไม่เรนเดอร์ children */}
+      <ConfirmDialog
+        open={confirmDelete}
+        tone="danger"
+        title={`ลบกลิ่น ${scent.code || scent.name}`}
+        description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
+        detail="ถ้ามีคำร้องหรือทะเบียนราคาอ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
+        confirmLabel="ลบ"
+        busy={removing}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={removeScent}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </RegistryDetailShell>

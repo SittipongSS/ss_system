@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, MessageSquare, Trash2, Undo2, UserPlus,
+  Building2, CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -20,11 +20,10 @@ import { requestAssignee } from "@/lib/requests/assign";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
-import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
 import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
-import UpdateLog from "@/components/updates/UpdateLog";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
@@ -154,10 +153,6 @@ export default function RequestDetailPage() {
   const [allScents, setAllScents] = useState([]);
   // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
   const [pricing, setPricing] = useState(null);
-  // แถวเธรดก้อนดิบ — เธรดโหลดมาแล้วส่งต่อให้การ์ด log บนรางขวาใช้ก้อนเดียวกัน
-  // (ห้ามให้การ์ดนั้นยิง `/api/updates` เอง — ดูคอมเมนต์ที่ `UpdateThread`)
-  const [threadItems, setThreadItems] = useState([]);
-
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
@@ -256,8 +251,14 @@ export default function RequestDetailPage() {
   // ติดอะไร (ปุ่มหายไปเฉย ๆ คือสิ่งที่งวด 2 เพิ่งเลิกทำ)
   const closeBlocker = closeRequestError(req, req.items || []);
   const canClose = !closeBlocker && req._mine;
-  // ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
-  const canMarkAnswered = !hasItems && owner && !answerRequestError(req);
+  /* ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
+     ⚠️ **หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง (`deliversRows`) ไม่นับว่า "ไม่มีบรรทัด"** —
+     พอส่งงานแล้วมันมีแถวที่เดินสถานะของตัวเอง ระบบรู้เองว่าครบหรือยัง
+     🐞 เดิมเงื่อนไขนี้เป็นจริงกับพัฒนากลิ่นมาตลอด แต่ถูกปุ่ม "ส่งงาน" บังไว้ · พอปุ่มนั้น
+     ย้ายลงตาราง (2026-08-18) ปุ่ม "ตอบแล้ว" ก็โผล่ขึ้นมาเป็นปุ่มหลักของ RD ทันที
+     ซึ่งเป็นทางลัดปิดงานที่ข้ามสถานะจริงของ direction */
+  const canMarkAnswered = !hasItems && !requestDeliversRows(req.kind)
+    && owner && !answerRequestError(req);
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
   const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
   const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;
@@ -562,23 +563,12 @@ export default function RequestDetailPage() {
           ? setAckDue(businessDate())
           : call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว")),
       }
-      // ⭐ พัฒนากลิ่น: หลังรับเรื่องแล้ว ปุ่มหลักของ RD คือ **ส่งของ** ซึ่งสร้างแถว
-      // เอง (SA ไม่มีทางรู้ล่วงหน้าว่าจะได้กี่ direction จึงไม่มีตารางตอนเปิดใบ)
-      : canAnswer && requestDeliversRows(req.kind)
-        ? {
-          id: "deliver",
-          // ⭐ คำเดียวกับก้าวรายแถว (2026-08-15) — เดิมปุ่มระดับใบเรียก "ส่งกลิ่น"
-          // ส่วนปุ่มในตารางเรียก "ส่งของ" ทั้งที่เป็นการส่งงานชิ้นเดียวกัน
-          label: "ส่งงาน",
-          kind: "submit",
-          icon: Send,
-          // ⭐ **รอบแก้ที่ค้างอยู่ขึ้นมาก่อนเสมอ** — ลูกค้าสั่งแก้ไว้แล้ว แถวรออยู่แล้ว
-          // RD ไม่ต้องไปจำเองว่าค้างอะไร และไม่มีทางสร้างแถวใหม่ทับของที่รออยู่
-          onClick: () => {
-            const waiting = reworkSlots(req.items || []).map(reworkDeliveryRow);
-            setDelivery(waiting.length ? waiting : [emptyDeliveryRow()]);
-          },
-        }
+      /* ⚠️ **ปุ่ม "ส่งงาน" ไม่อยู่บน Control Panel แล้ว** (มติผู้ใช้ 2026-08-18) —
+         ย้ายไปอยู่ **ในแถวของบรีฟ** ที่ตารางสรุปทั้งใบ (ดู `openDelivery` ข้างล่าง)
+         เหตุผล: ใบหนึ่งมีหลายบรีฟ ปุ่มระดับใบไม่ได้บอกว่ากำลังส่งตอบก้อนไหน ⇒ คนกด
+         ต้องมาเลือกบรีฟในโมดัลอีกทีทั้งที่เพิ่งอ่านตารางอยู่แท้ ๆ
+         ⇒ Control Panel เหลือ **ปุ่มปลายทาง** (ปิดเรื่อง) ที่จางพร้อมเหตุผลจนครบทุกขั้น
+         ⚠️ ย้าย ไม่ก๊อป — ห้ามเอากลับมาที่นี่ */
       // ชนิดที่ไม่มีบรรทัด: ผู้ตอบกด "ตอบแล้ว" ก่อน แล้วผู้ขอค่อยปิดเรื่อง
       // (ระบบนับคำตอบเองไม่ได้ — ไม่มีบรรทัดให้นับ)
       : canMarkAnswered
@@ -643,6 +633,18 @@ export default function RequestDetailPage() {
   // ไม่คิดเอง · ใบที่ไม่มี PDR ไม่มีประโยคนี้ (ปุ่มแก้ของมันคุมด้วย `canEditInfo` ล้วน)
   const editBlocker = requestHasPdr(req.kind) ? (req._editPdrBlocker || null) : null;
 
+  /* ⭐ เปิดโมดัลส่งงาน **ของบรีฟก้อนเดียว** (มติผู้ใช้ 2026-08-18) — ปุ่มอยู่ในแถว
+     ของบรีฟนั้นในตารางสรุปทั้งใบ
+     ⭐ **รอบแก้ที่ค้างอยู่ขึ้นมาก่อนเสมอ** — ลูกค้าสั่งแก้ไว้แล้ว แถวรออยู่แล้ว RD ไม่ต้อง
+     ไปจำเองว่าค้างอะไร และไม่มีทางสร้างแถวใหม่ทับของที่รออยู่ (กติกาเดิมของปุ่มระดับใบ)
+     ⚠️ กรองรอบแก้ **ตามบรีฟ** — ก้อนอื่นที่ค้างอยู่ไม่ใช่เรื่องของการกดปุ่มก้อนนี้ */
+  const openDelivery = (briefId) => {
+    const waiting = reworkSlots(req.items || [])
+      .filter((slot) => !briefId || slot.briefId === briefId)
+      .map(reworkDeliveryRow);
+    setDelivery(waiting.length ? waiting : [{ ...emptyDeliveryRow(), briefId: briefId || "" }]);
+  };
+
   const requestActions = normalizeDocumentControlActions({
     // ปุ่มหลักไม่ผ่านหัวใบ/ท้ายเธรดแล้ว — เข้า normalize ตรงเพื่อไปโผล่ที่บาร์บนสุด
     primaryAction,
@@ -656,22 +658,8 @@ export default function RequestDetailPage() {
         onClick: cancelEdit,
       },
     ] : [
-      {
-        // ⭐ **รวบส่งของหลายแถว** (ช่องว่างข้อ 3 ของแบบพัฒนาสูตร) — ใบที่ขอ 5 รายการ
-        // และเสร็จพร้อมกัน ไม่ต้องเปิดโมดัลห้ารอบกรอกวันเดิมห้าครั้ง
-        // ⚠️ โผล่เมื่อมีแถวพร้อมส่ง ≥ 2 — แถวเดียวใช้ปุ่มรายแถวท้ายเธรดตามเดิม
-        // (สองทางเข้าเดินเข้ากติกาเดียวกันที่ server · ไม่มีด่านของตัวเอง)
-        id: "bulk-ready",
-        label: "ส่งงานหลายรายการ",
-        kind: "submit",
-        icon: Send,
-        visible: canAnswer && bulkReadyRows(req.items || []).length >= 2,
-        onClick: () => setBulkReady({
-          rows: bulkReadyRows(req.items || []).map((item) => ({
-            item, formulaName: "", formulaCode: "", formulaDate: "",
-          })),
-        }),
-      },
+      /* ⚠️ **"ส่งงานหลายรายการ" ย้ายไปหัวการ์ดตารางสรุปทั้งใบแล้ว** (มติผู้ใช้
+         2026-08-18) — ปุ่มส่งงานทุกแบบอยู่กับตาราง Control Panel เหลือปุ่มปลายทาง */
       {
         // ⭐ **ออกเอกสาร** (มติผู้ใช้ 2026-08-09) — เดิมชื่อ "ดูฉบับที่ออกจริง" และ
         // ซ่อนอยู่ในแท็บแบบฟอร์ม · เป็นของระดับใบจึงย้ายมารวมที่แผงจัดการ
@@ -933,6 +921,63 @@ export default function RequestDetailPage() {
         </DetailCard>
       )}
 
+      {/* ⭐ **แถวบริบทเต็มความกว้าง ทรงเดียวกับหน้าใบสั่งขาย** (โจทย์ผู้ใช้ 2026-08-18
+          "เอาหน้ารายละเอียดใบสั่งขายเป็นตัวอย่าง") — การ์ดบริบทสามใบเคยต่อคิวอยู่ใน
+          รางขวา 330px ⇒ วัดจริงบนใบ SB-26080010: รางสูง 1992px ส่วนคอลัมน์เนื้อสูง
+          693px = ครึ่งล่างของหน้าเป็นรางเดี่ยวกับที่ว่าง 1026px ข้าง ๆ
+          ⚠️ ทุกหน้ารายละเอียดของระบบวางบริบทแบบนี้อยู่แล้ว (ใบสั่งขาย · ดีล · โครงการ ·
+          ลีด · งาน) — หน้าคำร้องเป็นหน้าเดียวที่ยัดไว้ในราง
+          ⭐ ลำดับ ลูกค้า › โครงการ › ดีล › ใบสั่งขาย = ลำดับเดียวกับหน้าใบสั่งขาย
+          (มติผู้ใช้ 2026-08-13 "ใครซื้อ → งานอยู่โครงการไหน → รอบขายไหน → ใบไหนต้นทาง")
+          ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
+      {(req.refCustomer || req.refProject || req.refDeal || req.refSalesOrder) && (
+        <ContextGrid className={styles.contextRow}>
+          {req.refCustomer && (
+            <ContextCard
+              href={`/database/customers/${req.refCustomer.id}`}
+              icon={Building2}
+              eyebrow="ลูกค้า"
+              title={req.refCustomer.name || req.customerName}
+              subtitle={req.refCustomer.arCode || undefined}
+              facts={[{ label: "ผู้ติดต่อ", value: req.refCustomer.contactPerson }]}
+            />
+          )}
+          {req.refProject && (
+            <ContextCard
+              href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
+              icon={FolderKanban}
+              eyebrow="โครงการ"
+              title={req.refProject.name || req.refProject.code || req.refProject.id}
+              subtitle={req.refProject.code || undefined}
+            />
+          )}
+          {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
+              /sales-planning/deals โดน redirect หนึ่งเด้ง */}
+          {req.refDeal && (
+            <ContextCard
+              href={`/sa/deals/${req.refDeal.id}`}
+              icon={Handshake}
+              eyebrow="ดีล"
+              title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
+              subtitle={req.refDeal.code || undefined}
+            />
+          )}
+          {/* ⭐ **ใบสั่งขายที่หายไปทั้งใบ** (ผลตรวจ 2026-08-17) — `refSalesOrder`
+              มากับ payload อยู่แล้วแต่ไม่เคยถูกเรนเดอร์ ⇒ ลิงก์เดินทางเดียว:
+              หน้าใบสั่งขายชี้มาที่คำร้อง (เลน "บรีฟกลิ่น") แต่กลับไม่ได้
+              ⚠️ **ไม่ใส่ `facts` จำนวนกลิ่นที่นี่** — การ์ดสรุปบนรางบอกไปแล้ว
+              ใส่ซ้ำก็ได้ตัวเลขเดียวกันสองที่ที่ต้องคอยดูแลให้ตรงกัน */}
+          {req.refSalesOrder && (
+            <ContextCard
+              href={`/sa/sales-orders/${req.refSalesOrder.id}`}
+              icon={FileText}
+              eyebrow="ใบสั่งขาย"
+              title={req.refSalesOrder.orderNumber || req.refSalesOrder.id}
+            />
+          )}
+        </ContextGrid>
+      )}
+
       {/* ⭐ **โครงเดียวทุกหัวข้อ** (ม-123 — จบการย้ายทีละหัวข้อที่เริ่มไว้ 2026-08-09):
           การ์ดขวา DOCUMENT CONTROL ถือ สถานะ + รางแนวตั้ง + ปุ่มระดับใบ **ที่เดียว**
           (หัวใบ/ท้ายเธรดไม่มีปุ่ม — ย้าย ไม่ก๊อป · บทเรียนรางขวารุ่นแรกที่ถูกยุบเพราะ
@@ -975,49 +1020,9 @@ export default function RequestDetailPage() {
                 <span className="ui-badge">{editBlocker}</span>
               ) : null}
             />
-            {/* การ์ดบริบท — ใบนี้เกาะโครงการ/ดีล/ใบสั่งขายไหน กดแล้วไปหน้านั้นได้เลย
-                (มติผู้ใช้ 2026-08-09) · ContextCard เป็นลิงก์ทั้งใบอยู่แล้ว
-                ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า
-                ⭐ **แต่ละใบพก `facts` ของตัวเอง** (ทรงเดียวกับหน้าใบสั่งขาย) — ของเดิม
-                มีแค่ชื่อกับบรรทัดรอง ⇒ ต้องกดเข้าไปดูถึงจะรู้ว่าอีกฝั่งอยู่สถานะไหน
-                ทั้งที่ค่าพวกนี้โหลดมากับใบอยู่แล้ว */}
-            {req.refProject && (
-              <ContextCard
-                href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
-                icon={FolderKanban}
-                eyebrow="โครงการ"
-                title={req.refProject.name || req.refProject.code || req.refProject.id}
-                subtitle={req.refProject.code || undefined}
-                facts={[{ label: "ลูกค้า", value: req.customerName }]}
-              />
-            )}
-            {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
-                /sales-planning/deals โดน redirect หนึ่งเด้ง */}
-            {req.refDeal && (
-              <ContextCard
-                href={`/sa/deals/${req.refDeal.id}`}
-                icon={Handshake}
-                eyebrow="ดีล"
-                title={req.refDeal.title || req.refDeal.code || req.refDeal.id}
-                subtitle={req.refDeal.code || undefined}
-              />
-            )}
-            {/* ⭐ **ใบสั่งขายที่หายไปทั้งใบ** (ผลตรวจ 2026-08-17) — `refSalesOrder`
-                มากับ payload อยู่แล้วแต่ไม่เคยถูกเรนเดอร์ ⇒ ลิงก์เดินทางเดียว:
-                หน้าใบสั่งขายชี้มาที่คำร้อง (เลน "บรีฟกลิ่น") แต่กลับไม่ได้
-                ⚠️ ยิ่งขัดกันเพราะการ์ดสรุปข้าง ๆ พูดถึง "กลิ่นตาม SO" อยู่แล้ว —
-                เห็นตัวเลขแต่กดไปดูที่มาไม่ได้
-                ⚠️ **ไม่ใส่ `facts` จำนวนกลิ่นที่นี่** — การ์ดสรุปข้าง ๆ บอกไปแล้ว
-                ใส่ซ้ำก็ได้ตัวเลขเดียวกันสองที่ที่ต้องคอยดูแลให้ตรงกัน · การ์ดนี้ตอบแค่
-                "ใบไหน กดไปดูได้" */}
-            {req.refSalesOrder && (
-              <ContextCard
-                href={`/sa/sales-orders/${req.refSalesOrder.id}`}
-                icon={FileText}
-                eyebrow="ใบสั่งขาย"
-                title={req.refSalesOrder.orderNumber || req.refSalesOrder.id}
-              />
-            )}
+            {/* ⚠️ **การ์ดบริบทไม่อยู่ในรางแล้ว** (2026-08-18) — ย้ายขึ้นไปเป็นแถว
+                `ContextGrid` เต็มความกว้างใต้หัวใบ ทรงเดียวกับหน้าใบสั่งขาย/ดีล/โครงการ
+                · ย้าย ไม่ก๊อป: ห้ามวางกลับที่นี่อีก ไม่งั้นได้ลิงก์เดียวกันสองที่ */}
             {/* การ์ดรายหัวข้อ — ส่งก้อนชุดเดียวกับ KindDetail แล้วให้หัวข้อหยิบ
                 ของตัวเอง (แพตเทิร์น ม-34 เดียวกับเนื้อกลางหน้า) */}
             {KindPanel && (
@@ -1032,28 +1037,11 @@ export default function RequestDetailPage() {
                 {...reconcileProps}
               />
             )}
-            {/* ⭐ log ของระบบ — ครึ่งที่ไม่ใช่บทสนทนาของเธรดเดียวกัน (มติผู้ใช้ 2026-08-17)
-                วางท้ายคอลัมน์เพราะเป็นข้อมูล "เย็น" ที่ไม่ใช่คำถามแรกของใคร — เหตุผล
-                เดียวกับที่หน้าใบสั่งขายวาง AUDIT TRAIL ไว้ท้ายสุด
-                ⚠️ ทรงต่างจากใบสั่งขายโดยตั้งใจ: ที่นั่นเป็นสามบรรทัด "ใครทำอะไร" ไม่มีเวลา
-                ซึ่งพอสำหรับเอกสารที่มีการตัดสินใจของคนสามจุด · คำร้องมีเหตุการณ์ 20+ ชนิด
-                ที่ *ลำดับ* คือเนื้อหา ⇒ ต้องเป็นเส้นเวลา */}
-            <UpdateLog
-              entityType="dept_request"
-              items={threadItems}
-              icon={History}
-              title="ประวัติการทำรายการ"
-            />
-            {/* ไฟล์แนบของใบ — ปิดท้ายคอลัมน์: อ่านจากบนลงล่างเป็น ควบคุม → บริบท →
-                สรุป → หลักฐาน · การ์ดทรงเดียวกับที่อื่นในคอลัมน์ (`DetailCard`) */}
-            <DetailCard icon={Paperclip} title="ไฟล์แนบของคำร้อง">
-              <AttachmentsPanel
-                entityType="dept_request"
-                entityId={req.id}
-                canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
-                inlineUpload
-              />
-            </DetailCard>
+            {/* ⚠️ **ประวัติการทำรายการกับไฟล์แนบไม่อยู่ในรางแล้ว** (2026-08-18) —
+                ลงไปท้ายคอลัมน์เนื้อ ตำแหน่งเดียวกับ AUDIT TRAIL ของหน้าใบสั่งขาย
+                เหตุผลเป็นเรื่องสัดส่วน ไม่ใช่รสนิยม: วัดบน SB-26080010 ก่อนย้าย
+                ราง 1992px vs เนื้อ 693px ⇒ ของ "เย็น" สองใบนี้ดันรางลงไปอีก 264px
+                ในคอลัมน์ 330px ทั้งที่ข้าง ๆ ว่าง 1026px */}
           </>
         )}
       >
@@ -1085,6 +1073,20 @@ export default function RequestDetailPage() {
           onPrice: (row) => setPricing({ item: row, price: "", validUntil: "", note: "" }),
         }}
         saving={saving}
+        /* ⭐ หัวข้อที่แก้ของกลาง (ทะเบียนกลิ่น/สูตร) ได้จากในใบ ต้องบอกเปลือกให้
+           โหลดใบใหม่ — ค่าที่ตารางโชว์เป็นค่าสดที่มากับ payload ของใบ (ม-129) */
+        onReload={load}
+        /* ปุ่มลงมือของ "ก้อนงาน" ในตารางสรุป — พัฒนากลิ่นใช้เป็นปุ่มส่งงานรายบรีฟ
+           ส่วนพัฒนาสูตรใช้เป็นปุ่มส่งรวบหลายแถว (ทั้งคู่คือของที่เคยอยู่บน Control Panel) */
+        onDeliver={openDelivery}
+        bulkReady={{
+          count: bulkReadyRows(req.items || []).length,
+          onOpen: () => setBulkReady({
+            rows: bulkReadyRows(req.items || []).map((item) => ({
+              item, formulaName: "", formulaCode: "", formulaDate: "",
+            })),
+          }),
+        }}
         board={board}
         briefSummary={briefSummary}
         formulaBoard={formulaBoard}
@@ -1099,29 +1101,29 @@ export default function RequestDetailPage() {
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"
           ต้องโทรออกนอกระบบ เหตุผลของราคาเลยหายไปกับสาย · เหตุการณ์ของใบ
           (ส่ง/รับเรื่อง/ตอบ/ปิด) ระบบเขียนลงสายเดียวกันให้เอง */}
-      <DetailCard icon={MessageSquare} eyebrow="Discussion" title="พูดคุยในคำร้องนี้">
+      <DetailCard icon={History} eyebrow="ACTIVITY" title="ความเคลื่อนไหวของคำร้อง">
         {/* 🐞 เคยส่งชื่อชุดก่อน mig 0173 (ชื่อเก่าของคำร้อง/บรรทัดคำร้อง) — เธรดเลย
             อ่านคนละคีย์กับที่ server เขียนเหตุการณ์ลงไป (`dept_request`) ผลคือ
             **ไม่เห็นทั้งเหตุการณ์ของระบบและข้อความเก่า** และข้อความใหม่ตกไปอยู่คีย์
             ที่ไม่มีใครอ่าน (ไฟล์แนบพลาดคู่กัน) · เทสต์กันไว้แล้วที่
             lib/master/entityTypeUsage.test.mjs */}
-        {/* ⭐ **เธรดเหลือเฉพาะบทสนทนา** (มติผู้ใช้ 2026-08-17) — เหตุการณ์ระบบไปอยู่
-            การ์ด "ประวัติการทำรายการ" บนรางขวา
-            🐞 นับจริงทั้งระบบ: 132 แถว = ข้อความคน 33 (25%) เหตุการณ์ระบบ 99 (75%)
-            และ **16 ใบจาก 32 ไม่มีข้อความคนสักแถว** ⇒ การ์ดที่พาดหัวว่า "พูดคุย"
-            เป็น log ล้วนบนครึ่งหนึ่งของใบทั้งระบบ
-            ⚠️ **ย้าย ไม่ก๊อป** — แถวหนึ่งโผล่ได้กล่องเดียว (คัดด้วยฟังก์ชันตัวเดียวกัน
-            กลับด้าน) · และยังเขียนลง `entity_updates` ครบทุกชนิดเหมือนเดิม เพราะ
-            แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด
-            ⚠️ ยิง `/api/updates` **ครั้งเดียว** — การ์ด log อ่านก้อนเดิมผ่าน
-            `onItemsChange` ไม่ยิงซ้ำ (การเปิดเธรดมาร์คแจ้งเตือนว่าอ่านแล้วด้วย) */}
+        {/* ⭐ **กล่องเดียว เรียงตามเวลา ตั้งต้นเห็นครบ** (มติผู้ใช้ 2026-08-18) —
+            ทับมติ 2026-08-17 ที่แยกเหตุการณ์ระบบไปการ์ด "ประวัติการทำรายการ" ต่างหาก
+            🐞 เหตุที่มติเดิมเกิด: การ์ดพาดหัวว่า "พูดคุยในคำร้องนี้" แต่เป็น log ล้วน
+            บน 16 ใบจาก 32 (นับจริง 132 แถว = ข้อความคน 33 · เหตุการณ์ระบบ 99)
+            🐞 เหตุที่มติเดิมถูกทับ: **พาดหัวคือปัญหา ไม่ใช่การเรียงรวม** · พอย้าย log
+            ลงมาคอลัมน์เดียวกับเธรด (2026-08-18) อาการโผล่ทันที — ใบ SB-26080010 ได้
+            การ์ด "พูดคุย" ว่างเปล่าวางติดการ์ด log ที่มี 3 แถว · และใบที่เลื่อนวันสองรอบ
+            (FD-26080006) เหตุการณ์อยู่กล่องหนึ่ง ข้อความที่คุยเรื่องเลื่อนอยู่อีกกล่อง
+            ⇒ ไล่เรื่องต่อกันไม่ได้ ทั้งที่ *ลำดับ* คือเนื้อหาของใบชนิดนี้
+            ⇒ กล่องเดียว **ชื่อกลาง ๆ ที่ไม่สัญญาว่าเป็นบทสนทนา** จึงไม่โกหกแม้ไม่มีใครพิมพ์
+            ⚠️ ตั้งต้น `hideSystem = false` (เห็นครบ) — คนที่ไม่อยากเห็นกดสวิตช์ในเธรดได้
+            และมันจำรายชนิดเอกสารให้เอง ไม่ต้องกดซ้ำทุกใบ */}
         <UpdateThread
           entityType="dept_request"
           entityId={req.id}
-          splitSystem
-          onItemsChange={setThreadItems}
           placeholder="ถามสเปก / ต่อรอง MOQ / แจ้งข้อมูลเพิ่ม..."
-          emptyText="ยังไม่มีการพูดคุย — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
+          emptyText="ยังไม่มีความเคลื่อนไหว — ถามสเปกหรือเงื่อนไขไว้ตรงนี้ได้ แนบรูปตัวอย่างได้ด้วย"
           composeHint={composeHint}
           onPosted={load}
         />
@@ -1135,6 +1137,27 @@ export default function RequestDetailPage() {
           เปลี่ยนแค่ว่ามันติดจออยู่ตลอดระหว่างเลื่อนอ่าน
           ⚠️ **ต้องอยู่นอก `DetailCard`** — `.card { overflow: hidden }` ตัด sticky ทิ้ง
           ทันที (พิสูจน์ในเบราว์เซอร์ 2026-08-08) · ตำแหน่งบนหน้ายังท้ายเธรดเหมือนเดิม */}
+
+      {/* ⭐ ไฟล์แนบของ **ทั้งใบ** — ย้ายลงมาจากท้ายราง (2026-08-18)
+          ⚠️ **ต้องอยู่ใต้เธรด ไม่ใช่ใต้การ์ดงาน** — ลองวางใต้การ์ดงานแล้ววัดจริงบน
+          SB-26080010: กล่องลากวางของ direction (ท้ายการ์ดงาน) กับกล่องลากวางของใบ
+          ห่างกัน 160px หน้าตาเหมือนกันเป๊ะ ⇒ อ่านไม่ออกว่าไฟล์จะไปลงใบหรือลง direction
+          · ของสองอันนี้คนละความหมาย (ของใบ vs ของ direction) ต้องไม่ติดกัน
+          ⚠️ ที่ 330px บนรางเดิม กล่องลากวางกว้างพอแค่ปุ่มเดียว — เต็มความกว้างของ
+          คอลัมน์เนื้อทำให้รายชื่อไฟล์อ่านได้จริงโดยไม่ตัดคำ */}
+      <DetailCard icon={Paperclip} eyebrow="ATTACHMENTS" title="ไฟล์แนบของคำร้อง">
+        <AttachmentsPanel
+          entityType="dept_request"
+          entityId={req.id}
+          canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+          inlineUpload
+        />
+      </DetailCard>
+
+      {/* ⚠️ **ไม่มีการ์ด `UpdateLog` แยกแล้ว** (มติผู้ใช้ 2026-08-18) — เหตุการณ์ระบบ
+          กลับไปเรียงในสายเดียวกับข้อความคนที่การ์ด "ความเคลื่อนไหวของคำร้อง" ข้างบน
+          · `UpdateLog` ยังอยู่ในระบบให้ entity อื่นใช้ ห้ามเอากลับมาที่หน้านี้
+          เพราะแถวชุดเดียวกันจะโผล่สองกล่อง */}
         </div>
       </DetailPageLayout>
 

@@ -17,10 +17,8 @@ import { usePagination } from "@/lib/usePagination";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
-import { salesOrderListTrack, salesOrderTrackSummary } from "@/lib/sales/salesOrderListTrack";
+import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
-import StatusBadge from "@/components/ui/StatusBadge";
-import styles from "./page.module.css";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
@@ -229,9 +227,13 @@ export default function SalesOrdersPage() {
 
   /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
+  /* ⚠️ **หน้านี้ไม่มี CSS module ของตัวเองแล้ว** (2026-08-18) — เคยมีกฎเดียวคือ
+     "จอ ≤1200px ซ่อนรางแล้วโชว์ป้ายสรุป" · ถอดออกตามมติผู้ใช้ ("อยากเห็นเส้นถึงระดับ
+     แท็บเล็ต เลื่อนแนวนอนไม่ติด ดีกว่าข้อมูลหาย") แล้วลดคอลัมน์แทน:
+     "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (วันครบกำหนดเป็นคุณสมบัติของงวด ไม่ใช่แกนแยก)
+     ⚠️ ตารางคิวคำร้องถอดกฎเดียวกันไปพร้อมกัน — สองตารางต้องอ่านเหมือนกัน */
   const orderRow = (row) => {
     const track = salesOrderListTrack(row);
-    const summary = salesOrderTrackSummary(row);
     return (
                 <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
                   <td>
@@ -248,14 +250,11 @@ export default function SalesOrdersPage() {
                     {track.cancelled ? (
                       <span className="cell-sub">{statusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</span>
                     ) : (
-                      <>
-                        {/* จอกว้างเห็นรางเต็ม · จอแคบสลับเป็นป้ายสรุปข้างล่าง (page.module.css) */}
-                        <span className={styles.trackWrap}><StepTrack steps={track.steps} /></span>
-                        {/* จอแคบยุบรางเป็นป้ายเดียว — ไม่ซ่อนข้อมูลทิ้ง แค่ละเอียดน้อยลง */}
-                        <span className={styles.summary}>
-                          <StatusBadge tone={summary.tone} size="sm">{summary.label}</StatusBadge>
-                        </span>
-                      </>
+                      /* ⭐ **รางขึ้นทุกความกว้าง** (มติผู้ใช้ 2026-08-18) — เดิมจอ ≤1200px
+                         สลับเป็นป้ายสรุป · ผู้ใช้เลือก "เห็นเส้นจนถึงแท็บเล็ต เลื่อนแนวนอน
+                         ไม่ติด ดีกว่าข้อมูลหาย" ⇒ ถอดกติกาสลับทิ้ง แล้วลดคอลัมน์แทน
+                         (กำหนดชำระยุบเข้าเซลล์งวดชำระ) ให้ตารางแคบลงจริง ๆ */
+                      <StepTrack steps={track.steps} />
                     )}
                   </td>
                   <td>
@@ -274,8 +273,13 @@ export default function SalesOrdersPage() {
                       บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
                   {/* ⚠️ `paymentCell` วาดบรรทัดสถานะให้ในตัวแล้ว — เติมซ้ำที่นี่จะได้
                       คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
-                  <td className="num mono">{paymentCell(row.payment)}</td>
-                  <td className={`num ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>{fmtDate(row.paymentDueDate)}</td>
+                  <td className="num mono">
+                    {paymentCell(row.payment)}
+                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม) */}
+                    <span className={`cell-sub ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>
+                      กำหนด {fmtDate(row.paymentDueDate)}
+                    </span>
+                  </td>
                 </DetailRow>
     );
   };
@@ -361,9 +365,12 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={920} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={820} aria-busy={loading}>
             <table className="w-full text-sm">
-              <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ</th><th className="num">กำหนดชำระ</th></tr></thead>
+              {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
+                  ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
+                  ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
+              <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th></tr></thead>
               <tbody>
                 {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `orderRow` ตัวเดียว
                     กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
@@ -372,7 +379,7 @@ export default function SalesOrdersPage() {
                   return (
                     <Fragment key={bucket.key}>
                       <TableGroupRow
-                        colSpan={5}
+                        colSpan={4}
                         label={bucket.label}
                         sub={bucket.sub}
                         badge={`${bucket.count} ใบ`}
@@ -387,7 +394,7 @@ export default function SalesOrdersPage() {
                 }) : pageRows.map(orderRow)}
                 {!filtered.length && !loading && (
                   <TableEmpty
-                    colSpan={5}
+                    colSpan={4}
                     title="ยังไม่มีใบสั่งขาย"
                     description="เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"
                   />

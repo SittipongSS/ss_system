@@ -34,6 +34,11 @@ export function formulaDevBoard(items = []) {
         unit: item.unit || null,
         // ⭐ สูตรที่เกิดจากแถวนี้ — ว่าง = RD ยังไม่ส่ง
         formulaId: item.producedFormulaId || null,
+        /* ⭐ **ค่าสดจากทะเบียน** (มติผู้ใช้ 2026-08-18) — สูตรที่ออกจากแถวนี้ ·
+           แถวที่ยังไม่มีสูตรได้ null · ดู `lib/requests/registryLinks.js`
+           ⚠️ กลิ่นที่แถวนี้ *ขอ* อยู่คนละช่อง (`scent`) — คนละตัวกับสูตรที่ได้ */
+        registry: item.refFormula ? { ...item.refFormula, kind: 'formula' } : null,
+        scent: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
         // ⭐ ราคาที่ออกจากแถวนี้ (ช่องว่างข้อ 5) — `findRequest` เติมจาก rev ที่
         // `answeredRevisionId` ชี้ · null = ยังไม่ถึงขั้นราคา
         priced: item.pricedResult || null,

@@ -91,7 +91,10 @@ export default function RequestQueuePanel({
 
   /* ความกว้างตายตัวของคอลัมน์ที่เนื้อคงที่ — ที่เหลือปล่อยให้ยืดตามเนื้อ
      (คลาสอยู่ใน requestForm.module.css ตามด่าน audit:ui ห้าม inline style) */
-  const COL_WIDTH = { next: styles.colNext, due: styles.colDue, progress: styles.colProgress };
+  // ⚠️ `doc` กว้างขึ้นเพราะรางสี่ขั้นย้ายเข้ามาอยู่ในเซลล์เดียวกัน (2026-08-18)
+  const COL_WIDTH = {
+    next: styles.colNext, due: styles.colDue, progress: styles.colProgress, doc: styles.colDoc,
+  };
   // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
   const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
   const showTools = toolLevel === "full";
@@ -160,6 +163,53 @@ export default function RequestQueuePanel({
      ⚠️ **ทุกคีย์ในทะเบียนต้องมีตัววาดที่นี่** — `queueColumns.test.mjs` สแกนไฟล์นี้
      เช็คไว้ · ขาดไปแล้วคอลัมน์นั้นจะเป็นช่องว่างเงียบ ๆ ไม่มี error ให้เห็น */
   const cols = requestColumns(columns);
+
+  /* ── ก้อน "คืบหน้า" — ป้ายสถานะ + ราง + ตัวเลขรายบรรทัด ──────────────────
+     ⭐ **ยุบเข้าเซลล์ "คำร้อง"** (มติผู้ใช้ 2026-08-18) — ของเดิมเป็นคอลัมน์ท้ายสุด
+     ⇒ ตากวาดจากเลขที่ใบ (ซ้ายสุด) ไปหาว่ามันเดินถึงไหน (ขวาสุด) ข้ามทั้งตารางทุกแถว
+     · สองช่องนี้ตอบคำถามชุดเดียวกัน ("ใบไหน · ถึงไหนแล้ว") จึงอยู่เซลล์เดียวกัน
+     ⚠️ **ก้อนเดียว สองที่วาง** — คีย์ `progress` ยังอยู่ในทะเบียนและยังมีตัววาด
+     (หน้าอื่นส่งรายชื่อคอลัมน์เองได้) · ห้ามก๊อปโค้ดแยกสองชุด ไม่งั้นเพี้ยนหากัน
+     ⚠️ วาดที่เดียวต่อแถวเสมอ — เซลล์ "คำร้อง" จะวาดก็ต่อเมื่อ **ไม่มี** คอลัมน์
+     `progress` แยกอยู่ */
+  const progressBlock = (ask, p) => {
+    const queueStatus = requestQueueStatus(ask);
+    const track = requestQueueTrack(ask);
+    return (
+      <>
+        {/* ⭐ **ป้ายกับรางไม่ขึ้นพร้อมกัน** (มติผู้ใช้ 2026-08-18 — "ป้ายกับเส้นมันซ้ำมั้ย")
+            ทั้งคู่ตอบคำถามเดียวกัน ("ใบนี้อยู่ขั้นไหน") ⇒ ในตารางใช้ **ราง** อย่างเดียว
+            ⭐ **ไม่สลับตามความกว้างแล้ว** (มติผู้ใช้ 2026-08-18 รอบสอง: *"อยากให้เห็นเส้น
+            จนถึงแท็บเล็ต ไม่ติดที่จะเลื่อนแนวนอน ดีกว่าข้อมูลหาย"*) — ของเดิมสลับเป็นป้าย
+            ที่ ≤1200px ตามตาราง SO · แต่ตารางคิวโผล่เฉพาะจอนอนกว้างกว่า 820px อยู่แล้ว
+            (`useResponsiveView` — แคบกว่านั้นเป็นการ์ดซึ่งมีป้ายของตัวเอง) ⇒ กติกาความกว้าง
+            อีกชั้นมีแต่ทำให้ทรงเปลี่ยนหลายจังหวะโดยไม่ได้อะไรกลับมา
+            ⚠️ ใบยกเลิกไม่มีราง ⇒ ยังต้องมีป้าย ไม่งั้นเซลล์จะว่างเปล่า */}
+        {track.cancelled && (
+          <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
+        )}
+        {/* ใครถืออยู่ (มติ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
+            ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง */}
+        {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+          <div className={styles.subText}>{requestAssignee(ask).name}</div>
+        )}
+        {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
+        {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
+          <div className={`${styles.subText} ${styles.overdue}`}>
+            {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+          </div>
+        )}
+        {!track.cancelled && <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />}
+        {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" ·
+            ใบที่ไม่มีบรรทัด (สอบถาม) ไม่มีตัวเลขให้นับ ⇒ ไม่เขียนอะไรเลย
+            ดีกว่าเขียน N/A ซ้ำทุกแถวใต้ราง */}
+        {p.total > 0 && (
+          <div className={styles.subText}>{p.done} / {p.total} {requestLineNoun(ask.kind)}</div>
+        )}
+      </>
+    );
+  };
+
   const cell = (key, ask) => {
     const due = requestDueText(ask, { todayIso: today });
     // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
@@ -235,6 +285,10 @@ export default function RequestQueuePanel({
                   "ถึงฝ่าย" ของตัวเอง (ชุด linked) หรือใต้ชนิด (ชุด queue) */}
               {cols.includes("dept") || cols.includes("kind") ? "" : ` → ${ask.dept}`}
             </div>
+            {/* สถานะ + รางสี่ขั้น ต่อท้ายในเซลล์เดียวกัน (มติผู้ใช้ 2026-08-18) */}
+            {!cols.includes("progress") && (
+              <div className={styles.docProgress}>{progressBlock(ask, p)}</div>
+            )}
           </>
         );
       /* ⭐ ด่วนบน · ชนิดกลาง · ฝ่ายปลายทางล่าง (มติผู้ใช้ 2026-08-17) — ช่องว่างเมื่อ
@@ -330,33 +384,8 @@ export default function RequestQueuePanel({
          ตัวเลขตอบว่า "ของในใบเสร็จไปกี่ชิ้น" ⇒ สามคำถามที่คนกวาดคิวถามต่อกันเป็นชุด
          ⚠️ ตรรกะของรางอยู่ที่ `lib/requests/queueTrack.js` (มีเทสต์) — ที่นี่วาดอย่างเดียว
          ⚠️ ใบยกเลิกไม่มีราง — ป้ายอย่างเดียว (รางที่ตายแล้วอ่านเหมือนใบยังเดินอยู่) */
-      case "progress": {
-        const queueStatus = requestQueueStatus(ask);
-        const track = requestQueueTrack(ask);
-        return (
-          <>
-            <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
-            {/* ใครถืออยู่ (มติ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
-                ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง */}
-            {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
-              <div className={styles.subText}>{requestAssignee(ask).name}</div>
-            )}
-            {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
-            {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
-              <div className={`${styles.subText} ${styles.overdue}`}>
-                {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
-              </div>
-            )}
-            {!track.cancelled && <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />}
-            {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" ·
-                ใบที่ไม่มีบรรทัด (สอบถาม) ไม่มีตัวเลขให้นับ ⇒ ไม่เขียนอะไรเลย
-                ดีกว่าเขียน N/A ซ้ำทุกแถวใต้ราง */}
-            {p.total > 0 && (
-              <div className={styles.subText}>{p.done} / {p.total} {requestLineNoun(ask.kind)}</div>
-            )}
-          </>
-        );
-      }
+      case "progress":
+        return progressBlock(ask, p);
       case "status":
         return <RequestStatusBadge status={ask.status} />;
       default:
