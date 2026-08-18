@@ -111,27 +111,10 @@ export default function BillingDocPanel({ request, docBoard: board = [], docTota
         </RelatedDocumentCard>
       )}
 
-      {/* อ้างอิงของใบนี้ — ตามกลับไม่เจอ = ใบถูกลบ ต้องบอกตรง ๆ ไม่ใช่ช่องว่างเงียบ */}
-      {(request.quotationId || request.salesOrderId) && (
-        <RelatedDocumentCard eyebrow="อ้างอิงของใบนี้" title="เอกสารที่เกี่ยวข้อง">
-          {request.quotationId && (
-            <p className={styles.panelRef}>
-              <span className={styles.panelRefLabel}>ใบเสนอราคา </span>
-              {qt
-                ? <a className="linklike" href={`/sa/quotations/${request.quotationId}`}><strong>{qt.quoteNumber}</strong></a>
-                : <strong>ถูกลบไปแล้ว</strong>}
-            </p>
-          )}
-          {request.salesOrderId && (
-            <p className={styles.panelRef}>
-              <span className={styles.panelRefLabel}>ใบสั่งขาย </span>
-              {request.refSalesOrder
-                ? <a className="linklike" href={`/sa/sales-orders/${request.salesOrderId}`}><strong>{request.refSalesOrder.orderNumber}</strong></a>
-                : <strong>ถูกลบไปแล้ว</strong>}
-            </p>
-          )}
-        </RelatedDocumentCard>
-      )}
+      {/* 📌 การ์ด "อ้างอิงของใบนี้" (ใบเสนอราคา + ใบสั่งขาย) ถูกยุบขึ้นไปอยู่แถวบริบท
+          ใต้หัวใบแล้ว (มติผู้ใช้ 2026-08-18) — ที่นั่นมีลูกค้า/โครงการ/ดีลอยู่ก่อนแล้ว
+          และใบสั่งขายเคยโผล่ซ้ำทั้งสองที่ · แผงนี้เหลือเฉพาะเรื่องเงินของใบวางบิล */
+      }
     </>
   );
 }
