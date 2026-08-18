@@ -24,12 +24,18 @@ function fakeSupabase() {
 
 const AUG = new Date('2026-08-11T09:00:00Z');
 
-test('scope มาจากหัวข้อ ไม่ใช่ฝ่ายล้วน — หัวข้อที่ไม่มี scope ตกไปที่ฝ่าย (PC ⇒ PM · ที่เหลือ ⇒ RM)', () => {
+test('scope มาจากทะเบียนหัวข้อที่เดียว — ไม่มีค่าเดาจากฝ่ายแล้ว (ม-135)', () => {
   assert.deepEqual(requestDocNoParts('info', 'RD', AUG), {
     scope: 'RQ', month: '2608', prefix: 'RQ-2608', width: 4,
   });
-  assert.equal(requestDocNoParts('ไม่รู้จัก', 'PC', AUG).prefix, 'PM-2608');
-  assert.equal(requestDocNoParts('ไม่รู้จัก', 'RD', AUG).prefix, 'RM-2608');
+  // ขอเอกสารสองสายแยกคำนำหน้ากัน (มติผู้ใช้ 2026-08-18)
+  assert.equal(requestDocNoParts('document', 'RD', AUG).prefix, 'DC-2608');
+  assert.equal(requestDocNoParts('billing_doc', 'FN', AUG).prefix, 'DF-2608');
+  /* 🐞 เดิมหัวข้อที่ไม่รู้จักตกไปเป็น `PM-`/`RM-` ตามฝ่าย (ซากยุคขอราคาวัสดุ) ⇒
+     ลืมประกาศ scope แล้วได้เลขคำนำหน้าผิดเงียบ ๆ และเลขที่ออกไปแล้วแก้ไม่ได้
+     ⇒ ตอนนี้โยนทิ้งตั้งแต่ประกอบเลข ไม่ปล่อยไปให้ SQL ตายตอนผู้ใช้กดส่ง */
+  assert.throws(() => requestDocNoParts('ไม่รู้จัก', 'PC', AUG), /ไม่มี scope/);
+  assert.throws(() => requestDocNoParts('ไม่รู้จัก', 'RD', AUG), /ไม่มี scope/);
 });
 
 test('กดส่ง: ยิงฟังก์ชันเดียวพร้อม patch — ไม่จองเลขแยกก่อน', async () => {

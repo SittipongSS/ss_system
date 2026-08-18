@@ -45,6 +45,13 @@ export function assertKind(kind, seen = new Set()) {
   if (seen.has(kind.key)) throw new Error(`${at}: key ซ้ำกับหัวข้ออื่น`);
   if (!kind.label) throw new Error(`${at}: ต้องมี label — ไม่งั้นใบเก่าจะขึ้นเป็น key ดิบ`);
   if (!kind.scope) throw new Error(`${at}: ต้องมี scope — เลขที่เอกสารออกจากค่านี้`);
+  /* ⚠️ **รูปแบบต้องตรงกับที่ SQL ตรวจเป๊ะ** (`^[A-Z]{2,4}$` ใน `next_request_running_no`
+     mig 0243) — ไม่งั้นพิมพ์ผิด (พิมพ์เล็ก/ยาวเกิน) จะผ่านด่านนี้แล้วไปตายตอนผู้ใช้
+     **กดส่งจริง** ซึ่งเป็นจังหวะที่แย่ที่สุด · และ `requestDocScope` ไม่มีค่าเดารองรับ
+     ให้แล้ว (ถอด `RM-`/`PM-` ออก 2026-08-18) ⇒ ด่านนี้คือที่กันจุดเดียว */
+  if (!/^[A-Z]{2,4}$/.test(kind.scope)) {
+    throw new Error(`${at}: scope "${kind.scope}" ต้องเป็นอักษรใหญ่ 2–4 ตัว (กติกาเดียวกับ SQL)`);
+  }
   if (kind.dept != null && !VALID_DEPTS.includes(kind.dept)) {
     throw new Error(`${at}: dept "${kind.dept}" ไม่อยู่ใน CHECK ของ dept_requests.dept`);
   }

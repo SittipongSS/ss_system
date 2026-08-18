@@ -41,6 +41,7 @@ import {
   requestKindLabel,
   legacyKindError,
   requestNeedsRef,
+  REQUEST_KINDS,
   requestDocScope,
   requestHasItems,
   requestShapeError,
@@ -63,6 +64,20 @@ const req = (over = {}) => ({
 });
 
 // ── ชนิดคำร้อง ───────────────────────────────────────────────────────────
+test('🔴 ทุกหัวข้อต้องประกาศ scope เอง — ไม่มีค่าเดาจากฝ่ายแล้ว (ม-135)', () => {
+  /* 🐞 เดิม `requestDocScope` เดา `RM-`/`PM-` จากฝ่ายเมื่อหัวข้อไม่ประกาศ (ซากจากยุค
+     คำร้องขอราคาวัสดุ) ⇒ หัวข้อใหม่ที่ลืมใส่จะได้คำนำหน้าผิดเงียบ ๆ แล้ว **เลขที่ออกไป
+     แล้วแก้ไม่ได้** เพราะ trigger ล็อก `docNo` ⇒ ถอดค่าเดาทิ้ง */
+  for (const kind of Object.keys(REQUEST_KINDS)) {
+    const scope = requestDocScope(kind);
+    assert.ok(scope, `หัวข้อ ${kind} ต้องมี scope`);
+    // รูปแบบเดียวกับที่ SQL ตรวจ (`next_request_running_no` · mig 0243)
+    assert.match(scope, /^[A-Z]{2,4}$/, `scope ของ ${kind} ผิดรูปแบบ`);
+  }
+  // หัวข้อที่ไม่มีในทะเบียน = ไม่มี scope ให้เดา (เดิมคืน 'RM')
+  assert.equal(requestDocScope('ไม่มีหัวข้อนี้'), null);
+});
+
 test('เลขที่: SB- · FD- · DC- · DF- แยกกัน · RQ- เหลือของสอบถาม', () => {
   // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
   // หัวข้อเก่าของ RD (0220) ⇒ เหลือสาม scope ที่มีหัวข้อจริงใช้อยู่
