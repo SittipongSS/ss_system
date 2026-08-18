@@ -930,7 +930,7 @@ export default function RequestDetailPage() {
           ⭐ ลำดับ ลูกค้า › โครงการ › ดีล › ใบสั่งขาย = ลำดับเดียวกับหน้าใบสั่งขาย
           (มติผู้ใช้ 2026-08-13 "ใครซื้อ → งานอยู่โครงการไหน → รอบขายไหน → ใบไหนต้นทาง")
           ⚠️ โชว์เฉพาะที่อ้างจริง — ใบที่ไม่ผูกโครงการไม่ต้องมีการ์ดเปล่า */}
-      {(req.refCustomer || req.refProject || req.refDeal || req.refSalesOrder) && (
+      {(req.refCustomer || req.refProject || req.refDeal || req.quotationId || req.salesOrderId) && (
         <ContextGrid className={styles.contextRow}>
           {req.refCustomer && (
             <ContextCard
@@ -967,12 +967,28 @@ export default function RequestDetailPage() {
               หน้าใบสั่งขายชี้มาที่คำร้อง (เลน "บรีฟกลิ่น") แต่กลับไม่ได้
               ⚠️ **ไม่ใส่ `facts` จำนวนกลิ่นที่นี่** — การ์ดสรุปบนรางบอกไปแล้ว
               ใส่ซ้ำก็ได้ตัวเลขเดียวกันสองที่ที่ต้องคอยดูแลให้ตรงกัน */}
-          {req.refSalesOrder && (
+          {/* ⭐ ใบเสนอราคาย้ายขึ้นมาจากรางขวา (มติผู้ใช้ 2026-08-18) — เดิมอยู่ในการ์ด
+              "อ้างอิงของใบนี้" ของแผงใบวางบิล ซึ่งทำให้บริบทของใบแตกเป็นสองที่:
+              ลูกค้า/โครงการ/ดีล/SO อยู่แถวบน แต่ QT อยู่รางขวา · แถมใบสั่งขายโผล่
+              ซ้ำทั้งสองที่ ⇒ ยุบมาไว้แถวเดียวตามลำดับ "ใครซื้อ → โครงการ → รอบขาย
+              → ใบไหนต้นทาง" เหมือนหน้าใบสั่งขาย
+              ⚠️ **ผูกไว้แต่ตามกลับไม่เจอ = ใบถูกลบ ต้องบอกตรง ๆ** (กติกาเดิมของการ์ด
+              ที่ถูกยุบมา) ⇒ เงื่อนไขดูที่ `quotationId` ไม่ใช่ `refQuotation`
+              ไม่งั้นใบที่ต้นทางถูกลบจะเงียบหายไปทั้งการ์ด */}
+          {req.quotationId && (
             <ContextCard
-              href={`/sa/sales-orders/${req.refSalesOrder.id}`}
+              href={req.refQuotation ? `/sa/quotations/${req.quotationId}` : undefined}
+              icon={FileText}
+              eyebrow="ใบเสนอราคา"
+              title={req.refQuotation?.quoteNumber || "ถูกลบไปแล้ว"}
+            />
+          )}
+          {req.salesOrderId && (
+            <ContextCard
+              href={req.refSalesOrder ? `/sa/sales-orders/${req.salesOrderId}` : undefined}
               icon={FileText}
               eyebrow="ใบสั่งขาย"
-              title={req.refSalesOrder.orderNumber || req.refSalesOrder.id}
+              title={req.refSalesOrder?.orderNumber || "ถูกลบไปแล้ว"}
             />
           )}
         </ContextGrid>
