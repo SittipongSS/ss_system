@@ -63,7 +63,7 @@ const req = (over = {}) => ({
 });
 
 // ── ชนิดคำร้อง ───────────────────────────────────────────────────────────
-test('เลขที่: SB- · FD- · DC- · BL- แยกกัน · RQ- เหลือของสอบถาม', () => {
+test('เลขที่: SB- · FD- · DC- · DF- แยกกัน · RQ- เหลือของสอบถาม', () => {
   // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
   // หัวข้อเก่าของ RD (0220) ⇒ เหลือสาม scope ที่มีหัวข้อจริงใช้อยู่
   assert.equal(requestDocScope('scent_dev'), 'SB');
@@ -71,7 +71,8 @@ test('เลขที่: SB- · FD- · DC- · BL- แยกกัน · RQ- เ
   assert.equal(requestDocScope('info'), 'RQ');
   // ⭐ แยกจากสอบถาม (มติผู้ใช้ 2026-08-18) — เดิมทั้งคู่เป็น RQ- จนแยกไม่ออกในคิว
   assert.equal(requestDocScope('document'), 'DC');
-  assert.equal(requestDocScope('billing_doc'), 'BL');
+  // ⚠️ ขอเอกสารสองสายใช้คนละ scope โดยตั้งใจ — ตัวนับแยกของใครของมัน (ม-135)
+  assert.equal(requestDocScope('billing_doc'), 'DF');
   assert.equal(requestDocScope('material_eta'), 'RQ');
 });
 
