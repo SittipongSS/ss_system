@@ -76,7 +76,24 @@ const cell = (v) => (v == null || String(v).trim() === '' ? NA : esc(v));
 // ถ้าไม่ปรับกลับ งบที่ต่ำเกินจะกินหน้าเปล่าเพิ่มมาทั้งแผ่น
 // ⚠️ แก้ padding ของ `.sheetContent` ก็ต้องหักเหมือนกัน — ระยะที่ไม่ได้หักคือระยะที่
 // โมเดลไม่รู้ว่ามีอยู่ แล้วแผ่นจะล้นเงียบ ๆ (`.sheet` เป็น overflow: hidden)
+//
+// ── ⭐ **หัวเอกสารพิมพ์เฉพาะแผ่นแรก** (IS-26080030 · RD แจ้งเอง 2026-08-18) ──
+// "ไม่ต้องแสดงผลหัวเอกสารในทุกหน้ากระดาษ ให้แสดงเฉพาะหน้าแรก เพื่อลดจำนวนหน้ากระดาษลง"
+// ⇒ **งบต่อแผ่นมีสองค่า** แผ่นแรกเสียที่ให้หัวเอกสาร แผ่นถัดไปไม่เสีย
+// 🪤 ถ้าตัดหัวออกแต่ยังใช้งบก้อนเดียว แผ่นหลังจะเว้นที่ว่างไว้เท่าความสูงหัวเอกสารทุกแผ่น
+// = ตัดหัวไปแล้วแต่ไม่ได้หน้าคืนสักแผ่น ซึ่งเป็นเป้าหมายทั้งหมดของเรื่องที่แจ้งมา
+//
+// ── รอบวัด 2026-08-19 (headless Chrome · zoom 1 · ใบตัวอย่าง 6 แผ่น) ──
+//   หัวเอกสาร (`.documentHeader` รวม padding-bottom + เส้นคั่น)  53.71mm
+//   `.sheetContent` แผ่นที่มีหัว   222.25mm  ⇒ หัก padding เอง (5+4) = 213.25 ⇒ งบ 206
+//   `.sheetContent` แผ่นที่ไม่มีหัว 275.96mm  ⇒ หัก padding เอง (5+4) = 266.96 ⇒ งบ 259
+// ระยะเผื่อ 7.25mm เท่ากันทั้งสองค่า (กันการตัดบรรทัดภาษาไทยที่เดาความกว้างไม่ได้แน่)
 const PAGE_MM = 206;
+const PAGE_REST_MM = 259;
+
+// ความสูงหัวเอกสารที่วัดได้ (53.71mm) = ส่วนต่างของงบสองค่า — เปิดให้เทสต์ยึดไว้
+// เพื่อไม่ให้มีใครตัดหัวออกแล้วลืมคืนพื้นที่ให้แผ่นหลัง (แล้วจำนวนหน้าไม่ลดสักแผ่น)
+export const PDR_PAGE_BUDGET_MM = { first: PAGE_MM, rest: PAGE_REST_MM };
 const COST = {
   // หัวข้อ 6.09mm + margin บนล่าง 6.6mm
   heading: 12.7,
@@ -297,14 +314,18 @@ const statusBlock = (request) => `<p class="status">Status: ${PAPER_STATUS
 // ย้อนกลับไปดูหน้าก่อน
 //
 // ⚠️ หัวข้อ **ห้ามค้างท้ายหน้าโดยไม่มีแถวตามมา** — ขึ้นหน้าใหม่พร้อมกับแถวแรกเสมอ
+//
+// ⚠️ **งบของแผ่นที่กำลังเติมอยู่ ไม่ใช่งบก้อนเดียว** — แผ่นแรกเสียที่ให้หัวเอกสาร
+// แผ่นถัดไปไม่มีหัว จึงรับได้มากกว่า (ดูรอบวัดที่ `PAGE_REST_MM`)
 function paginate(items) {
   const pages = [];
   let page = [];
   let used = 0;
+  const budget = () => (pages.length === 0 ? PAGE_MM : PAGE_REST_MM);
   for (const item of items) {
     // หัวข้อกินที่ของตัวเองบวกแถวแรกที่ต้องตามไปด้วย จึงคิดคู่กันตอนตัดสินใจ
     const cost = item.cost + (item.type === 'heading' ? COST.row : 0);
-    if (page.length && used + cost > PAGE_MM) {
+    if (page.length && used + cost > budget()) {
       pages.push(page);
       page = [];
       used = 0;
@@ -450,13 +471,19 @@ export function renderPdrDocument({
   });
 
   const pages = paginate(items);
+  // ⭐ **หัวเอกสารอยู่แผ่นแรกแผ่นเดียว** (IS-26080030) — ดูเหตุผลและรอบวัดที่ `PAGE_MM`
+  //
+  // ⚠️ แผ่นที่ไม่มีหัวยังต้อง **บอกได้เองว่าเป็นใบไหน** ถ้าหลุดจากปึก ⇒ ท้ายกระดาษ
+  // แบกหน้าที่นั้นแทน: ชื่อบริษัท · รหัสแบบฟอร์ม + เลขที่คำร้อง · เลขหน้า
+  // (เดิมท้ายกระดาษมีแค่รหัสแบบฟอร์ม ซึ่งเหมือนกันทุกใบ = ระบุใบไม่ได้)
+  const footerCenter = [formLine, request.docNo].filter(Boolean).join(' · ');
   const sheets = pages.map((pageItems, index) => `
     <article class="sheet explicit-page" aria-label="${esc(titleTh)} หน้า ${index + 1}">
-      ${header}
+      ${index === 0 ? header : ''}
       <div class="sheetContent">${renderPage(pageItems)}</div>
       ${documentFooter({
     left: company.legalNameTh,
-    center: formLine,
+    center: footerCenter,
     right: `หน้า ${index + 1} / ${pages.length}`,
   })}
     </article>`).join('');

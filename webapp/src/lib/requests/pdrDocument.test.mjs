@@ -4,7 +4,7 @@
 // เอกสารตัวนี้ในเทสต์เลย มีแต่เทสต์ของทะเบียนช่อง (pdrFields.test.mjs)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderPdrDocument } from './pdrDocument.js';
+import { PDR_PAGE_BUDGET_MM, renderPdrDocument } from './pdrDocument.js';
 import { PDR_FIELDS } from './pdrFields.js';
 import { COMPANY_PROFILE_FALLBACK } from '@/lib/companyProfile';
 
@@ -101,14 +101,35 @@ const sheets = (html) => (html.match(/class="sheet explicit-page"/g) || []).leng
 
 // 🐞 เดิมทั้งใบเป็นแผ่นเดียวยาวติดกัน — ไม่ได้ห่อ `.sheet` ของเปลือกเลย ⇒ ไม่มีขอบ
 // กระดาษ ไม่มีเลขหน้า ไม่มีท้ายกระดาษ และตอนสั่งพิมพ์เบราว์เซอร์ตัดหน้าเอาเองกลางตาราง
-test('เอกสารแบ่งเป็นแผ่น A4 พร้อมหัวและท้ายกระดาษทุกแผ่น', () => {
+test('เอกสารแบ่งเป็นแผ่น A4 · หัวเอกสารเฉพาะแผ่นแรก · ท้ายกระดาษทุกแผ่น', () => {
   const html = render({ briefs: [BRIEF] });
   const pages = sheets(html);
   assert.ok(pages >= 2, `ควรมีมากกว่าหนึ่งแผ่น ได้ ${pages}`);
-  // หัวเอกสารและท้ายกระดาษต้องมีครบทุกแผ่น ไม่ใช่เฉพาะแผ่นแรก
-  assert.equal((html.match(/class="documentHeader"/g) || []).length, pages);
+  // ⭐ หัวเอกสารพิมพ์แผ่นเดียว (IS-26080030 — RD ขอให้ลดจำนวนหน้า)
+  assert.equal((html.match(/class="documentHeader"/g) || []).length, 1);
+  // ท้ายกระดาษยังต้องมีครบทุกแผ่น — เป็นที่เดียวที่แผ่นหลัง ๆ บอกได้ว่าตัวเองคือใบไหน
   assert.equal((html.match(/class="footer"/g) || []).length, pages);
   assert.match(html, new RegExp(`หน้า ${pages} / ${pages}`));
+});
+
+// 🐞 ตัดหัวออกแล้วแต่ยังใช้งบต่อแผ่นก้อนเดิม = แผ่นหลังเว้นที่ว่างไว้เท่าหัวเอกสารทุกแผ่น
+// ⇒ จำนวนหน้าไม่ลดสักแผ่น ซึ่งเป็นเหตุผลทั้งหมดที่ผู้ใช้ขอมา (IS-26080030)
+// ⚠️ 53mm = ความสูงหัวเอกสารที่วัดจริง (53.71mm · รอบวัด 2026-08-19) — วัดใหม่เมื่อไร
+// ต้องขยับทั้งงบและเลขนี้พร้อมกัน ไม่งั้นค่าใดค่าหนึ่งจะเงียบ ๆ ไม่ตรงกับกระดาษ
+test('แผ่นที่ไม่มีหัวเอกสารได้งบเพิ่มเท่าความสูงหัวเอกสาร', () => {
+  const { first, rest } = PDR_PAGE_BUDGET_MM;
+  assert.equal(rest - first, 53, `ส่วนต่างงบต้องเท่าความสูงหัวเอกสาร (${rest} - ${first})`);
+});
+
+// ⚠️ ท้ายกระดาษเดิมมีแค่รหัสแบบฟอร์ม ซึ่งเหมือนกันทุกใบ — พอหัวเอกสารเหลือแผ่นเดียว
+// แผ่นที่หลุดจากปึกจะไม่มีอะไรบอกว่ามาจากคำร้องใบไหนเลย
+test('ท้ายกระดาษมีเลขที่คำร้องคู่กับรหัสแบบฟอร์ม', () => {
+  const html = render({ briefs: [BRIEF] });
+  const footers = html.match(/<footer class="footer">[\s\S]*?<\/footer>/g) || [];
+  assert.ok(footers.length >= 2, 'ต้องมีท้ายกระดาษมากกว่าหนึ่งแผ่น');
+  for (const footer of footers) {
+    assert.match(footer, /FM-RD-01: Rev\. No\.02\..* · SB-26070001/);
+  }
 });
 
 // ⚠️ บรีฟหลายก้อนต้องดันหน้าเพิ่ม ไม่ใช่ยัดลงแผ่นเดิมจน `overflow: hidden` กินทิ้ง
