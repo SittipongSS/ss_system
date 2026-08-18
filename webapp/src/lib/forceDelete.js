@@ -161,7 +161,7 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
 //
 // เจตนา: **ไม่ลบใบยื่นให้อัตโนมัติ** — ใบยื่นเป็นเอกสารภาษีที่อาจยื่นกรมสรรพสามิตแล้ว
 // การลากลบตามเอกสารต้นทางเป็นผลข้างเคียงที่เงียบเกินไป. เส้นทางเดียวกับด่านอื่นทั้งหมด
-// (ยกเลิก SO / ยกเลิกอนุมัติ / ออก Rev. ก็ถูกใบยื่นบล็อกเหมือนกัน) คือให้จัดการใบยื่นก่อน
+// (ยกเลิก SO / ย้อนการอนุมัติ / ออก Rev. ก็ถูกใบยื่นบล็อกเหมือนกัน) คือให้จัดการใบยื่นก่อน
 export async function exciseFilingsOfSalesOrder(supabase, salesOrderId) {
   const { data, error } = await supabase
     .from('orders').select('id, status').eq('salesOrderId', salesOrderId);

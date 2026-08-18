@@ -28,6 +28,7 @@ import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import {
   SALES_ORDER_CANCEL_REASONS,
+  canCancelSalesOrder,
   canHardDeleteSalesOrder,
   canIssueSalesOrderRevision,
   canRevokeSalesOrderApproval,
@@ -74,7 +75,7 @@ const STATUS = {
   pending_approval: { label: "รอ AE Supervisor อนุมัติ", color: "var(--amber)" },
   approved: { label: "อนุมัติแล้ว", color: "var(--green)", description: "ยอดถูกนับเป็น Actual แล้ว" },
   rejected: { label: "ตีกลับให้แก้ไข", color: "var(--red)", description: "แก้ไขตามเหตุผลแล้วส่งอนุมัติใหม่" },
-  approval_revoked: { label: "ยกเลิกอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev." },
+  approval_revoked: { label: "ย้อนการอนุมัติแล้ว", color: "var(--red)", description: "ยอดหลุดจาก Actual แล้ว · แก้ฉบับเดิมไม่ได้ ต้องออก Rev." },
   revised: { label: "ออก Rev. แล้ว", color: "var(--amber)", description: "เก็บเป็นประวัติและมีฉบับแก้ไขใหม่แล้ว" },
   cancelled: { label: "ยกเลิก", color: "var(--red)", description: "เอกสารนี้ไม่ถูกนับเป็น Actual" },
 };
@@ -85,7 +86,7 @@ const ACTION_MESSAGE = {
   approve: "อนุมัติ SO และอัปเดต Actual แล้ว",
   reject: "ตีกลับให้ผู้จัดทำแก้ไขแล้ว",
   withdraw: "ดึงกลับแล้ว",
-  revoke: "ยกเลิกอนุมัติแล้ว — ยอดหลุดจาก Actual · ขั้นถัดไปคือออก Rev.",
+  revoke: "ย้อนการอนุมัติแล้ว — ยอดหลุดจาก Actual · ขั้นถัดไปคือออก Rev.",
   revise: "ออก Rev. ใหม่แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
@@ -620,7 +621,7 @@ export default function SalesOrderDetailPage() {
   const editable = canEditDocument && editMode;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
-  // สองขั้น (mig 0166): ยกเลิกอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
+  // สองขั้น (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ → ออก Rev.
   const canRevoke = canRevokeSalesOrderApproval(order, { reviewer });
   const canRevise = canIssueSalesOrderRevision(order, { reviewer });
   const status = STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
@@ -665,12 +666,21 @@ export default function SalesOrderDetailPage() {
         }
     : canReviewThis && order.status === "pending_approval"
       ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
-    // สถานะกลางหลังยกเลิกอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
+    // สถานะกลางหลังย้อนการอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
     : canRevise
       ? { id: "revise", kind: "revise", label: "ออก Rev.", onClick: () => setConfirmState({
           title: "ออก Rev. ใหม่",
           description: `ระบบจะสร้างร่าง Rev. ใหม่จาก ${order.orderNumber} และเก็บฉบับนี้เป็นประวัติ`,
-          detail: order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนยกเลิกอนุมัติ: ${order.revisionReason}` : undefined,
+          /* ⭐ ชี้ทางตั้งแต่ก่อนกด (มติผู้ใช้ 2026-08-18) — Rev. ของใบสั่งขาย **คัดลอก
+             รายการมาทั้งดุ้น** (`revise_approved_sales_order_atomic` INSERT ... SELECT
+             จากบรรทัดใบเดิม) และหน้า SO ไม่มีที่ให้แก้ `qty`/ราคาเลยสักจุด
+             ⇒ คนที่กดเพราะคิดว่าจะแก้จำนวนได้ จะไปเจอใบใหม่ที่แก้อะไรไม่ได้
+             ยอดต้องแก้ที่ต้นทางคือใบเสนอราคา (บรรทัด SO ผูก `quotationLineId` ไว้) */
+          detail: [
+            "รายการและยอดจะถูกคัดลอกมาทั้งหมด — แก้จำนวน/ราคาในฉบับ Rev. ไม่ได้",
+            "ถ้าต้องแก้ยอด ให้ออก Rev. ที่ใบเสนอราคาแล้วออกใบสั่งขายใหม่แทน",
+            order.revisionReason ? `เหตุผลที่บันทึกไว้ตอนย้อนการอนุมัติ: ${order.revisionReason}` : null,
+          ].filter(Boolean).join(" · "),
           confirmLabel: "สร้างร่าง Rev. ใหม่",
           action: () => requestAction("revise", { expectedUpdatedAt: order?.updatedAt }),
         }) }
@@ -731,7 +741,9 @@ export default function SalesOrderDetailPage() {
       id: "cancel",
       kind: "cancel",
       label: "ยกเลิก SO",
-      visible: approved && reviewer,
+      // ปุ่มพูดเรื่องเดียวกับ API แล้ว (มติผู้ใช้ 2026-08-18) — เดิม `approved && reviewer`
+      // ทำให้ใบที่ถอนอนุมัติแล้ว/ใบร่าง/ใบตีกลับ ไม่มีทางยกเลิกจากหน้าจอเลย
+      visible: canCancelSalesOrder(order, { reviewer, canEdit }),
       disabled: !!filingState.filing,
       disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined,
       onClick: openCancel,
@@ -1019,13 +1031,13 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
-      {/* โมดัลใส่เหตุผลใช้ร่วมสามคำสั่ง — ยกเลิกอนุมัติ · ดึงกลับ · บัญชีตีกลับ
-          ⚠️ **บัญชีตีกลับไม่ถอน Actual** ต่างจากยกเลิกอนุมัติ ⇒ ข้อความต้องไม่พูดถึงยอด
+      {/* โมดัลใส่เหตุผลใช้ร่วมสามคำสั่ง — ย้อนการอนุมัติ · ดึงกลับ · บัญชีตีกลับ
+          ⚠️ **บัญชีตีกลับไม่ถอน Actual** ต่างจากย้อนการอนุมัติ ⇒ ข้อความต้องไม่พูดถึงยอด
           ไม่งั้นบัญชีจะเข้าใจว่ากดแล้วยอดขายหลุด (มติ 2026-08-13: คนละแกน) */}
       <ReasonDialog
         open={!!workflowForm}
         title={{
-          revoke: "ยกเลิกอนุมัติ ใบสั่งขาย",
+          revoke: "ย้อนการอนุมัติ ใบสั่งขาย",
           finance_reject: "บัญชีตีกลับ ใบสั่งขาย",
         }[workflowForm?.action] || "ดึงกลับ ใบสั่งขาย"}
         description={{
@@ -1042,7 +1054,7 @@ export default function SalesOrderDetailPage() {
         onClose={() => setWorkflowForm(null)}
         onConfirm={submitWorkflowAction}
         confirmLabel={{
-          revoke: "ยืนยันยกเลิกอนุมัติ",
+          revoke: "ยืนยันย้อนการอนุมัติ",
           finance_reject: "ยืนยันตีกลับ",
         }[workflowForm?.action] || "ยืนยันดึงกลับ"}
         placeholder="ระบุเหตุผลอย่างน้อย 10 ตัวอักษร"

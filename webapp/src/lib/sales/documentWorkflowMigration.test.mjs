@@ -119,7 +119,7 @@ const revokeSql = readFileSync(
   'utf8',
 );
 
-// มติ 2026-07-26: แยกเป็นสองขั้นเพราะ "ยกเลิกอนุมัติ" มีน้ำหนักของตัวเอง — Actual หลุดทันที
+// มติ 2026-07-26: แยกเป็นสองขั้นเพราะ "ย้อนการอนุมัติ" มีน้ำหนักของตัวเอง — Actual หลุดทันที
 test('SO revocation and revision are separate atomic steps with a locked state between', () => {
   // สถานะกลางต้องอยู่ใน CHECK ไม่งั้น RPC จะล้มด้วย constraint violation
   assert.match(revokeSql, /ADD CONSTRAINT sales_orders_status_check[\s\S]+'approval_revoked'/);

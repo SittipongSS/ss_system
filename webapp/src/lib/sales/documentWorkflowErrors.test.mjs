@@ -28,7 +28,7 @@ test('document workflow database errors become stable Thai HTTP responses', () =
   const filingBlocked = documentWorkflowError({ message: 'P0001: sales_order_revision_filing_exists' });
   assert.equal(filingBlocked.code, 'sales_order_revision_filing_exists');
   assert.equal(filingBlocked.status, 409);
-  // ด่านนี้เด้งตั้งแต่ขั้น "ยกเลิกอนุมัติ" (mig 0166) ไม่ใช่ขั้นออก Rev. — ข้อความจึงห้าม
+  // ด่านนี้เด้งตั้งแต่ขั้น "ย้อนการอนุมัติ" (mig 0166) ไม่ใช่ขั้นออก Rev. — ข้อความจึงห้าม
   // พูดถึงแค่ Rev. และต้องบอกทางออก ไม่งั้นผู้ใช้วนหาปุ่มไม่เจอ (ทุกปุ่มถูกใบยื่นบล็อกหมด)
   assert.match(filingBlocked.message, /ใบยื่นชำระภาษี/);
   assert.match(filingBlocked.message, /ลบใบยื่น/);
