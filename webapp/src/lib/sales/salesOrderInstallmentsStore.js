@@ -109,6 +109,12 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
  * ⇒ ใบที่มีงวดบันทึกเงินไว้ freeze ของเดิมตามที่เป็น แล้วปล่อยให้ธงเตือนแผนไม่ตรง
  * ค้างอยู่บนจอ ให้คนแก้เอง — ผิดแบบเห็นได้ ดีกว่าถูกแบบลบหลักฐานเงียบ ๆ
  *
+ * ⚠️ **เส้นนี้แทบไปไม่ถึงอยู่แล้ว** — QT ที่ออก SO แล้วแก้ไม่ได้ (`accepted` ไม่อยู่ใน
+ * `EDITABLE_STATUSES`) · `unaccept` ติด `sales_order_exists` ของ 0138 · SO ร่างแก้ได้แค่
+ * `referenceDoc`/`notes` ⇒ เหลือทางเดียวคือ ยกเลิก SO → unaccept → แก้แผน → รับใบใหม่
+ * → admin กด restore ใบที่ยกเลิก · เก็บด่านนี้ไว้เพราะราคาเท่ากับ `filter` หนึ่งบรรทัด
+ * แต่ราคาของการพลาดคือหลักฐานการเงินของลูกค้าหายไปทั้งแถว
+ *
  * ⚠️ **idempotent** — อนุมัติซ้ำ/กู้ธงที่ล้ม เรียกซ้ำได้ แถวที่ freeze แล้วไม่ถูกแตะ
  */
 export async function freezeInstallments(supabase, { order, user, now = null }) {
@@ -171,7 +177,8 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
         note: row.note || seed.note,
       } : {}),
       /* ⭐ **เงินที่บันทึกไว้ตอนร่าง เข้าคิวบัญชีตรงนี้** (มติผู้ใช้ 2026-08-19)
-         งวดร่างจอดที่ `pending` เพราะยอดยังลอย · พอยอดนิ่งแล้วมันคือคำแจ้งที่สมบูรณ์
+         งวดร่างจอดที่ `pending` เพราะงานถึงบัญชีได้ต่อเมื่อ AE Supervisor อนุมัติใบ
+         · ผ่านด่านนั้นแล้วมันคือคำแจ้งที่สมบูรณ์ ไม่ต้องให้ใครมากดซ้ำ
          ⚠️ `reportedAt` ต้องมีค่า ไม่งั้นชน CHECK `..._state_sane` ของ 0245
          (reported ต้องมี reportedAt) — แถวที่บันทึกผ่าน API มีอยู่แล้ว ที่ fallback ไว้
          เผื่อแถวที่ถูกเขียนมาทางอื่น ไม่ใช่ให้ API เลิกกรอก */
