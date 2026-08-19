@@ -5,7 +5,8 @@
 //          reopen (ยังไม่จบ — ถอนตราปิดของฝั่งที่กดไปแล้ว) ·
 //          acknowledge (RD/PC รับเรื่อง = ตัดรอบ) · commit-due (แจ้งกำหนดส่ง —
 //          ก้าวแยกจากการรับเรื่อง) · answer (ชนิดที่ไม่มี
-//          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
+//          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก) ·
+//          pdr-ref (ออกเลขที่เอกสาร PDR ย้อนหลังให้ใบที่รับเรื่องไปก่อน mig 0271)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
@@ -20,6 +21,9 @@ import { normalizePdr } from '@/lib/requests/pdr';
 import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
+import {
+  assignPdrRefNo, issuesPdrRefNoOnAcknowledge, pdrRefNoError,
+} from '@/lib/requests/pdrRefNo';
 import { listAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
 import {
@@ -165,6 +169,10 @@ export async function PATCH(request, { params }) {
   const patch = { updatedAt: nowIso };
   // กดส่ง = ต้องออกเลขที่คำร้องพร้อมบันทึกในทรานแซกชันเดียว (mig 0243) ไม่ใช่ใส่ลง patch
   let issueDocNo = false;
+  /* รับเรื่อง = ออก **เลขที่เอกสาร PDR** (DDMMYY-XXX · mig 0271) พร้อมบันทึก
+     ในทรานแซกชันเดียวด้วยเหตุผลเดียวกัน · ค่าที่เก็บคือ *วันที่ของเลข* ไม่ใช่ธง
+     เพราะปุ่มออกเลขย้อนหลังใช้วันที่รับเรื่องของใบนั้น ไม่ใช่วันที่กดปุ่ม */
+  let pdrRefAt = null;
   let summary = '';
   // รายการเปลี่ยนแปลงของ PDR — ใช้ตอนเขียนเธรดท้าย handler
   let pdrChanges = null;
@@ -219,6 +227,9 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedById = user?.id ?? null;
       patch.acknowledgedByName = user?.name ?? null;
       patch.acknowledgedAt = nowIso;
+      // ⭐ เลขที่เอกสาร PDR ออกที่จังหวะนี้ (มติผู้ใช้ 2026-08-20) — วันบนเลข
+      // คือวันที่ฝ่ายรับเรื่อง ⇒ ออกก่อนหน้านี้ไม่ได้ เพราะยังไม่มีวันให้ใช้
+      if (issuesPdrRefNoOnAcknowledge(before)) pdrRefAt = nowIso;
       summary = `รับเรื่อง ${before.docNo || id}`;
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
@@ -518,16 +529,39 @@ export async function PATCH(request, { params }) {
       patch.cancelReason = reason.slice(0, 500);
       patch.cancelledAt = nowIso;
       summary = `ยกเลิกคำร้อง ${before.docNo || id}`;
+    } else if (action === 'pdr-ref') {
+      /* ⭐ **ออกเลขที่เอกสารย้อนหลังทีละใบ** (มติผู้ใช้ 2026-08-20) — ใบที่รับเรื่อง
+         ไปก่อน mig 0271 ไม่มีเลข และ **ไม่ backfill อัตโนมัติ** เพราะการไล่ออกเลขให้
+         ทุกใบย้อนหลังคือการใช้เลขรันของเดือนเก่าไปกับใบที่ไม่มีใครจะพิมพ์แล้ว
+         ⚠️ วันบนเลขมาจาก `acknowledgedAt` **ของใบนั้น** ไม่ใช่วันที่กดปุ่ม — ไม่งั้น
+         ใบที่รับเรื่องเดือนก่อนจะไปกินเลขรันของเดือนนี้ */
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `ออกเลขที่เอกสารได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = pdrRefNoError(before);
+      if (err) return Response.json({ error: err }, { status: 409 });
+      pdrRefAt = before.acknowledgedAt;
+      // ⚠️ **ไม่ลงเธรด** โดยตั้งใจ — `askActionUpdate` ไม่รู้จัก action นี้ (คืน null)
+      // เพราะมันเป็นงานธุรการของฝ่ายบนใบที่ทุกฝ่ายรับรู้สถานะแล้ว ไม่ใช่ก้าวของงาน ·
+      // หลักฐานว่าใครกดเมื่อไรอยู่ที่ `recordAudit` ท้าย handler
+      summary = 'ออกเลขที่เอกสาร PDR';
     } else {
       return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
     }
 
-    const { data: saved, error } = issueDocNo
-      ? await assignRequestDocNo(supabase, before, patch)
-      : await supabase.from('dept_requests').update(patch).eq('id', id);
+    let saved = null;
+    let error = null;
+    if (issueDocNo) {
+      ({ data: saved, error } = await assignRequestDocNo(supabase, before, patch));
+    } else if (pdrRefAt) {
+      ({ data: saved, error } = await assignPdrRefNo(supabase, id, patch, new Date(pdrRefAt)));
+    } else {
+      ({ data: saved, error } = await supabase.from('dept_requests').update(patch).eq('id', id));
+    }
     if (error) throw error;
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
     if (issueDocNo && saved?.docNo) summary = `ส่งคำร้อง ${saved.docNo} ถึงฝ่าย ${before.dept}`;
+    if (action === 'pdr-ref' && saved?.pdrRefNo) summary = `ออกเลขที่เอกสาร PDR ${saved.pdrRefNo}`;
 
     // ใบขอราคาผลิตที่คำร้องนี้ถามแทน: เปิด = ใบเป็น 'pricing', ปิด/ยกเลิก = คืนสถานะ
     if (before.costingRequestId) await syncCostingPricingStatus(supabase, before.costingRequestId);
