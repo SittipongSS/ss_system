@@ -248,3 +248,27 @@ test('กฎ 6: การโหลดแถวเองบนตารางท�
     console.log(`  ⭐ กฎ 6: เหลือ ${hits.length}/${SELF_LOAD_CAP} — รูดเพดานลงใน systemRules.test.mjs`);
   }
 });
+
+// ── 7. สร้างสูตรจากกลิ่น = ต้องส่งลูกค้าไปด้วย ─────────────────────────────
+//
+// 🐞 **บั๊กจริง 2026-08-19** — มติ 2026-08-10 กลับทิศจาก mig 0207: server เลิก *derive*
+// ลูกค้าจากกลิ่น เปลี่ยนเป็น *ตรวจ* ว่าลูกค้าที่ส่งมาตรงกับเจ้าของกลิ่น
+// (`formulaScentCustomerError`) · ฟอร์มทะเบียนปรับตามแล้ว แต่ **เส้นคำร้องถูกลืม** ⇒
+// RD กด "ส่งงาน" ทีไรก็โดน "สูตรฐาน (ไม่ผูกลูกค้า) เลือกกลิ่นของลูกค้าไม่ได้" ทุกครั้ง
+// และไม่มีอะไรจับได้เลยจนผู้ใช้ถ่ายจอมาให้ดู
+//
+// ⚠️ กฎคือ **มีกลิ่น = ต้องมีลูกค้า** — สูตรฐาน (ไม่ผูกลูกค้า) ผูกกลิ่นของใครไม่ได้
+// ตามนิยาม · จุดที่ไม่มีกลิ่น (จัดระเบียบ) ส่งลูกค้าผ่าน `fallbackCustomer` แทน
+test('กฎ 7: createFormula ที่ส่ง scentId ต้องส่ง customerId ด้วยเสมอ', () => {
+  const bad = [];
+  for (const rel of listFiles('app/api', 'route.js')) {
+    const text = stripComments(read(rel));
+    if (!text.includes('createFormula(')) continue;
+    for (const m of text.match(/createFormula\([\s\S]{0,1200}?\}\s*,\s*user/g) || []) {
+      if (/scentId\s*:/.test(m) && !/customerId\s*:/.test(m)) bad.push(rel);
+    }
+  }
+  assert.deepEqual(bad, [],
+    'สร้างสูตรจากกลิ่นโดยไม่ส่งลูกค้า — ด่าน formulaScentCustomerError จะตีกลับทุกครั้ง\n'
+    + bad.join('\n'));
+});

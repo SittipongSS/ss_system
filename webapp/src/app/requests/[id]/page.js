@@ -52,6 +52,7 @@ import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
+import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
@@ -145,14 +146,42 @@ export default function RequestDetailPage() {
   const [scentOptions, setScentOptions] = useState([]);
   // ส่งของ (พัฒนากลิ่น) — [{ name, code, sentAt, derivedFromScentId, spec }]
   const [delivery, setDelivery] = useState(null);
-  // ⭐ โมดัลรวบส่งของของพัฒนาสูตร (ช่องว่างข้อ 3) — { at, rows: [{item, formulaName,
-  // formulaCode, formulaDate, error}] } · วันที่กรอกครั้งเดียว สูตรกรอกรายแถว
+  // ⭐ โมดัลรวบส่งของของพัฒนาสูตร (ช่องว่างข้อ 3) — { rows: [{ item, formula, error }] }
+  // `formula` = ค่าฟอร์มทะเบียนสูตรของแถวนั้น (ฟอร์มเดียวกับหน้าทะเบียน · 2026-08-19)
   const [bulkReady, setBulkReady] = useState(null);
   // ⚠️ ทะเบียนกลิ่น **ทั้งก้อน** ไม่ใช่เฉพาะของลูกค้ารายนี้ — รหัสกลิ่นห้ามซ้ำทั้ง
   // บริษัท (scents_code_uk เป็น unique ทั้งตาราง) ⇒ เตือนซ้ำต้องเทียบกับทุกแถว
   const [allScents, setAllScents] = useState([]);
   // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
   const [pricing, setPricing] = useState(null);
+  /* ⭐ ทะเบียนที่ **ฟอร์มส่งงานสูตร** ต้องใช้ (มติผู้ใช้ 2026-08-19) — ฟอร์มตัวเดียวกับ
+     หน้าทะเบียนสูตร ⇒ ต้องมีของครบชุดเหมือนกัน: ลูกค้า · กลิ่น · สูตร (สายพันธุ์)
+     ⚠️ โหลดเฉพาะใบที่มีแถวพัฒนาสูตรจริง — ใบสายเอกสาร/ราคาไม่มีวันเปิดฟอร์มนี้
+     ⚠️ โหลดตั้งแต่เปิดใบ ไม่ใช่ตอนกดส่ง — โหลดตอนกดจะได้ฟอร์มที่ช่องเลือกว่างเปล่า
+     ในวินาทีแรก (โรคเดียวกับ productTypes ข้างบน) */
+  const [formulaRegistry, setFormulaRegistry] = useState({
+    customers: [], scents: [], formulas: [],
+  });
+  const hasFormulaRows = (req?.items || []).some((i) => i.lineKind === "product_dev");
+  useEffect(() => {
+    if (!hasFormulaRows) return;
+    const get = (url) => fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => (Array.isArray(d) ? d : []))
+      .catch(() => []);
+    Promise.all([
+      get("/api/customers"), get("/api/master/scents"), get("/api/master/formulas"),
+    ]).then(([customers, scents, formulas]) => setFormulaRegistry({ customers, scents, formulas }));
+  }, [hasFormulaRows]);
+  /* ค่าตั้งต้นของฟอร์มส่งงาน — ลูกค้า/กลิ่น/หมวด เป็นของที่ **แถวรู้อยู่แล้ว** ⇒ เติมให้
+     แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
+     เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
+  const formulaDraftFor = useCallback((item) => ({
+    ...emptyFormulaForm(),
+    customerId: req?.customerId || "",
+    scentId: item?.scentId || "",
+    categoryCode: item?.categoryCode || "",
+  }), [req?.customerId]);
   const load = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
@@ -285,10 +314,8 @@ export default function RequestDetailPage() {
     hop,
     outcome,
     // ⭐ ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียว (P4b)
-    // **ไม่ถามหมวดกับกลิ่นซ้ำ** — อยู่บนแถวแล้วและเป็นตัวตนของสูตรพอดี
-    formulaCode: "",
-    formulaName: "",
-    formulaDate: "",
+    // **หมวดกับกลิ่นไม่ถามซ้ำ แต่โชว์เทาไว้** — อยู่บนแถวแล้วและเป็นตัวตนของสูตรพอดี
+    formula: formulaDraftFor(item),
     // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน
     at: businessDate(),
     dueAt: "",
@@ -307,11 +334,9 @@ export default function RequestDetailPage() {
         // ก้าวส่งไม่ส่งวัน (ม-92) — server ประทับวันไทยของวันที่กดให้เอง
         ...(hop === "ready" ? {} : { at: hopDraft.at }),
         ...(hop === "ack" ? { dueAt: hopDraft.dueAt || null } : {}),
-        ...(hop === "ready" && item.lineKind === "product_dev" ? {
-          formulaName: hopDraft.formulaName,
-          formulaCode: hopDraft.formulaCode,
-          formulaDate: hopDraft.formulaDate || null,
-        } : {}),
+        // ⚠️ ส่งทั้งก้อน — ลูกค้า/กลิ่น/หมวดที่ติดมาด้วยถูก server ทิ้ง แล้วยกจากแถวเอง
+        ...(hop === "ready" && item.lineKind === "product_dev"
+          ? { formula: hopDraft.formula } : {}),
         // เลขที่เอกสาร + วันครบกำหนดของบรรทัดเอกสารการเงิน (B-3)
         ...(hop === "ready" && item.lineKind === "billing_doc" ? {
           docNumber: hopDraft.docNumber,
@@ -356,9 +381,7 @@ export default function RequestDetailPage() {
             body: JSON.stringify({
               // ไม่ส่งวัน (ม-92) — server ประทับวันไทยของวันที่กดให้ทุกแถว
               hop: "ready",
-              formulaName: row.formulaName,
-              formulaCode: row.formulaCode,
-              formulaDate: row.formulaDate || null,
+              formula: row.formula,
             }),
           });
           const d = await res.json().catch(() => ({}));
@@ -1099,7 +1122,7 @@ export default function RequestDetailPage() {
           count: bulkReadyRows(req.items || []).length,
           onOpen: () => setBulkReady({
             rows: bulkReadyRows(req.items || []).map((item) => ({
-              item, formulaName: "", formulaCode: "", formulaDate: "",
+              item, formula: formulaDraftFor(item),
             })),
           }),
         }}
@@ -1322,41 +1345,22 @@ export default function RequestDetailPage() {
               <div key={row.item.id} className={styles.bulkRow}>
                 <div className="toolbar-label">{row.item.label}</div>
                 {row.error && <p className={styles.error}>{row.error}</p>}
+                {/* ฟอร์มเดียวกับทะเบียนสูตร — ลูกค้า/กลิ่น/หมวดของแถวนี้เทาไว้ให้อ่านได้
+                    ว่าสูตรที่กำลังจะเกิดผูกกับอะไร */}
+                <FormulaForm
+                  mode="create" canSetCode codeRequired
+                  value={row.formula} disabled={saving}
+                  customers={formulaRegistry.customers}
+                  scents={formulaRegistry.scents}
+                  formulas={formulaRegistry.formulas}
+                  categories={productTypes}
+                  locked={["customerId", "scentId", "categoryCode"]}
+                  onChange={(value) => setBulkReady({
+                    ...bulkReady,
+                    rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formula: value } : r)),
+                  })}
+                />
                 <div className="form-grid">
-                  <div className="form-group">
-                    <label htmlFor={`bulk-name-${i}`}>ชื่อสูตร</label>
-                    <Input
-                      id={`bulk-name-${i}`} value={row.formulaName} disabled={saving}
-                      placeholder="ชื่อจริงที่ RD ตั้ง"
-                      onChange={(e) => setBulkReady({
-                        ...bulkReady,
-                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaName: e.target.value } : r)),
-                      })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor={`bulk-code-${i}`}>รหัสสูตร</label>
-                    <Input
-                      id={`bulk-code-${i}`} mono value={row.formulaCode} disabled={saving}
-                      placeholder="เช่น PF638010202-P1"
-                      onChange={(e) => setBulkReady({
-                        ...bulkReady,
-                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaCode: e.target.value } : r)),
-                      })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor={`bulk-date-${i}`}>
-                      วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
-                    </label>
-                    <DateInput
-                      id={`bulk-date-${i}`} value={row.formulaDate} disabled={saving}
-                      onChange={(v) => setBulkReady({
-                        ...bulkReady,
-                        rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formulaDate: v } : r)),
-                      })}
-                    />
-                  </div>
                   {/* ไฟล์ประกอบ (ม-91) — แถวมีอยู่แล้ว อัปตรงเข้าแถวนั้นทันที */}
                   <div className="form-group col-span-2">
                     <span className="toolbar-label">
@@ -1387,7 +1391,10 @@ export default function RequestDetailPage() {
           ⭐ ห้ากล่องแยกจะได้ปุ่มยกเลิก/บันทึกและกติกาวันที่ห้าชุดที่ต้องคอยดูแลให้ตรงกัน
           ซึ่งเป็นโรคเดียวกับที่ AGENTS.md ห้ามไว้เรื่องฟอร์มสร้าง/แก้ */}
       <Modal
-        open={!!hopDraft} onClose={() => setHopDraft(null)} size="sm" dismissible={!saving}
+        open={!!hopDraft} onClose={() => setHopDraft(null)} dismissible={!saving}
+        /* ฟอร์มสูตรเป็นฟอร์มเต็มสองคอลัมน์ (ตัวเดียวกับทะเบียน) — กว้างเท่าโมดัลก้าวอื่น
+           ไม่พอ · ก้าวอื่นยังแคบเหมือนเดิม เพราะมันมีช่องเดียวสองช่อง */
+        size={hopDraft?.hop === "ready" && hopDraft?.item.lineKind === "product_dev" ? "md" : "sm"}
         title={hopDraft ? `${hopLabelFor(hopDraft.item, hopDraft.hop, hopDraft.outcome)} — ${hopDraft.item.label}` : ""}
       >
         {hopDraft && (
@@ -1473,34 +1480,19 @@ export default function RequestDetailPage() {
             {hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev" && (
               <>
                 <p className={styles.fieldHint}>
-                  บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — หมวดกับกลิ่นยกมาจาก
-                  รายการนี้เอง ({hopDraft.item.label}) ไม่ต้องเลือกซ้ำ
+                  บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
+                  · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({hopDraft.item.label}) จึงเทาไว้
                 </p>
-                <div className="form-group">
-                  <label htmlFor="hop-formula-name">ชื่อสูตร</label>
-                  <Input
-                    id="hop-formula-name" value={hopDraft.formulaName} disabled={saving}
-                    placeholder="ชื่อจริงที่ RD ตั้ง"
-                    onChange={(e) => setHopDraft({ ...hopDraft, formulaName: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="hop-formula-code">รหัสสูตร</label>
-                  <Input
-                    id="hop-formula-code" mono value={hopDraft.formulaCode} disabled={saving}
-                    placeholder="เช่น PF638010202-P1"
-                    onChange={(e) => setHopDraft({ ...hopDraft, formulaCode: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="hop-formula-date">
-                    วันที่ของสูตร <span className={styles.fieldHint}>(ไม่บังคับ)</span>
-                  </label>
-                  <DateInput
-                    id="hop-formula-date" value={hopDraft.formulaDate} disabled={saving}
-                    onChange={(v) => setHopDraft({ ...hopDraft, formulaDate: v })}
-                  />
-                </div>
+                <FormulaForm
+                  mode="create" canSetCode codeRequired
+                  value={hopDraft.formula} disabled={saving}
+                  customers={formulaRegistry.customers}
+                  scents={formulaRegistry.scents}
+                  formulas={formulaRegistry.formulas}
+                  categories={productTypes}
+                  locked={["customerId", "scentId", "categoryCode"]}
+                  onChange={(value) => setHopDraft({ ...hopDraft, formula: value })}
+                />
                 {/* ไฟล์ประกอบ (ม-91) — สามสายกดส่งแล้วจบในโมดัลเดียวเหมือนกัน ·
                     ไม่บังคับ: ตัวงานคือสูตรที่เข้าทะเบียน ไฟล์เป็นของแถม (ต่างจาก
                     สายเอกสารที่ไฟล์คือตัวงาน จึงบังคับ ≥ 1) · แถวมีอยู่แล้ว อัปตรง */}

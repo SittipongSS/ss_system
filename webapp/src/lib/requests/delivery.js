@@ -167,20 +167,47 @@ export function deliveryItemRow(row, {
 // พอดี (`formulas_identity_uk`) · ถามซ้ำเมื่อไร ผู้ใช้จะกรอกให้ต่างจากที่ขอไว้ได้
 // แล้วสูตรที่เกิดจะไม่ตรงกับแถวที่สั่ง
 export function normalizeFormulaDelivery(input = {}) {
-  const name = String(input.formulaName ?? '').trim().replace(/\s+/g, ' ');
+  /* ⭐ **ฟอร์มเดียวกับทะเบียน** (มติผู้ใช้ 2026-08-19) — ค่าที่ RD กรอกมาเป็นก้อน
+     `formula` ที่ใช้ชื่อช่องชุดเดียวกับ `FormulaForm` ⇒ เพิ่มช่องในทะเบียนแล้ว
+     สายคำร้องได้ตามโดยไม่ต้องคิดชื่อใหม่ (เดิมเป็น formulaName/formulaCode สามช่อง
+     ที่ค่อย ๆ เลื่อนออกจากทะเบียน) */
+  const src = input.formula || {};
+
+  const name = String(src.name ?? '').trim().replace(/\s+/g, ' ');
   if (!name) return { value: null, error: 'ต้องระบุชื่อสูตร' };
   if (name.length > 200) return { value: null, error: 'ชื่อสูตรยาวเกิน 200 ตัวอักษร' };
 
   // รหัสบังคับ — RD เป็นเจ้าของทะเบียน และนี่คือจังหวะที่สูตรเข้าทะเบียนจริง
   // ปล่อยว่างได้เมื่อไร จะได้สูตรร่างที่ไม่มีใครกลับมาใส่รหัสให้ (โรคเดียวกับกอง
   // "รอจัดระเบียบ" ที่ 0171 ทิ้งไว้)
-  const code = String(input.formulaCode ?? '').trim();
+  const code = String(src.code ?? '').trim();
   if (!code) return { value: null, error: 'ต้องระบุรหัสสูตร' };
   if (code.length > 100) return { value: null, error: 'รหัสสูตรยาวเกิน 100 ตัวอักษร' };
 
-  const formulaDate = String(input.formulaDate ?? '').trim() || null;
+  const formulaDate = String(src.formulaDate ?? '').trim() || null;
   if (formulaDate && !ISO_DATE.test(formulaDate)) {
     return { value: null, error: 'วันที่ของสูตรไม่ถูกต้อง' };
   }
-  return { value: { name, code, formulaDate }, error: null };
+
+  const customerTradeName = String(src.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
+  if (customerTradeName.length > 200) {
+    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
+  }
+
+  const note = String(src.note ?? '').trim();
+  if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
+
+  return {
+    value: {
+      name,
+      code,
+      formulaDate,
+      customerTradeName: customerTradeName || null,
+      // สายพันธุ์สูตร — ด่านข้ามลูกค้าอยู่ฝั่ง server (assertDerivedFromFormula)
+      // เพราะต้องอ่านแถวต้นทางมาเทียบ
+      derivedFromFormulaId: String(src.derivedFromFormulaId ?? '').trim() || null,
+      note: note || null,
+    },
+    error: null,
+  };
 }

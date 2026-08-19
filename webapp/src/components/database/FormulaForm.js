@@ -44,11 +44,21 @@ export function formulaToForm(formula) {
   };
 }
 
+/* ⭐ **ฟอร์มเดียวกับที่ใช้ในคำร้อง** (มติผู้ใช้ 2026-08-19) — RD กด "ส่งงาน" ที่แถว
+   พัฒนาสูตรแล้วสูตรเข้าทะเบียนทันที ⇒ สิ่งที่กรอกตอนนั้นต้องเป็นของชุดเดียวกับ
+   ทะเบียน ไม่ใช่ฟอร์มย่อสามช่องที่ค่อย ๆ เลื่อนออกจากกัน
+   `locked` = ช่องที่คำร้องรู้คำตอบอยู่แล้ว (ลูกค้า · กลิ่น · หมวด) — **เทาไว้ให้เห็น
+   ว่าค่าอะไร** ไม่ใช่ซ่อน · ซ่อนแล้วคนกรอกจะไม่รู้ว่าสูตรที่กำลังจะเกิดผูกกับกลิ่นตัวไหน
+   ⚠️ ค่าที่ถูกล็อกเป็นแค่ของบนจอ — server ยกจากแถวคำร้องเองอยู่แล้ว ไม่เชื่อ client */
 export default function FormulaForm({
   mode = "create", value, onChange, scents = [], formulas = [], customers = [], categories = [],
   editingId = null, canSetCode = false, disabled = false,
+  locked = [], lockedNote = "ยกมาจากรายการในคำร้อง — แก้ที่นี่ไม่ได้", codeRequired = false,
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
+  const isLocked = (field) => locked.includes(field);
+  const lockHint = (field) => (isLocked(field) && lockedNote
+    ? <small className={styles.hint}>{lockedNote}</small> : null);
 
   const scent = scents.find((s) => s.id === value.scentId) || null;
 
@@ -103,18 +113,20 @@ export default function FormulaForm({
       <div className="form-group">
         <label htmlFor="formula-customer">ลูกค้า</label>
         <SearchableSelect
-          id="formula-customer" value={value.customerId || ""} disabled={disabled}
+          id="formula-customer" value={value.customerId || ""} disabled={disabled || isLocked("customerId")}
           onChange={pickCustomer}
           options={customerOptions}
           placeholder="ไม่ผูกลูกค้า (สูตรฐาน ใช้ได้ทุกลูกค้า)"
           emptyText="ยังไม่มีลูกค้าในทะเบียน"
         />
+        {lockHint("customerId")}
       </div>
 
       <div className="form-group">
         <label htmlFor="formula-scent">กลิ่นที่ใช้</label>
         <SearchableSelect
-          id="formula-scent" value={value.scentId} disabled={disabled || !value.customerId}
+          id="formula-scent" value={value.scentId}
+          disabled={disabled || isLocked("scentId") || !value.customerId}
           onChange={(v) => set({ scentId: v })}
           options={scentOptions}
           placeholder={value.customerId ? "ไม่ระบุ" : "เลือกลูกค้าก่อน"}
@@ -122,9 +134,11 @@ export default function FormulaForm({
             ? "ลูกค้ารายนี้ยังไม่มีกลิ่นในทะเบียน"
             : "เลือกลูกค้าก่อนจึงจะเลือกกลิ่นได้"}
         />
-        <small className={styles.hint}>
-          เห็นเฉพาะกลิ่นของลูกค้าที่เลือก — สูตรของลูกค้ารายหนึ่งใช้กลิ่นของอีกรายไม่ได้
-        </small>
+        {isLocked("scentId") ? lockHint("scentId") : (
+          <small className={styles.hint}>
+            เห็นเฉพาะกลิ่นของลูกค้าที่เลือก — สูตรของลูกค้ารายหนึ่งใช้กลิ่นของอีกรายไม่ได้
+          </small>
+        )}
       </div>
 
       {/* ⭐ หมวด × กลิ่น = **ตัวตนของสูตร** (mig 0207) — สองช่องนี้ไม่ใช่ข้อมูลประกอบ
@@ -134,7 +148,7 @@ export default function FormulaForm({
       <ProductCategorySelect
         categories={categories}
         value={value.categoryCode}
-        disabled={disabled}
+        disabled={disabled || isLocked("categoryCode")}
         onChange={(categoryCode) => set({ categoryCode })}
       />
 
@@ -149,13 +163,19 @@ export default function FormulaForm({
 
       {canSetCode && (
         <div className="form-group">
-          <label htmlFor="formula-code">รหัสสูตร <span className={styles.hint}>(ไม่บังคับ)</span></label>
+          <label htmlFor="formula-code">
+            รหัสสูตร {codeRequired ? null : <span className={styles.hint}>(ไม่บังคับ)</span>}
+          </label>
           <Input
             id="formula-code" value={value.code} disabled={disabled}
             placeholder="เช่น PF638010202-P1"
             onChange={(e) => set({ code: e.target.value })}
           />
-          <small className={styles.hint}>ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง</small>
+          <small className={styles.hint}>
+            {codeRequired
+              ? "รหัสของฝ่าย RD — ห้ามซ้ำกับสูตรอื่น · ส่งงานแล้วสูตรเข้าทะเบียนทันที"
+              : "ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = ร่าง"}
+          </small>
         </div>
       )}
 

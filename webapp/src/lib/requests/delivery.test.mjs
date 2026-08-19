@@ -91,20 +91,47 @@ test('ใบที่ยังไม่เคยรับเรื่อง — 
 // ⇒ เป็นการขยายก้าว `ready` ไม่ใช่สร้างแถวใหม่
 test('ส่งสูตร: ชื่อกับรหัสบังคับ วันที่ไม่บังคับ', () => {
   assert.match(normalizeFormulaDelivery({}).error, /ชื่อสูตร/);
-  assert.match(normalizeFormulaDelivery({ formulaName: 'Well sleep #2' }).error, /รหัสสูตร/);
-  const okDelivery = { formulaName: 'Well sleep #2', formulaCode: 'PF-1' };
+  assert.match(normalizeFormulaDelivery({ formula: { name: 'Well sleep #2' } }).error, /รหัสสูตร/);
+  const okDelivery = { formula: { name: 'Well sleep #2', code: 'PF-1' } };
   assert.equal(normalizeFormulaDelivery(okDelivery).error, null);
   assert.equal(normalizeFormulaDelivery(okDelivery).value.formulaDate, null);
-  assert.match(normalizeFormulaDelivery({ ...okDelivery, formulaDate: '05/08/2026' }).error, /วันที่/);
+  assert.match(
+    normalizeFormulaDelivery({ formula: { ...okDelivery.formula, formulaDate: '05/08/2026' } }).error,
+    /วันที่/,
+  );
+});
+
+/* ⭐ **ฟอร์มเดียวกับทะเบียน** (มติผู้ใช้ 2026-08-19) — ช่องเสริมของทะเบียนต้องกรอก
+   ได้ตั้งแต่ตอนส่งงาน ไม่ใช่ต้องไปเปิดทะเบียนแก้ทีหลัง (ซึ่งคือจังหวะที่ข้อมูลสองที่
+   เริ่มต่างกัน) */
+test('ส่งสูตร: รับช่องเสริมของฟอร์มทะเบียนด้วย (ชื่อที่ลูกค้าเรียก · สายพันธุ์ · หมายเหตุ)', () => {
+  const { value, error } = normalizeFormulaDelivery({
+    formula: {
+      name: 'Well sleep #2',
+      code: 'PF-1',
+      customerTradeName: 'Sleepy  Night',
+      derivedFromFormulaId: 'FML-1',
+      note: 'แก้กลิ่นหัวให้เบาลง',
+    },
+  });
+  assert.equal(error, null);
+  assert.equal(value.customerTradeName, 'Sleepy Night', 'ช่องว่างซ้อนถูกยุบเหมือนทะเบียน');
+  assert.equal(value.derivedFromFormulaId, 'FML-1');
+  assert.equal(value.note, 'แก้กลิ่นหัวให้เบาลง');
+  assert.equal(normalizeFormulaDelivery({ formula: { name: 'A', code: 'PF-1' } }).value.note, null);
 });
 
 test('⚠️ ไม่รับหมวดกับกลิ่น — สองอย่างนั้นอยู่บนแถวและเป็นตัวตนของสูตรพอดี', () => {
   // ถามซ้ำเมื่อไร ผู้ใช้จะกรอกให้ต่างจากที่ขอไว้ได้ แล้วสูตรที่เกิดจะไม่ตรงกับแถวที่สั่ง
+  // ⚠️ ฟอร์มบนจอ **โชว์** สามช่องนี้ (เทาไว้) และส่งกลับมาด้วย — ด่านนี้คือที่ที่มันถูกทิ้ง
   const { value } = normalizeFormulaDelivery({
-    formulaName: 'A', formulaCode: 'PF-1', categoryCode: '99-999', scentId: 'SCT-อื่น',
+    formula: {
+      name: 'A', code: 'PF-1', categoryCode: '99-999', scentId: 'SCT-อื่น', customerId: 'CUS-อื่น',
+    },
   });
   assert.equal('categoryCode' in value, false);
   assert.equal('scentId' in value, false);
+  assert.equal('customerId' in value, false);
 });
 
 // ── ชั้นกลาง: direction ตอบบรีฟก้อนไหน (mig 0213) ──────────────────────
