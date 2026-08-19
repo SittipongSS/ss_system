@@ -9,7 +9,9 @@ import { loadMaterials } from '@/lib/materialPricesAdmin';
 import {
   latestRevision, materialPriceState, revisionPriceRange, revisionUnitPrice,
 } from '@/lib/materialPrices';
-import { derivedFromError, newScentStatus, normalizeScentInput } from '@/lib/master/scents';
+import {
+  derivedFromError, newScentStatus, normalizeScentInput, proposedScentStatus,
+} from '@/lib/master/scents';
 import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
@@ -132,6 +134,10 @@ export async function createScent(supabase, input, user, { accepted = false } = 
     // ⚠️ `newScentStatus` จำกัดไว้เฉพาะสองสถานะที่ "ของจริงแล้ว" และเฉพาะตอน RD
     // เป็นคนสร้าง — ฝ่ายขายยังได้ `draft` เสมอ (ใส่รหัส = รับเข้าทะเบียน เป็นอำนาจ RD)
     status: newScentStatus(input.status, accepted),
+    /* ⭐ ร่างจำสถานะที่ผู้เสนอบอกว่าเป็นจริงไว้ (mig 0269) — ฝ่ายขายที่ย้ายข้อมูล
+       กลิ่นเก่ารู้อยู่แล้วว่าตัวไหนลูกค้าอนุมัติไปแล้ว ⇒ RD ไม่ต้องไล่ถามใหม่ตอนกดรับ
+       ⚠️ RD สร้างเองใส่ `status` ตรง ๆ ได้อยู่แล้ว ช่องนี้จึงว่างสำหรับแถวของ RD */
+    proposedStatus: accepted ? null : proposedScentStatus(input.status),
     // RD ที่สร้างเองเป็นเจ้าของกลิ่นโดยปริยาย — ฝ่ายขายเปิดร่างยังไม่มีเจ้าของ
     ownerId: value.ownerId || (accepted ? user?.id ?? null : null),
     ownerName: value.ownerName || (accepted ? user?.name ?? null : null),
