@@ -6,7 +6,8 @@
 //          acknowledge (RD/PC รับเรื่อง = ตัดรอบ) · commit-due (แจ้งกำหนดส่ง —
 //          ก้าวแยกจากการรับเรื่อง) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก) ·
-//          pdr-ref (ออกเลขที่เอกสาร PDR ย้อนหลังให้ใบที่รับเรื่องไปก่อน mig 0271)
+//          pdr-ref (ออกเลขที่เอกสาร PDR ย้อนหลังให้ใบที่รับเรื่องไปก่อน mig 0271) ·
+//          pdr-ref-manual (RD กรอก/แก้เลขเองในช่วงเปลี่ยนผ่าน mig 0272)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
@@ -22,7 +23,8 @@ import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
-  assignPdrRefNo, issuesPdrRefNoOnAcknowledge, pdrRefNoError,
+  assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
+  pdrRefNoError,
 } from '@/lib/requests/pdrRefNo';
 import { listAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
@@ -229,7 +231,9 @@ export async function PATCH(request, { params }) {
       patch.acknowledgedAt = nowIso;
       // ⭐ เลขที่เอกสาร PDR ออกที่จังหวะนี้ (มติผู้ใช้ 2026-08-20) — วันบนเลข
       // คือวันที่ฝ่ายรับเรื่อง ⇒ ออกก่อนหน้านี้ไม่ได้ เพราะยังไม่มีวันให้ใช้
-      if (issuesPdrRefNoOnAcknowledge(before)) pdrRefAt = nowIso;
+      // ⚠️ เดือนนี้ยังเป็นช่วงที่ RD เดินเลขบนกระดาษเอง ⇒ ฟังก์ชันนี้คืน false
+      // และใบจะไปได้เลขทางปุ่ม "กรอกเลขที่เอกสาร" แทน (mig 0272)
+      if (issuesPdrRefNoOnAcknowledge(before, new Date(nowIso))) pdrRefAt = nowIso;
       summary = `รับเรื่อง ${before.docNo || id}`;
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
@@ -545,6 +549,23 @@ export async function PATCH(request, { params }) {
       // เพราะมันเป็นงานธุรการของฝ่ายบนใบที่ทุกฝ่ายรับรู้สถานะแล้ว ไม่ใช่ก้าวของงาน ·
       // หลักฐานว่าใครกดเมื่อไรอยู่ที่ `recordAudit` ท้าย handler
       summary = 'ออกเลขที่เอกสาร PDR';
+    } else if (action === 'pdr-ref-manual') {
+      /* ⭐ **ช่วงเปลี่ยนผ่าน: RD กรอกเลขของตัวเอง** (มติผู้ใช้ 2026-08-20 · mig 0272)
+         — ใบที่รับเรื่องก่อนเดือนที่ระบบเริ่มออกเลข ต้องลอกเลขจากกระดาษที่ออกไปแล้ว
+         ⚠️ **เขียน `pdrRefManual` ทุกครั้ง** — ธงนี้คือสิ่งเดียวที่บอก trigger ว่าเลข
+         ใบนี้แก้ได้ · ลืมเขียน = เลขที่พิมพ์ผิดล็อกถาวรตั้งแต่ครั้งแรก
+         ⚠️ ธงห้ามพลิกหลังมีเลขแล้ว (trigger กันไว้) ⇒ ใบที่มีเลขอยู่แล้วส่งค่าเดิมไป
+         ไม่ใช่ค่าใหม่ */
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `กรอกเลขที่เอกสารได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = pdrRefManualError(before, body.pdrRefNo);
+      if (err) return Response.json({ error: err }, { status: /รูปแบบ|กรุณากรอก/.test(err) ? 400 : 409 });
+      patch.pdrRefNo = normalizePdrRefNo(body.pdrRefNo);
+      patch.pdrRefManual = true;
+      summary = before.pdrRefNo
+        ? `แก้เลขที่เอกสาร PDR ${before.pdrRefNo} → ${patch.pdrRefNo}`
+        : `กรอกเลขที่เอกสาร PDR ${patch.pdrRefNo}`;
     } else {
       return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
     }
@@ -557,6 +578,13 @@ export async function PATCH(request, { params }) {
       ({ data: saved, error } = await assignPdrRefNo(supabase, id, patch, new Date(pdrRefAt)));
     } else {
       ({ data: saved, error } = await supabase.from('dept_requests').update(patch).eq('id', id));
+    }
+    /* 🪤 **เลขซ้ำต้องเป็นข้อความไทย ไม่ใช่ 500** — ช่วงกรอกเองคนพิมพ์เลขที่ใบอื่น
+       ใช้ไปแล้วได้ง่ายมาก (ลอกจากกระดาษผิดแผ่น) · unique index
+       `dept_requests_pdr_ref_no_key` เป็นด่านจริง ตรวจฝั่ง JS ก่อนไม่พอเพราะสองคน
+       กรอกพร้อมกันได้ */
+    if (error?.code === '23505' && /pdr_ref_no/.test(error.message || '')) {
+      return Response.json({ error: 'เลขที่เอกสารนี้ถูกใช้กับคำร้องใบอื่นแล้ว' }, { status: 409 });
     }
     if (error) throw error;
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)

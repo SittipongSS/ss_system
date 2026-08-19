@@ -42,7 +42,10 @@ import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
-import { pdrRefNoError } from "@/lib/requests/pdrRefNo";
+import {
+  canEditPdrRefManual, issuesPdrRefNoOnAcknowledge, pdrRefManualError, pdrRefMode,
+  pdrRefNoError,
+} from "@/lib/requests/pdrRefNo";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES,
@@ -127,6 +130,8 @@ export default function RequestDetailPage() {
   const [commitDue, setCommitDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
+  // ช่วงเปลี่ยนผ่าน: RD กรอกเลขที่เอกสารเอง (mig 0272) — null = ปิดโมดัล
+  const [refDraft, setRefDraft] = useState(null);
   // "ยังไม่จบ" — ถอนตราปิด · { reason } (บังคับ)
   const [reopen, setReopen] = useState(null);
   /* ⭐ มอบหมายผู้รับผิดชอบ (mig 0230) — `null` = ปิดโมดัล · สตริง = id ที่เลือกอยู่
@@ -482,12 +487,14 @@ export default function RequestDetailPage() {
         detail: `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
           + " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
           + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง"
-          // ⭐ บอกด้วยว่ากดแล้ว **ได้เลขที่เอกสารบนเอกสาร** (mig 0271) — เลขนั้นใช้
-          // วันที่ของวินาทีที่กด และแก้ทีหลังไม่ได้ คนกดจึงต้องรู้ก่อน ไม่ใช่มาเห็น
-          // ตอนพิมพ์กระดาษ
-          + (requestHasPdr(req.kind)
-            ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
-            : ""),
+          /* ⭐ บอกด้วยว่ากดแล้ว **ได้เลขที่เอกสารหรือยัง** — สองโหมดคนละเรื่องกันเลย
+             (mig 0271 · 0272) · เลขอัตโนมัติใช้วันที่ของวินาทีที่กดและแก้ทีหลังไม่ได้
+             ส่วนช่วงกรอกเองต้องบอกให้ชัดว่ายังต้องไปกดอีกปุ่ม ไม่งั้นคนกดจะเข้าใจว่า
+             จบแล้ว แล้วเอกสารออกไปโดยไม่มีเลข */
+          + (!requestHasPdr(req.kind) ? ""
+            : issuesPdrRefNoOnAcknowledge(req)
+              ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
+              : " · เดือนนี้ยังไม่ออกเลขให้เอง — รับเรื่องแล้วกด \"กรอกเลขที่เอกสาร\" ใส่เลขจากกระดาษ"),
         confirmLabel: "รับเรื่อง",
       };
     }
@@ -858,6 +865,24 @@ export default function RequestDetailPage() {
         icon: Hash,
         onClick: () => setConfirm({ kind: "pdr-ref" }),
         visible: canAnswer && requestHasPdr(req.kind) && !pdrRefNoError(req),
+      },
+      {
+        /* ⭐ **ช่วงเปลี่ยนผ่าน: กรอกเลขเอง** (มติผู้ใช้ 2026-08-20 · mig 0272) — ใบที่
+           รับเรื่องก่อนเดือนที่ระบบเริ่มออกเลข RD เดินเลขบนกระดาษของตัวเองไปแล้ว
+           ⇒ ที่นี่คือการ *ลอกเลขเข้าระบบ* ไม่ใช่การออกเลขใหม่
+           ⚠️ ปุ่มนี้กับ "ออกเลขที่เอกสาร" ข้างบน **ไม่มีวันขึ้นพร้อมกัน** — `pdrRefMode`
+           ตัดสินจากเดือนของ `acknowledgedAt` ใบเดียวกันจึงอยู่ได้โหมดเดียว
+           ⚠️ เลขที่กรอกเองแก้ได้จนกว่าใบจะปิด ปุ่มจึงยังอยู่หลังมีเลขแล้ว (ป้ายเปลี่ยน
+           เป็น "แก้") ต่างจากเลขอัตโนมัติที่ล็อกทันที */
+        id: "pdr-ref-manual",
+        label: canEditPdrRefManual(req) ? "แก้เลขที่เอกสาร" : "กรอกเลขที่เอกสาร",
+        kind: "edit",
+        icon: Hash,
+        onClick: () => setRefDraft(req.pdrRefNo || ""),
+        visible: canAnswer
+          && requestHasPdr(req.kind)
+          && pdrRefMode(req) === "manual"
+          && (!req.pdrRefNo || canEditPdrRefManual(req)),
       },
       {
         /* ⭐ **มอบหมายผู้รับผิดชอบ** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่อง
@@ -1455,6 +1480,45 @@ export default function RequestDetailPage() {
                 }, "เลื่อนวันแล้ว").then((ok) => { if (ok) setReschedule(null); })}
               >
                 บันทึกวันใหม่
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ⭐ กรอกเลขที่เอกสารเอง (ช่วงเปลี่ยนผ่าน · mig 0272) — ลอกเลขจากกระดาษที่ RD
+          ออกไปแล้ว · ด่านรูปแบบตัวเดียวกับฝั่ง API (`pdrRefManualError`) เพื่อไม่ให้
+          ปุ่มกับ server เห็นไม่ตรงกัน */}
+      <Modal
+        open={refDraft !== null} onClose={() => setRefDraft(null)} size="sm" dismissible={!saving}
+        title={req.pdrRefNo ? "แก้เลขที่เอกสาร" : "กรอกเลขที่เอกสาร"}
+      >
+        {refDraft !== null && (
+          <>
+            <div className="form-group">
+              <label htmlFor="pdr-ref-input">เลขที่เอกสารบนกระดาษ</label>
+              <Input
+                id="pdr-ref-input" value={refDraft} disabled={saving}
+                placeholder="200869-016" inputMode="numeric" autoComplete="off"
+                onChange={(e) => setRefDraft(e.target.value)}
+              />
+              <small className={styles.hint}>
+                รูปแบบ DDMMYY-XXX (พ.ศ.) — ส่วนที่ต่อท้ายรหัสแบบฟอร์มบนกระดาษ
+                เช่น FM-RD-01-<b>200869-016</b> · ใส่เลขตามที่ออกไปจริง ไม่ต้องตรงกับ
+                วันที่รับเรื่องในระบบ
+              </small>
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setRefDraft(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary"
+                disabled={saving || !!pdrRefManualError(req, refDraft) || refDraft === req.pdrRefNo}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({ action: "pdr-ref-manual", pdrRefNo: refDraft }),
+                }, "บันทึกเลขที่เอกสารแล้ว").then((ok) => { if (ok) setRefDraft(null); })}
+              >
+                บันทึกเลข
               </Button>
             </div>
           </>

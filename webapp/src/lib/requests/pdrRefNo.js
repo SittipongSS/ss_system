@@ -20,6 +20,25 @@ import { requestHasPdr } from '@/lib/master/requestTypes';
 export const PDR_REF_RUNNING_WIDTH = 3;
 
 /**
+ * ⭐ **เดือนแรกที่ระบบออกเลขเอง** (มติผู้ใช้ 2026-08-20) — เดือนนี้ RD ยังเดินเลข
+ * บนกระดาษของตัวเองอยู่ ใบที่รับเรื่องก่อนหน้านี้จึง **กรอกเลขเอง** ส่วนใบที่รับเรื่อง
+ * ตั้งแต่เดือนนี้เป็นต้นไประบบออกให้ตอนกดรับเรื่อง
+ *
+ * ⚠️ **เกณฑ์คือเดือนของ `acknowledgedAt` ของใบ ไม่ใช่วันที่ตอนกด** — ใบที่รับเรื่อง
+ * เดือน ส.ค. แล้วมากรอกเดือน ก.ย. ยังเป็นเลขของ ส.ค. อยู่ดี · ถ้ายึดวันที่ตอนกด
+ * ใบเดือน ส.ค. ที่ยังไม่ได้กรอกจะค้างไม่มีเลขถาวรตั้งแต่ 1 ก.ย.
+ *
+ * ⚠️ **และมันกันเลขชนกันด้วย** — ตัวนับของเดือน 2608 ไม่เคยถูกใช้ (เดือนนั้นกรอกมือ
+ * ล้วน) ⇒ ถ้าปล่อยให้กดออกอัตโนมัติย้อนหลังให้ใบเดือน ส.ค. ได้ ตัวนับจะเริ่มที่
+ * เลขที่ RD พิมพ์ไปแล้วบนกระดาษพอดี แล้วชน unique index หรือแย่กว่านั้นคือเลขซ้ำ
+ * กับกระดาษคนละใบ
+ *
+ * รูปแบบเป็น `businessMonthKey` (YYMM · ค.ศ.) — เทียบด้วย `<`/`>=` ตรง ๆ ได้เพราะ
+ * ยาวเท่ากันและเติมศูนย์หน้าเสมอ
+ */
+export const PDR_REF_AUTO_FROM_MONTH = '2609';
+
+/**
  * ชิ้นส่วนของเลขสำหรับส่งให้ฟังก์ชัน SQL — ที่นี่เป็นที่เดียวที่รู้รูปแบบเลข
  *
  * ⚠️ `like` คือแพตเทิร์นไว้ให้ SQL seed ตัวนับที่หายกลับมา — ปิดตาสองตัวแรก (วัน)
@@ -60,7 +79,17 @@ export function assignPdrRefNo(supabase, requestId, patch, now = new Date()) {
 }
 
 /**
- * ออกเลขให้ใบนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
+ * ใบนี้อยู่ช่วง "กรอกเอง" หรือ "ระบบออกให้" — ตัดสินจากเดือนที่รับเรื่อง
+ *
+ * คืน `'manual'` · `'auto'` · หรือ `null` (ยังไม่รับเรื่อง = ยังตอบไม่ได้)
+ */
+export function pdrRefMode(request) {
+  if (!request?.acknowledgedAt) return null;
+  return businessMonthKey(request.acknowledgedAt) < PDR_REF_AUTO_FROM_MONTH ? 'manual' : 'auto';
+}
+
+/**
+ * ระบบออกเลขให้ใบนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
  *
  * ⭐ **ใบเก่าไม่ backfill อัตโนมัติ มีปุ่มกดทีละใบแทน** (มติผู้ใช้ 2026-08-20 ·
  * แนวเดียวกับขั้นบัญชีตรวจใบสั่งขาย) — ไล่ออกเลขให้ทุกใบย้อนหลังแปลว่าเลขรันของ
@@ -73,13 +102,63 @@ export function pdrRefNoError(request) {
   // ⚠️ ยึด `acknowledgedAt` ไม่ใช่ `status` — ใบที่เดินไปไกลแล้ว (ตอบ/ปิด) ยังต้อง
   // ออกเลขย้อนหลังได้ · ส่วนใบที่ยังไม่มีใครรับ ยังไม่มีวันที่จะเอามาทำ DDMMYY
   if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — เลขที่เอกสารออกตอนฝ่ายรับเรื่อง';
+  if (pdrRefMode(request) === 'manual') {
+    return 'ใบที่รับเรื่องก่อนเดือนที่ระบบเริ่มออกเลข ต้องกรอกเลขเอง';
+  }
   return null;
 }
 
 /**
  * ใบนี้ควรได้เลขตอนรับเรื่องไหม — ใช้ตอน action `acknowledge`
- * (คำร้องที่ไม่มีแบบฟอร์ม PDR ไม่มีเอกสารให้พิมพ์เลขลงไป จึงไม่ออกเลขให้)
+ *
+ * ⚠️ รับ `now` มาเป็นวันที่รับเรื่อง (ยังไม่ได้เขียนลงแถวตอนถาม) — เดือนนี้ยังเป็น
+ * ช่วงกรอกเอง ระบบจึงต้อง **ไม่** ออกเลขให้ตอนกดรับเรื่อง
  */
-export function issuesPdrRefNoOnAcknowledge(request) {
-  return !!request && requestHasPdr(request.kind) && !request.pdrRefNo;
+export function issuesPdrRefNoOnAcknowledge(request, now = new Date()) {
+  if (!request || !requestHasPdr(request.kind) || request.pdrRefNo) return false;
+  return businessMonthKey(now) >= PDR_REF_AUTO_FROM_MONTH;
+}
+
+// ── ช่วงเปลี่ยนผ่าน: RD กรอกเลขของตัวเอง ──────────────────────────────────
+
+const PDR_REF_SHAPE = /^\d{6}-\d{3}$/;
+
+/**
+ * ตัดช่องว่างหัวท้าย + แปลงเลขไทยเป็นอารบิก
+ *
+ * ⚠️ **เลขไทยมาจริงจากการพิมพ์บนแป้นไทย** — ปล่อยผ่านแล้วมันจะตกด่านรูปแบบโดยที่
+ * คนกรอกมองไม่ออกว่าต่างกันตรงไหน (เห็น "๒๐๐๘๖๙-๐๑๖" กับ "200869-016" เหมือนกัน
+ * ในหัวตัวเอง) · แปลงให้เงียบ ๆ ตรงนี้ที่เดียว
+ */
+export function normalizePdrRefNo(value) {
+  const text = String(value ?? '').trim();
+  return text.replace(/[๐-๙]/g, (d) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d)));
+}
+
+/**
+ * กรอก/แก้เลขเองได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
+ *
+ * ⚠️ **ไม่บังคับว่า DDMMYY ต้องตรงกับวันที่รับเรื่องของใบ** — คนกรอกกำลังลอกเลขจาก
+ * กระดาษที่ออกไปแล้ว ซึ่งอาจลงวันคนละวันกับที่ระบบบันทึกไว้ · บังคับเมื่อไรก็ลอกไม่ได้
+ */
+export function pdrRefManualError(request, value) {
+  if (!request) return 'ไม่พบคำร้อง';
+  if (!requestHasPdr(request.kind)) return 'คำร้องหัวข้อนี้ไม่มีแบบฟอร์ม PDR';
+  if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — กรอกเลขที่เอกสารได้หลังฝ่ายรับเรื่อง';
+  if (pdrRefMode(request) === 'auto') {
+    return 'ใบนี้อยู่ช่วงที่ระบบออกเลขให้เอง — กรอกเองไม่ได้';
+  }
+  // ใบที่จบแล้วเป็นบันทึก ไม่ใช่ของที่ยังแก้ได้ (กติกาเดียวกับ trigger ที่ DB)
+  if (['closed', 'cancelled'].includes(request.status) && request.pdrRefNo) {
+    return 'คำร้องปิดแล้ว — แก้เลขที่เอกสารไม่ได้';
+  }
+  const text = normalizePdrRefNo(value);
+  if (!text) return 'กรุณากรอกเลขที่เอกสาร';
+  if (!PDR_REF_SHAPE.test(text)) return 'รูปแบบต้องเป็น DDMMYY-XXX เช่น 200869-016';
+  return null;
+}
+
+/** ใบนี้แก้เลขที่กรอกเองได้อยู่ไหม (ใช้ตัดสินว่าปุ่มเขียนว่า "กรอก" หรือ "แก้") */
+export function canEditPdrRefManual(request) {
+  return !!request?.pdrRefManual && !['closed', 'cancelled'].includes(request?.status);
 }

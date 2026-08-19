@@ -7,7 +7,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  assignPdrRefNo, pdrRefNoError, pdrRefNoParts, issuesPdrRefNoOnAcknowledge,
+  PDR_REF_AUTO_FROM_MONTH, assignPdrRefNo, canEditPdrRefManual, issuesPdrRefNoOnAcknowledge,
+  normalizePdrRefNo, pdrRefManualError, pdrRefMode, pdrRefNoError, pdrRefNoParts,
 } from './pdrRefNo.js';
 
 test('รูปแบบเลข: DDMMYY (พ.ศ.) + ตัวนับรายเดือน', () => {
@@ -52,22 +53,79 @@ test('ส่งชิ้นส่วนให้ SQL ออกเลข — ไ�
   assert.equal('pdrRefNo' in calls[0].args.p_patch, false);
 });
 
-test('ด่านออกเลขย้อนหลัง: ต้องรับเรื่องแล้ว · ยังไม่มีเลข · เป็นหัวข้อที่มี PDR', () => {
-  const acked = { kind: 'scent_dev', acknowledgedAt: '2026-08-20T09:00:00Z' };
-  assert.equal(pdrRefNoError(acked), null);
+// ── ช่วงเปลี่ยนผ่าน: เดือนนี้กรอกเอง เดือนหน้าระบบออกให้ (มติผู้ใช้ 2026-08-20) ──
+//
+// ⚠️ เกณฑ์คือ **เดือนของ `acknowledgedAt` ของใบ ไม่ใช่วันที่ตอนกด** — ยึดวันที่ตอนกด
+// เมื่อไร ใบเดือน ส.ค. ที่ยังไม่ได้กรอกจะค้างไม่มีเลขถาวรตั้งแต่ 1 ก.ย.
+const AUG = { kind: 'scent_dev', acknowledgedAt: '2026-08-20T09:00:00Z' };
+const SEP = { kind: 'scent_dev', acknowledgedAt: '2026-09-02T09:00:00Z' };
+
+test('เดือนตัดรอบอยู่ที่ค่าเดียว และแบ่งใบเป็นสองโหมด', () => {
+  assert.equal(PDR_REF_AUTO_FROM_MONTH, '2609');
+  assert.equal(pdrRefMode(AUG), 'manual');
+  assert.equal(pdrRefMode(SEP), 'auto');
+  // ยังไม่รับเรื่อง = ยังไม่มีวันให้ตัดสิน
+  assert.equal(pdrRefMode({ kind: 'scent_dev' }), null);
+});
+
+test('รับเรื่องปลายเดือน ส.ค. ตามเวลาไทยยังเป็นโหมดกรอกเอง', () => {
+  // 2026-08-31 17:30Z = 1 ก.ย. 00:30 ที่กรุงเทพ ⇒ ข้ามไปโหมดออโต้แล้ว
+  assert.equal(pdrRefMode({ kind: 'scent_dev', acknowledgedAt: '2026-08-31T17:30:00Z' }), 'auto');
+  assert.equal(pdrRefMode({ kind: 'scent_dev', acknowledgedAt: '2026-08-31T16:00:00Z' }), 'manual');
+});
+
+test('ด่านออกเลขอัตโนมัติย้อนหลัง: ต้องรับเรื่องแล้ว · ยังไม่มีเลข · มี PDR · อยู่โหมดออโต้', () => {
+  assert.equal(pdrRefNoError(SEP), null);
   assert.match(pdrRefNoError({ kind: 'scent_dev' }), /ยังไม่ได้รับเรื่อง/);
-  assert.match(pdrRefNoError({ ...acked, pdrRefNo: '200869-016' }), /มีเลขที่เอกสารแล้ว/);
-  assert.match(pdrRefNoError({ kind: 'info', acknowledgedAt: '2026-08-20T09:00:00Z' }), /ไม่มีแบบฟอร์ม PDR/);
+  assert.match(pdrRefNoError({ ...SEP, pdrRefNo: '020969-001' }), /มีเลขที่เอกสารแล้ว/);
+  assert.match(pdrRefNoError({ kind: 'info', acknowledgedAt: SEP.acknowledgedAt }), /ไม่มีแบบฟอร์ม PDR/);
+  // 🪤 ตัวสำคัญที่สุด — ใบเดือน ส.ค. ห้ามออกอัตโนมัติ เพราะตัวนับเดือน 2608 ไม่เคย
+  // ถูกใช้ (เดือนนั้นกรอกมือล้วน) ⇒ ปล่อยให้ออกจะได้เลขที่ RD พิมพ์ไปแล้วบนกระดาษ
+  assert.match(pdrRefNoError(AUG), /ต้องกรอกเลขเอง/);
 });
 
 test('ใบที่เดินไปไกลแล้วยังออกเลขย้อนหลังได้ (ยึด acknowledgedAt ไม่ใช่ status)', () => {
   assert.equal(pdrRefNoError({
-    kind: 'scent_dev', status: 'closed', acknowledgedAt: '2026-07-02T09:00:00Z',
+    kind: 'scent_dev', status: 'closed', acknowledgedAt: '2026-10-02T09:00:00Z',
   }), null);
 });
 
-test('รับเรื่อง: ออกเลขเฉพาะหัวข้อที่มี PDR และยังไม่มีเลข', () => {
-  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'scent_dev' }), true);
-  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'info' }), false);
-  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'scent_dev', pdrRefNo: '200869-016' }), false);
+test('รับเรื่อง: ออกเลขให้เองเฉพาะตั้งแต่เดือนตัดรอบเป็นต้นไป', () => {
+  const sep = new Date('2026-09-02T09:00:00Z');
+  const aug = new Date('2026-08-20T09:00:00Z');
+  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'scent_dev' }, sep), true);
+  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'scent_dev' }, aug), false);
+  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'info' }, sep), false);
+  assert.equal(issuesPdrRefNoOnAcknowledge({ kind: 'scent_dev', pdrRefNo: '020969-001' }, sep), false);
+});
+
+test('กรอกเอง: บังคับรูปแบบ DDMMYY-XXX แต่ไม่บังคับว่าวันต้องตรงกับวันที่รับเรื่อง', () => {
+  // ลอกเลขจากกระดาษที่ลงวันคนละวันกับที่ระบบบันทึก — ต้องผ่าน
+  assert.equal(pdrRefManualError(AUG, '170869-016'), null);
+  assert.match(pdrRefManualError(AUG, ''), /กรุณากรอก/);
+  assert.match(pdrRefManualError(AUG, 'FM-RD-01-170869-016'), /DDMMYY-XXX/);
+  assert.match(pdrRefManualError(AUG, '170869-16'), /DDMMYY-XXX/);
+  assert.match(pdrRefManualError(SEP, '020969-001'), /ระบบออกเลขให้เอง/);
+  assert.match(pdrRefManualError({ kind: 'scent_dev' }, '170869-016'), /ยังไม่ได้รับเรื่อง/);
+});
+
+test('กรอกเอง: เลขไทยแปลงให้เงียบ ๆ (พิมพ์บนแป้นไทยแล้วมองไม่ออกว่าต่างตรงไหน)', () => {
+  assert.equal(normalizePdrRefNo('  ๒๐๐๘๖๙-๐๑๖ '), '200869-016');
+  assert.equal(pdrRefManualError(AUG, '๒๐๐๘๖๙-๐๑๖'), null);
+});
+
+test('กรอกเอง: ใบที่ปิด/ยกเลิกแล้วแก้เลขเดิมไม่ได้ แต่ใบที่ยังไม่เคยมีเลขยังกรอกได้', () => {
+  const closed = { ...AUG, status: 'closed' };
+  assert.match(pdrRefManualError({ ...closed, pdrRefNo: '170869-016' }, '170869-017'), /ปิดแล้ว/);
+  // 🪤 ใบเก่าที่ปิดไปแล้วโดยไม่เคยมีเลข ยังต้องกรอกได้ — ไม่งั้นเอกสารของใบนั้น
+  // ไม่มีวันมีเลขเลย ทั้งที่กระดาษจริงมี
+  assert.equal(pdrRefManualError(closed, '170869-016'), null);
+});
+
+test('ปุ่มเขียนว่า "แก้" เฉพาะเลขที่กรอกเองและใบยังไม่จบ', () => {
+  assert.equal(canEditPdrRefManual({ pdrRefManual: true, status: 'acknowledged' }), true);
+  assert.equal(canEditPdrRefManual({ pdrRefManual: true, status: 'closed' }), false);
+  // เลขที่ระบบออกให้ล็อกทันที ไม่ว่าใบจะเดินไปถึงไหน
+  assert.equal(canEditPdrRefManual({ pdrRefManual: false, status: 'acknowledged' }), false);
+  assert.equal(canEditPdrRefManual({ status: 'acknowledged' }), false);
 });
