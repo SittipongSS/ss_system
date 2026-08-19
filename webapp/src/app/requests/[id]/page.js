@@ -154,25 +154,28 @@ export default function RequestDetailPage() {
   const [allScents, setAllScents] = useState([]);
   // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
   const [pricing, setPricing] = useState(null);
-  /* ⭐ ทะเบียนที่ **ฟอร์มส่งงานสูตร** ต้องใช้ (มติผู้ใช้ 2026-08-19) — ฟอร์มตัวเดียวกับ
-     หน้าทะเบียนสูตร ⇒ ต้องมีของครบชุดเหมือนกัน: ลูกค้า · กลิ่น · สูตร (สายพันธุ์)
-     ⚠️ โหลดเฉพาะใบที่มีแถวพัฒนาสูตรจริง — ใบสายเอกสาร/ราคาไม่มีวันเปิดฟอร์มนี้
+  /* ⭐ ทะเบียนที่ **ฟอร์มส่งงาน** ต้องใช้ (มติผู้ใช้ 2026-08-19) — ทั้งสายสูตรและสาย
+     กลิ่นใช้ฟอร์มตัวเดียวกับหน้าทะเบียน ⇒ ต้องมีของครบชุดเหมือนกัน
+     · สายสูตร: ลูกค้า · กลิ่น · สูตร (สายพันธุ์)   · สายกลิ่น: ลูกค้า (กลิ่นใช้ `allScents`)
+     ⚠️ โหลดเฉพาะใบที่มีฟอร์มนี้จริง — ใบสายเอกสาร/ราคาไม่มีวันเปิด
      ⚠️ โหลดตั้งแต่เปิดใบ ไม่ใช่ตอนกดส่ง — โหลดตอนกดจะได้ฟอร์มที่ช่องเลือกว่างเปล่า
      ในวินาทีแรก (โรคเดียวกับ productTypes ข้างบน) */
-  const [formulaRegistry, setFormulaRegistry] = useState({
-    customers: [], scents: [], formulas: [],
-  });
+  const [registry, setRegistry] = useState({ customers: [], scents: [], formulas: [] });
   const hasFormulaRows = (req?.items || []).some((i) => i.lineKind === "product_dev");
+  const needsCustomers = hasFormulaRows || req?.kind === "scent_dev";
   useEffect(() => {
-    if (!hasFormulaRows) return;
+    if (!needsCustomers) return;
     const get = (url) => fetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
     Promise.all([
-      get("/api/customers"), get("/api/master/scents"), get("/api/master/formulas"),
-    ]).then(([customers, scents, formulas]) => setFormulaRegistry({ customers, scents, formulas }));
-  }, [hasFormulaRows]);
+      get("/api/customers"),
+      // กลิ่น/สูตรใช้เฉพาะฟอร์มสูตร — ใบสายกลิ่นไม่ต้องลากทั้งทะเบียนมาเปล่า ๆ
+      hasFormulaRows ? get("/api/master/scents") : [],
+      hasFormulaRows ? get("/api/master/formulas") : [],
+    ]).then(([customers, scents, formulas]) => setRegistry({ customers, scents, formulas }));
+  }, [needsCustomers, hasFormulaRows]);
   /* ค่าตั้งต้นของฟอร์มส่งงาน — ลูกค้า/กลิ่น/หมวด เป็นของที่ **แถวรู้อยู่แล้ว** ⇒ เติมให้
      แล้วล็อกไว้ (ดู prop `locked` ของ FormulaForm) · ลูกค้ายกจากใบ ไม่ใช่จากกลิ่น
      เพื่อให้ตรงกับที่ server ตัดสิน (route ของแถว) */
@@ -411,9 +414,9 @@ export default function RequestDetailPage() {
       const at = row.targetItemId
         ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}`
         : `รายการที่ ${i + 1}`;
-      if (!String(row.name ?? "").trim()) return `${at}: ต้องระบุชื่อกลิ่น`;
-      if (!String(row.code ?? "").trim()) return `${at}: ต้องระบุรหัสกลิ่น`;
-      const clash = codeConflict(row.code, i, delivery, codes);
+      if (!String(row.scent?.name ?? "").trim()) return `${at}: ต้องระบุชื่อกลิ่น`;
+      if (!String(row.scent?.code ?? "").trim()) return `${at}: ต้องระบุรหัสกลิ่น`;
+      const clash = codeConflict(row.scent?.code, i, delivery, codes);
       if (clash) return `${at}: ${clash}`;
     }
     return null;
@@ -1350,9 +1353,9 @@ export default function RequestDetailPage() {
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={row.formula} disabled={saving}
-                  customers={formulaRegistry.customers}
-                  scents={formulaRegistry.scents}
-                  formulas={formulaRegistry.formulas}
+                  customers={registry.customers}
+                  scents={registry.scents}
+                  formulas={registry.formulas}
                   categories={productTypes}
                   locked={["customerId", "scentId", "categoryCode"]}
                   onChange={(value) => setBulkReady({
@@ -1486,9 +1489,9 @@ export default function RequestDetailPage() {
                 <FormulaForm
                   mode="create" canSetCode codeRequired
                   value={hopDraft.formula} disabled={saving}
-                  customers={formulaRegistry.customers}
-                  scents={formulaRegistry.scents}
-                  formulas={formulaRegistry.formulas}
+                  customers={registry.customers}
+                  scents={registry.scents}
+                  formulas={registry.formulas}
                   categories={productTypes}
                   locked={["customerId", "scentId", "categoryCode"]}
                   onChange={(value) => setHopDraft({ ...hopDraft, formula: value })}
@@ -1728,6 +1731,7 @@ export default function RequestDetailPage() {
             </p>
             <ScentDeliveryFields
               rows={delivery} onChange={setDelivery} scents={allScents}
+              customers={registry.customers}
               customerId={req.customerId} disabled={saving}
               briefs={req.briefs || []}
             />

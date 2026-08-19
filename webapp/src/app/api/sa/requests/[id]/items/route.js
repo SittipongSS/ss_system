@@ -107,6 +107,10 @@ export async function POST(request, { params }) {
         customerName: before.customerName,
         dealId: before.dealId || null,
         derivedFromScentId: row.derivedFromScentId,
+        // ⭐ ช่องเสริมของทะเบียนที่ฟอร์มร่วมเปิดให้กรอกตั้งแต่ตอนส่ง (2026-08-19) —
+        // เดิมต้องไปเปิดทะเบียนแก้ทีหลัง ซึ่งคือจังหวะที่ข้อมูลสองที่เริ่มต่างกัน
+        customerTradeName: row.customerTradeName,
+        note: row.note,
       }, user, { accepted: true });
       // ⭐ **วันผลิตอยู่บนตัวกลิ่น · วันส่งลูกค้ายังไม่เกิด** (มติผู้ใช้ 2026-08-08 ·
       // ม-66 · mig 0224) — ตอนนี้ของเพิ่งออกจากมือ RD มาถึงฝ่ายขาย ยังไม่ถึงลูกค้า

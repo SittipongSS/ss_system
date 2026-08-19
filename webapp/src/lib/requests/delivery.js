@@ -37,8 +37,12 @@ export function normalizeDeliveryRows(input, {
   for (let i = 0; i < raw.length; i += 1) {
     const row = raw[i] || {};
     const at = `รายการที่ ${i + 1}`;
+    /* ⭐ **ฟอร์มเดียวกับทะเบียนกลิ่น** (มติผู้ใช้ 2026-08-19) — ของที่เข้าทะเบียนอยู่ใน
+       ก้อน `scent` ชื่อช่องชุดเดียวกับ `ScentForm` · ที่เหลือ (บรีฟ · รายละเอียด ·
+       แถวรอบแก้) เป็นของแถวคำร้อง จึงยังอยู่ระดับบนเหมือนเดิม */
+    const scent = row.scent || {};
 
-    const name = String(row.name ?? '').trim().replace(/\s+/g, ' ');
+    const name = String(scent.name ?? '').trim().replace(/\s+/g, ' ');
     if (!name) return { rows: [], error: `${at}: ต้องระบุชื่อกลิ่น` };
     if (name.length > 200) return { rows: [], error: `${at}: ชื่อกลิ่นยาวเกิน 200 ตัวอักษร` };
     // ตัวตนของกลิ่นคือ ชื่อ + ลูกค้า (scents_identity_uk) — ส่งชื่อซ้ำในครั้งเดียว
@@ -75,7 +79,7 @@ export function normalizeDeliveryRows(input, {
       if (linkError) return { rows: [], error: `${at}: ${linkError}` };
     }
 
-    const code = String(row.code ?? '').trim();
+    const code = String(scent.code ?? '').trim();
     if (!code) return { rows: [], error: `${at}: ต้องระบุรหัสกลิ่น` };
     if (code.length > 100) return { rows: [], error: `${at}: รหัสกลิ่นยาวเกิน 100 ตัวอักษร` };
     const codeKey = code.toLowerCase();
@@ -95,11 +99,19 @@ export function normalizeDeliveryRows(input, {
 
     // ⚠️ ไม่กรอก = ถือว่าผลิตเสร็จวันเดียวกับที่ส่งมอบ — บังคับกรอกทั้งสองช่องทุกแถว
     // แล้วคนที่ผลิตกับส่งวันเดียวกันจริง ๆ (ซึ่งเป็นเคสส่วนใหญ่) ต้องพิมพ์ซ้ำเปล่า ๆ
-    const producedAt = String(row.producedAt ?? '').trim() || readyAt;
+    const producedAt = String(scent.producedAt ?? '').trim() || readyAt;
     if (!ISO_DATE.test(producedAt)) return { rows: [], error: `${at}: วันที่ผลิตกลิ่นไม่ถูกต้อง` };
 
     const spec = String(row.spec ?? '').trim();
     if (spec.length > 2000) return { rows: [], error: `${at}: รายละเอียดยาวเกิน 2000 ตัวอักษร` };
+
+    // ── ช่องเสริมของทะเบียน (มาพร้อมฟอร์มร่วม) — เพดานเดียวกับ normalizeScentInput
+    const customerTradeName = String(scent.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
+    if (customerTradeName.length > 200) {
+      return { rows: [], error: `${at}: ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร` };
+    }
+    const note = String(scent.note ?? '').trim();
+    if (note.length > 2000) return { rows: [], error: `${at}: หมายเหตุยาวเกิน 2000 ตัวอักษร` };
 
     rows.push({
       // แถวที่จะเติมของลงไป — null = สร้างแถวใหม่ตามปกติ
@@ -110,12 +122,15 @@ export function normalizeDeliveryRows(input, {
       readyAt,
       producedAt,
       spec: spec || null,
+      // ⚠️ สองช่องนี้ติดไปกับ **ตัวกลิ่นในทะเบียน** ไม่ใช่แถวคำร้อง (ดู route ของ /items)
+      customerTradeName: customerTradeName || null,
+      note: note || null,
       // "เลขที่อ้างอิง" — กลิ่นตัวนี้แก้มาจากตัวไหน · ด่านข้ามลูกค้าอยู่ฝั่ง server
       // (assertDerivedFromScent) เพราะต้องอ่านแถวต้นทางมาเทียบ
       // ⚠️ รอบแก้บังคับให้ชี้กลับกลิ่นตัวเดิมเสมอ — เป็นค่าที่ระบบรู้อยู่แล้ว
       // ไม่ใช่คำถาม · ปล่อยให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว
       derivedFromScentId: slot?.derivedFromScentId
-        || String(row.derivedFromScentId ?? '').trim() || null,
+        || String(scent.derivedFromScentId ?? '').trim() || null,
     });
   }
   return { rows, error: null };
