@@ -47,7 +47,7 @@ test('หัวข้อที่ไม่มี PDR ไม่มีสิทธ
 test('⚠️ ข้อความบอกว่าตอนนี้เป็นของใคร ไม่ใช่แค่ "แก้ไม่ได้"', () => {
   // คนที่กดแล้วโดนปฏิเสธต้องรู้ว่าต้องไปบอกใครให้แก้ให้
   assert.match(editPdrError(req({ status: 'draft' }), rd), /เฉพาะผู้เปิดคำร้อง/);
-  assert.match(editPdrError(req({ status: 'acknowledged' }), ae), /เฉพาะฝ่าย RD/);
+  assert.match(editPdrError(req({ status: 'acknowledged' }), ae), /เฉพาะ RD/);
 });
 
 // ⭐ ประโยคนี้มีมาตั้งแต่ mig 0216 แต่ถูกเรียกที่ route เท่านั้น ⇒ **จอไม่เคยแสดง**

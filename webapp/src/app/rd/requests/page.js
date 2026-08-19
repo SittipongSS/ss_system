@@ -20,7 +20,7 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
-import { DEPT_QUEUE_TABS, deptQueueRows, queueCounts } from "@/lib/requests/queueBoard";
+import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 
 const DEPT = "RD";
@@ -29,9 +29,9 @@ const DEPT = "RD";
    (มติผู้ใช้ 2026-08-15) ไม่ใช่ความเร่งแล้ว ⇒ ประโยค "เรื่องที่ยังไม่มีใครรับขึ้นก่อน
    เสมอ" ถูกถอดออก · ความเร่งยังเลือกได้จากปุ่ม "เรียง" */
 const TAB_BLURB = {
-  todo: "งานที่รอฝ่ายเราทำต่อ — ใบใหม่สุดอยู่บนสุด สลับเป็นเรียงตามความเร่งได้ที่ปุ่มเรียง",
-  waiting: "ส่งของไปแล้ว รอฝ่ายขายรับ/ส่งลูกค้า/ตอบกลับ — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
-  history: "เรื่องที่จบแล้วทั้งหมดของฝ่าย",
+  todo: "งานที่รอ RD ทำต่อ — ใบใหม่สุดอยู่บนสุด สลับเป็นเรียงตามความเร่งได้ที่ปุ่มเรียง",
+  waiting: "ส่งของไปแล้ว รอผู้ขอรับ/ส่งลูกค้า/ตอบกลับ — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
+  history: "เรื่องที่จบแล้วทั้งหมดของ RD",
 };
 
 export default function RdRequestsPage() {
@@ -45,7 +45,7 @@ export default function RdRequestsPage() {
   const [loadError, setLoadError] = useState("");
 
   // แท็บอยู่ใน URL — ลิงก์ตรงและปุ่มย้อนกลับของเบราว์เซอร์ทำงานได้จริง
-  const tabKeys = DEPT_QUEUE_TABS.map((t) => t.key);
+  const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
   const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
   const setTab = (next) => router.replace(`/rd/requests?tab=${next}`, { scroll: false });
@@ -120,7 +120,7 @@ export default function RdRequestsPage() {
           className="scope-toggle"
           value={tab}
           onChange={setTab}
-          options={DEPT_QUEUE_TABS.map((t) => ({
+          options={deptQueueTabs(DEPT).map((t) => ({
             value: t.key,
             label: t.label,
             // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่าง

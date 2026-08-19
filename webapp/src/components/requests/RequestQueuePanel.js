@@ -20,7 +20,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { WorkspaceSection } from "@/components/ui/Workspace";
 import { matchesQueueSearch, useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { fmtDate, NA } from "@/lib/format";
+import { fmtDate, fmtTime, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
@@ -35,6 +35,8 @@ import {
 import { REQUEST_COLUMNS, requestColumns } from "@/lib/requests/queueColumns";
 import { requestQueueTrack } from "@/lib/requests/queueTrack";
 import { requestAssignee } from "@/lib/requests/assign";
+import { requestSideText, requestWaitLabel } from "@/lib/requests/replyTurn";
+import { requestClosure } from "@/lib/requests/closure";
 import { RequestStatusBadge } from "@/components/requests/requestUi";
 import StatusBadge from "@/components/ui/StatusBadge";
 // รางขั้นตัวเดียวกับตารางใบสั่งขาย/ทะเบียนการชำระ — คำร้องเดินสี่ขั้น (queueTrack)
@@ -94,6 +96,7 @@ export default function RequestQueuePanel({
   // ⚠️ `doc` กว้างขึ้นเพราะรางสี่ขั้นย้ายเข้ามาอยู่ในเซลล์เดียวกัน (2026-08-18)
   const COL_WIDTH = {
     next: styles.colNext, due: styles.colDue, progress: styles.colProgress, doc: styles.colDoc,
+    deal: styles.colDeal, created: styles.colDue, closed: styles.colDue,
   };
   // รับได้ทั้ง "full"/"search"/"none" และ true/false ของผู้เรียกเดิม
   const toolLevel = tools === true ? "full" : tools === false ? "search" : tools;
@@ -175,6 +178,10 @@ export default function RequestQueuePanel({
   const progressBlock = (ask, p) => {
     const queueStatus = requestQueueStatus(ask);
     const track = requestQueueTrack(ask);
+    /* ⚠️ **สามชิ้นบนของก้อนนี้เป็นของคอลัมน์ `next`** (มติผู้ใช้ 2026-08-20 · เอาป้าย
+       สถานะกลับเข้าตาราง) — ป้าย · ชื่อคนที่ถืออยู่ · เหตุผลตีกลับ วาดที่นั่นแล้ว ⇒
+       ที่นี่เหลือแค่รางกับตัวเลข ไม่งั้นข้อมูลเดียวกันขึ้นสองช่องในแถวเดียว */
+    const hasStatusCol = cols.includes("next");
     return (
       <>
         {/* ⭐ **ป้ายกับรางไม่ขึ้นพร้อมกัน** (มติผู้ใช้ 2026-08-18 — "ป้ายกับเส้นมันซ้ำมั้ย")
@@ -185,16 +192,17 @@ export default function RequestQueuePanel({
             (`useResponsiveView` — แคบกว่านั้นเป็นการ์ดซึ่งมีป้ายของตัวเอง) ⇒ กติกาความกว้าง
             อีกชั้นมีแต่ทำให้ทรงเปลี่ยนหลายจังหวะโดยไม่ได้อะไรกลับมา
             ⚠️ ใบยกเลิกไม่มีราง ⇒ ยังต้องมีป้าย ไม่งั้นเซลล์จะว่างเปล่า */}
-        {track.cancelled && (
+        {track.cancelled && !hasStatusCol && (
           <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
         )}
         {/* ใครถืออยู่ (มติ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
             ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง */}
-        {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
+        {!hasStatusCol && queueStatus.owner === "dept" && requestAssignee(ask).name
+          && !cols.includes("owner") && (
           <div className={styles.subText}>{requestAssignee(ask).name}</div>
         )}
         {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
-        {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
+        {!hasStatusCol && queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
           <div className={`${styles.subText} ${styles.overdue}`}>
             {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
           </div>
@@ -225,22 +233,40 @@ export default function RequestQueuePanel({
          แดง = ตีกลับ ⇒ กวาดตาลงคอลัมน์แล้วรู้ทันทีว่าใบไหนเป็นงานเรา
          ⚠️ ใช้ `<StatusBadge>` กลาง ไม่ใช่ `.ui-badge` + สีเองแบบเดิม — โทนสี
          ประกาศที่ Badge.module.css ที่เดียวทั้งระบบ */
+      /* ⭐ **ป้าย + ราง อยู่คอลัมน์เดียวกัน** (มติผู้ใช้ 2026-08-20) — สองอย่างนี้ตอบ
+         คำถามต่อกันเป็นชุด ("ตาใคร" แล้ว "เดินถึงไหนแล้ว") · ของเดิมป้ายอยู่คอลัมน์แรก
+         ส่วนรางอยู่ท้ายเซลล์ "คำร้อง" ⇒ ตาต้องกระโดดข้ามชื่อเรื่องกลับไปกลับมา
+         ⚠️ เซลล์ "คำร้อง" เหลือ **ตัวตนของใบล้วน ๆ** (เลขที่ · เรื่อง · ชนิด/ลูกค้า)
+         และไม่วาดรางซ้ำเมื่อมีคอลัมน์นี้อยู่ */
       case "next": {
         const queueStatus = requestQueueStatus(ask);
+        const track = requestQueueTrack(ask);
         return (
           <>
             <StatusBadge tone={queueStatus.tone} size="sm">{queueStatus.label}</StatusBadge>
-            {/* ⭐ **ใครถืออยู่** (มติผู้ใช้ 2026-08-11 · แบบ ก) — ป้ายบอกได้แค่ *ฝั่งไหน*
-                ชื่อคนที่รับเรื่องคือสิ่งที่ทำให้ตามงานต่อได้จริง
-                ⚠️ โชว์เฉพาะตอนเป็นตาฝ่าย และเฉพาะตอนไม่มีคอลัมน์ "ผู้รับเรื่อง"
-                แยกอยู่แล้ว — ไม่งั้นชื่อเดียวกันขึ้นสองช่องในแถวเดียว */}
-            {queueStatus.owner === "dept" && requestAssignee(ask).name && !cols.includes("owner") && (
-              <div className={styles.subText}>{requestAssignee(ask).name}</div>
-            )}
+            {/* ⚠️ **ไม่มีชื่อผู้รับผิดชอบใต้ป้ายแล้ว** (มติผู้ใช้ 2026-08-20 — ทับมติ
+                2026-08-11 แบบ ก ที่ยกชื่อคนมาไว้ตรงนี้) · ชื่อบัญชีในระบบยาวจริง
+                ("ProjectCo.Jeab : Project Management, R&D") ⇒ ตกสองบรรทัดในช่องแคบ
+                แล้วกลบทั้งป้ายและรางที่อยู่ใต้มัน — โรคเดียวกับที่เคยทำให้ป้ายปุ่ม
+                "มอบหมาย" ต้องตัดชื่อออก (IS-26080021)
+                ⚠️ อยากเห็นว่าใครถือ = เปิดคอลัมน์ "ผู้รับผิดชอบ" (มีในทะเบียนคอลัมน์
+                อยู่แล้ว) หรือดูในใบ — ไม่ใช่ยัดกลับมาที่นี่ */}
             {/* ใบตีกลับ — ใครส่งคืนและเพราะอะไร อ่านได้จากคิวเลย */}
             {queueStatus.bounced && (ask.bouncedByName || ask.bounceReason) && (
               <div className={`${styles.subText} ${styles.overdue}`}>
                 {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
+              </div>
+            )}
+            {/* ใบยกเลิกไม่มีรางให้เดิน — ป้ายด้านบนพูดจบแล้ว (ลากรางที่ตายแล้วมาแสดง
+                ทำให้อ่านเหมือนใบยังเดินอยู่ · กติกาเดียวกับ `queueTrack`) */}
+            {!track.cancelled && (
+              <div className={styles.docProgress}>
+                <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />
+                {p.total > 0 && (
+                  <div className={styles.subText}>
+                    {p.done} / {p.total} {requestLineNoun(ask.kind)}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -288,8 +314,10 @@ export default function RequestQueuePanel({
                   "ถึงฝ่าย" ของตัวเอง (ชุด linked) หรือใต้ชนิด (ชุด queue) */}
               {cols.includes("dept") || cols.includes("kind") ? "" : ` → ${ask.dept}`}
             </div>
-            {/* สถานะ + รางสี่ขั้น ต่อท้ายในเซลล์เดียวกัน (มติผู้ใช้ 2026-08-18) */}
-            {!cols.includes("progress") && (
+            {/* ⚠️ **ก้อนสถานะ+ราง ย้ายไปคอลัมน์ "สถานะ" แล้ว** (มติผู้ใช้ 2026-08-20) —
+                วาดที่นี่เฉพาะตอนไม่มีทั้งคอลัมน์ `next` และ `progress` (การ์ดบนหน้าดีล
+                ส่งรายชื่อคอลัมน์เอง) ⇒ ไม่มีทางขึ้นสองที่ในตารางเดียว */}
+            {!cols.includes("progress") && !cols.includes("next") && (
               <div className={styles.docProgress}>{progressBlock(ask, p)}</div>
             )}
           </>
@@ -312,43 +340,103 @@ export default function RequestQueuePanel({
               ? <div className={styles.subText}>→ {ask.dept}</div> : null}
           </>
         );
-      /* ⭐ รหัส AR บน · ชื่อกิจการ · แบรนด์ล่าง — ทรงเดียวกับเซลล์ลูกค้าของตาราง QT
-         (มติ "รหัสบน · ชื่อล่าง" 2026-08-12) · แบรนด์มาจากดีลต้นทาง ⇒ ใบที่ไม่ผูกดีล
-         ไม่มีแบรนด์ ซึ่งถูกแล้ว ไม่ใช่ข้อมูลหาย */
+      /* ⭐ **สองบรรทัด: รหัส AR + แบรนด์ บน · ชื่อกิจการ ล่าง** (มติผู้ใช้ 2026-08-20)
+         ยังเป็นทรง "รหัสบน · ชื่อล่าง" (มติ 2026-08-12) แต่แบรนด์ขึ้นไปเกาะบรรทัดรหัส
+         แทนที่จะกินบรรทัดที่สาม ⇒ ทุกแถวเตี้ยลงหนึ่งบรรทัดในคิวที่มี 100+ ใบ
+         ⚠️ แบรนด์มาจากดีลต้นทาง ⇒ ใบที่ไม่ผูกดีลไม่มีแบรนด์ ซึ่งถูกแล้ว ไม่ใช่ข้อมูลหาย
+         ⚠️ แบรนด์ยาวถูกตัดด้วย ellipsis ไม่ใช่ตกบรรทัด — ตกบรรทัดเมื่อไรก็กลับไปเป็น
+         สามบรรทัดเหมือนเดิม (รหัสห้ามตัด จึงเป็นตัวที่ได้ที่ก่อนเสมอ) */
       case "customer":
         if (!ask.customerName && !ask.customerArCode) return <span className={styles.muted}>{NA}</span>;
         return (
           <>
-            {ask.customerArCode ? <span className="ar-code ar-code-block">{ask.customerArCode}</span> : null}
+            {(ask.customerArCode || ask.customerBrand) && (
+              <div className={styles.customerHead}>
+                {ask.customerArCode ? <span className="ar-code ar-code-block">{ask.customerArCode}</span> : null}
+                {/* จุดคั่นแบบเดียวกับ "รหัส · ชื่อ" ที่ใช้ทั้งระบบ — ขึ้นเฉพาะตอนมีของ
+                    ทั้งสองข้าง ไม่งั้นจะเหลือจุดลอยหน้าหรือหลังคำ */}
+                {ask.customerArCode && ask.customerBrand
+                  ? <span className={styles.dot} aria-hidden="true">·</span> : null}
+                {ask.customerBrand
+                  ? <span className={`${styles.subText} ${styles.customerBrand}`}>{ask.customerBrand}</span>
+                  : null}
+              </div>
+            )}
             <div className={styles.customerCell}>{ask.customerName || <span className={styles.muted}>{NA}</span>}</div>
-            {ask.customerBrand ? <div className={styles.subText}>{ask.customerBrand}</div> : null}
           </>
         );
       /* ⚠️ ช่องว่างเมื่อไม่ด่วน ไม่ใช่ขีดหรือคำว่า "ปกติ" — คอลัมน์นี้มีไว้ให้ **สะดุดตา**
          ตอนกวาดลงมา · เติมอะไรทุกแถวเท่ากับกลบสิ่งที่ตั้งใจให้เห็น */
       case "urgent":
         return ask.urgent ? <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span> : null;
+      /* ⭐ **รหัสบน · ชื่อดีลล่าง** (มติผู้ใช้ 2026-08-20) — ทรงเดียวกับเซลล์ลูกค้า
+         ⚠️ ใบภายในไม่ผูกดีลได้ขีด ไม่ใช่ช่องว่าง (ขีด = ถามแล้วไม่มี · ช่องว่าง = ระบบ
+         ไม่รู้ ซึ่งคนละเรื่อง — กติกาเดียวกับทั้งระบบ) */
+      case "deal":
+        if (!ask.dealId) return <span className={styles.muted}>{NA}</span>;
+        return (
+          <>
+            <div className={styles.docNoCell}>
+              <strong className="mono">{ask.dealCode || ask.dealId}</strong>
+            </div>
+            {ask.dealName ? <div className={styles.subText}>{ask.dealName}</div> : null}
+          </>
+        );
+      /* ⭐ **วันที่อยู่บรรทัดบนเสมอ ทั้งสามคอลัมน์วัน** (มติผู้ใช้ 2026-08-20) — ของเดิม
+         ช่องกำหนดส่งเอา "อีก 15 วัน" ขึ้นก่อน ⇒ สามคอลัมน์ที่อยู่ติดกันอ่านคนละทรง
+         ตากวาดแนวนอนแล้วสะดุดทุกช่อง · คำขยาย (เหลือกี่วัน · ใครตอบเมื่อไร) ลงบรรทัดรอง
+         ⭐ **เวลาต่อท้ายวันที่ร้องขอ** — ใบที่เข้ามาวันเดียวกันหลายใบ เรียงลำดับก่อนหลัง
+         ไม่ได้เลยถ้ามีแต่วันที่ (คิวตั้งต้นเรียงด้วยวันที่ร้องขอ) */
       case "created":
-        return ask.createdAt
-          ? <span className={styles.smallCell}>{fmtDate(ask.createdAt)}</span>
-          : <span className={styles.muted}>{NA}</span>;
+        if (!ask.createdAt) return <span className={styles.muted}>{NA}</span>;
+        return (
+          <>
+            <div className={styles.smallCell}>{fmtDate(ask.createdAt)}</div>
+            <div className={styles.subText}>{fmtTime(ask.createdAt)}</div>
+          </>
+        );
       /* ⭐ สองฝั่งของการปิดเรื่อง: บน = ฝ่ายผู้รับตอบเสร็จ · ล่าง = ผู้ขอกดปิด
          ⚠️ ใบที่ยังไม่จบต้องอ่านออกว่า "ยังไม่ปิด" ไม่ใช่ช่องว่างที่อ่านได้ว่าข้อมูลหาย */
       case "closed": {
+        // วันที่ขึ้นก่อน คำอธิบายลงบรรทัดรอง (กติกาเดียวกับอีกสองช่องวัน)
         /* 🐞 ใบยกเลิกเก็บเวลาไว้ที่ `cancelledAt` ไม่ใช่ `closedAt` ⇒ เคยขึ้น "ยังไม่ปิด"
            ทั้งที่ใบจบไปแล้ว (เจอตอนไล่ดูแท็บประวัติ 2026-08-15) · ยกเลิกไม่มีสองฝั่ง
            ให้แยก — ไม่มีใครตอบ ไม่มีใครปิด มีแค่วันที่ยกเลิก */
         if (ask.cancelledAt) {
-          return <span className={styles.smallCell}>ยกเลิก {fmtDate(ask.cancelledAt)}</span>;
+          return (
+            <>
+              <div className={styles.smallCell}>{fmtDate(ask.cancelledAt)}</div>
+              <div className={styles.subText}>ยกเลิก</div>
+            </>
+          );
         }
         if (!ask.answeredAt && !ask.closedAt) return <span className={styles.muted}>ยังไม่ปิด</span>;
+        /* ⚠️ **บรรทัดบนต้องเป็นวันเสมอ** — ใบที่ฝ่ายตอบแล้วแต่ผู้ขอยังไม่ปิด ถ้าเอา
+           คำว่า "ผู้ขอยังไม่ปิด" ขึ้นก่อน คอลัมน์นี้จะมีบางแถวขึ้นต้นด้วยคำ บางแถว
+           ขึ้นต้นด้วยเลข ⇒ กวาดตาลงคอลัมน์แล้วเทียบวันกันไม่ได้ · เอาวันที่มีจริง
+           (ปิด > ตอบ) ขึ้นบน แล้วให้บรรทัดรองบอกว่าวันนั้นคือวันอะไรและค้างที่ใคร */
+        /* ⭐ **ปิดสองฝั่ง** (มติผู้ใช้ 2026-08-20) — ตราเดียวยังไม่จบ ⇒ บรรทัดบนโชว์วัน
+           ของฝั่งที่กดแล้ว บรรทัดรองบอกว่ารออีกฝั่ง · ครบเมื่อไรถึงโชว์วันทั้งคู่ */
+        if (!requestClosure(ask).complete) {
+          return (
+            <>
+              <div className={styles.smallCell}>{fmtDate(ask.closedAt || ask.answeredAt)}</div>
+              <div className={styles.subText}>
+                {ask.answeredAt
+                  ? requestWaitLabel(ask, "requester", "ปิด")
+                  : requestWaitLabel(ask, "dept", "ตอบ")}
+              </div>
+            </>
+          );
+        }
         return (
           <>
-            <div className={styles.smallCell}>
-              {ask.answeredAt ? `ฝ่ายตอบ ${fmtDate(ask.answeredAt)}` : "ฝ่ายยังไม่ตอบ"}
-            </div>
+            <div className={styles.smallCell}>{fmtDate(ask.closedAt || ask.answeredAt)}</div>
             <div className={styles.subText}>
-              {ask.closedAt ? `ผู้ขอปิด ${fmtDate(ask.closedAt)}` : "ผู้ขอยังไม่ปิด"}
+              {[
+                ask.answeredAt ? `${requestSideText(ask, "dept", "ตอบ")} ${fmtDate(ask.answeredAt)}` : null,
+                ask.closedAt ? `${requestSideText(ask, "requester", "ปิด")} ${fmtDate(ask.closedAt)}` : null,
+              ].filter(Boolean).join(" · ")}
             </div>
           </>
         );
@@ -368,18 +456,20 @@ export default function RequestQueuePanel({
         if (bounced) {
           return (
             <>
-              <div className={styles.overdue}>{bounced.note}</div>
-              <div className={styles.subText}>{fmtDate(bounced.date)}</div>
+              <div className={styles.smallCell}>{fmtDate(bounced.date)}</div>
+              <div className={`${styles.subText} ${styles.overdue}`}>{bounced.note}</div>
             </>
           );
         }
         if (due) {
           return (
             <>
-              <div className={due.overdue ? styles.overdue : undefined}>
-                {due.note || fmtDate(due.date)}
-              </div>
-              {due.note && <div className={styles.subText}>{fmtDate(due.date)}</div>}
+              <div className={styles.smallCell}>{fmtDate(due.date)}</div>
+              {due.note && (
+                <div className={`${styles.subText} ${due.overdue ? styles.overdue : ""}`.trim()}>
+                  {due.note}
+                </div>
+              )}
             </>
           );
         }
@@ -481,7 +571,7 @@ export default function RequestQueuePanel({
             ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
             : emptyText
               || (scope === "queue"
-                ? `ไม่มีคำร้องรอ${REQUEST_DEPT_LABELS[dept] ? `ฝ่าย${REQUEST_DEPT_LABELS[dept].name}` : "ฝ่ายคุณ"}ตอบ`
+                ? `ไม่มีคำร้องรอ ${dept || "ฝ่ายคุณ"} ตอบ`
                 : "ยังไม่มีคำร้องของคุณ — กด \"เปิดคำร้อง\" เพื่อเริ่ม")}
         </EmptyState>
       ) : view === "list" ? (

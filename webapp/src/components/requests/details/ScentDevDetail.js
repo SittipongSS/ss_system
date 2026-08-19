@@ -110,7 +110,7 @@ export default function ScentDevDetail({
               ซึ่งอ่านเหมือนระบบพัง (มติผู้ใช้ 2026-08-09 — ถามว่า "แท็บงานแทบไม่มีอะไร") */}
           {!(request.items || []).length && (
             <EmptyState icon={FlaskConical}>
-              ยังไม่มี direction จากฝ่าย {request.dept}
+              ยังไม่มี direction จาก {request.dept}
               <small>
                 RD จะส่งกลิ่นเข้ามาทีละตัวหลังรับเรื่อง — แต่ละตัวขึ้นเป็นแถวที่เดินสถานะของตัวเอง
                 · ระหว่างนี้ดูสิ่งที่ขอไว้ได้ที่แท็บ &ldquo;แบบฟอร์ม PDR&rdquo;

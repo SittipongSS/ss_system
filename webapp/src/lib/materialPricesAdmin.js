@@ -250,11 +250,14 @@ export async function loadRequests(supabase, {
   let deals = [];
   if (dealIds.length) {
     const { data, error: dealError } = await supabase
-      .from('sales_deals').select('id, metadata').in('id', dealIds);
+      .from('sales_deals').select('id, metadata, code, title').in('id', dealIds);
     if (dealError) throw dealError;
     deals = data || [];
   }
   const brandByDeal = new Map(deals.map((d) => [d.id, String(d.metadata?.brand || '').trim()]));
+  // ⭐ ดีลเป็นคอลัมน์ของตัวเองในคิวแล้ว (มติผู้ใช้ 2026-08-20) — query เดิมอยู่แล้ว
+  // (ดึงมาทำแบรนด์) แค่ขอสองคอลัมน์เพิ่ม ⇒ ไม่มี query เพิ่มสักตัว
+  const dealById = new Map(deals.map((d) => [d.id, d]));
 
   // ⚠️ เดิมมีขั้นดึง `dept_request_item_tiers` มาแปะรายแถว — ตารางถูก DROP ใน
   // mig 0219 พร้อมหัวข้อขอราคา (ม-28) · ราคาในโมเดลใหม่เป็นราคาเดียวต่อแถว
@@ -268,6 +271,8 @@ export async function loadRequests(supabase, {
     customerArCode: arById.get(a.customerId) ?? null,
     // ชื่อแบรนด์ที่คนอ่านออก (TH · EN) — ดีลเก็บข้อความดิบ ทะเบียนของลูกค้าเป็นตัวแปล
     customerBrand: brandDisplayFromList(brandsById.get(a.customerId), brandByDeal.get(a.dealId)) || null,
+    dealCode: dealById.get(a.dealId)?.code ?? null,
+    dealName: dealById.get(a.dealId)?.title ?? null,
   }));
 }
 

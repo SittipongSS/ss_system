@@ -19,15 +19,15 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
-import { DEPT_QUEUE_TABS, deptQueueRows, queueCounts } from "@/lib/requests/queueBoard";
+import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 
 const DEPT = "FN";
 
 const TAB_BLURB = {
-  todo: "งานที่รอฝ่ายเราทำต่อ — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ",
-  waiting: "ออกเอกสารไปแล้ว รอฝ่ายขายรับ/ส่งลูกค้า — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
-  history: "เรื่องที่จบแล้วทั้งหมดของฝ่าย",
+  todo: "งานที่รอ FN ทำต่อ — เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ",
+  waiting: "ออกเอกสารไปแล้ว รอผู้ขอรับ/ส่งลูกค้า — ไม่ใช่งานค้างของเรา แต่ต้องตามได้",
+  history: "เรื่องที่จบแล้วทั้งหมดของ FN",
 };
 
 export default function FinanceRequestsPage() {
@@ -39,7 +39,7 @@ export default function FinanceRequestsPage() {
   const [loadError, setLoadError] = useState("");
 
   // แท็บอยู่ใน URL — ลิงก์ตรงและปุ่มย้อนกลับของเบราว์เซอร์ทำงานได้จริง
-  const tabKeys = DEPT_QUEUE_TABS.map((t) => t.key);
+  const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
   const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
   const setTab = (next) => router.replace(`/finance/requests?tab=${next}`, { scroll: false });
@@ -101,7 +101,7 @@ export default function FinanceRequestsPage() {
           className="scope-toggle"
           value={tab}
           onChange={setTab}
-          options={DEPT_QUEUE_TABS.map((t) => ({
+          options={deptQueueTabs(DEPT).map((t) => ({
             value: t.key,
             label: t.label,
             // นับจากชุดเดียวกับที่แท็บนั้นแสดงจริง — ตัวเลขบนแท็บกับตารางข้างล่างขัดกันไม่ได้

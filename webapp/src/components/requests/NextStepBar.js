@@ -56,7 +56,12 @@ const OUTCOME_BUTTON = {
   rejected: { tone: "danger", variant: "outline" },
 };
 
-const WAITING_TEXT = { dept: "รอฝ่ายปลายทาง", requester: "รอฝ่ายขาย" };
+/* ⚠️ **ป้ายพูดชื่อฝ่ายจริงเมื่อผู้เรียกส่งมาให้** (มติผู้ใช้ 2026-08-20) — คำว่า
+   "ฝ่ายปลายทาง"/"ฝ่ายขาย" เป็นคำถอยของผู้เรียกที่ไม่มีใบอยู่ในมือเท่านั้น
+   (ฝั่งผู้ขอไม่ใช่ฝ่ายขายเสมอไป — RD เปิดใบขอเอกสารจาก FN ก็มี) */
+const waitingText = (owner, { deptLabel, requesterLabel }) => (owner === "dept"
+  ? `รอ ${deptLabel || "ฝ่ายปลายทาง"}`
+  : `รอ ${requesterLabel || "ผู้ขอ"}`);
 
 // ── ปุ่ม/ป้ายก้าวถัดไปของ "แถวเดียว" — ก้อนกลางที่สองที่วางใช้ร่วมกัน ──────
 //
@@ -64,13 +69,20 @@ const WAITING_TEXT = { dept: "รอฝ่ายปลายทาง", requeste
 // "ก้าวถัดไปก็อยากในรายการเอกสารเลย") โดยไม่โคลนกติกา hop/เจ้าของ/ปฏิเสธ —
 // สองที่ประกอบเองเมื่อไรก็เพี้ยนกันเมื่อนั้น (โรคเดิมของฟอร์มสร้าง/แก้)
 // คืน null = แถวจบแล้ว ไม่มีก้าวให้เดิน
-export function RowStepActions({ row, canDept = false, canRequester = false, busy = false, onHop, onPrice }) {
+export function RowStepActions({
+  row, canDept = false, canRequester = false, busy = false, onHop, onPrice,
+  deptLabel = null, requesterLabel = null,
+}) {
   const stage = rowStage(row);
   const hop = hopAtStage(row, stage);
   if (!hop) return null;
   const owner = OWNER_OF[hop];
   const isMine = owner === "dept" ? canDept : canRequester;
-  if (!isMine) return <span className={styles.waiting}>{WAITING_TEXT[owner]}</span>;
+  if (!isMine) {
+    return (
+      <span className={styles.waiting}>{waitingText(owner, { deptLabel, requesterLabel })}</span>
+    );
+  }
   if (hop === "outcome") {
     return (
       <div className={styles.actions}>

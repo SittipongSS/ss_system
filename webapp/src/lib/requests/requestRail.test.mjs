@@ -90,20 +90,30 @@ test('⭐ ขั้นกลางสรุปจากแถว — "รอใ�
   const base = { status: 'acknowledged', committedDueDate: '2026-08-25' };
   // ยังไม่มีแถว = ยังไม่ได้ส่งงาน — เฉพาะหัวข้อที่ฝ่ายส่งของจริง (deliversRows)
   // ⚠️ คำต้องตรงกับปุ่ม (ม-120: "ส่งงาน" ทุกสาย) — รางเล่าก้าวเดียวกับที่ปุ่มกด
-  assert.match(requestRailSteps(scent(base)).steps[3].label, /รอฝ่าย RD ส่งงาน/);
+  assert.match(requestRailSteps(scent(base)).steps[3].label, /รอ RD ส่งงาน/);
   // ⭐ หัวข้อไม่มีแถวเลย (สอบถามข้อมูล) ไม่มี "ของ" ในสาย — รอ "คำตอบ" (มติผู้ใช้
   // 2026-08-09: "แก้เป็น รอฝ่าย RD ตอบ")
+  /* ⭐ หัวข้อเธรดล้วน — ป้ายพลิกตามคนโพสต์ล่าสุด (มติผู้ใช้ 2026-08-20) · ยังไม่มี
+     ใครพิมพ์ = ตาฝ่าย · คำเดียวกับคิว (`requestReplyTurn` ก้อนเดียว) */
   assert.match(requestRailSteps(info({ ...base, kind: 'info' })).steps[3].label,
-    /รอฝ่าย RD ตอบ/);
+    /รอ RD ตอบ/);
+  assert.match(
+    requestRailSteps(info({ ...base, kind: 'info', requesterDept: 'SA', lastReplySide: 'dept' })).steps[3].label,
+    /รอ SA ตอบ/,
+  );
   // คอนเฟิร์มแล้วยังไม่มีราคา — ใบค้างถาวรถ้าไม่มีใครเห็น
   const confirmed = scent({ ...base, items: [{ ackAt: at, readyAt: at, pickedUpAt: at, sentAt: at, outcome: 'confirmed' }] });
   assert.equal(requestRailSteps(confirmed).steps[3].label, 'รอใส่ราคา');
   // ของอยู่ที่ RD
   const atRd = scent({ ...base, items: [{ ackAt: at }] });
-  assert.match(requestRailSteps(atRd).steps[3].label, /ฝ่าย RD กำลังทำ/);
+  assert.match(requestRailSteps(atRd).steps[3].label, /^RD กำลังทำ$/);
   // ของอยู่ที่ฝ่ายขาย
   const atSa = scent({ ...base, items: [{ ackAt: at, readyAt: at }] });
-  assert.equal(requestRailSteps(atSa).steps[3].label, 'รอฝ่ายขายทำต่อ');
+  assert.equal(requestRailSteps(atSa).steps[3].label, 'รอผู้ขอทำต่อ');
+  assert.equal(
+    requestRailSteps(scent({ ...atSa, requesterDept: 'SA' })).steps[3].label,
+    'รอ SA ทำต่อ',
+  );
 });
 
 /* ⭐ **รับเรื่องแล้วแต่ยังไม่แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — รับเรื่องคือการ
@@ -117,13 +127,13 @@ test('⭐ ขั้น "กำหนดส่ง" — ยังไม่แจ�
   const before = requestRailSteps(undated);
   assert.equal(before.steps[2].id, 'commitDue');
   assert.equal(before.index, 2, 'ยังไม่แจ้งวัน = ไฮไลต์ต้องค้างที่ขั้นกำหนดส่ง');
-  assert.match(before.steps[2].hint, /รอฝ่าย RD แจ้งวัน/);
+  assert.match(before.steps[2].hint, /รอ RD แจ้งวัน/);
 
   // แจ้งวันแล้ว — ขั้นนี้พกวันจริง แล้วไฮไลต์เดินต่อไปขั้นกลางที่เล่าเรื่องงาน
   const after = requestRailSteps(scent({ ...undated, committedDueDate: '2026-08-25' }));
   assert.equal(after.steps[2].hint, '25/08/2026');
   assert.equal(after.index, 3);
-  assert.match(after.steps[3].label, /ฝ่าย RD กำลังทำ/);
+  assert.match(after.steps[3].label, /^RD กำลังทำ$/);
 });
 
 // ── บรรทัดใต้ชื่อขั้น = หลักฐานของใบนี้ ไม่ใช่นิยามของกระบวนการ ──────────
@@ -159,7 +169,7 @@ test('ขั้นที่ยังไม่ถึงต้องบอกว�
   const { steps } = requestRailSteps(scent({ status: 'draft', requestedByName: 'Supisara' }), {});
   for (const step of steps) assert.ok(step.hint, `ขั้น ${step.id} ไม่มีบรรทัดรอง`);
   const pending = steps.find((s) => s.id === 'pending');
-  assert.match(pending.hint, /ส่งถึงฝ่าย RD/);
+  assert.match(pending.hint, /ส่งถึง RD/);
   // ยื่นแล้วแต่ยังไม่มีใครรับ = โชว์วันที่ยื่น
   const sent = requestRailSteps(scent({ status: 'pending', submittedAt: '2026-08-10T07:44:00Z' }), {});
   assert.match(sent.steps.find((s) => s.id === 'pending').hint, /ยื่นเมื่อ 10\/08\/2026/);
