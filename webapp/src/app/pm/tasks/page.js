@@ -850,7 +850,7 @@ export default function TasksPage() {
               const due = requestDueTone(q, todayISO);
               return (
                 <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-7)" }}>
-                  <RequestStatusBadge status={q.status} />
+                  <RequestStatusBadge request={q} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
                   <Link href={`/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
                     {q.code ? `${q.code} · ` : ""}{q.title}

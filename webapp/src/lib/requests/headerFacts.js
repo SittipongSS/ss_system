@@ -146,7 +146,7 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
 
   facts.push({
     key: 'requestedDue',
-    label: 'ผู้ขอต้องการคำตอบ',
+    label: 'ผู้ขอต้องการรับงาน',
     value: wanted ? fmtDate(wanted) : '—',
     sub: wanted ? countdownLabel(wanted, now) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
   });
@@ -158,7 +158,9 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     // ⚠️ "ยังไม่ระบุ" ไม่ใช่ขีด — ขีดอ่านได้ทั้ง "ไม่มีกำหนด" และ "ระบบไม่รู้"
     // ซึ่งคนละเรื่องกัน (บทเรียนเดียวกับคอลัมน์วันในคิว RD)
     value: committed ? fmtDate(committed) : 'ยังไม่ระบุ',
-    sub: committed ? (gap?.text || null) : 'ระบุตอนกดรับเรื่อง',
+    // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
+    // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
+    sub: committed ? (gap?.text || null) : 'ฝ่ายยังไม่ได้แจ้งกำหนดส่ง',
     tone: committed ? gap?.tone || null : 'muted',
   });
 

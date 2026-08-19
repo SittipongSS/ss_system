@@ -387,7 +387,7 @@ export default function RequestQueuePanel({
       case "progress":
         return progressBlock(ask, p);
       case "status":
-        return <RequestStatusBadge status={ask.status} />;
+        return <RequestStatusBadge request={ask} />;
       default:
         return null;
     }

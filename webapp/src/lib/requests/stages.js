@@ -2,9 +2,7 @@
 // คืนข้อความไทย หรือ null ถ้าผ่าน · **API และหน้าจอเรียกตัวเดียวกัน** ปุ่มกับ server
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
-import {
-  requestDeliversRows, requestHasItems, requestRequiresCommittedDue,
-} from '@/lib/master/requestTypes';
+import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
@@ -40,27 +38,50 @@ export function submitRequestError(request, items = []) {
   if (requestHasItems(request.kind) && !items.length) {
     return 'ต้องมีรายการอย่างน้อย 1 รายการก่อนส่ง';
   }
-  // ⭐ วันที่คาดหวังบังคับทุกคำร้อง (มติผู้ใช้ 2026-08-08) — ร่างใหม่ถูกด่าน
+  // ⭐ วันที่ต้องการรับงานบังคับทุกคำร้อง (มติผู้ใช้ 2026-08-08) — ร่างใหม่ถูกด่าน
   // `requestShapeError` กันตั้งแต่ POST แล้ว · ด่านนี้กัน **ร่างเก่า** ที่เกิดก่อนมติ
   // ไม่ให้หลุดตอนกดส่ง — ร่างพวกนั้นไม่มีช่องแก้วัน ทางออกคือลบแล้วเปิดใหม่
   // ซึ่งข้อความต้องบอกตรง ๆ ไม่ใช่ให้ไปหาช่องที่ไม่มีอยู่
   if (!String(request.requestedDueDate ?? '').trim()) {
-    return 'ใบนี้ไม่มีวันที่คาดหวัง (ร่างเก่าก่อนกติกาบังคับวัน) — ลบร่างแล้วเปิดใหม่';
+    return 'ใบนี้ไม่มีวันที่ต้องการรับงาน (ร่างเก่าก่อนกติกาบังคับวัน) — ลบร่างแล้วเปิดใหม่';
   }
   return null;
 }
 
-export function acknowledgeRequestError(request, { committedDueDate = null } = {}) {
+// ⭐ **รับเรื่อง = ตัดรอบ ไม่ใช่การรับปากวัน** (มติผู้ใช้ 2026-08-19) — ทับมติ
+// 2026-08-08 ที่บังคับวันกำหนดส่งตอนกดรับเรื่องทุกหัวข้อ
+//
+// 🐞 เหตุผลที่มติเดิมพัง: ฝ่ายรับเรื่องบ่อยครั้ง **ยังตอบวันไม่ได้จริง ๆ** ตอนกดรับ
+// (รอวัตถุดิบ · รอฝ่ายอื่นตอบก่อน) ⇒ ทางเลือกเหลือสองทางที่แย่ทั้งคู่: เดาวันไปก่อน
+// แล้วเลื่อนทีหลัง (วันที่รับปากเลิกมีความหมาย) หรือไม่กดรับเลย (ใบค้างที่
+// "รอรับเรื่อง" ทั้งที่ฝ่ายดูอยู่แล้ว และนาฬิกาของผู้ขอไม่เดิน)
+//
+// ⇒ แยกเป็นสองก้าว: กดรับ = ตัดรอบเข้าฝ่าย · แจ้งกำหนดส่ง = รับปากวัน
+// (`commitDueRequestError`) · ระหว่างสองก้าวใบอยู่สถานะที่จอเรียกว่า **รอกำหนดส่ง**
+// (`acknowledged` + ยังไม่มี `committedDueDate`) ซึ่งคิวนับเป็นงานค้างของฝ่าย
+export function acknowledgeRequestError(request) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'draft') return 'คำร้องนี้ยังไม่ถูกส่ง';
   if (request.status !== 'pending') return 'คำร้องนี้รับเรื่องไปแล้ว';
-  // ⭐ **บังคับวันกำหนดส่งเฉพาะหัวข้อที่ประกาศธง** (มติผู้ใช้ 2026-08-06) — รับเรื่อง
-  // โดยไม่ผูกวันคือการรับปากว่า "จะทำ" โดยไม่บอกว่าเมื่อไร และเป็นวันที่ใช้นับว่า
-  // เลยกำหนดหรือยัง ⇒ ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า
-  // ⭐ **ทั้งระบบแล้ว** (มติผู้ใช้ 2026-08-08) — `requestRequiresCommittedDue` คืน
-  // true เสมอ · เงื่อนไขคงรูปไว้เผื่อวันที่มีหัวข้อยกเว้นจริง ๆ ค่อยกลับมาประกาศ
-  if (requestRequiresCommittedDue(request.kind) && !String(committedDueDate ?? '').trim()) {
-    return 'ต้องระบุวันกำหนดส่งตอนรับเรื่อง';
+  return null;
+}
+
+// ── แจ้งกำหนดส่ง: ก้าวที่สองของฝ่ายผู้รับ (มติผู้ใช้ 2026-08-19) ──────────
+//
+// ⚠️ **ครั้งแรกเท่านั้น** — เปลี่ยนวันที่รับปากไปแล้วต้องไปทาง
+// `rescheduleRequestError` ซึ่งบังคับให้เธรดเห็นว่าเลื่อนจากวันไหนเป็นวันไหน ·
+// ปล่อยให้ก้าวนี้เขียนทับได้เมื่อไร การเลื่อนวันก็มีทางลัดที่ไม่ทิ้งร่องรอยทันที
+export function commitDueRequestError(request, { committedDueDate = null } = {}) {
+  if (!request) return 'ไม่พบคำร้อง';
+  if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — รับเรื่องก่อนแจ้งกำหนดส่ง';
+  if (!REQUEST_OPEN_STATUSES.includes(request.status)) {
+    return request.status === 'cancelled' ? 'คำร้องนี้ถูกยกเลิกไปแล้ว' : 'คำร้องนี้ปิดไปแล้ว';
+  }
+  if (String(request.committedDueDate ?? '').trim()) {
+    return 'ใบนี้แจ้งกำหนดส่งไปแล้ว — ใช้ปุ่มเลื่อนวันกำหนดส่งแทน';
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(committedDueDate ?? '').trim())) {
+    return 'ต้องระบุวันกำหนดส่ง';
   }
   return null;
 }
@@ -72,11 +93,15 @@ export function acknowledgeRequestError(request, { committedDueDate = null } = {
 // ไปแล้ว และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง ⇒ ผู้เรียกต้องลงเธรดว่าเลื่อนจาก
 // วันไหนเป็นวันไหน ไม่งั้น "ไม่เคยเลยกำหนดสักใบ" จะกลายเป็นเรื่องจริงที่ไร้ความหมาย
 //
-// ⚠️ **ไม่ใช่ทางลัดของการรับเรื่อง** — ต้องมี `acknowledgedAt` ก่อน ไม่งั้นจะเป็น
-// ทางอ้อมที่ผูกวันได้โดยไม่ผ่านด่านของ `acknowledgeRequestError`
+// ⚠️ **ไม่ใช่ทางลัดของการรับเรื่อง** — ต้องมี `acknowledgedAt` ก่อน · และไม่ใช่
+// ทางลัดของการ **แจ้ง** วันครั้งแรกด้วย: ใบที่ยังไม่มี `committedDueDate` ต้องผ่าน
+// `commitDueRequestError` ซึ่งพูดคำว่า "แจ้งกำหนดส่ง" ตรงกับปุ่มและเธรด
 export function rescheduleRequestError(request, { committedDueDate = null } = {}) {
   if (!request) return 'ไม่พบคำร้อง';
   if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — ยังไม่มีวันให้เลื่อน';
+  if (!String(request.committedDueDate ?? '').trim()) {
+    return 'ใบนี้ยังไม่ได้แจ้งกำหนดส่ง — ใช้ปุ่มแจ้งกำหนดส่งแทน';
+  }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) {
     return request.status === 'cancelled' ? 'คำร้องนี้ถูกยกเลิกไปแล้ว' : 'คำร้องนี้ปิดไปแล้ว';
   }

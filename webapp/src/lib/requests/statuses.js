@@ -37,6 +37,31 @@ export const REQUEST_STATUS_TONES = {
 // คำร้องที่ "ยังเดินอยู่" — ใช้กรองคิวและนับงานค้างของฝ่าย
 export const REQUEST_OPEN_STATUSES = ['pending', 'acknowledged'];
 
+// ── "รอกำหนดส่ง" — สถานะที่ derive ไม่ใช่คอลัมน์ (มติผู้ใช้ 2026-08-19) ──────
+//
+// ⭐ **รับเรื่อง = ตัดรอบ · แจ้งกำหนดส่ง = รับปากวัน** — ฝ่ายกดรับได้ตั้งแต่วันที่ยัง
+// ตอบไม่ได้ว่าเสร็จเมื่อไร (รอวัตถุดิบ · รอฝ่ายอื่น) ⇒ ระหว่างสองก้าวนี้ใบมีสถานะจริง
+// ที่คนอ่านต้องเห็น: "ฝ่ายรับไปแล้ว แต่ยังไม่มีวันที่รับปาก"
+//
+// ⚠️ **ไม่เพิ่มค่าลง `REQUEST_STATUSES`** — สถานะใหม่หนึ่งค่าแปลว่าทุกด่าน ทุกตัวกรอง
+// ทุกรายงาน และ trigger ที่ DB ต้องรู้จักมันครบ ทั้งที่ข้อเท็จจริงอยู่ในคอลัมน์
+// `committedDueDate` อยู่แล้ว ⇒ derive ที่นี่ที่เดียว แล้วจอถามตัวนี้แทนอ่าน `status` ดิบ
+export function requestAwaitingDue(request) {
+  return request?.status === 'acknowledged'
+    && !String(request?.committedDueDate ?? '').trim();
+}
+
+// ป้ายสถานะที่คนเห็น — คำ + โทน · ใช้แทน `REQUEST_STATUS_LABELS[status]` ทุกที่ที่
+// มีทั้งใบอยู่ในมือ (ที่ไหนมีแค่ค่า `status` เปล่า ๆ ยังใช้ทะเบียนตรง ๆ ได้)
+export function requestStatusView(request) {
+  if (requestAwaitingDue(request)) return { label: 'รอกำหนดส่ง', tone: 'warning' };
+  const status = request?.status;
+  return {
+    label: REQUEST_STATUS_LABELS[status] || status || '—',
+    tone: REQUEST_STATUS_TONES[status] || 'neutral',
+  };
+}
+
 // ── สถานะของ "บรรทัด" — ชุดเดียวใช้ได้ทุกรูปร่าง (mig 0204) ───────────────
 //
 // ⭐ เดิมเป็น pending/quoted/no_quote ซึ่งพูดภาษาราคาล้วน · พอบรรทัดรับได้ 4 รูปร่าง

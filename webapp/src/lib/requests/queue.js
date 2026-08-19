@@ -3,13 +3,19 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 
 // ── กำหนดวันตอบ ─────────────────────────────────────────────────────────
-// ยกมาจากระบบสอบถามเดิม: ผู้ตอบระบุ "วันที่จะตอบ" ตอนกดรับเรื่อง แล้ววันนั้นเป็น
-// เส้นวัด KPI (ไม่ใช่วันที่ผู้ขออยากได้ ซึ่งเป็นความคาดหวังฝ่ายเดียว)
+// ผู้ตอบรับปากวันด้วยก้าว "แจ้งกำหนดส่ง" (แยกจากการรับเรื่อง — มติผู้ใช้ 2026-08-19)
+// แล้ววันนั้นเป็นเส้นวัด KPI (ไม่ใช่วันที่ผู้ขอต้องการรับงาน ซึ่งเป็นความคาดหวังฝ่ายเดียว)
 export function requestDueTone(request, todayIso) {
   if (!request || !todayIso) return null;
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
   const due = request.committedDueDate;
-  if (!due) return { label: 'ยังไม่รับเรื่อง', color: 'var(--text-3)' };
+  // ⚠️ ไม่มีวัน = สองเรื่องคนละเรื่อง (มติผู้ใช้ 2026-08-19) — ยังไม่มีใครรับ vs
+  // รับแล้วแต่ยังไม่แจ้งวัน · คนอ่านต้องรู้ว่าต้องไปตามใคร
+  if (!due) {
+    return request.status === 'pending'
+      ? { label: 'ยังไม่รับเรื่อง', color: 'var(--text-3)' }
+      : { label: 'รอกำหนดส่ง', color: 'var(--text-3)' };
+  }
   if (String(due) < String(todayIso)) return { label: 'เลยกำหนด', color: 'var(--red)' };
   if (String(due) === String(todayIso)) return { label: 'ครบกำหนดวันนี้', color: 'var(--amber)' };
   return null;

@@ -8,6 +8,7 @@
 // ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestDeliversRows } from '@/lib/master/requestTypes';
+import { requestAwaitingDue } from '@/lib/requests/statuses';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
 import { fmtDate } from '@/lib/format';
 
@@ -26,7 +27,7 @@ import { fmtDate } from '@/lib/format';
 const evidence = (...parts) => parts.filter(Boolean).join(' · ') || null;
 
 // ขั้นกลาง — สรุปจากแถวข้างใน ไม่ใช่คำตายตัว
-function middleStep(request, hasItems) {
+function middleStep(request) {
   const items = request.items || [];
   const summary = requestRowSummary(items);
   const awaitingPrice = items.filter((i) => rowStage(i) === 'awaiting_price').length;
@@ -54,7 +55,10 @@ function middleStep(request, hasItems) {
   if (summary.waitingRequester) {
     return { label: 'รอฝ่ายขายทำต่อ', hint: `${summary.waitingRequester} รายการ` };
   }
-  return { label: hasItems ? 'กำลังหาราคา' : 'กำลังดำเนินการ', hint: 'ฝ่ายเจ้าของรับเรื่องแล้ว' };
+  // ⚠️ **ห้ามกลับไปใช้คำว่า "กำลังหาราคา"** (มติผู้ใช้ 2026-08-19) — คำนั้นเหลือมาจาก
+  // ตอนที่คำร้องมีแต่สายขอราคาวัสดุ · วันนี้ใบส่วนใหญ่เป็นกลิ่น/สูตร/เอกสารที่ไม่มี
+  // ราคาให้หาสักบาท ⇒ รางเล่าเรื่องที่ไม่ได้เกิดขึ้น
+  return { label: 'กำลังดำเนินการ', hint: 'ฝ่ายเจ้าของรับเรื่องแล้ว' };
 }
 
 /**
@@ -85,9 +89,19 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
       )
         || (request.submittedAt ? `ยื่นเมื่อ ${fmtDate(request.submittedAt)}` : `ส่งถึงฝ่าย ${request.dept}`),
     },
+    /* ⭐ **ขั้น "กำหนดส่ง" เป็นขั้นของตัวเอง** (มติผู้ใช้ 2026-08-19) — รับเรื่อง =
+       ตัดรอบเข้าฝ่าย · การรับปากวันกดทีหลังได้เมื่อฝ่ายรู้จริง (รอวัตถุดิบ · รอฝ่ายอื่น)
+       ⚠️ ต้องเป็นขั้นแยก **ไม่ใช่คำในขั้นกลาง** — รางบนตารางรายการก็มีขั้นนี้
+       (`queueTrack`) · สองที่เล่าจำนวนขั้นไม่ตรงกันเมื่อไร คนอ่านจะนับขั้นไม่ตรงกัน */
+    {
+      id: 'commitDue',
+      label: 'กำหนดส่ง',
+      hint: evidence(request.committedDueDate && fmtDate(request.committedDueDate))
+        || (request.acknowledgedAt ? `รอฝ่าย ${request.dept} แจ้งวัน` : 'ฝ่ายรับปากวันหลังรับเรื่อง'),
+    },
     // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
     // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม
-    { id: 'acknowledged', ...middleStep(request, hasItems) },
+    { id: 'acknowledged', ...middleStep(request) },
     {
       id: 'answered',
       label: 'ตอบแล้ว',
@@ -103,15 +117,19 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
     },
   ];
 
+  /* ⚠️ **index ต้องนับขั้นที่เรนเดอร์จริง ไม่ใช่ลำดับของสถานะ** — บั๊ก "จุดไฮไลต์ชี้ผิด
+     ขั้น" ที่ผู้ใช้เคยเจอเกิดจากตรงนี้พอดี ตอนที่รางมีขั้นแทรกแต่ map ยังนับจากสถานะดิบ
+     ⇒ ขั้น "กำหนดส่ง" (2026-08-19) แทรกที่ตำแหน่ง 2 ⇒ ใบที่รับเรื่องแล้วแต่ยังไม่แจ้งวัน
+     หยุดที่ 2 · แจ้งแล้วถึงเดินต่อไปขั้นกลางที่ 3 */
   const index = request.status === 'draft'
     ? 0
     : request.status === 'pending'
       ? 1
       : request.status === 'acknowledged'
-        ? 2
+        ? (requestAwaitingDue(request) ? 2 : 3)
         : request.status === 'answered'
-          ? 3
-          : 4;
+          ? 4
+          : 5;
 
   return { steps, index };
 }
