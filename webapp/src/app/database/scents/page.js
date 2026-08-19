@@ -34,7 +34,8 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import StatusNotice from "@/components/ui/StatusNotice";
-import ScentForm, { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
+import { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
+import ScentFormModal from "@/components/database/ScentFormModal";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -46,7 +47,7 @@ import { businessDate } from "@/lib/businessDate";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
-  isScentRegistrar, isScentUsable, matchesScentSource, scentSourceLabel,
+  isScentRegistrar, isScentUsable, matchesScentSource, scentFormPayload, scentSourceLabel,
 } from "@/lib/master/scents";
 
 const todayIso = () => businessDate();
@@ -250,31 +251,16 @@ export default function ScentsPage() {
 
   const submitForm = async () => {
     const v = form.value;
-    const payload = {
-      name: v.name,
-      customerId: v.customerId,
+    /* ⚠️ **payload สร้างที่ lib ที่เดียว** (`scentFormPayload`) — หน้ารายละเอียดก็เปิด
+       ฟอร์มตัวนี้ได้แล้ว (2026-08-19) · เขียนสองที่เมื่อไรมันเลื่อนออกจากกันทันที
+       ⚠️ ชื่อลูกค้าหยิบจากชุดที่โหลดมา — server ไม่เชื่ออยู่ดี แต่ payload เดิมส่งมา
+       ตลอด จึงคงไว้ให้เหมือนเดิมเป๊ะ */
+    const payload = scentFormPayload(v, {
+      canSetCode: registrar,
+      mode: form.mode,
       customerName: customers.find((c) => c.id === v.customerId)?.name || null,
-      customerTradeName: v.customerTradeName,
-      derivedFromScentId: v.derivedFromScentId,
-      note: v.note,
-    };
-    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
-    // API ซึ่งยอมเฉพาะ RD ที่รับกลิ่นเข้าทะเบียนได้
-    /* 🐞 **ส่งรหัสไปเสมอ รวมตอนช่องว่าง** — ของเดิมส่งเฉพาะตอนไม่ว่าง ⇒ ผู้ใช้
-       ลบรหัสทิ้งแล้วกดบันทึก หน้าจอไม่ส่งอะไรไปเลย server จึงคงค่าเดิมไว้แล้วตอบ
-       200 ⇒ **ขึ้นว่าบันทึกสำเร็จทั้งที่ไม่มีอะไรเปลี่ยน** (ผู้ใช้ทัก 2026-08-10)
-       ⚠️ ส่งค่าว่างไปแล้ว server เป็นคนตัดสิน: ร่างล้างได้ · กลิ่นที่รับเข้าทะเบียน
-       แล้วตอบกลับเป็นข้อความไทยว่าทำไมไม่ได้ — เงียบแย่กว่าถูกปฏิเสธ */
-    if (registrar) payload.code = v.code.trim();
+    });
     if (form.mode === "create") {
-      // ⭐ กลิ่นเก่าที่เพิ่มเข้าทะเบียนเอง — วันที่/สถานะเกิดไปแล้วในอดีต (ม-75)
-      // ⚠️ ส่งเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง
-      // จะมีวันผลิตหรือสถานะของตัวเองไม่ได้ (server บังคับซ้ำที่ `newScentStatus`)
-      if (registrar && v.code.trim()) {
-        if (v.producedAt) payload.producedAt = v.producedAt;
-        if (v.sentAt) payload.sentAt = v.sentAt;
-        payload.status = v.status;
-      }
       const done = await call("/api/master/scents", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -661,27 +647,15 @@ export default function ScentsPage() {
       {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล (ชิดขวา + gap
           มาตรฐาน) — เดิมใช้ <div className="modal-actions"> ซึ่ง **ไม่มี CSS อยู่จริง**
           ปุ่มเลยติดกัน 0px ชิดซ้าย (เจอตอนวัดจริง 2026-08-12) */}
-      <Modal
-        open={!!form} onClose={() => setForm(null)} size="md" dismissible={!saving}
-        title={form?.mode === "edit" ? `แก้ข้อมูลกลิ่น — ${form.scent.name}` : "เพิ่มกลิ่นเข้าทะเบียน"}
-        footer={form && (
-          <>
-            <Button variant="quiet" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
-          </>
-        )}
-      >
-        {form && (
-          <ScentForm
-            mode={form.mode} value={form.value} customers={customers}
-            // ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม —
-            // ทะเบียนโหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
-            scents={scents} editingId={form.scent?.id || null}
-            canSetCode={registrar} disabled={saving}
-            onChange={(value) => setForm({ ...form, value })}
-          />
-        )}
-      </Modal>
+      {/* ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม — ทะเบียน
+          โหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม */}
+      <ScentFormModal
+        form={form} saving={saving}
+        customers={customers} scents={scents} canSetCode={registrar}
+        onChange={(value) => setForm({ ...form, value })}
+        onClose={() => setForm(null)}
+        onSubmit={submitForm}
+      />
 
       {/* รับเข้าทะเบียน — RD ใส่รหัสจริงของฝ่าย */}
       <Modal

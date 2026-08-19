@@ -19,6 +19,7 @@ import {
   derivedFromError,
   SCENT_SOURCES, matchesScentSource, scentSourceKind, scentSourceLabel,
   NEW_SCENT_STATUSES, newScentStatus,
+  scentFormPayload,
 } from './scents.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -245,4 +246,29 @@ test('⭐ ฝ่ายขายที่เสนอร่างได้ draft 
   assert.equal(newScentStatus('active', false), 'draft');
   assert.equal(newScentStatus('developing', false), 'draft');
   assert.equal(newScentStatus(undefined, false), 'draft');
+});
+
+/* ── ฟอร์ม → payload (ใช้ร่วมหน้ารายการกับหน้ารายละเอียด · 2026-08-19) ────── */
+test('payload ของฟอร์มกลิ่น: วัน/สถานะของเดิมส่งเฉพาะตอน RD สร้างใหม่พร้อมรหัส', () => {
+  const value = {
+    name: 'Forest night', code: 'SC-1', customerId: 'CUS-1', customerTradeName: '',
+    derivedFromScentId: '', note: '', producedAt: '2026-08-01', sentAt: '2026-08-02',
+    status: 'active',
+  };
+  const created = scentFormPayload(value, { canSetCode: true, mode: 'create', customerName: 'ลูกค้า ก' });
+  assert.equal(created.producedAt, '2026-08-01');
+  assert.equal(created.status, 'active');
+  assert.equal(created.customerName, 'ลูกค้า ก');
+
+  // ⚠️ โหมดแก้ไม่ส่งสามช่องนั้น — วัน/สถานะมี action ของตัวเอง
+  const edited = scentFormPayload(value, { canSetCode: true, mode: 'edit' });
+  assert.equal('producedAt' in edited, false);
+  assert.equal('status' in edited, false);
+
+  // ร่างที่ฝ่ายขายเสนอ (ไม่มีสิทธิ์ใส่รหัส) ไม่มีทั้งรหัสและวัน/สถานะของตัวเอง
+  const proposed = scentFormPayload(value, { canSetCode: false, mode: 'create' });
+  assert.equal('code' in proposed, false);
+  assert.equal('status' in proposed, false);
+  // ใส่รหัสไม่ได้แต่ยังต้องส่งชื่อ/ลูกค้าให้ครบ
+  assert.equal(proposed.customerId, 'CUS-1');
 });

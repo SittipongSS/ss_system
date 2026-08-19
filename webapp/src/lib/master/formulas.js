@@ -316,3 +316,31 @@ export function formulaScentCustomerError(scent, { customerId } = {}) {
   }
   return null;
 }
+
+/* ── ฟอร์มทะเบียนสูตร → payload ของ API ────────────────────────────────────
+ *
+ * ⭐ **ที่เดียวสำหรับสองจอ** (หน้ารายการ + หน้ารายละเอียด · 2026-08-19) — ก่อนหน้านี้
+ * หน้ารายละเอียดไม่มีฟอร์มของตัวเอง มันเด้งกลับไปหน้ารายการด้วย `?edit=` ซึ่งทำให้
+ * คนที่กำลังอ่านรายละเอียดอยู่หลุดออกจากหน้าที่ดูอยู่ · พอย้ายฟอร์มมาเปิดในที่ ตัวสร้าง
+ * payload ต้องเป็นก้อนเดียว ไม่งั้นสองจอจะเลื่อนออกจากกันแบบเดียวกับที่ AGENTS.md เตือน
+ *
+ * ⚠️ `customerName` ไม่ส่ง — server อ่านจากทะเบียนลูกค้าเสมอ (ชื่อที่ client ถืออาจเก่า)
+ * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** — ของเดิมส่งเฉพาะตอนไม่ว่าง ⇒ ผู้ใช้
+ * ลบรหัสทิ้งแล้วกดบันทึก หน้าจอไม่ส่งอะไรเลย server คงค่าเดิมแล้วตอบ 200 = "บันทึกแล้ว"
+ * ทั้งที่ไม่มีอะไรเปลี่ยน (ผู้ใช้ทัก 2026-08-10)
+ */
+export function formulaFormPayload(value = {}, { canSetCode = false } = {}) {
+  const payload = {
+    name: value.name,
+    formulaDate: value.formulaDate || null,
+    categoryCode: value.categoryCode || null,
+    // ⚠️ ส่ง `customerId` ได้ (มติผู้ใช้ 2026-08-10 กลับทิศจาก 0207)
+    customerId: value.customerId || null,
+    scentId: value.scentId || null,
+    customerTradeName: value.customerTradeName,
+    derivedFromFormulaId: value.derivedFromFormulaId || null,
+    note: value.note,
+  };
+  if (canSetCode) payload.code = String(value.code ?? '').trim();
+  return payload;
+}

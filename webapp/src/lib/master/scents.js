@@ -322,3 +322,31 @@ export function newScentStatus(requested, accepted = false) {
   const value = String(requested ?? '').trim();
   return NEW_SCENT_STATUSES.includes(value) ? value : 'developing';
 }
+
+/* ── ฟอร์มทะเบียนกลิ่น → payload ของ API ───────────────────────────────────
+ *
+ * ⭐ **ที่เดียวสำหรับสองจอ** — เหตุผลเดียวกับ `formulaFormPayload` (2026-08-19)
+ * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** (ดูเหตุผลที่ฝั่งสูตร)
+ * ⚠️ วันที่/สถานะของ "ของเดิมก่อนมีระบบ" ส่งเฉพาะตอน **RD สร้างใหม่พร้อมรหัส** —
+ * ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง จะมีวันผลิตหรือสถานะของตัวเองไม่ได้
+ * (server บังคับซ้ำที่ `newScentStatus`) · โหมดแก้ใช้ action ของตัวเองต่างหาก
+ */
+export function scentFormPayload(value = {}, {
+  canSetCode = false, mode = 'create', customerName = null,
+} = {}) {
+  const payload = {
+    name: value.name,
+    customerId: value.customerId,
+    customerName,
+    customerTradeName: value.customerTradeName,
+    derivedFromScentId: value.derivedFromScentId,
+    note: value.note,
+  };
+  if (canSetCode) payload.code = String(value.code ?? '').trim();
+  if (mode === 'create' && canSetCode && payload.code) {
+    if (value.producedAt) payload.producedAt = value.producedAt;
+    if (value.sentAt) payload.sentAt = value.sentAt;
+    payload.status = value.status;
+  }
+  return payload;
+}

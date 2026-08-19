@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptFormulaError, archiveFormulaError, canEditFormula, canProposeFormula, canViewFormulas, deleteFormulaError, derivedFromFormulaError, findFormulaByCode, findFormulaByIdentity, formulaIdentityKey, formulaScentCustomerError, formulaTransitionError, isFormulaRegistrar, isFormulaUsable, normalizeFormulaInput, sanitizeInheritedFormulaDate, unsortedFormulaRows,
+  formulaFormPayload,
 } from './formulas.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -221,4 +222,23 @@ test('ที่มาตัดสินจาก sourceRequest ไม่ใช�
   assert.ok(matchesFormulaSource({}, 'manual'));
   assert.ok(!matchesFormulaSource({}, 'request'));
   assert.deepEqual(FORMULA_SOURCES.map((s) => s.value), ['request', 'manual']);
+});
+
+/* ── ฟอร์ม → payload (ใช้ร่วมหน้ารายการกับหน้ารายละเอียด · 2026-08-19) ────── */
+test('payload ของฟอร์มสูตร: ส่งรหัสเฉพาะคนที่รับเข้าทะเบียนได้ — แต่ส่งแม้ช่องว่าง', () => {
+  const value = {
+    name: 'Well sleep #2', code: ' PF-1 ', customerId: 'CUS-1', scentId: 'SCT-1',
+    categoryCode: '01-030', formulaDate: '', customerTradeName: 'Sleepy', note: '',
+    derivedFromFormulaId: '',
+  };
+  const asRegistrar = formulaFormPayload(value, { canSetCode: true });
+  assert.equal(asRegistrar.code, 'PF-1', 'ตัดช่องว่างหัวท้ายเหมือนที่ index เทียบ');
+  assert.equal(asRegistrar.formulaDate, null, 'ช่องว่าง = null ไม่ใช่สตริงว่าง');
+  assert.equal(asRegistrar.customerId, 'CUS-1');
+  assert.equal('customerName' in asRegistrar, false, 'ชื่อลูกค้า server อ่านเอง');
+
+  // 🐞 ลบรหัสทิ้งแล้วต้อง **ส่งค่าว่างไป** ให้ server ตัดสิน — ไม่ส่ง = เงียบแล้วตอบ 200
+  assert.equal(formulaFormPayload({ ...value, code: '' }, { canSetCode: true }).code, '');
+  // คนที่ไม่มีสิทธิ์ไม่ส่งช่องรหัสเลย จะได้ไม่โดนตีกลับทั้งฟอร์มเพราะช่องที่แก้ไม่ได้อยู่แล้ว
+  assert.equal('code' in formulaFormPayload(value, { canSetCode: false }), false);
 });
