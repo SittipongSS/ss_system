@@ -106,3 +106,20 @@
   margin-top: var(--space-2);
 }
 .cardPriceLabel { color: var(--text-3); font-size: var(--fs-3); }
+
+/* สรุปข้อมูลที่ผู้เสนอกรอกมา บนโมดัลยืนยันของ RD (มติผู้ใช้ 2026-08-19)
+   ⚠️ เป็น **ข้อมูลให้อ่านตรวจ ไม่ใช่ฟอร์ม** — สองคอลัมน์ ป้ายซีดค่าเข้ม
+   เพื่อให้กวาดตาลงมาเจอค่าที่ผิดได้เร็ว ไม่ใช่ไล่อ่านทีละบรรทัด */
+.review {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-size: var(--fs-3);
+}
+.review dt { color: var(--text-3); }
+.review dd { margin: 0; }

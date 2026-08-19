@@ -3,9 +3,9 @@
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 import {
-  acceptScentError, archiveScentError, canEditScent, canViewScents,
-  deleteScentError, isScentRegistrar, normalizeScentInput, scentTransitionError,
-  sendScentError,
+  acceptScentCode, acceptScentError, acceptedScentStatus, archiveScentError,
+  canEditScent, canSetScentCode, canViewScents, deleteScentError, isScentRegistrar,
+  normalizeScentInput, scentTransitionError, sendScentError,
 } from '@/lib/master/scents';
 import {
   assertDerivedFromScent, countRegistryRefs, findScent, findScentDetail, updateScent,
@@ -34,7 +34,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
 // PATCH /api/master/scents/[id]
 //   { action: 'edit',   ...ฟิลด์เดียวกับตอนสร้าง }
-//   { action: 'accept', code }            — RD รับร่างเข้าทะเบียน
+//   { action: 'accept', code?, status? }  — RD ยืนยันข้อมูลแล้วรับร่างเข้าทะเบียน
+//                                           (ไม่ส่งมา = ใช้รหัส/สถานะที่ผู้เสนอกรอกไว้)
 //   { action: 'sent',   sentAt }          — RD บันทึกวันที่ส่งกลิ่นให้ลูกค้า
 //   { action: 'status', status }          — developing ↔ active ↔ archived
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
@@ -68,7 +69,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ⚠️ สถานะยังเปลี่ยนผ่าน action เฉพาะทางเหมือนเดิม — กันหน้าจอส่งมาเงียบ ๆ */
       const { code, ...editable } = value;
       if (code !== undefined && code !== (scent.code ?? null)) {
-        if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
+        /* ⭐ **เจ้าของร่างแก้รหัสของตัวเองได้** (มติผู้ใช้ 2026-08-19) — ฝ่ายขายกรอก
+           รหัสจากระบบเก่ามาตั้งแต่ตอนเสนอแล้ว พิมพ์ผิดต้องแก้ได้ก่อนส่งให้ RD ตรวจ
+           ไม่ใช่ลบร่างทิ้งแล้วกรอกใหม่ทั้งใบ · ของที่รับเข้าทะเบียนแล้วยังเป็นของ RD
+           คนเดียวเหมือนเดิม (ดู `canSetScentCode`) */
+        if (!canSetScentCode(user, scent)) return forbidden('เฉพาะ RD เท่านั้นที่แก้รหัสได้');
         /* 🐞 **ล้างรหัสของกลิ่นที่รับเข้าทะเบียนแล้วไม่ได้** — DB มี CHECK
            `status = 'draft' OR code IS NOT NULL` อยู่แล้ว แต่ปล่อยให้ชนที่ฐานจะได้
            error ดิบของ Postgres ที่คนอ่านไม่ออก · ตอบเป็นภาษาไทยตั้งแต่ที่นี่
@@ -94,9 +99,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!isScentRegistrar(user)) return forbidden('เฉพาะ RD เท่านั้นที่รับกลิ่นเข้าทะเบียนได้');
       const error = acceptScentError(scent, body);
       if (error) return badRequest(error);
+      /* ⭐ **ปลายทางไม่ใช่ `developing` ตายตัวอีกแล้ว** (มติผู้ใช้ 2026-08-19) —
+         กลิ่นเก่าที่ฝ่ายขายย้ายเข้ามาส่วนใหญ่ลูกค้าอนุมัติไปนานแล้ว บังคับให้ลง
+         `developing` ก่อน = RD ต้องกดเปลี่ยนสถานะซ้ำอีกรอบทุกแถว
+         ⚠️ ค่าที่ผู้เสนอขอมาเป็นแค่ **ค่าตั้งต้น** — คนกดรับเลือกทับได้เสมอ */
       const data = await updateScent(supabase, id, {
-        code: String(body.code).trim(),
-        status: 'developing',
+        code: acceptScentCode(scent, body),
+        status: acceptedScentStatus(scent, body),
         // RD ที่รับเรื่องเป็นเจ้าของกลิ่น ถ้ายังไม่มีใครถือ
         ownerId: scent.ownerId || user.id,
         ownerName: scent.ownerName || user.name || null,
