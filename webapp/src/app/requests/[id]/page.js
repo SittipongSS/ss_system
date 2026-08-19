@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Building2, CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
+  Building2, CalendarClock, FileText, FolderKanban, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -42,6 +42,7 @@ import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
+import { pdrRefNoError } from "@/lib/requests/pdrRefNo";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
   REQUEST_OPEN_STATUSES,
@@ -480,8 +481,26 @@ export default function RequestDetailPage() {
         description: req.docNo || "",
         detail: `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
           + " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
-          + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง",
+          + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง"
+          // ⭐ บอกด้วยว่ากดแล้ว **ได้เลขที่เอกสารบนเอกสาร** (mig 0271) — เลขนั้นใช้
+          // วันที่ของวินาทีที่กด และแก้ทีหลังไม่ได้ คนกดจึงต้องรู้ก่อน ไม่ใช่มาเห็น
+          // ตอนพิมพ์กระดาษ
+          + (requestHasPdr(req.kind)
+            ? " · ระบบจะออกเลขที่เอกสารของ PDR (วันที่วันนี้) ให้ในจังหวะเดียวกัน"
+            : ""),
         confirmLabel: "รับเรื่อง",
+      };
+    }
+    /* ⭐ ออกเลขที่เอกสารย้อนหลัง — ใบที่รับเรื่องไปก่อน mig 0271 ยังไม่มีเลข
+       ⚠️ ต้องบอกให้ชัดว่า **เลขใช้วันที่รับเรื่องของใบ ไม่ใช่วันนี้** และแก้ไม่ได้
+       (เลขที่พิมพ์ลงกระดาษไปแล้วต้องตามกลับมาที่ใบเดิมได้เสมอ) */
+    if (confirm.kind === "pdr-ref") {
+      return {
+        title: "ออกเลขที่เอกสาร PDR",
+        description: req.docNo || "",
+        detail: `เลขจะใช้วันที่รับเรื่องของใบนี้ (${fmtDate(req.acknowledgedAt)})`
+          + " ไม่ใช่วันที่กดปุ่ม · ออกแล้วแก้ไม่ได้ และจะขึ้นบนหัวเอกสารทันที",
+        confirmLabel: "ออกเลข",
       };
     }
     if (confirm.kind === "answer") {
@@ -554,6 +573,7 @@ export default function RequestDetailPage() {
     const labels = {
       submit: "ส่งคำร้องแล้ว", acknowledge: "รับเรื่องแล้ว",
       answer: "บันทึกว่าตอบแล้ว", close: "ปิดเรื่องแล้ว",
+      "pdr-ref": "ออกเลขที่เอกสารแล้ว",
     };
     const ok = await call("", {
       method: "PATCH", body: JSON.stringify({ action: confirm.kind }),
@@ -826,6 +846,20 @@ export default function RequestDetailPage() {
         visible: canReopen,
       },
       {
+        /* ⭐ **ออกเลขที่เอกสาร PDR ย้อนหลัง** (mig 0271 · มติผู้ใช้ 2026-08-20)
+           — ใบใหม่ได้เลขเองตอนรับเรื่อง ปุ่มนี้มีไว้ให้ใบที่รับเรื่องไปก่อนหน้านั้น
+           ⚠️ **ไม่ backfill ทั้งกองด้วย migration** — เลขรันของแต่ละเดือนมีจำกัด
+           (3 หลัก) การไล่ออกให้ทุกใบย้อนหลังคือการใช้เลขไปกับใบที่ไม่มีใครจะพิมพ์
+           ⚠️ เงื่อนไขต้องไม่หลวมกว่า `pdrRefNoError` ฝั่ง API — ปุ่มที่กดแล้วเด้ง
+           409 คือปุ่มที่ไม่ควรขึ้นตั้งแต่แรก */
+        id: "pdr-ref",
+        label: "ออกเลขที่เอกสาร",
+        kind: "edit",
+        icon: Hash,
+        onClick: () => setConfirm({ kind: "pdr-ref" }),
+        visible: canAnswer && requestHasPdr(req.kind) && !pdrRefNoError(req),
+      },
+      {
         /* ⭐ **มอบหมายผู้รับผิดชอบ** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่อง
            กับ "รับเรื่อง": รับเรื่อง = ฝ่ายรับปากกับผู้ขอ · มอบหมาย = จัดคนในฝ่าย
            ⚠️ เห็นตั้งแต่ใบยังไม่ถูกรับเรื่อง (ต่างจากเลื่อนวัน) — หัวหน้าแจกงาน
@@ -963,8 +997,18 @@ export default function RequestDetailPage() {
             ⚠️ **ย้าย ไม่ก๊อป** — เคยมีทั้งชิปบนหัวใบและบรรทัดนี้พร้อมกัน แล้วมันพูดซ้ำ
             คำต่อคำ (ชื่อเดียวกัน วันที่เดียวกัน) ผู้ใช้ทักทันที (ม-101.2) · รอบนี้ก็เหมือนกัน
             บรรทัดนี้จึงเหลือเฉพาะ **รหัสสูตร** ซึ่งยังไม่มีที่อยู่อื่นบนหัวใบ */}
-        {req.formulaCode && (
-          <p className={styles.headMeta}>สูตร {req.formulaCode}</p>
+        {/* ⭐ **เลขที่เอกสารของ PDR** (mig 0271) — คนละเลขกับหัวเรื่องข้างบน
+            ซึ่งเป็น `docNo` (เลขที่คำร้อง) · ที่นี่คือเลขที่พิมพ์บนกระดาษ FM-RD-01
+            ⇒ คนที่ถือกระดาษอยู่ตรงหน้าต้องหาใบในระบบเจอด้วยเลขนี้
+            ⚠️ อยู่บรรทัดนี้ ไม่ใช่ในแถบข้อเท็จจริง — แถบนั้นเหลือแต่เรื่องเวลาแล้ว
+            (มติ ม-101 · ดู lib/requests/headerFacts.js) */}
+        {(req.pdrRefNo || req.formulaCode) && (
+          <p className={styles.headMeta}>
+            {[
+              req.pdrRefNo ? `เลขที่เอกสาร ${req.pdrRefNo}` : null,
+              req.formulaCode ? `สูตร ${req.formulaCode}` : null,
+            ].filter(Boolean).join(" · ")}
+          </p>
         )}
 
         {/* ⭐ ขึ้นเฉพาะตอนยังเป็นร่าง — ส่งซ้ำแล้วค่าเดิมยังอยู่ในคอลัมน์ (เป็นประวัติ)
