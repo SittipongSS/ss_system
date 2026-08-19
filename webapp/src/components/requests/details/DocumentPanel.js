@@ -9,21 +9,11 @@
 //
 // ⚠️ ตัวเลข/สถานะนับที่ lib ก้อนเดิม (docBoard · docTotals) — ที่นี่แค่เปลี่ยนที่วาง
 import {
-  DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
+  DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import styles from "./details.module.css";
 
-export default function DocumentPanel({ request, docBoard: board = [], docTotals: totals }) {
-  // เช็คลิสต์รายแถว — ✓ = จบแล้ว (ได้รับ/ปฏิเสธ) · ช่องว่าง = ยังเดินอยู่
-  // ป้ายขั้น/ธงจบมาจากแถวของ documentBoard ตรง ๆ — คำเดียวกับตารางกลางหน้าเสมอ
-  const items = board.map((row) => ({
-    id: row.id,
-    // แถวของ documentBoard เรียกป้ายว่า `name` (มาจากทะเบียนคำศัพท์ ไม่ใช่ label ดิบ)
-    label: row.name,
-    detail: row.stageLabel || "",
-    ready: row.received || row.refused,
-  }));
-
+export default function DocumentPanel({ request, docTotals: totals }) {
   // ⚠️ **ยอดที่ขอวางบิลย้ายไป `BillingDocPanel` แล้ว** (ม-96) — การ์ดนี้เหลือของ RD
   // ล้วน · เอากลับมาเมื่อไรจะได้ยอดสองที่ที่ต้องคอยดูแลให้ตรงกัน
 
@@ -54,6 +44,9 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
 
   return (
     <>
+      {/* ⚠️ **ไม่มีเช็คลิสต์รายแถวในแผงนี้แล้ว** (มติผู้ใช้ 2026-08-20) — ตารางกลางหน้า
+          ไล่แถวเดียวกันพร้อมสถานะ เลขที่เอกสาร และก้าวถัดไปอยู่แล้ว ⇒ แผงขวาเหลือ
+          **ตัวเลขสรุป** ซึ่งเป็นสิ่งที่ตารางตอบไม่ได้ในสายตาเดียว */}
       {totals.asked > 0 && (
         <DocumentSummaryCard
           title="สรุปใบนี้"
@@ -66,9 +59,7 @@ export default function DocumentPanel({ request, docBoard: board = [], docTotals
             { id: "refused", label: "ปฏิเสธ", value: String(totals.refused) },
             { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
           ]}
-        >
-          <DocumentReadinessList items={items} label="รายการเอกสารในใบนี้" />
-        </DocumentSummaryCard>
+        />
       )}
       {refs.length > 0 && (
         <RelatedDocumentCard eyebrow="อ้างอิงของใบนี้" title="เอกสารที่เกี่ยวข้อง">

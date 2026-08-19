@@ -909,12 +909,15 @@ test('🔴 ทุกปุ่มที่ตั้ง saving ต้องคื�
 const ITEM_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/route.js';
 const PRICE_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/price/route.js';
 
-test('🔴 ก้าว ack รายแถวที่ดันใบทั้งใบ ต้องผ่านด่านของใบ ไม่ใช่เขียนสถานะเอง (ค-2)', () => {
-  // 🐞 เดิม route เขียน `headPatch.status = 'acknowledged'` เองโดยไม่ผ่านด่านของใบเลย
-  // ⇒ ทางเข้าที่สองที่กฎไปไม่ถึง
+test('🔴 รับเรื่องเป็นก้าวของ "ใบ" — ก้าวรายแถวต้องรอให้ใบถูกรับเรื่องก่อน', () => {
+  /* ⭐ มติผู้ใช้ 2026-08-20: *"ปุ่มรับเรื่องมันเป็นระดับใบนะ ไม่ใช่ระดับรายการ"*
+     🐞 เดิมก้าว `ack` รายแถวเขียน `headPatch.status = 'acknowledged'` เอง ⇒ มีสองทาง
+     ที่รับเรื่องได้ และทางรายแถวเคยข้ามด่านของใบมาแล้ว (ค-2) */
   const src = readFileSync(ITEM_ROUTE, 'utf8');
-  assert.match(src, /acknowledgeRequestError\(before\)/,
-    'ก้าว ack ต้องเรียกด่านของใบตัวเดียวกับปุ่มระดับใบ');
+  assert.match(src, /before\.status === 'pending'/,
+    'ก้าวรายแถวต้องถูกปิดจนกว่าใบจะถูกรับเรื่อง');
+  assert.doesNotMatch(src, /headPatch\.status = 'acknowledged'/,
+    'ก้าวรายแถวต้องไม่รับเรื่องแทนใบ — ปุ่มรับเรื่องอยู่ที่ใบที่เดียว');
   /* ⚠️ **ห้ามเขียน `committedDueDate` จากก้าวรายแถว** (มติผู้ใช้ 2026-08-19) — วันที่
      รับปากของใบมาจาก action `commit-due` ทางเดียว ซึ่งลงแถว `commitDue` ในเธรดเสมอ ·
      เขียนผ่านทางนี้เมื่อไร ใบได้วันโดยที่ฝ่ายขายไม่เห็นอะไรเลย (โรคเดียวกับที่

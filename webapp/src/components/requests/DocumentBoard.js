@@ -10,14 +10,22 @@
 // ของแถวพวกนี้ต้องเงียบ ดูเปลือก /requests/[id])
 //
 // ⚠️ การนับอยู่ที่ `lib/requests/documentBoard.js` ทั้งหมด ไม่ประกอบใน JSX
+import { Fragment } from "react";
 import { TableScroll } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDate } from "@/lib/format";
 import styles from "./briefBoard.module.css";
 
-export default function DocumentBoard({ rows = [], renderStep = null }) {
+/* ⭐ `renderDetail` — ของยาวรายแถว (ไฟล์เอกสารที่ส่งมา) มาเป็น **แถวขยายในตาราง**
+   ไม่ใช่การ์ดชุดที่สองใต้ตาราง (มติผู้ใช้ 2026-08-20: *"ทำไมต้องแยกสองส่วน รวมได้มั้ย"*)
+   🐞 ที่มาเดียวกับ IS-26080021 ของหน้าพัฒนากลิ่น: หน้านี้เคยวาง `RequestRows` ไว้ใต้
+   ตาราง ⇒ ชนิดเอกสารกับป้ายสถานะโผล่สองรอบในจอเดียว และไฟล์อยู่ไกลจากแถวของมัน
+   ⚠️ ขึ้นเสมอเมื่อมีเนื้อ ไม่มีปุ่มกาง — แพตเทิร์นเดียวกับ `BriefBoard` (สิ่งที่มติ
+   2026-08-13 ไม่ยอมคือ *การซ่อน* ไม่ใช่ตาราง) */
+export default function DocumentBoard({ rows = [], renderStep = null, renderDetail = null }) {
   if (!rows.length) return null;
+  const cols = renderStep ? 3 : 2;
 
   return (
     <section className={styles.wrap} aria-label="สรุปเอกสารที่ขอ">
@@ -32,8 +40,11 @@ export default function DocumentBoard({ rows = [], renderStep = null }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
+            {rows.map((r) => {
+              const detail = renderDetail?.(r);
+              return (
+              <Fragment key={r.id}>
+              <tr>
                 <td>
                   <div className={styles.name}>{r.name}</div>
                   {r.spec && <ReadableText text={r.spec} lines={2} className={styles.note} />}
@@ -54,7 +65,14 @@ export default function DocumentBoard({ rows = [], renderStep = null }) {
                 <td><StatusBadge tone={r.stageTone} label={r.stageLabel} /></td>
                 {renderStep && <td className={styles.stepCell}>{renderStep(r)}</td>}
               </tr>
-            ))}
+              {detail && (
+                <tr className={styles.detailRow}>
+                  <td colSpan={cols}>{detail}</td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </TableScroll>

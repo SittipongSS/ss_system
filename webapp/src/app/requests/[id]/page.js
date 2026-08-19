@@ -1177,6 +1177,8 @@ export default function RequestDetailPage() {
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         rowStep={{
+          // ⭐ ใบยังไม่ถูกรับเรื่อง = ยังไม่มีก้าวรายแถวให้กด (มติผู้ใช้ 2026-08-20)
+          requestPending: req.status === "pending",
           // ป้าย "รอใคร" ของก้าวรายแถว — ชื่อฝ่ายจริงทั้งสองฝั่ง (มติผู้ใช้ 2026-08-20)
           deptLabel: requestSideLabel(req, "dept"),
           requesterLabel: requestSideLabel(req, "requester"),

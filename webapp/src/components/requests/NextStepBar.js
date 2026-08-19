@@ -72,8 +72,14 @@ const waitingText = (owner, { deptLabel, requesterLabel }) => (owner === "dept"
 export function RowStepActions({
   row, canDept = false, canRequester = false, busy = false, onHop, onPrice,
   deptLabel = null, requesterLabel = null,
+  /* ⭐ **ใบต้องถูกรับเรื่องก่อน** (มติผู้ใช้ 2026-08-20: *"ปุ่มรับเรื่องมันเป็นระดับใบ
+     ไม่ใช่ระดับรายการ"*) — ของเดิมทุกแถวมีปุ่ม "รับเรื่อง" ของตัวเอง แล้วแถวแรกที่กด
+     ดันสถานะทั้งใบให้เอง ⇒ มีสองทางที่ทำสิ่งเดียวกัน
+     ⚠️ บอกว่ารออะไร ไม่ใช่ปล่อยช่องว่าง — ด่านจริงอยู่ที่ API ตัวเดียวกัน */
+  requestPending = false,
 }) {
   const stage = rowStage(row);
+  if (requestPending) return <span className={styles.waiting}>รอรับเรื่องที่ใบก่อน</span>;
   const hop = hopAtStage(row, stage);
   if (!hop) return null;
   const owner = OWNER_OF[hop];
