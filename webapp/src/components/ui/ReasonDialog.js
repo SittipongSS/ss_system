@@ -20,6 +20,11 @@ export default function ReasonDialog({
   placeholder,
   helpText,
   error,
+  // ข้อความล้มเหลวจากฝั่ง server (หรือด่านตรวจก่อนยิง) — คนละอย่างกับ `error` ซึ่งเป็น
+  // ผลตรวจ "เหตุผล" และปิดปุ่มยืนยันไว้. ตัวนี้ **ไม่ปิดปุ่ม** เพราะผู้ใช้ต้องกดซ้ำได้
+  // หลังแก้ต้นเหตุ. เดิมหน้าที่เรียกเก็บ error ไว้ในแถบของตัวเองซึ่งอยู่ *ใต้* โมดัล
+  // ⇒ กดยืนยันแล้วจอเงียบสนิท ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้งเอง 2026-08-19)
+  submitError = "",
   minLength = 1,
   maxLength = 500,
   rows = 4,
@@ -52,6 +57,9 @@ export default function ReasonDialog({
             {error || helpText || `${normalized.length}/${maxLength}`}
           </small>
         </label>
+        {submitError ? (
+          <div className={`${styles.detail} ${styles.danger}`} role="alert">{submitError}</div>
+        ) : null}
         <div className="action-bar">
           <Button variant="quiet" onClick={onClose} disabled={busy}>{cancelLabel}</Button>
           <Button
