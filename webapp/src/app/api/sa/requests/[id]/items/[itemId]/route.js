@@ -17,8 +17,9 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
-  canAnswerRequest, canManageRequest, canReadRequestRow, deriveRequestStatusAfterAnswer,
+  canAnswerRequest, canManageRequest, canReadRequestRow,
 } from '@/lib/deptRequests';
+import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import {
   HOP_OWNER, followUpRowFrom, hopLabel, hopLabelFor, hopPatch, hopStageError, hopUpdateKind,
   hopValuesError,
@@ -246,10 +247,10 @@ export async function PATCH(request, { params }) {
       headPatch.acknowledgedAt = nowIso;
       // ⚠️ **ไม่เขียน `committedDueDate` ที่นี่** — ดูเหตุผลที่ด่านข้างบน
     }
-    // ตอบครบทุกแถว → ใบเป็น answered เอง (กลไกเดิม ไม่แก้)
+    /* ตอบครบทุกแถว → ใบได้ **ตราปิดฝั่งฝ่าย** (`answeredAt`) เอง · ไม่ครบเมื่อไรตรา
+       ทั้งสองฝั่งหลุด (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง — ดู `closure.js`) */
     const after = await findRequest(supabase, id);
-    const derived = deriveRequestStatusAfterAnswer(after.items || [], after.status);
-    if (derived !== after.status) headPatch.status = derived;
+    Object.assign(headPatch, requestRowsClosurePatch(after, after.items || [], nowIso));
     if (Object.keys(headPatch).length) {
       const { error: headError } = await supabase
         .from('dept_requests').update({ ...headPatch, updatedAt: nowIso }).eq('id', id);

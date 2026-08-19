@@ -2,6 +2,7 @@
 // GET    : รายละเอียด (canViewRequests + **ต้องเป็นใบของตัวเอง/ของฝ่ายตน** — ดู
 //          canReadRequestRow; เดิมด่านนี้ไม่ดูแถวเลย เปิดตรงด้วย id ได้ทุกใบ)
 // PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย + @mention)
+//          reopen (ยังไม่จบ — ถอนตราปิดของฝั่งที่กดไปแล้ว) ·
 //          acknowledge (RD/PC รับเรื่อง = ตัดรอบ) · commit-due (แจ้งกำหนดส่ง —
 //          ก้าวแยกจากการรับเรื่อง) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
@@ -28,6 +29,8 @@ import {
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
 import { requestHasItems, requestShapeError } from '@/lib/master/requestTypes';
+import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
+import { requestSideText } from '@/lib/requests/replyTurn';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
@@ -435,9 +438,18 @@ export async function PATCH(request, { params }) {
       }
       const err = answerRequestError(before);
       if (err) return Response.json({ error: err }, { status: 409 });
-      patch.status = 'answered';
+      /* ⭐ **ปุ่มนี้คือตราปิดของฝั่งฝ่าย** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ใบจบ
+         ก็ต่อเมื่อผู้ขอกด "ปิดเรื่อง" ด้วย · กดก่อน/หลังกันได้ทั้งคู่ (ดู `closure.js`) */
       patch.answeredAt = nowIso;
-      summary = `ตอบคำร้อง ${before.docNo || id}`;
+      patch.answeredById = user?.id ?? null;
+      patch.answeredByName = user?.name ?? null;
+      patch.status = closureStatus({
+        status: before.status, answeredAt: nowIso, closedAt: before.closedAt,
+      });
+      summary = `ตอบคำร้อง ${before.docNo || id}`
+        + (patch.status === 'closed'
+          ? ' · ปิดครบสองฝั่ง'
+          : ` — ${requestSideText(before, 'requester', 'ยังไม่ปิด')}`);
     } else if (action === 'close') {
       // ⭐ **ปิดสองฝ่าย** (มติผู้ใช้ 2026-08-08 · ม-89): แถวทุกแถวจบด้วยมือของ
       // สองฝ่ายอยู่แล้ว (ฝ่ายส่ง → ผู้ขอกดรับ · หรือฝ่ายปฏิเสธพร้อมเหตุผล) แล้ว
@@ -459,12 +471,41 @@ export async function PATCH(request, { params }) {
       if (linked?.error) return Response.json({ error: linked.error }, { status: 400 });
       if (linked?.scentId) patch.scentId = linked.scentId;
 
-      patch.status = 'closed';
+      /* ⭐ **ปิดฝั่งผู้ขอ ≠ ใบจบ** (มติผู้ใช้ 2026-08-20) — ใบจบเมื่อมีตราครบสองฝั่ง ·
+         ฝั่งฝ่ายคือ `answeredAt` (มาเองเมื่อแถวครบ หรือปุ่ม "ตอบแล้ว" ของใบไม่มีแถว)
+         🐞 ของเดิมกดปุ่มนี้แล้วใบ `closed` ทันที ⇒ ใบสอบถามที่ฝ่ายยังไม่ตอบสักคำก็ปิดได้
+         และงานที่ค้างจริงหายจากคิวเงียบ ๆ */
       patch.closedById = user?.id ?? null;
       patch.closedByName = user?.name ?? null;
       patch.closedAt = nowIso;
-      summary = `ปิดเรื่อง ${before.docNo || id}`
+      patch.status = closureStatus({
+        status: before.status, answeredAt: before.answeredAt, closedAt: nowIso,
+      });
+      summary = (patch.status === 'closed'
+        ? `ปิดเรื่อง ${before.docNo || id} · ครบสองฝั่ง`
+        : `ผู้ขอปิดฝั่งตัวเอง ${before.docNo || id} — ${requestSideText(before, 'dept', 'ยังไม่ตอบ')}`)
         + (linked?.created ? ' · เพิ่มกลิ่นเข้าทะเบียน' : linked?.scentId ? ' · ผูกกลิ่นในทะเบียน' : '');
+    } else if (action === 'reopen') {
+      /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) — กดได้ทั้ง
+         สองฝั่ง: ฝั่งที่กดไปแล้วเปลี่ยนใจ หรืออีกฝั่งที่รู้ว่างานยังไม่จบจริง
+         ⚠️ ใบที่ปิดครบสองฝั่งแล้วเปิดกลับไม่ได้ — ด่านที่ `reopenRequestError` กันไว้ */
+      if (!canAnswerRequest(user, before) && !canManageRequest(user, before)) {
+        return Response.json({ error: 'ทำได้เฉพาะผู้ขอกับฝ่ายที่รับเรื่อง' }, { status: 403 });
+      }
+      const reason = String(body.reason ?? '').trim();
+      const err = reopenRequestError(before, { reason });
+      if (err) return Response.json({ error: err }, { status: /ต้องบอก|ยาวเกิน/.test(err) ? 400 : 409 });
+      const closure = requestClosure(before);
+      patch.answeredAt = null;
+      patch.answeredById = null;
+      patch.answeredByName = null;
+      patch.closedAt = null;
+      patch.closedById = null;
+      patch.closedByName = null;
+      patch.status = 'acknowledged';
+      eventReason = reason;
+      summary = `ยังไม่จบ — ถอนการปิดของ${closure.deptDone ? before.dept || 'ฝ่ายผู้รับ' : 'ผู้ขอ'}`
+        + ` ${before.docNo || id} — ${reason}`;
     } else if (action === 'cancel') {
       if (!canManageRequest(user, before)) {
         return Response.json({ error: 'ยกเลิกได้เฉพาะผู้เปิดเรื่อง' }, { status: 403 });

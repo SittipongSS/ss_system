@@ -18,6 +18,8 @@
 // node import JSX ไม่ได้ และป้ายสรุปบนจอแคบก็อ่านผลชุดเดียวกันโดยไม่วาดราง
 import { requestProgress } from '@/lib/requests/stages';
 import { fmtDate } from '@/lib/format';
+import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
+import { requestClosure } from '@/lib/requests/closure';
 
 const step = (key, label, state, note = null) => ({ key, label, state, note });
 
@@ -70,13 +72,17 @@ export function requestQueueTrack(request = {}) {
     : acked
       ? (finished
         ? step('due', 'กำหนดส่ง', 'skip', 'ไม่เคยแจ้งกำหนดส่ง')
-        : step('due', 'กำหนดส่ง', 'now', 'รอฝ่ายแจ้งวัน'))
+        : step('due', 'กำหนดส่ง', 'now', requestWaitLabel(request, 'dept', 'แจ้งวัน')))
       : step('due', 'กำหนดส่ง', 'todo');
 
   /* ── ขั้น 4 · ฝ่ายผู้รับตอบ/ส่งงาน ──────────────────────────────────────
      โน้ตใต้ขั้นบอก **คืบหน้ารายบรรทัด** ของใบที่มีบรรทัด — ตัวเลขเดียวกับที่
      คอลัมน์คืบหน้าโชว์ ไม่ได้คิดใหม่ (`requestProgress` ที่เดียวทั้งระบบ) */
-  const answered = !!request?.answeredAt || ['answered', 'closed'].includes(status);
+  /* ⚠️ **ขั้น "ตอบ" = ตราปิดฝั่งฝ่าย** (มติผู้ใช้ 2026-08-20) — `answeredAt` ที่หลุดได้
+     เมื่องานกลับมา (แถวใหม่ · ถูกถามกลับ) ⇒ ขั้นนี้ถอยกลับเองตามตรา ไม่ค้างเขียว
+     ⚠️ ใบเก่าที่ปิดไปก่อนกฎนี้อาจไม่มี `answeredAt` — `status` ที่จบแล้วยังนับว่าผ่าน */
+  const closure = requestClosure(request);
+  const answered = closure.deptDone || ['answered', 'closed'].includes(status);
   const progress = requestProgress(request?.items || []);
   const progressNote = progress.total ? `${progress.done}/${progress.total} รายการ` : null;
   const answerStep = answered
@@ -89,10 +95,16 @@ export function requestQueueTrack(request = {}) {
      ⚠️ ปิดเป็นคนละก้าวกับตอบ และเป็นคนละคนกด (มติ "วันที่ปิดเรื่องมีสองฝั่ง" ·
      2026-08-15) — ยุบสองขั้นนี้เมื่อไร ใบที่ฝ่ายตอบครบแล้วแต่ผู้ขอยังไม่ปิด
      จะหายไปจากสายตาทันที ทั้งที่นั่นคือกองงานค้างของฝั่งผู้ขอ */
-  const closeStep = request?.closedAt || status === 'closed'
-    ? step('close', 'ปิด', 'done')
-    : answered
-      ? step('close', 'ปิด', 'now', 'รอผู้ขอปิดเรื่อง')
+  /* ⭐ **ขั้นปิดเขียวเมื่อครบสองฝั่งเท่านั้น** (มติผู้ใช้ 2026-08-20) — ตราเดียวยังไม่จบ
+     · โน้ตบอกว่าเหลือฝั่งไหน ⇒ คนกวาดคิวรู้ว่าต้องไปตามใคร */
+  const closeStep = closure.complete
+    ? step('close', 'ปิด', 'done', closure.requesterDone && closure.deptDone
+      ? `${requestSideText(request, 'dept', 'ตอบ')} · ${requestSideText(request, 'requester', 'ปิด')}`
+      : null)
+    : closure.waitingSide
+      ? step('close', 'ปิด', 'now', closure.waitingSide === 'requester'
+        ? requestWaitLabel(request, 'requester', 'ปิดเรื่อง')
+        : requestWaitLabel(request, 'dept', 'ตอบ'))
       : step('close', 'ปิด', 'todo');
 
   return { cancelled: false, steps: [sendStep, ackStep, dueStep, answerStep, closeStep] };

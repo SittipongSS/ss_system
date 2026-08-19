@@ -6,6 +6,8 @@ import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes'
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
+import { closureStatus } from '@/lib/requests/closure';
+import { requestSideText } from '@/lib/requests/replyTurn';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
@@ -29,6 +31,39 @@ export function requestProgress(items = []) {
 export function deriveRequestStatusAfterAnswer(items = [], currentStatus = 'acknowledged') {
   if (currentStatus === 'cancelled' || currentStatus === 'closed') return currentStatus;
   return requestProgress(items).complete ? 'answered' : 'acknowledged';
+}
+
+/**
+ * patch ของ **หัวใบ** หลังแถวขยับ — ตราปิดฝั่งฝ่าย + สถานะ ในก้อนเดียว
+ *
+ * ⭐ **ตราฝั่งฝ่ายคือ `answeredAt`** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ใบที่มีแถว
+ * ได้ตรานี้เองเมื่อทุกแถวจบ ไม่ต้องมีปุ่มให้ฝ่ายกดอีกอัน
+ * 🐞 ของเดิมขยับแค่ `status` ⇒ `answeredAt` ของหัวใบไม่เคยถูกประทับเลยสำหรับใบที่มีแถว
+ * (คอลัมน์ว่างมาตั้งแต่ mig 0158) · พอกฎใหม่อ่านตราจากคอลัมน์นี้ มันต้องถูกเขียนจริง
+ *
+ * ⚠️ **แถวกลับมาไม่ครบ = ถอนตราทั้งสองฝั่ง** — มีแถวใหม่/ลูกค้าขอแก้ = งานยังไม่จบ
+ * ⇒ ตราของผู้ขอที่กดไว้ก่อนหน้าก็ต้องหลุดด้วย ไม่งั้นพอฝ่ายปิดรอบสองใบจะจบทันที
+ * ทั้งที่ผู้ขอยังไม่ได้ดูของรอบใหม่เลย
+ * ⚠️ ใบที่ยังไม่มีแถวสักแถว (ก่อนฝ่ายส่งงาน) ไม่แตะอะไรเลย — `requestProgress` ของ
+ * ใบเปล่าคือ "ยังไม่ครบ" ซึ่งไม่ได้แปลว่าต้องถอนตรา
+ */
+export function requestRowsClosurePatch(request, items = [], nowIso) {
+  const patch = {};
+  if (!request || ['cancelled', 'closed'].includes(request.status)) return patch;
+  if (!items.length) return patch;
+
+  const complete = requestProgress(items).complete;
+  const answeredAt = complete ? (request.answeredAt || nowIso) : null;
+  const closedAt = complete ? (request.closedAt || null) : null;
+  if ((request.answeredAt || null) !== answeredAt) patch.answeredAt = answeredAt;
+  if (!complete && request.closedAt) {
+    patch.closedAt = null;
+    patch.closedById = null;
+    patch.closedByName = null;
+  }
+  const status = closureStatus({ status: request.status, answeredAt, closedAt });
+  if (status !== request.status) patch.status = status;
+  return patch;
 }
 
 // ── ด่านของแต่ละ action ──────────────────────────────────────────────────
@@ -193,7 +228,7 @@ export function closeRequestError(request, items = []) {
      ⚠️ ทางออกของใบที่ฝ่ายส่งอะไรไม่ได้จริง ๆ คือ **ยกเลิก** ไม่ใช่ปิด — คำเดียวกับ
      ด่าน `pending` ข้างบน */
   if (!rows.length && requestDeliversRows(request.kind) && request.status !== 'answered') {
-    return `ฝ่าย ${request.dept || 'ปลายทาง'} ยังไม่ได้ส่งงานสักรายการ — ยกเลิกแทนการปิด`;
+    return `${requestSideText(request, 'dept', 'ยังไม่ได้ส่งงานสักรายการ')} — ยกเลิกแทนการปิด`;
   }
 
   /* ⭐ **ปิดได้เมื่อลูกค้าคอนเฟิร์มครบตามจำนวนที่สั่ง** (มติผู้ใช้ 2026-08-18)

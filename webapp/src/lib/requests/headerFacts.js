@@ -13,6 +13,7 @@
 // ⚠️ ลูกค้ากับคนถูกยกออกจากแถบข้อเท็จจริงแล้ว — อย่าเติมกลับเข้าไปเป็นช่องอีก
 // มันจะกลายเป็นข้อมูลเดียวกันสองที่บนหัวเดียวกัน
 import { fmtDate } from '@/lib/format';
+import { requestSideText } from '@/lib/requests/replyTurn';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -160,7 +161,7 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     value: committed ? fmtDate(committed) : 'ยังไม่ระบุ',
     // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
     // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
-    sub: committed ? (gap?.text || null) : 'ฝ่ายยังไม่ได้แจ้งกำหนดส่ง',
+    sub: committed ? (gap?.text || null) : requestSideText(request, 'dept', 'ยังไม่ได้แจ้งกำหนดส่ง'),
     tone: committed ? gap?.tone || null : 'muted',
   });
 

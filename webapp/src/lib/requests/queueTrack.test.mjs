@@ -55,11 +55,12 @@ test('รับเรื่องแล้ว — ชื่อคนรับอ
    เหมือนใบเดินไปถึงขั้นตอบแล้วทั้งที่ยังไม่มีคำสัญญาสักวัน */
 test('⭐ รับเรื่องแล้วยังไม่แจ้งวัน — ขั้น "กำหนดส่ง" เป็นตาฝ่าย', () => {
   const track = requestQueueTrack({
-    status: 'acknowledged', acknowledgedAt: '2026-08-15', acknowledgedByName: 'ปทิตญา',
+    status: 'acknowledged', dept: 'RD', acknowledgedAt: '2026-08-15', acknowledgedByName: 'ปทิตญา',
   });
   assert.equal(stateOf(track, 'ack'), 'done');
   assert.equal(stateOf(track, 'due'), 'now');
-  assert.equal(track.steps.find((s) => s.key === 'due').note, 'รอฝ่ายแจ้งวัน');
+  // ⭐ โน้ตพูดชื่อฝ่ายจริง ไม่ใช่คำว่า "ฝ่าย" ลอย ๆ (มติผู้ใช้ 2026-08-20)
+  assert.equal(track.steps.find((s) => s.key === 'due').note, 'รอ RD แจ้งวัน');
   /* ⚠️ **ขั้น "ตอบ" ยังเป็น `now` พร้อมกันได้** — ฝ่ายเริ่มลงมือระหว่างที่ยังตอบวัน
      ไม่ได้ (รอวัตถุดิบ · รอฝ่ายอื่น) คือเคสที่มติ 2026-08-19 ตั้งใจรองรับพอดี ⇒ รางมี
      สองขั้นที่เป็นตาฝ่ายพร้อมกัน ไม่ใช่บั๊ก · บังคับให้ขั้นตอบเป็น `todo` เมื่อไร
@@ -76,10 +77,15 @@ test('⚠️ ใบเก่าที่ปิดไปโดยไม่เค�
 });
 
 test('⭐ ตอบครบแล้วแต่ผู้ขอยังไม่ปิด — ขั้นปิดต้องเป็นงานค้างที่มองเห็น', () => {
-  const track = requestQueueTrack({ status: 'answered', answeredAt: '2026-08-16' });
+  const track = requestQueueTrack({
+    status: 'answered', answeredAt: '2026-08-16', requesterDept: 'SA',
+  });
   assert.equal(stateOf(track, 'answer'), 'done');
   assert.equal(stateOf(track, 'close'), 'now');
-  assert.equal(track.steps.find((s) => s.key === 'close').note, 'รอผู้ขอปิดเรื่อง');
+  assert.equal(track.steps.find((s) => s.key === 'close').note, 'รอ SA ปิดเรื่อง');
+  // ใบเก่าที่ไม่รู้ฝ่ายของคนเปิด — ถอยไปใช้คำว่า "ผู้ขอ" แบบไม่เว้นวรรค
+  const legacy = requestQueueTrack({ status: 'answered', answeredAt: '2026-08-16' });
+  assert.equal(legacy.steps.find((s) => s.key === 'close').note, 'รอผู้ขอปิดเรื่อง');
 });
 
 test('ปิดแล้วทั้งรางเป็นสีเดียว — ขั้นก่อนหน้าห้ามถอยกลับแม้ไม่มี timestamp', () => {

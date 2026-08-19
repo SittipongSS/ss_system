@@ -46,5 +46,5 @@ export function editPdrError(request, user) {
   if (canEditPdr(user, request)) return null;
   return side === 'requester'
     ? 'ช่วงนี้แก้ได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน'
-    : `รับเรื่องแล้ว — ช่วงนี้แก้ได้เฉพาะฝ่าย ${request.dept}`;
+    : `รับเรื่องแล้ว — ช่วงนี้แก้ได้เฉพาะ ${request.dept}`;
 }

@@ -15,6 +15,8 @@ import {
 import { quoteTargetError } from '@/lib/master/updateQuote';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { appendUpdate, findUpdate, listUpdates } from '@/lib/master/updates';
+import { replyClearsClosure } from '@/lib/requests/closure';
+import { requestIsThreadOnly } from '@/lib/requests/replyTurn';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -118,6 +120,35 @@ export async function POST(request) {
       entityType, entityId, kind, body: text || null, meta, attachments, user,
     });
     if (error) return Response.json({ error: `บันทึกอัปเดตไม่สำเร็จ: ${error}` }, { status: 500 });
+
+    /* ⭐ **คำร้องจำว่า "ฝั่งไหนพูดล่าสุด"** (mig 0270 · มติผู้ใช้ 2026-08-20) — หัวข้อ
+       ที่ทั้งใบคือเธรด (สอบถามข้อมูล) ไม่มีบรรทัดให้เดินสถานะ ⇒ คิวไม่มีทางรู้ว่าลูก
+       ปิงปองอยู่ฝั่งไหน · ป้าย "รอ X ตอบ" อ่านค่านี้ (ดู `lib/requests/replyTurn.js`)
+       ⚠️ **เฉพาะ `comment` = ข้อความที่คนพิมพ์** — เหตุการณ์ระบบ (รับเรื่อง · แจ้ง
+       กำหนดส่ง · ส่งงาน) ไม่ใช่การตอบ และมีสถานะของตัวเองเล่าอยู่แล้ว
+       ⚠️ ฝั่งตัดสินจาก **ฝ่ายของคนโพสต์เทียบฝ่ายปลายทางของใบ** ไม่ใช่ "เป็นคนเปิดใบ
+       ไหม" — เพื่อนร่วมทีมของผู้ขอตอบแทนกันได้ และ RD คนไหนในฝ่ายก็นับเป็นฝั่งฝ่าย
+       ⚠️ **กลืน error โดยตั้งใจ** — สัญญาเดียวกับ `appendUpdate`: เขียนของเสริมพลาด
+       ต้องไม่ทำให้ข้อความที่บันทึกสำเร็จแล้วตอบ 500 · และรีโปที่ยังไม่ได้รัน mig 0270
+       ต้องยังโพสต์ได้ตามปกติ */
+    if (entityType === 'dept_request' && kind === 'comment') {
+      const side = user?.department && user.department === parent?.dept ? 'dept' : 'requester';
+      const turnPatch = { lastReplySide: side, lastReplyAt: row.createdAt };
+
+      /* ⭐ **ถูกถามกลับ = ตราปิดของอีกฝั่งหลุดเอง** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง)
+         *"แล้วถ้าตอบ แต่ต้องถามกลับล่ะ แบบโต้ตอบไปมา"* — ใบสอบถามไม่มีแถว เธรดคือ
+         ตัวงาน ⇒ ข้อความจากอีกฝั่งคือหลักฐานว่ายังไม่จบ ไม่ต้องให้ใครไปกด "ยังไม่จบ"
+         ⚠️ ใบที่มีแถวไม่หลุดตามข้อความ — ตัวงานคือแถว ถามกันระหว่างทางเป็นเรื่องปกติ */
+      const clears = replyClearsClosure(parent, {
+        side, threadOnly: requestIsThreadOnly(parent?.kind) && !(parent?.items || []).length,
+      });
+      if (clears === 'dept') Object.assign(turnPatch, { answeredAt: null, answeredById: null, answeredByName: null, status: 'acknowledged' });
+      if (clears === 'requester') Object.assign(turnPatch, { closedAt: null, closedById: null, closedByName: null, status: 'acknowledged' });
+
+      const { error: turnError } = await supabase.from('dept_requests')
+        .update(turnPatch).eq('id', entityId);
+      if (turnError) console.error('[updates] stamp lastReplySide failed', turnError.message);
+    }
 
     await recordAudit({
       user, action: 'create', entityType: 'entity_update', entityId: row.id, after: row,

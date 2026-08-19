@@ -70,17 +70,39 @@ test('⭐ D · ก้าวถัดไปของใบ — ห้ามต่
   assert.equal(next({ status: 'pending', items: [] }), 'รอรับเรื่อง');
   /* ⚠️ ใบที่รับเรื่องแล้วต้องมี `committedDueDate` ในกรณีทดสอบพวกนี้ (มติผู้ใช้
      2026-08-19) — ใบที่ยังไม่แจ้งวันมีป้ายของตัวเองคือ "รอกำหนดส่ง" ซึ่งทับป้ายงาน
-     ทุกป้ายที่เป็นตาของฝ่าย (ทดสอบไว้ท้ายเทสต์นี้) */
-  const acked = { status: 'acknowledged', committedDueDate: '2026-08-25' };
-  assert.equal(next({ ...acked, items: [] }), 'รอฝ่ายเริ่ม');
-  assert.equal(next({ ...acked, items: [{}] }), 'รอฝ่ายทำต่อ');
-  assert.equal(next({ ...acked, items: [{ readyAt: '2026-08-08' }] }), 'รอผู้ขอทำต่อ');
+     ทุกป้ายที่เป็นตาของฝ่าย (ทดสอบไว้ท้ายเทสต์นี้)
+     ⚠️ **ป้ายพูดชื่อฝ่ายจริงแล้ว** (มติผู้ใช้ 2026-08-20: *"ฝ่ายคืออะไร ไม่สวยเลย"*)
+     ⇒ ใบตัวอย่างต้องมี `dept`/`kind` ครบเหมือนของจริง · `scent_dev` = หัวข้อที่ฝ่าย
+     สร้างแถวเองตอนส่งงาน (ไม่ใช่เธรดล้วน) จึงยังเดินป้ายชุด "เริ่ม/ทำต่อ" ตามเดิม */
+  const acked = {
+    status: 'acknowledged', kind: 'scent_dev', dept: 'RD', requesterDept: 'SA',
+    committedDueDate: '2026-08-25',
+  };
+  assert.equal(next({ ...acked, items: [] }), 'รอ RD เริ่ม');
+  assert.equal(next({ ...acked, items: [{}] }), 'รอ RD ทำต่อ');
+  assert.equal(next({ ...acked, items: [{ readyAt: '2026-08-08' }] }), 'รอ SA ทำต่อ');
   assert.equal(next({ ...acked, items: [{ answerStatus: 'done' }] }), 'รอปิดเรื่อง');
+  // ⚠️ ใบเก่าที่ไม่มี `requesterDept` ยังต้องอ่านออก — ถอยไปใช้คำว่า "ผู้ขอ" (ไม่เว้นวรรค)
+  assert.equal(
+    next({ ...acked, requesterDept: null, items: [{ readyAt: '2026-08-08' }] }),
+    'รอผู้ขอทำต่อ',
+  );
+
+  /* ⭐ **หัวข้อเธรดล้วน (สอบถามข้อมูล) — ป้ายพลิกตามคนโพสต์ล่าสุด** (มติผู้ใช้
+     2026-08-20) · ยังไม่มีใครพิมพ์ = ตาฝ่าย เพราะคำถามอยู่ในใบตั้งแต่เปิดแล้ว */
+  const asked = { ...acked, kind: 'info', items: [] };
+  assert.equal(next(asked), 'รอ RD ตอบ');
+  assert.equal(next({ ...asked, lastReplySide: 'requester' }), 'รอ RD ตอบ');
+  assert.equal(next({ ...asked, lastReplySide: 'dept' }), 'รอ SA ตอบ');
+
   // ⭐ รับเรื่องแล้วยังไม่แจ้งวัน = ก้าวที่ค้างอยู่จริงของฝ่าย — ทับป้ายงานของฝ่าย
-  assert.equal(next({ status: 'acknowledged', items: [] }), 'รอกำหนดส่ง');
-  assert.equal(next({ status: 'acknowledged', items: [{}] }), 'รอกำหนดส่ง');
+  assert.equal(next({ ...acked, committedDueDate: null, items: [] }), 'รอกำหนดส่ง');
+  assert.equal(next({ ...acked, committedDueDate: null, items: [{}] }), 'รอกำหนดส่ง');
   // ⚠️ แต่ห้ามทับก้าวของ **ผู้ขอ** — ใบที่ฝ่ายส่งครบแล้วรอผู้ขอปิด ไม่ได้ค้างที่ฝ่าย
-  assert.equal(next({ status: 'acknowledged', items: [{ answerStatus: 'done' }] }), 'รอปิดเรื่อง');
+  assert.equal(
+    next({ ...acked, committedDueDate: null, items: [{ answerStatus: 'done' }] }),
+    'รอปิดเรื่อง',
+  );
   // ⚠️ คิวมีคอลัมน์ "คืบหน้า" ที่บอก `2 / 3` อยู่แล้ว — ป้ายที่ต่อจำนวนคือพูดซ้ำ
   // และกินไป 50px · ป้ายตอบว่า "ใครค้าง" ตัวเลขตอบว่า "ค้างเท่าไร" คนละคำถาม
   for (const items of [[{}], [{ readyAt: '2026-08-08' }]]) {

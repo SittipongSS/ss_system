@@ -93,7 +93,7 @@ function daysWaiting(request, todayIso) {
 export const DEPT_PIPELINE_STAGES = [
   { key: 'unacked', label: 'รอรับเรื่อง', tone: 'warning' },
   { key: 'working', label: 'กำลังปรุง', tone: 'info' },
-  { key: 'waiting', label: 'ส่งแล้ว รอฝ่ายขาย', tone: 'neutral' },
+  { key: 'waiting', label: 'ส่งแล้ว รอผู้ขอ', tone: 'neutral' },
   { key: 'closed', label: 'ปิดเดือนนี้', tone: 'good' },
 ];
 

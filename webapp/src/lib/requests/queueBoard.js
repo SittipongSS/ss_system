@@ -10,6 +10,8 @@ import {
   REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestAwaitingDue,
 } from '@/lib/requests/statuses';
 import { requestRowSummary } from '@/lib/requests/rowStage';
+import { requestReplyTurn, requestWaitLabel } from '@/lib/requests/replyTurn';
+import { requestClosure } from '@/lib/requests/closure';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
 import { compareRequestUrgency } from '@/lib/requests/queue';
@@ -48,29 +50,51 @@ function baseNextStep(request) {
       ? { owner: 'requester', label: 'ตีกลับ — ต้องแก้', bounced: true }
       : { owner: 'requester', label: 'ยังไม่ได้ส่ง' };
   }
+  /* ⭐ **ช่วงปิดสองฝั่ง** (มติผู้ใช้ 2026-08-20) — ตราเดียวยังไม่จบ ⇒ ใบต้องอยู่ในคิว
+     ต่อ และป้ายบอกว่าเหลือใคร
+     🐞 ของเดิมใบ `answered` ตกด่านบรรทัดล่าง (`REQUEST_OPEN_STATUSES` ไม่มี answered)
+     ⇒ คืน null ⇒ ใบตกไปแท็บ "ประวัติ" ทันทีที่ฝ่ายตอบ ทั้งที่ผู้ขอยังไม่ได้ปิด */
+  const closure = requestClosure(request);
+  if (closure.complete) return null;
+  if (closure.waitingSide === 'requester') {
+    return { owner: 'requester', label: requestWaitLabel(request, 'requester', 'ปิด') };
+  }
+  if (closure.waitingSide === 'dept') {
+    return { owner: 'dept', label: requestWaitLabel(request, 'dept', 'ตอบ') };
+  }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return null;
 
   const items = request.items || [];
-  // ใบที่ยังไม่มีบรรทัด (สอบถาม/พัฒนากลิ่นก่อน RD ส่งของ) — คอขวดอยู่ที่ฝ่ายเสมอ
+  /* ⭐ **หัวข้อที่ทั้งใบคือเธรด — ป้ายพลิกตามคนโพสต์ล่าสุด** (มติผู้ใช้ 2026-08-20)
+     สอบถามข้อมูลไม่มีบรรทัดให้เดินสถานะ ⇒ ของเดิมขึ้น "รอฝ่ายเริ่ม" ค้างตั้งแต่วัน
+     รับเรื่องจนถึงวันที่มีคนกด "ตอบแล้ว" แม้ฝ่ายจะตอบไปแล้วและกำลังรอผู้ขอตอบกลับ
+     ⚠️ กติกาอยู่ที่ `replyTurn.js` ที่เดียว — รางหน้ารายละเอียดอ่านตัวเดียวกัน */
+  const turn = requestReplyTurn(request);
+  if (turn) return { owner: turn.side, label: turn.label };
+
+  // ใบที่ยังไม่มีบรรทัด (พัฒนากลิ่นก่อน RD ส่งของ) — คอขวดอยู่ที่ฝ่ายเสมอ
   //
-  // ⭐ "รอฝ่ายเริ่ม" ≠ "รอฝ่ายทำต่อ" — ตัวแรกคือรับเรื่องแล้วแต่ยังไม่มีของสักชิ้น
+  // ⭐ "รอ X เริ่ม" ≠ "รอ X ทำต่อ" — ตัวแรกคือรับเรื่องแล้วแต่ยังไม่มีของสักชิ้น
   // ตัวหลังคือส่งมาบ้างแล้วแต่ยังไม่ครบ · สองอย่างนี้ผู้ขอทำอะไรต่างกัน (ตัวแรกรอเฉย ๆ
   // ตัวหลังมีของให้ไปรับ) จึงยุบเป็นคำเดียวไม่ได้
   if (!items.length) {
     return request.status === 'pending'
       ? { owner: 'dept', label: 'รอรับเรื่อง' }
-      : { owner: 'dept', label: 'รอฝ่ายเริ่ม' };
+      : { owner: 'dept', label: requestWaitLabel(request, 'dept', 'เริ่ม') };
   }
 
   // ⚠️ **ไม่ต่อจำนวนท้ายป้าย** (มติผู้ใช้ 2026-08-08) — คิวมีคอลัมน์ "คืบหน้า" ที่บอก
   // `2 / 3` อยู่แล้ว ⇒ ป้ายพูดซ้ำและกินไป 50px (135px → 84px) · ป้ายตอบว่า "ใครค้าง"
   // คอลัมน์ตัวเลขตอบว่า "ค้างเท่าไร" — คนละคำถาม อย่ายัดไว้ที่เดียวกัน
+  /* ⚠️ **ป้ายพูดชื่อฝ่ายจริงทั้งสองฝั่ง** (มติผู้ใช้ 2026-08-20: *"ฝ่ายคืออะไร
+     ไม่สวยเลย"*) — คำว่า "ฝ่าย"/"ผู้ขอ" ลอย ๆ ไม่ได้บอกว่าต้องไปตามใคร · ฝั่งผู้ขอ
+     ถอยไปใช้คำว่า "ผู้ขอ" เฉพาะใบเก่าที่ไม่มี `requesterDept` (ดู `replyTurn.js`) */
   const summary = requestRowSummary(items);
   if (summary.waitingDept > 0) {
-    return { owner: 'dept', label: 'รอฝ่ายทำต่อ' };
+    return { owner: 'dept', label: requestWaitLabel(request, 'dept', 'ทำต่อ') };
   }
   if (summary.waitingRequester > 0) {
-    return { owner: 'requester', label: 'รอผู้ขอทำต่อ' };
+    return { owner: 'requester', label: requestWaitLabel(request, 'requester', 'ทำต่อ') };
   }
   // ทุกแถวจบแล้วแต่ใบยังไม่ปิด — คนที่ต้องกดปิดคือผู้ขอ
   return { owner: 'requester', label: 'รอปิดเรื่อง' };
@@ -132,7 +156,10 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
      ⚠️ นับเฉพาะตัวเองเท่านั้น ไม่ให้ไหลไปช่องอื่น — ใบตีกลับไม่ใช่ "กำลังดำเนินการ"
      และไม่ใช่ "เลยกำหนด" (ไม่มีวันกำหนดแล้ว เพราะยังไม่ถูกรับเรื่อง) */
   if (key === 'bounced') return !!request?.bouncedAt && request?.status === 'draft';
-  if (!REQUEST_OPEN_STATUSES.includes(request?.status)) return false;
+  /* ⚠️ **`answered` นับเป็นใบที่ยังเดินอยู่ด้วย** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) —
+     ฝ่ายกดตราแล้วแต่ผู้ขอยังไม่ปิด = ใบยังไม่จบ · แท็บนับมันอยู่แล้ว (มีก้าวถัดไป)
+     ⇒ ถ้าแถบตัวเลขไม่นับ จะได้อาการ "กดตัวเลข 0 แล้วเจอสามใบ" ที่คอมเมนต์ข้างบนกันไว้ */
+  if (!REQUEST_OPEN_STATUSES.concat('answered').includes(request?.status)) return false;
   // ยังไม่ได้ให้วัน — ใบที่ยังเดินอยู่แต่ไม่มีใครรับปากวันไหนไว้เลย
   if (key === 'undated') return !request?.committedDueDate;
   const next = requestNextStep(request);
@@ -170,7 +197,8 @@ export const QUEUE_COUNT_META = [
   { key: 'overdue', label: 'เลยกำหนด', tone: 'danger' },
   { key: 'working', label: 'กำลังดำเนินการ', tone: 'info' },
   // ⭐ ตัวนี้ไม่มีในระบบวันนี้ — มันคือตัวที่ทำให้ฝ่ายเลิกถูกนับงานที่ไม่ใช่ของตัวเอง
-  { key: 'waitingRequester', label: 'รอฝ่ายขายทำต่อ', tone: 'neutral' },
+  // ⚠️ "ผู้ขอ" ไม่ใช่ "ฝ่ายขาย" — ใบเปิดจากฝ่ายไหนก็ได้ (RD ขอเอกสารจาก FN ก็มี)
+  { key: 'waitingRequester', label: 'รอผู้ขอทำต่อ', tone: 'neutral' },
   /* ⭐ ตัวที่ 5 (2026-08-11) — **งานของผู้ขอ ไม่ใช่ของฝ่าย** · ใบที่ฝ่ายส่งคืนแล้วรอ
      คนเปิดใบมาแก้ · ก่อนหน้านี้ไม่มีตัวเลขไหนนับเลย ใบจึงค้างได้ไม่จำกัดโดยเงียบ
      ⚠️ หน้าคิวของ *ฝ่าย* (`/rd/requests`) จะได้ 0 เสมอ เพราะฝ่ายไม่ใช่คนแก้ —
@@ -382,13 +410,28 @@ export function nextUpRows(rows = [], { todayIso = null, limit = 5 } = {}) {
 // ค้างอยู่ตรงไหน") ⇒ กรองด้วย `dept` ก่อนเสมอ ไม่ดู `_mine` เลย
 //
 // ⚠️ ใบร่างไม่เข้าคิวฝ่ายไม่ว่ากรณีใด — ยังไม่ถูกส่ง = ยังไม่ใช่งานของใครนอกจากคนร่าง
-export const DEPT_QUEUE_TABS = [
-  { key: 'todo', label: 'รอฝ่ายตอบ' },
-  // ⭐ ตัวนี้คือ "รอฝ่ายขายทำต่อ" ของแถบตัวเลข — ยกขึ้นมาเป็นแท็บด้วยเพราะ RD ต้อง
-  // เปิดดูได้ว่าอะไรค้างอยู่ที่อีกฝั่ง (ของที่ส่งไปแล้วแต่ยังไม่มีใครมารับ)
-  { key: 'waiting', label: 'รอฝ่ายขายทำต่อ' },
-  { key: 'history', label: 'ประวัติ' },
-];
+/**
+ * แท็บของคิวฝ่าย — **ป้ายพูดชื่อฝ่ายจริง** (มติผู้ใช้ 2026-08-20)
+ *
+ * ⚠️ เป็นฟังก์ชัน ไม่ใช่ค่าคงที่ เพราะแต่ละหน้าเป็นคิวของคนละฝ่าย (`/rd/requests` ·
+ * `/finance/requests`) ⇒ "รอฝ่ายตอบ" ที่ไม่บอกว่าฝ่ายไหน คือคำที่ผู้ใช้ทักว่า
+ * *"ฝ่ายคืออะไร ไม่สวยเลย"*
+ * ⚠️ ฝั่งตรงข้ามยังใช้คำว่า "ผู้ขอ" เพราะแท็บนี้รวมใบของ **หลายฝ่ายผู้เปิด** ไว้ด้วยกัน
+ * (ต่างจากป้ายรายแถวที่รู้ `requesterDept` ของใบนั้น ๆ)
+ */
+export function deptQueueTabs(dept) {
+  const who = String(dept || '').trim();
+  return [
+    { key: 'todo', label: who ? `รอ ${who} ตอบ` : 'รอฝ่ายเราตอบ' },
+    // ⭐ ตัวนี้คือ "รอผู้ขอทำต่อ" ของแถบตัวเลข — ยกขึ้นมาเป็นแท็บด้วยเพราะ RD ต้อง
+    // เปิดดูได้ว่าอะไรค้างอยู่ที่อีกฝั่ง (ของที่ส่งไปแล้วแต่ยังไม่มีใครมารับ)
+    { key: 'waiting', label: 'รอผู้ขอทำต่อ' },
+    { key: 'history', label: 'ประวัติ' },
+  ];
+}
+
+/** คีย์ของแท็บคิวฝ่าย — ผู้เรียกที่ต้องการแค่คีย์ (validate query string) ใช้ตัวนี้ */
+export const DEPT_QUEUE_TAB_KEYS = ['todo', 'waiting', 'history'];
 
 export function deptQueueRows(rows = [], { dept, tab = 'todo' } = {}) {
   const mine = rows.filter((r) => r?.dept === dept && r?.status !== 'draft');

@@ -44,7 +44,7 @@ export function askActionUpdate(action, ask, {
   if (action === 'submit') {
     return {
       kind: 'submit',
-      body: `ส่งเคสถึงฝ่าย ${dept} — ${submitScope(ask)}`,
+      body: `ส่งเคสถึง ${dept} — ${submitScope(ask)}`,
       meta: { dept, docNo: ask.docNo || null },
     };
   }
@@ -54,7 +54,7 @@ export function askActionUpdate(action, ask, {
      ⭐ และคำใหม่ต้องบอก **ก้าวถัดไปที่ค้างอยู่จริง** — รับเรื่องแล้วยังไม่ใช่การรับปาก
      วัน ตราบใดที่ยังไม่มีแถว `commitDue` ตามมา */
   if (action === 'acknowledge') {
-    return { kind: 'acknowledge', body: `ฝ่าย ${dept} รับเรื่องแล้ว — รอแจ้งกำหนดส่ง`, meta: { dept } };
+    return { kind: 'acknowledge', body: `${dept} รับเรื่องแล้ว — รอแจ้งกำหนดส่ง`, meta: { dept } };
   }
   // ⭐ แจ้งกำหนดส่งครั้งแรก (มติผู้ใช้ 2026-08-19) — คนละแถวกับ `reschedule` ซึ่งเป็น
   // การ *แก้* คำสัญญาที่ให้ไปแล้ว · รวมสองอย่างเมื่อไร เธรดจะอ่านเหมือนใบนี้เลื่อนวัน
@@ -63,7 +63,7 @@ export function askActionUpdate(action, ask, {
     const due = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
     return {
       kind: 'commitDue',
-      body: `ฝ่าย ${dept} แจ้งกำหนดส่ง ${due}` + (clip(reason) ? ` — ${clip(reason)}` : ''),
+      body: `${dept} แจ้งกำหนดส่ง ${due}` + (clip(reason) ? ` — ${clip(reason)}` : ''),
       meta: { dept, due: ask.committedDueDate || null },
     };
   }
@@ -72,14 +72,31 @@ export function askActionUpdate(action, ask, {
   // แจ้งเตือนรายคนเกาะอยู่กับแถวเธรด (appendUpdate → notifyThreadUpdate) ผู้ขอจึง
   // ไม่เคยรู้ว่ามีคนตอบแล้ว ต้องเข้ามาเปิดดูเอง
   if (action === 'answer') {
-    return { kind: 'answer', body: `ฝ่าย ${dept} ตอบเรื่องนี้แล้ว`, meta: { dept } };
+    // ⭐ ปุ่มนี้เป็น **ตราปิดฝั่งฝ่าย** (ปิดสองฝั่ง · 2026-08-20) — เธรดต้องบอกด้วยว่า
+    // ยังเหลืออีกฝั่ง ไม่งั้นคนอ่านเข้าใจว่าใบจบแล้วทั้งที่ยังรอผู้ขอกดปิด
+    return {
+      kind: 'answer',
+      body: ask.closedAt
+        ? `${dept} ตอบเรื่องนี้แล้ว — ปิดครบสองฝั่ง`
+        : `${dept} ตอบเรื่องนี้แล้ว — รอผู้ขอปิดเรื่อง`,
+      meta: { dept },
+    };
+  }
+  /* ⭐ **ยังไม่จบ** — ถอนตราปิด · ต้องมีเหตุผลเสมอ (ด่านที่ `closure.js`) ⇒ คนอ่าน
+     ย้อนหลังรู้ว่าใบวนอีกรอบเพราะอะไร ไม่ใช่เห็นแค่สถานะเด้งกลับ */
+  if (action === 'reopen') {
+    return {
+      kind: 'reopen',
+      body: `ยังไม่จบ — เปิดเรื่องกลับมา${clip(reason) ? ` · ${clip(reason)}` : ''}`,
+      meta: { dept },
+    };
   }
   // ⭐ ตีกลับต้องลงเธรด **พร้อมเหตุผล** — ผู้ขอเปิดใบมาเห็นว่ากลับเป็นร่างแล้ว
   // แต่ถ้าไม่มีข้อความบอกว่าขาดอะไร เขาจะส่งใบเดิมกลับมาอีกรอบ
   if (action === 'bounce') {
     return {
       kind: 'bounce',
-      body: `ฝ่าย ${dept} ตีกลับให้แก้ไข — ${clip(reason) || 'ไม่ระบุเหตุผล'}`,
+      body: `${dept} ตีกลับให้แก้ไข — ${clip(reason) || 'ไม่ระบุเหตุผล'}`,
       meta: { dept },
     };
   }
@@ -95,7 +112,7 @@ export function askActionUpdate(action, ask, {
     const to = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
     return {
       kind: 'reschedule',
-      body: `ฝ่าย ${dept} เลื่อนวันกำหนดส่ง ${from} → ${to}`
+      body: `${dept} เลื่อนวันกำหนดส่ง ${from} → ${to}`
         + (clip(reason) ? ` — ${clip(reason)}` : ''),
       meta: { dept, from: previousDueDate || null, to: ask.committedDueDate || null },
     };
@@ -138,7 +155,12 @@ export function askActionUpdate(action, ask, {
     };
   }
   if (action === 'close') {
-    return { kind: 'close', body: 'ปิดเคส', meta: {} };
+    // ปิดฝั่งผู้ขอ ≠ ใบจบ — ใบจบเมื่อฝ่ายมีตราด้วย (`answeredAt`)
+    return {
+      kind: 'close',
+      body: ask.answeredAt ? 'ปิดเรื่อง — ครบสองฝั่ง' : `ผู้ขอปิดฝั่งตัวเอง — รอ ${dept} ตอบ`,
+      meta: { dept },
+    };
   }
   if (action === 'cancel') {
     // เหตุผลยกเลิกบังคับกรอกอยู่แล้วที่ API — เอาลงเธรดให้คนอ่านเห็นในสายเดียว

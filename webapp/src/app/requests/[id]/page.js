@@ -49,6 +49,8 @@ import {
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
+import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
+import { requestClosure, reopenRequestError } from "@/lib/requests/closure";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -124,6 +126,8 @@ export default function RequestDetailPage() {
   const [commitDue, setCommitDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
+  // "ยังไม่จบ" — ถอนตราปิด · { reason } (บังคับ)
+  const [reopen, setReopen] = useState(null);
   /* ⭐ มอบหมายผู้รับผิดชอบ (mig 0230) — `null` = ปิดโมดัล · สตริง = id ที่เลือกอยู่
      (สตริงว่าง = "ยังไม่ระบุ" ซึ่งแปลว่าถอนการมอบหมาย) */
   const [assign, setAssign] = useState(null);
@@ -286,8 +290,11 @@ export default function RequestDetailPage() {
   // ของตัวผ่านรายการ (ส่งเอกสาร/ปฏิเสธ) ไปแล้ว การปิดคือผู้ขอยืนยันรับงานทั้งใบ
   // ⚠️ เก็บ **ประโยค** ไว้ด้วย ไม่ใช่แค่ true/false — ผู้ขอที่กดปิดไม่ได้ต้องรู้ว่า
   // ติดอะไร (ปุ่มหายไปเฉย ๆ คือสิ่งที่งวด 2 เพิ่งเลิกทำ)
+  /* ⭐ **ปิดสองฝั่ง** (มติผู้ใช้ 2026-08-20) — ตราของฝ่ายคือ `answeredAt` · ของผู้ขอคือ
+     `closedAt` · ใบจบเมื่อครบทั้งคู่ (กติกาอยู่ที่ `lib/requests/closure.js`) */
+  const closure = requestClosure(req);
   const closeBlocker = closeRequestError(req, req.items || []);
-  const canClose = !closeBlocker && req._mine;
+  const canClose = !closeBlocker && req._mine && !closure.requesterDone;
   /* ชนิดที่ไม่มีบรรทัด ระบบไม่มีทางรู้ว่าคำตอบครบหรือยัง → ผู้ตอบกดเองว่า "ตอบแล้ว"
      ⚠️ **หัวข้อที่ฝ่ายสร้างแถวเองตอนส่ง (`deliversRows`) ไม่นับว่า "ไม่มีบรรทัด"** —
      พอส่งงานแล้วมันมีแถวที่เดินสถานะของตัวเอง ระบบรู้เองว่าครบหรือยัง
@@ -295,7 +302,11 @@ export default function RequestDetailPage() {
      ย้ายลงตาราง (2026-08-18) ปุ่ม "ตอบแล้ว" ก็โผล่ขึ้นมาเป็นปุ่มหลักของ RD ทันที
      ซึ่งเป็นทางลัดปิดงานที่ข้ามสถานะจริงของ direction */
   const canMarkAnswered = !hasItems && !requestDeliversRows(req.kind)
-    && owner && !answerRequestError(req);
+    && owner && !answerRequestError(req) && !closure.deptDone;
+  /* ⭐ **"ยังไม่จบ" — ถอนตราปิดที่กดไปแล้ว** (มติผู้ใช้ 2026-08-20) · โผล่เฉพาะตอนมี
+     ตราฝั่งใดฝั่งหนึ่งแล้วแต่ยังไม่ครบ · กดได้ทั้งสองฝั่ง (ฝั่งที่กดเปลี่ยนใจ หรือ
+     อีกฝั่งที่รู้ว่างานยังไม่จบจริง) — ด่านเดียวกับ server */
+  const canReopen = (owner || req._mine) && !reopenRequestError(req, { reason: "x" });
   // บรีฟกลิ่นที่ยังไม่ผูกกลิ่น = ต้องถามผลลัพธ์ก่อนปิด (ผูกแล้วไม่ต้องถามซ้ำ)
   const needsOutcome = requestNeedsOutcome(req.kind) && !req.scentId;
   const outcomeError = outcome ? closeOutcomeError(req, outcome) : null;
@@ -446,7 +457,7 @@ export default function RequestDetailPage() {
     if (req.status === "draft") return "ยังไม่ได้ส่ง — ข้อความนี้จะยังไม่แจ้งเตือนใคร";
     if (["closed", "cancelled"].includes(req.status)) return null;
     return req._mine
-      ? `จะแจ้งเตือนถึงฝ่าย ${req.dept} ที่ถือเรื่องนี้อยู่`
+      ? `จะแจ้งเตือนถึง ${req.dept} ที่ถือเรื่องนี้อยู่`
       : `จะแจ้งเตือนถึง ${req.requestedByName || "ผู้เปิดคำร้อง"}`;
   })();
 
@@ -455,7 +466,7 @@ export default function RequestDetailPage() {
     if (confirm.kind === "submit") {
       return {
         title: "ส่งคำร้อง",
-        description: `${(req.items || []).length} รายการ → ฝ่าย ${req.dept}`,
+        description: `${(req.items || []).length} รายการ → ${req.dept}`,
         detail: "ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้",
         confirmLabel: "ส่งคำร้อง",
       };
@@ -467,7 +478,7 @@ export default function RequestDetailPage() {
       return {
         title: "รับเรื่อง",
         description: req.docNo || "",
-        detail: `ใบนี้จะเข้าคิวของฝ่าย ${req.dept} ทันที และนับเป็นงานที่ฝ่ายรับไว้แล้ว`
+        detail: `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
           + " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
           + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง",
         confirmLabel: "รับเรื่อง",
@@ -477,18 +488,27 @@ export default function RequestDetailPage() {
       return {
         title: "ทำเครื่องหมายว่าตอบแล้ว",
         description: req.docNo || "",
+        /* ⭐ ปิดสองฝั่ง (มติผู้ใช้ 2026-08-20) — โมดัลต้องบอกว่ากดแล้วใบ **ยังไม่จบ**
+           ไม่งั้นฝ่ายเข้าใจว่าจบแล้วและเลิกตามงาน */
         detail: "ชนิดนี้ไม่มีรายการให้ระบบนับ — ผู้ตอบเป็นคนบอกเองว่าตอบครบแล้ว"
-          + " · ผู้ขอจะเป็นคนกดปิดเรื่องเมื่อพอใจกับคำตอบ",
+          + `\nใบยังไม่จบจนกว่า${requestSideLabel(req, "requester")}จะกด "ปิดเรื่อง" ด้วย`
+          + " · ถ้ามีคนถามกลับในเธรด เครื่องหมายนี้จะถูกถอนเองแล้วใบกลับมาที่คุณ",
         confirmLabel: "ตอบแล้ว",
       };
     }
     if (confirm.kind === "close") {
+      /* ⭐ ปิดสองฝั่ง (มติผู้ใช้ 2026-08-20) — บอกตรง ๆ ว่าใบจะจบเลยไหม หรือยังต้องรอ
+         ฝ่ายกด "ตอบแล้ว" ก่อน · และครบสองฝั่งแล้วเปิดกลับไม่ได้ */
+      const deptPending = !closure.deptDone;
       return {
         title: "ปิดเรื่อง",
         description: req.docNo || "",
-        detail: hasItems
+        detail: (hasItems
           ? "ราคาที่ตอบแล้วยังอยู่ในทะเบียนวัสดุตามเดิม — ปิดเรื่องแค่บอกว่างานนี้จบ"
-          : "ปิดเรื่องแล้วยังอ่านย้อนหลังได้ตามเดิม — แค่บอกว่างานนี้จบ",
+          : "ปิดเรื่องแล้วยังอ่านย้อนหลังได้ตามเดิม — แค่บอกว่างานนี้จบ")
+          + (deptPending
+            ? `\nนี่คือการปิดฝั่งคุณเท่านั้น — ใบยังไม่จบจนกว่า${requestSideLabel(req, "dept")}จะกด "ตอบแล้ว"`
+            : "\nอีกฝั่งกดแล้ว — กดปุ่มนี้คือใบจบถาวร เปิดกลับไม่ได้"),
         confirmLabel: "ปิดเรื่อง",
       };
     }
@@ -630,6 +650,7 @@ export default function RequestDetailPage() {
         ? {
           id: "answer",
           label: "ตอบแล้ว",
+          hint: `${requestSideText(req, "requester", "ยังต้องกดปิดเรื่องด้วย")}`,
           kind: "approve",
           icon: CheckCheck,
           onClick: () => setConfirm({ kind: "answer" }),
@@ -793,6 +814,18 @@ export default function RequestDetailPage() {
         visible: canAnswer && !!req.acknowledgedAt && !!req.committedDueDate,
       },
       {
+        /* ⭐ **ยังไม่จบ** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ถอนตราปิดของฝั่งที่กด
+           ไปแล้ว แล้วใบกลับมาเปิด · บังคับเหตุผล ลงเธรด
+           ⚠️ ใบที่ปิดครบสองฝั่งแล้วไม่มีปุ่มนี้ — `closed` เป็นปลายทางถาวร (มติเดียวกัน)
+           ⚠️ ใบสอบถามไม่ต้องรอปุ่มนี้: อีกฝั่งพิมพ์ถามกลับ ตราหลุดเอง (ดู closure.js) */
+        id: "reopen",
+        label: "ยังไม่จบ",
+        kind: "edit",
+        icon: Undo2,
+        onClick: () => setReopen({ reason: "" }),
+        visible: canReopen,
+      },
+      {
         /* ⭐ **มอบหมายผู้รับผิดชอบ** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่อง
            กับ "รับเรื่อง": รับเรื่อง = ฝ่ายรับปากกับผู้ขอ · มอบหมาย = จัดคนในฝ่าย
            ⚠️ เห็นตั้งแต่ใบยังไม่ถูกรับเรื่อง (ต่างจากเลื่อนวัน) — หัวหน้าแจกงาน
@@ -900,7 +933,7 @@ export default function RequestDetailPage() {
           ปุ่ม เรียงตามลำดับที่คนอ่านจริง · ฝ่ายผู้ตอบขึ้นไปอยู่กับชนิดบน eyebrow
           เพราะสองอย่างนี้คือ "ใบนี้คืออะไร ส่งไปไหน" ซึ่งอ่านคู่กันเสมอ */}
       <SalesDetailOverview
-        eyebrow={`${requestKindLabel(req.kind)} · ถึงฝ่าย ${req.dept}`}
+        eyebrow={`${requestKindLabel(req.kind)} · ถึง ${req.dept}`}
         title={req.docNo || `${requestKindLabel(req.kind)} (ร่าง)`}
         /* ⭐ ลูกค้าต่อท้ายหัวข้อเรื่องเป็นประโยคเดียว "ทำอะไร ให้ใคร" (ม-101) —
            เดิมลูกค้าเป็นช่องในแถบซึ่งหายไปทั้งใบเมื่อใบนั้นมีบรรทัด */
@@ -938,7 +971,7 @@ export default function RequestDetailPage() {
             แต่ไม่ควรค้างบนจอ ไม่งั้นใบที่แก้แล้วยังดูเหมือนถูกตีกลับอยู่ */}
         {req.status === "draft" && req.bounceReason && (
           <div className={styles.bounced}>
-            <strong>ฝ่าย {req.dept} ตีกลับให้แก้ไข</strong>
+            <strong>{req.dept} ตีกลับให้แก้ไข</strong>
             {req.bouncedByName ? ` · ${req.bouncedByName}` : ""}
             {req.bouncedAt ? ` · ${fmtDate(req.bouncedAt)}` : ""}
             <ReadableText text={req.bounceReason} lines={6} />
@@ -1144,6 +1177,9 @@ export default function RequestDetailPage() {
         canEditAttachments={(req._mine || owner)
           && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
         rowStep={{
+          // ป้าย "รอใคร" ของก้าวรายแถว — ชื่อฝ่ายจริงทั้งสองฝั่ง (มติผู้ใช้ 2026-08-20)
+          deptLabel: requestSideLabel(req, "dept"),
+          requesterLabel: requestSideLabel(req, "requester"),
           canDept: canAnswer,
           canRequester: !!req._mine && REQUEST_OPEN_STATUSES.includes(req.status),
           busy: saving,
@@ -1239,6 +1275,42 @@ export default function RequestDetailPage() {
         </div>
       </DetailPageLayout>
 
+      {/* ⭐ **ยังไม่จบ** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — ถอนตราปิดที่กดไปแล้ว
+          ⚠️ บังคับเหตุผล: ใบเด้งกลับมาโดยไม่มีใครรู้ว่าติดอะไร คือใบที่จะวนอีกรอบ */}
+      <Modal
+        open={reopen !== null} onClose={() => setReopen(null)} size="sm" dismissible={!saving}
+        title="ยังไม่จบ — เปิดเรื่องกลับมา"
+      >
+        {reopen && (
+          <>
+            <div className="form-group">
+              <label htmlFor="reopen-why">ยังเหลืออะไร *</label>
+              <Textarea
+                id="reopen-why" rows={3} maxLength={500}
+                value={reopen.reason} disabled={saving}
+                placeholder="เช่น กลิ่นที่ส่งมายังไม่ได้ให้ลูกค้าดม · ขอเอกสารเพิ่มอีกฉบับ"
+                onChange={(e) => setReopen({ ...reopen, reason: e.target.value })}
+              />
+              <small className={styles.hint}>
+                ตราปิดที่กดไปแล้วจะถูกถอน แล้วใบกลับมาอยู่ในคิวของทั้งสองฝั่ง
+              </small>
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setReopen(null)}>ยกเลิก</Button>
+              <Button
+                tone="danger" disabled={saving || !reopen.reason.trim()}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({ action: "reopen", reason: reopen.reason }),
+                }, "เปิดเรื่องกลับมาแล้ว").then((ok) => { if (ok) setReopen(null); })}
+              >
+                ยังไม่จบ
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
       {/* ⭐ **แจ้งกำหนดส่ง — ก้าวที่สองของฝ่ายผู้รับ** (มติผู้ใช้ 2026-08-19)
           ⚠️ ของเดิมโมดัลนี้คือ "รับเรื่อง — ระบุวันกำหนดส่ง" ซึ่งมัดสองก้าวไว้ด้วยกัน
           ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย */}
@@ -1257,7 +1329,7 @@ export default function RequestDetailPage() {
               {/* วันที่ผู้ขอต้องการเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และ
                   เป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
               <small className={styles.hint}>
-                เป็นวันที่ฝ่ายคุณรับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
+                เป็นวันที่ {req.dept} รับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
                 {req.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(req.requestedDueDate)}` : ""}
               </small>
             </div>
@@ -1318,7 +1390,7 @@ export default function RequestDetailPage() {
               <Textarea
                 id="resch-why" rows={2} maxLength={500}
                 value={reschedule.reason} disabled={saving}
-                placeholder="บอกฝ่ายขายว่าทำไมต้องเลื่อน — จะได้ไปคุยกับลูกค้าต่อได้"
+                placeholder="บอกผู้ขอว่าทำไมต้องเลื่อน — จะได้ไปคุยกับลูกค้าต่อได้"
                 onChange={(e) => setReschedule({ ...reschedule, reason: e.target.value })}
               />
             </div>
@@ -1771,7 +1843,7 @@ export default function RequestDetailPage() {
           "ส่งงาน") — กดปุ่มชื่อหนึ่งแล้วเจอหัวกล่องอีกชื่อ คนจะไม่แน่ใจว่ากดถูกกล่องไหม */}
       <Modal
         open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
-        title="ส่งงานให้ฝ่ายขาย — กลิ่นเข้าทะเบียนทันที"
+        title="ส่งงานให้ผู้ขอ — กลิ่นเข้าทะเบียนทันที"
         /* ── แถบเครื่องมือใต้หัวโมดัล (โซนที่ไม่เลื่อนตามฟอร์ม) ─────────────────
            ⭐ **ปุ่มเพิ่มอยู่แถวเดียวกับแท็บ** (มติผู้ใช้ 2026-08-19 · ยกแพตเทิร์นมาจาก
            โมดัลสร้างดีล) — ปุ่มล่างสุดหลุดบริบท และมองไม่ออกว่ามันเพิ่ม "แท็บ"

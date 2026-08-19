@@ -16,7 +16,8 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
-import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
+import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
+import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
 import { findRequest, priceRegistryEntry } from '@/lib/materialPricesAdmin';
@@ -132,12 +133,12 @@ export async function POST(request, { params }) {
     }).eq('id', itemId);
     if (error) throw error;
 
-    // ตอบครบทุกแถว → ใบเป็น answered เอง (กลไกเดิม ไม่แก้)
+    // ตอบครบทุกแถว → ใบได้ตราปิดฝั่งฝ่าย (`answeredAt`) เอง — ดู `closure.js`
     const after = await findRequest(supabase, id);
-    const derived = deriveRequestStatusAfterAnswer(after.items || [], after.status);
-    if (derived !== after.status) {
+    const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso);
+    if (Object.keys(closurePatch).length) {
       const { error: headError } = await supabase.from('dept_requests')
-        .update({ status: derived, updatedAt: nowIso }).eq('id', id);
+        .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
       if (headError) throw headError;
     }
 

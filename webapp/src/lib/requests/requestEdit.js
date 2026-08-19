@@ -13,6 +13,7 @@
 // ⚠️ แบบฟอร์ม PDR มีทางแก้ของตัวเองอยู่แล้ว (`action: 'pdr'` + `pdrEdit.js`) ซึ่ง
 // สลับเจ้าของสิทธิ์ตอน "รับเรื่อง" — ที่นี่ไม่ยุ่งกับมัน
 import { canManageRequest } from '@/lib/requests/access';
+import { requestSideText } from '@/lib/requests/replyTurn';
 
 /** ช่องที่แก้ได้ — **ที่เดียว** ที่ทั้ง API และหน้าจอถามว่า "แก้อะไรได้บ้าง" */
 export const REQUEST_EDITABLE_FIELDS = Object.freeze([
@@ -35,7 +36,7 @@ export function requestEditError(request, user) {
   if (!REQUEST_EDITABLE_STATUSES.includes(request.status)) {
     return request.status === 'cancelled'
       ? 'คำร้องถูกยกเลิกแล้ว — แก้ไม่ได้'
-      : 'ฝ่ายปลายทางรับเรื่องไปแล้ว — แก้ไม่ได้ ให้คุยต่อในเธรดแทน';
+      : `${requestSideText(request, 'dept', 'รับเรื่องไปแล้ว')} — แก้ไม่ได้ ให้คุยต่อในเธรดแทน`;
   }
   if (!canManageRequest(user, request)) return 'แก้ได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน';
   return null;

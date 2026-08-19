@@ -125,7 +125,7 @@ export default function RdOverviewPage() {
           *มีอะไรค้างบ้าง* ซึ่งเป็นคำถามของหัวหน้า · คนที่เปิดหน้ามาทำงานถามว่า
           *เริ่มที่ใบไหน* ⇒ คำตอบนั้นต้องอยู่บนสุด */}
       {!loading && !loadError && (
-        <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอฝ่ายตอบอยู่ตอนนี้" />
+        <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอ RD ตอบอยู่ตอนนี้" />
       )}
 
       {/* ⚠️ **เลยกำหนดเป็นธง ไม่ใช่ขั้นของงาน** — ใบที่เลยวันที่ฝ่ายรับปากไว้เองอยู่
@@ -142,7 +142,7 @@ export default function RdOverviewPage() {
           )}
         >
           <strong>เลยวันที่รับปากไว้ {counts.overdue} ใบ</strong>
-          {" — วันที่นี้ฝ่ายเป็นคนให้เอง ไม่ใช่วันที่ลูกค้าขอ"}
+          {" — วันที่นี้ RD เป็นคนให้เอง ไม่ใช่วันที่ลูกค้าขอ"}
         </AlertBanner>
       )}
 
@@ -211,7 +211,7 @@ export default function RdOverviewPage() {
              กรองซ้อนบนของที่คัดมาแล้วจะอ่านเหมือนนี่คือคิวทั้งหมด */
           tools={false}
           sectionTitle={null}
-          emptyText="ไม่มีใบอื่นรอฝ่ายอยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
+          emptyText="ไม่มีใบอื่นรอ RD อยู่แล้ว — เหลือแค่ใบที่การ์ดข้างบนชี้ไว้"
           loading={loading} loadError={loadError} reload={reload}
         />
       </WorkspaceSection>

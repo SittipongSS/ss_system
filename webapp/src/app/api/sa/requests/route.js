@@ -459,6 +459,18 @@ export async function POST(request) {
     });
     if (headError) throw headError;
 
+    /* ⭐ **ฝ่ายของคนเปิดใบ** (mig 0270) — ป้ายบนคิวเลิกใช้คำว่า "ฝ่าย"/"ผู้ขอ" ลอย ๆ
+       แล้วพูดชื่อฝ่ายจริงทั้งสองฝั่ง ("รอ RD ตอบ" / "รอ SA ตอบ" · มติผู้ใช้ 2026-08-20)
+       ⚠️ **เขียนแยกจาก insert หัว และกลืน error โดยตั้งใจ** — PostgREST ปฏิเสธทั้งก้อน
+       เมื่อ body มีคอลัมน์ที่ DB ยังไม่มี ⇒ ยัดคีย์นี้ลง insert เมื่อไร รีโปที่ยังไม่ได้
+       รัน mig 0270 จะ **เปิดคำร้องไม่ได้เลยสักใบ** (บทเรียนเดียวกับ mig 0258) ·
+       ป้ายถอยไปใช้คำว่า "ผู้ขอ" ได้อยู่แล้วเมื่อค่านี้ว่าง */
+    if (user?.department) {
+      const { error: deptError } = await supabase.from('dept_requests')
+        .update({ requesterDept: user.department }).eq('id', requestId);
+      if (deptError) console.error('[requests] stamp requesterDept failed', deptError.message);
+    }
+
     // 2.5) บรีฟรายกลิ่น — ชั้นกลางของโครงสามชั้น (mig 0213)
     //
     // ตรวจและประกอบแถวไปแล้วก่อน insert หัว (ดูเหตุผลที่นั่น) — เหลือแค่เขียนลงตาราง

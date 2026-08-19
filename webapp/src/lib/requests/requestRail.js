@@ -9,6 +9,8 @@
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestDeliversRows } from '@/lib/master/requestTypes';
 import { requestAwaitingDue } from '@/lib/requests/statuses';
+import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
+import { requestClosure } from '@/lib/requests/closure';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
 import { fmtDate } from '@/lib/format';
 
@@ -26,6 +28,24 @@ import { fmtDate } from '@/lib/format';
  */
 const evidence = (...parts) => parts.filter(Boolean).join(' · ') || null;
 
+// บรรทัดใต้ขั้น "ปิดเรื่อง" — ครบสองฝั่ง = โชว์ทั้งคู่ · ยังไม่ครบ = บอกว่าเหลือใคร
+function closureHint(request) {
+  const closure = requestClosure(request);
+  if (closure.complete) {
+    return evidence(
+      request.closedByName && `ปิดโดย ${request.closedByName}`,
+      request.closedAt && fmtDate(request.closedAt),
+    ) || 'ปิดครบสองฝั่งแล้ว';
+  }
+  if (closure.waitingSide === 'requester') {
+    return `${requestSideText(request, 'dept', 'ตอบแล้ว')} — ${requestWaitLabel(request, 'requester', 'ปิดเรื่อง')}`;
+  }
+  if (closure.waitingSide === 'dept') {
+    return `${requestSideText(request, 'requester', 'ปิดแล้ว')} — ${requestWaitLabel(request, 'dept', 'ตอบ')}`;
+  }
+  return 'ต้องปิดทั้งสองฝั่งถึงจะจบ';
+}
+
 // ขั้นกลาง — สรุปจากแถวข้างใน ไม่ใช่คำตายตัว
 function middleStep(request) {
   const items = request.items || [];
@@ -36,10 +56,23 @@ function middleStep(request) {
     // ⭐ ไม่มีแถวแปลว่าอะไร ขึ้นกับหัวข้อ (มติผู้ใช้ 2026-08-09): หัวข้อที่ฝ่ายสร้าง
     // แถวเองตอนส่ง (พัฒนากลิ่น) คือรอ **ของ** จริง ๆ · หัวข้อไม่มีแถวเลย
     // (สอบถามข้อมูล) ของไม่มีอยู่ในสาย — คำที่ถูกคือรอ **คำตอบ**
-    return requestDeliversRows(request.kind)
+    if (requestDeliversRows(request.kind)) {
       // "ส่งงาน" คำเดียวกับปุ่ม (ม-120) — รางเล่าก้าวเดียวกับที่ปุ่มกด
-      ? { label: `รอฝ่าย ${request.dept} ส่งงาน`, hint: 'รับเรื่องแล้ว ยังไม่มีของส่งมา' }
-      : { label: `รอฝ่าย ${request.dept} ตอบ`, hint: 'รับเรื่องแล้ว — ตอบกันในเธรด' };
+      return {
+        label: requestWaitLabel(request, 'dept', 'ส่งงาน'),
+        hint: 'รับเรื่องแล้ว ยังไม่มีของส่งมา',
+      };
+    }
+    /* ⭐ **หัวข้อเธรดล้วน — ตาใครตอบพลิกตามข้อความล่าสุด** (มติผู้ใช้ 2026-08-20)
+       ⚠️ อ่าน `requestReplyTurn` ตัวเดียวกับคิว ⇒ สองที่พูดคำเดียวกันเสมอ (ของเดิม
+       คิวเขียน "รอฝ่ายเริ่ม" แต่รางเขียน "รอฝ่าย RD ตอบ" — คนละคำสำหรับใบเดียวกัน) */
+    const turn = requestReplyTurn(request);
+    return {
+      label: turn ? turn.label : requestWaitLabel(request, 'dept', 'ตอบ'),
+      hint: turn?.side === 'requester'
+        ? `${request.dept} ตอบในเธรดแล้ว — รอคนเปิดเรื่องตอบกลับ`
+        : 'รับเรื่องแล้ว — ตอบกันในเธรด',
+    };
   }
   // ⭐ **"รอใส่ราคา" ต้องเห็นเป็นพิเศษ** — แถวที่คอนเฟิร์มแล้วแต่ยังไม่มีราคาคือใบค้าง
   // ถาวรถ้าไม่มีใครเห็น (กับดักข้อ 11 ของแผน)
@@ -48,17 +81,20 @@ function middleStep(request) {
   }
   if (summary.waitingDept) {
     return {
-      label: `ฝ่าย ${request.dept} กำลังทำ`,
+      label: `${request.dept} กำลังทำ`,
       hint: `เสร็จแล้ว ${summary.settled}/${summary.total}`,
     };
   }
   if (summary.waitingRequester) {
-    return { label: 'รอฝ่ายขายทำต่อ', hint: `${summary.waitingRequester} รายการ` };
+    return {
+      label: requestWaitLabel(request, 'requester', 'ทำต่อ'),
+      hint: `${summary.waitingRequester} รายการ`,
+    };
   }
   // ⚠️ **ห้ามกลับไปใช้คำว่า "กำลังหาราคา"** (มติผู้ใช้ 2026-08-19) — คำนั้นเหลือมาจาก
   // ตอนที่คำร้องมีแต่สายขอราคาวัสดุ · วันนี้ใบส่วนใหญ่เป็นกลิ่น/สูตร/เอกสารที่ไม่มี
   // ราคาให้หาสักบาท ⇒ รางเล่าเรื่องที่ไม่ได้เกิดขึ้น
-  return { label: 'กำลังดำเนินการ', hint: 'ฝ่ายเจ้าของรับเรื่องแล้ว' };
+  return { label: 'กำลังดำเนินการ', hint: requestSideText(request, 'dept', 'รับเรื่องแล้ว') };
 }
 
 /**
@@ -87,7 +123,7 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
         request.acknowledgedByName && `รับโดย ${request.acknowledgedByName}`,
         request.acknowledgedAt && fmtDate(request.acknowledgedAt),
       )
-        || (request.submittedAt ? `ยื่นเมื่อ ${fmtDate(request.submittedAt)}` : `ส่งถึงฝ่าย ${request.dept}`),
+        || (request.submittedAt ? `ยื่นเมื่อ ${fmtDate(request.submittedAt)}` : `ส่งถึง ${request.dept}`),
     },
     /* ⭐ **ขั้น "กำหนดส่ง" เป็นขั้นของตัวเอง** (มติผู้ใช้ 2026-08-19) — รับเรื่อง =
        ตัดรอบเข้าฝ่าย · การรับปากวันกดทีหลังได้เมื่อฝ่ายรู้จริง (รอวัตถุดิบ · รอฝ่ายอื่น)
@@ -97,7 +133,9 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
       id: 'commitDue',
       label: 'กำหนดส่ง',
       hint: evidence(request.committedDueDate && fmtDate(request.committedDueDate))
-        || (request.acknowledgedAt ? `รอฝ่าย ${request.dept} แจ้งวัน` : 'ฝ่ายรับปากวันหลังรับเรื่อง'),
+        || (request.acknowledgedAt
+          ? requestWaitLabel(request, 'dept', 'แจ้งวัน')
+          : `${request.dept} รับปากวันหลังรับเรื่อง`),
     },
     // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
     // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม
@@ -105,15 +143,19 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
     {
       id: 'answered',
       label: 'ตอบแล้ว',
-      hint: evidence(request.answeredAt && fmtDate(request.answeredAt)) || 'ผู้ตอบยืนยันว่าตอบครบ',
+      /* ⭐ **ขั้นนี้คือตราปิดฝั่งฝ่าย** (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง) — มาเองเมื่อ
+         ทุกแถวจบ หรือฝ่ายกดปุ่ม "ตอบแล้ว" ในใบที่ไม่มีแถว · หลุดได้เมื่องานกลับมา */
+      hint: evidence(
+        request.answeredByName && `${requestSideText(request, 'dept', 'ตอบ')} · ${request.answeredByName}`,
+        request.answeredAt && fmtDate(request.answeredAt),
+      ) || requestSideText(request, 'dept', 'ยืนยันว่าตอบครบ'),
     },
     {
       id: 'closed',
       label: 'ปิดเรื่อง',
-      hint: evidence(
-        request.closedByName && `ปิดโดย ${request.closedByName}`,
-        request.closedAt && fmtDate(request.closedAt),
-      ) || 'งานนี้สิ้นสุด',
+      /* ⭐ **ต้องครบสองฝั่งถึงจะจบ** — ตราเดียวยังไม่จบ ⇒ บรรทัดใต้ขั้นบอกว่าเหลือใคร
+         ไม่ใช่โชว์ชื่อคนที่กดไปแล้วเฉย ๆ (ซึ่งอ่านเหมือนใบจบแล้ว) */
+      hint: closureHint(request),
     },
   ];
 

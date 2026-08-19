@@ -16,7 +16,8 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
-import { canAnswerRequest, canReadRequestRow, deriveRequestStatusAfterAnswer } from '@/lib/deptRequests';
+import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
+import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { deliveryItemRow, normalizeDeliveryRows } from '@/lib/requests/delivery';
 import { findRequest } from '@/lib/materialPricesAdmin';
@@ -173,10 +174,10 @@ export async function POST(request, { params }) {
      "ครบทุกแถว = answered" อยู่ที่เดียว ไม่มีใครคิดเองสองที่
      ⚠️ ตัวนั้นกัน `closed`/`cancelled` ไว้ให้แล้ว จึงไม่ต้องเช็คซ้ำ */
   const afterAdd = await findRequest(supabase, id);
-  const derivedStatus = deriveRequestStatusAfterAnswer(afterAdd.items || [], afterAdd.status);
-  if (derivedStatus !== afterAdd.status) {
+  const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd.items || [], nowIso);
+  if (Object.keys(closurePatch).length) {
     await supabase.from('dept_requests')
-      .update({ status: derivedStatus, updatedAt: new Date().toISOString() })
+      .update({ ...closurePatch, updatedAt: nowIso })
       .eq('id', id);
   }
 
