@@ -37,6 +37,7 @@ import styles from "./UpdateThread.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { postUpdateWithFiles } from "@/lib/master/updatePost";
+import PhotoThumb from "@/components/ui/PhotoThumb";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -718,8 +719,10 @@ function ThreadAttachments({ row, onOpen }) {
               key={i} type="button" className={styles.photoBtn} title={a.fileName || "ดูรูป"}
               onClick={() => onOpen({ src: fileHref(row, i), name: a.fileName })}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={fileHref(row, i)} alt={a.fileName || "รูปแนบ"} loading="lazy" />
+              {/* ⚠️ ช่องที่เปิดรูปไม่ได้ต้องพูด — ตัวเดียวกับที่ไฟล์แนบใช้ (PhotoThumb)
+                  เดิมที่นี่เป็น <img> ล้วน ⇒ Drive ล่ม/โทเคนหมดอายุแล้วได้ไอคอนรูปแตก
+                  เรียงเต็มเธรด อ่านไม่ออกว่าเป็นที่ระบบหรือที่ไฟล์ */}
+              <PhotoThumb src={fileHref(row, i)} alt={a.fileName || "รูปแนบ"} />
             </button>
           ))}
         </div>
