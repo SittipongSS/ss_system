@@ -39,15 +39,16 @@ import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFa
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
 import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
-import { requestHasPdr, requestRequiresCommittedDue } from "@/lib/master/requestTypes";
+import { requestHasPdr } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
-  REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS,
+  REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
+import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -117,10 +118,10 @@ export default function RequestDetailPage() {
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
   }, []);
-  // ⭐ วันกำหนดส่งตอนรับเรื่อง — บังคับเฉพาะหัวข้อที่ประกาศธง (มติผู้ใช้ 2026-08-06)
-  // ⚠️ ปุ่มเดิมยิง `acknowledge` เปล่า ๆ ⇒ พอ server บังคับแล้วจะกดไม่ผ่านทุกครั้ง
-  // ถ้าไม่มีช่องให้กรอก · ด่านกับหน้าจอต้องมาพร้อมกันเสมอ
-  const [ackDue, setAckDue] = useState(null);
+  /* ⭐ **แจ้งกำหนดส่ง — ก้าวของตัวเอง** (มติผู้ใช้ 2026-08-19) · `null` = ปิดโมดัล
+     ⚠️ ไม่ใช่ช่องในโมดัลรับเรื่องอีกแล้ว — รับเรื่องคือการตัดรอบ ส่วนวันที่รับปาก
+     ฝ่ายกดทีหลังได้เมื่อรู้จริง (รอวัตถุดิบ · รอฝ่ายอื่น) */
+  const [commitDue, setCommitDue] = useState(null);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
   /* ⭐ มอบหมายผู้รับผิดชอบ (mig 0230) — `null` = ปิดโมดัล · สตริง = id ที่เลือกอยู่
@@ -304,14 +305,14 @@ export default function RequestDetailPage() {
   // ไม่งั้นสองชั้นจะเลื่อนออกจากกัน แล้วปุ่มที่กดได้จะได้ 400 กลับมา
   // ⚠️ สองด่านคนละชั้น — `hopValuesError` คุมค่าของก้าว · ของสูตรมีด่านของตัวเอง
   // ที่ server ใช้ตัวเดียวกัน (normalizeFormulaDelivery) ⇒ ปุ่มกับ API ไม่เพี้ยนกัน
-  // ก้าว `ack` ที่ดันใบจาก `pending` = รับเรื่องทั้งใบ ⇒ วันบังคับ (ค-2)
-  const ackDueRequired = hopDraft?.hop === "ack" && req?.status === "pending";
+  // ก้าว `ack` ที่ดันใบจาก `pending` = รับเรื่องทั้งใบ ⇒ ต้องผ่านด่านของใบด้วย (ค-2)
+  // ⚠️ **ไม่บังคับวันแล้ว** (มติผู้ใช้ 2026-08-19) — `dueAt` ตรงนี้เป็นวันของ *แถว*
+  // ส่วนวันที่รับปากของใบมาจากปุ่ม "แจ้งกำหนดส่ง" ทางเดียว
+  const ackPromotesRequest = hopDraft?.hop === "ack" && req?.status === "pending";
   const hopError = hopDraft
     ? (hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
       // ⚠️ เรียกด่านของ **ใบ** ตัวเดียวกับ server ไม่เขียนเงื่อนไขเองที่นี่
-      || (ackDueRequired
-        ? acknowledgeRequestError(req, { committedDueDate: hopDraft.dueAt || null })
-        : null)
+      || (ackPromotesRequest ? acknowledgeRequestError(req) : null)
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
         ? normalizeFormulaDelivery(hopDraft).error
         : null))
@@ -459,6 +460,19 @@ export default function RequestDetailPage() {
         confirmLabel: "ส่งคำร้อง",
       };
     }
+    /* ⭐ **รับเรื่องต้องมีโมดัลบอกผลลัพธ์** — กติกาเดียวกับทุกการอนุมัติในระบบ ·
+       ยิ่งจำเป็นหลังแยกก้าว: คนกดต้องรู้ว่ากดแล้วใบ **ยังไม่มีวันกำหนดส่ง** และ
+       ต้องกลับมากด "แจ้งกำหนดส่ง" อีกที ไม่งั้นจะเข้าใจว่าจบแล้ว */
+    if (confirm.kind === "acknowledge") {
+      return {
+        title: "รับเรื่อง",
+        description: req.docNo || "",
+        detail: `ใบนี้จะเข้าคิวของฝ่าย ${req.dept} ทันที และนับเป็นงานที่ฝ่ายรับไว้แล้ว`
+          + " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
+          + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง",
+        confirmLabel: "รับเรื่อง",
+      };
+    }
     if (confirm.kind === "answer") {
       return {
         title: "ทำเครื่องหมายว่าตอบแล้ว",
@@ -489,7 +503,7 @@ export default function RequestDetailPage() {
     // จะแสดงพรีวิวของที่จะโดนลบพ่วงอีกชั้น ที่นี่จึงบอกแค่ว่ากำลังจะทำอะไร
     return {
       title: "ลบคำร้องที่ส่งแล้ว",
-      description: `${req.docNo || id} · สถานะ ${REQUEST_STATUS_LABELS[req.status] || req.status}`,
+      description: `${req.docNo || id} · สถานะ ${requestStatusView(req).label}`,
       detail: "คำร้องที่ออกเลขแล้วถือเป็นหลักฐาน — ปกติควรใช้ \"ยกเลิกคำร้อง\" แทน"
         + " · ระบบจะแสดงรายการที่จะถูกลบพ่วงให้ยืนยันอีกครั้ง",
       confirmLabel: "ดำเนินการต่อ",
@@ -517,7 +531,10 @@ export default function RequestDetailPage() {
       }
       return;
     }
-    const labels = { submit: "ส่งคำร้องแล้ว", answer: "บันทึกว่าตอบแล้ว", close: "ปิดเรื่องแล้ว" };
+    const labels = {
+      submit: "ส่งคำร้องแล้ว", acknowledge: "รับเรื่องแล้ว",
+      answer: "บันทึกว่าตอบแล้ว", close: "ปิดเรื่องแล้ว",
+    };
     const ok = await call("", {
       method: "PATCH", body: JSON.stringify({ action: confirm.kind }),
     }, labels[confirm.kind]);
@@ -587,10 +604,20 @@ export default function RequestDetailPage() {
         label: "รับเรื่อง",
         kind: "approve",
         icon: Check,
-        onClick: () => (requestRequiresCommittedDue(req.kind)
-          ? setAckDue(businessDate())
-          : call("", { method: "PATCH", body: JSON.stringify({ action: "acknowledge" }) }, "รับเรื่องแล้ว")),
+        // ⚠️ ไม่ถามวันแล้ว (มติผู้ใช้ 2026-08-19) — รับเรื่อง = ตัดรอบเข้าฝ่าย
+        onClick: () => setConfirm({ kind: "acknowledge" }),
       }
+      /* ⭐ **แจ้งกำหนดส่ง = ก้าวถัดไปของฝ่าย** (มติผู้ใช้ 2026-08-19) — ต้องเป็น
+         *ปุ่มหลัก* ไม่ใช่เมนูรอง: ตราบใดที่ยังไม่กด ผู้ขอไม่มีวันให้ยึด และไม่มี
+         ตัวเลขไหนบอกได้ว่าใบนี้ช้าหรือยัง ⇒ มันคือสิ่งที่ค้างอยู่จริงของใบนี้ */
+      : owner && requestAwaitingDue(req)
+        ? {
+          id: "commit-due",
+          label: "แจ้งกำหนดส่ง",
+          kind: "approve",
+          icon: CalendarClock,
+          onClick: () => setCommitDue({ date: businessDate(), reason: "" }),
+        }
       /* ⚠️ **ปุ่ม "ส่งงาน" ไม่อยู่บน Control Panel แล้ว** (มติผู้ใช้ 2026-08-18) —
          ย้ายไปอยู่ **ในแถวของบรีฟ** ที่ตารางสรุปทั้งใบ (ดู `openDelivery` ข้างล่าง)
          เหตุผล: ใบหนึ่งมีหลายบรีฟ ปุ่มระดับใบไม่ได้บอกว่ากำลังส่งตอบก้อนไหน ⇒ คนกด
@@ -760,7 +787,10 @@ export default function RequestDetailPage() {
         onClick: () => setReschedule({ date: req.committedDueDate || businessDate(), reason: "" }),
         // เห็นเฉพาะฝ่ายที่รับงานไปแล้ว — `canAnswer` คุมทั้งสิทธิ์และ
         // "ใบยังเดินอยู่" ให้แล้ว · ห้ามหลวมกว่า `rescheduleRequestError`
-        visible: canAnswer && !!req.acknowledgedAt,
+        // ⚠️ **ต้องมีวันเดิมก่อน** (มติผู้ใช้ 2026-08-19) — ใบที่ยังไม่เคยแจ้งวันใช้
+        // ปุ่ม "แจ้งกำหนดส่ง" · ปล่อยให้เลื่อนได้ตั้งแต่ยังไม่มีวัน = ทางลัดที่เธรด
+        // จะเขียนว่า "เลื่อนจาก (ไม่เคยระบุ)" ทั้งที่นี่คือการให้วันครั้งแรก
+        visible: canAnswer && !!req.acknowledgedAt && !!req.committedDueDate,
       },
       {
         /* ⭐ **มอบหมายผู้รับผิดชอบ** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่อง
@@ -1051,8 +1081,11 @@ export default function RequestDetailPage() {
                 · notices = อุปสรรคที่เป็นของ "คนที่กำลังดูอยู่" ณ ตอนนี้ */}
             <DocumentControlCard
               title="จัดการคำร้อง"
-              status={REQUEST_STATUS_LABELS[req.status] || req.status}
-              statusColor={STATUS_TONE[req.status]}
+              /* ⚠️ **ป้ายมาจาก `requestStatusView` ไม่ใช่ `status` ดิบ** (มติผู้ใช้
+                 2026-08-19) — ใบที่รับเรื่องแล้วแต่ยังไม่แจ้งวันต้องอ่านว่า "รอกำหนดส่ง"
+                 ไม่ใช่ "กำลังดำเนินการ" ซึ่งฟังเหมือนมีวันแล้ว */
+              status={requestStatusView(req).label}
+              statusColor={requestAwaitingDue(req) ? "var(--amber)" : STATUS_TONE[req.status]}
               statusDescription={workflowSteps[workflowIndex]?.hint}
               workflowSteps={workflowSteps}
               primaryAction={requestActions.primaryAction}
@@ -1206,34 +1239,55 @@ export default function RequestDetailPage() {
         </div>
       </DetailPageLayout>
 
-      {/* ⭐ รับเรื่อง + วันกำหนดส่ง — หัวข้อที่บังคับต้องมีช่องให้กรอกในจังหวะเดียวกัน
-          ไม่ใช่ให้กดแล้วเจอ error แล้วไปหาว่าต้องกรอกที่ไหน */}
+      {/* ⭐ **แจ้งกำหนดส่ง — ก้าวที่สองของฝ่ายผู้รับ** (มติผู้ใช้ 2026-08-19)
+          ⚠️ ของเดิมโมดัลนี้คือ "รับเรื่อง — ระบุวันกำหนดส่ง" ซึ่งมัดสองก้าวไว้ด้วยกัน
+          ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย */}
       <Modal
-        open={ackDue !== null} onClose={() => setAckDue(null)} size="sm" dismissible={!saving}
-        title="รับเรื่อง — ระบุวันกำหนดส่ง"
+        open={commitDue !== null} onClose={() => setCommitDue(null)} size="sm" dismissible={!saving}
+        title="แจ้งกำหนดส่ง"
       >
-        <div className="form-group">
-          <label htmlFor="ack-due">วันกำหนดส่ง</label>
-          <DateInput id="ack-due" value={ackDue || ""} disabled={saving} onChange={setAckDue} />
-          {/* วันที่คาดหวังเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และเป็นตัวที่
-              ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
-          <small className={styles.hint}>
-            เป็นวันที่ฝ่ายคุณรับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
-            {req.requestedDueDate ? ` · ผู้ขอคาดหวังไว้ ${fmtDate(req.requestedDueDate)}` : ""}
-          </small>
-        </div>
-        <div className={`action-bar ${styles.modalActions}`}>
-          <Button variant="quiet" disabled={saving} onClick={() => setAckDue(null)}>ยกเลิก</Button>
-          <Button
-            tone="primary" disabled={saving || !ackDue}
-            onClick={() => call("", {
-              method: "PATCH",
-              body: JSON.stringify({ action: "acknowledge", committedDueDate: ackDue }),
-            }, "รับเรื่องแล้ว").then((ok) => { if (ok) setAckDue(null); })}
-          >
-            รับเรื่อง
-          </Button>
-        </div>
+        {commitDue && (
+          <>
+            <div className="form-group">
+              <label htmlFor="commit-due">วันกำหนดส่ง</label>
+              <DateInput
+                id="commit-due" value={commitDue.date} disabled={saving}
+                onChange={(v) => setCommitDue({ ...commitDue, date: v })}
+              />
+              {/* วันที่ผู้ขอต้องการเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และ
+                  เป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
+              <small className={styles.hint}>
+                เป็นวันที่ฝ่ายคุณรับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
+                {req.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(req.requestedDueDate)}` : ""}
+              </small>
+            </div>
+            <div className="form-group">
+              <label htmlFor="commit-why">หมายเหตุ (ไม่บังคับ)</label>
+              <Textarea
+                id="commit-why" rows={2} maxLength={500}
+                value={commitDue.reason} disabled={saving}
+                placeholder="เช่น รอวัตถุดิบเข้าวันที่ 25 — ส่งได้หลังจากนั้น"
+                onChange={(e) => setCommitDue({ ...commitDue, reason: e.target.value })}
+              />
+            </div>
+            <div className={`action-bar ${styles.modalActions}`}>
+              <Button variant="quiet" disabled={saving} onClick={() => setCommitDue(null)}>ยกเลิก</Button>
+              <Button
+                tone="primary" disabled={saving || !commitDue.date}
+                onClick={() => call("", {
+                  method: "PATCH",
+                  body: JSON.stringify({
+                    action: "commit-due",
+                    committedDueDate: commitDue.date,
+                    reason: commitDue.reason,
+                  }),
+                }, "แจ้งกำหนดส่งแล้ว").then((ok) => { if (ok) setCommitDue(null); })}
+              >
+                แจ้งกำหนดส่ง
+              </Button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* ⭐ เลื่อนวันกำหนดส่ง — **ไม่แก้เงียบ ๆ** วันนี้คือคำสัญญาที่ให้ฝ่ายขายไปแล้ว
@@ -1516,25 +1570,20 @@ export default function RequestDetailPage() {
               </>
             )}
 
-            {/* ⭐ **ก้าวนี้บังคับวันเมื่อมันคือการรับเรื่องของทั้งใบ** (ผลตรวจรอบ 12 · ค-2) —
-                ใบที่ยัง `pending` อยู่ การกดรับเรื่องที่แถวคือการรับเรื่องทั้งใบ ⇒ ต้องผูก
-                วันเหมือนปุ่มระดับใบ · ใบที่รับเรื่องไปแล้วมีวันของใบอยู่แล้ว วันของแถว
-                จึงเป็นของเสริม ไม่บังคับ
-                ⚠️ ป้ายกับด่านต้องพูดตรงกัน — server ตีกลับด้วย `acknowledgeRequestError`
-                ตัวเดียวกับปุ่มระดับใบ ⇒ จางปุ่มไว้ก่อนดีกว่าปล่อยให้กดแล้วเด้ง 409 */}
+            {/* ⚠️ **วันตรงนี้เป็นของ *แถว* ไม่ใช่คำสัญญาของใบ** (มติผู้ใช้ 2026-08-19) —
+                วันกำหนดส่งของใบมาจากปุ่ม "แจ้งกำหนดส่ง" ทางเดียว ซึ่งลงเธรดเสมอ ⇒
+                ไม่บังคับที่นี่แม้ก้าวนี้จะดันใบทั้งใบเป็น "รับเรื่องแล้ว" ก็ตาม */}
             {hopDraft.hop === "ack" && (
               <div className="form-group">
-                <label htmlFor="hop-due">
-                  {ackDueRequired ? "รับปากว่าจะส่งวันไหน" : "รับปากว่าจะส่งวันไหน (ไม่ใส่ก็ได้)"}
-                </label>
+                <label htmlFor="hop-due">วันที่คาดว่าจะส่งของแถวนี้ (ไม่ใส่ก็ได้)</label>
                 <DateInput
                   id="hop-due" value={hopDraft.dueAt} disabled={saving}
                   onChange={(v) => setHopDraft({ ...hopDraft, dueAt: v })}
                 />
                 <p className={styles.fieldHint}>
-                  {ackDueRequired
-                    ? "กดที่แถวนี้ = รับเรื่องทั้งใบ — ต้องผูกวันเหมือนกดรับเรื่องที่ใบ"
-                    : "ผู้ขอเห็นวันนี้ทันที และคิวใช้วันนี้เป็นตัวชี้ว่าเลยกำหนดหรือยัง"}
+                  {ackPromotesRequest
+                    ? "กดที่แถวนี้ = รับเรื่องทั้งใบด้วย — วันกำหนดส่งของใบยังต้องกด \"แจ้งกำหนดส่ง\" อีกที"
+                    : "เป็นวันของแถวนี้เท่านั้น — ไม่ทับวันกำหนดส่งของทั้งใบ"}
                 </p>
               </div>
             )}

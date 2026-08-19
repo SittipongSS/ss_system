@@ -91,7 +91,7 @@ export function requiredChecks(form = {}) {
     },
     // ── แท็บ "กำหนดและไฟล์" ─────────────────────────────────────────────
     {
-      tab: 'due', label: 'วันที่ต้องการคำตอบ',
+      tab: 'due', label: 'วันที่ต้องการรับงาน',
       applies: true, ok: filled(form.requestedDueDate),
     },
     {

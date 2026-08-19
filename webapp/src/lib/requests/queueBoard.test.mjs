@@ -410,7 +410,13 @@ test('ใบตีกลับได้โทนแดงและคำว่�
 
 test('ยังไม่มีใครรับ = เหลือง · เป็นตาฝ่าย = ฟ้า · รอฝั่งอื่น = เทา', () => {
   assert.equal(requestQueueStatus({ status: 'pending', items: [] }).tone, 'warning');
-  assert.equal(requestQueueStatus({ status: 'acknowledged', items: [] }).tone, 'info');
+  const working = { status: 'acknowledged', committedDueDate: '2026-08-25', items: [] };
+  assert.equal(requestQueueStatus(working).tone, 'info');
+  /* ⭐ "รอกำหนดส่ง" เหลืองเท่ากับ "รอรับเรื่อง" (มติผู้ใช้ 2026-08-19) — ทั้งคู่คือ
+     นาฬิกาเดินแล้วแต่ยังไม่มีคำสัญญา · ฟ้าเมื่อไรมันจะจมหายในคอลัมน์ */
+  const undated = requestQueueStatus({ status: 'acknowledged', items: [] });
+  assert.equal(undated.label, 'รอกำหนดส่ง');
+  assert.equal(undated.tone, 'warning');
   const waitingRequester = requestQueueStatus({ status: 'draft' });
   assert.equal(waitingRequester.tone, 'neutral');
   assert.equal(waitingRequester.label, 'ยังไม่ได้ส่ง');

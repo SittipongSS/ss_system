@@ -22,7 +22,7 @@ import styles from "./requestForm.module.css";
  *   | หัวข้อที่มี PDR         | **ไม่มีช่อง body เลย**           | โชว์เสมอ                    |
  *   | สวิตช์ด่วน              | มีไอคอน Flame                    | ไม่มี                       |
  *   | hint "วาง URL…"         | มี                               | หายไป                       |
- *   | ป้ายวันที่              | "อยากได้คำตอบภายใน (บังคับ)"     | "… *"                       |
+ *   | ป้ายวันที่              | "วันที่ต้องการรับงาน (บังคับ)"    | "… *"                       |
  *   | ป้าย "ความเร่งด่วน"     | `styles.fieldLabel` (ครบ 3 ค่า)  | `.form-field-label` (ว่าง)  |
  *
  * จุดที่ 2 หนักที่สุด — กติกา "หัวข้อที่ใช้ PDR ไม่มีช่อง body" ฝังอยู่สองที่
@@ -74,7 +74,7 @@ export function RequestTitleBodyFields({ value = {}, onChange, disabled = false,
   );
 }
 
-/** วันที่อยากได้คำตอบ + ธงด่วน (+ เหตุผลที่งอกมาเมื่อติดธง) */
+/** วันที่ต้องการรับงาน + ธงด่วน (+ เหตุผลที่งอกมาเมื่อติดธง) */
 export function RequestDueUrgentFields({ value = {}, onChange, disabled = false, idPrefix = "req" }) {
   const set = (patch) => onChange?.({ ...value, ...patch });
 
@@ -83,13 +83,16 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
       <div className="form-group">
         {/* ⭐ บังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08) — ด่านจริงอยู่ `requestShapeError`
             ตัวเดียวกับ server · ป้ายแค่บอกล่วงหน้าว่าช่องนี้ข้ามไม่ได้ */}
-        <label htmlFor={`${idPrefix}-due`}>อยากได้คำตอบภายใน (บังคับ)</label>
+        {/* ⚠️ **คำที่ล็อกไว้: "วันที่ต้องการรับงาน"** (มติผู้ใช้ 2026-08-19) — ของเดิม
+            เขียนว่า "อยากได้คำตอบภายใน" ซึ่งจริงเฉพาะหัวข้อสอบถาม · หัวข้อที่ฝ่ายต้อง
+            ส่งของ (กลิ่น · สูตร · เอกสาร) ไม่ได้รอคำตอบ แต่รองาน */}
+        <label htmlFor={`${idPrefix}-due`}>วันที่ต้องการรับงาน (บังคับ)</label>
         <DateInput
           id={`${idPrefix}-due`} value={value.requestedDueDate || ""} disabled={disabled}
           onChange={(v) => set({ requestedDueDate: v })}
         />
         <small className={styles.hint}>
-          เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกดรับเรื่อง
+          เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกด "แจ้งกำหนดส่ง"
         </small>
       </div>
       <div className="form-group">

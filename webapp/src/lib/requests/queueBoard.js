@@ -6,7 +6,9 @@
 //
 // ⚠️ อ่านขั้นของแถวจาก `rowStage.js` ที่เดียว — ตัวเดียวกับที่รางบนหน้ารายละเอียดใช้
 // ⇒ คิวกับหน้ารายละเอียดขัดกันไม่ได้เชิงโครงสร้าง (ไม่ใช่เพราะมีคนคอยดูให้ตรงกัน)
-import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES } from '@/lib/requests/statuses';
+import {
+  REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS, REQUEST_STATUS_TONES, requestAwaitingDue,
+} from '@/lib/requests/statuses';
 import { requestRowSummary } from '@/lib/requests/rowStage';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
@@ -19,7 +21,21 @@ import { compareRequestUrgency } from '@/lib/requests/queue';
 // เพราะฝ่ายเป็นคนถือคอขวด (ผู้ขอทำต่อไม่ได้จนกว่าของจะมา)
 //
 // คืน { owner, label } หรือ null เมื่อใบนี้ไม่ต้องการอะไรอีกแล้ว
+//
+/* ⭐ **"รอกำหนดส่ง" ทับป้ายได้เฉพาะก้าวที่เป็นของฝ่าย** (มติผู้ใช้ 2026-08-19) —
+   รับเรื่องแล้วแต่ยังไม่แจ้งวัน คือของค้างที่ฝ่ายต้องลงมือ ⇒ ต้องเห็นแทนป้ายงาน
+   🐞 เวอร์ชันแรกทับ **ทุกป้าย** ⇒ ใบที่ฝ่ายส่งครบแล้วรอผู้ขอปิด ("รอปิดเรื่อง") กลาย
+   เป็น "รอกำหนดส่ง" ที่ฝั่ง dept ⇒ คิวชี้ผิดตัวว่าใครค้าง และตัวเลข "รอฝ่ายขายทำต่อ"
+   ที่มีไว้ไม่ให้ฝ่ายถูกนับงานของคนอื่น ก็พังไปด้วย */
 export function requestNextStep(request) {
+  const next = baseNextStep(request);
+  if (next && next.owner === 'dept' && requestAwaitingDue(request)) {
+    return { ...next, label: 'รอกำหนดส่ง' };
+  }
+  return next;
+}
+
+function baseNextStep(request) {
   if (!request) return null;
   /* 🐞 **ใบที่ถูกตีกลับเคยเป็นใบเงียบ** (ผู้ใช้ถามเอง 2026-08-11: "ตีกลับอยู่ไหน")
      ตีกลับ = ฝ่ายผู้รับส่งคืน ⇒ `status` กลับเป็น `draft` พร้อม `bounceReason`/`bouncedAt`
@@ -80,8 +96,10 @@ export function requestNextStep(request) {
 export function requestQueueStatus(request) {
   const next = requestNextStep(request);
   if (next) {
+    // ⚠️ "รอกำหนดส่ง" เหลืองเท่ากับ "รอรับเรื่อง" — ทั้งคู่คือนาฬิกาเดินแล้วแต่ยังไม่มี
+    // คำสัญญา · ทาสีฟ้าเหมือนงานที่กำลังเดินอยู่เมื่อไร มันจะจมหายในคอลัมน์ทันที
     const tone = next.bounced ? 'danger'
-      : next.label === 'รอรับเรื่อง' ? 'warning'
+      : next.label === 'รอรับเรื่อง' || next.label === 'รอกำหนดส่ง' ? 'warning'
         : next.owner === 'dept' ? 'info'
           : 'neutral';
     return { label: next.label, tone, owner: next.owner, bounced: Boolean(next.bounced) };

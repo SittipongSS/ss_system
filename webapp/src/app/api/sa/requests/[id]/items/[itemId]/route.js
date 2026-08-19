@@ -99,17 +99,14 @@ export async function PATCH(request, { params }) {
 
   // ── ก้าว `ack` ที่ทำให้ทั้งใบเปลี่ยนเป็น "รับเรื่องแล้ว" ต้องผ่านกฎของใบ ──────
   //
-  // 🐞 **กฎที่เคยถูกข้ามทางแถว** (ผลตรวจรอบ 12 · ค-2) — ปุ่มระดับใบบังคับวันกำหนดส่ง
-  // ทุกหัวข้อ (`requestRequiresCommittedDue` คืน true เสมอ · เหตุผลเขียนไว้ที่
-  // `stages.js`: *"ไม่มีวัน = ไม่มีทางรู้ว่าใบไหนช้า"*) แต่ก้าวรายแถวเขียนสถานะเอง
-  // โดยไม่ผ่านด่านนั้น ⇒ ได้ใบ `acknowledged` ที่ไม่มีวันที่รับปาก ซึ่งเป็นตัวเลขที่
-  // ทุกรายงาน "เลยกำหนด" ยืนอยู่บนมัน
+  // 🐞 **กฎที่เคยถูกข้ามทางแถว** (ผลตรวจรอบ 12 · ค-2) — ก้าวรายแถวเขียนสถานะใบเอง
+  // โดยไม่ผ่านด่านของใบ ⇒ ทางเข้าที่สองที่กฎไปไม่ถึง · ด่านต้องเรียกจากทั้งสองทาง
   //
-  // ⚠️ **บังคับเฉพาะก้าวที่ดันใบจาก `pending`** — แถวของใบที่รับเรื่องไปแล้วยังใส่
-  // `dueAt` เป็นวันของแถวได้ตามเดิม (ไม่บังคับ) เพราะใบมีวันที่รับปากอยู่แล้ว
-  const committedDueDate = String(body.dueAt ?? '').trim() || null;
+  // ⚠️ **`dueAt` ของก้าวนี้เป็นวันของ *แถว* ไม่ใช่คำสัญญาของใบ** (มติผู้ใช้ 2026-08-19)
+  // — วันที่รับปากของใบมาจาก action `commit-due` ทางเดียว ซึ่งลงแถว `commitDue` ใน
+  // เธรดเสมอ · เขียนผ่านทางนี้เมื่อไร ใบจะได้วันโดยที่ฝ่ายขายไม่เห็นอะไรเลย
   if (hop === 'ack' && before.status === 'pending') {
-    const ackError = acknowledgeRequestError(before, { committedDueDate });
+    const ackError = acknowledgeRequestError(before);
     if (ackError) return Response.json({ error: ackError }, { status: 409 });
   }
 
@@ -247,9 +244,7 @@ export async function PATCH(request, { params }) {
       headPatch.acknowledgedById = user?.id ?? null;
       headPatch.acknowledgedByName = user?.name ?? null;
       headPatch.acknowledgedAt = nowIso;
-      // ⭐ **วันของแถวกลายเป็นวันที่รับปากของทั้งใบ** — ก้าวนี้คือ "รับเรื่อง" ของใบ
-      // จริง ๆ ⇒ ต้องผ่านกฎชุดเดียวกับปุ่มระดับใบ ไม่ใช่กฎที่ก๊อปมาไว้ตรงนี้
-      headPatch.committedDueDate = committedDueDate;
+      // ⚠️ **ไม่เขียน `committedDueDate` ที่นี่** — ดูเหตุผลที่ด่านข้างบน
     }
     // ตอบครบทุกแถว → ใบเป็น answered เอง (กลไกเดิม ไม่แก้)
     const after = await findRequest(supabase, id);

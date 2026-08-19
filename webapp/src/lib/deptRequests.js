@@ -35,6 +35,7 @@ export {
   deriveRequestStatusAfterAnswer,
   submitRequestError,
   acknowledgeRequestError,
+  commitDueRequestError,
   rescheduleRequestError,
   bounceRequestError,
   answerRequestError,

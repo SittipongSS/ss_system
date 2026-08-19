@@ -2,7 +2,8 @@
 // GET    : รายละเอียด (canViewRequests + **ต้องเป็นใบของตัวเอง/ของฝ่ายตน** — ดู
 //          canReadRequestRow; เดิมด่านนี้ไม่ดูแถวเลย เปิดตรงด้วย id ได้ทุกใบ)
 // PATCH  : submit (ผู้ขอ — ออกเลขตาม scope ของชนิด + แจ้ง space ฝ่าย + @mention)
-//          acknowledge (RD/PC รับเรื่อง + รับปากวันที่จะตอบ) · answer (ชนิดที่ไม่มี
+//          acknowledge (RD/PC รับเรื่อง = ตัดรอบ) · commit-due (แจ้งกำหนดส่ง —
+//          ก้าวแยกจากการรับเรื่อง) · answer (ชนิดที่ไม่มี
 //          บรรทัด — ตอบเสร็จแล้ว) · close (ปิดเรื่อง) · cancel (ผู้ขอยกเลิก)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -21,7 +22,7 @@ import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { listAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
 import {
-  acknowledgeRequestError, rescheduleRequestError,
+  acknowledgeRequestError, commitDueRequestError, rescheduleRequestError,
   bounceRequestError, answerRequestError, canAnswerRequest, canManageRequest,
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
@@ -204,20 +205,36 @@ export async function PATCH(request, { params }) {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `รับเรื่องได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
-      // ⭐ บังคับวันกำหนดส่ง **รายชนิด** — ผู้ใช้ยืนยันแล้วสำหรับพัฒนากลิ่น
-      // (คอมเมนต์เดิมตรงนี้เขียนไว้ว่า "ถ้าจะบังคับควรบังคับรายชนิดทีหลัง" — ถึงตอนนั้นแล้ว)
-      const err = acknowledgeRequestError(before, { committedDueDate: body.committedDueDate });
+      /* ⭐ **รับเรื่องไม่ผูกวันแล้ว** (มติผู้ใช้ 2026-08-19) — กดรับ = ตัดรอบเข้าฝ่าย ·
+         วันที่รับปากเป็น action ของตัวเอง (`commit-due`) ที่กดทีหลังได้เมื่อฝ่ายรู้จริง
+         ⚠️ **ไม่รับ `committedDueDate` จาก body ที่นี่โดยตั้งใจ** — เปิดช่องไว้เมื่อไร
+         วันก็ถูกผูกได้โดยไม่มีแถว `commitDue` ในเธรด แล้วฝ่ายขายไม่มีวินาทีที่รู้ว่า
+         ได้วันแล้ว (โรคเดียวกับที่ `reschedule` เคยเป็น: แก้จริงแต่เธรดเงียบ) */
+      const err = acknowledgeRequestError(before);
       if (err) return Response.json({ error: err }, { status: 409 });
-      const due = String(body.committedDueDate ?? '').trim();
-      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
-        return Response.json({ error: 'วันที่จะตอบไม่ถูกต้อง' }, { status: 400 });
-      }
       patch.status = 'acknowledged';
       patch.acknowledgedById = user?.id ?? null;
       patch.acknowledgedByName = user?.name ?? null;
       patch.acknowledgedAt = nowIso;
-      if (due) patch.committedDueDate = due;
       summary = `รับเรื่อง ${before.docNo || id}`;
+    } else if (action === 'commit-due') {
+      /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
+         การรับเรื่องเพราะของจริงคือ "รับไว้แล้ว แต่ยังตอบวันไม่ได้" (รอวัตถุดิบ ·
+         รอฝ่ายอื่น) · ครั้งแรกทางนี้ · เปลี่ยนวันหลังจากนั้นไปทาง `reschedule` ซึ่ง
+         บังคับให้เธรดเห็นว่าเลื่อนจากวันไหนเป็นวันไหน */
+      if (!canAnswerRequest(user, before)) {
+        return Response.json({ error: `แจ้งกำหนดส่งได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
+      }
+      const err = commitDueRequestError(before, { committedDueDate: body.committedDueDate });
+      if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
+      patch.committedDueDate = String(body.committedDueDate).trim();
+      // เหตุผลไม่บังคับ — ครั้งแรกยังไม่มีคำสัญญาเดิมให้ต้องอธิบาย (ต่างจากการเลื่อน)
+      const note = String(body.reason ?? '').trim();
+      if (note.length > 500) {
+        return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
+      }
+      eventReason = note || null;
+      summary = `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
     } else if (action === 'update') {
       // ⭐ **แก้คำร้องที่ยังไม่ถูกรับเรื่อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้
       // ใบที่บันทึกแล้วแก้ไม่ได้เลยสักช่อง ต้องลบทิ้งแล้วเปิดใหม่
@@ -338,7 +355,8 @@ export async function PATCH(request, { params }) {
       pdrChanges = pdrChangeSummary(before, columns);
       summary = `แก้แบบฟอร์ม PDR ${before.docNo || id}`;
     } else if (action === 'reschedule') {
-      // ⭐ **เลื่อนวันกำหนดส่ง** — RD เลือกวันตอนรับเรื่องแล้วเปลี่ยนใจได้ (มติผู้ใช้)
+      // ⭐ **เลื่อนวันกำหนดส่ง** — RD แจ้งวันไปแล้วเปลี่ยนใจได้ (มติผู้ใช้)
+      // ⚠️ ใบที่ยังไม่เคยแจ้งวันไปทาง `commit-due` — ด่านที่ `stages.js` กันไว้แล้ว
       //
       // ⚠️ **ไม่แก้เงียบ ๆ** — วันกำหนดส่งคือคำสัญญาที่ให้ฝ่ายขายไปแล้ว และเป็นตัวที่
       // ใช้นับว่าเลยกำหนดหรือยัง ⇒ เลื่อนแล้วต้องเห็นในเธรดว่าเลื่อนจากวันไหนเป็น

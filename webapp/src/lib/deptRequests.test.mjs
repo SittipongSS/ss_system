@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import {
   REQUEST_OPEN_STATUSES,
   acknowledgeRequestError,
+  commitDueRequestError,
   rescheduleRequestError,
   bounceRequestError,
   answerRequestError,
@@ -288,8 +289,8 @@ test('ชนิดที่ไม่มีบรรทัดส่งได้�
   assert.equal(submitRequestError(
     req({ kind: 'info', status: 'draft', requestedDueDate: '2569-08-20' }), [],
   ), null);
-  // ⭐ ร่างเก่าที่ไม่มีวันคาดหวัง (เกิดก่อนมติ 2026-08-08) ต้องไม่หลุดตอนกดส่ง
-  assert.match(submitRequestError(req({ kind: 'info', status: 'draft' }), []), /วันที่คาดหวัง/);
+  // ⭐ ร่างเก่าที่ไม่มีวันที่ต้องการรับงาน (เกิดก่อนมติ 2026-08-08) ต้องไม่หลุดตอนกดส่ง
+  assert.match(submitRequestError(req({ kind: 'info', status: 'draft' }), []), /วันที่ต้องการรับงาน/);
   assert.match(submitRequestError(req({ kind: 'formula_dev', status: 'draft' }), []), /อย่างน้อย 1 รายการ/);
 });
 
@@ -528,8 +529,8 @@ test('requestFormBlocker: ปุ่มส่งกับข้อความเ
   };
   assert.match(requestFormBlocker(brief), /ใบสั่งขาย/);
   assert.equal(requestFormBlocker({ ...brief, salesOrderId: 'SO-1' }), null);
-  // ⭐ วันที่คาดหวังบังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08)
-  assert.match(requestFormBlocker({ ...base, requestedDueDate: '' }), /วันที่คาดหวัง/);
+  // ⭐ วันที่ต้องการรับงานบังคับทุกหัวข้อ (มติผู้ใช้ 2026-08-08 · คำใหม่ 2026-08-19)
+  assert.match(requestFormBlocker({ ...base, requestedDueDate: '' }), /วันที่ต้องการรับงาน/);
   assert.match(requestFormBlocker({ ...base, dealId: '' }), /ดีล/);
 });
 
@@ -659,16 +660,33 @@ test('requestStepLabel อ่านชื่อขั้นจากแม่แ
   assert.equal(requestStepLabel('ไม่มีหัวข้อนี้'), null);
 });
 
-test('⭐ วันกำหนดส่งตอนรับเรื่องบังคับทุกหัวข้อ — มติผู้ใช้ 2026-08-08', () => {
-  // ยกระดับจากรายชนิดของ 2026-08-06: "วันที่คาดหวังกับวันที่กำหนดส่ง อยากให้บังคับ
-  // ใส่เสมอ ทุกคำร้อง" · เหตุผลเดิมยิ่งจริงขึ้น — แถบ "เลยกำหนด" นับจาก
-  // `committedDueDate` เท่านั้น ⇒ หัวข้อที่ไม่บังคับหายไปจากตัวเลขงานค้างถาวร
+/* ⭐ **รับเรื่อง = ตัดรอบ · แจ้งกำหนดส่ง = ก้าวที่สอง** (มติผู้ใช้ 2026-08-19) —
+   ทับมติ 2026-08-08 ที่บังคับวันตอนกดรับเรื่องทุกหัวข้อ
+   🐞 เหตุผลที่มติเดิมพัง: ฝ่ายรับเรื่องบ่อยครั้งยังตอบวันไม่ได้จริง (รอวัตถุดิบ ·
+   รอฝ่ายอื่น) ⇒ เดาวันไปก่อนแล้วเลื่อนทีหลัง หรือไม่กดรับเลย — แย่ทั้งคู่
+   ⚠️ **วันยังบังคับอยู่ แค่ย้ายก้าว** — ใบที่ยังไม่แจ้งวันขึ้นสถานะ "รอกำหนดส่ง"
+   ซึ่งคิว/ราง/ป้ายทวงให้เห็น (ดู `requestAwaitingDue`) */
+test('⭐ รับเรื่องไม่ต้องมีวันกำหนดส่ง — วันย้ายไปก้าว "แจ้งกำหนดส่ง" (มติผู้ใช้ 2026-08-19)', () => {
   for (const kind of ['scent_dev', 'formula_dev', 'info', 'document', 'material_eta']) {
-    const ask = { kind, status: 'pending' };
-    assert.match(acknowledgeRequestError(ask), /วันกำหนดส่ง/, kind);
-    assert.match(acknowledgeRequestError(ask, { committedDueDate: '  ' }), /วันกำหนดส่ง/, kind);
-    assert.equal(acknowledgeRequestError(ask, { committedDueDate: '2569-08-20' }), null, kind);
+    assert.equal(acknowledgeRequestError({ kind, status: 'pending' }), null, kind);
   }
+
+  const acked = { kind: 'scent_dev', status: 'acknowledged', acknowledgedAt: '2026-08-19T00:00:00Z' };
+  // ยังไม่รับเรื่อง = ยังไม่มีสิทธิ์รับปากวัน
+  assert.match(
+    commitDueRequestError({ kind: 'scent_dev', status: 'pending' }, { committedDueDate: '2026-08-25' }),
+    /ยังไม่ได้รับเรื่อง/,
+  );
+  assert.match(commitDueRequestError(acked), /ต้องระบุวันกำหนดส่ง/);
+  assert.match(commitDueRequestError(acked, { committedDueDate: '25/08/2026' }), /ต้องระบุวันกำหนดส่ง/);
+  assert.equal(commitDueRequestError(acked, { committedDueDate: '2026-08-25' }), null);
+  // ⚠️ ครั้งแรกเท่านั้น — แจ้งไปแล้วต้องไปทาง `reschedule` ที่ลงเธรดว่าเลื่อนจาก/เป็น
+  assert.match(
+    commitDueRequestError({ ...acked, committedDueDate: '2026-08-25' }, { committedDueDate: '2026-08-27' }),
+    /แจ้งกำหนดส่งไปแล้ว/,
+  );
+  // และทางกลับกัน: ใบที่ยังไม่เคยแจ้งวัน เลื่อนไม่ได้ (ไม่มีคำสัญญาให้เลื่อน)
+  assert.match(rescheduleRequestError(acked, { committedDueDate: '2026-08-27' }), /ยังไม่ได้แจ้งกำหนดส่ง/);
 });
 
 // ── เลื่อนวันกำหนดส่ง ────────────────────────────────────────────────────
@@ -892,14 +910,17 @@ const ITEM_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/route.js';
 const PRICE_ROUTE = 'src/app/api/sa/requests/[id]/items/[itemId]/price/route.js';
 
 test('🔴 ก้าว ack รายแถวที่ดันใบทั้งใบ ต้องผ่านด่านของใบ ไม่ใช่เขียนสถานะเอง (ค-2)', () => {
-  // 🐞 เดิม route เขียน `headPatch.status = 'acknowledged'` เองโดยไม่ผ่านด่าน ⇒ ได้ใบ
-  // ที่รับเรื่องแล้วแต่ **ไม่มีวันที่รับปาก** ทั้งที่ปุ่มระดับใบบังคับทุกหัวข้อ
-  // (`requestRequiresCommittedDue` คืน true เสมอ) ⇒ รายงาน "เลยกำหนด" นับใบนั้นไม่ได้
+  // 🐞 เดิม route เขียน `headPatch.status = 'acknowledged'` เองโดยไม่ผ่านด่านของใบเลย
+  // ⇒ ทางเข้าที่สองที่กฎไปไม่ถึง
   const src = readFileSync(ITEM_ROUTE, 'utf8');
-  assert.match(src, /acknowledgeRequestError\(before, \{ committedDueDate/,
+  assert.match(src, /acknowledgeRequestError\(before\)/,
     'ก้าว ack ต้องเรียกด่านของใบตัวเดียวกับปุ่มระดับใบ');
-  assert.match(src, /headPatch\.committedDueDate = committedDueDate/,
-    'วันที่ผ่านด่านแล้วต้องถูกเขียนลงใบ ไม่ใช่ตรวจแล้วทิ้ง');
+  /* ⚠️ **ห้ามเขียน `committedDueDate` จากก้าวรายแถว** (มติผู้ใช้ 2026-08-19) — วันที่
+     รับปากของใบมาจาก action `commit-due` ทางเดียว ซึ่งลงแถว `commitDue` ในเธรดเสมอ ·
+     เขียนผ่านทางนี้เมื่อไร ใบได้วันโดยที่ฝ่ายขายไม่เห็นอะไรเลย (โรคเดียวกับที่
+     `reschedule` เคยเป็น: แก้จริงแต่เธรดเงียบ) */
+  assert.doesNotMatch(src, /headPatch\.committedDueDate/,
+    'ก้าวรายแถวต้องไม่ผูกวันกำหนดส่งของใบ — ใช้ action commit-due ที่ลงเธรด');
 });
 
 test('🔴 route รายแถวสองตัวต้องมีด่านสถานะใบเท่ากัน (ค-5)', () => {
