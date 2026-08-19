@@ -6,6 +6,17 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
+  experimental: {
+    // Turbopack เป็น bundler ของ `next build` ตั้งแต่ Next 16 แต่ FS cache ปิดมาจาก
+    // ดีฟอลต์ (config-shared.js: turbopackFileSystemCacheForBuild: false) ⇒ ทุก build
+    // บน Vercel เป็น cold build ไม่ว่า diff จะเล็กแค่ไหน · เดือนที่แล้ว 492 build
+    // กินไป 7,066 CPU-min (14.4 CPU-min/build) = 87% ของบิล infra ทั้งก้อน
+    // เปิดแล้ว cache ลง .next/cache ซึ่งเป็นโฟลเดอร์ที่ Vercel restore ให้ข้าม build
+    // ⚠️ ยัง experimental — ถ้า output เพี้ยนหรือ build พัง ถอดคีย์นี้ออกได้ทันที
+    // ตรวจว่าได้ผลจริง: build log บน Vercel ต้องขึ้น "Restored build cache" และ
+    // Build CPU Minutes ในบิลต้องลดลง ไม่ใช่ดูแค่ว่า build ผ่าน
+    turbopackFileSystemCacheForBuild: true,
+  },
   turbopack: {
     root: rootDir,
   },
