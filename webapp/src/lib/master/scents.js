@@ -366,3 +366,34 @@ export function proposedScentStatus(requested) {
   const value = String(requested ?? '').trim();
   return NEW_SCENT_STATUSES.includes(value) ? value : null;
 }
+
+/* ── ฟอร์มทะเบียนกลิ่น → payload ของ API ───────────────────────────────────
+ *
+ * ⭐ **ที่เดียวสำหรับสองจอ** — เหตุผลเดียวกับ `formulaFormPayload` (2026-08-19):
+ * หน้ารายละเอียดเปิดฟอร์มตัวเดียวกับหน้ารายการได้แล้ว ⇒ ตัวสร้าง payload ต้องเป็น
+ * ก้อนเดียว ไม่งั้นสองจอเลื่อนออกจากกัน
+ * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** — ไม่ส่ง = server คงค่าเดิมแล้ว
+ * ตอบ 200 ⇒ ขึ้นว่าบันทึกสำเร็จทั้งที่ไม่มีอะไรเปลี่ยน (ผู้ใช้ทัก 2026-08-10)
+ * ⚠️ วันที่/สถานะส่งเฉพาะตอน **สร้างใหม่** — โหมดแก้มี action ของตัวเอง
+ * ⭐ ฝ่ายขายส่งวัน/สถานะมาได้แล้ว (มติผู้ใช้ 2026-08-19) — `status` ที่ส่งไปลงเป็น
+ * `proposedStatus` ให้เองที่ server (`createScent`) แถวยังเป็นร่างเหมือนเดิม
+ */
+export function scentFormPayload(value = {}, {
+  canSetCode = false, mode = 'create', customerName = null,
+} = {}) {
+  const payload = {
+    name: value.name,
+    customerId: value.customerId,
+    customerName,
+    customerTradeName: value.customerTradeName,
+    derivedFromScentId: value.derivedFromScentId,
+    note: value.note,
+  };
+  if (canSetCode) payload.code = String(value.code ?? '').trim();
+  if (mode === 'create') {
+    if (value.producedAt) payload.producedAt = value.producedAt;
+    if (value.sentAt) payload.sentAt = value.sentAt;
+    payload.status = value.status;
+  }
+  return payload;
+}

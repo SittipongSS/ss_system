@@ -12,11 +12,16 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import ScentFormModal from "@/components/database/ScentFormModal";
+import { scentToForm } from "@/components/database/ScentForm";
 import Toast from "@/components/ui/Toast";
 import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
-import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable, scentSourceLabel } from "@/lib/master/scents";
+import {
+  SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable,
+  scentFormPayload, scentSourceLabel,
+} from "@/lib/master/scents";
 
 // โทนของ StatusBadge → สีจริง (การ์ดจัดการรับเป็นค่า CSS ไม่ใช่ชื่อโทน)
 const TONE_COLOR = {
@@ -34,6 +39,49 @@ export default function ScentDetailPage() {
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
   const [toast, setToast] = useState(null);
+  /* ⭐ **แก้ในที่ ไม่เด้งกลับหน้ารายการ** (ผู้ใช้ทัก 2026-08-19) — เดิมปุ่มนี้
+     `router.push('/database/scents?edit=…')` ⇒ คนที่กำลังอ่านรายละเอียดถูกพาออกจาก
+     หน้าที่ดูอยู่ และหลังบันทึกก็ค้างที่หน้ารายการ · ตอนนี้เปิดฟอร์มตัวเดียวกัน
+     (`ScentFormModal`) ทับหน้านี้เลย แล้วโหลดค่าที่แก้กลับมาแสดง
+     ⚠️ ยังเป็น **ฟอร์มตัวเดียวกับหน้ารายการ** ไม่ใช่ก๊อปมาไว้ที่นี่ (กฎ AGENTS.md) */
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  /* ฟอร์มต้องมีทะเบียนลูกค้า (ชื่อลูกค้าเจ้าของ) และกลิ่นทั้งก้อน (ตัวเลือก "แก้มาจาก
+     กลิ่นไหน" ของลูกค้ารายเดียวกัน) — ชุดข้อมูลเล็ก โหลดตอนกดแก้ครั้งแรกพอ */
+  const [registryData, setRegistryData] = useState({ customers: [], scents: [] });
+  const openEdit = async () => {
+    setForm({ mode: "edit", scent, value: scentToForm(scent) });
+    const get = (url) => fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => (Array.isArray(d) ? d : []))
+      .catch(() => []);
+    const [customers, scents] = await Promise.all([
+      get("/api/customers"), get("/api/master/scents"),
+    ]);
+    setRegistryData({ customers, scents });
+  };
+  const submitEdit = async () => {
+    setSaving(true);
+    try {
+      const payload = scentFormPayload(form.value, {
+        // กติกาเดียวกับหน้ารายการ (mig 0269): ร่างยังแก้รหัสได้ · ของที่เข้าทะเบียน
+        // แล้วเป็นของ RD · ด่านจริงอยู่ที่ API ทุกเส้นอยู่แล้ว
+        canSetCode: isScentRegistrar(me) || scent.status === "draft",
+        mode: "edit",
+        customerName: registryData.customers.find((c) => c.id === form.value.customerId)?.name || null,
+      });
+      const res = await fetch(`/api/master/scents/${scent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit", ...payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setToast({ kind: "error", msg: data.error || "บันทึกไม่สำเร็จ" }); return; }
+      setForm(null);
+      setToast({ kind: "success", msg: "บันทึกข้อมูลกลิ่นแล้ว" });
+      await load();
+    } finally { setSaving(false); }
+  };
 
   /* ⭐ **ปุ่มลบบนการ์ดจัดการ** (มติผู้ใช้ 2026-08-18) — ลบได้ถึงขั้น "กำลังพัฒนา"
      (ด่านจริงอยู่ที่ `deleteScentError` ฝั่ง server) · ที่นี่แค่ถามยืนยัน
@@ -107,14 +155,14 @@ export default function ScentDetailPage() {
       ]}
       price={scent.price}
       priceLabel="ราคา F (บาท/Kg)"
-      /* ⚠️ **ไม่ก๊อปฟอร์มมาไว้ที่นี่** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่มและอยู่หน้า
-         รายการ (`ScentForm`) · ปุ่มนี้ส่งกลับไปเปิดฟอร์มที่นั่นด้วย `?edit=` */
+      /* ⚠️ **ไม่ก๊อปฟอร์มมาไว้ที่นี่** — เปิด `ScentFormModal` ซึ่งเป็นตัวเดียวกับที่
+         หน้ารายการใช้ (เดิมปุ่มนี้เด้งไปหน้ารายการด้วย `?edit=`) */
       primaryAction={{
         id: "edit",
         kind: "edit",
         label: "แก้ไขข้อมูล",
         icon: Pencil,
-        onClick: () => router.push(`/database/scents?edit=${scent.id}`),
+        onClick: openEdit,
       }}
       secondaryActions={canPrice ? [{
         id: "price",
@@ -144,6 +192,17 @@ export default function ScentDetailPage() {
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
+      />
+
+      {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
+      <ScentFormModal
+        form={form} saving={saving}
+        customers={registryData.customers} scents={registryData.scents}
+        canSetCode={isScentRegistrar(me) || scent.status === "draft"}
+        proposal={!isScentRegistrar(me)}
+        onChange={(value) => setForm({ ...form, value })}
+        onClose={() => setForm(null)}
+        onSubmit={submitEdit}
       />
 
       <RegistryPriceModal

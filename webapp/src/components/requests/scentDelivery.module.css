@@ -6,26 +6,12 @@
   gap: var(--space-3);
 }
 
-/* แต่ละ direction เป็นการ์ดของตัวเอง — ส่งหลายตัวพร้อมกันแล้วต้องแยกออกด้วยตา
-   ว่าช่องไหนเป็นของตัวไหน (ตารางแถวเดียวจะอ่านไม่ออกบนจอแคบ) */
+/* direction ที่เปิดอยู่เป็นการ์ดของตัวเอง — ตัวที่เหลืออยู่หลังแท็บ (2026-08-19)
+   หัวการ์ด (เลขรายการ + ปุ่มลบ) ย้ายไปอยู่บนแถบแท็บของโมดัลแล้ว */
 .row {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-3);
-}
-
-.rowHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.rowNo {
-  font-size: var(--fs-3);
-  font-weight: var(--fw-semibold);
-  color: var(--text-3);
 }
 
 .hint { color: var(--text-3); }

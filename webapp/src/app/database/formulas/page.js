@@ -28,7 +28,8 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import StatusNotice from "@/components/ui/StatusNotice";
-import FormulaForm, { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
+import { emptyFormulaForm, formulaToForm } from "@/components/database/FormulaForm";
+import FormulaFormModal from "@/components/database/FormulaFormModal";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
@@ -42,7 +43,8 @@ import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCatego
 import Link from "next/link";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
-  formulaSourceLabel, isFormulaRegistrar, isFormulaUsable, matchesFormulaSource,
+  formulaFormPayload, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable,
+  matchesFormulaSource,
 } from "@/lib/master/formulas";
 
 export default function FormulasPage() {
@@ -272,28 +274,11 @@ export default function FormulasPage() {
   };
 
   const submitForm = async () => {
-    const v = form.value;
-    // ⚠️ ส่ง `customerId` ได้แล้ว (มติผู้ใช้ 2026-08-10 กลับทิศจาก 0207) แต่
-    // `customerName` ยังไม่ส่ง — server อ่านจากทะเบียนลูกค้าเสมอ (ชื่ออาจเก่า)
-    const payload = {
-      name: v.name,
-      formulaDate: v.formulaDate || null,
-      categoryCode: v.categoryCode || null,
-      customerId: v.customerId || null,
-      scentId: v.scentId || null,
-      customerTradeName: v.customerTradeName,
-      derivedFromFormulaId: v.derivedFromFormulaId || null,
-      note: v.note,
-    };
-    // ⭐ รหัสแก้ได้แล้วทั้งตอนสร้างและตอนแก้ (มติผู้ใช้ 2026-08-10) — ด่านจริงอยู่ที่
-    // API ซึ่งยอมเฉพาะคนที่รับเข้าทะเบียนได้ · ที่นี่ส่งเฉพาะตอนมีสิทธิ์เพื่อไม่ให้
-    // คนที่ไม่มีสิทธิ์โดนตีกลับทั้งฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว
-    /* 🐞 **ส่งรหัสไปเสมอ รวมตอนช่องว่าง** — ของเดิมส่งเฉพาะตอนไม่ว่าง ⇒ ผู้ใช้
-       ลบรหัสทิ้งแล้วกดบันทึก หน้าจอไม่ส่งอะไรไปเลย server จึงคงค่าเดิมไว้แล้วตอบ
-       200 ⇒ **ขึ้นว่าบันทึกสำเร็จทั้งที่ไม่มีอะไรเปลี่ยน** (ผู้ใช้ทัก 2026-08-10)
-       ⚠️ ส่งค่าว่างไปแล้ว server เป็นคนตัดสิน: ร่างล้างได้ · สูตรที่รับเข้าทะเบียน
-       แล้วตอบกลับเป็นข้อความไทยว่าทำไมไม่ได้ — เงียบแย่กว่าถูกปฏิเสธ */
-    if (registrar) payload.code = v.code.trim();
+    /* ⚠️ **payload สร้างที่ lib ที่เดียว** (`formulaFormPayload`) — หน้ารายละเอียดก็เปิด
+       ฟอร์มตัวนี้ได้แล้ว (2026-08-19) · เขียนสองที่เมื่อไรมันเลื่อนออกจากกันทันที
+       ⭐ รหัสส่งเฉพาะตอนมีสิทธิ์รับเข้าทะเบียน — คนที่ไม่มีสิทธิ์จะได้ไม่โดนตีกลับทั้ง
+       ฟอร์มเพราะช่องที่เขาแก้ไม่ได้อยู่แล้ว */
+    const payload = formulaFormPayload(form.value, { canSetCode: registrar });
     if (form.mode === "create") {
       const done = await call("/api/master/formulas", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -654,27 +639,14 @@ export default function FormulasPage() {
       {/* เพิ่ม / แก้ไข — ฟอร์มเดียวสองโหมด (กฎ AGENTS.md) */}
       {/* ปุ่มอยู่ใน prop `footer` = โซน .drawer-footer ของโครงโมดัล — เดิมใช้
           <div className="modal-actions"> ซึ่งไม่มี CSS อยู่จริง ปุ่มติดกัน 0px */}
-      <Modal
-        open={!!form} onClose={() => setForm(null)} size="md" dismissible={!saving}
-        title={form?.mode === "edit" ? `แก้ข้อมูลสูตร — ${form.formula.name}` : "เพิ่มสูตรเข้าทะเบียน"}
-        footer={form && (
-          <>
-            <Button variant="quiet" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitForm} disabled={saving}>บันทึก</Button>
-          </>
-        )}
-      >
-        {form && (
-          <FormulaForm
-            customers={customers}
-            mode={form.mode} value={form.value} scents={scents}
-            formulas={formulas} categories={categories}
-            editingId={form.formula?.id || null}
-            canSetCode={registrar} disabled={saving}
-            onChange={(value) => setForm({ ...form, value })}
-          />
-        )}
-      </Modal>
+      <FormulaFormModal
+        form={form} saving={saving}
+        customers={customers} scents={scents} formulas={formulas} categories={categories}
+        canSetCode={registrar}
+        onChange={(value) => setForm({ ...form, value })}
+        onClose={() => setForm(null)}
+        onSubmit={submitForm}
+      />
 
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}

@@ -30,7 +30,7 @@ import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
 import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { findFormulaByIdentity } from '@/lib/master/formulas';
-import { createFormula, loadFormulas } from '@/lib/master/scentFormulaAdmin';
+import { createFormula, findScent, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { canAnswerRequestsFor } from '@/lib/permissions';
@@ -161,12 +161,24 @@ export async function PATCH(request, { params }) {
         await loadFormulas(supabase, { status: null }),
         { categoryCode: row.categoryCode, scentId: row.scentId },
       );
+      /* 🐞 **ต้องส่งลูกค้าไปด้วย** — มติ 2026-08-10 กลับทิศจาก mig 0207: server เลิก
+         *derive* ลูกค้าจากกลิ่น แล้วเปลี่ยนเป็น *ตรวจ* ว่าลูกค้าที่ส่งมาตรงกับเจ้าของกลิ่น
+         · ฟอร์มทะเบียนกับ "จัดระเบียบ" ปรับตามแล้ว แต่เส้นคำร้องถูกลืม ⇒ RD กดส่งงาน
+         ทีไรก็โดน "สูตรฐาน (ไม่ผูกลูกค้า) เลือกกลิ่นของลูกค้าไม่ได้" ทุกครั้งที่แถวมีกลิ่น
+         และยังไม่มีสูตรของคู่ (หมวด × กลิ่น) นั้น
+         ⚠️ ลูกค้ามาจาก **ใบ** ก่อน แล้วค่อยถอยไปเจ้าของกลิ่น (ใบภายในไม่มีลูกค้า) —
+         ด่าน `formulaScentCustomerError` ยังตรวจว่าทั้งสองเป็นคนเดียวกันเสมอ */
+      const scent = row.scentId ? await findScent(supabase, row.scentId) : null;
       const formula = existing || await createFormula(supabase, {
         name: formulaDelivery.name,
         code: formulaDelivery.code,
         formulaDate: formulaDelivery.formulaDate,
+        customerTradeName: formulaDelivery.customerTradeName,
+        derivedFromFormulaId: formulaDelivery.derivedFromFormulaId,
+        note: formulaDelivery.note,
         categoryCode: row.categoryCode,
         scentId: row.scentId,
+        customerId: before.customerId || scent?.customerId || null,
         dealId: before.dealId || null,
       }, user, { accepted: true });
       patch.producedFormulaId = formula.id;

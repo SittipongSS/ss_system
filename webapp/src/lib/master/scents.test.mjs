@@ -20,6 +20,7 @@ import {
   SCENT_SOURCES, matchesScentSource, scentSourceKind, scentSourceLabel,
   NEW_SCENT_STATUSES, newScentStatus,
   acceptScentCode, acceptedScentStatus, canSetScentCode, proposedScentStatus,
+  scentFormPayload,
 } from './scents.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
@@ -287,4 +288,31 @@ test('⭐ สถานะปลายทางตอนรับเข้าท�
   assert.equal(acceptedScentStatus(draft({ proposedStatus: null }), {}), 'developing');
   // ค่าที่ไม่อยู่ในชุด = ไม่เชื่อ (ยิง API ตรงก็ดันสถานะเถื่อนเข้าไม่ได้)
   assert.equal(acceptedScentStatus(draft({ proposedStatus: 'archived' }), { status: 'draft' }), 'developing');
+});
+
+/* ── ฟอร์ม → payload (ใช้ร่วมหน้ารายการกับหน้ารายละเอียด · 2026-08-19) ────── */
+test('payload ของฟอร์มกลิ่น: วัน/สถานะส่งเฉพาะตอนสร้าง · รหัสส่งเมื่อมีสิทธิ์', () => {
+  const value = {
+    name: 'Forest night', code: ' SC-1 ', customerId: 'CUS-1', customerTradeName: '',
+    derivedFromScentId: '', note: '', producedAt: '2026-08-01', sentAt: '2026-08-02',
+    status: 'active',
+  };
+  const created = scentFormPayload(value, { canSetCode: true, mode: 'create', customerName: 'ลูกค้า ก' });
+  assert.equal(created.code, 'SC-1', 'ตัดช่องว่างหัวท้ายเหมือนที่ index เทียบ');
+  assert.equal(created.producedAt, '2026-08-01');
+  /* ⭐ ฝ่ายขายส่งสถานะมาได้ (mig 0269) — server ลงเป็น `proposedStatus` ให้เอง
+     แถวยังเป็นร่าง ⇒ ฟอร์มไม่ต้องรู้เรื่องนั้น ส่งสิ่งที่คนกรอกไปตรง ๆ */
+  assert.equal(created.status, 'active');
+  assert.equal(created.customerName, 'ลูกค้า ก');
+
+  // ⚠️ โหมดแก้ไม่ส่งสามช่องนั้น — วัน/สถานะมี action ของตัวเอง
+  const edited = scentFormPayload(value, { canSetCode: true, mode: 'edit' });
+  assert.equal('producedAt' in edited, false);
+  assert.equal('status' in edited, false);
+  assert.equal(edited.customerId, 'CUS-1');
+
+  // 🐞 ลบรหัสทิ้งแล้วต้อง **ส่งค่าว่างไป** ให้ server ตัดสิน — ไม่ส่ง = เงียบแล้วตอบ 200
+  assert.equal(scentFormPayload({ ...value, code: '' }, { canSetCode: true }).code, '');
+  // คนที่แตะรหัสไม่ได้ (ร่างของคนอื่น / ของที่เข้าทะเบียนแล้ว) ไม่ส่งช่องรหัสเลย
+  assert.equal('code' in scentFormPayload(value, { canSetCode: false }), false);
 });

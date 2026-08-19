@@ -64,9 +64,10 @@ test('ห้ามเชื่อ targetItemId ที่ client ส่งมา'
 test('⭐ ส่งของลงรอบแก้: บรีฟกับกลิ่นต้นทางมาจากแถว ไม่ใช่จากที่ client ส่ง', () => {
   const { rows, error } = normalizeDeliveryRows([{
     targetItemId: 'DRI-2',
-    name: 'ทะเลเช้า v2', code: 'SC-002', sentAt: '2026-08-10',
+    // ของที่เข้าทะเบียนอยู่ในก้อน `scent` (ฟอร์มเดียวกับทะเบียน · 2026-08-19)
+    scent: { name: 'ทะเลเช้า v2', code: 'SC-002', derivedFromScentId: 'SCENT-9' },
     // client แกล้งส่งของผิดมาทั้งสองช่อง — ต้องถูกทับด้วยของจริง
-    briefId: 'BRF-9', derivedFromScentId: 'SCENT-9',
+    briefId: 'BRF-9',
   }], { briefs: [{ id: 'BRF-1' }, { id: 'BRF-2' }], items });
 
   assert.equal(error, null);
@@ -77,7 +78,7 @@ test('⭐ ส่งของลงรอบแก้: บรีฟกับก�
 
 test('ส่งของใหม่ (ไม่ใช่รอบแก้) ยังทำงานเหมือนเดิมทุกอย่าง', () => {
   const { rows, error } = normalizeDeliveryRows([{
-    name: 'ทะเลบ่าย', code: 'SC-003', sentAt: '2026-08-10', briefId: 'BRF-2',
+    scent: { name: 'ทะเลบ่าย', code: 'SC-003' }, briefId: 'BRF-2',
   }], { briefs: [{ id: 'BRF-1' }, { id: 'BRF-2' }], items });
 
   assert.equal(error, null);
@@ -88,7 +89,7 @@ test('ส่งของใหม่ (ไม่ใช่รอบแก้) ย�
 
 test('targetItemId ที่ใช้ไม่ได้ ต้องตีกลับพร้อมบอกว่ารายการที่เท่าไร', () => {
   const { error } = normalizeDeliveryRows([{
-    targetItemId: 'DRI-1', name: 'x', code: 'SC-004',
+    targetItemId: 'DRI-1', scent: { name: 'x', code: 'SC-004' },
   }], { briefs: [], items });
   assert.match(error, /รายการที่ 1: .*ไม่ใช่รอบแก้/);
 });

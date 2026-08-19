@@ -6,18 +6,13 @@
 //
 // ⚠️ **รหัสซ้ำเตือนที่ช่อง ไม่ใช่ตอนกดส่ง** — ปล่อยไปตายที่ DB จะได้ error 23505
 // ภาษาอังกฤษ และมาตอนที่คนกรอกไปหมดแล้วซึ่งสายเกินจะไล่แก้ทีละช่อง
-import { Plus, Trash2 } from "lucide-react";
-import Button from "@/components/ui/Button";
 import { notifyToast } from "@/components/ui/Toast";
 import PendingFiles from "@/components/ui/PendingFiles";
-import Input from "@/components/ui/Input";
-import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
+import ScentForm, { emptyScentForm } from "@/components/database/ScentForm";
 import { businessDate } from "@/lib/businessDate";
 import styles from "./scentDelivery.module.css";
-import { naText } from "@/lib/format";
 
 // ⭐ **สองวัน ไม่ใช่วันเดียว** (มติผู้ใช้ 2026-08-08 · ม-66 · mig 0224):
 //   · `producedAt` = RD ผลิตกลิ่นตัวนี้เสร็จวันไหน → ไปอยู่บน **ตัวกลิ่น** ในทะเบียน
@@ -28,21 +23,30 @@ import { naText } from "@/lib/format";
 // `_files` = File[] ค้างในฟอร์ม (ม-91) — แถวสายกลิ่นเกิดตอนกดส่ง จึงยังไม่มี
 // entityId ให้อัป ⇒ อัปหลังแถวเกิด (แพตเทิร์นเดียวกับหน้าสร้างคำร้อง · ม-84)
 // ⚠️ ขีดล่างนำหน้า = ของฟอร์มล้วน ห้ามส่งเข้า payload (ดูตอน submit ใน page.js)
+/* ⭐ **ฟอร์มเดียวกับทะเบียนกลิ่น** (มติผู้ใช้ 2026-08-19 · ทำคู่กับสายสูตร) — ของที่
+   กรอกอยู่ในก้อน `scent` ซึ่งใช้ชื่อช่องชุดเดียวกับ `ScentForm` ⇒ เพิ่มช่องในทะเบียน
+   แล้วสายคำร้องได้ตามฟรี · ที่เหลือเป็นของ **แถวคำร้อง** ไม่ใช่ของตัวกลิ่น
+   (บรีฟที่ตอบ · รายละเอียด direction · ไฟล์ที่ค้างรออัปหลังแถวเกิด)
+   ⚠️ `producedAt` ตั้งต้นเป็นวันนี้ ต่างจากทะเบียนที่เว้นว่าง — ที่นี่ RD เพิ่งผลิตเสร็จ
+   ส่วนทะเบียนมีไว้ลงของเก่าที่ไม่มีใครจำวันได้ */
 export const emptyDeliveryRow = () => ({
-  name: "", code: "", producedAt: businessDate(),
-  derivedFromScentId: "", spec: "", briefId: "", targetItemId: "", _files: [],
+  scent: { ...emptyScentForm(), producedAt: businessDate() },
+  spec: "", briefId: "", targetItemId: "", _files: [],
 });
 
 // ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
 // (ค่าสองตัวนั้นถูก server เขียนทับด้วยของจริงอยู่ดี ดู lib/requests/rework.js)
-export const reworkDeliveryRow = (slot) => ({
-  ...emptyDeliveryRow(),
-  targetItemId: slot.targetItemId,
-  briefId: slot.briefId || "",
-  derivedFromScentId: slot.derivedFromScentId || "",
-  _sourceLabel: slot.sourceLabel || "",
-  _customerNote: slot.customerNote || "",
-});
+export const reworkDeliveryRow = (slot) => {
+  const base = emptyDeliveryRow();
+  return {
+    ...base,
+    scent: { ...base.scent, derivedFromScentId: slot.derivedFromScentId || "" },
+    targetItemId: slot.targetItemId,
+    briefId: slot.briefId || "",
+    _sourceLabel: slot.sourceLabel || "",
+    _customerNote: slot.customerNote || "",
+  };
+};
 
 const norm = (v) => String(v ?? "").trim().toLowerCase();
 
@@ -52,12 +56,18 @@ export function codeConflict(code, index, rows, registryCodes) {
   const key = norm(code);
   if (!key) return null;
   if (registryCodes.has(key)) return "รหัสนี้มีในทะเบียนแล้ว";
-  const earlier = rows.findIndex((r, i) => i !== index && norm(r.code) === key);
+  const earlier = rows.findIndex((r, i) => i !== index && norm(r.scent?.code) === key);
   return earlier === -1 ? null : `ซ้ำกับรายการที่ ${earlier + 1}`;
 }
 
+/* ⭐ **หนึ่ง direction = หนึ่งแท็บ** (มติผู้ใช้ 2026-08-19 · แบบเดียวกับโมดัลสร้างดีล) —
+   แท็บกับปุ่ม "เพิ่ม Direction"/"ลบ" อยู่บนแถบเครื่องมือของโมดัล (ดู requests/[id])
+   ที่นี่จึงวาดเฉพาะ direction ที่เปิดอยู่
+   ⚠️ ปุ่มเพิ่มเคยอยู่ล่างสุดใต้ฟอร์มทุกใบ — กดแล้วไม่เห็นว่าเพิ่มอะไร และยิ่งหลายตัว
+   ยิ่งไถยาว (เหตุผลเดียวกับที่ดีลย้ายปุ่มขึ้นไปแถวเดียวกับแท็บเมื่อ 2026-08-04) */
 export default function ScentDeliveryFields({
-  rows, onChange, scents = [], customerId = null, disabled = false, briefs = [],
+  rows, onChange, scents = [], customers = [], customerId = null,
+  disabled = false, briefs = [], active = 0,
 }) {
   // ⭐ **บรีฟก้อนเดียว = ไม่ต้องถาม** (มติผู้ใช้) — ช่องที่มีตัวเลือกเดียวแต่ยังบังคับ
   // ให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร · server เลือกให้เองอยู่แล้ว
@@ -65,38 +75,20 @@ export default function ScentDeliveryFields({
   const registryCodes = new Set(scents.map((s) => norm(s.code)).filter(Boolean));
   const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
 
-  // "เลขที่อ้างอิง" — เลือกได้เฉพาะกลิ่นของลูกค้ารายเดียวกัน (มติ 9)
-  // ด่านจริงอยู่ฝั่ง server · ตัวกรองนี้กันคนกดผิด ไม่ได้กันคนยิง API ตรง
-  const lineage = scents
-    .filter((s) => s.customerId === customerId)
-    .map((s) => ({
-      value: s.id,
-      label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
-      search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
-    }));
+  const visible = rows[Math.min(Math.max(active, 0), rows.length - 1)];
 
   return (
     <div className={styles.wrap}>
-      {rows.map((row, i) => {
-        const conflict = codeConflict(row.code, i, rows, registryCodes);
+      {rows.filter((row) => row === visible).map((row) => {
+        const i = rows.indexOf(row);
+        const conflict = codeConflict(row.scent?.code, i, rows, registryCodes);
+        /* ⚠️ **รอบแก้ล็อกกลิ่นต้นทาง** — แถวรออยู่แล้วและระบบรู้ว่าแก้มาจากตัวไหน ·
+           ปล่อยให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว (server เขียนทับ
+           ด้วยของจริงอยู่ดี — ดู lib/requests/rework.js) */
+        const locked = row.targetItemId
+          ? ["customerId", "derivedFromScentId"] : ["customerId"];
         return (
           <div key={i} className={styles.row}>
-            <div className={styles.rowHead}>
-              <span className={styles.rowNo}>
-                {row.targetItemId ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}` : `รายการที่ ${i + 1}`}
-              </span>
-              {/* ⚠️ แถวรอบแก้ลบไม่ได้ — มันคืองานที่ลูกค้าสั่งไว้ ไม่ใช่บรรทัดที่ RD
-                  เพิ่งเพิ่มเอง · ลบทิ้งได้เมื่อไรก็เท่ากับทิ้งงานเงียบ ๆ */}
-              {rows.length > 1 && !row.targetItemId && (
-                <Button
-                  size="sm" variant="ghost" tone="danger" disabled={disabled}
-                  title="ลบรายการนี้"
-                  icon={<Trash2 size={14} aria-hidden="true" />}
-                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                />
-              )}
-            </div>
-
             {/* คำพูดลูกค้าอยู่ตรงหัวช่องที่กำลังจะกรอก ไม่ใช่ให้ไถกลับไปอ่านบนราง */}
             {row.targetItemId && row._customerNote && (
               <p className={styles.customerNote}>
@@ -104,36 +96,30 @@ export default function ScentDeliveryFields({
               </p>
             )}
 
+            {/* ⭐ **ฟอร์มเดียวกับหน้าทะเบียนกลิ่น** — ลูกค้า (และกลิ่นต้นทางของรอบแก้)
+                เป็นของที่คำร้องรู้แล้ว จึงเทาไว้ให้อ่านได้ ไม่ซ่อน
+                ⚠️ วันส่งลูกค้ากับสถานะไม่ใช่คำถามของจังหวะนี้ (ม-92 · ม-66): ของเพิ่ง
+                ออกจากมือ RD มาถึงฝ่ายขาย ยังไม่ถึงลูกค้า ⇒ ตัดช่องทิ้งทั้งคู่ */}
+            <ScentForm
+              mode="create" canSetCode canSetLegacy codeRequired
+              idPrefix={`d${i}`}
+              value={{ ...row.scent, customerId: customerId || row.scent?.customerId || "" }}
+              disabled={disabled}
+              customers={customers}
+              scents={scents}
+              codeIssue={conflict}
+              locked={locked}
+              lockedNote="ยกมาจากคำร้อง — แก้ที่นี่ไม่ได้"
+              hide={["sentAt", "status"]}
+              historyTitle="วันของกลิ่นตัวนี้"
+              historyNote="วันผลิตจริงของกลิ่น — วันส่งมอบระบบประทับให้ตอนกดส่ง"
+              onChange={(scent) => patch(i, { scent })}
+            />
+
+            {/* ── ของ **แถวคำร้อง** ไม่ใช่ของตัวกลิ่น ─────────────────────── */}
             <div className="form-grid">
-              <div className="form-group">
-                <label htmlFor={`d-name-${i}`}>ชื่อกลิ่น</label>
-                <Input
-                  id={`d-name-${i}`} value={row.name} disabled={disabled}
-                  placeholder="ชื่อจริงที่ RD ตั้ง"
-                  onChange={(e) => patch(i, { name: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor={`d-code-${i}`}>รหัสกลิ่น</label>
-                <Input
-                  id={`d-code-${i}`} mono value={row.code} disabled={disabled}
-                  invalid={!!conflict} placeholder="เช่น SC-2026-001"
-                  onChange={(e) => patch(i, { code: e.target.value })}
-                />
-                {conflict && <p className={styles.error}>{conflict}</p>}
-              </div>
-              {/* ⭐ เหลือวันเดียวบนจอ: วันผลิต (ข้อเท็จจริงของตัวกลิ่น มักเกิดก่อน
-                  วันกด) — วันส่งไม่ถามแล้ว ระบบประทับวันที่กดให้เอง (ม-92)
-                  ⚠️ ไม่บังคับ: ไม่กรอก = ถือว่าผลิตเสร็จวันเดียวกับที่ส่งมอบ */}
-              <div className="form-group">
-                <label htmlFor={`d-produced-${i}`}>วันที่ผลิตกลิ่น</label>
-                <DateInput
-                  id={`d-produced-${i}`} value={row.producedAt} disabled={disabled}
-                  onChange={(v) => patch(i, { producedAt: v })}
-                />
-              </div>
               {askBrief && !row.targetItemId && (
-                <div className="form-group">
+                <div className="form-group col-span-2">
                   <label htmlFor={`d-brief-${i}`}>ตอบบรีฟก้อนไหน *</label>
                   <Select
                     id={`d-brief-${i}`} value={row.briefId || ""} disabled={disabled}
@@ -149,40 +135,23 @@ export default function ScentDeliveryFields({
                   <span className={styles.hint}>เลือกก้อนเดิมซ้ำได้ ถ้าเสนอหลายทางจากบรีฟเดียว</span>
                 </div>
               )}
-              {row.targetItemId ? (
-                // ⭐ รอบแก้: แก้มาจากตัวไหน **ระบบรู้แล้ว** — แสดงเป็นข้อความ ไม่ใช่
-                // ช่องให้เลือก · คำตอบมีตัวเดียว ให้เลือกเมื่อไรก็ชี้ผิดตัวได้
-                <div className="form-group">
-                  <span className="toolbar-label">แก้มาจากกลิ่น</span>
-                  <p className={styles.locked}>
-                    {naText(row._sourceLabel)}
-                    <span className={styles.hint}> · ผูกให้อัตโนมัติ พร้อมบรีฟก้อนเดิม</span>
-                  </p>
-                </div>
-              ) : (
-              <div className="form-group">
-                <label htmlFor={`d-from-${i}`}>
-                  แก้มาจากกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
-                </label>
-                <SearchableSelect
-                  id={`d-from-${i}`} value={row.derivedFromScentId}
-                  disabled={disabled || !lineage.length}
-                  onChange={(v) => patch(i, { derivedFromScentId: v })}
-                  options={[{ value: "", label: "— ไม่ได้แก้มาจากตัวไหน —" }, ...lineage]}
-                  placeholder="ค้นด้วยรหัสหรือชื่อกลิ่น"
-                  emptyText="ลูกค้ารายนี้ยังไม่มีกลิ่นอื่นในทะเบียน"
-                />
-              </div>
+              {row.targetItemId && (
+                <p className={`col-span-2 ${styles.hint}`}>
+                  รอบแก้ — บรีฟก้อนเดิมผูกให้อัตโนมัติ ไม่ต้องเลือกซ้ำ
+                </p>
               )}
               <div className="form-group col-span-2">
                 <label htmlFor={`d-spec-${i}`}>
-                  รายละเอียด <span className={styles.hint}>(ไม่บังคับ)</span>
+                  รายละเอียด direction <span className={styles.hint}>(ไม่บังคับ)</span>
                 </label>
                 <Textarea
                   id={`d-spec-${i}`} rows={2} value={row.spec} disabled={disabled}
                   placeholder="ทิศทางกลิ่น / สิ่งที่ต่างจากตัวก่อนหน้า"
                   onChange={(e) => patch(i, { spec: e.target.value })}
                 />
+                {/* ⚠️ คนละช่องกับ "หมายเหตุ" ข้างบน — อันนี้อยู่บนแถวคำร้อง (ผู้ขอเห็น
+                    ในใบ) ส่วนหมายเหตุติดไปกับตัวกลิ่นในทะเบียน */}
+                <span className={styles.hint}>ติดอยู่กับรายการในใบคำร้อง — ไม่ได้เข้าทะเบียนกลิ่น</span>
               </div>
               {/* ไฟล์ประกอบของ direction นี้ (ม-91) — ไม่บังคับ: ตัวงานคือกลิ่นที่
                   เข้าทะเบียน ไฟล์เป็นของแถม ต่างจากสายเอกสารที่ไฟล์คือตัวงาน */}
@@ -203,14 +172,6 @@ export default function ScentDeliveryFields({
           </div>
         );
       })}
-
-      <Button
-        size="sm" disabled={disabled}
-        icon={<Plus size={14} aria-hidden="true" />}
-        onClick={() => onChange([...rows, emptyDeliveryRow()])}
-      >
-        เพิ่มอีก direction
-      </Button>
     </div>
   );
 }

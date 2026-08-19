@@ -58,12 +58,30 @@ export function scentToForm(scent) {
   };
 }
 
+/* ⭐ **ฟอร์มเดียวกับที่ใช้ในคำร้อง** (มติผู้ใช้ 2026-08-19 · ทำคู่กับสายสูตร) — RD
+   กด "ส่งงาน" ที่คำร้องพัฒนากลิ่นแล้วกลิ่นเข้าทะเบียนทันที ⇒ สิ่งที่กรอกตอนนั้นต้อง
+   เป็นของชุดเดียวกับทะเบียน ไม่ใช่ฟอร์มย่อที่ค่อย ๆ เลื่อนออกจากกัน
+   `locked` = ช่องที่คำร้องรู้คำตอบอยู่แล้ว — **เทาไว้ให้เห็นว่าค่าอะไร** ไม่ใช่ซ่อน
+   `hide`   = ช่องที่ไม่ใช่คำถามของสายนั้นเลย (เช่นวันส่งลูกค้า ซึ่ง ม-92 ให้ระบบ
+              ประทับตอนกดส่ง จึงต้องไม่มีช่องให้กรอก)
+   ⚠️ ค่าที่ถูกล็อกเป็นแค่ของบนจอ — server ยกจากใบคำร้องเองอยู่แล้ว ไม่เชื่อ client */
 export default function ScentForm({
   mode = "create", value, onChange, customers = [], scents = [],
   editingId = null, canSetCode = false, canSetLegacy = false, proposal = false,
   disabled = false,
+  locked = [], lockedNote = "ยกมาจากคำร้อง — แก้ที่นี่ไม่ได้", hide = [],
+  codeRequired = false, codeIssue = null, idPrefix = "scent",
+  historyTitle = "ของเดิมก่อนมีระบบ",
+  historyNote = "กลิ่นเก่าที่ลงย้อนหลัง — เว้นว่างได้ทั้งโซน",
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
+  const isLocked = (field) => locked.includes(field);
+  const shows = (field) => !hide.includes(field);
+  const lockHint = (field) => (isLocked(field) && lockedNote
+    ? <small className={styles.hint}>{lockedNote}</small> : null);
+  // id ต้องไม่ชนกันเมื่อฟอร์มถูกวางหลายชุดในจอเดียว (คำร้องส่งได้หลาย direction)
+  const fid = (name) => `${idPrefix}-${name}`;
+  const historyFields = ["producedAt", "sentAt", "status"].filter(shows);
 
   // ⚠️ กรองที่ต้นทางเลย ไม่ปล่อยให้เลือกผิดแล้วค่อยให้ server ตีกลับ — กลิ่นข้าม
   // ลูกค้าเป็นข้อห้ามระดับโมเดล (มติ 9) ไม่ใช่ค่าที่แค่ "ไม่แนะนำ"
@@ -83,26 +101,28 @@ export default function ScentForm({
       <FormZone title="ตัวตนกลิ่น" className="col-span-2" />
 
       <div className="form-group col-span-2">
-        <label htmlFor="scent-customer">ลูกค้าเจ้าของกลิ่น</label>
+        <label htmlFor={fid("customer")}>ลูกค้าเจ้าของกลิ่น</label>
         <SearchableSelect
-          id="scent-customer"
+          id={fid("customer")}
           value={value.customerId}
-          disabled={disabled || mode === "edit"}
+          disabled={disabled || mode === "edit" || isLocked("customerId")}
           onChange={(v) => set({ customerId: v })}
           options={customers.map((c) => ({ value: c.id, label: c.name || c.id }))}
           placeholder="เลือกลูกค้า"
         />
-        <small className={styles.hint}>
-          {mode === "edit"
-            ? "เปลี่ยนลูกค้าไม่ได้ — ตัวตนของกลิ่นผูกกับลูกค้า"
-            : "กลิ่นที่ออกแบบให้ลูกค้ารายหนึ่ง ใช้กับอีกรายไม่ได้"}
-        </small>
+        {isLocked("customerId") ? lockHint("customerId") : (
+          <small className={styles.hint}>
+            {mode === "edit"
+              ? "เปลี่ยนลูกค้าไม่ได้ — ตัวตนของกลิ่นผูกกับลูกค้า"
+              : "กลิ่นที่ออกแบบให้ลูกค้ารายหนึ่ง ใช้กับอีกรายไม่ได้"}
+          </small>
+        )}
       </div>
 
       <div className={`form-group ${canSetCode ? "" : "col-span-2"}`.trim()}>
-        <label htmlFor="scent-name">ชื่อกลิ่น</label>
+        <label htmlFor={fid("name")}>ชื่อกลิ่น</label>
         <Input
-          id="scent-name" value={value.name} disabled={disabled}
+          id={fid("name")} value={value.name} disabled={disabled}
           placeholder="เช่น Forest night, Walk on beach 01"
           onChange={(e) => set({ name: e.target.value })}
         />
@@ -110,56 +130,67 @@ export default function ScentForm({
 
       {canSetCode && (
         <div className="form-group">
-          <label htmlFor="scent-code">รหัสกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span></label>
+          <label htmlFor={fid("code")}>
+            รหัสกลิ่น {codeRequired ? null : <span className={styles.hint}>(ไม่บังคับ)</span>}
+          </label>
           <Input
-            id="scent-code" value={value.code} disabled={disabled}
+            id={fid("code")} value={value.code} disabled={disabled}
+            invalid={!!codeIssue}
             placeholder="เช่น SC-2026-001"
             onChange={(e) => set({ code: e.target.value })}
           />
-          {/* ⚠️ **คำอธิบายรหัสต่างกันตามคนกรอก** — ประโยคเดียวใช้ไม่ได้:
-              RD ใส่รหัส = เข้าทะเบียนทันที · ฝ่ายขายใส่รหัสยังเป็นร่างอยู่ดี
-              บอกผิดคือหลอกให้คิดว่าใช้กลิ่นนี้ต่อได้แล้ว */}
-          <small className={styles.hint}>
-            {proposal
-              ? "รหัสจริงจากระบบเก่า — RD ตรวจก่อนถึงใช้งานได้"
-              : "ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = เก็บเป็นร่างไว้ก่อน"}
-          </small>
+          {/* ⚠️ **คำอธิบายรหัสต่างกันตามคนกรอกและตามที่ที่ฟอร์มไปวาง** — ประโยคเดียว
+              ใช้ไม่ได้: RD ใส่รหัส = เข้าทะเบียนทันที · ฝ่ายขายใส่รหัสยังเป็นร่างอยู่ดี ·
+              ในคำร้องรหัสบังคับเพราะกดส่งแล้วเข้าทะเบียนในจังหวะนั้น
+              บอกผิดคือหลอกให้คิดว่าใช้กลิ่นนี้ต่อได้แล้ว
+              ⚠️ รหัสซ้ำเตือนที่ช่อง ไม่ใช่ตอนกดส่ง — ปล่อยไปตายที่ DB จะได้ 23505
+              ภาษาอังกฤษ ตอนที่คนกรอกไปหมดแล้วซึ่งสายเกินจะไล่แก้ทีละช่อง */}
+          {codeIssue ? <small className={styles.error}>{codeIssue}</small> : (
+            <small className={styles.hint}>
+              {codeRequired
+                ? "รหัสของฝ่าย RD — ห้ามซ้ำทั้งทะเบียน · ส่งงานแล้วกลิ่นเข้าทะเบียนทันที"
+                : proposal
+                  ? "รหัสจริงจากระบบเก่า — RD ตรวจก่อนถึงใช้งานได้"
+                  : "ใส่รหัสตอนนี้ = เข้าทะเบียนเลย · เว้นว่าง = เก็บเป็นร่างไว้ก่อน"}
+            </small>
+          )}
         </div>
       )}
 
       {/* ── โซน 2: กลิ่นเดิมที่เคยออกแบบไว้ก่อนมีระบบ (มติผู้ใช้ 2026-08-08) ────
           ⭐ ทางเพิ่มตรงมีไว้ลงของเก่า ⇒ วันผลิต/วันส่ง/สถานะ เกิดไปแล้วในอดีต
           ⚠️ ขึ้นเฉพาะตอน RD สร้างพร้อมรหัส — ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง */}
-      {canSetLegacy && mode === "create" && (
+      {canSetLegacy && mode === "create" && !!historyFields.length && (
         <>
-          <FormZone
-            title="ของเดิมก่อนมีระบบ"
-            note="กลิ่นเก่าที่ลงย้อนหลัง — เว้นว่างได้ทั้งโซน"
-            className="col-span-2"
-          />
-          <div className="form-group">
-            <label htmlFor="scent-produced">
+          <FormZone title={historyTitle} note={historyNote} className="col-span-2" />
+          {shows("producedAt") && (
+          <div className={`form-group ${shows("sentAt") ? "" : "col-span-2"}`.trim()}>
+            <label htmlFor={fid("produced")}>
               วันที่ผลิตกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
             </label>
             <DateInput
-              id="scent-produced" value={value.producedAt} disabled={disabled}
+              id={fid("produced")} value={value.producedAt} disabled={disabled}
               onChange={(v) => set({ producedAt: v })}
             />
           </div>
+          )}
+          {shows("sentAt") && (
           <div className="form-group">
-            <label htmlFor="scent-sent">
+            <label htmlFor={fid("sent")}>
               วันที่ส่งลูกค้า <span className={styles.hint}>(ไม่บังคับ)</span>
             </label>
             <DateInput
-              id="scent-sent" value={value.sentAt} disabled={disabled}
+              id={fid("sent")} value={value.sentAt} disabled={disabled}
               onChange={(v) => set({ sentAt: v })}
             />
           </div>
+          )}
+          {shows("status") && (
           <div className="form-group col-span-2">
             {/* ⭐ ฝ่ายขายเลือกได้แต่เป็น **สถานะที่ขอ** ไม่ใช่สถานะจริง (mig 0269) —
                 ป้ายต้องพูดตรงนั้น ไม่งั้นกดบันทึกแล้วเห็นแถวขึ้น "รอเข้าทะเบียน"
                 ทั้งที่เพิ่งเลือก "ใช้งานได้" = อ่านเหมือนระบบไม่บันทึกให้ */}
-            <label id="scent-status-label">
+            <label id={fid("status-label")}>
               {proposal ? "สถานะที่ขอ" : "สถานะเริ่มต้น"}
             </label>
             {/* ชุดตายตัว 2 ตัวเลือก = แผ่นเลือก ไม่ใช่ dropdown (กติกาคอนโทรล
@@ -190,6 +221,7 @@ export default function ScentForm({
               </small>
             )}
           </div>
+          )}
         </>
       )}
 
@@ -200,11 +232,11 @@ export default function ScentForm({
           ⚠️ ป้ายและ hint ต้องย้ำว่ามัน "เพิ่ม" ไม่ใช่ "แทน" ชื่อของเรา ปล่อยให้แทนกัน
           เมื่อไรจะเข้าโรคเดิมที่ 0171 บันทึกไว้ (ชื่อกลิ่นไปโผล่ในช่องชื่อสูตร) */}
       <div className="form-group">
-        <label htmlFor="scent-trade-name">
+        <label htmlFor={fid("trade-name")}>
           ชื่อที่ลูกค้าเรียก <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
         <Input
-          id="scent-trade-name" value={value.customerTradeName}
+          id={fid("trade-name")} value={value.customerTradeName}
           disabled={disabled} placeholder="ชื่อทางการค้าที่ลูกค้าตั้งเอง"
           onChange={(e) => set({ customerTradeName: e.target.value })}
         />
@@ -215,30 +247,33 @@ export default function ScentForm({
 
       {/* สายพันธุ์ — มาแทน Rev. เพราะ Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ */}
       <div className="form-group">
-        <label htmlFor="scent-derived-from">
+        <label htmlFor={fid("derived-from")}>
           แก้มาจากกลิ่น <span className={styles.hint}>(ไม่บังคับ)</span>
         </label>
         <SearchableSelect
-          id="scent-derived-from"
+          id={fid("derived-from")}
           value={value.derivedFromScentId}
-          disabled={disabled || !value.customerId || !lineageOptions.length}
+          disabled={disabled || isLocked("derivedFromScentId")
+            || !value.customerId || !lineageOptions.length}
           onChange={(v) => set({ derivedFromScentId: v })}
           options={[{ value: "", label: "— ไม่ได้แก้มาจากตัวไหน —" }, ...lineageOptions]}
           placeholder={value.customerId ? "ค้นด้วยรหัสหรือชื่อกลิ่น" : "เลือกลูกค้าก่อน"}
         />
-        <small className={styles.hint}>
-          {!value.customerId
-            ? "เลือกลูกค้าก่อน แล้วจะเห็นเฉพาะกลิ่นของลูกค้ารายนั้น"
-            : lineageOptions.length
-              ? "ลูกค้าขอให้แก้ตัวไหน เลือกตัวนั้น — ทะเบียนจะโยงสายให้อ่านย้อนได้"
-              : "ลูกค้ารายนี้ยังไม่มีกลิ่นอื่นในทะเบียน"}
-        </small>
+        {isLocked("derivedFromScentId") ? lockHint("derivedFromScentId") : (
+          <small className={styles.hint}>
+            {!value.customerId
+              ? "เลือกลูกค้าก่อน แล้วจะเห็นเฉพาะกลิ่นของลูกค้ารายนั้น"
+              : lineageOptions.length
+                ? "ลูกค้าขอให้แก้ตัวไหน เลือกตัวนั้น — ทะเบียนจะโยงสายให้อ่านย้อนได้"
+                : "ลูกค้ารายนี้ยังไม่มีกลิ่นอื่นในทะเบียน"}
+          </small>
+        )}
       </div>
 
       <div className="form-group col-span-2">
-        <label htmlFor="scent-note">หมายเหตุ</label>
+        <label htmlFor={fid("note")}>หมายเหตุ</label>
         <Textarea
-          id="scent-note" rows={3} value={value.note} disabled={disabled}
+          id={fid("note")} rows={3} value={value.note} disabled={disabled}
           placeholder="โน้ตกลิ่น / ที่มา / ข้อจำกัด"
           onChange={(e) => set({ note: e.target.value })}
         />

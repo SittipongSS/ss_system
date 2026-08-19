@@ -9,11 +9,17 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import FormulaFormModal from "@/components/database/FormulaFormModal";
+import { formulaToForm } from "@/components/database/FormulaForm";
 import Toast from "@/components/ui/Toast";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate, NA } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
-import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable } from "@/lib/master/formulas";
+import {
+  FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaFormPayload, formulaSourceLabel,
+  isFormulaRegistrar, isFormulaUsable,
+} from "@/lib/master/formulas";
 
 const TONE_COLOR = {
   success: "var(--green)", danger: "var(--red)", warn: "var(--amber)", neutral: "var(--text-3)",
@@ -31,6 +37,45 @@ export default function FormulaDetailPage() {
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
   const [toast, setToast] = useState(null);
+  /* ⭐ **แก้ในที่ ไม่เด้งกลับหน้ารายการ** (ผู้ใช้ทัก 2026-08-19) — เดิมปุ่มนี้
+     `router.push('/database/formulas?edit=…')` ⇒ คนที่กำลังอ่านรายละเอียดถูกพาออกจาก
+     หน้าที่ดูอยู่ และหลังบันทึกก็ค้างที่หน้ารายการ · ตอนนี้เปิดฟอร์มตัวเดียวกัน
+     (`FormulaFormModal`) ทับหน้านี้ แล้วโหลดค่าที่แก้กลับมาแสดง */
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  /* ฟอร์มสูตรต้องมีของครบชุดเหมือนหน้าทะเบียน: ลูกค้า · กลิ่น · สูตร (สายพันธุ์) ·
+     หมวดสินค้า — โหลดตอนกดแก้ครั้งแรกพอ (ชุด taxonomy ใช้แคชร่วมกับทั้งระบบ) */
+  const [registryData, setRegistryData] = useState({
+    customers: [], scents: [], formulas: [], categories: [],
+  });
+  const openEdit = async () => {
+    setForm({ mode: "edit", formula, value: formulaToForm(formula) });
+    const get = (url) => fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => (Array.isArray(d) ? d : []))
+      .catch(() => []);
+    const [customers, scents, formulas, categories] = await Promise.all([
+      get("/api/customers"), get("/api/master/scents"), get("/api/master/formulas"),
+      cachedFetchJson("/api/master/product-types").then((d) => (Array.isArray(d) ? d : [])).catch(() => []),
+    ]);
+    setRegistryData({ customers, scents, formulas, categories });
+  };
+  const submitEdit = async () => {
+    setSaving(true);
+    try {
+      const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me) });
+      const res = await fetch(`/api/master/formulas/${formula.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit", ...payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setToast({ kind: "error", msg: data.error || "บันทึกไม่สำเร็จ" }); return; }
+      setForm(null);
+      setToast({ kind: "success", msg: "บันทึกข้อมูลสูตรแล้ว" });
+      await load();
+    } finally { setSaving(false); }
+  };
 
   /* ⭐ **ปุ่มลบบนการ์ดจัดการ** (มติผู้ใช้ 2026-08-18) — ลบได้ถึงขั้น "กำลังพัฒนา"
      (ด่านจริงอยู่ที่ `deleteFormulaError` ฝั่ง server) · ที่นี่แค่ถามยืนยัน
@@ -111,7 +156,8 @@ export default function FormulaDetailPage() {
         kind: "edit",
         label: "แก้ไขข้อมูล",
         icon: Pencil,
-        onClick: () => router.push(`/database/formulas?edit=${formula.id}`),
+        // ⚠️ เปิดฟอร์มตัวเดียวกับหน้ารายการทับหน้านี้ — ไม่เด้งออกไปไหน
+        onClick: openEdit,
       }}
       secondaryActions={canPrice ? [{
         id: "price",
@@ -142,6 +188,17 @@ export default function FormulaDetailPage() {
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
+      />
+
+      {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
+      <FormulaFormModal
+        form={form} saving={saving}
+        customers={registryData.customers} scents={registryData.scents}
+        formulas={registryData.formulas} categories={registryData.categories}
+        canSetCode={isFormulaRegistrar(me)}
+        onChange={(value) => setForm({ ...form, value })}
+        onClose={() => setForm(null)}
+        onSubmit={submitEdit}
       />
 
       <RegistryPriceModal
