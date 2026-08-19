@@ -205,6 +205,11 @@ export default function QuotationEditorPage() {
   // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Rev.
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
   const canReviseDocument = !!quote && canEditCap && isRevisableQuotation(quote);
+  // ดีล Lost = จบแล้ว ฝั่ง API ปฏิเสธการออก Rev. (revise/route.js) — ปุ่มต้องรู้ด้วย
+  // ไม่งั้นมันชวนผู้ใช้เดินเข้าทางตัน: กรอกเหตุผล กดยืนยัน แล้วโดนตีกลับ 400
+  const reviseBlocker = quote?.deal?.stage === "lost"
+    ? "ดีลนี้ Lost แล้ว — ออก Rev. ใหม่ไม่ได้ (ถ้าดีลยังไม่จบจริง ให้ย้อนสถานะดีลก่อน)"
+    : "";
   // ปิด Won ได้เมื่อใบผ่านการอนุมัติแล้ว (หรือใบ grandfather) และยังไม่ถูกรับ/ปิด —
   // หลัง mig 0165 ใบพวกนี้เป็น 'sent' เสมอ ส่วน 'draft' เหลือไว้รองรับใบเก่าที่อนุมัติ
   // ก่อน migration และใบ grandfather ที่ไม่เคยผ่านเส้นทางอนุมัติ
@@ -648,7 +653,7 @@ export default function QuotationEditorPage() {
       kind: "withdraw",
       variant: "outline",
       visible: canWithdrawSubmission && !editMode,
-      onClick: () => setWorkflowForm({ reason: "" }),
+      onClick: () => { setError(""); setWorkflowForm({ reason: "" }); },
     },
     {
       id: "reject",
@@ -656,14 +661,16 @@ export default function QuotationEditorPage() {
       label: "ตีกลับให้แก้ไข",
       variant: "outline",
       visible: canRejectSubmission && !editMode,
-      onClick: () => setRejectForm({ reason: "" }),
+      onClick: () => { setError(""); setRejectForm({ reason: "" }); },
     },
     {
       id: "revise",
       kind: "revise",
       variant: "outline",
       visible: canReviseDocument && !editMode,
-      onClick: () => setRevisionForm({ reason: "" }),
+      disabled: !!reviseBlocker,
+      disabledReason: reviseBlocker || undefined,
+      onClick: () => { setError(""); setRevisionForm({ reason: "" }); },
     },
     // "ส่งให้ลูกค้า" ถูกถอดออก (mig 0165): การอนุมัติตั้ง status='sent' ให้เองแล้ว —
     // ปุ่มเดิมไม่ได้ส่งอีเมลหรือแจ้งเตือนอะไร แค่เปลี่ยนตัวอักษรบนป้ายสถานะ
@@ -694,7 +701,7 @@ export default function QuotationEditorPage() {
       label: "ย้อนการรับ",
       visible: canUnaccept && !editMode,
       title: "ย้อนการรับใบเสนอราคา (หัวหน้าทีม/แอดมิน)",
-      onClick: () => setUnacceptForm({ reason: "" }),
+      onClick: () => { setError(""); setUnacceptForm({ reason: "" }); },
     },
   ];
 
@@ -1045,6 +1052,7 @@ export default function QuotationEditorPage() {
         error={unacceptForm?.reason ? unacceptReasonValidation : ""}
         minLength={10}
         maxLength={UNACCEPT_REASON_MAX}
+        submitError={unacceptForm ? error : ""}
         busy={busy === "unaccept"}
       />
 
@@ -1064,6 +1072,7 @@ export default function QuotationEditorPage() {
         error={workflowForm?.reason && workflowForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
         minLength={10}
         maxLength={500}
+        submitError={workflowForm ? error : ""}
         busy={busy === "withdraw"}
       />
 
@@ -1084,6 +1093,7 @@ export default function QuotationEditorPage() {
         minLength={10}
         maxLength={500}
         tone="danger"
+        submitError={rejectForm ? error : ""}
         busy={busy === "reject"}
       />
 
@@ -1103,6 +1113,7 @@ export default function QuotationEditorPage() {
         error={revisionForm?.reason && revisionForm.reason.trim().length < 10 ? "กรุณาระบุอย่างน้อย 10 ตัวอักษร" : ""}
         minLength={10}
         maxLength={500}
+        submitError={revisionForm ? error : ""}
         busy={busy === "revise"}
       />
 
