@@ -11,7 +11,7 @@
 // ลำดับการ์ด = ลำดับคำถามของคนออกบิล:
 //   ขอเท่าไร → ออกให้ใคร → ออกไปแล้วกี่ใบ เลขอะไร → เงินก้อนนี้อยู่งวดไหน → อ้างอิง
 import {
-  DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
+  DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { INSTALLMENT_STATUS_LABELS, installmentDisplayStatus } from "@/lib/sales/salesOrderPayments";
@@ -19,7 +19,7 @@ import styles from "./details.module.css";
 
 const baht = (v) => `${fmtNumber(v, { maximumFractionDigits: 3 })} บาท`;
 
-export default function BillingDocPanel({ request, docBoard: board = [], docTotals: totals }) {
+export default function BillingDocPanel({ request, docTotals: totals }) {
   const qt = request.refQuotation || null;
   const inst = request.linkedInstallment || null;
 
@@ -47,20 +47,6 @@ export default function BillingDocPanel({ request, docBoard: board = [], docTota
     { id: "addr", label: "ที่อยู่ออกบิล", value: naText(qt.billingAddress) },
   ] : [];
 
-  /* เช็คลิสต์รายแถว — ✓ = จบแล้ว (ออกให้แล้ว/ให้ไม่ได้)
-     ⭐ **โชว์เลขที่เอกสารตรงนี้ด้วย** (0258) — สิ่งที่ผู้ขอเอาไปคุยกับลูกค้าคือเลข
-     ใบวางบิล ไม่ใช่ชื่อชนิดเอกสาร ⇒ เลขต้องอยู่ในบรรทัดเดียวกับชื่อ */
-  const items = board.map((row) => ({
-    id: row.id,
-    label: row.name,
-    detail: [
-      row.docNumber || null,
-      row.docDueDate ? `ครบกำหนด ${fmtDate(row.docDueDate)}` : null,
-      row.docNumber ? null : row.stageLabel,
-    ].filter(Boolean).join(" · "),
-    ready: row.received || row.refused,
-  }));
-
   return (
     <>
       {billRows.length > 0 && (
@@ -71,6 +57,10 @@ export default function BillingDocPanel({ request, docBoard: board = [], docTota
         <DocumentSummaryCard title="ออกบิลถึงใคร" rows={billToRows} />
       )}
 
+      {/* ⚠️ **ไม่มีเช็คลิสต์รายแถวในแผงนี้แล้ว** (มติผู้ใช้ 2026-08-20) — ตารางกลางหน้า
+          ไล่แถวเดียวกันพร้อมสถานะ เลขที่เอกสาร และก้าวถัดไปอยู่แล้ว ⇒ แผงขวาเหลือ
+          **ตัวเลขสรุป** ซึ่งเป็นสิ่งที่ตารางตอบไม่ได้ในสายตาเดียว
+          (อาการเดียวกับที่เพิ่งยุบตาราง+การ์ดรายแถวเข้าด้วยกัน) */}
       {totals.asked > 0 && (
         <DocumentSummaryCard
           title="เอกสารที่ขอ"
@@ -81,9 +71,7 @@ export default function BillingDocPanel({ request, docBoard: board = [], docTota
             { id: "refused", label: "ออกให้ไม่ได้", value: String(totals.refused) },
             { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
           ]}
-        >
-          <DocumentReadinessList items={items} label="เอกสารในใบนี้" />
-        </DocumentSummaryCard>
+        />
       )}
 
       {/* ⭐ **ฝั่งกลับของ B-5** — เดิมลิงก์เดินทางเดียว (จากใบสั่งขายเห็นคำร้อง)

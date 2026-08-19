@@ -29,7 +29,6 @@ import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { reworkHopError } from '@/lib/requests/rework';
-import { acknowledgeRequestError } from '@/lib/requests/stages';
 import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { createFormula, findScent, loadFormulas } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
@@ -98,17 +97,20 @@ export async function PATCH(request, { params }) {
   const valueError = hopValuesError(hop, body, { lineKind: row.lineKind });
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
 
-  // ── ก้าว `ack` ที่ทำให้ทั้งใบเปลี่ยนเป็น "รับเรื่องแล้ว" ต้องผ่านกฎของใบ ──────
-  //
-  // 🐞 **กฎที่เคยถูกข้ามทางแถว** (ผลตรวจรอบ 12 · ค-2) — ก้าวรายแถวเขียนสถานะใบเอง
-  // โดยไม่ผ่านด่านของใบ ⇒ ทางเข้าที่สองที่กฎไปไม่ถึง · ด่านต้องเรียกจากทั้งสองทาง
-  //
-  // ⚠️ **`dueAt` ของก้าวนี้เป็นวันของ *แถว* ไม่ใช่คำสัญญาของใบ** (มติผู้ใช้ 2026-08-19)
-  // — วันที่รับปากของใบมาจาก action `commit-due` ทางเดียว ซึ่งลงแถว `commitDue` ใน
-  // เธรดเสมอ · เขียนผ่านทางนี้เมื่อไร ใบจะได้วันโดยที่ฝ่ายขายไม่เห็นอะไรเลย
-  if (hop === 'ack' && before.status === 'pending') {
-    const ackError = acknowledgeRequestError(before);
-    if (ackError) return Response.json({ error: ackError }, { status: 409 });
+  /* ── ต้องรับเรื่องที่ "ใบ" ก่อน ถึงจะลงมือรายรายการได้ ────────────────────
+     ⭐ **มติผู้ใช้ 2026-08-20**: *"ปุ่มรับเรื่องมันเป็นระดับใบนะ ไม่ใช่ระดับรายการ
+     รับเรื่องก่อนมั้ย ค่อยโชว์ปุ่มระดับรายการ"*
+
+     🐞 ของเดิม: ก้าว `ack` รายแถวดันสถานะของ **ทั้งใบ** ให้เอง (รับเรื่องแถวแรก =
+     รับเรื่องทั้งใบ) ⇒ มีสองทางที่ทำสิ่งเดียวกัน และทางรายแถวข้ามด่านของใบมาแล้วครั้ง
+     หนึ่ง (ผลตรวจรอบ 12 · ค-2) · ตอนนี้ตัดให้เหลือ **ทางเดียว**: ปุ่ม "รับเรื่อง" ที่ใบ
+
+     ⚠️ ปิดที่ server ด้วย ไม่ใช่แค่ซ่อนปุ่ม — คนที่เปิดหน้าค้างไว้ตั้งแต่ก่อนรับเรื่อง
+     ยังยิงก้าวรายแถวได้ถ้าไม่มีด่านนี้ */
+  if (before.status === 'pending') {
+    return Response.json({
+      error: `ยังไม่ได้รับเรื่อง — กด "รับเรื่อง" ที่ใบก่อน แล้วค่อยลงมือรายรายการ`,
+    }, { status: 409 });
   }
 
   // ── ส่งของของ "พัฒนาผลิตภัณฑ์" = สูตรเข้าทะเบียนในจังหวะเดียวกัน (P4b) ──
@@ -236,17 +238,10 @@ export async function PATCH(request, { params }) {
       if (scentError) console.error('[requests] เขียนวันส่งลูกค้าลงทะเบียนกลิ่นไม่สำเร็จ:', scentError.message);
     }
 
-    // ── ใบตามแถว ────────────────────────────────────────────────────────
-    // รับเรื่องแถวแรก = รับเรื่องทั้งใบ (ใบที่ยังเป็น pending ต้องขยับตาม ไม่งั้น
-    // คิวจะโชว์ว่า "ยังไม่มีใครรับ" ทั้งที่ฝ่ายลงมือไปแล้ว)
+    /* ── ใบตามแถว ────────────────────────────────────────────────────────
+       ⚠️ **ก้าวรายแถวไม่แตะการรับเรื่องของใบแล้ว** (มติผู้ใช้ 2026-08-20) — ใบต้องถูก
+       รับเรื่องก่อนถึงจะมาถึงบรรทัดนี้ได้ (ด่านข้างบน) ⇒ เหลือแค่ผลของ "แถวครบ/ไม่ครบ" */
     const headPatch = {};
-    if (hop === 'ack' && before.status === 'pending') {
-      headPatch.status = 'acknowledged';
-      headPatch.acknowledgedById = user?.id ?? null;
-      headPatch.acknowledgedByName = user?.name ?? null;
-      headPatch.acknowledgedAt = nowIso;
-      // ⚠️ **ไม่เขียน `committedDueDate` ที่นี่** — ดูเหตุผลที่ด่านข้างบน
-    }
     /* ตอบครบทุกแถว → ใบได้ **ตราปิดฝั่งฝ่าย** (`answeredAt`) เอง · ไม่ครบเมื่อไรตรา
        ทั้งสองฝั่งหลุด (มติผู้ใช้ 2026-08-20 · ปิดสองฝั่ง — ดู `closure.js`) */
     const after = await findRequest(supabase, id);
