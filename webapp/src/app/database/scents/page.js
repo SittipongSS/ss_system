@@ -28,6 +28,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Pager from "@/components/ui/Pager";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -59,6 +60,14 @@ export default function ScentsPage() {
   const me = useMemo(() => ({ role, department }), [role, department]);
   const registrar = isScentRegistrar(me);
   const canPropose = canProposeScent(me);
+  /* ── ใครกรอกรหัส/วันที่/สถานะได้ (มติผู้ใช้ 2026-08-19) ─────────────────────
+     ⭐ ฝ่ายขายถือข้อมูลกลิ่นเก่าจากระบบเดิม ⇒ กรอกได้ครบตั้งแต่ตอนเสนอ
+     ⚠️ ที่นี่ใช้ `_canEdit` (ธงที่ server ติดมากับแถว) + สถานะ **ไม่ใช่**
+     `canSetScentCode` — `me` บนหน้านี้มีแค่ role/department ไม่มี user id
+     ให้เทียบ `createdById` · ด่านจริงอยู่ที่ API ทุกเส้นอยู่แล้ว */
+  const formCanSetCode = (f) => (
+    registrar || f?.mode === "create" || f?.scent?.status === "draft"
+  );
   // ปุ่มใส่ราคา F ต่อแถว (มติผู้ใช้ 2026-08-12 — ขอปุ่มในตาราง ไม่ใช่แค่หน้า
   // รายละเอียด) · เงื่อนไขเดียวกับหน้ารายละเอียด: ฝ่าย RD + รับเข้าทะเบียนแล้ว
   const canPriceScent = (s) => canQuoteMaterial(me, "RM_F") && isScentUsable(s);
@@ -93,7 +102,7 @@ export default function ScentsPage() {
   const [sourceFilter, setSourceFilter] = useState("");
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
-  const [accept, setAccept] = useState(null);   // { scent, code }
+  const [accept, setAccept] = useState(null);   // { scent, code, status }
   const [sending, setSending] = useState(null); // { scent, sentAt }
   const [pricing, setPricing] = useState(null); // กลิ่นที่กำลังใส่ราคา F
   const [confirm, setConfirm] = useState(null); // { kind, scent }
@@ -255,8 +264,11 @@ export default function ScentsPage() {
        ฟอร์มตัวนี้ได้แล้ว (2026-08-19) · เขียนสองที่เมื่อไรมันเลื่อนออกจากกันทันที
        ⚠️ ชื่อลูกค้าหยิบจากชุดที่โหลดมา — server ไม่เชื่ออยู่ดี แต่ payload เดิมส่งมา
        ตลอด จึงคงไว้ให้เหมือนเดิมเป๊ะ */
+    /* ⭐ **รหัสเปิดตามคนกรอก ไม่ใช่ตามฝ่าย** (มติผู้ใช้ 2026-08-19) — `formCanSetCode`
+       ⚠️ ชื่อลูกค้าหยิบจากชุดที่โหลดมา — server ไม่เชื่ออยู่ดี แต่ payload เดิมส่งมา
+       ตลอด จึงคงไว้ให้เหมือนเดิมเป๊ะ */
     const payload = scentFormPayload(v, {
-      canSetCode: registrar,
+      canSetCode: formCanSetCode(form),
       mode: form.mode,
       customerName: customers.find((c) => c.id === v.customerId)?.name || null,
     });
@@ -264,7 +276,11 @@ export default function ScentsPage() {
       const done = await call("/api/master/scents", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }, payload.code ? "เพิ่มกลิ่นเข้าทะเบียนแล้ว" : "เสนอกลิ่นแล้ว รอ RD รับเข้าทะเบียน");
+      // ⚠️ ข้อความตาม **คนกด** ไม่ใช่ตาม "มีรหัสไหม" — ฝ่ายขายใส่รหัสมาด้วยได้แล้ว
+      // แต่ยังได้ร่างอยู่ดี บอกว่า "เข้าทะเบียนแล้ว" คือโกหกตรง ๆ
+      }, registrar && payload.code
+        ? "เพิ่มกลิ่นเข้าทะเบียนแล้ว"
+        : "เสนอกลิ่นแล้ว รอ RD ตรวจและรับเข้าทะเบียน");
       if (done) setForm(null);
       return;
     }
@@ -275,10 +291,19 @@ export default function ScentsPage() {
     if (done) setForm(null);
   };
 
+  /* ⭐ **ขั้นนี้คือ "ตรวจแล้วยืนยัน" ไม่ใช่ "พิมพ์รหัสให้หน่อย"** (มติผู้ใช้ 2026-08-19) —
+     ฝ่ายขายกรอกรหัส/วันที่/สถานะที่ขอมาครบแล้วตั้งแต่ตอนเสนอ ⇒ โมดัลเปิดมาพร้อม
+     ของที่เขากรอก · RD อ่าน แก้ตรงที่ผิด แล้วกดยืนยัน */
+  const openAccept = (s) => setAccept({
+    scent: s,
+    code: s.code || "",
+    status: s.proposedStatus || "developing",
+  });
+
   const submitAccept = async () => {
     const done = await call(`/api/master/scents/${accept.scent.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept", code: accept.code }),
+      body: JSON.stringify({ action: "accept", code: accept.code, status: accept.status }),
     }, "รับกลิ่นเข้าทะเบียนแล้ว");
     if (done) setAccept(null);
   };
@@ -476,7 +501,7 @@ export default function ScentsPage() {
                         {registrar && s.status === "draft" && (
                           <Button size="sm" title="รับเข้าทะเบียน"
                             icon={<Check size={14} aria-hidden="true" />}
-                            onClick={() => setAccept({ scent: s, code: "" })}>
+                            onClick={() => openAccept(s)}>
                             รับเข้าทะเบียน
                           </Button>
                         )}
@@ -623,7 +648,7 @@ export default function ScentsPage() {
                           <div className={styles.rowActions}>
                             <Button size="sm" title="รับเข้าทะเบียน"
                               icon={<Check size={14} aria-hidden="true" />}
-                              onClick={() => setAccept({ scent: s, code: "" })}>
+                              onClick={() => openAccept(s)}>
                               รับเข้าทะเบียน
                             </Button>
                           </div>
@@ -648,19 +673,25 @@ export default function ScentsPage() {
           มาตรฐาน) — เดิมใช้ <div className="modal-actions"> ซึ่ง **ไม่มี CSS อยู่จริง**
           ปุ่มเลยติดกัน 0px ชิดซ้าย (เจอตอนวัดจริง 2026-08-12) */}
       {/* ตัวเลือก "แก้มาจากกลิ่นไหน" มาจากชุดที่โหลดมาแล้ว ไม่ยิงเพิ่ม — ทะเบียน
-          โหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม */}
+          โหลดทั้งก้อนอยู่แล้ว (ชุดข้อมูลเล็ก) การกรองเป็นเรื่องของฟอร์ม
+          ⚠️ หัวโมดัล/ช่องที่เปิด ตัดสินจาก **คนกด** ไม่ใช่ตามฝ่าย (mig 0269) —
+          ฝ่ายขายกดแล้วได้ร่าง ไม่ใช่แถวในทะเบียน · ตรรกะอยู่ในตัวโมดัลที่ใช้ร่วมกัน
+          กับหน้ารายละเอียด */}
       <ScentFormModal
         form={form} saving={saving}
-        customers={customers} scents={scents} canSetCode={registrar}
+        customers={customers} scents={scents}
+        canSetCode={formCanSetCode(form)} canSetLegacy={canPropose} proposal={!registrar}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitForm}
       />
 
-      {/* รับเข้าทะเบียน — RD ใส่รหัสจริงของฝ่าย */}
+      {/* รับเข้าทะเบียน = **ตรวจข้อมูลของผู้เสนอแล้วยืนยัน** (มติผู้ใช้ 2026-08-19)
+          ⭐ ของที่ผู้เสนอกรอกมาต้องอยู่ในโมดัลนี้ ไม่ใช่ให้ RD ไปเปิดอีกหน้าเทียบเอง —
+          ขั้นนี้มีไว้ยืนยันความถูกต้อง ถ้าไม่เห็นข้อมูลก็ยืนยันอะไรไม่ได้ */}
       <Modal
-        open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}
-        title={accept ? `รับเข้าทะเบียน — ${accept.scent.name}` : ""}
+        open={!!accept} onClose={() => setAccept(null)} size="md" dismissible={!saving}
+        title={accept ? `ยืนยันข้อมูลกลิ่น — ${accept.scent.name}` : ""}
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
@@ -671,14 +702,67 @@ export default function ScentsPage() {
         )}
       >
         {accept && (
-          <div className="form-group">
-            <label htmlFor="accept-code">รหัสกลิ่น</label>
-            <input
-              id="accept-code" className="premium-input" value={accept.code} disabled={saving}
-              placeholder="เช่น SC-2026-001" autoFocus
-              onChange={(e) => setAccept({ ...accept, code: e.target.value })}
-            />
-            <small className={styles.hint}>รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น</small>
+          <div className="form-grid cols-2">
+            <dl className={`${styles.review} col-span-2`}>
+              <dt>ผู้เสนอ</dt>
+              <dd>{accept.scent.createdByName || NA}</dd>
+              <dt>ลูกค้า</dt>
+              <dd>{customerLabel(accept.scent)}</dd>
+              <dt>วันที่ผลิตกลิ่น</dt>
+              <dd>{accept.scent.producedAt ? fmtDate(accept.scent.producedAt) : NA}</dd>
+              <dt>วันที่ส่งลูกค้า</dt>
+              <dd>{accept.scent.sentAt ? fmtDate(accept.scent.sentAt) : NA}</dd>
+              {accept.scent.note && (
+                <>
+                  <dt>หมายเหตุ</dt>
+                  <dd>{accept.scent.note}</dd>
+                </>
+              )}
+            </dl>
+
+            <div className="form-group col-span-2">
+              <label htmlFor="accept-code">รหัสกลิ่น</label>
+              <input
+                id="accept-code" className="premium-input" value={accept.code} disabled={saving}
+                placeholder="เช่น SC-2026-001" autoFocus
+                onChange={(e) => setAccept({ ...accept, code: e.target.value })}
+              />
+              {/* ⚠️ รหัสที่ผู้เสนอกรอกมาเป็นของระบบเก่า — บอกให้ชัดว่ากำลังยืนยันของใคร
+                  ไม่งั้นอ่านเหมือนช่องว่างที่ใครไปเติมค่าไว้ */}
+              <small className={styles.hint}>
+                {accept.scent.code
+                  ? "รหัสจากผู้เสนอ — แก้ได้ถ้าไม่ตรงกับของฝ่าย RD"
+                  : "รหัสของฝ่าย RD — ห้ามซ้ำกับกลิ่นอื่น"}
+              </small>
+            </div>
+
+            <div className="form-group col-span-2">
+              <label id="accept-status-label">สถานะหลังรับเข้าทะเบียน</label>
+              <OptionTiles
+                ariaLabel="สถานะหลังรับเข้าทะเบียน"
+                value={accept.status}
+                disabled={saving}
+                onChange={(status) => setAccept({ ...accept, status })}
+                options={[
+                  {
+                    value: "developing",
+                    label: SCENT_STATUS_LABELS.developing,
+                    description: "ยังปรับกลิ่นกับลูกค้าอยู่",
+                  },
+                  {
+                    value: "active",
+                    label: SCENT_STATUS_LABELS.active,
+                    tone: "teal",
+                    description: "ลูกค้าอนุมัติแล้ว ใช้ผลิตได้เลย",
+                  },
+                ]}
+              />
+              {accept.scent.proposedStatus && (
+                <small className={styles.hint}>
+                  ผู้เสนอระบุว่า &ldquo;{SCENT_STATUS_LABELS[accept.scent.proposedStatus]}&rdquo; — เปลี่ยนได้
+                </small>
+              )}
+            </div>
           </div>
         )}
       </Modal>

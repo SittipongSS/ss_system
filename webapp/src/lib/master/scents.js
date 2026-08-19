@@ -99,6 +99,21 @@ export function canEditScent(user, scent) {
   return canProposeScent(user) && scent.createdById === user?.id;
 }
 
+/* ── ใครกรอกรหัส/วันที่/สถานะที่ขอ ลงในร่างได้ (มติผู้ใช้ 2026-08-19) ─────────
+   ⭐ เดิมช่องพวกนี้เป็นของ RD คนเดียว ⇒ ฝ่ายขายที่ถือข้อมูลกลิ่นเก่าจากระบบเดิม
+   กรอกได้แค่ชื่อ+ลูกค้า แล้วรหัส/วันที่/สถานะจริงต้องส่งต่อ RD นอกระบบ
+   ⇒ เปิดให้ **คนที่เสนอร่างได้ กรอกได้ครบตั้งแต่แรก**
+   ⚠️ **ไม่ได้แปลว่าอนุมัติตัวเองได้** — ร่างยังเป็น `draft` และปลายทางจริงยังมาจาก
+   `accept` ของ RD/admin เท่านั้น (`isScentRegistrar`)
+   ⚠️ ของที่ **รับเข้าทะเบียนแล้ว** กลับไปเป็นของ RD เหมือนเดิม — รหัสตอนนั้นเป็น
+   ตัวตนที่ระบบอื่นอ้างถึงแล้ว (ใบเสนอราคา · สินค้า · สูตร) ไม่ใช่ช่องกรอกอิสระ */
+export function canSetScentCode(user, scent = null) {
+  if (isScentRegistrar(user)) return true;
+  if (!canProposeScent(user)) return false;
+  if (!scent) return true;                      // โหมดสร้าง — ยังไม่มีแถว
+  return scent.status === 'draft' && scent.createdById === user?.id;
+}
+
 // ลบได้เฉพาะร่างที่ยังไม่มีใครอ้าง — ของที่รับเข้าทะเบียนแล้วเป็นหลักฐาน
 //
 // ⚠️ `linkedCount` มาแทน `revisionCount` เดิม (ตารางรอบถูกยกเลิกไปพร้อมมติที่ว่า
@@ -128,11 +143,31 @@ export function deleteScentError(scent, { linkedCount = 0 } = {}) {
 }
 
 // ── ด่านของแต่ละ action — คืนข้อความไทย หรือ null ถ้าผ่าน ────────────────
-export function acceptScentError(scent, { code } = {}) {
+/* ⭐ **รหัสมาจากร่างได้แล้ว** (มติผู้ใช้ 2026-08-19) — ฝ่ายขายที่ย้ายข้อมูลจาก
+   ระบบเก่ากรอกรหัสจริงมาตั้งแต่ตอนเสนอ ⇒ ตอน RD กดรับไม่ต้องพิมพ์ซ้ำ
+   ⚠️ ยังต้อง **มีรหัส** เสมอ (constraint `scents_code_required_when_accepted`)
+   แค่ไม่สนว่ามาจากช่องในโมดัลหรือจากแถว */
+export function acceptScentCode(scent, body = {}) {
+  const typed = String(body.code ?? '').trim();
+  return typed || String(scent?.code ?? '').trim() || '';
+}
+
+export function acceptScentError(scent, body = {}) {
   if (!scent) return 'ไม่พบกลิ่น';
   if (scent.status !== 'draft') return 'กลิ่นนี้รับเข้าทะเบียนไปแล้ว';
-  if (!String(code ?? '').trim()) return 'ต้องระบุรหัสกลิ่นตอนรับเข้าทะเบียน';
+  if (!acceptScentCode(scent, body)) return 'ต้องระบุรหัสกลิ่นตอนรับเข้าทะเบียน';
   return null;
+}
+
+/* สถานะปลายทางตอนกดรับเข้าทะเบียน — ผู้ตรวจเลือกได้ · ไม่เลือก = ตามที่ผู้เสนอขอมา
+   · ไม่มีทั้งคู่ = `developing` เหมือนพฤติกรรมเดิมทุกประการ
+   ⚠️ **ค่าที่ผู้เสนอขอไม่ใช่คำสั่ง** — RD เห็นแล้วเปลี่ยนได้เสมอ นั่นคือทั้งหมด
+   ของขั้นตอนนี้ (ยืนยันความถูกต้อง ไม่ใช่ปั๊มตรายาง) */
+export function acceptedScentStatus(scent, body = {}) {
+  const chosen = String(body.status ?? '').trim();
+  if (NEW_SCENT_STATUSES.includes(chosen)) return chosen;
+  const proposed = String(scent?.proposedStatus ?? '').trim();
+  return NEW_SCENT_STATUSES.includes(proposed) ? proposed : 'developing';
 }
 
 // บันทึกวันที่ส่งกลิ่นให้ลูกค้า — ร่างยังไม่ใช่ของจริง เก็บเข้ากรุแล้วก็ไม่ส่งแล้ว
@@ -323,13 +358,25 @@ export function newScentStatus(requested, accepted = false) {
   return NEW_SCENT_STATUSES.includes(value) ? value : 'developing';
 }
 
+/* ── สถานะที่ผู้เสนอร่างบอกว่าเป็นจริง (mig 0269 · มติผู้ใช้ 2026-08-19) ──────
+   ฝ่ายขายถือข้อมูลกลิ่นเก่าจากระบบเดิม รวมถึงรู้ว่าตัวไหนลูกค้าอนุมัติไปแล้ว
+   ⇒ เก็บไว้เป็นค่าตั้งต้นให้คนตรวจ แทนที่จะให้ RD ไปไล่ถามใหม่ทุกแถว
+   ⚠️ **ไม่ใช่ `status`** — แถวยังเป็น `draft` และยังใช้งานไม่ได้จนกว่า RD จะรับ */
+export function proposedScentStatus(requested) {
+  const value = String(requested ?? '').trim();
+  return NEW_SCENT_STATUSES.includes(value) ? value : null;
+}
+
 /* ── ฟอร์มทะเบียนกลิ่น → payload ของ API ───────────────────────────────────
  *
- * ⭐ **ที่เดียวสำหรับสองจอ** — เหตุผลเดียวกับ `formulaFormPayload` (2026-08-19)
- * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** (ดูเหตุผลที่ฝั่งสูตร)
- * ⚠️ วันที่/สถานะของ "ของเดิมก่อนมีระบบ" ส่งเฉพาะตอน **RD สร้างใหม่พร้อมรหัส** —
- * ร่างที่ฝ่ายขายเสนอยังไม่ใช่ของจริง จะมีวันผลิตหรือสถานะของตัวเองไม่ได้
- * (server บังคับซ้ำที่ `newScentStatus`) · โหมดแก้ใช้ action ของตัวเองต่างหาก
+ * ⭐ **ที่เดียวสำหรับสองจอ** — เหตุผลเดียวกับ `formulaFormPayload` (2026-08-19):
+ * หน้ารายละเอียดเปิดฟอร์มตัวเดียวกับหน้ารายการได้แล้ว ⇒ ตัวสร้าง payload ต้องเป็น
+ * ก้อนเดียว ไม่งั้นสองจอเลื่อนออกจากกัน
+ * ⚠️ **ส่งรหัสไปเสมอเมื่อมีสิทธิ์ รวมตอนช่องว่าง** — ไม่ส่ง = server คงค่าเดิมแล้ว
+ * ตอบ 200 ⇒ ขึ้นว่าบันทึกสำเร็จทั้งที่ไม่มีอะไรเปลี่ยน (ผู้ใช้ทัก 2026-08-10)
+ * ⚠️ วันที่/สถานะส่งเฉพาะตอน **สร้างใหม่** — โหมดแก้มี action ของตัวเอง
+ * ⭐ ฝ่ายขายส่งวัน/สถานะมาได้แล้ว (มติผู้ใช้ 2026-08-19) — `status` ที่ส่งไปลงเป็น
+ * `proposedStatus` ให้เองที่ server (`createScent`) แถวยังเป็นร่างเหมือนเดิม
  */
 export function scentFormPayload(value = {}, {
   canSetCode = false, mode = 'create', customerName = null,
@@ -343,7 +390,7 @@ export function scentFormPayload(value = {}, {
     note: value.note,
   };
   if (canSetCode) payload.code = String(value.code ?? '').trim();
-  if (mode === 'create' && canSetCode && payload.code) {
+  if (mode === 'create') {
     if (value.producedAt) payload.producedAt = value.producedAt;
     if (value.sentAt) payload.sentAt = value.sentAt;
     payload.status = value.status;

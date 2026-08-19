@@ -19,6 +19,7 @@ import {
   derivedFromError,
   SCENT_SOURCES, matchesScentSource, scentSourceKind, scentSourceLabel,
   NEW_SCENT_STATUSES, newScentStatus,
+  acceptScentCode, acceptedScentStatus, canSetScentCode, proposedScentStatus,
   scentFormPayload,
 } from './scents.js';
 
@@ -248,15 +249,59 @@ test('⭐ ฝ่ายขายที่เสนอร่างได้ draft 
   assert.equal(newScentStatus(undefined, false), 'draft');
 });
 
+// ── ฝ่ายขายกรอกครบ · RD ยืนยัน (มติผู้ใช้ 2026-08-19 · mig 0269) ──────────
+test('⭐ สถานะที่ผู้เสนอขอ เก็บได้เฉพาะสองตัวที่เป็นของจริง', () => {
+  assert.equal(proposedScentStatus('active'), 'active');
+  assert.equal(proposedScentStatus('developing'), 'developing');
+  // draft/archived/ค่าเพี้ยน = ไม่เก็บ (null) — ตอนรับเข้าทะเบียนตกไปที่ developing
+  assert.equal(proposedScentStatus('draft'), null);
+  assert.equal(proposedScentStatus('archived'), null);
+  assert.equal(proposedScentStatus(''), null);
+  assert.equal(proposedScentStatus(undefined), null);
+});
+
+test('⭐ เจ้าของร่างกรอก/แก้รหัสของตัวเองได้ — ของที่เข้าทะเบียนแล้วเป็นของ RD', () => {
+  assert.equal(canSetScentCode(sale, null), true);                                  // โหมดสร้าง
+  assert.equal(canSetScentCode(sale, scent({ status: 'draft', createdById: 'u-sale' })), true);
+  assert.equal(canSetScentCode(sale, scent({ status: 'draft', createdById: 'u-other' })), false);
+  // ⚠️ รับเข้าทะเบียนแล้ว = รหัสเป็นตัวตนที่ระบบอื่นอ้างถึง ฝ่ายขายแตะไม่ได้
+  assert.equal(canSetScentCode(sale, scent({ status: 'developing', createdById: 'u-sale' })), false);
+  assert.equal(canSetScentCode(rd, scent({ status: 'active' })), true);
+  assert.equal(canSetScentCode(viewer, null), false);
+});
+
+test('⭐ รหัสตอนรับเข้าทะเบียน มาจากร่างได้ ไม่ต้องพิมพ์ซ้ำ', () => {
+  assert.equal(acceptScentCode(scent({ code: 'SC-OLD' }), {}), 'SC-OLD');
+  // พิมพ์มาใหม่ = ทับของเดิม (RD แก้ที่ผู้เสนอกรอกผิดได้)
+  assert.equal(acceptScentCode(scent({ code: 'SC-OLD' }), { code: ' SC-NEW ' }), 'SC-NEW');
+  assert.equal(acceptScentCode(scent({ code: null }), {}), '');
+  // ไม่มีทั้งสองทาง = ยังผ่านด่านไม่ได้ (constraint ของฐานบังคับว่าต้องมีรหัส)
+  assert.match(acceptScentError(scent({ status: 'draft', code: null }), {}), /รหัส/);
+  assert.equal(acceptScentError(scent({ status: 'draft', code: 'SC-OLD' }), {}), null);
+});
+
+test('⭐ สถานะปลายทางตอนรับเข้าทะเบียน: คนกดเลือก > ที่ผู้เสนอขอ > developing', () => {
+  const draft = (over) => scent({ status: 'draft', ...over });
+  assert.equal(acceptedScentStatus(draft({ proposedStatus: 'active' }), {}), 'active');
+  // ⚠️ ค่าที่ผู้เสนอขอเป็นแค่ค่าตั้งต้น — คนตรวจเปลี่ยนทับได้เสมอ
+  assert.equal(acceptedScentStatus(draft({ proposedStatus: 'active' }), { status: 'developing' }), 'developing');
+  assert.equal(acceptedScentStatus(draft({ proposedStatus: null }), {}), 'developing');
+  // ค่าที่ไม่อยู่ในชุด = ไม่เชื่อ (ยิง API ตรงก็ดันสถานะเถื่อนเข้าไม่ได้)
+  assert.equal(acceptedScentStatus(draft({ proposedStatus: 'archived' }), { status: 'draft' }), 'developing');
+});
+
 /* ── ฟอร์ม → payload (ใช้ร่วมหน้ารายการกับหน้ารายละเอียด · 2026-08-19) ────── */
-test('payload ของฟอร์มกลิ่น: วัน/สถานะของเดิมส่งเฉพาะตอน RD สร้างใหม่พร้อมรหัส', () => {
+test('payload ของฟอร์มกลิ่น: วัน/สถานะส่งเฉพาะตอนสร้าง · รหัสส่งเมื่อมีสิทธิ์', () => {
   const value = {
-    name: 'Forest night', code: 'SC-1', customerId: 'CUS-1', customerTradeName: '',
+    name: 'Forest night', code: ' SC-1 ', customerId: 'CUS-1', customerTradeName: '',
     derivedFromScentId: '', note: '', producedAt: '2026-08-01', sentAt: '2026-08-02',
     status: 'active',
   };
   const created = scentFormPayload(value, { canSetCode: true, mode: 'create', customerName: 'ลูกค้า ก' });
+  assert.equal(created.code, 'SC-1', 'ตัดช่องว่างหัวท้ายเหมือนที่ index เทียบ');
   assert.equal(created.producedAt, '2026-08-01');
+  /* ⭐ ฝ่ายขายส่งสถานะมาได้ (mig 0269) — server ลงเป็น `proposedStatus` ให้เอง
+     แถวยังเป็นร่าง ⇒ ฟอร์มไม่ต้องรู้เรื่องนั้น ส่งสิ่งที่คนกรอกไปตรง ๆ */
   assert.equal(created.status, 'active');
   assert.equal(created.customerName, 'ลูกค้า ก');
 
@@ -264,11 +309,10 @@ test('payload ของฟอร์มกลิ่น: วัน/สถานะ
   const edited = scentFormPayload(value, { canSetCode: true, mode: 'edit' });
   assert.equal('producedAt' in edited, false);
   assert.equal('status' in edited, false);
+  assert.equal(edited.customerId, 'CUS-1');
 
-  // ร่างที่ฝ่ายขายเสนอ (ไม่มีสิทธิ์ใส่รหัส) ไม่มีทั้งรหัสและวัน/สถานะของตัวเอง
-  const proposed = scentFormPayload(value, { canSetCode: false, mode: 'create' });
-  assert.equal('code' in proposed, false);
-  assert.equal('status' in proposed, false);
-  // ใส่รหัสไม่ได้แต่ยังต้องส่งชื่อ/ลูกค้าให้ครบ
-  assert.equal(proposed.customerId, 'CUS-1');
+  // 🐞 ลบรหัสทิ้งแล้วต้อง **ส่งค่าว่างไป** ให้ server ตัดสิน — ไม่ส่ง = เงียบแล้วตอบ 200
+  assert.equal(scentFormPayload({ ...value, code: '' }, { canSetCode: true }).code, '');
+  // คนที่แตะรหัสไม่ได้ (ร่างของคนอื่น / ของที่เข้าทะเบียนแล้ว) ไม่ส่งช่องรหัสเลย
+  assert.equal('code' in scentFormPayload(value, { canSetCode: false }), false);
 });

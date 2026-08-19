@@ -64,7 +64,9 @@ export default function ScentDetailPage() {
     setSaving(true);
     try {
       const payload = scentFormPayload(form.value, {
-        canSetCode: isScentRegistrar(me),
+        // กติกาเดียวกับหน้ารายการ (mig 0269): ร่างยังแก้รหัสได้ · ของที่เข้าทะเบียน
+        // แล้วเป็นของ RD · ด่านจริงอยู่ที่ API ทุกเส้นอยู่แล้ว
+        canSetCode: isScentRegistrar(me) || scent.status === "draft",
         mode: "edit",
         customerName: registryData.customers.find((c) => c.id === form.value.customerId)?.name || null,
       });
@@ -196,7 +198,8 @@ export default function ScentDetailPage() {
       <ScentFormModal
         form={form} saving={saving}
         customers={registryData.customers} scents={registryData.scents}
-        canSetCode={isScentRegistrar(me)}
+        canSetCode={isScentRegistrar(me) || scent.status === "draft"}
+        proposal={!isScentRegistrar(me)}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
         onSubmit={submitEdit}

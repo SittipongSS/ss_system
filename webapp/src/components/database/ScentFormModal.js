@@ -8,12 +8,17 @@ import ScentForm from "@/components/database/ScentForm";
 
 export default function ScentFormModal({
   form, onChange, onClose, onSubmit, saving = false,
-  customers = [], scents = [], canSetCode = false,
+  customers = [], scents = [],
+  canSetCode = false, canSetLegacy = false, proposal = false,
 }) {
   return (
     <Modal
       open={!!form} onClose={onClose} size="md" dismissible={!saving}
-      title={form?.mode === "edit" ? `แก้ข้อมูลกลิ่น — ${form.scent?.name}` : "เพิ่มกลิ่นเข้าทะเบียน"}
+      /* ⚠️ หัวโมดัลต้องบอกผลลัพธ์จริงของคนกด (mig 0269) — ฝ่ายขายกดแล้วได้ **ร่าง**
+         ไม่ใช่แถวในทะเบียน (toast บอกถูกมาตลอด แต่หัวเรื่องเคยสวนกันเอง) */
+      title={form?.mode === "edit"
+        ? `แก้ข้อมูลกลิ่น — ${form.scent?.name}`
+        : (proposal ? "เสนอกลิ่นเข้าทะเบียน" : "เพิ่มกลิ่นเข้าทะเบียน")}
       footer={form && (
         <>
           <Button variant="quiet" onClick={onClose} disabled={saving}>ยกเลิก</Button>
@@ -26,7 +31,8 @@ export default function ScentFormModal({
           mode={form.mode} value={form.value}
           customers={customers} scents={scents}
           editingId={form.scent?.id || null}
-          canSetCode={canSetCode} disabled={saving}
+          canSetCode={canSetCode} canSetLegacy={canSetLegacy} proposal={proposal}
+          disabled={saving}
           onChange={onChange}
         />
       )}

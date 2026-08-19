@@ -111,7 +111,7 @@ export default function ScentDeliveryFields({
                 ⚠️ วันส่งลูกค้ากับสถานะไม่ใช่คำถามของจังหวะนี้ (ม-92 · ม-66): ของเพิ่ง
                 ออกจากมือ RD มาถึงฝ่ายขาย ยังไม่ถึงลูกค้า ⇒ ตัดช่องทิ้งทั้งคู่ */}
             <ScentForm
-              mode="create" canSetCode codeRequired
+              mode="create" canSetCode canSetLegacy codeRequired
               idPrefix={`d${i}`}
               value={{ ...row.scent, customerId: customerId || row.scent?.customerId || "" }}
               disabled={disabled}
