@@ -195,3 +195,13 @@
    ⚠️ ใช้ ch ไม่ใช่ px — หน่วยของ "ความยาวบรรทัด" คือจำนวนตัวอักษร ไม่ใช่ระยะห่าง */
 .bodyCard p,
 .bodyCard li { max-width: 82ch; }
+
+/* ── แถบแท็บของโมดัลส่งงาน (พัฒนากลิ่น) ────────────────────────────────────
+   ทรงเดียวกับโมดัลสร้างดีล: แท็บกินพื้นที่ที่เหลือ ปุ่มเพิ่มไม่หด */
+.deliveryTabs {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+.deliveryTabSpacer { flex: 1 1 auto; }
+.deliveryAdd { flex: none; white-space: nowrap; }

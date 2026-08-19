@@ -13,6 +13,20 @@ import { reworkSlotFrom, reworkTargetError } from '@/lib/requests/rework';
 
 export const MAX_DELIVERY_ROWS = 20;
 
+/* ── ป้ายของ direction (ใช้บนแท็บและในข้อความด่าน) ────────────────────────
+ *
+ * ⭐ **แท็บแบบเดียวกับโมดัลสร้างดีล** (มติผู้ใช้ 2026-08-19) — เดิมทุก direction
+ * กางเรียงกันในโมดัลเดียว ปุ่ม "เพิ่มอีก direction" อยู่ล่างสุด ⇒ กดแล้วไม่เห็นว่า
+ * เพิ่มอะไร และยิ่งหลายตัวยิ่งไถยาว · ย้ายมาเป็นแท็บ + ปุ่มอยู่แถวเดียวกับแท็บ
+ * ⚠️ ประกอบที่ lib ไม่ใช่ใน JSX — ป้ายบนแท็บกับป้ายในข้อความด่านต้องเป็นตัวเดียวกัน
+ * ไม่งั้นด่านบอกว่าใบไหนพังแล้วคนหาแท็บนั้นไม่เจอ
+ */
+export function deliveryRowLabel(row = {}, index = 0) {
+  if (row.targetItemId) return `รอบแก้ของ ${row._sourceLabel || 'รายการก่อนหน้า'}`;
+  const name = String(row.scent?.name ?? '').trim();
+  return name || `Direction ${index + 1}`;
+}
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ── ตรวจของที่ RD กรอกตอนส่ง — คืน { rows, error } ───────────────────────

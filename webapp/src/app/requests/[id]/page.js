@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Building2, CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
+  Building2, CalendarClock, FileText, FolderKanban, Handshake, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -51,13 +51,14 @@ import {
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
-import { normalizeFormulaDelivery } from "@/lib/requests/delivery";
+import { deliveryRowLabel, normalizeFormulaDelivery } from "@/lib/requests/delivery";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { detailForKind, panelForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
   codeConflict, emptyDeliveryRow, reworkDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
+import Tabs from "@/components/ui/Tabs";
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
@@ -144,8 +145,11 @@ export default function RequestDetailPage() {
   // ผลลัพธ์ตอนปิดบรีฟกลิ่น — { mode: 'link'|'create'|'none', scentId, scentName, code }
   const [outcome, setOutcome] = useState(null);
   const [scentOptions, setScentOptions] = useState([]);
-  // ส่งของ (พัฒนากลิ่น) — [{ name, code, sentAt, derivedFromScentId, spec }]
+  // ส่งของ (พัฒนากลิ่น) — [{ scent, spec, briefId, targetItemId, _files }]
   const [delivery, setDelivery] = useState(null);
+  /* ⭐ **หนึ่ง direction = หนึ่งแท็บ** (มติผู้ใช้ 2026-08-19 · แบบเดียวกับโมดัลสร้างดีล)
+     — เดิมกางทุก direction เรียงกันแล้วมีปุ่ม "เพิ่มอีก direction" อยู่ล่างสุด */
+  const [deliveryTab, setDeliveryTab] = useState(0);
   // ⭐ โมดัลรวบส่งของของพัฒนาสูตร (ช่องว่างข้อ 3) — { rows: [{ item, formula, error }] }
   // `formula` = ค่าฟอร์มทะเบียนสูตรของแถวนั้น (ฟอร์มเดียวกับหน้าทะเบียน · 2026-08-19)
   const [bulkReady, setBulkReady] = useState(null);
@@ -410,10 +414,8 @@ export default function RequestDetailPage() {
     const codes = new Set(allScents.map((s) => String(s.code ?? "").trim().toLowerCase()).filter(Boolean));
     for (let i = 0; i < delivery.length; i += 1) {
       const row = delivery[i];
-      // ป้ายต้องตรงกับหัวการ์ดที่คนเห็น ไม่งั้นข้อความชี้ไปคนละใบกับที่ต้องแก้
-      const at = row.targetItemId
-        ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}`
-        : `รายการที่ ${i + 1}`;
+      // ป้ายต้องตรงกับ **แท็บ** ที่คนเห็น ไม่งั้นข้อความบอกว่าใบไหนพังแล้วหาแท็บไม่เจอ
+      const at = deliveryRowLabel(row, i);
       if (!String(row.scent?.name ?? "").trim()) return `${at}: ต้องระบุชื่อกลิ่น`;
       if (!String(row.scent?.code ?? "").trim()) return `${at}: ต้องระบุรหัสกลิ่น`;
       const clash = codeConflict(row.scent?.code, i, delivery, codes);
@@ -669,6 +671,7 @@ export default function RequestDetailPage() {
       .filter((slot) => !briefId || slot.briefId === briefId)
       .map(reworkDeliveryRow);
     setDelivery(waiting.length ? waiting : [{ ...emptyDeliveryRow(), briefId: briefId || "" }]);
+    setDeliveryTab(0);
   };
 
   const requestActions = normalizeDocumentControlActions({
@@ -1720,18 +1723,61 @@ export default function RequestDetailPage() {
       <Modal
         open={!!delivery} onClose={() => setDelivery(null)} size="lg" dismissible={!saving}
         title="ส่งงานให้ฝ่ายขาย — กลิ่นเข้าทะเบียนทันที"
+        /* ── แถบเครื่องมือใต้หัวโมดัล (โซนที่ไม่เลื่อนตามฟอร์ม) ─────────────────
+           ⭐ **ปุ่มเพิ่มอยู่แถวเดียวกับแท็บ** (มติผู้ใช้ 2026-08-19 · ยกแพตเทิร์นมาจาก
+           โมดัลสร้างดีล) — ปุ่มล่างสุดหลุดบริบท และมองไม่ออกว่ามันเพิ่ม "แท็บ"
+           ไม่ใช่ช่องในใบที่เปิดอยู่
+           ⚠️ **รอบแก้ลบไม่ได้** — มันคืองานที่ลูกค้าสั่งไว้ ไม่ใช่บรรทัดที่ RD เพิ่งเพิ่ม
+           เอง · ลบทิ้งได้เมื่อไรก็เท่ากับทิ้งงานเงียบ ๆ */
+        toolbar={delivery && (
+          <>
+            {delivery.length > 1 ? (
+              <Tabs
+                className={styles.deliveryTabs}
+                ariaLabel="direction ที่จะส่ง"
+                value={String(Math.min(deliveryTab, delivery.length - 1))}
+                onChange={(key) => setDeliveryTab(Number(key))}
+                tabs={delivery.map((row, i) => ({
+                  key: String(i),
+                  label: deliveryRowLabel(row, i),
+                }))}
+              />
+            ) : <span className={styles.deliveryTabSpacer} aria-hidden="true" />}
+            {delivery.length > 1 && !delivery[deliveryTab]?.targetItemId && (
+              <Button
+                variant="ghost" size="sm" tone="danger" disabled={saving}
+                onClick={() => {
+                  setDelivery(delivery.filter((_, j) => j !== deliveryTab));
+                  setDeliveryTab(Math.max(0, deliveryTab - 1));
+                }}
+              >
+                <Trash2 size={13} aria-hidden="true" /> ลบ direction นี้
+              </Button>
+            )}
+            <Button
+              variant="ghost" size="sm" disabled={saving}
+              className={styles.deliveryAdd}
+              onClick={() => {
+                setDelivery([...delivery, emptyDeliveryRow()]);
+                setDeliveryTab(delivery.length);
+              }}
+            >
+              <Plus size={14} aria-hidden="true" /> เพิ่ม Direction
+            </Button>
+          </>
+        )}
       >
         {delivery && (
           <>
             <p className={styles.fieldHint}>
-              แต่ละรายการคือ <strong>1 direction</strong> — บันทึกแล้วกลิ่นเข้าทะเบียนทันที
+              แต่ละแท็บคือ <strong>1 direction</strong> — บันทึกแล้วกลิ่นเข้าทะเบียนทันที
               พร้อมรหัสและวันที่ส่ง ไม่ต้องไปกรอกซ้ำที่หน้าทะเบียน
               {delivery.some((r) => r.targetItemId)
                 && " · รอบแก้ที่ลูกค้าสั่งไว้ขึ้นให้แล้ว — เติมชื่อกับรหัสของตัวใหม่ได้เลย"}
             </p>
             <ScentDeliveryFields
               rows={delivery} onChange={setDelivery} scents={allScents}
-              customers={registry.customers}
+              customers={registry.customers} active={deliveryTab}
               customerId={req.customerId} disabled={saving}
               briefs={req.briefs || []}
             />

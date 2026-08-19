@@ -6,8 +6,6 @@
 //
 // ⚠️ **รหัสซ้ำเตือนที่ช่อง ไม่ใช่ตอนกดส่ง** — ปล่อยไปตายที่ DB จะได้ error 23505
 // ภาษาอังกฤษ และมาตอนที่คนกรอกไปหมดแล้วซึ่งสายเกินจะไล่แก้ทีละช่อง
-import { Plus, Trash2 } from "lucide-react";
-import Button from "@/components/ui/Button";
 import { notifyToast } from "@/components/ui/Toast";
 import PendingFiles from "@/components/ui/PendingFiles";
 import Textarea from "@/components/ui/Textarea";
@@ -62,9 +60,14 @@ export function codeConflict(code, index, rows, registryCodes) {
   return earlier === -1 ? null : `ซ้ำกับรายการที่ ${earlier + 1}`;
 }
 
+/* ⭐ **หนึ่ง direction = หนึ่งแท็บ** (มติผู้ใช้ 2026-08-19 · แบบเดียวกับโมดัลสร้างดีล) —
+   แท็บกับปุ่ม "เพิ่ม Direction"/"ลบ" อยู่บนแถบเครื่องมือของโมดัล (ดู requests/[id])
+   ที่นี่จึงวาดเฉพาะ direction ที่เปิดอยู่
+   ⚠️ ปุ่มเพิ่มเคยอยู่ล่างสุดใต้ฟอร์มทุกใบ — กดแล้วไม่เห็นว่าเพิ่มอะไร และยิ่งหลายตัว
+   ยิ่งไถยาว (เหตุผลเดียวกับที่ดีลย้ายปุ่มขึ้นไปแถวเดียวกับแท็บเมื่อ 2026-08-04) */
 export default function ScentDeliveryFields({
   rows, onChange, scents = [], customers = [], customerId = null,
-  disabled = false, briefs = [],
+  disabled = false, briefs = [], active = 0,
 }) {
   // ⭐ **บรีฟก้อนเดียว = ไม่ต้องถาม** (มติผู้ใช้) — ช่องที่มีตัวเลือกเดียวแต่ยังบังคับ
   // ให้กด คือขั้นตอนที่ไม่ได้ตัดสินใจอะไร · server เลือกให้เองอยู่แล้ว
@@ -72,9 +75,12 @@ export default function ScentDeliveryFields({
   const registryCodes = new Set(scents.map((s) => norm(s.code)).filter(Boolean));
   const patch = (i, next) => onChange(rows.map((r, j) => (i === j ? { ...r, ...next } : r)));
 
+  const visible = rows[Math.min(Math.max(active, 0), rows.length - 1)];
+
   return (
     <div className={styles.wrap}>
-      {rows.map((row, i) => {
+      {rows.filter((row) => row === visible).map((row) => {
+        const i = rows.indexOf(row);
         const conflict = codeConflict(row.scent?.code, i, rows, registryCodes);
         /* ⚠️ **รอบแก้ล็อกกลิ่นต้นทาง** — แถวรออยู่แล้วและระบบรู้ว่าแก้มาจากตัวไหน ·
            ปล่อยให้เลือกเองเมื่อไรก็ชี้ผิดตัวได้ทั้งที่คำตอบมีตัวเดียว (server เขียนทับ
@@ -83,22 +89,6 @@ export default function ScentDeliveryFields({
           ? ["customerId", "derivedFromScentId"] : ["customerId"];
         return (
           <div key={i} className={styles.row}>
-            <div className={styles.rowHead}>
-              <span className={styles.rowNo}>
-                {row.targetItemId ? `รอบแก้ของ ${row._sourceLabel || "รายการก่อนหน้า"}` : `รายการที่ ${i + 1}`}
-              </span>
-              {/* ⚠️ แถวรอบแก้ลบไม่ได้ — มันคืองานที่ลูกค้าสั่งไว้ ไม่ใช่บรรทัดที่ RD
-                  เพิ่งเพิ่มเอง · ลบทิ้งได้เมื่อไรก็เท่ากับทิ้งงานเงียบ ๆ */}
-              {rows.length > 1 && !row.targetItemId && (
-                <Button
-                  size="sm" variant="ghost" tone="danger" disabled={disabled}
-                  title="ลบรายการนี้"
-                  icon={<Trash2 size={14} aria-hidden="true" />}
-                  onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                />
-              )}
-            </div>
-
             {/* คำพูดลูกค้าอยู่ตรงหัวช่องที่กำลังจะกรอก ไม่ใช่ให้ไถกลับไปอ่านบนราง */}
             {row.targetItemId && row._customerNote && (
               <p className={styles.customerNote}>
@@ -182,14 +172,6 @@ export default function ScentDeliveryFields({
           </div>
         );
       })}
-
-      <Button
-        size="sm" disabled={disabled}
-        icon={<Plus size={14} aria-hidden="true" />}
-        onClick={() => onChange([...rows, emptyDeliveryRow()])}
-      >
-        เพิ่มอีก direction
-      </Button>
     </div>
   );
 }
