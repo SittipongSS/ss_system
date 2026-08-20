@@ -31,6 +31,7 @@ import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace
 import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
 } from "@/lib/salesPlanning/myQueue";
+import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
 
 const ACTIVITY_KIND_LABEL = {
@@ -180,6 +181,12 @@ export default function MyDashboardTab({ month, allMonths = false }) {
       ) : (
         <div className={styles.startClear}><CheckCircle2 size={16} /> ไม่มีเรื่องค้างของคุณตอนนี้</div>
       ))}
+
+      {/* ⭐ **กำหนดการมาก่อนคิว** (มติผู้ใช้ 2026-08-21) — คิวตอบว่า "ทำอะไรก่อน"
+          แต่ของที่มีเวลานัดตายตัวเลื่อนไม่ได้ ⇒ ต้องเห็นก่อนจะไปเลือกงานอื่นทำ
+          ⚠️ ส่วนนี้โหลดข้อมูลของตัวเอง (`/api/sales-planning/my-schedule`) ไม่ใช้ก้อน
+          ของแท็บนี้ — ช่วงวันที่ของมันเปลี่ยนตามปุ่มในตัวเอง ไม่ใช่ตามงวดบนหัวหน้า */}
+      <ScheduleSection />
 
       <WorkspaceSection
         icon={<ListTodo size={17} />}
