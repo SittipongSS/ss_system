@@ -8,12 +8,15 @@
 // ⚠️ **การ์ดซ้ายผูกกับ "วันที่เลือก" ไม่ใช่กับมุมมอง** — ตั้งต้นเป็นวันนี้ · กดวันไหน
 // บนปฏิทินหัวการ์ดเปลี่ยนตามวันนั้น · ปุ่ม "วันนี้" คืนค่าทั้งวันที่เลือกและช่วงที่กาง
 //
+// ⚠️ **ไม่มีปุ่ม "ปฏิทินนัด" ที่หัวส่วน** — เมนูปฏิทินนัดอยู่มุมขวาบนของแถบเมนูข้าง
+// "วางเป้า" แล้ว (มติผู้ใช้ 2026-08-21) · สองประตูไปหน้าเดียวกันบนจอเดียวคือของเกิน
+//
 // ⚠️ **สามแหล่งมีความละเอียดเวลาไม่เท่ากัน** นัดมีเวลาจริง · งาน/คำร้องเป็นวันล้วน
 // ⇒ งานกับคำร้องอยู่แถว "ทั้งวัน" เท่านั้น ห้ามเดาเวลาให้มัน (กติกาอยู่ที่ lib/salesPlanning/mySchedule)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Building2, CalendarCheck, CalendarClock, CalendarDays, CalendarRange,
+  Building2, CalendarCheck, CalendarClock, CalendarDays,
   ChevronLeft, ChevronRight, Clock, ListTodo, MessageCircleQuestion, Monitor, Car, TriangleAlert,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -22,7 +25,6 @@ import MonthGrid from "@/components/ui/MonthGrid";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { WorkspaceSection } from "@/components/ui/Workspace";
-import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { NA, fmtDate, fmtDayMonth } from "@/lib/format";
@@ -54,7 +56,6 @@ function rangeLabel(view, anchor, range) {
 
 export default function ScheduleSection() {
   const today = businessDate();
-  const canLead = useCan("salesplan:lead");
   const [view, setView] = useState(DEFAULT_SCHEDULE_VIEW);
   const [anchor, setAnchor] = useState(today);
   const [selected, setSelected] = useState(today);
@@ -168,11 +169,6 @@ export default function ScheduleSection() {
       icon={<CalendarDays size={17} />}
       title="กำหนดการของฉัน"
       subtitle="นัดลูกค้า · งานและคำร้องที่ถึงกำหนด"
-      actions={canLead && (
-        <Button as={Link} href="/sa/calendar" size="sm" icon={<CalendarRange size={13} />}>
-          ปฏิทินนัด
-        </Button>
-      )}
     >
       <div className={styles.layout}>
         <div className={styles.cards}>

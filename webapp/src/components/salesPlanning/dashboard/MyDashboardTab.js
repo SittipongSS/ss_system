@@ -15,10 +15,9 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity, AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, Flame, ListTodo,
-  Target, TrendingUp, Undo2,
+  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Target, TrendingUp,
 } from "lucide-react";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
@@ -91,9 +90,6 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const counts = myQueueCounts(queue);
   const shown = kind ? queue.filter((item) => item.kind === kind) : queue;
   const groups = groupMyQueue(shown);
-  // ⭐ "เริ่มที่นี่" = แถวบนสุดของคิวเดียวกัน — ไม่ใช่กติกาความเร่งชุดใหม่
-  // (ประกาศเกณฑ์ของตัวเองเมื่อไรจะได้ "การ์ดชี้ใบ A แต่ตารางเรียงใบ B ไว้บนสุด")
-  const startHere = queue[0] || null;
 
   const feed = useMemo(() => {
     const dealPosts = (data?.dealActivityFeed || []).map((item) => ({
@@ -115,7 +111,6 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const canSetTarget = useCan("salesplan:target");
   const actual = Number(data?.wonValue || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
-  const byForecast = data?.byForecast || [];
   /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
      ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
      เพราะเลือกเดือนย้อนหลังได้อยู่แล้ว (ของเดิมเขียน "เดือนนี้" ทุกที่ = โกหกทั้งคู่) */
@@ -128,59 +123,57 @@ export default function MyDashboardTab({ month, allMonths = false }) {
 
   return (
     <div className="flex flex-col gap-4" aria-busy={loading}>
-      {/* ⭐ **ตัวเลขทุกช่องนับจากคิวเดียวกับตารางข้างล่าง** ยกเว้นช่องเป้าซึ่งเป็น
-          ตัวเลขของเดือน ไม่ใช่ของค้าง · กดแล้วกรองในที่ (ไม่พาออกจากหน้า) */}
+      {/* ⭐ **แถบบนเป็นยอดเงินของงวด ไม่ใช่จำนวนของค้าง** (มติผู้ใช้ 2026-08-21)
+          ของค้างมีที่อยู่ของตัวเองอยู่แล้วสองที่ — ชิปกรองบนคิว และการ์ด "ถึงกำหนด"
+          ในกำหนดการ · แถบบนจึงเหลือคำถามเดียวที่ไม่มีใครตอบ: **เดือนนี้ยอดถึงไหนแล้ว**
+          ⚠️ ฉบับเต็ม (ทบยอด/กราฟ/YoY) อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18)
+          ที่นี่มีแค่ตัวเลขสรุปกับทางเข้า */}
       {!loading && (
-        <MetricStrip aria-label="ของค้างของฉัน — กดเพื่อกรองคิว">
-          <Metric
-            as="button" type="button" icon={<ListTodo />} label="ค้างทั้งหมด" value={counts.total}
-            note={kind ? "กดเพื่อเลิกกรอง" : "ทุกชนิดรวมกัน"}
-            active={!kind} onClick={() => setKind(null)}
-          />
-          <Metric
-            icon={<AlertTriangle />} label="เลยกำหนด" value={counts.overdue}
-            note="เลยวันที่รับปากไว้" tone={counts.overdue ? "danger" : undefined}
-          />
-          <Metric
-            as="button" type="button" icon={<Undo2 />} label="ตีกลับ รอคุณแก้" value={counts.bounced}
-            note={counts.bounced ? "กดเพื่อดูเฉพาะคำร้อง" : "ไม่มีใบตีกลับ"}
-            tone={counts.bounced ? "danger" : undefined}
-            active={kind === "request"} onClick={() => setKind(kind === "request" ? null : "request")}
-          />
-          <Metric
-            as="button" type="button" icon={<CheckCircle2 />} label="รอออกเอกสาร" value={counts.document}
-            note="Won รอ SO · SO รอใบยื่นภาษี" tone={counts.document ? "warning" : undefined}
-            active={kind === "document"} onClick={() => setKind(kind === "document" ? null : "document")}
-          />
+        <div className="flex gap-2 items-center flex-wrap justify-end">
+          {data && !hasTarget && canSetTarget && (
+            <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
+              ตั้งเป้า
+            </Button>
+          )}
+          <Button
+            as={Link} size="sm" icon={<ArrowUpRight size={13} />}
+            href={data?.me?.id
+              ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}`
+              : "/sa/dashboard?tab=performance"}
+          >
+            ดูผลงานเต็ม
+          </Button>
+        </div>
+      )}
+
+      {!loading && (
+        <MetricStrip aria-label={`ตัวเลขของฉัน — ${scopeLabel}`}>
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
             value={hasTarget ? fmtPercent(targetPct, 0) : NA}
             note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
           />
+          <Metric
+            icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoneyCompact(actual)}
+            note={hasTarget ? `เหลืออีก ${fmtMoney(Math.max(0, target - actual))}` : scopeLabel}
+          />
+          <Metric
+            icon={<Handshake />} label="ดีลที่เปิดอยู่" value={data?.openDealsCount || 0}
+            note="ยังไม่ปิด — ทั้งท่อ ไม่ใช่เฉพาะงวดนี้"
+          />
+          <Metric
+            icon={<TrendingUp />} label="Pipeline" value={fmtMoneyCompact(data?.pipelineValue || 0)}
+            note="มูลค่าดีลที่ยังเปิดอยู่"
+          />
+          {/* ⚠️ **ยอดถ่วง FC ไม่ใช่ยอดขาย** — เป็นค่าคาดหวังของท่อ (มูลค่า × FC%)
+              ใช้ตอบว่า "ของพอไหม" ห้ามเอาไปรวมกับยอดปิดได้ */}
+          <Metric
+            icon={<Target />} label="ยอดถ่วง FC" value={fmtMoneyCompact(data?.weightedForecast || 0)}
+            note="ค่าคาดหวังของท่อ ไม่ใช่ยอดขาย"
+          />
         </MetricStrip>
       )}
-
-      {/* ⭐ การ์ด "เริ่มที่นี่" — แถวบนสุดของคิว · บอกว่าว่างด้วย ไม่ใช่ซ่อนทิ้ง
-          (หายไปเฉย ๆ อ่านไม่ออกว่างานหมดจริงหรือหน้ายังโหลดไม่เสร็จ) */}
-      {!loading && (startHere ? (
-        <div className={styles.startHere}>
-          <div className={styles.startBody}>
-            <div className={styles.startEyebrow}><Flame size={13} /> เริ่มที่นี่</div>
-            <div className={styles.startStep}>{startHere.step}</div>
-            <div className={styles.startTitle}>{startHere.title}</div>
-            <div className={styles.startSub}>
-              {[startHere.sub, startHere.dueText].filter(Boolean).join(" · ")}
-              {queue.length > 1 ? ` — และอีก ${queue.length - 1} เรื่องต่อจากนี้` : ""}
-            </div>
-          </div>
-          <Button tone="primary" icon={<ArrowRight size={15} />} onClick={() => router.push(startHere.href)}>
-            เปิดเรื่องนี้
-          </Button>
-        </div>
-      ) : (
-        <div className={styles.startClear}><CheckCircle2 size={16} /> ไม่มีเรื่องค้างของคุณตอนนี้</div>
-      ))}
 
       {/* ⭐ **กำหนดการมาก่อนคิว** (มติผู้ใช้ 2026-08-21) — คิวตอบว่า "ทำอะไรก่อน"
           แต่ของที่มีเวลานัดตายตัวเลื่อนไม่ได้ ⇒ ต้องเห็นก่อนจะไปเลือกงานอื่นทำ
@@ -188,6 +181,10 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           ของแท็บนี้ — ช่วงวันที่ของมันเปลี่ยนตามปุ่มในตัวเอง ไม่ใช่ตามงวดบนหัวหน้า */}
       <ScheduleSection />
 
+      {/* ⭐ **คิวซ้าย · อัปเดตขวา บรรทัดเดียวกัน** (มติผู้ใช้ 2026-08-21) — ฟีดตอบว่า
+          *อะไรเพิ่งเกิด* ซึ่งอ่านคู่กับคิวได้ ไม่ต้องเลื่อนลงไปหาที่ท้ายหน้า
+          ⚠️ ยุบเป็นคอลัมน์เดียวที่ ≤1000px — ตารางคิวสามคอลัมน์ในครึ่งจอแคบอ่านไม่ออก */}
+      <div className={styles.split}>
       <WorkspaceSection
         icon={<ListTodo size={17} />}
         title="คิวของฉัน"
@@ -264,55 +261,6 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         )}
       </WorkspaceSection>
 
-      {/* ตัวเลขของเดือน — **ไม่ใช่ของค้าง** จึงอยู่ใต้คิว · ฉบับเต็ม (ทบยอด/กราฟ/YoY)
-          อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18) ที่นี่มีแค่ทางเข้า */}
-      {!loading && (
-        <WorkspaceSection
-          icon={<TrendingUp size={17} />}
-          title={`ตัวเลขของฉัน — ${scopeLabel}`}
-          subtitle="เป้า · ยอดปิดได้ · ไปป์ไลน์ที่ยังเปิดอยู่"
-          actions={(
-            <div className="flex gap-2 items-center flex-wrap">
-              {data && !hasTarget && canSetTarget && (
-                <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
-                  ตั้งเป้า
-                </Button>
-              )}
-              <Button
-                as={Link} size="sm" icon={<ArrowUpRight size={13} />}
-                href={data?.me?.id
-                  ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}`
-                  : "/sa/dashboard?tab=performance"}
-              >
-                ดูผลงานเต็ม
-              </Button>
-            </div>
-          )}
-        >
-          <div className={styles.numbers}>
-            <p>
-              ยอดปิดได้
-              <strong>{fmtMoney(actual)}</strong>
-              <span>{hasTarget ? `จากเป้า ${fmtMoney(target)}` : `ยังไม่ตั้งเป้า${scopeLabel}`}</span>
-            </p>
-            <p>
-              ดีลที่เปิดอยู่
-              <strong>{data?.openDealsCount || 0}</strong>
-              <span>Pipeline {fmtMoney(data?.pipelineValue || 0)}</span>
-            </p>
-            {byForecast.map((bucket) => (
-              <p key={bucket.level}>
-                FC {bucket.level}%
-                <strong>{fmtMoney(bucket.value)}</strong>
-                <span>{bucket.count} ดีล</span>
-              </p>
-            ))}
-          </div>
-        </WorkspaceSection>
-      )}
-
-      {/* ⭐ **ฟีดย้ายลงท้ายหน้า** — มันตอบว่า *อะไรเพิ่งเกิด* ซึ่งมีค่า แต่ไม่ใช่สิ่งแรก
-          ที่ตาควรไปเจอตอนเปิดหน้ามาทำงาน (มติผู้ใช้ 2026-08-12 · แบบ ก) */}
       <WorkspaceSection
         icon={<Activity size={17} />}
         title="รายการอัปเดตล่าสุด"
@@ -347,6 +295,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           )}
         </div>
       </WorkspaceSection>
+      </div>
     </div>
   );
 }
