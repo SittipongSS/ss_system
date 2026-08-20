@@ -75,6 +75,28 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     countBy(supabase, 'project_tasks', 'dealId', id),
   ]);
 
+  // ใบยื่นภาษีเป็นด่านที่ break-glass ก็ข้ามไม่ได้ (FK RESTRICT + RPC ไม่ล้างให้) —
+  // ต้องบอกตั้งแต่พรีวิว ไม่ใช่ปล่อยให้ไปพังตอนลบจริง (แพตเทิร์นเดียวกับ QT/SO)
+  const filings = await exciseFilingsOfDeal(supabase, id);
+  if (filings.length) {
+    return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ดีล')], blocked: true };
+  }
+
+  // เอกสารที่ลงนาม/ออกฉบับจริงแล้วในดีล — บังคับลบจะทำลายหลักฐานถาวร ต้องขึ้นพรีวิว
+  // (พรีวิวอ่านไม่ได้ ≠ ไม่มี — แต่ต้องไม่ทำให้พรีวิวพัง จึงเตือนว่าตรวจไม่ได้แทน)
+  let signedNote = null;
+  try {
+    const signed = await dealSignedDocuments(supabase, id);
+    const signedCount = signed.quotations.length + signed.salesOrders.length;
+    if (signedCount > 0) {
+      signedNote = `⚠️ มีเอกสารที่ลงนาม/ออกฉบับจริงแล้ว ${signedCount} ใบ`
+        + ` (${[...signed.quotations.map((r) => r.quoteNumber || r.id), ...signed.salesOrders.map((r) => r.orderNumber || r.id)].join(', ')})`
+        + ' — บังคับลบจะทำลายหลักฐานลายเซ็นและฉบับตรึงถาวร กู้คืนไม่ได้';
+    }
+  } catch (signedError) {
+    signedNote = `ตรวจเอกสารที่มีหลักฐานลายเซ็นไม่สำเร็จ (${signedError.message}) — การลบจริงอาจถูกฐานข้อมูลปฏิเสธ`;
+  }
+
   const cascade = [
     line('ใบเสนอราคาที่รับแล้ว (Won) — แหล่งยอด Actual', accepted),
     line('ใบสั่งขาย — แหล่งยอด Actual', salesOrders),
@@ -85,6 +107,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
   ].filter((r) => r.count > 0);
 
   const notes = [];
+  if (signedNote) notes.push(signedNote);
   // โครงการไม่ลบตามดีล (เฟส B) — บอกให้ผู้ดูแลเห็นชัดว่าโครงการและงานส่วนที่เหลือยังอยู่
   if (project) {
     notes.push(`โครงการผลิต ${project.code || project.id} จะยังอยู่ (ถอดเฉพาะงานของดีลนี้ออก) — ลบโครงการทำที่หน้าโครงการ`);
@@ -92,7 +115,7 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
   if (deal.metadata?.sahamitPoId) notes.push('ดีลนี้มาจาก PO สหมิตร (settle เข้ายอดแล้ว)');
   if (isWonStage(deal.stage)) notes.push('ดีลนี้ปิดการขาย (Won) แล้ว');
 
-  return { cascade, notes };
+  return { cascade, notes, blocked: false };
 }
 
 // เก็บกวาดลูกดีลที่ "ไม่มี FK จริง" ก่อน/หลังลบแถวดีล. เรียกก่อนลบ sales_deals
@@ -186,6 +209,91 @@ export function exciseFilingBlockMessage(filings = [], documentLabel = 'เอ�
   return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีใบยื่นชำระภาษีผูกอยู่ ${list}`
     + ` — ใบยื่นเป็นเอกสารภาษีที่ระบบจะไม่ลบให้อัตโนมัติ กรุณาลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน`
     + ` แล้วจึงลบ${documentLabel}นี้ได้`;
+}
+
+// ── ดีล: เอกสารลูกที่ FK RESTRICT ไม่ยอมให้ cascade ───────────────────
+// quotations/sales_orders."dealId" เป็น ON DELETE CASCADE (0065:8 · 0107:9) แต่ลูกของ
+// เอกสารสองชนิดนั้น — หลักฐานลายเซ็น (0125) และฉบับตรึง (0130/0148) — เป็น RESTRICT
+// ⇒ ลบดีลตรง ๆ ตายกลางทางด้วย error ดิบจาก Postgres ที่หลุดขึ้นหน้าดีลทั้งดุ้น
+// ("update or delete on table \"quotations\" violates foreign key constraint
+// \"document_signature_evidence_quotationId_fkey\"" — prod 2026-08-20)
+//
+// เจตนา: เส้นทางปกติ **บล็อกพร้อมบอกชื่อใบ** (แปลง FK RESTRICT เป็นข้อความที่อ่านออก
+// กติกาเดียวกับ DELETE quotation) · ทาง ?force=1 ของผู้ดูแลระบบลบให้ผ่าน RPC break-glass
+//
+// ⚠️ โยน error เมื่ออ่านไม่สำเร็จ — เงียบแล้วสรุปว่า "ไม่มีหลักฐาน" คือปล่อยให้ไปตาย
+// ที่ฐานข้อมูลด้วย error ดิบเหมือนเดิม
+export async function dealSignedDocuments(supabase, dealId) {
+  const [quotes, orders] = await Promise.all([
+    supabase.from('quotations').select('id, quoteNumber').eq('dealId', dealId),
+    supabase.from('sales_orders').select('id, orderNumber').eq('dealId', dealId),
+  ]);
+  if (quotes.error) throw new Error(`อ่านใบเสนอราคาของดีลไม่สำเร็จ: ${quotes.error.message}`);
+  if (orders.error) throw new Error(`อ่านใบสั่งขายของดีลไม่สำเร็จ: ${orders.error.message}`);
+  const quoteRows = quotes.data || [];
+  const orderRows = orders.data || [];
+  const signed = { quotation: new Set(), sales_order: new Set() };
+  const probes = [
+    ['document_signature_evidence', 'quotationId', 'quotation', quoteRows],
+    ['issued_documents', 'quotationId', 'quotation', quoteRows],
+    ['document_signature_evidence', 'salesOrderId', 'sales_order', orderRows],
+    ['issued_documents', 'salesOrderId', 'sales_order', orderRows],
+  ];
+  for (const [table, column, kind, rows] of probes) {
+    if (!rows.length) continue;
+    const { data, error } = await supabase
+      .from(table).select(column).in(column, rows.map((r) => r.id));
+    if (error) throw new Error(`ตรวจหลักฐาน/ฉบับตรึงของเอกสารในดีลไม่สำเร็จ: ${error.message}`);
+    for (const row of data || []) if (row?.[column]) signed[kind].add(row[column]);
+  }
+  return {
+    quotations: quoteRows.filter((r) => signed.quotation.has(r.id)),
+    salesOrders: orderRows.filter((r) => signed.sales_order.has(r.id)),
+  };
+}
+
+// ใบยื่นชำระภาษีของ SO ทุกใบในดีล — ด่านที่ break-glass ก็ข้ามไม่ได้ (ดูหมายเหตุด้านบน)
+export async function exciseFilingsOfDeal(supabase, dealId) {
+  const { data: orders } = await supabase
+    .from('sales_orders').select('id').eq('dealId', dealId);
+  const ids = (orders || []).map((row) => row.id);
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('orders').select('id, status').in('salesOrderId', ids);
+  if (error) return [];
+  return data || [];
+}
+
+// ข้อความบล็อกเส้นทางปกติ — บอกชื่อใบที่ขวางอยู่ ไม่ใช่ "ลบไม่ได้" ลอย ๆ
+export function dealSignedBlockMessage({ quotations = [], salesOrders = [] } = {}) {
+  const parts = [];
+  if (quotations.length) parts.push(`ใบเสนอราคา ${quotations.map((r) => r.quoteNumber || r.id).join(', ')}`);
+  if (salesOrders.length) parts.push(`ใบสั่งขาย ${salesOrders.map((r) => r.orderNumber || r.id).join(', ')}`);
+  return `ลบดีลไม่ได้: มีเอกสารที่ลงนาม/ออกฉบับจริงแล้วในดีลนี้ (${parts.join(' · ')})`
+    + ' — เอกสารเหล่านี้เก็บเป็นหลักฐานถาวร ให้ “ยกเลิก”/ออก Rev. ที่หน้าเอกสารก่อน'
+    + ' (ถ้าจำเป็นต้องลบทั้งดีลจริง ๆ ให้แอดมินใช้ “บังคับลบ”)';
+}
+
+// บังคับลบเอกสารทั้งสายของดีลผ่าน RPC break-glass (mig 0152/0168) ก่อนลบแถวดีล —
+// RPC เก็บกวาดตามลำดับ FK ให้: SO ลูก → ฉบับตรึง+ไฟล์แนบ → หลักฐาน → ตัวใบ
+// (sales_orders."quotationId" เป็น NOT NULL UNIQUE ⇒ วนตามใบเสนอราคาครอบคลุม SO ครบ)
+//
+// ⚠️ ลบทีละใบ ไม่ใช่ทรานแซกชันเดียว — ล้มกลางทางแล้วดีลยังอยู่กับใบที่เหลือ ผู้เรียก
+// ต้องหยุดและรายงาน ไม่ใช่ลบดีลต่อ (จะได้ error ดิบจาก FK อยู่ดี)
+export async function forceDeleteDealDocuments(supabase, dealId, actor = {}) {
+  const { data: quotes, error } = await supabase
+    .from('quotations').select('id, quoteNumber').eq('dealId', dealId);
+  if (error) throw new Error(`อ่านใบเสนอราคาของดีลไม่สำเร็จ: ${error.message}`);
+  for (const quote of quotes || []) {
+    const { error: rpcError } = await supabase.rpc('force_delete_quotation', {
+      p_id: quote.id,
+      p_actor_id: actor.id || null,
+      p_actor_name: actor.name || null,
+      p_actor_role: actor.role || null,
+    });
+    if (rpcError) throw new Error(`บังคับลบใบเสนอราคา ${quote.quoteNumber || quote.id} ไม่สำเร็จ: ${rpcError.message}`);
+  }
+  return (quotes || []).length;
 }
 
 // ── QUOTATION ─────────────────────────────────────────────────────────

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
-  exciseFilingBlockMessage, exciseFilingsOfSalesOrder,
+  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseFilingsOfDeal,
+  dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
   scentForcePreview, formulaForcePreview, requestForcePreview, materialForcePreview,
 } from './forceDelete.js';
 
@@ -311,4 +312,92 @@ test('requestForcePreview: ร่างเปล่าที่ยังไม�
   });
   assert.deepEqual(cascade, [], 'ไม่มีลูก = ไม่มีรายการลบพ่วง');
   assert.deepEqual(notes, [], 'ร่างเปล่า ๆ ไม่ต้องมี note');
+});
+
+// stub supabase ที่คืน "แถวจริง" ตามตัวกรอง (.eq/.in) — ตัวนับด้านบนไม่พอสำหรับ
+// เส้นทางลบดีลที่ต้องอ่าน id/เลขที่เอกสารออกมาประกอบข้อความ
+function stubRows(rows, { errors = {}, rpcError = null } = {}) {
+  const rpcCalls = [];
+  return {
+    rpcCalls,
+    from(table) {
+      const filters = [];
+      const builder = {
+        select() { return builder; },
+        eq(col, val) { filters.push([col, val]); return builder; },
+        in(col, vals) { filters.push([col, vals]); return builder; },
+        then(resolve) {
+          if (errors[table]) return resolve({ error: { message: errors[table] } });
+          const data = (rows[table] || []).filter((row) => filters.every(([col, val]) => (
+            Array.isArray(val) ? val.includes(row[col]) : row[col] === val
+          )));
+          resolve({ data, count: data.length });
+        },
+      };
+      return builder;
+    },
+    rpc(name, args) {
+      rpcCalls.push({ name, args });
+      return Promise.resolve(rpcError ? { error: { message: rpcError } } : { data: {} });
+    },
+  };
+}
+
+const DEAL_DOCS = {
+  quotations: [
+    { id: 'Q1', quoteNumber: 'QT-1', dealId: 'D1' },
+    { id: 'Q2', quoteNumber: 'QT-2', dealId: 'D1' },
+    { id: 'Q9', quoteNumber: 'QT-9', dealId: 'D2' },
+  ],
+  sales_orders: [
+    { id: 'S1', orderNumber: 'SO-1', dealId: 'D1' },
+    { id: 'S2', orderNumber: 'SO-2', dealId: 'D1' },
+  ],
+  document_signature_evidence: [{ quotationId: 'Q2', salesOrderId: null }],
+  issued_documents: [{ quotationId: null, salesOrderId: 'S1' }],
+  orders: [],
+};
+
+test('dealSignedDocuments: คืนเฉพาะใบที่มีหลักฐาน/ฉบับตรึง ของดีลนั้น', async () => {
+  const { quotations, salesOrders } = await dealSignedDocuments(stubRows(DEAL_DOCS), 'D1');
+  assert.deepEqual(quotations.map((r) => r.quoteNumber), ['QT-2']);
+  assert.deepEqual(salesOrders.map((r) => r.orderNumber), ['SO-1']);
+});
+
+test('dealSignedDocuments: อ่านไม่สำเร็จต้อง throw (ห้ามสรุปว่า "ไม่มีหลักฐาน")', async () => {
+  const supabase = stubRows(DEAL_DOCS, { errors: { document_signature_evidence: 'boom' } });
+  await assert.rejects(() => dealSignedDocuments(supabase, 'D1'), /boom/);
+  const noQuotes = stubRows(DEAL_DOCS, { errors: { quotations: 'read fail' } });
+  await assert.rejects(() => dealSignedDocuments(noQuotes, 'D1'), /read fail/);
+});
+
+test('dealSignedBlockMessage: บอกเลขที่เอกสารที่ขวางอยู่', () => {
+  const msg = dealSignedBlockMessage({
+    quotations: [{ quoteNumber: 'QT-2' }],
+    salesOrders: [{ orderNumber: 'SO-1' }],
+  });
+  assert.ok(msg.includes('QT-2'));
+  assert.ok(msg.includes('SO-1'));
+  assert.ok(msg.includes('บังคับลบ'));
+});
+
+test('forceDeleteDealDocuments: ยิง RPC break-glass ทุกใบของดีล พร้อมผู้ทำรายการ', async () => {
+  const supabase = stubRows(DEAL_DOCS);
+  const count = await forceDeleteDealDocuments(supabase, 'D1', { id: 'U1', name: 'แอดมิน', role: 'admin' });
+  assert.equal(count, 2);
+  assert.deepEqual(supabase.rpcCalls.map((c) => c.name), ['force_delete_quotation', 'force_delete_quotation']);
+  assert.deepEqual(supabase.rpcCalls.map((c) => c.args.p_id), ['Q1', 'Q2']);
+  assert.equal(supabase.rpcCalls[0].args.p_actor_name, 'แอดมิน');
+});
+
+test('forceDeleteDealDocuments: RPC ล้ม = throw พร้อมเลขที่ใบ (ผู้เรียกต้องไม่ลบดีลต่อ)', async () => {
+  const supabase = stubRows(DEAL_DOCS, { rpcError: 'signature_evidence_delete_forbidden' });
+  await assert.rejects(() => forceDeleteDealDocuments(supabase, 'D1'), /QT-1/);
+});
+
+test('exciseFilingsOfDeal: อ่านใบยื่นภาษีของ SO ทุกใบในดีล', async () => {
+  const withFiling = { ...DEAL_DOCS, orders: [{ id: 'EX-1', status: 'filed', salesOrderId: 'S2' }] };
+  const filings = await exciseFilingsOfDeal(stubRows(withFiling), 'D1');
+  assert.deepEqual(filings.map((r) => r.id), ['EX-1']);
+  assert.deepEqual(await exciseFilingsOfDeal(stubRows(DEAL_DOCS), 'D1'), []);
 });
