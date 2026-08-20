@@ -4,6 +4,12 @@
 // อยู่บน **ทุกหน้า** → กติกาที่ห้ามลืม: อะไรพลาดที่นี่ต้องไม่ทำให้ header พัง
 // (API ตอบ `unavailable` ตอนยังไม่รัน migration → กระดิ่งขึ้น 0 เฉย ๆ)
 //
+// ⭐ **กระดิ่งแสดงเฉพาะกล่อง `bell`** (คำร้องข้ามฝ่าย · เรื่องแจ้งปัญหาระบบ ·
+// การมอบหมายงาน — มติผู้ใช้ 2026-08-20) — ทั้งรายการและเลขบนป้ายมาจากกล่องเดียวกันเสมอ ห้ามให้
+// ป้ายนับกว้างกว่าที่กล่องแสดง · ชนิดอื่นไม่ได้หายไป อ่านได้ที่ `/notifications`
+// ⚠️ ทะเบียนว่ากล่องมีชนิดไหนอยู่ที่ `lib/notifications.js` (`NOTIFICATION_BOXES`)
+// ฝั่งนี้ส่งแค่ *ชื่อกล่อง* — ห้ามส่งรายชื่อ entityType มาจากเบราว์เซอร์
+//
 // ⚠️ ไม่มี realtime/polling ถี่ ๆ โดยเจตนา — ดึงตอน mount + ตอนเปิดกล่อง + ทุก 2 นาที
 // พอสำหรับงานที่วัดกันเป็นชั่วโมง และไม่เผาโควตา Supabase ทุกแท็บที่เปิดค้างไว้
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +20,7 @@ import { fmtDateTime } from "@/lib/format";
 import styles from "./NotificationBell.module.css";
 
 const POLL_MS = 120_000;
+const BOX = "bell";
 
 export default function NotificationBell() {
   const [items, setItems] = useState([]);
@@ -25,7 +32,7 @@ export default function NotificationBell() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
+      const res = await fetch(`/api/notifications?box=${BOX}`, { cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json().catch(() => null);
       setItems(d?.items || []);
@@ -53,7 +60,8 @@ export default function NotificationBell() {
   const readAll = async () => {
     setBusy(true);
     try {
-      await patch({ action: "read_all" });
+      // ส่งชื่อกล่องไปด้วย — ปุ่มนี้ต้องล้างเท่าที่กล่องนี้แสดง ไม่ใช่ทั้งตาราง
+      await patch({ action: "read_all", box: BOX });
       await load();
     } catch { /* เงียบ */ } finally { setBusy(false); }
   };
@@ -90,7 +98,11 @@ export default function NotificationBell() {
       {open && (
         <div className={styles.panel} role="dialog" aria-label="แจ้งเตือน">
           <div className={styles.head}>
-            <strong>แจ้งเตือน</strong>
+            {/* บอกขอบเขตไว้ตรง ๆ — กล่องที่กรองอยู่แต่ไม่บอก จะถูกอ่านว่า "ไม่มีอะไรเลย" */}
+            <span className={styles.headText}>
+              <strong>แจ้งเตือน</strong>
+              <span className={styles.scope}>คำร้อง · แจ้งปัญหา · มอบหมายงาน</span>
+            </span>
             {unread > 0 && (
               <Button variant="quiet" size="sm" disabled={busy} icon={<Check size={13} />} onClick={readAll}>
                 อ่านทั้งหมด
@@ -134,7 +146,7 @@ export default function NotificationBell() {
               })}
             </ul>
           ) : (
-            <div className={styles.empty}>ยังไม่มีแจ้งเตือน</div>
+            <div className={styles.empty}>ยังไม่มีแจ้งเตือนในกล่องนี้</div>
           )}
 
           {/* ⭐ ทางออกไปหน้าเต็ม — กล่องนี้แสดงแค่ 30 แถวล่าสุด แต่ตัวเลขบนกระดิ่ง
@@ -142,7 +154,7 @@ export default function NotificationBell() {
               ⚠️ ต้องอยู่นอกเงื่อนไข `items.length` — คนที่ยังไม่อ่านค้างอยู่หลังแถว
               ที่ 30 จะเห็นกล่องว่างในโหมดกรองไม่ได้ ถ้าลิงก์นี้หายไปด้วยก็ตันสนิท */}
           <Link href="/notifications" className={styles.seeAll} onClick={() => setOpen(false)}>
-            ดูทั้งหมด
+            ดูแจ้งเตือนทั้งหมด
           </Link>
         </div>
       )}

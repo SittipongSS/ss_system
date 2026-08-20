@@ -34,6 +34,10 @@
   position: sticky; top: 0; background: var(--panel-float);
 }
 
+/* หัวกล่อง: ชื่อ + ขอบเขตที่กรองอยู่ ซ้อนกันสองบรรทัด */
+.headText { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.scope { color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-normal); line-height: var(--lh-text); }
+
 .list { margin: 0; padding: 0; list-style: none; }
 /* แถวเป็นแถบแนวนอน: เนื้อหากดไปเธรด + ปุ่ม "อ่านแล้ว" ชิดขวา (ทรงเดียวกับหน้าเต็ม) */
 .item { display: flex; align-items: flex-start; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-right: var(--space-2); }
