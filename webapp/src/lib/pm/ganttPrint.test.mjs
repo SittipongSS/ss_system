@@ -33,7 +33,9 @@ const PUBLISHED = {
 test('หัวใบพิมพ์บรรทัดควบคุมเต็มจากมาตรฐานที่เผยแพร่', () => {
   const html = buildGanttPrintHTML(PROJECT, null, PUBLISHED);
   assert.match(html, /FM-PD-05: Rev\. No\.00\. 08\/05\/2568/);
-  assert.match(html, /PROJECT TIMELINE/);
+  // หัวเอกสารเป็นภาษาเดียวทีละภาษา (มติผู้ใช้ 2026-08-21) — เอกสารไทยขึ้นชื่อไทย
+  // ชื่ออังกฤษยังอยู่ในบรรทัดควบคุม/รหัสแบบฟอร์มตามเดิม
+  assert.match(html, /เอกสารไทม์ไลน์โครงการ/);
   assert.match(html, /--doc-accent:#1f3551;/);
 });
 

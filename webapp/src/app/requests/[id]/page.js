@@ -1004,11 +1004,15 @@ export default function RequestDetailPage() {
             {req.title || requestKindLabel(req.kind)}
             {req.customerName ? (
               <>
-                {" · ให้ "}<b>{req.customerName}</b>
+                {" · ให้ "}
+                {/* ⭐ รหัส AR อยู่ **หน้าชื่อ** (มติผู้ใช้ 2026-08-21) — กติกาเดียวกับ
+                    ทุกหน้ารายละเอียด · เดิมห้อยท้ายชื่อเป็นชิป ซึ่งอ่านเป็นของแถมมากกว่า
+                    ตัวชี้ทะเบียน และไม่ตรงแนวกับหน้าอื่น
+                    ⚠️ nowrap — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */}
                 {req.refCustomer?.arCode ? (
-                  // ⚠️ nowrap — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส
                   <span className={styles.arCode}>{req.refCustomer.arCode}</span>
                 ) : null}
+                <b>{req.customerName}</b>
               </>
             ) : null}
           </span>

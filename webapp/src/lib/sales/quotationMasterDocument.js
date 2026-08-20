@@ -37,25 +37,20 @@ const labelsOf = (model) => quotationDocLabels(model.docLanguage);
 // หัวเอกสาร/กล่องคู่สัญญา/ท้ายกระดาษ/ลายน้ำ ย้ายไปอยู่ documentShell แล้ว — ที่นี่เหลือ
 // เฉพาะการ "แปลง model ของใบเสนอราคา" เป็นรูปที่เปลือกรับ
 function documentHeader(model, L) {
-  /* บล็อกบริษัท: ใบอังกฤษเอาชื่อ/ที่อยู่อังกฤษขึ้นบรรทัดบน ไทยเป็นบรรทัดรอง — บริษัท
-     เป็นนิติบุคคลไทย ชื่อไทยจึงยังต้องอยู่บนเอกสาร ไม่ใช่ตัดทิ้ง
-     ⚠️ สลับที่ตรงนี้จุดเดียว ไม่ไปสลับค่าใน model — คีย์ nameTh/nameEn ต้องยังหมายถึง
-     ภาษาที่มันบอกจริง ๆ ไม่งั้นที่อื่นที่อ่าน model จะได้ค่าที่ชื่อไม่ตรงเนื้อ */
+  /* ⭐ มติผู้ใช้ 2026-08-21: หัวเอกสารเป็น **ภาษาเดียวทีละภาษา** — ใบอังกฤษไม่มีชื่อไทย
+     เป็นบรรทัดรองอีกแล้ว (กลับมติเดิม "บริษัทเป็นนิติบุคคลไทย ชื่อไทยต้องอยู่บนเอกสาร")
+     ⚠️ ไม่สลับค่าใน model — คีย์ nameTh/nameEn ต้องยังหมายถึงภาษาที่มันบอกจริง ๆ
+     ไม่งั้นที่อื่นที่อ่าน model จะได้ค่าที่ชื่อไม่ตรงเนื้อ */
   const co = model.company || {};
-  const company = L.isEnglish
-    ? {
-      ...co,
-      nameTh: co.nameEn || co.nameTh,
-      nameEn: co.nameEn ? co.nameTh : '',
-      address: co.addressEn || co.address,
-    }
-    : co;
+  // ที่อยู่ยังสลับที่นี่ (คีย์ addressEn ไม่ได้เดินทางเข้าเปลือก) — ส่วนชื่อบริษัท/ชื่อ
+  // เอกสาร เปลือกเลือกภาษาเองจาก `language` แล้ว (มติ 2026-08-21: ภาษาเดียวทีละภาษา)
+  const company = L.isEnglish ? { ...co, address: co.addressEn || co.address } : co;
   return shellHeader({
     company,
+    language: L.isEnglish ? 'en' : 'th',
     formLine: model.formLine,
-    // ใบไทยพิมพ์ชื่อไทยตัวใหญ่ + อังกฤษบรรทัดรอง · ใบอังกฤษเหลือชื่ออังกฤษบรรทัดเดียว
-    titleTh: L.isEnglish ? (model.standard.titleEn || model.standard.titleTh) : model.standard.titleTh,
-    titleEn: L.isEnglish ? '' : model.standard.titleEn,
+    titleTh: model.standard.titleTh,
+    titleEn: model.standard.titleEn,
     labels: { taxId: L.t('companyTaxId'), phone: L.t('companyPhone'), line: L.t('companyLine') },
     rows: [
       { label: L.t('number'), value: model.document.number },

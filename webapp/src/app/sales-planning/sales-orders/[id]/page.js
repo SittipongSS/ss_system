@@ -19,6 +19,7 @@ import Toast from "@/components/ui/Toast";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { customerHeadline } from "@/lib/master/customerAr";
 import {
   DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -756,7 +757,9 @@ export default function SalesOrderDetailPage() {
         <SalesDetailOverview
           eyebrow="SALES ORDER · COMMERCIAL APPROVAL"
           title={order.orderNumber}
-          description={`${order.customerName || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
+          /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — API แนบ `customer` ที่อ่านสด
+             จากทะเบียนมาให้ ไม่ใช่ค่าที่ประทับไว้ในใบ */
+          description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
           badges={<><SalesStateBadge label={status.label} color={status.color} />{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
@@ -797,7 +800,7 @@ export default function SalesOrderDetailPage() {
             ⚠️ การ์ดลูกค้าไม่พูดสถานะ SO ซ้ำแล้ว — ป้ายบนหัวใบกับการ์ดจัดการเอกสาร
             พูดอยู่แล้ว ของเดิมพูดซ้ำสี่ที่ */}
         <ContextGrid>
-          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={naText(order.customerName)} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: naText(order.quotation?.contactName) }]} />
+          <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={naText(customerHeadline(order.customerName, order.customer?.arCode))} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: naText(order.quotation?.contactName) }]} />
           <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
           {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
               snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}

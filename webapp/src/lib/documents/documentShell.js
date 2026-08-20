@@ -93,15 +93,31 @@ const DEFAULT_HEADER_LABELS = Object.freeze({
 // rows = [{ label, value }] — แต่ละชนิดเอกสารส่งแถวของตัวเอง (ใบเสนอราคาใช้ เลขที่/
 // วันที่/ยืนราคาถึง · ใบภาษีใช้ เลขที่/วันที่เอกสาร/กำหนดส่งมอบ)
 // titleEn เว้นได้ — เอกสารภาษาเดียวมีชื่อบรรทัดเดียว ไม่ต้องมีบรรทัดรองว่างเป็น '-'
-export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows = [], labels = {} }) {
+/* ⭐ มติผู้ใช้ 2026-08-21: หัวเอกสารโชว์ **ภาษาเดียว ทีละภาษา** — ชื่อเอกสารและ
+   ชื่อบริษัทใช้ภาษาของใบนั้นอย่างเดียว ไม่มีบรรทัดรองอีกภาษา
+   (กลับกติกาเดิมที่ใบไทยพิมพ์ชื่ออังกฤษเป็นบรรทัดรอง และใบอังกฤษพิมพ์ชื่อไทยเป็น
+   บรรทัดรอง "เพราะเป็นนิติบุคคลไทย")
+   ⚠️ ไม่มีก็ตกไปอีกภาษา ไม่เว้นว่าง — เอกสารที่ยังไม่ได้กรอกชื่ออังกฤษต้องมีหัวเสมอ
+   ⚠️ `language` ตั้งต้นเป็น 'th' ⇒ เอกสารที่ไม่มีระบบเลือกภาษา (PDR · ภาษี · ไทม์ไลน์)
+   ได้ไทยล้วนเหมือนที่คนอ่านคาดหวัง */
+const headerText = (language, thai, english) => (
+  String(language || '').toLowerCase() === 'en'
+    ? (String(english ?? '').trim() || thai)
+    : (String(thai ?? '').trim() || english)
+);
+
+export function documentHeader({
+  company = {}, formLine, titleTh, titleEn, rows = [], labels = {}, language = 'th',
+}) {
   const label = { ...DEFAULT_HEADER_LABELS, ...labels };
+  const companyName = headerText(language, company.nameTh, company.nameEn);
+  const title = headerText(language, titleTh, titleEn);
   return `
     <header class="documentHeader">
       <div class="brandBlock">
         <img src="${SYSTEM_DOCUMENT_LOGO_URL}" width="160" height="54" alt="Scent and Sense" />
         <div>
-          <strong>${val(company.nameTh)}</strong>
-          <span>${val(company.nameEn)}</span>
+          <strong>${val(companyName)}</strong>
           <p>${val(company.address)}</p>
           <p>${esc(label.taxId)} ${val(company.taxId)}</p>
           <p>${esc(label.phone)} ${val(company.phone)} · ${esc(label.line)} ${val(company.line)}${company.website ? ` · ${esc(company.website)}` : ''}</p>
@@ -109,8 +125,7 @@ export function documentHeader({ company = {}, formLine, titleTh, titleEn, rows 
       </div>
       <div class="identityBlock">
         ${formLine ? `<div class="formLine">${val(formLine)}</div>` : ''}
-        <h1>${val(titleTh)}</h1>
-        ${titleEn ? `<div class="englishTitle">${esc(titleEn)}</div>` : ''}
+        <h1>${val(title)}</h1>
         <dl>
           ${rows.filter(Boolean).map((r) => `<div><dt>${esc(r.label)}</dt><dd>${val(r.value)}</dd></div>`).join(ROW_GAP)}
         </dl>
@@ -259,12 +274,10 @@ export function documentShellCss(orientation = 'portrait') {
   .brandBlock { display: flex; flex-direction: column; gap: 4.5mm; align-items: flex-start; }
   .brandBlock img { width: 40mm; height: auto; object-fit: contain; }
   .brandBlock strong { display: block; color: var(--doc-navy); font-size: 9pt; line-height: 1.65; }
-  .brandBlock span { display: block; margin-top: .5mm; color: var(--doc-muted); font-size: 6.8pt; letter-spacing: .02em; }
   .brandBlock p { margin: .6mm 0 0; color: var(--doc-muted); font-size: 6.8pt; line-height: 1.65; }
   .identityBlock { text-align: right; }
   .formLine { color: var(--doc-navy); font-size: 8.5pt; font-weight: 600; }
   .identityBlock h1 { margin: 2mm 0 0; color: var(--doc-accent); font-size: 19pt; line-height: 1.65; }
-  .englishTitle { color: var(--doc-muted); font-size: 9pt; font-weight: 600; letter-spacing: .09em; }
   .identityBlock dl { margin: 2.5mm 0 0; }
   .identityBlock dl div { display: grid; grid-template-columns: 22mm 1fr; gap: 2mm; padding-top: .8mm; }
   .identityBlock dt { color: var(--doc-muted); font-size: 8pt; }

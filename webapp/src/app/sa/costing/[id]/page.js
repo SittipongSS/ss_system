@@ -57,6 +57,8 @@ import { productSelectOptions } from "@/components/master/productOption";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
+import { cachedFetchJson } from "@/lib/apiCache";
+import { customerArIndex, customerHeadline } from "@/lib/master/customerAr";
 
 const money = (value) => (value == null
   ? "—"
@@ -136,6 +138,15 @@ export default function CostingDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* รหัส AR ของลูกค้าเจ้าของใบ — หัวหน้ารายละเอียดต้องขึ้น `AR-306 · ชื่อ`
+     (มติผู้ใช้ 2026-08-21) · อ่านสดจากทะเบียนลูกค้า ไม่ประทับลงใบ (ใบเก็บแค่ชื่อ
+     ณ วันเปิด) — ทะเบียนถูกแคชร่วมทั้งเว็บผ่าน cachedFetchJson จึงไม่ใช่คำขอเพิ่มจริง */
+  const [customers, setCustomers] = useState([]);
+  useEffect(() => {
+    cachedFetchJson("/api/customers").then((rows) => setCustomers(rows || [])).catch(() => {});
+  }, []);
+  const customerAr = useMemo(() => customerArIndex(customers), [customers]);
 
   // ผู้ใช้ปัจจุบันในรูปที่ predicate ฝั่ง lib ต้องการ (id มาจาก requestedById ไม่ได้ —
   // ใช้ role/team/department ที่ context ให้มา; server กันซ้ำอยู่แล้ว)
@@ -376,7 +387,7 @@ export default function CostingDetailPage() {
       <SalesDetailOverview
         eyebrow="SA COSTING REQUEST"
         title={request.docNo || "ใบขอราคา (ร่าง)"}
-        description={`${request.customerName || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ ${fmtDate(request.createdAt)}${request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}`}
+        description={`${customerHeadline(request.customerName, customerAr.get(request.customerId)) || "ใบสำรวจ (ไม่ผูกดีล)"} · สร้างเมื่อ ${fmtDate(request.createdAt)}${request.revisionNo > 1 ? ` · ฉบับแก้ไขที่ ${request.revisionNo}` : ""}`}
         badges={<SalesStateBadge label={COSTING_STATUS_LABELS[request.status] || request.status} color={COSTING_STATUS_TONES[request.status]} />}
         actions={canEdit ? (
           <button type="button" className="btn" onClick={openEdit} disabled={saving}>

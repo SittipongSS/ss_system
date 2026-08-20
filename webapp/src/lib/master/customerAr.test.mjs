@@ -1,7 +1,7 @@
 // รหัสลูกค้า (AR) คู่ชื่อกิจการ — IS-26080003
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { customerArIndex, customerSearchText, customerWithAr } from './customerAr.js';
+import { customerArIndex, customerHeadline, customerSearchText, customerWithAr } from './customerAr.js';
 
 const customers = [
   { id: 'CUS-1', name: 'บริษัท รวย เหนือ ฝัน จำกัด', arCode: 'AR-787' },
@@ -37,4 +37,17 @@ test('ค้นด้วยรหัส AR ต้องเจอแถวขอ�
   assert.ok(text.includes('รวย เหนือ ฝัน'));
   // ลูกค้าที่ยังไม่มีรหัส ยังต้องค้นด้วยชื่อได้ตามเดิม
   assert.equal(customerSearchText('CUS-3', 'ลูกค้าที่ยังไม่ได้ออกรหัส', index), 'ลูกค้าที่ยังไม่ได้ออกรหัส');
+});
+
+// ── หัวหน้ารายละเอียด: รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) ────────
+test('customerHeadline: รหัสนำหน้าชื่อ · ไม่มีรหัสก็ไม่มีตัวคั่นลอย', () => {
+  assert.equal(customerHeadline('บริษัท ตัวอย่าง จำกัด', 'AR-306'), 'AR-306 · บริษัท ตัวอย่าง จำกัด');
+  assert.equal(customerHeadline('บริษัท ตัวอย่าง จำกัด', ''), 'บริษัท ตัวอย่าง จำกัด');
+  assert.equal(customerHeadline('บริษัท ตัวอย่าง จำกัด', null), 'บริษัท ตัวอย่าง จำกัด');
+  // ไม่มีชื่อ (ยังไม่ผูกลูกค้า/ข้อมูลเก่า) = รหัสล้วน ไม่ใช่ ' · ' ห้อยอยู่
+  assert.equal(customerHeadline('', 'AR-306'), 'AR-306');
+  assert.equal(customerHeadline('', ''), '');
+  // ช่องว่างล้วนนับเป็นไม่มี
+  assert.equal(customerHeadline('  ', '  '), '');
+  assert.equal(customerHeadline(' ชื่อ ', ' AR-1 '), 'AR-1 · ชื่อ');
 });

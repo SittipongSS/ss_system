@@ -14,7 +14,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
-import { fgLineBrand, fgLineDescription, masterPriceState } from "@/lib/sales/quoteLines";
+import { fgLineBrand, fgLineDescription, fgLineLanguageMeta, masterPriceState } from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
@@ -159,7 +159,13 @@ export default function QuotationLineItems({
       fgCode: product.fgCode || null,
       // คำอธิบายหลักเก็บแยกจากรหัส/แบรนด์ เพื่อให้ทุกจุดจัดลำดับชั้นเหมือนกัน
       description: fgLineDescription(product),
-      metadata: { ...(lines[index]?.metadata || {}), productBrand: fgLineBrand(product) },
+      // ชื่อสองภาษาติดไปกับบรรทัดตั้งแต่ตอนเลือกสินค้า (server sync ซ้ำตอนบันทึกอยู่แล้ว
+      // — ที่นี่มีไว้ให้พรีวิวภาษาอังกฤษถูกตั้งแต่ยังไม่กดบันทึก)
+      metadata: {
+        ...(lines[index]?.metadata || {}),
+        ...fgLineLanguageMeta(product),
+        productBrand: fgLineBrand(product),
+      },
       // หน่วยขายผูกกับสินค้า (มติ 2026-07-23) — server enforce ทับด้วย master.saleUnit ตอนบันทึก
       unit: product.saleUnit || "ชิ้น",
       unitPrice: Number(product.costPrice || 0),

@@ -6,6 +6,7 @@ import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
 import {
   productBrandName,
   productDisplayName,
+  productDisplayNameFor,
   productVolumeLabel,
 } from '@/lib/master/productIdentity';
 
@@ -19,6 +20,27 @@ export function fgLineDescription(product) {
   return [productDisplayName(product), productVolumeLabel(product)]
     .filter(Boolean)
     .join(' · ') || productLabel(product);
+}
+
+/* คำอธิบายบรรทัดตามภาษาที่เลือก (มติผู้ใช้ 2026-08-20) — ใบเสนอราคาเลือกภาษาได้
+   (mig 0238) แต่ชื่อสินค้าที่ตรึงลงบรรทัดเป็นไทยเสมอ ⇒ ใบภาษาอังกฤษได้ชื่อไทย
+   ⚠️ เก็บเป็น **สองค่าในบรรทัด** ไม่ใช่ไปอ่าน master ตอนพิมพ์ — ใบที่อนุมัติแล้ว
+   ต้องพิมพ์ซ้ำได้เหมือนเดิมแม้ชื่อสินค้าใน master ถูกแก้ทีหลัง (หลักการเดียวกับ
+   ราคา/หน่วยที่ freeze ไว้แล้ว) · ค่านี้อยู่ใน metadata จึง **ไม่กระทบ fingerprint
+   การอนุมัติ** ซึ่งอ่านเฉพาะคีย์ที่ระบุไว้ (quotationApprovalFingerprint) */
+export function fgLineDescriptionFor(product, language) {
+  return [productDisplayNameFor(product, language), productVolumeLabel(product)]
+    .filter(Boolean)
+    .join(' · ') || productLabel(product);
+}
+
+/* metadata ของบรรทัด FG ที่เก็บชื่อไว้ทั้งสองภาษา — เขียนที่เดียว ใช้ทุกทางที่ sync
+   จาก master (seed จากโครงการ · บันทึกใบ · เติมสดตอนแสดงผล) */
+export function fgLineLanguageMeta(product) {
+  return {
+    descriptionTh: fgLineDescriptionFor(product, 'th'),
+    descriptionEn: fgLineDescriptionFor(product, 'en'),
+  };
 }
 
 export function fgLineBrand(product) {
@@ -57,6 +79,7 @@ export async function seedLinesFromProject(supabase, deal) {
       source: 'project_products',
       sortOrder: index,
       metadata: {
+        ...fgLineLanguageMeta(row.product),
         projectProductId: row.id,
         productBrand: fgLineBrand(row.product),
       },
@@ -165,7 +188,15 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
     const productBrand = master
       ? fgLineBrand(master)
       : (prev?.metadata?.productBrand ?? line.metadata?.productBrand ?? '');
-    const metadata = { ...(line.metadata || {}), productBrand };
+    /* ชื่อสองภาษาเดินทางไปกับบรรทัด — sync พร้อมกับคำอธิบาย/แบรนด์ทุกครั้งที่บันทึก
+       สินค้าถูกลบจาก master = คงของเดิมที่บันทึกไว้ (กติกาเดียวกับราคา/คำอธิบาย) */
+    const languageMeta = master
+      ? fgLineLanguageMeta(master)
+      : {
+        descriptionTh: prev?.metadata?.descriptionTh ?? line.metadata?.descriptionTh,
+        descriptionEn: prev?.metadata?.descriptionEn ?? line.metadata?.descriptionEn,
+      };
+    const metadata = { ...(line.metadata || {}), ...languageMeta, productBrand };
     // หน่วยผูก master เช่นกัน (มติ 2026-07-23) — freeze จากสินค้าตอนบันทึก; สินค้าถูกลบ = คงเดิม
     const unit = master ? (master.saleUnit || DEFAULT_SALE_UNIT) : (prev?.unit ?? line.unit ?? DEFAULT_SALE_UNIT);
     if (
@@ -174,6 +205,8 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       && fgCode === line.fgCode
       && unit === line.unit
       && productBrand === (line.metadata?.productBrand || '')
+      && languageMeta.descriptionTh === line.metadata?.descriptionTh
+      && languageMeta.descriptionEn === line.metadata?.descriptionEn
     ) return line;
     const net = quoteLineNet({ qty: line.qty, unitPrice, discountType: line.discountType, discountValue: line.discountValue });
     return {
@@ -212,7 +245,7 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
         description: fgLineDescription(p),
         fgCode: p.fgCode || l.fgCode,
         unit: p.saleUnit || l.unit || DEFAULT_SALE_UNIT,
-        metadata: { ...(l.metadata || {}), productBrand: fgLineBrand(p) },
+        metadata: { ...(l.metadata || {}), ...fgLineLanguageMeta(p), productBrand: fgLineBrand(p) },
       } : l;
     });
   }

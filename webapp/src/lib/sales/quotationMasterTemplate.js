@@ -935,7 +935,13 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       id: line.id,
       fgCode: line.fgCode || '',
       brand: line.metadata?.productBrand || line.brand || '',
-      description: line.description || '',
+      /* ชื่อสินค้าตามภาษาของใบ แล้วค่อยตกไปอีกภาษา (มติผู้ใช้ 2026-08-20)
+         ⚠️ ตกกลับไปที่ `line.description` เสมอเมื่อไม่มีคู่ภาษาในบรรทัด — บรรทัดที่
+         พิมพ์เอง (ไม่ผูก FG) และใบเก่าก่อนกติกานี้ไม่มี metadata ⇒ ต้องพิมพ์ของเดิม
+         ไม่ใช่ช่องว่าง */
+      description: (language === 'en'
+        ? line.metadata?.descriptionEn
+        : line.metadata?.descriptionTh) || line.description || '',
       note: line.metadata?.note || line.note || '',
       qty: Number(line.qty || 0),
       // หน่วยแปลตามภาษาใบ (IS-26080025) — ต่างจากข้อความที่คนกรอกตรงที่มันมาจากลิสต์ปิด
