@@ -39,6 +39,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { entityCodeDisplay } from "@/lib/entityCode";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
+import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
 import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import UiStatusBadge from "@/components/ui/StatusBadge";
@@ -1302,6 +1303,10 @@ export default function DealOverviewPage() {
               </div>
             </section>
             )}
+
+            {/* สัญญาของดีล (mig 0278) — การ์ดโหลดข้อมูลเอง และเป็นทางสร้างเส้นหลัก
+                เพราะสัญญาต้องรู้ดีล + ใบเสนอราคาที่อนุมัติ ซึ่งเป็นบริบทที่มีอยู่ตรงนี้แล้ว */}
+            {tab === "quotations" && <DealContractsCard dealId={id} canEdit={canEdit} />}
 
             {tab === "quotations" && SALES_FEATURES.documents && (
             <section className="glass-panel" style={{ padding: 16 }}>

@@ -14,7 +14,6 @@
 //                    เปิด = ไม่มีช่องพิมพ์รหัส มีตัวเลือกหมวด + แถบรหัสที่ประกอบให้
 //                    ปิด = ช่องพิมพ์รหัสแบบเดิม หมวดอ่านย้อนจากรหัส (mig 0230)
 import { useEffect, useState } from "react";
-import ChoiceChips from "@/components/ui/ChoiceChips";
 import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -37,6 +36,7 @@ import {
   DEFAULT_VOLUME_UNIT,
   SALE_UNITS,
   VOLUME_UNITS,
+  hasPackagingFields,
   packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
@@ -178,7 +178,11 @@ export default function ProductForm({
   // หน่วยขายที่กรอกอยู่ — ใช้พูดในคำอธิบายช่องอื่นให้เป็นภาษาของสินค้าตัวนี้จริง ๆ
   // ("ขนาดของ 1 ขวด" ชัดกว่า "ขนาดของ 1 หน่วยขาย")
   const saleUnitLabel = form.saleUnit || DEFAULT_SALE_UNIT;
-  const packaging = packagingSummary(form);
+  // กลุ่ม 03/04 ไม่มีของให้วัดขนาด ⇒ ไม่มีช่องปริมาตร/หน่วยบรรจุ/ต่อลังเลย (ดู units.js)
+  // ⚠️ ต้องอ่านจาก categoryCode ตัวเดียวกับที่ฟอร์มใช้ตัดสินใจเรื่องอื่น ไม่ใช่ form.categoryCode
+  // ดิบ ๆ (โหมดพิมพ์รหัสเองไม่ได้อัปเดตช่องนั้น — ดูคอมเมนต์ที่ประกาศ categoryCode)
+  const showPackaging = hasPackagingFields(categoryCode);
+  const packaging = showPackaging ? packagingSummary(form) : "";
 
   const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
@@ -416,26 +420,37 @@ export default function ProductForm({
               ปริมาตร | จำนวนต่อลัง · ราคาผลิต | หน่วยขาย
               ประโยคสรุปปิดท้ายประกอบจากค่าที่กรอกจริง กรอกสลับช่องเมื่อไหร่จะอ่านแล้ว
               ผิดทันที ('1 ml = 50 ขวด') */}
+          {showPackaging && (
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
-            {/* หน่วยปริมาตรมี 6 ตัว = กางให้เห็นตามกติกาคอนโทรล (≤6 ไม่ต้องซ่อนในดรอปดาวน์)
-                ⚠️ หน่วยขายด้านล่างยังเป็นดรอปดาวน์เพราะมี 8 ตัว — เกินเกณฑ์ */}
+            {/* ⚠️ ทั้งสองช่องเป็น **ดรอปดาวน์** ตามกติกาคอนโทรล v2 (docs/form-design-rules.md):
+                ChoiceChips ใช้กับชุด ≤6 เท่านั้น · รอบเพิ่มหน่วย 2026-08-20 รอบสอง ทำให้
+                หน่วยบรรจุเป็น 8 ตัว และหน่วยขายเป็น 7 ตัว = เกินเกณฑ์ทั้งคู่
+                (เคยเป็นชิปอยู่ช่วงที่ลิสต์สั้นกว่านี้ — ถ้าวันหลังตัดลงเหลือ ≤6 ค่อยกลับไปกางใหม่) */}
             <div className="mt-1.5">
-              <ChoiceChips
+              <Select
+                name="volumeUnit"
                 value={form.volumeUnit || DEFAULT_VOLUME_UNIT}
-                onChange={(v) => onForm({ volumeUnit: v })}
-                options={unitOptions(VOLUME_UNITS, form.volumeUnit)}
-                ariaLabel="หน่วยปริมาตร/น้ำหนักบรรจุ"
-              />
+                onChange={set("volumeUnit")}
+                aria-label="หน่วยปริมาตร/น้ำหนักบรรจุ"
+                fullWidth
+              >
+                {unitOptions(VOLUME_UNITS, form.volumeUnit).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
             </div>
             <span className="text-xs text-[var(--text-3)] mt-1"><strong>ขนาดของ 1 {saleUnitLabel}</strong> — ไม่ใช่หน่วยที่ใช้นับขาย</span>
           </div>
+          )}
+          {showPackaging && (
           <div className="form-group">
             <label>จำนวนต่อลัง</label>
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
             <span className="text-xs text-[var(--text-3)] mt-1">1 ลังมีกี่{saleUnitLabel} (เว้นว่างได้ถ้าไม่ได้ขายยกลัง)</span>
           </div>
+          )}
           <div className="form-group">
             <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (
@@ -454,7 +469,13 @@ export default function ProductForm({
           </div>
           <div className="form-group">
             <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
-            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
+            <Select
+              name="saleUnit"
+              value={form.saleUnit || DEFAULT_SALE_UNIT}
+              onChange={set("saleUnit")}
+              aria-label="หน่วยขาย"
+              fullWidth
+            >
               {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
@@ -463,9 +484,14 @@ export default function ProductForm({
           </div>
           {packaging && (
             <div className="form-group col-span-2">
+              {/* ⚠️ ท่อนคำใบ้ต้องขึ้นต้นด้วย "ถ้า" และอยู่คนละบรรทัดกับประโยคสรุป
+                  เดิมเขียนว่า "— อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง" ต่อท้ายบรรทัดเดียวกัน
+                  ซึ่งเป็น **ประโยคบอกเล่า** และขึ้นทุกครั้งไม่ว่ากรอกถูกหรือผิด ⇒ คนอ่านเข้าใจว่า
+                  ระบบกำลังบอกว่าตัวเองกรอกสลับช่องแล้ว ทั้งที่มันแค่แขวนคำใบ้ไว้เฉย ๆ
+                  (ผู้ใช้ส่งภาพมาถามว่าป้ายนี้จะสื่ออะไร 2026-08-20) */}
               <div className="text-xs rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2 text-[var(--text-2)]">
-                สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong>
-                <span className="text-[var(--text-3)]"> — อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง</span>
+                <div>สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong></div>
+                <div className="text-[var(--text-3)] mt-1">ถ้าประโยคนี้อ่านแล้วไม่ตรงกับของจริง แปลว่ากรอกสลับช่อง</div>
               </div>
             </div>
           )}

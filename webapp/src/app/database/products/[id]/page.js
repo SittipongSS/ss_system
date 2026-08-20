@@ -8,7 +8,7 @@ import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
-import { DEFAULT_SALE_UNIT, formatVolume } from "@/lib/master/units";
+import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/master/units";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
@@ -217,6 +217,8 @@ export default function ProductDetails() {
   // "เสียภาษีสรรพสามิต" (product_types.isExcise, mig 0131 — มติผู้ใช้ 2026-07-19);
   // หมวดอื่นไม่เข้าข่ายสรรพสามิต ไม่โชว์เลย
   const catFlags = categoryFlags(product.categoryCode || categoryOf(product.fgCode), productTypes);
+  // กลุ่ม 03/04 ไม่มีปริมาตร/หน่วยบรรจุ/ต่อลัง — ซ่อนทั้งสองแถว (ดู units.js)
+  const showPackaging = hasPackagingFields(product);
   const isExciseCat = catFlags.isExcise;
   // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
   // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
@@ -433,20 +435,26 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : NA}</span>
               </div>
+              {/* กลุ่ม 03/04 ไม่มีของให้วัดขนาด — ไม่มีช่องนี้ทั้งในฟอร์มและหน้านี้ (ดู units.js)
+                  โชว์เป็นขีดไว้เฉย ๆ ไม่ได้ เพราะขีดแปลว่า "ยังไม่กรอก" ซึ่งชวนให้คนไปหาอะไรมาใส่ */}
+              {showPackaging && (
               <div>
                 <span className="text-[var(--text-3)] block mb-1">ปริมาตร/น้ำหนักบรรจุ (Volume/Weight)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{formatVolume(product)}</span>
               </div>
+              )}
               <div>
                 {/* หน่วยขาย = หน่วยที่พิมพ์บนใบเสนอราคา/ใบสั่งขาย (คนละอย่างกับปริมาตรบรรจุ)
                     เดิมตั้งได้ในฟอร์มแต่ไม่โชว์ที่ไหนเลย ต้องเปิดฟอร์มแก้ถึงจะรู้ว่าตั้งอะไรไว้ */}
                 <span className="text-[var(--text-3)] block mb-1">หน่วยขาย (Sale Unit)</span>
                 <span className="font-semibold text-[var(--text)] text-sm">{product.saleUnit || DEFAULT_SALE_UNIT}</span>
               </div>
+              {showPackaging && (
               <div>
                 <span className="text-[var(--text-3)] block mb-1">จำนวนต่อลัง (Per Case)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${fmtNumber(product.piecesPerCase)} ${unit}/ลัง` : NA}</span>
               </div>
+              )}
               <div>
                 <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.categoryCode)}</span>

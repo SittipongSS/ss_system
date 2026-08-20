@@ -2229,6 +2229,15 @@ h1, h2, h3, h4, h5, h6 {
 .ui-badge.fc-level-50 { color: var(--amber); }
 .ui-badge.fc-level-80 { color: var(--teal); }
 .ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
+/* ชนิดสัญญา (mig 0278) — สีของ "ประเภทงาน" ไม่ใช่สถานะ: ออกแบบกลิ่นเข้าคู่ดีล SCENT
+   (amber) · จ้างผลิตเข้าคู่สายสินค้า (blue) · บริการเข้าคู่สายบริการ (teal)
+   ⇒ อ่านแล้วเชื่อมกับป้ายประเภทดีล/สายธุรกิจที่อยู่แถวเดียวกันได้ทันที
+   (ประกาศเป็นคลาสแทนการฝัง style ในแท็ก — ชั้นเก่าที่ audit:ui นับอยู่) */
+.ui-badge.contract-scent_design { color: var(--amber); }
+.ui-badge.contract-manufacturing { color: var(--blue); }
+.ui-badge.contract-service { color: var(--teal); }
+.ui-badge-w-contract { --cell-badge-w: 118px; } /* ชนิดสัญญา — "สัญญาจ้างออกแบบกลิ่น" */
+
 .ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ย้อนการอนุมัติ" */
 .ui-badge-w-lead { --cell-badge-w: 92px; }     /* สถานะลีด — "เปิดลูกค้าแล้ว" / "นัดประชุมแล้ว" 88px */
 .ui-badge-w-channel { --cell-badge-w: 88px; }  /* ช่องทางที่รับลีด — "Typeform" */

@@ -87,6 +87,7 @@
 
 | เอกสาร | ค้างอะไร | สถานะ |
 |---|---|---|
+| [sales-contract-plan.md](sales-contract-plan.md) | ระบบสัญญาในบริหารงานขาย (mig 0278 · รันแล้ว) · โค้ดครบ: ทะเบียน · ออกเลข+ตรึงเอกสาร · อัปโหลดฉบับลงนาม · แม่แบบมีแค่สัญญาออกแบบกลิ่น (จ้างผลิต/บริการรอต้นฉบับ) · รอ UAT | รอตรวจ |
 | [task-waiting-and-chain.md](task-waiting-and-chain.md) | งานติดตาม: สถานะ "รอคนอื่น" + งานต่อเนื่อง (mig 0266) · โค้ดครบ · **ยังไม่รัน migration บนฐานจริง** และยังไม่ UAT | รอตรวจ |
 | [timeline-dates-plan.md](timeline-dates-plan.md) | ครบทุกข้อแล้ว — เฟส 1–5 (PR #1198) · ของจริงบนใบพิมพ์ FM-PD-05 (PR #1200) · จุดสำคัญบน Gantt (รอ merge) · mig 0239 รันบนฐานจริงแล้ว | รอตรวจ |
 | [excise-filing-plan.md](excise-filing-plan.md) | โค้ดครบใน **draft** PR #738 — ยังไม่ merge | รอตรวจ |

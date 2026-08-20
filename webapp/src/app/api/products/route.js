@@ -8,6 +8,7 @@ import {
   CODE_MODE_AUTO, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError, fgCodeHasRunNo,
   fgCodePrefix, insertProductWithCode,
 } from '@/lib/master/masterCodes';
+import { clearedPackagingFields, hasPackagingFields } from '@/lib/master/units';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
@@ -184,6 +185,9 @@ export async function POST(request) {
   );
 
   const factoryPrice = costPriceNum;
+  // ⚠️ ค่าแรงคิดจากปริมาตร — กลุ่มที่ไม่มีช่องปริมาตร (03/04) จะได้ volume = null
+  // ซึ่ง `null >= 30` เป็น false ⇒ ตกชั้น 2 บาทเหมือนเดิมทุกใบ (เดิมกรอก '1 package'
+  // ไว้ก็ได้ 2 อยู่แล้ว) ตัวเลขจึงไม่ขยับเพราะการถอดช่องนี้
   const laborCost = volume >= 30 ? 5 : 2;
   const shippingCost = 1;
   const materialCost = factoryPrice * 0.65;
@@ -220,6 +224,9 @@ export async function POST(request) {
     // ชิ้นต่อลัง (ตัวแปลงหน่วยฝั่งสหมิตร, migration 0075) — optional, null = ยังไม่ตั้ง.
     piecesPerCase:
       body.piecesPerCase == null || body.piecesPerCase === '' ? null : Number(body.piecesPerCase),
+    // กลุ่ม 03/04 ไม่มีสามช่องนี้บนฟอร์ม — ล้างที่ server ด้วย ไม่ใช่หวังพึ่งจอ เพราะ
+    // POST ยิงตรงได้ และช่องที่ซ่อนอยู่ยังส่งค่าว่างติดมาในบอดี้ (volume: '' ลง numeric ไม่ได้)
+    ...clearedPackagingFields(categoryCode),
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
     retailPriceIncVat:
       retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
