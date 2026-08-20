@@ -69,6 +69,16 @@ test('holidays keeps its open-page access after moving under /settings', () => {
   assert.equal(lockedOut({ role: 'viewer', extraCaps: [] }, '/settings/company', 'GET', false), true);
 });
 
+test('ต้นแบบดีไซน์ระบบเปิดให้ทุก role — หน้าตั้งค่าลิงก์ให้ทุกคนอยู่แล้ว', () => {
+  /* 🐞 ของเดิม proxy ไม่ได้เปิด path นี้ ⇒ คนที่ไม่ใช่แอดมินกดจากหน้าตั้งค่าแล้วเด้ง
+     ไป /home เงียบ ๆ (ผู้ใช้รายงาน 2026-08-21) · หน้านี้ไม่มีข้อมูลจริง ไม่ยิง API เลย */
+  for (const role of ['ae', 'ac', 'rd', 'legal', 'staff', 'viewer', 'secretary', 'ae_supervisor']) {
+    assert.equal(lockedOut({ role, extraCaps: [] }, '/settings/design-preview', 'GET', false), false, `${role} /settings/design-preview`);
+  }
+  // เปิดเฉพาะหน้านี้ ไม่ใช่ /settings/* ทั้งชุด
+  assert.equal(lockedOut({ role: 'viewer', extraCaps: [] }, '/settings/cost-templates', 'GET', false), true);
+});
+
 test('คำร้องย้าย /sa/requests → /requests แล้วยังเปิดได้เท่าเดิม (P0b)', () => {
   // ⚠️ proxy เป็น allowlist แบบ default-deny — prefix ใหม่ที่ไม่ลงทะเบียนจะ 403 **เงียบ**
   // build ผ่าน เทสต์อื่นผ่าน และทดสอบด้วย admin ก็ผ่าน เพราะ admin ข้ามด่านนี้ไปเลย

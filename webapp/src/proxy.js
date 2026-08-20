@@ -109,10 +109,14 @@ export async function proxy(request) {
 
   // Phase 4 versioned settings are system configuration. Keep these pages
   // aligned with their server API gates until the permission redesign in Phase 8.
+  /* ⚠️ ใช้ `canUser` ไม่ใช่ `can(role, …)` — สิทธิ์รายคน (extraCaps) ต้องนับด้วย
+     🐞 ของเดิมดูแค่ cap ของ **บทบาท** ⇒ คนที่ถูกให้สิทธิ์ `master:manage` รายคน
+     เห็นเมนูในหน้าตั้งค่า (แถบข้างใช้ canUser) แต่กดแล้วเด้งไป /home เงียบ ๆ
+     — เมนูกับด่านต้องอ่านสิทธิ์ชุดเดียวกันเสมอ */
   if (
     user && !isApi &&
     (path.startsWith('/settings/company') || path.startsWith('/settings/workflow-templates')) &&
-    !can(user.app_metadata?.role, 'master:manage')
+    !canUser({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, 'master:manage')
   ) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
@@ -275,6 +279,18 @@ export function lockedOut(user, path, method, isApi) {
   // (ไทม์ไลน์โครงการอ้างอิง) · `/settings/chat-webhooks` ถูกถอดออกพร้อมท่อ Google Chat
   // (2026-08-12) จึงไม่ต้องเปิดทางให้อีก
   if (startsWithAny(path, ['/settings/holidays'])) return false;
+  /* 🐞 ต้นแบบดีไซน์ระบบถูกลิงก์ให้ **ทุกคน** จากหน้าตั้งค่ามาตลอด (`visible: () => true`
+     ที่ config/settingsNav.js) แต่ proxy เป็น allowlist ⇒ คนที่ไม่ใช่แอดมินกดแล้ว
+     **เด้งไป /home** เงียบ ๆ (ผู้ใช้รายงาน 2026-08-21)
+     ⚠️ หน้านี้ไม่ยิง API และไม่มีข้อมูลจริงสักตัว — มีแต่ primitive กลางกับข้อมูลสาธิต
+     ที่พิมพ์ไว้ในไฟล์ ⇒ เปิดให้ทุก role ที่ล็อกอินได้ ไม่ต้องมี cap
+     ⚠️ เปิดเฉพาะ path นี้ ไม่ใช่ /settings/* ทั้งชุด (หน้าอื่นเป็นค่าตั้งของระบบจริง) */
+  if (startsWithAny(path, ['/settings/design-preview'])) return false;
+  /* หน้าตั้งค่าที่เปิดด้วย cap — ต้องตรงกับ `visible` ของ config/settingsNav.js เป๊ะ
+     (เทสต์ settingsNavAccess.test.mjs ไล่ทุกรายการให้แล้ว) · ทั้งคู่ใช้ `canUser`
+     ⇒ สิทธิ์รายคนเปิดเมนูได้เท่าไร ก็ต้องเปิดหน้าได้เท่านั้น */
+  if (startsWithAny(path, ['/settings/cost-templates']) && canUser(user, 'master:manage')) return false;
+  if (startsWithAny(path, ['/settings/storage']) && canUser(user, 'users:manage')) return false;
   // Pages: the hub + open systems, plus the two admin READ surfaces when granted
   // per-user (audit log / user list). Grants are read-only; the write APIs stay
   // gated on the role caps (users:manage) in apiWriteAllowed.
