@@ -1,0 +1,48 @@
+/* รายการ "ป้าย → ค่า" ของหน้าสัญญา — ช่องกรอกของแม่แบบมีทั้งบรรทัดเดียว (ตัวเลข)
+   และหลายบรรทัด (ที่อยู่) จึงให้ค่าคง `white-space: pre-wrap` และตัดคำได้เสมอ */
+.factList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.factList > div {
+  display: grid;
+  grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.factList dt {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.factList dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* จอแคบ: ป้ายขึ้นบรรทัดของตัวเอง — บีบสองคอลัมน์ต่อไปแล้วค่าที่อยู่จะเหลือความกว้าง
+   ไม่กี่ตัวอักษรต่อบรรทัด */
+@media (max-width: 680px) {
+  .factList > div { grid-template-columns: minmax(0, 1fr); gap: var(--space-0-5); }
+}
+
+/* หัวการ์ด: ป้ายชนิด + ป้ายสถานะยืนคู่กัน */
+.badgeRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.backLink {
+  margin-top: var(--space-2);
+}
+
+/* ตัวทวงบนการ์ดจัดการ — จำนวนวันที่ค้างเกินกำหนด */
+.late {
+  color: var(--amber);
+}

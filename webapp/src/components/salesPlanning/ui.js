@@ -4,6 +4,7 @@ import { Trophy } from "lucide-react";
 import { DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/lib/sales/forecastLevels";
 import { fmtMoneyCompact } from "@/lib/format";
+import { contractKindLabel, contractStatusLabel, contractStatusTone } from "@/lib/sales/contracts";
 import UiKpiCard from "@/components/ui/KpiCard";
 
 export { default as MonthPicker } from "@/components/ui/MonthPicker";
@@ -158,6 +159,33 @@ export const QUOTE_STATUS_COLORS = {
   draft: "var(--text-3)", sent: "var(--blue)", accepted: "var(--green)",
   rejected: "var(--red)", cancelled: "var(--red)", revised: "var(--amber)", closed: "var(--text-3)",
 };
+/* ── สัญญา (mig 0278) ────────────────────────────────────────────────────
+   ป้ายสถานะ/ชนิดของสัญญา — ความหมายมาจากทะเบียนกลาง `lib/sales/contracts` (ชื่อโทน)
+   ส่วน *สี* อยู่ในคลาสของ globals ทั้งคู่ ไม่ฝัง style ในแท็ก */
+const CONTRACT_TONE_CLASS = {
+  muted: "",
+  warning: "warning",
+  success: "success",
+  danger: "danger",
+};
+
+export function contractStatusBadge(status, className = "") {
+  const tone = CONTRACT_TONE_CLASS[contractStatusTone(status)] || "";
+  return (
+    <span className={badgeClass([tone, className].filter(Boolean).join(" "))}>
+      {contractStatusLabel(status)}
+    </span>
+  );
+}
+
+export function contractKindBadge(kind, className = "") {
+  return (
+    <span className={badgeClass([`contract-${kind}`, className].filter(Boolean).join(" "))}>
+      {contractKindLabel(kind)}
+    </span>
+  );
+}
+
 export function quoteStatusBadge(status, className = "") {
   return (
     <span className={badgeClass(className)} style={{ color: QUOTE_STATUS_COLORS[status] || "var(--text-3)" }}>

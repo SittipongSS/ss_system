@@ -49,6 +49,14 @@ export const SCOPED_TABLES = {
     view: inSalesViewScope,
     edit: inSalesEditScope,
   },
+  // สัญญา (mig 0278) — scope ผ่านดีลแม่เหมือนใบเสนอราคา/ใบสั่งขาย
+  sales_contracts: {
+    label: 'สัญญา',
+    select: DEAL_JOIN,
+    scopeOf: (row) => row?.deal,
+    view: inSalesViewScope,
+    edit: inSalesEditScope,
+  },
   sales_leads: {
     label: 'ลีด',
     select: '*',

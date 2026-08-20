@@ -6,6 +6,7 @@ import {
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseFilingsOfDeal,
   dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
   scentForcePreview, formulaForcePreview, requestForcePreview, materialForcePreview,
+  contractBlockMessage,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -400,4 +401,32 @@ test('exciseFilingsOfDeal: อ่านใบยื่นภาษีของ S
   const filings = await exciseFilingsOfDeal(stubRows(withFiling), 'D1');
   assert.deepEqual(filings.map((r) => r.id), ['EX-1']);
   assert.deepEqual(await exciseFilingsOfDeal(stubRows(DEAL_DOCS), 'D1'), []);
+});
+
+/* ── สัญญาขวางการลบ (mig 0278) ────────────────────────────────────────────
+   FK ของสัญญาเป็น RESTRICT ทั้ง dealId และ quotationId ⇒ ถ้าพรีวิวไม่บอก
+   การลบจริงจะตายกลางทางด้วย error ดิบจาก Postgres (บทเรียนเดียวกับใบยื่นภาษี) */
+test('dealForcePreview: มีสัญญาผูกอยู่ = บล็อก พร้อมบอกเลขที่ให้ไปจัดการก่อน', async () => {
+  const supabase = stubCount({
+    'sales_contracts:dealId:rows': [{ id: 'CTR-1', contractNo: 'CT-26080001', status: 'awaiting_signature' }],
+  });
+  const { blocked, notes, cascade } = await dealForcePreview(supabase, { id: 'D1', stage: 'won' });
+  assert.equal(blocked, true);
+  assert.equal(cascade.length, 0);
+  assert.match(notes[0], /CT-26080001/);
+});
+
+test('quotationForcePreview: สัญญาที่อ้างใบนี้ก็บล็อกเหมือนกัน', async () => {
+  const supabase = stubCount({
+    'sales_contracts:quotationId:rows': [{ id: 'CTR-2', contractNo: null, status: 'draft' }],
+  });
+  const { blocked, notes } = await quotationForcePreview(supabase, { id: 'Q1', status: 'sent' });
+  assert.equal(blocked, true);
+  assert.match(notes[0], /ฉบับร่าง/);
+});
+
+test('contractBlockMessage: ร่างที่ยังไม่มีเลขที่ต้องอ่านออกว่าเป็นใบไหน', () => {
+  const message = contractBlockMessage([{ id: 'CTR-9', contractNo: null }], 'ดีล');
+  assert.match(message, /CTR-9/);
+  assert.match(message, /ลบ.*ดีล/);
 });
