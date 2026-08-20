@@ -57,9 +57,15 @@ test('คำที่เลิกใช้แล้วยังแปลเป�
   assert.equal(saleUnitLabel('Kg', 'en'), 'Kg');
 });
 
-test('ลิสต์หน่วยบรรจุตามที่ตกลง — ตัด L/pcs · เพิ่มคำไทย 4 ตัว', () => {
-  assert.deepEqual([...VOLUME_UNITS], ['ml', 'kg', 'g', 'package', 'ขวด', 'ถัง', 'แกลลอน', 'แผ่น']);
+test('ลิสต์หน่วยบรรจุตามที่ตกลง — ตัด L/pcs · เพิ่มคำไทย 3 ตัว', () => {
+  assert.deepEqual([...VOLUME_UNITS], ['ml', 'kg', 'g', 'package', 'ขวด', 'แกลลอน', 'แผ่น']);
   for (const gone of ['L', 'pcs']) assert.ok(!VOLUME_UNITS.includes(gone), gone);
+});
+
+// 'ถัง' กับ 'แกลลอน' คือของเดียวกันในงานจริง — มีสองคำแปลว่าคนกรอกต้องเดาว่าจะใช้ตัวไหน
+test("ไม่มี 'ถัง' ในลิสต์ — ซ้ำกับ 'แกลลอน'", () => {
+  assert.ok(!VOLUME_UNITS.includes('ถัง'));
+  assert.equal(VOLUME_UNIT_EN['ถัง'], undefined);
 });
 
 // หน่วยบรรจุเพิ่งมีคำไทยเข้ามา ⇒ ต้องมีคู่อังกฤษเหมือนฝั่งหน่วยขาย ไม่งั้นเอกสารอังกฤษ
@@ -73,7 +79,6 @@ test('volumeUnitLabel: แปลเฉพาะใบอังกฤษ · ใ�
   assert.equal(volumeUnitLabel('ขวด', 'en'), 'Bottle');
   assert.equal(volumeUnitLabel('แผ่น', 'en'), 'Sheet');
   assert.equal(volumeUnitLabel('แกลลอน', 'en'), 'Gallon');
-  assert.equal(volumeUnitLabel('ถัง', 'en'), 'Drum');
   assert.equal(volumeUnitLabel('ขวด', 'th'), 'ขวด');
   assert.equal(volumeUnitLabel('ขวด'), 'ขวด');
   // สัญลักษณ์สากลแปลเป็นตัวเอง — ผู้เรียกจะได้ไม่ต้องแยกเคสว่าตัวไหนต้องแปล
