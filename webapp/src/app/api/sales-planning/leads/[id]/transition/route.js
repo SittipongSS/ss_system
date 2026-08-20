@@ -36,6 +36,9 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
 //   screen     = supervisor/admin (คัดกรอง เลือกทีม — SLA 1 วันทำการ)
 //   assign     = senior_ae/ac ของทีมนั้น + supervisor/admin (กระจายให้ AE)
+//   reassign   = เดียวกับ assign แต่ทำกับใบที่มอบไปแล้ว (assigned/contacted/meeting)
+//     มติผู้ใช้ 2026-08-20: AE ลาออก/ลาป่วย/สลับงานกันในทีม ต้องย้ายเจ้าของได้โดย
+//     **ไม่ถอยสถานะ** และไม่ต้องตีกลับ (ตีกลับล้างทีม/เวลาติดต่อ/นัดทิ้งทั้งรอบ)
 //   contact    = ผู้รับมอบ (AE) / senior ทีม / admin (SLA 1 วันทำการ) — ต้องระบุหมายเหตุการติดต่อ (เก็บใน event.reason)
 //     มติผู้ใช้ 2026-07-21: supervisor จบงานที่คัดกรอง ไม่ทำขั้นทำงานแทนทีม
 //   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
@@ -74,7 +77,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     leadId: lead.id,
     kind: action,
     fromStatus: lead.status,
-    toStatus: TRANSITION_TO_STATUS[action],
+    // reassign = เปลี่ยนมือ ไม่เปลี่ยนขั้น ⇒ ปลายทางเป็น null ในแมป ต้องคงสถานะเดิม
+    toStatus: TRANSITION_TO_STATUS[action] ?? lead.status,
     createdBy: user.id || null,
     createdByName: user.name || null,
   };
@@ -108,8 +112,41 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.assigneeId = assignee.assigneeId;
     patch.assigneeName = assignee.assigneeName;
     patch.assignedAt = now; // จุดเริ่ม SLA ติดต่อกลับ — มอบใหม่นับใหม่ (เจ้าของใหม่)
+    // สองคอลัมน์ ไม่ใช่ตัวเดียวรับสองหน้าที่ (mig 0273 — เหตุผลเดียวกับ screen ข้างบน):
+    //   firstAssignedAt = มอบครั้งแรกของรอบ → *จุดจบ* ของด่านกระจาย (ไม่ขยับอีกเลยจนกว่า
+    //     จะตีกลับ ⇒ เปลี่ยนผู้รับผิดชอบทีหลังไม่ลบผลงานของคนที่มอบทันเวลา)
+    //   assignedAt      = เจ้าของปัจจุบันรับเมื่อไร → *จุดเริ่ม* ของด่านติดต่อกลับ
+    patch.firstAssignedAt = lead.firstAssignedAt || now;
     event.assigneeId = assignee.assigneeId;
     event.assigneeName = assignee.assigneeName;
+  } else if (action === 'reassign') {
+    // ด่านเดียวกับ assign เป๊ะ (superuser หรือทีมเจ้าของงาน) — ใบนี้มีทีมแล้วเสมอ
+    if (!(superuser || inTeam)) return forbidden('เปลี่ยนผู้รับผิดชอบได้เฉพาะ Senior AE ของทีม หรือ Supervisor/แอดมิน');
+    let assignee;
+    try {
+      assignee = await validateLeadAssignee(supabase, body.assigneeId, lead);
+    } catch (assigneeError) {
+      return fail(assigneeError.message, 500);
+    }
+    if (!assignee.ok) return badRequest(assignee.error);
+    // กันกดพลาดเลือกคนเดิม — ผ่านไปแล้วจะได้ event/แจ้งเตือน "เปลี่ยนผู้รับผิดชอบ"
+    // ที่ประวัติอ่านแล้วงง (จาก A ไป A) และ SLA ติดต่อกลับถูกรีเซ็ตฟรี ๆ ให้คนเดิม
+    if (assignee.assigneeId === lead.assigneeId) {
+      return badRequest('ผู้รับผิดชอบคนนี้ถือลีดใบนี้อยู่แล้ว — เลือกคนอื่นถ้าต้องการเปลี่ยนมือ');
+    }
+    patch.assigneeId = assignee.assigneeId;
+    patch.assigneeName = assignee.assigneeName;
+    /* ⚠️ รีเซ็ตนาฬิกาติดต่อกลับให้เจ้าของใหม่ **เฉพาะใบที่ยังไม่ได้ติดต่อลูกค้า** —
+       ใบที่ติดต่อไปแล้ว `firstContactAt` ค้างอยู่ในอดีต ถ้าดัน `assignedAt` มาเป็น
+       ตอนนี้จะได้คู่เวลาสลับลำดับ (assignedAt > firstContactAt) ⇒ countBusinessDays
+       ติดลบ → slaHit คืน null → ใบที่ทำทันจริง ๆ ถูกนับเข้า checked แต่ไม่ได้ hit
+       = โดนหักคะแนนเพราะมีคนย้ายเจ้าของ (บั๊กพี่น้องกับที่ bounce ล้าง firstContactAt) */
+    if (!lead.firstContactAt) patch.assignedAt = now;
+    event.assigneeId = assignee.assigneeId;
+    event.assigneeName = assignee.assigneeName;
+    // ประวัติต้องอ่านออกว่า "ย้ายจากใครไปใคร" — ชื่อเดิมอยู่ในแถวก่อนแก้เท่านั้น
+    event.reason = body.reason?.trim()
+      || `เปลี่ยนผู้รับผิดชอบจาก ${lead.assigneeName || 'ไม่ระบุ'} เป็น ${assignee.assigneeName}`;
   } else if (action === 'contact') {
     if (!workScope) return forbidden('ติดต่อกลับได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
     if (!body.reason?.trim()) return badRequest('ต้องระบุหมายเหตุการติดต่อ');
@@ -154,10 +191,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     //     ทั้งรอบ · ครั้งแรกยังอยู่ที่ firstScreenedAt ไม่ได้หายไปไหน
     patch.screenedAt = null;
     patch.assignedAt = null;
+    patch.firstAssignedAt = null; // ครั้งแรก "ของรอบ" ไม่ใช่ตลอดกาล — รอบใหม่นับใหม่ (mig 0273)
     event.reason = body.reason.trim();
   }
 
-  patch.status = TRANSITION_TO_STATUS[action];
+  patch.status = TRANSITION_TO_STATUS[action] ?? lead.status;
 
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
@@ -174,13 +212,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ตีกลับ (→ ผู้คัดกรอง + คนที่เพิ่งถูกดึงลีดออกจากมือ)
      ⚠️ `bounce` ล้าง assigneeId ไปแล้วใน patch — ผู้รับเดิมต้องอ่านจาก `lead` (ก่อนแก้)
      โหลดทะเบียนผู้ใช้เฉพาะจังหวะที่ต้องใช้ ไม่ใช่ทุก transition (contact/meeting ไม่ส่งมอบใคร) */
-  if (['screen', 'assign', 'bounce'].includes(action)) {
+  if (['screen', 'assign', 'reassign', 'bounce'].includes(action)) {
     notifyLeadHandoff(supabase, {
       action,
       lead: data,
       directory: await loadUserDirectory(supabase).catch(() => new Map()),
       actor: user,
-      previousAssigneeId: lead.assigneeId,
+      previousAssigneeId: lead.assigneeId, // reassign/bounce = คนที่เพิ่งถูกดึงลีดออกจากมือ
       reason: body.reason?.trim() || null,
     });
   }

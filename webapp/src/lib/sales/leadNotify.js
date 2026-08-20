@@ -39,7 +39,7 @@ const teamOf = (lead) => TEAM_LABELS[lead?.team] || lead?.team || '-';
 /**
  * ใครต้องรู้ + ข้อความว่าอะไร สำหรับจุดส่งมอบหนึ่งจุด — ฟังก์ชันบริสุทธิ์ เทสต์ได้
  *
- * @param action    create | screen | assign | bounce
+ * @param action    create | screen | assign | reassign | bounce
  * @param lead      แถวลีด **หลัง** ทำรายการแล้ว (ยกเว้น bounce ดู previousAssigneeId)
  * @param directory Map ของผู้ใช้จาก loadUserDirectory
  * @param actorId   คนที่กดปุ่ม — ไม่ต้องแจ้งตัวเอง
@@ -68,6 +68,17 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
     userIds = [lead.assigneeId];
     title = `คุณได้รับลีดใหม่ · ${who}`;
     body = `รับผ่าน ${channelOf(lead)} — ติดต่อกลับภายใน 1 วันทำการ`;
+  } else if (action === 'reassign') {
+    /* เปลี่ยนผู้รับผิดชอบ = ของเข้ามือคนใหม่ **และ** ของหลุดจากมือคนเก่า — ทั้งคู่ต้องรู้
+       (มติผู้ใช้ 2026-08-20) · ข้อความเดียวที่บอกทั้งสองฝั่งว่าย้ายจากใครไปใคร แทน
+       สองข้อความคนละใจความ — คนเก่าที่เห็นแต่ "คุณได้รับลีด" จะงงกว่าเดิม
+       ⚠️ ผู้รับเดิมมาจาก `previousAssigneeId` เพราะ `lead` เป็นแถวหลังแก้ไปแล้ว */
+    if (!lead.assigneeId) return null;
+    const previousName = directory?.get?.(String(previousAssigneeId || ''))?.name || 'ผู้รับเดิม';
+    userIds = [lead.assigneeId, previousAssigneeId];
+    title = `ลีดเปลี่ยนผู้รับผิดชอบ · ${who}`;
+    body = `ย้ายจาก ${previousName} เป็น ${lead.assigneeName || 'ผู้รับใหม่'}`
+      + (reason ? ` — ${reason}` : '');
   } else if (action === 'bounce') {
     /* ตีกลับ = ของกลับเข้าคิวกลาง **และ** ของถูกดึงออกจากมือคนเดิม — สองฝั่งต้องรู้คนละเรื่อง
        ผู้รับเดิมต้องมาจาก `previousAssigneeId` เพราะ handler ล้าง assigneeId ไปแล้ว */

@@ -176,6 +176,33 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         ],
       },
       {
+        /* ⭐ เปลี่ยนมือ ไม่เปลี่ยนขั้น (มติผู้ใช้ 2026-08-20) — AE ลาออก/ลาป่วย/สลับงาน
+           ต้องย้ายเจ้าของได้โดยไม่ต้อง "ตีกลับ" (ซึ่งล้างทีม/เวลาติดต่อ/นัดทั้งรอบ)
+           ⚠️ `to: null` โดยเจตนา: ปลายทางของ reassign คือสถานะเดิมของใบนั้น
+           (`TRANSITION_TO_STATUS.reassign === null` · handler เขียน `?? lead.status`)
+           ⚠️ `slot` ไม่ใช่ primary — ก้าวถัดไปตัวจริงของสามสถานะนี้คือ ติดต่อ/นัด/เปิดดีล
+           การย้ายเจ้าของเป็นงานกำกับดูแลที่นาน ๆ ทำที จึงอยู่ในเมนู "…" */
+        id: "reassign",
+        label: "เปลี่ยนผู้รับผิดชอบ",
+        rowLabel: "เปลี่ยนผู้รับผิดชอบ",
+        rowTone: "violet",
+        kind: "submit",
+        from: allowedFrom("reassign"),
+        to: null,
+        // ด่านเดียวกับ assign เป๊ะ (ดู handler) — คนที่กระจายลีดได้คือคนที่ย้ายเจ้าของได้
+        visible: (lead, user) => isSuperuser(user?.role) || inTeamOf(user, lead),
+        fields: [
+          {
+            name: "assigneeId",
+            label: "ผู้รับผิดชอบคนใหม่",
+            type: "person",
+            required: true,
+            users: (lead) => assignableFor(users, viewerTeam, lead?.team),
+            by: "id",
+          },
+        ],
+      },
+      {
         id: "contact",
         label: "บันทึกการติดต่อ",
         rowLabel: "ติดต่อแล้ว",
@@ -257,7 +284,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
 }
 
 /* transition ที่ต้องส่งไป `POST /transition` (ที่เหลือหน้าจัดการเอง) */
-export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "contact", "meeting", "bounce", "disqualify"];
+export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "reassign", "contact", "meeting", "bounce", "disqualify"];
 
 /* ── "เปิดดีลจากลีดนี้" = action เดี่ยว ไม่ใช่ขั้นในเส้นทาง ────────────────────
    มติผู้ใช้ 2026-08-04: **เปิดดีลได้ตั้งแต่ติดต่อแล้ว หรือจะรอนัดประชุมก่อนก็ได้**

@@ -250,9 +250,9 @@ export function canDeleteLead(user, lead) {
 export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
-  assigned: ['contact', 'bounce', 'disqualify'],
-  contacted: ['meeting', 'create_deal', 'bounce', 'disqualify'],
-  meeting: ['meeting', 'create_deal', 'bounce', 'disqualify'],
+  assigned: ['contact', 'reassign', 'bounce', 'disqualify'],
+  contacted: ['meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
+  meeting: ['meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
   disqualified: [],
 };
@@ -264,6 +264,11 @@ export const TRANSITION_TO_STATUS = {
   create_deal: 'qualified',
   disqualify: 'disqualified',
   bounce: 'new', // ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ)
+  /* ⭐ `reassign` = **เปลี่ยนมือ ไม่เปลี่ยนขั้น** (มติผู้ใช้ 2026-08-20) — ค่า null
+     โดยเจตนา: ผู้เรียกต้องคงสถานะเดิมไว้ (`TRANSITION_TO_STATUS[action] ?? lead.status`)
+     ⚠️ แมปเป็น 'assigned' เมื่อไร = ลีดที่ติดต่อ/นัดไปแล้วถอยกลับไป "รอติดต่อกลับ"
+     ทุกครั้งที่ย้ายเจ้าของ ⇒ งานที่ทำไปแล้วหายจากผัง Funnel และปุ่มก้าวถัดไปเพี้ยน */
+  reassign: null,
 };
 
 // ลีดต้นทางของดีล — ตัวตัดสินช่องเดียวที่ POST /deals ต้องใช้ทั้งตอน "ตรวจสิทธิ์" และ
@@ -365,12 +370,14 @@ export function slaHit(fromIso, toIso, holidays, limitDays = 1) {
  *
  *  ทั้งสามด่านของเส้นทางลีดวัดด้วยกติกาเดียวกันเป๊ะ ต่างกันแค่คู่ timestamp:
  *    คัดกรอง   createdAt  → firstScreenedAt (หัวหน้าฝ่ายขายเลือกทีม)
- *    กระจาย    screenedAt → assignedAt      (Senior AE เลือก AE)
+ *    กระจาย    screenedAt → firstAssignedAt (Senior AE เลือก AE ครั้งแรกของรอบ)
  *    ติดต่อกลับ assignedAt → firstContactAt  (AE ติดต่อลูกค้าครั้งแรก)
  *
- *  ⚠️ ด่านแรกใช้ `firstScreenedAt` (ครั้งแรกตลอดกาล) อีกสองด่านใช้คอลัมน์ **ของรอบ
- *  ปัจจุบัน** ที่ตีกลับล้างทิ้ง (mig 0234) — rework ไม่ลบผลงานคัดกรองรอบแรก แต่คนที่
- *  รับใบต่อในรอบใหม่ต้องเริ่มจับเวลาตอนที่ใบมาถึงมือเขา ไม่ใช่รอบที่แล้ว
+ *  ⚠️ สองด่านบนใช้คอลัมน์ "ครั้งแรก" อีกด่านใช้คอลัมน์ของ **เจ้าของปัจจุบัน** —
+ *  ทั้งหมดล้างตอนตีกลับ (mig 0234/0273) โดยเจตนาคนละอย่าง:
+ *  · rework ไม่ลบผลงานคัดกรอง/กระจายรอบแรก (คนมอบทันเวลาไปแล้ว ห้ามถูกลบผลงาน
+ *    เพราะมีการเปลี่ยนผู้รับผิดชอบทีหลัง — mig 0273)
+ *  · แต่คนที่รับใบต่อต้องเริ่มจับเวลาตอนที่ใบมาถึงมือเขา ไม่ใช่ของเจ้าของคนก่อน
  *
  *  ⚠️ `checked` นับเฉพาะใบที่มี **ทั้งสองเวลา** — ใบที่ยังไม่ถึงด่านถัดไปเป็น "ค้าง"
  *  ไม่ใช่ "พลาด" (ของค้างนับแยกจาก countLeadsByStatus ซึ่งดูสถานะ ณ ตอนนี้)

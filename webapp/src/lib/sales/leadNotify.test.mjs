@@ -77,14 +77,14 @@ test('ไม่แจ้งตัวเอง · ไม่มีผู้รั�
   assert.equal(notice({ action: 'create', lead: null, actorId: 'x' }), null);
 });
 
-test('route ต่อสายครบทั้งรับลีดและ 3 จังหวะของ transition', () => {
+test('route ต่อสายครบทั้งรับลีดและ 4 จังหวะของ transition', () => {
   const create = readFileSync(new URL('../../app/api/sales-planning/leads/route.js', import.meta.url), 'utf8');
   assert.match(create, /notifyLeadHandoff\(supabase, \{\s*action: 'create'/);
 
   const transition = readFileSync(
     new URL("../../app/api/sales-planning/leads/[id]/transition/route.js", import.meta.url), 'utf8',
   );
-  assert.match(transition, /\['screen', 'assign', 'bounce'\]\.includes\(action\)/);
+  assert.match(transition, /\['screen', 'assign', 'reassign', 'bounce'\]\.includes\(action\)/);
   assert.match(transition, /previousAssigneeId: lead\.assigneeId/,
     'ตีกลับล้าง assigneeId ไปแล้ว ต้องอ่านจากแถวก่อนแก้');
   // 🪦 เดิมต้องอยู่คู่กับ Chat webhook (คนละหน้าที่ตาม mig 0185) · ท่อ Chat ถูกถอด
