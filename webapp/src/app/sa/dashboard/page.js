@@ -14,6 +14,7 @@ import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import { TAB_PERIOD, resolveDashboardTab } from "@/lib/salesPlanning/dashboardTabs";
+import { cachedFetchJson } from "@/lib/apiCache";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
@@ -47,6 +48,14 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const role = useRole();
   const canSetTarget = useCan("salesplan:target");
+  /* id ของตัวเอง — ใช้ทำลิงก์ "ดูผลงานเต็ม" แบบเจาะตัวเอง · `cachedFetchJson` แชร์ผลกับ
+     หน้าอื่นที่ถามเส้นเดียวกันอยู่แล้ว จึงไม่ได้เพิ่มคำขอจริงต่อการเปิดหนึ่งครั้ง */
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    cachedFetchJson("/api/users/me")
+      .then((me) => setMeId(me?.id || null))
+      .catch(() => { /* ลิงก์ตกไปเป็นแบบไม่เจาะคน — ไม่ต้องล้มทั้งหน้าเพราะเรื่องนี้ */ });
+  }, []);
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   /* ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29 · ท่าเดียวกับหน้าลีด/ดีล)
@@ -132,8 +141,16 @@ function DashboardContent() {
                   ตั้งเป้า
                 </Button>
               )}
+              {/* 🪤 **ต้องส่ง `scope=person` ไปด้วย** — `PerformanceTab` ตั้งต้นที่ `company`
+                  ⇒ กดจากแท็บ "ของฉัน" แล้วไปโผล่ยอดทั้งบริษัท ซึ่งไม่ใช่สิ่งที่ปุ่มสัญญา
+                  (ยังไม่รู้ id = ลิงก์ธรรมดาไปแท็บนั้น ดีกว่าปุ่มที่กดแล้วเงียบ) */}
               {allowedTabs.some((tab) => tab.key === "performance") && (
-                <Button size="sm" icon={<ArrowUpRight size={13} />} onClick={() => setTab("performance")}>
+                <Button
+                  as={Link} size="sm" icon={<ArrowUpRight size={13} />}
+                  href={meId
+                    ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(meId)}`
+                    : "/sa/dashboard?tab=performance"}
+                >
                   ดูผลงานเต็ม
                 </Button>
               )}

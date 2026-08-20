@@ -44,6 +44,9 @@ const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "ม�
 /* ไอคอนรูปแบบนัด — lucide เท่านั้น (ระบบไม่มีอิโมจิบนหน้าจอ) · คำเต็มยังอยู่ข้าง ๆ เสมอ
    เพราะไอคอนสามตัวนี้แยกกันด้วยสายตาอย่างเดียวไม่ได้ */
 const MODE_ICON = { onsite_customer_visit: Car, onsite_at_office: Building2, online: Monitor };
+/* จำนวนชิปสูงสุดต่อกองในช่องวันของมุมมองสัปดาห์ — เกินกว่านี้ยุบเป็น "+N รายการ"
+   (ช่องกว้าง ~180px · เกินสี่ชิปแล้วแถวสูงจนตารางเสียรูป) */
+const WEEK_CELL_LIMIT = 2;
 const KIND_ICON = { task: ListTodo, request: MessageCircleQuestion };
 const KIND_LABEL = { task: "งาน", request: "คำร้อง" };
 
@@ -78,8 +81,12 @@ export default function ScheduleSection() {
   const changeView = useCallback((next) => {
     const safe = normalizeScheduleView(next);
     setView(safe);
+    /* ⚠️ มุมมองวันกางได้วันเดียว ⇒ ต้องกางวันที่ **เลือกอยู่** ไม่ใช่วันที่ anchor ค้างไว้
+       ไม่งั้นเลือกพุธ 19 ในมุมมองสัปดาห์ แล้วกด "วัน" จะเด้งกลับมาวันนี้เงียบ ๆ
+       (ขัดกับกฎของหน้านี้เองที่ว่าการ์ดซ้ายผูกกับวันที่เลือก) */
+    if (safe === "day") setAnchor(selected);
     try { window.localStorage.setItem(SCHEDULE_VIEW_STORAGE_KEY, safe); } catch { /* เหมือนขาอ่าน */ }
-  }, []);
+  }, [selected]);
 
   const range = useMemo(() => scheduleRange(view, anchor), [view, anchor]);
 
@@ -141,12 +148,16 @@ export default function ScheduleSection() {
      เป็น Z ⇒ เทียบสตริงแล้วนัดที่ผ่านไปแล้วโผล่เป็น "นัดถัดไป" ได้
      ⚠️ อ่านนาฬิกาใน effect ไม่ใช่ตอนเรนเดอร์ — เวลาเป็นค่าที่เปลี่ยนทุกครั้งที่เรียก
      (SSR กับ CSR จึงได้คนละค่า) */
+  /* 🪤 **"นัดถัดไป" พูดจากก้อนที่โหลดมาเท่านั้น** — ก้อนนั้นคือช่วงที่กางอยู่ ⇒ ถ้าเลื่อน
+     ไปดูเดือนหน้า นัดแรกของเดือนนั้นจะกลายเป็น "นัดถัดไป" ทั้งที่มีนัดใกล้กว่าในสัปดาห์นี้
+     ⇒ บอกได้เฉพาะตอนช่วงที่กาง **คลุมวันนี้** เท่านั้น นอกนั้นเงียบดีกว่าโกหก */
+  const rangeCoversToday = !!range && range.from <= today && today <= range.to;
   const nextMeeting = useMemo(() => {
-    if (nowMs == null) return null;
+    if (nowMs == null || !rangeCoversToday) return null;
     return (data?.meetings || [])
       .filter((meeting) => new Date(meeting.at).getTime() >= nowMs)
       .sort((a, b) => new Date(a.at) - new Date(b.at))[0] || null;
-  }, [data, nowMs]);
+  }, [data, nowMs, rangeCoversToday]);
 
   const go = (delta) => setAnchor((current) => shiftAnchor(view, current, delta));
   const goToday = () => { setAnchor(today); setSelected(today); };
@@ -199,7 +210,9 @@ export default function ScheduleSection() {
             />
           </div>
 
-          {loading && !data ? (
+          {/* ⚠️ ขึ้นโครงทุกครั้งที่โหลด ไม่ใช่เฉพาะครั้งแรก — ป้ายช่วงเปลี่ยนทันทีที่กดลูกศร
+              แต่ข้อมูลยังไม่มา ⇒ ช่องว่างเปล่าใต้ป้าย "23–29 ส.ค." อ่านเป็น "สัปดาห์นั้นว่าง" */}
+          {loading ? (
             <div className={styles.loading}><SkeletonRows rows={4} /></div>
           ) : view === "day" ? (
             <DayRail day={byDay.get(anchor) || { meetings: [], due: [] }} iso={anchor} today={today} />
@@ -297,8 +310,10 @@ function DueCard({ iso, today, loading, items, overdue }) {
           <CalendarCheck size={15} aria-hidden="true" />
           <b>ถึงกำหนด · {cardDate(iso, today)}</b>
         </span>
+        {/* ⚠️ นับ **ของที่โชว์จริงทั้งการ์ด** — เดิมนับแต่ของวันนั้น ⇒ วันที่ไม่มีของครบ
+            กำหนดแต่มีของค้าง หัวการ์ดขึ้นขีด (= ไม่มีข้อมูล) ทั้งที่ข้างล่างมีสองแถว */}
         <em className={styles.cardCount}>
-          {items.length ? `${items.length} รายการ` : NA}
+          {total ? `${total} รายการ` : NA}
           {overdue.length ? ` · เลยกำหนด ${overdue.length}` : ""}
         </em>
       </header>
@@ -428,6 +443,8 @@ function WeekStrip({ range, byDay, today, selected, holidayOf, onPick }) {
     <div className={styles.week}>
       {days.map((iso) => {
         const day = byDay.get(iso) || { meetings: [], due: [], clashes: 0 };
+        const hidden = Math.max(0, day.meetings.length - WEEK_CELL_LIMIT)
+          + Math.max(0, day.due.length - WEEK_CELL_LIMIT);
         const holiday = holidayOf(iso);
         const classes = [
           styles.weekCol,
@@ -446,14 +463,14 @@ function WeekStrip({ range, byDay, today, selected, holidayOf, onPick }) {
               <span className={styles.weekDate}>{Number(iso.slice(8, 10))}</span>
             </span>
             {holiday && <span className={styles.weekHoliday}>{holiday}</span>}
-            {day.meetings.slice(0, 2).map((meeting) => (
+            {day.meetings.slice(0, WEEK_CELL_LIMIT).map((meeting) => (
               <span key={meeting.id} className={`${styles.pill} ${styles.pillMeeting}`}>
                 <span className={`${styles.dot} ${styles.dotMeeting}`} aria-hidden="true" />
                 <b>{localHhmm(meeting.at)}</b>
                 <span>{meeting.company || meeting.contactName}</span>
               </span>
             ))}
-            {day.due.slice(0, 2).map((item) => (
+            {day.due.slice(0, WEEK_CELL_LIMIT).map((item) => (
               <span
                 key={item.key}
                 className={`${styles.pill} ${item.kind === "task" ? styles.pillTask : styles.pillRequest} ${item.overdue ? styles.pillOverdue : ""}`.trim()}
@@ -463,10 +480,11 @@ function WeekStrip({ range, byDay, today, selected, holidayOf, onPick }) {
               </span>
             ))}
             {/* ⚠️ ตัดที่ 2+2 แล้วต้องบอกว่าเหลืออีกเท่าไร — ช่องที่โชว์ไม่ครบโดยไม่บอก
-                อ่านเป็น "วันนี้มีแค่นี้" ซึ่งเป็นคนละเรื่องกับความจริง */}
-            {day.meetings.length + day.due.length > 4 && (
-              <span className={styles.weekMore}>+{day.meetings.length + day.due.length - 4} รายการ</span>
-            )}
+                อ่านเป็น "วันนี้มีแค่นี้" ซึ่งเป็นคนละเรื่องกับความจริง
+                🪤 เดิมเช็ค `นัด + ถึงกำหนด > 4` ซึ่งผิดสองทาง: นัด 4 ใบ ถึงกำหนด 0 = ซ่อน
+                2 ใบโดยไม่ขึ้นป้ายเลย · นัด 5 ใบ = ขึ้น "+1" ทั้งที่ซ่อน 3 ⇒ ต้องนับ
+                **ที่ถูกตัดของแต่ละกอง** ไม่ใช่ผลรวมลบเพดานรวม */}
+            {hidden > 0 && <span className={styles.weekMore}>+{hidden} รายการ</span>}
             {day.clashes > 0 && <span className={styles.weekWarn}>เวลาชนกัน {day.clashes} คู่</span>}
             {!day.meetings.length && !day.due.length && <span className={styles.weekMore}>{NA}</span>}
           </button>

@@ -140,8 +140,9 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           ในกำหนดการ · แถบบนจึงเหลือคำถามเดียวที่ไม่มีใครตอบ: **เดือนนี้ยอดถึงไหนแล้ว**
           ⚠️ ฉบับเต็ม (ทบยอด/กราฟ/YoY) อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18)
           ที่นี่มีแค่ตัวเลขสรุปกับทางเข้า */}
+      {/* ⚠️ ป้ายของแถบไม่ผูกงวด — สามช่องแรกเป็นของงวด แต่ "ดีลที่เปิด" เป็นทุกงวด */}
       {!loading && (
-        <MetricStrip aria-label={`ยอดของฉัน — ${scopeLabel}`}>
+        <MetricStrip aria-label="ยอดของฉัน">
           {/* ⚠️ **สี่ช่องนี้ต้องเป็นเลขคนละตัวจริง ๆ** — เป้า(เงิน) · ยอดปิดได้(เงิน) ·
               สัดส่วน(%) · ท่อ(เงิน+จำนวนใบ) · เดิมช่อง "เป้า" โชว์ % อยู่แล้ว การเพิ่ม
               ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่ */}
@@ -189,13 +190,14 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         icon={<ListTodo size={17} />}
         title="คิวของฉัน"
         subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
-        actions={<span className="ui-badge">{shown.length} รายการ</span>}
       >
         {/* ⚠️ **ตัวกรองของสองแผงต้องเป็นคอนโทรลเดียวกันและอยู่ระดับเดียวกัน** — เดิมคิวใช้
             ปุ่มเรียงกันในตัวการ์ด ส่วนฟีดใช้ชิปข้อความบนหัวส่วน ⇒ ของที่ทำงานเหมือนกัน
             สองอันบนจอเดียวหน้าตาคนละแบบ · ทั้งคู่เป็น `Segmented` (กติกา: สลับหน้า→Tabs,
             กรองในหน้า→segmented) วางในแถบเครื่องมือของ body เหมือนกัน
             ⚠️ ตัวเลขในชิปมาจากคิวก้อนเดียวกับตาราง ไม่ใช่นับใหม่ */}
+        {/* ⚠️ **ไม่มีป้ายจำนวนบนหัวแผงแล้ว** — มันนับ "หลังกรอง" ส่วนชิปนับ "ก่อนกรอง"
+            ⇒ สองเลขที่ไม่เท่ากันวางชิดกันบนหัวเดียว · ชิปที่เลือกอยู่บอกจำนวนของตัวเองแล้ว */}
         <div className="toolbar">
           <Segmented
             ariaLabel="กรองคิวตามชนิดงาน"
@@ -213,7 +215,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
 
         {loading ? <SkeletonRows rows={4} /> : shown.length === 0 ? (
           <EmptyState icon={CheckCircle2}>
-            {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้ 🎉"}
+            {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้"}
           </EmptyState>
         ) : (
           <TableScroll cells="stacked" className={styles.paneScroll}>
@@ -271,7 +273,6 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         icon={<Activity size={17} />}
         title="รายการอัปเดตล่าสุด"
         subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
-        actions={<span className="ui-badge">{feed.length} รายการ</span>}
       >
         <div className="toolbar">
           <Segmented

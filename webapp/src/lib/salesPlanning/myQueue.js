@@ -115,16 +115,23 @@ export function buildMyQueue({
   for (const request of requests) {
     // ใบตีกลับคือของค้างของ **ผู้ขอ** — วันที่ใช้เรียงคือวันที่ถูกตีกลับ
     const bounced = request.status === 'draft' && request.bouncedAt;
+    /* ⚠️ **ใบที่ฝ่ายยังไม่รับปากต้องมีวันเหมือนกัน แต่คนละความหมาย** — เดิมที่นี่อ่านแต่
+       `committedDueDate` ⇒ ใบที่ยังไม่รับปากตกไปกลุ่ม "ไม่มีกำหนด" ขณะที่ปฏิทินบนหน้า
+       เดียวกัน (lib/salesPlanning/mySchedule) วางมันบน `requestedDueDate` = **ใบเดียวกัน
+       สองวันบนจอเดียว** · ตอนนี้ถอยเป็นวันที่ผู้ขอต้องการ แต่ `basis: 'waiting'` เพราะ
+       ยังไม่มีใครรับปาก ⇒ ไม่ขึ้นป้าย "เลยกำหนด" (จะกลายเป็นการโทษฝ่ายที่ยังไม่ได้รับปาก) */
+    const committed = bounced ? null : request.committedDueDate || null;
+    const requested = bounced ? null : request.requestedDueDate || null;
     out.push(row({
       kind: 'request',
       id: request.id,
-      step: bounced ? 'แก้แล้วส่งใหม่' : 'รอฝ่ายตอบ',
+      step: bounced ? 'แก้แล้วส่งใหม่' : committed ? 'รอฝ่ายตอบ' : 'รอฝ่ายแจ้งกำหนดส่ง',
       title: request.title || request.customerName || requestKindLabel(request.kind),
       sub: [request.docNo || 'ร่าง', requestKindLabel(request.kind), request.customerName]
         .filter(Boolean).join(' · '),
-      due: bounced ? String(request.bouncedAt).slice(0, 10) : request.committedDueDate || null,
-      // ตีกลับ = ค้างที่เรา (ไม่มีกำหนด) · ใบปกติ = วันที่ฝ่ายรับปากไว้
-      basis: bounced ? 'waiting' : 'deadline',
+      due: bounced ? String(request.bouncedAt).slice(0, 10) : committed || requested,
+      // ตีกลับ/ยังไม่รับปาก = ค้างที่เรา (ไม่มีคำสัญญา) · ใบที่รับปากแล้ว = กำหนดจริง
+      basis: bounced || !committed ? 'waiting' : 'deadline',
       href: `/requests/${request.id}`,
       urgent: !!request.urgent || !!bounced,
       todayIso,

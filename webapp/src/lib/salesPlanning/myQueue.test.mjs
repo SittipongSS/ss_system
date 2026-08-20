@@ -155,3 +155,32 @@ test('ว่างเปล่าไม่พัง — คิวว่างต
   assert.deepEqual(groupMyQueue([]), []);
   assert.equal(myQueueCounts([]).total, 0);
 });
+
+/* 🐞 **ใบเดียวสองวันบนจอเดียว** (ตรวจ 2026-08-21) — ปฏิทิน "กำหนดการของฉัน" วางคำร้อง
+   ที่ฝ่ายยังไม่รับปากบน `requestedDueDate` แต่คิวนี้อ่านแต่ `committedDueDate` ⇒ ใบเดียวกัน
+   โผล่บนปฏิทินวันที่ 25 แต่คิวข้างล่างบอก "ไม่มีกำหนด" · สองที่ต้องอ่านฟิลด์ชุดเดียวกัน */
+test('คำร้องที่ฝ่ายยังไม่รับปาก ใช้วันที่ผู้ขอต้องการ — แต่เป็น "ค้าง" ไม่ใช่ "เลยกำหนด"', () => {
+  const [row] = build({
+    requests: [{
+      id: 'R9', docNo: 'RQ-9', kind: 'scent_dev', status: 'pending', requestedDueDate: '2026-08-08',
+    }],
+  });
+  assert.equal(row.due, '2026-08-08');
+  assert.equal(row.basis, 'waiting');
+  // วันผ่านไปแล้วก็ยังไม่ใช่ "สาย" — ยังไม่มีใครรับปากอะไรไว้
+  assert.equal(row.overdue, false);
+  assert.equal(row.step, 'รอฝ่ายแจ้งกำหนดส่ง');
+});
+
+test('คำร้องที่ฝ่ายรับปากแล้ว ใช้วันที่รับปาก และเลยกำหนดได้', () => {
+  const [row] = build({
+    requests: [{
+      id: 'R8', docNo: 'RQ-8', kind: 'scent_dev', status: 'acknowledged',
+      committedDueDate: '2026-08-10', requestedDueDate: '2026-08-01',
+    }],
+  });
+  assert.equal(row.due, '2026-08-10');
+  assert.equal(row.basis, 'deadline');
+  assert.equal(row.overdue, true);
+  assert.equal(row.step, 'รอฝ่ายตอบ');
+});
