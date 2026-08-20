@@ -1,18 +1,56 @@
-.sectionList { display: flex; flex-direction: column; gap: 22px; }
-.sectionHeader { margin-bottom: var(--space-2-5); }
-.sectionHeader h2 { font-size: var(--fs-9); font-weight: var(--fw-bold); color: var(--text); }
-.sectionHeader p { margin-top: var(--space-0-5); font-size: var(--fs-6); color: var(--text-3); }
-.cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-3); }
-.navCard { min-height: 112px; display: flex; align-items: center; gap: var(--space-3-5); padding: 17px var(--space-4-5); color: inherit; text-decoration: none; }
-.navCard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.icon { width: 44px; height: 44px; border-radius: var(--radius-lg); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--accent-ink); background: var(--accent-soft); }
-.copy { min-width: 0; flex: 1; }
-.copy strong { display: block; color: var(--text); font-size: var(--fs-8); }
-.copy span { display: block; margin-top: 3px; color: var(--text-3); font-size: var(--fs-6); line-height: var(--lh-thai); }
-.chevron { flex-shrink: 0; color: var(--text-3); }
+/* รายการตั้งค่าในหน้าภาพรวม — เป็น **แถว** ไม่ใช่การ์ดใหญ่ (มติผู้ใช้ 2026-08-20)
+   การ์ด 9 ใบสูงใบละ 112px ทำให้ต้องไถหน้าจอเพื่ออ่านสารบัญที่ควรกวาดตาทีเดียวจบ */
+.itemList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  color: inherit;
+  text-decoration: none;
+}
+.itemRow:hover { border-color: var(--accent); background: var(--panel-3); }
+.itemRow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.itemIcon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+
+.itemCopy { min-width: 0; flex: 1; }
+.itemCopy strong { display: block; color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
+/* คำอธิบายบรรทัดเดียว ตัดท้ายด้วย ellipsis — ชื่อเรื่องคือสิ่งที่ตากวาดหา
+   คำอธิบายมีไว้ยืนยันว่ามาถูกใบ ไม่ใช่ให้อ่านทั้งย่อหน้า */
+.itemCopy > span {
+  display: block;
+  margin-top: var(--space-0-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.itemChevron { flex: none; color: var(--text-3); }
 
 @media (max-width: 560px) {
-  .sectionList { gap: var(--space-4-5); }
-  .cardGrid { grid-template-columns: 1fr; }
-  .navCard { min-height: 104px; padding: 15px; }
+  .itemList { grid-template-columns: 1fr; }
+  .itemCopy > span { white-space: normal; }
 }

@@ -79,7 +79,7 @@
 
 /* ── การ์ดที่มีหัวข้อ (ฟอร์มแก้ไข / ประวัติเวอร์ชัน) ───────────────────────── */
 .panel { overflow: hidden; }
-.panelHeader { padding: var(--space-3-5) var(--space-4-5); border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.panelHeader { padding: var(--space-3-5) var(--panel-inset); border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .panelHeader h2 { margin: 0; color: var(--text); font-size: var(--fs-9); font-weight: var(--fw-bold); }
 .panelHeader p { margin: var(--space-0-5) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-text); }
 
@@ -95,7 +95,7 @@
    แล้วเอกสาร A4 ถูกซูมจนอ่านไม่ออก · ฟอร์มยังเป็น DocumentStandardFields ชุดเดียว
    ไม่ได้แตกเป็นสองชุดตามกฎ "แก้ไขต้องใช้ฟอร์มตัวเดียวกับตอนสร้าง" */
 .editPanel { margin-bottom: var(--space-4); }
-.form { padding: var(--space-4) var(--space-4-5) var(--space-4-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.form { padding: var(--space-4) var(--panel-inset) var(--panel-inset); display: flex; flex-direction: column; gap: var(--space-4); }
 .note { padding: var(--space-2-5); border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-5); line-height: var(--lh-text); }
 .formSection { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
 .formSection:last-of-type { padding-bottom: 0; border-bottom: 0; }
@@ -162,8 +162,11 @@
 }
 
 @media (max-width: 768px) {
+  /* หัวการ์ดกับรายการการ์ดต้องเว้นขอบเท่ากัน (ดูบันทึกเดียวกันใน workflow-templates) */
+  .panelHeader { padding-left: var(--space-3); padding-right: var(--space-3); }
   .historyTableWrap { display: none; }
-  .historyCards { padding: 0 var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+  /* เว้นระยะบนด้วย — ไม่งั้นการ์ดใบแรกชนเส้นใต้หัวการ์ด (ดูบันทึกใน workflow-templates) */
+  .historyCards { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
   .historyCard { padding: var(--space-2-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel-2); }
   .cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
   .historyCard > small { display: block; margin-top: var(--space-1-5); color: var(--text-3); font-size: var(--fs-3); }

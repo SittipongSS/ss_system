@@ -186,15 +186,11 @@ export default function HolidaysPage() {
   const openAdd = () => setAddForm({ date: "", name: "", lockDate: false });
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><CalendarDays size={22} /></span>{" "}
-            วันหยุด (ปฏิทินทำการ)
-          </h1>
-          <p>วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับ &quot;วันทำการ&quot; ของไทม์ไลน์โครงการ</p>
-        </div>
+    <Workspace
+      icon={<CalendarDays size={22} />}
+      title="วันหยุด (ปฏิทินทำการ)"
+      subtitle={'วันหยุดบริษัท/นักขัตฤกษ์ที่ระบบใช้นับ "วันทำการ" ของไทม์ไลน์โครงการ'}
+      headerRight={(
         <div className={styles.headerRight}>
           <div className="segmented">
             <button type="button" onClick={() => setTab("calendar")} className={tab === "calendar" ? "active" : ""}><CalendarRange size={14} /> ปฏิทิน</button>
@@ -202,7 +198,8 @@ export default function HolidaysPage() {
           </div>
           <div className="pill ok">ทั้งหมด {holidays.length} วัน</div>
         </div>
-      </div>
+      )}
+    >
 
       <div className="info-note">
         <Info size={16} />

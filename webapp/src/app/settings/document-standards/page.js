@@ -294,7 +294,6 @@ export default function DocumentStandardsPage() {
         icon={<FileBadge2 size={22} />}
         title="มาตรฐานเอกสาร"
         message="หน้านี้สำหรับหัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
-        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       />
     );
   }
@@ -313,13 +312,11 @@ export default function DocumentStandardsPage() {
   const shown = editing ? { ...editRow, ...form } : (draft || published);
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><FileBadge2 size={22} /></span> มาตรฐานเอกสาร</h1>
-          <p>ควบคุมรหัสแบบฟอร์ม Revision วันที่มีผล สี Accent และรูปแบบเลขที่โดยไม่เปลี่ยนเอกสารย้อนหลัง</p>
-        </div>
-      </header>
+    <Workspace
+      icon={<FileBadge2 size={22} />}
+      title="มาตรฐานเอกสาร"
+      subtitle="ควบคุมรหัสแบบฟอร์ม Revision วันที่มีผล สี Accent และรูปแบบเลขที่โดยไม่เปลี่ยนเอกสารย้อนหลัง"
+    >
 
       {/* แท็บกลางของระบบ (Tabs.js) — เดิมเป็นกริดปุ่มการ์ด 2×2 ที่กินพื้นที่แนวตั้ง
           เท่าการ์ดจริงทั้งที่เป็นแค่ตัวสลับมุมมอง และไม่มี roving tabindex */}

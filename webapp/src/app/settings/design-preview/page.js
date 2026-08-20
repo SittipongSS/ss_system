@@ -110,7 +110,7 @@ const BADGE_TONES = STATUS_TONES;
    ที่คลาดจากของจริงอยู่หลายเดือน `badgeFamilies.test.mjs` ตรวจให้ตรงกับการนับจริง
    ทุกครั้งที่รันเทสต์แล้ว (เลขเปลี่ยน = เทสต์ตก ให้แก้ตัวเลขตรงนี้) */
 const BADGE_FAMILIES = [
-  { cls: "ui-badge", count: 173 },
+  { cls: "ui-badge", count: 174 },
   { cls: "status-pill", count: 44 },
   { cls: "chip", count: 23 },
 ];
@@ -371,7 +371,6 @@ export default function DesignPreviewPage() {
       icon={<Palette size={22} />}
       title="ต้นแบบดีไซน์ระบบ"
       subtitle="primitive กลางของระบบ แยกเป็น 5 กลุ่มตามหน้าที่ — หน้าใหม่ให้หยิบจากที่นี่ ไม่ต้องก๊อปคลาสจากหน้าอื่น"
-      back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       toolbar={(
         <Tabs
           ariaLabel="กลุ่มของต้นแบบ"
