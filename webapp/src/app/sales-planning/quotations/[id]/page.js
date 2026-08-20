@@ -38,6 +38,7 @@ import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
+import { customerHeadline } from "@/lib/master/customerAr";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -749,7 +750,9 @@ export default function QuotationEditorPage() {
           <SalesDetailOverview
             eyebrow="FM-SA-01 · QUOTATION"
             title={quote.quoteNumber}
-            description={`${quote.customerName || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
+            /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านสดจากทะเบียนที่หน้านี้
+               โหลดไว้อยู่แล้วสำหรับที่อยู่เอกสาร ไม่ใช่ค่าที่ประทับไว้ในใบ */
+            description={`${customerHeadline(quote.customerName, customer?.arCode) || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
             badges={<><SalesStateBadge label={statusMeta.label} color={statusMeta.color} />{quote.revisionNo > 0 ? <span className="ui-badge">Revision {quote.revisionNo}</span> : null}</>}
             facts={[
               { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : NA },

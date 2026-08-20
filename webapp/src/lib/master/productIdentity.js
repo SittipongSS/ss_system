@@ -20,19 +20,40 @@ export function productBrandName(product) {
   );
 }
 
+const thaiNameChain = (product) => [
+  product?.productDescription,
+  product?.productNameTh,
+  product?.metadata?.productNameTh,
+];
+
+const englishNameChain = (product) => [
+  product?.productDescriptionEn,
+  product?.productNameEn,
+  product?.metadata?.productNameEn,
+];
+
+// ชื่อกลาง ๆ ที่ไม่ได้บอกภาษา — ท้ายสุดของทั้งสองทาง
+const neutralNameChain = (product) => [
+  product?.productName,
+  product?.name,
+  product?.description,
+];
+
 // ระบบเป็น Thai-first: ชื่อสินค้าไทยก่อน แล้วค่อยอังกฤษ/shape จากระบบย่อย.
 export function productDisplayName(product) {
-  return first(
-    product?.productDescription,
-    product?.productNameTh,
-    product?.metadata?.productNameTh,
-    product?.productDescriptionEn,
-    product?.productNameEn,
-    product?.metadata?.productNameEn,
-    product?.productName,
-    product?.name,
-    product?.description,
-  );
+  return first(...thaiNameChain(product), ...englishNameChain(product), ...neutralNameChain(product));
+}
+
+/* ชื่อสินค้าตาม "ภาษาที่เลือก" แล้วค่อยตกไปอีกภาษา (มติผู้ใช้ 2026-08-20)
+   ใช้กับ **เอกสารที่เลือกภาษาได้** (ใบเสนอราคา mig 0238) เท่านั้น — หน้าจอทำงาน
+   ยังเป็น Thai-first ตามเดิม (`productDisplayName`) เพราะคนในบริษัทอ่านไทย
+   ⚠️ ไม่แปลให้เอง: สินค้าที่ยังไม่กรอกชื่ออังกฤษ เอกสารอังกฤษจะได้ชื่อไทยไป
+   ซึ่งถูกต้องกว่าเดา — ที่แก้คือไปกรอกชื่ออังกฤษที่ฐานข้อมูลสินค้า */
+export function productDisplayNameFor(product, language) {
+  const en = String(language || '').toLowerCase() === 'en';
+  return en
+    ? first(...englishNameChain(product), ...thaiNameChain(product), ...neutralNameChain(product))
+    : productDisplayName(product);
 }
 
 export function productVolumeLabel(product) {

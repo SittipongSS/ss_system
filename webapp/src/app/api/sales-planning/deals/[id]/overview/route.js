@@ -57,6 +57,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const valueItems = await safe('deal value items', supabase.from('sales_deal_value_items')
     .select('*').eq('dealId', deal.id).order('seq', { ascending: true }).limit(200), []);
 
+  /* รหัส AR ของลูกค้า — หัวหน้ารายละเอียดขึ้น `AR-306 · ชื่อ` (มติผู้ใช้ 2026-08-21)
+     ⚠️ `dealSelect` ข้างบนมี join นี้อยู่ก็จริง แต่ `loadScoped` เลือก `*` เอง ⇒ ค่านี้
+     ไม่เคยเดินทางมาถึงหน้าจอ · อ่านสดจากทะเบียน ไม่ประทับลงแถวดีล (ชื่อบนดีลเป็น
+     หลักฐาน ณ วันผูก ส่วนรหัสเป็นตัวชี้กลับทะเบียนที่ต้องเป็นค่าปัจจุบัน) */
+  const customer = deal.customerId
+    ? await safe('customer', supabase.from('customers').select('id, name, arCode')
+      .eq('id', deal.customerId).maybeSingle(), null)
+    : { data: null, warning: null };
+
   // ── สายภาษี: ปลายทางของ SO ที่เดิมหน้าดีลมองไม่เห็น ────────────────────────
   // ใบยื่นชำระสรรพสามิตผูก SO ตัวต่อตัว (unique 1 SO = 1 ใบยื่น — mig 0160) แต่หน้าดีล
   // จบที่ SO มาตลอด คนดูดีลจึงไม่รู้ว่าภาษีเดินถึงไหน ต้องไปเปิดหน้า SO ก่อนทุกครั้ง
@@ -132,6 +141,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     inquiries.warning,
     siblingDeals.warning,
     valueItems.warning,
+    // รหัส AR ของลูกค้า — อ่านไม่ได้ = หัวใบจะเหลือชื่อเปล่า ต้องมีคำเตือน ไม่ใช่เงียบ
+    customer.warning,
   ].filter(Boolean);
 
   const forecastDrift = await loadForecastDrift(supabase, deal).catch(() => null);
@@ -183,7 +194,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* แถวมูลค่ารายหมวดไปกับดีลเลย — หน้าเดียวใช้ทั้งโชว์และเปิดฟอร์มแก้
        ⚠️ อ่านไม่สำเร็จ = `null` ไม่ใช่ `[]` — ฟอร์มแก้ส่งรายการกลับไปทั้งชุดตอนบันทึก
        ลิสต์ว่างจึงแปลว่า "ลบทุกแถว" หน้าเว็บต้องแยกสองกรณีนี้ออกจากกันได้ */
-    deal: { ...deal, valueItems: valueItems.warning ? null : (valueItems.data || []) },
+    deal: { ...deal, customer: customer.data || null, valueItems: valueItems.warning ? null : (valueItems.data || []) },
     canEdit,
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),

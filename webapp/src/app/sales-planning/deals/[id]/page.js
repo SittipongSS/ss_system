@@ -31,6 +31,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { FORECAST_LEVELS, businessLineBadge, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
+import { customerHeadline } from "@/lib/master/customerAr";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
@@ -783,7 +784,9 @@ export default function DealOverviewPage() {
             title={deal.title}
             description={<>
               {deal.code && <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{entityCodeDisplay(deal.code, 0)}</span>}
-              <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
+              {/* รหัส AR นำหน้าชื่อลูกค้าบนหัวหน้ารายละเอียดทุกหน้า (มติผู้ใช้ 2026-08-21)
+                  — รหัสอ่านสดจากทะเบียน (`deal.customer`) ไม่ใช่ค่าที่ประทับไว้ในแถว */}
+              <span>ลูกค้า: {customerHeadline(deal.customerName || deal.customer?.name, deal.customer?.arCode) || "ไม่ผูกลูกค้า"}</span>
               {(dealBrand.en || dealBrand.th) && <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? ` · ${dealBrand.th}` : ""}</span>}
             </>}
             badges={<>{businessLineBadge(deal.line)}{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
