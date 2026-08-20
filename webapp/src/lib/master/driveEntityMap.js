@@ -32,6 +32,8 @@ export const FOLDER_ENTITY_TYPES = [
   'deal',
   'quotation',
   'sales_order',
+  // สัญญา (mig 0278) — ลง `งานขาย / สัญญา / <เลขที่สัญญา>` เหมือนใบเสนอราคา
+  'contract',
   'sahamit_po',
   // นัดเข้าบริการ (S-3) — รูปหน้างาน + ลายเซ็นผู้รับงาน ลงโฟลเดอร์ไซต์ใต้ลูกค้า
   'service_visit',

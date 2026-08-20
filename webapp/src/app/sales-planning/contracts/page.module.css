@@ -1,0 +1,24 @@
+/* ทะเบียนสัญญา — คลาสของหน้านี้เอง (แทน style ฝังในแท็ก ซึ่งเป็นชั้นเก่าที่ audit:ui นับ) */
+.search {
+  width: 300px;
+}
+
+.numberCell {
+  white-space: nowrap;
+}
+
+.subLine {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.track {
+  white-space: nowrap;
+  color: var(--text-3);
+}
+
+/* ค้างนานเกินกำหนด = ตัวทวง ไม่ใช่สถานะ จึงใช้สีเดียวกับป้ายเตือนทั้งระบบ */
+.trackLate {
+  color: var(--amber);
+}

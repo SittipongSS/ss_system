@@ -82,6 +82,11 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ดีล')], blocked: true };
   }
 
+  const contracts = await contractsOfDeal(supabase, id);
+  if (contracts.length) {
+    return { cascade: [], notes: [contractBlockMessage(contracts, 'ดีล')], blocked: true };
+  }
+
   // เอกสารที่ลงนาม/ออกฉบับจริงแล้วในดีล — บังคับลบจะทำลายหลักฐานถาวร ต้องขึ้นพรีวิว
   // (พรีวิวอ่านไม่ได้ ≠ ไม่มี — แต่ต้องไม่ทำให้พรีวิวพัง จึงเตือนว่าตรวจไม่ได้แทน)
   let signedNote = null;
@@ -204,6 +209,31 @@ export async function exciseFilingsOfQuotation(supabase, quotationId) {
   return data || [];
 }
 
+// ── สัญญา: FK RESTRICT ทั้ง dealId และ quotationId (mig 0278) ──────────────
+// สัญญาเป็นเอกสารผูกพันตามกฎหมาย ⇒ ห้ามหายตามดีล/ใบเสนอราคาไปเงียบ ๆ และห้ามให้
+// break-glass ทำลายให้ด้วย · ปล่อยไว้เฉย ๆ = ลบจริงตายกลางทางด้วย error ดิบจาก
+// Postgres (บทเรียนเดียวกับ document_signature_evidence ที่หลุดขึ้นหน้าดีลทั้งดุ้น)
+export async function contractsOfDeal(supabase, dealId) {
+  const { data, error } = await supabase
+    .from('sales_contracts').select('id, "contractNo", status').eq('dealId', dealId);
+  if (error) return [];
+  return data || [];
+}
+
+export async function contractsOfQuotation(supabase, quotationId) {
+  const { data, error } = await supabase
+    .from('sales_contracts').select('id, "contractNo", status').eq('quotationId', quotationId);
+  if (error) return [];
+  return data || [];
+}
+
+export function contractBlockMessage(contracts = [], documentLabel = 'เอกสาร') {
+  const list = contracts.map((row) => row.contractNo || `${row.id} (ฉบับร่าง)`).join(', ');
+  return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีสัญญาผูกอยู่ ${list}`
+    + ' — สัญญาเป็นเอกสารผูกพันตามกฎหมายที่ระบบจะไม่ลบให้อัตโนมัติ'
+    + ` กรุณาจัดการสัญญาที่หน้า "บริหารงานขาย › สัญญา" ก่อน แล้วจึงลบ${documentLabel}นี้ได้`;
+}
+
 export function exciseFilingBlockMessage(filings = [], documentLabel = 'เอกสาร') {
   const list = filings.map((row) => `${row.id}${row.status ? ` (${row.status})` : ''}`).join(', ');
   return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีใบยื่นชำระภาษีผูกอยู่ ${list}`
@@ -301,12 +331,17 @@ export async function forceDeleteDealDocuments(supabase, dealId, actor = {}) {
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
 export async function quotationForcePreview(supabase, quote) {
-  const [salesOrders, evidence, issued, filings] = await Promise.all([
+  const [salesOrders, evidence, issued, filings, contracts] = await Promise.all([
     countBy(supabase, 'sales_orders', 'quotationId', quote.id),
     countBy(supabase, 'document_signature_evidence', 'quotationId', quote.id),
     countBy(supabase, 'issued_documents', 'quotationId', quote.id),
     exciseFilingsOfQuotation(supabase, quote.id),
+    contractsOfQuotation(supabase, quote.id),
   ]);
+  // สัญญาที่อ้างใบนี้ = ด่านที่ break-glass ข้ามไม่ได้เช่นกัน (FK RESTRICT ของ mig 0278)
+  if (contracts.length) {
+    return { cascade: [], notes: [contractBlockMessage(contracts, 'ใบเสนอราคา')], blocked: true };
+  }
   // ใบยื่นภาษีเป็นด่านที่ break-glass ก็ข้ามไม่ได้ (FK RESTRICT + RPC ไม่ล้างให้) —
   // ต้องบอกตั้งแต่พรีวิว ไม่ใช่ปล่อยให้ไปพังตอนลบจริงแล้วได้ error ดิบจาก Postgres
   if (filings.length) {
