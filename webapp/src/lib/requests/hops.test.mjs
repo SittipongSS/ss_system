@@ -328,6 +328,49 @@ test('receive/refuse ลงทะเบียนเป็นเหตุกา�
   }
 });
 
+// ── ดึงกลับ — ก้าวถอยก้าวเดียวของระบบ (มติผู้ใช้ 2026-08-20) ───────────────
+//
+// 🐞 อาการที่ชุดนี้ปิด: ฝ่ายแนบไฟล์ผิดแล้วกดส่ง ⇒ แถวไปอยู่ขั้น "รอไปรับ" ซึ่งเป็น
+// ตาของผู้ขอ · การ์ดไฟล์อ่านอย่างเดียว (ม-90) ⇒ ฝ่ายไม่มีทางแก้ไฟล์ของตัวเองเลย
+test('⭐ ดึงกลับ: ของฝ่าย · เฉพาะสายเอกสารขั้น ready · เหตุผลบังคับ · ล้างตราก้าวส่งครบ', () => {
+  assert.equal(HOP_OWNER.unready, 'dept');
+
+  // ขั้น: ส่งแล้วแต่ผู้ขอยังไม่รับ = ดึงกลับได้ · ก่อนส่งยังไม่มีอะไรให้ถอย
+  assert.equal(hopStageError(docAt('ready'), 'unready'), null);
+  assert.match(hopStageError(docAt('developing'), 'unready'), /ยังไม่ถึงขั้นนี้/);
+  // ⭐ **ผู้ขอกด "ได้รับแล้ว" = ปิดประตู** — ของที่อีกฝั่งรับไปใช้แล้วไม่ใช่ของที่
+  // เจ้าของถอยคืนเงียบ ๆ ได้ (มติผู้ใช้: ดึงกลับได้จนกว่าผู้ขอจะกดรับ)
+  const received = { ...docAt('ready'), pickedUpAt: '2026-08-04', answerStatus: 'done' };
+  assert.equal(rowStage(received), 'done');
+  assert.match(hopStageError(received, 'unready'), /ผ่านขั้นนี้ไปแล้ว/);
+  // สายพัฒนาไม่มีก้าวนี้ — ก้าวส่งของมันสร้างกลิ่น/สูตรเข้าทะเบียนไปแล้ว
+  assert.match(hopStageError(at('ready'), 'unready'), /ขอเอกสาร/);
+
+  // เหตุผลบังคับเหมือน "ดึงกลับ" ที่อื่นในระบบ — อีกฝั่งเห็นแถวเด้งกลับเอง
+  assert.match(hopValuesError('unready', {}), /เหตุผล/);
+  assert.match(hopValuesError('unready', { note: '   ' }), /เหตุผล/);
+  assert.equal(hopValuesError('unready', { note: 'แนบไฟล์ผิดใบ' }), null);
+
+  const patch = hopPatch('unready', { note: 'แนบไฟล์ผิดใบ' }, { id: 'U9', name: 'ปาริชาต' });
+  // ล้างครบสามช่อง — เหลือ readyById ค้าง = ประวัติบอกว่ามีคนส่งของที่ไม่มีวันส่ง
+  assert.deepEqual(patch, { readyAt: null, readyById: null, readyByName: null });
+  assert.equal(rowStage({ ...docAt('ready'), ...patch }), 'developing');
+  // ⚠️ เลขที่เอกสารของบรรทัดการเงินต้องไม่ถูกล้าง — ใบที่ FN ออกไปแล้วยังเลขเดิม
+  assert.ok(!('docNumber' in patch));
+  assert.ok(!('docDueDate' in patch));
+});
+
+test('ดึงกลับ: มีคำ ป้าย และเหตุการณ์ในเธรดครบ — ไม่เงียบบนจอ', () => {
+  assert.equal(hopLabel('unready'), 'ดึงกลับ');
+  assert.ok(UPDATE_KINDS.dept_request[hopUpdateKind('unready')], 'unready ยังไม่ลงทะเบียน');
+  // เหตุผลไม่มีคอลัมน์บนแถว ⇒ route ต้องพ่วงลงเนื้อเหตุการณ์ ไม่งั้นหายไปเลย
+  const itemSrc = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/route.js', 'utf8');
+  assert.ok(itemSrc.includes('unreadyReason'), 'route ต้องเก็บเหตุผลลงเธรด');
+  // ปุ่มอยู่คู่ป้าย "รออีกฝั่ง" ของสายเอกสาร — ฝ่ายกดได้ทั้งที่ตาเป็นของผู้ขอ
+  const barSrc = readFileSync('src/components/requests/NextStepBar.js', 'utf8');
+  assert.ok(/canUnready = canDept && stage === "ready" && isDocLineKind/.test(barSrc));
+});
+
 test('🔴 route: ส่งเอกสารต้องเช็คไฟล์แนบก่อน — และปิดเรื่องเป็นของผู้ขอเท่านั้น (ม-89)', () => {
   const itemSrc = readFileSync('src/app/api/sa/requests/[id]/items/[itemId]/route.js', 'utf8');
   // ด่านไฟล์: มติ "การส่งเอกสาร RD ต้องแนบไฟล์เอกสารด้วย" — ส่งโดยไม่มีไฟล์ =

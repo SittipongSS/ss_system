@@ -1,7 +1,7 @@
 // ── ก้าวของแถวคำร้อง (mig 0202) ──────────────────────────────────────────
 //
-// PATCH { hop: 'ack'|'ready'|'pickup'|'send'|'outcome', at?, dueAt?, outcome?,
-//         confirmedQty?, note? }
+// PATCH { hop: 'ack'|'ready'|'pickup'|'send'|'outcome'|'receive'|'refuse'|'unready',
+//         at?, dueAt?, outcome?, confirmedQty?, note? }
 //
 // ⭐ ทำไมเป็นเส้นรายแถว ไม่ใช่ action บน PATCH ของใบ: **สถานะอยู่ที่แถว ไม่ใช่ที่ใบ**
 // (คนละหมวดส่งไม่พร้อมกันได้) ⇒ การกดแต่ละก้าวเป็นเรื่องของแถวนั้นล้วน ๆ
@@ -255,11 +255,15 @@ export async function PATCH(request, { params }) {
     // ── ร่องรอย ─────────────────────────────────────────────────────────
     // ⚠️ ลงเธรดของ **ใบ** ไม่ใช่ของแถว — เธรดมีชุดเดียวต่อคำร้อง (ไม่มีเธรดซ้อนรายขั้น)
     const label = hopLabelFor(row, hop, body.outcome);
+    /* ⚠️ **เหตุผลของการดึงกลับไม่มีคอลัมน์เก็บ** (ต่างจาก `refuse` ที่ลง
+       `declineReason` บนแถว) — ก้าวนี้ล้างตราของก้าวส่งทิ้งอย่างเดียว ⇒ ถ้าไม่พ่วง
+       เหตุผลไว้ในเธรด ผู้ขอจะเห็นแถวเด้งกลับเป็น "กำลังทำ" โดยไม่มีที่ไหนบอกว่าทำไม */
+    const unreadyReason = hop === 'unready' ? String(body.note ?? '').trim() : '';
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
       kind: hopUpdateKind(hop, body.outcome),
-      body: `${label} — ${row.label}`,
+      body: `${label} — ${row.label}${unreadyReason ? ` · ${unreadyReason}` : ''}`,
       user,
     }).catch(() => {});
 

@@ -96,6 +96,10 @@ export const UPDATE_KINDS = {
     // ── สองก้าวจบของสายเอกสาร (ม-85) ────────────────────────────────
     received: { label: 'ได้รับเอกสารแล้ว', color: 'var(--green)' },
     refused: { label: 'ปฏิเสธเอกสาร', color: 'var(--red)', narrative: true },
+    // ⭐ ฝ่ายดึงงานที่ส่งไปแล้วกลับมาแก้ (มติผู้ใช้ 2026-08-20 · แนบไฟล์ผิด) —
+    // `narrative` เพราะมันคือคำพูดถึงผู้ขอ ("ไฟล์ที่โหลดไปเมื่อกี้ใช้ไม่ได้")
+    // ไม่ใช่ log ของระบบ · เหตุผลที่ฝ่ายพิมพ์อยู่ในเนื้อเหตุการณ์
+    unready: { label: 'ดึงงานกลับมาแก้', color: 'var(--amber)', narrative: true },
     close: { label: 'ปิดเคส', color: 'var(--text-3)' },
     cancel: { label: 'ยกเลิกเคส', color: 'var(--red)', narrative: true },
   },
