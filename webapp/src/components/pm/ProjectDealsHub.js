@@ -625,7 +625,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
       {createOpen && (
         <DealCreateModal
           customers={customers}
-          projects={[{ id: p.id, code: p.code, name: p.name, customerId: p.customerId }]}
+          projects={[{ id: p.id, code: p.code, name: p.name, customerId: p.customerId, line: p.line }]}
           categories={categories}
           owners={owners}
           defaultOwnerId={defaultOwnerId}
@@ -635,6 +635,9 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
             customerName: p.customerName || "",
             projectId: p.id,
             lockedProjectId: p.id,
+            // สร้างดีลจากโครงการ = รู้สายอยู่แล้ว (mig 0275) — เลือกให้เลย ไม่ต้อง
+            // ให้คนจิ้มซ้ำแล้วโดนตีกลับเพราะผูกข้ามสายไม่ได้
+            line: p.line || "",
             startDate: localToday(),
           }}
           onClose={() => setCreateOpen(false)}

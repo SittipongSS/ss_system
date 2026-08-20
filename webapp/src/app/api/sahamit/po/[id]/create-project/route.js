@@ -197,6 +197,8 @@ export async function POST(request, { params }) {
   setHolidays([...(await holidaySet())]);
   let templateOptions;
   try {
+    // คีย์ 'RE-ORDER' = แม่แบบสั่งผลิตซ้ำ **ของสายสินค้า** (คีย์สายบริการคือ
+    // 'SERVICE-RE-ORDER') — สายสหมิตรคือของที่ออกจากโรงงาน ไม่มีงานหน้างาน
     templateOptions = await loadWorkflowTemplateForGeneration(supabase, 'RE-ORDER');
   } catch (templateError) {
     await supabase.from('projects').delete().eq('id', project.id);

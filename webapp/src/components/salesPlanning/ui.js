@@ -8,6 +8,7 @@ import UiKpiCard from "@/components/ui/KpiCard";
 
 export { default as MonthPicker } from "@/components/ui/MonthPicker";
 export { MONTH_LABELS, monthsForYear, thisMonth, yearOfMonth } from "@/lib/datePeriods";
+import { businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
@@ -28,6 +29,9 @@ export const initialDealForm = {
   stage: "",
   // ดีลเก่าจากระบบเดิม — เปิดขั้นปลาย Won/Lost ตอนสร้าง (metadata.legacy)
   legacy: false,
+  // สายธุรกิจ (mig 0275) — PRODUCT | SERVICE · บังคับเลือกตอนสร้าง ห้าม default
+  // (ขั้นตอนไทม์ไลน์ของสองสายเป็นคนละชุด — เดาให้ = ได้ไทม์ไลน์ผิดสายเงียบ ๆ)
+  line: "",
   dealType: "",  // SCENT | NPD | RE-ORDER — บังคับเลือกตอนสร้าง (ห้าม default NPD เงียบ ๆ:
                  // เดิม default NPD ทำให้คนกดสร้างโดยไม่เลือก → ได้ template ผิดประเภท มติ 2026-07-21)
   formulaName: "",  // ชื่อสูตรกลิ่น (SCENT — จุดปลั๊กอิน RD ในอนาคต)
@@ -68,6 +72,18 @@ export function dealTypeBadge(type, className = "") {
   return (
     <span className={badgeClass(className)} style={{ color: DEAL_TYPE_COLORS[t] }}>
       {t}
+    </span>
+  );
+}
+
+/* สายธุรกิจของดีล (mig 0275) — ป้ายชุดเดียวกับที่หน้ารวมโครงการใช้ (โทนจากทะเบียน
+   กลาง lib/master/businessLines) เพื่อให้ "สายบริการ" หน้าตาเหมือนกันทั้งเว็บ
+   ดีลเก่าที่ยังไม่ระบุสายคืน null — ผู้เรียกเลือกเองว่าจะขึ้นตัวทวงหรือเงียบ */
+export function businessLineBadge(line, className = "") {
+  if (!isBusinessLine(line)) return null;
+  return (
+    <span className={badgeClass(className)} data-tone={businessLineTone(line) || undefined}>
+      {businessLineLabel(line)}
     </span>
   );
 }

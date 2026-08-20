@@ -24,7 +24,10 @@ import {
   WORKFLOW_TEMPLATE_ROLES,
   normalizeWorkflowTemplateDraft,
   templateMatchesCategory,
+  workflowTemplateDealTypeOf,
   workflowTemplateKeyLabel,
+  workflowTemplateLineLabel,
+  workflowTemplateLineOf,
   workflowTemplateStatusLabel,
   workflowTemplateSummary,
 } from "@/lib/workflowTemplates";
@@ -32,6 +35,13 @@ import { categoryFlags } from "@/lib/master/categoryOf";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+
+/* ปุ่มเลือกแม่แบบจัดเป็นกลุ่มตามสาย — ลำดับกลุ่มคงที่: ของใช้ร่วมก่อน แล้วสายสินค้า
+   แล้วสายบริการ (คนอ่านคาดหวังลำดับเดิมทุกครั้งที่เปิดหน้า) */
+const TEMPLATE_GROUPS = ["BOTH", "PRODUCT", "SERVICE"].map((line) => ({
+  line,
+  keys: WORKFLOW_TEMPLATE_KEYS.filter((key) => workflowTemplateLineOf(key) === line),
+})).filter((group) => group.keys.length);
 
 const EMPTY_STEP = {
   stepKey: "",
@@ -378,16 +388,27 @@ export default function WorkflowTemplatesPage() {
         </div>
       </header>
 
-      <nav className={styles.templateTabs} aria-label="ประเภท Workflow Template">
-        {WORKFLOW_TEMPLATE_KEYS.map((key) => {
-          const item = templates.find((template) => template.templateKey === key);
-          return (
-            <button key={key} type="button" aria-current={selectedKey === key ? "page" : undefined} className={selectedKey === key ? styles.activeTab : ""} onClick={() => setSelectedKey(key)}>
-              <span>{key}</span><strong>{workflowTemplateKeyLabel(key)}</strong>{item?.draft && <i>มีฉบับร่าง</i>}
-            </button>
-          );
-        })}
-      </nav>
+      {/* จัดกลุ่มตามสายธุรกิจ (มติผู้ใช้ 2026-08-20) — แม่แบบเป็นคู่ (สาย, ชนิดงาน)
+          แล้ว การไล่ 7 ปุ่มเรียงกันเฉย ๆ อ่านไม่ออกว่าใบไหนของสายไหน
+          ⚠️ กลุ่ม "ใช้ร่วมสองสาย" (SCENT) ต้องมีคำเตือน: แก้ใบนี้กระทบทั้งสองสาย */}
+      {TEMPLATE_GROUPS.map((group) => (
+        <section key={group.line} className={styles.tabGroup}>
+          <h2 className={styles.tabGroupLabel}>
+            {workflowTemplateLineLabel(group.line)}
+            {group.line === "BOTH" && <em>แก้ใบนี้มีผลกับทั้งสายสินค้าและสายบริการ</em>}
+          </h2>
+          <nav className={styles.templateTabs} aria-label={`Workflow Template ${workflowTemplateLineLabel(group.line)}`}>
+            {group.keys.map((key) => {
+              const item = templates.find((template) => template.templateKey === key);
+              return (
+                <button key={key} type="button" aria-current={selectedKey === key ? "page" : undefined} className={selectedKey === key ? styles.activeTab : ""} onClick={() => setSelectedKey(key)}>
+                  <span>{workflowTemplateDealTypeOf(key)}</span><strong>{workflowTemplateKeyLabel(key)}</strong>{item?.draft && <i>มีฉบับร่าง</i>}
+                </button>
+              );
+            })}
+          </nav>
+        </section>
+      ))}
 
       {loading ? <SkeletonRows rows={8} /> : error ? (
         <div className={`glass-panel ${styles.errorPanel}`}>
@@ -401,6 +422,7 @@ export default function WorkflowTemplatesPage() {
             <div className={styles.identity}>
               <div className={styles.titleLine}><span className={styles.eyebrow}>PUBLISHED TEMPLATE</span><StatusBadge status="published" /></div>
               <h2 id="published-title">{selected.published?.nameTh || workflowTemplateKeyLabel(selectedKey)}</h2>
+              <small>{workflowTemplateLineLabel(workflowTemplateLineOf(selectedKey))} · {workflowTemplateKeyLabel(selectedKey)}</small>
               <p>{selected.published?.description || "Template ที่ใช้สร้าง Timeline สำหรับงานใหม่"}</p>
               <small>Version {naText(selected.published?.versionNumber)} · เผยแพร่ {formatDate(selected.published?.publishedAt)} โดย {actorOf(selected.published)}</small>
             </div>

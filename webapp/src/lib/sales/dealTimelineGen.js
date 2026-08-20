@@ -3,8 +3,9 @@ import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { applyAutoStatuses } from '@/lib/pm/status';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
-import { loadWorkflowTemplateForGeneration } from '@/lib/admin/workflowTemplates';
+import { loadWorkflowTemplateForDeal } from '@/lib/admin/workflowTemplates';
 import { normalizeDealType } from '@/lib/salesPlanning';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 
 /* แกนกลางการ gen ไทม์ไลน์ลอยของดีล (DL1 — task ที่ projectId ว่าง) ใช้ร่วมกัน 3 ทาง:
    - POST /deals              → gen อัตโนมัติตอนสร้างดีล (มติผู้ใช้ 2026-08-08:
@@ -13,17 +14,21 @@ import { normalizeDealType } from '@/lib/salesPlanning';
    - PATCH /deals/[id]         → regen เมื่อประเภท/หมวดสินค้าเปลี่ยนและยังไม่เริ่มทำสักขั้น
    ห้ามคัดลอกลำดับ template→flags→build ไปประกอบเองอีกที่ — สามทางนี้ต้องได้ผลเหมือนกัน
 
-   คืน { rows, genType, categoryCode, startDate } — rows ว่าง = template หลังกรอง
+   คืน { rows, genType, genLine, categoryCode, startDate } — rows ว่าง = template หลังกรอง
    หมวดสินค้าไม่เหลือขั้นตอน (caller ตัดสินใจเองว่า error หรือข้าม)
    โยน WorkflowTemplateError เมื่อไม่มี template เผยแพร่ของประเภทนั้น */
-export async function buildDealTimelineRows(supabase, deal, { type, categoryCode, startDate } = {}) {
+export async function buildDealTimelineRows(supabase, deal, { type, line, categoryCode, startDate } = {}) {
   const genType = normalizeDealType(type ?? deal.dealType ?? deal.metadata?.projectType);
+  /* สายธุรกิจของดีล (mig 0274) = อีกครึ่งของกุญแจแม่แบบ · ค่าที่ caller ส่งมา
+     (ยืนยัน/สลับสายในโมดัล) ก่อน แล้วค่อยของที่ดีลเก็บไว้ — ไม่มีทั้งคู่ = โยน
+     ข้อความ "เลือกสายก่อน" จาก loadWorkflowTemplateForDeal ไม่ใช่เดาเป็นสายสินค้า */
+  const genLine = normalizeBusinessLine(line ?? deal.line) || null;
   const cat = (categoryCode ?? deal.categoryCode ?? '').trim() || null;
   // anchor เดียวกับกติกาเดิมของ route ไทม์ไลน์: ที่ส่งมา > วันเริ่มของดีล > วันนี้
   const anchor = startDate || deal.startDate || todayStr();
 
   setHolidays([...(await holidaySet())]);
-  const templateOptions = await loadWorkflowTemplateForGeneration(supabase, genType);
+  const templateOptions = await loadWorkflowTemplateForDeal(supabase, { line: genLine, dealType: genType });
   // ขั้นสรรพสามิตใน template ผูก token flag:excise (mig 0131) → ส่งธงของหมวดดีล
   templateOptions.categoryFlags = await categoryFlagsOf(cat);
   const rows = applyAutoStatuses(buildProjectTasks(
@@ -33,7 +38,7 @@ export async function buildDealTimelineRows(supabase, deal, { type, categoryCode
     deal.id,
     templateOptions,
   ));
-  return { rows, genType, categoryCode: cat, startDate: anchor };
+  return { rows, genType, genLine, categoryCode: cat, startDate: anchor };
 }
 
 /* สรุป "ขั้นตอนปัจจุบัน" ต่อดีลจาก task ที่เรียง stepOrder แล้ว — กติกาเดียวกับ

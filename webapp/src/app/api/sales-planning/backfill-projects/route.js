@@ -52,6 +52,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     ownerName: p.aeOwner || null,
     team: p.team || null,
     projectId: p.id,
+    // ดีลที่ปั้นจากโครงการ = สายของโครงการนั้น (mig 0275) — ไม่เดาเมื่อโครงการยังไม่ระบุ
+    line: p.line || null,
     metadata: { source: 'pm-backfill', needsReview: true, bypassPipeline: true, backfilledAt: now },
     createdAt: now,
     updatedAt: now,

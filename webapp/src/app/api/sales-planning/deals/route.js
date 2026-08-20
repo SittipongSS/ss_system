@@ -26,6 +26,7 @@ import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 
 export const dynamic = 'force-dynamic';
@@ -112,6 +113,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json();
   if (!body.title?.trim()) return badRequest('ต้องระบุชื่อดีล');
+
+  /* สายธุรกิจของดีล (mig 0274 · มติผู้ใช้ 2026-08-20) — **บังคับตั้งแต่วันเกิด**
+     เพราะไทม์ไลน์ถูก gen พร้อมดีลใบนี้เลย (ดูท้ายไฟล์) และแม่แบบเป็นคู่
+     (สาย, ประเภทดีล) ⇒ ไม่มีสาย = ไม่รู้ว่าจะเดินขั้นตอนของสายไหน
+     ⚠️ ห้ามใส่ค่าตั้งต้นให้เอง — บทเรียนเดียวกับ `projects.type` ที่ default 'NPD'
+     แล้วโครงการทั้ง 11 ใบบน prod เป็น NPD หมด (หัว mig 0191) */
+  const line = normalizeBusinessLine(body.line);
+  if (!line) return badRequest('ต้องเลือกสายธุรกิจของดีล (สินค้า หรือ บริการ)');
 
   /* มูลค่าคาดการณ์แยกตามหมวดสินค้า (mig 0264 — มติผู้ใช้ 2026-08-17)
      ส่ง valueItems มาเมื่อไร = ยอดรวมและหมวดของดีลมาจากแถวเท่านั้น
@@ -214,6 +223,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
     // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.
     dealType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType),
+    // สายธุรกิจ (mig 0274) — ครึ่งที่สองของกุญแจแม่แบบไทม์ไลน์ · โครงการที่ก่อจาก
+    // ดีลใบนี้ต้องเป็นสายเดียวกัน (ด่านที่ create-project/link-project)
+    line,
     // ชื่อสูตรกลิ่น (ดีล SCENT — จุดปลั๊กอิน RD ในอนาคต)
     formulaName: (body.formulaName || '').trim() || null,
     // หมวดสินค้า (DL1 — mig 0094): ใช้เลือก timeline template ตามหมวด

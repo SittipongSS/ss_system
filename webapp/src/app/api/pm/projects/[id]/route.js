@@ -15,7 +15,7 @@ import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose, projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
-import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
 import { canViewUpdates } from '@/lib/master/updateAccess';
@@ -366,7 +366,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // becomes Archived; multiple versions in one segment require explicit UAT.
     if (versionIds.length === 1) {
       try {
-        templateOptions = await loadWorkflowTemplateForGeneration(supabase, data.type, versionIds[0]);
+        // แม่แบบ = คู่ (สายของโครงการ, ประเภทงาน) ตั้งแต่ 2026-08-20 — โครงการสายบริการ
+        // ปักหมุดเวอร์ชันของคีย์ SERVICE-* ⇒ ส่งแค่ `data.type` จะเด้ง version mismatch
+        templateOptions = await loadWorkflowTemplateForDeal(supabase, { line: data.line, dealType: data.type }, versionIds[0]);
       } catch (templateError) {
         return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
       }

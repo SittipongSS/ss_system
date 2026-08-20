@@ -62,12 +62,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   let built;
   try {
     built = await buildDealTimelineRows(supabase, deal, {
-      type: body.type, categoryCode: body.categoryCode, startDate: body.startDate,
+      type: body.type, line: body.line, categoryCode: body.categoryCode, startDate: body.startDate,
     });
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
-  const { rows, genType, categoryCode } = built;
+  const { rows, genType, genLine, categoryCode } = built;
   // 0 แถว = template หลังกรองหมวดสินค้าไม่เหลือขั้นตอนเลย (หมวดของดีลไม่ตรง step ไหน
   // หรือ published template ของประเภทนี้ว่าง). เดิม insert([]) แล้วตอบ 201 เงียบ ๆ →
   // หน้าโหลดใหม่เจอ 0 task โชว์ปุ่มเดิม = ผู้ใช้เห็นว่า "กดแล้วไม่ขึ้นอะไร". ปฏิเสธพร้อมบอกสาเหตุ
@@ -84,6 +84,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // บันทึกหมวดที่ใช้ + ประเภทที่ยืนยัน + ขยับ stage เป็น timeline_proposed (เหมือน flow ผูกโครงการ)
   const patch = { updatedAt: now };
   if (categoryCode !== (deal.categoryCode || null)) patch.categoryCode = categoryCode;
+  // สายที่ใช้ gen จริง เขียนกลับให้ตรงกัน (กติกาเดียวกับประเภทดีล) — ดีลเก่าที่ยัง
+  // ไม่มีสายแล้วผู้ใช้เลือกในโมดัลยืนยัน จะได้ค่าติดตัวตั้งแต่รอบนี้
+  if (genLine && genLine !== (deal.line || null)) patch.line = genLine;
   // ยืนยัน/สลับประเภทตอนสร้างไทม์ไลน์ → เขียนกลับให้ deal.dealType ตรงกับ template ที่ใช้จริง
   // (เขียน metadata.projectType คู่ตาม transition mig 0088)
   if (genType !== (deal.dealType || null)) {
@@ -111,7 +114,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_deal', entityId: deal.id, before: deal, after: updatedDeal,
-    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genType}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
+    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genLine ? `${genLine} · ` : ''}${genType}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
     request: req,
   });
   return ok({ deal: updatedDeal, tasks: inserted }, 201);

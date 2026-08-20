@@ -1,41 +1,71 @@
-// ⚠️ ต้องตรงกับ CHECK ของ `workflow_templates."templateKey"` เป๊ะ (mig 0121 + 0249)
-// และตรงกับ DEAL_TYPES ของ lib/salesPlanning.js — ระบบเลือกแม่แบบด้วยประเภทดีล
+// ⚠️ ต้องตรงกับ CHECK ของ `workflow_templates."templateKey"` เป๊ะ (mig 0121 + 0249 + 0275)
 // ประเภทดีลที่ไม่มีคีย์ตรงนี้ = สร้างโครงการ/ไทม์ไลน์ไม่ได้
-export const WORKFLOW_TEMPLATE_KEYS = Object.freeze(['SCENT', 'NPD', 'RE-ORDER', 'OTHER']);
-
-// ── แม่แบบถูกค้นด้วย **คู่** (line, templateKey) — mig 0193/0194 ─────────
 //
-// ⭐ มติ 2026-08-02: แกนสายธุรกิจอยู่ที่โครงการ ส่วนชนิดงานอยู่ที่ดีล
-// ⇒ แม่แบบไทม์ไลน์ = คู่ `(project.line, deal.type)` = **บริบท × ส่วน**
-// วันนี้ `templateKey` เป็น PK ค่าเดียว จึงมี 'NPD' ได้ใบเดียวทั้งระบบ —
-// 0194 จะย้าย PK เป็นคู่ ส่วนตัวช่วยข้างล่างใช้ได้ตั้งแต่ตอนนี้
+// ── แม่แบบถูกค้นด้วย **คู่ (สาย, ประเภทดีล)** — มติผู้ใช้ 2026-08-20 ────────
 //
-// ⚠️ คู่ที่ "มีได้" ไม่เท่ากับคู่ที่ "มีจริง" — ระบบยอมให้ครบทั้ง 8 คู่ แต่บน prod
-// วันนี้มีแค่ 4 ใบสายสินค้า · ผู้เรียกต้องทนกรณีหาไม่เจอเสมอ (คืน null ไม่ใช่เดา
-// ให้เป็นสายสินค้า — เดาแล้วจะได้ไทม์ไลน์สายผิดโดยไม่มีอะไรเตือน)
-export const WORKFLOW_TEMPLATE_LINES = Object.freeze(['PRODUCT', 'SERVICE']);
+// ⭐ เดิมค้นด้วยประเภทดีลค่าเดียว ⇒ งานสายบริการเดินขั้นตอนเดียวกับสายสินค้าเป๊ะ
+// ทั้งที่ "ติดตั้งหน้างาน" กับ "ส่งของออกจากโรงงาน" ไม่ใช่เส้นเดียวกัน
+// ⇒ ดีลถือ `line` ของตัวเอง (mig 0274) แล้วแม่แบบเลือกจากคู่ (deal.line, deal.dealType)
+//
+// ⭐ **SCENT เดินเหมือนกันทั้งสองสาย** (มติผู้ใช้ 2026-08-20) ⇒ มีแม่แบบใบเดียว
+// ใช้ร่วมกัน ไม่ใช่สองใบที่ต้องมาไล่แก้ให้ตรงกันทุกครั้ง — คู่ (SERVICE, SCENT)
+// จึงชี้กลับมาที่คีย์ 'SCENT' ใบเดียวกับสายสินค้า และแถวนั้นถือ line = 'BOTH'
+//
+// ⚠️ **คีย์ของแม่แบบเข้ารหัสคู่ไว้ในตัวมันเอง** (`SERVICE-NPD`) ไม่ได้ย้าย PK เป็น
+// สองคอลัมน์ — ตั้งใจ: PK คู่ต้องรื้อ FK ของ versions + UNIQUE + partial index +
+// RPC 4 ตัว (create/save/publish/discard draft) + trigger guard บน prod ที่มีของจริง
+// อยู่แล้ว · ส่วนคอลัมน์ `line` (mig 0193) ยังอยู่และเป็น **ป้ายบอกสาย** ของแถว
+// (PRODUCT | SERVICE | BOTH) ให้หน้าตั้งค่าจัดกลุ่ม ไม่ใช่กุญแจค้น
+// ⇒ ห้ามค้นแม่แบบด้วย `line` ตรง ๆ ให้ผ่าน workflowTemplateKeyFor() ที่เดียว
+export const WORKFLOW_TEMPLATE_KEYS = Object.freeze([
+  'SCENT', 'NPD', 'RE-ORDER', 'OTHER',
+  'SERVICE-NPD', 'SERVICE-RE-ORDER', 'SERVICE-OTHER',
+]);
 
-// คีย์อ่านง่ายสำหรับใช้เป็น index ฝั่ง JS (Map/object) — **ไม่ใช่ค่าที่เก็บลง DB**
-// DB เก็บสองคอลัมน์แยกกัน ห้ามเอาสตริงนี้ไปเขียนลง `templateKey`
-export const workflowTemplateRef = (line, templateKey) => `${line}:${templateKey}`;
+// ป้ายสายของแถวแม่แบบ — 'BOTH' = ใบที่สองสายใช้ร่วมกัน (วันนี้มีแค่ SCENT)
+export const WORKFLOW_TEMPLATE_LINES = Object.freeze(['PRODUCT', 'SERVICE', 'BOTH']);
 
-// หาแม่แบบจากคู่ — คืน null เมื่อไม่มี ไม่ตกไปหาสายอื่นให้เอง
-export function findWorkflowTemplate(templates = [], line, templateKey) {
-  if (!line || !templateKey) return null;
-  return templates.find((row) => row?.line === line && row?.templateKey === templateKey) || null;
+// ประเภทดีลที่ "สายบริการเดินคนละทาง" — SCENT ไม่อยู่ในนี้เพราะใช้ใบเดียวร่วมกัน
+const SERVICE_SPLIT_TYPES = Object.freeze(['NPD', 'RE-ORDER', 'OTHER']);
+const SERVICE_PREFIX = 'SERVICE-';
+
+/** คู่ (สาย, ประเภทดีล) → คีย์แม่แบบใน DB · คืน null เมื่อคู่นี้ไม่มีแม่แบบรองรับ
+ *  ⚠️ ไม่เดาสายให้ — ดีลที่ยังไม่ระบุสาย (ของเก่าก่อน mig 0274) ต้องได้ null แล้ว
+ *  ให้ผู้เรียกบอกผู้ใช้ว่าต้องเลือกสายก่อน ไม่ใช่หล่นไปได้ไทม์ไลน์สายสินค้าเงียบ ๆ */
+export function workflowTemplateKeyFor(line, dealType) {
+  if (!dealType || !WORKFLOW_TEMPLATE_KEYS.includes(dealType)) return null;
+  if (dealType === 'SCENT') return 'SCENT';           // ใช้ร่วมทั้งสองสาย
+  if (line === 'PRODUCT') return dealType;
+  if (line === 'SERVICE' && SERVICE_SPLIT_TYPES.includes(dealType)) return `${SERVICE_PREFIX}${dealType}`;
+  return null;
+}
+
+/** ป้ายสายของคีย์ — ตรงกับคอลัมน์ `line` ที่แถวนั้นเก็บไว้ */
+export function workflowTemplateLineOf(templateKey) {
+  if (templateKey === 'SCENT') return 'BOTH';
+  return String(templateKey || '').startsWith(SERVICE_PREFIX) ? 'SERVICE' : 'PRODUCT';
+}
+
+/** คีย์แม่แบบ → ประเภทดีลที่มันรองรับ (ถอดคำนำหน้าสาย) */
+export function workflowTemplateDealTypeOf(templateKey) {
+  const key = String(templateKey || '');
+  return key.startsWith(SERVICE_PREFIX) ? key.slice(SERVICE_PREFIX.length) : key;
+}
+
+// หาแม่แบบของคู่จากรายการที่โหลดมา — คืน null เมื่อไม่มี ไม่ตกไปหาสายอื่นให้เอง
+export function findWorkflowTemplate(templates = [], line, dealType) {
+  const templateKey = workflowTemplateKeyFor(line, dealType);
+  if (!templateKey) return null;
+  return (templates || []).find((row) => row?.templateKey === templateKey) || null;
 }
 
 // คู่ที่ยังไม่มีแม่แบบ — หน้าตั้งค่าใช้บอกว่าต้องสร้างอะไรอีกบ้าง
 // (แบบเดียวกับตัวนับ "โครงการที่ยังไม่ระบุสาย" ของ 0191: บอกช่องว่าง ไม่เดาแทน)
 export function missingWorkflowTemplatePairs(templates = []) {
-  const have = new Set((templates || []).map((row) => workflowTemplateRef(row?.line, row?.templateKey)));
-  const missing = [];
-  for (const line of WORKFLOW_TEMPLATE_LINES) {
-    for (const templateKey of WORKFLOW_TEMPLATE_KEYS) {
-      if (!have.has(workflowTemplateRef(line, templateKey))) missing.push({ line, templateKey });
-    }
-  }
-  return missing;
+  const have = new Set((templates || []).map((row) => row?.templateKey));
+  return WORKFLOW_TEMPLATE_KEYS
+    .filter((templateKey) => !have.has(templateKey))
+    .map((templateKey) => ({ line: workflowTemplateLineOf(templateKey), templateKey }));
 }
 
 // มติ 2026-07-20 (mig 0131): token พิเศษใน categoryOnly/categoryExclude —
@@ -69,11 +99,21 @@ export const WORKFLOW_TEMPLATE_LIMITS = Object.freeze({
 // ⚠️ ต้องมีบรรทัดของทุกคีย์ใน WORKFLOW_TEMPLATE_KEYS — ค่าท้ายสุดเป็น fallback ของ
 // 'NPD' เท่านั้น ไม่ใช่ "ค่าเริ่มต้นของอะไรก็ได้" · เพิ่ม 'OTHER' (mig 0249) แล้วลืม
 // ตรงนี้ ผลคือการ์ด OTHER ที่หน้าตั้งค่าขึ้นป้าย "งานพัฒนาสินค้า" เงียบ ๆ
+// ป้ายบอก **ชนิดงาน** อย่างเดียว ไม่พ่วงชื่อสาย — สายอยู่ที่ป้ายแยกของมันเอง
+// (คีย์ SERVICE-* ถอดคำนำหน้าก่อนแล้วอ่านชื่อชนิดงานชุดเดียวกับสายสินค้า)
 export function workflowTemplateKeyLabel(key) {
-  if (key === 'SCENT') return 'งานพัฒนากลิ่น';
-  if (key === 'RE-ORDER') return 'งานสั่งผลิตซ้ำ';
-  if (key === 'OTHER') return 'งานอื่นๆ';
+  const type = workflowTemplateDealTypeOf(key);
+  if (type === 'SCENT') return 'งานพัฒนากลิ่น';
+  if (type === 'RE-ORDER') return 'งานสั่งผลิตซ้ำ';
+  if (type === 'OTHER') return 'งานอื่นๆ';
   return 'งานพัฒนาสินค้า';
+}
+
+// ป้ายสายของแม่แบบสำหรับหน้าตั้งค่า — 'BOTH' ต้องบอกให้ชัดว่าแก้ใบนี้กระทบสองสาย
+export function workflowTemplateLineLabel(line) {
+  if (line === 'SERVICE') return 'สายบริการ';
+  if (line === 'BOTH') return 'ใช้ร่วมสองสาย';
+  return 'สายสินค้า';
 }
 
 export function workflowTemplateStatusLabel(status) {

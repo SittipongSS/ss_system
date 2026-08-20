@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { loadScoped } from '@/lib/scopedRow';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import { recordAudit } from '@/lib/audit';
+import { businessLineLabel } from '@/lib/master/businessLines';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, inPmProjectScope } from '@/lib/permissions';
 import { buildAppendedTasks, todayStr } from '@/lib/pm/schedule';
@@ -19,7 +20,7 @@ import {
   nextStepOrder, planSegmentMove, rollbackSegmentTasks,
 } from '@/lib/sales/dealProjectMove';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
-import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!hasCompatibleProjectCustomer(deal, project)) {
     return badRequest('ดีลกับโครงการต้องเป็นลูกค้าเดียวกัน');
   }
+  /* ⭐ สายธุรกิจต้องตรงกัน (มติผู้ใช้ 2026-08-20) — ดีลถือสายของตัวเองตั้งแต่ mig 0274
+     และไทม์ไลน์ลอยของมันถูก gen ด้วยแม่แบบสายนั้นไปแล้ว · ผูกข้ามสาย = โครงการ
+     สายบริการมี segment ของสายสินค้าปนอยู่ โดยไม่มีที่ไหนบอกว่าปนมาจากไหน
+     ⚠️ ดีลเก่าที่ยังไม่ระบุสาย (ก่อน mig 0274) **สืบสายจากโครงการ** ตอนผูก —
+     กติกาเดียวกับ backfill ของ 0274 (ผูกโครงการอยู่ = ตามโครงการ) ไม่ใช่การเดา */
+  if (deal.line && project.line && deal.line !== project.line) {
+    return badRequest(`ดีลเป็น${businessLineLabel(deal.line)} แต่โครงการเป็น${businessLineLabel(project.line)} — ผูกข้ามสายไม่ได้`);
+  }
+  const adoptedLine = !deal.line && project.line ? project.line : null;
   // โครงการต้นทางของการย้าย: ต้องอยู่ในขอบเขตของผู้ย้ายและยังไม่ปิดเหมือนกัน —
   // ดีลหลุดออกไปคือโครงการต้นทาง "เปลี่ยนองค์ประกอบ" ไม่ต่างจากปลายทางที่รับเข้า
   let fromProject = null;
@@ -128,7 +138,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } else {
     let templateOptions;
     try {
-      templateOptions = await loadWorkflowTemplateForGeneration(supabase, dealTypeOf(deal));
+      // แม่แบบ = คู่ (สาย, ประเภทดีล) · สายของดีลกับของโครงการตรงกันแน่แล้วจากด่านข้างบน
+      templateOptions = await loadWorkflowTemplateForDeal(supabase, { line: deal.line || project.line, dealType: dealTypeOf(deal) });
     } catch (templateError) {
       return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);
     }
@@ -164,6 +175,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .update({
       projectId: project.id,
       customerId: project.customerId,
+      // ดีลเก่าที่ยังไม่มีสาย: สืบจากโครงการที่ผูกเข้าไป (ดูด่านข้างบน)
+      ...(adoptedLine ? { line: adoptedLine } : {}),
       customerName: project.customerName || deal.customerName || null,
       stage: nextStage,
       probability: nextProbability,

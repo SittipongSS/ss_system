@@ -2,6 +2,7 @@
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealValueLines from "@/components/salesPlanning/DealValueLines";
 import OptionTiles from "@/components/ui/OptionTiles";
+import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import StageSteps from "@/components/ui/StageSteps";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import { TEAM_LABELS } from "@/lib/permissions";
@@ -40,6 +41,7 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABEL
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { naText } from "@/lib/format";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { businessLineLabel } from "@/lib/master/businessLines";
 
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
 // (SCENT=amber · NPD=blue · RE-ORDER=teal · OTHER=violet) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
@@ -149,7 +151,13 @@ export default function DealFormFields({
       <SearchableSelect
         entity="project"
         value={form.projectId || ""}
-        onChange={(projectId) => onPatch({ projectId })}
+        onChange={(projectId) => {
+          /* โครงการประกาศสายของมันเอง (mig 0191) และดีลกับโครงการต้องสายเดียวกัน
+             (ด่านที่ link-project) ⇒ เลือกโครงการ = ได้สายมาด้วยเลย ไม่ต้องให้คน
+             เดาซ้ำแล้วโดนตีกลับตอนกดบันทึก */
+          const picked = projects.find((project) => project.id === projectId);
+          onPatch({ projectId, ...(picked?.line ? { line: picked.line } : {}) });
+        }}
         disabled={!form.customerId || !!form.lockedProjectId || alreadyWon}
         placeholder={form.customerId ? "ค้นหารหัส / ชื่อโครงการ..." : "เลือกลูกค้าก่อน"}
         options={[
@@ -228,6 +236,28 @@ export default function DealFormFields({
         options={ownerTeams.map((t) => ({ value: t, label: TEAM_LABELS[t] || t }))}
       />
       <small>ยอดขายและเป้าของดีลใบนี้จะถูกนับเข้าทีมที่เลือก</small>
+    </div>
+  );
+
+  /* สายธุรกิจของดีล (mig 0275) — **ครึ่งแรกของกุญแจแม่แบบไทม์ไลน์** จึงอยู่เหนือ
+     ประเภทดีล: ตอบ "งานนี้จบยังไง" ก่อน แล้วค่อยตอบ "ใบนี้เติมช่วงไหน"
+     ⚠️ ล็อกเมื่อดีลผูก/จะผูกโครงการ — โครงการเป็นเจ้าของสายอยู่แล้ว และผูกข้ามสาย
+     ถูกตีกลับที่ API อยู่ดี ⇒ ให้เห็นค่าที่จะได้ ดีกว่าปล่อยให้เลือกแล้วเด้ง */
+  const lineLockedByProject = !!form.projectId || !!form.lockedProjectId;
+  const lineField = (
+    <div className="deal-field" key="line">
+      <span className="deal-field-label">สายธุรกิจ <span className="required-mark">*</span></span>
+      <BusinessLineSelect
+        value={form.line || ""}
+        onChange={set("line")}
+        disabled={lineLockedByProject || alreadyWon}
+        ariaLabel="สายธุรกิจของดีล"
+      />
+      <small>
+        {lineLockedByProject
+          ? `สายมาจากโครงการที่ผูกไว้${form.line ? ` (${businessLineLabel(form.line)})` : ""} — เปลี่ยนที่โครงการ`
+          : "เลือกสายก่อน — ขั้นตอนไทม์ไลน์ของสายสินค้ากับสายบริการเป็นคนละชุด (ยกเว้นงานพัฒนากลิ่นที่เดินเหมือนกัน)"}
+      </small>
     </div>
   );
 
@@ -411,6 +441,10 @@ export default function DealFormFields({
 
   return (
     <>
+      {/* สายกับประเภทดีลอยู่คนละแถว (มติผู้ใช้ 2026-08-20) — แผ่นเลือกสองชุดวางเคียงกัน
+          บีบให้ทั้งคู่แคบจนคำอธิบายบรรทัดรองตัด และตาอ่านสลับซ้าย-ขวาเหมือนเป็นคำถามเดียว
+          ทั้งที่เป็นสองคำถามเรียงกัน: จบยังไง → แล้วใบนี้เติมช่วงไหน */}
+      {pairRows([lineField])}
       {pairRows([dealTypeField])}
       {pairRows([titleField])}
       {pairRows([customerField, brandField])}

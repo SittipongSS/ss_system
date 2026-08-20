@@ -9,10 +9,10 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { advanceStage, canEditSalesPlanning, dealAuditLabel, inSalesEditScope, normalizeDealType } from '@/lib/salesPlanning';
-import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
+import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { resolveProjectAcOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
-import { normalizeBusinessLine } from '@/lib/master/businessLines';
+import { normalizeBusinessLine, businessLineLabel } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +42,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // /api/sa/projects · ⚠️ ห้าม fallback จาก deal.team: prod มี SDS_…EGCO_HAND GEL
   // อยู่ใต้ทีม SV ทั้งที่เป็นสายสินค้า (ทีมขาย ≠ สายธุรกิจ · มติ #868)
   if (!normalizeBusinessLine(body.line)) return badRequest('ต้องเลือกสายธุรกิจ (PRODUCT หรือ SERVICE)');
+  /* ⭐ ดีลถือสายของตัวเองแล้ว (mig 0274) ⇒ โครงการที่ก่อจากดีลต้อง**สายเดียวกัน**
+     (มติผู้ใช้ 2026-08-20) — ไทม์ไลน์ลอยของดีลถูก gen ด้วยแม่แบบสายของดีลไปแล้ว
+     ตั้งแต่วันสร้าง · ปล่อยให้โมดัลเลือกสายอื่นตอนก่อโครงการ = ไทม์ไลน์ในโครงการ
+     เป็นของสายหนึ่ง แต่ตัวโครงการประกาศอีกสายหนึ่ง โดยไม่มีอะไรเตือน */
+  if (deal.line && normalizeBusinessLine(body.line) !== deal.line) {
+    return badRequest(`ดีลนี้เป็น${businessLineLabel(deal.line)} — สร้างโครงการสายอื่นจากดีลใบนี้ไม่ได้ (เปลี่ยนสายที่ดีลก่อน)`);
+  }
   // ตรวจ "หมวดพักใช้" เฉพาะตอนโมดัลเปลี่ยนหมวด (ส่ง productMainCategory ใหม่ที่ต่างจากเดิม)
   // — ดีลเดิมที่หมวดถูกพักใช้ทีหลังต้องสร้างโครงการต่อได้ (กติกาเดียวกับ deal PATCH).
   const categoryChanged = body.productMainCategory != null
@@ -181,7 +188,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // เฟส B: task ชุดก่อตั้งติดป้ายดีลเจ้าของ (timeline segment ต่อดีล — mig 0090)
     let templateOptions;
     try {
-      templateOptions = await loadWorkflowTemplateForGeneration(supabase, project.type);
+      // แม่แบบ = คู่ (สายของโครงการ, ประเภทงาน) — สายมาจากดีลเสมอ (ด่านข้างบนบังคับให้ตรงกัน)
+      templateOptions = await loadWorkflowTemplateForDeal(supabase, { line: project.line, dealType: project.type });
     } catch (templateError) {
       await supabase.from('projects').delete().eq('id', project.id);
       return fail(templateError.message || 'โหลด Workflow Template ไม่สำเร็จ', templateError instanceof WorkflowTemplateError ? templateError.status : 500);

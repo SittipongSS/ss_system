@@ -32,6 +32,7 @@ import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { activeProductTypeError } from '@/lib/master/productTypes';
+import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { loadDealValueItems, prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
@@ -178,6 +179,21 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.dealType = nextType;
     patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: nextType };
   }
+  /* สายธุรกิจของดีล (mig 0274) — อีกครึ่งของกุญแจแม่แบบไทม์ไลน์
+     ⚠️ ดีลที่ผูกโครงการแล้วห้ามสลับสาย: โครงการประกาศสายของมันเอง และ segment
+     ในโครงการถูก gen ด้วยแม่แบบสายนั้นไปแล้ว ⇒ ต้องย้าย/แก้ที่โครงการแทน
+     ⚠️ ล้างค่าเป็นว่างไม่ได้ (ถอยกลับไปเป็น "ไม่รู้สาย" ไม่มีประโยชน์กับใคร) */
+  /* ⚠️ ค่าว่าง = "ไม่แตะช่องนี้" ไม่ใช่ "ล้างสาย" — ฟอร์มแก้ดีลส่งทั้งฟอร์มกลับมา
+     เสมอ ⇒ ตีค่าว่างเป็น error จะทำให้ **แก้ดีลเก่า (ก่อน mig 0275) ไม่ได้เลย**
+     ทั้งที่คนแค่มาแก้ชื่อ */
+  if ('line' in body && (body.line ?? '') !== '') {
+    const nextLine = normalizeBusinessLine(body.line);
+    if (!nextLine) return badRequest('สายธุรกิจต้องเป็น PRODUCT หรือ SERVICE');
+    if (nextLine !== (before.line || null)) {
+      if (before.projectId) return badRequest('ดีลนี้ผูกโครงการแล้ว — เปลี่ยนสายธุรกิจที่โครงการแทน');
+      patch.line = nextLine;
+    }
+  }
   // ชื่อสูตรกลิ่น (SCENT) — แก้ได้ตลอด (จุดปลั๊กอิน RD ในอนาคต)
   if ('formulaName' in body) {
     patch.formulaName = (body.formulaName || '').trim() || null;
@@ -227,7 +243,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (itemsError) return fail(`บันทึกรายการมูลค่าคาดการณ์ไม่สำเร็จ: ${itemsError}`, 500);
   }
 
-  /* ประเภทดีล/หมวดสินค้าเปลี่ยน = template ของไทม์ไลน์เปลี่ยน → gen ชุดขั้นตอนใหม่
+  /* ประเภทดีล/สายธุรกิจ/หมวดสินค้าเปลี่ยน = template ของไทม์ไลน์เปลี่ยน → gen ชุดขั้นตอนใหม่
      ให้เอง (มติผู้ใช้ 2026-08-08 "แก้ดีลแล้วไทม์ไลน์อัปเดตตาม") เงื่อนไขปลอดภัย:
      - เฉพาะไทม์ไลน์ลอย (ผูกโครงการแล้วจัดการฝั่ง PM ตามกติกาเดิม)
      - เฉพาะเมื่อยังไม่เริ่มทำสักขั้น (ทุก task ยัง Pending) — เริ่มแล้วห้ามทิ้งงานคน
@@ -235,7 +251,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   let regenerated = false;
   const typeChanged = 'dealType' in patch && (patch.dealType || null) !== (before.dealType || null);
   const categoryChanged = 'categoryCode' in patch && (patch.categoryCode || null) !== (before.categoryCode || null);
-  if ((typeChanged || categoryChanged) && !data.projectId) {
+  // สายเปลี่ยน = แม่แบบคนละใบ ⇒ ต้อง regen ด้วยเงื่อนไขเดียวกับประเภท/หมวด
+  const lineChanged = 'line' in patch && (patch.line || null) !== (before.line || null);
+  if ((typeChanged || categoryChanged || lineChanged) && !data.projectId) {
     const { data: floating } = await supabase
       .from('project_tasks').select('id, status')
       .eq('dealId', id).is('projectId', null);

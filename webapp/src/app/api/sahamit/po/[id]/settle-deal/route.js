@@ -275,6 +275,8 @@ export async function POST(request, { params }) {
     team: 'KA',
     projectId: po.projectId,
     dealType: 'RE-ORDER',
+    // สายสหมิตร = ของที่ออกจากโรงงาน ไม่มีงานหน้างาน ⇒ สายสินค้าเสมอ (mig 0275)
+    line: 'PRODUCT',
     metadata: {
       source: 'sahamit-po', // ไม่ใช่ sahamit-forecast → กติกา "FC อัพเดทเคลียร์ดีล" ไม่แตะดีลนี้
       projectType: 'RE-ORDER',
