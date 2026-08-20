@@ -100,20 +100,19 @@ export default function AuditLogPage() {
         icon={<History size={22} />}
         title="บันทึกการใช้งาน"
         message="บันทึกการใช้งานเปิดให้ผู้ดูแลระบบและผู้ที่ได้รับสิทธิ์ดูเท่านั้น"
-        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       />
     );
   }
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><History size={22} /></span> บันทึกการใช้งาน</h1>
-          <p>ประวัติการสร้าง / แก้ไข / ลบ ข้อมูลในระบบ (ใครทำอะไรเมื่อไหร่)</p>
-        </div>
-        <div className="status-pill info">{total} รายการ</div>
-      </div>
+    /* หัวหน้าใช้ของ Workspace ตัวเดียวทั้งเปลือกตั้งค่า · ไม่มีปุ่มถอยกลับแล้ว
+       (แถบรายการตั้งค่าค้างซ้ายมือแทน — มติผู้ใช้ 2026-08-20) */
+    <Workspace
+      icon={<History size={22} />}
+      title="บันทึกการใช้งาน"
+      subtitle="ประวัติการสร้าง / แก้ไข / ลบ ข้อมูลในระบบ (ใครทำอะไรเมื่อไหร่)"
+      headerRight={<div className="status-pill info">{total} รายการ</div>}
+    >
 
       {/* ตัวกรอง */}
       <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 16 }}>

@@ -212,19 +212,16 @@ export default function CompanySettingsPage() {
         icon={<Building2 size={22} />}
         title="ข้อมูลบริษัท"
         message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
-        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       />
     );
   }
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Building2 size={22} /></span> ข้อมูลบริษัท</h1>
-          <p>จัดการข้อมูลนิติบุคคลที่ใช้บนเอกสารทั้งระบบ การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของใบที่ออกไปแล้ว</p>
-        </div>
-      </header>
+    <Workspace
+      icon={<Building2 size={22} />}
+      title="ข้อมูลบริษัท"
+      subtitle="จัดการข้อมูลนิติบุคคลที่ใช้บนเอกสารทั้งระบบ การเผยแพร่จะไม่แก้ข้อมูลย้อนหลังของใบที่ออกไปแล้ว"
+    >
 
       {loading ? <SkeletonRows rows={7} /> : error ? (
         <section className={`glass-panel ${styles.errorPanel}`} role="alert">

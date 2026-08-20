@@ -173,7 +173,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
-  padding: 5px var(--space-2-5);
+  padding: var(--space-1-5) var(--space-2-5);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--navy-fg) 14%, transparent);
   color: var(--navy-fg);
@@ -208,7 +208,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
-  padding: 7px 11px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
   color: var(--text-2);
   font-size: var(--fs-6);

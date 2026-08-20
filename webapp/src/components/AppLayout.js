@@ -17,6 +17,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
+import SettingsShell from '@/components/settings/SettingsShell';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -638,7 +639,15 @@ export default function AppLayout({ children }) {
             <ExtraCapsContext.Provider value={extraCaps}>
               <TeamContext.Provider value={team}>
                 <TeamsContext.Provider value={teams}>
-                  <DepartmentContext.Provider value={department}>{children}</DepartmentContext.Provider>
+                  <DepartmentContext.Provider value={department}>
+                    {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
+                        ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
+                        ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
+                        /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
+                    {isSettingsContext
+                      ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
+                      : children}
+                  </DepartmentContext.Provider>
                 </TeamsContext.Provider>
               </TeamContext.Provider>
             </ExtraCapsContext.Provider>

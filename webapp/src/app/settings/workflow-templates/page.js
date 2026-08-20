@@ -365,7 +365,6 @@ export default function WorkflowTemplatesPage() {
         icon={<Workflow size={22} />}
         title="Workflow และ Timeline Template"
         message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
-        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       />
     );
   }
@@ -380,13 +379,11 @@ export default function WorkflowTemplatesPage() {
 
   return (
     // ปุ่มสร้างฉบับร่างไม่อยู่บนหัวหน้า — การ์ด "ยังไม่มีฉบับร่าง" ในเนื้อหามีปุ่มของมันเองแล้ว
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Workflow size={22} /></span> Workflow และ Timeline Template</h1>
-          <p>กำหนดขั้นตอน ระยะเวลา ผู้รับผิดชอบ และ dependency ที่ใช้สร้าง Timeline งานใหม่แบบมีเวอร์ชัน</p>
-        </div>
-      </header>
+    <Workspace
+      icon={<Workflow size={22} />}
+      title="Workflow และ Timeline Template"
+      subtitle="กำหนดขั้นตอน ระยะเวลา ผู้รับผิดชอบ และ dependency ที่ใช้สร้าง Timeline งานใหม่แบบมีเวอร์ชัน"
+    >
 
       {/* จัดกลุ่มตามสายธุรกิจ (มติผู้ใช้ 2026-08-20) — แม่แบบเป็นคู่ (สาย, ชนิดงาน)
           แล้ว การไล่ 7 ปุ่มเรียงกันเฉย ๆ อ่านไม่ออกว่าใบไหนของสายไหน

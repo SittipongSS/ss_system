@@ -14,13 +14,12 @@ import { canViewSignatureCoverage, isGoLiveReady } from "@/lib/admin/signatureCo
 import { accessState } from "@/lib/accessGate";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import AccessDenied from "@/components/ui/AccessDenied";
-import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
+import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import { naText } from "@/lib/format";
 
-const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 
 const FILTERS = [
   { v: "all", label: "ทั้งหมด" },
@@ -106,7 +105,6 @@ export default function SignatureCoveragePage() {
         icon={<Signature size={22} />}
         title="ความพร้อมลายเซ็น"
         message="รายงานนี้เปิดให้ผู้ดูแลระบบ และผู้ที่ได้รับสิทธิ์ดูรายชื่อผู้ใช้เท่านั้น"
-        back={BACK_TO_SETTINGS}
       />
     );
   }
@@ -114,38 +112,44 @@ export default function SignatureCoveragePage() {
   const ready = isGoLiveReady(summary);
 
   return (
-    <Workspace hideHeader back={BACK_TO_SETTINGS}>
-      <div className="premium-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><Signature size={22} /></span> ความพร้อมลายเซ็น</h1>
-          <p>ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขายไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี</p>
+    /* หัวหน้ามาจาก Workspace ตัวเดียวทั้งเปลือกตั้งค่า (มติผู้ใช้ 2026-08-20) —
+       เดิมทุกหน้าเขียน .premium-header เองพร้อม inline style คนละชุด ⇒ หัวเรื่อง
+       เยื้องกันคนละระยะทุกหน้า · ปุ่ม/ป้ายของหน้าไปที่ headerRight ที่เดียว
+       ⚠️ ไม่มี back อีกแล้ว — แถบรายการตั้งค่าค้างซ้ายมือทำหน้าที่นั้นแทน */
+    <Workspace
+      icon={<Signature size={22} />}
+      title="ความพร้อมลายเซ็น"
+      subtitle="ใครยังเซ็นอนุมัติใบเสนอราคา / ใบสั่งขายไม่ได้ เพราะยังไม่มีลายเซ็นอิเล็กทรอนิกส์ในบัญชี"
+      /* required = 0 ไม่ใช่ "พร้อม" (isGoLiveReady คืน false โดยเจตนา — ไม่มีใครใน cohort
+         เลยแปลว่าข้อมูลผิดปกติ) แต่ก็ไม่ใช่ "ยังขาด 0 คน" ที่อ่านแล้วขัดกัน */
+      headerRight={!loading && !error && (
+        <div className={`status-pill ${ready ? "success" : "warning"}`}>
+          {ready ? "พร้อมเปิดใช้งาน"
+            : (summary.required > 0 ? `ยังขาด ${summary.required - summary.requiredReady} คน` : "ยังไม่มีข้อมูล")}
         </div>
-        {/* required = 0 ไม่ใช่ "พร้อม" (isGoLiveReady คืน false โดยเจตนา — ไม่มีใครใน cohort
-            เลยแปลว่าข้อมูลผิดปกติ) แต่ก็ไม่ใช่ "ยังขาด 0 คน" ที่อ่านแล้วขัดกัน */}
-        {!loading && !error && (
-          <div className={`status-pill ${ready ? "success" : "warning"}`}>
-            {ready ? "พร้อมเปิดใช้งาน"
-              : (summary.required > 0 ? `ยังขาด ${summary.required - summary.requiredReady} คน` : "ยังไม่มีข้อมูล")}
-          </div>
-        )}
-      </div>
+      )}
+    >
+      {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ `flex flex-col gap-4` — `.ui-metric-strip`
+          และกล่องอื่นไม่มี margin ของตัวเอง (กติกาเดียวกับหน้า RD / โครงการ) */}
+      <div className="flex flex-col gap-4">
+      {/* แถบตัวเลขกลาง (MetricStrip) — เดิมเป็น KpiCard 5 ใบใน .kpi-grid ที่ตัด 4+1
+          ⇒ ใบที่ห้าห้อยอยู่แถวสองใบเดียว · MetricStrip นับช่องเองและรองรับ 1–6
+          (กติกาของ ui/Workspace.js) และเป็นทรงเดียวกับแถบตัวเลขของหน้าตั้งค่าอื่น */}
+      <MetricStrip>
+        <Metric icon={<ShieldCheck size={16} />} label="ต้องมีลายเซ็น" value={summary.required} note="ผู้อนุมัติ + คนที่ถือดีลหรือมีเอกสารรอยื่น" />
+        <Metric icon={<CheckCircle2 size={16} />} label="พร้อมแล้ว" value={summary.requiredReady} note={`จากทั้งหมด ${summary.required} คน`} tone="success" />
+        <Metric icon={<AlertTriangle size={16} />} label="บล็อกงานอยู่ตอนนี้" value={summary.blocking} note="มีใบรออนุมัติแต่เซ็นไม่ได้" tone={summary.blocking ? "danger" : undefined} />
+        <Metric icon={<AlertTriangle size={16} />} label="ใบเสนอราคาที่ค้าง" value={summary.blockedQuotations} note="รออนุมัติจากคนที่ยังไม่มีลายเซ็น" tone={summary.blockedQuotations ? "warning" : undefined} />
+        <Metric icon={<AlertTriangle size={16} />} label="เอกสารรอยื่น" value={summary.blockedSubmissions} note="ผู้สร้างยังไม่มีลายเซ็น จะยื่นอนุมัติไม่ได้" tone={summary.blockedSubmissions ? "warning" : undefined} />
+      </MetricStrip>
 
-      <div className="kpi-grid" style={{ marginBottom: 16 }}>
-        <KpiCard label="ต้องมีลายเซ็น" value={summary.required} icon={ShieldCheck} tone="accent" hint="ผู้อนุมัติ + คนที่ถือดีลหรือมีเอกสารรอยื่น" />
-        <KpiCard label="พร้อมแล้ว" value={summary.requiredReady} icon={CheckCircle2} tone="success" hint={`จากทั้งหมด ${summary.required} คน`} />
-        <KpiCard label="บล็อกงานอยู่ตอนนี้" value={summary.blocking} icon={AlertTriangle} tone="danger" hint="มีใบรออนุมัติแต่เซ็นไม่ได้" />
-        <KpiCard label="ใบเสนอราคาที่ค้าง" value={summary.blockedQuotations} icon={AlertTriangle} tone="warning" hint="รออนุมัติจากคนที่ยังไม่มีลายเซ็น" />
-        <KpiCard label="เอกสารรอยื่น" value={summary.blockedSubmissions} icon={AlertTriangle} tone="warning" hint="ผู้สร้างยังไม่มีลายเซ็น จะยื่นอนุมัติไม่ได้" />
-      </div>
-
-      {/* ทำไมไม่มีปุ่ม "เพิ่มลายเซ็นให้" — กันคนเข้าใจผิดว่าหน้านี้ยังทำไม่เสร็จ */}
-      <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <ShieldCheck size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-        <p style={{ margin: 0, color: "var(--text-2)", fontSize: "var(--fs-7)", lineHeight: "var(--lh-relaxed)" }}>
-          ลายเซ็นเป็นข้อมูลส่วนบุคคล — ผู้ดูแลระบบอัปโหลดแทนกันไม่ได้ และไม่ควรได้ ไม่งั้นหลักฐานการเซ็นบนเอกสารจะไม่มีความหมาย
-          แต่ละคนต้องเพิ่มเองที่หน้า <Link href="/account" className="linklike"><strong>บัญชีของฉัน</strong></Link> หน้านี้ใช้ติดตามว่าเหลือใครบ้างเท่านั้น
-        </p>
-      </div>
+      {/* ทำไมไม่มีปุ่ม "เพิ่มลายเซ็นให้" — กันคนเข้าใจผิดว่าหน้านี้ยังทำไม่เสร็จ
+          กล่องข้อความใช้ StatusNotice กลาง (เดิมเป็น .glass-panel + inline style 4 ชุด
+          ที่มีระยะห่างเป็นของตัวเอง จึงชนกับแถบตัวเลขด้านบนพอดี) */}
+      <StatusNotice tone="info" icon={ShieldCheck}>
+        ลายเซ็นเป็นข้อมูลส่วนบุคคล — ผู้ดูแลระบบอัปโหลดแทนกันไม่ได้ และไม่ควรได้ ไม่งั้นหลักฐานการเซ็นบนเอกสารจะไม่มีความหมาย
+        แต่ละคนต้องเพิ่มเองที่หน้า <Link href="/account" className="linklike"><strong>บัญชีของฉัน</strong></Link> หน้านี้ใช้ติดตามว่าเหลือใครบ้างเท่านั้น
+      </StatusNotice>
 
       <div className="toolbar">
         <div className="segmented">
@@ -165,10 +169,12 @@ export default function SignatureCoveragePage() {
       {loading && <SkeletonRows rows={6} />}
 
       {!loading && error && (
-        <div className="glass-panel" role="alert" style={{ padding: "14px 16px", borderColor: "var(--red)", color: "var(--red)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ flex: 1 }}>{error}</span>
-          <button type="button" className="btn ghost sm" onClick={() => load()}>ลองอีกครั้ง</button>
-        </div>
+        <StatusNotice
+          tone="error"
+          action={<button type="button" className="btn ghost sm" onClick={() => load()}>ลองอีกครั้ง</button>}
+        >
+          {error}
+        </StatusNotice>
       )}
 
       {!loading && !error && !sort.sorted.length && (
@@ -219,6 +225,7 @@ export default function SignatureCoveragePage() {
           </table>
         </TableScroll>
       )}
+      </div>
     </Workspace>
   );
 }

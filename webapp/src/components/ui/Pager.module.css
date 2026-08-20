@@ -1,4 +1,7 @@
 .root {
+  /* แถบแบ่งหน้าอยู่ท้ายการ์ดเสมอ ⇒ เว้นขอบเท่าหัวการ์ดและตาราง (--panel-inset)
+     เดิมแปะติดขอบซ้าย/ล่างของการ์ด ทำให้ "ทั้งหมด N รายการ" ไม่ตรงแนวกับอะไรเลย */
+  padding: 0 var(--panel-inset) var(--panel-inset);
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -56,6 +56,15 @@ export function useDepartment() {
   return useContext(DepartmentContext);
 }
 
+/* ตัวตนสำหรับส่งเข้า `canUser(user, cap)` ของ lib/permissions — บทบาท + สิทธิ์รายคน
+   ⚠️ อย่าเช็คสิทธิ์ด้วย `useRole()` เปล่า ๆ เมื่อรายการยาวกว่าหนึ่ง cap: สิทธิ์
+   เพิ่มเติมรายคน (extraCaps) จะหายไปเงียบ ๆ และคนที่ถูกให้สิทธิ์พิเศษจะไม่เห็นเมนู */
+export function useCapUser() {
+  const role = useContext(RoleContext);
+  const extraCaps = useContext(ExtraCapsContext);
+  return useMemo(() => ({ role, extraCaps }), [role, extraCaps]);
+}
+
 export function useCan(cap) {
   const role = useContext(RoleContext);
   const extra = sanitizeExtraCaps(useContext(ExtraCapsContext));

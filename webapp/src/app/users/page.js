@@ -258,22 +258,12 @@ export default function UserManagement() {
   }
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <div
-        className="premium-header"
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-      >
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon">
-              <Users size={22} />
-            </span>{" "}
-            จัดการผู้ใช้งาน
-          </h1>
-          <p>เพิ่ม / แก้ไขสิทธิ์ Role และทีม Team ของผู้ใช้ในระบบ</p>
-        </div>
-        <div className="pill ok">ทั้งหมด {users.length} คน</div>
-      </div>
+    <Workspace
+      icon={<Users size={22} />}
+      title="จัดการผู้ใช้งาน"
+      subtitle="เพิ่ม / แก้ไขสิทธิ์ Role และทีม Team ของผู้ใช้ในระบบ"
+      headerRight={<div className="pill ok">ทั้งหมด {users.length} คน</div>}
+    >
 
       {loading ? (
         <SkeletonRows rows={7} />

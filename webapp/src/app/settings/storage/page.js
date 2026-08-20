@@ -17,12 +17,11 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import Button from "@/components/ui/Button";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import styles from "./page.module.css";
 
-const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 
 // ป้ายไทยของสถานะไฟล์ที่ตรวจเจอ — 'ok' ไม่ต้องมีเพราะไม่ถูกส่งกลับมา
 const FILE_STATUS = {
@@ -234,41 +233,36 @@ export default function StoragePage() {
         icon={<HardDrive size={22} />}
         title="ที่เก็บไฟล์"
         message="เครื่องมือตรวจและจัดโครงที่เก็บไฟล์เปิดให้ผู้ดูแลระบบเท่านั้น"
-        back={BACK_TO_SETTINGS}
       />
     );
   }
 
   return (
-    <Workspace hideHeader back={BACK_TO_SETTINGS}>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1><span className="premium-header-icon"><HardDrive size={22} /></span> ที่เก็บไฟล์ (Google Drive)</h1>
-          <p>ไฟล์แนบทั้งระบบเก็บบน Shared Drive ของบริษัท — หน้านี้ใช้ตรวจว่าท่อยังดีอยู่ และจัดโครงโฟลเดอร์</p>
-        </div>
-      </div>
-
+    <Workspace
+      icon={<HardDrive size={22} />}
+      title="ที่เก็บไฟล์ (Google Drive)"
+      subtitle="ไฟล์แนบทั้งระบบเก็บบน Shared Drive ของบริษัท — หน้านี้ใช้ตรวจว่าท่อยังดีอยู่ และจัดโครงโฟลเดอร์"
+    >
+      {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ `flex flex-col gap-4` — `.ui-section`
+          ไม่มี margin ของตัวเอง (กติกาเดียวกับหน้า RD / ใบสั่งขาย / โครงการ) */}
+      <div className="flex flex-col gap-4">
       {error ? <StatusNotice tone="error" title="มีปัญหา">{error}</StatusNotice> : null}
 
       {/* ── 1. การเชื่อมต่อ ── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <div>
-            <h2 className={styles.sectionTitle}>การเชื่อมต่อ</h2>
-            <p className={styles.sectionDesc}>
-              ยืนยันตัวตนด้วย Workload Identity Federation (ไม่มีไฟล์กุญแจให้หลุด) — ทำงานได้เฉพาะตอนรันบน Vercel
-            </p>
-          </div>
-          <div className={styles.actions}>
+      <WorkspaceSection
+        title="การเชื่อมต่อ"
+        subtitle="ยืนยันตัวตนด้วย Workload Identity Federation (ไม่มีไฟล์กุญแจให้หลุด) — ทำงานได้เฉพาะตอนรันบน Vercel"
+        actions={(
+          <>
             <Button onClick={() => loadHealth()} disabled={healthBusy} icon={<RefreshCw size={15} />}>
               ตรวจอีกครั้ง
             </Button>
             <Button tone="primary" onClick={() => loadHealth({ write: true })} disabled={healthBusy} icon={<PlayCircle size={15} />}>
               ทดสอบเขียนไฟล์จริง
             </Button>
-          </div>
-        </div>
-
+          </>
+        )}
+      >
         {healthBusy && !health ? <SkeletonRows rows={4} /> : null}
         {health ? (
           <ul className={styles.steps}>
@@ -285,22 +279,20 @@ export default function StoragePage() {
             ))}
           </ul>
         ) : null}
-      </section>
+      </WorkspaceSection>
 
       {/* ── 2. ไฟล์แนบทั้งระบบ ── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <div>
-            <h2 className={styles.sectionTitle}>ไฟล์แนบทั้งระบบ</h2>
-            <p className={styles.sectionDesc}>
-              ไล่ทุกแถวที่อ้างไฟล์บน Drive (เอกสารแนบ + ไฟล์ในเธรด) ว่าไฟล์ยังอยู่จริงไหม
-            </p>
-          </div>
-          <Button onClick={loadAudit} disabled={auditBusy} icon={<FileSearch size={15} />}>
-            {auditBusy ? "กำลังตรวจ..." : "ตรวจไฟล์ทั้งระบบ"}
-          </Button>
-        </div>
-
+      <WorkspaceSection
+        title="ไฟล์แนบทั้งระบบ"
+        subtitle="ไล่ทุกแถวที่อ้างไฟล์บน Drive (เอกสารแนบ + ไฟล์ในเธรด) ว่าไฟล์ยังอยู่จริงไหม"
+        actions={(
+          <>
+            <Button onClick={loadAudit} disabled={auditBusy} icon={<FileSearch size={15} />}>
+              {auditBusy ? "กำลังตรวจ..." : "ตรวจไฟล์ทั้งระบบ"}
+            </Button>
+          </>
+        )}
+      >
         {audit ? (
           <>
             <p className={styles.progress}>
@@ -328,30 +320,25 @@ export default function StoragePage() {
             )}
           </>
         ) : null}
-      </section>
+      </WorkspaceSection>
 
       {/* ── 2.2 แถวที่ระเบียนแม่ถูกลบไปแล้ว ── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <div>
-            <h2 className={styles.sectionTitle}>แถวไฟล์แนบที่ระเบียนแม่ถูกลบไปแล้ว</h2>
-            <p className={styles.sectionDesc}>
-              แถวที่ชี้ไปยังทะเบียน/ใบยื่น/ใบขอราคาที่ไม่มีอยู่ในระบบแล้ว — มองไม่เห็นจากหน้าไหน
-              เพราะไม่มีหน้าแม่ให้เปิด และทำให้รายงานด้านบนอ่านแล้วเข้าใจผิด
-            </p>
-          </div>
-          <div className={styles.actions}>
+      <WorkspaceSection
+        title="แถวไฟล์แนบที่ระเบียนแม่ถูกลบไปแล้ว"
+        subtitle="แถวที่ชี้ไปยังทะเบียน/ใบยื่น/ใบขอราคาที่ไม่มีอยู่ในระบบแล้ว — มองไม่เห็นจากหน้าไหน เพราะไม่มีหน้าแม่ให้เปิด และทำให้รายงานด้านบนอ่านแล้วเข้าใจผิด"
+        actions={(
+          <>
             <Button onClick={loadOrphanRows} disabled={rowBusy} icon={<FileSearch size={15} />}>
               {rowBusy ? "กำลังตรวจ..." : "ตรวจแถวกำพร้า"}
             </Button>
             {orphanRows?.orphanCount ? (
-              <Button tone="danger" onClick={purgeOrphanRows} disabled={rowBusy} icon={<Trash2 size={15} />}>
-                ลบ {orphanRows.orphanCount} แถว
-              </Button>
+            <Button tone="danger" onClick={purgeOrphanRows} disabled={rowBusy} icon={<Trash2 size={15} />}>
+              ลบ {orphanRows.orphanCount} แถว
+            </Button>
             ) : null}
-          </div>
-        </div>
-
+          </>
+        )}
+      >
         {orphanRows ? (
           <>
             <p className={styles.progress}>
@@ -371,30 +358,25 @@ export default function StoragePage() {
             )}
           </>
         ) : null}
-      </section>
+      </WorkspaceSection>
 
       {/* ── 2.5 ของบน Drive ที่ไม่มีใครอ้างถึง ── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <div>
-            <h2 className={styles.sectionTitle}>ของบน Drive ที่ไม่มีใครอ้างถึง</h2>
-            <p className={styles.sectionDesc}>
-              ตรวจทางกลับ: ไล่ของจริงบนไดรฟ์ว่ามีแถวไหนในระบบชี้มาไหม — นับผู้อ้างอิงครบทุกทาง
-              (เอกสารแนบ · เอกสาร Google ของงานบริหาร · ไฟล์ในเธรด · หลักฐาน Won · โฟลเดอร์ลูกค้า/สินค้า)
-            </p>
-          </div>
-          <div className={styles.actions}>
+      <WorkspaceSection
+        title="ของบน Drive ที่ไม่มีใครอ้างถึง"
+        subtitle="ตรวจทางกลับ: ไล่ของจริงบนไดรฟ์ว่ามีแถวไหนในระบบชี้มาไหม — นับผู้อ้างอิงครบทุกทาง (เอกสารแนบ · เอกสาร Google ของงานบริหาร · ไฟล์ในเธรด · หลักฐาน Won · โฟลเดอร์ลูกค้า/สินค้า)"
+        actions={(
+          <>
             <Button onClick={loadOrphans} disabled={orphanBusy} icon={<FileSearch size={15} />}>
               {orphanBusy ? "กำลังตรวจ..." : "ตรวจของกำพร้า"}
             </Button>
             {orphans?.orphans?.length ? (
-              <Button tone="danger" onClick={trashOrphans} disabled={orphanBusy} icon={<Trash2 size={15} />}>
-                ทิ้งลงถังขยะ {orphans.orphans.length} รายการ
-              </Button>
+            <Button tone="danger" onClick={trashOrphans} disabled={orphanBusy} icon={<Trash2 size={15} />}>
+              ทิ้งลงถังขยะ {orphans.orphans.length} รายการ
+            </Button>
             ) : null}
-          </div>
-        </div>
-
+          </>
+        )}
+      >
         {orphans ? (
           <>
             <p className={styles.progress}>
@@ -422,27 +404,23 @@ export default function StoragePage() {
             )}
           </>
         ) : null}
-      </section>
+      </WorkspaceSection>
 
       {/* ── 3. จัดโครงโฟลเดอร์ ── */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <div>
-            <h2 className={styles.sectionTitle}>จัดโครงโฟลเดอร์</h2>
-            <p className={styles.sectionDesc}>
-              จัดของเข้าโครง ลูกค้า / ขอราคา / งานบริหาร / งานขาย — ดูแผนก่อนได้ ไม่มีอะไรเปลี่ยนจนกว่าจะกดย้าย
-            </p>
-          </div>
-          <div className={styles.actions}>
+      <WorkspaceSection
+        title="จัดโครงโฟลเดอร์"
+        subtitle="จัดของเข้าโครง ลูกค้า / ขอราคา / งานบริหาร / งานขาย — ดูแผนก่อนได้ ไม่มีอะไรเปลี่ยนจนกว่าจะกดย้าย"
+        actions={(
+          <>
             <Button onClick={loadPlan} disabled={planBusy} icon={<FolderTree size={15} />}>
               {planBusy ? "กำลังคำนวณ..." : "ดูแผนการย้าย"}
             </Button>
             <Button tone="accent" onClick={runMove} disabled={!plan || planBusy}>
               ย้ายจริง
             </Button>
-          </div>
-        </div>
-
+          </>
+        )}
+      >
         {plan ? (
           <>
             <p className={styles.progress}>
@@ -477,7 +455,8 @@ export default function StoragePage() {
             ))}
           </div>
         ) : null}
-      </section>
+      </WorkspaceSection>
+      </div>
     </Workspace>
   );
 }

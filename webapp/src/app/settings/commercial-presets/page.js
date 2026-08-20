@@ -13,6 +13,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import VersionControlCard from "@/components/ui/VersionControlCard";
+import Tabs from "@/components/ui/Tabs";
 import { useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { canManageCommercialPresets } from "@/lib/permissions";
@@ -222,7 +223,6 @@ export default function CommercialPresetsPage() {
         icon={<WalletCards size={22} />}
         title="คลังเงื่อนไขการค้า"
         message="หน้านี้สำหรับหัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
-        back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}
       />
     );
   }
@@ -231,29 +231,29 @@ export default function CommercialPresetsPage() {
   const kindLabel = COMMERCIAL_PRESET_KIND_LABELS[kind];
 
   return (
-    <Workspace hideHeader back={{ href: "/settings", label: "กลับหน้าตั้งค่า" }}>
-      <header className="premium-header"><div className="header-content"><h1><span className="premium-header-icon"><WalletCards size={22} /></span> คลังเงื่อนไขการค้า</h1><p>เทมเพลตเงื่อนไขการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown</p></div></header>
+    <Workspace
+      icon={<WalletCards size={22} />}
+      title="คลังเงื่อนไขการค้า"
+      subtitle="เทมเพลตเงื่อนไขการชำระและชุดหมายเหตุที่คนทำใบเสนอราคาเลือกใช้จาก dropdown"
+    >
 
       <div className={styles.notice}>
         <AlertTriangle size={17} />
         <p><strong>ชุดที่เผยแพร่พร้อมให้เลือกใช้บนใบเสนอราคาทันที</strong> คนทำใบเป็นผู้เลือกเองและแก้ทับได้เสมอ — ระบบไม่เลือกให้อัตโนมัติ · ใบที่ออกไปแล้วไม่เปลี่ยนย้อนหลัง เพราะค่าถูกคัดลอกลงใบตั้งแต่ตอนสร้าง</p>
       </div>
 
-      <div className={styles.kindTabs} role="group" aria-label="เลือกคลัง">
-        {COMMERCIAL_PRESET_KINDS.map((value) => (
-          <button
-            key={value}
-            type="button"
-            className={`${styles.kindTab} ${kind === value ? styles.active : ""}`.trim()}
-            aria-pressed={kind === value}
-            disabled={loading}
-            onClick={() => { setKind(value); setDrawer(null); }}
-          >
-            <span>{COMMERCIAL_PRESET_KIND_LABELS[value]}</span>
-            <small>{loading ? "กำลังโหลด…" : `${countOf(value)} ชุด`}</small>
-          </button>
-        ))}
-      </div>
+      {/* แท็บกลางของระบบ — เดิมเป็นปุ่มการ์ดสองใบที่เขียนสไตล์เอง ⇒ หน้าตั้งค่าแต่ละหน้า
+          มี "ตัวสลับสิ่งที่กำลังดู" คนละทรง (มติผู้ใช้ 2026-08-20: ทั้งเปลือกต้องพูดภาษาเดียว) */}
+      <Tabs
+        ariaLabel="เลือกคลัง"
+        value={kind}
+        onChange={(value) => { setKind(value); setDrawer(null); }}
+        tabs={COMMERCIAL_PRESET_KINDS.map((value) => ({
+          key: value,
+          disabled: loading,
+          label: <>{COMMERCIAL_PRESET_KIND_LABELS[value]} <span className="ui-badge">{loading ? "…" : countOf(value)}</span></>,
+        }))}
+      />
 
       {loading ? <SkeletonRows rows={8} /> : error ? (
         <section className={`glass-panel ${styles.error}`} role="alert"><AlertTriangle size={26} /><p>{error}</p><button type="button" className="btn" onClick={load}>ลองอีกครั้ง</button></section>
