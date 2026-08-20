@@ -5,9 +5,12 @@ import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo'
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
+  dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
+  exciseFilingsOfDeal, exciseFilingBlockMessage,
 } from '@/lib/forceDelete';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import { validateDealOwner } from '@/lib/sales/dealOwner';
+import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
   canEditSalesPlanning,
@@ -374,6 +377,25 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  // ใบยื่นชำระภาษีของ SO ในดีล: FK RESTRICT ที่ break-glass ก็ข้ามไม่ได้ — ดักก่อน
+  // ทั้งสองเส้นทาง ไม่งั้น error ดิบจาก Postgres หลุดขึ้นหน้าดีลเป็น 500
+  const filings = await exciseFilingsOfDeal(supabase, id);
+  if (filings.length) return conflict(exciseFilingBlockMessage(filings, 'ดีล'));
+
+  // ใบเสนอราคา/ใบสั่งขายที่มีหลักฐานลายเซ็น (0125) หรือฉบับตรึง (0130/0148): ลูกพวกนี้
+  // เป็น FK RESTRICT ⇒ cascade จากการลบดีลถูกฐานข้อมูลปฏิเสธกลางทาง แล้วข้อความดิบ
+  // ("...violates foreign key constraint document_signature_evidence_quotationId_fkey")
+  // ขึ้นหน้าดีลทั้งดุ้น (prod 2026-08-20). แปลงเป็นข้อความที่บอกชื่อใบและทางออก —
+  // ?force=1 ของผู้ดูแลระบบไปลบผ่าน RPC break-glass ด้านล่างแทน
+  let signedDocs;
+  try {
+    signedDocs = await dealSignedDocuments(supabase, id);
+  } catch (signedError) {
+    return fail(`${signedError.message} — ยังไม่ได้ลบดีล`, 500);
+  }
+  const hasSignedDocs = signedDocs.quotations.length + signedDocs.salesOrders.length > 0;
+  if (hasSignedDocs && !force) return conflict(dealSignedBlockMessage(signedDocs));
+
   // เฟส B: โครงการมีได้หลายดีลและเป็นเอนทิตีอิสระที่อาจมีดีลอื่นมาผูกแทน — ลบดีลจึง
   // "ไม่ลบโครงการตาม" แม้เป็นดีลสุดท้าย (ปล่อยโครงการว่างดีลไว้ รอดีลใหม่มาผูก).
   // แค่ถอด timeline segment ของดีลนี้ออก; การลบโครงการทำที่หน้าโครงการโดยตรง.
@@ -397,8 +419,27 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { error: taskError } = await supabase.from('project_tasks').delete().eq('dealId', id);
   if (taskError) return fail(`ลบไทม์ไลน์ของดีลไม่สำเร็จ: ${taskError.message} — ยังไม่ได้ลบดีล`, 500);
 
+  // บังคับลบ: เอกสารการขายต้องไปทาง RPC break-glass เสมอ (mig 0152/0168) ไม่ใช่ปล่อยให้
+  // cascade ของ DB จัดการ — หลักฐาน/ฉบับตรึงเป็น RESTRICT ที่ cascade ข้ามไม่ได้ และ RPC
+  // เป็นที่เดียวที่ตั้ง flag ให้ guard ยอมลบแล้วเก็บกวาดตามลำดับ FK ให้ครบ
+  if (force) {
+    try {
+      await forceDeleteDealDocuments(supabase, id, user);
+    } catch (docError) {
+      return fail(`${docError.message} — ยังไม่ได้ลบดีล`, 500);
+    }
+  }
+
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
-  if (error) return fail(error.message, 500);
+  if (error) {
+    // ตาข่ายชั้นสอง: ยังมีลูกที่ FK RESTRICT อยู่ (เช่นเอกสารที่เพิ่งถูกเซ็นหลังเราตรวจ)
+    // — ห้ามปล่อยข้อความ Postgres ดิบออกหน้าเว็บ (ชื่อ constraint/ตารางหลุด)
+    if (isForeignKeyViolation(error)) {
+      console.error(`[deal delete ${id}] foreign key violation:`, error);
+      return conflict('ลบดีลไม่ได้: ยังมีเอกสารอ้างดีลนี้อยู่ (หลักฐานลายเซ็น/ฉบับตรึงของใบเสนอราคาหรือใบสั่งขาย) — กรุณาจัดการเอกสารเหล่านั้นที่หน้าเอกสารก่อน');
+    }
+    return fail(error.message, 500);
+  }
   // เธรดความเคลื่อนไหว (mig 0169) เป็น polymorphic ไม่มี FK — ของเดิมหายเองเพราะ
   // sales_deal_activities มี ON DELETE CASCADE แต่ตารางกลางไม่มี ต้องกวาดเอง
   // ไม่งั้นเหลือเธรดของดีลที่ไม่มีอยู่แล้วค้างในฟีดรวมข้ามโมดูล
