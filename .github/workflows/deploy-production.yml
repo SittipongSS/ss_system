@@ -42,6 +42,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # How long an undeployed commit may sit behind a non-green CI before
+          # a scheduled run stops warning and starts failing. Longer than the
+          # widest gap between rounds would never fire; much shorter would fire
+          # on healthy overnight waits.
+          STUCK_AFTER_HOURS=6
+
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           git fetch --no-tags origin +refs/heads/production:refs/remotes/origin/production || true
 
@@ -73,11 +79,37 @@ jobs:
               echo "::error::$message"
               exit 1
             fi
-            # On a schedule this is usually just a merge that landed a minute
-            # ago and is still building. Warn and let the next round pick it up
-            # — a red run every few hours would train everyone to ignore these.
-            echo "::warning::$message Waiting for the next scheduled round."
-            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+
+            # One skip is routine: a merge landed minutes ago and CI is still
+            # running. Skipping the *same* commit round after round is not — it
+            # means main is red and nothing is reaching production while nobody
+            # is being told. A warning alone is invisible, so escalate to a
+            # failed run (which GitHub actually notifies about) once the head
+            # commit has been stuck for longer than a normal wait.
+            #
+            # Measured as the age of the undeployed commit rather than a count
+            # of consecutive skips, because the gap between rounds is uneven
+            # (11:00 UTC to 02:00 UTC is 15 hours) so "two skips" means very
+            # different things depending on the time of day. Age measures the
+            # thing anyone actually cares about: how long has work been stuck.
+            head_epoch=$(git log -1 --format=%ct "$main_sha")
+            now_epoch=$(date -u +%s)
+            waiting_hours=$(( (now_epoch - head_epoch) / 3600 ))
+
+            if [ "$waiting_hours" -ge "$STUCK_AFTER_HOURS" ]; then
+              echo "::error::$message Undeployed for ${waiting_hours}h, past the ${STUCK_AFTER_HOURS}h threshold — production is stuck behind main. Fix CI on main, then deploy."
+              {
+                echo "## Production is stuck"
+                echo
+                echo "\`$main_sha\` has been undeployed for **${waiting_hours}h** and its \`ci\` check is \`$ci_conclusion\`."
+                echo
+                echo "Nothing has reached production since then. Fix CI on main, then run this workflow."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            echo "::warning::$message Undeployed for ${waiting_hours}h; waiting for the next scheduled round."
+            echo "$message Undeployed for ${waiting_hours}h — will retry next round." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
