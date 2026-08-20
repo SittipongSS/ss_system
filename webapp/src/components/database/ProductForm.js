@@ -484,9 +484,14 @@ export default function ProductForm({
           </div>
           {packaging && (
             <div className="form-group col-span-2">
+              {/* ⚠️ ท่อนคำใบ้ต้องขึ้นต้นด้วย "ถ้า" และอยู่คนละบรรทัดกับประโยคสรุป
+                  เดิมเขียนว่า "— อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง" ต่อท้ายบรรทัดเดียวกัน
+                  ซึ่งเป็น **ประโยคบอกเล่า** และขึ้นทุกครั้งไม่ว่ากรอกถูกหรือผิด ⇒ คนอ่านเข้าใจว่า
+                  ระบบกำลังบอกว่าตัวเองกรอกสลับช่องแล้ว ทั้งที่มันแค่แขวนคำใบ้ไว้เฉย ๆ
+                  (ผู้ใช้ส่งภาพมาถามว่าป้ายนี้จะสื่ออะไร 2026-08-20) */}
               <div className="text-xs rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2 text-[var(--text-2)]">
-                สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong>
-                <span className="text-[var(--text-3)]"> — อ่านแล้วไม่ตรงความจริง แปลว่ากรอกสลับช่อง</span>
+                <div>สรุปบรรจุภัณฑ์: <strong className="text-[var(--text)]">{packaging}</strong></div>
+                <div className="text-[var(--text-3)] mt-1">ถ้าประโยคนี้อ่านแล้วไม่ตรงกับของจริง แปลว่ากรอกสลับช่อง</div>
               </div>
             </div>
           )}
