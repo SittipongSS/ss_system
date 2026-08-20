@@ -16,7 +16,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { customerDocTypes, productDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
@@ -564,10 +564,14 @@ export default function ProductDetails() {
           )}
 
           {/* เอกสารของสินค้า — สัญญาจ้างผลิต / Artwork ฯลฯ */}
+          {/* การ์ดเอกสารตามหมวด — Artwork บังคับเฉพาะกลุ่ม 01 (ODM) กลุ่มบริการ/ค่าออกแบบ/
+              รายได้อื่นๆ ไม่มีของให้แนบ · ต้องส่ง docTypes ชุดเดียวกับที่ด่านอนุมัติฝั่ง
+              server ใช้ ไม่งั้นจอขึ้น "ยังขาด" แต่กดอนุมัติผ่าน (หรือกลับกัน) */}
           <AttachmentsPanel
             entityType="product"
             entityId={id}
             canEdit={canEditProducts}
+            docTypes={productDocTypes(product)}
             title="เอกสารของสินค้า"
             note="Artwork สินค้า (ใช้ต่อเรื่องขึ้นทะเบียนสรรพสามิต) และเอกสารอื่นๆ — สัญญาจ้างผลิตย้ายไปผูกกับลูกค้าแล้ว"
           />

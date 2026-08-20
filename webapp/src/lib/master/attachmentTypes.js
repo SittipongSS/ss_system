@@ -2,6 +2,7 @@
 // ประเภทเอกสารแนบต่อ entity (เฟส A: ลูกค้า + สินค้า). เป็นค่าคงที่ล้วน —
 // import ได้ทั้ง client (UI dropdown/badge) และ server (validation).
 // docType ที่ไม่อยู่ในลิสต์จะตกเป็น 'other' โดยอัตโนมัติเมื่อแสดงผล.
+import { categoryOf } from "@/lib/master/categoryOf";
 
 // `required: true` = เอกสารจำเป็น (โชว์เป็นการ์ดที่ต้องมี + ติ๊กถูกเมื่ออัปแล้ว).
 // `other` เป็นการ์ดเอกสารเพิ่มเติม (ไม่บังคับ, แนบได้หลายไฟล์).
@@ -130,6 +131,34 @@ export function customerDocTypes(customerType) {
   return CUSTOMER_DOC_TYPES[customerType] || CUSTOMER_DOC_TYPES.company;
 }
 
+// ── Artwork บังคับเฉพาะกลุ่มหลัก 01 (ODM) — มติผู้ใช้ 2026-08-20 ──────────
+// Artwork = แบบพิมพ์บนกล่อง/ฉลากของ "ของที่ผลิต" · อีกสามกลุ่มไม่มีของให้แนบเลย
+// (02 ธุรกิจบริการ · 03 ค่าออกแบบ · 04 รายได้อื่นๆ) ⇒ ถ้ายังบังคับ ทุกใบในกลุ่มนั้น
+// ต้องกด "อนุมัติโดยยกเว้นเอกสาร" พร้อมพิมพ์เหตุผล ≥10 ตัวอักษรทุกครั้ง = ด่านที่ไม่มี
+// วันผ่านตามปกติ และเหตุผลยกเว้นใน audit ก็กลายเป็นขยะที่ตามอะไรไม่ได้
+//
+// ⭐ เขียนเป็น "กลุ่มที่ **ต้องมี**" ไม่ใช่ลิสต์ข้อยกเว้น เพราะสามในสี่กลุ่มไม่มี Artwork
+// — ลิสต์ข้อยกเว้นจะยาวกว่ากติกาจริง และกลุ่มใหม่ที่เพิ่มมาทีหลังต้องมาไล่เติมทุกครั้ง
+// ทางนี้กลุ่มใหม่ตกไปทาง "ไม่บังคับ" ซึ่งคือค่าที่ถูกสำหรับทุกกลุ่มที่ไม่ใช่ของผลิต
+//
+// ⚠️ นี่คือ "เลขหมวดตายตัว" แบบเดียวกับ RETAIL_PRICE_MAIN_CATEGORY (ดู categoryOf.js)
+// ไม่ใช่ช่องติ๊กบนหมวดสินค้าอย่าง isExcise/requiresFdaNotice · ถ้าวันหนึ่งกลุ่ม 01 มีหมวด
+// ที่ไม่ต้องมี Artwork (หรือกลุ่มใหม่ที่ต้องมี) ให้ย้ายไปเป็นช่องติ๊กบนหมวด อย่าต่อรหัส
+export const ARTWORK_MAIN_CATEGORIES = ["01"];
+
+// ชุดเอกสาร (การ์ด) ของสินค้าตามหมวด — การ์ดคงเดิมทุกใบ เปลี่ยนแค่ว่า "บังคับ" ไหม
+// (ไม่ซ่อนการ์ด: สินค้าบริการบางใบมีไฟล์แบบงานที่อยากเก็บไว้ ก็ยังแนบได้เหมือนเดิม)
+//
+// ⚠️ ตาราง products เก่าบางแถว categoryCode ว่าง — อ่านย้อนจาก fgCode เป็นทางสำรอง
+// (กติกาเดียวกับหน้ารายละเอียดสินค้า) · **ไม่รู้หมวดเลย = คงค่าบังคับเดิมไว้** ไม่ใช่
+// ปล่อยผ่าน: อ่านหมวดไม่ออกแปลว่าไม่รู้ ไม่ได้แปลว่าไม่มี Artwork
+export function productDocTypes(record) {
+  const categoryCode = record?.categoryCode || categoryOf(record?.fgCode);
+  const mainCode = String(categoryCode || "").slice(0, 2);
+  if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return ATTACHMENT_TYPES.product;
+  return ATTACHMENT_TYPES.product.map((t) => (t.required ? { ...t, required: false } : t));
+}
+
 // union ของทุกประเภทเอกสารลูกค้า (company ∪ individual) — derive อัตโนมัติจาก
 // CUSTOMER_DOC_TYPES เพื่อไม่ต้อง sync มือ (เพิ่มคีย์ที่เดียวพอ). dedupe ด้วย key
 // (address_map/other มีทั้งสองประเภท) คงลำดับที่เจอครั้งแรก.
@@ -165,6 +194,8 @@ export const ATTACHMENT_TYPES = {
   // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.
   customer: customerDocTypesUnion,
   // สัญญาจ้างผลิต ย้ายไปผูกกับลูกค้า (ดู customer ด้านบน) — สินค้าเหลือ Artwork.
+  // ⚠️ ชุดนี้เป็น "ค่าเริ่มต้น/union" ใช้ validate docType กับ lookup ป้ายชื่อ — การ์ดที่
+  // จอแสดงและด่านอนุมัติต้องเรียก productDocTypes(record) เพราะบางหมวดไม่บังคับ Artwork
   product: [
     { key: "artwork", label: "Artwork สินค้า", required: true },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
@@ -428,6 +459,8 @@ export function requiredDocKeys(entityType, docTypes) {
 // ลูกค้าเจ้าของตอนอ่าน ฉะนั้น API ที่อ่าน row ตรงจากตารางจะไม่มีค่านี้ ต้อง lookup เอง
 export function docTypesFor(entityType, record) {
   if (entityType === "customer") return customerDocTypes(record?.customerType);
+  // สินค้า: หมวดที่ไม่มี Artwork ให้แนบ จะไม่บังคับการ์ดนั้น (ดู productDocTypes)
+  if (entityType === "product") return productDocTypes(record);
   return ATTACHMENT_TYPES[entityType] || [];
 }
 

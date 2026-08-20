@@ -10,6 +10,9 @@ import {
   attachmentTypeLabel,
   attachmentFileHeaders,
   customerDocTypes,
+  docTypesFor,
+  productDocTypes,
+  unsatisfiedRequiredDocs,
   documentValidity,
   fileExt,
   missingDocsMessage,
@@ -161,4 +164,50 @@ test('ข้อความตอนอนุมัติแยก "ยังไ
   ], 'ลูกค้า ก. ');
   assert.match(msg, /ขาด ภ\.พ\.20/);
   assert.match(msg, /หมดอายุแล้ว หนังสือรับรอง \(ถึง 2026-02-28\)/);
+});
+
+// ── Artwork ตามหมวดสินค้า (มติผู้ใช้ 2026-08-20) ─────────────────────────
+test('กลุ่ม 02/03/04 ไม่บังคับ Artwork — แต่การ์ดยังอยู่ให้แนบได้', () => {
+  // 02 ธุรกิจบริการ · 03 ค่าออกแบบ · 04 รายได้อื่นๆ — ไม่มีของให้พิมพ์ฉลาก
+  for (const categoryCode of ['02-001', '03-001', '04-001']) {
+    const types = productDocTypes({ categoryCode });
+    const artwork = types.find((t) => t.key === 'artwork');
+    assert.ok(artwork, `การ์ด Artwork ต้องไม่หายไป (${categoryCode})`);
+    assert.equal(artwork.required, false, categoryCode);
+    assert.deepEqual(requiredDocKeys('product', types), [], categoryCode);
+  }
+});
+
+test('กลุ่ม 01 (ODM) ยังบังคับ Artwork เหมือนเดิม', () => {
+  for (const categoryCode of ['01-002', '01-005']) {
+    assert.deepEqual(requiredDocKeys('product', productDocTypes({ categoryCode })), ['artwork'], categoryCode);
+  }
+});
+
+test('สินค้าเก่าที่ categoryCode ว่าง อ่านหมวดย้อนจาก fgCode', () => {
+  assert.deepEqual(requiredDocKeys('product', productDocTypes({ fgCode: 'FG-ABC-03-001-0001' })), []);
+  assert.deepEqual(requiredDocKeys('product', productDocTypes({ fgCode: 'FG-ABC-01-002-0001' })), ['artwork']);
+});
+
+test('ไม่รู้หมวดเลย = คงค่าบังคับเดิม ไม่ปล่อยผ่านเงียบ ๆ', () => {
+  for (const record of [null, {}, { categoryCode: '' }, { fgCode: 'LEGACY-CODE' }]) {
+    assert.deepEqual(requiredDocKeys('product', productDocTypes(record)), ['artwork'], JSON.stringify(record));
+  }
+});
+
+test('ชุดกลาง (ATTACHMENT_TYPES.product) ต้องไม่ถูกแก้ทับตอน map', () => {
+  productDocTypes({ categoryCode: '03-001' });
+  assert.equal(ATTACHMENT_TYPES.product.find((t) => t.key === 'artwork').required, true);
+});
+
+test('docTypesFor ของสินค้าเดินผ่านกติกาหมวดเดียวกับจอ', () => {
+  // จอกับด่านอนุมัติต้องตอบตรงกัน ไม่งั้นเห็นติ๊กเขียวครบแต่กดอนุมัติไม่ผ่าน
+  const record = { categoryCode: '04-002' };
+  assert.deepEqual(docTypesFor('product', record), productDocTypes(record));
+  assert.deepEqual(unsatisfiedRequiredDocs('product', docTypesFor('product', record), [], '2026-08-20'), []);
+  const normal = { categoryCode: '01-002' };
+  assert.deepEqual(
+    unsatisfiedRequiredDocs('product', docTypesFor('product', normal), [], '2026-08-20').map((m) => m.key),
+    ['artwork'],
+  );
 });
