@@ -46,6 +46,7 @@ import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
 import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
+import { customerHeadline } from "@/lib/master/customerAr";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
@@ -663,8 +664,10 @@ export default function ProjectDetailPage() {
           <span className="mono" style={{ fontWeight: "var(--fw-bold)", color: "var(--text)" }}>{entityCodeDisplay(p.code, p.currentRev)}</span>
           {/* ลิงก์ลูกค้ามาอยู่ตรงนี้แทนการ์ด "ลูกค้าของโครงการ" ที่ถอดออก (มติ 2026-08-05)
               — การ์ดใบนั้นพูดเรื่องเดียวกับบรรทัดนี้และแถบ facts ด้านล่างทั้งใบ */}
+          {/* รหัส AR นำหน้าชื่อลูกค้าบนหัวหน้ารายละเอียด (มติผู้ใช้ 2026-08-21) —
+              อ่านสดจากทะเบียนลูกค้าที่หน้านี้โหลดไว้แล้ว ไม่ประทับลงแถวโครงการ */}
           <span>ลูกค้า: {p.customerId
-            ? <Link href={`/database/customers/${p.customerId}`} className="linklike">{naText(p.customerName)}</Link>
+            ? <Link href={`/database/customers/${p.customerId}`} className="linklike">{naText(customerHeadline(p.customerName, customers.find((customer) => customer.id === p.customerId)?.arCode))}</Link>
             : (naText(p.customerName))}</span>
           <span>แบรนด์: {projectBrand}</span>
           {p.productMainCategory ? <span>หมวดสินค้า: {`${mainCatName(p.productMainCategory)}${p.productSubCategory ? ` / ${p.productSubCategory}` : ""}`}</span> : null}

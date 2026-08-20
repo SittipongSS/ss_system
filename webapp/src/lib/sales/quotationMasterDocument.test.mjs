@@ -33,7 +33,9 @@ test('V4 doc: เป็น HTML เต็มไฟล์ ใช้คลาส d
   assert.match(html, /class="document v4/);
   assert.match(html, /class="documentHeader"/);
   assert.match(html, /ใบเสนอราคา/);
-  assert.match(html, /QUOTATION/);
+  // ใบไทยพิมพ์ชื่อเอกสารไทยอย่างเดียว — ไม่มีบรรทัดชื่ออังกฤษใต้หัวอีกแล้ว
+  // (มติผู้ใช้ 2026-08-21: หัวเอกสารภาษาเดียวทีละภาษา)
+  assert.ok(!html.includes('QUOTATION'), 'ใบไทยต้องไม่มีชื่อเอกสารภาษาอังกฤษบนหัว');
   assert.ok(html.includes('ลูกค้าทดสอบ'), 'มีชื่อลูกค้า');
   assert.match(html, /ยอดรวมทั้งสิ้น/);
   assert.match(html, /@page \{ size: A4 portrait/);
@@ -382,7 +384,7 @@ test('V4 doc: ใบอังกฤษที่ข้อมูลยังเป
   assert.match(html, /<span>Grand Total<\/span>/);
 });
 
-test('V4 doc: ใบอังกฤษเอาชื่อ/ที่อยู่บริษัทอังกฤษขึ้นบรรทัดบน ชื่อไทยยังอยู่เป็นบรรทัดรอง', () => {
+test('V4 doc: ใบอังกฤษได้ชื่อ/ที่อยู่บริษัทอังกฤษล้วน — ไม่มีชื่อไทยเป็นบรรทัดรอง', () => {
   const company = {
     legalNameTh: 'บริษัท เซนท์ แอนด์ เซนส์ จำกัด',
     legalNameEn: 'SCENT AND SENSE CO., LTD.',
@@ -391,7 +393,9 @@ test('V4 doc: ใบอังกฤษเอาชื่อ/ที่อยู�
   };
   const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('1')]), docLanguage: 'en' }, { company });
   assert.match(html, /<strong>SCENT AND SENSE CO\., LTD\.<\/strong>/);
-  assert.match(html, /<span>บริษัท เซนท์ แอนด์ เซนส์ จำกัด<\/span>/, 'นิติบุคคลไทย ชื่อไทยต้องยังอยู่บนเอกสาร');
+  /* ⭐ มติผู้ใช้ 2026-08-21: หัวเอกสารเป็นภาษาเดียวทีละภาษา — กลับมติเดิมที่ให้ชื่อไทย
+     อยู่เป็นบรรทัดรอง "เพราะเป็นนิติบุคคลไทย" */
+  assert.ok(!html.includes('บริษัท เซนท์ แอนด์ เซนส์ จำกัด'), 'ใบอังกฤษต้องไม่มีชื่อไทยบนหัวเอกสาร');
   assert.ok(html.includes('88 Thai Road, Bangkok'), 'ใช้ที่อยู่จดทะเบียนภาษาอังกฤษ');
   assert.ok(!html.includes('88 ถนนไทย กรุงเทพฯ'), 'ไม่พิมพ์ที่อยู่ไทยซ้ำ');
   // ชื่อท้ายกระดาษต้องเป็นชื่อเดียวกับบรรทัดบนสุด ไม่ใช่คนละภาษาคนละที่

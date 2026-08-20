@@ -41,3 +41,15 @@ export function customerSearchText(customerId, snapshotName, arIndex) {
   const { name, arCode } = customerWithAr(customerId, snapshotName, arIndex);
   return [name, arCode].filter(Boolean).join(' ');
 }
+
+/* หัวเรื่องของหน้ารายละเอียด: `AR-306 · ชื่อกิจการ` (มติผู้ใช้ 2026-08-21)
+   — ทุกหน้ารายละเอียดที่หัวมีชื่อลูกค้า ต้องมีรหัส AR นำหน้าเสมอ เพื่อให้โยงกับ
+   รหัสกลิ่น/รหัส MU/รหัส FG ที่ทั้งบริษัทใช้คุยกันได้ทันทีโดยไม่ต้องเปิดทะเบียนอีกแท็บ
+   (ต่อยอดจาก IS-26080003 ที่ทำไว้แล้วในตารางทะเบียน)
+   ⚠️ ไม่มีรหัส = ชื่อล้วน ไม่ใส่ตัวคั่นลอย ๆ · ไม่มีชื่อ = รหัสล้วน */
+export function customerHeadline(name, arCode) {
+  const label = String(name ?? '').trim();
+  const code = String(arCode ?? '').trim();
+  if (!label) return code;
+  return code ? `${code} · ${label}` : label;
+}

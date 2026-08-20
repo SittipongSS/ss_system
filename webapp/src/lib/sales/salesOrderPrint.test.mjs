@@ -16,7 +16,8 @@ test('Sale Order print ใช้เครื่องยนต์ V4 + FM-SA-03 
   // เครื่องยนต์เดียวกับ V4
   assert.match(html, /class="document v4/);
   assert.match(html, /FM-SA-03/);
-  assert.match(html, /SALES ORDER/);
+  // หัวเอกสารภาษาเดียวทีละภาษา (มติผู้ใช้ 2026-08-21) — ใบสั่งขายเป็นเอกสารไทย
+  assert.match(html, /ใบสั่งขาย/);
   assert.match(html, /SO-26070001-0/);
   // แถวอ้างอิง SO
   assert.match(html, /อ้างอิง QT<\/dt><dd>QT-26070001-0/);

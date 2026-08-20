@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
+import { customerHeadline } from "@/lib/master/customerAr";
 import { useApiList } from "@/lib/excise/useApiList";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
@@ -158,7 +159,8 @@ export default function FilingDetailPage() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title={o?.taxNoticeNumber || o?.id || "..."}
-      subtitle={o?.customerName || ""}
+      /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านสดจากทะเบียนที่หน้านี้โหลดอยู่แล้ว */
+      subtitle={customerHeadline(o?.customerName, customers.find((customer) => customer.id === o?.customerId)?.arCode)}
       headerRight={headerRight}
       back={back}
       loading={loading && !o}

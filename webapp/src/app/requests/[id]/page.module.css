@@ -182,7 +182,8 @@
 
 /* ⚠️ ห้ามตัดกลางรหัส — "AR-787" ที่ขึ้นบรรทัดใหม่ตรงขีดกลางอ่านเป็นคนละรหัส */
 .arCode {
-  margin-left: var(--space-1-5);
+  /* รหัสอยู่หน้าชื่อแล้ว (มติผู้ใช้ 2026-08-21) — ระยะจึงอยู่ด้านขวาของรหัส */
+  margin-right: var(--space-1-5);
   color: var(--text-3);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: var(--fs-3);

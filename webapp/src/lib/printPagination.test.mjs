@@ -93,8 +93,9 @@ test('excise payment notice uses its pinned controlled form and document number'
   });
   assert.match(html, /ET-26070001-0/);
   assert.match(html, /FM-TAX-99: Rev\. No\.02\. 26\/07\/2569/);
-  assert.match(html, /TEST EXCISE PAYMENT NOTICE/);
+  // หัวเอกสารภาษาเดียวทีละภาษา (มติผู้ใช้ 2026-08-21) — เอกสารไทยขึ้นชื่อไทยอย่างเดียว
   assert.match(html, /ใบแจ้งชำระค่าภาษีทดสอบ/);
+  assert.doesNotMatch(html, /TEST EXCISE PAYMENT NOTICE/);
   assert.doesNotMatch(html, /ใบวางบิล/);
 });
 

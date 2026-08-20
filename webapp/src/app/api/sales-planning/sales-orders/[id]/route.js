@@ -66,7 +66,7 @@ async function loadOrder(supabase, id) {
   if (error) throw error;
   if (!order) return null;
 
-  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }] = await Promise.all([
+  const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { data: customer }] = await Promise.all([
     supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
@@ -88,6 +88,12 @@ async function loadOrder(supabase, id) {
     supabase.from('dept_requests').select('id, docNo, status')
       .eq('salesOrderId', id).eq('kind', 'scent_dev').neq('status', 'cancelled')
       .maybeSingle(),
+    /* รหัส AR ของลูกค้า — หัวหน้ารายละเอียดต้องขึ้น `AR-306 · ชื่อ` (มติผู้ใช้ 2026-08-21)
+       ⚠️ อ่านสดจากทะเบียน ไม่ใช่ประทับลงใบ: ชื่อบนใบเป็นหลักฐาน ณ วันออก ส่วนรหัส
+       เป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบันเสมอ (กติกาเดียวกับ lib/master/customerAr.js) */
+    order.customerId
+      ? supabase.from('customers').select('id, arCode').eq('id', order.customerId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
   if (signatureEvidenceError) throw signatureEvidenceError;
   const { data: revisionHistory, error: revisionHistoryError } = await supabase
@@ -117,6 +123,7 @@ async function loadOrder(supabase, id) {
     ...order,
     billingRequests,
     deal: deal || null,
+    customer: customer || null,
     quotation: quotation || null,
     project: project || null,
     revisionHistory: revisionHistory || [],
