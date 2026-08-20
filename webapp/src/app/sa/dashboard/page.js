@@ -1,17 +1,20 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { LayoutDashboard } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
-import { useRole } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import Segmented from "@/components/ui/Segmented";
 import { addDays, businessDayKey } from "@/lib/datePeriods";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
 import { TAB_PERIOD, resolveDashboardTab } from "@/lib/salesPlanning/dashboardTabs";
+import { cachedFetchJson } from "@/lib/apiCache";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
 import SalesKpiDashboard from "@/components/pm/SalesKpiDashboard";
@@ -44,6 +47,15 @@ const normalizeTab = (t) => (t === "overview" ? "performance" : t);
 function DashboardContent() {
   const searchParams = useSearchParams();
   const role = useRole();
+  const canSetTarget = useCan("salesplan:target");
+  /* id ของตัวเอง — ใช้ทำลิงก์ "ดูผลงานเต็ม" แบบเจาะตัวเอง · `cachedFetchJson` แชร์ผลกับ
+     หน้าอื่นที่ถามเส้นเดียวกันอยู่แล้ว จึงไม่ได้เพิ่มคำขอจริงต่อการเปิดหนึ่งครั้ง */
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    cachedFetchJson("/api/users/me")
+      .then((me) => setMeId(me?.id || null))
+      .catch(() => { /* ลิงก์ตกไปเป็นแบบไม่เจาะคน — ไม่ต้องล้มทั้งหน้าเพราะเรื่องนี้ */ });
+  }, []);
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   /* ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29 · ท่าเดียวกับหน้าลีด/ดีล)
@@ -112,12 +124,39 @@ function DashboardContent() {
       }
     >
       <div className="flex flex-col gap-4">
-        <Tabs
-          ariaLabel="มุมมองภาพรวม"
-          value={activeTab}
-          onChange={setTab}
-          tabs={allowedTabs}
-        />
+        {/* ⭐ **ปุ่มทางเข้าอยู่ระดับเดียวกับแท็บ** (มติผู้ใช้ 2026-08-21) — เดิมลอยอยู่เหนือ
+            แถบตัวเลขในแท็บ "ของฉัน" ซึ่งอ่านเหมือนปุ่มของแถบตัวเลข ทั้งที่มันคือทางออก
+            ไปหน้าอื่น · โผล่เฉพาะแท็บ "ของฉัน" เพราะแท็บอื่นมีเครื่องมือของตัวเองอยู่แล้ว */}
+        <div className={styles.tabsRow}>
+          <Tabs
+            ariaLabel="มุมมองภาพรวม"
+            value={activeTab}
+            onChange={setTab}
+            tabs={allowedTabs}
+          />
+          {activeTab === "my" && (
+            <div className={styles.tabsActions}>
+              {canSetTarget && (
+                <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
+                  ตั้งเป้า
+                </Button>
+              )}
+              {/* 🪤 **ต้องส่ง `scope=person` ไปด้วย** — `PerformanceTab` ตั้งต้นที่ `company`
+                  ⇒ กดจากแท็บ "ของฉัน" แล้วไปโผล่ยอดทั้งบริษัท ซึ่งไม่ใช่สิ่งที่ปุ่มสัญญา
+                  (ยังไม่รู้ id = ลิงก์ธรรมดาไปแท็บนั้น ดีกว่าปุ่มที่กดแล้วเงียบ) */}
+              {allowedTabs.some((tab) => tab.key === "performance") && (
+                <Button
+                  as={Link} size="sm" icon={<ArrowUpRight size={13} />}
+                  href={meId
+                    ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(meId)}`
+                    : "/sa/dashboard?tab=performance"}
+                >
+                  ดูผลงานเต็ม
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
         {deniedTab && activeTab && (
           <StatusNotice tone="warning" title={`ไม่มีสิทธิ์เข้าถึงแท็บ “${deniedTab.label}”`}>

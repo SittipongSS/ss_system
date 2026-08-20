@@ -252,9 +252,12 @@ export default function AppLayout({ children }) {
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
         /* ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
-           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง · อยู่ติดกันด้วยเหตุผลนั้น
+           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
+           ⭐ `utility: true` = อยู่กลุ่มขวาข้าง "วางเป้า" (มติผู้ใช้ 2026-08-21) — แถบซ้าย
+           เป็น **ลำดับงาน** (ลีด → ดีล → ใบเสนอราคา → ใบสั่งขาย) ส่วนปฏิทินกับวางเป้า
+           เป็นเครื่องมือที่เปิดเมื่อไรก็ได้ ไม่ใช่ขั้นของสายงาน · บนมือถือยังอยู่ในแผ่นเมนูตามเดิม
            ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้) */
-        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/calendar') },
+        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
         // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
         { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
@@ -485,11 +488,47 @@ export default function AppLayout({ children }) {
   // แถบบน แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด ไม่ต้องไล่ปิดทีละที่
   const isBareShell = isBareShellPathname(pathname);
   const menuItems = isBareShell ? [] : (currentGroup?.items || []);
+  /* แถบเมนูมีสองกลุ่ม: ลำดับงาน (ซ้าย) กับเครื่องมือ (ขวา ข้าง "วางเป้า")
+     ⚠️ `menuItems` ยังเป็นก้อนเดียวสำหรับมือถือ — แผ่นเมนูล่างไม่มีสองฝั่งให้แบ่ง */
+  const flowItems = menuItems.filter((item) => !item.utility);
+  const utilityItems = menuItems.filter((item) => item.utility);
   const ActiveSystemIcon = isAccountContext
     ? UserRound
     : activeSystem === 'settings'
       ? SettingsIcon
       : (activeSystemDefinition?.icon || LayoutDashboard);
+
+  /* ปุ่มเมนูหนึ่งชิ้น — ใช้ทั้งกลุ่มซ้าย (ลำดับงาน) และกลุ่มขวา (เครื่องมือ)
+     ⚠️ เขียนที่เดียว: สองกลุ่มต่างกันแค่คลาส ถ้าก๊อปเป็นสองชุดมันจะเพี้ยนหากันแน่นอน */
+  const renderMenuItem = (item, extraClass = '') => {
+    const Icon = item.icon;
+    const active = item.match(pathname);
+    // เมนูที่ยังไม่เปิด — จางและกดไม่ได้ (ดูหมายเหตุที่นิยามเมนูใน allGroups)
+    if (item.disabled) {
+      return (
+        <span key={item.href} aria-disabled="true" title={SYSTEM_DISABLED_NOTE} className={`topnav-item is-disabled ${extraClass}`.trim()}>
+          <Icon size={16} className="ico" />
+          <span>{item.name}</span>
+        </span>
+      );
+    }
+    // ⚠️ ป้ายจำนวนขึ้นเฉพาะเมื่อ > 0 (navCountFor คืน null ให้ 0/ไม่มีสิทธิ์) —
+    // ต่างจากแท็บในหน้าที่ต้องคง 0 ไว้กันแถวขยับ · แถวเมนูที่มี "0" เรียงกัน
+    // ทั้งแถวคือของประดับที่ไม่มีใครอ่าน
+    const count = navCountFor(navCounts, item.href);
+    return (
+      <Link
+        href={navHrefFor(item, count)}
+        key={item.href}
+        className={`topnav-item ${active ? 'active' : ''} ${extraClass}`.trim()}
+        aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+      >
+        <Icon size={16} className="ico" />
+        <span>{item.name}</span>
+        {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
+      </Link>
+    );
+  };
 
   return (
     <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
@@ -590,36 +629,9 @@ export default function AppLayout({ children }) {
 
         {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
         {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const active = item.match(pathname);
-            // เมนูที่ยังไม่เปิด — จางและกดไม่ได้ (ดูหมายเหตุที่นิยามเมนูใน allGroups)
-            if (item.disabled) {
-              return (
-                <span key={item.href} aria-disabled="true" title={SYSTEM_DISABLED_NOTE} className="topnav-item is-disabled">
-                  <Icon size={16} className="ico" />
-                  <span>{item.name}</span>
-                </span>
-              );
-            }
-            // ⚠️ ป้ายจำนวนขึ้นเฉพาะเมื่อ > 0 (navCountFor คืน null ให้ 0/ไม่มีสิทธิ์) —
-            // ต่างจากแท็บในหน้าที่ต้องคง 0 ไว้กันแถวขยับ · แถวเมนูที่มี "0" เรียงกัน
-            // ทั้งแถวคือของประดับที่ไม่มีใครอ่าน
-            const count = navCountFor(navCounts, item.href);
-            return (
-              <Link
-                href={navHrefFor(item, count)}
-                key={item.href}
-                className={`topnav-item ${active ? 'active' : ''}`}
-                aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
-              >
-                <Icon size={16} className="ico" />
-                <span>{item.name}</span>
-                {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
-              </Link>
-            );
-          })}
+          {flowItems.map((item) => renderMenuItem(item))}
           <span className="topnav-menu-spacer" />
+          {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
           {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
           {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
             <Link

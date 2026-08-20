@@ -3,3 +3,22 @@
 .yearSelect {
   width: 110px;
 }
+
+/* ── แถวแท็บ + ทางเข้าอื่น (มติผู้ใช้ 2026-08-21) ─────────────────────────
+   ⚠️ ปุ่มอยู่ **ระดับเดียวกับแท็บ** ไม่ใช่ลอยอยู่เหนือเนื้อหาของแท็บ — ปุ่มที่ลอยเหนือ
+   แถบตัวเลขอ่านเหมือนปุ่มของแถบตัวเลข ทั้งที่มันคือทางออกไปหน้าอื่น
+   จอแคบ: แท็บยังเลื่อนแนวนอนของมันเอง ปุ่มตกลงบรรทัดใหม่ */
+.tabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.tabsRow > :first-child { flex: 1 1 auto; min-width: 0; }
+.tabsActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}

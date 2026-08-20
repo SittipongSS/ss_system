@@ -1,0 +1,518 @@
+/* ── "กำหนดการของฉัน" — ซ้ายสองการ์ด · ขวาปฏิทินสลับ วัน/สัปดาห์/เดือน ──────
+   ⚠️ ระยะห่าง/มุม/ความสูงบรรทัด หยิบจากโทเคนล้วน (`audit:ui` มีเพดานรวมของเลขดิบ
+   ทั้งระบบ — เขียนเลขใหม่ที่นี่ = เพดานพัง)
+   ⚠️ ตำแหน่งบล็อกในรางชั่วโมงมาจาก `data-slot`/`data-span` ไม่ใช่ inline style
+   ด้วยเหตุผลเดียวกัน (metric `inlineStyle` ของโมดูลขายขึ้นไม่ได้) */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 330px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* ── การ์ดซ้าย ─────────────────────────────────────────────────────────── */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 60%, transparent);
+}
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--accent-ink);
+}
+.cardTitle b {
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+.cardCount {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-style: normal;
+  line-height: var(--lh-thai);
+}
+.cardFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--navy-ink) 8%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.cardFoot svg { flex: none; }
+
+/* ว่างสองบรรทัด: บรรทัดแรกบอกว่าไม่มีอะไร บรรทัดสองบอกว่าอะไรจะมาอยู่ตรงนี้ */
+.empty {
+  padding: var(--space-3-5) var(--space-3);
+  color: var(--text-2);
+  line-height: var(--lh-text);
+}
+.empty b {
+  display: block;
+  color: var(--text);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+.empty span {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+.loading { padding: var(--space-3); }
+
+/* ── แถวในการ์ด ────────────────────────────────────────────────────────── */
+.row {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: var(--space-2-5);
+  align-items: start;
+  padding: var(--space-2-5) var(--space-3);
+  border-top: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+}
+.row:first-of-type { border-top: 0; }
+.row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.rowTime {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}
+.rowTimeAllDay {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-medium);
+}
+.rowTimeOver {
+  color: var(--red);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+}
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.rowTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.rowTitle > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
+/* จุดสีนำหน้าชนิดของรายการ — สีไม่เคยเป็นสัญญาณเดียว มีคำกำกับข้าง ๆ เสมอ */
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+}
+.dotMeeting { background: var(--navy-ink); }
+.dotTask { background: var(--teal); }
+.dotRequest { background: var(--violet); }
+.dotOver { background: var(--red); }
+
+/* ── กล่องปฏิทินฝั่งขวา ─────────────────────────────────────────────────── */
+.calendar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-solid);
+}
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-2-5);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+}
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.range {
+  color: var(--text);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding: var(--space-2-5) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+.warn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--red);
+}
+
+/* ── ชิปของรายการในปฏิทิน ──────────────────────────────────────────────── */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-align: left;
+  text-decoration: none;
+}
+.pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill b { flex: none; font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.pillMeeting {
+  border-color: color-mix(in srgb, var(--navy-ink) 32%, transparent);
+  background: color-mix(in srgb, var(--navy-ink) 10%, var(--panel-solid));
+}
+.pillTask {
+  border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+  background: var(--teal-soft);
+}
+.pillRequest {
+  border-color: color-mix(in srgb, var(--violet) 30%, transparent);
+  background: var(--violet-soft);
+}
+.pillOverdue {
+  border-color: color-mix(in srgb, var(--red) 38%, transparent);
+  background: var(--red-soft);
+}
+
+/* ── มุมมองสัปดาห์: 7 ช่องวัน ───────────────────────────────────────────── */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--rule);
+  flex: 1;
+  background-color: var(--panel-solid);
+  background-image: linear-gradient(var(--border), var(--border));
+}
+@media (max-width: 900px) {
+  .week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.weekCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+  min-height: 148px;
+  padding: var(--space-2) var(--space-2) var(--space-2-5);
+  border: 0;
+  background: var(--panel-solid);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.weekCol:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel-solid)); }
+.isToday { background: color-mix(in srgb, var(--accent) 7%, var(--panel-solid)); }
+.isHoliday { background: color-mix(in srgb, var(--red) 5%, var(--panel-solid)); }
+.isSelected { box-shadow: inset 0 0 0 2px var(--accent); }
+.weekHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1-5);
+}
+.weekDay {
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  line-height: var(--lh-thai);
+}
+.weekDate {
+  color: var(--text);
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-flat);
+}
+.isToday .weekDate { color: var(--accent-ink); }
+.weekHoliday {
+  overflow: hidden;
+  color: var(--red);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weekMore {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+.weekWarn {
+  color: var(--red);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+}
+
+/* ── มุมมองวัน: รางชั่วโมง 09:00–18:00 (ช่องละ 30 นาที = 24px) ──────────── */
+.rail {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-rows: auto repeat(18, 24px);
+  flex: 1;
+}
+.railAllDayLabel,
+.railAllDay {
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+}
+.railAllDayLabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  line-height: var(--lh-thai);
+}
+.railAllDay {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+  min-width: 0;
+  min-height: 38px;
+  padding: var(--space-1-5) var(--space-2);
+  border-left: 1px solid var(--border);
+}
+.railEmpty {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+}
+.railHour {
+  display: flex;
+  justify-content: flex-end;
+  grid-column: 1;
+  padding: 0 var(--space-1-5);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-flat);
+  transform: translateY(-5px);
+}
+.railColumn {
+  display: grid;
+  grid-column: 2;
+  grid-row: 2 / span 18;
+  grid-template-rows: repeat(18, 24px);
+  border-left: 1px solid var(--border);
+  /* เส้นชั่วโมง — สองแถว (30 นาที × 2) = 48px ต่อหนึ่งชั่วโมง */
+  background-image: repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px 48px);
+}
+.railFree {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-row: 1 / span 18;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+/* ⚠️ **แถบ "ตอนนี้" ละเอียดระดับ 30 นาที ไม่ใช่เส้นตามนาที** — ตำแหน่งรายพิกเซล
+   ต้องใช้ inline style ซึ่งชนเพดาน `audit:ui` ⇒ ย้อมช่วงครึ่งชั่วโมงที่กำลังเดินอยู่
+   แทน (คนอ่านได้คำตอบเดียวกันคือ "ตอนนี้อยู่ตรงไหนของวัน" โดยไม่ต้องเชื่อเส้นที่
+   ละเอียดเกินกว่าที่หน้าจอรีเฟรชจริง) */
+.railNow {
+  grid-column: 1;
+  border-top: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  grid-column: 1;
+  overflow: hidden;
+  margin: var(--rule) var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--navy-ink) 34%, transparent);
+  border-left: 3px solid var(--navy-ink);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--navy-ink) 12%, var(--panel-solid));
+}
+.blockClash {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  border-left-color: var(--red);
+  background: var(--red-soft);
+}
+.blockClashMark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--red);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+/* ใบที่ชนกันวางเรียงข้างกัน — ก้อนสูงเท่าเดิม (1 ชม.) แต่ทุกใบยังอ่านชื่อออก */
+.blockItems {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+}
+.blockItem {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.blockItem b {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blockItem em {
+  display: block;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-style: normal;
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ตำแหน่งในราง — ค่าจากข้อมูล (`data-slot` = ช่วง 30 นาทีนับจาก 09:00) */
+.railHour[data-slot="0"] { grid-row: 2; }
+.railHour[data-slot="2"] { grid-row: 4; }
+.railHour[data-slot="4"] { grid-row: 6; }
+.railHour[data-slot="6"] { grid-row: 8; }
+.railHour[data-slot="8"] { grid-row: 10; }
+.railHour[data-slot="10"] { grid-row: 12; }
+.railHour[data-slot="12"] { grid-row: 14; }
+.railHour[data-slot="14"] { grid-row: 16; }
+.railHour[data-slot="16"] { grid-row: 18; }
+
+.railColumn > [data-slot="0"] { grid-row-start: 1; }
+.railColumn > [data-slot="1"] { grid-row-start: 2; }
+.railColumn > [data-slot="2"] { grid-row-start: 3; }
+.railColumn > [data-slot="3"] { grid-row-start: 4; }
+.railColumn > [data-slot="4"] { grid-row-start: 5; }
+.railColumn > [data-slot="5"] { grid-row-start: 6; }
+.railColumn > [data-slot="6"] { grid-row-start: 7; }
+.railColumn > [data-slot="7"] { grid-row-start: 8; }
+.railColumn > [data-slot="8"] { grid-row-start: 9; }
+.railColumn > [data-slot="9"] { grid-row-start: 10; }
+.railColumn > [data-slot="10"] { grid-row-start: 11; }
+.railColumn > [data-slot="11"] { grid-row-start: 12; }
+.railColumn > [data-slot="12"] { grid-row-start: 13; }
+.railColumn > [data-slot="13"] { grid-row-start: 14; }
+.railColumn > [data-slot="14"] { grid-row-start: 15; }
+.railColumn > [data-slot="15"] { grid-row-start: 16; }
+.railColumn > [data-slot="16"] { grid-row-start: 17; }
+.railColumn > [data-slot="17"] { grid-row-start: 18; }
+.railColumn > [data-span="1"] { grid-row-end: span 1; }
+.railColumn > [data-span="2"] { grid-row-end: span 2; }
+.railColumn > [data-span="3"] { grid-row-end: span 3; }
+.railColumn > [data-span="4"] { grid-row-end: span 4; }
+
+/* ── มุมมองเดือน: เนื้อในช่องของ MonthGrid กลาง ─────────────────────────── */
+.month { border: 0; }
+.monthCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  border-radius: var(--radius);
+}
+.monthCellSelected { box-shadow: 0 0 0 2px var(--accent); }
+.monthLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.monthLineWarn { color: var(--red); }

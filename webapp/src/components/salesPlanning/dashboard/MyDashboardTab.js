@@ -15,14 +15,13 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity, AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, Flame, ListTodo,
-  Target, TrendingUp, Undo2,
+  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
 } from "lucide-react";
-import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
-import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
+import Segmented from "@/components/ui/Segmented";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -31,6 +30,7 @@ import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace
 import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
 } from "@/lib/salesPlanning/myQueue";
+import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
 
 const ACTIVITY_KIND_LABEL = {
@@ -90,11 +90,10 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const counts = myQueueCounts(queue);
   const shown = kind ? queue.filter((item) => item.kind === kind) : queue;
   const groups = groupMyQueue(shown);
-  // ⭐ "เริ่มที่นี่" = แถวบนสุดของคิวเดียวกัน — ไม่ใช่กติกาความเร่งชุดใหม่
-  // (ประกาศเกณฑ์ของตัวเองเมื่อไรจะได้ "การ์ดชี้ใบ A แต่ตารางเรียงใบ B ไว้บนสุด")
-  const startHere = queue[0] || null;
 
-  const feed = useMemo(() => {
+  /* ⚠️ นับจำนวนของแต่ละชิป **จากก้อนก่อนกรอง** — ถ้านับหลังกรอง ชิปที่ไม่ได้เลือกจะขึ้น 0
+     ทั้งแถวทันทีที่กรองอยู่ ซึ่งอ่านเหมือน "ไม่มีของชนิดนั้นเลย" */
+  const allPosts = useMemo(() => {
     const dealPosts = (data?.dealActivityFeed || []).map((item) => ({
       ...item, feedType: "deal", feedAt: item.updatedAt || item.createdAt,
     }));
@@ -102,19 +101,28 @@ export default function MyDashboardTab({ month, allMonths = false }) {
       ...item, feedType: "task", feedAt: item.updatedAt || item.createdAt,
     }));
     return [...dealPosts, ...taskPosts]
-      .filter((item) => filter === "all" || item.feedType === filter || (filter === "urgent" && item.urgent))
       .sort((a, b) => String(b.feedAt || "").localeCompare(String(a.feedAt || "")))
       .slice(0, 50);
-  }, [data, filter]);
+  }, [data]);
+
+  const feedCounts = {
+    all: allPosts.length,
+    deal: allPosts.filter((item) => item.feedType === "deal").length,
+    task: allPosts.filter((item) => item.feedType === "task").length,
+    urgent: allPosts.filter((item) => item.urgent).length,
+  };
+
+  const feed = useMemo(() => allPosts.filter((item) => filter === "all"
+    || item.feedType === filter
+    || (filter === "urgent" && item.urgent)), [allPosts, filter]);
   const shownFeed = feed.slice(0, visible);
 
   const target = Number(data?.target || 0);
   // "ยังไม่ตั้งเป้า" (ไม่มี record) ≠ "เป้า = 0 จริง" — เคสแรกแสดง dash ตาม rulebook
   const hasTarget = !!data?.hasTarget;
-  const canSetTarget = useCan("salesplan:target");
   const actual = Number(data?.wonValue || 0);
+  const targetGap = Number(data?.targetGap || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
-  const byForecast = data?.byForecast || [];
   /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
      ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
      เพราะเลือกเดือนย้อนหลังได้อยู่แล้ว (ของเดิมเขียน "เดือนนี้" ทุกที่ = โกหกทั้งคู่) */
@@ -127,88 +135,90 @@ export default function MyDashboardTab({ month, allMonths = false }) {
 
   return (
     <div className="flex flex-col gap-4" aria-busy={loading}>
-      {/* ⭐ **ตัวเลขทุกช่องนับจากคิวเดียวกับตารางข้างล่าง** ยกเว้นช่องเป้าซึ่งเป็น
-          ตัวเลขของเดือน ไม่ใช่ของค้าง · กดแล้วกรองในที่ (ไม่พาออกจากหน้า) */}
+      {/* ⭐ **แถบบนเป็นยอดเงินของงวด ไม่ใช่จำนวนของค้าง** (มติผู้ใช้ 2026-08-21)
+          ของค้างมีที่อยู่ของตัวเองอยู่แล้วสองที่ — ชิปกรองบนคิว และการ์ด "ถึงกำหนด"
+          ในกำหนดการ · แถบบนจึงเหลือคำถามเดียวที่ไม่มีใครตอบ: **เดือนนี้ยอดถึงไหนแล้ว**
+          ⚠️ ฉบับเต็ม (ทบยอด/กราฟ/YoY) อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18)
+          ที่นี่มีแค่ตัวเลขสรุปกับทางเข้า */}
+      {/* ⚠️ ป้ายของแถบไม่ผูกงวด — สามช่องแรกเป็นของงวด แต่ "ดีลที่เปิด" เป็นทุกงวด */}
       {!loading && (
-        <MetricStrip aria-label="ของค้างของฉัน — กดเพื่อกรองคิว">
-          <Metric
-            as="button" type="button" icon={<ListTodo />} label="ค้างทั้งหมด" value={counts.total}
-            note={kind ? "กดเพื่อเลิกกรอง" : "ทุกชนิดรวมกัน"}
-            active={!kind} onClick={() => setKind(null)}
-          />
-          <Metric
-            icon={<AlertTriangle />} label="เลยกำหนด" value={counts.overdue}
-            note="เลยวันที่รับปากไว้" tone={counts.overdue ? "danger" : undefined}
-          />
-          <Metric
-            as="button" type="button" icon={<Undo2 />} label="ตีกลับ รอคุณแก้" value={counts.bounced}
-            note={counts.bounced ? "กดเพื่อดูเฉพาะคำร้อง" : "ไม่มีใบตีกลับ"}
-            tone={counts.bounced ? "danger" : undefined}
-            active={kind === "request"} onClick={() => setKind(kind === "request" ? null : "request")}
-          />
-          <Metric
-            as="button" type="button" icon={<CheckCircle2 />} label="รอออกเอกสาร" value={counts.document}
-            note="Won รอ SO · SO รอใบยื่นภาษี" tone={counts.document ? "warning" : undefined}
-            active={kind === "document"} onClick={() => setKind(kind === "document" ? null : "document")}
-          />
+        <MetricStrip aria-label="ยอดของฉัน">
+          {/* ⚠️ **สี่ช่องนี้ต้องเป็นเลขคนละตัวจริง ๆ** — เป้า(เงิน) · ยอดปิดได้(เงิน) ·
+              สัดส่วน(%) · ท่อ(เงิน+จำนวนใบ) · เดิมช่อง "เป้า" โชว์ % อยู่แล้ว การเพิ่ม
+              ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่ */}
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
+            value={hasTarget ? fmtMoneyCompact(target) : NA}
+            note={hasTarget ? `เป้าของ${scopeLabel}` : "ยังไม่ตั้งเป้างวดนี้"}
+          />
+          <Metric
+            icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoneyCompact(actual)}
+            /* ⚠️ ไม่มีเป้า = ไม่มีอะไรให้เทียบ ⇒ บอกงวดแทน ห้ามเขียน "ขาดอีก" จากเป้า 0
+               (เป้า 0 กับ "ยังไม่ตั้งเป้า" คนละเรื่อง — ดู empty-value-rule) */
+            note={!hasTarget ? `ปิดได้ใน${scopeLabel}`
+              : targetGap > 0 ? `ขาดอีก ${fmtMoney(targetGap)}` : `เกินเป้า ${fmtMoney(-targetGap)}`}
+            tone={hasTarget && targetGap <= 0 ? "good" : undefined}
+          />
+          <Metric
+            icon={<Percent />} label="% ที่ปิดได้"
             value={hasTarget ? fmtPercent(targetPct, 0) : NA}
-            note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
+            note={hasTarget ? "ยอดปิดได้ ÷ เป้า" : "ยังไม่ตั้งเป้า — ไม่มีตัวหาร"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
+          />
+          {/* ⭐ ยุบ "ดีลที่เปิดอยู่" กับ "Pipeline" เป็นใบเดียว — สองใบนั้นพูดถึงกองเดียวกัน
+              (จำนวนใบ กับ มูลค่าของใบชุดนั้น) การแยกเป็นสองช่องกินที่โดยไม่เพิ่มคำตอบ */}
+          <Metric
+            icon={<Handshake />} label="ดีลที่เปิด" value={fmtMoneyCompact(data?.pipelineValue || 0)}
+            note={`${data?.openDealsCount || 0} ดีลที่ยังไม่ปิด — ทุกงวด ไม่ใช่เฉพาะ${scopeLabel}`}
           />
         </MetricStrip>
       )}
 
-      {/* ⭐ การ์ด "เริ่มที่นี่" — แถวบนสุดของคิว · บอกว่าว่างด้วย ไม่ใช่ซ่อนทิ้ง
-          (หายไปเฉย ๆ อ่านไม่ออกว่างานหมดจริงหรือหน้ายังโหลดไม่เสร็จ) */}
-      {!loading && (startHere ? (
-        <div className={styles.startHere}>
-          <div className={styles.startBody}>
-            <div className={styles.startEyebrow}><Flame size={13} /> เริ่มที่นี่</div>
-            <div className={styles.startStep}>{startHere.step}</div>
-            <div className={styles.startTitle}>{startHere.title}</div>
-            <div className={styles.startSub}>
-              {[startHere.sub, startHere.dueText].filter(Boolean).join(" · ")}
-              {queue.length > 1 ? ` — และอีก ${queue.length - 1} เรื่องต่อจากนี้` : ""}
-            </div>
-          </div>
-          <Button tone="primary" icon={<ArrowRight size={15} />} onClick={() => router.push(startHere.href)}>
-            เปิดเรื่องนี้
-          </Button>
-        </div>
-      ) : (
-        <div className={styles.startClear}><CheckCircle2 size={16} /> ไม่มีเรื่องค้างของคุณตอนนี้</div>
-      ))}
+      {/* ⭐ **กำหนดการมาก่อนคิว** (มติผู้ใช้ 2026-08-21) — คิวตอบว่า "ทำอะไรก่อน"
+          แต่ของที่มีเวลานัดตายตัวเลื่อนไม่ได้ ⇒ ต้องเห็นก่อนจะไปเลือกงานอื่นทำ
+          ⚠️ ส่วนนี้โหลดข้อมูลของตัวเอง (`/api/sales-planning/my-schedule`) ไม่ใช้ก้อน
+          ของแท็บนี้ — ช่วงวันที่ของมันเปลี่ยนตามปุ่มในตัวเอง ไม่ใช่ตามงวดบนหัวหน้า */}
+      <ScheduleSection />
 
+      {/* ⭐ **คิวซ้าย · อัปเดตขวา บรรทัดเดียวกัน** (มติผู้ใช้ 2026-08-21) — ฟีดตอบว่า
+          *อะไรเพิ่งเกิด* ซึ่งอ่านคู่กับคิวได้ ไม่ต้องเลื่อนลงไปหาที่ท้ายหน้า
+          ⚠️ ยุบเป็นคอลัมน์เดียวที่ ≤1000px — ตารางคิวสามคอลัมน์ในครึ่งจอแคบอ่านไม่ออก */}
+      <div className={styles.split}>
       <WorkspaceSection
+        className={styles.pane}
+        bodyClassName={styles.paneBody}
         icon={<ListTodo size={17} />}
         title="คิวของฉัน"
         subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
-        actions={<span className="ui-badge">{shown.length} รายการ</span>}
       >
-        {/* ชิปกรองตามชนิด — ตัวเลขในชิปมาจากคิวก้อนเดียวกัน ไม่ใช่นับใหม่ */}
+        {/* ⚠️ **ตัวกรองของสองแผงต้องเป็นคอนโทรลเดียวกันและอยู่ระดับเดียวกัน** — เดิมคิวใช้
+            ปุ่มเรียงกันในตัวการ์ด ส่วนฟีดใช้ชิปข้อความบนหัวส่วน ⇒ ของที่ทำงานเหมือนกัน
+            สองอันบนจอเดียวหน้าตาคนละแบบ · ทั้งคู่เป็น `Segmented` (กติกา: สลับหน้า→Tabs,
+            กรองในหน้า→segmented) วางในแถบเครื่องมือของ body เหมือนกัน
+            ⚠️ ตัวเลขในชิปมาจากคิวก้อนเดียวกับตาราง ไม่ใช่นับใหม่ */}
+        {/* ⚠️ **ไม่มีป้ายจำนวนบนหัวแผงแล้ว** — มันนับ "หลังกรอง" ส่วนชิปนับ "ก่อนกรอง"
+            ⇒ สองเลขที่ไม่เท่ากันวางชิดกันบนหัวเดียว · ชิปที่เลือกอยู่บอกจำนวนของตัวเองแล้ว */}
         <div className="toolbar">
-          <Button size="sm" tone={kind ? undefined : "primary"} onClick={() => setKind(null)}>
-            ทั้งหมด {counts.total}
-          </Button>
-          {MY_QUEUE_KINDS.map((k) => (
-            <Button
-              key={k.key} size="sm" tone={kind === k.key ? "primary" : undefined}
-              disabled={!counts.byKind[k.key]}
-              onClick={() => setKind(kind === k.key ? null : k.key)}
-            >
-              {k.label} {counts.byKind[k.key] || 0}
-            </Button>
-          ))}
+          <Segmented
+            ariaLabel="กรองคิวตามชนิดงาน"
+            value={kind || "all"}
+            onChange={(next) => setKind(next === "all" ? null : next)}
+            options={[
+              { value: "all", label: "ทั้งหมด", count: counts.total },
+              ...MY_QUEUE_KINDS.map((k) => ({
+                value: k.key, label: k.label, count: counts.byKind[k.key] || 0,
+                disabled: !counts.byKind[k.key],
+              })),
+            ]}
+          />
         </div>
 
         {loading ? <SkeletonRows rows={4} /> : shown.length === 0 ? (
           <EmptyState icon={CheckCircle2}>
-            {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้ 🎉"}
+            {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้"}
           </EmptyState>
         ) : (
-          <TableScroll cells="stacked">
+          <TableScroll cells="stacked" className={styles.paneScroll}>
             <table className="w-full">
               <thead>
                 <tr>
@@ -257,89 +267,48 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         )}
       </WorkspaceSection>
 
-      {/* ตัวเลขของเดือน — **ไม่ใช่ของค้าง** จึงอยู่ใต้คิว · ฉบับเต็ม (ทบยอด/กราฟ/YoY)
-          อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18) ที่นี่มีแค่ทางเข้า */}
-      {!loading && (
-        <WorkspaceSection
-          icon={<TrendingUp size={17} />}
-          title={`ตัวเลขของฉัน — ${scopeLabel}`}
-          subtitle="เป้า · ยอดปิดได้ · ไปป์ไลน์ที่ยังเปิดอยู่"
-          actions={(
-            <div className="flex gap-2 items-center flex-wrap">
-              {data && !hasTarget && canSetTarget && (
-                <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
-                  ตั้งเป้า
-                </Button>
-              )}
-              <Button
-                as={Link} size="sm" icon={<ArrowUpRight size={13} />}
-                href={data?.me?.id
-                  ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}`
-                  : "/sa/dashboard?tab=performance"}
-              >
-                ดูผลงานเต็ม
-              </Button>
-            </div>
-          )}
-        >
-          <div className={styles.numbers}>
-            <p>
-              ยอดปิดได้
-              <strong>{fmtMoney(actual)}</strong>
-              <span>{hasTarget ? `จากเป้า ${fmtMoney(target)}` : `ยังไม่ตั้งเป้า${scopeLabel}`}</span>
-            </p>
-            <p>
-              ดีลที่เปิดอยู่
-              <strong>{data?.openDealsCount || 0}</strong>
-              <span>Pipeline {fmtMoney(data?.pipelineValue || 0)}</span>
-            </p>
-            {byForecast.map((bucket) => (
-              <p key={bucket.level}>
-                FC {bucket.level}%
-                <strong>{fmtMoney(bucket.value)}</strong>
-                <span>{bucket.count} ดีล</span>
-              </p>
-            ))}
-          </div>
-        </WorkspaceSection>
-      )}
-
-      {/* ⭐ **ฟีดย้ายลงท้ายหน้า** — มันตอบว่า *อะไรเพิ่งเกิด* ซึ่งมีค่า แต่ไม่ใช่สิ่งแรก
-          ที่ตาควรไปเจอตอนเปิดหน้ามาทำงาน (มติผู้ใช้ 2026-08-12 · แบบ ก) */}
       <WorkspaceSection
+        className={styles.pane}
+        bodyClassName={styles.paneBody}
         icon={<Activity size={17} />}
         title="รายการอัปเดตล่าสุด"
         subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
-        actions={(
-          <div className={styles.filters}>
-            {[["all", "ทั้งหมด"], ["deal", "ดีล"], ["task", "งาน"], ["urgent", "ด่วน"]].map(([key, label]) => (
-              <button
-                type="button" key={key}
-                className={filter === key ? styles.activeFilter : ""}
-                onClick={() => setFilter(key)}
-              >
-                {label}
-              </button>
-            ))}
+      >
+        <div className="toolbar">
+          <Segmented
+            ariaLabel="กรองรายการอัปเดต"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "ทั้งหมด", count: feedCounts.all },
+              { value: "deal", label: "ดีล", count: feedCounts.deal, disabled: !feedCounts.deal },
+              { value: "task", label: "งาน", count: feedCounts.task, disabled: !feedCounts.task },
+              { value: "urgent", label: "ด่วน", count: feedCounts.urgent, disabled: !feedCounts.urgent },
+            ]}
+          />
+        </div>
+        {/* ⚠️ **กดดูเพิ่มแล้วการ์ดต้องไม่สูงขึ้น** — ของที่โหลดมาเพิ่มไปต่อท้ายในกล่องที่
+            เลื่อนเอง ไม่ใช่ยืดการ์ดจนดันคิวฝั่งซ้ายเสียแนว · ปุ่มอยู่นอกกล่องเลื่อน
+            จะได้ไม่ต้องไถลงไปหามัน */}
+        <div className={styles.paneScroll}>
+          <div className={styles.feed}>
+            {shownFeed.map((item) => (item.feedType === "task"
+              ? <TaskPost key={`task-${item.id}`} item={item} />
+              : <DealPost key={`deal-${item.id}`} item={item} />))}
+            {!feed.length && (
+              <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
+            )}
+          </div>
+        </div>
+        {feed.length > visible && (
+          <div className={styles.feedMore}>
+            <Button size="sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
+              ดูเพิ่มเติม (อีก {feed.length - visible})
+            </Button>
           </div>
         )}
-      >
-        <div className={styles.feed}>
-          {shownFeed.map((item) => (item.feedType === "task"
-            ? <TaskPost key={`task-${item.id}`} item={item} />
-            : <DealPost key={`deal-${item.id}`} item={item} />))}
-          {feed.length > visible && (
-            <div className={styles.feedMore}>
-              <Button size="sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
-                ดูเพิ่มเติม (อีก {feed.length - visible})
-              </Button>
-            </div>
-          )}
-          {!feed.length && (
-            <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
-          )}
-        </div>
       </WorkspaceSection>
+      </div>
     </div>
   );
 }
