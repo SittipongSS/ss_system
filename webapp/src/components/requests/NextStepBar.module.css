@@ -36,7 +36,9 @@
 .label { display: flex; align-items: baseline; gap: var(--space-2); flex: 1; min-width: 12rem; }
 .stage { font-size: var(--fs-3); color: var(--text-3); }
 
-.actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* ⚠️ `align-items: center` เพราะป้าย "รออีกฝั่ง" นั่งแถวเดียวกับปุ่มทางถอยได้
+   (ดึงกลับ — ม-137) · stretch จะดันตัวหนังสือไปชิดขอบบนของปุ่ม */
+.actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 /* รออีกฝั่ง — ข้อความ ไม่ใช่ปุ่มจาง (ปุ่มที่กดไม่ได้ไม่บอกว่าทำไม) */
 .waiting { font-size: var(--fs-5); color: var(--text-3); }

@@ -357,7 +357,7 @@ export default function RequestDetailPage() {
       body: JSON.stringify({
         hop,
         // ก้าวส่งไม่ส่งวัน (ม-92) — server ประทับวันไทยของวันที่กดให้เอง
-        ...(hop === "ready" ? {} : { at: hopDraft.at }),
+        ...(["ready", "unready"].includes(hop) ? {} : { at: hopDraft.at }),
         ...(hop === "ack" ? { dueAt: hopDraft.dueAt || null } : {}),
         // ⚠️ ส่งทั้งก้อน — ลูกค้า/กลิ่น/หมวดที่ติดมาด้วยถูก server ทิ้ง แล้วยกจากแถวเอง
         ...(hop === "ready" && item.lineKind === "product_dev"
@@ -370,13 +370,16 @@ export default function RequestDetailPage() {
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
         // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
         // "ต้องบอกเหตุผลที่ปฏิเสธ" ทั้งที่กรอกแล้ว (เจอตอนกดจริงจากตาราง ม-94)
-        ...(hop === "refuse" ? { note: hopDraft.note } : {}),
+        ...(["refuse", "unready"].includes(hop) ? { note: hopDraft.note } : {}),
         ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
     }, outcome === "revise"
       // บอกผลข้างเคียงที่มองไม่เห็นตอนกด — แถวใหม่ถูกสร้างให้เอง
       ? "บันทึกแล้ว · เปิดรายการใหม่สำหรับรอบแก้ให้แล้ว"
-      : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
+      : hop === "unready"
+        // ก้าวถอยจบแล้วยังมีงานเหลือ — ไม่บอกว่าต้องกลับมากดส่งเอง คนจะนึกว่าจบ
+        ? 'ดึงกลับแล้ว · รายการกลับไปขั้น "กำลังทำ" — แก้ไฟล์แล้วกด "ส่งงาน" อีกครั้ง'
+        : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
     if (ok) setHopDraft(null);
   };
 
@@ -1644,7 +1647,7 @@ export default function RequestDetailPage() {
             {/* ⭐ ก้าวส่ง (ready) ไม่มีช่องวัน (ม-92) — ระบบประทับวันที่กดให้เอง
                 ก้าวอื่นยังถาม: แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมา
                 บันทึกเป็นเรื่องปกติ (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
-            {!["refuse", "ready"].includes(hopDraft.hop) && (
+            {!["refuse", "ready", "unready"].includes(hopDraft.hop) && (
             <div className="form-group">
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               <DateInput
@@ -1667,6 +1670,28 @@ export default function RequestDetailPage() {
                 />
                 <p className={styles.fieldHint}>
                   ผู้ขอเห็นเหตุผลนี้ติดแถวเอกสารในใบ — รายการจะจบแบบ &quot;ปฏิเสธ&quot;
+                </p>
+              </div>
+            )}
+
+            {/* ⭐ ดึงกลับ (มติผู้ใช้ 2026-08-20 — "เผื่อแนบผิด") — เหตุผลบังคับเหมือน
+                "ดึงกลับ" ทุกที่ในระบบ (ใบเสนอราคา · ใบขอราคาผลิต) เพราะอีกฝั่งเห็น
+                รายการเด้งกลับเอง · เหตุผลลงเธรดของใบ (ไม่มีคอลัมน์เก็บบนแถว)
+                ⚠️ **บอกผลลัพธ์ให้ครบก่อนกด** (กติกาโมดัลยืนยัน #1223) — คนกดต้องรู้ว่า
+                ไฟล์ไม่ได้หายไปไหน และต้องกลับมากด "ส่งงาน" ใหม่เอง */}
+            {hopDraft.hop === "unready" && (
+              <div className="form-group">
+                <label htmlFor="hop-unready-why">เหตุผลที่ดึงกลับ</label>
+                <Textarea
+                  id="hop-unready-why" rows={3} maxLength={500}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder="เช่น แนบไฟล์ผิดใบ / ไฟล์เป็นฉบับร่าง ขอส่งฉบับจริงแทน"
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  รายการจะกลับไปขั้น &quot;กำลังทำ&quot; และเป็นตาของฝ่ายอีกครั้ง ·
+                  <strong> ไฟล์ที่แนบไว้ยังอยู่ครบ</strong> — ลบตัวที่ผิดและแนบตัวใหม่ได้ใน
+                  หน้าต่าง &quot;ส่งงาน&quot; แล้วกดส่งอีกครั้ง · ผู้ขอเห็นเหตุผลนี้ในเธรด
                 </p>
               </div>
             )}

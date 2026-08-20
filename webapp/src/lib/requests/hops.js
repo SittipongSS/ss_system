@@ -17,12 +17,13 @@ import { isDocLineKind } from '@/lib/requests/docTypes';
 // ⭐ สองก้าวท้ายเป็นของสายเอกสารเท่านั้น (ม-85) — สายนั้นไม่มีลูกค้า/ราคา จึงจบด้วย
 //   receive  ผู้ขอยืนยันว่าได้ไฟล์ที่ใช้ได้จริง (answerStatus = done)
 //   refuse   ฝ่ายปฏิเสธ พร้อมเหตุผลบังคับ (answerStatus = declined)
-export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse'];
+//   unready  ฝ่ายดึงงานที่ส่งไปแล้วกลับมาแก้ (แนบไฟล์ผิด — มติผู้ใช้ 2026-08-20)
+export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse', 'unready'];
 
 // ก้าวไหนเป็นของฝั่งไหน — 'dept' = ฝ่ายที่ต้องตอบ · 'requester' = ผู้ขอ
 export const HOP_OWNER = {
   ack: 'dept', ready: 'dept', pickup: 'requester', send: 'requester', outcome: 'requester',
-  receive: 'requester', refuse: 'dept',
+  receive: 'requester', refuse: 'dept', unready: 'dept',
 };
 
 // ขั้นที่แถวต้องอยู่ **ก่อน** จะเดินก้าวนี้ได้ (array = ได้หลายขั้น)
@@ -38,6 +39,12 @@ const HOP_FROM_STAGE = {
   // ปฏิเสธ = คำตอบของฝ่ายระหว่างที่งานยังอยู่ในมือ — รับเรื่องแล้วแต่ยังไม่ส่ง ·
   // ส่งแล้ว (ready) คือมีของแล้ว ไม่มีเหตุให้ปฏิเสธอีก
   refuse: 'developing',
+  /* ⭐ **ดึงกลับ = ก้าวถอยก้าวเดียวของระบบ** (มติผู้ใช้ 2026-08-20: *"คำร้องขอเอกสาร
+     FN RD อยากให้สามารถดึงกลับ หรือลบได้ เผื่อแนบผิด"*) — เดินได้จากขั้น `ready`
+     เท่านั้น คือ **ช่วงที่ฝ่ายส่งไปแล้วแต่ผู้ขอยังไม่กด "ได้รับแล้ว"**
+     ⚠️ หลังผู้ขอกดรับ แถวเป็น `done` ⇒ ด่านขั้นตีกลับเอง — ของที่อีกฝั่งรับไปใช้แล้ว
+     ไม่ใช่ของที่เจ้าของถอยคืนได้เงียบ ๆ (ทางออกคือขอให้ผู้ขอเปิดรายการใหม่) */
+  unready: 'ready',
 };
 
 // ก้าวนี้ใช้กับรูปร่างบรรทัดนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
@@ -50,7 +57,10 @@ function hopLineKindError(row, hop) {
   if (doc && ['pickup', 'send', 'outcome'].includes(hop)) {
     return 'แถวเอกสารไม่มีก้าวของสายพัฒนา — ผู้ขอกด "ได้รับแล้ว" เมื่อไฟล์ใช้ได้จริง';
   }
-  if (!doc && ['receive', 'refuse'].includes(hop)) {
+  /* ⚠️ **ดึงกลับมีเฉพาะสายเอกสาร** — ก้าวส่งของสายพัฒนาสร้างกลิ่น/สูตรเข้าทะเบียน
+     ไปแล้ว (delivery.js · P4b) ⇒ ถอยก้าวเฉย ๆ จะได้ของค้างในทะเบียนที่ไม่มีแถวชี้
+     ส่วนไฟล์ของสายเอกสารเป็นของที่ลบ/แนบใหม่ได้ตรง ๆ ไม่มีอะไรงอกที่อื่น */
+  if (!doc && ['receive', 'refuse', 'unready'].includes(hop)) {
     return 'ก้าวนี้ใช้กับแถวขอเอกสารเท่านั้น';
   }
   return null;
@@ -133,6 +143,16 @@ export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
     return at ? null : 'ต้องระบุวันที่';
   }
 
+  /* ดึงกลับ — เหตุผลบังคับเหมือนทุก "ดึงกลับ" ในระบบ (ใบเสนอราคา · ใบขอราคาผลิต)
+     ⚠️ ผู้ขอเห็นแถวเด้งจาก "ส่งงานแล้ว" กลับเป็น "กำลังทำ" อยู่แล้ว — ไม่มีเหตุผล
+     กำกับ = เขาต้องเดาเองว่าไฟล์ที่โหลดไปเมื่อกี้ใช้ได้หรือไม่ */
+  if (hop === 'unready') {
+    const reason = String(values.note ?? '').trim();
+    if (!reason) return 'ต้องบอกเหตุผลที่ดึงกลับ';
+    if (reason.length > 500) return 'เหตุผลยาวเกิน 500 ตัวอักษร';
+    return null;
+  }
+
   // ปฏิเสธ — เหตุผลคือหลักฐาน (constraint answer_evidence บังคับคู่ declined+เหตุผล)
   // ไม่มีช่องวันของตัวเอง: เวลาอยู่บนเหตุการณ์ในเธรดแล้ว
   if (hop === 'refuse') {
@@ -191,6 +211,15 @@ export function hopPatch(hop, values = {}, user = null, today = null, { lineKind
       docDueDate: due || null,
     };
   }
+  /* ── ดึงกลับ = ล้างตราของก้าวส่ง แถวกลับไปขั้น "กำลังทำ" ─────────────────
+     ⚠️ **ล้างครบทั้งสามช่อง** — เหลือ `readyById` ค้างไว้เมื่อไร ประวัติจะบอกว่ามี
+     คนส่งของที่ไม่มีวันส่ง · CHECK hop_chain ผ่านเพราะสายเอกสารยังไม่มี pickedUpAt
+     (ผู้ขอกดรับเมื่อไร แถวเป็น done แล้วดึงกลับไม่ได้ — ด่านขั้นกันไว้)
+     ⚠️ **ไม่แตะ `docNumber`/`docDueDate` ของบรรทัดเอกสารการเงิน** — เลขที่ใบที่ FN
+     ออกไปแล้วยังเป็นเลขเดิม · โมดัลส่งงานเติมค่าเดิมกลับให้ตอนส่งซ้ำอยู่แล้ว */
+  if (hop === 'unready') {
+    return { readyAt: null, readyById: null, readyByName: null };
+  }
   if (hop === 'pickup') return { pickedUpAt: at, pickedUpById: by.id, pickedUpByName: by.name };
   if (hop === 'send') return { sentAt: at, sentById: by.id, sentByName: by.name };
 
@@ -241,6 +270,9 @@ export const hopLabel = (hop, outcome) => (hop === 'outcome'
   : {
     ack: 'รับเรื่อง', ready: 'ส่งงาน', pickup: 'รับของ', send: 'ส่งให้ลูกค้า',
     receive: 'ได้รับแล้ว', refuse: 'ปฏิเสธ',
+    // คำที่ล็อกไว้ทั้งระบบ: **ตีกลับ** = ผู้รับส่งคืน · **ดึงกลับ** = คนที่ส่งเอาคืนเอง
+    // (stages.js บรรทัดคำศัพท์) — ก้าวนี้คือฝ่ายเอางานของตัวเองคืน จึงเป็น "ดึงกลับ"
+    unready: 'ดึงกลับ',
   }[hop] || hop);
 
 // ป้ายก้าวที่รู้จักสายของแถว
@@ -293,5 +325,5 @@ export const hopUpdateKind = (hop, outcome) => (hop === 'outcome'
   ? (ROW_OUTCOMES.includes(outcome) ? outcome : 'comment')
   : {
     ack: 'acknowledge', ready: 'ready', pickup: 'pickup', send: 'sent',
-    receive: 'received', refuse: 'refused',
+    receive: 'received', refuse: 'refused', unready: 'unready',
   }[hop] || 'comment');

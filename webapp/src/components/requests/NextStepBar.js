@@ -84,9 +84,27 @@ export function RowStepActions({
   if (!hop) return null;
   const owner = OWNER_OF[hop];
   const isMine = owner === "dept" ? canDept : canRequester;
+  /* ⭐ **ดึงกลับ — ก้าวถอยก้าวเดียวของระบบ** (มติผู้ใช้ 2026-08-20: *"คำร้องขอเอกสาร
+     FN RD อยากให้สามารถดึงกลับ หรือลบได้ เผื่อแนบผิด"*)
+     🐞 ที่มา: ฝ่ายแนบไฟล์ผิดแล้วกดส่ง แถวเด้งไปขั้น "รอไปรับ" ซึ่งเป็นตาของผู้ขอ ⇒
+     ฝ่ายไม่มีปุ่มอะไรเหลือเลย (การ์ดไฟล์ก็อ่านอย่างเดียวตาม ม-90) · ทางเดียวคือรอให้
+     ผู้ขอกดรับของผิด แล้วค่อยเปิดใบใหม่
+     ⚠️ **โผล่คู่กับป้าย "รออีกฝั่ง" ไม่ใช่แทนที่** — ตายังเป็นของผู้ขอเหมือนเดิม
+     ปุ่มนี้เป็นทางถอยของฝ่าย ไม่ใช่ก้าวถัดไปของงาน ⇒ วางเป็นเส้นขอบ ไม่ใช่ปุ่มหลัก */
+  const canUnready = canDept && stage === "ready" && isDocLineKind(row.lineKind);
   if (!isMine) {
     return (
-      <span className={styles.waiting}>{waitingText(owner, { deptLabel, requesterLabel })}</span>
+      <div className={styles.actions}>
+        <span className={styles.waiting}>{waitingText(owner, { deptLabel, requesterLabel })}</span>
+        {canUnready && (
+          <Button
+            tone="warning" variant="outline" disabled={busy}
+            onClick={() => onHop?.(row, "unready")}
+          >
+            {hopLabel("unready")}
+          </Button>
+        )}
+      </div>
     );
   }
   if (hop === "outcome") {
@@ -120,6 +138,16 @@ export function RowStepActions({
           onClick={() => onHop?.(row, "refuse")}
         >
           {hopLabelFor(row, "refuse")}
+        </Button>
+      )}
+      {/* คนที่เป็นทั้งฝ่ายและผู้ขอในใบเดียวกัน (admin ตอบแทน) เห็นก้าวของผู้ขอเป็น
+          ปุ่มจริง ⇒ ทางถอยของฝ่ายต้องมาด้วย ไม่งั้นหายไปเฉพาะกับสิทธิ์นี้ */}
+      {canUnready && hop !== "unready" && (
+        <Button
+          tone="warning" variant="outline" disabled={busy}
+          onClick={() => onHop?.(row, "unready")}
+        >
+          {hopLabel("unready")}
         </Button>
       )}
     </div>
