@@ -89,7 +89,26 @@ git push -u origin main
    (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
 4. **Deploy** → ได้ URL `https://<repo>.vercel.app` ส่งให้ทีมใช้ได้เลย
 
-หลังจากนี้ push GitHub ครั้งไหน Vercel จะ deploy ให้อัตโนมัติ
+### จังหวะการ deploy — `main` ไม่ขึ้น prod เอง
+
+Vercel ไม่ได้ deploy จาก `main` แล้ว แต่ deploy จากแบรนช์ `production`
+(ตั้งไว้ที่ `vercel.json` → `git.deploymentEnabled` และที่ **Vercel → Settings → Git →
+Production Branch** ต้องเป็น `production` ทั้งสองที่ต้องตรงกัน)
+
+`main` ยังรับ merge ได้ตลอดวันเหมือนเดิม แล้ว workflow
+`.github/workflows/deploy-production.yml` จะ fast-forward `production` ตาม `main`
+ให้เองวันละ 3 รอบ: **09:00 / 13:00 / 18:00 เวลาไทย**
+
+เหตุผล: Build CPU Minutes เคยเป็น 87% ของบิล Vercel ($24.22 จาก subtotal $27.98)
+และ Vercel คิดเงินเป็น *vCPU ที่จองไว้ × wall-clock ของ build step ทั้งก้อน*
+(clone + install + build + อัป cache) ⇒ ตัวแปรที่ขยับตัวเลขได้จริงคือ**จำนวน build**
+ไม่ใช่ความเร็วของ build วันหนึ่งมี merge ~22 ครั้ง เหลือ 3 build
+
+**ของด่วนที่รอรอบถัดไปไม่ได้:** ไปที่ **Actions → Deploy to production → Run workflow**
+กดแล้วขึ้น prod ทันที และมีล็อกว่าใครกดเมื่อไร
+
+workflow จะไม่ deploy ให้ถ้า CI ของ `main` ยังไม่เขียว — รอบตามเวลาจะข้ามไปเงียบ ๆ
+แล้วไปเก็บรอบหน้า ส่วนการกดปุ่มเองจะฟ้องแดงให้เห็นว่าไม่ได้ deploy
 
 ---
 
@@ -135,3 +154,4 @@ Login เปลี่ยนจากรหัส `1234` เป็น **Supabase 
 - [ ] ทดสอบ `npm test`, `npm run lint`, `npm run build`
 - [ ] Smoke test: login → Lead → Deal → Quotation → Won พร้อมหลักฐาน → Project/PM
 - [ ] Vercel: Root = `webapp` + env 4 ตัว → Deploy
+- [ ] Vercel → Settings → Git → **Production Branch = `production`** (ไม่ใช่ `main`) ให้ตรงกับ `vercel.json`

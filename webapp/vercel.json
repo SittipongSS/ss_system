@@ -12,7 +12,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "main": true,
+      "production": true,
+      "main": false,
       "claude/*": false,
       "feature/*": false,
       "fix/*": false,
