@@ -11,8 +11,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  entityLabel, entityTitle, listNotificationPage, notificationCursor,
-  notificationHref, notifyThreadUpdate, recipientsForUpdate, threadParticipants,
+  NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
+  notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
+  recipientsForUpdate, threadParticipants, unreadCount,
 } from './notifications.js';
 import { UPDATE_ENTITIES, updateRecipients } from './master/updateAccess.js';
 import { isQuietUpdateKind } from './master/updateTypes.js';
@@ -155,11 +156,11 @@ test('quiet ผูกกับชนิด ไม่ใช่ทั้ง entity
 // ── หน้า "ดูทั้งหมด" ─────────────────────────────────────────────────────
 // stub ของหน้า: จำ query ที่ถูกสร้าง แล้วคืนแถวตามที่ตั้งไว้
 function pageStub(rows) {
-  const calls = { or: null, is: 0, order: [], limit: null };
+  const calls = { or: null, ors: [], is: 0, order: [], limit: null };
   const chain = {
     eq: () => chain,
     is: () => { calls.is += 1; return chain; },
-    or: (expr) => { calls.or = expr; return chain; },
+    or: (expr) => { calls.or = expr; calls.ors.push(expr); return chain; },
     order: (col, opts) => { calls.order.push([col, opts?.ascending]); return chain; },
     limit: async (n) => { calls.limit = n; return { data: rows.slice(0, n), error: null }; },
   };
@@ -238,4 +239,87 @@ test('หัวเรื่องใช้ชื่อ/เลขที่เอ�
   assert.equal(entityTitle('personal_task', { id: 'T-1', title: 'ทำใบเสนอราคา' }), 'งาน ทำใบเสนอราคา');
   // ไม่มีอะไรให้ใช้จริง ๆ ค่อยถอยไป id (ทางสุดท้าย ไม่ใช่ทางแรก)
   assert.equal(entityTitle('deal', { id: 'DL-9' }), 'ดีล DL-9');
+});
+
+// ── กล่องของกระดิ่ง (มติผู้ใช้ 2026-08-20) ───────────────────────────────
+
+test('⭐ กระดิ่งกรองเหลือคำร้อง + แจ้งปัญหา + มอบหมายงาน และกรองที่ฐานข้อมูล', async () => {
+  // กรองในหน้าจอ = ขอ 30 แถวได้จริง 3 แถว แล้ว `hasMore` โกหก (เหตุผลเดียวกับ
+  // โหมด "ยังไม่อ่าน") · และเลขบนป้ายจะไม่มีวันตรงกับสิ่งที่กล่องแสดง
+  const { calls, supabase } = pageStub([]);
+  await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
+  assert.deepEqual(calls.ors, [
+    'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign',
+  ]);
+});
+
+test('⭐ มอบหมายงานเข้ากล่องด้วย kind ไม่ใช่ทั้ง entity — เธรดงานทั้งเธรดต้องไม่ตามมา', () => {
+  // เธรดงาน 92% เป็นเหตุการณ์ระบบ (เปลี่ยนสถานะ/เลื่อนกำหนด) — ลากเข้ามาทั้ง entity
+  // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
+  assert.deepEqual(NOTIFICATION_BOXES.bell.kinds, ['task_assign']);
+});
+
+test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {
+  const { calls, supabase } = pageStub([]);
+  await listNotificationPage(supabase, 'u-1', {
+    box: notificationBox('bell'), cursor: '2026-08-12T03:00:00+00:00|NTF-2',
+  });
+  assert.equal(calls.ors.length, 2, 'ต้องเป็นคนละก้อน ห้ามยัดรวมเป็น or เดียว (จะกลายเป็น "หรือ")');
+  assert.match(calls.ors[0], /kind\.eq\.task_assign/);
+  assert.match(calls.ors[1], /createdAt\.lt\./);
+});
+
+test('ไม่ระบุกล่อง = ไม่กรอง — หน้า "ดูทั้งหมด" ต้องยังเห็นทุกชนิดเหมือนเดิม', async () => {
+  const { calls, supabase } = pageStub([]);
+  await listNotificationPage(supabase, 'u-1', {});
+  assert.deepEqual(calls.ors, [], 'แจ้งเตือนชนิดอื่นต้องไม่หายไปจากหน้าเต็ม');
+  // ชื่อกล่องที่ไม่รู้จัก (query string มั่ว) ต้องตกเป็น "ไม่กรอง" ไม่ใช่กรองเป็นชุดว่าง
+  const unknown = pageStub([]);
+  await listNotificationPage(unknown.supabase, 'u-1', { box: notificationBox('มั่ว') });
+  assert.deepEqual(unknown.calls.ors, []);
+});
+
+test('ทุก entity ในกล่องกระดิ่งต้องมีเธรดจริงในทะเบียน — ไม่งั้นกระดิ่งว่างตลอดกาล', () => {
+  for (const type of NOTIFICATION_BOXES.bell.entityTypes) {
+    assert.ok(UPDATE_ENTITIES[type], `${type} ไม่มีในทะเบียน entity ที่มีเธรด`);
+  }
+});
+
+// stub ของ query ปลายทางเป็น thenable (count/update) — จำ .or() ที่ถูกเรียก
+function tailStub(result = { count: 7, error: null }) {
+  const calls = { or: null, update: null };
+  const chain = {
+    eq: () => chain,
+    is: () => chain,
+    or: (expr) => { calls.or = expr; return chain; },
+    then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
+  };
+  return {
+    calls,
+    supabase: {
+      from: () => ({
+        select: () => chain,
+        update: (patch) => { calls.update = patch; return chain; },
+      }),
+    },
+  };
+}
+
+test('⭐ เลขบนป้ายนับกล่องเดียวกับที่กระดิ่งแสดง — ป้าย 12 แต่เปิดมาเจอ 3 คือกระดิ่งที่ไม่มีใครเชื่อ', async () => {
+  const { calls, supabase } = tailStub();
+  await unreadCount(supabase, 'u-1', { box: notificationBox('bell') });
+  assert.match(calls.or, /entityType\.eq\.dept_request/);
+  assert.match(calls.or, /kind\.eq\.task_assign/);
+});
+
+test('⭐ "อ่านทั้งหมด" ในกระดิ่งล้างเฉพาะกล่องนั้น — ห้ามกลืนของที่คนกดไม่เคยเห็น', async () => {
+  const bell = tailStub({ error: null });
+  await markAllRead(bell.supabase, 'u-1', { box: notificationBox('bell') });
+  assert.match(bell.calls.or, /entityType\.eq\.system_issue/);
+  assert.ok(bell.calls.update?.readAt, 'ต้องเขียน readAt');
+  // ปุ่มบนหน้าเต็มยังล้างทั้งกอง เพราะหน้านั้นแสดงทั้งกองจริง ๆ
+  const full = tailStub({ error: null });
+  await markAllRead(full.supabase, 'u-1');
+  assert.equal(full.calls.or, null);
 });

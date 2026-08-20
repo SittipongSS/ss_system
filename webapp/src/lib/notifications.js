@@ -24,6 +24,51 @@ import { ENTITY_LABEL, entityLabel, notificationHref } from '@/lib/notificationT
 
 export { entityLabel, notificationHref };
 
+// ── กล่องของกระดิ่ง (มติผู้ใช้ 2026-08-20) ───────────────────────────────
+//
+// ⭐ "กระดิ่งเอาแค่แจ้งเตือนเกี่ยวกับคำร้องก็พอ" + "เพิ่มเรื่องการมอบหมายงานด้วย"
+// ⇒ กระดิ่งบนแถบบนแสดง **คำร้องข้ามฝ่าย · เรื่องแจ้งปัญหาระบบ · การมอบหมายงาน**
+// เท่านั้น ทั้งรายการในกล่องและเลขบนป้าย
+// (เดิมเป็นทุกชนิดปนกัน · ของจริง 3 วันล่าสุด: ดีล 383 · คำร้อง 222 · โปรเจกต์ 163
+// ⇒ เรื่องคำร้องถูกดันตกขอบกล่อง 30 แถวเป็นปกติ)
+//
+// ⚠️ **แจ้งเตือนชนิดอื่นยังถูกเขียนลงตารางเหมือนเดิม ไม่ได้หายไปไหน** — อ่านได้ที่
+// หน้าเต็ม `/notifications` ซึ่งยังแสดงทุกชนิด · ที่นี่กรองแค่ "กล่องไหนโชว์อะไร"
+// ไม่ได้แตะกฎผู้รับ (มติ 14) และไม่ได้หยุดการเขียนของชนิดไหนเลย
+//
+// ⚠️ **กรองสองแกน และเป็น "หรือ" กัน**:
+//   - `entityTypes` — ทั้ง entity เข้ากล่อง (ทุกความเคลื่อนไหวของคำร้อง/เรื่องแจ้งปัญหา)
+//   - `kinds` — เหตุการณ์เดี่ยวที่เข้ากล่องโดยไม่ลากทั้ง entity มาด้วย
+//     (`task_assign` = มอบหมายงาน · **ไม่เอา** เธรดงานทั้งเธรดซึ่ง 92% เป็นเหตุการณ์ระบบ)
+//   คอลัมน์ `kind` ของแถวแจ้งเตือนเป็น `thread_update` เสมอเมื่อมาจากเธรด ⇒ เหตุการณ์
+//   ที่อยากให้เข้ากล่องแบบเจาะจงต้องยิงผ่าน `notifyUsers()` ด้วย kind ของตัวเอง
+export const NOTIFICATION_BOXES = {
+  bell: { entityTypes: ['dept_request', 'system_issue'], kinds: ['task_assign'] },
+};
+
+// ชื่อกล่องมาจาก query string ⇒ **ต้องผ่านทะเบียนเท่านั้น** ห้ามให้ฝั่งเบราว์เซอร์
+// ส่ง entityType/kind ดิบมาเอง (วันนี้ยังตัดขอบเขตด้วย userId อยู่แล้ว แต่ทะเบียนทำให้
+// "กล่องมีอะไรบ้าง" ตอบได้จากโค้ดที่เดียว ไม่ใช่จากสิ่งที่หน้าจอบังเอิญส่งมา)
+export function notificationBox(box) {
+  return NOTIFICATION_BOXES[String(box || '')] || null;
+}
+
+/**
+ * กรองตามกล่อง — **ที่ฐานข้อมูล ไม่ใช่หลังดึงมา**
+ *
+ * ⚠️ `.or()` ก้อนเดียวเสมอ (ทุกเงื่อนไขของกล่องต่อกันด้วย "หรือ") · ผู้เรียกอาจมี
+ * `.or()` ของตัวเองอยู่แล้ว (กุญแจหน้าถัดไป) — PostgREST เอา or สองก้อนมา **and**
+ * กัน ซึ่งเป็นสิ่งที่ต้องการพอดี (ตรวจกับของจริงแล้ว: or+or = 284 เท่ากับ or+and)
+ */
+function applyBox(query, box) {
+  if (!box) return query;
+  const parts = [
+    ...(box.entityTypes || []).map((t) => `entityType.eq.${t}`),
+    ...(box.kinds || []).map((k) => `kind.eq.${k}`),
+  ];
+  return parts.length ? query.or(parts.join(',')) : query;
+}
+
 export const NOTIFICATION_LIST_LIMIT = 30;
 // เพดานต่อคำขอของหน้า "ดูทั้งหมด" — กันคนแก้ query string ให้ดึงทั้งตารางในทีเดียว
 export const NOTIFICATION_PAGE_MAX = 100;
@@ -209,10 +254,13 @@ function applyCursor(query, cursor) {
 }
 
 export async function listNotifications(supabase, userId, {
-  limit = NOTIFICATION_LIST_LIMIT, unreadOnly = false, cursor = null,
+  limit = NOTIFICATION_LIST_LIMIT, unreadOnly = false, cursor = null, box = null,
 } = {}) {
   let query = supabase.from('notifications').select('*').eq('userId', String(userId));
   if (unreadOnly) query = query.is('readAt', null);
+  // กรองในหน้าจอ = ขอ 30 แถวได้จริง 3 แถว แล้ว `hasMore` โกหก (เหตุผลเดียวกับ
+  // โหมด "ยังไม่อ่าน")
+  query = applyBox(query, box);
   query = applyCursor(query, cursor);
   const { data, error } = await pageOrder(query).limit(limit);
   if (error) throw error;
@@ -236,20 +284,24 @@ export async function listNotificationPage(supabase, userId, options = {}) {
   };
 }
 
-export async function unreadCount(supabase, userId) {
-  const { count, error } = await supabase
+// ⚠️ เลขบนป้ายต้องนับ **กล่องเดียวกับที่กระดิ่งแสดง** — ป้ายขึ้น 12 แล้วเปิดมาเจอ
+// 3 แถวคือกระดิ่งที่ไม่มีใครเชื่ออีก
+export async function unreadCount(supabase, userId, { box = null } = {}) {
+  const query = applyBox(supabase
     .from('notifications').select('id', { count: 'exact', head: true })
-    .eq('userId', String(userId)).is('readAt', null);
+    .eq('userId', String(userId)).is('readAt', null), box);
+  const { count, error } = await query;
   if (error) throw error;
   return count || 0;
 }
 
 // จำนวนทั้งหมดของคนนี้ — หน้า "ดูทั้งหมด" ใช้บอกว่ากำลังไล่อ่านอยู่ในกองใหญ่แค่ไหน
 // (กระดิ่งไม่ต้องรู้ จึงไม่ถูกเรียกจากที่นั่น)
-export async function totalCount(supabase, userId) {
-  const { count, error } = await supabase
+export async function totalCount(supabase, userId, { box = null } = {}) {
+  const query = applyBox(supabase
     .from('notifications').select('id', { count: 'exact', head: true })
-    .eq('userId', String(userId));
+    .eq('userId', String(userId)), box);
+  const { count, error } = await query;
   if (error) throw error;
   return count || 0;
 }
@@ -286,10 +338,18 @@ export async function markOneRead(supabase, userId, id) {
   if (error) throw error;
 }
 
-export async function markAllRead(supabase, userId) {
-  const { error } = await supabase
+/**
+ * "อ่านทั้งหมด"
+ *
+ * ⚠️ **ต้องล้างเท่าที่กล่องนั้นแสดง** — ปุ่มในกระดิ่ง (กล่องคำร้อง) ที่ไปล้าง
+ * แจ้งเตือนดีล/ลีดที่เจ้าตัวไม่เคยเห็นด้วย = ทำของหายเงียบ ๆ โดยที่คนกดไม่รู้ตัว
+ * ปุ่มบนหน้าเต็มยังล้างทั้งกองเหมือนเดิม เพราะหน้านั้นแสดงทั้งกองจริง ๆ
+ */
+export async function markAllRead(supabase, userId, { box = null } = {}) {
+  const query = applyBox(supabase
     .from('notifications').update({ readAt: new Date().toISOString() })
-    .eq('userId', String(userId)).is('readAt', null);
+    .eq('userId', String(userId)).is('readAt', null), box);
+  const { error } = await query;
   if (error) throw error;
 }
 

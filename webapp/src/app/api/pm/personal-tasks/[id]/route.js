@@ -10,6 +10,7 @@ import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { autoTaskUpdates } from '@/lib/pm/taskUpdates';
 import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 import { appendUpdate, listUpdates, purgeUpdates } from '@/lib/master/updates';
+import { notifyTaskAssigned } from '@/lib/pm/taskAssignNotify';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -128,6 +129,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data, error } = await supabase.from('personal_tasks').update(takeoverUpdate).eq('id', id).select().single();
     if (error) return fail(error.message, 500);
     await recordAudit({ user, action: 'update', entityType: 'task', entityId: id, before: task, after: data, request: req });
+    /* ดึงงานมาเองก็คืองานเปลี่ยนมือ — คนที่ถืออยู่เดิมกับเจ้าของงานต้องรู้ ไม่งั้น
+       สองคนทำงานใบเดียวกันพร้อมกัน · ตัวคนดึงไม่ได้แจ้งตัวเอง (ดู taskAssignNotices) */
+    if ((data.assigneeId || null) !== (task.assigneeId || null)) {
+      await appendUpdate(supabase, {
+        entityType: 'personal_task',
+        entityId: id,
+        kind: 'assign',
+        body: `${user.name || 'ผู้ใช้'} รับช่วงงานนี้`,
+        meta: { field: 'assigneeId', from: task.assigneeId || null, to: data.assigneeId || null, takeover: true },
+        user,
+      });
+      notifyTaskAssigned(supabase, {
+        task: data,
+        actorId: user.id,
+        actorName: user.name,
+        previousAssigneeId: task.assigneeId || null,
+        assigneeName: user.name || null,
+      });
+    }
     return ok(data);
   }
 
@@ -222,6 +242,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // เปลี่ยนผู้รับมอบ → ตรวจสิทธิ์มอบหมายตามลำดับชั้น (canAssignTask) + เซ็ต assignedBy.
+  let assigneeName = null;   // ชื่อผู้รับคนใหม่ — ใช้เล่าให้คนที่งานหลุดมือฟัง
   if ('assigneeId' in updates) {
     const next = updates.assigneeId || null;
     if (!canChangeTaskAssignee(task, next)) {
@@ -242,8 +263,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       };
       if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
       updates.assignedBy = user.id;
+      assigneeName = au.user.user_metadata?.name || au.user.email || null;
     } else {
       updates.assignedBy = null; // ถอนการมอบหมาย / มอบให้ตัวเอง
+      // มอบให้ตัวเอง = ชื่อผู้รับคือคนที่กดอยู่นี่เอง — ไม่ได้ไปดึงจาก auth เพราะ
+      // ด่านข้างบนข้ามมา ⇒ ถ้าไม่เซ็ตตรงนี้ คนที่งานหลุดมือจะอ่านว่า "ให้คนอื่น"
+      if (next) assigneeName = user.name || null;
     }
     // A real reassignment supersedes the old temporary-proxy workflow. Without
     // clearing this, UI/KPI would still treat the legacy proxy as responsible.
@@ -346,6 +371,30 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   for (const u of autoTaskUpdates(task, data, { lateReason: updates.lateReason, blockedReason: statusChanged && data.status === TASK_STATUS_BLOCKED ? data.blockedReason : null })) {
     // ไม่เช็ค error โดยตั้งใจ — ฟีดพลาดต้องไม่ทำให้การบันทึกงานพังตาม
     await appendUpdate(supabase, { entityType: 'personal_task', entityId: id, ...u, user });
+  }
+
+  /* ── งานเปลี่ยนมือ (มติผู้ใช้ 2026-08-20) ──────────────────────────────
+     เดิมเงียบสนิท: `autoTaskUpdates` ดูแค่ status/dueDate/lateReason/blockedReason
+     ⇒ ไม่มีทั้งแถวในเธรดและแจ้งเตือน · คนที่ถูกมอบงานรู้ตัวเองไม่ได้เลย
+     แถวในเธรดเป็นชนิด quiet — การเด้งอยู่ที่ notifyTaskAssigned (คนละข้อความสำหรับ
+     คนที่งานเข้ามือกับคนที่งานหลุดมือ) ไม่งั้นหนึ่งการกระทำเด้งสองใบ */
+  if ((data.assigneeId || null) !== (task.assigneeId || null)) {
+    // ไม่เช็ค error โดยตั้งใจ — ฟีดพลาดต้องไม่ทำให้การบันทึกงานพังตาม
+    await appendUpdate(supabase, {
+      entityType: 'personal_task',
+      entityId: id,
+      kind: 'assign',
+      body: data.assigneeId ? `มอบหมายให้ ${assigneeName || 'ผู้ใช้'}` : 'ถอนการมอบหมาย',
+      meta: { field: 'assigneeId', from: task.assigneeId || null, to: data.assigneeId || null },
+      user,
+    });
+    notifyTaskAssigned(supabase, {
+      task: data,
+      actorId: user.id,
+      actorName: user.name,
+      previousAssigneeId: task.assigneeId || null,
+      assigneeName,
+    });
   }
 
   // ── เงาบนเธรดของดีลที่ผูกอยู่ ────────────────────────────────────────

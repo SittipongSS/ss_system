@@ -8,6 +8,7 @@ import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canViewRequest } from '@/lib/deptRequests';
 import { canLinkTaskToDeal, requiresDealLink } from '@/lib/pm/taskDealScope';
 import { appendUpdate } from '@/lib/master/updates';
+import { notifyTaskAssigned } from '@/lib/pm/taskAssignNotify';
 import { dealTaskUpdate } from '@/lib/sales/dealUpdates';
 import { businessDate } from '@/lib/businessDate';
 
@@ -78,6 +79,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // ── มอบหมาย: ตรวจสิทธิ์ตามลำดับชั้น (ไม่ผูกกับโครงการ) ──
   let assigneeId = null;
   let assignedBy = null;
+  let assigneeName = null;
   if (body.assigneeId && body.assigneeId !== user.id) {
     const { data: au, error: auError } = await supabase.auth.admin.getUserById(body.assigneeId);
     if (auError) return fail(auError.message, 500);
@@ -94,6 +96,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');
     assigneeId = body.assigneeId;
     assignedBy = user.id;
+    assigneeName = au.user.user_metadata?.name || au.user.email || null;
   }
 
   // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
@@ -193,6 +196,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       .update({ acknowledgedBy: user.id, acknowledgedAt: new Date().toISOString() })
       .eq('id', inquiryMessageId);
   }
+  /* มอบงานให้คนอื่นตั้งแต่ตอนสร้าง = จุดส่งมอบเหมือนกัน — ต้องเด้งหาผู้รับ
+     ไม่งั้นเขารู้ตัวก็ต่อเมื่อบังเอิญเปิดหน้า "งานของฉัน"
+     ⚠️ ไม่เขียนแถว `assign` ลงเธรดตอนสร้าง — แถวแรกของเธรดคือการสร้างงานอยู่แล้ว */
+  notifyTaskAssigned(supabase, {
+    task: data, actorId: user.id, actorName: user.name, previousAssigneeId: null, assigneeName,
+  });
+
   // งานที่ผูกดีล = ความเคลื่อนไหวของดีลด้วย — ดีลต้องรู้ว่ามีงานอะไรเปิดค้างอยู่
   // (ยกเฉพาะระดับหัวข้อ ไม่ยกเนื้อในเธรดงาน เพราะด่านของงานแคบกว่าด่านของดีล)
   if (data.dealId) {
