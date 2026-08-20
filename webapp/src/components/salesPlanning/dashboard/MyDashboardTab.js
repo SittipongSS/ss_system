@@ -15,7 +15,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Target,
+  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
@@ -142,11 +142,13 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           ที่นี่มีแค่ตัวเลขสรุปกับทางเข้า */}
       {!loading && (
         <MetricStrip aria-label={`ยอดของฉัน — ${scopeLabel}`}>
+          {/* ⚠️ **สี่ช่องนี้ต้องเป็นเลขคนละตัวจริง ๆ** — เป้า(เงิน) · ยอดปิดได้(เงิน) ·
+              สัดส่วน(%) · ท่อ(เงิน+จำนวนใบ) · เดิมช่อง "เป้า" โชว์ % อยู่แล้ว การเพิ่ม
+              ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่ */}
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
-            value={hasTarget ? fmtPercent(targetPct, 0) : NA}
-            note={hasTarget ? `${fmtMoney(actual)} จาก ${fmtMoney(target)}` : "ยังไม่ตั้งเป้างวดนี้"}
-            tone={hasTarget && targetPct >= 100 ? "good" : undefined}
+            value={hasTarget ? fmtMoneyCompact(target) : NA}
+            note={hasTarget ? `เป้าของ${scopeLabel}` : "ยังไม่ตั้งเป้างวดนี้"}
           />
           <Metric
             icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoneyCompact(actual)}
@@ -155,6 +157,12 @@ export default function MyDashboardTab({ month, allMonths = false }) {
             note={!hasTarget ? `ปิดได้ใน${scopeLabel}`
               : targetGap > 0 ? `ขาดอีก ${fmtMoney(targetGap)}` : `เกินเป้า ${fmtMoney(-targetGap)}`}
             tone={hasTarget && targetGap <= 0 ? "good" : undefined}
+          />
+          <Metric
+            icon={<Percent />} label="% ที่ปิดได้"
+            value={hasTarget ? fmtPercent(targetPct, 0) : NA}
+            note={hasTarget ? "ยอดปิดได้ ÷ เป้า" : "ยังไม่ตั้งเป้า — ไม่มีตัวหาร"}
+            tone={hasTarget && targetPct >= 100 ? "good" : undefined}
           />
           {/* ⭐ ยุบ "ดีลที่เปิดอยู่" กับ "Pipeline" เป็นใบเดียว — สองใบนั้นพูดถึงกองเดียวกัน
               (จำนวนใบ กับ มูลค่าของใบชุดนั้น) การแยกเป็นสองช่องกินที่โดยไม่เพิ่มคำตอบ */}
