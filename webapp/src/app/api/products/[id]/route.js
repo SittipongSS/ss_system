@@ -19,6 +19,7 @@ import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachment
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { clearedPackagingFields } from '@/lib/master/units';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -229,6 +230,12 @@ export async function PATCH(request, { params }) {
     updated.piecesPerCase =
       body.piecesPerCase === '' || body.piecesPerCase == null ? null : Number(body.piecesPerCase);
   }
+
+  // กลุ่ม 03/04 ไม่มีช่องปริมาตร/หน่วยบรรจุ/ต่อลัง (มติ 2026-08-20 · ดู units.js)
+  // ล้างที่ server เสมอ ไม่ใช่หวังพึ่งจอ — PATCH ยิงตรงได้ และเคสที่กัดจริงคือ
+  // **ย้ายหมวดข้ามกลุ่ม**: สินค้ากลุ่ม 01 ที่ถูกย้ายไป 03 ต้องไม่ลากค่าปริมาตรเก่าติดไปด้วย
+  // ⇒ ตัดสินจาก updated.categoryCode (ค่าหลังแก้) ไม่ใช่หมวดเดิมของแถว
+  Object.assign(updated, clearedPackagingFields(updated));
 
   // Re-point the FG owner (customerId) from master. Keep the denormalized
   // customerName snapshot in sync and reject an unknown customer. NOTE: existing
