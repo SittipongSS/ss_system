@@ -1,4 +1,5 @@
 // หน่วยกลางของระบบ — แหล่งเดียวที่ทุกหน้าอ้าง
+import { categoryOf } from '@/lib/master/categoryOf';
 //
 // มติ 2026-07-26: ไม่ทำเป็นเมนูในการตั้งค่า และไม่ผูกกับหมวดสินค้า
 //   · ลิสต์เปลี่ยนแทบไม่มี และประวัติการเปลี่ยนลิสต์ไม่มีค่า — สิ่งที่มีค่าคือ "ใบนี้ใช้หน่วย
@@ -72,12 +73,40 @@ export function saleUnitLabel(unit, language = 'th') {
 }
 
 // หน่วยปริมาตร/น้ำหนักบรรจุของตัวสินค้า — ไม่มีคำแปล EN (เป็นสัญลักษณ์สากล พิมพ์ตรงตัว
-// ทั้งสองภาษา) · ตัด 'L' ออก 2026-08-20: มีใบเดียวในระบบและเขียนเป็น ml ได้ตรงกว่า
-// (mig 0274 แปลง 1 L → 1000 ml ให้แล้ว)
+// ทั้งสองภาษา) · ตัด 'L' ออก 2026-08-20 (mig 0274 แปลง 1 L → 1000 ml ให้แล้ว)
+// และตัด 'pcs' ออกในรอบเดียวกันตามลิสต์ที่ผู้ใช้เคาะ (mig 0275)
 //
-// 'pcs' อยู่ต่อทั้งที่มีใบเดียว เพราะมันไม่ใช่ค่าขยะ — กิฟต์เซ็ตใช้บอกว่า "1 ชุดมีของ 2 ชิ้น"
-// ซึ่งไม่มีหน่วยตัวอื่นในลิสต์พูดแทนได้ ('package' จะอ่านเป็น '1 ชุด = 2 package' = ผิด)
-export const VOLUME_UNITS = Object.freeze(['ml', 'g', 'kg', 'package', 'pcs']);
+// ⚠️ ยังมีสินค้า 1 ใบที่ค่าเป็น 'pcs' อยู่ (กิฟต์เซ็ต FG-1001-01-037-10002 = "1 ชุดมีของ
+// 2 ชิ้น") — **จงใจไม่แปลงและไม่ล้าง** เพราะไม่มีหน่วยตัวไหนในลิสต์ใหม่พูดแทนได้
+// ('package' จะอ่านเป็น "1 ชุด = 2 package" = ผิดความหมาย) · unitOptions พ่วงค่าเดิม
+// ให้อยู่แล้ว ใบนั้นจึงยังเปิดแก้เรื่องอื่นได้โดยหน่วยไม่เปลี่ยนเงียบ ๆ
+export const VOLUME_UNITS = Object.freeze(['ml', 'kg', 'g', 'package']);
+
+// ── กลุ่มหลักที่ "มีของให้วัดขนาด" (มติผู้ใช้ 2026-08-20) ────────────────────
+// 03 ค่าออกแบบ · 04 รายได้อื่นๆ ไม่ใช่ของที่ผลิต จึงไม่มีปริมาตรบรรจุ ไม่มีหน่วยบรรจุ
+// และไม่มีจำนวนต่อลัง — **ฟอร์มไม่มีสามช่องนี้เลย** ไม่ใช่แค่ไม่บังคับกรอก
+//
+// ⭐ ทำไมต้องถอดช่องทิ้ง ไม่ใช่แค่ปลดบังคับ: ช่องปริมาตรเดิม required ⇒ คนกรอก '1 package'
+// ไปให้ผ่านฟอร์ม 23 ใบในสองกลุ่มนี้จึงเก็บค่าหลอกไว้ทั้งหมด แล้วกล่องสรุปบรรจุภัณฑ์ก็อ่าน
+// ออกมาเป็น "1 แพ็คเกจ = 1 package" ซึ่งเป็นประโยคซ้ำคำที่ไม่ได้บอกอะไร · ช่องที่ไม่มีวัน
+// มีคำตอบจริง ไม่ควรมีอยู่ให้คนต้องหาอะไรมาใส่
+//
+// ⚠️ เลขหมวดตายตัวชุดเดียวกับ ARTWORK_MAIN_CATEGORIES (lib/master/attachmentTypes)
+// ไม่รู้หมวด = ถือว่ามี เพื่อไม่ให้ช่องหายไปเงียบ ๆ กับแถวที่อ่านหมวดไม่ออก
+export const PACKAGING_MAIN_CATEGORIES = Object.freeze(['01', '02']);
+
+/**
+ * สินค้าตัวนี้มีช่องปริมาตร/หน่วยบรรจุ/จำนวนต่อลัง ไหม
+ * รับได้ทั้ง record ({ categoryCode, fgCode }) และรหัสหมวดตรง ๆ
+ */
+export function hasPackagingFields(recordOrCode) {
+  const raw = typeof recordOrCode === 'string'
+    ? recordOrCode
+    : (recordOrCode?.categoryCode || categoryOf(recordOrCode?.fgCode));
+  const mainCode = String(raw || '').slice(0, 2);
+  if (!mainCode) return true;
+  return PACKAGING_MAIN_CATEGORIES.includes(mainCode);
+}
 
 export const DEFAULT_SALE_UNIT = 'ชิ้น';
 export const DEFAULT_VOLUME_UNIT = 'ml';
@@ -118,6 +147,17 @@ export function packagingSummary({ volume, volumeUnit, saleUnit, piecesPerCase }
   const perCase = String(piecesPerCase ?? '').trim();
   if (perCase) parts.push(`1 ลัง = ${perCase} ${unit}`);
   return parts.join(' · ');
+}
+
+// ── ช่องบรรจุภัณฑ์ที่ต้องล้างเมื่อสินค้าอยู่กลุ่มที่ไม่มีของ ────────────────
+// ใช้ทั้งตอนสร้างและตอนแก้ (ฝั่ง server) — ซ่อนช่องบนจออย่างเดียวไม่พอ เพราะ PATCH
+// ยิงตรงได้ และสินค้าที่ย้ายหมวดข้ามกลุ่มจะพาค่าเก่าติดมาด้วย
+export const PACKAGING_FIELDS = Object.freeze(['volume', 'volumeUnit', 'piecesPerCase']);
+
+/** คืน patch ที่ล้างช่องบรรจุภัณฑ์ (ว่างเปล่าเมื่อกลุ่มนั้นมีช่องอยู่แล้ว) */
+export function clearedPackagingFields(recordOrCode) {
+  if (hasPackagingFields(recordOrCode)) return {};
+  return Object.fromEntries(PACKAGING_FIELDS.map((key) => [key, null]));
 }
 
 // '30 ml' — รวมการเติมหน่วยตั้งต้นที่เดิมเขียน `|| 'ml'` ซ้ำอยู่หลายหน้า

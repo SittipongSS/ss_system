@@ -36,6 +36,7 @@ import {
   DEFAULT_VOLUME_UNIT,
   SALE_UNITS,
   VOLUME_UNITS,
+  hasPackagingFields,
   packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
@@ -177,7 +178,11 @@ export default function ProductForm({
   // หน่วยขายที่กรอกอยู่ — ใช้พูดในคำอธิบายช่องอื่นให้เป็นภาษาของสินค้าตัวนี้จริง ๆ
   // ("ขนาดของ 1 ขวด" ชัดกว่า "ขนาดของ 1 หน่วยขาย")
   const saleUnitLabel = form.saleUnit || DEFAULT_SALE_UNIT;
-  const packaging = packagingSummary(form);
+  // กลุ่ม 03/04 ไม่มีของให้วัดขนาด ⇒ ไม่มีช่องปริมาตร/หน่วยบรรจุ/ต่อลังเลย (ดู units.js)
+  // ⚠️ ต้องอ่านจาก categoryCode ตัวเดียวกับที่ฟอร์มใช้ตัดสินใจเรื่องอื่น ไม่ใช่ form.categoryCode
+  // ดิบ ๆ (โหมดพิมพ์รหัสเองไม่ได้อัปเดตช่องนั้น — ดูคอมเมนต์ที่ประกาศ categoryCode)
+  const showPackaging = hasPackagingFields(categoryCode);
+  const packaging = showPackaging ? packagingSummary(form) : "";
 
   const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
@@ -415,6 +420,7 @@ export default function ProductForm({
               ปริมาตร | จำนวนต่อลัง · ราคาผลิต | หน่วยขาย
               ประโยคสรุปปิดท้ายประกอบจากค่าที่กรอกจริง กรอกสลับช่องเมื่อไหร่จะอ่านแล้ว
               ผิดทันที ('1 ml = 50 ขวด') */}
+          {showPackaging && (
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
@@ -431,11 +437,14 @@ export default function ProductForm({
             </div>
             <span className="text-xs text-[var(--text-3)] mt-1"><strong>ขนาดของ 1 {saleUnitLabel}</strong> — ไม่ใช่หน่วยที่ใช้นับขาย</span>
           </div>
+          )}
+          {showPackaging && (
           <div className="form-group">
             <label>จำนวนต่อลัง</label>
             <input type="number" name="piecesPerCase" value={form.piecesPerCase ?? ""} onChange={set("piecesPerCase")} min="1" step="1" placeholder="เช่น 12" className="premium-input w-full font-mono" />
             <span className="text-xs text-[var(--text-3)] mt-1">1 ลังมีกี่{saleUnitLabel} (เว้นว่างได้ถ้าไม่ได้ขายยกลัง)</span>
           </div>
+          )}
           <div className="form-group">
             <label>ราคาผลิต (บาท)</label>
             {factoryPrice === "readonly" ? (

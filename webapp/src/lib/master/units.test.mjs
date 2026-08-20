@@ -6,7 +6,9 @@ import {
   SALE_UNIT_EN,
   SALE_UNIT_MAX,
   VOLUME_UNITS,
+  clearedPackagingFields,
   formatVolume,
+  hasPackagingFields,
   packagingSummary,
   saleUnitLabel,
   saleUnitOf,
@@ -48,11 +50,50 @@ test('คำที่เลิกใช้แล้วยังแปลเป�
   assert.equal(saleUnitLabel('Kg', 'en'), 'Kg');
 });
 
-test('ลิสต์หน่วยบรรจุเหลือ 5 ตัว — ตัด L, เก็บ pcs ไว้', () => {
-  assert.deepEqual([...VOLUME_UNITS], ['ml', 'g', 'kg', 'package', 'pcs']);
-  // 'pcs' ไม่ใช่ค่าขยะ: กิฟต์เซ็ตใช้บอกว่า "1 ชุดมีของ 2 ชิ้น" ไม่มีหน่วยอื่นพูดแทนได้
-  assert.ok(VOLUME_UNITS.includes('pcs'));
-  assert.ok(!VOLUME_UNITS.includes('L'));
+test('ลิสต์หน่วยบรรจุเหลือ 4 ตัว — ตัด L และ pcs', () => {
+  assert.deepEqual([...VOLUME_UNITS], ['ml', 'kg', 'g', 'package']);
+});
+
+// ── กลุ่มที่ไม่มีของให้วัดขนาด (มติผู้ใช้ 2026-08-20 · mig 0275) ──────────
+test('03 ค่าออกแบบ · 04 รายได้อื่นๆ ไม่มีช่องปริมาตร/หน่วยบรรจุ/ต่อลัง', () => {
+  for (const categoryCode of ['03-002', '03-010', '04-005', '04-006']) {
+    assert.equal(hasPackagingFields({ categoryCode }), false, categoryCode);
+  }
+});
+
+test('01 ODM · 02 ธุรกิจบริการ ยังมีช่องบรรจุภัณฑ์เหมือนเดิม', () => {
+  for (const categoryCode of ['01-002', '01-037', '02-020', '02-001']) {
+    assert.equal(hasPackagingFields({ categoryCode }), true, categoryCode);
+  }
+});
+
+test('อ่านหมวดไม่ออก = ถือว่ามีช่อง ไม่ให้ช่องหายไปเงียบ ๆ', () => {
+  for (const record of [null, {}, { categoryCode: '' }, { fgCode: 'LEGACY' }]) {
+    assert.equal(hasPackagingFields(record), true, JSON.stringify(record));
+  }
+});
+
+test('categoryCode ว่าง อ่านย้อนจาก fgCode ได้', () => {
+  assert.equal(hasPackagingFields({ fgCode: 'FG-890-03-002' }), false);
+  assert.equal(hasPackagingFields({ fgCode: 'FG-657-01-002-2065' }), true);
+});
+
+test('hasPackagingFields รับรหัสหมวดตรง ๆ ได้ด้วย', () => {
+  assert.equal(hasPackagingFields('03-002'), false);
+  assert.equal(hasPackagingFields('01-002'), true);
+});
+
+// ด่านฝั่ง server: ซ่อนช่องบนจออย่างเดียวไม่พอ — PATCH ยิงตรงได้ และการย้ายหมวด
+// ข้ามกลุ่มจะพาค่าเก่าติดไปด้วยถ้าไม่ล้าง
+test('clearedPackagingFields: กลุ่มไม่มีของ = ล้างครบสามช่อง', () => {
+  assert.deepEqual(clearedPackagingFields({ categoryCode: '03-002' }), {
+    volume: null, volumeUnit: null, piecesPerCase: null,
+  });
+});
+
+test('clearedPackagingFields: กลุ่มที่มีของ = ไม่แตะอะไรเลย', () => {
+  assert.deepEqual(clearedPackagingFields({ categoryCode: '01-002' }), {});
+  assert.deepEqual(clearedPackagingFields({ categoryCode: '02-020' }), {});
 });
 
 test('saleUnitLabel: แปลเฉพาะใบอังกฤษ · ใบไทยคืนค่าเดิมไม่แตะ', () => {
