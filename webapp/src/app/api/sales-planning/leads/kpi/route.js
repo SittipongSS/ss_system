@@ -135,7 +135,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      มาถึงมือเขา ไม่ใช่จากรอบที่แล้ว · เขียน `screenedAt` ตรงนี้เมื่อไรคนที่มอบภายใน
      วันเดียวหลังตีกลับจะกลับไปถูกนับเป็น "ไม่ทัน" อีก */
   const screen = slaStage(rows, 'createdAt', 'firstScreenedAt', holidays);
-  const assign = slaStage(rows, 'screenedAt', 'assignedAt', holidays);
+  /* ⚠️ ด่านกระจายวัดถึง `firstAssignedAt` (มอบครั้งแรกของรอบ — mig 0273) ไม่ใช่
+     `assignedAt` ที่ขยับตามการเปลี่ยนผู้รับผิดชอบ · เขียน `assignedAt` ตรงนี้เมื่อไร
+     Senior AE ที่มอบทันเวลาจะถูกนับเป็น "ไม่ทัน" ย้อนหลังทุกครั้งที่มีคนย้ายเจ้าของ
+     (บั๊กพี่น้องกับที่ 0234 แก้ให้ด่านคัดกรองไปแล้ว) */
+  const assign = slaStage(rows, 'screenedAt', 'firstAssignedAt', holidays);
   const contact = slaStage(rows, 'assignedAt', 'firstContactAt', holidays);
 
   /* "ค้าง" = **ค้างอยู่ ณ ตอนนี้** ไม่ใช่ "ลีดของเดือนที่เลือกที่ยังค้าง"
@@ -185,7 +189,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const funnel = {
     total: rows.length,
     screened: rows.filter((l) => l.screenedAt).length,
-    assigned: rows.filter((l) => l.assignedAt).length,
+    assigned: rows.filter((l) => l.firstAssignedAt || l.assignedAt).length,
     contacted: rows.filter((l) => l.firstContactAt).length,
     meeting: rows.filter((l) => l.meetingAt).length,
     qualified: rows.filter((l) => l.status === 'qualified').length,

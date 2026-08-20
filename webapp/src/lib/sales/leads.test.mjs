@@ -26,12 +26,25 @@ test('channelGroupOf: chatcone/typeform→online, phone/walkin→onsite, website
 
 test('transition map: ทุก action ชี้สถานะปลายทางที่รู้จัก + สถานะปิดไม่มีทางไปต่อ', () => {
   for (const actions of Object.values(LEAD_TRANSITIONS)) {
-    for (const a of actions) assert.ok(TRANSITION_TO_STATUS[a], `action ${a} ไม่มีปลายทาง`);
+    /* ⚠️ ถามว่า "ประกาศปลายทางไว้ไหม" ไม่ใช่ "ปลายทางเป็นค่าจริงไหม" — `reassign`
+       ประกาศ null โดยเจตนา (เปลี่ยนมือ ไม่เปลี่ยนขั้น) แต่ห้ามหายไปจากแมป เพราะ
+       action ที่ไม่มีคีย์เลย = handler เขียน `patch.status = undefined` */
+    for (const a of actions) assert.ok(a in TRANSITION_TO_STATUS, `action ${a} ไม่มีปลายทาง`);
   }
   // qualified ไม่ปิดตาย: สร้างดีลซ้ำได้ (1 ลีด → หลายดีล, mig 0093 floating deals)
   assert.deepEqual(LEAD_TRANSITIONS.qualified, ['create_deal']);
   assert.deepEqual(LEAD_TRANSITIONS.disqualified, []);
   assert.equal(TRANSITION_TO_STATUS.bounce, 'new'); // ตีกลับ → คิวคัดกรอง
+  assert.equal(TRANSITION_TO_STATUS.reassign, null,
+    'เปลี่ยนผู้รับผิดชอบต้องคงสถานะเดิม — ปลายทางตายตัวเมื่อไหร่ ใบที่ติดต่อ/นัดแล้วจะถอยขั้น');
+  // เปลี่ยนมือได้ทุกสถานะที่ "มีเจ้าของแล้วและยังไม่ปิด" (มติผู้ใช้ 2026-08-20)
+  for (const status of ['assigned', 'contacted', 'meeting']) {
+    assert.ok(LEAD_TRANSITIONS[status].includes('reassign'), `${status} ต้องเปลี่ยนผู้รับผิดชอบได้`);
+  }
+  for (const status of ['new', 'screened', 'qualified', 'disqualified']) {
+    assert.ok(!LEAD_TRANSITIONS[status].includes('reassign'),
+      `${status} ยังไม่มี/ไม่ต้องมีเจ้าของให้เปลี่ยน — ใช้ assign หรือปิดไปแล้ว`);
+  }
 });
 
 test('SLA วันทำการ: วันเดียวกัน=0 (ทัน), วันทำการถัดไป=1 (ทัน), ข้าม 2 วันทำการ=พลาด', () => {
@@ -492,13 +505,15 @@ test('route ตีกลับ: ล้างคอลัมน์ของรอ
     'เก็บครั้งแรกไว้ในคอลัมน์เดียวกัน = ด่านกระจายกลับไปกินเวลารอบตีกลับอีก');
 });
 
-test('route KPI: ด่านคัดกรองวัดถึง firstScreenedAt · อีกสองด่านใช้คอลัมน์ของรอบปัจจุบัน', () => {
+test('route KPI: สองด่านแรกวัดถึงคอลัมน์ "ครั้งแรก" · ด่านติดต่อวัดจากเจ้าของปัจจุบัน', () => {
   const kpiSource = readFileSync(
     new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url),
     'utf8',
   );
   assert.match(kpiSource, /slaStage\(rows, 'createdAt', 'firstScreenedAt', holidays\)/);
-  assert.match(kpiSource, /slaStage\(rows, 'screenedAt', 'assignedAt', holidays\)/);
+  // ⚠️ ด่านกระจายต้องเป็น firstAssignedAt (mig 0273) — ใช้ assignedAt เมื่อไหร่ Senior AE
+  // ที่มอบทันเวลาจะถูกนับ "ไม่ทัน" ย้อนหลังทุกครั้งที่มีคนเปลี่ยนผู้รับผิดชอบ
+  assert.match(kpiSource, /slaStage\(rows, 'screenedAt', 'firstAssignedAt', holidays\)/);
   assert.match(kpiSource, /slaStage\(rows, 'assignedAt', 'firstContactAt', holidays\)/);
 });
 

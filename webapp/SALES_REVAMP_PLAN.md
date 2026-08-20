@@ -94,6 +94,7 @@ status ('new','screened','assigned','contacted','meeting','qualified','disqualif
 team (ODM/SV/KA) · assigneeId/Name (AE) · disqualifiedReason
 customerId (เมื่อเปิดลูกค้า) · projectId (เมื่อเปิดโครงการ)
 createdBy (Marketing) · timestamps ต่อสถานะ: screenedAt/assignedAt/firstContactAt/meetingAt/qualifiedAt
+  + firstScreenedAt (mig 0234) · firstAssignedAt (mig 0273) = "ครั้งแรกของรอบ" ที่ใช้วัด SLA สองด่านแรก
 ```
 
 **`lead_events`** — ทุก transition + ตีกลับ (ใคร เมื่อไหร่ จากไหนไปไหน เหตุผล) → เป็นแหล่งคำนวณ SLA/KPI
@@ -195,7 +196,7 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 |---|---|---|
 | Marketing กรอกลีดรายวัน | จำนวนลีด/วัน ต่อคน ต่อช่องทาง | `sales_leads.createdAt/createdBy/channel` |
 | Supervisor คัดกรองทัน SLA | `firstScreenedAt − createdAt ≤ 1 วันทำการ` (% hit) | `sales_leads` + ตาราง `holidays` เดิม (วันทำการ) |
-| Senior AE กระจายทัน SLA | `assignedAt − screenedAt ≤ 1 วันทำการ` (% hit) — **ของรอบปัจจุบัน** | `sales_leads` |
+| Senior AE กระจายทัน SLA | `firstAssignedAt − screenedAt ≤ 1 วันทำการ` (% hit) — **มอบครั้งแรกของรอบ** (mig 0273) | `sales_leads` |
 | AE ติดต่อกลับทัน SLA | `firstContactAt − assignedAt ≤ 1 วันทำการ` (% hit) | `sales_leads` |
 | นัดประชุม | จำนวนนัด onsite/online ต่อ AE + conversion ลีด→นัด→เปิดลูกค้า | `lead_events` (meeting) |
 | ตีกลับทีมผิด | จำนวน + rework time | `lead_events` (bounce) — **ยังไม่คำนวณ** ถอดออกจาก route 2026-08-12 เพราะไม่มีหน้าจอไหนแสดง (มติ 2026-08-11 เอาออกจากผัง) · เอากลับมาพร้อมที่แสดงเสมอ และซอย `.in()` ด้วย `chunkLeadIds` |
@@ -214,6 +215,9 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 - `screenedAt` · `assignedAt` · `firstContactAt` · `meetingAt` = **ของรอบปัจจุบัน**
   ตีกลับล้างทิ้งทั้งชุด คัดใหม่/มอบใหม่เขียนทับทุกรอบ — คนที่รับใบต่อในรอบใหม่
   ต้องเริ่มจับเวลาตอนที่ใบมาถึงมือเขา ไม่ใช่รอบที่แล้ว
+- `firstAssignedAt` = **มอบครั้งแรกของรอบ** (mig 0273) ใช้วัดด่านกระจายอย่างเดียว —
+  ตรรกะเดียวกับ `firstScreenedAt` แต่คนละเหตุ: การ **เปลี่ยนผู้รับผิดชอบ** ระหว่างรอบ
+  ต้องไม่ลบผลงานของ Senior AE ที่มอบทันเวลาไปแล้ว · ตีกลับล้างทิ้งเหมือนตัวอื่น
 - ผัง Funnel อ่านจากชุดรอบปัจจุบัน ⇒ ใบที่ถูกตีกลับหล่นกลับไปนับเป็น "รอคัดกรอง"
   ตามสถานะจริง ไม่ค้างเป็น "มอบหมายแล้ว"
 
@@ -221,6 +225,19 @@ sales_leads (LD-) ──qualified──► customers ──► projects (PRJ-) �
 ขณะที่ `assignedAt` เขียนทับทุกครั้ง ⇒ ด่านกระจายวัด "คัดกรองครั้งแรก → มอบครั้งล่าสุด"
 = กินเวลารอบตีกลับทั้งรอบ · และ Funnel นับ "มอบหมายแล้ว" จากซากรอบก่อนจนไม่ตรงกับ
 ตาราง AE บนจอเดียวกัน (ส.ค. 2026: ผัง 56 · ตาราง 54)
+
+### ⭐ เปลี่ยนผู้รับผิดชอบ = เปลี่ยนมือ ไม่เปลี่ยนขั้น (มติผู้ใช้ 2026-08-20 · mig 0273)
+
+AE ลาออก/ลาป่วย/สลับงานกันในทีม ⇒ ลีดที่มอบไปแล้วต้องย้ายเจ้าของได้ ของเดิมทำได้
+ทางเดียวคือ "ตีกลับ" ซึ่งล้างทีม/เวลาติดต่อ/นัดทั้งรอบแล้วเริ่มคัดกรองใหม่ — แรงเกินเหตุ
+
+- action `reassign` ทำได้จาก `assigned` · `contacted` · `meeting` โดย **สถานะไม่ถอย**
+  (`TRANSITION_TO_STATUS.reassign = null` · handler คงสถานะเดิม)
+- คนที่ทำได้ = คนที่กระจายลีดได้อยู่แล้ว: Senior AE/AC ของทีมนั้น + Supervisor/แอดมิน
+  (ผู้รับผิดชอบคนใหม่ยังผ่าน `validateLeadAssignee` ชุดเดิม — role + ทีมของลีด)
+- นาฬิกา SLA ติดต่อกลับรีเซ็ตให้เจ้าของใหม่ **เฉพาะใบที่ยังไม่ได้ติดต่อลูกค้า** —
+  ใบที่ติดต่อไปแล้วถ้าดัน `assignedAt` มาเป็นตอนนี้จะได้คู่เวลาสลับลำดับ (SLA นับไม่ได้)
+- ทั้งเจ้าของใหม่และเจ้าของเดิมได้แจ้งเตือนใบเดียวกัน (ย้ายจากใครไปใคร)
 
 ## 4. นิยามตัวเลข (ล็อกสูตร — helper `projectRollup.js` ตัวเดียวทุกหน้า)
 

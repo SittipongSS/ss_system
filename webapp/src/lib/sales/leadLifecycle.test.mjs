@@ -140,6 +140,33 @@ test("ปุ่มกำกับดูแล (ตีกลับ/ไม่ไ�
   }
 });
 
+/* ── เปลี่ยนผู้รับผิดชอบใบที่มอบไปแล้ว (มติผู้ใช้ 2026-08-20) ─────────────── */
+
+test("เปลี่ยนผู้รับผิดชอบ: คนที่กระจายลีดได้เท่านั้นที่ย้ายเจ้าของได้", () => {
+  for (const status of ["assigned", "contacted", "meeting"]) {
+    const record = lead({ status, team: "A", assigneeId: "u-ae" });
+    assert.ok(idsFor(record, SENIOR_A).includes("reassign"), `หัวหน้าทีมต้องย้ายเจ้าของใบ ${status} ได้`);
+    assert.ok(idsFor(record, SUPERVISOR).includes("reassign"), `supervisor ย้ายได้ทุกทีม (${status})`);
+    assert.ok(idsFor(record, ADMIN).includes("reassign"), `แอดมินย้ายได้ (${status})`);
+    assert.ok(!idsFor(record, AE_A).includes("reassign"),
+      `AE ผู้รับมอบย้ายลีดออกจากมือตัวเองไม่ได้ (${status})`);
+    assert.ok(!idsFor(record, { role: "senior_ae", id: "x", team: "B" }).includes("reassign"),
+      `หัวหน้าทีมอื่นไม่ควรเห็นปุ่มนี้ (${status})`);
+  }
+});
+
+/* ⚠️ ปลายทางต้องเป็น null — ผูกไว้ที่สถานะไหนก็ตาม ใบที่ติดต่อ/นัดแล้วจะถอยขั้น
+   ทุกครั้งที่ย้ายเจ้าของ (งานที่ทำไปแล้วหายจากผัง Funnel) */
+test("เปลี่ยนผู้รับผิดชอบ = เปลี่ยนมือ ไม่เปลี่ยนขั้น และไม่แย่งช่องปุ่มหลัก", () => {
+  const reassign = lifecycle.get("reassign");
+  assert.equal(reassign.to, null);
+  assert.notEqual(reassign.slot, "primary",
+    "ก้าวถัดไปตัวจริงของสามสถานะนี้คือ ติดต่อ/นัด/เปิดดีล — ปุ่มนี้เป็นงานกำกับดูแล");
+  const field = reassign.fields.find((f) => f.name === "assigneeId");
+  assert.equal(typeof field.users, "function",
+    "รายชื่อต้องกรองด้วยทีมของ *ลีดใบนั้น* เหมือน assign (ดู assignableFor)");
+});
+
 test("ลีดที่ปิดแล้วไม่เหลือปุ่มอะไรเลย", () => {
   assert.deepEqual(idsFor(lead({ status: "disqualified" }), ADMIN), []);
 });
