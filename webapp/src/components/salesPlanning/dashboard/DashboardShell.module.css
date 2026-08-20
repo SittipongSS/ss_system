@@ -70,9 +70,6 @@
 .groupRow[data-tone="warning"] td { color: var(--amber); }
 
 /* ── ตัวเลขของเดือน ────────────────────────────────────────────────── */
-.filters { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.filters button { border: 0; border-radius: var(--radius-full); padding: 5px 9px; background: transparent; color: var(--text-3); cursor: pointer; font-size: var(--fs-5); }
-.filters .activeFilter { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-ink); font-weight: var(--fw-bold); }
 .feed { display: flex; flex-direction: column; }
 .post { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: var(--space-4) var(--space-1); border-bottom: 1px solid var(--border); transition: background var(--motion-medium) ease; }
 .post:last-child { border-bottom: 0; }

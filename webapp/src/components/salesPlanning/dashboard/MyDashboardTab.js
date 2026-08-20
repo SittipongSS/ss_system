@@ -15,12 +15,13 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
+  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Target,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
+import Segmented from "@/components/ui/Segmented";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -90,7 +91,9 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const shown = kind ? queue.filter((item) => item.kind === kind) : queue;
   const groups = groupMyQueue(shown);
 
-  const feed = useMemo(() => {
+  /* ⚠️ นับจำนวนของแต่ละชิป **จากก้อนก่อนกรอง** — ถ้านับหลังกรอง ชิปที่ไม่ได้เลือกจะขึ้น 0
+     ทั้งแถวทันทีที่กรองอยู่ ซึ่งอ่านเหมือน "ไม่มีของชนิดนั้นเลย" */
+  const allPosts = useMemo(() => {
     const dealPosts = (data?.dealActivityFeed || []).map((item) => ({
       ...item, feedType: "deal", feedAt: item.updatedAt || item.createdAt,
     }));
@@ -98,10 +101,20 @@ export default function MyDashboardTab({ month, allMonths = false }) {
       ...item, feedType: "task", feedAt: item.updatedAt || item.createdAt,
     }));
     return [...dealPosts, ...taskPosts]
-      .filter((item) => filter === "all" || item.feedType === filter || (filter === "urgent" && item.urgent))
       .sort((a, b) => String(b.feedAt || "").localeCompare(String(a.feedAt || "")))
       .slice(0, 50);
-  }, [data, filter]);
+  }, [data]);
+
+  const feedCounts = {
+    all: allPosts.length,
+    deal: allPosts.filter((item) => item.feedType === "deal").length,
+    task: allPosts.filter((item) => item.feedType === "task").length,
+    urgent: allPosts.filter((item) => item.urgent).length,
+  };
+
+  const feed = useMemo(() => allPosts.filter((item) => filter === "all"
+    || item.feedType === filter
+    || (filter === "urgent" && item.urgent)), [allPosts, filter]);
   const shownFeed = feed.slice(0, visible);
 
   const target = Number(data?.target || 0);
@@ -146,14 +159,8 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           {/* ⭐ ยุบ "ดีลที่เปิดอยู่" กับ "Pipeline" เป็นใบเดียว — สองใบนั้นพูดถึงกองเดียวกัน
               (จำนวนใบ กับ มูลค่าของใบชุดนั้น) การแยกเป็นสองช่องกินที่โดยไม่เพิ่มคำตอบ */}
           <Metric
-            icon={<Handshake />} label="ท่อที่ยังเปิด" value={fmtMoneyCompact(data?.pipelineValue || 0)}
+            icon={<Handshake />} label="ดีลที่เปิด" value={fmtMoneyCompact(data?.pipelineValue || 0)}
             note={`${data?.openDealsCount || 0} ดีลที่ยังไม่ปิด — ทุกงวด ไม่ใช่เฉพาะ${scopeLabel}`}
-          />
-          {/* ⚠️ **ยอดถ่วง FC ไม่ใช่ยอดขาย** — มูลค่าท่อ × FC% ของแต่ละใบ ใช้ตอบว่า
-              "ของในท่อพอไหม" ห้ามเอาไปบวกกับยอดปิดได้ */}
-          <Metric
-            icon={<Percent />} label="ยอดถ่วง FC" value={fmtMoneyCompact(data?.weightedForecast || 0)}
-            note="มูลค่าท่อ × FC% — ค่าคาดหวัง ไม่ใช่ยอดขาย"
           />
         </MetricStrip>
       )}
@@ -176,20 +183,24 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
         actions={<span className="ui-badge">{shown.length} รายการ</span>}
       >
-        {/* ชิปกรองตามชนิด — ตัวเลขในชิปมาจากคิวก้อนเดียวกัน ไม่ใช่นับใหม่ */}
+        {/* ⚠️ **ตัวกรองของสองแผงต้องเป็นคอนโทรลเดียวกันและอยู่ระดับเดียวกัน** — เดิมคิวใช้
+            ปุ่มเรียงกันในตัวการ์ด ส่วนฟีดใช้ชิปข้อความบนหัวส่วน ⇒ ของที่ทำงานเหมือนกัน
+            สองอันบนจอเดียวหน้าตาคนละแบบ · ทั้งคู่เป็น `Segmented` (กติกา: สลับหน้า→Tabs,
+            กรองในหน้า→segmented) วางในแถบเครื่องมือของ body เหมือนกัน
+            ⚠️ ตัวเลขในชิปมาจากคิวก้อนเดียวกับตาราง ไม่ใช่นับใหม่ */}
         <div className="toolbar">
-          <Button size="sm" tone={kind ? undefined : "primary"} onClick={() => setKind(null)}>
-            ทั้งหมด {counts.total}
-          </Button>
-          {MY_QUEUE_KINDS.map((k) => (
-            <Button
-              key={k.key} size="sm" tone={kind === k.key ? "primary" : undefined}
-              disabled={!counts.byKind[k.key]}
-              onClick={() => setKind(kind === k.key ? null : k.key)}
-            >
-              {k.label} {counts.byKind[k.key] || 0}
-            </Button>
-          ))}
+          <Segmented
+            ariaLabel="กรองคิวตามชนิดงาน"
+            value={kind || "all"}
+            onChange={(next) => setKind(next === "all" ? null : next)}
+            options={[
+              { value: "all", label: "ทั้งหมด", count: counts.total },
+              ...MY_QUEUE_KINDS.map((k) => ({
+                value: k.key, label: k.label, count: counts.byKind[k.key] || 0,
+                disabled: !counts.byKind[k.key],
+              })),
+            ]}
+          />
         </div>
 
         {loading ? <SkeletonRows rows={4} /> : shown.length === 0 ? (
@@ -252,20 +263,21 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         icon={<Activity size={17} />}
         title="รายการอัปเดตล่าสุด"
         subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
-        actions={(
-          <div className={styles.filters}>
-            {[["all", "ทั้งหมด"], ["deal", "ดีล"], ["task", "งาน"], ["urgent", "ด่วน"]].map(([key, label]) => (
-              <button
-                type="button" key={key}
-                className={filter === key ? styles.activeFilter : ""}
-                onClick={() => setFilter(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        actions={<span className="ui-badge">{feed.length} รายการ</span>}
       >
+        <div className="toolbar">
+          <Segmented
+            ariaLabel="กรองรายการอัปเดต"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "ทั้งหมด", count: feedCounts.all },
+              { value: "deal", label: "ดีล", count: feedCounts.deal, disabled: !feedCounts.deal },
+              { value: "task", label: "งาน", count: feedCounts.task, disabled: !feedCounts.task },
+              { value: "urgent", label: "ด่วน", count: feedCounts.urgent, disabled: !feedCounts.urgent },
+            ]}
+          />
+        </div>
         {/* ⚠️ **กดดูเพิ่มแล้วการ์ดต้องไม่สูงขึ้น** — ของที่โหลดมาเพิ่มไปต่อท้ายในกล่องที่
             เลื่อนเอง ไม่ใช่ยืดการ์ดจนดันคิวฝั่งซ้ายเสียแนว · ปุ่มอยู่นอกกล่องเลื่อน
             จะได้ไม่ต้องไถลงไปหามัน */}
