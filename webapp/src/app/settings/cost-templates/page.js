@@ -23,7 +23,6 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { fmtDateTime, NA } from "@/lib/format";
 
-const BACK_TO_SETTINGS = { href: "/settings", label: "กลับหน้าตั้งค่า" };
 import {
   COST_LINE_KINDS,
   COST_LINE_KIND_LABELS,
@@ -77,7 +76,7 @@ function CostTemplateForm({ mode, form, setForm, productTypes, takenCategories }
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="flex flex-col gap-4">
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="ct-category">ประเภทสินค้า</label>
@@ -374,25 +373,16 @@ export default function CostTemplatesPage() {
         icon={<Layers size={22} />}
         title="แม่แบบต้นทุนตามประเภทสินค้า"
         message="หน้านี้สำหรับผู้ดูแลระบบเท่านั้น"
-        back={BACK_TO_SETTINGS}
       />
     );
   }
 
   return (
-    <Workspace hideHeader back={BACK_TO_SETTINGS}>
-      <div className="premium-header">
-        <div className="header-content">
-          <h1>
-            <span className="premium-header-icon"><Layers size={22} /></span>{" "}
-            แม่แบบต้นทุนตามประเภทสินค้า
-          </h1>
-          <p>
-            โครงบรรทัดต้นทุนที่ใบขอราคาจะกางออกมาให้อัตโนมัติเมื่อเลือกประเภทสินค้า —
-            กำหนดว่าต้องมีรายการอะไรและขอราคาจากฝ่ายไหน (ยังไม่ใส่ราคาที่นี่)
-          </p>
-        </div>
-      </div>
+    <Workspace
+      icon={<Layers size={22} />}
+      title="แม่แบบต้นทุนตามประเภทสินค้า"
+      subtitle="โครงบรรทัดต้นทุนที่ใบขอราคาจะกางออกมาให้อัตโนมัติเมื่อเลือกประเภทสินค้า — กำหนดว่าต้องมีรายการอะไรและขอราคาจากฝ่ายไหน (ยังไม่ใส่ราคาที่นี่)"
+    >
 
       <div className="toolbar">
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: "var(--text-2)" }}>
@@ -415,7 +405,8 @@ export default function CostTemplatesPage() {
           แล้วใบขอราคาจะกางบรรทัดให้เองทันทีที่เลือกประเภทนั้น
         </EmptyState>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        // ระยะห่างของรายการการ์ดใช้จังหวะเดียวกับหน้าตั้งค่าอื่น (16px) — เดิมเป็น 12 ดิบ ๆ
+        <div className="flex flex-col gap-4">
           {visible.map((t) => {
             const summary = summarizeCostTemplate(t.lines || []);
             return (

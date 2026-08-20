@@ -3,13 +3,13 @@
 .publishedPanel { padding: var(--space-4-5); display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: var(--space-4-5); }
 .identity { min-width: 0; }
 .eyebrow { color: var(--text-3); font-size: var(--fs-5); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
-.identity h2 { margin-top: 5px; color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
+.identity h2 { margin-top: var(--space-1-5); color: var(--text); font-size: var(--fs-11); font-weight: var(--fw-bold); }
 .identity .english { margin-top: var(--space-0-5); color: var(--text-2); font-size: var(--fs-7); }
 .identity .address { margin-top: var(--space-3); max-width: 760px; color: var(--text-2); font-size: var(--fs-7); line-height: var(--lh-relaxed); }
 .metaGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.metaGrid > div { min-width: 0; padding: var(--space-2-5) 11px; border-radius: var(--radius); background: var(--panel-2); }
+.metaGrid > div { min-width: 0; padding: var(--space-2-5) var(--space-3); border-radius: var(--radius); background: var(--panel-2); }
 .metaGrid span { display: block; color: var(--text-3); font-size: var(--fs-4); }
-.metaGrid strong { display: block; margin-top: 3px; color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
+.metaGrid strong { display: block; margin-top: var(--space-1); color: var(--text); font-size: var(--fs-7); overflow-wrap: anywhere; }
 .badge { min-height: 23px; padding: var(--space-0-5) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-full); display: inline-flex; align-items: center; white-space: nowrap; font-size: var(--fs-3); font-weight: var(--fw-bold); }
 .published { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 24%, transparent); }
 .draft { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 24%, transparent); }
@@ -22,10 +22,10 @@
 .formSection { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
 .formSection:last-child { padding-bottom: 0; border-bottom: 0; }
 .formSection h4 { margin-bottom: var(--space-2-5); color: var(--text); font-size: var(--fs-7); font-weight: var(--fw-bold); }
-.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
-.form label { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
+.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.form label { display: flex; flex-direction: column; gap: var(--space-1-5); color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-semibold); }
 .form label b { color: var(--red); }
-.note { padding: var(--space-2-5) 11px; border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-5); line-height: var(--lh-text); }
+.note { padding: var(--space-2-5) var(--space-3); border-radius: var(--radius); color: var(--text-2); background: var(--accent-soft); font-size: var(--fs-5); line-height: var(--lh-text); }
 
 @media (max-width: 800px) {
   .publishedPanel { grid-template-columns: 1fr; }

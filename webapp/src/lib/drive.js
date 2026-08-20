@@ -42,6 +42,7 @@ export const FOLDER = {
   salesLeads: 'ลีด',
   salesDeals: 'ดีล',
   salesQuotations: 'ใบเสนอราคา',
+  salesContracts: 'สัญญา',
   salesOrders: 'ใบสั่งขาย',
   sahamit: 'สหมิตร',
   // ธุรกิจบริการหน้าไซต์ (S-3) — รูปก่อน/หลัง + ลายเซ็นผู้รับงาน แยกเป็นโฟลเดอร์ต่อไซต์
@@ -333,6 +334,9 @@ const SALES_THREAD_FOLDER = {
   deal: { folder: FOLDER.salesDeals, table: 'sales_deals', labelKeys: ['code', 'title'] },
   quotation: { folder: FOLDER.salesQuotations, table: 'quotations', labelKeys: ['quoteNumber'] },
   sales_order: { folder: FOLDER.salesOrders, table: 'sales_orders', labelKeys: ['orderNumber'] },
+  // สัญญา (mig 0278) — ร่างยังไม่มีเลขที่ ⇒ ตกไปใช้ id ซึ่งถูกต้องแล้ว: ไฟล์ที่แนบ
+  // ก่อนออกเลขมีเฉพาะเอกสารประกอบ ส่วนฉบับเซ็นจริงมาหลังออกเลขเสมอ
+  contract: { folder: FOLDER.salesContracts, table: 'sales_contracts', labelKeys: ['contractNo'] },
 };
 
 export async function folderPathForEntity(entityType, entityId) {

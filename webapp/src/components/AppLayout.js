@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -17,6 +17,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
+import SettingsShell from '@/components/settings/SettingsShell';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -262,6 +263,7 @@ export default function AppLayout({ children }) {
         // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
         { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
         { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
+        { href: '/sa/contracts', name: 'สัญญา', icon: FileSignature, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
         // (เมนู "สอบถาม RD" ถูกถอดใน mig 0174 — งานย้ายไปเมนู "คำร้อง" ข้างล่าง
         //  ซึ่งรับได้ทุกชนิดรวมสอบถาม/ขอเอกสาร ไม่ใช่แค่ถาม RD อย่างเดียว)
         // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
@@ -638,7 +640,15 @@ export default function AppLayout({ children }) {
             <ExtraCapsContext.Provider value={extraCaps}>
               <TeamContext.Provider value={team}>
                 <TeamsContext.Provider value={teams}>
-                  <DepartmentContext.Provider value={department}>{children}</DepartmentContext.Provider>
+                  <DepartmentContext.Provider value={department}>
+                    {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
+                        ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
+                        ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
+                        /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
+                    {isSettingsContext
+                      ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
+                      : children}
+                  </DepartmentContext.Provider>
                 </TeamsContext.Provider>
               </TeamContext.Provider>
             </ExtraCapsContext.Provider>

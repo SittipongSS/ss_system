@@ -401,6 +401,11 @@
      มีไว้สำหรับที่ที่วาดเส้นด้วย `gap` แทน `border` (ดู .ui-metric-strip) ให้เขียน
      `gap: var(--rule)` ได้แทนเลข 1px ดิบ ๆ ซึ่งจะไปโผล่ในหนี้ระยะห่างของ audit:ui
      ทั้งที่มันคือเส้น ไม่ใช่ช่องไฟ */
+  /* ⭐ ระยะขอบในของ "การ์ด" ทั้งระบบ (มติผู้ใช้ 2026-08-20) — หัวการ์ด เนื้อการ์ด
+     ตารางที่ฝังในการ์ด และแถบแบ่งหน้า ต้องเริ่มที่เส้นเดียวกันทุกใบ
+     ⚠️ ก่อนมีโทเคนนี้: หัวการ์ด 16–18 · เนื้อ 17 · ช่องแรกของตาราง 13 ⇒ หัวเรื่อง
+     กับคอลัมน์แรกเยื้องกัน 2–4px ทุกหน้าที่มีตารางในการ์ด และตารางแปะติดขอบการ์ด */
+  --panel-inset: var(--space-4);
   --rule: 1px;
   --radius: 8px;
   /* --radius-md ถูกใช้ใน 5 ที่ (VersionControlCard ฯลฯ) แต่ไม่เคยถูกประกาศ →
@@ -1821,10 +1826,6 @@ h1, h2, h3, h4, h5, h6 {
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
-/* Kanban / list card lift on hover (PM Board + Tasks) */
-.hover-card { transition: transform var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast); }
-.hover-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: var(--shadow-md, var(--glass-shadow)); }
-
 .glass-panel.glow-emerald,
 .glass-panel.glow-gold {
   box-shadow: var(--shadow-sm);
@@ -2228,6 +2229,15 @@ h1, h2, h3, h4, h5, h6 {
 .ui-badge.fc-level-50 { color: var(--amber); }
 .ui-badge.fc-level-80 { color: var(--teal); }
 .ui-badge-w-deal-type { --cell-badge-w: 88px; }/* SCENT · NPD · RE-ORDER */
+/* ชนิดสัญญา (mig 0278) — สีของ "ประเภทงาน" ไม่ใช่สถานะ: ออกแบบกลิ่นเข้าคู่ดีล SCENT
+   (amber) · จ้างผลิตเข้าคู่สายสินค้า (blue) · บริการเข้าคู่สายบริการ (teal)
+   ⇒ อ่านแล้วเชื่อมกับป้ายประเภทดีล/สายธุรกิจที่อยู่แถวเดียวกันได้ทันที
+   (ประกาศเป็นคลาสแทนการฝัง style ในแท็ก — ชั้นเก่าที่ audit:ui นับอยู่) */
+.ui-badge.contract-scent_design { color: var(--amber); }
+.ui-badge.contract-manufacturing { color: var(--blue); }
+.ui-badge.contract-service { color: var(--teal); }
+.ui-badge-w-contract { --cell-badge-w: 118px; } /* ชนิดสัญญา — "สัญญาจ้างออกแบบกลิ่น" */
+
 .ui-badge-w-doc { --cell-badge-w: 112px; }     /* สถานะใบเสนอราคา/ใบสั่งขาย — "ย้อนการอนุมัติ" */
 .ui-badge-w-lead { --cell-badge-w: 92px; }     /* สถานะลีด — "เปิดลูกค้าแล้ว" / "นัดประชุมแล้ว" 88px */
 .ui-badge-w-channel { --cell-badge-w: 88px; }  /* ช่องทางที่รับลีด — "Typeform" */
@@ -5610,7 +5620,7 @@ button.empty-state { width: 100%; font: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: 15px 17px;
+  padding: var(--space-4) var(--panel-inset);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--panel-2) 50%, transparent);
 }
@@ -5619,7 +5629,27 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-section-title h2 { margin: 0; color: var(--text); font-size: var(--fs-section-title); }
 .ui-section-title p { margin: 3px 0 0; color: var(--text-3); font-size: var(--fs-4); }
 .ui-section-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
-.ui-section-body { min-width: 0; padding: var(--space-4) 17px; }
+.ui-section-body { min-width: 0; padding: var(--space-4) var(--panel-inset); }
+
+/* ── ตารางที่อยู่ในการ์ด — เว้นขอบเท่าหัวการ์ดเสมอ (มติผู้ใช้ 2026-08-20) ──────
+ *
+ * ⭐ `TableScroll` ตั้งค่าเริ่มต้นเป็น `surface="auto"` (ตัวเองเป็นพื้นข้อมูล) เพราะ
+ * ครึ่งหนึ่งของตารางในระบบวางลอยไม่มีการ์ดครอบ — แต่ **อีกครึ่งอยู่ในการ์ดอยู่แล้ว**
+ * และไม่ได้ส่ง `embedded` มา (20 ไฟล์) ⇒ ได้การ์ดซ้อนการ์ดที่แปะติดขอบพอดี
+ * ผลคือคอลัมน์แรกเยื้องจากหัวเรื่องข้างบน และขอบตารางทับขอบการ์ด (ผู้ใช้ส่งภาพมา)
+ *
+ * ⚠️ ดักที่ **แอตทริบิวต์** ไม่ใช่คลาสของ CSS module (ชื่อคลาสถูก hash) — และตั้ง
+ * specificity ให้ชนะกฎในโมดูลด้วย `[data-family]` ตัวที่สอง ไม่ต้องพึ่งลำดับไฟล์
+ * ⚠️ ในเนื้อการ์ดที่มีระยะขอบของตัวเองแล้ว (`.ui-section-body`) ห้ามเว้นซ้ำ */
+.glass-panel [data-surface="auto"][data-family],
+.ui-section [data-surface="auto"][data-family] {
+  background: transparent;
+  box-shadow: none;
+  margin: 0 var(--panel-inset) var(--panel-inset);
+}
+.ui-section-body [data-surface][data-family] {
+  margin: 0;
+}
 
 /* จำนวนคอลัมน์มาจาก `data-cols` ที่ `MetricStrip` นับใบให้เอง (ดูคอมเมนต์ที่นั่น)
    ค่าตั้งต้น 4 ไว้เผื่อมีใครใส่คลาสนี้ตรง ๆ โดยไม่ผ่านคอมโพเนนต์

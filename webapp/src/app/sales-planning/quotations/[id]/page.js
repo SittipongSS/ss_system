@@ -24,6 +24,7 @@ import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTe
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
+import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
@@ -87,6 +88,8 @@ export default function QuotationEditorPage() {
   const [workflowForm, setWorkflowForm] = useState(null);
   const [rejectForm, setRejectForm] = useState(null);
   const [revisionForm, setRevisionForm] = useState(null);
+  // สัญญา (mig 0278) — เปิดโมดัลออกสัญญาจากใบที่อนุมัติแล้ว
+  const [contractOpen, setContractOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [wonOpen, setWonOpen] = useState(false);
   // ย้อนการรับ (มติ 2026-07-21): null = ปิด; { reason } = เปิดฟอร์มเหตุผลบังคับ
@@ -678,6 +681,17 @@ export default function QuotationEditorPage() {
     // Won ย้ายขึ้นไปเป็นปุ่มหลักของใบที่อนุมัติแล้ว (ดู primaryAction ด้านบน)
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", visible: !editMode, onClick: doPrint },
     {
+      /* ⭐ ออกสัญญาจากใบนี้ (mig 0278) — ทางลัดจากใบที่ "อนุมัติแล้ว" ซึ่งเป็นด่านของสัญญาพอดี
+         ⚠️ ไม่ตรวจชนิดสัญญาที่นี่ — โมดัลถามด่านตัวเดียวกับ API แล้วบอกเหตุผลถ้าออกไม่ได้
+            (ดีลที่ยังไม่ระบุสายธุรกิจ ฯลฯ) · ซ่อนปุ่มเงียบ ๆ = คนถามว่าปุ่มอยู่ไหน */
+      id: "contract",
+      kind: "goto",
+      label: "ออกสัญญาจากใบนี้",
+      variant: "outline",
+      visible: quote?.approvalStatus === "approved" && !editMode && canEditCap,
+      onClick: () => setContractOpen(true),
+    },
+    {
       id: "download",
       kind: "download",
       label: "ดาวน์โหลด PDF",
@@ -1130,6 +1144,12 @@ export default function QuotationEditorPage() {
         busy={confirmBusy}
         onClose={() => !confirmBusy && setConfirmState(null)}
         onConfirm={runConfirmed}
+      />
+      <ContractCreateModal
+        open={contractOpen}
+        dealId={quote?.dealId}
+        quotationId={quote?.id}
+        onClose={() => setContractOpen(false)}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
