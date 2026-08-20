@@ -14,10 +14,10 @@
 //                    เปิด = ไม่มีช่องพิมพ์รหัส มีตัวเลือกหมวด + แถบรหัสที่ประกอบให้
 //                    ปิด = ช่องพิมพ์รหัสแบบเดิม หมวดอ่านย้อนจากรหัส (mig 0230)
 import { useEffect, useState } from "react";
-import ChoiceChips from "@/components/ui/ChoiceChips";
 import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
+import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
@@ -424,16 +424,22 @@ export default function ProductForm({
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
-            {/* หน่วยปริมาตรมี 5 ตัว = กางให้เห็นตามกติกาคอนโทรล (≤6 ไม่ต้องซ่อนในดรอปดาวน์)
-                หน่วยขายด้านล่างเหลือ 6 ตัวแล้ว (mig 0274) จึงกางเหมือนกัน — เดิมเป็น
-                ดรอปดาวน์เพราะมี 8 ตัวซึ่งเกินเกณฑ์ */}
+            {/* ⚠️ ทั้งสองช่องเป็น **ดรอปดาวน์** ตามกติกาคอนโทรล v2 (docs/form-design-rules.md):
+                ChoiceChips ใช้กับชุด ≤6 เท่านั้น · รอบเพิ่มหน่วย 2026-08-20 รอบสอง ทำให้
+                หน่วยบรรจุเป็น 8 ตัว และหน่วยขายเป็น 7 ตัว = เกินเกณฑ์ทั้งคู่
+                (เคยเป็นชิปอยู่ช่วงที่ลิสต์สั้นกว่านี้ — ถ้าวันหลังตัดลงเหลือ ≤6 ค่อยกลับไปกางใหม่) */}
             <div className="mt-1.5">
-              <ChoiceChips
+              <Select
+                name="volumeUnit"
                 value={form.volumeUnit || DEFAULT_VOLUME_UNIT}
-                onChange={(v) => onForm({ volumeUnit: v })}
-                options={unitOptions(VOLUME_UNITS, form.volumeUnit)}
-                ariaLabel="หน่วยปริมาตร/น้ำหนักบรรจุ"
-              />
+                onChange={set("volumeUnit")}
+                aria-label="หน่วยปริมาตร/น้ำหนักบรรจุ"
+                fullWidth
+              >
+                {unitOptions(VOLUME_UNITS, form.volumeUnit).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
             </div>
             <span className="text-xs text-[var(--text-3)] mt-1"><strong>ขนาดของ 1 {saleUnitLabel}</strong> — ไม่ใช่หน่วยที่ใช้นับขาย</span>
           </div>
@@ -463,12 +469,17 @@ export default function ProductForm({
           </div>
           <div className="form-group">
             <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
-            <ChoiceChips
+            <Select
+              name="saleUnit"
               value={form.saleUnit || DEFAULT_SALE_UNIT}
-              onChange={(v) => onForm({ saleUnit: v })}
-              options={unitOptions(SALE_UNITS, form.saleUnit)}
-              ariaLabel="หน่วยขาย"
-            />
+              onChange={set("saleUnit")}
+              aria-label="หน่วยขาย"
+              fullWidth
+            >
+              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
             <span className="text-xs text-[var(--text-3)] mt-1">หน่วยที่ <strong>นับขาย</strong> บนใบเสนอราคา/ใบสั่งขาย — ลูกค้าสั่ง 10 หมายถึง 10 หน่วยนี้</span>
           </div>
           {packaging && (
