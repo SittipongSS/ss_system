@@ -15,11 +15,10 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Target, TrendingUp,
+  Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
-import { useCan } from "@/lib/roleContext";
 import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -108,8 +107,8 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const target = Number(data?.target || 0);
   // "ยังไม่ตั้งเป้า" (ไม่มี record) ≠ "เป้า = 0 จริง" — เคสแรกแสดง dash ตาม rulebook
   const hasTarget = !!data?.hasTarget;
-  const canSetTarget = useCan("salesplan:target");
   const actual = Number(data?.wonValue || 0);
+  const targetGap = Number(data?.targetGap || 0);
   const targetPct = target > 0 ? (actual / target) * 100 : 0;
   /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
      ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
@@ -129,48 +128,32 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           ⚠️ ฉบับเต็ม (ทบยอด/กราฟ/YoY) อยู่แท็บ "ผลงานขาย" ที่เดียว (มติ 2026-07-18)
           ที่นี่มีแค่ตัวเลขสรุปกับทางเข้า */}
       {!loading && (
-        <div className="flex gap-2 items-center flex-wrap justify-end">
-          {data && !hasTarget && canSetTarget && (
-            <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
-              ตั้งเป้า
-            </Button>
-          )}
-          <Button
-            as={Link} size="sm" icon={<ArrowUpRight size={13} />}
-            href={data?.me?.id
-              ? `/sa/dashboard?tab=performance&scope=person&person=${encodeURIComponent(data.me.id)}`
-              : "/sa/dashboard?tab=performance"}
-          >
-            ดูผลงานเต็ม
-          </Button>
-        </div>
-      )}
-
-      {!loading && (
-        <MetricStrip aria-label={`ตัวเลขของฉัน — ${scopeLabel}`}>
+        <MetricStrip aria-label={`ยอดของฉัน — ${scopeLabel}`}>
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
             value={hasTarget ? fmtPercent(targetPct, 0) : NA}
-            note={hasTarget ? `${fmtMoney(actual)} / ${fmtMoney(target)}` : "ยังไม่ตั้งเป้า"}
+            note={hasTarget ? `${fmtMoney(actual)} จาก ${fmtMoney(target)}` : "ยังไม่ตั้งเป้างวดนี้"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
           />
           <Metric
             icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoneyCompact(actual)}
-            note={hasTarget ? `เหลืออีก ${fmtMoney(Math.max(0, target - actual))}` : scopeLabel}
+            /* ⚠️ ไม่มีเป้า = ไม่มีอะไรให้เทียบ ⇒ บอกงวดแทน ห้ามเขียน "ขาดอีก" จากเป้า 0
+               (เป้า 0 กับ "ยังไม่ตั้งเป้า" คนละเรื่อง — ดู empty-value-rule) */
+            note={!hasTarget ? `ปิดได้ใน${scopeLabel}`
+              : targetGap > 0 ? `ขาดอีก ${fmtMoney(targetGap)}` : `เกินเป้า ${fmtMoney(-targetGap)}`}
+            tone={hasTarget && targetGap <= 0 ? "good" : undefined}
           />
+          {/* ⭐ ยุบ "ดีลที่เปิดอยู่" กับ "Pipeline" เป็นใบเดียว — สองใบนั้นพูดถึงกองเดียวกัน
+              (จำนวนใบ กับ มูลค่าของใบชุดนั้น) การแยกเป็นสองช่องกินที่โดยไม่เพิ่มคำตอบ */}
           <Metric
-            icon={<Handshake />} label="ดีลที่เปิดอยู่" value={data?.openDealsCount || 0}
-            note="ยังไม่ปิด — ทั้งท่อ ไม่ใช่เฉพาะงวดนี้"
+            icon={<Handshake />} label="ท่อที่ยังเปิด" value={fmtMoneyCompact(data?.pipelineValue || 0)}
+            note={`${data?.openDealsCount || 0} ดีลที่ยังไม่ปิด — ทุกงวด ไม่ใช่เฉพาะ${scopeLabel}`}
           />
+          {/* ⚠️ **ยอดถ่วง FC ไม่ใช่ยอดขาย** — มูลค่าท่อ × FC% ของแต่ละใบ ใช้ตอบว่า
+              "ของในท่อพอไหม" ห้ามเอาไปบวกกับยอดปิดได้ */}
           <Metric
-            icon={<TrendingUp />} label="Pipeline" value={fmtMoneyCompact(data?.pipelineValue || 0)}
-            note="มูลค่าดีลที่ยังเปิดอยู่"
-          />
-          {/* ⚠️ **ยอดถ่วง FC ไม่ใช่ยอดขาย** — เป็นค่าคาดหวังของท่อ (มูลค่า × FC%)
-              ใช้ตอบว่า "ของพอไหม" ห้ามเอาไปรวมกับยอดปิดได้ */}
-          <Metric
-            icon={<Target />} label="ยอดถ่วง FC" value={fmtMoneyCompact(data?.weightedForecast || 0)}
-            note="ค่าคาดหวังของท่อ ไม่ใช่ยอดขาย"
+            icon={<Percent />} label="ยอดถ่วง FC" value={fmtMoneyCompact(data?.weightedForecast || 0)}
+            note="มูลค่าท่อ × FC% — ค่าคาดหวัง ไม่ใช่ยอดขาย"
           />
         </MetricStrip>
       )}
@@ -186,6 +169,8 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           ⚠️ ยุบเป็นคอลัมน์เดียวที่ ≤1000px — ตารางคิวสามคอลัมน์ในครึ่งจอแคบอ่านไม่ออก */}
       <div className={styles.split}>
       <WorkspaceSection
+        className={styles.pane}
+        bodyClassName={styles.paneBody}
         icon={<ListTodo size={17} />}
         title="คิวของฉัน"
         subtitle="ทุกอย่างที่รอคุณอยู่ — คำร้อง · ลีด · งาน · เอกสาร"
@@ -212,7 +197,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
             {kind ? "ไม่มีของค้างในชนิดนี้ — กดชิปซ้ำเพื่อดูทั้งหมด" : "ไม่มีของค้างของคุณตอนนี้ 🎉"}
           </EmptyState>
         ) : (
-          <TableScroll cells="stacked">
+          <TableScroll cells="stacked" className={styles.paneScroll}>
             <table className="w-full">
               <thead>
                 <tr>
@@ -262,6 +247,8 @@ export default function MyDashboardTab({ month, allMonths = false }) {
       </WorkspaceSection>
 
       <WorkspaceSection
+        className={styles.pane}
+        bodyClassName={styles.paneBody}
         icon={<Activity size={17} />}
         title="รายการอัปเดตล่าสุด"
         subtitle="กิจกรรมจากดีลและงานที่คุณรับผิดชอบ"
@@ -279,21 +266,26 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           </div>
         )}
       >
-        <div className={styles.feed}>
-          {shownFeed.map((item) => (item.feedType === "task"
-            ? <TaskPost key={`task-${item.id}`} item={item} />
-            : <DealPost key={`deal-${item.id}`} item={item} />))}
-          {feed.length > visible && (
-            <div className={styles.feedMore}>
-              <Button size="sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
-                ดูเพิ่มเติม (อีก {feed.length - visible})
-              </Button>
-            </div>
-          )}
-          {!feed.length && (
-            <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
-          )}
+        {/* ⚠️ **กดดูเพิ่มแล้วการ์ดต้องไม่สูงขึ้น** — ของที่โหลดมาเพิ่มไปต่อท้ายในกล่องที่
+            เลื่อนเอง ไม่ใช่ยืดการ์ดจนดันคิวฝั่งซ้ายเสียแนว · ปุ่มอยู่นอกกล่องเลื่อน
+            จะได้ไม่ต้องไถลงไปหามัน */}
+        <div className={styles.paneScroll}>
+          <div className={styles.feed}>
+            {shownFeed.map((item) => (item.feedType === "task"
+              ? <TaskPost key={`task-${item.id}`} item={item} />
+              : <DealPost key={`deal-${item.id}`} item={item} />))}
+            {!feed.length && (
+              <div className={styles.empty}>{loading ? "กำลังโหลดกิจกรรม..." : "ยังไม่มีกิจกรรมตามตัวกรองนี้"}</div>
+            )}
+          </div>
         </div>
+        {feed.length > visible && (
+          <div className={styles.feedMore}>
+            <Button size="sm" onClick={() => setVisible((n) => n + FEED_PAGE)}>
+              ดูเพิ่มเติม (อีก {feed.length - visible})
+            </Button>
+          </div>
+        )}
       </WorkspaceSection>
       </div>
     </div>

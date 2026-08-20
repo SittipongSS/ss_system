@@ -1,16 +1,18 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { LayoutDashboard } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
-import { useRole } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import Segmented from "@/components/ui/Segmented";
 import { addDays, businessDayKey } from "@/lib/datePeriods";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
+import Button from "@/components/ui/Button";
 import { TAB_PERIOD, resolveDashboardTab } from "@/lib/salesPlanning/dashboardTabs";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
@@ -44,6 +46,7 @@ const normalizeTab = (t) => (t === "overview" ? "performance" : t);
 function DashboardContent() {
   const searchParams = useSearchParams();
   const role = useRole();
+  const canSetTarget = useCan("salesplan:target");
   const currentMonth = thisMonth();
   const [month, setMonth] = useState(currentMonth);
   /* ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29 · ท่าเดียวกับหน้าลีด/ดีล)
@@ -112,12 +115,31 @@ function DashboardContent() {
       }
     >
       <div className="flex flex-col gap-4">
-        <Tabs
-          ariaLabel="มุมมองภาพรวม"
-          value={activeTab}
-          onChange={setTab}
-          tabs={allowedTabs}
-        />
+        {/* ⭐ **ปุ่มทางเข้าอยู่ระดับเดียวกับแท็บ** (มติผู้ใช้ 2026-08-21) — เดิมลอยอยู่เหนือ
+            แถบตัวเลขในแท็บ "ของฉัน" ซึ่งอ่านเหมือนปุ่มของแถบตัวเลข ทั้งที่มันคือทางออก
+            ไปหน้าอื่น · โผล่เฉพาะแท็บ "ของฉัน" เพราะแท็บอื่นมีเครื่องมือของตัวเองอยู่แล้ว */}
+        <div className={styles.tabsRow}>
+          <Tabs
+            ariaLabel="มุมมองภาพรวม"
+            value={activeTab}
+            onChange={setTab}
+            tabs={allowedTabs}
+          />
+          {activeTab === "my" && (
+            <div className={styles.tabsActions}>
+              {canSetTarget && (
+                <Button as={Link} size="sm" href="/sa/targets" icon={<ArrowUpRight size={13} />}>
+                  ตั้งเป้า
+                </Button>
+              )}
+              {allowedTabs.some((tab) => tab.key === "performance") && (
+                <Button size="sm" icon={<ArrowUpRight size={13} />} onClick={() => setTab("performance")}>
+                  ดูผลงานเต็ม
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
         {deniedTab && activeTab && (
           <StatusNotice tone="warning" title={`ไม่มีสิทธิ์เข้าถึงแท็บ “${deniedTab.label}”`}>
