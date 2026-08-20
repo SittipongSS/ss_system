@@ -92,8 +92,15 @@ git push -u origin main
 ### จังหวะการ deploy — `main` ไม่ขึ้น prod เอง
 
 Vercel ไม่ได้ deploy จาก `main` แล้ว แต่ deploy จากแบรนช์ `production`
-(ตั้งไว้ที่ `vercel.json` → `git.deploymentEnabled` และที่ **Vercel → Settings → Git →
-Production Branch** ต้องเป็น `production` ทั้งสองที่ต้องตรงกัน)
+(ตั้งไว้ที่ `vercel.json` → `git.deploymentEnabled` และที่ **Vercel → Settings →
+Environments → Production → Branch Tracking** ต้องเป็น `production` ทั้งสองที่ต้องตรงกัน)
+
+> Vercel เคยเก็บค่านี้ไว้ที่ Settings → Git แต่ย้ายมาอยู่ใต้ Environments แล้ว
+> ช่อง Branch Tracking พิมพ์ชื่อแบรนช์เองได้ ไม่ใช่ dropdown
+>
+> ⚠️ **แบรนช์ต้องมีอยู่จริงบน GitHub ก่อน** ไม่งั้นกด Save แล้วเด้ง
+> `Failed to save branch tracking. Try again.` โดยไม่บอกสาเหตุ — ข้อความชวนให้คิดว่า
+> เป็นความผิดพลาดชั่วคราว กดซ้ำอีกกี่ครั้งก็ไม่ผ่าน สร้างแบรนช์ก่อนแล้วค่อย Save
 
 `main` ยังรับ merge ได้ตลอดวันเหมือนเดิม แล้ว workflow
 `.github/workflows/deploy-production.yml` จะ fast-forward `production` ตาม `main`
@@ -154,4 +161,4 @@ Login เปลี่ยนจากรหัส `1234` เป็น **Supabase 
 - [ ] ทดสอบ `npm test`, `npm run lint`, `npm run build`
 - [ ] Smoke test: login → Lead → Deal → Quotation → Won พร้อมหลักฐาน → Project/PM
 - [ ] Vercel: Root = `webapp` + env 4 ตัว → Deploy
-- [ ] Vercel → Settings → Git → **Production Branch = `production`** (ไม่ใช่ `main`) ให้ตรงกับ `vercel.json`
+- [ ] Vercel → Settings → Environments → Production → **Branch Tracking = `production`** (ไม่ใช่ `main`) ให้ตรงกับ `vercel.json` — แบรนช์ต้องมีอยู่จริงก่อนถึงจะ Save ผ่าน
