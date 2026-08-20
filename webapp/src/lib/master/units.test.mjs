@@ -19,11 +19,40 @@ test('ทุกหน่วยในลิสต์ต้องมีคำอ�
   assert.deepEqual(missing, [], `หน่วยที่ยังไม่มีคำอังกฤษ: ${missing.join(', ')}`);
 });
 
-test('หน่วยที่ AE ขอเพิ่ม อยู่ในลิสต์จริง', () => {
-  assert.ok(SALE_UNITS.includes('เดือน'));
-  assert.ok(SALE_UNITS.includes('ครั้ง'));
+// ── ลิสต์รื้อใหม่ 2026-08-20 (mig 0274) ──────────────────────────────────
+test('ลิสต์หน่วยขายเหลือ 6 ตัวตามที่ตกลง — ไม่มากไม่น้อยกว่านี้', () => {
+  assert.deepEqual([...SALE_UNITS], ['ชิ้น', 'กิโลกรัม', 'เดือน', 'แพ็คเกจ', 'งาน', 'ชุด']);
+});
+
+test('คำที่เลิกใช้ต้องหลุดจากลิสต์จริง ไม่ใช่แค่ไม่มีใครเลือก', () => {
+  for (const unit of ['ขวด', 'หลอด', 'กล่อง', 'Kg', 'ครั้ง']) {
+    assert.ok(!SALE_UNITS.includes(unit), `'${unit}' ต้องไม่อยู่ในลิสต์แล้ว`);
+  }
+});
+
+test('คำที่เปลี่ยนชื่อ อยู่ในลิสต์แล้วพร้อมคำอังกฤษ', () => {
+  assert.ok(SALE_UNITS.includes('กิโลกรัม'));   // เดิม 'Kg'
+  assert.ok(SALE_UNITS.includes('งาน'));        // เดิม 'ครั้ง'
+  assert.equal(SALE_UNIT_EN['กิโลกรัม'], 'Kilogram');
+  assert.equal(SALE_UNIT_EN['งาน'], 'Job');
   assert.equal(SALE_UNIT_EN['เดือน'], 'Month');
-  assert.equal(SALE_UNIT_EN['ครั้ง'], 'Time');
+});
+
+// ตารางแปลทำหน้าที่ *แปล* ไม่ใช่ *จำกัดตัวเลือก* — แถวที่ migration ไล่ไม่ถึงต้องยังแปลได้
+// ไม่งั้นใบอังกฤษจะมีคำไทยโผล่กลางตารางในวันที่เจอแถวตกหล่น
+test('คำที่เลิกใช้แล้วยังแปลเป็นอังกฤษได้ (เผื่อแถวเก่าตกหล่น)', () => {
+  assert.equal(saleUnitLabel('ขวด', 'en'), 'Bottle');
+  assert.equal(saleUnitLabel('หลอด', 'en'), 'Tube');
+  assert.equal(saleUnitLabel('กล่อง', 'en'), 'Box');
+  assert.equal(saleUnitLabel('ครั้ง', 'en'), 'Time');
+  assert.equal(saleUnitLabel('Kg', 'en'), 'Kg');
+});
+
+test('ลิสต์หน่วยบรรจุเหลือ 5 ตัว — ตัด L, เก็บ pcs ไว้', () => {
+  assert.deepEqual([...VOLUME_UNITS], ['ml', 'g', 'kg', 'package', 'pcs']);
+  // 'pcs' ไม่ใช่ค่าขยะ: กิฟต์เซ็ตใช้บอกว่า "1 ชุดมีของ 2 ชิ้น" ไม่มีหน่วยอื่นพูดแทนได้
+  assert.ok(VOLUME_UNITS.includes('pcs'));
+  assert.ok(!VOLUME_UNITS.includes('L'));
 });
 
 test('saleUnitLabel: แปลเฉพาะใบอังกฤษ · ใบไทยคืนค่าเดิมไม่แตะ', () => {
@@ -52,7 +81,7 @@ test('saleUnitOf: ว่าง/ช่องว่างล้วน → ค่�
   assert.equal(saleUnitOf(''), 'ชิ้น');
   assert.equal(saleUnitOf('   '), 'ชิ้น');
   assert.equal(saleUnitOf(null), 'ชิ้น');
-  assert.equal(saleUnitOf(' ขวด '), 'ขวด');
+  assert.equal(saleUnitOf(' ชุด '), 'ชุด');
   // หน่วยที่ผู้ใช้พิมพ์เองยาวผิดปกติต้องไม่ไปดันคอลัมน์บนเอกสาร A4 เสียรูป
   assert.equal(saleUnitOf('ก'.repeat(80)).length, SALE_UNIT_MAX);
 });
@@ -66,7 +95,7 @@ test('unitOptions: พ่วงค่าเดิมที่ถูกตัด�
 });
 
 test('unitOptions: ค่าที่อยู่ในลิสต์อยู่แล้ว/ค่าว่าง ไม่พ่วงซ้ำ', () => {
-  assert.equal(unitOptions(SALE_UNITS, 'ขวด').length, SALE_UNITS.length);
+  assert.equal(unitOptions(SALE_UNITS, 'ชุด').length, SALE_UNITS.length);
   assert.equal(unitOptions(SALE_UNITS, '').length, SALE_UNITS.length);
   assert.equal(unitOptions(VOLUME_UNITS, 'oz').length, VOLUME_UNITS.length + 1);
 });
@@ -82,13 +111,13 @@ test('formatVolume: เติมหน่วยตั้งต้นเมื่
 // ประโยคสรุปบรรจุภัณฑ์ — ตัวช่วยแยก "หน่วยขาย" ออกจาก "หน่วยปริมาตร" บนฟอร์ม
 test('packagingSummary: ประกอบเป็นประโยคที่อ่านแล้วรู้ทันทีว่าช่องไหนคืออะไร', () => {
   assert.equal(
-    packagingSummary({ volume: 50, volumeUnit: 'ml', saleUnit: 'ขวด', piecesPerCase: 12 }),
-    '1 ขวด = 50 ml · 1 ลัง = 12 ขวด',
+    packagingSummary({ volume: 50, volumeUnit: 'ml', saleUnit: 'ชิ้น', piecesPerCase: 12 }),
+    '1 ชิ้น = 50 ml · 1 ลัง = 12 ชิ้น',
   );
 });
 
 test('packagingSummary: ไม่มีจำนวนต่อลัง ก็เหลือแค่ท่อนขนาด', () => {
-  assert.equal(packagingSummary({ volume: 30, volumeUnit: 'g', saleUnit: 'หลอด' }), '1 หลอด = 30 g');
+  assert.equal(packagingSummary({ volume: 30, volumeUnit: 'g', saleUnit: 'ชุด' }), '1 ชุด = 30 g');
 });
 
 test('packagingSummary: ยังไม่กรอกอะไรเลย = ไม่มีประโยค (ไม่โชว์กล่องเปล่า)', () => {

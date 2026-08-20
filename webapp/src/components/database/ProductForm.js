@@ -18,7 +18,6 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
-import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
@@ -419,8 +418,9 @@ export default function ProductForm({
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
             <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
-            {/* หน่วยปริมาตรมี 6 ตัว = กางให้เห็นตามกติกาคอนโทรล (≤6 ไม่ต้องซ่อนในดรอปดาวน์)
-                ⚠️ หน่วยขายด้านล่างยังเป็นดรอปดาวน์เพราะมี 8 ตัว — เกินเกณฑ์ */}
+            {/* หน่วยปริมาตรมี 5 ตัว = กางให้เห็นตามกติกาคอนโทรล (≤6 ไม่ต้องซ่อนในดรอปดาวน์)
+                หน่วยขายด้านล่างเหลือ 6 ตัวแล้ว (mig 0274) จึงกางเหมือนกัน — เดิมเป็น
+                ดรอปดาวน์เพราะมี 8 ตัวซึ่งเกินเกณฑ์ */}
             <div className="mt-1.5">
               <ChoiceChips
                 value={form.volumeUnit || DEFAULT_VOLUME_UNIT}
@@ -454,11 +454,12 @@ export default function ProductForm({
           </div>
           <div className="form-group">
             <label>หน่วยขาย <span className="text-[var(--red)]">*</span></label>
-            <Select name="saleUnit" value={form.saleUnit || DEFAULT_SALE_UNIT} onChange={set("saleUnit")} className="premium-input w-full">
-              {unitOptions(SALE_UNITS, form.saleUnit).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
+            <ChoiceChips
+              value={form.saleUnit || DEFAULT_SALE_UNIT}
+              onChange={(v) => onForm({ saleUnit: v })}
+              options={unitOptions(SALE_UNITS, form.saleUnit)}
+              ariaLabel="หน่วยขาย"
+            />
             <span className="text-xs text-[var(--text-3)] mt-1">หน่วยที่ <strong>นับขาย</strong> บนใบเสนอราคา/ใบสั่งขาย — ลูกค้าสั่ง 10 หมายถึง 10 หน่วยนี้</span>
           </div>
           {packaging && (
