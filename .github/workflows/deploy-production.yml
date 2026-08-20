@@ -1,0 +1,107 @@
+name: Deploy to production
+
+# Vercel deploys the `production` branch now, not `main` — see
+# webapp/vercel.json → git.deploymentEnabled. `main` still collects every merge
+# all day; this workflow fast-forwards `production` to `main` on a schedule so
+# ~22 merges a day become 3 production builds instead of 22.
+#
+# Why this exists: Build CPU Minutes were 87% of the Vercel infrastructure bill
+# ($24.22 of a $27.98 subtotal), and Vercel bills allocated vCPU multiplied by
+# the wall-clock duration of the entire build step — clone, install, build,
+# cache upload. Making the build itself cheaper only moves a slice of that;
+# running fewer builds is the lever that actually moves the number.
+
+on:
+  schedule:
+    # Times are UTC. 02:00 / 06:00 / 11:00 UTC = 09:00 / 13:00 / 18:00 in
+    # Thailand (ICT, UTC+7). Thailand has no daylight saving, so these stay
+    # correct year-round and never need a seasonal adjustment.
+    - cron: '0 2,6,11 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fast-forward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fast-forward production to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --no-tags origin +refs/heads/production:refs/remotes/origin/production || true
+
+          main_sha=$(git rev-parse refs/remotes/origin/main)
+          if git rev-parse --verify --quiet refs/remotes/origin/production >/dev/null; then
+            prod_sha=$(git rev-parse refs/remotes/origin/production)
+          else
+            prod_sha=""
+          fi
+
+          if [ "$prod_sha" = "$main_sha" ]; then
+            echo "production is already at $main_sha — nothing new to deploy."
+            echo "No new commits since the last deployment." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A scheduled deploy runs with nobody watching, so it must not ship a
+          # main whose CI is red or still running. The `ci` workflow runs on
+          # every push to main, so its conclusion for this exact SHA is the
+          # signal. A missing check run reads as "not green".
+          ci_conclusion=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${main_sha}/check-runs" \
+            --jq '[.check_runs[] | select(.name == "ci")] | first | .conclusion // "pending"' 2>/dev/null || echo "unknown")
+
+          if [ "$ci_conclusion" != "success" ]; then
+            message="CI for main ($main_sha) is '$ci_conclusion', not success — refusing to deploy."
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              # Someone pressed the button and is waiting for an answer: fail
+              # loudly so they see it rather than assuming the deploy went out.
+              echo "::error::$message"
+              exit 1
+            fi
+            # On a schedule this is usually just a merge that landed a minute
+            # ago and is still building. Warn and let the next round pick it up
+            # — a red run every few hours would train everyone to ignore these.
+            echo "::warning::$message Waiting for the next scheduled round."
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # `git push` without --force already refuses a non-fast-forward, but
+          # checking first turns a confusing push rejection into a clear reason.
+          if [ -n "$prod_sha" ] && ! git merge-base --is-ancestor "$prod_sha" "$main_sha"; then
+            echo "::error::production ($prod_sha) is not an ancestor of main ($main_sha). Someone pushed to production directly, or main was rewritten. Resolve by hand — this workflow will not force-push."
+            exit 1
+          fi
+
+          {
+            echo "## Deploying to production"
+            echo
+            echo "\`$main_sha\`"
+            echo
+            if [ -n "$prod_sha" ]; then
+              count=$(git rev-list --count "$prod_sha..$main_sha")
+              echo "$count commit(s) since the last deployment:"
+              echo
+              git log --no-merges --pretty='- %s' "$prod_sha..$main_sha"
+            else
+              echo "First deployment from this branch."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          git push origin "$main_sha:refs/heads/production"
+          echo "production -> $main_sha. Vercel builds from here."
