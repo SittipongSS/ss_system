@@ -1,3 +1,6 @@
+.tabGroup { margin-bottom: var(--space-3); }
+.tabGroupLabel { margin-bottom: var(--space-2); display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; color: var(--text-3); font-size: var(--fs-3); font-weight: var(--fw-bold); letter-spacing: var(--ls-label); }
+.tabGroupLabel em { color: var(--amber); font-size: var(--fs-3); font-style: normal; font-weight: var(--fw-semibold); }
 .headerActions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 .templateTabs { margin-bottom: var(--space-4); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2-5); }
 .templateTabs button { min-width: 0; padding: var(--space-3) var(--space-3-5); border: 1px solid var(--border); border-radius: var(--radius-lg); display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); color: var(--text-2); background: var(--panel); text-align: left; cursor: pointer; transition: border-color var(--motion-medium) ease, background var(--motion-medium) ease, transform var(--motion-medium) ease; }

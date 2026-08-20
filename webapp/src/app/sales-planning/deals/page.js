@@ -16,7 +16,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, MonthPicker, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
@@ -368,6 +368,8 @@ export default function SalesPlanningPipelinePage() {
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
+      // สายธุรกิจของดีล (mig 0275) — ต้องโหลดมาด้วย ไม่งั้นฟอร์มแก้ส่งค่าว่างไปทับ
+      line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
       // ทีมปัจจุบันของดีล — เจ้าของที่อยู่หลายทีมย้ายใบนี้ระหว่างทีมตัวเองได้จากช่องนี้
@@ -673,7 +675,10 @@ export default function SalesPlanningPipelinePage() {
           ? <span style={{ color: "var(--text-3)" }}>{NA}</span>
           : forecastBadge(deal.probability, "ui-badge-cell ui-badge-w-fc")}
       </td>
+      {/* สาย + ชนิดงานอยู่ช่องเดียวกัน: อ่านคู่กันเสมอ (สายบอกว่าเส้นทางจบยังไง
+          ชนิดงานบอกว่าใบนี้เติมช่วงไหน) — ดีลเก่าที่ยังไม่มีสายไม่ขึ้นป้ายสาย */}
       <td style={{ textAlign: "center" }}>
+        {businessLineBadge(deal.line, "ui-badge-cell")}
         {dealTypeBadge(dealTypeOf(deal), "ui-badge-cell ui-badge-w-deal-type")}
       </td>
       <td style={{ whiteSpace: "nowrap" }}>{ownerNameOf(deal) ? fmtName(ownerNameOf(deal)) : (naText(deal.team))}</td>

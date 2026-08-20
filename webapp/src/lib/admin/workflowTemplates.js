@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { WORKFLOW_TEMPLATE_KEYS, normalizeWorkflowTemplateDraft } from '@/lib/workflowTemplates';
+import { WORKFLOW_TEMPLATE_KEYS, normalizeWorkflowTemplateDraft, workflowTemplateKeyFor } from '@/lib/workflowTemplates';
+import { businessLineLabel } from '@/lib/master/businessLines';
 
 export class WorkflowTemplateError extends Error {
   constructor(message, status = 500, code = 'workflow_template_error') {
@@ -118,6 +119,26 @@ export async function loadWorkflowTemplateForGeneration(supabase, templateKey, v
     throw new WorkflowTemplateError(normalized.errors[0], 409, 'published_template_invalid');
   }
   return { templateVersionId: version.id, template: normalized.value.steps, version };
+}
+
+/* โหลดแม่แบบของ **คู่ (สาย, ประเภทดีล)** — ทางเข้าเดียวของทุกจุดที่ gen ไทม์ไลน์
+   (มติผู้ใช้ 2026-08-20 · ดูหัว lib/workflowTemplates.js)
+
+   ⚠️ **ไม่เดาสายให้** — ดีล/โครงการที่ยังไม่ระบุสาย (ของเก่าก่อน mig 0274) ต้องได้
+   ข้อความบอกว่าให้ไปเลือกสายก่อน ไม่ใช่หล่นไปได้แม่แบบสายสินค้าเงียบ ๆ แล้วเดิน
+   ขั้นตอนผิดสายทั้งไทม์ไลน์โดยไม่มีอะไรเตือน */
+export async function loadWorkflowTemplateForDeal(supabase, { line, dealType }, versionId = null) {
+  const templateKey = workflowTemplateKeyFor(line, dealType);
+  if (!templateKey) {
+    throw new WorkflowTemplateError(
+      line
+        ? `ไม่มี Workflow Template ของ ${businessLineLabel(line)} × ${dealType || 'ไม่ระบุประเภท'} — ตรวจการตั้งค่าที่ /settings/workflow-templates`
+        : 'ยังไม่ได้เลือกสายธุรกิจ (สินค้า/บริการ) — เลือกก่อนจึงจะรู้ว่าต้องใช้แม่แบบไทม์ไลน์ของสายไหน',
+      400,
+      'template_pair_unresolved',
+    );
+  }
+  return loadWorkflowTemplateForGeneration(supabase, templateKey, versionId);
 }
 
 export async function createWorkflowTemplateDraft(supabase, templateKey, user) {

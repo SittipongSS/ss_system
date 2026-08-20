@@ -29,7 +29,8 @@ import { createClient } from "@/lib/supabaseBrowser";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
-import { FORECAST_LEVELS, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, businessLineBadge, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
+import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
@@ -446,14 +447,17 @@ export default function DealOverviewPage() {
   // อัปเดต deal.dealType ให้ตรงด้วย.
   const [genOpen, setGenOpen] = useState(false);
   const [genType, setGenType] = useState("");
-  const openGenTimeline = () => { setGenType(dealTypeOf(deal)); setGenOpen(true); };
-  const genOwnTimeline = (type) => runAction("gen-timeline", `/api/sales-planning/deals/${id}/timeline`, {
+  /* สายธุรกิจ = อีกครึ่งของกุญแจแม่แบบ (mig 0275/0276) — ดีลเก่าที่ยังไม่มีสาย
+     ต้องเลือกที่นี่ก่อน ไม่งั้น server ตีกลับว่า "ยังไม่ได้เลือกสายธุรกิจ" */
+  const [genLine, setGenLine] = useState("");
+  const openGenTimeline = () => { setGenType(dealTypeOf(deal)); setGenLine(deal?.line || ""); setGenOpen(true); };
+  const genOwnTimeline = (type, line) => runAction("gen-timeline", `/api/sales-planning/deals/${id}/timeline`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(type ? { type } : {}),
+    body: JSON.stringify({ ...(type ? { type } : {}), ...(line ? { line } : {}) }),
   });
   const confirmGenTimeline = async () => {
-    const done = await genOwnTimeline(genType);
+    const done = await genOwnTimeline(genType, genLine);
     if (done) setGenOpen(false);
   };
   const dropOwnTimeline = async () => {
@@ -566,6 +570,8 @@ export default function DealOverviewPage() {
       notes: deal.notes || "",
       projectId: deal.projectId || "",
       lockedProjectId: deal.projectId || "",
+      // สายธุรกิจของดีล (mig 0275) — ต้องโหลดมาด้วย ไม่งั้นฟอร์มแก้ส่งค่าว่างไปทับ
+      line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
     });
@@ -779,7 +785,7 @@ export default function DealOverviewPage() {
               <span>ลูกค้า: {deal.customerName || deal.customer?.name || "ไม่ผูกลูกค้า"}</span>
               {(dealBrand.en || dealBrand.th) && <span>แบรนด์: {dealBrand.en || dealBrand.th}{dealBrand.en && dealBrand.th ? ` · ${dealBrand.th}` : ""}</span>}
             </>}
-            badges={<>{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
+            badges={<>{businessLineBadge(deal.line)}{dealTypeBadge(dealTypeOf(deal))}<SalesStateBadge label={STAGE_LABELS[deal.stage] || deal.stage} color={deal.stage === "lost" ? "var(--red)" : alreadyWon ? "var(--green)" : "var(--accent)"} /></>}
             actions={headerRight}
             facts={[
               { icon: UserRound, label: "ผู้ดูแล (AE)", value: naText(ownerName) },
@@ -1389,6 +1395,13 @@ export default function DealOverviewPage() {
             ระบบจะสร้างขั้นตอนงานจาก <strong>Workflow Template</strong> ตาม “ประเภทดีล” ด้านล่าง
             {deal?.categoryCode ? <> · หมวดสินค้า <strong>{deal.categoryCode}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
           </div>
+          <div className={styles.genLineField}>
+            สายธุรกิจ (เลือกก่อน — คนละแม่แบบกัน)
+            <BusinessLineSelect value={genLine} onChange={setGenLine} ariaLabel="สายธุรกิจของไทม์ไลน์" />
+            {genLine && genLine !== (deal?.line || "") && (
+              <span className={styles.genLineSwitchNote}>· จะอัปเดตสายธุรกิจของดีลเป็นค่านี้ให้ด้วย</span>
+            )}
+          </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: "var(--fs-7)" }}>
             ประเภทดีล (Template ที่จะใช้)
             <Select
@@ -1410,7 +1423,7 @@ export default function DealOverviewPage() {
           </div>
           <div className="form-action-bar">
             <button type="button" className="btn" onClick={() => setGenOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={confirmGenTimeline} disabled={!!actionBusy}>
+            <button type="button" className="btn btn-primary" onClick={confirmGenTimeline} disabled={!!actionBusy || !genLine}>
               {actionBusy === "gen-timeline" ? "กำลังสร้าง…" : "สร้างไทม์ไลน์"}
             </button>
           </div>

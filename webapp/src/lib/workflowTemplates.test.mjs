@@ -5,6 +5,9 @@ import {
   EXCISE_CATEGORY_TOKEN,
   WORKFLOW_TEMPLATE_KEYS,
   WORKFLOW_TEMPLATE_LINES,
+  workflowTemplateKeyFor,
+  workflowTemplateLineOf,
+  workflowTemplateDealTypeOf,
   WORKFLOW_TEMPLATE_ROLES,
   findWorkflowTemplate,
   missingWorkflowTemplatePairs,
@@ -216,27 +219,62 @@ test('0193: guard ที่เขียนทับยังมีด่าน�
     'ยังไม่ได้กัน line ของเวอร์ชันไม่ให้เปลี่ยน — เวอร์ชันจะหลุดสายจากแม่แบบได้');
 });
 
+test('workflowTemplateKeyFor: คู่ (สาย, ประเภทดีล) → คีย์แม่แบบ', () => {
+  assert.equal(workflowTemplateKeyFor('PRODUCT', 'NPD'), 'NPD');
+  assert.equal(workflowTemplateKeyFor('SERVICE', 'NPD'), 'SERVICE-NPD');
+  assert.equal(workflowTemplateKeyFor('SERVICE', 'RE-ORDER'), 'SERVICE-RE-ORDER');
+  assert.equal(workflowTemplateKeyFor('SERVICE', 'OTHER'), 'SERVICE-OTHER');
+  // ⭐ SCENT เดินเหมือนกันทั้งสองสาย = แม่แบบใบเดียว (มติผู้ใช้ 2026-08-20)
+  assert.equal(workflowTemplateKeyFor('PRODUCT', 'SCENT'), 'SCENT');
+  assert.equal(workflowTemplateKeyFor('SERVICE', 'SCENT'), 'SCENT');
+  // ⭐ ข้อสำคัญ: ไม่รู้สาย = null ห้ามตกไปเป็นสายสินค้าให้เอง
+  assert.equal(workflowTemplateKeyFor('', 'NPD'), null);
+  assert.equal(workflowTemplateKeyFor(null, 'RE-ORDER'), null);
+  assert.equal(workflowTemplateKeyFor('PRODUCT', ''), null);
+  assert.equal(workflowTemplateKeyFor('PRODUCT', 'ไม่รู้จัก'), null);
+});
+
+test('workflowTemplateLineOf / DealTypeOf: อ่านคู่กลับจากคีย์ได้', () => {
+  assert.equal(workflowTemplateLineOf('SCENT'), 'BOTH');
+  assert.equal(workflowTemplateLineOf('RE-ORDER'), 'PRODUCT');
+  assert.equal(workflowTemplateLineOf('SERVICE-RE-ORDER'), 'SERVICE');
+  assert.equal(workflowTemplateDealTypeOf('SERVICE-RE-ORDER'), 'RE-ORDER');
+  assert.equal(workflowTemplateDealTypeOf('NPD'), 'NPD');
+  // ทุกคีย์ต้องถอดกลับเป็นประเภทดีลที่มีจริง ไม่งั้นการ์ดที่หน้าตั้งค่าขึ้นป้ายผิดเงียบ ๆ
+  for (const key of WORKFLOW_TEMPLATE_KEYS) {
+    assert.ok(['SCENT', 'NPD', 'RE-ORDER', 'OTHER'].includes(workflowTemplateDealTypeOf(key)), key);
+    assert.equal(workflowTemplateKeyFor(
+      workflowTemplateLineOf(key) === 'BOTH' ? 'SERVICE' : workflowTemplateLineOf(key),
+      workflowTemplateDealTypeOf(key),
+    ), key);
+  }
+});
+
 test('findWorkflowTemplate: หาไม่เจอคืน null ไม่ตกไปหาสายอื่น', () => {
   const rows = [
     { line: 'PRODUCT', templateKey: 'NPD', publishedVersionId: 'workflow-npd-v2' },
-    { line: 'PRODUCT', templateKey: 'SCENT', publishedVersionId: 'workflow-scent-v1' },
+    { line: 'BOTH', templateKey: 'SCENT', publishedVersionId: 'workflow-scent-v1' },
   ];
   assert.equal(findWorkflowTemplate(rows, 'PRODUCT', 'NPD').publishedVersionId, 'workflow-npd-v2');
-  // ⭐ ข้อสำคัญ: SERVICE/NPD ยังไม่มี ต้องคืน null ไม่ใช่ยืม PRODUCT/NPD มาให้
+  // ⭐ ข้อสำคัญ: SERVICE/NPD ยังไม่มีแถว ต้องคืน null ไม่ใช่ยืม PRODUCT/NPD มาให้
   assert.equal(findWorkflowTemplate(rows, 'SERVICE', 'NPD'), null);
+  // SCENT ใบเดียวตอบได้ทั้งสองสาย
+  assert.equal(findWorkflowTemplate(rows, 'SERVICE', 'SCENT').publishedVersionId, 'workflow-scent-v1');
   assert.equal(findWorkflowTemplate(rows, '', 'NPD'), null);
   assert.equal(findWorkflowTemplate(rows, 'PRODUCT', ''), null);
   assert.equal(findWorkflowTemplate([], 'PRODUCT', 'NPD'), null);
 });
 
-test('missingWorkflowTemplatePairs: บอกช่องว่างครบทุกคู่ (line × templateKey)', () => {
-  // ผูกกับความยาวจริงของสองลิสต์ ไม่ใช่เลขตายตัว — เลข 6 เดิมแดงตอนเพิ่ม 'OTHER'
-  // เป็นคีย์ที่ 4 (mig 0249) ทั้งที่พฤติกรรมถูก
-  const allPairs = WORKFLOW_TEMPLATE_LINES.length * WORKFLOW_TEMPLATE_KEYS.length;
-  assert.equal(missingWorkflowTemplatePairs([]).length, allPairs);
-  const prodOnly = WORKFLOW_TEMPLATE_KEYS.map((templateKey) => ({ line: 'PRODUCT', templateKey }));
+test('missingWorkflowTemplatePairs: บอกช่องว่างครบทุกคีย์พร้อมป้ายสาย', () => {
+  // ผูกกับความยาวจริงของลิสต์ ไม่ใช่เลขตายตัว — เลขตายตัวเดิมแดงทุกครั้งที่เพิ่มคีย์
+  assert.equal(missingWorkflowTemplatePairs([]).length, WORKFLOW_TEMPLATE_KEYS.length);
+  const productOnly = ['SCENT', 'NPD', 'RE-ORDER', 'OTHER'].map((templateKey) => ({ templateKey }));
   assert.deepEqual(
-    missingWorkflowTemplatePairs(prodOnly),
-    WORKFLOW_TEMPLATE_KEYS.map((templateKey) => ({ line: 'SERVICE', templateKey })),
+    missingWorkflowTemplatePairs(productOnly),
+    [
+      { line: 'SERVICE', templateKey: 'SERVICE-NPD' },
+      { line: 'SERVICE', templateKey: 'SERVICE-RE-ORDER' },
+      { line: 'SERVICE', templateKey: 'SERVICE-OTHER' },
+    ],
   );
 });

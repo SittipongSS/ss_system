@@ -137,6 +137,11 @@ export default function DealCreateModal({
         if (!draft.dealType) {
           throw new Error(`กรุณาเลือกประเภทดีล (SCENT/NPD/RE-ORDER) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
         }
+        /* บังคับเลือกสายธุรกิจ — อีกครึ่งของกุญแจแม่แบบไทม์ไลน์ (mig 0275)
+           ฝั่ง server ปฏิเสธอยู่แล้ว ที่นี่บอกก่อนเสียเที่ยว (เหมือนประเภทดีล) */
+        if (!draft.line) {
+          throw new Error(`กรุณาเลือกสายธุรกิจ (สินค้า/บริการ) ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
+        }
         /* ช่องผู้รับผิดชอบโผล่เมื่อไร = ผู้ใช้รายนี้มอบดีลให้คนอื่นได้ ⇒ ต้องระบุให้ครบ
            (API ก็บังคับสำหรับ role ที่ไม่ได้ถือดีลเอง — ที่นี่บอกก่อนเสียเที่ยว) */
         if (owners.length > 0 && !draft.ownerId) {

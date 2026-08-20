@@ -196,6 +196,8 @@ export async function POST(request, { params }) {
       ownerId: bucket.ownerId || user.id || null,
       ownerName: bucket.ownerName || user.name || null,
       team: bucket.team,
+      // สายสหมิตร = ของที่ออกจากโรงงาน ไม่มีงานหน้างาน ⇒ สายสินค้าเสมอ (mig 0275)
+      line: 'PRODUCT',
       metadata,
     };
     const { data, error } = await supabase.from('sales_deals').insert(row).select().single();

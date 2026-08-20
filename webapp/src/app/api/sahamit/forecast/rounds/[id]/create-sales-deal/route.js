@@ -136,6 +136,8 @@ export async function POST(request, { params }) {
       ownerName,
       team: ownerTeam,
       dealType: 'RE-ORDER',
+      // สายสหมิตร = ของที่ออกจากโรงงาน ไม่มีงานหน้างาน ⇒ สายสินค้าเสมอ (mig 0275)
+      line: 'PRODUCT',
       metadata: {
         source: 'sahamit-forecast',
         projectType: 'RE-ORDER',
