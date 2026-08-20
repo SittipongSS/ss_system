@@ -603,7 +603,12 @@
   /* เฟส T: navigation = top bar 2 ชั้นตรึงบนสุด (แทน sidebar) — ความสูงรวมใช้เป็น
      offset ของ sticky element อื่น ๆ ทั้งระบบ */
   --topbar-h: 52px;                 /* ชั้นระบบ (โลโก้/สลับระบบ/ผู้ใช้) */
-  --topnav-menu-h: 44px;            /* ชั้นเมนูของระบบปัจจุบัน */
+  --topnav-menu-h: 44px;            /* ชั้นเมนูของระบบปัจจุบัน (โหมดแถบบน) */
+  /* โหมดแถบข้าง (≥1200px) — เมนูของระบบยืนข้างเนื้อหาแทนที่จะซ้อนใต้หัว
+     ⚠️ ตอนย่อ ราง 56px ต้องกว้างพอให้เป้ากด 40px + ระยะขอบสองข้าง ไม่ใช่แค่
+     ขนาดไอคอน · ค่านี้ถูกยุบเป็น 0 ในเปลือกไร้เมนู (ตั้งค่า · บัญชีของฉัน) */
+  --sidenav-w: 240px;
+  --sidenav-w-collapsed: 56px;
   /* ระยะเผื่อแถบเมนูสองชั้นสำหรับ `scroll-margin-top` ของจุดที่โค้ดสั่งเลื่อนไปหา
      (เปลี่ยนหน้าในตาราง/สลับแท็บ) — ไม่มีค่านี้ หัวตารางจะไปจอดใต้แถบเมนูพอดี */
   --scroll-anchor-top: calc(var(--topbar-h) + var(--topnav-menu-h) + var(--space-3));
@@ -628,7 +633,11 @@
      เป็น 40 อยู่แล้ว รอบนี้จึงให้ทั้งสองใช้ชั้นเดียวกันที่ 40 */
   --z-inline-menu: 40;     /* เมนูที่กางในหน้า ไม่ได้ portal ออกไป */
   --z-tooltip: 100;        /* tooltip ของกราฟ — ลอยเหนือเนื้อในการ์ดของตัวเอง */
-  --z-topnav: 100;         /* แถบบนสุด 2 ชั้น */
+  /* แถบเมนูของระบบ (แถวล่างบนจอแคบ · แถบข้างบนจอกว้าง) — อยู่ **ใต้** แถบบนสุด
+     เสมอ เพราะเมนูสลับระบบกางลงมาจากแถบบนแล้วต้องทับแถบนี้ได้ แต่ต้องเหนือ
+     ทุกอย่างในหน้า (หัวตารางตรึงใช้ 0–10 · แถบปุ่มตรึง 30 · เมนูในหน้า 40) */
+  --z-topnav-bar: 90;
+  --z-topnav: 100;         /* แถบบนสุด (ชั้นระบบ) */
   --z-topnav-menu: 120;    /* เมนูที่กางจากแถบบน */
   --z-account-menu: 125;
   /* แถบเมนูล่างบนมือถือ — ต้องทับเนื้อหา/แถบตรึงในหน้า แต่ต้องอยู่ **ใต้** แผ่นเมนู
@@ -1112,12 +1121,19 @@ button, select, input, textarea {
   .confirm-dialog-actions .btn { min-height: var(--ctl-h-touch); flex: 1; }
 }
 
-/* App Container Layout — เฟส T: top bar ตรึงบน + เนื้อหาเต็มความกว้าง (ไม่มี sidebar) */
+/* App Container Layout — แถบระบบตรึงบนสุดเสมอ · เมนูของระบบอยู่ใต้หัวบนจอแคบ
+   และย้ายไปยืนข้างเนื้อหาบนจอกว้าง (ดูบล็อก "โหมดแถบข้าง" ท้ายชุด topnav) */
 .app-container {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh / var(--ui-scale));
 }
+
+/* 🪤 `display: contents` ห้ามเปลี่ยนโดยไม่ดูโหมดแถบข้าง — กล่องนี้มีไว้ให้แถบเมนู
+   กับเนื้อหาจับคู่กันเป็นแถวได้ตอน ≥1200px เท่านั้น · ทุกความกว้างที่ต่ำกว่านั้น
+   มันต้อง "ไม่มีตัวตน" เพื่อให้ <nav> กับ <main> ยังเป็นลูกโดยตรงของ
+   .app-container (flex column) เหมือนก่อนแยกกล่องทุกประการ */
+.app-body { display: contents; }
 
 /* เปลือกไร้แถบเมนู — หน้าที่ไม่ได้เป็นของระบบไหน (ตั้งค่า · บัญชีของฉัน)
    แถบเมนูของระบบไม่ถูกวาด ความสูงที่กันไว้ให้มันจึงต้องเป็น 0 ด้วย ไม่งั้นเหลือ
@@ -1125,6 +1141,12 @@ button, select, input, textarea {
 .app-container.settings-context,
 .app-container.account-context {
   --topnav-menu-h: 0px;
+  /* 🪤 ต้องประกาศทับด้วยมือ ยุบ --topnav-menu-h อย่างเดียวไม่พอ — `--scroll-anchor-top`
+     ถูก substitute ตั้งแต่ตอนประกาศที่ `:root` (กติกา custom property: var() ข้างใน
+     ค่าถูกแทนที่ ณ ที่ที่ *ประกาศ* ไม่ใช่ที่ที่ *ใช้*) ลูกหลานจึงรับค่าที่คิดเสร็จแล้ว
+     มาเป็น 108px เสมอ ไม่ว่าจะเขียนทับ --topnav-menu-h ตรงไหน · วัด 2026-08-21:
+     จุดที่โค้ดสั่งเลื่อนไปหาในหน้าตั้งค่าจอดต่ำกว่าที่ควร 44px มาตลอด */
+  --scroll-anchor-top: calc(var(--topbar-h) + var(--space-3));
 }
 
 .main-content {
@@ -1170,9 +1192,9 @@ button, select, input, textarea {
   }
 }
 
-/* ── Top navigation (เฟส T): 2 ชั้นตรึงบนสุดทั้งระบบ — แทน sidebar เดิม ─────
-   ชั้นระบบ = พื้น navy (โทนโลโก้ตามมาตรฐานแบรนด์) · ชั้นเมนู = รายการของระบบ
-   ปัจจุบัน แนวนอน จอแคบเลื่อนข้างได้
+/* ── Top navigation ────────────────────────────────────────────────────────
+   ชั้นระบบ = พื้น navy (โทนโลโก้ตามมาตรฐานแบรนด์) ตรึงบนสุดทุกความกว้าง
+   ชั้นเมนูของระบบ = แถวแนวนอนใต้หัวบนจอแคบ · แถบข้างที่ย่อได้บนจอ ≥1200px
    ⚠️ เคยมี --topnav-h (ผลรวมความสูงสองชั้น) ประกาศไว้พร้อมคอมเมนต์ว่า sticky
    element อื่นอ้างได้ — ตรวจ 2026-07-29 พบว่าไม่มีใครอ้างเลยสักจุด ลบทิ้งแล้ว
    ถ้าวันหนึ่งต้องใช้จริงค่อยประกาศใหม่ตอนนั้น */
@@ -1185,6 +1207,15 @@ button, select, input, textarea {
   box-shadow: var(--glass-shadow);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+}
+
+/* 🪤 หน้าที่มีแถบเมนูใต้หัว: เส้นปิดท้าย + เงา ต้องเป็นของ **แถวเมนู** ไม่ใช่ของหัว
+   ตั้งแต่แถบเมนูถูกย้ายออกมานอก <header> เส้นของ .topnav จะไปโผล่คั่นกลาง
+   ระหว่างแถบ navy กับแถวเมนู ซึ่งเป็นเส้นที่มติ 2026-07-18 ตัดทิ้งไปแล้ว
+   (สองแถวต้องอ่านเป็น header ผืนเดียว) */
+.app-container.has-system-menu .topnav {
+  border-bottom: none;
+  box-shadow: none;
 }
 
 .topnav-system {
@@ -1307,11 +1338,21 @@ button, select, input, textarea {
 .topnav-system .user-name { color: #fff; }
 .topnav-system .user-avatar { background: rgba(255, 255, 255, 0.16); color: #fff; }
 
-/* ชั้นเมนูของระบบปัจจุบัน */
+/* ชั้นเมนูของระบบปัจจุบัน (โหมดแถบบน — ต่ำกว่า 1200px) */
 .topnav-menu {
+  /* 🪤 ตรึงเองแล้ว ไม่ได้ตรึงติดพ่วง <header> อีกต่อไป — แถบนี้อยู่นอก .topnav
+     (ดูเหตุผลใน AppLayout.js) จึงต้องมี sticky/z ของตัวเอง ไม่งั้นหัวตารางตรึง
+     ในหน้าจะไถขึ้นมาทับแถบเมนู · z ต้องต่ำกว่า --z-topnav เพื่อให้เมนูสลับระบบ
+     ที่กางลงมาจากแถบบนทับแถบนี้ได้ (ดูหมายเหตุที่โทเคน --z-topnav-bar) */
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: var(--z-topnav-bar);
   height: var(--topnav-menu-h);
   /* D1 (มติ 2026-07-18): ย้อมชั้นเมนูด้วยกรมท่าจาง ๆ ให้ไหลต่อจากแถบระบบเป็น
-     header ผืนเดียว — เส้นคั่นของชั้นนี้ตัดออก (เส้นปิดท้ายใช้ของ .topnav ตัวเดียว) */
+     header ผืนเดียว — ไม่มีเส้นคั่น**ด้านบน** · เส้นปิดท้าย + เงาของ header
+     ทั้งผืนมาจบที่ขอบล่างของแถบนี้ (ย้ายมาจาก .topnav ตอนแยกกล่อง) */
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--glass-shadow);
   background: color-mix(in srgb, var(--navy) 7%, var(--panel));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -1324,6 +1365,10 @@ button, select, input, textarea {
   scrollbar-width: thin;
 }
 .topnav-menu-spacer { flex: 1; }
+/* กล่องเลื่อนรายการเมนู — "ไม่มีตัวตน" ในโหมดแถบบน (ดูเหตุผลที่ .app-body) */
+.topnav-menu-scroll { display: contents; }
+/* ปุ่มย่อ/กางแถบข้าง — มีความหมายเฉพาะโหมดแถบข้าง (เปิดในบล็อก ≥1200px) */
+.sidenav-toggle { display: none; }
 /* เมนูระบบ = ภาษาเดียวกับแท็บ (มติผู้ใช้ 2026-07-18 — ตัวเลือก B):
    active = ตัวอักษรสี accent + แถบชี้ 3px ปลายมนชิดเส้นล่าง · hover = state layer จาง
    (เลิกกล่อง pill/เงา/เด้ง — ภาษานั้นสงวนให้ .segmented ที่เป็น "ตัวกรอง") */
@@ -1386,6 +1431,166 @@ button, select, input, textarea {
    ระบบไม่มีโทเคนสีระหว่าง --text-3 กับ --text-2 จึงต้องขึ้นมาที่ --text-2 (5.52:1 ผ่าน)
    แล้วย้าย "ความเบา" ไปไว้ที่ **น้ำหนักตัวอักษร** แทน ซึ่งไม่กระทบคอนทราสต์เลย */
 .topnav-utility-item { color: var(--text-2); font-weight: var(--fw-normal); }
+
+/* ── โหมดแถบข้าง (≥1200px) — เมนูของระบบยืนข้างเนื้อหา ย่อเป็นรางไอคอนได้ ────
+   ทำไมถึงเปลี่ยนที่ 1200px: แถวเมนูแนวนอนกินความสูง (สิ่งที่ขาด) เพื่อแลกความกว้าง
+   (สิ่งที่เหลือ) — พอจอกว้างพอ การย้ายไปยืนข้างจึงคืนความสูงให้เนื้อหาฟรี ๆ
+   ⚠️ **1200 ไม่ใช่ 1280** สองเหตุผล: (1) 1200 อยู่ในชุดจุดตัดที่ระบบใช้อยู่แล้ว
+   (breakpointScale.test.mjs คุมไว้ ค่านอกชุดต้องมีเหตุผลบันทึกกำกับ) · (2) จอ
+   1280px จริง ๆ ให้ media width ราว 1265px เพราะแถบเลื่อนกินไป ตั้ง 1280 แล้ว
+   โน้ตบุ๊กจอ 1280 จะ **ไม่เข้า** โหมดแถบข้างเลยทั้งที่เป็นกลุ่มเป้าหมายตรง ๆ
+   ต่ำกว่า 1200 ยังเป็นแถบบนเหมือนเดิม เพราะเหลือเนื้อหา <960px แล้วตารางเริ่มอึดอัด
+   ⚠️ สถานะย่อ/กางอยู่ที่ `data-sidenav` บน <html> ไม่ใช่คลาสบน .app-container —
+   สคริปต์ก่อน hydrate ใน app/layout.js ต้องตั้งค่าได้ก่อนเพนต์ (ท่าเดียวกับธีม) */
+@media (min-width: 1200px) {
+  .app-container.has-system-menu {
+    /* แถบเมนูไม่กินความสูงใต้หัวแล้ว — ของที่วัดจากค่านี้ (เช่น .previewAside ใน
+       หน้ามาตรฐานเอกสาร) ต้องเห็น 0 · `--scroll-anchor-top` ต้องเขียนทับแยกอีกที
+       ด้วยเหตุผลที่อธิบายไว้ที่บล็อกเปลือกไร้แถบเมนู */
+    --topnav-menu-h: 0px;
+    --scroll-anchor-top: calc(var(--topbar-h) + var(--space-3));
+  }
+  /* หัวกลับมาเป็นแถวเดียวโดด ๆ — เส้นปิดท้าย/เงาจึงกลับมาเป็นของมันเหมือนเดิม
+     (ตรงข้ามกับโหมดแถบบนที่ยกไปไว้ที่ขอบล่างของแถวเมนู) */
+  .app-container.has-system-menu .topnav {
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--glass-shadow);
+  }
+  :root[data-sidenav="collapsed"] .app-container.has-system-menu {
+    --sidenav-w: var(--sidenav-w-collapsed);
+  }
+
+  .app-body {
+    display: flex;
+    /* ⚠️ ต้อง flex-start — ค่าตั้งต้น `stretch` จะยืดแถบข้างให้สูงเท่าเนื้อหา
+       ทั้งหน้า (บางหน้ายาวหลายพัน px) แล้ว `position: sticky` ของมันจะไม่มีอะไร
+       ให้ยึดเพราะกล่องตัวเองสูงพอที่จะไม่เคยเลื่อนพ้นจอ */
+    align-items: flex-start;
+  }
+  .main-content { flex: 1; }
+
+  .topnav-menu {
+    flex: 0 0 var(--sidenav-w);
+    width: var(--sidenav-w);
+    /* 🪤 บวก/ลบ 1px คือ **เส้นขอบล่างของ .topnav** ซึ่งไม่ได้นับอยู่ใน --topbar-h
+       (52px = ความสูงเนื้อใน) — ไม่หักออก แถบข้างจะยาวเลยขอบจอไป 1px และก้นแถบ
+       (ปุ่มย่อ) จะถูกขอบล่างของหน้าต่างกินไปครึ่งเส้น · โหมดแถบบนไม่ต้องหัก
+       เพราะหน้าที่มีแถบเมนู เส้นของ .topnav ถูกตัดออกไปแล้ว */
+    top: calc(var(--topbar-h) + 1px);
+    height: calc(100vh / var(--ui-scale) - var(--topbar-h) - 1px);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-0-5);
+    padding: var(--space-3) var(--space-2);
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    box-shadow: none;
+    /* ตัวรางไม่เลื่อนเอง — คนเลื่อนคือ .topnav-menu-scroll ข้างใน เพื่อให้ปุ่ม
+       ย่อ/กางที่อยู่นอกกล่องนั้นติดก้นรางตลอด */
+    overflow: hidden;
+    transition: flex-basis var(--motion-medium), width var(--motion-medium);
+  }
+  .topnav-menu-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    /* 🪤 min-height: 0 ห้ามถอด — flex item มีพื้นความสูงเป็น `auto` ตามสเปก
+       กล่องจะยืดตามรายการแล้วไม่มีวันเลื่อน (ล้นทะลุรางออกไปเฉย ๆ) */
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  /* เมนูในแถบข้าง = แถวเต็มความกว้าง ไม่ใช่แท็บ — ขีดชี้ย้ายจากขอบล่างไปขอบซ้าย
+     และเพิ่มพื้นจาง ๆ ให้แถวที่ active เพราะขีด 3px เดี่ยว ๆ ในคอลัมน์ยาว ๆ
+     หาไม่เจอเท่ากับตอนอยู่บนแถวแนวนอนที่มีแค่ 5–8 ชิ้นเรียงกัน */
+  .topnav-item,
+  .sidenav-toggle {
+    min-height: 38px;
+    padding: 0 var(--space-2-5);
+    border-radius: var(--radius);
+    gap: var(--space-2-5);
+  }
+  .topnav-item .ico { flex: none; }
+  /* ป้ายชื่อเมนู (span ตัวแรก) — ชื่อไทยยาวกว่าราง 240px ได้ ต้องตัดด้วยจุดไข่ปลา
+     ไม่ใช่ดันแถวให้ล้น (ชื่อเต็มอยู่ใน title อยู่แล้ว) */
+  .topnav-item > span:not(.topnav-count) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topnav-item.active { background: var(--accent-soft); }
+  .topnav-item.active::after {
+    left: 0;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    border-radius: 0 3px 3px 0;
+  }
+  .topnav-count { margin-left: auto; flex: none; }
+
+  .sidenav-toggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+    /* ⚠️ --text-2 ไม่ใช่ --text-3 ด้วยเหตุผลเดียวกับ .topnav-utility-item —
+       --text-3 บนพื้นแถบเมนูวัดได้ 4.21:1 ในธีมสว่าง = ตก AA */
+    color: var(--text-2);
+    font-family: inherit;
+    font-size: var(--fs-7);
+    font-weight: var(--fw-normal);
+    cursor: pointer;
+    flex: none;
+    transition: color var(--motion-fast), background var(--motion-fast);
+  }
+  .sidenav-toggle svg { flex: none; }
+  .sidenav-toggle:hover { color: var(--text); }
+  .sidenav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* ── ย่อแล้ว: เหลือรางไอคอน — ชื่อเมนูอ่านจาก tooltip (title) ── */
+  :root[data-sidenav="collapsed"] .topnav-menu { padding-inline: var(--space-2); }
+  :root[data-sidenav="collapsed"] .topnav-item,
+  :root[data-sidenav="collapsed"] .sidenav-toggle {
+    justify-content: center;
+    padding-inline: 0;
+    gap: 0;
+  }
+  :root[data-sidenav="collapsed"] .topnav-item > span:not(.topnav-count),
+  :root[data-sidenav="collapsed"] .sidenav-toggle > span { display: none; }
+  /* ป้ายจำนวนไปเกาะมุมไอคอน — รางแคบเกินกว่าจะวางต่อท้ายได้ (ท่าเดียวกับแถบล่าง
+     มือถือ ดู .mbn-count)
+     ⚠️ **สีส้มที่นี่ ไม่ใช่เทาเหมือนตอนกางอยู่** — กติกา "ป้ายเทาคงที่" มีไว้กัน
+     ป้ายแข่งกับขีดชี้ในแถวที่*มีชื่อเมนูอยู่แล้ว* พอย่อเหลือแต่ไอคอน ป้ายกลายเป็น
+     สัญญาณเดียวที่บอกว่า "ตรงนี้มีของค้าง" เทาบนพื้นกรมท่าจึงจมหายไปเฉย ๆ
+     (เหตุผลเดียวกับที่แถบล่างมือถือซึ่งเป็นไอคอนล้วนใช้สีส้มมาตั้งแต่แรก)
+     ขีดชี้ของแถวที่ active อยู่ **ขอบซ้าย** ป้ายอยู่ **มุมขวาบน** จึงไม่ติดกัน */
+  :root[data-sidenav="collapsed"] .topnav-count {
+    position: absolute;
+    top: 0;
+    right: var(--space-1);
+    margin-left: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: var(--fs-2);
+    font-weight: var(--fw-bold);
+  }
+}
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
@@ -1453,6 +1658,13 @@ button, select, input, textarea {
 
   .topnav-system { height: var(--topbar-h); padding: 0 var(--space-2-5); gap: var(--space-2); }
   .topnav-menu { display: none; }
+  /* 🪤 แถวเมนูถูกซ่อนทั้งแถว (มือถือใช้แถบล่างแทน) — เส้นปิดท้าย + เงาของหัวจึงต้อง
+     กลับมาอยู่ที่ .topnav เอง ไม่งั้นหัวลอยไม่มีอะไรคั่นกับเนื้อหาเลย
+     (ทั้งสองอย่างถูกยกไปไว้ที่ขอบล่างของแถวเมนูในโหมดแถบบน) */
+  .app-container.has-system-menu .topnav {
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--glass-shadow);
+  }
   .topnav-brand-img { height: 26px; }
   .topnav-sys { min-width: 0; }
   .topnav-sys-btn {

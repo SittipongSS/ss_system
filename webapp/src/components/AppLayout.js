@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -51,6 +51,12 @@ export default function AppLayout({ children }) {
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  /* แถบเมนูของระบบบนจอกว้าง (≥1200px) = แถบข้างที่ย่อได้ — สถานะย่อ/กางเก็บที่
+     `data-sidenav` บน <html> ไม่ใช่ที่ state ตัวนี้ตัวเดียว เพราะสคริปต์ก่อน
+     hydrate ใน app/layout.js ต้องอ่านมันได้ก่อนเพนต์ (ท่าเดียวกับธีม) ไม่งั้น
+     แถบจะกางเต็มแล้วหุบให้เห็นทุกครั้งที่โหลดหน้า · state นี้มีไว้ให้ปุ่มสลับ
+     ไอคอน/aria ตามเท่านั้น */
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -191,6 +197,19 @@ export default function AppLayout({ children }) {
       localStorage.theme = 'dark';
       setIsDark(true);
     }
+  };
+
+  /* อ่านสถานะแถบข้างที่สคริปต์ก่อนเพนต์ตั้งไว้ ให้ปุ่มสลับเริ่มต้นตรงกับของจริง
+     (เรนเดอร์ฝั่ง server ไม่มีทางรู้ค่านี้ จึงต้องมาเก็บตอน mount) */
+  useEffect(() => {
+    setNavCollapsed(document.documentElement.getAttribute('data-sidenav') === 'collapsed');
+  }, []);
+
+  const toggleSideNav = () => {
+    const next = !navCollapsed;
+    document.documentElement.setAttribute('data-sidenav', next ? 'collapsed' : 'expanded');
+    try { localStorage.sidenav = next ? 'collapsed' : 'expanded'; } catch {}
+    setNavCollapsed(next);
   };
 
   const handleLogout = async () => {
@@ -506,7 +525,7 @@ export default function AppLayout({ children }) {
     // เมนูที่ยังไม่เปิด — จางและกดไม่ได้ (ดูหมายเหตุที่นิยามเมนูใน allGroups)
     if (item.disabled) {
       return (
-        <span key={item.href} aria-disabled="true" title={SYSTEM_DISABLED_NOTE} className={`topnav-item is-disabled ${extraClass}`.trim()}>
+        <span key={item.href} aria-disabled="true" title={`${item.name} — ${SYSTEM_DISABLED_NOTE}`} className={`topnav-item is-disabled ${extraClass}`.trim()}>
           <Icon size={16} className="ico" />
           <span>{item.name}</span>
         </span>
@@ -521,6 +540,8 @@ export default function AppLayout({ children }) {
         href={navHrefFor(item, count)}
         key={item.href}
         className={`topnav-item ${active ? 'active' : ''} ${extraClass}`.trim()}
+        // ⭐ ห้ามถอด — โหมดแถบข้างที่ย่อแล้วเหลือแต่ไอคอน ชื่อเมนูอยู่ในนี้ที่เดียว
+        title={item.name}
         aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
       >
         <Icon size={16} className="ico" />
@@ -531,8 +552,8 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
-      {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
+    <div className={`app-container${isBareShell ? '' : ' has-system-menu'}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
+      {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
@@ -627,46 +648,76 @@ export default function AppLayout({ children }) {
           </div>
         </div>
 
-        {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
-        {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
-          {flowItems.map((item) => renderMenuItem(item))}
-          <span className="topnav-menu-spacer" />
-          {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
-          {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
-          {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
-            <Link
-              href="/sa/targets"
-              className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
-            >
-              <Target size={16} className="ico" />
-              <span>วางเป้า</span>
-            </Link>
-          )}
-        </nav>}
       </header>
 
-      {/* Main Content Area */}
-      <main className="main-content">
-        <div className="page">
-          <RoleContext.Provider value={role}>
-            <ExtraCapsContext.Provider value={extraCaps}>
-              <TeamContext.Provider value={team}>
-                <TeamsContext.Provider value={teams}>
-                  <DepartmentContext.Provider value={department}>
-                    {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
-                        ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
-                        ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
-                        /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
-                    {isSettingsContext
-                      ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
-                      : children}
-                  </DepartmentContext.Provider>
-                </TeamsContext.Provider>
-              </TeamContext.Provider>
-            </ExtraCapsContext.Provider>
-          </RoleContext.Provider>
-        </div>
-      </main>
+      {/* 🪤 แถบเมนูของระบบอยู่ **นอก** <header> โดยเจตนา — บนจอกว้างมันต้องยืนข้าง
+          เนื้อหา ไม่ใช่ซ้อนใต้หัว และ .topnav มี `backdrop-filter` ซึ่งกลายเป็น
+          containing block ให้ลูกที่ position: fixed/absolute ทั้งหมด = ย้ายออกมา
+          ข้างนอกเท่านั้นถึงจะวางเป็นแถบข้างได้จริง
+          `.app-body` เป็น `display: contents` บนจอแคบ แถบเมนูกับเนื้อหาจึงยัง
+          เรียงเป็นแถวบน-ล่างเหมือนเดิมเป๊ะ พอถึง ≥1200px มันถึงกลายเป็นแถวคู่ */}
+      <div className="app-body">
+        {/* ชั้นเมนูของระบบปัจจุบัน — <1200px แถบแนวนอน (จอแคบเลื่อนข้างได้) ·
+            ≥1200px แถบข้างที่ย่อเป็นรางไอคอนได้ */}
+        {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+          {/* 🪤 กล่องเลื่อนครอบเฉพาะ "รายการเมนู" ปุ่มย่อ/กางอยู่นอกกล่องโดยเจตนา —
+              จอเตี้ย (เช่น 1280×560) รายการยาวกว่าราง ถ้าปุ่มอยู่ในกล่องเดียวกัน
+              มันจะไถหายไปใต้ขอบล่างจนกดไม่ได้ · บนจอแคบกล่องนี้เป็น
+              `display: contents` = ไม่มีตัวตน รายการจึงยังเลื่อนแนวนอนบนแถบบน
+              ได้เหมือนเดิมทุกประการ */}
+          <div className="topnav-menu-scroll">
+            {flowItems.map((item) => renderMenuItem(item))}
+            <span className="topnav-menu-spacer" />
+            {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
+            {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
+            {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
+              <Link
+                href="/sa/targets"
+                title="วางเป้า"
+                className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
+              >
+                <Target size={16} className="ico" />
+                <span>วางเป้า</span>
+              </Link>
+            )}
+          </div>
+          {/* ปุ่มย่อ/กางแถบข้าง — มีเฉพาะโหมดแถบข้าง (CSS ซ่อนทิ้งบนจอแคบ)
+              อยู่นอกกล่องเลื่อน จึงติดก้นรางเสมอไม่ว่าเมนูจะยาวแค่ไหน */}
+          <button
+            type="button"
+            className="sidenav-toggle"
+            onClick={toggleSideNav}
+            aria-expanded={!navCollapsed}
+            title={navCollapsed ? 'กางแถบเมนู' : 'ย่อแถบเมนู'}
+          >
+            {navCollapsed ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}
+            <span>ย่อแถบเมนู</span>
+          </button>
+        </nav>}
+
+        {/* Main Content Area */}
+        <main className="main-content">
+          <div className="page">
+            <RoleContext.Provider value={role}>
+              <ExtraCapsContext.Provider value={extraCaps}>
+                <TeamContext.Provider value={team}>
+                  <TeamsContext.Provider value={teams}>
+                    <DepartmentContext.Provider value={department}>
+                      {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
+                          ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
+                          ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
+                          /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
+                      {isSettingsContext
+                        ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
+                        : children}
+                    </DepartmentContext.Provider>
+                  </TeamsContext.Provider>
+                </TeamContext.Provider>
+              </ExtraCapsContext.Provider>
+            </RoleContext.Provider>
+          </div>
+        </main>
+      </div>
 
       {/* แถบเมนูล่างบนมือถือ — เมนูของระบบครบทุกตัว แบ่งหน้าปัดเอา (มติ 2026-08-02)
           ไม่โผล่ในเปลือกไร้เมนู (ตั้งค่า · บัญชีของฉัน) เพราะที่นั่นไม่มีเมนูของระบบ */}
