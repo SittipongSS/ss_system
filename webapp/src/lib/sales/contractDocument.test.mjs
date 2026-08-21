@@ -211,5 +211,7 @@ test('เอกสารบันทึกเพิ่มเติมใช้�
   // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
   assert.match(html, /classList\.add\('signSheet'\)/);
   assert.match(html, /\.contract \.clauseText \{[^}]*text-justify: inter-character/);
+  // บรรทัดวันที่ใต้หัวเรื่องชิดขวา (มติผู้ใช้ 2026-08-21)
+  assert.match(html, /\.contract \.docSubtitle \{[^}]*text-align: right/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });

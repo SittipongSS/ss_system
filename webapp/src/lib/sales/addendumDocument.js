@@ -68,7 +68,9 @@ const ADDENDUM_CSS = `
   /* เลขที่บันทึกยาวกว่าเลขสัญญา (ต่อท้ายด้วย -A1) ⇒ คืนที่จากคอลัมน์ป้าย ไม่งั้นเลขตกบรรทัด */
   .contract .identityBlock dl div { grid-template-columns: 28mm minmax(0, 1fr); }
   /* หัวเรื่องของบันทึกอยู่กลางหน้าเหมือนชื่อสัญญา แต่มีบรรทัดวันที่ต่อท้าย */
-  .contract .docSubtitle { margin: -4mm 0 6mm; color: var(--doc-muted); font-size: 9.5pt; text-align: center; }
+  /* บรรทัดวันที่ชิดขวา (มติผู้ใช้ 2026-08-21) — ต้นฉบับวางวันที่ไว้คนละแถวกับหัวเรื่อง
+     ที่กลางหน้า ⇒ ชิดขวาแยกสองอย่างออกจากกันชัดกว่าวางซ้อนกลางทั้งคู่ */
+  .contract .docSubtitle { margin: -4mm 0 6mm; color: var(--doc-muted); font-size: 9.5pt; text-align: right; }
 `;
 
 export function buildAddendumHTML(addendum, { contract = {}, company = {}, options = {} } = {}) {
