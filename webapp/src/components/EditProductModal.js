@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
 import ProductForm, { PRODUCT_EDIT_FIELDS } from "@/components/database/ProductForm";
-import { brandTh, brandEn, normalizeBrands } from "@/lib/master/brands";
+import { brandTh, brandEn, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { isAutoFgCode } from "@/lib/master/masterCodes";
 import { fmtMoney } from "@/lib/format";
 
@@ -80,7 +80,10 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!form.customerId) { setError("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!form.brandName?.trim() && !form.brandNameEn?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
+    // แบรนด์บังคับเฉพาะกลุ่มที่มีช่องแบรนด์ (brands.js) — โมดัลแก้ไม่มีสวิตช์โหมดรหัส
+    // หมวดจึงอ่านจากช่องหมวดก่อน แล้วค่อยถอยไปอ่านจากรหัส FG เหมือนที่ ProductForm ทำ
+    if (hasBrandField({ categoryCode: form.categoryCode, fgCode: form.fgCode })
+      && !form.brandName?.trim() && !form.brandNameEn?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!form.productDescription?.trim() && !form.productDescriptionEn?.trim()) {
       setError("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;

@@ -119,7 +119,7 @@ test('ชื่อเอกสารอยู่กลางหน้าเน�
   assert.match(html, /20 เดือน สิงหาคม พ.ศ. 2569/);
   // ไม่พิมพ์รุ่นแม่แบบบนกระดาษ — สัญญาไม่ใช่แบบฟอร์มควบคุมที่ต้องโชว์รหัส/รุ่น
   assert.doesNotMatch(html, /แม่แบบ scent_design/);
-  assert.doesNotMatch(html, /Ver\.20260708/);
+  assert.doesNotMatch(html, /Ver\.2026/);
 });
 
 test('ข้อมูลคู่สัญญาและวันที่พิมพ์เป็นตัวหนา · ตัวเลขเงื่อนไขไม่หนา', () => {
@@ -149,4 +149,29 @@ test('ย่อหน้าปิดท้ายต้องอยู่แผ�
   assert.match(block[1], /ทั้งผู้ว่าจ้างและผู้รับจ้างต่างยึดถือไว้ฝ่ายละฉบับ/);
   assert.match(block[1], /class="signGrid"/);
   assert.match(block[1], /พยาน/);
+});
+
+test('หน้าพรีวิวมีปุ่มพิมพ์ + ตัวสลับภาษา · อังกฤษยังกดไม่ได้', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.match(html, /class="toolbar no-print"/);
+  assert.match(html, /btn-print/);
+  assert.match(html, />พิมพ์เอกสาร</);
+  assert.match(html, /class="langSwitch"/);
+  /* ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ ⇒ ปุ่มต้อง **มีแต่กดไม่ได้พร้อมเหตุผล**
+     ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) และไม่ใช่กดได้แล้วได้เอกสารครึ่งภาษา */
+  assert.match(html, /data-lang="en"[^>]*disabled/);
+  assert.match(html, /ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ/);
+});
+
+test('ช่องลงนามชิดท้ายกระดาษ · เลขที่สัญญาใช้สี accent · ชื่อเอกสารไม่ใหญ่เกิน', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  // ดันเฉพาะช่องเซ็นลงล่าง และเปิด flex ได้หลังตัดหน้าเสร็จเท่านั้น (คลาสจากสคริปต์)
+  assert.match(html, /classList\.add\('signSheet'\)/);
+  assert.match(html, /\.contract \.sheet\.signSheet \.signPage \.signGrid \{ margin-top: auto/);
+  assert.match(html, /\.contract \.identityBlock dl div:first-child dd \{ color: var\(--doc-accent\)/);
+  assert.match(html, /\.contract \.docTitle \{[^}]*font-size: 13\.5pt/);
+  // ช่องพยานต้องห่างจากช่องคู่สัญญาพอให้ลายเซ็นไม่ทับกัน
+  assert.match(html, /\.contract \.signGrid \{[^}]*gap: 20mm 8mm/);
+  // accent ของสัญญาต้องไม่ใช่ navy — เกือบเท่าสีตัวหนังสือ จนสี accent ไม่มีความหมาย
+  assert.match(html, /--doc-accent:#ad5d43/);   // สีเดียวกับใบเสนอราคา
 });

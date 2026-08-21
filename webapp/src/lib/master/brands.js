@@ -3,6 +3,8 @@
 // แปลงเป็น array ของ object {th, en}. helper นี้อ่านได้ทั้งสองรูป เพื่อไม่ให้
 // โค้ดที่ยังไม่รัน migration หรือแถวเก่าพัง (defensive normalize ทุกจุดที่ใช้).
 
+import { categoryOf } from "@/lib/master/categoryOf";
+
 // ชื่อ TH ของสมาชิกแบรนด์หนึ่งตัว (รับได้ทั้ง "ABC" และ {th,en}).
 export function brandTh(b) {
   if (b == null) return "";
@@ -98,4 +100,39 @@ export function brandEnFor(brands, th) {
   if (!key || !Array.isArray(brands)) return "";
   const hit = brands.find((b) => brandTh(b).toLowerCase() === key);
   return hit ? brandEn(hit) : "";
+}
+
+// ── กลุ่มหลักที่ "มีแบรนด์ให้พูดถึง" (มติผู้ใช้ 2026-08-21) ──────────────────
+// 03 ค่าออกแบบ · 04 รายได้อื่นๆ ไม่ใช่ของที่วางขายใต้แบรนด์ของลูกค้า แต่เป็นค่าบริการ
+// ที่ออกให้ลูกค้าหนึ่งรายต่อหมวดรอง (รหัสไม่มีเลขรันด้วยเหตุผลเดียวกัน — masterCodes.js)
+// ⇒ **ฟอร์มไม่มีช่องแบรนด์เลย** ไม่ใช่แค่ไม่บังคับกรอก · เหตุผลเดียวกับที่ถอดช่อง
+// ปริมาตร/หน่วยบรรจุออกจากสองกลุ่มนี้ (units.js): ช่องบังคับที่ไม่มีคำตอบจริง คนกรอก
+// จะหาอะไรมาใส่ให้ผ่าน แล้วทะเบียนก็เก็บค่าหลอกไว้ทั้งชุด
+//
+// ⚠️ เลขหมวดตายตัวชุดเดียวกับ PACKAGING_MAIN_CATEGORIES (units.js) — ไม่รู้หมวด =
+// ถือว่ามี เพื่อไม่ให้ช่องหายเงียบ ๆ กับแถวเก่าที่อ่านหมวดไม่ออก
+export const BRAND_MAIN_CATEGORIES = Object.freeze(["01", "02"]);
+
+/**
+ * สินค้าตัวนี้มีช่องแบรนด์ไหม — รับได้ทั้ง record ({ categoryCode, fgCode })
+ * และรหัสหมวดตรง ๆ ('03-001' หรือ '03')
+ */
+export function hasBrandField(recordOrCode) {
+  const raw = typeof recordOrCode === "string"
+    ? recordOrCode
+    : (recordOrCode?.categoryCode || categoryOf(recordOrCode?.fgCode));
+  const mainCode = String(raw || "").slice(0, 2);
+  if (!mainCode) return true;
+  return BRAND_MAIN_CATEGORIES.includes(mainCode);
+}
+
+// ช่องแบรนด์ที่ต้องล้างเมื่อสินค้าอยู่กลุ่มที่ไม่มีแบรนด์ — ใช้ทั้งตอนสร้างและตอนแก้
+// (ฝั่ง server) · ซ่อนช่องบนจออย่างเดียวไม่พอ: POST/PATCH ยิงตรงได้ และสินค้าที่ย้าย
+// หมวดข้ามกลุ่มจะพาชื่อแบรนด์เก่าติดไปโผล่บนเอกสารของหมวดที่ไม่มีแบรนด์
+export const BRAND_FIELDS = Object.freeze(["brandName", "brandNameEn"]);
+
+/** คืน patch ที่ล้างช่องแบรนด์ (ว่างเปล่าเมื่อกลุ่มนั้นมีแบรนด์อยู่แล้ว) */
+export function clearedBrandFields(recordOrCode) {
+  if (hasBrandField(recordOrCode)) return {};
+  return Object.fromEntries(BRAND_FIELDS.map((key) => [key, null]));
 }

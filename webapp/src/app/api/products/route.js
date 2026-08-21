@@ -9,6 +9,7 @@ import {
   fgCodePrefix, insertProductWithCode,
 } from '@/lib/master/masterCodes';
 import { clearedPackagingFields, hasPackagingFields } from '@/lib/master/units';
+import { clearedBrandFields } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
@@ -227,6 +228,8 @@ export async function POST(request) {
     // กลุ่ม 03/04 ไม่มีสามช่องนี้บนฟอร์ม — ล้างที่ server ด้วย ไม่ใช่หวังพึ่งจอ เพราะ
     // POST ยิงตรงได้ และช่องที่ซ่อนอยู่ยังส่งค่าว่างติดมาในบอดี้ (volume: '' ลง numeric ไม่ได้)
     ...clearedPackagingFields(categoryCode),
+    // กลุ่ม 03/04 ไม่มีช่องแบรนด์บนฟอร์ม — ล้างที่ server ด้วยเหตุผลเดียวกัน
+    ...clearedBrandFields(categoryCode),
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
     retailPriceIncVat:
       retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,

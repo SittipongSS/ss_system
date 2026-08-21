@@ -195,6 +195,9 @@ const CONTRACT_CSS = `
      ให้เยื้องกันคนละแถว · กว้างพอให้ป้ายอยู่บรรทัดเดียว แล้วค่าชิดขวาตรงกันทุกแถว */
   .contract .identityBlock dl div { grid-template-columns: 36mm minmax(0, 1fr); }
   .contract .identityBlock dd { text-align: right; }
+  /* เลขที่สัญญา = ตัวชี้ใบนี้ ⇒ ใช้สี accent ให้กวาดตาเจอก่อนอย่างอื่นบนหัวใบ
+     (แถวแรกเสมอ — ลำดับแถวประกาศอยู่ที่ rows ของ documentHeader ด้านล่าง) */
+  .contract .identityBlock dl div:first-child dd { color: var(--doc-accent); }
   /* ⭐ เอกสารนี้ซ่อนชื่อเอกสารในหัวใบ (ย้ายไปกลางหน้า) ⇒ ฝั่งขวาเหลือแค่สองแถวแล้ว
      ลอยไปกองอยู่บนสุด ไม่สมดุลกับบล็อกบริษัทฝั่งซ้ายที่ยาวลงมาถึงเส้นคั่น
      ⇒ ดันแถวเลขที่/อ้างอิงลงไปอยู่ **ก้นหัวใบ** ให้จบระดับเดียวกับฝั่งซ้าย */
@@ -207,8 +210,8 @@ const CONTRACT_CSS = `
   .contract .identityBlock { display: flex; flex-direction: column; }
   .contract .identityBlock dl { margin-top: auto; }
 
-  .contract .docTitle { margin: 0 0 7mm; color: var(--doc-accent); font-size: 16pt;
-    line-height: 1.45; text-align: center; }
+  .contract .docTitle { margin: 0 0 6mm; color: var(--doc-accent); font-size: 13.5pt;
+    line-height: 1.4; text-align: center; }
 
   .contract .contractBody { display: block; }
   .contract .blk { break-inside: avoid-page; page-break-inside: avoid; }
@@ -233,7 +236,16 @@ const CONTRACT_CSS = `
   .contract .clauseTitle { display: block; color: var(--doc-text); font-size: 9.5pt; }
 
   .contract .signPage > .closing + .closing { margin-top: 3.5mm; }
-  .contract .signGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm 8mm; margin-top: 12mm; }
+  /* ⭐ ช่องลงนามชิดท้ายกระดาษ (มติผู้ใช้ 2026-08-21) — ดันเฉพาะช่องลงนามลงล่าง
+     ย่อหน้าปิดท้ายยังอยู่ต่อจากเนื้อตามปกติ
+     ⚠️ เปิด flex ได้เฉพาะ **หลังตัดหน้าเสร็จ** (คลาส signSheet ที่สคริปต์ติดให้) —
+     ถ้าเปิดตั้งแต่แรก flex จะบีบบล็อกให้พอดีแผ่น แล้วตัววัด "ล้นไหม" จะไม่มีวันจริง */
+  .contract .sheet.signSheet .sheetContent { display: flex; flex-direction: column; }
+  .contract .sheet.signSheet .signPage { display: flex; flex: 1; flex-direction: column; }
+  .contract .sheet.signSheet .signPage .signGrid { margin-top: auto; }
+  /* ระยะแถว 20mm (มติผู้ใช้ 2026-08-21) — ช่องพยานต้องห่างจากช่องคู่สัญญาพอให้
+     เซ็นแล้วลายเซ็นไม่ทับกัน · ระยะคอลัมน์ยัง 8mm เพราะสองฝั่งอ่านเป็นคู่กัน */
+  .contract .signGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20mm 8mm; margin-top: 12mm; }
   .contract .signBox { text-align: center; }
   .contract .signLine { font-size: 9.5pt; }
   .contract .signName { margin-top: 1.5mm; font-size: 9.5pt; }
@@ -305,6 +317,9 @@ const PAGINATE_SCRIPT = `
       for (var k = 0; k < moving.length; k += 1) content.appendChild(moving[k]);
     }
 
+    var signBlock = pages.querySelector('.signPage');
+    if (signBlock) signBlock.closest('.sheet').classList.add('signSheet');
+
     var list = pages.querySelectorAll('.sheet');
     for (var f = 0; f < list.length; f += 1) {
       var cells = list[f].querySelectorAll('.footer span');
@@ -336,6 +351,19 @@ const PAGINATE_SCRIPT = `
 })();
 `;
 
+
+/* ── แถบเครื่องมือของหน้าพรีวิว ────────────────────────────────────────────
+   ปุ่มพิมพ์มาจากเปลือกอยู่แล้ว · ที่เพิ่มคือปุ่มสลับภาษาแบบเดียวกับใบเสนอราคา
+   ⚠️ **อังกฤษยังเทาไว้** (มติผู้ใช้ 2026-08-21) — ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ
+   ปุ่มที่กดแล้วได้เอกสารครึ่งไทยครึ่งอังกฤษแย่กว่าปุ่มที่กดไม่ได้แล้วบอกเหตุผล
+   ⇒ ปุ่มมี `disabled` + `title` อธิบาย ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) */
+function contractToolbarControls() {
+  return '<div class="langSwitch" role="group" aria-label="ภาษาเอกสาร">'
+    + '<button type="button" data-lang="th" aria-pressed="true">ไทย</button>'
+    + '<button type="button" data-lang="en" aria-pressed="false" disabled'
+    + ' title="ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ">English</button>'
+    + '</div>';
+}
 
 // options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (ตอนฝังเป็นพรีวิวใน iframe/ตรึงเป็น snapshot)
 // ⚠️ ตอน "ออกสัญญา" ต้องเรียกด้วย toolbar: false เสมอ — HTML ที่ตรึงไว้คือกระดาษ
@@ -406,13 +434,17 @@ export function buildContractHTML(contract, { company = {}, quotation = null, op
 
   return renderDocumentHTML({
     title: documentFileName(contract.contractNo || 'ร่างสัญญา', contract.customerName, contract.metadata?.dealTitle),
-    accentKey: 'navy',
+    /* สีเดียวกับใบเสนอราคา (มติผู้ใช้ 2026-08-21) — สัญญากับใบเสนอราคาเป็นเอกสาร
+       คู่กันในสายตาลูกค้า (ออกสัญญาจากใบที่อนุมัติ) จึงใช้สีเดียวกันทั้งคู่
+       ⚠️ ห้ามกลับไป navy — #1f3551 เกือบเท่าสีตัวหนังสือ (#202833) ใส่แล้วไม่ต่าง */
+    accentKey: 'terracotta',
     variantClass: 'contract',
     dataAttrs: ` data-footer='${esc(footerMeta).replace(/'/g, '&#39;')}'`,
     extraCss: CONTRACT_CSS,
     toolbar: options.toolbar === false ? null : {
       label: `${titleTh} ${contract.contractNo || '(ฉบับร่าง)'}`,
-      button: '🖨 สั่งพิมพ์ / บันทึก PDF',
+      button: 'พิมพ์เอกสาร',
+      controlsHtml: contractToolbarControls(),
     },
     pages: flow,
     script: PAGINATE_SCRIPT,

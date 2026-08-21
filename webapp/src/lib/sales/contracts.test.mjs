@@ -84,10 +84,19 @@ test('นับวันค้างเฉพาะใบที่รอลง�
   assert.equal(daysAwaitingSignature({ status: 'signed', issuedAt: '2026-08-10T00:00:00Z' }, now), null);
 });
 
-test('ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้างตั้งต้นเป็น "ผู้มีอำนาจ/ผู้รับมอบอำนาจ"', async () => {
+test('ตำแหน่งผู้ลงนามฝั่งผู้ว่าจ้างไม่มีค่าตั้งต้น — ต้นฉบับล่าสุดไม่มีบรรทัดนี้', async () => {
   const { contractFieldDefaults } = await import('./contractTemplates.js');
   const filled = contractFieldDefaults('scent_design', {});
-  // ตรงกับถ้อยคำในตัวสัญญา ("โดย กรรมการผู้มีอำนาจ หรือ ผู้รับมอบอำนาจ") และครอบทั้ง
-  // กรณีกรรมการเซ็นเองและกรณีมอบอำนาจ — ฝั่งผู้รับจ้างยังเป็น "กรรมการผู้จัดการ"
-  assert.equal(filled.clientSignerTitle, 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ');
+  // เว้นว่าง = ไม่พิมพ์บรรทัดตำแหน่งใต้ "ผู้ว่าจ้าง" (ฉบับ 13 ส.ค. 2569 ตัดออก)
+  assert.ok(!filled.clientSignerTitle, 'ต้องไม่มีค่าตั้งต้น');
+});
+
+test('ข้อ 2.9 ใช้ถ้อยคำของต้นฉบับล่าสุด — "เลขที่ใบรับแจ้งน้ำหอม"', async () => {
+  const { SCENT_DESIGN_TEMPLATE } = await import('./contractTemplateScentDesign.js');
+  const clause = SCENT_DESIGN_TEMPLATE.sections
+    .flatMap((section) => section.clauses)
+    .find((item) => item.no === 'ข้อ 2.9');
+  // ฉบับ 13 ส.ค. 2569 เติมคำว่า "ใบรับแจ้ง" — จุดเดียวที่ต่างจากรุ่น 20260708
+  assert.match(clause.text, /เลขที่ใบรับแจ้งน้ำหอมของ/);
+  assert.equal(SCENT_DESIGN_TEMPLATE.version, '20260813');
 });
