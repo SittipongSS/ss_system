@@ -178,13 +178,11 @@ export default function AddendumDetailPage() {
                   onClick: () => setDeleteOpen(true),
                 },
               ]}
-              notices={(
-                <>
-                  {addendum.status === "cancelled" && addendum.cancelReason ? (
-                    <span className="ui-badge danger">เหตุผลที่ยกเลิก: {addendum.cancelReason}</span>
-                  ) : null}
-                </>
-              )}
+              /* ⚠️ ไม่มีอะไรเตือน = ส่ง null ไม่ใช่ fragment เปล่า — fragment เปล่าทำให้การ์ด
+                 วาดแถบว่างพร้อมระยะห่างค้างไว้ใต้รางขั้น */
+              notices={addendum.status === "cancelled" && addendum.cancelReason ? (
+                <span className="ui-badge danger">เหตุผลที่ยกเลิก: {addendum.cancelReason}</span>
+              ) : null}
             />
             <ContextGrid>
               <ContextCard
