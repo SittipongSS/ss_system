@@ -8,7 +8,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FileStack, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableEmpty, TableShell } from "@/components/ui/Table";
 import { fmtDate, naText } from "@/lib/format";
@@ -17,8 +16,7 @@ import { addendumStatusLabel } from "@/lib/sales/contractAddenda";
 
 export default function ContractAddendaCard({ contract, canEdit = false }) {
   const [rows, setRows] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [requestId, setRequestId] = useState("");
+  const [source, setSource] = useState(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -37,17 +35,17 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
 
   useEffect(() => { load(); }, [load]);
 
-  /* คำร้องพัฒนากลิ่นที่ปิดเรื่องแล้ว **ของลูกค้ารายนี้** และยังไม่ถูกใช้ทำบันทึกใบอื่น
-     — ด่านฝั่ง API ตัดให้แล้ว จอไม่ต้องกรองซ้ำ (กรองสองที่ = เพี้ยนหากันวันหลัง) */
-  const loadRequests = useCallback(async () => {
+  /* ⭐ ไม่มีให้เลือกคำร้อง (มติผู้ใช้ 2026-08-22) — คำร้องมาจากใบสั่งขาย สัญญาก็มาจาก
+     ใบเสนอราคาของใบสั่งขายเดียวกัน ระบบไล่สายเอง จอแค่ *บอกว่าจะใช้ใบไหน* ก่อนกดสร้าง
+     ⚠️ จอไม่กรองเอง — ด่านฝั่ง API เป็นคนตัด (กรองสองที่ = เพี้ยนหากันวันหลัง) */
+  const loadSource = useCallback(async () => {
     if (!contract?.id) return;
     try {
       const res = await fetch(`/api/sales-planning/contracts/${contract.id}/addenda/options`);
       const data = await res.json().catch(() => ({}));
-      setRequests(data.requests || []);
-      setRequestId(data.requests?.[0]?.id || "");
+      setSource(data && typeof data === "object" ? data : null);
     } catch {
-      setRequests([]);
+      setSource(null);
     }
   }, [contract?.id]);
 
@@ -57,13 +55,13 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
       const res = await fetch(`/api/sales-planning/contracts/${contract.id}/addenda`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ requestId }),
+        body: JSON.stringify({}),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "สร้างบันทึกไม่สำเร็จ");
       notifyToast.success("สร้างร่างบันทึกเพิ่มเติมแล้ว");
       setCreating(false);
-      await load();
+      await Promise.all([load(), loadSource()]);
     } catch (err) {
       notifyToast.error(err.message);
     } finally {
@@ -74,9 +72,9 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   return (
     <TableShell
       title="บันทึกเพิ่มเติมสัญญา"
-      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นตามคำร้องที่ปิดเรื่องแล้วของลูกค้ารายนี้ — ถือเป็นส่วนหนึ่งของสัญญา"
+      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นของใบสั่งขายเดียวกัน — ถือเป็นส่วนหนึ่งของสัญญา"
       actions={canEdit && signed ? (
-        <Button size="sm" variant="primary" onClick={() => { setCreating(true); loadRequests(); }}>
+        <Button size="sm" variant="primary" onClick={() => { setCreating(true); loadSource(); }}>
           <Plus size={13} aria-hidden="true" /> ทำบันทึกเพิ่มเติม
         </Button>
       ) : null}
@@ -89,27 +87,25 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
 
       {creating && (
         <div className="form-grid">
-          <label className="form-field span-2">
-            <span className="form-field-label">คำร้องพัฒนากลิ่นที่ปิดเรื่องแล้ว <span className="required-mark">*</span></span>
-            <Select
-              value={requestId}
-              onChange={(event) => setRequestId(event.target.value)}
-              disabled={busy}
-              options={requests.map((request) => ({
-                value: request.id,
-                label: `${request.docNo} · ${request.formulaCount} สูตร · ปิดเมื่อ ${fmtDate(request.closedAt)}`,
-              }))}
-            />
-            <span className="hint">
-              {requests.length
-                ? "ตารางสูตรในบันทึกดึงจากคำร้องใบนี้ แล้วตรึงลงเอกสาร · หนึ่งคำร้องออกบันทึกได้ครั้งเดียว"
-                : `ยังไม่มีคำร้องพัฒนากลิ่นของ ${contract?.customerName || "ลูกค้ารายนี้"} ที่ปิดเรื่อง มีสูตรขึ้นทะเบียน และยังไม่ถูกใช้ทำบันทึก`}
-            </span>
-          </label>
+          <div className="span-2">
+            {source?.next ? (
+              /* บอกให้ครบว่าจะเอาอะไรมาใส่ใบ — เลขคำร้อง · ใบสั่งขายต้นทาง · จำนวนสูตร
+                 (กดสร้างแล้วตารางสูตรถูกตรึงลงใบทันที ไม่ใช่ของที่แก้ทีหลังได้) */
+              <StatusNotice tone="info" title={`จะอ้างอิงคำร้อง ${source.next.docNo}`}>
+                {source.next.formulaCount} สูตร · ปิดเรื่องเมื่อ {fmtDate(source.next.closedAt)}
+                {source.next.salesOrderNo ? ` · จากใบสั่งขาย ${source.next.salesOrderNo}` : ""}
+                {source.remaining > 1 ? ` · เหลือคำร้องที่ยังไม่ได้ทำบันทึกอีก ${source.remaining - 1} ใบ` : ""}
+              </StatusNotice>
+            ) : (
+              <StatusNotice tone="warning" title="ยังทำบันทึกเพิ่มเติมไม่ได้">
+                {source?.reason || "กำลังตรวจสายเอกสารของสัญญาใบนี้"}
+              </StatusNotice>
+            )}
+          </div>
           <div className="form-actions span-2">
             <div className="form-actions-buttons">
               <Button onClick={() => setCreating(false)} disabled={busy}>ยกเลิก</Button>
-              <Button variant="accent" onClick={create} disabled={busy || !requestId}>สร้างร่างบันทึก</Button>
+              <Button variant="accent" onClick={create} disabled={busy || !source?.next}>สร้างร่างบันทึก</Button>
             </div>
           </div>
         </div>
@@ -137,7 +133,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
             <TableEmpty
               colSpan={5}
               title="ยังไม่มีบันทึกเพิ่มเติม"
-              description={signed ? "กด “ทำบันทึกเพิ่มเติม” เมื่อมีสูตรที่ตกลงกันแล้วจากคำร้องพัฒนากลิ่น" : undefined}
+              description={signed ? "กด “ทำบันทึกเพิ่มเติม” — ระบบดึงสูตรจากคำร้องพัฒนากลิ่นของใบสั่งขายนี้ให้เอง" : undefined}
             />
           )}
         </tbody>

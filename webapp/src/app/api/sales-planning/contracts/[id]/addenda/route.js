@@ -2,9 +2,10 @@ import { businessDate } from '@/lib/businessDate';
 import { genId } from '@/lib/id';
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 import { ADDENDUM_DOC_TITLE, addendumEligibility, addendumLinesFromFormulas } from '@/lib/sales/contractAddenda';
+import { addendumSourceReason, loadAddendumRequestCandidates, pickAddendumRequest } from '@/lib/sales/addendumRequests';
 import { ADDENDUM_TEMPLATE } from '@/lib/sales/contractTemplateAddendum';
 
 export const dynamic = 'force-dynamic';
@@ -42,26 +43,22 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (response) return response;
 
   const body = await req.json().catch(() => ({}));
-  if (!body?.requestId) return badRequest('เลือกคำร้องพัฒนากลิ่นที่ปิดเรื่องแล้วก่อน');
+
+  /* ⭐ **ไม่รับ requestId จากจอ** (มติผู้ใช้ 2026-08-22) — คำร้องมาจากใบสั่งขาย
+     สัญญาก็มาจากใบเสนอราคาของใบสั่งขายเดียวกัน ⇒ ระบบไล่สายเองที่นี่ที่เดียว
+     ⚠️ ไล่สายตอนกด ไม่ใช่ตอนจอโหลด — สองคนกดพร้อมกันต้องไม่ได้คำร้องใบเดียวกัน
+        (partial unique index ของ mig 0282 กันชั้นสุดท้าย) */
+  const { candidates, error: sourceError } = await loadAddendumRequestCandidates(supabase, contract);
+  if (sourceError) return fail(sourceError, 500);
+  const picked = pickAddendumRequest(candidates);
+  if (!picked) return fail(addendumSourceReason(candidates), 409);
 
   const { data: request, error: requestError } = await supabase
     .from('dept_requests').select('id, "docNo", kind, status, "customerName", "customerId"')
-    .eq('id', body.requestId).maybeSingle();
+    .eq('id', picked.id).maybeSingle();
   if (requestError) return fail(requestError.message, 500);
 
-  /* ⚠️ ด่าน "คำร้องนี้ถูกใช้ไปแล้ว" ต้องถามฐานตอนกด ไม่ใช่เชื่อลิสต์ที่จอโหลดไว้ —
-     สองคนเปิดหน้าเดียวกันคนละจังหวะ ลิสต์ของคนที่เปิดค้างไว้ยังมีใบนั้นอยู่
-     (unique index ของ mig 0282 กันอีกชั้น แต่ผู้ใช้จะเจอ error ดิบแทนข้อความที่อ่านออก) */
-  let takenByDocNo = null;
-  if (request?.id) {
-    const { data: taken, error: takenError } = await supabase
-      .from('sales_contract_addenda').select('"docNo", "addendumNo"')
-      .eq('requestId', request.id).neq('status', 'cancelled').limit(1);
-    if (takenError) return fail(takenError.message, 500);
-    if (taken?.length) takenByDocNo = taken[0].docNo || `ร่างครั้งที่ ${taken[0].addendumNo}`;
-  }
-
-  const eligibility = addendumEligibility({ contract, request, takenByDocNo });
+  const eligibility = addendumEligibility({ contract, request });
   if (!eligibility.ok) return fail(eligibility.reason, 409);
 
   // สูตรที่คำร้องนี้ผลิตออกมา — อ่านจากแถวคำร้อง (`producedFormulaId`) ไม่ใช่เดาจากชื่อ

@@ -173,6 +173,29 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
   assert.equal(addendumDocNo(null, 1), null);
 });
 
+test('บันทึกเพิ่มเติม: ระบบเลือกคำร้องเอง — เก่าสุดก่อน ข้ามใบที่ใช้แล้ว/ไม่มีสูตร', async () => {
+  const { pickAddendumRequest, addendumSourceReason } = await import('./addendumRequests.js');
+
+  const candidates = [
+    { id: 'r3', docNo: 'SB-3', closedAt: '2026-03-01', formulaCount: 2, taken: false },
+    { id: 'r1', docNo: 'SB-1', closedAt: '2026-01-01', formulaCount: 2, taken: true },
+    { id: 'r2', docNo: 'SB-2', closedAt: '2026-02-01', formulaCount: 0, taken: false },
+  ];
+  // r1 ถูกใช้แล้ว · r2 ไม่มีสูตรให้อ้าง ⇒ เหลือ r3
+  assert.equal(pickAddendumRequest(candidates).id, 'r3');
+  // เก่าสุดก่อน เพื่อให้ครั้งที่ 1, 2, 3 ไล่ตามลำดับที่คำร้องปิดจริง
+  assert.equal(pickAddendumRequest([
+    { id: 'b', closedAt: '2026-05-02', formulaCount: 1, taken: false },
+    { id: 'a', closedAt: '2026-04-30', formulaCount: 1, taken: false },
+  ]).id, 'a');
+  assert.equal(pickAddendumRequest([]), null);
+
+  // เหตุผลต้องแยกได้ว่า "ไม่มีคำร้อง" กับ "มีแต่ใช้ครบแล้ว" กับ "ยังไม่มีสูตร"
+  assert.match(addendumSourceReason([]), /ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง/);
+  assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 2, taken: true }]), /ครั้งเดียว/);
+  assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 0, taken: false }]), /รหัสสูตร/);
+});
+
 test('บันทึกเพิ่มเติม: ร่างลบได้ · ออกเลขแล้วลบไม่ได้', async () => {
   const { canDeleteAddendum, canIssueAddendum, canSignAddendum } = await import('./contractAddenda.js');
   assert.equal(canDeleteAddendum({ status: 'draft', docNo: null }), true);
