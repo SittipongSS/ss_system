@@ -255,6 +255,13 @@ export default function ContractDetailPage() {
               ]}
               notices={(
                 <>
+                  {/* ⭐ ใบเสนอราคาที่อ้างถึงถูกปิดไปแล้ว (มติผู้ใช้ 2026-08-22) — ร่างถูกยกเลิก
+                      ตามให้แล้ว ส่วนใบที่ออกเลขแล้วต้องให้คนตัดสินใจเอง จึงบอกเป็นตัวหนังสือ */}
+                  {contract.quotationNotice ? (
+                    <span className={`ui-badge${contract.quotationNotice.tone === "warning" ? " ui-badge-warn" : ""}`}>
+                      {contract.quotationNotice.title}
+                    </span>
+                  ) : null}
                   {/* ⚠️ บอกก่อนกด ไม่ใช่ให้ API ตอบ 400 ทีหลัง */}
                   {missing.length && isContractEditable(contract) ? (
                     <span className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
@@ -295,6 +302,14 @@ export default function ContractDetailPage() {
           </>
         )}
       >
+        {/* ข้อความเต็มของเรื่องใบเสนอราคา — ป้ายบนการ์ดจัดการบอกได้แค่หัวข้อ
+            แต่คนอ่านต้องรู้ว่า *ต้องทำอะไรต่อ* ซึ่งต่างกันตามสถานะของสัญญา */}
+        {contract.quotationNotice && (
+          <StatusNotice tone={contract.quotationNotice.tone} title={contract.quotationNotice.title}>
+            {contract.quotationNotice.body}
+          </StatusNotice>
+        )}
+
         <DetailCard
           icon={FileSignature}
           title="ข้อมูลบนสัญญา"

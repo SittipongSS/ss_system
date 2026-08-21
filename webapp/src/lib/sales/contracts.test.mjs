@@ -173,6 +173,52 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
   assert.equal(addendumDocNo(null, 1), null);
 });
 
+test('ใบเสนอราคาถูกปิด: ร่างปิดตาม · ใบที่ออกเลขแล้วแค่เตือน', async () => {
+  const {
+    quotationClosure, contractFollowsQuotationClosure, contractQuotationNotice,
+    newerApprovedQuotation, closureCancelReason,
+  } = await import('./contractQuotationState.js');
+
+  // เหตุที่นับว่าปิด — revised ต้องมาก่อน เพราะใบที่ออก Rev. ยังค้าง approved อยู่
+  assert.equal(quotationClosure({ status: 'revised', approvalStatus: 'approved' }).code, 'revised');
+  assert.equal(quotationClosure({ status: 'cancelled' }).code, 'cancelled');
+  assert.equal(quotationClosure({ status: 'rejected' }).code, 'rejected');
+  assert.equal(quotationClosure({ status: 'sent', approvalStatus: 'not_submitted' }).code, 'approval_lost');
+  assert.equal(quotationClosure({ status: 'sent', approvalStatus: 'approved' }), null);
+  assert.equal(quotationClosure(null), null);
+
+  // ร่างที่ยังไม่ออกเลขเท่านั้นที่ปิดตาม
+  assert.equal(contractFollowsQuotationClosure({ status: 'draft', contractNo: null }), true);
+  assert.equal(contractFollowsQuotationClosure({ status: 'draft', contractNo: 'CT-26080001-0' }), false);
+  assert.equal(contractFollowsQuotationClosure({ status: 'awaiting_signature', contractNo: 'CT-26080001-0' }), false);
+  assert.equal(contractFollowsQuotationClosure({ status: 'signed', contractNo: 'CT-26080001-0' }), false);
+
+  const closed = { quoteNumber: 'QT-26080001-0', status: 'revised', approvalStatus: 'approved' };
+  // ใบที่ลงนามแล้ว: ยังมีผลตามเอกสาร ทางแก้คือบันทึกเพิ่มเติม ไม่ใช่ยกเลิก
+  assert.match(contractQuotationNotice({ status: 'signed' }, closed).body, /บันทึกเพิ่มเติม/);
+  // ใบที่ออกเลขแล้วแต่ยังไม่เซ็น: ระบบไม่ยกเลิกให้ ต้องให้คนตัดสินใจ
+  assert.match(contractQuotationNotice({ status: 'awaiting_signature', contractNo: 'CT-1' }, closed).body, /ไม่ยกเลิกให้/);
+  // ร่าง: บอกว่าจะถูกยกเลิกตาม
+  assert.match(contractQuotationNotice({ status: 'draft', contractNo: null }, closed).body, /ยกเลิกตาม/);
+  // ใบที่ยังใช้ได้ = ไม่มีคำเตือน
+  assert.equal(contractQuotationNotice({ status: 'draft' }, { status: 'sent', approvalStatus: 'approved' }), null);
+
+  /* "อนุมัติที่ใบอื่น" — เตือนอย่างเดียว ไม่ปิดร่างตาม เพราะดีลหนึ่งมีใบอนุมัติหลายใบ
+     พร้อมกันได้จริง (ออกแบบกลิ่นใบหนึ่ง ผลิตอีกใบหนึ่ง) */
+  const mine = { id: 'q1', status: 'sent', approvalStatus: 'approved', approvedAt: '2026-08-01' };
+  const newer = newerApprovedQuotation(mine, [
+    mine,
+    { id: 'q2', quoteNumber: 'QT-2', status: 'sent', approvalStatus: 'approved', approvedAt: '2026-08-09' },
+    { id: 'q3', quoteNumber: 'QT-3', status: 'revised', approvalStatus: 'approved', approvedAt: '2026-08-10' },
+  ]);
+  assert.equal(newer.id, 'q2');
+  assert.equal(contractQuotationNotice({ status: 'draft' }, mine, { newerApproved: newer }).tone, 'info');
+  assert.equal(newerApprovedQuotation(mine, [mine]), null);
+
+  assert.match(closureCancelReason(closed), /QT-26080001-0 ถูกแทนด้วยฉบับแก้ไข/);
+  assert.equal(closureCancelReason({ status: 'sent', approvalStatus: 'approved' }), null);
+});
+
 test('บันทึกเพิ่มเติม: ระบบเลือกคำร้องเอง — เก่าสุดก่อน ข้ามใบที่ใช้แล้ว/ไม่มีสูตร', async () => {
   const { pickAddendumRequest, addendumSourceReason } = await import('./addendumRequests.js');
 

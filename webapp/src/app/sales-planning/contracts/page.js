@@ -174,10 +174,18 @@ export default function ContractsPage() {
                       <td className={styles.numberCell}>{fmtDate(row.contractDate)}</td>
                       <td>{contractStatusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                       <td className={`${styles.track}${waiting > 14 ? ` ${styles.trackLate}` : ""}`}>
-                        {row.status === "signed" && row.signedDate ? `เซ็น ${fmtDate(row.signedDate)}` : null}
-                        {row.status === "awaiting_signature" ? `รอมา ${waiting ?? 0} วัน` : null}
-                        {row.status === "draft" ? "ยังไม่ออกเลข" : null}
-                        {row.status === "cancelled" ? NA : null}
+                        {/* ⭐ ใบที่ออกเลขแล้วไม่ถูกยกเลิกตามใบเสนอราคา (มติผู้ใช้ 2026-08-22)
+                            ⇒ ทะเบียนต้องเห็นว่ามีเรื่องค้าง ไม่ใช่รู้ต่อเมื่อเปิดใบ */}
+                        {row._quotationClosure && row.status !== "cancelled"
+                          ? `ใบเสนอราคา${row._quotationClosure.label}`
+                          : (
+                            <>
+                              {row.status === "signed" && row.signedDate ? `เซ็น ${fmtDate(row.signedDate)}` : null}
+                              {row.status === "awaiting_signature" ? `รอมา ${waiting ?? 0} วัน` : null}
+                              {row.status === "draft" ? "ยังไม่ออกเลข" : null}
+                              {row.status === "cancelled" ? NA : null}
+                            </>
+                          )}
                       </td>
                     </DetailRow>
                   );

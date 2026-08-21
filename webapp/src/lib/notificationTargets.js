@@ -25,6 +25,8 @@ const HREF = {
   // นัดนั้นได้จริง (คลิกชิปแล้วโมดัลเปิดพร้อมเธรด)
   service_visit: () => '/service/schedule',
   system_issue: (id) => `/support/${id}`,
+  // สัญญา — แจ้งเตือนพาไปที่ใบ ไม่ใช่ทะเบียน (เรื่องที่ต้องตัดสินใจอยู่บนใบใบเดียว)
+  sales_contract: (id) => `/sa/contracts/${id}`,
 };
 
 // ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
@@ -43,6 +45,7 @@ export const ENTITY_LABEL = {
   sahamit_po: 'PO สหมิตร',
   service_visit: 'นัดเข้าบริการ',
   system_issue: 'เรื่องแจ้งปัญหา',
+  sales_contract: 'สัญญา',
 };
 
 export function notificationHref(entityType, entityId) {
