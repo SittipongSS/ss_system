@@ -288,7 +288,7 @@ export default function ReconcilePage() {
         <div className="toolbar">
           <div className="search-glass" style={{ width: 240 }}>
             <Search size={18} color="var(--text-3)" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
+            <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า..." />
           </div>
           <FilterPopover
             count={filterCount}

@@ -818,7 +818,7 @@ export default function SalesPlanningPipelinePage() {
           <div className="toolbar">
             <div className="search-glass" style={{ width: 280 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาดีล / ลูกค้า / ผู้ดูแล / สูตร" aria-label="ค้นหาดีล" />
             </div>
             <FilterPopover
               count={stageFilter.length + typeFilter.length + dueFilter.length + reviewFilter.length}

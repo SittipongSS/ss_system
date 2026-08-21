@@ -110,7 +110,7 @@ export default function ContractsPage() {
           <div className="toolbar">
             <div className={`search-glass ${styles.search}`}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
             </div>
             {waitingOnMeOnly && (
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>

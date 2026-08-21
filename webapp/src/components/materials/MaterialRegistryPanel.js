@@ -241,7 +241,7 @@ export default function MaterialRegistryPanel({
         {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
+          <input autoComplete="off"
             type="text" placeholder="ค้นชื่อวัสดุ · สูตร · ลูกค้า · ผู้ขาย"
             value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาวัสดุ"
           />

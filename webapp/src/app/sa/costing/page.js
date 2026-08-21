@@ -158,7 +158,7 @@ export default function CostingListPage() {
         {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (audit ดักไว้แล้ว) */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
+          <input autoComplete="off"
             type="text"
             placeholder="ค้นหาเลขที่ ลูกค้า หรือชื่อสินค้า"
             value={search}

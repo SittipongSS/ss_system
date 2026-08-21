@@ -885,7 +885,7 @@ export default function TasksPage() {
       <div className="toolbar">
         <div className="search-glass" style={{ width: "260px", maxWidth: "100%" }}>
           <Search size={18} color="var(--text-3)" />
-          <input type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input autoComplete="off" type="text" placeholder="ค้นหางาน..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         {statusFilter !== "all" && (
           <button onClick={() => setStatusFilter("all")} className="btn sm">
