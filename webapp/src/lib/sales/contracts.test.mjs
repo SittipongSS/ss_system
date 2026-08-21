@@ -173,6 +173,34 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
   assert.equal(addendumDocNo(null, 1), null);
 });
 
+test('ทะเบียนสัญญา: รางสามขั้น ร่าง → รอลงนาม → ลงนามแล้ว', async () => {
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const state = (row) => contractListTrack(row).steps.map((s) => s.state);
+
+  assert.deepEqual(state({ status: 'draft' }), ['now', 'todo', 'todo']);
+  assert.deepEqual(state({ status: 'awaiting_signature', contractNo: 'CT-1', issuedAt: new Date().toISOString() }), ['done', 'now', 'todo']);
+  assert.deepEqual(state({ status: 'signed', contractNo: 'CT-1', signedDate: '2026-08-20' }), ['done', 'done', 'done']);
+
+  // ใบที่ตายแล้วไม่มีรางให้เดิน — หน้าเว็บโชว์เหตุผลแทน
+  assert.equal(contractListTrack({ status: 'cancelled' }).closed, true);
+  assert.equal(contractListTrack({ status: 'revised' }).closed, true);
+  assert.deepEqual(contractListTrack({ status: 'cancelled' }).steps, []);
+
+  // รอลงนามเกิน 14 วัน = ธงแดงพร้อมโน้ตจำนวนวัน (เกณฑ์เดียวกับการ์ดสรุปบนหัวทะเบียน)
+  const old = new Date(Date.now() - 30 * 86400000).toISOString();
+  const late = contractListTrack({ status: 'awaiting_signature', contractNo: 'CT-1', issuedAt: old });
+  assert.equal(late.steps[1].state, 'bad');
+  assert.match(late.steps[1].note, /รอมา \d+ วัน/);
+
+  // ใบเสนอราคาถูกปิดแต่ใบออกเลขแล้ว = ธงแดงที่ขั้นที่ค้างอยู่ (ระบบไม่ยกเลิกให้)
+  const stale = contractListTrack({
+    status: 'awaiting_signature', contractNo: 'CT-1', issuedAt: new Date().toISOString(),
+    _quotationClosure: { code: 'revised', label: 'ถูกแทนด้วยฉบับแก้ไข (Rev.)' },
+  });
+  assert.equal(stale.steps[1].state, 'bad');
+  assert.match(stale.steps[1].note, /ใบเสนอราคา/);
+});
+
 test('ใบเสนอราคาถูกปิด: ร่างปิดตาม · ใบที่ออกเลขแล้วแค่เตือน', async () => {
   const {
     quotationClosure, contractFollowsQuotationClosure, contractQuotationNotice,

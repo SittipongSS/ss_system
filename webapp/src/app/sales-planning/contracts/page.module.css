@@ -18,7 +18,12 @@
   color: var(--text-3);
 }
 
-/* ค้างนานเกินกำหนด = ตัวทวง ไม่ใช่สถานะ จึงใช้สีเดียวกับป้ายเตือนทั้งระบบ */
-.trackLate {
-  color: var(--amber);
+/* ใบที่ตายแล้ว (ยกเลิก/ถูกแทนด้วยฉบับแก้ไข) — ไม่มีราง มีแต่เหตุผลสั้น ๆ
+   ⚠️ เหตุผลยาวได้ ⇒ ตัดด้วย ellipsis ไม่ใช่ปล่อยให้ดันคอลัมน์อื่นจนตารางเบี้ยว */
+.trackDead {
+  display: block;
+  overflow: hidden;
+  max-width: 22ch;
+  color: var(--text-3);
+  text-overflow: ellipsis;
 }

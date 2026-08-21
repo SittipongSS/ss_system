@@ -20,10 +20,12 @@ import Pager from "@/components/ui/Pager";
 import styles from "./page.module.css";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, naText, NA } from "@/lib/format";
+import { fmtDate, naText } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
+import StepTrack from "@/components/ui/StepTrack";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
+import { contractListTrack } from "@/lib/sales/contractListTrack";
 import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
   daysAwaitingSignature,
@@ -151,12 +153,12 @@ export default function ContractsPage() {
                   <th>ชนิด</th>
                   <th>วันที่สัญญา</th>
                   <th>สถานะ</th>
-                  <th>ติดตาม</th>
+                  <th>ความคืบหน้า</th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((row) => {
-                  const waiting = daysAwaitingSignature(row);
+                  const track = contractListTrack(row);
                   return (
                     <DetailRow key={row.id} href={`/sa/contracts/${row.id}`} className="premium-row">
                       <td>
@@ -173,19 +175,17 @@ export default function ContractsPage() {
                       <td>{contractKindBadge(row.kind, "ui-badge-cell ui-badge-w-contract")}</td>
                       <td className={styles.numberCell}>{fmtDate(row.contractDate)}</td>
                       <td>{contractStatusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
-                      <td className={`${styles.track}${waiting > 14 ? ` ${styles.trackLate}` : ""}`}>
-                        {/* ⭐ ใบที่ออกเลขแล้วไม่ถูกยกเลิกตามใบเสนอราคา (มติผู้ใช้ 2026-08-22)
-                            ⇒ ทะเบียนต้องเห็นว่ามีเรื่องค้าง ไม่ใช่รู้ต่อเมื่อเปิดใบ */}
-                        {row._quotationClosure && row.status !== "cancelled"
-                          ? `ใบเสนอราคา${row._quotationClosure.label}`
-                          : (
-                            <>
-                              {row.status === "signed" && row.signedDate ? `เซ็น ${fmtDate(row.signedDate)}` : null}
-                              {row.status === "awaiting_signature" ? `รอมา ${waiting ?? 0} วัน` : null}
-                              {row.status === "draft" ? "ยังไม่ออกเลข" : null}
-                              {row.status === "cancelled" ? NA : null}
-                            </>
-                          )}
+                      <td className={styles.track}>
+                        {/* ⭐ รางสามขั้น (มติผู้ใช้ 2026-08-22) — ภาษาเดียวกับการ์ดจัดการในหน้าใบ
+                            · ใบที่ตายแล้ว (ยกเลิก/ถูกแทน) ไม่มีรางให้เดิน โชว์เหตุเป็นข้อความแทน
+                            · รางขึ้นทุกความกว้างเหมือนตาราง SO — เลื่อนแนวนอนดีกว่าข้อมูลหาย */}
+                        {track.closed ? (
+                          <span className={styles.trackDead}>
+                            {row.status === "revised" ? "ถูกแทนด้วยฉบับแก้ไข" : naText(row.cancelReason) }
+                          </span>
+                        ) : (
+                          <StepTrack steps={track.steps} ariaLabel="ความคืบหน้าของสัญญา" />
+                        )}
                       </td>
                     </DetailRow>
                   );
