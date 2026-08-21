@@ -91,3 +91,13 @@ test('ตำแหน่งผู้ลงนามฝั่งผู้ว่�
   // กรณีกรรมการเซ็นเองและกรณีมอบอำนาจ — ฝั่งผู้รับจ้างยังเป็น "กรรมการผู้จัดการ"
   assert.equal(filled.clientSignerTitle, 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ');
 });
+
+test('ข้อ 2.9 ใช้ถ้อยคำของต้นฉบับล่าสุด — "เลขที่ใบรับแจ้งน้ำหอม"', async () => {
+  const { SCENT_DESIGN_TEMPLATE } = await import('./contractTemplateScentDesign.js');
+  const clause = SCENT_DESIGN_TEMPLATE.sections
+    .flatMap((section) => section.clauses)
+    .find((item) => item.no === 'ข้อ 2.9');
+  // ฉบับ 13 ส.ค. 2569 เติมคำว่า "ใบรับแจ้ง" — จุดเดียวที่ต่างจากรุ่น 20260708
+  assert.match(clause.text, /เลขที่ใบรับแจ้งน้ำหอมของ/);
+  assert.equal(SCENT_DESIGN_TEMPLATE.version, '20260813');
+});
