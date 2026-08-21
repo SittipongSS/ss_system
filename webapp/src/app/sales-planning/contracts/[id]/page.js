@@ -197,6 +197,31 @@ export default function ContractDetailPage() {
 
   const waitingDays = daysAwaitingSignature(contract);
 
+  /* ป้ายเตือนบนการ์ดจัดการ — ประกอบเป็นลิสต์ก่อน เพื่อให้ "ไม่มีอะไรเตือน" แปลว่า
+     ไม่ส่งอะไรไปเลย (ดูคอมเมนต์ที่ prop notices) */
+  const notices = [
+    contract.quotationNotice ? (
+      <span
+        key="quotation"
+        className={`ui-badge${contract.quotationNotice.tone === "warning" ? " ui-badge-warn" : ""}`}
+      >
+        {contract.quotationNotice.title}
+      </span>
+    ) : null,
+    /* ⚠️ บอกก่อนกด ไม่ใช่ให้ API ตอบ 400 ทีหลัง */
+    missing.length && isContractEditable(contract) ? (
+      <span key="missing" className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
+    ) : null,
+    contract.status === "awaiting_signature" ? (
+      <span key="waiting" className={`ui-badge${waitingDays > 14 ? ` ${styles.late}` : ""}`}>
+        รอฉบับลงนามมา {waitingDays ?? 0} วัน
+      </span>
+    ) : null,
+    contract.status === "cancelled" && contract.cancelReason ? (
+      <span key="cancelled" className="ui-badge danger">เหตุผลที่ยกเลิก: {contract.cancelReason}</span>
+    ) : null,
+  ].filter(Boolean);
+
   return (
     <SaWorkspace
       icon={<FileSignature size={22} />}
@@ -253,29 +278,9 @@ export default function ContractDetailPage() {
                   onClick: () => setDeleteOpen(true),
                 },
               ]}
-              notices={(
-                <>
-                  {/* ⭐ ใบเสนอราคาที่อ้างถึงถูกปิดไปแล้ว (มติผู้ใช้ 2026-08-22) — ร่างถูกยกเลิก
-                      ตามให้แล้ว ส่วนใบที่ออกเลขแล้วต้องให้คนตัดสินใจเอง จึงบอกเป็นตัวหนังสือ */}
-                  {contract.quotationNotice ? (
-                    <span className={`ui-badge${contract.quotationNotice.tone === "warning" ? " ui-badge-warn" : ""}`}>
-                      {contract.quotationNotice.title}
-                    </span>
-                  ) : null}
-                  {/* ⚠️ บอกก่อนกด ไม่ใช่ให้ API ตอบ 400 ทีหลัง */}
-                  {missing.length && isContractEditable(contract) ? (
-                    <span className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
-                  ) : null}
-                  {contract.status === "awaiting_signature" ? (
-                    <span className={`ui-badge${waitingDays > 14 ? ` ${styles.late}` : ""}`}>
-                      รอฉบับลงนามมา {waitingDays ?? 0} วัน
-                    </span>
-                  ) : null}
-                  {contract.status === "cancelled" && contract.cancelReason ? (
-                    <span className="ui-badge danger">เหตุผลที่ยกเลิก: {contract.cancelReason}</span>
-                  ) : null}
-                </>
-              )}
+              /* ⚠️ ส่ง null เมื่อไม่มีอะไรจะเตือน — ส่ง fragment เปล่ามาคือ "มีของ" ในสายตา
+                 การ์ด แล้วได้แถบว่างพร้อมระยะห่างค้างอยู่ใต้รางขั้น (เห็นชัดบนจอมือถือ) */
+              notices={notices.length ? <>{notices}</> : null}
             />
             <ContextGrid>
               <ContextCard

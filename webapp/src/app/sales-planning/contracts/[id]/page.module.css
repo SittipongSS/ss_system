@@ -3,25 +3,40 @@
 .factList {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
+  gap: var(--space-3);
   margin: 0;
 }
 
+/* เส้นคั่นรายบรรทัด — ป้ายของแม่แบบหลายอันยาวจนขึ้นสองบรรทัด พอไม่มีเส้นคั่น
+   บรรทัดที่พับจะกลืนกับบรรทัดถัดไป อ่านไม่ออกว่าค่าไหนเป็นของป้ายไหน
+   (ทรงเดียวกับ .addressList ของหน้าใบสั่งขาย) */
 .factList > div {
   display: grid;
-  grid-template-columns: minmax(0, 210px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
   gap: var(--space-2);
   align-items: start;
+  padding-bottom: var(--space-2-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.factList > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .factList dt {
   color: var(--text-3);
   font-size: var(--fs-4);
+  line-height: var(--lh-text);
 }
 
+/* ค่าที่กรอกจริงคือสิ่งที่คนมาอ่าน — เข้มกว่าและหนักกว่าป้าย ไม่ใช่สีเดียวกันทั้งแถว */
 .factList dd {
   margin: 0;
   overflow-wrap: anywhere;
+  color: var(--text);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-text);
   white-space: pre-wrap;
 }
 
