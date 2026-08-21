@@ -9,6 +9,9 @@ import { ADDENDUM_TEMPLATE } from '@/lib/sales/contractTemplateAddendum';
 
 export const dynamic = 'force-dynamic';
 
+// ค่าตั้งต้นของช่องกรอกอ่านจากแม่แบบที่เดียว — แก้คำในแม่แบบแล้วใบใหม่ต้องตามทันที
+const templateDefault = (key) => ADDENDUM_TEMPLATE.fields.find((field) => field.key === key)?.default || '';
+
 // GET /api/sales-planning/contracts/[id]/addenda — บันทึกเพิ่มเติมของสัญญาใบนี้
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
@@ -42,11 +45,23 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!body?.requestId) return badRequest('เลือกคำร้องพัฒนากลิ่นที่ปิดเรื่องแล้วก่อน');
 
   const { data: request, error: requestError } = await supabase
-    .from('dept_requests').select('id, "docNo", kind, status, "customerName"')
+    .from('dept_requests').select('id, "docNo", kind, status, "customerName", "customerId"')
     .eq('id', body.requestId).maybeSingle();
   if (requestError) return fail(requestError.message, 500);
 
-  const eligibility = addendumEligibility({ contract, request });
+  /* ⚠️ ด่าน "คำร้องนี้ถูกใช้ไปแล้ว" ต้องถามฐานตอนกด ไม่ใช่เชื่อลิสต์ที่จอโหลดไว้ —
+     สองคนเปิดหน้าเดียวกันคนละจังหวะ ลิสต์ของคนที่เปิดค้างไว้ยังมีใบนั้นอยู่
+     (unique index ของ mig 0282 กันอีกชั้น แต่ผู้ใช้จะเจอ error ดิบแทนข้อความที่อ่านออก) */
+  let takenByDocNo = null;
+  if (request?.id) {
+    const { data: taken, error: takenError } = await supabase
+      .from('sales_contract_addenda').select('"docNo", "addendumNo"')
+      .eq('requestId', request.id).neq('status', 'cancelled').limit(1);
+    if (takenError) return fail(takenError.message, 500);
+    if (taken?.length) takenByDocNo = taken[0].docNo || `ร่างครั้งที่ ${taken[0].addendumNo}`;
+  }
+
+  const eligibility = addendumEligibility({ contract, request, takenByDocNo });
   if (!eligibility.ok) return fail(eligibility.reason, 409);
 
   // สูตรที่คำร้องนี้ผลิตออกมา — อ่านจากแถวคำร้อง (`producedFormulaId`) ไม่ใช่เดาจากชื่อ
@@ -87,7 +102,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     fields: {
       addendumPlace: contract.fields?.contractPlace || '',
       contractorSignerName: contract.fields?.contractorSignerName || '',
-      clientSignerTitle: 'กรรมการผู้จัดการ',
+      clientSignerTitle: templateDefault('clientSignerTitle'),
     },
     templateKey: ADDENDUM_TEMPLATE.key,
     team: contract.team,

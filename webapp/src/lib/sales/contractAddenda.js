@@ -35,7 +35,19 @@ export const addendumDocNo = (contractNo, addendumNo) =>
 
 // ── ด่านสร้างบันทึก ─────────────────────────────────────────────────────────
 // คืน { ok, reason } — `reason` เอาไปโชว์ใต้ปุ่มได้ตรง ๆ
-export function addendumEligibility({ contract, request = null } = {}) {
+/* ลูกค้าเดียวกันไหม — เทียบรหัสลูกค้าก่อน เพราะชื่อบนเอกสารพิมพ์ต่างกันได้
+   (เว้นวรรค · "จำกัด" กับ "จก.") ⚠️ ข้อมูลไม่ครบทั้งสองฝั่ง = ตรวจไม่ได้ ไม่ใช่ไม่ผ่าน */
+const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+export function sameCustomer(contract, request) {
+  if (contract?.customerId && request?.customerId) return contract.customerId === request.customerId;
+  const left = normalizeName(contract?.customerName);
+  const right = normalizeName(request?.customerName);
+  if (!left || !right) return true;
+  return left === right;
+}
+
+export function addendumEligibility({ contract, request = null, takenByDocNo = null } = {}) {
   if (!contract) return { ok: false, reason: 'ไม่พบสัญญาแม่' };
   if (contract.kind !== 'scent_design') {
     return { ok: false, reason: 'ตอนนี้มีแม่แบบบันทึกเพิ่มเติมเฉพาะสัญญาจ้างออกแบบกลิ่น' };
@@ -57,6 +69,16 @@ export function addendumEligibility({ contract, request = null } = {}) {
      ยังขยับได้ แล้วตารางในบันทึกจะไม่ตรงกับของจริงที่ตกลงกัน (กติกาปิดสองฝั่ง mig 0158) */
   if (request.status !== 'closed') {
     return { ok: false, reason: 'คำร้องนี้ยังไม่ปิดเรื่อง — ปิดครบทั้งสองฝั่งก่อนจึงทำบันทึกได้' };
+  }
+  /* ⭐ ลูกค้าต้องเป็นรายเดียวกับสัญญา (มติผู้ใช้ 2026-08-22) — บันทึกเป็นส่วนหนึ่งของสัญญา
+     ตามข้อ 2 ของตัวมันเอง ⇒ เอาสูตรของลูกค้ารายอื่นมาแนบท้ายไม่ได้ */
+  if (!sameCustomer(contract, request)) {
+    return { ok: false, reason: 'คำร้องนี้เป็นของลูกค้าคนละรายกับสัญญา' };
+  }
+  /* ⭐ หนึ่งคำร้อง = หนึ่งบันทึก (มติผู้ใช้ 2026-08-22) — ออกซ้ำแปลว่าสูตรชุดเดียวกัน
+     ถูกแนบท้ายสองใบ แล้วไม่มีใครรู้ว่าใบไหนคือฉบับที่ใช้ */
+  if (takenByDocNo) {
+    return { ok: false, reason: `คำร้องนี้ออกบันทึกไปแล้ว (${takenByDocNo}) — หนึ่งคำร้องออกบันทึกได้ครั้งเดียว` };
   }
   return { ok: true, reason: null };
 }

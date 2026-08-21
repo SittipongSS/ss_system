@@ -85,6 +85,12 @@ CREATE INDEX IF NOT EXISTS sales_contract_addenda_contract_idx
 CREATE INDEX IF NOT EXISTS sales_contract_addenda_status_idx
   ON public.sales_contract_addenda (status);
 
+-- ⭐ หนึ่งคำร้อง = หนึ่งบันทึก (มติผู้ใช้ 2026-08-22) — สูตรชุดเดียวกันแนบท้ายได้ใบเดียว
+--    ไม่งั้นไม่มีใครรู้ว่าใบไหนคือฉบับที่ใช้ · ใบที่ **ยกเลิกแล้ว** ไม่นับ คำร้องกลับมาใช้ได้อีก
+CREATE UNIQUE INDEX IF NOT EXISTS sales_contract_addenda_request_once_idx
+  ON public.sales_contract_addenda ("requestId")
+  WHERE "requestId" IS NOT NULL AND status <> 'cancelled';
+
 ALTER TABLE public.sales_contract_addenda ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.sales_contract_addenda FROM anon, authenticated;
 GRANT ALL ON TABLE public.sales_contract_addenda TO service_role;

@@ -37,9 +37,10 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // คำร้องพัฒนากลิ่นที่ปิดเรื่องแล้วของดีลนี้ — ตัวเลือกเดียวที่บันทึกอ้างได้
+  /* คำร้องพัฒนากลิ่นที่ปิดเรื่องแล้ว **ของลูกค้ารายนี้** และยังไม่ถูกใช้ทำบันทึกใบอื่น
+     — ด่านฝั่ง API ตัดให้แล้ว จอไม่ต้องกรองซ้ำ (กรองสองที่ = เพี้ยนหากันวันหลัง) */
   const loadRequests = useCallback(async () => {
-    if (!contract?.dealId) return;
+    if (!contract?.id) return;
     try {
       const res = await fetch(`/api/sales-planning/contracts/${contract.id}/addenda/options`);
       const data = await res.json().catch(() => ({}));
@@ -48,7 +49,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
     } catch {
       setRequests([]);
     }
-  }, [contract?.id, contract?.dealId]);
+  }, [contract?.id]);
 
   const create = async () => {
     setBusy(true);
@@ -73,7 +74,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   return (
     <TableShell
       title="บันทึกเพิ่มเติมสัญญา"
-      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นตามคำร้องที่ปิดเรื่องแล้ว — ถือเป็นส่วนหนึ่งของสัญญา"
+      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นตามคำร้องที่ปิดเรื่องแล้วของลูกค้ารายนี้ — ถือเป็นส่วนหนึ่งของสัญญา"
       actions={canEdit && signed ? (
         <Button size="sm" variant="primary" onClick={() => { setCreating(true); loadRequests(); }}>
           <Plus size={13} aria-hidden="true" /> ทำบันทึกเพิ่มเติม
@@ -101,8 +102,8 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
             />
             <span className="hint">
               {requests.length
-                ? "ตารางสูตรในบันทึกดึงจากคำร้องใบนี้ แล้วตรึงลงเอกสาร"
-                : "ดีลนี้ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่องและมีสูตรขึ้นทะเบียนแล้ว"}
+                ? "ตารางสูตรในบันทึกดึงจากคำร้องใบนี้ แล้วตรึงลงเอกสาร · หนึ่งคำร้องออกบันทึกได้ครั้งเดียว"
+                : `ยังไม่มีคำร้องพัฒนากลิ่นของ ${contract?.customerName || "ลูกค้ารายนี้"} ที่ปิดเรื่อง มีสูตรขึ้นทะเบียน และยังไม่ถูกใช้ทำบันทึก`}
             </span>
           </label>
           <div className="form-actions span-2">

@@ -145,6 +145,28 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
   // คนละชนิดคำร้อง (ขอเอกสาร/สอบถาม) ไม่มีข้อมูลสูตรให้อ้าง
   assert.equal(addendumEligibility({ contract: signed, request: { kind: 'info', status: 'closed' } }).ok, false);
 
+  // ⭐ ลูกค้าต้องเป็นรายเดียวกับสัญญา (มติผู้ใช้ 2026-08-22)
+  const otherCustomer = addendumEligibility({
+    contract: { ...signed, customerId: 'CUS-1' },
+    request: { ...closedRequest, customerId: 'CUS-2' },
+  });
+  assert.equal(otherCustomer.ok, false);
+  assert.match(otherCustomer.reason, /คนละราย/);
+  // รหัสลูกค้าตรงกัน = ผ่าน แม้ชื่อบนเอกสารพิมพ์ไม่เหมือนกัน
+  assert.equal(addendumEligibility({
+    contract: { ...signed, customerId: 'CUS-1', customerName: 'บริษัท ก จำกัด' },
+    request: { ...closedRequest, customerId: 'CUS-1', customerName: 'บริษัท ก จก.' },
+  }).ok, true);
+  // ใบเก่าที่ไม่มีรหัสลูกค้า → เทียบชื่อแทน
+  assert.equal(addendumEligibility({
+    contract: { ...signed, customerName: 'บริษัท ก จำกัด' },
+    request: { ...closedRequest, customerName: 'บริษัท ข จำกัด' },
+  }).ok, false);
+  // ⭐ หนึ่งคำร้อง = หนึ่งบันทึก — ใบที่ถูกใช้แล้วต้องบอกว่าไปอยู่เลขที่ไหน
+  const taken = addendumEligibility({ contract: signed, request: closedRequest, takenByDocNo: 'CT-26080001-0-A1' });
+  assert.equal(taken.ok, false);
+  assert.match(taken.reason, /CT-26080001-0-A1/);
+
   // เลขที่ต่อจากสัญญาแม่ รวมเลขฉบับแก้ไข
   assert.equal(addendumDocNo('CT-26080001-0', 1), 'CT-26080001-0-A1');
   assert.equal(addendumDocNo('CT-26080001-1', 2), 'CT-26080001-1-A2');
