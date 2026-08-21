@@ -155,6 +155,7 @@ test('หน้าพรีวิวมีปุ่มพิมพ์ + ตั�
   const html = buildContractHTML(CONTRACT, { company: COMPANY });
   assert.match(html, /class="toolbar no-print"/);
   assert.match(html, /btn-print/);
+  assert.match(html, />พิมพ์เอกสาร</);
   assert.match(html, /class="langSwitch"/);
   /* ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ ⇒ ปุ่มต้อง **มีแต่กดไม่ได้พร้อมเหตุผล**
      ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) และไม่ใช่กดได้แล้วได้เอกสารครึ่งภาษา */
@@ -169,6 +170,8 @@ test('ช่องลงนามชิดท้ายกระดาษ · เ�
   assert.match(html, /\.contract \.sheet\.signSheet \.signPage \.signGrid \{ margin-top: auto/);
   assert.match(html, /\.contract \.identityBlock dl div:first-child dd \{ color: var\(--doc-accent\)/);
   assert.match(html, /\.contract \.docTitle \{[^}]*font-size: 13\.5pt/);
+  // ช่องพยานต้องห่างจากช่องคู่สัญญาพอให้ลายเซ็นไม่ทับกัน
+  assert.match(html, /\.contract \.signGrid \{[^}]*gap: 20mm 8mm/);
   // accent ของสัญญาต้องไม่ใช่ navy — เกือบเท่าสีตัวหนังสือ จนสี accent ไม่มีความหมาย
-  assert.match(html, /--doc-accent:#0f766e/);
+  assert.match(html, /--doc-accent:#ad5d43/);   // สีเดียวกับใบเสนอราคา
 });

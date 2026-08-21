@@ -243,7 +243,9 @@ const CONTRACT_CSS = `
   .contract .sheet.signSheet .sheetContent { display: flex; flex-direction: column; }
   .contract .sheet.signSheet .signPage { display: flex; flex: 1; flex-direction: column; }
   .contract .sheet.signSheet .signPage .signGrid { margin-top: auto; }
-  .contract .signGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm 8mm; margin-top: 12mm; }
+  /* ระยะแถว 20mm (มติผู้ใช้ 2026-08-21) — ช่องพยานต้องห่างจากช่องคู่สัญญาพอให้
+     เซ็นแล้วลายเซ็นไม่ทับกัน · ระยะคอลัมน์ยัง 8mm เพราะสองฝั่งอ่านเป็นคู่กัน */
+  .contract .signGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 20mm 8mm; margin-top: 12mm; }
   .contract .signBox { text-align: center; }
   .contract .signLine { font-size: 9.5pt; }
   .contract .signName { margin-top: 1.5mm; font-size: 9.5pt; }
@@ -432,16 +434,16 @@ export function buildContractHTML(contract, { company = {}, quotation = null, op
 
   return renderDocumentHTML({
     title: documentFileName(contract.contractNo || 'ร่างสัญญา', contract.customerName, contract.metadata?.dealTitle),
-    /* สีประจำชนิดเอกสาร — ใบเสนอราคา terracotta · ใบสั่งขาย steel · ไทม์ไลน์ navy
-       ⇒ สัญญาใช้ teal ที่ยังว่างอยู่ · เดิมตั้ง navy ซึ่ง **เกือบเท่าสีตัวหนังสือ**
-       (#1f3551 กับ #202833) ⇒ "สี accent" บนเลขที่สัญญาแทบไม่ต่างจากข้อความธรรมดา */
-    accentKey: 'teal',
+    /* สีเดียวกับใบเสนอราคา (มติผู้ใช้ 2026-08-21) — สัญญากับใบเสนอราคาเป็นเอกสาร
+       คู่กันในสายตาลูกค้า (ออกสัญญาจากใบที่อนุมัติ) จึงใช้สีเดียวกันทั้งคู่
+       ⚠️ ห้ามกลับไป navy — #1f3551 เกือบเท่าสีตัวหนังสือ (#202833) ใส่แล้วไม่ต่าง */
+    accentKey: 'terracotta',
     variantClass: 'contract',
     dataAttrs: ` data-footer='${esc(footerMeta).replace(/'/g, '&#39;')}'`,
     extraCss: CONTRACT_CSS,
     toolbar: options.toolbar === false ? null : {
       label: `${titleTh} ${contract.contractNo || '(ฉบับร่าง)'}`,
-      button: '🖨 สั่งพิมพ์ / บันทึก PDF',
+      button: 'พิมพ์เอกสาร',
       controlsHtml: contractToolbarControls(),
     },
     pages: flow,
