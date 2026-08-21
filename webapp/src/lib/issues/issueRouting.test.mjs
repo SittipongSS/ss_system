@@ -81,7 +81,10 @@ test('ระบบ support ประกาศครบทั้งสองท�
 
 // ⭐ ทางเดียวที่เปิดเรื่องได้คือโมดัลตัวเดียว — กฎของ repo ห้ามมีฟอร์มสร้างชุดที่สอง
 test('มีฟอร์มแจ้งเรื่องชุดเดียว ทุกที่เรียก component เดียวกัน', () => {
-  const callers = ['../../components/AppLayout.js', '../../app/support/page.js']
+  /* 📌 `AppLayout` ไม่อยู่ในรายชื่อแล้ว (มติผู้ใช้ 2026-08-22) — เมนูผู้ใช้เลิกเปิด
+     โมดัลเอง เหลือลิงก์เดียวไป /support ที่มีปุ่ม "+ แจ้งเรื่องใหม่" อยู่บนหัว
+     ⇒ คนที่ mount โมดัลจริงคือหน้า /support กับหน้า error */
+  const callers = ['../../app/error.js', '../../app/support/page.js']
     .map((rel) => readFileSync(join(here, rel), 'utf8'));
   for (const src of callers) {
     assert.match(src, /import ReportIssueModal from "?'?@\/components\/issues\/ReportIssueModal'?"?/);
