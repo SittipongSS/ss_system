@@ -211,7 +211,9 @@ test('เอกสารบันทึกเพิ่มเติมใช้�
   // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
   assert.match(html, /classList\.add\('signSheet'\)/);
   assert.match(html, /\.contract \.clauseText \{[^}]*text-justify: inter-character/);
-  // บรรทัดวันที่ใต้หัวเรื่องชิดขวา (มติผู้ใช้ 2026-08-21)
-  assert.match(html, /\.contract \.docSubtitle \{[^}]*text-align: right/);
+  /* วันที่อยู่ในประโยคแรกของเนื้อ ไม่ใช่บรรทัดลอยใต้หัวเรื่อง (มติผู้ใช้ 2026-08-21)
+     — ต่างจากต้นฉบับโดยตั้งใจ บันทึกไว้ที่ docs/sales-contract-plan.md §5.2 */
+  assert.match(html, /บันทึกฉบับนี้ทำขึ้นเมื่อ 21 เดือน สิงหาคม พ\.ศ\. 2569 ที่/);
+  assert.doesNotMatch(html, /docSubtitle/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });

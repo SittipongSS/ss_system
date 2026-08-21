@@ -90,6 +90,9 @@ export function contractTokenValues(contract, { company = {}, template = null } 
 const BOLD_TOKENS = new Set([
   'contractDateTh', 'clientName', 'clientRegNo', 'clientAddress',
   'contractorName', 'contractorRegNo', 'contractorAddress',
+  // บันทึกเพิ่มเติมใช้ตัวเติมชุดเดียวกัน — วันที่ของบันทึกและวันที่สัญญามีผลก็เป็น
+  // "ข้อมูลที่ต้องกวาดตาหา" เหมือนกัน
+  'addendumDateTh', 'effectiveDateTh',
 ]);
 
 // เติมค่าแล้วคืน **HTML** (ต่างจาก fillTokens ที่คืนข้อความล้วน) — ค่าที่กรอกจริงของ
