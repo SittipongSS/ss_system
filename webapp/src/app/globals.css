@@ -1431,6 +1431,11 @@ button, select, input, textarea {
   cursor: pointer;
 }
 .sidenav-hamburger:active { transform: scale(0.96); }
+/* ไอคอนของแฮมเบอร์เกอร์สลับตามการเปิดลิ้นชัก (คนละกลไกกับปุ่มในแถบซึ่งใช้
+   container query — ปุ่มนี้อยู่บนหัว ไม่ได้อยู่ในแถบ จึงถามคลาสของเปลือกแทน) */
+.sidenav-burger-close { display: none; }
+.app-container.sidenav-open .sidenav-burger-open { display: none; }
+.app-container.sidenav-open .sidenav-burger-close { display: block; }
 
 /* ฉากหลังตอนแถบลอยทับเนื้อหา — เป็นตัวรับคลิกนอกแถบเพื่อปิดด้วย
    (เปิดใช้ในบล็อกชั้นจอ · ต้องอยู่ก่อน <nav> ใน DOM เพราะ z เท่ากัน) */
@@ -1588,7 +1593,11 @@ button, select, input, textarea {
     margin-right: calc(0px - var(--sidenav-w-expanded));
     box-shadow: var(--shadow-float);
   }
-  /* แถบไม่มีที่ยืนแล้ว ปุ่มย่อ/กางที่เกาะแถบจึงไม่มีความหมาย — ทางเข้าย้ายมาที่หัว */
+  /* แถบไม่มีที่ยืนแล้ว ปุ่มย่อ/กางที่เกาะแถบจึงไม่มีความหมาย — ทางเข้าย้ายมาที่หัว
+     🪤 ต้องซ่อนปุ่มในแถบด้วย ไม่ใช่แค่โชว์แฮมเบอร์เกอร์ — ตอนลิ้นชักเปิด แถบถูกวาด
+     ขึ้นมา ปุ่มข้างในจึงโผล่คู่กับแฮมเบอร์เกอร์บนหัว = สองปุ่มทำเรื่องเดียวกัน
+     พร้อมกันคนละมุมจอ (มติผู้ใช้ 2026-08-22: หนึ่งชั้นจอ หนึ่งตัวคุม) */
+  .sidenav-toggle { display: none; }
   .topnav-system .sidenav-hamburger { display: inline-flex; }
 }
 

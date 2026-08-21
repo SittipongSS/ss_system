@@ -630,7 +630,10 @@ export default function AppLayout({ children }) {
               aria-expanded={navOpen}
               title={navOpen ? 'ปิดแถบเมนู' : 'เปิดแถบเมนู'}
             >
-              <Menu size={20} aria-hidden="true" />
+              {/* ภาษาเดียวกับปุ่มในแถบ: ☰ เปิด ↔ ✕ ปิด — สลับ **อยู่กับที่** ผู้ใช้จึง
+                  ไม่ต้องย้ายสายตาไปหาปุ่มปิดที่อื่น (ปุ่มในลิ้นชักถูกซ่อนในชั้นจอนี้) */}
+              <Menu className="sidenav-burger-open" size={20} aria-hidden="true" />
+              <X className="sidenav-burger-close" size={20} aria-hidden="true" />
             </button>
           )}
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
