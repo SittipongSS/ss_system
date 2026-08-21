@@ -116,8 +116,8 @@ function definitionsBlock(template, values) {
   if (!def) return '';
   return `
         <h2 class="blk" data-keep-next="1">${esc(def.heading)}</h2>
-        ${def.lead ? `<div class="blk">${paragraph(def.lead, values)}</div>` : ''}
-        ${def.terms.map((t) => `<div class="blk"><p class="clauseText"><strong>${esc(t.term)}</strong> ${fillTokensHtml(t.text, values)}</p></div>`).join('')}`;
+        ${def.lead ? `<div class="blk defs">${paragraph(def.lead, values)}</div>` : ''}
+        ${def.terms.map((t) => `<div class="blk defs"><p class="clauseText"><strong>${esc(t.term)}</strong> ${fillTokensHtml(t.text, values)}</p></div>`).join('')}`;
 }
 
 function sectionBlock(section, values) {
@@ -223,7 +223,10 @@ const CONTRACT_CSS = `
   .contract .clauseText { margin: 0; font-size: 9.5pt; line-height: 1.75; text-align: justify; }
   .contract .contractBody > .blk { margin-top: 3.5mm; }
   .contract .contractBody > .blk:first-child { margin-top: 0; }
+  /* ย่อหน้าแรกเข้า 12mm ทุกย่อหน้าที่เป็น "ความเรียง" — ความนำ · คำจำกัดความ · ปิดท้าย
+     (ข้อสัญญาไม่เข้า เพราะเลขข้ออยู่คอลัมน์ซ้ายเป็น hanging indent อยู่แล้ว) */
   .contract .intro .clauseText,
+  .contract .defs .clauseText,
   .contract .closing .clauseText { text-indent: 12mm; }
 
   .contract h2.blk { margin: 7mm 0 0; color: var(--doc-navy); font-size: 11pt; }

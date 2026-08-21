@@ -99,6 +99,9 @@ test('ย่อหน้าของความนำและย่อหน�
   assert.match(html, /class="blk intro"/);
   assert.match(html, /class="closing"/);
   assert.match(html, /\.contract \.closing \.clauseText \{ text-indent: 12mm/);
+  // คำจำกัดความก็เป็นความเรียง ⇒ ย่อหน้าเหมือนกัน (มติผู้ใช้ 2026-08-21)
+  assert.match(html, /class="blk defs"/);
+  assert.match(html, /\.contract \.defs \.clauseText,/);
 });
 
 test('ชนิดที่ยังไม่มีแม่แบบต้องเรนเดอร์ไม่ได้ ไม่ใช่ออกกระดาษเปล่า', () => {
