@@ -40,6 +40,14 @@ export function thaiContractDate(value) {
   return `${d.getDate()} เดือน ${TH_MONTHS[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
 }
 
+// "15 ธันวาคม พ.ศ. 2568" — รูปที่ต้นฉบับใช้ตอน *อ้างถึง* วันที่ของเอกสารอื่น (ไม่มีคำว่า "เดือน")
+export function thaiPlainDate(value) {
+  if (!value) return null;
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
+}
+
 // วันที่แบบสั้นบนหัวใบ: 29/06/2569 (พ.ศ.) — ต่างจากวันที่ในตัวสัญญาที่เขียนเต็มคำ
 export function thaiShortDate(value) {
   if (!value) return null;
@@ -92,7 +100,7 @@ const BOLD_TOKENS = new Set([
   'contractorName', 'contractorRegNo', 'contractorAddress',
   // บันทึกเพิ่มเติมใช้ตัวเติมชุดเดียวกัน — วันที่ของบันทึกและวันที่สัญญามีผลก็เป็น
   // "ข้อมูลที่ต้องกวาดตาหา" เหมือนกัน
-  'addendumDateTh', 'effectiveDateTh',
+  'addendumDateTh', 'effectiveDateTh', 'contractDatePlainTh',
 ]);
 
 // เติมค่าแล้วคืน **HTML** (ต่างจาก fillTokens ที่คืนข้อความล้วน) — ค่าที่กรอกจริงของ

@@ -14,7 +14,7 @@ import { fmtDate } from '@/lib/format';
 import { ADDENDUM_DOC_TITLE } from '@/lib/sales/contractAddenda';
 import {
   BLANK, CONTRACT_CSS, PAGINATE_SCRIPT, contractToolbarControls, fillTokensHtml, paragraph,
-  thaiContractDate, thaiShortDate,
+  thaiContractDate, thaiPlainDate, thaiShortDate,
 } from '@/lib/sales/contractDocument';
 import { ADDENDUM_TEMPLATE } from '@/lib/sales/contractTemplateAddendum';
 
@@ -31,6 +31,8 @@ export function addendumTokenValues(addendum, { contract = {}, company = {} } = 
     addendumDateTh: thaiContractDate(addendum?.addendumDate) || '',
     contractNo: contract.contractNo || '',
     contractDateTh: thaiContractDate(contract.contractDate) || '',
+    // ข้อ 2 ของต้นฉบับเขียนวันที่สัญญาแม่แบบไม่มีคำว่า "เดือน" — คนละรูปกับความนำโดยตั้งใจ
+    contractDatePlainTh: thaiPlainDate(contract.contractDate) || '',
     // วันมีผลของสัญญาแม่ — ใบที่ยังไม่กรอกวันมีผลใช้วันลงนามแทน (ค่าที่ระบบมีจริง)
     effectiveDateTh: thaiContractDate(contract.effectiveDate || contract.signedDate) || '',
     contractorName: company.legalNameTh || company.nameTh || '',
