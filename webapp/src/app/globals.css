@@ -1380,12 +1380,48 @@ button, select, input, textarea {
 }
 .topnav-menu-spacer { flex: 1; }
 
-/* ── ปุ่มคุมแถบเมนู — ปุ่มเดียว มุมซ้ายบนของแถบระบบ ทุกชั้นจอ ────────────────
-   (มติผู้ใช้ 2026-08-22) รูปทรงยืมจาก .topnav-global-action ที่กระดิ่ง/ตั้งค่า
-   ใช้อยู่แล้ว — ปุ่มบนแถบกรมท่าต้องหน้าตาเป็นครอบครัวเดียวกัน
-   ⚠️ คนละตัวกับ `…` (.mobile-top-more) ที่โผล่ ≤768px — ตัวนั้นเปิด "บัญชี/
-   เครื่องมือ" ตัวนี้คุม "เมนูของระบบ" · ชั้น ≤768 ไม่มีแถบข้าง ปุ่มนี้จึงหายไป */
+/* ── ปุ่มย่อ/กาง — อยู่ **หัวแถบเมนู** ไม่ใช่บนหัวเว็บ (มติผู้ใช้ 2026-08-22) ──
+   ปุ่มเกาะอยู่กับสิ่งที่มันคุมเสมอ · ชิดขวาตอนกาง (ไกลจากรายการเมนู ไม่แย่งสายตา)
+   และเลื่อนมากลางช่องเองตอนเป็นราง เพราะรางกว้าง 56px ไม่มีที่ให้ชิดขวา
+   ⚠️ ชั้นจอ 769–900 ไม่มีแถบเลย ปุ่มนี้จึงไม่มีที่เกาะ — ใช้ .sidenav-hamburger
+   บนหัวเว็บแทน (ดูบล็อกชั้นจอท้ายชุด) */
 .sidenav-toggle {
+  /* ตรึงไว้หัวแถบ — เมนูยาวจนต้องไถ ปุ่มก็ยังอยู่ที่เดิม (แถบเป็นตัวเลื่อนเอง) */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  align-self: flex-end;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: var(--space-1);
+  border: none;
+  border-radius: var(--radius);
+  /* พื้นเดียวกับแถบเป๊ะ ๆ — ตรึงอยู่ จึงต้องทึบไม่ให้เมนูไถทะลุขึ้นมาข้างหลัง */
+  background: color-mix(in srgb, var(--navy) 7%, var(--panel-float));
+  /* ⚠️ --text-2 ไม่ใช่ --text-3 ด้วยเหตุผลเดียวกับ .topnav-utility-item —
+     --text-3 บนพื้นแถบเมนูวัดได้ 4.21:1 ในธีมสว่าง = ตก AA */
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+.sidenav-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 10%, var(--panel-float)); }
+.sidenav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sidenav-toggle:active { transform: scale(0.94); }
+
+/* ไอคอนสองตัวสลับด้วย CSS ล้วน (ดูเหตุผลที่ปุ่มใน AppLayout.js)
+   ค่าตั้งต้น = แถบกาง ปุ่มจึงเป็น « (ย่อ) · สลับเป็น » ในบล็อก @container */
+.sidenav-ico-expand { display: none; }
+
+/* แฮมเบอร์เกอร์บนหัวเว็บ — ทางเข้าเมนูของชั้นจอที่ไม่มีแถบข้าง (เปิดใช้ท้ายชุด)
+   🪤 กฎ display ต้องมี `.topnav-system` นำหน้าทุกตัว — ปุ่มนี้ยืมรูปทรงจาก
+   `.topnav-global-action` ซึ่งประกาศ `display: inline-flex` ไว้ **ท้ายไฟล์กว่าที่นี่**
+   คลาสเดี่ยวน้ำหนักเท่ากันจึงแพ้ลำดับ แล้วปุ่มจะโผล่ทุกชั้นจอ (เจอจริง 2026-08-22:
+   แฮมเบอร์เกอร์ค้างอยู่บนหัวที่จอ 1300px คู่กับปุ่มในแถบ) */
+.topnav-system .sidenav-hamburger { display: none; }
+.sidenav-hamburger {
   order: -1;              /* ซ้ายสุด ก่อนโลโก้ */
   flex: 0 0 auto;
   width: var(--ctl-h);    /* ไอคอนล้วน — จัตุรัสเท่าความสูงมาตรฐานของตัวควบคุม */
@@ -1394,14 +1430,7 @@ button, select, input, textarea {
   font-family: inherit;
   cursor: pointer;
 }
-.sidenav-toggle:active { transform: scale(0.96); }
-
-/* ไอคอนสองตัวสลับด้วย CSS ล้วน (ดูเหตุผลที่ปุ่มใน AppLayout.js)
-   ค่าตั้งต้น = แฮมเบอร์เกอร์ แปลว่า "กดเพื่อเอาเมนูออกมา" */
-.sidenav-ico-collapse { display: none; }
-/* จอกว้างและผู้ใช้ไม่ได้สั่งย่อ = แถบกางค้างอยู่ ปุ่มจึงกลายเป็น "ย่อ" (ลูกศรซ้าย) */
-:root[data-sidenav="expanded"] .sidenav-ico-menu { display: none; }
-:root[data-sidenav="expanded"] .sidenav-ico-collapse { display: block; }
+.sidenav-hamburger:active { transform: scale(0.96); }
 
 /* ฉากหลังตอนแถบลอยทับเนื้อหา — เป็นตัวรับคลิกนอกแถบเพื่อปิดด้วย
    (เปิดใช้ในบล็อกชั้นจอ · ต้องอยู่ก่อน <nav> ใน DOM เพราะ z เท่ากัน) */
@@ -1493,6 +1522,9 @@ button, select, input, textarea {
     gap: 0;
   }
   .topnav-item > span:not(.topnav-count) { display: none; }
+  .sidenav-toggle { align-self: center; }
+  .sidenav-ico-collapse { display: none; }
+  .sidenav-ico-expand { display: block; }
   /* ป้ายจำนวนไปเกาะมุมไอคอน — แถบแคบเกินกว่าจะวางต่อท้ายได้ (ท่าเดียวกับแถบล่าง
      มือถือ ดู .mbn-count)
      ⚠️ **สีส้มที่นี่ ไม่ใช่เทาเหมือนตอนกางอยู่** — กติกา "ป้ายเทาคงที่" มีไว้กัน
@@ -1536,14 +1568,6 @@ button, select, input, textarea {
     margin-right: calc(var(--sidenav-w-rail) - var(--sidenav-w-expanded));
     box-shadow: var(--shadow-float);
   }
-  /* 🪤 ชั้นนี้แถบไม่เคยกางค้าง (เป็นรางหรือไม่มีเลย) ปุ่มจึงต้องกลับไปเป็น
-     แฮมเบอร์เกอร์ แม้ความชอบถาวรจะเขียนว่า expanded ก็ตาม — ค่านั้นเป็นของ
-     ชั้นจอกว้างเท่านั้น · ยกเว้นตอนกำลังกางทับอยู่ ปุ่มถึงกลายเป็น "ปิด" */
-  :root[data-sidenav="expanded"] .sidenav-ico-menu { display: block; }
-  :root[data-sidenav="expanded"] .sidenav-ico-collapse { display: none; }
-  .app-container.sidenav-open .sidenav-ico-menu { display: none; }
-  .app-container.sidenav-open .sidenav-ico-collapse { display: block; }
-
   /* กางแล้วลอยทับ → ต้องมีฉากหลังไว้รับคลิกปิด */
   .app-container.sidenav-open .sidenav-backdrop {
     display: block;
@@ -1564,6 +1588,8 @@ button, select, input, textarea {
     margin-right: calc(0px - var(--sidenav-w-expanded));
     box-shadow: var(--shadow-float);
   }
+  /* แถบไม่มีที่ยืนแล้ว ปุ่มย่อ/กางที่เกาะแถบจึงไม่มีความหมาย — ทางเข้าย้ายมาที่หัว */
+  .topnav-system .sidenav-hamburger { display: inline-flex; }
 }
 
 
@@ -1638,7 +1664,7 @@ button, select, input, textarea {
   .app-container.sidenav-open .topnav-menu { display: none; }
   .app-container.sidenav-open .sidenav-backdrop { display: none; }
   /* ไม่มีแถบข้างในชั้นนี้ ปุ่มคุมแถบจึงไม่มีอะไรให้คุม — เมนูอยู่ที่แถบล่าง */
-  .sidenav-toggle { display: none; }
+  .topnav-system .sidenav-hamburger { display: none; }
   .topnav-brand-img { height: 26px; }
   .topnav-sys { min-width: 0; }
   .topnav-sys-btn {

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, PanelLeftClose, Menu } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, ChevronsLeft, ChevronsRight, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -615,28 +615,22 @@ export default function AppLayout({ children }) {
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
-          {/* ⭐ ปุ่มเดียวคุมแถบเมนูทุกชั้นจอ อยู่มุมซ้ายบนเสมอ (มติผู้ใช้ 2026-08-22)
-              เดิมมีสองปุ่มคนละที่: แฮมเบอร์เกอร์บนหัวสำหรับจอ 769–900 กับปุ่มย่อ/กาง
-              ที่ก้นรางสำหรับจอกว้างกว่านั้น — การกระทำเดียวกันแต่ต้องหาปุ่มคนละมุม
-              ตามความกว้างหน้าต่าง · สิ่งที่ปุ่มทำยังต่างกันตามชั้นจอเหมือนเดิม
-              (จอกว้าง = ย่อ/กางถาวร · จอแคบกว่า = เปิด/ปิดชั่วคราว) ดู toggleSideNav
-              ⚠️ "กางอยู่จริงไหม" ไม่เท่ากับ "ผู้ใช้ตั้งค่าไว้ว่ากาง" — จอ ≤1200px แถบ
-              เป็นรางเสมอไม่ว่าความชอบถาวรจะเป็นอะไร */}
+          {/* ⭐ กติกาการวางปุ่มคุมแถบ (มติผู้ใช้ 2026-08-22): **ปุ่มอยู่กับแถบเสมอ**
+              คือหัวแถบเมนูเอง (ดู .sidenav-toggle ใน <nav> ข้างล่าง) — แฮมเบอร์เกอร์
+              ตัวนี้มีไว้เฉพาะชั้นจอ 769–900 ที่ไม่มีแถบให้ปุ่มเกาะเลย จึงต้องมีทาง
+              เข้าจากหัวแทน · CSS ซ่อนมันทุกชั้นจออื่น
+              ⚠️ คนละตัวกับ `…` (.mobile-top-more) ที่โผล่ ≤768px — ตัวนั้นเปิด
+              "บัญชี/เครื่องมือ" ตัวนี้เปิด "เมนูของระบบ" */}
           {!isBareShell && (
             <button
               type="button"
-              className="topnav-global-action sidenav-toggle"
+              className="topnav-global-action sidenav-hamburger"
               onClick={toggleSideNav}
               aria-label={`เมนู${systemSubtitle}`}
-              aria-expanded={sideNavExpanded}
-              title={navOpen ? 'ปิดแถบเมนู' : (sideNavExpanded ? 'ย่อแถบเมนู' : 'กางแถบเมนู')}
+              aria-expanded={navOpen}
+              title={navOpen ? 'ปิดแถบเมนู' : 'เปิดแถบเมนู'}
             >
-              {/* ⭐ ไอคอนสองตัวสลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้กางอยู่ไหม"
-                  ขึ้นกับความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้
-                  ไอคอนผิดหนึ่งเฟรมทุกครั้งที่โหลดหน้า · CSS อ่านจาก data-sidenav ที่
-                  สคริปต์ก่อนเพนต์ตั้งไว้ จึงถูกตั้งแต่เฟรมแรก (ดู .sidenav-ico-* ) */}
-              <Menu className="sidenav-ico-menu" size={20} aria-hidden="true" />
-              <PanelLeftClose className="sidenav-ico-collapse" size={20} aria-hidden="true" />
+              <Menu size={20} aria-hidden="true" />
             </button>
           )}
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
@@ -747,6 +741,24 @@ export default function AppLayout({ children }) {
         {/* เมนูของระบบปัจจุบัน — แถบข้างทุกความกว้าง (ดูสามชั้นจอที่ .topnav-menu
             ใน globals.css) · ≤768px ไม่วาด ใช้แถบล่างมือถือแทน */}
         {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+          {/* ปุ่มย่อ/กาง — อยู่หัวแถบ ชิดขวาเมื่อกาง กลางช่องเมื่อเป็นราง
+              ⚠️ "กางอยู่จริงไหม" ไม่เท่ากับ "ผู้ใช้ตั้งค่าไว้ว่ากาง" — จอ ≤1200px แถบ
+              เป็นรางเสมอไม่ว่าความชอบถาวรจะเป็นอะไร ถ้าอ่านจาก navCollapsed อย่างเดียว
+              ปุ่มจะบอก screen reader ว่า "กางอยู่" ทั้งที่หน้าจอเห็นแต่ไอคอน */}
+          <button
+            type="button"
+            className="sidenav-toggle"
+            onClick={toggleSideNav}
+            aria-label={`เมนู${systemSubtitle}`}
+            aria-expanded={sideNavExpanded}
+            title={navOpen ? 'ปิดแถบเมนู' : (sideNavExpanded ? 'ย่อแถบเมนู' : 'กางแถบเมนู')}
+          >
+            {/* ⭐ ไอคอนสองตัวสลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้กางหรือเป็นราง"
+                ขึ้นกับความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้
+                ไอคอนผิดหนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
+            <ChevronsLeft className="sidenav-ico-collapse" size={18} aria-hidden="true" />
+            <ChevronsRight className="sidenav-ico-expand" size={18} aria-hidden="true" />
+          </button>
           {flowItems.map((item) => renderMenuItem(item))}
           <span className="topnav-menu-spacer" />
           {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
