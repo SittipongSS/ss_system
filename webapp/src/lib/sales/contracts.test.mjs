@@ -127,3 +127,80 @@ test('ทะเบียนเหลือเฉพาะฉบับล่า�
   const ids = latestContractRevisions(rows).map((row) => row.id).sort();
   assert.deepEqual(ids, ['b', 'c', 'd']);
 });
+
+test('บันทึกเพิ่มเติม: ออกได้เฉพาะสัญญาที่ลงนามแล้ว + คำร้องพัฒนากลิ่นที่ปิดเรื่อง', async () => {
+  const { addendumEligibility, addendumDocNo } = await import('./contractAddenda.js');
+  const signed = { kind: 'scent_design', status: 'signed', contractNo: 'CT-26080001-0' };
+  const closedRequest = { kind: 'scent_dev', status: 'closed' };
+
+  assert.equal(addendumEligibility({ contract: signed, request: closedRequest }).ok, true);
+  // ยังไม่ลงนาม = ใช้ Rev. แทน (บอกทางออกให้ ไม่ใช่แค่ปฏิเสธ)
+  const notSigned = addendumEligibility({ contract: { ...signed, status: 'awaiting_signature' }, request: closedRequest });
+  assert.equal(notSigned.ok, false);
+  assert.match(notSigned.reason, /ฉบับแก้ไข/);
+  // คำร้องที่ยังไม่ปิดเรื่อง = สูตรยังขยับได้ ⇒ ตารางในบันทึกจะไม่ตรงของจริง
+  const openRequest = addendumEligibility({ contract: signed, request: { kind: 'scent_dev', status: 'answered' } });
+  assert.equal(openRequest.ok, false);
+  assert.match(openRequest.reason, /ปิดเรื่อง/);
+  // คนละชนิดคำร้อง (ขอเอกสาร/สอบถาม) ไม่มีข้อมูลสูตรให้อ้าง
+  assert.equal(addendumEligibility({ contract: signed, request: { kind: 'info', status: 'closed' } }).ok, false);
+
+  // ⭐ ลูกค้าต้องเป็นรายเดียวกับสัญญา (มติผู้ใช้ 2026-08-22)
+  const otherCustomer = addendumEligibility({
+    contract: { ...signed, customerId: 'CUS-1' },
+    request: { ...closedRequest, customerId: 'CUS-2' },
+  });
+  assert.equal(otherCustomer.ok, false);
+  assert.match(otherCustomer.reason, /คนละราย/);
+  // รหัสลูกค้าตรงกัน = ผ่าน แม้ชื่อบนเอกสารพิมพ์ไม่เหมือนกัน
+  assert.equal(addendumEligibility({
+    contract: { ...signed, customerId: 'CUS-1', customerName: 'บริษัท ก จำกัด' },
+    request: { ...closedRequest, customerId: 'CUS-1', customerName: 'บริษัท ก จก.' },
+  }).ok, true);
+  // ใบเก่าที่ไม่มีรหัสลูกค้า → เทียบชื่อแทน
+  assert.equal(addendumEligibility({
+    contract: { ...signed, customerName: 'บริษัท ก จำกัด' },
+    request: { ...closedRequest, customerName: 'บริษัท ข จำกัด' },
+  }).ok, false);
+  // ⭐ หนึ่งคำร้อง = หนึ่งบันทึก — ใบที่ถูกใช้แล้วต้องบอกว่าไปอยู่เลขที่ไหน
+  const taken = addendumEligibility({ contract: signed, request: closedRequest, takenByDocNo: 'CT-26080001-0-A1' });
+  assert.equal(taken.ok, false);
+  assert.match(taken.reason, /CT-26080001-0-A1/);
+
+  // เลขที่ต่อจากสัญญาแม่ รวมเลขฉบับแก้ไข
+  assert.equal(addendumDocNo('CT-26080001-0', 1), 'CT-26080001-0-A1');
+  assert.equal(addendumDocNo('CT-26080001-1', 2), 'CT-26080001-1-A2');
+  assert.equal(addendumDocNo(null, 1), null);
+});
+
+test('บันทึกเพิ่มเติม: ระบบเลือกคำร้องเอง — เก่าสุดก่อน ข้ามใบที่ใช้แล้ว/ไม่มีสูตร', async () => {
+  const { pickAddendumRequest, addendumSourceReason } = await import('./addendumRequests.js');
+
+  const candidates = [
+    { id: 'r3', docNo: 'SB-3', closedAt: '2026-03-01', formulaCount: 2, taken: false },
+    { id: 'r1', docNo: 'SB-1', closedAt: '2026-01-01', formulaCount: 2, taken: true },
+    { id: 'r2', docNo: 'SB-2', closedAt: '2026-02-01', formulaCount: 0, taken: false },
+  ];
+  // r1 ถูกใช้แล้ว · r2 ไม่มีสูตรให้อ้าง ⇒ เหลือ r3
+  assert.equal(pickAddendumRequest(candidates).id, 'r3');
+  // เก่าสุดก่อน เพื่อให้ครั้งที่ 1, 2, 3 ไล่ตามลำดับที่คำร้องปิดจริง
+  assert.equal(pickAddendumRequest([
+    { id: 'b', closedAt: '2026-05-02', formulaCount: 1, taken: false },
+    { id: 'a', closedAt: '2026-04-30', formulaCount: 1, taken: false },
+  ]).id, 'a');
+  assert.equal(pickAddendumRequest([]), null);
+
+  // เหตุผลต้องแยกได้ว่า "ไม่มีคำร้อง" กับ "มีแต่ใช้ครบแล้ว" กับ "ยังไม่มีสูตร"
+  assert.match(addendumSourceReason([]), /ดีลของสัญญานี้ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง/);
+  assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 2, taken: true }]), /ครั้งเดียว/);
+  assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 0, taken: false }]), /รหัสสูตร/);
+});
+
+test('บันทึกเพิ่มเติม: ร่างลบได้ · ออกเลขแล้วลบไม่ได้', async () => {
+  const { canDeleteAddendum, canIssueAddendum, canSignAddendum } = await import('./contractAddenda.js');
+  assert.equal(canDeleteAddendum({ status: 'draft', docNo: null }), true);
+  assert.equal(canDeleteAddendum({ status: 'awaiting_signature', docNo: 'CT-1-A1' }), false);
+  assert.equal(canIssueAddendum({ status: 'draft' }), true);
+  assert.equal(canSignAddendum({ status: 'awaiting_signature' }), true);
+  assert.equal(canSignAddendum({ status: 'signed' }), false);
+});

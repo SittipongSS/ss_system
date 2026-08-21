@@ -18,6 +18,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard";
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -328,6 +329,9 @@ export default function ContractDetailPage() {
             </dl>
           )}
         </DetailCard>
+
+        {/* บันทึกเพิ่มเติมสัญญา (mig 0282) — เอกสารลูกของสัญญา ทางสร้างอยู่ที่นี่ที่เดียว */}
+        <ContractAddendaCard contract={contract} canEdit={canEdit} />
 
         {/* ⭐ ไฟล์ฉบับลงนามอยู่ในการ์ดไฟล์แนบตัวเดียวกับที่ทั้งระบบใช้ — ไม่ทำท่ออัปโหลด
             ของตัวเอง เพราะจะได้ทางอัปไฟล์ที่สองที่ไม่ผ่านด่านเดียวกับของเดิม */}

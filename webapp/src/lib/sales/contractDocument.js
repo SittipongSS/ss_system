@@ -40,6 +40,14 @@ export function thaiContractDate(value) {
   return `${d.getDate()} เดือน ${TH_MONTHS[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
 }
 
+// "15 ธันวาคม พ.ศ. 2568" — รูปที่ต้นฉบับใช้ตอน *อ้างถึง* วันที่ของเอกสารอื่น (ไม่มีคำว่า "เดือน")
+export function thaiPlainDate(value) {
+  if (!value) return null;
+  const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} พ.ศ. ${d.getFullYear() + 543}`;
+}
+
 // วันที่แบบสั้นบนหัวใบ: 29/06/2569 (พ.ศ.) — ต่างจากวันที่ในตัวสัญญาที่เขียนเต็มคำ
 export function thaiShortDate(value) {
   if (!value) return null;
@@ -49,7 +57,7 @@ export function thaiShortDate(value) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear() + 543}`;
 }
 
-const BLANK = '____________________';
+export const BLANK = '____________________';
 
 // แทนค่า {{token}} — ค่าที่ยังไม่กรอกกลายเป็น "เส้นให้เขียนมือ" ไม่ใช่ช่องว่างเงียบ ๆ
 // (สัญญาที่พิมพ์ออกไปแล้วมีที่ว่างลอย = ไม่มีใครรู้ว่าตั้งใจเว้นหรือลืมกรอก)
@@ -90,11 +98,14 @@ export function contractTokenValues(contract, { company = {}, template = null } 
 const BOLD_TOKENS = new Set([
   'contractDateTh', 'clientName', 'clientRegNo', 'clientAddress',
   'contractorName', 'contractorRegNo', 'contractorAddress',
+  // บันทึกเพิ่มเติมใช้ตัวเติมชุดเดียวกัน — วันที่ของบันทึกและวันที่สัญญามีผลก็เป็น
+  // "ข้อมูลที่ต้องกวาดตาหา" เหมือนกัน
+  'addendumDateTh', 'effectiveDateTh', 'contractDatePlainTh',
 ]);
 
 // เติมค่าแล้วคืน **HTML** (ต่างจาก fillTokens ที่คืนข้อความล้วน) — ค่าที่กรอกจริงของ
 // คู่สัญญาถูกห่อด้วย <strong> ส่วนช่องที่ยังว่างเป็นเส้นประธรรมดา ไม่ต้องเน้น
-function fillTokensHtml(text, values = {}) {
+export function fillTokensHtml(text, values = {}) {
   return String(text ?? '')
     .split(/(\{\{\w+\}\})/)
     .map((part) => {
@@ -109,7 +120,7 @@ function fillTokensHtml(text, values = {}) {
     .join('');
 }
 
-const paragraph = (text, values) => `<p class="clauseText">${fillTokensHtml(text, values)}</p>`;
+export const paragraph = (text, values) => `<p class="clauseText">${fillTokensHtml(text, values)}</p>`;
 
 function definitionsBlock(template, values) {
   const def = template.definitions;
@@ -164,7 +175,7 @@ function signatureGrid(template, values) {
           <section class="signGrid" aria-label="ส่วนลงนาม">${template.signatures.map(box).join('')}</section>`;
 }
 
-const CONTRACT_CSS = `
+export const CONTRACT_CSS = `
   /* ── สายเนื้อหาก่อนถูกตัดหน้า ────────────────────────────────────────
      เห็นครบทั้งฉบับแม้สคริปต์ไม่ทำงาน (แผ่นยืดตามเนื้อ ไม่ครอบตัด) */
   /* ระยะขอบกระดาษของสัญญากว้างกว่าเอกสารชนิดอื่น — เอกสารผูกพันที่ต้องเซ็นและเย็บเก็บ
@@ -230,8 +241,13 @@ const CONTRACT_CSS = `
      ⚠️ ห้ามใช้ word-break: break-all แทน — ตัดกลางคำไทยเป็น "แล/ะให้" อ่านไม่ออก */
   .contract .clauseText { margin: 0; font-size: 9.5pt; line-height: 1.75;
     text-align: justify; text-justify: inter-character; }
-  .contract .contractBody > .blk { margin-top: 3.5mm; }
-  .contract .contractBody > .blk:first-child { margin-top: 0; }
+  /* ⚠️ ต้องเขียนถึง **ทั้งสองพ่อ** — ก่อนตัดหน้า บล็อกอยู่ใน .contractBody
+     พอสคริปต์ตัดหน้าเสร็จมันย้ายไปอยู่ใน .sheetContent ของแต่ละแผ่น
+     เขียนถึงแค่ .contractBody = ไฟล์ที่พิมพ์ออกมาจริงไม่มีระยะห่างย่อหน้าเลย */
+  .contract .contractBody > .blk,
+  .contract .sheetContent > .blk { margin-top: 3.5mm; }
+  .contract .contractBody > .blk:first-child,
+  .contract .sheetContent > .blk:first-child { margin-top: 0; }
   /* ย่อหน้าแรกเข้า 12mm ทุกย่อหน้าที่เป็น "ความเรียง" — ความนำ · คำจำกัดความ · ปิดท้าย
      (ข้อสัญญาไม่เข้า เพราะเลขข้ออยู่คอลัมน์ซ้ายเป็น hanging indent อยู่แล้ว) */
   .contract .intro .clauseText,
@@ -272,7 +288,7 @@ const CONTRACT_CSS = `
    · บล็อกที่สูงเกินหนึ่งแผ่นได้แผ่นยืด (`tall`) แทนการถูกครอบตัด
    ⚠️ สายเนื้อหาเดิมถูกลบ **หลังสร้างแผ่นเสร็จ** เท่านั้น — สคริปต์ตายกลางทาง
       ผู้ใช้ต้องยังเห็นเอกสารครบ ไม่ใช่หน้าขาว */
-const PAGINATE_SCRIPT = `
+export const PAGINATE_SCRIPT = `
 (function () {
   function paginate() {
     var doc = document.querySelector('.contract');
@@ -369,7 +385,7 @@ const PAGINATE_SCRIPT = `
    ⚠️ **อังกฤษยังเทาไว้** (มติผู้ใช้ 2026-08-21) — ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ
    ปุ่มที่กดแล้วได้เอกสารครึ่งไทยครึ่งอังกฤษแย่กว่าปุ่มที่กดไม่ได้แล้วบอกเหตุผล
    ⇒ ปุ่มมี `disabled` + `title` อธิบาย ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) */
-function contractToolbarControls() {
+export function contractToolbarControls() {
   return '<div class="langSwitch" role="group" aria-label="ภาษาเอกสาร">'
     + '<button type="button" data-lang="th" aria-pressed="true">ไทย</button>'
     + '<button type="button" data-lang="en" aria-pressed="false" disabled'
