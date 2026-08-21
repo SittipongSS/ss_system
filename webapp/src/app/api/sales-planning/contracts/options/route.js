@@ -78,7 +78,7 @@ async function listDealsThatCanIssue({ user, supabase }) {
 
   const { data: deals, error: dealError } = await supabase
     .from('sales_deals')
-    .select('id, code, title, stage, "dealType", team, "ownerId", "ownerName", "customerName", "projectId"')
+    .select('id, code, title, stage, "dealType", team, "ownerId", "ownerName", "customerId", "customerName", "projectId"')
     .in('id', [...byDeal.keys()]);
   if (dealError) return fail(dealError.message, 500);
 
@@ -103,10 +103,16 @@ async function listDealsThatCanIssue({ user, supabase }) {
       id: row.deal.id,
       code: row.deal.code,
       title: row.deal.title,
+      customerId: row.deal.customerId || null,
       customerName: row.deal.customerName,
       ownerName: row.deal.ownerName,
       quotationCount: (row.eligibility.quotations || []).length,
+      /* ⭐ ชนิดสัญญาที่ดีลนี้ออกได้ (มติผู้ใช้ 2026-08-22 รอบสอง) — จอถามเรียง
+         ลูกค้า → ชนิดสัญญา → ดีล ⇒ ต้องรู้ตั้งแต่ตอนโหลดว่าดีลไหนตอบชนิดไหนได้
+         ⚠️ เอาเฉพาะชนิดที่ **มีแม่แบบจริง** — ชนิดที่ยังไม่มีต้นฉบับเลือกไปก็ออกไม่ได้ */
+      kinds: contractKindsForDeal(row.deal, row.project).filter(hasContractTemplate),
     }))
+    .filter((row) => row.kinds.length)
     .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
 
   return ok({ deals: rows });
