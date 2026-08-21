@@ -78,11 +78,11 @@ test('ค้นหา: เทียบทั้งชื่อไทย ชื�
   assert.ok(!matchesSettingsQuery(drive, 'ลายเซ็น'));
 });
 
-test('แถบข้างกับหน้าภาพรวมอ่านแผนที่เดียวกัน ไม่มีใครสะกดรายการเอง', () => {
-  const shell = read('src/components/settings/SettingsShell.js');
+test('แถบเมนูกับหน้าภาพรวมอ่านแผนที่เดียวกัน ไม่มีใครสะกดรายการเอง', () => {
+  const shell = read('src/components/AppLayout.js');
   const overview = read('src/app/settings/page.js');
-  for (const [name, source] of [['SettingsShell', shell], ['หน้าภาพรวม', overview]]) {
-    assert.match(source, /settingsNavForUser/, `${name} ต้องอ่านจาก config/settingsNav`);
+  for (const [name, source] of [['AppLayout', shell], ['หน้าภาพรวม', overview]]) {
+    assert.match(source, /settingsMenuItems|settingsNavForUser/, `${name} ต้องอ่านจาก config/settingsNav`);
     /* คานารี: ทั้งสองไฟล์ไม่มีเหตุผลอื่นเลยที่จะเอ่ยถึงหน้าใดหน้าหนึ่งตรง ๆ
        (ลิงก์ของแถบข้าง/หน้าภาพรวมมาจากแผนที่ทั้งหมด) — เจอเมื่อไรแปลว่าเริ่มมี
        รายการชุดที่สองงอกขึ้นมา
@@ -92,10 +92,16 @@ test('แถบข้างกับหน้าภาพรวมอ่าน�
   }
 });
 
-test('เปลือกตั้งค่าถูกครอบที่ AppLayout — ไม่ใช่ layout ของ /settings อย่างเดียว', () => {
+test('เมนูตั้งค่าถูกประกอบที่ AppLayout — ไม่ใช่ layout ของ /settings อย่างเดียว', () => {
   const layout = read('src/components/AppLayout.js');
-  assert.match(layout, /isSettingsContext\s*\?\s*<SettingsShell/,
-    '/users และ /audit อยู่คนละราก ⇒ ครอบที่ app/settings/layout.js จะไม่ได้แถบข้าง');
+  assert.match(layout, /isSettingsContext\s*\n?\s*\?\s*settingsMenuItems/,
+    '/users และ /audit อยู่คนละราก ⇒ ประกอบที่ app/settings/layout.js จะไม่ได้เมนู');
+});
+
+test('ตั้งค่าไม่ใช่เปลือกไร้เมนูอีกแล้ว — เหลือบัญชีของฉันหน้าเดียว', () => {
+  const nav = read('src/config/navigation.js');
+  assert.doesNotMatch(nav, /isBareShellPathname[\s\S]{0,200}isSettingsPathname\(pathname\)/,
+    'ตั้งค่ากลับไปเป็นเปลือกไร้เมนู = แถบข้าง/แถบล่างหายทั้งบริบท');
 });
 
 test('หน้าตั้งค่าเลิกมีปุ่ม "กลับหน้าตั้งค่า" — แถบข้างทำหน้าที่นั้นแล้ว', () => {

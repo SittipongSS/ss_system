@@ -1,6 +1,6 @@
 import {
   Building2, CalendarDays, FileBadge2, HardDrive, History, Layers,
-  Palette, Signature, Users, WalletCards, Workflow,
+  Palette, Settings, Signature, Users, WalletCards, Workflow,
 } from 'lucide-react';
 import { canUser, canManageCommercialPresets, canManageDocumentStandards } from '@/lib/permissions';
 
@@ -15,15 +15,15 @@ import { canUser, canManageCommercialPresets, canManageDocumentStandards } from 
  * หากันทันทีที่ใครเพิ่มหน้าใหม่แล้วแก้ที่เดียว (กฎ "ฟอร์มเดียว" ของ AGENTS.md
  * ข้อเดียวกัน) ⇒ ทั้งสองที่อ่านไฟล์นี้
  *
- * ⚠️ `/users` และ `/audit` **ไม่ได้อยู่ใต้ `/settings`** แต่เป็นของเปลือกตั้งค่า
+ * ⚠️ `/users` และ `/audit` **ไม่ได้อยู่ใต้ `/settings`** แต่เป็นบริบทตั้งค่าเดียวกัน
  * (ดู `SETTINGS_PATHS` ใน config/navigation.js ที่นับสามรากนี้เป็นบริบทเดียวกัน)
- * ⇒ ต้องอยู่ในแผนที่นี้ด้วย ไม่งั้นเดินเข้าไปแล้วแถบข้างหายทั้งแถบ
+ * ⇒ ต้องอยู่ในแผนที่นี้ด้วย ไม่งั้นเดินเข้าไปแล้วเมนูหายทั้งแถบ
  *
  * ⚠️ ด่านสิทธิ์จริงอยู่ที่หน้าและ API — `visible` ที่นี่คุมแค่ว่า "เห็นทางเข้าไหม"
  */
 
-// ชื่อสั้นสำหรับแถบข้าง (`shortTitle`) ต่างจากหัวข้อเต็มของหน้าโดยตั้งใจ:
-// รางกว้าง ~15rem ชื่อยาวอย่าง "Workflow และ Timeline Template" ตัดท้ายทิ้งจนอ่านไม่ออก
+// ชื่อสั้นสำหรับแถบเมนู (`shortTitle`) ต่างจากหัวข้อเต็มของหน้าโดยตั้งใจ:
+// แถบกว้าง 240px ชื่อยาวอย่าง "Workflow และ Timeline Template" ตัดท้ายทิ้งจนอ่านไม่ออก
 export const SETTINGS_NAV = [
   {
     key: 'organization',
@@ -173,7 +173,37 @@ export function activeSettingsHref(pathname, user) {
   return matches.sort((a, b) => b.length - a.length)[0] || null;
 }
 
-/* ค้นหาในแถบข้าง/หน้ารวม — เทียบชื่อ ชื่อสั้น คำอธิบาย และ path
+/* แปลงแผนที่ตั้งค่าให้เป็น "เมนูของระบบ" ที่ AppLayout วาดได้ตรง ๆ ─────────────
+   ⭐ มติผู้ใช้ 2026-08-22: ตั้งค่าเลิกเป็นเปลือกพิเศษที่มีแถบรายการของตัวเอง —
+   ใช้แถบข้าง/แถบล่างชุดเดียวกับทุกระบบ · แผนที่ยังเป็นไฟล์นี้ไฟล์เดียวเหมือนเดิม
+   เปลี่ยนแค่ "ใครเป็นคนวาด"
+
+   ⚠️ `match` ต้องเป็นแบบ **ยาวสุดชนะ** ไม่ใช่ `startsWith` เฉย ๆ — `/settings`
+   เป็นคำนำหน้าของทุกหน้าย่อย ถ้าเทียบตรง ๆ "ภาพรวมการตั้งค่า" จะไฮไลต์ค้างตลอด
+   ไม่ว่าจะเดินไปหน้าไหน (กับดักเดียวกับที่ `activeSettingsHref` แก้ไว้แล้ว) ⇒
+   ยืมตัวนั้นมาตัดสินเลย
+
+   ⚠️ ไม่มี `cap` — ด่านสิทธิ์ของเมนูตั้งค่าคือ `visible` ในแผนที่นี้ ซึ่ง
+   `settingsNavForUser` กรองให้แล้วก่อนถึงมือ AppLayout */
+export function settingsMenuItems(user) {
+  const overview = {
+    href: '/settings',
+    name: 'ภาพรวมการตั้งค่า',
+    shortName: 'ภาพรวม',
+    icon: Settings,
+    match: (pathname) => pathname === '/settings',
+  };
+  const items = settingsNavForUser(user).flatMap((group) => group.items.map((item) => ({
+    href: item.href,
+    name: item.shortTitle || item.title,
+    icon: item.icon,
+    group: group.title,
+    match: (pathname) => activeSettingsHref(pathname, user) === item.href,
+  })));
+  return [overview, ...items];
+}
+
+/* ค้นหาในหน้ารวม — เทียบชื่อ ชื่อสั้น คำอธิบาย และ path
    (พิมพ์ "drive" หรือ "audit" ก็ต้องเจอ ทั้งที่ชื่อบนจอเป็นภาษาไทย) */
 export function matchesSettingsQuery(item, query) {
   const q = String(query || '').trim().toLowerCase();
