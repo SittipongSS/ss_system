@@ -9,6 +9,8 @@ import {
   latestContractRevisions,
 } from '@/lib/sales/contracts';
 import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
+import { quotationClosure } from '@/lib/sales/contractQuotationState';
+import { syncContractsAgainstQuotations } from '@/lib/sales/contractQuotationSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,13 +38,22 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const visible = (data || []).filter((row) => row.deal && inSalesViewScope(user, row.deal));
   /* ⭐ เหลือเฉพาะฉบับล่าสุดของแต่ละสาย (mig 0280) — ทะเบียนต้องไม่โชว์ฉบับเก่าปนกับ
      ฉบับปัจจุบัน · ฉบับเก่ายังเปิดดูได้จากหน้าใบของมันเอง (ลิงก์ในสายฉบับ) */
+  /* ⭐ ไล่ปิดร่างที่ใบเสนอราคาถูกปิดไปแล้ว (มติผู้ใช้ 2026-08-22) — ทำตรงนี้เพราะสถานะ
+     ใบเสนอราคาเปลี่ยนได้จากทางที่โค้ดฝั่งสัญญาไม่ได้ถือมีดด้วย (RPC ของ accept/won ·
+     แก้มือบนฐาน) ⇒ ไล่เฉพาะตอนออก Rev. อย่างเดียวจะมีร่างค้างที่ไม่มีวันปิด
+     ⚠️ ทำก่อนคัดฉบับล่าสุด/กรองสถานะ เพราะแถวที่เพิ่งถูกยกเลิกต้องโชว์สถานะใหม่ทันที */
+  const { quotationById, cancelledIds } = await syncContractsAgainstQuotations(supabase, visible, { actor: user });
+
   const rows = latestContractRevisions(visible)
+    .map((row) => (cancelledIds.has(row.id) ? { ...row, status: 'cancelled' } : row))
     .filter((row) => !status || status === 'all' || row.status === status)
     // เนื้อเอกสารที่ตรึงไว้หนักและไม่มีใครใช้ในลิสต์ — ตัดออกก่อนส่ง
     .map(({ issuedHtml, ...row }) => ({
       ...row,
       hasIssuedDocument: !!issuedHtml,
       _waitingOnMe: isContractWaitingOnMe(row, { userId: user.id }),
+      // ป้าย "ใบเสนอราคาถูกปิด" บนทะเบียน — ใบที่ออกเลขแล้วไม่ถูกแตะ แต่ต้องเห็นว่ามีเรื่อง
+      _quotationClosure: quotationClosure(quotationById.get(row.quotationId)) || null,
     }));
   return ok(rows);
 });

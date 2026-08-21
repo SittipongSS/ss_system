@@ -7,6 +7,7 @@ import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
+import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import {
   customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
@@ -220,6 +221,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     await supabase.from('quotations').delete().eq('id', newId);
     return fail(sourceErr?.message || 'ใบต้นทางถูกแก้ไขพร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
   }
+
+  /* ⭐ สัญญาที่อ้างใบเดิมต้องรู้ตัว (มติผู้ใช้ 2026-08-22) — ร่างยกเลิกตาม ใบที่ออกเลขแล้ว
+     ได้แจ้งเตือนไปหาเจ้าของใบ · ไม่เช็ค error: การออก Rev. สำเร็จไปแล้ว จะล้มทั้งคำสั่ง
+     เพราะแจ้งเตือนไม่ผ่านไม่ได้ (ตัวไล่ปิดตอนเปิดทะเบียนตามเก็บให้อยู่แล้ว) */
+  await syncContractsForQuotation(supabase, {
+    quotation: { ...quote, status: 'revised' },
+    actor: user,
+  });
 
   // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา (ดู submit/route.js)
   // ⚠️ ลงเธรดของ **ใบเดิม** ไม่ใช่ใบ Rev. ใหม่ (คนละ id) ไม่งั้นใบเดิมจบห้วน ๆ

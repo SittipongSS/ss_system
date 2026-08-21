@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FileSignature, FileText, Handshake, Pencil, Printer, X } from "lucide-react";
+import { FileSignature, FileText, Handshake, Pencil, Printer, Trash2, X } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -18,6 +18,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard";
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
@@ -25,7 +26,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
-  canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
+  canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
@@ -43,6 +44,7 @@ export default function ContractDetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [form, setForm] = useState({ fields: {}, contractDate: "" });
   const [signOpen, setSignOpen] = useState(false);
   const [signDate, setSignDate] = useState("");
@@ -162,6 +164,23 @@ export default function ContractDetailPage() {
     window.open(`/api/sales-planning/contracts/${id}/document`, "_blank", "noopener");
   };
 
+  const removeDraft = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/sales-planning/contracts/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "ลบสัญญาไม่สำเร็จ");
+      notifyToast.success("ลบร่างสัญญาแล้ว");
+      router.push("/sa/contracts");
+      return true;
+    } catch (err) {
+      notifyToast.error(err.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!canView) {
     return <AccessDenied icon={<FileSignature size={22} />} title="สัญญา" message="บัญชีนี้ยังไม่มีสิทธิ์อ่านเอกสารของสายขาย" back="/sa/contracts" />;
   }
@@ -222,9 +241,27 @@ export default function ContractDetailPage() {
                   visible: canEdit && isContractEditable(contract),
                   onClick: () => setEditing((on) => !on),
                 },
+                /* ⭐ ลบได้เฉพาะร่างที่ยังไม่ออกเลข (มติผู้ใช้ 2026-08-21) — ออกเลขแล้ว
+                   ต้องออกฉบับแก้ไขหรือยกเลิก ไม่ใช่ลบหลักฐานทิ้ง */
+                {
+                  id: "delete",
+                  label: "ลบฉบับร่าง",
+                  kind: "delete",
+                  icon: Trash2,
+                  slot: "danger",
+                  visible: canEdit && canDeleteContract(contract),
+                  onClick: () => setDeleteOpen(true),
+                },
               ]}
               notices={(
                 <>
+                  {/* ⭐ ใบเสนอราคาที่อ้างถึงถูกปิดไปแล้ว (มติผู้ใช้ 2026-08-22) — ร่างถูกยกเลิก
+                      ตามให้แล้ว ส่วนใบที่ออกเลขแล้วต้องให้คนตัดสินใจเอง จึงบอกเป็นตัวหนังสือ */}
+                  {contract.quotationNotice ? (
+                    <span className={`ui-badge${contract.quotationNotice.tone === "warning" ? " ui-badge-warn" : ""}`}>
+                      {contract.quotationNotice.title}
+                    </span>
+                  ) : null}
                   {/* ⚠️ บอกก่อนกด ไม่ใช่ให้ API ตอบ 400 ทีหลัง */}
                   {missing.length && isContractEditable(contract) ? (
                     <span className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
@@ -265,6 +302,14 @@ export default function ContractDetailPage() {
           </>
         )}
       >
+        {/* ข้อความเต็มของเรื่องใบเสนอราคา — ป้ายบนการ์ดจัดการบอกได้แค่หัวข้อ
+            แต่คนอ่านต้องรู้ว่า *ต้องทำอะไรต่อ* ซึ่งต่างกันตามสถานะของสัญญา */}
+        {contract.quotationNotice && (
+          <StatusNotice tone={contract.quotationNotice.tone} title={contract.quotationNotice.title}>
+            {contract.quotationNotice.body}
+          </StatusNotice>
+        )}
+
         <DetailCard
           icon={FileSignature}
           title="ข้อมูลบนสัญญา"
@@ -386,6 +431,18 @@ export default function ContractDetailPage() {
           <Link href="/sa/contracts" className="linklike">← กลับไปทะเบียนสัญญา</Link>
         </div>
       </DetailPageLayout>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        tone="danger"
+        title="ลบร่างสัญญา"
+        description={`ต้องการลบร่าง${contractKindLabel(contract.kind)} ของ ${naText(contract.customerName)} ใช่หรือไม่`}
+        detail="ร่างนี้ยังไม่ได้ออกเลขที่ ลบแล้วเรียกคืนจากหน้าจอนี้ไม่ได้"
+        confirmLabel="ลบร่างสัญญา"
+        busy={busy}
+        onClose={() => !busy && setDeleteOpen(false)}
+        onConfirm={removeDraft}
+      />
     </SaWorkspace>
   );
 }

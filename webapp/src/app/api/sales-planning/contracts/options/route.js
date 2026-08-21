@@ -1,21 +1,24 @@
 import { loadScoped } from '@/lib/scopedRow';
-import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
+import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { contractBusinessLine, contractEligibility, contractKindLabel, contractKindsForDeal } from '@/lib/sales/contracts';
 import { contractTemplateFields, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/sales-planning/contracts/options?dealId=… — "ดีลนี้ออกสัญญาอะไรได้บ้าง"
-//
-// ⭐ จอถามด่านตัวเดียวกับที่ API ใช้ปฏิเสธจริง (contractEligibility) — ไม่คิดเงื่อนไขเอง
-//    เพื่อไม่ให้เกิดปุ่มที่กดได้แล้วโดนปฏิเสธ หรือปุ่มที่หายไปทั้งที่ทำได้
+/* GET /api/sales-planning/contracts/options?dealId=… — "ดีลนี้ออกสัญญาอะไรได้บ้าง"
+   GET /api/sales-planning/contracts/options            — "ตอนนี้ออกสัญญาจากดีลไหนได้บ้าง"
+
+   ⭐ จอถามด่านตัวเดียวกับที่ API ใช้ปฏิเสธจริง (contractEligibility) — ไม่คิดเงื่อนไขเอง
+      เพื่อไม่ให้เกิดปุ่มที่กดได้แล้วโดนปฏิเสธ หรือปุ่มที่หายไปทั้งที่ทำได้
+   ⭐ แบบไม่ระบุดีลใช้กับปุ่ม "สร้างสัญญา" บนหัวทะเบียน (มติผู้ใช้ 2026-08-22) — คนกดยังไม่ได้
+      อยู่ในดีลไหน ⇒ ต้องมีรายการดีลที่ *ออกได้จริง* ให้เลือกก่อน ไม่ใช่ให้ไปหาเอง */
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
   const dealId = new URL(req.url).searchParams.get('dealId');
-  if (!dealId) return badRequest('ต้องระบุดีล');
+  if (!dealId) return listDealsThatCanIssue({ user, supabase });
 
   const { row: deal, response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
   if (response) return response;
@@ -52,3 +55,59 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
   });
 });
+
+/* ดีลที่ออกสัญญาได้ตอนนี้ — เริ่มจาก **ใบเสนอราคาที่อนุมัติแล้ว** แล้วค่อยย้อนขึ้นไปหาดีล
+   (ไล่จากดีลทุกใบแล้วค่อยกรองคือกวาดทั้งตารางเพื่อเอาไม่กี่แถว)
+   ⚠️ ด่านจริงยังเป็น contractEligibility ตัวเดิม — ที่นี่แค่คัดผู้เข้าชิงให้แคบลงก่อน */
+async function listDealsThatCanIssue({ user, supabase }) {
+  const { data: quotations, error } = await supabase
+    .from('quotations')
+    .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt", "dealId"')
+    .eq('approvalStatus', 'approved')
+    .order('createdAt', { ascending: false })
+    .limit(500);
+  if (error) return fail(error.message, 500);
+
+  const byDeal = new Map();
+  for (const quotation of quotations || []) {
+    if (!quotation.dealId) continue;
+    if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
+    byDeal.get(quotation.dealId).push(quotation);
+  }
+  if (!byDeal.size) return ok({ deals: [] });
+
+  const { data: deals, error: dealError } = await supabase
+    .from('sales_deals')
+    .select('id, code, title, stage, "dealType", team, "ownerId", "ownerName", "customerName", "projectId"')
+    .in('id', [...byDeal.keys()]);
+  if (dealError) return fail(dealError.message, 500);
+
+  const projectIds = [...new Set((deals || []).map((deal) => deal.projectId).filter(Boolean))];
+  let projectById = new Map();
+  if (projectIds.length) {
+    const { data: projects, error: projectError } = await supabase
+      .from('projects').select('id, code, name, line').in('id', projectIds);
+    if (projectError) return fail(projectError.message, 500);
+    projectById = new Map((projects || []).map((project) => [project.id, project]));
+  }
+
+  const rows = (deals || [])
+    .filter((deal) => inSalesViewScope(user, deal))
+    .map((deal) => {
+      const project = deal.projectId ? projectById.get(deal.projectId) || null : null;
+      const eligibility = contractEligibility({ deal, project, quotations: byDeal.get(deal.id) || [] });
+      return { deal, project, eligibility };
+    })
+    .filter((row) => row.eligibility.ok)
+    .map((row) => ({
+      id: row.deal.id,
+      code: row.deal.code,
+      title: row.deal.title,
+      customerName: row.deal.customerName,
+      ownerName: row.deal.ownerName,
+      quotationCount: (row.eligibility.quotations || []).length,
+    }))
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+
+  return ok({ deals: rows });
+}

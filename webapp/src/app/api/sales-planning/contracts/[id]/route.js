@@ -3,6 +3,8 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { canDeleteContract, contractKindLabel, isContractEditable } from '@/lib/sales/contracts';
+import { contractQuotationNotice, newerApprovedQuotation } from '@/lib/sales/contractQuotationState';
+import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +28,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       ? supabase.from('attachments').select('id, "fileName", "mimeType", "sizeBytes", "createdAt", "uploadedByName"').eq('id', row.signedFileId).maybeSingle()
       : Promise.resolve({ data: null }),
     row.quotationId
-      ? supabase.from('quotations').select('id, "quoteNumber", status, "approvalStatus", "totalAmount"').eq('id', row.quotationId).maybeSingle()
+      ? supabase.from('quotations').select('id, "quoteNumber", status, "approvalStatus", "approvedAt", "createdAt", "totalAmount"').eq('id', row.quotationId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -38,12 +40,27 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .eq('baseNumber', base).order('revisionNo', { ascending: true })
     : { data: null };
 
-  const { issuedHtml, ...rest } = row;
+  /* ⭐ ใบเสนอราคาถูกปิดไปแล้วหรือยัง (มติผู้ใช้ 2026-08-22) — ร่างยกเลิกตามตรงนี้เลย
+     เพื่อให้คนที่เปิดใบเห็นสถานะจริง ไม่ใช่ร่างที่ดูใช้ได้แต่ฐานราคาหายไปแล้ว */
+  const sync = await syncContractsForQuotation(supabase, { quotation, actor: user });
+  const current = sync.cancelled.includes(row.id) ? { ...row, status: 'cancelled' } : row;
+
+  /* ใบอื่นของดีลเดียวกันที่อนุมัติทีหลัง — **เตือนอย่างเดียว** ดีลหนึ่งมีใบอนุมัติหลายใบ
+     พร้อมกันได้จริง (ออกแบบกลิ่นใบหนึ่ง ผลิตอีกใบหนึ่ง) */
+  const { data: siblings } = quotation
+    ? await supabase.from('quotations')
+      .select('id, "quoteNumber", status, "approvalStatus", "approvedAt", "createdAt"')
+      .eq('dealId', row.dealId)
+    : { data: null };
+  const newerApproved = quotation ? newerApprovedQuotation(quotation, siblings || []) : null;
+
+  const { issuedHtml, ...rest } = current;
   return ok({
     ...rest,
     hasIssuedDocument: !!issuedHtml,
     signedFile: signedFile || null,
     quotation: quotation || null,
+    quotationNotice: contractQuotationNotice(current, quotation, { newerApproved }),
     revisions: revisions || [],
     canEdit: inSalesEditScope(user, row.deal) && canEditSalesPlanning(user),
   });

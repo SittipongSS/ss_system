@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Clock3, FileSignature, Flag, Search, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Clock3, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -20,9 +20,12 @@ import Pager from "@/components/ui/Pager";
 import styles from "./page.module.css";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, naText, NA } from "@/lib/format";
+import { fmtDate, naText } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
+import StepTrack from "@/components/ui/StepTrack";
+import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
+import { contractListTrack } from "@/lib/sales/contractListTrack";
 import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
   daysAwaitingSignature,
@@ -30,11 +33,13 @@ import {
 
 export default function ContractsPage() {
   const canView = useCan("salesplan:view");
+  const canEdit = useCan("salesplan:edit");
   const params = useSearchParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState([]);
   const [kindFilter, setKindFilter] = useState([]);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
@@ -90,6 +95,13 @@ export default function ContractsPage() {
       icon={<FileSignature size={22} />}
       title="บริหารงานขาย — สัญญา"
       subtitle="ออกได้หลังใบเสนอราคาอนุมัติ · พิมพ์ไปเซ็นแล้วอัปโหลดฉบับลงนามกลับเข้าใบ"
+      /* ⭐ ปุ่มสร้างบนหัวทะเบียน (มติผู้ใช้ 2026-08-22) — เดิมสร้างได้จากในดีล/ใบเสนอราคา
+         เท่านั้น คนที่เริ่มจากเมนูสัญญาไม่มีทางเริ่มงาน · โมดัลตัวเดียวกัน แค่มีช่องเลือกดีล */
+      headerRight={canEdit && (
+        <Button variant="accent" onClick={() => setCreateOpen(true)}>
+          <Plus size={15} aria-hidden="true" /> สร้างสัญญา
+        </Button>
+      )}
     >
       <div className="flex flex-col gap-4">
         {error && <StatusNotice tone="error" title="โหลดทะเบียนสัญญาไม่สำเร็จ">{error}</StatusNotice>}
@@ -141,12 +153,12 @@ export default function ContractsPage() {
                   <th>ชนิด</th>
                   <th>วันที่สัญญา</th>
                   <th>สถานะ</th>
-                  <th>ติดตาม</th>
+                  <th>ความคืบหน้า</th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((row) => {
-                  const waiting = daysAwaitingSignature(row);
+                  const track = contractListTrack(row);
                   return (
                     <DetailRow key={row.id} href={`/sa/contracts/${row.id}`} className="premium-row">
                       <td>
@@ -163,11 +175,17 @@ export default function ContractsPage() {
                       <td>{contractKindBadge(row.kind, "ui-badge-cell ui-badge-w-contract")}</td>
                       <td className={styles.numberCell}>{fmtDate(row.contractDate)}</td>
                       <td>{contractStatusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
-                      <td className={`${styles.track}${waiting > 14 ? ` ${styles.trackLate}` : ""}`}>
-                        {row.status === "signed" && row.signedDate ? `เซ็น ${fmtDate(row.signedDate)}` : null}
-                        {row.status === "awaiting_signature" ? `รอมา ${waiting ?? 0} วัน` : null}
-                        {row.status === "draft" ? "ยังไม่ออกเลข" : null}
-                        {row.status === "cancelled" ? NA : null}
+                      <td className={styles.track}>
+                        {/* ⭐ รางสามขั้น (มติผู้ใช้ 2026-08-22) — ภาษาเดียวกับการ์ดจัดการในหน้าใบ
+                            · ใบที่ตายแล้ว (ยกเลิก/ถูกแทน) ไม่มีรางให้เดิน โชว์เหตุเป็นข้อความแทน
+                            · รางขึ้นทุกความกว้างเหมือนตาราง SO — เลื่อนแนวนอนดีกว่าข้อมูลหาย */}
+                        {track.closed ? (
+                          <span className={styles.trackDead}>
+                            {row.status === "revised" ? "ถูกแทนด้วยฉบับแก้ไข" : naText(row.cancelReason) }
+                          </span>
+                        ) : (
+                          <StepTrack steps={track.steps} ariaLabel="ความคืบหน้าของสัญญา" />
+                        )}
                       </td>
                     </DetailRow>
                   );
@@ -187,6 +205,13 @@ export default function ContractsPage() {
           )}
         </SaSection>
       </div>
+
+      {/* โมดัลตัวเดียวกับที่หน้าดีล/ใบเสนอราคาใช้ — ไม่ระบุดีลมา = โมดัลมีช่องเลือกดีลให้ */}
+      <ContractCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={load}
+      />
     </SaWorkspace>
   );
 }
