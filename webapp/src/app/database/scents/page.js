@@ -400,7 +400,7 @@ export default function ScentsPage() {
             ใส่ที่ input ตรง ๆ จะได้ช่องที่ไม่มีแว่นขยาย เหมือนหน้าลูกค้า/สินค้าที่ทำถูก */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
+          <input autoComplete="off"
             type="text" placeholder="ค้นชื่อกลิ่น · รหัส · ลูกค้า"
             value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหากลิ่น"
           />

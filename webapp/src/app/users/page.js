@@ -2,7 +2,7 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff } from "lucide-react";
@@ -268,23 +268,25 @@ export default function UserManagement() {
       {loading ? (
         <SkeletonRows rows={7} />
       ) : (
-        <div className="glass-panel">
-          {/* ปุ่มเพิ่ม = action ของเนื้อหาในการ์ด อยู่ขวาสุดของ card header ตามกติกา Page Header */}
-          <div className="flex items-center justify-between gap-3" style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-            <strong>รายชื่อผู้ใช้</strong>
-            {canManage && (
-              <button
-                onClick={() => {
-                  setCreateForm(emptyForm);
-                  setShowCreate(true);
-                }}
-                className="btn btn-accent flex items-center gap-1.5"
-              >
-                <Plus size={16} /> เพิ่มผู้ใช้
-              </button>
-            )}
-          </div>
-          <TableScroll className="border-none" family="list">
+        /* หัวการ์ดมาจาก WorkspaceSection กลาง (มติผู้ใช้ 2026-08-21) — เดิมเป็น
+           .glass-panel + หัวที่เขียนเองพร้อม inline style ⇒ ระยะขอบไม่ตรงกับการ์ด
+           หน้าอื่น · ปุ่มเพิ่ม = action ของเนื้อหาในการ์ด จึงไปช่อง `actions` */
+        <WorkspaceSection
+          title="รายชื่อผู้ใช้"
+          subtitle={`ทั้งหมด ${users.length} คน · เรียงและแบ่งหน้าได้ที่ตารางด้านล่าง`}
+          actions={canManage && (
+            <button
+              onClick={() => {
+                setCreateForm(emptyForm);
+                setShowCreate(true);
+              }}
+              className="btn btn-accent flex items-center gap-1.5"
+            >
+              <Plus size={16} /> เพิ่มผู้ใช้
+            </button>
+          )}
+        >
+          <TableScroll family="list" surface="embedded">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -417,7 +419,7 @@ export default function UserManagement() {
               onPageSize={setPageSize}
             />
           )}
-        </div>
+        </WorkspaceSection>
       )}
 
       {/* Create user modal */}

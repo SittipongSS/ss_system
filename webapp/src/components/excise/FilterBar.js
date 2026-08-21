@@ -36,7 +36,7 @@ export default function FilterBar({
       {onSearch && (
         <div className="search-glass" style={{ width: 240 }}>
           <Search size={18} color="var(--text-3)" />
-          <input
+          <input autoComplete="off"
             type="text"
             value={search}
             onChange={(e) => onSearch(e.target.value)}

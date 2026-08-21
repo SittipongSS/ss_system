@@ -24,7 +24,8 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { TableScroll } from "@/components/ui/Table";
 import { fmtMoney } from "@/lib/format";
 import {
-  DEFAULT_SALE_UNIT, DEFAULT_VOLUME_UNIT, SALE_UNITS, VOLUME_UNITS, packagingSummary, unitOptions,
+  DEFAULT_SALE_UNIT, DEFAULT_VOLUME_UNIT, SALE_UNITS, VOLUME_UNITS,
+  hasPackagingFields, packagingSummary, unitOptions,
 } from "@/lib/master/units";
 import { DEAL_VALUE_ITEMS_MAX, dealValueLineAmount, dealValueTotal } from "@/lib/sales/dealValueItems";
 import styles from "./DealValueLines.module.css";
@@ -106,7 +107,12 @@ export default function DealValueLines({
                         value={row.categoryCode || ""}
                         mainValue={String(row.categoryCode || "").split("-")[0] || ""}
                         disabled={disabled}
-                        onChange={(categoryCode) => setRow(index, { categoryCode })}
+                        onChange={(categoryCode) => setRow(index, {
+                          categoryCode,
+                          // ย้ายไปหมวดที่ไม่มีของ = ล้างปริมาตรทันที ไม่ให้ค่าเก่าค้างซ่อน
+                          // อยู่หลังช่องที่หายไป แล้วโผล่กลับตอนย้ายหมวดกลับ
+                          ...(hasPackagingFields(categoryCode) ? {} : { volume: "", volumeUnit: "" }),
+                        })}
                         // ป้ายอยู่บนหัวคอลัมน์แล้ว — ป้ายในตัวจะซ้อนสองชั้น (ท่าเดียวกับ PdrForm)
                         label={null}
                         ariaLabel={`หมวดสินค้า รายการ ${index + 1}`}
@@ -133,7 +139,12 @@ export default function DealValueLines({
                   {/* ปริมาตร = ขนาดของ **หนึ่งหน่วยขาย** ไม่เข้าสูตรคิดเงิน · ไม่บังคับ
                       (งานบริการไม่มีขนาด) แต่กรอกตัวเลขแล้วต้องมีหน่วย — ช่องหน่วย
                       จึงเริ่มว่างและบังคับเลือกเฉพาะตอนมีตัวเลข */}
+                  {/* กลุ่ม 03/04 ไม่มีของให้วัดขนาด — กติกาเดียวกับทะเบียนสินค้า (mig 0277)
+                      แถวนี้ถือ categoryCode ของตัวเอง จึงตัดสินได้รายแถว ไม่ใช่ทั้งตาราง */}
                   <td data-label="ปริมาตร / ขนาด">
+                    {!hasPackagingFields(row.categoryCode) ? (
+                      <span className={styles.packaging}>— ไม่มีขนาดต่อหน่วย</span>
+                    ) : (
                     <div className={styles.volumeCell}>
                       <MoneyInput
                         min="0"
@@ -169,6 +180,7 @@ export default function DealValueLines({
                         </span>
                       )}
                     </div>
+                    )}
                   </td>
                   {/* จำนวนกับหน่วยขายอยู่เซลล์เดียวกัน (ท่าเดียวกับตารางใบเสนอราคา) —
                       ตารางนี้อยู่ในโมดัล ถ้าแตกเป็นคอลัมน์ที่ 8 จะเลื่อนแนวนอนทุกครั้ง */}

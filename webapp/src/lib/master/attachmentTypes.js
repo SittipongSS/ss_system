@@ -196,6 +196,11 @@ export const ATTACHMENT_TYPES = {
     { key: 'signed_contract', label: 'สัญญาที่ลงนามแล้ว' },
     { key: 'other', label: 'เอกสารแนบอื่นๆ' },
   ],
+  // บันทึกเพิ่มเติมสัญญา (mig 0282) — ฉบับที่ลูกค้าเซ็นแล้วสแกนกลับ (กติกาเดียวกับสัญญา)
+  contract_addendum: [
+    { key: 'signed_addendum', label: 'บันทึกที่ลงนามแล้ว' },
+    { key: 'other', label: 'เอกสารแนบอื่นๆ' },
+  ],
   // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท) — ใช้ validate ฝั่ง API
   // (docType ที่ไม่อยู่ในนี้จะถูกตีเป็น 'other') และ lookup ป้ายชื่อ. การ์ดที่ UI
   // แสดงเลือกตามประเภทผ่าน customerDocTypes(). มาจาก CUSTOMER_DOC_TYPES ชุดเดียว.

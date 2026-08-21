@@ -450,7 +450,7 @@ export default function FormulasPage() {
         {/* .search-glass เป็นกล่องครอบ ไม่ใช่คลาสของ input (ดูคอมเมนต์เดียวกันที่หน้าทะเบียนกลิ่น) */}
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
-          <input
+          <input autoComplete="off"
             type="text" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า"
             value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาสูตร"
           />

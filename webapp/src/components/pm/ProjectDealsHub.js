@@ -542,7 +542,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           {showSearch && (
             <div className={`search-glass ${styles.search}`}>
               <Search size={15} color="var(--text-3)" aria-hidden="true" />
-              <input value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
+              <input autoComplete="off" value={dealQuery} onChange={(event) => setDealQuery(event.target.value)} placeholder="ค้นหาดีล / สูตร / AE" aria-label="ค้นหาดีลในโครงการ" />
             </div>
           )}
           {/* สองทางเข้าคนละความหมาย: "เพิ่มดีล" = สร้างใบใหม่ในโครงการนี้ (งานที่ทำบ่อยกว่า

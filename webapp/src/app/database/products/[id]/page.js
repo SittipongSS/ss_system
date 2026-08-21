@@ -18,7 +18,7 @@ import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes, productDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
-import { brandThList, brandBoth } from "@/lib/master/brands";
+import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -219,6 +219,8 @@ export default function ProductDetails() {
   const catFlags = categoryFlags(product.categoryCode || categoryOf(product.fgCode), productTypes);
   // กลุ่ม 03/04 ไม่มีปริมาตร/หน่วยบรรจุ/ต่อลัง — ซ่อนทั้งสองแถว (ดู units.js)
   const showPackaging = hasPackagingFields(product);
+  // กลุ่ม 03/04 ไม่มีแบรนด์ — ซ่อนทั้งบรรทัดหัวและช่องในการ์ด (ดู brands.js)
+  const showBrand = hasBrandField(product);
   const isExciseCat = catFlags.isExcise;
   // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
   // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
@@ -297,7 +299,7 @@ export default function ProductDetails() {
         eyebrow="PRODUCT MASTER"
         /* รายละเอียด = "รหัส · ชื่อ EN·TH" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
         title={`${product.fgCode ? `${product.fgCode} · ` : ""}${productNameBoth(product) || productDisplayName(product)}`}
-        description={<><span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span><span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
+        description={<>{showBrand && <span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span>}<span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
         badges={<>
           <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
           {isExciseCat && <SalesStateBadge label="ภาษีสรรพสามิต" color="var(--amber)" />}
@@ -389,10 +391,12 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
               </div>
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
-                <span className="font-semibold text-[var(--text)] text-sm">{brandBoth(product.brandName, product.brandNameEn)}</span>
-              </div>
+              {showBrand && (
+                <div>
+                  <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
+                  <span className="font-semibold text-[var(--text)] text-sm">{naText(brandBoth(product.brandName, product.brandNameEn))}</span>
+                </div>
+              )}
               {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
                   โชว์ — ได้ · ชื่อ/รหัส/วันที่เป็น snapshot จากทะเบียน จึงยังอ่านจาก
                   แถวสินค้าตรง ๆ เหมือนเดิม ต่างแค่มีลิงก์กลับไปตัวสูตรเมื่อผูกแล้ว */}

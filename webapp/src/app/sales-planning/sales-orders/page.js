@@ -311,7 +311,7 @@ export default function SalesOrdersPage() {
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
           <div className="toolbar">
-            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
+            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
             <FilterPopover
               count={filterCount}
               onClear={() => { setStatusFilter([]); setPaymentFilter([]); setWaitingOnMeOnly(false); }}

@@ -30,12 +30,21 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       : Promise.resolve({ data: null }),
   ]);
 
+  // สายฉบับ (Rev.) — ใบเดียวกันทั้งสายอ่านจากเลขฐาน · ใช้โชว์ลิงก์ข้ามฉบับบนหน้าใบ
+  const base = row.baseNumber || row.contractNo;
+  const { data: revisions } = base
+    ? await supabase.from('sales_contracts')
+      .select('id, "contractNo", "revisionNo", status, "issuedAt"')
+      .eq('baseNumber', base).order('revisionNo', { ascending: true })
+    : { data: null };
+
   const { issuedHtml, ...rest } = row;
   return ok({
     ...rest,
     hasIssuedDocument: !!issuedHtml,
     signedFile: signedFile || null,
     quotation: quotation || null,
+    revisions: revisions || [],
     canEdit: inSalesEditScope(user, row.deal) && canEditSalesPlanning(user),
   });
 });

@@ -8,7 +8,7 @@
 // ⚠️ ปุ่มระดับใบอยู่ที่ **การ์ดจัดการที่เดียว** (ม-49/ม-57) — ห้ามวาดปุ่มซ้ำในเนื้อ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { FileSignature, FileText, Handshake, Pencil, Printer, X } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
@@ -18,6 +18,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard";
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -32,6 +33,7 @@ import styles from "./page.module.css";
 
 export default function ContractDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const canView = useCan("salesplan:view");
   const canEditCap = useCan("salesplan:edit");
   const { user } = useRole();
@@ -98,7 +100,27 @@ export default function ContractDetailPage() {
   const onTransition = async (transitionId, values = {}) => {
     if (transitionId === "issue") return act("/issue", {}, "ออกสัญญาแล้ว");
     if (transitionId === "cancel") return act("/cancel", { reason: values.reason }, "ยกเลิกสัญญาแล้ว");
+    if (transitionId === "revise") return revise();
     return false;
+  };
+
+  /* ออกฉบับแก้ไข = ได้ "ใบใหม่" ⇒ ต้องพาไปที่ใบนั้น ไม่ใช่รีเฟรชใบเดิมที่กลายเป็น
+     อ่านอย่างเดียวไปแล้ว (คนกดจะงงว่าทำไมกดแล้วแก้อะไรไม่ได้) */
+  const revise = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/sales-planning/contracts/${id}/revise`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "ออกฉบับแก้ไขไม่สำเร็จ");
+      notifyToast.success(`ออกฉบับแก้ไขแล้ว — แก้ข้อมูลแล้วกดออกสัญญาอีกครั้ง`);
+      router.push(`/sa/contracts/${data.id}`);
+      return true;
+    } catch (err) {
+      notifyToast.error(err.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
 
   const save = async () => {
@@ -254,6 +276,22 @@ export default function ContractDetailPage() {
             </div>
           )}
         >
+          {/* สายฉบับ (Rev.) — เห็นทุกฉบับของเลขฐานเดียวกัน กดข้ามไปดูฉบับก่อนหน้าได้
+              (ฉบับเก่าไม่โผล่ในทะเบียนแล้ว ทางเข้าเดียวคือจากตรงนี้) */}
+          {contract.revisions?.length > 1 && (
+            <p className={styles.revChain}>
+              ฉบับของเลขที่ {contract.baseNumber || contract.contractNo}:{" "}
+              {contract.revisions.map((rev, index) => (
+                <span key={rev.id}>
+                  {index > 0 ? " · " : ""}
+                  {rev.id === contract.id
+                    ? <strong>ฉบับที่ {rev.revisionNo} (ใบนี้)</strong>
+                    : <Link prefetch={false} href={`/sa/contracts/${rev.id}`} className="linklike">ฉบับที่ {rev.revisionNo}</Link>}
+                </span>
+              ))}
+            </p>
+          )}
+
           {editing ? (
             <>
               <ContractFormFields
@@ -291,6 +329,9 @@ export default function ContractDetailPage() {
             </dl>
           )}
         </DetailCard>
+
+        {/* บันทึกเพิ่มเติมสัญญา (mig 0282) — เอกสารลูกของสัญญา ทางสร้างอยู่ที่นี่ที่เดียว */}
+        <ContractAddendaCard contract={contract} canEdit={canEdit} />
 
         {/* ⭐ ไฟล์ฉบับลงนามอยู่ในการ์ดไฟล์แนบตัวเดียวกับที่ทั้งระบบใช้ — ไม่ทำท่ออัปโหลด
             ของตัวเอง เพราะจะได้ทางอัปไฟล์ที่สองที่ไม่ผ่านด่านเดียวกับของเดิม */}

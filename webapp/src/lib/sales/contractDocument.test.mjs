@@ -99,6 +99,9 @@ test('ย่อหน้าของความนำและย่อหน�
   assert.match(html, /class="blk intro"/);
   assert.match(html, /class="closing"/);
   assert.match(html, /\.contract \.closing \.clauseText \{ text-indent: 12mm/);
+  // คำจำกัดความก็เป็นความเรียง ⇒ ย่อหน้าเหมือนกัน (มติผู้ใช้ 2026-08-21)
+  assert.match(html, /class="blk defs"/);
+  assert.match(html, /\.contract \.defs \.clauseText,/);
 });
 
 test('ชนิดที่ยังไม่มีแม่แบบต้องเรนเดอร์ไม่ได้ ไม่ใช่ออกกระดาษเปล่า', () => {
@@ -119,7 +122,7 @@ test('ชื่อเอกสารอยู่กลางหน้าเน�
   assert.match(html, /20 เดือน สิงหาคม พ.ศ. 2569/);
   // ไม่พิมพ์รุ่นแม่แบบบนกระดาษ — สัญญาไม่ใช่แบบฟอร์มควบคุมที่ต้องโชว์รหัส/รุ่น
   assert.doesNotMatch(html, /แม่แบบ scent_design/);
-  assert.doesNotMatch(html, /Ver\.20260708/);
+  assert.doesNotMatch(html, /Ver\.2026/);
 });
 
 test('ข้อมูลคู่สัญญาและวันที่พิมพ์เป็นตัวหนา · ตัวเลขเงื่อนไขไม่หนา', () => {
@@ -149,4 +152,84 @@ test('ย่อหน้าปิดท้ายต้องอยู่แผ�
   assert.match(block[1], /ทั้งผู้ว่าจ้างและผู้รับจ้างต่างยึดถือไว้ฝ่ายละฉบับ/);
   assert.match(block[1], /class="signGrid"/);
   assert.match(block[1], /พยาน/);
+});
+
+test('หน้าพรีวิวมีปุ่มพิมพ์ + ตัวสลับภาษา · อังกฤษยังกดไม่ได้', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.match(html, /class="toolbar no-print"/);
+  assert.match(html, /btn-print/);
+  assert.match(html, />พิมพ์เอกสาร</);
+  assert.match(html, /class="langSwitch"/);
+  /* ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ ⇒ ปุ่มต้อง **มีแต่กดไม่ได้พร้อมเหตุผล**
+     ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) และไม่ใช่กดได้แล้วได้เอกสารครึ่งภาษา */
+  assert.match(html, /data-lang="en"[^>]*disabled/);
+  assert.match(html, /ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ/);
+});
+
+test('ช่องลงนามชิดท้ายกระดาษ · เลขที่สัญญาใช้สี accent · ชื่อเอกสารไม่ใหญ่เกิน', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  // ดันเฉพาะช่องเซ็นลงล่าง และเปิด flex ได้หลังตัดหน้าเสร็จเท่านั้น (คลาสจากสคริปต์)
+  assert.match(html, /classList\.add\('signSheet'\)/);
+  assert.match(html, /\.contract \.sheet\.signSheet \.signPage \.signGrid \{ margin-top: auto/);
+  assert.match(html, /\.contract \.identityBlock dl div:first-child dd \{ color: var\(--doc-accent\)/);
+  assert.match(html, /\.contract \.docTitle \{[^}]*font-size: 13\.5pt/);
+  // ช่องพยานต้องห่างจากช่องคู่สัญญาพอให้ลายเซ็นไม่ทับกัน
+  assert.match(html, /\.contract \.signGrid \{[^}]*gap: 20mm 8mm/);
+  // accent ของสัญญาต้องไม่ใช่ navy — เกือบเท่าสีตัวหนังสือ จนสี accent ไม่มีความหมาย
+  assert.match(html, /--doc-accent:#ad5d43/);   // สีเดียวกับใบเสนอราคา
+});
+
+test('ขอบขวาเสมอกันด้วย inter-character — ไม่ใช่ justify เปล่า ๆ ที่ยืดช่องว่างจนเป็นรู', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.match(html, /\.contract \.clauseText \{[^}]*text-align: justify/);
+  /* ⚠️ ขาดบรรทัดนี้ = กลับไปเป็นรูโหว่กลางประโยคทันที (ภาษาไทยไม่เว้นวรรคระหว่างคำ
+     justify จึงยืดช่องว่างเดียวที่มีจนโหว่ — อาการที่ผู้ใช้ทักจากข้อ 3.4) */
+  assert.match(html, /text-justify: inter-character/);
+  /* ระยะห่างย่อหน้าต้องเขียนถึง .sheetContent ด้วย — หลังสคริปต์ตัดหน้า บล็อกย้ายออกจาก
+     .contractBody ไปอยู่ในแผ่น ถ้าเขียนถึงพ่อเดิมอย่างเดียว ไฟล์ที่พิมพ์จริงจะไม่มีระยะเลย */
+  assert.match(html, /\.contract \.sheetContent > \.blk \{ margin-top: 3\.5mm/);
+  assert.match(html, /\.contract \.sheetContent > \.blk:first-child \{ margin-top: 0/);
+  // ตัดกลางคำไทยอ่านไม่ออก ("แล/ะให้") — ห้ามใช้แทน
+  assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*word-break: break-all/);
+});
+
+test('เอกสารบันทึกเพิ่มเติมใช้ชิ้นส่วนเดียวกับสัญญา + มีตารางสูตรที่ตรึงมา', async () => {
+  const { buildAddendumHTML } = await import('./addendumDocument.js');
+  const contract = {
+    contractNo: 'CT-26080001-0', contractDate: '2026-08-20', effectiveDate: '2026-08-20',
+    customerName: 'บริษัท ทดสอบ จำกัด', metadata: {},
+    fields: { clientName: 'บริษัท ทดสอบ จำกัด', clientRegNo: '0105500000000', clientAddress: 'ที่อยู่ทดสอบ' },
+  };
+  const addendum = {
+    docNo: 'CT-26080001-0-A1', addendumNo: 1, addendumDate: '2026-08-21', status: 'awaiting_signature',
+    requestDocNo: 'SB-26080001', fields: { addendumPlace: 'สำนักงานผู้รับจ้าง' },
+    lines: [{ seq: 1, name: 'สูตรทดสอบ', code: 'PF000001', formulaDate: '2026-08-01' }],
+  };
+  const html = buildAddendumHTML(addendum, { contract, company: COMPANY });
+  assert.match(html, /บันทึกเพิ่มเติมสัญญาจ้างออกแบบกลิ่นน้ำหอม ครั้งที่ 1/);
+  assert.match(html, /CT-26080001-0-A1/);
+  assert.match(html, /SB-26080001/);
+  // ตารางสูตรตามต้นฉบับ: ลำดับ · ชื่อสูตร · รหัสสูตร · วันที่สูตร
+  assert.match(html, /<th>ลำดับ<\/th>/);
+  // ตารางต้องเว้นระยะใต้ตัวเองก่อนข้อถัดไป (ข้อ 2 เคยชิดเส้นขอบล่างของตาราง)
+  assert.match(html, /\.contract \.formulaTable \{[^}]*margin: 3mm 0 5mm/);
+  // เส้นตารางครบทุกช่อง ไม่ใช่มีแต่เส้นใต้แถว
+  assert.match(html, /\.contract \.formulaTable \{[^}]*border: 1px solid/);
+  assert.match(html, /\.contract \.formulaTable td \{[^}]*border-right: 1px solid/);
+  assert.match(html, /PF000001/);
+  // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
+  assert.match(html, /classList\.add\('signSheet'\)/);
+  assert.match(html, /\.contract \.clauseText \{[^}]*text-justify: inter-character/);
+  /* วันที่อยู่ในประโยคแรกของเนื้อ ไม่ใช่บรรทัดลอยใต้หัวเรื่อง (มติผู้ใช้ 2026-08-21)
+     — ต่างจากต้นฉบับโดยตั้งใจ บันทึกไว้ที่ docs/sales-contract-plan.md §5.2 */
+  // วันที่เป็นตัวหนาเหมือนข้อมูลคู่สัญญา ⇒ มี markup คั่นในประโยค
+  assert.match(html, /บันทึกฉบับนี้ทำขึ้นเมื่อ <strong class="fill">21 เดือน สิงหาคม พ\.ศ\. 2569<\/strong> ที่/);
+  /* ข้อ 2 อ้างวันที่สัญญาแม่แบบไม่มีคำว่า "เดือน" ตามต้นฉบับ (ความนำใช้รูปเต็ม "20 เดือน สิงหาคม")
+     — ต่างกันจริงในต้นฉบับ ไม่ใช่ความพลาด ห้ามรวบให้เหมือนกัน */
+  assert.match(html, /ฉบับลงวันที่ <strong class="fill">20 สิงหาคม พ\.ศ\. 2569<\/strong>/);
+  /* ฝั่งผู้รับจ้างในความนำต้องมีเลขทะเบียนนิติบุคคลเท่าฝั่งผู้ว่าจ้าง (ต้นฉบับเขียนไว้ฝั่งเดียว)
+     — มติผู้ใช้ 2026-08-21 บันทึกไว้ที่ docs/sales-contract-plan.md §5.2 */
+  assert.match(html, /กับ .{0,80}เลขทะเบียนนิติบุคคล <strong class="fill">0105557081665<\/strong>/);
+  assert.doesNotMatch(html, /docSubtitle/);
+  assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });

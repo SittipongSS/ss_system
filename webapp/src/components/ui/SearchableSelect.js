@@ -113,7 +113,7 @@ export default function SearchableSelect({
           {searchEnabled ? (
             <label className="ui-select-search">
               <Search size={15} aria-hidden="true" />
-              <input
+              <input autoComplete="off"
                 autoFocus
                 value={search}
                 placeholder={searchPlaceholder}

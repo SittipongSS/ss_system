@@ -12,12 +12,16 @@
 //    วันที่ได้แต่แนบไฟล์ไม่ได้ ทั้งที่ไฟล์คือเงื่อนไขจริงของขั้นนั้น
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { CONTRACT_STATUS_LABELS, canCancelContract, canIssueContract } from "@/lib/sales/contracts";
+import {
+  CONTRACT_STATUS_LABELS, canCancelContract, canIssueContract, canReviseContract,
+  contractReviseBlockReason,
+} from "@/lib/sales/contracts";
 
 const STATUS_TONE = {
   draft: "neutral",
   awaiting_signature: "warning",
   signed: "success",
+  revised: "neutral",
   cancelled: "danger",
 };
 
@@ -25,6 +29,7 @@ const STATUS_DESCRIPTION = {
   draft: "ยังไม่ออกเลขที่ — แก้ข้อมูลในใบได้ตามต้องการ",
   awaiting_signature: "ออกเลขแล้ว เนื้อสัญญาถูกตรึง — พิมพ์ส่งลูกค้าเซ็นแล้วอัปโหลดฉบับลงนามกลับ",
   signed: "มีไฟล์ฉบับลงนามครบแล้ว — สัญญามีผลตามวันที่ที่บันทึกไว้",
+  revised: "ถูกแทนที่ด้วยฉบับแก้ไขแล้ว — อ่านอย่างเดียว ฉบับตรึงยังพิมพ์ซ้ำได้",
   cancelled: "ยกเลิกแล้ว — เหตุผลอยู่ในใบและในประวัติ",
 };
 
@@ -43,7 +48,7 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
       { label, tone: STATUS_TONE[key], description: STATUS_DESCRIPTION[key] },
     ])),
     steps: STEPS,
-    cancelledStatuses: ["cancelled"],
+    cancelledStatuses: ["cancelled", "revised"],
     transitions: [
       {
         id: "issue",
@@ -63,6 +68,28 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
           message: "ระบบจะออกเลขที่สัญญา (CT-YYMMXXXX) และตรึงเนื้อเอกสารตามข้อมูลที่กรอกไว้ "
             + "หลังจากนี้แก้เนื้อไม่ได้ ต้องยกเลิกแล้วออกใบใหม่ · ใบจะย้ายไปสถานะ “รอลงนาม”",
           confirmLabel: "ออกสัญญา",
+        },
+      },
+      {
+        /* ⭐ ออกฉบับแก้ไข (มติผู้ใช้ 2026-08-21: "พอออกแล้วต้อง REV เหมือน QT")
+           เนื้อของใบที่ออกเลขแล้วแก้ไม่ได้ ⇒ ทางแก้เดียวคือออกแถวใหม่ที่ถือเลขฐานเดิม
+           ⚠️ ใบที่ลงนามแล้วไม่มีปุ่มนี้ — ต้องทำบันทึกเพิ่มเติมสัญญา (ข้อ 3.2 ของตัวสัญญา) */
+        id: "revise",
+        label: "ออกฉบับแก้ไข (Rev.)",
+        rowLabel: "ออก Rev.",
+        rowTone: "violet",
+        kind: "revise",
+        slot: "secondary",
+        from: ["awaiting_signature"],
+        to: "revised",
+        visible: () => canEdit,
+        allow: (contract) => (canReviseContract(contract) ? true : contractReviseBlockReason(contract)),
+        confirm: {
+          title: "ออกฉบับแก้ไขของสัญญานี้",
+          message: "ระบบจะคัดลอกทั้งใบเป็นร่างใหม่ที่ถือเลขฐานเดิม (เช่น CT-26080001-1) "
+            + "แล้วใบนี้จะกลายเป็น “ออกฉบับแก้ไขแล้ว” อ่านอย่างเดียว · ฉบับตรึงของใบนี้ยังพิมพ์ซ้ำได้เหมือนเดิม "
+            + "· เลขที่ของฉบับใหม่จะออกตอนกด “ออกสัญญา” อีกครั้ง",
+          confirmLabel: "ออกฉบับแก้ไข",
         },
       },
       {

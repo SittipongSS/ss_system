@@ -48,6 +48,11 @@ export function forecastAccuracyRollup(openDeals = [], wonDeals = [], lostDeals 
 // ทำงานจริงคือ SA/AE เลื่อนเดือน FC ของดีลตามความเป็นจริงอยู่แล้ว (แก้ "วันที่คาดปิด"
 // แล้ว forecastMonth ขยับตาม — PATCH /deals ยอมให้แก้ตราบที่ยังไม่ Won)
 // ⇒ เดือน FC กับเดือนที่ปิดจึงควรตรงกันโดยธรรมชาติ ไม่ต้องมีกลไกทบยอดข้ามเดือน
+//
+// ⭐ มติผู้ใช้ 2026-08-21 (mig 0279): `metadata.wonMonth` ของดีลที่มี SO แล้ว =
+// เดือนที่ **อนุมัติใบสั่งขาย** (`sales_orders.approvedAt` เวลาไทย) ไม่ใช่เดือนของ
+// วันที่บนหัวใบ — Actual เกิดตอนอนุมัติ เดือนที่ลงยอดจึงต้องเป็นเดือนที่อนุมัติ
+// ค่านี้ DB เขียนให้เอง (trigger sync_sales_order_actual) ฝั่ง JS แค่อ่าน
 export const wonMonthOf = (d) => monthKey(d?.metadata?.wonMonth)
   || monthKey(d?.confirmedAt)
   || monthKey(d?.metadata?.poReceivedDate)

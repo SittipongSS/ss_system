@@ -57,6 +57,15 @@ export const SCOPED_TABLES = {
     view: inSalesViewScope,
     edit: inSalesEditScope,
   },
+  // บันทึกเพิ่มเติมสัญญา (mig 0282) — คัด team/ownerId มาจากสัญญาแม่ตอนสร้าง
+  // จึงตรวจด่านจากตัวแถวเองได้ ไม่ต้อง join ขึ้นไปถึงดีล
+  sales_contract_addenda: {
+    label: 'บันทึกเพิ่มเติมสัญญา',
+    select: '*',
+    scopeOf: (row) => row,
+    view: inSalesViewScope,
+    edit: inSalesEditScope,
+  },
   sales_leads: {
     label: 'ลีด',
     select: '*',

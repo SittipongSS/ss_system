@@ -158,3 +158,50 @@ test('API คิดยอดจากแถว ไม่เชื่อ projectV
   assert.match(patch, /'categoryCode' in body && !wantsValueItems/,
     'ช่อง categoryCode ดิบต้องไม่ทับหมวดที่มาจากแถว');
 });
+
+// ── หน่วยกับกฎหมวด ต้องตรงกับทะเบียนสินค้า (มติผู้ใช้ 2026-08-21 · mig 0281) ──
+// ผู้ใช้ทักว่า "หน่วยและเงื่อนไขหน่วยของดีล ยังไม่เหมือนกับฐานข้อมูล" — เดิมที่นี่รับ
+// ข้อความอิสระ ≤20 ตัว ดรอปดาวน์บนจอเป็นสิ่งเดียวที่กันไว้
+test('หน่วยขายต้องอยู่ในลิสต์กลาง ไม่ใช่ข้อความอิสระ', () => {
+  const bad = normalizeDealValueItems([row({ unit: 'โหล' })]);
+  assert.match(bad.error, /หน่วยขาย "โหล" ไม่อยู่ในลิสต์/);
+  assert.deepEqual(bad.items, []);
+  // คำที่เลิกใช้แล้วก็ต้องไม่ผ่าน ไม่งั้นดีลจะพาคำเก่ากลับเข้าระบบ
+  assert.match(normalizeDealValueItems([row({ unit: 'Kg' })]).error, /ไม่อยู่ในลิสต์/);
+  assert.equal(normalizeDealValueItems([row({ unit: 'กิโลกรัม' })]).error, null);
+});
+
+test('หน่วยปริมาตรต้องอยู่ในลิสต์กลางเช่นกัน', () => {
+  const bad = normalizeDealValueItems([row({ volume: 50, volumeUnit: 'oz' })]);
+  assert.match(bad.error, /หน่วยปริมาตร "oz" ไม่อยู่ในลิสต์/);
+  assert.equal(normalizeDealValueItems([row({ volume: 50, volumeUnit: 'ml' })]).error, null);
+});
+
+test('กลุ่ม 03/04 ไม่มีปริมาตร — ล้างเงียบ ๆ ไม่ฟ้อง error', () => {
+  // ฟ้อง error ไม่ได้: แถวเก่าที่บันทึกไว้ก่อนกฎนี้ต้องยังเปิดดีลมาแก้เรื่องอื่นได้
+  for (const categoryCode of ['03-002', '04-005']) {
+    const { items, error } = normalizeDealValueItems([
+      row({ categoryCode, volume: 1, volumeUnit: 'package' }),
+    ]);
+    assert.equal(error, null, categoryCode);
+    assert.equal(items[0].volume, null, categoryCode);
+    assert.equal(items[0].volumeUnit, null, categoryCode);
+  }
+});
+
+test('กลุ่ม 01/02 ยังเก็บปริมาตรได้ตามเดิม', () => {
+  for (const categoryCode of ['01-002', '02-020']) {
+    const { items, error } = normalizeDealValueItems([
+      row({ categoryCode, volume: 50, volumeUnit: 'ml' }),
+    ]);
+    assert.equal(error, null, categoryCode);
+    assert.equal(items[0].volume, 50, categoryCode);
+    assert.equal(items[0].volumeUnit, 'ml', categoryCode);
+  }
+});
+
+test('ยอดเงินไม่ขยับเพราะการล้างปริมาตร — ปริมาตรไม่เคยเข้าสูตร', () => {
+  const withVol = normalizeDealValueItems([row({ categoryCode: '03-002', volume: 1, volumeUnit: 'package' })]);
+  const without = normalizeDealValueItems([row({ categoryCode: '03-002' })]);
+  assert.equal(withVol.total, without.total);
+});

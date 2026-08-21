@@ -23,7 +23,10 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/
 
 // ⚠️ ทุกตารางที่ลงทะเบียนที่นี่ต้องมี `team` + `ownerId` (สิ่งที่ `inScope()` อ่าน) —
 // สัญญา (mig 0278) จึงคัด `team` มาจากดีลตอนสร้าง ไม่ได้ join สดตอนตรวจสิทธิ์
-export const SALES_ATTACHMENT_TABLE = { deal: 'sales_deals', project: 'projects', contract: 'sales_contracts' };
+export const SALES_ATTACHMENT_TABLE = {
+  deal: 'sales_deals', project: 'projects',
+  contract: 'sales_contracts', contract_addendum: 'sales_contract_addenda',
+};
 
 export const isSalesAttachment = (entityType) => !!SALES_ATTACHMENT_TABLE[entityType];
 

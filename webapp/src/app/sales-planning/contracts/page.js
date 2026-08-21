@@ -110,7 +110,7 @@ export default function ContractsPage() {
           <div className="toolbar">
             <div className={`search-glass ${styles.search}`}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
             </div>
             {waitingOnMeOnly && (
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
@@ -153,6 +153,8 @@ export default function ContractsPage() {
                         <Link prefetch={false} href={`/sa/contracts/${row.id}`} className="linklike">
                           <strong className="mono">{row.contractNo || "ฉบับร่าง"}</strong>
                         </Link>
+                        {/* ทะเบียนโชว์เฉพาะฉบับล่าสุดของแต่ละสาย — บอกให้รู้ว่าใบนี้เป็นฉบับที่เท่าไร */}
+                        {row.revisionNo > 0 && <span className={styles.subLine}>ฉบับแก้ไข R{row.revisionNo}</span>}
                       </td>
                       <td>
                         {naText(row.customerName)}
