@@ -16,6 +16,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { personFullName } from "@/lib/ui/personName";
+import { deptQueueHref } from "@/lib/requests/modules";
 import { requestAssignee } from "@/lib/requests/assign";
 import Toast from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
@@ -248,8 +249,16 @@ export default function RequestDetailPage() {
 
   // กลับไปแท็บที่คนคนนี้ใช้งานจริง — ผู้ตอบกลับเข้าคิวของฝ่ายที่คำร้องนี้ถามไป,
   // ผู้ขอกลับไปดูคำร้องของตัวเอง (ชื่อแท็บตรงกับที่ /sa/requests รับผ่าน ?tab=)
+  /* 🐞 **ฝ่ายที่มีโมดูลของตัวเองต้องกลับเข้าบ้านตัวเอง** (มติ 2026-08-22 · กฎข้อ 9)
+     ลิงก์เดิมชี้ `/requests?tab=queue-RD` ซึ่งเป็นชื่อแท็บยุคก่อนมี `/rd/requests`
+     ⇒ RD กด "กลับ" แล้วไปโผล่คิวรวมที่ **ไม่มีแถวของเขาเหลือแล้ว** (ฝ่ายที่มีโมดูล
+     ถูกตัดออกจากคิวรวมตั้งแต่ ม-29) · บั๊กนี้มีมาก่อนกฎข้อ 9 แต่เห็นชัดตอนนี้เพราะ
+     เปลือกไม่สลับให้รู้ตัวอีกแล้ว
+     ⚠️ ต้องดูที่ **ฝ่ายของคนกด** ไม่ใช่ฝ่ายบนใบ — AE Supervisor เปิดใบของ RD ได้
+     (break-glass) ถ้าส่งเขาไป `/rd/requests` จะโดน proxy เด้งกลับ `/home` เงียบ ๆ */
   const backTab = req?._mine === false ? `queue-${req.dept}` : "mine";
-  const back = { href: `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
+  const ownQueue = req?.dept === department ? deptQueueHref(department) : null;
+  const back = { href: ownQueue || `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !req) {
     return (
