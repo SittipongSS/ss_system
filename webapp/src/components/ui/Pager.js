@@ -53,7 +53,10 @@ export default function Pager({
   const pageNumbers = Array.from({ length: windowSize }, (_, index) => windowStart + index);
 
   return (
-    <nav ref={rootRef} className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
+    /* `data-pager` = จุดเกาะให้เปลือกกลางรู้ว่านี่คือแถบแบ่งหน้า — เมื่ออยู่ในเนื้อ
+       การ์ดที่มีระยะขอบของตัวเองแล้ว (`.ui-section-body`) globals จะตัดระยะซ้ำออก
+       (กติกาเดียวกับตารางที่ฝังในการ์ด · ดู --panel-inset) */
+    <nav ref={rootRef} data-pager className={`${styles.root} ${className}`.trim()} aria-label={ariaLabel}>
       <span>ทั้งหมด {fmtNumber(safeTotal)} {itemLabel}</span>
       <div className={styles.controls}>
         {showSize ? (
