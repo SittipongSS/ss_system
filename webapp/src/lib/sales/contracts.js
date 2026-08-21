@@ -34,12 +34,13 @@ export const CONTRACT_KIND_DOC_TITLES_EN = Object.freeze({
   service: 'SERVICE AGREEMENT',
 });
 
-export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'cancelled']);
+export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'revised', 'cancelled']);
 
 export const CONTRACT_STATUS_LABELS = Object.freeze({
   draft: 'ร่าง',
   awaiting_signature: 'รอลงนาม',
   signed: 'ลงนามแล้ว',
+  revised: 'ออกฉบับแก้ไขแล้ว',
   cancelled: 'ยกเลิก',
 });
 
@@ -48,6 +49,7 @@ export const CONTRACT_STATUS_TONES = Object.freeze({
   draft: 'muted',
   awaiting_signature: 'warning',
   signed: 'success',
+  revised: 'muted',
   cancelled: 'danger',
 });
 
@@ -139,8 +141,52 @@ export const isContractEditable = (contract) => contract?.status === 'draft';
 export const canIssueContract = (contract) => contract?.status === 'draft';
 export const canSignContract = (contract) => contract?.status === 'awaiting_signature';
 export const canCancelContract = (contract) => ['draft', 'awaiting_signature'].includes(contract?.status);
-// ลบได้เฉพาะร่างที่ยังไม่เคยออกเลข — ใบที่ออกเลขไปแล้วต้อง "ยกเลิก" ให้เหลือร่องรอย
+/* ลบได้ตราบใดที่ยังเป็นร่าง (มติผู้ใช้ 2026-08-21: "ถ้าร่างให้ลบได้ จนกว่าจะกดออกสัญญา")
+   ร่างไม่มีทางมีเลขที่อยู่แล้ว — เงื่อนไขเลขที่คงไว้เป็นเข็มขัดนิรภัยของข้อมูลเก่า */
 export const canDeleteContract = (contract) => contract?.status === 'draft' && !contract?.contractNo;
+
+/* ── ฉบับแก้ไข (Rev.) — กติกาเดียวกับใบเสนอราคา ────────────────────────────
+   ใบที่ออกเลขแล้วแก้เนื้อไม่ได้ ต้องออก **แถวใหม่** ที่ถือเลขฐานเดิม เลขฉบับถัดไป
+   (CT-YYMMXXXX-1) แล้วใบเดิมกลายเป็น `revised` = อ่านอย่างเดียว
+
+   ⚠️ **ใบที่ลงนามแล้วออก Rev. ไม่ได้** — ตัวสัญญาข้อ 3.2 เขียนไว้เองว่าการแก้ไข
+   เพิ่มเติมต้องทำเป็นลายลักษณ์อักษรและลงนามทั้งสองฝ่าย ⇒ ของแบบนั้นคือ "บันทึก
+   เพิ่มเติมสัญญา" (เอกสารคนละใบ) ไม่ใช่การออกฉบับแก้ไขทับของเดิม */
+export const canReviseContract = (contract) => contract?.status === 'awaiting_signature';
+
+export function contractReviseBlockReason(contract) {
+  if (canReviseContract(contract)) return null;
+  if (contract?.status === 'draft') return 'ใบนี้ยังเป็นร่าง — แก้ในใบได้เลย ไม่ต้องออกฉบับแก้ไข';
+  if (contract?.status === 'signed') return 'สัญญาที่ลงนามแล้วต้องทำบันทึกเพิ่มเติมสัญญา ไม่ใช่ออกฉบับแก้ไข (ข้อ 3.2)';
+  if (contract?.status === 'revised') return 'ใบนี้ถูกแทนที่ด้วยฉบับแก้ไขแล้ว — ออก Rev. ต่อที่ฉบับล่าสุด';
+  return 'ใบที่ยกเลิกแล้วออกฉบับแก้ไขไม่ได้';
+}
+
+// เลขฐานของสายฉบับ — ใบเก่าที่ยังไม่มี baseNumber ใช้เลขที่ของตัวเองเป็นฐาน
+export const contractRevisionKey = (contract) =>
+  contract?.baseNumber || contract?.contractNo || contract?.id || '';
+
+const revisionNo = (contract) => (Number.isFinite(Number(contract?.revisionNo)) ? Number(contract.revisionNo) : 0);
+const revisionTime = (contract) => {
+  const value = Date.parse(contract?.createdAt || contract?.updatedAt || '');
+  return Number.isFinite(value) ? value : 0;
+};
+
+/* เหลือเฉพาะฉบับล่าสุดของแต่ละสาย — ทะเบียนต้องไม่โชว์ฉบับเก่าปนกับฉบับปัจจุบัน
+   (แพตเทิร์นเดียวกับ latestQuotationRevisions ของใบเสนอราคา) */
+export function latestContractRevisions(contracts = []) {
+  const latest = new Map();
+  for (const contract of contracts) {
+    const key = contractRevisionKey(contract);
+    const current = latest.get(key);
+    if (!current
+      || revisionNo(contract) > revisionNo(current)
+      || (revisionNo(contract) === revisionNo(current) && revisionTime(contract) > revisionTime(current))) {
+      latest.set(key, contract);
+    }
+  }
+  return [...latest.values()].sort((a, b) => revisionTime(b) - revisionTime(a));
+}
 
 // ใบที่รอมือใคร — ใช้ทั้งป้ายตัวเลขบนเมนูและตัวกรอง "ที่ต้องทำ" ในลิสต์
 export function isContractWaitingOnMe(contract, { userId } = {}) {

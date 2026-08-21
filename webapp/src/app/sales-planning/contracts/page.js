@@ -153,6 +153,8 @@ export default function ContractsPage() {
                         <Link prefetch={false} href={`/sa/contracts/${row.id}`} className="linklike">
                           <strong className="mono">{row.contractNo || "ฉบับร่าง"}</strong>
                         </Link>
+                        {/* ทะเบียนโชว์เฉพาะฉบับล่าสุดของแต่ละสาย — บอกให้รู้ว่าใบนี้เป็นฉบับที่เท่าไร */}
+                        {row.revisionNo > 0 && <span className={styles.subLine}>ฉบับแก้ไข R{row.revisionNo}</span>}
                       </td>
                       <td>
                         {naText(row.customerName)}
