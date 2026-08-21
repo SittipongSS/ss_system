@@ -17,7 +17,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isBareShellPathname, isSettingsPathname, sharedItemBelongsInGroup, systemForPathname } from '@/config/navigation';
-import SettingsShell from '@/components/settings/SettingsShell';
+import { settingsMenuItems } from '@/config/settingsNav';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
@@ -617,10 +617,18 @@ export default function AppLayout({ children }) {
 
   const currentGroup = accessibleGroups.find((g) => g.system === activeSystem) || null;
   const isSettingsContext = isSettingsPathname(pathname);
-  // เปลือกไร้แถบเมนู (ตั้งค่า · บัญชีของฉัน) — ล้างเมนูทิ้งที่จุดเดียวตรงนี้ แล้วทั้ง
-  // แถบบน แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด ไม่ต้องไล่ปิดทีละที่
+  // เปลือกไร้แถบเมนู (เหลือบัญชีของฉันหน้าเดียว) — ล้างเมนูทิ้งที่จุดเดียวตรงนี้
+  // แล้วทั้งแถบข้าง แถบล่างมือถือ และแผ่นเมนู "เพิ่มเติม" ว่างตามกันหมด
   const isBareShell = isBareShellPathname(pathname);
-  const menuItems = isBareShell ? [] : (currentGroup?.items || []);
+  /* ⭐ ตั้งค่าใช้แถบเดียวกับทุกระบบ (มติผู้ใช้ 2026-08-22) — รายการมาจากแผนที่
+     `config/settingsNav` ไฟล์เดียวกับที่หน้าภาพรวมอ่าน ไม่ใช่รายการชุดที่สอง
+     ⚠️ ต้องแยกสาขาตรงนี้เพราะ `allGroups` ไม่มีระบบ `settings` — เมนูตั้งค่าคุมด้วย
+     `visible` ในแผนที่ ไม่ใช่ `cap` แบบระบบอื่น จึงยัดเข้า allGroups ตรง ๆ ไม่ได้ */
+  const menuItems = isBareShell
+    ? []
+    : isSettingsContext
+      ? settingsMenuItems(userContext)
+      : (currentGroup?.items || []);
   /* แถบเมนูมีสองกลุ่ม: ลำดับงาน (ซ้าย) กับเครื่องมือ (ขวา ข้าง "วางเป้า")
      ⚠️ `menuItems` ยังเป็นก้อนเดียวสำหรับมือถือ — แผ่นเมนูล่างไม่มีสองฝั่งให้แบ่ง */
   const flowItems = menuItems.filter((item) => !item.utility);
@@ -829,7 +837,17 @@ export default function AppLayout({ children }) {
             <X className="sidenav-ico-collapse" size={18} aria-hidden="true" />
             <Menu className="sidenav-ico-expand" size={18} aria-hidden="true" />
           </button>
-          {flowItems.map((item) => renderMenuItem(item))}
+          {/* หัวข้อกลุ่มโผล่เมื่อกลุ่มเปลี่ยน — ตอนนี้มีแค่เมนูตั้งค่าที่ใส่ `group` มา
+              เมนูของระบบอื่นไม่มี ⇒ ไม่มีหัวข้อโผล่ ไม่ต้องแก้อะไรที่ฝั่งนั้น
+              (ตอนแถบย่อเป็นราง หัวข้อถูกซ่อนด้วย container query ดู .topnav-group) */}
+          {flowItems.flatMap((item, index) => {
+            const out = [];
+            if (item.group && item.group !== flowItems[index - 1]?.group) {
+              out.push(<span key={`group-${item.group}`} className="topnav-group">{item.group}</span>);
+            }
+            out.push(renderMenuItem(item));
+            return out;
+          })}
           <span className="topnav-menu-spacer" />
           {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
           {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
@@ -853,13 +871,7 @@ export default function AppLayout({ children }) {
                 <TeamContext.Provider value={team}>
                   <TeamsContext.Provider value={teams}>
                     <DepartmentContext.Provider value={department}>
-                      {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
-                          ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
-                          ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
-                          /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
-                      {isSettingsContext
-                        ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
-                        : children}
+                      {children}
                     </DepartmentContext.Provider>
                   </TeamsContext.Provider>
                 </TeamContext.Provider>

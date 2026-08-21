@@ -1379,6 +1379,22 @@ button, select, input, textarea {
   transition: flex-basis var(--motion-medium), width var(--motion-medium);
 }
 .topnav-menu-spacer { flex: 1; }
+/* หัวข้อกลุ่มในแถบเมนู — ใช้กับเมนูที่ยาวจนต้องแบ่งหมวด (ตอนนี้คือตั้งค่า 11 หน้า)
+   ⚠️ ไม่ใช่ปุ่ม ห้ามให้ดูกดได้ — เล็กกว่า เบากว่า และเว้นบนมากกว่าเว้นล่าง
+   เพื่อให้มันเกาะกับรายการที่ตามมา ไม่ใช่ลอยอยู่กลางสองกลุ่ม */
+.topnav-group {
+  margin: var(--space-3) 0 var(--space-0-5);
+  padding: 0 var(--space-2-5);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* กลุ่มแรกไม่ต้องเว้นบน — ใต้ปุ่มย่อ/กางมีระยะของมันเองอยู่แล้ว */
+.topnav-group:first-of-type { margin-top: var(--space-1); }
 
 /* ── ปุ่มย่อ/กาง — อยู่ **หัวแถบเมนู** ไม่ใช่บนหัวเว็บ (มติผู้ใช้ 2026-08-22) ──
    ปุ่มเกาะอยู่กับสิ่งที่มันคุมเสมอ · ชิดขวาตอนกาง (ไกลจากรายการเมนู ไม่แย่งสายตา)
@@ -1527,6 +1543,22 @@ button, select, input, textarea {
     gap: 0;
   }
   .topnav-item > span:not(.topnav-count) { display: none; }
+  /* ราง 56px ไม่มีที่ให้ชื่อกลุ่ม — แทนด้วยเส้นคั่นบาง ๆ ให้ยังรู้ว่าขึ้นหมวดใหม่
+     (ซ่อนทิ้งเฉย ๆ แล้วไอคอน 11 ตัวจะเรียงติดกันเป็นพืดอ่านไม่ออกว่าแบ่งตรงไหน) */
+  .topnav-group {
+    /* 🪤 ตัดตัวหนังสือด้วย height+overflow ไม่ใช่ font-size/line-height: 0 —
+       ค่าพวกนั้นเป็นเลขดิบที่ audit:ui นับเป็นหนี้ และ line-height ดิบผิดกติกา
+       ข้อความไทย (≥1.65) ด้วย */
+    height: 1px;
+    margin: var(--space-2) var(--space-2) var(--space-1-5);
+    padding: 0;
+    border-top: 1px solid var(--border);
+    overflow: hidden;
+  }
+  /* 🪤 ห้ามยกเว้นหัวข้อกลุ่มแรกที่นี่ — ตอนกางมันแค่ลดระยะบน แต่ตอนเป็นราง
+     เส้นนั้นคือ **ขอบระหว่าง "ภาพรวม" กับกลุ่มแรก** ซึ่งเป็นขอบจริง ตัดออกแล้ว
+     ไอคอนภาพรวมจะเนียนไปกับกลุ่มแรกเหมือนอยู่กลุ่มเดียวกัน */
+  .topnav-group:first-of-type { border-top: 1px solid var(--border); margin-top: var(--space-2); }
   .sidenav-toggle { align-self: center; }
   .sidenav-ico-collapse { display: none; }
   .sidenav-ico-expand { display: block; }
