@@ -189,6 +189,10 @@ test('ขอบขวาเสมอกันด้วย inter-character — �
      .contractBody ไปอยู่ในแผ่น ถ้าเขียนถึงพ่อเดิมอย่างเดียว ไฟล์ที่พิมพ์จริงจะไม่มีระยะเลย */
   assert.match(html, /\.contract \.sheetContent > \.blk \{ margin-top: 3\.5mm/);
   assert.match(html, /\.contract \.sheetContent > \.blk:first-child \{ margin-top: 0/);
+  /* แผ่นต่อไม่เว้นช่องใต้หัวใบซ้ำ — ขอบกระดาษ 20mm เว้นให้แล้ว และแผ่นนั้นไม่มีหัวใบ
+     (สคริปต์เป็นคนติดคลาส contPage ให้แผ่นที่สร้างแบบไม่มีหัวใบ) */
+  assert.match(html, /page\.className = withHeader \? 'sheet' : 'sheet contPage'/);
+  assert.match(html, /\.contract \.sheet\.contPage \.sheetContent \{ padding-top: 0/);
   // ตัดกลางคำไทยอ่านไม่ออก ("แล/ะให้") — ห้ามใช้แทน
   assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*word-break: break-all/);
 });
