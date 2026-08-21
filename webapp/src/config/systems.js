@@ -1,5 +1,5 @@
 import { Briefcase, CircleDollarSign, Database, Factory, FlaskConical, LifeBuoy, LineChart, Scale, Wallet, Wrench } from 'lucide-react';
-import { canAccessFinance, canAccessMgmt, worksInSalesPipeline, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
+import { canAccessFinance, canAccessMgmt, homeSystemForUser, canAccessRd, canAccessSahamit, canViewProduction, canUser, canViewService, userTeams } from '@/lib/permissions';
 
 export const RECENT_SYSTEM_STORAGE_KEY = 'ss:last-system';
 
@@ -19,12 +19,16 @@ export const SYSTEM_CATALOG = [
     label: 'บริหารงานขาย',
     description: 'จัดการลีด ดีล โครงการ เอกสารขาย และงานของทีมในพื้นที่เดียว',
     icon: CircleDollarSign,
-    isVisible: (user) => ['salesplan:view', 'salesplan:lead', 'pm:view'].some((cap) => canUser(user, cap)),
+    /* ⚠️ **ฝ่ายบัญชีไม่เห็นการ์ดนี้แล้ว** (มติผู้ใช้ 2026-08-22) — เอกสารสี่ชนิดที่
+       กฎข้อ 7 ตัดสินว่าเป็นเมนูของเขา (ใบเสนอราคา · ใบสั่งขาย · สัญญา · คำร้อง)
+       ย้ายไปอยู่ในกลุ่มเมนูของโมดูล "บัญชีและการเงิน" แล้ว ⇒ กลุ่มนี้เหลือศูนย์
+       รายการสำหรับเขา · ปล่อยการ์ดไว้ = กดแล้วลงที่ `/sa/sales-orders` ซึ่งตอนนี้
+       สวมเปลือก "บัญชีและการเงิน" ⇒ ป้ายบนการ์ดกับเปลือกที่ได้ไม่ตรงกัน
+       ⚠️ **ไม่ได้ตัดสิทธิ์อ่านอะไรเลย** — `salesplan:view` ยังอยู่ครบ กดลิงก์จากใบ
+       ไปดีล/โครงการยังเข้าได้เหมือนเดิม (เหตุผลเดียวกับกฎข้อ 7: ตัดที่เมนู ไม่ใช่ที่ cap) */
+    isVisible: (user) => homeSystemForUser(user) !== 'finance'
+      && ['salesplan:view', 'salesplan:lead', 'pm:view'].some((cap) => canUser(user, cap)),
     landing: (user) => {
-      /* ⚠️ ปลายทางต้องเป็นหน้าที่ **อยู่ในเมนูของคนคนนั้น** — ไม่งั้นกดการ์ดระบบแล้วไป
-         ยืนบนหน้าที่แถบเมนูไม่ไฮไลต์อะไรเลย · ฝ่ายบัญชีไม่มีแดชบอร์ดยอดขายในเมนู
-         (มติ 2026-08-13 · กฎสามชั้น) เอกสารที่เขาเปิดจริงคือใบสั่งขาย */
-      if (!worksInSalesPipeline(user) && canUser(user, 'salesplan:view')) return '/sa/sales-orders';
       if (canUser(user, 'salesplan:view')) return '/sa';
       if (canUser(user, 'salesplan:lead')) return '/sa/leads';
       return '/sa/tasks';

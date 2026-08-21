@@ -16,7 +16,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
-import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
+import { isBareShellPathname, isSettingsPathname, sharedItemBelongsInGroup, systemForPathname } from '@/config/navigation';
 import SettingsShell from '@/components/settings/SettingsShell';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
@@ -37,6 +37,33 @@ const SUPABASE_CONFIGURED =
 // ทุกคอลัมน์" ทุกครั้งที่เข้าระบบ แม้ผู้ใช้ไม่เคยเปิดหน้าเหล่านั้นเลย = จ่าย egress
 // ฟรีทุก login. ตอนนี้แต่ละหน้า fetch เองตอนเปิดครั้งแรกแล้วแคชแบบ SWR ตามเดิม —
 // ช้าลงเฉพาะคลิกแรกของหน้านั้น ๆ ไม่ใช่ทุกการเข้าระบบ)
+
+/* ── เมนูเอกสารร่วม — ประกาศครั้งเดียว ใช้ได้หลายกลุ่ม ────────────────────
+   (มติผู้ใช้ 2026-08-22 · คู่กับ `ADOPTED_SHARED_PATHS` ใน config/navigation.js)
+
+   ⭐ เอกสารพวกนี้อยู่ `/sa` ตามกฎสามชั้นชั้น 2 **แต่ฝ่ายที่ไม่ใช่ฝ่ายขายก็ทำงานกับมัน
+   ทุกวัน** ⇒ ต้องขึ้นเมนูในบ้านของฝ่ายนั้นด้วย ไม่ใช่บังคับให้เขาเดินออกไปยืนใน
+   เปลือก "บริหารงานขาย" ทุกครั้ง (กฎข้อ 8: ปลายทางต้องเป็นหน้าที่อยู่ในเมนูของเขา)
+
+   ⚠️ **ห้ามก๊อปนิยามไปแปะซ้ำในแต่ละกลุ่ม** — `countHref`/`match` ของสองก้อนจะเพี้ยน
+   หากันภายในไม่กี่เดือน (บทเรียนเดียวกับ ม-34 ที่ห้ามโคลนคิวคำร้อง) · `shared: true`
+   คือธงที่ตัวกรองใน `accessibleGroups` ใช้ตัดสินว่ารายการนี้ควรขึ้นกลุ่มไหนของ "คนคนนี้"
+   — ขึ้นได้กลุ่มเดียวเสมอ ไม่ใช่สองกลุ่มพร้อมกัน */
+const SHARED_DOC_ITEMS = {
+  // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
+  quotations: { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
+  salesOrders: { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
+  contracts: { href: '/sa/contracts', name: 'สัญญา', icon: FileSignature, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
+  // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/ขอเอกสาร/ติดตามของเข้า
+  // อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก
+  // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
+  // ของระบบขอราคาผลิตมาใช้ตั้งแต่ตอนที่มันยังเป็น "ระบบขอราคาวัสดุ" ⇒ ฝ่ายที่รับ
+  // คำร้องได้แต่ไม่มีสิทธิ์เห็นต้นทุน (บัญชี) เปิดเมนูไม่ได้เลย
+  // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
+  // (lib/requests/access.js) ไม่ใช่ที่เมนู
+  // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
+  requests: { href: '/requests', name: 'คำร้อง', icon: MessageCircleQuestion, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, shared: true, match: (p) => p.startsWith('/requests') },
+};
 
 // เฟส T (Sales Revamp §5.1): navigation ทั้งระบบเป็น top bar 2 ชั้นตรึงบนสุด —
 // ชั้นระบบ (โลโก้ navy + ตัวสลับระบบ + user actions) และชั้นเมนูของระบบปัจจุบัน
@@ -77,6 +104,12 @@ export default function AppLayout({ children }) {
      ฝั่ง server ไม่มีทางรู้ จึงเป็น false หนึ่งเฟรมเสมอตอนโหลดหน้า */
   const [isWide, setIsWide] = useState(false);
   const sysMenuRef = useRef(null);
+
+  /* ⚠️ ต้องประกาศ **ก่อน** effect ที่ตัดสินเปลือกระบบข้างล่าง — ตั้งแต่มติ 2026-08-22
+     เปลือกของเอกสารร่วมเดินตาม *คนดู* ไม่ใช่ตาม URL อย่างเดียวอีกต่อไป
+     ⚠️ ค่าเป็น null ทั้งหมดหนึ่งเฟรมแรกเสมอ (auth ยังไม่กลับ) ⇒ effect ต้องมี
+     `role`/`department` อยู่ใน dependency ไม่งั้นเปลือกค้างที่ผลลัพธ์ของเฟรมนั้น */
+  const userContext = { role, team, teams, department, extraCaps };
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
@@ -159,7 +192,7 @@ export default function AppLayout({ children }) {
   }, [userName]);
 
   useEffect(() => {
-    const sys = systemForPathname(pathname);
+    const sys = systemForPathname(pathname, userContext);
 
     if (sys) setActiveSystem(sys);
     else {
@@ -172,12 +205,18 @@ export default function AppLayout({ children }) {
         if (recent && getSystemByKey(recent)) setActiveSystem(recent);
       } catch { /* โหมดส่วนตัว — คงเปลือกเดิมไว้ */ }
     }
-    if (getSystemByKey(sys)) {
+    /* ⚠️ **เขียนความจำเฉพาะระบบที่คนคนนี้เข้าถึงได้จริง** (มติผู้ใช้ 2026-08-22)
+       🐞 เดิมเขียนทุกครั้งที่เดินผ่าน ⇒ ฝ่ายบัญชีกดดูใบสั่งขายหนึ่งครั้ง
+       `ss:last-system` กลายเป็น `salesplan` ถาวร แล้วการ์ด "ทำงานต่อ" ที่หน้าแรก
+       (`recentSystemForUser`) กับเปลือกของหน้าที่ไม่เป็นของระบบไหน (`/notifications`
+       · `/account` ซึ่งถอยมาอ่านค่านี้) พาเขาไปยืนในบ้านฝ่ายขายตามไปด้วยทั้งหมด */
+    if (getSystemByKey(sys) && systemsForUser(userContext).some((system) => system.key === sys)) {
       try { localStorage.setItem(RECENT_SYSTEM_STORAGE_KEY, sys); } catch {}
     }
     setSysMenuOpen(false); // navigating closes the system dropdown
     setMobileMoreOpen(false);
-  }, [pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, role, department, extraCaps]);
 
   // ปิด dropdown สลับระบบเมื่อคลิกนอกเมนู
   useEffect(() => {
@@ -337,10 +376,11 @@ export default function AppLayout({ children }) {
         { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
         // เฟส B: หน้ารวมโครงการ (ภาชนะรวมดีล + KPI rollup) — เดิม /sa/projects เด้งไปหน้าดีล
         { href: '/sa/projects', name: 'โครงการ', countHref: '/sa/projects?count=projectCloses', icon: FolderKanban, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
-        // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
-        { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
-        { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
-        { href: '/sa/contracts', name: 'สัญญา', icon: FileSignature, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
+        /* เอกสารร่วมสามชนิด — นิยามอยู่ที่ `SHARED_DOC_ITEMS` เพราะฝ่าย FN มีเมนู
+           ชุดนี้ในบ้านตัวเองด้วย (มติผู้ใช้ 2026-08-22) · ขึ้นได้กลุ่มเดียวต่อคน */
+        SHARED_DOC_ITEMS.quotations,
+        SHARED_DOC_ITEMS.salesOrders,
+        SHARED_DOC_ITEMS.contracts,
         // (เมนู "สอบถาม RD" ถูกถอดใน mig 0174 — งานย้ายไปเมนู "คำร้อง" ข้างล่าง
         //  ซึ่งรับได้ทุกชนิดรวมสอบถาม/ขอเอกสาร ไม่ใช่แค่ถาม RD อย่างเดียว)
         // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน
@@ -350,18 +390,10 @@ export default function AppLayout({ children }) {
         // ถอดเมื่อไร ฝ่ายขายจะไปเปิดใบผิดชนิดแทน แล้วเราไม่รู้ว่ามีคนรออยู่กี่ใบ
         // ⚠️ เปลือก UI เท่านั้น — /sa/costing ยังเข้าได้ถ้าพิมพ์ URL ตรง ๆ
         { href: '/sa/costing', name: 'ขอราคาผลิต', icon: Calculator, cap: 'costing:view', visible: canViewCosting, disabled: true, match: (p) => p.startsWith('/sa/costing') },
-        // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/
-        // ขอเอกสาร/ติดตามของเข้า อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่
-        // ใต้ขาย ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว
-        // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
-        // ของระบบขอราคาผลิตมาใช้ตั้งแต่ตอนที่มันยังเป็น "ระบบขอราคาวัสดุ" ⇒ ฝ่ายที่รับ
-        // คำร้องได้แต่ไม่มีสิทธิ์เห็นต้นทุน (บัญชี) เปิดเมนูไม่ได้เลย
-        // ⚠️ `canViewRequests` กว้างกว่าโดยตั้งใจ — การกันข้อมูลอยู่ที่ **แถว**
-        // (lib/requests/access.js) ไม่ใช่ที่เมนู · lib ทำเสร็จไปแล้ว เหลือแค่จุดนี้
-        // ⚠️ ไม่มี cap ชื่อ `requests:view` — ด่านคือ **สองสาขาของ `canViewRequests`**
-        // (ถือ costing:view หรือเป็นฝ่ายที่ตอบคำร้องได้) จึงต้องประกาศ caps ให้ตรงกัน
-        // ไม่งั้นด่านชั้น cap จะแคบกว่าด่านจริงแล้วบัญชียังเปิดเมนูไม่ได้เหมือนเดิม
-        { href: '/requests', name: 'คำร้อง', icon: MessageCircleQuestion, caps: ['costing:view', 'requests:answer'], visible: canViewRequests, match: (p) => p.startsWith('/requests') },
+        // คำร้องข้ามฝ่าย (mig 0173) — เป็น "งาน" ไม่ใช่ข้อมูลหลัก จึงอยู่ใต้ขาย
+        // ต่างจากทะเบียนวัสดุที่ย้ายไปฐานข้อมูลแล้ว · นิยาม + เหตุผลของด่านอยู่ที่
+        // `SHARED_DOC_ITEMS` (ฝ่าย RD/FN มีเมนูตัวนี้ในบ้านตัวเอง)
+        SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
       ],
@@ -399,6 +431,12 @@ export default function AppLayout({ children }) {
         // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
         // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
         { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') },
+        /* ⭐ ใบคำร้อง (`/requests/[id]`) เป็นจอเดียวกันทั้งสองฝั่ง (ม-31) และตอนนี้
+           **เปลือกของมันเดินตามคนดู** ⇒ RD กดใบจากคิวแล้วยังยืนอยู่ในบ้านตัวเอง
+           ⇒ ต้องมีเมนูคู่กันที่นี่ ไม่งั้นยืนบนใบแล้วแถบเมนูไม่ไฮไลต์อะไรเลย (กฎข้อ 8)
+           ⚠️ คนละมุมกับ "คิวคำร้อง" ข้างบน — ที่นั่น = ใบที่ส่งมาถึงฝ่ายเรา
+           ที่นี่ = คิวรวม (ใบที่เราเปิดถึงฝ่ายอื่น) ซึ่งเป็นตารางเดียวกันคนละมุม */
+        SHARED_DOC_ITEMS.requests,
       ],
     },
     {
@@ -434,6 +472,19 @@ export default function AppLayout({ children }) {
            ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
            ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
         { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') },
+        /* ⭐ เอกสารขายที่ฝ่ายบัญชีทำงานด้วยจริง — **ย้ายมาจากกลุ่ม "บริหารงานขาย"**
+           (มติผู้ใช้ 2026-08-22) · กฎข้อ 7 (2026-08-13) ตัดสินไปแล้วว่าเมนูของ FN
+           คือใบเสนอราคา · ใบสั่งขาย · คำร้อง — แต่รายการเหล่านั้นถูกประกาศไว้ใน
+           *กลุ่มของฝ่ายขาย* ⇒ FN จะเห็นได้ก็ต่อเมื่อเดินออกไปยืนในเปลือกคนอื่น
+           ซึ่งคือสิ่งที่ผู้ใช้บอกว่า *"พอกดเข้าไป มันรูทเข้าไปที่บริหารงานขาย"*
+           ⚠️ **ไม่ใช่ก๊อป** — เป็นตัวเดียวกับที่กลุ่มขายใช้ (`SHARED_DOC_ITEMS`)
+           และตัวกรองใน `accessibleGroups` ให้ขึ้นได้กลุ่มเดียวต่อคนเสมอ
+           ⚠️ "สัญญา" ติดมาด้วยเพราะวันนี้ FN เห็นอยู่แล้ว (cap `salesplan:view`
+           ไม่มีด่านฝ่าย) — ย้ายบ้านต้องไม่ทำให้ใครเสียเมนูที่เคยมี */
+        SHARED_DOC_ITEMS.quotations,
+        SHARED_DOC_ITEMS.salesOrders,
+        SHARED_DOC_ITEMS.contracts,
+        SHARED_DOC_ITEMS.requests,
       ],
     },
     {
@@ -519,7 +570,6 @@ export default function AppLayout({ children }) {
 
   // department จำเป็นสำหรับเมนูที่ cap อย่างเดียวกว้างเกิน แล้วต้องแคบด้วยฝ่าย
   // (เช่น ใบขอราคาผลิต — ฝ่ายจัดซื้อใช้ role staff ร่วมกับ PD/WH/QC)
-  const userContext = { role, team, teams, department, extraCaps };
   const activeSystemDefinition = getSystemByKey(activeSystem);
   // หน้าบัญชีของฉันพูดชื่อตัวเอง ไม่ยืมชื่อระบบที่เพิ่งเดินออกมา (มติผู้ใช้ 2026-08-14)
   // — เปลือกเดียวกับหน้าตั้งค่า: หัวบอกว่าอยู่ไหน แถบเมนูของระบบหายไปทั้งแถบ
@@ -546,6 +596,12 @@ export default function AppLayout({ children }) {
         disabled: system.disabled,
         items: group.items.filter((item) => {
           const caps = item.caps || [item.cap];
+          /* ⭐ เมนูเอกสารร่วมขึ้น **กลุ่มเดียวต่อคน** — บ้านของคนดูรับเส้นทางนั้นไปแล้ว
+             ก็ขึ้นที่บ้านเขา ไม่งั้นขึ้นที่ "บริหารงานขาย" ตามเดิม
+             ⚠️ ต้องตัดสองทาง: ตัดตัวซ้ำออกจากกลุ่มขาย **และ** ไม่ให้กลุ่มของฝ่าย
+             โผล่ให้คนที่ไม่ได้อยู่ฝ่ายนั้น (เช่น admin ซึ่งเห็นทุกกลุ่ม) ไม่งั้นคนเดียว
+             เห็นเมนูเดียวกันสองที่ แล้วกดอันหนึ่งเปลือกเปลี่ยนใต้เท้า */
+          if (item.shared && !sharedItemBelongsInGroup(item.href, group.system, userContext)) return false;
           return caps.some((cap) => canUser(userContext, cap)) &&
             (!item.managerOnly || canManageProductCategories(role)) &&
             // ด่านเพิ่มสำหรับเมนูที่ cap กว้างกว่าผู้ใช้จริง (ดู costing:view)
