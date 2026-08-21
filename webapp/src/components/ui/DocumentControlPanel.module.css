@@ -118,6 +118,12 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* รางเป็นชิ้นสุดท้ายของการ์ด (ใบที่คนเปิดดูไม่มีสิทธิ์กดอะไรเลย) — margin ล่างที่ตั้งไว้
+   ให้ของที่ตามมา กลายเป็นแถบว่างใต้เส้นปิดราง เพราะไม่มีอะไรตามมาให้เว้นระยะให้ */
+.workflowRail:last-child {
+  margin-bottom: 0;
+}
+
 .workflowStep {
   position: relative;
   display: flex;
@@ -427,4 +433,8 @@
   /* ป้ายเตือน/หลักฐานเกาะไปกับปุ่ม — มันอธิบายว่าทำไมกดไม่ได้ ไม่ใช่เรื่องของราง */
   .controlBody .notices,
   .controlBody .evidence { order: -1; margin-top: 0; margin-bottom: var(--space-3-5); }
+  /* ⚠️ พอปุ่มถูกดันขึ้นไปบน **รางกลายเป็นชิ้นสุดท้ายที่ตาเห็น** — margin ล่างของราง
+     (ที่มีไว้เว้นให้ของที่ตามมา) จึงเหลือเป็นแถบว่างใต้เส้นปิดราง
+     `:last-child` ใช้ไม่ได้เพราะลำดับที่สลับเป็นแค่ `order` ไม่ใช่ลำดับใน DOM */
+  .controlBody .workflowRail { margin-bottom: 0; }
 }
