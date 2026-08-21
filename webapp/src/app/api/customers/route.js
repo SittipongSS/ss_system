@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
+import { customerNameError } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
   CODE_MODE_AUTO, arCodeError, codeModeOf, insertCustomerWithCode,
@@ -73,6 +74,12 @@ export async function POST(request) {
   //
   // ⚠️ ค่าที่ client ส่งมาในโหมด auto **ไม่ถูกใช้เลย** — ถือเป็นแค่สิ่งที่หน้าจอโชว์
   // ตอนนั้น ไม่ใช่คำสั่ง (สองคนเปิดฟอร์มพร้อมกันจะเห็นเลขเดียวกัน แต่ต้องได้คนละเลข)
+  // ⭐ ชื่ออย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) — ต้องตรวจ **ก่อน** โหมด auto
+  // จองเลข AR ด้วยเหตุผลที่เขียนไว้ข้างบน: ทุกด่านที่ตีกลับหลังจอง = เลขหายถาวร
+  // (เดิมไม่มีด่านชื่อฝั่ง server เลย — พึ่ง required ของฟอร์มอย่างเดียว)
+  const nameError = customerNameError(body);
+  if (nameError) return Response.json({ error: nameError }, { status: 400 });
+
   const codeMode = codeModeOf(body.codeMode);
   let arCode = String(body.arCode || '').trim();
   if (codeMode !== CODE_MODE_AUTO) {
@@ -155,7 +162,10 @@ export async function POST(request) {
     // แซกชันเดียวกับ insert (mig 0237) · ใส่มาเป็น null ไว้ก่อนไม่ได้ เพราะถ้าวันหนึ่ง
     // ท่อนเติมรหัสหลุดไป จะได้ลูกค้าที่ไม่มีรหัสแบบเงียบ ๆ แทนที่จะพังให้เห็น
     ...(codeMode === CODE_MODE_AUTO ? {} : { arCode }),
-    name: body.name,
+    name: body.name || null,
+    // ชื่อกิจการภาษาอังกฤษ (mig 0283) — ว่าง = null ไม่ใช่ '' เพื่อให้ "ยังไม่กรอก"
+    // เป็นค่าเดียวทั้งระบบ (การ์ด/ตารางเช็คด้วย falsy ตัวเดียว)
+    nameEn: String(body.nameEn || '').trim() || null,
     taxId,                                    // ตัวเลขล้วน (ถอดขีดแล้วที่ด่านเช็คซ้ำ)
     customerType: body.customerType === 'individual' ? 'individual' : 'company', // migration 0034
     addresses,                                // ที่อยู่ทั้งหมด (migration 0202)

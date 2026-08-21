@@ -16,6 +16,7 @@
 // ไม่ส่ง = โหมดแก้ (ช่องรหัสธรรมดา + `arLocked` เมื่อรหัสนั้นระบบเป็นคนออกให้)
 import { useEffect, useState } from "react";
 import CodeStrip from "@/components/ui/CodeStrip";
+import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import AddressesEditor from "@/components/database/AddressesEditor";
 import BrandsEditor from "@/components/database/BrandsEditor";
@@ -36,7 +37,7 @@ import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 // ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0202) ทั้งก้อน
 // server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
 export const EMPTY_CUSTOMER = {
-  arCode: "", name: "", customerType: "company", taxId: "",
+  arCode: "", name: "", nameEn: "", customerType: "company", taxId: "",
   phone: "", addresses: [], brands: [], contacts: [], creditTerms: "",
   teams: [],
 };
@@ -46,7 +47,7 @@ export const EMPTY_CUSTOMER = {
 // contacts[] ต้องเปิดฟอร์มแล้วเห็นค่าเดิม ไม่ใช่ว่างแล้วบันทึกทับหาย
 export const customerToForm = (c) => ({
   ...EMPTY_CUSTOMER,
-  arCode: c.arCode || "", name: c.name || "",
+  arCode: c.arCode || "", name: c.name || "", nameEn: c.nameEn || "",
   customerType: c.customerType || "company",
   taxId: c.taxId || "",
   phone: c.phone || "",
@@ -216,9 +217,43 @@ export default function CustomerForm({
             </div>
           )}
 
-          <div className="form-group col-span-2">
-            <label>{CUSTOMER_NAME_LABEL} <span className="text-[var(--red)]">*</span></label>
-            <input type="text" name="name" value={form.name} onChange={set("name")} required placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..." className="premium-input w-full" />
+          {/* ── ชื่อสองภาษา — ต้องมีอย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) ──
+              ⚠️ `required` **สลับข้างกันเอง**: ช่องหนึ่งบังคับเมื่ออีกช่องว่าง ⇒ กรอกภาษาไหน
+              ก็ผ่าน แต่ปล่อยว่างทั้งคู่ไม่ได้ · ทำแบบนี้แทน state ตรวจเองเพราะฟอร์มนี้ใช้
+              ด่านของเบราว์เซอร์อยู่แล้วทั้งใบ (API บังคับซ้ำที่ customerNameError)
+              ⚠️ ชื่ออังกฤษ **ไม่ใช่ชื่อสำหรับแสดงคู่กัน** แบบหมวดสินค้า (`EN · TH`) —
+              หน้าจอไทยล้วนตามเดิม ช่องนี้มีไว้ให้เอกสารอังกฤษ (IFRA/MSDS) หยิบไปใช้ */}
+          <div className="form-group">
+            <label>
+              {CUSTOMER_NAME_LABEL}
+              {!String(form.nameEn || "").trim() && <span className="text-[var(--red)]"> *</span>}
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={set("name")}
+              required={!String(form.nameEn || "").trim()}
+              placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
+              className="premium-input w-full"
+            />
+          </div>
+          <div className="form-group">
+            <label>
+              ชื่อภาษาอังกฤษ
+              {!String(form.name || "").trim() && <span className="text-[var(--red)]"> *</span>}
+            </label>
+            <Input
+              type="text"
+              name="nameEn"
+              value={form.nameEn || ""}
+              onChange={set("nameEn")}
+              required={!String(form.name || "").trim()}
+              placeholder="เช่น ABC International Co., Ltd."
+            />
+            <span className="text-[11px] text-[var(--text-3)] mt-1">
+              ใช้บนเอกสารภาษาอังกฤษ (IFRA · MSDS) — กรอกอย่างน้อยหนึ่งภาษา
+            </span>
           </div>
           <div className="form-group">
             <label>{isCompany ? "เลขประจำตัวผู้เสียภาษี" : "เลขประจำตัวประชาชน"}</label>

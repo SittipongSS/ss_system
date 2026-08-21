@@ -35,7 +35,8 @@
 // ได้ และลำดับในลิสต์เป็นสิ่งที่ผู้ใช้เห็นและสลับได้ตรง ๆ อยู่แล้ว
 import { genId } from '@/lib/id';
 import {
-  ADDRESS_PART_FIELDS, composeThaiAddress, hasStructuredParts, HEAD_OFFICE_BRANCH,
+  ADDRESS_PART_FIELDS, ADDRESS_PART_FIELDS_EN, composeEnglishAddress, composeThaiAddress,
+  hasEnglishParts, hasStructuredParts, HEAD_OFFICE_BRANCH,
   normalizeBranchCode, normalizePostcode,
 } from '@/lib/master/thaiAddress';
 
@@ -96,6 +97,8 @@ export function asAddressRow(raw) {
     id: text(raw?.id),
     label: text(raw?.label),
     address: text(raw?.address),
+    // ข้อความอังกฤษเต็มของแถวนี้ — คู่ของ `address` (IFRA/MSDS · มติ 2026-08-22)
+    addressEn: text(raw?.addressEn),
     useFor: addressUse(raw),
   };
   // ฟิลด์ที่เพิ่มทีหลัง (สาขา · ที่อยู่แบบมีโครงสร้าง · แผนที่ · ผู้รับของ) — เก็บเป็น
@@ -103,6 +106,7 @@ export function asAddressRow(raw) {
   // ตอนเจอแถวยุคเก่าที่ไม่มีคีย์เหล่านี้
   row.branchCode = text(raw?.branchCode);
   for (const field of ADDRESS_PART_FIELDS) row[field] = text(raw?.[field]);
+  for (const field of ADDRESS_PART_FIELDS_EN) row[field] = text(raw?.[field]);
   row.mapUrl = text(raw?.mapUrl);
   row.contactName = text(raw?.contactName);
   row.contactPhone = text(raw?.contactPhone);
@@ -126,10 +130,36 @@ export function addressText(row) {
   return composeThaiAddress(r) || typed;
 }
 
+// ── ข้อความที่อยู่ภาษาอังกฤษของแถวหนึ่ง ─────────────────────────────────
+// คู่ขนานกับ addressText ทุกประการ — เลือกจังหวัด/อำเภอ/ตำบลแล้วชื่ออังกฤษติดมา
+// กับตัวเลือก (ทะเบียนกรมการปกครองมี `en` ครบ) ⇒ ประกอบให้เอง · กด "พิมพ์ข้อความเอง"
+// หรือแถวที่ไม่ได้เลือกจากทะเบียน (ที่อยู่ต่างประเทศ) ใช้ข้อความที่พิมพ์ไว้ตามเดิม
+export function addressTextEn(row) {
+  const r = asAddressRow(row);
+  const typed = r.addressEn.trim();
+  if (r.addressOverride || !hasEnglishParts(r)) return typed;
+  // กับดักเดียวกับฝั่งไทย: แถวที่มีข้อความอังกฤษเต็มอยู่แล้วแต่ยังไม่ได้แยก line1En
+  // ต้องไม่ถูกเขียนทับด้วยหางที่ประกอบจากทะเบียนอย่างเดียว
+  if (!r.line1En.trim() && typed) return typed;
+  return composeEnglishAddress(r) || typed;
+}
+
+// ── ที่อยู่ตามภาษาที่ใช้อยู่ (มติผู้ใช้ 2026-08-22) ───────────────────────
+// "ใส่อย่างน้อยหนึ่งภาษา · โชว์ภาษาหลักของบริบทก่อน ไม่มีค่อยโชว์อีกภาษา"
+// ⚠️ **ไม่แปลให้เอง** — ตกไปอีกภาษาแบบตรง ๆ (กติกาเดียวกับชื่อสินค้าบนเอกสาร)
+export function addressTextIn(row, language = 'th') {
+  const th = addressText(row).trim();
+  const en = addressTextEn(row).trim();
+  return language === 'en' ? (en || th) : (th || en);
+}
+
 // ฟิลด์ที่ "ว่าง = ไม่ต้องเก็บ" — ไม่เขียนคีย์เปล่าลง jsonb เพื่อให้แถวยุคเก่าที่ยัง
 // ไม่กรอกอะไรเพิ่ม มีรูปร่างเท่าเดิมเป๊ะ (diff ของ changedFieldsAgainst จึงไม่ขยับ
 // = เปิดฟอร์มแล้วกดบันทึกเฉย ๆ ไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่)
-const OPTIONAL_ROW_FIELDS = ['branchCode', ...ADDRESS_PART_FIELDS, 'mapUrl', 'contactName', 'contactPhone'];
+const OPTIONAL_ROW_FIELDS = [
+  'branchCode', ...ADDRESS_PART_FIELDS, ...ADDRESS_PART_FIELDS_EN,
+  'mapUrl', 'contactName', 'contactPhone',
+];
 
 // ก่อนบันทึก: trim, ตัดแถวที่ไม่มีตัวที่อยู่ (ป้ายชื่อล้วนไม่ใช่ที่อยู่), เติม id
 // ให้แถวใหม่ — id ต้องนิ่งเพราะเอกสารฝั่งขายจะอ้างถึงที่อยู่ตัวนี้
@@ -139,17 +169,26 @@ export function normalizeAddresses(arr) {
   for (const raw of arr) {
     const row = asAddressRow(raw);
     const address = addressText(row).trim();
-    if (!address) continue;
+    // ⭐ อย่างน้อยหนึ่งภาษา (มติ 2026-08-22) — แถวที่มีแต่ข้อความอังกฤษต้องอยู่รอด
+    // ไม่ใช่ถูกตัดทิ้งเงียบ ๆ เหมือนแถวเปล่า (เดิมตัดที่ข้อความไทยอย่างเดียว)
+    const addressEn = addressTextEn(row).trim();
+    if (!address && !addressEn) continue;
     const next = {
       id: row.id.trim() || genId('ADR'),
       label: row.label.trim(),
       address,
       useFor: row.useFor,
     };
+    // ว่าง = ไม่เขียนคีย์ ⇒ แถวที่ยังไม่มีอังกฤษมีรูปร่างเท่าเดิมเป๊ะ (ดู OPTIONAL_ROW_FIELDS)
+    if (addressEn) next.addressEn = addressEn;
     const values = {
       branchCode: normalizeBranchCode(row.branchCode),
       line1: row.line1.trim(),
       subdistrict: row.subdistrict.trim(),
+      line1En: row.line1En.trim(),
+      subdistrictEn: row.subdistrictEn.trim(),
+      districtEn: row.districtEn.trim(),
+      provinceEn: row.provinceEn.trim(),
       subdistrictCode: row.subdistrictCode.trim(),
       district: row.district.trim(),
       districtCode: row.districtCode.trim(),
@@ -165,7 +204,9 @@ export function normalizeAddresses(arr) {
     }
     // เก็บธง "พิมพ์เอง" เฉพาะแถวที่มีฟิลด์ย่อยแล้วเท่านั้น — แถวยุคเก่าไม่ต้องมีธง
     // เพราะไม่มีอะไรให้ประกอบอยู่แล้ว (ดู addressText)
-    if (row.addressOverride && hasStructuredParts(values)) next.addressOverride = true;
+    if (row.addressOverride && (hasStructuredParts(values) || hasEnglishParts(values))) {
+      next.addressOverride = true;
+    }
     out.push(next);
   }
   return out;
@@ -234,9 +275,14 @@ export function primaryShippingAddress(list) {
 export function legacyAddressMirror(list, { fallbackBranchCode } = {}) {
   const billing = primaryBillingAddress(list);
   const shipping = primaryShippingAddress(list);
+  // ⚠️ ตกไปข้อความอังกฤษเมื่อแถวนั้นมีแต่ภาษาอังกฤษ — ไม่งั้นลูกค้าที่กรอกที่อยู่
+  // อังกฤษอย่างเดียวจะโดนด่าน "ต้องมีที่อยู่อย่างน้อย 1 รายการ" ตีกลับ และคอลัมน์
+  // เดี่ยวที่ตาราง/การค้นหา/snapshot อ่านอยู่จะกลายเป็น null
   return {
-    address: billing?.address || null,
-    shippingAddress: shipping && shipping.id !== billing?.id ? shipping.address : null,
+    address: billing ? (billing.address || billing.addressEn || null) : null,
+    shippingAddress: shipping && shipping.id !== billing?.id
+      ? (shipping.address || shipping.addressEn || null)
+      : null,
     // สาขาของที่อยู่ออกบิลหลัก — ไม่มีระบุ = สำนักงานใหญ่ (ความหมายเดิมของ '00000')
     // not null เสมอเพราะคอลัมน์นี้อยู่ใน unique (taxId, branchCode): ปล่อย null
     // แล้ว unique จะหลุด (null ไม่ชนกับอะไรใน Postgres) = ลูกค้า taxId ซ้ำเข้าได้
@@ -261,9 +307,12 @@ export function pickDocumentAddresses(customer, { billingAddressId, shippingAddr
     billing,
     shipping,
     snapshot: {
-      billingAddress: billing?.address || null,
+      // เอกสารไทยที่ลูกค้ามีแต่ที่อยู่อังกฤษ → พิมพ์อังกฤษ ดีกว่าพิมพ์ช่องว่าง
+      // (มติ "อย่างน้อยหนึ่งภาษา" 2026-08-22) — ไม่ได้เพิ่มคีย์ใหม่ให้ snapshot
+      billingAddress: billing ? (billing.address || billing.addressEn || null) : null,
       // ว่าง = ใช้ที่อยู่ออกบิล (ความหมายเดิมของช่องนี้บนเอกสาร)
-      shippingAddress: shipping?.address || billing?.address || null,
+      shippingAddress: shipping?.address || shipping?.addressEn
+        || billing?.address || billing?.addressEn || null,
       // สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติ 2026-08-06) — ออกบิลให้สาขา
       // ต้องได้เลขสาขานั้นบนใบกำกับภาษี ไม่ใช่เลขของสำนักงานใหญ่ตลอดกาล
       // ที่อยู่ที่ยังไม่ระบุสาขา → ถอยไปใช้เลขระดับลูกค้า (แถวยุคเก่าก่อน backfill)
@@ -281,6 +330,6 @@ export function addressLabel(a) {
   const row = asAddressRow(a);
   const name = row.label.trim();
   if (name) return name;
-  const line = row.address.trim().split(/\r?\n/)[0] || '';
+  const line = (row.address.trim() || row.addressEn.trim()).split(/\r?\n/)[0] || '';
   return line.length > LABEL_FALLBACK_MAX ? `${line.slice(0, LABEL_FALLBACK_MAX)}…` : (line || 'ที่อยู่');
 }

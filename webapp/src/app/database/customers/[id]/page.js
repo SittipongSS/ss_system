@@ -13,6 +13,7 @@ import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
+import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode } from "@/lib/master/masterCodes";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
@@ -27,7 +28,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
-  ADDRESS_USE_LABELS, addressLabel, customerAddresses, isBillingAddress, isShippingAddress,
+  ADDRESS_USE_LABELS, addressLabel, addressTextIn, customerAddresses, isBillingAddress, isShippingAddress,
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf, brandBoth, hasBrandField } from "@/lib/master/brands";
@@ -176,6 +177,7 @@ export default function CustomerDetails() {
     const payload = {
       arCode: formData.arCode,
       name: formData.name,
+      nameEn: formData.nameEn,               // ชื่ออังกฤษ (mig 0283) — อย่างน้อยหนึ่งภาษา
       customerType: formData.customerType || "company",
       teams: formData.teams,
       taxId: formData.taxId,
@@ -340,7 +342,7 @@ export default function CustomerDetails() {
       <SalesDetailOverview
         eyebrow="CUSTOMER MASTER"
         /* รายละเอียด = "รหัส · ชื่อ" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
-        title={`${customer.arCode ? `${customer.arCode} · ` : ""}${customer.name}`}
+        title={`${customer.arCode ? `${customer.arCode} · ` : ""}${customerNameIn(customer)}`}
         description={<><span>{customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล"}</span><span>สร้างเมื่อ {fmtDate(customer.createdAt)}</span></>}
         badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[
@@ -364,6 +366,10 @@ export default function CustomerDetails() {
         <div className="lg:col-span-2 space-y-6">
           <DetailCard icon={Building2} eyebrow="Customer profile" title="ข้อมูลลูกค้า บริษัท/บุคคล">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
+              {/* ชื่ออังกฤษ (mig 0283) — ช่องของเอกสาร IFRA/MSDS · ว่าง = ขีดตามกติกา
+                  ค่าว่างของทั้งระบบ (ต่างจากบรรทัดอังกฤษใต้ที่อยู่ ซึ่งเป็นบรรทัดเสริม
+                  ไม่ใช่ช่อง จึงตัดทิ้งเมื่อว่าง) */}
+              <Field label="ชื่อภาษาอังกฤษ" value={customer.nameEn} />
               <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
               <Field label="ทีมดูแล" value={teamsLabel} />
               <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
@@ -400,7 +406,14 @@ export default function CustomerDetails() {
                             </a>
                           )}
                         </div>
-                        <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{a.address}</p>
+                        {/* ภาษาหลักของหน้าจอคือไทย — ที่อยู่ที่มีแต่ภาษาอังกฤษให้ขึ้น
+                            อังกฤษเป็นบรรทัดหลักไปเลย ดีกว่าบรรทัดว่าง (มติ 2026-08-22) */}
+                        <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{addressTextIn(a, "th")}</p>
+                        {/* บรรทัดอังกฤษ = ของที่ RD ก๊อปไปวางในเทมเพลต IFRA/MSDS
+                            ⚠️ ไม่มี = ไม่มีบรรทัด ไม่ใช่ขีด (แพตเทิร์นเดียวกับลิงก์แผนที่) */}
+                        {!!a.addressEn && a.addressEn !== addressTextIn(a, "th") && (
+                          <p className="text-[12px] text-[var(--text-2)] leading-relaxed mt-0.5 break-words">{a.addressEn}</p>
+                        )}
                         {(a.contactName || a.contactPhone) && (
                           <p className="text-[11px] text-[var(--text-3)] mt-1">
                             ผู้รับของ: {naText(a.contactName)}
