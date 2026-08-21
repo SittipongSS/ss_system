@@ -1372,59 +1372,36 @@ button, select, input, textarea {
      ไม่ใช้ backdrop-filter เพราะพื้นทึบแล้วไม่เห็นผล และมันสร้าง containing block
      ให้ลูกที่ position: fixed ซึ่งเป็นกับดักที่ .topnav โดนมาแล้ว */
   background: color-mix(in srgb, var(--navy) 7%, var(--panel-float));
-  /* ตัวแถบไม่เลื่อนเอง — คนเลื่อนคือ .topnav-menu-scroll ข้างใน เพื่อให้ปุ่ม
-     ย่อ/กางที่อยู่นอกกล่องนั้นติดก้นแถบตลอด */
-  overflow: hidden;
-  transition: flex-basis var(--motion-medium), width var(--motion-medium);
-}
-.topnav-menu-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-  /* 🪤 min-height: 0 ห้ามถอด — flex item มีพื้นความสูงเป็น `auto` ตามสเปก
-     กล่องจะยืดตามรายการแล้วไม่มีวันเลื่อน (ล้นทะลุแถบออกไปเฉย ๆ) */
-  flex: 1;
-  min-height: 0;
+  /* เลื่อนเองในแนวตั้ง — เมนูยาวกว่าจอเมื่อไรก็ไถได้ ไม่ล้นทะลุแถบออกไป */
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
+  transition: flex-basis var(--motion-medium), width var(--motion-medium);
 }
 .topnav-menu-spacer { flex: 1; }
 
-/* ปุ่มย่อ/กางท้ายแถบ — อยู่นอกกล่องเลื่อน จึงติดก้นแถบเสมอแม้เมนูยาวจนต้องเลื่อน */
-.sidenav-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2-5);
-  width: 100%;
-  min-height: 38px;
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-2-5) 0;
-  border: none;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: none;
-  /* ⚠️ --text-2 ไม่ใช่ --text-3 ด้วยเหตุผลเดียวกับ .topnav-utility-item —
-     --text-3 บนพื้นแถบเมนูวัดได้ 4.21:1 ในธีมสว่าง = ตก AA */
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: var(--fs-7);
-  font-weight: var(--fw-normal);
-  cursor: pointer;
-  flex: none;
-  transition: color var(--motion-fast);
-}
-.sidenav-toggle svg { flex: none; }
-/* ไอคอนของปุ่มย่อ/กาง — ตัว "ย่อ" ขึ้นตอนแถบกาง ตัว "กาง" ขึ้นตอนเป็นราง
-   (สลับที่บล็อก @container ข้างล่าง — ดูเหตุผลที่ปุ่มใน AppLayout.js) */
-.sidenav-ico-expand { display: none; }
-.sidenav-toggle:hover { color: var(--text); }
-.sidenav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-
-/* ปุ่มแฮมเบอร์เกอร์บนแถบระบบ — เปิดใช้เฉพาะชั้น 769–899px (ดูบล็อกชั้นจอท้ายชุด)
+/* ── ปุ่มคุมแถบเมนู — ปุ่มเดียว มุมซ้ายบนของแถบระบบ ทุกชั้นจอ ────────────────
+   (มติผู้ใช้ 2026-08-22) รูปทรงยืมจาก .topnav-global-action ที่กระดิ่ง/ตั้งค่า
+   ใช้อยู่แล้ว — ปุ่มบนแถบกรมท่าต้องหน้าตาเป็นครอบครัวเดียวกัน
    ⚠️ คนละตัวกับ `…` (.mobile-top-more) ที่โผล่ ≤768px — ตัวนั้นเปิด "บัญชี/
-   เครื่องมือ" ตัวนี้เปิด "เมนูของระบบ" · แต่ละชั้นจอมีปุ่มเดียวเสมอ ไม่ซ้อนกัน */
-.sidenav-hamburger { display: none; }
+   เครื่องมือ" ตัวนี้คุม "เมนูของระบบ" · ชั้น ≤768 ไม่มีแถบข้าง ปุ่มนี้จึงหายไป */
+.sidenav-toggle {
+  order: -1;              /* ซ้ายสุด ก่อนโลโก้ */
+  flex: 0 0 auto;
+  width: var(--ctl-h);    /* ไอคอนล้วน — จัตุรัสเท่าความสูงมาตรฐานของตัวควบคุม */
+  padding: 0;
+  justify-content: center;
+  font-family: inherit;
+  cursor: pointer;
+}
+.sidenav-toggle:active { transform: scale(0.96); }
+
+/* ไอคอนสองตัวสลับด้วย CSS ล้วน (ดูเหตุผลที่ปุ่มใน AppLayout.js)
+   ค่าตั้งต้น = แฮมเบอร์เกอร์ แปลว่า "กดเพื่อเอาเมนูออกมา" */
+.sidenav-ico-collapse { display: none; }
+/* จอกว้างและผู้ใช้ไม่ได้สั่งย่อ = แถบกางค้างอยู่ ปุ่มจึงกลายเป็น "ย่อ" (ลูกศรซ้าย) */
+:root[data-sidenav="expanded"] .sidenav-ico-menu { display: none; }
+:root[data-sidenav="expanded"] .sidenav-ico-collapse { display: block; }
 
 /* ฉากหลังตอนแถบลอยทับเนื้อหา — เป็นตัวรับคลิกนอกแถบเพื่อปิดด้วย
    (เปิดใช้ในบล็อกชั้นจอ · ต้องอยู่ก่อน <nav> ใน DOM เพราะ z เท่ากัน) */
@@ -1510,16 +1487,12 @@ button, select, input, textarea {
 /* ── หน้าตา "ราง": ผูกกับความกว้างของแถบเอง ไม่ใช่ความกว้างจอ ───────────────
    แถบแคบกว่า 120px = ไม่มีที่ให้ป้ายชื่อ เหลือไอคอนล้วน (ชื่ออ่านจาก title) */
 @container sidenav (max-width: 120px) {
-  .topnav-item,
-  .sidenav-toggle {
+  .topnav-item {
     justify-content: center;
     padding-inline: 0;
     gap: 0;
   }
-  .topnav-item > span:not(.topnav-count),
-  .sidenav-toggle > span { display: none; }
-  .sidenav-ico-collapse { display: none; }
-  .sidenav-ico-expand { display: block; }
+  .topnav-item > span:not(.topnav-count) { display: none; }
   /* ป้ายจำนวนไปเกาะมุมไอคอน — แถบแคบเกินกว่าจะวางต่อท้ายได้ (ท่าเดียวกับแถบล่าง
      มือถือ ดู .mbn-count)
      ⚠️ **สีส้มที่นี่ ไม่ใช่เทาเหมือนตอนกางอยู่** — กติกา "ป้ายเทาคงที่" มีไว้กัน
@@ -1563,6 +1536,14 @@ button, select, input, textarea {
     margin-right: calc(var(--sidenav-w-rail) - var(--sidenav-w-expanded));
     box-shadow: var(--shadow-float);
   }
+  /* 🪤 ชั้นนี้แถบไม่เคยกางค้าง (เป็นรางหรือไม่มีเลย) ปุ่มจึงต้องกลับไปเป็น
+     แฮมเบอร์เกอร์ แม้ความชอบถาวรจะเขียนว่า expanded ก็ตาม — ค่านั้นเป็นของ
+     ชั้นจอกว้างเท่านั้น · ยกเว้นตอนกำลังกางทับอยู่ ปุ่มถึงกลายเป็น "ปิด" */
+  :root[data-sidenav="expanded"] .sidenav-ico-menu { display: block; }
+  :root[data-sidenav="expanded"] .sidenav-ico-collapse { display: none; }
+  .app-container.sidenav-open .sidenav-ico-menu { display: none; }
+  .app-container.sidenav-open .sidenav-ico-collapse { display: block; }
+
   /* กางแล้วลอยทับ → ต้องมีฉากหลังไว้รับคลิกปิด */
   .app-container.sidenav-open .sidenav-backdrop {
     display: block;
@@ -1583,20 +1564,6 @@ button, select, input, textarea {
     margin-right: calc(0px - var(--sidenav-w-expanded));
     box-shadow: var(--shadow-float);
   }
-  .sidenav-hamburger {
-    order: -1;
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    flex: 0 0 40px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: var(--radius-md);
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-    cursor: pointer;
-  }
-  .sidenav-hamburger:active { transform: scale(0.96); }
 }
 
 
@@ -1670,8 +1637,8 @@ button, select, input, textarea {
   .topnav-menu,
   .app-container.sidenav-open .topnav-menu { display: none; }
   .app-container.sidenav-open .sidenav-backdrop { display: none; }
-  /* แฮมเบอร์เกอร์เป็นของชั้น 769–899 เท่านั้น — ชั้นนี้มี `…` อยู่แล้ว */
-  .sidenav-hamburger { display: none; }
+  /* ไม่มีแถบข้างในชั้นนี้ ปุ่มคุมแถบจึงไม่มีอะไรให้คุม — เมนูอยู่ที่แถบล่าง */
+  .sidenav-toggle { display: none; }
   .topnav-brand-img { height: 26px; }
   .topnav-sys { min-width: 0; }
   .topnav-sys-btn {
