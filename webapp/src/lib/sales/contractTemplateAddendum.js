@@ -10,7 +10,7 @@
 
 export const ADDENDUM_TEMPLATE = {
   key: 'scent_design_addendum',
-  version: '20260821b',
+  version: '20260821c',
   titleTh: 'บันทึกเพิ่มเติมสัญญาจ้างออกแบบกลิ่นน้ำหอม',
 
   /* ช่องกรอกของบันทึก — ส่วนใหญ่สืบมาจากสัญญาแม่ (source: 'contract') คนกรอกแก้ทับได้
@@ -20,7 +20,7 @@ export const ADDENDUM_TEMPLATE = {
     { key: 'addendumPlace', label: 'ทำบันทึกที่', type: 'text', required: true },
     { key: 'contractorSignerName', label: 'ชื่อผู้ลงนามฝ่ายผู้รับจ้าง', type: 'text', required: true, default: 'นางสาวรุจิรา ตระกูลยิ่งเจริญ' },
     { key: 'clientSignerName', label: 'ชื่อผู้ลงนามฝ่ายผู้ว่าจ้าง', type: 'text', required: false, hint: 'เว้นว่างได้ — จะเป็นเส้นประให้เขียนมือ' },
-    { key: 'clientSignerTitle', label: 'ตำแหน่งผู้ลงนามฝ่ายผู้ว่าจ้าง', type: 'text', required: false, default: 'กรรมการผู้จัดการ' },
+    { key: 'clientSignerTitle', label: 'ตำแหน่งผู้ลงนามฝ่ายผู้ว่าจ้าง', type: 'text', required: false, default: 'ผู้มีอำนาจ/ผู้รับมอบอำนาจ' },
   ],
 
   // หัวเรื่อง: "บันทึกเพิ่มเติม… ครั้งที่ 1" (วันที่อยู่ในเนื้อ ไม่ใช่บรรทัดใต้หัวเรื่อง)

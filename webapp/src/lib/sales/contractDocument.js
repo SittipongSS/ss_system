@@ -241,8 +241,13 @@ export const CONTRACT_CSS = `
      ⚠️ ห้ามใช้ word-break: break-all แทน — ตัดกลางคำไทยเป็น "แล/ะให้" อ่านไม่ออก */
   .contract .clauseText { margin: 0; font-size: 9.5pt; line-height: 1.75;
     text-align: justify; text-justify: inter-character; }
-  .contract .contractBody > .blk { margin-top: 3.5mm; }
-  .contract .contractBody > .blk:first-child { margin-top: 0; }
+  /* ⚠️ ต้องเขียนถึง **ทั้งสองพ่อ** — ก่อนตัดหน้า บล็อกอยู่ใน .contractBody
+     พอสคริปต์ตัดหน้าเสร็จมันย้ายไปอยู่ใน .sheetContent ของแต่ละแผ่น
+     เขียนถึงแค่ .contractBody = ไฟล์ที่พิมพ์ออกมาจริงไม่มีระยะห่างย่อหน้าเลย */
+  .contract .contractBody > .blk,
+  .contract .sheetContent > .blk { margin-top: 3.5mm; }
+  .contract .contractBody > .blk:first-child,
+  .contract .sheetContent > .blk:first-child { margin-top: 0; }
   /* ย่อหน้าแรกเข้า 12mm ทุกย่อหน้าที่เป็น "ความเรียง" — ความนำ · คำจำกัดความ · ปิดท้าย
      (ข้อสัญญาไม่เข้า เพราะเลขข้ออยู่คอลัมน์ซ้ายเป็น hanging indent อยู่แล้ว) */
   .contract .intro .clauseText,

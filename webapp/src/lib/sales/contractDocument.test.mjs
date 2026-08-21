@@ -185,6 +185,10 @@ test('ขอบขวาเสมอกันด้วย inter-character — �
   /* ⚠️ ขาดบรรทัดนี้ = กลับไปเป็นรูโหว่กลางประโยคทันที (ภาษาไทยไม่เว้นวรรคระหว่างคำ
      justify จึงยืดช่องว่างเดียวที่มีจนโหว่ — อาการที่ผู้ใช้ทักจากข้อ 3.4) */
   assert.match(html, /text-justify: inter-character/);
+  /* ระยะห่างย่อหน้าต้องเขียนถึง .sheetContent ด้วย — หลังสคริปต์ตัดหน้า บล็อกย้ายออกจาก
+     .contractBody ไปอยู่ในแผ่น ถ้าเขียนถึงพ่อเดิมอย่างเดียว ไฟล์ที่พิมพ์จริงจะไม่มีระยะเลย */
+  assert.match(html, /\.contract \.sheetContent > \.blk \{ margin-top: 3\.5mm/);
+  assert.match(html, /\.contract \.sheetContent > \.blk:first-child \{ margin-top: 0/);
   // ตัดกลางคำไทยอ่านไม่ออก ("แล/ะให้") — ห้ามใช้แทน
   assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*word-break: break-all/);
 });
