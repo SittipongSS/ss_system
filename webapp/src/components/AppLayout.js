@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -51,12 +51,19 @@ export default function AppLayout({ children }) {
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  /* แถบเมนูของระบบบนจอกว้าง (≥1200px) = แถบข้างที่ย่อได้ — สถานะย่อ/กางเก็บที่
-     `data-sidenav` บน <html> ไม่ใช่ที่ state ตัวนี้ตัวเดียว เพราะสคริปต์ก่อน
-     hydrate ใน app/layout.js ต้องอ่านมันได้ก่อนเพนต์ (ท่าเดียวกับธีม) ไม่งั้น
-     แถบจะกางเต็มแล้วหุบให้เห็นทุกครั้งที่โหลดหน้า · state นี้มีไว้ให้ปุ่มสลับ
-     ไอคอน/aria ตามเท่านั้น */
+  /* เมนูของระบบเป็นแถบข้างทุกความกว้าง (มติผู้ใช้ 2026-08-21 — ไม่มีโหมดแถบบนแล้ว)
+     สามชั้นจอ: >1200 กาง/ย่อเองแล้วดันเนื้อหา · 901–1200 ราง กางแล้วลอยทับ ·
+     769–900 แฮมเบอร์เกอร์เปิดลิ้นชัก · ≤768 แถบล่างมือถือ
+
+     สองสถานะแยกกันคนละหน้าที่ ห้ามยุบรวม:
+     · `navCollapsed` = **ความชอบของผู้ใช้บนจอกว้าง** เก็บถาวรที่ `data-sidenav`
+       บน <html> เพราะสคริปต์ก่อน hydrate ใน app/layout.js ต้องอ่านได้ก่อนเพนต์
+       (ท่าเดียวกับธีม) ไม่งั้นแถบกางเต็มแล้วหุบให้เห็นทุกครั้งที่โหลดหน้า
+     · `navOpen` = **การกางชั่วคราวบนจอกลาง/แคบ** ไม่เก็บถาวร ปิดเองเมื่อเปลี่ยนหน้า
+       — ถ้าเอาไปปนกับความชอบข้างบน คนที่เปิดลิ้นชักบนแท็บเล็ตครั้งเดียวจะกลับไป
+       เจอจอคอมกางค้างโดยไม่ได้สั่ง */
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -205,12 +212,32 @@ export default function AppLayout({ children }) {
     setNavCollapsed(document.documentElement.getAttribute('data-sidenav') === 'collapsed');
   }, []);
 
+  /* 🪤 ตัวเลขนี้ต้องเป็น "ตรงข้าม" ของจุดตัด `@media (max-width: 1200px)` ใน
+     globals.css เป๊ะ ๆ (1200px + 0.02 = ค่าถัดไปที่ CSS ถือว่าพ้นจุดตัด) —
+     ชั้นจอกว้างเป็นชั้นเดียวที่ปุ่มไป "สลับความชอบถาวร" ชั้นอื่นปุ่มเดียวกันไป
+     "เปิด/ปิดการกางชั่วคราว" แทน · CSS รู้เรื่องนี้เองไม่ได้เพราะมันคือพฤติกรรม
+     ของ handler ไม่ใช่หน้าตา */
+  const SIDENAV_WIDE_QUERY = '(min-width: 1200.02px)';
+
   const toggleSideNav = () => {
+    if (navOpen) { setNavOpen(false); return; }
+    if (!window.matchMedia(SIDENAV_WIDE_QUERY).matches) { setNavOpen(true); return; }
     const next = !navCollapsed;
     document.documentElement.setAttribute('data-sidenav', next ? 'collapsed' : 'expanded');
     try { localStorage.sidenav = next ? 'collapsed' : 'expanded'; } catch {}
     setNavCollapsed(next);
   };
+
+  /* แถบที่กางทับเนื้อหาต้องปิดเองเมื่อไปหน้าใหม่ — ไม่งั้นคลิกเมนูแล้วหน้าเปลี่ยน
+     อยู่ข้างหลังโดยมีแถบกับฉากหลังบังไว้ ผู้ใช้ต้องกดปิดเองทุกครั้ง */
+  useEffect(() => { setNavOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const onKey = (event) => { if (event.key === 'Escape') setNavOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [navOpen]);
 
   const handleLogout = async () => {
     if (SUPABASE_CONFIGURED) {
@@ -552,11 +579,24 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-container${isBareShell ? '' : ' has-system-menu'}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
+    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
       {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
+          {/* แฮมเบอร์เกอร์ = ทางเข้าเมนูของระบบบนจอ 769–899px ที่ไม่มีแถบข้างประจำที่
+              (CSS ซ่อนทุกชั้นจออื่น) · ไม่วาดในเปลือกไร้เมนูเพราะที่นั่นไม่มีเมนูให้เปิด */}
+          {!isBareShell && (
+            <button
+              type="button"
+              className="sidenav-hamburger"
+              onClick={() => setNavOpen(true)}
+              aria-label={`เมนู${systemSubtitle}`}
+              aria-expanded={navOpen}
+            >
+              <Menu size={21} aria-hidden="true" />
+            </button>
+          )}
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
@@ -650,15 +690,20 @@ export default function AppLayout({ children }) {
 
       </header>
 
-      {/* 🪤 แถบเมนูของระบบอยู่ **นอก** <header> โดยเจตนา — บนจอกว้างมันต้องยืนข้าง
-          เนื้อหา ไม่ใช่ซ้อนใต้หัว และ .topnav มี `backdrop-filter` ซึ่งกลายเป็น
-          containing block ให้ลูกที่ position: fixed/absolute ทั้งหมด = ย้ายออกมา
-          ข้างนอกเท่านั้นถึงจะวางเป็นแถบข้างได้จริง
-          `.app-body` เป็น `display: contents` บนจอแคบ แถบเมนูกับเนื้อหาจึงยัง
-          เรียงเป็นแถวบน-ล่างเหมือนเดิมเป๊ะ พอถึง ≥1200px มันถึงกลายเป็นแถวคู่ */}
+      {/* ฉากหลังตอนแถบกางทับเนื้อหา (จอ <1200px) — เป็นตัวรับคลิกนอกแถบเพื่อปิด
+          ⚠️ ต้องอยู่ **ก่อน** <nav> ใน DOM เพราะทั้งคู่ใช้ z-index เดียวกัน
+          (--z-topnav-bar) ใครมาทีหลังทับ — สลับที่แล้วฉากหลังจะบังเมนูเอง */}
+      {navOpen && (
+        <div className="sidenav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />
+      )}
+
+      {/* 🪤 แถบเมนูของระบบอยู่ **นอก** <header> โดยเจตนา — มันต้องยืนข้างเนื้อหา
+          ไม่ใช่ซ้อนใต้หัว และ .topnav มี `backdrop-filter` ซึ่งกลายเป็น containing
+          block ให้ลูกที่ position: fixed/absolute ทั้งหมด = ย้ายออกมาข้างนอก
+          เท่านั้นถึงจะวางเป็นแถบข้างได้จริง */}
       <div className="app-body">
-        {/* ชั้นเมนูของระบบปัจจุบัน — <1200px แถบแนวนอน (จอแคบเลื่อนข้างได้) ·
-            ≥1200px แถบข้างที่ย่อเป็นรางไอคอนได้ */}
+        {/* เมนูของระบบปัจจุบัน — แถบข้างทุกความกว้าง (ดูสามชั้นจอที่ .topnav-menu
+            ใน globals.css) · ≤768px ไม่วาด ใช้แถบล่างมือถือแทน */}
         {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
           {/* 🪤 กล่องเลื่อนครอบเฉพาะ "รายการเมนู" ปุ่มย่อ/กางอยู่นอกกล่องโดยเจตนา —
               จอเตี้ย (เช่น 1280×560) รายการยาวกว่าราง ถ้าปุ่มอยู่ในกล่องเดียวกัน
@@ -687,10 +732,14 @@ export default function AppLayout({ children }) {
             type="button"
             className="sidenav-toggle"
             onClick={toggleSideNav}
-            aria-expanded={!navCollapsed}
-            title={navCollapsed ? 'กางแถบเมนู' : 'ย่อแถบเมนู'}
+            aria-expanded={navOpen || !navCollapsed}
+            title={navOpen ? 'ปิดแถบเมนู' : 'ย่อ/กางแถบเมนู'}
           >
-            {navCollapsed ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}
+            {/* ⭐ ไอคอนสองตัวสลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้เป็นรางหรือกาง"
+                ขึ้นกับความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้
+                ไอคอนผิดหนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
+            <PanelLeftClose className="sidenav-ico-collapse" size={16} aria-hidden="true" />
+            <PanelLeftOpen className="sidenav-ico-expand" size={16} aria-hidden="true" />
             <span>ย่อแถบเมนู</span>
           </button>
         </nav>}

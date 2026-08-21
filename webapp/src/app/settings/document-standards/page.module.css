@@ -33,11 +33,11 @@
    ฟอร์มยังเหลือ ~700px จึงวางช่อง 2 คอลัมน์กับแถวสามช่องได้ครบ */
 .editLayout { margin-bottom: var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr) minmax(420px, .93fr); gap: var(--space-4); align-items: start; }
 .editPanel { min-width: 0; }
-/* ตรึงใต้แถบบนสองชั้น — ถ้าใช้ top:0 การ์ดจะมุดใต้ .topnav ที่ sticky อยู่ก่อนแล้ว
-   (จอแคบ --topnav-menu-h เป็น 0 เอง ค่านี้จึงถูกทุกขนาด) */
-.previewAside { position: sticky; top: calc(var(--topbar-h) + var(--topnav-menu-h) + var(--space-3)); }
+/* ตรึงใต้แถบระบบ — ถ้าใช้ top:0 การ์ดจะมุดใต้ .topnav ที่ sticky อยู่ก่อนแล้ว
+   (ระยะเดียวกับ --scroll-anchor-top ของทั้งระบบ) */
+.previewAside { position: sticky; top: var(--scroll-anchor-top); }
 .previewAside .previewHeader h2 { font-size: var(--fs-8); }
-.previewInColumn { height: clamp(380px, calc(100vh - var(--topbar-h) - var(--topnav-menu-h) - 170px), 900px); }
+.previewInColumn { height: clamp(380px, calc(100vh - var(--topbar-h) - 170px), 900px); }
 
 /* ── แถบควบคุม: สรุปบรรทัดเดียว + ปุ่มทำงาน + รายละเอียดที่พับไว้ ─────────
    เดิมส่วนนี้เป็นการ์ดค่ามาตรฐานเต็มใบคู่กับกล่องควบคุมเวอร์ชัน กางค้างตลอดเวลา
