@@ -178,3 +178,9 @@ test('ช่องลงนามชิดท้ายกระดาษ · เ�
   // accent ของสัญญาต้องไม่ใช่ navy — เกือบเท่าสีตัวหนังสือ จนสี accent ไม่มีความหมาย
   assert.match(html, /--doc-accent:#ad5d43/);   // สีเดียวกับใบเสนอราคา
 });
+
+test('เนื้อสัญญาไม่ jusify — ภาษาไทยมีช่องว่างน้อย ยืดแล้วเป็นรูโหว่กลางบรรทัด', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.match(html, /\.contract \.clauseText \{[^}]*text-align: left/);
+  assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*text-align: justify/);
+});
