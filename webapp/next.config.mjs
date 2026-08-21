@@ -6,17 +6,26 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
-  experimental: {
-    // Turbopack เป็น bundler ของ `next build` ตั้งแต่ Next 16 แต่ FS cache ปิดมาจาก
-    // ดีฟอลต์ (config-shared.js: turbopackFileSystemCacheForBuild: false) ⇒ ทุก build
-    // บน Vercel เป็น cold build ไม่ว่า diff จะเล็กแค่ไหน · เดือนที่แล้ว 492 build
-    // กินไป 7,066 CPU-min (14.4 CPU-min/build) = 87% ของบิล infra ทั้งก้อน
-    // เปิดแล้ว cache ลง .next/cache ซึ่งเป็นโฟลเดอร์ที่ Vercel restore ให้ข้าม build
-    // ⚠️ ยัง experimental — ถ้า output เพี้ยนหรือ build พัง ถอดคีย์นี้ออกได้ทันที
-    // ตรวจว่าได้ผลจริง: build log บน Vercel ต้องขึ้น "Restored build cache" และ
-    // Build CPU Minutes ในบิลต้องลดลง ไม่ใช่ดูแค่ว่า build ผ่าน
-    turbopackFileSystemCacheForBuild: true,
-  },
+  /* 🔴 `experimental.turbopackFileSystemCacheForBuild` **ถอดออกแล้ว 2026-08-22** —
+     คีย์นี้ (#1339) เปิดไว้เพื่อลด Build CPU Minutes ซึ่งเดือนก่อนกินไป 7,066 CPU-min
+     = 87% ของบิล infra · คอมเมนต์เดิมเขียนทางหนีไฟไว้เองว่า "ถ้า output เพี้ยน
+     ถอดคีย์นี้ออกได้ทันที" — และมัน **เพี้ยนจริงบน production**
+
+     สิ่งที่เกิด: build เสิร์ฟ **JS ใหม่คู่กับ CSS เก่า** ผู้ใช้เห็นแถบเมนูแบบเก่า
+     พร้อมปุ่ม ☰/✕ ของโค้ดใหม่โผล่ซ้อนกันสี่ตัวบนจอเดียว
+
+     หลักฐานที่วัดได้ (21/08 18:53Z):
+     · HTML ที่ production เสิร์ฟสด ๆ (`x-vercel-cache: MISS`, age 0) ชี้ไปที่
+       `/_next/static/chunks/0m77d5wl_v7e5.css` ซึ่ง `last-modified: 18:41`
+       = ไฟล์จาก build รอบล่าสุดจริง ไม่ใช่ของค้างบน CDN
+     · ในไฟล์นั้น: `sidenav-hamburger` 0 ครั้ง · `sidenav-w-expanded` 0 ครั้ง ·
+       `container-name` 0 ครั้ง — แต่ยังมี `--topnav-menu-h` ซึ่ง #1356 ลบทิ้งไปแล้ว
+     · source บน main รอบเดียวกัน: `sidenav-hamburger` 6 · `sidenav-w-expanded` 8
+     ⇒ CSS ที่ออกจาก build ไม่ได้มาจาก source ของ commit ที่ build — มาจากแคช
+
+     จะเปิดกลับต้องพิสูจน์ก่อนว่า turbopack ไม่หยิบ CSS ก้อนเก่ามาใช้ซ้ำ ไม่ใช่แค่
+     ดูว่า build ผ่านหรือบิลถูกลง · ทางลดค่า build ที่ไม่แลกกับความถูกต้อง เช่น
+     ลดจำนวน build ต่อวัน หรือ ignore build step ตอน diff ไม่แตะ webapp/ */
   turbopack: {
     root: rootDir,
   },
