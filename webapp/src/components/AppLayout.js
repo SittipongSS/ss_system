@@ -21,6 +21,14 @@ import SettingsShell from '@/components/settings/SettingsShell';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
+/* 🪤 สองค่านี้ต้องเป็น "ตรงข้าม" ของจุดตัดใน globals.css เป๊ะ ๆ — CSS รู้เรื่องนี้
+   เองไม่ได้เพราะมันคือ **พฤติกรรมของปุ่ม** ไม่ใช่หน้าตา:
+   · เหนือ 1200px ปุ่มย่อ/กางไปสลับ "ความชอบถาวร" · ต่ำกว่านั้นไป "เปิด/ปิดชั่วคราว"
+   · ≤768px ไม่มีแถบข้างเลย ใช้แถบล่างแทน
+   (1200 + 0.02 = ค่าถัดไปที่ CSS ถือว่าพ้น `@media (max-width: 1200px)`) */
+const SIDENAV_WIDE_QUERY = '(min-width: 1200.02px)';
+const SIDENAV_BOTTOM_QUERY = '(max-width: 768px)';
+
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -64,6 +72,10 @@ export default function AppLayout({ children }) {
        เจอจอคอมกางค้างโดยไม่ได้สั่ง */
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  /* ⚠️ ใช้บอก **สถานะจริง** ให้ปุ่ม (aria-expanded / คำบนปุ่ม) เท่านั้น ห้ามเอาไป
+     ตัดสินหน้าตา — หน้าตาทั้งหมดเป็นงานของ CSS ที่รู้ตั้งแต่เพนต์แรก ส่วนค่านี้
+     ฝั่ง server ไม่มีทางรู้ จึงเป็น false หนึ่งเฟรมเสมอตอนโหลดหน้า */
+  const [isWide, setIsWide] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -212,15 +224,31 @@ export default function AppLayout({ children }) {
     setNavCollapsed(document.documentElement.getAttribute('data-sidenav') === 'collapsed');
   }, []);
 
-  /* 🪤 ตัวเลขนี้ต้องเป็น "ตรงข้าม" ของจุดตัด `@media (max-width: 1200px)` ใน
-     globals.css เป๊ะ ๆ (1200px + 0.02 = ค่าถัดไปที่ CSS ถือว่าพ้นจุดตัด) —
-     ชั้นจอกว้างเป็นชั้นเดียวที่ปุ่มไป "สลับความชอบถาวร" ชั้นอื่นปุ่มเดียวกันไป
-     "เปิด/ปิดการกางชั่วคราว" แทน · CSS รู้เรื่องนี้เองไม่ได้เพราะมันคือพฤติกรรม
-     ของ handler ไม่ใช่หน้าตา */
-  const SIDENAV_WIDE_QUERY = '(min-width: 1200.02px)';
+  /* ข้ามชั้นจอเมื่อไร ให้ล้างการกางชั่วคราวทิ้งเสมอ
+     🐞 ไม่ล้างแล้วเจอของจริง: เปิดลิ้นชักบนจอ 850 แล้วลากหน้าต่างให้กว้างเกิน 1200
+     — CSS ชั้นจอกว้างไม่มีกฎ .sidenav-open เลย แถบจึงกลับไปเป็นแถบปกติ แต่ state
+     ยังค้างว่า "เปิดอยู่" ผลคือกดปุ่มย่อครั้งแรกไม่มีอะไรเกิดขึ้น (มันไปปิดของที่
+     มองไม่เห็น) · ขอบ 900 ไม่ต้องล้าง เพราะลิ้นชักกับแถบลอยหน้าตาต่อเนื่องกันอยู่แล้ว */
+  useEffect(() => {
+    const wide = window.matchMedia(SIDENAV_WIDE_QUERY);
+    const bottom = window.matchMedia(SIDENAV_BOTTOM_QUERY);
+    const sync = () => { setIsWide(wide.matches); setNavOpen(false); };
+    sync();
+    wide.addEventListener('change', sync);
+    bottom.addEventListener('change', sync);
+    return () => {
+      wide.removeEventListener('change', sync);
+      bottom.removeEventListener('change', sync);
+    };
+  }, []);
 
   const toggleSideNav = () => {
     if (navOpen) { setNavOpen(false); return; }
+    /* ⚠️ ถามชั้นจอ **สด ๆ ตอนกด** ไม่ใช่อ่านจาก `isWide` — ปุ่มต้องทำงานถูกเสมอ
+       แม้ event ที่คอยอัปเดต state จะพลาดไปสักรอบ (ในเครื่องมือทดสอบที่ย่อ/ขยาย
+       จอผ่าน CDP ทั้ง `resize` และ `matchMedia change` ไม่ยิงเลย ขณะที่ CSS
+       คิดจุดตัดใหม่ปกติ) · `isWide` เอาไว้บอก *สถานะ* เท่านั้น พลาดแล้วแค่ป้าย
+       บนปุ่มค้าง ไม่ใช่ปุ่มทำงานผิด */
     if (!window.matchMedia(SIDENAV_WIDE_QUERY).matches) { setNavOpen(true); return; }
     const next = !navCollapsed;
     document.documentElement.setAttribute('data-sidenav', next ? 'collapsed' : 'expanded');
@@ -544,6 +572,9 @@ export default function AppLayout({ children }) {
       ? SettingsIcon
       : (activeSystemDefinition?.icon || LayoutDashboard);
 
+  /* แถบ "กางอยู่จริง" = กางทับชั่วคราว หรือ อยู่จอกว้างและผู้ใช้ไม่ได้สั่งย่อ */
+  const sideNavExpanded = navOpen || (isWide && !navCollapsed);
+
   /* ปุ่มเมนูหนึ่งชิ้น — ใช้ทั้งกลุ่มซ้าย (ลำดับงาน) และกลุ่มขวา (เครื่องมือ)
      ⚠️ เขียนที่เดียว: สองกลุ่มต่างกันแค่คลาส ถ้าก๊อปเป็นสองชุดมันจะเพี้ยนหากันแน่นอน */
   const renderMenuItem = (item, extraClass = '') => {
@@ -728,19 +759,24 @@ export default function AppLayout({ children }) {
           </div>
           {/* ปุ่มย่อ/กางแถบข้าง — มีเฉพาะโหมดแถบข้าง (CSS ซ่อนทิ้งบนจอแคบ)
               อยู่นอกกล่องเลื่อน จึงติดก้นรางเสมอไม่ว่าเมนูจะยาวแค่ไหน */}
+          {/* ⚠️ "กางอยู่จริงไหม" ไม่เท่ากับ "ผู้ใช้ตั้งค่าไว้ว่ากาง" — จอ ≤1200px แถบ
+              เป็นรางเสมอไม่ว่าความชอบถาวรจะเป็นอะไร ถ้าอ่านจาก navCollapsed อย่างเดียว
+              ปุ่มจะบอก screen reader ว่า "กางอยู่" ทั้งที่หน้าจอเห็นแต่ไอคอน */}
           <button
             type="button"
             className="sidenav-toggle"
             onClick={toggleSideNav}
-            aria-expanded={navOpen || !navCollapsed}
-            title={navOpen ? 'ปิดแถบเมนู' : 'ย่อ/กางแถบเมนู'}
+            aria-expanded={sideNavExpanded}
+            title={navOpen ? 'ปิดแถบเมนู' : (sideNavExpanded ? 'ย่อแถบเมนู' : 'กางแถบเมนู')}
           >
             {/* ⭐ ไอคอนสองตัวสลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้เป็นรางหรือกาง"
                 ขึ้นกับความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้
                 ไอคอนผิดหนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
             <PanelLeftClose className="sidenav-ico-collapse" size={16} aria-hidden="true" />
             <PanelLeftOpen className="sidenav-ico-expand" size={16} aria-hidden="true" />
-            <span>ย่อแถบเมนู</span>
+            {/* ป้ายนี้โผล่เฉพาะตอนแถบกว้าง (container query ซ่อนตอนเป็นราง) — ตอนกาง
+                ทับเนื้อหาการกดคือ "ปิด" ไม่ใช่ "ย่อ" คำจึงต้องเปลี่ยนตาม */}
+            <span>{navOpen ? 'ปิดแถบเมนู' : 'ย่อแถบเมนู'}</span>
           </button>
         </nav>}
 
