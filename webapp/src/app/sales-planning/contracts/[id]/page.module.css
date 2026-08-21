@@ -46,3 +46,10 @@
 .late {
   color: var(--amber);
 }
+
+/* สายฉบับแก้ไข — บรรทัดเดียวเหนือข้อมูลใบ */
+.revChain {
+  margin: 0 0 var(--space-3);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}

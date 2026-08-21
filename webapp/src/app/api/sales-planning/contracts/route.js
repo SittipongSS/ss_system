@@ -6,6 +6,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import {
   contractEligibility, contractKindLabel, isContractKind, isContractWaitingOnMe,
+  latestContractRevisions,
 } from '@/lib/sales/contracts';
 import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 
@@ -32,8 +33,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const { data, error } = await query;
   if (error) return fail(error.message, 500);
 
-  const rows = (data || [])
-    .filter((row) => row.deal && inSalesViewScope(user, row.deal))
+  const visible = (data || []).filter((row) => row.deal && inSalesViewScope(user, row.deal));
+  /* ⭐ เหลือเฉพาะฉบับล่าสุดของแต่ละสาย (mig 0280) — ทะเบียนต้องไม่โชว์ฉบับเก่าปนกับ
+     ฉบับปัจจุบัน · ฉบับเก่ายังเปิดดูได้จากหน้าใบของมันเอง (ลิงก์ในสายฉบับ) */
+  const rows = latestContractRevisions(visible)
     .filter((row) => !status || status === 'all' || row.status === status)
     // เนื้อเอกสารที่ตรึงไว้หนักและไม่มีใครใช้ในลิสต์ — ตัดออกก่อนส่ง
     .map(({ issuedHtml, ...row }) => ({

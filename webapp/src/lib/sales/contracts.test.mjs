@@ -100,3 +100,30 @@ test('ข้อ 2.9 ใช้ถ้อยคำของต้นฉบับล
   assert.match(clause.text, /เลขที่ใบรับแจ้งน้ำหอมของ/);
   assert.equal(SCENT_DESIGN_TEMPLATE.version, '20260813');
 });
+
+test('ร่างลบได้จนกว่าจะออกสัญญา · ออกแล้วต้องออกฉบับแก้ไข', async () => {
+  const { canDeleteContract, canReviseContract, contractReviseBlockReason } = await import('./contracts.js');
+  // ร่าง = ลบได้ (มติผู้ใช้ 2026-08-21)
+  assert.equal(canDeleteContract({ status: 'draft', contractNo: null }), true);
+  assert.equal(canReviseContract({ status: 'draft' }), false);
+  // ออกเลขแล้ว = ลบไม่ได้ ต้องออก Rev.
+  assert.equal(canDeleteContract({ status: 'awaiting_signature', contractNo: 'CT-26080001-0' }), false);
+  assert.equal(canReviseContract({ status: 'awaiting_signature' }), true);
+  /* ลงนามแล้วออก Rev. ไม่ได้ — ตัวสัญญาข้อ 3.2 บอกเองว่าการแก้ไขเพิ่มเติมต้องทำเป็น
+     ลายลักษณ์อักษรและลงนามทั้งสองฝ่าย = "บันทึกเพิ่มเติมสัญญา" ไม่ใช่ Rev. ของใบเดิม */
+  assert.equal(canReviseContract({ status: 'signed' }), false);
+  assert.match(contractReviseBlockReason({ status: 'signed' }), /บันทึกเพิ่มเติมสัญญา/);
+});
+
+test('ทะเบียนเหลือเฉพาะฉบับล่าสุดของแต่ละเลขฐาน', async () => {
+  const { latestContractRevisions } = await import('./contracts.js');
+  const rows = [
+    { id: 'a', baseNumber: 'CT-26080001', revisionNo: 0, status: 'revised', createdAt: '2026-08-01' },
+    { id: 'b', baseNumber: 'CT-26080001', revisionNo: 1, status: 'awaiting_signature', createdAt: '2026-08-02' },
+    { id: 'c', baseNumber: 'CT-26080002', revisionNo: 0, status: 'signed', createdAt: '2026-08-03' },
+    // ร่างที่ยังไม่มีเลข = สายของตัวเอง (คีย์ตกไปที่ id) ต้องไม่ถูกยุบรวมกับใบอื่น
+    { id: 'd', baseNumber: null, contractNo: null, revisionNo: 0, status: 'draft', createdAt: '2026-08-04' },
+  ];
+  const ids = latestContractRevisions(rows).map((row) => row.id).sort();
+  assert.deepEqual(ids, ['b', 'c', 'd']);
+});
