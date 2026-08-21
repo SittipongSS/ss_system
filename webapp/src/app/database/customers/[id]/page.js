@@ -30,7 +30,7 @@ import {
   ADDRESS_USE_LABELS, addressLabel, customerAddresses, isBillingAddress, isShippingAddress,
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
-import { brandBothOf, brandBoth } from "@/lib/master/brands";
+import { brandBothOf, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
@@ -449,7 +449,8 @@ export default function CustomerDetails() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
-                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{p.fgCode} · {brandBoth(p.brandName, p.brandNameEn)}</div>
+                            {/* กลุ่ม 03/04 ไม่มีแบรนด์ (brands.js) — ต่อ " · " ไปก็ได้ตัวคั่นลอย ๆ ท้ายรหัส */}
+                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{[p.fgCode, hasBrandField(p) ? brandBoth(p.brandName, p.brandNameEn) : ""].filter(Boolean).join(" · ")}</div>
                           </div>
                           <ProductStatusPill status={p.status} />
                         </div>
@@ -490,7 +491,9 @@ export default function CustomerDetails() {
                               <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
                               <td>
                                 <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
-                                <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {brandBoth(p.brandName, p.brandNameEn)}</div>
+                                {hasBrandField(p) && (
+                                  <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {naText(brandBoth(p.brandName, p.brandNameEn))}</div>
+                                )}
                               </td>
                               <td className="font-mono">{p.volume} {p.volumeUnit || "ml"}</td>
                               <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>

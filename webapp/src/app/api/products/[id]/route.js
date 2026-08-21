@@ -20,6 +20,7 @@ import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling'
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
+import { clearedBrandFields } from '@/lib/master/brands';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -263,6 +264,12 @@ export async function PATCH(request, { params }) {
     const categoryError = await activeProductTypeError(updated.categoryCode);
     if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
   }
+
+  // กลุ่ม 03/04 ไม่มีแบรนด์ (มติ 2026-08-21 · ดู brands.js) — ล้างที่ server เสมอ
+  // เคสที่กัดจริงคือ **ย้ายหมวดข้ามกลุ่ม**: สินค้ากลุ่ม 01 ที่ถูกย้ายไป 03 ต้องไม่ลาก
+  // ชื่อแบรนด์เก่าติดไปด้วย ⇒ ตัดสินจาก updated.categoryCode หลังหมวดนิ่งแล้ว (ต่างจาก
+  // ช่องบรรจุภัณฑ์ด้านบนที่ล้างก่อน re-derive มาแต่เดิม)
+  Object.assign(updated, clearedBrandFields(updated));
 
   // ธง "เสียภาษีไหม": ค่าตั้งต้นจากธง isExcise ของหมวด (mig 0131 — ไม่ parse จาก
   // fgCode ซ้ำ ไม่มีรหัสหมวดตายตัว) แต่ **การยกเว้นรายตัวของฝ่ายกฎหมายที่ตรึงไว้บน

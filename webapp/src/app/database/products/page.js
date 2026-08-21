@@ -25,7 +25,7 @@ import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
-import { brandBoth, normalizeBrands } from "@/lib/master/brands";
+import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney, naText, NA } from "@/lib/format";
 
 // Management view sees every status; the default GET (used by registration / PM
@@ -204,7 +204,10 @@ export default function ProductRegistry() {
     e.preventDefault();
     // customerId/brandName ใช้ SearchableSelect (ไม่ใช่ native input) — ตรวจ required เองที่นี่
     if (!formData.customerId) { notifyToast.error("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
-    if (!formData.brandName?.trim() && !formData.brandNameEn?.trim()) { notifyToast.error("กรุณาระบุชื่อแบรนด์"); return; }
+    // แบรนด์บังคับเฉพาะกลุ่มที่มีช่องแบรนด์ — กลุ่ม 03/04 ฟอร์มไม่มีช่องนี้เลย (brands.js)
+    // หมวดอ่านทางเดียวกับฟอร์ม: โหมดระบบใหม่จากตัวเลือกหมวด · โหมดกรอกเองจากรหัสที่พิมพ์
+    const brandCategory = codeMode === CODE_MODE_AUTO ? formData.categoryCode : categoryOf(formData.fgCode);
+    if (hasBrandField(brandCategory) && !formData.brandName?.trim() && !formData.brandNameEn?.trim()) { notifyToast.error("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       notifyToast.error("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
