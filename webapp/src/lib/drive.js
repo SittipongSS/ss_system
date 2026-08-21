@@ -337,6 +337,8 @@ const SALES_THREAD_FOLDER = {
   // สัญญา (mig 0278) — ร่างยังไม่มีเลขที่ ⇒ ตกไปใช้ id ซึ่งถูกต้องแล้ว: ไฟล์ที่แนบ
   // ก่อนออกเลขมีเฉพาะเอกสารประกอบ ส่วนฉบับเซ็นจริงมาหลังออกเลขเสมอ
   contract: { folder: FOLDER.salesContracts, table: 'sales_contracts', labelKeys: ['contractNo'] },
+  // บันทึกเพิ่มเติมลงลิ้นชักเดียวกับสัญญา — เอกสารสองใบนี้ต้องอยู่ด้วยกันเสมอ
+  contract_addendum: { folder: FOLDER.salesContracts, table: 'sales_contract_addenda', labelKeys: ['docNo'] },
 };
 
 export async function folderPathForEntity(entityType, entityId) {

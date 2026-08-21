@@ -188,3 +188,28 @@ test('ขอบขวาเสมอกันด้วย inter-character — �
   // ตัดกลางคำไทยอ่านไม่ออก ("แล/ะให้") — ห้ามใช้แทน
   assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*word-break: break-all/);
 });
+
+test('เอกสารบันทึกเพิ่มเติมใช้ชิ้นส่วนเดียวกับสัญญา + มีตารางสูตรที่ตรึงมา', async () => {
+  const { buildAddendumHTML } = await import('./addendumDocument.js');
+  const contract = {
+    contractNo: 'CT-26080001-0', contractDate: '2026-08-20', effectiveDate: '2026-08-20',
+    customerName: 'บริษัท ทดสอบ จำกัด', metadata: {},
+    fields: { clientName: 'บริษัท ทดสอบ จำกัด', clientRegNo: '0105500000000', clientAddress: 'ที่อยู่ทดสอบ' },
+  };
+  const addendum = {
+    docNo: 'CT-26080001-0-A1', addendumNo: 1, addendumDate: '2026-08-21', status: 'awaiting_signature',
+    requestDocNo: 'SB-26080001', fields: { addendumPlace: 'สำนักงานผู้รับจ้าง' },
+    lines: [{ seq: 1, name: 'สูตรทดสอบ', code: 'PF000001', formulaDate: '2026-08-01' }],
+  };
+  const html = buildAddendumHTML(addendum, { contract, company: COMPANY });
+  assert.match(html, /บันทึกเพิ่มเติมสัญญาจ้างออกแบบกลิ่นน้ำหอม ครั้งที่ 1/);
+  assert.match(html, /CT-26080001-0-A1/);
+  assert.match(html, /SB-26080001/);
+  // ตารางสูตรตามต้นฉบับ: ลำดับ · ชื่อสูตร · รหัสสูตร · วันที่สูตร
+  assert.match(html, /<th>ลำดับ<\/th>/);
+  assert.match(html, /PF000001/);
+  // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
+  assert.match(html, /classList\.add\('signSheet'\)/);
+  assert.match(html, /\.contract \.clauseText \{[^}]*text-justify: inter-character/);
+  assert.doesNotMatch(html, /\{\{\w+\}\}/);
+});

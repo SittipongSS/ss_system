@@ -62,6 +62,7 @@ export const PARENT_TABLE = {
   project: 'projects',
   // สัญญา (mig 0278) — ไฟล์ที่ลูกค้าเซ็นแล้วเปิดผ่าน proxy /file เหมือนไฟล์ดีล
   contract: 'sales_contracts',
+  contract_addendum: 'sales_contract_addenda',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 

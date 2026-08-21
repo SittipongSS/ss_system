@@ -49,7 +49,7 @@ export function thaiShortDate(value) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear() + 543}`;
 }
 
-const BLANK = '____________________';
+export const BLANK = '____________________';
 
 // แทนค่า {{token}} — ค่าที่ยังไม่กรอกกลายเป็น "เส้นให้เขียนมือ" ไม่ใช่ช่องว่างเงียบ ๆ
 // (สัญญาที่พิมพ์ออกไปแล้วมีที่ว่างลอย = ไม่มีใครรู้ว่าตั้งใจเว้นหรือลืมกรอก)
@@ -94,7 +94,7 @@ const BOLD_TOKENS = new Set([
 
 // เติมค่าแล้วคืน **HTML** (ต่างจาก fillTokens ที่คืนข้อความล้วน) — ค่าที่กรอกจริงของ
 // คู่สัญญาถูกห่อด้วย <strong> ส่วนช่องที่ยังว่างเป็นเส้นประธรรมดา ไม่ต้องเน้น
-function fillTokensHtml(text, values = {}) {
+export function fillTokensHtml(text, values = {}) {
   return String(text ?? '')
     .split(/(\{\{\w+\}\})/)
     .map((part) => {
@@ -109,7 +109,7 @@ function fillTokensHtml(text, values = {}) {
     .join('');
 }
 
-const paragraph = (text, values) => `<p class="clauseText">${fillTokensHtml(text, values)}</p>`;
+export const paragraph = (text, values) => `<p class="clauseText">${fillTokensHtml(text, values)}</p>`;
 
 function definitionsBlock(template, values) {
   const def = template.definitions;
@@ -164,7 +164,7 @@ function signatureGrid(template, values) {
           <section class="signGrid" aria-label="ส่วนลงนาม">${template.signatures.map(box).join('')}</section>`;
 }
 
-const CONTRACT_CSS = `
+export const CONTRACT_CSS = `
   /* ── สายเนื้อหาก่อนถูกตัดหน้า ────────────────────────────────────────
      เห็นครบทั้งฉบับแม้สคริปต์ไม่ทำงาน (แผ่นยืดตามเนื้อ ไม่ครอบตัด) */
   /* ระยะขอบกระดาษของสัญญากว้างกว่าเอกสารชนิดอื่น — เอกสารผูกพันที่ต้องเซ็นและเย็บเก็บ
@@ -272,7 +272,7 @@ const CONTRACT_CSS = `
    · บล็อกที่สูงเกินหนึ่งแผ่นได้แผ่นยืด (`tall`) แทนการถูกครอบตัด
    ⚠️ สายเนื้อหาเดิมถูกลบ **หลังสร้างแผ่นเสร็จ** เท่านั้น — สคริปต์ตายกลางทาง
       ผู้ใช้ต้องยังเห็นเอกสารครบ ไม่ใช่หน้าขาว */
-const PAGINATE_SCRIPT = `
+export const PAGINATE_SCRIPT = `
 (function () {
   function paginate() {
     var doc = document.querySelector('.contract');
@@ -369,7 +369,7 @@ const PAGINATE_SCRIPT = `
    ⚠️ **อังกฤษยังเทาไว้** (มติผู้ใช้ 2026-08-21) — ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ
    ปุ่มที่กดแล้วได้เอกสารครึ่งไทยครึ่งอังกฤษแย่กว่าปุ่มที่กดไม่ได้แล้วบอกเหตุผล
    ⇒ ปุ่มมี `disabled` + `title` อธิบาย ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) */
-function contractToolbarControls() {
+export function contractToolbarControls() {
   return '<div class="langSwitch" role="group" aria-label="ภาษาเอกสาร">'
     + '<button type="button" data-lang="th" aria-pressed="true">ไทย</button>'
     + '<button type="button" data-lang="en" aria-pressed="false" disabled'

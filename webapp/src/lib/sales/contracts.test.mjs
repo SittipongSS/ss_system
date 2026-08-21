@@ -127,3 +127,35 @@ test('ทะเบียนเหลือเฉพาะฉบับล่า�
   const ids = latestContractRevisions(rows).map((row) => row.id).sort();
   assert.deepEqual(ids, ['b', 'c', 'd']);
 });
+
+test('บันทึกเพิ่มเติม: ออกได้เฉพาะสัญญาที่ลงนามแล้ว + คำร้องพัฒนากลิ่นที่ปิดเรื่อง', async () => {
+  const { addendumEligibility, addendumDocNo } = await import('./contractAddenda.js');
+  const signed = { kind: 'scent_design', status: 'signed', contractNo: 'CT-26080001-0' };
+  const closedRequest = { kind: 'scent_dev', status: 'closed' };
+
+  assert.equal(addendumEligibility({ contract: signed, request: closedRequest }).ok, true);
+  // ยังไม่ลงนาม = ใช้ Rev. แทน (บอกทางออกให้ ไม่ใช่แค่ปฏิเสธ)
+  const notSigned = addendumEligibility({ contract: { ...signed, status: 'awaiting_signature' }, request: closedRequest });
+  assert.equal(notSigned.ok, false);
+  assert.match(notSigned.reason, /ฉบับแก้ไข/);
+  // คำร้องที่ยังไม่ปิดเรื่อง = สูตรยังขยับได้ ⇒ ตารางในบันทึกจะไม่ตรงของจริง
+  const openRequest = addendumEligibility({ contract: signed, request: { kind: 'scent_dev', status: 'answered' } });
+  assert.equal(openRequest.ok, false);
+  assert.match(openRequest.reason, /ปิดเรื่อง/);
+  // คนละชนิดคำร้อง (ขอเอกสาร/สอบถาม) ไม่มีข้อมูลสูตรให้อ้าง
+  assert.equal(addendumEligibility({ contract: signed, request: { kind: 'info', status: 'closed' } }).ok, false);
+
+  // เลขที่ต่อจากสัญญาแม่ รวมเลขฉบับแก้ไข
+  assert.equal(addendumDocNo('CT-26080001-0', 1), 'CT-26080001-0-A1');
+  assert.equal(addendumDocNo('CT-26080001-1', 2), 'CT-26080001-1-A2');
+  assert.equal(addendumDocNo(null, 1), null);
+});
+
+test('บันทึกเพิ่มเติม: ร่างลบได้ · ออกเลขแล้วลบไม่ได้', async () => {
+  const { canDeleteAddendum, canIssueAddendum, canSignAddendum } = await import('./contractAddenda.js');
+  assert.equal(canDeleteAddendum({ status: 'draft', docNo: null }), true);
+  assert.equal(canDeleteAddendum({ status: 'awaiting_signature', docNo: 'CT-1-A1' }), false);
+  assert.equal(canIssueAddendum({ status: 'draft' }), true);
+  assert.equal(canSignAddendum({ status: 'awaiting_signature' }), true);
+  assert.equal(canSignAddendum({ status: 'signed' }), false);
+});
