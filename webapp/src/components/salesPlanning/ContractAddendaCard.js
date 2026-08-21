@@ -35,8 +35,8 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ⭐ ไม่มีให้เลือกคำร้อง (มติผู้ใช้ 2026-08-22) — คำร้องมาจากใบสั่งขาย สัญญาก็มาจาก
-     ใบเสนอราคาของใบสั่งขายเดียวกัน ระบบไล่สายเอง จอแค่ *บอกว่าจะใช้ใบไหน* ก่อนกดสร้าง
+  /* ⭐ ไม่มีให้เลือกคำร้อง (มติผู้ใช้ 2026-08-22) — คำร้องกับสัญญาอยู่ในดีลเดียวกันอยู่แล้ว
+     ระบบหาให้เอง จอแค่ *บอกว่าจะใช้ใบไหน* ก่อนกดสร้าง
      ⚠️ จอไม่กรองเอง — ด่านฝั่ง API เป็นคนตัด (กรองสองที่ = เพี้ยนหากันวันหลัง) */
   const loadSource = useCallback(async () => {
     if (!contract?.id) return;
@@ -72,7 +72,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   return (
     <TableShell
       title="บันทึกเพิ่มเติมสัญญา"
-      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นของใบสั่งขายเดียวกัน — ถือเป็นส่วนหนึ่งของสัญญา"
+      description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นในดีลเดียวกัน — ถือเป็นส่วนหนึ่งของสัญญา"
       actions={canEdit && signed ? (
         <Button size="sm" variant="primary" onClick={() => { setCreating(true); loadSource(); }}>
           <Plus size={13} aria-hidden="true" /> ทำบันทึกเพิ่มเติม
@@ -133,7 +133,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
             <TableEmpty
               colSpan={5}
               title="ยังไม่มีบันทึกเพิ่มเติม"
-              description={signed ? "กด “ทำบันทึกเพิ่มเติม” — ระบบดึงสูตรจากคำร้องพัฒนากลิ่นของใบสั่งขายนี้ให้เอง" : undefined}
+              description={signed ? "กด “ทำบันทึกเพิ่มเติม” — ระบบดึงสูตรจากคำร้องพัฒนากลิ่นในดีลนี้ให้เอง" : undefined}
             />
           )}
         </tbody>

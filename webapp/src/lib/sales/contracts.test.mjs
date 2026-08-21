@@ -191,7 +191,7 @@ test('บันทึกเพิ่มเติม: ระบบเลือก
   assert.equal(pickAddendumRequest([]), null);
 
   // เหตุผลต้องแยกได้ว่า "ไม่มีคำร้อง" กับ "มีแต่ใช้ครบแล้ว" กับ "ยังไม่มีสูตร"
-  assert.match(addendumSourceReason([]), /ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง/);
+  assert.match(addendumSourceReason([]), /ดีลของสัญญานี้ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง/);
   assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 2, taken: true }]), /ครั้งเดียว/);
   assert.match(addendumSourceReason([{ id: 'r1', formulaCount: 0, taken: false }]), /รหัสสูตร/);
 });

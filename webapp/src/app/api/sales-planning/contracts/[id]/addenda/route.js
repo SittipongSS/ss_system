@@ -44,9 +44,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
 
-  /* ⭐ **ไม่รับ requestId จากจอ** (มติผู้ใช้ 2026-08-22) — คำร้องมาจากใบสั่งขาย
-     สัญญาก็มาจากใบเสนอราคาของใบสั่งขายเดียวกัน ⇒ ระบบไล่สายเองที่นี่ที่เดียว
-     ⚠️ ไล่สายตอนกด ไม่ใช่ตอนจอโหลด — สองคนกดพร้อมกันต้องไม่ได้คำร้องใบเดียวกัน
+  /* ⭐ **ไม่รับ requestId จากจอ** (มติผู้ใช้ 2026-08-22) — คำร้อง/ใบเสนอราคา/ใบสั่งขาย
+     และสัญญาถือ `dealId` เดียวกัน ⇒ ระบบหาเองที่นี่ที่เดียว
+     ⚠️ หาตอนกด ไม่ใช่ตอนจอโหลด — สองคนกดพร้อมกันต้องไม่ได้คำร้องใบเดียวกัน
         (partial unique index ของ mig 0282 กันชั้นสุดท้าย) */
   const { candidates, error: sourceError } = await loadAddendumRequestCandidates(supabase, contract);
   if (sourceError) return fail(sourceError, 500);

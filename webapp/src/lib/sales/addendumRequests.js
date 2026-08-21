@@ -2,13 +2,14 @@
 //
 // ⭐ มติผู้ใช้ 2026-08-22: *"คำร้องมันมาจาก SO อยู่แล้ว แล้วสัญญาหลักก็มาจาก SO
 //    งั้นก็ไม่ต้องเลือกคำร้องเลย เพราะมันเชื่อมโยงกันอยู่แล้ว"*
-//    ⇒ **ไม่มีดรอปดาวน์** ระบบไล่สายให้เอง: สัญญา → ใบเสนอราคา → ใบสั่งขาย → คำร้อง
+//    ⇒ **ไม่มีดรอปดาวน์** ระบบหาให้เอง
 //
-// สายที่ไล่ (ทุกขาเป็นคอลัมน์จริงในฐาน ไม่ใช่เดาจากชื่อ):
-//   sales_contracts."quotationId" → sales_orders."quotationId"
-//   → dept_requests."salesOrderId" (kind = scent_dev · 1 SO : 1 คำร้อง ตามด่านของ SA)
-// ถ้าสัญญาไม่มีใบเสนอราคาผูก (ใบเก่า/ใบที่กรอกมือ) ตกลงมาที่ดีลของสัญญา
-// แล้วยังกรองด้วยลูกค้าอีกชั้นเสมอ — บันทึกที่แนบสูตรของลูกค้ารายอื่นคือเอกสารที่ใช้ไม่ได้
+// ⭐ เส้นที่ใช้ผูกคือ **`dealId`** (มติผู้ใช้ 2026-08-22 รอบสอง) — ทั้ง QT · SO · คำร้อง
+//    ต่างถือ `dealId` ของตัวเอง และสัญญาก็ถือ `dealId` (NOT NULL) ⇒ ถามคำถามเดียวจบ
+//    ⚠️ เคยไล่สาย quotationId → sales_orders → dept_requests."salesOrderId" มาก่อน
+//       ซึ่งแคบกว่าและขาดง่าย: ใบสั่งขายที่ไม่ได้ออกจากใบเสนอราคาใบที่ผูกกับสัญญา
+//       (ออกหลายใบ · ออกมือ) ทำให้ลิสต์ว่างทั้งที่คำร้องมีอยู่ในดีลเดียวกัน
+// เลขใบสั่งขายยังอ่านมาโชว์อยู่ (จาก `dept_requests."salesOrderId"`) เพื่อให้คนกดเห็นที่มา
 import { sameCustomer } from '@/lib/sales/contractAddenda';
 
 /* เลือกใบที่จะใช้ต่อไป — เก่าสุดก่อน เพื่อให้บันทึกครั้งที่ 1, 2, 3 … ไล่ตามลำดับที่
@@ -23,29 +24,17 @@ export function pickAddendumRequest(candidates = []) {
 /* คำร้องทั้งหมดที่สายของสัญญาใบนี้พาไปถึง พร้อมสถานะว่าใบไหนถูกใช้ไปแล้ว
    คืน { candidates, error } — ตัวเรียกเป็นคนตัดสินใจว่าจะโชว์อะไร */
 export async function loadAddendumRequestCandidates(supabase, contract) {
-  if (!contract?.id) return { candidates: [], error: null };
+  if (!contract?.id || !contract?.dealId) return { candidates: [], error: null };
 
-  let orderNoById = new Map();
-  if (contract.quotationId) {
-    const { data: orders, error } = await supabase
-      .from('sales_orders').select('id, "orderNumber"').eq('quotationId', contract.quotationId);
-    if (error) return { candidates: [], error: error.message };
-    orderNoById = new Map((orders || []).map((order) => [order.id, order.orderNumber]));
-  }
-
-  let query = supabase
+  const { data: requests, error: requestError } = await supabase
     .from('dept_requests')
     .select('id, "docNo", "closedAt", "customerId", "customerName", "salesOrderId"')
+    .eq('dealId', contract.dealId)
     .eq('kind', 'scent_dev')
     .eq('status', 'closed');
-  query = orderNoById.size
-    ? query.in('salesOrderId', [...orderNoById.keys()])
-    : query.eq('dealId', contract.dealId);
-
-  const { data: requests, error: requestError } = await query;
   if (requestError) return { candidates: [], error: requestError.message };
 
-  // ⚠️ ด่านลูกค้าอยู่ท้ายสายเสมอ — ต่อให้ไล่สายมาถูก ใบที่ชื่อลูกค้าไม่ตรงก็ใช้ไม่ได้
+  // ⚠️ ด่านลูกค้าอยู่ท้ายเสมอ — ดีลเดียวกันแล้วยังต้องเป็นลูกค้ารายเดียวกับสัญญา
   const rows = (requests || []).filter((request) => sameCustomer(contract, request));
   const ids = rows.map((request) => request.id);
   if (!ids.length) return { candidates: [], error: null };
@@ -58,6 +47,16 @@ export async function loadAddendumRequestCandidates(supabase, contract) {
     map.set(item.requestId, (map.get(item.requestId) || 0) + 1);
     return map;
   }, new Map());
+
+  // เลขใบสั่งขายไว้โชว์ที่มาเฉย ๆ — ไม่ใช่เงื่อนไขคัดเลือก (ใบที่ไม่มีก็ยังใช้ได้)
+  const orderIds = [...new Set(rows.map((request) => request.salesOrderId).filter(Boolean))];
+  let orderNoById = new Map();
+  if (orderIds.length) {
+    const { data: orders, error: orderError } = await supabase
+      .from('sales_orders').select('id, "orderNumber"').in('id', orderIds);
+    if (orderError) return { candidates: [], error: orderError.message };
+    orderNoById = new Map((orders || []).map((order) => [order.id, order.orderNumber]));
+  }
 
   /* ใบที่ถูกใช้ไปแล้ว (มติผู้ใช้: หนึ่งคำร้อง = หนึ่งบันทึก)
      ⚠️ นับเฉพาะบันทึกที่ยังไม่ถูกยกเลิก — ยกเลิกแล้วคำร้องต้องกลับมาใช้ได้อีก */
@@ -84,7 +83,7 @@ export async function loadAddendumRequestCandidates(supabase, contract) {
 /* เหตุผลที่ยังทำบันทึกไม่ได้ — เขียนให้บอก *ทางออก* ไม่ใช่แค่ปฏิเสธ
    (ลิสต์ว่างเพราะอะไรต้องอ่านออกจากหน้าจอ ไม่ต้องให้ไปเดาเอง) */
 export function addendumSourceReason(candidates = []) {
-  if (!candidates.length) return 'ใบสั่งขายของสัญญานี้ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง';
+  if (!candidates.length) return 'ดีลของสัญญานี้ยังไม่มีคำร้องพัฒนากลิ่นที่ปิดเรื่อง';
   if (candidates.every((request) => request.taken)) {
     return 'คำร้องพัฒนากลิ่นของสัญญานี้ถูกใช้ทำบันทึกไปครบแล้ว — หนึ่งคำร้องออกบันทึกได้ครั้งเดียว';
   }
