@@ -58,7 +58,9 @@ function formulaTable(template, lines = []) {
 
 const ADDENDUM_CSS = `
   /* ตารางสูตรของบันทึก — โครงเดียวกับตารางรายการของใบเสนอราคา (หัวกรมท่า เส้นบาง) */
-  .contract .formulaTable { width: 100%; margin-top: 3mm; border-collapse: collapse; }
+  /* เว้นใต้ตารางก่อนข้อถัดไป — ข้อ 2 ชิดขอบตารางจนอ่านเหมือนเป็นคำอธิบายของตาราง
+     (ระยะระหว่างบล็อก 3.5mm ไม่พอ เพราะตารางมีเส้นขอบล่างซึ่งดึงสายตาเข้าหาบรรทัดถัดไป) */
+  .contract .formulaTable { width: 100%; margin: 3mm 0 5mm; border-collapse: collapse; }
   .contract .formulaTable th { padding: 2.1mm 1.5mm; color: #fff; background: var(--doc-navy);
     font-size: 8.4pt; font-weight: 600; text-align: left; }
   .contract .formulaTable td { padding: 2mm 1.5mm; border-bottom: 1px solid var(--doc-line); font-size: 8.8pt; }

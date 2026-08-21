@@ -207,6 +207,8 @@ test('เอกสารบันทึกเพิ่มเติมใช้�
   assert.match(html, /SB-26080001/);
   // ตารางสูตรตามต้นฉบับ: ลำดับ · ชื่อสูตร · รหัสสูตร · วันที่สูตร
   assert.match(html, /<th>ลำดับ<\/th>/);
+  // ตารางต้องเว้นระยะใต้ตัวเองก่อนข้อถัดไป (ข้อ 2 เคยชิดเส้นขอบล่างของตาราง)
+  assert.match(html, /\.contract \.formulaTable \{[^}]*margin: 3mm 0 5mm/);
   assert.match(html, /PF000001/);
   // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
   assert.match(html, /classList\.add\('signSheet'\)/);
