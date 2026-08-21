@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -20,6 +20,14 @@ import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/co
 import SettingsShell from '@/components/settings/SettingsShell';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
+
+/* 🪤 สองค่านี้ต้องเป็น "ตรงข้าม" ของจุดตัดใน globals.css เป๊ะ ๆ — CSS รู้เรื่องนี้
+   เองไม่ได้เพราะมันคือ **พฤติกรรมของปุ่ม** ไม่ใช่หน้าตา:
+   · เหนือ 1200px ปุ่มย่อ/กางไปสลับ "ความชอบถาวร" · ต่ำกว่านั้นไป "เปิด/ปิดชั่วคราว"
+   · ≤768px ไม่มีแถบข้างเลย ใช้แถบล่างแทน
+   (1200 + 0.02 = ค่าถัดไปที่ CSS ถือว่าพ้น `@media (max-width: 1200px)`) */
+const SIDENAV_WIDE_QUERY = '(min-width: 1200.02px)';
+const SIDENAV_BOTTOM_QUERY = '(max-width: 768px)';
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -51,6 +59,23 @@ export default function AppLayout({ children }) {
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  /* เมนูของระบบเป็นแถบข้างทุกความกว้าง (มติผู้ใช้ 2026-08-21 — ไม่มีโหมดแถบบนแล้ว)
+     สามชั้นจอ: >1200 กาง/ย่อเองแล้วดันเนื้อหา · 901–1200 ราง กางแล้วลอยทับ ·
+     769–900 แฮมเบอร์เกอร์เปิดลิ้นชัก · ≤768 แถบล่างมือถือ
+
+     สองสถานะแยกกันคนละหน้าที่ ห้ามยุบรวม:
+     · `navCollapsed` = **ความชอบของผู้ใช้บนจอกว้าง** เก็บถาวรที่ `data-sidenav`
+       บน <html> เพราะสคริปต์ก่อน hydrate ใน app/layout.js ต้องอ่านได้ก่อนเพนต์
+       (ท่าเดียวกับธีม) ไม่งั้นแถบกางเต็มแล้วหุบให้เห็นทุกครั้งที่โหลดหน้า
+     · `navOpen` = **การกางชั่วคราวบนจอกลาง/แคบ** ไม่เก็บถาวร ปิดเองเมื่อเปลี่ยนหน้า
+       — ถ้าเอาไปปนกับความชอบข้างบน คนที่เปิดลิ้นชักบนแท็บเล็ตครั้งเดียวจะกลับไป
+       เจอจอคอมกางค้างโดยไม่ได้สั่ง */
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  /* ⚠️ ใช้บอก **สถานะจริง** ให้ปุ่ม (aria-expanded / คำบนปุ่ม) เท่านั้น ห้ามเอาไป
+     ตัดสินหน้าตา — หน้าตาทั้งหมดเป็นงานของ CSS ที่รู้ตั้งแต่เพนต์แรก ส่วนค่านี้
+     ฝั่ง server ไม่มีทางรู้ จึงเป็น false หนึ่งเฟรมเสมอตอนโหลดหน้า */
+  const [isWide, setIsWide] = useState(false);
   const sysMenuRef = useRef(null);
 
   // Self-service password change (any signed-in user, their own account only).
@@ -192,6 +217,55 @@ export default function AppLayout({ children }) {
       setIsDark(true);
     }
   };
+
+  /* อ่านสถานะแถบข้างที่สคริปต์ก่อนเพนต์ตั้งไว้ ให้ปุ่มสลับเริ่มต้นตรงกับของจริง
+     (เรนเดอร์ฝั่ง server ไม่มีทางรู้ค่านี้ จึงต้องมาเก็บตอน mount) */
+  useEffect(() => {
+    setNavCollapsed(document.documentElement.getAttribute('data-sidenav') === 'collapsed');
+  }, []);
+
+  /* ข้ามชั้นจอเมื่อไร ให้ล้างการกางชั่วคราวทิ้งเสมอ
+     🐞 ไม่ล้างแล้วเจอของจริง: เปิดลิ้นชักบนจอ 850 แล้วลากหน้าต่างให้กว้างเกิน 1200
+     — CSS ชั้นจอกว้างไม่มีกฎ .sidenav-open เลย แถบจึงกลับไปเป็นแถบปกติ แต่ state
+     ยังค้างว่า "เปิดอยู่" ผลคือกดปุ่มย่อครั้งแรกไม่มีอะไรเกิดขึ้น (มันไปปิดของที่
+     มองไม่เห็น) · ขอบ 900 ไม่ต้องล้าง เพราะลิ้นชักกับแถบลอยหน้าตาต่อเนื่องกันอยู่แล้ว */
+  useEffect(() => {
+    const wide = window.matchMedia(SIDENAV_WIDE_QUERY);
+    const bottom = window.matchMedia(SIDENAV_BOTTOM_QUERY);
+    const sync = () => { setIsWide(wide.matches); setNavOpen(false); };
+    sync();
+    wide.addEventListener('change', sync);
+    bottom.addEventListener('change', sync);
+    return () => {
+      wide.removeEventListener('change', sync);
+      bottom.removeEventListener('change', sync);
+    };
+  }, []);
+
+  const toggleSideNav = () => {
+    if (navOpen) { setNavOpen(false); return; }
+    /* ⚠️ ถามชั้นจอ **สด ๆ ตอนกด** ไม่ใช่อ่านจาก `isWide` — ปุ่มต้องทำงานถูกเสมอ
+       แม้ event ที่คอยอัปเดต state จะพลาดไปสักรอบ (ในเครื่องมือทดสอบที่ย่อ/ขยาย
+       จอผ่าน CDP ทั้ง `resize` และ `matchMedia change` ไม่ยิงเลย ขณะที่ CSS
+       คิดจุดตัดใหม่ปกติ) · `isWide` เอาไว้บอก *สถานะ* เท่านั้น พลาดแล้วแค่ป้าย
+       บนปุ่มค้าง ไม่ใช่ปุ่มทำงานผิด */
+    if (!window.matchMedia(SIDENAV_WIDE_QUERY).matches) { setNavOpen(true); return; }
+    const next = !navCollapsed;
+    document.documentElement.setAttribute('data-sidenav', next ? 'collapsed' : 'expanded');
+    try { localStorage.sidenav = next ? 'collapsed' : 'expanded'; } catch {}
+    setNavCollapsed(next);
+  };
+
+  /* แถบที่กางทับเนื้อหาต้องปิดเองเมื่อไปหน้าใหม่ — ไม่งั้นคลิกเมนูแล้วหน้าเปลี่ยน
+     อยู่ข้างหลังโดยมีแถบกับฉากหลังบังไว้ ผู้ใช้ต้องกดปิดเองทุกครั้ง */
+  useEffect(() => { setNavOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    if (!navOpen) return undefined;
+    const onKey = (event) => { if (event.key === 'Escape') setNavOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [navOpen]);
 
   const handleLogout = async () => {
     if (SUPABASE_CONFIGURED) {
@@ -498,6 +572,9 @@ export default function AppLayout({ children }) {
       ? SettingsIcon
       : (activeSystemDefinition?.icon || LayoutDashboard);
 
+  /* แถบ "กางอยู่จริง" = กางทับชั่วคราว หรือ อยู่จอกว้างและผู้ใช้ไม่ได้สั่งย่อ */
+  const sideNavExpanded = navOpen || (isWide && !navCollapsed);
+
   /* ปุ่มเมนูหนึ่งชิ้น — ใช้ทั้งกลุ่มซ้าย (ลำดับงาน) และกลุ่มขวา (เครื่องมือ)
      ⚠️ เขียนที่เดียว: สองกลุ่มต่างกันแค่คลาส ถ้าก๊อปเป็นสองชุดมันจะเพี้ยนหากันแน่นอน */
   const renderMenuItem = (item, extraClass = '') => {
@@ -506,7 +583,7 @@ export default function AppLayout({ children }) {
     // เมนูที่ยังไม่เปิด — จางและกดไม่ได้ (ดูหมายเหตุที่นิยามเมนูใน allGroups)
     if (item.disabled) {
       return (
-        <span key={item.href} aria-disabled="true" title={SYSTEM_DISABLED_NOTE} className={`topnav-item is-disabled ${extraClass}`.trim()}>
+        <span key={item.href} aria-disabled="true" title={`${item.name} — ${SYSTEM_DISABLED_NOTE}`} className={`topnav-item is-disabled ${extraClass}`.trim()}>
           <Icon size={16} className="ico" />
           <span>{item.name}</span>
         </span>
@@ -521,6 +598,8 @@ export default function AppLayout({ children }) {
         href={navHrefFor(item, count)}
         key={item.href}
         className={`topnav-item ${active ? 'active' : ''} ${extraClass}`.trim()}
+        // ⭐ ห้ามถอด — โหมดแถบข้างที่ย่อแล้วเหลือแต่ไอคอน ชื่อเมนูอยู่ในนี้ที่เดียว
+        title={item.name}
         aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
       >
         <Icon size={16} className="ico" />
@@ -531,11 +610,32 @@ export default function AppLayout({ children }) {
   };
 
   return (
-    <div className={`app-container${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
-      {/* ── Top bar 2 ชั้น (ตรึงบนสุดทั้งระบบ) ── */}
+    <div className={`app-container${navOpen ? ' sidenav-open' : ''}${isSettingsContext ? ' settings-context' : ''}${isAccountContext ? ' account-context' : ''}`}>
+      {/* ── แถบระบบ: ตรึงบนสุดทุกความกว้าง (แถบเมนูของระบบย้ายไปอยู่นอก header) ── */}
       <header className="topnav">
         {/* ชั้นระบบ: โลโก้ (พื้น navy ตามมาตรฐานแบรนด์) + สลับระบบ + user actions */}
         <div className="topnav-system">
+          {/* ⭐ กติกาการวางปุ่มคุมแถบ (มติผู้ใช้ 2026-08-22): **ปุ่มอยู่กับแถบเสมอ**
+              คือหัวแถบเมนูเอง (ดู .sidenav-toggle ใน <nav> ข้างล่าง) — แฮมเบอร์เกอร์
+              ตัวนี้มีไว้เฉพาะชั้นจอ 769–900 ที่ไม่มีแถบให้ปุ่มเกาะเลย จึงต้องมีทาง
+              เข้าจากหัวแทน · CSS ซ่อนมันทุกชั้นจออื่น
+              ⚠️ คนละตัวกับ `…` (.mobile-top-more) ที่โผล่ ≤768px — ตัวนั้นเปิด
+              "บัญชี/เครื่องมือ" ตัวนี้เปิด "เมนูของระบบ" */}
+          {!isBareShell && (
+            <button
+              type="button"
+              className="topnav-global-action sidenav-hamburger"
+              onClick={toggleSideNav}
+              aria-label={`เมนู${systemSubtitle}`}
+              aria-expanded={navOpen}
+              title={navOpen ? 'ปิดแถบเมนู' : 'เปิดแถบเมนู'}
+            >
+              {/* ภาษาเดียวกับปุ่มในแถบ: ☰ เปิด ↔ ✕ ปิด — สลับ **อยู่กับที่** ผู้ใช้จึง
+                  ไม่ต้องย้ายสายตาไปหาปุ่มปิดที่อื่น (ปุ่มในลิ้นชักถูกซ่อนในชั้นจอนี้) */}
+              <Menu className="sidenav-burger-open" size={20} aria-hidden="true" />
+              <X className="sidenav-burger-close" size={20} aria-hidden="true" />
+            </button>
+          )}
           <Link href="/home" className="topnav-brand" title="หน้าแรก (สลับระบบ)">
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
@@ -627,8 +727,43 @@ export default function AppLayout({ children }) {
           </div>
         </div>
 
-        {/* ชั้นเมนูของระบบปัจจุบัน — จอแคบเลื่อนแนวนอนได้ (ไม่มี drawer แล้ว) */}
+      </header>
+
+      {/* ฉากหลังตอนแถบกางทับเนื้อหา (จอ <1200px) — เป็นตัวรับคลิกนอกแถบเพื่อปิด
+          ⚠️ ต้องอยู่ **ก่อน** <nav> ใน DOM เพราะทั้งคู่ใช้ z-index เดียวกัน
+          (--z-topnav-bar) ใครมาทีหลังทับ — สลับที่แล้วฉากหลังจะบังเมนูเอง */}
+      {navOpen && (
+        <div className="sidenav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />
+      )}
+
+      {/* 🪤 แถบเมนูของระบบอยู่ **นอก** <header> โดยเจตนา — มันต้องยืนข้างเนื้อหา
+          ไม่ใช่ซ้อนใต้หัว และ .topnav มี `backdrop-filter` ซึ่งกลายเป็น containing
+          block ให้ลูกที่ position: fixed/absolute ทั้งหมด = ย้ายออกมาข้างนอก
+          เท่านั้นถึงจะวางเป็นแถบข้างได้จริง */}
+      <div className="app-body">
+        {/* เมนูของระบบปัจจุบัน — แถบข้างทุกความกว้าง (ดูสามชั้นจอที่ .topnav-menu
+            ใน globals.css) · ≤768px ไม่วาด ใช้แถบล่างมือถือแทน */}
         {!isBareShell && <nav className="topnav-menu" aria-label={`เมนู${systemSubtitle}`}>
+          {/* ปุ่มย่อ/กาง — อยู่หัวแถบ ชิดขวาเมื่อกาง กลางช่องเมื่อเป็นราง
+              ⚠️ "กางอยู่จริงไหม" ไม่เท่ากับ "ผู้ใช้ตั้งค่าไว้ว่ากาง" — จอ ≤1200px แถบ
+              เป็นรางเสมอไม่ว่าความชอบถาวรจะเป็นอะไร ถ้าอ่านจาก navCollapsed อย่างเดียว
+              ปุ่มจะบอก screen reader ว่า "กางอยู่" ทั้งที่หน้าจอเห็นแต่ไอคอน */}
+          <button
+            type="button"
+            className="sidenav-toggle"
+            onClick={toggleSideNav}
+            aria-label={`เมนู${systemSubtitle}`}
+            aria-expanded={sideNavExpanded}
+            title={navOpen ? 'ปิดแถบเมนู' : (sideNavExpanded ? 'ย่อแถบเมนู' : 'กางแถบเมนู')}
+          >
+            {/* ภาษาไอคอน = ปิด/เปิดแบบโมดัล (มติผู้ใช้ 2026-08-22): กางอยู่ = ✕ ปิด ·
+                เป็นราง = แฮมเบอร์เกอร์ เปิด — ตัวเดียวกับที่หัวเว็บใช้ในชั้นจอที่ไม่มีแถบ
+                ⭐ สลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้กางหรือเป็นราง" ขึ้นกับ
+                ความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้ไอคอนผิด
+                หนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
+            <X className="sidenav-ico-collapse" size={18} aria-hidden="true" />
+            <Menu className="sidenav-ico-expand" size={18} aria-hidden="true" />
+          </button>
           {flowItems.map((item) => renderMenuItem(item))}
           <span className="topnav-menu-spacer" />
           {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
@@ -636,6 +771,7 @@ export default function AppLayout({ children }) {
           {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
             <Link
               href="/sa/targets"
+              title="วางเป้า"
               className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
             >
               <Target size={16} className="ico" />
@@ -643,30 +779,30 @@ export default function AppLayout({ children }) {
             </Link>
           )}
         </nav>}
-      </header>
 
-      {/* Main Content Area */}
-      <main className="main-content">
-        <div className="page">
-          <RoleContext.Provider value={role}>
-            <ExtraCapsContext.Provider value={extraCaps}>
-              <TeamContext.Provider value={team}>
-                <TeamsContext.Provider value={teams}>
-                  <DepartmentContext.Provider value={department}>
-                    {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
-                        ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
-                        ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
-                        /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
-                    {isSettingsContext
-                      ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
-                      : children}
-                  </DepartmentContext.Provider>
-                </TeamsContext.Provider>
-              </TeamContext.Provider>
-            </ExtraCapsContext.Provider>
-          </RoleContext.Provider>
-        </div>
-      </main>
+        {/* Main Content Area */}
+        <main className="main-content">
+          <div className="page">
+            <RoleContext.Provider value={role}>
+              <ExtraCapsContext.Provider value={extraCaps}>
+                <TeamContext.Provider value={team}>
+                  <TeamsContext.Provider value={teams}>
+                    <DepartmentContext.Provider value={department}>
+                      {/* บริบทตั้งค่า (/settings · /users · /audit) ได้แถบรายการตั้งค่า
+                          ค้างข้าง ๆ ทุกหน้า — มติผู้ใช้ 2026-08-20
+                          ⚠️ ครอบที่นี่ ไม่ใช่ app/settings/layout.js เพราะ /users และ
+                          /audit อยู่คนละราก (ดูหัว SettingsShell.js) */}
+                      {isSettingsContext
+                        ? <SettingsShell user={userContext} pathname={pathname}>{children}</SettingsShell>
+                        : children}
+                    </DepartmentContext.Provider>
+                  </TeamsContext.Provider>
+                </TeamContext.Provider>
+              </ExtraCapsContext.Provider>
+            </RoleContext.Provider>
+          </div>
+        </main>
+      </div>
 
       {/* แถบเมนูล่างบนมือถือ — เมนูของระบบครบทุกตัว แบ่งหน้าปัดเอา (มติ 2026-08-02)
           ไม่โผล่ในเปลือกไร้เมนู (ตั้งค่า · บัญชีของฉัน) เพราะที่นั่นไม่มีเมนูของระบบ */}
