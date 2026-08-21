@@ -179,8 +179,12 @@ test('ช่องลงนามชิดท้ายกระดาษ · เ�
   assert.match(html, /--doc-accent:#ad5d43/);   // สีเดียวกับใบเสนอราคา
 });
 
-test('เนื้อสัญญาไม่ jusify — ภาษาไทยมีช่องว่างน้อย ยืดแล้วเป็นรูโหว่กลางบรรทัด', () => {
+test('ขอบขวาเสมอกันด้วย inter-character — ไม่ใช่ justify เปล่า ๆ ที่ยืดช่องว่างจนเป็นรู', () => {
   const html = buildContractHTML(CONTRACT, { company: COMPANY });
-  assert.match(html, /\.contract \.clauseText \{[^}]*text-align: left/);
-  assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*text-align: justify/);
+  assert.match(html, /\.contract \.clauseText \{[^}]*text-align: justify/);
+  /* ⚠️ ขาดบรรทัดนี้ = กลับไปเป็นรูโหว่กลางประโยคทันที (ภาษาไทยไม่เว้นวรรคระหว่างคำ
+     justify จึงยืดช่องว่างเดียวที่มีจนโหว่ — อาการที่ผู้ใช้ทักจากข้อ 3.4) */
+  assert.match(html, /text-justify: inter-character/);
+  // ตัดกลางคำไทยอ่านไม่ออก ("แล/ะให้") — ห้ามใช้แทน
+  assert.doesNotMatch(html, /\.contract \.clauseText \{[^}]*word-break: break-all/);
 });
