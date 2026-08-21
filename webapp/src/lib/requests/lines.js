@@ -6,6 +6,7 @@
 // ตาราง `dept_request_item_tiers` — `normalizeRequestItems` / `normalizeRequestTiers`
 // เคยอยู่ไฟล์นี้ · ราคาในโมเดลใหม่เป็น **ราคาเดียวไม่มีชั้นจำนวน** ที่ RD ใส่ลงใน
 // ใบเดิมตอนลูกค้าคอนเฟิร์ม ไม่ใช่บรรทัดที่ต้องตรวจตอนเปิดใบ
+import { ALL_UNITS } from '@/lib/master/units';
 import { REQUEST_DOC_VOCABULARY } from '@/lib/requests/docTypes';
 
 export const MAX_REQUEST_ITEMS = 40;
@@ -60,8 +61,16 @@ export function normalizeProductDevItems(input) {
         return { items: [], error: `${at}: จำนวนต้องเป็นตัวเลขมากกว่า 0` };
       }
     }
+    /* หน่วยมาจากลิสต์กลาง (lib/master/units) — ยังไม่บังคับกรอก แต่ถ้ากรอกต้องเป็นคำที่
+       ระบบรู้จัก ไม่งั้นหน่วยบนคำร้องกับบนใบเสนอราคาหลุดกันเงียบ ๆ
+       ⭐ ใช้ **ALL_UNITS** (หน่วยขาย ∪ หน่วยบรรจุ) ไม่ใช่ SALE_UNITS อย่างเดียว เพราะช่องนี้
+       ถามว่า "ขอเท่าไร" — ของจริงในฐานมีทั้ง 'ชิ้น' และ 'ml' ปนกันอยู่แล้ว บังคับลิสต์เดียว
+       จะตัดเคสที่ใช้งานจริงทิ้ง */
     const unit = String(raw.unit ?? '').trim();
     if (unit.length > 50) return { items: [], error: `${at}: หน่วยยาวเกิน 50 ตัวอักษร` };
+    if (unit && !ALL_UNITS.includes(unit)) {
+      return { items: [], error: `${at}: หน่วย "${unit}" ไม่อยู่ในลิสต์ (${ALL_UNITS.join(' · ')})` };
+    }
 
     items.push({
       lineKind: 'product_dev',

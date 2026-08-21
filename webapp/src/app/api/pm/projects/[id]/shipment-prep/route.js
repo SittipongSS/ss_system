@@ -93,7 +93,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const body = await req.json().catch(() => ({}));
   const { data: links, error: linkError } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit)')
+    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit)')
     .eq('projectId', project.id);
   if (linkError) return fail(linkError.message, 500);
   if (!links?.length) return badRequest('ต้องผูก FG ในโครงการก่อนสร้างเอกสารเตรียมส่งของ');
@@ -143,7 +143,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       fgCode: product.fgCode || null,
       description: productDescription(product),
       qty,
-      unit: product.volumeUnit || null,
+      // 🐞 เดิมใส่ `volumeUnit` (ขนาดต่อหน่วยขาย) ทั้งที่ `qty` ข้างบนเป็น **จำนวนหน่วยขาย**
+      // ⇒ แถวเตรียมส่งอ่านออกมาเป็น "45 ml" แทน "45 ชิ้น" · ยังไม่มีจอไหนแสดงคอลัมน์นี้
+      // เลยยังไม่มีใครเห็น แต่ข้อมูลผิดมาตั้งแต่ mig 0067 · ขนาดบรรจุยังเก็บใน metadata.volume
+      unit: product.saleUnit || null,
       sortOrder: index,
       metadata: {
         volume: product.volume || null,

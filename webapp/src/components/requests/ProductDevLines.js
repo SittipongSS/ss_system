@@ -16,11 +16,13 @@ import { Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EditableLineList from "@/components/ui/EditableLineList";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
 import { productDevRowText } from "@/lib/requests/productDevLabel";
+import { ALL_UNITS, unitOptions } from "@/lib/master/units";
 import styles from "./scentDelivery.module.css";
 
 export const emptyProductDevRow = () => ({
@@ -146,11 +148,22 @@ export default function ProductDevLines({
             <label htmlFor={`pd-unit-${at}`}>
               หน่วย <span className={styles.hint}>(ไม่บังคับ)</span>
             </label>
-            <Input
-              id={`pd-unit-${at}`} value={row.unit} disabled={disabled}
-              placeholder="เช่น ชิ้น · ขวด"
+            {/* ⚠️ เดิมเป็นช่องพิมพ์อิสระ (≤50 ตัว) ที่มี placeholder ว่า "เช่น ชิ้น · ขวด"
+                — คำใบ้พาคนกรอกคำที่ระบบไม่รู้จัก แล้วหน่วยบนคำร้องกับบนใบเสนอราคาหลุดกัน
+                ใช้ ALL_UNITS (หน่วยขาย ∪ หน่วยบรรจุ) เพราะช่องนี้ถามว่า "ขอเท่าไร" — ของจริง
+                ในฐานมีทั้ง 'ชิ้น' และ 'ml' · ยังไม่บังคับ (เว้นว่างได้เหมือนเดิม)
+                · unitOptions พ่วงค่าเดิมของแถวเก่าไว้ ไม่ให้เด้งเป็นค่าอื่นตอนเปิดมาแก้ */}
+            <Select
+              id={`pd-unit-${at}`} value={row.unit || ""} disabled={disabled}
               onChange={(e) => patchAt({ unit: e.target.value })}
-            />
+              aria-label={`หน่วย รายการ ${at}`}
+              fullWidth
+            >
+              <option value="">ไม่ระบุ</option>
+              {unitOptions(ALL_UNITS, row.unit).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
           </div>
 
           <div className="form-group col-span-2">
