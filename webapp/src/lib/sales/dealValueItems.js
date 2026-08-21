@@ -15,6 +15,8 @@
 // ที่จำกัด 30 รายการ) · ดีลที่มีมากกว่านี้คือใบเสนอราคา ไม่ใช่ประมาณการดีลแล้ว
 export const DEAL_VALUE_ITEMS_MAX = 30;
 export const DEAL_VALUE_ITEM_NOTE_MAX = 500;
+import { SALE_UNITS, VOLUME_UNITS, hasPackagingFields } from '@/lib/master/units';
+
 const CATEGORY_CODE_RE = /^\d{2}-\d{3}$/;
 const UNIT_MAX = 20;
 
@@ -72,20 +74,36 @@ export function normalizeDealValueItems(raw) {
       return { items: [], total: 0, error: `${at}: ราคาต่อหน่วยต้องไม่ติดลบ` };
     }
 
+    /* หน่วยขายต้องอยู่ในลิสต์กลาง (lib/master/units) — เดิมรับข้อความอิสระ ≤20 ตัว
+       ⇒ ดรอปดาวน์เป็นสิ่งเดียวที่กันไว้ ยิง API ตรงใส่คำอะไรก็ได้ แล้วหน่วยบนดีลกับบน
+       ใบเสนอราคาจะหลุดกันเงียบ ๆ (ใบเสนอราคาบังคับจากทะเบียนสินค้าอยู่แล้ว) */
     const unit = String(row.unit ?? '').trim();
     if (!unit) return { items: [], total: 0, error: `${at}: กรุณาระบุหน่วยขาย` };
     if (unit.length > UNIT_MAX) return { items: [], total: 0, error: `${at}: หน่วยขายยาวเกิน ${UNIT_MAX} ตัวอักษร` };
+    if (!SALE_UNITS.includes(unit)) {
+      return { items: [], total: 0, error: `${at}: หน่วยขาย "${unit}" ไม่อยู่ในลิสต์ (${SALE_UNITS.join(' · ')})` };
+    }
 
     /* ปริมาตร = **ขนาดของหนึ่งหน่วยขาย** ("1 ชิ้น = 100 ml") ไม่เข้าสูตรคิดเงิน
        — คนละช่องกับ `unit` ข้างบนที่เป็นหน่วยนับขาย (กับดักที่ lib/master/units.js เตือน)
-       ไม่บังคับ (งานบริการไม่มีปริมาตร) แต่กรอกขนาดแล้วต้องมีหน่วยเสมอ */
-    const volumeRaw = row.volume === '' || row.volume == null ? null : Number(row.volume);
+       ไม่บังคับ (งานบริการไม่มีปริมาตร) แต่กรอกขนาดแล้วต้องมีหน่วยเสมอ
+
+       ⭐ **หมวดกลุ่ม 03/04 ไม่มีช่องนี้เลย** — กติกาเดียวกับทะเบียนสินค้า (mig 0277)
+       แถวดีลถือ categoryCode ของตัวเองอยู่แล้ว จึงตัดสินรายแถวได้ · ล้างเงียบ ๆ ไม่ฟ้อง
+       error เพราะแถวเก่าที่บันทึกไว้ก่อนกฎนี้ต้องยังเปิดดีลมาแก้เรื่องอื่นได้ */
+    const packaging = hasPackagingFields(categoryCode);
+    const volumeRaw = !packaging || row.volume === '' || row.volume == null
+      ? null
+      : Number(row.volume);
     if (volumeRaw !== null && (!Number.isFinite(volumeRaw) || volumeRaw <= 0)) {
       return { items: [], total: 0, error: `${at}: ปริมาตรต้องมากกว่า 0` };
     }
-    const volumeUnit = String(row.volumeUnit ?? '').trim();
+    const volumeUnit = packaging ? String(row.volumeUnit ?? '').trim() : '';
     if (volumeUnit.length > UNIT_MAX) {
       return { items: [], total: 0, error: `${at}: หน่วยปริมาตรยาวเกิน ${UNIT_MAX} ตัวอักษร` };
+    }
+    if (volumeUnit && !VOLUME_UNITS.includes(volumeUnit)) {
+      return { items: [], total: 0, error: `${at}: หน่วยปริมาตร "${volumeUnit}" ไม่อยู่ในลิสต์ (${VOLUME_UNITS.join(' · ')})` };
     }
     if (volumeRaw !== null && !volumeUnit) {
       return { items: [], total: 0, error: `${at}: กรุณาเลือกหน่วยของปริมาตร` };

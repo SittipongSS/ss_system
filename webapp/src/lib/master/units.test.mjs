@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ALL_UNITS,
   DEFAULT_SALE_UNIT,
   SALE_UNITS,
   SALE_UNIT_EN,
@@ -213,4 +214,12 @@ test('packagingSummary: ยังไม่กรอกอะไรเลย = �
 
 test('packagingSummary: ไม่ระบุหน่วย ใช้ค่าตั้งต้นเดียวกับที่ระบบบันทึกจริง', () => {
   assert.equal(packagingSummary({ volume: 50 }), '1 ชิ้น = 50 ml');
+});
+
+// ── ลิสต์รวมสำหรับช่อง "ขอเท่าไร" (มติผู้ใช้ 2026-08-21) ────────────────────
+test('ALL_UNITS = หน่วยขาย ∪ หน่วยบรรจุ · ไม่มีตัวซ้ำ', () => {
+  for (const u of [...SALE_UNITS, ...VOLUME_UNITS]) assert.ok(ALL_UNITS.includes(u), u);
+  assert.equal(ALL_UNITS.length, new Set(ALL_UNITS).size, 'ต้องไม่มีตัวเลือกซ้ำ');
+  // ของจริงในบรรทัดคำร้องมีทั้ง 'ชิ้น' และ 'ml' — ลิสต์เดียวต้องรับได้ทั้งคู่
+  assert.ok(ALL_UNITS.includes('ชิ้น') && ALL_UNITS.includes('ml'));
 });
