@@ -73,10 +73,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(message || 'ออกเลขที่สัญญาไม่สำเร็จ', 500);
   }
 
+  /* ⚠️ ตรึง **พร้อมแถบเครื่องมือ** (ปุ่มพิมพ์ + ตัวสลับภาษา) — แถบเป็น `no-print`
+     จึงไม่ติดไปกับกระดาษที่ลูกค้าได้รับ แต่ทำให้เปิดใบที่ออกแล้วสั่งพิมพ์ได้ทันที
+     แพตเทิร์นเดียวกับฉบับตรึงของใบเสนอราคา */
   const html = buildContractHTML(issued, {
     company,
     quotation: contract.quotationId ? { quoteNumber: issued.metadata?.quoteNumber } : null,
-    options: { toolbar: false },
   });
 
   const { data, error } = await supabase

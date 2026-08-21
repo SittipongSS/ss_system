@@ -31,7 +31,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     html = buildContractHTML(contract, {
       company,
       quotation: { quoteNumber: contract.metadata?.quoteNumber },
-      options: { toolbar: false },
     });
     // ใบที่ออกเลขแล้วเท่านั้นที่เก็บเนื้อไว้ — ร่างต้องเรนเดอร์สดทุกครั้ง ไม่งั้นจะ
     // พิมพ์ร่างเก่าออกมาหลังแก้ช่องกรอก

@@ -150,3 +150,25 @@ test('ย่อหน้าปิดท้ายต้องอยู่แผ�
   assert.match(block[1], /class="signGrid"/);
   assert.match(block[1], /พยาน/);
 });
+
+test('หน้าพรีวิวมีปุ่มพิมพ์ + ตัวสลับภาษา · อังกฤษยังกดไม่ได้', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  assert.match(html, /class="toolbar no-print"/);
+  assert.match(html, /btn-print/);
+  assert.match(html, /class="langSwitch"/);
+  /* ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ ⇒ ปุ่มต้อง **มีแต่กดไม่ได้พร้อมเหตุผล**
+     ไม่ใช่ซ่อนทิ้ง (ซ่อน = ไม่มีใครรู้ว่าจะมี) และไม่ใช่กดได้แล้วได้เอกสารครึ่งภาษา */
+  assert.match(html, /data-lang="en"[^>]*disabled/);
+  assert.match(html, /ยังไม่มีต้นฉบับสัญญาภาษาอังกฤษ/);
+});
+
+test('ช่องลงนามชิดท้ายกระดาษ · เลขที่สัญญาใช้สี accent · ชื่อเอกสารไม่ใหญ่เกิน', () => {
+  const html = buildContractHTML(CONTRACT, { company: COMPANY });
+  // ดันเฉพาะช่องเซ็นลงล่าง และเปิด flex ได้หลังตัดหน้าเสร็จเท่านั้น (คลาสจากสคริปต์)
+  assert.match(html, /classList\.add\('signSheet'\)/);
+  assert.match(html, /\.contract \.sheet\.signSheet \.signPage \.signGrid \{ margin-top: auto/);
+  assert.match(html, /\.contract \.identityBlock dl div:first-child dd \{ color: var\(--doc-accent\)/);
+  assert.match(html, /\.contract \.docTitle \{[^}]*font-size: 13\.5pt/);
+  // accent ของสัญญาต้องไม่ใช่ navy — เกือบเท่าสีตัวหนังสือ จนสี accent ไม่มีความหมาย
+  assert.match(html, /--doc-accent:#0f766e/);
+});
