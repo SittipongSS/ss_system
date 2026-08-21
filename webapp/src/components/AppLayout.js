@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -14,7 +14,6 @@ import AccountMenu from '@/components/AccountMenu';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import ReportIssueModal from '@/components/issues/ReportIssueModal';
 import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/nav/useNavCounts';
 import { isBareShellPathname, isSettingsPathname, systemForPathname } from '@/config/navigation';
 import SettingsShell from '@/components/settings/SettingsShell';
@@ -80,7 +79,6 @@ export default function AppLayout({ children }) {
 
   // Self-service password change (any signed-in user, their own account only).
   const [showPwd, setShowPwd] = useState(false);
-  const [showReport, setShowReport] = useState(false); // โมดัลแจ้งปัญหาระบบ (mig 0223)
   const [mustChangePwd, setMustChangePwd] = useState(false); // forced on first login
 
   useEffect(() => {
@@ -727,7 +725,6 @@ export default function AppLayout({ children }) {
               canChangePassword={SUPABASE_CONFIGURED}
               onToggleTheme={toggleTheme}
               onChangePassword={() => setShowPwd(true)}
-              onReportIssue={() => setShowReport(true)}
               onLogout={handleLogout}
             />
           </div>
@@ -846,9 +843,10 @@ export default function AppLayout({ children }) {
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
             {/* คู่กับ AccountMenu — แผ่นเมนูมือถือต้องมีทุกอย่างที่เมนูผู้ใช้มี
-                ไม่งั้นคนที่ใช้มือถืออย่างเดียวจะไม่มีทางแจ้งปัญหาเลย */}
-            <button type="button" onClick={() => { setMobileMoreOpen(false); setShowReport(true); }}><Bug size={18} /><span>แจ้งปัญหาระบบ</span></button>
-            <Link href="/support" onClick={() => setMobileMoreOpen(false)}><LifeBuoy size={18} /><span>เรื่องที่ฉันแจ้ง</span></Link>
+                ไม่งั้นคนที่ใช้มือถืออย่างเดียวจะไม่มีทางแจ้งปัญหาเลย
+                ⚠️ รวมเป็นรายการเดียวพร้อมกับเมนูผู้ใช้ (มติผู้ใช้ 2026-08-22) —
+                สองที่นี้ต้องตรงกันเสมอ ดูเหตุผลเต็มที่ AccountMenu.js */}
+            <Link href="/support" onClick={() => setMobileMoreOpen(false)}><LifeBuoy size={18} /><span>แจ้งปัญหาระบบ</span></Link>
             <button type="button" className="danger" onClick={handleLogout}><LogOut size={18} /><span>ออกจากระบบ</span></button>
           </section>
         </div>
@@ -862,9 +860,6 @@ export default function AppLayout({ children }) {
         onChanged={() => setMustChangePwd(false)}
       />
 
-      {/* แจ้งปัญหาระบบ (mig 0223) — mount ที่นี่เพราะเปิดได้จากทุกหน้าผ่านเมนูผู้ใช้
-          ตัวเดียวกับที่ปุ่มในหน้า /support เรียก (component เดียว ไม่มีฟอร์มชุดที่สอง) */}
-      <ReportIssueModal open={showReport} onClose={() => setShowReport(false)} />
     </div>
   );
 }
