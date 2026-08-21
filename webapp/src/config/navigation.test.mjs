@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isBareShellPathname, isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { ADOPTED_SHARED_PATHS, adoptsPathname, sharedItemBelongsInGroup, isBareShellPathname, isSettingsPathname, sortSystems, systemForPathname } from './navigation.js';
 
 test('systemForPathname keeps public and legacy sales routes in one system', () => {
   assert.equal(systemForPathname('/sa/quotations/1'), 'salesplan');
@@ -118,4 +121,136 @@ test('โมดูลของฝ่ายเป็นระบบของต�
   assert.equal(systemForPathname('/rd/requests'), 'rd');
   // ⚠️ ตัวใบยังอยู่ใต้บริหารงานขาย (ม-31 ใบเดียวจอเดียว) — เปิดจากคิวไหนก็เป็นใบเดียวกัน
   assert.equal(systemForPathname('/requests/DR-1'), 'salesplan');
+});
+
+
+/* ── เปลือกของเอกสารร่วมเดินตาม "คนดู" ไม่ใช่ตาม URL (มติผู้ใช้ 2026-08-22) ──
+   *"วิจัยและพัฒนา กับ การเงินและบัญชี พอกดเข้าไป บ้างอย่างมันรูทเข้าไปที่
+   บริหารงานขาย ซึ่งอยากให้แต่ละฝ่ายทำงานเฉพาะของโมดูลตัวเอง"*
+
+   🐞 อาการเดิม: FN กดใบสั่งขายจากทะเบียนการชำระ → เปลือกสลับเป็น "บริหารงานขาย"
+   → เมนู `/finance/payments` หายจากจอ → ต้องไปกดตัวสลับระบบกลับเอง
+   และ `ss:last-system` ถูกเขียนทับเป็น salesplan ถาวร */
+const FN = { role: 'finance', department: 'FN', team: null, extraCaps: [] };
+const RD = { role: 'rd', department: 'RD', team: null, extraCaps: [] };
+const AE = { role: 'ae', department: 'SA', team: 'SV', extraCaps: [] };
+const ADMIN = { role: 'admin', department: 'AD', team: null, extraCaps: [] };
+
+test('⭐ เอกสารร่วม: FN ยืนอยู่ในบ้านตัวเองตลอด ไม่ถูกลากไปเปลือกงานขาย', () => {
+  for (const p of ['/sa/sales-orders', '/sa/sales-orders/1', '/sa/quotations/9',
+    '/sa/contracts', '/requests', '/requests/DR-1', '/sales-planning/sales-orders/2']) {
+    assert.equal(systemForPathname(p, FN), 'finance', p);
+  }
+});
+
+test('⭐ RD รับเฉพาะใบคำร้อง — เอกสารขายอื่นยังเป็นเปลือกงานขายตามเดิม', () => {
+  assert.equal(systemForPathname('/requests/DR-1', RD), 'rd');
+  assert.equal(systemForPathname('/rd/requests', RD), 'rd');
+  // ⚠️ ความกว้างของ RD เป็นมติที่ตัดสินไว้แล้ว (เห็นดีล/โครงการทุกทีมเพื่อมีบริบท)
+  // ⇒ เขายังมีเมนูงานขายครบและอ่านในเปลือกนั้น — อย่ายุบเป็นกฎเดียวกับ FN
+  assert.equal(systemForPathname('/sa/sales-orders/1', RD), 'salesplan');
+  assert.equal(systemForPathname('/sa/deals/1', RD), 'salesplan');
+});
+
+test('⭐ ฝ่ายขาย · admin · และการเรียกแบบไม่ส่ง user = พฤติกรรมเดิมทุกประการ', () => {
+  for (const p of ['/sa/sales-orders/1', '/requests/DR-1', '/sa/deals/1']) {
+    assert.equal(systemForPathname(p), 'salesplan', p);
+    assert.equal(systemForPathname(p, AE), 'salesplan', p);
+    assert.equal(systemForPathname(p, ADMIN), 'salesplan', p);
+  }
+});
+
+test('⭐ ดีล/โครงการ/แดชบอร์ด ไม่ถูกรับไปบ้านใคร — กฎข้อ 7 ตัดสินแล้วว่าไม่ใช่เมนูของ FN', () => {
+  for (const p of ['/sa/deals/1', '/sa/projects/1', '/sa/dashboard', '/sa/tasks', '/pm/projects/1']) {
+    assert.equal(systemForPathname(p, FN), 'salesplan', p);
+  }
+});
+
+test('บ้านของตัวเองยังชนะเสมอ — ลิสต์รับเอกสารต้องไม่กลืนเส้นทางของโมดูลอื่น', () => {
+  assert.equal(systemForPathname('/finance/payments', FN), 'finance');
+  assert.equal(systemForPathname('/database/products', FN), 'master');
+  assert.equal(systemForPathname('/support', FN), 'support');
+  assert.equal(systemForPathname('/notifications', FN), null);
+  assert.equal(systemForPathname('/database/scents', RD), 'master');
+});
+
+/* 🔴 **ratchet คู่ของกฎข้อ 8** — เส้นทางที่ฝ่ายหนึ่งรับไปแล้วต้องมีเมนูคู่กันในกลุ่ม
+   ของฝ่ายนั้น ไม่งั้นเขายืนอยู่บนหน้าที่แถบเมนูไม่ไฮไลต์อะไรเลย · บั๊กแบบนี้
+   build/eslint จับไม่ได้เลยเพราะหน้าเรนเดอร์ปกติ ผิดแค่เปลือกที่ครอบมัน
+   (อ่านซอร์สตรง ๆ เพราะ AppLayout เป็น client component ที่ import มารันไม่ได้ —
+    ท่าเดียวกับ components/navMenuNames.test.mjs) */
+test('⭐ ทุกเส้นทางที่ถูกรับไป ต้องมีเมนูคู่กันในกลุ่มของฝ่ายนั้น', () => {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'AppLayout.js'), 'utf8');
+  const shared = source.slice(source.indexOf('const SHARED_DOC_ITEMS = {'));
+  const hrefByKey = new Map();
+  for (const [, key, href] of shared.slice(0, shared.indexOf('\n};')).matchAll(/^\s{2}(\w+): \{ href: '([^']+)'/gm)) {
+    hrefByKey.set(key, href);
+  }
+  assert.ok(hrefByKey.size >= 4, 'ต้องอ่านนิยาม SHARED_DOC_ITEMS ออก');
+
+  for (const [system, prefixes] of Object.entries(ADOPTED_SHARED_PATHS)) {
+    const start = source.indexOf(`system: '${system}',`);
+    assert.ok(start > 0, `ไม่พบกลุ่มเมนูของระบบ ${system}`);
+    const group = source.slice(start, source.indexOf('\n    },', start));
+    /* เมนูหนึ่งตัว "ครอบ" เส้นทางได้สองท่า — เป็นรายการเอกสารร่วมตรง ๆ
+       (`SHARED_DOC_ITEMS.x`) หรือเป็นเมนูของฝ่ายเองที่ `match` กินเส้นนั้นด้วย
+       (เช่น "คิวคำร้อง" ของ RD/FN ซึ่งกินใบ `/requests/[id]` — มติ 2026-08-22
+       ที่ว่าสองฝ่ายนี้ไม่เปิดคำร้องเอง จึงไม่มีเมนูคิวรวมในโมดูล) */
+    const covered = new Set([
+      ...[...group.matchAll(/SHARED_DOC_ITEMS\.(\w+)/g)].map((m) => hrefByKey.get(m[1])),
+      ...[...group.matchAll(/startsWith\('([^']+)'\)/g)].map((m) => m[1]),
+    ]);
+    for (const prefix of prefixes) {
+      // เส้นทางเก่า `/sales-planning/*` เป็นแค่ลิงก์ค้าง ไม่ต้องมีเมนูของตัวเอง
+      if (prefix.startsWith('/sales-planning')) continue;
+      assert.ok(covered.has(prefix), `ระบบ ${system} รับ ${prefix} มาแล้วแต่ไม่มีเมนูคู่กัน`);
+    }
+  }
+});
+
+/* ⚠️ RD/FN **ไม่มีเมนูคิวรวม "คำร้อง" ในโมดูลตัวเอง** (มติผู้ใช้ 2026-08-22:
+   *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"*) ⇒ แท็บ "ที่ฉันเปิด"
+   ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ใบที่เปิดจากคิวฝ่ายจึงต้องไฮไลต์ที่ "คิวคำร้อง" */
+test('⭐ ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย ไม่ใช่เมนูคิวรวม', () => {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'AppLayout.js'), 'utf8');
+  for (const [system, own] of [['rd', '/rd/requests'], ['finance', '/finance/requests']]) {
+    const start = source.indexOf(`system: '${system}',`);
+    const group = source.slice(start, source.indexOf('\n    },', start));
+    assert.match(group, new RegExp(`href: '${own}'[^\n]*startsWith\\('/requests'\\)`),
+      `เมนูคิวของ ${system} ต้อง match ใบ /requests/[id] ด้วย`);
+    assert.ok(!group.includes('SHARED_DOC_ITEMS.requests'),
+      `${system} ต้องไม่มีเมนูคิวรวม — ฝ่ายนี้ไม่เปิดคำร้องเอง`);
+  }
+});
+
+test('adoptsPathname ไม่จับครึ่งคำ — /requests ต้องไม่กลืน /requests-archive', () => {
+  assert.ok(adoptsPathname('rd', '/requests'));
+  assert.ok(adoptsPathname('rd', '/requests/DR-1'));
+  assert.equal(adoptsPathname('rd', '/requests-archive'), false);
+  assert.equal(adoptsPathname('rd', '/sa/sales-orders/1'), false);
+  assert.equal(adoptsPathname('salesplan', '/requests'), false);
+  assert.equal(adoptsPathname(null, '/requests'), false);
+});
+
+/* 🐞 กับดักที่เทสต์นี้กันไว้: เมนูเอกสารร่วมโผล่ **สองกลุ่มพร้อมกัน** ให้คนคนเดียว
+   แล้วกดคนละตัวได้เปลือกคนละอัน — เกิดกับ admin ซึ่งเห็นทุกกลุ่ม */
+test('⭐ เมนูเอกสารร่วมขึ้นได้กลุ่มเดียวต่อคนเสมอ', () => {
+  const cases = [
+    ['/sa/sales-orders', FN, { salesplan: false, finance: true, rd: false }],
+    /* RD/FN: คิวรวมถูก "รับ" ไปแล้ว ⇒ **ตัดออกจากเมนูงานขาย**
+       ⚠️ ค่า `true` ของกลุ่มบ้านตัวเองเป็นคำตอบเชิงสมมติ ("ถ้าประกาศรายการนี้ไว้
+       ในกลุ่มนั้น ควรโชว์ไหม") — ของจริงทั้งสองโมดูล **ไม่ได้ประกาศ** เพราะสองฝ่ายนี้
+       ไม่เปิดคำร้องเอง · เทสต์ "ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย" คุมข้อนั้นไว้ */
+    ['/requests', RD, { salesplan: false, finance: false, rd: true }],
+    ['/requests', FN, { salesplan: false, finance: true, rd: false }],
+    ['/sa/sales-orders', RD, { salesplan: true, finance: false, rd: false }],
+    ['/sa/sales-orders', AE, { salesplan: true, finance: false, rd: false }],
+    ['/requests', ADMIN, { salesplan: true, finance: false, rd: false }],
+  ];
+  for (const [href, user, want] of cases) {
+    for (const [system, expected] of Object.entries(want)) {
+      assert.equal(sharedItemBelongsInGroup(href, system, user), expected, `${href} · ${user.role} · ${system}`);
+    }
+    assert.ok(Object.values(want).filter(Boolean).length <= 1, `${href} · ${user.role} ต้องไม่ขึ้นเกินหนึ่งกลุ่ม`);
+  }
 });

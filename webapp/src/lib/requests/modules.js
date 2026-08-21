@@ -11,7 +11,23 @@
 // ⚠️ **ห้ามใช้ลิสต์นี้ตัดสินสิทธิ์** — มันตอบแค่ "งานของฝ่ายนี้แสดงที่จอไหน"
 // ด่านจริงคือ `canAnswerRequestsFor` (lib/permissions.js) และตัวกรองที่ API
 // ⇒ ฝ่ายที่หลุดจากลิสต์นี้ไม่ได้เสียสิทธิ์อะไร แค่เห็นงานตัวเองในคิวรวมแทน
-export const DEPTS_WITH_OWN_MODULE = ['RD'];
+/* ⭐ **แผนที่เดียว: ฝ่าย → คิวในบ้านของตัวเอง** — ลิสต์ `DEPTS_WITH_OWN_MODULE`
+   งอกมาจากตรงนี้ ไม่ได้สะกดแยก · เพิ่มฝ่ายที่นี่ที่เดียวแล้วทั้งคิวรวม ป้ายตัวเลข
+   และปุ่มย้อนกลับบนใบคำร้องตามเอง (วันที่ PC ได้โมดูล เติมบรรทัดเดียว) */
+export const DEPT_MODULE_QUEUE = { RD: '/rd/requests', FN: '/finance/requests' };
+
+// ปลายทางของ "กลับรายการคำร้อง" สำหรับคนที่ฝ่ายของเขามีบ้านแล้ว — null = ใช้คิวรวม
+export function deptQueueHref(dept) {
+  return DEPT_MODULE_QUEUE[dept] || null;
+}
+
+// ⚠️ **FN เข้าลิสต์แล้ว 2026-08-22** — `/finance/requests` มีของจริงและมติกฎข้อ 9
+// ยกเมนู "คิวคำร้อง" กับ "คำร้อง" มานั่งติดกันในแถบเดียวของฝ่ายบัญชี ⇒ ใบเดียวกัน
+// โผล่สองจอในสายตาเดียวกัน ซึ่งอ่านแล้วขัดกันเอง · ย้ายตอนคิวยังว่าง (0 เรื่อง)
+// คือจังหวะที่ไม่มีใครมีงานค้างให้หาย
+// ⚠️ ผลข้างเคียงที่ตั้งใจ: FN เปิด `/requests` แล้วแท็บตั้งต้นเป็น "ที่ฉันเปิด"
+// ไม่ใช่ "รอฉันตอบ" — `defaultTab` อ่านลิสต์นี้ตัวเดียวกัน (app/requests/page.js)
+export const DEPTS_WITH_OWN_MODULE = Object.keys(DEPT_MODULE_QUEUE);
 
 export function deptHasOwnModule(dept) {
   return DEPTS_WITH_OWN_MODULE.includes(dept);

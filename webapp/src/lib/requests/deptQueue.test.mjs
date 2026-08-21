@@ -57,9 +57,12 @@ test('ใกล้ถึงกำหนดนับจากวันที่�
 test('ลิสต์ฝ่ายที่มีโมดูลของตัวเองคุมทั้งสองจอจากที่เดียว', () => {
   assert.ok(DEPTS_WITH_OWN_MODULE.includes('RD'));
   assert.equal(deptHasOwnModule('RD'), true);
+  // FN เข้าลิสต์ 2026-08-22 พร้อมกฎข้อ 9 — บ้านของเขาคือ /finance/requests
+  assert.equal(deptHasOwnModule('FN'), true);
+  // PC ยังไม่มีโมดูล จึงต้องอยู่ในคิวรวมต่อไป (อย่าเผลอยัดเข้าลิสต์ตามฝ่ายอื่น)
   assert.equal(deptHasOwnModule('PC'), false);
   // คิวรวมของ /requests ต้องไม่เหลือฝ่ายที่มีบ้านของตัวเองแล้ว
-  assert.deepEqual(deptsInSharedQueue(['RD', 'PC', 'FN']), ['PC', 'FN']);
+  assert.deepEqual(deptsInSharedQueue(['RD', 'PC', 'FN']), ['PC']);
 });
 
 /* ⭐ **แท็บพูดชื่อฝ่ายจริง** (มติผู้ใช้ 2026-08-20: *"ฝ่ายคืออะไร ไม่สวยเลย"*) —

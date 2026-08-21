@@ -8,6 +8,7 @@ import {
   systemLandingForUser,
   systemsForUser,
 } from './systems.js';
+import { canUser } from '@/lib/permissions';
 
 const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 
@@ -42,7 +43,8 @@ test('system visibility covers every supported role and sales team', () => {
     /* ⭐ ฝ่ายบัญชี (มติผู้ใช้ 2026-08-13): *"เปิดระบบให้บัญชีเห็นแค่ฐานข้อมูลกับ
        บริหารงานขาย"* + บ้านของตัวเอง · **ห้ามมี `tax`** — เคยมีเพราะ role ถือ
        `history:view` ซึ่งเป็นตัวเปิดโมดูลภาษีทั้งโมดูล ไม่ใช่งานของฝ่ายนี้ */
-    ['finance', null, ['salesplan', 'finance', 'master', 'support']],
+    // ไม่มี 'salesplan' — เอกสารของ FN ย้ายเข้าโมดูลตัวเองแล้ว (มติ 2026-08-22)
+    ['finance', null, ['finance', 'master', 'support']],
     ['senior_ae', 'ODM', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
     ['senior_ae', 'KA', ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
     ['senior_ae', 'SV', ['salesplan', 'production', 'service', 'tax', 'master', 'support']],
@@ -152,17 +154,24 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
   }
 });
 
-/* ── กฎสามชั้น §ข้อ 5: เมนู = งานที่ฝ่ายนี้ทำ (มติผู้ใช้ 2026-08-13) ─────────
-   docs/module-ownership-rules.md · ฝ่ายบัญชีเข้ามา **ตรวจเอกสาร** ไม่ได้ทำงานในสายขาย
-   ⇒ ปลายทางของการ์ด "บริหารงานขาย" ต้องเป็นหน้าที่อยู่ในเมนูของเขาจริง ไม่งั้นกดแล้ว
-   ไปยืนบนแดชบอร์ดยอดขายซึ่งแถบเมนูไม่ไฮไลต์อะไรเลย */
-test('⭐ ฝ่ายบัญชีกดการ์ดงานขายแล้วลงที่ใบสั่งขาย ไม่ใช่แดชบอร์ดยอดขาย', () => {
+/* ── กฎสามชั้น §ข้อ 5 + มติผู้ใช้ 2026-08-22 ────────────────────────────────
+   docs/module-ownership-rule.md · เดิมกฎนี้พาฝ่ายบัญชี **ไปลงที่บ้านฝ่ายขาย**
+   (`/sa/sales-orders` ใต้เปลือก "บริหารงานขาย") ซึ่งคือสิ่งที่ผู้ใช้บอกว่าผิด:
+   *"อยากให้แต่ละฝ่ายทำงานเฉพาะของโมดูลตัวเอง โดยให้ส่วนข้อมูลกลางเดียวกัน"*
+   ⇒ เอกสารสี่ชนิดของเขาย้ายไปอยู่ในกลุ่มเมนูของโมดูล "บัญชีและการเงิน" แล้ว
+   การ์ด "บริหารงานขาย" จึงไม่มีของเหลือให้เขา และต้องไม่ขึ้นอีกต่อไป
+   ⚠️ **ไม่ใช่การตัดสิทธิ์** — `salesplan:view` ยังอยู่ครบ (ดูเทสต์ข้างล่าง) */
+test('⭐ ฝ่ายบัญชีไม่มีการ์ด "บริหารงานขาย" — เอกสารของเขาอยู่ในโมดูลตัวเองแล้ว', () => {
   const FN = { role: 'finance', department: 'FN', team: null, extraCaps: [] };
-  assert.equal(systemLandingForUser('salesplan', FN), '/sa/sales-orders');
-  // ฝ่ายขายและ RD ยังลงที่เดิม — กฎนี้แคบเฉพาะ FN โดยตั้งใจ (ของ RD เป็นมติที่ตัดสินแล้ว)
+  assert.deepEqual(keysFor(FN), ['finance', 'master', 'support']);
+  // สิทธิ์อ่านยังอยู่ — ที่ตัดคือ *เมนู* ไม่ใช่ *cap* (กฎข้อ 7)
+  assert.ok(canUser(FN, 'salesplan:view'));
+  // ฝ่ายขายและ RD ยังลงที่เดิมทุกอย่าง — กฎนี้แคบเฉพาะ FN โดยตั้งใจ
+  // (ความกว้างของ RD เป็นมติที่ตัดสินไว้แล้ว อย่ายุบเป็นกฎเดียวกับ FN)
   assert.equal(systemLandingForUser('salesplan', { role: 'ae', team: 'SV', extraCaps: [] }), '/sa');
   assert.equal(systemLandingForUser('salesplan', { role: 'rd', team: null, extraCaps: [] }), '/sa');
   assert.equal(systemLandingForUser('salesplan', { role: 'admin', team: null, extraCaps: [] }), '/sa');
+  assert.ok(keysFor({ role: 'rd', department: 'RD', team: null, extraCaps: [] }).includes('salesplan'));
 });
 
 // ── landing ต้องไม่ชี้หน้าที่เมนูเทาไว้ ────────────────────────────────────
