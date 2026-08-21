@@ -6,8 +6,8 @@
 // ⚠️ ตารางสูตรแก้ในใบไม่ได้: มันถูกตรึงมาจากคำร้องตอนสร้าง ⇒ ผิดเมื่อไรให้ลบร่างแล้วทำใหม่
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { FileSignature, FileStack, FileText, Printer, X } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { FileSignature, FileStack, FileText, Printer, Trash2, X } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -16,16 +16,18 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { TableScroll } from "@/components/ui/Table";
 import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
-import { ADDENDUM_DOC_TITLE, canSignAddendum } from "@/lib/sales/contractAddenda";
+import { ADDENDUM_DOC_TITLE, canDeleteAddendum, canSignAddendum } from "@/lib/sales/contractAddenda";
 import { buildAddendumLifecycle } from "@/lib/sales/addendumLifecycle";
 import styles from "./page.module.css";
 
 export default function AddendumDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const canView = useCan("salesplan:view");
   const canEditCap = useCan("salesplan:edit");
   const { user } = useRole();
@@ -35,6 +37,7 @@ export default function AddendumDetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [signDate, setSignDate] = useState("");
   const [signFileId, setSignFileId] = useState("");
 
@@ -97,6 +100,23 @@ export default function AddendumDetailPage() {
     setSignFileId(signed?.id || "");
   }, []);
 
+  const removeDraft = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/sales-planning/addenda/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "ลบบันทึกไม่สำเร็จ");
+      notifyToast.success("ลบร่างบันทึกแล้ว");
+      router.push(`/sa/contracts/${addendum?.contractId || ""}`);
+      return true;
+    } catch (err) {
+      notifyToast.error(err.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!canView) {
     return <AccessDenied icon={<FileStack size={22} />} title="บันทึกเพิ่มเติมสัญญา" message="บัญชีนี้ยังไม่มีสิทธิ์อ่านเอกสารของสายขาย" back="/sa/contracts" />;
   }
@@ -145,6 +165,17 @@ export default function AddendumDetailPage() {
                   slot: "primary",
                   visible: canEdit && canSignAddendum(addendum),
                   onClick: () => { setSignDate(""); setSignOpen(true); },
+                },
+                /* ⭐ ลบได้เฉพาะร่างที่ยังไม่ออกเลข — ตารางสูตรแก้ในใบไม่ได้ (ตรึงมาจากคำร้อง)
+                   ผิดเมื่อไรทางเดียวคือลบร่างแล้วสร้างใหม่ ⇒ ปุ่มนี้ขาดไม่ได้ */
+                {
+                  id: "delete",
+                  label: "ลบฉบับร่าง",
+                  kind: "delete",
+                  icon: Trash2,
+                  slot: "danger",
+                  visible: canEdit && canDeleteAddendum(addendum),
+                  onClick: () => setDeleteOpen(true),
                 },
               ]}
               notices={(
@@ -243,6 +274,18 @@ export default function AddendumDetailPage() {
           <Link href={`/sa/contracts/${addendum.contractId}`} className="linklike">← กลับไปที่สัญญา</Link>
         </div>
       </DetailPageLayout>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        tone="danger"
+        title="ลบร่างบันทึกเพิ่มเติม"
+        description={`ต้องการลบร่างบันทึกครั้งที่ ${addendum.addendumNo} ของสัญญา ${naText(addendum.contract?.contractNo)} ใช่หรือไม่`}
+        detail="ร่างนี้ยังไม่ได้ออกเลขที่ ลบแล้วคำร้องที่อ้างถึงจะกลับมาใช้ทำบันทึกใหม่ได้"
+        confirmLabel="ลบร่างบันทึก"
+        busy={busy}
+        onClose={() => !busy && setDeleteOpen(false)}
+        onConfirm={removeDraft}
+      />
     </SaWorkspace>
   );
 }
