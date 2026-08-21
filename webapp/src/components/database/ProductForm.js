@@ -30,7 +30,7 @@ import {
 import {
   productDuplicateWarning, productOtherSizeHint, splitProductMatches,
 } from "@/lib/master/productDuplicate";
-import { brandBoth } from "@/lib/master/brands";
+import { brandBoth, hasBrandField } from "@/lib/master/brands";
 import {
   DEFAULT_SALE_UNIT,
   DEFAULT_VOLUME_UNIT,
@@ -182,6 +182,9 @@ export default function ProductForm({
   // ⚠️ ต้องอ่านจาก categoryCode ตัวเดียวกับที่ฟอร์มใช้ตัดสินใจเรื่องอื่น ไม่ใช่ form.categoryCode
   // ดิบ ๆ (โหมดพิมพ์รหัสเองไม่ได้อัปเดตช่องนั้น — ดูคอมเมนต์ที่ประกาศ categoryCode)
   const showPackaging = hasPackagingFields(categoryCode);
+  // กลุ่ม 03/04 ไม่ได้ขายใต้แบรนด์ของลูกค้า ⇒ ไม่มีช่องแบรนด์เลย (ดู brands.js)
+  // อ่านจาก categoryCode ตัวเดียวกับช่องอื่น ไม่ใช่ form.categoryCode ดิบ ๆ
+  const showBrand = hasBrandField(categoryCode);
   const packaging = showPackaging ? packagingSummary(form) : "";
 
   const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
@@ -296,7 +299,7 @@ export default function ProductForm({
               ⭐ **ลูกค้า | แบรนด์ อยู่แถวเดียวกัน** (มติผู้ใช้ 2026-08-12) — เป็นคู่ที่
               อ่านคู่กันและขึ้นต่อกัน (แบรนด์มาจากลูกค้าที่เลือก ก่อนเลือกลูกค้าช่องขวา
               กดไม่ได้) · เอกสารวิธีคิดออกแบบฟอร์ม §1 ยกคู่นี้เป็นตัวอย่างไว้ตรง ๆ */}
-          <div className="form-group">
+          <div className={showBrand ? "form-group" : "form-group col-span-2"}>
             <label>{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า) <span className="text-[var(--red)]">*</span></label>
             <SearchableSelect
               entity="customer"
@@ -308,10 +311,15 @@ export default function ProductForm({
             />
             <span className="text-xs text-[var(--text-3)] mt-1">
               {creatorName
-                ? "FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก"
+                ? (showBrand
+                  ? "FG ทุกตัวต้องผูกกับลูกค้า — แบรนด์จะมาจากลูกค้าที่เลือก"
+                  : "FG ทุกตัวต้องผูกกับลูกค้า — หมวดนี้เป็นค่าบริการ จึงไม่มีแบรนด์")
                 : "เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ"}
             </span>
           </div>
+          {/* แบรนด์: กลุ่ม 03 ค่าออกแบบ / 04 รายได้อื่นๆ ไม่มีช่องนี้ (มติ 2026-08-21 ·
+              ดู brands.js) — ช่องหายพร้อมกับค่าที่ server ล้างให้ ไม่ใช่ซ่อนทับค่าเดิม */}
+          {showBrand && (
           <div className="form-group">
             <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
             <SearchableSelect
@@ -328,6 +336,7 @@ export default function ProductForm({
             />
             <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
           </div>
+          )}
           {/* หมวดสินค้า: ตัวเลือกหมวดกลางตัวเดียวกับฟอร์มดีล/โครงการ (TwoPanePicker
               105 หมวด/4 กลุ่ม) — โผล่เฉพาะโหมดระบบใหม่ เพราะโหมดกรอกเองหมวดฝังอยู่ใน
               รหัสที่พิมพ์แล้ว การมีตัวเลือกซ้ำอีกช่องคือการพูดเรื่องเดียวกันสองทาง */}
