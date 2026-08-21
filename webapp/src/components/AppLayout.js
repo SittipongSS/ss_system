@@ -701,14 +701,20 @@ export default function AppLayout({ children }) {
                 ขวาสุดถูก AccountMenu จองไว้แล้ว */}
             <NotificationBell />
             {/* topnav-settings-link = จุดเกาะให้ CSS ซ่อนเฉพาะตัวนี้บนมือถือ (ตั้งค่า
-                มีอยู่ในแผ่นเมนูแล้ว) โดยไม่พลาดไปซ่อนกระดิ่งซึ่งใช้คลาสเดียวกัน */}
+                มีอยู่ในแผ่นเมนูแล้ว) โดยไม่พลาดไปซ่อนกระดิ่งซึ่งใช้คลาสเดียวกัน
+                ⚠️ ไอคอนล้วน ไม่มีป้ายชื่อ (มติผู้ใช้ 2026-08-22) — `aria-label` จึงเป็น
+                ชื่อเดียวที่ screen reader อ่านได้ ถอดออกแล้วปุ่มนี้จะไม่มีชื่อเลย
+                ขนาดไอคอน 17 เท่ากระดิ่งที่อยู่ติดกัน · ไม่ต้องเขียน CSS เพิ่ม เพราะ
+                `.topnav-global-action` มี padding เท่ากันสองข้างอยู่แล้ว พอเหลือลูกตัว
+                เดียวมันกลายเป็นจัตุรัสขนาดเดียวกับกระดิ่งเอง */}
             <Link
               href="/settings"
               className={`topnav-global-action topnav-settings-link${isSettingsContext ? ' active' : ''}`}
               aria-current={isSettingsContext ? 'page' : undefined}
+              aria-label="ตั้งค่าระบบ"
+              title="ตั้งค่าระบบ"
             >
               <SettingsIcon size={17} aria-hidden="true" />
-              <span>ตั้งค่า</span>
             </Link>
             <AccountMenu
               userName={userName}
