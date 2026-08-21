@@ -209,6 +209,9 @@ test('เอกสารบันทึกเพิ่มเติมใช้�
   assert.match(html, /<th>ลำดับ<\/th>/);
   // ตารางต้องเว้นระยะใต้ตัวเองก่อนข้อถัดไป (ข้อ 2 เคยชิดเส้นขอบล่างของตาราง)
   assert.match(html, /\.contract \.formulaTable \{[^}]*margin: 3mm 0 5mm/);
+  // เส้นตารางครบทุกช่อง ไม่ใช่มีแต่เส้นใต้แถว
+  assert.match(html, /\.contract \.formulaTable \{[^}]*border: 1px solid/);
+  assert.match(html, /\.contract \.formulaTable td \{[^}]*border-right: 1px solid/);
   assert.match(html, /PF000001/);
   // ใช้สคริปต์ตัดหน้าและ CSS ชุดเดียวกับสัญญา — ห้ามก๊อปมาอีกชุด
   assert.match(html, /classList\.add\('signSheet'\)/);

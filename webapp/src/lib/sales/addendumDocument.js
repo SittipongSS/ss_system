@@ -61,9 +61,18 @@ const ADDENDUM_CSS = `
   /* เว้นใต้ตารางก่อนข้อถัดไป — ข้อ 2 ชิดขอบตารางจนอ่านเหมือนเป็นคำอธิบายของตาราง
      (ระยะระหว่างบล็อก 3.5mm ไม่พอ เพราะตารางมีเส้นขอบล่างซึ่งดึงสายตาเข้าหาบรรทัดถัดไป) */
   .contract .formulaTable { width: 100%; margin: 3mm 0 5mm; border-collapse: collapse; }
+  /* เส้นตารางครบทุกช่อง (มติผู้ใช้ 2026-08-21) — เดิมมีแต่เส้นใต้แถว ซึ่งอ่านเป็น
+     "รายการ" มากกว่า "ตาราง" ในเอกสารที่ต้องเซ็น · เส้นคั่นบนหัวใช้สีขาวจาง เพราะ
+     เส้นสีเทาบนพื้นกรมท่าจะมองไม่เห็น */
+  .contract .formulaTable { border: 1px solid var(--doc-line-strong); }
   .contract .formulaTable th { padding: 2.1mm 1.5mm; color: #fff; background: var(--doc-navy);
-    font-size: 8.4pt; font-weight: 600; text-align: left; }
-  .contract .formulaTable td { padding: 2mm 1.5mm; border-bottom: 1px solid var(--doc-line); font-size: 8.8pt; }
+    font-size: 8.4pt; font-weight: 600; text-align: left;
+    border-right: 1px solid rgb(255 255 255 / 35%); }
+  .contract .formulaTable th:last-child { border-right: 0; }
+  .contract .formulaTable td { padding: 2mm 1.5mm; font-size: 8.8pt;
+    border-right: 1px solid var(--doc-line); border-bottom: 1px solid var(--doc-line); }
+  .contract .formulaTable td:last-child { border-right: 0; }
+  .contract .formulaTable tr:last-child td { border-bottom: 0; }
   .contract .formulaTable th:first-child, .contract .formulaTable td:first-child { width: 14mm; }
   .contract .formulaTable th:nth-child(3), .contract .formulaTable td:nth-child(3) { width: 42mm; }
   .contract .formulaTable th:last-child, .contract .formulaTable td:last-child { width: 26mm; }
