@@ -1,4 +1,5 @@
 import { businessDate } from '@/lib/businessDate';
+import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { genId } from '@/lib/id';
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
@@ -80,7 +81,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       ? supabase.from('projects').select('id, code, line, name').eq('id', deal.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('quotations')
-      .select('id, quoteNumber, status, approvalStatus, totalAmount, customerId, customerName, createdAt')
+      .select('id, quoteNumber, status, approvalStatus, totalAmount, customerId, customerName, createdAt, "billingAddress"')
       .eq('dealId', deal.id),
   ]);
   if (quoteError) return fail(quoteError.message, 500);
@@ -99,8 +100,19 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const customerId = quotation.customerId || deal.customerId || null;
   const { data: customer } = customerId
-    ? await supabase.from('customers').select('id, name, taxId, address').eq('id', customerId).maybeSingle()
+    ? await supabase.from('customers')
+      .select('id, name, "taxId", address, addresses, "shippingAddress", "branchCode"')
+      .eq('id', customerId).maybeSingle()
     : { data: null };
+
+  /* ⚠️ ที่อยู่บนสัญญาต้องมาจากทางเดียวกับใบเสนอราคา — คอลัมน์ `customers.address`
+     เป็นแค่ "กระจก" ของที่อยู่หลักยุคเก่า ซึ่งของจริงมีทั้งชื่อบริษัทปนอยู่ในนั้นและ
+     ตำบล/อำเภอ/จังหวัดซ้ำสองรอบ ⇒ สัญญาพิมพ์ที่อยู่คนละแบบกับใบเสนอราคาของตัวเอง
+     ลำดับ: ที่อยู่ที่ **ใบเสนอราคาใบนั้นออกบิล** → ที่อยู่ออกบิลหลักของลูกค้า → กระจกเดิม */
+  const billing = pickDocumentAddresses(customer || {}).snapshot.billingAddress;
+  const contractCustomer = customer
+    ? { ...customer, address: quotation.billingAddress || billing || customer.address || '' }
+    : null;
 
   const row = {
     id: genId('CTR'),
@@ -112,7 +124,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ชื่อลูกค้าบนสัญญา = สำเนา ณ วันที่ทำ ไม่ซิงก์ตามทะเบียนภายหลัง
     customerName: customer?.name || quotation.customerName || deal.customerName || null,
     contractDate: body.contractDate || businessDate(),
-    fields: contractFieldDefaults(body.kind, { customer, quotation, current: body.fields || {} }),
+    fields: contractFieldDefaults(body.kind, { customer: contractCustomer, quotation, current: body.fields || {} }),
     templateKey: body.kind,
     team: deal.team || null,
     ownerId: deal.ownerId || user.id || null,

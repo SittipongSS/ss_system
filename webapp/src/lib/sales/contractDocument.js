@@ -187,9 +187,12 @@ export const CONTRACT_CSS = `
   /* ⚠️ **ต้องเป็น block ไม่ใช่ flex** — .sheetContent ของเปลือกเป็น flex column
      ซึ่งจะ *บีบ* บล็อกลูกให้พอดีแผ่นแทนที่จะล้น ⇒ ตัววัด scrollHeight > clientHeight
      ไม่มีวันเป็นจริง แล้วทุกอย่างไปกองอยู่แผ่นเดียวโดยตัวหนังสือทับกัน */
-  /* เว้นใต้เส้นคั่นหัวใบก่อนเข้าเนื้อ — บรรทัดแรกชนเส้นอ่านแล้วอึดอัด
-     (มีผลกับแผ่นที่ไม่มีหัวใบด้วย: เนื้อไม่ชนขอบบนกระดาษ) */
+  /* เว้นใต้เส้นคั่นหัวใบก่อนเข้าเนื้อ — บรรทัดแรกชนเส้นอ่านแล้วอึดอัด */
   .contract .sheetContent { display: block; padding-top: 7mm; }
+
+  /* ⭐ แผ่นต่อไม่ต้องเว้นซ้ำ (มติผู้ใช้ 2026-08-22) — ขอบกระดาษ 20mm เว้นให้อยู่แล้ว
+     บวก 7mm ของช่องใต้หัวใบซึ่งแผ่นนี้ไม่มีหัวใบ กลายเป็นแถบว่างหัวหน้าที่ไม่มีเหตุผล */
+  .contract .sheet.contPage .sheetContent { padding-top: 0; }
 
   /* แผ่นที่สคริปต์สร้าง = ขนาดกระดาษจริงตามเปลือก · แผ่นที่บล็อกเดียวสูงเกินหนึ่งหน้า
      ได้ .tall ให้ยืดแทนการครอบตัด (กันเนื้อหายเงียบ ซึ่งเป็นกับดักของ overflow:hidden) */
@@ -312,7 +315,8 @@ export const PAGINATE_SCRIPT = `
 
     function newPage(withHeader) {
       var page = document.createElement('article');
-      page.className = 'sheet';
+      // แผ่นต่อ (ไม่มีหัวใบ) ได้คลาสของตัวเอง — CSS เลือก "แผ่นที่ไม่มีหัวใบ" ตรง ๆ ไม่ได้
+      page.className = withHeader ? 'sheet' : 'sheet contPage';
       page.setAttribute('aria-label', meta.title || 'สัญญา');
       page.innerHTML = watermarkHtml + (withHeader ? headerHtml : '')
         + '<div class="sheetContent"></div>'
