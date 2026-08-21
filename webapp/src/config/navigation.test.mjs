@@ -192,12 +192,34 @@ test('⭐ ทุกเส้นทางที่ถูกรับไป ต้
     const start = source.indexOf(`system: '${system}',`);
     assert.ok(start > 0, `ไม่พบกลุ่มเมนูของระบบ ${system}`);
     const group = source.slice(start, source.indexOf('\n    },', start));
-    const declared = new Set([...group.matchAll(/SHARED_DOC_ITEMS\.(\w+)/g)].map((m) => hrefByKey.get(m[1])));
+    /* เมนูหนึ่งตัว "ครอบ" เส้นทางได้สองท่า — เป็นรายการเอกสารร่วมตรง ๆ
+       (`SHARED_DOC_ITEMS.x`) หรือเป็นเมนูของฝ่ายเองที่ `match` กินเส้นนั้นด้วย
+       (เช่น "คิวคำร้อง" ของ RD/FN ซึ่งกินใบ `/requests/[id]` — มติ 2026-08-22
+       ที่ว่าสองฝ่ายนี้ไม่เปิดคำร้องเอง จึงไม่มีเมนูคิวรวมในโมดูล) */
+    const covered = new Set([
+      ...[...group.matchAll(/SHARED_DOC_ITEMS\.(\w+)/g)].map((m) => hrefByKey.get(m[1])),
+      ...[...group.matchAll(/startsWith\('([^']+)'\)/g)].map((m) => m[1]),
+    ]);
     for (const prefix of prefixes) {
       // เส้นทางเก่า `/sales-planning/*` เป็นแค่ลิงก์ค้าง ไม่ต้องมีเมนูของตัวเอง
       if (prefix.startsWith('/sales-planning')) continue;
-      assert.ok(declared.has(prefix), `ระบบ ${system} รับ ${prefix} มาแล้วแต่ไม่มีเมนูคู่กัน`);
+      assert.ok(covered.has(prefix), `ระบบ ${system} รับ ${prefix} มาแล้วแต่ไม่มีเมนูคู่กัน`);
     }
+  }
+});
+
+/* ⚠️ RD/FN **ไม่มีเมนูคิวรวม "คำร้อง" ในโมดูลตัวเอง** (มติผู้ใช้ 2026-08-22:
+   *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"*) ⇒ แท็บ "ที่ฉันเปิด"
+   ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ใบที่เปิดจากคิวฝ่ายจึงต้องไฮไลต์ที่ "คิวคำร้อง" */
+test('⭐ ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย ไม่ใช่เมนูคิวรวม', () => {
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'components', 'AppLayout.js'), 'utf8');
+  for (const [system, own] of [['rd', '/rd/requests'], ['finance', '/finance/requests']]) {
+    const start = source.indexOf(`system: '${system}',`);
+    const group = source.slice(start, source.indexOf('\n    },', start));
+    assert.match(group, new RegExp(`href: '${own}'[^\n]*startsWith\\('/requests'\\)`),
+      `เมนูคิวของ ${system} ต้อง match ใบ /requests/[id] ด้วย`);
+    assert.ok(!group.includes('SHARED_DOC_ITEMS.requests'),
+      `${system} ต้องไม่มีเมนูคิวรวม — ฝ่ายนี้ไม่เปิดคำร้องเอง`);
   }
 });
 
@@ -215,7 +237,12 @@ test('adoptsPathname ไม่จับครึ่งคำ — /requests ต�
 test('⭐ เมนูเอกสารร่วมขึ้นได้กลุ่มเดียวต่อคนเสมอ', () => {
   const cases = [
     ['/sa/sales-orders', FN, { salesplan: false, finance: true, rd: false }],
+    /* RD/FN: คิวรวมถูก "รับ" ไปแล้ว ⇒ **ตัดออกจากเมนูงานขาย**
+       ⚠️ ค่า `true` ของกลุ่มบ้านตัวเองเป็นคำตอบเชิงสมมติ ("ถ้าประกาศรายการนี้ไว้
+       ในกลุ่มนั้น ควรโชว์ไหม") — ของจริงทั้งสองโมดูล **ไม่ได้ประกาศ** เพราะสองฝ่ายนี้
+       ไม่เปิดคำร้องเอง · เทสต์ "ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย" คุมข้อนั้นไว้ */
     ['/requests', RD, { salesplan: false, finance: false, rd: true }],
+    ['/requests', FN, { salesplan: false, finance: true, rd: false }],
     ['/sa/sales-orders', RD, { salesplan: true, finance: false, rd: false }],
     ['/sa/sales-orders', AE, { salesplan: true, finance: false, rd: false }],
     ['/requests', ADMIN, { salesplan: true, finance: false, rd: false }],
@@ -224,6 +251,6 @@ test('⭐ เมนูเอกสารร่วมขึ้นได้กล�
     for (const [system, expected] of Object.entries(want)) {
       assert.equal(sharedItemBelongsInGroup(href, system, user), expected, `${href} · ${user.role} · ${system}`);
     }
-    assert.equal(Object.values(want).filter(Boolean).length, 1, `${href} · ${user.role} ต้องขึ้นกลุ่มเดียว`);
+    assert.ok(Object.values(want).filter(Boolean).length <= 1, `${href} · ${user.role} ต้องไม่ขึ้นเกินหนึ่งกลุ่ม`);
   }
 });

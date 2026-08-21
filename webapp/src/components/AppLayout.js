@@ -430,13 +430,15 @@ export default function AppLayout({ children }) {
         // ชื่อต้องไม่ซ้ำกับ "คำร้อง" ของระบบบริหารงานขาย — คนละมุมของตารางเดียวกัน:
         // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
         // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
-        { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') },
-        /* ⭐ ใบคำร้อง (`/requests/[id]`) เป็นจอเดียวกันทั้งสองฝั่ง (ม-31) และตอนนี้
-           **เปลือกของมันเดินตามคนดู** ⇒ RD กดใบจากคิวแล้วยังยืนอยู่ในบ้านตัวเอง
-           ⇒ ต้องมีเมนูคู่กันที่นี่ ไม่งั้นยืนบนใบแล้วแถบเมนูไม่ไฮไลต์อะไรเลย (กฎข้อ 8)
-           ⚠️ คนละมุมกับ "คิวคำร้อง" ข้างบน — ที่นั่น = ใบที่ส่งมาถึงฝ่ายเรา
-           ที่นี่ = คิวรวม (ใบที่เราเปิดถึงฝ่ายอื่น) ซึ่งเป็นตารางเดียวกันคนละมุม */
-        SHARED_DOC_ITEMS.requests,
+        /* ⭐ `match` กินใบคำร้อง (`/requests/[id]`) ด้วย — **ไม่ใช่ของเกิน**
+           ใบเป็นจอเดียวกันทั้งสองฝั่ง (ม-31) และเปลือกของมันเดินตามคนดู (กฎข้อ 9)
+           ⇒ RD กดใบจากคิวแล้วยังยืนในบ้านตัวเอง เมนูต้องไฮไลต์ที่คิว ซึ่งเป็นที่เดียว
+           ที่เขาเข้าถึงใบนั้นได้จริง (กฎข้อ 8)
+           ⚠️ **ไม่มีเมนู "คำร้อง" (คิวรวม) ในโมดูลนี้** — มติผู้ใช้ 2026-08-22:
+           *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"* ⇒ แท็บ
+           "ที่ฉันเปิด" ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ประวัติงานของฝ่าย
+           อยู่ในแท็บ "ประวัติ" ของคิวนี้แล้ว */
+        { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
       ],
     },
     {
@@ -471,7 +473,9 @@ export default function AppLayout({ children }) {
            โดยตั้งใจ: เป็นของอย่างเดียวกันคนละฝ่าย · ต้องไม่ชนกับ "คำร้อง" ของฝ่ายขาย
            ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
            ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
-        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') },
+        /* `match` กินใบคำร้องด้วย และ **ไม่มีเมนู "คำร้อง" (คิวรวม)** — เหตุผลเดียว
+           กับของ RD ข้างบน (มติผู้ใช้ 2026-08-22: บัญชีไม่เปิดคำร้องเอง) */
+        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') || p.startsWith('/requests') },
         /* ⭐ เอกสารขายที่ฝ่ายบัญชีทำงานด้วยจริง — **ย้ายมาจากกลุ่ม "บริหารงานขาย"**
            (มติผู้ใช้ 2026-08-22) · กฎข้อ 7 (2026-08-13) ตัดสินไปแล้วว่าเมนูของ FN
            คือใบเสนอราคา · ใบสั่งขาย · คำร้อง — แต่รายการเหล่านั้นถูกประกาศไว้ใน
@@ -484,7 +488,6 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.quotations,
         SHARED_DOC_ITEMS.salesOrders,
         SHARED_DOC_ITEMS.contracts,
-        SHARED_DOC_ITEMS.requests,
       ],
     },
     {
