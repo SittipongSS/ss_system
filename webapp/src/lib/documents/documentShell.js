@@ -15,6 +15,7 @@
 import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
 import { PRINT_FONT_STACK } from '@/lib/printTheme';
+import { PAPER_SIZES } from '@/lib/documents/paperSize';
 import { fmtNumber } from '@/lib/format';
 
 export const esc = (s) => String(s ?? '')
@@ -180,10 +181,9 @@ export function watermarkBlock(text) {
 // ขนาดกระดาษต่อการวางแนว — เอกสารพิมพ์เป็นไฟล์เดี่ยว จึงกำหนด @page ต่อไฟล์ได้ตรง ๆ
 // scale ใช้เลื่อนขั้นบันได zoom: กระดาษแนวนอนกว้างกว่า 297/210 เท่า จอจึงต้องเริ่มย่อ
 // ที่ความกว้างมากกว่าตามสัดส่วนเดียวกัน ไม่งั้นแนวนอนล้นจอก่อนที่ zoom จะทำงาน
-const PAPER = Object.freeze({
-  portrait: { width: '210mm', height: '297mm', page: 'A4 portrait', scale: 1 },
-  landscape: { width: '297mm', height: '210mm', page: 'A4 landscape', scale: 297 / 210 },
-});
+// ⚠️ ตารางขนาดอยู่ที่ `lib/documents/paperSize.js` — **A4 เท่านั้นทั้งระบบ**
+// (มติผู้ใช้ 2026-08-21) · แยกไฟล์เพื่อให้เทสต์ตรวจได้โดยไม่ต้องโหลดฟอนต์ base64 ของเปลือก
+const PAPER = PAPER_SIZES;
 
 /* ขั้นบันได zoom ตอนดูบนจอ (มติผู้ใช้ 2026-07-26): จอแคบกว่ากระดาษให้ "ย่อทั้งแผ่น"
    ไม่ใช่จัดหน้าใหม่ — สัดส่วน/การขึ้นหน้าจึงตรงกับที่พิมพ์จริง 100%
