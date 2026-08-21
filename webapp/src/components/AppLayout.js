@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, ChevronsLeft, ChevronsRight, Menu } from 'lucide-react';
+import { Home, Building2, Bug, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -753,11 +753,13 @@ export default function AppLayout({ children }) {
             aria-expanded={sideNavExpanded}
             title={navOpen ? 'ปิดแถบเมนู' : (sideNavExpanded ? 'ย่อแถบเมนู' : 'กางแถบเมนู')}
           >
-            {/* ⭐ ไอคอนสองตัวสลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้กางหรือเป็นราง"
-                ขึ้นกับความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้
-                ไอคอนผิดหนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
-            <ChevronsLeft className="sidenav-ico-collapse" size={18} aria-hidden="true" />
-            <ChevronsRight className="sidenav-ico-expand" size={18} aria-hidden="true" />
+            {/* ภาษาไอคอน = ปิด/เปิดแบบโมดัล (มติผู้ใช้ 2026-08-22): กางอยู่ = ✕ ปิด ·
+                เป็นราง = แฮมเบอร์เกอร์ เปิด — ตัวเดียวกับที่หัวเว็บใช้ในชั้นจอที่ไม่มีแถบ
+                ⭐ สลับกันด้วย CSS ไม่ใช่ด้วย state — "ตอนนี้กางหรือเป็นราง" ขึ้นกับ
+                ความกว้างจอด้วย ซึ่งฝั่ง server ไม่รู้ ถ้าเลือกด้วย JS จะได้ไอคอนผิด
+                หนึ่งเฟรมทุกครั้งที่โหลดหน้า (container query รู้ทันทีที่เพนต์) */}
+            <X className="sidenav-ico-collapse" size={18} aria-hidden="true" />
+            <Menu className="sidenav-ico-expand" size={18} aria-hidden="true" />
           </button>
           {flowItems.map((item) => renderMenuItem(item))}
           <span className="topnav-menu-spacer" />
