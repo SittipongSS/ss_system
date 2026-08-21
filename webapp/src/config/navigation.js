@@ -1,4 +1,5 @@
 import { SYSTEM_ORDER } from './systems.js';
+import { homeSystemForUser } from '@/lib/permissions';
 
 export { SYSTEM_ORDER };
 
@@ -20,11 +21,57 @@ export function isBareShellPathname(pathname) {
   return pathname === '/account';
 }
 
+/* ── เอกสารร่วมที่ฝ่ายอื่น "รับไปทำงานในบ้านตัวเอง" ────────────────────────
+   (มติผู้ใช้ 2026-08-22 — ดู `homeSystemForUser` ใน lib/permissions.js)
+
+   ⭐ **ไม่ใช่การย้ายที่เก็บ** — เอกสารยังอยู่ `/sa` ตามกฎสามชั้นชั้น 2 · route เดิม
+   API เดิม ด่านสิทธิ์เดิม โมดัลเดิม · ที่เปลี่ยนคือ **เปลือกเมนูที่ครอบมัน**
+   เดินตามคนดู ไม่ใช่ตามเจ้าของที่เก็บ
+
+   ⚠️ **ลิสต์นี้ต้องตรงกับเมนูที่ฝ่ายนั้นมีจริงใน `AppLayout.allGroups`** — เส้นทางที่
+   ถูกรับมาแต่ไม่มีเมนูคู่กัน = ยืนอยู่บนหน้าที่แถบเมนูไม่ไฮไลต์อะไรเลย (กฎข้อ 8 ของ
+   `docs/module-ownership-rule.md`) · `navigation.test.mjs` ล็อกคู่นี้ไว้แล้ว
+
+   ⚠️ **ดีล/โครงการไม่อยู่ในลิสต์โดยตั้งใจ** — กฎข้อ 7 ตัดสินแล้วว่าไม่ใช่เมนูของ FN
+   ส่วน RD เปิดดูเพื่อ *บริบทตอนตอบคำร้อง* ไม่ใช่งานประจำของฝ่าย ⇒ สองอย่างนั้นยัง
+   เป็นของเปลือก "บริหารงานขาย" ตามเดิม กดจากลิงก์บนใบได้เหมือนเดิมทุกอย่าง */
+export const ADOPTED_SHARED_PATHS = {
+  // RD รับเฉพาะ "ใบคำร้อง" — เอกสารขายอื่น ๆ เขาอ่านในเปลือกงานขายตามเดิม
+  rd: ['/requests'],
+  // FN รับเอกสารสี่ชนิดที่มติ 2026-08-13 (กฎข้อ 7) ตัดสินไว้แล้วว่าเป็นเมนูของเขา
+  // (เส้นทางเก่า `/sales-planning/*` ยังมีลิงก์ค้างอยู่ในระบบ จึงต้องรับคู่กันเสมอ)
+  finance: [
+    '/sa/quotations', '/sales-planning/quotations',
+    '/sa/sales-orders', '/sales-planning/sales-orders',
+    '/sa/contracts', '/sales-planning/contracts',
+    '/requests',
+  ],
+};
+
+export function adoptsPathname(system, pathname) {
+  const prefixes = ADOPTED_SHARED_PATHS[system];
+  if (!prefixes || !pathname) return false;
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+/* เมนูเอกสารร่วมหนึ่งรายการ ควรขึ้นในกลุ่มไหนของ "คนคนนี้" — ตอบได้กลุ่มเดียวเสมอ
+   · บ้านของเขารับเส้นทางนั้นไปแล้ว ⇒ ขึ้นที่บ้านเขา ตัดออกจากกลุ่ม "บริหารงานขาย"
+   · ไม่ได้รับ (ฝ่ายขาย · admin) ⇒ ขึ้นที่กลุ่ม "บริหารงานขาย" ตามเดิม
+
+   ⚠️ **ต้องตัดสองทาง** — ตัดแค่ฝั่งกลุ่มขายไม่พอ: `admin` เห็นทุกกลุ่ม ⇒ เมนู
+   ใบสั่งขายจะโผล่ทั้งใต้ "บริหารงานขาย" และใต้ "บัญชีและการเงิน" พร้อมกัน
+   แล้วกดคนละตัวได้เปลือกคนละอัน ซึ่งอ่านแล้วขัดกันเอง */
+export function sharedItemBelongsInGroup(href, groupSystem, user) {
+  const home = homeSystemForUser(user);
+  const adopted = !!home && adoptsPathname(home, href);
+  return groupSystem === 'salesplan' ? !adopted : (adopted && home === groupSystem);
+}
+
 export function sortSystems(groups) {
   return [...groups].sort((a, b) => SYSTEM_ORDER.indexOf(a.system) - SYSTEM_ORDER.indexOf(b.system));
 }
 
-export function systemForPathname(pathname) {
+export function systemForPathname(pathname, user) {
   if (isSettingsPathname(pathname)) return 'settings';
   // ⭐ กล่องแจ้งเตือนไม่ใช่ของระบบไหน — มันรวมของทุกระบบไว้ในกองเดียว
   // คืน `null` = **คงเปลือกเมนูของระบบที่คนกำลังอยู่ไว้** (AppLayout ข้าม setActiveSystem
@@ -71,6 +118,11 @@ export function systemForPathname(pathname) {
   // และเมนู "คำร้อง" (ซึ่งอยู่ในกลุ่ม salesplan) กดเข้าไม่ได้จากเปลือกนั้นเลย
   // ⚠️ build/เทสต์จับไม่ได้เพราะหน้าเรนเดอร์ปกติทุกอย่าง — ผิดแค่เปลือกที่ครอบมัน
   // (บทเรียนเดียวกับที่แผน P0 เตือนเรื่องลิงก์ค้าง: href ตายไม่มีอะไรจับ)
+  /* ⭐ ต้องอยู่ **เหนือกฎ salesplan** — เอกสารร่วมที่บ้านของคนดูรับไปแล้ว ให้คืนบ้าน
+     ของเขา ไม่ใช่บ้านของเจ้าของที่เก็บ · ไม่ส่ง `user` มา = พฤติกรรมเดิมทุกประการ
+     (เรียกใช้จริงมีที่เดียวคือ `AppLayout` — เทสต์เดิมทั้งชุดจึงยังถูกต้องอยู่) */
+  const home = homeSystemForUser(user);
+  if (home && adoptsPathname(home, pathname)) return home;
   if (pathname === '/sa' || pathname.startsWith('/sa/') || pathname.startsWith('/sales-planning')
     || pathname.startsWith('/pm') || pathname.startsWith('/requests')) return 'salesplan';
   if (pathname.startsWith('/sahamit')) return 'sahamit';
