@@ -1,6 +1,6 @@
 "use client";
 import Select from "@/components/ui/Select";
-import Workspace from "@/components/ui/Workspace";
+import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { History, Search, Eye } from "lucide-react";
@@ -114,8 +114,12 @@ export default function AuditLogPage() {
       headerRight={<div className="status-pill info">{total} รายการ</div>}
     >
 
-      {/* ตัวกรอง */}
-      <div className="glass-panel" style={{ padding: "14px 16px", marginBottom: 16 }}>
+      {/* ⚠️ ระยะห่างระหว่างก้อนมาจากตัวห่อ flex gap-4 — `.ui-section` ไม่มี margin
+          ของตัวเอง (กติกาเดียวกับหน้า RD / โครงการ / ตั้งค่า) */}
+      <div className="flex flex-col gap-4">
+      {/* ตัวกรอง — หัวการ์ดมาจาก WorkspaceSection กลาง (มติผู้ใช้ 2026-08-21)
+          เดิมเป็น .glass-panel + inline style ที่มีระยะขอบเป็นของตัวเอง */}
+      <WorkspaceSection title="ตัวกรอง" subtitle="ช่วงเวลา ประเภทข้อมูล การกระทำ และผู้ทำ">
         <div className="flex flex-wrap items-center gap-2">
           <div className="segmented">
             {MONTH_OPTS.map((o) => (
@@ -149,13 +153,16 @@ export default function AuditLogPage() {
             <input type="text" placeholder="ค้นหา รายละเอียด / รหัสข้อมูล..." value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
-      </div>
+      </WorkspaceSection>
 
       {loading ? (
         <SkeletonRows rows={7} />
       ) : (
-        <div className="glass-panel">
-          <TableScroll surface="embedded" className="border-none" family="list">
+        <WorkspaceSection
+          title="รายการบันทึก"
+          subtitle={`${total} รายการตามเงื่อนไขที่กรองอยู่`}
+        >
+          <TableScroll surface="embedded" family="list">
             <table className="premium-table">
               <thead>
                 <tr>
@@ -206,8 +213,9 @@ export default function AuditLogPage() {
           {pageRows.length > 0 && (
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
-        </div>
+        </WorkspaceSection>
       )}
+      </div>
 
       <AuditDetailModal log={detail} onClose={() => setDetail(null)} />
     </Workspace>
