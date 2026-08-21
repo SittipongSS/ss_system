@@ -213,7 +213,7 @@ export default function MaterialPage() {
           <div className="toolbar">
             <div className="search-glass" style={{ width: 240 }}>
               <Search size={18} color="var(--text-3)" />
-              <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />
+              <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหารหัส / ชื่อสินค้า / เลข PO..." />
             </div>
             <FilterPopover
               count={filterCount}

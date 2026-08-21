@@ -571,7 +571,7 @@ export default function LeadsPage() {
           <div className="toolbar" style={{ flexWrap: "wrap" }}>
             <div className="search-glass" style={{ width: 260 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาลีด / บริษัท / เบอร์" aria-label="ค้นหาลีด" />
             </div>
             <FilterPopover
               count={statusFilter.length + teamFilter.length + assigneeFilter.length + channelFilter.length}

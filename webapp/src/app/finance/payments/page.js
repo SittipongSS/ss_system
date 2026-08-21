@@ -412,7 +412,7 @@ export default function FinancePaymentsPage() {
           <div className="toolbar">
             <div className="search-glass">
               <Search size={16} color="var(--text-3)" />
-              <input
+              <input autoComplete="off"
                 defaultValue={q}
                 onChange={(e) => setFilter("q", e.target.value)}
                 placeholder="ค้นหาเลข SO / QT / ลูกค้า / ชื่องวด"

@@ -149,7 +149,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
                 <div style={{ position: "sticky", top: 0, background: "var(--panel)", padding: "2px 2px 6px", zIndex: 1 }}>
                   <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                     <Search size={14} style={{ position: "absolute", left: 9, color: "var(--text-3)", pointerEvents: "none" }} />
-                    <input
+                    <input autoComplete="off"
                       autoFocus
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}

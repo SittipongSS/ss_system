@@ -157,7 +157,7 @@ export default function TwoPanePicker({
             <div className={`${styles.pane} ${styles.left}`}>
               <label className="ui-select-search">
                 <Search size={14} aria-hidden="true" />
-                <input
+                <input autoComplete="off"
                   value={groupQuery}
                   placeholder={groupSearchPlaceholder}
                   aria-label={groupSearchPlaceholder}
@@ -191,7 +191,7 @@ export default function TwoPanePicker({
             <div className={`${styles.pane} ${styles.right}`}>
               <label className="ui-select-search">
                 <Search size={14} aria-hidden="true" />
-                <input
+                <input autoComplete="off"
                   value={itemQuery}
                   placeholder={itemSearchPlaceholder}
                   aria-label={itemSearchPlaceholder}
