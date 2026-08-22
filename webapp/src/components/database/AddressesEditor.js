@@ -30,6 +30,7 @@ import { genId } from "@/lib/id";
 import { naText } from "@/lib/format";
 import {
   addressText,
+  addressTextEn,
   asAddressRow,
   isBillingAddress,
   isShippingAddress,
@@ -113,7 +114,7 @@ export default function AddressesEditor({ value = [], onChange }) {
     setUntouched((prev) => new Set(prev).add(id));
     // ค่าที่บันทึกจริงถ้าผู้ใช้ไม่แตะปุ่มเลย = 'both' (ค่าตั้งต้นเดิมของระบบ) —
     // ไม่ติ๊กให้บนจอ แต่ก็ไม่บันทึกที่อยู่ที่ใช้ทำอะไรไม่ได้เลยลงฐานข้อมูล
-    onChange([...rows, { id, label: "", address: "", useFor: "both" }]);
+    onChange([...rows, { id, label: "", address: "", addressEn: "", useFor: "both" }]);
   };
   const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
   const move = (i, delta) => {
@@ -126,26 +127,33 @@ export default function AddressesEditor({ value = [], onChange }) {
 
   // เลือกจังหวัด/อำเภอ/ตำบล — ล้างระดับล่างเสมอ (อำเภอของจังหวัดเดิมค้างอยู่ =
   // ที่อยู่ข้ามจังหวัดที่ไม่มีอยู่จริง แล้วไปโผล่บนใบกำกับภาษี)
+  // ⭐ เก็บ **ชื่ออังกฤษของทะเบียนลงแถวด้วย** (mig 0283) — เหตุผลเดียวกับที่เก็บชื่อไทย:
+  // เอกสาร/หน้าจอต้องประกอบข้อความได้เองโดยไม่ต้องเปิดตารางอ้างอิง (ทะเบียน 650KB
+  // เป็น server-only) · ชื่ออังกฤษติดมากับตัวเลือกอยู่แล้ว ไม่มีคำขอเพิ่ม
   const pickProvince = (i, code) => {
     const province = provinces.find((p) => p.code === code);
     update(i, {
-      provinceCode: province?.code || "", province: province?.th || "",
-      districtCode: "", district: "", subdistrictCode: "", subdistrict: "", postcode: "",
+      provinceCode: province?.code || "", province: province?.th || "", provinceEn: province?.en || "",
+      districtCode: "", district: "", districtEn: "",
+      subdistrictCode: "", subdistrict: "", subdistrictEn: "", postcode: "",
     });
   };
   const pickDistrict = (i, code) => {
     const province = provinces.find((p) => p.code === rows[i].provinceCode);
     const district = province?.districts.find((d) => d.code === code);
     update(i, {
-      districtCode: district?.code || "", district: district?.th || "",
-      subdistrictCode: "", subdistrict: "", postcode: "",
+      districtCode: district?.code || "", district: district?.th || "", districtEn: district?.en || "",
+      subdistrictCode: "", subdistrict: "", subdistrictEn: "", postcode: "",
     });
     if (district) loadSubs(district.code);
   };
   const pickSubdistrict = (i, code) => {
     const sub = (subsByDistrict[rows[i].districtCode] || []).find((s) => s.code === code);
     // รหัสไปรษณีย์เติมให้จากตำบล แต่ยังแก้มือได้ (ที่อยู่ในนิคม/หน่วยงานบางแห่งใช้รหัสเฉพาะ)
-    update(i, { subdistrictCode: sub?.code || "", subdistrict: sub?.th || "", postcode: sub?.zip || "" });
+    update(i, {
+      subdistrictCode: sub?.code || "", subdistrict: sub?.th || "", subdistrictEn: sub?.en || "",
+      postcode: sub?.zip || "",
+    });
   };
 
   // แยกข้อความเดิม → ฟิลด์ย่อย · สองเฟสเพราะชุดที่ฟอร์มโหลดมามีแค่จังหวัด+อำเภอ
@@ -154,7 +162,16 @@ export default function AddressesEditor({ value = [], onChange }) {
     const row = rows[i];
     const { parts, rest } = parseThaiAddress(row.address, buildAddressIndex(provinces));
     if (!parts) return;
-    let patch = { ...parts, addressOverride: false };
+    // ชื่ออังกฤษของระดับที่แยกได้ — parseThaiAddress คืนเฉพาะชื่อไทย/รหัส
+    const provinceHit = provinces.find((p) => p.code === parts.provinceCode);
+    const districtHit = provinceHit?.districts.find((d) => d.code === parts.districtCode);
+    let patch = {
+      ...parts,
+      addressOverride: false,
+      provinceEn: provinceHit?.en || "",
+      districtEn: districtHit?.en || "",
+      subdistrictEn: "",
+    };
     if (parts.districtCode) {
       const subs = await loadSubs(parts.districtCode);
       const { subdistrict, line1 } = matchSubdistrict(rest, subs || []);
@@ -163,6 +180,7 @@ export default function AddressesEditor({ value = [], onChange }) {
           ...patch,
           subdistrictCode: subdistrict.code,
           subdistrict: subdistrict.th,
+          subdistrictEn: subdistrict.en || "",
           postcode: parts.postcode || subdistrict.zip,
           line1,
         };
@@ -190,6 +208,9 @@ export default function AddressesEditor({ value = [], onChange }) {
         const subs = subsByDistrict[a.districtCode] || [];
         // ข้อความที่จะถูกบันทึกจริง — โชว์ให้เห็นก่อนเสมอ ไม่ใช่รู้ตอนใบพิมพ์ออกมาแล้ว
         const preview = addressText(a);
+        // ข้อความอังกฤษที่จะถูกบันทึกจริง (mig 0283) — ประกอบจากชื่ออังกฤษของทะเบียน
+        // ที่ติดมากับตัวเลือก · ว่าง = ลูกค้ารายนี้ยังไม่มีที่อยู่อังกฤษ (ไม่ใช่ขีด)
+        const previewEn = addressTextEn(a);
         const typing = legacy || a.addressOverride;
         return (
           <div
@@ -240,14 +261,29 @@ export default function AddressesEditor({ value = [], onChange }) {
               </div>
             </div>
 
-            {/* บ้านเลขที่/ถนน — แถวยุคเก่ายังพิมพ์ที่อยู่ทั้งก้อนในช่องนี้ตามเดิม */}
-            <Textarea
-              rows={2}
-              placeholder={typing ? "ที่อยู่เต็ม…" : "บ้านเลขที่ / หมู่ / ซอย / ถนน…"}
-              value={typing ? a.address : a.line1}
-              onChange={(e) => update(i, typing ? { address: e.target.value } : { line1: e.target.value })}
-              className="w-full text-xs h-[60px] resize-none"
-            />
+            {/* บ้านเลขที่/ถนน — แถวยุคเก่ายังพิมพ์ที่อยู่ทั้งก้อนในช่องนี้ตามเดิม
+                ⭐ ช่องอังกฤษอยู่ **คู่กันเสมอ ไม่ซ่อน ไม่พับ** (มติ 2026-08-22) — ไฟล์นี้มีมติเดิม
+                ว่าห้ามซ่อน/โผล่ตามสถานะ เพราะช่องที่เหลือจะเลื่อนตำแหน่งทุกครั้งที่กดปุ่ม
+                (ผู้ใช้: "กดแล้วมันโดดไปโดดมา") · ว่างไว้ได้ทุกแถว — บังคับแค่ "อย่างน้อยหนึ่งภาษา"
+                ⚠️ พิมพ์แค่ท่อนแรก: ตำบล/อำเภอ/จังหวัดภาษาอังกฤษประกอบให้เองจากทะเบียน */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Textarea
+                rows={2}
+                placeholder={typing ? "ที่อยู่เต็ม…" : "บ้านเลขที่ / หมู่ / ซอย / ถนน…"}
+                value={typing ? a.address : a.line1}
+                onChange={(e) => update(i, typing ? { address: e.target.value } : { line1: e.target.value })}
+                className="w-full text-xs h-[60px] resize-none"
+                aria-label="ที่อยู่ภาษาไทย"
+              />
+              <Textarea
+                rows={2}
+                placeholder={typing ? "ที่อยู่เต็ม ภาษาอังกฤษ…" : "บ้านเลขที่ / ถนน — ภาษาอังกฤษ…"}
+                value={typing ? a.addressEn : a.line1En}
+                onChange={(e) => update(i, typing ? { addressEn: e.target.value } : { line1En: e.target.value })}
+                className="w-full text-xs h-[60px] resize-none"
+                aria-label="ที่อยู่ภาษาอังกฤษ (สำหรับเอกสาร IFRA / MSDS)"
+              />
+            </div>
 
             {/* จังหวัด → อำเภอ → ตำบล → รหัสไปรษณีย์ */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -354,7 +390,17 @@ export default function AddressesEditor({ value = [], onChange }) {
                 ) : legacy ? (
                   <span>ที่อยู่นี้ยังเป็นข้อความก้อนเดียว — กด “แยกที่อยู่อัตโนมัติ” แล้วตรวจก่อนบันทึก</span>
                 ) : (
-                  <span className="break-words">บนเอกสารจะพิมพ์ว่า: <b className="text-[var(--text-2)]">{naText(preview)}</b></span>
+                  <>
+                    <span className="break-words">บนเอกสารจะพิมพ์ว่า: <b className="text-[var(--text-2)]">{naText(preview)}</b></span>
+                    {/* ⚠️ ไม่มีอังกฤษ = **ไม่มีบรรทัดนี้** ไม่ใช่ขีด — ที่อยู่ส่วนใหญ่ไม่ต้องใช้
+                        อังกฤษ ขึ้นขีดใต้ทุกแถวคือเสียงรบกวน (แพตเทิร์นเดียวกับลิงก์แผนที่
+                        และแถวเอกสารอ้างอิงบนใบเสนอราคาที่ "ว่าง = ตัดแถวทิ้ง") */}
+                    {!!previewEn.trim() && (
+                      <span className="break-words block">
+                        ใบภาษาอังกฤษ: <b className="text-[var(--text-2)]">{previewEn}</b>
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
               <div className="flex gap-1.5 items-center shrink-0">

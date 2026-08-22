@@ -24,6 +24,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
+import { customerNameIn } from "@/lib/master/customerName";
 
 // Management view sees every status (pending/approved/rejected); the default
 // GET (used everywhere else) returns only approved rows.
@@ -139,6 +140,8 @@ export default function CustomerDirectory() {
       codeMode,
       arCode: formData.arCode,
       name: formData.name,
+      nameEn: formData.nameEn,               // ชื่ออังกฤษ (mig 0283) — อย่างน้อยหนึ่งภาษา
+
       customerType: formData.customerType || "company",
       taxId: formData.taxId,
       phone: formData.phone,
@@ -200,7 +203,9 @@ export default function CustomerDirectory() {
     if (statusFilter.length && !statusFilter.includes(approvalStatusOf(c))) return false;
     if (teamFilter.length && !teamsOf(c).some((t) => teamFilter.includes(t))) return false;
     if (!q) return true;
-    return [c.arCode, c.name, c.taxId, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
+    // ⚠️ ชื่ออังกฤษต้องค้นเจอด้วย (กติกา entity: ค้นหาต้องเจอทุกภาษาที่มี) — ลูกค้าที่
+    // มีแต่ชื่ออังกฤษจะหาไม่เจอเลยถ้าลืมคีย์นี้
+    return [c.arCode, c.name, c.nameEn, c.taxId, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
       .some((v) => (v || "").toLowerCase().includes(q));
   });
 
@@ -211,7 +216,7 @@ export default function CustomerDirectory() {
 
   const sort = useSortableTable(filteredCustomers, {
     arCode: (c) => c.arCode || "",
-    name: (c) => c.name || "",
+    name: (c) => customerNameIn(c),
     brands: (c) => c.brands?.length || 0,
     address: (c) => c.address || "",
   });
@@ -297,7 +302,7 @@ export default function CustomerDirectory() {
             items={approvalQueue}
             onDecide={decide}
             primary={(c) => c.arCode}
-            secondary={(c) => `${c.name}${teamsOf(c).length ? ` · ทีม ${teamsOf(c).join("/")}` : ""}`}
+            secondary={(c) => `${customerNameIn(c)}${teamsOf(c).length ? ` · ทีม ${teamsOf(c).join("/")}` : ""}`}
             onOpen={open}
           />
         </>
@@ -319,7 +324,7 @@ export default function CustomerDirectory() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-[var(--accent)] font-mono text-sm">{c.arCode}</div>
-                    <div className="text-[13px] font-medium text-[var(--text)] mt-0.5 truncate">{c.name}</div>
+                    <div className="text-[13px] font-medium text-[var(--text)] mt-0.5 truncate">{customerNameIn(c)}</div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
@@ -372,7 +377,7 @@ export default function CustomerDirectory() {
                     <td>
                       {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว) */}
                       <div className="font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</div>
-                      <div className="font-medium text-[var(--text)] mt-0.5">{c.name}</div>
+                      <div className="font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</div>
                       <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</div>
                       {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
                     </td>

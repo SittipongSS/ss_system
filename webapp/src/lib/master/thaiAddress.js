@@ -98,6 +98,38 @@ export function composeThaiAddress(parts = {}) {
   return `${line1} ${tail}`;
 }
 
+// ── ที่อยู่ภาษาอังกฤษ (IFRA / MSDS) ─────────────────────────────────────
+// ⭐ ชื่ออังกฤษของ ตำบล/อำเภอ/จังหวัด **มีอยู่ในทะเบียนกรมการปกครองแล้วทุกชั้น**
+// (`en` ใน src/data/thaiAdmin.js ซึ่ง /api/master/thai-address ส่งให้ฟอร์มอยู่แล้ว)
+// ⇒ คนกรอกพิมพ์แค่ท่อนแรก (บ้านเลขที่/หมู่/ถนน) ที่เหลือประกอบให้เอง ไม่ต้องแปลมือ
+//
+// เก็บ **ชื่ออังกฤษลงในแถว** เหมือนที่เก็บชื่อไทย ด้วยเหตุผลเดียวกับหัวไฟล์: ข้อความ
+// บนเอกสารต้องประกอบได้โดยไม่ต้องเปิดตารางอ้างอิง — ตัวทะเบียน 650KB เป็น server-only
+// (lib/master/thaiAdmin.js) หน้าจอกับเอกสารจึง import ไม่ได้
+export const ADDRESS_PART_FIELDS_EN = ['line1En', 'subdistrictEn', 'districtEn', 'provinceEn'];
+
+// ภาษาอังกฤษไม่มีคำนำหน้า ตำบล/อำเภอ/จังหวัด — คั่นด้วยจุลภาค แล้วรหัสไปรษณีย์
+// ต่อท้ายชื่อจังหวัดด้วยเว้นวรรค (รูปที่ไปรษณีย์ไทย/ขนส่งต่างประเทศใช้จริง)
+//   99/9 Moo 5, Bangna-Trad Rd., Bang Chalong, Bang Phli, Samut Prakan 10540
+// คืน '' เมื่อยังไม่มีอะไรให้ประกอบ — ผู้เรียกจะได้รู้ว่าต้องใช้ข้อความที่พิมพ์เอง
+export function composeEnglishAddress(parts = {}) {
+  const line1 = text(parts.line1En).trim();
+  const region = [
+    clean(parts.subdistrictEn),
+    clean(parts.districtEn),
+    clean(parts.provinceEn),
+  ].filter(Boolean).join(', ');
+  const postcode = normalizePostcode(parts.postcode);
+  const tail = [region, postcode].filter(Boolean).join(' ');
+
+  if (!line1) return tail;
+  if (!tail) return line1;
+  return `${line1}, ${tail}`;
+}
+
+// ฟิลด์ย่อยอังกฤษครบพอจะประกอบไหม — จังหวัดคือขั้นต่ำ (กติกาเดียวกับฝั่งไทย)
+export const hasEnglishParts = (parts = {}) => !!clean(parts.provinceEn);
+
 // ฟิลด์ย่อยครบพอที่จะประกอบข้อความแทนการพิมพ์เองไหม — จังหวัดคือขั้นต่ำ
 // (ที่อยู่ที่ไม่มีจังหวัดส่งของไม่ได้ และเป็นสัญญาณว่าแถวนั้นยังเป็นข้อความยุคเก่า)
 export const hasStructuredParts = (parts = {}) => !!clean(parts.province);

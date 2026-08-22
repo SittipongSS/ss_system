@@ -6,6 +6,7 @@ import {
   rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
+import { customerNameError } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
 import { CODE_MODE_MANUAL, arCodeError, isAutoArCode, isReusableCode } from '@/lib/master/masterCodes';
 import {
@@ -280,17 +281,25 @@ export async function PATCH(request, { params }) {
   // 'team'/'ownerId' allow transferring a customer to another team (gated above
   // by canEditRecord — supervisor cross-team, team roles within their scope).
   for (const k of [
-    'arCode', 'name', 'taxId', 'customerType', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
+    'arCode', 'name', 'nameEn', 'taxId', 'customerType', 'branchCode', 'phone', 'address', 'shippingAddress', 'brands',  // mapFileUrl ย้ายไป attachments แล้ว
     'contactPerson', 'contactPhone', 'email', 'creditTerms', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
   ]) {
     if (body[k] !== undefined) {
-      updates[k] = (k === 'taxId' && body[k] === '') ? null : body[k];
+      // ช่องที่ "ว่าง = ยังไม่กรอก" ต้องลง null ไม่ใช่ '' — ไม่งั้น falsy เหมือนกัน
+      // แต่ค่าที่เก็บต่างกันสองแบบ แล้วการ์ด/ตาราง/ด่านตรวจต้องเช็คสองรูปตลอดไป
+      updates[k] = (['taxId', 'nameEn'].includes(k) && String(body[k]).trim() === '') ? null : body[k];
     }
   }
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
+  // ⭐ ชื่ออย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) — เทียบกับ **ค่าหลังแก้**
+  // ไม่ใช่ค่าที่ส่งมาอย่างเดียว: ฟอร์มส่งทั้งก้อนก็จริง แต่สายอื่นยิงคีย์เดียวได้
+  // (ลบชื่อไทยทิ้งโดยยังมีชื่ออังกฤษ = ผ่าน · ลบทิ้งทั้งคู่ = ตีกลับ)
+  const nameError = customerNameError({ ...customer, ...updates });
+  if (nameError) return Response.json({ error: nameError }, { status: 400 });
+
   // ที่อยู่ (0202): ลิสต์คือแหล่งความจริง; ที่อยู่หลัก → กระจกลงช่องเดี่ยวเดิม.
   // ผู้เรียกเก่าที่ยัง PATCH มาด้วย address/shippingAddress ยังใช้ได้ — แปลงขึ้นลิสต์
   // ให้ ไม่งั้นแก้ผ่านสายเก่าแล้วลิสต์ค้างค่าเดิม = ข้อมูลสองชุด
