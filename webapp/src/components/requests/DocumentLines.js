@@ -43,6 +43,9 @@ function rowTitle(row, index, vocabulary) {
 // ฝ่ายบัญชี — กฎของบรรทัดเหมือนกันทุกข้อ ต่างแค่ลิสต์ชนิด
 export default function DocumentLines({
   rows, onChange, disabled = false, vocabulary = REQUEST_DOC_VOCABULARY,
+  /* เนื้อเพิ่มของหัวข้อที่ครอบอยู่ — วางระหว่าง "ชนิดเอกสาร" กับ "รายละเอียด"
+     ⚠️ ตารางนี้ไม่รู้ว่ามันคืออะไร (ดูเหตุผลที่ `RequestLineFields`) */
+  detailExtra = null,
 }) {
   // ⚠️ จำเป็น **ตำแหน่ง** ไม่ใช่ id — บรรทัดยังไม่มี id จนกว่าจะบันทึก · ลบแถวแล้ว
   // ต้องเลื่อนตัวที่เลือกอยู่ให้ไม่ชี้ช่องว่าง (กันด้วย `Math.min` ตอนเรนเดอร์)
@@ -127,6 +130,8 @@ export default function DocumentLines({
                 }))}
               />
             </div>
+
+            {detailExtra}
 
             <div className="form-group col-span-2">
               <label htmlFor={`doc-spec-${at}`}>

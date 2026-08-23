@@ -10,7 +10,7 @@ import DocumentLines from "@/components/requests/DocumentLines";
 import ProductDevLines from "@/components/requests/ProductDevLines";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import { lineShapeForKind, requestHasPdr, requestKindMeta } from "@/lib/master/requestTypes";
-import { billAmountFor } from "@/lib/requests/billingQuotations";
+import { billAmountFor, billFieldInit } from "@/lib/requests/billingQuotations";
 import { fmtNumber } from "@/lib/format";
 import styles from "./requestForm.module.css";
 
@@ -151,6 +151,11 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
 export function RequestLineFields({
   kind, value = [], onChange, disabled = false,
   categories = [], scents = [], customerId = null,
+  /* ⭐ เนื้อเพิ่มในแผงรายละเอียดของบรรทัด (มติผู้ใช้ 2026-08-24) — ตอนนี้มีผู้ใช้
+     รายเดียวคือ "ยอดที่ขอวางบิล" ของ FN ที่ย้ายมาจากแท็บ "งาน"
+     ⚠️ รับเป็น **node ทึบ** ไม่ใช่ธง `showBillAmount` — ตารางบรรทัดไม่ควรรู้ว่ามัน
+     คือยอดหรืออะไร ไม่งั้นทุกครั้งที่มีของใหม่มาแปะ ต้องมาแก้ตารางกลางอีกรอบ */
+  detailExtra = null,
 }) {
   const lineShape = lineShapeForKind(kind);
   const copy = requestKindMeta(kind)?.form || {};
@@ -176,6 +181,7 @@ export function RequestLineFields({
           onChange={onChange}
           vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
           disabled={disabled}
+          detailExtra={detailExtra}
         />
       )}
     </div>
@@ -197,17 +203,18 @@ export function RequestBillAmountFields({
   /* ⚠️ โหมดเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ `billPercent`/`billAmount`
      ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
      ⭐ มาจากปุ่ม "ขอใบวางบิลงวดนี้" (B-5) = รู้ **จำนวนเงินของงวด** มาแล้ว ไม่ใช่ %
-     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount */
-  const [mode, setMode] = useState(
-    value?.billAmount != null && value?.billPercent == null ? "amount" : "percent",
-  );
+     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount
+     🐞 **โหมดกับตัวเลขต้องมาจากการตัดสินครั้งเดียวกัน** — เดิมแยกกันสองบรรทัด
+     (โหมดดู `billPercent` · ตัวเลขดู `billAmount`) ⇒ ใบที่เก็บทั้งคู่ (ทุกใบที่บันทึก
+     แล้ว) เปิดโหมดแก้ได้ยอดบาทไปนั่งในช่อง % · ตอนนี้อยู่ที่ `billFieldInit` ที่เดียว
+     พร้อมเทสต์ */
+  const [init] = useState(() => billFieldInit(value));
+  const [mode, setMode] = useState(init.mode);
   /* 🐞 **ตัวเลขที่พิมพ์ต้องค้างอยู่แม้ค่าไม่ผ่านด่าน** — รอบแรกช่องนี้อ่านค่าจาก
      `value.billAmount` ตรง ๆ ⇒ พิมพ์ยอดที่เกินยอดใบแล้วตัวเลขหายไปทั้งช่องพร้อมกับ
      ข้อความอธิบาย (เพราะ error คิดจากค่าที่ถูกล้างเป็น null ไปแล้ว) ⇒ ผู้ใช้เห็นแค่
      ช่องว่างกับปุ่มจาง · เก็บ "สิ่งที่พิมพ์" แยกจาก "ค่าที่ผ่านแล้ว" */
-  const [input, setInput] = useState(
-    value?.billAmount != null ? String(value.billAmount) : "",
-  );
+  const [input, setInput] = useState(init.input);
   const base = Number(baseAmount) || 0;
 
   // คิดจาก **สิ่งที่พิมพ์** ไม่ใช่ค่าที่ผ่านด่านแล้ว — ไม่งั้นค่าที่ไม่ผ่านจะไม่มี

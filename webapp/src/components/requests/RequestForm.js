@@ -290,6 +290,12 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
+  /* ใบเสนอราคาที่ใบนี้ยึด + ยอดเต็มของมัน — **ยกขึ้นมาระดับบนสุด** (2026-08-24)
+     เพราะช่อง "ยอดที่ขอวางบิล" ย้ายไปอยู่ในเนื้อของบรรทัด (แท็บ "รายละเอียด") แล้ว
+     แต่ตัวเลือกใบยังอยู่แท็บ "งาน" ⇒ สองแท็บต้องอ่านฐานยอดตัวเดียวกัน
+     ⚠️ โหมดแก้ไม่ได้โหลดทะเบียนใบมาทั้งชุด — ถอยไปใช้ฐานที่ประทับไว้บนคำร้อง */
+  const pickedQuotation = quotations.find((q) => q.id === value.quotationId) || null;
+  const billBase = Number(pickedQuotation?.totalAmount) || Number(billBaseAmount) || 0;
   // ⚠️ state ของช่อง "ยอดที่ขอวางบิล" ย้ายเข้าไปอยู่ใน `RequestBillAmountFields`
   // แล้ว (ของกลางที่ฝั่งแก้ใช้ร่วม) — ที่นี่เหลือแค่ส่ง `baseAmount` กับ `key` ให้
   // ไฟล์ใหญ่เกินเพดาน — ด่านอยู่ใน PendingFiles ที่เดียว ที่นี่แค่รับข้อความมาโชว์
@@ -552,9 +558,8 @@ export default function RequestForm({
       {needsQuotation && (() => {
         const options = billingQuotationOptions(quotations, { keepId: value.quotationId || null });
         const skipHint = billingQuotationSkipHint(billingQuotationSkips(quotations));
-        const picked = quotations.find((q) => q.id === value.quotationId) || null;
-        // โหมดแก้ไม่ได้โหลดทะเบียนใบมาทั้งชุด — ฐานยอดมาจากใบที่ประทับไว้บนคำร้อง
-        const base = Number(picked?.totalAmount) || Number(billBaseAmount) || 0;
+        const picked = pickedQuotation;
+        const base = billBase;
         /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
            ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
            (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
@@ -626,21 +631,14 @@ export default function RequestForm({
             <DerivedField label="AC (ผู้ประสานงาน)" from="เติมจากโครงการของดีล"
               value={projectOfDeal?.acOwner || ""} />
 
-            {/* ⚠️ **ช่องเดียวกับที่หน้ารายละเอียดใช้ตอนแก้** (`RequestBillAmountFields`)
-                — ยอดที่ขอเป็นช่องบังคับที่เคยแก้ไม่ได้หลังบันทึก (ผู้ใช้แจ้ง 2026-08-24)
-                ⚠️ `ready` = เลือกใบแล้วหรือยัง · ฐานยอดมาจากใบที่เลือก ไม่ใช่โหลดเอง */}
-            <RequestBillAmountFields
-              /* ⚠️ **`key` ผูกกับใบ** — ตัวเลขที่พิมพ์ค้างเป็น state ในตัวช่อง
-                 (ต้องค้างไว้แม้ค่าไม่ผ่านด่าน) ⇒ เปลี่ยนใบแล้วต้อง **remount** ไม่งั้น
-                 ยอดของใบเก่าค้างอยู่ในช่องทั้งที่ฐานเปลี่ยนไปแล้ว · remount ตรงกับ
-                 กติกาของรีโปที่ห้าม sync ด้วย effect (มันกระโดดใต้มือคนที่กำลังพิมพ์) */
-              key={value.quotationId || "no-quotation"}
-              value={value}
-              onChange={onChange}
-              baseAmount={base}
-              disabled={disabled}
-              ready={!!picked}
-            />
+            {/* ⚠️ **ช่อง "ยอดที่ขอวางบิล" ไม่อยู่แท็บนี้แล้ว** (มติผู้ใช้ 2026-08-24:
+                *"ยอดที่ขอวางบิล ไปอยู่ในรายละเอียดรายการมั้ย ทุกใบมียอดอยู่แล้ว"*)
+                — มันย้ายไปอยู่ในเนื้อของบรรทัดในแท็บ "รายละเอียด" ติดกับเอกสารที่ขอ
+                ⚠️ **ยอดยังเป็นของทั้งใบ ไม่ใช่รายบรรทัด** (ไม่ได้ย้ายโมเดล) — ใบวางบิล
+                กับใบกำกับภาษีของงวดเดียวกันคือเงินก้อนเดียว · ที่ทำได้ตอนนี้เพราะทุกใบ
+                มีบรรทัดเดียว (นับ prod 2026-08-24: 9/9 ใบ) ⇒ วางในบรรทัดแล้วไม่กำกวม
+                ⛔ อยากได้ยอดคนละก้อนต่อบรรทัด (ขอหลายงวดในใบเดียว) = migration + ต้อง
+                   ทบทวนการกระทบยอดกับ /finance ก่อน — ห้ามแอบเปลี่ยนที่นี่ */}
           </div>
         );
       })()}
@@ -1004,6 +1002,25 @@ export default function RequestForm({
         scents={scents}
         customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
         disabled={disabled}
+        /* ⭐ ยอดที่ขอวางบิลไปอยู่ในเนื้อของบรรทัด (มติผู้ใช้ 2026-08-24) — ส่งเป็น
+           node ทึบ ๆ ลงไป ตารางบรรทัดไม่ต้องรู้ว่ามันคือยอดหรืออะไร ⇒ หัวข้ออื่น
+           ที่ใช้ตารางเดียวกัน (ขอเอกสารของ RD) ไม่ได้อะไรเพิ่มมา */
+        detailExtra={needsQuotation ? (
+          <RequestBillAmountFields
+            /* ⚠️ **`key` ผูกกับใบ** — ตัวเลขที่พิมพ์ค้างเป็น state ในตัวช่อง
+               (ต้องค้างไว้แม้ค่าไม่ผ่านด่าน) ⇒ เปลี่ยนใบแล้วต้อง **remount** ไม่งั้น
+               ยอดของใบเก่าค้างอยู่ในช่องทั้งที่ฐานเปลี่ยนไปแล้ว · remount ตรงกับ
+               กติกาของรีโปที่ห้าม sync ด้วย effect (มันกระโดดใต้มือคนที่กำลังพิมพ์) */
+            key={value.quotationId || "no-quotation"}
+            value={value}
+            onChange={onChange}
+            baseAmount={billBase}
+            disabled={disabled}
+            /* ⚠️ โหมดแก้: ใบถูกล็อกไว้แล้วและไม่ได้โหลดทะเบียนมา ⇒ `pickedQuotation`
+               เป็น null เสมอ · ถือว่าพร้อมเมื่อมีฐานยอดจริง ไม่ใช่เมื่อหาใบเจอ */
+            ready={!!pickedQuotation || billBase > 0}
+          />
+        ) : null}
       />
       </div>
       )}

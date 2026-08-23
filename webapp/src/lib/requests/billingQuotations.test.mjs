@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  billAmountFor, billingQuotationError, billingQuotationOptions,
+  billAmountFor, billFieldInit, billingQuotationError, billingQuotationOptions,
   billingQuotationSkipHint, billingQuotationSkips, resolveBillAmount,
 } from './billingQuotations.js';
 
@@ -128,4 +128,40 @@ test('ฝั่ง server: ด่านตรวจที่ยอด ไม่�
   assert.match(resolveBillAmount({ amount: 50, baseAmount: 0 }).error, /ไม่มียอดให้วางบิล/);
   // เต็มจำนวนได้ — ขอใบกำกับเต็มยอดเป็นเรื่องปกติ
   assert.equal(resolveBillAmount({ percent: 100, amount: 100, baseAmount: 100 }).percent, 100);
+});
+
+/* ── ค่าตั้งต้นของช่องยอด (บั๊กที่ผู้ใช้เจอ 2026-08-24) ────────────────────── */
+test('⭐ ใบที่เก็บทั้ง % และจำนวนเงิน — ช่องต้องเปิดเป็น % พร้อมเลข %', () => {
+  // 🐞 ของเดิมได้ mode 'percent' แต่เติม "49998.96" (ยอดบาท) ลงช่องเปอร์เซ็นต์
+  // ⇒ เปิดโหมดแก้แล้วขึ้น error "สัดส่วนที่ขอต้องอยู่ระหว่าง 0–100%" ทั้งที่ไม่มีใครพิมพ์
+  assert.deepEqual(
+    billFieldInit({ billPercent: 50, billAmount: 49998.96 }),
+    { mode: 'percent', input: '50' },
+  );
+});
+
+test('รู้จำนวนเงินอย่างเดียว (ปุ่ม "ขอใบวางบิลงวดนี้") = โหมดจำนวนเงิน', () => {
+  assert.deepEqual(
+    billFieldInit({ billPercent: null, billAmount: 90508.125 }),
+    { mode: 'amount', input: '90508.125' },
+  );
+});
+
+test('ใบใหม่ที่ยังไม่มีค่าอะไรเลย = % และช่องว่าง', () => {
+  assert.deepEqual(billFieldInit({}), { mode: 'percent', input: '' });
+  assert.deepEqual(billFieldInit(), { mode: 'percent', input: '' });
+});
+
+test('ค่าที่เติมกลับเข้าช่อง ต้องคิดกลับได้ยอดเดิม — ไม่ใช่แค่รูปแบบถูก', () => {
+  const stored = { billPercent: 50, billAmount: 49998.96 };
+  const init = billFieldInit(stored);
+  const back = billAmountFor({
+    mode: init.mode,
+    percent: init.mode === 'percent' ? init.input : null,
+    amount: init.mode === 'amount' ? init.input : null,
+    baseAmount: 99997.92,
+  });
+  assert.equal(back.error, null);
+  assert.equal(back.amount, stored.billAmount);
+  assert.equal(back.percent, stored.billPercent);
 });
