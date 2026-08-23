@@ -42,14 +42,14 @@
   /* หัวกับบรรทัดรองต่างกันหนึ่งขั้น — ทรงเดียวกับ tooltip ของกราฟ (ChartCard) */
   font-size: var(--fs-5);
   font-weight: var(--fw-semibold);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 /* บรรทัดรอง — ข้อความยาว (ชื่อคนถือใบ · วันที่ปิด) ตกบรรทัดได้ในกรอบ 280px */
 .note {
   color: var(--text-2);
   font-size: var(--fs-4);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
 }
 
 /* กล่องที่ไม่มีหัว — ข้อความของเซลล์ที่ถูกตัด กล่องนี้คือ "ของจริงเต็ม ๆ"
@@ -59,7 +59,7 @@
 .plain {
   color: var(--text);
   font-size: var(--fs-5);
-  line-height: 1.45;
+  line-height: var(--lh-thai);
   overflow-wrap: anywhere;
   /* ขึ้นบรรทัดตามที่ตาเห็นในเซลล์ (ดู `tipFor` ใน Tooltip.js) */
   white-space: pre-line;
