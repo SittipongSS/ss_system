@@ -156,7 +156,35 @@ export default function RequestForm({
   // ปุ่มที่อยู่ติดช่องหัวข้อ — { label, onClick } · ผู้เรียกตัดสินว่าเป็น "แสดงฟอร์ม"
   // หรือ "เปลี่ยนหัวข้อ" เพราะมันเป็นเรื่องของสองขั้นในหน้านั้น ไม่ใช่กฎของฟอร์ม
   topicAction = null,
+  /* ⭐ **โหมด ไม่ใช่คนละฟอร์ม** (กฎ AGENTS.md · มติผู้ใช้ 2026-08-24: "หน้าแก้
+     ไม่เหมือนหน้าสร้างหรอ … ทุกๆหัวข้อ") — หน้ารายละเอียดเคยประกอบการ์ดแก้ของตัวเอง
+     จากช่องกลางไม่กี่ช่อง ⇒ ได้ฟอร์มที่ **ไม่มีแท็บ ไม่มีเกจ ลำดับช่องคนละแบบ**
+     ทั้งที่คนกดเพิ่งกรอกฟอร์มสร้างมา · ตอนนี้ทั้งสองทางเรียกไฟล์นี้ตัวเดียวกัน
+     ต่างกันแค่ props ตามที่กฎอนุญาต
+     ⚠️ สิ่งที่โหมดแก้ต่างออกไป **มีเหตุผลด้านข้อมูลทุกข้อ** ไม่ใช่ความสะดวก:
+       · ของที่ `needs` (ดีล · ใบสั่งขาย · ใบเสนอราคา) = ต้นทางที่ลูกค้า/ดีล/ฐานยอด
+         ถูก derive มาแล้ว ⇒ เทาไว้ให้อ่าน **ไม่ซ่อน** (แพตเทิร์น `locked` เดียวกับ
+         ฟอร์มส่งงานของ RD)
+       · ไฟล์แนบมีการ์ดของตัวเองบนหน้ารายละเอียด (แนบได้จริง มี entityId แล้ว) ⇒
+         ช่อง `PendingFiles` ของฝั่งสร้างไม่มีความหมายที่นี่
+       · ทีมเจ้าของใบย้ายคิว ⇒ เป็นงานของปุ่ม "มอบหมาย" ไม่ใช่ฟอร์มแก้ */
+  mode = "create",
+  /* ป้ายของสิ่งที่ล็อกไว้ในโหมดแก้ — `{ deal, project, customer, quotation, salesOrder }`
+     ⚠️ รับเป็น **ป้ายสำเร็จรูป** ไม่ใช่ให้ฟอร์มไปหาจากลิสต์ — หน้ารายละเอียดรู้คำตอบ
+     อยู่แล้ว (`refDeal`/`refQuotation`…) การบังคับให้โหลดทะเบียนทั้งชุดมาเพื่อแปล id
+     เป็นชื่อ คือ N ครั้งของ query ที่ไม่ได้ใช้ทำอะไรอีกเลย */
+  lockedRefs = {},
+  // ฐานยอดวางบิลตอนที่ใบถูกล็อก QT ไว้แล้ว (โหมดแก้) — ฝั่งสร้างอ่านจากใบที่เพิ่งเลือก
+  billBaseAmount = null,
+  /* ⭐ **แบบฟอร์ม PDR มีด่านของตัวเอง และสลับมือคนละจังหวะกับหัวใบ** —
+     `_canEdit` เป็นของผู้ขอถึงก่อน "รับเรื่อง" · `_canEditPdr` ย้ายไปฝ่ายปลายทาง
+     ตอนรับเรื่อง ⇒ มีขั้นที่คนคนหนึ่งแก้ได้แค่ส่วนเดียว
+     ⚠️ ต้อง **เทาส่วนที่แก้ไม่ได้ ไม่ใช่ซ่อน** — ซ่อนแล้วอีกฝั่งจะไม่รู้ว่าของที่ตัวเอง
+     มองหาอยู่ไหน · และห้ามปล่อยให้พิมพ์ได้ทั้งที่บันทึกไม่ผ่าน (พิมพ์แล้วหายเงียบ)
+     ค่าตั้งต้น = ตามทั้งฟอร์ม ⇒ ฝั่งสร้างไม่ต้องรู้จักพร็อพนี้ */
+  pdrDisabled = null,
 }) {
+  const isEdit = mode === "edit";
   const set = (patch) => onChange({ ...value, ...patch });
   /* ทีมของคนเปิดใบ — มาจาก `me` (/api/users/me) ไม่ใช่ context เพราะฟอร์มนี้ถูกใช้
      ทั้งในหน้าเปิดคำร้องและโมดัลของหน้าอื่น ซึ่งส่ง `me` มาให้อยู่แล้ว */
@@ -174,7 +202,15 @@ export default function RequestForm({
 
   // ช่องที่ต้องกรอกมาจากทะเบียนหัวข้อที่เดียว — ห้ามเขียน `kind === "..."` ในฟอร์ม
   // (ธงเพี้ยนจาก server ไม่ได้ เพราะอ่านตัวเดียวกัน)
-  const needsProject = requestNeedsRef(kind, "project");
+  /* 🐞 **เคยถาม `'project'` ทั้งที่หัวข้อประกาศ `'deal'`** — #1385 ถอด `'project'`
+     ออกจาก `needs` ของ ขอเอกสาร/พัฒนาสูตร/สอบถามข้อมูล (ดีลลอยเปิดคำร้องได้แล้ว)
+     แต่ฟอร์มยังเปิดบล็อกดีลด้วยธงเก่า ⇒ **สามหัวข้อนั้นไม่มีช่องดีลบนจอเลย** ทั้งที่
+     เกจขึ้น "ยังขาด: ดีล" และปุ่มบันทึกจางพร้อมข้อความ "ต้องเลือกดีลที่เกี่ยวข้อง"
+     = สั่งให้ทำสิ่งที่หน้าจอไม่มีให้ทำ · เปิดใบสามหัวข้อนี้ไม่ได้เลยสักใบ
+     ⚠️ ธงของช่องต้องเป็น **ตัวเดียวกับที่ด่านใช้** — `requestShapeError` ถาม
+     `needs.includes('deal')` ⇒ ฟอร์มต้องถามคำเดียวกัน (เทสต์คุมไว้ที่
+     `requestFields.test.mjs`) */
+  const needsDeal = requestNeedsRef(kind, "deal");
   const needsSalesOrder = requestNeedsRef(kind, "salesOrder");
   // ⭐ หัวข้อที่ยึด **ใบเสนอราคา** เป็นต้นทาง (ม-ค) — ไม่มีช่องดีลให้เลือก
   const needsQuotation = requestNeedsRef(kind, "quotation");
@@ -517,7 +553,8 @@ export default function RequestForm({
         const options = billingQuotationOptions(quotations, { keepId: value.quotationId || null });
         const skipHint = billingQuotationSkipHint(billingQuotationSkips(quotations));
         const picked = quotations.find((q) => q.id === value.quotationId) || null;
-        const base = Number(picked?.totalAmount) || 0;
+        // โหมดแก้ไม่ได้โหลดทะเบียนใบมาทั้งชุด — ฐานยอดมาจากใบที่ประทับไว้บนคำร้อง
+        const base = Number(picked?.totalAmount) || Number(billBaseAmount) || 0;
         /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
            ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
            (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
@@ -526,6 +563,20 @@ export default function RequestForm({
         const projectOfDeal = projects.find((p) => p.id === dealOfQt?.projectId) || null;
         return (
           <div className="form-grid cols-2">
+            {isEdit ? (
+              /* ⚠️ **เปลี่ยนใบไม่ได้หลังบันทึก** — ดีล ลูกค้า และฐานยอดของใบนี้ถูก
+                 derive จากใบเสนอราคาไปแล้ว · เปลี่ยนใบ = เปลี่ยนทั้งสามอย่างพร้อมกัน
+                 ซึ่งเป็นด่านที่ POST ถืออยู่ ⇒ ผูกผิดให้ลบร่างแล้วเปิดใหม่ */
+              <div className="form-group col-span-2">
+                <DerivedField
+                  label="ใบเสนอราคา (QT)" from="ผูกไว้ตอนเปิดใบ"
+                  value={lockedRefs.quotation || ""}
+                />
+                <small className={styles.hint}>
+                  เปลี่ยนใบเสนอราคาทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+                </small>
+              </div>
+            ) : (
             <div className="form-group col-span-2">
               <span className={styles.fieldLabel}>ใบเสนอราคา (QT)</span>
               <SearchableSelect
@@ -559,11 +610,13 @@ export default function RequestForm({
                   คือด่านที่คนหาทางอ้อม (กฎเดียวกับใบสั่งขายของบรีฟกลิ่น) */}
               {skipHint && <small className={styles.hint}>{skipHint}</small>}
             </div>
+            )}
 
+            {/* ⚠️ โหมดแก้ไม่ได้โหลดทะเบียนใบ/ดีลมา — ป้ายมาจากใบที่ server ประกอบให้แล้ว */}
             <DerivedField label="ลูกค้า" from="เติมจากใบเสนอราคา"
-              value={picked?.customerName || dealOfQt?.customerName || ""} />
+              value={picked?.customerName || dealOfQt?.customerName || lockedRefs.customer || ""} />
             <DerivedField label="ดีล" from="เติมจากใบเสนอราคา"
-              value={dealOfQt?.title || ""} />
+              value={dealOfQt?.title || lockedRefs.deal || ""} />
             {/* ⭐ AE/AC **ห้ามพิมพ์เอง** (ม-ค) — ในข้อความแชทเขียนมือทุกครั้งแล้วสะกด
                 ไม่ตรงกัน · AE = เจ้าของดีล · AC = ผู้ประสานงานโครงการ (mig 0255)
                 ⚠️ AC ว่างได้ — ดีลที่ยังไม่ผูกโครงการไม่มีผู้ประสานงาน และหัวข้อนี้
@@ -591,7 +644,7 @@ export default function RequestForm({
           </div>
         );
       })()}
-      {needsProject && (
+      {needsDeal && (
       <div className="form-grid cols-2">
       <div className="form-group col-span-2">
         <span className={styles.fieldLabel}>ดีล</span>
@@ -600,6 +653,17 @@ export default function RequestForm({
             อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ
             ⚠️ ในแผงค้นด้วย **ชื่อลูกค้า** ได้ (`dealSearchText` รวม customerName) —
             คนที่คิดจากลูกค้าก่อนพิมพ์ชื่อลูกค้าลงช่องค้นได้เลย ไม่ต้องมีช่องแยก */}
+        {isEdit ? (
+          /* ⚠️ **เปลี่ยนดีลไม่ได้หลังบันทึก** — ลูกค้า โครงการ และขอบเขตทีมของใบนี้
+             derive มาจากดีลแล้ว · เขียนด่านย้ายดีลใหม่ที่นี่ = มีสองชุดกฎที่ต้องคอย
+             ให้ตรงกับ POST ตลอดไป ⇒ ผูกผิดให้ลบร่างแล้วเปิดใหม่ */
+          <>
+            <DerivedField label="ดีล" from="ผูกไว้ตอนเปิดใบ" value={lockedRefs.deal || ""} />
+            <small className={styles.hint}>
+              เปลี่ยนดีลทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+            </small>
+          </>
+        ) : (
         <DealPicker
           deals={deals}
           projects={projects}
@@ -609,6 +673,7 @@ export default function RequestForm({
           placeholder="เลือกดีลของคำร้อง"
           ariaLabel="ดีลของคำร้อง"
         />
+        )}
         {/* ⭐ ดีลลอยเปิดคำร้องได้แล้ว (2026-08-24 — `needs` ไม่มี `'project'` อีก) ·
             เดิมตรงนี้เป็นคำเตือนว่าเปิดไม่ได้ · ตอนนี้เหลือแค่บอกว่าใบนี้จะยังไม่
             เกาะโครงการไหน ซึ่งเป็นข้อเท็จจริง ไม่ใช่ด่าน (โครงการจะถูกเติมย้อนหลัง
@@ -626,13 +691,14 @@ export default function RequestForm({
           server จะเขียนจริง ไม่ใช่ช่องให้แก้ (`requestPayload` ไม่ส่งสองค่านี้เลย) */}
       <DerivedField
         label="ลูกค้า" from="เติมจากดีลที่เลือก"
-        value={selectedDeal?.customerName || ""}
+        value={selectedDeal?.customerName || lockedRefs.customer || ""}
       />
       <DerivedField
         label="โครงการ" from="เติมจากดีลที่เลือก"
         value={(() => {
           const project = projects.find((p) => p.id === selectedDeal?.projectId);
-          return project ? `${project.code ? `${project.code} — ` : ""}${project.name || project.id}` : "";
+          if (project) return `${project.code ? `${project.code} — ` : ""}${project.name || project.id}`;
+          return lockedRefs.project || "";
         })()}
       />
 
@@ -766,6 +832,20 @@ export default function RequestForm({
           แล้วขัดกันเอง (SO ของดีล A แต่เลือกดีล B) */}
       {needsSalesOrder && (
         <div className="form-grid cols-2">
+            {isEdit ? (
+              /* ⚠️ **เปลี่ยนใบสั่งขายไม่ได้หลังบันทึก** — จำนวนบล็อกบรีฟงอกตามจำนวน
+                 กลิ่นที่ใบนั้นขาย และ 1 SO : 1 PDR เป็นด่านของ POST ⇒ เปลี่ยนที่นี่
+                 แปลว่าบรีฟที่เขียนไปแล้วต้องถูกล้างทิ้งเงียบ ๆ */
+              <div className="form-group col-span-2">
+                <DerivedField
+                  label="ใบสั่งขายออกแบบกลิ่น" from="ผูกไว้ตอนเปิดใบ"
+                  value={lockedRefs.salesOrder || ""}
+                />
+                <small className={styles.hint}>
+                  เปลี่ยนใบสั่งขายทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+                </small>
+              </div>
+            ) : (
             <div className="form-group col-span-2">
               <span className={styles.fieldLabel}>ใบสั่งขายออกแบบกลิ่น *</span>
               <SearchableSelect
@@ -811,13 +891,16 @@ export default function RequestForm({
                   ].filter(Boolean).join(" · ")}
               </small>
             </div>
+            )}
             <DerivedField
               label="ลูกค้า" from="เติมจาก SO"
-              value={selectedSo?.customerName || ""}
+              value={selectedSo?.customerName || lockedRefs.customer || ""}
             />
             <DerivedField
               label="ดีล" from="เติมจาก SO"
-              value={soDeal ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}` : ""}
+              value={soDeal
+                ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}`
+                : (lockedRefs.deal || "")}
             />
         </div>
       )}
@@ -919,7 +1002,7 @@ export default function RequestForm({
         onChange={(rows) => set({ items: rows })}
         categories={productTypes}
         scents={scents}
-        customerId={selectedDeal?.customerId || null}
+        customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
         disabled={disabled}
       />
       </div>
@@ -956,7 +1039,7 @@ export default function RequestForm({
             onBriefsChange={(briefs) => set({ briefs })}
             targets={value.pdrTargets || []}
             onTargetsChange={(pdrTargets) => set({ pdrTargets })}
-            disabled={disabled}
+            disabled={pdrDisabled == null ? disabled : pdrDisabled}
             /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
                เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)
                ⚠️ `scentCount` ของหน้านี้คำนวณสด ๆ จากใบสั่งขายที่เพิ่งเลือก จึงทับของใน
@@ -974,13 +1057,18 @@ export default function RequestForm({
 
         {/* ทีมเจ้าของคำร้อง — โผล่เฉพาะคนที่อยู่หลายทีม (มติ 2026-08-11)
             คำถามเชิง "ความรับผิดชอบ" จึงอยู่ท้ายฟอร์มตามกติกาลำดับช่องข้อ 4 */}
+        {/* ⚠️ โหมดแก้: **เทาไว้ให้อ่าน ไม่ซ่อน** — ย้ายใบข้ามคิวทีมเป็นงานของปุ่ม
+            "มอบหมาย" ซึ่งลงเธรดและแจ้งเตือนคนที่เกี่ยวข้อง · ปล่อยให้เปลี่ยนเงียบ ๆ
+            ผ่านฟอร์มแก้เมื่อไร ใบจะหายจากคิวของทีมเดิมโดยไม่มีใครรู้ */}
         <TeamPickerField
           teams={myTeams}
           value={myTeams.includes(value.team) ? value.team : (myTeam || myTeams[0])}
           onChange={(team) => set({ team })}
-          disabled={disabled}
+          disabled={disabled || isEdit}
           label="ทีมเจ้าของคำร้อง"
-          hint="คำร้องใบนี้จะเข้าคิวของทีมที่เลือก"
+          hint={isEdit
+            ? 'ย้ายคิวทีมด้วยปุ่ม "มอบหมาย" บนแผงจัดการ — ที่นี่แก้ไม่ได้'
+            : "คำร้องใบนี้จะเข้าคิวของทีมที่เลือก"}
         />
 
       {/* ── แนบไฟล์ + กล่าวถึง (ทำงานเหมือนกล่องพิมพ์ในเธรด) ────────────────
@@ -990,6 +1078,19 @@ export default function RequestForm({
           พร้อม @ ด้วยธง `deferAttachments` ทั้งที่กลไกอัปมีอยู่แล้ว
           ⚠️ @ ยังซ่อนตอนร่าง (`deferMentions`) — แจ้งเตือนออกตอนกดส่ง ไม่ใช่ตอน
           บันทึกร่าง โชว์ไว้จะเป็นช่องที่กรอกแล้วไม่เกิดอะไรในจังหวะที่คนคาดว่าเกิด */}
+        {isEdit ? (
+          /* ⚠️ **โหมดแก้ไม่มีช่องนี้ เพราะไฟล์แนบได้จริงอยู่แล้ว** — `PendingFiles`
+             เป็นที่พักไฟล์ของ *ฝั่งสร้าง* ตอนที่ใบยังไม่มี id (ผู้เรียกอัปให้หลังบันทึก)
+             · ใบที่บันทึกแล้วมี `AttachmentsPanel` ของตัวเองบนหน้ารายละเอียด ซึ่งอัป/ลบ
+             ได้ทันที ⇒ วางช่องนี้ซ้ำ = ไฟล์สองที่ที่คนต้องเดาว่าอันไหนของจริง */
+          <div className="form-group col-span-2">
+            <span className={styles.fieldLabel}>แนบไฟล์</span>
+            <small className={styles.hint}>
+              แนบ/ลบไฟล์ได้ที่การ์ด &quot;ไฟล์แนบของคำร้อง&quot; ด้านล่างของหน้านี้ — ใบนี้บันทึกแล้ว
+              ไฟล์จึงขึ้นทันทีโดยไม่ต้องรอกดบันทึก
+            </small>
+          </div>
+        ) : (
         <div className="form-group col-span-2">
           <span className={styles.fieldLabel}>แนบไฟล์</span>
           {/* ⭐ ใช้ `ui/PendingFiles` ของกลาง (มติผู้ใช้ 2026-08-09: "ดูรูปแบบที่อื่น ๆ
@@ -1006,6 +1107,7 @@ export default function RequestForm({
           />
           {fileError && <small className="text-[var(--red)] text-[13px]">{fileError}</small>}
         </div>
+        )}
 
         {!deferMentions && (
         <div className="form-group col-span-2">

@@ -15,12 +15,12 @@ import {
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
+import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
-import { requestOptionalRefs } from '@/lib/master/requestTypes';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import {
   deptForRequest, requestDeptError,
@@ -242,53 +242,16 @@ export async function POST(request) {
   // ⚠️ หัวข้อที่ **ต้อง** อ้าง QT ผ่านด่านของตัวเองไปแล้วข้างบน (ม-ค) — เก็บค่าไว้
   // ตรงนี้ด้วย ไม่งั้นแถวจะบันทึกโดยไม่มี `quotationId` ทั้งที่เป็นต้นทางของทั้งใบ
   let quotationId = requestNeedsRef(kind, 'quotation') ? body.quotationId : null;
-  let optionalSalesOrderId = null;
-  let refProduct = null;
-  const optionalRefs = requestOptionalRefs(kind);
-  if (optionalRefs.includes('quotation') && body.quotationId) {
-    const { data: qt, error: qtError } = await supabase
-      .from('quotations').select('id, "dealId"').eq('id', body.quotationId).maybeSingle();
-    if (qtError) return Response.json({ error: qtError.message }, { status: 500 });
-    if (!qt) return Response.json({ error: 'ไม่พบใบเสนอราคาที่อ้างถึง' }, { status: 400 });
-    if (dealId && qt.dealId && qt.dealId !== dealId) {
-      return Response.json({ error: 'ใบเสนอราคาที่อ้างไม่ใช่ของดีลนี้' }, { status: 400 });
-    }
-    quotationId = qt.id;
-  }
-  if (optionalRefs.includes('salesOrder') && !requestNeedsRef(kind, 'salesOrder') && body.salesOrderId) {
-    const { data: so, error: soRefError } = await supabase
-      .from('sales_orders').select('id, "dealId"').eq('id', body.salesOrderId).maybeSingle();
-    if (soRefError) return Response.json({ error: soRefError.message }, { status: 500 });
-    if (!so) return Response.json({ error: 'ไม่พบใบสั่งขายที่อ้างถึง' }, { status: 400 });
-    if (dealId && so.dealId && so.dealId !== dealId) {
-      return Response.json({ error: 'ใบสั่งขายที่อ้างไม่ใช่ของดีลนี้' }, { status: 400 });
-    }
-    optionalSalesOrderId = so.id;
-  }
-  if (optionalRefs.includes('product')) {
-    // ⭐ FG **หลายรายการ** (ม-89) — ตรวจทุกตัวว่ามีจริง แล้วเก็บ snapshot
-    // [{ id, label }] เอง (ชื่อจากแถวจริง ไม่รับจาก client — ทะเบียนเปลี่ยนชื่อ
-    // ทีหลัง ใบเก่ายังอ่านออกว่าตอนนั้นอ้างอะไร) · FG ไม่ผูกดีล จึงไม่เทียบดีล
-    const wanted = [...new Set((Array.isArray(body.productIds) ? body.productIds : [])
-      .concat(body.productId ? [body.productId] : []).filter(Boolean))];
-    if (wanted.length > 20) {
-      return Response.json({ error: 'อ้างสินค้า (FG) ได้ไม่เกิน 20 รายการ' }, { status: 400 });
-    }
-    if (wanted.length) {
-      const { data: fgs, error: fgError } = await supabase
-        .from('products').select('id, "fgCode", "productDescription"').in('id', wanted);
-      if (fgError) return Response.json({ error: fgError.message }, { status: 500 });
-      const byId = new Map((fgs || []).map((f) => [f.id, f]));
-      const missing = wanted.filter((id) => !byId.has(id));
-      if (missing.length) {
-        return Response.json({ error: 'ไม่พบสินค้า (FG) ที่อ้างถึงบางรายการ' }, { status: 400 });
-      }
-      refProduct = wanted.map((id) => {
-        const fg = byId.get(id);
-        return { id, label: [fg.fgCode, fg.productDescription].filter(Boolean).join(' · ') || id };
-      });
-    }
-  }
+  /* ⚠️ **ตัวเดียวกับทางแก้ใบ** (`PATCH action: 'update'`) — ฟอร์มแก้กางช่อง QT/SO/FG
+     ชุดเดียวกันนี้ (มติผู้ใช้ 2026-08-24 "หน้าแก้ต้องเหมือนหน้าสร้าง") ⇒ ด่านต้องเป็น
+     ก้อนเดียว ไม่งั้นสร้างผ่านแต่แก้ไม่ผ่าน (หรือแย่กว่า: แก้ผ่านทั้งที่สร้างไม่ผ่าน) */
+  const { patch: refPatch, error: refError } = await resolveOptionalRefs(supabase, kind, body, { dealId });
+  if (refError) return Response.json({ error: refError }, { status: 400 });
+  // `quotationId` ของหัวข้อที่ **ยึด QT เป็นต้นทาง** ถูกตั้งไปแล้วข้างบน — helper
+  // ไม่แตะคีย์นั้น (มันคุมเฉพาะ "อ้างอิงเพิ่ม") จึงเขียนทับได้เฉพาะเมื่อ helper ตอบมา
+  if (refPatch.quotationId !== undefined) quotationId = refPatch.quotationId;
+  const optionalSalesOrderId = refPatch.salesOrderId ?? null;
+  const refProduct = refPatch.productRefs?.length ? refPatch.productRefs : null;
 
   // หัวข้อขอราคา F/FB ไม่ผูกดีล → ลูกค้ามาจาก **กลิ่น/สูตร** ที่อ้างถึงแทน
   // (กลิ่นมี customerId NOT NULL เสมอ ตามมติ 9 — กลิ่นของลูกค้า A ใช้กับ B ไม่ได้)

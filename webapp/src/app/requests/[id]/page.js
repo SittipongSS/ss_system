@@ -30,9 +30,7 @@ import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
-import {
-  RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
-} from "@/components/requests/RequestEditableFields";
+import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -121,9 +119,20 @@ export default function RequestDetailPage() {
   const [loadError, setLoadError] = useState("");
   // ก้าวของแถว — { item, hop, outcome, at, dueAt, confirmedQty, note }
   const [hopDraft, setHopDraft] = useState(null);
-  // ⭐ โหมดแก้ PDR — null = อ่านอย่างเดียว · object = กำลังแก้ (มติผู้ใช้ 2026-08-06)
-  // สิทธิ์สลับมือที่จังหวะ "รับเรื่อง" — server เป็นคนตัดสิน (`_canEditPdr`)
-  const [pdrDraft, setPdrDraft] = useState(null);
+  /* ทะเบียนที่ **ฟอร์มแก้** ต้องใช้ — ช่อง "อ้างอิงเพิ่ม" (QT/SO/FG) ของหัวข้อที่มี
+     ⚠️ **โหลดตอนกดแก้เท่านั้น** — ใบส่วนใหญ่ถูกเปิดอ่านอย่างเดียว การลากทะเบียน
+     ใบเสนอราคา/ใบสั่งขาย/สินค้าทั้งชุดมาทุกครั้งที่เปิดใบ คือ 3 query ที่ไม่ได้ใช้
+     ⚠️ โหลดครั้งเดียวต่อการเปิดหน้า (ธง `loaded`) — กดแก้/ยกเลิกสลับไปมาไม่ยิงซ้ำ */
+  const [editRefs, setEditRefs] = useState({
+    loaded: false, quotations: [], salesOrders: [], products: [],
+  });
+
+  /* ⭐ **โหมดแก้มีสถานะเดียว** (มติผู้ใช้ 2026-08-24) — เดิมแยกเป็น `editDraft`
+     (หัวใบ) กับ `pdrDraft` (แบบฟอร์ม) คนละก้อน คนละที่วาง ⇒ หน้าแก้ไม่เหมือนหน้าสร้าง
+     เลยสักหัวข้อ · ตอนนี้เป็นค่าของ `RequestForm` ก้อนเดียวกับตอนเปิดใบ
+     ⚠️ สิทธิ์ยัง **สลับมือคนละจังหวะ** อยู่ (หัวใบ = ผู้ขอ ถึงก่อนรับเรื่อง ·
+     PDR = ฝ่ายปลายทาง หลังรับเรื่อง) ⇒ ก้อนเดียวแต่ยิงสอง action ตามเดิม
+     และเทาส่วนที่คนนี้แก้ไม่ได้ผ่าน `disabled`/`pdrDisabled` */
   /* ทะเบียนหมวดสินค้า — ฟอร์ม PDR (โหมดแก้) ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
      ⚠️ โหลดเสมอ ไม่รอให้กดแก้ — โหลดตอนกดจะได้ดรอปดาวน์ว่างในวินาทีแรก */
   const [productTypes, setProductTypes] = useState([]);
@@ -227,6 +236,23 @@ export default function RequestDetailPage() {
       .then((d) => setScentOptions(Array.isArray(d) ? d : []))
       .catch(() => setScentOptions([]));
   }, [req?.customerId, req?.kind]);
+
+  /* โหลดทะเบียนของช่อง "อ้างอิงเพิ่ม" ครั้งแรกที่เปิดโหมดแก้
+     ⚠️ ล้มแล้วไม่โยน — ช่องอ้างอิงเป็นของ "ถ้ามี" · ดรอปดาวน์ว่างดีกว่าฟอร์มไม่ขึ้น */
+  useEffect(() => {
+    if (!editDraft || editRefs.loaded) return;
+    const get = (url) => fetch(url, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => (Array.isArray(d) ? d : []))
+      .catch(() => []);
+    Promise.all([
+      get("/api/sales-planning/quotations"),
+      get("/api/sales-planning/sales-orders"),
+      get("/api/products"),
+    ]).then(([quotations, salesOrders, products]) => setEditRefs({
+      loaded: true, quotations, salesOrders, products,
+    }));
+  }, [editDraft, editRefs.loaded]);
 
   useEffect(() => {
     if (req?.kind !== "scent_dev") { setAllScents([]); return; }
@@ -615,10 +641,8 @@ export default function RequestDetailPage() {
      ต้องหลบไป เหลือแค่ "บันทึกแบบฟอร์ม / ยกเลิก" ซึ่งเป็นสองทางเดียวที่ออกจากโหมดนี้ได้
      ⚠️ ปล่อยให้ปุ่มอื่นค้างไว้ = กด "ส่งคำร้อง" ระหว่างที่ยังไม่บันทึกฟอร์ม แล้วของที่
      พิมพ์ค้างหายเงียบ ๆ */
-  const editingPdr = !!pdrDraft;
-  // โหมดแก้ = แก้หัวใบ หรือแก้แบบฟอร์ม (หรือทั้งคู่ ถ้าขั้นนั้นเปิดให้ทั้งสอง)
-  const editing = editingPdr || !!editDraft;
-  const cancelEdit = () => { setPdrDraft(null); setEditDraft(null); };
+  const editing = !!editDraft;
+  const cancelEdit = () => setEditDraft(null);
 
   const primaryAction = editing
     ? {
@@ -632,21 +656,21 @@ export default function RequestDetailPage() {
          ⚠️ ยิงหัวใบก่อน แล้วค่อยแบบฟอร์ม — หัวใบล้ม (เช่นลืมเหตุผลด่วน) ต้องหยุด
          ทันทีโดยที่แบบฟอร์มยังไม่ถูกเขียน ไม่ใช่บันทึกครึ่งเดียวแล้วบอกว่าพลาด */
       onClick: async () => {
-        if (editDraft) {
+        if (canEditInfo) {
           const ok = await call("", {
             method: "PATCH",
             body: JSON.stringify({ action: "update", ...editDraft }),
-          }, pdrDraft ? null : "แก้ข้อมูลคำร้องแล้ว");
+          }, canEditPdrNow ? null : "แก้ข้อมูลคำร้องแล้ว");
           if (!ok) return;
         }
-        if (pdrDraft) {
+        if (canEditPdrNow) {
           const ok = await call("", {
             method: "PATCH",
             body: JSON.stringify({
               action: "pdr",
-              pdr: pdrDraft.pdr,
-              briefs: pdrDraft.briefs,
-              pdrTargets: pdrDraft.targets,
+              pdr: editDraft.pdr,
+              briefs: editDraft.briefs,
+              pdrTargets: editDraft.pdrTargets,
             }),
           }, "บันทึกการแก้ไขแล้ว");
           if (!ok) return;
@@ -810,9 +834,12 @@ export default function RequestDetailPage() {
         kind: "edit",
         icon: Pencil,
         onClick: () => {
-          if (canEditInfo) {
-            setEditDraft({
+          /* ⭐ **ค่าเดียวกับฟอร์มเปิดใบ** — `emptyRequestForm` เติมคีย์ที่เหลือให้ครบ
+             (ฟอร์มเป็น controlled ล้วน · คีย์ที่ขาดกลายเป็น uncontrolled input) */
+          setEditDraft(emptyRequestForm({
               kind: req.kind,
+              dept: req.dept || "",
+              team: req.team || "",
               title: req.title || "",
               body: req.body || "",
               requestedDueDate: req.requestedDueDate || "",
@@ -828,18 +855,25 @@ export default function RequestDetailPage() {
               // ยอดที่ขอวางบิล — ส่งคู่เสมอ server คิดใหม่จากยอดจริงของใบอยู่ดี
               billPercent: req.billPercent ?? null,
               billAmount: req.billAmount ?? null,
-            });
-          }
-          if (canEditPdrNow) {
-            setPdrDraft({
+              /* ของที่ผูก — ส่งไปให้ฟอร์มอ่าน (ช่องถูกล็อกในโหมดแก้) และให้ด่าน
+                 `requestShapeError` ฝั่ง server เห็นใบทั้งใบเหมือนตอนเปิด */
+              dealId: req.dealId || "",
+              projectId: req.projectId || "",
+              /* ⚠️ อ้างอิงเพิ่ม QT/SO/FG **แก้ได้** — มันคือ "ถ้ามี" ไม่ใช่ต้นทาง
+                 (ด่านมีข้อเดียว: มีจริง + อยู่ดีลเดียวกัน · `resolveOptionalRefs`) */
+              quotationId: req.quotationId || "",
+              salesOrderId: req.salesOrderId || "",
+              productIds: (req.productRefs || []).map((fg) => fg.id)
+                .concat(!req.productRefs?.length && req.productId ? [req.productId] : []),
+              /* แบบฟอร์ม PDR อยู่ในก้อนเดียวกันแล้ว — แท็บ "รายละเอียด" ของฟอร์ม
+                 เป็นคนวาดราง เหมือนตอนเปิดใบเป๊ะ
+                 ⚠️ แถวข้อ 2.2/2.3 (mig 0229) ต้องแปลงเป็นค่าสตริงของฟอร์มด้วยตัวแปลง
+                 กลาง — ลืมบรรทัดนี้ = เปิดโหมดแก้แล้วรายการราคาหายทั้งชุด แล้วกด
+                 บันทึกทับของจริง */
               pdr: pdrValuesFrom(req),
               briefs: (req.briefs || []).map((b) => ({ ...b })),
-              // แถวข้อ 2.2/2.3 (mig 0229) — แปลงเป็นค่าสตริงของฟอร์มด้วยตัวแปลงกลาง
-              // ⚠️ ลืมบรรทัดนี้ = เปิดโหมดแก้แล้วรายการราคาหายทั้งชุด แล้วกดบันทึก
-              // ทับของจริง (บั๊กเดียวกับที่ `pdrValuesFrom` มีไว้กันฝั่งหัวใบ)
-              targets: (req.targets || []).map(pdrTargetValuesFrom),
-            });
-          }
+            pdrTargets: (req.targets || []).map(pdrTargetValuesFrom),
+          }));
           /* ⭐ **กดแก้แล้วต้องเห็นว่ามีอะไรเปิดขึ้นมา** (ผลตรวจ 2026-08-24) — ปุ่มอยู่
              บนแผงจัดการ (รางขวา / บนสุดบนจอแคบ) ส่วนการ์ดแก้ไปโผล่ในคอลัมน์เนื้อ
              ⇒ บนใบยาว ๆ กดแล้วหน้าไม่ขยับเลย อ่านเหมือนปุ่มเสีย
@@ -1116,47 +1150,54 @@ export default function RequestDetailPage() {
           เปิดทั้งสองส่วนบนพื้นเดียวกัน ไม่มีโมดัลซ้อนหน้าที่กำลังแก้อยู่
           ⚠️ ช่องมาจาก `RequestEditableFields` ตัวเดียวกับฟอร์มเปิดคำร้อง — ห้ามวาง
           Input/Textarea เองที่นี่ (กฎ AGENTS.md · เคยเพี้ยนมาแล้ว 6 จุด) */}
+      {/* ── โหมดแก้: **ฟอร์มตัวเดียวกับตอนเปิดคำร้อง** ───────────────────────
+          ⭐ มติผู้ใช้ 2026-08-24: *"หน้าแก้ ไม่เหมือนหน้าสร้างหรอ … ในทุกๆหัวข้อ
+          ตามกฎ สร้างเหมือนกับแก้"* — ก่อนหน้านี้ที่นี่ประกอบการ์ดของตัวเองจากช่องกลาง
+          ไม่กี่ช่อง ⇒ ได้ฟอร์มที่ไม่มีแท็บ ไม่มีเกจ "ยังขาดอะไร" และลำดับช่องคนละแบบ
+          กับที่คนเพิ่งกรอกมาตอนเปิดใบ · แบบฟอร์ม PDR ก็ถูกวาดแยกอีกที่หนึ่ง
+          (ใน `ScentDevDetail`) ⇒ ใบพัฒนากลิ่นมีพื้นที่แก้สองแห่งในหน้าเดียว
+          ⚠️ ตอนนี้เป็น `RequestForm` ตัวเดียวกัน ต่างกันแค่ props ตามที่ AGENTS.md
+          อนุญาต — เหตุผลของแต่ละข้ออยู่ที่หัวพร็อพ `mode` ของฟอร์ม */}
       {editDraft && (
         <DetailCard
           icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง"
           className={styles.editCard} id="request-edit"
         >
-          <div className="form-grid cols-2">
-            {/* ⚠️ ยอดที่ขอวางบิลอยู่บนสุดเพราะฝั่งสร้างถามมันในแท็บแรก ("งาน") —
-                ลำดับช่องสองฝั่งต้องเหมือนกัน ไม่งั้นคนที่เพิ่งกรอกมาจำที่ไม่ได้
-                ⚠️ ฐานยอดมาจาก `billBaseAmount` ที่ประทับบนใบตอนเปิด — ใบเสนอราคา
-                เปลี่ยนทางนี้ไม่ได้ ⇒ ฐานไม่ขยับ · server อ่านยอดสดของใบอีกทีตอนบันทึก */}
-            {req.quotationId != null && req.billBaseAmount != null && (
-              <RequestBillAmountFields
-                value={editDraft} onChange={setEditDraft}
-                baseAmount={req.billBaseAmount} disabled={saving}
-              />
-            )}
-            <RequestTitleBodyFields
-              value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
-            />
-            {/* ⭐ **ตารางบรรทัดตัวเดียวกับฟอร์มเปิดคำร้อง** (กฎ AGENTS.md) — ทะเบียน
-                กลิ่น/หมวดที่สายพัฒนาสูตรต้องใช้ หน้านี้โหลดไว้อยู่แล้วสำหรับฟอร์มส่งงาน
-                ⇒ ไม่มี fetch เพิ่มสำหรับโหมดแก้ */}
-            {hasItems && (
-              <RequestLineFields
-                kind={req.kind}
-                value={editDraft.items || []}
-                onChange={(rows) => setEditDraft((d) => ({ ...d, items: rows }))}
-                categories={productTypes}
-                scents={registry.scents}
-                customerId={req.customerId || null}
-                disabled={saving}
-              />
-            )}
-            <RequestDueUrgentFields
-              value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
-            />
-          </div>
-          <small className={styles.hint}>
-            เปลี่ยนดีล ใบสั่งขาย ใบเสนอราคา หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
-            (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
-          </small>
+          <RequestForm
+            mode="edit"
+            value={editDraft}
+            onChange={setEditDraft}
+            /* ⚠️ **สองด่าน สลับมือคนละจังหวะ** — คนที่แก้ PDR ได้อาจแก้หัวใบไม่ได้แล้ว
+               (และกลับกัน) ⇒ เทาส่วนที่ไม่ใช่ของตัวเอง ไม่ใช่ซ่อน · server ตัดสิน */
+            disabled={saving || !canEditInfo}
+            pdrDisabled={saving || !canEditPdrNow}
+            lockKind
+            deferMentions
+            showBlocker={false}
+            /* ป้ายของสิ่งที่ล็อกไว้ — มาจากใบที่ server ประกอบให้แล้ว ไม่ต้องโหลด
+               ทะเบียนดีล/ใบสั่งขาย/ใบเสนอราคาทั้งชุดมาแปล id เป็นชื่อ */
+            lockedRefs={{
+              deal: req.refDeal
+                ? `${req.refDeal.code || req.dealId}${req.refDeal.title ? ` — ${req.refDeal.title}` : ""}`
+                : req.dealId || "",
+              project: req.projectCode || req.projectName
+                ? [req.projectCode, req.projectName].filter(Boolean).join(" — ")
+                : "",
+              customer: req.customerName || "",
+              customerId: req.customerId || null,
+              quotation: req.refQuotation?.quoteNumber || req.quotationId || "",
+              salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
+            }}
+            billBaseAmount={req.billBaseAmount ?? null}
+            /* ทะเบียนที่ช่อง "อ้างอิงเพิ่ม" กับตารางบรรทัดต้องใช้ — โหลดตอนกดแก้
+               เท่านั้น (ใบส่วนใหญ่ไม่เคยถูกแก้ ⇒ ไม่ต้องจ่ายตอนเปิดอ่าน) */
+            quotations={editRefs.quotations}
+            salesOrders={editRefs.salesOrders}
+            products={editRefs.products}
+            productTypes={productTypes}
+            scents={registry.scents}
+            me={me}
+          />
         </DetailCard>
       )}
 
@@ -1357,8 +1398,6 @@ export default function RequestDetailPage() {
         docBoard={docBoard}
         docTotals={docTotals}
         {...reconcileProps}
-        pdrDraft={pdrDraft}
-        onPdrDraftChange={setPdrDraft}
       />
 
       {/* เธรดคุยกันในคำร้อง (mig 0163) — เดิมคำถามอย่าง "ขวดสีชามีไหม / MOQ 500 ได้ไหม"

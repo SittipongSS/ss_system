@@ -43,6 +43,7 @@ import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
 import { lineDiffIsEmpty, lineShapeEditable, requestLineDiff } from '@/lib/requests/requestLineEdit';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
+import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
@@ -336,6 +337,17 @@ export async function PATCH(request, { params }) {
         next.billAmount = bill.amount;
         next.billBaseAmount = Number(qtRow.totalAmount);
       }
+
+      /* ── อ้างอิงเพิ่ม QT/SO/FG (มติเดียวกัน) ─────────────────────────────
+         ⭐ ฟอร์มแก้เป็นฟอร์มเดียวกับตอนสร้าง ⇒ ช่องพวกนี้กางอยู่บนจอ · ไม่รับที่นี่
+         = ผู้ใช้แก้แล้วหายเงียบ ซึ่งเป็นอาการเดิมที่ใบนี้มาแก้พอดี
+         ⚠️ ด่านก้อนเดียวกับ POST (`resolveOptionalRefs`) — "มีจริง + อยู่ดีลเดียวกัน"
+         ⚠️ **ดีลของใบเป็นตัวอ้างอิง ไม่ใช่ค่าที่ client ส่ง** — `dealId` แก้ทางนี้ไม่ได้ */
+      const { patch: refPatch, error: refError } = await resolveOptionalRefs(
+        supabase, before.kind, body, { dealId: before.dealId },
+      );
+      if (refError) return Response.json({ error: refError }, { status: 400 });
+      Object.assign(next, refPatch);
 
       // ⚠️ ด่านรูปทรงเดียวกับตอนเปิดใบ — ชื่อเรื่องบังคับ · วันที่ต้องมีและถูกรูปแบบ ·
       // ด่วนต้องมีเหตุผล · ส่งของเดิมที่ไม่ได้แก้เข้าไปด้วยเพื่อให้ด่านเห็นใบทั้งใบ
