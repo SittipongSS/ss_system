@@ -54,7 +54,9 @@ const STAGE_DESCRIPTION = {
    (`in_project` ถูกยุบเข้า won ตั้งแต่ mig 0082 แต่ข้อมูลเก่ายังมี จึงนับเป็นขั้นเดียวกัน) */
 const STEPS = [
   { id: "open", label: "เปิดดีล", hint: "คัดกรองและตั้งต้น", statuses: ["lead", "qualified"] },
-  { id: "project", label: "ผูกโครงการ", hint: "ต้องมีก่อนออกใบเสนอราคา", statuses: ["timeline_proposed"] },
+  // ⚠️ คำใบ้เคยเป็น "ต้องมีก่อนออกใบเสนอราคา" — ไม่จริงแล้ว (2026-08-24) ออกใบได้ตั้งแต่
+  // ดีลยังลอย · โครงการเริ่มจำเป็นตอนรับใบปิด Won (quotations/[id]/accept)
+  { id: "project", label: "ผูกโครงการ", hint: "ต้องมีก่อนปิด Won", statuses: ["timeline_proposed"] },
   { id: "quote", label: "เสนอราคา", hint: "รอลูกค้าตอบ", statuses: ["quotation", "awaiting_confirm", "deposit_pending"] },
   /* ต้องกาง WON_STAGES ห้ามพิมพ์รายชื่อสถานะ Won เองซ้ำ — มีเทสต์ git grep ทั้ง repo
      ห้ามไว้ (นิยามอยู่ที่ salesPlanning.js ที่เดียว) · คอมเมนต์เองก็ห้ามพิมพ์ ตัวสแกน
@@ -98,7 +100,8 @@ export function createDealLifecycle() {
     transitions: [
       {
         /* ผูกโครงการ = ก้าวถัดไปตัวจริงของดีล — เป็น action เดียวในหน้ารายการที่ดัน stage
-           (`advanceStage → timeline_proposed`) และเป็นเงื่อนไขก่อนออกใบเสนอราคา
+           (`advanceStage → timeline_proposed`) และเป็นเงื่อนไข **ก่อนปิด Won**
+           (ไม่ใช่ก่อนออกใบเสนอราคาอีกแล้ว — 2026-08-24)
            การลงมือเกิดที่ฟอร์มเลือกโครงการ หน้าจึงดักด้วย onSelect */
         id: "link_project",
         label: "เชื่อมกับโครงการเดิม",
@@ -162,9 +165,12 @@ export function canDeleteDeal(deal, { role, superuser } = {}) {
   return true;
 }
 
-/** ออกใบเสนอราคาได้ไหม — ต้องมีโครงการ + ลูกค้า และดีลยังไม่ปิด */
+/** ออกใบเสนอราคาได้ไหม — ต้องมีลูกค้า และดีลยังไม่ปิด
+ *  ⚠️ **ไม่รวมโครงการ** (2026-08-24) — โครงการเริ่มจำเป็นตอนรับใบปิด Won เท่านั้น
+ *  (ด่านจริงอยู่ที่ `quotations/[id]/accept`) · ต้องตรงกับ `eligibleQuotationDeals`
+ *  และ `quotationDealBlocker` เสมอ ทั้งสามตัวคือกติกาข้อเดียวกันมองคนละมุม */
 export function canQuoteDeal(deal) {
-  return canEdit(deal) && !!deal?.projectId && !!deal?.customerId && !isClosedStage(deal?.stage);
+  return canEdit(deal) && !!deal?.customerId && !isClosedStage(deal?.stage);
 }
 
 /** transition ที่ยิง `PATCH /deals/[id]` ตรง ๆ (ที่เหลือหน้าพาไปฟอร์มของมันเอง) */

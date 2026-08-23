@@ -1,9 +1,12 @@
 // ── "ทำไมลูกค้ารายนี้ไม่อยู่ในลิสต์ออกใบเสนอราคา" ────────────────────────────────
 // ลิสต์ลูกค้าบนหน้าสร้างใบเสนอราคาไม่ใช่ทะเบียนลูกค้า แต่ derive จาก "ดีลที่ออกใบได้"
-// (มติ 2026-07-15: ลูกค้า → โครงการ → ดีล) — prod 2026-07-26 มีลูกค้าใช้งานได้ 89 ราย
-// แต่เลือกได้ 11 ราย เพราะดีล 131/145 ใบยังไม่ผูกโครงการ. เดิมหายไปเงียบ ๆ ผู้ใช้จึง
-// คิดว่าระบบพัง (เสียเวลาสืบทีละเคส) — มติผู้ใช้ 2026-07-26: **คงกติกาไว้ แต่ต้องบอกเหตุ
-// ตอนค้นไม่เจอ** พร้อมทางไปแก้ ไม่ใช่โชว์ทุกรายให้ลิสต์ยาว
+//
+// ⭐ **โครงการถูกถอดออกจากเงื่อนไข** (2026-08-24) — เดิมต้องผูกโครงการก่อนจึงออกใบได้
+// ซึ่งกินลิสต์ไปเกือบหมด (prod 2026-07-26: ลูกค้าใช้งานได้ 89 ราย เลือกได้ 11 ราย
+// เพราะดีล 131/145 ใบยังไม่ผูกโครงการ) · รอบนั้นแก้ด้วยการ "คงกติกาไว้ แต่บอกเหตุ"
+// รอบนี้ผู้ใช้บอกว่ายังยุ่งยากอยู่ดี และตรวจแล้วว่าตอนออกใบไม่มีใครอ่านค่าโครงการเลย
+// ⇒ ถอดกติกาทิ้ง · ด่าน "ต้องมีโครงการ" เหลือที่เดียวคือตอนรับใบปิด Won
+// ตัวบอกเหตุยังอยู่ครบสำหรับเงื่อนไขที่เหลือ (ปิดแล้ว · ทีมอื่น · ยังไม่มีลูกค้า)
 
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
 
@@ -11,11 +14,11 @@ import { CLOSED_STAGES } from '@/lib/salesPlanning';
 // เจตนาเฉพาะที่ของลิสต์นี้ ("ออกใบไม่ได้แล้ว") และมีเทสต์อ้างชื่อนี้อยู่
 export const QUOTATION_DEAL_EXCLUDED_STAGES = CLOSED_STAGES;
 
-// ดีลที่ออกใบเสนอราคาได้: ผูกโครงการ + มีลูกค้า + stage ยังเปิด + เป็นดีลที่ผู้ใช้แก้ไขได้
+// ดีลที่ออกใบเสนอราคาได้: มีลูกค้า + stage ยังเปิด + เป็นดีลที่ผู้ใช้แก้ไขได้
 // (canEdit มาจาก API — edit scope; ไม่ใช่ view scope ไม่งั้น POST จะเด้ง forbidden)
+// ⚠️ ต้องตรงกับด่าน server ที่ `deals/[id]/quotations` และกับ `canQuoteDeal` เสมอ
 export function eligibleQuotationDeals(deals = []) {
-  return (Array.isArray(deals) ? deals : []).filter((deal) => deal?.projectId
-    && deal?.customerId
+  return (Array.isArray(deals) ? deals : []).filter((deal) => deal?.customerId
     && deal?.canEdit
     && !QUOTATION_DEAL_EXCLUDED_STAGES.includes(deal?.stage));
 }
@@ -28,11 +31,6 @@ const REASONS = {
     code: 'closed_stage',
     label: 'ดีลปิดแล้ว (Won / ไม่สำเร็จ) — ออกใบใหม่ไม่ได้',
     action: 'เปิดหน้าดีล',
-  },
-  no_project: {
-    code: 'no_project',
-    label: 'ดีลยังไม่ผูกโครงการ — ออกใบยังไม่ได้',
-    action: 'ไปผูกโครงการที่หน้าดีล',
   },
   not_editable: {
     code: 'not_editable',
@@ -59,7 +57,7 @@ const REASONS = {
  *    วันหนึ่งจะเพี้ยนจากกันโดยไม่มีอะไรเตือน
  *
  * 🐞 **สิ่งที่ตัวนี้ปิด** — ปุ่ม "สร้างใบเสนอราคา" บนหน้าดีลเขียนเงื่อนไขชุดเดียวกันนี้
- *    ด้วยมือ (`canEdit && projectId && customerId && !isClosedStage`) แล้ว *ซ่อนปุ่ม
+ *    ด้วยมือ (`canEdit && customerId && !isClosedStage` — สมัยนั้นมี `projectId` ด้วย)
  *    เงียบ ๆ* เมื่อไม่ผ่าน ⇒ ผู้ใช้เห็นการ์ดใบเสนอราคาแต่ไม่มีปุ่ม และไม่มีอะไรบอกว่า
  *    ทำไม · กติกาของระบบคือ **โชว์ปุ่มเสมอ แล้วบอกเหตุตอนกด** (แบบเดียวกับโมดัล
  *    ออกสัญญา: "ซ่อนปุ่มเงียบ ๆ = คนถามว่าปุ่มอยู่ไหน")
@@ -73,7 +71,6 @@ export function quotationDealBlocker(deal) {
   if (!deal) return REASONS.no_deal.label;
   if (QUOTATION_DEAL_EXCLUDED_STAGES.includes(deal.stage)) return REASONS.closed_stage.label;
   if (!deal.canEdit) return REASONS.not_editable.label;
-  if (!deal.projectId) return REASONS.no_project.label;
   if (!deal.customerId) return REASONS.no_customer.label;
   return null;
 }
@@ -121,18 +118,13 @@ function registryReasonFor(customer) {
 function reasonForDeals(deals) {
   if (!deals.length) return REASONS.no_deal;
   const open = deals.filter((d) => !QUOTATION_DEAL_EXCLUDED_STAGES.includes(d.stage));
-  const openEditable = open.filter((d) => d.canEdit);
-  if (openEditable.some((d) => !d.projectId)) return REASONS.no_project;
-  if (open.length && !openEditable.length) return REASONS.not_editable;
   if (!open.length) return REASONS.closed_stage;
-  return REASONS.no_project;
+  // ⚠️ ลิสต์นี้ทำจากดีลที่ "มีลูกค้ารายนี้" อยู่แล้ว ⇒ `no_customer` เป็นไปไม่ได้ที่นี่
+  // เหตุที่เหลือจึงมีทางเดียว: เปิดอยู่แต่ไม่ใช่ดีลที่คนนี้แก้ไขได้
+  return REASONS.not_editable;
 }
 
 function pickDeal(deals, code) {
-  if (code === 'no_project') {
-    return deals.find((d) => d.canEdit && !d.projectId
-      && !QUOTATION_DEAL_EXCLUDED_STAGES.includes(d.stage)) || deals[0] || null;
-  }
   if (code === 'closed_stage') {
     return deals.find((d) => QUOTATION_DEAL_EXCLUDED_STAGES.includes(d.stage)) || deals[0] || null;
   }

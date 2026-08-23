@@ -112,10 +112,14 @@ test('ชนิดที่มีบรรทัด = พัฒนาสูต�
 
 test('สิ่งที่ต้องผูกต่างกันตามหัวข้อ (มติ 2026-08-03 รอบสอง · ม-40)', () => {
   //   พัฒนากลิ่น = ผูก SO (ค่าบริการ — ยืนยันกับ SCENT_TEMPLATE ขั้น 4 → 6)
-  //   พัฒนาสูตร  = ผูกโครงการ+ดีล **ไม่ต้องมี SO** (ม-40: ขอตัวอย่างจากกลิ่นที่มีอยู่)
+  //   พัฒนาสูตร  = ผูก **ดีล** อย่างเดียว (ม-40: ขอตัวอย่างจากกลิ่นที่มีอยู่)
+  // ⚠️ โครงการถูกถอดออกจาก `needs` 2026-08-24 — ด่าน "ต้องมีโครงการ" เหลือที่เดียว
+  // คือตอนรับใบปิด Won · ดีลลอยเปิดคำร้องได้ตามปกติ (โครงการเติมย้อนหลังตอนผูก)
   assert.deepEqual(requestNeeds('scent_dev'), ['salesOrder']);
-  assert.deepEqual(requestNeeds('formula_dev'), ['project', 'deal']);
-  assert.deepEqual(requestNeeds('info'), ['project', 'deal']);
+  assert.deepEqual(requestNeeds('formula_dev'), ['deal']);
+  assert.deepEqual(requestNeeds('info'), ['deal']);
+  assert.deepEqual(requestNeeds('document'), ['deal']);
+  assert.equal(requestNeedsRef('formula_dev', 'project'), false, 'ดีลลอยต้องเปิดคำร้องได้');
   assert.equal(requestNeedsRef('formula_dev', 'salesOrder'), false, 'พัฒนาสูตรต้องไม่บังคับ SO');
 });
 
@@ -429,16 +433,35 @@ test('หมุด: ร่างยังไม่ถูกส่ง = ยัง
   assert.equal(byStep.size, 0);
 });
 
-test('หมุด: คำร้องของโครงการอื่นไม่มาปนไทม์ไลน์นี้', () => {
-  const rows = [pinReq({ id: 'A' }), pinReq({ id: 'B', projectId: 'PRJ-2' })];
-  const byStep = requestsByStepKey(rows, { projectId: 'PRJ-1' });
-  assert.deepEqual(byStep.get('npd-15').map((r) => r.id), ['A']);
+test('หมุด: คำร้องของดีลอื่นไม่มาปนขั้นของดีลนี้ (โครงการเดียวกันก็ตาม)', () => {
+  /* 🐞 ของเดิมกรองด้วย `projectId` ⇒ โครงการที่มีหลายดีล (SCENT+NPD หรือ RE-ORDER
+     หลายรอบ) มี `stepKey` ชุดเดียวกันทุก segment คำร้องจึงโผล่ข้ามดีลกันเอง
+     ตัวจับคู่ที่ถูกคือดีลของ task ซึ่งรู้ตอนอ่าน ⇒ กรองที่ `stepPinSummary` */
+  const byStep = requestsByStepKey([
+    pinReq({ id: 'A', dealId: 'D-1' }),
+    pinReq({ id: 'B', dealId: 'D-2' }),
+  ]);
+  assert.deepEqual(stepPinSummary(byStep, 'npd-15', 'D-1').first.id, 'A');
+  assert.equal(stepPinSummary(byStep, 'npd-15', 'D-1').total, 1);
+  assert.equal(stepPinSummary(byStep, 'npd-15', 'D-2').total, 1);
 });
 
-test('หมุด: คำร้องที่ยังไม่ผูกโครงการ (ดีลยังไม่มีโครงการ) ยังนับให้', () => {
+test('หมุด: คำร้องที่ยังไม่ผูกโครงการ (ดีลลอย) ยังนับให้', () => {
   // ดีลส่วนใหญ่บน prod ยังไม่มีโครงการ — ถ้าตัดทิ้งหมุดจะว่างเปล่าเกือบทั้งระบบ
-  const byStep = requestsByStepKey([pinReq({ projectId: null })], { projectId: 'PRJ-1' });
-  assert.equal(byStep.get('npd-15').length, 1);
+  const byStep = requestsByStepKey([pinReq({ projectId: null, dealId: 'D-1' })]);
+  assert.equal(stepPinSummary(byStep, 'npd-15', 'D-1').total, 1);
+});
+
+test('หมุด: คำร้องของกลาง (ไม่ผูกดีล) ขึ้นได้ทุกขั้น', () => {
+  // หัวข้อที่ไม่ผูกดีลโดยเจตนา เช่นติดตามของเข้า (`material_eta` — needs: [])
+  const byStep = requestsByStepKey([pinReq({ id: 'กลาง', dealId: null, kind: 'material_eta' })]);
+  assert.equal(stepPinSummary(byStep, 'npd-15', 'D-1').total, 1);
+  assert.equal(stepPinSummary(byStep, 'npd-15', 'D-9').total, 1);
+});
+
+test('หมุด: ขั้นกลางของโครงการ (task ไม่มีดีล) ไม่รับหมุดที่เป็นของดีลใดดีลหนึ่ง', () => {
+  const byStep = requestsByStepKey([pinReq({ dealId: 'D-1' })]);
+  assert.equal(stepPinSummary(byStep, 'npd-15', null), null);
 });
 
 test('หมุด: เรื่องที่ยังค้างขึ้นก่อนเรื่องที่ปิดแล้วเสมอ', () => {
@@ -454,13 +477,13 @@ test('สรุปหมุด: นับรวม/นับค้าง แล�
     pinReq({ id: 'A', status: 'pending' }),
     pinReq({ id: 'B', status: 'closed' }),
   ]);
-  const sum = stepPinSummary(byStep, 'npd-15');
+  const sum = stepPinSummary(byStep, 'npd-15', 'D-1');
   assert.equal(sum.total, 2);
   assert.equal(sum.open, 1);
   assert.equal(sum.first.id, 'A');
-  assert.equal(stepPinSummary(byStep, 'npd-25'), null);
+  assert.equal(stepPinSummary(byStep, 'npd-25', 'D-1'), null);
   // task เก่าที่ไม่มี stepKey (165 จาก 282 แถวบน prod) ต้องไม่ระเบิด
-  assert.equal(stepPinSummary(byStep, null), null);
+  assert.equal(stepPinSummary(byStep, null, 'D-1'), null);
 });
 
 // ── ผลลัพธ์ตอนปิดเรื่อง ───────────────────────────────────────────────────
@@ -852,16 +875,19 @@ test('🐞 โครงการเป็นของที่ server เติ�
   );
 });
 
-test('ฟอร์มบอกให้ตรงว่าติดอะไร — ไม่สั่งให้เลือกช่องที่ไม่มีอยู่บนจอ', () => {
-  // ⚠️ ฟอร์มไม่มีช่อง "โครงการ" (โครงการมาจากดีล) ⇒ "ต้องเลือกโครงการ" คือคำสั่งที่
-  // ทำตามไม่ได้ · prod มี 122/136 ดีลที่ยังไม่ผูกโครงการ ⇒ เจอบ่อยที่สุด
+test('ดีลที่ยังไม่ผูกโครงการเปิดคำร้องได้ — ไม่มีด่านโครงการเหลืออยู่บนฟอร์ม', () => {
+  /* ⚠️ เดิมฟอร์มตีกลับว่า "ดีลนี้ยังไม่ผูกโครงการ" ซึ่งเป็นคำสั่งที่ทำตามบนฟอร์มไม่ได้
+     (ไม่มีช่องโครงการ — มันมาจากดีล) และ prod มีดีลลอย 122/136 ⇒ เจอแทบทุกใบ
+     2026-08-24 ถอดด่านทิ้ง: ใบเปิดได้ทั้งมีและไม่มีโครงการ */
   const form = {
     kind: 'formula_dev', dept: 'RD', title: 'ขอตัวอย่าง',
     dealId: 'D-1', projectId: '', requestedDueDate: '2569-08-20',
     items: [{ categoryCode: '01-002', scentId: 'SCT-1' }],
   };
-  assert.match(requestFormBlocker(form), /ดีลนี้ยังไม่ผูกโครงการ/);
+  assert.equal(requestFormBlocker(form), null, 'ดีลลอยต้องผ่านด่านฟอร์ม');
   assert.equal(requestFormBlocker({ ...form, projectId: 'PRJ-1' }), null);
+  // ดีลยังเป็นของบังคับเหมือนเดิม — ถอดโครงการไม่ได้แปลว่าถอดดีลด้วย
+  assert.match(requestFormBlocker({ ...form, dealId: null }), /ดีล/);
 });
 
 test('ฟอร์มเปล่าบอกให้เลือกดีล ไม่ใช่โครงการ — ทุกหัวข้อที่โครงการมาจากดีล', () => {
