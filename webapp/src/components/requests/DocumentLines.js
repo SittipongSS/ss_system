@@ -80,8 +80,14 @@ export default function DocumentLines({
         onChange={(key) => setActive(Number(key.replace("row-", "")))}
         emptyText="ยังไม่มีรายการ — กดปุ่มข้างซ้ายเพื่อเพิ่มรายการแรก"
         navFooter={(
+          /* ⭐ **terracotta = "เริ่มของใหม่"** (กติกาโทนปุ่ม) — ตรงความหมายของปุ่มนี้พอดี
+             🐞 ปุ่มพื้นฐาน (`btn` เปล่า) **มองไม่เห็นในราง**: พื้นปุ่มเป็น `--panel`
+             ซึ่ง *เข้มกว่า* พื้นราง (`--panel-2`) + ขอบจาง + ตัวอักษรสี `--text-2`
+             ⇒ อ่านเป็นช่องยุบ ๆ ไม่ใช่ปุ่ม (ผู้ใช้ทัก 2026-08-24)
+             ⚠️ กติกา "accent หน้าละปุ่มเดียว" ยังถือ — ตรวจแล้วทั้งหน้าเปิดคำร้องและ
+             หน้ารายละเอียดไม่มีปุ่ม accent ตัวอื่น (ปุ่มหลักของหน้าเป็น navy) */
           <Button
-            size="sm" disabled={disabled}
+            size="sm" tone="accent" disabled={disabled}
             icon={<Plus size={14} aria-hidden="true" />}
             onClick={addRow}
           >
