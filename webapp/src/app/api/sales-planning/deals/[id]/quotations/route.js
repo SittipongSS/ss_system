@@ -1,10 +1,13 @@
-import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
-import { canEditSalesPlanning, canViewSalesPlanning, isWonStage } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel, isWonStage } from '@/lib/salesPlanning';
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
+import { dealAwaitsCustomer, dealCustomerAdoptError } from '@/lib/sales/dealCustomerAdopt';
+import { caretakerTeamsOf, hasTeam, userTeams, viewScopeUser } from '@/lib/permissions';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,19 +54,75 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ ห้ามเพิ่มด่านกลับมาที่นี่โดยไม่ย้ายด่านของ accept ออกก่อน — สองด่านที่ถามเรื่อง
      เดียวกันคนละเวลาคือที่มาของฟีดแบครอบนี้
      ส่วนรายการสินค้า (รหัส FG) ค่อยใส่ตอนแก้ใบ ไม่บังคับตอนสร้าง */
-  // cascade: ใบเสนอราคาต้องมีลูกค้า (มติผู้ใช้ — เลือกลูกค้าที่ดีลก่อน)
-  if (!deal.customerId) return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าที่ดีลก่อน แล้วจึงออกใบเสนอราคา');
-  // โครงการปิดแล้ว = ออกใบใหม่ผูกเข้าโครงการนั้นไม่ได้ (มติ B3)
-  const closedProject = await closedProjectBlock(supabase, deal.projectId, 'ออกใบเสนอราคาใบใหม่');
-  if (closedProject) return badRequest(closedProject);
-
   // มติผู้ใช้ 2026-07-15: 1 ดีลมีใบเสนอราคาได้หลายใบจนกว่าจะ Won — guard "1 ใบ active
   // ต่อดีล" (0099) ถูกยกเลิก (mig 0103 ดรอป unique index); ตอน Won ใบอื่นถูกปิด+ล็อกใน RPC
   const body = await req.json().catch(() => ({}));
+
+  /* ⭐ **ดีลที่ยังไม่มีลูกค้า รับลูกค้าที่เลือกบนฟอร์มไปตั้งให้ตัวเอง** (มติผู้ใช้ 2026-08-24)
+     ใบเสนอราคายังต้องมีลูกค้าเสมอ — ที่เปลี่ยนคือ "เติมได้จากตรงนี้" แทนการไล่คนกลับไป
+     หน้าดีล (prod 2026-08-24: ดีลเปิดอยู่ 82 ใบไม่มีลูกค้า · 17 ใบไปถึงขั้นเสนอราคาแล้ว)
+     กติกาอยู่ที่ lib/sales/dealCustomerAdopt ที่เดียว — ฟอร์มใช้ตัวเดียวกันกันเสนอ
+     ตัวเลือกที่กดแล้วโดนตีกลับ · ท่าเดียวกับที่ `link-project` รับลูกค้าจากโครงการ */
+  let workingDeal = deal;
+  let adoptedCustomer = null;
+  if (dealAwaitsCustomer(deal)) {
+    if (!body.customerId) {
+      return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าบนฟอร์ม แล้วระบบจะตั้งให้ดีลด้วย');
+    }
+    const { data: customer } = await supabase
+      .from('customers').select('id, name, "arCode", team, teams, "approvalStatus", "isActive"')
+      .eq('id', body.customerId).maybeSingle();
+    const adoptError = dealCustomerAdoptError(deal, customer);
+    if (adoptError) return badRequest(adoptError);
+    /* ⚠️ ขอบเขตทีมต้องตรวจซ้ำที่ server — ตัวเลือกบนจอถูกกรองด้วยกติกานี้อยู่แล้ว
+       (GET /api/customers) แต่คนยิงตรงเข้ามาไม่ผ่านตัวกรองนั้น · ลูกค้าที่ไม่มีทีม
+       เป็นของกลางที่ทุกทีมใช้ได้ (กติกาเดียวกับ `inScope`) */
+    const teams = caretakerTeamsOf(customer);
+    if (viewScopeUser(user) === 'team' && userTeams(user).length
+      && teams.length && !hasTeam(user, teams)) {
+      return badRequest('ลูกค้ารายนี้อยู่ในความดูแลของทีมอื่น');
+    }
+    /* guard `.is('customerId', null)` — สองคนกดพร้อมกันคนละลูกค้า ต้องมีคนแพ้
+       ไม่ใช่เขียนทับกันเงียบ ๆ (ท่าเดียวกับ guard `projectId` ของ link-project) */
+    const { data: linked, error: linkError } = await supabase
+      .from('sales_deals')
+      .update({ customerId: customer.id, customerName: customer.name || null, updatedAt: new Date().toISOString() })
+      .eq('id', deal.id).is('customerId', null)
+      .select().single();
+    if (linkError) {
+      if (linkError.code === 'PGRST116') return conflict('ดีลนี้เพิ่งถูกตั้งลูกค้าโดยคนอื่น — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+      return fail(linkError.message, 500);
+    }
+    workingDeal = linked;
+    adoptedCustomer = customer;
+    /* ⚠️ **ตั้งลูกค้าก่อน แล้วค่อยสร้างใบ — ไม่ย้อนคืนถ้าสร้างใบล้ม** โดยเจตนา:
+       ค่าที่เขียนคือสิ่งที่ผู้ใช้เลือกเองบนฟอร์ม และเป็นการเติมช่องว่าง ไม่ใช่ทับของเดิม
+       ⇒ ล้มแล้วกดใหม่ได้ทันทีโดยไม่ต้องไปเติมลูกค้าซ้ำ (ย้อนคืนต่างหากคือการลบ
+       สิ่งที่ผู้ใช้เพิ่งตั้งใจตั้ง) */
+  }
+
+  // โครงการปิดแล้ว = ออกใบใหม่ผูกเข้าโครงการนั้นไม่ได้ (มติ B3)
+  const closedProject = await closedProjectBlock(supabase, workingDeal.projectId, 'ออกใบเสนอราคาใบใหม่');
+  if (closedProject) return badRequest(closedProject);
+
   // core การสร้างใบอยู่ใน lib เดียวกับสายสหมิตร (ยืนยัน PO → ออก QT) — แก้กติกาใบที่นั่น
   try {
-    const { quote, deal: updatedDeal } = await createQuotationDraft({ supabase, user, deal, body, request: req });
-    return ok({ ...quote, deal: updatedDeal }, 201);
+    const { quote, deal: updatedDeal } = await createQuotationDraft({ supabase, user, deal: workingDeal, body, request: req });
+    /* บันทึกการตั้งลูกค้าแยกจากการสร้างใบ — คนตามประวัติดีลต้องเห็นว่า "ลูกค้ามาจากไหน"
+       โดยไม่ต้องไปเปิด audit ของใบเสนอราคา (ท่าเดียวกับที่ link-project เขียนไว้) */
+    if (adoptedCustomer) {
+      await recordAudit({
+        user, action: 'update', entityType: 'sales_deal', entityId: workingDeal.id,
+        before: deal, after: workingDeal,
+        summary: `ตั้งลูกค้า ${adoptedCustomer.arCode ? `${adoptedCustomer.arCode} · ` : ''}${adoptedCustomer.name || adoptedCustomer.id} ให้ดีล ${dealAuditLabel(deal)} ตอนออกใบเสนอราคา`,
+        request: req,
+      });
+    }
+    return ok({
+      ...quote,
+      deal: updatedDeal,
+      ...(adoptedCustomer ? { adoptedCustomer: { id: adoptedCustomer.id, name: adoptedCustomer.name || null } } : {}),
+    }, 201);
   } catch (e) {
     if (e instanceof QuotationDraftError) return fail(e.message, e.status);
     throw e;

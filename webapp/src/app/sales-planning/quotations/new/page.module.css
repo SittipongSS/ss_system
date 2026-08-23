@@ -28,6 +28,8 @@
 .sourceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-5); }
 /* คำอธิบายว่าลิสต์ลูกค้ามาจากไหน — ชั้นพิมพ์เดียวกับ .sectionHeading > span */
 .sourceHint { margin: var(--space-3) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: 1.65; }
+/* คำเตือนว่ากดบันทึกแล้วจะไปแก้ของนอกใบนี้ (ตั้งลูกค้าให้ดีล) — ต้องสะดุดตากว่าคำอธิบายทั่วไป */
+.sourceHintWarn { composes: sourceHint; color: var(--amber); }
 
 /* คำตอบใน dropdown ตอนค้นเจอลูกค้าในทะเบียนแต่ออกใบไม่ได้ — ชิดซ้าย อ่านเป็นรายการ
    (พื้นที่ .ui-select-empty เดิมจัดกลางไว้สำหรับข้อความบรรทัดเดียว) */

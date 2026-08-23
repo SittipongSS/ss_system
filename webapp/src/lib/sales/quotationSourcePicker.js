@@ -14,13 +14,22 @@ import { CLOSED_STAGES } from '@/lib/salesPlanning';
 // เจตนาเฉพาะที่ของลิสต์นี้ ("ออกใบไม่ได้แล้ว") และมีเทสต์อ้างชื่อนี้อยู่
 export const QUOTATION_DEAL_EXCLUDED_STAGES = CLOSED_STAGES;
 
-// ดีลที่ออกใบเสนอราคาได้: มีลูกค้า + stage ยังเปิด + เป็นดีลที่ผู้ใช้แก้ไขได้
-// (canEdit มาจาก API — edit scope; ไม่ใช่ view scope ไม่งั้น POST จะเด้ง forbidden)
-// ⚠️ ต้องตรงกับด่าน server ที่ `deals/[id]/quotations` และกับ `canQuoteDeal` เสมอ
+/* ดีลที่ออกใบเสนอราคาได้: stage ยังเปิด + เป็นดีลที่ผู้ใช้แก้ไขได้
+   (canEdit มาจาก API — edit scope; ไม่ใช่ view scope ไม่งั้น POST จะเด้ง forbidden)
+
+   ⭐ **ไม่บังคับลูกค้าที่ตัวดีลแล้ว** (2026-08-24) — ใบเสนอราคายังต้องมีลูกค้าเสมอ
+   แต่ดีลที่ยังไม่มีสามารถ "รับลูกค้าที่เลือกบนฟอร์ม" ไปตั้งให้ตัวเองได้ตอนบันทึก
+   (ดู lib/sales/dealCustomerAdopt) ⇒ ตัดออกจากลิสต์ตั้งแต่ต้นทางคือปิดทางแก้
+   ⚠️ ต้องตรงกับด่าน server ที่ `deals/[id]/quotations` และกับ `canQuoteDeal` เสมอ */
 export function eligibleQuotationDeals(deals = []) {
-  return (Array.isArray(deals) ? deals : []).filter((deal) => deal?.customerId
-    && deal?.canEdit
+  return (Array.isArray(deals) ? deals : []).filter((deal) => deal?.canEdit
     && !QUOTATION_DEAL_EXCLUDED_STAGES.includes(deal?.stage));
+}
+
+/* ดีลที่ยัง "ไม่มีเจ้าของลูกค้า" — ฟอร์มเอาไปต่อท้ายลิสต์ของลูกค้าที่เลือกไว้
+   (เลือกแล้ว = ตั้งลูกค้ารายนั้นให้ดีลตอนบันทึก) */
+export function unassignedQuotationDeals(deals = []) {
+  return eligibleQuotationDeals(deals).filter((deal) => !deal.customerId);
 }
 
 const norm = (value) => String(value || '').trim().toLocaleLowerCase('th');
@@ -41,11 +50,6 @@ const REASONS = {
     code: 'no_deal',
     label: 'ยังไม่มีดีล — ต้องสร้างดีลก่อนออกใบ',
     action: 'ไปหน้าดีล',
-  },
-  no_customer: {
-    code: 'no_customer',
-    label: 'ดีลยังไม่ระบุลูกค้า — ออกใบยังไม่ได้',
-    action: 'ไปเลือกลูกค้าที่หน้าดีล',
   },
 };
 
@@ -71,7 +75,8 @@ export function quotationDealBlocker(deal) {
   if (!deal) return REASONS.no_deal.label;
   if (QUOTATION_DEAL_EXCLUDED_STAGES.includes(deal.stage)) return REASONS.closed_stage.label;
   if (!deal.canEdit) return REASONS.not_editable.label;
-  if (!deal.customerId) return REASONS.no_customer.label;
+  /* ⚠️ **ไม่มีลูกค้า ≠ ออกใบไม่ได้** อีกต่อไป (2026-08-24) — ฟอร์มถามลูกค้าเป็นช่องแรก
+     อยู่แล้ว และตั้งให้ดีลตอนบันทึก ⇒ บล็อกที่ปุ่มคือส่งคนไปแก้ที่หน้าดีลโดยไม่จำเป็น */
   return null;
 }
 
@@ -119,8 +124,8 @@ function reasonForDeals(deals) {
   if (!deals.length) return REASONS.no_deal;
   const open = deals.filter((d) => !QUOTATION_DEAL_EXCLUDED_STAGES.includes(d.stage));
   if (!open.length) return REASONS.closed_stage;
-  // ⚠️ ลิสต์นี้ทำจากดีลที่ "มีลูกค้ารายนี้" อยู่แล้ว ⇒ `no_customer` เป็นไปไม่ได้ที่นี่
-  // เหตุที่เหลือจึงมีทางเดียว: เปิดอยู่แต่ไม่ใช่ดีลที่คนนี้แก้ไขได้
+  // ⚠️ ลิสต์นี้ทำจากดีลที่ "มีลูกค้ารายนี้" อยู่แล้ว และโครงการ/ลูกค้าไม่ใช่ด่านอีกต่อไป
+  // ⇒ เหตุที่เหลือมีทางเดียว: เปิดอยู่แต่ไม่ใช่ดีลที่คนนี้แก้ไขได้
   return REASONS.not_editable;
 }
 
