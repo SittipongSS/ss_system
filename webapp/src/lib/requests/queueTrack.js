@@ -97,10 +97,18 @@ export function requestQueueTrack(request = {}) {
      จะหายไปจากสายตาทันที ทั้งที่นั่นคือกองงานค้างของฝั่งผู้ขอ */
   /* ⭐ **ขั้นปิดเขียวเมื่อครบสองฝั่งเท่านั้น** (มติผู้ใช้ 2026-08-20) — ตราเดียวยังไม่จบ
      · โน้ตบอกว่าเหลือฝั่งไหน ⇒ คนกวาดคิวรู้ว่าต้องไปตามใคร */
+  /* ⭐ **วันที่ปิดอยู่ในโน้ตของขั้นนี้** (มติผู้ใช้ 2026-08-23) — เดิมเป็นคอลัมน์ของตัวเอง
+     กว้าง 215px ทั้งที่แถวส่วนใหญ่เขียนแค่ "ยังไม่ปิด" · ย้ายมาแปะกับขั้นที่มันเป็น
+     เจ้าของเวลานั้นจริง ๆ แล้วถอดคอลัมน์ออก (ดู REQUEST_COLUMN_PRESETS.queue)
+     ⚠️ `closedAt` คือฝั่งผู้ขอ · ใบเก่าที่ปิดก่อนกฎสองฝั่งอาจมีแต่ `answeredAt` */
+  const closedOn = fmtDate(request.closedAt || request.answeredAt);
   const closeStep = closure.complete
-    ? step('close', 'ปิด', 'done', closure.requesterDone && closure.deptDone
-      ? `${requestSideText(request, 'dept', 'ตอบ')} · ${requestSideText(request, 'requester', 'ปิด')}`
-      : null)
+    ? step('close', 'ปิด', 'done', [
+      closure.requesterDone && closure.deptDone
+        ? `${requestSideText(request, 'dept', 'ตอบ')} · ${requestSideText(request, 'requester', 'ปิด')}`
+        : null,
+      closedOn ? `เมื่อ ${closedOn}` : null,
+    ].filter(Boolean).join(' · ') || null)
     : closure.waitingSide
       ? step('close', 'ปิด', 'now', closure.waitingSide === 'requester'
         ? requestWaitLabel(request, 'requester', 'ปิดเรื่อง')

@@ -20,6 +20,18 @@
   white-space: nowrap;
 }
 
+/* โหมดย่อ — เหลือแต่จุด ชื่อขั้นไปอยู่ใน tooltip (ดูเหตุผลที่ StepTrack.js)
+   ⚠️ ซ่อนป้ายด้วย CSS ไม่ใช่ตัดออกจาก DOM — screen reader ต้องยังอ่านชื่อขั้นได้ */
+.compact .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.compact .step { gap: 0; }
+
 .dot {
   width: 9px;
   height: 9px;

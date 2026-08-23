@@ -207,7 +207,7 @@ export default function RequestQueuePanel({
             {[ask.bouncedByName, ask.bounceReason].filter(Boolean).join(" · ").slice(0, 70)}
           </div>
         )}
-        {!track.cancelled && <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />}
+        {!track.cancelled && <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" compact />}
         {/* หน่วยมาจากทะเบียนหัวข้อ — พัฒนากลิ่นนับเป็น "กลิ่น" ·
             ใบที่ไม่มีบรรทัด (สอบถาม) ไม่มีตัวเลขให้นับ ⇒ ไม่เขียนอะไรเลย
             ดีกว่าเขียน N/A ซ้ำทุกแถวใต้ราง */}
@@ -261,7 +261,7 @@ export default function RequestQueuePanel({
                 ทำให้อ่านเหมือนใบยังเดินอยู่ · กติกาเดียวกับ `queueTrack`) */}
             {!track.cancelled && (
               <div className={styles.docProgress}>
-                <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" />
+                <StepTrack steps={track.steps} ariaLabel="ขั้นของคำร้อง" compact />
                 {p.total > 0 && (
                   <div className={styles.subText}>
                     {p.done} / {p.total} {requestLineNoun(ask.kind)}
@@ -704,7 +704,7 @@ export default function RequestQueuePanel({
                       {cols.map((key) => (
                         <td
                           key={key}
-                          className={[REQUEST_COLUMNS[key].num ? "num" : "", REQUEST_COLUMNS[key].wide ? "ui-cell-wide" : ""].filter(Boolean).join(" ") || undefined}
+                          className={REQUEST_COLUMNS[key].num ? "num" : undefined}
                         >
                           {cell(key, ask)}
                         </td>
