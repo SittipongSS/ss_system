@@ -702,7 +702,10 @@ export default function RequestQueuePanel({
                       onClick={() => router.push(`/requests/${ask.id}`)}
                     >
                       {cols.map((key) => (
-                        <td key={key} className={REQUEST_COLUMNS[key].num ? "num" : undefined}>
+                        <td
+                          key={key}
+                          className={[REQUEST_COLUMNS[key].num ? "num" : "", REQUEST_COLUMNS[key].wide ? "ui-cell-wide" : ""].filter(Boolean).join(" ") || undefined}
+                        >
                           {cell(key, ask)}
                         </td>
                       ))}

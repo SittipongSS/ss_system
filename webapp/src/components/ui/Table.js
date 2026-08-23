@@ -1,5 +1,46 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import styles from "./Table.module.css";
+
+/* เติม `title` ให้เฉพาะช่องที่ **ถูกตัดจริง** — คู่กับเพดาน `--cell-text-max`
+ *
+ * ⭐ มติผู้ใช้ 2026-08-23: ค่าที่ยาวเกินเพดานตัดด้วยจุดไข่ปลา แล้วชี้เมาส์เห็นเต็ม
+ * ⚠️ ทำที่นี่ที่เดียว ไม่ไล่ใส่รายเซลล์ — ตารางในระบบมี 101 จุด ใส่มือแล้วมันจะ
+ * ตกหล่นทันทีที่มีคนเพิ่มคอลัมน์ใหม่
+ * ⚠️ ใส่ **เฉพาะที่ถูกตัด** ไม่ใช่ทุกช่อง — ช่องที่อ่านครบอยู่แล้วแต่มี tooltip
+ * ซ้ำข้อความเดิม คือเสียงรบกวนที่บังของอื่นบนจอ
+ * ⚠️ ไม่แตะช่องที่คนอื่นตั้ง `title` ไว้เองแล้ว (เช่นวันที่ที่โชว์เวลาเต็มใน tooltip)
+ */
+function useTruncationTitles(ref) {
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return undefined;
+    const sync = () => {
+      for (const cell of root.querySelectorAll("td")) {
+        const cut = cell.scrollWidth > cell.clientWidth + 1;
+        if (!cut) {
+          if (cell.dataset.autoTitle) { cell.removeAttribute("title"); delete cell.dataset.autoTitle; }
+          continue;
+        }
+        if (cell.title && !cell.dataset.autoTitle) continue;
+        const text = cell.textContent.trim();
+        if (!text) continue;
+        cell.title = text;
+        cell.dataset.autoTitle = "1";
+      }
+    };
+    sync();
+    /* ข้อมูลมาจาก fetch และตารางกรอง/เรียงใหม่ได้ตลอด — ต้องคิดใหม่เมื่อเนื้อในเปลี่ยน
+       ไม่ใช่คำนวณรอบเดียวตอน mount */
+    const mo = new MutationObserver(sync);
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+    const ro = new ResizeObserver(sync);
+    ro.observe(root);
+    return () => { mo.disconnect(); ro.disconnect(); };
+  }, [ref]);
+}
 
 export function TableToolbar({ children, className = "", ...props }) {
   return <div className={`${styles.toolbar} ${className}`.trim()} {...props}>{children}</div>;
@@ -26,8 +67,11 @@ export function TableScroll({
   className = "",
   ...props
 }) {
+  const ref = useRef(null);
+  useTruncationTitles(ref);
   return (
     <div
+      ref={ref}
       className={`${styles.scroll} ${className}`.trim()}
       data-family={family}
       data-surface={surface}
