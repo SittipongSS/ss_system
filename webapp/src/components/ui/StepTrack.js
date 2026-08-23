@@ -19,6 +19,7 @@
 // `lib/requests/queueTrack.js` (คำร้อง) พร้อมเทสต์ของตัวเอง
 // (แยกเพราะตรรกะต้องทดสอบได้โดยไม่ต้องเรนเดอร์ และมีที่เรียกที่ไม่ได้วาดราง เช่นป้ายสรุป)
 import { Fragment } from "react";
+import Tooltip from "./Tooltip";
 import styles from "./StepTrack.module.css";
 
 /* `skip` = **ขั้นที่ใบนี้ไม่มี** (เช่นใบยอด 0 ไม่มีขั้นเก็บเงิน — มติผู้ใช้ 2026-08-18)
@@ -26,11 +27,19 @@ import styles from "./StepTrack.module.css";
    **วงกลมกลวง** ซึ่งเป็นรูปเดียวที่ยังไม่ถูกใช้ ⇒ อ่านออกจากรูปก่อนอ่านจากสี */
 const STEP_CLASS = { done: "stepDone", now: "stepNow", bad: "stepBad", skip: "stepSkip", todo: "" };
 
-export default function StepTrack({ steps, className = "", ariaLabel = "ความคืบหน้าของใบ" }) {
+/* `compact` = **เหลือแต่จุด ไม่มีป้ายคำ** (มติผู้ใช้ 2026-08-23)
+   🐞 ที่มา: รางห้าขั้นพร้อมป้ายคำกินคอลัมน์ 320px ในตารางคิวคำร้อง = 27% ของทั้งตาราง
+   มากกว่าคอลัมน์ข้อมูลจริงทุกตัว ⇒ ตารางล้นกรอบบนจอ 1440 · และสามในห้าคำนั้นเป็น
+   ขั้นที่ยังไม่ถึง ซึ่งเทาจางจนไม่ได้บอกอะไร
+   ⚠️ โหมดนี้ **ชื่อขั้นต้องไปอยู่ใน tooltip** ไม่ใช่หายไปเฉย ๆ — ตำแหน่งจุดบอกได้ว่า
+   เดินถึงไหน แต่บอกไม่ได้ว่าขั้นนั้นชื่ออะไร
+   ⚠️ จอสัมผัสไม่มี hover ⇒ ชื่อขั้นเข้าถึงไม่ได้บนมือถือ · ยอมรับได้เพราะหน้า
+   รายละเอียดของใบเล่าครบอยู่แล้ว และตารางกว้างแบบนี้ไม่ได้ถูกใช้บนมือถืออยู่ดี */
+export default function StepTrack({ steps, className = "", ariaLabel = "ความคืบหน้าของใบ", compact = false }) {
   const list = Array.isArray(steps) ? steps : [];
   if (!list.length) return null;
   return (
-    <div className={`${styles.track} ${className}`.trim()} aria-label={ariaLabel}>
+    <div className={`${styles.track} ${compact ? styles.compact : ""} ${className}`.trim()} aria-label={ariaLabel}>
       {list.map((step, index) => (
         <Fragment key={step.key}>
           {/* ⚠️ เส้นที่ "ผ่านแล้ว" ย้อมเขียวด้วย ไม่ใช่ย้อมแค่หมุด — เส้นคือสิ่งที่ตากวาด
@@ -47,12 +56,21 @@ export default function StepTrack({ steps, className = "", ariaLabel = "คว�
               aria-hidden="true"
             />
           ) : null}
-          <span
-            className={`${styles.step} ${STEP_CLASS[step.state] ? styles[STEP_CLASS[step.state]] : ""}`.trim()}
-            title={step.note || undefined}
+          {/* ⚠️ โหมดเต็มที่ไม่มีโน้ต = **ไม่มีกล่อง** — ป้ายคำอยู่บนจออยู่แล้ว
+              กล่องที่พูดซ้ำกับสิ่งที่อ่านอยู่คือเสียงรบกวน (`disabled` ⇒ Tooltip
+              คืนลูกกลับไปเฉย ๆ ไม่มีตัวดักเมาส์เหลือ) */}
+          <Tooltip
+            label={step.label}
+            note={step.note}
+            disabled={!compact && !step.note}
           >
-            <span className={styles.dot} aria-hidden="true" />{step.label}
-          </span>
+            <span className={`${styles.step} ${STEP_CLASS[step.state] ? styles[STEP_CLASS[step.state]] : ""}`.trim()}>
+              <span className={styles.dot} aria-hidden="true" />
+              {/* ป้ายคำยังอยู่ใน DOM เสมอ — โหมดย่อซ่อนด้วย CSS ไม่ใช่ไม่เรนเดอร์
+                  เพื่อให้ screen reader ยังอ่านชื่อขั้นได้ตามปกติ */}
+              <span className={styles.label}>{step.label}</span>
+            </span>
+          </Tooltip>
         </Fragment>
       ))}
     </div>
