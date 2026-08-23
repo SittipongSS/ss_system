@@ -1,6 +1,7 @@
 "use client";
 import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useSearchParams } from "next/navigation";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
@@ -34,6 +35,10 @@ const MANAGE_KEY = "/api/master/customers?manage=1";
 // `team` for rows not yet migrated.
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
   const role = useRole();
@@ -49,7 +54,7 @@ export default function CustomerDirectory() {
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useStickyState("search", "");
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
   /* ⭐ `?count=customers` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับใบที่รออนุมัติ
@@ -59,7 +64,7 @@ export default function CustomerDirectory() {
      ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
   const fromNavCount = useSearchParams().get("count") === "customers";
   const [statusFilter, setStatusFilter] = useState(fromNavCount ? ["pending"] : []);
-  const [teamFilter, setTeamFilter] = useState([]);
+  const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 

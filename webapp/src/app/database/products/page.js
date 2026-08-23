@@ -2,6 +2,7 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -38,6 +39,10 @@ const FORMULA_KEY = "/api/master/formulas";
 // Master product catalog. Every FG is created here owned by a customer
 // (chosen in the form). Excise approval still happens later in the excise
 // registration flow (/excise).
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const canMargin = useCan("products:margin");
@@ -61,10 +66,10 @@ export default function ProductRegistry() {
   const [showForm, setShowForm] = useState(false);
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
-  const [statusFilter, setStatusFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
   // การขึ้นทะเบียนสรรพสามิต ('none'|'in_progress'|'approved') — มีความหมายเฉพาะ
   // หมวดสรรพสามิต: เลือกแล้วสินค้าหมวดอื่นถูกตัดออกทั้งหมด
-  const [regFilter, setRegFilter] = useState([]);
+  const [regFilter, setRegFilter] = useStickyState("regFilter", EMPTY);
   const [showInactive, setShowInactive] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
@@ -75,7 +80,7 @@ export default function ProductRegistry() {
   const [nextFgRunNo, setNextFgRunNo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [userName, setUserName] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useStickyState("search", "");
 
   const fetchProducts = async () => {
     try {

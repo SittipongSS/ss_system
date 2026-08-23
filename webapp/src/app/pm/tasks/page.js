@@ -1,6 +1,7 @@
 "use client";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
@@ -153,6 +154,10 @@ const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "ม�
 const sundayIndex = (jsDay) => jsDay;
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function TasksPage() {
   const router = useRouter();
   const role = useRole();
@@ -166,7 +171,7 @@ export default function TasksPage() {
   const askConfirm = (opts) => new Promise((resolve) => setConfirmState({ ...opts, resolve }));
   const resolveConfirm = (result) => { setConfirmState((s) => { s?.resolve(result); return null; }); };
 
-  const [scope, setScope] = useState("mine");
+  const [scope, setScope] = useStickyState("scope", "mine");
   const [mineView, setMineView] = useState(MINE_TASK_VIEWS.RESPONSIBLE);
   const [allowedScopes, setAllowedScopes] = useState(["mine"]);
   const [personalTasks, setPersonalTasks] = useState([]);
@@ -185,13 +190,13 @@ export default function TasksPage() {
   const [usersMap, setUsersMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [view, setView] = useResponsiveView({ portrait: "list", landscape: "table" });
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all"); // all | progress | urgent | done
+  const [search, setSearch] = useStickyState("search", "");
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", "all"); // all | progress | urgent | done
   // ผู้รับมอบหมาย + หมวดหมู่ รวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18)
   // — multi-select ทั้งคู่, ว่าง = ทั้งหมด. สถานะไม่อยู่ในแผงนี้เพราะเป็น drill-down
   // ของการ์ด KPI ด้านบน (มาตรฐาน: KPI/สโคป/เรียงลำดับ อยู่นอกปุ่มกรอง)
-  const [assigneeFilter, setAssigneeFilter] = useState([]);
-  const [categoryFilter, setCategoryFilter] = useState([]);
+  const [assigneeFilter, setAssigneeFilter] = useStickyState("assigneeFilter", EMPTY);
+  const [categoryFilter, setCategoryFilter] = useStickyState("categoryFilter", EMPTY);
   /* ⭐ กรองตามดีล — ตั้งต้นจาก `?dealId=` ที่หน้าดีล/หน้าโครงการส่งมา
      🐞 พารามิเตอร์ตัวนี้เคย **เปิดโมดัลสร้างงาน** แทนที่จะกรอง: ปุ่มบนหน้าดีลชื่อ
      "เปิด" กับบนหน้าโครงการชื่อ "เปิดหน้างาน" ทั้งคู่มีไอคอนลิงก์ออก ⇒ คนกดเพื่อ
@@ -199,9 +204,9 @@ export default function TasksPage() {
      ไม่ได้กรองตามดีลที่กดมาเลย · ตอนนี้ "สร้างงาน" มีปุ่มของตัวเองอยู่ในหน้าดีล/
      โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง */
   const [dealFilter, setDealFilter] = useState([]);
-  const [sortKey, setSortKey] = useState("created");
-  const [sortDir, setSortDir] = useState("asc");
-  const [groupBy, setGroupBy] = useState("none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", "created");
+  const [sortDir, setSortDir] = useStickyState("sortDir", "asc");
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [collapsed, setCollapsed] = useState(() => new Set());
   // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
   const [calRef, setCalRef] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });

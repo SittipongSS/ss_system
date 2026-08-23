@@ -14,6 +14,7 @@
 //    หัวทะเบียนนี้ · ทุกทางเรียก `ContractCreateModal` ตัวเดียวกัน ต่างกันแค่ว่ารู้ดีล
 //    มาแล้วหรือยัง (prop `dealId` / `dealIds`) ⇒ ไม่มีฟอร์มชุดที่สองให้ดูแล
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Clock3, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
@@ -38,6 +39,10 @@ import {
   daysAwaitingSignature,
 } from "@/lib/sales/contracts";
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function ContractsPage() {
   const canView = useCan("salesplan:view");
   const canEdit = useCan("salesplan:edit");
@@ -45,10 +50,10 @@ export default function ContractsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useStickyState("query", "");
   const [createOpen, setCreateOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [kindFilter, setKindFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [kindFilter, setKindFilter] = useStickyState("kindFilter", EMPTY);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(params.get("waiting") === "1");
 
