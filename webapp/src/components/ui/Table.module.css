@@ -122,6 +122,20 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* 🪤 ต้องใส่ **ทั้งสองชั้น** — ระบบมีตารางสองแบบปนกัน: `.premium-table` (ชั้นเก่า
+   48 ไฟล์) กับ `.scroll[data-family]` (ชั้นนี้) · เขียนกฎชั้นเดียวจะพลาดไปครึ่งระบบ
+   แบบเงียบ ๆ ตอนวัดจะเห็นเป็น "ไม่ล้น" ทั้งที่จริงคือ "กฎไม่โดน"
+   เหตุผลของตัวเลข 220px อยู่ที่โทเคน --cell-text-max ใน globals.css */
+.scroll[data-family] :global(td) {
+  max-width: var(--cell-text-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scroll[data-family] :global(td.ui-cell-wide) {
+  max-width: none;
+  overflow: visible;
+}
+
 /* จังหวะแถวของต้นแบบ: หัวตาราง 42px แถว 52px คงที่ — ตารางทุกหน้าจึงมีจังหวะ
    แนวตั้งเท่ากันไม่ว่าเนื้อหาในแถวจะสูงแค่ไหน (มติ 2026-07-26 ข้อ 7) */
 .scroll[data-family] :global(th) {
