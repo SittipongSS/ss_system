@@ -28,6 +28,21 @@ export function isMonthEditable(year, monthIdx, now = new Date()) {
   return monthIdx <= now.getMonth();
 }
 
+/* เดือนที่ "ปิดแล้ว" — จบเดือนไปแล้วจริง ๆ ต่างจาก `isMonthEditable` ตรงเดือนปัจจุบัน
+   🔴 ใช้กับปุ่มเติมยอดจากระบบเท่านั้น: ยอดของเดือนที่ยังเดินอยู่ยังขยับได้ทุกวัน
+   การก๊อปมาเก็บเป็นแถว `sales_history` (source manual) = **แช่แข็ง** เส้น Actual ของ
+   เดือนนั้นไว้ที่ยอด ณ วินาทีที่กด เพราะแท็บผลงานขายเอาแถวที่กรอกเองไปทับยอดระบบ
+   (`overlayHistory`) — ดีลที่ปิดหลังจากนั้นจะไม่ขึ้นรีพอร์ตอีกเลย
+   ส่วนเดือนปัจจุบัน "พิมพ์เอง" ยังทำได้ตามเดิม — คนพิมพ์รู้ตัวว่ากำลังตรึงตัวเลข */
+export function isMonthClosed(year, monthIdx, now = new Date()) {
+  const y = Number(year);
+  if (!Number.isFinite(y) || monthIdx < 0 || monthIdx >= MONTHS_IN_YEAR) return false;
+  const currentYear = now.getFullYear();
+  if (y < currentYear) return true;
+  if (y > currentYear) return false;
+  return monthIdx < now.getMonth();
+}
+
 export function monthsSum(values = []) {
   return values.reduce((sum, value) => {
     const n = Number(value);
