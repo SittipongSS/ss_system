@@ -11,6 +11,7 @@
 // ⚠️ ก่อนมีหน้านี้ คนกรอกชื่อกลิ่นลงช่อง "ชื่อสูตร" ของสินค้าเพราะไม่มีที่เก็บ
 // (เจอจริงบน prod 10 แถว) — ดูการ์ด "รอจัดระเบียบ" ที่หน้าทะเบียนสูตร
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -99,7 +100,7 @@ export default function ScentsPage() {
   );
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
-  const [sourceFilter, setSourceFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", "");
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code, status }

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import { ReceiptText, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -36,7 +37,7 @@ export default function FilingsPage() {
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
   }, [router]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
 
   const rows = useMemo(() => {

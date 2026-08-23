@@ -10,6 +10,7 @@ import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 // โครงการ = ภาชนะรวมดีล (SCENT→NPD→RE-ORDER…) — ตารางทุกโครงการพร้อม KPI
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Layers, Plus, Flag, GitBranch, UserRound } from "lucide-react";
@@ -75,6 +76,10 @@ function compareProjects(a, b, key, dir) {
   return key === "code" ? byCode * mul : byCode;
 }
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function ProjectsIndexPage() {
   const canView = useCan("salesplan:view");
   /* ⚠️ หน้านี้ "อ่านอย่างเดียว" โดยเจตนา (มติผู้ใช้ 2026-08-02) — ต่างจากหน้ารายการ
@@ -86,7 +91,7 @@ export default function ProjectsIndexPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useStickyState("query", "");
   /* ⭐ `?count=projectCloses` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "คำขอปิดที่รอ
      ฉันเซ็น" ไม่ใช่จำนวนโครงการ ⇒ กรองด้วยธง `_waitingOnMe` จาก server ซึ่งรู้ทั้ง
      closeStatus และว่าใครเป็นคนยื่น (คนยื่นเซ็นให้ตัวเองไม่ได้ จึงไม่นับใบของตัวเอง)
@@ -95,10 +100,10 @@ export default function ProjectsIndexPage() {
   const fromNavCount = useSearchParams().get("count") === "projectCloses";
   const [statusFilter, setStatusFilter] = useState(fromNavCount ? "all" : SCOPE_DEFAULT); // active = ไม่รวม Done/Drop
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(fromNavCount);
-  const [lineFilter, setLineFilter] = useState([]);
-  const [groupBy, setGroupBy] = useState("none");
-  const [sortKey, setSortKey] = useState(SORT_DEFAULT);
-  const [sortDir, setSortDir] = useState(sortDirOf(SORT_DEFAULT));
+  const [lineFilter, setLineFilter] = useStickyState("lineFilter", EMPTY);
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const [showCreateModal, setShowCreateModal] = useState(false);

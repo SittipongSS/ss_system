@@ -7,6 +7,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // SLA 1 วันทำการ **ทั้งสามด่าน** (คัดกรอง · กระจาย · ติดต่อกลับ) วัดจาก timestamp อัตโนมัติ
 // โชว์ครบบนแถบ KPI ของหน้านี้ · ตัวเลขเชิงลึก (รายช่องทาง · รายคน) อยู่ที่แท็บ "KPI ลีด"
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -81,6 +82,10 @@ function channelBadge(channel) {
   );
 }
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function LeadsPage() {
   const canLead = useCan("salesplan:lead");
   const canView = useCan("salesplan:view");
@@ -119,7 +124,7 @@ export default function LeadsPage() {
   }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useStickyState("query", "");
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) — ทุกหมวด
   // multi-select, ว่าง = ทั้งหมด. "คิวงาน" (ซ่อนลีดที่ปิดแล้ว) เดิมเป็นค่าตั้งต้นของ
   // dropdown สถานะ — แยกเป็นหมวดของตัวเองและติ๊กไว้ตั้งแต่แรกเพื่อคงพฤติกรรมเดิม
@@ -134,15 +139,15 @@ export default function LeadsPage() {
      ถ้าตั้งต้นเป็น "ของฉัน" คนที่เคยเห็นคิวทั้งทีมจะเปิดหน้ามาแล้วของหายไปเฉย ๆ
      (หน้าดีลตั้งต้นที่ตัวแรกได้เพราะมันเป็นแบบนั้นมาแต่ต้น) */
   const scopes = useMemo(() => leadScopes(role), [role]);
-  const [scope, setScope] = useState(null);
+  const [scope, setScope] = useStickyState("scope", null);
   const activeScope = scope && scopes.includes(scope) ? scope : scopes[scopes.length - 1];
 
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [teamFilter, setTeamFilter] = useState([]);
-  const [assigneeFilter, setAssigneeFilter] = useState([]);
-  const [channelFilter, setChannelFilter] = useState([]);
-  const [sortKey, setSortKey] = useState("created");
-  const [sortDir, setSortDir] = useState("desc");
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
+  const [assigneeFilter, setAssigneeFilter] = useStickyState("assigneeFilter", EMPTY);
+  const [channelFilter, setChannelFilter] = useStickyState("channelFilter", EMPTY);
+  const [sortKey, setSortKey] = useStickyState("sortKey", "created");
+  const [sortDir, setSortDir] = useStickyState("sortDir", "desc");
 
   const SORT_OPTIONS = [
     { key: "created", label: "รับล่าสุด" },
@@ -160,8 +165,8 @@ export default function LeadsPage() {
   const sortArrow = (key) => sortKey === key
     ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
     : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />; // open = ยังไม่ปิด
-  const [month, setMonth] = useState(thisMonth());
-  const [allMonths, setAllMonths] = useState(false);
+  const [month, setMonth] = useStickyState("month", thisMonth());
+  const [allMonths, setAllMonths] = useStickyState("allMonths", false);
   /* โหมดช่วงเวลา (IS-26080023) — Marketing นับลีดรายวัน/สัปดาห์เทียบยอด Spending Ads
      ⚠️ ค่าตั้งต้นยังเป็น "รายเดือน" · คนที่ไม่ได้ทำงานรายวันต้องไม่เจออะไรใหม่
      วันนี้คิดจาก **วันไทย** ไม่ใช่ `new Date()` ของเบราว์เซอร์ ไม่งั้นช่วง "สัปดาห์นี้"

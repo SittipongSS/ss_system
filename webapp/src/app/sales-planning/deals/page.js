@@ -4,6 +4,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, Paperclip, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -50,6 +51,11 @@ import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
    (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
 const dealValue = (deal) => Number((isWonStage(deal.stage) ? deal.wonValue ?? deal.projectValue : deal.projectValue) || 0);
 
+/* 🪤 ค่าตั้งต้นของตัวกรองต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าที่ไหนก็ตามคิดว่า
+   "เปลี่ยนแล้ว" ตลอดเวลา */
+const EMPTY = [];
+
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const role = useRole();
@@ -63,13 +69,13 @@ export default function SalesPlanningPipelinePage() {
   // (กรองไม่ได้จริง) — ย้ายมาเป็นหมวดหนึ่งในแผงนี้
   /* ตัวกรอง "เดือน FC" (มติผู้ใช้ 2026-08-05) — ทางเดียวที่จะหาใบที่ต้องเลื่อนเจอ
      โดยไม่ต้องเปิดทีละใบ · เกณฑ์มาจาก forecastDueState ตัวเดียวกับป้ายในแถว */
-  const [dueFilter, setDueFilter] = useState([]);
-  const [stageFilter, setStageFilter] = useState([]);
-  const [typeFilter, setTypeFilter] = useState([]); // ประเภทดีล SCENT/NPD/RE-ORDER
-  const [reviewFilter, setReviewFilter] = useState([]);
+  const [dueFilter, setDueFilter] = useStickyState("dueFilter", EMPTY);
+  const [stageFilter, setStageFilter] = useStickyState("stageFilter", EMPTY);
+  const [typeFilter, setTypeFilter] = useStickyState("typeFilter", EMPTY); // ประเภทดีล SCENT/NPD/RE-ORDER
+  const [reviewFilter, setReviewFilter] = useStickyState("reviewFilter", EMPTY);
   const reviewOnly = reviewFilter.includes("needsReview");
-  const [month, setMonth] = useState(thisMonth());
-  const [allMonths, setAllMonths] = useState(true);
+  const [month, setMonth] = useStickyState("month", thisMonth());
+  const [allMonths, setAllMonths] = useStickyState("allMonths", true);
   const [deals, setDeals] = useState([]);
   const [customers, setCustomers] = useState([]);
   /* ⭐ รหัสลูกค้า (AR) คู่ชื่อกิจการ (มติผู้ใช้ IS-26080003) — ตัวเชื่อมกับรหัสกลิ่น/MU
@@ -80,12 +86,12 @@ export default function SalesPlanningPipelinePage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState("created");
-  const [sortDir, setSortDir] = useState("desc");
+  const [query, setQuery] = useStickyState("query", "");
+  const [sortKey, setSortKey] = useStickyState("sortKey", "created");
+  const [sortDir, setSortDir] = useStickyState("sortDir", "desc");
   /* จัดกลุ่มรายการดีล (มติผู้ใช้ 2026-08-08) — ดูภาพรวมเป็นก้อนต่อลูกค้า/โครงการ/แบรนด์/AE
      แล้วกดย่อ-ขยายทีละกลุ่มได้ · ตัวเลือกน้อยจึงเป็น Segmented ไม่ใช่ dropdown (มาตรฐานระบบ) */
-  const [groupBy, setGroupBy] = useState("none");
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
@@ -100,7 +106,7 @@ export default function SalesPlanningPipelinePage() {
   const currentMonth = today ? today.slice(0, 7) : null;
   const reviewWindow = forecastReviewWindow(today);
 
-  const [scope, setScope] = useState(null);
+  const [scope, setScope] = useStickyState("scope", null);
   const [meId, setMeId] = useState(null);
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});

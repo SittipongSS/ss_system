@@ -7,6 +7,7 @@ import { TableScroll } from "@/components/ui/Table";
 // ตัวเลข "อนุมัติแล้ว x/y" และ "ราคา x/y" นับสดจากลูกทุกครั้ง ไม่ได้อ่านจาก
 // คอลัมน์ที่เก็บไว้ (มติ 2026-07-22 — กันเลขเพี้ยนจากของจริง)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Calculator, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
@@ -31,15 +32,19 @@ import {
   pricingProgress,
 } from "@/lib/costing";
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function CostingListPage() {
   const router = useRouter();
   const canCreate = useCan("costing:edit");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [teamFilter, setTeamFilter] = useState([]);
-  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
+  const [search, setSearch] = useStickyState("search", "");
 
   // ฟอร์มเปิดใบใหม่ — component เดียวกับตอนแก้ (กฎ AGENTS.md) ต่างกันแค่ mode
   const [form, setForm] = useState(null);

@@ -2,6 +2,7 @@
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
@@ -110,16 +111,20 @@ function compareOrders(a, b, key, dir) {
 }
 
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useStickyState("query", "");
   /* ตัวกรองรวมในปุ่มเดียว (FilterPopover) — เลือกได้หลายค่าต่อหมวด ต่างจาก
      dropdown เดิมที่เลือกสถานะได้ทีละค่า ("รออนุมัติ + ตีกลับ" คือคำถามจริงของ AE Sup) */
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [paymentFilter, setPaymentFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [paymentFilter, setPaymentFilter] = useStickyState("paymentFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
@@ -156,9 +161,9 @@ export default function SalesOrdersPage() {
     return () => { alive = false; };
   }, []);
 
-  const [groupBy, setGroupBy] = useState("none");
-  const [sortKey, setSortKey] = useState(SORT_DEFAULT);
-  const [sortDir, setSortDir] = useState(sortDirOf(SORT_DEFAULT));
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const filtered = useMemo(() => {

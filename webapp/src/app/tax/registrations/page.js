@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -52,7 +53,7 @@ export default function RegistrationsPage() {
     const openId = params.get("open");
     if (openId) router.replace(`/tax/registrations/${openId}`);
   }, [router]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
 
   const rows = useMemo(() => {

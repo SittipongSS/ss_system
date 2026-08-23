@@ -5,6 +5,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
@@ -73,6 +74,10 @@ function compareQuotes(a, b, key, dir) {
   return key === "number" ? byNumber * mul : byNumber;
 }
 
+/* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
+   ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
+const EMPTY = [];
+
 export default function QuotationsPage() {
   const canEdit = useCan("salesplan:edit");
   const canView = useCan("salesplan:view");
@@ -80,13 +85,13 @@ export default function QuotationsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useStickyState("query", "");
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [typeFilter, setTypeFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [typeFilter, setTypeFilter] = useStickyState("typeFilter", EMPTY);
   // ⚠️ เก็บเป็น **ownerId** ไม่ใช่ชื่อ — ชื่อเปลี่ยนได้ ตัวกรองจะแตกเป็นสองคน
-  const [ownerFilter, setOwnerFilter] = useState([]);
+  const [ownerFilter, setOwnerFilter] = useStickyState("ownerFilter", EMPTY);
   const directory = usePeopleDirectory();
   const ownerNameOf = useCallback(
     (row) => livePersonName(directory, row?.deal?.ownerId, row?.deal?.ownerName),
@@ -102,9 +107,9 @@ export default function QuotationsPage() {
      ใครเป็นผู้อนุมัติ (ต้องรู้เจ้าของดีล + ดีลปิดยัง) คำนวณเองเมื่อไรเลขก็ไม่ตรงกัน
      ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นผู้ใช้กดล้างตัวกรองไม่ได้ */
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "quotations");
-  const [groupBy, setGroupBy] = useState("none");
-  const [sortKey, setSortKey] = useState(SORT_DEFAULT);
-  const [sortDir, setSortDir] = useState(sortDirOf(SORT_DEFAULT));
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
