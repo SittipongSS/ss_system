@@ -111,6 +111,9 @@ export default function DealFormFields({
       <SearchableSelect
         entity="customer"
         value={form.customerId || ""}
+        /* ⚠️ ดีลที่ปิด Won แล้วเปลี่ยนลูกค้าไม่ได้ — ยอดจริงและเอกสารผูกกับรายเดิมไปแล้ว
+           (ช่องอื่นในฟอร์มล็อกด้วย `alreadyWon` มานานแล้ว ช่องนี้เพิ่งตกสำรวจ) */
+        disabled={alreadyWon}
         onChange={(customerId) => onPatch({ customerId, brand: "", ...(!form.lockedProjectId ? { projectId: "" } : {}) })}
         placeholder="ค้นหารหัส / ชื่อลูกค้า..."
         emptyText={CUSTOMER_PICKER_EMPTY_HINT}
@@ -119,6 +122,11 @@ export default function DealFormFields({
           ...customerSelectOptions(customers),
         ]}
       />
+      {/* ⚠️ เปลี่ยนลูกค้าทั้งที่ผูกโครงการอยู่ = ดีลกับโครงการคนละลูกค้า — ด่านจริงอยู่ที่
+          server (`dealCustomerPatchError`) ที่นี่แค่บอกล่วงหน้าว่าจะติดอะไร */}
+      {form.lockedProjectId && !alreadyWon && (
+        <small>เปลี่ยนลูกค้าได้เฉพาะรายที่ตรงกับโครงการที่ผูกอยู่ — ถ้าผูกผิดราย ให้ย้ายโครงการก่อน</small>
+      )}
     </label>
   );
 
@@ -173,7 +181,7 @@ export default function DealFormFields({
       />
       {/* ล็อกได้ 2 กรณี: ดีลเชื่อมโครงการไปแล้ว (แก้) · เปิดฟอร์มจากหน้าโครงการนั้นเอง (สร้าง)
           ⇒ ข้อความต้องกลาง ๆ ใช้ได้ทั้งสองทาง */}
-      {form.lockedProjectId && <small>โครงการถูกกำหนดไว้แล้ว — เปลี่ยน/ย้ายโครงการทำที่หน้าโครงการ</small>}
+      {form.lockedProjectId && <small>โครงการถูกกำหนดไว้แล้ว — ย้ายโครงการทำที่หน้าดีล (ปุ่ม “ย้ายไปโครงการอื่น”) หรือที่หน้าโครงการ</small>}
     </label>
   );
 

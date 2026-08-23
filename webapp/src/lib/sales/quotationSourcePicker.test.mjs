@@ -7,7 +7,7 @@ import {
   eligibleQuotationDeals,
   unassignedQuotationDeals,
 } from "./quotationSourcePicker.js";
-import { dealCustomerAdoptError } from "./dealCustomerAdopt.js";
+import { dealAttachmentSummary, dealCustomerAdoptError, dealCustomerPatchError } from "./dealCustomerAdopt.js";
 
 const customers = [
   { id: "C-OK", name: "บริษัท ทิพย์นที (2005) จำกัด", arCode: "AR-001" },
@@ -186,4 +186,77 @@ test('เหตุที่ใกล้ออกใบได้มาก่อ�
     deals: [{ id: 'DL-1', customerId: 'CUS-1', canEdit: true, stage: 'won' }],
   });
   assert.deepEqual(rows.map((r) => r.reasonCode), ['closed_stage', 'pending_approval']);
+});
+
+/* ── เปลี่ยนลูกค้าของดีล (ฟอร์มแก้ไข) — ด่านที่ PATCH ใช้ ────────────────────
+   ของเดิม `PATCH deals/[id]` รับ customerId ดิบ ๆ เข้าคอลัมน์ ⇒ เดินอ้อมด่านของ
+   link-project ได้ · prod หลุดจริง 1 ใบ (DL-26080193) เทสต์ชุดนี้ล็อกทุกเงื่อนไข */
+const CUS = { id: 'CUS-1', name: 'ลูกค้า ก', approvalStatus: 'approved', isActive: true };
+const CUS2 = { id: 'CUS-2', name: 'ลูกค้า ข', approvalStatus: 'approved', isActive: true };
+
+test('เปลี่ยนลูกค้า: ไม่เปลี่ยนอะไร = ผ่าน · ค่าเดิมว่างแล้วเติม = ผ่าน', () => {
+  assert.equal(dealCustomerPatchError({ deal: { id: 'D1', customerId: 'CUS-1' }, customer: CUS }), null);
+  assert.equal(dealCustomerPatchError({ deal: { id: 'D1' }, customer: CUS }), null);
+  assert.equal(dealCustomerPatchError({ deal: { id: 'D1' }, customer: null }), null);
+});
+
+test('เปลี่ยนลูกค้า: ดีลปิด Won แล้วห้ามแตะ', () => {
+  assert.match(
+    dealCustomerPatchError({ deal: { id: 'D1', customerId: 'CUS-1' }, customer: CUS2, isWon: true }),
+    /ปิด Won/,
+  );
+  // เติมช่องว่างของดีล Won ก็ห้าม — ยอดจริงถูกผูกไปแล้ว
+  assert.match(dealCustomerPatchError({ deal: { id: 'D1' }, customer: CUS, isWon: true }), /ปิด Won/);
+});
+
+test('เปลี่ยนลูกค้า: ต้องมีจริง + ใช้ออกเอกสารได้', () => {
+  // 🐞 ขอ id ที่ไม่มีในทะเบียน ต้องตีกลับ ไม่ใช่กลายเป็น "ล้างลูกค้า" เงียบ ๆ
+  assert.match(
+    dealCustomerPatchError({ deal: { id: 'D1', customerId: 'CUS-1' }, customer: null, requestedId: 'CUS-ไม่มีจริง' }),
+    /ไม่พบลูกค้า/,
+  );
+  assert.match(
+    dealCustomerPatchError({ deal: { id: 'D1' }, customer: { ...CUS, isActive: false } }),
+    /พักใช้/,
+  );
+});
+
+test('เปลี่ยนลูกค้า: ห้ามให้ดีลกับโครงการเป็นคนละลูกค้า (เคส DL-26080193)', () => {
+  const project = { id: 'PRJ-1', code: 'PJ-26080114', customerId: 'CUS-1', customerName: 'ลูกค้า ก' };
+  assert.match(
+    dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1' }, customer: CUS2, project }),
+    /PJ-26080114 เป็นของ ลูกค้า ก/,
+  );
+  // ตรงกับโครงการ = ผ่าน
+  assert.equal(dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1' }, customer: CUS, project }), null);
+  // ⚠️ ล้างเป็นค่าว่างต้องยังทำได้ทั้งที่ผูกโครงการ — เป็นทางออกจากทางตัน
+  // (ล้างลูกค้า → ย้ายโครงการ → ตั้งลูกค้าใหม่) และตรงกับ hasCompatibleProjectCustomer
+  assert.equal(
+    dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1', customerId: 'CUS-1' }, customer: null, project }),
+    null,
+  );
+});
+
+test('เปลี่ยนลูกค้า: มีเอกสารงอกจากดีลแล้ว = ห้ามเปลี่ยน และต้องบอกว่าติดอะไรกี่ใบ', () => {
+  const deal = { id: 'D1', customerId: 'CUS-1' };
+  const err = dealCustomerPatchError({ deal, customer: CUS2, counts: { quotations: 2, salesOrders: 1 } });
+  assert.match(err, /ใบเสนอราคา 2 · ใบสั่งขาย 1/);
+  // ดีลที่ยังไม่เคยมีลูกค้า = เติมได้เสมอ ถึงจะมีคำร้องค้างอยู่ก็ตาม
+  assert.equal(
+    dealCustomerPatchError({ deal: { id: 'D1' }, customer: CUS, counts: { requests: 3 } }),
+    null,
+  );
+  assert.equal(dealAttachmentSummary({ quotations: 0, salesOrders: 0, requests: 0 }), '');
+});
+
+test('PATCH ดีลต้องเรียกด่านกลาง ไม่เขียน customerId ดิบ ๆ เข้าคอลัมน์', () => {
+  const route = routeSource('sales-planning/deals/[id]/route.js');
+  assert.match(route, /dealCustomerPatchError\(/, 'ต้องผ่านด่านกลาง');
+  assert.doesNotMatch(
+    route,
+    /for \(const key of \['customerId', 'customerName'/,
+    'customerId/customerName ต้องไม่อยู่ในลูปที่ก๊อป body เข้า patch ตรง ๆ',
+  );
+  assert.match(route, /patch\.customerName = customer\?\.name \|\| null;/,
+    'ชื่อลูกค้าต้องอ่านจากทะเบียน ไม่ใช่รับจาก body');
 });

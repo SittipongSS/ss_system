@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { isSuperuser } from '@/lib/permissions';
+import { caretakerTeamsOf, hasTeam, isSuperuser, userTeams, viewScopeUser } from '@/lib/permissions';
 import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
@@ -10,6 +10,7 @@ import {
 } from '@/lib/forceDelete';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import { validateDealOwner } from '@/lib/sales/dealOwner';
+import { dealCustomerPatchError } from '@/lib/sales/dealCustomerAdopt';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -93,11 +94,58 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (transitioningToWon) return badRequest('ปิด Won ผ่านใบเสนอราคาเท่านั้น');
   if (alreadyWon && nextStage !== before.stage) return badRequest('ดีล Won แล้ว ไม่สามารถเปลี่ยนสถานะจากฟอร์มดีลได้');
 
+  /* ⭐ **ลูกค้าของดีลมีด่านแล้ว** (มติผู้ใช้ 2026-08-24 รอบสอง) — ของเดิมปล่อย
+     `customerId` จาก body เข้าคอลัมน์ตรง ๆ ไม่ตรวจอะไรเลย ⇒ เดินอ้อมด่านของ
+     `link-project` ได้ทั้งชุด (prod หลุดจริง 1 ใบ: DL-26080193 ดีลของ หจก. ผูก
+     โครงการของ บจก. พร้อมใบเสนอราคา 2 ใบ) · กติกาอยู่ที่ lib/sales/dealCustomerAdopt
+     ที่เดียว ใช้ร่วมกับเส้นทาง "ตั้งลูกค้าตอนออกใบเสนอราคา"
+     ⚠️ `customerName` ไม่รับจาก body อีกต่อไป — อ่านจากทะเบียนเสมอ ไม่งั้นชื่อกับ id
+     หลุดจากกันได้ (ส่งชื่อรายหนึ่งพร้อม id อีกรายหนึ่ง) */
   const patch = {
     updatedAt: new Date().toISOString(),
   };
-  for (const key of ['customerId', 'customerName', 'expectedCloseDate', 'lostReason', 'notes', 'team']) {
+  for (const key of ['expectedCloseDate', 'lostReason', 'notes', 'team']) {
     if (key in body) patch[key] = body[key] === '' ? null : body[key];
+  }
+  if ('customerId' in body) {
+    const nextCustomerId = body.customerId === '' ? null : body.customerId;
+    if (String(before.customerId || '') !== String(nextCustomerId || '')) {
+      let customer = null;
+      if (nextCustomerId) {
+        const { data } = await supabase
+          .from('customers').select('id, name, team, teams, "approvalStatus", "isActive"')
+          .eq('id', nextCustomerId).maybeSingle();
+        customer = data || null;
+        // ขอบเขตทีมตรวจที่นี่ (ต้องใช้ user) — ที่เหลือเป็นกติกาบริสุทธิ์ใน lib
+        const teams = caretakerTeamsOf(customer);
+        if (customer && viewScopeUser(user) === 'team' && userTeams(user).length
+          && teams.length && !hasTeam(user, teams)) {
+          return badRequest('ลูกค้ารายนี้อยู่ในความดูแลของทีมอื่น');
+        }
+      }
+      // นับของที่งอกจากดีลแล้ว เฉพาะตอนที่ดีลมีลูกค้าอยู่ก่อน (เติมช่องว่างไม่ต้องนับ)
+      let counts = {};
+      if (before.customerId) {
+        const [q, so, rq] = await Promise.all([
+          supabase.from('quotations').select('id', { count: 'exact', head: true }).eq('dealId', before.id),
+          supabase.from('sales_orders').select('id', { count: 'exact', head: true }).eq('dealId', before.id),
+          supabase.from('dept_requests').select('id', { count: 'exact', head: true }).eq('dealId', before.id),
+        ]);
+        counts = { quotations: q.count || 0, salesOrders: so.count || 0, requests: rq.count || 0 };
+      }
+      const gateError = dealCustomerPatchError({
+        deal: before,
+        customer,
+        // ขอ id ที่ไม่มีในทะเบียน ต้องตีกลับ ไม่ใช่ตีความเป็น "ล้างลูกค้า"
+        requestedId: nextCustomerId,
+        project: before.projectId ? await loadProject(supabase, before.projectId) : null,
+        counts,
+        isWon: alreadyWon,
+      });
+      if (gateError) return badRequest(gateError);
+      patch.customerId = nextCustomerId;
+      patch.customerName = customer?.name || null;
+    }
   }
   /* เปลี่ยนผู้รับผิดชอบ — ด่านเดียวกับตอนสร้าง (lib/sales/dealOwner.js)
      🐞 ของเดิม ownerId/ownerName ไหลจาก body ตรงเข้า patch: ปลอมชื่อได้ และยกดีลให้
