@@ -95,6 +95,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
     workingDeal = linked;
     adoptedCustomer = customer;
+    /* ⚠️ **เขียน audit ตรงนี้ ไม่ใช่หลังสร้างใบสำเร็จ** — ดีลถูกแก้ไปแล้วตั้งแต่บรรทัดบน
+       ถ้ารอไปเขียนท้ายสุด เคสที่ "ตั้งลูกค้าสำเร็จแต่สร้างใบล้ม" จะกลายเป็นการแก้ข้อมูล
+       ที่ไม่มีร่องรอยเลย (ตรวจเจอตอน UAT 2026-08-24) */
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_deal', entityId: workingDeal.id,
+      before: deal, after: workingDeal,
+      summary: `ตั้งลูกค้า ${customer.arCode ? `${customer.arCode} · ` : ''}${customer.name || customer.id} ให้ดีล ${dealAuditLabel(deal)} ตอนออกใบเสนอราคา`,
+      request: req,
+    });
     /* ⚠️ **ตั้งลูกค้าก่อน แล้วค่อยสร้างใบ — ไม่ย้อนคืนถ้าสร้างใบล้ม** โดยเจตนา:
        ค่าที่เขียนคือสิ่งที่ผู้ใช้เลือกเองบนฟอร์ม และเป็นการเติมช่องว่าง ไม่ใช่ทับของเดิม
        ⇒ ล้มแล้วกดใหม่ได้ทันทีโดยไม่ต้องไปเติมลูกค้าซ้ำ (ย้อนคืนต่างหากคือการลบ
@@ -108,16 +117,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // core การสร้างใบอยู่ใน lib เดียวกับสายสหมิตร (ยืนยัน PO → ออก QT) — แก้กติกาใบที่นั่น
   try {
     const { quote, deal: updatedDeal } = await createQuotationDraft({ supabase, user, deal: workingDeal, body, request: req });
-    /* บันทึกการตั้งลูกค้าแยกจากการสร้างใบ — คนตามประวัติดีลต้องเห็นว่า "ลูกค้ามาจากไหน"
-       โดยไม่ต้องไปเปิด audit ของใบเสนอราคา (ท่าเดียวกับที่ link-project เขียนไว้) */
-    if (adoptedCustomer) {
-      await recordAudit({
-        user, action: 'update', entityType: 'sales_deal', entityId: workingDeal.id,
-        before: deal, after: workingDeal,
-        summary: `ตั้งลูกค้า ${adoptedCustomer.arCode ? `${adoptedCustomer.arCode} · ` : ''}${adoptedCustomer.name || adoptedCustomer.id} ให้ดีล ${dealAuditLabel(deal)} ตอนออกใบเสนอราคา`,
-        request: req,
-      });
-    }
     return ok({
       ...quote,
       deal: updatedDeal,
