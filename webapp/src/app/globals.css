@@ -4532,6 +4532,14 @@ button.empty-state { width: 100%; font: inherit; }
 .section-rail-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--panel-3); flex: none; }
 .section-rail-dot[data-tone="some"] { background: var(--amber); }
 .section-rail-dot[data-tone="full"] { background: var(--green); }
+/* ⭐ ปุ่ม "เพิ่ม…" ท้ายราง (`navFooter`) — ใช้ตอนรายการในรางเป็นของที่ผู้ใช้สร้างเอง
+   ⚠️ มีเส้นคั่นด้านบนเสมอ — ปุ่มที่ลอยต่อจากรายการโดยไม่มีเส้น อ่านเหมือน "รายการ
+   ตัวสุดท้าย" อีกอัน (ต่างจากรายการอื่นแค่มีไอคอน +) */
+.section-rail-add {
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
 .section-rail-body { padding: var(--space-4); min-width: 0; }
 @media (max-width: 768px) {
   .section-rail { grid-template-columns: 1fr; }
@@ -4539,6 +4547,12 @@ button.empty-state { width: 100%; font: inherit; }
   /* ⚠️ `flex: none` จำเป็น — แถวเลื่อนแนวนอนที่ปล่อยให้ลูกหดจะบีบทุกส่วนให้ทับกัน
      แทนที่จะเลื่อน (เจอจริงบนจอ 375px) */
   .section-rail-item { white-space: nowrap; flex: none; }
+  /* จอแคบ: รางเป็นแถวเลื่อนแนวนอน ⇒ ปุ่มเพิ่มต่อท้ายแถว ไม่ใช่ขึ้นบรรทัดใหม่ */
+  .section-rail-add {
+    margin-top: 0; padding-top: 0; padding-left: var(--space-2);
+    border-top: 0; border-left: 1px solid var(--border); flex: none;
+    display: flex; align-items: center;
+  }
   .section-rail-label { white-space: nowrap; overflow: visible; }
   /* เกจรวมลงบรรทัดของตัวเอง — ไม่งั้นมันกินครึ่งแถวจนแท็บท้าย ๆ (ฟอร์ม PDR ·
      กำหนด) ถูกดันออกนอกจอโดยไม่มีอะไรบอกว่ายังมีอยู่ */

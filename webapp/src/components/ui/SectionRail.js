@@ -14,11 +14,17 @@ import { useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 
 export default function SectionRail({
-  sections,          // [{ key, label, count?: {filled,total,optional?} }]
+  sections,          // [{ key, label, count?: {filled,total,optional?}, tone? }]
   value,
   onChange,
   ariaLabel = "ส่วนของแบบฟอร์ม",
   children,          // เนื้อของส่วนที่เลือก
+  /* ⭐ ปุ่มท้ายราง (มติผู้ใช้ 2026-08-24) — ใช้ตอนรายการในรางเป็น **ของที่ผู้ใช้
+     สร้างเอง 0..N** ไม่ใช่ชุดตายตัว · ปุ่ม "เพิ่ม…" ต้องอยู่ *ในราง* ไม่ใช่ใต้กล่อง
+     ทั้งใบ ไม่งั้นมันอ่านเหมือนปุ่มของเนื้อฝั่งขวาที่กำลังเปิดอยู่ */
+  navFooter = null,
+  // ยังไม่มีรายการเลย — ต้องบอกว่าให้ทำอะไร ไม่ใช่ปล่อยฝั่งขวาว่าง
+  emptyText = null,
 }) {
   const generatedId = useId();
   const rootId = `rail-${generatedId.replaceAll(":", "")}`;
@@ -44,9 +50,13 @@ export default function SectionRail({
              🐞 เดิมส่วนพวกนี้ขึ้น "0/6" กับจุดเทาเหมือนงานค้าง ทั้งที่เว้นว่างได้ตามตั้งใจ
                 ⇒ อ่านเป็นหนี้ที่ไม่มีวันเคลียร์ */
           // จุดสีบอก "แตะแล้วหรือยัง" — เขียวเมื่อครบ, เหลืองเมื่อเริ่มแล้ว, เทาเมื่อยังว่าง
-          const tone = optional
+          /* ⚠️ ผู้เรียกกำหนดสีจุดเองได้ (`tone`) — รายการที่ "ครบ/ไม่ครบ" ไม่ได้วัดด้วย
+             จำนวนช่องเสมอไป (บรรทัดเอกสารครบเมื่อ *เลือกชนิดแล้ว และมีรายละเอียด
+             ถ้าชนิดนั้นบังคับ*) ⇒ บังคับให้แปลงเป็นเศษส่วนจะได้ "1/2" ที่ไม่มีความหมาย
+             บนราง · ไม่ส่งมาก็คิดจาก `count` เหมือนเดิมทุกประการ */
+          const tone = item.tone || (optional
             ? (filled > 0 ? "full" : "none")
-            : total > 0 && filled >= total ? "full" : filled > 0 ? "some" : "none";
+            : total > 0 && filled >= total ? "full" : filled > 0 ? "some" : "none");
           return (
             <button
               key={item.key}
@@ -70,9 +80,12 @@ export default function SectionRail({
             </button>
           );
         })}
+        {navFooter && <div className="section-rail-add">{navFooter}</div>}
       </div>
       <div className="section-rail-body" role="tabpanel" id={`${rootId}-panel`}>
-        {children}
+        {items.length === 0 && emptyText
+          ? <p className="line-empty">{emptyText}</p>
+          : children}
       </div>
     </div>
   );
