@@ -34,7 +34,15 @@ import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from "@/lib/sales/contract
 // โทนเดียวกับป้ายชนิดสัญญาในตาราง — ป้ายกดกับป้ายอ่านต้องเป็นสีเดียวกัน
 const KIND_TONE = { scent_design: "amber", manufacturing: "blue", service: "teal" };
 
-export default function ContractCreateModal({ open, dealId = "", quotationId = "", onClose, onCreated }) {
+export default function ContractCreateModal({
+  open,
+  dealId = "",
+  quotationId = "",
+  // จำกัดตัวเลือกดีลไว้ที่ชุดนี้ (หน้าโครงการส่ง id ของดีลในโครงการมา) — null = ไม่จำกัด
+  dealIds = null,
+  onClose,
+  onCreated,
+}) {
   const router = useRouter();
   const [options, setOptions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -57,13 +65,18 @@ export default function ContractCreateModal({ open, dealId = "", quotationId = "
       try {
         const res = await fetch("/api/sales-planning/contracts/options");
         const data = await res.json().catch(() => ({}));
-        if (alive) setDeals(data?.deals || []);
+        /* ⚠️ `dealIds` = ขอบเขตของ *ที่ที่กดมา* ไม่ใช่ด่านสิทธิ์ — เปิดจากหน้าโครงการ
+           ต้องเห็นเฉพาะดีลของโครงการนั้น · ด่านจริง (`contractEligibility`) ยังกรอง
+           มาจาก server เหมือนเดิม ที่นี่แค่ตัดของที่ไม่เกี่ยวกับหน้าที่ผู้ใช้ยืนอยู่ */
+        const rows = data?.deals || [];
+        if (alive) setDeals(dealIds ? rows.filter((row) => dealIds.includes(row.id)) : rows);
       } catch {
         if (alive) setDeals([]);
       }
     })();
     return () => { alive = false; };
-  }, [open, dealPicker]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, dealPicker, dealIds?.join(",")]);
 
   // ปิดโมดัลแล้วต้องกลับไปเริ่มใหม่ — ไม่งั้นเปิดรอบหน้าได้ค่าค้างของรอบก่อน
   useEffect(() => {

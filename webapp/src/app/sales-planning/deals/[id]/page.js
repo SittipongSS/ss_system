@@ -4,18 +4,21 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Button from "@/components/ui/Button";
+import GatedAction from "@/components/ui/GatedAction";
+import TaskCreateButton from "@/components/pm/TaskCreateButton";
+import RequestCreateButton from "@/components/requests/RequestCreateButton";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FlaskConical, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Layers, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -35,6 +38,7 @@ import { customerHeadline } from "@/lib/master/customerAr";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
+import { quotationDealBlocker } from "@/lib/sales/quotationSourcePicker";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
@@ -975,8 +979,17 @@ export default function DealOverviewPage() {
           </>
           )}
 
+          {/* ⭐ สร้างงานได้จากตรงนี้ (มติผู้ใช้ 2026-08-22 — ดีลเป็นศูนย์กลางการควบคุม)
+              🐞 ปุ่ม "เปิด" เดิมพาไป `/sa/tasks?dealId=` ซึ่ง **เปิดโมดัลสร้างงาน** ทับจอ
+              ทั้งที่ป้ายกับไอคอนบอกว่าจะไปดูรายการ · ตอนนี้พารามิเตอร์นั้นเป็นตัวกรอง
+              ตามที่ป้ายสัญญาไว้ ส่วนการสร้างมีปุ่มของตัวเองที่ไม่ต้องออกจากหน้า */}
           {(tab === "tasks" || tab === "overview") && (
-          <DetailCard icon={ListTodo} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={<a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>}>
+          <DetailCard icon={ListTodo} eyebrow="Linked tasks" title="งานของดีล" meta={`${dealTaskSummary.done}/${dealTaskSummary.total} เสร็จ`} actions={(
+            <>
+              <TaskCreateButton dealId={deal.id} canEdit={canEdit} onSaved={load} />
+              <a className="btn ghost" href={`/sa/tasks?dealId=${deal.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิดคิวงาน</a>
+            </>
+          )}>
             {(data.dealTasks || []).length ? (
               <div className="premium-glass-table table-responsive">
                 <TableScroll surface="embedded"><table className="premium-table">
@@ -1006,7 +1019,7 @@ export default function DealOverviewPage() {
                 </table></TableScroll>
               </div>
             ) : (
-              <Empty>ยังไม่มีงานของดีลนี้ กด “เปิด” แล้วสร้างงานโดยเลือกผูกกับดีลนี้ได้</Empty>
+              <Empty>ยังไม่มีงานของดีลนี้ — กด “สร้างงาน” ได้จากตรงนี้ ดีลถูกผูกให้แล้ว</Empty>
             )}
           </DetailCard>
           )}
@@ -1024,23 +1037,16 @@ export default function DealOverviewPage() {
               emptyText="ยังไม่มีคำร้องที่ผูกกับรายการนี้"
               headerActions={(
                 <>
-                  {/* ⭐ **ทางลัดพัฒนาสูตร** (มติผู้ใช้ 2026-08-08 · ช่องว่างข้อ 1 ของแบบ) —
-                      คู่ขนานกับการ์ด "บรีฟกลิ่นของใบนี้" บนหน้าใบสั่งขาย · ต่างกันที่
-                      พัฒนาสูตรเริ่มที่ **ดีล** ไม่ใช่ SO (ม-40)
-                      ⚠️ ไม่มีโครงการ = เปิดไม่ได้ (`REQUEST_NEEDS.project` derive จากดีล) ⇒
-                      บอกเหตุผลเป็นข้อความ ไม่ใช่ปุ่มจางที่กดไม่ได้แล้วไม่บอกว่าทำไม
+                  {/* ⭐ **ทุกหัวข้อที่ดีลใบนี้เปิดได้ ไม่ใช่ทางลัดหัวข้อเดียว**
+                      (มติผู้ใช้ 2026-08-22 · เดิมมีแค่พัฒนาสูตร ที่เหลือต้องไปเริ่มที่คิว
+                      แล้วเลือกดีลเดิมใหม่อีกรอบ) · รายการหัวข้อ + เหตุที่เปิดไม่ได้ มาจาก
+                      `dealRequestEntries` ที่เดียว — ห้ามคิดเงื่อนไขเองตรงนี้
                       ⚠️ **เติมค่าให้เฉย ๆ ไม่ได้ปลดด่าน** — ด่านตอน POST ยังตรวจครบเหมือนเดิม */}
-                  {canEdit && (deal.projectId ? (
-                    <Button
-                      as={Link} size="sm" icon={<FlaskConical size={13} aria-hidden="true" />}
-                      href={`/requests/new?kind=formula_dev&dealId=${encodeURIComponent(deal.id)}&projectId=${encodeURIComponent(deal.projectId)}&returnTo=${encodeURIComponent(`/sales-planning/deals/${deal.id}`)}`}
-                      title="ขอตัวอย่างจาก R&D ในนามดีลนี้ — 1 บรรทัด = หมวดสินค้า × กลิ่น"
-                    >
-                      ขอตัวอย่าง (พัฒนาสูตร)
-                    </Button>
-                  ) : (
-                    <span className="toolbar-label">ผูกโครงการก่อนถึงจะเปิดคำร้องได้</span>
-                  ))}
+                  <RequestCreateButton
+                    deal={deal} canEdit={canEdit}
+                    quotations={data.quotations || []}
+                    returnTo={`/sales-planning/deals/${deal.id}`}
+                  />
                   <Button as={Link} size="sm" href={`/requests?dealId=${deal.id}`} icon={<ExternalLink size={13} aria-hidden="true" />}>
                     เปิดหน้าคำร้อง
                   </Button>
@@ -1254,9 +1260,20 @@ export default function DealOverviewPage() {
                 <FileText size={17} aria-hidden="true" />
                 <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ใบเสนอราคา</h2>
                 <div className="spacer" />
-                {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
-                {canEdit && deal.projectId && deal.customerId && !isClosedStage(deal.stage) && (
-                  <Link prefetch={false} href={`/sa/quotations/new?dealId=${deal.id}`} className="btn btn-primary sm"><Plus size={13} aria-hidden="true" /> สร้างใบเสนอราคา</Link>
+                {/* 🐞 ของเดิมเป็น `canEdit && projectId && customerId && !isClosedStage`
+                    แล้ว **ซ่อนปุ่มทิ้ง** เมื่อไม่ผ่าน ⇒ เห็นการ์ดใบเสนอราคาแต่ไม่มีปุ่ม
+                    และไม่มีอะไรบอกว่าทำไม · เงื่อนไขชุดนั้นยังเป็นสำเนามือของ
+                    `eligibleQuotationDeals` อีกด้วย (ตรงกันวันนี้ ไม่มีอะไรกันไม่ให้แตก)
+                    ⇒ ย้ายไปเป็น `quotationDealBlocker` ที่อยู่ไฟล์เดียวกับด่านนั้น
+                    ⚠️ `canEdit` เป็นตัวแปรของ *หน้า* ไม่ใช่ช่องของแถวดีล — ต้องแนบเข้าไป */}
+                {canEdit && (
+                  <GatedAction
+                    size="sm" tone="primary" icon={<Plus size={13} aria-hidden="true" />}
+                    blocker={quotationDealBlocker({ ...deal, canEdit })}
+                    href={`/sa/quotations/new?dealId=${deal.id}&returnTo=${encodeURIComponent(`/sales-planning/deals/${deal.id}`)}`}
+                  >
+                    สร้างใบเสนอราคา
+                  </GatedAction>
                 )}
                 <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
               </div>

@@ -43,6 +43,16 @@ function NewQuotationInner() {
   const params = useSearchParams();
   const canEdit = useCan("salesplan:edit");
 
+  /* ⭐ **กลับไปที่เดิมเมื่อยกเลิก** — แพตเทิร์นเดียวกับ `/requests/new` และปุ่มบรีฟกลิ่น
+     บนหน้าใบสั่งขาย (`salesOrderWorkTrack`: "กลับมาที่ใบเดิม ไม่ใช่โยนไปหน้าคิวรวม")
+     🐞 เดิมทั้งปุ่มยกเลิกและปุ่มกลับ hardcode `/sa/quotations` ⇒ คนที่กด "สร้างใบเสนอราคา"
+     จากหน้าดีลแล้วเปลี่ยนใจ ไปโผล่คิวใบเสนอราคา ต้องไล่หาดีลเดิมกลับเอง
+     ⚠️ ค่าที่ไม่ใช่เส้นทางภายในถูกทิ้ง — open redirect จากโดเมนของเราเองคือของจริงที่
+     เคยหลุดมาแล้ว (ด่านตัวเดียวกับ `/requests/new`) */
+  const backRaw = params.get("returnTo");
+  const returnTo = backRaw && backRaw.startsWith("/") && !backRaw.startsWith("//") ? backRaw : "/sa/quotations";
+  const returnLabel = returnTo === "/sa/quotations" ? "กลับหน้าใบเสนอราคา" : "กลับ";
+
   const [deals, setDeals] = useState([]);
   const [projectsById, setProjectsById] = useState({});
   const [loading, setLoading] = useState(true);
@@ -394,7 +404,7 @@ function NewQuotationInner() {
           icon: null,
           label: "ยกเลิก",
           variant: "ghost",
-          href: "/sa/quotations",
+          href: returnTo,
         }]}
         busy={creating}
         footer="เลขที่ใบเสนอราคาจะสร้างอัตโนมัติเมื่อบันทึก · ส่งลูกค้าได้หลังเจ้าของดีลอนุมัติ"
@@ -407,7 +417,7 @@ function NewQuotationInner() {
       icon={<FileText size={22} />}
       title="สร้างใบเสนอราคา"
       subtitle={selectedDeal ? `${naText(selectedDeal.customerName)} · ${selectedProject?.name || naText(selectedProject?.code)} · ${selectedDeal.title}` : "เลือกที่มาของเอกสารและจัดทำใบเสนอราคาในหน้าเดียว"}
-      back={{ href: "/sa/quotations", label: "กลับหน้าใบเสนอราคา" }}
+      back={{ href: returnTo, label: returnLabel }}
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
       {!loading && !eligible.length && (
