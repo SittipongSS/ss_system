@@ -1095,6 +1095,8 @@ export default function SalesPlanningPipelinePage() {
         open={!!wonQuote}
         onClose={() => setWonQuote(null)}
         quote={wonQuote}
+        deal={quoteDeal}
+        project={quoteDeal?.projectId ? projects.find((p) => p.id === quoteDeal.projectId) || null : null}
         customerId={quoteDeal?.customerId}
         customerName={quoteDeal?.customerName}
         onDone={async () => {

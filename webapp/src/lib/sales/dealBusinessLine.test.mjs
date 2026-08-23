@@ -71,7 +71,7 @@ test('PATCH: ค่าว่าง = ไม่แตะ (ดีลเก่า�
 });
 
 test('ผูก/ก่อโครงการ: ข้ามสายไม่ได้ · ดีลเก่าที่ยังไม่มีสายสืบจากโครงการ', () => {
-  const link = read('src/app/api/sales-planning/deals/[id]/link-project/route.js');
+  const link = read('src/lib/sales/dealProjectLink.js');
   assert.match(link, /if \(deal\.line && project\.line && deal\.line !== project\.line\)/);
   assert.match(link, /const adoptedLine = !deal\.line && project\.line \? project\.line : null;/);
   const create = read('src/app/api/sales-planning/deals/[id]/create-project/route.js');

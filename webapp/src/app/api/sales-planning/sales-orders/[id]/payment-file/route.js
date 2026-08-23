@@ -6,7 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
-import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
+import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,7 @@ export async function GET(request, { params }) {
   const att = list[Number(url.searchParams.get('i')) || 0];
   if (!att?.storagePath) return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
 
-  const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
+  const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
   const safeOrderId = String(order.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
   // ⚠️ งวดแรกอาจ **ยืมไฟล์มาจากหลักฐาน Won ของ QT** (สลิปโอนเงิน) ⇒ path จะขึ้นต้นด้วย
   //    `quotations/…/won/` ไม่ใช่โฟลเดอร์ของใบสั่งขาย · ยอมรับทั้งสองรูปแบบ แต่ไม่ยอมรับ

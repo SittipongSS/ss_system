@@ -178,27 +178,29 @@ export function installmentPlanDrift(rows = [], plan = null, total = 0) {
 }
 
 /**
- * งวดพร้อม insert — เท่ากับ `installmentsFromPaymentPlan` แต่ **ยืมหลักฐานจากตอนปิด Won**
- * มาตั้งงวดแรกให้เมื่อใบนั้นปิดด้วยสลิปโอนเงิน (มติผู้ใช้ 2026-08-13)
+ * งวดพร้อม insert — เท่ากับ `installmentsFromPaymentPlan` แต่ **ยืมเอกสารยืนยันคำสั่งซื้อ**
+ * มาตั้งงวดแรกให้เมื่อใบนั้นยืนยันด้วยสลิปโอนเงิน (มติผู้ใช้ 2026-08-13)
  *
- * ⭐ เหตุผล: `payment_slip` เป็นหนึ่งใน `WON_DOC_TYPES` ⇒ ใบที่ปิด Won ด้วยสลิป
- * แปลว่า **จ่ายมาแล้วตั้งแต่ก่อนออกใบสั่งขาย** · ปล่อยให้ทุกงวดเป็น `pending`
- * แล้วบังคับให้ SA ไปแนบสลิปใบเดิมซ้ำ = ให้คนกรอกของที่ระบบถืออยู่แล้ว
+ * ⭐ เหตุผล: `payment_slip` เป็นหนึ่งใน `CONFIRM_DOC_TYPES` ⇒ ใบที่ยืนยันด้วยสลิป
+ * แปลว่า **จ่ายมาแล้ว** · ปล่อยให้ทุกงวดเป็น `pending` แล้วบังคับให้ SA ไปแนบสลิป
+ * ใบเดิมซ้ำ = ให้คนกรอกของที่ระบบถืออยู่แล้ว
+ * ⚠️ เอกสารชุดนี้อยู่ที่ **ใบสั่งขาย** ตั้งแต่ mig 0285 (ก่อนหน้านั้นอยู่ที่ใบเสนอราคา
+ * ตอนปิด Won) — ผู้เรียกส่งผ่าน `orderConfirmationOf` ที่อ่านสองบ้านให้แล้ว
  *
  * ⚠️ **ยังต้องผ่านบัญชีเหมือนเดิม** — ตั้งให้แค่ `reported` ไม่ใช่ `confirmed`
  * ข้ามด่านบัญชีเมื่อไรก็เท่ากับไม่มีด่าน (กติกาเดิมของสายนี้)
  * ⚠️ ตั้งเฉพาะ **งวดแรก** — สลิปใบเดียวรู้แค่ว่ามีเงินเข้า ไม่รู้ว่าครอบคลุมกี่งวด
  *    ยอดจริงเป็นเรื่องที่บัญชีตรวจตอนคอนเฟิร์ม
  */
-export function buildInstallmentsForOrder(plan, total, { wonEvidence = null, actor = null, now = null } = {}) {
+export function buildInstallmentsForOrder(plan, total, { confirmation = null, actor = null, now = null } = {}) {
   // ใบยอด 0 ไม่มีงวดเลย (มติผู้ใช้ 2026-08-18) — ดู paymentNotRequired
   if (paymentNotRequired(total)) return [];
   const rows = installmentsFromPaymentPlan(plan, total);
-  const paidOn = wonEvidence?.docDate || null;
-  const seeded = wonEvidence?.docType === 'payment_slip'
+  const paidOn = confirmation?.docDate || null;
+  const seeded = confirmation?.docType === 'payment_slip'
     && !!paidOn
-    && Array.isArray(wonEvidence?.attachments)
-    && wonEvidence.attachments.length > 0;
+    && Array.isArray(confirmation?.attachments)
+    && confirmation.attachments.length > 0;
 
   if (!seeded || !rows.length) return rows;
 
@@ -210,8 +212,8 @@ export function buildInstallmentsForOrder(plan, total, { wonEvidence = null, act
       reportedAt: now || new Date().toISOString(),
       reportedById: actor?.id || null,
       reportedByName: actor?.name || null,
-      evidence: wonEvidence.attachments,
-      note: row.note || 'หลักฐานจากตอนปิด Won (สลิปโอนเงิน) — ระบบยกมาให้ รอบัญชีตรวจ',
+      evidence: confirmation.attachments,
+      note: row.note || 'หลักฐานจากเอกสารยืนยันคำสั่งซื้อ (สลิปโอนเงิน) — ระบบยกมาให้ รอบัญชีตรวจ',
     }
     : row));
 }

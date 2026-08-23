@@ -8,10 +8,10 @@
 // ลืมอัปเดตแล้วกลายเป็นรูให้แนบไฟล์ใส่ใบที่ปิดไปแล้ว
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
-import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
+import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 
 export const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET
-  || DEFAULT_WON_EVIDENCE_BUCKET;
+  || DEFAULT_EVIDENCE_BUCKET;
 
 const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
 
@@ -24,6 +24,19 @@ const TARGETS = {
     gate: (row) => (['draft', 'sent'].includes(row.status)
       ? null : 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้'),
     prefix: (entityId) => `quotations/${safeId(entityId)}/won/`,
+  },
+  /* ⭐ เอกสารยืนยันคำสั่งซื้อของใบสั่งขาย (mig 0285) — **แนบก่อนที่ใบจะเกิด**
+     ฟอร์มหน้าสร้างใบสั่งขายอัปไฟล์ตั้งแต่ยังไม่มี orderId (เลขที่ใบออกตอนกดสร้าง
+     และใช้ซ้ำไม่ได้ ⇒ ห้ามสร้างใบเปล่ารอไว้) ⇒ ไฟล์พักไว้ใต้ **ใบเสนอราคาต้นทาง**
+     แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
+     ⚠️ ด่านคือ "ใบเสนอราคาปิด Won แล้ว" — ตรงข้ามกับ quotation_won_evidence ที่รับ
+     เฉพาะตอนใบยังเปิด · คนละโฟลเดอร์กันเพื่อให้ proxy แยกด่านอ่านได้ */
+  sales_order_confirmation: {
+    table: 'quotations',
+    notFound: 'ไม่พบใบเสนอราคา',
+    gate: (row) => (row.status === 'accepted'
+      ? null : 'แนบเอกสารยืนยันคำสั่งซื้อได้เมื่อใบเสนอราคาปิด Won แล้ว'),
+    prefix: (entityId) => `quotations/${safeId(entityId)}/order-confirmation/`,
   },
   // งวดชำระเกิดตอนใบสั่งขายอนุมัติ — ก่อนหน้านั้นไม่มีอะไรให้แนบ
   sales_order_payment_evidence: {
@@ -70,6 +83,27 @@ export async function checkPrivateEvidenceScope(user, entityType, entityId) {
   if (!deal || !inSalesEditScope(user, deal)) return { ok: false, error: 'forbidden', status: 403 };
 
   return { ok: true };
+}
+
+/**
+ * ไฟล์ที่ client อ้างมา **มีอยู่จริงใน bucket ไหม** — คืนข้อความผิดพลาด หรือ null เมื่อครบ
+ *
+ * 🛑 path ที่ปลอมขึ้นมาหรือชี้ของที่ยังอัปไม่สำเร็จ ต้องไม่กลายเป็นหลักฐานถาวรของ
+ * เอกสารการค้า · เดิมด่านนี้อยู่ใน route ปิด Won ที่เดียว พอหลักฐานย้ายมาที่ใบสั่งขาย
+ * (mig 0285) ก็ต้องยกออกมาให้ผู้เรียกทั้งสองฝั่งใช้ตัวเดียวกัน
+ */
+export async function missingStoredEvidence(supabase, bucket, attachments = []) {
+  for (const att of (attachments || []).filter((item) => item?.storagePath)) {
+    const slash = att.storagePath.lastIndexOf('/');
+    const folder = att.storagePath.slice(0, slash);
+    const name = att.storagePath.slice(slash + 1);
+    const { data: stored, error } = await supabase.storage
+      .from(bucket).list(folder, { search: name, limit: 10 });
+    if (error || !stored?.some((item) => item.name === name)) {
+      return `ไม่พบไฟล์ ${att.fileName || name} ในพื้นที่จัดเก็บ private`;
+    }
+  }
+  return null;
 }
 
 /**

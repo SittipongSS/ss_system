@@ -1,8 +1,12 @@
-// Proxy แสดง/ดาวน์โหลดไฟล์หลักฐานการปิด Won ของใบเสนอราคา (quotations.wonAttachments).
-// สิทธิ์คุมด้วย view-scope ของดีลเจ้าของ (pattern เดียวกับ activities/[id]/file) แล้ว
-// stream bytes จาก private Supabase Storage / Google Drive; ไฟล์ legacy บน
-// public Supabase Storage ยัง redirect URL เดิมเพื่อ backward compatibility.
-// ?i=<index> ชี้ไฟล์ในอาเรย์ wonAttachments (default 0).
+// Proxy แสดง/ดาวน์โหลด "เอกสารยืนยันคำสั่งซื้อ" ของใบสั่งขาย (sales_orders.confirmAttachments)
+//
+// ⭐ ฝาแฝดของ quotations/[id]/file (หลักฐานปิด Won ของใบเก่า) และ
+// sales-orders/[id]/payment-file (หลักฐานรายงวด) — ด่านเดียวกัน: view-scope ของดีล
+// เจ้าของใบ แล้ว stream ไบต์จาก private bucket / Drive · legacy public URL redirect
+//
+// ⚠️ path ต้องอยู่ใต้โฟลเดอร์ของ **ใบเสนอราคาต้นทาง** เพราะไฟล์ถูกอัปตั้งแต่ตอนที่ใบ
+// สั่งขายยังไม่เกิด (เลขที่ใบใช้ซ้ำไม่ได้ ⇒ ฟอร์มสร้างใบยิงคำขอเดียวตอนกดสร้าง)
+// ?i=<index> ชี้ไฟล์ในอาเรย์ (default 0)
 import { Readable } from 'node:stream';
 import { loadScoped } from '@/lib/scopedRow';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
@@ -21,29 +25,27 @@ export async function GET(request, { params }) {
   }
 
   const supabase = getSupabaseAdmin();
-  // ⭐ โหลดใบ + ดีลเจ้าของ + ตรวจ view-scope ในคำสั่งเดียว (`loadScoped` join ดีลมาให้)
-  // — เดิมยิงสองรอบแล้วตรวจทีหลัง ซึ่งเป็นรูปที่ "โหลดแล้วลืมตรวจ" เขียนออกได้
-  const { row: quote, response } = await loadScoped(supabase, 'quotations', id, user, 'view');
+  const { row: order, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
   if (response) return response;
 
-  const list = Array.isArray(quote.wonAttachments) ? quote.wonAttachments : [];
+  const list = Array.isArray(order.confirmAttachments) ? order.confirmAttachments : [];
   const idx = Number(new URL(request.url).searchParams.get('i')) || 0;
   const att = list[idx];
   if (!att || (!att.fileUrl && !att.storagePath)) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
   }
 
-  // New Won evidence: private bucket, streamed only after deal-scope auth above.
   if (att.storagePath) {
     const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
-    const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
-    if (att.storageBucket !== privateBucket || !String(att.storagePath).startsWith(`quotations/${safeQuoteId}/won/`)) {
+    const safeQuoteId = String(order.quotationId || '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+    if (att.storageBucket !== privateBucket
+      || !String(att.storagePath).startsWith(`quotations/${safeQuoteId}/order-confirmation/`)) {
       return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
     }
     const { data, error } = await supabase.storage.from(privateBucket).download(att.storagePath);
     if (error || !data) {
-      console.error('[quotations/file] private storage download failed:', error);
-      return Response.json({ error: 'ดึงไฟล์หลักฐานไม่สำเร็จ' }, { status: 502 });
+      console.error('[sales-orders/confirm-file] private storage download failed:', error);
+      return Response.json({ error: 'ดึงไฟล์เอกสารยืนยันไม่สำเร็จ' }, { status: 502 });
     }
     return new Response(data, {
       headers: {
@@ -54,10 +56,8 @@ export async function GET(request, { params }) {
     });
   }
 
-  // Legacy Supabase public URL (no Drive id / private path) → redirect ตรง.
   if (!att.driveFileId) return Response.redirect(att.fileUrl, 307);
 
-  // Drive: stream bytes ผ่าน server (ไฟล์ private).
   try {
     const { getFileStream } = await import('@/lib/drive');
     const stream = await getFileStream(att.driveFileId);
@@ -69,7 +69,7 @@ export async function GET(request, { params }) {
       },
     });
   } catch (err) {
-    console.error('[quotations/file] drive stream failed:', err);
+    console.error('[sales-orders/confirm-file] drive stream failed:', err);
     return Response.json({ error: 'ดึงไฟล์จาก Google Drive ไม่สำเร็จ' }, { status: 502 });
   }
 }

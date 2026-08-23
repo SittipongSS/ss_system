@@ -27,7 +27,7 @@ import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
+import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -446,23 +446,11 @@ export default function QuotationEditorPage() {
       await load();
     }
   };
-  const createSalesOrder = async () => {
-    setBusy("sales-order");
-    setError("");
-    try {
-      const res = await fetch("/api/sales-planning/sales-orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ quotationId: quote.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "สร้างใบสั่งขายไม่สำเร็จ");
-      router.push(`/sa/sales-orders/${data.id}`);
-    } catch (err) {
-      setError(err.message || "สร้างใบสั่งขายไม่สำเร็จ");
-      setBusy("");
-    }
-  };
+  /* ⭐ ออกใบสั่งขาย = **ไปหน้าฟอร์ม** ไม่ใช่ยิงสร้างทันที (มติผู้ใช้ 2026-08-24)
+     เอกสารยืนยันคำสั่งซื้อ กำหนดชำระรายงวด และเงินที่ลูกค้าจ่ายมาแล้ว ถูกกรอกที่นั่น
+     แล้วออกใบทีเดียว — เลขที่ใบใช้ซ้ำไม่ได้ (0241) จึงห้ามสร้างใบเปล่ารอไว้ก่อน */
+  const salesOrderFormHref = `/sa/sales-orders/new?quotationId=${id}&returnTo=${encodeURIComponent(`/sa/quotations/${id}`)}`;
+
   const doDelete = () => {
     const elevatedDelete = quote.status !== "draft";
     setConfirmState({
@@ -968,7 +956,7 @@ export default function QuotationEditorPage() {
                   <h2>หลักฐานการปิด Won</h2>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "var(--fs-7)" }}>
-                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || naText(quote.wonDocType)}</div>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{CONFIRM_DOC_TYPE_LABELS[quote.wonDocType] || naText(quote.wonDocType)}</div>
                   <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : NA}</div>
                   {quote.wonPaymentDueDate && <div><small style={{ color: "var(--text-3)", display: "block" }}>กำหนดชำระ</small>{fmtDate(quote.wonPaymentDueDate)}</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1006,9 +994,9 @@ export default function QuotationEditorPage() {
                 eyebrow="DOWNSTREAM DOCUMENT"
                 title="ใบสั่งขาย"
                 meta="ยังไม่ได้สร้างเอกสารปลายทาง"
-                actions={<button type="button" className="btn btn-primary" onClick={createSalesOrder} disabled={!!busy}><Plus size={14} /> {busy === "sales-order" ? "กำลังสร้าง…" : "สร้างร่าง ใบสั่งขาย"}</button>}
+                actions={<Link href={salesOrderFormHref} className="btn btn-primary"><Plus size={14} /> สร้างใบสั่งขาย</Link>}
               >
-                <p style={{ color: "var(--text-2)", marginTop: 0 }}>สร้างร่าง SO จาก QT ใบนี้เพื่อตรวจสอบข้อมูลและยื่นให้ AE Supervisor อนุมัติ</p>
+                <p style={{ color: "var(--text-2)", marginTop: 0 }}>กรอกเอกสารยืนยันคำสั่งซื้อ กำหนดชำระรายงวด และเงินที่ลูกค้าจ่ายมาแล้ว ในหน้าเดียว แล้วออกใบเพื่อยื่นให้ AE Supervisor อนุมัติ</p>
               </RelatedDocumentCard>
             )}
             {quote.revisionHistory?.length > 1 && (
@@ -1047,6 +1035,7 @@ export default function QuotationEditorPage() {
         open={wonOpen}
         onClose={() => setWonOpen(false)}
         quote={quote}
+        deal={quote?.deal}
         customerId={quote?.customerId || quote?.deal?.customerId}
         customerName={quote?.customerName || quote?.deal?.customerName}
         onDone={async () => { setWonOpen(false); await load(); }}

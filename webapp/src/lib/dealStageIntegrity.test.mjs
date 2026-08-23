@@ -32,7 +32,7 @@ const QUOTE_DRAFT = 'lib/sales/createQuotationDraft.js';
 // เส้นทางทั้งหมดที่ขยับ stage ของดีล — ทุกเส้นต้องผ่าน advanceStage ตัวเดียวกัน
 const ADVANCING_ROUTES = [
   'app/api/sales-planning/deals/[id]/create-project/route.js',
-  'app/api/sales-planning/deals/[id]/link-project/route.js',
+  'lib/sales/dealProjectLink.js',   // เนื้อในของ link-project (โมดัลปิด Won เรียกตัวเดียวกัน)
   TIMELINE_ROUTE,
   QUOTE_DRAFT,
 ];

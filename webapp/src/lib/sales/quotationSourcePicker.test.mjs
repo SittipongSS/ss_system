@@ -100,7 +100,12 @@ test('ออกใบเสนอราคาไม่บังคับโค�
   const create = routeSource('sales-planning/deals/[id]/quotations/route.js');
   const accept = routeSource('sales-planning/quotations/[id]/accept/route.js');
   assert.doesNotMatch(create, /if \(!deal\.projectId\) return/, 'ตอนออกใบต้องไม่มีด่านโครงการ');
-  assert.match(accept, /if \(!deal\.projectId\) return/, 'ตอนปิด Won ต้องยังบังคับโครงการ');
+  /* ⭐ ตั้งแต่ 2026-08-24 ด่านโครงการ **ปลดได้ในคำขอเดียวกัน**: ไม่มีโครงการ = ต้องส่ง
+     projectId มากับการปิด Won แล้ว route ผูกให้ก่อนเรียก RPC — ไม่ใช่ตีกลับให้ไปทำเอง
+     ⚠️ ที่ล็อกไว้คือ "ปิด Won โดยไม่มีโครงการไม่ได้" ไม่ใช่รูปประโยคของด่าน */
+  assert.match(accept, /if \(!deal\.projectId\) \{/, 'ตอนปิด Won ต้องยังบังคับโครงการ');
+  assert.match(accept, /if \(!projectId\) return badRequest/, 'ไม่มีโครงการและไม่ได้เลือกมา = ปิดไม่ได้');
+  assert.match(accept, /linkDealToProject\(supabase, \{ deal, projectId/, 'ผูกโครงการในคำขอเดียวกับที่ปิด Won');
   /* ⚠️ ลูกค้า **ยังบังคับ** แต่เปลี่ยนท่า (2026-08-24): ใบต้องมีลูกค้าเสมอ ถ้าดีลยังไม่มี
      ให้รับจากฟอร์มมาตั้งให้ดีล — ไม่ใช่ตีกลับให้ไปแก้ที่หน้าดีล ⇒ ด่านต้องเหลืออยู่ใน
      รูป "ไม่มีทั้งที่ดีลและที่ body = ตีกลับ" */

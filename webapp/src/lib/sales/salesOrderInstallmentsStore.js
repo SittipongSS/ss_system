@@ -6,6 +6,7 @@ import { genId } from '@/lib/id';
 import {
   buildInstallmentsForOrder, installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen,
 } from '@/lib/sales/salesOrderPayments';
+import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 
 const TABLE = 'sales_order_installments';
 
@@ -48,14 +49,9 @@ export async function ensureInstallments(supabase, { order, user, now = null, fr
     order.quotation?.paymentPlan,
     order.totalAmount,
     {
-      // หลักฐานตอนปิด Won ของ QT ต้นทาง — ยืมมาตั้งงวดแรกเมื่อปิดด้วยสลิปโอนเงิน
-      wonEvidence: frozenAt && order.quotation
-        ? {
-          docType: order.quotation.wonDocType,
-          docDate: order.quotation.wonDocDate,
-          attachments: order.quotation.wonAttachments,
-        }
-        : null,
+      // เอกสารยืนยันคำสั่งซื้อของใบ (ใบเก่าถอยไปอ่านหลักฐาน Won ของ QT ต้นทาง) —
+      // ยืมมาตั้งงวดแรกเมื่อยืนยันด้วยสลิปโอนเงิน
+      confirmation: frozenAt ? orderConfirmationOf(order, order.quotation) : null,
       actor: { id: user?.id || null, name: user?.name || user?.email || null },
       now,
     },
@@ -145,16 +141,12 @@ export async function freezeInstallments(supabase, { order, user, now = null }) 
   }
 
   /* จำนวนตรงกัน — ทับยอด/สัดส่วน/ป้ายรายแถว แล้วประทับ frozenAt
-     ⭐ **ยืมหลักฐาน Won ตรงนี้ด้วย** — งวดร่างเป็น `pending` ล้วนเสมอ (CHECK ของ 0259)
+     ⭐ **ยืมเอกสารยืนยันคำสั่งซื้อตรงนี้ด้วย** — งวดร่างเป็น `pending` ล้วนเสมอ (CHECK ของ 0259)
      ⇒ ใบที่ SA กด "เริ่มติดตาม" ไว้ก่อน ต้องได้งวดแรกเป็น `reported` พร้อมสลิปจากตอน
      ปิด Won เหมือนใบที่ไม่เคยกด ไม่งั้นการกดปุ่มเร็วกลายเป็นการเสียสิทธิ์ */
   const bySeq = new Map(plan.map((row) => [row.seq, row]));
   const seeded = buildInstallmentsForOrder(order.quotation?.paymentPlan, order.totalAmount, {
-    wonEvidence: order.quotation ? {
-      docType: order.quotation.wonDocType,
-      docDate: order.quotation.wonDocDate,
-      attachments: order.quotation.wonAttachments,
-    } : null,
+    confirmation: orderConfirmationOf(order, order.quotation),
     actor: { id: user?.id || null, name: user?.name || user?.email || null },
     now: stamp,
   });

@@ -1,107 +1,109 @@
 "use client";
-import { useMemo, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
-import Modal from "@/components/Modal";
-import PendingFiles from "@/components/ui/PendingFiles";
-import Select from "@/components/ui/Select";
-import Input from "@/components/ui/Input";
-import DateInput from "@/components/ui/DateInput";
-import { fmtMoney } from "@/lib/format";
-import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  WON_DOC_TYPES, isPaymentDocType, validateWonEvidence, MAX_WON_ATTACHMENTS,
-  MAX_WON_DOC_NO, wonDocNoRule,
-} from "@/lib/sales/quotationWonEvidence";
+  CheckCircle2, ClipboardList, CircleAlert, FileText, FolderKanban, Handshake, Undo2,
+} from "lucide-react";
+import Modal from "@/components/Modal";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { quotationWonEffects, selectableProjectsForWon } from "@/lib/sales/quotationWonPrompt";
+import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
-import { businessDate } from "@/lib/businessDate";
+import styles from "./QuotationWonDialog.module.css";
 
-// ฟอร์มยืนยัน Won จากใบเสนอราคา (บังคับหลักฐาน — feedback ผู้ใช้ 2026-07-15):
-// แนบไฟล์ สลิป/PO/เอกสารยืนยันการสั่งซื้อ ≥1 + วันที่เอกสาร; ถ้าไม่ใช่เอกสาร
-// การชำระเงิน ต้องกรอกกำหนดชำระ. อัปไฟล์ผ่าน /api/upload ไป private Supabase bucket
-// แล้วส่ง ref ไปกับ POST /quotations/[id]/accept — ใช้ร่วมหน้า editor + หน้าดีล.
-export default function QuotationWonDialog({ open, onClose, quote, customerName, onDone }) {
-  const today = businessDate();
-  const [docType, setDocType] = useState("payment_slip");
-  const [docDate, setDocDate] = useState(today);
-  const [docNo, setDocNo] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [files, setFiles] = useState([]); // File[] ที่เลือกไว้ (ยังไม่อัป)
+// โมดัลยืนยันปิด Won (มติผู้ใช้ 2026-08-24)
+//
+// ⭐ **ไม่มีฟอร์มหลักฐานแล้ว** — สลิป / PO / เอกสารยืนยันการสั่งซื้อ ย้ายไปกรอกที่
+// หน้าสร้างใบสั่งขาย (mig 0285) ซึ่งเป็นที่ที่มันถูกใช้จริง · สิ่งที่โมดัลนี้ทำคือ
+// บอกผลลัพธ์ให้ครบก่อนกด (กติกาเดียวกับ `approvalPrompt`)
+//
+// ⭐ **คำถามเดียวที่เหลืออยู่คือโครงการ** — ตั้งแต่ #1385 ด่าน "ต้องมีโครงการ" เหลือ
+// ที่เดียวคือตอนปิด Won ⇒ ดีลลอยต้องปลดด่านได้จากตรงนี้เลย ไม่ใช่ถูกตีกลับให้ไปทำ
+// ที่หน้าดีลแล้วเดินกลับมา · ผูกโครงการกับปิด Won ไปด้วยกันในคำขอเดียว (accept รับ
+// projectId) ไม่ใช่สองคำขอเรียงกัน — ครั้งที่สองล้ม = ดีลผูกโครงการโดยยังไม่ Won
+/* ไอคอนประจำผลลัพธ์แต่ละข้อ — อ่านเร็วกว่าจุดนำหน้าเปล่า ๆ เวลาแถวยาวหลายบรรทัด
+   (ทรงเดียวกับรายการผลลัพธ์บนโมดัลอนุมัติอื่น ๆ ที่มีไอคอนนำ) */
+const EFFECT_ICONS = {
+  link: FolderKanban,
+  won: Handshake,
+  zero: CircleAlert,
+  closed: FileText,
+  order: ClipboardList,
+  undo: Undo2,
+};
+
+export default function QuotationWonDialog({ open, onClose, quote, deal: dealProp, project: projectProp = null, customerId, customerName, onDone }) {
+  const deal = dealProp || quote?.deal || null;
+  // โครงการที่ผูกอยู่: บางหน้าโหลดมากับดีล บางหน้ามีเป็นทะเบียนแยก ⇒ รับได้ทั้งสองทาง
+  const linkedProject = deal?.project || projectProp || null;
+  const needsProject = !!deal && !deal.projectId;
+
+  const [projects, setProjects] = useState([]);
+  const [projectId, setProjectId] = useState("");
+  const [loadingProjects, setLoadingProjects] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const wonAmount = useMemo(() => quotationWonAmount(quote), [quote]);
-  const needsDueDate = !isPaymentDocType(docType);
-  // เลขที่เอกสาร — บังคับเมื่อเป็น PO เพราะใบสั่งขายดึงไปเป็น "เอกสารอ้างอิง" (mig 0246)
-  const docNoRule = wonDocNoRule(docType);
+  const dealCustomerId = customerId || quote?.customerId || deal?.customerId || null;
 
-  const reset = () => {
-    setDocType("payment_slip");
-    setDocDate(today);
-    setDocNo("");
-    setDueDate("");
-    setFiles([]);
+  const loadProjects = useCallback(async () => {
+    setLoadingProjects(true);
+    try {
+      const res = await fetch("/api/pm/projects");
+      const rows = res.ok ? await res.json() : [];
+      const usable = selectableProjectsForWon(rows, { customerId: dealCustomerId, line: deal?.line || null });
+      setProjects(usable);
+      // มีให้เลือกใบเดียว = เลือกให้เลย (ไม่ใช่ค่าตั้งต้นของการตัดสินใจ — มันคือ
+      // ตัวเลือกทั้งหมดที่มี · กฎ "ห้าม default ให้การตัดสินใจ" พูดถึงชุดที่มีหลายทาง)
+      if (usable.length === 1) setProjectId(usable[0].id);
+    } catch {
+      setProjects([]);
+    } finally {
+      setLoadingProjects(false);
+    }
+  }, [dealCustomerId, deal?.line]);
+
+  useEffect(() => {
+    if (!open || !needsProject) return;
+    setProjectId("");
     setError("");
-  };
+    loadProjects();
+  }, [open, needsProject, loadProjects]);
+
+  const chosenProject = useMemo(
+    () => (needsProject ? projects.find((p) => p.id === projectId) || null : linkedProject),
+    [needsProject, projects, projectId, linkedProject],
+  );
+
+  const wonAmount = useMemo(() => quotationWonAmount(quote), [quote]);
+  // วันที่ผูกโครงการ — ดีลเก็บไว้ใน metadata ตอน link-project (ไม่มีก็ไม่ต้องเดา)
+  const linkedAt = deal?.metadata?.linkedProjectAt || null;
+
+  const effects = useMemo(
+    () => quotationWonEffects({ quote, deal, project: chosenProject, linkingProject: needsProject }),
+    [quote, deal, chosenProject, needsProject],
+  );
+
   const close = () => {
     if (busy) return;
-    reset();
-    onClose();
-  };
-
-  const uploadOne = async (file) => {
-    // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ด้วย signed URL ที่ server ออกให้ —
-    // ไม่ผ่าน function จึงไม่ติดเพดาน request body 4.5 MB ของโฮสติ้ง
-    let ref;
-    try {
-      ref = await uploadFileForEntity({
-        file, entityType: "quotation_won_evidence", entityId: quote.id,
-      });
-    } catch (err) {
-      throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-    }
-    return {
-      fileUrl: ref.url || null,
-      driveFileId: ref.driveFileId || null,
-      storageBucket: ref.storageBucket || null,
-      storagePath: ref.storagePath || null,
-      fileName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-    };
+    setError("");
+    onClose?.();
   };
 
   const submit = async () => {
-    // ตรวจฟอร์มก่อนอัปไฟล์ (ใช้ placeholder แทนไฟล์ที่จะอัป — กันอัปแล้วค่อยเจอ error ฟอร์ม)
-    const preview = validateWonEvidence({
-      docType, docDate, docNo, paymentDueDate: dueDate || null,
-      attachments: files.map((f) => ({ fileUrl: "pending", fileName: f.name })),
-    });
-    if (!preview.ok) { setError(preview.error); return; }
+    if (needsProject && !projectId) { setError("เลือกโครงการที่ดีลนี้จะเข้าไปอยู่ก่อน"); return; }
     setBusy(true);
     setError("");
-    const attachments = [];
     try {
-      for (const f of files) attachments.push(await uploadOne(f));
       const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docType, docDate, docNo, paymentDueDate: dueDate || null, attachments }),
+        body: JSON.stringify(needsProject ? { projectId } : {}),
       });
       if (!res.ok) throw new Error(await describeResponseError(res, "ปิด Won ไม่สำเร็จ"));
       const data = await res.json();
-      reset();
       await onDone?.(data);
     } catch (e) {
-      await Promise.allSettled(attachments.map((att) => fetch("/api/upload", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...att,
-          entityType: "quotation_won_evidence",
-          entityId: quote.id,
-        }),
-      })));
       setError(e.message || "ปิด Won ไม่สำเร็จ");
     } finally {
       setBusy(false);
@@ -109,72 +111,93 @@ export default function QuotationWonDialog({ open, onClose, quote, customerName,
   };
 
   if (!quote) return null;
+  const blockedReason = needsProject && !projectId
+    ? "เลือกโครงการก่อนจึงจะปิด Won ได้ — ใบสั่งขายและงานผลิตที่ตามมาต้องรู้ว่าอยู่โครงการไหน"
+    : "";
+
   return (
-    <Modal open={open} onClose={close} title={`ยืนยัน Won · ${quote.quoteNumber || "ใบเสนอราคา"}`} size="md">
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ margin: 0, color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
-          ยอดก่อน VAT <strong>{fmtMoney(wonAmount)}</strong> จะถูกบันทึกเป็นยอด Won (นับ AT ตามเดือนของวันที่เอกสาร)
-          และใบเสนอราคาฉบับอื่นในดีลนี้จะถูก<strong>ปิดและล็อก</strong> แก้ไข/ลบไม่ได้
-          {/* ใบ 0 บาทปิด Won ได้ (มติ 2026-08-03) — ทวนให้เห็นก่อนกด เพราะยอดนี้ทับมูลค่าดีล */}
-          {wonAmount === 0 && <> · ใบนี้ยอดเป็น <strong>0 บาท</strong> ดีลจะมีมูลค่าปิดเป็น 0</>}
-        </p>
-
-        {error && (
-          <div role="alert" style={{ padding: "10px 12px", border: "1px solid var(--red)", borderRadius: 10, color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>
-        )}
-
-        <div className="form-grid">
-          <label>ประเภทเอกสารหลักฐาน *
-            <Select className="premium-select" value={docType} onChange={(e) => setDocType(e.target.value)} disabled={busy}>
-              {WON_DOC_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </Select>
-          </label>
-          <label>วันที่เอกสาร *
-            <DateInput value={docDate} onChange={setDocDate} disabled={busy} />
-          </label>
-          {docNoRule !== "none" && (
-            <label>เลขที่เอกสาร {docNoRule === "required" ? "*" : "(ถ้ามี)"}
-              <Input
-                value={docNo} maxLength={MAX_WON_DOC_NO} disabled={busy}
-                placeholder="เช่น PO-2569-00123"
-                onChange={(e) => setDocNo(e.target.value)}
-              />
-            </label>
-          )}
-          <label>กำหนดชำระ {needsDueDate ? "*" : "(ถ้ามี)"}
-            <DateInput value={dueDate} min={docDate || undefined} onChange={setDueDate} disabled={busy} />
-          </label>
-        </div>
-        {needsDueDate && (
-          <p className="form-note">
-            เอกสารนี้ไม่ใช่เอกสารการชำระเงิน — ต้องระบุกำหนดชำระ
-          </p>
-        )}
-        {docNoRule !== "none" && (
-          <p className="form-note">
-            เลขที่นี้จะถูกดึงไปเป็น &ldquo;เอกสารอ้างอิง&rdquo; ของใบสั่งขายที่ออกจากใบนี้ — ค้นหาได้และขึ้นเป็นคอลัมน์ในตาราง
-          </p>
-        )}
-
-        <div className="form-group">
-          <span className="toolbar-label">ไฟล์หลักฐาน * (สลิป / PO / เอกสารยืนยันการสั่งซื้อ)</span>
-          {/* ⭐ ตะกร้าไฟล์กลาง — เดิมที่นี่วาดปุ่ม+รายการเองด้วย inline style ทั้งก้อน
-              ซึ่งเป็นทรงที่ 4 ของ "แนบไฟล์" ในระบบ · ได้ลากมาวาง/Ctrl+V ติดมาด้วย */}
-          <PendingFiles
-            files={files} onChange={setFiles} disabled={busy}
-            max={MAX_WON_ATTACHMENTS} onOversize={setError}
-          />
-          {!files.length && (
-            <p className="form-note">ยังไม่ได้แนบไฟล์ — ต้องแนบอย่างน้อย 1 ไฟล์</p>
-          )}
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+    <Modal
+      open={open}
+      onClose={close}
+      title="ปิดการขาย (Won) ด้วยใบนี้"
+      subtitle={`${quote.quoteNumber || "ใบเสนอราคา"} · ${customerName || quote.customerName || "ไม่ระบุลูกค้า"}`}
+      size="md"
+      footer={(
+        <div className={styles.footer}>
           <button type="button" className="btn ghost" onClick={close} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
-            <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยัน Won"}
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || (needsProject && !projectId)} title={blockedReason || undefined}>
+            <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยันปิด Won"}
           </button>
         </div>
+      )}
+    >
+      <div className={styles.body}>
+        {error && (
+          <div role="alert" className={styles.error}>{error}</div>
+        )}
+
+        {/* โครงการ: ผูกแล้ว = ช่องอ่านอย่างเดียว (ค่าที่ระบบรู้แล้วห้ามให้เลือกซ้ำ) ·
+            ยังไม่ผูก = ต้องเลือก และลิสต์ต้องบอกได้ว่าทำไมใบที่หาไม่อยู่ในลิสต์ */}
+        <div className="form-group">
+          <span className="toolbar-label"><FolderKanban size={13} aria-hidden="true" /> {needsProject ? "โครงการ *" : "โครงการที่ดีลนี้อยู่"}</span>
+          {needsProject ? (
+            <>
+              <SearchableSelect
+                className="w-full" entity="project" ariaLabel="โครงการที่ดีลนี้จะเข้าไปอยู่"
+                value={projectId} onChange={setProjectId} disabled={busy || loadingProjects}
+                options={projects.map((p) => ({
+                  value: p.id,
+                  label: `${p.code || p.id} · ${p.name || ""}`.trim(),
+                  search: `${p.code || ""} ${p.name || ""}`,
+                }))}
+                placeholder={loadingProjects ? "กำลังโหลด…" : projects.length ? "เลือกโครงการที่ดีลนี้จะเข้าไปอยู่" : "ลูกค้ารายนี้ยังไม่มีโครงการที่เลือกได้"}
+                searchPlaceholder="ค้นหาโครงการ"
+                emptyText="ไม่พบโครงการที่ตรงกับคำค้น"
+              />
+              <p className="form-note">
+                เห็นเฉพาะโครงการของ <b>{customerName || quote.customerName || "ลูกค้ารายนี้"}</b> (ลูกค้าบนใบเสนอราคา)
+                ที่ยังไม่ปิด อยู่ในทีมของคุณ และเป็นสายธุรกิจเดียวกับดีล — โครงการที่ไม่อยู่ในลิสต์ติดข้อใดข้อหนึ่งใน 4 ข้อนี้
+                {!loadingProjects && !projects.length && <> · ยังไม่มีโครงการที่ใช้ได้ ⇒ สร้างโครงการจากหน้าดีลก่อน</>}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="readable-field is-compact">
+                {linkedProject
+                  ? `${linkedProject.code || linkedProject.id}${linkedProject.name ? ` · ${linkedProject.name}` : ""}`
+                  : <span className="readable-field-empty">ผูกโครงการไว้แล้ว</span>}
+              </div>
+              <p className="form-note">
+                {linkedAt ? `ผูกไว้ตั้งแต่ ${fmtDate(linkedAt)} — ` : ""}เปลี่ยน/ย้ายโครงการทำที่หน้าดีล
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* ยอดที่กำลังจะกลายเป็นมูลค่าปิดของดีล — ตัวเลขที่ต้องอ่านก่อนกด จึงแยกแถวของตัวเอง */}
+        <div className={styles.amountRow}>
+          <span>ยอด Won (ก่อน VAT)</span>
+          <b className="mono">{fmtMoney(wonAmount)}</b>
+        </div>
+
+        <div className="form-group">
+          <span className="toolbar-label">สิ่งที่จะเกิดขึ้นทันที</span>
+          <ul className={styles.effects}>
+            {effects.map((effect) => {
+              const Icon = EFFECT_ICONS[effect.id] || CheckCircle2;
+              return (
+                <li key={effect.id}>
+                  <Icon size={15} aria-hidden="true" />
+                  <span>{effect.text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* เหตุผลที่ปุ่มกดไม่ได้ต้องเป็นตัวหนังสือเหนือปุ่ม ไม่ใช่ tooltip
+            (ปุ่มที่จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง) */}
+        {blockedReason && <p className={styles.blocked} role="status">{blockedReason}</p>}
       </div>
     </Modal>
   );

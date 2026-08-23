@@ -15,7 +15,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
-import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
+import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   installmentActionError, installmentDisplayStatus, installmentPlanDrift, installmentPrepaid,
@@ -84,7 +84,13 @@ export default function SalesOrderPaymentPanel({
   };
 
   const quotation = order?.quotation;
-  const wonFiles = Array.isArray(quotation?.wonAttachments) ? quotation.wonAttachments : [];
+  /* เอกสารยืนยันคำสั่งซื้อของใบ — ใบใหม่ถืออยู่ที่ตัวเอง (mig 0285) ใบเก่าอยู่ที่
+     ใบเสนอราคาต้นทาง ⇒ อ่านสองบ้านผ่านตัวเดียว แล้วเลือก proxy ไฟล์ตามแหล่งที่ได้มา */
+  const confirmation = orderConfirmationOf(order, quotation);
+  const confirmFiles = confirmation?.attachments || [];
+  const confirmFileHref = (index) => (confirmation?.source === "order"
+    ? `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`
+    : `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`);
   // ⚠️ ส่ง `rows` เข้าไปด้วยเสมอ — ด่าน "งวดต้องไล่ลำดับ" (2026-08-18) ต้องเห็นงวดอื่น
   // ไม่ส่ง = ปุ่มบนจอจะเปิดให้กดงวดที่ API จะตีกลับ
   const gate = (row, action, options) => installmentActionError(row, action, user, {
@@ -150,18 +156,18 @@ export default function SalesOrderPaymentPanel({
         </div>
       ) : null}
 
-      {/* หลักฐานปิดการขาย — แถวเดียว */}
+      {/* เอกสารยืนยันคำสั่งซื้อ — แถวเดียว */}
       <div className={styles.won}>
-        <span className={styles.wonLabel}>ปิดการขายด้วย</span>
+        <span className={styles.wonLabel}>ยืนยันด้วย</span>
         <span className={styles.wonValue}>
-          {WON_DOC_TYPE_LABELS[quotation?.wonDocType] || naText(quotation?.wonDocType)}
-          {quotation?.wonDocNo ? <> · <b>{quotation.wonDocNo}</b></> : null}
-          {quotation?.wonDocDate ? ` · ${fmtDate(quotation.wonDocDate)}` : ""}
+          {CONFIRM_DOC_TYPE_LABELS[confirmation?.docType] || naText(confirmation?.docType)}
+          {confirmation?.docNo ? <> · <b>{confirmation.docNo}</b></> : null}
+          {confirmation?.docDate ? ` · ${fmtDate(confirmation.docDate)}` : ""}
         </span>
-        {wonFiles.map((att, i) => (
+        {confirmFiles.map((att, i) => (
           <a
             key={`${att.storagePath || att.fileUrl || "f"}-${i}`}
-            href={`/api/sales-planning/quotations/${order.quotationId}/file?i=${i}`}
+            href={confirmFileHref(i)}
             target="_blank" rel="noreferrer" className={styles.fileLink}
             title={att.fileName || `ไฟล์ ${i + 1}`}
           >

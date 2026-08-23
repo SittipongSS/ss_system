@@ -6,7 +6,7 @@
 // และต้องผ่านการอนุมัติใบเสนอราคาก่อน · `POST /deals/[id]/win` ถูกปิดตายไว้ตอบ 400 เสมอ
 // และ `PATCH` ก็ปฏิเสธ `stage:'won'` ที่ส่งมาตรง ๆ
 // → ที่นี่จึง **ไม่ประกาศ transition ชื่อ win** เด็ดขาด ถ้าเห็นใครจะเพิ่ม ให้ไปอ่าน
-//   `lib/sales/quotationWonEvidence.js` ก่อน
+//   `lib/sales/orderConfirmationDocs.js` ก่อน
 //
 // ⚠️ ถอย Won ก็ไม่ใช่ transition ของดีล — เกิดที่ `unaccept_quotation_atomic`
 // (ยกเลิกรับใบเสนอราคา) หรือ `cancel_sales_order_with_reversal_atomic` เท่านั้น

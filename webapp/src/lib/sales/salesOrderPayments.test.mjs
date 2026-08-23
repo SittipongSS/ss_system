@@ -84,7 +84,7 @@ test('ปิด Won ด้วยสลิป — งวดแรกขึ้น�
   const rows = buildInstallmentsForOrder(
     { type: 'installment', installments: [{ label: 'มัดจำ', percent: 30 }, { label: 'ที่เหลือ', percent: 70 }] },
     100000,
-    { wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
+    { confirmation: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
   );
   assert.equal(rows[0].status, 'reported');
   assert.equal(rows[0].paidOn, '2026-08-05');
@@ -96,7 +96,7 @@ test('ปิด Won ด้วยสลิป — งวดแรกขึ้น�
 /* 🔴 ยืมหลักฐานมาให้ ≠ ข้ามด่านบัญชี — ตั้งได้แค่ reported เท่านั้น */
 test('งวดที่ยืมหลักฐานมายังต้องรอบัญชี ไม่ใช่ confirmed', () => {
   const rows = buildInstallmentsForOrder({ type: 'full' }, 64200, {
-    wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
+    confirmation: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
   });
   assert.equal(rows[0].status, 'reported');
   assert.notEqual(rows[0].status, 'confirmed');
@@ -107,24 +107,24 @@ test('ตั้งให้เฉพาะงวดแรก — สลิปใ
   const rows = buildInstallmentsForOrder(
     { type: 'installment', installments: [{ percent: 30 }, { percent: 30 }, { percent: 40 }] },
     100000,
-    { wonEvidence: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
+    { confirmation: SLIP_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW },
   );
   assert.deepEqual(rows.map((r) => r.status || 'pending'), ['reported', 'pending', 'pending']);
 });
 
 test('ปิด Won ด้วย PO ไม่ใช่หลักฐานว่าจ่ายเงิน — ทุกงวดยัง pending', () => {
   const rows = buildInstallmentsForOrder({ type: 'full' }, 64200, {
-    wonEvidence: PO_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
+    confirmation: PO_EVIDENCE, actor: { id: 'u1', name: 'สมชาย' }, now: NOW,
   });
   assert.equal(rows[0].status, undefined);
 });
 
 test('สลิปที่ไม่มีไฟล์แนบหรือไม่มีวันที่ ไม่ตั้งงวดให้', () => {
   const noFiles = buildInstallmentsForOrder({ type: 'full' }, 100, {
-    wonEvidence: { ...SLIP_EVIDENCE, attachments: [] }, now: NOW,
+    confirmation: { ...SLIP_EVIDENCE, attachments: [] }, now: NOW,
   });
   const noDate = buildInstallmentsForOrder({ type: 'full' }, 100, {
-    wonEvidence: { ...SLIP_EVIDENCE, docDate: null }, now: NOW,
+    confirmation: { ...SLIP_EVIDENCE, docDate: null }, now: NOW,
   });
   assert.equal(noFiles[0].status, undefined);
   assert.equal(noDate[0].status, undefined);

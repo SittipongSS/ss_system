@@ -1,7 +1,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
-import { sanitizeWonAttachments } from '@/lib/sales/quotationWonEvidence';
+import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
   installmentActionError, installmentReportOutcome, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
@@ -146,7 +146,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       patch = { dueDate };
     } else if (action === 'report') {
       // หลักฐานผ่าน sanitize ตัวเดียวกับหลักฐาน Won — รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว
-      const evidence = sanitizeWonAttachments(body.evidence);
+      const evidence = sanitizeEvidenceAttachments(body.evidence);
       if (!evidence.length) return badRequest('ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์');
       /* ⭐ ปลายทางขึ้นกับว่าใครกด (มติผู้ใช้ 2026-08-18 — ทางเลือก ก.)
          ฝ่ายขายแจ้ง → `reported` เข้าคิวบัญชี · **บัญชีแจ้งเอง → `confirmed` เลย**

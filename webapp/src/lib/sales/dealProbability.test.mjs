@@ -102,7 +102,8 @@ test('สร้างดีล: FC มาจากขั้น ไม่ใช�
 });
 
 test('ผูกโครงการแล้วคิด FC ใหม่ — เพิ่งรู้ว่ามีพี่น้องใบไหน', () => {
-  const src = read('src/app/api/sales-planning/deals/[id]/link-project/route.js');
+  // เนื้อในของการผูกโครงการย้ายมาอยู่ที่ lib แล้ว (โมดัลปิด Won เรียกตัวเดียวกัน)
+  const src = read('src/lib/sales/dealProjectLink.js');
   assert.match(src, /resolveProbability\(supabase, \{/);
   assert.match(src, /probability: nextProbability,/);
 });
