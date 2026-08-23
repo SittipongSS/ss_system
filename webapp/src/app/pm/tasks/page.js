@@ -192,6 +192,13 @@ export default function TasksPage() {
   // ของการ์ด KPI ด้านบน (มาตรฐาน: KPI/สโคป/เรียงลำดับ อยู่นอกปุ่มกรอง)
   const [assigneeFilter, setAssigneeFilter] = useState([]);
   const [categoryFilter, setCategoryFilter] = useState([]);
+  /* ⭐ กรองตามดีล — ตั้งต้นจาก `?dealId=` ที่หน้าดีล/หน้าโครงการส่งมา
+     🐞 พารามิเตอร์ตัวนี้เคย **เปิดโมดัลสร้างงาน** แทนที่จะกรอง: ปุ่มบนหน้าดีลชื่อ
+     "เปิด" กับบนหน้าโครงการชื่อ "เปิดหน้างาน" ทั้งคู่มีไอคอนลิงก์ออก ⇒ คนกดเพื่อ
+     *ดูรายการ* แต่ได้ฟอร์มสร้างงานทับจอ แถมคิวที่อยู่ข้างหลังก็เป็นงานทั้งระบบ
+     ไม่ได้กรองตามดีลที่กดมาเลย · ตอนนี้ "สร้างงาน" มีปุ่มของตัวเองอยู่ในหน้าดีล/
+     โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง */
+  const [dealFilter, setDealFilter] = useState([]);
   const [sortKey, setSortKey] = useState("created");
   const [sortDir, setSortDir] = useState("asc");
   const [groupBy, setGroupBy] = useState("none");
@@ -323,6 +330,21 @@ export default function TasksPage() {
     [personalTasks],
   );
 
+  /* ตัวเลือกดีล = ดีลที่มีงานอยู่จริงในคิวนี้ (ไม่ใช่ทะเบียนดีลทั้งระบบ — เลือกดีลที่
+     ไม่มีงานแล้วได้ตารางว่างคือตัวเลือกที่ไม่ควรมี) · ชื่อดีลมาจาก `resolveDeal`
+     ⚠️ ดีลที่ถูกส่งมาทาง `?dealId=` ต้องอยู่ในลิสต์เสมอ แม้ยังไม่มีงานสักใบ — ไม่งั้น
+     ชิปกรองจะโชว์ค้างโดยไม่มีทางปิดจากในแผง (และผู้ใช้ไม่รู้ว่ากรองอะไรค้างอยู่) */
+  const dealOptions = useMemo(() => {
+    const ids = Array.from(new Set([
+      ...personalTasks.map((t) => t.dealId).filter(Boolean),
+      ...dealFilter,
+    ]));
+    return ids
+      .map((id) => ({ id, name: resolveDeal(id)?.title || id }))
+      .sort((a, b) => a.name.localeCompare(b.name, "th"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personalTasks, dealFilter, dealsMap, allDeals]);
+
   const mineViewCounts = useMemo(() => {
     const openTasks = personalTasks.filter((task) => task.status !== "Completed");
     return {
@@ -343,8 +365,9 @@ export default function TasksPage() {
   const pool = useMemo(() => roleFilteredTasks
     .filter((t) => !q || [t.title, t.note, t.category].some((v) => (v || "").toLowerCase().includes(q)))
     .filter((t) => !assigneeFilter.length || assigneeFilter.includes(t.assigneeId || t.ownerId))
-    .filter((t) => !categoryFilter.length || categoryFilter.includes(t.category)),
-    [roleFilteredTasks, q, assigneeFilter, categoryFilter]);
+    .filter((t) => !categoryFilter.length || categoryFilter.includes(t.category))
+    .filter((t) => !dealFilter.length || dealFilter.includes(t.dealId)),
+    [roleFilteredTasks, q, assigneeFilter, categoryFilter, dealFilter]);
 
   const stats = useMemo(() => ({
     // "งานทั้งหมด" = งานที่ยังต้องทำ; งานเสร็จเก็บไว้ดูย้อนหลังในการ์ด "เสร็จแล้ว"
@@ -470,11 +493,8 @@ export default function TasksPage() {
       })().catch((error) => setToast({ kind: "error", msg: error.message || "เปิดฟอร์มสร้างงานไม่สำเร็จ" }));
       return;
     }
-    setEditingId(null);
-    setInquirySource(null);
-    setForm({ ...TASK_BLANK, dealId });
-   
-    setShowModal(true);
+    // ⭐ `?dealId=` = **กรองคิวตามดีล** ไม่ใช่เปิดฟอร์มสร้าง (ดู `dealFilter` ข้างบน)
+    setDealFilter([dealId]);
   }, []);
   // แก้ = ส่ง task ให้โมดัลไปเติมฟอร์มเอง (taskToForm) — ไม่ต้อง map ซ้ำที่นี่
   const openEdit = (t) => {
@@ -894,11 +914,16 @@ export default function TasksPage() {
         )}
         {/* หมวดหมู่/ผู้รับมอบหมาย = ตัวเลือกจากงานที่โหลดมา — ซ่อนหมวดที่มีค่าเดียว
             (กรองแล้วไม่เปลี่ยนอะไร) และซ่อนผู้รับมอบหมายในสโคป "ของฉัน" ตามเดิม */}
-        {(categoryOptions.length > 1 || (scope !== "mine" && assigneeOptions.length > 1)) && (
+        {(categoryOptions.length > 1 || dealOptions.length > 1 || dealFilter.length > 0 || (scope !== "mine" && assigneeOptions.length > 1)) && (
           <FilterPopover
-            count={categoryFilter.length + assigneeFilter.length}
-            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); }}
+            count={categoryFilter.length + assigneeFilter.length + dealFilter.length}
+            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); setDealFilter([]); }}
             groups={[
+              ...(dealOptions.length > 1 || dealFilter.length ? [{
+                key: "deal", label: "ดีล", icon: Handshake,
+                options: dealOptions.map((d) => ({ value: d.id, label: d.name })),
+                selected: dealFilter, onChange: setDealFilter,
+              }] : []),
               ...(categoryOptions.length > 1 ? [{
                 key: "category", label: "หมวดหมู่", icon: Tag,
                 options: categoryOptions.map((c) => ({ value: c, label: c })),

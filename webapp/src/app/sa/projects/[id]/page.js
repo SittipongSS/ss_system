@@ -50,6 +50,8 @@ import { customerHeadline } from "@/lib/master/customerAr";
 import MultiSelectFilter from "@/components/ui/MultiSelectFilter";
 import { detailTabFromSearch, PROJECT_DETAIL_TABS, PROJECT_TAB_ALIASES } from "@/lib/salesDetailTabs";
 import { TIMELINE_CENTRAL, filterTimelineTasks, singleSelectedDeal } from "@/lib/pm/timelineFilter";
+import TaskCreateButton from "@/components/pm/TaskCreateButton";
+import RequestCreateButton from "@/components/requests/RequestCreateButton";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
@@ -901,7 +903,7 @@ export default function ProjectDetailPage() {
           แท็บเอกสารบนหน้าดีล แค่โหมดโครงการรวมทุกดีลและบอกว่าแถวไหนของดีลไหน */}
       {tab === "documents" && (
         <>
-          <ProjectQuotationsCard project={p} />
+          <ProjectQuotationsCard project={p} canEdit={canEdit} />
           {/* ใช้ WorkspaceSection ของกลาง — inline style คือชั้นเก่าที่ ratchet
               audit:ui ห้ามเพิ่ม (เพดานลงได้อย่างเดียว) */}
           <SaSection
@@ -926,7 +928,15 @@ export default function ProjectDetailPage() {
             <div style={{ marginLeft: "auto" }}>
               {dealFilterOptions.length > 1 && <MultiSelectFilter label="ดีลที่แสดง" selected={dealFilters} onChange={setDealFilters} options={dealFilterOptions} />}
             </div>
-            <Link className="btn ghost sm" href={dealFilters.length === 1 ? `/sa/tasks?dealId=${dealFilters[0]}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
+            {/* ⭐ สร้างงานจากหน้าโครงการ (มติผู้ใช้ 2026-08-22) — เลือกดีลในโมดัล
+                ⚠️ ตัวเลือกดีลถูกจำกัดเป็น **ดีลของโครงการนี้** โดยส่ง `p.deals` เข้าไป
+                ไม่ใช่ทำตัวเลือกชุดที่สองบนหน้านี้ (ฟอร์มเป็นเจ้าของช่องดีลอยู่แล้ว) */}
+            <TaskCreateButton projectDeals={p.deals || []} canEdit={canEdit} onSaved={load} />
+            {/* 🐞 ของเดิมเป็น `dealFilters.length === 1 ? dealFilters[0]` ตรง ๆ ⇒ เลือก
+                "งานเดิมของโครงการ" ตัวเดียวแล้วกด จะยิง `?dealId=__central__` (ค่าหมุด
+                ของตัวกรอง ไม่ใช่ id ดีล) ออกไป · `singleSelectedDeal` ตัดหมุดตัวนั้นทิ้ง
+                อยู่แล้วและถูกใช้กับไทม์ไลน์ข้างบน — จุดนี้เป็นที่เดียวที่ข้ามมันไป */}
+            <Link className="btn ghost sm" href={singleSelectedDeal(dealFilters) ? `/sa/tasks?dealId=${singleSelectedDeal(dealFilters)}` : "/sa/tasks"}><ExternalLink size={13} /> เปิดหน้างาน</Link>
           </div>
           {shownPersonalTasks.length ? (
             /* ตารางกลางล้วน — คลาสเก่า `.premium-table` บังคับ nowrap ทุกเซลล์ ชื่องาน
@@ -964,9 +974,18 @@ export default function ProjectDetailPage() {
           sectionSubtitle="เรื่องที่เปิดถึงฝ่ายอื่นในนามโครงการนี้"
           emptyText="ยังไม่มีคำร้องที่ผูกกับรายการนี้"
           headerActions={(
-            <Button as={Link} size="sm" href="/requests" icon={<ExternalLink size={13} aria-hidden="true" />}>
-              เปิดหน้าคำร้อง
-            </Button>
+            <>
+              {/* ⭐ เปิดคำร้องจากหน้าโครงการ — เลือกดีลก่อน แล้วโมดัลบอกเองว่าดีลใบนั้น
+                  เปิดหัวข้อไหนได้/ไม่ได้เพราะอะไร (มติผู้ใช้ 2026-08-22) */}
+              <RequestCreateButton
+                projectDeals={p.deals || []} project={p} canEdit={canEdit}
+                quotations={p.quotations || []}
+                returnTo={`/sa/projects/${p.id}`}
+              />
+              <Button as={Link} size="sm" href="/requests" icon={<ExternalLink size={13} aria-hidden="true" />}>
+                เปิดหน้าคำร้อง
+              </Button>
+            </>
           )}
         />
       )}
