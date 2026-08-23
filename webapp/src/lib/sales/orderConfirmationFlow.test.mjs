@@ -13,25 +13,30 @@ const quote = { totalAmount: 599200, vatAmount: 39200 };
 /* ── โมดัลปิด Won: บอกผลลัพธ์ให้ครบก่อนกด (กติกาเดียวกับ approvalPrompt) ────── */
 test('ผลลัพธ์ของการปิด Won บอกครบทั้งดีล ใบอื่น และก้าวถัดไป', () => {
   const effects = quotationWonEffects({ quote, deal: { title: 'KA_Artepol ฤดูร้อน' } });
-  assert.match(effects.join('\n'), /KA_Artepol ฤดูร้อน.*Won/s);
-  assert.match(effects.join('\n'), /ใบเสนอราคาฉบับอื่น/);
-  assert.match(effects.join('\n'), /ใบสั่งขาย/);
-  assert.match(effects.join('\n'), /ย้อนการรับใบ/);
+  const text = effects.map((e) => e.text).join('\n');
+  assert.deepEqual(effects.map((e) => e.id), ['won', 'closed', 'order', 'undo'], 'ทุกข้อมี id ให้จอเลือกไอคอน');
+  assert.match(text, /KA_Artepol ฤดูร้อน.*Won/s);
+  assert.match(text, /ใบเสนอราคาฉบับอื่น/);
+  assert.match(text, /ใบสั่งขาย/);
+  assert.match(text, /ย้อนการรับใบ/);
   // ⚠️ ห้ามพูดถึงหลักฐาน/ไฟล์แนบอีก — ย้ายไปหน้าสร้างใบสั่งขายแล้ว
-  assert.doesNotMatch(effects.join('\n'), /แนบไฟล์|หลักฐานการชำระ/);
+  assert.doesNotMatch(text, /แนบไฟล์|หลักฐานการชำระ/);
+  // ⚠️ ยอดเงินไม่อยู่ในลิสต์ผลลัพธ์ — โมดัลโชว์เป็นแถวของตัวเอง (อ่านก่อนกด)
+  assert.doesNotMatch(text, /มูลค่าปิด/);
 });
 
 test('ดีลลอย: ผลลัพธ์บอกด้วยว่าไทม์ไลน์ลอยถูกรับเข้าโครงการ ไม่ใช่สร้างใหม่ทับ', () => {
   const effects = quotationWonEffects({
     quote, deal: { title: 'ดีลลอย' }, project: { code: 'PRJ-1', name: 'โครงการเดิม' }, linkingProject: true,
   });
-  assert.match(effects[0], /PRJ-1 · โครงการเดิม/);
-  assert.match(effects[0], /ไม่สร้างทับ/);
+  assert.equal(effects[0].id, 'link');
+  assert.match(effects[0].text, /PRJ-1 · โครงการเดิม/);
+  assert.match(effects[0].text, /ไม่สร้างทับ/);
 });
 
 test('ใบยอด 0 ต้องทวนว่ามูลค่าปิดของดีลจะเป็น 0', () => {
   const effects = quotationWonEffects({ quote: { totalAmount: 0, vatAmount: 0 }, deal: { title: 'ดีล' } });
-  assert.ok(effects.some((line) => /ยอดเป็น 0 บาท/.test(line)));
+  assert.ok(effects.some((e) => e.id === 'zero' && /ยอดเป็น 0 บาท/.test(e.text)));
 });
 
 /* ── ลิสต์โครงการในโมดัล = กติกาเดียวกับ linkDealToProject ─────────────────── */

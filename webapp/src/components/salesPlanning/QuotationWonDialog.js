@@ -1,9 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, FolderKanban } from "lucide-react";
+import {
+  CheckCircle2, ClipboardList, CircleAlert, FileText, FolderKanban, Handshake, Undo2,
+} from "lucide-react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { quotationWonEffects, selectableProjectsForWon } from "@/lib/sales/quotationWonPrompt";
+import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
 import styles from "./QuotationWonDialog.module.css";
 
@@ -17,6 +21,17 @@ import styles from "./QuotationWonDialog.module.css";
 // ที่เดียวคือตอนปิด Won ⇒ ดีลลอยต้องปลดด่านได้จากตรงนี้เลย ไม่ใช่ถูกตีกลับให้ไปทำ
 // ที่หน้าดีลแล้วเดินกลับมา · ผูกโครงการกับปิด Won ไปด้วยกันในคำขอเดียว (accept รับ
 // projectId) ไม่ใช่สองคำขอเรียงกัน — ครั้งที่สองล้ม = ดีลผูกโครงการโดยยังไม่ Won
+/* ไอคอนประจำผลลัพธ์แต่ละข้อ — อ่านเร็วกว่าจุดนำหน้าเปล่า ๆ เวลาแถวยาวหลายบรรทัด
+   (ทรงเดียวกับรายการผลลัพธ์บนโมดัลอนุมัติอื่น ๆ ที่มีไอคอนนำ) */
+const EFFECT_ICONS = {
+  link: FolderKanban,
+  won: Handshake,
+  zero: CircleAlert,
+  closed: FileText,
+  order: ClipboardList,
+  undo: Undo2,
+};
+
 export default function QuotationWonDialog({ open, onClose, quote, deal: dealProp, project: projectProp = null, customerId, customerName, onDone }) {
   const deal = dealProp || quote?.deal || null;
   // โครงการที่ผูกอยู่: บางหน้าโหลดมากับดีล บางหน้ามีเป็นทะเบียนแยก ⇒ รับได้ทั้งสองทาง
@@ -60,6 +75,10 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
     [needsProject, projects, projectId, linkedProject],
   );
 
+  const wonAmount = useMemo(() => quotationWonAmount(quote), [quote]);
+  // วันที่ผูกโครงการ — ดีลเก็บไว้ใน metadata ตอน link-project (ไม่มีก็ไม่ต้องเดา)
+  const linkedAt = deal?.metadata?.linkedProjectAt || null;
+
   const effects = useMemo(
     () => quotationWonEffects({ quote, deal, project: chosenProject, linkingProject: needsProject }),
     [quote, deal, chosenProject, needsProject],
@@ -97,12 +116,22 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
     : "";
 
   return (
-    <Modal open={open} onClose={close} title={`ปิดการขาย (Won) · ${quote.quoteNumber || "ใบเสนอราคา"}`} size="md">
+    <Modal
+      open={open}
+      onClose={close}
+      title="ปิดการขาย (Won) ด้วยใบนี้"
+      subtitle={`${quote.quoteNumber || "ใบเสนอราคา"} · ${customerName || quote.customerName || "ไม่ระบุลูกค้า"}`}
+      size="md"
+      footer={(
+        <div className={styles.footer}>
+          <button type="button" className="btn ghost" onClick={close} disabled={busy}>ยกเลิก</button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || (needsProject && !projectId)} title={blockedReason || undefined}>
+            <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยันปิด Won"}
+          </button>
+        </div>
+      )}
+    >
       <div className={styles.body}>
-        <p className={styles.subject}>
-          {quote.quoteNumber} · {customerName || quote.customerName || "ไม่ระบุลูกค้า"}
-        </p>
-
         {error && (
           <div role="alert" className={styles.error}>{error}</div>
         )}
@@ -110,7 +139,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
         {/* โครงการ: ผูกแล้ว = ช่องอ่านอย่างเดียว (ค่าที่ระบบรู้แล้วห้ามให้เลือกซ้ำ) ·
             ยังไม่ผูก = ต้องเลือก และลิสต์ต้องบอกได้ว่าทำไมใบที่หาไม่อยู่ในลิสต์ */}
         <div className="form-group">
-          <span className="toolbar-label"><FolderKanban size={13} aria-hidden="true" /> โครงการ {needsProject ? "*" : ""}</span>
+          <span className="toolbar-label"><FolderKanban size={13} aria-hidden="true" /> {needsProject ? "โครงการ *" : "โครงการที่ดีลนี้อยู่"}</span>
           {needsProject ? (
             <>
               <SearchableSelect
@@ -121,42 +150,54 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
                   label: `${p.code || p.id} · ${p.name || ""}`.trim(),
                   search: `${p.code || ""} ${p.name || ""}`,
                 }))}
-                placeholder={loadingProjects ? "กำลังโหลด…" : projects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการที่เลือกได้"}
-                searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
+                placeholder={loadingProjects ? "กำลังโหลด…" : projects.length ? "เลือกโครงการที่ดีลนี้จะเข้าไปอยู่" : "ลูกค้ารายนี้ยังไม่มีโครงการที่เลือกได้"}
+                searchPlaceholder="ค้นหาโครงการ"
                 emptyText="ไม่พบโครงการที่ตรงกับคำค้น"
               />
               <p className="form-note">
-                เห็นเฉพาะโครงการของ <b>{customerName || quote.customerName || "ลูกค้ารายนี้"}</b> ที่ยังไม่ปิด
-                อยู่ในสายธุรกิจเดียวกับดีล และอยู่ในทีมของคุณ — โครงการที่ไม่อยู่ในลิสต์ติดข้อใดข้อหนึ่งใน 4 ข้อนี้
+                เห็นเฉพาะโครงการของ <b>{customerName || quote.customerName || "ลูกค้ารายนี้"}</b> (ลูกค้าบนใบเสนอราคา)
+                ที่ยังไม่ปิด อยู่ในทีมของคุณ และเป็นสายธุรกิจเดียวกับดีล — โครงการที่ไม่อยู่ในลิสต์ติดข้อใดข้อหนึ่งใน 4 ข้อนี้
                 {!loadingProjects && !projects.length && <> · ยังไม่มีโครงการที่ใช้ได้ ⇒ สร้างโครงการจากหน้าดีลก่อน</>}
               </p>
             </>
           ) : (
-            <div className="readable-field is-compact">
-              {linkedProject
-                ? `${linkedProject.code || linkedProject.id}${linkedProject.name ? ` · ${linkedProject.name}` : ""}`
-                : <span className="readable-field-empty">ผูกโครงการไว้แล้ว</span>}
-            </div>
+            <>
+              <div className="readable-field is-compact">
+                {linkedProject
+                  ? `${linkedProject.code || linkedProject.id}${linkedProject.name ? ` · ${linkedProject.name}` : ""}`
+                  : <span className="readable-field-empty">ผูกโครงการไว้แล้ว</span>}
+              </div>
+              <p className="form-note">
+                {linkedAt ? `ผูกไว้ตั้งแต่ ${fmtDate(linkedAt)} — ` : ""}เปลี่ยน/ย้ายโครงการทำที่หน้าดีล
+              </p>
+            </>
           )}
+        </div>
+
+        {/* ยอดที่กำลังจะกลายเป็นมูลค่าปิดของดีล — ตัวเลขที่ต้องอ่านก่อนกด จึงแยกแถวของตัวเอง */}
+        <div className={styles.amountRow}>
+          <span>ยอด Won (ก่อน VAT)</span>
+          <b className="mono">{fmtMoney(wonAmount)}</b>
         </div>
 
         <div className="form-group">
           <span className="toolbar-label">สิ่งที่จะเกิดขึ้นทันที</span>
           <ul className={styles.effects}>
-            {effects.map((line) => <li key={line}>{line}</li>)}
+            {effects.map((effect) => {
+              const Icon = EFFECT_ICONS[effect.id] || CheckCircle2;
+              return (
+                <li key={effect.id}>
+                  <Icon size={15} aria-hidden="true" />
+                  <span>{effect.text}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
         {/* เหตุผลที่ปุ่มกดไม่ได้ต้องเป็นตัวหนังสือเหนือปุ่ม ไม่ใช่ tooltip
             (ปุ่มที่จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง) */}
-        {blockedReason && <p className="form-note" role="status">{blockedReason}</p>}
-
-        <div className={styles.footer}>
-          <button type="button" className="btn ghost" onClick={close} disabled={busy}>ยกเลิก</button>
-          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || (needsProject && !projectId)} title={blockedReason || undefined}>
-            <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยันปิด Won"}
-          </button>
-        </div>
+        {blockedReason && <p className={styles.blocked} role="status">{blockedReason}</p>}
       </div>
     </Modal>
   );

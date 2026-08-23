@@ -1,16 +1,31 @@
-/* โมดัลยืนยันปิด Won — เนื้อโมดัลกับแถบปุ่ม (Modal กลางคุมเปลือกให้แล้ว) */
+/* โมดัลยืนยันปิด Won — เนื้อโมดัลกับแถบปุ่ม (Modal กลางคุมหัว/แถบปุ่มให้แล้ว) */
 .body {
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3-5);
+  gap: var(--space-4);
 }
 
-.subject {
-  margin: 0;
+/* ยอดที่กำลังจะกลายเป็นมูลค่าปิดของดีล — แถวของตัวเอง อ่านคู่กันซ้าย-ขวา */
+.amountRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
   color: var(--text-2);
-  font-size: var(--fs-7);
+  font-size: var(--fs-6);
   line-height: var(--lh-thai);
+}
+
+.amountRow b {
+  color: var(--text);
+  font-size: var(--fs-9);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 .error {
@@ -24,12 +39,38 @@
 
 .effects {
   margin: 0;
-  padding-left: var(--space-4-5);
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1-5);
+  gap: var(--space-2);
   color: var(--text-2);
   font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.effects li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+}
+
+/* ไอคอนเป็นเครื่องหมายนำสายตา ไม่ใช่สัญญาณเดียว — ข้อความข้าง ๆ บอกครบอยู่แล้ว */
+.effects svg {
+  flex: none;
+  margin-block-start: var(--space-0-5);
+  color: var(--navy-ink);
+}
+
+/* เหตุผลที่ยังกดยืนยันไม่ได้ — เหลืองอำพัน = "ยังไม่พร้อม" ไม่ใช่ "ผิดพลาด" */
+.blocked {
+  margin: 0;
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-5);
   line-height: var(--lh-thai);
 }
 
@@ -38,6 +79,4 @@
   justify-content: flex-end;
   gap: var(--space-2-5);
   flex-wrap: wrap;
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-3-5);
 }
