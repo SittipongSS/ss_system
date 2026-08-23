@@ -15,10 +15,33 @@
 import { canManageRequest } from '@/lib/requests/access';
 import { requestSideText } from '@/lib/requests/replyTurn';
 
-/** ช่องที่แก้ได้ — **ที่เดียว** ที่ทั้ง API และหน้าจอถามว่า "แก้อะไรได้บ้าง" */
+/** ช่องที่แก้ได้ — **ที่เดียว** ที่ทั้ง API และหน้าจอถามว่า "แก้อะไรได้บ้าง"
+ *
+ * ⭐ `billPercent`/`billAmount` เข้ามา 2026-08-24 — "ยอดที่ขอวางบิล" เป็นช่อง
+ * **บังคับ** ของแท็บ "งาน" (`formTabs.js`) แต่ไม่เคยแก้ได้ ⇒ กรอกยอดผิดหนึ่งหลัก
+ * ต้องเปิดใบใหม่ทั้งใบ · ⚠️ ค่าที่ส่งมาไม่ได้ถูกเชื่อตรง ๆ — server คิดใหม่จาก
+ * **ยอดจริงของใบเสนอราคา** ด้วย `resolveBillAmount` ตัวเดียวกับตอนเปิดใบ
+ * ⚠️ `quotationId` ยัง **แก้ไม่ได้** — เปลี่ยนใบ = เปลี่ยนดีล/ลูกค้า/ฐานยอดทั้งชุด
+ * ซึ่งเป็นด่านผูกที่ POST ถืออยู่ (ดูย่อหน้าบนสุดของไฟล์)
+ */
 export const REQUEST_EDITABLE_FIELDS = Object.freeze([
   'title', 'body', 'requestedDueDate', 'urgent', 'urgentReason',
+  'billPercent', 'billAmount',
 ]);
+
+/* ช่องที่ `requestEditPatch` **เขียนลงแถวเองได้ตรง ๆ**
+   ⚠️ ต่างจากลิสต์ข้างบนที่ `billPercent`/`billAmount` — สองตัวนั้นเชื่อค่าที่ client
+   ส่งมาไม่ได้ ต้องคิดใหม่จาก **ยอดจริงของใบเสนอราคา** ซึ่งต้องอ่าน DB ⇒ handler
+   เป็นคนเติมลง patch เอง (`resolveBillAmount`) ไม่ใช่ฟังก์ชันบริสุทธิ์ตัวนี้ */
+export const REQUEST_EDIT_PATCH_FIELDS = Object.freeze([
+  'title', 'body', 'requestedDueDate', 'urgent', 'urgentReason',
+]);
+
+/* ⭐ **บรรทัดก็เป็น "ช่องที่แก้ได้" เหมือนกัน** (มติผู้ใช้ 2026-08-24) — แต่ไม่ได้อยู่
+   ในลิสต์ข้างบนเพราะมันอยู่คนละตาราง (`dept_request_items`) และเขียนด้วยแผน
+   update/insert/remove ไม่ใช่ patch ก้อนเดียว ⇒ กฎอยู่ที่ `requestLineEdit.js`
+   ⚠️ **ขั้นที่แก้บรรทัดได้ = ขั้นเดียวกับหัวใบ** (`REQUEST_EDITABLE_STATUSES`) —
+   ไม่มีลิสต์ที่สองให้ต้องคอยดูแลให้ตรงกัน */
 
 /* ขั้นที่ยังแก้ได้ — ยังไม่มีใครรับเรื่องไปทำ
    ⚠️ `pending` (ส่งแล้วรอรับเรื่อง) แก้ได้ด้วย เพราะฝ่ายปลายทางยังไม่เริ่มงาน และ

@@ -14,6 +14,7 @@ import {
   REQUEST_ANSWER_DEPARTMENTS, attributionTeam, canAnswerRequestsFor, canUser, canViewRequests,
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
@@ -306,42 +307,17 @@ export async function POST(request) {
     // ⚠️ พัฒนาผลิตภัณฑ์ไม่มีวัสดุ — ป้ายชื่อ (`label`) เป็น snapshot ที่ derive จาก
     // **ทะเบียน** ไม่ใช่ค่าที่ client ส่งมา · แพตเทิร์นเดียวกับ productFormulaSnapshot
     // ปล่อยให้พิมพ์เองเมื่อไร จะได้ป้ายที่ไม่ตรงกับหมวด/กลิ่นที่แถวชี้อยู่จริง
-    const resolved = [];
-    if (isProductDev) {
-      const scentIds = [...new Set(items.map((i) => i.scentId))];
-      const [{ data: scentRows, error: scentError }, { data: typeRows, error: typeError }] =
-        await Promise.all([
-          supabase.from('scents').select('id, code, name, customerId').in('id', scentIds),
-          supabase.from('product_types').select('mainCategoryCode, typeCode, nameTh, nameEn'),
-        ]);
-      if (scentError) throw scentError;
-      if (typeError) throw typeError;
-      const scentById = new Map((scentRows || []).map((r) => [r.id, r]));
-      const typeByCode = new Map((typeRows || [])
-        .map((r) => [`${r.mainCategoryCode}-${r.typeCode}`, r]));
-
-      for (const item of items) {
-        const scent = scentById.get(item.scentId);
-        if (!scent) throw new Error(`ไม่พบกลิ่นที่เลือกในรายการที่ ${item.sortOrder}`);
-        // ⚠️ กลิ่นข้ามลูกค้าไม่ได้ (มติ 9) — ใบผูกดีลของลูกค้ารายหนึ่ง จะขอกลิ่นของ
-        // อีกรายไม่ได้ · ตรวจที่นี่ ไม่ใช่แค่กรองตัวเลือกบนจอ
-        if (customerId && scent.customerId !== customerId) {
-          throw new Error(`รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย`);
-        }
-        const type = typeByCode.get(item.categoryCode);
-        // หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปใช้รหัส ห้ามป้ายว่าง
-        const typeName = type?.nameTh || type?.nameEn || item.categoryCode;
-        resolved.push({
-          ...item,
-          label: `${typeName} · ${scent.code ? `${scent.code} ` : ''}${scent.name}`,
-        });
-      }
-    }
-    // บรรทัดรูปร่างอื่น (เอกสาร · ใบวางบิล) ไม่มีของให้ resolve — ครบตั้งแต่ normalize
+    // ⚠️ **ตัวเดียวกับทางแก้ใบ** (`PATCH action: 'update'`) — ป้าย "หมวด · กลิ่น"
+    // กับด่านกลิ่นข้ามลูกค้าอยู่ที่ `lib/requests/lineLabels.js` ที่เดียว · เขียนสอง
+    // ที่เมื่อไรก็เพี้ยนกันเมื่อนั้น
     //
     // ⚠️ เดิมมีสาขาที่ **สร้างวัสดุร่างให้บรรทัดที่ยังไม่ผูกทะเบียน** (`ensureMaterial`)
     // ซึ่งเป็นของบรรทัดวัสดุล้วน ๆ · ถอดพร้อมหัวข้อขอราคาใน mig 0219 (มติ ม-28)
-    if (!isProductDev) resolved.push(...items);
+    const { items: resolved, error: labelError } = await resolveLineLabels(supabase, items, {
+      lineShape, customerId,
+    });
+    // โยนเหมือนเดิม — ตกที่ catch ท้าย handler ซึ่งลบใบร่างที่เพิ่งสร้างทิ้งให้
+    if (labelError) throw new Error(labelError);
 
     // ⭐ ส่วนหัว PDR (mig 0214) — 21 ช่องที่ฟอร์มถามตั้งแต่ตอนเปิดใบ
     //

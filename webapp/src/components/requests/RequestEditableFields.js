@@ -1,10 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { Flame } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
+import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
-import { requestHasPdr, requestKindMeta } from "@/lib/master/requestTypes";
+import DocumentLines from "@/components/requests/DocumentLines";
+import ProductDevLines from "@/components/requests/ProductDevLines";
+import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
+import { lineShapeForKind, requestHasPdr, requestKindMeta } from "@/lib/master/requestTypes";
+import { billAmountFor } from "@/lib/requests/billingQuotations";
+import { fmtNumber } from "@/lib/format";
 import styles from "./requestForm.module.css";
 
 /* ── ช่องที่ "แก้ได้" ของคำร้อง — เขียนที่เดียว สองทางเรียกใช้ ──────────────
@@ -126,5 +133,153 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
         </div>
       )}
     </>
+  );
+}
+
+/* ── บรรทัดของใบ (มติผู้ใช้ 2026-08-24) ────────────────────────────────────
+ *
+ * ⭐ **หัวข้อที่เนื้องานอยู่ในบรรทัด ต้องแก้บรรทัดได้ด้วยฟอร์มเดียวกับตอนสร้าง**
+ * 🐞 ของจริงที่ผู้ใช้แจ้ง: ใบ "ขอเอกสาร" กด "แก้ไข" แล้วได้แต่ชื่อเรื่อง/รายละเอียด/
+ * วันที่/ด่วน — **ชนิดเอกสารกับรายละเอียดรายบรรทัดแก้ไม่ได้เลย** ทางเดียวคือลบทั้งใบ
+ * เปิดใหม่ (ทำได้เฉพาะร่าง) · อาการเดียวกันกับ "ขอใบวางบิล" และ "พัฒนาสูตร"
+ *
+ * ⚠️ เลือกตารางจาก **รูปร่างบรรทัด** (`lineShapeForKind`) ไม่ใช่ `kind === "..."`
+ * — กติกาเดิมของฟอร์ม (มี ratchet ห้ามไว้) · หัวข้อใหม่ที่ใช้รูปร่างเดิมได้ตารางฟรี
+ * ⚠️ `scent_dev` ไม่มีตารางตรงนี้โดยตั้งใจ — แถวของมันเกิดตอน RD กดส่งงาน
+ * ไม่ได้กรอกตอนเปิดใบ (ดู `rd/lineShapes.js`)
+ */
+export function RequestLineFields({
+  kind, value = [], onChange, disabled = false,
+  categories = [], scents = [], customerId = null,
+}) {
+  const lineShape = lineShapeForKind(kind);
+  const copy = requestKindMeta(kind)?.form || {};
+  if (!lineShape || lineShape === "scent_dev") return null;
+
+  return (
+    <div className="form-group col-span-2">
+      <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
+      {lineShape === "product_dev" ? (
+        <ProductDevLines
+          rows={value}
+          onChange={onChange}
+          categories={categories}
+          scents={scents}
+          customerId={customerId}
+          disabled={disabled}
+        />
+      ) : (
+        /* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
+           คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */
+        <DocumentLines
+          rows={value}
+          onChange={onChange}
+          vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
+          disabled={disabled}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── ยอดที่ขอวางบิล (B-2 · ม-ค) ────────────────────────────────────────────
+ *
+ * ⭐ ยกออกมาเป็นของกลาง 2026-08-24 พร้อมเหตุผลเดียวกับบรรทัด — เป็นช่อง **บังคับ**
+ * ของแท็บ "งาน" แต่แก้ไม่ได้หลังบันทึก ⇒ พิมพ์ยอดผิดหลักเดียวต้องเปิดใบใหม่
+ *
+ * ⚠️ `baseAmount` มาจากผู้เรียก ไม่ใช่โหลดเอง — ฝั่งสร้างได้จากใบที่เพิ่งเลือกในฟอร์ม
+ * ฝั่งแก้ได้จาก `billBaseAmount` ที่ประทับบนใบ · ทั้งสองทาง server คิดใหม่จากยอดจริง
+ * ของใบเสมอ (`resolveBillAmount`) ค่าที่นี่มีไว้ให้คนกดเห็นว่า "50% ของอะไร"
+ */
+export function RequestBillAmountFields({
+  value = {}, onChange, baseAmount = 0, disabled = false, ready = true,
+}) {
+  /* ⚠️ โหมดเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ `billPercent`/`billAmount`
+     ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
+     ⭐ มาจากปุ่ม "ขอใบวางบิลงวดนี้" (B-5) = รู้ **จำนวนเงินของงวด** มาแล้ว ไม่ใช่ %
+     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount */
+  const [mode, setMode] = useState(
+    value?.billAmount != null && value?.billPercent == null ? "amount" : "percent",
+  );
+  /* 🐞 **ตัวเลขที่พิมพ์ต้องค้างอยู่แม้ค่าไม่ผ่านด่าน** — รอบแรกช่องนี้อ่านค่าจาก
+     `value.billAmount` ตรง ๆ ⇒ พิมพ์ยอดที่เกินยอดใบแล้วตัวเลขหายไปทั้งช่องพร้อมกับ
+     ข้อความอธิบาย (เพราะ error คิดจากค่าที่ถูกล้างเป็น null ไปแล้ว) ⇒ ผู้ใช้เห็นแค่
+     ช่องว่างกับปุ่มจาง · เก็บ "สิ่งที่พิมพ์" แยกจาก "ค่าที่ผ่านแล้ว" */
+  const [input, setInput] = useState(
+    value?.billAmount != null ? String(value.billAmount) : "",
+  );
+  const base = Number(baseAmount) || 0;
+
+  // คิดจาก **สิ่งที่พิมพ์** ไม่ใช่ค่าที่ผ่านด่านแล้ว — ไม่งั้นค่าที่ไม่ผ่านจะไม่มี
+  // ทั้งตัวเลขและเหตุผลเหลืออยู่บนจอ
+  const bill = billAmountFor({
+    mode,
+    percent: mode === "percent" ? input : null,
+    amount: mode === "amount" ? input : null,
+    baseAmount: base,
+  });
+  /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
+     ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า */
+  const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
+
+  /* เขียนค่าคู่เสมอ — ช่องที่ผู้ใช้ไม่ได้พิมพ์ก็ต้องมีค่า ไม่งั้น payload ส่งไป
+     ครึ่งเดียวแล้ว server คิดกลับได้ไม่ตรงกับที่จอโชว์ */
+  const setBill = (raw) => {
+    setInput(raw);
+    const out = billAmountFor({
+      mode,
+      percent: mode === "percent" ? raw : null,
+      amount: mode === "amount" ? raw : null,
+      baseAmount: base,
+    });
+    onChange?.({ ...value, billPercent: out.percent ?? null, billAmount: out.amount ?? null });
+  };
+  /* สลับโหมด = เริ่มพิมพ์ใหม่จากค่าที่ผ่านแล้วของโหมดนั้น — ไม่ใช่ล้างทิ้ง
+     (พิมพ์ 50% แล้วอยากดูเป็นบาท ต้องเห็นยอดที่คิดได้ ไม่ใช่ช่องว่าง) */
+  const switchMode = (next) => {
+    setMode(next);
+    const carried = next === "percent" ? value.billPercent : value.billAmount;
+    setInput(carried == null ? "" : String(carried));
+  };
+
+  return (
+    <div className="form-group col-span-2">
+      <span className={styles.fieldLabel}>ยอดที่ขอวางบิล</span>
+      <OptionTiles
+        value={mode} disabled={disabled || !ready}
+        onChange={switchMode}
+        ariaLabel="วิธีระบุยอดที่ขอ"
+        options={[
+          { value: "percent", label: "คิดเป็น %", description: "เช่น 50% ก่อนผลิต" },
+          { value: "amount", label: "ระบุจำนวนเงิน", description: "พิมพ์ยอดตรง ๆ" },
+        ]}
+      />
+      {/* 🐞 **เคยเป็น `<input className="form-control">` ซึ่งเป็นคลาสที่ไม่มีอยู่จริง
+          ในระบบนี้** ⇒ ช่องไม่มีกรอบ ไม่มีความสูงมาตรฐาน หลุดธีมทั้งช่อง ·
+          ช่องกรอกของระบบมี primitive เดียวคือ `Input` (`.premium-input`) */}
+      <div className={styles.amountField}>
+        <Input
+          type="number" step="any" min="0" mono
+          disabled={disabled || !ready}
+          value={input}
+          onChange={(e) => setBill(e.target.value)}
+          placeholder={mode === "percent" ? "50" : "90508.125"}
+          aria-label={mode === "percent" ? "สัดส่วนที่ขอ (%)" : "ยอดที่ขอ (บาท)"}
+        />
+        <span className={styles.amountUnit} aria-hidden="true">
+          {mode === "percent" ? "%" : "บาท"}
+        </span>
+      </div>
+      {/* ⭐ โชว์ทั้งฐานและผลลัพธ์ — คนกดต้องเห็นว่า 50% ของอะไร ก่อนส่งให้บัญชี */}
+      {ready && (
+        <small className={styles.hint}>
+          ยอดเต็มตามใบ {money(base)} บาท
+          {bill.amount != null && ` · ขอ ${money(bill.percent)}% = ${money(bill.amount)} บาท`}
+        </small>
+      )}
+      {/* 🐞 **เงียบจนกว่าจะเลือกใบ** — ฐานเป็น 0 ตอนยังไม่เลือก ⇒ ตัวคำนวณคืน
+          "ไม่มียอดให้วางบิล" ตั้งแต่เปิดฟอร์ม ซึ่งอ่านเหมือนใบที่ยังไม่ได้เลือกมีปัญหา */}
+      {ready && bill.error && <small className={styles.hint}>{bill.error}</small>}
+    </div>
   );
 }

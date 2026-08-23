@@ -73,6 +73,11 @@ export function normalizeProductDevItems(input) {
     }
 
     items.push({
+      // ⭐ id ของแถวเดิม (ถ้ามี) — ผู้เรียกที่ **แก้ใบเดิม** ใช้จับคู่แถวว่าตัวไหน
+      // คือตัวไหน · POST ไม่เคยอ่านค่านี้ (มันสร้าง id ของตัวเองเสมอ) และ
+      // `requestLineDiff` ยอมรับเฉพาะ id ที่มีอยู่จริงในใบนั้น ⇒ client ปลอม id
+      // มาได้ก็กลายเป็นแถวใหม่ ไม่ใช่ทางไปเขียนทับแถวของใบอื่น
+      id: String(raw.id ?? '').trim() || null,
       lineKind: 'product_dev',
       categoryCode,
       scentId,
@@ -128,6 +133,8 @@ export function normalizeDocLines(input, vocab) {
     seen.add(key);
 
     items.push({
+      // id ของแถวเดิม — เหตุผลเดียวกับบรรทัดพัฒนาสูตรข้างบน
+      id: String(raw.id ?? '').trim() || null,
       lineKind: vocab.lineKind,
       docType,
       // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร

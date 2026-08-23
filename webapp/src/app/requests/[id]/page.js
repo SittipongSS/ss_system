@@ -23,13 +23,16 @@ import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
+import { lineFormRows } from "@/lib/requests/requestLineEdit";
 import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
   DocumentControlCard, WorkflowRail,
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
-import { RequestDueUrgentFields, RequestTitleBodyFields } from "@/components/requests/RequestEditableFields";
+import {
+  RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
+} from "@/components/requests/RequestEditableFields";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -70,7 +73,9 @@ import Tabs from "@/components/ui/Tabs";
 import { reworkSlots } from "@/lib/requests/rework";
 import DateInput from "@/components/ui/DateInput";
 import { businessDate } from "@/lib/businessDate";
-import { requestDeliversRows, requestHasItems, requestKindLabel } from "@/lib/master/requestTypes";
+import {
+  lineShapeForKind, requestDeliversRows, requestHasItems, requestKindLabel,
+} from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -745,8 +750,13 @@ export default function RequestDetailPage() {
   const canEditInfo = (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status);
   const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
   // ⭐ ประโยค "ทำไมแก้ไม่ได้ตอนนี้" — server ตัดสินมาให้แล้ว (`editPdrError`) หน้าจอ
-  // ไม่คิดเอง · ใบที่ไม่มี PDR ไม่มีประโยคนี้ (ปุ่มแก้ของมันคุมด้วย `canEditInfo` ล้วน)
-  const editBlocker = requestHasPdr(req.kind) ? (req._editPdrBlocker || null) : null;
+  /* เหตุผลที่แก้ไม่ได้ — **มาจาก server ทั้งสองฝั่ง ไม่คิดเอง**
+     · ใบที่มีแบบฟอร์ม PDR ⇒ `_editPdrBlocker` (สิทธิ์สลับมือตอนรับเรื่อง)
+     · ใบที่ไม่มี ⇒ `_editBlocker` (= `requestEditError` — ผู้ขอ ถึงก่อนรับเรื่อง)
+     🐞 เดิมฝั่งขวาเป็น `null` ตายตัว ⇒ ใบขอเอกสาร/ขอใบวางบิล/พัฒนาสูตร/สอบถาม
+     พอฝ่ายกด "รับเรื่อง" **ปุ่มแก้หายไปทั้งปุ่มโดยไม่มีเหตุผลบนจอ** ทั้งที่ประโยค
+     ไทยรออยู่ใน `requestEditError` แล้ว (ผลตรวจ 2026-08-24) */
+  const editBlocker = (requestHasPdr(req.kind) ? req._editPdrBlocker : req._editBlocker) || null;
 
   /* ⭐ เปิดโมดัลส่งงาน **ของบรีฟก้อนเดียว** (มติผู้ใช้ 2026-08-18) — ปุ่มอยู่ในแถว
      ของบรีฟนั้นในตารางสรุปทั้งใบ
@@ -808,6 +818,16 @@ export default function RequestDetailPage() {
               requestedDueDate: req.requestedDueDate || "",
               urgent: !!req.urgent,
               urgentReason: req.urgentReason || "",
+              /* ⭐ **บรรทัดเข้าโหมดแก้ด้วย** (มติผู้ใช้ 2026-08-24) — หัวข้อที่เนื้องาน
+                 อยู่ในบรรทัด (ขอเอกสาร · ขอใบวางบิล · พัฒนาสูตร) เคยแก้ได้แต่หัวใบ
+                 ⚠️ **ต้องพา `id` ของแถวเดิมไปด้วย** (`lineFormRows`) — server จับคู่
+                 แถวด้วย id · ลืมบรรทัดนี้ = ทุกแถวกลายเป็นแถวใหม่แล้วของเดิมถูกลบ
+                 พร้อมไฟล์แนบที่ผูกกับ id นั้น (บั๊กเดียวกับที่ `pdrValuesFrom` กันไว้
+                 ฝั่ง PDR) */
+              items: hasItems ? lineFormRows(req.items || [], lineShapeForKind(req.kind)) : [],
+              // ยอดที่ขอวางบิล — ส่งคู่เสมอ server คิดใหม่จากยอดจริงของใบอยู่ดี
+              billPercent: req.billPercent ?? null,
+              billAmount: req.billAmount ?? null,
             });
           }
           if (canEditPdrNow) {
@@ -820,6 +840,15 @@ export default function RequestDetailPage() {
               targets: (req.targets || []).map(pdrTargetValuesFrom),
             });
           }
+          /* ⭐ **กดแก้แล้วต้องเห็นว่ามีอะไรเปิดขึ้นมา** (ผลตรวจ 2026-08-24) — ปุ่มอยู่
+             บนแผงจัดการ (รางขวา / บนสุดบนจอแคบ) ส่วนการ์ดแก้ไปโผล่ในคอลัมน์เนื้อ
+             ⇒ บนใบยาว ๆ กดแล้วหน้าไม่ขยับเลย อ่านเหมือนปุ่มเสีย
+             ⚠️ `setTimeout(0)` ไม่ใช่ `requestAnimationFrame` — ต้องรอให้ React
+             commit การ์ดลง DOM ก่อน ไม่งั้น `getElementById` ยังได้ null */
+          setTimeout(() => {
+            document.getElementById("request-edit")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 0);
         },
         // ⚠️ ฝั่งจอไม่มี `user.id` (context เก็บแค่ role/department) จึงถามด้วย
         // `_mine` ที่ server คำนวณมาให้ + ขั้นชุดเดียวกับ lib · ด่านจริงอยู่ที่ API
@@ -829,7 +858,13 @@ export default function RequestDetailPage() {
         // ไม่รู้ว่าต้องไปบอกใคร · โชว์ปุ่มแบบกดไม่ได้พร้อมเหตุผลจาก server แทน
         // ⚠️ ซ่อนจริงเฉพาะใบที่ **ไม่มีอะไรให้แก้เลย** (ไม่มี PDR และไม่ใช่ใบของเรา)
         // — ปุ่มที่ไม่มีวันกดได้ไม่ควรกินที่บนแผง
-        visible: (canEditInfo || canEditPdrNow || (requestHasPdr(req.kind) && !!editBlocker))
+        /* ⚠️ ซ่อนจริงเฉพาะใบที่ **ไม่ใช่เรื่องของคนนี้เลย** — ใบของคนอื่นที่เราแค่
+           เปิดอ่าน ปุ่มแก้ไม่มีวันกดได้ ⇒ ไม่ควรกินที่บนแผง
+           ⭐ ส่วนใบ **ของเราเองที่เลยจังหวะแก้ไปแล้ว** ต้องโชว์แบบกดไม่ได้พร้อมเหตุผล
+           (มติ GatedAction) · ใบที่มี PDR โชว์เสมอเพราะสิทธิ์สลับมือไปอีกฝั่ง
+           คนที่เห็นปุ่มหายจะไม่รู้ว่าต้องไปบอกใคร */
+        visible: (canEditInfo || canEditPdrNow
+          || (!!editBlocker && (requestHasPdr(req.kind) || req._mine)))
           && !editing,
         disabled: !canEditInfo && !canEditPdrNow,
         disabledReason: editBlocker,
@@ -1082,17 +1117,44 @@ export default function RequestDetailPage() {
           ⚠️ ช่องมาจาก `RequestEditableFields` ตัวเดียวกับฟอร์มเปิดคำร้อง — ห้ามวาง
           Input/Textarea เองที่นี่ (กฎ AGENTS.md · เคยเพี้ยนมาแล้ว 6 จุด) */}
       {editDraft && (
-        <DetailCard icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง" className={styles.editCard}>
+        <DetailCard
+          icon={Pencil} eyebrow="EDIT" title="แก้ข้อมูลคำร้อง"
+          className={styles.editCard} id="request-edit"
+        >
           <div className="form-grid cols-2">
+            {/* ⚠️ ยอดที่ขอวางบิลอยู่บนสุดเพราะฝั่งสร้างถามมันในแท็บแรก ("งาน") —
+                ลำดับช่องสองฝั่งต้องเหมือนกัน ไม่งั้นคนที่เพิ่งกรอกมาจำที่ไม่ได้
+                ⚠️ ฐานยอดมาจาก `billBaseAmount` ที่ประทับบนใบตอนเปิด — ใบเสนอราคา
+                เปลี่ยนทางนี้ไม่ได้ ⇒ ฐานไม่ขยับ · server อ่านยอดสดของใบอีกทีตอนบันทึก */}
+            {req.quotationId != null && req.billBaseAmount != null && (
+              <RequestBillAmountFields
+                value={editDraft} onChange={setEditDraft}
+                baseAmount={req.billBaseAmount} disabled={saving}
+              />
+            )}
             <RequestTitleBodyFields
               value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
             />
+            {/* ⭐ **ตารางบรรทัดตัวเดียวกับฟอร์มเปิดคำร้อง** (กฎ AGENTS.md) — ทะเบียน
+                กลิ่น/หมวดที่สายพัฒนาสูตรต้องใช้ หน้านี้โหลดไว้อยู่แล้วสำหรับฟอร์มส่งงาน
+                ⇒ ไม่มี fetch เพิ่มสำหรับโหมดแก้ */}
+            {hasItems && (
+              <RequestLineFields
+                kind={req.kind}
+                value={editDraft.items || []}
+                onChange={(rows) => setEditDraft((d) => ({ ...d, items: rows }))}
+                categories={productTypes}
+                scents={registry.scents}
+                customerId={req.customerId || null}
+                disabled={saving}
+              />
+            )}
             <RequestDueUrgentFields
               value={editDraft} onChange={setEditDraft} disabled={saving} idPrefix="edit"
             />
           </div>
           <small className={styles.hint}>
-            เปลี่ยนดีล ใบสั่งขาย รายการ หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
+            เปลี่ยนดีล ใบสั่งขาย ใบเสนอราคา หรือหัวข้อทางนี้ไม่ได้ — ใบร่างลบแล้วเปิดใหม่ได้
             (ยังไม่กินเลขที่) ส่วนใบที่ส่งแล้วให้คุยต่อในเธรด
           </small>
         </DetailCard>

@@ -32,19 +32,18 @@ import Input from "@/components/ui/Input";
 import DealPicker from "@/components/pm/DealPicker";
 import FormZone from "@/components/ui/FormZone";
 import { productIdentity } from "@/lib/master/productIdentity";
-import ProductDevLines from "@/components/requests/ProductDevLines";
-import DocumentLines from "@/components/requests/DocumentLines";
-import { RequestDueUrgentFields, RequestTitleBodyFields } from "./RequestEditableFields";
+import {
+  RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
+} from "./RequestEditableFields";
 import TeamPickerField from "@/components/ui/TeamPickerField";
 import { userTeams } from "@/lib/permissions";
 import PdrForm from "@/components/requests/PdrForm";
 import { pdrRailSections } from "@/lib/requests/pdrFields";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
-import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import {
   PLANNED_REQUEST_DEPTS, requestOptionalRefs, defaultRequestDept,
   REQUEST_DEPTS, REQUEST_DEPT_LABELS,
-  kindsForDept, lineShapeForKind, requestHasItems,
+  kindsForDept, requestHasItems,
   requestHasPdr,
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
 } from "@/lib/master/requestTypes";
@@ -54,7 +53,7 @@ import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
 import {
-  billAmountFor, billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
+  billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
 } from "@/lib/requests/billingQuotations";
 import { fmtNumber } from "@/lib/format";
 import { isScentUsable } from "@/lib/master/scents";
@@ -171,8 +170,6 @@ export default function RequestForm({
   //  ของตัวเอง) · ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว จึงอ่านตรง ๆ ได้ไม่ต้อง fallback
   const copy = meta.form || {};
   const hasItems = requestHasItems(kind);
-  // รูปร่างบรรทัดมาจากทะเบียนหัวข้อที่เดียว — ฟอร์มไม่เช็ค `kind === "..."` เอง
-  const lineShape = lineShapeForKind(kind);
   const dept = value.dept || "";
 
   // ช่องที่ต้องกรอกมาจากทะเบียนหัวข้อที่เดียว — ห้ามเขียน `kind === "..."` ในฟอร์ม
@@ -257,20 +254,8 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
-  /* ⚠️ โหมดของช่องยอดที่ขอเป็น **วิธีกรอก** ไม่ใช่ข้อมูล — ค่าที่เก็บคือ
-     `billPercent`/`billAmount` ทั้งคู่เสมอ ไม่ว่าจะพิมพ์ช่องไหน
-     ⭐ มาจากปุ่ม "ขอใบวางบิลงวดนี้" (B-5) = รู้ **จำนวนเงินของงวด** มาแล้ว ไม่ใช่ %
-     ⇒ เปิดมาที่โหมดจำนวนเงินพร้อมตัวเลขในช่อง · ตั้งครั้งเดียวตอน mount */
-  const [billMode, setBillMode] = useState(
-    value?.billAmount != null && value?.billPercent == null ? "amount" : "percent",
-  );
-  /* 🐞 **ตัวเลขที่พิมพ์ต้องค้างอยู่แม้ค่าไม่ผ่านด่าน** — รอบแรกช่องนี้อ่านค่าจาก
-     `value.billAmount` ตรง ๆ ⇒ พิมพ์ยอดที่เกินยอดใบแล้วตัวเลขหายไปทั้งช่องพร้อมกับ
-     ข้อความอธิบาย (เพราะ error คิดจากค่าที่ถูกล้างเป็น null ไปแล้ว) ⇒ ผู้ใช้เห็นแค่
-     ช่องว่างกับปุ่มจาง · เก็บ "สิ่งที่พิมพ์" แยกจาก "ค่าที่ผ่านแล้ว" */
-  const [billInput, setBillInput] = useState(
-    value?.billAmount != null ? String(value.billAmount) : "",
-  );
+  // ⚠️ state ของช่อง "ยอดที่ขอวางบิล" ย้ายเข้าไปอยู่ใน `RequestBillAmountFields`
+  // แล้ว (ของกลางที่ฝั่งแก้ใช้ร่วม) — ที่นี่เหลือแค่ส่ง `baseAmount` กับ `key` ให้
   // ไฟล์ใหญ่เกินเพดาน — ด่านอยู่ใน PendingFiles ที่เดียว ที่นี่แค่รับข้อความมาโชว์
   const [fileError, setFileError] = useState("");
   const formTabs = requestFormTabs(value, { optionalRefs });
@@ -533,41 +518,12 @@ export default function RequestForm({
         const skipHint = billingQuotationSkipHint(billingQuotationSkips(quotations));
         const picked = quotations.find((q) => q.id === value.quotationId) || null;
         const base = Number(picked?.totalAmount) || 0;
-        // คิดจาก **สิ่งที่พิมพ์** ไม่ใช่ค่าที่ผ่านด่านแล้ว — ไม่งั้นค่าที่ไม่ผ่านจะไม่มี
-        // ทั้งตัวเลขและเหตุผลเหลืออยู่บนจอ
-        const bill = billAmountFor({
-          mode: billMode,
-          percent: billMode === "percent" ? billInput : null,
-          amount: billMode === "amount" ? billInput : null,
-          baseAmount: base,
-        });
         /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
            ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
            (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
         const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
         const dealOfQt = deals.find((d) => d.id === picked?.dealId) || null;
         const projectOfDeal = projects.find((p) => p.id === dealOfQt?.projectId) || null;
-        /* เขียนค่าคู่เสมอ — ช่องที่ผู้ใช้ไม่ได้พิมพ์ก็ต้องมีค่า ไม่งั้น payload ส่งไป
-           ครึ่งเดียวแล้ว server คิดกลับได้ไม่ตรงกับที่จอโชว์
-           ⚠️ ค่าที่ไม่ผ่านด่านเขียนเป็น null ลงฟอร์ม (ปุ่มจึงจางถูกต้อง) แต่ตัวเลข
-           ที่พิมพ์ยังอยู่ใน `billInput` ให้แก้ต่อได้ */
-        const setBill = (raw) => {
-          setBillInput(raw);
-          const out = billAmountFor({
-            mode: billMode,
-            percent: billMode === "percent" ? raw : null,
-            amount: billMode === "amount" ? raw : null,
-            baseAmount: base,
-          });
-          set({ billPercent: out.percent ?? null, billAmount: out.amount ?? null });
-        };
-        /* สลับโหมด = เริ่มพิมพ์ใหม่จากค่าที่ผ่านแล้วของโหมดนั้น — ไม่ใช่ล้างทิ้ง
-           (พิมพ์ 50% แล้วอยากดูเป็นบาท ต้องเห็นยอดที่คิดได้ ไม่ใช่ช่องว่าง) */
-        const switchMode = (next) => {
-          setBillMode(next);
-          const carried = next === "percent" ? value.billPercent : value.billAmount;
-          setBillInput(carried == null ? "" : String(carried));
-        };
         return (
           <div className="form-grid cols-2">
             <div className="form-group col-span-2">
@@ -585,7 +541,6 @@ export default function RequestForm({
                     // ใบเปลี่ยน = ฐานเปลี่ยน ⇒ ยอดเดิมไม่มีความหมายอีกต่อไป
                     billPercent: null, billAmount: null,
                   });
-                  setBillInput("");
                 }}
                 /* ⚠️ `SearchableSelect` ไม่มีบรรทัดรอง — ยอดกับชื่อลูกค้าจึงอยู่ในป้าย
                    เดียวกัน · เลือกใบผิดเพราะเลขที่ใกล้กันคือความผิดพลาดที่แพงที่สุด
@@ -618,48 +573,21 @@ export default function RequestForm({
             <DerivedField label="AC (ผู้ประสานงาน)" from="เติมจากโครงการของดีล"
               value={projectOfDeal?.acOwner || ""} />
 
-            <div className="form-group col-span-2">
-              <span className={styles.fieldLabel}>ยอดที่ขอวางบิล</span>
-              <OptionTiles
-                value={billMode} disabled={disabled || !picked}
-                onChange={switchMode}
-                ariaLabel="วิธีระบุยอดที่ขอ"
-                options={[
-                  { value: "percent", label: "คิดเป็น %", description: "เช่น 50% ก่อนผลิต" },
-                  { value: "amount", label: "ระบุจำนวนเงิน", description: "พิมพ์ยอดตรง ๆ" },
-                ]}
-              />
-              {/* 🐞 **เคยเป็น `<input className="form-control">` ซึ่งเป็นคลาสที่ไม่มีอยู่จริง
-                  ในระบบนี้** ⇒ ช่องไม่มีกรอบ ไม่มีความสูงมาตรฐาน หลุดธีมทั้งช่อง ·
-                  ช่องกรอกของระบบมี primitive เดียวคือ `Input` (`.premium-input`)
-                  ⚠️ และเคยห่อด้วย `.pickAdd` ซึ่งเป็นทรงของ "ดรอปดาวน์ + ปุ่มเพิ่ม"
-                  (`flex: 1` บนลูกตัวแรก) ⇒ หน่วยถูกดันไปติดขอบขวาสุดของการ์ด
-                  ห่างจากตัวเลขครึ่งจอ · ที่ถูกคือช่องสั้นแล้วหน่วยชิดขวาของช่อง */}
-              <div className={styles.amountField}>
-                <Input
-                  type="number" step="any" min="0" mono
-                  disabled={disabled || !picked}
-                  value={billInput}
-                  onChange={(e) => setBill(e.target.value)}
-                  placeholder={billMode === "percent" ? "50" : "90508.125"}
-                  aria-label={billMode === "percent" ? "สัดส่วนที่ขอ (%)" : "ยอดที่ขอ (บาท)"}
-                />
-                <span className={styles.amountUnit} aria-hidden="true">
-                  {billMode === "percent" ? "%" : "บาท"}
-                </span>
-              </div>
-              {/* ⭐ โชว์ทั้งฐานและผลลัพธ์ — คนกดต้องเห็นว่า 50% ของอะไร ก่อนส่งให้บัญชี */}
-              {picked && (
-                <small className={styles.hint}>
-                  ยอดเต็มตามใบ {money(base)} บาท
-                  {bill.amount != null && ` · ขอ ${money(bill.percent)}% = ${money(bill.amount)} บาท`}
-                </small>
-              )}
-              {/* 🐞 **เงียบจนกว่าจะเลือกใบ** — ฐานเป็น 0 ตอนยังไม่เลือก ⇒ ตัวคำนวณ
-                  คืน "ไม่มียอดให้วางบิล" ตั้งแต่เปิดฟอร์ม ซึ่งอ่านเหมือนใบที่ยังไม่ได้
-                  เลือกมีปัญหา · ของที่ขาดตอนนั้นคือ **ใบ** ซึ่งแถบ "ยังขาด" บอกอยู่แล้ว */}
-              {picked && bill.error && <small className={styles.hint}>{bill.error}</small>}
-            </div>
+            {/* ⚠️ **ช่องเดียวกับที่หน้ารายละเอียดใช้ตอนแก้** (`RequestBillAmountFields`)
+                — ยอดที่ขอเป็นช่องบังคับที่เคยแก้ไม่ได้หลังบันทึก (ผู้ใช้แจ้ง 2026-08-24)
+                ⚠️ `ready` = เลือกใบแล้วหรือยัง · ฐานยอดมาจากใบที่เลือก ไม่ใช่โหลดเอง */}
+            <RequestBillAmountFields
+              /* ⚠️ **`key` ผูกกับใบ** — ตัวเลขที่พิมพ์ค้างเป็น state ในตัวช่อง
+                 (ต้องค้างไว้แม้ค่าไม่ผ่านด่าน) ⇒ เปลี่ยนใบแล้วต้อง **remount** ไม่งั้น
+                 ยอดของใบเก่าค้างอยู่ในช่องทั้งที่ฐานเปลี่ยนไปแล้ว · remount ตรงกับ
+                 กติกาของรีโปที่ห้าม sync ด้วย effect (มันกระโดดใต้มือคนที่กำลังพิมพ์) */
+              key={value.quotationId || "no-quotation"}
+              value={value}
+              onChange={onChange}
+              baseAmount={base}
+              disabled={disabled}
+              ready={!!picked}
+            />
           </div>
         );
       })()}
@@ -980,38 +908,20 @@ export default function RequestForm({
         </div>
       )}
 
-      {/* ── พัฒนาผลิตภัณฑ์: บรรทัด หมวด × กลิ่น ───────────────────────────
-          ⚠️ คนละตารางกับบรรทัดวัสดุโดยสิ้นเชิง — วัสดุเลือกจากทะเบียนวัสดุแล้วขอราคา
-          ส่วนนี่คือ "หมวดไหน กลิ่นไหน" ซึ่งเป็นตัวตนของสูตรที่จะเกิด · ยัดสองอย่างนี้
-          ลงตารางเดียวกันจะได้ช่องที่ครึ่งหนึ่งไม่เกี่ยวกับหัวข้อที่เลือกอยู่ */}
-      {lineShape === "product_dev" && (
-        <div className="form-group col-span-2">
-          <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
-          <ProductDevLines
-            rows={items}
-            onChange={(rows) => set({ items: rows })}
-            categories={productTypes}
-            scents={scents}
-            customerId={selectedDeal?.customerId || null}
-            disabled={disabled}
-          />
-        </div>
-      )}
-
-      {/* ── ขอเอกสาร: บรรทัดชนิดเอกสาร ─────────────────────────────────── */}
-      {(lineShape === "document" || lineShape === "billing_doc") && (
-        <div className="form-group col-span-2">
-          <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
-          {/* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
-              คำร้องขอเอกสารของ RD จะมีตัวเลือก "ใบกำกับภาษี" ซึ่ง RD ออกให้ไม่ได้ */}
-          <DocumentLines
-            rows={items}
-            onChange={(rows) => set({ items: rows })}
-            vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
-            disabled={disabled}
-          />
-        </div>
-      )}
+      {/* ── บรรทัดของหัวข้อนี้ ─────────────────────────────────────────────
+          ⚠️ **ตารางเดียวกับที่หน้ารายละเอียดใช้ตอนกด "แก้ไข"** (`RequestLineFields`)
+          — กฎ AGENTS.md "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" · เดิมตารางสอง
+          ตัวนี้อยู่ที่นี่ที่เดียว ⇒ ฝั่งแก้จึงไม่มีบรรทัดให้แก้เลย (ผู้ใช้แจ้ง 2026-08-24)
+          ⚠️ การเลือกตารางตามรูปร่างบรรทัดย้ายเข้าไปในของกลางแล้ว — ที่นี่ไม่ตัดสินเอง */}
+      <RequestLineFields
+        kind={kind}
+        value={items}
+        onChange={(rows) => set({ items: rows })}
+        categories={productTypes}
+        scents={scents}
+        customerId={selectedDeal?.customerId || null}
+        disabled={disabled}
+      />
       </div>
       )}
 

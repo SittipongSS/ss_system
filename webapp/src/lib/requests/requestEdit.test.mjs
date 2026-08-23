@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { REQUEST_EDITABLE_FIELDS, requestEditError, requestEditPatch } from './requestEdit.js';
+import {
+  REQUEST_EDITABLE_FIELDS, REQUEST_EDIT_PATCH_FIELDS, requestEditError, requestEditPatch,
+} from './requestEdit.js';
 
 const owner = { id: 'U1', role: 'ae' };
 const other = { id: 'U2', role: 'ae' };
@@ -28,10 +30,24 @@ test('รับเฉพาะช่องที่แก้ได้ — ขอ
     title: '  ขอ COA ล็อต B  ', body: 'รายละเอียด', requestedDueDate: '2026-09-01',
     urgent: true, urgentReason: 'ลูกค้าออกบูธ',
     // ของที่ห้ามแก้ทางนี้ — เปลี่ยนแล้วกระทบว่าใบผูกกับอะไร
-    kind: 'formula_dev', dealId: 'DEAL-9', salesOrderId: 'SO-9', items: [{}], status: 'closed',
+    kind: 'formula_dev', dealId: 'DEAL-9', salesOrderId: 'SO-9', status: 'closed',
+    // ⚠️ บรรทัดแก้ได้แล้ว (2026-08-24) แต่ **ไม่ผ่านทางนี้** — มันอยู่คนละตาราง
+    // (`dept_request_items`) และเขียนด้วยแผน update/insert/remove ⇒ ต้องไม่หลุดเข้า
+    // patch ของหัวใบ ไม่งั้น PostgREST ปฏิเสธทั้งก้อน (คอลัมน์ `items` ไม่มีจริง)
+    items: [{}],
   });
-  assert.deepEqual(Object.keys(patch).sort(), [...REQUEST_EDITABLE_FIELDS].sort());
+  assert.deepEqual(Object.keys(patch).sort(), [...REQUEST_EDIT_PATCH_FIELDS].sort());
   assert.equal(patch.title, 'ขอ COA ล็อต B');
+});
+
+test('ยอดที่ขอวางบิลอยู่ในลิสต์ "แก้ได้" แต่ไม่ได้เขียนโดยฟังก์ชันบริสุทธิ์ตัวนี้', () => {
+  // ⚠️ ค่าที่ client ส่งมาเชื่อไม่ได้ — handler คิดใหม่จากยอดจริงของใบเสนอราคา
+  // (`resolveBillAmount`) · ปล่อยให้ผ่านทางนี้เมื่อไร = วางบิลเกินยอดใบได้
+  const extra = REQUEST_EDITABLE_FIELDS.filter((f) => !REQUEST_EDIT_PATCH_FIELDS.includes(f));
+  assert.deepEqual([...extra].sort(), ['billAmount', 'billPercent']);
+  const patch = requestEditPatch({ title: 'x', billPercent: 50, billAmount: 999999 });
+  assert.equal('billAmount' in patch, false);
+  assert.equal('billPercent' in patch, false);
 });
 
 test('ถอดธงด่วนแล้วเหตุผลต้องถูกล้าง ไม่ใช่ค้างไว้', () => {
