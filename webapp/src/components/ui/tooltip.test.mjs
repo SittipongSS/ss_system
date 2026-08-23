@@ -61,3 +61,10 @@ test("TooltipHost มีตัวเดียวทั้งแอป", () => {
   assert.match(TOOLTIP, /export function TooltipHost/);
   assert.equal(APP_LAYOUT.match(/<TooltipHost \/>/g)?.length, 1);
 });
+
+test("ตัวที่มีกล่องของตัวเองแล้ว ตัวดักกลางต้องเงียบ", () => {
+  /* 🐞 UAT 2026-08-24: ชี้หมุดในรางที่อยู่ในเซลล์ซึ่งถูกตัดพอดี ได้สองกล่องซ้อนกัน
+     (ชื่อขั้นจาก <Tooltip> + ข้อความเต็มของเซลล์จาก TooltipHost) */
+  assert.match(TOOLTIP, /"data-tip-own": ""/);
+  assert.match(TOOLTIP, /closest\("\[data-tip-own\]"\)/);
+});

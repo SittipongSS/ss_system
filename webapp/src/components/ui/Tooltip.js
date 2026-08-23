@@ -136,6 +136,11 @@ export default function Tooltip({ label, note, children, disabled = false }) {
   return (
     <>
       {cloneElement(children, {
+        /* 🐞 ป้ายบอกว่า "ตัวนี้มีกล่องของตัวเองแล้ว" — ตัวดักกลาง (TooltipHost) ต้อง
+           ไม่ขึ้นกล่องของเซลล์ทับ · ของจริงที่เจอตอน UAT 2026-08-24: ชี้หมุดในราง
+           ที่อยู่ในเซลล์ซึ่งถูกตัดพอดี ⇒ ได้สองกล่องซ้อนกัน (ชื่อขั้น + ข้อความเต็ม
+           ของเซลล์) */
+        "data-tip-own": "",
         onMouseEnter: compose(children.props.onMouseEnter, show),
         onMouseLeave: compose(children.props.onMouseLeave, hide),
         onFocus: compose(children.props.onFocus, show),
@@ -176,7 +181,13 @@ export function TooltipHost() {
 
   useEffect(() => {
     const onOver = (event) => {
-      const target = event.target instanceof Element ? event.target.closest(TIP_SELECTOR) : null;
+      if (!(event.target instanceof Element)) return;
+      /* ตัวที่มีกล่องของตัวเองพูดแทนแล้ว — ตัวดักกลางต้องเงียบ ไม่ใช่ขึ้นซ้อน */
+      if (event.target.closest("[data-tip-own]")) {
+        if (current.current) { current.current = null; hide(); }
+        return;
+      }
+      const target = event.target.closest(TIP_SELECTOR);
       if (!target) {
         if (current.current) { current.current = null; hide(); }
         return;
