@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -84,6 +84,9 @@ export default function AppLayout({ children }) {
   const navCounts = useNavCounts(pathname);
   const [activeSystem, setActiveSystem] = useState('tax');
   const [sysMenuOpen, setSysMenuOpen] = useState(false); // dropdown สลับระบบ
+  /* ระบบที่กางเมนูย่อยค้างอยู่ในดรอปดาวน์ (มติผู้ใช้ 2026-08-23) — ทีละระบบเท่านั้น
+     เก็บเป็น key ไม่ใช่ boolean ต่อแถว เพราะกางสองระบบพร้อมกันคือแผงยาวเลยจอ */
+  const [openSystem, setOpenSystem] = useState(null);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   /* เมนูของระบบเป็นแถบข้างทุกความกว้าง (มติผู้ใช้ 2026-08-21 — ไม่มีโหมดแถบบนแล้ว)
      สามชั้นจอ: >1200 กาง/ย่อเองแล้วดันเนื้อหา · 901–1200 ราง กางแล้วลอยทับ ·
@@ -212,6 +215,7 @@ export default function AppLayout({ children }) {
       try { localStorage.setItem(RECENT_SYSTEM_STORAGE_KEY, sys); } catch {}
     }
     setSysMenuOpen(false); // navigating closes the system dropdown
+    setOpenSystem(null);
     setMobileMoreOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, role, department, extraCaps]);
@@ -220,7 +224,7 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     if (!sysMenuOpen) return;
     const onDown = (e) => {
-      if (sysMenuRef.current && !sysMenuRef.current.contains(e.target)) setSysMenuOpen(false);
+      if (sysMenuRef.current && !sysMenuRef.current.contains(e.target)) { setSysMenuOpen(false); setOpenSystem(null); }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -740,17 +744,72 @@ export default function AppLayout({ children }) {
                      ⚠️ ระบบที่กำลังอยู่ก็ยังโชว์ — ตัวเลขคือ "เหลือเท่าไร" ไม่ใช่
                      "ที่อื่นมีอะไร" · ซ่อนตอน active แล้วเลขจะหายตอนเข้าไปดู */
                   const systemCount = navCountForSystem(navCounts, g.system);
+                  /* ⭐ เมนูย่อยของแต่ละระบบ (มติผู้ใช้ 2026-08-23) — เดิมจะไปหน้าใด
+                     หน้าหนึ่งของระบบอื่นต้องสลับระบบก่อนแล้วค่อยหาในแถบข้าง สองจังหวะ
+                     ⚠️ **เป้ากดสองอัน ไม่ใช่อันเดียว**: กดชื่อระบบ = ไปหน้าแรกของระบบ
+                     นั้น (พฤติกรรมเดิม ห้ามเสีย) · กดลูกศรถึงจะกางเมนู — รวมเป็นปุ่ม
+                     เดียวเมื่อไร คนที่แค่อยากข้ามระบบจะต้องกางเมนูทิ้งทุกครั้ง
+                     ⚠️ แถบข้างกับแถบล่างมือถือ **ยังอยู่เหมือนเดิม** ตัวนี้เป็นทางลัด
+                     ข้ามระบบ ไม่ใช่ตัวแทน (ของเดิมบอก "ตอนนี้อยู่ไหน" ตลอดเวลา
+                     โดยไม่ต้องกดเปิด ซึ่งดรอปดาวน์ทำแทนไม่ได้) */
+                  const subOpen = openSystem === g.system;
                   return (
-                    <Link
-                      key={g.system}
-                      href={g.home}
-                      role="menuitem"
-                      className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
-                      aria-label={systemCount ? `${g.label} ${systemCount} รายการรอคุณ` : undefined}
-                    >
-                      <SystemIcon size={15} className="ico" /> {g.label}
-                      {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
-                    </Link>
+                    <div key={g.system} role="none" className={`topnav-sys-row${subOpen ? ' open' : ''}`}>
+                      <Link
+                        href={g.home}
+                        role="menuitem"
+                        className={`topnav-sys-item ${g.system === activeSystem ? 'active' : ''}`}
+                        aria-label={systemCount ? `${g.label} ${systemCount} รายการรอคุณ` : undefined}
+                        /* เมาส์ชี้แล้วกางเอง = ภาษาของ cascading menu ที่คนคุ้น · กัน
+                           ด้วย (hover: hover) เพราะจอสัมผัสยิง mouseenter ตอนแตะด้วย
+                           ⚠️ อ่าน matchMedia **สดตอนชี้** ไม่เก็บใส่ state — event
+                           ที่คอยอัปเดต state พลาดได้ แต่เมนูต้องไม่พลาด */
+                        onMouseEnter={() => {
+                          if (g.items.length && window.matchMedia('(hover: hover)').matches) setOpenSystem(g.system);
+                        }}
+                      >
+                        <SystemIcon size={15} className="ico" /> {g.label}
+                        {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
+                      </Link>
+                      {g.items.length > 0 && (
+                        <button
+                          type="button"
+                          className="topnav-sys-expand"
+                          aria-expanded={subOpen}
+                          aria-label={`เมนู${g.label}`}
+                          onClick={() => setOpenSystem(subOpen ? null : g.system)}
+                        >
+                          <ChevronRight size={14} aria-hidden="true" />
+                        </button>
+                      )}
+                      {subOpen && (
+                        <div className="topnav-sys-sub" role="menu" aria-label={`เมนู${g.label}`}>
+                          {g.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const count = navCountFor(navCounts, item.href);
+                            if (item.disabled) {
+                              return (
+                                <span key={item.href} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
+                                  <ItemIcon size={15} className="ico" /> {item.name}
+                                </span>
+                              );
+                            }
+                            return (
+                              <Link
+                                key={item.href}
+                                href={navHrefFor(item, count)}
+                                role="menuitem"
+                                className={`topnav-sys-item ${item.match(pathname) ? 'active' : ''}`}
+                                aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+                              >
+                                <ItemIcon size={15} className="ico" /> {item.name}
+                                {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

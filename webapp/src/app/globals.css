@@ -1267,7 +1267,10 @@ button, select, input, textarea {
   top: calc(100% + 6px);
   left: 0;
   min-width: 220px;
-  background: var(--panel);
+  /* 🪤 ต้องทึบ (--panel-float) ไม่ใช่ --panel ที่โปร่ง 4–6% — แผงนี้ลอยทับเนื้อหา
+     ตัวหนังสือข้างหลังทะลุขึ้นมาปนกับรายการ เห็นชัดที่สุดบนจอ ≤768px ที่แผงกาง
+     เต็มความกว้าง (บทเรียนเดียวกับแถบเมนูข้างและ .topnav-sys-sub) */
+  background: var(--panel-float);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow), var(--shadow-lg);
@@ -1288,6 +1291,48 @@ button, select, input, textarea {
   font-size: var(--fs-7);
 }
 .topnav-sys-item:hover { background: var(--panel-2); color: var(--text); }
+
+/* ── เมนูย่อยของแต่ละระบบในดรอปดาวน์สลับระบบ (มติผู้ใช้ 2026-08-23) ─────────
+   จอกว้าง = กางออกข้างแบบ cascading menu · จอแคบ = กางลงในแผ่นเดิมแบบ accordion
+   (เมนูซ้อนที่กางออกข้างบนจอสัมผัสกดพลาดง่ายและมักหลุดขอบจอ)
+   ⚠️ แถวหนึ่งมี **สองเป้ากด**: ลิงก์ชื่อระบบ กับปุ่มลูกศร — ดูเหตุผลที่ AppLayout.js */
+.topnav-sys-row { position: relative; display: flex; align-items: center; gap: var(--space-0-5); }
+.topnav-sys-row > .topnav-sys-item { flex: 1; min-width: 0; }
+.topnav-sys-expand {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
+}
+.topnav-sys-expand:hover { color: var(--text); background: var(--panel-2); }
+.topnav-sys-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.topnav-sys-sub {
+  position: absolute;
+  top: calc(0px - var(--space-2));
+  left: 100%;
+  margin-left: var(--space-1);
+  min-width: 210px;
+  max-height: 70vh;
+  overflow-y: auto;
+  /* 🪤 พื้นต้องทึบ (--panel-float) ไม่ใช่ --panel — แผงนี้ลอยทับเนื้อหา ถ้าโปร่ง
+     ตัวหนังสือข้างหลังทะลุขึ้นมาปนกับรายการ (บทเรียนเดียวกับแถบเมนูข้าง) */
+  background: var(--panel-float);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow), var(--shadow-lg);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
 .topnav-sys-item.active { color: var(--accent-ink); font-weight: var(--fw-semibold); background: var(--accent-soft); }
 /* ยอดรวมของระบบ — ชิดขวาสุดของแถว ให้ตัวเลขของทุกระบบเรียงเป็นคอลัมน์เดียวกวาดตาได้
    (ชื่อระบบยาวไม่เท่ากัน · ป้ายที่เกาะท้ายชื่อจะกระโดดไปมาทั้งเมนู) */
@@ -1951,6 +1996,23 @@ button, select, input, textarea {
     padding: var(--space-2-5) var(--space-3) var(--space-4);
   }
   .topnav-sys-item { min-height: 48px; padding: var(--space-2-5) var(--space-3); }
+  /* จอแคบ: เมนูย่อยกางลงในแผ่นเดิม ไม่กางออกข้าง (ดูเหตุผลที่ .topnav-sys-sub) */
+  .topnav-sys-row { flex-wrap: wrap; }
+  .topnav-sys-expand { width: 44px; height: 44px; }
+  .topnav-sys-row.open .topnav-sys-expand { transform: rotate(90deg); }
+  .topnav-sys-sub {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    max-height: none;
+    margin: var(--space-1) 0 var(--space-2) var(--space-5);
+    padding: 0 0 0 var(--space-2);
+    border: none;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    background: none;
+  }
 }
 
 @media (hover: none) and (pointer: coarse) {
