@@ -14,6 +14,7 @@ import { resolveProjectAcOwner, resolveProjectSupervisor } from '@/lib/pm/projec
 import { dealLinkedUpdate } from '@/lib/pm/projectUpdates';
 import { normalizeBusinessLine, businessLineLabel } from '@/lib/master/businessLines';
 import { appendUpdate } from '@/lib/master/updates';
+import { mirrorCounts, moveDealMirrors } from '@/lib/sales/dealProjectMove';
 
 export const dynamic = 'force-dynamic';
 
@@ -254,6 +255,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(linkError.message, 500);
   }
 
+  /* ⭐ ของที่เปิดไว้ตอนดีลยังลอย (คำร้อง/งาน/ใบสั่งขาย/งานผลิตที่ผูกแค่ `dealId`)
+     ต้องรับ `projectId` ของโครงการที่เพิ่งเกิดไปด้วย — ไม่งั้นค้าง null ถาวรแล้วหาย
+     จากทุกที่ที่กรองด้วยโครงการ (งานของทีมใน /api/pm/my-work · ตัวกรองในคิวคำร้อง)
+     ⚠️ ล้มเหลว = **เตือน ไม่ถอนโครงการ** — ค่าเดิมเป็น null คือยังไม่ครบ ไม่ใช่ผิด
+     ต่างจากเส้นย้ายโครงการที่ค่าเดิมชี้ผิดจริง (ดู link-project) */
+  let mirrorWarning = null;
+  let linkedMirrors = [];
+  try {
+    linkedMirrors = await moveDealMirrors(supabase, { dealId: deal.id, toProjectId: project.id });
+  } catch (mirrorError) {
+    mirrorWarning = `สร้างโครงการแล้ว แต่ย้ายของที่เปิดไว้ก่อนหน้าเข้าโครงการไม่สำเร็จ: ${mirrorError.message}`;
+  }
+
   // บันทึกประวัติเฉพาะเมื่อ stage เปลี่ยนจริง (ดีลที่ผ่าน timeline_proposed มาแล้ว
   // nextStage === deal.stage → เดิมเขียนแถว from===to ปลอม เหมือน link-project/timeline)
   if (deal.stage !== nextStage) {
@@ -293,5 +307,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
 
-  return ok({ project: { ...project, tasks: insertedTasks }, deal: updatedDeal, productWarning }, 201);
+  return ok({
+    project: { ...project, tasks: insertedTasks },
+    deal: updatedDeal,
+    productWarning,
+    linkedMirrors: mirrorCounts(linkedMirrors),
+    ...(mirrorWarning ? { warning: mirrorWarning } : {}),
+  }, 201);
 });

@@ -208,19 +208,29 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(linkErr.message, 500);
   }
 
-  // ของที่ mirror โครงการจากดีล (งาน/คำร้อง/ใบสั่งขาย) ต้องย้ายตาม ไม่งั้นค้างชี้
-  // โครงการเก่าแล้วโผล่ผิดที่ทั้งสองฝั่ง · พังกลางทาง = ถอนคืนทุกอย่างรวมถึงตัวดีล
+  /* ของที่ mirror โครงการจากดีล (งาน/คำร้อง/ใบสั่งขาย/งานผลิต) ต้องเดินตามดีล
+     ⭐ **ทำทั้งเส้นผูกครั้งแรกและเส้นย้าย** — เดิมทำเฉพาะตอนย้าย ของที่เปิดไว้ตอนดีล
+     ยังลอย (คำร้อง/งานที่ผูกแค่ดีล) จึงค้าง `projectId = null` ถาวร แล้วหายไปจาก
+     ทุกที่ที่กรองด้วยโครงการ · `moveDealMirrors` ข้ามแถวที่ชี้ปลายทางถูกอยู่แล้ว
+     จึงเรียกซ้ำได้ไม่มีผลข้างเคียง
+
+     ⚠️ ท่าจัดการความล้มเหลว **ต่างกันตามเส้น โดยตั้งใจ**:
+       ย้าย  — ค่าเดิมชี้โครงการที่ไม่ใช่เจ้าของดีลแล้ว = ผิดจริง ⇒ ถอนคืนทั้งชุด
+       ผูกแรก — ค่าเดิมเป็น null = ยังไม่ผิด แค่ยังไม่ครบ ⇒ เตือน ไม่ถอนการผูก
+                (ถอนแปลว่าคนผูกโครงการไม่ได้เลยเพราะแถวเก่าแถวเดียว) */
   let movedMirrors = [];
-  if (fromProject) {
-    try {
-      movedMirrors = await moveDealMirrors(supabase, { dealId: deal.id, toProjectId: project.id });
-    } catch (mirrorError) {
+  let mirrorWarning = null;
+  try {
+    movedMirrors = await moveDealMirrors(supabase, { dealId: deal.id, toProjectId: project.id });
+  } catch (mirrorError) {
+    if (fromProject) {
       await supabase.from('sales_deals')
         .update({ projectId: deal.projectId, metadata: deal.metadata || null, updatedAt: now })
         .eq('id', deal.id);
       await rollbackSegmentTasks(supabase, movedSegment);
       return fail(mirrorError.message, 500);
     }
+    mirrorWarning = `ผูกโครงการแล้ว แต่ย้ายของที่เปิดไว้ก่อนหน้าเข้าโครงการไม่สำเร็จ: ${mirrorError.message}`;
   }
 
   if (deal.stage !== nextStage) {
@@ -259,7 +269,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     after: updatedDeal,
     summary: fromProject
       ? `ย้ายดีล ${dealAuditLabel(deal)} จากโครงการ ${fromProject.code || fromProject.id} ไป ${project.code || project.id} (ไทม์ไลน์ ${movedSegment.length} ขั้นตอน${Object.entries(movedCounts).map(([table, count]) => `, ${table} ${count}`).join('')} · รายการ FG ไม่ย้ายตาม)`
-      : `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id}${adoptedCustomer ? ` และตั้งลูกค้าเป็น ${project.customerName || project.customerId}` : ''} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)})`,
+      : `ผูกดีล ${dealAuditLabel(deal)} เข้าโครงการเดิม ${project.code || project.id}${adoptedCustomer ? ` และตั้งลูกค้าเป็น ${project.customerName || project.customerId}` : ''} (${adopted ? `รับเลี้ยงไทม์ไลน์เดิม ${adopted}` : `+${insertedTasks.length}`} ขั้นตอน segment ${dealTypeOf(deal)}${Object.entries(movedCounts).map(([table, count]) => ` · ${table} ${count}`).join('')})`,
     request: req,
   });
 
@@ -268,6 +278,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     project: { id: project.id, code: project.code, name: project.name },
     appendedTasks: insertedTasks.length + adopted,
     adoptedTasks: adopted,
+    ...(mirrorWarning ? { warning: mirrorWarning } : {}),
+    ...(!fromProject ? { linkedMirrors: mirrorCounts(movedMirrors) } : {}),
     ...(fromProject ? {
       movedFrom: { id: fromProject.id, code: fromProject.code, name: fromProject.name },
       movedTasks: movedSegment.length,
