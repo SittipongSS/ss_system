@@ -5,6 +5,7 @@ import {
   historyRowKey,
   historySaveItems,
   historyYearOptions,
+  isMonthClosed,
   isMonthEditable,
   monthsSum,
   resolveYearTotal,
@@ -28,6 +29,19 @@ test('เดือนที่ยังมาไม่ถึงกรอกไ�
   assert.equal(isMonthEditable('2027', 0, JULY_2026), false);
   assert.equal(isMonthEditable('ไม่ใช่ปี', 0, JULY_2026), false);
   assert.equal(isMonthEditable('2025', 12, JULY_2026), false);
+});
+
+test('เดือนปัจจุบันยัง "ไม่ปิด" — ปุ่มเติมยอดจากระบบต้องไม่แตะเดือนที่ยังเดินอยู่', () => {
+  // ก.ค. 2026 = index 6 · กรอกเองได้ (isMonthEditable) แต่ยังไม่ปิด จึงห้ามเติมอัตโนมัติ
+  assert.equal(isMonthEditable('2026', 6, JULY_2026), true);
+  assert.equal(isMonthClosed('2026', 6, JULY_2026), false);
+
+  assert.equal(isMonthClosed('2026', 5, JULY_2026), true);
+  assert.equal(isMonthClosed('2026', 7, JULY_2026), false);
+  for (let mi = 0; mi < 12; mi += 1) assert.equal(isMonthClosed('2025', mi, JULY_2026), true, `2025-${mi}`);
+  assert.equal(isMonthClosed('2027', 0, JULY_2026), false);
+  assert.equal(isMonthClosed('ไม่ใช่ปี', 0, JULY_2026), false);
+  assert.equal(isMonthClosed('2025', 12, JULY_2026), false);
 });
 
 test('ผลรวมรายเดือนข้ามช่องว่างและค่าที่ไม่ใช่ตัวเลข', () => {

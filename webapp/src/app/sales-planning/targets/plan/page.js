@@ -21,6 +21,7 @@ import {
   distributeBySeasonal,
   normalizeToPercent,
 } from "@/lib/salesForecast";
+import { planNodes, summarizeOverwrite } from "@/lib/sales/targetPlanWrite";
 
 const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
@@ -223,8 +224,13 @@ export default function SalesTargetPlanPage() {
       const c = companyHist[y] || {};
       items.push({ period: y, periodType: "year", team: null, ownerId: null, targetAmount: c.target || 0, actualAmount: c.actual || 0, source: c.source || "manual" });
     }
+    /* 🪤 **ห้ามส่ง `targetAmount` ในแถวทีม** — ขั้นนี้กรอกแค่ *ยอดขายจริง* ของทีม
+       ปีล่าสุด ไม่ได้ถามเป้าเลย · API เขียนคอลัมน์ที่ "ส่งมาจริง" เท่านั้น
+       (`Object.hasOwn` ใน api/sales-planning/history) ⇒ ของเดิมที่ส่ง `targetAmount: 0`
+       ติดมาด้วย = เป้ารายปีของทีมที่เคยบันทึกไว้ถูกล้างเป็น 0 ทุกครั้งที่กด "ถัดไป"
+       จากขั้น 1 · กติกาเดียวกับที่ `lib/sales/historyEntry` เขียนเตือนไว้ (แก้ 2026-08-24) */
     for (const t of SALES_TEAMS) {
-      items.push({ period: latestHistYear, periodType: "year", team: t, ownerId: null, targetAmount: 0, actualAmount: Number(teamHist[t] || 0), source: "manual" });
+      items.push({ period: latestHistYear, periodType: "year", team: t, ownerId: null, actualAmount: Number(teamHist[t] || 0), source: "manual" });
     }
     const res = await fetch("/api/sales-planning/history", {
       method: "POST",
@@ -234,14 +240,76 @@ export default function SalesTargetPlanPage() {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกประวัติไม่สำเร็จ");
   };
 
-  // Write the full plan into sales_targets: for every node (company / each team /
-  // each AE) distribute its annual amount across 12 months by the season shape,
-  // one bulk call per node (each ≤ 12 items, within the endpoint's cap).
+  /* ชื่อเรียกโหนดในข้อความเตือน — ชื่อจากบัญชีจริงก่อนเสมอ ส่วน `ownerName` ที่ค้าง
+     ในแถวเป็นสำเนา ณ ตอนวางเป้า (ของจริงบน prod มีแถวที่ยังเป็นนามสกุลเดิม) */
+  const nodeLabel = useCallback((node) => {
+    if (node.ownerId) return users.find((u) => u.id === node.ownerId)?.name || node.ownerName || node.ownerId;
+    if (node.team) return `ทีม ${TEAM_LABELS[node.team] || node.team}`;
+    return "SA รวมทั้งฝ่าย";
+  }, [users]);
+
+  // รายชื่อยาว ๆ ในโมดัลอ่านไม่ไหว — ตัดที่ 8 แล้วบอกว่าเหลืออีกกี่แถว
+  const nameList = useCallback((rows) => {
+    const names = rows.map(nodeLabel);
+    return names.length > 8 ? `${names.slice(0, 8).join(" · ")} และอีก ${names.length - 8} แถว` : names.join(" · ");
+  }, [nodeLabel]);
+
+  /* Write the full plan into sales_targets: for every node (company / each team /
+     each AE) distribute its annual amount across 12 months by the season shape,
+     one bulk call per node (each ≤ 12 items, within the endpoint's cap).
+
+     🔴 **สองด่านที่เพิ่มเข้ามา 2026-08-24** (ของเดิมเขียนทับทั้งปีเงียบ ๆ):
+     1. เขียนเฉพาะโหนดที่มียอดจริง — ยอด 0 = ไม่แตะ ไม่ใช่เขียนศูนย์ทับ
+        (เหตุผลเต็มอยู่บนหัว `lib/sales/targetPlanWrite`)
+     2. อ่านเป้าที่มีอยู่ของปีนั้นสด ๆ แล้วถามก่อนทับ พร้อมบอกด้วยว่าแถวไหน
+        "ไม่ถูกแตะ" — แถวพวกนั้นยังนับเข้ายอดรวมทีมอยู่ ต้องไปเคลียร์เองที่ตารางเป้า */
   const confirmPlan = async () => {
     if (saving) return;
-    setSaving(true);
     setError("");
     setInfo("");
+
+    const nodes = planNodes({
+      finalTarget,
+      teams: SALES_TEAMS,
+      teamTargets,
+      teamMembers,
+      personTargets,
+    });
+    if (!nodes.length) {
+      setError("ยังไม่มียอดให้วาง — ทุกช่องเป็น 0 (โหนดที่ยอด 0 ระบบจะไม่เขียนทับของเดิม)");
+      return;
+    }
+
+    // อ่านของเดิม "ตอนกด" ไม่ใช่ตอนเปิดหน้า — หัวหน้าอาจเปิดค้างไว้ข้ามวัน
+    let existingRows = [];
+    try {
+      const res = await fetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
+      if (res.ok) existingRows = await res.json();
+    } catch {
+      // อ่านของเดิมไม่ได้ = เตือนละเอียดไม่ได้ แต่ไม่บล็อกการวางเป้า
+    }
+    const { overwrite, keep } = summarizeOverwrite({ existingRows, nodes, year: targetYear });
+
+    if (overwrite.length || keep.length) {
+      const lines = [];
+      if (overwrite.length) {
+        lines.push(`เขียนทับ ${overwrite.length} แถว (เป้าเดิมรวม ${fmt(sum(overwrite.map((r) => r.amount)))}): ${nameList(overwrite)}`);
+      }
+      if (keep.length) {
+        lines.push(`คงไว้ ${keep.length} แถวที่ไม่ได้อยู่ในแผนนี้ (ยอด 0 หรือคนที่ย้าย/ออกไปแล้ว) — เป้าเดิมรวม ${fmt(sum(keep.map((r) => r.amount)))} ยังนับเข้ายอดรวมอยู่ ถ้าจะล้างต้องไปแก้เป็น 0 เองที่ตารางเป้า: ${nameList(keep)}`);
+      }
+      const okToWrite = await confirmAction({
+        title: `วางเป้าปี ${targetYear} ทับของเดิม`,
+        description: `ปี ${targetYear} มีเป้าวางไว้อยู่แล้ว — ยืนยันแล้วจะเขียน ${nodes.length} แถวตามแผนนี้`,
+        detail: lines.join("\n"),
+        confirmLabel: "ยืนยันวางเป้า",
+        tone: overwrite.length ? "danger" : "default",
+      });
+      if (!okToWrite) return;
+    }
+
+    setSaving(true);
+    const done = [];
     try {
       const profile = monthPct.map((p) => p / 100);
       const months = monthsForYear(String(targetYear));
@@ -263,22 +331,19 @@ export default function SalesTargetPlanPage() {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "วางเป้าไม่สำเร็จ");
       };
 
-      // Company-wide (SA) anchor.
-      await writeNode({ team: null, ownerId: null, annual: Number(finalTarget || 0) });
-      // Teams.
-      for (const t of SALES_TEAMS) {
-        await writeNode({ team: t, ownerId: null, annual: Number(teamTargets[t] || 0) });
-      }
-      // AEs.
-      for (const t of SALES_TEAMS) {
-        for (const m of teamMembers[t] || []) {
-          await writeNode({ team: t, ownerId: m.id, ownerName: m.name, annual: Number(personTargets[m.id] || 0) });
-        }
+      // ยิงทีละโหนด (บริษัท → ทีม → คน) — ไม่มี transaction ครอบ ถ้าพังกลางทาง
+      // ต้องบอกให้ได้ว่าอันไหนลงไปแล้ว ไม่งั้นหัวหน้าไม่รู้ว่าต้องกดซ้ำหรือไปแก้มือ
+      for (const node of nodes) {
+        await writeNode(node);
+        done.push(node);
       }
       setInfo("วางเป้าเรียบร้อย กำลังพาไปหน้าตารางเป้า…");
       setTimeout(() => router.push("/sa/targets"), 900);
     } catch (e) {
-      setError(e.message || "วางเป้าไม่สำเร็จ");
+      const base = e.message || "วางเป้าไม่สำเร็จ";
+      setError(done.length
+        ? `${base} — วางไปแล้ว ${done.length}/${nodes.length} แถว (${nameList(done)}) ที่เหลือยังไม่ถูกเขียน กดยืนยันซ้ำได้`
+        : base);
     } finally {
       setSaving(false);
     }

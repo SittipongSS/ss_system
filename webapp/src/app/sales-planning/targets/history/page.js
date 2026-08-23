@@ -2,7 +2,8 @@
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarRange, Check, History } from "lucide-react";
+import { AlertTriangle, CalendarRange, Check, Download, History } from "lucide-react";
+import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
@@ -12,7 +13,7 @@ import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES } from "@/components/sale
 import { TEAM_LABELS } from "@/lib/permissions";
 import {
   buildHistoryRows, historyRowKey, historySaveItems,
-  historyYearOptions, isMonthEditable, resolveYearTotal,
+  historyYearOptions, isMonthClosed, isMonthEditable, resolveYearTotal,
 } from "@/lib/sales/historyEntry";
 import { fmtMoney, fmtMoneyCompact, naText } from "@/lib/format";
 import styles from "./page.module.css";
@@ -101,11 +102,14 @@ export default function SalesHistoryMonthlyPage() {
         (nextValues[key] ||= emptyValue()).months[mi] = Number(row.actualAmount || 0);
         (nextSaved[key] ||= new Set()).add(mi);
       }
-      // pre-fill จากยอดระบบ **เฉพาะแถวบริษัท** และเฉพาะช่องที่ยังไม่เคยกรอกเอง
-      const company = (nextValues.company ||= emptyValue());
-      for (let mi = 0; mi < 12; mi += 1) {
-        if (company.months[mi] === "" && sys.company?.[mi] > 0) company.months[mi] = sys.company[mi];
-      }
+      /* 🔴 **ไม่ pre-fill แถวบริษัทอีกแล้ว** (แก้ 2026-08-24) — ของเดิมเติมยอดที่ระบบรู้
+         ลงช่องว่างให้เอง แล้วปุ่ม "บันทึก" ส่งทุกช่องที่ไม่ว่างขึ้นไปเป็น `source: 'manual'`
+         ⇒ เปิดหน้านี้วันที่ 10 เพื่อกรอก ม.ค.–พ.ค. แล้วกดบันทึก เดือนที่ระบบรู้อยู่แล้ว
+         (รวม **เดือนปัจจุบันที่ยังเดินอยู่**) ถูกตรึงไว้ที่ยอด ณ วันนั้นตลอดไป เพราะ
+         แท็บผลงานขายเอาแถวที่กรอกเองไปทับยอดระบบ — ดีลที่ปิดวันที่ 11–31 หายจากรีพอร์ต
+         ตอนนี้ยอดระบบเป็น "ตัวเลขใบ้" ใต้ช่องเหมือนแถวทีม/รายคน (กติกาเดียวกันทั้งตาราง)
+         ใครจะใช้จริงกดปุ่ม "เติมยอดจากระบบ" ซึ่งเติมเฉพาะเดือนที่ปิดแล้ว */
+      nextValues.company ||= emptyValue();
 
       setSavedRows(rows || []);
       setValues(nextValues);
@@ -130,6 +134,27 @@ export default function SalesHistoryMonthlyPage() {
   };
   const setYearOverride = (key, amount) => {
     setValues((prev) => ({ ...prev, [key]: { ...(prev[key] || emptyValue()), yearOverride: amount } }));
+  };
+
+  /* เติมยอดที่ระบบรู้ลงช่องว่างของแถวบริษัท — เป็นการกดเอง ไม่ใช่ pre-fill เงียบ ๆ
+     และ **เฉพาะเดือนที่ปิดแล้ว** เดือนที่ยังเดินอยู่ต้องไม่ถูกตรึง (ดู isMonthClosed) */
+  const companyFillable = useMemo(() => {
+    const sys = systemCells.company || {};
+    const months = (values.company || emptyValue()).months;
+    return months.reduce((count, value, mi) => (
+      value === "" && isMonthClosed(year, mi, now) && sys[mi] > 0 ? count + 1 : count
+    ), 0);
+  }, [systemCells, values, year, now]);
+
+  const fillCompanyFromSystem = () => {
+    const sys = systemCells.company || {};
+    setValues((prev) => {
+      const current = prev.company || emptyValue();
+      const months = current.months.map((value, mi) => (
+        value === "" && isMonthClosed(year, mi, now) && sys[mi] > 0 ? sys[mi] : value
+      ));
+      return { ...prev, company: { ...current, months } };
+    });
   };
 
   // แถวไหนที่ผลรวมทั้งปีไม่ตรงกับผลรวมรายเดือน — เตือนแต่ไม่บล็อก
@@ -210,6 +235,17 @@ export default function SalesHistoryMonthlyPage() {
           <CalendarRange size={17} aria-hidden="true" />
           <h2 style={{ margin: 0, fontSize: "var(--fs-10)", fontWeight: "var(--fw-bold)" }}>ยอดขายจริง ปี {year}</h2>
           <div className="spacer" />
+          {companyFillable > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={fillCompanyFromSystem}
+              disabled={saving || loading}
+              title="เติมยอดที่ระบบรู้ลงช่องว่างของแถวทั้งบริษัท เฉพาะเดือนที่ปิดแล้ว — เดือนที่ยังเดินอยู่ต้องพิมพ์เอง"
+            >
+              <Download size={15} aria-hidden="true" /> เติมยอดจากระบบ ({companyFillable} เดือน)
+            </Button>
+          )}
           <button type="button" className="btn btn-primary" onClick={save} disabled={saving || loading}>
             <Check size={15} aria-hidden="true" /> {saving ? "กำลังบันทึก…" : "บันทึก"}
           </button>
@@ -219,7 +255,9 @@ export default function SalesHistoryMonthlyPage() {
           ทีมขายเพิ่งแบ่งจริงเมื่อ มิ.ย. 2026 เดือนก่อนหน้านั้นการแยกทีมย้อนหลังคือการเดา ·
           <b>ช่องว่าง = ไม่บันทึกแถวนั้น</b> ต่างจากใส่ 0 ที่แปลว่าขายไม่ได้เลย ·
           ป้าย <span className="ui-badge" style={{ color: "var(--teal)" }}>กรอกเอง</span> = เคยบันทึกไว้แล้ว ·
-          ตัวเลขจาง ๆ ใต้ช่องทีม/รายคน = ยอดที่ระบบรู้ (ไม่ได้เติมให้อัตโนมัติ กดใส่เองถ้าจะใช้) ·
+          ตัวเลขจาง ๆ ใต้ช่อง = ยอดที่ระบบรู้ <b>ไม่เติมให้อัตโนมัติ</b> (กด &ldquo;เติมยอดจากระบบ&rdquo; หรือพิมพ์เอง) ·
+          ⚠️ ยอดที่กรอกจะ<b>ทับ</b>ยอดระบบบนแท็บผลงานขายถาวร — เดือนที่ยังเดินอยู่จึงไม่ควรกรอก
+          เพราะดีลที่ปิดหลังจากนั้นจะไม่ขึ้นรีพอร์ตอีก ·
           กด &ldquo;บันทึก&rdquo; ถึงมีผล
         </p>
 
@@ -264,10 +302,10 @@ export default function SalesHistoryMonthlyPage() {
                             className={styles.input}
                           />
                           <span className={`${styles.hint} ${isSaved ? styles.hintSaved : ""}`}>
+                            {/* ทุกแถวใช้กติกาเดียวกันแล้ว — ยอดระบบเป็นตัวเลขใบ้ ไม่ใช่ค่าที่เติมให้ */}
                             {!editable ? "ยังไม่ถึง"
                               : isSaved ? "กรอกเอง"
-                                : row.scope === "company" ? (sys[mi] > 0 ? "ระบบ" : "")
-                                  : sys[mi] > 0 ? `ระบบ ${fmtMoneyCompact(sys[mi])}` : ""}
+                                : sys[mi] > 0 ? `ระบบ ${fmtMoneyCompact(sys[mi])}` : ""}
                           </span>
                         </td>
                       );
