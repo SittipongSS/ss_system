@@ -14,7 +14,7 @@ import { useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 
 export default function SectionRail({
-  sections,          // [{ key, label, count?: {filled,total,optional?}, tone? }]
+  sections,          // [{ key, label, count?: {filled,total,optional?}, tone?, action? }]
   value,
   onChange,
   ariaLabel = "ส่วนของแบบฟอร์ม",
@@ -57,7 +57,7 @@ export default function SectionRail({
           const tone = item.tone || (optional
             ? (filled > 0 ? "full" : "none")
             : total > 0 && filled >= total ? "full" : filled > 0 ? "some" : "none");
-          return (
+          const tab = (
             <button
               key={item.key}
               ref={(node) => { buttonsRef.current[index] = node; }}
@@ -78,6 +78,28 @@ export default function SectionRail({
                 ? filled > 0 && <span className="section-rail-count">กรอก {filled}</span>
                 : total > 0 && <span className="section-rail-count">{filled}/{total}</span>}
             </button>
+          );
+          if (!item.action) return tab;
+          /* ⭐ **ปุ่มของรายการอยู่ที่รายการ** (มติผู้ใช้ 2026-08-24) — เดิมปุ่มลบอยู่บน
+             หัวของเนื้อฝั่งขวา ซึ่งอ่านเหมือนปุ่มของ *ช่องที่กำลังเปิด* ไม่ใช่ของ
+             *รายการ* · ย้ายมาชิดขวาของแถวในรางแล้วเป้าหมายชัดในตัวเอง
+             ⚠️ **ห่อ ไม่ยัดปุ่มซ้อนปุ่ม** — `<button>` ซ้อน `<button>` เป็น HTML ที่ผิด
+             (เบราว์เซอร์แยกคลิกไม่ออก และ a11y tree พัง) ⇒ แถวเป็น div ที่ `role`
+             โปร่งใส เพื่อให้ `role="tablist"` ยังเห็น `role="tab"` เป็นลูกโดยตรงเชิงความหมาย */
+          return (
+            <div className="section-rail-row" role="presentation" key={item.key}>
+              {tab}
+              <button
+                type="button"
+                className="section-rail-action"
+                title={item.action.title}
+                aria-label={item.action.title}
+                disabled={item.action.disabled}
+                onClick={item.action.onClick}
+              >
+                {item.action.icon}
+              </button>
+            </div>
           );
         })}
         {navFooter && <div className="section-rail-add">{navFooter}</div>}

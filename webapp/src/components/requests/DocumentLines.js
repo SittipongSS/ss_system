@@ -59,9 +59,12 @@ export default function DocumentLines({
     onChange([...rows, emptyDocumentRow()]);
     setActive(rows.length);   // เปิดใบใหม่ให้เลย — เพิ่มแล้วต้องได้กรอกต่อทันที
   };
-  const removeRow = () => {
-    onChange(rows.filter((_, j) => j !== at));
-    setActive(Math.max(at - 1, 0));
+  /* ⚠️ ลบ **แถวที่ระบุ** ไม่ใช่แถวที่เปิดอยู่ — ปุ่มอยู่ที่แต่ละแถวในรางแล้ว
+     ⚠️ ตัวที่เปิดอยู่ต้องขยับตามด้วยเมื่อลบตัวที่อยู่ก่อนหน้า ไม่งั้นเนื้อฝั่งขวา
+     จะกระโดดไปเป็นของอีกแถวโดยที่คนกดไม่ได้สั่ง */
+  const removeRow = (index) => {
+    onChange(rows.filter((_, j) => j !== index));
+    setActive((cur) => (index < cur ? cur - 1 : Math.min(cur, rows.length - 2)));
   };
 
   const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim());
@@ -78,6 +81,19 @@ export default function DocumentLines({
           label: rowTitle(r, i, vocabulary),
           // เขียว = แถวนี้กรอกครบพอที่จะส่งได้ · เทา = ยังขาด (ตัวเดียวกับด่านส่ง)
           tone: rowReady(r) ? "full" : "none",
+          /* ⭐ **ถังขยะอยู่ที่แถวของมันเอง ชิดขวา** (มติผู้ใช้ 2026-08-24) — เดิมเป็น
+             ปุ่ม "ลบรายการนี้" บนหัวของเนื้อฝั่งขวา ซึ่งอ่านเหมือนปุ่มของ *ช่องที่
+             กำลังเปิด* ไม่ใช่ของ *รายการ* · ที่แถวแล้วเป้าหมายชัดในตัวเอง
+             ⚠️ **ลบแถวไหนก็ได้ ไม่ต้องเปิดมันก่อน** — ต่างจากของเดิมที่ลบได้เฉพาะ
+             แถวที่เปิดอยู่ ⇒ ต้องกดสองครั้ง (เปิด แล้วค่อยลบ)
+             ⚠️ ใบต้องมีอย่างน้อย 1 รายการ (ด่านส่ง) ⇒ เหลือแถวเดียวไม่มีปุ่ม */
+          action: rows.length > 1 ? {
+            icon: <Trash2 size={14} aria-hidden="true" />,
+            // เว้นวรรคก่อนชื่อ — ชนิดเอกสารเป็นตัวย่อโรมัน ("ลบCOA" อ่านติดกันจนสะดุด)
+            title: `ลบ ${rowTitle(r, i, vocabulary)}`,
+            disabled,
+            onClick: () => removeRow(i),
+          } : null,
         }))}
         value={`row-${at}`}
         onChange={(key) => setActive(Number(key.replace("row-", "")))}
@@ -101,19 +117,8 @@ export default function DocumentLines({
         {rows.length > 0 && (
           <div className="form-grid cols-2">
             <div className="form-group col-span-2">
-              <span className="form-field-label split">
-                ชนิดเอกสาร
-                {rows.length > 1 && (
-                  <Button
-                    size="sm" variant="ghost" tone="danger" disabled={disabled}
-                    title="ลบรายการนี้"
-                    icon={<Trash2 size={14} aria-hidden="true" />}
-                    onClick={removeRow}
-                  >
-                    ลบรายการนี้
-                  </Button>
-                )}
-              </span>
+              {/* ⚠️ ไม่มีปุ่มลบตรงนี้แล้ว — ย้ายไปเป็นถังขยะที่แถวในราง (ดูเหตุผลข้างบน) */}
+              <span className="form-field-label">ชนิดเอกสาร</span>
               {/* ⭐ **แผ่นเลือก ไม่ใช่ดรอปดาวน์** (มติผู้ใช้ 2026-08-09) — ชุดตายตัว
                   4–5 ตัว เข้ากติกาคอนโทรล v2 ("≤6 กางให้เห็น") เหมือนหัวข้อคำร้อง
                   · คนขอเอกสารส่วนใหญ่ไม่ได้จำว่า COA ต่างจาก MSDS ยังไง ⇒ คำขยาย
