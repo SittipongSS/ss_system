@@ -81,7 +81,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .from('sales_deals')
     // ⚠️ `ownerId` ต้องมีเสมอ — ด่านของเธรดดีล (scope 'own' ของ AE) เทียบช่องนี้
     // ขาดไปเมื่อไร AE จะไม่เห็นความเคลื่อนไหวของดีลตัวเองบนหน้าโครงการ
-    .select('id, title, stage, dealType, projectValue, wonValue, forecastMonth, formulaName, ownerId, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
+    /* ⚠️ `projectId` ต้องติดมาด้วย ทั้งที่ทุกแถวมีค่าเท่ากับโครงการใบนี้อยู่แล้ว —
+       แถวดีลถูกส่งต่อเข้า `DealPicker` / `quotationDealBlocker` / `dealRequestEntries`
+       ซึ่งอ่านช่องนี้เพื่อตอบว่า "ดีลผูกโครงการหรือยัง"
+       🐞 ไม่มีช่องนี้ = ดีลของโครงการตัวเองขึ้นว่า **"ยังไม่ผูกโครงการ"** ⇒ ตัวเลือก
+       ดีลบนหน้าโครงการเตือนผิด และปุ่มเปิดคำร้องบอกว่าเปิดไม่ได้ทั้งที่เปิดได้ */
+    .select('id, title, stage, dealType, "projectId", "customerId", "customerName", projectValue, wonValue, forecastMonth, formulaName, ownerId, ownerName, team, probability, expectedCloseDate, metadata, createdAt')
     .eq('projectId', project.id)
     .order('createdAt', { ascending: true });
   const deals = sortDealsByOrder(linkedDeals || [], project.metadata?.dealOrder || []);

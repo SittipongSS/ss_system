@@ -24,6 +24,10 @@ import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
+import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
+import DealPicker from "@/components/pm/DealPicker";
+import GatedAction from "@/components/ui/GatedAction";
+import { quotationDealBlocker } from "@/lib/sales/quotationSourcePicker";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { createClient } from "@/lib/supabaseBrowser";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -169,10 +173,18 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
 }
 
 // ใบเสนอราคาจริงที่รวมจากทุกดีล ใช้ชุดเดียวกันทั้งแท็บและหน้า Overview
-export function ProjectQuotationsCard({ project: p }) {
+export function ProjectQuotationsCard({ project: p, canEdit = false }) {
   const dealById = useMemo(() => new Map((p.deals || []).map((deal) => [deal.id, deal])), [p.deals]);
   const quotes = p.quotations || [];
   const salesOrders = p.salesOrders || [];
+  const [quoteDealOpen, setQuoteDealOpen] = useState(false);
+  const [contractOpen, setContractOpen] = useState(false);
+  const [quoteDealId, setQuoteDealId] = useState("");
+  const quoteDeal = (p.deals || []).find((deal) => deal.id === quoteDealId) || null;
+  /* ⚠️ `canEdit` เป็นสิทธิ์ของ **หน้าโครงการ** ไม่ใช่ช่องของแถวดีล (payload ของโครงการ
+     ไม่ได้ส่ง canEdit รายดีลมา) — แนบเข้าไปให้ blocker อ่านได้ · ด่านจริงยังอยู่ที่
+     server ทั้งตอนเปิดหน้าสร้างและตอน POST */
+  const quoteBlocker = quotationDealBlocker(quoteDeal ? { ...quoteDeal, canEdit } : null);
   return (
     <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", marginBottom: 24 }}>
     <section className="glass-panel" style={{ padding: "16px 20px" }}>
@@ -181,6 +193,18 @@ export function ProjectQuotationsCard({ project: p }) {
         <h2 style={{ margin: 0, fontSize: "var(--fs-10)" }}>ใบเสนอราคา</h2>
         <span className="ui-badge" style={{ color: "var(--text-3)" }}>{quotes.length} ใบ</span>
         <div className="spacer" />
+        {/* ⭐ **สร้างจากหน้าโครงการได้** (มติผู้ใช้ 2026-08-22) — เดิมหน้านี้อ่านอย่างเดียว
+            แล้วบอกให้ "ไปสร้างที่เมนูใบเสนอราคา" ซึ่งเป็นทางอ้อม: เมนูนั้นเริ่มที่ลูกค้า
+            ⇒ คนที่ยืนอยู่บนโครงการต้องไปเลือก ลูกค้า → ดีล ใหม่ทั้งชุด · หน้าทะเบียนสัญญา
+            เขียนกฎข้อนี้ไว้เองแล้ว: "ปุ่มที่กดแล้วต้องมาเลือกดีลอีกทีคือทางอ้อมที่ยาวกว่าเดิม" */}
+        {canEdit && (
+          <>
+            <Button size="sm" onClick={() => setContractOpen(true)}>ออกสัญญา</Button>
+            <Button size="sm" tone="primary" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setQuoteDealOpen(true)}>
+              สร้างใบเสนอราคา
+            </Button>
+          </>
+        )}
         <Link href="/sa/quotations" className="btn ghost sm"><ExternalLink size={13} aria-hidden="true" /> เมนูใบเสนอราคา</Link>
       </div>
       {quotes.length ? (
@@ -234,6 +258,47 @@ export function ProjectQuotationsCard({ project: p }) {
         </div>
       ) : <div style={{ padding: 18, color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มี ใบสั่งขาย — ผู้ขายสร้างร่างได้จาก QT ที่ Won</div>}
     </section>
+
+    {/* เลือกดีลก่อนออกใบ — โครงการมีได้หลายดีล (SCENT / NPD / RE-ORDER) จึงเดาแทนไม่ได้
+        ⚠️ ตัวเลือกจำกัดเป็นดีลของโครงการนี้เท่านั้น (ส่ง `p.deals` เข้า `DealPicker`)
+        ⚠️ ปุ่มยัง **โชว์เสมอ** แล้วบอกเหตุ ไม่ใช่ซ่อนตัวเองเมื่อดีลใบนั้นออกใบไม่ได้ */}
+    <Modal open={quoteDealOpen} onClose={() => setQuoteDealOpen(false)} title="สร้างใบเสนอราคาจากดีลไหน" size="sm">
+      <div className={styles.pickBody}>
+        <label className={styles.pickField}>
+          ดีลในโครงการนี้
+          <DealPicker
+            deals={p.deals || []}
+            projects={[{ id: p.id, code: p.code, name: p.name, customerId: p.customerId }]}
+            value={quoteDealId}
+            onChange={(dealId) => setQuoteDealId(dealId)}
+            placeholder="เลือกดีลที่จะออกใบ"
+            ariaLabel="ดีลที่จะออกใบเสนอราคา"
+          />
+        </label>
+        <div className={styles.pickActions}>
+          <Button variant="ghost" onClick={() => setQuoteDealOpen(false)}>ยกเลิก</Button>
+          <GatedAction
+            tone="primary"
+            blocker={quoteDealId ? quoteBlocker : "เลือกดีลก่อน"}
+            href={`/sa/quotations/new?dealId=${quoteDealId}&returnTo=${encodeURIComponent(`/sa/projects/${p.id}`)}`}
+          >
+            ไปสร้างใบเสนอราคา
+          </GatedAction>
+        </div>
+      </div>
+    </Modal>
+
+    {/* ⭐ ใช้โมดัลออกสัญญาตัวกลางตัวเดิม — มันถามเรียง ลูกค้า → ชนิด → ดีล และดึงเหตุผล
+        ที่ออกไม่ได้จาก `/contracts/options` (ด่านเดียวกับ API) อยู่แล้ว
+        ⚠️ `dealIds` จำกัดให้เหลือเฉพาะดีลของโครงการนี้ — ไม่งั้นเปิดจากหน้าโครงการ
+        แล้วเลือกดีลของโครงการอื่นได้ ซึ่งขัดกับที่ผู้ใช้กำลังยืนอยู่ */}
+    {contractOpen && (
+      <ContractCreateModal
+        open={contractOpen}
+        dealIds={(p.deals || []).map((deal) => deal.id)}
+        onClose={() => setContractOpen(false)}
+      />
+    )}
     </div>
   );
 }
