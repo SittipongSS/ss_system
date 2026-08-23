@@ -9,6 +9,8 @@ const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const TOOLTIP = source("./Tooltip.js");
 const TOOLTIP_CSS = source("./Tooltip.module.css");
 const STEP_TRACK = source("./StepTrack.js");
+const TABLE = source("./Table.js");
+const APP_LAYOUT = source("../AppLayout.js");
 const GLOBALS = source("../../app/globals.css");
 
 test("Tooltip portal ไป body และลอยเหนือทุกชั้น", () => {
@@ -42,4 +44,20 @@ test("StepTrack เลิกใช้ title ของเบราว์เซอ
   /* กล่องของ OS ไม่ใช่ดีไซน์ของระบบ (มติผู้ใช้ 2026-08-24) — ธีมมืดยังได้กล่องขาว */
   assert.doesNotMatch(STEP_TRACK, /title=\{/);
   assert.match(STEP_TRACK, /<Tooltip/);
+});
+
+test("เซลล์ที่ถูกตัดได้กล่องเดียวกัน โดยไม่ต้องเฝ้าทุก td", () => {
+  /* เดิม Table.js เดินไล่ทุก `<td>` ด้วย MutationObserver + ResizeObserver แล้วเติม
+     `title` ให้ช่องที่ถูกตัด — คิดตอนชี้แทนได้ผลเท่ากันโดยไม่ต้องเฝ้าอะไรเลย
+     และครอบคลุมตารางชั้นเก่า (.premium-table) ที่ไม่ได้ผ่าน TableScroll ด้วย */
+  assert.doesNotMatch(TABLE, /MutationObserver|ResizeObserver|scrollWidth/);
+  assert.match(TOOLTIP, /scrollWidth <= element\.clientWidth \+ 1/);
+  /* เจ้าของช่องตั้งใจให้ tooltip พูดอย่างอื่น (วันที่ที่โชว์เวลาเต็ม) — ห้ามทับ */
+  assert.match(TOOLTIP, /if \(element\.title\) return null;/);
+});
+
+test("TooltipHost มีตัวเดียวทั้งแอป", () => {
+  /* วางไว้ในตารางแต่ละตัว = ตัวดักซ้อนกัน 101 ตัว */
+  assert.match(TOOLTIP, /export function TooltipHost/);
+  assert.equal(APP_LAYOUT.match(/<TooltipHost \/>/g)?.length, 1);
 });

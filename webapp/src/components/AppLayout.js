@@ -18,6 +18,7 @@ import useNavCounts, { navCountFor, navCountForSystem, navHrefFor } from '@/lib/
 import { isBareShellPathname, isSettingsPathname, sharedItemBelongsInGroup, systemForPathname } from '@/config/navigation';
 import { settingsMenuItems } from '@/config/settingsNav';
 import useScrollTopOnNavigate from '@/lib/ui/useScrollTopOnNavigate';
+import { TooltipHost } from '@/components/ui/Tooltip';
 import { getSystemByKey, RECENT_SYSTEM_STORAGE_KEY, SYSTEM_DISABLED_NOTE, systemLandingForUser, systemsForUser } from '@/config/systems';
 
 /* 🪤 สองค่านี้ต้องเป็น "ตรงข้าม" ของจุดตัดใน globals.css เป๊ะ ๆ — CSS รู้เรื่องนี้
@@ -981,6 +982,11 @@ export default function AppLayout({ children }) {
           </section>
         </div>
       )}
+
+      {/* กล่องคำอธิบายลอยของทั้งแอป — ตัวเดียวดักให้ทุกเซลล์ตารางที่ถูกตัด และ
+          ทุก element ที่ติด `data-tip` (ดู components/ui/Tooltip.js)
+          ⚠️ ต้องมี **ตัวเดียว** ทั้งแอป — วางไว้ในตารางแต่ละตัวคือ 101 ตัวดักซ้อนกัน */}
+      <TooltipHost />
 
       {/* Self-service change-password modal (forced & non-dismissible on first login) */}
       <ChangePasswordModal
