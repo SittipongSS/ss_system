@@ -134,8 +134,8 @@ test('moveDealMirrors: อ่านตารางไม่ได้ = หยุ
 
 // ── ratchet บน route: ด่านและการถอนคืนต้องไม่หายไปเงียบ ๆ ────────────────────
 test('link-project route: ย้ายได้เฉพาะเมื่อสั่ง move และถอนคืนเมื่อ mirror พัง', () => {
-  const route = readFileSync(join(SRC, 'app/api/sales-planning/deals/[id]/link-project/route.js'), 'utf8');
-  assert.match(route, /movingFrom && !body\.move/, 'ดีลที่มีโครงการต้องยัง 409 เมื่อไม่ได้สั่ง move');
+  const route = readFileSync(join(SRC, 'lib/sales/dealProjectLink.js'), 'utf8');
+  assert.match(route, /movingFrom && !move/, 'ดีลที่มีโครงการต้องยัง 409 เมื่อไม่ได้สั่ง move');
   assert.match(route, /dealUpdate\.eq\('projectId', fromProject\.id\)/, 'การย้ายต้อง guard ว่ายังอยู่โครงการเดิม');
   assert.match(route, /rollbackSegmentTasks\(supabase, movedSegment\)/, 'mirror พังแล้วต้องถอนไทม์ไลน์คืน');
 });
@@ -149,7 +149,7 @@ test('รายชื่อตาราง mirror ตรงกับที่ต
 
 // ── ผูกโครงการครั้งแรกต้องเก็บของที่เปิดไว้ตอนดีลยังลอยเข้าโครงการด้วย ────────
 test('create-project / link-project: เรียก moveDealMirrors ทั้งเส้นผูกแรกและเส้นย้าย', () => {
-  const link = readFileSync(join(SRC, 'app/api/sales-planning/deals/[id]/link-project/route.js'), 'utf8');
+  const link = readFileSync(join(SRC, 'lib/sales/dealProjectLink.js'), 'utf8');
   const create = readFileSync(join(SRC, 'app/api/sales-planning/deals/[id]/create-project/route.js'), 'utf8');
   assert.match(create, /moveDealMirrors\(supabase, \{ dealId: deal\.id, toProjectId: project\.id \}\)/,
     'สร้างโครงการใหม่ต้องดูดของที่ผูกแค่ดีลเข้าโครงการ');

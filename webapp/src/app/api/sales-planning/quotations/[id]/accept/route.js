@@ -2,16 +2,13 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { cascadeNpdProbability } from '@/lib/sales/dealProbability';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
+import { can } from '@/lib/permissions';
 import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope, isWonStage } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
-import {
-  DEFAULT_WON_EVIDENCE_BUCKET,
-  validateWonEvidence,
-  WON_DOC_TYPE_LABELS,
-} from '@/lib/sales/quotationWonEvidence';
+import { linkDealToProject } from '@/lib/sales/dealProjectLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +16,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
 
-  // หลักฐานบังคับ (feedback ผู้ใช้ 2026-07-15): ไฟล์แนบ + ประเภท + วันที่เอกสาร
-  // (+กำหนดชำระเมื่อไม่ใช่เอกสารการชำระ) — validate ที่นี่ก่อน แล้ว RPC ตรวจซ้ำชั้น DB
+  /* ปิด Won = ยืนยันอย่างเดียว (มติผู้ใช้ 2026-08-24) — ไม่มีหลักฐานให้กรอกแล้ว
+     เอกสารยืนยันคำสั่งซื้อ (สลิป/PO/ใบยืนยัน) ย้ายไปอยู่กับใบสั่งขาย (mig 0285)
+     และเป็นด่านของ **การยื่นอนุมัติใบสั่งขาย** ไม่ใช่ด่านของการปิดการขาย
+     ⚠️ RPC ยังรับ `p_evidence` ไว้เผื่อของเก่า — ที่นี่ส่ง {} เสมอ */
   const body = await req.json().catch(() => ({}));
   const { id } = await ctx.params;
   const { data: quote, error } = await supabase
@@ -36,35 +35,31 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ยอดก่อน VAT 0 บาทปิด Won ได้ (มติผู้ใช้ 2026-08-03) — ใบที่ลด/แถมจนเหลือ 0 ก็เป็นดีล
   // ที่ปิดได้จริง ยอด Won 0 ที่เขียนลงดีลคือค่าที่ถูกต้องของใบนั้น ไม่ใช่ข้อมูลหาย
 
-  const { data: deal, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
+  const { data: dealRow, error: dealError } = await supabase.from('sales_deals').select('*').eq('id', quote.dealId).maybeSingle();
   if (dealError) return fail(dealError.message, 500);
-  if (!deal) return notFound('ไม่พบดีล');
-  if (!inSalesEditScope(user, deal)) return forbidden();
-  if (!deal.projectId) return badRequest('ต้องเชื่อมโครงการกับดีลก่อนปิด Won ผ่านใบเสนอราคา');
-  if (deal.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถปิด Won ผ่านใบเสนอราคาได้');
-  if (isWonStage(deal.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
+  if (!dealRow) return notFound('ไม่พบดีล');
+  if (!inSalesEditScope(user, dealRow)) return forbidden();
+  if (dealRow.stage === 'lost') return badRequest('ดีลนี้ปิดเป็น Lost แล้ว ไม่สามารถปิด Won ผ่านใบเสนอราคาได้');
+  if (isWonStage(dealRow.stage)) return badRequest('ดีลนี้ปิดการขาย (Won) แล้ว');
 
-  // Private evidence refs must point only to this quotation's folder in the
-  // dedicated bucket. Legacy public URLs / Drive refs remain valid.
-  const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
-  const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
-  const evidenceCheck = validateWonEvidence(body, {
-    allowedStorageBucket: privateBucket,
-    allowedStoragePathPrefix: `quotations/${safeQuoteId}/won/`,
-  });
-  if (!evidenceCheck.ok) return badRequest(evidenceCheck.error);
-  const evidence = evidenceCheck.evidence;
-
-  // Do not let a forged/nonexistent object path become permanent Won evidence.
-  for (const att of evidence.attachments.filter((item) => item.storagePath)) {
-    const slash = att.storagePath.lastIndexOf('/');
-    const folder = att.storagePath.slice(0, slash);
-    const name = att.storagePath.slice(slash + 1);
-    const { data: stored, error: storageError } = await supabase.storage
-      .from(privateBucket).list(folder, { search: name, limit: 10 });
-    if (storageError || !stored?.some((item) => item.name === name)) {
-      return badRequest(`ไม่พบไฟล์หลักฐาน ${att.fileName || name} ในพื้นที่จัดเก็บ private`);
-    }
+  /* ⭐ **ผูกโครงการให้ในคำขอเดียวกัน** (มติผู้ใช้ 2026-08-24) — ตั้งแต่ #1385 ด่าน
+     โครงการเหลือที่เดียวคือตรงนี้ ⇒ ดีลลอยที่พร้อมปิดต้องปลดด่านได้จากโมดัลเลย
+     ไม่ต้องออกไปหน้าดีลก่อนแล้วกลับมา
+     ⚠️ **ทำในคำขอเดียว ไม่ใช่ให้หน้าจอยิงสองครั้ง** — ยิงสองครั้งแล้วครั้งที่สองล้ม
+     = ดีลผูกโครงการไปแล้วโดยที่ยังไม่ Won ซึ่งไม่มีใครสั่งให้เกิด
+     ⚠️ ล้มที่ขั้นผูก = ยังไม่แตะสถานะใบเลย (ผูกก่อน accept โดยตั้งใจ: RPC ต้องเห็น
+     projectId แล้ว ไม่งั้นมันจะ raise deal_project_required) */
+  let deal = dealRow;
+  if (!deal.projectId) {
+    const projectId = String(body.projectId || '').trim();
+    if (!projectId) return badRequest('ดีลนี้ยังไม่ผูกโครงการ — เลือกโครงการในโมดัลปิด Won ก่อน');
+    if (!can(user.role, 'pm:edit')) return forbidden('ไม่มีสิทธิ์ผูกโครงการให้ดีล');
+    const linked = await linkDealToProject(supabase, { deal, projectId, user, req });
+    if (linked.error) return fail(linked.error, linked.status);
+    deal = linked.data.deal || { ...deal, projectId };
+  } else if (body.projectId && String(body.projectId) !== String(deal.projectId)) {
+    // ย้ายโครงการเป็นคนละเรื่องกับการปิดการขาย — ทำที่หน้าดีล (ต้องส่ง move: true)
+    return badRequest('ดีลนี้ผูกโครงการอยู่แล้ว — ย้ายโครงการทำที่หน้าดีล');
   }
 
   const currentFingerprint = quotationApprovalFingerprint(quote);
@@ -95,7 +90,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     p_actor_name: user.name || null,
     p_history_id: genId('DSH'),
     p_forecast_id: genId('DFC'),
-    p_evidence: evidence,
+    p_evidence: {},
   });
   if (acceptError) {
     if (acceptError.code === '23505' || acceptError.message?.includes('already_has_accepted')) {
@@ -130,7 +125,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: quote.id,
     before: quote,
     after: accepted,
-    summary: `mark quotation ${quote.quoteNumber} as Won for ${dealAuditLabel(deal)} (หลักฐาน: ${WON_DOC_TYPE_LABELS[evidence.docType]} ลงวันที่ ${evidence.docDate})`,
+    summary: `mark quotation ${quote.quoteNumber} as Won for ${dealAuditLabel(deal)}`,
     request: req,
   });
 

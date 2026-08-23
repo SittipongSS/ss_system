@@ -8,7 +8,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
-import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
+import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export async function GET(request, { params }) {
 
   // New Won evidence: private bucket, streamed only after deal-scope auth above.
   if (att.storagePath) {
-    const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_WON_EVIDENCE_BUCKET;
+    const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
     const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
     if (att.storageBucket !== privateBucket || !String(att.storagePath).startsWith(`quotations/${safeQuoteId}/won/`)) {
       return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });

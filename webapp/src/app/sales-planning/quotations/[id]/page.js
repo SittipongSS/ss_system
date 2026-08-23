@@ -27,7 +27,7 @@ import SignatureReadyNotice from "@/components/account/SignatureReadyNotice";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { WON_DOC_TYPE_LABELS } from "@/lib/sales/quotationWonEvidence";
+import { CONFIRM_DOC_TYPE_LABELS } from "@/lib/sales/orderConfirmationDocs";
 import { UNACCEPT_REASON_MAX, canUnacceptQuotation, normalizeUnacceptReason, unacceptReasonError } from "@/lib/sales/quotationUnaccept";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSuperuser } from "@/lib/permissions";
@@ -968,7 +968,7 @@ export default function QuotationEditorPage() {
                   <h2>หลักฐานการปิด Won</h2>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: "var(--fs-7)" }}>
-                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{WON_DOC_TYPE_LABELS[quote.wonDocType] || naText(quote.wonDocType)}</div>
+                  <div><small style={{ color: "var(--text-3)", display: "block" }}>ประเภทเอกสาร</small>{CONFIRM_DOC_TYPE_LABELS[quote.wonDocType] || naText(quote.wonDocType)}</div>
                   <div><small style={{ color: "var(--text-3)", display: "block" }}>วันที่เอกสาร</small>{quote.wonDocDate ? fmtDate(quote.wonDocDate) : NA}</div>
                   {quote.wonPaymentDueDate && <div><small style={{ color: "var(--text-3)", display: "block" }}>กำหนดชำระ</small>{fmtDate(quote.wonPaymentDueDate)}</div>}
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1047,6 +1047,7 @@ export default function QuotationEditorPage() {
         open={wonOpen}
         onClose={() => setWonOpen(false)}
         quote={quote}
+        deal={quote?.deal}
         customerId={quote?.customerId || quote?.deal?.customerId}
         customerName={quote?.customerName || quote?.deal?.customerName}
         onDone={async () => { setWonOpen(false); await load(); }}

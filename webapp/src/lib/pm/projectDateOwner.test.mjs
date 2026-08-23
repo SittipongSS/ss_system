@@ -19,10 +19,10 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
 test('ผูกดีลเข้าโครงการ: วัน segment ต้องตกมาที่วันเริ่มของดีลก่อนถึงจะเป็นวันนี้', () => {
-  const src = read('app/api/sales-planning/deals/[id]/link-project/route.js');
+  const src = read('lib/sales/dealProjectLink.js');
   assert.match(
     src,
-    /body\.startDate \|\| deal\.startDate \|\| todayStr\(\)/,
+    /startDateInput \|\| deal\.startDate \|\| todayStr\(\)/,
     'ลำดับต้องเท่ากับ create-project — ข้าม deal.startDate ไปคือ segment เริ่มนับจากวันนี้',
   );
   // เส้นทางสร้างโครงการจากดีลใช้ลำดับเดียวกันอยู่แล้ว — ล็อกไว้ไม่ให้เดินหนีกันอีก

@@ -8,10 +8,10 @@
 // ลืมอัปเดตแล้วกลายเป็นรูให้แนบไฟล์ใส่ใบที่ปิดไปแล้ว
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
-import { DEFAULT_WON_EVIDENCE_BUCKET } from '@/lib/sales/quotationWonEvidence';
+import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 
 export const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET
-  || DEFAULT_WON_EVIDENCE_BUCKET;
+  || DEFAULT_EVIDENCE_BUCKET;
 
 const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
 
@@ -24,6 +24,19 @@ const TARGETS = {
     gate: (row) => (['draft', 'sent'].includes(row.status)
       ? null : 'ใบเสนอราคานี้ไม่อยู่ในสถานะที่แนบหลักฐาน Won ได้'),
     prefix: (entityId) => `quotations/${safeId(entityId)}/won/`,
+  },
+  /* ⭐ เอกสารยืนยันคำสั่งซื้อของใบสั่งขาย (mig 0285) — **แนบก่อนที่ใบจะเกิด**
+     ฟอร์มหน้าสร้างใบสั่งขายอัปไฟล์ตั้งแต่ยังไม่มี orderId (เลขที่ใบออกตอนกดสร้าง
+     และใช้ซ้ำไม่ได้ ⇒ ห้ามสร้างใบเปล่ารอไว้) ⇒ ไฟล์พักไว้ใต้ **ใบเสนอราคาต้นทาง**
+     แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
+     ⚠️ ด่านคือ "ใบเสนอราคาปิด Won แล้ว" — ตรงข้ามกับ quotation_won_evidence ที่รับ
+     เฉพาะตอนใบยังเปิด · คนละโฟลเดอร์กันเพื่อให้ proxy แยกด่านอ่านได้ */
+  sales_order_confirmation: {
+    table: 'quotations',
+    notFound: 'ไม่พบใบเสนอราคา',
+    gate: (row) => (row.status === 'accepted'
+      ? null : 'แนบเอกสารยืนยันคำสั่งซื้อได้เมื่อใบเสนอราคาปิด Won แล้ว'),
+    prefix: (entityId) => `quotations/${safeId(entityId)}/order-confirmation/`,
   },
   // งวดชำระเกิดตอนใบสั่งขายอนุมัติ — ก่อนหน้านั้นไม่มีอะไรให้แนบ
   sales_order_payment_evidence: {
