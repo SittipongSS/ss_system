@@ -1,0 +1,79 @@
+/* หน้าสร้างใบสั่งขาย — ทรงเฉพาะของหน้านี้เท่านั้น
+   (ที่เหลือใช้ primitive กลาง: DetailCard · DocumentControlCard · TableScroll) */
+
+.docGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+@media (max-width: 768px) {
+  .docGrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.addressList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+}
+
+.addressList dd {
+  margin: var(--space-0-5) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+
+.formStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ตารางงวดของฟอร์มสร้าง — งวดยังไม่เกิดจริง จึงไม่มีปุ่มรายแถวเหมือนการ์ด "การชำระ" */
+.planTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.planTable th,
+.planTable td {
+  text-align: left;
+}
+
+.planTable td {
+  vertical-align: middle;
+}
+
+/* เงินที่ลูกค้าจ่ายมาก่อนออกใบ — กล่องแยกใต้ตาราง (ธง + ช่องที่โผล่ตามธง) */
+.prepaidBox {
+  margin-top: var(--space-3-5);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2-5);
+}
+
+.prepaidSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.prepaidNote {
+  margin: 0;
+}
+
+.colSeq { width: 52px; }
+.colPercent { width: 74px; }
+.colAmount { width: 132px; }
+.colDue { width: 176px; }
+
+/* ป้ายบอกสถานะความพร้อมบนการ์ดจัดการเอกสาร — คำขยาย ไม่ใช่สถานะของใบ */
+.hintBadge { color: var(--text-3); }

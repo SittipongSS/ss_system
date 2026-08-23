@@ -5,7 +5,9 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
-import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
+import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
+import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -135,6 +137,15 @@ export const GET = withUser(async ({ user, supabase }) => {
   return ok(visible);
 });
 
+/* ── ออกใบสั่งขายจากฟอร์มหน้าสร้าง (มติผู้ใช้ 2026-08-24) ──────────────────
+   ⭐ **คำขอเดียวจบ** — ฟอร์มถือทุกอย่างไว้ในเครื่องแล้วยิงทีเดียวตอนกด "สร้าง"
+   เพราะเลขที่ใบมาจากเคาน์เตอร์ที่ **ใช้ซ้ำไม่ได้** (mig 0241) ⇒ ห้ามสร้างใบเปล่า
+   รอไว้แล้วค่อยเติมข้อมูล · ไฟล์ที่แนบพักไว้ใต้ใบเสนอราคาต้นทางก่อน (ยังไม่มี orderId)
+   แล้ว ref ตามเข้าใบตอนสร้างสำเร็จ
+
+   payload: { quotationId, referenceDoc?, notes?, confirmation?, installments?, firstPayment? }
+   ⚠️ **เอกสารยืนยันไม่บังคับตอนสร้าง** — AE ที่ยังรอ PO ต้องตั้งใบร่างไว้ก่อนได้
+   ด่านจริงคือตอนยื่นอนุมัติ (`salesOrderConfirmationGate`) */
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -144,7 +155,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
@@ -155,12 +166,45 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
   if (closedProject) return badRequest(closedProject);
 
+  /* หลักฐานส่วนตัวต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น (ref เก่าแบบ URL/Drive
+     ยังผ่านได้) — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้ */
+  const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
+  const safeQuoteId = String(quote.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
+  const attachmentOptions = {
+    allowedStorageBucket: privateBucket,
+    allowedStoragePathPrefix: `quotations/${safeQuoteId}/order-confirmation/`,
+  };
+  const confirmCheck = validateOrderConfirmation(body.confirmation || {}, attachmentOptions);
+  if (!confirmCheck.ok) return badRequest(confirmCheck.error);
+  const confirmation = confirmCheck.confirmation;
+
+  // เงินงวดแรกที่ลูกค้าจ่ายมาแล้ว (ไม่บังคับ) — ลงเป็น "งวดร่างที่บันทึกเงินไว้"
+  // สถานะยังเป็น pending ตาม CHECK ของ 0259 แล้วขึ้นเป็นคำแจ้งตอนใบอนุมัติ
+  const firstPaidOn = String(body.firstPayment?.paidOn || '').trim() || null;
+  const firstEvidence = sanitizeEvidenceAttachments(body.firstPayment?.evidence, attachmentOptions);
+  if (firstPaidOn && !/^\d{4}-\d{2}-\d{2}$/.test(firstPaidOn)) return badRequest('รูปแบบวันที่ชำระงวดแรกไม่ถูกต้อง');
+  if (firstPaidOn && !firstEvidence.length) return badRequest('บันทึกว่าลูกค้าจ่ายงวดแรกแล้ว ต้องแนบหลักฐานการชำระอย่างน้อย 1 ไฟล์');
+  if (!firstPaidOn && firstEvidence.length) return badRequest('แนบหลักฐานการชำระงวดแรกแล้ว ต้องระบุวันที่ลูกค้าจ่ายด้วย');
+
+  const storageMiss = await missingStoredEvidence(supabase, privateBucket, [
+    ...(confirmation?.attachments || []), ...firstEvidence,
+  ]);
+  if (storageMiss) return badRequest(storageMiss);
+
   const orderId = genId('SOR');
   const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
     p_quote_id: quotationId,
     p_order_id: orderId,
     p_actor_id: user.id || null,
     p_actor_name: user.name || null,
+    p_overrides: {
+      referenceDoc: String(body.referenceDoc || '').trim() || null,
+      notes: typeof body.notes === 'string' ? body.notes : null,
+      confirmDocType: confirmation?.docType || null,
+      confirmDocNo: confirmation?.docNo || null,
+      confirmDocDate: confirmation?.docDate || null,
+      confirmAttachments: confirmation?.attachments || [],
+    },
   });
   if (error) {
     if (error.code === '23505' || error.message?.includes('already_exists')) {
@@ -181,14 +225,49 @@ export const POST = withUser(async ({ user, supabase, req }) => {
      ⚠️ **ล้มแล้วไม่ล้มทั้งคำขอ** — ใบเกิดแล้วใน RPC ที่ commit ไปแล้ว ตอบ error กลับไป
      เท่ากับผู้ใช้เห็น "สร้างไม่สำเร็จ" ทั้งที่ใบมีอยู่จริง · งวดเป็นของที่ derive จาก QT
      กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ที่ยังอยู่บนการ์ด และตอนอนุมัติก็สร้างให้อยู่ดี */
+  let installmentWarning = null;
   try {
     await ensureInstallments(supabase, {
       order: { ...order, quotation: { paymentPlan: quote.paymentPlan } },
       user,
     });
+    await applyCreateFormPayments(supabase, {
+      orderId, dues: body.installments, firstPaidOn, firstEvidence,
+    });
   } catch (installmentError) {
-    console.error('create SO: ensureInstallments failed', orderId, installmentError);
+    console.error('create SO: installments failed', orderId, installmentError);
+    installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
   }
 
-  return ok(order, 201);
+  return ok(installmentWarning ? { ...order, warning: installmentWarning } : order, 201);
 });
+
+/**
+ * กำหนดชำระรายงวด + เงินงวดแรกที่กรอกมาจากฟอร์มหน้าสร้าง
+ *
+ * ⚠️ เขียนหลังงวดเกิดแล้วเท่านั้น (จับคู่ด้วย `seq`) · สถานะไม่ถูกแตะเลย — งวดร่าง
+ * ต้องเป็น `pending` ตาม CHECK `sales_order_installments_draft_pending` (0259)
+ * `paidOn` + `evidence` บนแถว pending = "งวดร่างที่บันทึกเงินไว้" (installmentPrepaid)
+ * ซึ่งจะกลายเป็นคำแจ้งให้บัญชีเองตอนใบอนุมัติ (freezeInstallments)
+ */
+async function applyCreateFormPayments(supabase, { orderId, dues, firstPaidOn, firstEvidence }) {
+  const rows = await loadInstallments(supabase, orderId);
+  if (!rows.length) return;
+  const bySeq = new Map(rows.map((row) => [row.seq, row]));
+
+  for (const item of Array.isArray(dues) ? dues : []) {
+    const row = bySeq.get(Number(item?.seq));
+    const dueDate = String(item?.dueDate || '').trim();
+    if (!row || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) continue;
+    await updateInstallment(supabase, row.id, { dueDate });
+  }
+
+  if (!firstPaidOn) return;
+  const first = bySeq.get(1);
+  if (!first) return;
+  await updateInstallment(supabase, first.id, {
+    paidOn: firstPaidOn,
+    evidence: firstEvidence,
+    note: first.note || 'ลูกค้าจ่ายมาก่อนออกใบ — บันทึกจากฟอร์มสร้างใบสั่งขาย',
+  });
+}

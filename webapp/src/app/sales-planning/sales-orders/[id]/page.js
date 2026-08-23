@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
+  ExternalLink, FileCheck2, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
   Trash2, Undo2, XCircle,
 } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
@@ -20,6 +20,8 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
+import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
+import { orderConfirmationOf, salesOrderConfirmationGate } from "@/lib/sales/orderConfirmationDocs";
 import {
   DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -112,6 +114,10 @@ export default function SalesOrderDetailPage() {
   /* แก้ได้เหลือสองช่อง (มติผู้ใช้ 2026-08-18) — วันที่ SO ล็อกเป็นวันที่สร้าง
      และกำหนดชำระย้ายไปอยู่ที่งวดทั้งหมด */
   const [form, setForm] = useState({ referenceDoc: "", notes: "" });
+  /* เอกสารยืนยันคำสั่งซื้อ (mig 0285) — ใบเก่าหลักฐานอยู่ที่ใบเสนอราคา `orderConfirmationOf`
+     อ่านสองบ้านให้แล้ว · ไฟล์ใหม่ที่เพิ่งเลือกยังไม่ได้อัป จึงถือเป็น File[] แยกไว้ */
+  const [confirmation, setConfirmation] = useState({ docType: "", docNo: "", docDate: "", attachments: [] });
+  const [confirmFiles, setConfirmFiles] = useState([]);
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
   const [toast, setToast] = useState(null);
@@ -176,6 +182,13 @@ export default function SalesOrderDetailPage() {
     }
     setOrder(data);
     setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
+    setConfirmation({
+      docType: data.confirmDocType || "",
+      docNo: data.confirmDocNo || "",
+      docDate: data.confirmDocDate || "",
+      attachments: Array.isArray(data.confirmAttachments) ? data.confirmAttachments : [],
+    });
+    setConfirmFiles([]);
     setDirty(false);
     return true;
   }, [id]);
@@ -256,8 +269,38 @@ export default function SalesOrderDetailPage() {
   }
 
   async function save() {
-    const saved = await requestAction("save", form);
+    /* ⚠️ ไฟล์เอกสารยืนยันอัปก่อนบันทึก แล้วส่งไปทั้งก้อน — ที่เก็บของมันคือโฟลเดอร์ของ
+       **ใบเสนอราคาต้นทาง** (ไฟล์ถูกอัปตั้งแต่ตอนสร้างใบซึ่งใบยังไม่มี id) จึงใช้
+       entityType เดียวกับหน้าสร้าง เพื่อให้ทั้งสองทางลงที่เดียวกัน */
+    let attachments = confirmation.attachments || [];
+    if (confirmFiles.length) {
+      setBusy("save");
+      try {
+        const uploaded = [];
+        for (const file of confirmFiles) {
+          const ref = await uploadFileForEntity({
+            file, entityType: "sales_order_confirmation", entityId: order.quotationId,
+          });
+          uploaded.push({
+            fileUrl: ref.url || null,
+            driveFileId: ref.driveFileId || null,
+            storageBucket: ref.storageBucket || null,
+            storagePath: ref.storagePath || null,
+            fileName: file.name,
+            mimeType: file.type,
+            sizeBytes: file.size,
+          });
+        }
+        attachments = [...attachments, ...uploaded];
+      } catch (uploadError) {
+        setBusy("");
+        setError(uploadError.message || "อัปโหลดเอกสารยืนยันไม่สำเร็จ");
+        return;
+      }
+    }
+    const saved = await requestAction("save", { ...form, confirmation: { ...confirmation, attachments } });
     if (!saved) return;
+    setConfirmFiles([]);
     setEditMode(false);
   }
 
@@ -351,6 +394,13 @@ export default function SalesOrderDetailPage() {
 
   function leaveEditMode() {
     setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
+    setConfirmation({
+      docType: order.confirmDocType || "",
+      docNo: order.confirmDocNo || "",
+      docDate: order.confirmDocDate || "",
+      attachments: Array.isArray(order.confirmAttachments) ? order.confirmAttachments : [],
+    });
+    setConfirmFiles([]);
     setDirty(false);
     setSaveState("idle");
     setEditMode(false);
@@ -646,6 +696,11 @@ export default function SalesOrderDetailPage() {
     stepCount: workflow.length,
   });
   const workflowSteps = workflowStepsFromIndex(workflow, workflowIndexResolved, order.status === "cancelled");
+  // เอกสารยืนยันที่ใบนี้มีจริง (ของใบเอง ถ้าไม่มีถอยไปดูหลักฐาน Won ของใบเสนอราคา)
+  const confirmationOnFile = orderConfirmationOf(order, order.quotation);
+  const confirmationGate = ["draft", "rejected"].includes(order.status)
+    ? salesOrderConfirmationGate(order, order.quotation)
+    : null;
   const financeGate = (action, options) => financeActionError(order, action, { id: order.meId, role, department: order.meDepartment }, options);
   const primaryAction = editable
     ? {
@@ -661,8 +716,12 @@ export default function SalesOrderDetailPage() {
           id: "submit",
           kind: "submit",
           label: "ยื่นอนุมัติ",
-          disabled: !canSubmitThis,
-          disabledReason: canSubmitThis ? undefined : "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น",
+          disabled: !canSubmitThis || !!confirmationGate,
+          /* ⭐ เอกสารยืนยันคำสั่งซื้อเป็นด่านของ "ยื่นอนุมัติ" ไม่ใช่ของการสร้างใบ
+             (มติ 2026-08-24) — เหตุผลขึ้นติดปุ่มเป็นตัวหนังสือ ไม่ใช่ tooltip */
+          disabledReason: !canSubmitThis
+            ? "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น"
+            : (confirmationGate || undefined),
           onClick: openSubmitConfirm,
         }
     : canReviewThis && order.status === "pending_approval"
@@ -961,6 +1020,42 @@ export default function SalesOrderDetailPage() {
                   : <div className={styles.readonlyFormField}><span>หมายเหตุ</span><div className="readable-field"><ReadableText text={form.notes} lines={5} empty={<span className="readable-field-empty">ไม่มีหมายเหตุ</span>} /></div></div>}
               </div>
             </div>
+          </DetailCard>
+
+          {/* ⭐ เอกสารยืนยันคำสั่งซื้อ (mig 0285) — ย้ายมาจากขั้นปิด Won
+              ⚠️ **ช่องกรอกใช้ component เดียวกับหน้าสร้างใบ** (กฎ AGENTS.md: ฟอร์มสร้าง
+              กับฟอร์มแก้ต้องเป็นตัวเดียวกัน ต่างกันได้แค่โหมด) — ที่นี่คือโหมด `saved`
+              เพราะไฟล์ที่บันทึกแล้วเปิดผ่าน proxy ได้ ส่วนไฟล์ใหม่ยังเป็น File[] ที่รออัป
+              ⚠️ ใบเก่าที่หลักฐานอยู่ที่ใบเสนอราคา อ่านจากที่นั่น + บอกว่ามาจากไหน */}
+          <DetailCard
+            icon={FileCheck2}
+            eyebrow="ORDER CONFIRMATION"
+            title="ยืนยันคำสั่งซื้อ"
+            meta={confirmationOnFile?.source === "quotation"
+              ? `หลักฐานอยู่ที่ใบเสนอราคา ${naText(order.quotation?.quoteNumber)} (ใบที่ออกก่อนย้ายขั้นนี้มาที่ใบสั่งขาย)`
+              : "เอกสารที่ลูกค้ายืนยันคำสั่งซื้อ — ต้องมีก่อนยื่นอนุมัติ"}
+          >
+            {confirmationOnFile?.source === "quotation" && !editable ? (
+              <SalesOrderConfirmationFields
+                mode="read"
+                value={confirmationOnFile}
+                fileHref={(index) => `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`}
+              />
+            ) : (
+              <SalesOrderConfirmationFields
+                mode={editable ? "saved" : "read"}
+                value={editable ? confirmation : (confirmationOnFile || confirmation)}
+                onChange={(next) => { setConfirmation(next); setDirty(true); setSaveState("dirty"); }}
+                files={confirmFiles}
+                onFilesChange={setConfirmFiles}
+                onOversize={setError}
+                disabled={!!busy}
+                fileHref={(index) => `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`}
+              />
+            )}
+            {confirmationGate && !editable && (
+              <p className="form-note" role="status" style={{ marginTop: 12 }}>{confirmationGate}</p>
+            )}
           </DetailCard>
 
           {/* ⭐ การ์ด "การชำระ" (mig 0245/0246) — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง

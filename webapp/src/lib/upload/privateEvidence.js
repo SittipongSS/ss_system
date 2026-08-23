@@ -86,6 +86,27 @@ export async function checkPrivateEvidenceScope(user, entityType, entityId) {
 }
 
 /**
+ * ไฟล์ที่ client อ้างมา **มีอยู่จริงใน bucket ไหม** — คืนข้อความผิดพลาด หรือ null เมื่อครบ
+ *
+ * 🛑 path ที่ปลอมขึ้นมาหรือชี้ของที่ยังอัปไม่สำเร็จ ต้องไม่กลายเป็นหลักฐานถาวรของ
+ * เอกสารการค้า · เดิมด่านนี้อยู่ใน route ปิด Won ที่เดียว พอหลักฐานย้ายมาที่ใบสั่งขาย
+ * (mig 0285) ก็ต้องยกออกมาให้ผู้เรียกทั้งสองฝั่งใช้ตัวเดียวกัน
+ */
+export async function missingStoredEvidence(supabase, bucket, attachments = []) {
+  for (const att of (attachments || []).filter((item) => item?.storagePath)) {
+    const slash = att.storagePath.lastIndexOf('/');
+    const folder = att.storagePath.slice(0, slash);
+    const name = att.storagePath.slice(slash + 1);
+    const { data: stored, error } = await supabase.storage
+      .from(bucket).list(folder, { search: name, limit: 10 });
+    if (error || !stored?.some((item) => item.name === name)) {
+      return `ไม่พบไฟล์ ${att.fileName || name} ในพื้นที่จัดเก็บ private`;
+    }
+  }
+  return null;
+}
+
+/**
  * path ปลายทางของไฟล์หนึ่งใบ — ชื่อไฟล์ถูกล้างเป็น ASCII เพราะ key ของ Supabase
  * Storage ไม่รับอักขระไทย/ช่องว่าง (ต่างจาก Drive ที่รับ Unicode ได้)
  * @param {number} stamp - เวลา (ms) ที่ใช้เป็นคำนำหน้า ให้ผู้เรียกส่งเข้ามาเพื่อทดสอบได้

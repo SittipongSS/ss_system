@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { quotationWonEffects, selectableProjectsForWon } from "@/lib/sales/quotationWonPrompt";
 import { describeResponseError } from "@/lib/fetchError";
+import styles from "./QuotationWonDialog.module.css";
 
 // โมดัลยืนยันปิด Won (มติผู้ใช้ 2026-08-24)
 //
@@ -97,13 +98,13 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
 
   return (
     <Modal open={open} onClose={close} title={`ปิดการขาย (Won) · ${quote.quoteNumber || "ใบเสนอราคา"}`} size="md">
-      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ margin: 0, color: "var(--text-2)", fontSize: "var(--fs-7)", lineHeight: "var(--lh-thai)" }}>
+      <div className={styles.body}>
+        <p className={styles.subject}>
           {quote.quoteNumber} · {customerName || quote.customerName || "ไม่ระบุลูกค้า"}
         </p>
 
         {error && (
-          <div role="alert" style={{ padding: "10px 12px", border: "1px solid var(--red)", borderRadius: 10, color: "var(--red)", fontSize: "var(--fs-7)" }}>{error}</div>
+          <div role="alert" className={styles.error}>{error}</div>
         )}
 
         {/* โครงการ: ผูกแล้ว = ช่องอ่านอย่างเดียว (ค่าที่ระบบรู้แล้วห้ามให้เลือกซ้ำ) ·
@@ -141,7 +142,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
 
         <div className="form-group">
           <span className="toolbar-label">สิ่งที่จะเกิดขึ้นทันที</span>
-          <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6, color: "var(--text-2)", fontSize: "var(--fs-6)", lineHeight: "var(--lh-thai)" }}>
+          <ul className={styles.effects}>
             {effects.map((line) => <li key={line}>{line}</li>)}
           </ul>
         </div>
@@ -150,7 +151,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
             (ปุ่มที่จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง) */}
         {blockedReason && <p className="form-note" role="status">{blockedReason}</p>}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+        <div className={styles.footer}>
           <button type="button" className="btn ghost" onClick={close} disabled={busy}>ยกเลิก</button>
           <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || (needsProject && !projectId)} title={blockedReason || undefined}>
             <CheckCircle2 size={15} aria-hidden="true" /> {busy ? "กำลังบันทึก…" : "ยืนยันปิด Won"}

@@ -3,6 +3,10 @@ import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import {
+  DEFAULT_EVIDENCE_BUCKET, salesOrderConfirmationGate, validateOrderConfirmation,
+} from '@/lib/sales/orderConfirmationDocs';
+import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { departmentOf } from '@/lib/permissions';
 import {
   canEditSalesPlanning,
@@ -427,9 +431,32 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     // คนกรอกเจอ error ภาษาอังกฤษของ Postgres · ยาวกว่านี้แปลว่ากำลังใช้ช่องนี้เป็น
     // ช่องหมายเหตุ ซึ่งมี `notes` อยู่แล้วข้างล่าง
     const referenceDoc = String(body.referenceDoc || '').trim().slice(0, 200);
+    /* ⭐ เอกสารยืนยันคำสั่งซื้อแก้ได้ตอนใบยังเป็นร่าง (mig 0285) — ใบที่ออกไว้ก่อน
+       ได้เอกสารจากลูกค้าทีหลัง ต้องเติมได้โดยไม่ต้องออกใบใหม่
+       ⚠️ ส่ง `confirmation` มาเมื่อไร = ทับทั้งก้อน (ไฟล์ที่หายไปคือไฟล์ที่ถูกลบ) ·
+       ไม่ส่งมาเลย = ไม่แตะของเดิม */
+    let confirmPatch = {};
+    if ('confirmation' in body) {
+      const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
+      const safeQuoteId = String(before.quotationId || '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+      const check = validateOrderConfirmation(body.confirmation || {}, {
+        allowedStorageBucket: privateBucket,
+        allowedStoragePathPrefix: `quotations/${safeQuoteId}/order-confirmation/`,
+      });
+      if (!check.ok) return badRequest(check.error);
+      const missing = await missingStoredEvidence(supabase, privateBucket, check.confirmation?.attachments || []);
+      if (missing) return badRequest(missing);
+      confirmPatch = {
+        confirmDocType: check.confirmation?.docType || null,
+        confirmDocNo: check.confirmation?.docNo || null,
+        confirmDocDate: check.confirmation?.docDate || null,
+        confirmAttachments: check.confirmation?.attachments || [],
+      };
+    }
     const patch = {
       referenceDoc: referenceDoc || null,
       notes: String(body.notes || '').trim() || null,
+      ...confirmPatch,
       updatedAt: new Date().toISOString(),
     };
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
@@ -454,6 +481,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
+    /* ⭐ **ด่านเอกสารยืนยันคำสั่งซื้ออยู่ตรงนี้ ไม่ใช่ตอนสร้างใบ** (มติผู้ใช้ 2026-08-24)
+       AE ที่ยังรอ PO จากลูกค้าต้องตั้งใบร่างไว้ก่อนได้ แต่จะส่งให้คนอื่นอนุมัติโดยไม่มี
+       หลักฐานจากลูกค้าไม่ได้ · ใบเก่าที่หลักฐานอยู่ที่ใบเสนอราคาผ่านด่านนี้ตามเดิม
+       (`orderConfirmationOf` อ่านสองบ้าน) */
+    const confirmationGate = salesOrderConfirmationGate(before, before.quotation);
+    if (confirmationGate) return badRequest(confirmationGate);
     // การยื่น = การลงนามของผู้จัดทำ (mig 0153) — สถานะ + หลักฐาน proposer ต้อง commit
     // พร้อมกันในทรานแซกชันเดียว จึงยกจาก plain UPDATE มาเป็น RPC; ผู้ยื่นที่ไม่มีลายเซ็นจะ
     // ได้ 409 + ลิงก์ /account และสถานะไม่เปลี่ยนเลย (rollback ทั้งก้อน)
