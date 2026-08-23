@@ -146,10 +146,9 @@ export default function TimelineWorkspace({
   const [tableSort, setTableSort] = useState("step");
   // หมุดคำร้อง → ขั้นตอน · จับคู่ด้วย stepKey ไม่ใช่ id ของ task เพราะ resync
   // แม่แบบลบ/สร้าง task ใหม่ (ดู lib/pm/schedule.js) ผูก id ตรง ๆ แล้วหมุดหลุดเงียบ
-  const stepPins = useMemo(
-    () => requestsByStepKey(requests, { projectId }),
-    [requests, projectId],
-  );
+  // ⚠️ ไม่ส่งขอบเขตเข้าไปแล้ว — การจับคู่หมุดกับขั้นใช้ **ดีลของขั้นนั้น** (ดู
+  // lib/requests/pins.js) เพราะโครงการหนึ่งมีหลายดีลและ `stepKey` ซ้ำกันทุก segment
+  const stepPins = useMemo(() => requestsByStepKey(requests), [requests]);
   // ตัวกรองสถานะ + ฝ่าย ใน FilterPopover เดียว เป็น multi-select ทั้งคู่ (มติผู้ใช้
   // 2026-07-18: ตัวกรองทั้งระบบเลือกหลายค่าได้) — ว่าง = ทั้งหมด; ขั้นที่ไม่ระบุฝ่าย/ALL
   // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
@@ -513,7 +512,7 @@ export default function TimelineWorkspace({
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                               <h4 style={{ margin: 0, fontSize: "var(--fs-9)", color: complete ? "var(--green)" : "var(--text)", fontWeight: "var(--fw-semibold)" }}>{numberOf.get(task.id)}. {task.name}</h4>
                               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                                <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey)} />
+                                <StepPin pin={stepPinSummary(stepPins, task.workflowTemplateStepKey, task.dealId)} />
                                 <StepBadge badge={stepBadgeFor?.(task)} />
                                 <span className="timeline-role-text" style={{ color: role.color }}>{naText(task.role)}</span>
                                 {canEdit ? <StatusSelect value={task.status || "Pending"} disabled={!!busyId} onChange={(status) => patch(task, { status })} /> : <span className="ui-badge" style={{ color: STATUS_META[task.status]?.color }}>{STATUS_META[task.status]?.label || task.status}</span>}
@@ -601,7 +600,7 @@ export default function TimelineWorkspace({
                       </span>
                       {/* หมุดวางนอก .timeline-task-name เพราะกฎ `> span` ของคลาสนั้น
                           บังคับ overflow-wrap:anywhere ให้ลูกทุกตัว ป้ายจะแตกกลางคำ */}
-                      <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey)} />
+                      <StepPin pin={stepPinSummary(stepPins, t.workflowTemplateStepKey, t.dealId)} />
                       <StepBadge badge={stepBadgeFor?.(t)} />
                     </td>
                     <td><span className="timeline-role-text" style={{ color: ROLE_META[t.role]?.color || "var(--text-2)" }}>{naText(t.role)}</span></td>

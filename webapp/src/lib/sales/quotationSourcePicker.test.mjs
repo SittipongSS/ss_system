@@ -21,8 +21,10 @@ const deals = [
   { id: "D-4", title: "ทีมอื่น", customerId: "C-OTHERTEAM", projectId: "PRJ-4", stage: "qualified", canEdit: false },
 ];
 
-test("ดีลที่ออกใบได้ = ผูกโครงการ + มีลูกค้า + stage เปิด + แก้ไขได้", () => {
-  assert.deepEqual(eligibleQuotationDeals(deals).map((d) => d.id), ["D-1"]);
+test("ดีลที่ออกใบได้ = มีลูกค้า + stage เปิด + แก้ไขได้ (ไม่บังคับโครงการ)", () => {
+  // ⚠️ D-2 ยังไม่ผูกโครงการแต่ต้องออกใบได้ — โครงการถูกถอดออกจากเงื่อนไข 2026-08-24
+  // (ด่านจริงย้ายไปอยู่ตอนรับใบปิด Won ที่ quotations/[id]/accept)
+  assert.deepEqual(eligibleQuotationDeals(deals).map((d) => d.id), ["D-1", "D-2"]);
   assert.deepEqual(QUOTATION_DEAL_EXCLUDED_STAGES, ["won", "in_project", "lost"]);
   assert.deepEqual(eligibleQuotationDeals(), []);
 });
@@ -38,14 +40,12 @@ test("ค้นเจอลูกค้าที่ดีลปิดเป็�
   assert.equal(row.href, "/sa/deals/D-3");
 });
 
-test("ดีลยังไม่ผูกโครงการ → ชี้ไปผูกโครงการที่ดีลใบนั้น", () => {
-  const [row] = blockedQuotationCustomers({ search: "ไหมไทย", customers, deals });
-  assert.equal(row.reasonCode, "no_project");
-  assert.equal(row.href, "/sa/deals/D-2");
-  assert.match(row.actionLabel, /ผูกโครงการ/);
+test("ดีลยังไม่ผูกโครงการ = ออกใบได้ ไม่ต้องมีคำอธิบายอะไรทั้งนั้น", () => {
+  // เคสเดิมของเทสต์นี้คือ "ชี้ไปผูกโครงการ" — ตอนนี้ไม่ใช่เหตุขวางอีกแล้ว
+  assert.deepEqual(blockedQuotationCustomers({ search: "ไหมไทย", customers, deals }), []);
 });
 
-test("ดีลของทีมอื่น (แก้ไขไม่ได้) แยกจากกรณีไม่มีโครงการ", () => {
+test("ดีลของทีมอื่น (แก้ไขไม่ได้) มีเหตุของตัวเอง", () => {
   const [row] = blockedQuotationCustomers({ search: "ลิกซิล", customers, deals });
   assert.equal(row.reasonCode, "not_editable");
 });
@@ -64,8 +64,8 @@ test("ลูกค้าที่ออกใบได้อยู่แล้�
 });
 
 test("ค้นด้วยรหัสลูกค้าได้ และจำกัดจำนวนที่แสดง", () => {
-  const [byCode] = blockedQuotationCustomers({ search: "AR-002", customers, deals });
-  assert.equal(byCode.customerId, "C-NOPROJ");
+  const [byCode] = blockedQuotationCustomers({ search: "AR-000", customers, deals });
+  assert.equal(byCode.customerId, "C-WON");
   const many = blockedQuotationCustomers({ search: "บริษัท", customers, deals, limit: 2 });
   assert.equal(many.length, 2);
 });
@@ -83,6 +83,30 @@ test("หน้าสร้างใบเสนอราคาเรียก�
   // ลูกค้าที่รออนุมัติ/พักใช้/ทีมอื่น จะกลายเป็นตัวเลือกออกใบ = พังกติกาการกรอง
   assert.match(page, /cachedFetchJson\("\/api\/customers\?manage=1"\)/);
   assert.doesNotMatch(page, /registryCustomers\.map|registryCustomers\.filter/);
+});
+
+/* ── ด่าน "ต้องมีโครงการ" มีได้ที่เดียว: ตอนรับใบปิด Won ─────────────────────
+   ฟีดแบคผู้ใช้ 2026-08-24: "จะทำอะไรต่อก็ต้องผูกโครงการก่อน ยุ่งยาก" — ด่านตอน
+   *ออกใบ* ถูกถอด เพราะไม่มีใครอ่านค่าโครงการก่อนปิด Won · ด่านตอน *รับใบ* ต้องอยู่
+   เพราะ RPC สร้าง SO ก๊อป `projectId` ของดีลไปใช้จริงแล้วไหลต่อไปงานผลิต/ส่งของ
+   ⚠️ เทสต์นี้ล็อก **ทั้งสองข้าง**: ถอดด่านออกทั้งคู่ = ใบสั่งขายไม่มีโครงการ ·
+   ใส่กลับที่ตอนออกใบ = ฟีดแบครอบนี้กลับมาใหม่ */
+const routeSource = (path) => readFileSync(new URL(`../../app/api/${path}`, import.meta.url), 'utf8');
+
+test('ออกใบเสนอราคาไม่บังคับโครงการ แต่รับใบปิด Won ยังบังคับ', () => {
+  const create = routeSource('sales-planning/deals/[id]/quotations/route.js');
+  const accept = routeSource('sales-planning/quotations/[id]/accept/route.js');
+  assert.doesNotMatch(create, /if \(!deal\.projectId\) return/, 'ตอนออกใบต้องไม่มีด่านโครงการ');
+  assert.match(create, /if \(!deal\.customerId\) return/, 'ลูกค้ายังบังคับเหมือนเดิม');
+  assert.match(accept, /if \(!deal\.projectId\) return/, 'ตอนปิด Won ต้องยังบังคับโครงการ');
+});
+
+test('เปิดคำร้องไม่บังคับโครงการ — ด่านเดิมที่ requests ต้องไม่กลับมา', () => {
+  const requests = routeSource('sa/requests/route.js');
+  assert.doesNotMatch(requests, /requestNeedsRef\(kind, 'project'\)/,
+    "ด่านโครงการของคำร้องถูกถอดแล้ว (needs เหลือ 'deal')");
+  assert.match(requests, /projectId = dealRow\.projectId \|\| null;/,
+    'โครงการยัง derive จากดีลเหมือนเดิม แค่ว่างได้');
 });
 
 // ── เหตุระดับทะเบียน (2026-07-27) — สามเหตุที่เคยหายเงียบแม้มีตัวบอกเหตุรอบแรก ──
@@ -127,7 +151,8 @@ test('เหตุที่ใกล้ออกใบได้มาก่อ�
       { id: 'CUS-1', name: 'ลูกค้า ข', approvalStatus: 'approved' },
       { id: 'CUS-2', name: 'ลูกค้า ค', approvalStatus: 'pending' },
     ],
-    deals: [{ id: 'DL-1', customerId: 'CUS-1', canEdit: true, stage: 'qualified' }],
+    // ดีลปิดแล้ว = เหตุระดับดีล ซึ่งต้องมาก่อนเหตุระดับทะเบียนของอีกราย
+    deals: [{ id: 'DL-1', customerId: 'CUS-1', canEdit: true, stage: 'won' }],
   });
-  assert.deepEqual(rows.map((r) => r.reasonCode), ['no_project', 'pending_approval']);
+  assert.deepEqual(rows.map((r) => r.reasonCode), ['closed_stage', 'pending_approval']);
 });
