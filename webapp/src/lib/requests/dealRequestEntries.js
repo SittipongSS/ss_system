@@ -50,16 +50,16 @@ export function dealRequestEntries(deal, { quotations = [], salesOrders = [], re
      (คืนลิสต์เปล่าดีกว่าคืนปุ่มที่บอกเหตุไม่ได้) */
   if (!deal?.id) return [];
 
-  /* ⚠️ **ดีลลอยเปิดคำร้องไม่ได้** — `REQUEST_NEEDS.project` derive จากดีล ⇒ ดีลที่ยัง
-     ไม่ผูกโครงการทำให้ทุกหัวข้อที่ผูกดีลตกด่านที่ server · เกิดบ่อยมากบน prod
-     (2026-08-03: 122 จาก 136 ดีลยังไม่ผูกโครงการ) จึงต้องบอกเป็นข้อความ ไม่ใช่ปล่อย
-     ให้ไปตายที่หน้าฟอร์ม */
-  const noProject = deal.projectId ? '' : 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการก่อนจึงเปิดคำร้องได้';
-
+  /* ⭐ **ดีลลอยเปิดคำร้องได้แล้ว** (2026-08-24) — เดิมบล็อกไว้เพราะ `needs` ของสาม
+     หัวข้อนี้มี `'project'` อยู่ แล้วดีลที่ยังไม่ผูกโครงการตกด่านที่ server ทุกใบ
+     (prod 2026-08-03: 122 จาก 136 ดีลยังไม่ผูกโครงการ) · ตอนนี้ `needs` เหลือ `deal`
+     อย่างเดียว ⇒ ไม่มีเหตุให้บล็อกที่ปุ่มอีก
+     ⚠️ ยังส่ง `projectId` ไปกับลิงก์เมื่อดีลมี — ฟอร์มโชว์กลับให้เห็นว่าใบนี้จะเกาะ
+     โครงการไหน (มติ 2026-08-08) ไม่ใช่ค่าที่ฟอร์มบังคับ */
   const entries = dealScopedRequestKinds().map((kind) => ({
     kind,
     label: requestKindLabel(kind),
-    blocker: noProject,
+    blocker: '',
     href: link({ kind, dealId: deal.id, ...(deal.projectId ? { projectId: deal.projectId } : {}) }),
   }));
 

@@ -47,9 +47,10 @@ test('งานด่วนที่ยังไม่บอกเหตุผ�
 test('ตัวหารนับเฉพาะช่องบังคับที่ใช้จริงกับหัวข้อนั้น', () => {
   const info = requestFormTabs(base);
   const work = info.find((t) => t.key === 'work');
-  // สอบถามข้อมูลต้องมีดีล + โครงการของดีล — ไม่มีใบสั่งขาย
-  assert.equal(work.required.total, 2);
-  assert.equal(work.required.filled, 2);
+  // สอบถามข้อมูลต้องมี **ดีล** อย่างเดียว — โครงการถูกถอดออกจาก `needs` (2026-08-24)
+  // และไม่มีใบสั่งขาย ⇒ แท็บงานเหลือช่องบังคับตัวเดียว
+  assert.equal(work.required.total, 1);
+  assert.equal(work.required.filled, 1);
   // ⭐ สามแท็บเท่ากันทุกหัวข้อ (มติ 2026-08-09) — PDR ไปรวมอยู่ใน "รายละเอียด"
   assert.deepEqual(info.map((t) => t.key), ['work', 'subject', 'due']);
 

@@ -421,7 +421,7 @@ function NewQuotationInner() {
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
       {!loading && !eligible.length && (
-        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องผูกโครงการ มีลูกค้า ยังไม่ Won/ไม่หลุด และเป็นดีลที่คุณแก้ไขได้ (ตามทีม/เจ้าของดีล) <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
+        <div className={styles.emptyPanel}>ยังไม่มีดีลที่พร้อมออกใบเสนอราคา — ดีลต้องมีลูกค้า ยังไม่ Won/ไม่หลุด และเป็นดีลที่คุณแก้ไขได้ (ตามทีม/เจ้าของดีล) <Link href="/sa/deals" className="btn ghost sm"><ExternalLink size={13} /> ไปหน้าดีล</Link></div>
       )}
 
       <DetailPageLayout

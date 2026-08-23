@@ -98,10 +98,11 @@ test("ลบดีล: Won ต้องเป็น superuser · มี PO ส�
   assert.equal(canDeleteDeal(deal({ canEdit: false }), { role: "ae", superuser: true }), false);
 });
 
-test("ออกใบเสนอราคาต้องมีทั้งโครงการและลูกค้า และดีลยังไม่ปิด", () => {
+test("ออกใบเสนอราคาต้องมีลูกค้า และดีลยังไม่ปิด — ไม่บังคับโครงการ", () => {
   assert.equal(canQuoteDeal(deal({ projectId: "P1", customerId: "C1" })), true);
   assert.equal(canQuoteDeal(deal({ projectId: "P1" })), false, "ไม่มีลูกค้า");
-  assert.equal(canQuoteDeal(deal({ customerId: "C1" })), false, "ไม่มีโครงการ");
+  // ⚠️ ดีลลอย (ยังไม่ผูกโครงการ) ออกใบได้ — ด่านโครงการอยู่ตอนรับใบปิด Won เท่านั้น
+  assert.equal(canQuoteDeal(deal({ customerId: "C1" })), true, "ดีลลอยต้องออกใบได้");
   assert.equal(canQuoteDeal(deal({ stage: "lost", projectId: "P1", customerId: "C1" })), false);
 });
 

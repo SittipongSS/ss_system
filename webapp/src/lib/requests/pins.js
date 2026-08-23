@@ -10,14 +10,17 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 
 // คืน Map(stepKey → คำร้อง[]) · เรียงเรื่องที่ยังค้างขึ้นก่อนเสมอ เพราะหมุดมีไว้
 // เตือนว่า "ขั้นนี้มีเรื่องรออยู่" ไม่ใช่ไว้ดูประวัติ
-export function requestsByStepKey(requests = [], { projectId = null } = {}) {
+//
+// ⚠️ **ไม่กรองที่นี่แล้ว** (2026-08-24) — ของเดิมกรองด้วย `projectId` ซึ่งเป็นคีย์ผิด:
+// โครงการหนึ่งมีหลายดีล และทุก segment มี `stepKey` ชุดเดียวกัน ⇒ คำร้องของดีลหนึ่ง
+// ไปโผล่บนขั้นเดียวกันของดีลพี่น้องด้วย (prod มีโครงการที่มีดีล SCENT 2 ใบ)
+// การจับคู่ที่ถูกคือ **ดีลของ task** ซึ่งรู้ได้ตอนอ่านเท่านั้น ⇒ ไปกรองที่ `stepPinSummary`
+export function requestsByStepKey(requests = []) {
   const byStep = new Map();
   for (const r of requests) {
     if (!r?.stepKey) continue;
     // คำร้องร่างยังไม่ถูกส่ง = ยังไม่ใช่งานของใคร ไม่ควรโผล่บนไทม์ไลน์ของทีม
     if (r.status === 'draft') continue;
-    // คำร้องของดีลอื่นที่ยังไม่ผูกโครงการนี้ ไม่ใช่หมุดของไทม์ไลน์นี้
-    if (projectId && r.projectId && r.projectId !== projectId) continue;
     const list = byStep.get(r.stepKey) || [];
     list.push(r);
     byStep.set(r.stepKey, list);
@@ -34,9 +37,15 @@ export function requestsByStepKey(requests = [], { projectId = null } = {}) {
 
 // สรุปหมุดของขั้นเดียว → { total, open, first } หรือ null ถ้าไม่มีอะไรผูกอยู่
 // UI ใช้ `open` ตัดสินสี: มีเรื่องค้าง = เตือน, ปิดครบแล้ว = เงียบ ๆ
-export function stepPinSummary(byStep, stepKey) {
-  const list = stepKey ? byStep?.get(stepKey) : null;
-  if (!list?.length) return null;
+//
+// `taskDealId` = ดีลของขั้นที่กำลังวาด (task ติดป้าย `dealId` ตั้งแต่ mig 0090):
+//   · คำร้องมีดีล + ขั้นมีดีล → ต้องเป็นดีลเดียวกัน (กันหมุดข้าม segment)
+//   · คำร้อง **ไม่มีดีล** (หัวข้อของกลางอย่างติดตามของเข้า) → ขึ้นทุกขั้นเหมือนเดิม
+//   · ขั้นไม่มีดีล (task กลางของโครงการ) → ไม่รับหมุดที่เป็นของดีลใดดีลหนึ่ง
+export function stepPinSummary(byStep, stepKey, taskDealId = null) {
+  const all = stepKey ? byStep?.get(stepKey) : null;
+  const list = (all || []).filter((r) => !r.dealId || r.dealId === taskDealId);
+  if (!list.length) return null;
   const open = list.filter((r) => REQUEST_OPEN_STATUSES.includes(r.status)).length;
   return { total: list.length, open, first: list[0] };
 }

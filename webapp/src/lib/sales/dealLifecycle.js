@@ -162,9 +162,12 @@ export function canDeleteDeal(deal, { role, superuser } = {}) {
   return true;
 }
 
-/** ออกใบเสนอราคาได้ไหม — ต้องมีโครงการ + ลูกค้า และดีลยังไม่ปิด */
+/** ออกใบเสนอราคาได้ไหม — ต้องมีลูกค้า และดีลยังไม่ปิด
+ *  ⚠️ **ไม่รวมโครงการ** (2026-08-24) — โครงการเริ่มจำเป็นตอนรับใบปิด Won เท่านั้น
+ *  (ด่านจริงอยู่ที่ `quotations/[id]/accept`) · ต้องตรงกับ `eligibleQuotationDeals`
+ *  และ `quotationDealBlocker` เสมอ ทั้งสามตัวคือกติกาข้อเดียวกันมองคนละมุม */
 export function canQuoteDeal(deal) {
-  return canEdit(deal) && !!deal?.projectId && !!deal?.customerId && !isClosedStage(deal?.stage);
+  return canEdit(deal) && !!deal?.customerId && !isClosedStage(deal?.stage);
 }
 
 /** transition ที่ยิง `PATCH /deals/[id]` ตรง ๆ (ที่เหลือหน้าพาไปฟอร์มของมันเอง) */

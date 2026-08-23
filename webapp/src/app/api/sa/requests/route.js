@@ -215,13 +215,13 @@ export async function POST(request) {
       .eq('id', dealId).maybeSingle();
     if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
     if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
-    // บังคับโครงการเฉพาะหัวข้อที่ประกาศว่าต้องมี — SO ที่ derive ดีลมาให้ก็ต้องผ่าน
-    // ด่านนี้ด้วย เพราะหมุดไทม์ไลน์ของบรีฟกลิ่นต้องมีโครงการจึงจะปักได้
-    if (!dealRow.projectId && requestNeedsRef(kind, 'project')) {
-      return Response.json({
-        error: 'ดีลนี้ยังไม่ผูกโครงการ — ผูกโครงการให้ดีลก่อนจึงเปิดคำร้องได้',
-      }, { status: 400 });
-    }
+    /* ⭐ **ไม่บังคับโครงการอีกต่อไป** (2026-08-24) — เหตุผลเดิมคือ "หมุดไทม์ไลน์ต้องมี
+       โครงการจึงจะปักได้" ซึ่งไม่จริง: `requestsByStepKey` จับหมุดด้วย `stepKey` และใช้
+       ดีลเป็นตัวกรอง ส่วนไทม์ไลน์ลอยบนดีลได้อยู่แล้ว (DL1 · lib/pm/status.js)
+       ⇒ ด่าน "ต้องมีโครงการ" เหลือที่เดียวคือตอนปิด Won (quotations/[id]/accept)
+       ซึ่งเป็นจุดที่ของจริงเริ่มเกาะโครงการ (SO → งานผลิต → ส่งของ)
+       ⚠️ `projectId` ยัง derive จากดีลเหมือนเดิม — ว่างได้ แล้วรับค่าย้อนหลังตอนดีล
+       ผูกโครงการ (`moveDealMirrors` ทำงานทั้งเส้นผูกแรกและเส้นย้าย) */
     projectId = dealRow.projectId || null;
     // ลูกค้ามาจากดีล ไม่ใช่จาก client — ปล่อยให้ส่งเองคือเปิดช่องให้ราคาเข้าทะเบียน
     // ใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
