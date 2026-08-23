@@ -13,7 +13,12 @@ import {
   ALL_DEALS_BUCKET, buildDealBuckets, dealSearchText, NO_PROJECT_BUCKET, projectLabelOf,
 } from "@/lib/pm/dealPickerTree";
 
-const dealMeta = (deal) => [deal.customerName, `FC ${deal.forecastMonth || "ไม่ระบุ"}`].filter(Boolean).join(" · ");
+// ⚠️ ดีลที่ยังไม่มีลูกค้าต้องบอกไว้ตรงนี้ — บนหน้าออกใบเสนอราคา ดีลกลุ่มนี้โผล่ต่อท้าย
+// ลิสต์ของลูกค้าที่เลือกไว้ และการเลือกมันแปลว่า "ตั้งลูกค้ารายนั้นให้ดีลด้วย"
+const dealMeta = (deal) => [
+  deal.customerName || (deal.customerId ? "" : "ยังไม่มีลูกค้า"),
+  `FC ${deal.forecastMonth || "ไม่ระบุ"}`,
+].filter(Boolean).join(" · ");
 
 export default function DealPicker({
   deals = [],

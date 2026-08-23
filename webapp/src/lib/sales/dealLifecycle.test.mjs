@@ -98,12 +98,15 @@ test("ลบดีล: Won ต้องเป็น superuser · มี PO ส�
   assert.equal(canDeleteDeal(deal({ canEdit: false }), { role: "ae", superuser: true }), false);
 });
 
-test("ออกใบเสนอราคาต้องมีลูกค้า และดีลยังไม่ปิด — ไม่บังคับโครงการ", () => {
+test("ออกใบเสนอราคา: ดีลยังไม่ปิดและแก้ไขได้ก็พอ — ไม่บังคับโครงการ/ลูกค้า", () => {
   assert.equal(canQuoteDeal(deal({ projectId: "P1", customerId: "C1" })), true);
-  assert.equal(canQuoteDeal(deal({ projectId: "P1" })), false, "ไม่มีลูกค้า");
   // ⚠️ ดีลลอย (ยังไม่ผูกโครงการ) ออกใบได้ — ด่านโครงการอยู่ตอนรับใบปิด Won เท่านั้น
   assert.equal(canQuoteDeal(deal({ customerId: "C1" })), true, "ดีลลอยต้องออกใบได้");
+  // ⚠️ ดีลที่ยังไม่มีลูกค้าก็เข้าฟอร์มได้ — ฟอร์มถามลูกค้าเป็นช่องแรกแล้วตั้งให้ดีลตอนบันทึก
+  assert.equal(canQuoteDeal(deal({ projectId: "P1" })), true, "ดีลไม่มีลูกค้าต้องเข้าฟอร์มได้");
+  assert.equal(canQuoteDeal(deal({})), true);
   assert.equal(canQuoteDeal(deal({ stage: "lost", projectId: "P1", customerId: "C1" })), false);
+  assert.equal(canQuoteDeal(deal({ canEdit: false, customerId: "C1" })), false);
 });
 
 test("ทุก stage ที่ระบบรู้จักมีป้ายและคำอธิบายครบ", () => {

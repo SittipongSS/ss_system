@@ -5,7 +5,9 @@ import {
   QUOTATION_DEAL_EXCLUDED_STAGES,
   blockedQuotationCustomers,
   eligibleQuotationDeals,
+  unassignedQuotationDeals,
 } from "./quotationSourcePicker.js";
+import { dealCustomerAdoptError } from "./dealCustomerAdopt.js";
 
 const customers = [
   { id: "C-OK", name: "บริษัท ทิพย์นที (2005) จำกัด", arCode: "AR-001" },
@@ -21,9 +23,10 @@ const deals = [
   { id: "D-4", title: "ทีมอื่น", customerId: "C-OTHERTEAM", projectId: "PRJ-4", stage: "qualified", canEdit: false },
 ];
 
-test("ดีลที่ออกใบได้ = มีลูกค้า + stage เปิด + แก้ไขได้ (ไม่บังคับโครงการ)", () => {
+test("ดีลที่ออกใบได้ = stage เปิด + แก้ไขได้ (ไม่บังคับโครงการ/ลูกค้า)", () => {
   // ⚠️ D-2 ยังไม่ผูกโครงการแต่ต้องออกใบได้ — โครงการถูกถอดออกจากเงื่อนไข 2026-08-24
   // (ด่านจริงย้ายไปอยู่ตอนรับใบปิด Won ที่ quotations/[id]/accept)
+  // ส่วนลูกค้าดูเทสต์ "ดีลที่ยังไม่มีลูกค้ายังอยู่ในลิสต์ออกใบ…" ข้างล่าง
   assert.deepEqual(eligibleQuotationDeals(deals).map((d) => d.id), ["D-1", "D-2"]);
   assert.deepEqual(QUOTATION_DEAL_EXCLUDED_STAGES, ["won", "in_project", "lost"]);
   assert.deepEqual(eligibleQuotationDeals(), []);
@@ -97,8 +100,36 @@ test('ออกใบเสนอราคาไม่บังคับโค�
   const create = routeSource('sales-planning/deals/[id]/quotations/route.js');
   const accept = routeSource('sales-planning/quotations/[id]/accept/route.js');
   assert.doesNotMatch(create, /if \(!deal\.projectId\) return/, 'ตอนออกใบต้องไม่มีด่านโครงการ');
-  assert.match(create, /if \(!deal\.customerId\) return/, 'ลูกค้ายังบังคับเหมือนเดิม');
   assert.match(accept, /if \(!deal\.projectId\) return/, 'ตอนปิด Won ต้องยังบังคับโครงการ');
+  /* ⚠️ ลูกค้า **ยังบังคับ** แต่เปลี่ยนท่า (2026-08-24): ใบต้องมีลูกค้าเสมอ ถ้าดีลยังไม่มี
+     ให้รับจากฟอร์มมาตั้งให้ดีล — ไม่ใช่ตีกลับให้ไปแก้ที่หน้าดีล ⇒ ด่านต้องเหลืออยู่ใน
+     รูป "ไม่มีทั้งที่ดีลและที่ body = ตีกลับ" */
+  assert.match(create, /dealAwaitsCustomer\(deal\)/, 'ต้องยังตรวจว่าดีลมีลูกค้าหรือยัง');
+  assert.match(create, /if \(!body\.customerId\) \{[\s\S]{0,200}?return badRequest/,
+    'ไม่มีลูกค้าทั้งที่ดีลและบนฟอร์ม = ต้องตีกลับเหมือนเดิม');
+  assert.match(create, /\.is\('customerId', null\)/, 'การตั้งลูกค้าต้อง guard กันเขียนทับ');
+});
+
+test('ตั้งลูกค้าให้ดีลได้เฉพาะช่องที่ว่าง และเฉพาะลูกค้าที่ใช้ออกเอกสารได้', () => {
+  const ok = { id: 'CUS-1', name: 'ลูกค้า ก', approvalStatus: 'approved', isActive: true };
+  assert.equal(dealCustomerAdoptError({ id: 'D1' }, ok), null);
+  // legacy NULL = อนุมัติแล้ว/ใช้งานอยู่ (แถวก่อน mig 0027/0030)
+  assert.equal(dealCustomerAdoptError({ id: 'D1' }, { id: 'CUS-2', name: 'เก่า' }), null);
+  assert.match(dealCustomerAdoptError({ id: 'D1', customerId: 'CUS-9' }, ok), /มีลูกค้าอยู่แล้ว/);
+  assert.match(dealCustomerAdoptError({ id: 'D1' }, null), /ไม่พบลูกค้า/);
+  assert.match(dealCustomerAdoptError({ id: 'D1' }, { ...ok, approvalStatus: 'pending' }), /รออนุมัติ/);
+  assert.match(dealCustomerAdoptError({ id: 'D1' }, { ...ok, isActive: false }), /พักใช้/);
+});
+
+test('ดีลที่ยังไม่มีลูกค้ายังอยู่ในลิสต์ออกใบ และแยกออกมาเป็นกลุ่มของตัวเองได้', () => {
+  const rows = [
+    { id: 'D-1', customerId: 'C-OK', stage: 'quotation', canEdit: true },
+    { id: 'D-9', customerId: null, stage: 'qualified', canEdit: true },
+    { id: 'D-8', customerId: null, stage: 'won', canEdit: true },      // ปิดแล้ว = ไม่นับ
+    { id: 'D-7', customerId: null, stage: 'lead', canEdit: false },    // ทีมอื่น = ไม่นับ
+  ];
+  assert.deepEqual(eligibleQuotationDeals(rows).map((d) => d.id), ['D-1', 'D-9']);
+  assert.deepEqual(unassignedQuotationDeals(rows).map((d) => d.id), ['D-9']);
 });
 
 test('เปิดคำร้องไม่บังคับโครงการ — ด่านเดิมที่ requests ต้องไม่กลับมา', () => {

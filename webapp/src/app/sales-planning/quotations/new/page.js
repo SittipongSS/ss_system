@@ -33,7 +33,8 @@ import { branchLabel } from "@/lib/master/thaiAddress";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
-import { blockedQuotationCustomers, eligibleQuotationDeals } from "@/lib/sales/quotationSourcePicker";
+import { blockedQuotationCustomers, eligibleQuotationDeals, unassignedQuotationDeals } from "@/lib/sales/quotationSourcePicker";
+import { dealAwaitsCustomer, dealCustomerAdoptNote, isQuotableCustomer } from "@/lib/sales/dealCustomerAdopt";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -147,10 +148,14 @@ function NewQuotationInner() {
     return map;
   }, [customers]);
 
+  // ดีลที่ยังไม่มีลูกค้า — เลือกลูกค้าแล้วดีลกลุ่มนี้จะโผล่ต่อท้ายให้เลือกได้
+  // (บันทึกใบ = ตั้งลูกค้ารายนั้นให้ดีลด้วย — ดู lib/sales/dealCustomerAdopt)
+  const unassigned = useMemo(() => unassignedQuotationDeals(deals), [deals]);
+
   const customerOptions = useMemo(() => {
     const seen = new Map();
     eligible.forEach((deal) => {
-      if (seen.has(deal.customerId)) return;
+      if (!deal.customerId || seen.has(deal.customerId)) return;
       const master = customerById.get(deal.customerId);
       seen.set(deal.customerId, {
         id: deal.customerId,
@@ -158,14 +163,27 @@ function NewQuotationInner() {
         name: master?.name || deal.customerName || "ไม่มีชื่อลูกค้า",
       });
     });
+    /* ⭐ **มีดีลที่ยังไม่มีลูกค้าอยู่ = ลูกค้าทุกรายที่มองเห็นเลือกได้** — ไม่งั้นดีลกลุ่มนั้น
+       เข้าถึงไม่ได้เลยเมื่อลูกค้าของมันยังไม่เคยมีดีลอื่น (เคสที่เจอบ่อยที่สุด: ลูกค้าใหม่)
+       ⚠️ `customers` คือลิสต์ที่ API กรองมาแล้ว (อนุมัติแล้ว + ไม่ถูกพักใช้ + ทีมที่ดูแล)
+       จึงไม่ทำให้ลูกค้าที่ออกใบไม่ได้กลายเป็นตัวเลือก — กรองซ้ำด้วย `isQuotableCustomer`
+       เพื่อไม่ต้องเชื่อฝั่ง API ข้างเดียว (ด่านจริงอยู่ที่ server ตอนบันทึก) */
+    if (unassigned.length) {
+      (Array.isArray(customers) ? customers : []).forEach((c) => {
+        if (!c?.id || seen.has(c.id) || !isQuotableCustomer(c)) return;
+        seen.set(c.id, { id: c.id, arCode: c.arCode || "", name: c.name || "ไม่มีชื่อลูกค้า" });
+      });
+    }
     return customerSelectOptions([...seen.values()]);
-  }, [eligible, customerById]);
+  }, [eligible, customerById, customers, unassigned]);
 
   // ดีลของลูกค้าที่เลือก + รายชื่อโครงการ — ป้อนให้ DealPicker (ตัวเลือกกลางสองชั้น)
   // แทนคู่ช่อง "โครงการ → ดีล" เดิม
   const dealsOfCustomer = useMemo(
-    () => (customerId ? eligible.filter((d) => d.customerId === customerId) : []),
-    [eligible, customerId],
+    () => (customerId
+      ? [...eligible.filter((d) => d.customerId === customerId), ...unassigned]
+      : []),
+    [eligible, customerId, unassigned],
   );
   const projectList = useMemo(() => Object.values(projectsById || {}), [projectsById]);
   const selectedProject = projectId ? projectsById[projectId] : null;
@@ -293,6 +311,9 @@ function NewQuotationInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          /* ดีลที่ยังไม่มีลูกค้า: ส่งลูกค้าที่เลือกบนฟอร์มไปให้ server ตั้งให้ดีลด้วย
+             (ด่านจริงอยู่ที่นั่น — ที่นี่แค่ไม่ปล่อยให้ค่าหาย) */
+          ...(dealAwaitsCustomer(selectedDeal) ? { customerId } : {}),
           contactIndex,
           // ที่อยู่ที่ใบนี้เลือก (0203) — server ตรวจซ้ำว่า id เป็นของลูกค้ารายนี้จริง
           // และใช้ได้กับหน้าที่นั้น ไม่งั้นถอยไปที่อยู่หลัก
@@ -334,7 +355,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
+  }, [dealId, selectedDeal, customerId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
   if (!canEdit) {
     return (
@@ -466,6 +487,13 @@ function NewQuotationInner() {
               <p className={styles.sourceHint}>
                 เลือกได้ {customerOptions.length} ราย จากดีลที่พร้อมออกใบ {eligible.length} ดีล —
                 ไม่เจอลูกค้าที่ต้องการ? พิมพ์ชื่อในช่องด้านบน ระบบจะบอกว่าติดอะไรและไปแก้ที่ไหน
+              </p>
+            )}
+            {/* ⚠️ **บอกก่อนกด ไม่ใช่บอกหลังบันทึก** — การตั้งลูกค้าให้ดีลเป็นการแก้ของที่
+                อยู่นอกใบนี้ ผู้ใช้ต้องเห็นล่วงหน้าว่ากดแล้วจะเกิดอะไรกับดีล */}
+            {dealAwaitsCustomer(selectedDeal) && customerId && (
+              <p className={styles.sourceHintWarn}>
+                {dealCustomerAdoptNote(selectedDeal, customerById.get(customerId) || { id: customerId })}
               </p>
             )}
           </section>
