@@ -141,5 +141,20 @@ test('link-project route: ย้ายได้เฉพาะเมื่อส
 });
 
 test('รายชื่อตาราง mirror ตรงกับที่ตั้งใจ — เพิ่มตารางใหม่ต้องมาแก้ที่นี่ด้วย', () => {
-  assert.deepEqual([...DEAL_PROJECT_MIRROR_TABLES], ['personal_tasks', 'dept_requests', 'sales_orders']);
+  assert.deepEqual(
+    [...DEAL_PROJECT_MIRROR_TABLES],
+    ['personal_tasks', 'dept_requests', 'sales_orders', 'production_jobs'],
+  );
+});
+
+// ── ผูกโครงการครั้งแรกต้องเก็บของที่เปิดไว้ตอนดีลยังลอยเข้าโครงการด้วย ────────
+test('create-project / link-project: เรียก moveDealMirrors ทั้งเส้นผูกแรกและเส้นย้าย', () => {
+  const link = readFileSync(join(SRC, 'app/api/sales-planning/deals/[id]/link-project/route.js'), 'utf8');
+  const create = readFileSync(join(SRC, 'app/api/sales-planning/deals/[id]/create-project/route.js'), 'utf8');
+  assert.match(create, /moveDealMirrors\(supabase, \{ dealId: deal\.id, toProjectId: project\.id \}\)/,
+    'สร้างโครงการใหม่ต้องดูดของที่ผูกแค่ดีลเข้าโครงการ');
+  // เส้นผูกแรกของ link-project ต้องไม่ถูกครอบด้วย `if (fromProject)` อีก
+  assert.doesNotMatch(link, /let movedMirrors = \[\];\s*\n\s*if \(fromProject\) \{/,
+    'moveDealMirrors ต้องเรียกทั้งสองเส้น ไม่ใช่เฉพาะตอนย้าย');
+  assert.match(link, /mirrorWarning/, 'ผูกครั้งแรกที่ mirror พังต้องเตือน ไม่ใช่ถอนการผูก');
 });

@@ -14,8 +14,14 @@
 
 // ตารางที่ snapshot `projectId` ไว้ข้าง `dealId` — โครงการของแถวพวกนี้คือ
 // "โครงการของดีล" เสมอ (mirror) ดีลย้ายเมื่อไหร่ต้องย้ายตาม ไม่งั้นงาน/คำร้อง/
-// ใบสั่งขายจะค้างชี้โครงการเก่า แล้วโผล่ผิดที่ทั้งสองฝั่ง
-export const DEAL_PROJECT_MIRROR_TABLES = Object.freeze(['personal_tasks', 'dept_requests', 'sales_orders']);
+// ใบสั่งขาย/งานผลิตจะค้างชี้โครงการเก่า แล้วโผล่ผิดที่ทั้งสองฝั่ง
+//
+// ⚠️ `production_jobs` ก็อยู่ในชุดนี้: ใบงานผลิตก๊อป `projectId` มาจากใบสั่งขาย
+// ตอน auto-draft (lib/pm/productionJobsRepo — approvedOrdersWithLines) ⇒ ย้ายดีล
+// หลังมีงานผลิตแล้วโดยไม่ย้ายตาม = ใบงานชี้โครงการเก่าเงียบ ๆ
+export const DEAL_PROJECT_MIRROR_TABLES = Object.freeze([
+  'personal_tasks', 'dept_requests', 'sales_orders', 'production_jobs',
+]);
 
 /**
  * แผนย้าย segment: ต่อท้ายไทม์ไลน์ปลายทางโดยคงลำดับภายใน segment ไว้

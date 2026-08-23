@@ -65,11 +65,25 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       const { data } = await allTasks(supabase, (q) => q.eq('role', dept));
       projectTasks = data || [];
     } else {
-      const ids = await teamProjectIds(supabase, user.teams);
-      if (ids.length) {
-      const { data } = await allTasks(supabase, (q) => q.in('projectId', ids));
-      projectTasks = data || [];
-      }
+      /* 🐞 ดึงด้วย `projectId` ล้วนไม่พอ — ไทม์ไลน์ "ลอย" ของดีลที่ยังไม่ผูกโครงการ
+         (`project_tasks.projectId = null` + `dealId` — ดู lib/pm/status.js DL1) ไม่โผล่ใน
+         "งานของทีม" เลย ทั้งที่เป็นงานจริงที่มีคนทำอยู่ · งานส่วนตัวข้างล่างมีสาขา
+         `dealId` คู่กับ `projectId` มาตั้งแต่แรก ตรงนี้ขาดไปข้างเดียว
+         ⚠️ ดีลของทีมที่ไปผูกโครงการของทีมอื่น จะติดมาด้วยทางสาขา `dealId` —
+         ตั้งใจ (งานของดีลทีมเรา = งานของเรา) และเป็นพฤติกรรมเดียวกับงานส่วนตัว */
+      const [projIds, { data: teamDeals }] = await Promise.all([
+        teamProjectIds(supabase, user.teams),
+        whereTeamIn(supabase.from('sales_deals').select('id'), user),
+      ]);
+      const dealIds = (teamDeals || []).map((deal) => deal.id);
+      const wheres = [];
+      if (projIds.length) wheres.push((q) => q.in('projectId', projIds));
+      if (dealIds.length) wheres.push((q) => q.in('dealId', dealIds));
+      const results = await Promise.all(wheres.map((where) => allTasks(supabase, where)));
+      const seenTask = new Set();
+      projectTasks = results
+        .flatMap((r) => r.data || [])
+        .filter((t) => (seenTask.has(t.id) ? false : seenTask.add(t.id)));
     }
   } else { // all
     const { data } = await allTasks(supabase);
