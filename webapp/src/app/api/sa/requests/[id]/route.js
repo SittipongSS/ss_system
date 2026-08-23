@@ -48,6 +48,7 @@ import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
+import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
@@ -197,6 +198,9 @@ export async function PATCH(request, { params }) {
      ⚠️ เขียนทีหลังโดยตั้งใจ: หัวใบล้ม (เช่นลืมเหตุผลด่วน) ต้องไม่มีอะไรถูกเขียนเลย
      — เหตุผลเดียวกับที่ปุ่มบันทึกบนจอยิงหัวใบก่อนแบบฟอร์ม */
   let lineWrites = null;
+  /* รับเรื่องที่ใบแล้วต้องประทับลงแถวที่ยังไม่มี `ackAt` ด้วย — ดูเหตุผลที่ action
+     `acknowledge` · เขียนหลังหัวใบผ่าน ด้วยเหตุผลเดียวกับ `lineWrites` */
+  let ackFanOut = false;
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
 
@@ -253,6 +257,15 @@ export async function PATCH(request, { params }) {
       // ⚠️ เดือนนี้ยังเป็นช่วงที่ RD เดินเลขบนกระดาษเอง ⇒ ฟังก์ชันนี้คืน false
       // และใบจะไปได้เลขทางปุ่ม "กรอกเลขที่เอกสาร" แทน (mig 0272)
       if (issuesPdrRefNoOnAcknowledge(before, new Date(nowIso))) pdrRefAt = nowIso;
+      /* ⭐ **รับเรื่องที่ใบ = รับทุกแถวในใบ** (มติผู้ใช้ 2026-08-24) — ประทับ `ackAt`
+         ลงแถวที่ยังไม่มี ณ จังหวะเดียวกัน
+         🐞 ก่อนหน้านี้ไม่ทำ ⇒ ใบที่กดรับแล้ว แถวข้างในยังค้างขั้น `awaiting_ack` และ
+         จอขึ้นปุ่ม "รับเรื่อง" ให้กดซ้ำรายแถวก่อนถึงจะกด "ส่งงาน" ได้ · วัดบน prod:
+         DC-26080003 รับเรื่องใบแล้วแต่ต้องกดรับอีก **25 ครั้ง** · และแถวที่กดทีหลัง
+         บันทึก `ackAt` เป็นวันที่กด ไม่ใช่วันที่ฝ่ายรับเรื่องจริง (เส้นวัด lead time เพี้ยน)
+         ⚠️ ทำ **หลัง** หัวใบเขียนสำเร็จ (ดูท้าย handler) ไม่ใช่ตรงนี้ — หัวใบล้มแล้ว
+         แถวต้องไม่ถูกแตะ · แค่ติดธงไว้ก่อน */
+      ackFanOut = true;
       summary = `รับเรื่อง ${before.docNo || id}`;
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
@@ -722,6 +735,23 @@ export async function PATCH(request, { params }) {
         lineWrites.remove.length && `ลบ ${lineWrites.remove.length}`,
       ].filter(Boolean);
       summary += ` · รายการ: ${parts.join(' · ')}`;
+    }
+
+    /* ── รับเรื่องที่ใบ ⇒ ประทับลงแถวที่ยังไม่มี ─────────────────────────────
+       ⚠️ `.is('ackAt', null)` **ไม่ใช่ `.eq('ackAt', null)`** — PostgREST แปล `eq`
+       เป็น `= NULL` ซึ่งไม่เคยจริง ⇒ อัปเดตศูนย์แถวแบบเงียบ ๆ (กับดักเดิมของรีโปนี้)
+       ⚠️ วันไทย ไม่ใช่วัน UTC — กดรับตอนเช้ามืดแล้ววันจะถอยไปหนึ่งวัน
+       ⚠️ ล้มแล้ว **ไม่ throw** — ใบถูกรับเรื่องไปแล้วจริง ย้อนไม่ได้ · ปล่อยให้ทั้ง
+       request ล้มจะได้ผู้ใช้กดซ้ำแล้วเจอ "รับเรื่องไปแล้ว" ทั้งที่ของจริงบันทึกแล้ว
+       (เหตุผลเดียวกับบล็อกวันส่งของ items route) */
+    if (ackFanOut) {
+      const { error: ackError } = await supabase.from('dept_request_items').update({
+        ackAt: businessDate(),
+        ackById: user?.id ?? null,
+        ackByName: user?.name ?? null,
+        updatedAt: nowIso,
+      }).eq('requestId', id).is('ackAt', null);
+      if (ackError) console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
     }
 
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
