@@ -4,6 +4,25 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { NA } from "@/lib/format";
 
+/* ── ตัวตัดวง: กันคำตอบ "ล้นไหม" สลับไปมาทุกเฟรม ────────────────────────────
+ *
+ * 🐞 ของจริงที่เจอ (ผู้ใช้ส่งวิดีโอมา 2026-08-24 · ตารางหน้า "งานของฉัน" สั่นทั้งตาราง):
+ * บล็อกนี้วัดว่าข้อความล้นไหม แล้ววาด **ปุ่ม** ตามคำตอบ · ปุ่มนั้นไปเปลี่ยน layout
+ * ที่ตัวมันเองกำลังวัดอยู่ ⇒ เป็นวงปิดทันทีที่มีกฎ CSS ข้อไหนก็ตามที่มองเห็นปุ่ม
+ * ของจริงคือ `.scroll[data-family] td:has(… button …) { max-width: none }` (#1391):
+ *   ไม่มีปุ่ม → ช่องโดนเพดาน 220px → ข้อความล้น 2 บรรทัด → ขึ้นปุ่ม
+ *   มีปุ่ม   → เพดานถูกถอด ช่องกว้างขึ้น → ข้อความไม่ล้นแล้ว → ถอดปุ่ม → วนต่อ
+ * วัดจริงในเบราว์เซอร์: กวาดความกว้างกล่อง 620–1400px เจอ 104 ค่าที่สลับสองสถานะ
+ *
+ * ⚠️ ตัวตัดวงนี้เป็น **ตาข่ายรับ ไม่ใช่ตัวแก้เหตุ** — เหตุแก้ที่ Table.module.css
+ * (ปุ่มของบล็อกนี้ไม่นับเป็นคอนโทรลที่ต้องถอดเพดาน) · เก็บไว้เพราะบล็อกนี้ถูกใช้
+ * 102 จุด และกฎ CSS ข้อถัดไปที่บังเอิญมองเห็นปุ่มจะปลุกวงเดิมขึ้นมาอีกโดยไม่มีใครรู้
+ *
+ * ⚠️ นับเป็น **ช่วงเวลา** ไม่ใช่นับสะสม — ผู้ใช้ลากขอบหน้าต่างข้ามจุดพอดีก็สลับได้
+ * หลายครั้ง แต่ไม่มีทางสลับถึง 4 ครั้งใน 250ms ส่วนวงจริงสลับทุกเฟรม (~16ms) */
+const FLIP_LIMIT = 4;
+const FLIP_WINDOW_MS = 250;
+
 /**
  * Shared presentation for user-entered, potentially long text.
  * Keeps intentional line breaks, clamps previews by rendered height, and only
@@ -32,13 +51,33 @@ export default function ReadableText({
     const node = textRef.current;
     if (!node || expanded) return undefined;
 
+    /* 🪤 ประกาศ observer ไว้ก่อน `measure` แล้วเติมค่าทีหลัง — measure ต้องปิดตัวเฝ้า
+       ได้จากข้างใน (แพตเทิร์นเดียวกับ lib/ui/useScrollTopOnNavigate.js) */
+    let observer = null;
+    let last = null;
+    let flips = [];
+
     const measure = () => {
-      setCanExpand(node.scrollHeight > node.clientHeight + 1);
+      const next = node.scrollHeight > node.clientHeight + 1;
+      if (last !== null && next !== last) {
+        const now = performance.now();
+        flips = flips.filter((at) => now - at < FLIP_WINDOW_MS);
+        flips.push(now);
+        if (flips.length >= FLIP_LIMIT) {
+          observer?.disconnect();
+          /* ค้างที่ "มีปุ่ม" ไม่ใช่ "ไม่มีปุ่ม" — ปุ่มเกินมาคือปุ่มที่กดแล้วไม่มีอะไร
+             เพิ่ม ส่วนปุ่มที่หายไปคือข้อความที่ผู้ใช้เปิดอ่านไม่ได้อีกเลย */
+          setCanExpand(true);
+          return;
+        }
+      }
+      last = next;
+      setCanExpand(next);
     };
 
     measure();
     if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(measure);
+    observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
   }, [content, expanded, lines]);
