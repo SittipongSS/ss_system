@@ -29,7 +29,9 @@ permissions:
 jobs:
   fast-forward:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 5 นาทีพอสำหรับแค่ push — แต่ขั้นตรวจปลายทางต้องรอ Vercel build เสร็จ
+    # (วัดจริง ~3–5 นาที) แล้วยังเผื่อคิว build ที่ยาวกว่าปกติ
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Fast-forward production to main
+        id: ff
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -61,6 +64,7 @@ jobs:
           if [ "$prod_sha" = "$main_sha" ]; then
             echo "production is already at $main_sha — nothing new to deploy."
             echo "No new commits since the last deployment." >> "$GITHUB_STEP_SUMMARY"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -110,6 +114,7 @@ jobs:
 
             echo "::warning::$message Undeployed for ${waiting_hours}h; waiting for the next scheduled round."
             echo "$message Undeployed for ${waiting_hours}h — will retry next round." >> "$GITHUB_STEP_SUMMARY"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -137,3 +142,67 @@ jobs:
 
           git push origin "$main_sha:refs/heads/production"
           echo "production -> $main_sha. Vercel builds from here."
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$main_sha" >> "$GITHUB_OUTPUT"
+
+      # ── ถามเว็บจริงว่ารันคอมมิตไหน ────────────────────────────────────────
+      #
+      # Why this exists: pushing `production` and seeing Vercel report a
+      # successful build proves neither that the build shipped nor that what it
+      # shipped matches the source. While the turbopack build cache was on
+      # (2026-08-20 19:22 → 2026-08-21 19:10) every deploy reported success
+      # while serving stale CSS: users said "my change never went live" and
+      # every dashboard on our side was green. GitHub's deployment record
+      # cannot see that — only the running site can answer it.
+      #
+      # `/api/version` returns the commit the deployment was built from
+      # (VERCEL_GIT_COMMIT_SHA). The alias keeps serving the previous build
+      # until Vercel cuts over, so the old SHA here means "still building",
+      # not "broken" — poll until it flips, then fail loudly if it never does.
+      - name: Verify production is serving the deployed commit
+        if: steps.ff.outputs.deployed == 'true'
+        env:
+          # โดเมนของ production — ตั้งเป็น repo variable ทับได้ถ้าย้ายโดเมน
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://ss-team.vercel.app' }}
+          EXPECTED_SHA: ${{ steps.ff.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          # เผื่อเวลาให้ยาวกว่า build ที่ช้าที่สุดที่เคยวัดได้ (~5 นาที) พอสมควร
+          # แต่ยังสั้นกว่า timeout ของ job เพื่อให้ข้อความของเราได้ขึ้นก่อนโดนตัด
+          DEADLINE=$(( $(date -u +%s) + 840 ))
+          live=""
+
+          while :; do
+            live=$(curl -fsS --max-time 20 -H 'Cache-Control: no-cache' \
+              "${PRODUCTION_URL}/api/version" 2>/dev/null | jq -r '.sha // empty' || true)
+
+            if [ "$live" = "$EXPECTED_SHA" ]; then
+              echo "production is serving $EXPECTED_SHA."
+              {
+                echo "## Verified live"
+                echo
+                echo "\`${PRODUCTION_URL}/api/version\` reports \`$EXPECTED_SHA\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            if [ "$(date -u +%s)" -ge "$DEADLINE" ]; then
+              # ว่าง = เส้นนั้นตอบไม่ได้เลย (deployment เก่ายังไม่มี route นี้ · โดเมน
+              # เปลี่ยน · เว็บล่ม) — ต่างจากตอบมาแต่เป็นคอมมิตอื่น ซึ่งแปลว่า cutover
+              # ไม่เกิดขึ้น หรือ Vercel เสิร์ฟ build เก่าอยู่
+              reported="${live:-(ไม่ตอบ)}"
+              echo "::error::production ยังไม่เสิร์ฟ $EXPECTED_SHA หลังรอ 14 นาที — ตอบกลับมาเป็น $reported"
+              {
+                echo "## Deploy did not reach production"
+                echo
+                echo "pushed \`$EXPECTED_SHA\` แต่ \`${PRODUCTION_URL}/api/version\` ยังตอบ \`$reported\`"
+                echo
+                echo "เช็ค build ล่าสุดบน Vercel ว่าล้มหรือค้าง แล้ว deploy ซ้ำ"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+
+            echo "ยังไม่ cutover (ตอบ ${live:-'(ไม่ตอบ)'}) — รออีก 20 วินาที"
+            sleep 20
+          done

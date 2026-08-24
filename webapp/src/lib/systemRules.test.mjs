@@ -54,6 +54,7 @@ const ROUTES_WITHOUT_OWN_GUARD = {
   'master/products/[id]/relations/route.js': 'ส่ง user เข้า productRelations ด้วยเหตุผลเดียวกับฝั่งลูกค้า',
   'master/formulas/[id]/price/route.js': 'ด่านอยู่ใน makeRegistryPriceHandler (401 ถ้าไม่ล็อกอิน · canQuoteMaterial)',
   'master/scents/[id]/price/route.js': 'ด่านอยู่ใน makeRegistryPriceHandler ตัวเดียวกับฝั่งสูตร',
+  'version/route.js': 'คืนเลขคอมมิตของรีโปสาธารณะให้ deploy workflow ตรวจว่าของขึ้นจริง — ไม่แตะฐานข้อมูล ไม่มีพารามิเตอร์',
 };
 
 const GUARD_CALL = /\b(can[A-Z][A-Za-z]*|require[A-Z][A-Za-z]*|getSahamitContext|assert[A-Z][A-Za-z]*)\s*\(/;
