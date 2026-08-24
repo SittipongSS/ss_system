@@ -698,6 +698,21 @@ export function canApproveMasterData(role) {
   return isSuperuser(role);
 }
 
+// ── แก้รหัสลูกค้าที่ระบบออกให้ (AR-AAAA) ──────────────────────────────────
+// ⭐ มติผู้ใช้ 2026-08-24: **admin แก้เลข AR ได้ทุกใบ** ไม่ว่ารหัสนั้นจะเป็นรูปแบบที่
+// ระบบออกให้เอง (AR-AAAA, สวิตช์ "ระบบใหม่") หรือรูปแบบเดิมที่กรอกมือ (AR-AAA) —
+// ของจริงคือทะเบียนที่ยกมาจากระบบเก่ามีเลขผิดอยู่จริง และเดิมซ่อมได้เฉพาะรหัสกรอกมือ
+// (ดู `docs/master-code-scheme.md` §4) ⇒ ใบที่ระบบออกเลขให้ผิด ไม่มีทางแก้เลย
+// นอกจากลบทิ้งสร้างใหม่ ซึ่งทำให้ทั้งเส้นดีล/ใบเสนอราคาที่ผูก `customerId` ไว้หลุดตาม
+//
+// 🔴 **ห้ามใช้ `isSuperuser` ที่นี่** — ตัวนั้นรวม `ae_supervisor` ซึ่งเป็นหัวหน้าฝ่ายขาย
+// ที่ทำงานกับทะเบียนนี้ทุกวัน · นี่คือ break-glass ซ่อมข้อมูล ไม่ใช่ปุ่มของงานประจำวัน
+// (รหัสที่แก้ไปแล้วเรียกคืนไม่ได้: เลขเดิมไม่กลับเข้ากองเลขคืน และเอกสารที่พิมพ์รหัส
+// เดิมไปแล้วก็ไม่ตามมาแก้ให้ — เหตุผลเต็ม ๆ อยู่ที่ PATCH /api/customers/[id])
+export function canEditIssuedMasterCode(role) {
+  return role === 'admin';
+}
+
 // Product-category taxonomy is business master data owned by the Sales head.
 // Keep this separate from `master:manage`: that capability also controls
 // system-level configuration (for example holidays) and remains admin-only
