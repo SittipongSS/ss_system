@@ -197,6 +197,17 @@ export async function PATCH(request, { params }) {
       const { error: nextError } = await supabase.from('dept_request_items').insert({
         id: `DRI-${randomUUID()}`,
         ...followUpRowFrom(row, nextOrder),
+        /* ⭐ **ใบรับเรื่องไปแล้ว แถวใหม่จึงไม่ต้องรับซ้ำ** (มติผู้ใช้ 2026-08-24) —
+           รับเรื่องเป็นเรื่องของ *ใบ* · แถวรอบแก้ที่เกิดตอนใบเดินอยู่แล้วต้องเริ่มที่
+           "กำลังทำ" ไม่ใช่ "รอรับเรื่อง" ซึ่งเป็นคลิกเปล่าที่ไม่มีข้อมูลใหม่
+           ⚠️ วันมาจาก **วันที่รับเรื่องของใบ** ไม่ใช่วันนี้ — แถวนี้อยู่ใต้รอบรับเรื่อง
+           เดิม ประทับวันนี้แล้วเส้นวัด lead time จะสั้นกว่าความจริง */
+        // ⚠️ **แปลงเป็นวันไทยก่อนตัด** ไม่ใช่ `.slice(0,10)` ของ ISO ดิบ — ใบที่ถูกกดรับ
+        // ระหว่างเที่ยงคืนถึง 07:00 น. ของไทย มี UTC เป็นเมื่อวาน (`businessDate` รับ
+        // ค่าเวลาเข้ามาแปลงให้ได้อยู่แล้ว)
+        ackAt: before.acknowledgedAt ? businessDate(before.acknowledgedAt) : null,
+        ackById: before.acknowledgedById ?? null,
+        ackByName: before.acknowledgedByName ?? null,
         createdAt: nowIso,
         updatedAt: nowIso,
       });

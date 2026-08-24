@@ -26,7 +26,7 @@ import {
   assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
   pdrRefNoError,
 } from '@/lib/requests/pdrRefNo';
-import { listAttachments } from '@/lib/master/attachments';
+import { listAttachments, purgeAttachments } from '@/lib/master/attachments';
 import { normalizeScentBriefs, scentBriefNameError } from '@/lib/requests/scentBriefs';
 import {
   acknowledgeRequestError, commitDueRequestError, rescheduleRequestError,
@@ -34,13 +34,21 @@ import {
   canReadRequestRow, cancelRequestError, closeOutcomeError, closeRequestError,
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
-import { requestHasItems, requestShapeError } from '@/lib/master/requestTypes';
+import {
+  lineShapeForKind, requestHasItems, requestKindLabel, requestNeedsRef, requestShapeError,
+} from '@/lib/master/requestTypes';
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
+import { lineDiffIsEmpty, lineShapeEditable, requestLineDiff } from '@/lib/requests/requestLineEdit';
+import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { resolveLineLabels } from '@/lib/requests/lineLabels';
+import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
+import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
+import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
@@ -148,6 +156,14 @@ export async function GET(request, { params }) {
         // แสดง** · ปุ่มแก้หายไปเฉย ๆ แล้วคนกดต้องเดาเองว่าต้องไปบอกใคร
         // (บทเรียนเดียวกับ `requestFormBlocker` ที่คอมเมนต์ของ pdrEdit.js อ้างถึง)
         _editPdrBlocker: editPdrError(row, user),
+        /* ⭐ **เหตุผลที่แก้หัวใบไม่ได้** (มติผู้ใช้ 2026-08-24) — คู่แฝดของบรรทัดบน
+           สำหรับหัวข้อที่ **ไม่มีแบบฟอร์ม PDR**
+           🐞 ก่อนหน้านี้จอมีแต่ `_editPdrBlocker` ⇒ ใบขอเอกสาร/ขอใบวางบิล/พัฒนาสูตร/
+           สอบถาม พอฝ่ายกด "รับเรื่อง" **ปุ่มแก้หายไปทั้งปุ่มโดยไม่มีเหตุผลบนจอ**
+           ทั้งที่ `requestEditError` เขียนประโยคไทยรออยู่แล้ว — อาการเดียวกับที่
+           คอมเมนต์ของ `_editPdrBlocker` ข้างบนเล่าไว้ แค่คนละหัวข้อ
+           ⚠️ กติกาของระบบคือ "ปุ่มกดไม่ได้ = โชว์เสมอ บอกเหตุตอนกด" (GatedAction) */
+        _editBlocker: requestEditError(row, user),
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );
@@ -178,6 +194,13 @@ export async function PATCH(request, { params }) {
   let summary = '';
   // รายการเปลี่ยนแปลงของ PDR — ใช้ตอนเขียนเธรดท้าย handler
   let pdrChanges = null;
+  /* แผนเขียน **บรรทัด** ของ action 'update' — ประกอบตอนตรวจ แล้วเขียนหลังหัวใบผ่าน
+     ⚠️ เขียนทีหลังโดยตั้งใจ: หัวใบล้ม (เช่นลืมเหตุผลด่วน) ต้องไม่มีอะไรถูกเขียนเลย
+     — เหตุผลเดียวกับที่ปุ่มบันทึกบนจอยิงหัวใบก่อนแบบฟอร์ม */
+  let lineWrites = null;
+  /* รับเรื่องที่ใบแล้วต้องประทับลงแถวที่ยังไม่มี `ackAt` ด้วย — ดูเหตุผลที่ action
+     `acknowledge` · เขียนหลังหัวใบผ่าน ด้วยเหตุผลเดียวกับ `lineWrites` */
+  let ackFanOut = false;
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
 
@@ -234,6 +257,15 @@ export async function PATCH(request, { params }) {
       // ⚠️ เดือนนี้ยังเป็นช่วงที่ RD เดินเลขบนกระดาษเอง ⇒ ฟังก์ชันนี้คืน false
       // และใบจะไปได้เลขทางปุ่ม "กรอกเลขที่เอกสาร" แทน (mig 0272)
       if (issuesPdrRefNoOnAcknowledge(before, new Date(nowIso))) pdrRefAt = nowIso;
+      /* ⭐ **รับเรื่องที่ใบ = รับทุกแถวในใบ** (มติผู้ใช้ 2026-08-24) — ประทับ `ackAt`
+         ลงแถวที่ยังไม่มี ณ จังหวะเดียวกัน
+         🐞 ก่อนหน้านี้ไม่ทำ ⇒ ใบที่กดรับแล้ว แถวข้างในยังค้างขั้น `awaiting_ack` และ
+         จอขึ้นปุ่ม "รับเรื่อง" ให้กดซ้ำรายแถวก่อนถึงจะกด "ส่งงาน" ได้ · วัดบน prod:
+         DC-26080003 รับเรื่องใบแล้วแต่ต้องกดรับอีก **25 ครั้ง** · และแถวที่กดทีหลัง
+         บันทึก `ackAt` เป็นวันที่กด ไม่ใช่วันที่ฝ่ายรับเรื่องจริง (เส้นวัด lead time เพี้ยน)
+         ⚠️ ทำ **หลัง** หัวใบเขียนสำเร็จ (ดูท้าย handler) ไม่ใช่ตรงนี้ — หัวใบล้มแล้ว
+         แถวต้องไม่ถูกแตะ · แค่ติดธงไว้ก่อน */
+      ackFanOut = true;
       summary = `รับเรื่อง ${before.docNo || id}`;
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก
@@ -262,10 +294,80 @@ export async function PATCH(request, { params }) {
       if (denied) return Response.json({ error: denied }, { status: 403 });
 
       const next = requestEditPatch(body);
+
+      /* ── บรรทัด (มติผู้ใช้ 2026-08-24) ───────────────────────────────────
+         ⭐ **หัวข้อที่เนื้องานอยู่ในบรรทัดต้องแก้บรรทัดได้** — ขอเอกสาร/ขอใบวางบิล
+         เลือกชนิดผิดหรือพิมพ์รายละเอียดตกไปบรรทัดหนึ่ง เคยต้องลบทั้งใบเปิดใหม่
+         ⚠️ **ตัวตรวจตัวเดียวกับ POST** (`normalizeLinesFor` + `resolveLineLabels`)
+         ไม่ใช่กฎชุดที่สอง · ที่เพิ่มมาคือ "แถวไหนคือแถวไหน" (`requestLineDiff`)
+         ⚠️ ไม่ส่ง `items` มา = ไม่แตะบรรทัดเลย (ผู้เรียกที่แก้แค่หัวใบ) — แพตเทิร์น
+         เดียวกับ `pdrTargets` · ส่งอาเรย์ว่างมาถูกตีกลับที่ `normalizeLinesFor`
+         ด้วยข้อความ "ต้องมีรายการอย่างน้อย 1 รายการ" ตัวเดียวกับตอนเปิดใบ */
+      let nextItems = before.items;
+      if (Array.isArray(body.items) && requestHasItems(before.kind)) {
+        const lineShape = lineShapeForKind(before.kind);
+        if (!lineShapeEditable(lineShape)) {
+          return Response.json({
+            error: 'รายการของหัวข้อนี้ไม่ได้กรอกตอนเปิดใบ — แก้ทางนี้ไม่ได้',
+          }, { status: 400 });
+        }
+        const normalized = normalizeLinesFor(lineShape, body.items, {
+          dept: before.dept, kindLabel: requestKindLabel(before.kind),
+        });
+        if (normalized.error) return Response.json({ error: normalized.error }, { status: 400 });
+
+        const resolvedLines = await resolveLineLabels(supabase, normalized.items, {
+          lineShape, customerId: before.customerId,
+        });
+        if (resolvedLines.error) {
+          return Response.json({ error: resolvedLines.error }, { status: 400 });
+        }
+
+        const plan = requestLineDiff(before.items, resolvedLines.items, { lineShape });
+        if (plan.error) return Response.json({ error: plan.error }, { status: 409 });
+        lineWrites = lineDiffIsEmpty(plan) ? null : plan;
+        nextItems = resolvedLines.items;
+      }
+
+      /* ── ยอดที่ขอวางบิล (มติเดียวกัน) ────────────────────────────────────
+         ⚠️ **คิดใหม่จากยอดจริงของใบ ไม่เชื่อค่าที่ client แนบมา** — กฎเดียวกับ POST
+         · `quotationId` แก้ไม่ได้ ⇒ ฐานยังเป็นใบเดิมเสมอ แต่ยอดของใบนั้นขยับได้
+         (แก้ใบเสนอราคาแล้วอนุมัติใหม่) จึงต้องอ่านสด ไม่ใช้ `billBaseAmount` ที่
+         ประทับไว้ตอนเปิด */
+      if (requestNeedsRef(before.kind, 'quotation')
+        && (body.billPercent != null || body.billAmount != null)) {
+        const { data: qtRow, error: qtError } = await supabase
+          .from('quotations').select('id, "totalAmount"')
+          .eq('id', before.quotationId).maybeSingle();
+        if (qtError) return Response.json({ error: qtError.message }, { status: 500 });
+        if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาของคำร้องนี้' }, { status: 409 });
+        const bill = resolveBillAmount({
+          percent: body.billPercent, amount: body.billAmount,
+          baseAmount: Number(qtRow.totalAmount),
+        });
+        if (bill.error) return Response.json({ error: bill.error }, { status: 400 });
+        next.billPercent = bill.percent;
+        next.billAmount = bill.amount;
+        next.billBaseAmount = Number(qtRow.totalAmount);
+      }
+
+      /* ── อ้างอิงเพิ่ม QT/SO/FG (มติเดียวกัน) ─────────────────────────────
+         ⭐ ฟอร์มแก้เป็นฟอร์มเดียวกับตอนสร้าง ⇒ ช่องพวกนี้กางอยู่บนจอ · ไม่รับที่นี่
+         = ผู้ใช้แก้แล้วหายเงียบ ซึ่งเป็นอาการเดิมที่ใบนี้มาแก้พอดี
+         ⚠️ ด่านก้อนเดียวกับ POST (`resolveOptionalRefs`) — "มีจริง + อยู่ดีลเดียวกัน"
+         ⚠️ **ดีลของใบเป็นตัวอ้างอิง ไม่ใช่ค่าที่ client ส่ง** — `dealId` แก้ทางนี้ไม่ได้ */
+      const { patch: refPatch, error: refError } = await resolveOptionalRefs(
+        supabase, before.kind, body, { dealId: before.dealId },
+      );
+      if (refError) return Response.json({ error: refError }, { status: 400 });
+      Object.assign(next, refPatch);
+
       // ⚠️ ด่านรูปทรงเดียวกับตอนเปิดใบ — ชื่อเรื่องบังคับ · วันที่ต้องมีและถูกรูปแบบ ·
       // ด่วนต้องมีเหตุผล · ส่งของเดิมที่ไม่ได้แก้เข้าไปด้วยเพื่อให้ด่านเห็นใบทั้งใบ
+      // ⚠️ ใช้ **บรรทัดชุดใหม่** — ลบแถวจนหมดต้องตกที่ "ต้องมีรายการอย่างน้อย 1 รายการ"
+      // ไม่ใช่ผ่านเพราะด่านมองแถวเดิมที่กำลังจะถูกลบ
       const shapeError = requestShapeError(before.kind, {
-        ...before, ...next, items: before.items,
+        ...before, ...next, items: nextItems,
       });
       if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
 
@@ -587,6 +689,71 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: 'เลขที่เอกสารนี้ถูกใช้กับคำร้องใบอื่นแล้ว' }, { status: 409 });
     }
     if (error) throw error;
+
+    /* ── บรรทัดของ action 'update' — เขียน **หลัง** หัวใบผ่านแล้วเท่านั้น ─────
+       ⚠️ **ไม่มี transaction ข้ามตาราง** (PostgREST ไม่มีให้) — ลำดับจึงเป็น
+       "ลบ → แก้ → เพิ่ม" · ลบก่อนเพราะแถวที่ถูกลบไม่มีวันชนกับแถวใหม่ และ
+       `sortOrder` ของชุดใหม่ถูกคิดจากตำแหน่งในฟอร์มอยู่แล้ว
+       ⚠️ **ไม่ลบแล้วสร้างใหม่ทั้งชุด** — id ของแถวคือ `attachments.entityId`
+       (ดู `requestLineEdit.js`) */
+    if (lineWrites) {
+      if (lineWrites.remove.length) {
+        /* ⚠️ **กวาดไฟล์แนบของแถวก่อน** — `attachments` เป็น polymorphic ไม่มี FK
+           cascade (ดู `purgeAttachments`) · ลบแถวเฉย ๆ แล้วไฟล์บน Drive กับแถว
+           attachment จะค้างชี้ id ที่ไม่มีแล้ว · สายพัฒนาสูตรให้ผู้ขอแนบรูป/สเปก
+           รายแถวได้ตั้งแต่ร่าง ⇒ เกิดจริงได้ ไม่ใช่เคสสมมติ */
+        for (const rowId of lineWrites.remove) {
+          await purgeAttachments('dept_request_item', rowId).catch(() => {});
+        }
+        const { error: removeError } = await supabase
+          .from('dept_request_items').delete().in('id', lineWrites.remove);
+        if (removeError) throw removeError;
+      }
+      for (const row of lineWrites.update) {
+        const { error: rowError } = await supabase
+          .from('dept_request_items').update({ ...row.patch, updatedAt: nowIso })
+          .eq('id', row.id);
+        if (rowError) throw rowError;
+      }
+      if (lineWrites.insert.length) {
+        const { error: insertError } = await supabase.from('dept_request_items').insert(
+          lineWrites.insert.map((row) => ({
+            id: `DRI-${randomUUID()}`,
+            requestId: id,
+            ...row,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          })),
+        );
+        if (insertError) throw insertError;
+      }
+      /* ⚠️ **บอกว่าเปลี่ยนอะไร ไม่ใช่แค่ "แก้ข้อมูลคำร้อง"** — บรรทัดคือของที่ฝ่าย
+         ปลายทางเอาไปทำงานจริง · ใบที่ยังไม่ถูกรับเรื่องก็มีคนเปิดดูบนคิวไปแล้ว */
+      const parts = [
+        lineWrites.insert.length && `เพิ่ม ${lineWrites.insert.length}`,
+        lineWrites.update.length && `แก้ ${lineWrites.update.length}`,
+        lineWrites.remove.length && `ลบ ${lineWrites.remove.length}`,
+      ].filter(Boolean);
+      summary += ` · รายการ: ${parts.join(' · ')}`;
+    }
+
+    /* ── รับเรื่องที่ใบ ⇒ ประทับลงแถวที่ยังไม่มี ─────────────────────────────
+       ⚠️ `.is('ackAt', null)` **ไม่ใช่ `.eq('ackAt', null)`** — PostgREST แปล `eq`
+       เป็น `= NULL` ซึ่งไม่เคยจริง ⇒ อัปเดตศูนย์แถวแบบเงียบ ๆ (กับดักเดิมของรีโปนี้)
+       ⚠️ วันไทย ไม่ใช่วัน UTC — กดรับตอนเช้ามืดแล้ววันจะถอยไปหนึ่งวัน
+       ⚠️ ล้มแล้ว **ไม่ throw** — ใบถูกรับเรื่องไปแล้วจริง ย้อนไม่ได้ · ปล่อยให้ทั้ง
+       request ล้มจะได้ผู้ใช้กดซ้ำแล้วเจอ "รับเรื่องไปแล้ว" ทั้งที่ของจริงบันทึกแล้ว
+       (เหตุผลเดียวกับบล็อกวันส่งของ items route) */
+    if (ackFanOut) {
+      const { error: ackError } = await supabase.from('dept_request_items').update({
+        ackAt: businessDate(),
+        ackById: user?.id ?? null,
+        ackByName: user?.name ?? null,
+        updatedAt: nowIso,
+      }).eq('requestId', id).is('ackAt', null);
+      if (ackError) console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
+    }
+
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
     if (issueDocNo && saved?.docNo) summary = `ส่งคำร้อง ${saved.docNo} ถึงฝ่าย ${before.dept}`;
     if (action === 'pdr-ref' && saved?.pdrRefNo) summary = `ออกเลขที่เอกสาร PDR ${saved.pdrRefNo}`;
@@ -629,6 +796,9 @@ export async function PATCH(request, { params }) {
       ...after,
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
+      // ต้องคืนคู่กับ `_editPdrBlocker` เสมอ — จอตัดสินว่าจะโชว์ปุ่มแก้แบบกดไม่ได้
+      // หรือซ่อนทิ้ง จากสองค่านี้รวมกัน
+      _editBlocker: requestEditError(after, user),
       // ต้องคืนคู่กับ `_canEditPdr` เสมอ — สองอันนี้มาจากด่านเดียวกัน ขาดตัวใดตัวหนึ่ง
       // แล้วหน้าจอหลัง PATCH จะรู้ว่า "กดไม่ได้" แต่ไม่รู้ว่าทำไม
       _editPdrBlocker: editPdrError(after, user),

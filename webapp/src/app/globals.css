@@ -4532,6 +4532,41 @@ button.empty-state { width: 100%; font: inherit; }
 .section-rail-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--panel-3); flex: none; }
 .section-rail-dot[data-tone="some"] { background: var(--amber); }
 .section-rail-dot[data-tone="full"] { background: var(--green); }
+/* ⭐ ปุ่ม "เพิ่ม…" ท้ายราง (`navFooter`) — ใช้ตอนรายการในรางเป็นของที่ผู้ใช้สร้างเอง
+   ⚠️ มีเส้นคั่นด้านบนเสมอ — ปุ่มที่ลอยต่อจากรายการโดยไม่มีเส้น อ่านเหมือน "รายการ
+   ตัวสุดท้าย" อีกอัน (ต่างจากรายการอื่นแค่มีไอคอน +) */
+.section-rail-add {
+  margin-top: var(--space-1-5);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+/* ⚠️ **เต็มความกว้างของราง** — `.btn-accent` มี `min-width: 104px` ของตัวเอง ⇒ ปุ่ม
+   สั้นกว่าแถวรายการแล้วเหลือช่องว่างข้างขวาเป็นบันไดเบี้ยว ๆ (ผู้ใช้ส่งภาพมา
+   2026-08-24) · แถวในรางกินเต็มความกว้างทุกแถว ปุ่มจึงต้องกินเต็มด้วย */
+.section-rail-add .btn { width: 100%; min-width: 0; justify-content: center; }
+
+/* แถวที่มีปุ่มของตัวเอง (เช่นถังขยะลบรายการ) — แท็บกินที่เหลือ ปุ่มชิดขวา */
+.section-rail-row { display: flex; align-items: center; gap: var(--space-0-5); min-width: 0; }
+.section-rail-row .section-rail-item { flex: 1; min-width: 0; }
+.section-rail-action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+/* ⚠️ แดงตอนชี้เท่านั้น — ถังขยะแดงตลอดเวลาบนทุกแถว ทำให้รางอ่านเหมือนรายการที่มี
+   ปัญหา ทั้งที่มันเป็นแค่ปุ่มที่มีอยู่ตามปกติ */
+.section-rail-action:hover:not(:disabled) { color: var(--red); background: var(--panel-3); }
+.section-rail-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-rail-action:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .section-rail-body { padding: var(--space-4); min-width: 0; }
 @media (max-width: 768px) {
   .section-rail { grid-template-columns: 1fr; }
@@ -4539,6 +4574,15 @@ button.empty-state { width: 100%; font: inherit; }
   /* ⚠️ `flex: none` จำเป็น — แถวเลื่อนแนวนอนที่ปล่อยให้ลูกหดจะบีบทุกส่วนให้ทับกัน
      แทนที่จะเลื่อน (เจอจริงบนจอ 375px) */
   .section-rail-item { white-space: nowrap; flex: none; }
+  /* จอแคบ: รางเป็นแถวเลื่อนแนวนอน ⇒ ปุ่มเพิ่มต่อท้ายแถว ไม่ใช่ขึ้นบรรทัดใหม่ */
+  .section-rail-add {
+    margin-top: 0; padding-top: 0; padding-left: var(--space-2);
+    border-top: 0; border-left: 1px solid var(--border); flex: none;
+    display: flex; align-items: center;
+  }
+  /* แนวนอนแล้วปุ่มไม่ต้องยืดเต็ม — ความกว้างของมันคือความกว้างของตัวเอง */
+  .section-rail-add .btn { width: auto; }
+  .section-rail-row { flex: none; }
   .section-rail-label { white-space: nowrap; overflow: visible; }
   /* เกจรวมลงบรรทัดของตัวเอง — ไม่งั้นมันกินครึ่งแถวจนแท็บท้าย ๆ (ฟอร์ม PDR ·
      กำหนด) ถูกดันออกนอกจอโดยไม่มีอะไรบอกว่ายังมีอยู่ */

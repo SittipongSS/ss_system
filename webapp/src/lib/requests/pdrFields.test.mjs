@@ -173,9 +173,11 @@ test('⭐ แถว 2.2/2.3 ต้องถูกเดินสายครบ�
   const wired = {
     // ฟอร์มรับแถวและส่งกลับ
     'src/components/requests/PdrForm.js': [/targets/, /onTargetsChange/],
-    // สองที่ที่เรียก PdrForm ต้องส่งทั้งคู่ (หน้าเปิดใบ · หน้าแก้)
+    /* ⭐ **ที่เดียวที่เรียก `PdrForm` แล้ว** (มติผู้ใช้ 2026-08-24 "หน้าแก้ต้องเหมือน
+       หน้าสร้าง") — เดิมมีสองที่: ฟอร์มเปิดใบ กับโหมดแก้ที่ `ScentDevDetail` วางเอง
+       ⇒ ต้องคอยส่งพร็อพให้ครบทั้งคู่ และเคยลืมมาแล้วจริง (ดูคอมเมนต์ 🐞 ในไฟล์นั้น)
+       ⚠️ เหลือที่เดียวคือสิ่งที่ทำให้ลืมไม่ได้อีก — ไม่ใช่แค่ "ตอนนี้ยังไม่ลืม" */
     'src/components/requests/RequestForm.js': [/targets=\{/, /onTargetsChange=\{/],
-    'src/components/requests/details/ScentDevDetail.js': [/targets=\{/, /onTargetsChange=\{/],
     // payload ตอนสร้าง และตอนกดบันทึกในหน้ารายละเอียด
     'src/lib/master/requestCreate.js': [/pdrTargets/],
     'src/app/requests/[id]/page.js': [/pdrTargets/, /pdrTargetValuesFrom/],
@@ -191,6 +193,12 @@ test('⭐ แถว 2.2/2.3 ต้องถูกเดินสายครบ�
     const src = readFileSync(file, 'utf8');
     for (const re of patterns) assert.match(src, re, `${file}: ขาด ${re}`);
   }
+  // ⚠️ ห้ามงอกที่เรียกที่สองกลับมา — นั่นคือรูปเดิมของบั๊ก "ลืมส่งพร็อพข้างเดียว"
+  assert.doesNotMatch(
+    readFileSync('src/components/requests/details/ScentDevDetail.js', 'utf8'),
+    /<PdrForm\b/,
+    'ScentDevDetail วางฟอร์ม PDR เอง — โหมดแก้ต้องอยู่ใน RequestForm ที่เดียว',
+  );
 });
 
 // 🐞 โรคเดียวกับช่องเงินที่ผู้ใช้เจอ 2026-08-10 แต่เป็นเรื่องความยาว: เพดานอยู่ฝั่ง
