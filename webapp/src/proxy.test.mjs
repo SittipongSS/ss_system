@@ -13,9 +13,20 @@ test('⭐ เส้น cron ต้องข้ามด่าน session — ผ
   assert.equal(bypassesSessionGate('/api/cron/close-resolved-issues'), true);
 });
 
-test('ด่านที่ข้ามได้ต้องแคบ — เปิดเฉพาะใต้ /api/cron/ เท่านั้น', () => {
+/* เส้นบอกคอมมิตที่ production รันอยู่ — ผู้เรียกคือ deploy workflow ซึ่งเป็นเครื่อง
+   เหมือน cron · มีไว้เพื่อจับเคส "build success แต่ไฟล์ที่เสิร์ฟเป็นของเก่า" ที่
+   deployment record ของ GitHub มองไม่เห็น (turbopack build cache 20–21/08/69) */
+test('⭐ เส้นบอกเวอร์ชันต้องข้ามด่าน session — GitHub Actions ไม่มี cookie', () => {
+  assert.equal(bypassesSessionGate('/api/version'), true);
+});
+
+test('ด่านที่ข้ามได้ต้องแคบ — เปิดเฉพาะใต้ /api/cron/ กับ /api/version เป๊ะ ๆ', () => {
   // ⚠️ ถ้าเผลอเขียนเป็น startsWith('/api/cron') เปล่า ๆ สองเส้นล่างจะหลุดตามไปด้วย
-  for (const path of ['/api/cron', '/api/crontab', '/api/cronjobs/run', '/api/notifications', '/home', '/']) {
+  // ⚠️ /api/version ต้องเทียบเต็มเส้น — เขียนเป็น startsWith แล้วชื่อคล้ายกันหลุดตาม
+  for (const path of [
+    '/api/cron', '/api/crontab', '/api/cronjobs/run', '/api/notifications', '/home', '/',
+    '/api/versions', '/api/version-history', '/api/version/secret',
+  ]) {
     assert.equal(bypassesSessionGate(path), false, `${path} ต้องไม่ข้ามด่าน session`);
   }
 });

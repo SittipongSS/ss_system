@@ -166,7 +166,12 @@ export async function proxy(request) {
  */
 export function bypassesSessionGate(path) {
   // ต้องมี `/` ปิดท้าย — `/api/cron` เปล่า ๆ หรือ `/api/crontab` ต้องไม่ผ่าน
-  return path.startsWith('/api/cron/');
+  if (path.startsWith('/api/cron/')) return true;
+  // เลขคอมมิตที่ production รันอยู่ — ผู้เรียกคือ deploy workflow ของ GitHub
+  // ⚠️ **เทียบเต็มเส้น ไม่ใช่ startsWith** — เส้นนี้ไม่มีลูก และ prefix จะพา
+  // `/api/version-history` หรือชื่อคล้ายกันในอนาคตหลุดด่านตามไปด้วย
+  // route คืนเฉพาะเลขคอมมิตของรีโปสาธารณะ ไม่แตะฐานข้อมูล (ดู api/version/route.js)
+  return path === '/api/version';
 }
 
 // Master switch for the phased lockdown. Set to false to re-open all three
