@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, isSuperuser, redactProductMargin } from '@/lib/permissions';
+import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, canEditIssuedMasterCode, isSuperuser, redactProductMargin } from '@/lib/permissions';
 import {
   changedFieldsAgainst, CUSTOMER_ADDRESS_EXEMPT_FIELDS, CUSTOMER_CONTACT_FIELDS, normalizeRejectionReason,
   rejectionReasonError, resetApprovalOnEdit,
@@ -9,6 +9,7 @@ import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/
 import { customerNameError } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
 import { CODE_MODE_MANUAL, arCodeError, isAutoArCode, isReusableCode } from '@/lib/master/masterCodes';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 import {
   branchKeyOf, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError,
 } from '@/lib/master/customerTaxId';
@@ -254,16 +255,35 @@ export async function PATCH(request, { params }) {
   }
 
   if (body.arCode && body.arCode !== customer.arCode) {
-    // ⚠️ รหัสที่ระบบออกให้ (AR-AAAA 4 หลัก, mig 0230) แก้ไม่ได้ — เลขนั้นถูกจองไปแล้ว
-    // จากเคาน์เตอร์กลาง แก้ทิ้งเมื่อไรคือเลขที่หายไปจากระบบโดยไม่มีใครรู้ และรหัสเดิม
-    // อาจถูกอ้างบนเอกสารที่ออกไปแล้ว · รหัสที่กรอกเอง (รูปแบบเดิม) ยังแก้ได้ตามเดิม
-    if (isAutoArCode(customer.arCode)) {
+    // ── ใครแก้เลข AR ได้บ้าง (มติผู้ใช้ 2026-08-24) ──────────────────────────
+    // ⭐ **admin แก้ได้ทั้งรหัสที่ระบบออกให้ (AR-AAAA) และรหัสเดิมที่กรอกมือ (AR-AAA)**
+    // — ทะเบียนที่ยกมาจากระบบเก่ามีเลขผิดอยู่จริง และเดิมซ่อมได้เฉพาะรหัสกรอกมือ ⇒ ใบที่
+    // ระบบออกเลขให้ผิดไม่มีทางแก้เลยนอกจากลบสร้างใหม่ ซึ่งพาดีล/ใบเสนอราคาที่ผูก
+    // `customerId` ไว้หลุดตามไปด้วย · คนอื่นยังเป็นกติกาเดิมทุกอย่าง
+    //
+    // ⚠️ **สิ่งที่การแก้รหัสนี้ไม่ได้ทำให้** (ผู้เรียกต้องรู้ก่อนกด — โมดัลยืนยันหน้าลูกค้า
+    // เขียนไว้ครบแล้ว): เลขเดิม **ไม่กลับเข้ากองเลขคืน** (`entity_number_reclaimed`) เพราะ
+    // กองนั้นรับเฉพาะเลขของแถวที่ถูกลบและไม่เคยอนุมัติ · รหัสสินค้า `FG-AAAA-…` ของลูกค้า
+    // รายนี้ **ยังฝังเลขเดิมไว้** (รหัสคือสตริงที่ออกครั้งเดียว ไม่ใช่ค่าที่คำนวณสด) ·
+    // เอกสารที่พิมพ์รหัสเดิมไปแล้วก็ไม่ตามมาแก้ให้
+    const mayEditIssued = canEditIssuedMasterCode(user?.role);
+    if (isAutoArCode(customer.arCode) && !mayEditIssued) {
       return Response.json(
-        { error: 'รหัสลูกค้านี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้' },
+        { error: 'รหัสลูกค้านี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้ — ต้องให้แอดมินเป็นคนแก้' },
         { status: 400 },
       );
     }
-    const codeError = arCodeError(body.arCode, { mode: CODE_MODE_MANUAL });
+    // 🔴 ลูกค้าสหมิตร = `AR-109` **ฝังอยู่ในโค้ด** (`lib/sahamit/server.js` — ทุก API ของ
+    // โมดูลสหมิตรหาลูกค้าจากรหัสนี้ ไม่ใช่จาก id) ⇒ แก้รหัสนี้เมื่อไร ทั้งโมดูลตอบ
+    // "ไม่พบลูกค้า AR-109" ทันทีโดยไม่มีอะไรฟ้องตอนกดบันทึก · ต้องแก้ค่าคงที่ในโค้ดก่อน
+    // (ด่านนี้กันเฉพาะ "ย้ายรหัสนี้ออก" — การย้ายรหัสนี้ไปให้รายอื่นถูกกันด้วยด่านซ้ำอยู่แล้ว)
+    if (customer.arCode === SAHAMIT_AR_CODE) {
+      return Response.json(
+        { error: `${SAHAMIT_AR_CODE} เป็นรหัสของลูกค้าสหมิตรซึ่งถูกอ้างไว้ในโค้ดของโมดูลสหมิตร — แก้รหัสนี้ต้องแก้ค่าคงที่ SAHAMIT_AR_CODE (src/lib/sahamit/server.js) พร้อมกัน` },
+        { status: 400 },
+      );
+    }
+    const codeError = arCodeError(body.arCode, { mode: CODE_MODE_MANUAL, allowIssued: mayEditIssued });
     if (codeError) return Response.json({ error: codeError }, { status: 400 });
     const { data: dup, error: dupError } = await supabase
       .from('customers')

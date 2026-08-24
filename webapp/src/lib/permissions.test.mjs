@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -430,6 +430,17 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   assert.equal(canApproveMasterData('senior_ae'), false);
   for (const role of ['ae', 'ac', 'marketing', 'legal', 'rd', 'viewer', 'staff', 'secretary']) {
     assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
+  }
+});
+
+// ── แก้เลข AR ที่ระบบออกให้ (มติผู้ใช้ 2026-08-24) ──────────────────────────
+// admin เท่านั้น — **ห้ามกลายเป็น isSuperuser** ไม่งั้นหัวหน้าฝ่ายขายซึ่งทำงานกับ
+// ทะเบียนนี้ทุกวันจะแก้รหัสบนเอกสารที่ออกไปแล้วได้เอง (ผลลัพธ์เรียกคืนไม่ได้)
+test('canEditIssuedMasterCode: admin เท่านั้น ไม่รวมหัวหน้าฝ่ายขาย', () => {
+  assert.equal(canEditIssuedMasterCode('admin'), true);
+  assert.equal(canEditIssuedMasterCode('ae_supervisor'), false);
+  for (const role of ['senior_ae', 'ae', 'ac', 'marketing', 'legal', 'rd', 'finance', 'executive', 'viewer', 'staff', 'secretary']) {
+    assert.equal(canEditIssuedMasterCode(role), false, `${role} ต้องแก้รหัสที่ระบบออกให้ไม่ได้`);
   }
 });
 

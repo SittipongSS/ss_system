@@ -9,12 +9,13 @@ import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useRole } from "@/lib/roleContext";
-import { isSuperuser, TEAM_LABELS } from "@/lib/permissions";
+import { canEditIssuedMasterCode, isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
 import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode } from "@/lib/master/masterCodes";
+import { approvalStatusOf } from "@/components/ApprovalStatus";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -26,7 +27,7 @@ import { siteRefillBadge } from "@/lib/service/refill";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import {
   ADDRESS_USE_LABELS, addressLabel, addressTextIn, customerAddresses, isBillingAddress, isShippingAddress,
 } from "@/lib/master/addresses";
@@ -77,7 +78,10 @@ export default function CustomerDetails() {
   // Excise tax data (rollups, orders/filings, per-item tax) is confidential to
   // the tax workflow — shown only to roles allowed to see the tax system.
   const canViewTax = useCan("history:view");
-  const superuser = isSuperuser(useRole());
+  const role = useRole();
+  const superuser = isSuperuser(role);
+  // แอดมินแก้เลข AR ได้ทุกใบ รวมใบที่ระบบออกเลขให้ (มติ 2026-08-24) — ด่านจริงอยู่ที่ PATCH
+  const canFixArCode = canEditIssuedMasterCode(role);
   const isPortrait = useIsPortrait();
 
   const [customer, setCustomer] = useState(null);
@@ -169,8 +173,10 @@ export default function CustomerDetails() {
       .catch(() => {});
   }, [id]);
 
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
+  // ── บันทึกจริง ──────────────────────────────────────────────────────────
+  // แยกจาก `handleEditSubmit` เพราะการเปลี่ยน **เลข AR** ต้องผ่านโมดัลยืนยันก่อน
+  // (ผลที่ตามมาเรียกคืนไม่ได้ ดูข้อความในโมดัล) · การแก้ช่องอื่นบันทึกตรงเหมือนเดิม
+  const saveEdit = async () => {
     setIsSubmitting(true);
 
     // แผนที่/เอกสารย้ายไปจัดการที่ส่วน "เอกสารของลูกค้า" (attachments) แล้ว.
@@ -208,6 +214,36 @@ export default function CustomerDetails() {
       setToast({ kind: "error", msg: "เกิดข้อผิดพลาดในการบันทึกข้อมูล" });
     }
     setIsSubmitting(false);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    const nextAr = String(formData.arCode || "").trim();
+    const currentAr = String(customer?.arCode || "").trim();
+    if (currentAr && nextAr && nextAr !== currentAr) {
+      // เปลี่ยนเลข AR = บอกผลลัพธ์ให้ครบ **ก่อน**กด — ทุกข้อข้างล่างกดแก้กลับแล้วไม่คืน
+      // (เลขเดิมไม่กลับเข้ากองเลขคืน · รหัสสินค้าเป็นสตริงที่ออกครั้งเดียว ไม่ได้คำนวณสด ·
+      //  เอกสารที่พิมพ์ไปแล้วอยู่นอกระบบ) · แพตเทิร์นเดียวกับด่านเตือนหมวดภาษีของฟอร์มสินค้า
+      const accepted = await confirmAction({
+        title: "เปลี่ยนเลขที่ลูกค้า (AR Code)",
+        description: `${currentAr} → ${nextAr}`,
+        detail: [
+          `· เลขเดิม ${currentAr} จะไม่ถูกนำกลับไปออกให้ลูกค้ารายอื่น`,
+          products.length
+            ? `· รหัสสินค้าของลูกค้ารายนี้ ${products.length} รายการ ยังฝังเลขเดิมไว้ (เช่น ${products[0]?.fgCode || "FG-…"}) ระบบไม่ตามไปแก้ให้`
+            : "· รหัสสินค้าที่ออกไปแล้วจะยังฝังเลขเดิมไว้เสมอ ระบบไม่ตามไปแก้ให้",
+          "· ใบเสนอราคา/ใบสั่งขาย/ทะเบียนสรรพสามิตที่พิมพ์รหัสเดิมไปแล้ว ไม่เปลี่ยนตาม",
+          "· สินค้าที่สร้างหลังจากนี้จะได้ท่อนลูกค้าใหม่ ⇒ ลูกค้ารายนี้จะมีรหัสสินค้าสองท่อนปนกัน",
+          approvalStatusOf(customer) === "approved"
+            ? "· ลูกค้ารายนี้จะกลับไปสถานะ “รออนุมัติ” และหลุดจากลิสต์เลือกทุกหน้าจนกว่าจะอนุมัติใหม่"
+            : null,
+        ].filter(Boolean).join("\n"),
+        confirmLabel: "เปลี่ยนรหัสและบันทึก",
+        danger: true,
+      });
+      if (!accepted) return;
+    }
+    await saveEdit();
   };
 
   // Retire / reactivate a customer. Retired (isActive=false) customers drop out
@@ -831,13 +867,15 @@ export default function CustomerDetails() {
           {/* ฟอร์มเดียวกับโมดัลเพิ่มลูกค้า (หน้ารวม) — กฎ: แก้ = ฟอร์มเดียวกับสร้าง.
               ต่างแค่โหมด: มีช่องทีมดูแล (ย้ายทีมได้เฉพาะ superuser — API บังคับซ้ำ) ·
               ไม่มีสวิตช์โหมดรหัส (รหัสออกไปแล้ว) และรหัสที่ระบบเป็นคนออกให้ = ล็อก
-              (mig 0230 — API บังคับซ้ำที่ PATCH) */}
+              (mig 0230 — API บังคับซ้ำที่ PATCH) ยกเว้น **แอดมิน** ที่แก้ได้ทุกใบและพิมพ์ได้
+              ทั้งสองรูปแบบ (มติ 2026-08-24 · `canEditIssuedMasterCode`) */}
           <CustomerForm
             form={formData}
             onForm={(patch) => setFormData((f) => ({ ...f, ...patch }))}
             showTeams
             canEditTeams={superuser}
-            arLocked={isAutoArCode(customer.arCode)}
+            arLocked={isAutoArCode(customer.arCode) && !canFixArCode}
+            arAllowIssued={canFixArCode}
             selfId={customer.id}
           />
           <div className="form-action-bar is-page">

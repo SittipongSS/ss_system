@@ -209,7 +209,12 @@ export function arCodeParts(number) {
 // (เคาน์เตอร์ไม่ได้ซิงก์กับข้อมูลจริงหลัง mig 0230 รันไปแล้ว)
 //
 // ⇒ ต้องการรหัสรูปแบบใหม่ = เปิดสวิตช์ให้ระบบออกให้เท่านั้น
-export function arCodeError(code, { mode = CODE_MODE_MANUAL } = {}) {
+// ⭐ `allowIssued` (มติผู้ใช้ 2026-08-24) — ยอมให้ **พิมพ์รูปแบบที่ระบบออกให้** ได้
+// ด้วย · เปิดเฉพาะ **ตอนแก้ทะเบียนโดย admin** (`canEditIssuedMasterCode`) ไม่ใช่ตอนสร้าง:
+// ตอนสร้างมีสวิตช์ให้ระบบออกเลขให้อยู่แล้ว การพิมพ์เองจึงมีแต่ทางเสีย (ไปจับจองเลขที่
+// เคาน์เตอร์ยังรันไปไม่ถึง) · ตอนแก้ไม่มีทางเลือกนั้น — ใบที่ระบบออกเลขให้ผิดต้องพิมพ์
+// เลขที่ถูกทับลงไปตรง ๆ เท่านั้น
+export function arCodeError(code, { mode = CODE_MODE_MANUAL, allowIssued = false } = {}) {
   const value = digitsOf(code);
   if (!value) return 'กรุณากรอกรหัสลูกค้า (AR Code)';
   if (codeModeOf(mode) === CODE_MODE_AUTO) {
@@ -217,9 +222,13 @@ export function arCodeError(code, { mode = CODE_MODE_MANUAL } = {}) {
   }
   if (AR_MANUAL_RE.test(value)) return null;
   if (AR_AUTO_RE.test(value)) {
-    return `${value} เป็นรหัสรูปแบบที่ระบบออกให้ (${AR_AUTO_HINT}) — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`;
+    return allowIssued
+      ? null
+      : `${value} เป็นรหัสรูปแบบที่ระบบออกให้ (${AR_AUTO_HINT}) — พิมพ์เองไม่ได้ ถ้าต้องการรหัสแบบนี้ให้เปิดสวิตช์ระบบใหม่`;
   }
-  return `รูปแบบรหัสลูกค้าไม่ถูกต้อง — ต้องเป็น ${AR_MANUAL_HINT} เช่น AR-109`;
+  return allowIssued
+    ? `รูปแบบรหัสลูกค้าไม่ถูกต้อง — ต้องเป็น ${AR_MANUAL_HINT} หรือ ${AR_AUTO_HINT}`
+    : `รูปแบบรหัสลูกค้าไม่ถูกต้อง — ต้องเป็น ${AR_MANUAL_HINT} เช่น AR-109`;
 }
 
 export function fgCodeError(code, { mode = CODE_MODE_MANUAL, categoryCode = null } = {}) {

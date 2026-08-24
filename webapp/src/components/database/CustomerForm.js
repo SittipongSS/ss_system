@@ -30,7 +30,7 @@ import {
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
-  AR_MANUAL_HINT, CODE_MODE_AUTO, CODE_MODE_MANUAL, arCodeParts, codeModeOf,
+  AR_AUTO_HINT, AR_MANUAL_HINT, CODE_MODE_AUTO, CODE_MODE_MANUAL, arCodeParts, codeModeOf,
 } from "@/lib/master/masterCodes";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 
@@ -81,6 +81,10 @@ export default function CustomerForm({
   onCodeMode = null,
   nextArNumber = null,    // เลขถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
   arLocked = false,       // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
+  /* แอดมินแก้เลข AR ได้ทุกใบ (มติ 2026-08-24) — พิมพ์ได้ทั้งรูปแบบเดิมและรูปแบบที่ระบบ
+     ออกให้ · เป็น "คำอธิบายใต้ช่อง" ล้วน ๆ ด่านจริงอยู่ที่ PATCH (`allowIssued`)
+     ⚠️ คนละตัวกับ `arLocked`: ล็อก = ห้ามแก้ · ตัวนี้ = แก้ได้ถึงขั้นเปลี่ยนรูปแบบรหัส */
+  arAllowIssued = false,
   selfId = null,          // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
@@ -156,14 +160,18 @@ export default function CustomerForm({
                 onChange={set("arCode")}
                 required
                 readOnly={arLocked}
-                placeholder="เช่น AR-109"
+                placeholder={arAllowIssued ? "เช่น AR-109 หรือ AR-1009" : "เช่น AR-109"}
                 className="premium-input w-full font-mono"
                 style={arLocked ? { color: "var(--text-3)", background: "var(--panel-2)", cursor: "not-allowed" } : undefined}
               />
               <span className="text-[11px] text-[var(--text-3)] mt-1">
                 {arLocked
                   ? "รหัสนี้ออกโดยระบบ (เลขรันอัตโนมัติ) จึงแก้ไม่ได้ — ต้องการรหัสอื่นต้องสร้างรายการใหม่"
-                  : `กรอกเอง ${AR_MANUAL_HINT} — ห้ามซ้ำกับรหัสที่มีอยู่`}
+                  : arAllowIssued
+                    /* บอกผลที่ตามมาตรงนี้เลย ไม่ใช่รอไปโผล่ในโมดัลยืนยัน — คนที่กำลัง
+                       พิมพ์รหัสใหม่ทับต้องรู้ก่อนพิมพ์ว่ารหัสสินค้า/เอกสารเดิมไม่ตามมาแก้ให้ */
+                    ? `แอดมินแก้ได้ทั้ง ${AR_MANUAL_HINT} และ ${AR_AUTO_HINT} — ห้ามซ้ำกับรหัสที่มีอยู่ · เลขเดิมไม่ถูกนำกลับมาใช้ และรหัสสินค้า/เอกสารที่ออกไปแล้วยังอ้างเลขเดิม`
+                    : `กรอกเอง ${AR_MANUAL_HINT} — ห้ามซ้ำกับรหัสที่มีอยู่`}
               </span>
             </>
           )}

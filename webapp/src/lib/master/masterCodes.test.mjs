@@ -132,6 +132,22 @@ test('โหมดกรอกเอง: ห้ามพิมพ์รหัส
   assert.match(fgCodeError('FG-109-01-002-100011', { mode: CODE_MODE_MANUAL }), /รูปแบบ/);
 });
 
+// แอดมินซ่อมเลข AR ได้ทุกรูปแบบ (มติผู้ใช้ 2026-08-24) — `allowIssued` เปิดเฉพาะตอน **แก้**
+// ทะเบียนโดยแอดมิน · ตอนสร้างยังห้ามพิมพ์รูปแบบที่ระบบออกให้เหมือนเดิมทุกประการ
+test('allowIssued: แอดมินพิมพ์ได้ทั้งรูปแบบเดิมและรูปแบบที่ระบบออกให้', () => {
+  assert.equal(arCodeError('AR-1001', { mode: CODE_MODE_MANUAL, allowIssued: true }), null);
+  assert.equal(arCodeError('AR-109', { mode: CODE_MODE_MANUAL, allowIssued: true }), null);
+  // ผิดรูปแบบยังผิดเหมือนเดิม และข้อความต้องบอกทั้งสองแบบที่พิมพ์ได้
+  const wrong = arCodeError('AR-10', { mode: CODE_MODE_MANUAL, allowIssued: true });
+  assert.match(wrong, /AR-AAA/);
+  assert.match(wrong, /AR-AAAA/);
+  assert.match(arCodeError('', { mode: CODE_MODE_MANUAL, allowIssued: true }), /กรุณากรอก/);
+  // ค่าตั้งต้นต้องเป็น "ห้าม" — ผู้เรียกที่ลืมส่งธงต้องได้กติกาเดิม ไม่ใช่กติกาแอดมิน
+  assert.match(arCodeError('AR-1001', { mode: CODE_MODE_MANUAL }), /เปิดสวิตช์ระบบใหม่/);
+  // โหมด auto ไม่เกี่ยวกับธงนี้เลย (ระบบออกเลขเอง ไม่มีใครพิมพ์)
+  assert.match(arCodeError('AR-109', { mode: CODE_MODE_AUTO, allowIssued: true }), /4 หลัก/);
+});
+
 test('ด่านตรวจรหัสสินค้าแยกตามโหมด และต้องตรงกับหมวดที่เลือก', () => {
   assert.equal(fgCodeError('FG-0109-01-002-10001', { mode: CODE_MODE_AUTO }), null);
   assert.match(fgCodeError('FG-109-01-002-1001', { mode: CODE_MODE_AUTO }), /FG-AAAA/);
