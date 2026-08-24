@@ -22,7 +22,7 @@ import { DIFFICULTY_LABELS, DIFFICULTY_OPTIONS, PERSONAL_TASK_STATUSES, TASK_CAT
 import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import Textarea from "@/components/ui/Textarea";
 
 export const TASK_BLANK = {
@@ -55,13 +55,17 @@ export const taskToForm = (t) => ({
   blockedReason: t.blockedReason || "", predecessorId: t.predecessorId || "",
 });
 
+// 🐞 เดิมเรียก `uploadFileForEntity` ตรง ๆ ซึ่งเป็น **ขั้นเดียว** (ไบต์ขึ้น Drive) แล้ว
+// ทิ้ง ref ที่มันคืนมา ⇒ ไม่มีใครบันทึกแถว metadata: ไฟล์ขึ้น Drive จริง แต่ไม่มีแถวใน
+// `attachments` ⇒ แผง "ไฟล์แนบงาน" ว่างเปล่าโดยไม่มี error ให้เห็นเลย ผู้ใช้อ่านหน้าจอ
+// แล้วเห็นว่า "แนบไปแล้วไฟล์หายไป" · ตัวที่ถูกคือ `uploadAttachment` ซึ่งทำครบสองขั้น
+// และลบไฟล์ที่เพิ่งอัปทิ้งให้เองถ้าขั้นบันทึกแถวล้ม (ไม่เหลือไฟล์กำพร้าบน Drive)
 async function uploadTaskAttachment(taskId, file) {
   // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ — ไม่ผ่าน function จึงไม่ติดเพดาน 4.5 MB
-  try {
-    return await uploadFileForEntity({ file, entityType: "personal_task", entityId: taskId });
-  } catch (err) {
-    throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-  }
+  const { ok, error } = await uploadAttachment({
+    entityType: "personal_task", entityId: taskId, file, docType: "other",
+  });
+  if (!ok) throw new Error(error || `อัปโหลด ${file.name} ไม่สำเร็จ`);
 }
 
 export default function TaskFormModal({
