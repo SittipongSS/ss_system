@@ -2,6 +2,7 @@
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Calendar, Clock3 } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -44,18 +45,21 @@ export default function MgmtMeetingsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     try {
       const res = await fetch(`/api/mgmt/meetings?year=${year}`);
       const rows = res.ok ? await res.json() : [];
       if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
       setMeetings(rows);
-    } catch { if (isLatest()) setMeetings([]); }
+    } catch { if (isLatest() && !opts?.background) setMeetings([]); }
     if (isLatest()) setLoading(false);
   }, [year, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const upsert = (row) => setMeetings((prev) => {
     const i = prev.findIndex((m) => m.id === row.id);

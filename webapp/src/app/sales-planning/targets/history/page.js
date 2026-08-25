@@ -3,6 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarRange, Check, Download, History } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -65,9 +66,11 @@ export default function SalesHistoryMonthlyPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setError("");
     setInfo("");
     try {
@@ -122,13 +125,14 @@ export default function SalesHistoryMonthlyPage() {
       setValues(nextValues);
       setSavedCells(nextSaved);
     } catch (e) {
-      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [year, startRun]);
 
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const valueOf = useCallback((key) => values[key] || emptyValue(), [values]);
 

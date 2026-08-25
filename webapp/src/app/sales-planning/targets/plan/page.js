@@ -5,6 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -83,9 +84,11 @@ export default function SalesTargetPlanPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setError("");
     try {
       const [histRes, users] = await Promise.all([
@@ -119,13 +122,14 @@ export default function SalesTargetPlanPage() {
       }
       setTeamHist(teams);
     } catch (e) {
-      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [historyYears, latestHistYear, startRun]);
 
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   // ---- Derived: projection from company history ----
   const projection = useMemo(() => {

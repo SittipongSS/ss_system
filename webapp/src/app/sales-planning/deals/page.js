@@ -5,6 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, Paperclip, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
@@ -168,9 +169,11 @@ export default function SalesPlanningPipelinePage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setError("");
     try {
       const [dealsRes, customersRes, projectsRes] = await Promise.all([
@@ -205,7 +208,7 @@ export default function SalesPlanningPipelinePage() {
       setCustomers(custData);
       setProjects(projData);
     } catch (e) {
-      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
@@ -214,6 +217,7 @@ export default function SalesPlanningPipelinePage() {
   useEffect(() => {
     load();
   }, [load]);
+  useRevalidateOnFocus(load);
 
   // หมวดสินค้าให้ฟอร์มดีล (สร้าง/แก้) — โหลดครั้งเดียว
   // (โมดัลสร้างโครงการเคยอยู่หน้านี้แบบไม่มีปุ่มเรียก — ถอดทิ้งแล้ว ตัวจริงอยู่หน้าดีลรายใบ)

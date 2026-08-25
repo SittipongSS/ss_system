@@ -21,3 +21,35 @@ export async function cachedJson(key, ttlMs, loader) {
 export function invalidateCache(prefix) {
   for (const key of store.keys()) if (key.startsWith(prefix)) store.delete(key);
 }
+
+/* ── ผูก cache เข้ากับ "สแตมป์ของข้อมูล" ไม่ใช่รอ TTL หมดอายุอย่างเดียว ─────────
+ *
+ * 🐞 **ปัญหาที่แก้ (2026-08-25):** แดชบอร์ดขาย cache ไว้ 5 นาทีและ **ไม่มีใครล้างเลย**
+ * ⇒ ปิดดีล Won เสร็จ กด F5 สิบรอบก็ยังเห็นเลขเก่า ต้องรอครบ 5 นาทีเอง
+ *
+ * ⚠️ **ทำไมไม่ใช้ `invalidateCache` ที่เส้นเขียนแทน** — cache อยู่ต่อ instance
+ * (ดูหัวไฟล์) ⇒ เรียกตอนเขียนจะล้างได้แค่ instance ที่รับ write นั้น · instance อื่น
+ * ยังตอบของเก่าจนครบ TTL อยู่ดี และ Fluid compute มีหลาย instance พร้อมกัน
+ * ⇒ ผู้ใช้ยังเจอ "รีเฟรชสองทีได้เลขสองแบบสลับไปมา" เหมือนเดิม
+ *
+ * สแตมป์แก้ที่ต้นเหตุ: ทุก instance ถามค่าเดียวกันจาก DB ก่อนตอบ ⇒ ข้อมูลเปลี่ยน
+ * เมื่อไร **ทุก instance เห็นพร้อมกัน** และไม่มีเส้นเขียนไหนต้องจำว่าต้องล้าง cache
+ */
+const stamps = new Map();
+
+/**
+ * แจ้งสแตมป์ล่าสุดของข้อมูลกลุ่มหนึ่ง — เปลี่ยนจากเดิม = ล้าง cache ทั้ง prefix ทันที
+ * @returns true ถ้าเพิ่งล้าง (ข้อมูลเปลี่ยน) · false ถ้าเหมือนเดิม
+ */
+export function bumpStamp(prefix, stamp) {
+  if (stamp == null) return false;           // อ่านสแตมป์ไม่ได้ = ถอยไปใช้ TTL ตามเดิม
+  if (stamps.get(prefix) === stamp) return false;
+  invalidateCache(prefix);
+  stamps.set(prefix, stamp);
+  return true;
+}
+
+/** สำหรับเทสต์เท่านั้น — ล้างสแตมป์ที่จำไว้ */
+export function resetStamps() {
+  stamps.clear();
+}

@@ -5,6 +5,7 @@ import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -45,9 +46,11 @@ export default function SalesPlanningTargetsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setError("");
     try {
       const [targetsRes, users] = await Promise.all([
@@ -60,7 +63,7 @@ export default function SalesPlanningTargetsPage() {
       setTargets(rows);
       setUsers(users || []);
     } catch (e) {
-      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
@@ -69,6 +72,7 @@ export default function SalesPlanningTargetsPage() {
   useEffect(() => {
     load();
   }, [load]);
+  useRevalidateOnFocus(load);
 
   // 12 monthly rows (or null) for one org node in the selected year.
   const rowsFor = useCallback(

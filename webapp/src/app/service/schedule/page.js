@@ -6,6 +6,7 @@
 //    ไม่ต้องการความละเอียดระดับนั้น · ชิปเรียงตามเวลาในช่องวันพอแล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -69,9 +70,11 @@ export default function ServiceSchedulePage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/service/visits?from=${range.from}&to=${range.to}`);
@@ -83,12 +86,13 @@ export default function ServiceSchedulePage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ตารางเปล่า — "โหลดพัง" กับ "สัปดาห์นี้ไม่มีนัด"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่าง
-      if (isLatest()) setLoadError(e.message || "โหลดตารางไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดตารางไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   // รายชื่อช่าง + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น
   useEffect(() => {

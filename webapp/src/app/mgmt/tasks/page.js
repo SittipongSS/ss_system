@@ -3,6 +3,7 @@ import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -58,9 +59,11 @@ export default function MgmtTasksPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     const p = new URLSearchParams({ year: String(year) });
     if (filters.deptCode) p.set("deptCode", filters.deptCode);
     if (filters.status) p.set("status", filters.status);
@@ -70,11 +73,12 @@ export default function MgmtTasksPage() {
       const rows = res.ok ? await res.json() : [];
       if (!isLatest()) return; // ตัวกรอง/ปีเปลี่ยนไปแล้ว — คำตอบนี้เป็นของชุดเก่า
       setTasks(rows);
-    } catch { if (isLatest()) setTasks([]); }
+    } catch { if (isLatest() && !opts?.background) setTasks([]); }
     if (isLatest()) setLoading(false);
   }, [year, filters.deptCode, filters.status, filters.priority, startRun]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+  useRevalidateOnFocus(loadTasks);
 
   const rows = useMemo(() => {
     const q = filters.q.trim().toLowerCase();
