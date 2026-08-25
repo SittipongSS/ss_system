@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useMemo } from "react";
-import { can as _can, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
+import { can as _can, homeSystemForUser, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
 
 // Provided by AppLayout (which already knows the signed-in user's role).
 // Pages use useCan('<resource>:<action>') to show/hide actions.
@@ -63,6 +63,19 @@ export function useCapUser() {
   const role = useContext(RoleContext);
   const extraCaps = useContext(ExtraCapsContext);
   return useMemo(() => ({ role, extraCaps }), [role, extraCaps]);
+}
+
+/* บ้านของคนที่กำลังดูอยู่ — 'rd' | 'finance' | null (= สายขาย/แอดมิน)
+ *
+ * ⭐ **ตัวเดียวกับที่เลือกเปลือกเมนู** (`homeSystemForUser` ที่ `config/navigation.js`
+ * ใช้ตัดสินว่าเมนูเอกสารร่วมไปขึ้นกลุ่มไหน — มติผู้ใช้ 2026-08-22) ⇒ หน้าที่ต้อง
+ * "พูดภาษาของคนที่ยืนอยู่" ต้องถามที่นี่ **ห้ามเช็ค role/department เองในหน้า**
+ * ไม่งั้นวันที่เมนูเปลี่ยน (ฝ่ายใหม่ได้เอกสารร่วมเพิ่ม) เปลือกกับเนื้อหาจะเดินหนีกัน
+ */
+export function useHomeSystem() {
+  const role = useContext(RoleContext);
+  const department = useContext(DepartmentContext);
+  return useMemo(() => homeSystemForUser({ role, department }), [role, department]);
 }
 
 export function useCan(cap) {

@@ -5,6 +5,8 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
+import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
+import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
 import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
@@ -137,6 +139,11 @@ export const GET = withUser(async ({ user, supabase }) => {
       _awaitingMyApproval: isSalesOrderReviewer(user.role)
         && row.status === 'pending_approval'
         && !isSalesOrderSelfApproval(row, user.id),
+      /* ⭐ **แกนที่สองของใบเดียวกัน: ขั้นบัญชีตรวจ** (mig 0250 · `financeStatus`)
+         ทะเบียนใบสั่งขายอยู่ในเมนูของฝ่ายบัญชีตั้งแต่มติ 2026-08-22 และหน้าสวมเปลือก
+         ตามคนดู ⇒ คิวบนหัวหน้าต้องพูดงานของคนที่ยืนอยู่ ไม่ใช่ของสายขายเสมอ
+         ⚠️ ด่านจริงยังอยู่ที่ `financeActionError` บนใบ — ธงนี้เป็นแค่ "มีอะไรรอฉัน" */
+      _awaitingFinanceReview: canConfirmPayment(user) && awaitsFinanceReview(row),
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 

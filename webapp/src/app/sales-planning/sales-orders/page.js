@@ -16,7 +16,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useHomeSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -225,8 +225,21 @@ export default function SalesOrdersPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${sortKey}|${sortDir}` });
 
-  // ใบที่รอคนที่กำลังดูอยู่อนุมัติ (ธงจาก server)
-  const approvalQueue = useMemo(() => rows.filter((row) => row._awaitingMyApproval), [rows]);
+  /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
+     ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
+     และหน้าเดียวกันสวมเปลือกคนละอันตามคนดู ⇒ การ์ดต้องพูดงานของคนที่ยืนอยู่
+       เปลือกบัญชี  → ใบที่ผ่าน AE Sup แล้วและรอบัญชีตรวจ (แกน `financeStatus`)
+       เปลือกอื่น   → ใบที่รอคนดูอนุมัติ (แกน `status`)
+     ⚠️ ตัดสินด้วย `useHomeSystem()` ซึ่งเป็น **ตัวเดียวกับที่เลือกเปลือกเมนู** —
+     ห้ามเช็ค role/department เองตรงนี้ ไม่งั้นเมนูกับการ์ดเดินหนีกันวันที่ฝ่ายใหม่
+     ได้เมนูเอกสารร่วมเพิ่ม
+     ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
+     (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
+  const financeShell = useHomeSystem() === "finance";
+  const approvalQueue = useMemo(
+    () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : row._awaitingMyApproval)),
+    [rows, financeShell],
+  );
 
   const summary = useMemo(() => ({
     total: rows.length,
@@ -322,11 +335,14 @@ export default function SalesOrdersPage() {
             ⚠️ ตัดใบที่ตัวเองสร้างหรือยื่นออกที่ server แล้ว (อนุมัติเองไม่ได้) */}
         <ApprovalQueue
           items={approvalQueue}
+          title={financeShell ? "ต้องทำตอนนี้ — ใบที่รอบัญชีตรวจ" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
           primary={(o) => o.orderNumber}
           secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
           onOpen={(o) => router.push(`/sa/sales-orders/${o.id}`)}
           renderAction={(o) => (
-            <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">เปิดใบเพื่ออนุมัติ</Button>
+            <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
+              {financeShell ? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"}
+            </Button>
           )}
         />
 
