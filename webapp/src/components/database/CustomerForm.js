@@ -30,7 +30,8 @@ import {
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
-  AR_AUTO_HINT, AR_MANUAL_HINT, CODE_MODE_AUTO, CODE_MODE_MANUAL, arCodeParts, codeModeOf,
+  AR_AUTO_HINT, AR_FIRST_NUMBER, AR_MANUAL_HINT, CODE_MODE_AUTO, CODE_MODE_MANUAL,
+  arCodeParts, codeModeOf, formatArCode,
 } from "@/lib/master/masterCodes";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 
@@ -170,7 +171,9 @@ export default function CustomerForm({
                   : arAllowIssued
                     /* บอกผลที่ตามมาตรงนี้เลย ไม่ใช่รอไปโผล่ในโมดัลยืนยัน — คนที่กำลัง
                        พิมพ์รหัสใหม่ทับต้องรู้ก่อนพิมพ์ว่ารหัสสินค้า/เอกสารเดิมไม่ตามมาแก้ให้ */
-                    ? `แอดมินแก้ได้ทั้ง ${AR_MANUAL_HINT} และ ${AR_AUTO_HINT} — ห้ามซ้ำกับรหัสที่มีอยู่ · เลขเดิมไม่ถูกนำกลับมาใช้ และรหัสสินค้า/เอกสารที่ออกไปแล้วยังอ้างเลขเดิม`
+                    /* เงื่อนไขที่ด่านรู้แต่ฟอร์มไม่บอก ห้ามมี (กฎในเอกสารวิธีคิดออกแบบฟอร์ม)
+                       ⇒ ต้องเขียนด้วยว่าเลข 4 หลักเริ่มที่ 1001 · รหัสเก่าพิมพ์ 3 หลักตามทะเบียน */
+                    ? `แอดมินแก้ได้ทั้ง ${AR_MANUAL_HINT} และ ${AR_AUTO_HINT} เริ่มที่ ${formatArCode(AR_FIRST_NUMBER)} — ห้ามซ้ำกับรหัสที่มีอยู่ · เลขเดิมไม่ถูกนำกลับมาใช้ และรหัสสินค้า/เอกสารที่ออกไปแล้วยังอ้างเลขเดิม`
                     : `กรอกเอง ${AR_MANUAL_HINT} — ห้ามซ้ำกับรหัสที่มีอยู่`}
               </span>
             </>
