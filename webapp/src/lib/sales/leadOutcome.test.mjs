@@ -1,0 +1,285 @@
+// ── "ลีดใบนี้ไปถึงไหน" — คำตอบเดียวของทั้งระบบ ────────────────────────────
+//
+// เทสต์ชุดนี้คุมสองเรื่องที่พังเงียบทั้งคู่:
+//   1. **ตีกลับล้างคอลัมน์** ⇒ อ่านจากแถวแล้วนัดที่เกิดขึ้นจริงหายไปจากตัวเศษ
+//   2. **เปิดดีลข้ามขั้นนัดได้** ⇒ นับแค่ "เคยนัด" แล้วผลลัพธ์ที่ดีที่สุดได้ศูนย์คะแนน
+// ทั้งคู่ไม่มี error ไม่มีอะไรฟ้อง มีแต่ตัวเลขที่ต่ำกว่าความจริง
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  leadOutcome, leadOutcomeTotals, leadOutcomesFor, LEAD_LOST_UNCOUNTABLE,
+  LEAD_OUTCOME_EVENT_KINDS, channelRollup as channelRollupOf,
+} from './leads.js';
+
+const lead = (over = {}) => ({ status: 'assigned', ...over });
+const ev = (kind, over = {}) => ({ kind, createdAt: '2026-08-01T03:00:00Z', ...over });
+
+/* ── แหล่งข้อมูล: แถว vs ประวัติ ─────────────────────────────────────────── */
+
+test('ไม่ส่ง events มา = อ่านจากคอลัมน์ และบอกว่า basis เป็น row', () => {
+  const o = leadOutcome(lead({ firstContactAt: '2026-08-02T03:00:00Z', meetingAt: '2026-08-05T03:00:00Z' }));
+  assert.equal(o.basis, 'row');
+  assert.equal(o.reachedContact, true);
+  assert.equal(o.reachedMeeting, true);
+});
+
+/* ⚠️ ความต่างที่ไม่มีวันมีใครสังเกตเห็นถ้าไม่ล็อกไว้: `[]` แปลว่า "อ่านประวัติมาแล้ว
+   ไม่มีอะไรเลย" ไม่ใช่ "ไม่ได้อ่าน" · ถอยไปใช้คอลัมน์เมื่อไรจะได้ระบบที่ตอบเหมือน
+   ไม่เคยอ่านประวัติ ทั้งที่อ่านมาแล้ว */
+test('events = [] ไม่ถอยไปใช้คอลัมน์ (คนละความหมายกับ null)', () => {
+  const row = lead({ firstContactAt: '2026-08-02T03:00:00Z', meetingAt: '2026-08-05T03:00:00Z' });
+  const fromRow = leadOutcome(row, null);
+  const fromEmpty = leadOutcome(row, []);
+  assert.equal(fromRow.reachedMeeting, true);
+  assert.equal(fromEmpty.basis, 'events');
+  assert.equal(fromEmpty.reachedMeeting, false);
+});
+
+/* ── 🐞 บั๊กหลักที่ฟังก์ชันนี้เกิดมาแก้ ──────────────────────────────────── */
+
+/* `bounce` ล้าง `meetingAt` + `firstContactAt` (transition/route.js) ⇒ ลีดที่นัดประชุม
+   ไปแล้วจริง ๆ แล้วถูกตีกลับ จะหายจากตัวเศษของอัตราแปลง · ยิ่งเปิดตีกลับอัตโนมัติ
+   ตัวชี้วัดยิ่งถูกกลไกของระบบเองลบทิ้งเป็นประจำ */
+test('ลีดที่นัดแล้วถูกตีกลับ: แถวบอกว่าไม่เคยนัด แต่ประวัติยังจำได้', () => {
+  const bounced = lead({ status: 'new', firstContactAt: null, meetingAt: null });
+  const history = [
+    ev('bounce', { createdAt: '2026-08-10T03:00:00Z' }),
+    ev('meeting', { createdAt: '2026-08-06T03:00:00Z' }),
+    ev('contact', { createdAt: '2026-08-02T03:00:00Z' }),
+  ];
+  assert.equal(leadOutcome(bounced).reachedMeeting, false, 'คอลัมน์ถูกล้างไปแล้ว');
+  assert.equal(leadOutcome(bounced, history).reachedMeeting, true, 'ประวัติไม่เคยถูกล้าง');
+  assert.equal(leadOutcome(bounced, history).reachedContact, true);
+});
+
+/* ⚠️ ต่างจาก meetingTimesSinceBounce ที่ตัดที่ bounce โดยเจตนา — ตัวนั้นตอบ "นัดถัดไป
+   ที่ต้องไป" ตัวนี้ตอบ "เคยไปถึงขั้นนัดไหม" · เอาโค้ดมาใช้ร่วมกันเมื่อไรพังทันที */
+test('นัดที่อยู่ก่อน bounce ยังนับ — ไม่ตัดประวัติที่ขอบรอบ', () => {
+  const history = [ev('bounce', { createdAt: '2026-08-10T03:00:00Z' }), ev('meeting', { createdAt: '2026-08-01T03:00:00Z' })];
+  assert.equal(leadOutcome(lead({ status: 'new' }), history).reachedMeeting, true);
+});
+
+test('followup นับเป็นการติดต่อ (การติดต่อครั้งที่ 2 ขึ้นไป)', () => {
+  assert.equal(leadOutcome(lead(), [ev('followup')]).reachedContact, true);
+});
+
+test('เหตุการณ์ที่ไม่ใช่การคุยกับลูกค้า ไม่นับเป็นติดต่อ', () => {
+  const admin = [ev('create'), ev('screen'), ev('assign'), ev('reassign'), ev('update')];
+  const o = leadOutcome(lead(), admin);
+  assert.equal(o.reachedContact, false);
+  assert.equal(o.reachedMeeting, false);
+});
+
+/* ── ชนะ / แพ้ ──────────────────────────────────────────────────────────── */
+
+test('ชนะ/แพ้อ่านจากสถานะ ไม่ใช่ประวัติ (สองสถานะนี้ไม่มีทางถอย)', () => {
+  assert.equal(leadOutcome(lead({ status: 'qualified' })).won, true);
+  assert.equal(leadOutcome(lead({ status: 'disqualified' })).lost, true);
+  const still = leadOutcome(lead({ status: 'meeting' }));
+  assert.equal(still.won, false);
+  assert.equal(still.lost, false);
+});
+
+/* ⭐ `LEAD_TRANSITIONS.contacted` มี `create_deal` ⇒ ปิดดีลได้โดยไม่ต้องนัด
+   ข้อมูลจริง ส.ค. 2026: นัด 2 แต่เปิดลูกค้า 4 */
+test('เปิดดีลโดยไม่ผ่านนัด = ชนะ แต่ไม่เคยนัด', () => {
+  const o = leadOutcome(lead({ status: 'qualified' }), [ev('create_deal'), ev('contact')]);
+  assert.equal(o.won, true);
+  assert.equal(o.reachedMeeting, false);
+});
+
+/* ── ตัวส่วน ─────────────────────────────────────────────────────────────── */
+
+test('ลีดซ้ำ / ข้อมูลติดต่อผิด หลุดจากตัวส่วน', () => {
+  for (const code of LEAD_LOST_UNCOUNTABLE) {
+    assert.equal(leadOutcome(lead({ status: 'disqualified', disqualifiedCode: code })).countable, false, code);
+  }
+});
+
+test('แพ้ด้วยเหตุผลอื่น ยังอยู่ในตัวส่วน (แพ้จริงต้องถูกนับ)', () => {
+  for (const code of ['no_response', 'budget', 'not_target', 'timing', 'competitor', 'other']) {
+    assert.equal(leadOutcome(lead({ status: 'disqualified', disqualifiedCode: code })).countable, true, code);
+  }
+});
+
+/* คอลัมน์ `disqualifiedCode` ยังไม่มีในฐานข้อมูล — ใบเก่าทุกใบจะคืน undefined
+   ต้องนับต่อเหมือนเดิม ไม่ใช่หลุดจากตัวส่วนกันทั้งกอง */
+test('ใบเก่าที่ยังไม่มีรหัสเหตุผล = นับตามเดิม', () => {
+  assert.equal(leadOutcome(lead({ status: 'disqualified' })).countable, true);
+  assert.equal(leadOutcome(lead({ status: 'disqualified', disqualifiedCode: null })).countable, true);
+});
+
+test('ใบที่ยังเดินอยู่ อยู่ในตัวส่วนเสมอ', () => {
+  for (const status of ['new', 'screened', 'assigned', 'contacted', 'meeting']) {
+    assert.equal(leadOutcome(lead({ status })).countable, true, status);
+  }
+});
+
+/* ── ผลรวม ──────────────────────────────────────────────────────────────── */
+
+const totalsOf = (leads) => leadOutcomeTotals(leads.map((l) => leadOutcome(l)));
+
+test('ตัวเศษ = เคยนัด หรือ เปิดดีล — ใบที่เข้าทั้งสองเงื่อนไขนับครั้งเดียว', () => {
+  const t = totalsOf([
+    lead({ status: 'meeting', meetingAt: '2026-08-05T03:00:00Z' }),          // นัดอย่างเดียว
+    lead({ status: 'qualified' }),                                            // เปิดดีลโดยไม่นัด
+    lead({ status: 'qualified', meetingAt: '2026-08-06T03:00:00Z' }),         // ทั้งสองอย่าง
+    lead({ status: 'assigned' }),                                             // ยังไม่ถึงไหน
+  ]);
+  assert.equal(t.countable, 4);
+  assert.equal(t.reached, 3, 'ใบที่ทั้งนัดและเปิดดีลต้องไม่ถูกนับสองครั้ง');
+  assert.equal(t.wonWithoutMeeting, 1);
+  assert.equal(t.pct, 75);
+});
+
+test('ใบที่ตัดออกไม่อยู่ทั้งตัวเศษและตัวส่วน', () => {
+  const t = totalsOf([
+    lead({ status: 'qualified' }),
+    lead({ status: 'disqualified', disqualifiedCode: 'duplicate' }),
+    lead({ status: 'disqualified', disqualifiedCode: 'invalid' }),
+  ]);
+  assert.equal(t.total, 3);
+  assert.equal(t.countable, 1);
+  assert.equal(t.excluded, 2);
+  assert.equal(t.pct, 100, 'สแปมที่เข้ามาไม่ควรลากอัตราแปลงลง');
+});
+
+/* ⚠️ 0% อ่านว่า "ทำไม่ได้เลย" ส่วน "ยังไม่มีข้อมูล" เป็นคนละเรื่อง — กลบเป็น 0 เมื่อไร
+   จะได้คำตอบที่ดูปกติจนไม่มีใครสงสัย (กติกาเดียวกับ slaPendingTone) */
+test('ไม่มีใบไหนอยู่ในตัวส่วน = null ไม่ใช่ 0', () => {
+  assert.equal(leadOutcomeTotals([]).pct, null);
+  assert.equal(totalsOf([lead({ status: 'disqualified', disqualifiedCode: 'invalid' })]).pct, null);
+});
+
+test('basis ของผลรวมจับได้ว่าจอผสมสองแหล่ง', () => {
+  const rowOnly = [leadOutcome(lead()), leadOutcome(lead())];
+  const evOnly = [leadOutcome(lead(), []), leadOutcome(lead(), [ev('contact')])];
+  assert.equal(leadOutcomeTotals(rowOnly).basis, 'row');
+  assert.equal(leadOutcomeTotals(evOnly).basis, 'events');
+  assert.equal(leadOutcomeTotals([...rowOnly, ...evOnly]).basis, 'mixed');
+  assert.equal(leadOutcomeTotals([]).basis, 'row', 'ก้อนว่างต้องไม่อ้างว่าอ่านประวัติมา');
+});
+
+/* ── ของที่ต้องไม่ระเบิด ────────────────────────────────────────────────── */
+
+test('ค่าว่าง/ขยะ ไม่โยน error', () => {
+  assert.equal(leadOutcome().basis, 'row');
+  assert.equal(leadOutcome({}, [null, undefined, {}]).reachedContact, false);
+  assert.equal(leadOutcomeTotals().total, 0);
+  assert.equal(leadOutcomeTotals([null]).countable, 0);
+});
+
+/* ══ อ่านจากประวัติ (5b) ═══════════════════════════════════════════════════ */
+
+/* 🪤 all-or-nothing — อ่านประวัติไม่ได้แล้วต้องถอยไปใช้คอลัมน์ **ทั้งกระดาน**
+   ปล่อยให้บางใบอ่านจากประวัติ บางใบอ่านจากคอลัมน์ = ตัวเลขผสมสองนิยามในตารางเดียว
+   ซึ่งไม่มีทางอธิบายได้ว่าทำไมสองแถวถึงนับไม่เหมือนกัน */
+test('อ่านประวัติไม่ได้ (null) = ทุกใบถอยไปใช้คอลัมน์พร้อมกัน', () => {
+  const rows = [lead({ meetingAt: 'x' }), lead({ status: 'new' })];
+  const outcomes = leadOutcomesFor(rows, null);
+  assert.deepEqual(outcomes.map((o) => o.basis), ['row', 'row']);
+  assert.equal(leadOutcomeTotals(outcomes).basis, 'row', 'หน้าจอต้องรู้ว่านับจากคอลัมน์');
+});
+
+/* ⚠️ ใบที่ไม่มีเหตุการณ์เลยต้องได้ `[]` ไม่ใช่ `undefined` — `undefined` จะถอยไปอ่าน
+   คอลัมน์เงียบ ๆ แล้วใบนั้นจะนับคนละนิยามกับเพื่อนในตารางเดียวกัน */
+test('ใบที่ไม่มีเหตุการณ์ในแมป ยังนับจากประวัติ (ไม่ใช่ถอยไปคอลัมน์)', () => {
+  const withMeeting = lead({ id: 'A', meetingAt: 'x' });
+  const outcomes = leadOutcomesFor([withMeeting], new Map());
+  assert.equal(outcomes[0].basis, 'events');
+  assert.equal(outcomes[0].reachedMeeting, false, 'ประวัติว่าง = ยังไม่เคยนัด แม้คอลัมน์จะมีค่า');
+});
+
+/* 🐞 บั๊กที่ 5b เกิดมาแก้: ลีดที่นัดแล้วถูกตีกลับ คอลัมน์ถูกล้าง ⇒ หายจากตัวเศษ */
+test('อ่านจากประวัติแล้วใบที่ถูกตีกลับกลับเข้าตัวเศษ', () => {
+  const bounced = lead({ id: 'B', status: 'new', meetingAt: null, firstContactAt: null });
+  const history = new Map([['B', [ev('meeting'), ev('contact'), ev('bounce')]]]);
+  const fromRow = leadOutcomeTotals(leadOutcomesFor([bounced], null));
+  const fromEvents = leadOutcomeTotals(leadOutcomesFor([bounced], history));
+  assert.equal(fromRow.reached, 0, 'คอลัมน์ถูกล้างไปแล้ว');
+  assert.equal(fromEvents.reached, 1, 'ประวัติยังจำนัดนั้นได้');
+  assert.equal(fromEvents.pct, 100);
+});
+
+test('ชุด kind ที่ต้องดึงครอบทุกอย่างที่ leadOutcome อ่าน', () => {
+  assert.deepEqual([...LEAD_OUTCOME_EVENT_KINDS].sort(), ['contact', 'followup', 'meeting']);
+});
+
+/* ══ ผู้เรียกทั้งหมดกินนิยามเดียวกัน ═══════════════════════════════════════
+   สามที่ที่เคยเขียนเงื่อนไขเองซ้ำกัน: `channelRollup` (ไฟล์นี้) · `funnel` และ
+   `byAssignee` (KPI route) · ย้ายมาใช้ `leadOutcome` แล้วทั้งหมด
+
+   ⚠️ **`myQueue` ไม่ใช่ผู้เรียก** ทั้งที่อ่าน `meetingAt` เหมือนกัน — มันถามว่า
+   "มีนัดที่ยังไม่ถึงไหม" (วันกำหนดในคิวงาน) ไม่ใช่ "เคยไปถึงขั้นนัดไหม" (ผลลัพธ์)
+   สองคำถามนี้บังเอิญอ่านคอลัมน์เดียวกันเฉย ๆ · ยัด leadOutcome เข้าไปเมื่อไร
+   ลีดที่นัดไปแล้วเมื่อเดือนที่แล้วจะขึ้นคิวงานว่ามีนัด ทั้งที่ประชุมจบไปนานแล้ว */
+
+/* 🪤 คนที่ลืมง่ายที่สุดคือ "แก้ที่หนึ่ง ลืมอีกสองที่" — เทสต์นี้อ่านซอร์สจริงมาดูว่า
+   ยังมีใครเขียนเงื่อนไขเองอยู่ไหม · เพิ่มตัวนับใหม่ในอนาคตแล้วเผลอเขียน
+   `l.meetingAt` ตรง ๆ จะแดงทันที ไม่ต้องรอให้ตัวเลขสองจอขัดกันแล้วค่อยรู้ */
+test('ไม่มีผู้เรียกไหนเขียนเงื่อนไข "ไปถึงไหน" เองอีก', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kpiRoute = readFileSync(
+    new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url), 'utf8',
+  );
+  // ตัดคอมเมนต์ออกก่อน — คอมเมนต์อธิบายบั๊กเก่าย่อมพูดถึงชื่อคอลัมน์เหล่านี้
+  const code = kpiRoute.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const banned of [/\bl\.meetingAt\b/, /\bl\.firstContactAt\b/]) {
+    // firstContactAt ยังใช้ได้ในบริบท SLA ("ทันไหม") — ห้ามเฉพาะตอนใช้เป็นตัวนับ
+    const hits = [...code.matchAll(new RegExp(banned.source, 'g'))];
+    for (const hit of hits) {
+      const line = code.slice(0, hit.index).split('\n').pop() + code.slice(hit.index).split('\n')[0];
+      assert.match(line, /slaHit|slaStage/,
+        `KPI route ยังอ่าน ${hit[0]} เป็นตัวนับ — ต้องผ่าน leadOutcome`);
+    }
+  }
+  // เรียกตัวเดี่ยวหรือตัวชุดก็ได้ — ขอแค่ผลมาจากโมดูลกลาง ไม่ใช่คิดเอง
+  assert.match(code, /leadOutcomesFor\(|leadOutcome\(/,
+    'route ต้องเอาผลมาจาก leadOutcome/leadOutcomesFor จริง ไม่ใช่แค่ import');
+});
+
+/* ผลของ channelRollup ต้องไม่ขยับหลังย้ายมาใช้ leadOutcome — การรวมโค้ดกับการเปลี่ยน
+   นิยามต้องเป็นคนละคอมมิต ไม่งั้นตัวเลขขยับแล้วแยกไม่ออกว่าเพราะอะไร */
+test('ย้ายมาใช้ leadOutcome แล้วตัวเลขไม่ขยับ — รวมโค้ด ไม่ใช่เปลี่ยนนิยาม', () => {
+  const rows = [
+    { channel: 'phone', status: 'qualified', firstContactAt: 'x', meetingAt: 'y' },
+    { channel: 'phone', status: 'contacted', firstContactAt: 'x' },
+    { channel: 'phone', status: 'new' },
+    { channel: 'website', status: 'disqualified', firstContactAt: 'x', disqualifiedCode: 'duplicate' },
+    { channel: 'website', status: 'meeting', firstContactAt: 'x', meetingAt: 'y' },
+  ];
+  const [phone, website] = channelRollupOf(rows);
+  assert.deepEqual(
+    { count: phone.count, contacted: phone.contacted, meeting: phone.meeting, won: phone.won, untouched: phone.untouched },
+    { count: 3, contacted: 2, meeting: 1, won: 1, untouched: 1 },
+  );
+  /* ⚠️ ใบที่ `countable: false` (ลีดซ้ำ) **ยังนับใน channelRollup ตามเดิม** — ตารางนี้
+     ตอบว่า "เข้ามาทางไหนแล้วเกิดอะไรขึ้น" ซึ่งลีดซ้ำก็เข้ามาจริง · การตัดออกจากตัวส่วน
+     เป็นเรื่องของอัตราแปลง (leadOutcomeTotals) ไม่ใช่ของตารางช่องทาง */
+  assert.equal(website.lost, 1, 'ลีดซ้ำยังนับในตารางช่องทาง');
+  assert.equal(website.count, 2);
+});
+
+/* ── 🪤 กันดริฟต์: ผลรวมต้องเท่ากับ channelRollup ที่มีอยู่เดิม ─────────────
+   ตราบใดที่ยังไม่มีใบไหนถูกตีกลับและยังไม่มี disqualifiedCode ทั้งสองทางต้องได้เลข
+   เดียวกันเป๊ะ · แดงเมื่อไรแปลว่านิยามสองที่เริ่มแยกจากกันแล้ว ซึ่งคือโรคที่ฟังก์ชันนี้
+   เกิดมารักษา — ไม่ใช่ให้แก้เทสต์ ให้ไปแก้ที่มาให้มันกินตัวเดียวกัน */
+test('เทียบกับ channelRollup ของเดิม: เลขต้องตรงกันบนข้อมูลที่ไม่ถูกตีกลับ', async () => {
+  const { channelRollup } = await import('./leads.js');
+  const rows = [
+    { channel: 'phone', status: 'qualified', firstContactAt: 'x', meetingAt: 'y' },
+    { channel: 'phone', status: 'contacted', firstContactAt: 'x' },
+    { channel: 'website', status: 'meeting', firstContactAt: 'x', meetingAt: 'y' },
+    { channel: 'website', status: 'disqualified', firstContactAt: 'x' },
+    { channel: 'website', status: 'new' },
+  ];
+  const old = channelRollup(rows).reduce((a, c) => ({
+    contacted: a.contacted + c.contacted, meeting: a.meeting + c.meeting,
+    qualified: a.qualified + c.qualified, disqualified: a.disqualified + c.disqualified,
+  }), { contacted: 0, meeting: 0, qualified: 0, disqualified: 0 });
+  const now = totalsOf(rows);
+  assert.equal(now.contacted, old.contacted);
+  assert.equal(now.meeting, old.meeting);
+  assert.equal(now.won, old.qualified);
+  assert.equal(now.lost, old.disqualified);
+});
