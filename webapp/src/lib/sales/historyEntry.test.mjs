@@ -44,6 +44,32 @@ test('เดือนปัจจุบันยัง "ไม่ปิด" — 
   assert.equal(isMonthClosed('2025', 12, JULY_2026), false);
 });
 
+/* 🪤 งวดต้องนับตามวันไทย ไม่ใช่นาฬิกาของเครื่องที่เปิดหน้า
+   สองเคสนี้ห่างกันชั่วโมงเดียวและคร่อมเที่ยงคืนไทยพอดี — ถ้าใครเผลอกลับไปใช้
+   `now.getMonth()` เคสแรกจะพัง (เครื่องโซนล้ำหน้าจะนับว่าเป็น ก.ย. แล้ว) */
+test('เดือนที่ปิด/แก้ได้ นับตามเวลาไทย ไม่ใช่เวลาเครื่อง', () => {
+  const stillAugustBkk = new Date('2026-08-31T16:00:00Z'); // 31 ส.ค. 23:00 ไทย
+  const alreadySeptBkk = new Date('2026-08-31T17:00:00Z'); // 1 ก.ย. 00:00 ไทย
+
+  // ส.ค. = index 7
+  assert.equal(isMonthClosed('2026', 7, stillAugustBkk), false, 'ยังเป็นสิงหาคมในไทย = ยังไม่ปิด');
+  assert.equal(isMonthClosed('2026', 7, alreadySeptBkk), true, 'ขึ้นกันยายนในไทยแล้ว = สิงหาคมปิด');
+
+  // ก.ย. = index 8 — เพิ่งเริ่ม ยังกรอกได้แต่ยังไม่ปิด
+  assert.equal(isMonthEditable('2026', 8, stillAugustBkk), false);
+  assert.equal(isMonthEditable('2026', 8, alreadySeptBkk), true);
+  assert.equal(isMonthClosed('2026', 8, alreadySeptBkk), false);
+});
+
+test('ข้ามปีก็ยังนับตามวันไทย', () => {
+  const stillDecBkk = new Date('2026-12-31T16:00:00Z'); // 31 ธ.ค. 23:00 ไทย
+  const alreadyJanBkk = new Date('2026-12-31T17:00:00Z'); // 1 ม.ค. 2027 00:00 ไทย
+  assert.equal(isMonthClosed('2026', 11, stillDecBkk), false);
+  assert.equal(isMonthClosed('2026', 11, alreadyJanBkk), true);
+  assert.equal(isMonthEditable('2027', 0, stillDecBkk), false);
+  assert.equal(isMonthEditable('2027', 0, alreadyJanBkk), true);
+});
+
 test('ผลรวมรายเดือนข้ามช่องว่างและค่าที่ไม่ใช่ตัวเลข', () => {
   assert.equal(monthsSum(['', 100, null, 250, undefined, 'x']), 350);
   assert.equal(monthsSum([]), 0);

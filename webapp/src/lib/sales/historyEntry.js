@@ -8,8 +8,21 @@
 // (ต่างจากใส่ 0 ซึ่งแปลว่า "ขายไม่ได้เลย") — คนกรอกเลือกเองว่าปีไหนแยกได้จริง
 
 import { hasTeam } from '@/lib/permissions';
+import { businessMonthKey } from '@/lib/datePeriods';
 
 export const MONTHS_IN_YEAR = 12;
+
+/* งวดเดือนของ "ตอนนี้" ตามเวลาไทย — ห้ามอ่าน `now.getMonth()` ตรง ๆ
+   🪤 `getMonth()` เป็นเวลาท้องถิ่นของเบราว์เซอร์ · เครื่องที่ตั้ง TZ ล้ำหน้าไทย
+   (หรือตั้งผิด) จะข้ามเดือนก่อนไทยหลายชั่วโมง ⇒ 31 ส.ค. สามทุ่มเวลาไทย เครื่องนั้น
+   นับว่าเป็น ก.ย. แล้ว → สิงหาคมถูกถือว่า "ปิดแล้ว" ทั้งที่ยังขายอยู่ → ปุ่มเติมยอด
+   เสนอตรึงยอดเดือนที่ยังเดิน ซึ่งคือบั๊กที่ทั้งไฟล์นี้ตั้งใจกัน
+   งวดของทั้งระบบนับตามวันไทยอยู่แล้ว (ดู lib/datePeriods) จึงต้องใช้ฐานเดียวกัน */
+function nowMonthKey(now) {
+  return businessMonthKey(now instanceof Date ? now.toISOString() : now) || '';
+}
+
+const monthKeyOf = (year, monthIdx) => `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
 
 // ปีปัจจุบัน + ย้อนหลัง 3 ปี — ต้องมีปีปัจจุบันด้วยเพราะเดือนต้นปีที่ยังไม่ได้ใช้ระบบ
 // (ม.ค.–พ.ค. 2026) ก็ต้องกรอกย้อนหลังเหมือนกัน
@@ -22,10 +35,9 @@ export function historyYearOptions(now = new Date(), span = 4) {
 export function isMonthEditable(year, monthIdx, now = new Date()) {
   const y = Number(year);
   if (!Number.isFinite(y) || monthIdx < 0 || monthIdx >= MONTHS_IN_YEAR) return false;
-  const currentYear = now.getFullYear();
-  if (y < currentYear) return true;
-  if (y > currentYear) return false;
-  return monthIdx <= now.getMonth();
+  const nowKey = nowMonthKey(now);
+  if (!nowKey) return false;
+  return monthKeyOf(y, monthIdx) <= nowKey;
 }
 
 /* เดือนที่ "ปิดแล้ว" — จบเดือนไปแล้วจริง ๆ ต่างจาก `isMonthEditable` ตรงเดือนปัจจุบัน
@@ -37,10 +49,9 @@ export function isMonthEditable(year, monthIdx, now = new Date()) {
 export function isMonthClosed(year, monthIdx, now = new Date()) {
   const y = Number(year);
   if (!Number.isFinite(y) || monthIdx < 0 || monthIdx >= MONTHS_IN_YEAR) return false;
-  const currentYear = now.getFullYear();
-  if (y < currentYear) return true;
-  if (y > currentYear) return false;
-  return monthIdx < now.getMonth();
+  const nowKey = nowMonthKey(now);
+  if (!nowKey) return false;
+  return monthKeyOf(y, monthIdx) < nowKey;
 }
 
 export function monthsSum(values = []) {
