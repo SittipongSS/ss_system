@@ -23,11 +23,23 @@ test('เพดาน 220px ยังอยู่กับช่องข้อ�
   );
 });
 
-test('เซลล์ที่กลายเป็นการ์ด (stacked) ไม่โดนเพดาน', () => {
+test('เซลล์ที่กลายเป็นการ์ดในตารางแก้ไขได้ (editable + stacked) ไม่โดนเพดาน', () => {
   assert.match(
     tableCss,
-    /\.scroll\[data-cells="stacked"\] :global\(td\)[^{]*\{[^}]*max-width: none/s,
-    'stacked = การ์ดเต็มความกว้าง เพดาน 220px บีบทั้งการ์ดจนคอนโทรลถูกตัด',
+    /\.scroll\[data-family="editable"\]\[data-cells="stacked"\] :global\(td\)[^{]*\{[^}]*max-width: none/s,
+    'การ์ดเต็มความกว้างที่ข้างในเป็นคอนโทรล — เพดาน 220px บีบจนคอนโทรลถูกตัด',
+  );
+});
+
+/* 🐞 วัดจริง 2026-08-25: ข้อยกเว้นข้างบนเคยเขียนเป็น `[data-cells="stacked"]` เปล่า ๆ
+   ⇒ ถอดเพดานให้ **ตารางลิสต์** ที่ใช้ stacked ด้วย (คิวคำร้อง · ทะเบียนกลิ่น ·
+   ใบสั่งขาย · การเงิน · ทะเบียนชำระ) · คิวคำร้องกว้าง 2136px ในกรอบ 1338 ทันที
+   ซึ่งล้ม #1389 ที่เพิ่งทำให้ตารางนั้นลงกรอบพอดี */
+test('ตารางลิสต์ที่ใช้ stacked ยังต้องได้เพดาน', () => {
+  assert.doesNotMatch(
+    tableCss,
+    /^\.scroll\[data-cells="stacked"\] :global\(td\),/m,
+    'ข้อยกเว้นต้องผูกกับ family="editable" ไม่ใช่ stacked ทั้งชุด',
   );
 });
 
@@ -54,7 +66,7 @@ test('ปุ่ม "อ่านทั้งหมด" ไม่นับเป�
 
 test('ข้อยกเว้นต้องอยู่หลังกฎเพดาน — specificity เท่ากัน ลำดับในไฟล์เป็นตัวตัดสิน', () => {
   const capAt = tableCss.indexOf('max-width: var(--cell-text-max)');
-  const stackedAt = tableCss.indexOf('.scroll[data-cells="stacked"] :global(td),');
+  const stackedAt = tableCss.indexOf('.scroll[data-family="editable"][data-cells="stacked"] :global(td),');
   assert.ok(capAt > 0 && stackedAt > 0);
   assert.ok(stackedAt > capAt, 'ย้ายข้อยกเว้นขึ้นไปก่อนกฎเพดาน = กลับไปพังเหมือนเดิมแบบเงียบ ๆ');
 });
