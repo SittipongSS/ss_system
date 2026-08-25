@@ -14,7 +14,7 @@ import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
 import { customerNameIn } from "@/lib/master/customerName";
-import { isAutoArCode, isReusableCode } from "@/lib/master/masterCodes";
+import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import OrderDetailModal from "@/components/OrderDetailModal";
 import ProductStatusPill from "@/components/ProductStatusPill";
@@ -228,7 +228,11 @@ export default function CustomerDetails() {
         title: "เปลี่ยนเลขที่ลูกค้า (AR Code)",
         description: `${currentAr} → ${nextAr}`,
         detail: [
-          `· เลขเดิม ${currentAr} จะไม่ถูกนำกลับไปออกให้ลูกค้ารายอื่น`,
+          /* เลขเดิมได้คืนหรือไม่ ตัดสินด้วยกติกาเดียวกับ server (reclaimableArNumber)
+             — ห้ามให้โมดัลสัญญาอย่างหนึ่งแล้ว API ทำอีกอย่าง */
+          reclaimableArNumber(customer)
+            ? `· เลขเดิม ${currentAr} จะกลับเข้ากองรอออกให้ลูกค้ารายถัดไป (ใบนี้ยังไม่เคยผ่านอนุมัติ)`
+            : `· เลขเดิม ${currentAr} จะไม่ถูกนำกลับไปออกให้ลูกค้ารายอื่น`,
           products.length
             ? `· รหัสสินค้าของลูกค้ารายนี้ ${products.length} รายการ ยังฝังเลขเดิมไว้ (เช่น ${products[0]?.fgCode || "FG-…"}) ระบบไม่ตามไปแก้ให้`
             : "· รหัสสินค้าที่ออกไปแล้วจะยังฝังเลขเดิมไว้เสมอ ระบบไม่ตามไปแก้ให้",
