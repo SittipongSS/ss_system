@@ -14,7 +14,7 @@ import { useId, useRef } from "react";
 import { nextEnabledIndex } from "@/lib/ui/selectionNavigation";
 
 export default function SectionRail({
-  sections,          // [{ key, label, count?: {filled,total,optional?}, tone?, action? }]
+  sections,          // [{ key, label, count?: {filled,total,optional?}, tone?, action?, title? }]
   value,
   onChange,
   ariaLabel = "ส่วนของแบบฟอร์ม",
@@ -68,6 +68,9 @@ export default function SectionRail({
               aria-controls={`${rootId}-panel`}
               tabIndex={on ? 0 : -1}
               className="section-rail-item"
+              /* ⚠️ ป้ายบนรางถูกย่อได้ (ผู้เรียกส่ง `label` สั้น + `title` เต็ม) — ชื่อเต็ม
+                 ต้องยังอ่านได้โดยไม่ต้องเปิดแถว · ไม่ส่งมาก็ไม่มี tooltip เหมือนเดิม */
+              title={item.title || undefined}
               data-on={on ? "1" : undefined}
               onClick={() => onChange?.(item.key)}
               onKeyDown={(event) => moveFocus(event, index)}
