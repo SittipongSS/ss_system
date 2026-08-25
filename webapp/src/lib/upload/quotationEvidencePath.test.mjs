@@ -46,3 +46,19 @@ test('ไม่รับ path นอกโฟลเดอร์หลักฐ�
     assert.equal(isQuotationEvidencePath(bad), false, `ต้องไม่รับ: ${bad}`);
   }
 });
+
+test('ผูกกับใบเสนอราคาของใบตัวเอง — ref ที่ชี้ใบอื่นต้องไม่ผ่าน', () => {
+  const own = 'quotations/QT-abc123/order-confirmation/1_uuid_f.jpg';
+  const other = 'quotations/QT-zzz999/order-confirmation/1_uuid_f.jpg';
+  assert.equal(isQuotationEvidencePath(own, 'QT-abc123'), true);
+  assert.equal(isQuotationEvidencePath(other, 'QT-abc123'), false, 'ใบอื่นต้องไม่ผ่านเมื่อผูก id แล้ว');
+  // ไม่ส่ง id = โหมดกว้าง (ผู้เรียกที่ยังไม่รู้ว่าใบไหน) — ยังต้องรับของตัวเองได้
+  assert.equal(isQuotationEvidencePath(other), true);
+});
+
+test('id ถูกล้างด้วยกฎเดียวกับตอนเขียน path', () => {
+  // ชื่อใบที่มีอักขระนอก [A-Za-z0-9_-] ถูกแทนด้วย `_` ทั้งตอนเขียนและตอนตรวจ
+  const prefix = privateEvidencePrefix('sales_order_confirmation', 'QT 26/08');
+  assert.equal(prefix, 'quotations/QT_26_08/order-confirmation/');
+  assert.equal(isQuotationEvidencePath(`${prefix}f.jpg`, 'QT 26/08'), true);
+});

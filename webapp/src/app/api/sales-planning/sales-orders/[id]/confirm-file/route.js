@@ -13,6 +13,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { isQuotationEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,9 +38,12 @@ export async function GET(request, { params }) {
 
   if (att.storagePath) {
     const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
-    const safeQuoteId = String(order.quotationId || '').replace(/[^a-zA-Z0-9_-]+/g, '_');
+    /* ⚠️ ใบเก่า (ก่อน mig 0285) หลักฐานอยู่ในโฟลเดอร์ `won/` ของใบเสนอราคาต้นทาง —
+       พอโหมดแก้ยกไฟล์เหล่านั้นตามเข้าใบ (ดู sales-orders/[id]/page.js) ref ที่บันทึก
+       จึงเป็น path ของ `won/` ไม่ใช่ `order-confirmation/` · ถามทะเบียนเดียวกับ
+       payment-file แทนการเขียนชื่อโฟลเดอร์เองอีกชุด ซึ่งเป็นต้นเหตุของ #1404 พอดี */
     if (att.storageBucket !== privateBucket
-      || !String(att.storagePath).startsWith(`quotations/${safeQuoteId}/order-confirmation/`)) {
+      || !isQuotationEvidencePath(att.storagePath, order.quotationId)) {
       return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
     }
     const { data, error } = await supabase.storage.from(privateBucket).download(att.storagePath);

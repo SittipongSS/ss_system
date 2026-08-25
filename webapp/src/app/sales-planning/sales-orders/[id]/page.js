@@ -22,6 +22,29 @@ import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/compon
 import { customerHeadline } from "@/lib/master/customerAr";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
 import { orderConfirmationOf, salesOrderConfirmationGate } from "@/lib/sales/orderConfirmationDocs";
+
+/* ค่าตั้งต้นของฟอร์ม "ยืนยันคำสั่งซื้อ" — **อ่านสองบ้านเหมือนตอนแสดงผล**
+ *
+ * 🐞 เดิม seed จาก `order.confirm*` อย่างเดียว ⇒ ใบที่ออกก่อน mig 0285 (61 จาก 72 ใบ
+ * บน prod) กดแก้แล้วการ์ดไฟล์ว่างเปล่า ทั้งที่หลักฐานอยู่ครบที่ใบเสนอราคาต้นทาง
+ * · แย่กว่านั้น: แค่กรอกช่อง "ชนิดเอกสาร" แล้วบันทึก `orderConfirmationOf` ก็พลิกไป
+ * อ่านบ้านของใบสั่งขายซึ่งไม่มีไฟล์ ⇒ หลักฐานหายจากจอ และด่านยื่นอนุมัติเด้งว่า
+ * "ยังไม่มีไฟล์แนบ" ทั้งที่ไฟล์ยังอยู่ที่เดิม
+ *
+ * ⭐ seed จากบ้านที่ระบบอ่านจริง ⇒ ไฟล์ที่เห็นตอนแก้คือไฟล์ชุดเดียวกับตอนอ่าน และ
+ * บันทึกแล้ว ref ตามเข้าใบ ทำให้ใบเป็นเจ้าของหลักฐานของตัวเองตั้งแต่นั้น
+ * (ด่านอ่าน `confirm-file` รับ path ของโฟลเดอร์ `won/` ด้วยแล้ว — ดู privateEvidence) */
+function confirmationDraft(order) {
+  const onFile = orderConfirmationOf(order, order?.quotation);
+  return {
+    docType: order?.confirmDocType || onFile?.docType || "",
+    docNo: order?.confirmDocNo || onFile?.docNo || "",
+    docDate: order?.confirmDocDate || onFile?.docDate || "",
+    attachments: Array.isArray(order?.confirmAttachments) && order.confirmAttachments.length
+      ? order.confirmAttachments
+      : (onFile?.attachments || []),
+  };
+}
 import {
   DocumentControlCard, DocumentSummaryCard,
 } from "@/components/ui/DocumentControlPanel";
@@ -182,12 +205,7 @@ export default function SalesOrderDetailPage() {
     }
     setOrder(data);
     setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "" });
-    setConfirmation({
-      docType: data.confirmDocType || "",
-      docNo: data.confirmDocNo || "",
-      docDate: data.confirmDocDate || "",
-      attachments: Array.isArray(data.confirmAttachments) ? data.confirmAttachments : [],
-    });
+    setConfirmation(confirmationDraft(data));
     setConfirmFiles([]);
     setDirty(false);
     return true;
@@ -394,12 +412,7 @@ export default function SalesOrderDetailPage() {
 
   function leaveEditMode() {
     setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "" });
-    setConfirmation({
-      docType: order.confirmDocType || "",
-      docNo: order.confirmDocNo || "",
-      docDate: order.confirmDocDate || "",
-      attachments: Array.isArray(order.confirmAttachments) ? order.confirmAttachments : [],
-    });
+    setConfirmation(confirmationDraft(order));
     setConfirmFiles([]);
     setDirty(false);
     setSaveState("idle");
@@ -698,6 +711,13 @@ export default function SalesOrderDetailPage() {
   const workflowSteps = workflowStepsFromIndex(workflow, workflowIndexResolved, order.status === "cancelled");
   // เอกสารยืนยันที่ใบนี้มีจริง (ของใบเอง ถ้าไม่มีถอยไปดูหลักฐาน Won ของใบเสนอราคา)
   const confirmationOnFile = orderConfirmationOf(order, order.quotation);
+  /* 🐞 ปุ่มเปิดไฟล์ต้องเลือก proxy ตาม **บ้านที่ไฟล์อยู่จริง** ไม่ใช่ยิง confirm-file ตายตัว —
+     ใบเก่ายังไม่ได้บันทึกทับ ไฟล์ยังอยู่ที่ใบเสนอราคา ⇒ confirm-file อ่าน
+     `order.confirmAttachments` ที่ว่างแล้วตอบ "ไม่พบไฟล์แนบ" · แผงงวดชำระเลือกถูกอยู่แล้ว
+     (SalesOrderPaymentPanel) แต่หน้านี้เขียนไว้อีกชุด — ยกมาเป็นตัวเดียว */
+  const confirmFileHref = (index) => (confirmationOnFile?.source === "order"
+    ? `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`
+    : `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`);
   const confirmationGate = ["draft", "rejected"].includes(order.status)
     ? salesOrderConfirmationGate(order, order.quotation)
     : null;
@@ -1039,7 +1059,7 @@ export default function SalesOrderDetailPage() {
               <SalesOrderConfirmationFields
                 mode="read"
                 value={confirmationOnFile}
-                fileHref={(index) => `/api/sales-planning/quotations/${order.quotationId}/file?i=${index}`}
+                fileHref={confirmFileHref}
               />
             ) : (
               <SalesOrderConfirmationFields
@@ -1050,7 +1070,7 @@ export default function SalesOrderDetailPage() {
                 onFilesChange={setConfirmFiles}
                 onOversize={setError}
                 disabled={!!busy}
-                fileHref={(index) => `/api/sales-planning/sales-orders/${order.id}/confirm-file?i=${index}`}
+                fileHref={confirmFileHref}
               />
             )}
             {confirmationGate && !editable && (
