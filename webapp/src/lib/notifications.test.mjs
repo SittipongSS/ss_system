@@ -10,7 +10,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+
+/* ไล่ไฟล์ .js ทั้งต้นไม้ — ใช้แทนการไล่ชื่อไฟล์ทีละอัน (ดูเหตุผลที่เทสต์ LEAD_BELL_KINDS) */
+function* walk(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir);
+    if (entry.isDirectory()) yield* walk(child);
+    else if (entry.name.endsWith('.js')) yield child;
+  }
+}
 
 import {
   LEAD_BELL_KINDS,
@@ -287,13 +296,20 @@ test('LEAD_BELL_KINDS ครบทุก kind ที่ยิงจริง —
   for (const action of actions) {
     assert.ok(LEAD_BELL_KINDS.includes(`lead_${action}`), `lead_${action} ยังไม่อยู่ในกระดิ่ง`);
   }
-  const digest = readFileSync(
-    new URL('../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8',
-  );
-  const digestKinds = [...digest.matchAll(/kind: '(lead_[a-z_]+)'/g)].map((m) => m[1]);
-  assert.ok(digestKinds.length >= 1, 'อ่าน kind จาก cron ไม่ได้ — เทสต์นี้ตาบอดแล้ว');
-  for (const kind of digestKinds) {
-    assert.ok(LEAD_BELL_KINDS.includes(kind), `${kind} ยังไม่อยู่ในกระดิ่ง`);
+  /* 🪤 **กวาดทั้ง src ไม่ใช่ไล่ไฟล์ทีละชื่อ** — เดิมเทสต์นี้อ่าน `daily-digest` ตรง ๆ
+     ตามชื่อไฟล์ ⇒ ผู้ยิงแจ้งเตือนลีดรายใหม่ (cron อื่น · route อื่น) จะไม่ถูกตรวจเลย
+     แล้ว kind ใหม่จะเงียบหายจากกระดิ่งโดยไม่มีอะไรแดง ซึ่งคือบั๊กเดียวกับที่เทสต์นี้
+     เกิดมาจับพอดี · ตอนนี้หาเองจากทุกไฟล์ที่ยิง `entityType: 'lead'` */
+  const leadKinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    if (!src.includes("entityType: 'lead'")) continue;
+    for (const [, kind] of src.matchAll(/kind: '(lead_[a-z_]+)'/g)) leadKinds.add(kind);
+  }
+  assert.ok(leadKinds.size >= 1, 'หา kind ของแจ้งเตือนลีดไม่เจอเลย — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of leadKinds) {
+    assert.ok(LEAD_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน LEAD_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
   }
 });
 
