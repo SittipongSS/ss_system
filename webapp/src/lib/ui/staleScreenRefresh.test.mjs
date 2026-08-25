@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { THREAD_POLL_FAST_MS } from "./threadPollSchedule.js";
 
 /* ── จอที่รู้ตัวว่าเก่า ต้องดึงของใหม่เอง ────────────────────────────────────
  *
@@ -54,17 +55,21 @@ test("ใบเสนอราคา/ใบสั่งขาย: ดึงเ�
 
 /* ── เธรดอัปเดต = ที่เดียวในระบบที่ดึงเองเป็นระยะ ────────────────────────── */
 
+/* ⚠️ **ล็อกพฤติกรรม ไม่ใช่รูปแบบ** — ของเดิมเขียนไว้ว่าต้องเป็น `setInterval(tick, POLL_MS)`
+   เป๊ะ ๆ ⇒ พอเปลี่ยนไปใช้ timeout ต่อเนื่องเพื่อถอยจังหวะตอนเธรดเงียบ (2026-08-26)
+   ด่านนี้แดงทั้งที่พฤติกรรมที่ตั้งใจคุ้มครองยังอยู่ครบ · ตัวจังหวะมีเทสต์ของตัวเองแล้วที่
+   `threadPollSchedule.test.mjs` — ที่นี่เหลือคุมแค่ "ต้องมีรอบดึงเอง + หยุดตอนแท็บซ่อน" */
 test("เธรดดึงของใหม่เป็นระยะ และหยุดเมื่อแท็บถูกซ่อน", () => {
-  assert.match(thread, /setInterval\(tick, POLL_MS\)/, "ต้องมีรอบดึงเอง — เธรดคือกล่องสนทนา");
+  assert.match(thread, /threadPollDelay\(/, "ต้องมีรอบดึงเอง — เธรดคือกล่องสนทนา");
   assert.match(thread, /document\.visibilityState !== "visible"/,
     "ต้องเช็คใน tick — แท็บที่ถูกซ่อนระหว่างทางต้องหยุดยิงด้วย ไม่ใช่แค่ตอน mount");
-  assert.match(thread, /clearInterval\(timer\)/, "ต้องเก็บกวาด ไม่งั้นเปิดหลายใบแล้ว timer ทับกัน");
-  assert.match(thread, /removeEventListener\("visibilitychange", tick\)/, "ต้องถอด listener ตอน unmount");
+  assert.match(thread, /clearTimeout\(timer\)/, "ต้องเก็บกวาด ไม่งั้นเปิดหลายใบแล้ว timer ทับกัน");
+  assert.match(thread, /removeEventListener\("visibilitychange", onReturn\)/, "ต้องถอด listener ตอน unmount");
 });
 
 test("รอบดึงของเธรดต้องไม่ถี่กว่าที่ตั้งใจ และมีคอกกั้นทางที่ผู้ใช้กระตุ้น", () => {
-  const poll = Number(/const POLL_MS = ([\d_]+)/.exec(thread)?.[1]?.replace(/_/g, ""));
-  assert.ok(poll >= 30_000 && poll <= 60_000, `POLL_MS ต้องอยู่ระหว่าง 30–60 วินาที (ได้ ${poll})`);
+  assert.ok(THREAD_POLL_FAST_MS >= 30_000 && THREAD_POLL_FAST_MS <= 60_000,
+    `จังหวะถี่สุดต้องอยู่ระหว่าง 30–60 วินาที (ได้ ${THREAD_POLL_FAST_MS})`);
   assert.match(thread, /Date\.now\(\) - lastLoadAt\.current < MIN_GAP_MS/,
     "visibilitychange กับ focus เด้งพร้อมกันตอนสลับแท็บ — ต้องมีคอกกั้นไม่ให้ยิงซ้อน");
 });

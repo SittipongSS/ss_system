@@ -38,6 +38,7 @@ import Textarea from "@/components/ui/Textarea";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { postUpdateWithFiles } from "@/lib/master/updatePost";
 import PhotoThumb from "@/components/ui/PhotoThumb";
+import { threadPollDelay, threadSignature } from "@/lib/ui/threadPollSchedule";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -49,7 +50,6 @@ const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
    บอกว่าถึงตาตัวเองจึงต้องรีเฟรชเองถึงจะรู้ว่าเขาพิมพ์อะไรมา
    ⚠️ **ไม่ยิงตอนแท็บซ่อน** โดยเจตนา — กติกาเดียวกับที่กระดิ่งเขียนไว้: แท็บที่เปิดค้าง
    ทิ้งไว้ทั้งวันต้องไม่เผาโควตาโดยไม่มีใครดู */
-const POLL_MS = 45_000;
 /* คอกกั้นสำหรับทางที่ผู้ใช้เป็นคนกระตุ้น (สลับแท็บกลับมา) — คนที่สลับไปมาถี่ ๆ
    ต้องไม่กลายเป็นตัวยิงรัว (ลอกแนวจาก `MIN_GAP_MS` ของ useNavCounts) */
 const MIN_GAP_MS = 10_000;
@@ -122,6 +122,9 @@ export default function UpdateThread({
   // เวลาที่ดึงล่าสุด — ใช้กับคอกกั้นของทางที่ผู้ใช้กระตุ้น (ดู effect ข้างล่าง)
   // นับรวมการดึงหลังโพสต์ด้วย เพราะมันก็คือของสด ๆ เหมือนกัน
   const lastLoadAt = useRef(0);
+  // จำนวนรอบที่ดึงแล้วเธรดไม่ขยับ — ยิ่งมากยิ่งถอยจังหวะออก
+  const quietRounds = useRef(0);
+  const lastSignature = useRef(null);
 
   const load = useCallback(async () => {
     if (!entityType || !entityId) return;
@@ -133,6 +136,11 @@ export default function UpdateThread({
       );
       const d = await res.json().catch(() => null);
       if (res.ok) {
+        /* นับ "รอบที่เงียบ" เพื่อถอยจังหวะดึง — มีของใหม่เมื่อไรกลับมาไวทันที
+           (ดู lib/ui/threadPollSchedule: เปิดหน้าค้างทั้งวันเคยจ่าย ~640 ครั้ง/วัน) */
+        const signature = threadSignature(d?.items);
+        quietRounds.current = signature === lastSignature.current ? quietRounds.current + 1 : 0;
+        lastSignature.current = signature;
         setItems(d?.items || []);
         setCanPost(!!d?.canPost);
         // ส่งก้อนดิบให้หน้าแม่ไปวาดกล่อง log — ห้ามให้กล่องนั้นยิง API เอง
@@ -144,13 +152,14 @@ export default function UpdateThread({
 
   useEffect(() => { load(); }, [load]);
 
-  /* ดึงของใหม่เอง: ทุก POLL_MS ระหว่างที่แท็บเปิดอยู่ + ทันทีที่กลับมามองแท็บ
+  /* ดึงของใหม่เอง: ตามจังหวะของ `threadPollDelay` ระหว่างที่แท็บเปิดอยู่ + ทันทีที่กลับมามองแท็บ
      ⚠️ เช็ค `document.visibilityState` ใน tick ไม่ใช่ตอนตั้ง interval — แท็บที่ถูกซ่อน
      ระหว่างทางต้องหยุดยิงด้วย ไม่ใช่แค่แท็บที่ซ่อนอยู่ตอน mount
      ⚠️ เบราว์เซอร์หน่วง timer ของแท็บพื้นหลังอยู่แล้ว แต่ไม่ได้หยุดให้ — เช็คเองจึงยัง
      จำเป็น ไม่ใช่ของแถม */
   useEffect(() => {
     if (!entityType || !entityId) return undefined;
+    let timer = null;
     /* คอกกั้นคุมทั้งสองทาง: `visibilitychange` กับ `focus` เด้งพร้อมกันตอนสลับแท็บกลับมา
        และเพิ่งโพสต์เสร็จก็เพิ่งดึงไปแล้ว — ทั้งสองกรณีต้องไม่กลายเป็นยิงซ้อน */
     const tick = () => {
@@ -158,13 +167,25 @@ export default function UpdateThread({
       if (Date.now() - lastLoadAt.current < MIN_GAP_MS) return;
       load();
     };
-    const timer = setInterval(tick, POLL_MS);
-    document.addEventListener("visibilitychange", tick);
-    window.addEventListener("focus", tick);
+    /* ⚠️ **timeout ต่อเนื่อง ไม่ใช่ `setInterval`** — ระยะรอบถัดไปขึ้นกับว่าเธรดเงียบมานาน
+       แค่ไหน จึงต้องคำนวณใหม่ทุกครั้ง (`setInterval` ล็อกระยะไว้ตั้งแต่ตอนตั้ง) */
+    const schedule = () => {
+      timer = setTimeout(() => { tick(); schedule(); }, threadPollDelay(quietRounds.current));
+    };
+    schedule();
+    /* กลับมามองแท็บ = ถือว่าบทสนทนากลับมาเดินอีกครั้ง ⇒ รีเซ็ตให้ไวเหมือนเดิม
+       ไม่งั้นคนที่เพิ่งกลับมาต้องรอถึง 3 นาทีกว่าจะเห็นของใหม่ */
+    const onReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      quietRounds.current = 0;
+      tick();
+    };
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
     return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-      window.removeEventListener("focus", tick);
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
     };
   }, [entityType, entityId, load]);
 
