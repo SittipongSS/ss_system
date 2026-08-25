@@ -24,3 +24,15 @@
 .followUpValue { color: var(--text-2); }
 .followUpValue[data-tone="late"] { color: var(--red); }
 .followUpValue[data-tone="today"] { color: var(--amber); }
+
+/* ข้อความบนการ์ดการติดตามตอนใบไม่มีวันติดตาม — บอกว่าระบบจะไม่ทำอะไรให้ ต้องลงมือเอง */
+.followUpNote {
+  margin: 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--amber-soft);
+  color: var(--text-2);
+  font-size: var(--fs-3);
+  line-height: var(--lh-relaxed);
+}

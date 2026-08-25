@@ -92,6 +92,10 @@
 }
 .pillAction { cursor: pointer; }
 .pillAction:hover { border-color: var(--border-strong); color: var(--text); background: var(--panel-3); }
+/* อำพัน = "ต้องจัดการ แต่ไม่ได้ผิดกำหนด" (ใบส่งกลับ / ใบที่ยังไม่มีวันติดตาม)
+   ต่างจาก .pillLate ที่แดง = เลยกำหนดแล้ว — สองเรื่องนี้ห้ามใช้สีเดียวกัน */
+.pillWarn { border-color: color-mix(in srgb, var(--amber) 40%, transparent); color: var(--amber); }
+
 .pillLate { border-color: color-mix(in srgb, var(--red) 40%, transparent); color: var(--red); }
 
 .age { font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }

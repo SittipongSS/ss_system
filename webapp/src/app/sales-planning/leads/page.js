@@ -604,6 +604,8 @@ export default function LeadsPage() {
           holidays={holidays}
           scopeLabel={scopes.length > 1 ? SCOPE_LABELS[activeScope] : null}
           showOwners={activeScope !== "mine"}
+          // API แนบบริบทการตีกลับมากับแถวแล้ว (ดู attachBounceContext)
+          withBounceContext
           onPickStatus={(status) => setStatusFilter([status])}
           onPickOwner={(assigneeId) => setAssigneeFilter([assigneeId])}
         />

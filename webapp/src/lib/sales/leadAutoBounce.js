@@ -81,6 +81,20 @@ export function planAutoBounce(leads = [], { ageOf, roundOf = () => 0 } = {}) {
   return { bounce: bounce.sort(worstFirst), escalate: escalate.sort(worstFirst) };
 }
 
+/** เหลืออีกกี่วันทำการก่อนระบบจะส่งกลับ — สำหรับบอกบนหน้าใบ ไม่ใช่สำหรับตัดสินใจตีกลับ
+ *
+ *  ⚠️ ตัวตัดสินจริงคือ `planAutoBounce` (`days > AUTO_BOUNCE_AFTER_BUSINESS_DAYS`)
+ *  ที่นี่ต้องกลับสมการตัวเดียวกันเป๊ะ ไม่งั้นหน้าจอนับถอยหลังคนละวันกับที่ระบบลงมือ:
+ *  ตีกลับเมื่อ days ≥ N+1 ⇒ เหลือ = (N+1) − days · ถึง 0 เมื่อไรคือเข้าเกณฑ์แล้ว
+ *  (ยังไม่ตีกลับจนกว่า cron รอบถัดไปจะทำงาน — ข้อความบนจอต้องไม่สัญญาว่า "ตีกลับแล้ว")
+ *
+ *  @param days จำนวนวันทำการนับจากวันที่นัดติดตามไว้ · `null` = ไม่มีนาฬิกา
+ */
+export function autoBounceCountdown(days) {
+  if (days == null) return null;
+  return Math.max(0, AUTO_BOUNCE_AFTER_BUSINESS_DAYS + 1 - days);
+}
+
 /** ข้อความแจ้งเตือนของใบที่ครบโควตารอบแล้ว — ต้องบอกว่าให้ทำอะไรต่อ ไม่ใช่แค่รายงาน */
 export function escalationNotice(entries = []) {
   if (!entries.length) return null;
