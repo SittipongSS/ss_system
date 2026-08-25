@@ -46,22 +46,40 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
   assert.match(orders, /!isSalesOrderSelfApproval\(row, user\.id\)/, 'ใบของตัวเองต้องถูกตัดที่ server');
 });
 
-test('ทะเบียนทั้งสี่ใช้คิวตัวเดียวกัน และเอกสารขายกดเปิดใบ ไม่ใช่ติ๊กอนุมัติในลิสต์', () => {
+test('ทะเบียนทั้งห้าใช้คิวตัวเดียวกัน และเอกสารขายกดเปิดใบ ไม่ใช่ติ๊กอนุมัติในลิสต์', () => {
   const shared = 'components/ui/ApprovalQueue.js';
   for (const page of [
     'app/database/customers/page.js',
     'app/database/products/page.js',
     'app/sales-planning/quotations/page.js',
     'app/sales-planning/sales-orders/page.js',
+    'app/sales-planning/contracts/page.js',
   ]) {
     assert.match(read(page), /import ApprovalQueue from "@\/components\/ui\/ApprovalQueue"/, `${page} ต้องใช้คิวกลาง`);
   }
   /* 🛑 การอนุมัติ QT/SO ตรึงลายเซ็นผู้อนุมัติกับ fingerprint ของเนื้อใบ และโมดัลยืนยัน
      ต้องบอกผลลัพธ์ (ยอด Actual · งวดชำระ) ⇒ ตัดสินในลิสต์ไม่ได้ ต้องเปิดใบก่อน */
-  for (const page of ['app/sales-planning/quotations/page.js', 'app/sales-planning/sales-orders/page.js']) {
+  for (const page of [
+    'app/sales-planning/quotations/page.js',
+    'app/sales-planning/sales-orders/page.js',
+    'app/sales-planning/contracts/page.js',
+  ]) {
     const src = read(page);
     assert.match(src, /renderAction=\{/, `${page} ต้องส่งปุ่มของตัวเอง`);
     assert.doesNotMatch(src, /<ApprovalQueue[\s\S]{0,400}onDecide=/, `${page} ต้องไม่ตัดสินอนุมัติจากลิสต์`);
   }
   assert.match(read(shared), /renderAction \? renderAction\(rec\)/, 'คิวกลางต้องรองรับทั้งสองโหมด');
+});
+
+/* 🪤 **สัญญาไม่มีขั้นอนุมัติ** (draft → awaiting_signature → signed) — การ์ดบนทะเบียน
+   สัญญาจึงต้องไม่พูดคำว่า "รออนุมัติ" และต้องใช้ธง `_waitingOnMe` ตัวเดียวกับตัวกรอง
+   ไม่ใช่นิยามที่สองที่เดินหนีกันทีหลัง */
+test('ทะเบียนสัญญาใช้คำของตัวเอง และยึดธงเดิม', () => {
+  const page = read('app/sales-planning/contracts/page.js');
+  assert.match(page, /title="ต้องทำตอนนี้ — สัญญาที่ค้างอยู่กับคุณ"/);
+  assert.doesNotMatch(page, /<ApprovalQueue[\s\S]{0,300}รออนุมัติ/, 'สัญญาไม่มีขั้นอนุมัติ ห้ามใช้คำนี้');
+  assert.match(page, /rows\.filter\(\(row\) => row\._waitingOnMe\)/, 'ต้องใช้ธงเดิม ไม่นิยามใหม่');
+  const lib = read('lib/sales/contracts.js');
+  assert.match(lib, /contract\.status === 'draft' \|\| contract\.status === 'awaiting_signature'/,
+    'นิยาม "ค้างอยู่กับฉัน" ของสัญญาอยู่ที่ lib ที่เดียว');
 });

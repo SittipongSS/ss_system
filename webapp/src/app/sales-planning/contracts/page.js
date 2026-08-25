@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, Clock3, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -24,6 +24,7 @@ import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, Workspac
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import Pager from "@/components/ui/Pager";
 import styles from "./page.module.css";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
@@ -36,7 +37,7 @@ import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanni
 import { contractListTrack } from "@/lib/sales/contractListTrack";
 import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
-  daysAwaitingSignature,
+  daysAwaitingSignature, contractStatusLabel,
 } from "@/lib/sales/contracts";
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -56,6 +57,9 @@ export default function ContractsPage() {
   const [kindFilter, setKindFilter] = useStickyState("kindFilter", EMPTY);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(params.get("waiting") === "1");
+  const router = useRouter();
+  // ของค้างของคนที่กำลังดูอยู่ — ธงจาก server (ตัวเดียวกับตัวกรองและป้ายเลขบนเมนู)
+  const workQueue = useMemo(() => rows.filter((row) => row._waitingOnMe), [rows]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,6 +130,23 @@ export default function ContractsPage() {
           <SaMetric icon={<ShieldCheck />} label="ค้างเกิน 14 วัน" value={summary.overdue} note="ใบที่ควรโทรตาม" tone={summary.overdue ? "warning" : "good"} />
           <SaMetric icon={<CheckCircle2 />} label="ลงนามแล้ว" value={summary.signed} note="มีไฟล์ฉบับเซ็นครบ" tone="good" />
         </SaMetricStrip>
+
+        {/* ⭐ ของค้างขึ้นหัวตาราง — ทรงเดียวกับทะเบียนใบเสนอราคา/ใบสั่งขาย/ลูกค้า/สินค้า
+            (มติผู้ใช้ 2026-08-25) ของเดิมมีแต่ตัวกรอง "ที่ต้องทำ" ที่ต้องกดเอง
+            ⚠️ **คำบนการ์ดไม่ใช่ "รออนุมัติ"** — สัญญาไม่มีขั้นอนุมัติ (draft →
+            awaiting_signature → signed) ⇒ ของที่ค้างคือ "ร่างที่ยังไม่ออกเลข" กับ
+            "ออกแล้วรอลายเซ็น" ซึ่งเป็นงานของเจ้าของใบ ไม่ใช่ของผู้อนุมัติคนอื่น
+            ⚠️ ใช้ธง `_waitingOnMe` ตัวเดียวกับตัวกรองและป้ายเลขบนเมนู — ห้ามนิยามที่สอง */}
+        <ApprovalQueue
+          items={workQueue}
+          title="ต้องทำตอนนี้ — สัญญาที่ค้างอยู่กับคุณ"
+          primary={(row) => row.contractNo || "ฉบับร่าง"}
+          secondary={(row) => `${naText(row.customerName)} · ${contractStatusLabel(row.status)}`}
+          onOpen={(row) => router.push(`/sa/contracts/${row.id}`)}
+          renderAction={(row) => (
+            <Button as={Link} href={`/sa/contracts/${row.id}`} tone="primary" size="sm">เปิดสัญญา</Button>
+          )}
+        />
 
         <SaSection
           icon={<FileSignature size={17} />}
