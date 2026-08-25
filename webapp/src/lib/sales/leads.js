@@ -119,6 +119,28 @@ export function leadBudgetText(lead = {}, money = String, empty = 'ไม่ร�
   return `${money(min)} – ${money(max)}`;
 }
 
+/* ── วันติดตามต่อ (mig 0289) ───────────────────────────────────────────────
+   ⭐ **ทุกการติดต่อต้องมีทางออก** (มติผู้ใช้ 2026-08-25) — `contacted` เคยเป็นสถานะ
+   เดียวในเส้นทางที่ไม่มีนาฬิกา ลีดจึงนอนอยู่ได้ตลอดกาลโดยไม่มีอะไรทวง
+   ⇒ `contact` และ `followup` **บังคับ** ระบุวันติดตามต่อ
+
+   🪤 **ทางออกของเคส "ลูกค้าไม่สนใจแล้ว" ไม่ใช่การกรอกวันมั่ว ๆ** — `assigned` มี
+   `disqualify` อยู่ในลิสต์อยู่แล้ว กดปิดตรงได้เลยโดยไม่ต้องผ่าน `contact`
+   (เหตุผลที่คุยกับลูกค้าไปเขียนในช่องเหตุผลของ disqualify)
+
+   ⭐ **ด่านเดียวใช้ทั้งฟอร์มและ API** ตามกติกา form-design-rules §2 — เงื่อนไขที่ปุ่ม
+   รู้แต่ฟอร์มไม่รู้ (หรือกลับกัน) คือจุดที่ผู้ใช้กดแล้วโดนตีกลับโดยไม่รู้ว่าเพราะอะไร
+   (ท่าเดียวกับ `leadBudgetError` ข้างล่าง) */
+export const LEAD_FOLLOW_UP_ACTIONS = ['contact', 'followup'];
+
+/** @returns ข้อความผิดพลาด หรือ '' ถ้าผ่าน */
+export function leadFollowUpError(value) {
+  if (value == null || value === '') return 'ต้องระบุวันติดตามต่อ';
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return 'วันติดตามต่อไม่ถูกต้อง';
+  return '';
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 
@@ -247,12 +269,18 @@ export function canDeleteLead(user, lead) {
 // ⚠️ **ไม่เปิด `meeting → contact`** ทั้งที่ mockup เคยวาดปุ่มไว้ — `contact` แปลว่า
 // สถานะกลับไปเป็น `contacted` (ดู TRANSITION_TO_STATUS) = ลีดถอยหลังจากที่นัดแล้ว
 // บันทึกการคุยเพิ่มระหว่างรอประชุมใช้เธรดกลางซึ่งเปิดอยู่ทุกสถานะอยู่แล้ว
+// ⭐ `followup` = **ติดตามครั้งที่สองขึ้นไป ไม่ขยับสถานะ** (มติผู้ใช้ 2026-08-25)
+// 🐞 ของเดิมบันทึกการติดต่อซ้ำไม่ได้เลย — `contacted` ไม่มี `contact` ในลิสต์ ⇒ AE ที่โทร
+// ตามรอบสองกดปุ่มไม่ได้ ต้องไปเขียนในเธรดกลางแทน ซึ่งไม่มีวันที่ให้ระบบทวงต่อ
+// ⚠️ **ไม่เปิด `contacted → contact`** ทั้งที่ดูเหมือนแก้ง่ายกว่า — `contact` แปลว่า
+// สถานะไปเป็น `contacted` (ดู TRANSITION_TO_STATUS) ⇒ ใช้จาก `meeting` แล้วลีดถอยหลัง
+// จากที่นัดไว้ · `followup` ปลายทางเป็น null จึงใช้ได้ทั้งสองสถานะโดยไม่ดึงใครถอย
 export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
   assigned: ['contact', 'reassign', 'bounce', 'disqualify'],
-  contacted: ['meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
-  meeting: ['meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
+  contacted: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
+  meeting: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
   disqualified: [],
 };
@@ -264,6 +292,10 @@ export const TRANSITION_TO_STATUS = {
   create_deal: 'qualified',
   disqualify: 'disqualified',
   bounce: 'new', // ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ)
+  /* ⭐ `followup` = **ติดตามต่อ ไม่เปลี่ยนขั้น** — null โดยเจตนา ท่าเดียวกับ reassign
+     ⚠️ แมปเป็น 'contacted' เมื่อไร = ลีดที่นัดประชุมแล้วถอยกลับไป "ติดต่อแล้ว"
+     ทุกครั้งที่โทรตาม ซึ่งเป็นเหตุผลเดียวกับที่ไม่เปิด `meeting → contact` */
+  followup: null,
   /* ⭐ `reassign` = **เปลี่ยนมือ ไม่เปลี่ยนขั้น** (มติผู้ใช้ 2026-08-20) — ค่า null
      โดยเจตนา: ผู้เรียกต้องคงสถานะเดิมไว้ (`TRANSITION_TO_STATUS[action] ?? lead.status`)
      ⚠️ แมปเป็น 'assigned' เมื่อไร = ลีดที่ติดต่อ/นัดไปแล้วถอยกลับไป "รอติดต่อกลับ"

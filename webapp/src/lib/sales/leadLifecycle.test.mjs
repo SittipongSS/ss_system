@@ -275,12 +275,21 @@ test("action ที่ API บังคับเหตุผล ต้องต�
     path.join(process.cwd(), "src/app/api/sales-planning/leads/[id]/transition/route.js"),
     "utf8",
   );
-  // ตัดไฟล์เป็นบล็อกต่อ action ตาม `if/else if (action === 'x')` แล้วดูว่าบล็อกไหนมีด่านเหตุผล
+  /* ตัดไฟล์เป็นบล็อกต่อสาขาตาม `if/else if (action === 'x')` แล้วดูว่าบล็อกไหนมีด่านเหตุผล
+     ⚠️ **หนึ่งสาขามีได้หลาย action** — `contact` กับ `followup` ใช้กติกาเดียวกันทุกข้อ
+     จึงเขียนรวมเป็น `action === 'contact' || action === 'followup'` (แยกสองบล็อกเมื่อไร
+     ก็เป็นสองที่ที่ต้องคอยทำให้ตรงกันเอง) ⇒ ต้องอ่าน action **ทุกตัวที่หัวสาขาเอ่ยถึง**
+     ไม่ใช่ตัวแรกตัวเดียว ไม่งั้นเทสต์จะมองไม่เห็นตัวที่สองแล้วเขียวทั้งที่ดริฟต์จริง */
   const blocks = apiSrc.split(/(?:\}\s*else\s+)?if\s*\(action === '/).slice(1);
   const requiredByApi = blocks
-    .map((block) => [block.slice(0, block.indexOf("'")), block])
+    .map((block) => {
+      const head = block.slice(0, block.indexOf("{"));
+      const actions = [block.slice(0, block.indexOf("'")),
+        ...[...head.matchAll(/action === '([a-z_]+)'/g)].map(([, name]) => name)];
+      return [[...new Set(actions)], block];
+    })
     .filter(([, block]) => /!body\.reason\?\.trim\(\)/.test(block.split("} else if")[0]))
-    .map(([action]) => action)
+    .flatMap(([actions]) => actions)
     .sort();
 
   assert.deepEqual([...LEAD_REASON_REQUIRED].sort(), requiredByApi,
@@ -300,7 +309,38 @@ test("ยังไม่กรอกเหตุผล = validateTransitionValue
   const contact = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "contact");
   assert.ok(contact, "สถานะ assigned ควรมีปุ่มบันทึกการติดต่อ");
   assert.ok(validateTransitionValues(contact.transition, {}), "ไม่กรอกเหตุผลต้องได้ข้อความทัก");
-  assert.equal(validateTransitionValues(contact.transition, { reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา" }), null);
+  /* ⭐ ตั้งแต่ mig 0289 เหตุผลอย่างเดียวไม่พอ — **ทุกการติดต่อต้องมีทางออก**
+     ไม่งั้นลีดนอนอยู่ใน "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง */
+  assert.ok(validateTransitionValues(contact.transition, { reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา" }),
+    "กรอกเหตุผลแต่ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้");
+  assert.equal(
+    validateTransitionValues(contact.transition, {
+      reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", followUpAt: "2026-09-01",
+    }),
+    null,
+  );
+});
+
+/* ปุ่ม "บันทึกการติดตาม" ต้องมีด่านชุดเดียวกับ "บันทึกการติดต่อ" เป๊ะ — สองปุ่มนี้ต่างกัน
+   แค่สถานะปลายทาง (mig 0289) แยกกติกาเมื่อไรก็เป็นสองที่ที่ต้องคอยทำให้ตรงกันเอง */
+test("ติดตามต่อ: ปุ่มโผล่ที่ contacted/meeting และบังคับทั้งเหตุผลและวันติดตาม", () => {
+  for (const status of ["contacted", "meeting"]) {
+    const row = lead({ status, team: "A", assigneeId: "u-ae" });
+    const followup = lifecycle.available(row, AE_A).find((entry) => entry.id === "followup");
+    assert.ok(followup, `สถานะ ${status} ต้องมีปุ่มบันทึกการติดตาม`);
+    // ⚠️ ไม่ขยับสถานะ — แมปเป็น contacted เมื่อไร ใบที่นัดแล้วจะถอยกลับทุกครั้งที่โทรตาม
+    assert.equal(followup.transition.to, null, `${status}: followup ต้องไม่เปลี่ยนสถานะ`);
+    assert.ok(validateTransitionValues(followup.transition, {}));
+    assert.ok(validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว" }),
+      `${status}: ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้`);
+    assert.equal(
+      validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", followUpAt: "2026-09-08" }),
+      null,
+    );
+  }
+  // สถานะที่ยังไม่เคยติดต่อ ต้องไม่มีปุ่มนี้ (ครั้งแรกใช้ "บันทึกการติดต่อ")
+  const assigned = lead({ status: "assigned", team: "A", assigneeId: "u-ae" });
+  assert.equal(lifecycle.available(assigned, AE_A).find((entry) => entry.id === "followup"), undefined);
 });
 
 /* body ที่ส่งไป API ต้องมาจากที่เดียว — เคยประกอบเองคนละแบบใน 2 หน้า */
