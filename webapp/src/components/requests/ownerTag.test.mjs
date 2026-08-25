@@ -29,6 +29,13 @@ test('🔴 ชิปขึ้นเฉพาะตอนปุ่มกดได
   assert.ok(notMine > 0 && tagDecl > notMine, 'ชิปต้องประกาศหลังกิ่ง !isMine');
 });
 
+test('🔴 ชิปขึ้นเฉพาะตอนสองฝั่งสดพร้อมกัน — คนบทบาทเดียวต้องไม่เห็น', () => {
+  /* 🐞 รอบแรกติดทุกครั้งที่ปุ่มกดได้ โดยอ้างว่าปุ่มจางไม่บอกว่าเป็นของใคร ซึ่งผิด —
+     กิ่ง !isMine เขียน "รอ RD" อยู่แล้ว ⇒ SA ทั่วไปได้ป้าย "SA" ซ้ำทุกแถวที่กดได้
+     ⭐ คนที่แยกไม่ออกจริงคือคนที่ canDept และ canRequester จริงพร้อมกัน (แอดมิน) */
+  assert.match(code, /const tag = \(canDept && canRequester\)/);
+});
+
 test('⭐ ทุกกิ่งที่มีปุ่มกดได้ต้องมีชิป — outcome (3 ปุ่ม) และปุ่มเดี่ยว', () => {
   const branches = code.split('return (').filter((b) => /styles\.actions/.test(b) && /<Button/.test(b));
   const withTag = branches.filter((b) => /\{tag\}/.test(b));
@@ -41,5 +48,7 @@ test('⭐ ปุ่มระดับก้อนใช้ชิปตัวเ�
   assert.match(code, /export function OwnerTag/);
   const scent = readFileSync('src/components/requests/details/ScentDevDetail.js', 'utf8');
   assert.match(scent, /<OwnerTag owner="dept"/);
+  // ⚠️ เงื่อนไขต้องตรงกับ RowStepActions — ตารางเดียวมีปุ่มติดชิปกับไม่ติดปนกันไม่ได้
+  assert.match(scent, /rowStep\.canDept && rowStep\.canRequester &&/);
   assert.match(scent, /import \{ OwnerTag, RowStepActions \}/);
 });

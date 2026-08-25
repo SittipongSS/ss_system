@@ -21,7 +21,7 @@ import RequestRows from "./RequestRows";
 // สิทธิ์แนบของสายเอกสารถูกโมดัลส่งเอกสารถืออยู่คนเดียว)
 export default function DocumentDetail({
   request, docBoard: board = [],
-  rowStep, today = null,
+  rowStep, today = null, due = null,
 }) {
   // ปุ่มก้าวติดแถว (มติผู้ใช้ 2026-08-09) — แถวของ board ชี้กลับ item ดิบด้วย id
   // (RowStepActions ต้องอ่าน lineKind/ช่องก้าวจริง ไม่ใช่แถวสรุป)
@@ -47,6 +47,7 @@ export default function DocumentDetail({
           ⚠️ ดูอย่างเดียว: แนบ/ลบทำในโมดัลส่งงานที่เดียว (ม-90) */}
       <DocumentBoard
         today={today}
+        due={due}
         rows={board}
         renderStep={renderStep}
         renderDetail={(boardRow) => {
