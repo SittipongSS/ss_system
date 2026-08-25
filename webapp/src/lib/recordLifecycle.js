@@ -264,6 +264,17 @@ export function fieldUsers(field, record) {
   return Array.isArray(users) ? users : [];
 }
 
+/** ตัวเลือกของ field ชนิด select — **รับฟังก์ชันได้เหมือน `users`**
+ *
+ *  ⚠️ lifecycle ถูกสร้าง **ครั้งเดียวต่อหน้า** แต่ตารางมีหลายแถวที่บริบทต่างกัน
+ *  (เช่น ทีมที่ถูกล็อกของใบที่ถูกส่งกลับ) ⇒ ตัวเลือกที่ขึ้นกับแถวต้องเป็นฟังก์ชัน
+ *  🪤 ส่ง `field.options` ดิบเข้า `<Select options>` เมื่อไร ฟังก์ชันจะกลายเป็น
+ *  อาร์เรย์ว่างเงียบ ๆ (Select ทำ `options.map`) ⇒ ดรอปดาวน์ว่างเปล่าโดยไม่มี error */
+export function fieldOptions(field, record) {
+  const options = typeof field?.options === "function" ? field.options(record) : field?.options;
+  return Array.isArray(options) ? options : [];
+}
+
 /**
  * ค่าที่กรอกครบตามที่ transition ขอหรือยัง — TransitionDialog ใช้คุมปุ่มยืนยัน
  * คืน null = ผ่าน / สตริง = เหตุที่ยังกดไม่ได้

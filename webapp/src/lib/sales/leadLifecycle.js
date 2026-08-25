@@ -146,7 +146,19 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
             label: "ทีมเจ้าของงาน",
             type: "select",
             required: true,
-            options: TEAMS.map((team) => ({ value: team, label: TEAM_LABELS[team] || team })),
+            /* ⭐ **ล็อกทีมเดิมเมื่อใบนี้ถูกส่งกลับอัตโนมัติครบโควตารอบแล้ว**
+               🪤 ไม่มีด่านนี้ = วนไม่รู้จบ: ระบบตีกลับ → ผู้ดูแลคัดเข้าทีมเดิม (ข้อมูล
+               ลีดยังบอกอย่างเดิม) → มอบคนเดิม → เงียบอีก → ตีกลับอีก · เพดานใน cron
+               หยุดได้แค่ "ไม่ตีกลับรอบที่ 3" ปลายทางคือลีดค้างถาวรโดยไม่มีใครตัดสิน
+               ⚠️ **ล็อกไม่ซ่อน** (กฎโปรเจกต์: "ตัวเลือกที่ไม่มีสิทธิ์ต้องเห็นว่ามีอยู่")
+               — ซ่อนแล้วผู้ดูแลจะงงว่าทีมหายไปไหน แล้วไปหาทางอื่น
+               ⚠️ กติกา "ครบกี่รอบ" อยู่ที่ `leadBounceHistory` ที่เดียวร่วมกับป้ายในคิว */
+            options: (lead) => TEAMS.map((team) => ({
+              value: team,
+              label: TEAM_LABELS[team] || team,
+              disabled: lead?.bounce?.teamLocked === team,
+              hint: lead?.bounce?.teamLocked === team ? "ส่งกลับจากทีมนี้มาแล้ว 2 รอบ" : undefined,
+            })),
           },
         ],
       },

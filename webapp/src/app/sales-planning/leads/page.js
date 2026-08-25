@@ -702,6 +702,21 @@ export default function LeadsPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
+                        {/* ⭐ ใบที่ถูกส่งกลับโผล่ในคิวคัดกรอง **เหมือนลีดใหม่ทุกประการ**
+                            (bounce ล้าง team/assignee ทิ้ง) ⇒ ผู้ดูแลคัดเข้าทีมเดิม
+                            มอบคนเดิม แล้ววนรอบใหม่ · เพดาน 2 รอบกันได้แค่รอบที่ 3
+                            ป้ายนี้คือสิ่งเดียวที่ทำให้คนตัดสินใจรู้ว่าเคยลองอะไรมาแล้ว */}
+                        {lead.bounce?.autoRounds > 0 && (
+                          <span className={styles.bounceTag} data-hot={lead.bounce.autoRounds >= 2 || undefined}>
+                            ส่งกลับ รอบที่ {lead.bounce.autoRounds}
+                          </span>
+                        )}
+                        {lead.bounce?.previousAssigneeName && (
+                          <span className={styles.bounceWho}>
+                            เคยอยู่กับ {lead.bounce.previousAssigneeName}
+                            {lead.bounce.previousTeam ? ` · ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam}` : ""}
+                          </span>
+                        )}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
                       {lead.followUpAt ? (

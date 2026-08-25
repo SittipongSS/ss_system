@@ -216,6 +216,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⚠️ กติกา "ตีกลับแล้วต้องล้างอะไรบ้าง" อยู่ที่ `leadBouncePatch` ที่เดียว —
        cron ตีกลับอัตโนมัติ (mig 0291) เขียนแถวเองไม่ผ่าน route นี้ (ไม่มี session user)
        สองที่ที่ต้องล้างเจ็ดคอลัมน์ให้ตรงกันเองคือสองที่ที่จะเพี้ยนหากัน */
+    /* ⭐ เก็บ "เคยอยู่กับใคร/ทีมไหน" ลงประวัติ **ก่อน** ล้างแถว — ไม่งั้นไม่มีทางรู้อีกเลย
+       คนคัดกรองรอบใหม่ต้องเห็นว่าเคยส่งไปทีมไหนแล้วไม่เวิร์ก ไม่งั้นส่งซ้ำทางเดิม
+       (คู่กับ cron ตีกลับอัตโนมัติที่เขียนชุดเดียวกัน) */
+    event.team = lead.team || null;
+    event.assigneeId = lead.assigneeId || null;
+    event.assigneeName = lead.assigneeName || null;
     Object.assign(patch, leadBouncePatch(now));
     event.reason = body.reason.trim();
   }

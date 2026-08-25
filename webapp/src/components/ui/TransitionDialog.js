@@ -19,7 +19,7 @@ import PersonSelect from "@/components/ui/PersonSelect";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { fieldUsers, resolveLabel, validateTransitionValues } from "@/lib/recordLifecycle";
+import { fieldOptions, fieldUsers, resolveLabel, validateTransitionValues } from "@/lib/recordLifecycle";
 import styles from "./TransitionDialog.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -31,7 +31,7 @@ function TransitionField({ field, record, value, onChange, disabled }) {
         {...common}
         fullWidth
         value={value ?? ""}
-        options={field.options || []}
+        options={fieldOptions(field, record)}
         placeholder={field.placeholder || "— เลือก —"}
         onChange={(event) => onChange(event.target.value)}
       />

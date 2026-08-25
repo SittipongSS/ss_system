@@ -8,6 +8,8 @@ import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
+// ⚠️ ทางเดียว: leadAutoBounce.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
+import { AUTO_BOUNCE_MAX_ROUNDS } from '@/lib/sales/leadAutoBounce';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform', 'email',
@@ -242,6 +244,39 @@ export function leadLostText(lead = {}, empty = 'ไม่ระบุ') {
   const detail = String(lead.disqualifiedReason || '').trim();
   if (!label) return detail || empty;
   return detail ? `${label} — ${detail}` : label;
+}
+
+/* ══ "ใบนี้กลับมาแล้วกี่รอบ · เคยอยู่กับใคร" ═══════════════════════════════
+ *
+ * ⭐ ที่มา: `bounce`/`auto_bounce` ล้าง `team` + `assigneeId` บนแถวทิ้ง ⇒ ใบที่ถูก
+ * ส่งกลับโผล่ในคิวคัดกรอง **เหมือนลีดใหม่ทุกประการ** · ผู้ดูแลจึงคัดเข้าทีมเดิม
+ * มอบคนเดิม แล้ววนรอบใหม่ทันที — เพดาน `AUTO_BOUNCE_MAX_ROUNDS` กันได้แค่
+ * "ไม่ตีกลับรอบที่ 3" แต่กันรอบที่ 2 ไม่ได้ เพราะ **คนตัดสินใจไม่มีข้อมูล**
+ *
+ * ⚠️ นับเฉพาะ `auto_bounce` เป็น "รอบ" — ตีกลับด้วยมือคือคนตัดสินใจแล้วว่าทีมไม่ตรง
+ * ซึ่งเป็นคนละเรื่องกับ "ไม่มีใครทำ" · เอามารวมกันแล้วใบที่ถูกส่งต่อตามเนื้องานจริง
+ * จะโดนล็อกทีมทั้งที่ไม่เคยถูกดองเลย
+ *
+ * ⚠️ `events` ต้องเรียง **ใหม่→เก่า** (เหมือน `meetingTimesSinceBounce`) — ผู้เรียก
+ * ที่เรียงกลับด้านจะได้ "เคยอยู่กับใคร" เป็นรอบแรกสุดแทนรอบล่าสุด
+ */
+export function leadBounceHistory(events = []) {
+  const rows = events || [];
+  const autoRounds = rows.filter((e) => e?.kind === 'auto_bounce').length;
+  // ใบล่าสุดที่ถูกตีกลับ (ชนิดไหนก็ได้) = บริบทที่คนคัดกรองรอบนี้ต้องเห็น
+  const last = rows.find((e) => LEAD_BOUNCE_KINDS.includes(e?.kind)) || null;
+  return {
+    autoRounds,
+    bouncedAt: last?.createdAt || null,
+    previousTeam: last?.team || null,
+    previousAssigneeId: last?.assigneeId || null,
+    previousAssigneeName: last?.assigneeName || null,
+    lastReason: last?.reason || null,
+    /* ครบโควตาแล้ว = ห้ามส่งกลับทีมเดิมอีก (ด่านฝั่งจอ · cron หยุดตีกลับเองอยู่แล้ว)
+       ⚠️ ใช้ `AUTO_BOUNCE_MAX_ROUNDS` ตัวเดียวกับ cron — สะกดเลขซ้ำที่นี่เมื่อไร
+       จอกับ cron จะเลิกเห็นตรงกันโดยไม่มีอะไรฟ้อง */
+    teamLocked: autoRounds >= AUTO_BOUNCE_MAX_ROUNDS ? last?.team || null : null,
+  };
 }
 
 /** สถานะของวันติดตามต่อ — `'late' | 'today' | 'ahead'` · **ที่เดียวสำหรับทุกจอ**

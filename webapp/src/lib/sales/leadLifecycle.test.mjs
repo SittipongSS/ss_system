@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
-import { fieldUsers, validateTransitionValues } from "../recordLifecycle.js";
+import { fieldOptions, fieldUsers, validateTransitionValues } from "../recordLifecycle.js";
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
+import { TEAMS } from "../permissions.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
    ปุ่มโผล่แต่ API ปฏิเสธ = ผู้ใช้กดแล้วเด้ง error · ปุ่มไม่โผล่ทั้งที่ API ยอม = ทำงานไม่ได้
@@ -270,6 +271,33 @@ test("กติกา role ฝั่ง UI ยังอ้างตัวช่�
    ทั้งที่ handler ตอบ badRequest ถ้าไม่มีเหตุผล → กดยืนยันโดยไม่พิมพ์ = 400
    เทสต์นี้ **อ่าน route.js จริง** หาว่า action ไหนมีด่าน `body.reason?.trim()`
    แล้วบังคับให้ฝั่ง UI ตรงกันทั้งสองทาง (ขาดก็ตก เกินก็ตก) */
+/* 🪤 `options` เป็นฟังก์ชันได้ (ทีมที่ถูกล็อกขึ้นกับใบ) — ส่งดิบเข้า <Select options>
+   เมื่อไร ฟังก์ชันจะกลายเป็นอาร์เรย์ว่างเงียบ ๆ (Select ทำ options.map) ⇒ ดรอปดาวน์
+   ว่างเปล่าโดยไม่มี error · เทสต์นี้ล็อกว่า dialog คลี่ผ่าน `fieldOptions` เสมอ */
+test("คัดกรอง: ทีมที่ส่งกลับมาแล้วครบโควตาถูกล็อก ไม่ใช่ซ่อน", () => {
+  const screen = lifecycle.transitions.find((t) => t.id === "screen");
+  const field = screen.fields.find((f) => f.name === "team");
+
+  const fresh = fieldOptions(field, lead({ status: "new" }));
+  assert.equal(fresh.length, 3, "ลีดปกติต้องเลือกได้ทุกทีม");
+  assert.equal(fresh.every((o) => !o.disabled), true);
+
+  const looped = fieldOptions(field, lead({ status: "new", bounce: { teamLocked: TEAMS[0] } }));
+  assert.equal(looped.length, 3, "ล็อกไม่ซ่อน — ตัวเลือกที่กดไม่ได้ต้องยังเห็นว่ามีอยู่");
+  const locked = looped.find((o) => o.value === TEAMS[0]);
+  assert.equal(locked.disabled, true);
+  assert.ok(locked.hint, "ต้องบอกเหตุผลที่กดไม่ได้ ไม่ใช่จางเฉย ๆ");
+  assert.equal(looped.filter((o) => o.disabled).length, 1, "ล็อกเฉพาะทีมเดิม");
+});
+
+test("TransitionDialog คลี่ options ผ่าน fieldOptions ไม่ส่งฟังก์ชันดิบเข้า Select", () => {
+  const src = readFileSync(
+    path.join(process.cwd(), "src/components/ui/TransitionDialog.js"), "utf8",
+  );
+  assert.match(src, /options=\{fieldOptions\(field, record\)\}/);
+  assert.doesNotMatch(src, /options=\{field\.options/);
+});
+
 test("action ที่ API บังคับเหตุผล ต้องตรงกับ reason ของ lifecycle เป๊ะ", () => {
   const apiSrc = readFileSync(
     path.join(process.cwd(), "src/app/api/sales-planning/leads/[id]/transition/route.js"),
