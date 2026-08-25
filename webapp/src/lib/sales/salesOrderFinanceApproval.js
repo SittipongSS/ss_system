@@ -14,6 +14,7 @@
 // ⚠️ ต่างจาก "คอนเฟิร์มงวดชำระ" (0245): อันนั้นตอบว่า *เงินงวดนี้เข้าจริงไหม*
 //    อันนี้ตรวจ **ตัวเอกสาร** ครั้งเดียว (ข้อมูลลูกค้า · เงื่อนไขชำระ · ยอด/VAT · เครดิต)
 import { canConfirmPayment, canUser } from '@/lib/permissions';
+import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 
 export const FINANCE_STATUSES = ['pending', 'approved', 'rejected'];
 
@@ -52,9 +53,18 @@ export function financeStatusOf(order) {
   return FINANCE_STATUSES.includes(raw) ? raw : null;
 }
 
-/** ใบนี้อยู่ในขั้นที่บัญชีต้องตรวจไหม (อนุมัติแล้วและยังไม่ผ่านบัญชี) */
+/** ใบนี้อยู่ในขั้นที่บัญชีต้องตรวจไหม (อนุมัติแล้ว · ยังไม่ผ่านบัญชี · มีเงินให้ตรวจ)
+ *
+ * ⭐ **ใบยอด 0 ไม่เข้าคิวบัญชี** (มติผู้ใช้ 2026-08-18 ขยายมาที่แกนนี้ 2026-08-26) —
+ * สิ่งที่บัญชีตรวจคือเงื่อนไขชำระ ยอด/VAT และเครดิต ซึ่งใบยอด 0 ไม่มีสักข้อ ·
+ * กติกาเดียวกับงวดชำระที่ตัดใบยอด 0 ออกไปแล้ว (`paymentNotRequired`)
+ * 🪤 ผู้ใช้เจอบน production 26/08: `SO-26080073-0 · ฿0.00` นั่งอยู่ในคิว "ใบที่รอ
+ * บัญชีตรวจ" ทั้งที่ไม่มีอะไรให้ตรวจ — ใบแบบนี้ถูกประทับ pending ตั้งแต่ตอนอนุมัติ
+ */
 export function awaitsFinanceReview(order) {
-  return order?.status === 'approved' && financeStatusOf(order) === 'pending';
+  return order?.status === 'approved'
+    && financeStatusOf(order) === 'pending'
+    && !paymentNotRequired(order?.totalAmount);
 }
 
 /**
