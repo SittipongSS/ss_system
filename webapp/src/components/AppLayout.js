@@ -87,6 +87,14 @@ export default function AppLayout({ children }) {
   /* ระบบที่กางเมนูย่อยค้างอยู่ในดรอปดาวน์ (มติผู้ใช้ 2026-08-23) — ทีละระบบเท่านั้น
      เก็บเป็น key ไม่ใช่ boolean ต่อแถว เพราะกางสองระบบพร้อมกันคือแผงยาวเลยจอ */
   const [openSystem, setOpenSystem] = useState(null);
+  /* ⭐ **แถบระบบบนหัวสำหรับจอกว้าง** (มติผู้ใช้ 2026-08-25) — ทุกระบบที่คนคนนี้เข้าได้
+     เรียงอยู่บนแถบบน กดชื่อระบบแล้วเมนูของระบบนั้นกางลงมาเป็นดรอปดาวน์
+     ⚠️ **กดชื่อระบบไม่ย้ายหน้า** (มติเดียวกัน) — มันเปิดเมนูให้เลือกเท่านั้น จึงต้อง
+     มีแถวแรกในดรอปดาวน์ที่พาไปหน้าแรกของระบบ ไม่งั้นไปหน้านั้นไม่ได้เลย
+     ⚠️ คนละ state กับ `openSystem` ของดรอปดาวน์สลับระบบ — สองตัวนี้ไม่เคยโผล่
+     พร้อมกัน (คนละชั้นจอ) แต่ใช้ตัวแปรร่วมกันเมื่อไร ค่าค้างของอีกฝั่งจะทำให้เมนู
+     กางเองตอนสลับความกว้างจอ */
+  const [openBarSystem, setOpenBarSystem] = useState(null);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   /* ⭐ **ไม่มีแถบข้างประจำที่แล้วทุกความกว้าง** (มติผู้ใช้ 2026-08-25) — เมนูของระบบ
      มาเป็นลิ้นชักที่เปิดจากแฮมเบอร์เกอร์บนหัว แล้วลอยทับเนื้อหา
@@ -98,6 +106,7 @@ export default function AppLayout({ children }) {
      · `navOpen` = การกางชั่วคราว ไม่เก็บถาวร ปิดเองเมื่อเปลี่ยนหน้า */
   const [navOpen, setNavOpen] = useState(false);
   const sysMenuRef = useRef(null);
+  const sysBarRef = useRef(null);
 
   /* ⚠️ ต้องประกาศ **ก่อน** effect ที่ตัดสินเปลือกระบบข้างล่าง — ตั้งแต่มติ 2026-08-22
      เปลือกของเอกสารร่วมเดินตาม *คนดู* ไม่ใช่ตาม URL อย่างเดียวอีกต่อไป
@@ -208,6 +217,7 @@ export default function AppLayout({ children }) {
     }
     setSysMenuOpen(false); // navigating closes the system dropdown
     setOpenSystem(null);
+    setOpenBarSystem(null);
     setMobileMoreOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, role, department, extraCaps]);
@@ -221,6 +231,21 @@ export default function AppLayout({ children }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [sysMenuOpen]);
+
+  /* ปิดเมนูของแถบระบบเมื่อคลิกนอกแถบหรือกด Esc — ท่าเดียวกับดรอปดาวน์สลับระบบ */
+  useEffect(() => {
+    if (!openBarSystem) return undefined;
+    const onDown = (e) => {
+      if (sysBarRef.current && !sysBarRef.current.contains(e.target)) setOpenBarSystem(null);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpenBarSystem(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openBarSystem]);
 
   useEffect(() => {
     if (!mobileMoreOpen) return;
@@ -596,6 +621,20 @@ export default function AppLayout({ children }) {
     : isSettingsContext
       ? settingsMenuItems(userContext)
       : (currentGroup?.items || []);
+  /* รายการที่วางบนแถบระบบของจอกว้าง = ระบบที่เข้าได้ทั้งหมด + "ตั้งค่า" เมื่อกำลัง
+     อยู่ในนั้น (ตั้งค่าไม่ได้อยู่ใน allGroups — ดูเหตุผลที่ `menuItems` ข้างบน)
+     ⚠️ ไม่เอา `isBareShell` — หน้าที่ไม่เป็นของระบบไหนต้องได้เปลือกเปล่าเหมือนเดิม */
+  const barGroups = isBareShell
+    ? []
+    : isSettingsContext
+      ? [...accessibleGroups, {
+        system: 'settings',
+        label: 'ตั้งค่า',
+        icon: SettingsIcon,
+        home: '/settings',
+        items: settingsMenuItems(userContext),
+      }]
+      : accessibleGroups;
   /* แถบเมนูมีสองกลุ่ม: ลำดับงาน (ซ้าย) กับเครื่องมือ (ขวา ข้าง "วางเป้า")
      ⚠️ `menuItems` ยังเป็นก้อนเดียวสำหรับมือถือ — แผ่นเมนูล่างไม่มีสองฝั่งให้แบ่ง */
   const flowItems = menuItems.filter((item) => !item.utility);
@@ -815,6 +854,84 @@ export default function AppLayout({ children }) {
             />
           </div>
         </div>
+
+        {/* ── แถบระบบของจอกว้าง (มติผู้ใช้ 2026-08-25) ─────────────────────────
+            ทุกระบบที่คนคนนี้เข้าได้เรียงอยู่ตรงนี้ · กดชื่อระบบ = **กางเมนูของระบบ
+            นั้น ไม่ใช่ย้ายหน้า** ⇒ ดูเมนูระบบอื่นได้โดยไม่หลุดจากงานที่ทำอยู่
+            ⚠️ CSS ซ่อนทั้งแถบเมื่อจอ ≤1200 แล้วกลับไปใช้แฮมเบอร์เกอร์+ลิ้นชัก
+            ⚠️ แถวแรกของดรอปดาวน์คือทางไปหน้าแรกของระบบ — ไม่มีแล้วจะไปหน้านั้น
+            ไม่ได้เลย เพราะปุ่มบนแถบไม่พาไปไหน (ยกเว้นระบบที่เมนูมีหน้านั้นอยู่แล้ว) */}
+        {barGroups.length > 0 && (
+          <nav className="topnav-systems" ref={sysBarRef} aria-label="ระบบทั้งหมด">
+            {barGroups.map((g) => {
+              const SystemIcon = g.icon || LayoutDashboard;
+              const open = openBarSystem === g.system;
+              const systemCount = navCountForSystem(navCounts, g.system);
+              const isActive = g.system === activeSystem || (g.system === 'settings' && isSettingsContext);
+              if (g.disabled) {
+                return (
+                  <span key={g.system} className="topnav-sysbar-btn is-disabled" aria-disabled="true" title={SYSTEM_DISABLED_NOTE}>
+                    {g.label}
+                  </span>
+                );
+              }
+              /* ระบบที่เมนูมีหน้าแรกของตัวเองอยู่แล้ว (เช่น "ภาพรวม") ไม่ต้องมี
+                 แถวพาไปหน้าแรกซ้ำอีกแถว */
+              const hasHomeItem = g.items.some((item) => item.href === g.home);
+              return (
+                <div key={g.system} className={`topnav-sysbar-item${open ? ' open' : ''}`}>
+                  <button
+                    type="button"
+                    className={`topnav-sysbar-btn${isActive ? ' active' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    onClick={() => setOpenBarSystem(open ? null : g.system)}
+                  >
+                    {/* ⚠️ **ไม่มีไอคอนบนแถวนี้** — วัดจริง 2026-08-25: ไอคอน 10 ตัวกิน
+                        รวม ~210px ทำให้แถวตกสองบรรทัดที่จอ 1280 (หัวสูง 126px) · ชื่อระบบ
+                        เป็นคำที่คนอ่านอยู่แล้ว ส่วนไอคอนยังอยู่ครบในดรอปดาวน์ ตัวสลับระบบ
+                        และการ์ดหน้าแรก */}
+                    {g.label}
+                    {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
+                    <ChevronDown size={13} strokeWidth={2.5} aria-hidden="true" className="topnav-sysbar-caret" />
+                  </button>
+                  {open && (
+                    <div className="topnav-sysbar-menu" role="menu" aria-label={`เมนู${g.label}`}>
+                      {!hasHomeItem && (
+                        <Link href={g.home} role="menuitem" className="topnav-sys-item">
+                          <SystemIcon size={15} className="ico" /> ไปที่{g.label}
+                        </Link>
+                      )}
+                      {g.items.map((item) => {
+                        const ItemIcon = item.icon;
+                        const count = navCountFor(navCounts, item.href);
+                        if (item.disabled) {
+                          return (
+                            <span key={item.href} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
+                              <ItemIcon size={15} className="ico" /> {item.name}
+                            </span>
+                          );
+                        }
+                        return (
+                          <Link
+                            key={item.href}
+                            href={navHrefFor(item, count)}
+                            role="menuitem"
+                            className={`topnav-sys-item ${item.match(pathname) ? 'active' : ''}`}
+                            aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+                          >
+                            <ItemIcon size={15} className="ico" /> {item.name}
+                            {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        )}
 
       </header>
 
