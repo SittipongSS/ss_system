@@ -42,8 +42,11 @@ test("ทุกหน้ารายการในทะเบียนต้�
   for (const rel of GUARDED) {
     const text = read(rel);
     assert.match(text, /import useLatestRun from "@\/lib\/ui\/useLatestRun"/, `${rel}: ไม่ได้ import ตัวกัน`);
-    assert.match(text, /const startRun = useLatestRun\(\);/, `${rel}: ไม่ได้สร้างตัวนับรอบ`);
-    assert.match(text, /const isLatest = startRun\(\);/, `${rel}: ไม่ได้จองรอบตอนเริ่มโหลด`);
+    /* ⚠️ ชื่อตัวแปรยืดหยุ่นได้ — หน้าที่โหลดหลายก้อนอิสระต้องมีตัวนับ **คนละชุด**
+       (คิวลีดมี startLeadsRun กับ startKpiRun) ⇒ ล็อกที่ "มีตัวนับและมีการจองรอบ"
+       ไม่ใช่ล็อกที่ชื่อ */
+    assert.match(text, /const start\w* = useLatestRun\(\);/, `${rel}: ไม่ได้สร้างตัวนับรอบ`);
+    assert.match(text, /const isLatest = start\w*\(\);/, `${rel}: ไม่ได้จองรอบตอนเริ่มโหลด`);
     assert.match(text, /if \(!isLatest\(\)\) return;/, `${rel}: ไม่มีจุดทิ้งคำตอบของรอบเก่า`);
   }
 });

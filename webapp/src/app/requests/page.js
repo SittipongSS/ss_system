@@ -82,7 +82,6 @@ export default function RequestsPage() {
   // ⚠️ เหลือ **ดีลอย่างเดียว** — ใช้เติมค่าตั้งต้นให้ปุ่ม "เปิดคำร้อง" ตอนมาจากหน้าดีล
   // (`?dealId=`) · ทะเบียนที่เหลือเคยโหลดไว้ส่งให้ `RequestQueuePanel` ซึ่ง **ไม่เคย
   // อ่านมันเลย** ⇒ 8 endpoint ต่อการเปิดคิวหนึ่งครั้ง โดยไม่มีอะไรบนจอเปลี่ยน
-  const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -148,13 +147,6 @@ export default function RequestsPage() {
 
   useEffect(() => { reload(); }, [reload]);
   useRevalidateOnFocus(reload);
-  // ดีลใช้เติมค่าตั้งต้นของปุ่มเปิดคำร้องเมื่อมาจากหน้าดีล — ทะเบียนที่ฟอร์มต้องใช้
-  // จริงโหลดที่ `/requests/new` ซึ่งเป็นที่ที่ฟอร์มอยู่ ไม่ใช่ที่คิว
-  useEffect(() => {
-    fetch("/api/sales-planning/deals", { cache: "no-store" })
-      .then((r) => r.json()).then((d) => setDeals(Array.isArray(d) ? d : [])).catch(() => {});
-  }, []);
-
   /* ⚠️ ทุกอย่างท้ายน้ำต้องอ่านจาก `requests` ตัวนี้ตัวเดียว — ตัวเลขบนแท็บกับตาราง
      ข้างล่างขัดกันไม่ได้ (กติกาเดิมของหน้านี้) ⇒ กรองทีมที่นี่ที่เดียว ไม่ใช่ที่ตาราง
      คนอยู่ทีมเดียว: `matches` คืน true เสมอ = ชุดเดิมทั้งก้อน ไม่มีอะไรเปลี่ยน */
@@ -202,10 +194,22 @@ export default function RequestsPage() {
   // ตอนนี้ดีลบังคับทุกหัวข้อแล้ว การเติมล่วงหน้าจึงมีค่ากว่าเดิม: มาจากหน้าดีลไหน
   // ก็เปิดคำร้องของดีลนั้นได้เลยไม่ต้องไล่หาในโครงการ
   const dealIdParam = searchParams.get("dealId");
-  const dealParam = useMemo(
-    () => deals.find((d) => d.id === dealIdParam) || null,
-    [deals, dealIdParam],
-  );
+  /* ⭐ **โหลดเฉพาะดีลใบที่ลิงก์ส่งมา ไม่ใช่ทะเบียนทั้งระบบ**
+     🐞 ของเดิมยิง `/api/sales-planning/deals` (ไม่มีตัวกรองเดือน/ปีเลย = สแกนทั้งตาราง)
+     **ทุกครั้งที่เปิดคิว** เพื่อเอามาหาแถวเดียวแล้วทิ้งที่เหลือทั้งหมด — และคนส่วนใหญ่
+     เปิดคิวโดยไม่มี `?dealId=` ด้วยซ้ำ ⇒ จ่ายเต็มราคาให้ของที่ไม่ได้ใช้
+     ตอนนี้: ไม่มี `?dealId=` = ไม่ยิงเลยสักครั้ง · มี = ยิงใบเดียว
+     ⚠️ ธง `alive` กันคำตอบของ dealId เก่ามาทับตอนกดลิงก์ต่อกันเร็ว ๆ */
+  const [dealParam, setDealParam] = useState(null);
+  useEffect(() => {
+    if (!dealIdParam) { setDealParam(null); return undefined; }
+    let alive = true;
+    fetch(`/api/sales-planning/deals/${encodeURIComponent(dealIdParam)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setDealParam(d || null); })
+      .catch(() => { if (alive) setDealParam(null); });
+    return () => { alive = false; };
+  }, [dealIdParam]);
   const newRequestDefaults = useMemo(() => (dealParam?.projectId
     ? { projectId: dealParam.projectId, dealId: dealParam.id }
     : null), [dealParam]);

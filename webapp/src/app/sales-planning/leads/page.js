@@ -187,43 +187,65 @@ export default function LeadsPage() {
   // ยิง KPI เฉพาะ role ที่ API ยอมให้อ่าน — คนอื่นเคยได้ 403 ทุกครั้งที่เปิด/เปลี่ยนเดือน
   // (ทิ้งไปเปล่า ๆ เพราะแถบตัวเลขก็ไม่ขึ้นให้เขาอยู่แล้ว) · ด่านเดียวกับที่ใช้ตัดสินการ render
   const showKpi = canSeeLeadKpi(role);
-  /* ⚠️ ตัวกรองของหน้านี้มีช่องวันที่ ⇒ เลื่อนทีละวันคือยิงโหลดซ้อนกันหลายรอบ
-     คำตอบมาผิดลำดับเมื่อไร ตัวเลข KPI จะเป็นของช่วงที่เลื่อนผ่านไปแล้ว (ดู lib/ui/latestRun) */
-  const startRun = useLatestRun();
-  const load = useCallback(async (opts) => {
-    const isLatest = startRun();
+  /* ⭐ **แยกสองก้อนที่ผันตามคนละอย่าง** (แก้ 2026-08-25)
+     🐞 ของเดิมมัด "รายการลีด" กับ "แถบ KPI" ไว้ใน `Promise.all` เดียวกัน ทั้งที่
+     `/api/sales-planning/leads` **ไม่รับพารามิเตอร์ตัวกรองเลยสักตัว** ⇒ เลื่อนช่วงวัน
+     ทีละวันในช่วง 14 วัน = ดึงรายการลีดทั้งก้อนซ้ำ 14 รอบโดยไม่มีอะไรเปลี่ยน
+     ผลข้างเคียงที่ผู้ใช้เห็น: ตารางกระพริบ/หายทุกครั้งที่ขยับตัวกรองซึ่งไม่เกี่ยวกับตาราง
+     ⚠️ ตัวนับรอบ **แยกชุดกัน** — ชุดเดียวจะทำให้การโหลดของก้อนหนึ่งไปทิ้งคำตอบ
+     ของอีกก้อน (ดูหมายเหตุใน lib/ui/useLatestRun) */
+  const startLeadsRun = useLatestRun();
+  const loadLeads = useCallback(async (opts) => {
+    const isLatest = startLeadsRun();
     /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
        จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const [leadsRes, kpiRes] = await Promise.all([
-        fetch("/api/sales-planning/leads"),
-        // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
-        // โหมดช่วงวันส่ง from/to ซึ่ง API ให้มาก่อน month/year (IS-26080023)
-        showKpi
-          ? fetch(periodMode === "range"
-            ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
-            : allMonths
-              ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
-              : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`)
-          : null,
-      ]);
-      if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
-      const rows = await leadsRes.json();
-      const kpiData = kpiRes?.ok ? await kpiRes.json() : null;
-      if (!isLatest()) return; // ตัวกรองขยับไปแล้ว — คำตอบนี้เป็นของช่วงเก่า
+      const res = await fetch("/api/sales-planning/leads");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
+      const rows = await res.json();
+      if (!isLatest()) return;
       setLeads(rows);
-      setKpi(kpiData);
     } catch (e) {
       // รอบเก่าที่ล้มต้องไม่พ่นข้อความทับหน้าที่กำลังโหลดของใหม่อยู่
       if (isLatest() && !opts?.background) setError(e.message || "โหลดลีดไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [month, allMonths, periodMode, range.from, range.to, showKpi, startRun]);
+  }, [startLeadsRun]);
 
-  useEffect(() => { load(); }, [load]);
+  /* ⚠️ ก้อนนี้คือก้อนที่ผันตามตัวกรองจริง ๆ · มีช่องวันที่ ⇒ เลื่อนทีละวันคือยิงซ้อนกัน
+     หลายรอบ คำตอบมาผิดลำดับเมื่อไรตัวเลขจะเป็นของช่วงที่เลื่อนผ่านไปแล้ว
+     ⚠️ **ไม่มีสถานะโหลดของตัวเอง** โดยตั้งใจ — ตัวเลขเปลี่ยนค่าอยู่กับที่อ่านง่ายกว่า
+     แถบตัวเลขที่หายแล้วโผล่ (และตารางข้างล่างไม่เกี่ยวกับตัวกรองนี้เลย) */
+  const startKpiRun = useLatestRun();
+  const loadKpi = useCallback(async () => {
+    if (!showKpi) { setKpi(null); return; }
+    const isLatest = startKpiRun();
+    try {
+      // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
+      // โหมดช่วงวันส่ง from/to ซึ่ง API ให้มาก่อน month/year (IS-26080023)
+      const res = await fetch(periodMode === "range"
+        ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
+        : allMonths
+          ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
+          : `/api/sales-planning/leads/kpi?month=${encodeURIComponent(month)}`);
+      const data = res.ok ? await res.json() : null;
+      if (!isLatest()) return; // ตัวกรองขยับไปแล้ว — คำตอบนี้เป็นของช่วงเก่า
+      setKpi(data);
+    } catch {
+      // แถบตัวเลขพังต้องไม่ทำให้คิวลีดพัง — คงเลขเดิมไว้เงียบ ๆ
+    }
+  }, [month, allMonths, periodMode, range.from, range.to, showKpi, startKpiRun]);
+
+  /** ดึงใหม่ทั้งหน้า — ใช้หลังทำรายการที่กระทบทั้งตารางและตัวเลข */
+  const load = useCallback(async (opts) => {
+    await Promise.all([loadLeads(opts), loadKpi()]);
+  }, [loadLeads, loadKpi]);
+
+  useEffect(() => { loadLeads(); }, [loadLeads]);
+  useEffect(() => { loadKpi(); }, [loadKpi]);
   useRevalidateOnFocus(load);
 
   // รายชื่อ AE (มอบหมาย) + ลูกค้า (qualify) — โหลดเมื่อ role ทำงานคิวได้เท่านั้น
