@@ -10,7 +10,7 @@ import {
   LEAD_EDIT_LOCKED_STATUSES, LEAD_DELETE_LOCKED_STATUSES,
   meetingTimesSinceBounce, pickNextMeetingAt, inLeadScope, chunkLeadIds,
   sourceLeadIdOf, slaStage, slaPendingTone, channelRollup, withAssigneePending,
-  LEAD_SLA_STAGES, leadSlaNote,
+  LEAD_SLA_STAGES, leadSlaNote, leadBouncePatch,
 } from './leads';
 import { bangkokDate } from './handoffQueue';
 import { businessDayKey } from '../datePeriods';
@@ -491,13 +491,18 @@ test('route ตีกลับ: ล้างคอลัมน์ของรอ
     new URL('../../app/api/sales-planning/leads/[id]/transition/route.js', import.meta.url),
     'utf8',
   );
-  const bounceBlock = routeSource.split("action === 'bounce'")[1] || '';
+  /* ⭐ กติกาย้ายไปอยู่ที่ `leadBouncePatch` แล้ว (mig 0291) เพราะ cron ตีกลับอัตโนมัติ
+     เขียนแถวเองไม่ผ่าน route นี้ — ตรวจที่ตัวจริงดีกว่าอ่านข้อความในไฟล์
+     ⚠️ ยังต้องเช็คว่า route **เรียกมันจริง** ไม่ใช่กลับไปเขียนเอง (บรรทัดล่าง) */
+  const patch = leadBouncePatch('2026-08-25T03:00:00Z');
   for (const field of ['screenedAt', 'assignedAt', 'firstContactAt', 'meetingAt']) {
-    assert.match(bounceBlock, new RegExp(`patch\\.${field} = null`),
+    assert.equal(patch[field], null,
       `ตีกลับไม่ล้าง ${field} ⇒ ซากรอบก่อนทำให้ผัง Funnel และ SLA ของรอบใหม่เพี้ยน`);
   }
-  assert.doesNotMatch(bounceBlock, /patch\.firstScreenedAt = null/,
+  assert.equal('firstScreenedAt' in patch, false,
     'firstScreenedAt = ประวัติครั้งแรกตลอดกาล ล้างแล้ว SLA คัดกรองของใบนั้นหายไปทั้งใบ');
+  assert.match(routeSource, /Object\.assign\(patch, leadBouncePatch\(now\)\)/,
+    'route ต้องใช้กติกากลาง ไม่ใช่ล้างคอลัมน์เอง');
   // คัดกรอง: เขียนสองคอลัมน์คนละกติกา — ครั้งแรกเก็บครั้งเดียว รอบปัจจุบันทับทุกครั้ง
   assert.match(routeSource, /patch\.firstScreenedAt = lead\.firstScreenedAt \|\| lead\.screenedAt \|\| now/);
   assert.match(routeSource, /patch\.screenedAt = now/);

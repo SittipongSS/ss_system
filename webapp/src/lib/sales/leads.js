@@ -435,13 +435,55 @@ export function sourceLeadIdOf(body = {}) {
 // แยกเป็นฟังก์ชันบริสุทธิ์สองตัวเพราะกติกาอยู่ในไฟล์ route แล้วเทสต์เข้าไม่ถึง
 // (route เหลือหน้าที่เดียวคือ query แล้วส่งแถวมาให้)
 
+/* ── ตีกลับมีสองชนิด ต้องนับเป็นเรื่องเดียวกันเสมอ ────────────────────────
+   `bounce` = คนกด · `auto_bounce` = ระบบตีกลับเพราะไม่มีความเคลื่อนไหว (mig 0291)
+   🪤 **ทุกที่ที่เคยเขียน `'bounce'` ตรง ๆ ต้องมาใช้ลิสต์นี้** — ลืมที่ไหนที่หนึ่ง
+   แล้วใบที่ถูกตีกลับอัตโนมัติจะ "ไม่นับว่าเคยตีกลับ" ที่นั่น ⇒ นัดของเจ้าของคนเก่า
+   ฟื้นขึ้นมาบนลีดของเจ้าของคนใหม่ ซึ่งเป็นบั๊กที่ `meetingTimesSinceBounce`
+   เกิดมาแก้พอดี · จุดที่ต้องใช้: ฟังก์ชันข้างล่างนี้ และ query ของ `nextMeetingAt`
+   ใน transition/route.js */
+export const LEAD_BOUNCE_KINDS = ['bounce', 'auto_bounce'];
+
+/** สถานะของลีดหลังถูกตีกลับ — **ที่เดียวที่รู้ว่าต้องล้างอะไรบ้าง**
+ *
+ *  🪤 ก่อนหน้านี้กติกานี้อยู่ในไฟล์ route ก้อนเดียว พอมี cron ตีกลับอัตโนมัติ (mig 0291)
+ *  ก็จะมีสองที่ที่ต้องล้างเจ็ดคอลัมน์ให้ตรงกันเอง — ลืมคอลัมน์เดียวคือ SLA เพี้ยนเงียบ ๆ
+ *  (มีประวัติแล้ว: mig 0234 ต้องมาไล่เก็บ screenedAt/assignedAt ที่ตกหล่นรอบแรก
+ *  และ mig 0273 มาเก็บ firstAssignedAt อีกรอบ)
+ *
+ *  ⚠️ ล้างทั้ง **ต้นรอบและปลายรอบ** — ใบนี้กลับไปนอนคิวคัดกรองแล้ว ยังไม่ถูกคัดกรอง/
+ *  มอบหมายในรอบใหม่ · ค้างไว้แล้วผัง Funnel นับ "คัดกรองแล้ว/มอบหมายแล้ว" เกินจริง
+ *  และ SLA กระจายของรอบใหม่จะถูกวัดจาก `screenedAt` รอบก่อน = กินเวลาตีกลับทั้งรอบ
+ *  ⚠️ **`firstScreenedAt` ไม่อยู่ในลิสต์โดยเจตนา** — ครั้งแรกตลอดกาลไม่ใช่ของรอบ
+ *  (mig 0234: rework ไม่ลบผลงานคัดกรองรอบแรก)
+ */
+export function leadBouncePatch(now) {
+  return {
+    status: 'new',
+    team: null,
+    assigneeId: null,
+    assigneeName: null,
+    // ปลายรอบ — ไม่ล้างแล้ว SLA ติดต่อกลับของผู้รับคนใหม่ถูกวัดจาก firstContactAt เดิม
+    // (assignedAt ใหม่ > firstContactAt เก่า → countBusinessDays ติดลบ → นับเป็น "ทัน" ฟรี)
+    firstContactAt: null,
+    meetingAt: null,
+    // วันติดตามของเจ้าของคนเก่า (mig 0288) — ไม่ล้างแล้วระบบจะทวงคนใหม่ด้วยกำหนดของคนอื่น
+    followUpAt: null,
+    // ต้นรอบ (mig 0234 / 0273) — รอบใหม่นับใหม่ทั้งชุด
+    screenedAt: null,
+    assignedAt: null,
+    firstAssignedAt: null,
+    updatedAt: now,
+  };
+}
+
 /** นัดของ "รอบปัจจุบัน" — events เรียงใหม่→เก่า แล้วตัดที่ bounce ตัวแรกที่เจอ
  *  ⚠️ bounce = เริ่มรอบใหม่ (ล้างทีม/ผู้รับ/เวลาติดต่อ/เวลานัด) แต่ `lead_events` เก็บ
  *  ประวัติไว้หมด ไม่ตัดที่ bounce = นัดของเจ้าของคนเก่าฟื้นกลับมาบนลีดของเจ้าของคนใหม่ */
 export function meetingTimesSinceBounce(events = []) {
   const times = [];
   for (const row of events) {
-    if (row?.kind === 'bounce') break;
+    if (LEAD_BOUNCE_KINDS.includes(row?.kind)) break;
     if (row?.eventAt) times.push(row.eventAt);
   }
   return times;

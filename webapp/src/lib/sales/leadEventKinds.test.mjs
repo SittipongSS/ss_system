@@ -9,7 +9,7 @@
 // ⇒ insert ชน constraint ทุกครั้ง + โค้ดไม่ได้อ่าน error ⇒ เงียบสนิท
 //
 // เทสต์นี้เทียบสองฝั่งตรง ๆ: ค่าที่ปรากฏใน `kind:` ของโค้ด ต้องอยู่ในชุดของ
-// CHECK ล่าสุด (0289) — เพิ่ม kind ใหม่ในโค้ดโดยไม่แตะ migration แล้วจะแดงทันที
+// CHECK ล่าสุด (0291) — เพิ่ม kind ใหม่ในโค้ดโดยไม่แตะ migration แล้วจะแดงทันที
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 // ⚠️ ต้องชี้ migration **ล่าสุด** ที่นิยาม CHECK นี้ — ชี้ไฟล์เก่าเมื่อไหร่เทสต์จะเขียว
 // ทั้งที่ของจริงบน DB เป็นอีกชุด (บทเรียนเดียวกับ deal_probability_for_stage)
-const KIND_CHECK_MIGRATION = 'supabase/migrations/0289_lead_follow_up.sql';
+const KIND_CHECK_MIGRATION = 'supabase/migrations/0291_lead_auto_bounce.sql';
 
 function allowedKinds() {
   const sql = read(KIND_CHECK_MIGRATION);
@@ -41,20 +41,38 @@ const WRITERS = [
   'src/app/api/sales-planning/leads/route.js',
   'src/app/api/sales-planning/leads/[id]/transition/route.js',
   'src/app/api/sales-planning/deals/route.js',
+  // ⭐ cron ตีกลับอัตโนมัติ (mig 0291) เขียน lead_events เองไม่ผ่าน transition route —
+  // ไม่ใส่ที่นี่ = เทสต์ตาบอดต่อผู้เขียนรายใหม่ ซึ่งเป็นสิ่งเดียวที่ไฟล์นี้มีไว้จับ
+  'src/app/api/cron/auto-bounce-leads/route.js',
 ];
 
 test('CHECK ของ lead_events.kind ต้องมี create_deal (mig 0199)', () => {
   assert.ok(allowedKinds().has('create_deal'), 'ไม่มี create_deal = ประวัติการเปิดดีลจากลีดจะล้มเงียบอีก');
 });
 
-test('kind ที่โค้ดเขียนตรง ๆ ต้องอยู่ใน CHECK ทุกค่า', () => {
+/* ⚠️ **ตรวจเฉพาะ kind ที่เขียนลง `lead_events`** — ไฟล์เดียวกันเขียนลงตารางอื่นได้ด้วย
+   (cron ตีกลับอัตโนมัติยิง `notifyUsers` ด้วย `kind: 'lead_auto_bounce'` ซึ่งเป็น
+   kind ของ **ตารางแจ้งเตือน** คนละตาราง คนละ CHECK) · กวาดทั้งไฟล์เมื่อไรจะได้
+   false positive ที่บังคับให้คนแก้ผิดที่ — หรือแย่กว่านั้น ทำให้คนปิดเทสต์ทิ้ง */
+const leadEventBlocks = (src) => src
+  .split(/\.from\(/)
+  .filter((part) => part.startsWith("'lead_events'"))
+  /* ตัดที่ปลาย statement — เชนของ supabase จบด้วย `;` เสมอ · ไม่ตัดแล้วบล็อกสุดท้าย
+     จะลากยาวไปถึงท้ายไฟล์แล้วกลืน `notifyUsers` ที่อยู่ข้างล่างเข้ามาด้วย */
+  .map((part) => part.slice(0, part.indexOf(';') + 1 || undefined));
+
+test('kind ที่เขียนลง lead_events ต้องอยู่ใน CHECK ทุกค่า', () => {
   const allowed = allowedKinds();
+  let seen = 0;
   for (const rel of WRITERS) {
-    const src = read(rel);
-    for (const [, kind] of src.matchAll(/kind:\s*'([a-z_]+)'/g)) {
-      assert.ok(allowed.has(kind), `${rel} เขียน kind='${kind}' ที่ CHECK ไม่ยอมรับ`);
+    for (const block of leadEventBlocks(read(rel))) {
+      for (const [, kind] of block.matchAll(/kind:\s*'([a-z_]+)'/g)) {
+        seen += 1;
+        assert.ok(allowed.has(kind), `${rel} เขียน kind='${kind}' ที่ CHECK ไม่ยอมรับ`);
+      }
     }
   }
+  assert.ok(seen > 0, 'อ่าน kind จากผู้เขียนไม่เจอเลย — เทสต์นี้กลายเป็นเทสต์เปล่า');
 });
 
 // transition route เขียน `kind: action` ตรง ๆ จาก body — ทุก action ที่เดินถึง insert
