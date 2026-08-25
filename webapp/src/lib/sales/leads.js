@@ -697,12 +697,20 @@ export function channelRollup(rows) {
       });
     }
     const row = map.get(channel);
+    /* ⭐ นิยาม "ไปถึงไหน" มาจาก `leadOutcome` ที่เดียว — เดิมเขียนเงื่อนไขเองตรงนี้
+       แล้วมีอีกสองที่ใน KPI route ที่เขียนเงื่อนไขเดียวกันซ้ำ (funnel · byAssignee)
+       ⚠️ ส่งเป็นแถวล้วน (ไม่มี events) = อ่านจากคอลัมน์ตามเดิมทุกประการ ตัวเลขไม่ขยับ
+       การเปลี่ยนไปอ่านประวัติเป็นการเปลี่ยน **นิยาม** ซึ่งต้องเป็นคอมมิตของตัวเอง
+       ไม่งั้นตัวเลขขยับแล้วไม่มีใครแยกออกว่าเพราะรวมโค้ดหรือเพราะเปลี่ยนนิยาม */
+    const outcome = leadOutcome(lead);
     row.count += 1;
-    if (lead?.firstContactAt) row.contacted += 1;
-    if (lead?.meetingAt) row.meeting += 1;
-    if (lead?.status === 'qualified') { row.qualified += 1; row.won += 1; }
-    else if (lead?.status === 'disqualified') { row.disqualified += 1; row.lost += 1; }
-    else if (lead?.firstContactAt) row.talking += 1;
+    if (outcome.reachedContact) row.contacted += 1;
+    if (outcome.reachedMeeting) row.meeting += 1;
+    /* ⚠️ ช่องสถานะ (won/lost/talking/untouched) **ไม่ซ้อนกัน** ต่างจากช่อง funnel ข้างบน
+       ลำดับความสำคัญเดิมทุกประการ: ปิดแล้วมาก่อน แล้วค่อยดูว่าเคยติดต่อไหม */
+    if (outcome.won) { row.qualified += 1; row.won += 1; }
+    else if (outcome.lost) { row.disqualified += 1; row.lost += 1; }
+    else if (outcome.reachedContact) row.talking += 1;
     else row.untouched += 1;
   }
   return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));

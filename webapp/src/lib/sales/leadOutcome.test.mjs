@@ -6,7 +6,9 @@
 // ทั้งคู่ไม่มี error ไม่มีอะไรฟ้อง มีแต่ตัวเลขที่ต่ำกว่าความจริง
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leadOutcome, leadOutcomeTotals, LEAD_LOST_UNCOUNTABLE } from './leads.js';
+import {
+  leadOutcome, leadOutcomeTotals, LEAD_LOST_UNCOUNTABLE, channelRollup as channelRollupOf,
+} from './leads.js';
 
 const lead = (over = {}) => ({ status: 'assigned', ...over });
 const ev = (kind, over = {}) => ({ kind, createdAt: '2026-08-01T03:00:00Z', ...over });
@@ -164,6 +166,59 @@ test('ค่าว่าง/ขยะ ไม่โยน error', () => {
   assert.equal(leadOutcome({}, [null, undefined, {}]).reachedContact, false);
   assert.equal(leadOutcomeTotals().total, 0);
   assert.equal(leadOutcomeTotals([null]).countable, 0);
+});
+
+/* ══ ผู้เรียกทั้งหมดกินนิยามเดียวกัน ═══════════════════════════════════════
+   สามที่ที่เคยเขียนเงื่อนไขเองซ้ำกัน: `channelRollup` (ไฟล์นี้) · `funnel` และ
+   `byAssignee` (KPI route) · ย้ายมาใช้ `leadOutcome` แล้วทั้งหมด
+
+   ⚠️ **`myQueue` ไม่ใช่ผู้เรียก** ทั้งที่อ่าน `meetingAt` เหมือนกัน — มันถามว่า
+   "มีนัดที่ยังไม่ถึงไหม" (วันกำหนดในคิวงาน) ไม่ใช่ "เคยไปถึงขั้นนัดไหม" (ผลลัพธ์)
+   สองคำถามนี้บังเอิญอ่านคอลัมน์เดียวกันเฉย ๆ · ยัด leadOutcome เข้าไปเมื่อไร
+   ลีดที่นัดไปแล้วเมื่อเดือนที่แล้วจะขึ้นคิวงานว่ามีนัด ทั้งที่ประชุมจบไปนานแล้ว */
+
+/* 🪤 คนที่ลืมง่ายที่สุดคือ "แก้ที่หนึ่ง ลืมอีกสองที่" — เทสต์นี้อ่านซอร์สจริงมาดูว่า
+   ยังมีใครเขียนเงื่อนไขเองอยู่ไหม · เพิ่มตัวนับใหม่ในอนาคตแล้วเผลอเขียน
+   `l.meetingAt` ตรง ๆ จะแดงทันที ไม่ต้องรอให้ตัวเลขสองจอขัดกันแล้วค่อยรู้ */
+test('ไม่มีผู้เรียกไหนเขียนเงื่อนไข "ไปถึงไหน" เองอีก', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kpiRoute = readFileSync(
+    new URL('../../app/api/sales-planning/leads/kpi/route.js', import.meta.url), 'utf8',
+  );
+  // ตัดคอมเมนต์ออกก่อน — คอมเมนต์อธิบายบั๊กเก่าย่อมพูดถึงชื่อคอลัมน์เหล่านี้
+  const code = kpiRoute.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const banned of [/\bl\.meetingAt\b/, /\bl\.firstContactAt\b/]) {
+    // firstContactAt ยังใช้ได้ในบริบท SLA ("ทันไหม") — ห้ามเฉพาะตอนใช้เป็นตัวนับ
+    const hits = [...code.matchAll(new RegExp(banned.source, 'g'))];
+    for (const hit of hits) {
+      const line = code.slice(0, hit.index).split('\n').pop() + code.slice(hit.index).split('\n')[0];
+      assert.match(line, /slaHit|slaStage/,
+        `KPI route ยังอ่าน ${hit[0]} เป็นตัวนับ — ต้องผ่าน leadOutcome`);
+    }
+  }
+  assert.match(code, /leadOutcome\(/, 'route ต้องเรียก leadOutcome จริง ไม่ใช่แค่ import');
+});
+
+/* ผลของ channelRollup ต้องไม่ขยับหลังย้ายมาใช้ leadOutcome — การรวมโค้ดกับการเปลี่ยน
+   นิยามต้องเป็นคนละคอมมิต ไม่งั้นตัวเลขขยับแล้วแยกไม่ออกว่าเพราะอะไร */
+test('ย้ายมาใช้ leadOutcome แล้วตัวเลขไม่ขยับ — รวมโค้ด ไม่ใช่เปลี่ยนนิยาม', () => {
+  const rows = [
+    { channel: 'phone', status: 'qualified', firstContactAt: 'x', meetingAt: 'y' },
+    { channel: 'phone', status: 'contacted', firstContactAt: 'x' },
+    { channel: 'phone', status: 'new' },
+    { channel: 'website', status: 'disqualified', firstContactAt: 'x', disqualifiedCode: 'duplicate' },
+    { channel: 'website', status: 'meeting', firstContactAt: 'x', meetingAt: 'y' },
+  ];
+  const [phone, website] = channelRollupOf(rows);
+  assert.deepEqual(
+    { count: phone.count, contacted: phone.contacted, meeting: phone.meeting, won: phone.won, untouched: phone.untouched },
+    { count: 3, contacted: 2, meeting: 1, won: 1, untouched: 1 },
+  );
+  /* ⚠️ ใบที่ `countable: false` (ลีดซ้ำ) **ยังนับใน channelRollup ตามเดิม** — ตารางนี้
+     ตอบว่า "เข้ามาทางไหนแล้วเกิดอะไรขึ้น" ซึ่งลีดซ้ำก็เข้ามาจริง · การตัดออกจากตัวส่วน
+     เป็นเรื่องของอัตราแปลง (leadOutcomeTotals) ไม่ใช่ของตารางช่องทาง */
+  assert.equal(website.lost, 1, 'ลีดซ้ำยังนับในตารางช่องทาง');
+  assert.equal(website.count, 2);
 });
 
 /* ── 🪤 กันดริฟต์: ผลรวมต้องเท่ากับ channelRollup ที่มีอยู่เดิม ─────────────

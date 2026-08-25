@@ -1,7 +1,9 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup } from '@/lib/sales/leads';
+import {
+  slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup, leadOutcome,
+} from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessDays, dateRangeOfBusinessMonth,
@@ -164,19 +166,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   ]);
 
   // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI)
+  /* ⚠️ นิยาม "ไปถึงไหน" มาจาก `leadOutcome` ที่เดียว เหมือน funnel และ channelRollup
+     เดิมสามที่นี้เขียนเงื่อนไขเดียวกันซ้ำสามชุด (`l.meetingAt` · `l.firstContactAt` ·
+     `status === 'qualified'`) แก้ที่หนึ่งลืมอีกสองที่ = ตัวเลขบนจอเดียวกันขัดกันเอง
+     ⚠️ `slaHit` ยังคำนวณตรงนี้เพราะเป็นคำถามคนละอัน — "ทันไหม" ไม่ใช่ "ไปถึงไหน" */
   const byAssignee = {};
   for (const l of rows) {
     if (!l.assigneeId) continue;
     const k = l.assigneeId;
     if (!byAssignee[k]) byAssignee[k] = { assigneeId: k, name: l.assigneeName || 'ไม่ระบุ', team: l.team || null, assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0 };
     const b = byAssignee[k];
+    const outcome = leadOutcome(l);
     b.assigned += 1;
-    if (l.firstContactAt) {
+    if (outcome.reachedContact) {
       b.contacted += 1;
       if (slaHit(l.assignedAt, l.firstContactAt, holidays) === true) b.slaHit += 1;
     }
-    if (l.meetingAt) b.meetings += 1;
-    if (l.status === 'qualified') b.qualified += 1;
+    if (outcome.reachedMeeting) b.meetings += 1;
+    if (outcome.won) b.qualified += 1;
   }
 
   /* ⚠️ ไม่มี "ตีกลับ" ในก้อนนี้แล้ว — มติผู้ใช้ 2026-08-11 เอาออกจากผัง แล้วไม่มีหน้าจอไหน
@@ -191,14 +198,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      🐞 เดิมสองขั้นบนนับจากซากของรอบก่อนที่ไม่ถูกล้าง ⇒ ส.ค. 2026 ผังขึ้น "มอบหมายแล้ว 56"
      ขณะที่ตาราง AE ข้างล่างรวมได้ 54 (byAssignee ข้ามใบที่ assigneeId ว่างไปแล้ว)
      สองตัวเลขบนจอเดียวกันขัดกันเองโดยไม่มีอะไรอธิบาย */
+  /* ⚠️ สองขั้นบน (คัดกรอง/มอบหมาย) ยังอ่าน timestamp ตรง ๆ — เป็นเรื่อง "ผ่านด่านไหน
+     มาแล้ว" ของรอบปัจจุบัน ไม่ใช่ "ผลลัพธ์" จึงไม่ใช่หน้าที่ของ leadOutcome
+     สี่ขั้นล่างมาจาก `leadOutcome` ที่เดียวร่วมกับ channelRollup และ byAssignee */
+  const outcomes = rows.map((lead) => leadOutcome(lead));
   const funnel = {
     total: rows.length,
     screened: rows.filter((l) => l.screenedAt).length,
     assigned: rows.filter((l) => l.firstAssignedAt || l.assignedAt).length,
-    contacted: rows.filter((l) => l.firstContactAt).length,
-    meeting: rows.filter((l) => l.meetingAt).length,
-    qualified: rows.filter((l) => l.status === 'qualified').length,
-    disqualified: rows.filter((l) => l.status === 'disqualified').length,
+    contacted: outcomes.filter((o) => o.reachedContact).length,
+    meeting: outcomes.filter((o) => o.reachedMeeting).length,
+    qualified: outcomes.filter((o) => o.won).length,
+    disqualified: outcomes.filter((o) => o.lost).length,
   };
 
   return ok({
