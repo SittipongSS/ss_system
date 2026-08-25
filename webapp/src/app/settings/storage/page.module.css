@@ -87,16 +87,3 @@
   line-height: var(--lh-text);
 }
 
-.logBox {
-  max-height: 240px;
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  font-size: var(--fs-5);
-  line-height: var(--lh-relaxed);
-}
-
-.logLine { overflow-wrap: anywhere; }

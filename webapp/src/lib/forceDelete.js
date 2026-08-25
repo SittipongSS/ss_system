@@ -142,6 +142,18 @@ async function purgeTaskThreads(supabase, { column, values }) {
 
 // ⚠️ โยน error ออกมาเสมอเมื่อกวาดไม่สำเร็จ — ผู้เรียกต้องหยุดก่อนลบแถวดีล ไม่งั้น
 // ดีลหายแต่ลูกยังอยู่ กลายเป็นแถวกำพร้าที่ไม่มีทางเข้าถึงและไม่มีใครตามลบให้
+/* ── ลบงานส่วนบุคคลเป็นชุด: กวาดไฟล์แนบก่อนเสมอ ───────────────────────────
+ * 🐞 เส้นลบงานทีละใบ (`/api/pm/personal-tasks/[id]`) เรียก `purgeAttachments` อยู่แล้ว
+ * แต่เส้นที่ลบเป็นชุด (ล้างของพ่วงดีล/คำร้อง/โครงการ) ยิง `.delete()` ตรง ๆ ⇒ ไฟล์แนบ
+ * ของงานเหล่านั้นค้างทั้งแถวและไฟล์บน Drive · งานส่วนบุคคลเป็นชนิดที่คนแนบไฟล์บ่อย
+ * ที่สุดในระบบ (29 แถวบน prod) ⇒ เส้นชุดคือทางที่จะสร้างของกำพร้ามากที่สุด */
+async function purgeTaskAttachments(supabase, column, value) {
+  const { data, error } = await supabase.from('personal_tasks').select('id').eq(column, value);
+  if (error) throw new Error(`อ่านงานที่จะลบไม่สำเร็จ: ${error.message}`);
+  for (const task of data || []) await purgeAttachments('personal_task', task.id, supabase);
+  return (data || []).length;
+}
+
 export async function cleanupDealOrphans(supabase, dealId) {
   // คำร้องผูกดีล — ลบเธรด + งานที่ผูกคำร้องก่อน แล้วลบตัวคำร้อง
   const { data: inqs, error: inqError } = await supabase
@@ -153,6 +165,7 @@ export async function cleanupDealOrphans(supabase, dealId) {
     // บรรทัด/ชั้นจำนวนของคำร้องมี FK CASCADE อยู่แล้ว ปล่อยให้ DB จัดการ
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     await purgeTaskThreads(supabase, { column: 'inquiryId', values: inquiryIds });
+    for (const inquiryId of inquiryIds) await purgeTaskAttachments(supabase, 'inquiryId', inquiryId);
     const { error: reqTaskError } = await supabase
       .from('personal_tasks').delete().in('inquiryId', inquiryIds);
     if (reqTaskError) throw new Error(`ลบงานที่ผูกคำร้องไม่สำเร็จ: ${reqTaskError.message}`);
@@ -165,6 +178,7 @@ export async function cleanupDealOrphans(supabase, dealId) {
   }
   // งานส่วนตัวที่ผูกดีลโดยตรง
   await purgeTaskThreads(supabase, { column: 'dealId', values: [dealId] });
+  await purgeTaskAttachments(supabase, 'dealId', dealId);
   const { error: taskError } = await supabase.from('personal_tasks').delete().eq('dealId', dealId);
   if (taskError) throw new Error(`ลบงานที่ผูกดีลไม่สำเร็จ: ${taskError.message}`);
   // ดีลอื่นที่อ้างดีลนี้เป็น parent — ปลด logical ref กันกำพร้า
@@ -595,6 +609,7 @@ export async function cleanupRequestOrphans(supabase, requestId) {
   if (itemError) throw new Error(`อ่านบรรทัดของคำร้องไม่สำเร็จ: ${itemError.message}`);
 
   // ไฟล์แนบอยู่สองระดับ: หัวคำร้อง + รายบรรทัด · ต้องลบไฟล์บน Drive ด้วย ไม่ใช่แค่แถว
+  await purgeTaskAttachments(supabase, 'inquiryId', requestId);
   await purgeAttachments('dept_request', requestId);
   for (const item of items || []) {
     await purgeAttachments('dept_request_item', item.id);

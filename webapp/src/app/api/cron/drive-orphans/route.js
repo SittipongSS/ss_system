@@ -19,7 +19,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { businessDate } from '@/lib/businessDate';
-import { auditOrphanDriveItems } from '@/lib/driveMaintenance';
+import { auditDriveFiles, auditOrphanDriveItems } from '@/lib/driveMaintenance';
 import { driveEnvStatus } from '@/lib/drive';
 import { notifyUsers } from '@/lib/notifications';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -55,12 +55,33 @@ export async function GET(request) {
     return Response.json({ error: e.message }, { status: 500 });
   }
 
+  /* ⭐ ตรวจ "ทางกลับ" ในรอบเดียวกัน (2026-08-25) — ของกำพร้าคือไฟล์ที่ระบบมองไม่เห็น
+     ส่วนอันนี้คือ **ไฟล์ที่ระบบชี้ถึงแต่หายไปจาก Drive** (มีคนลบ/ทิ้งถังขยะด้วยมือ)
+     เดิมมีแต่ปุ่มในหน้าตั้งค่า ⇒ ต้องมีคนนึกได้ว่าต้องเปิดหน้านั้นถึงจะรู้ ซึ่งแปลว่า
+     ไม่มีใครรู้ · ทั้งสองทางเดินไดรฟ์ชุดเดียวกันอยู่แล้ว รวมรอบจึงไม่แพงขึ้นจริง
+     ⚠️ ล้มตรงนี้ต้องไม่ทำให้รายงานของกำพร้าล้มตาม — มันคนละคำถามกัน */
+  let missing = null;
+  try {
+    const files = await auditDriveFiles();
+    const bad = (files.problems || []).filter((r) => r.status !== 'no-drive-id');
+    missing = { checked: files.total, broken: bad.length, sample: bad.slice(0, 3).map((r) => r.fileName) };
+  } catch (e) {
+    console.error('[cron/drive-orphans] ตรวจไฟล์ที่ระบบอ้างถึงไม่สำเร็จ', e?.message);
+  }
+
   // นับเฉพาะ **ไฟล์** — โฟลเดอร์ว่างที่ไม่มีใครอ้างเป็นเรื่องบ้านรก ไม่ใช่ของหาย
   const files = (report.orphans || []).filter((o) => o.kind === 'ไฟล์');
   const bytes = files.reduce((sum, o) => sum + (o.sizeBytes || 0), 0);
-  const summary = { scanned: report.scanned, orphanFiles: files.length, orphanBytes: bytes };
+  const summary = {
+    scanned: report.scanned, orphanFiles: files.length, orphanBytes: bytes, missing,
+  };
 
-  if (files.length < ORPHAN_FILE_ALERT) return Response.json({ ...summary, notified: 0 });
+  /* ไฟล์ที่ระบบชี้ถึงแต่หายไปจากไดรฟ์ = **แจ้งตั้งแต่ใบแรก** ไม่มีเกณฑ์ขั้นต่ำ —
+     ต่างจากของกำพร้าซึ่งมีเศษปกติอยู่เสมอ · อันนี้คือของที่ผู้ใช้กดเปิดแล้วไม่เจอ */
+  const brokenCount = missing?.broken || 0;
+  if (files.length < ORPHAN_FILE_ALERT && !brokenCount) {
+    return Response.json({ ...summary, notified: 0 });
+  }
 
   const directory = await loadUserDirectory(getSupabaseAdmin());
   const admins = [...directory.values()].filter((u) => u.role === 'admin' && !u.disabled);
@@ -76,8 +97,14 @@ export async function GET(request) {
     entityType: 'drive_orphans',
     entityId: 'weekly',
     kind: 'drive_orphans',
-    title: `ไฟล์บน Drive ที่ไม่มีใครอ้างถึง ${files.length} ไฟล์ (${mb} MB)`,
-    body: `กวาดทั้งหมด ${report.scanned} รายการ · ตัวอย่าง: ${newest}`
+    title: brokenCount
+      ? `ไฟล์หายจาก Drive ${brokenCount} ไฟล์ · ไม่มีใครอ้างถึงอีก ${files.length} ไฟล์`
+      : `ไฟล์บน Drive ที่ไม่มีใครอ้างถึง ${files.length} ไฟล์ (${mb} MB)`,
+    body: (brokenCount
+      ? `ระบบชี้ถึงไฟล์ที่ไม่มีอยู่แล้ว ${brokenCount} จาก ${missing.checked} ใบ`
+        + `${missing.sample.length ? ` (เช่น ${missing.sample.join(' · ')})` : ''} — กดเปิดแล้วจะไม่เจอ · `
+      : '')
+      + `กวาดทั้งหมด ${report.scanned} รายการ · ตัวอย่างของกำพร้า: ${newest}`
       + ' — เปิดดูรายการเต็มที่ ตั้งค่า → ที่เก็บไฟล์ ก่อนตัดสินใจว่าอันไหนคือไฟล์ที่ผู้ใช้ตามหาอยู่',
     href: '/settings/storage',
     // สัปดาห์ละใบ — กดยิงซ้ำเองวันเดียวกันไม่เกิดแถวซ้ำ
