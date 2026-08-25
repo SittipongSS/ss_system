@@ -43,6 +43,7 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, naText, NA } from "@/lib/fo
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
@@ -185,7 +186,11 @@ export default function LeadsPage() {
   // ยิง KPI เฉพาะ role ที่ API ยอมให้อ่าน — คนอื่นเคยได้ 403 ทุกครั้งที่เปิด/เปลี่ยนเดือน
   // (ทิ้งไปเปล่า ๆ เพราะแถบตัวเลขก็ไม่ขึ้นให้เขาอยู่แล้ว) · ด่านเดียวกับที่ใช้ตัดสินการ render
   const showKpi = canSeeLeadKpi(role);
+  /* ⚠️ ตัวกรองของหน้านี้มีช่องวันที่ ⇒ เลื่อนทีละวันคือยิงโหลดซ้อนกันหลายรอบ
+     คำตอบมาผิดลำดับเมื่อไร ตัวเลข KPI จะเป็นของช่วงที่เลื่อนผ่านไปแล้ว (ดู lib/ui/latestRun) */
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setError("");
     try {
@@ -202,14 +207,18 @@ export default function LeadsPage() {
           : null,
       ]);
       if (!leadsRes.ok) throw new Error((await leadsRes.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
-      setLeads(await leadsRes.json());
-      setKpi(kpiRes?.ok ? await kpiRes.json() : null);
+      const rows = await leadsRes.json();
+      const kpiData = kpiRes?.ok ? await kpiRes.json() : null;
+      if (!isLatest()) return; // ตัวกรองขยับไปแล้ว — คำตอบนี้เป็นของช่วงเก่า
+      setLeads(rows);
+      setKpi(kpiData);
     } catch (e) {
-      setError(e.message || "โหลดลีดไม่สำเร็จ");
+      // รอบเก่าที่ล้มต้องไม่พ่นข้อความทับหน้าที่กำลังโหลดของใหม่อยู่
+      if (isLatest()) setError(e.message || "โหลดลีดไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [month, allMonths, periodMode, range.from, range.to, showKpi]);
+  }, [month, allMonths, periodMode, range.from, range.to, showKpi, startRun]);
 
   useEffect(() => { load(); }, [load]);
 

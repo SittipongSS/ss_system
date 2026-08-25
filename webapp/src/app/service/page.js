@@ -9,6 +9,7 @@
 // ⚠️ ข้อ 3 คือของที่ระบบเก่าไม่มี — ไซต์ที่น้ำหอมจะหมดแต่ยังไม่มีนัด คือลูกค้าที่
 //    กำลังจะโทรมาบ่น · ต้องอยู่หน้าแรก ไม่ใช่ซ่อนอยู่ในแท็บของหน้าไซต์
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, CalendarDays, Droplets,
@@ -74,7 +75,10 @@ export default function ServiceOverviewPage() {
     [todayIso],
   );
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
@@ -87,17 +91,18 @@ export default function ServiceOverviewPage() {
       const siteData = await siteRes.json().catch(() => null);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดไซต์บริการไม่สำเร็จ");
 
+      if (!isLatest()) return; // เลื่อนช่วงวันที่ระหว่างรอ — ทั้งแผงต้องมาจากรอบเดียวกัน
       setVisits(Array.isArray(visitData?.visits) ? visitData.visits : []);
       setVisitSites(Array.isArray(visitData?.sites) ? visitData.sites : []);
       setSites(Array.isArray(siteData) ? siteData : []);
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ภาพรวมว่าง — "โหลดพัง" กับ "ไม่มีนัดค้าง"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วทีมจะเชื่อว่าเคลียร์หมดแล้ว
-      setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [range.from, range.to]);
+  }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const sitesById = useMemo(() => new Map(visitSites.map((s) => [s.id, s])), [visitSites]);

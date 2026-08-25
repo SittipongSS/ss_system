@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { Users, Plus, Calendar, Clock3 } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -41,14 +42,19 @@ export default function MgmtMeetingsPage() {
     cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     try {
       const res = await fetch(`/api/mgmt/meetings?year=${year}`);
-      setMeetings(res.ok ? await res.json() : []);
-    } catch { setMeetings([]); }
-    setLoading(false);
-  }, [year]);
+      const rows = res.ok ? await res.json() : [];
+      if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
+      setMeetings(rows);
+    } catch { if (isLatest()) setMeetings([]); }
+    if (isLatest()) setLoading(false);
+  }, [year, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const upsert = (row) => setMeetings((prev) => {

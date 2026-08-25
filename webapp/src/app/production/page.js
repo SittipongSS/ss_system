@@ -8,6 +8,7 @@
 //    1. มีงานอะไรที่ต้องตัดสินใจก่อน  2. โรงงานแน่นแค่ไหนสัปดาห์นี้  3. วันนี้ไลน์ไหนเดินอะไร
 // ⚠️ ทุกตัวเลขต้องกดต่อไปหางานได้ — ตัวเลขที่กดไม่ได้คือตัวเลขที่ไม่มีใครดูรอบสอง
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarRange, Factory, Gauge, Hammer, LayoutDashboard, ListChecks, PlayCircle } from "lucide-react";
 import ActionQueue from "@/components/ui/ActionQueue";
@@ -66,7 +67,10 @@ export default function ProductionOverviewPage() {
   const todayIso = useMemo(() => businessDate(), []);
   const weekEnd = useMemo(() => shiftDays(todayIso, 6), [todayIso]);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
@@ -82,6 +86,7 @@ export default function ProductionOverviewPage() {
       const board = await boardRes.json().catch(() => null);
       if (!boardRes.ok) throw new Error(board?.error || "โหลดกำลังผลิตไม่สำเร็จ");
 
+      if (!isLatest()) return; // ช่วงวันเปลี่ยนระหว่างรอ — ตัวเลขทั้งแผงต้องมาจากรอบเดียวกัน
       setJobs(Array.isArray(queue?.jobs) ? queue.jobs : []);
       setLines(Array.isArray(board?.lines) ? board.lines : []);
       // ⚠️ ใช้งานจากบอร์ด ไม่ใช่จากคิว — งานที่เริ่มก่อนสัปดาห์นี้แต่ยังเดินคร่อมเข้ามา
@@ -91,11 +96,11 @@ export default function ProductionOverviewPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ภาพรวมว่าง — "โหลดพัง" กับ "ไม่มีงาน" หน้าตา
       // เหมือนกันจนแยกไม่ออก แล้ว PC จะเชื่อว่าโรงงานว่าง
-      setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [todayIso, weekEnd]);
+  }, [todayIso, weekEnd, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const overridesByLine = useMemo(() => {

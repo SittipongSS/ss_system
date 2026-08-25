@@ -3,6 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -98,14 +99,19 @@ export default function MgmtRocksPage() {
     fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     try {
       const res = await fetch(`/api/mgmt/rocks?year=${year}`);
-      setRows(res.ok ? await res.json() : []);
-    } catch { setRows([]); }
-    setLoading(false);
-  }, [year]);
+      const data = res.ok ? await res.json() : [];
+      if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
+      setRows(data);
+    } catch { if (isLatest()) setRows([]); }
+    if (isLatest()) setLoading(false);
+  }, [year, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const deptLabel = useCallback((code) => departments.find((d) => d.code === code)?.label || code, [departments]);
