@@ -226,15 +226,35 @@ export async function auditOrphanAttachmentRows() {
 export async function purgeOrphanAttachmentRows() {
   const supabase = getSupabaseAdmin();
   const { orphans, unknownTypes } = await loadOrphanAttachmentRows(supabase);
-  if (!orphans.length) return { deleted: 0, unknownTypes, byType: {} };
+  if (!orphans.length) return { deleted: 0, unknownTypes, byType: {}, rows: [] };
 
   const byType = {};
   for (const row of orphans) byType[row.entityType] = (byType[row.entityType] || 0) + 1;
 
+  /* 🐞 **คืนตัวตนของแถวที่ลบด้วย ไม่ใช่แค่ตัวเลข** — แถวกำพร้าคือหลักฐานชิ้นเดียวที่
+     ผูกไฟล์บน Drive เข้ากับระเบียนที่ถูกลบไปแล้ว · ลบแล้วไฟล์ยังอยู่ (ตั้งใจ) แต่จะ
+     ไปโผล่ในหัวข้อ "ของบน Drive ที่ไม่มีใครอ้างถึง" โดย **ไม่มีใครรู้ว่ามันเคยเป็นของใบไหน**
+     ⇒ ผู้เรียกต้องเอาไปลง audit ให้ครบ ไม่งั้นความรู้นั้นหายไปพร้อมแถว
+     ⚠️ ตัดที่ 200 แถว — เท่ากับเพดานที่ `auditOrphanAttachmentRows` ส่งให้หน้าจอดู
+     ก่อนกด ⇒ "สิ่งที่บันทึก" ครอบคลุม "สิ่งที่คนเห็นตอนตัดสินใจ" เสมอ */
+  const rows = orphans.slice(0, 200).map((r) => ({
+    id: r.id,
+    entityType: r.entityType,
+    entityId: r.entityId,
+    fileName: r.fileName || null,
+    driveFileId: r.driveFileId || null,
+  }));
+
   const { data, error } = await supabase
     .from('attachments').delete().in('id', orphans.map((r) => r.id)).select('id');
   if (error) throw error;
-  return { deleted: data?.length || 0, byType, unknownTypes, withDriveFile: orphans.filter((r) => r.driveFileId).length };
+  return {
+    deleted: data?.length || 0,
+    byType,
+    unknownTypes,
+    withDriveFile: orphans.filter((r) => r.driveFileId).length,
+    rows,
+  };
 }
 
 // ── 2.5 ไฟล์บน Drive ที่ไม่มีใครในระบบอ้างถึง ──────────────────────────
