@@ -244,6 +244,26 @@ export function leadLostText(lead = {}, empty = 'ไม่ระบุ') {
   return detail ? `${label} — ${detail}` : label;
 }
 
+/** สถานะของวันติดตามต่อ — `'late' | 'today' | 'ahead'` · **ที่เดียวสำหรับทุกจอ**
+ *
+ *  ⚠️ คืน **สถานะ ไม่ใช่สี** — สีเป็นเรื่องของ CSS (`[data-tone]`) · คืนเป็นสีเมื่อไร
+ *  จอต้องเขียน inline style ซึ่งชนเพดาน ratchet ของ `audit:ui` และทำให้ธีมมืด
+ *  ทับค่าไม่ได้
+ *
+ *  ⚠️ เกณฑ์ต้องตรงกับ `OVERDUE_AFTER_BY_STATUS.contacted` ของการทวง (leadNotify.js)
+ *  ไม่งั้นจอทาสีแดงคนละวันกับที่กระดิ่งเด้ง = สองมาตรฐานบนเรื่องเดียวกัน
+ *
+ *  ⚠️ เทียบด้วย **วันไทย** (`businessDayKey`) ไม่ใช่ `Date.now()` ดิบ — ค่าใน DB เป็น
+ *  00:00Z ซึ่งคือ 07:00 ของวันเดียวกันตามเวลาไทย เทียบด้วย UTC จะกลายเป็น "เลยแล้ว"
+ *  ตั้งแต่เที่ยงคืน
+ */
+export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date().toISOString())) {
+  const due = businessDayKey(followUpAt);
+  if (!due || !todayKey) return 'ahead';
+  if (due < todayKey) return 'late';
+  return due === todayKey ? 'today' : 'ahead';
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 

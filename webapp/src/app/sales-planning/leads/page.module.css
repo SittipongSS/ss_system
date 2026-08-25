@@ -25,3 +25,10 @@
 
 /* แถวขอบเขต + ทางไป KPI เต็ม ย้ายไป globals.css แล้ว (`.scope-row` / `.kpi-full-link`)
    — ไปป์ไลน์ดีลใช้แถวเดียวกัน และยืม *.module.css ข้ามโฟลเดอร์ไม่ได้ */
+
+/* วันติดตามต่อในตารางคิว (mig 0289) — สถานะมาจาก `leadFollowUpState` — CSS เป็นคนเลือกสี
+   ⚠️ เป็นคลาสไม่ใช่ inline style: audit:ui มีเพดาน ratchet ของชั้นเก่าอยู่ */
+.followUp { color: var(--text-2); }
+.followUp[data-tone="late"] { color: var(--red); }
+.followUp[data-tone="today"] { color: var(--amber); }
+.followUpSub { display: block; color: var(--text-3); font-size: var(--fs-5); }

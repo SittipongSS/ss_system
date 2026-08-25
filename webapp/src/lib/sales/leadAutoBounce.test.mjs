@@ -157,10 +157,20 @@ test('query ของ nextMeetingAt รวม auto_bounce ด้วย', () => {
 
 /* ⚠️ ตรวจข้อมูลจริง 2026-08-08 พบลีด 14 ใบค้างข้ามเดือน ⇒ รอบแรกจะกวาดของค้าง
    ทั้งกองในนาทีเดียว · เปิดผิดหน้าแล้วลีดทั้งกองเปลี่ยนมือไม่ได้ */
-test('cron ไม่เขียนอะไรถ้าไม่ได้ขอ apply=1 อย่างชัดเจน', () => {
+/* 🪤 **สวิตช์ต้องผูกกับตัวตนผู้เรียก ไม่ใช่ query string ใน vercel.json**
+   ผูกกับ `?apply=1` อย่างเดียวเมื่อไร แล้ว query string หายไป (Vercel ไม่ส่งต่อ /
+   มีคนแก้ config แล้วตกหล่น) route จะคืน 200 OK พร้อม `apply:false` ⇒ Vercel เห็นว่า
+   สำเร็จทุกรอบ ไม่มี log ผิดปกติ แต่ไม่มีอะไรถูกตีกลับเลยตลอดไป */
+test('cron ทำจริงด้วยตัวตนผู้เรียก — คนกดเองยังต้องขอชัด ๆ', () => {
   const src = readFileSync(new URL('../../app/api/cron/auto-bounce-leads/route.js', import.meta.url), 'utf8');
-  assert.match(src, /const apply = url\.searchParams\.get\('apply'\) === '1'/);
+  assert.match(src, /const apply = cronOk \|\| url\.searchParams\.get\('apply'\) === '1'/,
+    'cron ต้องไม่พึ่ง query string — หายเมื่อไรจะพังเงียบ');
   assert.match(src, /if \(!apply\) \{/);
+  // vercel.json ต้องไม่กลับไปพก query string อีก (จุดที่หายแล้วไม่มีใครรู้)
+  const vercel = readFileSync(new URL('../../../vercel.json', import.meta.url), 'utf8');
+  const cron = JSON.parse(vercel).crons.find((c) => c.path.includes('auto-bounce-leads'));
+  assert.ok(cron, 'คิว auto-bounce หายจาก vercel.json');
+  assert.equal(cron.path, '/api/cron/auto-bounce-leads', 'ไม่ต้องมี ?apply=1 แล้ว');
   // กันแข่งกับ AE ที่เพิ่งกดบันทึกการติดต่อพอดี
   assert.match(src, /\.eq\('status', lead\.status\)/);
   // อ่านจำนวนรอบไม่ได้ = หยุดทั้งรอบ ไม่ใช่เดาว่าศูนย์

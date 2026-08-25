@@ -19,3 +19,8 @@
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .sidebar { position: static; order: -1; } }
 @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } .card { padding: 15px; } }
 .page { display: flex; max-width: 1380px; flex-direction: column; gap: var(--space-4); }
+
+/* วันติดตามต่อบนการ์ดสรุป — สถานะมาจาก `leadFollowUpState` (data-tone ไม่ใช่ inline style · ratchet) */
+.followUpValue { color: var(--text-2); }
+.followUpValue[data-tone="late"] { color: var(--red); }
+.followUpValue[data-tone="today"] { color: var(--amber); }

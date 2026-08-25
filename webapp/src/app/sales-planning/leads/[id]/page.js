@@ -19,9 +19,9 @@ import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
-import { fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -373,6 +373,18 @@ function LeadSummary({ lead }) {
     {/* "นัดถัดไป" ไม่ใช่ "นัดล่าสุด" — ลีดหนึ่งใบมีได้หลายนัดแล้ว คอลัมน์เก็บนัดที่ยังไม่ถึง
         (ดู nextMeetingAt ใน route ของ transition) · นัดทั้งหมดอยู่ในประวัติด้านซ้าย */}
     <div className={styles.summaryRow}><span>นัดถัดไป</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : NA}</strong></div>
+    {/* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้เอง** ไม่ใช่ SLA ของระบบ
+        🐞 ก่อนหน้านี้คอลัมน์นี้มีแต่ฝั่งหลังบ้าน (ทวง/ตีกลับ/คิวของฉัน/KPI) — เปิดใบมาแล้ว
+        ไม่เห็นว่าตัวเองนัดวันไหนไว้ ต้องไล่ดูในไทม์ไลน์ ซึ่งเป็นโรคเดียวกับที่
+        `disqualifiedReason` เคยเป็น (เขียนแล้วไม่มีใครอ่าน)
+        ⚠️ โทนสีมาจาก `leadFollowUpState` ที่เดียวร่วมกับตารางคิว — เกณฑ์ต้องตรงกับที่
+        ระบบใช้ทวงจริง ไม่งั้นจอแดงคนละวันกับที่กระดิ่งเด้ง */}
+    {lead.followUpAt && (
+      <div className={styles.summaryRow}>
+        <span>ติดตามต่อ</span>
+        <strong className={styles.followUpValue} data-tone={leadFollowUpState(lead.followUpAt)}>{fmtDate(lead.followUpAt)}</strong>
+      </div>
+    )}
     {/* ⭐ เหตุผลที่ไม่ไปต่อ (mig 0290) — เดิม `disqualifiedReason` ถูกเขียนลง DB ทุกใบ
         แต่ **ไม่มีจอไหนอ่านเลย** อ่านได้ทางเดียวคือไล่ดูไทม์ไลน์ด้านซ้าย · ใบที่ปิดแล้ว
         คำถามแรกของคนเปิดดูคือ "ทำไมไม่ไปต่อ" จึงควรอยู่ตรงนี้
