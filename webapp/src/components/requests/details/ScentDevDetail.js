@@ -134,9 +134,12 @@ export default function ScentDevDetail({
                แล้ว) — ที่ย้ายคือ *ที่วาง* ไม่ใช่ด่าน */
             renderGroupStep={rowStep?.canDept && onDeliver ? (g) => (
               <>
-                {/* ⚠️ ชิปตัวเดียวกับปุ่มรายแถว — ตารางเดียวมีปุ่มติดชิปกับไม่ติดชิป
-                    ปนกันไม่ได้ (มติผู้ใช้ 2026-08-26) */}
-                <OwnerTag owner="dept" deptLabel={rowStep.deptLabel} />
+                {/* ⚠️ ชิปตัวเดียวกับปุ่มรายแถว **และกติกาเดียวกัน** — ตารางเดียวมีปุ่ม
+                    ติดชิปกับไม่ติดปนกันไม่ได้ ⇒ เงื่อนไขต้องตรงกับ `RowStepActions`
+                    (ขึ้นเฉพาะตอนสองฝั่งสดพร้อมกัน · มติผู้ใช้ 2026-08-26) */}
+                {rowStep.canDept && rowStep.canRequester && (
+                  <OwnerTag owner="dept" deptLabel={rowStep.deptLabel} />
+                )}
                 <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
                   <Send size={14} /> ส่งงาน
                 </Button>
