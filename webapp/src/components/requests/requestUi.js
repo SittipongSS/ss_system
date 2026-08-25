@@ -3,6 +3,7 @@
 // ระบบสอบถามใน mig 0174
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestStatusView } from "@/lib/requests/statuses";
+import { liveDueDate } from "@/lib/requests/dueRound";
 
 /* ⚠️ **ส่ง `request` ทั้งใบ ไม่ใช่ `status` เปล่า ๆ** (มติผู้ใช้ 2026-08-19) — ป้าย
    "รอกำหนดส่ง" เป็นสถานะที่ derive จาก `status` + `committedDueDate` คู่กัน ⇒ ที่ไหน
@@ -21,7 +22,8 @@ export function RequestStatusBadge({ request = null, status = null }) {
 // ของ "คิว" (บอกว่ายังไม่มีใครรับด้วย) ส่วนตัวนี้ทำป้ายเตือนบนการ์ดที่แสดงคู่กับ
 // วันที่อยู่แล้ว จึงเงียบเมื่อยังไม่ถึงกำหนด
 export function requestDueTone(request, todayISO) {
-  const due = request?.committedDueDate;
+  // ⚠️ วันของรอบก่อน = ไม่มีกำหนด = ไม่มีป้าย (ตรวจย้อนหลัง 2026-08-26)
+  const due = liveDueDate(request);
   const open = request?.status === "pending" || request?.status === "acknowledged";
   if (!due || !open || !todayISO) return null;
   if (due < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };

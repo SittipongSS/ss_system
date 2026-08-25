@@ -278,6 +278,31 @@ export default function StoragePage() {
               {Object.entries(orphanRows.byType).map(([k, v]) => ` · ${k} ${v}`)}
               {orphanRows.unknownTypes?.length ? ` · ข้ามชนิดที่ยังไม่รู้จัก: ${orphanRows.unknownTypes.join(", ")}` : ""}
             </p>
+            {/* ⚠️ **โชว์ว่าจะลบอะไรก่อนเสมอ** — ปุ่มข้าง ๆ ลบถาวรและไม่มี soft delete
+                แถวพวกนี้คือหลักฐานชิ้นเดียวที่ผูกไฟล์บน Drive เข้ากับระเบียนที่ถูกลบไปแล้ว
+                ⇒ กดโดยไม่เห็นรายการ = ลบความรู้นั้นทิ้งโดยไม่มีใครเคยอ่าน
+                (ปุ่ม "ทิ้งไฟล์กำพร้า" ด้านล่างโชว์รายการอยู่แล้ว — ปุ่มนี้เคยเป็นข้อยกเว้นเดียว) */}
+            {orphanRows.rows?.length ? (
+              <div className={styles.planGrid}>
+                {orphanRows.rows.map((r) => (
+                  <div key={r.id} className={styles.planRow}>
+                    <span className={styles.planPath}>
+                      {r.fileName || r.docType || r.id}
+                      <span className={styles.planMeta}>{r.entityType} · {r.entityId}</span>
+                    </span>
+                    <span className={styles.planCount}>
+                      {r.driveFileId ? "มีไฟล์บนไดรฟ์" : "ไม่มีไฟล์"}
+                    </span>
+                  </div>
+                ))}
+                {orphanRows.orphanCount > orphanRows.rows.length ? (
+                  <p className={styles.progress}>
+                    แสดง {orphanRows.rows.length} จาก {orphanRows.orphanCount} แถว —
+                    ที่เหลือถูกลบด้วยและถูกบันทึกไว้ในบันทึกการใช้งาน
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {orphanRows.orphanCount ? (
               <StatusNotice tone="warning" title="ลบแถวไม่กระทบไฟล์บน Drive">
                 ไฟล์ {orphanRows.withDriveFile} ใบที่แถวเหล่านี้ชี้ถึงจะยังอยู่บนไดรฟ์ตามเดิม —

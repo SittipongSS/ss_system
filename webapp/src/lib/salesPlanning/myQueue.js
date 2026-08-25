@@ -16,6 +16,7 @@
 import { fmtDate } from '@/lib/format';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 /* ชนิดของงานในคิว — ป้ายบนชิปกรอง · เรียงตาม "ความใกล้ตัวคนขาย" ไม่ใช่ตามตัวอักษร
    ⚠️ คีย์ตรงกับ `kind` ของแถว — เพิ่มชนิดใหม่ต้องเติมที่นี่ ไม่งั้นชิปจะไม่มีให้กด
@@ -120,7 +121,9 @@ export function buildMyQueue({
        เดียวกัน (lib/salesPlanning/mySchedule) วางมันบน `requestedDueDate` = **ใบเดียวกัน
        สองวันบนจอเดียว** · ตอนนี้ถอยเป็นวันที่ผู้ขอต้องการ แต่ `basis: 'waiting'` เพราะ
        ยังไม่มีใครรับปาก ⇒ ไม่ขึ้นป้าย "เลยกำหนด" (จะกลายเป็นการโทษฝ่ายที่ยังไม่ได้รับปาก) */
-    const committed = bounced ? null : request.committedDueDate || null;
+    // ⚠️ ผ่าน `liveDueDate` — ใบที่มีรอบแก้ค้างจะได้ step "รอฝ่ายแจ้งกำหนดส่ง" และ
+    //    `basis: 'waiting'` ตามกฎที่คอมเมนต์ข้างบนตั้งไว้เอง (ตรวจย้อนหลัง 2026-08-26)
+    const committed = bounced ? null : liveDueDate(request);
     const requested = bounced ? null : request.requestedDueDate || null;
     out.push(row({
       kind: 'request',

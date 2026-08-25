@@ -4,6 +4,7 @@ import { calendarRange, toCalendarEntries } from '@/lib/sales/leadCalendar';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { fetchAll, fetchAllResult } from '@/lib/supabaseFetchAll';
 import { businessDate } from '@/lib/businessDate';
+import { attachReworkRows } from '@/lib/requests/reworkRows';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (eventsResult.error) return fail(eventsResult.error.message, 500);
   if (tasksResult.error) return fail(tasksResult.error.message, 500);
   if (requestsResult.error) return fail(requestsResult.error.message, 500);
+  /* ⚠️ **ต้องมีแถวถึงจะรู้ว่าวันเป็นของรอบไหน** (ตรวจย้อนหลัง 2026-08-26) — ใบที่ลูกค้า
+     ขอให้แก้ถือ `committedDueDate` ของรอบก่อนไว้ ซึ่งเป็นวันที่ผ่านไปแล้วโดยนิยาม ·
+     ไม่โหลดแถวมา จอนี้จะขึ้นวันนั้นเป็นเดดไลน์ต่อไปทั้งที่รางในใบบอกว่ารอ RD แจ้งวันใหม่ */
+  requestsResult.data = await attachReworkRows(supabase, requestsResult.data || []);
 
   // ── นัดลูกค้า: เหตุการณ์ในช่วง → ลีดที่ **ฉัน** ดูแล ──
   const events = eventsResult.data || [];

@@ -79,6 +79,9 @@ export async function POST(request) {
   if (body.action === 'purge-orphan-rows') {
     try {
       const result = await purgeOrphanAttachmentRows();
+      /* ⚠️ **บันทึกตัวตนของแถวที่ลบ ไม่ใช่แค่จำนวน** — ไฟล์บน Drive ยังอยู่ต่อ (ตั้งใจ)
+         แต่หลังลบแถวแล้วไม่มีอะไรบอกได้อีกว่าไฟล์ใบไหนเคยเป็นของระเบียนใด · บันทึกนี้
+         คือทางเดียวที่จะตามกลับได้ว่า "ไฟล์กำพร้าที่เห็นในหัวข้อถัดไปมาจากไหน" */
       await recordAudit({
         user,
         action: 'delete',

@@ -5,7 +5,7 @@
 //
 // 🔴 **ตีกลับ ไม่ใช่ปิดลีด** — เหตุผลเต็มอยู่ที่หัวไฟล์ leadAutoBounce.js
 //
-// ⚠️ **ค่าตั้งต้นคือ dry-run** — `?apply=1` เท่านั้นถึงจะเขียนจริง
+// ⚠️ **คนเปิดเองได้แค่ดู** — cron (มี CRON_SECRET) ทำจริง ส่วนคนกดต้องเติม `?apply=1`
 // ตรวจข้อมูลจริง 2026-08-08 พบลีด 14 ใบค้างข้ามเดือน ใบที่นานสุด 10 วันทำการ ⇒ รอบแรก
 // จะตีกลับของค้างทั้งกองในนาทีเดียวโดยไม่มีใครทันดู · เปิดจากเบราว์เซอร์ในฐานะแอดมิน
 // เพื่อดูรายการก่อนได้ โดยไม่เขียนอะไรเลย · คิวใน vercel.json ส่ง `apply=1` มาเอง
@@ -63,8 +63,17 @@ export async function GET(request) {
       return Response.json({ error: 'unauthorized' }, { status: 401 });
     }
   }
-  // ⚠️ ต้องขอเขียนอย่างชัดเจน — เปิดผิดหน้าแล้วลีดทั้งกองเปลี่ยนมือไม่ได้
-  const apply = url.searchParams.get('apply') === '1';
+  /* ⭐ **สวิตช์ผูกกับ *ตัวตนผู้เรียก* ไม่ใช่ query string**
+     · cron (มี `Bearer CRON_SECRET`) = ทำจริง
+     · คนเปิดจากเบราว์เซอร์ = ดูอย่างเดียว (ต้องเติม `?apply=1` เองถ้าจะให้เขียน)
+
+     🪤 เดิมอ่านจาก `?apply=1` อย่างเดียว แล้ววางสวิตช์ไว้ใน `vercel.json` — ถ้า query
+     string หายไป (Vercel ไม่ส่งต่อ / มีคนแก้ config แล้วตกหล่น) route จะคืน
+     **200 OK พร้อม `apply:false`** ⇒ Vercel เห็นว่าสำเร็จทุกรอบ ไม่มี log ผิดปกติ
+     แต่ **ไม่มีอะไรถูกตีกลับเลยตลอดไป** · ค่าตั้งต้นที่ปลอดภัยกลายเป็นโหมดพังเงียบ
+     เพราะไปผูกกับ string ใน config ที่หายแล้วไม่มีใครรู้
+     ⚠️ ความปลอดภัยเดิมยังอยู่ครบ — คนกดเองยังไม่เขียนอะไรจนกว่าจะขอชัด ๆ */
+  const apply = cronOk || url.searchParams.get('apply') === '1';
 
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
@@ -115,7 +124,7 @@ export async function GET(request) {
   if (!apply) {
     return Response.json({
       apply: false,
-      note: 'โหมดดูอย่างเดียว — ยังไม่เขียนอะไร · ใส่ ?apply=1 เพื่อทำจริง',
+      note: 'โหมดดูอย่างเดียว — ยังไม่เขียนอะไร · cron ทำจริงเองอยู่แล้ว · คนกดเองใส่ ?apply=1 ถ้าจะเขียน',
       scanned: leads.length,
       wouldBounce: todo.length,
       skippedOverLimit: skipped,

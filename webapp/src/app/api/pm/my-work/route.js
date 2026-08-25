@@ -6,6 +6,7 @@ import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
 import { whereTeamIn } from '@/lib/teamScope';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { attachReworkRows } from '@/lib/requests/reworkRows';
 
 export const dynamic = 'force-dynamic';
 
@@ -165,7 +166,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       }
       const { data, error } = await requestQuery.order('committedDueDate', { ascending: true });
       if (error) throw error;
-      inquiries = data || [];
+      // ⚠️ เหตุผลเดียวกับ `/api/sales-planning/my-schedule` — ป้าย "เลยกำหนด" ของจอนี้
+      // ต้องไม่นับวันของรอบที่ส่งไปแล้ว (ดู lib/requests/reworkRows.js)
+      inquiries = await attachReworkRows(supabase, data || []);
     }
   }
 

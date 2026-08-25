@@ -34,7 +34,7 @@ import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_T
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
-  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone,
+  canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
 } from "@/lib/sales/leads";
 import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
@@ -664,7 +664,11 @@ export default function LeadsPage() {
                   <th className="num" onClick={() => handleSort("budget")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>Budget {sortArrow("budget")}</span></th>
                   <th>ทีม / ผู้รับผิดชอบ</th>
                   <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none", textAlign: "center" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "center" }}>สถานะ {sortArrow("status")}</span></th>
-                  <th onClick={() => handleSort("created")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>รับเมื่อ {sortArrow("created")}</span></th>
+                  {/* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้** ต้องอ่านได้จาก
+                      ตารางโดยไม่ต้องเปิดใบ · รวมช่องเดียวกับ "รับเมื่อ" เพราะตารางนี้มี 8
+                      คอลัมน์อยู่แล้ว เพิ่มช่องใหม่จะดันให้เลื่อนแนวนอนบนจอ 1280
+                      ใบที่ยังไม่มีวันติดตามยังโชว์ "รับเมื่อ" เหมือนเดิมทุกประการ */}
+                  <th onClick={() => handleSort("created")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ติดตามต่อ / รับเมื่อ {sortArrow("created")}</span></th>
                   <th></th>
                 </tr>
               </thead>
@@ -699,7 +703,18 @@ export default function LeadsPage() {
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
                       </td>
-                    <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>{fmtDateTime(lead.createdAt)}</td>
+                    <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
+                      {lead.followUpAt ? (
+                        <>
+                          {/* เลยกำหนดแล้วต้องเห็นตั้งแต่กวาดตา — ทวงประจำวันเห็นใบนี้อยู่แล้ว
+                              แต่ตารางเป็นที่ที่คนเปิดดูเองตอนวางแผนวัน */}
+                          <strong className={styles.followUp} data-tone={leadFollowUpState(lead.followUpAt)}>
+                            {fmtDate(lead.followUpAt)}
+                          </strong>
+                          <span className={styles.followUpSub}>รับเมื่อ {fmtDate(lead.createdAt)}</span>
+                        </>
+                      ) : fmtDateTime(lead.createdAt)}
+                    </td>
                     <td className="num" onClick={(event) => event.stopPropagation()}>
                       {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —
                           แถวโชว์ "ก้าวถัดไป" 1 ปุ่ม (มีสีตามขั้น) + เมนู "…" ที่รวม

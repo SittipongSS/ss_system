@@ -21,6 +21,7 @@ import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
+import { awaitsFinanceReview } from "@/lib/sales/salesOrderFinanceApproval";
 
 export default function FinanceOverviewPage() {
   const router = useRouter();
@@ -52,7 +53,9 @@ export default function FinanceOverviewPage() {
      ตอน mig 0250 ที่จงใจไม่ backfill) · นับรวมเมื่อไรบัญชีจะเปิดมาเจอคิวค้าง
      ทั้งกองที่ไม่มีใครตั้งใจสร้าง */
   const awaitingReview = useMemo(
-    () => orders.filter((o) => o.status === "approved" && o.financeStatus === "pending"),
+    // ⚠️ ใช้ helper ตัวเดียวกับคิวบนทะเบียนใบสั่งขาย — เขียนเงื่อนไขซ้ำเมื่อไร
+    // สองจอจะนับคนละชุด (ใบยอด 0 เคยโผล่ที่หนึ่งแต่ไม่โผล่อีกที่ก็เพราะแบบนี้)
+    () => orders.filter((o) => awaitsFinanceReview(o)),
     [orders],
   );
   const bounced = useMemo(

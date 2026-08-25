@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, LEAD_FOLLOW_UP_ACTIONS, leadFollowUpError,
-  leadBouncePatch,
+  leadBouncePatch, leadFollowUpState,
 } from './leads.js';
 
 const routeSrc = readFileSync(
@@ -57,6 +57,26 @@ test('API เรียก leadFollowUpError ตัวเดียวกับฟ
   assert.match(routeSrc, /leadFollowUpError\(body\.followUpAt\)/);
   assert.doesNotMatch(routeSrc, /body\.followUpAt\s*(?:\?\?|\|\|)\s*['"]/,
     'เห็นค่าถอยของ followUpAt ใน route = มีเงื่อนไขซ้อนอยู่นอกด่านกลาง');
+});
+
+/* ── สถานะที่จอใช้ทาสี ───────────────────────────────────────────────────── */
+
+/* 🪤 จอกับระบบทวงต้องใช้เกณฑ์เดียวกัน — จอแดงตั้งแต่วันแรกที่เลย แต่กระดิ่งเพิ่งเด้ง
+   วันที่ 3 = ผู้ใช้เห็นสองมาตรฐานบนเรื่องเดียวกันแล้วเลิกเชื่อทั้งคู่ */
+test('leadFollowUpState: เลย=late · วันนี้=today · ยังไม่ถึง=ahead', () => {
+  const today = '2026-08-26';
+  assert.equal(leadFollowUpState('2026-08-25T00:00:00Z', today), 'late');
+  assert.equal(leadFollowUpState('2026-08-26T00:00:00Z', today), 'today');
+  assert.equal(leadFollowUpState('2026-08-27T00:00:00Z', today), 'ahead');
+  // ไม่มีวันติดตาม = ไม่ทาสีอะไร ไม่ใช่ "เลยกำหนด"
+  assert.equal(leadFollowUpState(null, today), 'ahead');
+});
+
+/* ⚠️ ค่าใน DB เป็น 00:00Z = 07:00 ไทยของ **วันเดียวกัน** — เทียบด้วย UTC ดิบจะกลาย
+   เป็น "เลยแล้ว" ตั้งแต่เที่ยงคืนไทย ซึ่งเร็วไปเจ็ดชั่วโมง */
+test('เทียบด้วยวันไทย ไม่ใช่ UTC ดิบ', () => {
+  assert.equal(leadFollowUpState('2026-08-26T00:00:00Z', '2026-08-26'), 'today',
+    '00:00Z คือ 07:00 ไทยของวันเดียวกัน ต้องยังไม่เลย');
 });
 
 /* ── การล้างคอลัมน์ ──────────────────────────────────────────────────────── */

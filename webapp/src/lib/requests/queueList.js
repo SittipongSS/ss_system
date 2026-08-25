@@ -12,6 +12,7 @@
 import { compareRequestUrgency } from '@/lib/requests/queue';
 import { requestKindLabel } from '@/lib/master/requestTypes';
 import { requestAssignee } from '@/lib/requests/assign';
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 // ค่าที่ใช้แทน "ไม่มีข้อมูลในมิตินี้" — ต้องเป็นคีย์จริง ไม่ใช่ null เพราะมันต้อง
 // ถูกเลือกในตัวกรองได้ ("ยังไม่มีคนรับ" คือสิ่งที่หัวหน้าอยากกรองที่สุด)
@@ -140,7 +141,8 @@ export const requestSortDefaultDir = (key) => (key === 'created' ? 'desc' : 'asc
 
 // ค่าที่ใช้เทียบของแต่ละคีย์ — คืน '' เมื่อใบนั้นไม่มีค่าในคีย์นี้
 const sortValue = (row, key) => {
-  if (key === 'due') return String(row.committedDueDate || '');
+  // ⚠️ เรียงตามวันที่ยังเป็นคำสัญญาอยู่จริง — ใบที่รอแจ้งวันรอบใหม่ไปกองกับใบไม่มีวัน
+  if (key === 'due') return String(liveDueDate(row) || '');
   if (key === 'created') return String(row.createdAt || '');
   if (key === 'docNo') return String(row.docNo || '');
   if (key === 'customer') {
