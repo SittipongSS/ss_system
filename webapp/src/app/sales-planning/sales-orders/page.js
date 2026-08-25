@@ -4,18 +4,19 @@ import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -129,6 +130,7 @@ export default function SalesOrdersPage() {
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
   const navCountParam = useSearchParams().get("count") || "";
+  const router = useRouter();
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
 
   const load = useCallback(async () => {
@@ -223,6 +225,23 @@ export default function SalesOrdersPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${sortKey}|${sortDir}` });
 
+  /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
+     ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
+     และหน้าเดียวกันสวมเปลือกคนละอันตามคนดู ⇒ การ์ดต้องพูดงานของคนที่ยืนอยู่
+       เปลือกบัญชี  → ใบที่ผ่าน AE Sup แล้วและรอบัญชีตรวจ (แกน `financeStatus`)
+       เปลือกอื่น   → ใบที่รอคนดูอนุมัติ (แกน `status`)
+     ⚠️ ตัดสินด้วย `useShellSystem(pathname)` ซึ่งถาม **ทั้งบ้านของคนดูและลิสต์
+     เส้นทางที่บ้านนั้นรับไป** (`ADOPTED_SHARED_PATHS`) — ชุดเดียวกับที่เมนูใช้
+     ห้ามเช็ค role/department เองตรงนี้ และห้ามใช้ "บ้านของคนดู" ลอย ๆ เพราะ RD
+     รับแค่ `/requests` ⇒ RD ที่เปิดหน้านี้ยังอยู่ในเปลือกงานขาย ไม่ใช่เปลือก RD
+     ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
+     (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
+  const financeShell = useShellSystem(usePathname()) === "finance";
+  const approvalQueue = useMemo(
+    () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : row._awaitingMyApproval)),
+    [rows, financeShell],
+  );
+
   const summary = useMemo(() => ({
     total: rows.length,
     pending: rows.filter((row) => row.status === "pending_approval").length,
@@ -312,6 +331,21 @@ export default function SalesOrdersPage() {
           <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
           <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
         </SaMetricStrip>
+
+        {/* คิว "รออนุมัติจากคุณ" — เหตุผลและทรงเดียวกับทะเบียนใบเสนอราคา/ลูกค้า/สินค้า
+            ⚠️ ตัดใบที่ตัวเองสร้างหรือยื่นออกที่ server แล้ว (อนุมัติเองไม่ได้) */}
+        <ApprovalQueue
+          items={approvalQueue}
+          title={financeShell ? "ต้องทำตอนนี้ — ใบที่รอบัญชีตรวจ" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
+          primary={(o) => o.orderNumber}
+          secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
+          onOpen={(o) => router.push(`/sa/sales-orders/${o.id}`)}
+          renderAction={(o) => (
+            <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
+              {financeShell ? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"}
+            </Button>
+          )}
+        />
 
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}

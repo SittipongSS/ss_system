@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useMemo } from "react";
-import { can as _can, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
+import { can as _can, homeSystemForUser, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
+import { adoptsPathname } from "@/config/navigation";
 
 // Provided by AppLayout (which already knows the signed-in user's role).
 // Pages use useCan('<resource>:<action>') to show/hide actions.
@@ -63,6 +64,34 @@ export function useCapUser() {
   const role = useContext(RoleContext);
   const extraCaps = useContext(ExtraCapsContext);
   return useMemo(() => ({ role, extraCaps }), [role, extraCaps]);
+}
+
+/* บ้านของคนที่กำลังดูอยู่ — 'rd' | 'finance' | null (= สายขาย/แอดมิน)
+ *
+ * ⭐ **ตัวเดียวกับที่เลือกเปลือกเมนู** (`homeSystemForUser` ที่ `config/navigation.js`
+ * ใช้ตัดสินว่าเมนูเอกสารร่วมไปขึ้นกลุ่มไหน — มติผู้ใช้ 2026-08-22) ⇒ หน้าที่ต้อง
+ * "พูดภาษาของคนที่ยืนอยู่" ต้องถามที่นี่ **ห้ามเช็ค role/department เองในหน้า**
+ * ไม่งั้นวันที่เมนูเปลี่ยน (ฝ่ายใหม่ได้เอกสารร่วมเพิ่ม) เปลือกกับเนื้อหาจะเดินหนีกัน
+ */
+export function useHomeSystem() {
+  const role = useContext(RoleContext);
+  const department = useContext(DepartmentContext);
+  return useMemo(() => homeSystemForUser({ role, department }), [role, department]);
+}
+
+/* เปลือกที่ "หน้านี้" สวมอยู่สำหรับคนดูคนนี้ — 'rd' | 'finance' | null (= เปลือกงานขาย)
+ *
+ * ⚠️ **บ้านของคนดูอย่างเดียวไม่พอ** — ฝ่ายหนึ่งรับเฉพาะบางเส้นทางมาไว้ในบ้านตัวเอง
+ * (`ADOPTED_SHARED_PATHS`: RD รับแค่ `/requests` · FN รับเอกสารขายสี่ชนิด) ⇒ ต้องถาม
+ * ทั้ง "บ้านของเขา" และ "หน้านี้ถูกรับไปหรือยัง" ด้วยฟังก์ชันชุดเดียวกับที่เมนูใช้
+ * ไม่งั้นวันที่ลิสต์การรับเปลี่ยน เนื้อหาบนหน้าจะพูดภาษาของเปลือกที่ไม่ได้ครอบมันอยู่
+ */
+export function useShellSystem(pathname) {
+  const home = useHomeSystem();
+  return useMemo(
+    () => (home && adoptsPathname(home, pathname) ? home : null),
+    [home, pathname],
+  );
 }
 
 export function useCan(cap) {

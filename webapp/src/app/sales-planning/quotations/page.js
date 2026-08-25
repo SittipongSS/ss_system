@@ -7,12 +7,13 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -100,6 +101,7 @@ export default function QuotationsPage() {
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
   const [salesOrders, setSalesOrders] = useState([]);
   const navCountParam = useSearchParams().get("count") || "";
+  const router = useRouter();
   const [pendingSoOnly, setPendingSoOnly] = useState(false);
   /* ⭐ `?count=quotations` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบที่รอฉันลงมือ"
      (รอฉันอนุมัติ + ใบของฉันที่ถูกตีกลับ) ⇒ กดแล้วต้องเจอเท่านั้น
@@ -230,6 +232,9 @@ export default function QuotationsPage() {
     usePagination(sorted, {
       resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}|${sortKey}|${sortDir}`,
     });
+  // ใบที่ **รอคนที่กำลังดูอยู่อนุมัติ** — ธงมาจาก server (helper ตัวเดียวกับป้ายบนเมนู)
+  const approvalQueue = useMemo(() => rows.filter((q) => q._awaitingMyApproval), [rows]);
+
   const summary = useMemo(() => ({
     total: rows.length,
     active: rows.filter((row) => ["draft", "sent", "pending_approval"].includes(row.status)).length,
@@ -350,6 +355,20 @@ export default function QuotationsPage() {
           <SaMetric icon={<BadgeCheck />} label="ปิดสำเร็จ" value={summary.accepted} note="ใบที่ลูกค้ายอมรับหรือ Won" tone="good" />
           <SaMetric icon={<CircleDollarSign />} label="มูลค่ารวม" value={fmtMoney(summary.value)} note="รวมยอดใบเสนอราคาที่มองเห็น" />
         </SaMetricStrip>
+
+        {/* ⭐ คิว "รออนุมัติจากคุณ" คาดเหนือตาราง — ทรงเดียวกับทะเบียนลูกค้า/สินค้า
+            (มติผู้ใช้ 2026-08-25) · ของเดิมมีแต่ตัวกรอง "รอฉันลงมือ" ที่ต้องกดเอง
+            ⚠️ ปุ่มเป็น **เปิดใบ** ไม่ใช่ติ๊กอนุมัติในลิสต์ — การอนุมัติตรึงลายเซ็นกับ
+            fingerprint ของเนื้อใบ ผู้อนุมัติต้องเห็นรายการ/ราคาก่อนกด */}
+        <ApprovalQueue
+          items={approvalQueue}
+          primary={(q) => q.quoteNumber}
+          secondary={(q) => `${naText(q.customerName)} · ${fmtMoney(q.totalAmount)}`}
+          onOpen={(q) => router.push(`/sa/quotations/${q.id}`)}
+          renderAction={(q) => (
+            <Button as={Link} href={`/sa/quotations/${q.id}`} tone="primary" size="sm">เปิดใบเพื่ออนุมัติ</Button>
+          )}
+        />
 
         <SaSection icon={<FileText size={17} />} title="ทะเบียนใบเสนอราคา" subtitle="ค้นหา กรอง และเปิดเอกสารเพื่อดำเนินการต่อ" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           <div className="toolbar">

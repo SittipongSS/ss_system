@@ -14,7 +14,7 @@ import { CODE_MODE_AUTO, DEFAULT_CODE_MODE } from "@/lib/master/masterCodes";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
-import ApprovalQueue from "@/components/database/ApprovalQueue";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, naText, NA } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
