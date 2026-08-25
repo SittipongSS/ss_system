@@ -148,6 +148,33 @@ test('allowIssued: แอดมินพิมพ์ได้ทั้งรู�
   assert.match(arCodeError('AR-109', { mode: CODE_MODE_AUTO, allowIssued: true }), /4 หลัก/);
 });
 
+// 🔴 เลข 4 หลักนำศูนย์ = ท่อนลูกค้าของรหัส FG ไปชนกับรหัสเก่า 3 หลัก (AR-0306 vs AR-306
+// เติมศูนย์แล้วได้ `0306` เหมือนกัน) ⇒ ห้ามแม้เป็นแอดมิน · ข้อความต้องชี้ทางที่ถูกให้ด้วย
+// เพราะเคสจริงคือ "เผลอสร้างด้วยระบบใหม่ ต้องแก้กลับเป็นเลขเก่า" ซึ่งพิมพ์ 3 หลักได้อยู่แล้ว
+test('allowIssued: เลข 4 หลักต่ำกว่า 1001 ห้าม — ท่อนรหัส FG จะชนกับรหัสเก่า', () => {
+  const admin = { mode: CODE_MODE_MANUAL, allowIssued: true };
+  const err = arCodeError('AR-0306', admin);
+  assert.match(err, /AR-1001/);   // บอกว่าเลขของระบบเริ่มที่ไหน
+  assert.match(err, /AR-306/);    // และบอกว่าถ้าจะใช้เลขเก่าให้พิมพ์อะไร
+  assert.equal(customerCodeSegment('AR-0306'), customerCodeSegment('AR-306')); // เหตุผลที่ห้าม
+  assert.match(arCodeError('AR-0001', admin), /AR-001/);
+  assert.match(arCodeError('AR-0000', admin), /AR-000/);
+  // ขอบเขตพอดี: 1001 ผ่าน · 1000 ไม่ผ่าน
+  assert.equal(arCodeError(formatArCode(AR_FIRST_NUMBER), admin), null);
+  assert.match(arCodeError('AR-1000', admin), /ระบบไม่เคยออกให้/);
+  // รูปเดิม 3 หลัก (เคสจริงของผู้ใช้) ต้องไม่ถูกแตะเลย
+  assert.equal(arCodeError('AR-306', admin), null);
+  assert.equal(arCodeError('AR-001', admin), null);
+});
+
+// ค่าที่มีช่องว่างติดมาต้องผ่านด่านได้เหมือนเดิม (ตัวตรวจ trim ให้) — ข้อควรระวังคือ
+// **ผู้เรียกต้องบันทึกค่าที่ตัดแล้ว** ไม่ใช่ค่าดิบ ไม่งั้นด่านกันซ้ำ/unique มองเป็นคนละค่า
+// (PATCH /api/customers/[id] ตัดก่อนทุกด่านแล้วเขียนค่าที่ตัดแล้วลงตาราง)
+test('ช่องว่างหัวท้ายไม่ทำให้ด่านรูปแบบเพี้ยน', () => {
+  assert.equal(arCodeError(' AR-1009 ', { mode: CODE_MODE_MANUAL, allowIssued: true }), null);
+  assert.equal(arCodeError('  AR-306  ', { mode: CODE_MODE_MANUAL }), null);
+});
+
 test('ด่านตรวจรหัสสินค้าแยกตามโหมด และต้องตรงกับหมวดที่เลือก', () => {
   assert.equal(fgCodeError('FG-0109-01-002-10001', { mode: CODE_MODE_AUTO }), null);
   assert.match(fgCodeError('FG-109-01-002-1001', { mode: CODE_MODE_AUTO }), /FG-AAAA/);

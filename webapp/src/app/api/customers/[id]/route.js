@@ -254,7 +254,19 @@ export async function PATCH(request, { params }) {
     return Response.json(updated);
   }
 
-  if (body.arCode && body.arCode !== customer.arCode) {
+  // ⚠️ **ตัดช่องว่างก่อนทุกด่าน แล้วใช้ค่าที่ตัดแล้วเป็นค่าที่บันทึกจริง** (2026-08-24)
+  // เดิมด่านตรวจ trim ให้ (digitsOf) แต่ค่าที่เขียนลงตารางเป็นค่าดิบ ⇒ `" AR-1009 "` ผ่าน
+  // ทุกด่านแล้วลงฐานทั้งช่องว่าง · บนจอเหมือนกันเป๊ะ แต่ระบบถือเป็นคนละค่า: ด่านกันซ้ำ
+  // (`.eq('arCode', …)`) กับ unique index เทียบสตริงตรง ๆ จึงมองไม่เห็น และท่อน seed ของ
+  // `create_customer_with_code` (LIKE 'AR-%' + regex ตัวเลขล้วน) ก็ข้ามแถวนี้ ⇒ เคาน์เตอร์
+  // ออก `AR-1009` ให้อีกรายได้ในภายหลัง กลายเป็นรหัสซ้ำที่มองด้วยตาไม่เห็น
+  //
+  // ⚠️ **เช็ค `!== undefined` ไม่ใช่ truthy** — ของเดิมใช้ `body.arCode &&` ⇒ ส่งค่าว่างมา
+  // จะ **ข้ามทั้งบล็อก** (ด่านสิทธิ์/สหมิตร/รูปแบบ/ซ้ำ) แล้วตกไปเขียนรหัสว่างทับของจริง
+  // (ฟอร์มมี required จึงไม่โดนทางจอ แต่ยิง API ตรงได้ — และ route นี้คือทางซ่อมรหัส
+  // อย่างเป็นทางการแล้ว) · ตอนนี้ค่าว่างวิ่งเข้า arCodeError แล้วเด้ง "กรุณากรอกรหัสลูกค้า"
+  const nextArCode = String(body.arCode ?? '').trim();
+  if (body.arCode !== undefined && nextArCode !== customer.arCode) {
     // ── ใครแก้เลข AR ได้บ้าง (มติผู้ใช้ 2026-08-24) ──────────────────────────
     // ⭐ **admin แก้ได้ทั้งรหัสที่ระบบออกให้ (AR-AAAA) และรหัสเดิมที่กรอกมือ (AR-AAA)**
     // — ทะเบียนที่ยกมาจากระบบเก่ามีเลขผิดอยู่จริง และเดิมซ่อมได้เฉพาะรหัสกรอกมือ ⇒ ใบที่
@@ -283,12 +295,12 @@ export async function PATCH(request, { params }) {
         { status: 400 },
       );
     }
-    const codeError = arCodeError(body.arCode, { mode: CODE_MODE_MANUAL, allowIssued: mayEditIssued });
+    const codeError = arCodeError(nextArCode, { mode: CODE_MODE_MANUAL, allowIssued: mayEditIssued });
     if (codeError) return Response.json({ error: codeError }, { status: 400 });
     const { data: dup, error: dupError } = await supabase
       .from('customers')
       .select('id')
-      .eq('arCode', body.arCode)
+      .eq('arCode', nextArCode)
       .maybeSingle();
     if (dupError) return Response.json({ error: dupError.message }, { status: 500 });
     if (dup) return Response.json({ error: 'รหัสลูกค้านี้มีในระบบแล้ว' }, { status: 409 });
@@ -312,6 +324,8 @@ export async function PATCH(request, { params }) {
       updates[k] = (['taxId', 'nameEn'].includes(k) && String(body[k]).trim() === '') ? null : body[k];
     }
   }
+  // รหัสลูกค้าเขียนค่าที่ตัดช่องว่างแล้วเสมอ — ค่าดิบผ่านลูปข้างบนมา (เหตุผลอยู่ที่ด่านข้างบน)
+  if (body.arCode !== undefined) updates.arCode = nextArCode;
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
   // ⭐ ชื่ออย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) — เทียบกับ **ค่าหลังแก้**
