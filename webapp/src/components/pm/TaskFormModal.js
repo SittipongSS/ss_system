@@ -55,7 +55,7 @@ export const taskToForm = (t) => ({
   blockedReason: t.blockedReason || "", predecessorId: t.predecessorId || "",
 });
 
-// 🐞 เดิมเรียก `uploadFileForEntity` ตรง ๆ ซึ่งเป็น **ขั้นเดียว** (ไบต์ขึ้น Drive) แล้ว
+// 🐞 เดิมเรียก `uploadFileBytes` ตรง ๆ ซึ่งเป็น **ขั้นเดียว** (ไบต์ขึ้น Drive) แล้ว
 // ทิ้ง ref ที่มันคืนมา ⇒ ไม่มีใครบันทึกแถว metadata: ไฟล์ขึ้น Drive จริง แต่ไม่มีแถวใน
 // `attachments` ⇒ แผง "ไฟล์แนบงาน" ว่างเปล่าโดยไม่มี error ให้เห็นเลย ผู้ใช้อ่านหน้าจอ
 // แล้วเห็นว่า "แนบไปแล้วไฟล์หายไป" · ตัวที่ถูกคือ `uploadAttachment` ซึ่งทำครบสองขั้น

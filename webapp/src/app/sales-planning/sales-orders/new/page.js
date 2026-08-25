@@ -36,7 +36,7 @@ import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { previewInstallments } from "@/lib/sales/salesOrderPayments";
 import { validateOrderConfirmation, MAX_CONFIRM_ATTACHMENTS } from "@/lib/sales/orderConfirmationDocs";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { describeResponseError } from "@/lib/fetchError";
 import AccessDenied from "@/components/ui/AccessDenied";
 import styles from "./page.module.css";
@@ -131,7 +131,7 @@ function NewSalesOrderInner() {
   const uploadOne = useCallback(async (file) => {
     // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ด้วย signed URL — ไม่ผ่าน function
     // จึงไม่ติดเพดาน request body 4.5 MB ของโฮสติ้ง
-    const ref = await uploadFileForEntity({
+    const ref = await uploadFileBytes({
       file, entityType: "sales_order_confirmation", entityId: quotationId,
     });
     return {

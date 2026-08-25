@@ -20,7 +20,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { notifyToast } from "@/lib/feedback";
 import { shortUserAgent } from "@/lib/issues/userAgent";
 import { describeResponseError } from "@/lib/fetchError";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import {
   ISSUE_IMPACTS, ISSUE_IMPACT_LABELS, ISSUE_KINDS, ISSUE_KIND_LABELS,
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
@@ -203,7 +203,7 @@ async function attachToThread(issueId, files) {
   const attachments = [];
   for (const file of files) {
     // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
-    const payload = await uploadFileForEntity({
+    const payload = await uploadFileBytes({
       file, entityType: "system_issue", entityId: issueId,
     });
     attachments.push({

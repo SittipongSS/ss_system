@@ -46,6 +46,9 @@ export const ENTITY_LABEL = {
   service_visit: 'นัดเข้าบริการ',
   system_issue: 'เรื่องแจ้งปัญหา',
   sales_contract: 'สัญญา',
+  // รายงานประจำสัปดาห์ ไม่ใช่ระเบียนในระบบ — ป้ายจึงบอก "เรื่องอะไร" ไม่ใช่ "ใบไหน"
+  // (ถ้าไม่มีบรรทัดนี้ แถวจะขึ้นว่า "รายการ" ซึ่งไม่บอกอะไรเลย)
+  drive_orphans: 'ไฟล์กำพร้าบน Drive',
 };
 
 export function notificationHref(entityType, entityId) {

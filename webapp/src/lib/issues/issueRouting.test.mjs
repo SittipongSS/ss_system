@@ -98,7 +98,7 @@ test('โมดัลแนบไฟล์ผ่านเส้นเธรด �
   assert.match(modal, /fetch\("\/api\/updates"/);
   // มองหา "การเรียก" ไม่ใช่คำในคอมเมนต์ (เหตุผลที่ไม่ใช้เส้นนั้นเขียนอยู่ในไฟล์)
   assert.ok(!/fetch\(["'`]\/api\/attachments/.test(modal), 'ห้ามใช้เส้นไฟล์แนบที่ viewer ผ่านไม่ได้');
-  // ไฟล์ขึ้นที่เก็บผ่านท่อกลาง (uploadFileForEntity) โดยประกาศ entityType ตัวนี้ —
+  // ไฟล์ขึ้นที่เก็บผ่านท่อกลาง (uploadFileBytes) โดยประกาศ entityType ตัวนี้ —
   // ตัว entityType เป็นสิ่งที่ตัดสินว่าไฟล์ไปโฟลเดอร์ไหนบน Drive
   assert.match(modal, /entityType: "system_issue"/);
 

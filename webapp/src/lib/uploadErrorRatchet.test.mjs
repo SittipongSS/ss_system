@@ -44,7 +44,7 @@ test('⭐ ทางอัปไฟล์มีที่เดียว — ห�
   assert.deepEqual(
     rel,
     [UPLOAD_ENTRY],
-    'จุดที่ยิงคำขออัปโหลดเองแทนที่จะเรียก uploadFileForEntity():\n  '
+    'จุดที่ยิงคำขออัปโหลดเองแทนที่จะเรียก uploadFileBytes():\n  '
       + `${rel.filter((r) => r !== UPLOAD_ENTRY).join('\n  ')}`,
   );
 });

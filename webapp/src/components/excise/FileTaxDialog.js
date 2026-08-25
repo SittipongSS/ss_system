@@ -6,7 +6,7 @@ import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
 
@@ -48,7 +48,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
       let receiptDriveFileId = null;
       if (file && !isExempt) {
         // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
-        const uploaded = await uploadFileForEntity({
+        const uploaded = await uploadFileBytes({
           file, entityType: "order", entityId: order.id,
         });
         receiptUrl = uploaded.url;
