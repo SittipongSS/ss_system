@@ -104,9 +104,12 @@ export default function RecordActionMenu({
       : []),
   ];
 
-  const run = async () => {
+  /* ⚠️ ใช้ค่าที่ `TransitionDialog` ส่งมา ไม่ใช่ `pending.values` ดิบ — dialog ตัดค่าของ
+     ช่องที่ถูกซ่อนอยู่ทิ้งให้แล้ว (เลือกเหตุผลหนึ่ง กรอกช่องเงื่อนไข แล้วเปลี่ยนใจ
+     ค่าที่ค้างจะติดไปกับ payload) · ถอยไป pending.values ถ้าผู้เรียกเก่าไม่ส่งมา */
+  const run = async (values) => {
     if (!pending) return;
-    const ok = await onTransition?.(pending.transition.id, pending.values);
+    const ok = await onTransition?.(pending.transition.id, values || pending.values);
     if (ok !== false) setPending(null);
   };
 

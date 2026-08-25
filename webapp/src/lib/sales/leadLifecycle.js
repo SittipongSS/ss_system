@@ -24,6 +24,7 @@ import {
   MEETING_MODE_LABELS,
   LEAD_FOLLOW_UP_ACTIONS,
   LEAD_LOST_REASONS,
+  LEAD_LOST_REVISIT_CODES,
   canWorkLead,
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
@@ -350,9 +351,30 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           {
             name: "disqualifiedCode",
             label: "เหตุผลที่ไม่ไปต่อ",
-            type: "select",
+            /* ⭐ **ไทล์ ไม่ใช่ดรอปดาวน์** — ตัวเลือกตายตัวไม่โต ต้องกางให้เห็นทั้งหมด
+               (form-design-rules "เลือกคอนโทรลอะไร") · ดรอปดาวน์ซ่อนว่ามีกี่แบบจนกว่า
+               จะกด แล้วคนจะหยิบตัวแรกที่เห็นแทนตัวที่ตรงจริง ⇒ รายงาน "แพ้เพราะอะไร"
+               จะเอียงไปทางตัวเลือกบนสุดโดยไม่มีใครรู้ */
+            type: "tiles",
             required: true,
-            options: LEAD_LOST_REASONS.map(({ code, label }) => ({ value: code, label })),
+            options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+              value: code,
+              label,
+              // คำอธิบายมาจากลิสต์เดียวกับรหัส — สะกดที่จอเมื่อไรก็เริ่มไม่ตรงกัน
+              description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
+            })),
+          },
+          /* ช่องที่โผล่ตามเงื่อนไข **อยู่ใต้ตัวที่ทำให้มันโผล่** (form-design-rules §1.3)
+             ⭐ "ยังไม่พร้อม" ไม่ใช่แพ้ถาวร — เก็บวันกลับมาถามใหม่ไว้ ไม่งั้นดีลที่แค่
+             เลื่อนเวลาจะหายไปเท่ากับดีลที่แพ้จริง
+             ⚠️ ไม่บังคับกรอก — บางเคสลูกค้าบอกแค่ "ไว้ก่อน" ไม่มีกำหนด บังคับแล้วคนจะ
+             กรอกวันมั่วเพื่อให้ผ่านด่าน ซึ่งแย่กว่าเว้นว่าง */
+          {
+            name: "revisitAt",
+            label: "วันกลับมาถามใหม่",
+            type: "date",
+            visible: (lead, user, values) => LEAD_LOST_REVISIT_CODES.includes(values?.disqualifiedCode),
+            hint: "เว้นว่างได้ถ้าลูกค้าไม่ได้ให้กำหนด",
           },
         ],
       },
@@ -420,6 +442,8 @@ export function buildLeadTransitionPayload({ action, values = {}, users = [] } =
     // ⚠️ ส่งเฉพาะตอนปิดลีด — ติดไปกับ action อื่นไม่พังวันนี้ (handler ไม่อ่าน)
     // แต่เป็นทางที่ payload จะเริ่มโกหกว่า "ทุก action มีเหตุผลที่ไม่ไปต่อ"
     disqualifiedCode: action === "disqualify" ? values.disqualifiedCode || undefined : undefined,
+    // ⚠️ ช่องนี้โผล่เฉพาะเหตุผลที่ "ไม่ใช่แพ้ถาวร" — dialog ตัดค่าที่ค้างให้แล้วตอนซ่อน
+    revisitAt: action === "disqualify" ? values.revisitAt || undefined : undefined,
     meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
     eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
     /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS) — ส่งไปกับ action อื่น

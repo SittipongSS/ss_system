@@ -226,7 +226,10 @@ function normalizeTransition(transition, entity) {
    ช่องพิมพ์อิสระ) · เพิ่มที่ dialog อย่างเดียวแล้ว defineLifecycle จะ throw ตั้งแต่
    ตอนสร้าง lifecycle — อันหลังดังกว่า จึงเป็นด่านที่พึ่งได้
    `date` = วันล้วน ๆ (DateInput · เก็บ/ส่งเป็น ISO ค.ศ.) ต่างจาก `datetime` ที่มีเวลาด้วย */
-const FIELD_TYPES = ["text", "select", "person", "date", "datetime", "money"];
+/* `tiles` = ตัวเลือกตายตัวที่ **กางให้เห็นทั้งหมด** (OptionTiles) ต่างจาก `select`
+   ที่ซ่อนไว้จนกว่าจะกด · กติกาโปรเจกต์: ตัวเลือกตายตัวไม่โต ให้กางให้เห็น
+   ดรอปดาวน์ไว้ให้ลิสต์ยาว/ค้นหาได้ (form-design-rules "เลือกคอนโทรลอะไร") */
+const FIELD_TYPES = ["text", "select", "tiles", "person", "date", "datetime", "money"];
 
 function normalizeField(field, entity, transitionId) {
   if (!field?.name) throw new Error(`defineLifecycle(${entity}): ${transitionId} — field ต้องมี name`);
@@ -270,6 +273,28 @@ export function fieldUsers(field, record) {
  *  (เช่น ทีมที่ถูกล็อกของใบที่ถูกส่งกลับ) ⇒ ตัวเลือกที่ขึ้นกับแถวต้องเป็นฟังก์ชัน
  *  🪤 ส่ง `field.options` ดิบเข้า `<Select options>` เมื่อไร ฟังก์ชันจะกลายเป็น
  *  อาร์เรย์ว่างเงียบ ๆ (Select ทำ `options.map`) ⇒ ดรอปดาวน์ว่างเปล่าโดยไม่มี error */
+/** ช่องนี้ควรโผล่ไหม — **ขึ้นกับค่าที่กรอกไปแล้วในกล่องเดียวกัน**
+ *
+ *  ⭐ ช่องที่โผล่ตามเงื่อนไขต้องอยู่ **ใต้ตัวที่ทำให้มันโผล่** (form-design-rules §1.3)
+ *  ⚠️ ไม่ประกาศ `visible` = โผล่เสมอ (พฤติกรรมเดิมของทุก field ที่มีอยู่)
+ *  🪤 ค่าของช่องที่ถูกซ่อนต้อง **ไม่ถูกส่งไป API** — ผู้ใช้เลือก "ยังไม่พร้อม" กรอกวัน
+ *  แล้วเปลี่ยนใจไปเลือก "งบไม่ถึง" ค่าที่ค้างอยู่จะติดไปด้วยโดยไม่มีใครเห็น
+ *  (`visibleFieldValues` ข้างล่างเป็นตัวกรองนั้น)
+ */
+export function fieldVisible(field, record, values = {}) {
+  return typeof field?.visible === "function" ? !!field.visible(record, undefined, values) : true;
+}
+
+/** ค่าที่ควรส่งจริง — ตัดค่าของช่องที่ถูกซ่อนอยู่ทิ้ง */
+export function visibleFieldValues(transition, record, values = {}) {
+  const fields = transition?.fields || [];
+  const hidden = fields.filter((f) => !fieldVisible(f, record, values)).map((f) => f.name);
+  if (!hidden.length) return values;
+  const out = { ...values };
+  for (const name of hidden) delete out[name];
+  return out;
+}
+
 export function fieldOptions(field, record) {
   const options = typeof field?.options === "function" ? field.options(record) : field?.options;
   return Array.isArray(options) ? options : [];
@@ -279,7 +304,7 @@ export function fieldOptions(field, record) {
  * ค่าที่กรอกครบตามที่ transition ขอหรือยัง — TransitionDialog ใช้คุมปุ่มยืนยัน
  * คืน null = ผ่าน / สตริง = เหตุที่ยังกดไม่ได้
  */
-export function validateTransitionValues(transition, values = {}) {
+export function validateTransitionValues(transition, values = {}, record = null) {
   if (!transition) return "ไม่พบรายการนี้";
   const { reason, reasonPolicy, fields } = transition;
   if (reason === "required") {
@@ -290,6 +315,8 @@ export function validateTransitionValues(transition, values = {}) {
   if (overLimit) return `เหตุผลยาวเกิน ${reasonPolicy.maxLength} ตัวอักษร`;
   for (const field of fields) {
     if (!field.required) continue;
+    // ⚠️ ช่องที่ซ่อนอยู่ต้องไม่บังคับกรอก — ไม่งั้นปุ่มยืนยันกดไม่ได้โดยไม่มีช่องให้กรอก
+    if (!fieldVisible(field, record, values)) continue;
     const value = values[field.name];
     if (value === undefined || value === null || String(value).trim() === "") {
       return `กรุณากรอก${field.label || field.name}`;
