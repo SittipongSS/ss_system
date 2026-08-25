@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
-import { cachedJson } from '@/lib/serverCache';
+import { bumpStamp, cachedJson } from '@/lib/serverCache';
+import { DASHBOARD_CACHE_PREFIX, loadDashboardStamp } from '@/lib/sales/dashboardStamp';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
@@ -30,6 +31,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const yearParam = sp.get('year');
   const year = /^\d{4}$/.test(yearParam || '') ? yearParam : null;
   try {
+    /* ⭐ **สดทันทีที่ข้อมูลเปลี่ยน โดยไม่ทิ้ง cache** (แก้ 2026-08-25) — ของเดิมรอ TTL
+       อย่างเดียว ⇒ ปิดดีล Won เสร็จ **กด F5 กี่รอบก็ยังเห็นเลขเก่า** เพราะ cache อยู่
+       ฝั่ง server ไม่ใช่ในเบราว์เซอร์ · ตอนนี้ถามสแตมป์ (เวลาแก้ล่าสุด + จำนวนแถว
+       ของ deals/targets) ก่อนตอบ — เปลี่ยนเมื่อไรล้าง cache ทันที
+       ⚠️ เลือกทางนี้แทน `invalidateCache` ที่เส้นเขียน เพราะ cache อยู่ต่อ instance:
+       ล้างตอนเขียนได้แค่ instance ที่รับ write ส่วน instance อื่นยังตอบของเก่าจนครบ
+       TTL ⇒ ผู้ใช้ยังเจอ "รีเฟรชสองทีได้เลขสองแบบ" · สแตมป์ทุก instance เห็นตรงกัน
+       ⚠️ ราคาคือคำถามเล็ก ๆ 2 ครั้งต่อหนึ่ง request (limit 1 + count) ซึ่งถูกกว่าการ
+       สแกนดีลทั้งตาราง + เป้า + ทะเบียนผู้ใช้ใหม่อยู่หลายเท่า */
+    bumpStamp(DASHBOARD_CACHE_PREFIX, await loadDashboardStamp(supabase));
+
     if (year) {
       return ok(await cachedJson(`sales-dashboard:year:${year}`, DASHBOARD_TTL_MS, () => buildYearDashboards(supabase, year)));
     }
