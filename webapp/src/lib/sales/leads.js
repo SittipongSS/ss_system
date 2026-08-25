@@ -557,6 +557,145 @@ export function leadSlaNote(stage = {}, pendingLabel = 'ค้างตอนน
   return `ทัน ${stage.hit ?? 0}/${stage.checked ?? 0} · ${pendingLabel} ${stage.pending ?? '-'}`;
 }
 
+/* ══ "ลีดใบนี้ไปถึงไหน" — คำตอบเดียวของทั้งระบบ ══════════════════════════════
+ *
+ * ทำไมต้องมี: คำถามเดียวกันถูกตอบด้วยโค้ดคนละชุด **สี่ที่** และทุกที่อ่านจากคอลัมน์ดิบ
+ *   1. `funnel` ใน /api/sales-planning/leads/kpi   `rows.filter(l => l.meetingAt)`
+ *   2. `channelRollup` ข้างล่างไฟล์นี้              `if (lead.meetingAt) row.meeting += 1`
+ *   3. `byAssignee` ใน route เดียวกัน               `if (l.meetingAt) b.meetings += 1`
+ *   4. `myQueue`                                    `status === 'meeting' && meetingAt`
+ * "ติดต่อแล้ว" (`firstContactAt`) ซ้ำสามที่ · "เปิดลูกค้า" (`status === 'qualified'`)
+ * ซ้ำสามที่ เหมือนกัน · เปลี่ยนนิยามทีหนึ่งต้องไล่แก้สิบเอ็ดจุด ลืมจุดเดียวได้ตัวเลข
+ * สองตัวบนจอเดียวกันที่ขัดกันเองโดยไม่มีอะไรฟ้อง — **เกิดมาแล้วจริง**: ส.ค. 2026
+ * ผัง Funnel ขึ้น "มอบหมายแล้ว 56" ขณะที่ตาราง AE ข้างล่างรวมได้ 54
+ *
+ * 🔴 **คอลัมน์บนแถวลีดไม่ใช่ประวัติ — มันคือสถานะของรอบปัจจุบัน**
+ * `bounce` ล้าง `meetingAt` และ `firstContactAt` ทิ้งทั้งคู่ (ดู transition/route.js)
+ * ⇒ ลีดที่นัดประชุมไปแล้วจริง ๆ แล้วถูกตีกลับ จะ **หายจากตัวเศษ** ของอัตราแปลง
+ * ทั้งที่นัดนั้นเกิดขึ้นจริงและมีคนไปนั่งประชุมมาแล้ว · ยิ่งมีการตีกลับอัตโนมัติเมื่อไร
+ * ตัวเลขนี้จะถูกกลไกของระบบเองลบทิ้งเป็นประจำ
+ * ⇒ ตัวชี้วัดต้องอ่านจาก `lead_events` ซึ่งไม่เคยถูกล้าง (ลบเฉพาะตอนลบลีดทั้งใบ)
+ *
+ * ⚠️ **`events: null` กับ `events: []` ไม่เหมือนกัน** — `null` = ผู้เรียกไม่ได้อ่าน
+ * ประวัติมา (ถอยไปใช้คอลัมน์) · `[]` = อ่านมาแล้วไม่มีเหตุการณ์เลย (เชื่อตามนั้น)
+ * ถ้าปล่อยให้ `[]` ถอยไปใช้คอลัมน์เงียบ ๆ จะได้ระบบที่ "อ่านประวัติแล้วแต่ตอบเหมือน
+ * ไม่ได้อ่าน" ซึ่งเป็นความต่างที่ไม่มีวันมีใครสังเกตเห็นจนกว่าตัวเลขจะเพี้ยน
+ * ⇒ คืน `basis` มาด้วยเสมอ จอที่ผสมสองแหล่งบนตารางเดียวจะได้จับได้ (ดู leadOutcomeTotals)
+ */
+
+/* ⚠️ กติกา "เหตุผลไหนไม่นับเข้าตัวส่วน" อยู่ที่ `LEAD_LOST_REASONS` ข้างบนที่เดียว
+   (`countable: false`) — `LEAD_LOST_UNCOUNTABLE` หามาจากลิสต์นั้น ไม่ได้สะกดซ้ำ
+   ⚠️ ใบเก่าที่ยังไม่มี `disqualifiedCode` คืน `undefined` แล้วถูกนับเป็น countable
+   ตามเดิม (ปลอดภัยกว่าเดา) — ดู mig 0289 ที่ตั้งใจไม่ backfill */
+
+/* เหตุการณ์ที่แปลว่า "ได้คุยกับลูกค้าแล้ว" — `followup` คือการติดต่อครั้งที่ 2 ขึ้นไป
+   (ยังไม่มีใน CHECK ของ lead_events วันนี้ ใส่ไว้ให้พร้อมก่อนเพื่อไม่ต้องกลับมาแก้สองรอบ) */
+const CONTACT_KINDS = new Set(['contact', 'followup']);
+
+const hasKind = (events, test) => (events || []).some((e) => test(e?.kind));
+
+/**
+ * @param lead   แถวจาก `sales_leads`
+ * @param events แถวจาก `lead_events` ของลีดใบนี้ · `null` = ไม่ได้อ่านมา (ใช้คอลัมน์แทน)
+ * @returns {{ basis: 'events'|'row', reachedContact: boolean, reachedMeeting: boolean,
+ *            won: boolean, lost: boolean, countable: boolean }}
+ */
+export function leadOutcome(lead = {}, events = null) {
+  const status = lead?.status || null;
+  /* ชนะ/แพ้อ่านจากสถานะเสมอ แม้จะมีประวัติ — สองสถานะนี้เป็นปลายทางที่ไม่มีทางถอย
+     (`LEAD_TRANSITIONS.qualified` เหลือแค่ `create_deal` · `disqualified` ว่าง)
+     คอลัมน์จึงไม่มีวันถูกล้างเหมือน meetingAt/firstContactAt */
+  const won = status === 'qualified';
+  const lost = status === 'disqualified';
+
+  const code = lead?.disqualifiedCode || null;
+  // ไม่ใช่ใบที่ปิดไป = อยู่ในตัวส่วนเสมอ (ยังเดินอยู่ก็คือยังมีโอกาส)
+  const countable = !lost || !LEAD_LOST_UNCOUNTABLE.includes(code);
+
+  if (events == null) {
+    return {
+      basis: 'row',
+      /* ⚠️ ใบที่ **ถูกตีกลับ** ตอบผิดตรงนี้ — คอลัมน์ถูกล้างไปแล้ว · ไม่ใช่บั๊กของฟังก์ชัน
+         แต่เป็นเพดานของแหล่งข้อมูล ผู้เรียกที่ต้องการเลขที่ถูกต้องต้องส่ง events มา */
+      reachedContact: !!lead?.firstContactAt,
+      reachedMeeting: !!lead?.meetingAt,
+      won, lost, countable,
+    };
+  }
+
+  /* ⚠️ **ไม่ตัดที่ bounce** — ต่างจาก `meetingTimesSinceBounce` ข้างบนโดยเจตนา
+     ตัวนั้นตอบ "นัดถัดไปที่ต้องไป" (ของรอบปัจจุบัน) ตัวนี้ตอบ "เคยไปถึงขั้นนัดไหม"
+     (ตลอดกาล) · สองคำถามนี้หน้าตาเหมือนกันจนเอาโค้ดมาใช้ร่วมกันได้ ห้ามทำ */
+  return {
+    basis: 'events',
+    reachedContact: hasKind(events, (k) => CONTACT_KINDS.has(k)),
+    reachedMeeting: hasKind(events, (k) => k === 'meeting'),
+    won, lost, countable,
+  };
+}
+
+/* เหตุการณ์ที่ `leadOutcome` ต้องใช้จริง — ดึงมาแค่นี้พอ ไม่ต้องลากประวัติทั้งก้อน
+   (`won`/`lost` อ่านจากสถานะบนแถว ไม่ได้อ่านจากประวัติ) */
+export const LEAD_OUTCOME_EVENT_KINDS = ['contact', 'followup', 'meeting'];
+
+/** ผลของลีดทั้งชุด — **ทุกใบต้องใช้แหล่งเดียวกัน**
+ *
+ *  🪤 **all-or-nothing โดยเจตนา** — `eventsByLead = null` แปลว่าอ่านประวัติไม่ได้
+ *  (query ล้ม/ก้อนใดก้อนหนึ่งพัง) ⇒ ถอยไปใช้คอลัมน์ **ทั้งกระดาน** ไม่ใช่เฉพาะใบที่พลาด
+ *  ปล่อยให้บางใบอ่านจากประวัติ บางใบอ่านจากคอลัมน์ = ตัวเลขผสมสองนิยามในตารางเดียว
+ *  ซึ่งไม่มีทางอธิบายได้ว่าทำไมสองแถวถึงนับไม่เหมือนกัน · `basis` ที่ `leadOutcomeTotals`
+ *  คืนมาจะเป็น 'row' ให้หน้าจอขึ้นคำเตือนได้
+ *
+ *  ⚠️ ใบที่ **ไม่มีเหตุการณ์เลย** ต้องได้ `[]` ไม่ใช่ `undefined` — `[]` = อ่านแล้วว่าง
+ *  (ลีดที่ยังไม่เคยติดต่อ) ส่วน `undefined` จะถอยไปอ่านคอลัมน์เงียบ ๆ แล้วใบนั้น
+ *  จะนับคนละนิยามกับเพื่อนในตารางเดียวกัน
+ */
+export function leadOutcomesFor(rows = [], eventsByLead = null) {
+  return (rows || []).map((lead) => leadOutcome(
+    lead,
+    eventsByLead ? (eventsByLead.get?.(lead?.id) ?? []) : null,
+  ));
+}
+
+/** รวมผลของลีดหลายใบเป็นตัวเลขชุดเดียว — ที่เดียวที่หาร
+ *
+ *  🐞 สูตรอัตราแปลงเคยถูกเขียนสองที่: หน้าคิวลีดเขียน `(qualified / total) * 100` ตรง ๆ
+ *  ใน JSX ส่วนแท็บ KPI ใช้ helper `pct()` ของตัวเอง — วันนี้ตรงกันเพราะคนเขียนระวัง
+ *  ไม่ใช่เพราะโค้ดบังคับ
+ *
+ *  ⭐ **ตัวเศษ = เคยนัด _หรือ_ เปิดดีล** ไม่ใช่ "เคยนัด" อย่างเดียว —
+ *  `LEAD_TRANSITIONS.contacted` มี `create_deal` อยู่ด้วย ⇒ ปิดดีลได้โดยไม่ต้องนัด
+ *  (ข้อมูลจริง ส.ค. 2026: นัด 2 แต่เปิดลูกค้า 4) · นับแค่ "เคยนัด" เมื่อไร
+ *  **ผลลัพธ์ที่ดีที่สุดจะได้คะแนนศูนย์**
+ *
+ *  ⚠️ `pct` คืน `null` เมื่อตัวส่วนเป็น 0 ไม่ใช่ 0 — "0%" อ่านว่าทำไม่ได้เลย
+ *  ส่วน "ยังไม่มีข้อมูล" คือคนละเรื่อง (กติกาเดียวกับ slaPendingTone)
+ *
+ *  @param outcomes ผลจาก `leadOutcome` ของลีดแต่ละใบ
+ */
+export function leadOutcomeTotals(outcomes = []) {
+  const list = outcomes || [];
+  const countable = list.filter((o) => o?.countable);
+  const reached = countable.filter((o) => o.reachedMeeting || o.won);
+  return {
+    total: list.length,
+    countable: countable.length,
+    excluded: list.length - countable.length,
+    contacted: countable.filter((o) => o.reachedContact).length,
+    meeting: countable.filter((o) => o.reachedMeeting).length,
+    won: countable.filter((o) => o.won).length,
+    lost: countable.filter((o) => o.lost).length,
+    reached: reached.length,
+    // เปิดดีลโดยไม่ผ่านนัด — แยกออกมาเพราะเป็นตัวเลขที่อธิบายว่าทำไมตัวเศษ > "นัด"
+    wonWithoutMeeting: countable.filter((o) => o.won && !o.reachedMeeting).length,
+    pct: countable.length ? (reached.length / countable.length) * 100 : null,
+    /* 🪤 ตารางที่ผสมสองแหล่งบนจอเดียวกันคือจุดที่ตัวเลขจะขัดกันเอง — ผู้เรียกเช็คค่านี้
+       แล้วขึ้นคำเตือนได้ ไม่ต้องรอให้ผู้ใช้มาทักว่าเลขไม่ตรง */
+    basis: list.length && list.every((o) => o?.basis === 'events') ? 'events'
+      : list.some((o) => o?.basis === 'events') ? 'mixed' : 'row',
+  };
+}
+
 /** สรุปลีดรายช่องทาง — ตอบ "เข้ามาทางไหน แล้วติดต่อ/นัด/เปิดลูกค้าได้เท่าไร"
  *
  *  คืนสองชุดในแถวเดียวกันเพราะตอบคนละคำถาม:
@@ -569,7 +708,10 @@ export function leadSlaNote(stage = {}, pendingLabel = 'ค้างตอนน
  *  มาก่อนเสมอ แล้วค่อยดูว่าเคยติดต่อไหม · ถ้าไล่จาก firstContactAt ก่อน ใบที่ปิดไปแล้ว
  *  จะไปโผล่ในช่อง "คุยอยู่" ด้วย แล้วผลรวมเกินจำนวนลีดจริง
  */
-export function channelRollup(rows) {
+/** @param outcomeOf Map(leadId → ผลจาก `leadOutcome`) · ไม่ส่ง = คำนวณจากคอลัมน์เอง
+ *  ⚠️ ผู้เรียกที่มีประวัติลีดอยู่แล้วต้องส่งมา ไม่งั้นตารางนี้จะนับจากคอลัมน์
+ *  ขณะที่การ์ดข้าง ๆ นับจากประวัติ = สองนิยามบนจอเดียวกัน */
+export function channelRollup(rows, outcomeOf = null) {
   const map = new Map();
   for (const lead of rows || []) {
     const channel = lead?.channel || 'unknown';
@@ -581,12 +723,20 @@ export function channelRollup(rows) {
       });
     }
     const row = map.get(channel);
+    /* ⭐ นิยาม "ไปถึงไหน" มาจาก `leadOutcome` ที่เดียว — เดิมเขียนเงื่อนไขเองตรงนี้
+       แล้วมีอีกสองที่ใน KPI route ที่เขียนเงื่อนไขเดียวกันซ้ำ (funnel · byAssignee)
+       ⚠️ ส่งเป็นแถวล้วน (ไม่มี events) = อ่านจากคอลัมน์ตามเดิมทุกประการ ตัวเลขไม่ขยับ
+       การเปลี่ยนไปอ่านประวัติเป็นการเปลี่ยน **นิยาม** ซึ่งต้องเป็นคอมมิตของตัวเอง
+       ไม่งั้นตัวเลขขยับแล้วไม่มีใครแยกออกว่าเพราะรวมโค้ดหรือเพราะเปลี่ยนนิยาม */
+    const outcome = outcomeOf?.get(lead?.id) || leadOutcome(lead);
     row.count += 1;
-    if (lead?.firstContactAt) row.contacted += 1;
-    if (lead?.meetingAt) row.meeting += 1;
-    if (lead?.status === 'qualified') { row.qualified += 1; row.won += 1; }
-    else if (lead?.status === 'disqualified') { row.disqualified += 1; row.lost += 1; }
-    else if (lead?.firstContactAt) row.talking += 1;
+    if (outcome.reachedContact) row.contacted += 1;
+    if (outcome.reachedMeeting) row.meeting += 1;
+    /* ⚠️ ช่องสถานะ (won/lost/talking/untouched) **ไม่ซ้อนกัน** ต่างจากช่อง funnel ข้างบน
+       ลำดับความสำคัญเดิมทุกประการ: ปิดแล้วมาก่อน แล้วค่อยดูว่าเคยติดต่อไหม */
+    if (outcome.won) { row.qualified += 1; row.won += 1; }
+    else if (outcome.lost) { row.disqualified += 1; row.lost += 1; }
+    else if (outcome.reachedContact) row.talking += 1;
     else row.untouched += 1;
   }
   return [...map.values()].sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel));

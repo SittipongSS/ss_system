@@ -1,7 +1,10 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup } from '@/lib/sales/leads';
+import {
+  slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup,
+  leadOutcomesFor, leadOutcomeTotals, chunkLeadIds, LEAD_OUTCOME_EVENT_KINDS,
+} from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessDays, dateRangeOfBusinessMonth,
@@ -36,6 +39,53 @@ async function pendingContactByAssignee(supabase, team) {
     if (!meta[row.assigneeId]) meta[row.assigneeId] = { name: row.assigneeName || null, team: row.team || null };
   }
   return { counts, meta };
+}
+
+/** ประวัติของลีดทั้งชุด → Map(leadId → events[]) · คืน `null` ถ้าอ่านไม่ครบ
+ *
+ * ⭐ **ทำไมต้องอ่านประวัติ ทั้งที่คอลัมน์มีอยู่แล้ว**: `bounce` ล้าง `meetingAt` และ
+ * `firstContactAt` ทิ้ง (ดู transition/route.js) ⇒ ลีดที่นัดประชุมไปแล้วจริงแล้วถูก
+ * ตีกลับ จะ **หายจากตัวเศษ** ของอัตราแปลง ทั้งที่นัดนั้นเกิดขึ้นจริงและมีคนไปนั่งประชุม
+ * มาแล้ว · `lead_events` ไม่เคยถูกล้าง (ลบเฉพาะตอนลบลีดทั้งใบ)
+ *
+ * ⚠️ **ซอย `.in()` เสมอ** — PostgREST ยัดลิสต์ลง query string ทั้งก้อน id ลีดยาว ~19
+ * ตัวอักษร ⇒ ทั้งปี ~30KB เกินลิมิตความยาว URL (ดู LEAD_ID_CHUNK ใน leads.js)
+ *
+ * 🪤 **ก้อนใดก้อนหนึ่งพัง = คืน null ทั้งหมด** ไม่ใช่ส่งเท่าที่ได้ — ประวัติมาไม่ครบแล้ว
+ * นับต่อ จะได้ตัวเลขที่ต่ำกว่าความจริงโดยไม่มีอะไรบอก ซึ่งอ่านเหมือนผลงานตกจริง ๆ
+ * ถอยไปใช้คอลัมน์ทั้งกระดานแทน แล้วบอกหน้าจอผ่าน `outcome.basis`
+ */
+/* 🪤 **นับ "ใบ" ไม่ได้แปลว่านับ "แถว"** — ลีดหนึ่งใบมีเหตุการณ์ได้ไม่จำกัด (ติดตาม
+   กี่ครั้งก็ได้ตั้งแต่ mig 0288) · ซอย 200 ใบเหมือน `.in()` ที่อื่นแล้วอาจได้ 2,000 แถว
+   ซึ่งชน **เพดาน 1,000 แถวของ PostgREST ที่ตัดเงียบ ๆ** ⇒ นัดของลีดท้ายก้อนหายไป
+   แล้วอัตราแปลงต่ำกว่าความจริง — อาการเดียวกับบั๊กที่ฟีเจอร์นี้เกิดมาแก้พอดี
+   ⇒ ซอยเล็กลง + ขอ limit ชัดเจน + **ตรวจว่าเต็มพอดีไหม** ถ้าเต็มแปลว่าอาจโดนตัด
+   ให้ถือว่าอ่านไม่สำเร็จ ดีกว่านับต่อด้วยข้อมูลที่อาจไม่ครบ */
+const EVENT_LEADS_PER_QUERY = 60;
+const EVENT_ROW_LIMIT = 1000;
+
+async function loadOutcomeEvents(supabase, ids) {
+  const chunks = chunkLeadIds(ids, EVENT_LEADS_PER_QUERY);
+  if (!chunks.length) return new Map();
+  const byLead = new Map(ids.map((id) => [id, []]));
+  for (const chunk of chunks) {
+    const { data, error } = await supabase
+      .from('lead_events')
+      .select('leadId, kind')
+      .in('leadId', chunk)
+      .in('kind', LEAD_OUTCOME_EVENT_KINDS)
+      .limit(EVENT_ROW_LIMIT);
+    if (error) {
+      console.error('[lead kpi] อ่านประวัติลีดไม่สำเร็จ — ถอยไปนับจากคอลัมน์:', error.message);
+      return null;
+    }
+    if ((data || []).length >= EVENT_ROW_LIMIT) {
+      console.error(`[lead kpi] ประวัติลีดเต็มเพดาน ${EVENT_ROW_LIMIT} แถวในก้อนเดียว — อาจถูกตัด ถอยไปนับจากคอลัมน์`);
+      return null;
+    }
+    for (const row of data || []) byLead.get(row.leadId)?.push(row);
+  }
+  return byLead;
 }
 
 /** จำนวนลีดที่ค้างอยู่ในสถานะหนึ่ง **ตอนนี้** (ไม่ผูกกับเดือนที่เลือก)
@@ -123,7 +173,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      เดิมคืนแค่ count + qualified ⇒ หน้าจอบอกได้แค่ปริมาณกับผลลัพธ์ปลายทาง มองไม่เห็นว่า
      ช่องทางไหนติดต่อไม่ทันหรือกองอยู่ตรงไหน · กติกาการจัดช่องอยู่ใน channelRollup ที่เดียว
      (มีเทสคุมว่าช่องสถานะสี่ช่องรวมกันต้องเท่าจำนวนลีดเป๊ะ ไม่งั้นแท่งสัดส่วนยาวเกินราง) */
-  const byChannel = channelRollup(rows);
+  /* ⭐ ประวัติลีด — แหล่งเดียวของคำว่า "เคยไปถึงขั้นไหน" (ดู loadOutcomeEvents)
+     คำนวณ outcome ชุดเดียวแล้วส่งต่อให้ทุกตัวนับในหน้านี้ ⇒ ไม่มีทางที่สองตาราง
+     บนจอเดียวกันจะนับคนละนิยาม */
+  const eventsByLead = await loadOutcomeEvents(supabase, rows.map((l) => l.id).filter(Boolean));
+  const outcomes = leadOutcomesFor(rows, eventsByLead);
+  const outcomeOf = new Map(rows.map((lead, i) => [lead.id, outcomes[i]]));
+
+  const byChannel = channelRollup(rows, outcomeOf);
 
   /* ⭐ "แพ้เพราะอะไร" (mig 0290) — ก่อนหน้านี้ `disqualifiedReason` ถูกเขียนทุกใบแต่
      **ไม่มีใครอ่าน** และ KPI มีแค่ % รวม ตอบได้แค่ว่าแพ้เท่าไร ไม่ใช่แพ้เพราะอะไร
@@ -164,19 +221,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   ]);
 
   // SLA ติดต่อกลับ รายผู้รับมอบ (AE KPI)
+  /* ⚠️ นิยาม "ไปถึงไหน" มาจาก `leadOutcome` ที่เดียว เหมือน funnel และ channelRollup
+     เดิมสามที่นี้เขียนเงื่อนไขเดียวกันซ้ำสามชุด (`l.meetingAt` · `l.firstContactAt` ·
+     `status === 'qualified'`) แก้ที่หนึ่งลืมอีกสองที่ = ตัวเลขบนจอเดียวกันขัดกันเอง
+     ⚠️ `slaHit` ยังคำนวณตรงนี้เพราะเป็นคำถามคนละอัน — "ทันไหม" ไม่ใช่ "ไปถึงไหน" */
   const byAssignee = {};
   for (const l of rows) {
     if (!l.assigneeId) continue;
     const k = l.assigneeId;
     if (!byAssignee[k]) byAssignee[k] = { assigneeId: k, name: l.assigneeName || 'ไม่ระบุ', team: l.team || null, assigned: 0, contacted: 0, slaHit: 0, meetings: 0, qualified: 0 };
     const b = byAssignee[k];
+    const outcome = outcomeOf.get(l.id);
     b.assigned += 1;
-    if (l.firstContactAt) {
+    if (outcome.reachedContact) {
       b.contacted += 1;
       if (slaHit(l.assignedAt, l.firstContactAt, holidays) === true) b.slaHit += 1;
     }
-    if (l.meetingAt) b.meetings += 1;
-    if (l.status === 'qualified') b.qualified += 1;
+    if (outcome.reachedMeeting) b.meetings += 1;
+    if (outcome.won) b.qualified += 1;
   }
 
   /* ⚠️ ไม่มี "ตีกลับ" ในก้อนนี้แล้ว — มติผู้ใช้ 2026-08-11 เอาออกจากผัง แล้วไม่มีหน้าจอไหน
@@ -191,14 +253,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      🐞 เดิมสองขั้นบนนับจากซากของรอบก่อนที่ไม่ถูกล้าง ⇒ ส.ค. 2026 ผังขึ้น "มอบหมายแล้ว 56"
      ขณะที่ตาราง AE ข้างล่างรวมได้ 54 (byAssignee ข้ามใบที่ assigneeId ว่างไปแล้ว)
      สองตัวเลขบนจอเดียวกันขัดกันเองโดยไม่มีอะไรอธิบาย */
+  /* ⚠️ สองขั้นบน (คัดกรอง/มอบหมาย) ยังอ่าน timestamp ตรง ๆ — เป็นเรื่อง "ผ่านด่านไหน
+     มาแล้ว" ของรอบปัจจุบัน ไม่ใช่ "ผลลัพธ์" จึงไม่ใช่หน้าที่ของ leadOutcome
+     สี่ขั้นล่างมาจาก `leadOutcome` ที่เดียวร่วมกับ channelRollup และ byAssignee */
   const funnel = {
     total: rows.length,
     screened: rows.filter((l) => l.screenedAt).length,
     assigned: rows.filter((l) => l.firstAssignedAt || l.assignedAt).length,
-    contacted: rows.filter((l) => l.firstContactAt).length,
-    meeting: rows.filter((l) => l.meetingAt).length,
-    qualified: rows.filter((l) => l.status === 'qualified').length,
-    disqualified: rows.filter((l) => l.status === 'disqualified').length,
+    contacted: outcomes.filter((o) => o.reachedContact).length,
+    meeting: outcomes.filter((o) => o.reachedMeeting).length,
+    qualified: outcomes.filter((o) => o.won).length,
+    disqualified: outcomes.filter((o) => o.lost).length,
   };
 
   return ok({
@@ -215,6 +280,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .sort((a, b) => b.count - a.count),
     byChannel,
     lostReasons,
+    /* ⭐ อัตราแปลง "เปิดลีด → นัดประชุม" — ตัวเศษเป็น **เคยนัด หรือ เปิดดีล**
+       `LEAD_TRANSITIONS.contacted` มี `create_deal` ⇒ ปิดดีลได้โดยไม่ต้องนัด
+       (ข้อมูลจริง ส.ค. 2026: นัด 2 แต่เปิดลูกค้า 4) นับแค่ "เคยนัด" เมื่อไร
+       **ผลลัพธ์ที่ดีที่สุดจะได้คะแนนศูนย์**
+       ⚠️ ตัวส่วนตัดลีดซ้ำ/ข้อมูลติดต่อผิดออก — ไม่เคยเป็นโอกาสขาย นับเข้าไปแล้ว
+       อัตราแปลงจะต่ำลงตามปริมาณสแปม ซึ่งไม่ใช่ผลงานของใคร
+       ⚠️ `basis` บอกว่าอ่านจากประวัติหรือคอลัมน์ — 'row' = อ่านประวัติไม่ได้
+       ตัวเลขจะต่ำกว่าความจริง หน้าจอต้องบอกผู้ใช้ ไม่ใช่ปล่อยให้อ่านผิด */
+    outcome: leadOutcomeTotals(outcomes),
     /* เรียงตาม "ค้างตอนนี้" มากสุดก่อน ไม่ใช่ตามจำนวนที่รับมอบ — ตารางนี้ตอบคำถาม
        "ตอนนี้ต้องไปตามใคร" · withAssigneePending เติมแถวให้คนที่เดือนนี้ไม่มีลีดใหม่
        แต่ยังกองของเก่าไว้ด้วย ไม่งั้นคนที่ต้องตามที่สุดจะหายจากตาราง */

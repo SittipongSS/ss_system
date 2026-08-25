@@ -71,11 +71,25 @@ const STATUS_SERIES = [
  * ⚠️ โน้ตต้องสั้นระดับนี้ — `.ui-metric em` เป็น nowrap + ellipsis ที่ไม่ทำงาน
  * (ไม่มี min-width:0) ข้อความยาวจะล้นไปทับการ์ดข้าง ๆ
  */
+/* ⭐ **อัตราแปลง** เป็นการ์ดแรก — ตัวเศษคือ "เคยนัด **หรือ** เปิดดีล"
+   🐞 เดิมเป็น `pct(f.meeting, f.total)` = นับแค่เคยนัด · `LEAD_TRANSITIONS.contacted`
+   มี `create_deal` ⇒ ปิดดีลได้โดยไม่ต้องนัด (ส.ค. 2026: นัด 2 แต่เปิดลูกค้า 4)
+   ⇒ **ผลลัพธ์ที่ดีที่สุดเคยได้คะแนนศูนย์** · และตัวส่วนเดิมกินลีดซ้ำ/สแปมด้วย
+   ตัวเลขชุดนี้มาจาก `o` (kpi.outcome) ไม่ใช่ `f` (kpi.funnel) — คนละตัวหาร */
 const OUTCOME_CARDS = [
-  { key: "in", label: "ลีดเข้า", value: (f) => naText(f.total), note: () => "ตัวหารของทุกอัตราในแถวนี้" },
-  { key: "meet", label: "นัดประชุมได้", value: (f) => pct(f.meeting, f.total), note: (f) => `${f.meeting ?? 0} จาก ${f.total ?? 0} ใบ` },
-  { key: "won", label: "เปิดลูกค้า", value: (f) => pct(f.qualified, f.total), note: (f) => `${f.qualified ?? 0} จาก ${f.total ?? 0} ใบ` },
-  { key: "lost", label: "ไม่ไปต่อ", value: (f) => pct(f.disqualified, f.total), note: (f) => `${f.disqualified ?? 0} จาก ${f.total ?? 0} ใบ` },
+  {
+    key: "rate", label: "อัตราแปลง เปิดลีด → นัดประชุม",
+    value: (f, o) => (o.pct == null ? NA : fmtPercent(o.pct)),
+    note: (f, o) => `${o.reached ?? 0} จาก ${o.countable ?? 0} ใบที่นับ`,
+  },
+  { key: "in", label: "ลีดเข้า", value: (f) => naText(f.total), note: (f, o) => (o.excluded ? `ตัดออกจากตัวส่วน ${o.excluded} ใบ` : "ตัวหารของทุกอัตราในแถวนี้") },
+  {
+    key: "meet", label: "เคยนัดประชุม",
+    value: (f, o) => pct(o.meeting, o.countable),
+    // ⚠️ ตัวเลขที่อธิบายว่าทำไมตัวเศษถึงมากกว่าจำนวนนัด — ไม่มีบรรทัดนี้แล้วอ่านเหมือนบวกผิด
+    note: (f, o) => (o.wonWithoutMeeting ? `${o.meeting ?? 0} ใบ · เปิดดีลโดยไม่ผ่านนัดอีก ${o.wonWithoutMeeting}` : `${o.meeting ?? 0} จาก ${o.countable ?? 0} ใบ`),
+  },
+  { key: "lost", label: "ไม่ไปต่อ", value: (f, o) => pct(o.lost, o.countable), note: (f, o) => `${o.lost ?? 0} จาก ${o.countable ?? 0} ใบ` },
 ];
 
 export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rangeFrom = null, rangeTo = null }) {
@@ -118,6 +132,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
   const f = useMemo(() => kpi?.funnel || {}, [kpi]);
   // เหตุผลเดียวกับ `f` — `kpi?.lostReasons || {}` สร้างอ็อบเจกต์ใหม่ทุกเรนเดอร์เมื่อ kpi ยังว่าง
   const lost = useMemo(() => kpi?.lostReasons || {}, [kpi]);
+  // เหตุผลเดียวกับ `f` — สร้างอ็อบเจกต์ใหม่ทุกเรนเดอร์เมื่อ kpi ยังว่าง
+  const o = useMemo(() => kpi?.outcome || {}, [kpi]);
   const sla = kpi?.sla || {};
   /* ป้ายงวดคิดจากค่าที่หน้าจอถืออยู่ ไม่ใช่ `kpi.month` ที่ตอบกลับมา — โหมดทั้งปี
      route ไม่ได้ใช้ `month` แต่ยังคืนค่าถอย (เดือนปัจจุบัน) ติดมาด้วย */
@@ -260,9 +276,19 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
         </SaMetricStrip>
         {/* ผลลัพธ์แยกแถบของตัวเอง ไม่ต่อท้าย SLA — สองชุดตอบคนละคำถาม
             (ทันเวลาไหม vs ได้ผลเท่าไร) และรวมแถบเดียวแล้วจะตัดบรรทัดค้างเป็นแถวเศษ */}
+        {/* 🪤 อ่านประวัติลีดไม่สำเร็จ = ตัวเลข **ต่ำกว่าความจริง** เพราะใบที่ถูกตีกลับ
+            จะหายจากตัวเศษ (bounce ล้าง meetingAt) · เงียบไว้แล้วคนอ่านจะสรุปว่าผลงานตก
+            ⚠️ ขึ้นเฉพาะตอนโหลดเสร็จแล้วเท่านั้น — ระหว่างโหลด `outcome` ยังว่าง
+            ซึ่งไม่ได้แปลว่าอ่านไม่ได้ */}
+        {!loading && o.basis === "row" && o.total ? (
+          <p className={styles.basisWarning} role="status">
+            อ่านประวัติลีดไม่สำเร็จ — ตัวเลขชุดนี้นับจากคอลัมน์บนแถวลีดแทน
+            ใบที่เคยถูกตีกลับจะไม่ถูกนับว่าเคยนัดประชุม ทำให้อัตราแปลงต่ำกว่าความจริง
+          </p>
+        ) : null}
         <SaMetricStrip className={styles.qualityStrip} aria-busy={loading}>
           {OUTCOME_CARDS.map(({ key, label, value, note }) => (
-            <SaMetric key={key} icon={<CalendarClock />} label={label} value={value(f)} note={note(f)} />
+            <SaMetric key={key} icon={<CalendarClock />} label={label} value={value(f, o)} note={note(f, o)} />
           ))}
         </SaMetricStrip>
       </SaSection>
