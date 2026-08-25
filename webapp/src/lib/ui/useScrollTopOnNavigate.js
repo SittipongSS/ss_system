@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import arrivedByHistory from "./historyArrival";
 
 /* เปลี่ยนหน้าจากเมนู (หรือลิงก์ใด ๆ ที่ข้าม pathname) แล้วพาจอกลับขึ้นบนสุด
  * — และ **กดย้อนกลับแล้วคืนตำแหน่งที่ไถค้างไว้** (มติผู้ใช้ 2026-08-22)
@@ -33,13 +34,6 @@ const RESTORE_DEADLINE_MS = 2000;
 
 export default function useScrollTopOnNavigate() {
   const pathname = usePathname();
-  const historyNavRef = useRef(false);
-
-  useEffect(() => {
-    const markHistoryNavigation = () => { historyNavRef.current = true; };
-    window.addEventListener("popstate", markHistoryNavigation);
-    return () => window.removeEventListener("popstate", markHistoryNavigation);
-  }, []);
 
   /* จำตำแหน่งไถของหน้านี้ไว้ตลอดที่ยังอยู่ — throttle ด้วย rAF เพราะ event
      scroll ยิงถี่มาก การเขียน sessionStorage ทุกครั้งทำให้ไถหนืด */
@@ -62,8 +56,10 @@ export default function useScrollTopOnNavigate() {
   }, [pathname]);
 
   useEffect(() => {
-    const wasHistoryNavigation = historyNavRef.current;
-    historyNavRef.current = false;
+    /* ⚠️ ถามที่เดียวกับตัวจำตัวกรอง (lib/ui/historyArrival.js) — เดิมฮุกนี้ดัก
+       popstate เองอีกชุด · สองชุดที่ตอบคนละคำถามคือจุดเริ่มของ "ตำแหน่งคืนแต่
+       ตัวกรองไม่คืน" (หรือกลับกัน) ที่หาสาเหตุยากมาก */
+    const wasHistoryNavigation = arrivedByHistory(pathname);
 
     if (window.location.hash) return undefined;
 
