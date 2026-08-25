@@ -699,6 +699,16 @@ export default function LeadsPage() {
                     <td>
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : NA}
                       {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
+                      {/* ⭐ ใบที่ถูกตีกลับไม่มีทีม/ผู้รับ (bounce ล้างทิ้ง) ⇒ ช่องนี้ขึ้น "—" ว่าง
+                          พอดี · เจ้าของ *คนก่อน* คือคำตอบของคำถามเดียวกับคอลัมน์นี้
+                          🪤 เคยวางไว้ใต้ป้ายสถานะ — ช่องนั้นกว้าง 118px ทำให้ชื่อคน + ชื่อทีม
+                          ตัดเป็นสามบรรทัด (วัดจากจอจริง ไม่ได้เดา) */}
+                      {!lead.team && lead.bounce?.previousAssigneeName && (
+                        <span className={styles.bounceWho}>
+                          เคยอยู่กับ {lead.bounce.previousAssigneeName}
+                          {lead.bounce.previousTeam ? ` · ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam}` : ""}
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
@@ -709,12 +719,6 @@ export default function LeadsPage() {
                         {lead.bounce?.autoRounds > 0 && (
                           <span className={styles.bounceTag} data-hot={lead.bounce.autoRounds >= 2 || undefined}>
                             ส่งกลับ รอบที่ {lead.bounce.autoRounds}
-                          </span>
-                        )}
-                        {lead.bounce?.previousAssigneeName && (
-                          <span className={styles.bounceWho}>
-                            เคยอยู่กับ {lead.bounce.previousAssigneeName}
-                            {lead.bounce.previousTeam ? ` · ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam}` : ""}
                           </span>
                         )}
                       </td>

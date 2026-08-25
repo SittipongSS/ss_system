@@ -27,6 +27,7 @@ import {
   canWorkLead,
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
+import { AUTO_BOUNCE_MAX_ROUNDS } from "@/lib/sales/leadAutoBounce";
 
 /* action ที่ handler ตอบ badRequest ถ้าไม่มี `body.reason?.trim()`
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
@@ -153,12 +154,20 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
                ⚠️ **ล็อกไม่ซ่อน** (กฎโปรเจกต์: "ตัวเลือกที่ไม่มีสิทธิ์ต้องเห็นว่ามีอยู่")
                — ซ่อนแล้วผู้ดูแลจะงงว่าทีมหายไปไหน แล้วไปหาทางอื่น
                ⚠️ กติกา "ครบกี่รอบ" อยู่ที่ `leadBounceHistory` ที่เดียวร่วมกับป้ายในคิว */
-            options: (lead) => TEAMS.map((team) => ({
-              value: team,
-              label: TEAM_LABELS[team] || team,
-              disabled: lead?.bounce?.teamLocked === team,
-              hint: lead?.bounce?.teamLocked === team ? "ส่งกลับจากทีมนี้มาแล้ว 2 รอบ" : undefined,
-            })),
+            options: (lead) => TEAMS.map((team) => {
+              const locked = lead?.bounce?.teamLocked === team;
+              return {
+                value: team,
+                /* ⚠️ **เหตุผลอยู่ในป้ายตัวเลือกเอง** ไม่ใช่ tooltip หรือ hint ใต้ช่อง —
+                   `Select` ไม่เรนเดอร์ `hint` รายตัวเลือก และกฎโปรเจกต์บอกว่า
+                   "ปุ่มที่กดไม่ได้ต้องบอกเหตุผลติดปุ่ม · จางเฉย ๆ คือสิ่งที่ทำให้คน
+                   คิดว่าระบบพัง" · ตัวเลือกที่จางโดยไม่มีคำอธิบายก็เข้าข่ายเดียวกัน */
+                label: locked
+                  ? `${TEAM_LABELS[team] || team} — ส่งกลับจากทีมนี้มาแล้ว ${AUTO_BOUNCE_MAX_ROUNDS} รอบ`
+                  : TEAM_LABELS[team] || team,
+                disabled: locked,
+              };
+            }),
           },
         ],
       },

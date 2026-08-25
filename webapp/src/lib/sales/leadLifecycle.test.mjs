@@ -286,7 +286,13 @@ test("คัดกรอง: ทีมที่ส่งกลับมาแล
   assert.equal(looped.length, 3, "ล็อกไม่ซ่อน — ตัวเลือกที่กดไม่ได้ต้องยังเห็นว่ามีอยู่");
   const locked = looped.find((o) => o.value === TEAMS[0]);
   assert.equal(locked.disabled, true);
-  assert.ok(locked.hint, "ต้องบอกเหตุผลที่กดไม่ได้ ไม่ใช่จางเฉย ๆ");
+  /* ⚠️ เหตุผลอยู่ใน **ป้ายตัวเลือกเอง** — `Select` ไม่เรนเดอร์ `hint` รายตัวเลือก
+     (ตรวจบนจอจริงแล้ว: ตัวเลือกจางโดยไม่มีคำอธิบายเลย) · กฎโปรเจกต์: ปุ่มที่กดไม่ได้
+     ต้องบอกเหตุผลติดปุ่ม จางเฉย ๆ คือสิ่งที่ทำให้คนคิดว่าระบบพัง */
+  assert.match(locked.label, /ส่งกลับจากทีมนี้มาแล้ว/, "ตัวเลือกที่ล็อกต้องบอกเหตุผลในป้าย");
+  assert.match(locked.label, /New ODM|Key Account|Services/, "ต้องยังอ่านชื่อทีมออก");
+  const free = looped.find((o) => o.value !== TEAMS[0]);
+  assert.doesNotMatch(free.label, /ส่งกลับจากทีมนี้/, "ทีมที่เลือกได้ต้องไม่มีคำอธิบายรก");
   assert.equal(looped.filter((o) => o.disabled).length, 1, "ล็อกเฉพาะทีมเดิม");
 });
 
