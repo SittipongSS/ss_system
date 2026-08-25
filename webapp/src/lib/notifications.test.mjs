@@ -10,7 +10,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+
 import {
+  LEAD_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -249,7 +252,8 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   const { calls, supabase } = pageStub([]);
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
-    'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign',
+    'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
+    + LEAD_BELL_KINDS.map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
 
@@ -257,7 +261,40 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   // เธรดงาน 92% เป็นเหตุการณ์ระบบ (เปลี่ยนสถานะ/เลื่อนกำหนด) — ลากเข้ามาทั้ง entity
   // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
-  assert.deepEqual(NOTIFICATION_BOXES.bell.kinds, ['task_assign']);
+  assert.deepEqual(NOTIFICATION_BOXES.bell.kinds, ['task_assign', ...LEAD_BELL_KINDS]);
+});
+
+/* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
+   เหตุผลเดียวกับมอบหมายงานเป๊ะ ๆ: เอา **เหตุการณ์ที่ต้องลงมือ** ไม่เอาทั้ง entity
+   🪤 ใส่ 'lead' ลง entityTypes เมื่อไร เธรดกลางของลีด (เปิดอยู่ทุกใบทุกสถานะ)
+   จะไหลเข้ากระดิ่งทั้งหมด แล้วคำร้องถูกดันตกขอบกล่อง 30 แถวอีกรอบ */
+test('⭐ ลีดเข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity — เธรดลีดต้องไม่ตามมา', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('lead'), false);
+  for (const kind of LEAD_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
+  }
+});
+
+/* ⚠️ ดริฟต์ที่พังเงียบที่สุดของงานนี้: เพิ่ม action ใหม่ใน `leadHandoffNotice`
+   แล้วลืมเติม `LEAD_BELL_KINDS` ⇒ แจ้งเตือนถูกเขียนลงตารางตามปกติ แต่ไม่โผล่
+   ในกระดิ่ง ไม่มี error ไม่มีอะไรฟ้อง · เทสต์นี้อ่านซอร์สจริงมาเทียบ
+   (ท่าเดียวกับ leadLifecycle.test.mjs ที่อ่าน route.js มาเทียบกับลิสต์ของตัวเอง) */
+test('LEAD_BELL_KINDS ครบทุก kind ที่ยิงจริง — ทั้งจุดส่งมอบและทวงประจำวัน', () => {
+  const notify = readFileSync(new URL('./sales/leadNotify.js', import.meta.url), 'utf8');
+  // `action === 'xxx'` ทุกตัวใน leadHandoffNotice = หนึ่ง kind (`lead_${action}`)
+  const actions = [...notify.matchAll(/action === '([a-z_]+)'/g)].map((m) => m[1]);
+  assert.ok(actions.length >= 5, 'อ่าน action จากซอร์สไม่ได้ — เทสต์นี้ตาบอดแล้ว');
+  for (const action of actions) {
+    assert.ok(LEAD_BELL_KINDS.includes(`lead_${action}`), `lead_${action} ยังไม่อยู่ในกระดิ่ง`);
+  }
+  const digest = readFileSync(
+    new URL('../app/api/cron/daily-digest/route.js', import.meta.url), 'utf8',
+  );
+  const digestKinds = [...digest.matchAll(/kind: '(lead_[a-z_]+)'/g)].map((m) => m[1]);
+  assert.ok(digestKinds.length >= 1, 'อ่าน kind จาก cron ไม่ได้ — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of digestKinds) {
+    assert.ok(LEAD_BELL_KINDS.includes(kind), `${kind} ยังไม่อยู่ในกระดิ่ง`);
+  }
 });
 
 test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {
