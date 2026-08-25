@@ -167,7 +167,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     for (const deal of linked || []) {
       const { leadId: _dropped, ...rest } = deal.metadata || {};
       const { error: cleanError } = await supabase
-        .from('sales_deals').update({ metadata: rest }).eq('id', deal.id);
+        /* ⚠️ ต้องขยับ `updatedAt` ด้วย — แดชบอร์ดขายผูก cache ไว้กับ "เวลาแก้ล่าสุด +
+           จำนวนแถว" ของ sales_deals (ดู lib/sales/dashboardStamp) · แถวนี้ไม่ได้เพิ่ม/ลด
+           จำนวน ⇒ ถ้าไม่ขยับเวลา สแตมป์จะนิ่ง แล้วตัวเลขบนแดชบอร์ดค้างได้ถึง 5 นาที
+           ทั้งที่ metadata (ซึ่งแดชบอร์ดอ่าน) เปลี่ยนไปแล้ว */
+        .from('sales_deals').update({ metadata: rest, updatedAt: new Date().toISOString() }).eq('id', deal.id);
       if (cleanError) return fail(`ล้างการอ้างลีดในดีล ${deal.id} ไม่สำเร็จ: ${cleanError.message} — ยังไม่ได้ลบลีด`, 500);
     }
   }
