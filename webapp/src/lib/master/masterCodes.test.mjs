@@ -21,6 +21,7 @@ import {
   isAutoArCode,
   isAutoFgCode,
   isReusableCode,
+  reclaimableArNumber,
   peekMasterNumber,
   RECLAIMED_TABLE,
 } from './masterCodes.js';
@@ -323,4 +324,24 @@ test('เลขคืนได้เฉพาะแถวที่ไม่เ�
   assert.equal(isReusableCode(null), false);   // ไม่มีแถวให้ดู = ไม่สัญญาว่าเลขจะคืน
   // ยังไม่ได้รัน mig 0248 = แถวไม่มีคีย์นี้เลย ต่างจาก null (มีคอลัมน์ = ยังไม่เคยอนุมัติ)
   assert.equal(isReusableCode({ approvalStatus: 'pending' }), false);
+});
+
+// ── ย้ายรหัสออกจากใบ แล้วเลขเดิมได้คืนไหม (มติผู้ใช้ 2026-08-25) ──────────────
+// กติกาต้องตรงกับ trigger `customer_code_reclaim` ของ mig 0248 ทุกข้อ — ที่นี่คือฝั่งแอป
+test('reclaimableArNumber: คืนเฉพาะรหัสที่ระบบออกให้ และใบที่ไม่เคยผ่านอนุมัติ', () => {
+  const draft = { arCode: 'AR-1011', firstApprovedAt: null };
+  assert.equal(reclaimableArNumber(draft), 1011);
+
+  // เคยอนุมัติ = เลขตายถาวร (รหัสไปอยู่บนเอกสารแล้ว)
+  assert.equal(reclaimableArNumber({ arCode: 'AR-1011', firstApprovedAt: '2026-08-20T00:00:00Z' }), null);
+
+  // รหัสกรอกเองไม่เคยกินเลขรัน จึงไม่มีอะไรให้คืน
+  assert.equal(reclaimableArNumber({ arCode: 'AR-306', firstApprovedAt: null }), null);
+
+  // ไม่มีคอลัมน์ (mig 0248 ยังไม่รัน) = ตอบ "ไม่คืน" เสมอ ไม่ใช่เดาว่าเป็นร่าง
+  assert.equal(reclaimableArNumber({ arCode: 'AR-1011' }), null);
+  assert.equal(reclaimableArNumber(null), null);
+
+  // รับ previousCode แยกได้ สำหรับผู้เรียกที่ถือแถวหลังแก้ไปแล้ว
+  assert.equal(reclaimableArNumber({ arCode: 'AR-306', firstApprovedAt: null }, { previousCode: 'AR-1011' }), 1011);
 });

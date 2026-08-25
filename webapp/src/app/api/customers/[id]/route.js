@@ -8,7 +8,10 @@ import {
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { customerNameError } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
-import { CODE_MODE_MANUAL, arCodeError, isAutoArCode, isReusableCode } from '@/lib/master/masterCodes';
+import {
+  AR_SCOPE, CODE_MODE_MANUAL, RECLAIMED_TABLE, arCodeError, isAutoArCode, isReusableCode,
+  reclaimableArNumber,
+} from '@/lib/master/masterCodes';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 import {
   branchKeyOf, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError,
@@ -414,6 +417,26 @@ export async function PATCH(request, { params }) {
       return Response.json({ error: msg }, { status: 409 });
     }
     return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  // ── ย้ายรหัสออกจากเลขที่ระบบออกให้ = เลขเดิมกลับเข้ากองเลขคืน (มติ 2026-08-25) ──
+  // เงื่อนไขและเหตุผลอยู่ที่ `reclaimableArNumber` — เงื่อนไขเดียวกับตอนลบร่างทิ้ง (mig 0248)
+  //
+  // ⚠️ **ต้องอยู่หลัง update สำเร็จ** — คืนก่อนแล้วบันทึกล้ม = เลขที่ยังมีเจ้าของอยู่ถูก
+  // ปล่อยเข้ากอง · และ **ล้มตรงนี้ต้องไม่ทำให้คำขอล้ม**: การแก้รหัสสำเร็จไปแล้วจริง ๆ
+  // ส่วนที่เสียไปคือเลขไม่ถูกคืน ซึ่งเท่ากับพฤติกรรมก่อนมติใบนี้ (ตารางกองเลขอาจยังไม่มี
+  // ถ้า mig 0248 ไม่ได้รัน — ตอบ 42P01/PGRST205 ซึ่งไม่ใช่เหตุให้ผู้ใช้เห็น error)
+  if (updated.arCode !== customer.arCode) {
+    const reclaimNo = reclaimableArNumber(customer);
+    if (reclaimNo) {
+      const { error: reclaimError } = await supabase
+        .from(RECLAIMED_TABLE)
+        .upsert(
+          { scope: AR_SCOPE, no: reclaimNo, releasedFrom: customer.arCode },
+          { onConflict: 'scope,no', ignoreDuplicates: true },
+        );
+      if (reclaimError) console.error('คืนเลข AR ไม่สำเร็จ:', reclaimError.message);
+    }
   }
 
   // Cascade name/taxId changes to this customer's excise registrations
