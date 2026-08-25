@@ -99,12 +99,44 @@ export async function PATCH(request, { params }) {
   if (error) return Response.json({ error: error.message }, { status: 400 });
   invalidateCache('assignable-users'); // ชื่อ/บทบาท/ทีมเปลี่ยน — dropdown เห็นทันที
 
+  /* ── ขอบเขตเปลี่ยน = ถอนสิทธิ์เอกสารร่วมบน Drive ที่ระบบเคยให้ ─────────────
+   *
+   * 🐞 ก่อนหน้านี้การถอนมีทางเดียวคือคนกดปุ่มโล่ในหน้าผู้ใช้ ส่วนการ **ให้** เป็น
+   * อัตโนมัติทุกครั้งที่เปิดหน้า ⇒ สองด้านไม่สมมาตร สิทธิ์บน Drive บวมทางเดียว
+   * และไม่มีตัวเลขไหนวัดความต่างระหว่าง ACL ของระบบกับของ Drive เลย
+   *
+   * ⭐ **ถอนทุกครั้งที่ role/ทีมขยับ ไม่ต้องแยกว่าแคบลงหรือกว้างขึ้น** — เพราะการให้
+   * เป็นอัตโนมัติอยู่แล้ว คนที่ยังมีสิทธิ์เห็นเอกสารใบนั้นจะได้คืนเองทันทีที่เปิดหน้า
+   * ถัดไป · แยกเคสเองมีแต่จะพลาดเคสที่นึกไม่ถึง (ถอดจากทีมใดทีมหนึ่ง · ดีลย้ายมือ)
+   *
+   * ⚠️ best-effort — ถอนไม่สำเร็จต้องไม่ทำให้การแก้ผู้ใช้ล้ม (บันทึกไว้ใน audit แทน)
+   * ⚠️ ปิดบัญชีก็ถอนด้วย: บัญชีที่ถูก ban ล็อกอินไม่ได้ก็จริง แต่ permission ที่ค้าง
+   * บนไฟล์เป็นของที่ตามเก็บยากถ้าปล่อยไว้ */
+  const scopeMoved = (body.role !== undefined && updates.app_metadata)
+    || body.teams !== undefined
+    || body.disabled === true;
+  let revokeNote = null;
+  if (scopeMoved && existing.user.email) {
+    try {
+      const { revokeGoogleDocAccess } = await import('@/lib/master/googleDocAccess');
+      const r = await revokeGoogleDocAccess(supabase, existing.user.email);
+      if (r.files) {
+        revokeNote = `ถอนสิทธิ์เอกสารร่วม ${r.revoked}/${r.files} ไฟล์`
+          + (r.failed ? ` · ค้าง ${r.failed} (กดปุ่มโล่ซ้ำได้)` : '');
+      }
+    } catch (err) {
+      console.error('[users] ถอนสิทธิ์เอกสารร่วมหลังเปลี่ยนขอบเขตไม่สำเร็จ', id, err?.message);
+      revokeNote = 'ถอนสิทธิ์เอกสารร่วมไม่สำเร็จ — กดปุ่มโล่ในหน้าผู้ใช้';
+    }
+  }
+
   // Snapshot หลังอัปเดต (re-fetch ให้ค่า role/team/disabled ตรงจริง). password
   // ไม่ถูกบันทึก — แค่หมายเหตุว่ามีการรีเซ็ตใน summary.
   const { data: after } = await supabase.auth.admin.getUserById(id);
   const notes = [];
   if (updates.password) notes.push('รีเซ็ตรหัสผ่าน');
   if (body.disabled !== undefined) notes.push(body.disabled ? 'ปิดบัญชี' : 'เปิดบัญชี');
+  if (revokeNote) notes.push(revokeNote);
 
   /* เปลี่ยนชื่อแล้วสำเนาชื่อในตารางต้องตามด้วย — ไม่งั้นค้างชื่อเก่าตลอดกาล
      (ดู lib/personNameFanOut.js ว่าคอลัมน์ไหนซิงก์ได้ คอลัมน์ไหนเป็น snapshot ห้ามแตะ)

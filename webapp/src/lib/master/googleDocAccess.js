@@ -19,11 +19,36 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 
 // ชื่อคีย์ใน metadata ที่จำว่าให้สิทธิ์ใครไปแล้ว — กันยิง Drive ซ้ำทุกครั้งที่เปิดหน้า
 const GRANTED_KEY = 'accessGranted';
+/* ⭐ **role ที่ให้ไป** เก็บแยกเป็นแมป `{ อีเมล: role }` (2026-08-25)
+ *
+ * 🐞 เดิมจำแค่อีเมล ⇒ ตัวกรองข้างล่างตัดคนที่ "เคยให้แล้ว" ออกก่อนถึง `grantFileRole`
+ * เสมอ **ไม่ว่าคราวนี้เขาควรได้ role ไหน** · คนที่เคยแก้ดีลได้ (writer) แล้วต่อมาหลุด
+ * ขอบเขต (ย้ายทีม · ดีลเปลี่ยนผู้ดูแล · ลดบทบาท) จึงยังแก้เอกสารจริงบน Drive ได้ตลอดไป
+ * ทั้งที่หน้าจอในระบบเป็นแบบอ่านอย่างเดียวไปแล้ว
+ *
+ * ⚠️ **แยกคีย์ ไม่แปลงรูป `accessGranted`** โดยตั้งใจ — `revokeGoogleDocAccess` ค้นด้วย
+ * `.contains(metadata, { accessGranted: [email] })` ซึ่งเป็น containment ของ **สตริง**
+ * เปลี่ยนสมาชิกเป็นอ็อบเจ็กต์เมื่อไร แถวเก่าจะค้นไม่เจอทันที = ปุ่มถอนใช้ไม่ได้กับของเดิม
+ * ⚠️ แถวเก่าที่ยังไม่มีแมปนี้ = "ไม่รู้ว่าให้ role ไหนไป" ⇒ ให้ซ้ำหนึ่งครั้งด้วย role
+ * ที่ถูกต้อง (Drive รับซ้ำได้ ถือเป็นการตั้งค่าใหม่) แล้วจดไว้ตั้งแต่นั้น */
+const ROLES_KEY = 'accessRoles';
 
 const grantedList = (attachment) => {
   const raw = attachment?.metadata?.[GRANTED_KEY];
   return Array.isArray(raw) ? raw.filter((x) => typeof x === 'string') : [];
 };
+
+const grantedRoles = (attachment) => {
+  const raw = attachment?.metadata?.[ROLES_KEY];
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+};
+
+/** ต้องยิง Drive ให้คนนี้ไหม — ยังไม่เคยให้ หรือเคยให้ด้วย role อื่น
+ *  export ไว้ให้เทสต์จับได้ตรง ๆ: ตรรกะนี้คือตัวตัดสินว่า writer จะถูกลดเป็น reader
+ *  ไหม ซึ่งเป็นของที่ผิดแล้วไม่มีใครเห็นจนกว่าจะมีคนแก้เอกสารที่ไม่ควรแก้ได้ */
+export const needsGrant = (attachment, email, role) => (
+  !grantedList(attachment).includes(email) || grantedRoles(attachment)[email] !== role
+);
 
 // ให้สิทธิ์ผู้ใช้เปิดเอกสารร่วมของรายการที่ส่งมา — เรียกจาก route ที่ **ผ่านด่านสิทธิ์
 // ของ entity แม่มาแล้วเท่านั้น** (ฟังก์ชันนี้ไม่ตรวจสิทธิ์ซ้ำ มันเชื่อผู้เรียก)
@@ -33,7 +58,7 @@ const grantedList = (attachment) => {
 export async function ensureGoogleDocAccess(supabase, attachments, { email, role }) {
   if (!email) return 0;
   const pending = (attachments || []).filter((att) => (
-    isGoogleDoc(att) && att.metadata?.googleFileId && !grantedList(att).includes(email)
+    isGoogleDoc(att) && att.metadata?.googleFileId && needsGrant(att, email, role)
   ));
   if (!pending.length) return 0;
 
@@ -62,11 +87,12 @@ export async function ensureGoogleDocAccess(supabase, attachments, { email, role
     // จำไว้ในแถว — ครั้งหน้าไม่ต้องยิง Drive อีก
     // ⚠️ อ่าน-แล้ว-เขียนแบบนี้แข่งกันได้ถ้าเปิดสองแท็บพร้อมกัน · ผลแย่สุดคือชื่อหาย
     // ไปหนึ่งรายการแล้วรอบหน้าให้สิทธิ์ซ้ำ (Drive รับซ้ำได้) ไม่ใช่สิทธิ์รั่ว
-    const next = [...grantedList(att), email];
+    const next = grantedList(att).includes(email) ? grantedList(att) : [...grantedList(att), email];
+    const nextRoles = { ...grantedRoles(att), [email]: role };
     try {
       await supabase
         .from('attachments')
-        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next } })
+        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
         .eq('id', att.id);
     } catch (err) {
       // จำไม่ได้ = รอบหน้าให้สิทธิ์ซ้ำ (Drive รับได้) — ไม่ใช่เหตุให้ทั้งคำขอล้ม
@@ -173,10 +199,14 @@ export async function revokeGoogleDocAccess(supabase, email, deps = {}) {
       continue;
     }
     const next = grantedList(att).filter((x) => x !== email);
+    // ล้างทั้งสองคีย์เสมอ — เหลือ role ค้างไว้แปลว่ารอบหน้า `needsGrant` จะคิดว่า
+    // "เคยให้ role นี้แล้ว" ทั้งที่สิทธิ์ถูกถอนไปแล้ว
+    const nextRoles = { ...grantedRoles(att) };
+    delete nextRoles[email];
     try {
       await supabase
         .from('attachments')
-        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next } })
+        .update({ metadata: { ...(att.metadata || {}), [GRANTED_KEY]: next, [ROLES_KEY]: nextRoles } })
         .eq('id', att.id);
     } catch (err) {
       console.error('[googleDocAccess] ล้างรายชื่อที่ถอนแล้วไม่สำเร็จ', att.id, err?.message);
