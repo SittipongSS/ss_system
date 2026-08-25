@@ -140,17 +140,24 @@ export function buildMyQueue({
 
   for (const lead of leads) {
     const meeting = lead.status === 'meeting' && lead.meetingAt ? String(lead.meetingAt).slice(0, 10) : null;
+    /* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้** จึงเป็นกำหนดจริง
+       เหมือนวันนัด ไม่ใช่ "วันที่เริ่มค้าง" · ก่อนมีคอลัมน์นี้ ลีดที่ติดต่อแล้วตกไปใช้
+       `assignedAt` แบบ waiting ⇒ ใบที่นัดจะโทรพรุ่งนี้ขึ้นว่า "ค้างมา N วัน"
+       ⚠️ วันนัดมาก่อนเสมอ — `meeting` ล้าง followUpAt อยู่แล้ว สองค่านี้จึงไม่ควรมี
+       พร้อมกัน แต่เรียงไว้ให้ชัดเผื่อข้อมูลเก่าที่ค้างมาก่อน migration */
+    const followUp = lead.followUpAt ? String(lead.followUpAt).slice(0, 10) : null;
+    const promised = meeting || followUp;
     out.push(row({
       kind: 'lead',
       id: lead.id,
-      step: meeting ? 'นัดหมายลูกค้า' : 'โทรกลับลูกค้า',
+      step: meeting ? 'นัดหมายลูกค้า' : followUp ? 'ติดตามลูกค้า' : 'โทรกลับลูกค้า',
       title: lead.company || lead.contactName || 'ลีด',
       sub: LEAD_STATUS_LABELS[lead.status] || lead.status || '',
-      // ไม่มีวันนัด = ใช้วันที่ลีดเข้ามาถึงมือเรา ⇒ ลีดที่ดองไว้จะไต่ขึ้นมาเอง
-      due: meeting || (lead.assignedAt ? String(lead.assignedAt).slice(0, 10) : null)
+      // ไม่มีวันที่รับปากไว้ = ใช้วันที่ลีดเข้ามาถึงมือเรา ⇒ ลีดที่ดองไว้จะไต่ขึ้นมาเอง
+      due: promised || (lead.assignedAt ? String(lead.assignedAt).slice(0, 10) : null)
         || (lead.createdAt ? String(lead.createdAt).slice(0, 10) : null),
-      // มีวันนัด = กำหนดจริง · ไม่มี = นับจากวันที่ลีดมาถึงมือเรา
-      basis: meeting ? 'deadline' : 'waiting',
+      // รับปากวันไหนไว้ = กำหนดจริง · ไม่ได้รับปาก = นับจากวันที่ลีดมาถึงมือเรา
+      basis: promised ? 'deadline' : 'waiting',
       href: `/sales-planning/leads/${lead.id}`,
       todayIso,
     }));

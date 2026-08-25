@@ -6,7 +6,7 @@
 //   ไม่มี fields → เรียก ReasonDialog เดิมตรง ๆ ไม่ห่อ ไม่ปรับ (4 หน้าที่ใช้ ReasonDialog
 //     อยู่แล้ว — QT/SO — จึงไม่กระทบ และหน้าใหม่ได้หน้าตาเดียวกับของเดิมฟรี)
 //   มี fields → เรนเดอร์ช่องเพิ่มด้วย primitive ที่มีอยู่ (Select/PersonSelect/
-//     DateTimeInput/MoneyInput) ไม่สร้าง input ใหม่
+//     DateTimeInput/DateInput/MoneyInput) ไม่สร้าง input ใหม่
 //
 // ⚠️ ห้ามยัด "ฟอร์มหลายส่วน" ลงมาที่นี่ (มติผู้ใช้: modal ฟอร์มหลายส่วนไม่อยู่ในขอบเขต) —
 // ถ้า transition ต้องกรอกเยอะกว่านี้ ให้พาไปหน้า/โมดัลของมันเอง
@@ -17,6 +17,7 @@ import ReasonDialog from "@/components/ui/ReasonDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
 import DateTimeInput from "@/components/ui/DateTimeInput";
+import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { fieldUsers, resolveLabel, validateTransitionValues } from "@/lib/recordLifecycle";
 import styles from "./TransitionDialog.module.css";
@@ -51,6 +52,20 @@ function TransitionField({ field, record, value, onChange, disabled }) {
   }
   if (field.type === "datetime") {
     return <DateTimeInput value={value ?? ""} onChange={onChange} disabled={disabled} />;
+  }
+  /* ⚠️ วันล้วน ๆ ต้องผ่าน `DateInput` เสมอ — `<input type="date">` ดิบแสดงตาม locale
+     ของเครื่อง (en-US เห็น mm/dd/yyyy) และบังคับ ค.ศ. · ก่อนมีสาขานี้ field ชนิด
+     "date" ตกไปที่ input ข้อความข้างล่างเงียบ ๆ ซึ่งอ่านเป็นวันไม่ได้เลย */
+  if (field.type === "date") {
+    return (
+      <DateInput
+        value={value ?? ""}
+        onChange={onChange}
+        disabled={disabled}
+        min={field.min}
+        ariaLabel={field.label || field.name}
+      />
+    );
   }
   if (field.type === "money") {
     return (

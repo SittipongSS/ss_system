@@ -22,6 +22,7 @@ import {
   LEAD_TRANSITIONS,
   MEETING_MODES,
   MEETING_MODE_LABELS,
+  LEAD_FOLLOW_UP_ACTIONS,
   canWorkLead,
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
@@ -30,7 +31,7 @@ import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
    🐞 เคยประกาศ contact เป็น "optional" (#864) → กดยืนยันโดยไม่พิมพ์ได้ แล้วโดน 400
    เทสต์ `leadLifecycle.test.mjs` อ่าน route.js จริงมาเทียบกับลิสต์นี้ ดริฟต์แล้วแดง */
-export const LEAD_REASON_REQUIRED = ["contact", "bounce", "disqualify"];
+export const LEAD_REASON_REQUIRED = ["contact", "followup", "bounce", "disqualify"];
 
 const reasonRule = (action) => (LEAD_REASON_REQUIRED.includes(action) ? "required" : "none");
 
@@ -219,7 +220,47 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร ได้ข้อมูลอะไร นัดอะไรต่อ",
         },
-        fields: [{ name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" }],
+        fields: [
+          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
+          /* ⭐ บังคับกรอก (mig 0289) — ทุกการติดต่อต้องมีทางออก ไม่งั้นลีดนอนอยู่ใน
+             "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง · ด่านจริงอยู่ที่ leadFollowUpError
+             ซึ่ง API เรียกตัวเดียวกัน (form-design-rules §2) */
+          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
+        ],
+      },
+      {
+        /* ⭐ ติดตามครั้งที่ 2 ขึ้นไป — **ไม่ขยับสถานะ** (มติผู้ใช้ 2026-08-25)
+           🐞 ของเดิมบันทึกการติดต่อซ้ำไม่ได้เลย: `LEAD_TRANSITIONS.contacted` ไม่มี
+           `contact` ⇒ AE ที่โทรตามรอบสองกดปุ่มไม่ได้ ต้องไปเขียนในเธรดกลางแทน
+           ซึ่งไม่มีวันที่ให้ระบบทวงต่อ — ลีดจึงเงียบหายไปเฉย ๆ
+           ⚠️ `to: null` โดยเจตนา (ท่าเดียวกับ reassign) ⇒ ใช้ได้ทั้งจาก `contacted`
+           และ `meeting` โดยไม่ดึงใบที่นัดแล้วถอยกลับ
+           ⚠️ slot = primary เฉพาะตอนอยู่ `contacted` — ที่ `meeting` ก้าวถัดไปตัวจริง
+           คือไปประชุมหรือเปิดดีล การโทรตามระหว่างรอเป็นงานรอง */
+        id: "followup",
+        label: "บันทึกการติดตาม",
+        rowLabel: "ติดตาม",
+        rowTone: "teal",
+        kind: "submit",
+        /* ⚠️ **ไม่ใช่ primary** — ก้าวถัดไปตัวจริงของ "ติดต่อแล้ว" คือนัดประชุม
+           (มติเดิม 2026-08-04 ที่ย้าย meeting ขึ้นมาเป็น primary) การโทรตามระหว่างรอ
+           เป็นงานที่ทำซ้ำ ไม่ใช่ขั้นถัดไป · `slot` รับได้แค่สตริงจาก RECORD_SLOTS
+           ฟังก์ชันจะ throw ตั้งแต่ตอน defineLifecycle */
+        slot: "secondary",
+        from: allowedFrom("followup"),
+        to: null,
+        visible: (lead, user) => canWorkLead(user, lead),
+        reason: reasonRule("followup"),
+        reasonPolicy: {
+          title: "บันทึกการติดตามลูกค้า",
+          description: "สถานะไม่เปลี่ยน — เป็นการติดต่อครั้งถัดไปในประวัติเดียวกัน",
+          label: "หมายเหตุการติดตาม",
+          placeholder: "คุยกับใคร คืบหน้าแค่ไหน ตกลงอะไรกันไว้",
+        },
+        fields: [
+          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
+          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
+        ],
       },
       {
         id: "meeting",
@@ -284,7 +325,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
 }
 
 /* transition ที่ต้องส่งไป `POST /transition` (ที่เหลือหน้าจัดการเอง) */
-export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "reassign", "contact", "meeting", "bounce", "disqualify"];
+export const LEAD_TRANSITION_ACTIONS = ["screen", "assign", "reassign", "contact", "followup", "meeting", "bounce", "disqualify"];
 
 /* ── "เปิดดีลจากลีดนี้" = action เดี่ยว ไม่ใช่ขั้นในเส้นทาง ────────────────────
    มติผู้ใช้ 2026-08-04: **เปิดดีลได้ตั้งแต่ติดต่อแล้ว หรือจะรอนัดประชุมก่อนก็ได้**
@@ -342,5 +383,10 @@ export function buildLeadTransitionPayload({ action, values = {}, users = [] } =
     reason: values.reason?.trim() || undefined,
     meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
     eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
+    /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS) — ส่งไปกับ action อื่น
+       ไม่พังวันนี้เพราะ handler ไม่อ่าน แต่เป็นทางที่ payload จะเริ่มโกหกว่า
+       "ทุก action มีวันติดตาม" · ค่ามาจาก DateInput เป็น ISO วันล้วน (YYYY-MM-DD)
+       handler แปลงเป็น timestamptz เอง */
+    followUpAt: LEAD_FOLLOW_UP_ACTIONS.includes(action) ? values.followUpAt || undefined : undefined,
   };
 }

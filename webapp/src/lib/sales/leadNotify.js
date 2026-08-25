@@ -108,10 +108,35 @@ export function leadHandoffNotice({ action, lead, directory, actorId, previousAs
    (ตรงกับเกณฑ์ที่การ์ด LeadQueueSummary ใช้ทาสีแดง) */
 export const OVERDUE_AFTER_BUSINESS_DAYS = 1;
 
+/* ⭐ **เกณฑ์ต่อสถานะ ไม่ใช่ตัวเดียวคุมทั้งหมด** (มติผู้ใช้ 2026-08-25)
+   สามด่านแรกเป็น **SLA ของระบบ** ("ภายใน 1 วันทำการ") — เลยเมื่อไรคือฝ่ายผิดสัญญา
+   ส่วน `contacted` เป็น **คำสัญญาที่ AE ให้ลูกค้าเอง** ผ่าน `followUpAt` ซึ่งเลื่อน
+   ได้ตามจริง จึงให้ระยะผ่อนผัน 2 วันทำการก่อนทวง — ทวงตั้งแต่วันแรกที่เลยจะกลายเป็น
+   เสียงรบกวนของงานที่แค่ช้าไปครึ่งวัน
+   ⚠️ ตัวเลขพวกนี้เป็น "เลยกำหนดคือมากกว่า N" ไม่ใช่ "ตั้งแต่ N" (ตรงกับเกณฑ์ที่การ์ด
+   LeadQueueSummary ใช้ทาสีแดง) */
+export const OVERDUE_AFTER_BY_STATUS = Object.freeze({
+  new: OVERDUE_AFTER_BUSINESS_DAYS,
+  screened: OVERDUE_AFTER_BUSINESS_DAYS,
+  assigned: OVERDUE_AFTER_BUSINESS_DAYS,
+  contacted: 2,
+});
+
+/* ⚠️ **แมปนี้มีสามก๊อป ต้องแก้พร้อมกันเสมอ** — ที่นี่ (ตัวกรองว่าใบไหนเข้าข่าย) ·
+   `daily-digest/route.js` (ตัวคำนวณอายุ) · `leadDigest.js` (การ์ดสรุปเช้า)
+   แก้ไม่ครบ = ใบโผล่ในการ์ดแต่ไม่มีใครโดนเตือน หรือกลับกัน โดยไม่มีอะไรฟ้อง
+
+   ⭐ `contacted` เข้ามาพร้อม mig 0289 — ก่อนหน้านี้สถานะนี้**ไม่มีนาฬิกาเลย**
+   ลีดที่ติดต่อแล้วจึงเงียบหายไปจากทุกระบบทวง · ตอนนี้นับจาก `followUpAt`
+   ซึ่งเป็นวันที่ AE รับปากลูกค้าไว้เอง ไม่ใช่ SLA ที่ระบบตั้งให้
+   ⚠️ ใบที่ยังไม่มี `followUpAt` (ของเก่าก่อน migration) คืน undefined ⇒ ตกจากตัวกรอง
+   `SINCE_OF[l?.status] && late(l)` ไปเงียบ ๆ ซึ่งถูกแล้ว — ไม่มีใครเคยรับปากวันไหนไว้
+   จะไปทวงด้วยกำหนดที่เดาเอาเองไม่ได้ */
 const SINCE_OF = {
   new: (l) => l.createdAt,
   screened: (l) => l.screenedAt || l.createdAt,
   assigned: (l) => l.assignedAt || l.createdAt,
+  contacted: (l) => l.followUpAt || null,
 };
 
 const preview = (leads) => {
@@ -128,7 +153,13 @@ const preview = (leads) => {
  * @returns [{ userIds, entityId, title, body, dedupeKey }]
  */
 export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}) {
-  const late = (lead) => ageOf(lead) > OVERDUE_AFTER_BUSINESS_DAYS;
+  const late = (lead) => ageOf(lead) > (OVERDUE_AFTER_BY_STATUS[lead?.status] ?? OVERDUE_AFTER_BUSINESS_DAYS);
+  /* ⚠️ เช็คแค่ว่า "สถานะนี้มีนาฬิกาไหม" ก็พอ — ใบ `contacted` ที่ยังไม่มี `followUpAt`
+     (ของเก่าก่อน mig 0289) ตกจากตัวกรองนี้เองอยู่แล้วผ่าน `late()`:
+     `businessDaysWaiting(null, …)` คืน 0 ⇒ ไม่มีทางเกินเกณฑ์
+     🪤 เคยเขียนเป็น `SINCE_OF[status]?.(l) && late(l)` เพื่อ "ให้ชัด" — ผลคือใบที่ยัง
+     ไม่มี timestamp ครบทุกสถานะถูกตัดทิ้งไปด้วย (ผู้เรียกบางทางส่งแถวที่มีแค่ id/status
+     มา) ⇒ ทวงไม่ออกทั้งกระดาน โดยไม่มีอะไรฟ้อง */
   const rows = (leads || []).filter((l) => SINCE_OF[l?.status] && late(l));
   if (!rows.length) return [];
 
@@ -136,6 +167,22 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
     const found = usersWhere(directory, (u) => SCREENERS.includes(u.role));
     return found.length ? found : usersWhere(directory, (u) => SCREENER_FALLBACK.includes(u.role));
   })();
+
+  /* ⚠️ กอง AE กองเดียวรับได้**สองเรื่อง**ตั้งแต่ mig 0289 — ใบที่ยังไม่ได้ติดต่อเลย
+     (`assigned`) กับใบที่เลยวันติดตาม (`contacted`) · เขียนป้ายตายตัวว่า "รอติดต่อกลับ"
+     เมื่อไร ใบที่ติดต่อไปแล้วสามรอบจะถูกรายงานว่ายังไม่เคยติดต่อ ซึ่งอ่านแล้วเหมือน
+     ระบบนับผิด · กองผสมจึงใช้คำกลางแทน ไม่ใช่เลือกข้างใดข้างหนึ่ง
+     ⚠️ **ไม่แยกเป็นสองเด้ง** — กติกา "หนึ่งคนหนึ่งเด้งต่อวัน" (mig 0185) สำคัญกว่า
+     ความละเอียดของป้าย · ตัวใบอยู่ในบรรทัดรองอยู่แล้ว */
+  /* ⚠️ คำว่า "เกิน SLA" ใช้ได้เฉพาะสามด่านที่เป็น SLA ของระบบจริง ๆ — วันติดตามเป็น
+     คำสัญญาที่ AE ให้ลูกค้าเอง ไม่ใช่ SLA เรียกผิดแล้วความหมายเปลี่ยน */
+  const stageLabel = (key, group) => {
+    if (key === 'screeners') return 'รอคัดกรองเกิน SLA';
+    if (key.startsWith('team:')) return 'รอกระจายเกิน SLA';
+    const kinds = new Set(group.map((l) => l.status));
+    if (kinds.size > 1) return 'งานลีดค้าง';
+    return kinds.has('contacted') ? 'เลยวันติดตาม' : 'รอติดต่อกลับเกิน SLA';
+  };
 
   /* จัดกลุ่มตาม "ใครต้องลงมือ" ไม่ใช่ตามสถานะ — คนหนึ่งคนอาจค้างทั้งลีดที่รอกระจาย
      ของทีมตัวเอง และลีดที่ตัวเองรับมอบ ⇒ ควรได้เด้งเดียวที่รวมทุกอย่าง */
@@ -155,12 +202,12 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
   return [...buckets.entries()].map(([key, bucket]) => {
     const sorted = [...bucket.leads].sort((a, b) => ageOf(b) - ageOf(a));
     const worst = ageOf(sorted[0]);
-    const stage = key === 'screeners' ? 'รอคัดกรอง' : key.startsWith('team:') ? 'รอกระจาย' : 'รอติดต่อกลับ';
+    const stage = stageLabel(key, bucket.leads);
     return {
       userIds: bucket.userIds,
       // ผูกกับใบที่ค้างนานสุด เพื่อให้ลบลีดใบนั้นแล้วแจ้งเตือนถูกกวาดตาม (purgeUpdates)
       entityId: sorted[0].id,
-      title: `${stage}เกิน SLA ${sorted.length} ใบ · ค้างนานสุด ${worst} วันทำการ`,
+      title: `${stage} ${sorted.length} ใบ · ค้างนานสุด ${worst} วันทำการ`,
       body: preview(sorted),
       // กัน cron รันซ้ำ/แอดมินกดทดสอบซ้ำในวันเดียวกัน ไม่ให้เด้งซ้ำ
       dedupeKey: `DIGEST-lead-overdue-${dayKey}-${key}`,

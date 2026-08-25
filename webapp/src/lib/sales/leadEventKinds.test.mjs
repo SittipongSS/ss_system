@@ -9,7 +9,7 @@
 // ⇒ insert ชน constraint ทุกครั้ง + โค้ดไม่ได้อ่าน error ⇒ เงียบสนิท
 //
 // เทสต์นี้เทียบสองฝั่งตรง ๆ: ค่าที่ปรากฏใน `kind:` ของโค้ด ต้องอยู่ในชุดของ
-// CHECK ล่าสุด (0273) — เพิ่ม kind ใหม่ในโค้ดโดยไม่แตะ migration แล้วจะแดงทันที
+// CHECK ล่าสุด (0289) — เพิ่ม kind ใหม่ในโค้ดโดยไม่แตะ migration แล้วจะแดงทันที
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 // ⚠️ ต้องชี้ migration **ล่าสุด** ที่นิยาม CHECK นี้ — ชี้ไฟล์เก่าเมื่อไหร่เทสต์จะเขียว
 // ทั้งที่ของจริงบน DB เป็นอีกชุด (บทเรียนเดียวกับ deal_probability_for_stage)
-const KIND_CHECK_MIGRATION = 'supabase/migrations/0273_lead_reassign.sql';
+const KIND_CHECK_MIGRATION = 'supabase/migrations/0289_lead_follow_up.sql';
 
 function allowedKinds() {
   const sql = read(KIND_CHECK_MIGRATION);

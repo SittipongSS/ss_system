@@ -4,7 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { can, hasTeam, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
-  meetingTimesSinceBounce, pickNextMeetingAt,
+  meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS } from '@/lib/permissions';
@@ -30,8 +30,8 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 }
 
 // POST /api/sales-planning/leads/[id]/transition
-// { action: screen|assign|contact|meeting|qualify|disqualify|bounce,
-//   team?, assigneeId?, assigneeName?, reason?, meetingMode?, eventAt?, customerId? }
+// { action: screen|assign|reassign|contact|followup|meeting|disqualify|bounce,
+//   team?, assigneeId?, assigneeName?, reason?, meetingMode?, eventAt?, followUpAt? }
 //
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
 //   screen     = supervisor/admin (คัดกรอง เลือกทีม — SLA 1 วันทำการ)
@@ -41,7 +41,12 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 //     **ไม่ถอยสถานะ** และไม่ต้องตีกลับ (ตีกลับล้างทีม/เวลาติดต่อ/นัดทิ้งทั้งรอบ)
 //   contact    = ผู้รับมอบ (AE) / senior ทีม / admin (SLA 1 วันทำการ) — ต้องระบุหมายเหตุการติดต่อ (เก็บใน event.reason)
 //     มติผู้ใช้ 2026-07-21: supervisor จบงานที่คัดกรอง ไม่ทำขั้นทำงานแทนทีม
+//   followup   = เดียวกับ contact แต่ **ไม่ขยับสถานะ** (ติดตามครั้งที่ 2 ขึ้นไป)
+//     มติผู้ใช้ 2026-08-25: ของเดิมบันทึกการติดต่อซ้ำไม่ได้เลย — `contacted` ไม่มี
+//     `contact` ในลิสต์ ⇒ AE ที่โทรตามรอบสองต้องไปเขียนในเธรดกลาง ซึ่งไม่มีวันที่
+//     ให้ระบบทวงต่อ · ทั้ง contact และ followup **บังคับ followUpAt** (mig 0289)
 //   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
+//     ล้าง followUpAt เพราะวันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว
 //   qualify    = เดียวกับ contact — ต้องระบุ customerId (เปิดลูกค้าในฐานข้อมูลก่อน)
 //   disqualify = ขั้นกำกับดูแล: ทีมเจ้าของงาน + supervisor/admin — ต้องมีเหตุผล
 //   bounce     = ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ) — ต้องมีเหตุผล
@@ -147,10 +152,23 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // ประวัติต้องอ่านออกว่า "ย้ายจากใครไปใคร" — ชื่อเดิมอยู่ในแถวก่อนแก้เท่านั้น
     event.reason = body.reason?.trim()
       || `เปลี่ยนผู้รับผิดชอบจาก ${lead.assigneeName || 'ไม่ระบุ'} เป็น ${assignee.assigneeName}`;
-  } else if (action === 'contact') {
-    if (!workScope) return forbidden('ติดต่อกลับได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
+  } else if (action === 'contact' || action === 'followup') {
+    /* ⭐ สองจังหวะเดียวกันทุกอย่างยกเว้นสถานะปลายทาง (มติผู้ใช้ 2026-08-25):
+       `contact` = ครั้งแรก (assigned → contacted) · `followup` = ครั้งที่สองขึ้นไป
+       (สถานะไม่ขยับ ⇒ ใช้ได้ทั้งจาก contacted และ meeting)
+       เขียนรวมกันเพราะกติกา "ต้องมีหมายเหตุ + ต้องมีวันติดตามต่อ" ต้องตรงกันเป๊ะ —
+       แยกสองบล็อกเมื่อไรก็เป็นสองที่ที่ต้องคอยทำให้ตรงกันเอง */
+    const label = action === 'contact' ? 'ติดต่อกลับ' : 'บันทึกการติดตาม';
+    if (!workScope) return forbidden(`${label}ได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)`);
     if (!body.reason?.trim()) return badRequest('ต้องระบุหมายเหตุการติดต่อ');
-    patch.firstContactAt = lead.firstContactAt || now;
+    /* ⚠️ ด่านเดียวกับที่ฟอร์มใช้ (`leadFollowUpError`) — ห้ามเขียนเงื่อนไขซ้ำที่นี่
+       ทุกการติดต่อต้องมีทางออก ไม่งั้นลีดนอนอยู่ใน `contacted` ได้ตลอดกาล
+       🪤 เคส "ลูกค้าไม่สนใจแล้ว" ไม่ต้องกรอกวันมั่ว — กด `disqualify` ตรงจาก
+       `assigned` ได้เลย (อยู่ใน LEAD_TRANSITIONS.assigned แล้ว) */
+    const followUpError = leadFollowUpError(body.followUpAt);
+    if (followUpError) return badRequest(followUpError);
+    if (action === 'contact') patch.firstContactAt = lead.firstContactAt || now;
+    patch.followUpAt = new Date(body.followUpAt).toISOString();
     event.eventAt = body.eventAt || now;
     event.reason = body.reason.trim();
   } else if (action === 'meeting') {
@@ -161,6 +179,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.eventAt = meetingAt;
     // ลีดเดียวมีได้หลายนัดแล้ว — คอลัมน์เก็บ "นัดถัดไป" ไม่ใช่ "นัดที่กดล่าสุด"
     patch.meetingAt = await nextMeetingAt(supabase, lead.id, meetingAt, now);
+    /* ⚠️ วันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว — ปล่อยทั้งคู่ไว้ = ลีดใบเดียว
+       โผล่สองแถวในคิวของฉันด้วยกำหนดคนละวัน · อยากติดตามต่อหลังประชุมให้กด
+       "บันทึกการติดตาม" ซึ่งตั้งวันใหม่ให้เอง */
+    patch.followUpAt = null;
   } else if (action === 'create_deal') {
     // สร้างดีลจากลีดต้องผ่าน POST /api/sales-planning/deals (ทางเดียว) — ที่นั่นออกรหัส DL
     // แบบ atomic + บันทึก stage history + audit + กันสร้างซ้ำ. path นี้เดิมสร้างดีล
@@ -183,6 +205,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     // countBusinessDays ติดลบ → slaHit นับเป็น "ทัน" ฟรี ๆ)
     patch.firstContactAt = null;
     patch.meetingAt = null;
+    // ⭐ วันติดตามของเจ้าของคนเก่า (mig 0289) — ไม่ล้างแล้วมันฟื้นขึ้นมาบนลีดของ
+    // เจ้าของคนใหม่ที่ไม่เคยรับปากอะไรไว้ แล้วระบบจะทวงเขาด้วยกำหนดของคนอื่น
+    patch.followUpAt = null;
     // ⭐ ล้างต้นรอบด้วย ไม่ใช่แค่ปลายรอบ (mig 0234) — ใบนี้กลับไปนอนคิวคัดกรองแล้ว
     // ยังไม่ถูกคัดกรอง/มอบหมายในรอบใหม่ สองคอลัมน์นี้จึงต้องว่างตามสถานะ `new`
     //   · ค้างไว้แล้วผัง Funnel นับ "คัดกรองแล้ว/มอบหมายแล้ว" เกินจริง (ตาราง AE ไม่นับ

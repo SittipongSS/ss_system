@@ -62,6 +62,41 @@ test('ลีดที่ไม่มีวันนัด ใช้วันท�
   assert.equal(rows.find((r) => r.id === 'OLD').step, 'โทรกลับลูกค้า');
 });
 
+/* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้** จึงเป็นกำหนดจริง
+   🐞 ก่อนมีคอลัมน์นี้ ลีดที่ติดต่อแล้วตกไปใช้ `assignedAt` แบบ waiting ⇒ ใบที่นัด
+   จะโทรพรุ่งนี้ขึ้นว่า "ค้างมา N วัน" ทั้งที่ยังไม่ถึงกำหนดที่รับปากไว้ด้วยซ้ำ */
+test('ลีดที่มีวันติดตามต่อ = กำหนดจริง ไม่ใช่วันที่เริ่มค้าง', () => {
+  const rows = build({
+    leads: [
+      { id: 'FU', company: 'นัดโทร', status: 'contacted', assignedAt: '2026-08-01', followUpAt: '2026-08-14T03:00:00Z' },
+      { id: 'LATE', company: 'เลยแล้ว', status: 'contacted', assignedAt: '2026-08-01', followUpAt: '2026-08-08T03:00:00Z' },
+    ],
+  });
+  const fu = rows.find((r) => r.id === 'FU');
+  assert.equal(fu.step, 'ติดตามลูกค้า');
+  assert.equal(fu.due, '2026-08-14', 'ต้องใช้วันติดตาม ไม่ใช่ assignedAt');
+  assert.equal(fu.basis, 'deadline');
+  assert.equal(fu.overdue, false, 'ยังไม่ถึงกำหนดที่รับปากไว้');
+
+  const late = rows.find((r) => r.id === 'LATE');
+  assert.equal(late.overdue, true, 'เลยวันที่รับปากไว้ = สายจริง');
+  assert.match(late.dueText, /เลย/);
+});
+
+/* ⚠️ `meeting` ล้าง followUpAt อยู่แล้วที่ฝั่ง API — สองค่านี้จึงไม่ควรมีพร้อมกัน
+   แต่ข้อมูลเก่าที่ค้างมาก่อน migration มีได้ · วันนัดต้องมาก่อนเสมอ ไม่งั้นลีดใบเดียว
+   จะโผล่ด้วยกำหนดที่ขัดกับสิ่งที่หน้ารายละเอียดแสดง */
+test('มีทั้งวันนัดและวันติดตาม (ข้อมูลเก่า) — วันนัดมาก่อน', () => {
+  const [row] = build({
+    leads: [{
+      id: 'BOTH', company: 'ทั้งคู่', status: 'meeting',
+      meetingAt: '2026-08-13T09:00:00Z', followUpAt: '2026-08-20T03:00:00Z',
+    }],
+  });
+  assert.equal(row.due, '2026-08-13');
+  assert.equal(row.step, 'นัดหมายลูกค้า');
+});
+
 test('⭐ เรียง: เลยกำหนดก่อน · ใกล้กำหนดก่อน · ไม่มีวันไปท้ายเสมอ', () => {
   const rows = sortMyQueue([
     { key: 'a', days: null, urgent: true },
