@@ -364,6 +364,19 @@ export default function QuotationEditorPage() {
     });
   };
 
+  /* ดึงกลับมาเฉพาะ "ตัวใบ" — สถานะ/ขั้นอนุมัติ/สิทธิ์ ซึ่งเป็นสิ่งที่ปุ่มทุกตัวอ่าน
+     ⚠️ **ห้ามใช้ `load()` แทน** — `load` เขียนทับ `form` กับ `lines` ด้วย ซึ่งคือร่างที่
+     ผู้ใช้กำลังพิมพ์อยู่ (หน้านี้มี `useUnsavedChanges(dirty)` เฝ้าอยู่) ⇒ การรีเฟรช
+     ตอนทำรายการไม่ผ่านจะกลายเป็นการกลืนงานที่ยังไม่บันทึก */
+  const refreshQuote = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sales-planning/quotations/${id}`);
+      if (!res.ok) return;
+      const fresh = await res.json().catch(() => null);
+      if (fresh) setQuote(fresh);
+    } catch { /* รีเฟรชเงียบ — ข้อความจริงที่ผู้ใช้ต้องอ่านคือ error ของ action */ }
+  }, [id]);
+
   const act = async (label, url, opts = { method: "POST" }) => {
     setBusy(label);
     setError("");
@@ -374,6 +387,11 @@ export default function QuotationEditorPage() {
       if (!res.ok) {
         setError(data.error || "ทำรายการไม่สำเร็จ");
         setErrorActionUrl(data.accountUrl || "");
+        /* ⭐ **ตีกลับ = จอไม่ตรงกับของจริงแล้ว** — route อนุมัติอ่านแถวสดแล้วตรวจสถานะ
+           ซ้ำทุกครั้ง (`api/.../approval/route.js`) ⇒ "ใบนี้อนุมัติแล้ว" แปลว่ามีคนกด
+           ไปก่อน ไม่ใช่ผู้ใช้กดผิด · ของเดิมปล่อยให้ปุ่มเดิมค้างอยู่ครบ คนจึงกดซ้ำ
+           ได้ข้อความเดิมไปเรื่อย ๆ จนต้อง F5 เอง */
+        refreshQuote();
         return null;
       }
       return data;
