@@ -20,7 +20,7 @@
 import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
+import { CustomerSay, RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -28,6 +28,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
 import { fmtNumber } from "@/lib/format";
+import { dueCellTracker } from "@/lib/requests/dueCell";
 
 const qty = (n) => fmtNumber(n);
 
@@ -55,7 +56,7 @@ const qty = (n) => fmtNumber(n);
    (วัด 2026-08-25) ⇒ กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง */
 export default function BriefBoard({
   groups = [], renderStep = null, renderDetail = null, renderGroupStep = null,
-  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null,
+  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null, due = null,
 }) {
 
   /* ⭐ **ก้อนที่ยังต้องลงมือกางไว้ ก้อนที่จบแล้วพับ** (ทางเลือก ก+ · มติผู้ใช้ 2026-08-10)
@@ -78,7 +79,10 @@ export default function BriefBoard({
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete;
-  const cols = showActions ? 4 : 3;
+  const cols = (showActions ? 4 : 3) + (due ? 1 : 0);
+  /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
+     พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
+  const showDue = dueCellTracker(due);
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
@@ -97,6 +101,7 @@ export default function BriefBoard({
             <tr>
               <th className={styles.colName}>direction</th>
               <th className={styles.colTrack}>ขั้น</th>
+              {due && <th className={styles.colDue}>กำหนดส่ง</th>}
               <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
@@ -175,6 +180,7 @@ export default function BriefBoard({
                             />
                           </td>
                           <RowStageCell row={d} />
+                          {due && <RowDueCell row={d} due={due} show={showDue(d)} />}
                           <RowIdleCell row={d} today={today} />
                           {showActions && (
                             <RowStepCell>

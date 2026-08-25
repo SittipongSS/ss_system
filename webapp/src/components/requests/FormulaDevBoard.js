@@ -16,7 +16,7 @@
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
 import { Fragment } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
+import { CustomerSay, RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -24,6 +24,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import styles from "./briefBoard.module.css";
+import { dueCellTracker } from "@/lib/requests/dueCell";
 
 const qty = (n) => fmtNumber(n);
 const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
@@ -42,7 +43,7 @@ const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
    ที่รางวาด · ผลลัพธ์กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง (ว่าง 97% ของแถว) */
 export default function FormulaDevBoard({
   rows = [], renderStep = null, renderDetail = null,
-  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null,
+  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null, due = null,
 }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป
   if (!rows.length) return null;
@@ -53,7 +54,10 @@ export default function FormulaDevBoard({
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete;
-  const cols = 3 + (showQty ? 1 : 0) + (showActions ? 1 : 0);
+  const cols = 3 + (showQty ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
+  /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
+     พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
+  const showDue = dueCellTracker(due);
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
@@ -68,6 +72,7 @@ export default function FormulaDevBoard({
               <th className={styles.colName}>รายการ</th>
               {showQty && <th className={`${styles.colQty} num`}>จำนวน</th>}
               <th className={styles.colTrack}>ขั้น</th>
+              {due && <th className={styles.colDue}>กำหนดส่ง</th>}
               <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
@@ -120,6 +125,7 @@ export default function FormulaDevBoard({
                     </td>
                     )}
                     <RowStageCell row={r} />
+                    {due && <RowDueCell row={r} due={due} show={showDue(r)} />}
                     <RowIdleCell row={r} today={today} />
                     {showActions && (
                       <RowStepCell>
