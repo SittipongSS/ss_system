@@ -4,6 +4,7 @@
 import { purgeUpdatesMany } from '@/lib/master/updates';
 import { userTeams } from '@/lib/permissions';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -59,7 +60,9 @@ export async function deleteProjectDeep(supabase, projectId) {
   /* ไฟล์แนบของงานใต้โครงการต้องไปก่อนแถว — polymorphic ไม่มี FK cascade
      (เส้นลบงานทีละใบเรียก purgeAttachments อยู่แล้ว เส้นชุดนี้เคยหลุด) */
   {
-    const { data: tasks } = await supabase.from('personal_tasks').select('id').eq('projectId', projectId);
+    // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ forceDelete: ตัดที่ 1,000 = ไฟล์แนบค้างกำพร้า
+    const { data: tasks } = await fetchAllResult(() => supabase
+      .from('personal_tasks').select('id').eq('projectId', projectId).order('id', { ascending: true }));
     for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
   }
   await supabase.from('personal_tasks').delete().eq('projectId', projectId);
@@ -74,7 +77,8 @@ export async function deleteProjectDeep(supabase, projectId) {
     // เธรดเป็น polymorphic ไม่มี FK — กวาดเอง (บรรทัด/ชั้นจำนวนมี FK CASCADE แล้ว)
     await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
     {
-      const { data: tasks } = await supabase.from('personal_tasks').select('id').in('inquiryId', inquiryIds);
+      const { data: tasks } = await fetchAllResult(() => supabase
+        .from('personal_tasks').select('id').in('inquiryId', inquiryIds).order('id', { ascending: true }));
       for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
     }
     await supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds);

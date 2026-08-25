@@ -15,6 +15,7 @@
 import { purgeUpdatesMany } from '@/lib/master/updates';
 import { registryRefTargets } from '@/lib/master/registryRefs';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isWonStage } from '@/lib/salesPlanning';
 
 // อ่าน query flag จาก request URL.
@@ -148,7 +149,10 @@ async function purgeTaskThreads(supabase, { column, values }) {
  * ของงานเหล่านั้นค้างทั้งแถวและไฟล์บน Drive · งานส่วนบุคคลเป็นชนิดที่คนแนบไฟล์บ่อย
  * ที่สุดในระบบ (29 แถวบน prod) ⇒ เส้นชุดคือทางที่จะสร้างของกำพร้ามากที่สุด */
 async function purgeTaskAttachments(supabase, column, value) {
-  const { data, error } = await supabase.from('personal_tasks').select('id').eq(column, value);
+  // ⚠️ ไล่ทีละหน้า — ถ้าโดนเพดาน 1,000 ตัด ไฟล์แนบของงานที่เกินมาจะค้างเป็นของกำพร้า
+  // ทั้งแถวและไฟล์บน Drive ซึ่งคือบั๊กที่ฟังก์ชันนี้เพิ่งถูกเขียนขึ้นมาเพื่อปิดพอดี
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('personal_tasks').select('id').eq(column, value).order('id', { ascending: true }));
   if (error) throw new Error(`อ่านงานที่จะลบไม่สำเร็จ: ${error.message}`);
   for (const task of data || []) await purgeAttachments('personal_task', task.id, supabase);
   return (data || []).length;
