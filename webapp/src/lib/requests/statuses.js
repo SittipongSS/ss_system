@@ -10,6 +10,7 @@
 // ป้ายที่ยาวสุดหดจาก 170px เหลือ 99px = คอลัมน์สถานะคืนที่ให้เนื้อหา 70px
 // (วัดจริงบน dev server · ดู UI_DESIGN_SYSTEM.md §ป้ายในตาราง)
 import { lineShapeLabels } from '@/lib/requests/kinds/lineShapes';
+import { dueIsStale } from '@/lib/requests/dueRound';
 
 export const REQUEST_STATUSES = ['draft', 'pending', 'acknowledged', 'answered', 'closed', 'cancelled'];
 
@@ -46,9 +47,20 @@ export const REQUEST_OPEN_STATUSES = ['pending', 'acknowledged'];
 // ⚠️ **ไม่เพิ่มค่าลง `REQUEST_STATUSES`** — สถานะใหม่หนึ่งค่าแปลว่าทุกด่าน ทุกตัวกรอง
 // ทุกรายงาน และ trigger ที่ DB ต้องรู้จักมันครบ ทั้งที่ข้อเท็จจริงอยู่ในคอลัมน์
 // `committedDueDate` อยู่แล้ว ⇒ derive ที่นี่ที่เดียว แล้วจอถามตัวนี้แทนอ่าน `status` ดิบ
+//
+// ⭐ **ขั้นนี้กลับมาได้ ไม่ใช่ผ่านแล้วผ่านเลย** (มติผู้ใช้ 2026-08-25) — ลูกค้าขอให้แก้
+// ⇒ เกิดแถวรอบใหม่ที่ยังไม่มีใครรับปากวัน · ของเดิมเป็นจริงได้ครั้งเดียว (`!committedDueDate`)
+// ⇒ ใบถือวันของรอบก่อนไว้ตลอด ซึ่งเป็นวันที่ผ่านไปแล้วโดยนิยาม · วัด 2026-08-25:
+// ใบที่เดินอยู่ 53 ใบ **22 ใบเลยวันที่แจ้งไว้**
+//
+// ⚠️ **อ่าน `request.items` เอง ไม่เพิ่มพารามิเตอร์** — ผู้เรียกทั้งสี่ (ราง · คิว ·
+// ป้ายสถานะ · ปุ่มบนหน้ารายละเอียด) มีแถวติดมากับใบอยู่แล้ว · เพิ่มพารามิเตอร์เมื่อไร
+// จะมีผู้เรียกที่ลืมส่ง แล้วสองจอตอบคนละคำสำหรับใบเดียวกันโดยไม่มีอะไรจับได้
+// (ใบที่ไม่มี `items` ติดมา = ไม่รู้ว่ามีรอบแก้ไหม ⇒ ตอบเท่าเดิมเป๊ะ ไม่เดา)
 export function requestAwaitingDue(request) {
-  return request?.status === 'acknowledged'
-    && !String(request?.committedDueDate ?? '').trim();
+  if (request?.status !== 'acknowledged') return false;
+  if (!String(request?.committedDueDate ?? '').trim()) return true;
+  return dueIsStale(request, request?.items);
 }
 
 // ป้ายสถานะที่คนเห็น — คำ + โทน · ใช้แทน `REQUEST_STATUS_LABELS[status]` ทุกที่ที่

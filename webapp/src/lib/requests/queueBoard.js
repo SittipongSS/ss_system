@@ -310,7 +310,7 @@ export const QUEUE_GROUPS = [
      และหลุดจากการ์ด "เริ่มที่นี่" ทั้งที่เป็นของค้างที่เร่งที่สุด */
   { key: 'bounced', label: 'ตีกลับ — รอคุณแก้แล้วส่งใหม่' },
   { key: 'unacked', label: 'ยังไม่มีใครรับเรื่อง' },
-  { key: 'overdue', label: 'เลยกำหนดที่รับปากไว้' },
+  { key: 'overdue', label: 'เลยกำหนดที่แจ้งไว้' },
   { key: 'open', label: 'กำลังดำเนินการ' },
   { key: 'settled', label: 'จบแล้ว' },
 ];

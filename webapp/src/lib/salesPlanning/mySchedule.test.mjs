@@ -131,19 +131,19 @@ test('งานไม่มีวันครบกำหนด = ไม่เ�
   assert.equal(items[0].days, 0);
 });
 
-test('คำร้องที่ฝ่ายรับปากแล้วนับว่าเลยกำหนดได้ · ใบที่ยังไม่รับปากไม่นับ (ไม่มีใครผิดสัญญา)', () => {
+test('คำร้องที่ฝ่ายแจ้งวันส่งแล้วนับว่าเลยกำหนดได้ · ใบที่ยังไม่แจ้งไม่นับ (ไม่มีใครผิดสัญญา)', () => {
   const [committed, requested] = buildScheduleDueItems({
     requests: [
-      { id: 'R1', title: 'รับปากแล้ว', committedDueDate: '2026-08-18', docNo: 'RQ-1' },
-      { id: 'R2', title: 'ยังไม่รับปาก', requestedDueDate: '2026-08-19' },
+      { id: 'R1', title: 'แจ้งวันส่งแล้ว', committedDueDate: '2026-08-18', docNo: 'RQ-1' },
+      { id: 'R2', title: 'ยังไม่แจ้งวันส่ง', requestedDueDate: '2026-08-19' },
     ],
     todayIso: '2026-08-21',
   });
   assert.equal(committed.overdue, true);
   assert.equal(committed.days, -3);
-  assert.equal(committed.dateNote, 'ฝ่ายรับปากส่ง');
+  assert.equal(committed.dateNote, 'ฝ่ายแจ้งวันส่ง');
   assert.equal(requested.overdue, false);
-  assert.match(requested.dateNote, /ยังไม่รับปาก/);
+  assert.match(requested.dateNote, /ยังไม่แจ้งวันส่ง/);
 });
 
 test('เรียงตามวัน แล้วด่วนก่อนเมื่อวันเท่ากัน', () => {

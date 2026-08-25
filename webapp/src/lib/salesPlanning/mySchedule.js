@@ -326,7 +326,7 @@ export function buildScheduleDueItems({ tasks = [], requests = [], todayIso = nu
       title: request.title || request.customerName || 'คำร้อง',
       sub: [request.docNo, request.dept].filter(Boolean).join(' · '),
       date,
-      dateNote: committed ? 'ฝ่ายรับปากส่ง' : 'ผู้ขอต้องการรับงาน — ฝ่ายยังไม่รับปาก',
+      dateNote: committed ? 'ฝ่ายแจ้งวันส่ง' : 'ผู้ขอต้องการรับงาน — ฝ่ายยังไม่แจ้งวันส่ง',
       statusLabel: committed ? 'รอฝ่ายส่งงาน' : 'รอฝ่ายแจ้งกำหนดส่ง',
       href: `/requests/${request.id}`,
       urgent: !!request.urgent,

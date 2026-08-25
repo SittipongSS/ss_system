@@ -116,7 +116,7 @@ export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
 
   if (hop === 'ack') {
     const due = String(values.dueAt ?? '').trim();
-    if (due && !ISO_DATE.test(due)) return 'วันที่รับปากว่าจะส่งไม่ถูกต้อง';
+    if (due && !ISO_DATE.test(due)) return 'วันที่แจ้งว่าจะส่งไม่ถูกต้อง';
     return null;
   }
 

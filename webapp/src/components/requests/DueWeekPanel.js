@@ -32,7 +32,7 @@ export default function DueWeekPanel({
     <WorkspaceSection
       icon={<CalendarClock size={17} />}
       title="ปฏิทินคำสัญญา"
-      subtitle="วันที่ฝ่ายรับปากไว้เอง — ดูก่อนรับปากใบใหม่ว่าวันไหนกองหนักแล้ว"
+      subtitle="วันที่ฝ่ายแจ้งไว้เอง — ดูก่อนแจ้งวันส่งใบใหม่ว่าวันไหนกองหนักแล้ว"
       actions={(
         <div className="flex gap-2 items-center flex-wrap">
           <span className="ui-badge">{calendar.inWeek} ใบในสัปดาห์นี้</span>

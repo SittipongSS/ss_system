@@ -55,6 +55,7 @@ import {
   answerRequestError, closeOutcomeError, closeRequestError, requestNeedsOutcome, requestProgress,
 } from "@/lib/deptRequests";
 import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
+import { dueIsStale } from "@/lib/requests/dueRound";
 import { requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, reopenRequestError } from "@/lib/requests/closure";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
@@ -302,6 +303,10 @@ export default function RequestDetailPage() {
   // ตัวนี้คุม `canDept` ของรางห้าก้าว ⇒ ถามผิดคำถามแปลว่าฝ่ายเจ้าของเรื่อง
   // เห็นแต่ป้าย "รอฝ่ายปลายทางรับเรื่อง" และกดอะไรไม่ได้เลยทั้งใบ
   const owner = canAnswerRequestsFor(me, req.dept);
+  /* ⭐ **วันที่ถืออยู่เป็นของรอบก่อน** (มติผู้ใช้ 2026-08-25) — เปลี่ยนคำบนปุ่ม/โมดัล
+     จาก "แจ้งกำหนดส่ง" เป็น "แจ้งวันส่งรอบแก้" · ตัวตัดสินอยู่ที่ `lib/requests/dueRound.js`
+     ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้ ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
+  const dueStale = dueIsStale(req, req.items);
   const showPdr = requestHasPdr(req.kind);
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -698,10 +703,17 @@ export default function RequestDetailPage() {
       /* ⭐ **แจ้งกำหนดส่ง = ก้าวถัดไปของฝ่าย** (มติผู้ใช้ 2026-08-19) — ต้องเป็น
          *ปุ่มหลัก* ไม่ใช่เมนูรอง: ตราบใดที่ยังไม่กด ผู้ขอไม่มีวันให้ยึด และไม่มี
          ตัวเลขไหนบอกได้ว่าใบนี้ช้าหรือยัง ⇒ มันคือสิ่งที่ค้างอยู่จริงของใบนี้ */
+      /* ⭐ **รอบแก้ดึงปุ่มนี้กลับมา** (มติผู้ใช้ 2026-08-25) — ลูกค้าขอให้แก้ ⇒ ใบมี
+         งานชิ้นใหม่ที่ยังไม่มีวัน · ของเดิมปุ่มนี้ขึ้นได้ครั้งเดียวตลอดอายุใบ ⇒ RD ไม่มี
+         ทางลงวันของรอบใหม่เลย นอกจากจะเดาเองว่าต้องไปหาปุ่ม "เลื่อนวันกำหนดส่ง"
+         ⚠️ **คนแจ้งวันคือฝ่าย ไม่ใช่คนบันทึก feedback** — `outcome` เป็นก้าวของผู้ขอ
+         (`HOP_OWNER`) ส่วน `commit-due` กันด้วย `canAnswerRequest` ⇒ ถามวันในโมดัล
+         บันทึกคำตอบไม่ได้ มันจะเป็นฟอร์มที่กรอกแล้วยิงไม่ผ่านด่าน 403 */
       : owner && requestAwaitingDue(req)
         ? {
           id: "commit-due",
-          label: "แจ้งกำหนดส่ง",
+          label: dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง",
+          hint: dueStale ? `รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : undefined,
           kind: "approve",
           icon: CalendarClock,
           onClick: () => setCommitDue({ date: businessDate(), reason: "" }),
@@ -1529,7 +1541,7 @@ export default function RequestDetailPage() {
           ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย */}
       <Modal
         open={commitDue !== null} onClose={() => setCommitDue(null)} size="sm" dismissible={!saving}
-        title="แจ้งกำหนดส่ง"
+        title={dueStale ? "แจ้งวันส่งของรอบแก้" : "แจ้งกำหนดส่ง"}
       >
         {commitDue && (
           <>
@@ -1541,8 +1553,10 @@ export default function RequestDetailPage() {
               />
               {/* วันที่ผู้ขอต้องการเป็นของผู้ขอ · วันกำหนดส่งเป็นของฝ่ายปลายทาง และ
                   เป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง — คนละช่อง คนละเจ้าของ */}
+              {/* ⚠️ รอบแก้ต้องเห็นวันของรอบก่อน — ไม่งั้นคนกรอกไม่รู้ว่ากำลังแทนที่อะไร */}
               <small className={styles.hint}>
-                เป็นวันที่ {req.dept} รับปาก และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
+                เป็นวันที่ {req.dept} แจ้ง และเป็นตัวที่ใช้นับว่าเลยกำหนดหรือยัง
+                {dueStale ? ` · รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : ""}
                 {req.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(req.requestedDueDate)}` : ""}
               </small>
             </div>

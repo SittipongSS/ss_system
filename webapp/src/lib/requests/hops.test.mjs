@@ -57,7 +57,7 @@ test('ก้าวฝั่งผู้ขอที่บันทึกเห�
   assert.match(hopValuesError('ready', { at: '12/08/2026' }), /วันที่ไม่ถูกต้อง/);
   // รับเรื่องไม่บังคับวันที่ (ค่าตั้งต้น = วันนี้) แต่ถ้าใส่วันนัดส่งต้องถูกรูปแบบ
   assert.equal(hopValuesError('ack', {}), null);
-  assert.match(hopValuesError('ack', { dueAt: 'พรุ่งนี้' }), /วันที่รับปาก/);
+  assert.match(hopValuesError('ack', { dueAt: 'พรุ่งนี้' }), /วันที่แจ้งว่าจะส่ง/);
 });
 
 test('ส่งเอกสารการเงินต้องมีเลขที่ — วันครบกำหนดไม่บังคับ (B-3 · R-6)', () => {
