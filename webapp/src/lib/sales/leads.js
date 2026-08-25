@@ -634,6 +634,29 @@ export function leadOutcome(lead = {}, events = null) {
   };
 }
 
+/* เหตุการณ์ที่ `leadOutcome` ต้องใช้จริง — ดึงมาแค่นี้พอ ไม่ต้องลากประวัติทั้งก้อน
+   (`won`/`lost` อ่านจากสถานะบนแถว ไม่ได้อ่านจากประวัติ) */
+export const LEAD_OUTCOME_EVENT_KINDS = ['contact', 'followup', 'meeting'];
+
+/** ผลของลีดทั้งชุด — **ทุกใบต้องใช้แหล่งเดียวกัน**
+ *
+ *  🪤 **all-or-nothing โดยเจตนา** — `eventsByLead = null` แปลว่าอ่านประวัติไม่ได้
+ *  (query ล้ม/ก้อนใดก้อนหนึ่งพัง) ⇒ ถอยไปใช้คอลัมน์ **ทั้งกระดาน** ไม่ใช่เฉพาะใบที่พลาด
+ *  ปล่อยให้บางใบอ่านจากประวัติ บางใบอ่านจากคอลัมน์ = ตัวเลขผสมสองนิยามในตารางเดียว
+ *  ซึ่งไม่มีทางอธิบายได้ว่าทำไมสองแถวถึงนับไม่เหมือนกัน · `basis` ที่ `leadOutcomeTotals`
+ *  คืนมาจะเป็น 'row' ให้หน้าจอขึ้นคำเตือนได้
+ *
+ *  ⚠️ ใบที่ **ไม่มีเหตุการณ์เลย** ต้องได้ `[]` ไม่ใช่ `undefined` — `[]` = อ่านแล้วว่าง
+ *  (ลีดที่ยังไม่เคยติดต่อ) ส่วน `undefined` จะถอยไปอ่านคอลัมน์เงียบ ๆ แล้วใบนั้น
+ *  จะนับคนละนิยามกับเพื่อนในตารางเดียวกัน
+ */
+export function leadOutcomesFor(rows = [], eventsByLead = null) {
+  return (rows || []).map((lead) => leadOutcome(
+    lead,
+    eventsByLead ? (eventsByLead.get?.(lead?.id) ?? []) : null,
+  ));
+}
+
 /** รวมผลของลีดหลายใบเป็นตัวเลขชุดเดียว — ที่เดียวที่หาร
  *
  *  🐞 สูตรอัตราแปลงเคยถูกเขียนสองที่: หน้าคิวลีดเขียน `(qualified / total) * 100` ตรง ๆ
@@ -685,7 +708,10 @@ export function leadOutcomeTotals(outcomes = []) {
  *  มาก่อนเสมอ แล้วค่อยดูว่าเคยติดต่อไหม · ถ้าไล่จาก firstContactAt ก่อน ใบที่ปิดไปแล้ว
  *  จะไปโผล่ในช่อง "คุยอยู่" ด้วย แล้วผลรวมเกินจำนวนลีดจริง
  */
-export function channelRollup(rows) {
+/** @param outcomeOf Map(leadId → ผลจาก `leadOutcome`) · ไม่ส่ง = คำนวณจากคอลัมน์เอง
+ *  ⚠️ ผู้เรียกที่มีประวัติลีดอยู่แล้วต้องส่งมา ไม่งั้นตารางนี้จะนับจากคอลัมน์
+ *  ขณะที่การ์ดข้าง ๆ นับจากประวัติ = สองนิยามบนจอเดียวกัน */
+export function channelRollup(rows, outcomeOf = null) {
   const map = new Map();
   for (const lead of rows || []) {
     const channel = lead?.channel || 'unknown';
@@ -702,7 +728,7 @@ export function channelRollup(rows) {
        ⚠️ ส่งเป็นแถวล้วน (ไม่มี events) = อ่านจากคอลัมน์ตามเดิมทุกประการ ตัวเลขไม่ขยับ
        การเปลี่ยนไปอ่านประวัติเป็นการเปลี่ยน **นิยาม** ซึ่งต้องเป็นคอมมิตของตัวเอง
        ไม่งั้นตัวเลขขยับแล้วไม่มีใครแยกออกว่าเพราะรวมโค้ดหรือเพราะเปลี่ยนนิยาม */
-    const outcome = leadOutcome(lead);
+    const outcome = outcomeOf?.get(lead?.id) || leadOutcome(lead);
     row.count += 1;
     if (outcome.reachedContact) row.contacted += 1;
     if (outcome.reachedMeeting) row.meeting += 1;

@@ -77,3 +77,16 @@
 .mutedRow {
   color: var(--text-3);
 }
+
+/* คำเตือน "นับจากคอลัมน์แทนประวัติ" — เหลืองอำพัน = "ยังไม่พร้อม/ไม่ครบ"
+   ไม่ใช่แดง (แดงสงวนให้ของที่พังจริง · หน้านี้ยังอ่านตัวเลขได้อยู่ แค่ต่ำกว่าความจริง) */
+.basisWarning {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-2-5);
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}

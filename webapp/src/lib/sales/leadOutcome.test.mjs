@@ -7,7 +7,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  leadOutcome, leadOutcomeTotals, LEAD_LOST_UNCOUNTABLE, channelRollup as channelRollupOf,
+  leadOutcome, leadOutcomeTotals, leadOutcomesFor, LEAD_LOST_UNCOUNTABLE,
+  LEAD_OUTCOME_EVENT_KINDS, channelRollup as channelRollupOf,
 } from './leads.js';
 
 const lead = (over = {}) => ({ status: 'assigned', ...over });
@@ -168,6 +169,42 @@ test('ค่าว่าง/ขยะ ไม่โยน error', () => {
   assert.equal(leadOutcomeTotals([null]).countable, 0);
 });
 
+/* ══ อ่านจากประวัติ (5b) ═══════════════════════════════════════════════════ */
+
+/* 🪤 all-or-nothing — อ่านประวัติไม่ได้แล้วต้องถอยไปใช้คอลัมน์ **ทั้งกระดาน**
+   ปล่อยให้บางใบอ่านจากประวัติ บางใบอ่านจากคอลัมน์ = ตัวเลขผสมสองนิยามในตารางเดียว
+   ซึ่งไม่มีทางอธิบายได้ว่าทำไมสองแถวถึงนับไม่เหมือนกัน */
+test('อ่านประวัติไม่ได้ (null) = ทุกใบถอยไปใช้คอลัมน์พร้อมกัน', () => {
+  const rows = [lead({ meetingAt: 'x' }), lead({ status: 'new' })];
+  const outcomes = leadOutcomesFor(rows, null);
+  assert.deepEqual(outcomes.map((o) => o.basis), ['row', 'row']);
+  assert.equal(leadOutcomeTotals(outcomes).basis, 'row', 'หน้าจอต้องรู้ว่านับจากคอลัมน์');
+});
+
+/* ⚠️ ใบที่ไม่มีเหตุการณ์เลยต้องได้ `[]` ไม่ใช่ `undefined` — `undefined` จะถอยไปอ่าน
+   คอลัมน์เงียบ ๆ แล้วใบนั้นจะนับคนละนิยามกับเพื่อนในตารางเดียวกัน */
+test('ใบที่ไม่มีเหตุการณ์ในแมป ยังนับจากประวัติ (ไม่ใช่ถอยไปคอลัมน์)', () => {
+  const withMeeting = lead({ id: 'A', meetingAt: 'x' });
+  const outcomes = leadOutcomesFor([withMeeting], new Map());
+  assert.equal(outcomes[0].basis, 'events');
+  assert.equal(outcomes[0].reachedMeeting, false, 'ประวัติว่าง = ยังไม่เคยนัด แม้คอลัมน์จะมีค่า');
+});
+
+/* 🐞 บั๊กที่ 5b เกิดมาแก้: ลีดที่นัดแล้วถูกตีกลับ คอลัมน์ถูกล้าง ⇒ หายจากตัวเศษ */
+test('อ่านจากประวัติแล้วใบที่ถูกตีกลับกลับเข้าตัวเศษ', () => {
+  const bounced = lead({ id: 'B', status: 'new', meetingAt: null, firstContactAt: null });
+  const history = new Map([['B', [ev('meeting'), ev('contact'), ev('bounce')]]]);
+  const fromRow = leadOutcomeTotals(leadOutcomesFor([bounced], null));
+  const fromEvents = leadOutcomeTotals(leadOutcomesFor([bounced], history));
+  assert.equal(fromRow.reached, 0, 'คอลัมน์ถูกล้างไปแล้ว');
+  assert.equal(fromEvents.reached, 1, 'ประวัติยังจำนัดนั้นได้');
+  assert.equal(fromEvents.pct, 100);
+});
+
+test('ชุด kind ที่ต้องดึงครอบทุกอย่างที่ leadOutcome อ่าน', () => {
+  assert.deepEqual([...LEAD_OUTCOME_EVENT_KINDS].sort(), ['contact', 'followup', 'meeting']);
+});
+
 /* ══ ผู้เรียกทั้งหมดกินนิยามเดียวกัน ═══════════════════════════════════════
    สามที่ที่เคยเขียนเงื่อนไขเองซ้ำกัน: `channelRollup` (ไฟล์นี้) · `funnel` และ
    `byAssignee` (KPI route) · ย้ายมาใช้ `leadOutcome` แล้วทั้งหมด
@@ -196,7 +233,9 @@ test('ไม่มีผู้เรียกไหนเขียนเงื�
         `KPI route ยังอ่าน ${hit[0]} เป็นตัวนับ — ต้องผ่าน leadOutcome`);
     }
   }
-  assert.match(code, /leadOutcome\(/, 'route ต้องเรียก leadOutcome จริง ไม่ใช่แค่ import');
+  // เรียกตัวเดี่ยวหรือตัวชุดก็ได้ — ขอแค่ผลมาจากโมดูลกลาง ไม่ใช่คิดเอง
+  assert.match(code, /leadOutcomesFor\(|leadOutcome\(/,
+    'route ต้องเอาผลมาจาก leadOutcome/leadOutcomesFor จริง ไม่ใช่แค่ import');
 });
 
 /* ผลของ channelRollup ต้องไม่ขยับหลังย้ายมาใช้ leadOutcome — การรวมโค้ดกับการเปลี่ยน
