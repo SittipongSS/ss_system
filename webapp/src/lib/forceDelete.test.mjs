@@ -128,11 +128,19 @@ test('cleanupDealOrphans: ลบเธรด+งาน+คำร้องขอ�
       const b = {
         _table: table, _op: null, _col: null,
         select() {
-          return {
-            eq: (c, v) => ({ then: (r) => { b._col = c; r({ data: [{ id: 'IQ1' }] }); } }),
-            // purgeTaskThreads หา id ของงานที่จะถูกลบก่อน เพื่อกวาดเธรดของมัน (mig 0163)
-            in: (c, v) => ({ then: (r) => { b._col = c; r({ data: [{ id: 'T1' }] }); } }),
+          /* ⚠️ chain ได้หลายชั้น — `purgeAttachments` อ่านไฟล์แนบด้วย
+             `.eq(entityType).eq(entityId).order(createdAt)` ⇒ fake ชั้นเดียวพังทันที
+             ที่เส้นลบเริ่มกวาดไฟล์แนบ (ซึ่งเป็นพฤติกรรมที่ต้องการ ไม่ใช่บั๊ก)
+             ⚠️ ตาราง `attachments` ต้องคืน [] — ในเทสต์นี้ไม่มีไฟล์แนบให้กวาด
+             เราสนใจแค่ว่า "เส้นลบเรียกตัวกวาดไหม" ไม่ใช่ผลของการกวาด */
+          const rowsFor = () => (table === 'attachments' ? [] : [{ id: table === 'personal_tasks' ? 'T1' : 'IQ1' }]);
+          const chain = {
+            eq: (c) => { if (!b._col) b._col = c; return chain; },
+            in: (c) => { if (!b._col) b._col = c; return chain; },
+            order: () => Promise.resolve({ data: rowsFor(), error: null }),
+            then: (r) => { r({ data: rowsFor(), error: null }); },
           };
+          return chain;
         },
         delete() { b._op = 'delete'; return b; },
         update(patch) { b._op = 'update'; b._patch = patch; return b; },

@@ -19,15 +19,22 @@ function fakeSupabase({ counts = {}, rows = {}, ops = [], rpcArgs = [] } = {}) {
     from(table) {
       return {
         select() {
-          return {
-            eq() {
-              return Promise.resolve({
-                count: counts[table] ?? 0,
-                data: rows[table] ?? [],
-                error: null,
-              });
-            },
+          /* ⚠️ ต้อง chain `.eq()` ได้หลายชั้นและ `.in()` ด้วย — `listAttachments`
+             (ที่ `purgeAttachments` เรียก) ใช้ `.eq().eq().order()` ส่วนการหางาน
+             ใต้โครงการใช้ `.eq()` ชั้นเดียว · เดิม fake รองรับชั้นเดียวเลยพังทันที
+             ที่ deleteProjectDeep เริ่มกวาดไฟล์แนบ (ซึ่งเป็นพฤติกรรมที่ต้องการ) */
+          const result = () => Promise.resolve({
+            count: counts[table] ?? 0,
+            data: rows[table] ?? [],
+            error: null,
+          });
+          const chain = {
+            eq: () => chain,
+            in: () => chain,
+            order: result,
+            then: (resolve, reject) => result().then(resolve, reject),
           };
+          return chain;
         },
         delete() {
           // ⚠️ ต้อง chain ได้ทั้ง `.eq()` เดี่ยว และ `.eq(...).in(...)` (purgeUpdatesMany

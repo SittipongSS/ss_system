@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { ADDENDUM_DOC_TITLE, canDeleteAddendum, isAddendumEditable } from '@/lib/sales/contractAddenda';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +84,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return fail('ลบได้เฉพาะร่างที่ยังไม่ออกเลขที่ — ฉบับที่ออกแล้วให้กดยกเลิก', 409);
   }
 
+  // ไฟล์ที่แนบกับบันทึกเพิ่มเติม — เหตุผลเดียวกับตัวสัญญา
+  await purgeAttachments('contract_addendum', id);
   const { error } = await supabase.from('sales_contract_addenda').delete().eq('id', id);
   if (error) return fail(error.message, 500);
 

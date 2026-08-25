@@ -36,6 +36,7 @@ import { recordAudit } from '@/lib/audit';
 import { canAnswerRequestsFor } from '@/lib/permissions';
 import { deleteRequestRowError, registryOwnedByRow } from '@/lib/requests/rowDelete';
 import { countRegistryRefs } from '@/lib/master/scentFormulaAdmin';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -324,6 +325,12 @@ export async function DELETE(request, { params }) {
   if (gate) return Response.json({ error: gate }, { status: 409 });
 
   try {
+    /* ⚠️ ไฟล์แนบของบรรทัดต้องไปก่อนแถว — polymorphic ไม่มี FK cascade ⇒ ลบแถวเฉย ๆ
+       แล้วทั้งแถวไฟล์แนบและไฟล์บน Drive ค้างเป็นของกำพร้า · วัดบน prod 2026-08-25:
+       แถวกำพร้าชนิด `dept_request_item` 3 แถว มาจากเส้นนี้
+       ⚠️ เส้นลบอีกสองทางของบรรทัดเดียวกัน (ลบทั้งใบ · ลบวัสดุที่ถูกอ้าง) เรียก
+       `purgeAttachments` อยู่แล้ว — เส้นนี้เป็นทางที่หลุด */
+    await purgeAttachments('dept_request_item', itemId);
     const { error: rowError } = await supabase.from('dept_request_items').delete().eq('id', itemId);
     if (rowError) throw rowError;
 

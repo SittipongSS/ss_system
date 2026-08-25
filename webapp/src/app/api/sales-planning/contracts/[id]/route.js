@@ -5,6 +5,7 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/
 import { canDeleteContract, contractKindLabel, isContractEditable } from '@/lib/sales/contracts';
 import { contractQuotationNotice, newerApprovedQuotation } from '@/lib/sales/contractQuotationState';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,6 +114,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return fail('ลบได้เฉพาะร่างที่ยังไม่ออกเลขที่สัญญา — ใบที่ออกแล้วให้กดยกเลิก', 409);
   }
 
+  // ไฟล์ฉบับลงนามที่แนบกับสัญญา — กวาดก่อนแถวหาย (polymorphic ไม่มี FK cascade)
+  await purgeAttachments('contract', id);
   const { error } = await supabase.from('sales_contracts').delete().eq('id', id);
   if (error) return fail(error.message, 500);
 
