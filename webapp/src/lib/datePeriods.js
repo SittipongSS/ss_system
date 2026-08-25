@@ -134,6 +134,72 @@ export function periodScopeLabel(month, allMonths, { short = false } = {}) {
   return `ทั้งปี ${displayYear(year)}`;
 }
 
+/* ── ช่วงงวดเดือน `{ from, to }` ─────────────────────────────────────────
+   ⭐ รายงานยอดขายต้องดูช่วงที่ **ข้ามปีปฏิทิน** ได้ (มติผู้ใช้ 2026-08-25) เช่น
+   ก.ย. 2025 – ส.ค. 2026 · ของเดิมทั้งระบบคิดเป็น "ปีหนึ่งปี" หรือ "เดือนหนึ่งเดือน"
+   เท่านั้น จึงต้องมีชนิดข้อมูลกลางของช่วงเดือนก่อน แล้วค่อยมีตัวเลือกบนจอ
+
+   ⚠️ **ความละเอียดเป็นเดือน ไม่ใช่วัน** ต่างจาก `DayRangePicker` ของหน้าลีดโดยตั้งใจ —
+   ยอดขายไม่มี resolution ระดับวัน (ยอดปิดบัคเก็ตเป็นเดือน · เป้าและยอดย้อนหลังเก็บ
+   รายเดือน) ช่วงรายวันจะให้ตัวเลขที่ไม่มีทางถูก
+
+   🪤 ทรงเป็น `{ from, to }` ไม่ใช่ `{ first, last }` ของ `monthRangeOfYear` ข้างล่าง —
+   ตัวนั้นเป็นตัวช่วยเทียบคอลัมน์ที่มีผู้เรียกอยู่แล้ว ส่วนชุดนี้เป็นค่าที่ผู้ใช้เลือก
+   และจะไปโผล่เป็น query string `?from=&to=` (ทรงเดียวกับคิว KPI ลีด) */
+
+/** ช่วงที่ถูกต้อง = สองค่าเป็นงวดเดือนจริง และ from ไม่มากกว่า to (สลับให้เองถ้ากลับด้าน) */
+export function normalizeMonthRange(range) {
+  const from = range?.from;
+  const to = range?.to;
+  if (!isMonthValue(from) || !isMonthValue(to)) return null;
+  return compareMonths(from, to) > 0 ? { from: to, to: from } : { from, to };
+}
+
+/** ทุกงวดเดือนในช่วง (รวมปลายทั้งสองข้าง) เรียงจากเก่าไปใหม่ */
+export function monthsInRange(from, to) {
+  const range = normalizeMonthRange({ from, to });
+  if (!range) return [];
+  const out = [];
+  let cursor = range.from;
+  // เพดานกันวนไม่รู้จบเมื่อได้ค่าประหลาดมา — 100 ปีเกินพอสำหรับรายงานยอดขาย
+  for (let guard = 0; guard < 1200 && cursor && compareMonths(cursor, range.to) <= 0; guard += 1) {
+    out.push(cursor);
+    cursor = addMonths(cursor, 1);
+  }
+  return out;
+}
+
+/** จำนวนเดือนในช่วง — นับปลายทั้งสองข้าง (ก.ย.–ก.ย. = 1 เดือน) */
+export function monthCountInRange(from, to) {
+  return monthsInRange(from, to).length;
+}
+
+/** ช่วง N เดือนล่าสุดโดยนับเดือนที่ยืนอยู่เป็นเดือนสุดท้าย */
+export function lastNMonths(count, { now = new Date(), anchor } = {}) {
+  const end = isMonthValue(anchor) ? anchor : currentMonth(now);
+  const n = Math.trunc(Number(count));
+  if (!end || !Number.isFinite(n) || n < 1) return null;
+  return { from: addMonths(end, -(n - 1)), to: end };
+}
+
+/** ไตรมาสที่ครอบงวดเดือนนั้น (ไตรมาสปฏิทิน ม.ค.–มี.ค. เป็นต้นไป) */
+export function quarterRangeOfMonth(month) {
+  const parts = partsOf(month);
+  if (!parts) return null;
+  const startMonth = Math.floor((parts.month - 1) / 3) * 3 + 1;
+  const year = String(parts.year).padStart(4, '0');
+  return {
+    from: `${year}-${String(startMonth).padStart(2, '0')}`,
+    to: `${year}-${String(startMonth + 2).padStart(2, '0')}`,
+  };
+}
+
+/** ช่วงของทั้งปีในทรง `{ from, to }` */
+export function monthRangeOfWholeYear(year) {
+  if (!isYearValue(year)) return null;
+  return { from: `${year}-01`, to: `${year}-12` };
+}
+
 /** ขอบเขตงวดเดือนของทั้งปี — ใช้เทียบกับคอลัมน์ที่เก็บเป็น YYYY-MM */
 export function monthRangeOfYear(year) {
   if (!isYearValue(year)) return null;
