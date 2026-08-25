@@ -17,6 +17,7 @@
 // ⚠️ **ตรรกะอยู่ที่นี่ ตัววาดอยู่ที่ `components/ui/StepTrack`** — แยกเพราะเทสต์
 // node import JSX ไม่ได้ และป้ายสรุปบนจอแคบก็อ่านผลชุดเดียวกันโดยไม่วาดราง
 import { requestProgress } from '@/lib/requests/stages';
+import { dueIsStale } from '@/lib/requests/dueRound';
 import { fmtDate } from '@/lib/format';
 import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
@@ -67,13 +68,21 @@ export function requestQueueTrack(request = {}) {
   const committed = String(request?.committedDueDate || '').trim();
   const finished = ['answered', 'closed'].includes(status)
     || !!request?.answeredAt || !!request?.closedAt;
-  const dueStep = committed
-    ? step('due', 'กำหนดส่ง', 'done', fmtDate(committed))
-    : acked
-      ? (finished
-        ? step('due', 'กำหนดส่ง', 'skip', 'ไม่เคยแจ้งกำหนดส่ง')
-        : step('due', 'กำหนดส่ง', 'now', requestWaitLabel(request, 'dept', 'แจ้งวัน')))
-      : step('due', 'กำหนดส่ง', 'todo');
+  /* ⭐ **รอบแก้ดึงขั้นนี้กลับมา** (มติผู้ใช้ 2026-08-25) — ลูกค้าขอให้แก้ ⇒ เกิดแถว
+     รอบใหม่ที่ยังไม่มีใครรับปากวัน · หมุด `done` พร้อมวันของรอบก่อนอ่านว่า "ตกลงกัน
+     แล้ว" ทั้งที่งานที่กำลังทำอยู่ไม่มีวันสักวัน (`dueIsStale` — lib/requests/dueRound.js) */
+  // ⚠️ ใบที่จบแล้วไม่ค้าง — แถวรอบแก้ที่ยังเปิดค้างในใบที่ปิดไปแล้วมีได้ (ปิดทั้งใบ
+  // ทับแถว) · ไม่กันไว้ตรงนี้ หมุดจะเด้งกลับเป็น `now` ในใบที่ไม่มีใครทำอะไรแล้ว
+  const staleDue = !finished && dueIsStale(request, request?.items);
+  const dueStep = staleDue
+    ? step('due', 'กำหนดส่ง', 'now', requestWaitLabel(request, 'dept', 'แจ้งวันรอบแก้'))
+    : committed
+      ? step('due', 'กำหนดส่ง', 'done', fmtDate(committed))
+      : acked
+        ? (finished
+          ? step('due', 'กำหนดส่ง', 'skip', 'ไม่เคยแจ้งกำหนดส่ง')
+          : step('due', 'กำหนดส่ง', 'now', requestWaitLabel(request, 'dept', 'แจ้งวัน')))
+        : step('due', 'กำหนดส่ง', 'todo');
 
   /* ── ขั้น 4 · ฝ่ายผู้รับตอบ/ส่งงาน ──────────────────────────────────────
      โน้ตใต้ขั้นบอก **คืบหน้ารายบรรทัด** ของใบที่มีบรรทัด — ตัวเลขเดียวกับที่

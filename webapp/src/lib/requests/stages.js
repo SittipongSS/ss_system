@@ -3,6 +3,7 @@
 // จึงขัดกันไม่ได้ (กฎที่ request-hub-rebuild-plan บันทึกไว้ว่าเคยพลาด: เงื่อนไขที่
 // ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางเงียบโดยไม่บอกเหตุผล)
 import { requestDeliversRows, requestHasItems } from '@/lib/master/requestTypes';
+import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
@@ -103,16 +104,23 @@ export function acknowledgeRequestError(request) {
 
 // ── แจ้งกำหนดส่ง: ก้าวที่สองของฝ่ายผู้รับ (มติผู้ใช้ 2026-08-19) ──────────
 //
-// ⚠️ **ครั้งแรกเท่านั้น** — เปลี่ยนวันที่รับปากไปแล้วต้องไปทาง
-// `rescheduleRequestError` ซึ่งบังคับให้เธรดเห็นว่าเลื่อนจากวันไหนเป็นวันไหน ·
-// ปล่อยให้ก้าวนี้เขียนทับได้เมื่อไร การเลื่อนวันก็มีทางลัดที่ไม่ทิ้งร่องรอยทันที
+// ⚠️ **หนึ่งครั้งต่อรอบ** — เปลี่ยนวันของ *รอบเดิม* ต้องไปทาง `rescheduleRequestError`
+// ซึ่งบังคับให้เธรดเห็นว่าเลื่อนจากวันไหนเป็นวันไหน · ปล่อยให้ก้าวนี้เขียนทับได้เมื่อไร
+// การเลื่อนวันก็มีทางลัดที่ไม่ทิ้งร่องรอยทันที
+//
+// ⭐ **รอบแก้เปิดก้าวนี้ใหม่** (มติผู้ใช้ 2026-08-25) — ลูกค้าขอให้แก้ ⇒ เกิดแถวรอบใหม่
+// ที่ยังไม่มีใครรับปากวัน · วันที่ใบถืออยู่เป็นของงานที่ส่งไปแล้ว ⇒ ไม่ใช่การ "เลื่อน"
+// คำสัญญาเดิม แต่เป็นการ **แจ้งวันของงานชิ้นใหม่** ⇒ คำบนปุ่มและในเธรดต้องเป็น
+// "แจ้งวันส่ง" ไม่ใช่ "เลื่อนวัน" (`dueIsStale` ตัดสินให้ — ดู lib/requests/dueRound.js)
 export function commitDueRequestError(request, { committedDueDate = null } = {}) {
   if (!request) return 'ไม่พบคำร้อง';
   if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — รับเรื่องก่อนแจ้งกำหนดส่ง';
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) {
     return request.status === 'cancelled' ? 'คำร้องนี้ถูกยกเลิกไปแล้ว' : 'คำร้องนี้ปิดไปแล้ว';
   }
-  if (String(request.committedDueDate ?? '').trim()) {
+  // ⚠️ อ่านแถวจากตัวใบ (`request.items`) ไม่ใช่พารามิเตอร์เพิ่ม — เหตุผลเดียวกับ
+  // `requestAwaitingDue`: ผู้เรียกที่ลืมส่งจะทำให้ด่านกับปุ่มเห็นไม่ตรงกันเงียบ ๆ
+  if (String(request.committedDueDate ?? '').trim() && !dueIsStale(request, request.items)) {
     return 'ใบนี้แจ้งกำหนดส่งไปแล้ว — ใช้ปุ่มเลื่อนวันกำหนดส่งแทน';
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(committedDueDate ?? '').trim())) {
@@ -137,6 +145,12 @@ export function rescheduleRequestError(request, { committedDueDate = null } = {}
   if (!String(request.committedDueDate ?? '').trim()) {
     return 'ใบนี้ยังไม่ได้แจ้งกำหนดส่ง — ใช้ปุ่มแจ้งกำหนดส่งแทน';
   }
+  /* ⚠️ **รอบแก้ไม่ใช่การเลื่อน** (มติผู้ใช้ 2026-08-25) — วันที่ถืออยู่เป็นของงานที่ส่ง
+     ไปแล้ว ⇒ ปล่อยให้ทางนี้ผ่านเมื่อไร เธรดจะขึ้น "เลื่อนวันกำหนดส่ง 14/08 → 05/09"
+     ทั้งที่ไม่มีใครเลื่อนอะไร — งานคนละชิ้นกัน · หนึ่งสถานะต้องมีปุ่มที่ถูกปุ่มเดียว */
+  if (dueIsStale(request, request.items)) {
+    return 'รอบแก้นี้ยังไม่ได้แจ้งวันส่ง — ใช้ปุ่มแจ้งกำหนดส่งแทน';
+  }
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) {
     return request.status === 'cancelled' ? 'คำร้องนี้ถูกยกเลิกไปแล้ว' : 'คำร้องนี้ปิดไปแล้ว';
   }
@@ -144,7 +158,7 @@ export function rescheduleRequestError(request, { committedDueDate = null } = {}
   // ⚠️ ว่างไม่ได้ — "เลื่อน" ที่แปลว่าลบวันทิ้งคือการถอนคำสัญญาโดยไม่มีใครเห็น
   // อยากถอนจริงต้องยกเลิกใบ ไม่ใช่ล้างช่องวัน
   if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return 'ต้องระบุวันกำหนดส่งใหม่';
-  if (next === request.committedDueDate) return 'วันเดิมกับที่รับปากไว้แล้ว';
+  if (next === request.committedDueDate) return 'วันเดิมกับที่แจ้งไว้แล้ว';
   return null;
 }
 

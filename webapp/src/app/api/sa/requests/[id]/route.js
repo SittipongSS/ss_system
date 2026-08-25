@@ -10,6 +10,7 @@
 //          pdr-ref-manual (RD กรอก/แก้เลขเองในช่วงเปลี่ยนผ่าน mig 0272)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { dueIsStale } from '@/lib/requests/dueRound';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import {
@@ -275,16 +276,29 @@ export async function PATCH(request, { params }) {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `แจ้งกำหนดส่งได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
+      /* ⭐ **รอบแก้เปิดก้าวนี้ใหม่** (มติผู้ใช้ 2026-08-25) — ต้องอ่าน `dueIsStale`
+         **ก่อน** เขียน patch เพราะพอเขียนแล้ววันเก่าหายไปจากมือ */
+      const rework = dueIsStale(before, before.items);
       const err = commitDueRequestError(before, { committedDueDate: body.committedDueDate });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
       patch.committedDueDate = String(body.committedDueDate).trim();
+      /* ⭐ **ตราเวลาที่ลงวัน** (mig 0288) — ตัวเดียวที่ตอบได้ว่าวันที่ถืออยู่เป็นของ
+         รอบไหน · ขาดไปเมื่อไร ใบจะค้างอยู่ขั้น "แจ้งกำหนดส่ง" ตลอดกาลเพราะแถวรอบแก้
+         เกิดหลัง `dueCommittedAt` ที่ยังเป็น NULL ไม่ได้ (NULL = ไม่ค้าง) แต่ใบที่เคย
+         มีค่าแล้วจะไม่มีอะไรมาขยับให้ */
+      patch.dueCommittedAt = nowIso;
       // เหตุผลไม่บังคับ — ครั้งแรกยังไม่มีคำสัญญาเดิมให้ต้องอธิบาย (ต่างจากการเลื่อน)
       const note = String(body.reason ?? '').trim();
       if (note.length > 500) {
         return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });
       }
       eventReason = note || null;
-      summary = `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
+      /* ⚠️ **รอบแก้ต้องบอกวันเดิมด้วย** — ไม่ใช่เพราะเลื่อน แต่เพราะคนอ่านย้อนหลัง
+         ต้องแยกออกว่า 05/09 นี้เป็นวันของรอบใหม่ ไม่ใช่การแก้ตัวเลข 14/08 ที่ค้างอยู่ */
+      summary = rework
+        ? `แจ้งกำหนดส่งรอบแก้ ${patch.committedDueDate} (รอบก่อน ${before.committedDueDate})`
+          + (note ? ` — ${note}` : '')
+        : `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
     } else if (action === 'update') {
       // ⭐ **แก้คำร้องที่ยังไม่ถูกรับเรื่อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้
       // ใบที่บันทึกแล้วแก้ไม่ได้เลยสักช่อง ต้องลบทิ้งแล้วเปิดใหม่
@@ -490,6 +504,9 @@ export async function PATCH(request, { params }) {
 
       const next = String(body.committedDueDate).trim();
       patch.committedDueDate = next;
+      // ⚠️ เลื่อนวันก็คือการลงวันใหม่ — ไม่ประทับที่นี่ด้วย ใบที่แจ้งครั้งแรกแล้วเลื่อน
+      // ก่อนมีรอบแก้ จะถือ `dueCommittedAt` ของครั้งแรกซึ่งเก่ากว่าความจริง (mig 0288)
+      patch.dueCommittedAt = nowIso;
       const reason = String(body.reason ?? '').trim();
       if (reason.length > 500) {
         return Response.json({ error: 'เหตุผลยาวเกิน 500 ตัวอักษร' }, { status: 400 });

@@ -9,6 +9,7 @@
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestDeliversRows } from '@/lib/master/requestTypes';
 import { requestAwaitingDue } from '@/lib/requests/statuses';
+import { dueIsStale } from '@/lib/requests/dueRound';
 import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
 import { requestRowSummary, rowStage } from '@/lib/requests/rowStage';
@@ -132,10 +133,16 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
     {
       id: 'commitDue',
       label: 'กำหนดส่ง',
-      hint: evidence(request.committedDueDate && fmtDate(request.committedDueDate))
+      /* ⭐ **รอบแก้ดึงขั้นนี้กลับมา** (มติผู้ใช้ 2026-08-25) — วันที่ใบถืออยู่เป็นของ
+         งานที่ส่งไปแล้ว ⇒ โชว์เป็นหลักฐานเฉย ๆ ไม่ได้ ต้องบอกว่ารออะไรอยู่ตอนนี้
+         ⚠️ ยังโชว์วันเดิมต่อท้าย — คนอ่านต้องรู้ว่ารอบก่อนตกลงวันไหนไว้ ไม่ใช่ให้
+         ตัวเลขหายไปเฉย ๆ ราวกับไม่เคยมีใครรับปากอะไร */
+      hint: (dueIsStale(request, request.items) && request.committedDueDate)
+        ? `${requestWaitLabel(request, 'dept', 'แจ้งวันของรอบแก้')} · รอบก่อน ${fmtDate(request.committedDueDate)}`
+        : evidence(request.committedDueDate && fmtDate(request.committedDueDate))
         || (request.acknowledgedAt
           ? requestWaitLabel(request, 'dept', 'แจ้งวัน')
-          : `${request.dept} รับปากวันหลังรับเรื่อง`),
+          : `${request.dept} แจ้งวันส่งหลังรับเรื่อง`),
     },
     // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
     // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม
