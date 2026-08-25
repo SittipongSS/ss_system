@@ -11,6 +11,7 @@
 // (`/api/notifications` ไม่รับพารามิเตอร์ `userId` โดยเจตนา)
 import { useCallback, useEffect, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { Bell, BellOff, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -79,9 +80,12 @@ export default function NotificationsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true); setError("");
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
+    setError("");
     try {
       const body = await fetchPage({ scope });
       if (!isLatest()) return; // สลับขอบเขตระหว่างรอ — กล่องต้องตรงกับปุ่มที่กดค้างไว้
@@ -90,12 +94,13 @@ export default function NotificationsPage() {
       setTotal(body.total || 0);
       setCursor(body.hasMore ? body.nextCursor : null);
     } catch (e) {
-      if (!isLatest()) return;
+      if (!isLatest() || opts?.background) return;
       setError(e.message);
       setItems([]);
     } finally { if (isLatest()) setLoading(false); }
   }, [scope, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const loadMore = async () => {
     if (!cursor) return;

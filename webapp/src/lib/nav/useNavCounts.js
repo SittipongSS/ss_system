@@ -79,9 +79,21 @@ export default function useNavCounts(pathname) {
 
   useEffect(() => { load(true); }, [load]);
   useEffect(() => { load(); }, [pathname, load]);
+  /* ⚠️ **ไม่ยิงตอนแท็บซ่อน** (กติกาเดียวกับกระดิ่ง) — ป้ายที่ไม่มีใครมองไม่ต้องสด
+     กลับมามองเมื่อไรค่อยดึง · ทางนี้ไม่ force เพราะคอกกั้น MIN_GAP_MS ต้องมีผล
+     (`visibilitychange` เด้งได้ถี่กว่ารอบโพลมาก) */
   useEffect(() => {
-    const timer = setInterval(() => load(true), POLL_MS);
-    return () => clearInterval(timer);
+    const tick = (force) => {
+      if (document.visibilityState !== "visible") return;
+      load(force === true);
+    };
+    const timer = setInterval(() => tick(true), POLL_MS);
+    const onVisible = () => tick(false);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load]);
 
   return counts;

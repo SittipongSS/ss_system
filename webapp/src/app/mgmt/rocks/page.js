@@ -4,6 +4,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -101,18 +102,21 @@ export default function MgmtRocksPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     try {
       const res = await fetch(`/api/mgmt/rocks?year=${year}`);
       const data = res.ok ? await res.json() : [];
       if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
       setRows(data);
-    } catch { if (isLatest()) setRows([]); }
+    } catch { if (isLatest() && !opts?.background) setRows([]); }
     if (isLatest()) setLoading(false);
   }, [year, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const deptLabel = useCallback((code) => departments.find((d) => d.code === code)?.label || code, [departments]);
   const addable = useMemo(() => {

@@ -2,6 +2,7 @@
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -225,9 +226,11 @@ export default function TasksPage() {
      เป็น `lib/ui/latestRun` แล้วให้ทุกหน้ารายการใช้ตัวเดียวกัน (พฤติกรรมเหมือนเดิมเป๊ะ) */
   const startRun = useLatestRun();
   const deepLinkHandled = useRef(false);
-  const loadWork = async (sc) => {
+  const loadWork = async (sc, opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร คิวงานต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     try {
       const res = await fetch(`/api/pm/my-work?scope=${sc}`);
       const d = res.ok ? await res.json() : {};
@@ -244,6 +247,8 @@ export default function TasksPage() {
   };
 
   useEffect(() => { loadWork(scope); }, [scope]);
+  // ⚠️ ส่ง arrow ตรง ๆ ได้ — hook เก็บตัวล่าสุดไว้ใน ref อยู่แล้ว ไม่ต้องกลัว identity เปลี่ยน
+  useRevalidateOnFocus(() => loadWork(scope, { background: true }));
   useEffect(() => {
     cachedFetchJson("/api/pm/assignable-users").then((u) => {
       setUsers(u || []);

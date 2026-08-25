@@ -9,6 +9,7 @@
 // จำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CheckCircle2, MapPin, Phone, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -50,9 +51,11 @@ export default function MyVisitsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/service/my-visits?scope=${scope}`);
@@ -64,12 +67,13 @@ export default function MyVisitsPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "วันนี้ไม่มีงาน" หน้าตาเหมือนกัน
       // จนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่างทั้งที่มีนัดรออยู่
-      if (isLatest()) setLoadError(e.message || "โหลดคิวงานไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดคิวงานไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [scope, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
   const todayIso = businessDate();
