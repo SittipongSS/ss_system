@@ -185,7 +185,7 @@ export default function TransitionDialog({
   // มีช่องเพิ่ม → ประกอบเอง แต่ยังใช้ primitive เดิมทุกช่อง
   const reasonRequired = reason === "required";
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm" dismissible={!busy}>
+    <Modal open={open} onClose={onClose} title={title} size={transition.dialogSize || "sm"} dismissible={!busy}>
       <div className={styles.body}>
         {description ? <p className={styles.description}>{description}</p> : null}
         {reasonPolicy.detail ? (

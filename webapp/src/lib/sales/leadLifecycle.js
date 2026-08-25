@@ -335,6 +335,9 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         from: allowedFrom("disqualify"),
         to: "disqualified",
         reason: reasonRule("disqualify"),
+        // เหตุผล 8 ข้อเรียงเป็นไทล์ — กล่อง sm บีบเหลือ 2 คอลัมน์ = 4 แถว ต้องเลื่อนอ่าน
+        // md ได้ 3 คอลัมน์ เห็นครบทุกข้อพร้อมกันก่อนตัดสินใจ (มติผู้ใช้ 2026-08-25)
+        dialogSize: "md",
         visible: (lead, user) => oversees(user, lead),
         reasonPolicy: {
           title: "ปิดลีดนี้",

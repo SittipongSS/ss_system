@@ -46,6 +46,11 @@ export const BACKWARD_KINDS = [
 export const ROW_TONES = ["navy", "blue", "violet", "teal", "green", "amber", "red"];
 
 const REASON_MODES = ["none", "optional", "required"];
+
+/* ความกว้างของกล่องกรอก — ตรงกับ size ของ Modal
+   ปกติ 'sm' (480px) พอสำหรับช่องเรียงลงมาแนวตั้ง; ขยายเฉพาะ transition ที่มีชุดไทล์
+   ให้เลือก เพราะไทล์เรียงเป็นกริดตามความกว้าง กล่องแคบบีบให้เหลือ 2 คอลัมน์ ต้องเลื่อนอ่าน */
+const DIALOG_SIZES = ["sm", "md", "lg", "xl"];
 const DEFAULT_REASON_MIN = 10;
 const DEFAULT_REASON_MAX = 500;
 
@@ -194,6 +199,11 @@ function normalizeTransition(transition, entity) {
     );
   }
 
+  const dialogSize = transition.dialogSize || "sm";
+  if (!DIALOG_SIZES.includes(dialogSize)) {
+    throw new Error(`defineLifecycle(${entity}): transition ${id} dialogSize ต้องเป็น ${DIALOG_SIZES.join("|")}`);
+  }
+
   const fields = asArray(transition.fields).map((field) => normalizeField(field, entity, id));
 
   return {
@@ -207,6 +217,7 @@ function normalizeTransition(transition, entity) {
     from: transition.from == null || transition.from === "*" ? "*" : asArray(transition.from),
     to: transition.to ?? null,
     reason,
+    dialogSize,
     reasonPolicy: {
       label: "เหตุผล",
       minLength: reason === "required" ? DEFAULT_REASON_MIN : 0,
