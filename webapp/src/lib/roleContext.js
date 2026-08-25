@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useMemo } from "react";
 import { can as _can, homeSystemForUser, sanitizeExtraCaps, userTeams as _userTeams } from "./permissions";
+import { adoptsPathname } from "@/config/navigation";
 
 // Provided by AppLayout (which already knows the signed-in user's role).
 // Pages use useCan('<resource>:<action>') to show/hide actions.
@@ -76,6 +77,21 @@ export function useHomeSystem() {
   const role = useContext(RoleContext);
   const department = useContext(DepartmentContext);
   return useMemo(() => homeSystemForUser({ role, department }), [role, department]);
+}
+
+/* เปลือกที่ "หน้านี้" สวมอยู่สำหรับคนดูคนนี้ — 'rd' | 'finance' | null (= เปลือกงานขาย)
+ *
+ * ⚠️ **บ้านของคนดูอย่างเดียวไม่พอ** — ฝ่ายหนึ่งรับเฉพาะบางเส้นทางมาไว้ในบ้านตัวเอง
+ * (`ADOPTED_SHARED_PATHS`: RD รับแค่ `/requests` · FN รับเอกสารขายสี่ชนิด) ⇒ ต้องถาม
+ * ทั้ง "บ้านของเขา" และ "หน้านี้ถูกรับไปหรือยัง" ด้วยฟังก์ชันชุดเดียวกับที่เมนูใช้
+ * ไม่งั้นวันที่ลิสต์การรับเปลี่ยน เนื้อหาบนหน้าจะพูดภาษาของเปลือกที่ไม่ได้ครอบมันอยู่
+ */
+export function useShellSystem(pathname) {
+  const home = useHomeSystem();
+  return useMemo(
+    () => (home && adoptsPathname(home, pathname) ? home : null),
+    [home, pathname],
+  );
 }
 
 export function useCan(cap) {

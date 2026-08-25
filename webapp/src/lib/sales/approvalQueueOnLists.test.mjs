@@ -52,18 +52,23 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
    ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (SHARED_DOC_ITEMS · 2026-08-22)
    🪤 ถ้าหน้าจอเช็ค role/department เอง วันที่ฝ่ายใหม่ได้เมนูเอกสารร่วมเพิ่ม
    เปลือกกับการ์ดจะเดินหนีกันเงียบ ๆ ⇒ ต้องถามตัวเดียวกับที่เลือกเปลือก */
-test('การ์ดบนทะเบียนใบสั่งขายถามบ้านของคนดูจากตัวเลือกเปลือก ไม่ใช่เช็ค role เอง', () => {
+test('การ์ดบนทะเบียนใบสั่งขายถามเปลือกที่หน้านี้สวมอยู่ ไม่ใช่เช็ค role เอง', () => {
   const page = read('app/sales-planning/sales-orders/page.js');
-  assert.match(page, /useHomeSystem\(\) === "finance"/, 'ต้องใช้ hook ตัวเดียวกับเมนู');
+  assert.match(page, /useShellSystem\(usePathname\(\)\) === "finance"/, 'ต้องถามเปลือกของหน้านี้');
   assert.doesNotMatch(page, /department === ['"]FN['"]|role === ['"]finance['"]/, 'ห้ามเช็คฝ่าย/บทบาทเองในหน้า');
   assert.match(page, /financeShell \? row\._awaitingFinanceReview : row\._awaitingMyApproval/);
   assert.match(page, /financeShell \? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"/, 'คำบนปุ่มต้องตรงกับงานของคนที่ยืนอยู่');
 
+  /* 🪤 **บ้านของคนดูอย่างเดียวไม่พอ** — RD รับแค่ `/requests` (ADOPTED_SHARED_PATHS)
+     ⇒ RD ที่เปิดทะเบียนใบสั่งขายยังอยู่ในเปลือกงานขาย · ถ้าตัดสินด้วย home ลอย ๆ
+     วันที่ลิสต์การรับเปลี่ยน เนื้อหาจะพูดภาษาเปลือกที่ไม่ได้ครอบมันอยู่ */
   const ctx = read('lib/roleContext.js');
-  assert.match(ctx, /export function useHomeSystem\(\)/);
+  assert.match(ctx, /export function useShellSystem\(pathname\)/);
+  assert.match(ctx, /adoptsPathname\(home, pathname\)/, 'ต้องเช็คลิสต์เส้นทางที่บ้านนั้นรับไปด้วย');
   assert.match(ctx, /homeSystemForUser\(\{ role, department \}\)/, 'hook ต้องเรียกตัวเดียวกับ config/navigation');
   const nav = read('config/navigation.js');
   assert.match(nav, /homeSystemForUser\(user\)/, 'เมนูยังตัดสินด้วยฟังก์ชันเดิม');
+  assert.match(nav, /rd: \['\/requests'\]/, 'RD รับแค่ใบคำร้อง — เอกสารขายยังเป็นเปลือกงานขาย');
 });
 
 test('ทะเบียนทั้งห้าใช้คิวตัวเดียวกัน และเอกสารขายกดเปิดใบ ไม่ใช่ติ๊กอนุมัติในลิสต์', () => {

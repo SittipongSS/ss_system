@@ -4,7 +4,7 @@ import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
@@ -16,7 +16,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan, useHomeSystem } from "@/lib/roleContext";
+import { useCan, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -230,12 +230,13 @@ export default function SalesOrdersPage() {
      และหน้าเดียวกันสวมเปลือกคนละอันตามคนดู ⇒ การ์ดต้องพูดงานของคนที่ยืนอยู่
        เปลือกบัญชี  → ใบที่ผ่าน AE Sup แล้วและรอบัญชีตรวจ (แกน `financeStatus`)
        เปลือกอื่น   → ใบที่รอคนดูอนุมัติ (แกน `status`)
-     ⚠️ ตัดสินด้วย `useHomeSystem()` ซึ่งเป็น **ตัวเดียวกับที่เลือกเปลือกเมนู** —
-     ห้ามเช็ค role/department เองตรงนี้ ไม่งั้นเมนูกับการ์ดเดินหนีกันวันที่ฝ่ายใหม่
-     ได้เมนูเอกสารร่วมเพิ่ม
+     ⚠️ ตัดสินด้วย `useShellSystem(pathname)` ซึ่งถาม **ทั้งบ้านของคนดูและลิสต์
+     เส้นทางที่บ้านนั้นรับไป** (`ADOPTED_SHARED_PATHS`) — ชุดเดียวกับที่เมนูใช้
+     ห้ามเช็ค role/department เองตรงนี้ และห้ามใช้ "บ้านของคนดู" ลอย ๆ เพราะ RD
+     รับแค่ `/requests` ⇒ RD ที่เปิดหน้านี้ยังอยู่ในเปลือกงานขาย ไม่ใช่เปลือก RD
      ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
      (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
-  const financeShell = useHomeSystem() === "finance";
+  const financeShell = useShellSystem(usePathname()) === "finance";
   const approvalQueue = useMemo(
     () => rows.filter((row) => (financeShell ? row._awaitingFinanceReview : row._awaitingMyApproval)),
     [rows, financeShell],
