@@ -128,7 +128,16 @@ export function RowStepActions({
       </div>
     );
   }
-  const tag = <OwnerTag owner={owner} deptLabel={deptLabel} requesterLabel={requesterLabel} />;
+  /* ⚠️ **ขึ้นเฉพาะตอนสองฝั่งสดพร้อมกัน** (มติผู้ใช้ 2026-08-26 — แคบลงจากรอบแรก)
+     🐞 รอบแรกติดชิปทุกครั้งที่ปุ่มกดได้ โดยให้เหตุผลว่า "คนที่เพิ่งเข้าระบบอ่านปุ่มจาง
+     ได้แค่ว่าไม่ใช่ของฉัน" ซึ่ง **ผิด** — กิ่ง `!isMine` เขียน "รอ RD" อยู่แล้ว ไม่ใช่
+     ปุ่มจางเปล่า ๆ ⇒ คนที่มีบทบาทเดียวได้ป้ายบอกบทบาทตัวเองซ้ำทุกแถวที่กดได้
+     ⭐ คนที่แยกไม่ออกจริงมีกลุ่มเดียว: คนที่ `canDept` และ `canRequester` เป็นจริง
+     พร้อมกัน (แอดมิน — `canAnswerRequestsFor` และ `canManageRequest` คืน true ให้
+     superuser ทั้งคู่) ⇒ เห็นปุ่มสดทั้งสองฝั่งทุกแถวโดยไม่มีอะไรบอกว่าแถวไหนของใคร */
+  const tag = (canDept && canRequester)
+    ? <OwnerTag owner={owner} deptLabel={deptLabel} requesterLabel={requesterLabel} />
+    : null;
   if (hop === "outcome") {
     return (
       <div className={styles.actions}>

@@ -6,7 +6,7 @@
 //
 // ⚠️ **ประกอบที่ lib ไม่ใช่ใน JSX** — กฎที่ตั้งไว้หลังบั๊กรางซ้ำ (#1033): ประกอบ
 // array ของขั้นตอน/แถวใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ
-import { ROW_STAGE_LABELS, ROW_STAGE_TONES, rowStage } from '@/lib/requests/rowStage';
+import { ROW_STAGE_LABELS, ROW_STAGE_TONES, isRowSettled, rowStage } from '@/lib/requests/rowStage';
 import { hopLabel } from '@/lib/requests/hops';
 /* ⭐ **รางขั้น + อายุงานเป็นของกลางทุกหัวข้อ** (มติผู้ใช้ 2026-08-25) — สามตาราง
    เคยบอกขั้นด้วยป้ายคำเดี่ยว ๆ ซึ่งตอบได้แค่ "ตอนนี้อยู่ไหน" ไม่ได้บอกว่าเหลืออีกไกล
@@ -50,6 +50,8 @@ function directionRow(item, all = []) {
     outcomeNote: item.outcomeNote || null,
     confirmedQty: item.confirmedQty ?? null,
     stage,
+    // ⚠️ ตารางใช้ตัดสินว่าจะโชว์กำหนดส่งไหม — แถวที่จบแล้วไม่ผูกกับกำหนดนี้อีก
+    settled: isRowSettled(item),
     track: rowTrackSteps(item),
     // ⚠️ ตราเวลาดิบ ไม่ใช่จำนวนวัน — ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน
     idle: rowIdleStamps(item),
