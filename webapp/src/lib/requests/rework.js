@@ -49,6 +49,20 @@ export function reworkSlotFrom(row, items = []) {
   };
 }
 
+/**
+ * "โจทย์ของรอบนี้" — คอมเมนต์ลูกค้าที่ทำให้เกิดแถวรอบแก้ตัวนี้
+ *
+ * ⭐ **ตารางต้องบอกโจทย์ ไม่ใช่แค่บอกว่าเป็นรอบแก้** (มติผู้ใช้ 2026-08-25) — เดิม
+ * แถวรอบแก้มีแค่ป้าย "รอบแก้" ⇒ RD ต้องเลื่อนขึ้นไปหาแถวต้นทางเพื่ออ่านว่าลูกค้า
+ * ขอให้แก้อะไร ซึ่งในใบที่มี 3 บรีฟ × หลายรอบคือการไล่หาจริง ๆ
+ *
+ * ⚠️ ไม่จำกัด `lineKind` (ต่างจาก `pendingReworkRows`) — สายสูตรก็มีรอบแก้และมี
+ * คอมเมนต์เหมือนกัน · ตัวกรองสายอยู่ที่ผู้เรียกซึ่งกรองมาก่อนหน้าแล้ว
+ */
+export const reworkBriefOf = (row, items = []) => (row?.derivedFromItemId
+  ? ((items || []).find((i) => i.id === row.derivedFromItemId)?.outcomeNote || null)
+  : null);
+
 // ทั้งชุด — หน้าจอใช้ตั้งค่าเริ่มต้นของฟอร์มส่งกลิ่น
 export function reworkSlots(items = []) {
   return pendingReworkRows(items).map((row) => reworkSlotFrom(row, items));

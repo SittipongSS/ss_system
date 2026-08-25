@@ -39,8 +39,8 @@ import { canAnswerRequestsFor } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
-import { bulkReadyRows, formulaDevBoard, formulaDevTotals } from "@/lib/requests/formulaDevBoard";
-import { documentBoard, documentTotals } from "@/lib/requests/documentBoard";
+import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
+import { documentBoard } from "@/lib/requests/documentBoard";
 import { requestHasPdr } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -137,6 +137,7 @@ export default function RequestDetailPage() {
   /* ทะเบียนหมวดสินค้า — ฟอร์ม PDR (โหมดแก้) ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
      ⚠️ โหลดเสมอ ไม่รอให้กดแก้ — โหลดตอนกดจะได้ดรอปดาวน์ว่างในวินาทีแรก */
   const [productTypes, setProductTypes] = useState([]);
+
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
   }, []);
@@ -144,6 +145,12 @@ export default function RequestDetailPage() {
      ⚠️ ไม่ใช่ช่องในโมดัลรับเรื่องอีกแล้ว — รับเรื่องคือการตัดรอบ ส่วนวันที่รับปาก
      ฝ่ายกดทีหลังได้เมื่อรู้จริง (รอวัตถุดิบ · รอฝ่ายอื่น) */
   const [commitDue, setCommitDue] = useState(null);
+  /* วันนี้ — จับใน effect ตามกฎ react-hooks/purity (ห้ามอ่านนาฬิการะหว่าง render)
+     ⭐ ใช้ตัวเดียวสำหรับคอลัมน์ "ค้างมา" ของตารางสรุปทุกหัวข้อ (มติผู้ใช้ 2026-08-25)
+     ⚠️ ส่งลงไปเป็น prop ไม่ให้ตารางอ่านเอง — สามตารางอ่านนาฬิกาคนละครั้งจะได้เลข
+     คนละวันในใบเดียวกันตอนเที่ยงคืน และ hydration mismatch ตอนเรนเดอร์ฝั่ง server */
+  const [today, setToday] = useState(null);
+  useEffect(() => { setToday(businessDate()); }, []);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
   // ช่วงเปลี่ยนผ่าน: RD กรอกเลขที่เอกสารเอง (mig 0272) — null = ปิดโมดัล
@@ -326,9 +333,7 @@ export default function RequestDetailPage() {
   // ⚠️ ประกอบทั้งสองแบบไว้เสมอ แล้วให้ component ของหัวข้อเลือกใช้ — ประกอบใน
   // เงื่อนไขเมื่อไร hook order จะเปลี่ยนตามหัวข้อ ซึ่ง React ห้าม
   const formulaBoard = formulaDevBoard(req.items || []);
-  const formulaTotals = formulaDevTotals(formulaBoard);
   const docBoard = documentBoard(req.items || []);
-  const docTotals = documentTotals(docBoard);
   const briefSummary = briefBoardTotals(board);
   const canAnswer = owner && REQUEST_OPEN_STATUSES.includes(req.status);
   const progress = requestProgress(req.items || []);
@@ -1360,9 +1365,7 @@ export default function RequestDetailPage() {
               <KindPanel
                 request={req}
                 docBoard={docBoard}
-                docTotals={docTotals}
                 formulaBoard={formulaBoard}
-                formulaTotals={formulaTotals}
                 board={board}
                 briefSummary={briefSummary}
                 {...reconcileProps}
@@ -1430,9 +1433,8 @@ export default function RequestDetailPage() {
         board={board}
         briefSummary={briefSummary}
         formulaBoard={formulaBoard}
-        formulaTotals={formulaTotals}
         docBoard={docBoard}
-        docTotals={docTotals}
+        today={today}
         {...reconcileProps}
       />
       )}

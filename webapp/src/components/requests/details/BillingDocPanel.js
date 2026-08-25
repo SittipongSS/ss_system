@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { INSTALLMENT_STATUS_LABELS, installmentDisplayStatus } from "@/lib/sales/salesOrderPayments";
+import RequestSummaryPanel from "./RequestSummaryPanel";
 import styles from "./details.module.css";
 
 const baht = (v) => `${fmtNumber(v, { maximumFractionDigits: 3 })} บาท`;
 
-export default function BillingDocPanel({ request, docTotals: totals }) {
+export default function BillingDocPanel({ request }) {
   const qt = request.refQuotation || null;
   const inst = request.linkedInstallment || null;
 
@@ -61,18 +62,11 @@ export default function BillingDocPanel({ request, docTotals: totals }) {
           ไล่แถวเดียวกันพร้อมสถานะ เลขที่เอกสาร และก้าวถัดไปอยู่แล้ว ⇒ แผงขวาเหลือ
           **ตัวเลขสรุป** ซึ่งเป็นสิ่งที่ตารางตอบไม่ได้ในสายตาเดียว
           (อาการเดียวกับที่เพิ่งยุบตาราง+การ์ดรายแถวเข้าด้วยกัน) */}
-      {totals.asked > 0 && (
-        <DocumentSummaryCard
-          title="เอกสารที่ขอ"
-          rows={[
-            // ⚠️ คำของฝ่ายบัญชี ไม่ใช่ของ RD — "ออกให้แล้ว/ให้ไม่ได้" ตรงกับสิ่งที่เขาทำ
-            { id: "issued", label: "ออกให้แล้ว", value: String(totals.received) },
-            { id: "waiting", label: "รอออก", value: String(totals.waiting) },
-            { id: "refused", label: "ออกให้ไม่ได้", value: String(totals.refused) },
-            { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
-          ]}
-        />
-      )}
+      {/* ⭐ ทรงเดียวกับทุกหัวข้อ (มติผู้ใช้ 2026-08-25) — คำใต้ตัวเลขนำเป็น **ภาษา
+          ของฝ่ายบัญชี** ("ออกให้แล้ว") ไม่ใช่ของ RD · ทะเบียนคำอยู่ที่
+          `lib/requests/panelSummary.js` แยกตามรูปร่างบรรทัด ⇒ สองฝ่ายใช้จอเดียวกัน
+          แต่การ์ดพูดภาษาของแต่ละฝ่าย */}
+      <RequestSummaryPanel request={request} lineShape="billing_doc" />
 
       {/* ⭐ **ฝั่งกลับของ B-5** — เดิมลิงก์เดินทางเดียว (จากใบสั่งขายเห็นคำร้อง)
           ⇒ บัญชีที่เปิดใบจากคิวไม่รู้ว่าเงินก้อนนี้อยู่งวดไหนของใบไหน

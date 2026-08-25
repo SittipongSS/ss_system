@@ -76,23 +76,40 @@ export function WorkflowRail({ steps = [], label = "เส้นทางเอ�
   );
 }
 
+/* ⭐ `totalCaption` — คำใต้ตัวเลขนำ (มติผู้ใช้ 2026-08-25) · `totalComplete` = ครบแล้ว
+   ⚠️ **เพิ่ม ไม่แก้ของเดิม** — การ์ดนี้ใช้ที่ใบสั่งขาย สัญญา ทะเบียนชำระ และคำร้อง ·
+   ผู้เรียกที่ไม่ส่งสองตัวนี้ได้หน้าตาเดิมทุก px
+   ⭐ `zero` รายแถว — แถวที่เป็นศูนย์ **จางลงแต่ไม่หาย** (แกนสามแถวของการ์ดคำร้อง) ·
+   ซ่อนเมื่อไร ตำแหน่งของแถวที่เหลือจะเลื่อน แล้วข้อดีของ "ตำแหน่งคงที่ สแกนข้ามใบได้"
+   ก็หมดไปทั้งอัน */
 export function DocumentSummaryCard({
   title = "สรุปเอกสาร",
   total,
+  totalCaption = null,
+  totalComplete = false,
   rows = [],
   status,
   statusColor = "var(--text-3)",
+  /* ⚠️ **ป้ายเหนือบรรทัดสถานะปรับได้** — การ์ดนี้ไม่ได้ใช้แค่กับเอกสารแล้ว · บนการ์ด
+     คำร้อง บรรทัดนี้เป็นผลกระทบยอดใบสั่งขาย ⇒ คำว่า "สถานะเอกสาร" อ่านผิดเรื่อง
+     ("สถานะเอกสาร · ใบสั่งขาย 1 — ยังไม่มีรายการที่ลูกค้าคอนเฟิร์ม") */
+  statusLabel = "สถานะเอกสาร",
   children,
   className = "",
 }) {
   return (
     <section className={`${styles.panel} ${styles.summaryCard} ${className}`.trim()}>
       <div className={styles.summaryLabel}>{title}</div>
-      {total !== undefined && total !== null ? <div className={styles.totalAmount}>{total}</div> : null}
+      {total !== undefined && total !== null ? (
+        <div className={totalCaption ? styles.lead : undefined}>
+          <div className={`${styles.totalAmount} ${totalComplete ? styles.totalComplete : ""}`.trim()}>{total}</div>
+          {totalCaption ? <div className={styles.totalCaption}>{totalCaption}</div> : null}
+        </div>
+      ) : null}
       {rows.length ? (
         <dl className={styles.summaryRows}>
           {rows.map((row, index) => (
-            <div key={row.id || row.label || index}>
+            <div key={row.id || row.label || index} className={row.zero ? styles.summaryZero : undefined}>
               <dt>{row.label}</dt>
               <dd>{naText(row.value)}</dd>
             </div>
@@ -102,7 +119,7 @@ export function DocumentSummaryCard({
       {status ? (
         <div className={styles.documentStatus}>
           <span className={styles.statusDot} style={{ "--state-color": statusColor }} />
-          <span><small>สถานะเอกสาร</small><strong>{status}</strong></span>
+          <span><small>{statusLabel}</small><strong>{status}</strong></span>
         </div>
       ) : null}
       {children}

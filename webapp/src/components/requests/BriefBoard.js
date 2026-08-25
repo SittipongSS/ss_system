@@ -20,6 +20,7 @@
 import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { CustomerSay, RowIdleCell, RowStageCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -47,9 +48,14 @@ const qty = (n) => fmtNumber(n);
 /* ⭐ `renderGroupStep` — ปุ่ม "ส่งงาน" **ของบรีฟก้อนนั้น** (มติผู้ใช้ 2026-08-18)
    บรีฟคือสิ่งที่ฝ่ายส่ง direction มาตอบ ⇒ ปุ่มอยู่ในแถวของบรีฟ ไม่ใช่ปุ่มระดับใบที่
    ไม่ได้บอกว่าหมายถึงก้อนไหน · Control Panel เหลือแต่ปุ่มปลายทาง (ปิดเรื่อง) */
+/* ⭐ **ดีไซน์ใหม่ (มติผู้ใช้ 2026-08-25)** — โครงเดียวกับอีกสองตาราง: direction ·
+   ขั้น (ราง) · ค้างมา · ก้าวถัดไป · สองชั้น (บรีฟ → direction) ยังอยู่เหมือนเดิม
+   ⚠️ **"สถานะ" กับ "ผลลัพธ์จากลูกค้า" ถูกถอด ไม่ใช่ย่อ** — ทั้งคู่คิดจาก `stage`
+   ตัวเดียวกับที่รางวาดอยู่แล้ว · ผลลัพธ์มีค่าจริงแค่ 2 จาก 68 แถวบน production
+   (วัด 2026-08-25) ⇒ กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง */
 export default function BriefBoard({
   groups = [], renderStep = null, renderDetail = null, renderGroupStep = null,
-  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false,
+  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null,
 }) {
 
   /* ⭐ **ก้อนที่ยังต้องลงมือกางไว้ ก้อนที่จบแล้วพับ** (ทางเลือก ก+ · มติผู้ใช้ 2026-08-10)
@@ -84,14 +90,14 @@ export default function BriefBoard({
         /* ⚠️ ความกว้างขั้นต่ำต้องพอดีกับ **คอลัมน์เนื้อของหน้ารายละเอียด** ไม่ใช่ตั้งเผื่อ
            — วัดจริง 2026-08-18: การ์ดกว้าง ~730px ตอนจอ ~780px แต่ตารางตั้งไว้ 760
            ⇒ ตารางเลื่อนแนวนอนตลอดเวลาและคอลัมน์ "ก้าวถัดไป" โดนตัดครึ่ง (ผู้ใช้ส่งภาพมา) */
-        minWidth={showActions ? 680 : 520}
+        minWidth={showActions ? 700 : 520}
       >
         <table>
           <thead>
             <tr>
               <th className={styles.colName}>direction</th>
-              <th className={styles.colOutcome}>ผลลัพธ์จากลูกค้า</th>
-              <th className={styles.colStage}>สถานะ</th>
+              <th className={styles.colTrack}>ขั้น</th>
+              <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
@@ -151,19 +157,25 @@ export default function BriefBoard({
                             <RegistryCell
                               registry={d.registry}
                               fallback={d.name}
-                              extra={d.rework ? <span className="ui-badge">รอบแก้</span> : null}
+                              extra={(
+                                <>
+                                  {d.rework && <span className="ui-badge">รอบแก้</span>}
+                                  {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
+                                      (มติผู้ใช้ 2026-08-25) — คอลัมน์ที่ว่าง 97% กินที่
+                                      ของสิ่งที่มีค่าทุกแถว · ยังไม่ถึงตาลูกค้า = ไม่มีชิป
+                                      ซึ่งอ่านถูกอยู่แล้วเพราะรางบอกว่าอยู่ขั้นไหน */}
+                                  {d.outcomeLabel && (
+                                    <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
+                                  )}
+                                  {d.confirmedQty != null && (
+                                    <div className={styles.note}>คอนเฟิร์ม {qty(d.confirmedQty)}</div>
+                                  )}
+                                </>
+                              )}
                             />
                           </td>
-                          <td>
-                            {d.outcomeLabel
-                              ? <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
-                              // ⚠️ ยังไม่ถึงตาลูกค้า ≠ ลูกค้าเงียบ — ขีดเฉย ๆ อ่านเป็นอย่างหลัง
-                              : <span className={styles.pending}>ยังไม่ถึงขั้นลูกค้าตอบ</span>}
-                            {d.confirmedQty != null && (
-                              <div className={styles.note}>คอนเฟิร์ม {qty(d.confirmedQty)}</div>
-                            )}
-                          </td>
-                          <td><StatusBadge tone={d.stageTone} label={d.stageLabel} /></td>
+                          <RowStageCell row={d} />
+                          <RowIdleCell row={d} today={today} />
                           {showActions && (
                             <td className={styles.stepCell}>
                               {renderStep?.(d)}
@@ -192,12 +204,10 @@ export default function BriefBoard({
                         {/* ⭐ แถวขยาย — ของยาวของ direction ตัวนี้ (หมายเหตุผลลัพธ์ ·
                             สเปก · ไฟล์แนบ) · **ไม่มีปุ่มกาง ขึ้นเสมอเมื่อมีเนื้อ**
                             เพราะสิ่งที่มติ 2026-08-13 ไม่ยอมคือ *การซ่อน* ไม่ใช่ตาราง */}
-                        {(detail || d.outcomeNote) && (
+                        {(detail || d.outcomeNote || d.reworkBrief) && (
                           <tr className={styles.detailRow}>
                             <td colSpan={cols}>
-                              {d.outcomeNote && (
-                                <ReadableText text={d.outcomeNote} lines={2} className={styles.note} />
-                              )}
+                              <CustomerSay note={d.outcomeNote} brief={d.reworkBrief} />
                               {detail}
                             </td>
                           </tr>

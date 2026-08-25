@@ -28,7 +28,7 @@ import { DetailCard } from "@/components/ui/DetailPage";
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
 export default function FormulaDevDetail({
   request, formulaBoard: board = [], canEditAttachments,
-  rowStep, onReload, bulkReady,
+  rowStep, onReload, bulkReady, today = null,
 }) {
   const [editRegistry, setEditRegistry] = useState(null);
   const role = useRole();
@@ -82,6 +82,7 @@ export default function FormulaDevDetail({
         ) : null}
       >
       <FormulaDevBoard
+        today={today}
         rows={board}
         canEditRegistry={registrar}
         onEditRegistry={(registry) => setEditRegistry(registry)}
