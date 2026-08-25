@@ -2,6 +2,7 @@
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { ListTodo, Plus, RotateCcw, Search } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -55,7 +56,10 @@ export default function MgmtTasksPage() {
     cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const loadTasks = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     const p = new URLSearchParams({ year: String(year) });
     if (filters.deptCode) p.set("deptCode", filters.deptCode);
@@ -63,10 +67,12 @@ export default function MgmtTasksPage() {
     if (filters.priority) p.set("priority", filters.priority);
     try {
       const res = await fetch(`/api/mgmt/tasks?${p}`);
-      setTasks(res.ok ? await res.json() : []);
-    } catch { setTasks([]); }
-    setLoading(false);
-  }, [year, filters.deptCode, filters.status, filters.priority]);
+      const rows = res.ok ? await res.json() : [];
+      if (!isLatest()) return; // ตัวกรอง/ปีเปลี่ยนไปแล้ว — คำตอบนี้เป็นของชุดเก่า
+      setTasks(rows);
+    } catch { if (isLatest()) setTasks([]); }
+    if (isLatest()) setLoading(false);
+  }, [year, filters.deptCode, filters.status, filters.priority, startRun]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 

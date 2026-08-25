@@ -1,6 +1,7 @@
 "use client";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -220,15 +221,17 @@ export default function TasksPage() {
   const [chainSource, setChainSource] = useState(null); // {id, title} — งานก่อนหน้าตอนสร้างงานต่อเนื่อง
 
   // กันผลลัพธ์ที่มาช้า/สลับลำดับเมื่อสลับ scope เร็ว ๆ
-  const loadSeq = useRef(0);
+  /* ⭐ หน้านี้เป็นหน้าแรกที่กันคำตอบมาผิดลำดับด้วยเลขลำดับที่เขียนเอง — ตอนนี้ยกออกไป
+     เป็น `lib/ui/latestRun` แล้วให้ทุกหน้ารายการใช้ตัวเดียวกัน (พฤติกรรมเหมือนเดิมเป๊ะ) */
+  const startRun = useLatestRun();
   const deepLinkHandled = useRef(false);
   const loadWork = async (sc) => {
-    const seq = ++loadSeq.current;
+    const isLatest = startRun();
     setLoading(true);
     try {
       const res = await fetch(`/api/pm/my-work?scope=${sc}`);
       const d = res.ok ? await res.json() : {};
-      if (seq !== loadSeq.current) return;
+      if (!isLatest()) return;
       setPersonalTasks(d.personalTasks || []);
       setInquiries(d.inquiries || []);
       setProjectsMap(d.projects || {});
@@ -237,7 +240,7 @@ export default function TasksPage() {
       if (d.allowedScopes) setAllowedScopes(d.allowedScopes);
       if (d.scope && d.scope !== sc) setScope(d.scope);
     } catch { /* ignore */ }
-    finally { if (seq === loadSeq.current) setLoading(false); }
+    finally { if (isLatest()) setLoading(false); }
   };
 
   useEffect(() => { loadWork(scope); }, [scope]);

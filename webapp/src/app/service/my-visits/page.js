@@ -8,6 +8,7 @@
 // (/sa/tasks = งานติดตามส่วนบุคคล) คนละเรื่องกันคนละระบบ · ชื่อซ้ำข้ามระบบทำให้คน
 // จำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { AlertTriangle, CheckCircle2, MapPin, Phone, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -47,23 +48,27 @@ export default function MyVisitsPage() {
   const [closing, setClosing] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/service/my-visits?scope=${scope}`);
       const data = await res.json().catch(() => null);
+      if (!isLatest()) return; // สลับขอบเขตระหว่างรอ — คิวต้องตรงกับปุ่มที่กดค้างไว้
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานไม่สำเร็จ");
       setVisits(Array.isArray(data?.visits) ? data.visits : []);
       setSites(Array.isArray(data?.sites) ? data.sites : []);
     } catch (e) {
       // ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "วันนี้ไม่มีงาน" หน้าตาเหมือนกัน
       // จนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่างทั้งที่มีนัดรออยู่
-      setLoadError(e.message || "โหลดคิวงานไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดคิวงานไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [scope]);
+  }, [scope, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);

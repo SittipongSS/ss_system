@@ -8,6 +8,7 @@
 // หน้านี้คือคิวเดียวของทุกชนิดคำร้อง — ชนิดคุมด้วย lib/master/requestTypes.js
 // (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircleQuestion, Plus, Undo2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -121,19 +122,25 @@ export default function RequestsPage() {
   ));
   const [activeScope, setActiveScope] = useState("mine");
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const reload = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true); setLoadError("");
     try {
       const res = await fetch(`/api/sa/requests?scope=${scope}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
+      /* กดสลับ ของฉัน→ทีม→ทั้งหมด รัว ๆ แล้วคำตอบมาสลับลำดับ = **ป้ายขอบเขตกับแถว
+         หลุดจากกัน** เพราะป้ายอ่านจากเฮดเดอร์ของคำตอบ (X-Request-Scope) ⇒ ทิ้งทั้งก้อน */
+      if (!isLatest()) return;
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);
       // ⚠️ server เป็นคนตัดสินขอบเขตจริง (สิทธิ์ไม่พอ = ถอยลงมา ไม่ปฏิเสธ) ⇒ อ่าน
       // ค่าที่ได้จริงกลับมาแสดง ไม่ใช่โชว์สิ่งที่ผู้ใช้ *ขอ* ซึ่งอาจไม่ใช่สิ่งที่ได้
       setActiveScope(res.headers.get("X-Request-Scope") || scope);
-    } catch (e) { setLoadError(e.message); }
-    setLoading(false);
-  }, [scope]);
+    } catch (e) { if (isLatest()) setLoadError(e.message); }
+    if (isLatest()) setLoading(false);
+  }, [scope, startRun]);
 
   useEffect(() => { reload(); }, [reload]);
   // ดีลใช้เติมค่าตั้งต้นของปุ่มเปิดคำร้องเมื่อมาจากหน้าดีล — ทะเบียนที่ฟอร์มต้องใช้

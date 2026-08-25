@@ -5,6 +5,7 @@
 // ⚠️ รอบแรก **ยังไม่ทำ time-grid พิกเซลต่อชั่วโมง** — งานวิ่งไซต์ 3–5 นัดต่อวัน
 //    ไม่ต้องการความละเอียดระดับนั้น · ชิปเรียงตามเวลาในช่องวันพอแล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -66,23 +67,27 @@ export default function ServiceSchedulePage() {
 
   const range = useMemo(() => ({ from: days[0].iso, to: days[6].iso }), [days]);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/service/visits?from=${range.from}&to=${range.to}`);
       const data = await res.json().catch(() => null);
+      if (!isLatest()) return; // เลื่อนสัปดาห์ระหว่างรอ — ตารางต้องเป็นของช่วงที่ค้างอยู่
       if (!res.ok) throw new Error(data?.error || "โหลดตารางไม่สำเร็จ");
       setVisits(Array.isArray(data?.visits) ? data.visits : []);
       setSites(Array.isArray(data?.sites) ? data.sites : []);
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ตารางเปล่า — "โหลดพัง" กับ "สัปดาห์นี้ไม่มีนัด"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่าง
-      setLoadError(e.message || "โหลดตารางไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดตารางไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [range.from, range.to]);
+  }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
 
   // รายชื่อช่าง + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น

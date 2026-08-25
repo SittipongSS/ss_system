@@ -10,6 +10,7 @@
 // ⚠️ หน้านี้ไม่ได้ตัดสิทธิ์อะไรเอง — API ตัดขอบเขตด้วย user ที่ล็อกอินเสมอ
 // (`/api/notifications` ไม่รับพารามิเตอร์ `userId` โดยเจตนา)
 import { useCallback, useEffect, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import Link from "next/link";
 import { Bell, BellOff, Check } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -76,19 +77,24 @@ export default function NotificationsPage() {
   const [todayKey, setTodayKey] = useState(null);
   useEffect(() => { setTodayKey(dayKey(new Date())); }, []);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true); setError("");
     try {
       const body = await fetchPage({ scope });
+      if (!isLatest()) return; // สลับขอบเขตระหว่างรอ — กล่องต้องตรงกับปุ่มที่กดค้างไว้
       setItems(body.items || []);
       setUnread(body.unread || 0);
       setTotal(body.total || 0);
       setCursor(body.hasMore ? body.nextCursor : null);
     } catch (e) {
+      if (!isLatest()) return;
       setError(e.message);
       setItems([]);
-    } finally { setLoading(false); }
-  }, [scope]);
+    } finally { if (isLatest()) setLoading(false); }
+  }, [scope, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const loadMore = async () => {

@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { AlertTriangle, CalendarRange, Check, Download, History } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
@@ -62,7 +63,10 @@ export default function SalesHistoryMonthlyPage() {
     [users, savedRows],
   );
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setError("");
     setInfo("");
@@ -91,6 +95,9 @@ export default function SalesHistoryMonthlyPage() {
           for (const ownerRow of month.byOwner || []) put(historyRowKey({ team: ownerRow.team, ownerId: ownerRow.ownerId }), ownerRow.won);
         }
       }
+      // เปลี่ยนปีระหว่างรอ — ทั้งตารางต้องมาจากรอบเดียวกัน ไม่งั้นยอดระบบของปีหนึ่ง
+      // ไปนั่งอยู่ใต้ช่องกรอกของอีกปี ซึ่งอ่านไม่ออกเลยว่าผิด
+      if (!isLatest()) return;
       setSystemCells(sys);
 
       const nextValues = {};
@@ -115,11 +122,11 @@ export default function SalesHistoryMonthlyPage() {
       setValues(nextValues);
       setSavedCells(nextSaved);
     } catch (e) {
-      setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [year]);
+  }, [year, startRun]);
 
   useEffect(() => { load(); }, [load]);
 
