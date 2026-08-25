@@ -10,25 +10,49 @@
 // (closedCount = จำนวนเดือนที่จบไปแล้วของปีนั้น).
 
 import { teamRank } from '@/lib/salesPlanning';
+import { monthsForYear } from '@/lib/datePeriods';
 
-const ZERO12 = () => Array(12).fill(0);
+/* ── แกนเวลาของ matrix ────────────────────────────────────────────────────
+   ⭐ เดิมทุกแถวเป็นอาเรย์ 12 ช่องที่ **index = เดือนของปีเดียว** — รายงานจึงดูข้ามปี
+   ปฏิทินไม่ได้เลย (มติผู้ใช้ 2026-08-25 ให้ดูช่วงข้ามปีได้)
+   ตอนนี้แถวถือ `months` (รายชื่องวด `YYYY-MM` เรียงเวลา) แล้วอาเรย์ทั้งหมดยาวเท่านั้น
+   ⇒ คณิตที่เดินด้วย index ช่วง [startIdx..endIdx] ใช้ต่อได้ทั้งชุดโดยไม่ต้องแก้สูตร
+   ⚠️ ผู้เรียกที่ยังส่งแค่ dashboards ของปีเดียวได้ผลเหมือนเดิมเป๊ะ (ยังเป็น 12 ช่อง) */
 
-function monthIdxOf(monthKey) {
-  const i = Number(String(monthKey || '').slice(5, 7)) - 1;
-  return i >= 0 && i < 12 ? i : null;
+const zeros = (n) => Array(n).fill(0);
+
+/** ปีของงวดเดือน — ใช้ตัดรอบทบยอด (ทบไม่ข้ามปีปฏิทิน) */
+const yearOfKey = (monthKey) => String(monthKey || '').slice(0, 4);
+
+/** รายชื่องวดเดือนที่ dashboards ก้อนนี้ครอบคลุม เรียงเวลา ไม่ซ้ำ */
+export function monthsOfDashboards(dashboards) {
+  const keys = [...new Set((dashboards || [])
+    .map((d) => String(d?.month || ''))
+    .filter((k) => /^\d{4}-(0[1-9]|1[0-2])$/.test(k)))];
+  return keys.sort();
 }
 
 // แปลง response ของ GET /api/sales-planning/dashboard?year= (data.months 12 ก้อน
-// แต่ละก้อนมี totals / byOwner / byTeam) เป็น matrix 12 ช่องต่อแถว.
+// แต่ละก้อนมี totals / byOwner / byTeam) เป็น matrix ที่มีช่องละหนึ่งงวดเดือน.
 // team/company อ่านจาก byTeam/totals ตรง ๆ — ห้าม sum จากรายคน เพราะเป้าระดับทีม
 // (ownerId null) ไม่อยู่ใน byOwner และจะนับซ้ำ/ขาดเงียบ ๆ.
-export function buildMatrix(yearDashboards) {
-  const company = { target: ZERO12(), fcTotal: ZERO12(), forecast: ZERO12(), actual: ZERO12() };
+//
+// `months` = แกนเวลาที่ต้องการ (ไม่ส่ง = ใช้ทั้ง 12 เดือนของปีที่พบใน dashboards
+// เพื่อคงพฤติกรรมเดิมของผู้เรียกที่ยังคิดเป็นรายปี) · เดือนที่ไม่มีข้อมูลได้ 0
+export function buildMatrix(yearDashboards, { months } = {}) {
+  const axis = (Array.isArray(months) && months.length)
+    ? months.slice()
+    : monthsForYear(yearOfKey(monthsOfDashboards(yearDashboards)[0]) || '') ;
+  const size = axis.length || 12;
+  const axisIndex = new Map(axis.map((key, i) => [key, i]));
+  const blank = () => ({ months: axis, target: zeros(size), fcTotal: zeros(size), forecast: zeros(size), actual: zeros(size) });
+
+  const company = blank();
   const people = new Map();
   const teams = new Map();
 
   for (const dashboard of yearDashboards || []) {
-    const mi = monthIdxOf(dashboard.month);
+    const mi = axisIndex.get(String(dashboard.month || ''));
     if (mi == null) continue;
     const totals = dashboard.totals || {};
     company.target[mi] += Number(totals.targetAmount || 0);
@@ -40,15 +64,7 @@ export function buildMatrix(yearDashboards) {
       // คีย์เดียวกับ buildYearRows เดิมของหน้า /sa — ownerId ก่อน, ไม่มีก็ team+ชื่อ
       const key = row.ownerId || `${row.team || 'none'}:${row.ownerName || 'ไม่ระบุ'}`;
       if (!people.has(key)) {
-        people.set(key, {
-          id: key,
-          name: row.ownerName || 'ไม่ระบุ',
-          team: row.team || null,
-          target: ZERO12(),
-          fcTotal: ZERO12(),
-          forecast: ZERO12(),
-          actual: ZERO12(),
-        });
+        people.set(key, { id: key, name: row.ownerName || 'ไม่ระบุ', team: row.team || null, ...blank() });
       }
       const p = people.get(key);
       p.target[mi] += Number(row.target || 0);
@@ -60,7 +76,7 @@ export function buildMatrix(yearDashboards) {
     for (const row of dashboard.byTeam || []) {
       const key = row.team || 'ไม่ระบุทีม';
       if (!teams.has(key)) {
-        teams.set(key, { team: key, target: ZERO12(), fcTotal: ZERO12(), forecast: ZERO12(), actual: ZERO12() });
+        teams.set(key, { team: key, ...blank() });
       }
       const t = teams.get(key);
       t.target[mi] += Number(row.target || 0);
@@ -74,7 +90,7 @@ export function buildMatrix(yearDashboards) {
     (a, b) => teamRank(a.team) - teamRank(b.team) || a.name.localeCompare(b.name, 'th'),
   );
   const sortedTeams = [...teams.values()].sort((a, b) => teamRank(a.team) - teamRank(b.team));
-  return { people: sortedPeople, teams: sortedTeams, company };
+  return { people: sortedPeople, teams: sortedTeams, company, months: axis };
 }
 
 // จำนวนเดือนที่ "จบแล้ว" ของปีหนึ่ง ๆ (เดือนปัจจุบันยังไม่จบ ไม่นับ) —
@@ -94,23 +110,67 @@ export function ytdMonths(year, now) {
 
 const sumRange = (arr, s, e) => {
   let total = 0;
-  for (let i = s; i <= e && i < 12; i += 1) total += Number(arr[i] || 0);
+  const last = Math.min(e, (arr?.length ?? 0) - 1);
+  for (let i = Math.max(0, s); i <= last; i += 1) total += Number(arr[i] || 0);
   return total;
 };
 
-// ยอดทบยกมาเข้า "งวดที่เริ่ม startIdx" = ยอดขาดสะสมของเดือนที่จบแล้วก่อนหน้างวด.
-// เกิน/ขาดหักล้างกันสะสม แล้ว clamp ไม่ให้ติดลบตอนยกเข้า.
-export function carryIn(target, actual, startIdx, closedCount = 12) {
+/* ยอดทบยกมาเข้า "งวดที่เริ่ม startIdx" = ยอดขาดสะสมของเดือนที่จบแล้วก่อนหน้างวด.
+   เกิน/ขาดหักล้างกันสะสม แล้ว clamp ไม่ให้ติดลบตอนยกเข้า.
+
+   ⭐ **ทบยอดรีเซ็ตทุกต้นปีปฏิทิน** (มติผู้ใช้ 2026-08-26) — ยอดที่ขาดของ ธ.ค. ไม่ทบ
+   ข้ามไป ม.ค. ปีถัดไป แม้ช่วงที่เลือกจะข้ามปี · ส่งรายชื่อเดือน (`months`) มาด้วยเมื่อ
+   แกนเวลาข้ามปี ไม่งั้นจะสะสมยาวตั้งแต่ต้นแกน
+   ⚠️ ไม่ส่ง `months` = พฤติกรรมเดิม (แกนเป็นปีเดียวอยู่แล้ว จุดตัดจึงตรงกันพอดี) */
+export function carryIn(target, actual, startIdx, closedCount = 12, months = null) {
   const upTo = Math.min(startIdx, closedCount) - 1;
   if (upTo < 0) return 0;
-  const shortfall = sumRange(target, 0, upTo) - sumRange(actual, 0, upTo);
+  let from = 0;
+  if (Array.isArray(months) && months.length) {
+    const year = yearOfKey(months[Math.min(startIdx, months.length - 1)]);
+    // ถอยขึ้นไปจนสุดเดือนแรกของ "ปีเดียวกับงวดที่กำลังดู"
+    from = startIdx;
+    while (from > 0 && yearOfKey(months[from - 1]) === year) from -= 1;
+  }
+  if (upTo < from) return 0;
+  const shortfall = sumRange(target, from, upTo) - sumRange(actual, from, upTo);
   return shortfall > 1e-9 ? shortfall : 0;
+}
+
+/* ---------- ช่วงบนแกนเวลา (รายงานข้ามปี) ---------- */
+
+/** index ของงวดเดือนบนแกน · -1 ถ้าไม่อยู่ในแกน */
+export function indexOfMonth(months, monthKey) {
+  return (months || []).indexOf(String(monthKey || ''));
+}
+
+/** ช่วง { from, to } → { startIdx, endIdx } บนแกน · ตัดให้อยู่ในแกนเสมอ
+ *  คืน null เมื่อช่วงไม่ทับแกนเลย (ผู้เรียกต้องแยกเคสนี้ ไม่ใช่เผลอได้ทั้งแกน) */
+export function rangeWindow(months, { from, to } = {}) {
+  const axis = months || [];
+  if (!axis.length) return null;
+  const lo = String(from || '');
+  const hi = String(to || '');
+  if (!lo || !hi || lo > hi) return null;
+  if (hi < axis[0] || lo > axis[axis.length - 1]) return null;
+  let startIdx = axis.findIndex((k) => k >= lo);
+  let endIdx = axis.length - 1;
+  for (let i = axis.length - 1; i >= 0; i -= 1) { if (axis[i] <= hi) { endIdx = i; break; } }
+  if (startIdx < 0) startIdx = 0;
+  return startIdx > endIdx ? null : { startIdx, endIdx };
+}
+
+/** จำนวนงวดบนแกนที่ "จบแล้ว" — ใช้แทน closedMonths เมื่อแกนข้ามปี
+ *  now = { year, monthIdx } (monthIdx 0-11) เหมือนที่ทั้งแท็บใช้อยู่ */
+export function closedCountOnAxis(months, now) {
+  const current = `${now.year}-${String(now.monthIdx + 1).padStart(2, '0')}`;
+  return (months || []).filter((key) => key < current).length;
 }
 
 // สถิติของงวด [startIdx..endIdx] ของแถวหนึ่ง (คน/ทีม/บริษัท).
 export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount = 12 }) {
   const target = sumRange(row.target, startIdx, endIdx);
-  const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount) : 0;
+  const carry = carryOn ? carryIn(row.target, row.actual, startIdx, closedCount, row.months || null) : 0;
   const mustClose = target + carry;
   const fcTotal = sumRange(row.fcTotal || [], startIdx, endIdx);
   const forecast = sumRange(row.forecast, startIdx, endIdx);
