@@ -31,7 +31,7 @@ import {
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { freezeInstallments, loadInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
-import { paymentLockReason } from '@/lib/sales/salesOrderPayments';
+import { paymentLockReason, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { financeActionError } from '@/lib/sales/salesOrderFinanceApproval';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 import { salesOrderApprovalFingerprint } from '@/lib/sales/salesOrderApprovalFingerprint';
@@ -562,10 +562,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ⚠️ best-effort แบบเดียวกับ snapshot: อนุมัติ commit ไปแล้ว ตั้งธงล้มต้องไม่ roll back
        ใบที่ธงไม่ติดจะไม่โผล่ในคิวบัญชี ซึ่งกู้ได้ด้วยการอนุมัติซ้ำหรือแก้มือ */
     try {
-      await supabase.from('sales_orders')
-        .update({ financeStatus: 'pending' })
-        .eq('id', id)
-        .is('financeStatus', null);
+      /* ⭐ **ใบยอด 0 ไม่ต้องเข้าคิวบัญชี** (มติ 2026-08-18 · ขยายมาแกนนี้ 26/08) —
+         ตรงกับงวดชำระที่ตัดใบยอด 0 ออกอยู่แล้ว · ธงค้างเป็น NULL = "ไม่มีขั้นนี้"
+         ซึ่งเป็นความหมายเดียวกับใบที่ออกก่อน mig 0250 */
+      if (!paymentNotRequired(before.totalAmount)) {
+        await supabase.from('sales_orders')
+          .update({ financeStatus: 'pending' })
+          .eq('id', id)
+          .is('financeStatus', null);
+      }
     } catch (financeFlagError) {
       console.error('sales order finance queue flag failed', id, financeFlagError);
     }

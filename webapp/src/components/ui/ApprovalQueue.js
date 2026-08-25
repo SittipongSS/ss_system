@@ -1,5 +1,7 @@
 "use client";
+import { useState } from "react";
 import { Clock } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { ApprovalActions } from "@/components/ApprovalStatus";
 import styles from "./ApprovalQueue.module.css";
 
@@ -24,8 +26,16 @@ import styles from "./ApprovalQueue.module.css";
      secondary    — (rec) => string   บรรทัดรอง (ชื่อ · ทีม)
      onOpen       — (rec) => void     กดที่แถวเพื่อเปิดรายละเอียด (ไม่บังคับ)
      title        — คำบนหัวกล่อง (ไม่บังคับ) */
-export default function ApprovalQueue({ items, onDecide, renderAction, primary, secondary, onOpen, title = "ต้องทำตอนนี้ — รออนุมัติจากคุณ" }) {
+const QUEUE_PREVIEW = 3;
+
+export default function ApprovalQueue({
+  items, onDecide, renderAction, primary, secondary, onOpen,
+  title = "ต้องทำตอนนี้ — รออนุมัติจากคุณ", unit = "รายการ",
+}) {
+  const [open, setOpen] = useState(false);
+  // ⚠️ hook ต้องมาก่อน early return เสมอ — คิวว่างแล้วค่อยคืน null
   if (!items.length) return null;
+  const shown = open ? items : items.slice(0, QUEUE_PREVIEW);
   return (
     <section className={styles.queue}>
       <div className={styles.head}>
@@ -33,7 +43,7 @@ export default function ApprovalQueue({ items, onDecide, renderAction, primary, 
         <span>{title} ({items.length})</span>
       </div>
       <div className={styles.list}>
-        {items.map((rec) => (
+        {shown.map((rec) => (
           <div
             key={rec.id}
             onClick={onOpen ? () => onOpen(rec) : undefined}
@@ -48,6 +58,13 @@ export default function ApprovalQueue({ items, onDecide, renderAction, primary, 
             </div>
           </div>
         ))}
+        {items.length > QUEUE_PREVIEW && (
+          <div className={styles.more}>
+            <Button size="sm" variant="quiet" onClick={() => setOpen((v) => !v)}>
+              {open ? "ย่อคิว" : `ดูอีก ${items.length - QUEUE_PREVIEW} ${unit}`}
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

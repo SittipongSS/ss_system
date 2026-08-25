@@ -32,3 +32,11 @@
 .rowText { flex: 1; min-width: 180px; line-height: var(--lh-thai); }
 .rowText .code { color: var(--accent-ink); font-family: var(--font-numeric); font-size: var(--fs-5); }
 .rowText .name { color: var(--text); font-size: var(--fs-6); }
+
+/* ปุ่มกาง/ย่อคิว — ทรงเดียวกับคิวของทะเบียนการชำระ (แถวกลาง ใต้รายการ) */
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-2-5);
+  border-top: 1px solid var(--border);
+}
