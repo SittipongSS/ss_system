@@ -13,7 +13,7 @@ import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
 import Workspace from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
-import ApprovalQueue from "@/components/database/ApprovalQueue";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";

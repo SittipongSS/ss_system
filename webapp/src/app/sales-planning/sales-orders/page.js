@@ -4,12 +4,13 @@ import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import FilterPopover from "@/components/ui/FilterPopover";
+import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
@@ -129,6 +130,7 @@ export default function SalesOrdersPage() {
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
   const navCountParam = useSearchParams().get("count") || "";
+  const router = useRouter();
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
 
   const load = useCallback(async () => {
@@ -223,6 +225,9 @@ export default function SalesOrdersPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${sortKey}|${sortDir}` });
 
+  // ใบที่รอคนที่กำลังดูอยู่อนุมัติ (ธงจาก server)
+  const approvalQueue = useMemo(() => rows.filter((row) => row._awaitingMyApproval), [rows]);
+
   const summary = useMemo(() => ({
     total: rows.length,
     pending: rows.filter((row) => row.status === "pending_approval").length,
@@ -312,6 +317,18 @@ export default function SalesOrdersPage() {
           <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
           <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
         </SaMetricStrip>
+
+        {/* คิว "รออนุมัติจากคุณ" — เหตุผลและทรงเดียวกับทะเบียนใบเสนอราคา/ลูกค้า/สินค้า
+            ⚠️ ตัดใบที่ตัวเองสร้างหรือยื่นออกที่ server แล้ว (อนุมัติเองไม่ได้) */}
+        <ApprovalQueue
+          items={approvalQueue}
+          primary={(o) => o.orderNumber}
+          secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
+          onOpen={(o) => router.push(`/sa/sales-orders/${o.id}`)}
+          renderAction={(o) => (
+            <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">เปิดใบเพื่ออนุมัติ</Button>
+          )}
+        />
 
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}

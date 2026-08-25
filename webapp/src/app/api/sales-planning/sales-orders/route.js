@@ -4,6 +4,7 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
 import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/sales/salesOrderInstallmentsStore';
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
@@ -131,6 +132,11 @@ export const GET = withUser(async ({ user, supabase }) => {
       // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
       // ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
       _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) }),
+      /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
+         (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
+      _awaitingMyApproval: isSalesOrderReviewer(user.role)
+        && row.status === 'pending_approval'
+        && !isSalesOrderSelfApproval(row, user.id),
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 
