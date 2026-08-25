@@ -7,6 +7,7 @@
 //    เลี่ยงไปวางนอกระบบ แล้วบอร์ดก็ตายทั้งใบ
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -60,9 +61,11 @@ export default function ProductionBoardPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/production/board?from=${range.from}&to=${range.to}`);
@@ -75,12 +78,13 @@ export default function ProductionBoardPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์บอร์ดว่าง — "โหลดพัง" กับ "ไลน์ว่างทั้งเดือน"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้ว PC จะวางงานทับของที่มีอยู่
-      if (isLatest()) setLoadError(e.message || "โหลดบอร์ดไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดบอร์ดไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   // override กำลังรายวัน แยกตามไลน์ — ใช้ทั้งตอนคำนวณโหลดและตอนวาดช่องว่าง
   const overridesByLine = useMemo(() => {

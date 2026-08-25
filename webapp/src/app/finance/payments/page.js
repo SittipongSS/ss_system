@@ -20,6 +20,7 @@
 // ปุ่มดาวน์โหลดใช้ query ชุดเดียวกัน ⇒ ไฟล์ที่ได้ตรงกับที่เห็นบนจอเสมอ
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -123,9 +124,12 @@ export default function FinancePaymentsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true); setError("");
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
+    setError("");
     try {
       const res = await fetch(`/api/finance/payments?${query}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
@@ -135,11 +139,12 @@ export default function FinancePaymentsPage() {
         rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0,
         undatedHidden: body.undatedHidden || null,
       });
-    } catch (loadError) { if (isLatest()) setError(loadError.message); }
+    } catch (loadError) { if (isLatest() && !opts?.background) setError(loadError.message); }
     if (isLatest()) setLoading(false);
   }, [query, startRun]);
 
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const rows = data.rows;
   const summary = data.summary;

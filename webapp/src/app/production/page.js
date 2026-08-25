@@ -9,6 +9,7 @@
 // ⚠️ ทุกตัวเลขต้องกดต่อไปหางานได้ — ตัวเลขที่กดไม่ได้คือตัวเลขที่ไม่มีใครดูรอบสอง
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarRange, Factory, Gauge, Hammer, LayoutDashboard, ListChecks, PlayCircle } from "lucide-react";
 import ActionQueue from "@/components/ui/ActionQueue";
@@ -69,9 +70,11 @@ export default function ProductionOverviewPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       // ⭐ autoDraft=1 เหมือนหน้าคิว — ถ้าภาพรวมไม่กวาด SO อนุมัติแล้วมาเป็นงานร่าง
@@ -96,12 +99,13 @@ export default function ProductionOverviewPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ภาพรวมว่าง — "โหลดพัง" กับ "ไม่มีงาน" หน้าตา
       // เหมือนกันจนแยกไม่ออก แล้ว PC จะเชื่อว่าโรงงานว่าง
-      if (isLatest()) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [todayIso, weekEnd, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const overridesByLine = useMemo(() => {
     const map = new Map();

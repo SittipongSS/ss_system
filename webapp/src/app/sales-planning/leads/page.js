@@ -44,6 +44,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
@@ -189,9 +190,11 @@ export default function LeadsPage() {
   /* ⚠️ ตัวกรองของหน้านี้มีช่องวันที่ ⇒ เลื่อนทีละวันคือยิงโหลดซ้อนกันหลายรอบ
      คำตอบมาผิดลำดับเมื่อไร ตัวเลข KPI จะเป็นของช่วงที่เลื่อนผ่านไปแล้ว (ดู lib/ui/latestRun) */
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setError("");
     try {
       const [leadsRes, kpiRes] = await Promise.all([
@@ -214,13 +217,14 @@ export default function LeadsPage() {
       setKpi(kpiData);
     } catch (e) {
       // รอบเก่าที่ล้มต้องไม่พ่นข้อความทับหน้าที่กำลังโหลดของใหม่อยู่
-      if (isLatest()) setError(e.message || "โหลดลีดไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setError(e.message || "โหลดลีดไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [month, allMonths, periodMode, range.from, range.to, showKpi, startRun]);
 
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   // รายชื่อ AE (มอบหมาย) + ลูกค้า (qualify) — โหลดเมื่อ role ทำงานคิวได้เท่านั้น
   useEffect(() => {

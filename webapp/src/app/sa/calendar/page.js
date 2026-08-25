@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -88,9 +89,12 @@ export default function SalesCalendarPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true); setError("");
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
+    setError("");
     const from = `${cursor.y}-${pad(cursor.m + 1)}-01`;
     const last = new Date(cursor.y, cursor.m + 1, 0).getDate();
     const to = `${cursor.y}-${pad(cursor.m + 1)}-${pad(last)}`;
@@ -101,12 +105,13 @@ export default function SalesCalendarPage() {
       if (!res.ok) throw new Error(body?.error || "โหลดปฏิทินไม่สำเร็จ");
       setEntries(Array.isArray(body) ? body : []);
     } catch (e) {
-      if (!isLatest()) return;
+      if (!isLatest() || opts?.background) return;
       setError(e.message); setEntries([]);
     } finally { if (isLatest()) setLoading(false); }
   }, [cursor, startRun]);
 
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   /* ขอบเขต "ของฉัน / ทีม / ทุกทีม" — กรองภายในสิ่งที่ API คืนมาแล้วเท่านั้น
      ด่านจริงอยู่ที่ applyLeadScope ฝั่ง server · ตั้งต้นที่ตัวกว้างสุดเหมือนหน้าคิวลีด */

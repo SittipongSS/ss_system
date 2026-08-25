@@ -40,10 +40,19 @@ export default function NotificationBell() {
     } catch { /* กระดิ่งพังต้องไม่ทำ header พัง */ }
   }, []);
 
+  /* ⚠️ **ไม่ยิงตอนแท็บซ่อน** — เดิม interval เดินทั้งวันแม้จอมืด: ทุกแท็บที่เปิดค้าง
+     ไว้จ่าย 30 request/ชม. ให้กับสิ่งที่ไม่มีใครดู · เช็คใน tick ไม่ใช่ตอนตั้ง interval
+     เพราะแท็บที่ถูกซ่อน *ระหว่างทาง* ต้องหยุดด้วย ไม่ใช่แค่แท็บที่ซ่อนอยู่ตอน mount
+     ⚠️ ต้องยิงตอนกลับมามองด้วย ไม่งั้นป้ายจะเก่าได้ถึงสองนาทีทั้งที่คนกำลังจ้องอยู่ */
   useEffect(() => {
     load();
-    const timer = setInterval(load, POLL_MS);
-    return () => clearInterval(timer);
+    const tick = () => { if (document.visibilityState === "visible") load(); };
+    const timer = setInterval(tick, POLL_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [load]);
 
   useEffect(() => {
