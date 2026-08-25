@@ -18,16 +18,29 @@
 // ⚠️ **ไม่นับ "รอบที่เท่าไร"** — เลขรอบต้องมีคนคอยนับให้ตรงกับสายพันธุ์ของแถว
 // (`derivedFromItemId`) ซึ่งเป็นตัวนับที่สองที่ drift ได้ · ที่นี่ถามคำถามที่ตอบได้
 // จากของที่มีอยู่แล้ว: **แถวรอบแก้ที่ยังเดินอยู่ เกิดหลังการแจ้งวันครั้งล่าสุดไหม**
-import { isRowSettled } from '@/lib/requests/rowStage';
+import { rowStage } from '@/lib/requests/rowStage';
+
+/* ⭐ **ขั้นที่ "ยังไม่ได้ส่ง"** — ชุดเดียวกับ `FILLABLE` ของ `lib/requests/rework.js`
+   (แถวรอบแก้ที่ยังเติมของลงไปได้) เพราะถามคำถามเดียวกัน: RD ส่งของรอบนี้ไปหรือยัง */
+const UNDELIVERED = new Set(['awaiting_ack', 'developing']);
 
 /**
- * แถวที่เป็น "รอบแก้ที่ยังเดินอยู่" — เกิดจากที่ลูกค้าขอให้แก้ และยังไม่จบ
+ * แถวที่เป็น "รอบแก้ที่ยังไม่ได้ส่ง" — เกิดจากที่ลูกค้าขอให้แก้ และ RD ยังไม่ส่งของ
  *
  * ⚠️ `derivedFromItemId` เป็นตัวชี้ว่าแถวนี้เป็นรอบต่อของแถวไหน (ตั้งโดย
  * `followUpRowFrom`) — แถวรอบแรกไม่มีค่านี้เสมอ
+ *
+ * 🐞 **เคยกรองด้วย `!isRowSettled` ซึ่งกว้างเกินไป** (เจอตอนตรวจย้อนหลัง 2026-08-26)
+ * — `awaiting_price` ไม่นับว่า settled ⇒ แถวรอบแก้ที่ RD ส่งไปแล้ว ลูกค้าคอนเฟิร์ม
+ * แล้ว และเหลือแค่รอใส่ราคา **ยังถูกนับว่า "ค้างวัน"** ⇒ รางค้างที่ขั้น "กำหนดส่ง"
+ * (index 2) และคิวขึ้น "รอกำหนดส่ง" ทับป้าย "รอใส่ราคา" ซึ่ง `middleStep` ตั้งใจ
+ * ให้เห็นเป็นพิเศษเพราะเป็น "ใบค้างถาวรถ้าไม่มีใครเห็น" (กับดักข้อ 11 ของแผน)
+ *
+ * ⭐ **วันส่งคือคำสัญญาว่า *จะส่งเมื่อไร*** ⇒ ส่งไปแล้วคำถามนี้จบ ไม่ว่าปลายทาง
+ * จะจบสวยหรือยังค้างที่ขั้นอื่น · เส้นแบ่งจึงอยู่ที่ `readyAt` ไม่ใช่ที่ปลายสาย
  */
 export function openReworkRows(items = []) {
-  return (items || []).filter((row) => row?.derivedFromItemId && !isRowSettled(row));
+  return (items || []).filter((row) => row?.derivedFromItemId && UNDELIVERED.has(rowStage(row)));
 }
 
 /**
@@ -51,4 +64,29 @@ export function dueIsStale(request, items = []) {
     const born = row.createdAt ? Date.parse(row.createdAt) : null;
     return Number.isFinite(born) && born > committedAt;
   });
+}
+
+/**
+ * วันกำหนดส่ง **ที่ยังเป็นคำสัญญาอยู่จริง** — คืน null เมื่อวันที่ถืออยู่เป็นของรอบก่อน
+ *
+ * ⭐ **ผู้เรียกทุกคนที่ตัดสินคำว่า "เลยกำหนด" ต้องอ่านผ่านตัวนี้ ไม่ใช่อ่าน
+ * `request.committedDueDate` ดิบ** (ตรวจย้อนหลัง 2026-08-26)
+ *
+ * 🐞 รอบแรกแก้แค่ `requestAwaitingDue` ⇒ รางบนหน้ารายละเอียดบอก "รอ RD แจ้งวันของ
+ * รอบแก้" แต่ **ใบเดียวกัน** ในคิวยังขึ้นป้ายแดง "เลยกำหนด" ตกกลุ่ม "เลยกำหนด"
+ * และถูกนับเข้าแถบตัวเลข เพราะแปดจุดที่ตัดสินเรื่องวันเป็นคนละฟังก์ชันกันหมด
+ * (`requestDueTone` · `requestGroupKey` · `matchesQueueCount` · `requestDueText` ·
+ *  `dueSoonRequests` · `headerFacts` · `dueCalendar` · `RequestDueBadge`)
+ *
+ * ⭐ **คืน null ไม่ใช่ธงแยก** — ผู้เรียกทุกคนมีกิ่ง "ยังไม่มีวัน" ที่ถูกต้องอยู่แล้ว
+ * (`requestDueTone` คืน "รอกำหนดส่ง" · `requestGroupKey` คืน 'open' · ตัวนับ
+ * `undated` เป็นจริง) ⇒ เปลี่ยนแหล่งอ่านอย่างเดียว ไม่ต้องเพิ่มกิ่งให้ใครสักคน
+ *
+ * ⚠️ ตรงกับกฎที่รีโปเขียนไว้เองที่ `lib/salesPlanning/myQueue.js`: *ของที่ไม่มีใคร
+ * รับปากวันไว้ ห้ามขึ้นกลุ่มเลยกำหนด — จะกลายเป็นการโทษฝ่ายที่ยังไม่ได้รับปาก*
+ */
+export function liveDueDate(request) {
+  const due = String(request?.committedDueDate ?? '').trim();
+  if (!due) return null;
+  return dueIsStale(request, request?.items) ? null : due;
 }
