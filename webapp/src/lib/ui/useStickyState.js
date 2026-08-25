@@ -2,12 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import arrivedByHistory from "./historyArrival";
 
 /* ── จำค่าที่ผู้ใช้ตั้งไว้ในหน้ารายการ (ตัวกรอง · การเรียง · การจัดกลุ่ม) ────
  *
  * 🐞 ปัญหาที่แก้ (ผู้ใช้รายงาน 2026-08-22): ตัวกรอง/การเรียงเป็น `useState` ธรรมดา
  * ในแต่ละหน้า · กดเข้าหน้ารายละเอียด หน้ารายการถูก unmount ค่าหายหมด กดย้อนกลับ
  * มาก็เริ่มจากค่าตั้งต้นใหม่ ⇒ คนที่ไล่เปิดทีละใบต้องกรองใหม่ทุกครั้ง
+ *
+ * ⭐ **คืนค่าเฉพาะตอนกดย้อน/เดินหน้า** (มติผู้ใช้ 2026-08-25) — เข้าหน้าจากเมนูหรือ
+ * ลิงก์อื่น = เริ่มที่ค่าตั้งต้นเสมอ และล้างของที่จำไว้ทิ้ง · กติกาเดียวกับการคืน
+ * ตำแหน่งที่ไถ (lib/ui/useScrollTopOnNavigate.js) ⇒ "ย้อนกลับ = กลับไปที่เดิม" ส่วน
+ * "เข้าใหม่ = เริ่มใหม่" ไม่ต้องเดาว่าตัวกรองที่ติดอยู่มาจากไหน
  *
  * ⭐ มติผู้ใช้ 2026-08-22: เก็บใน **sessionStorage** (จำจนกว่าจะปิดแท็บ) ไม่ใช่ URL
  * — แลกกับการส่งลิงก์พร้อมตัวกรองให้คนอื่นไม่ได้ ได้กลับมาคือทุกหน้าได้ผลเหมือนกัน
@@ -58,9 +64,20 @@ export default function useStickyState(key, initialValue) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setValue(readStored(storageKey, initialRef.current));
+    /* ⚠️ ถามที่เดียวกับที่ตัวคืนตำแหน่งไถถาม (lib/ui/historyArrival.js) — ธงถูกกิน
+       ทีละ pathname ไม่ใช่ทีละคนเรียก หน้าหนึ่งจึงมี useStickyState กี่ตัวก็ได้
+       คำตอบเดียวกันทั้งหมด */
+    if (arrivedByHistory(pathname)) {
+      setValue(readStored(storageKey, initialRef.current));
+    } else {
+      /* เข้าใหม่ = เริ่มใหม่ · ล้างของเก่าทิ้งด้วย ไม่ใช่แค่ไม่อ่าน — ไม่งั้นค่าที่
+         ค้างอยู่จะโผล่กลับมาตอนกดย้อนเข้าหน้านี้ในภายหลัง ทั้งที่ผู้ใช้ล้างไปแล้ว
+         โดยการเข้าใหม่ */
+      setValue(initialRef.current);
+      try { window.sessionStorage.removeItem(storageKey); } catch {}
+    }
     setHydrated(true);
-  }, [storageKey]);
+  }, [pathname, storageKey]);
 
   useEffect(() => {
     /* 🪤 ห้ามเขียนก่อนอ่าน — เรนเดอร์แรกค่ายังเป็นค่าตั้งต้น ถ้าเขียนทันที
