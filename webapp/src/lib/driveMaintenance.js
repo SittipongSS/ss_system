@@ -8,6 +8,7 @@
 //   3. จัดโครงโฟลเดอร์ (planRestructure/runRestructure)
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { PARENT_TABLE } from '@/lib/master/attachments';
 import {
   FOLDER, driveEnvStatus, getDrive, getFileMeta, uploadFile, deleteFile, moveFile,
@@ -116,15 +117,15 @@ async function mapLimited(items, worker) {
 
 export async function auditDriveFiles() {
   const supabase = getSupabaseAdmin();
-  const [attRes, updRes] = await Promise.all([
-    supabase.from('attachments').select('id, entityType, entityId, docType, fileName, fileUrl, driveFileId'),
-    supabase.from('entity_updates').select('id, entityType, entityId, attachments').not('attachments', 'is', null),
+  const [attachments, updates] = await Promise.all([
+    fetchAll(() => supabase
+      .from('attachments').select('id, entityType, entityId, docType, fileName, fileUrl, driveFileId').order('id')),
+    fetchAll(() => supabase
+      .from('entity_updates').select('id, entityType, entityId, attachments').order('id')),
   ]);
-  if (attRes.error) throw attRes.error;
-  if (updRes.error) throw updRes.error;
 
   const targets = [];
-  for (const row of attRes.data || []) {
+  for (const row of attachments) {
     targets.push({
       source: 'attachments',
       rowId: row.id,
@@ -135,7 +136,7 @@ export async function auditDriveFiles() {
       fileUrl: row.fileUrl,
     });
   }
-  for (const row of updRes.data || []) {
+  for (const row of updates) {
     const list = Array.isArray(row.attachments) ? row.attachments : [];
     list.forEach((att, i) => {
       targets.push({
@@ -180,11 +181,10 @@ export async function auditDriveFiles() {
 // ระเบียนที่ไม่มีอยู่จริง · มองไม่เห็นจากหน้าไหนเลยเพราะไม่มีหน้าแม่ให้เปิด และทำให้
 // รายงาน "ไฟล์เข้าถึงไม่ได้" อ่านแล้วเข้าใจผิดว่าของสำคัญหาย ทั้งที่เป็นของตายทั้งหมด
 async function loadOrphanAttachmentRows(supabase) {
-  const { data, error } = await supabase.from('attachments').select('*');
-  if (error) throw error;
+  const data = await fetchAll(() => supabase.from('attachments').select('*').order('id'));
 
   const byType = {};
-  for (const row of data || []) (byType[row.entityType] ||= []).push(row);
+  for (const row of data) (byType[row.entityType] ||= []).push(row);
 
   const orphans = [];
   const unknownTypes = [];
@@ -193,12 +193,18 @@ async function loadOrphanAttachmentRows(supabase) {
     // entityType ที่ยังไม่ได้ลงทะเบียนตาราง = **ห้ามเดาว่ากำพร้า** (ลบผิดกู้ยาก)
     if (!table) { unknownTypes.push(entityType); continue; }
     const ids = [...new Set(rows.map((r) => r.entityId))];
-    const parents = await supabase.from(table).select('id').in('id', ids);
-    if (parents.error) throw new Error(`${table}: ${parents.error.message}`);
-    const alive = new Set((parents.data || []).map((r) => r.id));
+    /* ⚠️ หั่น `.in()` เป็นชุด — รายการยาว ๆ ทำให้ URL ของ PostgREST ยาวเกินจนถูกปฏิเสธ
+       และผลลัพธ์ต้องไล่ทีละหน้าด้วย ไม่งั้นแม่ที่ยังอยู่จริงถูกตัดออกจากชุด `alive`
+       แล้วแถวลูกถูกตัดสินว่ากำพร้า ⇒ **ปุ่มล้างจะลบของที่ยังใช้อยู่** */
+    const alive = new Set();
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const parents = await fetchAll(() => supabase.from(table).select('id').in('id', chunk).order('id'));
+      for (const row of parents) alive.add(row.id);
+    }
     orphans.push(...rows.filter((r) => !alive.has(r.entityId)));
   }
-  return { orphans, unknownTypes, total: data?.length || 0 };
+  return { orphans, unknownTypes, total: data.length };
 }
 
 export async function auditOrphanAttachmentRows() {
@@ -280,32 +286,30 @@ async function collectReferencedIds(supabase) {
   const refs = new Set();
   const add = (id) => { if (id) refs.add(String(id)); };
 
-  const [attRes, updRes, quoRes, custRes, prodRes] = await Promise.all([
-    supabase.from('attachments').select('driveFileId, fileUrl, metadata'),
-    supabase.from('entity_updates').select('attachments').not('attachments', 'is', null),
-    supabase.from('quotations').select('wonAttachments').not('wonAttachments', 'is', null),
-    supabase.from('customers').select('driveFolderId').not('driveFolderId', 'is', null),
-    supabase.from('products').select('driveFolderId').not('driveFolderId', 'is', null),
+  const [attachments, updates, quotations, customers, products] = await Promise.all([
+    fetchAll(() => supabase.from('attachments').select('id, driveFileId, fileUrl, metadata').order('id')),
+    fetchAll(() => supabase.from('entity_updates').select('id, attachments').order('id')),
+    fetchAll(() => supabase.from('quotations').select('id, "wonAttachments"').order('id')),
+    fetchAll(() => supabase.from('customers').select('id, "driveFolderId"').order('id')),
+    fetchAll(() => supabase.from('products').select('id, "driveFolderId"').order('id')),
   ]);
-  const firstError = attRes.error || updRes.error || quoRes.error || custRes.error || prodRes.error;
-  if (firstError) throw firstError;
 
-  for (const row of attRes.data || []) {
+  for (const row of attachments) {
     add(row.driveFileId);
     add(driveIdFromUrl(row.fileUrl));
     add(row.metadata?.googleFileId);
   }
-  for (const row of updRes.data || []) {
+  for (const row of updates) {
     for (const att of Array.isArray(row.attachments) ? row.attachments : []) {
       add(att?.driveFileId);
       add(driveIdFromUrl(att?.fileUrl));
     }
   }
-  for (const row of quoRes.data || []) {
+  for (const row of quotations) {
     for (const att of Array.isArray(row.wonAttachments) ? row.wonAttachments : []) add(att?.driveFileId);
   }
-  for (const row of custRes.data || []) add(row.driveFolderId);
-  for (const row of prodRes.data || []) add(row.driveFolderId);
+  for (const row of customers) add(row.driveFolderId);
+  for (const row of products) add(row.driveFolderId);
   return refs;
 }
 
@@ -424,20 +428,18 @@ async function findFolderByPath(names) {
 // แผนการย้าย — อ่าน DB อย่างเดียว ไม่แตะ Drive เลย (กดดูได้ปลอดภัย)
 export async function planRestructure() {
   const supabase = getSupabaseAdmin();
-  const [custRes, prodRes, attRes, updRes] = await Promise.all([
-    supabase.from('customers').select('id, name, driveFolderId').not('driveFolderId', 'is', null),
-    supabase.from('products').select('id, fgCode, customerId, driveFolderId').not('driveFolderId', 'is', null),
-    supabase.from('attachments').select('id, entityType, entityId, fileName, driveFileId').not('driveFileId', 'is', null),
-    supabase.from('entity_updates').select('id, entityType, entityId, attachments').not('attachments', 'is', null),
+  const [customers, products, attachments, updates] = await Promise.all([
+    fetchAll(() => supabase.from('customers').select('id, name, "driveFolderId"').not('driveFolderId', 'is', null).order('id')),
+    fetchAll(() => supabase.from('products').select('id, "fgCode", "customerId", "driveFolderId"').not('driveFolderId', 'is', null).order('id')),
+    fetchAll(() => supabase.from('attachments').select('id, "entityType", "entityId", "fileName", "driveFileId"').not('driveFileId', 'is', null).order('id')),
+    fetchAll(() => supabase.from('entity_updates').select('id, "entityType", "entityId", attachments').order('id')),
   ]);
-  const firstError = custRes.error || prodRes.error || attRes.error || updRes.error;
-  if (firstError) throw firstError;
 
-  const files = [...(attRes.data || []).map((r) => ({
+  const files = [...attachments.map((r) => ({
     source: 'attachments', rowId: r.id, entityType: r.entityType, entityId: r.entityId,
     fileName: r.fileName, driveFileId: r.driveFileId,
   }))];
-  for (const row of updRes.data || []) {
+  for (const row of updates) {
     (Array.isArray(row.attachments) ? row.attachments : []).forEach((att, i) => {
       if (att?.driveFileId) {
         files.push({
@@ -464,8 +466,8 @@ export async function planRestructure() {
 
   return {
     folderMoves: {
-      customers: custRes.data?.length || 0,
-      products: prodRes.data?.length || 0,
+      customers: customers.length,
+      products: products.length,
     },
     fileCount: files.length,
     targets: [...byTarget.entries()]
@@ -479,19 +481,17 @@ export async function planRestructure() {
 // รายการไฟล์ทั้งหมดที่ระบบอ้างถึงบน Drive — เรียงคงที่ (id) เพื่อให้แบ่งเป็นชุดแล้ว
 // เดินหน้าได้จริง ไม่วนกลับมาทำชุดเดิม
 async function driveFileTargets(supabase) {
-  const [attRes, updRes] = await Promise.all([
-    supabase.from('attachments').select('id, entityType, entityId, fileName, driveFileId')
-      .not('driveFileId', 'is', null).order('id'),
-    supabase.from('entity_updates').select('id, entityType, entityId, attachments')
-      .not('attachments', 'is', null).order('id'),
+  const [attachments, updates] = await Promise.all([
+    fetchAll(() => supabase.from('attachments').select('id, "entityType", "entityId", "fileName", "driveFileId"')
+      .not('driveFileId', 'is', null).order('id')),
+    fetchAll(() => supabase.from('entity_updates').select('id, "entityType", "entityId", attachments')
+      .order('id')),
   ]);
-  if (attRes.error) throw attRes.error;
-  if (updRes.error) throw updRes.error;
 
-  const files = (attRes.data || []).map((r) => ({
+  const files = attachments.map((r) => ({
     rowId: r.id, entityType: r.entityType, entityId: r.entityId, fileName: r.fileName, driveFileId: r.driveFileId,
   }));
-  for (const row of updRes.data || []) {
+  for (const row of updates) {
     (Array.isArray(row.attachments) ? row.attachments : []).forEach((att, i) => {
       if (att?.driveFileId) {
         files.push({
@@ -510,17 +510,15 @@ async function driveFileTargets(supabase) {
 // ที่เหลือค้างที่ราก และ UI เห็นเป็น error โดยไม่รู้ว่าทำไปถึงไหน (เจอจริงบน prod)
 // → รวมทุกอย่างเป็นลิสต์งานเดียวที่เรียงคงที่ แล้วหั่นด้วย offset เหมือนกันหมด
 async function buildRestructureTasks(supabase) {
-  const [custRes, prodRes] = await Promise.all([
-    supabase.from('customers').select('id, name, driveFolderId').not('driveFolderId', 'is', null).order('id'),
-    supabase.from('products').select('id, fgCode, customerId, driveFolderId').not('driveFolderId', 'is', null).order('id'),
+  const [customers, products] = await Promise.all([
+    fetchAll(() => supabase.from('customers').select('id, name, "driveFolderId"').not('driveFolderId', 'is', null).order('id')),
+    fetchAll(() => supabase.from('products').select('id, "fgCode", "customerId", "driveFolderId"').not('driveFolderId', 'is', null).order('id')),
   ]);
-  if (custRes.error) throw custRes.error;
-  if (prodRes.error) throw prodRes.error;
 
   return [
     ...LEGACY_ABSORB.map((absorb) => ({ kind: 'absorb', absorb, label: absorb.from.join(' / ') })),
-    ...(custRes.data || []).map((customer) => ({ kind: 'customerFolder', customer, label: `โฟลเดอร์ลูกค้า ${customer.name}` })),
-    ...(prodRes.data || []).map((product) => ({ kind: 'productFolder', product, label: `โฟลเดอร์สินค้า ${product.fgCode || product.id}` })),
+    ...customers.map((customer) => ({ kind: 'customerFolder', customer, label: `โฟลเดอร์ลูกค้า ${customer.name}` })),
+    ...products.map((product) => ({ kind: 'productFolder', product, label: `โฟลเดอร์สินค้า ${product.fgCode || product.id}` })),
     ...(await driveFileTargets(supabase)).map((file) => ({ kind: 'file', file, label: file.fileName || file.rowId })),
   ];
 }
