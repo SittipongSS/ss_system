@@ -21,7 +21,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -373,5 +373,12 @@ function LeadSummary({ lead }) {
     {/* "นัดถัดไป" ไม่ใช่ "นัดล่าสุด" — ลีดหนึ่งใบมีได้หลายนัดแล้ว คอลัมน์เก็บนัดที่ยังไม่ถึง
         (ดู nextMeetingAt ใน route ของ transition) · นัดทั้งหมดอยู่ในประวัติด้านซ้าย */}
     <div className={styles.summaryRow}><span>นัดถัดไป</span><strong>{lead.meetingAt ? fmtDateTime(lead.meetingAt) : NA}</strong></div>
+    {/* ⭐ เหตุผลที่ไม่ไปต่อ (mig 0290) — เดิม `disqualifiedReason` ถูกเขียนลง DB ทุกใบ
+        แต่ **ไม่มีจอไหนอ่านเลย** อ่านได้ทางเดียวคือไล่ดูไทม์ไลน์ด้านซ้าย · ใบที่ปิดแล้ว
+        คำถามแรกของคนเปิดดูคือ "ทำไมไม่ไปต่อ" จึงควรอยู่ตรงนี้
+        ⚠️ `leadLostText` อ่านออกทั้งใบใหม่ (รหัส + ข้อความ) และใบเก่าที่มีแต่ข้อความ */}
+    {lead.status === "disqualified" && (
+      <div className={styles.summaryRow}><span>ไม่ไปต่อเพราะ</span><strong>{leadLostText(lead)}</strong></div>
+    )}
   </DetailCard>;
 }

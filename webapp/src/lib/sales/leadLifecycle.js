@@ -23,6 +23,7 @@ import {
   MEETING_MODES,
   MEETING_MODE_LABELS,
   LEAD_FOLLOW_UP_ACTIONS,
+  LEAD_LOST_REASONS,
   canWorkLead,
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
@@ -316,9 +317,23 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         reasonPolicy: {
           title: "ปิดลีดนี้",
           description: "ลีดจะถูกปิดถาวร เหตุผลจะถูกเก็บในประวัติ",
-          label: "เหตุผลที่ไม่ไปต่อ",
-          placeholder: "เช่น งบไม่ถึง / ไม่ใช่กลุ่มเป้าหมาย / ติดต่อไม่ได้",
+          label: "รายละเอียด",
+          placeholder: "เกิดอะไรขึ้นจริง ๆ — เช่น เสนอไป 1.4 ล้าน ลูกค้าตั้งงบไว้ 8 แสน",
         },
+        /* ⭐ รหัสเหตุผล (mig 0290) — **หัวข้อก่อน แล้วค่อยรายละเอียด**
+           ข้อความอิสระอย่างเดียวนับไม่ได้ ("งบไม่ถึง"/"งบไม่พอ"/"ลูกค้าบอกแพง" =
+           เรื่องเดียวกันแต่ group by ไม่ได้) ⇒ รายงาน "แพ้เพราะอะไร" เกิดไม่ได้เลย
+           ⚠️ ตัวเลือกมาจาก `LEAD_LOST_REASONS` ที่เดียว — สะกดซ้ำที่นี่เมื่อไร
+           ฟอร์มกับ CHECK ของ DB จะเริ่มไม่ตรงกัน แล้วผู้ใช้เลือกได้แต่บันทึกไม่ได้ */
+        fields: [
+          {
+            name: "disqualifiedCode",
+            label: "เหตุผลที่ไม่ไปต่อ",
+            type: "select",
+            required: true,
+            options: LEAD_LOST_REASONS.map(({ code, label }) => ({ value: code, label })),
+          },
+        ],
       },
     ],
   });
@@ -381,6 +396,9 @@ export function buildLeadTransitionPayload({ action, values = {}, users = [] } =
     assigneeId: values.assigneeId || undefined,
     assigneeName: assignee ? fmtName(assignee) : undefined,
     reason: values.reason?.trim() || undefined,
+    // ⚠️ ส่งเฉพาะตอนปิดลีด — ติดไปกับ action อื่นไม่พังวันนี้ (handler ไม่อ่าน)
+    // แต่เป็นทางที่ payload จะเริ่มโกหกว่า "ทุก action มีเหตุผลที่ไม่ไปต่อ"
+    disqualifiedCode: action === "disqualify" ? values.disqualifiedCode || undefined : undefined,
     meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
     eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
     /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS) — ส่งไปกับ action อื่น

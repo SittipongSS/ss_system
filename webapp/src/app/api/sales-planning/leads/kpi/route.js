@@ -1,7 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { holidaySet } from '@/lib/master/holidays';
 import { canSeeLeadKpi } from '@/lib/permissions';
-import { slaHit, slaStage, channelRollup, withAssigneePending } from '@/lib/sales/leads';
+import { slaHit, slaStage, channelRollup, withAssigneePending, lostReasonRollup } from '@/lib/sales/leads';
 import { monthKey } from '@/lib/salesPlanning';
 import {
   businessDayKey, businessMonthKey, dateRangeOfBusinessDays, dateRangeOfBusinessMonth,
@@ -125,6 +125,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      (มีเทสคุมว่าช่องสถานะสี่ช่องรวมกันต้องเท่าจำนวนลีดเป๊ะ ไม่งั้นแท่งสัดส่วนยาวเกินราง) */
   const byChannel = channelRollup(rows);
 
+  /* ⭐ "แพ้เพราะอะไร" (mig 0290) — ก่อนหน้านี้ `disqualifiedReason` ถูกเขียนทุกใบแต่
+     **ไม่มีใครอ่าน** และ KPI มีแค่ % รวม ตอบได้แค่ว่าแพ้เท่าไร ไม่ใช่แพ้เพราะอะไร
+     ⚠️ กติกาการนับอยู่ที่ `lostReasonRollup` ที่เดียว (route เหลือหน้าที่ส่งต่อ) */
+  const lostReasons = lostReasonRollup(rows);
+
   /* SLA (นับเฉพาะใบที่ถึงขั้นนั้นแล้ว): hit = ≤1 วันทำการ · กติกาอยู่ใน slaStage ที่เดียว
      เส้นทางลีดมี **สามด่าน** ไม่ใช่สอง — ด่านกลาง "กระจาย" (Senior AE เลือก AE) เคยหายไป
      ทั้งที่การ์ดค้างคิวขึ้นหัวว่า "SLA 1 วันทำการทุกขั้น" และ `screenedAt`/`assignedAt`
@@ -209,6 +214,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .map((c) => ({ ...c, days: c.days.size, perDay: c.days.size ? +(c.count / c.days.size).toFixed(1) : 0 }))
       .sort((a, b) => b.count - a.count),
     byChannel,
+    lostReasons,
     /* เรียงตาม "ค้างตอนนี้" มากสุดก่อน ไม่ใช่ตามจำนวนที่รับมอบ — ตารางนี้ตอบคำถาม
        "ตอนนี้ต้องไปตามใคร" · withAssigneePending เติมแถวให้คนที่เดือนนี้ไม่มีลีดใหม่
        แต่ยังกองของเก่าไว้ด้วย ไม่งั้นคนที่ต้องตามที่สุดจะหายจากตาราง */
