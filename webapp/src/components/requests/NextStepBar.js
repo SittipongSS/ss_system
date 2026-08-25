@@ -63,12 +63,33 @@ const waitingText = (owner, { deptLabel, requesterLabel }) => (owner === "dept"
   ? `รอ ${deptLabel || "ฝ่ายปลายทาง"}`
   : `รอ ${requesterLabel || "ผู้ขอ"}`);
 
+/* ── ชิปบอกว่าก้าวนี้เป็นของใคร (มติผู้ใช้ 2026-08-26) ─────────────────────
+   🐞 **ปุ่มที่กดได้ไม่เคยบอกว่าเป็นของใคร** — ป้าย "รอ RD" ขึ้นเฉพาะตอนก้าวนั้น
+   *ไม่ใช่* ของคนที่กำลังดู ⇒ คนที่มีสิทธิ์ทั้งสองฝั่ง (แอดมิน · คนที่ตอบแทนฝ่าย)
+   เห็นปุ่มสดทุกแถวโดยไม่มีอะไรบอกว่าแถวไหนควรเป็นงานของ RD แถวไหนของ SA ·
+   และคนที่เพิ่งเข้าระบบอ่านปุ่มจางได้แค่ว่า "ไม่ใช่ของฉัน" ไม่ได้ว่า "เป็นของใคร"
+
+   ⚠️ **ขึ้นเฉพาะตอนปุ่มกดได้** — กิ่ง `!isMine` เขียน "รอ RD" อยู่แล้ว ติดชิปซ้ำ
+   คือข้อเท็จจริงเดียวกันสองที่ในบรรทัดเดียว
+   ⚠️ **ใช้ชื่อฝ่ายจริงจาก props ชุดเดียวกับ `waitingText`** ไม่ใช่คิดเอง — ฝั่งผู้ขอ
+   ไม่ใช่ SA เสมอไป (RD เปิดใบขอเอกสารจาก FN ก็มี) */
+export const ownerTag = (owner, { deptLabel, requesterLabel } = {}) => (owner === "dept"
+  ? (deptLabel || "ฝ่าย")
+  : (requesterLabel || "ผู้ขอ"));
+
 // ── ปุ่ม/ป้ายก้าวถัดไปของ "แถวเดียว" — ก้อนกลางที่สองที่วางใช้ร่วมกัน ──────
 //
 // ⭐ แยกออกมาเพื่อให้ **ตารางเอกสาร** วางปุ่มติดแถวได้ (มติผู้ใช้ 2026-08-09:
 // "ก้าวถัดไปก็อยากในรายการเอกสารเลย") โดยไม่โคลนกติกา hop/เจ้าของ/ปฏิเสธ —
 // สองที่ประกอบเองเมื่อไรก็เพี้ยนกันเมื่อนั้น (โรคเดิมของฟอร์มสร้าง/แก้)
 // คืน null = แถวจบแล้ว ไม่มีก้าวให้เดิน
+/* ⚠️ **ปุ่มลงมือทุกตัวในตารางเดียวกันต้องติดชิปเหมือนกัน** — ปุ่มระดับก้อน (ส่งงาน
+   รายบรีฟ) ไม่ได้ผ่าน `RowStepActions` ⇒ ต้องใช้ชิปตัวเดียวกันนี้ ไม่งั้นตารางเดียว
+   มีปุ่มติดชิปกับไม่ติดชิปปนกัน ซึ่งอ่านเหมือนชิปมีความหมายพิเศษ */
+export function OwnerTag({ owner = "dept", deptLabel = null, requesterLabel = null }) {
+  return <span className={styles.owner}>{ownerTag(owner, { deptLabel, requesterLabel })}</span>;
+}
+
 export function RowStepActions({
   row, canDept = false, canRequester = false, busy = false, onHop, onPrice,
   deptLabel = null, requesterLabel = null,
@@ -107,9 +128,11 @@ export function RowStepActions({
       </div>
     );
   }
+  const tag = <OwnerTag owner={owner} deptLabel={deptLabel} requesterLabel={requesterLabel} />;
   if (hop === "outcome") {
     return (
       <div className={styles.actions}>
+        {tag}
         {ROW_OUTCOMES.map((outcome) => (
           <Button
             key={outcome} disabled={busy}
@@ -125,6 +148,7 @@ export function RowStepActions({
   }
   return (
     <div className={styles.actions}>
+      {tag}
       <Button
         tone="primary" disabled={busy}
         onClick={() => (hop === "price" ? onPrice?.(row) : onHop?.(row, hop))}

@@ -32,7 +32,7 @@ import RequestRows from "./RequestRows";
 import { ListChecks } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PdrSummary from "@/components/requests/PdrSummary";
-import { RowStepActions } from "@/components/requests/NextStepBar";
+import { OwnerTag, RowStepActions } from "@/components/requests/NextStepBar";
 // ⚠️ รางหมวดของทั้งสองโหมดมาจากตัวเดียวกัน — โหมดแก้ส่งค่าฟอร์ม โหมดอ่านส่งแถวคำร้อง
 // แล้วตัวลิบแปลงให้เอง ⇒ เลขบนรางก่อนกด "แก้ไข" กับหลังกดต้องตรงกันเสมอ
 import {
@@ -132,9 +132,14 @@ export default function ScentDevDetail({
                ⚠️ เงื่อนไขเดียวกับปุ่มเดิมเป๊ะ (`rowStep.canDept` = ฝ่ายปลายทางที่รับเรื่อง
                แล้ว) — ที่ย้ายคือ *ที่วาง* ไม่ใช่ด่าน */
             renderGroupStep={rowStep?.canDept && onDeliver ? (g) => (
-              <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
-                <Send size={14} /> ส่งงาน
-              </Button>
+              <>
+                {/* ⚠️ ชิปตัวเดียวกับปุ่มรายแถว — ตารางเดียวมีปุ่มติดชิปกับไม่ติดชิป
+                    ปนกันไม่ได้ (มติผู้ใช้ 2026-08-26) */}
+                <OwnerTag owner="dept" deptLabel={rowStep.deptLabel} />
+                <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
+                  <Send size={14} /> ส่งงาน
+                </Button>
+              </>
             ) : null}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
