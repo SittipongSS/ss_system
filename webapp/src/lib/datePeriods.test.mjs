@@ -5,6 +5,12 @@ import { readFileSync } from "node:fs";
 import {
   addDays,
   addMonths,
+  lastNMonths,
+  monthCountInRange,
+  monthRangeOfWholeYear,
+  monthsInRange,
+  normalizeMonthRange,
+  quarterRangeOfMonth,
   businessDayKey,
   businessMonthKey,
   dateRangeOfBusinessDays,
@@ -192,4 +198,47 @@ test('route KPI: โหมดช่วงวันมาก่อนเดือ
     'ช่วงวันต้องถูกตรวจก่อน year/month',
   );
   assert.match(src, /days: dayRange \? daysInRange/);
+});
+
+
+/* ── ช่วงงวดเดือน (รายงานยอดขายข้ามปี) ─────────────────────────────── */
+
+test('ช่วงเดือนข้ามปีปฏิทินได้ และนับปลายทั้งสองข้าง', () => {
+  assert.deepEqual(monthsInRange('2025-11', '2026-02'), ['2025-11', '2025-12', '2026-01', '2026-02']);
+  assert.equal(monthCountInRange('2025-09', '2026-08'), 12);
+  // เดือนเดียว = 1 ไม่ใช่ 0
+  assert.deepEqual(monthsInRange('2026-03', '2026-03'), ['2026-03']);
+  assert.equal(monthCountInRange('2026-03', '2026-03'), 1);
+});
+
+test('ช่วงที่กลับด้านถูกสลับให้ ไม่ใช่คืนค่าว่าง', () => {
+  assert.deepEqual(normalizeMonthRange({ from: '2026-08', to: '2025-09' }), { from: '2025-09', to: '2026-08' });
+  assert.deepEqual(monthsInRange('2026-02', '2025-12'), ['2025-12', '2026-01', '2026-02']);
+});
+
+test('ค่าที่ไม่ใช่งวดเดือนให้ผลว่าง ไม่ใช่พังหรือวนไม่รู้จบ', () => {
+  assert.equal(normalizeMonthRange({ from: '2026-13', to: '2026-01' }), null);
+  assert.equal(normalizeMonthRange({ from: '2026', to: '2026-01' }), null);
+  assert.equal(normalizeMonthRange(null), null);
+  assert.deepEqual(monthsInRange('ไม่ใช่เดือน', '2026-01'), []);
+  assert.equal(monthCountInRange(undefined, undefined), 0);
+});
+
+test('N เดือนล่าสุดนับเดือนที่ยืนอยู่เป็นเดือนสุดท้าย', () => {
+  const now = new Date('2026-08-26T10:00:00+07:00');
+  assert.deepEqual(lastNMonths(12, { now }), { from: '2025-09', to: '2026-08' });
+  assert.deepEqual(lastNMonths(1, { now }), { from: '2026-08', to: '2026-08' });
+  // ระบุเดือนอ้างอิงเองได้ (ใช้ตอนย้อนดูช่วงเก่า)
+  assert.deepEqual(lastNMonths(3, { anchor: '2026-02' }), { from: '2025-12', to: '2026-02' });
+  assert.equal(lastNMonths(0, { now }), null);
+  assert.equal(lastNMonths('มาก', { now }), null);
+});
+
+test('ไตรมาสคิดตามปฏิทิน และของทั้งปีคืนทรง from/to', () => {
+  assert.deepEqual(quarterRangeOfMonth('2026-08'), { from: '2026-07', to: '2026-09' });
+  assert.deepEqual(quarterRangeOfMonth('2026-01'), { from: '2026-01', to: '2026-03' });
+  assert.deepEqual(quarterRangeOfMonth('2026-12'), { from: '2026-10', to: '2026-12' });
+  assert.equal(quarterRangeOfMonth('2026'), null);
+  assert.deepEqual(monthRangeOfWholeYear('2026'), { from: '2026-01', to: '2026-12' });
+  assert.equal(monthRangeOfWholeYear('26'), null);
 });
