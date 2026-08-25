@@ -4,7 +4,7 @@ import Modal from "@/components/Modal";
 import PendingFiles from "@/components/ui/PendingFiles";
 import { fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
@@ -33,7 +33,7 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
       if (file) {
         try {
           // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
-          const { url, driveFileId } = await uploadFileForEntity({
+          const { url, driveFileId } = await uploadFileBytes({
             file, entityType: "order", entityId: order.id,
           });
           const sv = await fetch("/api/master/attachments", {

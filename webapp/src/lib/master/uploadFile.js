@@ -22,6 +22,17 @@ import {
 // storageBucket, storagePath, mimeType }` — ผู้เรียกจึงส่งต่อให้ endpoint metadata
 // (`/api/master/attachments` · `/api/updates` · accept ของใบเสนอราคา) ได้เหมือนเดิม
 // @throws {Error} ข้อความไทยพร้อมโชว์ผู้ใช้ — ผู้เรียกเลือกเองว่าจะ toast หรือใส่ในฟอร์ม
+//
+// 🐞 **ตัวนี้ทำครึ่งเดียว และครึ่งที่ขาดคือครึ่งที่ทำให้ไฟล์ "มีอยู่"**
+// เดิมชื่อ `uploadFileForEntity` ซึ่งอ่านแล้วเหมือน "แนบไฟล์ให้ entity นี้เรียบร้อย"
+// ฟอร์มสร้างงานเลยเรียกตัวนี้แล้วทิ้ง ref ที่คืนมา ⇒ ไบต์ขึ้น Drive จริงแต่ไม่มีแถวใน
+// `attachments` ⇒ แผงไฟล์แนบว่างเปล่าโดยไม่มี error สักตัว ผู้ใช้เห็นว่า "แนบแล้วหาย"
+// และไม่มีใครรู้ตั้งแต่ 17/07 ถึง 24/08/69 (PR #1394)
+//
+// ⭐ **ไฟล์แนบปกติให้ใช้ `uploadAttachment()` (lib/master/attachmentUpload.js)** ซึ่งทำ
+// ทั้งสองขั้นและลบไฟล์ทิ้งให้เองถ้าขั้นบันทึกแถวล้ม · เรียกตัวนี้ตรง ๆ ได้เฉพาะเมื่อ
+// **เอา ref ไปเขียนลงคอลัมน์ของตัวเอง** (หลักฐาน Won · สลิปชำระ · รูปปิดงานบริการ ·
+// ไฟล์ในเธรดอัปเดต) — ทะเบียนผู้เรียกที่อนุญาตอยู่ที่ `uploadBytesCallers.test.mjs`
 
 /** PUT ไบต์ขึ้น URL ที่ได้มา + รายงานความคืบหน้า (fetch ยังบอก progress ของ upload ไม่ได้) */
 function putWithProgress(url, file, contentType, onProgress) {
@@ -69,7 +80,7 @@ async function uploadThroughApi({ file, entityType, entityId }) {
   };
 }
 
-export async function uploadFileForEntity({ file, entityType, entityId, onProgress = null }) {
+export async function uploadFileBytes({ file, entityType, entityId, onProgress = null }) {
   // เช็คก่อนยิง (กันเสียเวลาอัปแล้วโดนปฏิเสธ) — server ตรวจชุดเดียวกันซ้ำเสมอ
   const verdict = checkUploadCandidate({
     fileName: file?.name, mimeType: file?.type, sizeBytes: file?.size,

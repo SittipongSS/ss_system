@@ -1,4 +1,4 @@
-import { uploadFileForEntity } from '@/lib/master/uploadFile';
+import { uploadFileBytes } from '@/lib/master/uploadFile';
 
 // ── ส่งอัปเดตหนึ่งข้อความพร้อมไฟล์แนบ ────────────────────────────────────
 //
@@ -17,7 +17,7 @@ export async function uploadUpdateFiles({ entityType, entityId, files = [] }) {
   const attachments = [];
   for (const file of files) {
     // ไบต์ขึ้น Drive ตรงจากเบราว์เซอร์ (ไม่ผ่าน function = ไม่ติดเพดาน 4.5 MB)
-    const ref = await uploadFileForEntity({ file, entityType, entityId });
+    const ref = await uploadFileBytes({ file, entityType, entityId });
     attachments.push({
       fileUrl: ref.url,
       driveFileId: ref.driveFileId || null,

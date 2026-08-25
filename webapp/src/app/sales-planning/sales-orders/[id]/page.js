@@ -62,7 +62,7 @@ import { salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import Textarea from "@/components/ui/Textarea";
 import Input from "@/components/ui/Input";
 import { businessDate } from "@/lib/businessDate";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
@@ -278,7 +278,7 @@ export default function SalesOrderDetailPage() {
       try {
         const uploaded = [];
         for (const file of confirmFiles) {
-          const ref = await uploadFileForEntity({
+          const ref = await uploadFileBytes({
             file, entityType: "sales_order_confirmation", entityId: order.quotationId,
           });
           uploaded.push({
@@ -323,7 +323,7 @@ export default function SalesOrderDetailPage() {
     // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ (signed URL จาก /api/upload/session)
     let ref;
     try {
-      ref = await uploadFileForEntity({
+      ref = await uploadFileBytes({
         file, entityType: "sales_order_payment_evidence", entityId: id,
       });
     } catch (err) {

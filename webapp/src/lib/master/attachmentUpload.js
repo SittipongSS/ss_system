@@ -1,5 +1,5 @@
 import { describeResponseError } from '@/lib/fetchError';
-import { uploadFileForEntity } from '@/lib/master/uploadFile';
+import { uploadFileBytes } from '@/lib/master/uploadFile';
 
 // ── อัปไฟล์แนบ 1 ไฟล์: storage → แถว metadata ──────────────────────────
 //
@@ -23,7 +23,7 @@ export async function uploadAttachment({
   try {
     // ข้อความจริงจากชั้นอัปก่อนเสมอ — "อัปโหลดไฟล์ไม่สำเร็จ" ตายตัวทำให้ผู้ใช้ไม่รู้ว่า
     // ติดชนิดไฟล์ ขนาด หรือท่อ Drive และคนดูแลระบบตามไม่ได้
-    ({ url, driveFileId } = await uploadFileForEntity({
+    ({ url, driveFileId } = await uploadFileBytes({
       file, entityType, entityId, onProgress,
     }));
   } catch (err) {

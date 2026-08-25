@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/close-resolved-issues",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/drive-orphans",
+      "schedule": "0 3 * * 1"
     }
   ],
   "git": {

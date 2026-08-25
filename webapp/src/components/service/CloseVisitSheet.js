@@ -12,7 +12,7 @@ import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import TimeInput from "@/components/ui/TimeInput";
 import SignaturePad from "./SignaturePad";
-import { uploadFileForEntity } from "@/lib/master/uploadFile";
+import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
@@ -107,7 +107,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   // ไฟล์ใหญ่เกิน/ชนิดไม่รองรับ/ท่อ Drive ตาย ซึ่งแก้คนละทาง
   const uploadBlob = async (blob, name) => {
     const file = new File([blob], name, { type: blob.type || "image/png" });
-    const ref = await uploadFileForEntity({
+    const ref = await uploadFileBytes({
       file, entityType: "service_visit", entityId: visit.id,
     });
     return ref.url || null;
