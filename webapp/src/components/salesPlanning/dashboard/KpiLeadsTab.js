@@ -2,7 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Inbox, Filter, Users, PhoneCall, CalendarClock, PieChart as PieIcon } from "lucide-react";
+import { Inbox, Filter, Users, PhoneCall, CalendarClock, Ban, PieChart as PieIcon } from "lucide-react";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, LabelList, ResponsiveContainer, Tooltip as RTooltip,
 } from "recharts";
@@ -116,6 +116,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
   // ห่อ useMemo เพราะ `kpi?.funnel || {}` สร้างอ็อบเจกต์ใหม่ทุกเรนเดอร์เมื่อ kpi ยังว่าง
   // ⇒ useMemo ที่พึ่ง `f` จะคำนวณใหม่ทุกครั้ง (eslint react-hooks จับได้)
   const f = useMemo(() => kpi?.funnel || {}, [kpi]);
+  // เหตุผลเดียวกับ `f` — `kpi?.lostReasons || {}` สร้างอ็อบเจกต์ใหม่ทุกเรนเดอร์เมื่อ kpi ยังว่าง
+  const lost = useMemo(() => kpi?.lostReasons || {}, [kpi]);
   const sla = kpi?.sla || {};
   /* ป้ายงวดคิดจากค่าที่หน้าจอถืออยู่ ไม่ใช่ `kpi.month` ที่ตอบกลับมา — โหมดทั้งปี
      route ไม่ได้ใช้ `month` แต่ยังคืนค่าถอย (เดือนปัจจุบัน) ติดมาด้วย */
@@ -446,6 +448,45 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
           </>
         ) : (
           <ChartEmptyState>ยังไม่มีลีด · {scopeLabel}</ChartEmptyState>
+        )}
+      </SaSection>
+
+      {/* ⭐ "แพ้เพราะอะไร" (mig 0290) — ก่อนหน้านี้ `disqualifiedReason` ถูกเขียนทุกใบ
+          แต่ไม่มีจอไหนอ่านเลย และแท็บนี้มีแค่การ์ด "ไม่ไปต่อ %" ซึ่งตอบได้แค่แพ้เท่าไร
+          ⚠️ แถวที่เป็น 0 ยังขึ้น — "เดือนนี้ไม่มีใครแพ้เพราะราคาเลย" คือข้อมูล ไม่ใช่
+          ความว่างเปล่า · และเรียงตามลิสต์คงที่ ไม่ใช่ตามจำนวน ไม่งั้นอ่านเทียบข้ามเดือนไม่ได้ */}
+      <SaSection
+        icon={<Ban size={17} />}
+        title="เหตุผลที่ไม่ไปต่อ"
+        subtitle={`${lost.total ?? 0} ใบของ${scopeLabel} · นับเป็นแพ้ ${lost.countedTotal ?? 0} · ไม่นับ ${lost.excluded ?? 0}`}
+      >
+        {lost.total ? (
+          <TableScroll surface="embedded"><table>
+            <thead><tr><th>เหตุผล</th><th className="num">ใบ</th><th className="num">สัดส่วน</th></tr></thead>
+            <tbody>
+              {(lost.reasons || []).map((r) => (
+                <tr key={r.code} className={`premium-row ${r.countable ? "" : styles.mutedRow}`.trim()}>
+                  <td>{r.label}</td>
+                  <td className="num mono">{r.count}</td>
+                  {/* ⚠️ ตัวหาร = ใบที่นับเป็นแพ้จริง ไม่ใช่ทุกใบที่ปิด — ไม่งั้นสแปมจะไปกด
+                      สัดส่วนของเหตุผลจริงทุกแถวให้ดูเล็กลง · แถวที่ไม่นับจึงไม่มี % ให้อ่าน */}
+                  <td className="num mono">{r.countable ? pct(r.count, lost.countedTotal) : "ไม่นับ"}</td>
+                </tr>
+              ))}
+              {/* ใบเก่าก่อน mig 0290 — แยกจาก "อื่นๆ" โดยเจตนา: "อื่นๆ" คือสิ่งที่ AE
+                  เลือกเอง ส่วนตัวนี้คือของที่ระบบไม่เคยถาม ปนกันแล้วจะอ่านว่า "อื่นๆ"
+                  พุ่งขึ้นทั้งที่ไม่มีใครเลือกมันเพิ่มเลย */}
+              {lost.unknown ? (
+                <tr className={`premium-row ${styles.mutedRow}`}>
+                  <td>ไม่ระบุ (ใบก่อนเริ่มเก็บรหัส)</td>
+                  <td className="num mono">{lost.unknown}</td>
+                  <td className="num mono">{pct(lost.unknown, lost.countedTotal)}</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table></TableScroll>
+        ) : (
+          <ChartEmptyState>ยังไม่มีลีดที่ปิดว่าไม่ไปต่อ · {scopeLabel}</ChartEmptyState>
         )}
       </SaSection>
 
