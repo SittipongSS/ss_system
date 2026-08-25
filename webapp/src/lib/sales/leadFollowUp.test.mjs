@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, LEAD_FOLLOW_UP_ACTIONS, leadFollowUpError,
+  leadBouncePatch,
 } from './leads.js';
 
 const routeSrc = readFileSync(
@@ -73,10 +74,12 @@ const branch = (action) => {
    ล้างไม่ครบแล้ววันติดตามของเจ้าของคนเก่าจะฟื้นขึ้นมาบนลีดของเจ้าของคนใหม่
    ซึ่งไม่เคยรับปากอะไรไว้ แล้วระบบจะทวงเขาด้วยกำหนดของคนอื่น */
 test('ตีกลับล้างวันติดตามด้วย — ครบชุดเดียวกับ firstContactAt/meetingAt', () => {
-  const bounce = branch('bounce');
+  // กติกาอยู่ที่ `leadBouncePatch` ตั้งแต่ mig 0291 (cron ใช้ตัวเดียวกับ route)
+  const patch = leadBouncePatch('2026-08-25T03:00:00Z');
   for (const col of ['firstContactAt', 'meetingAt', 'followUpAt']) {
-    assert.match(bounce, new RegExp(`patch\\.${col} = null`), `bounce ไม่ได้ล้าง ${col}`);
+    assert.equal(patch[col], null, `bounce ไม่ได้ล้าง ${col}`);
   }
+  assert.match(routeSrc, /Object\.assign\(patch, leadBouncePatch\(now\)\)/);
 });
 
 /* ⚠️ วันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว — ปล่อยทั้งคู่ไว้ = ลีดใบเดียวโผล่

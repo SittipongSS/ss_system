@@ -5,6 +5,7 @@ import { can, hasTeam, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
   meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError, leadLostReasonError,
+  leadBouncePatch, LEAD_BOUNCE_KINDS,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS } from '@/lib/permissions';
@@ -21,7 +22,9 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
     .from('lead_events')
     .select('kind, eventAt, createdAt')
     .eq('leadId', leadId)
-    .in('kind', ['meeting', 'bounce'])
+    // ⚠️ ต้องรวม auto_bounce ด้วย (mig 0291) — ลิสต์นี้ตัดที่ 'ขอบรอบ' ขาดชนิดไหนไป
+    // นัดของรอบก่อนจะฟื้นขึ้นมาบนลีดของเจ้าของคนใหม่
+    .in('kind', ['meeting', ...LEAD_BOUNCE_KINDS])
     .order('createdAt', { ascending: false });
   // อ่านประวัติไม่ได้ = ถอยไปใช้นัดที่เพิ่งบันทึก (พฤติกรรมเดิมก่อนมติ) ไม่ล้มทั้งรายการ
   if (error) console.error('[lead transition] อ่านประวัตินัดไม่สำเร็จ:', error.message);
@@ -210,26 +213,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   } else if (action === 'bounce') {
     if (!oversightScope) return forbidden();
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ตีกลับ (เช่น ทีมไม่ตรง)');
-    patch.team = null;
-    patch.assigneeId = null;
-    patch.assigneeName = null;
-    // ตีกลับ = เริ่มใหม่หมด: ล้างเวลาติดต่อ/นัดของรอบก่อน ไม่งั้น SLA ติดต่อกลับของ
-    // ผู้รับคนใหม่ถูกวัดจาก firstContactAt เดิม (assignedAt ใหม่ > firstContactAt เก่า →
-    // countBusinessDays ติดลบ → slaHit นับเป็น "ทัน" ฟรี ๆ)
-    patch.firstContactAt = null;
-    patch.meetingAt = null;
-    // ⭐ วันติดตามของเจ้าของคนเก่า (mig 0289) — ไม่ล้างแล้วมันฟื้นขึ้นมาบนลีดของ
-    // เจ้าของคนใหม่ที่ไม่เคยรับปากอะไรไว้ แล้วระบบจะทวงเขาด้วยกำหนดของคนอื่น
-    patch.followUpAt = null;
-    // ⭐ ล้างต้นรอบด้วย ไม่ใช่แค่ปลายรอบ (mig 0234) — ใบนี้กลับไปนอนคิวคัดกรองแล้ว
-    // ยังไม่ถูกคัดกรอง/มอบหมายในรอบใหม่ สองคอลัมน์นี้จึงต้องว่างตามสถานะ `new`
-    //   · ค้างไว้แล้วผัง Funnel นับ "คัดกรองแล้ว/มอบหมายแล้ว" เกินจริง (ตาราง AE ไม่นับ
-    //     เพราะ assigneeId ว่างไปแล้ว ⇒ สองที่บนจอเดียวกันไม่ตรงกัน)
-    //   · ค้างไว้แล้ว SLA กระจายของรอบใหม่ถูกวัดจาก screenedAt รอบก่อน = กินเวลาตีกลับ
-    //     ทั้งรอบ · ครั้งแรกยังอยู่ที่ firstScreenedAt ไม่ได้หายไปไหน
-    patch.screenedAt = null;
-    patch.assignedAt = null;
-    patch.firstAssignedAt = null; // ครั้งแรก "ของรอบ" ไม่ใช่ตลอดกาล — รอบใหม่นับใหม่ (mig 0273)
+    /* ⚠️ กติกา "ตีกลับแล้วต้องล้างอะไรบ้าง" อยู่ที่ `leadBouncePatch` ที่เดียว —
+       cron ตีกลับอัตโนมัติ (mig 0291) เขียนแถวเองไม่ผ่าน route นี้ (ไม่มี session user)
+       สองที่ที่ต้องล้างเจ็ดคอลัมน์ให้ตรงกันเองคือสองที่ที่จะเพี้ยนหากัน */
+    Object.assign(patch, leadBouncePatch(now));
     event.reason = body.reason.trim();
   }
 
