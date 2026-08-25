@@ -1,6 +1,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { DEAL_TYPES, canViewSalesPlanning, dealTypeOf, forecastAmount, monthKey, teamRank } from '@/lib/salesPlanning';
 import { cachedJson } from '@/lib/serverCache';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { forecastAccuracyRollup, isWonDeal, isOpenDeal, isRealLostDeal, normalizedOwnerName, wonAmountOf, wonMonthOf } from '@/lib/sales/dashboardMetrics';
 import { buildOwnerResolver } from '@/lib/sales/ownerIdentity';
 import { FORECAST_VALUES, snapForecastLevel } from '@/lib/sales/forecastLevels';
@@ -43,7 +44,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 // โปร่งใสทั้งบริษัท). การจำกัด scope ตามทีม/เจ้าของ ยังบังคับที่หน้า pipeline
 // (deals) และหน้าวางเป้า (targets) ตามเดิม — เฉพาะภาพรวมนี้ที่เห็นครบ.
 async function loadAllDeals(supabase) {
-  const { data: deals, error } = await supabase.from('sales_deals').select(DEAL_COLUMNS);
+  /* ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ ไม่มี error ⇒ KPI ทั้งแผงคิดจากดีล
+     ไม่ครบโดยไม่มีใครดูออก เพราะมันเป็นตัวเลขสรุป (บทเรียนเดียวกับ project_tasks 16/08)
+     เรียงด้วย `id` พอ — ตัวรวมยอดไม่สนลำดับ ขอแค่ลำดับนิ่งระหว่างไล่หน้า */
+  const { data: deals, error } = await fetchAllResult(() => supabase
+    .from('sales_deals').select(DEAL_COLUMNS).order('id', { ascending: true }));
   if (error) throw new Error(error.message);
   return deals || [];
 }

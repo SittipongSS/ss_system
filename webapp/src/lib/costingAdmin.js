@@ -3,6 +3,7 @@
 import { randomUUID } from 'crypto';
 import { sourceDeptForKind } from '@/lib/master/costTemplate';
 import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 // โหลดใบพร้อมลูกทั้งสามชั้นในชุด query คงที่ (ไม่ยิงต่อใบ — กัน N+1 บนหน้ารายการ)
 export async function loadCostingRequests(supabase, { id = null, filters = {} } = {}) {
@@ -60,11 +61,13 @@ export async function findCostingRequest(supabase, id) {
 // คืนรายการ { componentId, askId, docNo, askStatus } เฉพาะรายการที่ยังไม่ถูกตอบ
 // ในเคสที่ยังเดินอยู่ — ใช้ทั้งป้ายบนหน้าจอ, ด่านส่งผู้บริหาร และธงสถานะ 'pricing'
 export async function loadPendingAskLinks(supabase, requestId) {
-  const { data: asks, error } = await supabase
+  // ⚠️ ไล่ทีละหน้า — เคสขอราคาหนึ่งใบแตกเป็นใบขอย่อยได้หลายรอบ
+  const { data: asks, error } = await fetchAllResult(() => supabase
     .from('dept_requests')
     .select('id, docNo, status, dept')
     .eq('costingRequestId', requestId)
-    .in('status', REQUEST_OPEN_STATUSES);
+    .in('status', REQUEST_OPEN_STATUSES)
+    .order('id', { ascending: true }));
   if (error) throw error;
   if (!asks?.length) return [];
 

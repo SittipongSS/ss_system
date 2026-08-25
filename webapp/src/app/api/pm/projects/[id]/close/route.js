@@ -1,5 +1,6 @@
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, inPmProjectScope } from '@/lib/permissions';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { recordAudit } from '@/lib/audit';
 import {
@@ -31,9 +32,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // สองตัวแรกมาจากตัวตัดสินกลางของคิวรอยต่อ (lib/sales/handoffQueue) — คำเตือนตอนปิด
     // กับการ์ดคิวบนแดชบอร์ดต้องนับด้วยกติกาเดียวกัน ไม่งั้นสองที่บอกไม่ตรงกัน
     const handoff = await loadHandoffQueue(supabase, { dealIds });
+    // ⚠️ ไล่ทีละหน้า — โครงการที่รวมดีลไว้หลายใบ จำนวน SO รวมกันโตได้เกินเพดาน
     const { data: salesOrders, error: orderError } = dealIds.length
-      ? await supabase.from('sales_orders')
+      ? await fetchAllResult(() => supabase.from('sales_orders')
         .select('id, orderNumber, status, supersededById').in('dealId', dealIds)
+        .order('id', { ascending: true }))
       : { data: [], error: null };
     if (orderError) throw orderError;
     const orderIds = (salesOrders || []).map((order) => order.id);

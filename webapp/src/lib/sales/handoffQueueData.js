@@ -6,6 +6,7 @@
 // รับ supabase client มาเป็นพารามิเตอร์ (ไม่ import เอง) — my-dashboard ส่งตัวที่ผูก
 // สิทธิ์ผู้ใช้มา ส่วน cron ส่ง service-role มา
 import { resolveSoFiling } from '@/lib/excise/soFiling';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
 
 const LIST_CAP = 100;
@@ -17,12 +18,18 @@ const raise = (label, error) => {
 // ใบเสนอราคา Won ที่ยังไม่มี Sale Order ที่ใช้งานอยู่
 // dealIds = null → ทั้งระบบ (การ์ดสรุปเช้า) · array → เฉพาะดีลชุดนั้น (แดชบอร์ดของฉัน)
 async function loadAwaitingSalesOrder(supabase, dealIds) {
-  let query = supabase
-    .from('quotations')
-    .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt')
-    .eq('status', 'accepted');
-  if (dealIds) query = query.in('dealId', dealIds);
-  const { data: quotations, error } = await query;
+  /* ⚠️ ไล่ทีละหน้า — `dealIds = null` (การ์ดสรุปเช้า) = อ่านใบที่ Won **ทั้งทะเบียน**
+     ซึ่งโตขึ้นเรื่อย ๆ ไม่มีวันลด · โดนตัดที่ 1,000 เมื่อไร คิวส่งมอบจะขาดใบเก่าไป
+     เงียบ ๆ แล้วไม่มีใครรู้ว่ามีใบค้างอยู่ */
+  const { data: quotations, error } = await fetchAllResult(() => {
+    let query = supabase
+      .from('quotations')
+      .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt')
+      .eq('status', 'accepted')
+      .order('id', { ascending: true });
+    if (dealIds) query = query.in('dealId', dealIds);
+    return query;
+  });
   raise('โหลดใบเสนอราคา Won ไม่สำเร็จ', error);
   if (!quotations?.length) return [];
 
@@ -42,13 +49,17 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
 // Sale Order ที่อนุมัติแล้วและยังไม่มีใบยื่นชำระภาษี — เฉพาะใบที่ "มีสินค้าสรรพสามิต
 // ให้ยื่นจริง" (resolveSoFiling().eligible) ไม่งั้น SO ที่ขายของนอกพิกัดจะค้างคิวถาวร
 async function loadAwaitingFiling(supabase, dealIds) {
-  let query = supabase
-    .from('sales_orders')
-    .select('id, orderNumber, customerId, customerName, dealId, status, supersededById, approvedAt, totalAmount')
-    .eq('status', 'approved')
-    .is('supersededById', null);
-  if (dealIds) query = query.in('dealId', dealIds);
-  const { data: approved, error } = await query;
+  // ⚠️ เหตุผลเดียวกับก้อนบน — `dealIds = null` = อ่าน SO ที่อนุมัติแล้วทั้งทะเบียน
+  const { data: approved, error } = await fetchAllResult(() => {
+    let query = supabase
+      .from('sales_orders')
+      .select('id, orderNumber, customerId, customerName, dealId, status, supersededById, approvedAt, totalAmount')
+      .eq('status', 'approved')
+      .is('supersededById', null)
+      .order('id', { ascending: true });
+    if (dealIds) query = query.in('dealId', dealIds);
+    return query;
+  });
   raise('โหลด ใบสั่งขายที่อนุมัติแล้วไม่สำเร็จ', error);
   if (!approved?.length) return [];
 

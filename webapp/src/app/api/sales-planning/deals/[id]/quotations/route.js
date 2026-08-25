@@ -1,5 +1,6 @@
 import { withUser, ok, fail, badRequest, conflict, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel, isWonStage } from '@/lib/salesPlanning';
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
@@ -22,11 +23,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { row: deal, response } = await loadScoped(supabase, 'sales_deals', id, user, 'view');
   if (response) return response;
 
-  const { data, error } = await supabase
+  // ⚠️ ไล่ทีละหน้า — ดีลอายุยาวที่ออก Rev. ซ้ำ ๆ สะสมใบได้เรื่อย ๆ · พ่วง `id` ให้ลำดับนิ่ง
+  const { data, error } = await fetchAllResult(() => supabase
     .from('quotations')
     .select(quoteSelect)
     .eq('dealId', deal.id)
-    .order('createdAt', { ascending: false });
+    .order('createdAt', { ascending: false })
+    .order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
   // บรรทัด FG โชว์คำอธิบายสดจาก master เฉพาะใบที่ยังแก้ได้ (แสดงผลเท่านั้น ไม่บันทึก)
   return ok(await refreshFgLinesForDisplay(supabase, latestQuotationRevisions(data || [])));
