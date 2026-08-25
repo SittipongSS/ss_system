@@ -626,7 +626,10 @@
      🪤 เคยบวก `--topnav-menu-h` (แถวเมนูแนวนอน) ด้วย · แถวนั้นไม่มีแล้ว และค่านั้น
      ก็เคยเพี้ยนอยู่ก่อน เพราะ var() ในค่านี้ถูก substitute ตั้งแต่ตอน *ประกาศ* ที่
      `:root` การเขียนทับ `--topnav-menu-h` ที่ลูกจึงไม่เคยมีผลกับมันเลย */
-  --scroll-anchor-top: calc(var(--topbar-h) + var(--space-3));
+  /* ความสูงแถวระบบบนหัว (จอกว้าง) — 0 เมื่อไม่มีแถวนั้น (ดูบล็อกชั้นจอ)
+     ⚠️ ต้องอยู่ในโทเคน เพราะจุดยึดการเลื่อนข้างล่างบวกมันด้วย */
+  --sysbar-h: 42px;
+  --scroll-anchor-top: calc(var(--topbar-h) + var(--sysbar-h) + var(--space-3));
   /* ── ชั้นซ้อน (z-index) ────────────────────────────────────────────────
      **ของใหม่ต้องหยิบชื่อจากที่นี่ ห้ามคิดเลขเอง** (audit:ui บังคับไว้)
 
@@ -1292,6 +1295,96 @@ button, select, input, textarea {
   flex-direction: column;
   gap: var(--space-0-5);
 }
+/* ── แถบระบบบนหัว สำหรับจอกว้าง (มติผู้ใช้ 2026-08-25) ────────────────────
+   **แถวที่สองของหัว** — ทุกระบบที่คนคนนี้เข้าได้เรียงอยู่ตรงนี้ · กดชื่อระบบ = กาง
+   เมนูของระบบนั้นลงมา **ไม่ย้ายหน้า** ⇒ ดูเมนูระบบอื่นได้โดยไม่หลุดจากงานที่ทำอยู่
+   ⚠️ **ต้องเป็นแถวของตัวเอง ไม่ใช่ต่อท้ายแถวโลโก้** — วัดจริง 2026-08-25: สิทธิ์เต็ม
+   มี 10 ระบบ กว้างรวม 1412px ขณะที่ที่ว่างข้างโลโก้เหลือ 965px ⇒ ล้น 447px
+   ⚠️ ปิดทั้งแถวเมื่อจอ ≤1200 (ดูบล็อกชั้นจอท้ายไฟล์) แล้วกลับไปใช้แฮมเบอร์เกอร์ +
+   ลิ้นชัก · ความสูงของแถวอยู่ในโทเคน --sysbar-h เพราะจุดยึดการเลื่อน
+   (--scroll-anchor-top) ต้องบวกมันด้วย ไม่งั้นหัวตารางไปจอดใต้แถบพอดี */
+.topnav-systems {
+  display: none;
+  align-items: center;
+  gap: var(--space-0-5);
+  /* 🪤 **ห้ามใส่ overflow ใด ๆ ที่ไม่ใช่ visible** — เคยใส่ `overflow-x: auto` ให้ไถ
+     ตอนระบบเยอะ ผลคือ CSS บังคับให้แกนตั้งกลายเป็น auto ตามไปด้วย แล้ว **ดรอปดาวน์
+     ที่กางลงมาถูกตัดหายทั้งใบ** (DOM ยังวัดได้ปกติ จับได้จากภาพหน้าจอเท่านั้น)
+     ⇒ ระบบเยอะเกินหนึ่งบรรทัดก็ให้ **ตกบรรทัด** ไม่ใช่ไถ · ทุกระบบยังเห็นครบ
+     ซึ่งเป็นข้อกำหนดของแถวนี้ (มติผู้ใช้ 2026-08-25) */
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+  min-height: var(--sysbar-h);
+  padding: var(--space-1) var(--space-4);
+  border-top: 1px solid color-mix(in srgb, var(--navy-fg) 12%, transparent);
+  background: color-mix(in srgb, var(--navy) 88%, #000);
+}
+.topnav-sysbar-item { position: relative; flex: none; }
+.topnav-sysbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 30px;
+  padding: 0 var(--space-2-5);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  /* แถวนี้เป็นพื้นกรมท่า — สีตัวอักษรมาจาก --navy-fg ไม่ใช่ --text-2
+     (เหตุผลเดียวกับ .topnav-system .btn.ghost) */
+  color: color-mix(in srgb, var(--navy-fg) 78%, transparent);
+  font-family: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.topnav-sysbar-btn:hover { background: rgba(255, 255, 255, 0.14); color: var(--navy-fg); }
+.topnav-sysbar-btn:focus-visible { outline: 2px solid var(--navy-fg); outline-offset: -2px; }
+/* ระบบที่กำลังอยู่ — ต้องอ่านออกจาก **พื้น** ไม่ใช่สีตัวอักษรอย่างเดียว เพราะแถวนี้
+   มีปุ่มสิบตัวเรียงกัน สีตัวอักษรที่ต่างกันนิดเดียวหาไม่เจอตอนกวาดตา */
+.topnav-sysbar-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--navy-fg);
+  font-weight: var(--fw-semibold);
+}
+.topnav-sysbar-btn.is-disabled { opacity: var(--op-disabled); cursor: not-allowed; }
+.topnav-sysbar-caret { opacity: var(--op-muted); }
+.topnav-sysbar-item.open .topnav-sysbar-caret { transform: rotate(180deg); }
+/* ป้ายจำนวนบนแถวนี้อยู่บนพื้นกรมท่า — ใช้สีเน้นเหมือนป้ายในลิ้นชักตอนเป็นราง */
+.topnav-systems .topnav-count {
+  min-width: 17px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+}
+/* ดรอปดาวน์ของระบบ — พื้นผิว/ระยะชุดเดียวกับดรอปดาวน์อื่นในหัว
+   ⚠️ ไม่ยืมคลาส .topnav-sys-menu มาทั้งดุ้น เพราะตัวนั้นถูกชั้นจอมือถือเปลี่ยนเป็น
+   แผ่นเต็มจอ ซึ่งไม่ใช่สิ่งที่แถวนี้ต้องการ (แถวนี้ไม่มีบนจอแคบอยู่แล้ว) */
+.topnav-sysbar-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 232px;
+  max-height: calc(100vh - var(--topbar-h) - var(--sysbar-h) - var(--space-6));
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* ทึบเสมอ — ตัวหนังสือของหน้าทะลุขึ้นมาปนกับรายการถ้าใช้ --panel ที่โปร่ง */
+  background: var(--panel-float);
+  box-shadow: var(--glass-shadow), var(--shadow-lg);
+  z-index: var(--z-topnav-menu);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+/* ปุ่มท้าย ๆ ของแถวอยู่ชิดขอบขวา — ดรอปดาวน์ต้องกางย้อนกลับ ไม่งั้นหลุดจอ */
+.topnav-sysbar-item:nth-last-child(-n+3) .topnav-sysbar-menu { left: auto; right: 0; }
+
 .topnav-sys-item {
   display: flex;
   align-items: center;
@@ -1582,8 +1675,23 @@ button, select, input, textarea {
   background: rgba(0, 0, 0, 0.35);
   z-index: var(--z-topnav-bar);
 }
-/* ทางเข้าเมนูมีตัวเดียว อยู่บนหัว (ไม่มีแถบประจำที่ให้ปุ่มเกาะแล้ว) */
-.topnav-system .sidenav-hamburger { display: inline-flex; }
+/* ⭐ **จอกว้าง (>1200) ใช้แถบระบบบนหัว** (มติผู้ใช้ 2026-08-25) — ไม่ต้องมี
+   แฮมเบอร์เกอร์/ลิ้นชัก และไม่ต้องมีดรอปดาวน์สลับระบบ เพราะทุกระบบอยู่บนแถบแล้ว */
+.topnav-systems { display: flex; }
+.topnav-system .sidenav-hamburger { display: none; }
+.topnav-sys { display: none; }
+/* ⚠️ `display: block` ตอนกลับมาโชว์ ไม่ใช่ค่าเดิม `position: relative` ที่บรรทัด
+   ประกาศคลาส — ตัวนั้นเป็น block อยู่แล้วโดยปริยาย (เป็น <div>) */
+
+/* ≤1200: ไม่มีที่พอให้ระบบ 7–8 ตัวเรียงกัน — กลับไปใช้แฮมเบอร์เกอร์ + ลิ้นชัก
+   และดรอปดาวน์สลับระบบ (ซึ่งมีเมนูย่อยของแต่ละระบบอยู่ในตัวอยู่แล้ว) */
+@media (max-width: 1200px) {
+  /* ไม่มีแถวระบบแล้ว จุดยึดการเลื่อนจึงกลับไปนับแค่แถบบน */
+  :root { --sysbar-h: 0px; }
+  .topnav-systems { display: none; }
+  .topnav-system .sidenav-hamburger { display: inline-flex; }
+  .topnav-sys { display: block; }
+}
 
 
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
@@ -1674,8 +1782,9 @@ button, select, input, textarea {
   .topbar-actions { display: flex; gap: var(--space-1); order: 1; margin-left: auto; }
   /* ⚠️ ซ่อน "เฉพาะตัวที่ระบุชื่อ" ห้ามซ่อนด้วยลูกโดยตรงของ .topbar-actions —
      กระดิ่งใช้คลาส .topnav-global-action เหมือนกัน วันนี้รอดเพราะบังเอิญมี div ครอบ
-     ถ้าวันหน้ามีคนถอด div นั้นออก กระดิ่งจะหายจากมือถืออีกรอบแบบเงียบ ๆ */
-  .topbar-actions .topnav-settings-link,
+     ถ้าวันหน้ามีคนถอด div นั้นออก กระดิ่งจะหายจากมือถืออีกรอบแบบเงียบ ๆ
+     ⚠️ เคยมี .topnav-settings-link (ไอคอนเฟือง) อยู่ในรายการนี้ด้วย — ตั้งค่าย้ายเข้า
+     เมนูผู้ใช้แล้ว (มติผู้ใช้ 2026-08-25) ไม่มีปุ่มนั้นบนหัวอีก */
   .topbar-actions .account-menu { display: none; }
   /* กระดิ่งบนมือถือต้องเท่าปุ่ม `…` ที่อยู่ติดกัน (40×40) ไม่งั้นเป้ากดเล็กกว่า
      เพื่อนบ้านทั้งที่อยู่คู่กัน · ตอนนี้ --ctl-h = 40px เท่ากันพอดี กฎนี้จึงเหลือผล
