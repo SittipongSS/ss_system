@@ -4,7 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { can, hasTeam, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
-  meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError,
+  meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError, leadLostReasonError,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { TEAMS } from '@/lib/permissions';
@@ -48,7 +48,9 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 //   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
 //     ล้าง followUpAt เพราะวันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว
 //   qualify    = เดียวกับ contact — ต้องระบุ customerId (เปิดลูกค้าในฐานข้อมูลก่อน)
-//   disqualify = ขั้นกำกับดูแล: ทีมเจ้าของงาน + supervisor/admin — ต้องมีเหตุผล
+//   disqualify = ขั้นกำกับดูแล: ทีมเจ้าของงาน + supervisor/admin
+//     ต้องมี **ทั้งรหัสเหตุผล** (disqualifiedCode · mig 0290) **และข้อความ** —
+//     รหัสไว้ทำรายงาน "แพ้เพราะอะไร" ข้อความไว้อ่านย้อนหลัง
 //   bounce     = ทีมไม่ตรง → กลับคิวคัดกรอง (ล้างทีม/ผู้รับ) — ต้องมีเหตุผล
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
@@ -190,7 +192,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return badRequest('สร้างดีลจากลีดผ่านปุ่ม "สร้างดีล" (ระบบดีล) เท่านั้น');
   } else if (action === 'disqualify') {
     if (!oversightScope) return forbidden();
+    /* ⭐ รหัสเหตุผล (mig 0290) — **คู่กับข้อความ ไม่ใช่แทนที่** · ข้อความอิสระนับไม่ได้
+       ("งบไม่ถึง"/"งบไม่พอ"/"ลูกค้าบอกแพง" = เรื่องเดียวกันแต่ group by ไม่ได้)
+       ⚠️ ด่านเดียวกับที่ฟอร์มใช้ — เขียนเงื่อนไขซ้ำที่นี่เมื่อไร สองฝั่งจะเริ่มไม่ตรงกัน
+       แล้วผู้ใช้กดแล้วโดนตีกลับโดยไม่รู้ว่าเพราะอะไร (form-design-rules §2) */
+    const lostError = leadLostReasonError({ code: body.disqualifiedCode, detail: body.reason });
+    if (lostError) return badRequest(lostError);
+    /* ⚠️ รายละเอียดยังบังคับทุกเหตุผลเหมือนเดิม — รหัสบอกว่า "หมวดไหน" ส่วนข้อความบอก
+       ว่า "เกิดอะไรขึ้นจริง ๆ" ซึ่งเป็นสิ่งเดียวที่คนอ่านประวัติย้อนหลังใช้ได้
+       (`leadLostReasonError` บังคับข้อความเฉพาะ 'other' — ที่นี่เข้มกว่าโดยเจตนา
+       เพราะเป็นกติกาเดิมของ API ที่มีมาก่อนแล้ว ไม่ใช่ของใหม่) */
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ไม่ไปต่อ');
+    patch.disqualifiedCode = body.disqualifiedCode;
     patch.disqualifiedReason = body.reason.trim();
     patch.closedAt = now;
     event.reason = body.reason.trim();

@@ -141,6 +141,109 @@ export function leadFollowUpError(value) {
   return '';
 }
 
+/* ══ เหตุผลที่ลีดไม่ไปต่อ (mig 0290 · มติผู้ใช้ 2026-08-25) ═══════════════════
+ *
+ * ⭐ ที่มา: `disqualifiedReason` เป็นข้อความอิสระ และ **ไม่มีจอไหนอ่านมันเลย** —
+ * เขียนที่ transition/route.js ที่เดียว ส่วน KPI มีแค่ % รวม ("ไม่ไปต่อ 32 จาก 113")
+ * ตอบไม่ได้ว่าแพ้เพราะอะไร ⇒ เหตุผลที่ฝ่ายขายพิมพ์ทุกใบตลอดปีเป็นข้อมูลที่เขียนแล้วทิ้ง
+ *
+ * ⚠️ **รหัสคู่กับข้อความ ไม่ใช่แทนที่ข้อความ** — "งบไม่ถึง" / "งบไม่พอ" / "ลูกค้าบอกแพง"
+ * คือเรื่องเดียวกันแต่ group by ไม่ได้ · ส่วนรายละเอียดที่ AE เขียนเองยังมีค่าเสมอ
+ * (`disqualifiedReason` คงไว้ทุกประการ ไม่ได้ถูกแทนที่)
+ *
+ * 🔴 **เพิ่มรหัสใหม่ต้องแก้ 2 ที่พร้อมกัน** ไม่งั้นพังคนละแบบ:
+ *   1. ลิสต์นี้ — ไม่เพิ่ม = ฟอร์มไม่มีตัวเลือก และ API ตีกลับ
+ *   2. CHECK ของ `sales_leads.disqualifiedCode` (mig 0290) — ไม่เพิ่ม = **บันทึกไม่ได้
+ *      ตอน update จริง ทั้งที่ฟอร์มโชว์ตัวเลือกให้เลือกแล้ว** (โรคเดียวกับ CHECK ของ
+ *      `channel` ที่ต้องไล่แก้ตาม mig 0129 → 0252)
+ *
+ * `countable: false` = **ไม่อยู่ในตัวส่วน**ของอัตราแปลง ไม่ใช่แค่ไม่นับเป็นชนะ —
+ * ลีดซ้ำกับข้อมูลติดต่อผิดไม่เคยเป็นโอกาสขาย นับเข้าไปแล้วอัตราแปลงจะต่ำลงตามปริมาณ
+ * สแปมที่เข้ามา ซึ่งไม่ใช่ผลงานของใครเลย
+ *
+ * `detail: 'required'` = ต้องเขียนรายละเอียดด้วย — "อื่นๆ" ที่ไม่มีคำอธิบาย
+ * นับเป็นข้อมูลไม่ได้ มันคือช่องที่ทำให้ทุกอย่างที่ไม่อยากคิดไหลมารวมกัน
+ */
+export const LEAD_LOST_REASONS = Object.freeze([
+  { code: 'no_response', label: 'ติดต่อไม่ได้ / ลูกค้าเงียบ', countable: true },
+  { code: 'budget', label: 'งบไม่ถึง', countable: true },
+  { code: 'not_target', label: 'ไม่ตรงบริการ', countable: true },
+  /* ⚠️ "ยังไม่พร้อม" ไม่ใช่แพ้ถาวร — ยังนับในตัวส่วนเพราะเป็นดีลที่เสียไปในงวดนี้จริง
+     แต่รายงานควรแยกให้เห็น เพราะเป็นกองที่กลับมาถามใหม่ได้ ต่างจาก "เลือกเจ้าอื่น" */
+  { code: 'timing', label: 'ยังไม่พร้อม ไว้ทีหลัง', countable: true },
+  { code: 'competitor', label: 'เลือกเจ้าอื่น', countable: true },
+  { code: 'duplicate', label: 'ลีดซ้ำ', countable: false },
+  { code: 'invalid', label: 'ข้อมูลติดต่อผิด / สแปม', countable: false },
+  { code: 'other', label: 'อื่นๆ', countable: true, detail: 'required' },
+]);
+
+export const LEAD_LOST_CODES = LEAD_LOST_REASONS.map((r) => r.code);
+export const LEAD_LOST_LABELS = Object.fromEntries(LEAD_LOST_REASONS.map((r) => [r.code, r.label]));
+/* ⚠️ **หามาจากลิสต์ ไม่ใช่สะกดซ้ำ** — สองที่ที่ต้องตรงกันเองคือสองที่ที่จะเพี้ยนหากัน
+   ผู้อ่านหลักคือ `leadOutcome` (ตัวกรองตัวส่วนของอัตราแปลง) */
+export const LEAD_LOST_UNCOUNTABLE = LEAD_LOST_REASONS.filter((r) => !r.countable).map((r) => r.code);
+
+const LOST_DETAIL_REQUIRED = new Set(
+  LEAD_LOST_REASONS.filter((r) => r.detail === 'required').map((r) => r.code),
+);
+
+/** ด่านเดียวใช้ทั้งฟอร์มและ API (form-design-rules §2)
+ *  @returns ข้อความผิดพลาด หรือ '' ถ้าผ่าน */
+export function leadLostReasonError({ code, detail } = {}) {
+  if (!code) return 'ต้องเลือกเหตุผลที่ไม่ไปต่อ';
+  if (!LEAD_LOST_CODES.includes(code)) return 'เหตุผลที่ไม่ไปต่อไม่ถูกต้อง';
+  if (LOST_DETAIL_REQUIRED.has(code) && !String(detail || '').trim()) {
+    return 'เลือก "อื่นๆ" แล้วต้องเขียนรายละเอียดด้วย';
+  }
+  return '';
+}
+
+/** คำที่ใช้แสดงเหตุผลของลีดที่ปิดแล้ว — ที่เดียวสำหรับทุกจอ
+ *  ⚠️ ใบเก่าก่อน mig 0290 ไม่มีรหัส เหลือแต่ข้อความอิสระ — ต้องยังอ่านออก
+ *  ไม่ใช่ขึ้น "ไม่ระบุ" ทั้งที่ AE เขียนเหตุผลไว้ครบ */
+/** สรุป "แพ้เพราะอะไร" — ที่เดียวที่นับ
+ *
+ *  ⚠️ **เรียงตามลิสต์ ไม่ใช่ตามจำนวน** — รายงานที่สลับลำดับแถวทุกเดือนอ่านเทียบข้ามเดือน
+ *  ไม่ได้ · แถวที่เป็น 0 ยังต้องขึ้น เพราะ "เดือนนี้ไม่มีใครแพ้เพราะราคาเลย" คือข้อมูล
+ *  ไม่ใช่ความว่างเปล่า (กติกาเดียวกับวันที่ไม่มีลีดในกราฟรายวัน · IS-26080023)
+ *
+ *  ⚠️ ใบเก่าก่อน mig 0290 ไม่มีรหัส — เข้าแถว `unknown` แยกต่างหาก **ไม่ยัดเข้า 'other'**
+ *  ("อื่นๆ" คือสิ่งที่ AE เลือกเอง ส่วน `unknown` คือของที่ระบบไม่เคยถาม สองอย่างนี้
+ *  ปนกันเมื่อไรจะอ่านว่า "อื่นๆ" พุ่งขึ้นทั้งที่ไม่มีใครเลือกมันเพิ่มเลย)
+ *
+ *  @param rows ลีดของงวดที่เลือก (ทุกสถานะ — ฟังก์ชันกรองเอง)
+ */
+export function lostReasonRollup(rows = []) {
+  const lost = (rows || []).filter((lead) => lead?.status === 'disqualified');
+  const counts = new Map(LEAD_LOST_CODES.map((code) => [code, 0]));
+  let unknown = 0;
+  for (const lead of lost) {
+    const code = lead?.disqualifiedCode;
+    if (counts.has(code)) counts.set(code, counts.get(code) + 1);
+    else unknown += 1;
+  }
+  const reasons = LEAD_LOST_REASONS.map(({ code, label, countable }) => ({
+    code, label, countable, count: counts.get(code) || 0,
+  }));
+  const countedTotal = reasons.filter((r) => r.countable).reduce((sum, r) => sum + r.count, 0) + unknown;
+  return {
+    total: lost.length,
+    // ⚠️ ตัวหารของคอลัมน์ "สัดส่วน" = เฉพาะใบที่นับเป็นแพ้จริง ไม่ใช่ทุกใบที่ปิด
+    // ไม่งั้นสแปม 7 ใบจะไปกดสัดส่วนของเหตุผลจริงทุกแถวให้ดูเล็กลง
+    countedTotal,
+    excluded: lost.length - countedTotal,
+    unknown,
+    reasons,
+  };
+}
+
+export function leadLostText(lead = {}, empty = 'ไม่ระบุ') {
+  const label = LEAD_LOST_LABELS[lead.disqualifiedCode] || null;
+  const detail = String(lead.disqualifiedReason || '').trim();
+  if (!label) return detail || empty;
+  return detail ? `${label} — ${detail}` : label;
+}
+
 export const LEAD_EDIT_LOCKED_STATUSES = ['qualified', 'disqualified'];
 export const LEAD_DELETE_LOCKED_STATUSES = ['contacted', 'meeting', 'qualified', 'disqualified'];
 
