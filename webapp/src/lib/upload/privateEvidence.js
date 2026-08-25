@@ -67,10 +67,19 @@ const QUOTATION_EVIDENCE_FOLDERS = Object.values(TARGETS)
   .filter((target) => target.table === 'quotations')
   .map((target) => target.prefix('__ID__').replace('quotations/__ID__/', '').replace(/\/$/, ''));
 
-/** path นี้เป็นหลักฐานที่แนบไว้ใต้ใบเสนอราคาใบใดใบหนึ่งไหม (ไม่เจาะจงว่าใบไหน) */
-export function isQuotationEvidencePath(storagePath) {
+/**
+ * path นี้เป็นหลักฐานที่แนบไว้ใต้ใบเสนอราคาใบนั้นไหม
+ *
+ * ⚠️ **ส่ง `quotationId` มาด้วยเสมอถ้ารู้** — ไม่ส่งจะรับใบไหนก็ได้ ซึ่งกว้างเกินจำเป็น:
+ * ค่าใน jsonb เขียนโดย server ฝั่งเดียวก็จริง แต่ด่านที่ผูก id ทำให้แถวที่เพี้ยน
+ * (ก๊อป ref ข้ามใบ · แก้มือใน DB) เปิดไฟล์ของใบอื่นไม่ได้ตั้งแต่แรก
+ * ตรวจของจริงบน prod 2026-08-25: ref ทั้ง 42 ตัวชี้ใบเสนอราคาของใบตัวเองครบ
+ * ⇒ ผูกได้โดยไม่มีของพัง · `safeId` คืนเฉพาะ [A-Za-z0-9_-] จึงเอาไปต่อใน RegExp ตรง ๆ ได้
+ */
+export function isQuotationEvidencePath(storagePath, quotationId = null) {
   const folders = QUOTATION_EVIDENCE_FOLDERS.join('|');
-  return new RegExp(`^quotations/[a-zA-Z0-9_-]+/(${folders})/`).test(String(storagePath || ''));
+  const id = quotationId ? safeId(quotationId) : '[a-zA-Z0-9_-]+';
+  return new RegExp(`^quotations/${id}/(${folders})/`).test(String(storagePath || ''));
 }
 
 export { QUOTATION_EVIDENCE_FOLDERS };

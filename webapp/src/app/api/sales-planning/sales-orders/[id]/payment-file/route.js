@@ -51,7 +51,7 @@ export async function GET(request, { params }) {
   //    `order-confirmation` โดยไม่มีใครกลับมาแก้ที่นี่ ⇒ งวดที่ยืมไฟล์ยืนยันคำสั่งซื้อมา
   //    ตอบ "ไม่พบไฟล์แนบ" ทุกใบ · ตอนนี้ถามจากทะเบียนเดียวกับที่ใช้ตอนเขียนไฟล์
   const allowed = String(att.storagePath).startsWith(`sales-orders/${safeOrderId}/payments/`)
-    || isQuotationEvidencePath(att.storagePath);
+    || isQuotationEvidencePath(att.storagePath, order.quotationId);
   if (att.storageBucket !== privateBucket || !allowed) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
   }
