@@ -4,6 +4,7 @@ import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, 
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, updateOrderResilient } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
+import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
 import { exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 
@@ -265,8 +266,12 @@ export async function DELETE(request, { params }) {
   const { data, error } = await supabase.from('orders').delete().eq('id', id).select('id');
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!data || data.length === 0) return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
-  // เธรดกลางเป็น polymorphic ไม่มี FK → ต้องกวาดเอง
+  /* เธรดกลางกับไฟล์แนบเป็น polymorphic ไม่มี FK → ต้องกวาดเอง **ทั้งคู่**
+     🐞 เดิมกวาดแต่เธรด ⇒ แถวไฟล์แนบของใบที่ถูกลบค้างชี้ไปยัง id ที่ไม่มีแล้ว และไฟล์
+     บน Drive ก็ค้างตาม · วัดบน prod 2026-08-25: แถวกำพร้าชนิด `order` 2 แถว มาจาก
+     ตรงนี้ทั้งคู่ (ไปโผล่ที่หน้าตั้งค่า → ที่เก็บไฟล์ ให้แอดมินมานั่งกดล้างทีหลัง) */
   await purgeUpdates(supabase, 'excise_order', id);
+  await purgeAttachments('order', id);
   await recordAudit({ user, action: 'delete', entityType: 'order', entityId: id, before: order, request });
   return Response.json({ success: true, message: 'ลบใบสั่งซื้อเรียบร้อยแล้ว' });
 }

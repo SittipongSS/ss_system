@@ -6,9 +6,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 // เอกสารทั้งหมดของ entity หนึ่งๆ (ใหม่สุดก่อน).
-export async function listAttachments(entityType, entityId) {
+export async function listAttachments(entityType, entityId, client = null) {
   if (!entityType || !entityId) return [];
-  const supabase = getSupabaseAdmin();
+  const supabase = client || getSupabaseAdmin();
   const { data, error } = await supabase
     .from('attachments')
     .select('*')
@@ -117,12 +117,15 @@ export async function releaseAttachmentFile(att) {
 // ลบไฟล์แนบทั้งหมดของ entity แม่ (row + ไฟล์จริง) — ใช้ตอนลบ entity (cascade).
 // live DB ไม่มี FK cascade จาก attachments → ต้องเก็บกวาดเอง กันไฟล์/แถวกำพร้า.
 // best-effort ต่อไฟล์; ลบแถวเป็นชุดเดียวท้ายสุด. คืนจำนวนเอกสารที่จัดการ.
-export async function purgeAttachments(entityType, entityId) {
+// `client` ไว้ให้ผู้เรียกที่ถือ supabase ของตัวเองอยู่แล้ว (และให้เทสต์ยัดตัวปลอมได้) —
+// ไม่ส่งมาก็ใช้ admin client ตามเดิม
+export async function purgeAttachments(entityType, entityId, client = null) {
   if (!entityType || !entityId) return 0;
-  const list = await listAttachments(entityType, entityId);
+  const supabase = client || getSupabaseAdmin();
+  const list = await listAttachments(entityType, entityId, supabase);
   if (!list.length) return 0;
   for (const att of list) await releaseAttachmentFile(att);
-  await getSupabaseAdmin()
+  await supabase
     .from('attachments').delete().eq('entityType', entityType).eq('entityId', entityId);
   return list.length;
 }

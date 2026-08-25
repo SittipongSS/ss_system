@@ -43,10 +43,6 @@ export default function StoragePage() {
   const [rowBusy, setRowBusy] = useState(false);
   const [orphans, setOrphans] = useState(null);
   const [orphanBusy, setOrphanBusy] = useState(false);
-  const [plan, setPlan] = useState(null);
-  const [planBusy, setPlanBusy] = useState(false);
-  const [moving, setMoving] = useState(null); // { done, total, moved, skipped }
-  const [log, setLog] = useState([]);
   const [error, setError] = useState("");
 
   const call = useCallback(async (url, init) => {
@@ -172,70 +168,6 @@ export default function StoragePage() {
       setOrphanBusy(false);
     }
   };
-
-  const loadPlan = async () => {
-    setPlanBusy(true);
-    setError("");
-    try {
-      setPlan(await call("/api/admin/drive?action=plan"));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setPlanBusy(false);
-    }
-  };
-
-  // ย้ายจริง — เรียกเป็นชุดจนกว่า done เพราะ serverless มีเพดานเวลา 60 วินาที
-  const runMove = async () => {
-    const okToRun = await confirmAction(
-      "ย้ายไฟล์และโฟลเดอร์บน Google Drive เข้าโครงใหม่ตอนนี้?",
-      { detail: "การย้ายเปลี่ยนแค่ที่อยู่ของโฟลเดอร์ — id ไฟล์ไม่เปลี่ยน ลิงก์เดิมในระบบยังใช้ได้ทั้งหมด และกดซ้ำได้ถ้าค้างกลางทาง" },
-    );
-    if (!okToRun) return;
-
-    setError("");
-    setLog([]);
-    let offset = 0;
-    let moved = 0;
-    let skipped = 0;
-    const errors = [];
-    try {
-      let more = true;
-      while (more) {
-        const res = await call("/api/admin/drive", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "restructure", offset, limit: 25 }),
-        });
-        moved += res.moved;
-        skipped += res.skipped;
-        errors.push(...(res.errors || []));
-        setLog((prev) => [...prev, ...(res.log || [])]);
-        setMoving({ done: res.nextOffset, total: res.total, moved, skipped });
-        more = !res.done;
-        offset = res.nextOffset;
-      }
-      notifyToast.success(`จัดโครงเสร็จ — ย้าย ${moved} รายการ · อยู่ที่เดิมถูกต้องแล้ว ${skipped} รายการ`);
-      if (errors.length) {
-        setError(`มี ${errors.length} รายการที่ย้ายไม่สำเร็จ: ${errors.slice(0, 3).map((e) => `${e.what} (${e.error})`).join(" · ")}`);
-      }
-      await loadPlan();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const gate = accessState(role, canManage);
-  if (gate === "loading") return <SkeletonRows rows={6} />;
-  if (gate === "denied") {
-    return (
-      <AccessDenied
-        icon={<HardDrive size={22} />}
-        title="ที่เก็บไฟล์"
-        message="เครื่องมือตรวจและจัดโครงที่เก็บไฟล์เปิดให้ผู้ดูแลระบบเท่านั้น"
-      />
-    );
-  }
 
   return (
     <Workspace
@@ -407,55 +339,6 @@ export default function StoragePage() {
       </WorkspaceSection>
 
       {/* ── 3. จัดโครงโฟลเดอร์ ── */}
-      <WorkspaceSection
-        title="จัดโครงโฟลเดอร์"
-        subtitle="จัดของเข้าโครง ลูกค้า / ขอราคา / งานบริหาร / งานขาย — ดูแผนก่อนได้ ไม่มีอะไรเปลี่ยนจนกว่าจะกดย้าย"
-        actions={(
-          <>
-            <Button onClick={loadPlan} disabled={planBusy} icon={<FolderTree size={15} />}>
-              {planBusy ? "กำลังคำนวณ..." : "ดูแผนการย้าย"}
-            </Button>
-            <Button tone="accent" onClick={runMove} disabled={!plan || planBusy}>
-              ย้ายจริง
-            </Button>
-          </>
-        )}
-      >
-        {plan ? (
-          <>
-            <p className={styles.progress}>
-              โฟลเดอร์ลูกค้า {plan.folderMoves.customers} · โฟลเดอร์สินค้า {plan.folderMoves.products} · ไฟล์ {plan.fileCount} รายการ
-            </p>
-            <div className={styles.planGrid}>
-              {plan.targets.map((t) => (
-                <div key={t.path} className={styles.planRow}>
-                  <span className={styles.planPath}>{t.path}</span>
-                  <span className={styles.planCount}>{t.count} ไฟล์</span>
-                </div>
-              ))}
-            </div>
-            {plan.failed.length ? (
-              <StatusNotice tone="warning" title={`หาโฟลเดอร์ปลายทางไม่ได้ ${plan.failed.length} ไฟล์`}>
-                {plan.failed.slice(0, 5).map((f) => `${f.fileName || f.rowId} (${f.error})`).join(" · ")}
-              </StatusNotice>
-            ) : null}
-          </>
-        ) : null}
-
-        {moving ? (
-          <p className={styles.progress}>
-            ความคืบหน้า {moving.done}/{moving.total} — ย้ายแล้ว {moving.moved} · อยู่ถูกที่แล้ว {moving.skipped}
-          </p>
-        ) : null}
-
-        {log.length ? (
-          <div className={styles.logBox}>
-            {log.map((line, i) => (
-              <div key={i} className={styles.logLine}>{line}</div>
-            ))}
-          </div>
-        ) : null}
-      </WorkspaceSection>
       </div>
     </Workspace>
   );

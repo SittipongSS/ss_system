@@ -3,15 +3,12 @@
 //
 // GET  ?action=health[&write=1] — ตรวจการเชื่อมต่อ (write=1 = ทดสอบเขียนไฟล์จริง)
 // GET  ?action=audit            — ตรวจว่าไฟล์ที่ระบบอ้างถึงยังอยู่บน Drive จริงไหม
-// GET  ?action=plan             — แผนการจัดโครงโฟลเดอร์ (อ่าน DB อย่างเดียว ไม่แตะ Drive)
-// POST { action:'restructure', offset, limit } — ย้ายจริงทีละชุด
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import {
   driveHealth, auditDriveFiles, auditOrphanDriveItems, trashOrphanDriveItems,
   auditOrphanAttachmentRows, purgeOrphanAttachmentRows,
-  planRestructure, runRestructure,
 } from '@/lib/driveMaintenance';
 
 // googleapis + OIDC token ต้อง Node runtime · การย้ายทีละชุดกินเวลาได้ถึงเพดาน
@@ -41,7 +38,6 @@ export async function GET(request) {
     if (action === 'audit') return Response.json(await auditDriveFiles());
     if (action === 'orphans') return Response.json(await auditOrphanDriveItems());
     if (action === 'orphan-rows') return Response.json(await auditOrphanAttachmentRows());
-    if (action === 'plan') return Response.json(await planRestructure());
     return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
   } catch (err) {
     console.error(`[admin/drive] ${action} failed`, err);
@@ -98,26 +94,5 @@ export async function POST(request) {
     }
   }
 
-  if (body.action !== 'restructure') {
-    return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
-  }
-  try {
-    const result = await runRestructure({
-      offset: Number(body.offset) || 0,
-      limit: Math.min(Number(body.limit) || 40, 100),
-    });
-    // บันทึกไว้ว่าใครสั่งย้ายเมื่อไร — เป็นการเปลี่ยนโครงของจริงบน Drive
-    await recordAudit({
-      user,
-      action: 'update',
-      entityType: 'drive_restructure',
-      entityId: `offset-${Number(body.offset) || 0}`,
-      after: { moved: result.moved, skipped: result.skipped, errors: result.errors.length },
-      request,
-    });
-    return Response.json(result);
-  } catch (err) {
-    console.error('[admin/drive] restructure failed', err);
-    return Response.json({ error: String(err?.message || err) }, { status: 500 });
-  }
+  return Response.json({ error: 'action ไม่ถูกต้อง' }, { status: 400 });
 }

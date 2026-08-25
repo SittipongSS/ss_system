@@ -39,6 +39,7 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -496,6 +497,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  // ไฟล์แนบของดีล (entityType `deal`) — polymorphic ไม่มี FK cascade ⇒ กวาดก่อนแถวหาย
+  // (เธรดถูกกวาดอยู่แล้วด้วย purgeUpdates ข้างล่าง — ไฟล์แนบเคยตกหล่นข้างเดียว)
+  await purgeAttachments('deal', id);
   const { error } = await supabase.from('sales_deals').delete().eq('id', id);
   if (error) {
     // ตาข่ายชั้นสอง: ยังมีลูกที่ FK RESTRICT อยู่ (เช่นเอกสารที่เพิ่งถูกเซ็นหลังเราตรวจ)
