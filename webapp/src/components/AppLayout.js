@@ -823,23 +823,8 @@ export default function AppLayout({ children }) {
             {/* กระดิ่งอยู่ก่อน "ตั้งค่า" — งานของคุณสำคัญกว่าเมนูตั้งค่า และตำแหน่ง
                 ขวาสุดถูก AccountMenu จองไว้แล้ว */}
             <NotificationBell />
-            {/* topnav-settings-link = จุดเกาะให้ CSS ซ่อนเฉพาะตัวนี้บนมือถือ (ตั้งค่า
-                มีอยู่ในแผ่นเมนูแล้ว) โดยไม่พลาดไปซ่อนกระดิ่งซึ่งใช้คลาสเดียวกัน
-                ⚠️ ไอคอนล้วน ไม่มีป้ายชื่อ (มติผู้ใช้ 2026-08-22) — `aria-label` จึงเป็น
-                ชื่อเดียวที่ screen reader อ่านได้ ถอดออกแล้วปุ่มนี้จะไม่มีชื่อเลย
-                ขนาดไอคอน 17 เท่ากระดิ่งที่อยู่ติดกัน · ไม่ต้องเขียน CSS เพิ่ม เพราะ
-                `.topnav-global-action` มี padding เท่ากันสองข้างอยู่แล้ว พอเหลือลูกตัว
-                เดียวมันกลายเป็นจัตุรัสขนาดเดียวกับกระดิ่งเอง */}
-            <Link
-              href="/settings"
-              className={`topnav-global-action topnav-settings-link${isSettingsContext ? ' active' : ''}`}
-              aria-current={isSettingsContext ? 'page' : undefined}
-              aria-label="ตั้งค่าระบบ"
-              title="ตั้งค่าระบบ"
-            >
-              <SettingsIcon size={17} aria-hidden="true" />
-            </Link>
             <AccountMenu
+              settingsActive={isSettingsContext}
               userName={userName}
               userInitials={userInitials}
               roleLabel={teams.length
@@ -1022,13 +1007,15 @@ export default function AppLayout({ children }) {
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
               {!isBareShell && activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
-              <Link href="/settings" className={`mobile-nav-card${isSettingsContext ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>
 
           <section className="mobile-nav-section mobile-account-actions">
             <h2>บัญชีและการตั้งค่า</h2>
             <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
+            {/* ตั้งค่าย้ายมาอยู่กลุ่มนี้พร้อมกับเมนูผู้ใช้ (มติผู้ใช้ 2026-08-25) —
+                เดิมเป็นการ์ดในกลุ่ม "เครื่องมือ" ข้างบน · สองที่นี้ต้องตรงกันเสมอ */}
+            <Link href="/settings" onClick={() => setMobileMoreOpen(false)}><SettingsIcon size={18} /><span>ตั้งค่าระบบ</span></Link>
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
             {/* คู่กับ AccountMenu — แผ่นเมนูมือถือต้องมีทุกอย่างที่เมนูผู้ใช้มี

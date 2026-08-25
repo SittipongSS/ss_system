@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, KeyRound, LifeBuoy, LogOut, Moon, Sun, UserRound } from "lucide-react";
+import { ChevronDown, KeyRound, LifeBuoy, LogOut, Moon, Settings as SettingsIcon, Sun, UserRound } from "lucide-react";
 
 export default function AccountMenu({
   userName,
@@ -10,6 +10,7 @@ export default function AccountMenu({
   roleLabel,
   roleTone = "viewer",
   isDark,
+  settingsActive = false,
   canChangePassword = true,
   onToggleTheme,
   onChangePassword,
@@ -67,6 +68,19 @@ export default function AccountMenu({
           <Link href="/account" role="menuitem" className="account-menu-item" onClick={() => setOpen(false)}>
             <UserRound size={17} aria-hidden="true" />
             <span>บัญชีของฉัน</span>
+          </Link>
+          {/* ⭐ **ตั้งค่าอยู่ในเมนูนี้ ไม่ใช่ไอคอนเฟืองบนหัว** (มติผู้ใช้ 2026-08-25) —
+              หัวเว็บมีแถวระบบเต็มแถวแล้ว ไอคอนเดี่ยว ๆ ข้างกระดิ่งจึงกลายเป็นของ
+              ที่ต้องเดาว่าคืออะไร · ที่นี่มันอยู่กับของส่วนตัวชิ้นอื่นและมีชื่อกำกับ */}
+          <Link
+            href="/settings"
+            role="menuitem"
+            className="account-menu-item"
+            aria-current={settingsActive ? "page" : undefined}
+            onClick={() => setOpen(false)}
+          >
+            <SettingsIcon size={17} aria-hidden="true" />
+            <span>ตั้งค่าระบบ</span>
           </Link>
           <button type="button" role="menuitem" className="account-menu-item" onClick={act(onToggleTheme)}>
             {isDark ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
