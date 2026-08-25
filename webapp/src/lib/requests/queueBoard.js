@@ -15,6 +15,7 @@ import { requestClosure } from '@/lib/requests/closure';
 // ⚠️ ดึงตัวเรียงจาก `queue.js` ตรง ๆ ไม่ผ่าน façade `deptRequests.js` — façade
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
 import { compareRequestUrgency } from '@/lib/requests/queue';
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 // ── ก้าวถัดไปของ "ทั้งใบ" ────────────────────────────────────────────────
 //
@@ -161,7 +162,7 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
      ⇒ ถ้าแถบตัวเลขไม่นับ จะได้อาการ "กดตัวเลข 0 แล้วเจอสามใบ" ที่คอมเมนต์ข้างบนกันไว้ */
   if (!REQUEST_OPEN_STATUSES.concat('answered').includes(request?.status)) return false;
   // ยังไม่ได้ให้วัน — ใบที่ยังเดินอยู่แต่ไม่มีใครรับปากวันไหนไว้เลย
-  if (key === 'undated') return !request?.committedDueDate;
+  if (key === 'undated') return !liveDueDate(request);
   const next = requestNextStep(request);
 
   if (key === 'unacked') return request.status === 'pending';
@@ -169,8 +170,8 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
   // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
   // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
   if (key === 'overdue') {
-    return !!todayIso && !!request.committedDueDate
-      && String(request.committedDueDate) < String(todayIso);
+    const due = liveDueDate(request);
+    return !!todayIso && !!due && String(due) < String(todayIso);
   }
   if (key === 'working') return next?.owner === 'dept' && request.status !== 'pending';
   // ⭐ ตัวที่ 4 — ใบที่ฝ่ายทำส่วนของตัวเองเสร็จแล้วแต่ยังปิดไม่ได้
@@ -321,8 +322,8 @@ export function requestGroupKey(request, { todayIso = null } = {}) {
   if (request.status === 'draft' && request.bouncedAt) return 'bounced';
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) return 'settled';
   if (request.status === 'pending') return 'unacked';
-  if (todayIso && request.committedDueDate
-    && String(request.committedDueDate) < String(todayIso)) return 'overdue';
+  const due = liveDueDate(request);
+  if (todayIso && due && String(due) < String(todayIso)) return 'overdue';
   return 'open';
 }
 
@@ -459,8 +460,8 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
   return rows
     .filter((r) => r?.dept === dept && r?.status !== 'draft')
     .filter((r) => requestNextStep(r)?.owner === 'dept')
-    .filter((r) => r.committedDueDate && String(r.committedDueDate) <= limitIso)
-    .sort((a, b) => String(a.committedDueDate).localeCompare(String(b.committedDueDate)));
+    .filter((r) => liveDueDate(r) && String(liveDueDate(r)) <= limitIso)
+    .sort((a, b) => String(liveDueDate(a)).localeCompare(String(liveDueDate(b))));
 }
 
 // ── กำหนดส่งที่ฝ่ายรับปากไว้ — ข้อความพร้อมแสดง ────────────────────────────
@@ -490,7 +491,7 @@ export function bouncedDaysText(request, { todayIso = null } = {}) {
 }
 
 export function requestDueText(request, { todayIso = null } = {}) {
-  const due = request?.committedDueDate ? String(request.committedDueDate) : null;
+  const due = liveDueDate(request);
   if (!due) return null;
   if (!todayIso) return { date: due, note: null, overdue: false };
 

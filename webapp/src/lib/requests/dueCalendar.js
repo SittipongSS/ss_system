@@ -8,6 +8,7 @@
 // ⚠️ **ข้อจำกัดที่รู้อยู่ตั้งแต่ตอนเลือกแบบ** — วันที่ทำ 8 จาก 15 ใบในคิวจริง *ยังไม่มี
 // ใครให้วัน* ⇒ ปฏิทินจะโล่งกว่าความจริงมาก · จึงต้องคู่กับตัวเลข "ยังไม่ได้ให้วัน"
 // ที่กดไปคิวได้เสมอ (`undated`) ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 const DAY_MS = 86400000;
 
@@ -66,7 +67,7 @@ export function dueCalendar(rows = [], { startIso, todayIso = null } = {}) {
   let dated = 0;
 
   for (const request of rows) {
-    const due = request?.committedDueDate ? String(request.committedDueDate).slice(0, 10) : null;
+    const due = liveDueDate(request)?.slice(0, 10) || null;
     if (!due) { undated += 1; continue; }
     dated += 1;
     const late = !!todayIso && due < String(todayIso).slice(0, 10);

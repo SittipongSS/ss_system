@@ -7,12 +7,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { dueIsStale, openReworkRows } from './dueRound.js';
+import { dueIsStale, liveDueDate, openReworkRows } from './dueRound.js';
 import { requestAwaitingDue, requestStatusView } from './statuses.js';
 import { commitDueRequestError, rescheduleRequestError } from './stages.js';
 import { requestRailSteps } from './requestRail.js';
 import { requestQueueTrack } from './queueTrack.js';
-import { requestNextStep } from './queueBoard.js';
+import { requestNextStep, requestDueText, requestGroupKey, matchesQueueCount } from './queueBoard.js';
+import { requestDueTone } from './queue.js';
 
 const ACKED = '2026-08-01T03:00:00.000Z';
 const DUE_SET = '2026-08-05T03:00:00.000Z';   // RD แจ้งวันครั้งแรก
@@ -119,4 +120,58 @@ test('ไม่มีรอบแก้ — ด่านคู่เดิมย
     /แจ้งกำหนดส่งไปแล้ว/,
   );
   assert.equal(rescheduleRequestError(plain, { committedDueDate: '2026-09-05' }), null);
+});
+
+
+/* ── รอบสอง: ช่องว่างที่เจอตอนตรวจย้อนหลัง 2026-08-26 ─────────────────────
+   ทั้งสามข้อเป็นเรื่องเดียวกัน — "ใครเป็นคนตัดสินว่าวันยังใช้ได้อยู่ไหม" */
+
+test('🔴 รอบแก้ที่ RD ส่งไปแล้ว ต้องไม่ค้างที่ขั้น "แจ้งวันส่ง" อีก', () => {
+  /* วันส่งคือคำสัญญาว่า *จะส่งเมื่อไร* ⇒ ส่งแล้วคำถามจบ
+     🐞 เดิมกรองด้วย `!isRowSettled` ซึ่งไม่รวม `awaiting_price` ⇒ แถวที่ส่งแล้ว
+     ลูกค้าคอนเฟิร์มแล้ว เหลือแค่รอใส่ราคา ยังถูกนับว่า "ค้างวัน" ⇒ รางค้างที่ขั้น 2
+     และคิวขึ้น "รอกำหนดส่ง" ทับป้าย "รอใส่ราคา" ซึ่งเป็นขั้นที่ `middleStep` ตั้งใจ
+     ให้เห็นเป็นพิเศษ ("ใบค้างถาวรถ้าไม่มีใครเห็น") */
+  const delivered = (over) => req({ items: [doneRow(), reworkRow({ readyAt: '2026-08-22', ...over })] });
+
+  const ready = delivered({});
+  assert.equal(dueIsStale(ready, ready.items), false, 'ส่งงานแล้ว = ไม่ค้างวัน');
+
+  const priced = delivered({ pickedUpAt: '2026-08-23', sentAt: '2026-08-24', outcome: 'confirmed' });
+  assert.equal(dueIsStale(priced, priced.items), false, 'รอใส่ราคา = ไม่ค้างวัน');
+  assert.equal(requestRailSteps(priced).index, 3, 'รางต้องเดินไปขั้นกลาง ไม่ค้างที่ 2');
+  // ⚠️ ยืนยัน **สิ่งที่ห้ามเกิด** ไม่ใช่ล็อกคำที่ป้ายระดับใบใช้ — ป้ายนั้นเป็นของ
+  //    `baseNextStep` ซึ่งสรุปทั้งใบ ("รอ RD ทำต่อ") ไม่ใช่ก้าวรายแถว
+  assert.notEqual(requestNextStep(priced).label, 'รอกำหนดส่ง', 'ห้ามทับด้วย "รอกำหนดส่ง"');
+
+  // ยังไม่ส่ง = ยังค้างวันตามเดิม
+  const undelivered = req();
+  assert.equal(dueIsStale(undelivered, undelivered.items), true);
+});
+
+test('⭐ liveDueDate — วันของรอบก่อนไม่ใช่คำสัญญาที่ยังอยู่', () => {
+  assert.equal(liveDueDate(req()), null, 'มีรอบแก้ค้าง = ไม่มีวัน');
+  const fresh = req({ committedDueDate: '2026-09-05', dueCommittedAt: '2026-08-21T03:00:00.000Z' });
+  assert.equal(liveDueDate(fresh), '2026-09-05');
+  assert.equal(liveDueDate({ status: 'acknowledged' }), null, 'ไม่มีวันเลย = null');
+});
+
+test('🔴 คิวต้องไม่ขึ้น "เลยกำหนด" ให้ใบที่รอแจ้งวันของรอบใหม่', () => {
+  /* 🐞 รอบแรกแก้แค่ `requestAwaitingDue` ⇒ รางบนหน้ารายละเอียดบอก "รอ RD แจ้งวันของ
+     รอบแก้" แต่ใบเดียวกันในคิวยังขึ้นป้ายแดง ตกกลุ่ม "เลยกำหนด" และถูกนับเข้าแถบ
+     ตัวเลข — สองจอพูดคนละเรื่องเกี่ยวกับใบเดียวกัน ซึ่งเป็นอาการที่งานนี้ตั้งใจปิด */
+  const today = '2026-08-26';
+  const stale = req();                       // committedDueDate 14/08 = เลยไปแล้ว
+  assert.equal(requestDueTone(stale, today).label, 'รอกำหนดส่ง');
+  assert.equal(requestGroupKey(stale, { todayIso: today }), 'open');
+  assert.equal(matchesQueueCount(stale, 'overdue', { todayIso: today }), false);
+  assert.equal(matchesQueueCount(stale, 'undated', { todayIso: today }), true);
+  assert.equal(requestDueText(stale, { todayIso: today }), null);
+
+  // ใบปกติที่เลยกำหนดจริงต้องยังแดงเหมือนเดิมทุกตัวอักษร
+  const real = req({ items: [doneRow({ outcome: 'confirmed' })] });
+  assert.equal(requestDueTone(real, today).label, 'เลยกำหนด');
+  assert.equal(requestGroupKey(real, { todayIso: today }), 'overdue');
+  assert.equal(matchesQueueCount(real, 'overdue', { todayIso: today }), true);
+  assert.equal(requestDueText(real, { todayIso: today }).overdue, true);
 });

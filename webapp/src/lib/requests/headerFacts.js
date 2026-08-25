@@ -14,6 +14,7 @@
 // มันจะกลายเป็นข้อมูลเดียวกันสองที่บนหัวเดียวกัน
 import { fmtDate } from '@/lib/format';
 import { requestSideText } from '@/lib/requests/replyTurn';
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -143,7 +144,8 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
 
   // ── สองวันกำหนด — อยู่คู่กันเสมอ ────────────────────────────────────
   const wanted = String(request.requestedDueDate || '').trim();
-  const committed = String(request.committedDueDate || '').trim();
+  // ⚠️ วันของรอบก่อน = ยังไม่มีวันของรอบนี้ ⇒ การ์ดหัวใบต้องไม่ขัดกับรางใต้มัน
+  const committed = liveDueDate(request) || '';
 
   facts.push({
     key: 'requestedDue',

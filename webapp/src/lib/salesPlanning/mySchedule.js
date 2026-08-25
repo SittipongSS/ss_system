@@ -13,6 +13,8 @@
 // ⚠️ **แบ่งช่องวันด้วยเวลาท้องถิ่นของเครื่องผู้ใช้** — `eventAt` เป็น UTC · กติกาเดียว
 // กับ `lib/sales/leadCalendar.js` (server ส่งช่วงเผื่อขอบมาให้ แล้วฝั่งจอเป็นคนตัดจริง)
 
+import { liveDueDate } from '@/lib/requests/dueRound';
+
 /** มุมมองปฏิทิน — คีย์ตรงกับค่าที่จำไว้ใน localStorage */
 export const SCHEDULE_VIEWS = [
   { key: 'day', label: 'วัน' },
@@ -316,7 +318,9 @@ export function buildScheduleDueItems({ tasks = [], requests = [], todayIso = nu
   }
 
   for (const request of requests) {
-    const committed = isoDay(request?.committedDueDate);
+    // ⚠️ วันของรอบก่อนไม่ใช่คำสัญญาที่ยังอยู่ ⇒ ถอยไปวันที่ผู้ขอต้องการ พร้อมโน้ต
+    //    "ฝ่ายยังไม่แจ้งวันส่ง" ซึ่งเป็นความจริงของรอบนี้ (ตรวจย้อนหลัง 2026-08-26)
+    const committed = isoDay(liveDueDate(request));
     const date = committed || isoDay(request?.requestedDueDate);
     if (!date) continue;
     out.push({
