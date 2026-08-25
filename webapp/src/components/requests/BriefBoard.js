@@ -20,7 +20,7 @@
 import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowIdleCell, RowStageCell } from "./RowProgressCells";
+import { CustomerSay, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -177,7 +177,7 @@ export default function BriefBoard({
                           <RowStageCell row={d} />
                           <RowIdleCell row={d} today={today} />
                           {showActions && (
-                            <td className={styles.stepCell}>
+                            <RowStepCell>
                               {renderStep?.(d)}
                               {/* ⭐ **แก้/ลบ อยู่ในเมนู `⋯`** (มติผู้ใช้ 2026-08-18) —
                                   ทรงเดียวกับทุกตารางในระบบ: ปุ่มก้าวถัดไป 1 ปุ่ม
@@ -197,7 +197,7 @@ export default function BriefBoard({
                                   },
                                 ].filter(Boolean)}
                               />
-                            </td>
+                            </RowStepCell>
                           )}
                         </tr>
 

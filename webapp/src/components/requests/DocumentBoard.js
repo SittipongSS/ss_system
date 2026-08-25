@@ -14,7 +14,7 @@ import { Fragment } from "react";
 import { TableScroll } from "@/components/ui/Table";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDate } from "@/lib/format";
-import { RowIdleCell, RowStageCell } from "./RowProgressCells";
+import { RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import styles from "./briefBoard.module.css";
 
 /* ⭐ `renderDetail` — ของยาวรายแถว (ไฟล์เอกสารที่ส่งมา) มาเป็น **แถวขยายในตาราง**
@@ -71,7 +71,7 @@ export default function DocumentBoard({ rows = [], renderStep = null, renderDeta
                 </td>
                 <RowStageCell row={r} />
                 <RowIdleCell row={r} today={today} />
-                {renderStep && <td className={styles.stepCell}>{renderStep(r)}</td>}
+                {renderStep && <RowStepCell>{renderStep(r)}</RowStepCell>}
               </tr>
               {detail && (
                 <tr className={styles.detailRow}>

@@ -16,7 +16,7 @@
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
 import { Fragment } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { CustomerSay, RowIdleCell, RowStageCell } from "./RowProgressCells";
+import { CustomerSay, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -122,7 +122,7 @@ export default function FormulaDevBoard({
                     <RowStageCell row={r} />
                     <RowIdleCell row={r} today={today} />
                     {showActions && (
-                      <td className={styles.stepCell}>
+                      <RowStepCell>
                         {renderStep?.(r)}
                         {/* แก้/ลบ อยู่ในเมนู `⋯` — เหตุผลเดียวกับ `BriefBoard` */}
                         <RowActionMenu
@@ -139,7 +139,7 @@ export default function FormulaDevBoard({
                             },
                           ].filter(Boolean)}
                         />
-                      </td>
+                      </RowStepCell>
                     )}
                   </tr>
 
