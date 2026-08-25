@@ -11,6 +11,11 @@
 // ⚠️ **ประกอบที่ lib ไม่ใช่ใน JSX** — กฎที่ตั้งไว้หลังบั๊กรางซ้ำ (#1033)
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, isRowSettled, rowStage } from '@/lib/requests/rowStage';
 import { hopLabel } from '@/lib/requests/hops';
+/* ⭐ **รางขั้น + อายุงานเป็นของกลางทุกหัวข้อ** (มติผู้ใช้ 2026-08-25) — สามตาราง
+   เคยบอกขั้นด้วยป้ายคำเดี่ยว ๆ ซึ่งตอบได้แค่ "ตอนนี้อยู่ไหน" ไม่ได้บอกว่าเหลืออีกไกล
+   แค่ไหน · ประกอบที่นี่ (ตัวสร้างแถว) ไม่ใช่ใน JSX — กฎหลังบั๊กรางซ้ำ #1033 */
+import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
+import { reworkBriefOf } from '@/lib/requests/rework';
 
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
 
@@ -44,12 +49,17 @@ export function formulaDevBoard(items = []) {
         priced: item.pricedResult || null,
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
+        // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)
+        reworkBrief: reworkBriefOf(item, items),
         outcome: item.outcome || null,
         outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
         outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,
         outcomeNote: item.outcomeNote || null,
         confirmedQty: item.confirmedQty ?? null,
         stage,
+        track: rowTrackSteps(item),
+        // ⚠️ ตราเวลาดิบ ไม่ใช่จำนวนวัน — ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน
+        idle: rowIdleStamps(item),
         stageLabel: ROW_STAGE_LABELS[stage] || stage,
         stageTone: ROW_STAGE_TONES[stage] || 'neutral',
         settled: isRowSettled(item),

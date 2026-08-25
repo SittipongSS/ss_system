@@ -12,9 +12,9 @@
 // ⚠️ การนับอยู่ที่ `lib/requests/documentBoard.js` ทั้งหมด ไม่ประกอบใน JSX
 import { Fragment } from "react";
 import { TableScroll } from "@/components/ui/Table";
-import StatusBadge from "@/components/ui/StatusBadge";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDate } from "@/lib/format";
+import { RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import styles from "./briefBoard.module.css";
 
 /* ⭐ `renderDetail` — ของยาวรายแถว (ไฟล์เอกสารที่ส่งมา) มาเป็น **แถวขยายในตาราง**
@@ -23,19 +23,26 @@ import styles from "./briefBoard.module.css";
    ตาราง ⇒ ชนิดเอกสารกับป้ายสถานะโผล่สองรอบในจอเดียว และไฟล์อยู่ไกลจากแถวของมัน
    ⚠️ ขึ้นเสมอเมื่อมีเนื้อ ไม่มีปุ่มกาง — แพตเทิร์นเดียวกับ `BriefBoard` (สิ่งที่มติ
    2026-08-13 ไม่ยอมคือ *การซ่อน* ไม่ใช่ตาราง) */
-export default function DocumentBoard({ rows = [], renderStep = null, renderDetail = null }) {
+/* ⭐ **ดีไซน์ใหม่ (มติผู้ใช้ 2026-08-25)** — โครงเดียวกับสองตารางของสายพัฒนา:
+   ชนิดเอกสาร · ขั้น (ราง) · ค้างมา · ก้าวถัดไป
+   ⚠️ **คอลัมน์ "สถานะ" ถูกถอด ไม่ใช่ย่อ** — ป้ายสถานะกับรางคิดจาก `stage` ตัวเดียวกัน
+   ⇒ สองคอลัมน์ที่พูดเรื่องเดียวกัน · รางบอกได้มากกว่า (เหลืออีกกี่ขั้น)
+   ⚠️ **เลขที่เอกสารไม่เป็นคอลัมน์** — ว่าง 91% ของแถวบน production ⇒ อยู่ในเซลล์ชื่อ
+   เป็นผลลัพธ์ของแถวเมื่อมีจริง */
+export default function DocumentBoard({ rows = [], renderStep = null, renderDetail = null, today = null }) {
   if (!rows.length) return null;
-  const cols = renderStep ? 3 : 2;
+  const cols = renderStep ? 4 : 3;
 
   return (
     <section className={styles.wrap} aria-label="สรุปเอกสารที่ขอ">
       <div className={styles.head}><strong>เอกสารที่ขอ</strong></div>
-      <TableScroll surface="embedded" minWidth={renderStep ? 680 : 560}>
+      <TableScroll surface="embedded" cells="stacked" minWidth={renderStep ? 720 : 560}>
         <table>
           <thead>
             <tr>
               <th className={styles.colName}>ชนิดเอกสาร</th>
-              <th className={styles.colStage}>สถานะ</th>
+              <th className={styles.colTrack}>ขั้น</th>
+              <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
@@ -62,8 +69,9 @@ export default function DocumentBoard({ rows = [], renderStep = null, renderDeta
                     <ReadableText text={r.declineReason} lines={2} className={styles.note} />
                   )}
                 </td>
-                <td><StatusBadge tone={r.stageTone} label={r.stageLabel} /></td>
-                {renderStep && <td className={styles.stepCell}>{renderStep(r)}</td>}
+                <RowStageCell row={r} />
+                <RowIdleCell row={r} today={today} />
+                {renderStep && <RowStepCell>{renderStep(r)}</RowStepCell>}
               </tr>
               {detail && (
                 <tr className={styles.detailRow}>

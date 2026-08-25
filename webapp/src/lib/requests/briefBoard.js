@@ -8,6 +8,11 @@
 // array ของขั้นตอน/แถวใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ
 import { ROW_STAGE_LABELS, ROW_STAGE_TONES, rowStage } from '@/lib/requests/rowStage';
 import { hopLabel } from '@/lib/requests/hops';
+/* ⭐ **รางขั้น + อายุงานเป็นของกลางทุกหัวข้อ** (มติผู้ใช้ 2026-08-25) — สามตาราง
+   เคยบอกขั้นด้วยป้ายคำเดี่ยว ๆ ซึ่งตอบได้แค่ "ตอนนี้อยู่ไหน" ไม่ได้บอกว่าเหลืออีกไกล
+   แค่ไหน · ประกอบที่นี่ (ตัวสร้างแถว) ไม่ใช่ใน JSX — กฎหลังบั๊กรางซ้ำ #1033 */
+import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
+import { reworkBriefOf } from '@/lib/requests/rework';
 
 // ผลลัพธ์จากลูกค้า → ป้าย + โทน · ยังไม่ตอบ = ยังไม่ถึงตาลูกค้า ไม่ใช่ลูกค้าเงียบ
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -19,7 +24,7 @@ const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'dange
  * ณ ตอนส่ง (ดู delivery.js) ⇒ ทะเบียนเปลี่ยนชื่อทีหลังแล้วใบเก่ายังอ่านออกว่าตอนนั้น
  * ส่งอะไรไป
  */
-function directionRow(item) {
+function directionRow(item, all = []) {
   const stage = rowStage(item);
   return {
     id: item.id,
@@ -32,6 +37,10 @@ function directionRow(item) {
     registry: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
     // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
     rework: !!item.derivedFromItemId,
+    /* ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)
+       ⚠️ หาใน **แถวทั้งใบ** ไม่ใช่แค่แถวในบรีฟก้อนเดียวกัน — แถวรอบแก้ที่เกิดก่อน
+       #1049 มี `briefId` ว่าง ⇒ ต้นทางของมันอยู่คนละก้อนกับตัวมันเอง */
+    reworkBrief: reworkBriefOf(item, all),
     // ⭐ **สายพันธุ์ของงาน** — ฐานเก็บไว้แล้วแต่ตารางไม่เคยใช้ ⇒ รอบแก้ลอยเป็นแถว
     // ธรรมดา อ่านไม่ออกว่าแก้มาจากตัวไหน (ผู้ใช้ทัก 2026-08-10)
     parentId: item.derivedFromItemId || null,
@@ -41,6 +50,9 @@ function directionRow(item) {
     outcomeNote: item.outcomeNote || null,
     confirmedQty: item.confirmedQty ?? null,
     stage,
+    track: rowTrackSteps(item),
+    // ⚠️ ตราเวลาดิบ ไม่ใช่จำนวนวัน — ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน
+    idle: rowIdleStamps(item),
     stageLabel: ROW_STAGE_LABELS[stage] || stage,
     stageTone: ROW_STAGE_TONES[stage] || 'neutral',
   };
@@ -109,7 +121,7 @@ function groupSummary(directions = []) {
 export function briefBoard(briefs = [], items = []) {
   const rows = (items || []).filter((i) => i?.lineKind === 'scent_dev');
   const groups = (briefs || []).map((b, i) => {
-    const directions = lineage(rows.filter((r) => r.briefId === b.id).map(directionRow));
+    const directions = lineage(rows.filter((r) => r.briefId === b.id).map((r) => directionRow(r, rows)));
     return {
       id: b.id,
       label: b.label || `กลิ่นที่ ${i + 1}`,
@@ -128,8 +140,8 @@ export function briefBoard(briefs = [], items = []) {
       id: null,
       label: 'ยังไม่ผูกบรีฟ',
       brief: null,
-      directions: lineage(orphans.map(directionRow)),
-      summary: groupSummary(lineage(orphans.map(directionRow))),
+      directions: lineage(orphans.map((r) => directionRow(r, rows))),
+      summary: groupSummary(lineage(orphans.map((r) => directionRow(r, rows)))),
       untouched: false,
     });
   }

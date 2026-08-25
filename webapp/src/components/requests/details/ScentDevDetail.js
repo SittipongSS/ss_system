@@ -41,7 +41,7 @@ import {
 import styles from "./details.module.css";
 
 export default function ScentDevDetail({
-  request, board, canEditAttachments, saving, rowStep, onReload, onDeliver,
+  request, board, canEditAttachments, saving, rowStep, onReload, onDeliver, today = null,
 }) {
   /* ⭐ **เปิดมาที่แท็บที่มีเนื้อ** (มติผู้ใช้ 2026-08-09) — ใบร่าง/ใบที่เพิ่งส่งยังไม่มี
      direction สักตัว เปิดมาเจอแท็บ "งาน" ที่ว่างเปล่าทุกครั้ง ⇒ ตั้งต้นที่แบบฟอร์ม
@@ -122,6 +122,7 @@ export default function ScentDevDetail({
           ⇒ หัวข้อ "สรุปทั้งใบ" ย้ายมาเป็นหัวการ์ด ตัวตารางจึงไม่ต้องมีหัวของตัวเองอีก */}
       <DetailCard icon={ListChecks} title="สรุปทั้งใบ">
       <BriefBoard
+        today={today}
             groups={board}
             canEditRegistry={registrar}
             onEditRegistry={(registry) => setEditRegistry(registry)}

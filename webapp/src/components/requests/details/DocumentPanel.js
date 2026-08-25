@@ -7,13 +7,13 @@
 //   2 "ใบนี้ของงานไหน" — อ้างอิง QT/SO/FG ที่ **ย้าย**มาจากแถบบนหน้า (ไม่ก๊อป —
 //     บทเรียนรางขวารุ่นแรก: ของซ้ำสองที่คือเหตุที่มันถูกยุบ)
 //
-// ⚠️ ตัวเลข/สถานะนับที่ lib ก้อนเดิม (docBoard · docTotals) — ที่นี่แค่เปลี่ยนที่วาง
-import {
-  DocumentSummaryCard, RelatedDocumentCard,
-} from "@/components/ui/DocumentControlPanel";
+// ⚠️ ตัวเลขนับที่ `lib/requests/panelSummary.js` — ทะเบียนคำแยกตามรูปร่างบรรทัด
+// ⇒ RD กับบัญชีใช้จอเดียวกันแต่การ์ดพูดภาษาของแต่ละฝ่าย
+import { RelatedDocumentCard } from "@/components/ui/DocumentControlPanel";
+import RequestSummaryPanel from "./RequestSummaryPanel";
 import styles from "./details.module.css";
 
-export default function DocumentPanel({ request, docTotals: totals }) {
+export default function DocumentPanel({ request }) {
   // ⚠️ **ยอดที่ขอวางบิลย้ายไป `BillingDocPanel` แล้ว** (ม-96) — การ์ดนี้เหลือของ RD
   // ล้วน · เอากลับมาเมื่อไรจะได้ยอดสองที่ที่ต้องคอยดูแลให้ตรงกัน
 
@@ -47,20 +47,9 @@ export default function DocumentPanel({ request, docTotals: totals }) {
       {/* ⚠️ **ไม่มีเช็คลิสต์รายแถวในแผงนี้แล้ว** (มติผู้ใช้ 2026-08-20) — ตารางกลางหน้า
           ไล่แถวเดียวกันพร้อมสถานะ เลขที่เอกสาร และก้าวถัดไปอยู่แล้ว ⇒ แผงขวาเหลือ
           **ตัวเลขสรุป** ซึ่งเป็นสิ่งที่ตารางตอบไม่ได้ในสายตาเดียว */}
-      {totals.asked > 0 && (
-        <DocumentSummaryCard
-          title="สรุปใบนี้"
-          rows={[
-            // ⚠️ **คำเดียวกับป้ายขั้นของแถว** (ม-120) — เดิมการ์ดนับว่า "มาแล้ว"
-            // ส่วนแถวในตารางเดียวกันเขียน "ได้รับแล้ว" ⇒ ตัวเลขกับแถวพูดคนละคำ
-            { id: "received", label: "ได้รับแล้ว", value: String(totals.received) },
-            { id: "waiting", label: "รอเอกสาร", value: String(totals.waiting) },
-            // "ปฏิเสธ" แยกจาก "ได้รับแล้ว" เสมอ (ม-89) — จบเหมือนกันแต่คนละความหมาย
-            { id: "refused", label: "ปฏิเสธ", value: String(totals.refused) },
-            { id: "asked", label: "จากที่ขอ", value: String(totals.asked) },
-          ]}
-        />
-      )}
+      {/* ⭐ ทรงเดียวกับทุกหัวข้อ (มติผู้ใช้ 2026-08-25) — ตัวเลขนำ "ได้รับแล้ว N/M"
+          + แกนสามแถว · คำใต้ตัวเลขนำตรงกับป้ายขั้นของแถวในตารางเดียวกัน (ม-120) */}
+      <RequestSummaryPanel request={request} lineShape="document" />
       {refs.length > 0 && (
         <RelatedDocumentCard eyebrow="อ้างอิงของใบนี้" title="เอกสารที่เกี่ยวข้อง">
           {refs.map((ref, i) => (

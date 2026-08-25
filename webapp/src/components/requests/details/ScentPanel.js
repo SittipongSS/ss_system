@@ -6,13 +6,19 @@
 // (briefBoardTotals · soReconcile) ที่นี่แค่เปลี่ยนที่วาง
 //
 // ⚠️ กระทบยอด SO **เตือน ไม่บล็อก** (มติเดิม) — โทนมากับ reconcileTone จากเปลือก
-import {
-  DocumentReadinessList, DocumentSummaryCard,
-} from "@/components/ui/DocumentControlPanel";
+import { DocumentReadinessList } from "@/components/ui/DocumentControlPanel";
 import { toneColor } from "@/lib/ui/tone";
+import RequestSummaryPanel from "./RequestSummaryPanel";
 
+/* ⭐ **ทรงเดียวกับทุกหัวข้อแล้ว** (มติผู้ใช้ 2026-08-25) — ตัวเลขนำ + แกนสามแถว
+   มาจาก `RequestSummaryPanel` · ที่นี่เหลือแต่ **ของเฉพาะพัฒนากลิ่น** ในก้อนล่าง:
+   กระทบยอด SO และเช็คลิสต์บรีฟ
+   ⚠️ ตัวเลข "บรีฟ / direction ส่งแล้ว / บรีฟยังไม่ลงมือ / รอลูกค้าตอบ / รอใส่ราคา"
+   ถูกถอด **ไม่ใช่ย่อ** — สี่ในห้าตัวเป็นการนับสิ่งที่ตารางข้างล่างแสดงเป็นแถวอยู่แล้ว
+   (บรีฟเป็นหัวกลุ่ม · direction เป็นแถว · ขั้นอยู่บนราง) · ที่เหลือเป็นของจริงคือ
+   "บรีฟยังไม่ลงมือ" ซึ่งย้ายไปเป็นเช็คลิสต์ที่บอกด้วยว่าเหลือกี่ก้อน */
 export default function ScentPanel({
-  briefSummary, reconcile, reconcileTone, reconcileText,
+  request, briefSummary, reconcile, reconcileTone, reconcileText,
 }) {
   if (!briefSummary) return null;
   // เช็คลิสต์ความพร้อมก่อนส่ง — คำตอบของ "ทำไมยังส่งไม่ได้ / เหลืออะไร"
@@ -33,16 +39,9 @@ export default function ScentPanel({
   ];
   return (
     <>
-      <DocumentSummaryCard
-        title="สรุปใบนี้"
-        rows={[
-          { id: "briefs", label: "บรีฟ", value: String(briefSummary.briefs) },
-          ...(reconcile ? [{ id: "ordered", label: "กลิ่นตาม SO", value: String(reconcile.ordered) }] : []),
-          { id: "directions", label: "direction ส่งแล้ว", value: String(briefSummary.directions) },
-          { id: "untouched", label: "บรีฟยังไม่ลงมือ", value: String(briefSummary.untouched) },
-          { id: "customer", label: "รอลูกค้าตอบ", value: String(briefSummary.waitingCustomer) },
-          { id: "price", label: "รอใส่ราคา", value: String(briefSummary.awaitingPrice) },
-        ]}
+      <RequestSummaryPanel
+        request={request}
+        lineShape="scent_dev"
         // ป้ายกระทบยอด — ประโยคเดียวกับที่เคยเป็น StatusNotice กลางหน้า
         // ⚠️ สีมาจาก `toneColor` ที่เดียวของระบบ (lib/ui/tone.js) — **ห้ามเทียบสตริง
         // โทนเองที่นี่**
@@ -51,9 +50,10 @@ export default function ScentPanel({
         // และทุกสถานะตกไปที่กิ่ง else = เขียว · "ขาด 2 กลิ่น" จึงทาเขียวว่าเรียบร้อย
         status={reconcile && reconcileText ? reconcileText : undefined}
         statusColor={toneColor(reconcileTone)}
+        statusLabel="กระทบยอดใบสั่งขาย"
       >
         <DocumentReadinessList items={readiness} label="ความพร้อมของใบนี้" />
-      </DocumentSummaryCard>
+      </RequestSummaryPanel>
     </>
   );
 }

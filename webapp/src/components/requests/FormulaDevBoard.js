@@ -16,6 +16,7 @@
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
 import { Fragment } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { CustomerSay, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
 import RegistryCell from "./RegistryCell";
@@ -33,18 +34,26 @@ const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
    ชุดเดียวกันสองรอบ · ชื่อกลิ่นโผล่ซ้ำและป้ายสถานะซ้ำ เหมือนที่สายกลิ่นโดน */
 /* ⭐ `onEditRegistry` / `canEditRegistry` — เหมือน `BriefBoard` แต่ตัวที่แก้คือ
    **ทะเบียนสูตร** (มติผู้ใช้ 2026-08-18) */
+/* ⭐ **ดีไซน์ใหม่ (มติผู้ใช้ 2026-08-25)** — โครงเดียวกับอีกสองตาราง: รายการ ·
+   [จำนวน] · ขั้น (ราง) · ค้างมา · ก้าวถัดไป
+   ⚠️ **"จำนวน" โผล่เมื่อใบนี้มีค่าจริง ไม่ใช่เพราะหัวข้ออนุญาต** — ทั้งระบบมีแถวที่
+   กรอกจำนวนแค่ 4% (วัด 2026-08-25) ⇒ คอลัมน์ว่างทั้งแถวในเกือบทุกใบ
+   ⚠️ **"สถานะ" กับ "ผลลัพธ์จากลูกค้า" ถูกถอด** — ทั้งคู่คิดจาก `stage` ตัวเดียวกับ
+   ที่รางวาด · ผลลัพธ์กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง (ว่าง 97% ของแถว) */
 export default function FormulaDevBoard({
   rows = [], renderStep = null, renderDetail = null,
-  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false,
+  onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null,
 }) {
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป
   if (!rows.length) return null;
+  // ⚠️ ถามจาก **ค่าจริงในใบนี้** ไม่ใช่จากหัวข้อ — ใบที่ไม่กรอกจำนวนเลยไม่ควรมีคอลัมน์
+  const showQty = rows.some((r) => r.qty != null || r.priced?.price != null);
 
   // ⭐ ปุ่มแก้อยู่ท้ายแถว รวมกับปุ่มลงมือ (มติผู้ใช้ 2026-08-18)
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete;
-  const cols = showActions ? 5 : 4;
+  const cols = 3 + (showQty ? 1 : 0) + (showActions ? 1 : 0);
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
@@ -57,9 +66,9 @@ export default function FormulaDevBoard({
           <thead>
             <tr>
               <th className={styles.colName}>รายการ</th>
-              <th className={`${styles.colQty} num`}>จำนวน</th>
-              <th className={styles.colOutcome}>ผลลัพธ์จากลูกค้า</th>
-              <th className={styles.colStage}>สถานะ</th>
+              {showQty && <th className={`${styles.colQty} num`}>จำนวน</th>}
+              <th className={styles.colTrack}>ขั้น</th>
+              <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
@@ -82,6 +91,10 @@ export default function FormulaDevBoard({
                         extra={(
                           <>
                             {r.rework && <span className="ui-badge">รอบแก้</span>}
+                            {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
+                                (มติผู้ใช้ 2026-08-25) — มีค่าจริงแค่ 3% ของแถว ·
+                                คอลัมน์ที่ว่าง 97% กินที่ของสิ่งที่มีค่าทุกแถว */}
+                            {r.outcomeLabel && <StatusBadge tone={r.outcomeTone} label={r.outcomeLabel} />}
                             {/* สิ่งที่ขอไว้ตอนเปิดใบ — สแนปช็อต ไม่ใช่ค่าทะเบียน
                                 ⚠️ ยังไม่มีสูตร = RD ยังไม่ส่ง บอกตรง ๆ ดีกว่าเว้นว่างให้เดา */}
                             <div className={styles.note}>
@@ -91,6 +104,7 @@ export default function FormulaDevBoard({
                         )}
                       />
                     </td>
+                    {showQty && (
                     <td className="num">
                       {r.qty != null ? `${qty(r.qty)}${r.unit ? ` ${r.unit}` : ""}` : null}
                       {/* ⭐ ราคาที่ตกลงแล้ว — เดิม RD ใส่ราคาเสร็จ แถวขึ้น "เสร็จ" แต่ในใบ
@@ -104,17 +118,11 @@ export default function FormulaDevBoard({
                         </div>
                       )}
                     </td>
-                    <td>
-                      {r.outcomeLabel
-                        ? <StatusBadge tone={r.outcomeTone} label={r.outcomeLabel} />
-                        : <span className={styles.pending}>ยังไม่ถึงตาลูกค้า</span>}
-                      {r.confirmedQty != null && (
-                        <div className={styles.note}>คอนเฟิร์ม {qty(r.confirmedQty)}</div>
-                      )}
-                    </td>
-                    <td><StatusBadge tone={r.stageTone} label={r.stageLabel} /></td>
+                    )}
+                    <RowStageCell row={r} />
+                    <RowIdleCell row={r} today={today} />
                     {showActions && (
-                      <td className={styles.stepCell}>
+                      <RowStepCell>
                         {renderStep?.(r)}
                         {/* แก้/ลบ อยู่ในเมนู `⋯` — เหตุผลเดียวกับ `BriefBoard` */}
                         <RowActionMenu
@@ -131,16 +139,16 @@ export default function FormulaDevBoard({
                             },
                           ].filter(Boolean)}
                         />
-                      </td>
+                      </RowStepCell>
                     )}
                   </tr>
 
                   {/* แถวขยาย — ของยาวของแถวนี้ · ขึ้นเสมอเมื่อมีเนื้อ ไม่มีปุ่มกาง */}
-                  {(detail || spec || r.outcomeNote) && (
+                  {(detail || spec || r.outcomeNote || r.reworkBrief) && (
                     <tr className={styles.detailRow}>
                       <td colSpan={cols}>
                         {spec && <ReadableText text={spec} lines={2} className={styles.note} />}
-                        {r.outcomeNote && <ReadableText text={r.outcomeNote} lines={2} className={styles.note} />}
+                        <CustomerSay note={r.outcomeNote} brief={r.reworkBrief} />
                         {detail}
                       </td>
                     </tr>
