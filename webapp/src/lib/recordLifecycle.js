@@ -221,7 +221,12 @@ function normalizeTransition(transition, entity) {
   };
 }
 
-const FIELD_TYPES = ["text", "select", "person", "datetime", "money"];
+/* ⚠️ ทะเบียนนี้ต้องตรงกับสาขาที่ `TransitionDialog` เรนเดอร์จริง — เพิ่มที่นี่ที่เดียว
+   แล้ว dialog ไม่รู้จัก field จะตกไปเป็น input ข้อความเงียบ ๆ (วันที่จะกลายเป็น
+   ช่องพิมพ์อิสระ) · เพิ่มที่ dialog อย่างเดียวแล้ว defineLifecycle จะ throw ตั้งแต่
+   ตอนสร้าง lifecycle — อันหลังดังกว่า จึงเป็นด่านที่พึ่งได้
+   `date` = วันล้วน ๆ (DateInput · เก็บ/ส่งเป็น ISO ค.ศ.) ต่างจาก `datetime` ที่มีเวลาด้วย */
+const FIELD_TYPES = ["text", "select", "person", "date", "datetime", "money"];
 
 function normalizeField(field, entity, transitionId) {
   if (!field?.name) throw new Error(`defineLifecycle(${entity}): ${transitionId} — field ต้องมี name`);

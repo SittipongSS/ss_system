@@ -41,6 +41,19 @@ import PhotoThumb from "@/components/ui/PhotoThumb";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
+/* ⭐ **เธรดเป็นที่เดียวในระบบที่ควรดึงเองเป็นระยะ** — หน้าอื่นเป็นทะเบียนที่คนเปิดมา
+   อ่านแล้วปิด แต่กล่องนี้เป็นบทสนทนา: "ของใหม่มาจากคนอื่นระหว่างที่เรานั่งดูอยู่" คือ
+   พฤติกรรมปกติของมัน ไม่ใช่กรณีขอบ
+   🐞 ของเดิมโหลดครั้งเดียวตอน mount ⇒ อีกฝ่ายตอบแล้วเราไม่มีทางเห็นจนกว่าจะกด F5
+   ทั้งที่ระบบอุตส่าห์จำ "ตาใครตอบ" ไว้ให้แล้ว (`lastReplySide` · mig 0270) — คนที่ถูก
+   บอกว่าถึงตาตัวเองจึงต้องรีเฟรชเองถึงจะรู้ว่าเขาพิมพ์อะไรมา
+   ⚠️ **ไม่ยิงตอนแท็บซ่อน** โดยเจตนา — กติกาเดียวกับที่กระดิ่งเขียนไว้: แท็บที่เปิดค้าง
+   ทิ้งไว้ทั้งวันต้องไม่เผาโควตาโดยไม่มีใครดู */
+const POLL_MS = 45_000;
+/* คอกกั้นสำหรับทางที่ผู้ใช้เป็นคนกระตุ้น (สลับแท็บกลับมา) — คนที่สลับไปมาถี่ ๆ
+   ต้องไม่กลายเป็นตัวยิงรัว (ลอกแนวจาก `MIN_GAP_MS` ของ useNavCounts) */
+const MIN_GAP_MS = 10_000;
+
 // สวิตช์ซ่อนเหตุการณ์ระบบจำรายชนิดเอกสาร ไม่ใช่รายใบ — คนที่ไม่อยากเห็นเหตุการณ์
 // ระบบบนใบ QT ก็ไม่อยากเห็นบนทุกใบ QT ไม่ใช่แค่ใบที่เพิ่งกด
 const hideSystemKey = (entityType) => `updateThread.hideSystem.${entityType}`;
@@ -106,8 +119,13 @@ export default function UpdateThread({
   const onItemsChangeRef = useRef(onItemsChange);
   onItemsChangeRef.current = onItemsChange;
 
+  // เวลาที่ดึงล่าสุด — ใช้กับคอกกั้นของทางที่ผู้ใช้กระตุ้น (ดู effect ข้างล่าง)
+  // นับรวมการดึงหลังโพสต์ด้วย เพราะมันก็คือของสด ๆ เหมือนกัน
+  const lastLoadAt = useRef(0);
+
   const load = useCallback(async () => {
     if (!entityType || !entityId) return;
+    lastLoadAt.current = Date.now();
     try {
       const res = await fetch(
         `/api/updates?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
@@ -125,6 +143,30 @@ export default function UpdateThread({
   }, [entityType, entityId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* ดึงของใหม่เอง: ทุก POLL_MS ระหว่างที่แท็บเปิดอยู่ + ทันทีที่กลับมามองแท็บ
+     ⚠️ เช็ค `document.visibilityState` ใน tick ไม่ใช่ตอนตั้ง interval — แท็บที่ถูกซ่อน
+     ระหว่างทางต้องหยุดยิงด้วย ไม่ใช่แค่แท็บที่ซ่อนอยู่ตอน mount
+     ⚠️ เบราว์เซอร์หน่วง timer ของแท็บพื้นหลังอยู่แล้ว แต่ไม่ได้หยุดให้ — เช็คเองจึงยัง
+     จำเป็น ไม่ใช่ของแถม */
+  useEffect(() => {
+    if (!entityType || !entityId) return undefined;
+    /* คอกกั้นคุมทั้งสองทาง: `visibilitychange` กับ `focus` เด้งพร้อมกันตอนสลับแท็บกลับมา
+       และเพิ่งโพสต์เสร็จก็เพิ่งดึงไปแล้ว — ทั้งสองกรณีต้องไม่กลายเป็นยิงซ้อน */
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadAt.current < MIN_GAP_MS) return;
+      load();
+    };
+    const timer = setInterval(tick, POLL_MS);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, [entityType, entityId, load]);
 
   // เปิดเธรด = อ่านแจ้งเตือนของ entity นี้ทั้งก้อน (มติ 15 — ตั้งใจไม่ทำ watermark
   // ต่อข้อความแบบ Slack) · ทำที่นี่ที่เดียวจึงครอบทั้ง "กดจากกล่องแจ้งเตือน" และ

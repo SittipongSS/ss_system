@@ -6,6 +6,7 @@
 // ⚠️ ช่องที่เกินกำลัง **เตือน ไม่บล็อก** — โรงงานจริงมี OT · ระบบที่บล็อกจะถูก
 //    เลี่ยงไปวางนอกระบบ แล้วบอร์ดก็ตายทั้งใบ
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -57,12 +58,16 @@ export default function ProductionBoardPage() {
 
   const range = useMemo(() => ({ from: days[0].iso, to: days[days.length - 1].iso }), [days]);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`/api/production/board?from=${range.from}&to=${range.to}`);
       const data = await res.json().catch(() => null);
+      if (!isLatest()) return; // เลื่อนช่วงวันที่ระหว่างรอ — บอร์ดต้องเป็นของช่วงที่ค้างอยู่
       if (!res.ok) throw new Error(data?.error || "โหลดบอร์ดไม่สำเร็จ");
       setLines(Array.isArray(data?.lines) ? data.lines : []);
       setJobs(Array.isArray(data?.jobs) ? data.jobs : []);
@@ -70,11 +75,11 @@ export default function ProductionBoardPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์บอร์ดว่าง — "โหลดพัง" กับ "ไลน์ว่างทั้งเดือน"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้ว PC จะวางงานทับของที่มีอยู่
-      setLoadError(e.message || "โหลดบอร์ดไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดบอร์ดไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [range.from, range.to]);
+  }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
 
   // override กำลังรายวัน แยกตามไลน์ — ใช้ทั้งตอนคำนวณโหลดและตอนวาดช่องว่าง

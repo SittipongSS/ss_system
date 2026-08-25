@@ -19,6 +19,7 @@
 // ⚠️ ตัวกรองเก็บใน URL — บัญชีส่งลิงก์ "งวดที่เลยกำหนดของเดือนนี้" ให้กันได้ และ
 // ปุ่มดาวน์โหลดใช้ query ชุดเดียวกัน ⇒ ไฟล์ที่ได้ตรงกับที่เห็นบนจอเสมอ
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -120,19 +121,23 @@ export default function FinancePaymentsPage() {
     router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
   }, [params, router]);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true); setError("");
     try {
       const res = await fetch(`/api/finance/payments?${query}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
+      if (!isLatest()) return; // ตัวกรองขยับระหว่างรอ — ทะเบียนต้องตรงกับตัวกรองที่เห็นอยู่
       if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนการชำระไม่สำเร็จ");
       setData({
         rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0,
         undatedHidden: body.undatedHidden || null,
       });
-    } catch (loadError) { setError(loadError.message); }
-    setLoading(false);
-  }, [query]);
+    } catch (loadError) { if (isLatest()) setError(loadError.message); }
+    if (isLatest()) setLoading(false);
+  }, [query, startRun]);
 
   useEffect(() => { load(); }, [load]);
 

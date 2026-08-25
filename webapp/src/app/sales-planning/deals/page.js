@@ -4,6 +4,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, Paperclip, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
@@ -165,7 +166,10 @@ export default function SalesPlanningPipelinePage() {
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
   const [shippingDealId, setShippingDealId] = useState(null);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setError("");
     try {
@@ -188,20 +192,24 @@ export default function SalesPlanningPipelinePage() {
         throw new Error(errStr);
       }
       const dTxt = await dealsRes.text();
-      try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
       let custData = [];
       if (customersRes.ok) {
         const txt = await customersRes.text();
         try { if(txt) custData = JSON.parse(txt); } catch(e){}
       }
+      const projData = projectsRes.ok ? await projectsRes.json() : [];
+      // อ่านทุกคำตอบให้จบก่อน แล้วค่อยเช็ครอบทีเดียว — เดือนเปลี่ยนไปแล้วก็ทิ้งทั้งก้อน
+      // (เขียนบางตัวแล้วทิ้งตัวที่เหลือ = จอกลายเป็นลูกผสมของสองเดือน)
+      if (!isLatest()) return;
+      try { setDeals(dTxt ? JSON.parse(dTxt) : []); } catch(e) { setDeals([]); }
       setCustomers(custData);
-      setProjects(projectsRes.ok ? await projectsRes.json() : []);
+      setProjects(projData);
     } catch (e) {
-      setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [month, allMonths, reviewOnly]);
+  }, [month, allMonths, reviewOnly, startRun]);
 
   useEffect(() => {
     load();

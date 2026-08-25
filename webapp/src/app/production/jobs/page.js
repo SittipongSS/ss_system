@@ -5,6 +5,7 @@
 // ⭐ ตัวเชื่อมที่สำคัญที่สุด: คอลัมน์ "ของครบ?" มาจาก `productionReadiness()` ของ
 //    ของเข้า PM/RM ที่ PC กรอกไว้แล้ว — โมดูลนี้เป็นปลายทางของข้อมูลชิ้นนั้น
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { AlertTriangle, Hammer, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -48,7 +49,10 @@ export default function ProductionJobsPage() {
   const [formJob, setFormJob] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [toast, setToast] = useState(null);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setLoadError("");
     try {
@@ -57,6 +61,7 @@ export default function ProductionJobsPage() {
       const status = showDone ? "" : `&status=${OPEN_STATUSES}`;
       const res = await fetch(`/api/production/jobs?autoDraft=1${status}`);
       const data = await res.json().catch(() => null);
+      if (!isLatest()) return; // สลับ "แสดงงานที่จบแล้ว" ระหว่างรอ — คิวต้องตรงกับสวิตช์
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานผลิตไม่สำเร็จ");
       setJobs(Array.isArray(data?.jobs) ? data.jobs : []);
       setLines(Array.isArray(data?.lines) ? data.lines : []);
@@ -66,11 +71,11 @@ export default function ProductionJobsPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์คิวว่าง — "โหลดพัง" กับ "ไม่มีงาน" หน้าตาเหมือนกัน
       // จนแยกไม่ออก แล้ว PC จะเชื่อว่าโรงงานว่าง
-      setLoadError(e.message || "โหลดคิวงานผลิตไม่สำเร็จ");
+      if (isLatest()) setLoadError(e.message || "โหลดคิวงานผลิตไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [showDone]);
+  }, [showDone, startRun]);
   useEffect(() => { load(); }, [load]);
 
   const linesById = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines]);

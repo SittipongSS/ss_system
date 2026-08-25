@@ -28,8 +28,10 @@ export const maxDuration = 60;
 async function notifyOverdueLeads(supabase) {
   const { data, error } = await supabase
     .from('sales_leads')
-    .select('id, contactName, status, team, assigneeId, createdAt, screenedAt, assignedAt')
-    .in('status', ['new', 'screened', 'assigned']);
+    .select('id, contactName, status, team, assigneeId, createdAt, screenedAt, assignedAt, followUpAt')
+    // ⭐ `contacted` เข้ามาพร้อม mig 0289 — สถานะนี้เคยไม่มีนาฬิกาเลย ลีดที่ติดต่อแล้ว
+    // จึงเงียบหายไปจากการทวงทั้งหมด · นับจาก `followUpAt` (วันที่ AE รับปากลูกค้าไว้)
+    .in('status', ['new', 'screened', 'assigned', 'contacted']);
   if (error) return { sent: 0, error: error.message };
   if (!data?.length) return { sent: 0, reason: 'ไม่มีลีดค้าง' };
 
@@ -38,7 +40,15 @@ async function notifyOverdueLeads(supabase) {
     loadUserDirectory(supabase).catch(() => new Map()),
   ]);
   const now = new Date().toISOString();
-  const sinceOf = { new: (l) => l.createdAt, screened: (l) => l.screenedAt || l.createdAt, assigned: (l) => l.assignedAt || l.createdAt };
+  // ⚠️ ก๊อปที่ 2 ของ 3 — ต้องตรงกับ SINCE_OF ใน lib/sales/leadNotify.js เป๊ะ
+  // (อีกตัวอยู่ที่ lib/sales/leadDigest.js) · `contacted` คืน null ได้ ตัวกรองฝั่ง
+  // overdueLeadNotices ตัดใบพวกนั้นออกเอง
+  const sinceOf = {
+    new: (l) => l.createdAt,
+    screened: (l) => l.screenedAt || l.createdAt,
+    assigned: (l) => l.assignedAt || l.createdAt,
+    contacted: (l) => l.followUpAt || null,
+  };
   const notices = overdueLeadNotices(data, {
     directory,
     ageOf: (lead) => businessDaysWaiting(sinceOf[lead.status]?.(lead), now, holidays),

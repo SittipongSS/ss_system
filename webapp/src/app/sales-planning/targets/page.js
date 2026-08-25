@@ -4,6 +4,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -42,7 +43,10 @@ export default function SalesPlanningTargetsPage() {
 
   const toggleTeam = (t) => setCollapsed((c) => ({ ...c, [t]: !c[t] }));
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setError("");
     try {
@@ -51,14 +55,16 @@ export default function SalesPlanningTargetsPage() {
         cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!targetsRes.ok) throw new Error((await targetsRes.json()).error || "โหลด target ไม่สำเร็จ");
-      setTargets(await targetsRes.json());
+      const rows = await targetsRes.json();
+      if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — เป้าที่โชว์ต้องเป็นของปีที่เลือกอยู่
+      setTargets(rows);
       setUsers(users || []);
     } catch (e) {
-      setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [year]);
+  }, [year, startRun]);
 
   useEffect(() => {
     load();

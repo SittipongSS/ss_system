@@ -105,6 +105,42 @@ const pending = (id, over) => {
   return row;
 };
 
+/* ── วันติดตามต่อ (mig 0289) ─────────────────────────────────────────────── */
+
+/* ⭐ เกณฑ์ต่อสถานะ ไม่ใช่ตัวเดียวคุมทั้งหมด — สามด่านแรกเป็น SLA ของระบบ (1 วันทำการ)
+   ส่วน `contacted` เป็นคำสัญญาที่ AE ให้ลูกค้าเอง ผ่อนผัน 2 วันทำการก่อนทวง */
+test('เลยวันติดตาม: ผ่อนผัน 2 วันทำการ ไม่ใช่ 1 เหมือนสามด่านแรก', () => {
+  const followUp = (id, age) => pending(id, { status: 'contacted', followUpAt: '2026-08-05T03:00:00Z', age });
+  assert.equal(overdue([followUp('F1', 1)]).length, 0, 'เลยวันเดียวยังไม่ทวง');
+  assert.equal(overdue([followUp('F2', 2)]).length, 0, 'ตรงเกณฑ์ยังไม่ถือว่าสาย');
+  assert.equal(overdue([followUp('F3', 3)]).length, 1);
+});
+
+/* ใบ `contacted` ที่ยังไม่มี followUpAt (ของเก่าก่อน migration) ต้องเงียบ —
+   ไม่มีใครเคยรับปากวันไหนไว้ จะไปทวงด้วยกำหนดที่เดาเอาเองไม่ได้ */
+test('ใบเก่าที่ยังไม่มีวันติดตาม ไม่ถูกทวง', () => {
+  const stale = pending('OLD', { status: 'contacted', age: 9 });
+  delete stale.followUpAt;
+  // ตัวจริงคำนวณอายุจาก businessDaysWaiting(null) = 0 ⇒ ไม่มีทางเกินเกณฑ์
+  assert.equal(overdueLeadNotices([stale], {
+    directory: DIR, ageOf: () => 0, dayKey: '2026-08-10',
+  }).length, 0);
+});
+
+/* 🪤 กอง AE กองเดียวรับได้สองเรื่องตั้งแต่ mig 0289 — เขียนป้ายตายตัวว่า "รอติดต่อกลับ"
+   เมื่อไร ใบที่ติดต่อไปแล้วสามรอบจะถูกรายงานว่ายังไม่เคยติดต่อ */
+test('ป้ายบอกเรื่องที่ค้างจริง — กองผสมใช้คำกลาง ไม่เลือกข้าง', () => {
+  const late = pending('A1', { age: 5 });                                  // assigned
+  const over = pending('A2', { status: 'contacted', followUpAt: '2026-08-05T03:00:00Z', age: 5 });
+  assert.match(overdue([late])[0].title, /รอติดต่อกลับเกิน SLA/);
+  assert.match(overdue([over])[0].title, /เลยวันติดตาม/);
+  const mixed = overdue([late, over]);
+  assert.equal(mixed.length, 1, 'คนเดียวกันต้องได้เด้งเดียว');
+  assert.match(mixed[0].title, /งานลีดค้าง/);
+  // "เกิน SLA" ใช้ได้เฉพาะด่านที่เป็น SLA จริง — วันติดตามเป็นคำสัญญาของ AE เอง
+  assert.doesNotMatch(overdue([over])[0].title, /SLA/);
+});
+
 test('ทวงเฉพาะที่ **เกิน** 1 วันทำการ — ตรงเกณฑ์ยังไม่ถือว่าสาย', () => {
   assert.equal(overdue([pending('L1', { age: 1 })]).length, 0, 'SLA คือ "ภายใน 1 วันทำการ"');
   assert.equal(overdue([pending('L2', { age: 2 })]).length, 1);

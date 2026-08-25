@@ -11,6 +11,7 @@
 // นัดนั้นจะไปโผล่ผิดวัน (server จึงส่งช่วงเผื่อขอบมาให้ ดู calendarRange)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, List, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -85,7 +86,10 @@ export default function SalesCalendarPage() {
     cachedFetchJson("/api/holidays").then((rows) => setHolidays(Array.isArray(rows) ? rows : [])).catch(() => {});
   }, []);
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true); setError("");
     const from = `${cursor.y}-${pad(cursor.m + 1)}-01`;
     const last = new Date(cursor.y, cursor.m + 1, 0).getDate();
@@ -93,12 +97,14 @@ export default function SalesCalendarPage() {
     try {
       const res = await fetch(`/api/sales-planning/calendar?from=${from}&to=${to}`, { cache: "no-store" });
       const body = await res.json();
+      if (!isLatest()) return; // กดลูกศรเดือนรัว ๆ — ปฏิทินต้องเป็นของเดือนที่ค้างอยู่จริง
       if (!res.ok) throw new Error(body?.error || "โหลดปฏิทินไม่สำเร็จ");
       setEntries(Array.isArray(body) ? body : []);
     } catch (e) {
+      if (!isLatest()) return;
       setError(e.message); setEntries([]);
-    } finally { setLoading(false); }
-  }, [cursor]);
+    } finally { if (isLatest()) setLoading(false); }
+  }, [cursor, startRun]);
 
   useEffect(() => { load(); }, [load]);
 

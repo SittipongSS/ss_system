@@ -4,6 +4,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useLatestRun from "@/lib/ui/useLatestRun";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -80,7 +81,10 @@ export default function SalesTargetPlanPage() {
 
   const latestHistYear = historyYears[historyYears.length - 1];
 
+  // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
+  const startRun = useLatestRun();
   const load = useCallback(async () => {
+    const isLatest = startRun();
     setLoading(true);
     setError("");
     try {
@@ -90,6 +94,7 @@ export default function SalesTargetPlanPage() {
       ]);
       if (!histRes.ok) throw new Error((await histRes.json()).error || "โหลดประวัติไม่สำเร็จ");
       const { rows, systemActuals: sys } = await histRes.json();
+      if (!isLatest()) return; // ชุดปีที่อ้างอิงเปลี่ยนระหว่างรอ — ทิ้งรอบเก่าทั้งก้อน
       setSystemActuals(sys || {});
       setUsers(users || []);
 
@@ -114,11 +119,11 @@ export default function SalesTargetPlanPage() {
       }
       setTeamHist(teams);
     } catch (e) {
-      setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+      if (isLatest()) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
-  }, [historyYears, latestHistYear]);
+  }, [historyYears, latestHistYear, startRun]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -16,10 +16,13 @@ export const DIGEST_MAX_OWNERS = 4;
 
 /* เวลาที่ใช้นับอายุของแต่ละสถานะ = จุดตั้งต้นของ SLA ของสถานะนั้น ไม่ใช่ createdAt เสมอ
    (ลีดที่รับเข้ามานานแต่เพิ่งถูกมอบเมื่อวาน ยังไม่ถือว่า AE ดอง) */
+/* ⚠️ ก๊อปที่ 3 ของ 3 — ต้องตรงกับ `SINCE_OF` ใน leadNotify.js และ `sinceOf` ใน
+   cron/daily-digest/route.js · แก้ไม่ครบ = การ์ดกับแจ้งเตือนรายงานคนละชุดใบ */
 const SINCE_OF = {
   new: (lead) => lead.createdAt,
   screened: (lead) => lead.screenedAt || lead.createdAt,
   assigned: (lead) => lead.assignedAt || lead.createdAt,
+  contacted: (lead) => lead.followUpAt || null,
 };
 
 function ageOf(lead, asOf, holidays) {

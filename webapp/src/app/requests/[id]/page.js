@@ -223,8 +223,13 @@ export default function RequestDetailPage() {
     scentId: item?.scentId || "",
     categoryCode: item?.categoryCode || "",
   }), [req?.customerId]);
-  const load = useCallback(async () => {
-    setLoading(true); setLoadError("");
+  /* `background: true` = ดึงใหม่โดยไม่พาหน้าไปอยู่สถานะ "กำลังโหลด" — ใช้ตอนที่จอ
+     มีของอยู่แล้วและเราแค่อยากให้มันตรงกับของจริง (ดู `call` ข้างล่าง)
+     ⚠️ เช็ค `?.background` ไม่ใช่ arg ตรง ๆ เพราะ `load` ถูกส่งเป็น callback ให้
+     ลูก (`onReload` / `onPosted`) ซึ่งเรียกมาพร้อม event/ข้อมูล — ต้องตกไปโหมดปกติ */
+  const load = useCallback(async (opts) => {
+    if (!opts?.background) setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch(`/api/sa/requests/${id}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
@@ -277,7 +282,17 @@ export default function RequestDetailPage() {
         headers: { "Content-Type": "application/json" }, ...init,
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
+      /* ⭐ **ตีกลับ = จอไม่ตรงกับของจริงแล้ว ⇒ ดึงใหม่ทันที** — ด่านฝั่ง server อ่านแถวสด
+         ทุกครั้งก่อนตัดสิน (ดู `api/sa/requests/[id]`) ⇒ คำตอบที่ไม่ผ่านเกือบทุกใบแปลว่า
+         มีคนเดินสถานะไปก่อนแล้ว ไม่ใช่ว่าผู้ใช้กดผิด
+         🐞 ของเดิมโยน error ตรงนี้แล้วจบ — toast บอกว่า "ใบนี้ปิดไปแล้ว" แต่ปุ่มเดิม
+         ยังอยู่ครบและสถานะบนจอยังเป็นของเก่า ⇒ คนกดซ้ำแล้วได้ข้อความเดิมไม่รู้จบ
+         จนต้องกด F5 เอง ทั้งที่เป็นจังหวะเดียวที่ระบบ *รู้แน่* ว่าจอเก่า
+         ไม่ await เพราะ toast ต้องขึ้นทันที และไม่ต้องให้หน้ากระพริบเป็นสถานะโหลด */
+      if (!res.ok) {
+        load({ background: true });
+        throw new Error(d.error || "ทำรายการไม่สำเร็จ");
+      }
       // okMsg = null ⇒ เงียบไว้ (ขั้นกลางของงานที่ยิงหลายครั้ง — ทักครั้งเดียวตอนจบ)
       if (okMsg) setToast({ kind: "success", msg: okMsg });
       await load();

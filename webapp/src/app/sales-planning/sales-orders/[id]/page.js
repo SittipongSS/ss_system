@@ -212,6 +212,19 @@ export default function SalesOrderDetailPage() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
+  /* ดึงกลับมาเฉพาะ "ตัวใบ" — สถานะ/ขั้นอนุมัติ/ขั้นบัญชี ซึ่งเป็นสิ่งที่ปุ่มทุกตัวอ่าน
+     ⚠️ **ห้ามใช้ `load()` แทน** — `load` เขียนทับ `form` · `confirmation` · `confirmFiles`
+     และสั่ง `setDirty(false)` ⇒ ถ้าเรียกตอนทำรายการไม่ผ่าน มันจะกลืนสิ่งที่ผู้ใช้
+     พิมพ์ค้างไว้ แล้วยังบอกว่า "ไม่มีอะไรค้าง" ต่อหน้าเขาอีกที */
+  const refreshOrder = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
+      if (!res.ok) return;
+      const fresh = await res.json().catch(() => null);
+      if (fresh) setOrder(fresh);
+    } catch { /* รีเฟรชเงียบ — ข้อความที่ผู้ใช้ต้องอ่านคือ error ของ action */ }
+  }, [id]);
+
   async function createFiling() {
     setBusy("filing");
     setError("");
@@ -268,6 +281,11 @@ export default function SalesOrderDetailPage() {
       setError(data.error || "อัปเดตใบสั่งขายไม่สำเร็จ");
       setErrorActionUrl(data.accountUrl || "");
       if (action === "save") setSaveState("error");
+      /* ⭐ **ตีกลับ = จอไม่ตรงกับของจริงแล้ว ⇒ ดึงตัวใบกลับมา** — ด่านของ SO อ่านแถวสด
+         ทุกครั้ง (ขั้นยื่น/อนุมัติ/บัญชีตรวจใช้ RPC ที่ตรวจ `expectedUpdatedAt` ซ้ำอีกชั้น)
+         ⇒ ข้อความอย่าง "ใบนี้อนุมัติแล้ว" แปลว่ามีคนกดไปก่อน ไม่ใช่ผู้ใช้กดผิด
+         ของเดิมปุ่มค้างอยู่ครบ คนกดซ้ำได้ข้อความเดิมจนต้อง F5 เอง */
+      refreshOrder();
       return false;
     }
     if (action === "revise" && data?.id) {
