@@ -7,6 +7,7 @@ import { loadScoped } from '@/lib/scopedRow';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { isQuotationEvidencePath } from '@/lib/upload/privateEvidence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,11 +42,16 @@ export async function GET(request, { params }) {
 
   const privateBucket = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET || DEFAULT_EVIDENCE_BUCKET;
   const safeOrderId = String(order.id).replace(/[^a-zA-Z0-9_-]+/g, '_');
-  // ⚠️ งวดแรกอาจ **ยืมไฟล์มาจากหลักฐาน Won ของ QT** (สลิปโอนเงิน) ⇒ path จะขึ้นต้นด้วย
-  //    `quotations/…/won/` ไม่ใช่โฟลเดอร์ของใบสั่งขาย · ยอมรับทั้งสองรูปแบบ แต่ไม่ยอมรับ
-  //    path อื่นเลย เพื่อไม่ให้ค่าใน jsonb ชี้ไปไฟล์ของใครก็ได้ใน bucket
+  // ⚠️ งวดแรกอาจ **ยืมไฟล์มาจากหลักฐานที่แนบไว้ใต้ใบเสนอราคาต้นทาง** (สลิปโอนเงินตอน
+  //    ปิด Won หรือเอกสารยืนยันคำสั่งซื้อ) ⇒ path จะขึ้นต้นด้วย `quotations/…` ไม่ใช่
+  //    โฟลเดอร์ของใบสั่งขาย · ยอมรับทั้งสองแหล่ง แต่ไม่ยอมรับ path อื่นเลย เพื่อไม่ให้
+  //    ค่าใน jsonb ชี้ไปไฟล์ของใครก็ได้ใน bucket
+  //
+  // 🐞 เดิมเขียนรายการโฟลเดอร์ไว้เองในบรรทัดนี้ (`won` อย่างเดียว) แล้ว #1391 เพิ่ม
+  //    `order-confirmation` โดยไม่มีใครกลับมาแก้ที่นี่ ⇒ งวดที่ยืมไฟล์ยืนยันคำสั่งซื้อมา
+  //    ตอบ "ไม่พบไฟล์แนบ" ทุกใบ · ตอนนี้ถามจากทะเบียนเดียวกับที่ใช้ตอนเขียนไฟล์
   const allowed = String(att.storagePath).startsWith(`sales-orders/${safeOrderId}/payments/`)
-    || /^quotations\/[a-zA-Z0-9_-]+\/won\//.test(String(att.storagePath));
+    || isQuotationEvidencePath(att.storagePath);
   if (att.storageBucket !== privateBucket || !allowed) {
     return Response.json({ error: 'ไม่พบไฟล์แนบ' }, { status: 404 });
   }

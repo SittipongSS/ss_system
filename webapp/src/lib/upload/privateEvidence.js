@@ -52,6 +52,29 @@ export function isPrivateEvidence(entityType) {
   return Boolean(TARGETS[entityType]);
 }
 
+/* ── ไฟล์ของงวดชำระที่ "ยืมมาจากใบเสนอราคาต้นทาง" ──────────────────────────
+ *
+ * 🐞 ผู้ใช้แจ้ง 2026-08-25: กดดูสลิปของงวดแรกแล้วได้ `{"error":"ไม่พบไฟล์แนบ"}`
+ * ทั้งที่ไฟล์อยู่ครบใน bucket · ด่านอ่านของ `payment-file` เขียนรายการโฟลเดอร์ที่
+ * ยอมรับไว้เองสองอัน (`sales-orders/…/payments/` กับ `quotations/…/won/`) แล้ว #1391
+ * เพิ่มโฟลเดอร์ที่สาม (`order-confirmation/`) โดยไม่มีใครกลับมาแก้ด่านอ่าน
+ * ⇒ งวดที่ ref ตามไฟล์ยืนยันคำสั่งซื้อมา เปิดไม่ได้ทั้งหมด (วัดบน prod: 6 งวด)
+ *
+ * ⭐ **อ่านชื่อโฟลเดอร์จาก TARGETS ตัวเดียวกับที่ใช้ตอนเขียน** — โฟลเดอร์ที่สี่ที่จะ
+ * เพิ่มวันหน้าจึงเข้ามาเองโดยไม่ต้องมีใครนึกออกว่ามีด่านอ่านซ่อนอยู่ตรงไหนบ้าง
+ * (`__ID__` เป็นค่าหลอกที่รอด `safeId` ทั้งก้อน จึงตัดออกได้ตรง ๆ) */
+const QUOTATION_EVIDENCE_FOLDERS = Object.values(TARGETS)
+  .filter((target) => target.table === 'quotations')
+  .map((target) => target.prefix('__ID__').replace('quotations/__ID__/', '').replace(/\/$/, ''));
+
+/** path นี้เป็นหลักฐานที่แนบไว้ใต้ใบเสนอราคาใบใดใบหนึ่งไหม (ไม่เจาะจงว่าใบไหน) */
+export function isQuotationEvidencePath(storagePath) {
+  const folders = QUOTATION_EVIDENCE_FOLDERS.join('|');
+  return new RegExp(`^quotations/[a-zA-Z0-9_-]+/(${folders})/`).test(String(storagePath || ''));
+}
+
+export { QUOTATION_EVIDENCE_FOLDERS };
+
 /** โฟลเดอร์ที่ไฟล์ของเอกสารใบนั้นต้องอยู่ — ใช้ทั้งตอนสร้าง path และตอนตรวจ path ที่ client ส่งมา */
 export function privateEvidencePrefix(entityType, entityId) {
   const target = TARGETS[entityType];
