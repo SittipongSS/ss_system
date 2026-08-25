@@ -33,6 +33,10 @@ export const REFERENCE_REGISTRY = {
       { table: 'sales_leads', label: 'ลีด', sample: null },
       { table: 'quotations', label: 'ใบเสนอราคา', sample: 'quoteNumber' },
       { table: 'sales_orders', label: 'ใบสั่งขาย', sample: 'orderNumber' },
+      /* 🐞 **ตกทะเบียนมาตั้งแต่ระบบสัญญาขึ้น** (พบ 2026-08-25 ตอนเอา check:refs เข้า CI) —
+         ด่านนี้มีอยู่แล้วแต่ไม่เคยถูกรันใน CI จึงไม่มีใครเห็นว่ามันแดง
+         ผลถ้าไม่มีบรรทัดนี้: ลบลูกค้าที่ยังมีสัญญาอยู่ได้ แล้วสัญญาเสียสายเชื่อมเงียบ ๆ */
+      { table: 'sales_contracts', label: 'สัญญา', sample: 'contractNo' },
       { table: 'dept_requests', label: 'คำร้อง', sample: 'docNo' },
       { table: 'costing_requests', label: 'ใบขอราคาผลิต', sample: 'docNo' },
       { table: 'scents', label: 'กลิ่นในทะเบียน', sample: 'code' },
