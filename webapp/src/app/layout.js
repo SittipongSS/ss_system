@@ -49,15 +49,8 @@ export default function RootLayout({ children }) {
                 document.documentElement.setAttribute('data-theme', 'light');
               }
             } catch (_) {}
-            try {
-              // แถบเมนูของระบบบนจอกว้าง: ย่อ/กาง — ต้องตั้งก่อนเพนต์ด้วยเหตุผล
-              // เดียวกับธีม ไม่งั้นแถบกางเต็ม 240px แล้วหุบเหลือ 56px ให้เห็น
-              // ทุกครั้งที่โหลดหน้า (CSS อ่านที่ :root[data-sidenav="collapsed"])
-              document.documentElement.setAttribute(
-                'data-sidenav',
-                localStorage.sidenav === 'collapsed' ? 'collapsed' : 'expanded'
-              );
-            } catch (_) {}
+            // ⚠️ เคยตั้ง data-sidenav จาก localStorage ตรงนี้ — เมนูของระบบไม่มี
+            // สถานะถาวรแล้ว (เป็นลิ้นชักที่เปิดทีละครั้ง มติผู้ใช้ 2026-08-25)
           `,
         }} />
         <ToastProvider>
