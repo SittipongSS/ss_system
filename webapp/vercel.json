@@ -8,7 +8,7 @@
       "schedule": "30 1 * * 1-5"
     },
     {
-      "path": "/api/cron/auto-bounce-leads?apply=1",
+      "path": "/api/cron/auto-bounce-leads",
       "schedule": "0 2 * * 1-5"
     },
     {
