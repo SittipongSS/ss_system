@@ -20,6 +20,18 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # ── ด่านที่ต้องคุยกับฐานจริง (check:columns · check:refs) ───────────────
+    # สองด่านนี้เทียบโค้ดกับ **schema จริงบน Supabase** จึงต้องมีคีย์ · ถ้าไม่ตั้ง
+    # secret ไว้ ทั้งคู่จะถูก **ข้าม** (ขึ้นสีเทาในหน้า run + มี warning) ไม่ใช่เขียว
+    # เงียบ ๆ — ด่านที่ผ่านโดยไม่ได้ตรวจอะไรเลย อันตรายกว่าไม่มีด่าน
+    #
+    # ⚠️ ต้องใช้ **service-role key** — anon key อ่าน schema (`/rest/v1/`) ไม่ได้
+    # (ตอบ 401) และอ่านตารางได้ 0 แถวเพราะ RLS ⇒ ใช้แทนกันไม่ได้ · การเก็บ
+    # service-role ไว้ใน GitHub secrets = ทุก workflow run มีสิทธิ์เขียน production
+    # ⇒ **เป็นการตัดสินใจของเจ้าของรีโป ไม่ใช่ของ CI** จึงปล่อยให้ข้ามได้ตามค่าตั้งต้น
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -61,6 +73,24 @@ jobs:
       # ค้างแดงอยู่หลายวันโดยไม่มีอะไรเตือน (ตรวจพบ 2026-08-25)
       - name: Row cap ratchet
         run: npm run check:rowcap
+
+      # คอลัมน์ที่ `.select()` อ้างถึงต้องมีอยู่จริงบนฐาน — คอลัมน์ที่พิมพ์ผิด/ถูกลบ
+      # ทำให้ PostgREST ตอบ 500 ทั้งเส้น และ JS ไม่มีทางจับได้ตอน build
+      - name: Schema drift (select columns)
+        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: npm run check:columns
+
+      # ทะเบียนอ้างอิง (หมวด/หน่วย/สถานะ) ที่โค้ดใช้ ต้องตรงกับแถวจริงบนฐาน
+      - name: Reference tables
+        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: npm run check:refs
+
+      # ⚠️ ไม่มี secret = สองด่านบนถูกข้าม · ต้องส่งเสียงให้เห็นในหน้า run ไม่ใช่
+      # ปล่อยให้ทั้ง job เขียวแล้วเข้าใจว่าตรวจครบ
+      - name: เตือนเมื่อด่านที่ต้องใช้ฐานข้อมูลถูกข้าม
+        if: env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == ''
+        run: |
+          echo "::warning title=ด่าน schema ถูกข้าม::check:columns และ check:refs ไม่ได้รัน เพราะยังไม่ได้ตั้ง secret SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — คอลัมน์ที่พิมพ์ผิดหรือถูกลบจะหลุดขึ้น production ได้"
 
       - name: Test
         run: npm test
