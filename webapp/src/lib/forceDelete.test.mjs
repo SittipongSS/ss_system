@@ -134,10 +134,16 @@ test('cleanupDealOrphans: ลบเธรด+งาน+คำร้องขอ�
              ⚠️ ตาราง `attachments` ต้องคืน [] — ในเทสต์นี้ไม่มีไฟล์แนบให้กวาด
              เราสนใจแค่ว่า "เส้นลบเรียกตัวกวาดไหม" ไม่ใช่ผลของการกวาด */
           const rowsFor = () => (table === 'attachments' ? [] : [{ id: table === 'personal_tasks' ? 'T1' : 'IQ1' }]);
+          /* ⚠️ `order()` ต้องคืน chain ไม่ใช่ Promise — เส้นที่ไล่ทีละหน้าด้วย `fetchAll`
+             ต่อ `.range()` **หลัง** `.order()` (`makeQuery().range(from, to)`) · ของเดิม
+             คืน Promise ตรงนี้ ทำให้ fake พังทันทีที่เส้นลบเปลี่ยนไปใช้ fetchAll
+             chain เป็น thenable อยู่แล้ว จุดที่ `await ...order(...)` เฉย ๆ จึงยังทำงานเหมือนเดิม */
+          const page = () => Promise.resolve({ data: rowsFor(), error: null });
           const chain = {
             eq: (c) => { if (!b._col) b._col = c; return chain; },
             in: (c) => { if (!b._col) b._col = c; return chain; },
-            order: () => Promise.resolve({ data: rowsFor(), error: null }),
+            order: () => chain,
+            range: page,
             then: (r) => { r({ data: rowsFor(), error: null }); },
           };
           return chain;
