@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUSES, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
@@ -22,6 +23,7 @@ const approved = (extra = {}) => ({ status: 'approved', financeStatus: 'pending'
 test('ใบเก่าที่ไม่มี financeStatus = ยังไม่เข้าแกนบัญชี ไม่ใช่รอตรวจ', () => {
   assert.equal(financeStatusOf({ status: 'approved' }), null);
   assert.equal(awaitsFinanceReview({ status: 'approved' }), false);
+  assert.equal(awaitsFinanceReview({ status: 'approved', financeStatus: 'pending', totalAmount: 53500 }), true);
   assert.equal(financeWorkflowStep({ status: 'approved' }), null);
 });
 
@@ -149,4 +151,28 @@ test('บัญชีอนุมัติแล้ว = ✓ ทั้งรา�
     salesOrderWorkflowIndex({ status: 'approved', financeStatus: 'approved' }, { baseIndex: 3, stepCount: 5 }),
     5,
   );
+});
+
+/* 🪤 **ใบยอด 0 ไม่เข้าคิวบัญชี** (ผู้ใช้เจอบน production 2026-08-26: SO ยอด ฿0.00
+   นั่งอยู่ในคิว "ใบที่รอบัญชีตรวจ") — สิ่งที่บัญชีตรวจคือเงื่อนไขชำระ ยอด/VAT เครดิต
+   ซึ่งใบยอด 0 ไม่มีสักข้อ · กติกาเดียวกับงวดชำระที่ตัดใบยอด 0 ออกตั้งแต่ 2026-08-18 */
+test('ใบยอด 0 ไม่ต้องให้บัญชีตรวจ — ทั้งที่ธงเคยถูกประทับไว้แล้ว', () => {
+  const zero = { status: 'approved', financeStatus: 'pending', totalAmount: 0 };
+  assert.equal(awaitsFinanceReview(zero), false);
+  // ใบยอดปกติยังเข้าคิวเหมือนเดิม
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: 1 }), true);
+  // ⚠️ "ไม่รู้ยอด" ≠ "ยอด 0" — แถวที่ยังโหลดไม่ครบต้องไม่ถูกตัดออกจากคิวเงียบ ๆ
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: null }), true);
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: undefined }), true);
+});
+
+test('ต้นทางไม่ประทับ pending ให้ใบยอด 0 ตอนอนุมัติ', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(route, /if \(!paymentNotRequired\(before\.totalAmount\)\) \{[\s\S]{0,220}financeStatus: 'pending'/);
+});
+
+test('หน้าภาพรวมบัญชีใช้ helper ตัวเดียวกับคิวบนทะเบียน ไม่เขียนเงื่อนไขซ้ำ', () => {
+  const page = readFileSync(new URL('../../app/finance/page.js', import.meta.url), 'utf8');
+  assert.match(page, /orders\.filter\(\(o\) => awaitsFinanceReview\(o\)\)/);
+  assert.doesNotMatch(page, /financeStatus === "pending"/, 'ห้ามมีนิยามที่สอง');
 });

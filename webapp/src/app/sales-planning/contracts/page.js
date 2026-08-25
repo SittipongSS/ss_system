@@ -139,6 +139,7 @@ export default function ContractsPage() {
             ⚠️ ใช้ธง `_waitingOnMe` ตัวเดียวกับตัวกรองและป้ายเลขบนเมนู — ห้ามนิยามที่สอง */}
         <ApprovalQueue
           items={workQueue}
+          unit="ใบ"
           title="ต้องทำตอนนี้ — สัญญาที่ค้างอยู่กับคุณ"
           primary={(row) => row.contractNo || "ฉบับร่าง"}
           secondary={(row) => `${naText(row.customerName)} · ${contractStatusLabel(row.status)}`}
