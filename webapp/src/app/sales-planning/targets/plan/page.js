@@ -62,6 +62,8 @@ export default function SalesTargetPlanPage() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [saving, setSaving] = useState(false);
+  // ช่วงที่กดยืนยันแล้วแต่ยังไม่เริ่มเขียน (กำลังอ่านเป้าเดิม / รอคนตอบโมดัล) — ปุ่มต้องกดซ้ำไม่ได้
+  const [preparing, setPreparing] = useState(false);
 
   // Step 1 — company target/actual per history year, and per-team actual for the
   // most recent history year (drives the team split ratio in step 3).
@@ -273,7 +275,10 @@ export default function SalesTargetPlanPage() {
      2. อ่านเป้าที่มีอยู่ของปีนั้นสด ๆ แล้วถามก่อนทับ พร้อมบอกด้วยว่าแถวไหน
         "ไม่ถูกแตะ" — แถวพวกนั้นยังนับเข้ายอดรวมทีมอยู่ ต้องไปเคลียร์เองที่ตารางเป้า */
   const confirmPlan = async () => {
-    if (saving) return;
+    /* 🪤 ต้องกันตั้งแต่ก่อนอ่านของเดิม ไม่ใช่ตอน `setSaving(true)` ซึ่งอยู่หลังโมดัล —
+       ระหว่างรอ GET + รอคนตอบโมดัล ปุ่มยังกดได้ ⇒ กดรัวสองที = เดินสองรอบ ยิง GET ซ้ำ
+       และ ConfirmProvider เก็บคำขอเดียว ใบแรกถูกทับโดยไม่ถูก resolve (promise ค้างถาวร) */
+    if (saving || preparing) return;
     setError("");
     setInfo("");
 
@@ -291,15 +296,33 @@ export default function SalesTargetPlanPage() {
 
     // อ่านของเดิม "ตอนกด" ไม่ใช่ตอนเปิดหน้า — หัวหน้าอาจเปิดค้างไว้ข้ามวัน
     let existingRows = [];
+    let readFailed = false;
+    setPreparing(true);
     try {
       const res = await fetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
       if (res.ok) existingRows = await res.json();
+      else readFailed = true;
     } catch {
-      // อ่านของเดิมไม่ได้ = เตือนละเอียดไม่ได้ แต่ไม่บล็อกการวางเป้า
+      readFailed = true;
+    } finally {
+      setPreparing(false);
     }
     const { overwrite, keep } = summarizeOverwrite({ existingRows, nodes, year: targetYear });
 
-    if (overwrite.length || keep.length) {
+    /* 🔴 อ่านของเดิมไม่ได้ ≠ ไม่มีของเดิม — ของเดิมเดินผ่านไปเขียนทับเงียบ ๆ เพราะ
+       `existingRows` ว่างทำให้ทั้ง overwrite และ keep ว่างตาม ⇒ ด่านที่เพิ่งเพิ่มมา
+       หายไปทั้งด่านในเคสที่มันควรทำงานที่สุด (token หมดอายุระหว่างเปิดหน้าค้างข้ามวัน
+       ซึ่งเป็นเหตุผลที่ย้ายมาอ่านตอนกดตั้งแต่แรก) */
+    if (readFailed) {
+      const okBlind = await confirmAction({
+        title: `วางเป้าปี ${targetYear}`,
+        description: `อ่านเป้าเดิมของปี ${targetYear} ไม่สำเร็จ — ตรวจไม่ได้ว่าจะเขียนทับอะไรบ้าง`,
+        detail: `ยืนยันแล้วจะเขียน ${nodes.length} แถวตามแผนนี้ทับของเดิมทันที โดยไม่มีรายการให้ดูก่อน\nถ้าไม่แน่ใจ ให้ปิดหน้านี้ เข้าใหม่ แล้วลองอีกครั้ง`,
+        confirmLabel: "ยืนยันทั้งที่ตรวจไม่ได้",
+        tone: "danger",
+      });
+      if (!okBlind) return;
+    } else if (overwrite.length || keep.length) {
       const lines = [];
       if (overwrite.length) {
         lines.push(`เขียนทับ ${overwrite.length} แถว (เป้าเดิมรวม ${fmt(sum(overwrite.map((r) => r.amount)))}): ${nameList(overwrite)}`);
@@ -455,9 +478,9 @@ export default function SalesTargetPlanPage() {
                 ถัดไป <ArrowRight size={16} aria-hidden="true" />
               </button>
             ) : (
-              <button type="button" className="btn btn-primary" onClick={confirmPlan} disabled={saving}
+              <button type="button" className="btn btn-primary" onClick={confirmPlan} disabled={saving || preparing}
                 style={{ fontWeight: "var(--fw-bold)", padding: "10px 28px", minWidth: 200 }}>
-                <Check size={18} aria-hidden="true" /> {saving ? "กำลังวางเป้า…" : "ยืนยันวางเป้า"}
+                <Check size={18} aria-hidden="true" /> {saving ? "กำลังวางเป้า…" : preparing ? "กำลังตรวจของเดิม…" : "ยืนยันวางเป้า"}
               </button>
             )}
           </div>
