@@ -51,3 +51,21 @@ test('อ้างของที่ไม่มีในทะเบียน�
   assert.equal(main, 'รายการที่ 5');
   assert.equal(sub, '');
 });
+
+/* ── ป้ายของราง (มติผู้ใช้ 2026-08-25) ────────────────────────────────────
+   🐞 `main` เต็ม ๆ ตัดคำลงราง 208px ได้แถวละ 100px ⇒ 5 รายการ = ป้ายล้วน 500px
+   ⇒ รางใช้ `short` = ชื่อหมวด × รหัสกลิ่น (ตัดรหัสหมวดกับชื่อกลิ่นที่ยาวที่สุดออก) */
+test('⭐ short = ชื่อหมวด × รหัสกลิ่น — สั้นกว่า main แต่ยังแยกแถวออกจากกันได้', () => {
+  const { main, short } = productDevRowText({ categoryCode: '01-001', scentId: 'SC-1' }, 0, registry);
+  assert.ok(short.length < main.length, `short (${short}) ต้องสั้นกว่า main (${main})`);
+  assert.doesNotMatch(short, /01-001/, 'รหัสหมวดต้องไม่อยู่ใน short — ชื่อหมวดอ่านออกกว่า');
+});
+
+test('กลิ่นที่ไม่มีรหัส ถอยไปใช้ชื่อ — ป้ายว่างแย่กว่าป้ายยาว', () => {
+  const noCode = { scents: [{ id: 'SC-9', name: 'กลิ่นไร้รหัส' }], categories: registry.categories };
+  assert.match(productDevRowText({ categoryCode: '01-001', scentId: 'SC-9' }, 0, noCode).short, /กลิ่นไร้รหัส/);
+});
+
+test('ยังไม่เลือกอะไรเลย — short ถอยไปเป็น "รายการที่ N" เหมือน main', () => {
+  assert.equal(productDevRowText({}, 2, registry).short, 'รายการที่ 3');
+});

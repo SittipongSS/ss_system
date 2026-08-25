@@ -7,14 +7,24 @@
 // ⚠️ หมวดใช้ **ตัวเลือกกลาง** ตัวเดียวกับฟอร์มดีล/โครงการ/ทะเบียนสูตร (P2c) —
 // ช่องเดียว หมวดหลักเป็นหัวกลุ่ม ⇒ ลงเซลล์ตารางได้ · นี่คือเหตุผลที่ยุบมันตั้งแต่ P2c
 //
-// ⭐ **ยุบบรรทัดที่กรอกแล้ว** (มติผู้ใช้ 2026-08-09 · `ui/EditableLineList`) —
-// แต่ละแถวมี 5 ช่อง กางพร้อมกันหลายแถวแล้วยาวเกินจอตั้งแต่แถวที่สอง
-// ⚠️ **เลือกแบบนี้แทนรางข้าง** เพราะแถวสรุปกินเต็มความกว้าง ⇒ ใส่ได้ครบทั้ง
-// รหัส+ชื่อหมวด · รหัส+ชื่อกลิ่น · วันที่ของกลิ่น (มติผู้ใช้) ซึ่งรางกว้าง 13rem ใส่ไม่ลง
+// ⭐ **ราง ไม่ใช่แถวยุบ** (มติผู้ใช้ 2026-08-25: *"สองชั้น ซ้ายขวา ใช้กับพัฒนาสูตร
+// ด้วยได้มั้ย"*) — **ทับมติ 2026-08-09** ที่เลือก `ui/EditableLineList`
+//
+// เหตุผลของมติเดิมคือ "แถวสรุปกินเต็มความกว้าง ⇒ ใส่ได้ครบทั้งรหัส+ชื่อหมวด ·
+// รหัส+ชื่อกลิ่น · วันที่ของกลิ่น ซึ่งรางกว้าง 13rem ใส่ไม่ลง" · สิ่งที่เปลี่ยนไปคือ
+// **แท็บ "รายละเอียด" ของหัวข้ออื่นเป็นรางหมดแล้ว** (ขอเอกสาร · ขอใบวางบิล · PDR)
+// ⇒ พัฒนาสูตรเป็นหัวข้อเดียวที่เหลือเป็นแถวยุบ · คนที่สลับหัวข้อเจอสองผังในแท็บ
+// ชื่อเดียวกัน ⇒ ความคงเส้นคงวาชนะรายละเอียดบนแถวสรุป
+//
+// ⚠️ **`sub` (วันที่กลิ่น · จำนวน+หน่วย) ไม่ขึ้นบนราง** — มันมีไว้ตอนแถว *ยุบ* เท่านั้น
+// พอเป็นรางแล้วแถวที่เลือกอยู่กางอยู่ฝั่งขวาเสมอ ⇒ ทั้งวันที่กลิ่นและจำนวนอ่านได้จาก
+// ช่องจริงของมันอยู่แล้ว · และ `main` ไม่ซ้ำกันโดยโครงสร้างอยู่แล้ว (หมวด × กลิ่น
+// ซ้ำกันไม่ได้ — `duplicatePair`) ⇒ ไม่ต้องมีบรรทัดรองมาช่วยแยก
+// ⚠️ **ห้ามถอยกลับไปเป็นแถวยุบโดยไม่ถามเจ้าของงานก่อน** — เป็นมติที่ถูกทับไปแล้ว
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import EditableLineList from "@/components/ui/EditableLineList";
+import SectionRail from "@/components/ui/SectionRail";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
@@ -62,50 +72,64 @@ export default function ProductDevLines({
     onChange([...rows, emptyProductDevRow()]);
     setActive(rows.length);
   };
-  const removeRow = () => {
-    onChange(rows.filter((_, j) => j !== at));
-    setActive(Math.max(at - 1, 0));
+  /* ⚠️ ลบ **แถวที่ระบุ** ไม่ใช่แถวที่เปิดอยู่ — ปุ่มอยู่ที่แต่ละแถวในรางแล้ว
+     ⚠️ ตัวที่เปิดอยู่ต้องขยับตามเมื่อลบตัวที่อยู่ก่อนหน้า ไม่งั้นเนื้อฝั่งขวาจะกระโดด
+     ไปเป็นของอีกแถวโดยที่คนกดไม่ได้สั่ง (กติกาเดียวกับ DocumentLines) */
+  const removeRow = (index) => {
+    onChange(rows.filter((_, j) => j !== index));
+    setActive((cur) => (index < cur ? cur - 1 : Math.min(cur, rows.length - 2)));
   };
 
   return (
     <div className={styles.wrap}>
-      <EditableLineList
-        count={rows.length}
-        active={at}
-        onActiveChange={setActive}
-        onAdd={addRow}
-        addLabel="เพิ่มรายการ"
-        disabled={disabled}
-        renderSummary={(i) => {
-          const r = rows[i];
-          const { main, sub } = productDevRowText(r, i, { categories, scents });
-          // ครบ = มีทั้งหมวดและกลิ่น (สองอย่างนี้คือตัวตนของสูตรที่จะเกิด)
-          const ready = Boolean(r.categoryCode && r.scentId) && !duplicatePair(r, i, rows);
-          return (
-            <>
-              <span className="line-summary-dot" data-ok={ready ? "1" : undefined} />
-              <span className="line-summary-main">{main}</span>
-              {sub && <span className="line-summary-sub">{sub}</span>}
-              <span className="line-summary-open">แก้ไข</span>
-            </>
-          );
-        }}
+      <SectionRail
+        ariaLabel="รายการที่ขอ"
+        /* ⚠️ คีย์เป็น **ตำแหน่ง** ด้วยเหตุผลเดียวกับ `active` — แถวยังไม่มี id
+           จนกว่าจะบันทึก · ลบแถวกลางแล้วคีย์ของตัวที่เหลือขยับตามซึ่งถูกต้อง
+           เพราะเนื้อของมันก็มาจาก `rows[at]` ตำแหน่งใหม่เหมือนกัน */
+        sections={rows.map((r, i) => {
+          const text = productDevRowText(r, i, { categories, scents });
+          return {
+          key: `row-${i}`,
+          /* ⚠️ **`short` ไม่ใช่ `main`** — ป้ายเต็มตัดคำลงราง 208px ได้แถวละ 100px
+             (วัดจริง) ⇒ 5 รายการก็เป็นรางสูง 500px ของป้ายล้วน · ชื่อเต็มยังอยู่ที่
+             tooltip และที่เนื้อฝั่งขวาซึ่งกางอยู่แล้วของแถวที่เลือก */
+          label: text.short,
+          title: text.main,
+          // เขียว = ครบพอที่จะส่งได้ (มีทั้งหมวดและกลิ่น และไม่ซ้ำ) · ตัวเดียวกับด่านส่ง
+          tone: Boolean(r.categoryCode && r.scentId) && !duplicatePair(r, i, rows)
+            ? "full" : "none",
+          /* ⭐ ถังขยะอยู่ที่แถวของมันเอง ชิดขวา (กติกาเดียวกับ DocumentLines) —
+             ลบแถวไหนก็ได้โดยไม่ต้องเปิดมันก่อน · ใบต้องมีอย่างน้อย 1 รายการ
+             (ด่านส่ง) ⇒ เหลือแถวเดียวไม่มีปุ่ม */
+          action: rows.length > 1 ? {
+            icon: <Trash2 size={14} aria-hidden="true" />,
+            title: `ลบ ${text.short}`,
+            disabled,
+            onClick: () => removeRow(i),
+          } : null,
+          };
+        })}
+        value={`row-${at}`}
+        onChange={(key) => setActive(Number(key.replace("row-", "")))}
+        emptyText="ยังไม่มีรายการ — กดปุ่มข้างซ้ายเพื่อเพิ่มรายการแรก"
+        navFooter={(
+          /* terracotta = "เริ่มของใหม่" · ปุ่มพื้นฐานมองไม่เห็นในราง (พื้น `--panel`
+             เข้มกว่าพื้นราง `--panel-2`) — เหตุผลเต็มอยู่ที่ DocumentLines */
+          <Button
+            size="sm" tone="accent" disabled={disabled}
+            icon={<Plus size={14} aria-hidden="true" />}
+            onClick={addRow}
+          >
+            เพิ่มรายการ
+          </Button>
+        )}
       >
+        {rows.length > 0 && (
         <div className="form-grid cols-2">
+          {/* ⚠️ ไม่มีปุ่มลบตรงนี้แล้ว — ย้ายไปเป็นถังขยะที่แถวในราง */}
           <div className="form-group col-span-2">
-            <span className="form-field-label split">
-              ของที่ขอ
-              {rows.length > 1 && (
-                <Button
-                  size="sm" variant="ghost" tone="danger" disabled={disabled}
-                  title="ลบรายการนี้"
-                  icon={<Trash2 size={14} aria-hidden="true" />}
-                  onClick={removeRow}
-                >
-                  ลบรายการนี้
-                </Button>
-              )}
-            </span>
+            <span className="form-field-label">ของที่ขอ</span>
           </div>
 
           <ProductCategorySelect
@@ -178,7 +202,8 @@ export default function ProductDevLines({
             />
           </div>
         </div>
-      </EditableLineList>
+        )}
+      </SectionRail>
     </div>
   );
 }
