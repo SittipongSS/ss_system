@@ -10,6 +10,7 @@
 //    กำลังจะโทรมาบ่น · ต้องอยู่หน้าแรก ไม่ใช่ซ่อนอยู่ในแท็บของหน้าไซต์
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle, CalendarClock, CalendarDays, Droplets,
@@ -77,9 +78,11 @@ export default function ServiceOverviewPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       const [visitRes, siteRes] = await Promise.all([
@@ -98,12 +101,13 @@ export default function ServiceOverviewPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ภาพรวมว่าง — "โหลดพัง" กับ "ไม่มีนัดค้าง"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วทีมจะเชื่อว่าเคลียร์หมดแล้ว
-      if (isLatest()) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดภาพรวมไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const sitesById = useMemo(() => new Map(visitSites.map((s) => [s.id, s])), [visitSites]);
 

@@ -9,6 +9,7 @@
 // (สอบถาม · พัฒนากลิ่น · พัฒนาสูตร · ขอเอกสาร · ติดตามของเข้า)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircleQuestion, Plus, Undo2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -124,9 +125,12 @@ export default function RequestsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true); setLoadError("");
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
+    setLoadError("");
     try {
       const res = await fetch(`/api/sa/requests?scope=${scope}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
@@ -138,11 +142,12 @@ export default function RequestsPage() {
       // ⚠️ server เป็นคนตัดสินขอบเขตจริง (สิทธิ์ไม่พอ = ถอยลงมา ไม่ปฏิเสธ) ⇒ อ่าน
       // ค่าที่ได้จริงกลับมาแสดง ไม่ใช่โชว์สิ่งที่ผู้ใช้ *ขอ* ซึ่งอาจไม่ใช่สิ่งที่ได้
       setActiveScope(res.headers.get("X-Request-Scope") || scope);
-    } catch (e) { if (isLatest()) setLoadError(e.message); }
+    } catch (e) { if (isLatest() && !opts?.background) setLoadError(e.message); }
     if (isLatest()) setLoading(false);
   }, [scope, startRun]);
 
   useEffect(() => { reload(); }, [reload]);
+  useRevalidateOnFocus(reload);
   // ดีลใช้เติมค่าตั้งต้นของปุ่มเปิดคำร้องเมื่อมาจากหน้าดีล — ทะเบียนที่ฟอร์มต้องใช้
   // จริงโหลดที่ `/requests/new` ซึ่งเป็นที่ที่ฟอร์มอยู่ ไม่ใช่ที่คิว
   useEffect(() => {

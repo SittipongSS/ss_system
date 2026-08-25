@@ -6,6 +6,7 @@
 //    ของเข้า PM/RM ที่ PC กรอกไว้แล้ว — โมดูลนี้เป็นปลายทางของข้อมูลชิ้นนั้น
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
+import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, Hammer, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -51,9 +52,11 @@ export default function ProductionJobsPage() {
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts) => {
     const isLatest = startRun();
-    setLoading(true);
+    /* โหมดเบื้องหลัง (ดึงเองตอนกลับมามองแท็บ) ห้ามพาหน้าไปอยู่สถานะโหลด —
+       จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
+    if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
       // autoDraft=1 — กวาด SO ที่อนุมัติแล้วมาเป็นงานร่างก่อนคืนคิว
@@ -71,12 +74,13 @@ export default function ProductionJobsPage() {
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์คิวว่าง — "โหลดพัง" กับ "ไม่มีงาน" หน้าตาเหมือนกัน
       // จนแยกไม่ออก แล้ว PC จะเชื่อว่าโรงงานว่าง
-      if (isLatest()) setLoadError(e.message || "โหลดคิวงานผลิตไม่สำเร็จ");
+      if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดคิวงานผลิตไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
     }
   }, [showDone, startRun]);
   useEffect(() => { load(); }, [load]);
+  useRevalidateOnFocus(load);
 
   const linesById = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines]);
   const visibleJobs = useMemo(
