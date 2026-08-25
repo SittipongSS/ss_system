@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
@@ -22,11 +23,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const params = new URL(req.url).searchParams;
   const status = params.get('status');
 
-  let query = supabase.from('sales_leads').select('*').order('createdAt', { ascending: false });
-  query = applyLeadScope(query, user);
-  if (status && status !== 'all') query = query.eq('status', status);
-
-  const { data, error } = await query;
+  /* ⚠️ ไล่ทีละหน้า — `applyLeadScope` **คืน query เดิมโดยไม่กรองเลย** สำหรับ superuser /
+     ผู้สังเกตการณ์ / marketing (ดู lib/sales/leads.js) ⇒ สามบทบาทนั้นอ่านทั้งตาราง
+     และจะโดนเพดาน 1,000 แถวตัดเงียบ ๆ ก่อนเพื่อน · เรียง `createdAt` มากไปน้อย
+     ⇒ ลีดเก่าหายก่อน แล้ว KPI ที่นับจากลิสต์นี้จะต่ำกว่าจริงโดยไม่มีสัญญาณ */
+  const { data, error } = await fetchAllResult(() => {
+    let query = supabase.from('sales_leads').select('*')
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: true });
+    query = applyLeadScope(query, user);
+    if (status && status !== 'all') query = query.eq('status', status);
+    return query;
+  });
   if (error) return fail(error.message, 500);
   return ok(data || []);
 });

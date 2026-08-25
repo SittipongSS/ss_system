@@ -1,5 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isSuperuser } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
@@ -96,11 +97,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // แก้ได้ — ใบเก่าที่ snapshot แค่ชื่อจะแสดง/พิมพ์ครบโดยไม่ต้องบันทึกใหม่
   await refreshFgLinesForDisplay(supabase, [filledQuote]);
   const baseNumber = filledQuote.baseNumber || filledQuote.quoteNumber;
-  const { data: revisionHistory, error: revisionError } = await supabase
+  // ⚠️ ไล่ทีละหน้า — ประวัติ Rev. ของเลขใบเดียว สะสมได้ไม่จำกัด
+  const { data: revisionHistory, error: revisionError } = await fetchAllResult(() => supabase
     .from('quotations')
     .select('id, quoteNumber, revisionNo, status, quoteDate, createdAt, totalAmount')
     .eq('baseNumber', baseNumber)
-    .order('revisionNo', { ascending: false });
+    .order('revisionNo', { ascending: false })
+    .order('id', { ascending: true }));
   if (revisionError) return fail(revisionError.message, 500);
   // รูปลายเซ็นผู้เสนอราคา (ไม่บล็อกถ้าโหลดไม่ได้ — เอกสารยังพิมพ์ได้ ตกช่องเซ็นเปล่า)
   let proposerSignature = null;

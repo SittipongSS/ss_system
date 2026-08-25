@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesTarget, canViewSalesPlanning, isWonStage, monthKey, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
@@ -65,7 +66,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const { data: rows, error } = await query;
   if (error) return fail(error.message, 500);
 
-  const { data: deals, error: dealsErr } = await supabase.from('sales_deals').select('*');
+  // ⚠️ ไล่ทีละหน้า — `aggregateWonDeals` รวมยอดจากดีลทุกใบ โดนตัดที่ 1,000 เมื่อไร
+  // ยอด Actual ต่ำกว่าจริงเงียบ ๆ แล้วไปโผล่เป็นตัวเลขใบ้ใต้ช่องกรอกของทั้งตาราง
+  const { data: deals, error: dealsErr } = await fetchAllResult(() => supabase
+    .from('sales_deals').select('*').order('id', { ascending: true }));
   if (dealsErr) return fail(dealsErr.message, 500);
 
   return ok({ rows: rows || [], systemActuals: aggregateWonDeals(deals) });

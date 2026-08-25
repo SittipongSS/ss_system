@@ -1,4 +1,5 @@
 import { loadScoped } from '@/lib/scopedRow';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { contractBusinessLine, contractEligibility, contractKindLabel, contractKindsForDeal } from '@/lib/sales/contracts';
@@ -27,9 +28,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     deal.projectId
       ? supabase.from('projects').select('id, code, name, line').eq('id', deal.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from('quotations')
+    // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ /contracts
+    fetchAllResult(() => supabase.from('quotations')
       .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt"')
-      .eq('dealId', dealId),
+      .eq('dealId', dealId).order('id', { ascending: true })),
   ]);
   if (error) return fail(error.message, 500);
 

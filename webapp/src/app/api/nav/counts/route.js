@@ -13,6 +13,7 @@
 // ⚠️ ตัวเลขต้องตรงกับหน้าปลายทางเสมอ — ใช้ loadVisibleRequests + helper ชุดเดียว
 // กับที่หน้าคิวใช้ ห้ามเขียนเงื่อนไข "รอฉันตอบ" ใหม่ที่นี่ (ดู lib/nav/navCounts.js)
 import { withUser, ok, unauthorized } from '@/lib/http';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import {
   can, canAccessRd, canApproveMasterData, canEditService, canViewRequests, normalizeDepartment,
 } from '@/lib/permissions';
@@ -48,10 +49,12 @@ export const dynamic = 'force-dynamic';
 // ไม่ใช่งานที่รอฉันทำ — มันอยู่แท็บ "มอบหมายโดยฉัน" ซึ่งไม่ได้ขึ้นเมนู
 async function myOpenTasks(supabase, userId) {
   const columns = 'id,status,ownerId,assigneeId,proxyBy';
+  /* ⚠️ ไล่ทีละหน้า — `personal_tasks` เกิน 1,000 แถวไปแล้วทั้งตาราง แม้สามก้อนนี้จะกรอง
+     รายคน แต่คนที่ทำงานมานานพอจะแตะเพดานได้เอง แล้วป้ายบนเมนูจะนับไม่ครบเงียบ ๆ */
+  const page = (column) => fetchAllResult(() => supabase
+    .from('personal_tasks').select(columns).eq(column, userId).order('id', { ascending: true }));
   const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }] = await Promise.all([
-    supabase.from('personal_tasks').select(columns).eq('ownerId', userId),
-    supabase.from('personal_tasks').select(columns).eq('assigneeId', userId),
-    supabase.from('personal_tasks').select(columns).eq('proxyBy', userId),
+    page('ownerId'), page('assigneeId'), page('proxyBy'),
   ]);
   const seen = new Set();
   return [...(byOwner || []), ...(byAssignee || []), ...(byProxy || [])]

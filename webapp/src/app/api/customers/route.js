@@ -10,6 +10,7 @@ import {
 } from '@/lib/master/masterCodes';
 import { splitTaxIdMatches, taxIdDigits, taxIdDuplicateError } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
 // Customers are a central registry (so teams don't re-register the same
@@ -30,11 +31,17 @@ export async function GET(request) {
   const manage = params.get('manage') === '1';
   const scopeAll = manage || params.get('scope') === 'all';
 
-  let query = supabase.from('customers').select('*').order('createdAt', { ascending: false });
-  // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
-  if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
-
-  const { data, error } = await query;
+  /* ⚠️ ต้องไล่ทีละหน้า — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ ไม่มี error
+     ทะเบียนนี้เรียง `createdAt` มากไปน้อย ⇒ ถ้าโดนตัด **ลูกค้าเก่าหายก่อน** ซึ่งคือ
+     รายที่สั่งซ้ำบ่อยที่สุด · พ่วง `id` ให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำ+แถวหาย */
+  const { data, error } = await fetchAllResult(() => {
+    let query = supabase.from('customers').select('*')
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: true });
+    // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
+    if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
+    return query;
+  });
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   // Hide retired (isActive=false) customers from every downstream picker, but

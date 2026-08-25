@@ -1,6 +1,7 @@
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
@@ -80,9 +81,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     deal.projectId
       ? supabase.from('projects').select('id, code, line, name').eq('id', deal.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from('quotations')
+    // ⚠️ ไล่ทีละหน้า — ใบของดีลหนึ่งใบสะสมได้เรื่อย ๆ ตามจำนวน Rev.
+    fetchAllResult(() => supabase.from('quotations')
       .select('id, quoteNumber, status, approvalStatus, totalAmount, customerId, customerName, createdAt, "billingAddress"')
-      .eq('dealId', deal.id),
+      .eq('dealId', deal.id).order('id', { ascending: true })),
   ]);
   if (quoteError) return fail(quoteError.message, 500);
 

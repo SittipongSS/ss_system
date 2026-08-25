@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
@@ -19,11 +20,14 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (!user) return unauthorized();
   if (!canViewSalesPlanning(user)) return forbidden();
 
-  const { data: orders, error } = await supabase
+  // ⚠️ ไล่ทีละหน้า — เพดาน 1,000 แถวตัดเงียบ ๆ · `orderDate` ซ้ำกันได้ทั้งวัน จึงพ่วง
+  // `id` ปิดท้ายให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำและแถวหายพร้อมกัน
+  const { data: orders, error } = await fetchAllResult(() => supabase
     .from('sales_orders')
     .select('*')
     .order('orderDate', { ascending: false })
-    .order('createdAt', { ascending: false });
+    .order('createdAt', { ascending: false })
+    .order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
 
   // 🐞 **บรรทัดของใบต้องมาด้วย** — หน้าเปิดคำร้องพัฒนากลิ่นอ่าน `so.lines` เพื่อรู้ว่า

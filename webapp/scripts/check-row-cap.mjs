@@ -38,22 +38,29 @@ const ROOT = process.cwd();
  *   · และในทางกลับกัน **ปล่อยของจริงผ่านฟรี** เมื่อ `.limit()` ของคำสั่งข้างเคียง
  *     บังเอิญตกอยู่ในหน้าต่าง — dept_requests จึงโผล่เพิ่มจาก 13 เป็น 14 (+1 ของจริง) */
 const CAPS = {
-  project_tasks: 29,            // 2,820 แถว — เกินเพดานแล้ว
-  personal_tasks: 12,           // 1,045 แถว — เกินเพดานแล้ว
-  notifications: 0,             // 1,194 แถว — เกินเพดานแล้ว แต่ทุก query กรอง userId + มี limit/cursor
-  sales_deals: 37,              // 277
-  dept_requests: 14,            // 33
-  sales_orders: 12,             // 18
-  attachments: 10,              // 50
-  sahamit_po_lines: 11,         // 126
-  sahamit_forecast_lines: 10,   // 331
-  quotations: 9,                // 77
-  sales_leads: 6,               // 140
-  sahamit_pos: 6,               // 112
-  sales_deal_forecast_lines: 5, // 41
-  sales_order_installments: 3,  // 20
-  sahamit_fc_flags: 2,          // 181
-  material_prices: 2,           // 0
+  /* 🔴 **ตัวเลขชุดนี้ตั้งใหม่ 2026-08-25 หลังแก้วิธีนับ** — ของเดิมนับการเขียน
+     (`.insert(rows).select()`) และจุดที่ห่อ `fetchAll` ไว้บรรทัดก่อนหน้า เป็นความผิด
+     ⇒ ตัวเลขบวมเกินจริงจนหกตารางขึ้นไปเกินเพดานเองโดยที่ไม่มีใครเพิ่มจุดอ่านใหม่เลย
+     เทียบก่อน/หลังแก้ตัวนับ: sales_deals 39→34 · project_tasks 29→21 · personal_tasks 15→10 */
+  project_tasks: 21,            // 4,247 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
+  notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
+  personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
+  sales_deals: 34,              // 333
+  products: 24,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ
+  quotations: 9,                // 198
+  customers: 8,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ
+  projects: 8,                  // 155
+  dept_requests: 14,            // 74
+  sales_orders: 12,             // 74
+  sales_leads: 6,               // 181
+  attachments: 4,
+  sahamit_po_lines: 11,
+  sahamit_forecast_lines: 10,
+  sahamit_pos: 6,
+  sales_deal_forecast_lines: 5,
+  sales_order_installments: 3,
+  sahamit_fc_flags: 2,
+  material_prices: 2,
   audit_logs: 0,
   document_updates: 0,
 };
@@ -67,6 +74,27 @@ const capped = (text) => /\.(range|limit|single|maybeSingle)\(/.test(text) || /f
 /* `select('id', { count: 'exact', head: true })` ไม่คืนแถวสักแถว (คืนแต่ตัวเลขใน header)
    เพดาน max_rows จึงไม่เกี่ยวเลย — เดิมนับเป็นความผิด ทำให้ตัวเลขหนี้บวมเกินจริง */
 const HEAD_ONLY = /head:\s*true/;
+
+/* 🐞 **นับการเขียนเป็นการอ่าน** (แก้ 2026-08-25) — `.insert(rows).select()` และ
+   `.update(patch).select()` มี `.select(` อยู่ในก้อนจึงรอดด่านบรรทัดบน แต่มันคืนเฉพาะ
+   *แถวที่เพิ่งเขียน* ซึ่งเท่ากับจำนวนที่เราส่งไปเอง — เพดาน max_rows ไม่เกี่ยวเลย
+   ตัวอย่างที่เคยถูกนับเป็นหนี้: `sales/dealProjectLink.js` (insert ไทม์ไลน์แล้ว select กลับ) */
+const WRITE_THEN_SELECT = /\.(insert|update|upsert|delete)\(/;
+
+/* 🐞 **มองไม่เห็น `fetchAll` ที่อยู่บรรทัดก่อนหน้า** (แก้ 2026-08-25) — แพตเทิร์นที่ใช้จริง
+   ทั้งระบบคือส่ง "ฟังก์ชันสร้าง query" เข้าไป:
+
+       const allTasks = (supabase) => fetchAllResult(() => supabase
+         .from('project_tasks').select('*')          ← ด่านเริ่มนับที่บรรทัดนี้
+         .order('stepOrder').order('id'));
+
+   `statementAt` เริ่มที่บรรทัด `.from(` แล้วมองไปข้างหน้าเท่านั้น ⇒ ตัวห่อที่อยู่
+   *ข้างบน* หลุดสายตา แล้วจุดที่แก้เรียบร้อยแล้วถูกนับเป็นหนี้ต่อไปเรื่อย ๆ
+   (ของจริงที่โดน: `pm/my-work/route.js` · `pm/project-tasks/route.js` · `lib/pm/taskKpi.js`)
+   มองย้อน 4 บรรทัดพอ — ตัวห่อกับ `.from(` อยู่ห่างกันไม่เกินนั้นในทุกจุดที่ใช้จริง */
+function wrappedInFetchAll(lines, start) {
+  return /fetchAll(?:Result)?\s*\(/.test(lines.slice(Math.max(0, start - 4), start).join('\n'));
+}
 
 /* ก้อน "คำสั่งเดียว": ไล่จนวงเล็บสมดุลและเจอ `;` หรือจนกว่าจะขึ้นคำสั่งใหม่
    (สูงสุด 14 บรรทัด) — ไม่หยุดแค่เพราะเจอบรรทัดว่างเหมือนเดิม */
@@ -99,7 +127,9 @@ for (const file of files) {
     const chunk = statementAt(lines, i);
     if (!/\.select\(/.test(chunk)) continue;         // เขียนอย่างเดียว ไม่เกี่ยว
     if (HEAD_ONLY.test(chunk)) continue;             // นับอย่างเดียว ไม่คืนแถว → เพดานไม่เกี่ยว
+    if (WRITE_THEN_SELECT.test(chunk)) continue;     // `.insert(rows).select()` = คืนเฉพาะแถวที่เพิ่งเขียน
     if (capped(chunk)) continue;
+    if (wrappedInFetchAll(lines, i)) continue;       // `fetchAll(() => supabase` อยู่บรรทัดก่อนหน้า
     if (/\.eq\(\s*['"]id['"]/.test(chunk)) continue; // ค้นด้วย primary key = แถวเดียว
 
     /* query ที่ถูกเก็บใส่ตัวแปรก่อน แล้วค่อยปิดท้ายทีหลัง (เช่น notifications.js:214

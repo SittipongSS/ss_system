@@ -15,6 +15,7 @@ import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling'
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { naText } from "@/lib/format";
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
 // Approval gate: by default GET returns only APPROVED products, so downstream
@@ -32,20 +33,29 @@ export async function GET(request) {
   // The approval gate + isActive filter + margin redaction below still apply.
   const customerId = url.searchParams.get('customerId');
 
-  let query = supabase.from('products').select('*').order('createdAt', { ascending: false });
-  if (customerId) query = query.eq('customerId', customerId);
-  // NO team scope on read (มติ 2026-07-20): the FG catalog is shared master data,
-  // like product_types. `product.team` records who CREATED the row, not who owns
-  // the product — the owner is the customer — so scoping reads by it hid FGs from
-  // the very teams selling them. That mismatch already forced the ?customerId=
-  // bypass above (a443cbe) for the PM picker; scoping the list view had the same
-  // bug with no escape hatch. Confidentiality is handled where it belongs:
-  // redactProductMargin strips cost/margin below, and writes stay team-scoped via
-  // editScope in POST/PATCH.
-  // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
-  if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
+  /* ⚠️ ต้องไล่ทีละหน้า — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ ไม่มี error
+     ทะเบียน FG เรียง `createdAt` มากไปน้อย ⇒ ถ้าโดนตัด **สินค้าเก่าหายก่อน** แล้ว
+     ลูกค้าเดิมที่สั่งซ้ำจะหาสินค้าตัวเองไม่เจอในทุก dropdown ของระบบ
+     พ่วง `id` ให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำ+แถวหายพร้อมกัน */
+  const buildQuery = () => {
+    let query = supabase.from('products').select('*')
+      .order('createdAt', { ascending: false })
+      .order('id', { ascending: true });
+    if (customerId) query = query.eq('customerId', customerId);
+    // NO team scope on read (มติ 2026-07-20): the FG catalog is shared master data,
+    // like product_types. `product.team` records who CREATED the row, not who owns
+    // the product — the owner is the customer — so scoping reads by it hid FGs from
+    // the very teams selling them. That mismatch already forced the ?customerId=
+    // bypass above (a443cbe) for the PM picker; scoping the list view had the same
+    // bug with no escape hatch. Confidentiality is handled where it belongs:
+    // redactProductMargin strips cost/margin below, and writes stay team-scoped via
+    // editScope in POST/PATCH.
+    // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
+    if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
+    return query;
+  };
 
-  const { data, error } = await query;
+  const { data, error } = await fetchAllResult(buildQuery);
   if (error) return Response.json({ error: error.message }, { status: 500 });
   // Hide retired (isActive=false) products from downstream pickers; keep them in
   // the management view. Filtered in JS so it stays resilient before migration

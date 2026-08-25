@@ -53,6 +53,15 @@ jobs:
       - name: UI audit
         run: npm run audit:ui
 
+      # ด่านเพดาน 1,000 แถวของ PostgREST (ratchet) — `.select()` ที่ไม่มี range/limit
+      # ได้คืนมาแค่ 1,000 แถวแรก **โดยไม่มี error** โค้ดจึงเดินต่อด้วยข้อมูลไม่ครบ
+      #
+      # ประวัติเดียวกับ UI audit เป๊ะ: ด่านนี้มีมาตั้งแต่ 2026-08-16 แต่ไม่เคยอยู่ใน CI
+      # ⇒ ต้องมีคนเดินไปกดเอง · พอไม่มีใครกด ratchet ก็ลอยขึ้นเงียบ ๆ แล้ว main
+      # ค้างแดงอยู่หลายวันโดยไม่มีอะไรเตือน (ตรวจพบ 2026-08-25)
+      - name: Row cap ratchet
+        run: npm run check:rowcap
+
       - name: Test
         run: npm test
 
