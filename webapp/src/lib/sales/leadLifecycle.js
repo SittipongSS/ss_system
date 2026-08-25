@@ -29,6 +29,7 @@ import {
 } from "@/lib/sales/leads";
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
 import { AUTO_BOUNCE_MAX_ROUNDS } from "@/lib/sales/leadAutoBounce";
+import { withWorkload } from "@/lib/sales/leadWorkload";
 
 /* action ที่ handler ตอบ badRequest ถ้าไม่มี `body.reason?.trim()`
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
@@ -119,7 +120,32 @@ export function assignableFor(users, viewerTeam, leadTeam = null) {
  * @param canCreateDeals  ผู้ใช้เปิดดีลได้ไหม (สิทธิ์คนละตัวกับสิทธิ์ลีด)
  * @param viewerTeam  ทีมของคนที่เปิดหน้าอยู่ — ใช้เป็นค่าถอยเมื่อไม่รู้ทีมของลีด
  */
-export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null } = {}) {
+/* ป้ายกำกับรายคนในช่องมอบหมาย — "คนนี้เคยปล่อยใบนี้จนถูกส่งกลับ"
+   ⚠️ **เตือน ไม่ห้าม** (มติผู้ใช้ 2026-08-25): รอบแรกยังมอบคนเดิมได้ถ้ามีเหตุผล
+   ตัวล็อกจริงคือทีมที่ถูกล็อกตอนคัดกรองหลังครบ AUTO_BOUNCE_MAX_ROUNDS รอบ
+   ⚠️ ต้องมี `lead.bounce` ติดมากับแถว ⇒ API ต้องแนบบริบทให้ใบสถานะ `screened` ด้วย
+   ไม่ใช่แค่ `new` ไม่งั้นป้ายนี้ไม่มีวันขึ้น เพราะขั้นมอบหมายอยู่หลังคัดกรอง */
+const bouncedHolderNote = (lead, user) => {
+  const previous = lead?.bounce?.previousAssigneeId;
+  if (!previous || !user?.id || previous !== user.id) return null;
+  return {
+    label: "เคยถือใบนี้มาแล้ว",
+    warning: `คนนี้คือคนที่ปล่อยใบนี้จนถูกส่งกลับ — มอบซ้ำได้ถ้ามีเหตุผล แต่ถ้าเงียบอีกครั้ง `
+      + `ใบนี้จะถูกส่งกลับรอบถัดไป และครบ ${AUTO_BOUNCE_MAX_ROUNDS} รอบเมื่อไร ทีมนี้จะถูกล็อกไม่ให้เลือกอีก`,
+  };
+};
+
+/* เปลี่ยนมือ: คนที่ถืออยู่ตอนนี้ต้องอ่านออกทันที ไม่งั้นเลือกคนเดิมแล้วไม่มีอะไรเกิดขึ้น */
+const currentHolderNote = (lead, user) => {
+  if (!lead?.assigneeId || !user?.id || lead.assigneeId !== user.id) return null;
+  return { label: "ถือใบนี้อยู่ตอนนี้", warning: "เลือกคนเดิม = ไม่มีอะไรเปลี่ยน เลือกคนใหม่ถึงจะย้ายเจ้าของ" };
+};
+
+/**
+ * @param workload  ภาระงานรายคน `{ [userId]: { holding, waitingContact, lateFollowUp } }`
+ *                  จาก /api/sales-planning/leads/workload — ไม่ส่งมาก็ใช้ได้ (ขึ้นเลข 0)
+ */
+export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null, workload = null } = {}) {
   return defineLifecycle({
     entity: "lead",
     noun: "ลีด",
@@ -181,6 +207,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         slot: "primary",
         from: allowedFrom("assign"),
         to: "assigned",
+        dialogSize: "md", // แถวรายชื่อ + ตัวเลขภาระงาน 3 ช่อง ไม่ลงในกล่อง 480px
         /* ⭐ มติผู้ใช้ 2026-08-08: **AE Supervisor กระจายลีดได้ทุกทีม**
            เดิมเงื่อนไขเป็น `admin || inTeamOf` ซึ่งไม่ครอบ ae_supervisor (ตำแหน่งนี้ไม่มีทีม
            `inTeamOf` จึงไม่มีวันจริง) ⇒ ปุ่มไม่เคยโผล่ ทั้งที่ handler เปิดให้มาตลอด
@@ -190,11 +217,15 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           {
             name: "assigneeId",
             label: "ผู้รับผิดชอบ",
-            type: "person",
+            /* ⭐ ไม่ใช่ดรอปดาวน์ — คำถามตรงนี้คือ "ตอนนี้ใครยังตามงานไหว" ซึ่งตอบไม่ได้
+               ถ้าตัวเลขภาระงานถูกพับไว้ข้างใน (เหตุผลเต็มอยู่หัวไฟล์ PersonLoadSelect) */
+            type: "person-load",
             required: true,
+            hint: "ตัวเลขคือของค้าง ณ ตอนนี้ ไม่ใช่ผลงานรายเดือน",
             /* ฟังก์ชันของลีด ไม่ใช่อาร์เรย์ตายตัว — lifecycle สร้างครั้งเดียวต่อหน้า
                แต่หน้ารายการมีลีดหลายทีมในจอเดียว (ดู fieldUsers ใน recordLifecycle) */
-            users: (lead) => assignableFor(users, viewerTeam, lead?.team),
+            users: (lead) => withWorkload(assignableFor(users, viewerTeam, lead?.team), workload),
+            noteOf: bouncedHolderNote,
             by: "id",
           },
         ],
@@ -207,6 +238,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
            ⚠️ `slot` ไม่ใช่ primary — ก้าวถัดไปตัวจริงของสามสถานะนี้คือ ติดต่อ/นัด/เปิดดีล
            การย้ายเจ้าของเป็นงานกำกับดูแลที่นาน ๆ ทำที จึงอยู่ในเมนู "…" */
         id: "reassign",
+        dialogSize: "md",
         label: "เปลี่ยนผู้รับผิดชอบ",
         rowLabel: "เปลี่ยนผู้รับผิดชอบ",
         rowTone: "violet",
@@ -219,9 +251,11 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           {
             name: "assigneeId",
             label: "ผู้รับผิดชอบคนใหม่",
-            type: "person",
+            type: "person-load",
             required: true,
-            users: (lead) => assignableFor(users, viewerTeam, lead?.team),
+            hint: "ตัวเลขคือของค้าง ณ ตอนนี้ ไม่ใช่ผลงานรายเดือน",
+            users: (lead) => withWorkload(assignableFor(users, viewerTeam, lead?.team), workload),
+            noteOf: currentHolderNote,
             by: "id",
           },
         ],

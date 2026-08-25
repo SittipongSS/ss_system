@@ -48,10 +48,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 /* ⚠️ ซอย `.in()` เสมอ — PostgREST ยัดลิสต์ลง query string ทั้งก้อน (ดู LEAD_ID_CHUNK)
-   ⚠️ **ถามเฉพาะใบที่ยังอยู่คิวคัดกรอง** — ใบที่ถูกมอบหมายต่อไปแล้วไม่ต้องโชว์ป้าย
-   "ส่งกลับ" อีก เพราะรอบใหม่เริ่มไปแล้ว · ตัดจำนวนใบที่ต้องถามลงมาก */
+   ⚠️ **ถามเฉพาะใบที่ยังไม่มีเจ้าของรอบใหม่** — ใบที่ถูกมอบหมายต่อไปแล้วไม่ต้องโชว์ป้าย
+   "ส่งกลับ" อีก เพราะรอบใหม่เริ่มไปแล้ว · ตัดจำนวนใบที่ต้องถามลงมาก
+   ⚠️ ต้องมี `screened` ด้วย ไม่ใช่แค่ `new`: `bounce` ส่งใบกลับไปที่ `new` ก็จริง แต่คน
+   ที่ต้องอ่านบริบทมากที่สุดคือคนกด **มอบหมาย** ซึ่งเกิดตอน `screened` (หลังคัดกรองแล้ว)
+   ถ้าตัดที่ `new` อย่างเดียว ป้าย "เคยถือใบนี้มาแล้ว" ในกล่องมอบหมายจะไม่มีวันขึ้น */
+const BOUNCE_CONTEXT_STATUSES = ['new', 'screened'];
+
 async function attachBounceContext(supabase, leads) {
-  const ids = leads.filter((l) => l?.status === 'new').map((l) => l.id).filter(Boolean);
+  const ids = leads.filter((l) => BOUNCE_CONTEXT_STATUSES.includes(l?.status)).map((l) => l.id).filter(Boolean);
   if (!ids.length) return;
   const byLead = new Map();
   for (const chunk of chunkLeadIds(ids)) {

@@ -16,6 +16,7 @@ import Button from "@/components/ui/Button";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
+import PersonLoadSelect from "@/components/ui/PersonLoadSelect";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
@@ -63,6 +64,20 @@ function TransitionField({ field, record, value, onChange, disabled }) {
         by={field.by || "id"}
         disabled={disabled}
         ariaLabel={field.label || field.name}
+        onChange={onChange}
+      />
+    );
+  }
+  if (field.type === "person-load") {
+    /* เลือกคนโดยเห็นภาระงานพร้อมกัน — ตัวเลขติดมากับ user แต่ละคนแล้ว (ดู withWorkload)
+       `noteOf` รับ record ด้วย เพราะป้าย "เคยถือใบนี้มาแล้ว" ขึ้นกับใบ ไม่ใช่ตัวคน */
+    return (
+      <PersonLoadSelect
+        users={fieldUsers(field, record)}
+        value={value ?? ""}
+        disabled={disabled}
+        ariaLabel={field.label || field.name}
+        noteOf={field.noteOf ? (user) => field.noteOf(record, user) : undefined}
         onChange={onChange}
       />
     );

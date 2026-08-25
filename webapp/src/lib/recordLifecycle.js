@@ -240,7 +240,7 @@ function normalizeTransition(transition, entity) {
 /* `tiles` = ตัวเลือกตายตัวที่ **กางให้เห็นทั้งหมด** (OptionTiles) ต่างจาก `select`
    ที่ซ่อนไว้จนกว่าจะกด · กติกาโปรเจกต์: ตัวเลือกตายตัวไม่โต ให้กางให้เห็น
    ดรอปดาวน์ไว้ให้ลิสต์ยาว/ค้นหาได้ (form-design-rules "เลือกคอนโทรลอะไร") */
-const FIELD_TYPES = ["text", "select", "tiles", "person", "date", "datetime", "money"];
+const FIELD_TYPES = ["text", "select", "tiles", "person", "person-load", "date", "datetime", "money"];
 
 function normalizeField(field, entity, transitionId) {
   if (!field?.name) throw new Error(`defineLifecycle(${entity}): ${transitionId} — field ต้องมี name`);

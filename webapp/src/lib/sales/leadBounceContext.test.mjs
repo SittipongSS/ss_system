@@ -76,11 +76,18 @@ test('ตีกลับด้วยมือก็เขียนเหมื�
   );
 });
 
-/* API ต้องถามเฉพาะใบที่ยังอยู่คิวคัดกรอง — ใบที่มอบต่อไปแล้วรอบใหม่เริ่มแล้ว
+/* API ต้องถามเฉพาะใบที่ยังไม่มีเจ้าของรอบใหม่ — ใบที่มอบต่อไปแล้วรอบใหม่เริ่มแล้ว
+   ⚠️ ต้องมี `screened` ด้วย ไม่ใช่แค่ `new`: ป้าย "เคยถือใบนี้มาแล้ว" ในกล่องมอบหมาย
+   อ่านจาก `lead.bounce` และขั้นมอบหมายเกิดตอน `screened` — ตัดที่ `new` อย่างเดียว
+   ป้ายนั้นไม่มีวันขึ้นเลย · ใบที่มอบไปแล้ว (assigned ขึ้นไป) ต้องไม่ถูกถาม
    และการซอย .in() ต้องยังอยู่ (เพดาน query string ของ PostgREST) */
-test('API คิวลีดถามประวัติเฉพาะใบสถานะ new และซอยคิวรี', () => {
+test('API คิวลีดถามประวัติเฉพาะใบที่ยังไม่มีเจ้าของ และซอยคิวรี', () => {
   const src = readFileSync(new URL('../../app/api/sales-planning/leads/route.js', import.meta.url), 'utf8');
-  assert.match(src, /status === 'new'/);
+  const statuses = src.match(/BOUNCE_CONTEXT_STATUSES = \[([^\]]*)\]/)?.[1] || '';
+  assert.match(statuses, /'new'/);
+  assert.match(statuses, /'screened'/);
+  assert.doesNotMatch(statuses, /'assigned'|'contacted'|'meeting'/);
+  assert.match(src, /BOUNCE_CONTEXT_STATUSES\.includes\(l\?\.status\)/);
   assert.match(src, /chunkLeadIds\(ids\)/);
   assert.match(src, /\.in\('kind', LEAD_BOUNCE_KINDS\)/);
   // อ่านไม่สำเร็จต้องไม่ล้มทั้งหน้า — คิวลีดเป็นหน้าทำงานหลัก

@@ -15,13 +15,14 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import useLeadWorkload from "@/lib/sales/useLeadWorkload";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -68,6 +69,8 @@ export default function LeadDetailPage() {
   /* ตัวตนผู้ใช้สำหรับตัดสินว่าปุ่มไหนควรโผล่ — ท่าเดียวกับหน้ารายการลีด
      (role/team มาจาก context ส่วน id ต้องถามเพราะ context ไม่ได้เก็บไว้) */
   const role = useRole();
+  /* ตัวเลขภาระงานสำหรับกล่องมอบหมาย — hook ยิงเฉพาะตำแหน่งที่มอบหมายได้ */
+  const workload = useLeadWorkload(role);
   const team = useTeam();
   const teams = useTeams();
   const canCreateDeals = canCreateDealFromLead(role);
@@ -98,8 +101,8 @@ export default function LeadDetailPage() {
      ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
   const dealOwners = useDealOwners(meId);
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
-    [users, canCreateDeals, team],
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload }),
+    [users, canCreateDeals, team, workload],
   );
 
   const load = useCallback(async () => {
@@ -108,7 +111,10 @@ export default function LeadDetailPage() {
       const res = await fetch(`/api/sales-planning/leads/${id}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
-      setLead(body);
+      /* บริบทการตีกลับ — หน้ารายการได้มาจาก API (แนบให้ทีละหลายใบ) แต่หน้านี้มี
+         ประวัติทั้งก้อนอยู่แล้ว จึงคิดเองตรงนี้ ไม่ต้องให้ API ทำงานซ้ำ
+         กติกาเดียวกันเป๊ะเพราะเรียก `leadBounceHistory` ตัวเดียวกัน */
+      setLead({ ...body, bounce: leadBounceHistory(body?.events || []) });
       setForm({ ...blank, ...body, budget: body.budget ?? "", budgetMax: body.budgetMax ?? "" });
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
