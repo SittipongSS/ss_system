@@ -14,6 +14,7 @@ import {
   hasLineDiscount,
   quotationDocLabels,
 } from '@/lib/sales/quotationMasterTemplate';
+import { amountInWords } from '@/lib/documents/amountInWords';
 import { fmtNumber, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
@@ -133,6 +134,10 @@ function itemTable(lines, startIndex, showDiscount, L) {
 function totalsSection(model, L) {
   const { totals } = model;
   const hasDiscount = Number(totals.discountAmount) > 0;
+  /* จำนวนเงินตัวอักษรใต้ยอดรวมทั้งสิ้น (IS-26080034) — คำนวณสด ไม่เก็บลงฐาน และ
+     อ่านจาก `totals.totalAmount` ตัวเดียวกับที่บรรทัดเหนือมันพิมพ์ จึงขัดกันไม่ได้
+     ⚠️ กินที่บนหน้ากระดาษ ⇒ `V4_TOTALS*` ใน quotationMasterTemplate เผื่อไว้แล้ว
+        แก้ทรงบรรทัดนี้เมื่อไหร่ ต้องวัดแล้วขยับค่านั้นด้วย ไม่งั้น .sheet ตัดเงียบ */
   return `
     <section class="totals" aria-label="${esc(L.t('totalsAria'))}">
       <div><span>${esc(L.t('subtotal'))}</span><strong>${money(totals.subtotal)}</strong></div>
@@ -141,7 +146,8 @@ function totalsSection(model, L) {
       <div class="afterDiscount"><span>${esc(L.t('afterDiscount'))}</span><strong>${money(totals.afterDiscount)}</strong></div>` : ''}
       <div><span>${esc(L.t('vat'))} ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
       <div class="grandTotal"><span>${esc(L.t('grandTotal'))}</span><strong>${money(totals.totalAmount)} ${esc(L.t('currency'))}</strong></div>
-    </section>`;
+    </section>
+    <p class="amountWords"><span>${esc(L.t('amountInWords'))}</span><strong>(${esc(amountInWords(totals.totalAmount, L.language))})</strong></p>`;
 }
 
 // หัวข้อสองบรรทัดของใบไทย ("งวดชำระเงิน / PAYMENT SCHEDULE") — ใบอังกฤษเหลือบรรทัดเดียว

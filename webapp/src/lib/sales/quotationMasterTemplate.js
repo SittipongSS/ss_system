@@ -119,6 +119,7 @@ const DOC_LABEL_PAIRS = Object.freeze({
   vat: ['ภาษีมูลค่าเพิ่ม', 'VAT'],
   grandTotal: ['ยอดรวมทั้งสิ้น', 'Grand Total'],
   currency: ['บาท', 'THB'],
+  amountInWords: ['จำนวนเงินตัวอักษร', 'Amount in Words'],
   // งวดชำระ + เงื่อนไข
   paymentSchedule: ['งวดชำระเงิน', 'PAYMENT SCHEDULE'],
   // แถวเดียวที่ระบบสร้างเองเมื่อใบไม่ได้แบ่งงวด (paymentScheduleRows) — ป้าย ไม่ใช่
@@ -386,8 +387,13 @@ const V4_PARTY = 9; // 167.4px
 const V4_BANNER = 1; // ป้าย "รายการต่อ" 19px
 // มูลค่ารวมมีสองทรง — ใบที่มีส่วนลดรายบรรทัดมีแถวส่วนลดเพิ่ม สูงกว่ากันเกือบ 60px
 // 🐞 เดิมจองค่าเดียว (6 หน่วย) ทั้งที่ทรงใหญ่กิน 8 ⇒ ใบที่ให้ส่วนลดรายบรรทัดเสี่ยงโดนตัด
-const V4_TOTALS = 5; // 96.9px + ระยะห่าง
-const V4_TOTALS_WITH_LINE_DISCOUNT = 8; // 155.0px + ระยะห่าง
+/* บล็อกมูลค่ารวม = ตาราง .totals + บรรทัด "จำนวนเงินตัวอักษร" ใต้มัน (IS-26080034)
+   วัดจริงด้วย Chrome ที่ line-height 1.65 · รวม margin-top ของทั้งสองก้อน:
+     3 แถว (ไม่มีส่วนลด)      109.3 + 24.2 = 133.5px = 6.90 หน่วย ⇒ ปัดขึ้น 7
+     5 แถว (มีส่วนลด)         167.2 + 24.2 = 191.4px = 9.89 หน่วย ⇒ ปัดขึ้น 10
+   บรรทัดตัวอักษรวัดได้ 1 บรรทัดถึงยอดหลักพันล้านทั้งไทยและอังกฤษ (กว้าง 186mm) */
+const V4_TOTALS = 7; // 133.5px
+const V4_TOTALS_WITH_DISCOUNT_ROWS = 10; // 191.4px
 const V4_SAFETY = 2; // กันประเมินความยาวข้อความพลาด — ห้ามล้นเพราะ overflow:hidden ตัดเงียบ
 const V4_SIGNATURES = 8; // 156.2px
 // 🐞 เดิมจองไว้ 8 หน่วย (155px) ทั้งที่แถวเงื่อนไข "ไม่รวมบรรทัดข้อความ" สูงแค่ 48.6px
@@ -414,8 +420,14 @@ export function hasLineDiscount(lines = []) {
   return lines.some((line) => Number(line.discountAmount || 0) > 0);
 }
 
-function v4TotalsReserve(lines = []) {
-  return hasLineDiscount(lines) ? V4_TOTALS_WITH_LINE_DISCOUNT : V4_TOTALS;
+/* ทรงของบล็อกมูลค่ารวมตัดสินจาก **ส่วนลดระดับหัวใบ** เพราะนั่นคือสิ่งเดียวที่เพิ่มแถว
+   "หัก ส่วนลด" + "ยอดหลังหักส่วนลด" (ดู totalsSection ใน quotationMasterDocument)
+   🐞 ของเดิมตัดสินจาก `hasLineDiscount(lines)` ซึ่งเป็นคนละเรื่อง — ส่วนลดรายบรรทัด
+      เพิ่ม *คอลัมน์ในตาราง* ไม่ได้เพิ่มแถวในบล็อกนี้ ⇒ ใบที่ลดที่หัวใบแต่ไม่ได้ลด
+      รายบรรทัด (วัดจากฐานจริง 26/08/2026: 29 จาก 34 ใบที่มีส่วนลด) จองไว้ทรง 3 แถว
+      แต่วาด 5 แถว ขาด 3 หน่วย — ยังไม่มีใบไหนล้นเพราะเป็นใบสั้น แต่รอเวลาเท่านั้น */
+function v4TotalsReserve(discountAmount) {
+  return Number(discountAmount || 0) > 0 ? V4_TOTALS_WITH_DISCOUNT_ROWS : V4_TOTALS;
 }
 
 function v4RowCost(line) {
@@ -810,7 +822,7 @@ export function buildQuotationMasterPreview(
   // V1–V3 คงพฤติกรรมเดิมทุกประการ
   const isFilledLayout = selectedTemplate.id === 'v4';
   const firstCapacity = isFilledLayout ? v4FirstCapacity(customer) : firstPageCapacity(customer);
-  const totalsReserve = v4TotalsReserve(lines);
+  const totalsReserve = v4TotalsReserve(discountAmount);
   const linePages = paginateQuotationMasterLines(lines, {
     firstCapacity,
     mode: isFilledLayout ? 'fill' : 'balanced',
@@ -1027,7 +1039,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     : ((preparerIsSalesOwner && quote.createdByPhone) || '');
 
   const firstCapacity = v4FirstCapacity(customer);
-  const totalsReserve = v4TotalsReserve(lines);
+  const totalsReserve = v4TotalsReserve(discountAmount);
   const linePages = paginateQuotationMasterLines(lines, { firstCapacity, mode: 'fill', totalsReserve });
   const pages = buildGroupedPages({
     linePages,
