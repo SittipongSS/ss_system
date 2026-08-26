@@ -19,6 +19,7 @@ import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
 import RoundComparison from "@/components/sahamit/RoundComparison";
 import { useCan } from "@/lib/roleContext";
+import { businessDate } from "@/lib/businessDate";
 
 const TABS = [
   { key: "overview", label: "รายการสินค้า" },
@@ -28,7 +29,9 @@ const TABS = [
 ];
 const nf = (n) => fmtNumber(n || 0);
 const nfBaht = (n) => fmtMoneyCompact(n);
-const thisMonth = () => new Date().toISOString().slice(0, 7);
+/* 🐞 เดิม `toISOString().slice(0,7)` = **เดือนแบบ UTC** — วันที่ 1 ตี 2 เวลาไทยยังเป็น
+   สิ้นเดือนก่อนใน UTC ⇒ หน้าเปิดมาเลือกเดือนที่แล้วให้เอง โดยไม่มีอะไรบอก */
+const thisMonth = () => businessDate().slice(0, 7);
 
 function ForecastPageInner() {
   const { data: rounds, loading, error, reload } = useApiList("/api/sahamit/forecast/rounds");

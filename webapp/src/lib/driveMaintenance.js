@@ -8,6 +8,7 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { classifyDriveItems } from '@/lib/driveOrphanClassify';
 import { PARENT_TABLE } from '@/lib/master/attachments';
 import {
   FOLDER, driveEnvStatus, getDrive, getFileMeta, uploadFile, deleteFile, ensureUnsortedFolder,
@@ -333,40 +334,14 @@ async function collectReferencedIds(supabase) {
 export async function auditOrphanDriveItems() {
   const supabase = getSupabaseAdmin();
   const [items, refs] = await Promise.all([listAllDriveItems(), collectReferencedIds(supabase)]);
-
-  const byId = new Map(items.map((f) => [f.id, f]));
-  const hasChildren = new Set(items.flatMap((f) => f.parents || []));
-  const pathOf = (item) => {
-    const parts = [];
-    let cur = item;
-    for (let i = 0; i < 12 && cur; i += 1) {
-      parts.unshift(cur.name);
-      cur = byId.get(cur.parents?.[0]);
-    }
-    return parts.join(' / ');
-  };
-
-  const orphans = [];
-  for (const item of items) {
-    if (refs.has(item.id)) continue;
-    const isFolder = item.mimeType === FOLDER_MIME;
-    // โฟลเดอร์ของโครงสร้าง (ลูกค้า/ขอราคา/งานขาย/...) และโฟลเดอร์ที่ยังมีของข้างใน
-    // ไม่ใช่ขยะ — ตัวที่ควรเก็บกวาดคือ "กล่องเปล่าที่ไม่มีใครอ้าง"
-    if (isFolder && (STRUCTURE_FOLDER_NAMES.has(item.name) || hasChildren.has(item.id))) continue;
-    orphans.push({
-      id: item.id,
-      name: item.name,
-      kind: isFolder ? 'โฟลเดอร์ว่าง' : 'ไฟล์',
-      path: pathOf(item),
-      sizeBytes: Number(item.size) || null,
-      modifiedTime: item.modifiedTime || null,
-    });
-  }
-  orphans.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0));
-
+  // การจัดกอง = ตรรกะล้วน อยู่ที่ lib/driveOrphanClassify.js เพื่อให้เทสต์ได้โดยไม่ต้องมี Drive
+  const { scanned, referenced, keptFolders, orphans } = classifyDriveItems(items, refs, STRUCTURE_FOLDER_NAMES);
   return {
-    scanned: items.length,
-    referenced: items.filter((f) => refs.has(f.id)).length,
+    scanned,
+    referenced,
+    // โฟลเดอร์ที่ไม่มีใครอ้างแต่ไม่ใช่ขยะ — **ต้องส่งขึ้นหน้าจอด้วย** ไม่งั้นสามตัวเลข
+    // บนหัวบวกกันไม่ครบแล้วคนอ่านนึกว่าจัดครบทุกตัวแล้ว
+    keptFolders,
     orphans,
     orphanBytes: orphans.reduce((sum, o) => sum + (o.sizeBytes || 0), 0),
   };
