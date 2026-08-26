@@ -13,6 +13,7 @@ import {
   quarterRangeOfMonth,
   businessDayKey,
   businessMonthKey,
+  businessTimeKey,
   dateRangeOfBusinessDays,
   dateRangeOfBusinessMonth,
   dateRangeOfBusinessYear,
@@ -98,6 +99,17 @@ test('businessDayKey: วันตามเวลาไทย ไม่ใช่
   assert.equal(businessDayKey('ไม่ใช่วันที่'), null);
   assert.equal(businessDayKey(null), null);
   assert.equal(businessMonthKey('2026-07-31T17:30:00.000Z'), '2026-08');
+});
+
+/* คู่กับ businessDayKey เสมอ — ตัวจัดรูปบนจอเอาวันจากตัวหนึ่ง เวลาจากอีกตัวหนึ่ง
+   ถ้าสองตัวใช้นาฬิกาคนละเรือน ข้อความเดียวกันจะบอกวันกับเวลาที่ไม่เข้าคู่กัน */
+test('businessTimeKey: เวลาตามเวลาไทย ไม่ใช่เวลาเครื่อง', () => {
+  assert.equal(businessTimeKey('2026-08-25T20:21:45.000Z'), '03:21');
+  assert.equal(businessTimeKey('2026-07-31T17:30:00.000Z'), '00:30');
+  assert.equal(businessTimeKey('2026-08-12T05:00:00.000Z'), '12:00');
+  assert.equal(businessTimeKey('ไม่ใช่เวลา'), null);
+  // วันกับเวลาต้องมาจากจุดเวลาเดียวกัน
+  assert.equal(businessDayKey('2026-07-31T17:30:00.000Z'), '2026-08-01');
 });
 
 test('ขอบเดือน/ปี = ต้นวันตามเวลาไทย ครึ่งเปิด [from, until)', () => {
