@@ -5,6 +5,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, leadBudgetError,
   applyLeadScope, canViewLeads, canCreateLead,
+  leadBounceHistory, chunkLeadIds, LEAD_BOUNCE_KINDS,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
@@ -36,8 +37,49 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     return query;
   });
   if (error) return fail(error.message, 500);
-  return ok(data || []);
+  const leads = data || [];
+
+  /* ⭐ บริบทของใบที่ถูกส่งกลับ — ติดไปกับแถวเลย ไม่ให้จอต้องยิงรายใบ
+     ใบที่ไม่เคยถูกตีกลับไม่มีคีย์นี้เลย (ไม่ใช่ค่าว่าง) ⇒ จอเช็ค `lead.bounce` ตรง ๆ ได้
+     ⚠️ อ่านไม่สำเร็จ = **ไม่ใส่บริบท** แต่ยังคืนลีดตามปกติ — คิวลีดเป็นหน้าทำงานหลัก
+     ล้มทั้งหน้าเพราะป้ายเสริมอ่านไม่ได้คือแลกผิดฝั่ง */
+  await attachBounceContext(supabase, leads);
+  return ok(leads);
 });
+
+/* ⚠️ ซอย `.in()` เสมอ — PostgREST ยัดลิสต์ลง query string ทั้งก้อน (ดู LEAD_ID_CHUNK)
+   ⚠️ **ถามเฉพาะใบที่ยังไม่มีเจ้าของรอบใหม่** — ใบที่ถูกมอบหมายต่อไปแล้วไม่ต้องโชว์ป้าย
+   "ส่งกลับ" อีก เพราะรอบใหม่เริ่มไปแล้ว · ตัดจำนวนใบที่ต้องถามลงมาก
+   ⚠️ ต้องมี `screened` ด้วย ไม่ใช่แค่ `new`: `bounce` ส่งใบกลับไปที่ `new` ก็จริง แต่คน
+   ที่ต้องอ่านบริบทมากที่สุดคือคนกด **มอบหมาย** ซึ่งเกิดตอน `screened` (หลังคัดกรองแล้ว)
+   ถ้าตัดที่ `new` อย่างเดียว ป้าย "เคยถือใบนี้มาแล้ว" ในกล่องมอบหมายจะไม่มีวันขึ้น */
+const BOUNCE_CONTEXT_STATUSES = ['new', 'screened'];
+
+async function attachBounceContext(supabase, leads) {
+  const ids = leads.filter((l) => BOUNCE_CONTEXT_STATUSES.includes(l?.status)).map((l) => l.id).filter(Boolean);
+  if (!ids.length) return;
+  const byLead = new Map();
+  for (const chunk of chunkLeadIds(ids)) {
+    const { data, error } = await supabase
+      .from('lead_events')
+      .select('leadId, kind, team, assigneeId, assigneeName, reason, createdAt')
+      .in('leadId', chunk)
+      .in('kind', LEAD_BOUNCE_KINDS)
+      .order('createdAt', { ascending: false });
+    if (error) {
+      console.error('[leads] อ่านประวัติการตีกลับไม่สำเร็จ — คิวจะไม่มีป้ายบริบท:', error.message);
+      return;
+    }
+    for (const row of data || []) {
+      if (!byLead.has(row.leadId)) byLead.set(row.leadId, []);
+      byLead.get(row.leadId).push(row);
+    }
+  }
+  for (const lead of leads) {
+    const events = byLead.get(lead.id);
+    if (events?.length) lead.bounce = leadBounceHistory(events);
+  }
+}
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();

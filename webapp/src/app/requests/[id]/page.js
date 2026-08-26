@@ -81,6 +81,7 @@ import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
 import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
+import { requestDueCell } from "@/lib/requests/dueCell";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -151,6 +152,10 @@ export default function RequestDetailPage() {
      คนละวันในใบเดียวกันตอนเที่ยงคืน และ hydration mismatch ตอนเรนเดอร์ฝั่ง server */
   const [today, setToday] = useState(null);
   useEffect(() => { setToday(businessDate()); }, []);
+  /* ⭐ **กำหนดส่งของทั้งใบ คิดครั้งเดียวแล้วส่งให้ตารางใช้ทุกแถว** (มติผู้ใช้ 2026-08-26)
+     ⚠️ คิดที่นี่ ไม่ใช่ในตาราง — `dueIsStale` ไล่ทุกแถวในใบ ⇒ เรียกรายแถวแล้วเป็น
+     O(n²) ในใบ 25 แถว · และตารางสามตัวจะได้ค่าเดียวกันเสมอโดยไม่ต้องมีใครดูให้ตรง */
+  const dueCell = requestDueCell(req, today);
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
   // ช่วงเปลี่ยนผ่าน: RD กรอกเลขที่เอกสารเอง (mig 0272) — null = ปิดโมดัล
@@ -1450,6 +1455,7 @@ export default function RequestDetailPage() {
         formulaBoard={formulaBoard}
         docBoard={docBoard}
         today={today}
+        due={dueCell}
         {...reconcileProps}
       />
       )}

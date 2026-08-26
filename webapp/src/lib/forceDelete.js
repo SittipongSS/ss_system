@@ -187,7 +187,8 @@ export async function cleanupDealOrphans(supabase, dealId) {
   if (taskError) throw new Error(`ลบงานที่ผูกดีลไม่สำเร็จ: ${taskError.message}`);
   // ดีลอื่นที่อ้างดีลนี้เป็น parent — ปลด logical ref กันกำพร้า
   const { error: parentError } = await supabase
-    .from('sales_deals').update({ parentDealId: null }).eq('parentDealId', dealId);
+    // ขยับ `updatedAt` ตามกติกาเดียวกับจุดอื่น — แถวเปลี่ยนแล้วต้องบันทึกว่าเปลี่ยนเมื่อไร
+    .from('sales_deals').update({ parentDealId: null, updatedAt: new Date().toISOString() }).eq('parentDealId', dealId);
   if (parentError) throw new Error(`ปลดดีลลูกออกจากดีลนี้ไม่สำเร็จ: ${parentError.message}`);
 }
 
@@ -432,7 +433,10 @@ export async function cleanupQuotationOrphans(supabase, quote) {
     if (deal?.metadata?.acceptedQuotationId === quote.id) {
       const nextMeta = { ...deal.metadata };
       delete nextMeta.acceptedQuotationId;
-      await supabase.from('sales_deals').update({ metadata: nextMeta }).eq('id', deal.id);
+      // ⚠️ `metadata` คือสิ่งที่แดชบอร์ดอ่าน — ไม่ขยับ `updatedAt` = สแตมป์ไม่ขยับ
+      // = ตัวเลขค้างได้ถึง 5 นาทีหลังบังคับลบใบเสนอราคา (ดู lib/sales/dashboardStamp)
+      await supabase.from('sales_deals')
+        .update({ metadata: nextMeta, updatedAt: new Date().toISOString() }).eq('id', deal.id);
     }
   } catch {
     // best-effort — ไม่ให้ทำลาย flow การลบหลัก

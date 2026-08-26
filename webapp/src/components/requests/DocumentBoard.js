@@ -14,8 +14,9 @@ import { Fragment } from "react";
 import { TableScroll } from "@/components/ui/Table";
 import ReadableText from "@/components/ui/ReadableText";
 import { fmtDate } from "@/lib/format";
-import { RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
+import { RowDueCell, RowIdleCell, RowStageCell, RowStepCell } from "./RowProgressCells";
 import styles from "./briefBoard.module.css";
+import { dueCellTracker } from "@/lib/requests/dueCell";
 
 /* ⭐ `renderDetail` — ของยาวรายแถว (ไฟล์เอกสารที่ส่งมา) มาเป็น **แถวขยายในตาราง**
    ไม่ใช่การ์ดชุดที่สองใต้ตาราง (มติผู้ใช้ 2026-08-20: *"ทำไมต้องแยกสองส่วน รวมได้มั้ย"*)
@@ -29,9 +30,14 @@ import styles from "./briefBoard.module.css";
    ⇒ สองคอลัมน์ที่พูดเรื่องเดียวกัน · รางบอกได้มากกว่า (เหลืออีกกี่ขั้น)
    ⚠️ **เลขที่เอกสารไม่เป็นคอลัมน์** — ว่าง 91% ของแถวบน production ⇒ อยู่ในเซลล์ชื่อ
    เป็นผลลัพธ์ของแถวเมื่อมีจริง */
-export default function DocumentBoard({ rows = [], renderStep = null, renderDetail = null, today = null }) {
+export default function DocumentBoard({
+  rows = [], renderStep = null, renderDetail = null, today = null, due = null,
+}) {
   if (!rows.length) return null;
-  const cols = renderStep ? 4 : 3;
+  const cols = (renderStep ? 4 : 3) + (due ? 1 : 0);
+  /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
+     พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
+  const showDue = dueCellTracker(due);
 
   return (
     <section className={styles.wrap} aria-label="สรุปเอกสารที่ขอ">
@@ -42,6 +48,7 @@ export default function DocumentBoard({ rows = [], renderStep = null, renderDeta
             <tr>
               <th className={styles.colName}>ชนิดเอกสาร</th>
               <th className={styles.colTrack}>ขั้น</th>
+              {due && <th className={styles.colDue}>กำหนดส่ง</th>}
               <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
@@ -70,6 +77,7 @@ export default function DocumentBoard({ rows = [], renderStep = null, renderDeta
                   )}
                 </td>
                 <RowStageCell row={r} />
+                {due && <RowDueCell row={r} due={due} show={showDue(r)} />}
                 <RowIdleCell row={r} today={today} />
                 {renderStep && <RowStepCell>{renderStep(r)}</RowStepCell>}
               </tr>

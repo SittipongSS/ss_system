@@ -362,6 +362,7 @@ export default function QuotationsPage() {
             fingerprint ของเนื้อใบ ผู้อนุมัติต้องเห็นรายการ/ราคาก่อนกด */}
         <ApprovalQueue
           items={approvalQueue}
+          unit="ใบ"
           primary={(q) => q.quoteNumber}
           secondary={(q) => `${naText(q.customerName)} · ${fmtMoney(q.totalAmount)}`}
           onOpen={(q) => router.push(`/sa/quotations/${q.id}`)}

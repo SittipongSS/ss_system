@@ -1,3 +1,4 @@
+import { businessDayKey, businessTimeKey } from "@/lib/datePeriods";
 import {
   productBrandName,
   productDisplayName,
@@ -123,16 +124,62 @@ export const fmtMoneyCompact = (amount) => {
 
 // Date-only (no time) → DD/MM/YYYY (ค.ศ.); {short:true} → DD/MM/YY.
 // ทนต่อ null และสตริงที่ format มาแล้ว (คืนค่าเดิมถ้าจับรูปไม่ได้).
+/* ── ทุกอย่างบนจอเป็น "เวลาไทย" ────────────────────────────────────────────
+   🐞 **บั๊กจริง (พบ 2026-08-26 ตอนตี 3):** `fmtDate(createdAt)` ขึ้น 25/08 ทั้งที่
+   เวลาไทยเป็นวันที่ 26 แล้ว — ตัวเดิมตัดตัวอักษรจากสตริง ISO ตรง ๆ ซึ่งคือ **วันแบบ UTC**
+   ⇒ ทุกวันช่วงเที่ยงคืนถึง 7 โมงเช้า วันที่บนจอย้อนหลังไปหนึ่งวันทั้งระบบ
+
+   ที่แย่กว่าคือ **ตัวจัดรูปแต่ละตัวใช้นาฬิกาคนละเรือน**: `fmtDate` ใช้ UTC ส่วน
+   `fmtDateTime`/`fmtDayMonth` ใช้นาฬิกาเครื่อง ⇒ ค่าเดียวกันบนจอเดียวกันอ่านได้คนละวัน
+   และไม่ตรงกับหลังบ้านซึ่งคิดด้วยวันไทยทั้งหมด (SLA · KPI · ตีกลับอัตโนมัติ · เดือน Actual)
+
+   กติกาเดียวจากนี้: **จุดเวลา → วันไทยเสมอ** (ผ่าน `businessDayKey` ตัวเดียวกับหลังบ้าน)
+   ⚠️ ยกเว้นสตริงที่ **ไม่มีเวลาเลย** ("2026-08-14") ซึ่งเป็น *วันในปฏิทิน* ไม่ใช่จุดเวลา
+   ห้ามขยับโซนให้ ไม่งั้นวันเกิด/วันครบกำหนดจะเลื่อนไปมาตามเครื่องที่เปิดดู */
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+/* ISO ที่ไม่ได้บอกโซนเวลา — `Date.parse` จะตีความเป็น **เวลาเครื่อง** ตามสเปก
+   ⇒ ค่าเดียวกันได้คนละวันบนเครื่องคนละโซน · เติม Z ให้เป็น UTC เหมือนที่ฝั่ง server
+   (Vercel รันด้วย UTC) อ่าน จะได้ตรงกันทั้งสองฝั่ง
+   หมายเหตุ: ตารางทั้งระบบเป็น `timestamptz` ทั้งหมด (ไม่มี `timestamp` เปล่าเลยสักคอลัมน์)
+   สตริงไร้โซนจึงมาจากค่าที่ประกอบเองในโค้ด ไม่ใช่จากฐานข้อมูล */
+const NAKED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/** ทำให้ค่าที่รับมาเป็นสตริง ISO ที่อ่านได้แน่นอน — รับ Date / epoch ms / สตริง
+ *  🐞 เคยพลาด: ส่ง `Date` หรือ epoch ms เข้ามาแล้วตกไปที่ `String(value)` ⇒ จอขึ้น
+ *  เลข 13 หลักแทนวันที่ (ของเดิมรับได้เพราะเรียก `new Date(value)` ตรง ๆ) */
+const toIso = (value) => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value === "number") return Number.isFinite(value) ? new Date(value).toISOString() : null;
+  const text = String(value);
+  return NAKED_ISO.test(text) ? `${text}Z` : text;
+};
+
+const thaiParts = (value) => {
+  if (value == null || value === "") return null;
+  const iso = toIso(value);
+  if (iso == null) return null;
+  const bare = iso.match(DATE_ONLY);
+  const day = bare ? bare[0] : businessDayKey(iso);
+  if (!day) return null;
+  const [yyyy, mm, dd] = day.split("-");
+  return { yyyy, mm, dd, year: Number(yyyy), monthIndex: Number(mm) - 1, dayOfMonth: Number(dd) };
+};
+
+/* เวลาของค่าเดียวกัน — ต้องมาจาก `businessTimeKey` เท่านั้น ไม่ใช่ `d.getHours()`
+   ไม่งั้นวันมาจากนาฬิกาไทยแต่เวลามาจากนาฬิกาเครื่อง */
+const thaiTime = (value) => {
+  const iso = toIso(value);
+  return iso == null ? null : businessTimeKey(iso);
+};
+
 export const fmtDate = (value, { short = false } = {}) => fmtDateNumeric(value, { short });
 
 // Date + time → DD/MM/YYYY HH:MM (ค.ศ., 24 ชม.).
 export const fmtDateTime = (value) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${fmtDateNumeric(d)} ${hh}:${mi}`;
+  const time = thaiTime(value);
+  if (!time) return String(value);
+  return `${fmtDateNumeric(value)} ${time}`;
 };
 
 // Date + time แบบสั้น → DD/MM HH:MM (ไม่มีปี) สำหรับคอลัมน์แคบ เช่น หัวแถวเธรด
@@ -141,13 +188,10 @@ export const fmtDateTime = (value) => {
 // react-hooks/purity (ดูแพตเทิร์น nowMs ในหน้าดีล)
 export const fmtDayTime = (value) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm} ${hh}:${mi}`;
+  const parts = thaiParts(value);
+  const time = thaiTime(value);
+  if (!parts || !time) return String(value);
+  return `${parts.dd}/${parts.mm} ${time}`;
 };
 
 // Time is always rendered as 24-hour HH:mm. This also normalizes editable
@@ -176,20 +220,20 @@ export const fmtTime = (value) => {
   if (!value) return "-";
   const direct = normalizeTime(String(value).slice(0, 5));
   if (direct) return direct;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return thaiTime(value) || String(value);
 };
 
 // ระดับเดือน → YYYY-MM (ค.ศ.). รับ Date / ISO / "YYYY-MM" / "YYYY-MM-DD".
 export const fmtYearMonth = (value) => {
   if (!value) return "-";
-  // "2026-07" หรือ "2026-07-xx" — ตัดเอา YYYY-MM ตรง ๆ กัน timezone เพี้ยน.
-  const m = String(value).match(/^(\d{4})-(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}`;
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  // "2026-07" = ค่างวดเดือนอยู่แล้ว ไม่ใช่จุดเวลา — ห้ามตีความใหม่
+  const monthOnly = String(value).match(/^(\d{4})-(\d{2})$/);
+  if (monthOnly) return `${monthOnly[1]}-${monthOnly[2]}`;
+  /* 🐞 ของเดิมจับ /^(\d{4})-(\d{2})/ ซึ่งกินสตริง ISO เต็มด้วย ⇒ ได้ **เดือนแบบ UTC**
+     ใบที่อนุมัติ 31 ก.ค. สามทุ่มไทย (14:00Z) ยังพอไหว แต่ 1 ส.ค. ตี 2 ไทย (31 ก.ค. 19:00Z)
+     จะถูกนับเป็นเดือน ก.ค. ⇒ ขัดกับหลังบ้านที่คิดเดือน Actual จากเวลาไทย (mig 0279) */
+  const parts = thaiParts(value);
+  return parts ? `${parts.yyyy}-${parts.mm}` : String(value);
 };
 
 // ── Display-format standards (Change Request §2) ─────────────────────────
@@ -284,29 +328,22 @@ export const formatNationalIdInput = (raw) => {
 // วันที่แบบตัวเลข (§2.4): กว้าง = DD/MM/YYYY, แคบ = DD/MM/YY (ปี ค.ศ.).
 export const fmtDateNumeric = (value, { short = false } = {}) => {
   if (!value) return "-";
-  // Date-only strings represent a calendar date, not a moment in time. Parsing
-  // them with new Date("YYYY-MM-DD") applies UTC semantics and can render the
-  // previous day in negative timezones, so format their parts directly.
-  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
-  if (dateOnly) {
-    const [, yyyy, mm, dd] = dateOnly;
-    return short ? `${dd}/${mm}/${yyyy.slice(-2)}` : `${dd}/${mm}/${yyyy}`;
-  }
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return short ? `${dd}/${mm}/${String(yyyy).slice(-2)}` : `${dd}/${mm}/${yyyy}`;
+  /* 🐞 ของเดิมจับ /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/ — `(?:$|T)` ทำให้ **สตริงเวลาเต็ม
+     ถูกอ่านเป็นวันในปฏิทิน** แล้วตัดตัวอักษรมาใช้ตรง ๆ ซึ่งคือวันแบบ UTC
+     ตอนนี้เหลือเฉพาะรูปที่ไม่มีเวลาเลย ส่วนจุดเวลาเดินผ่าน `businessDayKey` (ดู thaiParts) */
+  const parts = thaiParts(value);
+  if (!parts) return String(value);
+  const { dd, mm, yyyy } = parts;
+  return short ? `${dd}/${mm}/${yyyy.slice(-2)}` : `${dd}/${mm}/${yyyy}`;
 };
 
 // เดือน/ปี (§2.5): "Jul 26" / "ก.ค. 26" (ปี ค.ศ. 2 หลัก).
 export const fmtMonthYear = (value, { locale = "en" } = {}) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const m = locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
-  return `${m} ${String(d.getFullYear()).slice(-2)}`;
+  const parts = thaiParts(value);
+  if (!parts) return String(value);
+  const m = locale === "th" ? TH_MONTHS_SHORT[parts.monthIndex] : EN_MONTHS_SHORT[parts.monthIndex];
+  return `${m} ${parts.yyyy.slice(-2)}`;
 };
 
 // วัน + เดือนย่อ ไม่มีปี: "14 ส.ค." / "14 Aug" — หัวคอลัมน์ปฏิทินและบอร์ดรายสัปดาห์
@@ -317,28 +354,28 @@ export const fmtMonthYear = (value, { locale = "en" } = {}) => {
 // เมื่อไรหัวตารางสี่หน้านั้นจะพลิกภาษาพร้อมกันโดยไม่มีใครตั้งใจ
 export const fmtDayMonth = (value, { locale = "th" } = {}) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const m = locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
-  return `${d.getDate()} ${m}`;
+  const parts = thaiParts(value);
+  if (!parts) return String(value);
+  const m = locale === "th" ? TH_MONTHS_SHORT[parts.monthIndex] : EN_MONTHS_SHORT[parts.monthIndex];
+  return `${parts.dayOfMonth} ${m}`;
 };
 
 // เดือนย่ออย่างเดียว: "ส.ค." / "Aug" — ใช้กับช่วงวันที่ที่เขียนเดือนครั้งเดียว
 // ("1 ส.ค. – 7 ส.ค. 2026") ซึ่งวันกับปีถูกประกอบข้างนอก
 export const fmtMonthShort = (value, { locale = "th" } = {}) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  return locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
+  const parts = thaiParts(value);
+  if (!parts) return String(value);
+  return locale === "th" ? TH_MONTHS_SHORT[parts.monthIndex] : EN_MONTHS_SHORT[parts.monthIndex];
 };
 
 // วัน เดือน ปี (§2.6): "25 Jul 26" / "25 ก.ค. 26" (ปี ค.ศ. 2 หลัก).
 export const fmtDayMonthYear = (value, { locale = "en" } = {}) => {
   if (!value) return "-";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  const m = locale === "th" ? TH_MONTHS_SHORT[d.getMonth()] : EN_MONTHS_SHORT[d.getMonth()];
-  return `${d.getDate()} ${m} ${String(d.getFullYear()).slice(-2)}`;
+  const parts = thaiParts(value);
+  if (!parts) return String(value);
+  const m = locale === "th" ? TH_MONTHS_SHORT[parts.monthIndex] : EN_MONTHS_SHORT[parts.monthIndex];
+  return `${parts.dayOfMonth} ${m} ${parts.yyyy.slice(-2)}`;
 };
 
 /* ── ค่าว่างทั้งระบบพูดคำเดียวกัน: ขีด `—` ────────────────────────────────

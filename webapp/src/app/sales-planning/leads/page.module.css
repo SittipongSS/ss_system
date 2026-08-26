@@ -32,3 +32,23 @@
 .followUp[data-tone="late"] { color: var(--red); }
 .followUp[data-tone="today"] { color: var(--amber); }
 .followUpSub { display: block; color: var(--text-3); font-size: var(--fs-5); }
+
+/* ป้าย "ส่งกลับ รอบที่ N" ใต้สถานะในคิว — เหลือง = เคยกลับมา · แดง = ครบโควตารอบแล้ว
+   ⚠️ คลาส ไม่ใช่ inline style (เพดาน ratchet ของ audit:ui) */
+.bounceTag {
+  display: inline-flex; align-items: center; margin-top: var(--space-1);
+  padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
+  color: var(--amber); font-size: var(--fs-label); font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+.bounceTag[data-hot] {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--red);
+}
+.bounceWho {
+  display: block; margin-top: var(--space-0-5); color: var(--text-3);
+  font-size: var(--fs-4); line-height: var(--lh-thai);
+}

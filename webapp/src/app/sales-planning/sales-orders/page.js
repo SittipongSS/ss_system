@@ -336,6 +336,7 @@ export default function SalesOrdersPage() {
             ⚠️ ตัดใบที่ตัวเองสร้างหรือยื่นออกที่ server แล้ว (อนุมัติเองไม่ได้) */}
         <ApprovalQueue
           items={approvalQueue}
+          unit="ใบ"
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่รอบัญชีตรวจ" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
           primary={(o) => o.orderNumber}
           secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}

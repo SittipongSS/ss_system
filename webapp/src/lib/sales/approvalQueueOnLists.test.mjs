@@ -108,3 +108,25 @@ test('ทะเบียนสัญญาใช้คำของตัวเ�
   assert.match(lib, /contract\.status === 'draft' \|\| contract\.status === 'awaiting_signature'/,
     'นิยาม "ค้างอยู่กับฉัน" ของสัญญาอยู่ที่ lib ที่เดียว');
 });
+
+/* 🪤 **คิวยาวได้จริง** — ฝ่ายบัญชีเจอ 43 ใบรอตรวจ (ผู้ใช้ส่งภาพ 2026-08-26) การ์ดกิน
+   ทั้งจอจนตารางถูกดันหาย ⇒ ต้องตัดพรีวิวแล้วมีปุ่มกาง · ค่าเดียวกับคิวของทะเบียน
+   การชำระ (มติ 2026-08-13) เพื่อให้ "คิวบนหัวหน้า" มีทรงเดียวทั้งระบบ */
+test('คิวตัดพรีวิวเท่ากับคิวของทะเบียนการชำระ และมีปุ่มกาง', () => {
+  const queue = read('components/ui/ApprovalQueue.js');
+  const payments = read('app/finance/payments/page.js');
+
+  const capOf = (src) => Number(/QUEUE_PREVIEW = (\d+)/.exec(src)?.[1]);
+  assert.equal(capOf(queue), capOf(payments), 'สองคิวต้องตัดที่จำนวนเดียวกัน');
+  assert.match(queue, /items\.slice\(0, QUEUE_PREVIEW\)/);
+  assert.match(queue, /ดูอีก \$\{items\.length - QUEUE_PREVIEW\} \$\{unit\}/, 'ปุ่มต้องบอกจำนวนที่เหลือ');
+  assert.match(queue, /open \? "ย่อคิว"/, 'กางแล้วต้องย่อกลับได้');
+
+  // ลักษณนามต้องตรงกับของที่นับ — เอกสารเป็น "ใบ" ทะเบียนข้อมูลเป็น "รายการ"
+  for (const page of [
+    'app/sales-planning/quotations/page.js',
+    'app/sales-planning/sales-orders/page.js',
+    'app/sales-planning/contracts/page.js',
+  ]) assert.match(read(page), /unit="ใบ"/, `${page} ต้องนับเป็นใบ`);
+  assert.match(queue, /unit = "รายการ"/, 'ค่าตั้งต้นเป็นรายการ (ลูกค้า/สินค้า)');
+});

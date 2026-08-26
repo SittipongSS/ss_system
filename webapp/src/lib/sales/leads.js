@@ -8,6 +8,8 @@ import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
+// ⚠️ ทางเดียว: leadAutoBounce.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
+import { AUTO_BOUNCE_MAX_ROUNDS } from '@/lib/sales/leadAutoBounce';
 
 export const LEAD_CHANNELS = [
   'chatcone_line', 'chatcone_meta', 'chatcone_tiktok', 'chatcone_ig', 'typeform', 'email',
@@ -165,17 +167,22 @@ export function leadFollowUpError(value) {
  * นับเป็นข้อมูลไม่ได้ มันคือช่องที่ทำให้ทุกอย่างที่ไม่อยากคิดไหลมารวมกัน
  */
 export const LEAD_LOST_REASONS = Object.freeze([
-  { code: 'no_response', label: 'ติดต่อไม่ได้ / ลูกค้าเงียบ', countable: true },
-  { code: 'budget', label: 'งบไม่ถึง', countable: true },
-  { code: 'not_target', label: 'ไม่ตรงบริการ', countable: true },
+  { code: 'no_response', label: 'ติดต่อไม่ได้ / ลูกค้าเงียบ', hint: 'โทรไม่ติด ทักไม่ตอบ', countable: true },
+  { code: 'budget', label: 'งบไม่ถึง', hint: 'ราคาเกินงบที่ลูกค้าตั้งไว้', countable: true },
+  { code: 'not_target', label: 'ไม่ตรงบริการ', hint: 'ไม่ใช่กลุ่มเป้าหมาย หรือเราไม่ได้ทำ', countable: true },
   /* ⚠️ "ยังไม่พร้อม" ไม่ใช่แพ้ถาวร — ยังนับในตัวส่วนเพราะเป็นดีลที่เสียไปในงวดนี้จริง
      แต่รายงานควรแยกให้เห็น เพราะเป็นกองที่กลับมาถามใหม่ได้ ต่างจาก "เลือกเจ้าอื่น" */
-  { code: 'timing', label: 'ยังไม่พร้อม ไว้ทีหลัง', countable: true },
-  { code: 'competitor', label: 'เลือกเจ้าอื่น', countable: true },
-  { code: 'duplicate', label: 'ลีดซ้ำ', countable: false },
-  { code: 'invalid', label: 'ข้อมูลติดต่อผิด / สแปม', countable: false },
-  { code: 'other', label: 'อื่นๆ', countable: true, detail: 'required' },
+  { code: 'timing', label: 'ยังไม่พร้อม ไว้ทีหลัง', hint: 'สนใจ แต่ยังไม่ถึงเวลา', countable: true, revisit: true },
+  { code: 'competitor', label: 'เลือกเจ้าอื่น', hint: 'ตัดสินใจใช้คู่แข่งไปแล้ว', countable: true },
+  { code: 'duplicate', label: 'ลีดซ้ำ', hint: 'มีใบเดิมของลูกค้ารายนี้อยู่แล้ว', countable: false },
+  { code: 'invalid', label: 'ข้อมูลติดต่อผิด / สแปม', hint: 'เบอร์/อีเมลใช้ไม่ได้ หรือใบทดสอบ', countable: false },
+  { code: 'other', label: 'อื่นๆ', hint: 'ระบุเองในช่องรายละเอียด', countable: true, detail: 'required' },
 ]);
+
+/* เหตุผลที่ **ไม่ใช่แพ้ถาวร** — ถามวันกลับมาคุยใหม่ต่อได้
+   ⚠️ ไม่บังคับกรอก: บางเคสลูกค้าบอกแค่ "ไว้ก่อน" โดยไม่มีกำหนด · บังคับแล้วคนจะ
+   กรอกวันมั่วเพื่อให้ผ่านด่าน ซึ่งแย่กว่าเว้นว่าง */
+export const LEAD_LOST_REVISIT_CODES = LEAD_LOST_REASONS.filter((r) => r.revisit).map((r) => r.code);
 
 export const LEAD_LOST_CODES = LEAD_LOST_REASONS.map((r) => r.code);
 export const LEAD_LOST_LABELS = Object.fromEntries(LEAD_LOST_REASONS.map((r) => [r.code, r.label]));
@@ -242,6 +249,39 @@ export function leadLostText(lead = {}, empty = 'ไม่ระบุ') {
   const detail = String(lead.disqualifiedReason || '').trim();
   if (!label) return detail || empty;
   return detail ? `${label} — ${detail}` : label;
+}
+
+/* ══ "ใบนี้กลับมาแล้วกี่รอบ · เคยอยู่กับใคร" ═══════════════════════════════
+ *
+ * ⭐ ที่มา: `bounce`/`auto_bounce` ล้าง `team` + `assigneeId` บนแถวทิ้ง ⇒ ใบที่ถูก
+ * ส่งกลับโผล่ในคิวคัดกรอง **เหมือนลีดใหม่ทุกประการ** · ผู้ดูแลจึงคัดเข้าทีมเดิม
+ * มอบคนเดิม แล้ววนรอบใหม่ทันที — เพดาน `AUTO_BOUNCE_MAX_ROUNDS` กันได้แค่
+ * "ไม่ตีกลับรอบที่ 3" แต่กันรอบที่ 2 ไม่ได้ เพราะ **คนตัดสินใจไม่มีข้อมูล**
+ *
+ * ⚠️ นับเฉพาะ `auto_bounce` เป็น "รอบ" — ตีกลับด้วยมือคือคนตัดสินใจแล้วว่าทีมไม่ตรง
+ * ซึ่งเป็นคนละเรื่องกับ "ไม่มีใครทำ" · เอามารวมกันแล้วใบที่ถูกส่งต่อตามเนื้องานจริง
+ * จะโดนล็อกทีมทั้งที่ไม่เคยถูกดองเลย
+ *
+ * ⚠️ `events` ต้องเรียง **ใหม่→เก่า** (เหมือน `meetingTimesSinceBounce`) — ผู้เรียก
+ * ที่เรียงกลับด้านจะได้ "เคยอยู่กับใคร" เป็นรอบแรกสุดแทนรอบล่าสุด
+ */
+export function leadBounceHistory(events = []) {
+  const rows = events || [];
+  const autoRounds = rows.filter((e) => e?.kind === 'auto_bounce').length;
+  // ใบล่าสุดที่ถูกตีกลับ (ชนิดไหนก็ได้) = บริบทที่คนคัดกรองรอบนี้ต้องเห็น
+  const last = rows.find((e) => LEAD_BOUNCE_KINDS.includes(e?.kind)) || null;
+  return {
+    autoRounds,
+    bouncedAt: last?.createdAt || null,
+    previousTeam: last?.team || null,
+    previousAssigneeId: last?.assigneeId || null,
+    previousAssigneeName: last?.assigneeName || null,
+    lastReason: last?.reason || null,
+    /* ครบโควตาแล้ว = ห้ามส่งกลับทีมเดิมอีก (ด่านฝั่งจอ · cron หยุดตีกลับเองอยู่แล้ว)
+       ⚠️ ใช้ `AUTO_BOUNCE_MAX_ROUNDS` ตัวเดียวกับ cron — สะกดเลขซ้ำที่นี่เมื่อไร
+       จอกับ cron จะเลิกเห็นตรงกันโดยไม่มีอะไรฟ้อง */
+    teamLocked: autoRounds >= AUTO_BOUNCE_MAX_ROUNDS ? last?.team || null : null,
+  };
 }
 
 /** สถานะของวันติดตามต่อ — `'late' | 'today' | 'ahead'` · **ที่เดียวสำหรับทุกจอ**

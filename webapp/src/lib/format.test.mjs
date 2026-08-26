@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, NA } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, NA } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -93,6 +93,38 @@ test("date-only formatting preserves the calendar date without timezone parsing"
   assert.equal(fmtDateNumeric("2026-07-12"), "12/07/2026");
   assert.equal(fmtDateNumeric("2026-07-12", { short: true }), "12/07/26");
   assert.equal(fmtDateNumeric("2026-07-12T00:00:00.000Z"), "12/07/2026");
+
+  /* 🐞 บั๊กจริง (26/08/2026 ตี 3): จุดเวลาถูกอ่านเป็น "วันในปฏิทิน" แล้วตัดตัวอักษร
+     จากสตริง ISO ⇒ ได้วันแบบ UTC · ทุกวันช่วงเที่ยงคืนถึง 7 โมงเช้าเวลาไทย
+     วันที่ทั้งระบบย้อนหลังไปหนึ่งวัน (20:21Z = ตี 3 ของวันถัดไปตามเวลาไทย)
+     ⚠️ เทสต์ชุดนี้ผูกกับ "เวลาไทย" ไม่ใช่นาฬิกาเครื่อง — รันบน CI (UTC) กับบนเครื่อง
+     ที่กรุงเทพต้องได้ผลเท่ากัน ถอยกลับไปใช้ getHours()/getDate() เมื่อไรจะตกที่ CI */
+  assert.equal(fmtDateNumeric("2026-08-25T20:21:45Z"), "26/08/2026");
+  assert.equal(fmtDateTime("2026-08-25T20:21:45Z"), "26/08/2026 03:21");
+  assert.equal(fmtDayTime("2026-08-25T20:21:45Z"), "26/08 03:21");
+  assert.equal(fmtTime("2026-08-25T20:21:45Z"), "03:21");
+  assert.equal(fmtDayMonth("2026-08-25T20:21:45Z"), "26 ส.ค.");
+  assert.equal(fmtDayMonthYear("2026-08-25T20:21:45Z"), "26 Aug 26");
+  assert.equal(fmtMonthYear("2026-08-25T20:21:45Z"), "Aug 26");
+
+  /* วันในปฏิทิน (ไม่มีเวลา) ต้องไม่ถูกขยับโซนเด็ดขาด — วันครบกำหนด/วันนัดจะเลื่อน */
+  assert.equal(fmtDateNumeric("2026-08-14"), "14/08/2026");
+  assert.equal(fmtDayMonth("2026-08-14"), "14 ส.ค.");
+
+  /* 🐞 เดือนก็เพี้ยนแบบเดียวกัน: 31 ก.ค. 19:00Z = 1 ส.ค. ตี 2 เวลาไทย
+     ของเดิมตอบ 2026-07 ⇒ ขัดกับเดือน Actual ที่หลังบ้านคิดจากเวลาไทย (mig 0279) */
+  assert.equal(fmtYearMonth("2026-07-31T19:00:00Z"), "2026-08");
+  assert.equal(fmtYearMonth("2026-07"), "2026-07");
+
+  /* 🐞 รับ Date / epoch ms ได้เหมือนเดิม — เคยตกไปเป็น `String(value)` ทำให้จอขึ้น
+     เลข 13 หลักแทนวันที่ · และสตริง ISO ที่ไม่บอกโซนต้องไม่ขึ้นกับนาฬิกาเครื่อง */
+  const moment = new Date("2026-08-25T20:21:45Z");
+  assert.equal(fmtDateNumeric(moment), "26/08/2026");
+  assert.equal(fmtDateTime(moment), "26/08/2026 03:21");
+  assert.equal(fmtDateNumeric(moment.getTime()), "26/08/2026");
+  assert.equal(fmtDateNumeric("2026-08-25T20:21:45"), "26/08/2026");
+  assert.equal(fmtDateNumeric("2026-08-26T03:21:45+07:00"), "26/08/2026");
+  assert.equal(fmtDateNumeric("ไม่ใช่วันที่"), "ไม่ใช่วันที่");
 });
 
 test("time helpers enforce the system-wide 24-hour HH:mm rule", () => {

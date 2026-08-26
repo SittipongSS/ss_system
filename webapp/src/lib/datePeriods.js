@@ -243,6 +243,15 @@ export function businessDayKey(value) {
   return new Date(ms + BUSINESS_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** เวลา (HH:MM) ของ timestamp **ตามเวลาไทย**
+ *  ⚠️ คู่กับ `businessDayKey` เสมอ — ถ้าวันมาจากนาฬิกาไทยแต่เวลามาจากนาฬิกาเครื่อง
+ *  สองส่วนของข้อความเดียวกันจะมาจากคนละโซนเวลา ซึ่งเพี้ยนเงียบบนเครื่องที่ตั้งโซนอื่น */
+export function businessTimeKey(value) {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + BUSINESS_OFFSET_MS).toISOString().slice(11, 16);
+}
+
 /** งวดเดือน (YYYY-MM) ของ timestamp ตามเวลาไทย */
 export function businessMonthKey(value) {
   const day = businessDayKey(value);

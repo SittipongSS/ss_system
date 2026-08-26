@@ -16,10 +16,14 @@ import Button from "@/components/ui/Button";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import Select from "@/components/ui/Select";
 import PersonSelect from "@/components/ui/PersonSelect";
+import PersonLoadSelect from "@/components/ui/PersonLoadSelect";
 import DateTimeInput from "@/components/ui/DateTimeInput";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { fieldUsers, resolveLabel, validateTransitionValues } from "@/lib/recordLifecycle";
+import OptionTiles from "@/components/ui/OptionTiles";
+import {
+  fieldOptions, fieldUsers, fieldVisible, resolveLabel, validateTransitionValues, visibleFieldValues,
+} from "@/lib/recordLifecycle";
 import styles from "./TransitionDialog.module.css";
 import Textarea from "@/components/ui/Textarea";
 
@@ -31,9 +35,23 @@ function TransitionField({ field, record, value, onChange, disabled }) {
         {...common}
         fullWidth
         value={value ?? ""}
-        options={field.options || []}
+        options={fieldOptions(field, record)}
         placeholder={field.placeholder || "— เลือก —"}
         onChange={(event) => onChange(event.target.value)}
+      />
+    );
+  }
+  if (field.type === "tiles") {
+    /* ⚠️ ใช้ `fieldOptions` ตัวเดียวกับ select — ตัวเลือกที่ขึ้นกับแถวต้องเป็นฟังก์ชันได้
+       ⚠️ ป้ายของตัวเลือกที่กดไม่ได้ต้องบอกเหตุผลในตัวเอง (Select/OptionTiles ไม่มีที่
+       ให้ tooltip) — กติกาเดียวกับที่ล็อกทีมในโมดัลคัดกรอง */
+    return (
+      <OptionTiles
+        value={value ?? ""}
+        onChange={onChange}
+        options={fieldOptions(field, record)}
+        disabled={disabled}
+        ariaLabel={field.label || field.name}
       />
     );
   }
@@ -46,6 +64,20 @@ function TransitionField({ field, record, value, onChange, disabled }) {
         by={field.by || "id"}
         disabled={disabled}
         ariaLabel={field.label || field.name}
+        onChange={onChange}
+      />
+    );
+  }
+  if (field.type === "person-load") {
+    /* เลือกคนโดยเห็นภาระงานพร้อมกัน — ตัวเลขติดมากับ user แต่ละคนแล้ว (ดู withWorkload)
+       `noteOf` รับ record ด้วย เพราะป้าย "เคยถือใบนี้มาแล้ว" ขึ้นกับใบ ไม่ใช่ตัวคน */
+    return (
+      <PersonLoadSelect
+        users={fieldUsers(field, record)}
+        value={value ?? ""}
+        disabled={disabled}
+        ariaLabel={field.label || field.name}
+        noteOf={field.noteOf ? (user) => field.noteOf(record, user) : undefined}
         onChange={onChange}
       />
     );
@@ -110,7 +142,10 @@ export default function TransitionDialog({
   const title = confirm?.title || reasonPolicy.title || label;
   const description = confirm?.message || reasonPolicy.description || "";
   const setValue = (name, next) => onChange?.({ ...values, [name]: next });
-  const invalidReason = validateTransitionValues(transition, values);
+  const invalidReason = validateTransitionValues(transition, values, record);
+  /* 🪤 ค่าของช่องที่ถูกซ่อนต้องไม่ถูกส่งไป — ผู้ใช้เลือก "ยังไม่พร้อม" กรอกวันกลับมาถาม
+     แล้วเปลี่ยนใจไปเลือก "งบไม่ถึง" ค่าที่ค้างอยู่จะติดไปกับ payload โดยไม่มีใครเห็น */
+  const submit = () => onConfirm?.(visibleFieldValues(transition, record, values));
 
   // ไม่ขอเหตุผล และไม่มีช่องเพิ่ม → กล่องยืนยันล้วน
   if (reason === "none" && !fields.length) {
@@ -122,7 +157,7 @@ export default function TransitionDialog({
             <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
             <Button
               tone={reasonPolicy.tone === "danger" ? "danger" : reasonPolicy.tone === "warning" ? "warning" : "primary"}
-              onClick={onConfirm}
+              onClick={submit}
               disabled={busy}
             >
               {busy ? "กำลังดำเนินการ…" : confirm?.confirmLabel || label}
@@ -146,7 +181,7 @@ export default function TransitionDialog({
         value={text}
         onChange={(next) => setValue("reason", next)}
         onClose={onClose}
-        onConfirm={onConfirm}
+        onConfirm={submit}
         confirmLabel={reasonPolicy.confirmLabel || label}
         placeholder={reasonPolicy.placeholder}
         helpText={reasonPolicy.helpText
@@ -165,13 +200,13 @@ export default function TransitionDialog({
   // มีช่องเพิ่ม → ประกอบเอง แต่ยังใช้ primitive เดิมทุกช่อง
   const reasonRequired = reason === "required";
   return (
-    <Modal open={open} onClose={onClose} title={title} size="sm" dismissible={!busy}>
+    <Modal open={open} onClose={onClose} title={title} size={transition.dialogSize || "sm"} dismissible={!busy}>
       <div className={styles.body}>
         {description ? <p className={styles.description}>{description}</p> : null}
         {reasonPolicy.detail ? (
           <div className={`${styles.detail} ${styles[reasonPolicy.tone] || styles.warning}`}>{reasonPolicy.detail}</div>
         ) : null}
-        {fields.map((field) => (
+        {fields.filter((field) => fieldVisible(field, record, values)).map((field) => (
           <label className="form-group" key={field.name}>
             <span>{field.label || field.name}{field.required ? " *" : ""}</span>
             <TransitionField
@@ -208,7 +243,7 @@ export default function TransitionDialog({
           <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
           <Button
             tone={reasonPolicy.tone === "danger" ? "danger" : reasonPolicy.tone === "warning" ? "warning" : "primary"}
-            onClick={onConfirm}
+            onClick={submit}
             disabled={busy || !!invalidReason}
           >
             {busy ? "กำลังดำเนินการ…" : reasonPolicy.confirmLabel || label}

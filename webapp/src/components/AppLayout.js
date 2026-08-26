@@ -87,6 +87,14 @@ export default function AppLayout({ children }) {
   /* ระบบที่กางเมนูย่อยค้างอยู่ในดรอปดาวน์ (มติผู้ใช้ 2026-08-23) — ทีละระบบเท่านั้น
      เก็บเป็น key ไม่ใช่ boolean ต่อแถว เพราะกางสองระบบพร้อมกันคือแผงยาวเลยจอ */
   const [openSystem, setOpenSystem] = useState(null);
+  /* ⭐ **แถบระบบบนหัวสำหรับจอกว้าง** (มติผู้ใช้ 2026-08-25) — ทุกระบบที่คนคนนี้เข้าได้
+     เรียงอยู่บนแถบบน กดชื่อระบบแล้วเมนูของระบบนั้นกางลงมาเป็นดรอปดาวน์
+     ⚠️ **กดชื่อระบบไม่ย้ายหน้า** (มติเดียวกัน) — มันเปิดเมนูให้เลือกเท่านั้น จึงต้อง
+     มีแถวแรกในดรอปดาวน์ที่พาไปหน้าแรกของระบบ ไม่งั้นไปหน้านั้นไม่ได้เลย
+     ⚠️ คนละ state กับ `openSystem` ของดรอปดาวน์สลับระบบ — สองตัวนี้ไม่เคยโผล่
+     พร้อมกัน (คนละชั้นจอ) แต่ใช้ตัวแปรร่วมกันเมื่อไร ค่าค้างของอีกฝั่งจะทำให้เมนู
+     กางเองตอนสลับความกว้างจอ */
+  const [openBarSystem, setOpenBarSystem] = useState(null);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   /* ⭐ **ไม่มีแถบข้างประจำที่แล้วทุกความกว้าง** (มติผู้ใช้ 2026-08-25) — เมนูของระบบ
      มาเป็นลิ้นชักที่เปิดจากแฮมเบอร์เกอร์บนหัว แล้วลอยทับเนื้อหา
@@ -98,6 +106,7 @@ export default function AppLayout({ children }) {
      · `navOpen` = การกางชั่วคราว ไม่เก็บถาวร ปิดเองเมื่อเปลี่ยนหน้า */
   const [navOpen, setNavOpen] = useState(false);
   const sysMenuRef = useRef(null);
+  const sysBarRef = useRef(null);
 
   /* ⚠️ ต้องประกาศ **ก่อน** effect ที่ตัดสินเปลือกระบบข้างล่าง — ตั้งแต่มติ 2026-08-22
      เปลือกของเอกสารร่วมเดินตาม *คนดู* ไม่ใช่ตาม URL อย่างเดียวอีกต่อไป
@@ -208,6 +217,7 @@ export default function AppLayout({ children }) {
     }
     setSysMenuOpen(false); // navigating closes the system dropdown
     setOpenSystem(null);
+    setOpenBarSystem(null);
     setMobileMoreOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, role, department, extraCaps]);
@@ -221,6 +231,21 @@ export default function AppLayout({ children }) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [sysMenuOpen]);
+
+  /* ปิดเมนูของแถบระบบเมื่อคลิกนอกแถบหรือกด Esc — ท่าเดียวกับดรอปดาวน์สลับระบบ */
+  useEffect(() => {
+    if (!openBarSystem) return undefined;
+    const onDown = (e) => {
+      if (sysBarRef.current && !sysBarRef.current.contains(e.target)) setOpenBarSystem(null);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpenBarSystem(null); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [openBarSystem]);
 
   useEffect(() => {
     if (!mobileMoreOpen) return;
@@ -596,6 +621,32 @@ export default function AppLayout({ children }) {
     : isSettingsContext
       ? settingsMenuItems(userContext)
       : (currentGroup?.items || []);
+  /* ⭐ **ป้ายบอกตำแหน่งข้างโลโก้** (มติผู้ใช้ 2026-08-26 · แบบ ข จากม็อกสี่ตัวเลือก) —
+     แถบระบบบอกได้แค่ว่าอยู่ *ระบบ* ไหน ไม่ได้บอกว่าอยู่ *เมนู* ไหนของระบบนั้น
+     ⚠️ ใช้ `match` ของทะเบียนเมนูเอง ไม่ใช่เทียบ href ตรง ๆ — หน้ารายละเอียด
+     (`/sa/deals/DEAL-x`) ต้องยังนับเป็นเมนู "ดีล" · เมนูตั้งค่ามี match ของตัวเอง
+     ที่คิดจาก `activeSettingsHref` (ยาวสุดชนะ) อยู่แล้ว
+     ⚠️ อันสุดท้ายที่แมตช์ชนะ — ทะเบียนเรียงจากกว้างไปแคบ (`/tax` ก่อน `/tax/reports`)
+     เอาอันแรกจะได้ชื่อกว้างเกินจริงในหน้าลูก */
+  const hereItem = [...menuItems].reverse().find((item) => item.match(pathname)) || null;
+  /* ที่ว่างข้างโลโก้ยาว ~900px จึงเป็นที่ของป้ายนี้ · ไม่มีเมนูที่แมตช์ (เช่น /home
+     หรือเปลือกเปล่า) = ไม่ต้องมีป้าย ปล่อยว่างไว้เหมือนเดิม */
+  const hereLabel = isBareShell ? null : hereItem?.name || null;
+
+  /* รายการที่วางบนแถบระบบของจอกว้าง = ระบบที่เข้าได้ทั้งหมด + "ตั้งค่า" เมื่อกำลัง
+     อยู่ในนั้น (ตั้งค่าไม่ได้อยู่ใน allGroups — ดูเหตุผลที่ `menuItems` ข้างบน)
+     ⚠️ ไม่เอา `isBareShell` — หน้าที่ไม่เป็นของระบบไหนต้องได้เปลือกเปล่าเหมือนเดิม */
+  const barGroups = isBareShell
+    ? []
+    : isSettingsContext
+      ? [...accessibleGroups, {
+        system: 'settings',
+        label: 'ตั้งค่า',
+        icon: SettingsIcon,
+        home: '/settings',
+        items: settingsMenuItems(userContext),
+      }]
+      : accessibleGroups;
   /* แถบเมนูมีสองกลุ่ม: ลำดับงาน (ซ้าย) กับเครื่องมือ (ขวา ข้าง "วางเป้า")
      ⚠️ `menuItems` ยังเป็นก้อนเดียวสำหรับมือถือ — แผ่นเมนูล่างไม่มีสองฝั่งให้แบ่ง */
   const flowItems = menuItems.filter((item) => !item.utility);
@@ -669,6 +720,17 @@ export default function AppLayout({ children }) {
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
           </Link>
+
+          {/* ป้ายบอกตำแหน่ง "ระบบ › เมนู" — **ข้อความ ไม่ใช่ปุ่ม** (การเดินทางเป็นงาน
+              ของแถบระบบข้างล่าง) · CSS ซ่อนเมื่อจอ ≤1200 เพราะชั้นจอนั้นมีตัวสลับระบบ
+              กับลิ้นชักบอกตำแหน่งอยู่แล้ว และที่ว่างบนหัวไม่มีเหลือ */}
+          {hereLabel && (
+            <div className="topnav-here" aria-live="polite">
+              <span className="topnav-here-sys">{systemSubtitle}</span>
+              <span className="topnav-here-sep" aria-hidden="true">›</span>
+              <span className="topnav-here-page">{hereLabel}</span>
+            </div>
+          )}
 
           <div className="topnav-sys" ref={sysMenuRef}>
             <button
@@ -784,23 +846,8 @@ export default function AppLayout({ children }) {
             {/* กระดิ่งอยู่ก่อน "ตั้งค่า" — งานของคุณสำคัญกว่าเมนูตั้งค่า และตำแหน่ง
                 ขวาสุดถูก AccountMenu จองไว้แล้ว */}
             <NotificationBell />
-            {/* topnav-settings-link = จุดเกาะให้ CSS ซ่อนเฉพาะตัวนี้บนมือถือ (ตั้งค่า
-                มีอยู่ในแผ่นเมนูแล้ว) โดยไม่พลาดไปซ่อนกระดิ่งซึ่งใช้คลาสเดียวกัน
-                ⚠️ ไอคอนล้วน ไม่มีป้ายชื่อ (มติผู้ใช้ 2026-08-22) — `aria-label` จึงเป็น
-                ชื่อเดียวที่ screen reader อ่านได้ ถอดออกแล้วปุ่มนี้จะไม่มีชื่อเลย
-                ขนาดไอคอน 17 เท่ากระดิ่งที่อยู่ติดกัน · ไม่ต้องเขียน CSS เพิ่ม เพราะ
-                `.topnav-global-action` มี padding เท่ากันสองข้างอยู่แล้ว พอเหลือลูกตัว
-                เดียวมันกลายเป็นจัตุรัสขนาดเดียวกับกระดิ่งเอง */}
-            <Link
-              href="/settings"
-              className={`topnav-global-action topnav-settings-link${isSettingsContext ? ' active' : ''}`}
-              aria-current={isSettingsContext ? 'page' : undefined}
-              aria-label="ตั้งค่าระบบ"
-              title="ตั้งค่าระบบ"
-            >
-              <SettingsIcon size={17} aria-hidden="true" />
-            </Link>
             <AccountMenu
+              settingsActive={isSettingsContext}
               userName={userName}
               userInitials={userInitials}
               roleLabel={teams.length
@@ -815,6 +862,84 @@ export default function AppLayout({ children }) {
             />
           </div>
         </div>
+
+        {/* ── แถบระบบของจอกว้าง (มติผู้ใช้ 2026-08-25) ─────────────────────────
+            ทุกระบบที่คนคนนี้เข้าได้เรียงอยู่ตรงนี้ · กดชื่อระบบ = **กางเมนูของระบบ
+            นั้น ไม่ใช่ย้ายหน้า** ⇒ ดูเมนูระบบอื่นได้โดยไม่หลุดจากงานที่ทำอยู่
+            ⚠️ CSS ซ่อนทั้งแถบเมื่อจอ ≤1200 แล้วกลับไปใช้แฮมเบอร์เกอร์+ลิ้นชัก
+            ⚠️ แถวแรกของดรอปดาวน์คือทางไปหน้าแรกของระบบ — ไม่มีแล้วจะไปหน้านั้น
+            ไม่ได้เลย เพราะปุ่มบนแถบไม่พาไปไหน (ยกเว้นระบบที่เมนูมีหน้านั้นอยู่แล้ว) */}
+        {barGroups.length > 0 && (
+          <nav className="topnav-systems" ref={sysBarRef} aria-label="ระบบทั้งหมด">
+            {barGroups.map((g) => {
+              const SystemIcon = g.icon || LayoutDashboard;
+              const open = openBarSystem === g.system;
+              const systemCount = navCountForSystem(navCounts, g.system);
+              const isActive = g.system === activeSystem || (g.system === 'settings' && isSettingsContext);
+              if (g.disabled) {
+                return (
+                  <span key={g.system} className="topnav-sysbar-btn is-disabled" aria-disabled="true" title={SYSTEM_DISABLED_NOTE}>
+                    {g.label}
+                  </span>
+                );
+              }
+              /* ระบบที่เมนูมีหน้าแรกของตัวเองอยู่แล้ว (เช่น "ภาพรวม") ไม่ต้องมี
+                 แถวพาไปหน้าแรกซ้ำอีกแถว */
+              const hasHomeItem = g.items.some((item) => item.href === g.home);
+              return (
+                <div key={g.system} className={`topnav-sysbar-item${open ? ' open' : ''}`}>
+                  <button
+                    type="button"
+                    className={`topnav-sysbar-btn${isActive ? ' active' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    onClick={() => setOpenBarSystem(open ? null : g.system)}
+                  >
+                    {/* ⚠️ **ไม่มีไอคอนบนแถวนี้** — วัดจริง 2026-08-25: ไอคอน 10 ตัวกิน
+                        รวม ~210px ทำให้แถวตกสองบรรทัดที่จอ 1280 (หัวสูง 126px) · ชื่อระบบ
+                        เป็นคำที่คนอ่านอยู่แล้ว ส่วนไอคอนยังอยู่ครบในดรอปดาวน์ ตัวสลับระบบ
+                        และการ์ดหน้าแรก */}
+                    {g.label}
+                    {systemCount ? <span className="topnav-count">{systemCount > 99 ? '99+' : systemCount}</span> : null}
+                    <ChevronDown size={13} strokeWidth={2.5} aria-hidden="true" className="topnav-sysbar-caret" />
+                  </button>
+                  {open && (
+                    <div className="topnav-sysbar-menu" role="menu" aria-label={`เมนู${g.label}`}>
+                      {!hasHomeItem && (
+                        <Link href={g.home} role="menuitem" className="topnav-sys-item">
+                          <SystemIcon size={15} className="ico" /> ไปที่{g.label}
+                        </Link>
+                      )}
+                      {g.items.map((item) => {
+                        const ItemIcon = item.icon;
+                        const count = navCountFor(navCounts, item.href);
+                        if (item.disabled) {
+                          return (
+                            <span key={item.href} role="menuitem" aria-disabled="true" className="topnav-sys-item is-disabled">
+                              <ItemIcon size={15} className="ico" /> {item.name}
+                            </span>
+                          );
+                        }
+                        return (
+                          <Link
+                            key={item.href}
+                            href={navHrefFor(item, count)}
+                            role="menuitem"
+                            className={`topnav-sys-item ${item.match(pathname) ? 'active' : ''}`}
+                            aria-label={count ? `${item.name} ${count} รายการรอคุณ` : undefined}
+                          >
+                            <ItemIcon size={15} className="ico" /> {item.name}
+                            {count ? <span className="topnav-count">{count > 99 ? '99+' : count}</span> : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        )}
 
       </header>
 
@@ -905,13 +1030,15 @@ export default function AppLayout({ children }) {
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
               {!isBareShell && activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
-              <Link href="/settings" className={`mobile-nav-card${isSettingsContext ? ' active' : ''}`}><SettingsIcon size={20} /><span>ตั้งค่า</span></Link>
             </div>
           </section>
 
           <section className="mobile-nav-section mobile-account-actions">
             <h2>บัญชีและการตั้งค่า</h2>
             <Link href="/account" onClick={() => setMobileMoreOpen(false)}><UserRound size={18} /><span>บัญชีของฉัน</span></Link>
+            {/* ตั้งค่าย้ายมาอยู่กลุ่มนี้พร้อมกับเมนูผู้ใช้ (มติผู้ใช้ 2026-08-25) —
+                เดิมเป็นการ์ดในกลุ่ม "เครื่องมือ" ข้างบน · สองที่นี้ต้องตรงกันเสมอ */}
+            <Link href="/settings" onClick={() => setMobileMoreOpen(false)}><SettingsIcon size={18} /><span>ตั้งค่าระบบ</span></Link>
             <button type="button" onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}<span>{isDark ? 'โหมดสว่าง' : 'โหมดมืด'}</span></button>
             {SUPABASE_CONFIGURED && <button type="button" onClick={() => setShowPwd(true)}><KeyRound size={18} /><span>เปลี่ยนรหัสผ่าน</span></button>}
             {/* คู่กับ AccountMenu — แผ่นเมนูมือถือต้องมีทุกอย่างที่เมนูผู้ใช้มี

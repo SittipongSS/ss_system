@@ -31,6 +31,7 @@ import { postUpdateWithFiles } from "@/lib/master/updatePost";
 import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import useLeadWorkload from "@/lib/sales/useLeadWorkload";
 import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
@@ -92,6 +93,8 @@ export default function LeadsPage() {
   const canLead = useCan("salesplan:lead");
   const canView = useCan("salesplan:view");
   const role = useRole();
+  /* ตัวเลขภาระงานสำหรับกล่องมอบหมาย — hook ยิงเฉพาะตำแหน่งที่มอบหมายได้ */
+  const workload = useLeadWorkload(role);
   const team = useTeam();
   const teams = useTeams();
   // อยู่หลายทีม → เลือกได้ว่าขอบเขต "ทีม" จะรวมทีมไหนบ้าง
@@ -451,8 +454,8 @@ export default function LeadsPage() {
      rowActions() ของตัวเองที่คิดซ้ำจาก LEAD_TRANSITIONS + เช็ค role เอง แล้วเพี้ยนจาก
      หน้ารายละเอียดได้เงียบ ๆ (เจอจริง: contact บังคับเหตุผลที่นี่ แต่หน้าโน้นไม่บังคับ) */
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
-    [users, canCreateDeals, team],
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload }),
+    [users, canCreateDeals, team, workload],
   );
   /* "เปิดดีล" ไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction) — ในแถวจึงมี **ช่องของตัวเอง**
      แยกจากปุ่มก้าวถัดไป (มติผู้ใช้ 2026-08-04) ไม่ใช่ซ่อนในเมนู "…" ซึ่งหาไม่เจอ
@@ -601,6 +604,8 @@ export default function LeadsPage() {
           holidays={holidays}
           scopeLabel={scopes.length > 1 ? SCOPE_LABELS[activeScope] : null}
           showOwners={activeScope !== "mine"}
+          // API แนบบริบทการตีกลับมากับแถวแล้ว (ดู attachBounceContext)
+          withBounceContext
           onPickStatus={(status) => setStatusFilter([status])}
           onPickOwner={(assigneeId) => setAssigneeFilter([assigneeId])}
         />
@@ -699,9 +704,28 @@ export default function LeadsPage() {
                     <td>
                       {lead.team ? `${TEAM_LABELS[lead.team] || lead.team}` : NA}
                       {assigneeNameOf(lead) && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>{assigneeNameOf(lead)}</span>}
+                      {/* ⭐ ใบที่ถูกตีกลับไม่มีทีม/ผู้รับ (bounce ล้างทิ้ง) ⇒ ช่องนี้ขึ้น "—" ว่าง
+                          พอดี · เจ้าของ *คนก่อน* คือคำตอบของคำถามเดียวกับคอลัมน์นี้
+                          🪤 เคยวางไว้ใต้ป้ายสถานะ — ช่องนั้นกว้าง 118px ทำให้ชื่อคน + ชื่อทีม
+                          ตัดเป็นสามบรรทัด (วัดจากจอจริง ไม่ได้เดา) */}
+                      {!lead.team && lead.bounce?.previousAssigneeName && (
+                        <span className={styles.bounceWho}>
+                          เคยอยู่กับ {lead.bounce.previousAssigneeName}
+                          {lead.bounce.previousTeam ? ` · ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam}` : ""}
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: "center" }}>
                         {statusBadge(lead.status)}
+                        {/* ⭐ ใบที่ถูกส่งกลับโผล่ในคิวคัดกรอง **เหมือนลีดใหม่ทุกประการ**
+                            (bounce ล้าง team/assignee ทิ้ง) ⇒ ผู้ดูแลคัดเข้าทีมเดิม
+                            มอบคนเดิม แล้ววนรอบใหม่ · เพดาน 2 รอบกันได้แค่รอบที่ 3
+                            ป้ายนี้คือสิ่งเดียวที่ทำให้คนตัดสินใจรู้ว่าเคยลองอะไรมาแล้ว */}
+                        {lead.bounce?.autoRounds > 0 && (
+                          <span className={styles.bounceTag} data-hot={lead.bounce.autoRounds >= 2 || undefined}>
+                            ส่งกลับ รอบที่ {lead.bounce.autoRounds}
+                          </span>
+                        )}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
                       {lead.followUpAt ? (

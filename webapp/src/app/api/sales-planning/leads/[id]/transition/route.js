@@ -4,7 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { can, hasTeam, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
-  meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError, leadLostReasonError,
+  meetingTimesSinceBounce, pickNextMeetingAt, leadFollowUpError, leadLostReasonError, LEAD_LOST_REVISIT_CODES,
   leadBouncePatch, LEAD_BOUNCE_KINDS,
 } from '@/lib/sales/leads';
 import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
@@ -207,6 +207,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        เพราะเป็นกติกาเดิมของ API ที่มีมาก่อนแล้ว ไม่ใช่ของใหม่) */
     if (!body.reason?.trim()) return badRequest('ต้องระบุเหตุผลที่ไม่ไปต่อ');
     patch.disqualifiedCode = body.disqualifiedCode;
+    /* ⭐ วันกลับมาถามใหม่ (mig 0293) — เก็บเฉพาะเหตุผลที่ไม่ใช่แพ้ถาวร
+       ⚠️ เหตุผลอื่นเขียนทับเป็น null เสมอ ไม่ใช่ปล่อยค่าเดิมค้าง — ใบที่เคยปิดว่า
+       "ยังไม่พร้อม" แล้วเปิดใหม่/ปิดใหม่ด้วยเหตุผลอื่น จะเหลือวันของรอบก่อนติดอยู่
+       แล้วรายงาน "ถึงเวลากลับไปถาม" จะกวาดใบที่แพ้จริงมาด้วย */
+    patch.revisitAt = LEAD_LOST_REVISIT_CODES.includes(body.disqualifiedCode) && body.revisitAt
+      ? new Date(body.revisitAt).toISOString()
+      : null;
     patch.disqualifiedReason = body.reason.trim();
     patch.closedAt = now;
     event.reason = body.reason.trim();
@@ -216,6 +223,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⚠️ กติกา "ตีกลับแล้วต้องล้างอะไรบ้าง" อยู่ที่ `leadBouncePatch` ที่เดียว —
        cron ตีกลับอัตโนมัติ (mig 0291) เขียนแถวเองไม่ผ่าน route นี้ (ไม่มี session user)
        สองที่ที่ต้องล้างเจ็ดคอลัมน์ให้ตรงกันเองคือสองที่ที่จะเพี้ยนหากัน */
+    /* ⭐ เก็บ "เคยอยู่กับใคร/ทีมไหน" ลงประวัติ **ก่อน** ล้างแถว — ไม่งั้นไม่มีทางรู้อีกเลย
+       คนคัดกรองรอบใหม่ต้องเห็นว่าเคยส่งไปทีมไหนแล้วไม่เวิร์ก ไม่งั้นส่งซ้ำทางเดิม
+       (คู่กับ cron ตีกลับอัตโนมัติที่เขียนชุดเดียวกัน) */
+    event.team = lead.team || null;
+    event.assigneeId = lead.assigneeId || null;
+    event.assigneeName = lead.assigneeName || null;
     Object.assign(patch, leadBouncePatch(now));
     event.reason = body.reason.trim();
   }

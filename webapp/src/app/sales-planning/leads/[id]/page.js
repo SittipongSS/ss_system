@@ -15,13 +15,17 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_TRANSITION_ACTIONS } from "@/lib/sales/leadLifecycle";
+import useLeadWorkload from "@/lib/sales/useLeadWorkload";
+import { autoBounceCountdown } from "@/lib/sales/leadAutoBounce";
+import { businessDaysWaiting } from "@/lib/sales/handoffQueue";
+import { cachedFetchJson } from "@/lib/apiCache";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -68,6 +72,16 @@ export default function LeadDetailPage() {
   /* ตัวตนผู้ใช้สำหรับตัดสินว่าปุ่มไหนควรโผล่ — ท่าเดียวกับหน้ารายการลีด
      (role/team มาจาก context ส่วน id ต้องถามเพราะ context ไม่ได้เก็บไว้) */
   const role = useRole();
+  /* ตัวเลขภาระงานสำหรับกล่องมอบหมาย — hook ยิงเฉพาะตำแหน่งที่มอบหมายได้ */
+  const workload = useLeadWorkload(role);
+  /* วันหยุด — ใช้นับ "เลยวันติดตามมากี่วันทำการ" บนการ์ดการติดตาม (เส้นเดียวกับที่ SLA ใช้)
+     โหลดพลาด = Set ว่าง ⇒ ตัวเลขพองนิดหน่อย ดีกว่าการ์ดหายทั้งใบ (ท่าเดียวกับหน้าคิว) */
+  const [holidays, setHolidays] = useState(() => new Set());
+  useEffect(() => {
+    cachedFetchJson("/api/holidays")
+      .then((rows) => setHolidays(new Set((Array.isArray(rows) ? rows : []).map((h) => h.date))))
+      .catch(() => {});
+  }, []);
   const team = useTeam();
   const teams = useTeams();
   const canCreateDeals = canCreateDealFromLead(role);
@@ -98,8 +112,8 @@ export default function LeadDetailPage() {
      ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
   const dealOwners = useDealOwners(meId);
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team }),
-    [users, canCreateDeals, team],
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload }),
+    [users, canCreateDeals, team, workload],
   );
 
   const load = useCallback(async () => {
@@ -108,7 +122,10 @@ export default function LeadDetailPage() {
       const res = await fetch(`/api/sales-planning/leads/${id}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
-      setLead(body);
+      /* บริบทการตีกลับ — หน้ารายการได้มาจาก API (แนบให้ทีละหลายใบ) แต่หน้านี้มี
+         ประวัติทั้งก้อนอยู่แล้ว จึงคิดเองตรงนี้ ไม่ต้องให้ API ทำงานซ้ำ
+         กติกาเดียวกันเป๊ะเพราะเรียก `leadBounceHistory` ตัวเดียวกัน */
+      setLead({ ...body, bounce: leadBounceHistory(body?.events || []) });
       setForm({ ...blank, ...body, budget: body.budget ?? "", budgetMax: body.budgetMax ?? "" });
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
@@ -274,6 +291,7 @@ export default function LeadDetailPage() {
             busy={busy}
           />
           <LeadSummary lead={lead} />
+          <LeadFollowUpCard lead={lead} holidays={holidays} />
         </>}>
 
         <DetailCard icon={Contact} eyebrow="Lead information" title="ข้อมูลผู้ติดต่อและความต้องการ">
@@ -359,6 +377,65 @@ export default function LeadDetailPage() {
         )}
     </div>}
   </Workspace>;
+}
+
+/* ── การ์ด "การติดตาม" — นาฬิกาของใบนี้ อ่านจากที่เดียวกับที่ระบบใช้ลงมือ ─────────
+   🔴 ปัญหาที่แก้: กติกาติดตาม/ตีกลับอัตโนมัติทำงานอยู่หลังบ้านครบ แต่คนถือใบเปิดหน้ามา
+   แล้วไม่รู้ว่าเหลือเวลาเท่าไร รู้อีกทีคือใบหลุดจากมือไปแล้ว — บทลงโทษที่มองไม่เห็น
+   ล่วงหน้าไม่ได้เปลี่ยนพฤติกรรมใคร มันแค่สร้างความงุนงง
+
+   ⚠️ ตัวเลขนับถอยหลังมาจาก `autoBounceCountdown` ซึ่งกลับสมการของ `planAutoBounce`
+   ตัวเดียวกับที่ cron ใช้ — คำนวณเองที่นี่เมื่อไร จอกับระบบจะนับคนละวัน */
+function LeadFollowUpCard({ lead, holidays }) {
+  // นาฬิกาเดินเฉพาะขั้น "ติดต่อแล้ว" — ขั้นอื่นมี SLA ของตัวเองอยู่บนแถบคิวแล้ว
+  if (lead.status !== "contacted") return null;
+
+  const state = lead.followUpAt ? leadFollowUpState(lead.followUpAt) : null;
+  const daysLate = lead.followUpAt
+    ? businessDaysWaiting(lead.followUpAt, new Date().toISOString(), holidays || new Set())
+    : null;
+  const left = autoBounceCountdown(daysLate);
+  const touches = (lead.events || []).filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e.kind));
+
+  return <DetailCard icon={CalendarClock} eyebrow="Follow-up" title="การติดตาม">
+    {/* 🔴 ไม่มีวันติดตาม = ไม่มีนาฬิกาจับเลย ทั้งการทวงและการส่งกลับข้ามใบนี้ทั้งคู่
+        (ดู `planAutoBounce`: ไม่มีจุดเริ่ม = ไม่แตะ) ⇒ ต้องพูดออกมาตรง ๆ ไม่ใช่
+        ปล่อยการ์ดว่างซึ่งอ่านได้ว่า "ไม่มีอะไรต้องทำ" */}
+    {!lead.followUpAt ? (
+      <p className={styles.followUpNote}>
+        ใบนี้ยังไม่มีวันติดตาม — ระบบจะไม่ทวงและไม่ส่งกลับคิวคัดกรอง
+        กด “ติดตามต่อ” เพื่อกำหนดวันที่จะกลับไปหาลูกค้า
+      </p>
+    ) : (
+      <>
+        <div className={styles.summaryRow}>
+          <span>นัดติดตามไว้</span>
+          <strong className={styles.followUpValue} data-tone={state}>{fmtDate(lead.followUpAt)}</strong>
+        </div>
+        <div className={styles.summaryRow}>
+          <span>สถานะ</span>
+          <strong className={styles.followUpValue} data-tone={state}>
+            {state === "late" ? `เลยมาแล้ว ${daysLate} วันทำการ` : state === "today" ? "ถึงกำหนดวันนี้" : "ยังไม่ถึงกำหนด"}
+          </strong>
+        </div>
+        {/* บอกว่า "เข้าเกณฑ์แล้ว" ไม่ใช่ "ถูกส่งกลับแล้ว" — cron ทำงานเป็นรอบ
+            ใบยังอยู่ในมือจนกว่ารอบถัดไปจะถึง การเขียนเกินจริงทำให้คนเลิกพยายาม */}
+        <div className={styles.summaryRow}>
+          <span>ส่งกลับอัตโนมัติ</span>
+          <strong className={styles.followUpValue} data-tone={left === 0 ? "late" : left <= 2 ? "today" : undefined}>
+            {left === 0 ? "เข้าเกณฑ์แล้ว รอรอบถัดไปของระบบ" : `อีก ${left} วันทำการ`}
+          </strong>
+        </div>
+      </>
+    )}
+    <div className={styles.summaryRow}><span>ติดต่อไปแล้ว</span><strong>{touches.length ? `${touches.length} ครั้ง` : NA}</strong></div>
+    {/* ⚠️ `fmtDateTime` ไม่ใช่ `fmtDate` — `fmtDate` อ่านตัวอักษรจากสตริง ISO ตรง ๆ
+        (ถูกสำหรับคอลัมน์ที่เป็นวันล้วน) แต่ค่านี้เป็น timestamp ⇒ ช่วงตี 0 ถึง 7 โมง
+        เวลาไทยยังเป็นวันก่อนหน้าในเวลา UTC แล้วจอจะขึ้นวันที่ย้อนหลังไปหนึ่งวัน */}
+    {touches.length > 0 && (
+      <div className={styles.summaryRow}><span>ติดต่อล่าสุด</span><strong>{fmtDateTime(touches[0].createdAt)}</strong></div>
+    )}
+  </DetailCard>;
 }
 
 function LeadSummary({ lead }) {
