@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   branchLabel, composeThaiAddress, hasStructuredParts, normalizeBranchCode,
   normalizePostcode, parseThaiAddress,
-  matchSubdistrict, isBranchCodeValid,
+  matchSubdistrict, isBranchCodeValid, isHeadOfficeBranch, composeEnglishAddress,
 } from './thaiAddress.js';
 import { buildThaiAdminIndex, provincesWithDistricts, resolveAddressParts, subdistrictsOf } from './thaiAdmin.js';
 
@@ -208,4 +208,75 @@ test('เลขสาขาที่เป็น "ชื่อ" สาขา ต
   assert.equal(normalizeBranchCode('สาขาที่ 12'), '00012');
   assert.equal(isBranchCodeValid('12'), true);
   assert.equal(isBranchCodeValid(''), false);
+});
+
+test('ข้อความสาขาที่แปลว่า "สำนักงานใหญ่" ต้องไม่กลายเป็น "สาขา สำนักงานใหญ่"', () => {
+  // เคสจริง: customers.branchCode = 'สำนักงานใหญ่' (คนกรอกเป็นคำ ไม่ใช่ '00000')
+  assert.equal(branchLabel('สำนักงานใหญ่'), 'สำนักงานใหญ่');
+  assert.equal(branchLabel('สนญ.'), 'สำนักงานใหญ่');
+  assert.equal(branchLabel('Head Office'), 'สำนักงานใหญ่');
+  assert.equal(isHeadOfficeBranch('00000'), true);
+  assert.equal(isHeadOfficeBranch(''), true);
+  assert.equal(isHeadOfficeBranch('00001'), false);
+  assert.equal(isHeadOfficeBranch('แจ้งวัฒนะ'), false);
+});
+
+// ── หางซ้ำ ───────────────────────────────────────────────────────────────
+// เคสจริง 14 แถวในทะเบียนลูกค้า / 11 ใบเสนอราคา: คนวางที่อยู่ทั้งก้อนลงช่อง line1
+// (ตอนเพิ่มแถวใหม่ ช่องนั้นคือช่องที่อยู่ช่องเดียวที่เห็น) แล้วเลือกจังหวัด/อำเภอ/ตำบล
+// ⇒ ประกอบออกมาได้ตำบล/อำเภอ/จังหวัด/ไปรษณีย์ สองรอบบนใบกำกับภาษี
+test('line1 ที่มีหางอยู่แล้ว ต้องไม่ถูกต่อหางซ้ำ', () => {
+  const bkk = {
+    line1: '55 ซอยทุ่งมังกร 1 ถนนทุ่งมังกร แขวงฉิมพลี เขตตลิ่งชัน กรุงเทพมหานคร 10170',
+    subdistrict: 'ฉิมพลี', district: 'ตลิ่งชัน', province: 'กรุงเทพมหานคร', provinceCode: '10', postcode: '10170',
+  };
+  assert.equal(composeThaiAddress(bkk), bkk.line1);
+
+  // คำนำหน้าย่อคนละแบบกับที่เราประกอบ ('จ.นครนายก' ↔ 'จังหวัดนครนายก')
+  const upcountry = {
+    line1: '219/8 หมู่ที่ 17 ตำบลพรหมณี อำเภอเมืองนครนายก จ.นครนายก 26000',
+    subdistrict: 'พรหมณี', district: 'เมืองนครนายก', province: 'นครนายก', provinceCode: '26', postcode: '26000',
+  };
+  assert.equal(composeThaiAddress(upcountry), upcountry.line1);
+
+  // ชื่อพ้องของกรุงเทพฯ + ไม่ได้เขียนรหัสไปรษณีย์ไว้
+  const abbrev = {
+    line1: '99 หมู่ 5 ถนนบางนา-ตราด แขวงฉิมพลี เขตตลิ่งชัน กทม.',
+    subdistrict: 'ฉิมพลี', district: 'ตลิ่งชัน', province: 'กรุงเทพมหานคร', provinceCode: '10', postcode: '10170',
+  };
+  assert.equal(composeThaiAddress(abbrev), abbrev.line1);
+});
+
+test('line1 ปกติยังต้องได้หางต่อท้ายเหมือนเดิม — รวมถึงชื่อถนนที่พ้องกับชื่ออำเภอ', () => {
+  assert.equal(
+    composeThaiAddress({
+      line1: '53 ซอยเจริญใจ (เอกมัย 12) ถนนสุขุมวิท 63',
+      subdistrict: 'คลองตันเหนือ', district: 'วัฒนา', province: 'กรุงเทพมหานคร', provinceCode: '10', postcode: '10110',
+    }),
+    '53 ซอยเจริญใจ (เอกมัย 12) ถนนสุขุมวิท 63 แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพมหานคร 10110',
+  );
+  // ⚠️ ด่านกันหางซ้ำต้องไม่กินเคสนี้: line1 มีคำว่า "สาทร" (ชื่อถนน) ซึ่งพ้องกับชื่อเขต
+  // แต่ไม่ได้มีครบทั้งชุดเรียงติดกันที่ท้ายข้อความ ⇒ ยังต้องต่อหางให้
+  assert.equal(
+    composeThaiAddress({
+      line1: '1 อาคารเอ็มไพร์ ชั้น 53 ถนนสาทรใต้',
+      subdistrict: 'ยานนาวา', district: 'สาทร', province: 'กรุงเทพมหานคร', provinceCode: '10', postcode: '10120',
+    }),
+    '1 อาคารเอ็มไพร์ ชั้น 53 ถนนสาทรใต้ แขวงยานนาวา เขตสาทร กรุงเทพมหานคร 10120',
+  );
+});
+
+test('ฝั่งอังกฤษกันหางซ้ำด้วยกติกาเดียวกัน (รับคำต่อท้าย Sub-district/District)', () => {
+  const dup = {
+    line1En: '89/402 Soi Phahon Yothin 54/1, Sai Mai Sub-district, Sai Mai District, Bangkok 10220',
+    subdistrictEn: 'Sai Mai', districtEn: 'Sai Mai', provinceEn: 'Bangkok', postcode: '10220',
+  };
+  assert.equal(composeEnglishAddress(dup), dup.line1En);
+  assert.equal(
+    composeEnglishAddress({
+      line1En: '53 Soi Charoenjai', subdistrictEn: 'Khlong Tan Nuea', districtEn: 'Watthana',
+      provinceEn: 'Bangkok', postcode: '10110',
+    }),
+    '53 Soi Charoenjai, Khlong Tan Nuea, Watthana, Bangkok 10110',
+  );
 });

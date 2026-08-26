@@ -69,10 +69,61 @@ export const HEAD_OFFICE_BRANCH = '00000';
 // ฝั่งจอใช้ตัวนี้ขึ้นคำเตือน โดยไม่บล็อกการบันทึก
 export const isBranchCodeValid = (value) => /^\d{5}$/.test(normalizeBranchCode(value));
 
+// ข้อความที่คนกรอกแทนเลข '00000' — ของจริงในฐานข้อมูลมีลูกค้าที่กรอกช่องสาขาว่า
+// 'สำนักงานใหญ่' ตรง ๆ · normalizeBranchCode เก็บข้อความไว้ตามเดิม (ตั้งใจ ดูเหตุผล
+// ข้างบน) จึงต้องมาแปลความที่ชั้นป้าย ไม่งั้นใบกำกับภาษีขึ้น "สาขา สำนักงานใหญ่"
+const HEAD_OFFICE_ALIASES = /^(สำนักงานใหญ่|สนง\.?ใหญ่|สนญ\.?|head\s*office|hq)$/i;
+
+export function isHeadOfficeBranch(value) {
+  const code = normalizeBranchCode(value);
+  return !code || code === HEAD_OFFICE_BRANCH || HEAD_OFFICE_ALIASES.test(code);
+}
+
 export function branchLabel(branchCode) {
   const code = normalizeBranchCode(branchCode);
-  if (!code || code === HEAD_OFFICE_BRANCH) return 'สำนักงานใหญ่';
+  if (isHeadOfficeBranch(code)) return 'สำนักงานใหญ่';
   return isBranchCodeValid(code) ? `สาขาที่ ${code}` : `สาขา ${code}`;
+}
+
+// ── กันหางซ้ำ ───────────────────────────────────────────────────────────
+// กรุงเทพฯ เขียนกันหลายแบบ (เหมือนที่ parseThaiAddress ต้องรองรับ) — ข้อความที่คน
+// วางมาจึงไม่จำเป็นต้องสะกดตรงกับชื่อในทะเบียนที่เราประกอบ
+const BANGKOK_ALIASES = ['กรุงเทพมหานคร', 'กรุงเทพฯ', 'กรุงเทพ', 'กทม.', 'กทม'];
+
+// คำต่อท้ายระดับที่คนเขียนกันในที่อยู่อังกฤษ (ทะเบียนเก็บชื่อเปล่า ๆ)
+const EN_LEVEL_SUFFIXES = [
+  ['Sub-district', 'Subdistrict', 'Sub District', 'Tambon', 'Khwaeng'],
+  ['District', 'Amphoe', 'Amphur', 'Khet'],
+  ['Province'],
+];
+
+const escapeRegExp = (v) => text(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// ตัวเลือกในวงเล็บต้องเรียงยาว→สั้น ไม่งั้น 'กรุงเทพ' จะชนะก่อน 'กรุงเทพมหานคร'
+// แล้วเหลือ 'มหานคร' ค้างให้ตัวคั่นตัวถัดไปแมตช์ไม่ลง
+const alternation = (words) => [...new Set(words.filter(Boolean))]
+  .sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
+
+/* `line1` ลงท้ายด้วย "หาง" ก้อนเดียวกับที่กำลังจะต่อหรือยัง
+   เทียบแบบยืดหยุ่น: คำนำหน้าไทย (ต./ตำบล/แขวง · อ./อำเภอ/เขต · จ./จังหวัด) มีหรือไม่มีก็ได้
+   · คำต่อท้ายอังกฤษ (Sub-district/District) เช่นกัน · ชื่อพ้องของจังหวัด · รหัสไปรษณีย์มีก็ได้
+   ⭐ ต้องครบ **ทุกระดับที่มีค่า เรียงติดกัน และอยู่ท้ายข้อความ** — เงื่อนไขนี้คือสิ่งที่กัน
+   ไม่ให้ line1 ที่บังเอิญมีชื่อถนนพ้องชื่ออำเภอ ('1 ถนนสาทรใต้' ในเขตสาทร) ถูกตัดหางทิ้ง */
+function tailAlreadyEnds(line1, names, postcode, { prefixes = [], suffixes = [], aliases = {}, gap = '\\s*' } = {}) {
+  const groups = [];
+  names.forEach((name, level) => {
+    const value = clean(name);
+    if (!value) return;
+    const pre = alternation(prefixes[level] || []);
+    const post = alternation(suffixes[level] || []);
+    groups.push([
+      pre ? `(?:${pre})?` : '',
+      `(?:${alternation([value, ...(aliases[level] || [])])})`,
+      post ? `(?:\\s*(?:${post}))?` : '',
+    ].join(''));
+  });
+  if (!groups.length) return false;
+  const zip = postcode ? `(?:${gap}${escapeRegExp(postcode)})?` : '';
+  return new RegExp(`${groups.join(gap)}${zip}\\s*$`).test(clean(line1));
 }
 
 // ── ประกอบข้อความที่อยู่จากฟิลด์ย่อย ────────────────────────────────────
@@ -95,6 +146,14 @@ export function composeThaiAddress(parts = {}) {
 
   if (!line1) return tail;
   if (!tail) return line1;
+  // 🐞 หางซ้ำ: คนวางที่อยู่ **ทั้งก้อน** ลงช่อง line1 (ตอนเพิ่มแถวใหม่ ช่องนั้นคือช่อง
+  // ที่อยู่ช่องเดียวที่เห็น) แล้วค่อยเลือกจังหวัด/อำเภอ/ตำบล ⇒ ได้หางสองรอบบนใบ:
+  //   "… แขวงฉิมพลี เขตตลิ่งชัน กรุงเทพมหานคร 10170 แขวงฉิมพลี เขตตลิ่งชัน กรุงเทพมหานคร 10170"
+  // ⚠️ ด่านเดิมกันแค่ตอน line1 **ว่าง** จึงไม่ครอบเคสนี้เลย
+  if (tailAlreadyEnds(line1, [parts.subdistrict, parts.district, parts.province], postcode, {
+    prefixes: [SUBDISTRICT_PREFIXES, DISTRICT_PREFIXES, PROVINCE_PREFIXES],
+    aliases: { 2: isBangkok(provinceCode) ? BANGKOK_ALIASES : [] },
+  })) return line1;
   return `${line1} ${tail}`;
 }
 
@@ -124,6 +183,12 @@ export function composeEnglishAddress(parts = {}) {
 
   if (!line1) return tail;
   if (!tail) return line1;
+  // หางซ้ำแบบเดียวกับฝั่งไทย (ดู composeThaiAddress) — ข้อความอังกฤษที่คนวางมามัก
+  // เขียนเต็มยศ "…, Sai Mai Sub-district, Sai Mai District, Bangkok 10220"
+  if (tailAlreadyEnds(line1, [parts.subdistrictEn, parts.districtEn, parts.provinceEn], postcode, {
+    suffixes: EN_LEVEL_SUFFIXES,
+    gap: '[,\\s]*',
+  })) return line1;
   return `${line1}, ${tail}`;
 }
 

@@ -79,7 +79,13 @@ function partyGrid(model, L) {
       address: model.customer.address,
       rows: [
         { label: L.t('customerTaxId'), value: model.customer.taxId },
-        // 'สำนักงาน' ของลูกค้าถูกตัดออก (มติผู้ใช้ 2026-08-05) — สาขาอยู่ในที่อยู่อยู่แล้ว
+        /* ⭐ สาขากลับมาอยู่บนเอกสาร — แถวนี้เคยถูกตัดออก (2026-08-05) ด้วยเหตุผลว่า
+           "สาขาอยู่ในที่อยู่อยู่แล้ว" ซึ่งเป็นจริงตอนที่อยู่ยังเป็นข้อความก้อนเดียว
+           วันรุ่งขึ้น (2026-08-06) เลขสาขากลับมาเป็น **ฟิลด์แยกของแถวที่อยู่** และ
+           composeThaiAddress ไม่เคยเอา branchCode ใส่ข้อความ ⇒ ตั้งแต่นั้นใบเสนอราคา/
+           ใบสั่งขายไม่มีสาขาอยู่ที่ไหนเลย ซึ่งทำให้ใบกำกับภาษีเต็มรูปผิดทุกใบที่ออก
+           ให้สาขา · ค่ามาจาก quotationBranchText ตัวเดียว ห้ามต่อสตริงเองที่นี่ */
+        { label: L.t('branchRow'), value: model.customer.branch },
         { label: L.t('shippingAddress'), value: model.customer.shippingAddress || model.customer.address },
         { label: L.t('contact'), value: contact },
       ],
