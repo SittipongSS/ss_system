@@ -895,8 +895,14 @@ export default function AppLayout({ children }) {
                 );
               }
               /* ระบบที่เมนูมีหน้าแรกของตัวเองอยู่แล้ว (เช่น "ภาพรวม") ไม่ต้องมี
-                 แถวพาไปหน้าแรกซ้ำอีกแถว */
-              const hasHomeItem = g.items.some((item) => item.href === g.home);
+                 แถวพาไปหน้าแรกซ้ำอีกแถว
+                 🐞 **ถามด้วย `match` ไม่ใช่เทียบ href** (ผู้ใช้ทัก 2026-08-26) —
+                 บริหารงานขาย landing เป็น `/sa` แต่เมนู "ภาพรวม" มี href `/sa/dashboard`
+                 (match ครอบ `/sa` ไว้แล้ว) ⇒ เทียบสตริงตรง ๆ แล้วไม่เจอ เลยงอกแถว
+                 "ไปที่บริหารงานขาย" ขึ้นมาซ้ำกับ "ภาพรวม" ที่อยู่ใต้มันพอดี
+                 ⚠️ เงื่อนไขนี้ยังต้องมี — ระบบที่ landing ไม่ได้อยู่ในเมนูของตัวเอง
+                 จะไม่มีทางเข้าเลย เพราะปุ่มบนแถบไม่พาไปไหน */
+              const hasHomeItem = g.items.some((item) => item.match(g.home));
               return (
                 <div key={g.system} className={`topnav-sysbar-item${open ? ' open' : ''}`}>
                   <button
