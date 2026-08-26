@@ -17,6 +17,7 @@
     "check:users": "node scripts/check-user-access.mjs",
     "gen:document-fonts": "node scripts/generate-document-fonts.mjs",
     "check:rowcap": "node scripts/check-row-cap.mjs",
+    "check:thaitime": "node scripts/check-thai-time.mjs",
     "check:refs": "node scripts/check-reference-tables.mjs",
     "deploy:status": "node scripts/deploy-status.mjs"
   },

@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
+import { businessDate } from '@/lib/businessDate';
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { planTargetTransfer, nextMonthKey } from '@/lib/usersTransfer';
 
@@ -116,7 +117,7 @@ export async function POST(request, { params }) {
     }
     if (plan.zero.length) {
       const { error } = await supabase.from('sales_targets')
-        .update({ targetAmount: 0, notes: `โอนให้ ${toName} (${now.slice(0, 10)})`, updatedAt: now })
+        .update({ targetAmount: 0, notes: `โอนให้ ${toName} (${businessDate(now)})`, updatedAt: now })
         .in('id', plan.zero);
       if (error) return Response.json({ error: `ล้างเป้าต้นทางไม่สำเร็จ: ${error.message}` }, { status: 500 });
     }
