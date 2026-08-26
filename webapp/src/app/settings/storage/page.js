@@ -336,8 +336,13 @@ export default function StoragePage() {
       >
         {orphans ? (
           <>
+            {/* สามกองต้องบวกกันได้เท่าที่ไล่มา — เดิมบอกแค่ "มีคนอ้าง" กับ "ไม่มีใครอ้าง"
+                แล้วโฟลเดอร์ที่ตั้งใจข้ามหายไปเงียบ ๆ (ของจริง 181 จาก 586) คนอ่านจึง
+                นึกว่าจัดครบทุกตัวแล้ว (ผู้ใช้ทัก 2026-08-26) */}
             <p className={styles.progress}>
-              ไล่ของบนไดรฟ์ {orphans.scanned} รายการ · มีคนอ้างถึง {orphans.referenced} · ไม่มีใครอ้าง {orphans.orphans.length}
+              ไล่ของบนไดรฟ์ {orphans.scanned} รายการ · มีคนอ้างถึง {orphans.referenced}
+              {typeof orphans.keptFolders === "number" ? ` · โฟลเดอร์โครงสร้างและโฟลเดอร์ที่มีของอยู่ ${orphans.keptFolders} (ไม่นับเป็นขยะ)` : ""}
+              {" · ไม่มีใครอ้าง "}{orphans.orphans.length}
               {orphans.orphanBytes ? ` (${(orphans.orphanBytes / 1048576).toFixed(1)} MB)` : ""}
             </p>
             {orphans.orphans.length ? (
