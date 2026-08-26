@@ -147,7 +147,7 @@ function totalsSection(model, L) {
       <div><span>${esc(L.t('vat'))} ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
       <div class="grandTotal"><span>${esc(L.t('grandTotal'))}</span><strong>${money(totals.totalAmount)} ${esc(L.t('currency'))}</strong></div>
     </section>
-    <p class="amountWords"><span>${esc(L.t('amountInWords'))}</span><strong>(${esc(amountInWords(totals.totalAmount, L.language))})</strong></p>`;
+    <p class="amountWords">(${esc(amountInWords(totals.totalAmount, L.language))})</p>`;
 }
 
 // หัวข้อสองบรรทัดของใบไทย ("งวดชำระเงิน / PAYMENT SCHEDULE") — ใบอังกฤษเหลือบรรทัดเดียว
