@@ -1,7 +1,8 @@
--- 0293 - แช่ "เจ้าของยอด"
+-- 0294 - แช่ "เจ้าของยอด"
 --
--- 📌 เดิมชื่อ 0292 และ **รันบน production ไปแล้ว** ก่อนที่ 0292_backfill_due_committed_at
--- ของอีกสายจะ merge เข้ามาชนเลข · เปลี่ยนเป็น 0293 ได้เพราะทุกคำสั่งในไฟล์นี้ idempotent
+-- 📌 **รันบน production ไปแล้ว** (ตอนนั้นชื่อ 0292) · ต้องขยับเลขสองรอบเพราะสายอื่น
+-- merge เข้ามาชนทั้ง 0292 (backfill_due_committed_at) และ 0293 (lead_revisit_at)
+-- เปลี่ยนชื่อได้เพราะทุกคำสั่งในไฟล์นี้ idempotent
 -- (ADD COLUMN IF NOT EXISTS · CREATE OR REPLACE · DROP TRIGGER IF EXISTS · UPDATE ที่
 -- กรอง ownerId IS NULL) — รันซ้ำแล้วไม่มีอะไรเปลี่ยน ลงใบสั่งขายตอนหัวหน้าฝ่ายขายอนุมัติ
 --
