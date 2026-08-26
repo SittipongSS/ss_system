@@ -25,7 +25,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 import { TEAM_LABELS } from "@/lib/permissions";
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -125,7 +125,11 @@ export default function LeadDetailPage() {
       /* บริบทการตีกลับ — หน้ารายการได้มาจาก API (แนบให้ทีละหลายใบ) แต่หน้านี้มี
          ประวัติทั้งก้อนอยู่แล้ว จึงคิดเองตรงนี้ ไม่ต้องให้ API ทำงานซ้ำ
          กติกาเดียวกันเป๊ะเพราะเรียก `leadBounceHistory` ตัวเดียวกัน */
-      setLead({ ...body, bounce: leadBounceHistory(body?.events || []) });
+      setLead({
+        ...body,
+        bounce: leadBounceHistory(body?.events || []),
+        handoff: leadHandoffContext(body?.events || []),
+      });
       setForm({ ...blank, ...body, budget: body.budget ?? "", budgetMax: body.budgetMax ?? "" });
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);

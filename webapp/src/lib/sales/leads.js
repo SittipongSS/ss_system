@@ -284,6 +284,28 @@ export function leadBounceHistory(events = []) {
   };
 }
 
+/** สิ่งที่คนกำลังจะ "มอบหมาย" ต้องรู้ก่อนเลือกคน — สรุปจากประวัติของใบเดียว
+ *
+ *  ⭐ ป้าย "เคยถือใบนี้มาแล้ว" บนแถวคนตอบได้แค่ว่า *ใคร* แต่ไม่ได้ตอบว่า **ทำไมมันถึงกลับมา**
+ *  คนที่กำลังจะมอบใหม่จึงตัดสินใจจากรายชื่อกับตัวเลขภาระงานล้วน ๆ ส่วนที่มา เหตุผล
+ *  และประวัติต้องไปเปิดดูเองอีกหน้า (มติผู้ใช้ 2026-08-26)
+ *
+ *  ⚠️ `events` ต้องเรียงใหม่ไปเก่า (createdAt desc) เหมือนที่ `leadBounceHistory` ใช้
+ *  @param events เหตุการณ์ของลีดใบนั้น
+ *  @returns { screenNote, contacts, meetings } — รวมกับ `leadBounceHistory` เป็นบริบทเต็ม
+ */
+export function leadHandoffContext(events = []) {
+  const rows = events || [];
+  /* ⚠️ เอาเฉพาะข้อความของการคัดกรอง **รอบล่าสุด** — ใบที่ถูกตีกลับแล้วคัดใหม่จะมี
+     event `screen` หลายใบ ข้อความของรอบเก่าคือคำแนะนำที่ล้าไปแล้ว */
+  const screen = rows.find((e) => e?.kind === 'screen') || null;
+  return {
+    screenNote: screen?.reason || null,
+    contacts: rows.filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e?.kind)).length,
+    meetings: rows.filter((e) => e?.kind === 'meeting').length,
+  };
+}
+
 /** สถานะของวันติดตามต่อ — `'late' | 'today' | 'ahead'` · **ที่เดียวสำหรับทุกจอ**
  *
  *  ⚠️ คืน **สถานะ ไม่ใช่สี** — สีเป็นเรื่องของ CSS (`[data-tone]`) · คืนเป็นสีเมื่อไร

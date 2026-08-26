@@ -229,6 +229,10 @@ function normalizeTransition(transition, entity) {
     reason,
     dialogSize,
     actionFrom: transition.actionFrom || null,
+    /* บริบทอ่านอย่างเดียวบนหัวกล่อง — (record) → [{ label, value }]
+       ⚠️ ไม่ใช่ field: ไม่มีค่าให้กรอก ไม่ถูกส่งไป API และไม่ผ่าน validate
+       มีไว้ตอบคำถาม "ใบนี้ผ่านอะไรมา" ตรงจังหวะที่ต้องตัดสินใจ ไม่ใช่ให้ไปเปิดอีกหน้า */
+    context: transition.context || null,
     reasonPolicy: {
       label: "เหตุผล",
       minLength: reason === "required" ? DEFAULT_REASON_MIN : 0,

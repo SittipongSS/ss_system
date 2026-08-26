@@ -383,11 +383,34 @@ test("action ที่ API บังคับเหตุผล ต้องต�
   assert.deepEqual([...LEAD_REASON_REQUIRED].sort(), requiredByApi,
     `API บังคับเหตุผลกับ [${requiredByApi}] แต่ LEAD_REASON_REQUIRED = [${LEAD_REASON_REQUIRED}]`);
 
+  /* ⚠️ ที่ต้องตรงกันคือ **"บังคับ"** สองฝั่ง ไม่ใช่ทั้งสามค่า
+     `optional` เป็นสถานะที่สาม: ฟอร์มเปิดช่องให้ฝากข้อความได้ API เก็บให้ถ้ามี
+     แต่ไม่ตกถ้าไม่มี (ใช้กับ screen/assign ที่ฝากข้อความถึงคนถัดไป)
+     🔴 ผิดฝั่งที่อันตรายจริงคือ **ฟอร์มไม่บังคับ แต่ API บังคับ** ⇒ กดปุ่มแล้วเด้ง 400
+     โดยที่กล่องไม่เคยขอให้กรอกอะไรเลย · เช็คทั้งสองทิศ */
   for (const transition of lifecycle.transitions) {
     if (!LEAD_TRANSITION_ACTIONS.includes(transition.id)) continue;
-    const expected = requiredByApi.includes(transition.id) ? "required" : "none";
-    assert.equal(transition.reason, expected,
-      `${transition.id}: API ${expected === "required" ? "บังคับ" : "ไม่บังคับ"}เหตุผล แต่ lifecycle ว่า "${transition.reason}"`);
+    if (requiredByApi.includes(transition.id)) {
+      assert.equal(transition.reason, "required",
+        `${transition.id}: API บังคับเหตุผล แต่ฟอร์มไม่บังคับ ⇒ กดแล้วเด้ง 400`);
+    } else {
+      assert.notEqual(transition.reason, "required",
+        `${transition.id}: ฟอร์มบังคับเหตุผล แต่ API ไม่เคยอ่าน ⇒ บังคับกรอกของที่ไม่มีใครใช้`);
+    }
+  }
+});
+
+/* ช่องฝากข้อความถึงคนถัดไป ต้องมีทั้งสองจุดของเส้นทางส่งมอบ (มติผู้ใช้ 2026-08-26)
+   🔴 ก่อนหน้านี้ไม่มีสักจุด — ใบเดินผ่านสามมือโดยไม่มีใครฝากอะไรถึงคนถัดไปได้เลย
+   สิ่งที่รอบก่อนติดจึงหายทุกครั้งที่เปลี่ยนมือ */
+test("ส่งมอบลีดต้องฝากข้อความถึงคนรับได้ ทั้งตอนคัดกรองและตอนมอบหมาย", () => {
+  for (const id of ["screen", "assign"]) {
+    const t = lifecycle.transitions.find((entry) => entry.id === id);
+    assert.equal(t.reason, "optional", `${id}: ต้องเปิดช่องให้ฝากข้อความ แต่ไม่บังคับ`);
+    assert.ok(t.reasonPolicy.label, `${id}: ต้องมีป้ายของช่อง`);
+    assert.ok(t.reasonPolicy.helpText, `${id}: ต้องบอกว่าข้อความไปโผล่ที่ไหน`);
+    // ไม่บังคับ = กดยืนยันได้โดยไม่ต้องกรอก
+    assert.equal(t.reasonPolicy.minLength, 0, `${id}: ไม่บังคับต้องไม่มีความยาวขั้นต่ำ`);
   }
 });
 

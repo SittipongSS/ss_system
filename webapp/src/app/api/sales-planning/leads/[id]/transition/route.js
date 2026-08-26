@@ -105,6 +105,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.firstScreenedAt = lead.firstScreenedAt || lead.screenedAt || now;
     patch.screenedAt = now;
     event.team = body.team;
+    /* ⭐ ข้อความฝากถึงทีมที่รับต่อ (ไม่บังคับ) — เก็บในเหตุการณ์ และส่งไปกับการแจ้งเตือน
+       กล่องมอบหมายอ่านกลับมาโชว์เป็นบรรทัด "ผู้คัดกรองฝาก" (ดู attachHandoffContext) */
+    if (body.reason?.trim()) event.reason = body.reason.trim();
   } else if (action === 'assign') {
     // supervisor/admin (superuser) กระจายได้ทุกทีม + senior_ae/ac เฉพาะทีมตัวเอง
     if (!(superuser || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือ Supervisor/แอดมิน');
@@ -121,6 +124,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (!assignee.ok) return badRequest(assignee.error);
     patch.assigneeId = assignee.assigneeId;
     patch.assigneeName = assignee.assigneeName;
+    // ข้อความฝากถึง AE ผู้รับ (ไม่บังคับ) — ไปโผล่ในกล่องแจ้งเตือนของเขาพร้อมลีด
+    if (body.reason?.trim()) event.reason = body.reason.trim();
     patch.assignedAt = now; // จุดเริ่ม SLA ติดต่อกลับ — มอบใหม่นับใหม่ (เจ้าของใหม่)
     // สองคอลัมน์ ไม่ใช่ตัวเดียวรับสองหน้าที่ (mig 0273 — เหตุผลเดียวกับ screen ข้างบน):
     //   firstAssignedAt = มอบครั้งแรกของรอบ → *จุดจบ* ของด่านกระจาย (ไม่ขยับอีกเลยจนกว่า

@@ -11,6 +11,7 @@
 // ⚠️ ห้ามยัด "ฟอร์มหลายส่วน" ลงมาที่นี่ (มติผู้ใช้: modal ฟอร์มหลายส่วนไม่อยู่ในขอบเขต) —
 // ถ้า transition ต้องกรอกเยอะกว่านี้ ให้พาไปหน้า/โมดัลของมันเอง
 
+import { Fragment } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ReasonDialog from "@/components/ui/ReasonDialog";
@@ -150,6 +151,9 @@ export default function TransitionDialog({
      กล่องที่มีหลายปลายทาง (ดู `actionFrom`) เลือก "ไม่ไปต่อ" แล้วปุ่มยังเขียนว่า
      "บันทึกการติดต่อ" = ปิดลีดถาวรใต้ป้ายที่ฟังดูไม่มีพิษภัย */
   const outcome = transition.confirmFrom?.(values, record) || null;
+  /* บรรทัดที่ค่าว่างถูกตัดทิ้งตั้งแต่ที่นี่ — กล่องบริบทที่ขึ้น "—" ครึ่งกล่อง
+     อ่านเหมือนระบบพัง มากกว่าจะอ่านว่า "ใบนี้ยังไม่มีเรื่องพวกนั้น" */
+  const contextRows = (transition.context?.(record) || []).filter((row) => row?.value);
   const outcomeTone = outcome?.tone || reasonPolicy.tone;
 
   // ไม่ขอเหตุผล และไม่มีช่องเพิ่ม → กล่องยืนยันล้วน
@@ -211,6 +215,16 @@ export default function TransitionDialog({
         {reasonPolicy.detail ? (
           <div className={`${styles.detail} ${styles[reasonPolicy.tone] || styles.warning}`}>{reasonPolicy.detail}</div>
         ) : null}
+        {contextRows.length > 0 && (
+          <dl className={styles.context}>
+            {contextRows.map((row) => (
+              <Fragment key={row.label}>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </Fragment>
+            ))}
+          </dl>
+        )}
         {fields.filter((field) => fieldVisible(field, record, values)).map((field) => (
           <label className="form-group" key={field.name}>
             <span>{field.label || field.name}{field.required ? " *" : ""}</span>

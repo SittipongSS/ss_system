@@ -16,7 +16,7 @@
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import { hasTeam, isSuperuser, userTeams, TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import { fmtName } from "@/lib/format";
+import { fmtDate, fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
   LEAD_TRANSITIONS,
@@ -241,6 +241,17 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         slot: "primary",
         from: allowedFrom("screen"),
         to: "screened",
+        /* ⭐ ฝากข้อความถึงทีมที่รับต่อ (มติผู้ใช้ 2026-08-26) — **ไม่บังคับ**
+           ใบส่วนใหญ่ไม่มีอะไรต้องฝาก บังคับกรอกเมื่อไรคนจะพิมพ์ "-" ผ่าน ๆ ไป
+           แล้วช่องนี้จะกลายเป็นขยะที่ทุกคนเรียนรู้ที่จะไม่อ่าน
+           ⚠️ ไปโผล่ในกล่องแจ้งเตือนของ Senior AE และในกล่องมอบหมาย ("ผู้คัดกรองฝาก") */
+        reason: "optional",
+        reasonPolicy: {
+          title: "คัดกรองและส่งทีม",
+          label: "บันทึกถึงทีมที่รับต่อ",
+          placeholder: "เช่น เบอร์เดิมติดต่อไม่ได้ ลองอีเมลจัดซื้อแทน",
+          helpText: "สิ่งที่รอบก่อนติดแล้วรอบนี้ควรทำต่างออกไป — ขึ้นในกล่องแจ้งเตือนของ Senior AE",
+        },
         visible: (lead, user) => isSuperuser(user?.role),
         fields: [
           {
@@ -287,6 +298,34 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
            `inTeamOf` จึงไม่มีวันจริง) ⇒ ปุ่มไม่เคยโผล่ ทั้งที่ handler เปิดให้มาตลอด
            (`superuser || inTeam`) — ทางลัดที่ทำได้แต่ไม่มีใครเห็น · ตอนนี้ตรงกับ API แล้ว */
         visible: (lead, user) => isSuperuser(user?.role) || inTeamOf(user, lead),
+        /* ⭐ บริบทของใบก่อนเลือกคน (มติผู้ใช้ 2026-08-26) — ป้าย "เคยถือใบนี้มาแล้ว"
+           บนแถวคนตอบได้แค่ *ใคร* ไม่ได้ตอบว่า **ทำไมมันถึงกลับมา**
+           ⚠️ บรรทัดที่ไม่มีค่าถูกตัดทิ้งที่ TransitionDialog — ใบปกติที่ไม่เคยถูกตีกลับ
+           จะไม่มีกล่องนี้เลย ไม่ใช่กล่องที่มีแต่ขีด */
+        context: (lead) => [
+          lead?.bounce?.bouncedAt && {
+            label: "ที่มา",
+            value: `${lead.bounce.autoRounds > 0 ? `ส่งกลับอัตโนมัติ รอบที่ ${lead.bounce.autoRounds}` : "ถูกส่งกลับคิวคัดกรอง"} · ${fmtDate(lead.bounce.bouncedAt)}`,
+          },
+          lead?.bounce?.previousAssigneeName && {
+            label: "เคยถือโดย",
+            value: `${lead.bounce.previousAssigneeName}${lead.bounce.previousTeam ? ` (ทีม ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam})` : ""}`,
+          },
+          lead?.bounce?.lastReason && { label: "เหตุที่ส่งกลับ", value: lead.bounce.lastReason },
+          lead?.handoff?.screenNote && { label: "ผู้คัดกรองฝาก", value: `“${lead.handoff.screenNote}”` },
+          lead?.handoff?.contacts > 0 && {
+            label: "ประวัติ",
+            value: `ติดต่อ ${lead.handoff.contacts} ครั้ง · ${lead.handoff.meetings > 0 ? `นัดประชุมแล้ว ${lead.handoff.meetings} ครั้ง` : "ยังไม่เคยนัดประชุม"}`,
+          },
+        ].filter(Boolean),
+        // ⭐ ฝากข้อความถึง AE ผู้รับ — ไม่บังคับ ด้วยเหตุผลเดียวกับตอนคัดกรอง
+        reason: "optional",
+        reasonPolicy: {
+          title: "มอบหมายผู้รับผิดชอบ",
+          label: "บันทึกถึงผู้รับ",
+          placeholder: "เช่น ติดต่อทางอีเมลจัดซื้อ purchasing@… แทนเบอร์เดิม",
+          helpText: "ขึ้นในกล่องแจ้งเตือนของ AE พร้อมลีด — บอกสิ่งที่รอบก่อนติด",
+        },
         fields: [
           {
             name: "assigneeId",
