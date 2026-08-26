@@ -5,6 +5,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { fetchAll, fetchAllResult } from '@/lib/supabaseFetchAll';
 import { businessDate } from '@/lib/businessDate';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
+import { liveDueDate } from '@/lib/requests/dueRound';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +104,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .filter((task) => (seenTask.has(task.id) ? false : seenTask.add(task.id)));
 
   const requests = requestsResult.data || [];
-  const requestDue = (request) => request.committedDueDate || request.requestedDueDate || null;
+  /* 🐞 **เคยอ่าน `committedDueDate` ดิบ ทั้งที่บรรทัดบนโหลดแถวมาให้แล้ว** (ตรวจย้อนหลัง
+     2026-08-26) — `attachReworkRows` ข้างบนมีไว้เพื่อบรรทัดนี้โดยเฉพาะ แต่ตอนนั้น
+     แก้ที่ `lib/salesPlanning/mySchedule.js` อย่างเดียวแล้วคิดว่าจบ · route ตัวนี้
+     ตัดสินช่วงและ "ของค้าง" ด้วยตัวเอง ⇒ ใบที่มีรอบแก้ค้างยังถูกนับว่าเลยกำหนดที่นี่
+     ขณะที่คิวและหน้ารายละเอียดของใบเดียวกันบอกว่า "รอ RD แจ้งวันของรอบแก้"
+     (วัดบน production: SB-26080008 · FD-26080006 — สองคนละคนเห็นขัดกันในจอตัวเอง) */
+  const requestDue = (request) => liveDueDate(request) || request.requestedDueDate || null;
   const inRange = (date) => !!date && date >= from && date <= to;
   const isOverdue = (date) => !!date && date < today;
 
@@ -118,7 +125,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ตอนช่วงที่กางคาบวันในอดีต (มุมมองเดือนคาบเสมอ) */
     overdueTasks: tasks.filter((task) => isOverdue(task.dueDate) && !inRange(task.dueDate)),
     overdueRequests: requests.filter((request) => {
-      const date = request.committedDueDate;  // ยังไม่รับปาก = ไม่มีใครผิดสัญญา ไม่นับว่าค้าง
+      // ⚠️ ยังไม่แจ้งวัน = ไม่มีใครผิดสัญญา ไม่นับว่าค้าง · วันของรอบที่ส่งไปแล้วก็เช่นกัน
+      const date = liveDueDate(request);
       return isOverdue(date) && !inRange(date);
     }),
   });

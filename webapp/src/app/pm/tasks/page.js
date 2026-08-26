@@ -38,6 +38,8 @@ import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
 import Textarea from "@/components/ui/Textarea";
+import { liveDueDate } from "@/lib/requests/dueRound";
+import { REQUEST_OPEN_STATUSES } from "@/lib/requests/statuses";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -495,7 +497,9 @@ export default function TasksPage() {
           ...TASK_BLANK,
           title: `[${req.docNo || "คำร้อง"}] ${sourceText.slice(0, 120)}`,
           note: sourceText,
-          dueDate: req.committedDueDate || req.requestedDueDate || "",
+          // ⚠️ ผ่าน `liveDueDate` — ใบที่มีรอบแก้ค้างถือวันของรอบก่อนซึ่งเป็นอดีต
+          //    เอามาตั้งเป็นกำหนดของงานใหม่แล้วงานเกิดมาก็เลยกำหนดทันที
+          dueDate: liveDueDate(req) || req.requestedDueDate || "",
           dealId: req.dealId || "",
           category: "ประสานงานภายใน",
           important: !!req.urgent,
@@ -877,21 +881,28 @@ export default function TasksPage() {
 
       {/* ── ข้อสอบถามค้างของฝ่าย (role rd) — คิวเดียวกับงาน: ตอบในเธรด ── */}
       {inquiries.length > 0 && (
-        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => q.status === "open").length} รอตอบ</span><Link href="/requests" className="linklike">ดูทั้งหมด</Link></>}>
+        <SaSection icon={<MessageCircleQuestion size={17} />} title="คำร้องจากฝ่ายขาย" subtitle="เรื่องที่ฝ่ายของคุณต้องตอบหรือติดตาม" actions={<><span className="ui-badge" style={{ color: "var(--amber)" }}>{inquiries.filter((q) => REQUEST_OPEN_STATUSES.includes(q.status)).length} รอตอบ</span><Link href="/requests" className="linklike">ดูทั้งหมด</Link></>}>
+          {/* 🐞 **สามช่องนี้เคยเป็นชื่อของตาราง `inquiries` เก่า** (ตรวจย้อนหลัง 2026-08-26)
+              — แหล่งข้อมูลย้ายมาเป็น `dept_requests` ตั้งแต่ mig 0174 แต่บล็อกนี้ไม่ได้
+              ตามไปด้วย ⇒ `q.code` · `q.requesterName` · `q.dueDate` เป็น undefined ทั้งหมด
+              ผลบนจอ: เลขที่ใบหาย · ขึ้น "โดย —" ทุกบรรทัด · บล็อกกำหนดตอบไม่เคยเรนเดอร์เลย
+              ⚠️ ชื่อจริงคือ `docNo` · `requestedByName` · และวันกำหนดส่งต้องผ่าน
+              `liveDueDate` เหมือนทุกจอ (ใบที่มีรอบแก้ค้างต้องไม่โชว์วันของรอบก่อน) */}
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             {inquiries.slice(0, 8).map((q) => {
               const due = requestDueTone(q, todayISO);
+              const dueDate = liveDueDate(q);
               return (
                 <li key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: "var(--fs-7)" }}>
                   <RequestStatusBadge request={q} />
                   {q.urgent && <span className="ui-badge" style={{ color: "var(--red)" }}>ด่วน</span>}
                   <Link href={`/requests/${q.id}`} className="linklike" style={{ fontWeight: "var(--fw-semibold)" }}>
-                    {q.code ? `${q.code} · ` : ""}{q.title}
+                    {q.docNo ? `${q.docNo} · ` : ""}{q.title}
                   </Link>
-                  <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {naText(q.requesterName)}</span>
-                  {q.dueDate && (
+                  <span style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>โดย {naText(q.requestedByName)}</span>
+                  {dueDate && (
                     <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--fs-5)", color: due?.color || "var(--text-3)" }}>
-                      กำหนดตอบ {fmtDate(q.dueDate)}{due ? ` · ${due.label}` : ""}
+                      กำหนดตอบ {fmtDate(dueDate)}{due ? ` · ${due.label}` : ""}
                     </span>
                   )}
                 </li>
