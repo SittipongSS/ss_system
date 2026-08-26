@@ -356,13 +356,6 @@ export default function AppLayout({ children }) {
         { href: '/sa/dashboard', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
-        /* ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
-           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
-           ⭐ `utility: true` = อยู่กลุ่มขวาข้าง "วางเป้า" (มติผู้ใช้ 2026-08-21) — แถบซ้าย
-           เป็น **ลำดับงาน** (ลีด → ดีล → ใบเสนอราคา → ใบสั่งขาย) ส่วนปฏิทินกับวางเป้า
-           เป็นเครื่องมือที่เปิดเมื่อไรก็ได้ ไม่ใช่ขั้นของสายงาน · บนมือถือยังอยู่ในแผ่นเมนูตามเดิม
-           ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้) */
-        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
         // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
         { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
@@ -388,12 +381,23 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
-        /* 🐞 **"วางเป้า" เคยเป็น JSX ฝังมือ ไม่ได้อยู่ในรายการนี้** — พอแถวระบบบนหัว
+        /* ── เครื่องมือ (utility) — ต้องอยู่ **ท้ายรายการและเรียงแบบนี้** ─────────────
+           ⭐ มติผู้ใช้ 2026-08-26: ปฏิทินนัดมาก่อนวางเป้า และ **ลำดับต้องเหมือนกันทั้ง
+           แถวบน · ลิ้นชัก · แถบล่างมือถือ**
+
+           🪤 ลำดับจะตรงกันได้ก็ต่อเมื่อ utility อยู่ท้ายอาเรย์เท่านั้น — ลิ้นชักเรนเดอร์
+           `flowItems` แล้วค่อย `utilityItems` (คั่นด้วย spacer) ส่วนแถวบนกับแถบล่าง
+           ไล่อาเรย์ดิบเรียงเดียว · ถ้า utility ไปแทรกกลางอาเรย์ สองฝั่งจะเรียงไม่ตรงกัน
+           ทันที (ของเดิมปฏิทินนัดอยู่อันดับ 3 แถวบนจึงขึ้นคนละที่กับลิ้นชัก)
+
+           ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
+           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
+           ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้)
+
+           🐞 **"วางเป้า" เคยเป็น JSX ฝังมือ ไม่ได้อยู่ในรายการนี้** — พอแถวระบบบนหัว
            (#1439) มาเป็นตัวเรนเดอร์ตัวที่สามที่ไล่จาก `items` เมนูนี้ก็ **หายไปจาก
-           แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08)
-           ⇒ ย้ายเข้ามาเป็นข้อมูลเหมือนเมนูอื่น ตัวเรนเดอร์ตัวถัดไปจะได้ไม่ตกอีก
-           `utility: true` = อยู่กลุ่มขวาคู่กับปฏิทินนัด (มติผู้ใช้ 2026-08-21) —
-           แถบซ้ายเป็นลำดับงาน ส่วนสองตัวนี้เป็นเครื่องมือที่เปิดเมื่อไรก็ได้ */
+           แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
+        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
       ],
     },
