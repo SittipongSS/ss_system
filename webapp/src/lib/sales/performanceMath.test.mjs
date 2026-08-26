@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   buildMatrix,
+  closedCountOnAxis,
+  indexOfMonth,
+  monthsOfDashboards,
+  rangeWindow,
   closedMonths,
   ytdMonths,
   carryIn,
@@ -341,4 +345,93 @@ test('periodKindOf compares the window against now', () => {
   assert.equal(periodKindOf(windowForPeriod('2026'), now), 'current');
   assert.equal(periodKindOf(windowForPeriod('2025'), now), 'past');
   assert.equal(periodKindOf(windowForPeriod('2027'), now), 'future');
+});
+
+
+/* ── แกนเวลาข้ามปี (รายงานยอดขายตามช่วง) ────────────────────────────── */
+
+const dash = (month, { target = 0, won = 0 } = {}) => ({
+  month,
+  totals: { targetAmount: target, wonValue: won, fullForecast: 0, weightedForecast: 0 },
+  byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target, won, fcTotal: 0, weighted: 0 }],
+  byTeam: [{ team: 'KA', target, won, fcTotal: 0, weighted: 0 }],
+});
+
+test('ไม่ส่งแกนเวลา = ได้ 12 ช่องของปีที่พบ (ผู้เรียกเดิมต้องไม่กระทบ)', () => {
+  const m = buildMatrix([dash('2026-03', { target: 300, won: 200 })]);
+  assert.equal(m.company.target.length, 12);
+  assert.deepEqual(m.months.at(0), '2026-01');
+  assert.deepEqual(m.months.at(-1), '2026-12');
+  assert.equal(m.company.target[2], 300); // มี.ค. = index 2
+  assert.equal(m.company.actual[2], 200);
+});
+
+test('ส่งแกนข้ามปีได้ และค่าลงช่องตามงวดจริง ไม่ใช่ตามเดือนของปี', () => {
+  const months = ['2025-11', '2025-12', '2026-01', '2026-02'];
+  const m = buildMatrix([
+    dash('2025-12', { target: 120, won: 100 }),
+    dash('2026-01', { target: 130, won: 140 }),
+    dash('2026-07', { target: 999, won: 999 }), // นอกแกน — ต้องถูกทิ้ง
+  ], { months });
+  assert.deepEqual(m.months, months);
+  assert.deepEqual(m.company.target, [0, 120, 130, 0]);
+  assert.deepEqual(m.company.actual, [0, 100, 140, 0]);
+  // แถวคน/ทีมใช้แกนเดียวกัน
+  assert.deepEqual(m.people[0].months, months);
+  assert.deepEqual(m.teams[0].target, [0, 120, 130, 0]);
+});
+
+test('monthsOfDashboards เรียงเวลา ไม่ซ้ำ และทิ้งค่าที่ไม่ใช่งวด', () => {
+  assert.deepEqual(
+    monthsOfDashboards([{ month: '2026-02' }, { month: '2025-12' }, { month: '2026-02' }, { month: 'x' }, {}]),
+    ['2025-12', '2026-02'],
+  );
+});
+
+test('ทบยอดรีเซ็ตทุกต้นปีปฏิทิน — ธ.ค. ที่ขาดไม่ทบข้าม ม.ค.', () => {
+  const months = ['2025-11', '2025-12', '2026-01', '2026-02'];
+  const target = [100, 100, 100, 100];
+  const actual = [50, 50, 100, 100]; // ปี 2025 ขาดรวม 100
+  // งวดที่เริ่ม ธ.ค. 2025 (index 1) ยังอยู่ปีเดียวกับ พ.ย. ⇒ ทบ 50 มา
+  assert.equal(carryIn(target, actual, 1, 4, months), 50);
+  // งวดที่เริ่ม ม.ค. 2026 (index 2) = ปีใหม่ ⇒ ทบเป็น 0 ไม่ลากยอดขาดของปีก่อนมา
+  assert.equal(carryIn(target, actual, 2, 4, months), 0);
+  // ก.พ. 2026 ทบเฉพาะที่ขาดใน ม.ค. ปีเดียวกัน (ม.ค. ปิดครบ ⇒ 0)
+  assert.equal(carryIn(target, actual, 3, 4, months), 0);
+  // ไม่ส่งแกน = พฤติกรรมเดิม (สะสมตั้งแต่ช่องแรก)
+  assert.equal(carryIn(target, actual, 2, 4), 100);
+});
+
+test('windowStat บนแกนข้ามปีใช้ทบที่รีเซ็ตแล้ว', () => {
+  const months = ['2025-11', '2025-12', '2026-01'];
+  const row = { months, target: [100, 100, 100], actual: [50, 50, 0], fcTotal: [0, 0, 0], forecast: [0, 0, 0] };
+  const jan = windowStat(row, { startIdx: 2, endIdx: 2, carryOn: true, closedCount: 3 });
+  assert.equal(jan.carry, 0, 'ยอดขาดของปี 2025 ต้องไม่ตามมา');
+  assert.equal(jan.mustClose, 100);
+  const dec = windowStat(row, { startIdx: 1, endIdx: 1, carryOn: true, closedCount: 3 });
+  assert.equal(dec.carry, 50);
+  assert.equal(dec.mustClose, 150);
+});
+
+test('rangeWindow ตัดช่วงให้อยู่ในแกน และคืน null เมื่อไม่ทับกันเลย', () => {
+  const months = ['2025-11', '2025-12', '2026-01', '2026-02'];
+  assert.deepEqual(rangeWindow(months, { from: '2025-12', to: '2026-01' }), { startIdx: 1, endIdx: 2 });
+  // ขอเกินขอบทั้งสองด้าน = ได้ทั้งแกน ไม่ใช่ error
+  assert.deepEqual(rangeWindow(months, { from: '2020-01', to: '2030-12' }), { startIdx: 0, endIdx: 3 });
+  // เดือนเดียว
+  assert.deepEqual(rangeWindow(months, { from: '2026-02', to: '2026-02' }), { startIdx: 3, endIdx: 3 });
+  // ไม่ทับแกนเลย / ค่าไม่ถูกต้อง
+  assert.equal(rangeWindow(months, { from: '2027-01', to: '2027-12' }), null);
+  assert.equal(rangeWindow(months, { from: '2026-02', to: '2025-11' }), null);
+  assert.equal(rangeWindow([], { from: '2026-01', to: '2026-02' }), null);
+});
+
+test('closedCountOnAxis นับเฉพาะงวดที่จบแล้วบนแกน', () => {
+  const months = ['2025-11', '2025-12', '2026-01', '2026-02'];
+  // ก.พ. 2026 ยังวิ่ง ⇒ ปิดแล้วสามงวด (พ.ย. · ธ.ค. · ม.ค.)
+  assert.equal(closedCountOnAxis(months, { year: 2026, monthIdx: 1 }), 3);
+  assert.equal(closedCountOnAxis(months, { year: 2026, monthIdx: 5 }), 4);
+  assert.equal(closedCountOnAxis(months, { year: 2025, monthIdx: 10 }), 0);
+  assert.equal(indexOfMonth(months, '2026-01'), 2);
+  assert.equal(indexOfMonth(months, '2024-01'), -1);
 });

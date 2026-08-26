@@ -1,0 +1,22 @@
+/* หน้ารายงานยอดขาย — เปลือก/ตาราง/ป้าย ใช้ของกลางทั้งหมด
+   ไฟล์นี้เหลือไว้เฉพาะความกว้างคอลัมน์กับสีตัวเลข ซึ่งเป็นของเฉพาะหน้านี้ */
+
+.toolbarRow { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.toolbarNote { color: var(--text-3); font-size: var(--fs-5); }
+
+/* ความกว้างขั้นต่ำของคอลัมน์ — ตัวเลขเงินต้องไม่ตัดบรรทัดกลางจำนวน */
+.colPeriod { min-width: 120px; }
+.colMoney { min-width: 140px; }
+.colMoneySm { min-width: 120px; }
+.colPct { min-width: 96px; }
+.colSource { min-width: 150px; }
+.colName { min-width: 200px; }
+.colTeam { min-width: 120px; }
+.colDoc { min-width: 160px; }
+.colCount { min-width: 84px; }
+
+.up { color: var(--green); }
+.down { color: var(--red); }
+
+.footNote { color: var(--text-3); font-size: var(--fs-5); }
+.emptyBox { margin: var(--space-4); }
