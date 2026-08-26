@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
 import { fieldOptions, fieldUsers, fieldVisible, validateTransitionValues, visibleFieldValues } from "../recordLifecycle.js";
-import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
+import { LEAD_TRANSITIONS, MEETING_MODES, TRANSITION_TO_STATUS } from "./leads.js";
 import { TEAMS } from "../permissions.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
@@ -249,10 +249,21 @@ test("บันทึกการติดต่อ: ไทล์ก้าวถ
   assert.equal(gate.actionFrom({ nextStep: "disqualify" }), "disqualify");
   assert.equal(gate.actionFrom({}), "followup", "ไม่เลือกอะไร = ติดตามต่อ (ค่าที่ไม่ทำลายอะไร)");
 
-  // ทั้งสามปลายทางต้องเป็น action ที่สถานะนี้ทำได้จริง — ไทล์ไม่เปิดสิทธิ์ใหม่ให้ใคร
-  const tiles = gate.fields.find((f) => f.name === "nextStep").options.map((o) => o.value);
-  for (const action of tiles) {
-    assert.ok(LEAD_TRANSITIONS.contacted.includes(action), `${action} ต้องทำได้จากสถานะ contacted`);
+  /* 🔴 ไทล์ต้องไม่เสนอปลายทางที่สถานะนั้นทำไม่ได้ — กดแล้วเด้ง 400 คือ UX ที่แย่กว่า
+     ไม่มีตัวเลือกนั้นเลย · ตรวจทุกสถานะที่กล่องนี้โผล่ ไม่ใช่แค่ contacted
+     ⚠️ ค่าไทล์ "ติดตามต่อ" เปลี่ยนตามสถานะ (contact ที่ assigned · followup ที่เหลือ)
+     จึงต้องคลี่ผ่าน `fieldOptions` ไม่ใช่อ่าน `options` ดิบ */
+  for (const [status, gateId] of [["assigned", "contact"], ["contacted", "followup"], ["meeting", "followup"]]) {
+    const row = lead({ status, team: "A", assigneeId: "u-ae" });
+    const t = lifecycle.available(row, AE_A).find((entry) => entry.id === gateId).transition;
+    const field = t.fields.find((f) => f.name === "nextStep");
+    const tiles = fieldOptions(field, row).map((o) => o.value);
+    assert.equal(tiles.length, 3, `${status}: ต้องมีสามปลายทาง`);
+    for (const action of tiles) {
+      assert.ok(LEAD_TRANSITIONS[status].includes(action),
+        `${status}: ไทล์เสนอ ${action} แต่สถานะนี้ทำไม่ได้`);
+    }
+    assert.equal(t.actionFrom({ nextStep: tiles[0] }), tiles[0]);
   }
 });
 
@@ -390,9 +401,19 @@ test("ยังไม่กรอกเหตุผล = validateTransitionValue
      ไม่งั้นลีดนอนอยู่ใน "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง */
   assert.ok(validateTransitionValues(contact.transition, { reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา" }),
     "กรอกเหตุผลแต่ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้");
+  assert.ok(validateTransitionValues(contact.transition, {
+    reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", followUpAt: "2026-09-01",
+  }), "ไม่เลือกก้าวถัดไป ต้องยังกดไม่ได้");
   assert.equal(
     validateTransitionValues(contact.transition, {
-      reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", followUpAt: "2026-09-01",
+      reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", nextStep: "contact", followUpAt: "2026-09-01",
+    }),
+    null,
+  );
+  /* โทรครั้งแรกแล้วได้คิวเลย — ไม่ต้องกรอกวันติดตาม แต่ต้องเลือกรูปแบบนัด */
+  assert.equal(
+    validateTransitionValues(contact.transition, {
+      reason: "โทรแล้ว ได้นัดเข้าไปคุยที่ออฟฟิศ", nextStep: "meeting", meetingMode: MEETING_MODES[0],
     }),
     null,
   );

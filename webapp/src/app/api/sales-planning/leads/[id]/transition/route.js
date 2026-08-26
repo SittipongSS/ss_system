@@ -182,6 +182,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const meetingAt = body.eventAt || now;
     event.meetingMode = body.meetingMode || null;
     event.eventAt = meetingAt;
+    /* ⚠️ นัดได้ = ติดต่อไปแล้วจริง — ต้องเขียน `firstContactAt` ที่นี่ด้วย ตั้งแต่เปิดให้
+       `meeting` ทำได้ตรงจาก `assigned` (ดู LEAD_TRANSITIONS) ไม่งั้นใบที่ข้ามมาทางนี้
+       จะหายจากตัวหารของ SLA "ติดต่อกลับ" ⇒ ตัวเลขดูดีขึ้นเพราะนับใบน้อยลง ไม่ใช่เพราะทำได้ดีขึ้น */
+    patch.firstContactAt = lead.firstContactAt || now;
+    // หมายเหตุของสายที่เพิ่งคุยจบ — กล่องเดียวกันเก็บมาให้แล้ว อย่าทิ้ง
+    if (body.reason?.trim()) event.reason = body.reason.trim();
     // ลีดเดียวมีได้หลายนัดแล้ว — คอลัมน์เก็บ "นัดถัดไป" ไม่ใช่ "นัดที่กดล่าสุด"
     patch.meetingAt = await nextMeetingAt(supabase, lead.id, meetingAt, now);
     /* ⚠️ วันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว — ปล่อยทั้งคู่ไว้ = ลีดใบเดียว

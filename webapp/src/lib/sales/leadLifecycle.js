@@ -145,6 +145,80 @@ const currentHolderNote = (lead, user) => {
  * @param workload  ภาระงานรายคน `{ [userId]: { holding, waitingContact, lateFollowUp } }`
  *                  จาก /api/sales-planning/leads/workload — ไม่ส่งมาก็ใช้ได้ (ขึ้นเลข 0)
  */
+/* ── ชุดช่อง "โทรไปแล้วได้อะไร" — ใช้ร่วมกันทั้งการติดต่อครั้งแรกและครั้งถัดไป ──
+   ⚠️ ต้องเป็นชุดเดียวจริง ๆ ไม่ใช่ก๊อปสองชุด — สองกล่องนี้ถามคำถามเดียวกัน
+   ก๊อปเมื่อไรมันจะเพี้ยนหากันแบบที่ AGENTS.md ยกตัวอย่างไว้ (ฟอร์มสร้าง vs ฟอร์มแก้)
+
+   ⭐ ค่าไทล์ "ติดตามต่อ" **เปลี่ยนตามสถานะ**: ที่ `assigned` คือ `contact` (ครั้งแรก
+   ขยับสถานะ) ที่ `contacted`/`meeting` คือ `followup` (ไม่ขยับ) — ค่าของไทล์คือ
+   action จริงเสมอ `actionFrom` จึงอ่านค่าตรง ๆ ได้โดยไม่ต้องรู้จักสถานะ */
+const NEXT_STEP_FIELDS = [
+  { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
+  {
+    name: "nextStep",
+    label: "ก้าวถัดไป",
+    type: "tiles",
+    required: true,
+    /* ⚠️ ไม่มีค่าตั้งต้น — ทุกการติดต่อต้องมีทางออก และทางออกเป็น *การตัดสินใจ*
+       ตั้งค่าตั้งต้นเมื่อไร คนจะกดผ่านโดยไม่ได้เลือก (form-design-rules §3) */
+    hint: "ทุกการติดต่อต้องมีทางออก — เลือกจากสิ่งที่เพิ่งคุยจบ",
+    options: (lead) => [
+      {
+        value: lead?.status === "assigned" ? "contact" : "followup",
+        label: "ติดตามต่อ",
+        description: "ยังไม่จบ นัดวันกลับไปหาใหม่",
+      },
+      { value: "meeting", label: "นัดประชุม", description: "ได้คิวเจอกันแล้ว" },
+      { value: "disqualify", label: "ไม่ไปต่อ", description: "ปิดลีดนี้ถาวร" },
+    ],
+  },
+  {
+    name: "followUpAt",
+    label: "วันติดตามต่อ",
+    type: "date",
+    required: true,
+    visible: (lead, user, values) => LEAD_FOLLOW_UP_ACTIONS.includes(values?.nextStep),
+    hint: "วันที่รับปากลูกค้าไว้ว่าจะกลับไปหา — วันนี้จะไปโผล่ในคิวของฉัน",
+  },
+  {
+    name: "meetingMode",
+    label: "รูปแบบนัด",
+    type: "tiles",
+    required: true,
+    visible: (lead, user, values) => values?.nextStep === "meeting",
+    options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
+  },
+  {
+    name: "disqualifiedCode",
+    label: "เหตุผลที่ไม่ไปต่อ",
+    type: "tiles",
+    required: true,
+    visible: (lead, user, values) => values?.nextStep === "disqualify",
+    options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+      value: code,
+      label,
+      description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
+    })),
+  },
+  {
+    name: "revisitAt",
+    label: "วันกลับมาถามใหม่",
+    type: "date",
+    visible: (lead, user, values) =>
+      values?.nextStep === "disqualify" && LEAD_LOST_REVISIT_CODES.includes(values?.disqualifiedCode),
+    hint: "เว้นว่างได้ถ้าลูกค้าไม่ได้ให้กำหนด",
+  },
+];
+
+/* ปลายทางจริงมาจากไทล์ ไม่ใช่ id ของปุ่มที่กด · ป้าย+สีของปุ่มยืนยันเดินตามด้วย
+   เพราะปิดลีดถาวรต้องไม่ซ่อนอยู่ใต้ปุ่มสีเดียวกับการโทรตามธรรมดา */
+const nextStepAction = (fallback) => (values) => values?.nextStep || fallback;
+const nextStepConfirm = (fallbackLabel) => (values) => (
+  values?.nextStep === "disqualify" ? { label: "ปิดลีด — ไม่ไปต่อ", tone: "danger" }
+    : values?.nextStep === "meeting" ? { label: "บันทึกนัดประชุม", tone: "primary" }
+      : { label: fallbackLabel, tone: "primary" }
+);
+
 export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null, workload = null } = {}) {
   return defineLifecycle({
     entity: "lead",
@@ -272,18 +346,19 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         visible: (lead, user) => canWorkLead(user, lead),
         // API บังคับหมายเหตุการติดต่อ (เก็บใน event.reason) — ดู LEAD_REASON_REQUIRED
         reason: reasonRule("contact"),
+        dialogSize: "md",
+        /* ⭐ กล่องเดียวกับการติดตามครั้งถัดไป — คำถามเดียวกัน ("โทรไปแล้วได้อะไร")
+           ⚠️ ที่สถานะนี้ ไทล์ "ติดตามต่อ" มีค่าเป็น `contact` (ครั้งแรก ขยับสถานะ)
+           ส่วน "นัดประชุม" ยิง `meeting` ตรง ๆ ได้แล้ว (มติผู้ใช้ 2026-08-26)
+           โทรครั้งแรกแล้วได้คิวเลยเป็นเรื่องปกติ ไม่ต้องบันทึกสองก้าว */
+        actionFrom: nextStepAction("contact"),
+        confirmFrom: nextStepConfirm("บันทึกการติดต่อ"),
         reasonPolicy: {
           title: "บันทึกการติดต่อลูกค้า",
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร ได้ข้อมูลอะไร นัดอะไรต่อ",
         },
-        fields: [
-          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
-          /* ⭐ บังคับกรอก (mig 0289) — ทุกการติดต่อต้องมีทางออก ไม่งั้นลีดนอนอยู่ใน
-             "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง · ด่านจริงอยู่ที่ leadFollowUpError
-             ซึ่ง API เรียกตัวเดียวกัน (form-design-rules §2) */
-          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
-        ],
+        fields: NEXT_STEP_FIELDS,
       },
       {
         /* ⭐ ติดตามครั้งที่ 2 ขึ้นไป — **ไม่ขยับสถานะ** (มติผู้ใช้ 2026-08-25)
@@ -311,72 +386,14 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         dialogSize: "md",
         /* ⚠️ ปลายทางจริงมาจากไทล์ "ก้าวถัดไป" — ทั้งสามเป็น action ที่สถานะนี้ทำได้อยู่แล้ว
            (ดู LEAD_TRANSITIONS.contacted / .meeting) ไม่ได้เปิดสิทธิ์ใหม่ให้ใคร */
-        actionFrom: (values) => values?.nextStep || "followup",
-        /* ป้ายและสีของปุ่มยืนยันเดินตามปลายทางที่เลือก — ปิดลีดถาวรต้องไม่ซ่อนอยู่ใต้
-           ปุ่มสีเดียวกับการโทรตามธรรมดา */
-        confirmFrom: (values) => (
-          values?.nextStep === "disqualify" ? { label: "ปิดลีด — ไม่ไปต่อ", tone: "danger" }
-            : values?.nextStep === "meeting" ? { label: "บันทึกนัดประชุม", tone: "primary" }
-              : { label: "บันทึกการติดต่อ", tone: "primary" }
-        ),
+        actionFrom: nextStepAction("followup"),
+        confirmFrom: nextStepConfirm("บันทึกการติดต่อ"),
         reasonPolicy: {
           title: "บันทึกการติดต่อลูกค้า",
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร คืบหน้าแค่ไหน ตกลงอะไรกันไว้",
         },
-        fields: [
-          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
-          {
-            name: "nextStep",
-            label: "ก้าวถัดไป",
-            type: "tiles",
-            required: true,
-            /* ⚠️ ไม่มีค่าตั้งต้น — ทุกการติดต่อต้องมีทางออก และทางออกเป็น *การตัดสินใจ*
-               ตั้งค่าตั้งต้นเมื่อไร คนจะกดผ่านโดยไม่ได้เลือก (form-design-rules §3) */
-            hint: "ทุกการติดต่อต้องมีทางออก — เลือกจากสิ่งที่เพิ่งคุยจบ",
-            options: [
-              { value: "followup", label: "ติดตามต่อ", description: "ยังไม่จบ นัดวันกลับไปหาใหม่" },
-              { value: "meeting", label: "นัดประชุม", description: "ได้คิวเจอกันแล้ว" },
-              { value: "disqualify", label: "ไม่ไปต่อ", description: "ปิดลีดนี้ถาวร" },
-            ],
-          },
-          {
-            name: "followUpAt",
-            label: "วันติดตามต่อ",
-            type: "date",
-            required: true,
-            visible: (lead, user, values) => values?.nextStep === "followup",
-            hint: "วันที่รับปากลูกค้าไว้ว่าจะกลับไปหา — วันนี้จะไปโผล่ในคิวของฉัน",
-          },
-          {
-            name: "meetingMode",
-            label: "รูปแบบนัด",
-            type: "tiles",
-            required: true,
-            visible: (lead, user, values) => values?.nextStep === "meeting",
-            options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
-          },
-          {
-            name: "disqualifiedCode",
-            label: "เหตุผลที่ไม่ไปต่อ",
-            type: "tiles",
-            required: true,
-            visible: (lead, user, values) => values?.nextStep === "disqualify",
-            options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
-              value: code,
-              label,
-              description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
-            })),
-          },
-          {
-            name: "revisitAt",
-            label: "วันกลับมาถามใหม่",
-            type: "date",
-            visible: (lead, user, values) =>
-              values?.nextStep === "disqualify" && LEAD_LOST_REVISIT_CODES.includes(values?.disqualifiedCode),
-            hint: "เว้นว่างได้ถ้าลูกค้าไม่ได้ให้กำหนด",
-          },
-        ],
+        fields: NEXT_STEP_FIELDS,
       },
       {
         id: "meeting",

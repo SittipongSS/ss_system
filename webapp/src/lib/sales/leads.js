@@ -441,7 +441,11 @@ export function canDeleteLead(user, lead) {
 export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
-  assigned: ['contact', 'reassign', 'bounce', 'disqualify'],
+  /* ⭐ `meeting` ตรงจาก `assigned` ได้ (มติผู้ใช้ 2026-08-26) — โทรครั้งแรกแล้วได้คิว
+     เจอกันเลยเป็นเรื่องปกติ บังคับให้บันทึก "ติดต่อแล้ว" ก่อนคือเพิ่มก้าวที่ไม่มีความหมาย
+     ⚠️ handler ของ `meeting` ต้องเขียน `firstContactAt` ให้ด้วย ไม่งั้นใบที่ข้ามมาทางนี้
+     จะหายจากตัวหาร SLA "ติดต่อกลับ" ทั้งที่ติดต่อไปแล้วจริง (นัดประชุมได้ = คุยกันแล้ว) */
+  assigned: ['contact', 'meeting', 'reassign', 'bounce', 'disqualify'],
   contacted: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   meeting: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
