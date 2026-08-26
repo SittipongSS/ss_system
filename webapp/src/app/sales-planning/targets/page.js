@@ -1,6 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -343,6 +344,12 @@ export default function SalesPlanningTargetsPage() {
       {isSuper && canTarget && (
         <>
           {/* ทางเข้าหน้ากรอกยอดย้อนหลังอยู่ที่นี่ที่เดียว — แท็บผลงานขายเป็นหน้าอ่านผล */}
+          {/* 🐞 หน้ารายงานยอดขาย (#1441) ขึ้น production ไปโดย **ไม่มีทางเข้าเลย** —
+              เข้าได้ทางเดียวคือพิมพ์ URL · หน้านี้คือบ้านของมัน เพราะใช้สิทธิ์เดียวกัน
+              (`salesplan:target`) และอ่านเป้าชุดเดียวกับตารางนี้ */}
+          <Button as={Link} href="/sa/targets/report" variant="ghost" title="เป้าเทียบยอดขายจริงตามช่วงที่เลือก · เจาะถึงใบสั่งขาย">
+            รายงานยอดขาย
+          </Button>
           <Link href="/sa/targets/history" className="btn ghost" title="กรอกยอดขายจริงของช่วงที่ยังไม่ได้ใช้ระบบ (ปีก่อน ๆ และเดือนต้นปีนี้)">
             ยอดขายย้อนหลัง
           </Link>

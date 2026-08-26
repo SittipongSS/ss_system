@@ -356,13 +356,6 @@ export default function AppLayout({ children }) {
         { href: '/sa/dashboard', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/dashboard' || p === '/sa' || p === '/sales-planning' || p === '/sa/my-dashboard' || p === '/sa/kpi' },
         // เฟส C: คิวลีดของ Marketing/ฝ่ายขาย — role marketing เห็นเมนูนี้ตัวเดียว
         { href: '/sa/leads', name: 'ลีด', icon: Inbox, cap: 'salesplan:lead', match: (p) => p.startsWith('/sa/leads') || p.startsWith('/sales-planning/leads') },
-        /* ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
-           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
-           ⭐ `utility: true` = อยู่กลุ่มขวาข้าง "วางเป้า" (มติผู้ใช้ 2026-08-21) — แถบซ้าย
-           เป็น **ลำดับงาน** (ลีด → ดีล → ใบเสนอราคา → ใบสั่งขาย) ส่วนปฏิทินกับวางเป้า
-           เป็นเครื่องมือที่เปิดเมื่อไรก็ได้ ไม่ใช่ขั้นของสายงาน · บนมือถือยังอยู่ในแผ่นเมนูตามเดิม
-           ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้) */
-        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
         // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
         { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
@@ -388,6 +381,24 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+        /* ── เครื่องมือ (utility) — ต้องอยู่ **ท้ายรายการและเรียงแบบนี้** ─────────────
+           ⭐ มติผู้ใช้ 2026-08-26: ปฏิทินนัดมาก่อนวางเป้า และ **ลำดับต้องเหมือนกันทั้ง
+           แถวบน · ลิ้นชัก · แถบล่างมือถือ**
+
+           🪤 ลำดับจะตรงกันได้ก็ต่อเมื่อ utility อยู่ท้ายอาเรย์เท่านั้น — ลิ้นชักเรนเดอร์
+           `flowItems` แล้วค่อย `utilityItems` (คั่นด้วย spacer) ส่วนแถวบนกับแถบล่าง
+           ไล่อาเรย์ดิบเรียงเดียว · ถ้า utility ไปแทรกกลางอาเรย์ สองฝั่งจะเรียงไม่ตรงกัน
+           ทันที (ของเดิมปฏิทินนัดอยู่อันดับ 3 แถวบนจึงขึ้นคนละที่กับลิ้นชัก)
+
+           ปฏิทินนัด — อ่านจาก lead_events (kind='meeting') ที่บันทึกจากคิวลีด
+           cap เดียวกับเมนู "ลีด" เพราะเป็นข้อมูลชุดเดียวกันคนละมุมมอง
+           ⚠️ ไม่ใช่ปฏิทินของ /mgmt (คนละตาราง คนละ cap — AE เปิดตัวนั้นไม่ได้)
+
+           🐞 **"วางเป้า" เคยเป็น JSX ฝังมือ ไม่ได้อยู่ในรายการนี้** — พอแถวระบบบนหัว
+           (#1439) มาเป็นตัวเรนเดอร์ตัวที่สามที่ไล่จาก `items` เมนูนี้ก็ **หายไปจาก
+           แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
+        { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
+        { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
       ],
     },
     {
@@ -973,17 +984,6 @@ export default function AppLayout({ children }) {
           })}
           <span className="topnav-menu-spacer" />
           {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
-          {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
-          {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
-            <Link
-              href="/sa/targets"
-              title="วางเป้า"
-              className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
-            >
-              <Target size={16} className="ico" />
-              <span>วางเป้า</span>
-            </Link>
-          )}
         </nav>}
 
         {/* Main Content Area */}
@@ -1024,12 +1024,12 @@ export default function AppLayout({ children }) {
               เมนูของระบบครบทุกตัวอยู่แล้วตั้งแต่มติ 2026-08-02 (แบ่งหน้าปัดเอา)
               การวางซ้ำในแผ่นนี้คือของเหลือจากกติกาเก่า "4+เพิ่มเติม" ที่ถูกล้มไปแล้ว
               ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
-              (รวม "วางเป้า" ที่เป็นเมนูเสริมของบริหารงานขาย ไม่ได้อยู่บนแถบล่าง) */}
+              (26/08: "วางเป้า" ย้ายเข้ารายการเมนูของระบบแล้ว จึงอยู่บนแถบล่างเหมือนตัวอื่น
+               ไม่ต้องมีการ์ดซ้ำในแผ่นนี้อีก) */}
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
-              {!isBareShell && activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
             </div>
           </section>
 
