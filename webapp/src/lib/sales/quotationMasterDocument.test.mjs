@@ -519,3 +519,36 @@ test('พรีวิว: แถบเครื่องมือทั้งแ
   assert.ok(toolbar.includes('btn-print'), 'ปุ่มพิมพ์อยู่ในแถบเดียวกัน');
   assert.match(html, /\.no-print \{ display: none/, 'CSS ตอนพิมพ์ซ่อนแถบนี้');
 });
+
+// ── จำนวนเงินตัวอักษรใต้ยอดรวมทั้งสิ้น (IS-26080034) ────────────────────────────
+test('V4 doc: มีบรรทัดจำนวนเงินตัวอักษรอยู่ "ใต้" บล็อกยอดรวม ไม่ใช่ในกล่อง 74mm', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('a')]), {});
+  assert.match(html, /<\/section>\s*<p class="amountWords">/, 'อยู่นอก section.totals');
+  assert.match(html, /จำนวนเงินตัวอักษร/);
+  assert.match(html, /\(หนึ่งพันเจ็ดสิบบาทถ้วน\)/, 'อ่านยอดรวมทั้งสิ้นหลัง VAT');
+});
+
+test('V4 doc: ใบอังกฤษได้คำอ่านอังกฤษ ไม่มีคำไทยหลุด', () => {
+  const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('a')]), docLanguage: 'en' }, {});
+  const words = html.match(/<p class="amountWords">.*?<\/p>/s)[0];
+  assert.match(words, /Amount in Words/);
+  assert.match(words, /\(One Thousand Seventy Baht Only\)/);
+  assert.doesNotMatch(words, /[฀-๿]/, 'ห้ามมีอักษรไทยบนใบอังกฤษ');
+});
+
+test('V4 doc: ตัวอักษรต้องอ่านยอดตัวเดียวกับที่พิมพ์ในแถวยอดรวมทั้งสิ้น', () => {
+  const quote = { ...baseQuote([lineOf('a', { lineTotal: 1234.56, unitPrice: 123.456 })]) };
+  const subtotal = 1234.56;
+  const vatAmount = Math.round(subtotal * 0.07 * 100) / 100;
+  const html = buildQuotationMasterHTML({ ...quote, subtotal, vatAmount, totalAmount: subtotal + vatAmount }, {});
+  const grand = html.match(/<div class="grandTotal"><span>[^<]*<\/span><strong>([\d,.]+)/)[1];
+  assert.equal(grand, '1,320.98');
+  assert.match(html, /\(หนึ่งพันสามร้อยยี่สิบบาทเก้าสิบแปดสตางค์\)/);
+});
+
+// ใบสั่งขายใช้เครื่องยนต์เอกสารตัวเดียวกัน — บรรทัดนี้ต้องขึ้นด้วย ไม่ต้องแก้ salesOrderPrint
+test('V4 doc: preview ของใบสั่งขายก็มีบรรทัดจำนวนเงินตัวอักษร', () => {
+  const model = buildQuotationMasterPreview('compact', 'approved', 'v4', 'salesOrder');
+  const html = renderQuotationMasterDocumentHTML(model, { documentLabel: 'ใบสั่งขาย' });
+  assert.match(html, /<p class="amountWords">/);
+});

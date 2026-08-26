@@ -325,6 +325,12 @@ export function documentShellCss(orientation = 'portrait') {
   .afterDiscount { border-top: 1px dashed var(--doc-line); }
   .grandTotal { margin-top: .5mm; color: var(--doc-navy); background: var(--doc-paper); border-top: 1.8px solid var(--doc-navy); border-bottom: 1px solid var(--doc-navy); font-size: 11.5pt !important; }
   .grandTotal span { color: var(--doc-navy); font-weight: 600; }
+  /* จำนวนเงินตัวอักษร — เต็มความกว้างของเนื้อหา ไม่ใช่ในกล่อง .totals 74mm เพราะคำอ่าน
+     ไทย/อังกฤษของยอดหลักล้านยาวกว่ากล่องเท่าตัว ใส่ในกล่องแคบแล้วตกบรรทัดจนอ่านไม่ออก
+     ชิดขวาให้อยู่ใต้ตัวเลขที่มันอ่าน */
+  .amountWords { display: flex; gap: 3mm; justify-content: flex-end; margin: 1.4mm 0 0; padding: 0 1.5mm; font-size: 8.6pt; line-height: 1.65; text-align: right; }
+  .amountWords span { flex: none; color: var(--doc-muted); }
+  .amountWords strong { color: var(--doc-navy); font-weight: 600; overflow-wrap: anywhere; }
   .paymentContent { display: flex; flex: 1; flex-direction: column; min-height: 0; }
   .paymentDetails { break-inside: avoid; }
   .paymentDetails .installmentSection { margin-top: 3.5mm; }
