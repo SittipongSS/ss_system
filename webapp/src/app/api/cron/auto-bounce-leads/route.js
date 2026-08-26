@@ -159,6 +159,14 @@ export async function GET(request) {
       kind: 'auto_bounce',
       fromStatus: lead.status,
       toStatus: 'new',
+      /* ⭐ **ต้องเก็บว่าใบนี้เคยอยู่กับใคร/ทีมไหน** — `leadBouncePatch` ล้าง
+         `assigneeId`/`team` บนแถวทิ้งไปแล้ว ⇒ ถ้าไม่เขียนลงประวัติตรงนี้
+         **ไม่มีทางรู้อีกเลย** ต้องไปไล่ event `assign` ย้อนหลังทีละใบ
+         · คนคัดกรองรอบใหม่ต้องเห็นว่า "เคยส่งไปทีมนี้แล้วไม่เวิร์ก" ไม่งั้นจะส่งซ้ำทางเดิม
+         ⚠️ คอลัมน์พวกนี้มีใน `lead_events` อยู่แล้วตั้งแต่ mig 0091 — ไม่ต้อง migrate */
+      team: lead.team || null,
+      assigneeId: lead.assigneeId || null,
+      assigneeName: lead.assigneeName || null,
       reason,
       createdBy: null,
       createdByName: 'ระบบ',

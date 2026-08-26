@@ -13,8 +13,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LEAD_LOST_REASONS, LEAD_LOST_CODES, LEAD_LOST_LABELS, LEAD_LOST_UNCOUNTABLE,
-  leadLostReasonError, leadLostText, lostReasonRollup,
+  LEAD_LOST_REVISIT_CODES, leadLostReasonError, leadLostText, lostReasonRollup,
 } from './leads.js';
+import { createLeadLifecycle } from './leadLifecycle.js';
+import { fieldVisible, visibleFieldValues } from '../recordLifecycle.js';
+
+const disqualifyFields = () => createLeadLifecycle({})
+  .transitions.find((t) => t.id === 'disqualify').fields;
 
 /* ── รหัสในโค้ด ↔ CHECK ของ DB ─────────────────────────────────────────── */
 
@@ -48,6 +53,62 @@ test('ลีดซ้ำ / ข้อมูลติดต่อผิด = ไ�
   const countable = LEAD_LOST_REASONS.filter((r) => r.countable).map((r) => r.code);
   assert.equal(countable.includes('duplicate'), false);
   assert.equal(countable.includes('timing'), true, 'ยังไม่พร้อม = แพ้ในงวดนี้จริง ต้องนับ');
+});
+
+/* ── ตัวเลือกต้องกางให้เห็น ไม่ใช่ซ่อนในดรอปดาวน์ ─────────────────────────── */
+
+/* 🪤 ดรอปดาวน์ซ่อนว่ามีกี่แบบจนกว่าจะกด แล้วคนจะหยิบตัวแรกที่เห็นแทนตัวที่ตรงจริง
+   ⇒ รายงาน "แพ้เพราะอะไร" เอียงไปทางตัวเลือกบนสุดโดยไม่มีใครรู้
+   กติกาโปรเจกต์: ตัวเลือกตายตัวไม่โต ให้กางให้เห็น (form-design-rules) */
+test('เหตุผลไม่ไปต่อเป็นไทล์ ไม่ใช่ดรอปดาวน์ · ทุกตัวมีคำอธิบาย', () => {
+  const field = disqualifyFields().find((f) => f.name === 'disqualifiedCode');
+  assert.equal(field.type, 'tiles');
+  const opts = field.options;
+  assert.equal(opts.length, LEAD_LOST_CODES.length);
+  for (const o of opts) {
+    assert.ok(o.description, `${o.value} ไม่มีคำอธิบายใต้ป้าย`);
+  }
+  // ใบที่ไม่นับเป็นแพ้ต้องบอกไว้ในคำอธิบาย ไม่ให้คนเลือกโดยไม่รู้ผล
+  const dup = opts.find((o) => o.value === 'duplicate');
+  assert.match(dup.description, /ไม่นับเป็นแพ้/);
+  const budget = opts.find((o) => o.value === 'budget');
+  assert.doesNotMatch(budget.description, /ไม่นับเป็นแพ้/);
+});
+
+/* ── "ยังไม่พร้อม" ไม่ใช่แพ้ถาวร ───────────────────────────────────────── */
+
+test('เฉพาะ timing ที่ถามวันกลับมาถามใหม่', () => {
+  assert.deepEqual(LEAD_LOST_REVISIT_CODES, ['timing']);
+});
+
+/* ⚠️ ช่องเงื่อนไขต้องโผล่เฉพาะตอนเลือกเหตุผลนั้น และ **ไม่บังคับกรอก** —
+   บังคับแล้วคนจะกรอกวันมั่วเพื่อให้ผ่านด่าน ซึ่งแย่กว่าเว้นว่าง */
+test('ช่องวันกลับมาถามโผล่ตามเหตุผล และไม่บังคับ', () => {
+  const field = disqualifyFields().find((f) => f.name === 'revisitAt');
+  assert.equal(field.required, false);
+  assert.equal(field.type, 'date');
+  assert.equal(fieldVisible(field, {}, { disqualifiedCode: 'timing' }), true);
+  assert.equal(fieldVisible(field, {}, { disqualifiedCode: 'budget' }), false);
+  assert.equal(fieldVisible(field, {}, {}), false, 'ยังไม่เลือกเหตุผล = ยังไม่ต้องโผล่');
+});
+
+/* 🪤 เลือก timing → กรอกวัน → เปลี่ยนใจไป budget · ค่าที่ค้างต้องไม่ติดไปกับ payload
+   ไม่งั้นรายงาน "ถึงเวลากลับไปถาม" จะกวาดใบที่แพ้จริงมาด้วย */
+test('ค่าของช่องที่ถูกซ่อนไม่ติดไปกับ payload', () => {
+  const t = { fields: disqualifyFields() };
+  const kept = visibleFieldValues(t, {}, { disqualifiedCode: 'timing', revisitAt: '2026-12-01' });
+  assert.equal(kept.revisitAt, '2026-12-01');
+  const dropped = visibleFieldValues(t, {}, { disqualifiedCode: 'budget', revisitAt: '2026-12-01' });
+  assert.equal('revisitAt' in dropped, false);
+});
+
+/* API ต้องล้างค่าเมื่อเหตุผลไม่ใช่ timing — ไม่ใช่ปล่อยค่าเดิมค้างจากรอบก่อน */
+test('API เขียน revisitAt เป็น null เมื่อเหตุผลอื่น', () => {
+  const src = readFileSync(
+    new URL('../../app/api/sales-planning/leads/[id]/transition/route.js', import.meta.url), 'utf8',
+  );
+  assert.match(src, /LEAD_LOST_REVISIT_CODES\.includes\(body\.disqualifiedCode\) && body\.revisitAt/);
+  assert.match(src, /:\s*null;/);
 });
 
 /* ── ด่าน ────────────────────────────────────────────────────────────────── */

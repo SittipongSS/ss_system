@@ -9,6 +9,8 @@
 // (route เหลือหน้าที่ query + ประกอบข้อความ)
 
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
+import { leadFollowUpState } from '@/lib/sales/leads';
+import { businessDayKey } from '@/lib/datePeriods';
 
 /* จำนวนคนที่เอ่ยชื่อในการ์ดก่อนยุบเป็น "อีก N คน" — การ์ด Chat ที่ยาวเกินจะถูกอ่านผ่าน
    เท่ากับไม่ได้เขียน · 4 คนพอให้เห็นว่ากองอยู่ที่ใครโดยไม่กลายเป็นรายชื่อทั้งฝ่าย */
@@ -44,12 +46,18 @@ function groupBy(leads, keyOf, labelOf, asOf, holidays) {
 }
 
 /**
- * @param leads    แถวจาก sales_leads ที่สถานะยังค้าง (new / screened / assigned)
+ * @param leads    แถวจาก sales_leads ที่สถานะยังค้าง (new / screened / assigned / contacted)
  * @param asOf     เวลาที่ใช้เป็น "วันนี้"
  * @param holidays Set ของวันหยุด (นับวันทำการ)
  * @param nameOf   (assigneeId) → ชื่อปัจจุบัน · ไม่เจอให้คืนค่าว่างแล้วจะถอยไปชื่อในแถว
+ * @param withBounceContext  แถวมี `lead.bounce` แนบมาแล้วหรือยัง (ดู attachBounceContext)
+ *   🪤 **ไม่ใช่ค่าตั้งต้น true โดยเจตนา** — ผู้เรียกที่ไม่ได้แนบบริบทจะได้ `autoBounced`
+ *   เป็น 0 ทุกครั้ง ซึ่งอ่านว่า "ไม่มีใบไหนถูกส่งกลับเลย" ทั้งที่แปลว่า "ไม่ได้ถาม"
+ *   ⇒ ไม่ส่งธงมา = **ไม่มีคีย์นี้เลย** หน้าจอจะได้ไม่วาดตัวเลขที่ไม่มีใครยืนยัน
  */
-export function summarizeLeadQueue(leads = [], { asOf, holidays, nameOf = () => null } = {}) {
+export function summarizeLeadQueue(leads = [], {
+  asOf, holidays, nameOf = () => null, withBounceContext = false,
+} = {}) {
   const of = (status) => leads.filter((lead) => lead.status === status);
   const oldestOf = (rows) => rows.reduce((max, lead) => Math.max(max, ageOf(lead, asOf, holidays)), 0);
 
@@ -57,8 +65,23 @@ export function summarizeLeadQueue(leads = [], { asOf, holidays, nameOf = () => 
   const spread = of('screened');
   const contact = of('assigned');
 
+  /* ── ขั้นติดตาม (mig 0289) ────────────────────────────────────────────────
+     ⭐ ขั้นนี้ไม่เคยอยู่ในสรุปมาก่อน ทั้งที่เป็นขั้นที่ลีดค้างนานที่สุดในระบบจริง
+     (ตรวจ prod 2026-08-25: `contacted` 106 ใบ เทียบกับ `assigned` 9 ใบ)
+     ⚠️ ต่างจากขั้นอื่นตรงที่ **นาฬิกาเป็นวันที่ AE รับปากลูกค้าไว้เอง** ไม่ใช่ SLA กลาง
+     ⇒ "เลยกำหนด" ที่นี่คือเลยวันที่ตัวเองนัด ไม่ใช่เลย 1 วันทำการ */
+  const followUp = of('contacted');
+  const todayKey = businessDayKey(asOf);
+  const stateOf = (lead) => (lead.followUpAt ? leadFollowUpState(lead.followUpAt, todayKey) : null);
+  const dueToday = followUp.filter((l) => stateOf(l) === 'today');
+  const overdue = followUp.filter((l) => stateOf(l) === 'late');
+  /* 🔴 ใบที่ติดต่อแล้วแต่ **ไม่มีวันติดตามเลย** — ของก่อน mig 0289 ที่ไม่มีนาฬิกาจับ
+     ตีกลับอัตโนมัติก็ไม่แตะ (planAutoBounce ข้ามใบที่ไม่มีจุดเริ่ม) ⇒ นอนเงียบตลอดกาล
+     ถ้าไม่นับแยกไว้ หน้าจอจะขึ้น "เลยวันติดตาม 0" ทั้งที่มีใบรออยู่ร้อยกว่าใบ */
+  const noPlan = followUp.filter((l) => !l.followUpAt);
+
   return {
-    total: screen.length + spread.length + contact.length,
+    total: screen.length + spread.length + contact.length + followUp.length,
     screen: { count: screen.length, oldest: oldestOf(screen) },
     spread: {
       count: spread.length,
@@ -77,6 +100,34 @@ export function summarizeLeadQueue(leads = [], { asOf, holidays, nameOf = () => 
         holidays,
       ),
     },
+    followUp: {
+      count: followUp.length,
+      dueToday: dueToday.length,
+      noPlan: noPlan.length,
+      late: {
+        count: overdue.length,
+        oldest: oldestOf(overdue),
+        owners: groupBy(
+          overdue,
+          (l) => l.assigneeId,
+          (l, key) => (key === '__none__' ? 'ยังไม่มีผู้รับผิดชอบ' : nameOf(key) || l.assigneeName || key),
+          asOf,
+          holidays,
+        ),
+      },
+    },
+    /* ใบที่กลับมาอยู่คิวเพราะระบบดึงออกจากมือคนเดิม — ต้องถูกคัดใหม่ด้วยสายตาที่ต่างจากเดิม
+       ไม่ใช่คัดเข้าทีมเดิมมอบคนเดิมแล้ววนอีกรอบ
+       ⚠️ แยกตามขั้นที่ใบไปกองอยู่ ไม่ใช่ยอดรวมก้อนเดียว — คนคัดกรองกับคนกระจายเป็น
+       คนละคน ตัวเลขรวมจึงบอกไม่ได้ว่าใครต้องระวัง */
+    ...(withBounceContext
+      ? {
+        autoBounced: {
+          screen: screen.filter((l) => (l.bounce?.autoRounds || 0) > 0).length,
+          spread: spread.filter((l) => (l.bounce?.autoRounds || 0) > 0).length,
+        },
+      }
+      : null),
   };
 }
 
