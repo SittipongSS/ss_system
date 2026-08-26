@@ -621,6 +621,18 @@ export default function AppLayout({ children }) {
     : isSettingsContext
       ? settingsMenuItems(userContext)
       : (currentGroup?.items || []);
+  /* ⭐ **ป้ายบอกตำแหน่งข้างโลโก้** (มติผู้ใช้ 2026-08-26 · แบบ ข จากม็อกสี่ตัวเลือก) —
+     แถบระบบบอกได้แค่ว่าอยู่ *ระบบ* ไหน ไม่ได้บอกว่าอยู่ *เมนู* ไหนของระบบนั้น
+     ⚠️ ใช้ `match` ของทะเบียนเมนูเอง ไม่ใช่เทียบ href ตรง ๆ — หน้ารายละเอียด
+     (`/sa/deals/DEAL-x`) ต้องยังนับเป็นเมนู "ดีล" · เมนูตั้งค่ามี match ของตัวเอง
+     ที่คิดจาก `activeSettingsHref` (ยาวสุดชนะ) อยู่แล้ว
+     ⚠️ อันสุดท้ายที่แมตช์ชนะ — ทะเบียนเรียงจากกว้างไปแคบ (`/tax` ก่อน `/tax/reports`)
+     เอาอันแรกจะได้ชื่อกว้างเกินจริงในหน้าลูก */
+  const hereItem = [...menuItems].reverse().find((item) => item.match(pathname)) || null;
+  /* ที่ว่างข้างโลโก้ยาว ~900px จึงเป็นที่ของป้ายนี้ · ไม่มีเมนูที่แมตช์ (เช่น /home
+     หรือเปลือกเปล่า) = ไม่ต้องมีป้าย ปล่อยว่างไว้เหมือนเดิม */
+  const hereLabel = isBareShell ? null : hereItem?.name || null;
+
   /* รายการที่วางบนแถบระบบของจอกว้าง = ระบบที่เข้าได้ทั้งหมด + "ตั้งค่า" เมื่อกำลัง
      อยู่ในนั้น (ตั้งค่าไม่ได้อยู่ใน allGroups — ดูเหตุผลที่ `menuItems` ข้างบน)
      ⚠️ ไม่เอา `isBareShell` — หน้าที่ไม่เป็นของระบบไหนต้องได้เปลือกเปล่าเหมือนเดิม */
@@ -708,6 +720,17 @@ export default function AppLayout({ children }) {
             {/* โลโก้ตัวเต็มมี wordmark ในภาพแล้ว (มติผู้ใช้ 2026-07-16) — ไม่ใส่ข้อความซ้ำ */}
             <BrandMark height={34} className="topnav-brand-img" />
           </Link>
+
+          {/* ป้ายบอกตำแหน่ง "ระบบ › เมนู" — **ข้อความ ไม่ใช่ปุ่ม** (การเดินทางเป็นงาน
+              ของแถบระบบข้างล่าง) · CSS ซ่อนเมื่อจอ ≤1200 เพราะชั้นจอนั้นมีตัวสลับระบบ
+              กับลิ้นชักบอกตำแหน่งอยู่แล้ว และที่ว่างบนหัวไม่มีเหลือ */}
+          {hereLabel && (
+            <div className="topnav-here" aria-live="polite">
+              <span className="topnav-here-sys">{systemSubtitle}</span>
+              <span className="topnav-here-sep" aria-hidden="true">›</span>
+              <span className="topnav-here-page">{hereLabel}</span>
+            </div>
+          )}
 
           <div className="topnav-sys" ref={sysMenuRef}>
             <button
