@@ -8,10 +8,15 @@ import { businessDate } from '@/lib/businessDate';
 
 export const todayStr = () => businessDate();
 
+/* 🐞 เดิมตัด `toISOString().slice(0,10)` = **วันแบบ UTC** — `resolveSchedule` ส่ง
+   `project.createdAt` (timestamp จริง) เข้ามา ⇒ โครงการที่สร้างหลังห้าโมงเย็นเวลาไทย
+   จะได้ anchor เป็นเมื่อวาน แล้ว **ทั้งไทม์ไลน์เลื่อนไปหนึ่งวัน**
+   ⚠️ ค่าที่เป็นวันล้วนอยู่แล้ว (startDate / วันที่คำนวณจาก addBusinessDays) ไม่ขยับ —
+   00:00Z อ่านตามเวลาไทยคือ 07:00 ของวันเดียวกัน */
 export const toDateStr = (d) => {
   if (!d) return null;
   const dt = new Date(d);
-  return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+  return isNaN(dt.getTime()) ? null : businessDate(dt);
 };
 
 // บวกวันทำการ (ข้ามเสาร์-อาทิตย์ + วันหยุด); เลื่อนวันเริ่มมาเป็นวันทำการก่อน
