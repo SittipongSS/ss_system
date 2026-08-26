@@ -1295,6 +1295,38 @@ button, select, input, textarea {
   flex-direction: column;
   gap: var(--space-0-5);
 }
+/* ── ป้ายบอกตำแหน่ง "ระบบ › เมนู" ข้างโลโก้ (มติผู้ใช้ 2026-08-26) ─────────
+   แถบระบบบอกได้แค่ว่าอยู่ระบบไหน — ป้ายนี้บอกว่าอยู่เมนูไหนของระบบนั้น
+   ⚠️ วางบนแถวโลโก้เพราะที่ตรงนั้นว่างยาว ~900px อยู่แล้ว ⇒ ได้ข้อมูลโดยไม่กิน
+   ความสูงเพิ่ม และหัวเลิกอ่านเป็นรูปทแยง (ของเทียบสี่แบบอยู่ในม็อก 2026-08-26)
+   ⚠️ เป็น **ข้อความ ไม่ใช่ปุ่ม** — การเดินทางเป็นงานของแถบระบบข้างล่าง */
+.topnav-here {
+  display: none;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-inline-start: var(--space-3-5);
+  border-inline-start: 1px solid color-mix(in srgb, var(--navy-fg) 22%, transparent);
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+}
+.topnav-here-sys {
+  color: color-mix(in srgb, var(--navy-fg) 72%, transparent);
+  white-space: nowrap;
+}
+.topnav-here-sep { color: color-mix(in srgb, var(--navy-fg) 45%, transparent); }
+/* ชื่อเมนูคือของที่มาอ่าน — เข้มกว่าและหนากว่าชื่อระบบที่นำหน้า
+   ⚠️ ตัดด้วยจุดไข่ปลาแทนที่จะดันโลโก้/ปุ่มขวา — ชื่อเมนูยาวสุดในระบบคือ
+   "การยื่นชำระภาษี" ซึ่งพอดี แต่หน้าใหม่ในอนาคตยาวกว่านี้ได้ */
+.topnav-here-page {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--navy-fg);
+  font-weight: var(--fw-semibold);
+}
+
 /* ── แถบระบบบนหัว สำหรับจอกว้าง (มติผู้ใช้ 2026-08-25) ────────────────────
    **แถวที่สองของหัว** — ทุกระบบที่คนคนนี้เข้าได้เรียงอยู่ตรงนี้ · กดชื่อระบบ = กาง
    เมนูของระบบนั้นลงมา **ไม่ย้ายหน้า** ⇒ ดูเมนูระบบอื่นได้โดยไม่หลุดจากงานที่ทำอยู่
@@ -1306,18 +1338,25 @@ button, select, input, textarea {
 .topnav-systems {
   display: none;
   align-items: center;
+  /* ⭐ **กระจายเต็มความกว้าง** (มติผู้ใช้ 2026-08-25 — "ดูไม่ค่อย balance") — เดิม
+     ชิดซ้ายแล้วเหลือช่องว่างท้ายแถว 312px ขณะที่แถวบนมีของอยู่สองมุม หัวเว็บจึง
+     อ่านเป็นรูปทแยง · กระจายแล้วสองแถวจบที่ขอบเดียวกัน
+     ⚠️ ใช้ได้เพราะจำนวนระบบคงที่ต่อคน (ไม่ใช่ลิสต์ที่งอกได้เรื่อย ๆ) และทุกปุ่มเป็น
+     ป้ายคำสั้น ๆ — ระยะห่างที่ไม่เท่ากันเป๊ะจึงไม่อ่านเป็นความผิดพลาด */
+  justify-content: space-between;
   gap: var(--space-0-5);
+  min-height: var(--sysbar-h);
+  padding: var(--space-1) clamp(var(--space-3-5), 2.2vw, var(--space-8));
+  /* พื้นเดียวกับแถบบน (ไม่ผสมดำเพิ่ม) ⇒ หัวเว็บอ่านเป็นก้อนกรมท่าก้อนเดียว
+     มีเส้นบางคั่นให้รู้ว่าเป็นคนละชั้นหน้าที่ */
+  border-top: 1px solid color-mix(in srgb, var(--navy-fg) 12%, transparent);
+  background: var(--navy);
   /* 🪤 **ห้ามใส่ overflow ใด ๆ ที่ไม่ใช่ visible** — เคยใส่ `overflow-x: auto` ให้ไถ
      ตอนระบบเยอะ ผลคือ CSS บังคับให้แกนตั้งกลายเป็น auto ตามไปด้วย แล้ว **ดรอปดาวน์
      ที่กางลงมาถูกตัดหายทั้งใบ** (DOM ยังวัดได้ปกติ จับได้จากภาพหน้าจอเท่านั้น)
-     ⇒ ระบบเยอะเกินหนึ่งบรรทัดก็ให้ **ตกบรรทัด** ไม่ใช่ไถ · ทุกระบบยังเห็นครบ
-     ซึ่งเป็นข้อกำหนดของแถวนี้ (มติผู้ใช้ 2026-08-25) */
+     ⇒ ระบบเยอะเกินหนึ่งบรรทัดก็ให้ตกบรรทัด ไม่ใช่ไถ */
   flex-wrap: wrap;
   row-gap: var(--space-1);
-  min-height: var(--sysbar-h);
-  padding: var(--space-1) var(--space-4);
-  border-top: 1px solid color-mix(in srgb, var(--navy-fg) 12%, transparent);
-  background: color-mix(in srgb, var(--navy) 88%, #000);
 }
 .topnav-sysbar-item { position: relative; flex: none; }
 .topnav-sysbar-btn {
@@ -1678,6 +1717,7 @@ button, select, input, textarea {
 /* ⭐ **จอกว้าง (>1200) ใช้แถบระบบบนหัว** (มติผู้ใช้ 2026-08-25) — ไม่ต้องมี
    แฮมเบอร์เกอร์/ลิ้นชัก และไม่ต้องมีดรอปดาวน์สลับระบบ เพราะทุกระบบอยู่บนแถบแล้ว */
 .topnav-systems { display: flex; }
+.topnav-here { display: flex; }
 .topnav-system .sidenav-hamburger { display: none; }
 .topnav-sys { display: none; }
 /* ⚠️ `display: block` ตอนกลับมาโชว์ ไม่ใช่ค่าเดิม `position: relative` ที่บรรทัด
@@ -1689,6 +1729,8 @@ button, select, input, textarea {
   /* ไม่มีแถวระบบแล้ว จุดยึดการเลื่อนจึงกลับไปนับแค่แถบบน */
   :root { --sysbar-h: 0px; }
   .topnav-systems { display: none; }
+  /* ชั้นจอนี้มีตัวสลับระบบ + ลิ้นชักบอกตำแหน่งอยู่แล้ว และหัวไม่มีที่ว่างเหลือ */
+  .topnav-here { display: none; }
   .topnav-system .sidenav-hamburger { display: inline-flex; }
   .topnav-sys { display: block; }
 }
