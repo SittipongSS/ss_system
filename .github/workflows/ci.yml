@@ -8,9 +8,21 @@ on:
   push:
     branches: [main]
 
+# ── PR ยกเลิกของเก่าได้ · main ห้ามยกเลิกกันเอง ────────────────────────────
+# 🐞 **ของเดิมใช้กลุ่มเดียวกันทั้งสองทาง** (`github.ref` = `refs/heads/main` ทุก push)
+# คู่กับ `cancel-in-progress: true` ⇒ merge สองใบติดกัน **ใบแรกโดนยกเลิกกลางคัน**
+# แล้ว run ของ commit นั้นค้างเป็น `cancelled` ตลอดไป
+#
+# ⚠️ ไม่ใช่แค่ตัวเลขบนหน้า Actions — `deploy-production.yml` อ่าน **ผลของ `ci`
+# ที่ SHA นั้นตรง ๆ** เป็นด่านก่อน deploy (ดูคอมเมนต์ในไฟล์นั้น) ⇒ commit ที่ถูก
+# ยกเลิกจะ deploy ไม่ได้ตลอดกาล ทั้งที่โค้ดไม่ได้พังอะไรเลย · วันที่มีหลายสายทำงาน
+# พร้อมกัน merge ถี่ ๆ จึงทำให้ production ตันเองเงียบ ๆ
+#
+# main = กลุ่มต่อ commit (`github.sha`) ⇒ ทุก commit ได้ผลของตัวเองเสมอ ไม่มีใครไปยกเลิก
+# PR   = กลุ่มต่อ PR + ยกเลิกของเก่าได้ตามเดิม (push รัว ๆ เอาเฉพาะครั้งล่าสุดก็พอ)
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
