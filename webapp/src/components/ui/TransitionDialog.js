@@ -146,6 +146,11 @@ export default function TransitionDialog({
   /* 🪤 ค่าของช่องที่ถูกซ่อนต้องไม่ถูกส่งไป — ผู้ใช้เลือก "ยังไม่พร้อม" กรอกวันกลับมาถาม
      แล้วเปลี่ยนใจไปเลือก "งบไม่ถึง" ค่าที่ค้างอยู่จะติดไปกับ payload โดยไม่มีใครเห็น */
   const submit = () => onConfirm?.(visibleFieldValues(transition, record, values));
+  /* 🔴 ปุ่มยืนยันต้องพูดถึง **สิ่งที่กำลังจะเกิด** ไม่ใช่ชื่อปุ่มที่กดเข้ามา
+     กล่องที่มีหลายปลายทาง (ดู `actionFrom`) เลือก "ไม่ไปต่อ" แล้วปุ่มยังเขียนว่า
+     "บันทึกการติดต่อ" = ปิดลีดถาวรใต้ป้ายที่ฟังดูไม่มีพิษภัย */
+  const outcome = transition.confirmFrom?.(values, record) || null;
+  const outcomeTone = outcome?.tone || reasonPolicy.tone;
 
   // ไม่ขอเหตุผล และไม่มีช่องเพิ่ม → กล่องยืนยันล้วน
   if (reason === "none" && !fields.length) {
@@ -242,11 +247,11 @@ export default function TransitionDialog({
         <div className="action-bar">
           <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
           <Button
-            tone={reasonPolicy.tone === "danger" ? "danger" : reasonPolicy.tone === "warning" ? "warning" : "primary"}
+            tone={outcomeTone === "danger" ? "danger" : outcomeTone === "warning" ? "warning" : "primary"}
             onClick={submit}
             disabled={busy || !!invalidReason}
           >
-            {busy ? "กำลังดำเนินการ…" : reasonPolicy.confirmLabel || label}
+            {busy ? "กำลังดำเนินการ…" : outcome?.label || reasonPolicy.confirmLabel || label}
           </Button>
         </div>
       </div>

@@ -109,7 +109,10 @@ export default function RecordActionMenu({
      ค่าที่ค้างจะติดไปกับ payload) · ถอยไป pending.values ถ้าผู้เรียกเก่าไม่ส่งมา */
   const run = async (values) => {
     if (!pending) return;
-    const ok = await onTransition?.(pending.transition.id, values || pending.values);
+    const picked = values || pending.values;
+    /* ปลายทางจริงอาจไม่ใช่ปุ่มที่กด — ดู `actionFrom` ใน recordLifecycle */
+    const actionId = pending.transition.actionFrom?.(picked) || pending.transition.id;
+    const ok = await onTransition?.(actionId, picked);
     if (ok !== false) setPending(null);
   };
 

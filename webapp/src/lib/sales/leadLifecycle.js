@@ -295,28 +295,87 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
            ⚠️ slot = primary เฉพาะตอนอยู่ `contacted` — ที่ `meeting` ก้าวถัดไปตัวจริง
            คือไปประชุมหรือเปิดดีล การโทรตามระหว่างรอเป็นงานรอง */
         id: "followup",
-        label: "บันทึกการติดตาม",
-        rowLabel: "ติดตาม",
+        label: "บันทึกการติดต่อ",
+        rowLabel: "ติดต่อ",
         rowTone: "teal",
         kind: "submit",
-        /* ⚠️ **ไม่ใช่ primary** — ก้าวถัดไปตัวจริงของ "ติดต่อแล้ว" คือนัดประชุม
-           (มติเดิม 2026-08-04 ที่ย้าย meeting ขึ้นมาเป็น primary) การโทรตามระหว่างรอ
-           เป็นงานที่ทำซ้ำ ไม่ใช่ขั้นถัดไป · `slot` รับได้แค่สตริงจาก RECORD_SLOTS
-           ฟังก์ชันจะ throw ตั้งแต่ตอน defineLifecycle */
-        slot: "secondary",
+        /* ⭐ **ประตูเดียวของ "โทรไปแล้วได้อะไร"** (มติผู้ใช้ 2026-08-26 — กลับคำจากมติ
+           2026-08-04 ที่ยก `meeting` ขึ้นเป็น primary) · ของเดิมยกสามปลายทางขึ้นเป็นปุ่ม
+           คู่กันบนแผง (นัดประชุม / ติดตาม / ไม่ไปต่อ) ⇒ คนต้องตัดสินใจ **ก่อน** เปิดกล่อง
+           ทั้งที่คำตอบเพิ่งเกิดขึ้นในสายที่เพิ่งวาง · ตอนนี้เป็นปุ่มเดียว แล้วถามในกล่อง */
+        slot: "primary",
         from: allowedFrom("followup"),
         to: null,
         visible: (lead, user) => canWorkLead(user, lead),
         reason: reasonRule("followup"),
+        dialogSize: "md",
+        /* ⚠️ ปลายทางจริงมาจากไทล์ "ก้าวถัดไป" — ทั้งสามเป็น action ที่สถานะนี้ทำได้อยู่แล้ว
+           (ดู LEAD_TRANSITIONS.contacted / .meeting) ไม่ได้เปิดสิทธิ์ใหม่ให้ใคร */
+        actionFrom: (values) => values?.nextStep || "followup",
+        /* ป้ายและสีของปุ่มยืนยันเดินตามปลายทางที่เลือก — ปิดลีดถาวรต้องไม่ซ่อนอยู่ใต้
+           ปุ่มสีเดียวกับการโทรตามธรรมดา */
+        confirmFrom: (values) => (
+          values?.nextStep === "disqualify" ? { label: "ปิดลีด — ไม่ไปต่อ", tone: "danger" }
+            : values?.nextStep === "meeting" ? { label: "บันทึกนัดประชุม", tone: "primary" }
+              : { label: "บันทึกการติดต่อ", tone: "primary" }
+        ),
         reasonPolicy: {
-          title: "บันทึกการติดตามลูกค้า",
-          description: "สถานะไม่เปลี่ยน — เป็นการติดต่อครั้งถัดไปในประวัติเดียวกัน",
-          label: "หมายเหตุการติดตาม",
+          title: "บันทึกการติดต่อลูกค้า",
+          label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร คืบหน้าแค่ไหน ตกลงอะไรกันไว้",
         },
         fields: [
           { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
-          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
+          {
+            name: "nextStep",
+            label: "ก้าวถัดไป",
+            type: "tiles",
+            required: true,
+            /* ⚠️ ไม่มีค่าตั้งต้น — ทุกการติดต่อต้องมีทางออก และทางออกเป็น *การตัดสินใจ*
+               ตั้งค่าตั้งต้นเมื่อไร คนจะกดผ่านโดยไม่ได้เลือก (form-design-rules §3) */
+            hint: "ทุกการติดต่อต้องมีทางออก — เลือกจากสิ่งที่เพิ่งคุยจบ",
+            options: [
+              { value: "followup", label: "ติดตามต่อ", description: "ยังไม่จบ นัดวันกลับไปหาใหม่" },
+              { value: "meeting", label: "นัดประชุม", description: "ได้คิวเจอกันแล้ว" },
+              { value: "disqualify", label: "ไม่ไปต่อ", description: "ปิดลีดนี้ถาวร" },
+            ],
+          },
+          {
+            name: "followUpAt",
+            label: "วันติดตามต่อ",
+            type: "date",
+            required: true,
+            visible: (lead, user, values) => values?.nextStep === "followup",
+            hint: "วันที่รับปากลูกค้าไว้ว่าจะกลับไปหา — วันนี้จะไปโผล่ในคิวของฉัน",
+          },
+          {
+            name: "meetingMode",
+            label: "รูปแบบนัด",
+            type: "tiles",
+            required: true,
+            visible: (lead, user, values) => values?.nextStep === "meeting",
+            options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
+          },
+          {
+            name: "disqualifiedCode",
+            label: "เหตุผลที่ไม่ไปต่อ",
+            type: "tiles",
+            required: true,
+            visible: (lead, user, values) => values?.nextStep === "disqualify",
+            options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+              value: code,
+              label,
+              description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
+            })),
+          },
+          {
+            name: "revisitAt",
+            label: "วันกลับมาถามใหม่",
+            type: "date",
+            visible: (lead, user, values) =>
+              values?.nextStep === "disqualify" && LEAD_LOST_REVISIT_CODES.includes(values?.disqualifiedCode),
+            hint: "เว้นว่างได้ถ้าลูกค้าไม่ได้ให้กำหนด",
+          },
         ],
       },
       {
@@ -327,10 +386,11 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         rowLabel: (lead) => (lead?.status === "meeting" ? "นัดเพิ่ม" : "นัดประชุม"),
         rowTone: "teal",
         kind: "submit",
-        /* ก้าวถัดไปตัวจริงของขั้น "ติดต่อแล้ว" — เดิมเป็น secondary เพราะ `create_deal`
-           ยึดช่อง primary ไว้ ทั้งที่การเปิดดีลไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction)
-           ผลคือคนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
-        slot: "primary",
+        /* ⚠️ กลับมาเป็น secondary (มติผู้ใช้ 2026-08-26) — ปุ่มนี้ยังอยู่สำหรับกรณีที่
+           "ได้นัดมาโดยไม่ได้เพิ่งโทร" (ลูกค้าทักมาเอง / นัดต่อจากที่ประชุมก่อน)
+           แต่ทางหลักคือเลือก "นัดประชุม" ในกล่องบันทึกการติดต่อ ซึ่งเก็บหมายเหตุสายนั้นด้วย
+           สองปุ่ม primary พร้อมกันบนแผงเดียว = ไม่มีปุ่มไหนเป็น primary จริง */
+        slot: "secondary",
         from: allowedFrom("meeting"),
         to: "meeting",
         visible: (lead, user) => canWorkLead(user, lead),

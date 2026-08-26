@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
-import { fieldOptions, fieldUsers, validateTransitionValues } from "../recordLifecycle.js";
+import { fieldOptions, fieldUsers, fieldVisible, validateTransitionValues, visibleFieldValues } from "../recordLifecycle.js";
 import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
 import { TEAMS } from "../permissions.js";
 
@@ -227,12 +227,55 @@ test("ป้ายปุ่มบอกได้ว่ากำลังเป�
   assert.match(more.label, /เพิ่ม/);
 });
 
-/* ก้าวถัดไปของขั้น "ติดต่อแล้ว" ต้องเป็น **นัดประชุม** ไม่ใช่เปิดดีล — เดิมเปิดดีล
-   ยึดช่อง primary ไว้ ทำให้คนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
-test("ก้าวถัดไปที่ขั้นติดต่อแล้ว คือนัดประชุม", () => {
+/* ก้าวถัดไปของขั้น "ติดต่อแล้ว" คือ **บันทึกการติดต่อ** (มติผู้ใช้ 2026-08-26)
+   เดิมยกสามปลายทางขึ้นเป็นปุ่มคู่กัน (นัดประชุม / ติดตาม / ไม่ไปต่อ) ⇒ คนต้องตัดสินใจ
+   ก่อนเปิดกล่อง ทั้งที่คำตอบเพิ่งเกิดในสายที่เพิ่งวาง · ตอนนี้ปุ่มเดียว แล้วถามในกล่อง
+   ⚠️ ต้องมี primary **ตัวเดียว** — สองตัวพร้อมกันแปลว่าไม่มีตัวไหนเป็น primary จริง */
+test("ก้าวถัดไปที่ขั้นติดต่อแล้ว คือบันทึกการติดต่อ ปุ่มเดียว", () => {
+  for (const status of ["contacted", "meeting"]) {
+    const row = lead({ status, team: "A", assigneeId: "u-ae" });
+    const primary = lifecycle.available(row, AE_A).filter((entry) => entry.slot === "primary");
+    assert.deepEqual(primary.map((entry) => entry.id), ["followup"], `${status}: primary ต้องเป็น followup ตัวเดียว`);
+  }
+});
+
+/* 🪤 ปลายทางจริงมาจากไทล์ในกล่อง ไม่ใช่ id ของปุ่ม — ถ้า `actionFrom` หาย ทุกอย่าง
+   จะถูกยิงเป็น `followup` หมด ⇒ นัดประชุมกับปิดลีดกลายเป็นการโทรตามธรรมดาเงียบ ๆ */
+test("บันทึกการติดต่อ: ไทล์ก้าวถัดไปเป็นตัวเลือก action จริง", () => {
   const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
-  const primary = lifecycle.available(contacted, AE_A).filter((entry) => entry.slot === "primary");
-  assert.deepEqual(primary.map((entry) => entry.id), ["meeting"]);
+  const gate = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "followup").transition;
+  assert.equal(typeof gate.actionFrom, "function");
+  assert.equal(gate.actionFrom({ nextStep: "meeting" }), "meeting");
+  assert.equal(gate.actionFrom({ nextStep: "disqualify" }), "disqualify");
+  assert.equal(gate.actionFrom({}), "followup", "ไม่เลือกอะไร = ติดตามต่อ (ค่าที่ไม่ทำลายอะไร)");
+
+  // ทั้งสามปลายทางต้องเป็น action ที่สถานะนี้ทำได้จริง — ไทล์ไม่เปิดสิทธิ์ใหม่ให้ใคร
+  const tiles = gate.fields.find((f) => f.name === "nextStep").options.map((o) => o.value);
+  for (const action of tiles) {
+    assert.ok(LEAD_TRANSITIONS.contacted.includes(action), `${action} ต้องทำได้จากสถานะ contacted`);
+  }
+});
+
+/* ช่องของแต่ละปลายทางต้องโผล่เฉพาะเมื่อเลือกปลายทางนั้น และค่าที่ซ่อนต้องไม่ถูกส่งไป */
+test("บันทึกการติดต่อ: ช่องเปลี่ยนตามก้าวถัดไปที่เลือก", () => {
+  const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
+  const gate = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "followup").transition;
+  const shown = (values) => gate.fields.filter((f) => fieldVisible(f, contacted, values)).map((f) => f.name);
+
+  assert.ok(shown({ nextStep: "followup" }).includes("followUpAt"));
+  assert.ok(!shown({ nextStep: "followup" }).includes("meetingMode"));
+  assert.ok(shown({ nextStep: "meeting" }).includes("meetingMode"));
+  assert.ok(!shown({ nextStep: "meeting" }).includes("followUpAt"));
+  assert.ok(shown({ nextStep: "disqualify" }).includes("disqualifiedCode"));
+
+  // วันกลับมาถามใหม่ผูกกับเหตุผล ไม่ใช่แค่ปลายทาง
+  assert.ok(!shown({ nextStep: "disqualify", disqualifiedCode: "budget" }).includes("revisitAt"));
+  assert.ok(shown({ nextStep: "disqualify", disqualifiedCode: "timing" }).includes("revisitAt"));
+
+  // เลือกนัดประชุมแล้ว วันติดตามที่ค้างอยู่ต้องไม่ติดไปกับ payload
+  const kept = visibleFieldValues(gate, contacted, { nextStep: "meeting", meetingMode: "onsite", followUpAt: "2026-09-08" });
+  assert.equal(kept.followUpAt, undefined);
+  assert.equal(kept.meetingMode, "onsite");
 });
 
 /* ปุ่มเปิดดีลต้องผ่านด่านทีมเดียวกับ transition อื่น — ไม่ใช่ใครก็กดได้ */
@@ -367,8 +410,10 @@ test("ติดตามต่อ: ปุ่มโผล่ที่ contacted/m
     assert.ok(validateTransitionValues(followup.transition, {}));
     assert.ok(validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว" }),
       `${status}: ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้`);
+    assert.ok(validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", followUpAt: "2026-09-08" }),
+      `${status}: ไม่เลือกก้าวถัดไป ต้องยังกดไม่ได้`);
     assert.equal(
-      validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", followUpAt: "2026-09-08" }),
+      validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", nextStep: "followup", followUpAt: "2026-09-08" }),
       null,
     );
   }

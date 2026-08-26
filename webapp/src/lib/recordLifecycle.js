@@ -199,6 +199,16 @@ function normalizeTransition(transition, entity) {
     );
   }
 
+  /* ⭐ **หนึ่งปุ่ม หลายปลายทาง** — บางขั้นของงานเป็น "คำถามเดียว" ในหัวคนใช้
+     ("โทรไปแล้วได้อะไร") แต่ระบบเห็นเป็นคนละ transition (ติดตามต่อ / นัดประชุม / ไม่ไปต่อ)
+     ถ้ายกทั้งสามขึ้นเป็นปุ่มคู่กัน คนต้องตัดสินใจ *ก่อน* เปิดกล่อง ทั้งที่คำตอบเพิ่งเกิดในสาย
+     `actionFrom` ให้ transition หนึ่งตัวเป็นประตู แล้วส่งต่อไปยัง action จริงตามที่เลือกในกล่อง
+     ⚠️ ปลายทางต้องเป็น action ที่สถานะนั้นทำได้จริงอยู่แล้ว — ตัวนี้ไม่ได้เปิดสิทธิ์ใหม่
+     ด่านฝั่ง server ยังตรวจทุกใบเหมือนเดิม (LEAD_TRANSITIONS) */
+  if (transition.actionFrom && typeof transition.actionFrom !== "function") {
+    throw new Error(`defineLifecycle(${entity}): transition ${id} actionFrom ต้องเป็นฟังก์ชัน`);
+  }
+
   const dialogSize = transition.dialogSize || "sm";
   if (!DIALOG_SIZES.includes(dialogSize)) {
     throw new Error(`defineLifecycle(${entity}): transition ${id} dialogSize ต้องเป็น ${DIALOG_SIZES.join("|")}`);
@@ -218,6 +228,7 @@ function normalizeTransition(transition, entity) {
     to: transition.to ?? null,
     reason,
     dialogSize,
+    actionFrom: transition.actionFrom || null,
     reasonPolicy: {
       label: "เหตุผล",
       minLength: reason === "required" ? DEFAULT_REASON_MIN : 0,
