@@ -5,7 +5,7 @@
 // การ์ดสรุปเช้านับแค่ 3 ขั้นแรก ⇒ ขั้นที่แย่ที่สุดคือขั้นที่มองไม่เห็น
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeLeadQueue } from './leadDigest.js';
+import { leadQueueNotice, summarizeLeadQueue } from './leadDigest.js';
 import { autoBounceCountdown, AUTO_BOUNCE_AFTER_BUSINESS_DAYS } from './leadAutoBounce.js';
 
 const AS_OF = '2026-08-25T04:00:00Z';   // 25 ส.ค. 2569 เวลาไทยช่วงเช้า
@@ -73,4 +73,31 @@ test('นับถอยหลังตรงกับเกณฑ์ตีก�
   assert.equal(autoBounceCountdown(N + 1), 0);    // เกินแล้ว = เข้าเกณฑ์
   assert.equal(autoBounceCountdown(N + 9), 0);    // ไม่ติดลบ
   assert.equal(autoBounceCountdown(null), null);  // ไม่มีนาฬิกา = ไม่มีตัวเลข
+});
+
+/* ── แถบเตือนบนหัวคิว ────────────────────────────────────────────────────── */
+
+test('แถบเตือน: เลยวันนัดมาก่อน เพราะมีนาฬิกาตีกลับเดินอยู่', () => {
+  const s = summarizeLeadQueue([
+    lead({ id: 'a', followUpAt: '2026-08-20T00:00:00Z' }),   // เลยแล้ว
+    lead({ id: 'b', followUpAt: null }),                       // ไม่มีนาฬิกา
+  ], opts);
+  assert.deepEqual(leadQueueNotice(s), { kind: 'late', count: 1, tone: 'danger' });
+});
+
+test('แถบเตือน: ไม่มีใบเลยกำหนด แต่มีใบที่ไม่มีวันติดตาม ต้องยังเตือน', () => {
+  const s = summarizeLeadQueue([lead({ followUpAt: null }), lead({ id: 'b', followUpAt: null })], opts);
+  assert.deepEqual(leadQueueNotice(s), { kind: 'noPlan', count: 2, tone: 'warning' });
+});
+
+/* 🪤 ไม่มีอะไรต้องบอก = **ไม่มีแถบ** ไม่ใช่แถบเขียวว่า "เรียบร้อย" — พื้นที่หัวคิว
+   แพงเกินกว่าจะใช้บอกว่าไม่มีอะไร (กติกาเดียวกับที่การ์ดสรุปหายไปตอนคิวว่าง) */
+test('แถบเตือน: ทุกใบมีวันติดตามและยังไม่เลย = ไม่มีแถบ', () => {
+  const s = summarizeLeadQueue([
+    lead({ followUpAt: '2026-08-25T00:00:00Z' }),
+    lead({ id: 'b', followUpAt: '2026-08-28T00:00:00Z' }),
+  ], opts);
+  assert.equal(leadQueueNotice(s), null);
+  assert.equal(leadQueueNotice(null), null);
+  assert.equal(leadQueueNotice({}), null);
 });

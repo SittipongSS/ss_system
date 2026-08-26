@@ -145,3 +145,19 @@ export function describeOwners(entries = [], max = DIGEST_MAX_OWNERS) {
   if (rest > 0) shown.push(`อีก ${rest} คน`);
   return shown.join(' · ');
 }
+
+/* ── เรื่องเดียวที่ต้องบอกบนหัวคิว ────────────────────────────────────────────
+   การ์ดข้างล่างบอก "เท่าไร" ครบแล้ว แถบเตือนมีหน้าที่บอก "แล้วจะเกิดอะไรต่อ"
+   ⚠️ **เรื่องเดียว** ไม่ใช่ทุกเรื่องที่เข้าเงื่อนไข — ซ้อนกันหลายแถบคือกลับไปเป็น
+   กำแพงตัวเลขอีกแบบหนึ่ง ซึ่งเป็นสิ่งที่แถบนี้มีไว้แก้
+   ลำดับความด่วน:
+     1. `late`   — เลยวันที่รับปากลูกค้าไว้แล้ว **และมีนาฬิกาเดินอยู่** (ตีกลับอัตโนมัติ)
+     2. `noPlan` — ติดต่อแล้วแต่ไม่มีวันติดตามเลย ⇒ **ไม่มีอะไรทวงให้** นอนได้ตลอดกาล
+   ข้อ 2 ดังน้อยกว่าเพราะไม่มีเส้นตาย แต่ปล่อยไว้แล้วเงียบกว่าข้อ 1 มาก */
+export function leadQueueNotice(summary) {
+  const followUp = summary?.followUp;
+  if (!followUp) return null;
+  if (followUp.late?.count > 0) return { kind: 'late', count: followUp.late.count, tone: 'danger' };
+  if (followUp.noPlan > 0) return { kind: 'noPlan', count: followUp.noPlan, tone: 'warning' };
+  return null;
+}
