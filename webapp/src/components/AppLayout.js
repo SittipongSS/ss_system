@@ -388,6 +388,13 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.requests,
         // (เมนู "ทะเบียนวัสดุ" ย้ายไปกลุ่ม "ฐานข้อมูล" — ดูหมายเหตุที่นั่น)
         { href: '/sa/tasks', name: 'งานของฉัน', icon: ListTodo, caps: ['salesplan:view', 'pm:view'], visible: worksInSalesPipeline, match: (p) => p === '/sa/tasks' || p.startsWith('/sa/tasks/') || p === '/pm/tasks' || p.startsWith('/pm/tasks/') },
+        /* 🐞 **"วางเป้า" เคยเป็น JSX ฝังมือ ไม่ได้อยู่ในรายการนี้** — พอแถวระบบบนหัว
+           (#1439) มาเป็นตัวเรนเดอร์ตัวที่สามที่ไล่จาก `items` เมนูนี้ก็ **หายไปจาก
+           แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08)
+           ⇒ ย้ายเข้ามาเป็นข้อมูลเหมือนเมนูอื่น ตัวเรนเดอร์ตัวถัดไปจะได้ไม่ตกอีก
+           `utility: true` = อยู่กลุ่มขวาคู่กับปฏิทินนัด (มติผู้ใช้ 2026-08-21) —
+           แถบซ้ายเป็นลำดับงาน ส่วนสองตัวนี้เป็นเครื่องมือที่เปิดเมื่อไรก็ได้ */
+        { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
       ],
     },
     {
@@ -973,17 +980,6 @@ export default function AppLayout({ children }) {
           })}
           <span className="topnav-menu-spacer" />
           {utilityItems.map((item) => renderMenuItem(item, 'topnav-utility-item'))}
-          {/* วางเป้าเป็นเมนูของระบบบริหารงานขายระบบเดียว — ไม่โชว์ตอนอยู่ระบบอื่น */}
-          {activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && (
-            <Link
-              href="/sa/targets"
-              title="วางเป้า"
-              className={`topnav-item topnav-utility-item ${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? 'active' : ''}`}
-            >
-              <Target size={16} className="ico" />
-              <span>วางเป้า</span>
-            </Link>
-          )}
         </nav>}
 
         {/* Main Content Area */}
@@ -1024,12 +1020,12 @@ export default function AppLayout({ children }) {
               เมนูของระบบครบทุกตัวอยู่แล้วตั้งแต่มติ 2026-08-02 (แบ่งหน้าปัดเอา)
               การวางซ้ำในแผ่นนี้คือของเหลือจากกติกาเก่า "4+เพิ่มเติม" ที่ถูกล้มไปแล้ว
               ⚠️ แผ่นนี้เหลือหน้าที่เดียว = บัญชี/เครื่องมือ ซึ่งบนมือถือไม่มีทางเข้าอื่น
-              (รวม "วางเป้า" ที่เป็นเมนูเสริมของบริหารงานขาย ไม่ได้อยู่บนแถบล่าง) */}
+              (26/08: "วางเป้า" ย้ายเข้ารายการเมนูของระบบแล้ว จึงอยู่บนแถบล่างเหมือนตัวอื่น
+               ไม่ต้องมีการ์ดซ้ำในแผ่นนี้อีก) */}
           <section className="mobile-nav-section">
             <h2>เครื่องมือ</h2>
             <div className="mobile-nav-grid">
               <Link href="/home" className={`mobile-nav-card${pathname === '/home' ? ' active' : ''}`}><Home size={20} /><span>หน้าหลัก</span></Link>
-              {!isBareShell && activeSystem === 'salesplan' && canUser({ role, extraCaps }, 'salesplan:target') && <Link href="/sa/targets" className={`mobile-nav-card${pathname.startsWith('/sa/targets') || pathname.startsWith('/sales-planning/targets') ? ' active' : ''}`}><Target size={20} /><span>วางเป้า</span></Link>}
             </div>
           </section>
 
