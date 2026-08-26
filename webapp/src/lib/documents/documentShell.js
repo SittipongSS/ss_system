@@ -220,6 +220,20 @@ export function documentShellCss(orientation = 'portrait') {
 
   /* สลับภาษาบนแถบเครื่องมือ — เอกสารสองภาษาอยู่ในไฟล์เดียว ซ่อนฝั่งที่ไม่ได้เลือกด้วย CSS
      จึงสลับได้ทันทีโดยไม่ต้องโหลดใหม่ และตอนสั่งพิมพ์ก็ออกเฉพาะฝั่งที่เห็นอยู่ */
+  /* กล่องยืนยันตอนสลับภาษา — ช่องที่ไม่มีคู่ภาษาจะพิมพ์ไทยต่อไปเงียบ ๆ ต้องบอกก่อนกด
+     สามโซนแยกกัน (หัว · เนื้อ · แถบปุ่ม) ตามกติกาโมดัลของระบบ */
+  .langConfirm[hidden] { display: none; }
+  .langConfirm { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgb(29 26 20 / 48%); }
+  .langConfirmBox { display: flex; flex-direction: column; width: min(520px, 100%); max-height: 100%; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 24px 64px rgb(20 26 36 / 28%); }
+  .langConfirmHead { padding: 16px 20px 12px; border-bottom: 1px solid #e2e6eb; }
+  .langConfirmHead strong { display: block; color: #1f3551; font-size: 15pt; line-height: 1.65; }
+  .langConfirmHead span { display: block; margin-top: 2px; color: #647080; font-size: 10pt; line-height: 1.65; }
+  .langConfirmBody { overflow-y: auto; padding: 16px 20px; color: #202833; font-size: 10.5pt; line-height: 1.65; }
+  .langConfirmBody ul { margin: 0; padding-left: 1.2em; }
+  .langConfirmBody li { margin-bottom: 5px; }
+  .langConfirmFoot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid #e2e6eb; background: #f7f8f9; }
+  .langConfirmFoot button { padding: 8px 16px; border: 1px solid #c2cbd6; border-radius: 8px; background: #fff; color: #202833; font: inherit; font-size: 10.5pt; cursor: pointer; }
+  .langConfirmFoot button.primary { border-color: #1f3551; background: #1f3551; color: #fff; }
   .langSwitch { display: flex; border: 1px solid #c2cbd6; border-radius: 8px; overflow: hidden; }
   .langSwitch button { background: #fff; color: #4a5766; border: 0; font: inherit; font-size: 13px;
                        padding: 7px 14px; cursor: pointer; }
@@ -422,6 +436,9 @@ export function renderDocumentHTML({
   // สคริปต์ของแถบเครื่องมือ (เช่น สลับภาษา) — ไม่มีผลกับกระดาษ เอกสารยัง self-contained
   // ⚠️ ผู้เรียกต้องประกอบสตริงนี้เอง = ต้อง escape ค่าที่มาจากข้อมูลด้วย JSON.stringify
   script = '',
+  // แผงลอยทับหน้าจอ (เช่น กล่องยืนยันตอนสลับภาษา) — `no-print` เหมือนแถบเครื่องมือ
+  // อยู่นอก `.document` โดยตั้งใจ ไม่งั้นมันจะกลายเป็นส่วนหนึ่งของกระดาษตอนพิมพ์
+  overlayHtml = '',
 } = {}) {
   /* toolbar.controlsHtml = ปุ่มเพิ่มเติมซ้ายปุ่มพิมพ์ (ผู้เรียกประกอบ HTML มาเอง)
      toolbar.noteId = id ของช่องข้อความแจ้งผลแถวล่าง — ข้อความยาวได้ จึงต้องมีแถวของตัวเอง
@@ -447,6 +464,7 @@ export function renderDocumentHTML({
   <div class="${classes}" style="${accentStyle(accentKey)}"${dataAttrs}>
     ${pages}
   </div>
+  ${overlayHtml}
 ${script ? `  <script>${script}</script>` : ''}
 </body>
 </html>`;

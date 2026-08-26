@@ -3,7 +3,7 @@
 // ตั้งแต่ Phase 7C (ใบเสนอราคา) และ 7D (ใบสั่งขาย) แล้ว — ไฟล์นี้เหลือเฉพาะ
 // helper จัดการหน้าต่างพิมพ์ (เปิดแท็บระหว่าง click, เขียน HTML, แจ้ง error).
 import { buildQuotationMasterSwitchableHTML } from '@/lib/sales/quotationMasterDocument';
-import { isEditableQuotation } from '@/lib/sales/quotationWorkflow';
+import { canSwitchQuotationDocLanguage } from '@/lib/sales/quotationWorkflow';
 import { getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { notifyToast } from '@/lib/feedback';
 import { printPlaceholderHtml } from '@/lib/printTheme';
@@ -57,11 +57,14 @@ export function openQuotePrintWindow(quote, preparedWindow = null, company = nul
   // ลายเซ็นผู้เสนอราคา: server ฝังรูป+วันที่+Evidence มาให้จากหลักฐานที่ตรึงตอนยื่น
   // (mig 0155, API detail) — ใบที่ยังไม่ยื่นไม่มีค่านี้ → ช่องเซ็นเปล่าเหมือนเดิม
   const proposer = quote?.proposerSignature;
-  // เอกสารฝังทั้งสองภาษาพร้อมสวิตช์บนแถบเครื่องมือ (IS-26080005) — สวิตช์กดได้เฉพาะใบที่
-  // ยังแก้ได้ ด่านเดียวกับที่ PATCH ใช้ ไม่งั้นกดแล้วเด้ง 409 กลับมาให้งง
+  /* เอกสารฝังทั้งสองภาษาพร้อมสวิตช์บนแถบเครื่องมือ (IS-26080005)
+     ⭐ มติผู้ใช้ 2026-08-27: สวิตช์กดได้แม้ใบอนุมัติแล้ว — ภาษาเปลี่ยนแค่กระดาษที่พิมพ์
+     ไม่ใช่ข้อเสนอ · ด่านเดียวกับที่ PATCH ใช้ (`canSwitchQuotationDocLanguage`)
+     ไม่งั้นกดแล้วเด้ง 409 กลับมาให้งง — ห้ามใช้ `isEditableQuotation` ตรงนี้อีก
+     เพราะนั่นคือด่าน "แก้เนื้อหาใบ" ซึ่งเข้มกว่าโดยตั้งใจ */
   win.document.write(buildQuotationMasterSwitchableHTML(quote, {
     company,
-    editable: isEditableQuotation(quote),
+    editable: canSwitchQuotationDocLanguage(quote),
     form: resolveDocumentForm(standard, 'quotation'),
     accentKey: resolveDocumentAccentKey(standard, 'quotation'),
     documentTitleTh: resolveDocumentTitleTh(standard, 'quotation'),

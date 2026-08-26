@@ -15,6 +15,7 @@ import {
   quotationDocLabels,
 } from '@/lib/sales/quotationMasterTemplate';
 import { amountInWords } from '@/lib/documents/amountInWords';
+import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
 import { fmtNumber, fmtPhone } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
@@ -337,7 +338,27 @@ function langSwitchControls(active, { editable }) {
 /* สคริปต์บนแถบเครื่องมือ — สลับมุมมองก่อน (ทันตา) แล้วค่อยบันทึก
    ⚠️ บันทึกไม่ผ่านต้องบอกให้เห็น ไม่ใช่กลืนเงียบ: คนจะพิมพ์ใบอังกฤษส่งลูกค้าไปแล้วเข้าใจว่า
    ระบบจำให้แล้ว พอกลับมาพิมพ์ใหม่กลายเป็นไทย โดยไม่มีอะไรเคยเตือน */
-function langSwitchScript(quotationId) {
+/* กล่องยืนยันตอนสลับไปอังกฤษ — โผล่เฉพาะตอนมีช่องที่ไม่มีคู่ภาษา
+   ⚠️ ไม่มีช่องที่ขาด = ไม่ต้องถาม · ถามทุกครั้งคือกล่องที่คนกดผ่านโดยไม่อ่าน */
+function langConfirmOverlay(messages) {
+  if (!messages.length) return '';
+  const items = messages.map((m) => `<li>${esc(m)}</li>`).join('');
+  return `<div class="langConfirm no-print" id="langConfirm" hidden role="dialog" aria-modal="true" aria-labelledby="langConfirmTitle">
+    <div class="langConfirmBox">
+      <div class="langConfirmHead">
+        <strong id="langConfirmTitle">เปลี่ยนภาษาเอกสารเป็นอังกฤษ</strong>
+        <span>ช่องที่ยังไม่มีคู่ภาษาอังกฤษ จะพิมพ์เป็นภาษาไทยบนเอกสาร</span>
+      </div>
+      <div class="langConfirmBody"><ul>${items}</ul></div>
+      <div class="langConfirmFoot">
+        <button type="button" id="langConfirmCancel">ยกเลิก</button>
+        <button type="button" class="primary" id="langConfirmOk">เปลี่ยนเป็นอังกฤษ</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function langSwitchScript(quotationId, hasConfirm) {
   return `
 (function () {
   var doc = document.querySelector('.document');
@@ -356,7 +377,7 @@ function langSwitchScript(quotationId) {
     note.textContent = text || '';
     if (tone) note.setAttribute('data-tone', tone); else note.removeAttribute('data-tone');
   }
-  window.ssSetDocLanguage = function (lang) {
+  function apply(lang) {
     if (doc.getAttribute('data-active-lang') === lang) return;
     paint(lang, true);
     say('กำลังบันทึก…');
@@ -374,7 +395,22 @@ function langSwitchScript(quotationId) {
       paint(lang, false);
       say('เปลี่ยนมุมมองแล้วแต่บันทึกไม่สำเร็จ: ' + (err.message || 'ไม่ทราบสาเหตุ') + ' — พิมพ์ครั้งหน้าจะกลับเป็นภาษาเดิม', 'error');
     });
-  };
+  }
+  ${hasConfirm ? `
+  // ถามก่อนเฉพาะขาไป "อังกฤษ" — ขากลับเป็นไทยไม่มีอะไรตกหล่น จึงไม่ต้องถาม
+  var box = document.getElementById('langConfirm');
+  var pending = null;
+  function closeBox() { box.hidden = true; pending = null; }
+  document.getElementById('langConfirmCancel').addEventListener('click', closeBox);
+  document.getElementById('langConfirmOk').addEventListener('click', function () {
+    var lang = pending; closeBox(); if (lang) apply(lang);
+  });
+  window.ssSetDocLanguage = function (lang) {
+    if (doc.getAttribute('data-active-lang') === lang) return;
+    if (lang === 'en') { pending = lang; box.hidden = false; return; }
+    apply(lang);
+  };` : `
+  window.ssSetDocLanguage = apply;`}
 })();`;
 }
 
@@ -383,6 +419,9 @@ function langSwitchScript(quotationId) {
    ฉบับตรึง snapshot ไม่เดินทางนี้: มันเสิร์ฟ HTML ที่ตรึงไว้ตรง ๆ จาก server */
 export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
   const active = docLanguageOf(quote?.docLanguage);
+  /* ช่องที่ยังไม่มีคู่ภาษาอังกฤษ — คำนวณฝั่ง server แล้วฝังไปกับไฟล์ เพราะหน้าต่างพิมพ์
+     ถูกตัด `opener` ทิ้ง เรียกกลับไปถามหน้าหลักไม่ได้ (เหตุผลเดียวกับที่ฝังสองภาษา) */
+  const gapMessages = englishGapMessages(englishDocumentGaps(quote));
   const models = Object.fromEntries(QUOTATION_DOC_LANGUAGES.map((language) => [
     language,
     buildQuotationMasterModelFromQuote(quote, { ...options, docLanguage: language }),
@@ -409,6 +448,7 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
       const model = models[language];
       return `<div class="langPane" data-lang="${esc(language)}">${renderPages(model, labelsOf(model))}</div>`;
     }).join(''),
-    script: editable && quote?.id ? langSwitchScript(quote.id) : '',
+    script: editable && quote?.id ? langSwitchScript(quote.id, gapMessages.length > 0) : '',
+    overlayHtml: editable && quote?.id ? langConfirmOverlay(gapMessages) : '',
   });
 }

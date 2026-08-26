@@ -206,6 +206,29 @@ export function artifactSha256(html) {
 
 // Captures the snapshot + artifact through the atomic, idempotent RPC. Retrying
 // with identical content returns the existing snapshot instead of duplicating.
+/* ── ตรึงเอกสารใหม่เมื่อ "ภาษาของใบ" เปลี่ยน (มติผู้ใช้ 2026-08-27) ──────────
+   ใบที่อนุมัติแล้วเปลี่ยนภาษาได้โดยไม่ต้องออก Rev. — แต่ถ้าเปลี่ยนแค่ค่าในตารางแล้วจบ
+   **ฉบับตรึงจะยังเป็นภาษาเดิมค้างอยู่** และปุ่มพิมพ์ของใบที่อนุมัติแล้วเล่นฉบับตรึงเสมอ
+   ⇒ ผู้ใช้กดสลับแล้วเห็นบนจอเป็นอังกฤษ แต่ไฟล์ที่ส่งลูกค้ายังเป็นไทย ซึ่งแย่กว่าล็อกไว้
+   ⇒ เปลี่ยนภาษา = ตรึงฉบับใหม่ทันที · `docLanguage` อยู่ใน payload อยู่แล้ว
+   ลายนิ้วมือเนื้อหาจึงต่างไปเอง RPC ออก issueSequence ใหม่ให้ ฉบับเดิมยังอยู่ในประวัติ
+
+   ⚠️ **ไม่ใช่การอนุมัติใหม่** — ใช้หลักฐานลายเซ็นใบเดิม (`signatureEvidenceId`) ผู้อนุมัติ
+   คนเดิม วันเดิม · ที่เปลี่ยนคือภาษาบนกระดาษเท่านั้น
+   ⚠️ best-effort เหมือนตอนอนุมัติ — ตรึงพลาดต้องไม่ทำให้การเปลี่ยนภาษาที่ commit ไปแล้ว
+   ตอบ error กลับไป ผู้เรียกจึงต้องกลืน error เอง (ดู PATCH ของใบเสนอราคา) */
+export async function reissueQuotationDocumentForLanguage(supabase, { quote, user, company }) {
+  if (!quote?.signatureEvidenceId) return null; // ใบ grandfather ไม่มีฉบับตรึงให้ตามอยู่แล้ว
+  const { data: evidence, error } = await supabase
+    .from('document_signature_evidence')
+    .select('*')
+    .eq('id', quote.signatureEvidenceId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!evidence) return null;
+  return captureIssuedQuotationSnapshot(supabase, { quote, evidence, user, company });
+}
+
 export async function captureIssuedQuotationSnapshot(supabase, { quote, evidence, user, company }) {
   // ข้อมูลลูกค้าบนใบเป็น snapshot ณ วันสร้าง — ใบที่สร้างก่อนฟีเจอร์ snapshot ครบ
   // (ผู้ติดต่อ 2026-07-19 / เลขผู้เสียภาษี 2026-07-21) หรือใบที่ตอนสร้างทะเบียนลูกค้ายังไม่มี
