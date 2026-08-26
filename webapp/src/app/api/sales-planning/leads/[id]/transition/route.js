@@ -105,6 +105,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     patch.firstScreenedAt = lead.firstScreenedAt || lead.screenedAt || now;
     patch.screenedAt = now;
     event.team = body.team;
+    /* ⭐ ข้อความฝากถึงทีมที่รับต่อ (ไม่บังคับ) — เก็บในเหตุการณ์ และส่งไปกับการแจ้งเตือน
+       กล่องมอบหมายอ่านกลับมาโชว์เป็นบรรทัด "ผู้คัดกรองฝาก" (ดู attachHandoffContext) */
+    if (body.reason?.trim()) event.reason = body.reason.trim();
   } else if (action === 'assign') {
     // supervisor/admin (superuser) กระจายได้ทุกทีม + senior_ae/ac เฉพาะทีมตัวเอง
     if (!(superuser || inTeam)) return forbidden('กระจายลีดได้เฉพาะ Senior AE ของทีม หรือ Supervisor/แอดมิน');
@@ -121,6 +124,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (!assignee.ok) return badRequest(assignee.error);
     patch.assigneeId = assignee.assigneeId;
     patch.assigneeName = assignee.assigneeName;
+    // ข้อความฝากถึง AE ผู้รับ (ไม่บังคับ) — ไปโผล่ในกล่องแจ้งเตือนของเขาพร้อมลีด
+    if (body.reason?.trim()) event.reason = body.reason.trim();
     patch.assignedAt = now; // จุดเริ่ม SLA ติดต่อกลับ — มอบใหม่นับใหม่ (เจ้าของใหม่)
     // สองคอลัมน์ ไม่ใช่ตัวเดียวรับสองหน้าที่ (mig 0273 — เหตุผลเดียวกับ screen ข้างบน):
     //   firstAssignedAt = มอบครั้งแรกของรอบ → *จุดจบ* ของด่านกระจาย (ไม่ขยับอีกเลยจนกว่า
@@ -182,6 +187,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const meetingAt = body.eventAt || now;
     event.meetingMode = body.meetingMode || null;
     event.eventAt = meetingAt;
+    /* ⚠️ นัดได้ = ติดต่อไปแล้วจริง — ต้องเขียน `firstContactAt` ที่นี่ด้วย ตั้งแต่เปิดให้
+       `meeting` ทำได้ตรงจาก `assigned` (ดู LEAD_TRANSITIONS) ไม่งั้นใบที่ข้ามมาทางนี้
+       จะหายจากตัวหารของ SLA "ติดต่อกลับ" ⇒ ตัวเลขดูดีขึ้นเพราะนับใบน้อยลง ไม่ใช่เพราะทำได้ดีขึ้น */
+    patch.firstContactAt = lead.firstContactAt || now;
+    // หมายเหตุของสายที่เพิ่งคุยจบ — กล่องเดียวกันเก็บมาให้แล้ว อย่าทิ้ง
+    if (body.reason?.trim()) event.reason = body.reason.trim();
     // ลีดเดียวมีได้หลายนัดแล้ว — คอลัมน์เก็บ "นัดถัดไป" ไม่ใช่ "นัดที่กดล่าสุด"
     patch.meetingAt = await nextMeetingAt(supabase, lead.id, meetingAt, now);
     /* ⚠️ วันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว — ปล่อยทั้งคู่ไว้ = ลีดใบเดียว

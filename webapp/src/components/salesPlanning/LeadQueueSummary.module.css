@@ -3,6 +3,9 @@
    เต็มทุกช่องแล้ว (scripts/ui-legacy-budget.json) ขึ้นอีกไม่ได้
    ⚠️ ระยะห่าง/ความมน/ความจาง ใช้โทเคนล้วน — ทั้งสามมีเพดานหนี้ที่แตะขอบแล้ว */
 
+/* แถบเตือนอยู่หัวการ์ด — เว้นระยะจากแถวตัวเลขให้อ่านเป็นคนละชั้น */
+.card > :global(div[role="status"]) { margin-bottom: var(--space-3); }
+
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);

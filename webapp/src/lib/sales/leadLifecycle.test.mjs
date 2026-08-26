@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
-import { fieldOptions, fieldUsers, validateTransitionValues } from "../recordLifecycle.js";
-import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
+import { fieldOptions, fieldUsers, fieldVisible, validateTransitionValues, visibleFieldValues } from "../recordLifecycle.js";
+import { LEAD_TRANSITIONS, MEETING_MODES, TRANSITION_TO_STATUS } from "./leads.js";
 import { TEAMS } from "../permissions.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
@@ -227,12 +227,66 @@ test("ป้ายปุ่มบอกได้ว่ากำลังเป�
   assert.match(more.label, /เพิ่ม/);
 });
 
-/* ก้าวถัดไปของขั้น "ติดต่อแล้ว" ต้องเป็น **นัดประชุม** ไม่ใช่เปิดดีล — เดิมเปิดดีล
-   ยึดช่อง primary ไว้ ทำให้คนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
-test("ก้าวถัดไปที่ขั้นติดต่อแล้ว คือนัดประชุม", () => {
+/* ก้าวถัดไปของขั้น "ติดต่อแล้ว" คือ **บันทึกการติดต่อ** (มติผู้ใช้ 2026-08-26)
+   เดิมยกสามปลายทางขึ้นเป็นปุ่มคู่กัน (นัดประชุม / ติดตาม / ไม่ไปต่อ) ⇒ คนต้องตัดสินใจ
+   ก่อนเปิดกล่อง ทั้งที่คำตอบเพิ่งเกิดในสายที่เพิ่งวาง · ตอนนี้ปุ่มเดียว แล้วถามในกล่อง
+   ⚠️ ต้องมี primary **ตัวเดียว** — สองตัวพร้อมกันแปลว่าไม่มีตัวไหนเป็น primary จริง */
+test("ก้าวถัดไปที่ขั้นติดต่อแล้ว คือบันทึกการติดต่อ ปุ่มเดียว", () => {
+  for (const status of ["contacted", "meeting"]) {
+    const row = lead({ status, team: "A", assigneeId: "u-ae" });
+    const primary = lifecycle.available(row, AE_A).filter((entry) => entry.slot === "primary");
+    assert.deepEqual(primary.map((entry) => entry.id), ["followup"], `${status}: primary ต้องเป็น followup ตัวเดียว`);
+  }
+});
+
+/* 🪤 ปลายทางจริงมาจากไทล์ในกล่อง ไม่ใช่ id ของปุ่ม — ถ้า `actionFrom` หาย ทุกอย่าง
+   จะถูกยิงเป็น `followup` หมด ⇒ นัดประชุมกับปิดลีดกลายเป็นการโทรตามธรรมดาเงียบ ๆ */
+test("บันทึกการติดต่อ: ไทล์ก้าวถัดไปเป็นตัวเลือก action จริง", () => {
   const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
-  const primary = lifecycle.available(contacted, AE_A).filter((entry) => entry.slot === "primary");
-  assert.deepEqual(primary.map((entry) => entry.id), ["meeting"]);
+  const gate = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "followup").transition;
+  assert.equal(typeof gate.actionFrom, "function");
+  assert.equal(gate.actionFrom({ nextStep: "meeting" }), "meeting");
+  assert.equal(gate.actionFrom({ nextStep: "disqualify" }), "disqualify");
+  assert.equal(gate.actionFrom({}), "followup", "ไม่เลือกอะไร = ติดตามต่อ (ค่าที่ไม่ทำลายอะไร)");
+
+  /* 🔴 ไทล์ต้องไม่เสนอปลายทางที่สถานะนั้นทำไม่ได้ — กดแล้วเด้ง 400 คือ UX ที่แย่กว่า
+     ไม่มีตัวเลือกนั้นเลย · ตรวจทุกสถานะที่กล่องนี้โผล่ ไม่ใช่แค่ contacted
+     ⚠️ ค่าไทล์ "ติดตามต่อ" เปลี่ยนตามสถานะ (contact ที่ assigned · followup ที่เหลือ)
+     จึงต้องคลี่ผ่าน `fieldOptions` ไม่ใช่อ่าน `options` ดิบ */
+  for (const [status, gateId] of [["assigned", "contact"], ["contacted", "followup"], ["meeting", "followup"]]) {
+    const row = lead({ status, team: "A", assigneeId: "u-ae" });
+    const t = lifecycle.available(row, AE_A).find((entry) => entry.id === gateId).transition;
+    const field = t.fields.find((f) => f.name === "nextStep");
+    const tiles = fieldOptions(field, row).map((o) => o.value);
+    assert.equal(tiles.length, 3, `${status}: ต้องมีสามปลายทาง`);
+    for (const action of tiles) {
+      assert.ok(LEAD_TRANSITIONS[status].includes(action),
+        `${status}: ไทล์เสนอ ${action} แต่สถานะนี้ทำไม่ได้`);
+    }
+    assert.equal(t.actionFrom({ nextStep: tiles[0] }), tiles[0]);
+  }
+});
+
+/* ช่องของแต่ละปลายทางต้องโผล่เฉพาะเมื่อเลือกปลายทางนั้น และค่าที่ซ่อนต้องไม่ถูกส่งไป */
+test("บันทึกการติดต่อ: ช่องเปลี่ยนตามก้าวถัดไปที่เลือก", () => {
+  const contacted = lead({ status: "contacted", team: "A", assigneeId: "u-ae" });
+  const gate = lifecycle.available(contacted, AE_A).find((entry) => entry.id === "followup").transition;
+  const shown = (values) => gate.fields.filter((f) => fieldVisible(f, contacted, values)).map((f) => f.name);
+
+  assert.ok(shown({ nextStep: "followup" }).includes("followUpAt"));
+  assert.ok(!shown({ nextStep: "followup" }).includes("meetingMode"));
+  assert.ok(shown({ nextStep: "meeting" }).includes("meetingMode"));
+  assert.ok(!shown({ nextStep: "meeting" }).includes("followUpAt"));
+  assert.ok(shown({ nextStep: "disqualify" }).includes("disqualifiedCode"));
+
+  // วันกลับมาถามใหม่ผูกกับเหตุผล ไม่ใช่แค่ปลายทาง
+  assert.ok(!shown({ nextStep: "disqualify", disqualifiedCode: "budget" }).includes("revisitAt"));
+  assert.ok(shown({ nextStep: "disqualify", disqualifiedCode: "timing" }).includes("revisitAt"));
+
+  // เลือกนัดประชุมแล้ว วันติดตามที่ค้างอยู่ต้องไม่ติดไปกับ payload
+  const kept = visibleFieldValues(gate, contacted, { nextStep: "meeting", meetingMode: "onsite", followUpAt: "2026-09-08" });
+  assert.equal(kept.followUpAt, undefined);
+  assert.equal(kept.meetingMode, "onsite");
 });
 
 /* ปุ่มเปิดดีลต้องผ่านด่านทีมเดียวกับ transition อื่น — ไม่ใช่ใครก็กดได้ */
@@ -329,11 +383,34 @@ test("action ที่ API บังคับเหตุผล ต้องต�
   assert.deepEqual([...LEAD_REASON_REQUIRED].sort(), requiredByApi,
     `API บังคับเหตุผลกับ [${requiredByApi}] แต่ LEAD_REASON_REQUIRED = [${LEAD_REASON_REQUIRED}]`);
 
+  /* ⚠️ ที่ต้องตรงกันคือ **"บังคับ"** สองฝั่ง ไม่ใช่ทั้งสามค่า
+     `optional` เป็นสถานะที่สาม: ฟอร์มเปิดช่องให้ฝากข้อความได้ API เก็บให้ถ้ามี
+     แต่ไม่ตกถ้าไม่มี (ใช้กับ screen/assign ที่ฝากข้อความถึงคนถัดไป)
+     🔴 ผิดฝั่งที่อันตรายจริงคือ **ฟอร์มไม่บังคับ แต่ API บังคับ** ⇒ กดปุ่มแล้วเด้ง 400
+     โดยที่กล่องไม่เคยขอให้กรอกอะไรเลย · เช็คทั้งสองทิศ */
   for (const transition of lifecycle.transitions) {
     if (!LEAD_TRANSITION_ACTIONS.includes(transition.id)) continue;
-    const expected = requiredByApi.includes(transition.id) ? "required" : "none";
-    assert.equal(transition.reason, expected,
-      `${transition.id}: API ${expected === "required" ? "บังคับ" : "ไม่บังคับ"}เหตุผล แต่ lifecycle ว่า "${transition.reason}"`);
+    if (requiredByApi.includes(transition.id)) {
+      assert.equal(transition.reason, "required",
+        `${transition.id}: API บังคับเหตุผล แต่ฟอร์มไม่บังคับ ⇒ กดแล้วเด้ง 400`);
+    } else {
+      assert.notEqual(transition.reason, "required",
+        `${transition.id}: ฟอร์มบังคับเหตุผล แต่ API ไม่เคยอ่าน ⇒ บังคับกรอกของที่ไม่มีใครใช้`);
+    }
+  }
+});
+
+/* ช่องฝากข้อความถึงคนถัดไป ต้องมีทั้งสองจุดของเส้นทางส่งมอบ (มติผู้ใช้ 2026-08-26)
+   🔴 ก่อนหน้านี้ไม่มีสักจุด — ใบเดินผ่านสามมือโดยไม่มีใครฝากอะไรถึงคนถัดไปได้เลย
+   สิ่งที่รอบก่อนติดจึงหายทุกครั้งที่เปลี่ยนมือ */
+test("ส่งมอบลีดต้องฝากข้อความถึงคนรับได้ ทั้งตอนคัดกรองและตอนมอบหมาย", () => {
+  for (const id of ["screen", "assign"]) {
+    const t = lifecycle.transitions.find((entry) => entry.id === id);
+    assert.equal(t.reason, "optional", `${id}: ต้องเปิดช่องให้ฝากข้อความ แต่ไม่บังคับ`);
+    assert.ok(t.reasonPolicy.label, `${id}: ต้องมีป้ายของช่อง`);
+    assert.ok(t.reasonPolicy.helpText, `${id}: ต้องบอกว่าข้อความไปโผล่ที่ไหน`);
+    // ไม่บังคับ = กดยืนยันได้โดยไม่ต้องกรอก
+    assert.equal(t.reasonPolicy.minLength, 0, `${id}: ไม่บังคับต้องไม่มีความยาวขั้นต่ำ`);
   }
 });
 
@@ -347,9 +424,19 @@ test("ยังไม่กรอกเหตุผล = validateTransitionValue
      ไม่งั้นลีดนอนอยู่ใน "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง */
   assert.ok(validateTransitionValues(contact.transition, { reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา" }),
     "กรอกเหตุผลแต่ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้");
+  assert.ok(validateTransitionValues(contact.transition, {
+    reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", followUpAt: "2026-09-01",
+  }), "ไม่เลือกก้าวถัดไป ต้องยังกดไม่ได้");
   assert.equal(
     validateTransitionValues(contact.transition, {
-      reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", followUpAt: "2026-09-01",
+      reason: "โทรแล้ว ลูกค้าขอใบเสนอราคา", nextStep: "contact", followUpAt: "2026-09-01",
+    }),
+    null,
+  );
+  /* โทรครั้งแรกแล้วได้คิวเลย — ไม่ต้องกรอกวันติดตาม แต่ต้องเลือกรูปแบบนัด */
+  assert.equal(
+    validateTransitionValues(contact.transition, {
+      reason: "โทรแล้ว ได้นัดเข้าไปคุยที่ออฟฟิศ", nextStep: "meeting", meetingMode: MEETING_MODES[0],
     }),
     null,
   );
@@ -367,8 +454,10 @@ test("ติดตามต่อ: ปุ่มโผล่ที่ contacted/m
     assert.ok(validateTransitionValues(followup.transition, {}));
     assert.ok(validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว" }),
       `${status}: ไม่ระบุวันติดตามต่อ ต้องยังกดไม่ได้`);
+    assert.ok(validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", followUpAt: "2026-09-08" }),
+      `${status}: ไม่เลือกก้าวถัดไป ต้องยังกดไม่ได้`);
     assert.equal(
-      validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", followUpAt: "2026-09-08" }),
+      validateTransitionValues(followup.transition, { reason: "โทรตามแล้ว", nextStep: "followup", followUpAt: "2026-09-08" }),
       null,
     );
   }

@@ -16,7 +16,7 @@
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import { hasTeam, isSuperuser, userTeams, TEAMS, TEAM_LABELS } from "@/lib/permissions";
-import { fmtName } from "@/lib/format";
+import { fmtDate, fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
   LEAD_TRANSITIONS,
@@ -145,6 +145,80 @@ const currentHolderNote = (lead, user) => {
  * @param workload  ภาระงานรายคน `{ [userId]: { holding, waitingContact, lateFollowUp } }`
  *                  จาก /api/sales-planning/leads/workload — ไม่ส่งมาก็ใช้ได้ (ขึ้นเลข 0)
  */
+/* ── ชุดช่อง "โทรไปแล้วได้อะไร" — ใช้ร่วมกันทั้งการติดต่อครั้งแรกและครั้งถัดไป ──
+   ⚠️ ต้องเป็นชุดเดียวจริง ๆ ไม่ใช่ก๊อปสองชุด — สองกล่องนี้ถามคำถามเดียวกัน
+   ก๊อปเมื่อไรมันจะเพี้ยนหากันแบบที่ AGENTS.md ยกตัวอย่างไว้ (ฟอร์มสร้าง vs ฟอร์มแก้)
+
+   ⭐ ค่าไทล์ "ติดตามต่อ" **เปลี่ยนตามสถานะ**: ที่ `assigned` คือ `contact` (ครั้งแรก
+   ขยับสถานะ) ที่ `contacted`/`meeting` คือ `followup` (ไม่ขยับ) — ค่าของไทล์คือ
+   action จริงเสมอ `actionFrom` จึงอ่านค่าตรง ๆ ได้โดยไม่ต้องรู้จักสถานะ */
+const NEXT_STEP_FIELDS = [
+  { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
+  {
+    name: "nextStep",
+    label: "ก้าวถัดไป",
+    type: "tiles",
+    required: true,
+    /* ⚠️ ไม่มีค่าตั้งต้น — ทุกการติดต่อต้องมีทางออก และทางออกเป็น *การตัดสินใจ*
+       ตั้งค่าตั้งต้นเมื่อไร คนจะกดผ่านโดยไม่ได้เลือก (form-design-rules §3) */
+    hint: "ทุกการติดต่อต้องมีทางออก — เลือกจากสิ่งที่เพิ่งคุยจบ",
+    options: (lead) => [
+      {
+        value: lead?.status === "assigned" ? "contact" : "followup",
+        label: "ติดตามต่อ",
+        description: "ยังไม่จบ นัดวันกลับไปหาใหม่",
+      },
+      { value: "meeting", label: "นัดประชุม", description: "ได้คิวเจอกันแล้ว" },
+      { value: "disqualify", label: "ไม่ไปต่อ", description: "ปิดลีดนี้ถาวร" },
+    ],
+  },
+  {
+    name: "followUpAt",
+    label: "วันติดตามต่อ",
+    type: "date",
+    required: true,
+    visible: (lead, user, values) => LEAD_FOLLOW_UP_ACTIONS.includes(values?.nextStep),
+    hint: "วันที่รับปากลูกค้าไว้ว่าจะกลับไปหา — วันนี้จะไปโผล่ในคิวของฉัน",
+  },
+  {
+    name: "meetingMode",
+    label: "รูปแบบนัด",
+    type: "tiles",
+    required: true,
+    visible: (lead, user, values) => values?.nextStep === "meeting",
+    options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
+  },
+  {
+    name: "disqualifiedCode",
+    label: "เหตุผลที่ไม่ไปต่อ",
+    type: "tiles",
+    required: true,
+    visible: (lead, user, values) => values?.nextStep === "disqualify",
+    options: LEAD_LOST_REASONS.map(({ code, label, hint, countable }) => ({
+      value: code,
+      label,
+      description: countable ? hint : `${hint} · ไม่นับเป็นแพ้ในรายงาน`,
+    })),
+  },
+  {
+    name: "revisitAt",
+    label: "วันกลับมาถามใหม่",
+    type: "date",
+    visible: (lead, user, values) =>
+      values?.nextStep === "disqualify" && LEAD_LOST_REVISIT_CODES.includes(values?.disqualifiedCode),
+    hint: "เว้นว่างได้ถ้าลูกค้าไม่ได้ให้กำหนด",
+  },
+];
+
+/* ปลายทางจริงมาจากไทล์ ไม่ใช่ id ของปุ่มที่กด · ป้าย+สีของปุ่มยืนยันเดินตามด้วย
+   เพราะปิดลีดถาวรต้องไม่ซ่อนอยู่ใต้ปุ่มสีเดียวกับการโทรตามธรรมดา */
+const nextStepAction = (fallback) => (values) => values?.nextStep || fallback;
+const nextStepConfirm = (fallbackLabel) => (values) => (
+  values?.nextStep === "disqualify" ? { label: "ปิดลีด — ไม่ไปต่อ", tone: "danger" }
+    : values?.nextStep === "meeting" ? { label: "บันทึกนัดประชุม", tone: "primary" }
+      : { label: fallbackLabel, tone: "primary" }
+);
+
 export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null, workload = null } = {}) {
   return defineLifecycle({
     entity: "lead",
@@ -167,6 +241,17 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         slot: "primary",
         from: allowedFrom("screen"),
         to: "screened",
+        /* ⭐ ฝากข้อความถึงทีมที่รับต่อ (มติผู้ใช้ 2026-08-26) — **ไม่บังคับ**
+           ใบส่วนใหญ่ไม่มีอะไรต้องฝาก บังคับกรอกเมื่อไรคนจะพิมพ์ "-" ผ่าน ๆ ไป
+           แล้วช่องนี้จะกลายเป็นขยะที่ทุกคนเรียนรู้ที่จะไม่อ่าน
+           ⚠️ ไปโผล่ในกล่องแจ้งเตือนของ Senior AE และในกล่องมอบหมาย ("ผู้คัดกรองฝาก") */
+        reason: "optional",
+        reasonPolicy: {
+          title: "คัดกรองและส่งทีม",
+          label: "บันทึกถึงทีมที่รับต่อ",
+          placeholder: "เช่น เบอร์เดิมติดต่อไม่ได้ ลองอีเมลจัดซื้อแทน",
+          helpText: "สิ่งที่รอบก่อนติดแล้วรอบนี้ควรทำต่างออกไป — ขึ้นในกล่องแจ้งเตือนของ Senior AE",
+        },
         visible: (lead, user) => isSuperuser(user?.role),
         fields: [
           {
@@ -213,6 +298,34 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
            `inTeamOf` จึงไม่มีวันจริง) ⇒ ปุ่มไม่เคยโผล่ ทั้งที่ handler เปิดให้มาตลอด
            (`superuser || inTeam`) — ทางลัดที่ทำได้แต่ไม่มีใครเห็น · ตอนนี้ตรงกับ API แล้ว */
         visible: (lead, user) => isSuperuser(user?.role) || inTeamOf(user, lead),
+        /* ⭐ บริบทของใบก่อนเลือกคน (มติผู้ใช้ 2026-08-26) — ป้าย "เคยถือใบนี้มาแล้ว"
+           บนแถวคนตอบได้แค่ *ใคร* ไม่ได้ตอบว่า **ทำไมมันถึงกลับมา**
+           ⚠️ บรรทัดที่ไม่มีค่าถูกตัดทิ้งที่ TransitionDialog — ใบปกติที่ไม่เคยถูกตีกลับ
+           จะไม่มีกล่องนี้เลย ไม่ใช่กล่องที่มีแต่ขีด */
+        context: (lead) => [
+          lead?.bounce?.bouncedAt && {
+            label: "ที่มา",
+            value: `${lead.bounce.autoRounds > 0 ? `ส่งกลับอัตโนมัติ รอบที่ ${lead.bounce.autoRounds}` : "ถูกส่งกลับคิวคัดกรอง"} · ${fmtDate(lead.bounce.bouncedAt)}`,
+          },
+          lead?.bounce?.previousAssigneeName && {
+            label: "เคยถือโดย",
+            value: `${lead.bounce.previousAssigneeName}${lead.bounce.previousTeam ? ` (ทีม ${TEAM_LABELS[lead.bounce.previousTeam] || lead.bounce.previousTeam})` : ""}`,
+          },
+          lead?.bounce?.lastReason && { label: "เหตุที่ส่งกลับ", value: lead.bounce.lastReason },
+          lead?.handoff?.screenNote && { label: "ผู้คัดกรองฝาก", value: `“${lead.handoff.screenNote}”` },
+          lead?.handoff?.contacts > 0 && {
+            label: "ประวัติ",
+            value: `ติดต่อ ${lead.handoff.contacts} ครั้ง · ${lead.handoff.meetings > 0 ? `นัดประชุมแล้ว ${lead.handoff.meetings} ครั้ง` : "ยังไม่เคยนัดประชุม"}`,
+          },
+        ].filter(Boolean),
+        // ⭐ ฝากข้อความถึง AE ผู้รับ — ไม่บังคับ ด้วยเหตุผลเดียวกับตอนคัดกรอง
+        reason: "optional",
+        reasonPolicy: {
+          title: "มอบหมายผู้รับผิดชอบ",
+          label: "บันทึกถึงผู้รับ",
+          placeholder: "เช่น ติดต่อทางอีเมลจัดซื้อ purchasing@… แทนเบอร์เดิม",
+          helpText: "ขึ้นในกล่องแจ้งเตือนของ AE พร้อมลีด — บอกสิ่งที่รอบก่อนติด",
+        },
         fields: [
           {
             name: "assigneeId",
@@ -272,18 +385,19 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         visible: (lead, user) => canWorkLead(user, lead),
         // API บังคับหมายเหตุการติดต่อ (เก็บใน event.reason) — ดู LEAD_REASON_REQUIRED
         reason: reasonRule("contact"),
+        dialogSize: "md",
+        /* ⭐ กล่องเดียวกับการติดตามครั้งถัดไป — คำถามเดียวกัน ("โทรไปแล้วได้อะไร")
+           ⚠️ ที่สถานะนี้ ไทล์ "ติดตามต่อ" มีค่าเป็น `contact` (ครั้งแรก ขยับสถานะ)
+           ส่วน "นัดประชุม" ยิง `meeting` ตรง ๆ ได้แล้ว (มติผู้ใช้ 2026-08-26)
+           โทรครั้งแรกแล้วได้คิวเลยเป็นเรื่องปกติ ไม่ต้องบันทึกสองก้าว */
+        actionFrom: nextStepAction("contact"),
+        confirmFrom: nextStepConfirm("บันทึกการติดต่อ"),
         reasonPolicy: {
           title: "บันทึกการติดต่อลูกค้า",
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร ได้ข้อมูลอะไร นัดอะไรต่อ",
         },
-        fields: [
-          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
-          /* ⭐ บังคับกรอก (mig 0289) — ทุกการติดต่อต้องมีทางออก ไม่งั้นลีดนอนอยู่ใน
-             "ติดต่อแล้ว" ได้ตลอดกาลโดยไม่มีอะไรทวง · ด่านจริงอยู่ที่ leadFollowUpError
-             ซึ่ง API เรียกตัวเดียวกัน (form-design-rules §2) */
-          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
-        ],
+        fields: NEXT_STEP_FIELDS,
       },
       {
         /* ⭐ ติดตามครั้งที่ 2 ขึ้นไป — **ไม่ขยับสถานะ** (มติผู้ใช้ 2026-08-25)
@@ -295,29 +409,30 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
            ⚠️ slot = primary เฉพาะตอนอยู่ `contacted` — ที่ `meeting` ก้าวถัดไปตัวจริง
            คือไปประชุมหรือเปิดดีล การโทรตามระหว่างรอเป็นงานรอง */
         id: "followup",
-        label: "บันทึกการติดตาม",
-        rowLabel: "ติดตาม",
+        label: "บันทึกการติดต่อ",
+        rowLabel: "ติดต่อ",
         rowTone: "teal",
         kind: "submit",
-        /* ⚠️ **ไม่ใช่ primary** — ก้าวถัดไปตัวจริงของ "ติดต่อแล้ว" คือนัดประชุม
-           (มติเดิม 2026-08-04 ที่ย้าย meeting ขึ้นมาเป็น primary) การโทรตามระหว่างรอ
-           เป็นงานที่ทำซ้ำ ไม่ใช่ขั้นถัดไป · `slot` รับได้แค่สตริงจาก RECORD_SLOTS
-           ฟังก์ชันจะ throw ตั้งแต่ตอน defineLifecycle */
-        slot: "secondary",
+        /* ⭐ **ประตูเดียวของ "โทรไปแล้วได้อะไร"** (มติผู้ใช้ 2026-08-26 — กลับคำจากมติ
+           2026-08-04 ที่ยก `meeting` ขึ้นเป็น primary) · ของเดิมยกสามปลายทางขึ้นเป็นปุ่ม
+           คู่กันบนแผง (นัดประชุม / ติดตาม / ไม่ไปต่อ) ⇒ คนต้องตัดสินใจ **ก่อน** เปิดกล่อง
+           ทั้งที่คำตอบเพิ่งเกิดขึ้นในสายที่เพิ่งวาง · ตอนนี้เป็นปุ่มเดียว แล้วถามในกล่อง */
+        slot: "primary",
         from: allowedFrom("followup"),
         to: null,
         visible: (lead, user) => canWorkLead(user, lead),
         reason: reasonRule("followup"),
+        dialogSize: "md",
+        /* ⚠️ ปลายทางจริงมาจากไทล์ "ก้าวถัดไป" — ทั้งสามเป็น action ที่สถานะนี้ทำได้อยู่แล้ว
+           (ดู LEAD_TRANSITIONS.contacted / .meeting) ไม่ได้เปิดสิทธิ์ใหม่ให้ใคร */
+        actionFrom: nextStepAction("followup"),
+        confirmFrom: nextStepConfirm("บันทึกการติดต่อ"),
         reasonPolicy: {
-          title: "บันทึกการติดตามลูกค้า",
-          description: "สถานะไม่เปลี่ยน — เป็นการติดต่อครั้งถัดไปในประวัติเดียวกัน",
-          label: "หมายเหตุการติดตาม",
+          title: "บันทึกการติดต่อลูกค้า",
+          label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร คืบหน้าแค่ไหน ตกลงอะไรกันไว้",
         },
-        fields: [
-          { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
-          { name: "followUpAt", label: "วันติดตามต่อ", type: "date", required: true },
-        ],
+        fields: NEXT_STEP_FIELDS,
       },
       {
         id: "meeting",
@@ -327,10 +442,11 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         rowLabel: (lead) => (lead?.status === "meeting" ? "นัดเพิ่ม" : "นัดประชุม"),
         rowTone: "teal",
         kind: "submit",
-        /* ก้าวถัดไปตัวจริงของขั้น "ติดต่อแล้ว" — เดิมเป็น secondary เพราะ `create_deal`
-           ยึดช่อง primary ไว้ ทั้งที่การเปิดดีลไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction)
-           ผลคือคนที่จะนัดประชุมต้องไปหาในเมนู "…" ทุกครั้ง */
-        slot: "primary",
+        /* ⚠️ กลับมาเป็น secondary (มติผู้ใช้ 2026-08-26) — ปุ่มนี้ยังอยู่สำหรับกรณีที่
+           "ได้นัดมาโดยไม่ได้เพิ่งโทร" (ลูกค้าทักมาเอง / นัดต่อจากที่ประชุมก่อน)
+           แต่ทางหลักคือเลือก "นัดประชุม" ในกล่องบันทึกการติดต่อ ซึ่งเก็บหมายเหตุสายนั้นด้วย
+           สองปุ่ม primary พร้อมกันบนแผงเดียว = ไม่มีปุ่มไหนเป็น primary จริง */
+        slot: "secondary",
         from: allowedFrom("meeting"),
         to: "meeting",
         visible: (lead, user) => canWorkLead(user, lead),

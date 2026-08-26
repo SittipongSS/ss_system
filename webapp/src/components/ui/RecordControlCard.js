@@ -82,7 +82,10 @@ export default function RecordControlCard({
      ค่าที่ค้างจะติดไปกับ payload) */
   const run = async (values) => {
     if (!pending) return;
-    const ok = await onTransition?.(pending.transition.id, values || pending.values);
+    const picked = values || pending.values;
+    /* ปลายทางจริงอาจไม่ใช่ปุ่มที่กด — ดู `actionFrom` ใน recordLifecycle */
+    const actionId = pending.transition.actionFrom?.(picked) || pending.transition.id;
+    const ok = await onTransition?.(actionId, picked);
     // คืน false = ทำไม่สำเร็จ ให้กล่องค้างไว้พร้อมค่าที่กรอก ไม่ต้องพิมพ์เหตุผลใหม่
     if (ok !== false) setPending(null);
   };

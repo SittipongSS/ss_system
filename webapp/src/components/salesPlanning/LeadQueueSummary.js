@@ -11,8 +11,11 @@
 // ไม่งั้นหน้าจอกับแชทจะรายงานคนละเลขโดยไม่มีอะไรฟ้อง
 
 import { useMemo } from "react";
-import { CalendarClock, Filter, PhoneCall, Users } from "lucide-react";
-import { summarizeLeadQueue } from "@/lib/sales/leadDigest";
+import { CalendarClock, Filter, PhoneCall, TriangleAlert, Users } from "lucide-react";
+import AlertBanner from "@/components/ui/AlertBanner";
+import Button from "@/components/ui/Button";
+import { AUTO_BOUNCE_AFTER_BUSINESS_DAYS } from "@/lib/sales/leadAutoBounce";
+import { leadQueueNotice, summarizeLeadQueue } from "@/lib/sales/leadDigest";
 import { TEAM_LABELS } from "@/lib/permissions";
 import styles from "./LeadQueueSummary.module.css";
 
@@ -52,8 +55,37 @@ export default function LeadQueueSummary({
   const rowFlag = (isLate) => `${styles.row} ${isLate ? styles.rowLate : ""}`.trim();
   const rowClass = (days) => rowFlag(late(days));
 
+  /* ── แถบเตือน: ตัวเลขบอกว่า "เท่าไร" แถบนี้บอกว่า "แล้วจะเกิดอะไรต่อ" ──────────
+     🔴 การ์ดข้างล่างนับของค้างได้ครบ แต่ไม่เคยบอกผลของการปล่อยไว้ — คนอ่านเลข
+     "ยังไม่มีวันติดตาม 106" แล้วไม่รู้ว่าต้องทำอะไร เพราะไม่มีอะไรบอกว่าใบพวกนั้น
+     **ไม่มีระบบอะไรคอยทวงให้เลย**
+     ⚠️ แถบเดียวเท่านั้น เรียงตามความด่วน — ซ้อนสองแถบคือกลับไปเป็นกำแพงตัวเลขอีกแบบ
+     ⚠️ ปุ่มต้องพาไปที่ตัวกรอง ไม่ใช่บอกเฉย ๆ (กติกาของ AlertBanner) */
+  const notice = leadQueueNotice(summary);
+
   return (
     <section className={styles.card} aria-label="สรุปลีดที่ค้างคิว">
+      {notice && (
+        <AlertBanner
+          tone={notice.tone}
+          icon={TriangleAlert}
+          action={(
+            <Button size="sm" variant="quiet" onClick={() => onPickStatus?.("contacted")}>ดูรายการ</Button>
+          )}
+        >
+          {notice.kind === "late" ? (
+            <>
+              <strong>{notice.count} ใบเลยวันที่นัดลูกค้าไว้</strong>
+              {` — เงียบต่อจนครบ ${AUTO_BOUNCE_AFTER_BUSINESS_DAYS} วันทำการ ระบบจะส่งกลับคิวคัดกรองอัตโนมัติ`}
+            </>
+          ) : (
+            <>
+              <strong>{notice.count} ใบติดต่อแล้วแต่ยังไม่มีวันติดตาม</strong>
+              {" — ระบบจะไม่ทวงและไม่ส่งกลับให้ ต้องเปิดใบแล้วกดบันทึกการติดต่อเพื่อกำหนดวันเอง"}
+            </>
+          )}
+        </AlertBanner>
+      )}
       <header className={styles.head}>
         <h3 className={styles.title}>ค้างคิว {summary.total} ใบ</h3>
         {scopeLabel && <span className={styles.scope}>{scopeLabel}</span>}

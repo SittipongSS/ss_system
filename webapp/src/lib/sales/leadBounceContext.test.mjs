@@ -89,7 +89,11 @@ test('API คิวลีดถามประวัติเฉพาะใบ�
   assert.doesNotMatch(statuses, /'assigned'|'contacted'|'meeting'/);
   assert.match(src, /BOUNCE_CONTEXT_STATUSES\.includes\(l\?\.status\)/);
   assert.match(src, /chunkLeadIds\(ids\)/);
-  assert.match(src, /\.in\('kind', LEAD_BOUNCE_KINDS\)/);
+  /* ชนิดที่ถามต้องครอบ "ตีกลับ" เสมอ และตอนนี้กว้างขึ้นเป็นบริบทส่งมอบทั้งชุด
+     (ผู้คัดกรองฝาก · ติดต่อกี่ครั้ง · เคยนัดหรือยัง) — ดู leadHandoffContext
+     ⚠️ ยังต้องกรองชนิดที่หน้าไม่ใช้ออกตั้งแต่ที่ query ไม่ใช่ดึงทุกชนิดมาแล้วค่อยกรอง */
+  assert.match(src, /HANDOFF_CONTEXT_KINDS = \[\.\.\.LEAD_BOUNCE_KINDS/);
+  assert.match(src, /\.in\('kind', HANDOFF_CONTEXT_KINDS\)/);
   // อ่านไม่สำเร็จต้องไม่ล้มทั้งหน้า — คิวลีดเป็นหน้าทำงานหลัก
   assert.match(src, /คิวจะไม่มีป้ายบริบท/);
 });

@@ -5,7 +5,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, leadBudgetError,
   applyLeadScope, canViewLeads, canCreateLead,
-  leadBounceHistory, chunkLeadIds, LEAD_BOUNCE_KINDS,
+  leadBounceHistory, leadHandoffContext, chunkLeadIds, LEAD_BOUNCE_KINDS, LEAD_FOLLOW_UP_ACTIONS,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
@@ -54,6 +54,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
    ที่ต้องอ่านบริบทมากที่สุดคือคนกด **มอบหมาย** ซึ่งเกิดตอน `screened` (หลังคัดกรองแล้ว)
    ถ้าตัดที่ `new` อย่างเดียว ป้าย "เคยถือใบนี้มาแล้ว" ในกล่องมอบหมายจะไม่มีวันขึ้น */
 const BOUNCE_CONTEXT_STATUSES = ['new', 'screened'];
+const HANDOFF_CONTEXT_KINDS = [...LEAD_BOUNCE_KINDS, 'screen', 'meeting', ...LEAD_FOLLOW_UP_ACTIONS];
 
 async function attachBounceContext(supabase, leads) {
   const ids = leads.filter((l) => BOUNCE_CONTEXT_STATUSES.includes(l?.status)).map((l) => l.id).filter(Boolean);
@@ -64,7 +65,11 @@ async function attachBounceContext(supabase, leads) {
       .from('lead_events')
       .select('leadId, kind, team, assigneeId, assigneeName, reason, createdAt')
       .in('leadId', chunk)
-      .in('kind', LEAD_BOUNCE_KINDS)
+      /* ⚠️ ไม่ใช่แค่ชนิด "ตีกลับ" อีกต่อไป — กล่องมอบหมายต้องเล่าได้ว่าใบนี้ผ่านอะไรมา
+         (ผู้คัดกรองฝากอะไรไว้ · ติดต่อไปแล้วกี่ครั้ง · เคยนัดหรือยัง)
+         🪤 อย่าเผลอเอาลิมิตมาใส่: ใบเดียวมีเหตุการณ์ได้ไม่จำกัด และเราซอย `.in()` ตามใบ
+         ไม่ใช่ตามแถว — ดู LEAD_ID_CHUNK · ชนิดที่ไม่ได้ใช้ตัดออกตั้งแต่ที่นี่ */
+      .in('kind', HANDOFF_CONTEXT_KINDS)
       .order('createdAt', { ascending: false });
     if (error) {
       console.error('[leads] อ่านประวัติการตีกลับไม่สำเร็จ — คิวจะไม่มีป้ายบริบท:', error.message);
@@ -77,7 +82,10 @@ async function attachBounceContext(supabase, leads) {
   }
   for (const lead of leads) {
     const events = byLead.get(lead.id);
-    if (events?.length) lead.bounce = leadBounceHistory(events);
+    if (events?.length) {
+      lead.bounce = leadBounceHistory(events);
+      lead.handoff = leadHandoffContext(events);
+    }
   }
 }
 

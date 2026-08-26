@@ -284,6 +284,28 @@ export function leadBounceHistory(events = []) {
   };
 }
 
+/** สิ่งที่คนกำลังจะ "มอบหมาย" ต้องรู้ก่อนเลือกคน — สรุปจากประวัติของใบเดียว
+ *
+ *  ⭐ ป้าย "เคยถือใบนี้มาแล้ว" บนแถวคนตอบได้แค่ว่า *ใคร* แต่ไม่ได้ตอบว่า **ทำไมมันถึงกลับมา**
+ *  คนที่กำลังจะมอบใหม่จึงตัดสินใจจากรายชื่อกับตัวเลขภาระงานล้วน ๆ ส่วนที่มา เหตุผล
+ *  และประวัติต้องไปเปิดดูเองอีกหน้า (มติผู้ใช้ 2026-08-26)
+ *
+ *  ⚠️ `events` ต้องเรียงใหม่ไปเก่า (createdAt desc) เหมือนที่ `leadBounceHistory` ใช้
+ *  @param events เหตุการณ์ของลีดใบนั้น
+ *  @returns { screenNote, contacts, meetings } — รวมกับ `leadBounceHistory` เป็นบริบทเต็ม
+ */
+export function leadHandoffContext(events = []) {
+  const rows = events || [];
+  /* ⚠️ เอาเฉพาะข้อความของการคัดกรอง **รอบล่าสุด** — ใบที่ถูกตีกลับแล้วคัดใหม่จะมี
+     event `screen` หลายใบ ข้อความของรอบเก่าคือคำแนะนำที่ล้าไปแล้ว */
+  const screen = rows.find((e) => e?.kind === 'screen') || null;
+  return {
+    screenNote: screen?.reason || null,
+    contacts: rows.filter((e) => LEAD_FOLLOW_UP_ACTIONS.includes(e?.kind)).length,
+    meetings: rows.filter((e) => e?.kind === 'meeting').length,
+  };
+}
+
 /** สถานะของวันติดตามต่อ — `'late' | 'today' | 'ahead'` · **ที่เดียวสำหรับทุกจอ**
  *
  *  ⚠️ คืน **สถานะ ไม่ใช่สี** — สีเป็นเรื่องของ CSS (`[data-tone]`) · คืนเป็นสีเมื่อไร
@@ -441,7 +463,11 @@ export function canDeleteLead(user, lead) {
 export const LEAD_TRANSITIONS = {
   new: ['screen', 'disqualify'],
   screened: ['assign', 'bounce', 'disqualify'],
-  assigned: ['contact', 'reassign', 'bounce', 'disqualify'],
+  /* ⭐ `meeting` ตรงจาก `assigned` ได้ (มติผู้ใช้ 2026-08-26) — โทรครั้งแรกแล้วได้คิว
+     เจอกันเลยเป็นเรื่องปกติ บังคับให้บันทึก "ติดต่อแล้ว" ก่อนคือเพิ่มก้าวที่ไม่มีความหมาย
+     ⚠️ handler ของ `meeting` ต้องเขียน `firstContactAt` ให้ด้วย ไม่งั้นใบที่ข้ามมาทางนี้
+     จะหายจากตัวหาร SLA "ติดต่อกลับ" ทั้งที่ติดต่อไปแล้วจริง (นัดประชุมได้ = คุยกันแล้ว) */
+  assigned: ['contact', 'meeting', 'reassign', 'bounce', 'disqualify'],
   contacted: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   meeting: ['followup', 'meeting', 'create_deal', 'reassign', 'bounce', 'disqualify'],
   qualified: ['create_deal'],
