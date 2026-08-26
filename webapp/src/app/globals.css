@@ -1306,18 +1306,25 @@ button, select, input, textarea {
 .topnav-systems {
   display: none;
   align-items: center;
+  /* ⭐ **กระจายเต็มความกว้าง** (มติผู้ใช้ 2026-08-25 — "ดูไม่ค่อย balance") — เดิม
+     ชิดซ้ายแล้วเหลือช่องว่างท้ายแถว 312px ขณะที่แถวบนมีของอยู่สองมุม หัวเว็บจึง
+     อ่านเป็นรูปทแยง · กระจายแล้วสองแถวจบที่ขอบเดียวกัน
+     ⚠️ ใช้ได้เพราะจำนวนระบบคงที่ต่อคน (ไม่ใช่ลิสต์ที่งอกได้เรื่อย ๆ) และทุกปุ่มเป็น
+     ป้ายคำสั้น ๆ — ระยะห่างที่ไม่เท่ากันเป๊ะจึงไม่อ่านเป็นความผิดพลาด */
+  justify-content: space-between;
   gap: var(--space-0-5);
+  min-height: var(--sysbar-h);
+  padding: var(--space-1) clamp(var(--space-3-5), 2.2vw, var(--space-8));
+  /* พื้นเดียวกับแถบบน (ไม่ผสมดำเพิ่ม) ⇒ หัวเว็บอ่านเป็นก้อนกรมท่าก้อนเดียว
+     มีเส้นบางคั่นให้รู้ว่าเป็นคนละชั้นหน้าที่ */
+  border-top: 1px solid color-mix(in srgb, var(--navy-fg) 12%, transparent);
+  background: var(--navy);
   /* 🪤 **ห้ามใส่ overflow ใด ๆ ที่ไม่ใช่ visible** — เคยใส่ `overflow-x: auto` ให้ไถ
      ตอนระบบเยอะ ผลคือ CSS บังคับให้แกนตั้งกลายเป็น auto ตามไปด้วย แล้ว **ดรอปดาวน์
      ที่กางลงมาถูกตัดหายทั้งใบ** (DOM ยังวัดได้ปกติ จับได้จากภาพหน้าจอเท่านั้น)
-     ⇒ ระบบเยอะเกินหนึ่งบรรทัดก็ให้ **ตกบรรทัด** ไม่ใช่ไถ · ทุกระบบยังเห็นครบ
-     ซึ่งเป็นข้อกำหนดของแถวนี้ (มติผู้ใช้ 2026-08-25) */
+     ⇒ ระบบเยอะเกินหนึ่งบรรทัดก็ให้ตกบรรทัด ไม่ใช่ไถ */
   flex-wrap: wrap;
   row-gap: var(--space-1);
-  min-height: var(--sysbar-h);
-  padding: var(--space-1) var(--space-4);
-  border-top: 1px solid color-mix(in srgb, var(--navy-fg) 12%, transparent);
-  background: color-mix(in srgb, var(--navy) 88%, #000);
 }
 .topnav-sysbar-item { position: relative; flex: none; }
 .topnav-sysbar-btn {
