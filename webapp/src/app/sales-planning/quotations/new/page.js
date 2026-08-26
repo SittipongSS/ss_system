@@ -520,12 +520,15 @@ function NewQuotationInner() {
                     : null}
                   <span className={styles.addressPreview}>{naText(shippingAddress)}</span>
                 </label>
-                {/* สาขา = ของ **ที่อยู่ออกบิล** (มติผู้ใช้ 2026-08-06 กลับมติ 2026-08-05
-                    — ดูเหตุผลยาวที่ lib/master/addresses.js) · ที่นี่ยังอ่านช่องระดับลูกค้า
-                    ซึ่งเป็น "กระจกของที่อยู่ออกบิลหลัก" ตามที่ไฟล์นั้นอธิบายไว้
-                    ⚠️ ผ่าน branchLabel — `|| "00000"` เดิมทำให้จอโชว์เลขดิบ ขณะที่หน้า
-                    ทะเบียนลูกค้าโชว์ "สำนักงานใหญ่" สำหรับข้อมูลตัวเดียวกัน */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchLabel(customer.branchCode)}</span></div>
+                {/* สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติผู้ใช้ 2026-08-06 กลับมติ
+                    2026-08-05 — ดูเหตุผลยาวที่ lib/master/addresses.js)
+                    🐞 เดิมอ่าน `customer.branchCode` ซึ่งเป็น "กระจกของที่อยู่ออกบิล**หลัก**"
+                    ⇒ สลับช่องที่อยู่ไปสาขา ข้อความที่อยู่ใต้ช่องเปลี่ยนตาม แต่ช่องนี้ค้างที่
+                    "สำนักงานใหญ่" ตลอด ทั้งที่ server ตรึง branchCode ของสาขาลงใบไปแล้ว
+                    = จอบอกคนละเรื่องกับกระดาษที่พิมพ์ออกมา
+                    ⚠️ ผ่าน branchLabel เสมอ — ค่าดิบ '00000' ต้องอ่านว่า "สำนักงานใหญ่"
+                    ให้ตรงกับหน้าทะเบียนลูกค้าและตัวเอกสาร */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchLabel(pickedAddresses.snapshot.branchCode)}</span></div>
                 <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
               </div>
             </section>
