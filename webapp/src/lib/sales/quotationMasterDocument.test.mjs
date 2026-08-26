@@ -524,15 +524,22 @@ test('พรีวิว: แถบเครื่องมือทั้งแ
 test('V4 doc: มีบรรทัดจำนวนเงินตัวอักษรอยู่ "ใต้" บล็อกยอดรวม ไม่ใช่ในกล่อง 74mm', () => {
   const html = buildQuotationMasterHTML(baseQuote([lineOf('a')]), {});
   assert.match(html, /<\/section>\s*<p class="amountWords">/, 'อยู่นอก section.totals');
-  assert.match(html, /จำนวนเงินตัวอักษร/);
   assert.match(html, /\(หนึ่งพันเจ็ดสิบบาทถ้วน\)/, 'อ่านยอดรวมทั้งสิ้นหลัง VAT');
+});
+
+// มติผู้ใช้ 2026-08-26: ไม่มีป้าย "จำนวนเงินตัวอักษร" บนกระดาษ เหลือแต่คำอ่านในวงเล็บ
+test('V4 doc: ไม่มีป้ายกำกับหน้าคำอ่าน — เหลือแค่วงเล็บ', () => {
+  const html = buildQuotationMasterHTML(baseQuote([lineOf('a')]), {});
+  const words = html.match(/<p class="amountWords">.*?<\/p>/s)[0];
+  assert.equal(words, '<p class="amountWords">(หนึ่งพันเจ็ดสิบบาทถ้วน)</p>');
+  // เทียบเฉพาะกระดาษ — DOCUMENT_CSS มีคอมเมนต์ที่เอ่ยคำนี้และเดินทางไปกับไฟล์ด้วย
+  assert.doesNotMatch(printedMarkup(html), /จำนวนเงินตัวอักษร/);
 });
 
 test('V4 doc: ใบอังกฤษได้คำอ่านอังกฤษ ไม่มีคำไทยหลุด', () => {
   const html = buildQuotationMasterHTML({ ...baseQuote([lineOf('a')]), docLanguage: 'en' }, {});
   const words = html.match(/<p class="amountWords">.*?<\/p>/s)[0];
-  assert.match(words, /Amount in Words/);
-  assert.match(words, /\(One Thousand Seventy Baht Only\)/);
+  assert.equal(words, '<p class="amountWords">(One Thousand Seventy Baht Only)</p>');
   assert.doesNotMatch(words, /[฀-๿]/, 'ห้ามมีอักษรไทยบนใบอังกฤษ');
 });
 

@@ -119,7 +119,6 @@ const DOC_LABEL_PAIRS = Object.freeze({
   vat: ['ภาษีมูลค่าเพิ่ม', 'VAT'],
   grandTotal: ['ยอดรวมทั้งสิ้น', 'Grand Total'],
   currency: ['บาท', 'THB'],
-  amountInWords: ['จำนวนเงินตัวอักษร', 'Amount in Words'],
   // งวดชำระ + เงื่อนไข
   paymentSchedule: ['งวดชำระเงิน', 'PAYMENT SCHEDULE'],
   // แถวเดียวที่ระบบสร้างเองเมื่อใบไม่ได้แบ่งงวด (paymentScheduleRows) — ป้าย ไม่ใช่
