@@ -43,7 +43,8 @@ const pageSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8'
 
 test('หน้าสร้างใบ: ช่องสาขาอ่านจากที่อยู่ที่เลือกอยู่ ไม่ใช่ช่องระดับลูกค้า', () => {
   const src = pageSource('../../app/sales-planning/quotations/new/page.js');
-  assert.match(src, /<small>สาขา<\/small>\{branchLabel\(pickedAddresses\.snapshot\.branchCode\)\}/);
+  // ป้าย "สาขา" มีอยู่แล้ว ⇒ ใช้ branchValue (เลขเปล่า) ไม่ใช่ branchLabel ที่เติม "สาขาที่"
+  assert.match(src, /<small>สาขา<\/small>\{branchValue\(pickedAddresses\.snapshot\.branchCode\)\}/);
   assert.doesNotMatch(src, /branchLabel\(customer\.branchCode\)/);
 });
 

@@ -29,7 +29,7 @@ import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
-import { branchLabel } from "@/lib/master/thaiAddress";
+import { branchValue } from "@/lib/master/thaiAddress";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -526,9 +526,10 @@ function NewQuotationInner() {
                     ⇒ สลับช่องที่อยู่ไปสาขา ข้อความที่อยู่ใต้ช่องเปลี่ยนตาม แต่ช่องนี้ค้างที่
                     "สำนักงานใหญ่" ตลอด ทั้งที่ server ตรึง branchCode ของสาขาลงใบไปแล้ว
                     = จอบอกคนละเรื่องกับกระดาษที่พิมพ์ออกมา
-                    ⚠️ ผ่าน branchLabel เสมอ — ค่าดิบ '00000' ต้องอ่านว่า "สำนักงานใหญ่"
-                    ให้ตรงกับหน้าทะเบียนลูกค้าและตัวเอกสาร */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchLabel(pickedAddresses.snapshot.branchCode)}</span></div>
+                    ⚠️ ผ่าน branchValue เสมอ — ค่าดิบ '00000' ต้องอ่านว่า "สำนักงานใหญ่"
+                    ให้ตรงกับตัวเอกสาร · ใช้ branchValue ไม่ใช่ branchLabel เพราะช่องนี้
+                    มีป้าย "สาขา" กำกับอยู่แล้ว เติม "สาขาที่" อีกคือพูดซ้ำสองรอบ */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchValue(pickedAddresses.snapshot.branchCode)}</span></div>
                 <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
               </div>
             </section>

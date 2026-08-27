@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   branchLabel, composeThaiAddress, hasStructuredParts, normalizeBranchCode,
   normalizePostcode, parseThaiAddress,
-  matchSubdistrict, isBranchCodeValid, isHeadOfficeBranch, composeEnglishAddress,
+  matchSubdistrict, isBranchCodeValid, isHeadOfficeBranch, composeEnglishAddress, branchValue,
 } from './thaiAddress.js';
 import { buildThaiAdminIndex, provincesWithDistricts, resolveAddressParts, subdistrictsOf } from './thaiAdmin.js';
 
@@ -279,4 +279,15 @@ test('ฝั่งอังกฤษกันหางซ้ำด้วยก�
     }),
     '53 Soi Charoenjai, Khlong Tan Nuea, Watthana, Bangkok 10110',
   );
+});
+
+test('branchValue = เลขเปล่าสำหรับช่องที่มีป้ายอยู่แล้ว · branchLabel = มีคำนำหน้าสำหรับชิปลอย', () => {
+  assert.equal(branchValue('00001'), '00001');
+  assert.equal(branchLabel('00001'), 'สาขาที่ 00001');
+  // สำนักงานใหญ่อ่านเป็นคำทั้งคู่ — ไม่พิมพ์ '00000' ให้คนอ่านเอง
+  assert.equal(branchValue('00000'), 'สำนักงานใหญ่');
+  assert.equal(branchValue(''), 'สำนักงานใหญ่');
+  assert.equal(branchValue('สำนักงานใหญ่'), 'สำนักงานใหญ่');
+  // ชื่อสาขาที่คนกรอกเป็นข้อความ พิมพ์ตามเดิมทั้งคู่ ไม่เติมคำนำหน้าเลข
+  assert.equal(branchValue('แจ้งวัฒนะ'), 'แจ้งวัฒนะ');
 });
