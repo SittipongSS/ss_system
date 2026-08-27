@@ -151,6 +151,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     row.history[i] = 1;
   }
 
+  /* 🐞 **ยอดของทีม = ผลรวมของคนในทีม** — ไม่ใช่เส้นอิสระเหมือนเป้า (UAT 2026-08-27)
+     เป้าตั้งแยกสามระดับจริง แต่ *ยอดขาย* ไม่เคยมีแถวระดับทีมเลยสักแถวใน sales_history
+     (ตรวจ prod: บริษัท 43 · ทีม 0 · คน 8) ⇒ ก.ค. 2026 ที่กรอกยอดรายคนไว้ครบ
+     กลับโชว์ "ทุกทีมทำได้ 0%" เพราะยอดรายคนไม่เคยไหลขึ้นแถวทีม
+     ⇒ เติมให้ทีมจากผลรวมสมาชิก **เว้นเดือนที่มีแถวทีมกรอกไว้เอง** (ค่าที่คนกรอกชนะ) */
+  const teamHistory = new Set((history || [])
+    .filter((h) => h.team && !h.ownerId && slot.has(h.period))
+    .map((h) => `${h.team}|${slot.get(h.period)}`));
+  for (const row of rows.values()) {
+    if (row.scope !== 'team') continue;
+    const members = [...rows.values()].filter((r) => r.scope === 'owner' && r.team === row.team);
+    months.forEach((_, i) => {
+      if (teamHistory.has(`${row.team}|${i}`)) return;
+      const fromMembers = members.reduce((sum, m) => sum + m.actual[i], 0);
+      if (fromMembers > row.actual[i]) row.actual[i] = fromMembers;
+    });
+  }
+
   const all = [...rows.values()];
   return ok({
     range,
