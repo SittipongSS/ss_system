@@ -13,6 +13,21 @@ import { recordAudit } from '@/lib/audit';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
+
+/* คอลัมน์ของลิสต์ picker = ทุกคอลัมน์ **ยกเว้น** `addresses` กับ `contacts`
+   (เหตุผลอยู่ที่จุดใช้งานใน GET) · เขียนชื่อครบทุกช่องแทนที่จะใช้ `select('*')`
+   เพราะ PostgREST ไม่มีไวยากรณ์ "เอาทุกช่องยกเว้น"
+   🪤 เพิ่มคอลัมน์ใหม่ให้ตาราง `customers` แล้วอยากให้ picker เห็น ต้องเติมชื่อที่นี่
+   ด้วย ไม่งั้นช่องจะว่างเงียบ ๆ ไม่มี error (`?manage=1` ยังได้ทั้งแถวเสมอ) */
+const CUSTOMER_PICKER_COLUMNS = [
+  'id', 'arCode', 'name', 'nameEn', 'taxId', 'address', 'shippingAddress', 'branchCode',
+  'brands', 'mapFileUrl', 'phone', 'email', 'contactPerson', 'contactPhone',
+  'creditTerms', 'customerType', 'metadata', 'driveFolderId',
+  'team', 'teams', 'ownerId', 'isActive',
+  'approvalStatus', 'submittedBy', 'submittedByName', 'approvedBy', 'approvedByName',
+  'approvedAt', 'firstApprovedAt', 'rejectionReason',
+  'createdAt', 'updatedAt',
+].join(',');
 // Customers are a central registry (so teams don't re-register the same
 // customer) but the LIST is team-scoped by default (กฎ ลูกค้า›แบรนด์›สินค้า):
 // AE/AC/Senior see only customers their team ดูแล (teams[] — fallback team) to
@@ -34,14 +49,21 @@ export async function GET(request) {
   /* ⚠️ ต้องไล่ทีละหน้า — เพดาน 1,000 แถวของ PostgREST ตัดเงียบ ๆ ไม่มี error
      ทะเบียนนี้เรียง `createdAt` มากไปน้อย ⇒ ถ้าโดนตัด **ลูกค้าเก่าหายก่อน** ซึ่งคือ
      รายที่สั่งซ้ำบ่อยที่สุด · พ่วง `id` ให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำ+แถวหาย */
+  /* ⚠️ **ที่อยู่/ผู้ติดต่อไม่ไปกับลิสต์ของ picker** — สองคอลัมน์นี้เป็น JSON ก้อนโต
+     (วัด 27/08 บน 191 ราย: `addresses` 136 KB · `contacts` 17 KB = ครึ่งหนึ่งของ
+     ทั้งลิสต์) และไม่มี picker ไหนอ่าน · ทุกจอที่ต้องใช้ที่อยู่/ผู้ติดต่อจริงอ่าน
+     **รายตัว** จาก GET /api/customers/[id] อยู่แล้ว ด้วยเหตุผลที่เขียนไว้ใน
+     lib/master/useCustomerRecord.js (ลิสต์กรอง 3 ชั้น ⇒ ใช้ได้แค่ตอน "เลือก")
+     🪤 `?manage=1` (หน้าทะเบียนลูกค้า) ยังได้ทั้งแถวเหมือนเดิม — จอนั้นแก้ของจริง */
   const { data, error } = await fetchAllResult(() => {
-    let query = supabase.from('customers').select('*')
+    let query = supabase.from('customers').select(manage ? '*' : CUSTOMER_PICKER_COLUMNS)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true });
     // Treat legacy NULL as approved (pre-0027 rows). Filter only outside manage view.
     if (!manage) query = query.or('approvalStatus.eq.approved,approvalStatus.is.null');
     return query;
   });
+
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   // Hide retired (isActive=false) customers from every downstream picker, but
