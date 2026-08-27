@@ -21,6 +21,7 @@ import {
   canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
+  canSwitchSalesOrderDocLanguage,
   isForeignKeyViolation,
   isSalesOrderReviewer,
   isValidCancelReasonCode,
@@ -299,6 +300,54 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       dealId: before.dealId || before.deal?.id || null,
     });
   };
+
+  /* ⭐ เปลี่ยนภาษาเอกสาร (มติผู้ใช้ 2026-08-27 · mig 0295) — คู่ขนานกับใบเสนอราคา #1456
+     ภาษาเปลี่ยนแค่กระดาษที่พิมพ์ ไม่ใช่ข้อเสนอ ⇒ ใบที่อนุมัติแล้วก็เปลี่ยนได้ ไม่ต้องออก Rev.
+     ⚠️ **ต้องตรึงเอกสารฉบับใหม่ด้วย** ไม่ใช่แค่เปลี่ยนค่าในตาราง — ใบที่อนุมัติแล้วพิมพ์
+     จากฉบับตรึงเสมอ (openSalesOrderPrintWindowPreferIssued) ⇒ ไม่ตรึงใหม่ = จอบอกอังกฤษ
+     แต่ไฟล์ที่ส่งลูกค้ายังเป็นไทย */
+  if (action === 'set-doc-language') {
+    const language = body.language === 'en' ? 'en' : (body.language === 'th' ? 'th' : null);
+    if (!language) return badRequest('ภาษาเอกสารต้องเป็น "th" หรือ "en" เท่านั้น');
+    if (!canSwitchSalesOrderDocLanguage(before)) {
+      return fail('ใบสั่งขายนี้เปลี่ยนภาษาเอกสารไม่ได้ในสถานะปัจจุบัน', 409);
+    }
+    if (before.docLanguage === language) return ok(before);
+    const { data, error } = await supabase.from('sales_orders')
+      .update({ docLanguage: language, updatedAt: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (error) return fail(error.message, 500);
+
+    // ตรึงฉบับใหม่เฉพาะใบที่มีฉบับตรึงอยู่แล้ว (= ผ่านการอนุมัติมาแล้ว) · best-effort
+    if (before.signatureEvidenceId) {
+      try {
+        const { data: evidence } = await supabase
+          .from('document_signature_evidence').select('*')
+          .eq('id', before.signatureEvidenceId).maybeSingle();
+        if (evidence) {
+          const company = await getPublishedCompanyProfile(supabase).catch(() => null);
+          await captureIssuedSalesOrderSnapshot(getSupabaseAdmin(), {
+            order: {
+              ...before, ...data,
+              lines: before.lines, deal: before.deal, quotation: before.quotation, project: before.project,
+            },
+            evidence,
+            user,
+            company,
+          });
+        }
+      } catch (snapshotError) {
+        console.error('reissue sales order for language failed', id, snapshotError);
+      }
+    }
+
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data,
+      summary: `เปลี่ยนภาษาเอกสารใบสั่งขาย ${before.orderNumber} เป็น ${language === 'en' ? 'อังกฤษ' : 'ไทย'}`,
+      request: req,
+    });
+    return ok(data);
+  }
 
   if (action === 'withdraw') {
     // ดึงกลับเป็นการกระทำของผู้ยื่นเท่านั้น (มติ 2026-07-26) — ผู้รีวิวใช้ตีกลับแทน
