@@ -2,7 +2,8 @@
 // (quotationMasterDocument) ตัวเดียวกับใบเสนอราคา ผ่าน options เฉพาะ SO
 // (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
 import { fmtDate } from '@/lib/format';
-import { buildQuotationMasterHTML } from '@/lib/sales/quotationMasterDocument';
+import { buildQuotationMasterHTML, buildQuotationMasterSwitchableHTML } from '@/lib/sales/quotationMasterDocument';
+import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
 import {
@@ -30,7 +31,7 @@ export function showSalesOrderPrintError(printWindow, message = 'ไม่สา
 
 // standard = เวอร์ชันมาตรฐานเอกสารที่เผยแพร่ (ชนิด salesOrder) — ฝั่ง client ดึงสดจาก API,
 // ฝั่ง server ตอนตรึง snapshot ส่งค่าที่ตรึงไว้ใน evidence มา; ไม่ส่ง = ใช้ค่าสำรอง
-export function buildSalesOrderPrintHTML(order, company = null, standard = null) {
+export function buildSalesOrderPrintHTML(order, company = null, standard = null, options = {}) {
   const quotation = order.quotation || {};
   /* อัตรา VAT ที่พิมพ์บนใบ — **เอาของใบเสนอราคาต้นทางก่อนเสมอ**
      (กติกาเดียวกับ discountType/discountValue ข้างล่างที่ดึงจาก quotation ด้วยเหตุผลเดียวกัน:
@@ -126,10 +127,22 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null)
     paymentPlan: quotation.paymentPlan,
     paymentTerms: quotation.paymentTerms,
     notes,
+    // ภาษาของใบ (mig 0295) — ใบเก่าก่อนคอลัมน์นี้เป็นไทยทั้งหมด
+    docLanguage: order.docLanguage === 'en' ? 'en' : 'th',
   };
 
-  return buildQuotationMasterHTML(printable, {
+  /* ⭐ สวิตช์ภาษาบนหน้าพิมพ์ (มติผู้ใช้ 2026-08-27) — ใบสั่งขายใช้เครื่องยนต์เอกสาร
+     ตัวเดียวกับใบเสนอราคาอยู่แล้ว แต่เดิม **ไม่เคยส่งภาษาเข้าไปเลย** จึงตกเป็นไทยเสมอ
+     ⚠️ `docLanguage` ต้องอยู่บน `printable` ไม่ใช่ options — builder อ่านจากตัวใบ
+     ⚠️ ฉบับตรึง (issued snapshot) ไม่เดินทางนี้ มันเสิร์ฟ HTML ที่ตรึงไว้ตรง ๆ */
+  const build = options.switchable ? buildQuotationMasterSwitchableHTML : buildQuotationMasterHTML;
+  return build(printable, {
     company,
+    editable: options.editable === true,
+    languageSave: {
+      url: `/api/sales-planning/sales-orders/${encodeURIComponent(order.id || '')}`,
+      body: { action: 'set-doc-language', language: '__LANG__' },
+    },
     // มาตรฐานเอกสารที่เผยแพร่คุมรหัสแบบฟอร์ม/Revision/ชื่อเอกสาร/สี — ไม่มีก็ตกไปใช้
     // ค่าสำรอง (ใบสั่งขาย = Steel Blue ตามมติผู้ใช้ 2026-07-21; ใบเสนอราคา = Terracotta)
     form: resolveDocumentForm(standard, 'salesOrder'),
@@ -184,7 +197,10 @@ export function openSalesOrderPrintWindow(order, preparedWindow = null, company 
   const win = preparedWindow || prepareSalesOrderPrintWindow();
   if (!win) return;
   win.document.open();
-  win.document.write(buildSalesOrderPrintHTML(order, company, standard));
+  win.document.write(buildSalesOrderPrintHTML(order, company, standard, {
+    switchable: true,
+    editable: canSwitchSalesOrderDocLanguage(order),
+  }));
   win.document.close();
   return win;
 }

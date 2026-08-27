@@ -364,13 +364,18 @@ function langConfirmOverlay(messages) {
   </div>`;
 }
 
-function langSwitchScript(quotationId, hasConfirm) {
+/* `save` = ปลายทางที่บันทึกภาษา — ต่างกันตามชนิดเอกสาร
+     ใบเสนอราคา  PATCH /api/sales-planning/quotations/{id}   body {"docLanguage":"__LANG__"}
+     ใบสั่งขาย   PATCH /api/sales-planning/sales-orders/{id}  body {"action":"set-doc-language","language":"__LANG__"}
+   ⚠️ เดิมฝังพาธของใบเสนอราคาไว้ตายตัว — ใบสั่งขายจึงใช้สวิตช์ตัวนี้ไม่ได้เลย */
+function langSwitchScript(save, hasConfirm) {
   return `
 (function () {
   var doc = document.querySelector('.document');
   var note = document.getElementById("langNote");
   var buttons = Array.prototype.slice.call(document.querySelectorAll('.langSwitch button'));
-  var url = '/api/sales-planning/quotations/' + encodeURIComponent(${JSON.stringify(quotationId)});
+  var url = ${JSON.stringify(save.url)};
+  var bodyTpl = ${JSON.stringify(JSON.stringify(save.body))};
   function paint(lang, busy) {
     doc.setAttribute('data-active-lang', lang);
     document.documentElement.lang = lang;
@@ -390,7 +395,7 @@ function langSwitchScript(quotationId, hasConfirm) {
     fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docLanguage: lang }),
+      body: bodyTpl.replace(/__LANG__/g, lang),
     }).then(function (res) {
       if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) {
         throw new Error(d.error || ('บันทึกไม่สำเร็จ (' + res.status + ')'));
@@ -428,6 +433,13 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
   /* ช่องที่ยังไม่มีคู่ภาษาอังกฤษ — คำนวณฝั่ง server แล้วฝังไปกับไฟล์ เพราะหน้าต่างพิมพ์
      ถูกตัด `opener` ทิ้ง เรียกกลับไปถามหน้าหลักไม่ได้ (เหตุผลเดียวกับที่ฝังสองภาษา) */
   const gapMessages = englishGapMessages(englishDocumentGaps(quote));
+  /* ปลายทางที่บันทึกภาษา — ผู้เรียกส่งมาเอง (ใบสั่งขายมี route ของตัวเอง)
+     ไม่ส่งมา = ใบเสนอราคาตามเดิม เพื่อไม่ให้ผู้เรียกเดิมต้องแก้ */
+  const saveTarget = options.languageSave
+    || (quote?.id ? {
+      url: `/api/sales-planning/quotations/${encodeURIComponent(quote.id)}`,
+      body: { docLanguage: '__LANG__' },
+    } : null);
   const models = Object.fromEntries(QUOTATION_DOC_LANGUAGES.map((language) => [
     language,
     buildQuotationMasterModelFromQuote(quote, { ...options, docLanguage: language }),
@@ -454,7 +466,7 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
       const model = models[language];
       return `<div class="langPane" data-lang="${esc(language)}">${renderPages(model, labelsOf(model))}</div>`;
     }).join(''),
-    script: editable && quote?.id ? langSwitchScript(quote.id, gapMessages.length > 0) : '',
-    overlayHtml: editable && quote?.id ? langConfirmOverlay(gapMessages) : '',
+    script: editable && saveTarget ? langSwitchScript(saveTarget, gapMessages.length > 0) : '',
+    overlayHtml: editable && saveTarget ? langConfirmOverlay(gapMessages) : '',
   });
 }

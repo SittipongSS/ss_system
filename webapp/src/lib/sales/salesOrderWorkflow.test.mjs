@@ -8,6 +8,7 @@ import {
   canIssueSalesOrderRevision,
   canCancelSalesOrder,
   canRevokeSalesOrderApproval,
+  canSwitchSalesOrderDocLanguage,
   canSalesOrderTransition,
   canSubmitSalesOrder,
   canWithdrawSalesOrderSubmission,
@@ -286,4 +287,21 @@ test('ยกเลิก SO: ใบที่ยกเลิก/ถูกแท�
 
 test('ยกเลิก SO: ไม่มีสิทธิ์แก้งานขาย = ไม่มีปุ่ม แม้เป็นผู้ตรวจสอบ', () => {
   assert.equal(canCancelSalesOrder({ status: 'draft' }, { canEdit: false, reviewer: true }), false);
+});
+
+// ── เปลี่ยนภาษาเอกสารได้ไหม (มติผู้ใช้ 2026-08-27) ───────────────────────────
+test('SO: อนุมัติแล้วเปลี่ยนภาษาได้ · รออนุมัติไม่ได้', () => {
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'approved' }), true);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'draft' }), true);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'rejected' }), true);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'approval_revoked' }), true);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'pending_approval' }), false);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'cancelled' }), false);
+});
+
+// ฉบับที่ถูก Rev. ทับแล้วไม่ใช่ใบที่มีชีวิต — ห้ามงอกเอกสารใหม่จากมัน
+test('SO: ฉบับที่ถูก Rev. ทับแล้ว เปลี่ยนไม่ได้', () => {
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'approved', supersededById: 'SO-2' }), false);
+  assert.equal(canSwitchSalesOrderDocLanguage({ status: 'revised' }), false);
+  assert.equal(canSwitchSalesOrderDocLanguage(null), false);
 });
