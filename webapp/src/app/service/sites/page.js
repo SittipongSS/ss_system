@@ -87,7 +87,7 @@ export default function ServiceSitesPage() {
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("th");
     if (!needle) return sites;
-    return sites.filter((site) => [site.name, site.customerName, site.zone, site.code]
+    return sites.filter((site) => [site.name, site.customerName, site.routeZone, site.code]
       .filter(Boolean).some((field) => String(field).toLocaleLowerCase("th").includes(needle)));
   }, [sites, search]);
 
@@ -107,7 +107,7 @@ export default function ServiceSitesPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อไซต์ ลูกค้า โซน หรือรหัส"
+            placeholder="ค้นหาชื่อไซต์ ลูกค้า เขตวิ่งงาน หรือรหัส"
             aria-label="ค้นหาไซต์บริการ"
             className={styles.searchInput}
           />
@@ -133,7 +133,7 @@ export default function ServiceSitesPage() {
                 <th>รหัส</th>
                 <th>ไซต์</th>
                 <th>ลูกค้า</th>
-                <th>โซน</th>
+                <th>เขตวิ่งงาน</th>
                 <th className={styles.numCol}>เครื่อง</th>
                 <th>ช่วงเวลาที่เข้าได้</th>
                 <th>สถานะ</th>
@@ -149,7 +149,7 @@ export default function ServiceSitesPage() {
                       <Link href={`/service/sites/${site.id}`} className={styles.siteLink}>{site.name}</Link>
                     </td>
                     <td>{naText(site.customerName)}</td>
-                    <td>{naText(site.zone)}</td>
+                    <td>{naText(site.routeZone)}</td>
                     <td className={styles.numCol}>
                       {/* เครื่องที่ยังใช้งานคือตัวเลขที่ช่างสนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                       {site.activeAssetCount || 0}

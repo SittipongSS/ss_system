@@ -1,7 +1,7 @@
 // ── รอบบริการ + ตารางนัดเข้าไซต์ (mig 0188) — logic ล้วน ──────────────────
 //
 // ⭐ `service_visits` คือ "ตาราง" ที่ผู้ใช้ขอ · ไฟล์นี้คือกฎทั้งหมดของมัน:
-// gen นัดตามรอบ · เตือนเวลาทับกัน · เตือนวิ่งข้ามโซน · เตือนนอกช่วงที่ไซต์ให้เข้า
+// gen นัดตามรอบ · เตือนเวลาทับกัน · เตือนวิ่งข้ามเขต · เตือนนอกช่วงที่ไซต์ให้เข้า
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ปฏิทิน/ฟอร์ม) และ server (validate + gen)
 import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
@@ -400,30 +400,32 @@ export function overlappingVisitIds(visits = []) {
   return ids;
 }
 
-// ── วิ่งข้ามโซนในวันเดียว ────────────────────────────────────────────────
-// จัดกลุ่มนัดของช่างคนหนึ่งในวันหนึ่งตามโซนของไซต์ · ≥2 โซน = ขึ้นป้ายเตือน
-// (สาเหตุที่ตารางเลื่อนบ่อยที่สุดคือรถติดระหว่างโซน ไม่ใช่งานที่ไซต์นาน)
-export function zoneSplit(visits = [], sitesById = new Map()) {
+// ── วิ่งข้ามเขตในวันเดียว ────────────────────────────────────────────────
+// จัดกลุ่มนัดของช่างคนหนึ่งในวันหนึ่งตาม **เขตวิ่งงาน** ของไซต์ (routeZone —
+// 'BKK-E' / 'ปริมณฑล') · ≥2 เขต = ขึ้นป้ายเตือน
+// (สาเหตุที่ตารางเลื่อนบ่อยที่สุดคือรถติดระหว่างเขต ไม่ใช่งานที่ไซต์นาน)
+// ⚠️ คนละเรื่องกับ "โซน" (service_zones) ที่เป็นพื้นที่ย่อยในไซต์
+export function routeZoneSplit(visits = [], sitesById = new Map()) {
   const map = new Map();
   for (const visit of visits) {
     if (!isLive(visit)) continue;
     const key = `${visit.assigneeId || 'unassigned'}|${visit.scheduledDate}`;
-    const zone = sitesById.get(visit.siteId)?.zone || null;
+    const routeZone = sitesById.get(visit.siteId)?.routeZone || null;
     const entry = map.get(key) || {
       assigneeId: visit.assigneeId || null,
       assigneeName: visit.assigneeName || null,
       date: visit.scheduledDate,
-      zones: new Set(),
+      routeZones: new Set(),
       count: 0,
     };
     entry.count += 1;
-    if (zone) entry.zones.add(zone);
+    if (routeZone) entry.routeZones.add(routeZone);
     map.set(key, entry);
   }
   return [...map.values()].map((entry) => ({
     ...entry,
-    zones: [...entry.zones],
-    crossZone: entry.zones.size > 1,
+    routeZones: [...entry.routeZones],
+    crossRouteZone: entry.routeZones.size > 1,
   }));
 }
 

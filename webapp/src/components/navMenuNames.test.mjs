@@ -26,12 +26,12 @@ function menuNameFor(href) {
 }
 
 test('⭐ คิวงานของตัวเองสองระบบต้องใช้คนละชื่อ — ชื่อซ้ำข้ามระบบทำให้คนเปิดผิดหน้าประจำ', () => {
-  const sales = menuNameFor('/sa/tasks');              // บริหารงานขาย — งานติดตามส่วนบุคคล
-  const service = menuNameFor('/service/my-visits');   // ธุรกิจบริการ — นัดเข้าไซต์
+  const sales = menuNameFor('/sa/tasks');           // บริหารงานขาย — งานติดตามส่วนบุคคล
+  const service = menuNameFor('/service/today');    // ธุรกิจบริการ — นัดเข้าไซต์ (F-1: เดิม /service/my-visits "นัดของฉัน")
 
   assert.notEqual(sales, service);
   assert.equal(sales, 'งานของฉัน');
-  assert.equal(service, 'นัดของฉัน');
+  assert.equal(service, 'งานวันนี้');
 });
 
 test('⭐ X-1: สองระบบมีหน้าภาพรวมของตัวเอง คนละเส้นทาง — ไม่ใช่ปฏิทินรวม', () => {
@@ -71,7 +71,9 @@ const NEEDS_SHORT_NAME = {
 
 // ป้ายที่ "เกือบ" ล้นแต่รอดเพราะระบบของมันมีช่องกว้างกว่า — ถ้าวันไหนมีคนเพิ่มเมนู
 // เข้าระบบนั้นจนช่องแคบลง ป้ายพวกนี้จะเป็นกลุ่มแรกที่ถูกตัด
-const NEAR_LIMIT = ['/tax/filings', '/production/board', '/service/schedule'];
+// (F-1 2026-08-27: /service/schedule หลุดจากลิสต์ — เปลี่ยนชื่อ "ตารางเข้าบริการ" →
+//  "จัดคิวช่าง" ซึ่งสั้นกว่าเดิมมาก ไม่เฉียดขอบช่องแล้ว)
+const NEAR_LIMIT = ['/tax/filings', '/production/board'];
 
 test('⭐ ป้ายที่ยาวเกินช่องแถบล่างต้องมี shortName — ตัดท้ายด้วย … แล้วอ่านไม่ออก', () => {
   for (const [href, expected] of Object.entries(NEEDS_SHORT_NAME)) {
@@ -104,11 +106,11 @@ test('เมนูที่ป้ายเกือบเต็มช่อง�
 
 test('เมนูของแต่ละระบบอยู่ใต้เส้นทางของระบบตัวเอง — ไม่ยืมเส้นทางข้ามระบบ', () => {
   // /sa/tasks อยู่ในกลุ่ม salesplan · /service/* อยู่ในกลุ่ม service
-  // ถ้าวันไหนมีคนย้าย my-visits ไปไว้ใต้ /sa หรือ /pm ระบบธุรกิจบริการจะกลายเป็น
+  // ถ้าวันไหนมีคนย้าย "งานวันนี้" ไปไว้ใต้ /sa หรือ /pm ระบบธุรกิจบริการจะกลายเป็น
   // เมนูของฝ่ายขายอีกครั้ง ซึ่งเป็นเรื่องที่ตั้งใจแยกออกมาตั้งแต่ต้น (มติ 2026-07-30)
-  assert.ok(SOURCE.includes("href: '/service/my-visits'"));
-  assert.ok(!SOURCE.includes("href: '/sa/my-visits'"));
-  assert.ok(!SOURCE.includes("href: '/pm/my-visits'"));
+  assert.ok(SOURCE.includes("href: '/service/today'"));
+  assert.ok(!SOURCE.includes("href: '/sa/today'"));
+  assert.ok(!SOURCE.includes("href: '/pm/today'"));
 });
 
 // ── ทุกระบบต้องมีแถบเมนูของตัวเอง ────────────────────────────────────────

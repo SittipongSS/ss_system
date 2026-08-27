@@ -518,10 +518,9 @@ export default function AppLayout({ children }) {
         // ภาพรวมมาก่อนสุด (X-1) — หัวหน้าทีมบริการเปิดมาเห็นนัดค้าง/วันนี้ใครไปไหน/
         // ไซต์ที่น้ำหอมกำลังจะหมด · **คนละหน้ากับภาพรวมของวางแผนผลิต** ตามมติแยกทีม
         { href: '/service', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'service:view', visible: canViewService, match: (p) => p === '/service' },
-        // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
-        // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
-        // ตารางมาก่อนทะเบียน — หน้าที่ช่าง/หัวหน้าเปิดทุกเช้าคือตาราง ไม่ใช่ทะเบียน
-        // งานของฉันมาก่อนสุด — ช่างเปิดระบบมาเพื่อดูงานตัวเองวันนี้ ไม่ใช่ตารางทั้งฝ่าย
+        // งานวันนี้มาก่อนสุด — ช่างเปิดระบบมาเพื่อดูงานตัวเองวันนี้ ไม่ใช่ตารางทั้งฝ่าย
+        // (F-1 2026-08-27: เดิมชื่อ "นัดของฉัน" ที่ /service/my-visits — เปลี่ยนชื่อ+route
+        // เพราะหน้านี้ไม่มีปุ่มสลับ "ทั้งทีม" แล้ว มุมมองข้ามคนย้ายไปหน้าจัดคิวช่าง)
         // ⚠️ ชื่อต้องไม่ซ้ำกับ "งานของฉัน" ของระบบบริหารงานขาย (/sa/tasks) — คนละเรื่อง
         // กันคนละระบบ: ฝั่งขาย = งานติดตามส่วนบุคคล · ฝั่งนี้ = นัดเข้าไซต์ที่ต้องไปทำจริง
         // ชื่อซ้ำข้ามระบบทำให้คนจำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
@@ -529,11 +528,16 @@ export default function AppLayout({ children }) {
         // ทีมขาย SV · admin/หัวหน้าฝ่ายขาย · กว้างกว่า "คนที่รับงานได้" หนึ่งขั้นเพื่อให้
         // หัวหน้าเปิดดูรูปหน้าจอของช่างได้ โดยไม่เปิดให้ฝ่ายขายทีมอื่นที่ไม่เกี่ยวเลย
         // 🐞 เดิมเปิดด้วย service:view = ฝ่ายขายทุกคนเห็นเมนูที่กดเข้าไปแล้วว่างเสมอ
-        { href: '/service/my-visits', name: 'นัดของฉัน', icon: Wrench, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/my-visits') },
-        // ⚠️ ต้องมี visible: canViewService ทุกรายการ — cap service:view ถือกว้างระดับ role
-        // (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService · ถ้าเช็คแค่ cap
-        // ฝ่ายคลัง/QC จะเห็นเมนูของทีมช่าง ซึ่งขัดมติแยกทีม (PD ≠ TS) ที่ตกลงไว้
-        { href: '/service/schedule', name: 'ตารางเข้าบริการ', icon: CalendarDays, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/schedule') },
+        { href: '/service/today', name: 'งานวันนี้', icon: Wrench, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/today') },
+        // จัดคิวช่าง = เครื่องมือวางแผนของ TS (F-1: เดิมชื่อ "ตารางเข้าบริการ") —
+        // แคบเป็น canEditService เพราะเป็นหน้าลงมือจัดคิว ไม่ใช่หน้าอ่าน · ฝ่ายขายที่
+        // อยากรู้ว่า "ช่างเข้าเมื่อไหร่" ดูจากหน้าไซต์บริการซึ่งยังเปิดตามสิทธิ์อ่านเดิม
+        { href: '/service/schedule', name: 'จัดคิวช่าง', icon: CalendarDays, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/schedule') },
+        // ⚠️ ต้องมี visible: canViewService/canEditService ทุกรายการ — cap service:view
+        // ถือกว้างระดับ role (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService ·
+        // ถ้าเช็คแค่ cap ฝ่ายคลัง/QC จะเห็นเมนูของทีมช่าง ซึ่งขัดมติแยกทีม (PD ≠ TS)
+        // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
+        // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
       ],
     },

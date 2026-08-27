@@ -5,6 +5,7 @@
 // ⚠️ รอบแรก **ยังไม่ทำ time-grid พิกเซลต่อชั่วโมง** — งานวิ่งไซต์ 3–5 นัดต่อวัน
 //    ไม่ต้องการความละเอียดระดับนั้น · ชิปเรียงตามเวลาในช่องวันพอแล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
@@ -25,7 +26,7 @@ import {
   sortByTime,
   visitTimeText,
   visitWarnings,
-  zoneSplit,
+  routeZoneSplit,
 } from "@/lib/service/rounds";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -105,7 +106,7 @@ export default function ServiceSchedulePage() {
           if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
           // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
           // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
-          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "นัดของฉัน" ก็ว่างตลอดกาล
+          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของช่างก็ว่างตลอดกาล
           setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
         } catch (e) {
           setToast({ kind: "error", msg: e.message });
@@ -157,10 +158,10 @@ export default function ServiceSchedulePage() {
     return map;
   }, [visits]);
 
-  const crossZone = useMemo(() => {
+  const crossRouteZone = useMemo(() => {
     const set = new Set();
-    for (const entry of zoneSplit(visits, sitesById)) {
-      if (entry.crossZone) set.add(`${entry.assigneeId || UNASSIGNED}|${entry.date}`);
+    for (const entry of routeZoneSplit(visits, sitesById)) {
+      if (entry.crossRouteZone) set.add(`${entry.assigneeId || UNASSIGNED}|${entry.date}`);
     }
     return set;
   }, [visits, sitesById]);
@@ -203,8 +204,8 @@ export default function ServiceSchedulePage() {
   return (
     <Workspace
       icon={<CalendarDays size={20} aria-hidden="true" />}
-      title="ตารางเข้าบริการ"
-      subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามโซน และนัดนอกช่วงที่ไซต์ให้เข้า"
+      title="จัดคิวช่าง"
+      subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
       headerRight={canEdit ? (
         <Button tone="primary" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
           นัดเข้าบริการ
@@ -245,7 +246,16 @@ export default function ServiceSchedulePage() {
                 </tr>
               ) : rows.map((row) => (
                 <tr key={row.key}>
-                  <th scope="row" className={styles.techCol}>{row.name}</th>
+                  {/* ชื่อช่างกดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
+                      มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าช่าง (มติ 2026-08-02 ข้อ 2)
+                      แถว "ยังไม่มอบหมาย" ไม่มีเจ้าของ จึงไม่มีลิงก์ */}
+                  <th scope="row" className={styles.techCol}>
+                    {row.key === UNASSIGNED ? row.name : (
+                      <Link href={`/service/today?user=${encodeURIComponent(row.key)}`} className={styles.techLink}>
+                        {row.name}
+                      </Link>
+                    )}
+                  </th>
                   {days.map((day) => {
                     const cellVisits = sortByTime(row.visits.filter((v) => v.scheduledDate === day.iso));
                     const loadKey = `${row.key}|${day.iso}`;
@@ -253,12 +263,12 @@ export default function ServiceSchedulePage() {
                     return (
                       <td key={day.iso} className={day.weekend ? styles.weekend : undefined}>
                         <div className={styles.cell}>
-                          {(load?.over || crossZone.has(loadKey)) && (
+                          {(load?.over || crossRouteZone.has(loadKey)) && (
                             <p className={styles.cellWarn}>
                               <AlertTriangle size={12} aria-hidden="true" />
                               {load?.over ? `${load.count} นัด` : null}
-                              {load?.over && crossZone.has(loadKey) ? " · " : null}
-                              {crossZone.has(loadKey) ? "ข้ามโซน" : null}
+                              {load?.over && crossRouteZone.has(loadKey) ? " · " : null}
+                              {crossRouteZone.has(loadKey) ? "ข้ามเขต" : null}
                             </p>
                           )}
                           {cellVisits.map((visit) => {
@@ -272,7 +282,7 @@ export default function ServiceSchedulePage() {
                                 onClick={() => setFormVisit(visit)}
                                 title={[
                                   site?.name,
-                                  site?.zone,
+                                  site?.routeZone,
                                   VISIT_KIND_LABELS[visit.kind],
                                   VISIT_STATUS_LABELS[visit.status],
                                   ...warnings.map((w) => `⚠ ${w.message}`),

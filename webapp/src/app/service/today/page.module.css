@@ -1,13 +1,6 @@
-/* หน้ามือถือของช่าง (S-3)
+/* หน้ามือถือของช่าง: งานวันนี้ (S-3 · F-1)
    ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
    ⚠️ ออกแบบจากจอแคบขึ้นไป (mobile-first) — ช่างเปิดหน้านี้บนมือถือหน้างานเสมอ */
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
 
 .counts {
   display: flex;
@@ -90,3 +83,8 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+/* มติ 2026-08-02 ข้อ 3: ปุ่มบนหน้าช่างต้องสูงระดับจอสัมผัส (--ctl-h-touch = 44px)
+   ไม่ใช่ค่าเดสก์ท็อป — ช่างกดด้วยนิ้วโป้งกลางไซต์ ไม่ใช่เมาส์ · override เฉพาะ
+   ในหน้านี้ ไม่แก้ <Button> กลาง เพราะหน้าเดสก์ท็อปอื่นไม่ได้ต้องการ */
+.actions :global(.btn) { min-height: var(--ctl-h-touch); }

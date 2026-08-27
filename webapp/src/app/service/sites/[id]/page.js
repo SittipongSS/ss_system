@@ -235,7 +235,7 @@ export default function ServiceSiteDetailPage({ params }) {
     >
       <WorkspaceSection title="ข้อมูลไซต์">
         <dl className={styles.info}>
-          <div><dt>โซน</dt><dd>{naText(site.zone)}</dd></div>
+          <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{naText(site.address)}</dd></div>
           <div><dt>ผู้ติดต่อ</dt><dd>{naText(site.contactName)}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>

@@ -13,7 +13,7 @@ import { WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, toHHMM } from "@/lib/serv
 import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
-  customerId: "", name: "", zone: "", address: "", mapUrl: "",
+  customerId: "", name: "", routeZone: "", address: "", mapUrl: "",
   contactName: "", contactPhone: "",
   accessFrom: "", accessTo: "", accessDays: [], accessNote: "",
   note: "", isActive: true,
@@ -32,7 +32,7 @@ export default function ServiceSiteModal({ open, site = null, customers = [], on
       ? {
         customerId: site.customerId || "",
         name: site.name || "",
-        zone: site.zone || "",
+        routeZone: site.routeZone || "",
         address: site.address || "",
         mapUrl: site.mapUrl || "",
         contactName: site.contactName || "",
@@ -104,8 +104,8 @@ export default function ServiceSiteModal({ open, site = null, customers = [], on
         </label>
 
         <label className={styles.field}>
-          <span>โซน</span>
-          <Input value={form.zone} onChange={change("zone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
+          <span>เขตวิ่งงาน</span>
+          <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
           <small>ใช้จัดรอบวิ่งให้ช่างไม่ต้องข้ามเมืองในวันเดียว</small>
         </label>
 

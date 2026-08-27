@@ -1,13 +1,17 @@
 "use client";
-// ── หน้ามือถือของช่าง: นัดของฉัน (S-3) ────────────────────────────────────
+// ── หน้ามือถือของช่าง: งานวันนี้ (S-3 · เดิมชื่อ "นัดของฉัน" — F-1 2026-08-27) ──
 //
 // ⭐ **จุดที่ข้อมูลจริงเข้าระบบ** — ถ้าหน้านี้ใช้ยาก ทั้งโมดูลตาย · ตารางสวยแค่ไหน
 // ก็ไม่มีค่าถ้าไม่มีใครปิดงาน แล้วทุกแถวค้างเป็น "นัดไว้" ตลอดกาล
 //
-// ⚠️ ชื่อหน้าเป็น "นัดของฉัน" ไม่ใช่ "งานของฉัน" — ชื่อหลังเป็นของระบบบริหารงานขาย
+// ⚠️ ชื่อหน้าเป็น "งานวันนี้" ไม่ใช่ "งานของฉัน" — ชื่อหลังเป็นของระบบบริหารงานขาย
 // (/sa/tasks = งานติดตามส่วนบุคคล) คนละเรื่องกันคนละระบบ · ชื่อซ้ำข้ามระบบทำให้คน
 // จำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
+//
+// ⚠️ ไม่มีปุ่มสลับ "ทั้งทีม" บนหน้านี้ (มติ 2026-08-02 ข้อ 2) — มุมมองทั้งฝ่ายอยู่ที่
+// หน้าจัดคิวช่าง · เคสไปแทนกันเข้าหน้านี้ด้วยลิงก์ ?user=<id> จากหน้าจัดคิวแทน
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CheckCircle2, MapPin, Phone, Wrench } from "lucide-react";
@@ -17,11 +21,10 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import CloseVisitSheet from "@/components/service/CloseVisitSheet";
-import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
-import { VISIT_SCOPES, VISIT_SCOPE_LABELS, groupVisits, openCount } from "@/lib/service/myVisits";
+import { groupVisits, openCount } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -34,14 +37,20 @@ const SECTIONS = [
   { key: "later", title: "ถัดไป", tone: "plain" },
 ];
 
-export default function MyVisitsPage() {
+export default function TodayPage() {
   const role = useRole();
   const team = useTeam();
   const teams = useTeams();
   const department = useDepartment();
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
-  const [scope, setScope] = useState("mine");
+  // ไปแทนกัน: หน้าจัดคิวลิงก์มาพร้อม ?user=<id> — หน้านี้กลายเป็น "งานวันนี้ของ <ช่าง>"
+  // ไม่มี UI สลับคนบนหน้านี้เอง (มุมมองข้ามคนเป็นเรื่องของหน้าจัดคิว) · server เป็นคน
+  // เทียบว่า id นี้คือตัวเองหรือคนอื่น — ฝั่ง client ไม่มีทางรู้ id ตัวเอง (roleContext ไม่พก id)
+  const searchParams = useSearchParams();
+  const viewUserId = searchParams.get("user") || "";
+  const viewingOther = !!viewUserId;
+
   const [visits, setVisits] = useState([]);
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,9 +67,10 @@ export default function MyVisitsPage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/service/my-visits?scope=${scope}`);
+      const assignee = viewingOther ? `&assignee=${encodeURIComponent(viewUserId)}` : "";
+      const res = await fetch(`/api/service/my-visits?scope=mine${assignee}`);
       const data = await res.json().catch(() => null);
-      if (!isLatest()) return; // สลับขอบเขตระหว่างรอ — คิวต้องตรงกับปุ่มที่กดค้างไว้
+      if (!isLatest()) return; // เปลี่ยนคนดูระหว่างรอ — คิวต้องตรงกับลิงก์ล่าสุด
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานไม่สำเร็จ");
       setVisits(Array.isArray(data?.visits) ? data.visits : []);
       setSites(Array.isArray(data?.sites) ? data.sites : []);
@@ -71,7 +81,7 @@ export default function MyVisitsPage() {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [scope, startRun]);
+  }, [startRun, viewingOther, viewUserId]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
 
@@ -79,6 +89,12 @@ export default function MyVisitsPage() {
   const todayIso = businessDate();
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
+
+  // ชื่อช่างที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
+  const viewedName = useMemo(() => {
+    if (!viewingOther) return "";
+    return visits.find((v) => v.assigneeName)?.assigneeName || "ช่างคนอื่น";
+  }, [viewingOther, visits]);
 
   const closeVisit = async (form) => {
     const res = await fetch(`/api/service/visits/${closing.id}`, {
@@ -92,38 +108,26 @@ export default function MyVisitsPage() {
     // ⭐ server เสนอนัดรอบถัดไปมา — บอกวันให้เห็น แต่ไม่สร้างให้เอง
     const suggestion = data?.nextVisitSuggestion;
     setToast(suggestion
-      ? { kind: "success", msg: `ปิดงานแล้ว · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าตาราง` }
+      ? { kind: "success", msg: `ปิดงานแล้ว · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวช่าง` }
       : { kind: "success", msg: "ปิดงานแล้ว" });
     setClosing(null);
     await load();
   };
 
-  const subtitle = scope === "mine"
-    ? "นัดที่มอบหมายให้คุณ · ปิดงานได้จากหน้านี้"
-    : "นัดของทั้งฝ่าย — ใช้ตอนไปแทนกัน";
+  const subtitle = viewingOther
+    ? `กำลังดูงานของ ${viewedName} (ไปแทนกัน) · ปิดงานแทนได้จากหน้านี้`
+    : "นัดเข้าไซต์ที่มอบหมายให้คุณ · ปิดงานได้จากหน้านี้";
 
   return (
     <Workspace
       icon={<Wrench size={20} aria-hidden="true" />}
-      title="นัดของฉัน"
+      title="งานวันนี้"
       subtitle={subtitle}
       toolbar={(
-        <div className={styles.toolbar}>
-          {/* ⭐ ตัวสลับของฉัน/ทั้งทีม (มติผู้ใช้) — ช่างไปแทนกันเป็นเรื่องปกติ
-              ต้องเปิดดูของคนที่ลาได้โดยไม่ต้องออกไปหน้าตารางใหญ่ */}
-          {/* สถานะ active ของ .segmented มาจาก aria-pressed เอง — ไม่ต้องใส่คลาสซ้ำ */}
-          <div className="segmented" role="group" aria-label="ขอบเขตคิวงาน">
-            {VISIT_SCOPES.map((key) => (
-              <button key={key} type="button" onClick={() => setScope(key)} aria-pressed={scope === key}>
-                {VISIT_SCOPE_LABELS[key]}
-              </button>
-            ))}
-          </div>
-          <span className={styles.counts}>
-            {counts.overdue > 0 && <strong className={styles.overdueCount}>ค้าง {counts.overdue}</strong>}
-            วันนี้ {counts.today} · พรุ่งนี้ {counts.tomorrow}
-          </span>
-        </div>
+        <span className={styles.counts}>
+          {counts.overdue > 0 && <strong className={styles.overdueCount}>ค้าง {counts.overdue}</strong>}
+          วันนี้ {counts.today} · พรุ่งนี้ {counts.tomorrow}
+        </span>
       )}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
@@ -131,7 +135,7 @@ export default function MyVisitsPage() {
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
         SECTIONS.every((section) => groups[section.key].length === 0) ? (
           <EmptyState icon={CheckCircle2}>
-            {scope === "mine" ? "ไม่มีนัดค้างและไม่มีนัดในช่วงนี้" : "ทั้งฝ่ายไม่มีนัดในช่วงนี้"}
+            {viewingOther ? `${viewedName} ไม่มีนัดค้างและไม่มีนัดในช่วงนี้` : "ไม่มีนัดค้างและไม่มีนัดในช่วงนี้"}
           </EmptyState>
         ) : SECTIONS.map((section) => {
           const rows = groups[section.key];
@@ -158,14 +162,10 @@ export default function MyVisitsPage() {
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
                     <p className={styles.meta}>
-                      {naText([site?.zone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
+                      {naText([site?.routeZone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
                         .filter(Boolean).join(" · "))}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}
-                    {/* ทั้งทีม: ต้องรู้ว่านัดนี้เป็นของใคร ไม่งั้นไปทับงานคนอื่น */}
-                    {scope === "team" && (
-                      <p className={styles.meta}>ช่าง: {visit.assigneeName || "ยังไม่มอบหมาย"}</p>
-                    )}
 
                     {warnings.map((warning) => (
                       <p key={warning.kind} className={styles.warn}>

@@ -133,14 +133,14 @@ export async function assetsForSites(supabase, siteIds = []) {
   return out;
 }
 
-// ── ไซต์ที่นัดชุดหนึ่งอ้างถึง — ปฏิทินต้องรู้ชื่อ/โซน/ช่วงเวลาเข้าไซต์ ───
+// ── ไซต์ที่นัดชุดหนึ่งอ้างถึง — ปฏิทินต้องรู้ชื่อ/เขตวิ่งงาน/ช่วงเวลาเข้าไซต์ ───
 // ⚠️ ยิงรวดเดียวด้วย `in` ไม่ใช่รายนัด (สัปดาห์หนึ่ง 40 นัด = 40 คำขอ)
 export async function sitesForVisits(supabase, visits = []) {
   const ids = [...new Set(visits.map((v) => v.siteId).filter(Boolean))];
   if (!ids.length) return new Map();
   const { data, error } = await supabase
     .from('service_sites')
-    .select('id, code, name, zone, customerName, accessFrom, accessTo, accessDays, accessNote, mapUrl, contactName, contactPhone')
+    .select('id, code, name, routeZone, customerName, accessFrom, accessTo, accessDays, accessNote, mapUrl, contactName, contactPhone')
     .in('id', ids);
   if (error) throw error;
   return new Map((data || []).map((row) => [row.id, row]));

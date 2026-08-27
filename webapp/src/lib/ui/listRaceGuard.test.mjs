@@ -27,7 +27,7 @@ const GUARDED = [
   "app/production/board/page.js",
   "app/service/page.js",
   "app/service/schedule/page.js",
-  "app/service/my-visits/page.js",
+  "app/service/today/page.js",
   "app/sales-planning/deals/page.js",
   "app/sales-planning/leads/page.js",
   "app/sales-planning/targets/page.js",

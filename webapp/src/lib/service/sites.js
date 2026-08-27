@@ -73,7 +73,7 @@ export function normalizeSiteInput(body = {}) {
 
   const fields = {};
   for (const [field, label, max] of [
-    ['zone', 'โซน', 50],
+    ['routeZone', 'เขตวิ่งงาน', 50],
     ['address', 'ที่อยู่', 500],
     ['mapUrl', 'ลิงก์แผนที่', 500],
     ['contactName', 'ชื่อผู้ติดต่อ', 100],
