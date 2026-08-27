@@ -219,10 +219,16 @@ function NewQuotationInner() {
       const next = data?.customer || data || null;
       setCustomer(next);
       setContactIndex(0);
-      // ตั้งต้น = ที่อยู่หลักของลูกค้า (กติกาเดียวกับฝั่ง server ถ้าไม่ส่ง id มา)
-      const picked = pickDocumentAddresses(next, {});
-      setBillingAddressId(picked.billing?.id || "");
-      setShippingAddressId(picked.shipping?.id || "");
+      /* ⭐ **ไม่เลือกให้ล่วงหน้าเมื่อมีให้เลือกมากกว่าหนึ่ง** (มติผู้ใช้ 2026-08-27)
+         เดิมตั้งต้นเป็น "ที่อยู่หลัก" ให้เลย ⇒ คนทำใบเห็นช่องที่กรอกไว้แล้วก็ผ่านไป
+         โดยไม่ได้อ่าน ⇒ ใบออกไปที่อยู่ผิดโดยไม่มีใครรู้ตัว (สาขา/คลังคนละที่กัน)
+         ⚠️ ลูกค้าที่มีที่อยู่เดียวยังเลือกให้เหมือนเดิม — บังคับกดในสิ่งที่ไม่มีทางเลือก
+         คือความรำคาญเปล่า ๆ ไม่ได้เพิ่มความระวังอะไร */
+      const options = customerAddresses(next);
+      const onlyBilling = options.filter(isBillingAddress);
+      const onlyShipping = options.filter(isShippingAddress);
+      setBillingAddressId(onlyBilling.length === 1 ? onlyBilling[0].id : "");
+      setShippingAddressId(onlyShipping.length === 1 ? onlyShipping[0].id : "");
     })();
     return () => { alive = false; };
   }, [dealId, customerId]);
@@ -299,6 +305,14 @@ function NewQuotationInner() {
   // ก่อนจึงส่งลูกค้าได้ — ปุ่ม "ส่งให้ลูกค้า" อยู่ที่หน้าใบหลังอนุมัติแล้วเท่านั้น
   const create = useCallback(async () => {
     if (!dealId) return;
+    /* ต้องเลือกที่อยู่ออกบิลเองก่อนเสมอเมื่อลูกค้ามีให้เลือกหลายที่ (มติผู้ใช้ 2026-08-27)
+       ⚠️ ด่านนี้อยู่ฝั่งจอเท่านั้นโดยตั้งใจ — ฝั่ง server ยังถอยไปที่อยู่หลักเมื่อไม่ส่ง id
+       มา เพราะสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร → ออก QT) ต้องออกใบได้ต่อ
+       ที่อยู่จัดส่งไม่บังคับ: ว่าง = ใช้ที่อยู่ออกบิล ซึ่งเป็นความหมายเดิมของช่องนี้ */
+    if (billingOptions.length && !billingAddressId) {
+      setError("เลือกที่อยู่ออกบิลก่อน — ที่อยู่นี้จะขึ้นบนใบกำกับภาษี");
+      return;
+    }
     const paymentValidation = validatePaymentPlan(paymentPlan);
     if (!paymentValidation.ok) {
       setError(paymentValidation.error);
@@ -355,7 +369,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, selectedDeal, customerId, contactIndex, billingAddressId, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
+  }, [dealId, selectedDeal, customerId, contactIndex, billingAddressId, billingOptions.length, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
   if (!canEdit) {
     return (
@@ -507,14 +521,22 @@ function NewQuotationInner() {
                 <label className={styles.contactField}>ที่อยู่ออกบิล
                   {billingOptions.length
                     ? <Select value={billingAddressId} onChange={(e) => setBillingAddressId(e.target.value)} aria-label="เลือกที่อยู่ออกบิล">
+                        <option value="">— เลือกที่อยู่ออกบิล —</option>
                         {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                       </Select>
                     : null}
-                  <span className={styles.addressPreview}>{billingAddress || "ลูกค้ารายนี้ยังไม่มีที่อยู่ — เพิ่มที่ฐานข้อมูลลูกค้า"}</span>
+                  <span className={styles.addressPreview}>
+                    {billingOptions.length && !billingAddressId
+                      ? "ยังไม่ได้เลือก — ที่อยู่นี้จะขึ้นบนใบกำกับภาษี เลือกให้ตรงกับที่ลูกค้าจะออกบิล"
+                      : (billingAddress || "ลูกค้ารายนี้ยังไม่มีที่อยู่ — เพิ่มที่ฐานข้อมูลลูกค้า")}
+                  </span>
                 </label>
                 <label className={styles.contactField}>ที่อยู่จัดส่ง
                   {shippingOptions.length
                     ? <Select value={shippingAddressId} onChange={(e) => setShippingAddressId(e.target.value)} aria-label="เลือกที่อยู่จัดส่ง">
+                        {/* ว่าง = ใช้ที่อยู่ออกบิล — ความหมายเดิมของช่องนี้บนเอกสาร
+                            (ดู pickDocumentAddresses) เขียนให้เห็นตรง ๆ ไม่ใช่ให้เดา */}
+                        <option value="">— ใช้ที่อยู่ออกบิล —</option>
                         {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                       </Select>
                     : null}
