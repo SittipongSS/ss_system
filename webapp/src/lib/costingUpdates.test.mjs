@@ -70,6 +70,34 @@ test('⭐ ทุก action ที่ route รองรับ ต้องมี
   assert.deepEqual(missing, [], `action เหล่านี้ยังไม่มีแถวลงเธรด: ${missing.join(', ')}`);
 });
 
+test('⭐ แจ้งกำหนดส่งต้องบอกว่าเป็นวันของรอบไหน (เจอตอน UAT 2026-08-27)', () => {
+  /* 🐞 ก้าวนี้เกิดซ้ำได้แล้วตั้งแต่รอบแก้เปิดขั้นนี้ใหม่ (#1406) ⇒ เธรดของใบที่เดิน
+     สองรอบมี "แจ้งกำหนดส่ง" สองบรรทัดหน้าตาเหมือนกันเป๊ะ อ่านย้อนหลังไม่ออกว่าทำไม
+     มีสองครั้ง · วัดของจริงบน FD-26080009 ตอน UAT:
+       17:49:44 commitDue  RD แจ้งกำหนดส่ง 10/09/2026
+       17:52:23 commitDue  RD แจ้งกำหนดส่ง 30/09/2026   ← แยกไม่ออก
+     ⚠️ **#1406 อ้างว่าเธรดบอกรอบอยู่แล้ว ซึ่งผิด** — ข้อความนั้นอยู่ที่ `summary`
+     ของ route ซึ่งไปลง audit log ไม่ใช่เธรด */
+  const ask = { dept: 'RD', committedDueDate: '2026-09-30' };
+
+  // แจ้งครั้งแรก — ยังไม่มีวันเดิม ⇒ คำเดิมทุกตัวอักษร ไม่มีคำว่า "รอบแก้"
+  const first = askActionUpdate('commit-due', { ...ask, committedDueDate: '2026-09-10' }, {});
+  assert.equal(first.body, 'RD แจ้งกำหนดส่ง 10/09/2026');
+
+  // แจ้งของรอบแก้ — `previousDueDate` ไม่ null เฉพาะกรณีนี้ (ด่าน commitDueRequestError
+  // ปล่อยผ่านแค่สองแบบ: ไม่มีวัน หรือวันที่มีเป็นของรอบที่ส่งไปแล้ว)
+  const rework = askActionUpdate('commit-due', ask, { previousDueDate: '2026-09-10' });
+  assert.match(rework.body, /แจ้งกำหนดส่งรอบแก้ 30\/09\/2026/);
+  assert.match(rework.body, /รอบก่อน 10\/09\/2026/);
+  assert.equal(rework.meta.previousDue, '2026-09-10');
+
+  // เหตุผลยังต่อท้ายได้เหมือนเดิมทั้งสองแบบ
+  assert.match(
+    askActionUpdate('commit-due', ask, { previousDueDate: '2026-09-10', reason: 'รอวัตถุดิบ' }).body,
+    /รอวัตถุดิบ/,
+  );
+});
+
 test('⭐ เลื่อนวันกำหนดส่งต้องบอก "จากวันไหน → วันไหน" ไม่ใช่แค่ "แก้วันแล้ว"', () => {
   const ask = { dept: 'RD', committedDueDate: '2026-08-20' };
   const u = askActionUpdate('reschedule', ask, { previousDueDate: '2026-08-10', reason: 'ตัวอย่างยังไม่นิ่ง' });

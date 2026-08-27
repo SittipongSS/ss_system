@@ -61,10 +61,26 @@ export function askActionUpdate(action, ask, {
   // ตั้งแต่ยังไม่เคยให้วันสักครั้ง
   if (action === 'commit-due') {
     const due = ask.committedDueDate ? fmtDate(ask.committedDueDate) : '(ไม่ระบุ)';
+    /* ⭐ **บอกด้วยว่าเป็นวันของรอบไหน** (เจอตอน UAT 2026-08-27) — ก้าวนี้เกิดซ้ำได้
+       แล้วตั้งแต่รอบแก้เปิดขั้นนี้ใหม่ (#1406) ⇒ เธรดของใบที่เดินสองรอบมี
+       "แจ้งกำหนดส่ง" สองบรรทัดที่หน้าตาเหมือนกันเป๊ะ อ่านย้อนหลังไม่ออกว่าทำไมมีสองครั้ง
+
+       🐞 **คำอธิบายใน #1406 อ้างว่าเธรดบอกรอบอยู่แล้ว ซึ่งผิด** — ข้อความนั้นถูกใส่ไว้
+       ที่ตัวแปร `summary` ของ route ซึ่งไปลง **audit log** ไม่ใช่เธรด · เธรดประกอบ
+       ข้อความเองที่นี่ และที่นี่ไม่เคยรู้จักรอบเลย
+
+       ⭐ **ไม่ต้องเพิ่มพารามิเตอร์ใหม่** — `previousDueDate` ที่ route ส่งมาให้อยู่แล้ว
+       เป็นตัวแยกที่พอดีเป๊ะ: แจ้งครั้งแรก `before.committedDueDate` เป็น null ·
+       แจ้งของรอบแก้มีวันของรอบก่อนค้างอยู่เสมอ (ด่าน `commitDueRequestError` ปล่อยผ่าน
+       เฉพาะสองกรณีนี้ — ไม่มีวัน หรือวันที่มีเป็นของรอบที่ส่งไปแล้ว) */
+    const prev = previousDueDate ? fmtDate(previousDueDate) : null;
     return {
       kind: 'commitDue',
-      body: `${dept} แจ้งกำหนดส่ง ${due}` + (clip(reason) ? ` — ${clip(reason)}` : ''),
-      meta: { dept, due: ask.committedDueDate || null },
+      body: (prev
+        ? `${dept} แจ้งกำหนดส่งรอบแก้ ${due} (รอบก่อน ${prev})`
+        : `${dept} แจ้งกำหนดส่ง ${due}`)
+        + (clip(reason) ? ` — ${clip(reason)}` : ''),
+      meta: { dept, due: ask.committedDueDate || null, previousDue: previousDueDate || null },
     };
   }
   // 🐞 เดิมไม่มีกรณีนี้ → ชนิดที่ไม่มีบรรทัด (สอบถาม/พัฒนากลิ่น/
