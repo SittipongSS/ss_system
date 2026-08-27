@@ -1,0 +1,2399 @@
+<meta charset="utf-8">
+<title>รื้อ UI ธุรกิจบริการ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap">
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ — ไม่มีสีใหม่ในม็อกนี้
+   ══════════════════════════════════════════════════════════════ */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--panel-float:#fffdf9;--panel-solid:#fefefd;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--glass-shadow:0 4px 16px 0 rgba(41,35,27,.07);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;--navy-ink:#243b63;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--teal:#377275;--teal-soft:#e0f0f0;--violet:#6f5e9f;--violet-soft:#eee9f6;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--space-0-5:2px;--space-1:4px;--space-1-5:6px;--space-2:8px;--space-2-5:10px;
+--space-3:12px;--space-3-5:14px;--space-4:16px;--space-4-5:18px;--space-5:20px;
+--space-6:24px;--space-7:28px;--space-8:32px;--space-9:40px;
+--radius:8px;--radius-md:10px;--radius-lg:13px;--radius-xl:16px;--radius-full:9999px;
+--fs-1:9.5px;--fs-2:10.5px;--fs-3:11px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;
+--fs-7:13px;--fs-8:14px;--fs-9:15px;--fs-10:16px;--fs-11:18px;--fs-12:20px;
+--fs-13:22px;--fs-14:24px;--fs-15:27px;
+--fw-normal:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;
+--lh-thai:1.65;--lh-text:1.6;--lh-flat:1;
+--ls-heading:-.02em;--ls-label:.08em;--ls-tabular:-.01em;
+--ctl-h:40px;--ctl-h-touch:44px;--panel-inset:var(--space-4);--rule:1px;
+--content-max:1480px;--op-disabled:.45;--op-muted:.55;
+--ok:var(--green);
+}
+:root:not([data-theme="light"]) .darkable{--x:0}
+@media (prefers-color-scheme: dark){
+:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}
+
+*{box-sizing:border-box}
+body{
+margin:0;background:var(--bg);color:var(--text);
+font-family:"Sarabun","IBM Plex Sans Thai",system-ui,sans-serif;
+font-size:var(--fs-8);line-height:var(--lh-thai);letter-spacing:.025em;
+}
+svg{flex:none}
+.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── เปลือกของเดคเอง (ไม่ใช่ของแอป) ────────────────────────── */
+.deck{max-width:1180px;margin:0 auto;padding:0 var(--space-4) var(--space-9)}
+.deckbar{
+position:sticky;top:0;z-index:50;background:var(--bg);
+border-bottom:1px solid var(--border);margin-bottom:var(--space-6);
+}
+.deckbar-in{max-width:1180px;margin:0 auto;padding:var(--space-3) var(--space-4);
+display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.deckbar h1{margin:0;font-size:var(--fs-9);font-weight:var(--fw-bold);letter-spacing:var(--ls-heading)}
+.deckbar h1 small{display:block;font-size:var(--fs-4);font-weight:var(--fw-normal);color:var(--text-3);letter-spacing:0}
+.navstrip{display:flex;gap:var(--space-1);overflow-x:auto;padding-bottom:2px;margin-left:auto;scrollbar-width:thin}
+.navstrip button{
+appearance:none;border:1px solid transparent;background:transparent;color:var(--text-2);
+font:inherit;font-size:var(--fs-4);font-weight:var(--fw-semibold);cursor:pointer;
+padding:var(--space-1-5) var(--space-2-5);border-radius:var(--radius-full);white-space:nowrap;
+}
+.navstrip button:hover{background:var(--panel-2);color:var(--text)}
+.navstrip button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+.navstrip button[aria-pressed="true"] .n{opacity:.65}
+.n{font-variant-numeric:tabular-nums;margin-inline-end:5px;opacity:.5}
+.themebtn{appearance:none;border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);
+border-radius:var(--radius-full);width:34px;height:34px;display:grid;place-items:center;cursor:pointer;font-size:15px}
+.themebtn:hover{color:var(--text)}
+
+.screen{display:none;animation:fade .2s ease-out}
+.screen.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.screen{animation:none}}
+
+/* แถบคำอธิบายของแต่ละจอ */
+.brief{
+display:grid;grid-template-columns:1fr;gap:var(--space-3);
+border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel);box-shadow:var(--glass-shadow);
+padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);
+}
+@media(min-width:760px){.brief{grid-template-columns:1.25fr 1fr}}
+.brief h2{margin:0 0 var(--space-1);font-size:var(--fs-13);letter-spacing:var(--ls-heading);font-weight:var(--fw-bold)}
+.brief .route{font-size:var(--fs-4);color:var(--text-3);font-variant-numeric:tabular-nums}
+.brief p{margin:var(--space-2) 0 0;color:var(--text-2);font-size:var(--fs-7);max-width:62ch}
+.fixes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-1-5)}
+.fixes li{display:flex;gap:var(--space-2);font-size:var(--fs-6);color:var(--text-2);line-height:var(--lh-thai)}
+.fixes .mk{flex:none;width:16px;text-align:center;font-weight:var(--fw-bold);color:var(--green)}
+.fixes .mk.new{color:var(--accent-ink)}
+.fixes b{color:var(--text);font-weight:var(--fw-semibold)}
+.briefhead{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)}
+.who{display:flex;gap:var(--space-1-5);flex-wrap:wrap;margin-top:var(--space-2)}
+
+/* กรอบอุปกรณ์ */
+.frame{border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden;
+background:var(--bg);box-shadow:var(--shadow-md);margin-bottom:var(--space-6)}
+.frame-cap{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);
+border-bottom:1px solid var(--border);background:var(--panel-2);
+font-size:var(--fs-3);color:var(--text-3);letter-spacing:var(--ls-label);text-transform:uppercase}
+.frame-body{padding:var(--space-5);overflow-x:auto}
+.frame.phone{max-width:400px;margin-inline:auto}
+.frame.phone .frame-body{padding:var(--space-3);background:var(--bg)}
+
+/* ══ ชั้นคลาสจริงของแอป (ชื่อตรงกับ globals.css) ══════════════ */
+.ui-workspace{width:100%;max-width:var(--content-max);min-width:0;margin:0 auto}
+.premium-header{
+min-width:0;margin-bottom:var(--space-4-5);padding:var(--space-5) 22px;
+border:1px solid var(--border);border-radius:var(--radius-lg);
+background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);flex-wrap:wrap;
+}
+.premium-header h1{display:flex;align-items:center;gap:var(--space-2-5);margin:0;
+font-size:clamp(var(--fs-12),2vw,var(--fs-14));line-height:var(--lh-thai);
+letter-spacing:var(--ls-heading);font-weight:var(--fw-bold);color:var(--text)}
+.premium-header p{margin:var(--space-1) 0 0;color:var(--text-3);font-size:var(--fs-7);max-width:820px}
+.premium-header-icon{width:34px;height:34px;flex:none;border-radius:var(--radius-md);
+background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent-ink);
+display:grid;place-items:center;font-size:19px}
+.ui-workspace-header-actions{display:flex;gap:var(--space-2);flex-wrap:wrap}
+
+.ui-section{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel);box-shadow:var(--glass-shadow)}
+.ui-section+.ui-section{margin-top:var(--space-4)}
+.ui-section-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+padding:var(--space-4) var(--panel-inset);border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--panel-2) 50%,transparent)}
+.ui-section-header h2{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);
+display:flex;align-items:center;gap:var(--space-2)}
+.ui-section-header p{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3)}
+.ui-section-body{min-width:0;padding:var(--space-4) var(--panel-inset)}
+.ui-section-body.flush{padding:0}
+
+.ui-metric-strip{display:grid;grid-template-columns:repeat(var(--c,4),minmax(0,1fr));gap:var(--rule);
+overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background-color:var(--panel);background-image:linear-gradient(var(--border),var(--border));
+box-shadow:var(--glass-shadow);margin-bottom:var(--space-4)}
+.ui-metric{display:flex;align-items:center;gap:11px;min-width:0;padding:var(--space-3-5) var(--space-4);
+border:0;background:var(--panel-solid);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.ui-metric:hover{background:var(--panel-2)}
+.ui-metric-ic{width:30px;height:30px;flex:none;border-radius:var(--radius);display:grid;place-items:center;
+background:var(--panel-2);color:var(--text-3);font-size:15px}
+.ui-metric-txt{min-width:0}
+.ui-metric-txt span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.ui-metric-txt strong{display:block;font-size:var(--fs-15);font-weight:var(--fw-bold);
+line-height:1.15;letter-spacing:var(--ls-tabular);font-variant-numeric:tabular-nums}
+.ui-metric-txt em{display:block;font-style:normal;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.ui-metric[data-tone="danger"] strong{color:var(--red)}
+.ui-metric[data-tone="danger"] .ui-metric-ic{background:var(--red-soft);color:var(--red)}
+.ui-metric[data-tone="warning"] strong{color:var(--amber)}
+.ui-metric[data-tone="warning"] .ui-metric-ic{background:var(--amber-soft);color:var(--amber)}
+.ui-metric[data-tone="accent"] strong{color:var(--accent-ink)}
+.ui-metric[data-tone="accent"] .ui-metric-ic{background:var(--accent-soft);color:var(--accent-ink)}
+.ui-metric[data-tone="good"] strong{color:var(--green)}
+.ui-metric[data-tone="good"] .ui-metric-ic{background:var(--green-soft);color:var(--green)}
+.ui-metric[data-tone="info"] .ui-metric-ic{background:var(--blue-soft);color:var(--blue)}
+
+.ui-badge,.status-pill,.chip{display:inline-flex;align-items:center;gap:5px;min-height:24px;
+padding:3px var(--space-2-5);border-radius:var(--radius-full);font-size:var(--fs-4);
+font-weight:var(--fw-semibold);line-height:var(--lh-thai);white-space:nowrap;
+background:color-mix(in srgb,currentColor 12%,transparent);
+border:1px solid color-mix(in srgb,currentColor 24%,transparent);color:var(--text-2)}
+.ui-badge.success{color:var(--green)}.ui-badge.warning{color:var(--amber)}
+.ui-badge.danger{color:var(--red)}.ui-badge.info{color:var(--blue)}
+.ui-badge.accent{color:var(--accent-ink)}.ui-badge.violet{color:var(--violet)}
+.ui-badge.teal{color:var(--teal)}.ui-badge.plain{color:var(--text-3)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1-5);
+min-height:var(--ctl-h);min-width:96px;padding:0 var(--space-3-5);border-radius:var(--radius);
+border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);
+font:inherit;font-size:var(--fs-5);font-weight:var(--fw-semibold);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--panel-3)}
+.btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn-quiet{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn-quiet:hover{background:var(--panel-2)}
+.btn-danger{background:transparent;border-color:color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}
+.btn.sm{min-height:30px;min-width:0;padding:0 var(--space-2-5);font-size:var(--fs-4);gap:5px}
+.btn.icon{min-width:0;width:var(--ctl-h);padding:0}
+.btn.icon.sm{width:30px}
+.btn.touch{min-height:var(--ctl-h-touch)}
+.btn.wide{flex:1}
+.btn[disabled],.btn.off{opacity:var(--op-disabled);cursor:not-allowed}
+
+.toolbar{display:flex;align-items:center;gap:var(--space-2-5);margin-bottom:var(--space-4);flex-wrap:wrap}
+.toolbar>.spacer{margin-left:auto}
+.toolbar .btn,.toolbar .search-glass,.toolbar .premium-select{min-height:var(--ctl-h);height:var(--ctl-h)}
+.search-glass{display:flex;align-items:center;gap:var(--space-2);min-width:210px;flex:0 1 260px;
+height:var(--ctl-h);padding:0 var(--space-3);border:1px solid var(--border);
+border-radius:var(--radius);background:var(--bg);color:var(--text-3)}
+.search-glass input{border:0;background:transparent;outline:none;font:inherit;font-size:var(--fs-8);
+color:var(--text);width:100%}
+.premium-select{display:inline-flex;align-items:center;gap:var(--space-2);height:var(--ctl-h);
+padding:0 var(--space-3);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2);font-size:var(--fs-5);font-weight:var(--fw-semibold);color:var(--text-2);cursor:pointer}
+.premium-select .cnt{background:var(--accent);color:var(--accent-fg);border-radius:var(--radius-full);
+min-width:18px;height:18px;display:grid;place-items:center;font-size:var(--fs-2);padding:0 4px}
+
+.segmented{display:inline-flex;align-items:center;gap:var(--space-0-5);padding:3px;
+background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg)}
+.segmented>button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1-5);
+min-height:30px;padding:0 var(--space-3);border:0;border-radius:var(--radius-md);background:transparent;
+color:var(--text-2);font:inherit;font-size:var(--fs-4);font-weight:var(--fw-semibold);cursor:pointer}
+.segmented>button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.segmented .seg-count{min-width:20px;font-variant-numeric:tabular-nums;opacity:.75}
+.scope-row{display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-bottom:var(--space-4)}
+
+table{width:100%;border-collapse:collapse}
+.tbl th{font-size:var(--fs-1);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);font-weight:var(--fw-semibold);text-align:left;padding:0 var(--space-3);
+height:42px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{font-size:var(--fs-3);padding:var(--space-2) var(--space-3);height:52px;
+border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text-2)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:hover td{background:color-mix(in srgb,var(--accent-soft) 25%,transparent)}
+.tbl .t-strong{color:var(--text);font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.cell-sub{display:block;font-size:var(--fs-2);color:var(--text-3);margin-top:1px}
+.num{text-align:right;font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.mono{font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.linklike{color:var(--navy-ink);text-decoration:none;font-weight:var(--fw-semibold);cursor:pointer}
+.linklike:hover{text-decoration:underline}
+.tblwrap{overflow-x:auto}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+gap:var(--space-2);padding:var(--space-9) var(--space-7);text-align:center;color:var(--text-3);
+font-size:var(--fs-7);line-height:var(--lh-text)}
+.empty-state b{color:var(--text-2);font-size:var(--fs-8)}
+
+.notice{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3-5) var(--space-4);
+border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+margin-bottom:var(--space-4);font-size:var(--fs-7);line-height:var(--lh-thai)}
+.notice .ic{flex:none;font-size:17px;margin-top:1px}
+.notice b{display:block;color:var(--text);font-weight:var(--fw-semibold)}
+.notice span{color:var(--text-2)}
+.notice .act{margin-left:auto;flex:none;align-self:center}
+.notice[data-tone="warning"]{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 30%,transparent)}
+.notice[data-tone="warning"] .ic{color:var(--amber)}
+.notice[data-tone="danger"]{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.notice[data-tone="danger"] .ic{color:var(--red)}
+.notice[data-tone="info"]{background:var(--blue-soft);border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
+.notice[data-tone="info"] .ic{color:var(--blue)}
+
+/* คิว "ต้องจัดการก่อน" */
+.aq{display:flex;flex-direction:column}
+.aq-row{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--panel-inset);
+border-bottom:1px solid var(--border)}
+.aq-row:last-child{border-bottom:0}
+.aq-row:hover{background:var(--panel-2)}
+.aq-ic{width:32px;height:32px;flex:none;border-radius:var(--radius);display:grid;place-items:center;font-size:16px}
+.aq-row[data-tone="danger"] .aq-ic{background:var(--red-soft);color:var(--red)}
+.aq-row[data-tone="warning"] .aq-ic{background:var(--amber-soft);color:var(--amber)}
+.aq-row[data-tone="info"] .aq-ic{background:var(--blue-soft);color:var(--blue)}
+.aq-txt{min-width:0;flex:1}
+.aq-txt b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);color:var(--text)}
+.aq-txt span{display:block;font-size:var(--fs-4);color:var(--text-3)}
+.aq-row .btn{flex:none}
+
+/* แถบภาระช่างรายวัน */
+.load{display:flex;flex-direction:column;gap:var(--space-1)}
+.load-row{display:grid;grid-template-columns:132px 1fr auto;gap:var(--space-3);align-items:center;
+padding:var(--space-2) var(--panel-inset)}
+.load-row:hover{background:var(--panel-2)}
+.load-name{font-size:var(--fs-7);font-weight:var(--fw-semibold);display:flex;align-items:center;gap:var(--space-2)}
+.load-name .dot{width:8px;height:8px;border-radius:var(--radius-full);flex:none;background:var(--teal)}
+.bar{position:relative;height:26px;border-radius:var(--radius);background:var(--panel-2);
+border:1px solid var(--border);overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;border-radius:3px;font-style:normal;font-size:var(--fs-2);
+color:#fff;display:grid;place-items:center;overflow:hidden;white-space:nowrap;padding:0 3px}
+.bar i.refill{background:var(--accent)}
+.bar i.repair{background:var(--red)}
+.bar i.install{background:var(--violet)}
+.bar i.inspect{background:var(--teal)}
+.load-sum{font-size:var(--fs-3);color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.load-sum b{color:var(--text-2)}
+.hours{display:grid;grid-template-columns:132px 1fr auto;gap:var(--space-3);
+padding:0 var(--panel-inset) var(--space-1)}
+.hours .marks{display:flex;justify-content:space-between;font-size:var(--fs-1);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-3) var(--panel-inset);
+border-top:1px solid var(--border);font-size:var(--fs-3);color:var(--text-3)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* ราง StepTrack */
+.steps{display:flex;align-items:center;gap:4px}
+.steps s{width:26px;height:4px;border-radius:2px;background:var(--border-strong);text-decoration:none;display:block}
+.steps s.done{background:var(--green)}
+.steps s.now{background:var(--accent)}
+.steps s.bad{background:var(--red)}
+.steps em{font-style:normal;font-size:var(--fs-2);color:var(--text-3);margin-left:var(--space-1)}
+
+/* ── การ์ดนัดของช่าง (มือถือ) ─────────────────────────────── */
+.grp{margin-bottom:var(--space-4)}
+.grp-h{display:flex;align-items:center;gap:var(--space-2);margin:0 0 var(--space-2);
+font-size:var(--fs-4);font-weight:var(--fw-bold);color:var(--text-2)}
+.grp-h.bad{color:var(--red)}
+.grp-h .c{margin-left:auto;color:var(--text-3);font-weight:var(--fw-normal);font-variant-numeric:tabular-nums}
+.vcard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+padding:var(--space-3);margin-bottom:var(--space-2);box-shadow:var(--shadow-sm)}
+.vcard.live{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.vcard.late{border-inline-start:3px solid var(--red)}
+.vcard.done{opacity:var(--op-muted)}
+.vcard-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+.vcard-when{font-size:var(--fs-8);font-weight:var(--fw-bold);font-variant-numeric:tabular-nums}
+.vcard-when small{font-weight:var(--fw-normal);color:var(--text-3);font-size:var(--fs-4)}
+.vcard h3{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.vcard .meta{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.vnote{margin-top:var(--space-2);padding:var(--space-2) var(--space-2-5);border-radius:var(--radius);
+background:var(--blue-soft);color:var(--text-2);font-size:var(--fs-4);line-height:var(--lh-thai);
+display:flex;gap:var(--space-2)}
+.vnote b{color:var(--text);font-weight:var(--fw-semibold)}
+.vwarn{margin-top:var(--space-2);display:flex;align-items:flex-start;gap:var(--space-1-5);
+color:var(--amber);font-size:var(--fs-4);line-height:var(--lh-thai)}
+.vacts{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+.running{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);
+padding:var(--space-2) var(--space-2-5);border-radius:var(--radius);background:var(--accent-soft);
+color:var(--accent-ink);font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.running .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;
+animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.running .pulse{animation:none}}
+
+/* ── ฟอร์มปิดงาน (หน้าแยก) ───────────────────────────────── */
+.fstep{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+margin-bottom:var(--space-3);overflow:hidden}
+.fstep-h{display:flex;align-items:center;gap:var(--space-2-5);padding:var(--space-3) var(--space-3-5);
+border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--panel-2) 50%,transparent)}
+.fstep-h b{font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.fstep-h .no{width:22px;height:22px;flex:none;border-radius:50%;display:grid;place-items:center;
+background:var(--navy);color:#fff;font-size:var(--fs-3);font-weight:var(--fw-bold)}
+.fstep-h .ok{background:var(--green)}
+.fstep-b{padding:var(--space-3-5)}
+.fstep-b>p{margin:0 0 var(--space-2);font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.arow{display:flex;align-items:center;gap:var(--space-2-5);padding:var(--space-2-5) 0;
+border-bottom:1px solid var(--border)}
+.arow:last-child{border-bottom:0}
+.arow-t{flex:1;min-width:0}
+.arow-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.arow-t span{display:block;font-size:var(--fs-3);color:var(--text-3)}
+.tri{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex:none}
+.tri button{appearance:none;border:0;background:var(--panel-2);color:var(--text-3);font:inherit;
+font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--space-2);height:34px;cursor:pointer;
+border-inline-end:1px solid var(--border)}
+.tri button:last-child{border-inline-end:0}
+.tri button[aria-pressed="true"]{background:var(--green);color:#fff}
+.tri button.no[aria-pressed="true"]{background:var(--red)}
+.tri button.sw[aria-pressed="true"]{background:var(--violet)}
+.field{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-3)}
+.field>span{font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.inp{height:var(--ctl-h);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--bg);padding:0 var(--space-3);display:flex;align-items:center;
+font-size:var(--fs-8);color:var(--text)}
+.inp.ta{height:auto;min-height:76px;align-items:flex-start;padding:var(--space-2-5) var(--space-3);color:var(--text-3)}
+.inp.ro{background:transparent;border-style:dashed;color:var(--text-2)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.thumbs{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.thumb{width:64px;height:64px;border-radius:var(--radius);border:1px solid var(--border);
+background:var(--panel-2);display:grid;place-items:center;color:var(--text-3);font-size:var(--fs-2);gap:2px}
+.thumb.add{border-style:dashed;color:var(--accent-ink)}
+.sticky-acts{position:sticky;bottom:0;display:flex;gap:var(--space-2);padding:var(--space-3);
+background:var(--panel-float);border-top:1px solid var(--border);
+border-radius:0 0 var(--radius-lg) var(--radius-lg);margin:0 calc(-1*var(--space-3)) calc(-1*var(--space-3))}
+
+/* ── ตารางจัดคิว (matrix) ─────────────────────────────────── */
+.board{border-collapse:separate;border-spacing:0;min-width:880px}
+.board th,.board td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);
+vertical-align:top;padding:var(--space-1-5)}
+.board th{background:var(--panel-2);font-size:var(--fs-4);font-weight:var(--fw-semibold);
+color:var(--text-2);text-align:center;position:sticky;top:0;z-index:2;height:auto;padding:var(--space-2)}
+.board th .d{display:block;font-size:var(--fs-2);color:var(--text-3);letter-spacing:var(--ls-label)}
+.board th .num2{display:block;font-size:var(--fs-9);font-weight:var(--fw-bold);font-variant-numeric:tabular-nums}
+.board th.today .num2{background:var(--accent);color:var(--accent-fg);border-radius:var(--radius-full);
+width:26px;height:26px;line-height:26px;margin:0 auto}
+.board .tech{position:sticky;left:0;z-index:3;background:var(--panel);width:150px;min-width:150px;
+text-align:left;vertical-align:middle;white-space:normal}
+.board thead .tech{z-index:4}
+.board .wknd{background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.cellload{display:flex;align-items:center;gap:4px;font-size:var(--fs-2);color:var(--text-3);
+margin-bottom:3px;font-variant-numeric:tabular-nums}
+.cellload.hot{color:var(--amber);font-weight:var(--fw-semibold)}
+.vchip{display:block;width:100%;text-align:left;border:0;border-radius:6px;padding:4px 6px;
+margin-bottom:3px;font:inherit;font-size:var(--fs-2);line-height:1.35;cursor:pointer;color:#fff}
+.vchip b{font-variant-numeric:tabular-nums;margin-inline-end:4px}
+.vchip.refill{background:var(--accent)}.vchip.repair{background:var(--red)}
+.vchip.install{background:var(--violet)}.vchip.inspect{background:var(--teal)}
+.vchip.maint{background:var(--blue)}
+.vchip.draft{background:var(--panel-2);color:var(--text-2);border:1px dashed var(--border-strong)}
+.addcell{display:block;width:100%;min-height:26px;border:1px dashed var(--border-strong);
+border-radius:6px;background:transparent;color:var(--text-3);cursor:pointer;font-size:var(--fs-3)}
+.addcell:hover{border-color:var(--accent);color:var(--accent-ink)}
+.queue{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+padding:var(--space-3);height:fit-content}
+.queue h3{margin:0 0 var(--space-1);font-size:var(--fs-7);font-weight:var(--fw-semibold);
+display:flex;align-items:center;gap:var(--space-2)}
+.queue p{margin:0 0 var(--space-3);font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.qitem{border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--space-2);
+margin-bottom:var(--space-2);cursor:grab;background:var(--panel-2)}
+.qitem b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold)}
+.qitem span{display:block;font-size:var(--fs-2);color:var(--text-3)}
+.split{display:grid;gap:var(--space-4);grid-template-columns:1fr}
+@media(min-width:980px){.split{grid-template-columns:236px 1fr}}
+
+/* ── หน้ารายละเอียด (DetailPage) ─────────────────────────── */
+.dlayout{display:grid;gap:var(--space-4);grid-template-columns:1fr;align-items:start}
+@media(min-width:1040px){.dlayout{grid-template-columns:minmax(0,1fr) 316px}}
+.dover{border:1px solid var(--border);border-radius:var(--radius-lg);
+background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+padding:var(--space-5);margin-bottom:var(--space-4-5);
+display:flex;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;align-items:flex-start}
+.dover .eyebrow{font-size:var(--fs-3);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);display:flex;align-items:center;gap:var(--space-1-5)}
+.dover h1{margin:var(--space-1) 0 0;font-size:clamp(var(--fs-12),2vw,var(--fs-14));
+font-weight:var(--fw-bold);letter-spacing:var(--ls-heading);line-height:var(--lh-thai)}
+.dover .desc{margin:var(--space-1) 0 0;color:var(--text-3);font-size:var(--fs-7)}
+.crumb{display:flex;align-items:center;gap:var(--space-1-5);font-size:var(--fs-4);
+color:var(--text-3);margin-bottom:var(--space-3)}
+.crumb a{color:var(--navy-ink);text-decoration:none;font-weight:var(--fw-semibold);cursor:pointer}
+.crumb a:hover{text-decoration:underline}
+.ctx{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+box-shadow:var(--glass-shadow);margin-bottom:var(--space-3);overflow:hidden}
+.ctx-h{padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--panel-2) 50%,transparent);
+display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.ctx-h .btn{margin-left:auto}
+.ctx-b{padding:var(--space-3) var(--space-4)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-3);
+font-size:var(--fs-6);align-items:baseline}
+.kv dt{color:var(--text-3);white-space:nowrap}
+.kv dd{margin:0;color:var(--text-2);text-align:right}
+.kv dd b{color:var(--text);font-weight:var(--fw-semibold)}
+.zgrid{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.zcard{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel-2);
+padding:var(--space-3);cursor:pointer}
+.zcard:hover{border-color:var(--accent);background:var(--panel)}
+.zcard b{display:flex;align-items:center;gap:var(--space-1-5);font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.zcard .code{font-size:var(--fs-2);color:var(--text-3);margin-top:1px;display:block}
+.zcard .row{display:flex;justify-content:space-between;font-size:var(--fs-3);color:var(--text-3);margin-top:var(--space-2)}
+.zcard .row b{font-size:var(--fs-3);color:var(--text-2);display:inline}
+.meter{height:6px;border-radius:3px;background:var(--panel-3);overflow:hidden;margin-top:var(--space-2)}
+.meter i{display:block;height:100%;background:var(--green)}
+.meter i.over{background:var(--red)}
+.meter i.warn{background:var(--amber)}
+.pager{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--panel-inset);
+border-top:1px solid var(--border);font-size:var(--fs-4);color:var(--text-3);flex-wrap:wrap}
+.pager .pg{display:flex;gap:4px;margin-left:auto}
+.pager .pg button{width:30px;height:30px;border-radius:var(--radius);border:1px solid var(--border);
+background:var(--panel-2);color:var(--text-2);font:inherit;font-size:var(--fs-4);cursor:pointer;
+font-variant-numeric:tabular-nums}
+.pager .pg button[aria-current="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.tl{display:flex;flex-direction:column;gap:0}
+.tl-i{display:flex;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--border)}
+.tl-i:last-child{border-bottom:0}
+.tl-d{flex:none;width:74px;font-size:var(--fs-3);color:var(--text-3);font-variant-numeric:tabular-nums;padding-top:2px}
+.tl-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.tl-t span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.doc{background:var(--panel-float);border:1px solid var(--border);border-radius:var(--radius-lg);
+padding:var(--space-5);font-size:var(--fs-7);line-height:var(--lh-thai)}
+.doc h4{margin:0 0 var(--space-1);font-size:var(--fs-4);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--text-3);font-weight:var(--fw-semibold)}
+.doc .line{display:flex;gap:var(--space-3);padding:var(--space-2) 0;border-bottom:1px dashed var(--border)}
+.doc .line:last-child{border-bottom:0}
+.doc .line span:first-child{flex:none;width:120px;color:var(--text-3)}
+
+/* ── OptionTiles: เลือกที่อยู่ลูกค้า ─────────────────────── */
+.tiles{display:grid;gap:var(--space-2-5);grid-template-columns:repeat(auto-fill,minmax(238px,1fr))}
+.tile{display:block;width:100%;text-align:left;border:1px solid var(--border);
+border-radius:var(--radius-md);background:var(--panel-2);padding:var(--space-3);
+font:inherit;color:inherit;cursor:pointer}
+.tile:hover{border-color:var(--border-strong);background:var(--panel-3)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+box-shadow:0 0 0 1px var(--accent) inset}
+.tile .th{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.tile b{font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.tile .adr{display:block;margin-top:var(--space-1-5);font-size:var(--fs-3);color:var(--text-3);
+line-height:var(--lh-thai)}
+.tile.own{border-style:dashed}
+.tile.own b{color:var(--accent-ink)}
+/* แถบบริบทของขั้นที่ผ่านไปแล้ว (กติกาฟอร์ม: ยุบขั้นที่จบแล้วเหลือบรรทัดเดียว) */
+.ctxstrip{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-2-5) var(--space-3-5);border:1px solid var(--border);
+border-radius:var(--radius-md);background:var(--panel-2);
+font-size:var(--fs-6);color:var(--text-2);margin-bottom:var(--space-4)}
+.ctxstrip .done{color:var(--green);display:inline-flex;align-items:center;gap:5px;font-weight:var(--fw-semibold)}
+.ctxstrip .btn{margin-left:auto}
+/* ช่องที่ระบบรู้ค่าแล้ว = เส้นประอ่านอย่างเดียว ไม่ใช่ dropdown ที่จางลง */
+.lockrow{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-1)}
+.lockrow .src{font-size:var(--fs-3);color:var(--text-3);display:inline-flex;align-items:center;gap:4px}
+.lockrow .btn{margin-left:auto}
+
+/* ── ด่านเข้าไซต์ (เช็คลิสต์ก่อนร่างขึ้นตาราง) ─────────────── */
+.gate{display:flex;flex-direction:column}
+.gate-i{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3) 0;
+border-bottom:1px solid var(--border)}
+.gate-i:last-child{border-bottom:0}
+.gate-mk{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;
+font-size:14px;margin-top:1px}
+.gate-i[data-s="ok"] .gate-mk{background:var(--green-soft);color:var(--green)}
+.gate-i[data-s="bad"] .gate-mk{background:var(--red-soft);color:var(--red)}
+.gate-i[data-s="park"] .gate-mk{background:var(--panel-3);color:var(--text-3)}
+.gate-t{flex:1;min-width:0}
+.gate-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.gate-t span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.gate-i[data-s="park"] .gate-t b{color:var(--text-3)}
+.gate-who{flex:none;display:flex;align-items:center;gap:var(--space-2);align-self:center}
+.owner{font-size:var(--fs-2);letter-spacing:var(--ls-label);color:var(--text-3);
+border:1px solid var(--border);border-radius:var(--radius-full);padding:2px 8px;white-space:nowrap}
+.qgroup{margin-bottom:var(--space-3)}
+.qgroup h4{margin:0 0 var(--space-1-5);font-size:var(--fs-3);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--text-3);display:flex;align-items:center;gap:5px}
+.qitem.blocked{border-style:solid;border-color:color-mix(in srgb,var(--red) 35%,transparent);
+background:var(--red-soft);cursor:not-allowed}
+.qitem.blocked .why{display:block;font-size:var(--fs-2);color:var(--red);margin-top:3px}
+.qitem.ready{border-style:solid;border-color:color-mix(in srgb,var(--green) 35%,transparent);
+background:var(--panel-2)}
+.qitem.ready .why{display:block;font-size:var(--fs-2);color:var(--green);margin-top:3px}
+.dropcell{display:block;width:100%;min-height:26px;border:1px dashed transparent;border-radius:6px;
+background:transparent;color:var(--text-3);cursor:default;font-size:var(--fs-2)}
+tr:hover .dropcell{border-color:var(--border-strong)}
+.dropcell.armed{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft);cursor:pointer}
+</style>
+
+<svg style="display:none" aria-hidden="true">
+<symbol id="dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+<symbol id="wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></symbol>
+<symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+<symbol id="warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+<symbol id="phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+<symbol id="left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+<symbol id="pkg" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5M16 13H8M16 17H8M10 9H8"/></symbol>
+<symbol id="pencil" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.98-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></symbol>
+<symbol id="drop" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+<symbol id="rot" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="bldg" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4"/></symbol>
+<symbol id="cam" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+<symbol id="play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></symbol>
+<symbol id="hand" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="M21 3v7M3 20l3-3M3 4l5 5"/></symbol>
+<symbol id="dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+</svg>
+
+<div class="deckbar">
+  <div class="deckbar-in">
+    <h1>รื้อ UI ธุรกิจบริการ<small>โมดูล /service ของฝ่าย TS · ม็อกจากโทเคนจริง</small></h1>
+    <nav class="navstrip" id="nav" aria-label="เลือกจอ"></nav>
+    <button class="themebtn" id="theme" title="สลับธีมสว่าง/มืด" aria-label="สลับธีมสว่าง/มืด">◐</button>
+  </div>
+</div>
+
+<div class="deck" id="deck">
+
+<!-- ═══ 01 เมนู / IA ═══════════════════════════════════════════ -->
+<section class="screen on" id="ia">
+  <div class="brief">
+    <div>
+      <div class="briefhead">
+        <div>
+          <h2>เมนูของโมดูล</h2>
+          <div class="route">ธุรกิจบริการ · ผู้ใช้หลัก = ฝ่าย TS</div>
+        </div>
+      </div>
+      <p>เมนูเดิม 4 รายการตอบได้แค่ครึ่งเดียวของงานที่ TS ทำจริง — ไม่มีที่รับงานที่ขายปิดมาแล้ว
+      และตัวเลขบนภาพรวมกดแล้วไปไม่ถึงของ ชุดใหม่เรียงตาม<b>ความถี่ที่เปิด</b> ไม่ใช่ตามลำดับกระบวนการ
+      เหมือนที่โมดูลวางแผนผลิตทำอยู่</p>
+      <div class="who">
+        <span class="ui-badge plain">ช่าง · มือถือ</span>
+        <span class="ui-badge plain">หัวหน้า/ผู้วางแผน · เดสก์ท็อป</span>
+        <span class="ui-badge plain">ฝ่ายขาย · อ่านอย่างเดียว</span>
+      </div>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span><b>งานเข้าใหม่</b> — เมนูใหม่ รับใบสั่งขายสายบริการที่อนุมัติแล้ว (ลูกศรที่ 3)</span></li>
+      <li><span class="mk">✓</span><span><b>จัดคิวช่าง</b> แคบเป็นสิทธิ์แก้ไข — ฝ่ายขายอ่านคำตอบจากหน้าไซต์แทน</span></li>
+      <li><span class="mk">✓</span><span>ตัดปุ่ม “งานวันนี้” ออกจากหัวภาพรวม — หัวหน้ากดแล้วเจอจอว่าง เพราะเป็นคิวของตัวเอง</span></li>
+      <li><span class="mk new">+</span><span>หน้ารายละเอียด 4 หน้าที่ยังไม่มี: <b>โซน · อุปกรณ์ · ใบส่งงาน · ปิดงาน</b></span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">แถบเมนูของโมดูล</div>
+    <div class="frame-body">
+      <div style="display:grid;gap:var(--space-5);grid-template-columns:1fr">
+        <div>
+          <div style="font-size:var(--fs-3);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3);margin-bottom:var(--space-2)">เดิม — 4 รายการ</div>
+          <div style="display:flex;gap:var(--space-1);flex-wrap:wrap;opacity:.6">
+            <span class="chip"><svg class="i"><use href="#dash"/></svg>ภาพรวม</span>
+            <span class="chip"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</span>
+            <span class="chip"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</span>
+            <span class="chip"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:var(--fs-3);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--accent-ink);margin-bottom:var(--space-2)">ใหม่ — 5 รายการ</div>
+          <div style="display:flex;gap:var(--space-1-5);flex-wrap:wrap">
+            <span class="chip accent" style="font-size:var(--fs-7);min-height:34px"><svg class="i"><use href="#dash"/></svg>ภาพรวม</span>
+            <span class="chip accent" style="font-size:var(--fs-7);min-height:34px"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</span>
+            <span class="chip accent" style="font-size:var(--fs-7);min-height:34px"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</span>
+            <span class="chip accent" style="font-size:var(--fs-7);min-height:34px"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<b style="background:var(--accent);color:var(--accent-fg);border-radius:var(--radius-full);padding:0 6px;font-size:var(--fs-2)">3</b></span>
+            <span class="chip accent" style="font-size:var(--fs-7);min-height:34px"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ui-section">
+    <div class="ui-section-header"><div><h2>ผังหน้าทั้งหมด</h2><p>กดชื่อจอเพื่อดูดีไซน์ของหน้านั้น</p></div></div>
+    <div class="ui-section-body flush">
+      <div class="tblwrap"><table class="tbl">
+        <thead><tr><th>หน้า</th><th>เส้นทาง</th><th>ใคร</th><th>ตอบคำถามอะไร</th><th>สถานะ</th></tr></thead>
+        <tbody>
+          <tr><td><a class="linklike t-strong" data-jump="ov">ภาพรวม</a></td><td class="mono">/service</td><td>หัวหน้า TS</td><td>วันนี้ทีมเป็นยังไง มีอะไรต้องตัดสินใจก่อน</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="today">งานวันนี้</a></td><td class="mono">/service/today</td><td>ช่าง (มือถือ)</td><td>ฉันต้องไปไหน · เริ่ม/ปิดงานยังไง</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="close">ปิดงาน</a></td><td class="mono">/service/visits/[id]/close</td><td>ช่าง (มือถือ)</td><td>ทำอะไรไปบ้าง เครื่องไหนไม่ผ่าน</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="sched">จัดคิวช่าง</a></td><td class="mono">/service/schedule</td><td>ผู้วางแผน</td><td>สัปดาห์นี้ใครว่าง วางนัดตรงไหน</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="gate">ด่านเข้าไซต์</a></td><td class="mono">โมดัล · ร่าง → เข้าคิว</td><td>TS · SA · FN</td><td>ร่างใบนี้ขึ้นตารางได้หรือยัง ติดใคร</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="intake">งานเข้าใหม่</a></td><td class="mono">/service/intake</td><td>ผู้วางแผน</td><td>ขายปิดอะไรมา ต้องตั้งไซต์/โซนอะไรบ้าง</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="sites">ทะเบียนไซต์</a></td><td class="mono">/service/sites</td><td>ทุกคน</td><td>ลูกค้ามีจุดไหนบ้าง สถานะแต่ละจุด</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="site">ไซต์</a></td><td class="mono">/service/sites/[id]</td><td>ทุกคน</td><td>ไซต์นี้มีโซน/เครื่อง/รอบอะไร</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="siteform">ฟอร์มไซต์</a></td><td class="mono">โมดัล · สร้าง = แก้</td><td>TS</td><td>ไซต์นี้อยู่ที่ไหน ใช้ที่อยู่ไหนของลูกค้า</td><td><span class="ui-badge warning">รื้อ</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="zone">โซน</a></td><td class="mono">…/zones/[id]</td><td>TS + ขาย</td><td>โซนนี้ขายไว้เท่าไร ใช้จริงเท่าไร</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="asset">อุปกรณ์</a></td><td class="mono">…/assets/[id]</td><td>ช่าง + TS</td><td>เครื่องนี้ตั้งค่าไว้ยังไง ประวัติเป็นมายังไง</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+          <tr><td><a class="linklike t-strong" data-jump="doc">ใบส่งงาน</a></td><td class="mono">/service/visits/[id]</td><td>หัวหน้า + ลูกค้า</td><td>รอบนั้นทำอะไรไป ใช้ของเท่าไร</td><td><span class="ui-badge accent">ใหม่</span></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 02 ภาพรวม ═════════════════════════════════════════════ -->
+<section class="screen" id="ov">
+  <div class="brief">
+    <div>
+      <h2>ภาพรวม</h2>
+      <div class="route">/service · หัวหน้าทีมช่าง</div>
+      <p>หน้านี้ต้องตอบคำถามเดียว: <b>วันนี้ต้องเข้าไปยุ่งกับอะไรก่อน</b> ของเดิมมีตัวเลขสวย ๆ 4 ใบ
+      แต่กดแล้วไปโผล่หน้าที่ไม่มีของที่นับไว้ — และยังแสดง “ไม่รู้” ให้ดูเหมือน “ปลอดภัย”</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk">✓</span><span>ตัวเลขทุกช่อง<b>กดแล้วถึงของจริง</b> — “นัดค้าง” พาไปมุมมองค้างที่ไม่ผูกสัปดาห์ (ของเดิมนับย้อน 120 วัน แต่พาไปตารางที่โหลดแค่สัปดาห์นี้)</span></li>
+      <li><span class="mk new">+</span><span>แถบเตือน <b>“ระบบไม่รู้”</b> — เครื่องที่ไม่มีอัตราใช้ ประเมินวันหมดไม่ได้ ของเดิมเงียบสนิท</span></li>
+      <li><span class="mk new">+</span><span>ช่อง <b>ปิดงานสัปดาห์นี้ 34/41</b> — ของเดิมนับแต่ของค้าง ไม่มีตัวเลขว่าทีมทำได้เท่าไร</span></li>
+      <li><span class="mk">✓</span><span>“วันนี้ใครไปไหน” เปลี่ยนจากข้อความยาวเป็น<b>แถบเวลา</b> — เห็นว่าแน่นเพราะงานยาวหรือเพราะหลายจุด</span></li>
+      <li><span class="mk new">+</span><span>เพิ่มเหตุ <b>วิ่งข้ามเขต</b> และ <b>ไซต์ยังไม่มีรอบ</b> เข้าคิวต้องจัดการ</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป · 1480px</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+
+      <div class="premium-header">
+        <div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#dash"/></svg></span>ภาพรวมธุรกิจบริการ</h1>
+          <p>นัดที่ค้าง · วันนี้ทีมไปไหน · ไซต์ที่น้ำหอมกำลังจะหมด</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <button class="btn" data-jump="intake"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่ 3</button>
+          <button class="btn btn-primary" data-jump="sched"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</button>
+        </div>
+      </div>
+
+      <div class="ui-metric-strip" style="--c:5">
+        <button class="ui-metric" data-tone="danger" data-jump="sched">
+          <span class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></span>
+          <span class="ui-metric-txt"><span>นัดค้าง</span><strong>12</strong><em>เก่าสุด 24 มิ.ย. · 61 วัน</em></span>
+        </button>
+        <button class="ui-metric" data-tone="accent" data-jump="sched">
+          <span class="ui-metric-ic"><svg class="i"><use href="#clock"/></svg></span>
+          <span class="ui-metric-txt"><span>นัดวันนี้</span><strong>9</strong><em>พฤ. 27 ส.ค.</em></span>
+        </button>
+        <button class="ui-metric" data-tone="danger" data-jump="gate">
+          <span class="ui-metric-ic"><svg class="i"><use href="#file"/></svg></span>
+          <span class="ui-metric-txt"><span>ร่างติดด่าน</span><strong>7</strong><em>ติดเงิน 4 · ติดสัญญา 2 · ไม่มีช่าง 1</em></span>
+        </button>
+        <button class="ui-metric" data-tone="warning" data-jump="sites">
+          <span class="ui-metric-ic"><svg class="i"><use href="#drop"/></svg></span>
+          <span class="ui-metric-txt"><span>ต้องเข้าเติม</span><strong>23</strong><em>หมดแล้ว 6 · ใกล้หมด 17</em></span>
+        </button>
+        <button class="ui-metric" data-tone="good">
+          <span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span>
+          <span class="ui-metric-txt"><span>ปิดงานสัปดาห์นี้</span><strong>34<span style="font-size:var(--fs-9);color:var(--text-3);font-weight:var(--fw-normal)"> / 41</span></strong><em>เหลืออีก 7 นัด</em></span>
+        </button>
+      </div>
+
+      <div class="notice" data-tone="warning">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>เครื่อง 40 ตัวใน 12 ไซต์ ระบบยังไม่รู้อัตราการใช้</b>
+        <span>ประเมินไม่ได้ว่าน้ำหอมจะหมดวันไหน จึงไม่ถูกนับใน “ต้องเข้าเติม” ข้างบน — ตัวเลข 23 คือเท่าที่รู้ ไม่ใช่ทั้งหมด</span></div>
+        <span class="act"><button class="btn sm" data-jump="sites">ดูรายการ</button></span>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2><svg class="i" style="color:var(--red)"><use href="#warn"/></svg>ต้องจัดการก่อน</h2>
+          <p>8 รายการ · เรียงตามความเร่ง</p></div>
+          <span class="ui-badge danger">4 เกินกำหนด</span>
+        </div>
+        <div class="ui-section-body flush">
+          <div class="aq">
+            <div class="aq-row" data-tone="danger">
+              <span class="aq-ic"><svg class="i"><use href="#warn"/></svg></span>
+              <span class="aq-txt"><b>24 มิ.ย. · Multy Beauty เมกาบางนา</b>
+              <span>ค้างมา 61 วัน · ช่าง: ต้า · เติมน้ำหอม</span></span>
+              <button class="btn sm" data-jump="doc">เปิดนัด</button>
+            </div>
+            <div class="aq-row" data-tone="danger">
+              <span class="aq-ic"><svg class="i"><use href="#warn"/></svg></span>
+              <span class="aq-txt"><b>19 ส.ค. · Jim Thompson Outlet 93</b>
+              <span>ค้างมา 8 วัน · ยังไม่มอบหมายช่าง · ซ่อม</span></span>
+              <button class="btn sm" data-jump="sched">มอบหมาย</button>
+            </div>
+            <div class="aq-row" data-tone="danger">
+              <span class="aq-ic"><svg class="i"><use href="#file"/></svg></span>
+              <span class="aq-txt"><b>ร่าง 4 ใบติดด่านเงิน — ครบรอบแล้วแต่ขึ้นตารางไม่ได้</b>
+              <span>CASTLE BLACK · Meko · R3 Life · Rine+Sou&amp; · SA แจ้งจ่ายแล้ว รอบัญชีกดรับรอง</span></span>
+              <button class="btn sm" data-jump="gate">ดูด่าน</button>
+            </div>
+            <div class="aq-row" data-tone="warning">
+              <span class="aq-ic"><svg class="i"><use href="#cal"/></svg></span>
+              <span class="aq-txt"><b>พรุ่งนี้ · ต้า วิ่ง 3 เขตในวันเดียว</b>
+              <span>BKK-E → ปริมณฑล → BKK-N · เวลาเดินทางกินคิวบ่าย</span></span>
+              <button class="btn sm" data-jump="sched">จัดใหม่</button>
+            </div>
+            <div class="aq-row" data-tone="warning">
+              <span class="aq-ic"><svg class="i"><use href="#clock"/></svg></span>
+              <span class="aq-txt"><b>29 ส.ค. 09:00 · CP LAND ทัสคานี</b>
+              <span>ไซต์ให้เข้า 10:00–17:00 เท่านั้น — นัดอยู่นอกช่วง</span></span>
+              <button class="btn sm" data-jump="sched">เลื่อนเวลา</button>
+            </div>
+            <div class="aq-row" data-tone="info">
+              <span class="aq-ic"><svg class="i"><use href="#rot"/></svg></span>
+              <span class="aq-txt"><b>Siam Premium Outlet · ยังไม่มีรอบบริการ</b>
+              <span>ติดตั้งเมื่อ 14 ส.ค. แล้วเงียบ — ไม่มีนัดไหนเกิดขึ้นเองได้</span></span>
+              <button class="btn sm" data-jump="site">ตั้งรอบ</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2><svg class="i"><use href="#users"/></svg>วันนี้ทีมไปไหน</h2>
+          <p>พฤ. 27 ส.ค. · 9 นัด · 4 ช่าง</p></div>
+          <button class="btn sm" data-jump="sched">เปิดตารางสัปดาห์</button>
+        </div>
+        <div class="ui-section-body flush">
+          <div class="hours"><span></span><span class="marks"><i>08:00</i><i>10:00</i><i>12:00</i><i>14:00</i><i>16:00</i><i>18:00</i></span><span></span></div>
+          <div class="load">
+            <div class="load-row">
+              <span class="load-name"><span class="dot"></span><a class="linklike" data-jump="today">ต้า</a></span>
+              <span class="bar">
+                <i class="refill" style="left:2%;width:20%">Jim 93</i>
+                <i class="refill" style="left:24%;width:16%">Jim House</i>
+                <i class="repair" style="left:44%;width:22%">Multy บางนา</i>
+                <i class="refill" style="left:70%;width:18%">R3 Life</i>
+              </span>
+              <span class="load-sum"><b>4 นัด</b> · 11 เครื่อง · 6 แพ็ค</span>
+            </div>
+            <div class="load-row">
+              <span class="load-name"><span class="dot" style="background:var(--violet)"></span><a class="linklike" data-jump="today">ฟลุ๊ค</a></span>
+              <span class="bar">
+                <i class="install" style="left:6%;width:52%">AWC Empire — ติดตั้ง 242 จุด</i>
+              </span>
+              <span class="load-sum"><b>1 นัด</b> · 242 จุด · 5 ชม./3 คน</span>
+            </div>
+            <div class="load-row">
+              <span class="load-name"><span class="dot" style="background:var(--blue)"></span><a class="linklike" data-jump="today">ไอซ์</a></span>
+              <span class="bar">
+                <i class="inspect" style="left:10%;width:14%">CP ทัสคานี</i>
+                <i class="refill" style="left:28%;width:16%">Solvani</i>
+              </span>
+              <span class="load-sum"><b>2 นัด</b> · 4 เครื่อง · 3 แพ็ค</span>
+            </div>
+            <div class="load-row" style="background:var(--amber-soft)">
+              <span class="load-name" style="color:var(--amber)"><svg class="i"><use href="#warn"/></svg>ยังไม่มอบหมาย</span>
+              <span class="bar">
+                <i class="refill" style="left:20%;width:16%;opacity:.55">Meko</i>
+                <i class="refill" style="left:40%;width:16%;opacity:.55">Rapi Rabi</i>
+              </span>
+              <span class="load-sum"><b>2 นัด</b> · ต้องหาคนก่อน 09:00</span>
+            </div>
+          </div>
+          <div class="legend">
+            <span><i style="background:var(--accent)"></i>เติมน้ำหอม</span>
+            <span><i style="background:var(--red)"></i>ซ่อม</span>
+            <span><i style="background:var(--violet)"></i>ติดตั้ง</span>
+            <span><i style="background:var(--teal)"></i>ตรวจพื้นที่</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2><svg class="i"><use href="#drop"/></svg>น้ำหอมกำลังจะหมด</h2>
+          <p>8 จาก 43 ไซต์ที่ยังใช้งาน</p></div>
+          <button class="btn sm" data-jump="sites">ทะเบียนไซต์</button>
+        </div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>ไซต์</th><th>ลูกค้า</th><th class="num">เครื่องที่ต้องเติม</th><th>คาดว่าหมด</th><th>นัดครั้งหน้า</th></tr></thead>
+            <tbody>
+              <tr><td><a class="linklike t-strong" data-jump="site">Multy Beauty เมกาบางนา</a><span class="cell-sub">SS-2607014 · BKK-E</span></td>
+                <td>บริษัท มัลตี้ บิวตี้ จำกัด</td><td class="num" style="color:var(--red);font-weight:600">3</td>
+                <td style="color:var(--red)">หมดแล้ว 6 วัน</td><td><span class="ui-badge danger">ยังไม่มีนัด</span></td></tr>
+              <tr><td><a class="linklike t-strong" data-jump="site">Jim Thompson Outlet 93</a><span class="cell-sub">SS-2606008 · BKK-S</span></td>
+                <td>บริษัท จิม ทอมป์สัน จำกัด</td><td class="num" style="color:var(--amber);font-weight:600">2</td>
+                <td>อีก 4 วัน</td><td>29 ส.ค. · ต้า</td></tr>
+              <tr><td><a class="linklike t-strong" data-jump="site">CP LAND ทัสคานี มีนบุรี</a><span class="cell-sub">SS-2605002 · BKK-E</span></td>
+                <td>บริษัท ซี.พี. แลนด์ จำกัด</td><td class="num">1</td>
+                <td>อีก 9 วัน</td><td>2 ก.ย. · ไอซ์</td></tr>
+              <tr><td><a class="linklike t-strong" data-jump="site">Rapi Rabi สยามสแควร์</a><span class="cell-sub">SS-2604011 · BKK-C</span></td>
+                <td>บริษัท ราปิ ราบิ จำกัด</td><td class="num">1</td>
+                <td>อีก 11 วัน</td><td><span class="ui-badge warning">ยังไม่มีนัด</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 03 งานวันนี้ ═══════════════════════════════════════════ -->
+<section class="screen" id="today">
+  <div class="brief">
+    <div>
+      <h2>งานวันนี้</h2>
+      <div class="route">/service/today · ช่าง · มือถือหน้างาน</div>
+      <p>จอที่ข้อมูลจริงเข้าระบบ — ถ้าหน้านี้ใช้ยาก ทั้งโมดูลตาย ของเดิมการ์ดบอกแค่ “เวลา”
+      ไม่บอก<b>วันที่</b> ⇒ นัดที่ค้างมาสองสัปดาห์หน้าตาเหมือนนัดของเมื่อวานเป๊ะ</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk">✓</span><span><b>วันที่อยู่บนการ์ด</b> และนัดค้างบอกว่าค้างมากี่วัน — รูที่ใหญ่ที่สุดของหน้าเดิม</span></li>
+      <li><span class="mk new">+</span><span>แสดง<b>หมายเหตุจากคนจัดคิว</b> — เก็บใน DB และส่งมากับ API อยู่แล้ว แต่การ์ดไม่เคยอ่าน</span></li>
+      <li><span class="mk new">+</span><span>ปุ่ม <b>เริ่มงาน</b> → สถานะ “กำลังทำ” พร้อมเวลาที่ประทับจากนาฬิกาเซิร์ฟเวอร์ (ไม่ใช่เวลาที่พิมพ์ย้อนหลัง)</span></li>
+      <li><span class="mk">✓</span><span>ปุ่มเต็มความกว้าง สูง 44px ทุกตัว — ของเดิมกว้างตามข้อความ ~62px</span></li>
+      <li><span class="mk new">+</span><span>ช่าง<b>ไม่เห็นร่างที่ยังไม่ผ่านด่าน</b> — งานที่โผล่ในหน้านี้คืองานที่ยืนยันแล้วเท่านั้น</span></li>
+      <li><span class="mk new">+</span><span>บอก<b>โซนและจำนวนอุปกรณ์</b>ที่ต้องทำ — ช่างรู้ว่าจะเจออะไรก่อนถึงหน้างาน</span></li>
+    </ul>
+  </div>
+
+  <div class="frame phone">
+    <div class="frame-cap">มือถือ · 390px</div>
+    <div class="frame-body">
+      <div class="premium-header" style="padding:var(--space-4);margin-bottom:var(--space-3)">
+        <div>
+          <h1 style="font-size:var(--fs-12)"><span class="premium-header-icon"><svg class="i"><use href="#wrench"/></svg></span>งานวันนี้</h1>
+          <p style="font-size:var(--fs-4)">นัดเข้าไซต์ที่มอบหมายให้คุณ</p>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-bottom:var(--space-3)">
+        <span class="ui-badge danger">ค้าง 2</span>
+        <span class="ui-badge accent">วันนี้ 4</span>
+        <span class="ui-badge plain">พรุ่งนี้ 3</span>
+      </div>
+
+      <div class="grp">
+        <h2 class="grp-h bad"><svg class="i"><use href="#warn"/></svg>ค้างอยู่<span class="c">2</span></h2>
+        <article class="vcard late">
+          <div class="vcard-top">
+            <span class="vcard-when">24 มิ.ย. <small>09:00–12:00</small></span>
+            <span class="ui-badge danger">ค้าง 64 วัน</span>
+          </div>
+          <h3>Multy Beauty เมกาบางนา</h3>
+          <p class="meta">BKK-E · บริษัท มัลตี้ บิวตี้ จำกัด · เข้าได้ จ.–ศ. 10:00–19:00</p>
+          <p class="meta">โซน Lobby · 2 เครื่อง · Signature A</p>
+          <div class="vnote"><svg class="i" style="color:var(--blue);margin-top:2px"><use href="#file"/></svg>
+            <span><b>หมายเหตุจากคนจัดคิว</b> ลูกค้าขอให้โทรก่อนถึง 30 นาที — รปภ. ต้องออกบัตร</span></div>
+          <div class="vwarn"><svg class="i"><use href="#warn"/></svg>นัดอยู่นอกช่วงที่ไซต์ให้เข้า</div>
+          <div class="vacts">
+            <button class="btn sm touch"><svg class="i"><use href="#pin"/></svg>นำทาง</button>
+            <button class="btn sm touch"><svg class="i"><use href="#phone"/></svg>โทร</button>
+            <button class="btn sm touch btn-accent wide"><svg class="i"><use href="#play"/></svg>เริ่มงาน</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="grp">
+        <h2 class="grp-h">วันนี้ · พฤ. 27 ส.ค.<span class="c">4</span></h2>
+
+        <article class="vcard live">
+          <div class="vcard-top">
+            <span class="vcard-when">09:00 <small>–11:00</small></span>
+            <span class="ui-badge accent">เติมน้ำหอม</span>
+          </div>
+          <h3>Jim Thompson Outlet 93</h3>
+          <p class="meta">BKK-S · โซน ชั้น 1/3/4 · 6 เครื่อง · 3 แพ็ค</p>
+          <div class="running"><span class="pulse"></span>กำลังทำอยู่ · เริ่ม 09:12 น. (43 นาทีที่แล้ว)</div>
+          <div class="vacts">
+            <button class="btn sm touch"><svg class="i"><use href="#pin"/></svg>นำทาง</button>
+            <button class="btn sm touch btn-primary wide" data-jump="close"><svg class="i"><use href="#check"/></svg>ปิดงาน</button>
+          </div>
+        </article>
+
+        <article class="vcard">
+          <div class="vcard-top">
+            <span class="vcard-when">13:00 <small>–14:30</small></span>
+            <span class="ui-badge danger">ซ่อม</span>
+          </div>
+          <h3>R3 Life ลาดพร้าว</h3>
+          <p class="meta">BKK-N · โซน Reception · 1 เครื่อง</p>
+          <div class="vnote"><svg class="i" style="color:var(--blue);margin-top:2px"><use href="#file"/></svg>
+            <span><b>หมายเหตุ</b> เครื่องไม่พ่น ลูกค้าแจ้งตั้งแต่ 22 ส.ค. — เอาเครื่องสำรองไปด้วย</span></div>
+          <div class="vacts">
+            <button class="btn sm touch"><svg class="i"><use href="#pin"/></svg>นำทาง</button>
+            <button class="btn sm touch"><svg class="i"><use href="#phone"/></svg>โทร</button>
+            <button class="btn sm touch btn-accent wide"><svg class="i"><use href="#play"/></svg>เริ่มงาน</button>
+          </div>
+        </article>
+
+        <article class="vcard done">
+          <div class="vcard-top">
+            <span class="vcard-when">08:00 <small>–08:45</small></span>
+            <span class="ui-badge success">ปิดงานแล้ว</span>
+          </div>
+          <h3>Jim House ชั้น G</h3>
+          <p class="meta">BKK-S · ใช้ไป 2 ขวด · มีลายเซ็นลูกค้า</p>
+          <div class="vacts">
+            <button class="btn sm touch wide" data-jump="doc"><svg class="i"><use href="#file"/></svg>ดูใบส่งงาน</button>
+          </div>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 04 ปิดงาน ═════════════════════════════════════════════ -->
+<section class="screen" id="close">
+  <div class="brief">
+    <div>
+      <h2>ปิดงาน</h2>
+      <div class="route">/service/visits/[id]/close · ช่าง · มือถือ</div>
+      <p>ของเดิมเป็นโมดัล 600px ที่ยัดฟอร์ม 9 ขั้นไว้ในใบเดียว บนมือถือแถวเวลา 3 ช่องแตกเป็น 4 บรรทัด
+      และแผ่นเซ็นสูง 140px ดักนิ้วที่กำลังเลื่อนหน้า พอเพิ่ม<b>ปิดงานรายเครื่อง</b> เข้าไปอีก
+      โมดัลรับไม่ไหว ⇒ ย้ายเป็นหน้าแยกที่แชร์ลิงก์ได้</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span><b>ปิดงานรายเครื่อง</b> — ติ๊กทีละตัว เรียบร้อย / ทำไม่ได้ / เปลี่ยนเครื่อง · สถานะใบสรุปจากลูก ไม่มีปุ่มเลือกเอง</span></li>
+      <li><span class="mk">✓</span><span>เวลา<b>ประทับจากเซิร์ฟเวอร์</b> ตอนกดเริ่ม/จบ — ช่างไม่พิมพ์เวลาเอง แก้ย้อนหลังได้แต่ติดเครื่องหมาย</span></li>
+      <li><span class="mk">✓</span><span>แผ่นเซ็น<b>ยุบไว้</b> จนกดเปิด — เลิกดักนิ้วที่เลื่อนหน้า</span></li>
+      <li><span class="mk new">+</span><span>“เปลี่ยนเครื่อง” เข้า<b>ทะเบียนจริง</b> (ถอด + ติดตั้งใหม่) ไม่ใช่ข้อความในช่องหมายเหตุ</span></li>
+    </ul>
+  </div>
+
+  <div class="frame phone">
+    <div class="frame-cap">มือถือ · 390px</div>
+    <div class="frame-body">
+      <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)">
+        <button class="btn icon sm" data-jump="today"><svg class="i"><use href="#left"/></svg></button>
+        <div style="min-width:0">
+          <div style="font-size:var(--fs-9);font-weight:var(--fw-bold);line-height:1.3">ปิดงาน SV-2608014</div>
+          <div style="font-size:var(--fs-4);color:var(--text-3)">Jim Thompson Outlet 93 · เติมน้ำหอม</div>
+        </div>
+      </div>
+
+      <div class="fstep">
+        <div class="fstep-h"><span class="no ok"><svg class="i"><use href="#check"/></svg></span><b>เวลาที่ทำจริง</b></div>
+        <div class="fstep-b">
+          <p>ประทับจากนาฬิกาเซิร์ฟเวอร์ตอนคุณกดปุ่ม — แก้ได้ถ้าจำเป็น แต่ใบจะติดเครื่องหมาย “แก้ย้อนหลัง”</p>
+          <div class="two">
+            <label class="field"><span>เริ่ม</span><span class="inp ro">27 ส.ค. 09:12</span></label>
+            <label class="field"><span>เสร็จ</span><span class="inp ro">27 ส.ค. 10:41</span></label>
+          </div>
+          <span class="ui-badge plain"><svg class="i"><use href="#clock"/></svg>รวม 1 ชม. 29 นาที</span>
+        </div>
+      </div>
+
+      <div class="fstep">
+        <div class="fstep-h"><span class="no">2</span><b>อุปกรณ์ในโซนนี้</b><span class="ui-badge warning" style="margin-left:auto">4 / 6</span></div>
+        <div class="fstep-b">
+          <p>ติ๊กทีละตัว — สถานะของใบสรุปจากตรงนี้เอง</p>
+          <div class="arow">
+            <div class="arow-t"><b>เครื่องที่ 1 · ชั้น 1 ทางเข้า</b><span>O800 ขาว · SN-0412 · เติม 300 ml</span></div>
+            <span class="tri"><button aria-pressed="true">ทำแล้ว</button><button class="no">ไม่ได้</button><button class="sw">เปลี่ยน</button></span>
+          </div>
+          <div class="arow">
+            <div class="arow-t"><b>เครื่องที่ 2 · ชั้น 3 บันได</b><span>O800 ดำ · SN-0417 · เติม 300 ml</span></div>
+            <span class="tri"><button aria-pressed="true">ทำแล้ว</button><button class="no">ไม่ได้</button><button class="sw">เปลี่ยน</button></span>
+          </div>
+          <div class="arow">
+            <div class="arow-t" style="color:var(--violet)"><b>เครื่องที่ 3 · ชั้น 3 ทางเข้า</b><span>ชำรุด — เปลี่ยนเป็น SN-0902</span></div>
+            <span class="tri"><button>ทำแล้ว</button><button class="no">ไม่ได้</button><button class="sw" aria-pressed="true">เปลี่ยน</button></span>
+          </div>
+          <div class="arow">
+            <div class="arow-t" style="color:var(--red)"><b>Reed diffuser · 6 ขวด</b><span>ต้องระบุเหตุผลที่ทำไม่ได้</span></div>
+            <span class="tri"><button>ทำแล้ว</button><button class="no" aria-pressed="true">ไม่ได้</button><button class="sw">เปลี่ยน</button></span>
+          </div>
+          <label class="field" style="margin-top:var(--space-3)"><span>เหตุผลที่ Reed ยังไม่ได้ทำ *</span>
+            <span class="inp ta">ยังอยู่ในขั้นตอนปรับสูตร ทีม RD ขอให้รอรอบหน้า</span></label>
+        </div>
+      </div>
+
+      <div class="fstep">
+        <div class="fstep-h"><span class="no">3</span><b>รูปหน้างาน</b><span class="ui-badge plain" style="margin-left:auto">ไม่บังคับ</span></div>
+        <div class="fstep-b">
+          <div class="thumbs">
+            <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>ก่อน</span>
+            <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>หลัง</span>
+            <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>หน้าจอ</span>
+            <button class="thumb add"><svg class="i" style="font-size:18px"><use href="#plus"/></svg>เพิ่ม</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="fstep">
+        <div class="fstep-h"><span class="no">4</span><b>ลายเซ็นผู้รับงาน</b>
+          <button class="btn sm" style="margin-left:auto">เปิดแผ่นเซ็น</button></div>
+      </div>
+
+      <div class="fstep">
+        <div class="fstep-h"><span class="no">5</span><b>สรุปงาน</b></div>
+        <div class="fstep-b">
+          <label class="field"><span>สิ่งที่เปลี่ยนไปจากรอบก่อน</span>
+            <span class="inp ta">พบเครื่องชั้น 3 ชำรุด นำเครื่องสำรองมาเปลี่ยน ทำงานปกติแล้ว</span></label>
+        </div>
+      </div>
+
+      <div class="notice" data-tone="warning" style="margin-bottom:var(--space-3)">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ใบนี้จะปิดเป็น “ทำไม่ครบ”</b><span>เพราะ Reed 6 ขวดยังไม่ได้ทำ — หัวหน้าจะเห็นใบนี้ในคิวต้องดู</span></div>
+      </div>
+
+      <div class="sticky-acts">
+        <button class="btn touch wide">ยังไม่ปิด</button>
+        <button class="btn touch btn-primary wide">บันทึกและปิดงาน</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 05 จัดคิวช่าง ═════════════════════════════════════════ -->
+<section class="screen" id="sched">
+  <div class="brief">
+    <div>
+      <h2>จัดคิวช่าง</h2>
+      <div class="route">/service/schedule · ผู้วางแผน</div>
+      <p>ของเดิมเป็นกริดกว้าง 900px ที่<b>คอลัมน์ชื่อช่างไม่ตรึง</b> เลื่อนไปทางขวาแล้วไม่รู้ว่าดูแถวของใคร
+      และข้อมูลของนัดทั้งหมด (ชนิดงาน สถานะ คำเตือน) อยู่ใน tooltip ซึ่งบนจอสัมผัสไม่มีอยู่จริง</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>🔴 <b>TS สร้างงานเองไม่ได้</b> — ตัดปุ่มสร้างสี terracotta และปุ่ม <span class="mono">+</span> ที่เดิมมีอยู่ทุกช่องว่างทิ้ง · หน้านี้ทำได้อย่างเดียวคือ <b>วาง</b> งานที่มีอยู่แล้วลงคิว</span></li>
+      <li><span class="mk new">+</span><span>คิวรอจัดแยกสองกลุ่ม: <b>ผ่านด่านแล้ว = ลากวางได้</b> · <b>ติดด่าน = วางไม่ได้</b> พร้อมบอกว่าติดอะไรและใครแก้</span></li>
+      <li><span class="mk">✓</span><span>คอลัมน์ช่าง<b>ตรึงซ้าย</b> (ตระกูล matrix) — ของเดิมใช้ตระกูล <span class="mono">grid</span> ที่ไม่มีอยู่จริงในระบบตาราง</span></li>
+      <li><span class="mk">✓</span><span>เลขวันที่ของ “วันนี้” เปลี่ยนเป็น <span class="mono">--accent-fg</span> — ของเดิมใช้ <span class="mono">--accent-ink</span> ซึ่งใน<b>ธีมมืดเป็นสีเดียวกับพื้น เลขหายสนิท</b></span></li>
+      <li><span class="mk new">+</span><span>ภาระนับเป็น<b>เครื่อง คู่กับ แพ็ค</b> ไม่ใช่จำนวนนัด — 1 แพ็คของ MULTY = 2 เครื่อง แต่ของ RAPI = 1</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="premium-header">
+        <div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#cal"/></svg></span>จัดคิวช่าง</h1>
+          <p>นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <span class="segmented"><button aria-pressed="true">สัปดาห์</button><button>วัน</button><button>รายการ</button></span>
+          <!-- ⚠️ ไม่มีปุ่มสร้างสี terracotta บนหน้านี้โดยเจตนา — TS ไม่ใช่ต้นทางของงาน
+               งานเกิดจากรอบบริการ หรือจากงานนอกรอบที่มีต้นเรื่อง แล้วต้องผ่านด่านก่อนขึ้นตาราง -->
+          <button class="btn"><svg class="i"><use href="#plus"/></svg>สร้างงานนอกรอบ</button>
+        </div>
+      </div>
+
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>หน้านี้ “วาง” งาน ไม่ได้ “สร้าง” งาน</b>
+        <span>นัดเกิดจากรอบบริการของไซต์ หรือจากงานนอกรอบที่มีต้นเรื่อง (ลูกค้าแจ้งเสีย · ติดตั้งตามใบสั่งขาย) —
+        ทุกใบเกิดเป็น <b>ร่าง</b> และขึ้นตารางไม่ได้จนกว่าจะผ่านด่าน 4 ข้อ</span></div>
+        <span class="act"><button class="btn sm" data-jump="gate">ดูด่าน</button></span>
+      </div>
+
+      <div class="toolbar">
+        <span class="search-glass"><svg class="i"><use href="#search"/></svg><input placeholder="ค้นหาไซต์ ลูกค้า หรือรหัสนัด" autocomplete="off"></span>
+        <span class="premium-select"><svg class="i"><use href="#filter"/></svg>ตัวกรอง<span class="cnt">2</span></span>
+        <span class="premium-select"><svg class="i"><use href="#left"/></svg></span>
+        <span style="font-size:var(--fs-7);font-weight:var(--fw-semibold);min-width:170px;text-align:center">25 – 31 ส.ค. 2026</span>
+        <span class="premium-select"><svg class="i"><use href="#right"/></svg></span>
+        <button class="btn sm">สัปดาห์นี้</button>
+        <span class="spacer"></span>
+        <span class="ui-badge plain">18 นัด · 5 รอจัด</span>
+      </div>
+
+      <div class="split">
+        <aside class="queue">
+          <h3><svg class="i" style="color:var(--amber)"><use href="#inbox"/></svg>คิวรอจัด</h3>
+          <p>ร่างที่ระบบสร้างจากรอบบริการ — <b>วางได้เฉพาะใบที่ผ่านด่านแล้ว</b></p>
+
+          <div class="qgroup">
+            <h4><svg class="i" style="color:var(--green)"><use href="#check"/></svg>ผ่านด่านแล้ว · ลากวางได้ 3</h4>
+            <div class="qitem ready"><b>Meko สยาม</b><span>เติมน้ำหอม · ครบรอบ 26 ส.ค.</span>
+              <span class="why">ด่านครบ 4/4</span></div>
+            <div class="qitem ready"><b>Rapi Rabi ทองหล่อ</b><span>เติมน้ำหอม · ครบรอบ 27 ส.ค.</span>
+              <span class="why">ด่านครบ 4/4</span></div>
+            <div class="qitem ready"><b>Solvani พิษณุโลก</b><span>เติมน้ำหอม · ต่างจังหวัด</span>
+              <span class="why">ด่านครบ 4/4</span></div>
+          </div>
+
+          <div class="qgroup">
+            <h4><svg class="i" style="color:var(--red)"><use href="#warn"/></svg>ติดด่าน · วางไม่ได้ 2</h4>
+            <div class="qitem blocked" data-jump="gate"><b>CASTLE BLACK</b><span>เปลี่ยนก้าน Reed · ครบรอบ 28 ส.ค.</span>
+              <span class="why">งวด 3 เลยกำหนด บัญชียังไม่รับรอง — SA แจ้ง → FN</span></div>
+            <div class="qitem blocked" data-jump="gate"><b>AWC Empire Tower</b><span>ตรวจพื้นที่ · ต้องใช้ 3 คน</span>
+              <span class="why">สัญญาหมดผล 31 ก.ค. — SA ต่อสัญญาก่อน</span></div>
+          </div>
+        </aside>
+
+        <div class="ui-section">
+          <div class="ui-section-body flush">
+            <div class="tblwrap">
+              <table class="board">
+                <thead><tr>
+                  <th class="tech">ช่าง</th>
+                  <th><span class="d">จ.</span><span class="num2">25</span></th>
+                  <th><span class="d">อ.</span><span class="num2">26</span></th>
+                  <th class="today"><span class="d">พฤ.</span><span class="num2">27</span></th>
+                  <th><span class="d">พฤ.</span><span class="num2">28</span></th>
+                  <th><span class="d">ศ.</span><span class="num2">29</span></th>
+                  <th class="wknd"><span class="d">ส.</span><span class="num2">30</span></th>
+                  <th class="wknd"><span class="d">อา.</span><span class="num2">31</span></th>
+                </tr></thead>
+                <tbody>
+                  <tr>
+                    <th class="tech"><a class="linklike" data-jump="today">ต้า</a><span class="cell-sub">ฝ่าย TS</span></th>
+                    <td><span class="cellload">2 นัด · 5 เครื่อง</span>
+                      <button class="vchip refill"><b>09:00</b>Jim 93</button>
+                      <button class="vchip repair"><b>13:00</b>R3 Life</button></td>
+                    <td><button class="vchip refill"><b>10:00</b>Jim House</button>
+                      <span class="dropcell"></span></td>
+                    <td><span class="cellload hot"><svg class="i"><use href="#warn"/></svg>4 นัด · ข้ามเขต</span>
+                      <button class="vchip refill"><b>09:00</b>Jim 93</button>
+                      <button class="vchip refill"><b>11:00</b>Jim House</button>
+                      <button class="vchip repair"><b>13:00</b>Multy บางนา</button>
+                      <button class="vchip refill"><b>16:00</b>R3 Life</button></td>
+                    <td><button class="vchip inspect"><b>09:30</b>CP ทัสคานี</button>
+                      <span class="dropcell"></span></td>
+                    <td><span class="dropcell"></span></td>
+                    <td class="wknd"></td><td class="wknd"></td>
+                  </tr>
+                  <tr>
+                    <th class="tech"><a class="linklike" data-jump="today">ฟลุ๊ค</a><span class="cell-sub">ฝ่าย TS</span></th>
+                    <td><button class="vchip maint"><b>13:00</b>BIS Energy</button></td>
+                    <td><span class="dropcell"></span></td>
+                    <td><span class="cellload">1 นัด · 242 จุด</span>
+                      <button class="vchip install"><b>09:00</b>AWC Empire</button></td>
+                    <td><button class="vchip install"><b>09:00</b>AWC Empire</button></td>
+                    <td><button class="vchip refill"><b>14:00</b>EA Rooftop</button></td>
+                    <td class="wknd"></td><td class="wknd"></td>
+                  </tr>
+                  <tr>
+                    <th class="tech"><a class="linklike" data-jump="today">ไอซ์</a><span class="cell-sub">ฝ่าย TS</span></th>
+                    <td><span class="dropcell"></span></td>
+                    <td><button class="vchip refill"><b>10:00</b>Meko</button></td>
+                    <td><button class="vchip inspect"><b>09:00</b>CP ทัสคานี</button>
+                      <button class="vchip refill"><b>13:00</b>Solvani</button></td>
+                    <td><span class="dropcell"></span></td>
+                    <td><button class="vchip refill"><b>11:00</b>Rine+Sou&amp;</button></td>
+                    <td class="wknd"></td><td class="wknd"></td>
+                  </tr>
+                  <tr>
+                    <th class="tech" style="color:var(--amber)"><svg class="i"><use href="#warn"/></svg> ยังไม่มอบหมาย</th>
+                    <td></td>
+                    <td><button class="vchip draft"><b>—</b>Rapi Rabi</button></td>
+                    <td><button class="vchip draft"><b>—</b>Meko สยาม</button>
+                      </td>
+                    <td></td>
+                    <td><button class="vchip draft"><b>—</b>Solvani พิษณุโลก</button></td>
+                    <td class="wknd"></td><td class="wknd"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="legend">
+              <span><i style="background:var(--accent)"></i>เติมน้ำหอม</span>
+              <span><i style="background:var(--red)"></i>ซ่อม</span>
+              <span><i style="background:var(--violet)"></i>ติดตั้ง</span>
+              <span><i style="background:var(--teal)"></i>ตรวจพื้นที่</span>
+              <span><i style="background:var(--blue)"></i>บำรุงรักษา</span>
+              <span><i style="background:var(--panel-2);border:1px dashed var(--border-strong)"></i>ยังไม่ลงคิว</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ด่านเข้าไซต์ ══════════════════════════════════════════ -->
+<section class="screen" id="gate">
+  <div class="brief">
+    <div>
+      <h2>ด่านเข้าไซต์</h2>
+      <div class="route">ร่าง → เข้าคิว · จอที่ขาดไปจากม็อกรอบแรก</div>
+      <p>กติกาที่ตัดสินไว้แล้ว: <b>สร้างร่างได้เสมอ แต่ต้องครบถึงเข้าคิวได้</b> —
+      TS ไม่ใช่ต้นทางของงาน และร่างที่ยังไม่ผ่านด่านจะ<b>ไม่ขึ้นตาราง ไม่นับภาระรายวัน
+      และไม่โผล่ในงานวันนี้ของช่าง</b> · มาจากของจริง 2 อย่างพร้อมกัน: ส่งช่างไปที่ที่หมดสัญญา 25 จุด
+      และไม่ได้ไปที่ที่จ่ายเงินแล้ว 102 จุด</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>เป็น<b>รายการติ๊กพร้อมชื่อคนที่แก้ได้</b> ไม่ใช่ปุ่มเทา — ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม</span></li>
+      <li><span class="mk new">+</span><span>ข้อที่ยังไม่มีระบบรองรับขึ้นเป็น <b>“รอระบบสัญญา”</b> ไม่ใช่ติ๊กผ่านเงียบ ๆ — เฟสสัญญายัง parked รอต้นฉบับ</span></li>
+      <li><span class="mk new">+</span><span><b>หัวหน้าข้ามได้ พร้อมเหตุผลบังคับ</b> — ของจริงมี 25 จุดที่วิ่งอยู่ตอนนี้ ถ้าบล็อกแข็งวันแรก งานหยุดทันที</span></li>
+      <li><span class="mk new">+</span><span>ปุ่ม “เข้าคิว” <b>โชว์เสมอแม้กดไม่ได้</b> แล้วบอกเหตุตอนกด (GatedAction)</span></li>
+    </ul>
+  </div>
+
+  <div class="frame" style="max-width:680px;margin-inline:auto">
+    <div class="frame-cap">โมดัล · กดเข้าคิวจากร่าง</div>
+    <div class="frame-body" style="background:var(--panel-float)">
+      <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)">
+        <span class="premium-header-icon"><svg class="i"><use href="#cal"/></svg></span>
+        <div><div style="font-size:var(--fs-11);font-weight:var(--fw-bold);line-height:1.3">เข้าคิว SV-2608021</div>
+        <div style="font-size:var(--fs-4);color:var(--text-3)">CASTLE BLACK ทองหล่อ · เปลี่ยนก้าน Reed · 28 ส.ค. 2026</div></div>
+        <span class="ui-badge plain" style="margin-left:auto">ร่าง</span>
+      </div>
+
+      <div class="notice" data-tone="danger">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ผ่าน 2 จาก 4 ข้อ — ยังเข้าคิวไม่ได้</b>
+        <span>ตราบใดที่เป็นร่าง นัดนี้ไม่ขึ้นตาราง ไม่นับภาระของช่าง และช่างจะไม่เห็นในงานวันนี้</span></div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>เช็คลิสต์ก่อนขึ้นตาราง</h2>
+          <p>สองข้อแรกเป็นด่านเงิน/สัญญา · สองข้อหลังเป็นด่านความพร้อมงาน</p></div></div>
+        <div class="ui-section-body">
+          <div class="gate">
+            <div class="gate-i" data-s="park">
+              <span class="gate-mk"><svg class="i"><use href="#file"/></svg></span>
+              <span class="gate-t"><b>1 · ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด</b>
+                <span>รอระบบสัญญา — ยังไม่มีต้นฉบับสัญญาจ้างบริการในระบบ จึงยังตรวจให้ไม่ได้</span></span>
+              <span class="gate-who"><span class="owner">SA</span>
+                <button class="btn sm off">ดูสัญญา</button></span>
+            </div>
+            <div class="gate-i" data-s="bad">
+              <span class="gate-mk"><svg class="i"><use href="#warn"/></svg></span>
+              <span class="gate-t"><b>2 · ไม่มีงวดเลยกำหนดที่บัญชียังไม่รับรอง</b>
+                <span>งวด 3 (ก.ค.–ก.ย.) ครบกำหนด 15 ส.ค. · SA แจ้งว่าลูกค้าจ่ายแล้วเมื่อ 20 ส.ค. แต่บัญชียังไม่กดรับรอง
+                — <b>“แจ้งแล้ว” ไม่ปลดด่าน ปลดเมื่อ “รับรองแล้ว” เท่านั้น</b></span></span>
+              <span class="gate-who"><span class="owner">SA → FN</span>
+                <button class="btn sm">เตือนบัญชี</button></span>
+            </div>
+            <div class="gate-i" data-s="bad">
+              <span class="gate-mk"><svg class="i"><use href="#warn"/></svg></span>
+              <span class="gate-t"><b>3 · มีช่างผู้รับผิดชอบ</b>
+                <span>ยังไม่มอบหมาย — เลือกได้ที่นี่เลย ไม่ต้องออกไปหน้าตาราง</span></span>
+              <span class="gate-who"><span class="owner">TS</span>
+                <button class="btn sm btn-primary">เลือกช่าง</button></span>
+            </div>
+            <div class="gate-i" data-s="ok">
+              <span class="gate-mk"><svg class="i"><use href="#check"/></svg></span>
+              <span class="gate-t"><b>4 · วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า</b>
+                <span>ศ. 28 ส.ค. · ไซต์เปิดให้เข้า จ.–ส. 11:00–20:00</span></span>
+              <span class="gate-who"><span class="owner">TS</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sticky-acts" style="margin-top:var(--space-4)">
+        <button class="btn">ปิด</button>
+        <span class="spacer"></span>
+        <button class="btn btn-danger">ข้ามด่าน (หัวหน้า)</button>
+        <button class="btn btn-primary off" title="ยังเข้าคิวไม่ได้ — เหลืออีก 2 ข้อ">เข้าคิว</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame" style="max-width:680px;margin-inline:auto">
+    <div class="frame-cap">โมดัล · หัวหน้าข้ามด่าน</div>
+    <div class="frame-body" style="background:var(--panel-float)">
+      <div style="font-size:var(--fs-11);font-weight:var(--fw-bold);margin-bottom:var(--space-1)">ข้ามด่านเข้าคิว</div>
+      <p style="margin:0 0 var(--space-3);font-size:var(--fs-6);color:var(--text-2);line-height:var(--lh-thai)">
+        นัดนี้จะขึ้นตารางทั้งที่ยังไม่ผ่านด่าน 2 ข้อ — ใบจะติดเครื่องหมาย “ข้ามด่าน” ถาวร
+        และชื่อคุณกับเหตุผลจะอยู่บนใบให้ทุกคนเห็น</p>
+
+      <div class="notice" data-tone="warning" style="margin-bottom:var(--space-3)">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ข้ามอะไรบ้าง</b>
+          <span>ข้อ 1 สัญญา (รอระบบ) · ข้อ 2 งวด 3 บัญชียังไม่รับรอง</span></div>
+      </div>
+
+      <label class="field"><span>เหตุผลที่ต้องข้าม *</span>
+        <span class="inp ta" style="color:var(--text)">ลูกค้าโอนแล้ว ส่งสลิปมาทางไลน์ 20 ส.ค. บัญชีติดปิดงบสิ้นเดือน — ยืนยันกับคุณเกลแล้วว่าจะกดรับรองต้นเดือนหน้า</span>
+        <span class="lockrow"><span class="src">อย่างน้อย 10 ตัวอักษร · ลงบันทึกและขึ้นบนใบส่งงาน</span></span>
+      </label>
+
+      <div class="sticky-acts">
+        <button class="btn">ยกเลิก</button>
+        <span class="spacer"></span>
+        <button class="btn btn-danger">ข้ามด่านและเข้าคิว</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 06 งานเข้าใหม่ ════════════════════════════════════════ -->
+<section class="screen" id="intake">
+  <div class="brief">
+    <div>
+      <h2>งานเข้าใหม่</h2>
+      <div class="route">/service/intake · ผู้วางแผน · หน้าใหม่ทั้งหน้า</div>
+      <p>รูที่ทำให้สองระบบไม่เคยเจอกัน — ขายปิดใบสั่งขายสายบริการแล้ว<b>ไม่มีใครในฝั่งช่างรู้</b>
+      จนกว่าจะมีคนเดินไปบอก (ในชีตจริง ตรวจสองโลกชนกันได้แค่ 42 จาก 166 แถว)</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>คิวใบสั่งขาย<b>สายบริการที่อนุมัติแล้ว</b>แต่ยังไม่มีไซต์/โซน — คือ “ลูกศรที่ 3” ที่ออกแบบไว้แต่ยังไม่เคยเขียนโค้ด</span></li>
+      <li><span class="mk new">+</span><span>ตัวช่วย 2 จังหวะ: เลือก/สร้างไซต์ → <b>จับคู่บรรทัดขายกับโซน</b> · ผูกโซนเดิม = ต่อสัญญา ประวัติไม่ขาดตอน</span></li>
+      <li><span class="mk new">+</span><span>ไซต์ใหม่<b>ตั้งจากที่อยู่ในทะเบียนลูกค้า</b> — เลิกพิมพ์ที่อยู่/แผนที่/ผู้ติดต่อซ้ำสองที่ · มีไทล์ “ที่อยู่อื่น” ไว้ให้เคสที่ไซต์ไม่ใช่สถานประกอบการทางภาษี</span></li>
+      <li><span class="mk new">+</span><span>ถังแยก <b>“ตอบไม่ได้ว่าสายอะไร”</b> — ใบที่ไม่รู้สายธุรกิจต้องไม่หายเงียบ</span></li>
+      <li><span class="mk">✓</span><span>ปุ่ม “สร้างสัญญาบริการ” <b>โชว์เสมอแต่บอกเหตุตอนกด</b> (รอต้นฉบับสัญญา) ไม่ใช่ปุ่มเทาเงียบ ๆ</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="premium-header">
+        <div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#inbox"/></svg></span>งานเข้าใหม่</h1>
+          <p>ใบสั่งขายสายบริการที่อนุมัติแล้ว รอตั้งไซต์ · ผูกโซน · ตั้งรอบบริการ</p>
+        </div>
+      </div>
+
+      <div class="scope-row">
+        <span class="segmented">
+          <button aria-pressed="true">รอตั้งไซต์/โซน <span class="seg-count">3</span></button>
+          <button>รอตั้งรอบ <span class="seg-count">2</span></button>
+          <button>ครบรอบยังไม่มีนัด <span class="seg-count">4</span></button>
+        </span>
+      </div>
+
+      <div class="notice" data-tone="danger">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>1 ใบตอบไม่ได้ว่าเป็นสายธุรกิจอะไร</b>
+        <span>SO-26080044 ไม่มีสายบนดีลและบนโครงการ — ระบบไม่เดาให้ ต้องให้ฝ่ายขายระบุก่อน</span></div>
+        <span class="act"><button class="btn sm">ดูใบนั้น</button></span>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>รอตั้งไซต์และโซน</h2><p>3 ใบ · 11 บรรทัดที่ยังไม่ผูกโซน</p></div>
+        </div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>ใบสั่งขาย</th><th>ลูกค้า</th><th class="num">บรรทัด</th><th>ขั้นที่เดินไป</th><th>อนุมัติเมื่อ</th><th></th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="t-strong mono">SO-26080031</span><span class="cell-sub">QT-26080196 · ดีล DL-2607009</span></td>
+                <td>บริษัท วี ซีเล็คเต็ด 89 จำกัด<span class="cell-sub">KA · 4 สาขา</span></td>
+                <td class="num"><b style="color:var(--amber)">6</b> <span style="color:var(--text-3)">/ 6</span></td>
+                <td><span class="steps"><s class="done"></s><s class="now"></s><s></s><s></s><em>ตั้งไซต์</em></span></td>
+                <td class="mono">25 ส.ค.</td>
+                <td><button class="btn sm btn-accent">ตั้งไซต์/โซน</button></td>
+              </tr>
+              <tr>
+                <td><span class="t-strong mono">SO-26080028</span><span class="cell-sub">QT-26080177 · ดีล DL-2606014</span></td>
+                <td>บริษัท มัลตี้ บิวตี้ จำกัด<span class="cell-sub">SV · ต่อสัญญาปีที่ 3</span></td>
+                <td class="num"><b style="color:var(--amber)">4</b> <span style="color:var(--text-3)">/ 4</span></td>
+                <td><span class="steps"><s class="done"></s><s class="now"></s><s></s><s></s><em>ผูกโซนเดิม</em></span></td>
+                <td class="mono">22 ส.ค.</td>
+                <td><button class="btn sm btn-accent">ตั้งไซต์/โซน</button></td>
+              </tr>
+              <tr>
+                <td><span class="t-strong mono">SO-26080019</span><span class="cell-sub">QT-26080142 · ดีล DL-2605022</span></td>
+                <td>บริษัท ซี.พี. แลนด์ จำกัด<span class="cell-sub">SV · 2 สาขาใหม่</span></td>
+                <td class="num"><b style="color:var(--green)">0</b> <span style="color:var(--text-3)">/ 3</span></td>
+                <td><span class="steps"><s class="done"></s><s class="done"></s><s class="now"></s><s></s><em>ตั้งรอบ</em></span></td>
+                <td class="mono">18 ส.ค.</td>
+                <td><button class="btn sm" data-jump="site">ไปตั้งรอบ</button></td>
+              </tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>ตัวช่วยตั้งไซต์/โซน — จังหวะที่ 1</h2>
+          <p>SO-26080028 · ใบนี้ลงที่ไซต์ไหนบ้าง (หนึ่งใบมีหลายไซต์ได้)</p></div>
+          <span class="ui-badge info">ลูกค้ามีไซต์เดิม 4 แห่ง</span>
+        </div>
+        <div class="ui-section-body">
+          <div class="two" style="grid-template-columns:1fr;gap:var(--space-4)">
+            <div>
+              <div style="font-size:var(--fs-4);font-weight:var(--fw-semibold);margin-bottom:var(--space-2)">ไซต์เดิมของลูกค้ารายนี้</div>
+              <div class="tiles">
+                <button class="tile" aria-pressed="true">
+                  <span class="th"><b>เมกาบางนา</b><span class="ui-badge success">เลือกแล้ว</span></span>
+                  <span class="adr">SS-2607014 · BKK-E · 3 โซน · 6 อุปกรณ์</span>
+                </button>
+                <button class="tile">
+                  <span class="th"><b>เซ็นทรัลเวิลด์</b></span>
+                  <span class="adr">SS-2607015 · BKK-C · 2 โซน · 4 อุปกรณ์</span>
+                </button>
+                <button class="tile own">
+                  <span class="th"><b><svg class="i"><use href="#plus"/></svg> สร้างไซต์ใหม่</b><span class="ui-badge accent">เลือกแล้ว</span></span>
+                  <span class="adr">สำหรับพื้นที่ที่ยังไม่เคยติดตั้ง</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:var(--fs-4);font-weight:var(--fw-semibold);margin-bottom:var(--space-1)">ไซต์ใหม่ตั้งจากที่อยู่ไหน</div>
+              <p style="margin:0 0 var(--space-2-5);font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)">
+                ดึงจากทะเบียนที่อยู่ของลูกค้า — เลือกแล้วไม่ต้องพิมพ์ที่อยู่ แผนที่ และผู้ติดต่อซ้ำ ·
+                <b>ที่อยู่กับไซต์ไม่ใช่ของเดียวกัน</b> ระบบก๊อปค่าไปตั้งต้นให้เท่านั้น แก้ต่อได้ และไม่เปลี่ยนตามทีหลังเอง</p>
+              <div class="tiles">
+                <button class="tile">
+                  <span class="th"><b>สำนักงานใหญ่</b><span class="ui-badge plain mono">00000</span><span class="ui-badge info">ออกบิล + จัดส่ง</span></span>
+                  <span class="adr">88/9 อาคารมัลตี้ ชั้น 12 แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110</span>
+                </button>
+                <button class="tile" aria-pressed="true">
+                  <span class="th"><b>สาขาเมกาบางนา</b><span class="ui-badge plain mono">00012</span><span class="ui-badge info">ออกบิล + จัดส่ง</span></span>
+                  <span class="adr">39 หมู่ 6 เมกาบางนา ชั้น 1 ต.บางแก้ว อ.บางพลี สมุทรปราการ 10540</span>
+                </button>
+                <button class="tile">
+                  <span class="th"><b>คลังบางพลี</b><span class="ui-badge plain">จัดส่งอย่างเดียว</span></span>
+                  <span class="adr">129/4 ซ.กิ่งแก้ว 25 ต.ราชาเทวะ อ.บางพลี สมุทรปราการ 10540</span>
+                </button>
+                <button class="tile own">
+                  <span class="th"><b>ที่อยู่อื่น — พิมพ์เอง</b></span>
+                  <span class="adr">ตึกที่ลูกค้าเช่าพื้นที่ · โรงแรม · จุดที่ไม่ได้ออกบิลที่นั่น</span>
+                </button>
+              </div>
+              <div class="notice" data-tone="info" style="margin:var(--space-3) 0 0">
+                <span class="ic"><svg class="i"><use href="#bldg"/></svg></span>
+                <div><span>ไม่พบที่อยู่ที่ต้องการ? ที่อยู่เพิ่มได้ที่<a class="linklike"> ทะเบียนลูกค้า</a> — ที่นี่เลือกได้อย่างเดียว เพราะที่อยู่ทางเอกสารเป็นของฝ่ายขาย</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="toolbar" style="margin:var(--space-4) 0 0">
+            <span class="spacer"></span>
+            <button class="btn">ยกเลิก</button>
+            <button class="btn btn-primary">ถัดไป — จับคู่โซน</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>ตัวช่วยตั้งไซต์/โซน — จังหวะที่ 2</h2>
+          <p>SO-26080028 · จับคู่บรรทัดขายกับโซน</p></div>
+          <span class="ui-badge info">ต่อสัญญา — ผูกโซนเดิมได้</span>
+        </div>
+        <div class="ui-section-body">
+          <div class="ctxstrip">
+            <span class="done"><svg class="i"><use href="#check"/></svg>จังหวะที่ 1</span>
+            <span>ไซต์: <b>เมกาบางนา</b> · <b>Food Court พาร์ค</b> (ใหม่ — ตั้งจากที่อยู่ “สาขาเมกาบางนา”)</span>
+            <button class="btn sm">แก้</button>
+          </div>
+          <div class="notice" data-tone="info" style="margin-bottom:var(--space-4)">
+            <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+            <div><b>ลูกค้ารายนี้มีไซต์อยู่แล้ว 4 แห่ง · 9 โซน</b>
+            <span>เลือก “ผูกโซนเดิม” เพื่อให้ประวัติการเข้าและยอดการใช้ต่อเนื่องจากสัญญาปีก่อน — สร้างโซนใหม่เมื่อเป็นพื้นที่ที่ไม่เคยขายมาก่อนเท่านั้น</span></div>
+          </div>
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>บรรทัดในใบสั่งขาย</th><th>กลิ่น</th><th class="num">แพ็ค</th><th>ไซต์</th><th>โซน</th></tr></thead>
+            <tbody>
+              <tr><td class="t-strong">บรรทัด 1<span class="cell-sub mono">FG-0123-02-001-10001</span></td>
+                <td>Signature A</td><td class="num">2</td>
+                <td><span class="inp ro" style="height:34px;font-size:var(--fs-6)">เมกาบางนา</span></td>
+                <td><span class="inp" style="height:34px;font-size:var(--fs-6);color:var(--navy-ink);font-weight:600">Lobby &nbsp;<span class="ui-badge success" style="min-height:20px">โซนเดิม</span></span></td></tr>
+              <tr><td class="t-strong">บรรทัด 2<span class="cell-sub mono">FG-0123-02-001-10001</span></td>
+                <td>Signature A</td><td class="num">3</td>
+                <td><span class="inp ro" style="height:34px;font-size:var(--fs-6)">เมกาบางนา</span></td>
+                <td><span class="inp" style="height:34px;font-size:var(--fs-6);color:var(--navy-ink);font-weight:600">Reception &nbsp;<span class="ui-badge success" style="min-height:20px">โซนเดิม</span></span></td></tr>
+              <tr><td class="t-strong">บรรทัด 3<span class="cell-sub mono">FG-0123-02-001-10002</span></td>
+                <td>Signature B</td><td class="num">1</td>
+                <td><span class="inp ro" style="height:34px;font-size:var(--fs-6)">เมกาบางนา</span></td>
+                <td><span class="inp" style="height:34px;font-size:var(--fs-6);color:var(--accent-ink);font-weight:600">Food Hall &nbsp;<span class="ui-badge accent" style="min-height:20px">โซนใหม่</span></span></td></tr>
+              <tr><td class="t-strong">บรรทัด 4<span class="cell-sub mono">FG-0123-02-001-10003</span></td>
+                <td>Signature C</td><td class="num">2</td>
+                <td><span class="inp" style="height:34px;font-size:var(--fs-6);color:var(--accent-ink);font-weight:600">Food Court พาร์ค &nbsp;<span class="ui-badge accent" style="min-height:20px">ไซต์ใหม่</span></span></td>
+                <td><span class="inp" style="height:34px;font-size:var(--fs-6);color:var(--accent-ink);font-weight:600">Food Court &nbsp;<span class="ui-badge accent" style="min-height:20px">โซนใหม่</span></span></td></tr>
+            </tbody>
+          </table></div>
+          <div class="toolbar" style="margin:var(--space-4) 0 0">
+            <button class="btn off" title="ยังออกไม่ได้ — ยังไม่มีต้นฉบับสัญญาจ้างบริการในระบบ">
+              <svg class="i"><use href="#file"/></svg>สร้างสัญญาบริการ</button>
+            <span style="font-size:var(--fs-4);color:var(--text-3)">กดแล้วระบบจะบอกว่าติดอะไร — ไม่ใช่ปุ่มเทาเฉย ๆ</span>
+            <span class="spacer"></span>
+            <button class="btn">ยกเลิก</button>
+            <button class="btn btn-primary">บันทึกและตั้งรอบต่อ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 07 ทะเบียนไซต์ ════════════════════════════════════════ -->
+<section class="screen" id="sites">
+  <div class="brief">
+    <div>
+      <h2>ทะเบียนไซต์</h2>
+      <div class="route">/service/sites · ทุกคน</div>
+      <p>หน้ารายการเต็มรูปแบบที่<b>ไม่มีตัวกรองสักตัว</b> นอกจากช่องค้นหา — ไม่มีจัดกลุ่ม ไม่มีเรียง
+      ไม่มีแบ่งหน้า ทั้งที่ชุดควบคุมตารางเป็นของกลางที่ 5 ตารางอื่นในระบบใช้อยู่แล้ว</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk">✓</span><span>ต่อ<b>ชุดควบคุมตารางของกลาง</b> — ตัวกรอง · จัดกลุ่ม · เรียง · แบ่งหน้า ตามลำดับที่ทั้งระบบยึด</span></li>
+      <li><span class="mk">✓</span><span>ใช้ <span class="mono">.toolbar</span> กลาง — ของเดิมประกาศคลาสชื่อเดียวกันทับในโมดูล ทำให้<b>ปุ่มสูงไม่เท่ากัน</b>กับหน้าอื่นทั้งเว็บ</span></li>
+      <li><span class="mk new">+</span><span>คอลัมน์ <b>โซน</b> และ <b>รอบบริการ</b> — ไซต์ที่ยังไม่มีรอบคือไซต์ที่จะเงียบตลอดกาล ต้องเห็นจากทะเบียน</span></li>
+      <li><span class="mk new">+</span><span>ตัวกรอง “ระบบประเมินไม่ได้” — ปลายทางของแถบเตือนบนภาพรวม</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="premium-header">
+        <div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#pin"/></svg></span>ไซต์บริการ</h1>
+          <p>จุดติดตั้งของลูกค้าทุกราย · โซน อุปกรณ์ และรอบบริการของแต่ละจุด</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg>เพิ่มไซต์</button>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>ทะเบียนไซต์</h2><p>43 ไซต์ที่ใช้งาน · 12 ปิดใช้งาน</p></div>
+          <span class="ui-badge warning">12 ไซต์ ระบบประเมินไม่ได้</span>
+        </div>
+        <div class="ui-section-body flush">
+          <div class="toolbar" style="padding:var(--space-3) var(--panel-inset) 0;margin-bottom:var(--space-3)">
+            <span class="search-glass"><svg class="i"><use href="#search"/></svg><input placeholder="ค้นหาชื่อไซต์ ลูกค้า เขตวิ่งงาน หรือรหัส" autocomplete="off"></span>
+            <span class="premium-select"><svg class="i"><use href="#filter"/></svg>ตัวกรอง<span class="cnt">1</span></span>
+            <span class="premium-select"><svg class="i"><use href="#layers"/></svg>จัดกลุ่ม: ลูกค้า</span>
+            <button class="btn icon"><svg class="i"><use href="#left"/></svg></button>
+            <span class="spacer"></span>
+            <span class="premium-select">เรียง: น้ำหอมใกล้หมด</span>
+            <button class="btn icon"><svg class="i"><use href="#arrow"/></svg></button>
+          </div>
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>ไซต์</th><th>เขตวิ่งงาน</th><th class="num">โซน</th><th class="num">อุปกรณ์</th><th>รอบบริการ</th><th>นัดครั้งหน้า</th><th>น้ำหอม</th><th>สถานะ</th><th></th></tr></thead>
+            <tbody>
+              <tr style="background:var(--panel-2)"><td colspan="9" style="height:38px;font-size:var(--fs-4);font-weight:600;color:var(--text-2)">
+                <svg class="i"><use href="#bldg"/></svg> บริษัท มัลตี้ บิวตี้ จำกัด <span style="color:var(--text-3);font-weight:400">· 4 ไซต์ · 11 โซน</span></td></tr>
+              <tr>
+                <td><a class="linklike t-strong" data-jump="site">เมกาบางนา</a><span class="cell-sub mono">SS-2607014</span></td>
+                <td>BKK-E</td><td class="num">3</td><td class="num">6</td>
+                <td>ทุกวันที่ 17</td><td class="mono">29 ส.ค. · ต้า</td>
+                <td><span class="ui-badge danger">หมดแล้ว 3</span></td>
+                <td><span class="ui-badge success">ใช้งาน</span></td>
+                <td><button class="btn icon sm"><svg class="i"><use href="#dots"/></svg></button></td>
+              </tr>
+              <tr>
+                <td><a class="linklike t-strong" data-jump="site">เซ็นทรัลเวิลด์</a><span class="cell-sub mono">SS-2607015</span></td>
+                <td>BKK-C</td><td class="num">2</td><td class="num">4</td>
+                <td>ทุกวันที่ 17</td><td class="mono">29 ส.ค. · ต้า</td>
+                <td><span class="ui-badge success">พอ</span></td>
+                <td><span class="ui-badge success">ใช้งาน</span></td>
+                <td><button class="btn icon sm"><svg class="i"><use href="#dots"/></svg></button></td>
+              </tr>
+              <tr style="background:var(--panel-2)"><td colspan="9" style="height:38px;font-size:var(--fs-4);font-weight:600;color:var(--text-2)">
+                <svg class="i"><use href="#bldg"/></svg> บริษัท จิม ทอมป์สัน จำกัด <span style="color:var(--text-3);font-weight:400">· 3 ไซต์ · 7 โซน</span></td></tr>
+              <tr>
+                <td><a class="linklike t-strong" data-jump="site">Outlet สุขุมวิท 93</a><span class="cell-sub mono">SS-2606008</span></td>
+                <td>BKK-S</td><td class="num">2</td><td class="num">8</td>
+                <td>ทุกวันที่ 1–5</td><td class="mono">29 ส.ค. · ต้า</td>
+                <td><span class="ui-badge warning">ใกล้หมด 2</span></td>
+                <td><span class="ui-badge success">ใช้งาน</span></td>
+                <td><button class="btn icon sm"><svg class="i"><use href="#dots"/></svg></button></td>
+              </tr>
+              <tr>
+                <td><a class="linklike t-strong" data-jump="site">Jim House ชั้น G/1</a><span class="cell-sub mono">SS-2606009</span></td>
+                <td>BKK-S</td><td class="num">2</td><td class="num">4</td>
+                <td>ทุกวันที่ 1–5</td><td class="mono">26 ส.ค. · ต้า</td>
+                <td><span class="ui-badge plain">ประเมินไม่ได้</span></td>
+                <td><span class="ui-badge success">ใช้งาน</span></td>
+                <td><button class="btn icon sm"><svg class="i"><use href="#dots"/></svg></button></td>
+              </tr>
+              <tr style="background:var(--panel-2)"><td colspan="9" style="height:38px;font-size:var(--fs-4);font-weight:600;color:var(--text-2)">
+                <svg class="i"><use href="#bldg"/></svg> บริษัท เอ ดับบลิว ซี จำกัด <span style="color:var(--text-3);font-weight:400">· 1 ไซต์ · 1 โซน</span></td></tr>
+              <tr>
+                <td><a class="linklike t-strong" data-jump="site">Empire Tower — เครื่องกดสบู่</a><span class="cell-sub mono">SS-2608002</span></td>
+                <td>BKK-C</td><td class="num">1</td><td class="num">242 จุด</td>
+                <td><span style="color:var(--amber)">ยังไม่มีรอบ</span></td>
+                <td><span class="ui-badge warning">ยังไม่มีนัด</span></td>
+                <td><span class="ui-badge plain">—</span></td>
+                <td><span class="ui-badge success">ใช้งาน</span></td>
+                <td><button class="btn icon sm"><svg class="i"><use href="#dots"/></svg></button></td>
+              </tr>
+            </tbody>
+          </table></div>
+          <div class="pager">
+            <span>43 ไซต์ · แสดง 1–20</span>
+            <span class="premium-select" style="height:30px;font-size:var(--fs-4)">20 ต่อหน้า</span>
+            <span class="pg"><button>‹</button><button aria-current="true">1</button><button>2</button><button>3</button><button>›</button></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 08 ไซต์ ═══════════════════════════════════════════════ -->
+<section class="screen" id="site">
+  <div class="brief">
+    <div>
+      <h2>รายละเอียดไซต์</h2>
+      <div class="route">/service/sites/[id]</div>
+      <p>ของเดิมเป็นการ์ด 6 ใบเรียงลงมาเป็นเสาเดียว ต่างจาก<b>หน้ารายละเอียดทุกหน้า</b>ในระบบ (26 ไฟล์)
+      ที่ใช้โครง 2 คอลัมน์พร้อมรางขวา และ “รอบบริการ” ที่ตั้งครั้งเดียวใช้ทั้งปี กินก้อนเต็มความกว้างอยู่กลางหน้า</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk">✓</span><span>ใช้โครง <b>2 คอลัมน์ + รางขวา</b> ของกลาง — ของนิ่ง (บริบทไซต์ · รอบ · นัดถัดไป) ไปอยู่ราง ของที่ต้องลงมือคงอยู่กลาง</span></li>
+      <li><span class="mk new">+</span><span>โซนเป็น<b>การ์ด</b> พร้อมยอดใช้จริงเทียบมาตรฐาน — ของเดิมเป็นตาราง 3 คอลัมน์ (ชื่อ/จำนวน/สถานะ) ซึ่งไม่ได้บอกเหตุผลที่โซนมีอยู่</span></li>
+      <li><span class="mk">✓</span><span>อุปกรณ์<b>เลือกหลายแถวแล้วกำหนดโซนทีเดียว</b> — ของเดิมบอกให้ “กดแก้ไขรายตัว” ซึ่งไซต์ 40 เครื่องคือเปิดฟอร์ม 40 รอบ</span></li>
+      <li><span class="mk">✓</span><span>รอบบริการยุบเหลือ<b>บรรทัดสรุปในราง</b> พร้อมปุ่มแก้</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="crumb"><a data-jump="sites">ทะเบียนไซต์</a><svg class="i"><use href="#right"/></svg><span>เมกาบางนา</span></div>
+
+      <div class="dover">
+        <div>
+          <span class="eyebrow"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ · SS-2607014</span>
+          <h1>Multy Beauty เมกาบางนา</h1>
+          <p class="desc">บริษัท มัลตี้ บิวตี้ จำกัด · BKK-E · โครงการ PJ-2606011</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <span class="ui-badge success">ใช้งาน</span>
+          <button class="btn"><svg class="i"><use href="#pencil"/></svg>แก้ไขไซต์</button>
+          <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg>นัดเข้าบริการ</button>
+        </div>
+      </div>
+
+      <div class="dlayout">
+        <div>
+          <div class="ui-section">
+            <div class="ui-section-header">
+              <div><h2><svg class="i"><use href="#layers"/></svg>โซนในไซต์</h2>
+              <p>3 โซน · การใช้จริงเทียบมาตรฐานของเดือนนี้</p></div>
+              <button class="btn sm"><svg class="i"><use href="#plus"/></svg>เพิ่มโซน</button>
+            </div>
+            <div class="ui-section-body">
+              <div class="zgrid">
+                <div class="zcard" data-jump="zone">
+                  <b><svg class="i" style="color:var(--accent-ink)"><use href="#layers"/></svg>Lobby</b>
+                  <span class="code">ZN-26070012 · Signature A · 2 แพ็ค</span>
+                  <div class="row"><span>ใช้เดือนนี้</span><b>620 / 600 ml</b></div>
+                  <div class="meter"><i class="over" style="width:100%"></i></div>
+                  <div class="row"><span>เกินมาตรฐาน 3%</span><span>2 เครื่อง</span></div>
+                </div>
+                <div class="zcard" data-jump="zone">
+                  <b><svg class="i" style="color:var(--accent-ink)"><use href="#layers"/></svg>Reception</b>
+                  <span class="code">ZN-26070013 · Signature A · 3 แพ็ค</span>
+                  <div class="row"><span>ใช้เดือนนี้</span><b>780 / 900 ml</b></div>
+                  <div class="meter"><i style="width:87%"></i></div>
+                  <div class="row"><span>ต่ำกว่ามาตรฐาน 13%</span><span>3 เครื่อง</span></div>
+                </div>
+                <div class="zcard" data-jump="zone">
+                  <b><svg class="i" style="color:var(--text-3)"><use href="#layers"/></svg>Food Hall</b>
+                  <span class="code">ZN-26080004 · Signature B · 1 แพ็ค</span>
+                  <div class="row"><span>ใช้เดือนนี้</span><b>— / 300 ml</b></div>
+                  <div class="meter"></div>
+                  <div class="row"><span style="color:var(--amber)">ยังไม่เคยเข้าบริการ</span><span>1 เครื่อง</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header">
+              <div><h2><svg class="i"><use href="#pkg"/></svg>อุปกรณ์</h2><p>6 ใช้งาน · 1 ส่งซ่อม</p></div>
+              <button class="btn sm"><svg class="i"><use href="#plus"/></svg>เพิ่มอุปกรณ์</button>
+            </div>
+            <div class="ui-section-body flush">
+              <div class="notice" data-tone="info" style="margin:var(--space-3) var(--panel-inset)">
+                <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+                <div><b>เลือกไว้ 2 รายการ</b><span>กำหนดโซนให้ทั้งสองรายการพร้อมกัน</span></div>
+                <span class="act"><button class="btn sm btn-primary">กำหนดโซน…</button></span>
+              </div>
+              <div class="tblwrap"><table class="tbl">
+                <thead><tr><th style="width:32px"></th><th>อุปกรณ์</th><th>ชนิด</th><th>โซน</th><th>รุ่น / Serial</th><th>ค่าตั้ง</th><th>คาดว่าหมด</th><th>สถานะ</th></tr></thead>
+                <tbody>
+                  <tr><td>☐</td>
+                    <td><a class="linklike t-strong" data-jump="asset">เครื่องที่ 1 · ชั้น 1</a><span class="cell-sub">ประตูทางเข้าขวามือ</span></td>
+                    <td><span class="ui-badge accent">เครื่องกระจายกลิ่น</span></td><td>Lobby</td>
+                    <td class="mono">O800 (ขาว)<span class="cell-sub mono">SN-0412</span></td>
+                    <td class="mono">30/225 · Grade 5</td><td style="color:var(--red)">หมดแล้ว 6 วัน</td>
+                    <td><span class="ui-badge success">ใช้งาน</span></td></tr>
+                  <tr><td>☐</td>
+                    <td><a class="linklike t-strong" data-jump="asset">เครื่องที่ 2 · ชั้น 1</a><span class="cell-sub">หน้าลิฟต์</span></td>
+                    <td><span class="ui-badge accent">เครื่องกระจายกลิ่น</span></td><td>Lobby</td>
+                    <td class="mono">MAX (ขาว)<span class="cell-sub mono">SN-0413</span></td>
+                    <td class="mono">60/180 · Grade 3</td><td>อีก 4 วัน</td>
+                    <td><span class="ui-badge success">ใช้งาน</span></td></tr>
+                  <tr style="background:color-mix(in srgb,var(--accent-soft) 30%,transparent)"><td>☑</td>
+                    <td><a class="linklike t-strong" data-jump="asset">เครื่องที่ 5 · ชั้น 2</a><span class="cell-sub">โซนอาหาร</span></td>
+                    <td><span class="ui-badge accent">เครื่องกระจายกลิ่น</span></td>
+                    <td><span style="color:var(--amber)">ยังไม่ระบุ</span></td>
+                    <td class="mono">O800 (ดำ)<span class="cell-sub mono">SN-0511</span></td>
+                    <td class="mono">—</td><td><span style="color:var(--text-3)">ประเมินไม่ได้</span></td>
+                    <td><span class="ui-badge success">ใช้งาน</span></td></tr>
+                  <tr style="background:color-mix(in srgb,var(--accent-soft) 30%,transparent)"><td>☑</td>
+                    <td><a class="linklike t-strong" data-jump="asset">Reed diffuser · ชั้น 2</a><span class="cell-sub">6 จุด</span></td>
+                    <td><span class="ui-badge violet">Reed diffuser</span></td>
+                    <td><span style="color:var(--amber)">ยังไม่ระบุ</span></td>
+                    <td class="mono">—</td><td class="mono">16 ก้าน · 60 วัน</td><td>—</td>
+                    <td><span class="ui-badge success">ใช้งาน</span></td></tr>
+                  <tr><td>☐</td>
+                    <td><a class="linklike t-strong" data-jump="asset">เครื่องที่ 3 · ชั้น 3</a><span class="cell-sub">ทางเข้า</span></td>
+                    <td><span class="ui-badge accent">เครื่องกระจายกลิ่น</span></td><td>Reception</td>
+                    <td class="mono">O800 (ดำ)<span class="cell-sub mono">SN-0417</span></td>
+                    <td class="mono">90/180 · Grade 3</td><td>—</td>
+                    <td><span class="ui-badge danger">ส่งซ่อม</span></td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header"><div><h2><svg class="i"><use href="#clock"/></svg>ประวัติการเข้า</h2><p>20 ครั้งล่าสุด</p></div></div>
+            <div class="ui-section-body flush">
+              <div class="tblwrap"><table class="tbl">
+                <thead><tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>ใช้ไป</th><th>สถานะ</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">24 มิ.ย.</td><td><span style="color:var(--red)">ยังไม่ปิดงาน</span></td><td>เติมน้ำหอม</td><td>ต้า</td><td>—</td><td><span class="ui-badge danger">ค้าง 64 วัน</span></td></tr>
+                  <tr><td class="mono">17 พ.ค.</td><td class="mono">18 พ.ค.</td><td>เติมน้ำหอม</td><td>ต้า</td><td class="num">600 ml</td><td><span class="ui-badge success">เสร็จ</span></td></tr>
+                  <tr><td class="mono">17 เม.ย.</td><td class="mono">17 เม.ย.</td><td>เติมน้ำหอม</td><td>ไอซ์</td><td class="num">580 ml</td><td><span class="ui-badge warning">ทำไม่ครบ</span></td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#bldg"/></svg>ข้อมูลไซต์
+              <button class="btn sm" data-jump="siteform">แก้</button></div>
+            <div class="ctx-b"><dl class="kv">
+              <dt>ลูกค้า</dt><dd><b>มัลตี้ บิวตี้</b></dd>
+              <dt>เขตวิ่งงาน</dt><dd>BKK-E</dd>
+              <dt>ที่อยู่</dt><dd>39 หมู่ 6 เมกาบางนา ชั้น 1<br>บางแก้ว บางพลี สมุทรปราการ</dd>
+              <dt>ผู้ติดต่อ</dt><dd>คุณแนน<br>08 1234 5678</dd>
+              <dt>เข้าได้</dt><dd>จ.–ศ. 10:00–19:00</dd>
+              <dt>ผู้ดูแล</dt><dd>ต้า</dd>
+            </dl>
+            <p style="margin:var(--space-3) 0 0;padding-top:var(--space-2-5);border-top:1px solid var(--border);font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)">
+              <svg class="i"><use href="#bldg"/></svg> ตั้งจากที่อยู่ <b style="color:var(--text-2)">สาขาเมกาบางนา (00012)</b> ในทะเบียนลูกค้า —
+              ค่าถูกก๊อปมาตั้งต้น ไม่ได้ผูกให้เปลี่ยนตามกัน</p>
+            </div>
+          </div>
+
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#rot"/></svg>รอบบริการ<button class="btn sm">แก้</button></div>
+            <div class="ctx-b">
+              <div style="font-size:var(--fs-7);font-weight:var(--fw-semibold)">เติมน้ำหอม · ทุกวันที่ 17 ของเดือน</div>
+              <div style="font-size:var(--fs-4);color:var(--text-3);margin-top:2px">ช่างประจำ: ต้า · เริ่ม 17 ม.ค. 2026 · ไม่มีกำหนดสิ้นสุด</div>
+              <div class="notice" data-tone="info" style="margin:var(--space-3) 0 0;padding:var(--space-2) var(--space-2-5);font-size:var(--fs-4)">
+                <span class="ic" style="font-size:14px"><svg class="i"><use href="#check"/></svg></span>
+                <div><span>รอบใช้ “วันที่ X ของเดือน” จึงไม่เลื่อนสะสม</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#cal"/></svg>นัดที่จะถึง</div>
+            <div class="ctx-b" style="padding:0">
+              <div class="tl" style="padding:0 var(--space-4)">
+                <div class="tl-i"><span class="tl-d">29 ส.ค.</span><span class="tl-t"><b>เติมน้ำหอม</b><span>09:00–11:00 · ต้า</span></span></div>
+                <div class="tl-i"><span class="tl-d">17 ก.ย.</span><span class="tl-t"><b>เติมน้ำหอม</b><span>ยังไม่ระบุเวลา · ต้า</span></span></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ฟอร์มไซต์ ═════════════════════════════════════════════ -->
+<section class="screen" id="siteform">
+  <div class="brief">
+    <div>
+      <h2>ฟอร์มไซต์</h2>
+      <div class="route">โมดัลเดียวใช้ทั้ง “เพิ่มไซต์” และ “แก้ไขไซต์”</div>
+      <p>จุดที่ตัดสินว่า <b>ที่อยู่ในฐานลูกค้า กับ ไซต์บริการ ไม่ใช่ของเดียวกัน</b> —
+      ที่อยู่ตอบว่าออกบิล/ส่งของที่ไหน (มีเลขสาขาสำหรับใบกำกับ) ส่วนไซต์ตอบว่าเครื่องตั้งอยู่ไหนและช่างเข้าได้เมื่อไหร่ ·
+      ทับกัน 4 ช่อง (ที่อยู่ · แผนที่ · ชื่อผู้ติดต่อ · เบอร์) ซึ่งวันนี้ต้อง<b>พิมพ์ซ้ำสองที่</b></p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span><b>ตั้งจากที่อยู่ลูกค้า</b> — กางเป็นไทล์ให้เห็นทุกรายการ ไม่ใช่ดรอปดาวน์ (ลูกค้า 96% มีที่อยู่เดียว)</span></li>
+      <li><span class="mk new">+</span><span>เลือกแล้วสี่ช่องนั้นเป็น<b>ช่องเส้นประอ่านอย่างเดียว</b> พร้อมบอกที่มา — ไม่ใช่ช่องกรอกที่จางลง</span></li>
+      <li><span class="mk new">+</span><span><b>ก๊อปค่ามาตั้งต้น ไม่ผูกให้เปลี่ยนตามกัน</b> — ที่อยู่ทางภาษีกับที่อยู่หน้างานเป็นคนละความจริง เครื่องย้ายต้องมีคนกด ไม่ใช่ค่าที่ขยับเงียบ ๆ</span></li>
+      <li><span class="mk new">+</span><span>โหมดแก้ไข: ถ้าค่าต่างจากต้นทางแล้ว มีปุ่ม <b>“ดึงใหม่”</b> พร้อมบอกว่าต่างตรงไหน</span></li>
+      <li><span class="mk">✓</span><span>ป้ายเดิม “โซน” เปลี่ยนเป็น <b>เขตวิ่งงาน</b> — คำว่า “โซน” สงวนให้พื้นที่ย่อยในไซต์</span></li>
+    </ul>
+  </div>
+
+  <div class="frame" style="max-width:660px;margin-inline:auto">
+    <div class="frame-cap">โมดัล · โหมดเพิ่มไซต์</div>
+    <div class="frame-body" style="background:var(--panel-float)">
+      <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-4)">
+        <span class="premium-header-icon"><svg class="i"><use href="#pin"/></svg></span>
+        <div><div style="font-size:var(--fs-11);font-weight:var(--fw-bold);line-height:1.3">เพิ่มไซต์บริการ</div>
+        <div style="font-size:var(--fs-4);color:var(--text-3)">บริษัท มัลตี้ บิวตี้ จำกัด</div></div>
+      </div>
+
+      <label class="field"><span>ลูกค้าเจ้าของไซต์ *</span>
+        <span class="inp ro">บริษัท มัลตี้ บิวตี้ จำกัด · AR-0231</span>
+        <span class="lockrow"><span class="src"><svg class="i"><use href="#arrow"/></svg>มาจากใบสั่งขาย SO-26080028</span></span>
+      </label>
+
+      <div class="field">
+        <span>ตั้งจากที่อยู่ในทะเบียนลูกค้า</span>
+        <p style="margin:0 0 var(--space-2);font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)">
+          ระบบก๊อปที่อยู่ · แผนที่ · ผู้ติดต่อ มาตั้งต้นให้ แล้วแก้ต่อได้ — ไม่ใช่การผูกให้เปลี่ยนตามกันทีหลัง</p>
+        <div class="tiles">
+          <button class="tile">
+            <span class="th"><b>สำนักงานใหญ่</b><span class="ui-badge plain mono">00000</span></span>
+            <span class="adr">88/9 อาคารมัลตี้ ชั้น 12 คลองเตย กรุงเทพฯ 10110</span>
+          </button>
+          <button class="tile" aria-pressed="true">
+            <span class="th"><b>สาขาเมกาบางนา</b><span class="ui-badge plain mono">00012</span><span class="ui-badge success">เลือกแล้ว</span></span>
+            <span class="adr">39 หมู่ 6 เมกาบางนา ชั้น 1 ต.บางแก้ว อ.บางพลี สมุทรปราการ 10540</span>
+          </button>
+          <button class="tile">
+            <span class="th"><b>คลังบางพลี</b><span class="ui-badge plain">จัดส่งอย่างเดียว</span></span>
+            <span class="adr">129/4 ซ.กิ่งแก้ว 25 ราชาเทวะ บางพลี สมุทรปราการ 10540</span>
+          </button>
+          <button class="tile own">
+            <span class="th"><b>ที่อยู่อื่น — พิมพ์เอง</b></span>
+            <span class="adr">ตึกที่ลูกค้าเช่าพื้นที่ · โรงแรม · จุดที่ไม่ได้ออกบิลที่นั่น</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="two">
+        <label class="field"><span>ชื่อไซต์ *</span>
+          <span class="inp" style="color:var(--text)">Food Court พาร์ค</span>
+          <span class="lockrow"><span class="src">ชื่อที่ช่างใช้เรียก — ไม่ใช่ชื่อนิติบุคคล</span></span>
+        </label>
+        <label class="field"><span>เขตวิ่งงาน</span>
+          <span class="inp" style="color:var(--text)">BKK-E</span>
+          <span class="lockrow"><span class="src">ใช้จัดรอบวิ่งไม่ให้ข้ามเมืองในวันเดียว</span></span>
+        </label>
+      </div>
+
+      <div class="notice" data-tone="info" style="margin-bottom:var(--space-3)">
+        <span class="ic"><svg class="i"><use href="#bldg"/></svg></span>
+        <div><b>สี่ช่องข้างล่างมาจากที่อยู่ “สาขาเมกาบางนา”</b>
+        <span>แก้ได้เฉพาะไซต์นี้ — ทะเบียนลูกค้าไม่เปลี่ยนตาม และถ้าฝ่ายขายแก้ที่อยู่ทีหลัง ไซต์นี้ก็ไม่ขยับเอง</span></div>
+      </div>
+
+      <label class="field"><span>ที่อยู่</span>
+        <span class="inp ta ro" style="min-height:56px">39 หมู่ 6 เมกาบางนา ชั้น 1 ต.บางแก้ว อ.บางพลี สมุทรปราการ 10540</span>
+        <span class="lockrow"><span class="src"><svg class="i"><use href="#bldg"/></svg>จากที่อยู่ลูกค้า</span>
+          <button class="btn sm">แก้เฉพาะไซต์นี้</button></span>
+      </label>
+
+      <div class="two">
+        <label class="field"><span>ลิงก์แผนที่</span>
+          <span class="inp ro" style="font-size:var(--fs-4)">maps.app.goo.gl/52aim…</span>
+          <span class="lockrow"><span class="src"><svg class="i"><use href="#bldg"/></svg>จากที่อยู่ลูกค้า</span>
+            <button class="btn sm">แก้</button></span>
+        </label>
+        <label class="field"><span>ผู้ติดต่อหน้างาน</span>
+          <span class="inp ro">คุณแนน · 08 1234 5678</span>
+          <span class="lockrow"><span class="src"><svg class="i"><use href="#bldg"/></svg>จากที่อยู่ลูกค้า</span>
+            <button class="btn sm">แก้</button></span>
+        </label>
+      </div>
+
+      <div class="fstep" style="margin:var(--space-4) 0 var(--space-3)">
+        <div class="fstep-h"><svg class="i" style="color:var(--accent-ink)"><use href="#clock"/></svg>
+          <b>ช่วงเวลาที่ไซต์ยอมให้เข้า</b>
+          <span class="ui-badge accent" style="margin-left:auto">ของไซต์เท่านั้น</span></div>
+        <div class="fstep-b">
+          <p>ข้อจำกัดถาวรของหน้างาน — คนละเรื่องกับเวลานัด และไม่มีในทะเบียนที่อยู่ของลูกค้า</p>
+          <div class="two">
+            <label class="field"><span>เข้าได้ตั้งแต่</span><span class="inp">10:00</span></label>
+            <label class="field"><span>ถึง</span><span class="inp">19:00</span></label>
+          </div>
+          <div class="field"><span>วันที่เข้าได้</span>
+            <div style="display:flex;gap:var(--space-1);flex-wrap:wrap">
+              <span class="chip plain">อา.</span><span class="chip accent">จ.</span><span class="chip accent">อ.</span>
+              <span class="chip accent">พ.</span><span class="chip accent">พฤ.</span><span class="chip accent">ศ.</span>
+              <span class="chip plain">ส.</span>
+            </div>
+          </div>
+          <label class="field" style="margin-bottom:0"><span>เงื่อนไขการเข้า</span>
+            <span class="inp ta" style="min-height:52px">ต้องแจ้ง รปภ. ล่วงหน้า 30 นาที · จอดรถชั้น B2 ประตู 4</span></label>
+        </div>
+      </div>
+
+      <div class="two">
+        <label class="field"><span>ผู้ดูแลไซต์</span><span class="inp" style="color:var(--text)">ต้า</span></label>
+        <label class="field"><span>โครงการต้นทาง</span>
+          <span class="inp ro">PJ-2606011</span>
+          <span class="lockrow"><span class="src"><svg class="i"><use href="#arrow"/></svg>จากใบสั่งขาย</span></span>
+        </label>
+      </div>
+
+      <div class="sticky-acts" style="margin-top:var(--space-4)">
+        <span class="spacer"></span>
+        <button class="btn">ยกเลิก</button>
+        <button class="btn btn-primary">เพิ่มไซต์</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame" style="max-width:660px;margin-inline:auto">
+    <div class="frame-cap">โหมดแก้ไข · เมื่อค่าต่างจากต้นทางแล้ว</div>
+    <div class="frame-body" style="background:var(--panel-float)">
+      <div class="notice" data-tone="warning">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ที่อยู่ของไซต์นี้ต่างจากที่อยู่ “สาขาเมกาบางนา” ในทะเบียนลูกค้าแล้ว</b>
+        <span>ฝ่ายขายแก้เลขที่จาก 39 เป็น 39/1 เมื่อ 14 ส.ค. — ถ้าเป็นการแก้ที่อยู่จดทะเบียนเฉย ๆ ไม่ต้องทำอะไร ถ้าเครื่องย้ายจริงให้กดดึงใหม่</span></div>
+        <span class="act"><button class="btn sm">ดึงใหม่</button></span>
+      </div>
+      <label class="field" style="margin-bottom:0"><span>ที่อยู่</span>
+        <span class="inp ta" style="min-height:56px;color:var(--text)">39 หมู่ 6 เมกาบางนา ชั้น 1 ต.บางแก้ว อ.บางพลี สมุทรปราการ 10540</span>
+        <span class="lockrow"><span class="src"><svg class="i"><use href="#pencil"/></svg>แก้เฉพาะไซต์นี้แล้ว · ไม่ตามทะเบียนลูกค้า</span></span>
+      </label>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 09 โซน ════════════════════════════════════════════════ -->
+<section class="screen" id="zone">
+  <div class="brief">
+    <div>
+      <h2>โซน</h2>
+      <div class="route">/service/sites/[id]/zones/[id] · หน้าใหม่ทั้งหน้า</div>
+      <p>หน้าที่เป็น<b>เหตุผลของทั้งแผน</b> — ตารางรอบขายของโซนมีอยู่ในฐานข้อมูลแล้ว
+      (SO ไหน กลิ่นอะไร กี่แพ็ค มาตรฐานเท่าไร) แต่<b>ไม่มี UI สักจอ</b> ⇒ ตอนลบโซนผู้ใช้จะเจอข้อความ
+      “โซนนี้มีรอบขายผูกอยู่” ที่อ้างถึงของที่เขาไม่เคยเห็นมาก่อน</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span><b>รอบขายทุกรอบ รวมรอบที่จบไปแล้ว</b> — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกทับ ประวัติจึงต่อเนื่องข้ามการต่อสัญญา</span></li>
+      <li><span class="mk new">+</span><span><b>ใช้จริง เทียบ มาตรฐาน</b> รายเดือน — คำถามที่ทั้งบริษัทตอบไม่ได้มาตลอด</span></li>
+      <li><span class="mk new">+</span><span>ประวัติการเข้า<b>ข้ามใบสั่งขายทุกใบ</b> — ของเดิมประวัติผูกกับไซต์ทั้งก้อน แยกไม่ออกว่า Lobby หรือ Reception</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="crumb"><a data-jump="sites">ทะเบียนไซต์</a><svg class="i"><use href="#right"/></svg>
+        <a data-jump="site">เมกาบางนา</a><svg class="i"><use href="#right"/></svg><span>Lobby</span></div>
+
+      <div class="dover">
+        <div>
+          <span class="eyebrow"><svg class="i"><use href="#layers"/></svg>โซนบริการ · ZN-26070012</span>
+          <h1>Lobby</h1>
+          <p class="desc">Multy Beauty เมกาบางนา · บริษัท มัลตี้ บิวตี้ จำกัด</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <span class="ui-badge success">มีรอบขายที่ยังมีผล</span>
+          <button class="btn"><svg class="i"><use href="#pencil"/></svg>แก้ไขโซน</button>
+        </div>
+      </div>
+
+      <div class="dlayout">
+        <div>
+          <div class="ui-section">
+            <div class="ui-section-header">
+              <div><h2><svg class="i"><use href="#file"/></svg>รอบขายของโซนนี้</h2>
+              <p>ทุกรอบตั้งแต่เริ่มขาย — แต่ละรอบคือ 1 บรรทัดในใบสั่งขาย</p></div>
+            </div>
+            <div class="ui-section-body flush">
+              <div class="tblwrap"><table class="tbl">
+                <thead><tr><th>ใบสั่งขาย</th><th>ช่วงบริการ</th><th>กลิ่น</th><th class="num">แพ็ค</th><th class="num">มาตรฐาน/เดือน</th><th>สัญญา</th><th>สถานะ</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="t-strong mono">SO-26080028</span><span class="cell-sub">บรรทัด 1</span></td>
+                    <td class="mono">ก.ย. 2026 – ส.ค. 2027</td><td>Signature A</td>
+                    <td class="num">2</td><td class="num">600 ml</td>
+                    <td><span class="ui-badge plain">รอต้นฉบับ</span></td>
+                    <td><span class="ui-badge info">กำลังจะเริ่ม</span></td></tr>
+                  <tr><td><span class="t-strong mono">SO-25080017</span><span class="cell-sub">บรรทัด 1</span></td>
+                    <td class="mono">ก.ย. 2025 – ส.ค. 2026</td><td>Signature A</td>
+                    <td class="num">2</td><td class="num">600 ml</td>
+                    <td class="mono">CT-25080004</td>
+                    <td><span class="ui-badge success">มีผลอยู่</span></td></tr>
+                  <tr style="opacity:.7"><td><span class="t-strong mono">SO-24080009</span><span class="cell-sub">บรรทัด 2</span></td>
+                    <td class="mono">ก.ย. 2024 – ส.ค. 2025</td><td>Fresh Linen</td>
+                    <td class="num">1</td><td class="num">300 ml</td>
+                    <td class="mono">CT-24080011</td>
+                    <td><span class="ui-badge plain">จบแล้ว</span></td></tr>
+                </tbody>
+              </table></div>
+              <div class="notice" data-tone="info" style="margin:var(--space-3) var(--panel-inset)">
+                <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+                <div><span>เปลี่ยนกลิ่นและเพิ่มแพ็คเมื่อ ก.ย. 2025 — กราฟข้างล่างจึงมีเส้นมาตรฐานสองระดับ</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header">
+              <div><h2><svg class="i"><use href="#drop"/></svg>ใช้จริง เทียบ มาตรฐาน</h2>
+              <p>6 เดือนล่าสุด · หน่วยเป็น ml</p></div>
+              <span class="ui-badge warning">เฉลี่ยเกิน 4%</span>
+            </div>
+            <div class="ui-section-body flush">
+              <div class="tblwrap"><table class="tbl">
+                <thead><tr><th>เดือน</th><th>เข้าบริการ</th><th class="num">มาตรฐาน</th><th class="num">ใช้จริง</th><th style="width:180px">เทียบ</th><th class="num">ส่วนต่าง</th></tr></thead>
+                <tbody>
+                  <tr><td class="t-strong">ส.ค. 2026</td><td class="mono">17 ส.ค. · ต้า</td><td class="num">600</td><td class="num">620</td>
+                    <td><span class="meter" style="margin:0"><i class="over" style="width:100%"></i></span></td>
+                    <td class="num" style="color:var(--red)">+20</td></tr>
+                  <tr><td class="t-strong">ก.ค. 2026</td><td class="mono">17 ก.ค. · ต้า</td><td class="num">600</td><td class="num">640</td>
+                    <td><span class="meter" style="margin:0"><i class="over" style="width:100%"></i></span></td>
+                    <td class="num" style="color:var(--red)">+40</td></tr>
+                  <tr><td class="t-strong">มิ.ย. 2026</td><td><span style="color:var(--red)">ไม่ได้เข้า</span></td><td class="num">600</td><td class="num">—</td>
+                    <td><span class="meter" style="margin:0"></span></td>
+                    <td class="num">—</td></tr>
+                  <tr><td class="t-strong">พ.ค. 2026</td><td class="mono">18 พ.ค. · ต้า</td><td class="num">600</td><td class="num">600</td>
+                    <td><span class="meter" style="margin:0"><i style="width:100%"></i></span></td>
+                    <td class="num">0</td></tr>
+                  <tr><td class="t-strong">เม.ย. 2026</td><td class="mono">17 เม.ย. · ไอซ์</td><td class="num">600</td><td class="num">580</td>
+                    <td><span class="meter" style="margin:0"><i style="width:96%"></i></span></td>
+                    <td class="num" style="color:var(--green)">−20</td></tr>
+                  <tr><td class="t-strong">มี.ค. 2026</td><td class="mono">17 มี.ค. · ไอซ์</td><td class="num">600</td><td class="num">610</td>
+                    <td><span class="meter" style="margin:0"><i class="warn" style="width:100%"></i></span></td>
+                    <td class="num" style="color:var(--amber)">+10</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header"><div><h2><svg class="i"><use href="#clock"/></svg>ประวัติการเข้าของโซนนี้</h2>
+              <p>ข้ามใบสั่งขายทุกใบ — ต่อเนื่องตั้งแต่ติดตั้งครั้งแรก</p></div></div>
+            <div class="ui-section-body">
+              <div class="tl">
+                <div class="tl-i"><span class="tl-d">17 ส.ค. 26</span><span class="tl-t">
+                  <b>เติมน้ำหอม 620 ml · ต้า</b><span>เครื่องที่ 1 และ 2 · มีลายเซ็นลูกค้า</span></span>
+                  <button class="btn sm" style="margin-left:auto;align-self:center" data-jump="doc">ใบส่งงาน</button></div>
+                <div class="tl-i"><span class="tl-d">17 ก.ค. 26</span><span class="tl-t">
+                  <b>เติมน้ำหอม 640 ml · ต้า</b><span>เครื่องที่ 1 ใช้เกินปกติ — ตั้ง work/pause ใหม่เป็น 30/225</span></span></div>
+                <div class="tl-i"><span class="tl-d">1 ก.ย. 25</span><span class="tl-t">
+                  <b>เปลี่ยนกลิ่นเป็น Signature A</b><span>ตามรอบขายใหม่ SO-25080017 · เพิ่มจาก 1 เป็น 2 แพ็ค</span></span></div>
+                <div class="tl-i"><span class="tl-d">3 ก.ย. 24</span><span class="tl-t">
+                  <b>ติดตั้งครั้งแรก · ฟลุ๊ค</b><span>เครื่องที่ 1 (SN-0412) · Fresh Linen 1 แพ็ค</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#layers"/></svg>สรุปโซน</div>
+            <div class="ctx-b"><dl class="kv">
+              <dt>ไซต์</dt><dd><b>เมกาบางนา</b></dd>
+              <dt>กลิ่นปัจจุบัน</dt><dd>Signature A</dd>
+              <dt>รหัสสินค้า</dt><dd class="mono" style="font-size:var(--fs-3)">FG-0123-02-001-10001</dd>
+              <dt>แพ็คที่ขาย</dt><dd><b>2</b></dd>
+              <dt>อุปกรณ์</dt><dd>2 เครื่อง</dd>
+              <dt>รอบ</dt><dd>ทุกวันที่ 17</dd>
+              <dt>เข้าไปแล้ว</dt><dd><b>23 ครั้ง</b></dd>
+              <dt>ใช้สะสม</dt><dd><b>13,850 ml</b></dd>
+            </dl></div>
+          </div>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#pkg"/></svg>อุปกรณ์ในโซน</div>
+            <div class="ctx-b" style="padding:0">
+              <div class="tl" style="padding:0 var(--space-4)">
+                <div class="tl-i"><span class="tl-t"><b><a class="linklike" data-jump="asset">เครื่องที่ 1 · ชั้น 1</a></b>
+                  <span>O800 ขาว · SN-0412 · 30/225</span></span></div>
+                <div class="tl-i"><span class="tl-t"><b><a class="linklike" data-jump="asset">เครื่องที่ 2 · ชั้น 1</a></b>
+                  <span>MAX ขาว · SN-0413 · 60/180</span></span></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 10 อุปกรณ์ ════════════════════════════════════════════ -->
+<section class="screen" id="asset">
+  <div class="brief">
+    <div>
+      <h2>อุปกรณ์</h2>
+      <div class="route">/service/sites/[id]/assets/[id] · หน้าใหม่ทั้งหน้า</div>
+      <p>ค่าตั้งเครื่องจริงอยู่ใน<b>รูปถ่ายหน้าจอที่ช่างส่งเข้า LINE ทุกเดือน</b> — ระบบเพิ่งมีที่เก็บ
+      (คอลัมน์ settings) แต่ยังไม่มีจอไหนแสดง และเครื่องหนึ่งตัวมีประวัติของตัวเอง
+      (ย้ายไซต์ · ส่งซ่อม · เปลี่ยนค่าตั้ง) ที่ตอนนี้เป็นแค่แถวในตาราง</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span><b>ค่าตั้งเครื่องขึ้นจอ</b> — พ่น/พัก · Grade · ช่วงเวลาทำงาน · ที่มาของการประเมินวันหมด</span></li>
+      <li><span class="mk new">+</span><span><b>ประวัติรายเครื่อง</b> — เปลี่ยนเครื่องเข้าทะเบียนจริง (ถอด+ติดตั้ง) ไม่ใช่ข้อความในหมายเหตุ ⇒ ทะเบียนไม่เพี้ยนตั้งแต่เดือนแรก</span></li>
+      <li><span class="mk new">+</span><span>เตือนเมื่อ<b>ค่าตั้งกับการใช้จริงไม่ตรงกัน</b> — เครื่องนี้พ่นถี่กว่าอีกตัวในโซนเดียวกัน 40%</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="crumb"><a data-jump="site">เมกาบางนา</a><svg class="i"><use href="#right"/></svg>
+        <a data-jump="zone">Lobby</a><svg class="i"><use href="#right"/></svg><span>เครื่องที่ 1</span></div>
+
+      <div class="dover">
+        <div>
+          <span class="eyebrow"><svg class="i"><use href="#pkg"/></svg>เครื่องกระจายกลิ่น · SN-0412</span>
+          <h1>เครื่องที่ 1 · ชั้น 1</h1>
+          <p class="desc">ประตูทางเข้าขวามือ · โซน Lobby · O800 สีขาว</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <span class="ui-badge success">ใช้งาน</span>
+          <button class="btn"><svg class="i"><use href="#pencil"/></svg>แก้ไข</button>
+          <button class="btn"><svg class="i"><use href="#hand"/></svg>เปลี่ยนเครื่อง</button>
+        </div>
+      </div>
+
+      <div class="dlayout">
+        <div>
+          <div class="notice" data-tone="warning">
+            <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+            <div><b>เครื่องนี้ใช้น้ำหอมมากกว่าเครื่องที่ 2 ในโซนเดียวกัน 40%</b>
+            <span>ค่าพ่น/พัก 30/225 ถี่กว่าของเครื่องที่ 2 (60/180) และเปิด 12 ชม./วันเท่ากัน — ถ้าตั้งใจให้ต่างกันไม่ต้องแก้ ถ้าไม่ ให้ตั้งค่าใหม่รอบหน้า</span></div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header">
+              <div><h2><svg class="i"><use href="#dash"/></svg>ค่าตั้งเครื่อง</h2>
+              <p>บันทึกล่าสุดเมื่อ 17 ก.ค. 2026 โดย ต้า</p></div>
+              <span class="ui-badge accent">Grade 5</span>
+            </div>
+            <div class="ui-section-body">
+              <div class="zgrid">
+                <div class="zcard" style="cursor:default">
+                  <span class="code">พ่น / พัก</span>
+                  <b style="font-size:var(--fs-13);margin-top:2px">30 / 225 <span style="font-size:var(--fs-4);color:var(--text-3);font-weight:400">วินาที</span></b>
+                  <div class="row"><span>= พ่น 12.6 นาที/ชม.</span></div>
+                </div>
+                <div class="zcard" style="cursor:default">
+                  <span class="code">ช่วงเวลาทำงาน</span>
+                  <b style="font-size:var(--fs-10);margin-top:2px">จ.–อา. 07:00–19:00</b>
+                  <div class="row"><span>12 ชม./วัน · 7 วัน/สัปดาห์</span></div>
+                </div>
+                <div class="zcard" style="cursor:default">
+                  <span class="code">ขนาดขวด / อัตราใช้</span>
+                  <b style="font-size:var(--fs-10);margin-top:2px">300 ml · 10 ml/วัน</b>
+                  <div class="row"><span>คาดว่าหมด</span><b style="color:var(--red)">หมดแล้ว 6 วัน</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ui-section">
+            <div class="ui-section-header"><div><h2><svg class="i"><use href="#clock"/></svg>ประวัติของเครื่องนี้</h2>
+              <p>ตั้งแต่รับเข้าทะเบียน</p></div></div>
+            <div class="ui-section-body">
+              <div class="tl">
+                <div class="tl-i"><span class="tl-d">17 ก.ค. 26</span><span class="tl-t">
+                  <b>เปลี่ยนค่าตั้งเป็น 30/225 (Grade 5)</b><span>เดิม 60/180 · ต้า — ลูกค้าขอให้กลิ่นแรงขึ้นช่วงเย็น</span></span></div>
+                <div class="tl-i"><span class="tl-d">17 มี.ค. 26</span><span class="tl-t">
+                  <b>ส่งซ่อม แล้วกลับเข้าใช้งาน</b><span>ปั๊มตัน · ไอซ์ — หยุดใช้งาน 9 วัน</span></span></div>
+                <div class="tl-i"><span class="tl-d">3 ก.ย. 24</span><span class="tl-t">
+                  <b>ติดตั้งที่โซน Lobby</b><span>ฟลุ๊ค · ใบสั่งขาย SO-24080009</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#pkg"/></svg>ทะเบียน</div>
+            <div class="ctx-b"><dl class="kv">
+              <dt>Serial</dt><dd class="mono"><b>SN-0412</b></dd>
+              <dt>รุ่น</dt><dd>O800</dd>
+              <dt>สี</dt><dd>ขาว</dd>
+              <dt>ชั้น</dt><dd>1</dd>
+              <dt>จุดติดตั้ง</dt><dd style="text-align:right">ประตูทางเข้าขวามือ</dd>
+              <dt>ติดตั้งเมื่อ</dt><dd class="mono">3 ก.ย. 2024</dd>
+              <dt>อายุใช้งาน</dt><dd>1 ปี 11 เดือน</dd>
+              <dt>กลิ่นที่เติม</dt><dd>Signature A</dd>
+            </dl></div>
+          </div>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#drop"/></svg>ใช้ 6 รอบล่าสุด</div>
+            <div class="ctx-b"><dl class="kv">
+              <dt>17 ส.ค.</dt><dd><b>320 ml</b></dd>
+              <dt>17 ก.ค.</dt><dd><b>340 ml</b></dd>
+              <dt>มิ.ย.</dt><dd>ไม่ได้เข้า</dd>
+              <dt>18 พ.ค.</dt><dd>300 ml</dd>
+              <dt>17 เม.ย.</dt><dd>300 ml</dd>
+              <dt>17 มี.ค.</dt><dd>310 ml</dd>
+            </dl></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 11 ใบส่งงาน ═══════════════════════════════════════════ -->
+<section class="screen" id="doc">
+  <div class="brief">
+    <div>
+      <h2>ใบส่งงาน</h2>
+      <div class="route">/service/visits/[id] · หัวหน้า · แชร์ให้ลูกค้าได้</div>
+      <p>ทุกวันนี้ช่างพิมพ์ข้อความ 20 บรรทัดส่ง LINE ทุกครั้ง แล้วแท็กหัวหน้า 4 คนท้ายข้อความ —
+      <b>90% ของข้อความนั้นคือข้อมูลที่อยู่ในทะเบียนอยู่แล้ว</b> ระบบควรประกอบให้เอง
+      ช่างกรอกแค่สิ่งที่เปลี่ยนวันนี้</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>ระบบ<b>ประกอบใบเอง</b>จากทะเบียน — ช่างเขียนแค่บรรทัดสรุปกับสิ่งที่ผิดปกติ</span></li>
+      <li><span class="mk new">+</span><span>แถบ <b>“ต้องดู”</b> บนหัวใบ — ดันเข้ากระดิ่งเฉพาะใบที่ผิดปกติ (เปลี่ยนเครื่อง · ทำไม่ครบ · ไม่มีลายเซ็น · แก้เวลาย้อนหลัง) ถ้าดันทุกใบ หัวหน้าจะปิดแจ้งเตือนภายในสัปดาห์เดียว</span></li>
+      <li><span class="mk new">+</span><span>แชร์เป็นลิงก์/PDF — แทนที่กลไก “แท็กใน LINE” ไม่ใช่แค่มีหน้าให้เข้าไปดู</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="crumb"><a data-jump="sched">จัดคิวช่าง</a><svg class="i"><use href="#right"/></svg><span>SV-2608014</span></div>
+
+      <div class="dover">
+        <div>
+          <span class="eyebrow"><svg class="i"><use href="#file"/></svg>ใบส่งงาน · SV-2608014</span>
+          <h1>Jim Thompson Outlet 93</h1>
+          <p class="desc">27 ส.ค. 2026 · เติมน้ำหอมรายเดือน · ต้า</p>
+        </div>
+        <div class="ui-workspace-header-actions">
+          <span class="ui-badge warning">ทำไม่ครบ</span>
+          <button class="btn"><svg class="i"><use href="#file"/></svg>บันทึกเป็น PDF</button>
+          <button class="btn btn-primary"><svg class="i"><use href="#arrow"/></svg>แชร์ลิงก์ให้ลูกค้า</button>
+        </div>
+      </div>
+
+      <div class="notice" data-tone="warning">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ใบนี้ถูกดันขึ้นกระดิ่งของหัวหน้า</b>
+        <span>เพราะมีสองเรื่องที่ต้องดู: เปลี่ยนเครื่อง 1 ตัว · Reed 6 ขวดยังไม่ได้ทำ — ใบปกติจะไม่ถูกดัน</span></div>
+      </div>
+
+      <div class="dlayout">
+        <div>
+          <div class="ui-section">
+            <div class="ui-section-header"><div><h2>ใบส่งงานที่ระบบประกอบให้</h2>
+              <p>ส่วนที่เป็นตัวเอียงคือสิ่งที่ช่างพิมพ์เอง — ที่เหลือมาจากทะเบียน</p></div></div>
+            <div class="ui-section-body">
+              <div class="doc">
+                <h4>รายละเอียดงาน</h4>
+                <div class="line"><span>วันที่</span><span>27 สิงหาคม 2026 · 09:12 – 10:41 น. (1 ชม. 29 นาที)</span></div>
+                <div class="line"><span>ไซต์</span><span>Jim Thompson Outlet สุขุมวิท 93 · BKK-S</span></div>
+                <div class="line"><span>โซน</span><span>ชั้น 1 / 3 / 4 · 3 แพ็ค</span></div>
+                <div class="line"><span>งาน</span><span>เติมน้ำหอมรายเดือน (รอบวันที่ 1–5)</span></div>
+                <div class="line"><span>กลิ่น</span><span>A Breath of Dream · FG-0088-02-001-10004</span></div>
+                <div class="line"><span>ช่าง</span><span>ต้า</span></div>
+
+                <h4 style="margin-top:var(--space-4)">อุปกรณ์ 6 รายการ</h4>
+                <div class="line"><span>เครื่องที่ 1</span><span>ชั้น 1 ทางเข้า · O800 ขาว · เติม 300 ml · <b style="color:var(--green)">เรียบร้อย</b></span></div>
+                <div class="line"><span>เครื่องที่ 2</span><span>ชั้น 3 บันได · O800 ดำ · เติม 300 ml · <b style="color:var(--green)">เรียบร้อย</b></span></div>
+                <div class="line"><span>เครื่องที่ 3</span><span>ชั้น 3 ทางเข้า · <b style="color:var(--violet)">เปลี่ยนเครื่อง</b> SN-0417 → SN-0902 (ตัวเดิมชำรุด)</span></div>
+                <div class="line"><span>เครื่องที่ 4</span><span>ชั้น 4 โถงลิฟต์ · MAX ขาว · เติม 300 ml · <b style="color:var(--green)">เรียบร้อย</b></span></div>
+                <div class="line"><span>Reed diffuser</span><span>ชั้น 1 · 6 ขวด · <b style="color:var(--red)">ยังไม่ได้ทำ</b> — <i>ยังอยู่ในขั้นตอนปรับสูตร ทีม RD ขอให้รอรอบหน้า</i></span></div>
+
+                <h4 style="margin-top:var(--space-4)">สรุปโดยช่าง</h4>
+                <p style="margin:var(--space-2) 0 0;font-style:italic;color:var(--text-2)">
+                  พบเครื่องบริเวณทางเข้าชั้น 3 ชำรุด ทางทีมได้นำเครื่องมาเปลี่ยน สามารถทำงานปกติแล้วครับ</p>
+
+                <h4 style="margin-top:var(--space-4)">หลักฐาน</h4>
+                <div class="thumbs" style="margin-top:var(--space-2)">
+                  <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>ก่อน</span>
+                  <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>หลัง</span>
+                  <span class="thumb"><svg class="i" style="font-size:18px"><use href="#cam"/></svg>หน้าจอ</span>
+                  <span class="thumb"><svg class="i" style="font-size:18px"><use href="#pencil"/></svg>ลายเซ็น</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <aside>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#warn"/></svg>สิ่งที่ต้องดู</div>
+            <div class="ctx-b" style="padding:0">
+              <div class="tl" style="padding:0 var(--space-4)">
+                <div class="tl-i"><span class="tl-t"><b style="color:var(--violet)">เปลี่ยนเครื่อง 1 ตัว</b>
+                  <span>SN-0417 ถอดออก · SN-0902 เข้าทะเบียนแล้ว</span></span></div>
+                <div class="tl-i"><span class="tl-t"><b style="color:var(--red)">ทำไม่ครบ · Reed 6 ขวด</b>
+                  <span>รอ RD ปรับสูตร — ยกไปรอบหน้า</span></span></div>
+              </div>
+            </div>
+          </div>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#check"/></svg>ครบตามเกณฑ์</div>
+            <div class="ctx-b"><dl class="kv">
+              <dt>รูปหน้างาน</dt><dd><b style="color:var(--green)">3 รูป</b></dd>
+              <dt>ลายเซ็นลูกค้า</dt><dd><b style="color:var(--green)">มี</b></dd>
+              <dt>เวลาที่ประทับ</dt><dd><b style="color:var(--green)">จากเซิร์ฟเวอร์</b></dd>
+              <dt>ของที่ใช้</dt><dd>900 ml</dd>
+            </dl></div>
+          </div>
+          <div class="ctx">
+            <div class="ctx-h"><svg class="i"><use href="#rot"/></svg>รอบถัดไป</div>
+            <div class="ctx-b">
+              <div style="font-size:var(--fs-7);font-weight:var(--fw-semibold)">1–5 ก.ย. 2026</div>
+              <div style="font-size:var(--fs-4);color:var(--text-3);margin-top:2px">นับจากวันที่เข้าจริง · ยังไม่สร้างนัด</div>
+              <button class="btn sm btn-accent" style="margin-top:var(--space-3);width:100%">สร้างนัดรอบถัดไป</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+const SCREENS = [
+  ["ia","เมนู"],["ov","ภาพรวม"],["today","งานวันนี้"],["close","ปิดงาน"],
+  ["sched","จัดคิวช่าง"],["gate","ด่านเข้าไซต์"],["intake","งานเข้าใหม่"],["sites","ทะเบียนไซต์"],
+  ["site","ไซต์"],["siteform","ฟอร์มไซต์"],["zone","โซน"],["asset","อุปกรณ์"],["doc","ใบส่งงาน"]
+];
+const nav = document.getElementById("nav");
+SCREENS.forEach(([id,label],i)=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.setAttribute("aria-pressed", i===0?"true":"false");
+  b.innerHTML='<span class="n">'+String(i+1).padStart(2,"0")+'</span>'+label;
+  nav.appendChild(b);
+});
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.toggle("on", s.id===id));
+  nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.go===id)));
+  window.scrollTo({top:0,behavior:"instant"});
+}
+nav.addEventListener("click",e=>{const b=e.target.closest("button[data-go]"); if(b) show(b.dataset.go);});
+document.getElementById("deck").addEventListener("click",e=>{
+  const j=e.target.closest("[data-jump]"); if(j){e.preventDefault(); show(j.dataset.jump);}
+});
+const root=document.documentElement;
+document.getElementById("theme").addEventListener("click",()=>{
+  const cur=root.getAttribute("data-theme");
+  const dark=cur? cur==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.setAttribute("data-theme", dark?"light":"dark");
+});
+</script>

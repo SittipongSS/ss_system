@@ -19,6 +19,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
+  VISIT_KINDS,
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
   dayLoad,
@@ -201,18 +202,23 @@ export default function ServiceSchedulePage() {
     return next;
   });
 
+  /* ⚠️ ปุ่มบนหัวหน้านี้เป็น **ปุ่มรอง** โดยเจตนา (มติผู้ใช้ 2026-08-28):
+     *TS ไม่ใช่ต้นทางของงาน* — นัดเกิดจากรอบบริการของไซต์ หรือจากงานนอกรอบที่มี
+     ต้นเรื่อง (ลูกค้าแจ้งเสีย · ติดตั้งตามใบสั่งขาย) แล้วทุกใบต้องผ่านด่านก่อน
+     ขึ้นตาราง · หน้านี้ทำหน้าที่ **วาง** งานที่มีอยู่แล้ว ไม่ใช่ **สร้าง** งาน
+     จึงไม่มีปุ่มสีแบรนด์ (สีแบรนด์ = เริ่มของใหม่ หน้าละหนึ่งปุ่ม) */
   return (
     <Workspace
       icon={<CalendarDays size={20} aria-hidden="true" />}
       title="จัดคิวช่าง"
       subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
       headerRight={canEdit ? (
-        <Button tone="primary" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
-          นัดเข้าบริการ
+        <Button tone="neutral" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
+          งานนอกรอบ
         </Button>
       ) : null}
       toolbar={(
-        <div className={styles.toolbar}>
+        <div className="toolbar">
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
           <strong className={styles.weekLabel}>{weekLabel}</strong>
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
@@ -224,7 +230,12 @@ export default function ServiceSchedulePage() {
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
-        <TableScroll family="grid" minWidth={900}>
+        /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
+           ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
+           มาครึ่งเดียว: คอลัมน์ชื่อช่างไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
+           ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อช่างเหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
+           ในหน้า · ตัวที่ตรึงคอลัมน์แรกคือ matrix · ชิดบนทั้งแถวคือ cells stacked */
+        <TableScroll family="matrix" cells="stacked" minWidth={900}>
           <table className={styles.board}>
             <thead>
               <tr>
@@ -294,20 +305,10 @@ export default function ServiceSchedulePage() {
                               </button>
                             );
                           })}
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className={styles.addCell}
-                              aria-label={`เพิ่มนัดให้ ${row.name} วันที่ ${day.iso}`}
-                              onClick={() => openNew({
-                                scheduledDate: day.iso,
-                                assigneeId: row.key === UNASSIGNED ? "" : row.key,
-                                assigneeName: row.key === UNASSIGNED ? "" : row.name,
-                              })}
-                            >
-                              +
-                            </button>
-                          )}
+                          {/* 🔴 เดิมมีปุ่ม "+" อยู่ **ทุกช่องว่าง** ของกริด ซึ่งอ่านได้ว่า
+                              จิ้มตรงไหนก็สร้างงานได้ตามใจ — ขัดกติกา "TS ไม่ใช่ต้นทางของงาน"
+                              (มติผู้ใช้ 2026-08-28) · ถอดออกแล้ว การวางงานลงช่องจะมาจาก
+                              คิวรอจัดเท่านั้น ซึ่งแสดงเฉพาะร่างที่ผ่านด่านแล้ว */}
                         </div>
                       </td>
                     );
@@ -317,6 +318,19 @@ export default function ServiceSchedulePage() {
             </tbody>
           </table>
         </TableScroll>
+      )}
+
+      {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
+          บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
+      {!loading && !loadError && visits.length > 0 && (
+        <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
+          {VISIT_KINDS.map((kind) => (
+            <li key={kind} className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles[`kind_${kind}`] || ""}`} aria-hidden="true" />
+              {VISIT_KIND_LABELS[kind] || kind}
+            </li>
+          ))}
+        </ul>
       )}
 
       <ServiceVisitModal

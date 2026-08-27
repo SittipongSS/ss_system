@@ -1,12 +1,11 @@
 /* ปฏิทินเข้าบริการ: ช่าง × วัน (mig 0188)
    ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet */
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
+/* ⚠️ ห้ามประกาศ `.toolbar` ของตัวเองที่นี่ — คลาส `.toolbar` กลางใน globals.css
+   ถือกฎที่หน้าอื่นทั้งเว็บใช้ร่วมกัน: gap 10px · margin-bottom 16px · และที่สำคัญ
+   `--ctl-h` ที่ตรึงให้ปุ่ม/ช่องค้นหา/ดรอปดาวน์ทุกตัวบนแถบสูงเท่ากัน 40px
+   🐞 ของเดิมประกาศทับ (gap 8px ไม่มี margin ไม่มีกฎความสูง) ⇒ แถบเครื่องมือของ
+   โมดูลบริการเป็นที่เดียวในระบบที่ตัวควบคุมสูงไม่เท่ากัน */
 
 .weekLabel {
   line-height: var(--lh-thai);
@@ -46,12 +45,16 @@
   font-size: var(--fs-label);
 }
 
+/* 🐞 เดิมเป็น `color: var(--accent-ink)` บนพื้น `--accent` — ธีมมืดตั้งสองตัวนี้
+   เป็น **สีเดียวกันเป๊ะ** (#d38a61) เลขวันที่ของวันนี้จึงหายสนิท และธีมสว่างได้
+   คอนทราสต์ 1.9:1 ซึ่งอ่านแทบไม่ออก · โทเคนคู่ของ `--accent` คือ `--accent-fg`
+   (ตัวเดียวกับที่ `.btn-accent` ใช้) ซึ่งพลิกตามธีมให้เอง */
 .today {
   display: inline-block;
   min-width: 22px;
   border-radius: var(--radius-full);
   background: var(--accent);
-  color: var(--accent-ink);
+  color: var(--accent-fg);
 }
 
 .techCol {
@@ -115,15 +118,30 @@
 /* ยกเลิก/เลื่อนแล้ว = ยังเห็นได้แต่ไม่แย่งสายตาไปจากงานที่ยังต้องทำ */
 .visitMuted { opacity: var(--op-muted); text-decoration: line-through; }
 
-.addCell {
-  align-self: flex-start;
-  padding: 0 var(--space-2);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  background: transparent;
+/* คำอธิบายสีชนิดงาน — ของเดิมสีทั้ง 6 ไม่มีคำอธิบายอยู่ที่ไหนเลย และรายละเอียด
+   ของนัดอยู่ใน `title=` ซึ่งบนจอสัมผัสไม่มีอยู่จริง */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
   color: var(--text-3);
-  cursor: pointer;
+  font-size: var(--fs-3);
   line-height: var(--lh-thai);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex: none;
 }
 
 .emptyRow {

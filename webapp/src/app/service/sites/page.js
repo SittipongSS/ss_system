@@ -102,7 +102,7 @@ export default function ServiceSitesPage() {
         </Button>
       ) : null}
       toolbar={(
-        <div className={styles.toolbar}>
+        <div className="toolbar">
           <Search size={15} aria-hidden="true" />
           <Input
             value={search}

@@ -51,8 +51,28 @@
   flex-wrap: wrap;
 }
 
-.time { font-weight: var(--fw-bold); }
+.date { font-weight: var(--fw-bold); }
+.time { font-weight: var(--fw-bold); color: var(--text-2); }
 .kind { color: var(--text-3); font-size: var(--fs-label); }
+
+/* นัดที่เลยวันแล้วยังไม่ปิด — แถบซ้ายสีแดงให้เห็นตั้งแต่กวาดตา ไม่ต้องอ่านป้าย */
+.cardLate { border-inline-start: 3px solid var(--red); }
+
+/* หมายเหตุจากคนจัดคิว = คำสั่ง ไม่ใช่คำขยาย จึงไม่ใช้ .meta ที่เป็นสีจางสุด */
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  background: var(--blue-soft);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.note svg { flex: none; margin-top: var(--space-0-5); color: var(--blue); }
 
 .siteName {
   margin: var(--space-1) 0 0;

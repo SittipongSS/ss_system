@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CheckCircle2, MapPin, Phone, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, MapPin, Phone, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -24,11 +24,11 @@ import CloseVisitSheet from "@/components/service/CloseVisitSheet";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
-import { groupVisits, openCount } from "@/lib/service/myVisits";
+import { groupVisits, openCount, overdueDays } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { naText } from "@/lib/format";
+import { fmtDayMonth, naText } from "@/lib/format";
 
 const SECTIONS = [
   { key: "overdue", title: "ค้างอยู่", tone: "danger" },
@@ -152,11 +152,16 @@ export default function TodayPage() {
                 const site = sitesById.get(visit.siteId);
                 const warnings = visitWarnings(visit, { site });
                 const done = visit.status === "done";
+                const late = overdueDays(visit, todayIso);
                 return (
-                  <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""}`}>
+                  <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${late && !done ? styles.cardLate : ""}`}>
                     <div className={styles.cardHead}>
+                      {/* ⚠️ **วันที่ต้องอยู่บนการ์ด** — กลุ่ม "ค้างอยู่" กับ "ถัดไป" รวมหลายวัน
+                          ไว้ด้วยกัน ถ้ามีแต่เวลา นัดที่ค้างมาสองเดือนจะหน้าตาเหมือนนัดเมื่อวาน */}
+                      <span className={styles.date}>{fmtDayMonth(visit.scheduledDate)}</span>
                       <span className={styles.time}>{visitTimeText(visit)}</span>
                       <span className={styles.kind}>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</span>
+                      {late && !done && <span className="ui-badge danger">ค้าง {late} วัน</span>}
                       {done && <span className="ui-badge">ปิดงานแล้ว</span>}
                     </div>
 
@@ -166,6 +171,16 @@ export default function TodayPage() {
                         .filter(Boolean).join(" · "))}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}
+
+                    {/* 🐞 หมายเหตุที่คนจัดคิวพิมพ์ไว้ **ไม่เคยถูกแสดงบนการ์ดเลย** ทั้งที่
+                        เก็บลง service_visits.note และ API ส่งมาครบ (select '*') ⇒ ข้อความที่
+                        ตั้งใจสั่งงานช่างหายทั้งหมด · แยกทรงจาก .meta เพราะเป็นคำสั่ง ไม่ใช่คำขยาย */}
+                    {visit.note && (
+                      <p className={styles.note}>
+                        <FileText size={13} aria-hidden="true" />
+                        <span>{visit.note}</span>
+                      </p>
+                    )}
 
                     {warnings.map((warning) => (
                       <p key={warning.kind} className={styles.warn}>

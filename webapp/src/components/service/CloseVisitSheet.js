@@ -265,11 +265,17 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
 
       {error && <p className="form-error" role="alert">{error}</p>}
 
+      {/* 🐞 ปุ่มสองตัวนี้เคยเป็นลูก **ตรง** ของ `.form-actions` ⇒ พลาดกฎจอสัมผัสของ
+          globals.css ที่ผูกไว้กับ `.form-actions-buttons .btn` (สูง --ctl-h-touch 44px
+          และแบ่งความกว้างเท่ากันบนจอ ≤680px) · ปุ่มจบงานที่สำคัญที่สุดของโมดูลจึงสูง
+          40px บนมือถือหน้างาน และเรียงเป็นคอลัมน์โดย "ยังไม่ปิด" อยู่เหนือปุ่มบันทึก */}
       <div className="form-actions">
-        <Button tone="neutral" onClick={onClose} disabled={busy}>ยังไม่ปิด</Button>
-        <Button tone="primary" onClick={submit} disabled={busy}>
-          {busy ? "กำลังบันทึก…" : "บันทึกและปิดงาน"}
-        </Button>
+        <div className="form-actions-buttons">
+          <Button tone="neutral" onClick={onClose} disabled={busy}>ยังไม่ปิด</Button>
+          <Button tone="primary" onClick={submit} disabled={busy}>
+            {busy ? "กำลังบันทึก…" : "บันทึกและปิดงาน"}
+          </Button>
+        </div>
       </div>
     </Modal>
   );
