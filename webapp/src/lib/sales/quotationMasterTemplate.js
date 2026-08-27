@@ -1,5 +1,5 @@
 import { fmtDate } from '@/lib/format';
-import { isHeadOfficeBranch, normalizeBranchCode } from '@/lib/master/thaiAddress';
+import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
@@ -148,7 +148,6 @@ const DOC_LABEL_PAIRS = Object.freeze({
   draft: ['ฉบับร่าง', 'DRAFT'],
   cancelled: ['ยกเลิก', 'CANCELLED'],
   documentLabel: ['ใบเสนอราคา', 'Quotation'],
-  headOffice: ['สำนักงานใหญ่', 'Head Office'],
   /* ── ป้ายของ "ใบสั่งขาย" ──────────────────────────────────────────────
      🐞 ที่มา 2026-08-27: ใบสั่งขายเลือกภาษาได้แล้ว (#1457) และแม่แบบแปลป้ายของตัวเอง
      ครบ แต่ป้ายที่ `salesOrderPrint.js` **ประกอบเองแล้วส่งผ่าน options** ข้าม L.t() ไป
@@ -178,15 +177,14 @@ const DOC_LABEL_PAIRS = Object.freeze({
   branchRow: ['สาขา', 'Branch'],
 });
 
-/* เลขสาขาบนเอกสาร
-   ⭐ **เลขเปล่า ๆ ไม่มีคำว่า "สาขาที่" นำหน้า** (มติผู้ใช้ 2026-08-27) — แถวนี้มีป้าย
-   `สาขา` กำกับอยู่แล้ว เขียน "สาขา · สาขาที่ 00001" คือพูดซ้ำสองรอบบนบรรทัดเดียว
-   ⚠️ '00000' คือค่าที่พบบ่อยที่สุด (คอลัมน์ not null เพราะอยู่ใน unique (taxId, branchCode))
-   ⇒ ยังต้องอ่านเป็น "สำนักงานใหญ่" ไม่ใช่พิมพ์เลข 00000 ให้ลูกค้าอ่านเอง
+/* เลขสาขาบนเอกสาร — **เลขล้วนเสมอ** (มติผู้ใช้ 2026-08-27 สองรอบ)
+     1. ไม่มีคำว่า "สาขาที่" นำหน้า — แถวนี้มีป้าย `สาขา` กำกับอยู่แล้ว
+     2. สำนักงานใหญ่พิมพ์ '00000' ไม่แปลเป็นคำ — ช่องนี้คือช่องเลขสาขาตามแบบ
+        กรมสรรพากร และการมีสองรูป (คำ กับ เลข) ในช่องเดียวกันทำให้เทียบใบกันไม่ได้
+   ⇒ ไม่ต้องแยกตามภาษาของใบอีกแล้ว ใบไทยกับใบอังกฤษได้เลขชุดเดียวกัน
    ส่วนลูกค้าที่กรอกช่องสาขาเป็น *ชื่อ* ('แจ้งวัฒนะ') พิมพ์ชื่อนั้นตามเดิม */
-export function quotationBranchText(branchCode, L) {
-  const code = normalizeBranchCode(branchCode);
-  return isHeadOfficeBranch(code) ? L.t('headOffice') : code;
+export function quotationBranchText(branchCode) {
+  return branchValue(branchCode);
 }
 
 /* ตัวอ่านป้ายของภาษาที่ใบนี้เลือก
@@ -1027,7 +1025,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     address: quote.billingAddress || '-',
     shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
-    branch: quotationBranchText(quote.branchCode, L),
+    branch: quotationBranchText(quote.branchCode),
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',
   };
