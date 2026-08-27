@@ -14,6 +14,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { REFERENCE_REGISTRY, referenceTableNames } from '../src/lib/master/entityReferences.js';
+import { fetchSchema } from './schemaFetch.mjs';
 
 const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -22,12 +23,7 @@ if (!url || !key) {
   process.exit(0);
 }
 
-const res = await fetch(`${url}/rest/v1/`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
-if (!res.ok) {
-  console.error(`อ่านสคีมาจากฐานไม่สำเร็จ: HTTP ${res.status}`);
-  process.exit(1);
-}
-const openApi = await res.json();
+const openApi = await fetchSchema({ url, key, label: 'อ่านสคีมาจากฐาน' });
 const spec2def = (entitySpec) => Object.fromEntries(
   Object.entries(openApi.definitions || {}).filter(([, def]) => def?.properties?.[entitySpec.column]),
 );
