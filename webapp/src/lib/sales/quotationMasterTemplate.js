@@ -1,5 +1,5 @@
 import { fmtDate } from '@/lib/format';
-import { isBranchCodeValid, isHeadOfficeBranch, normalizeBranchCode } from '@/lib/master/thaiAddress';
+import { isHeadOfficeBranch, normalizeBranchCode } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
@@ -149,20 +149,19 @@ const DOC_LABEL_PAIRS = Object.freeze({
   cancelled: ['ยกเลิก', 'CANCELLED'],
   documentLabel: ['ใบเสนอราคา', 'Quotation'],
   headOffice: ['สำนักงานใหญ่', 'Head Office'],
-  branch: ['สาขาที่', 'Branch'],
   // ป้ายหัวแถวในบล็อกลูกค้า — คนละตัวกับ `branch` ที่เป็น **คำนำหน้าเลข** ("สาขาที่ 00001")
   branchRow: ['สาขา', 'Branch'],
 });
 
-/* เลขสาขาบนเอกสาร = กติกาเดียวกับ branchLabel ฝั่งจอ แต่ตามภาษาของใบ
-   ⚠️ ห้ามต่อสตริงเอง: '00000' คือ **ค่าที่พบบ่อยที่สุด** (คอลัมน์ not null เพราะอยู่ใน
-   unique (taxId, branchCode)) ⇒ ต่อดิบ ๆ แล้วใบเกือบทุกใบขึ้น "สาขาที่ 00000"
-   ส่วนลูกค้าที่กรอกช่องสาขาเป็น *ชื่อ* ('แจ้งวัฒนะ') ต้องพิมพ์ชื่อนั้นตามเดิม
-   ไม่เติมคำนำหน้าเลขให้กลายเป็น "สาขาที่ แจ้งวัฒนะ" */
+/* เลขสาขาบนเอกสาร
+   ⭐ **เลขเปล่า ๆ ไม่มีคำว่า "สาขาที่" นำหน้า** (มติผู้ใช้ 2026-08-27) — แถวนี้มีป้าย
+   `สาขา` กำกับอยู่แล้ว เขียน "สาขา · สาขาที่ 00001" คือพูดซ้ำสองรอบบนบรรทัดเดียว
+   ⚠️ '00000' คือค่าที่พบบ่อยที่สุด (คอลัมน์ not null เพราะอยู่ใน unique (taxId, branchCode))
+   ⇒ ยังต้องอ่านเป็น "สำนักงานใหญ่" ไม่ใช่พิมพ์เลข 00000 ให้ลูกค้าอ่านเอง
+   ส่วนลูกค้าที่กรอกช่องสาขาเป็น *ชื่อ* ('แจ้งวัฒนะ') พิมพ์ชื่อนั้นตามเดิม */
 export function quotationBranchText(branchCode, L) {
   const code = normalizeBranchCode(branchCode);
-  if (isHeadOfficeBranch(code)) return L.t('headOffice');
-  return isBranchCodeValid(code) ? `${L.t('branch')} ${code}` : code;
+  return isHeadOfficeBranch(code) ? L.t('headOffice') : code;
 }
 
 /* ตัวอ่านป้ายของภาษาที่ใบนี้เลือก

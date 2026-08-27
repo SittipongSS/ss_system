@@ -84,7 +84,8 @@ test('V4 doc: บล็อกลูกค้า — โชว์เลขภา�
   };
   const html = buildQuotationMasterHTML(q, {});
   assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105561000000/);
-  assert.match(html, /<dt>สาขา<\/dt><dd>สาขาที่ 00001/);
+  // เลขเปล่า — แถวมีป้าย 'สาขา' อยู่แล้ว ไม่ต้องมี 'สาขาที่' ซ้ำ (มติผู้ใช้ 2026-08-27)
+  assert.match(html, /<dt>สาขา<\/dt><dd>00001</);
   assert.match(html, /ที่อยู่จัดส่ง<\/dt><dd>ที่อยู่จัดส่งต่างหาก/);
 });
 
@@ -100,8 +101,10 @@ test('V4 doc: สาขา — 00000/ข้อความ "สำนักง�
   assert.match(of('สำนักงานใหญ่'), /<dt>สาขา<\/dt><dd>สำนักงานใหญ่/);
   assert.match(of('แจ้งวัฒนะ'), /<dt>สาขา<\/dt><dd>แจ้งวัฒนะ/);
   assert.doesNotMatch(of('แจ้งวัฒนะ'), /สาขาที่ แจ้งวัฒนะ/);
+  // ⚠️ ห้ามกลับไปเติมคำนำหน้า — ป้ายแถวพูดแล้ว
+  assert.doesNotMatch(of('00001'), /สาขาที่ 00001/);
   // ใบภาษาอังกฤษใช้ป้ายของตัวเอง
-  assert.match(of('00001', { docLanguage: 'en' }), /<dt>Branch<\/dt><dd>Branch 00001/);
+  assert.match(of('00001', { docLanguage: 'en' }), /<dt>Branch<\/dt><dd>00001</);
   assert.match(of('00000', { docLanguage: 'en' }), /<dt>Branch<\/dt><dd>Head Office/);
 });
 

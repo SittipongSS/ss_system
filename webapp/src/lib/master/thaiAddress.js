@@ -79,6 +79,15 @@ export function isHeadOfficeBranch(value) {
   return !code || code === HEAD_OFFICE_BRANCH || HEAD_OFFICE_ALIASES.test(code);
 }
 
+/* ค่าเลขสาขาสำหรับช่องที่ **มีป้ายกำกับ "สาขา" อยู่แล้ว** — คืนเลขเปล่า ๆ ไม่เติม
+   คำนำหน้าซ้ำ (มติผู้ใช้ 2026-08-27: "สาขา · สาขาที่ 00001" คือพูดสองรอบ)
+   ⚠️ '00000' ยังอ่านเป็น "สำนักงานใหญ่" — ไม่พิมพ์เลขศูนย์ให้คนอ่านเอง
+   คู่กับ branchLabel() ข้างล่างซึ่งใช้กับช่องที่ **ไม่มีป้าย** (ชิปลอย ๆ ใต้ที่อยู่) */
+export function branchValue(branchCode) {
+  const code = normalizeBranchCode(branchCode);
+  return isHeadOfficeBranch(code) ? 'สำนักงานใหญ่' : code;
+}
+
 export function branchLabel(branchCode) {
   const code = normalizeBranchCode(branchCode);
   if (isHeadOfficeBranch(code)) return 'สำนักงานใหญ่';
