@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildSalesOrderPrintHTML, openSalesOrderPrintWindow } from './salesOrderPrint.js';
 
 const order = {
@@ -253,4 +254,69 @@ test('SO: สวิตช์ปิด = เป็นป้ายอ่านอ�
   );
   assert.match(html, /เปลี่ยนไม่ได้แล้ว/);
   assert.doesNotMatch(html, /ssSetDocLanguage/);
+});
+
+/* ── ภาษาเอกสารของใบสั่งขาย ───────────────────────────────────────────────
+   🐞 ที่มา 2026-08-27: #1457 เพิ่มคอลัมน์ docLanguage + สวิตช์ + แม่แบบแปลป้ายของตัวเอง
+   ครบแล้ว แต่ป้ายที่ salesOrderPrint ประกอบเองแล้วส่งผ่าน options ข้าม L.t() ไป
+   ⇒ ใบอังกฤษยังพิมพ์ไทย 13 จุด (วัดจากใบจริงบน production) */
+const soLabelsEn = [
+  'SO Date', 'Payment Due', 'Quotation Ref.', 'Document Status',
+  'Project No.', 'Project Type', 'Proposed By',
+  'Sales', 'Sales Manager', 'Finance',
+];
+const soLabelsTh = [
+  'วันที่ SO', 'กำหนดชำระ', 'อ้างอิง QT', 'สถานะเอกสาร',
+  'เลขที่โครงการ', 'ประเภทโครงการ', 'ผู้เสนอราคา',
+  'ฝ่ายขาย', 'ผู้จัดการฝ่ายขาย', 'ฝ่ายบัญชี',
+];
+
+test('ใบสั่งขายภาษาอังกฤษ: ป้ายระบบต้องเป็นอังกฤษครบ ไม่มีไทยหลุด', () => {
+  const html = buildSalesOrderPrintHTML({ ...order, status: 'draft', docLanguage: 'en' });
+  for (const label of soLabelsEn) assert.ok(html.includes(label), `ต้องมีป้าย "${label}"`);
+  // ป้ายไทยของ **ระบบ** ต้องไม่หลุดมาเลย (ข้อความที่คนกรอกยังเป็นไทยได้ตามกติกา "ไม่แปลให้เอง")
+  const sheet = html.slice(html.indexOf('<div class="sheet'));
+  for (const label of soLabelsTh) assert.ok(!sheet.includes(`<dt>${label}</dt>`), `ป้ายไทยหลุด: ${label}`);
+});
+
+test('ใบสั่งขายภาษาไทยต้องเหมือนเดิมเป๊ะ — ไม่ระบุภาษา = ไทย', () => {
+  for (const o of [{ ...order, status: 'draft' }, { ...order, status: 'draft', docLanguage: 'th' }]) {
+    const html = buildSalesOrderPrintHTML(o);
+    for (const label of soLabelsTh) assert.ok(html.includes(label), `ต้องมีป้าย "${label}"`);
+  }
+});
+
+test('ลายน้ำเดินตามภาษาของใบ — เคสที่ทำให้เจอบั๊กนี้', () => {
+  // ⚠️ ลายน้ำมาจาก options ของ SO ซึ่ง **ทับ** ค่าที่แม่แบบเลือกตามภาษา
+  // ⇒ ถ้าไม่แปลตรงนี้ ใบอังกฤษจะขึ้น "ฉบับร่าง" ทั้งที่ทั้งใบเป็นอังกฤษ
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'draft', docLanguage: 'en' }), /class="watermark">DRAFT</);
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'draft', docLanguage: 'th' }), /class="watermark">ฉบับร่าง</);
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled', docLanguage: 'en' }), /class="watermark">CANCELLED DOCUMENT</);
+  assert.match(buildSalesOrderPrintHTML({ ...order, status: 'cancelled', docLanguage: 'th' }), /class="watermark">เอกสารยกเลิก</);
+  // อนุมัติแล้ว = ไม่มีลายน้ำ ทั้งสองภาษา
+  for (const lang of ['th', 'en']) {
+    assert.doesNotMatch(buildSalesOrderPrintHTML({ ...order, status: 'approved', docLanguage: lang }), /class="watermark"/);
+  }
+});
+
+test('สถานะเอกสารในบล็อกอ้างอิงแปลตามภาษา', () => {
+  const statusOf = (status, docLanguage) => /<dt>(?:สถานะเอกสาร|Document Status)<\/dt><dd>([^<]*)</
+    .exec(buildSalesOrderPrintHTML({ ...order, status, docLanguage }))?.[1];
+  assert.equal(statusOf('draft', 'th'), 'ฉบับร่าง');
+  assert.equal(statusOf('draft', 'en'), 'Draft');
+  assert.equal(statusOf('pending_approval', 'en'), 'Pending Approval');
+  assert.equal(statusOf('approved', 'en'), 'Approved');
+  assert.equal(statusOf('cancelled', 'en'), 'Cancelled');
+});
+
+test('ไม่มีป้ายไทยตายตัวเหลือใน salesOrderPrint นอกจากป้ายแถบเครื่องมือ', () => {
+  const src = readFileSync(new URL('./salesOrderPrint.js', import.meta.url), 'utf8');
+  // ตัดคอมเมนต์ให้ขาดจริง (บล็อกคอมเมนต์ในไฟล์นี้เป็นภาษาไทยเกือบทั้งหมด)
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const thaiLiterals = [...code.matchAll(/'([^'\n]*[฀-๿][^'\n]*)'/g)].map((m) => m[1]);
+  /* แถบเครื่องมือเป็นไทยเสมอโดยตั้งใจ — คนกดพิมพ์คือพนักงานไทย (มีเทสต์คุมไว้ที่
+     quotationMasterDocument.test.mjs) · นอกจากนั้นห้ามมีป้ายไทยตายตัวเหลือ */
+  const allowed = new Set(['ใบสั่งขาย', 'ไม่สามารถโหลดข้อมูลใบสั่งขายได้']);
+  const leftover = thaiLiterals.filter((t) => !allowed.has(t));
+  assert.deepEqual(leftover, [], `ป้ายไทยตายตัวที่ต้องย้ายไป DOC_LABEL_PAIRS: ${leftover.join(' · ')}`);
 });
