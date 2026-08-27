@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser, TEAMS } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
-import { customerNameError } from '@/lib/master/customerName';
+import { customerNameError, customerNamePatch } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
   CODE_MODE_AUTO, arCodeError, codeModeOf, insertCustomerWithCode,
@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
    🪤 เพิ่มคอลัมน์ใหม่ให้ตาราง `customers` แล้วอยากให้ picker เห็น ต้องเติมชื่อที่นี่
    ด้วย ไม่งั้นช่องจะว่างเงียบ ๆ ไม่มี error (`?manage=1` ยังได้ทั้งแถวเสมอ) */
 const CUSTOMER_PICKER_COLUMNS = [
-  'id', 'arCode', 'name', 'nameEn', 'taxId', 'address', 'shippingAddress', 'branchCode',
+  'id', 'arCode', 'name', 'nameEn', 'nameTitle', 'namePerson', 'taxId', 'address', 'shippingAddress', 'branchCode',
   'brands', 'mapFileUrl', 'phone', 'email', 'contactPerson', 'contactPhone',
   'creditTerms', 'customerType', 'metadata', 'driveFolderId',
   'team', 'teams', 'ownerId', 'isActive',
@@ -192,6 +192,10 @@ export async function POST(request) {
     // ท่อนเติมรหัสหลุดไป จะได้ลูกค้าที่ไม่มีรหัสแบบเงียบ ๆ แทนที่จะพังให้เห็น
     ...(codeMode === CODE_MODE_AUTO ? {} : { arCode }),
     name: body.name || null,
+    // คำนำหน้า/ชื่อเปล่าของลูกค้าบุคคล (mig 0296) — `name` ข้างบนถูก **เขียนทับ**
+    // ด้วยค่าที่ประกอบแล้วผ่าน spread ข้างล่าง เมื่อฟอร์มส่งสองช่องนี้มา
+    nameTitle: null,
+    namePerson: null,
     // ชื่อกิจการภาษาอังกฤษ (mig 0283) — ว่าง = null ไม่ใช่ '' เพื่อให้ "ยังไม่กรอก"
     // เป็นค่าเดียวทั้งระบบ (การ์ด/ตารางเช็คด้วย falsy ตัวเดียว)
     nameEn: String(body.nameEn || '').trim() || null,
@@ -225,6 +229,10 @@ export async function POST(request) {
     approvedByName: autoApprove ? (user?.name ?? null) : null,
     approvedAt: autoApprove ? nowIso : null,
     createdAt: nowIso,
+    /* กระจกชื่อ: `name` ที่เขียนจริงประกอบจาก nameTitle + namePerson (แพตเทิร์นเดียว
+       กับ addresses[] → address) · นิติบุคคล/สายเก่าไม่ส่งสองช่องนี้มา = {} = ใช้
+       `name` ที่พิมพ์ตรง ๆ เหมือนเดิม ⇒ ต้องอยู่ **ท้ายสุด** ของอ็อบเจกต์ */
+    ...customerNamePatch(body),
   };
 
   // ── ออกรหัส + insert ──────────────────────────────────────────────────────

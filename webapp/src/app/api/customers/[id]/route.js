@@ -6,7 +6,7 @@ import {
   rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
-import { customerNameError } from '@/lib/master/customerName';
+import { customerNameError, customerNamePatch } from '@/lib/master/customerName';
 import { cascadeCustomerName } from '@/lib/master/customerNameMirrors';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
@@ -332,6 +332,22 @@ export async function PATCH(request, { params }) {
   if (body.arCode !== undefined) updates.arCode = nextArCode;
   // brands (0059): normalize to [{th,en}] — accepts legacy string[] too.
   if (body.brands !== undefined) updates.brands = normalizeBrands(body.brands);
+  /* คำนำหน้า/ชื่อเปล่าของลูกค้าบุคคล (mig 0296) — เขียนกระจก `name` ทับให้ตรงกับสอง
+     ช่องย่อยเสมอ · ต้องอยู่ **ก่อน** ด่านชื่อข้างล่าง ไม่งั้นด่านตรวจ `name` ตัวเก่า
+     (ที่ฟอร์มบุคคลไม่ได้ส่งมาแล้ว) แทนที่จะตรวจชื่อที่กำลังจะถูกบันทึกจริง
+     🪤 ไม่ใส่ nameTitle/namePerson ในลูป allowlist ข้างบน — สองช่องนี้ต้องเดินคู่กัน
+        เสมอ ปล่อยให้ PATCH มาทีละช่องได้เมื่อไหร่ กระจก `name` จะเพี้ยนทันที
+     🪤 เข้าเงื่อนไขเฉพาะตอน **body ส่งช่องย่อยมาจริง** — ถ้าดูจากค่าในแถวแทน
+        (ซึ่งมีคีย์เสมอหลัง mig 0296) การเปลี่ยนชื่อนิติบุคคลผ่าน `name` เฉย ๆ
+        จะโดนประกอบทับด้วยค่าเก่าเงียบ ๆ */
+  if (body.nameTitle !== undefined || body.namePerson !== undefined) {
+    Object.assign(updates, customerNamePatch({
+      customerType: updates.customerType ?? customer.customerType,
+      nameTitle: body.nameTitle ?? customer.nameTitle,
+      namePerson: body.namePerson ?? customer.namePerson,
+      name: updates.name ?? customer.name,
+    }));
+  }
   // ⭐ ชื่ออย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) — เทียบกับ **ค่าหลังแก้**
   // ไม่ใช่ค่าที่ส่งมาอย่างเดียว: ฟอร์มส่งทั้งก้อนก็จริง แต่สายอื่นยิงคีย์เดียวได้
   // (ลบชื่อไทยทิ้งโดยยังมีชื่ออังกฤษ = ผ่าน · ลบทิ้งทั้งคู่ = ตีกลับ)

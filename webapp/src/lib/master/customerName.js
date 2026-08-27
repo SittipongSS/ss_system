@@ -55,3 +55,57 @@ export function customerNameBranchWarning(customer) {
   if (!hits.length) return null;
   return `${hits.join(' และ ')}มีคำว่า “สำนักงานใหญ่/สาขา” — เลขสาขาควรอยู่ที่ช่อง “เลขสาขา” ของที่อยู่ ไม่ใช่ในชื่อกิจการ ไม่งั้นเอกสารจะบอกสาขาสองที่ไม่ตรงกัน (บันทึกต่อได้)`;
 }
+
+// ── คำนำหน้าชื่อลูกค้าบุคคลธรรมดา (mig 0296) ────────────────────────────
+//
+// ⭐ ที่มา (มติผู้ใช้ 2026-08-27): ทะเบียนเขียนคำนำหน้ากันคนละแบบทั้งกอง และ
+// ตัวที่ใช้เยอะสุดคือ 'คุณ' (42 ราย) ซึ่ง **ไม่ใช่คำนำหน้าตามกฎหมาย** ใช้บนใบกำกับ
+// ภาษีเต็มรูปไม่ได้ ⇒ ตัวเลือกมีสามตัวตามบัตรประชาชนเท่านั้น
+//
+// ⚠️ 'คุณ' **ไม่อยู่ในตัวเลือก** โดยตั้งใจ — ของเดิม 42 รายต้องไล่แก้เป็น
+// นาย/นาง/นางสาว ทีละราย (เดาแทนคนไม่ได้: ชื่อไทยหลายชื่อใช้ได้ทั้งสองเพศ)
+//
+// ⚠️ ช่อง "อื่น ๆ" พิมพ์เองได้ เพราะคำนำหน้าที่ใช้จริงมีนอกสามตัวนี้
+// (ทะเบียนมี 'ดร.' อยู่แล้ว 1 ราย · ยศทหาร/ตำรวจก็เป็นคำนำหน้าบนเอกสารจริง)
+export const CUSTOMER_NAME_TITLES = Object.freeze(['นาย', 'นาง', 'นางสาว']);
+
+/* ประกอบชื่อเต็มจากคำนำหน้า + ชื่อ — ใช้ทั้งฝั่งฟอร์ม (พรีวิว) และฝั่ง API (ค่าที่เขียนจริง)
+   ⚠️ **ถอยไปใช้ `name` เดิมเมื่อยังไม่มี namePerson** — แถวยุคก่อน mig 0296 กับลูกค้า
+   นิติบุคคลไม่มีสองช่องนี้ ต้องไม่ถูกล้างเป็นค่าว่างตอนบันทึกผ่านสายที่ไม่ได้ส่งมา */
+export function composeCustomerName({ nameTitle, namePerson, name } = {}) {
+  const person = text(namePerson);
+  if (!person) return text(name);
+  const title = text(nameTitle);
+  return title ? `${title} ${person}` : person;
+}
+
+/* แยกชื่อเต็มที่มีคำนำหน้าติดมา → { nameTitle, namePerson }
+   ใช้ตอน backfill และตอนเปิดฟอร์มแก้แถวที่ยังไม่มีสองช่องนี้ (ไม่ได้เขียนลงฐาน
+   จนกว่าคนจะกดบันทึก) · จับไม่ได้ = คำนำหน้าว่าง ชื่อเต็มไปอยู่ที่ namePerson
+   ⚠️ 'คุณ' จับด้วย แต่คืนออกมาตามที่เจอ — **ไม่แปลงให้เป็น นาย/นางสาว เอง**
+   เพราะเดาเพศจากชื่อไทยไม่ได้ · จอเป็นคนบอกว่าค่านี้ไม่อยู่ในตัวเลือก */
+const TITLE_PATTERN = /^(นางสาว|นาง|นาย|น\.ส\.?|ด\.ช\.|ด\.ญ\.|คุณ|ดร\.)\s*/;
+export function splitCustomerName(fullName) {
+  const full = text(fullName);
+  const match = TITLE_PATTERN.exec(full);
+  if (!match) return { nameTitle: '', namePerson: full };
+  // 'น.ส.' เป็นตัวย่อของ 'นางสาว' — เก็บรูปเต็มรูปเดียวทั้งระบบ ไม่งั้นเรียง/กรอง
+  // ได้สองกอง · ตัวย่ออื่น (ด.ช./ด.ญ.) ไม่มีรูปเต็มที่ใช้บนเอกสาร จึงคงตามที่เจอ
+  const raw = match[1];
+  const nameTitle = /^น\.ส\.?$/.test(raw) ? 'นางสาว' : raw;
+  return { nameTitle, namePerson: full.slice(match[0].length).trim() };
+}
+
+/* เขียนกระจก `name` จากสองช่องย่อย — เรียกก่อนบันทึกทุกครั้ง (POST/PATCH)
+   คืน patch ที่พร้อม merge · ไม่มีช่องย่อยส่งมาเลย = ไม่แตะอะไรทั้งนั้น
+   🪤 **นิติบุคคลต้องล้างสองช่องนี้ทิ้ง** ไม่ใช่ปล่อยผ่าน — ฟอร์มถือ state ชุดเดียว
+      ทั้งสองประเภท คนสลับ "บุคคลธรรมดา → นิติบุคคล" แล้วบันทึก ถ้าไม่ล้าง แถวนั้น
+      จะค้าง namePerson ของยุคที่ยังเป็นบุคคล แล้ว `name` โดนประกอบทับด้วยชื่อเก่า
+      ทุกครั้งที่แก้ครั้งถัดไป */
+export function customerNamePatch(body = {}) {
+  if (body.namePerson === undefined && body.nameTitle === undefined) return {};
+  if (body.customerType !== 'individual') return { nameTitle: null, namePerson: null };
+  const nameTitle = text(body.nameTitle) || null;
+  const namePerson = text(body.namePerson) || null;
+  return { nameTitle, namePerson, name: composeCustomerName({ nameTitle, namePerson, name: body.name }) || null };
+}

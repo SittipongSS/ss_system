@@ -27,7 +27,9 @@ import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
 import {
   isCompleteTaxId, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError, taxIdOtherBranchWarning,
 } from "@/lib/master/customerTaxId";
-import { customerNameBranchWarning } from "@/lib/master/customerName";
+import {
+  CUSTOMER_NAME_TITLES, composeCustomerName, customerNameBranchWarning, splitCustomerName,
+} from "@/lib/master/customerName";
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
@@ -39,7 +41,7 @@ import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
 // ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0202) ทั้งก้อน
 // server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
 export const EMPTY_CUSTOMER = {
-  arCode: "", name: "", nameEn: "", customerType: "company", taxId: "",
+  arCode: "", name: "", nameEn: "", nameTitle: "", namePerson: "", customerType: "company", taxId: "",
   phone: "", addresses: [], brands: [], contacts: [], creditTerms: "",
   teams: [],
 };
@@ -50,6 +52,16 @@ export const EMPTY_CUSTOMER = {
 export const customerToForm = (c) => ({
   ...EMPTY_CUSTOMER,
   arCode: c.arCode || "", name: c.name || "", nameEn: c.nameEn || "",
+  /* คำนำหน้า/ชื่อเปล่า (mig 0296) — แถวที่ยังไม่มีสองช่องนี้ **แยกจากชื่อเต็มให้ตอนเปิด
+     ฟอร์ม** ไม่ใช่ปล่อยว่าง ไม่งั้นกดบันทึกทีเดียวคำนำหน้าเดิมหายไปจากชื่อเงียบ ๆ ·
+     ค่าที่แยกได้ยังไม่ถูกเขียนลงฐานจนกว่าคนจะกดบันทึกจริง
+     🪤 เฉพาะลูกค้าบุคคล — ชื่อนิติบุคคลไม่มีคำนำหน้าให้แยก ถ้าแยกด้วยจะได้ชื่อบริษัท
+        ทั้งก้อนไปนั่งใน namePerson แล้วโดนเขียนลงฐานตอนบันทึก */
+  ...(c.customerType === "individual"
+    ? (c.namePerson
+      ? { nameTitle: c.nameTitle || "", namePerson: c.namePerson }
+      : splitCustomerName(c.name || ""))
+    : { nameTitle: "", namePerson: "" }),
   customerType: c.customerType || "company",
   taxId: c.taxId || "",
   phone: c.phone || "",
@@ -96,6 +108,18 @@ export default function CustomerForm({
   // เป็นคำที่ผิดทันทีเมื่อเลือกบุคคลธรรมดา (กฎในเอกสารฟอร์ม: ป้ายต้องเรียกชื่อสิ่งที่
   // อยู่ตรงหน้าจริง ๆ ไม่ใช่ชื่อที่ใช้ได้กับกรณีส่วนใหญ่)
   const isCompany = form.customerType !== "individual";
+  /* ── ชื่อบุคคล = คำนำหน้า + ชื่อเปล่า (mig 0296) ──────────────────────
+     แก้ช่องไหนก็เขียนกระจก `form.name` ให้ทันที — ฟอร์มนี้มีสายที่อ่าน `name`
+     ตรง ๆ อยู่แล้ว (คำเตือนสำนักงานใหญ่ · ด่าน required ของชื่อสองภาษา) และ
+     คนกรอกต้องเห็นชื่อเต็มที่จะถูกบันทึกจริง ไม่ใช่เดาเอาจากสองช่องแยก
+     ⚠️ ตัวประกอบตัวเดียวกับที่ API ใช้ตอนเขียนจริง — ห้ามประกอบเองซ้ำที่นี่ */
+  const setPerson = (patch) => {
+    const next = { nameTitle: form.nameTitle || "", namePerson: form.namePerson || "", ...patch };
+    onForm({ ...next, name: composeCustomerName(next) });
+  };
+  // คำนำหน้านอกสามตัวที่เลือกได้ (ของเดิม 'คุณ'/'ดร.' · ยศ) = โหมด "อื่น ๆ"
+  const titleIsOther = !!String(form.nameTitle || "").trim()
+    && !CUSTOMER_NAME_TITLES.includes(form.nameTitle);
 
   // ── เช็คลูกค้าซ้ำจากเลขผู้เสียภาษี ตั้งแต่กรอกครบ 13 หลัก (มติผู้ใช้ 2026-08-12) ──
   // เตือน **ก่อน** กรอกทั้งใบเสร็จแล้วค่อยโดนตีกลับตอนกดบันทึก · ด่านจริงอยู่ที่ API
@@ -237,20 +261,74 @@ export default function CustomerForm({
               ด่านของเบราว์เซอร์อยู่แล้วทั้งใบ (API บังคับซ้ำที่ customerNameError)
               ⚠️ ชื่ออังกฤษ **ไม่ใช่ชื่อสำหรับแสดงคู่กัน** แบบหมวดสินค้า (`EN · TH`) —
               หน้าจอไทยล้วนตามเดิม ช่องนี้มีไว้ให้เอกสารอังกฤษ (IFRA/MSDS) หยิบไปใช้ */}
+          {!isCompany && (
+            <div className="form-group col-span-2">
+              <label>คำนำหน้า</label>
+              {/* ชุดตายตัว 3 ตัว = แผ่นเลือก ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรล v2)
+                  'คุณ' ไม่อยู่ในชุดโดยตั้งใจ — ใช้บนใบกำกับภาษีเต็มรูปไม่ได้
+                  (เหตุผลเต็มอยู่ที่ lib/master/customerName.js) */}
+              <OptionTiles
+                value={titleIsOther ? "__other" : (form.nameTitle || "")}
+                onChange={(v) => setPerson({ nameTitle: v === "__other" ? "" : v })}
+                ariaLabel="คำนำหน้าชื่อ"
+                options={[
+                  ...CUSTOMER_NAME_TITLES.map((t) => ({ value: t, label: t })),
+                  { value: "__other", label: "อื่น ๆ", description: "เช่น ดร. · ยศ" },
+                ]}
+              />
+              {titleIsOther && (
+                <Input
+                  type="text"
+                  name="nameTitle"
+                  value={form.nameTitle || ""}
+                  onChange={(e) => setPerson({ nameTitle: e.target.value })}
+                  placeholder="พิมพ์คำนำหน้า เช่น ดร."
+                  className="mt-2"
+                />
+              )}
+              {/* เตือนตรงนี้ ไม่ใช่บล็อก — ของเดิม 42 รายที่ใช้ 'คุณ' ต้องเปิดฟอร์ม
+                  แล้วบันทึกช่องอื่นต่อได้โดยไม่ต้องแก้คำนำหน้าก่อน */}
+              {String(form.nameTitle || "").trim() === "คุณ" && (
+                <span className="text-[11px] text-[var(--amber)] mt-1">
+                  “คุณ” ไม่ใช่คำนำหน้าตามกฎหมาย ใช้บนใบกำกับภาษีเต็มรูปไม่ได้ — เลือก นาย/นาง/นางสาว (บันทึกต่อได้)
+                </span>
+              )}
+            </div>
+          )}
           <div className="form-group">
             <label>
-              {CUSTOMER_NAME_LABEL}
+              {isCompany ? CUSTOMER_NAME_LABEL : "ชื่อ-นามสกุล"}
               {!String(form.nameEn || "").trim() && <span className="text-[var(--red)]"> *</span>}
             </label>
-            <input
-              type="text"
-              name="name"
-              value={form.name}
-              onChange={set("name")}
-              required={!String(form.nameEn || "").trim()}
-              placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
-              className="premium-input w-full"
-            />
+            {isCompany ? (
+              <input
+                type="text"
+                name="name"
+                value={form.name}
+                onChange={set("name")}
+                required={!String(form.nameEn || "").trim()}
+                placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
+                className="premium-input w-full"
+              />
+            ) : (
+              <>
+                <Input
+                  type="text"
+                  name="namePerson"
+                  value={form.namePerson || ""}
+                  onChange={(e) => setPerson({ namePerson: e.target.value })}
+                  required={!String(form.nameEn || "").trim()}
+                  placeholder="ชื่อ นามสกุล (ไม่ต้องใส่คำนำหน้า)"
+                />
+                {/* ชื่อเต็มที่จะถูกบันทึกจริง — คนกรอกต้องเห็นผลของสองช่องรวมกัน
+                    ก่อนกดบันทึก ไม่ใช่ไปเจอตอนเปิดเอกสาร */}
+                {!!String(form.name || "").trim() && (
+                  <span className="text-[11px] text-[var(--text-3)] mt-1">
+                    ชื่อที่จะบันทึก: {form.name}
+                  </span>
+                )}
+              </>
+            )}
             {/* เตือนเฉย ๆ (สีเดียวกับคำเตือนเลขภาษีคนละสาขา) — ครอบทั้งช่องไทยและอังกฤษ
                 เพราะสองช่องอยู่ติดกัน และตัวข้อความบอกอยู่แล้วว่าโดนช่องไหน */}
             {nameBranchWarning && (
