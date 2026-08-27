@@ -1,4 +1,5 @@
 import { fmtDate } from '@/lib/format';
+import { isBranchCodeValid, isHeadOfficeBranch, normalizeBranchCode } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
@@ -149,7 +150,20 @@ const DOC_LABEL_PAIRS = Object.freeze({
   documentLabel: ['ใบเสนอราคา', 'Quotation'],
   headOffice: ['สำนักงานใหญ่', 'Head Office'],
   branch: ['สาขาที่', 'Branch'],
+  // ป้ายหัวแถวในบล็อกลูกค้า — คนละตัวกับ `branch` ที่เป็น **คำนำหน้าเลข** ("สาขาที่ 00001")
+  branchRow: ['สาขา', 'Branch'],
 });
+
+/* เลขสาขาบนเอกสาร = กติกาเดียวกับ branchLabel ฝั่งจอ แต่ตามภาษาของใบ
+   ⚠️ ห้ามต่อสตริงเอง: '00000' คือ **ค่าที่พบบ่อยที่สุด** (คอลัมน์ not null เพราะอยู่ใน
+   unique (taxId, branchCode)) ⇒ ต่อดิบ ๆ แล้วใบเกือบทุกใบขึ้น "สาขาที่ 00000"
+   ส่วนลูกค้าที่กรอกช่องสาขาเป็น *ชื่อ* ('แจ้งวัฒนะ') ต้องพิมพ์ชื่อนั้นตามเดิม
+   ไม่เติมคำนำหน้าเลขให้กลายเป็น "สาขาที่ แจ้งวัฒนะ" */
+export function quotationBranchText(branchCode, L) {
+  const code = normalizeBranchCode(branchCode);
+  if (isHeadOfficeBranch(code)) return L.t('headOffice');
+  return isBranchCodeValid(code) ? `${L.t('branch')} ${code}` : code;
+}
 
 /* ตัวอ่านป้ายของภาษาที่ใบนี้เลือก
    - `t(key)` = ป้ายเดี่ยวในภาษานั้น
@@ -382,7 +396,9 @@ function balancedSplit(lines, leftCapacity, rightCapacity, rightReserve) {
 const V4_PAGE_UNITS = 44; // 858.2px / 19.36
 const V4_ROW_BASE = 2; // padding+เส้นตารางต่อแถว 34.4px
 const V4_THEAD = 2; // 34.3px
-const V4_PARTY = 9; // 167.4px
+// 2026-08-27: +1 หน่วยเมื่อคืนแถว "สาขา" เข้าบล็อกลูกค้า — วัดจริงด้วย Chrome ที่
+// line-height 1.65: .partyGrid 209.2px → 227.7px (+18.5px = 0.96 หน่วย ⇒ ปัดขึ้น 1)
+const V4_PARTY = 10; // 186.8px
 const V4_BANNER = 1; // ป้าย "รายการต่อ" 19px
 // มูลค่ารวมมีสองทรง — ใบที่มีส่วนลดรายบรรทัดมีแถวส่วนลดเพิ่ม สูงกว่ากันเกือบ 60px
 // 🐞 เดิมจองค่าเดียว (6 หน่วย) ทั้งที่ทรงใหญ่กิน 8 ⇒ ใบที่ให้ส่วนลดรายบรรทัดเสี่ยงโดนตัด
@@ -987,7 +1003,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     address: quote.billingAddress || '-',
     shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
     taxId: quote.customerTaxId || '-',
-    branch: quote.branchCode ? `${L.t('branch')} ${quote.branchCode}` : L.t('headOffice'),
+    branch: quotationBranchText(quote.branchCode, L),
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',
   };

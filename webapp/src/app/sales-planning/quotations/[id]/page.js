@@ -793,7 +793,12 @@ export default function QuotationEditorPage() {
                     unique (taxId, branchCode) บังคับ not null แล้วตกไป '00000' ⇒ เขียน
                     `สาขา ${...}` ตรง ๆ จะได้ "สาขา 00000" บนใบเกือบทุกใบ ขณะที่หน้าทะเบียน
                     ลูกค้าเรียก branchLabel แล้วขึ้น "สำนักงานใหญ่" = ข้อมูลตัวเดียวกันสองคำ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}{quote.branchCode ? ` · ${branchLabel(quote.branchCode)}` : ""}</span></div>
+                {/* ระหว่างแก้ร่าง สาขาต้องเดินตามช่อง "ที่อยู่ออกบิล" ที่กำลังเลือกอยู่
+                    (กติกาเดียวกับข้อความที่อยู่ใต้ช่องนั้น) ไม่ใช่ค้างที่ค่าที่บันทึกไว้
+                    — ไม่งั้นสลับไปสาขาแล้วบรรทัดนี้ยังบอก "สำนักงานใหญ่" จนกว่าจะกดบันทึก
+                    ⚠️ ใบที่แก้ไม่ได้แล้วต้องโชว์ **ค่าที่ตรึงไว้** เสมอ (หลักฐานการค้า)
+                    ห้ามคำนวณสดจากทะเบียนลูกค้าที่อาจถูกแก้ไปแล้วหลังออกใบ */}
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}{` · ${branchLabel(editable && billingOptions.length ? pickedAddresses.snapshot.branchCode : quote.branchCode)}`}</span></div>
                 <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))}</span></div>
                 {editable && billingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่ออกบิล
