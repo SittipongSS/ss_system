@@ -31,7 +31,7 @@ test('แถวใหม่ได้ id เสมอ และแถวที่
   assert.match(rows[0].id, /^ADR-/);
   assert.deepEqual(
     { ...rows[0], id: undefined },
-    { id: undefined, label: 'คลังบางนา', address: '99/1 บางนา', useFor: 'shipping' },
+    { id: undefined, label: 'คลังบางนา', address: '99/1 บางนา', useFor: 'shipping', branchCode: '00000' },
   );
 });
 
@@ -209,11 +209,13 @@ test('กรุงเทพฯ ใช้ แขวง/เขต และไม�
   assert.equal(row.address, '1 อาคารสีลม แขวงสีลม เขตบางรัก กรุงเทพมหานคร 10500');
 });
 
-test('แถวยุคเก่าที่ยังไม่มีฟิลด์ย่อย: ข้อความเดิมอยู่ครบ และรูปแถวไม่งอกคีย์ใหม่', () => {
+test('แถวยุคเก่าที่ยังไม่มีฟิลด์ย่อย: ข้อความเดิมอยู่ครบ และไม่งอกคีย์ใหม่เกินจำเป็น', () => {
   const [row] = normalizeAddresses([{ id: 'ADR-old', address: '1 สีลม กรุงเทพฯ 10500', useFor: 'both' }]);
-  // คีย์ต้องเท่าเดิมเป๊ะ ไม่งั้น changedFieldsAgainst จะเห็นเป็น "แก้ไข" แล้วลูกค้า
-  // ทุกรายตกไปรออนุมัติใหม่พร้อมกันเพียงเพราะเปิดฟอร์มแล้วกดบันทึก
-  assert.deepEqual(Object.keys(row).sort(), ['address', 'id', 'label', 'useFor']);
+  /* คีย์ต้องนิ่ง ไม่งั้น changedFieldsAgainst เห็นเป็น "แก้ไข"
+     ⭐ `branchCode` เป็นข้อยกเว้นเดียวที่เขียนเสมอ (มติผู้ใช้ 2026-08-27 — ทุกที่อยู่ต้องมี
+     เลขสาขา ไม่กรอก = 00000) · ปลอดภัยเพราะ `addresses` อยู่ใน CUSTOMER_ADDRESS_EXEMPT_FIELDS
+     จึงไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่ ⚠️ ฟิลด์อื่นห้ามทำตาม */
+  assert.deepEqual(Object.keys(row).sort(), ['address', 'branchCode', 'id', 'label', 'useFor']);
   assert.equal(row.address, '1 สีลม กรุงเทพฯ 10500');
 });
 
@@ -252,4 +254,69 @@ test('ที่อยู่ที่ส่งมาเป็นสตริง�
   const [row] = normalizeAddresses(['1 สีลม กรุงเทพฯ 10500']);
   assert.equal(row.address, '1 สีลม กรุงเทพฯ 10500');
   assert.equal(row.useFor, 'both');
+});
+
+/* ── เลขสาขาต้องมีเสมอ ไม่กรอก = 00000 (มติผู้ใช้ 2026-08-27) ──────────────
+   ที่มา: 95 จาก 214 แถวที่อยู่ในทะเบียนไม่มีคีย์ `branchCode` เลย ⇒ ค่าต้องเดินทาง
+   ผ่าน pickDocumentAddresses → customers.branchCode → เอกสาร ซึ่งเป็นสายยาวที่ขาด
+   ตรงไหนก็เงียบ · เขียนลงแถวไปเลยจบกว่า
+   ⚠️ ปลอดภัยเพราะ `addresses` อยู่ใน CUSTOMER_ADDRESS_EXEMPT_FIELDS — รูปแถวที่ขยับ
+   ไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่ */
+test('ไม่กรอกเลขสาขา → เขียน 00000 ลงแถวเสมอ ไม่ปล่อยคีย์ว่าง', () => {
+  const [row] = normalizeAddresses([{ address: '1 ถนนทดสอบ', useFor: 'both' }]);
+  assert.equal(row.branchCode, '00000');
+  assert.ok('branchCode' in row, 'ต้องมีคีย์จริง ไม่ใช่ undefined');
+});
+
+test('กรอกเลขไหนได้เลขนั้น · เติมศูนย์ให้ครบ 5 หลัก', () => {
+  const rows = normalizeAddresses([
+    { address: 'ก', branchCode: '00001' },
+    { address: 'ข', branchCode: '1' },
+    { address: 'ค', branchCode: 'สาขาที่ 7' },
+  ]);
+  assert.deepEqual(rows.map((r) => r.branchCode), ['00001', '00001', '00007']);
+});
+
+test('ข้อความที่แปลว่าสำนักงานใหญ่เก็บเป็น 00000 · ชื่อสาขาจริงเก็บตามที่พิมพ์', () => {
+  const rows = normalizeAddresses([
+    { address: 'ก', branchCode: 'สำนักงานใหญ่' },
+    { address: 'ข', branchCode: 'สนญ.' },
+    // เคสจริงในฐาน: ลูกค้ากรอกเป็น *ชื่อ* สาขา — ห้ามกลืนเป็นสำนักงานใหญ่
+    { address: 'ค', branchCode: 'แจ้งวัฒนะ' },
+  ]);
+  assert.deepEqual(rows.map((r) => r.branchCode), ['00000', '00000', 'แจ้งวัฒนะ']);
+});
+
+test('เอกสารได้เลขสาขาเสมอ ไม่มีทางเป็น null', () => {
+  const bare = { addresses: [{ id: 'ADR-1', address: '1 ถนนทดสอบ', useFor: 'both' }] };
+  assert.equal(pickDocumentAddresses(bare, {}).snapshot.branchCode, '00000');
+  // ลูกค้าที่ยังไม่ backfill (อ่านจากช่องเดี่ยวเดิม) ก็ต้องได้ค่า
+  assert.equal(pickDocumentAddresses({ address: '1 ถนนทดสอบ' }, {}).snapshot.branchCode, '00000');
+  // เลือกที่อยู่สาขา → ได้เลขของสาขานั้น ไม่ใช่ของสำนักงานใหญ่
+  const two = {
+    branchCode: '00000',
+    addresses: [
+      { id: 'ADR-hq', address: 'สำนักงานใหญ่', useFor: 'both' },
+      { id: 'ADR-br', address: 'สาขา', useFor: 'both', branchCode: '00001' },
+    ],
+  };
+  assert.equal(pickDocumentAddresses(two, {}).snapshot.branchCode, '00000');
+  assert.equal(pickDocumentAddresses(two, { billingAddressId: 'ADR-br' }).snapshot.branchCode, '00001');
+});
+
+test('แถวยุคเก่าที่ยังไม่ backfill: กระจกระดับลูกค้าที่ถือสาขาจริง ต้องไม่ถูกกลืนเป็น 00000', () => {
+  /* ตั้งแต่ normalizeAddresses เขียน '00000' ให้ทุกแถว แถว "ยังไม่เคยกรอก" กับแถว
+     "ตั้งใจเป็นสำนักงานใหญ่" หน้าตาเหมือนกัน ⇒ ถ้าไม่เผื่อกรณีนี้ ลูกค้าที่ตั้งสาขาไว้
+     ก่อนย้ายเลขมาอยู่กับที่อยู่ จะโดนรีเซ็ตเป็นสำนักงานใหญ่เงียบ ๆ บนใบกำกับภาษี */
+  const legacy = { branchCode: '00007', addresses: [{ id: 'ADR-1', address: '1 ถนนทดสอบ', useFor: 'both' }] };
+  assert.equal(pickDocumentAddresses(legacy, {}).snapshot.branchCode, '00007');
+  // แต่ถ้าที่อยู่ระบุสาขาไว้เอง ต้องชนะกระจกเสมอ (ออกบิลให้สาขาไหนได้เลขสาขานั้น)
+  const explicit = {
+    branchCode: '00007',
+    addresses: [{ id: 'ADR-1', address: '1 ถนนทดสอบ', useFor: 'both', branchCode: '00002' }],
+  };
+  assert.equal(pickDocumentAddresses(explicit, {}).snapshot.branchCode, '00002');
+  // กระจกเป็นสำนักงานใหญ่ = ไม่มีอะไรให้กู้ ⇒ ใช้ของที่อยู่ตามปกติ
+  const hq = { branchCode: '00000', addresses: [{ id: 'ADR-1', address: '1 ถนนทดสอบ', useFor: 'both' }] };
+  assert.equal(pickDocumentAddresses(hq, {}).snapshot.branchCode, '00000');
 });

@@ -7,7 +7,8 @@
 // รูปเก็บ: customers.addresses = [{ id, label, branchCode, line1, subdistrict,
 //   subdistrictCode, district, districtCode, province, provinceCode, postcode,
 //   mapUrl, contactName, contactPhone, address, addressOverride, useFor }]
-//   (คีย์ที่ยังว่างจะไม่ถูกเขียนลง jsonb เลย — ดู OPTIONAL_ROW_FIELDS)
+//   (คีย์ที่ยังว่างจะไม่ถูกเขียนลง jsonb เลย — ดู OPTIONAL_ROW_FIELDS ·
+//    ยกเว้น branchCode ที่เขียนเสมอ ไม่กรอก = '00000')
 //
 //   useFor = 'both' | 'billing' | 'shipping' — เก็บเป็นค่าเดียว 3 ทาง (ไม่ใช่ธงสอง
 //   ตัวอิสระ) เพราะธงสองตัวมีสถานะ "ไม่ใช้ทำอะไรเลย" ที่บันทึกได้แต่ไม่มีความหมาย ·
@@ -36,7 +37,7 @@
 import { genId } from '@/lib/id';
 import {
   ADDRESS_PART_FIELDS, ADDRESS_PART_FIELDS_EN, composeEnglishAddress, composeThaiAddress,
-  hasEnglishParts, hasStructuredParts, HEAD_OFFICE_BRANCH,
+  hasEnglishParts, hasStructuredParts, HEAD_OFFICE_BRANCH, isHeadOfficeBranch,
   normalizeBranchCode, normalizePostcode,
 } from '@/lib/master/thaiAddress';
 
@@ -156,8 +157,14 @@ export function addressTextIn(row, language = 'th') {
 // ฟิลด์ที่ "ว่าง = ไม่ต้องเก็บ" — ไม่เขียนคีย์เปล่าลง jsonb เพื่อให้แถวยุคเก่าที่ยัง
 // ไม่กรอกอะไรเพิ่ม มีรูปร่างเท่าเดิมเป๊ะ (diff ของ changedFieldsAgainst จึงไม่ขยับ
 // = เปิดฟอร์มแล้วกดบันทึกเฉย ๆ ไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่)
+// ⭐ `branchCode` **ไม่อยู่ในลิสต์นี้แล้ว** (มติผู้ใช้ 2026-08-27) — ทุกแถวที่อยู่ต้องมี
+// เลขสาขาเสมอ ไม่กรอก = '00000' (สำนักงานใหญ่) · ที่ต้องเขียนลงไปจริง ๆ ไม่ใช่ปล่อยว่าง
+// แล้วให้ปลายทางเดา: ค่าที่ "ไม่มี" ต้องเดินทางผ่าน pickDocumentAddresses →
+// customers.branchCode → เอกสาร ซึ่งเป็นสายยาวที่ขาดตรงไหนก็เงียบ
+// ⚠️ ปลอดภัยเพราะ `addresses` อยู่ใน CUSTOMER_ADDRESS_EXEMPT_FIELDS — รูปแถวที่ขยับ
+// จึงไม่ทำให้ลูกค้าตกไปรออนุมัติใหม่ (ต่างจากฟิลด์อื่นในลิสต์ข้างล่าง)
 const OPTIONAL_ROW_FIELDS = [
-  'branchCode', ...ADDRESS_PART_FIELDS, ...ADDRESS_PART_FIELDS_EN,
+  ...ADDRESS_PART_FIELDS, ...ADDRESS_PART_FIELDS_EN,
   'mapUrl', 'contactName', 'contactPhone',
 ];
 
@@ -181,8 +188,12 @@ export function normalizeAddresses(arr) {
     };
     // ว่าง = ไม่เขียนคีย์ ⇒ แถวที่ยังไม่มีอังกฤษมีรูปร่างเท่าเดิมเป๊ะ (ดู OPTIONAL_ROW_FIELDS)
     if (addressEn) next.addressEn = addressEn;
+    // เลขสาขาเขียนเสมอ — ข้อความที่แปลว่าสำนักงานใหญ่ ('สำนักงานใหญ่' · 'สนญ.') เก็บเป็น
+    // '00000' ให้เป็นรูปเดียวกันทั้งระบบ · ชื่อสาขาจริง ('แจ้งวัฒนะ') ยังเก็บตามที่พิมพ์
+    next.branchCode = isHeadOfficeBranch(row.branchCode)
+      ? HEAD_OFFICE_BRANCH
+      : normalizeBranchCode(row.branchCode);
     const values = {
-      branchCode: normalizeBranchCode(row.branchCode),
       line1: row.line1.trim(),
       subdistrict: row.subdistrict.trim(),
       line1En: row.line1En.trim(),
@@ -298,6 +309,21 @@ export function legacyAddressMirror(list, { fallbackBranchCode } = {}) {
 //   id      = "เลือกที่อยู่ไหน" ซึ่งใบฉบับ Rev. ต้องรู้เพื่อดึงข้อความ **ของที่อยู่
 //             ตัวเดิม** มาสดใหม่ ไม่ใช่เด้งกลับไปที่อยู่หลักของลูกค้า
 // id ที่ชี้ไปที่อยู่ที่ถูกลบ/เปลี่ยนหน้าที่ไปแล้ว → ถอยไปใช้ที่อยู่หลัก ไม่ใช่ค้างว่าง
+/* เลขสาขาที่จะตรึงลงเอกสาร
+   ปกติ = ของที่อยู่ออกบิลที่ใบนี้เลือก · **ไม่มีทางคืนค่าว่าง** ไม่ระบุ = สำนักงานใหญ่
+   ⚠️ ตั้งแต่ normalizeAddresses เขียน '00000' ให้ทุกแถว (2026-08-27) แถวที่ยังไม่เคย
+   กรอกสาขากับแถวที่ตั้งใจเป็นสำนักงานใหญ่จึงหน้าตาเหมือนกัน ⇒ ต้องเผื่อกรณี
+   "แถวยุคเก่ายังไม่ backfill แต่ `customers.branchCode` (กระจก) ถือสาขาจริงอยู่"
+   ไม่งั้นลูกค้าที่ตั้งสาขาไว้ก่อนย้ายเลขมาอยู่กับที่อยู่ จะโดนรีเซ็ตเป็นสำนักงานใหญ่เงียบ ๆ */
+function documentBranchCode(billing, customer) {
+  const fromAddress = normalizeBranchCode(billing?.branchCode);
+  const fromCustomer = normalizeBranchCode(customer?.branchCode);
+  if (isHeadOfficeBranch(fromAddress) && fromCustomer && !isHeadOfficeBranch(fromCustomer)) {
+    return fromCustomer;
+  }
+  return fromAddress || HEAD_OFFICE_BRANCH;
+}
+
 export function pickDocumentAddresses(customer, { billingAddressId, shippingAddressId } = {}) {
   const list = customerAddresses(customer);
   const pick = (id, usable) => (id ? list.find((a) => a.id === id && usable(a)) : null) || null;
@@ -316,7 +342,9 @@ export function pickDocumentAddresses(customer, { billingAddressId, shippingAddr
       // สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติ 2026-08-06) — ออกบิลให้สาขา
       // ต้องได้เลขสาขานั้นบนใบกำกับภาษี ไม่ใช่เลขของสำนักงานใหญ่ตลอดกาล
       // ที่อยู่ที่ยังไม่ระบุสาขา → ถอยไปใช้เลขระดับลูกค้า (แถวยุคเก่าก่อน backfill)
-      branchCode: normalizeBranchCode(billing?.branchCode) || customer?.branchCode || null,
+      // ⭐ ไม่เคยเป็น null — ไม่ระบุ = สำนักงานใหญ่ (มติผู้ใช้ 2026-08-27) · ก่อนหน้านี้
+      // ปล่อย null ได้ แล้วเอกสารต้องไปเดาต่อเองว่าค่าว่างแปลว่าอะไร
+      branchCode: documentBranchCode(billing, customer),
       billingAddressId: billing?.id || null,
       shippingAddressId: shipping?.id || null,
     },

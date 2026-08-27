@@ -87,7 +87,10 @@ test('ที่อยู่: แถวที่มีแต่ภาษาอั
 
 test('ที่อยู่: แถวที่ยังไม่มีอังกฤษมีรูปร่างเท่าเดิมเป๊ะ (ไม่มีคีย์ addressEn งอก)', () => {
   const [row] = normalizeAddresses([{ id: 'ADR-1', label: 'สำนักงานใหญ่', address: '1 สีลม', useFor: 'both' }]);
-  assert.deepEqual(Object.keys(row).sort(), ['address', 'id', 'label', 'useFor']);
+  // `branchCode` เขียนเสมอตั้งแต่ 2026-08-27 (ไม่กรอก = 00000) — ข้อยกเว้นเดียว
+  // ที่ตั้งใจให้รูปแถวขยับ ดูเหตุผลที่ OPTIONAL_ROW_FIELDS ใน addresses.js
+  assert.deepEqual(Object.keys(row).sort(), ['address', 'branchCode', 'id', 'label', 'useFor']);
+  assert.equal(row.addressEn, undefined, 'ยังต้องไม่งอกคีย์ addressEn');
 });
 
 test('ที่อยู่: ภาษาหลักก่อน ไม่มีค่อยตกไปอีกภาษา', () => {
