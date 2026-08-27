@@ -161,7 +161,8 @@ test('capture ใช้หลักฐานการยื่นที่ตร
     user: { id: 'U1' },
   });
   assert.match(sink.args.p_artifact_html, /ผู้ยื่นจริง/);
-  assert.match(sink.args.p_artifact_html, /Evidence DSE-SUBMIT/);
+  // เลข evidence ไม่ขึ้นกระดาษแล้ว (2026-08-27) — ตัวหลักฐานยังเก็บในตาราง evidence ครบ
+  assert.doesNotMatch(sink.args.p_artifact_html, /Evidence DSE-SUBMIT/);
   assert.match(sink.args.p_artifact_html, /26\/07\/2026/);
 });
 
