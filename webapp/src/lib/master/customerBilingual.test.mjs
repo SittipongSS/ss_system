@@ -7,6 +7,7 @@
 //      พิมพ์แค่ท่อนแรก
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   addressText,
@@ -16,7 +17,7 @@ import {
   normalizeAddresses,
   pickDocumentAddresses,
 } from './addresses.js';
-import { customerNameError, customerNameIn, hasCustomerName } from './customerName.js';
+import { customerNameBranchWarning, customerNameError, customerNameIn, hasCustomerName } from './customerName.js';
 import { composeEnglishAddress } from './thaiAddress.js';
 
 // ที่อยู่ที่เลือกจากทะเบียนครบทุกชั้น — ชื่ออังกฤษติดมากับตัวเลือกตอนผู้ใช้เลือก
@@ -115,4 +116,44 @@ test('snapshot ของเอกสารไม่มีคีย์ใหม�
     Object.keys(pickDocumentAddresses(null, {}).snapshot).sort(),
     ['billingAddress', 'billingAddressId', 'branchCode', 'shippingAddress', 'shippingAddressId'],
   );
+});
+
+/* ── คำเตือน "สำนักงานใหญ่/สาขา" ในชื่อกิจการ ──────────────────────────────
+   ที่มา 2026-08-27: พอคืนแถว "สาขา" กลับมาบนใบเสนอราคา ใบของลูกค้าที่พิมพ์คำนี้ติดไว้
+   ในชื่อกลายเป็นขัดกันเองบนกระดาษแผ่นเดียว (ชื่อบอกสำนักงานใหญ่ · ช่องสาขาบอกสาขา 1)
+   ของจริงในทะเบียนตอนพบ: 15 ราย จาก 191 */
+test('ชื่อที่มีคำว่า สำนักงานใหญ่/สาขา ต้องถูกเตือน — แต่ไม่บล็อกการบันทึก', () => {
+  const cases = [
+    'บริษัท ซารางแฮร์ ดูล จำกัด (สำนักงานใหญ่)',
+    'บริษัท กี๊ก แกลเลอรี่ จำกัด สำนักงานใหญ่',
+    'บริษัท แบงค็อก เวนิว จำกัด สาขา 00001',
+    'บริษัท เอนริช โกลด์ จำกัด ( สำนักงานใหญ่ )',
+  ];
+  for (const name of cases) {
+    assert.ok(customerNameBranchWarning({ name }), `ต้องเตือน: ${name}`);
+    // ⚠️ เตือนอย่างเดียว — แถวเดิมต้องยังบันทึกได้โดยไม่ต้องแก้ชื่อก่อน
+    assert.equal(customerNameError({ name }), null, `ห้ามบล็อก: ${name}`);
+  }
+});
+
+test('ชื่อปกติไม่ถูกเตือน', () => {
+  for (const c of [{ name: 'บริษัท หอมมหาศาล จำกัด' }, { name: 'บริษัท ซารางแฮร์ ดูล จำกัด' },
+    { name: 'บริษัท ปกติ จำกัด', nameEn: 'Normal Co., Ltd.' }, { nameEn: 'ABC International Co., Ltd.' }]) {
+    assert.equal(customerNameBranchWarning(c), null, JSON.stringify(c));
+  }
+});
+
+test('ช่องอังกฤษก็ตรวจด้วย และบอกได้ว่าโดนช่องไหน', () => {
+  assert.match(customerNameBranchWarning({ nameEn: 'ABC Co., Ltd. (Head Office)' }), /ชื่อภาษาอังกฤษ/);
+  assert.match(customerNameBranchWarning({ name: 'บริษัท ก (สำนักงานใหญ่)' }), /ชื่อภาษาไทย/);
+  const both = customerNameBranchWarning({ name: 'บริษัท ก (สำนักงานใหญ่)', nameEn: 'K Co. Branch 1' });
+  assert.match(both, /ชื่อภาษาไทย และ ชื่อภาษาอังกฤษ/);
+  // 'Branding' ไม่ใช่ 'Branch' — ขอบคำต้องคุมไว้
+  assert.equal(customerNameBranchWarning({ nameEn: 'Branding House Co., Ltd.' }), null);
+});
+
+test('หน้าฟอร์มลูกค้าต้องวาดคำเตือนจริง ไม่ใช่มีแต่ตัว helper', () => {
+  const src = readFileSync(new URL('../../components/database/CustomerForm.js', import.meta.url), 'utf8');
+  assert.match(src, /customerNameBranchWarning\(form\)/);
+  assert.match(src, /\{nameBranchWarning &&/);
 });
