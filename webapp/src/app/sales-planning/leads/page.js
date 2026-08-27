@@ -9,7 +9,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Download, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -37,6 +37,7 @@ import {
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
 } from "@/lib/sales/leads";
+import { canExportLeadReport } from "@/lib/sales/leadReport";
 import { MonthPicker, SCOPE_LABELS, thisMonth, yearOfMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import { addDays, businessDayKey } from "@/lib/datePeriods";
@@ -100,6 +101,9 @@ export default function LeadsPage() {
   // อยู่หลายทีม → เลือกได้ว่าขอบเขต "ทีม" จะรวมทีมไหนบ้าง
   const myTeams = useMyTeamsFilter();
   const canCreate = canCreateLead(role);
+  /* ไฟล์รายงานมีชื่อ/เบอร์/อีเมลลูกค้าเป็นแถว ๆ — ด่านแคบกว่า "เห็นคิวลีด" มาก
+     กติกาอยู่ที่ `canExportLeadReport` ที่เดียวร่วมกับ route ไม่สะกดเงื่อนไขซ้ำที่นี่ */
+  const canExportReport = canExportLeadReport(role);
   const [meId, setMeId] = useState(null);
 
   useEffect(() => {
@@ -519,6 +523,30 @@ export default function LeadsPage() {
             />
           ) : (
             <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+          )}
+          {/* ⭐ ดาวน์โหลดรายงาน (มติผู้ใช้ 2026-08-27) — วางไว้ที่นี่ ไม่ใช่แท็บ KPI
+              เพราะไฟล์เป็น **แถวลีดดิบ** ⇒ สิ่งที่โหลดได้ต้องตรงกับสิ่งที่เห็นบนจอนี้
+              (แท็บ KPI เป็นตัวเลขสรุป คนละของ) · ปุ่มโผล่เฉพาะ Marketing/Admin
+              ⚠️ ส่งช่วงวันเฉพาะตอนอยู่โหมด "ช่วงวัน" — โหมดรายเดือนยังไม่รองรับ
+              ที่ปลายทาง จึงไม่ส่งอะไรไปแทนที่จะส่งค่าที่แปลผิด (ดู route) */}
+          {canExportReport && (
+            /* ⚠️ ใช้ `Button as={Link}` ไม่ใช่ `<a className="btn">` — คลาสปุ่มดิบ
+               ถูก ratchet ของ audit:ui นับไว้ และเพดานของหน้านี้ขึ้นไม่ได้
+               `prefetch={false}` เพราะปลายทางเป็นไฟล์ ไม่ใช่หน้า */
+            <Button
+              as={Link}
+              prefetch={false}
+              variant="quiet"
+              icon={<Download size={15} />}
+              href={periodMode === "range"
+                ? `/api/sales-planning/leads/report?from=${range.from}&to=${range.to}`
+                : "/api/sales-planning/leads/report"}
+              title={periodMode === "range"
+                ? `ดาวน์โหลดลีดช่วง ${range.from} ถึง ${range.to}`
+                : "ดาวน์โหลดลีดทั้งหมด — เลือก “ช่วงวัน” ถ้าต้องการเฉพาะบางช่วง"}
+            >
+              ดาวน์โหลด Excel
+            </Button>
           )}
           {canCreate && (
             <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setPendingFiles([]); setFormOpen(true); }}>
