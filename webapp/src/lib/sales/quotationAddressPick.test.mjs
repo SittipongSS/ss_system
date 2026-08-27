@@ -9,6 +9,9 @@ import { readFileSync } from 'node:fs';
    ⚠️ ด่านอยู่ฝั่งจอเท่านั้นโดยตั้งใจ — ฝั่ง server ยังถอยไปที่อยู่หลักเมื่อไม่ส่ง id มา
    เพราะสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร → ออก QT) ต้องออกใบได้ต่อ */
 const src = readFileSync(new URL('../../app/sales-planning/quotations/new/page.js', import.meta.url), 'utf8');
+/* ⭐ 2026-08-27: บล็อก "ข้อมูลลูกค้าในเอกสาร" ถูกยกออกมาเป็น component เดียวให้สองหน้า
+   ใช้ร่วมกันตามกฎใน AGENTS.md — JSX ของช่องต่าง ๆ จึงย้ายมาอยู่ที่นี่ */
+const fieldsSrc = readFileSync(new URL('../../components/salesPlanning/QuotationCustomerFields.js', import.meta.url), 'utf8');
 
 test('โหลดลูกค้าแล้วทุกช่องกลับไป "ยังไม่เลือก" — ไม่ยกเว้นแม้มีตัวเลือกเดียว', () => {
   assert.match(src, /setContactIndex\(""\);\s*\n\s*setBillingAddressId\(""\);\s*\n\s*setShippingAddressId\(""\);/);
@@ -19,10 +22,11 @@ test('โหลดลูกค้าแล้วทุกช่องกลั�
   assert.doesNotMatch(src, /const \[contactIndex, setContactIndex\] = useState\(0\)/);
 });
 
-test('ทั้งสามช่องมีตัวเลือกว่างให้เห็นว่ายังไม่ได้เลือก', () => {
-  for (const label of ['เลือกที่อยู่ออกบิล', 'เลือกที่อยู่จัดส่ง', 'เลือกผู้ติดต่อ']) {
-    assert.match(src, new RegExp(`<option value="">— ${label} —</option>`), label);
-  }
+test('หน้าสร้าง: ทั้งสามช่องมีตัวเลือกว่างให้เห็นว่ายังไม่ได้เลือก', () => {
+  // โหมด create เท่านั้นที่ตัวเลือกว่างแปลว่า "ยังไม่เลือก" — โหมด edit แปลว่า "คงเดิม"
+  assert.match(fieldsSrc, /`— เลือก\$\{what\} —`/);
+  assert.match(fieldsSrc, /"— เลือกผู้ติดต่อ —"/);
+  assert.match(fieldsSrc, /const blankOption = \(what, current\) => \(isEdit \? keepLabel\(current\) : /);
 });
 
 test('กดสร้างโดยยังไม่เลือกครบ = ถูกบล็อกพร้อมบอกว่าขาดช่องไหน', () => {
@@ -39,7 +43,7 @@ test('กดสร้างโดยยังไม่เลือกครบ =
 test('ช่องสาขาไม่โชว์ค่าของที่อยู่ที่ยังไม่ได้เลือก', () => {
   // pickDocumentAddresses ถอยไปที่อยู่หลักเสมอ ⇒ ถ้าไม่กั้น ช่องสาขาจะโชว์เลขของ
   // ที่อยู่ที่คนทำใบยังไม่ได้เลือก ซึ่งคือการเดาให้แบบเดิมในรูปอื่น
-  assert.match(src, /billingAddressId \? branchValue\(pickedAddresses\.snapshot\.branchCode\) : naText\(""\)/);
+  assert.match(fieldsSrc, /\(billingAddressId \|\| isEdit\) \? branchValue\(picked\?\.snapshot\?\.branchCode\) : ""/);
 });
 
 test('ยังไม่เลือกผู้ติดต่อ = ไม่ส่ง contactIndex ไป server', () => {
@@ -53,17 +57,40 @@ test('ยังไม่เลือกผู้ติดต่อ = ไม่�
 const detailSrc = readFileSync(new URL('../../app/sales-planning/quotations/[id]/page.js', import.meta.url), 'utf8');
 const routeSrc = readFileSync(new URL('../../app/api/sales-planning/quotations/[id]/route.js', import.meta.url), 'utf8');
 
-test('หน้ารายละเอียด: ร่างที่แก้ได้มีช่องเลือกผู้ติดต่อ', () => {
-  assert.match(detailSrc, /editable && contactOptions\.length \?/);
-  assert.match(detailSrc, /aria-label="เลือกผู้ติดต่อ"/);
-  // ใบที่แก้ไม่ได้แล้วยังโชว์ค่าที่ตรึงไว้แบบอ่านอย่างเดียว
-  assert.match(detailSrc, /<small>ผู้ติดต่อ<\/small>\{naText\(\[quote\.contactName, quote\.contactPhone\]/);
+test('ร่างที่แก้ได้มีช่องเลือกผู้ติดต่อ · ใบที่ปิดแล้วเป็นอ่านอย่างเดียว', () => {
+  assert.match(fieldsSrc, /aria-label="เลือกผู้ติดต่อ"/);
+  assert.match(fieldsSrc, /if \(isEdit && !editable\) \{/);
+});
+
+/* ── กฎ AGENTS.md: ฟอร์มสร้างกับฟอร์มแก้ต้องเป็น component เดียวกัน ────────
+   บล็อกนี้เคยเป็น JSX คนละชุด แล้วเพี้ยนกันจริงภายในวันเดียว (ตัวเลือกว่าง · ด่าน
+   บังคับเลือก · branchValue vs branchLabel · แม้แต่ชื่อคลาส CSS) */
+test('ทั้งสองหน้าเรียก component ตัวเดียวกัน ไม่มีใครวาดกริดเอง', () => {
+  for (const [name, page] of [['หน้าสร้าง', src], ['หน้าแก้', detailSrc]]) {
+    assert.match(page, /<QuotationCustomerFields/, `${name} ต้องเรียก component กลาง`);
+    assert.doesNotMatch(page, /styles\.customerGrid/, `${name} ห้ามวาดกริดเอง`);
+    assert.doesNotMatch(page, /aria-label="เลือกที่อยู่ออกบิล"/, `${name} ห้ามวาดช่องเอง`);
+  }
+  assert.match(src, /mode="create"/);
+  assert.match(detailSrc, /mode="edit"/);
+});
+
+test('โหมดอ่านอย่างเดียวต้องวาดจากค่าที่ตรึงไว้ ห้ามอ่านทะเบียนสด', () => {
+  const readOnly = fieldsSrc.slice(fieldsSrc.indexOf('if (isEdit && !editable)'), fieldsSrc.indexOf('const keepLabel'));
+  assert.ok(readOnly.length > 100, 'หาบล็อกอ่านอย่างเดียวไม่เจอ');
+  // ใบที่ปิดแล้วคือหลักฐานการค้า — ทะเบียนอาจถูกแก้ไปหลังออกใบ
+  for (const live of ['customerAddresses', 'billingOptions', 'shippingOptions', 'contacts', 'picked']) {
+    assert.ok(!readOnly.includes(live), `โหมดอ่านอย่างเดียวห้ามแตะ ${live}`);
+  }
+  assert.match(readOnly, /snapshot\?\.billingAddress/);
+  assert.match(readOnly, /branchValue\(snapshot\?\.branchCode\)/);
 });
 
 test('ยังไม่แตะช่องผู้ติดต่อ = ไม่ส่ง contactIndex ⇒ ค่าบนใบไม่ขยับ', () => {
   assert.match(detailSrc, /\.\.\.\(form\.contactIndex === "" \? \{\} : \{ contactIndex: form\.contactIndex \}\)/);
-  // ตัวเลือกแรกคือ "คงเดิม" ไม่ใช่เด้งไปผู้ติดต่อคนแรกของทะเบียน
-  assert.match(detailSrc, /\(คงเดิม\)/);
+  // ตัวเลือกแรกคือ "คงเดิม" ไม่ใช่เด้งไปผู้ติดต่อคนแรกของทะเบียน — อยู่ใน component แล้ว
+  assert.match(fieldsSrc, /\(คงเดิม\)/);
+  assert.match(fieldsSrc, /const keepLabel = \(current\) =>/);
 });
 
 test('PATCH รับ contactIndex แล้วอ่านชื่อ/เบอร์สดจากทะเบียน ไม่เชื่อ client', () => {

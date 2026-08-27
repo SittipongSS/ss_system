@@ -41,20 +41,14 @@ test('เลือกที่อยู่ออกบิลคนละตั�
    ทั้งที่ข้อความที่อยู่ข้าง ๆ วาดจาก pickedAddresses แล้ว — ข้อนี้กันไม่ให้ย้อนกลับไป */
 const pageSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('หน้าสร้างใบ: ช่องสาขาอ่านจากที่อยู่ที่เลือกอยู่ ไม่ใช่ช่องระดับลูกค้า', () => {
-  const src = pageSource('../../app/sales-planning/quotations/new/page.js');
+/* ⭐ 2026-08-27: ช่องสาขาย้ายไปอยู่ใน component กลาง QuotationCustomerFields ที่หน้าสร้าง
+   กับหน้าแก้ใช้ร่วมกัน (กฎ AGENTS.md) — ข้อนี้จึงตรวจที่ component ตัวเดียว ไม่ต้องไล่สองหน้า */
+test('ช่องสาขาอ่านจากที่อยู่ที่เลือกอยู่ ไม่ใช่ช่องระดับลูกค้า', () => {
+  const src = pageSource('../../components/salesPlanning/QuotationCustomerFields.js');
   /* ป้าย "สาขา" มีอยู่แล้ว ⇒ ใช้ branchValue (เลขเปล่า) ไม่ใช่ branchLabel ที่เติม "สาขาที่"
-     ⚠️ และต้องกั้นด้วย billingAddressId — ยังไม่เลือกที่อยู่ก็ยังไม่มีสาขาให้โชว์
-     (2026-08-27: ทุกช่องในบล็อกนี้เริ่มที่ "ยังไม่เลือก") */
-  assert.match(src, /billingAddressId \? branchValue\(pickedAddresses\.snapshot\.branchCode\) : naText\(""\)/);
-  assert.doesNotMatch(src, /branchLabel\(customer\.branchCode\)/);
-});
-
-test('หน้ารายละเอียดใบ: ระหว่างแก้ร่างเดินตามที่อยู่ที่เลือก · ใบที่ปิดแล้วโชว์ค่าที่ตรึงไว้', () => {
-  const src = pageSource('../../app/sales-planning/quotations/[id]/page.js');
-  // ตรึงไว้ทั้งสองขา: มี branch ของ picked (ตอนแก้ได้) และของ quote (ตอนอ่านอย่างเดียว)
-  assert.match(
-    src,
-    /branchLabel\(editable && billingOptions\.length \? pickedAddresses\.snapshot\.branchCode : quote\.branchCode\)/,
-  );
+     ⚠️ ตอนสร้างใบต้องกั้นด้วย billingAddressId — ยังไม่เลือกที่อยู่ก็ยังไม่มีสาขาให้โชว์ */
+  assert.match(src, /\(billingAddressId \|\| isEdit\) \? branchValue\(picked\?\.snapshot\?\.branchCode\) : ""/);
+  assert.doesNotMatch(src, /branchLabel\(/);
+  // ใบที่ปิดแล้วอ่านจากค่าที่ตรึงไว้ ไม่ใช่คำนวณสดจากทะเบียน
+  assert.match(src, /branchValue\(snapshot\?\.branchCode\)/);
 });

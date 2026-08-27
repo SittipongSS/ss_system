@@ -15,6 +15,7 @@ import { DocumentControlCard, DocumentReadinessList, DocumentSummaryCard } from 
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import DealPicker from "@/components/pm/DealPicker";
 import Select from "@/components/ui/Select";
+import QuotationCustomerFields from "@/components/salesPlanning/QuotationCustomerFields";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -27,9 +28,8 @@ import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
+  customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
 } from "@/lib/master/addresses";
-import { branchValue } from "@/lib/master/thaiAddress";
 import { businessDate } from "@/lib/businessDate";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
@@ -521,47 +521,17 @@ function NewQuotationInner() {
           {dealId && customer && (
             <section className={styles.card}>
               <div className={styles.sectionHeading}><UserRound size={17} /><h2>ข้อมูลลูกค้าในเอกสาร</h2><span>Snapshot ณ วันที่สร้าง</span><div className="spacer" /><Link href={`/database/customers/${customerId}`} className="btn ghost sm" target="_blank"><ExternalLink size={13} /> แก้ที่ฐานข้อมูลลูกค้า</Link></div>
-              <div className={styles.customerGrid}>
-                {/* ที่อยู่เลือกได้ (0202) — ลูกค้ารายเดียวมีได้หลายที่/หลายสาขา ตั้งต้นเป็น
-                    ที่อยู่หลัก · ตัวข้อความโชว์ไว้ใต้ช่องเพราะป้ายชื่อบอกไม่ได้ว่าที่ไหนจริง ๆ */}
-                <label className={styles.contactField}>ที่อยู่ออกบิล
-                  {billingOptions.length
-                    ? <Select value={billingAddressId} onChange={(e) => setBillingAddressId(e.target.value)} aria-label="เลือกที่อยู่ออกบิล">
-                        <option value="">— เลือกที่อยู่ออกบิล —</option>
-                        {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
-                      </Select>
-                    : null}
-                  <span className={styles.addressPreview}>
-                    {billingOptions.length && !billingAddressId
-                      ? "ยังไม่ได้เลือก — ที่อยู่นี้จะขึ้นบนใบกำกับภาษี เลือกให้ตรงกับที่ลูกค้าจะออกบิล"
-                      : (billingAddress || "ลูกค้ารายนี้ยังไม่มีที่อยู่ — เพิ่มที่ฐานข้อมูลลูกค้า")}
-                  </span>
-                </label>
-                <label className={styles.contactField}>ที่อยู่จัดส่ง
-                  {shippingOptions.length
-                    ? <Select value={shippingAddressId} onChange={(e) => setShippingAddressId(e.target.value)} aria-label="เลือกที่อยู่จัดส่ง">
-                        <option value="">— เลือกที่อยู่จัดส่ง —</option>
-                        {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
-                      </Select>
-                    : null}
-                  <span className={styles.addressPreview}>
-                    {shippingOptions.length && !shippingAddressId
-                      ? "ยังไม่ได้เลือก — เลือกให้ตรงกับที่ลูกค้าจะรับของ"
-                      : naText(shippingAddress)}
-                  </span>
-                </label>
-                {/* สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติผู้ใช้ 2026-08-06 กลับมติ
-                    2026-08-05 — ดูเหตุผลยาวที่ lib/master/addresses.js)
-                    🐞 เดิมอ่าน `customer.branchCode` ซึ่งเป็น "กระจกของที่อยู่ออกบิล**หลัก**"
-                    ⇒ สลับช่องที่อยู่ไปสาขา ข้อความที่อยู่ใต้ช่องเปลี่ยนตาม แต่ช่องนี้ค้างที่
-                    "สำนักงานใหญ่" ตลอด ทั้งที่ server ตรึง branchCode ของสาขาลงใบไปแล้ว
-                    = จอบอกคนละเรื่องกับกระดาษที่พิมพ์ออกมา
-                    ⚠️ ผ่าน branchValue เสมอ — ค่าดิบ '00000' ต้องอ่านว่า "สำนักงานใหญ่"
-                    ให้ตรงกับตัวเอกสาร · ใช้ branchValue ไม่ใช่ branchLabel เพราะช่องนี้
-                    มีป้าย "สาขา" กำกับอยู่แล้ว เติม "สาขาที่" อีกคือพูดซ้ำสองรอบ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{billingAddressId ? branchValue(pickedAddresses.snapshot.branchCode) : naText("")}</span></div>
-                <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(e.target.value === "" ? "" : Number(e.target.value))} aria-label="เลือกผู้ติดต่อ"><option value="">— เลือกผู้ติดต่อ —</option>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
-              </div>
+              <QuotationCustomerFields
+                mode="create"
+                customer={customer}
+                value={{ billingAddressId, shippingAddressId, contactIndex }}
+                picked={pickedAddresses}
+                onChange={(patch) => {
+                  if ("billingAddressId" in patch) setBillingAddressId(patch.billingAddressId);
+                  if ("shippingAddressId" in patch) setShippingAddressId(patch.shippingAddressId);
+                  if ("contactIndex" in patch) setContactIndex(patch.contactIndex);
+                }}
+              />
             </section>
           )}
 

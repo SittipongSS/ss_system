@@ -563,7 +563,8 @@ test('model อ่านภาษาจากตัวใบ — ป้ายอ
   assert.deepEqual(model.referenceRows.map((row) => row.label), ['Project No.', 'Project', 'Project Type', 'Quoted By']);
   assert.deepEqual(model.signers.map((row) => row.label), ['Prepared By', 'Approved By', 'Confirmed By']);
   assert.equal(model.watermark, 'DRAFT');
-  assert.equal(model.customer.branch, 'Head Office');
+  // เลขสาขาเป็นเลขล้วนทั้งสองภาษาแล้ว (มติผู้ใช้ 2026-08-27)
+  assert.equal(model.customer.branch, '00000');
 
   // ใบเดียวกันแต่ไม่ระบุภาษา = ใบไทยเดิมทุกป้าย
   const thai = buildQuotationMasterModelFromQuote({ ...quote, docLanguage: undefined });
