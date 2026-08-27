@@ -186,6 +186,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       customerName: o.customerName,
       ownerId: o.ownerId,
       ownerName: person(o.ownerId)?.name || o.ownerName || null,
+      // ทีมมาจากบัญชีปัจจุบันของเจ้าของยอด — ใช้กรอง/จัดกลุ่มในตารางใบ
+      team: person(o.ownerId)?.team || null,
       month: orderMonth(o),
       approvedAt: o.approvedAt,
       lineCount: lineCount.get(o.id) || 0,
