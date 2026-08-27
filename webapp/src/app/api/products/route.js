@@ -22,22 +22,31 @@ export const dynamic = 'force-dynamic';
 /* คอลัมน์ของลิสต์ picker — ไล่จากจุดอ่านจริงทุกจอที่กิน `GET /api/products`
    (ทะเบียนสรรพสามิต · ใบยื่น · คำร้อง สร้าง/แก้ · ต้นทุน · โครงการ · ใบเสนอราคา ·
    `components/master/productOption.js` · `lib/sales/quoteLines.js`)
-   ที่ตัดออกคือช่องที่ **ไม่มีจอไหนอ่านจากลิสต์นี้เลย** — ต้นทุน/ภาษีที่คำนวณไว้ล่วงหน้า
+   ที่ตัดออกคือช่องที่ **ไม่มีจอไหนอ่านจากลิสต์นี้เลย** — ต้นทุนที่คำนวณไว้ล่วงหน้า
    (`materialCost` `laborCost` `shippingCost` `factoryProfit` `retailPriceExVat`
-   `exciseTax` `localTax` `taxableOverride`) · ร่องรอยการอนุมัติที่ลิสต์ไม่โชว์
+   `taxableOverride`) · ร่องรอยการอนุมัติที่ลิสต์ไม่โชว์
    (`approvedBy` `approvedAt` `submittedBy` `submittedByName` `firstApprovedAt`)
    · ของหน้ารายละเอียด (`formulaId` `formulaName` `formulaDate` `piecesPerCase`
    `driveFolderId` `address`) — วัด 27/08: 492 KB -> 318 KB (-35%) ต่อการโหลดหนึ่งครั้ง
    ⚠️ ช่องต้นทุนพวกนี้ `redactProductMargin` ตัดทิ้งให้ role ส่วนใหญ่อยู่แล้ว — ดึงมา
    แล้วโยนทิ้งทุกครั้ง · ฝั่ง server ที่ต้องใช้จริง (soFiling · reports · PATCH) query
    ตาราง `products` เอง ไม่ได้กิน endpoint นี้
+
+   🔴 **`exciseTax`/`localTax` ต้องอยู่ในลิสต์ — เคยตัดออกแล้วพังมาแล้ว** (#1474 →
+   แก้ที่ใบนี้) · ไม่มีจอไหน "เขียนชื่อช่องนี้" ตรง ๆ จึงหลุดตอนไล่หาคนอ่าน แต่
+   `/tax/registrations` กับ `/tax/registrations/[id]` เรียก
+   `exciseTaxLineForRegistration({ registration, product })` ซึ่งเข้าไปอ่าน
+   `product.exciseTax` / `product.localTax` **ข้างใน** helper อีกชั้น ⇒ คอลัมน์
+   ภาษี/ชิ้น กลายเป็น ฿0.00 ทั้งตารางเงียบ ๆ ไม่มี error
+   🪤 บทเรียน: ไล่ "ใครอ่านคอลัมน์นี้" ต้องไล่เข้าไปใน helper ที่จอส่งแถวเข้าไปด้วย
+   ไม่ใช่แค่ grep ชื่อคอลัมน์ในไฟล์ของจอ
    🪤 เพิ่มช่องใหม่แล้วอยากให้จอเห็น ต้องเติมชื่อที่นี่ด้วย ไม่งั้นช่องว่างเงียบ ๆ ไม่มี
    error · `?manage=1` (หน้าทะเบียนสินค้า) ยังได้ทั้งแถวเสมอ */
 const PRODUCT_PICKER_COLUMNS = [
   'id', 'fgCode', 'categoryCode', 'customerId', 'customerName', 'taxId',
   'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
   'volume', 'volumeUnit', 'saleUnit',
-  'price', 'costPrice', 'retailPriceIncVat',
+  'price', 'costPrice', 'retailPriceIncVat', 'exciseTax', 'localTax',
   'scentId', 'formulaCode', 'metadata',
   'status', 'isActive', 'approvalStatus', 'approvalNumber', 'rejectionReason',
   'isExciseTaxable', 'assignee', 'team', 'ownerId', 'approvedByName',
