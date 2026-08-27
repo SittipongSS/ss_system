@@ -117,9 +117,17 @@ export default function CustomerForm({
     const next = { nameTitle: form.nameTitle || "", namePerson: form.namePerson || "", ...patch };
     onForm({ ...next, name: composeCustomerName(next) });
   };
-  // คำนำหน้านอกสามตัวที่เลือกได้ (ของเดิม 'คุณ'/'ดร.' · ยศ) = โหมด "อื่น ๆ"
-  const titleIsOther = !!String(form.nameTitle || "").trim()
-    && !CUSTOMER_NAME_TITLES.includes(form.nameTitle);
+  /* คำนำหน้านอกสามตัวที่เลือกได้ (ของเดิม 'คุณ'/'ดร.' · ยศ) = โหมด "อื่น ๆ"
+     🪤 อ่านจากค่าอย่างเดียวไม่พอ — กด "อื่น ๆ" ครั้งแรกค่ายังว่าง ถ้าโหมดคำนวณจาก
+     "ค่าไม่ว่างและไม่อยู่ในสามตัว" ช่องพิมพ์จะไม่มีวันโผล่ (กดแล้วไม่เกิดอะไรเลย)
+     ⇒ ต้องมีธงของตัวเอง แล้วให้การกดคำนำหน้าที่เลือกได้เป็นตัวปิดธง */
+  const [titleOtherMode, setTitleOtherMode] = useState(false);
+  const titleIsOther = !CUSTOMER_NAME_TITLES.includes(form.nameTitle || "")
+    && (titleOtherMode || !!String(form.nameTitle || "").trim());
+  const pickTitle = (value) => {
+    setTitleOtherMode(value === "__other");
+    setPerson({ nameTitle: value === "__other" ? "" : value });
+  };
 
   // ── เช็คลูกค้าซ้ำจากเลขผู้เสียภาษี ตั้งแต่กรอกครบ 13 หลัก (มติผู้ใช้ 2026-08-12) ──
   // เตือน **ก่อน** กรอกทั้งใบเสร็จแล้วค่อยโดนตีกลับตอนกดบันทึก · ด่านจริงอยู่ที่ API
@@ -269,7 +277,7 @@ export default function CustomerForm({
                   (เหตุผลเต็มอยู่ที่ lib/master/customerName.js) */}
               <OptionTiles
                 value={titleIsOther ? "__other" : (form.nameTitle || "")}
-                onChange={(v) => setPerson({ nameTitle: v === "__other" ? "" : v })}
+                onChange={pickTitle}
                 ariaLabel="คำนำหน้าชื่อ"
                 options={[
                   ...CUSTOMER_NAME_TITLES.map((t) => ({ value: t, label: t })),
