@@ -7,6 +7,7 @@ import {
 } from '@/lib/master/approval';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { customerNameError } from '@/lib/master/customerName';
+import { cascadeCustomerName } from '@/lib/master/customerNameMirrors';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
   AR_SCOPE, CODE_MODE_MANUAL, RECLAIMED_TABLE, arCodeError, isAutoArCode, isReusableCode,
@@ -439,10 +440,14 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  // Cascade name/taxId changes to this customer's excise registrations
-  // (they snapshot the customer for display/history).
-  const cascade = { customerName: updated.name, taxId: updated.taxId };
-  await supabase.from('excise_registrations').update(cascade).eq('customerId', id);
+  /* สำเนาชื่อลูกค้าที่กระจายอยู่ตามตารางอื่น — รายการ + กติกาของแต่ละตารางอยู่ที่
+     lib/master/customerNameMirrors.js ที่เดียว
+     🐞 เดิมบรรทัดนี้ hard-code ไว้ที่ `excise_registrations` ตารางเดียว ทั้งที่มี 5 ตาราง
+     ถือคอลัมน์ `customerName` ⇒ เปลี่ยนชื่อลูกค้าแล้วโครงการ/ดีลค้างชื่อเก่าถาวร
+     (วัดจริง 2026-08-27: projects 3 แถว · sales_deals 4 แถว)
+     ⚠️ ไม่บล็อกการบันทึกเมื่อสำเนาตารางใดเขียนไม่ผ่าน — ตัวลูกค้าอัปเดตสำเร็จไปแล้ว
+     แต่ต้อง log (cascadeCustomerName ทำให้) ไม่ใช่เงียบแบบตัวเดิมที่ไม่เช็ค error เลย */
+  await cascadeCustomerName(supabase, id, updated);
   void oldName; void oldTaxId;
 
   await recordAudit({ user, action: 'update', entityType: 'customer', entityId: id, before: customer, after: updated, request });
