@@ -643,6 +643,14 @@ export default function AppLayout({ children }) {
   /* ที่ว่างข้างโลโก้ยาว ~900px จึงเป็นที่ของป้ายนี้ · ไม่มีเมนูที่แมตช์ (เช่น /home
      หรือเปลือกเปล่า) = ไม่ต้องมีป้าย ปล่อยว่างไว้เหมือนเดิม */
   const hereLabel = isBareShell ? null : hereItem?.name || null;
+  /* ปลายทางของชื่อระบบบนป้ายบอกตำแหน่ง — กลุ่มปัจจุบันรู้ `home` ของตัวเองอยู่แล้ว
+     (คิดจาก systemLandingForUser ตอนสร้าง accessibleGroups) · หน้าตั้งค่าใช้ /settings
+     ตัวเดียวกับแถบระบบ · บัญชีของฉันยืนอยู่บนหน้านั้นเอง ไม่มีปลายทาง ⇒ เป็นข้อความ */
+  const hereSystemHref = isAccountContext
+    ? null
+    : isSettingsContext
+      ? '/settings'
+      : currentGroup?.home || null;
 
   /* รายการที่วางบนแถบระบบของจอกว้าง = ระบบที่เข้าได้ทั้งหมด + "ตั้งค่า" เมื่อกำลัง
      อยู่ในนั้น (ตั้งค่าไม่ได้อยู่ใน allGroups — ดูเหตุผลที่ `menuItems` ข้างบน)
@@ -732,12 +740,21 @@ export default function AppLayout({ children }) {
             <BrandMark height={34} className="topnav-brand-img" />
           </Link>
 
-          {/* ป้ายบอกตำแหน่ง "ระบบ › เมนู" — **ข้อความ ไม่ใช่ปุ่ม** (การเดินทางเป็นงาน
-              ของแถบระบบข้างล่าง) · CSS ซ่อนเมื่อจอ ≤1200 เพราะชั้นจอนั้นมีตัวสลับระบบ
-              กับลิ้นชักบอกตำแหน่งอยู่แล้ว และที่ว่างบนหัวไม่มีเหลือ */}
+          {/* ป้ายบอกตำแหน่ง "ระบบ › เมนู" · CSS ซ่อนเมื่อจอ ≤1200 เพราะชั้นจอนั้นมี
+              ตัวสลับระบบกับลิ้นชักบอกตำแหน่งอยู่แล้ว และที่ว่างบนหัวไม่มีเหลือ
+              ⭐ **ชื่อระบบกดได้ ชื่อเมนูไม่กด** (มติผู้ใช้ 2026-08-28 — กลับมติเดิม
+              2026-08-26 ที่ให้ป้ายนี้เป็นข้อความล้วน) — ชื่อระบบพาไปหน้าแรกของระบบนั้น
+              ซึ่งเป็นทางลัดที่คนคาดหวังจากป้ายทรงนี้อยู่แล้ว ส่วนชื่อเมนูคือหน้าที่ยืนอยู่
+              กดแล้วไม่ไปไหน จึงไม่ทำให้กดได้
+              ⚠️ ปลายทางมาจาก `home` ของกลุ่มเดียวกับที่ dropdown สลับระบบใช้ ไม่ใช่
+              `/{system}` เดา ๆ — หน้าแรกของแต่ละคนไม่เหมือนกัน (systemLandingForUser) */}
           {hereLabel && (
             <div className="topnav-here" aria-live="polite">
-              <span className="topnav-here-sys">{systemSubtitle}</span>
+              {hereSystemHref ? (
+                <Link href={hereSystemHref} className="topnav-here-sys">{systemSubtitle}</Link>
+              ) : (
+                <span className="topnav-here-sys">{systemSubtitle}</span>
+              )}
               <span className="topnav-here-sep" aria-hidden="true">›</span>
               <span className="topnav-here-page">{hereLabel}</span>
             </div>
