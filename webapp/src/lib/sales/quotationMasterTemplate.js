@@ -149,6 +149,31 @@ const DOC_LABEL_PAIRS = Object.freeze({
   cancelled: ['ยกเลิก', 'CANCELLED'],
   documentLabel: ['ใบเสนอราคา', 'Quotation'],
   headOffice: ['สำนักงานใหญ่', 'Head Office'],
+  /* ── ป้ายของ "ใบสั่งขาย" ──────────────────────────────────────────────
+     🐞 ที่มา 2026-08-27: ใบสั่งขายเลือกภาษาได้แล้ว (#1457) และแม่แบบแปลป้ายของตัวเอง
+     ครบ แต่ป้ายที่ `salesOrderPrint.js` **ประกอบเองแล้วส่งผ่าน options** ข้าม L.t() ไป
+     ⇒ ใบอังกฤษยังพิมพ์ไทย 13 จุด (อ้างอิง QT · ช่องลงนาม · ลายน้ำ ฯลฯ)
+     ⚠️ ป้ายใหม่ของเอกสารชนิดไหนก็ตาม ต้องมาอยู่ที่นี่ ห้ามพิมพ์ไทยตายตัวในตัว print */
+  soDate: ['วันที่ SO', 'SO Date'],
+  soPaymentDue: ['กำหนดชำระ', 'Payment Due'],
+  refQuotation: ['อ้างอิง QT', 'Quotation Ref.'],
+  documentStatus: ['สถานะเอกสาร', 'Document Status'],
+  projectCode: ['เลขที่โครงการ', 'Project No.'],
+  projectTitle: ['โครงการ', 'Project'],
+  projectType: ['ประเภทโครงการ', 'Project Type'],
+  proposer: ['ผู้เสนอราคา', 'Proposed By'],
+  salesTeam: ['ฝ่ายขาย', 'Sales'],
+  salesTeamRole: ['AE เจ้าของดีล', 'Deal Owner (AE)'],
+  salesManager: ['ผู้จัดการฝ่ายขาย', 'Sales Manager'],
+  financeTeam: ['ฝ่ายบัญชี', 'Finance'],
+  financeTeamRole: ['ผู้ตรวจสอบ', 'Reviewer'],
+  cancelledDocument: ['เอกสารยกเลิก', 'CANCELLED DOCUMENT'],
+  // สถานะใบสั่งขายที่พิมพ์ในบล็อกอ้างอิง
+  soStatusDraft: ['ฉบับร่าง', 'Draft'],
+  soStatusPending: ['รออนุมัติ', 'Pending Approval'],
+  soStatusApproved: ['อนุมัติแล้ว', 'Approved'],
+  soStatusRejected: ['ตีกลับให้แก้ไข', 'Rejected'],
+  soStatusCancelled: ['ยกเลิก', 'Cancelled'],
   // ป้ายหัวแถวในบล็อกลูกค้า — คนละตัวกับ `branch` ที่เป็น **คำนำหน้าเลข** ("สาขาที่ 00001")
   branchRow: ['สาขา', 'Branch'],
 });

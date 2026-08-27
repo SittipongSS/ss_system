@@ -3,6 +3,7 @@
 // (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
 import { fmtDate } from '@/lib/format';
 import { buildQuotationMasterHTML, buildQuotationMasterSwitchableHTML } from '@/lib/sales/quotationMasterDocument';
+import { docLanguageOf, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
 import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
@@ -13,12 +14,15 @@ import {
   resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
 
-const STATUS_LABELS = {
-  draft: 'ฉบับร่าง',
-  pending_approval: 'รออนุมัติ',
-  approved: 'อนุมัติแล้ว',
-  rejected: 'ตีกลับให้แก้ไข',
-  cancelled: 'ยกเลิก',
+/* 🐞 เดิมเป็นข้อความไทยตายตัว — ใบสั่งขายเลือกภาษาได้แล้ว (#1457) แต่ทุกป้ายที่ไฟล์นี้
+   ประกอบเองแล้วส่งผ่าน options ข้าม L.t() ของแม่แบบไป ⇒ ใบอังกฤษพิมพ์ไทย 13 จุด
+   ตอนนี้ทุกป้ายอยู่ใน DOC_LABEL_PAIRS ที่เดียวกับใบเสนอราคา */
+const STATUS_LABEL_KEYS = {
+  draft: 'soStatusDraft',
+  pending_approval: 'soStatusPending',
+  approved: 'soStatusApproved',
+  rejected: 'soStatusRejected',
+  cancelled: 'soStatusCancelled',
 };
 
 export function prepareSalesOrderPrintWindow() {
@@ -56,7 +60,10 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     : (taxableAmount > 0
       ? Math.round((Number(order.vatAmount || 0) / taxableAmount) * 10000) / 100
       : 0);
-  const statusLabel = STATUS_LABELS[order.status] || order.status || '-';
+  // ป้ายทั้งใบเดินตามภาษาของใบ — ตัวเดียวกับที่แม่แบบใช้ ไม่มีตารางป้ายของตัวเอง
+  const L = quotationDocLabels(docLanguageOf(order.docLanguage));
+  const statusKey = STATUS_LABEL_KEYS[order.status];
+  const statusLabel = statusKey ? L.t(statusKey) : (order.status || '-');
   const notes = [order.notes, order.approvalNote ? `หมายเหตุการอนุมัติ: ${order.approvalNote}` : null]
     .filter(Boolean)
     .join('\n');
@@ -153,21 +160,21 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     // สำหรับประกอบชื่อไฟล์ (รหัสเอกสาร_ชื่อลูกค้า_ชื่อดีล)
     dealTitle: order.deal?.title || '',
     documentNumber: order.orderNumber,
-    dateLabel: 'วันที่ SO',
+    dateLabel: L.t('soDate'),
     dateValue: order.orderDate ? fmtDate(order.orderDate) : '-',
-    secondaryLabel: 'กำหนดชำระ',
+    secondaryLabel: L.t('soPaymentDue'),
     secondaryValue: order.paymentDueDate ? fmtDate(order.paymentDueDate) : '-',
     // ชุดอ้างอิงต้องตรงกับใบเสนอราคาซึ่งเป็นใบต้นทางของ SO ไม่งั้นลูกค้าได้สองใบที่
     // เรียกของอย่างเดียวกันคนละชื่อ คนละลำดับ (มติผู้ใช้ 2026-08-04, แยกช่อง 08-05)
     // "โครงการ" บนเอกสาร = ดีล · ผู้เสนอราคา = AE เจ้าของดีล (ไม่มีบทบาทผู้จัดทำแล้ว)
     // ดีลไม่มีเจ้าของ → ขีด ไม่ถอยไปใช้ชื่อคนทำใบ เพราะคนละบทบาท
     referenceRows: [
-      { label: 'อ้างอิง QT', value: quotation.quoteNumber || '-' },
-      { label: 'สถานะเอกสาร', value: statusLabel },
-      { label: 'เลขที่โครงการ', value: order.project?.code || '-' },
-      { label: 'โครงการ', value: order.deal?.title || '-' },
-      { label: 'ประเภทโครงการ', value: (order.deal && dealTypeOf(order.deal)) || '-' },
-      { label: 'ผู้เสนอราคา', value: order.deal?.ownerName || '-' },
+      { label: L.t('refQuotation'), value: quotation.quoteNumber || '-' },
+      { label: L.t('documentStatus'), value: statusLabel },
+      { label: L.t('projectCode'), value: order.project?.code || '-' },
+      { label: L.t('projectTitle'), value: order.deal?.title || '-' },
+      { label: L.t('projectType'), value: (order.deal && dealTypeOf(order.deal)) || '-' },
+      { label: L.t('proposer'), value: order.deal?.ownerName || '-' },
     ],
     // ช่องลงชื่อ SO — ป้ายช่องเป็น "หน่วยงาน" ไม่ใช่บทบาทในเอกสาร
     // (มติผู้ใช้ 2026-08-05): ฝ่ายขาย / ผู้จัดการฝ่ายขาย / ฝ่ายบัญชี
@@ -178,18 +185,18 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     // มีด่านนี้อาจถูกยื่นโดยคนอื่น เอาชื่อเจ้าของดีลไปแปะทับจะได้ชื่อคนหนึ่งคู่ลายมืออีกคน
     signers: [
       proposerEsignature
-        ? { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', esignature: proposerEsignature }
-        : { label: 'ฝ่ายขาย', role: 'AE เจ้าของดีล', name: order.deal?.ownerName || '' },
+        ? { label: L.t('salesTeam'), role: L.t('salesTeamRole'), esignature: proposerEsignature }
+        : { label: L.t('salesTeam'), role: L.t('salesTeamRole'), name: order.deal?.ownerName || '' },
       approverEsignature
-        ? { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', esignature: approverEsignature }
-        : { label: 'ผู้จัดการฝ่ายขาย', role: 'AE Supervisor', name: order.approvedByName || '' },
+        ? { label: L.t('salesManager'), role: 'AE Supervisor', esignature: approverEsignature }
+        : { label: L.t('salesManager'), role: 'AE Supervisor', name: order.approvedByName || '' },
       financeEsignature
-        ? { label: 'ฝ่ายบัญชี', role: 'ผู้ตรวจสอบ', esignature: financeEsignature }
-        : { label: 'ฝ่ายบัญชี', role: 'Scent & Sense', name: '' },
+        ? { label: L.t('financeTeam'), role: L.t('financeTeamRole'), esignature: financeEsignature }
+        : { label: L.t('financeTeam'), role: 'Scent & Sense', name: '' },
     ],
     // ลายน้ำ: อนุมัติแล้วไม่มี · ยกเลิก = "เอกสารยกเลิก" · อื่น ๆ = "ฉบับร่าง" (มติ 2026-07-18)
     watermark: order.status === 'approved' ? ''
-      : (order.status === 'cancelled' ? `เอกสาร${statusLabel}` : 'ฉบับร่าง'),
+      : (order.status === 'cancelled' ? L.t('cancelledDocument') : L.t('draft')),
   });
 }
 
