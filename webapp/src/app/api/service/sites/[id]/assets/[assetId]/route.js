@@ -52,6 +52,27 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const before = await findAsset(supabase, id, assetId);
     if (!before) return notFound('ไม่พบเครื่องในไซต์นี้');
 
+    /* 🔴 **ด่านที่ไม่เคยมี** — ของเดิม `delete().eq('id', assetId)` ตรง ๆ ไม่ตรวจอะไรเลย
+       และ `service_assets` ก็ไม่อยู่ใน REFERENCE_REGISTRY ⇒ ลบเครื่องที่มีประวัติได้ทันที
+       ผลตามมาสองชั้นตอนที่ F-4 เปิดใช้ `assetId` จริง:
+         · `service_visit_items.assetId` เป็น ON DELETE SET NULL ⇒ สายเชื่อม consumption
+           ขาดเงียบ ๆ ยอด ml ของโซนหายไปโดยไม่มี error
+         · `service_visit_assets.assetId` เป็น RESTRICT ⇒ Postgres จะโยน 23503 ดิบ ๆ
+           ภาษาอังกฤษให้ผู้ใช้เห็นแทน
+       ⇒ เช็คก่อนแล้วบอกทางออก (ปิดใช้งาน/ถอดออก) เหมือนที่ไซต์กับโซนทำอยู่แล้ว */
+    const [{ count: resultCount }, { count: itemCount }] = await Promise.all([
+      supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
+      supabase.from('service_visit_items').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
+    ]);
+    const used = (resultCount || 0) + (itemCount || 0);
+    if (used > 0) {
+      return conflict(
+        `อุปกรณ์นี้มีประวัติการเข้าบริการอยู่ ${used} รายการ ลบไม่ได้ — `
+        + 'ถ้าถอดออกจากหน้างานจริงให้เปลี่ยนสถานะเป็น “ถอดออกแล้ว” พร้อมวันที่ถอด '
+        + 'เพื่อไม่ให้ประวัติและยอดการใช้ของโซนหายไปด้วย',
+      );
+    }
+
     const { error } = await supabase.from('service_assets').delete().eq('id', assetId);
     if (error) return fail(error.message, 500);
 

@@ -7,6 +7,8 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit } from '@/lib/service/visitStatus';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
+import { loadAssets, loadZones } from '@/lib/service/sitesRepo';
+import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
 import { businessTimeKey } from '@/lib/datePeriods';
 
@@ -17,7 +19,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const access = await requireVisit({ user, supabase, id });
     if (access.response) return access.response;
-    return ok({ visit: access.visit, items: await loadVisitItems(supabase, id) });
+    /* ⭐ ส่งอุปกรณ์ + โซนของไซต์มาด้วย — ฟอร์มปิดงานรายเครื่องต้องรู้ว่าที่ไซต์นี้มี
+       อะไรให้ทำบ้าง · ของเดิมหน้าปิดงานได้แค่ `visit` + `site` จาก /my-visits ซึ่ง
+       select แค่ 12 คอลัมน์และไม่มี assets เลย ⇒ ยิงจากที่นี่ทีเดียวดีกว่าให้จอ
+       ไปเรียก /sites/[id]/assets เพิ่มอีกใบ */
+    const [items, assets, zones, results] = await Promise.all([
+      loadVisitItems(supabase, id),
+      loadAssets(supabase, access.visit.siteId),
+      loadZones(supabase, access.visit.siteId),
+      supabase.from('service_visit_assets').select('*').eq('visitId', id)
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+    ]);
+    return ok({ visit: access.visit, items, assets, zones, results });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -31,6 +44,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const before = access.visit;
 
     const body = await req.json().catch(() => ({}));
+
+    /* ⭐ **สถานะของใบสรุปจากลูก ไม่ใช่จากปุ่มที่ช่างเลือก** (มติ 2026-08-02 ข้อ 6)
+       ถ้าให้เลือกเอง คนจะกด "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุดเสมอ แล้ว "ทำไม่ครบ"
+       จะไม่มีวันปรากฏในระบบทั้งที่ของจริงเกิดทุกเดือน
+       ⚠️ อ่านผลจาก **แถวจริงใน DB** ไม่ใช่จาก body — เชื่อค่าที่ client ส่งมาเมื่อไร
+       ก็ข้ามการสรุปได้ทันที (แพตเทิร์นเดียวกับที่ billing-request-flow §3.5 บันทึกไว้) */
+    if (body.closeFromAssets) {
+      const { data: results, error: resErr } = await supabase
+        .from('service_visit_assets').select('assetId, outcome').eq('visitId', id);
+      if (resErr) return fail(resErr.message, 500);
+      body.status = deriveVisitStatus(results || []);
+      if (body.status === 'unable' && !String(body.unableReason ?? '').trim()) {
+        const reasons = (results || []).map((r) => r.reason).filter(Boolean);
+        body.unableReason = reasons[0] || 'ไปถึงไซต์แล้วแต่ทำไม่ได้สักรายการ';
+      }
+    }
+
     const { value, error } = normalizeVisitInput({ ...before, ...body });
     if (error) return badRequest(error);
 

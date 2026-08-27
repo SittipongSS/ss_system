@@ -9,9 +9,14 @@ import { AlertTriangle, Camera, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Select from "@/components/ui/Select";
 import SignaturePad from "./SignaturePad";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
+import { VISIT_STATUS_LABELS } from "@/lib/service/visitStatus";
+import {
+  ASSET_OUTCOMES, ASSET_OUTCOME_LABELS, deriveVisitStatus, normalizeAssetResult, pendingAssets,
+} from "@/lib/service/visitAssets";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
@@ -20,7 +25,10 @@ import { fmtNumber, naText } from "@/lib/format";
 export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }) {
   const [form, setForm] = useState(() => closeFormDefaults(null));
   const [items, setItems] = useState([]);
-  const [draftItem, setDraftItem] = useState({ label: "", qty: "", unit: "" });
+  const [assets, setAssets] = useState([]);
+  // ผลรายเครื่อง: Map<assetId, { outcome, reason, replacedByAssetId }>
+  const [results, setResults] = useState({});
+  const [draftItem, setDraftItem] = useState({ label: "", qty: "", unit: "", assetId: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -30,14 +38,26 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   useEffect(() => {
     if (!open || !visit) return;
     setError("");
-    setDraftItem({ label: "", qty: "", unit: "" });
+    setDraftItem({ label: "", qty: "", unit: "", assetId: "" });
     setForm(closeFormDefaults(visit));
     (async () => {
       try {
-        const res = await fetch(`/api/service/visits/${visit.id}/items`);
+        /* GET นัดคืน visit + items + assets + zones + results มาในคำขอเดียว —
+           ฟอร์มต้องรู้ว่าไซต์นี้มีอะไรให้ทำบ้างก่อนจะให้ติ๊กรายเครื่องได้ */
+        const res = await fetch(`/api/service/visits/${visit.id}`);
         const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(data?.error || "โหลดของที่ใช้ไม่สำเร็จ");
-        setItems(Array.isArray(data) ? data : []);
+        if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลนัดไม่สำเร็จ");
+        setItems(Array.isArray(data?.items) ? data.items : []);
+        setAssets(Array.isArray(data?.assets) ? data.assets : []);
+        const seed = {};
+        for (const row of data?.results || []) {
+          seed[row.assetId] = {
+            outcome: row.outcome,
+            reason: row.reason || "",
+            replacedByAssetId: row.replacedByAssetId || "",
+          };
+        }
+        setResults(seed);
       } catch (e) {
         setError(e.message);
       }
@@ -71,7 +91,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
       setItems((prev) => [...prev, data]);
-      setDraftItem({ label: "", qty: "", unit: "" });
+      setDraftItem({ label: "", qty: "", unit: "", assetId: "" });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -139,11 +159,47 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     }
   };
 
+  const activeAssets = assets.filter((a) => a.status === "active");
+  const resultRows = activeAssets
+    .map((a) => ({ assetId: a.id, ...(results[a.id] || {}) }))
+    .filter((r) => ASSET_OUTCOMES.includes(r.outcome));
+  const pending = pendingAssets(assets, resultRows);
+  const derived = deriveVisitStatus(resultRows);
+
+  const setOutcome = (assetId, outcome) => setResults((prev) => ({
+    ...prev,
+    [assetId]: { reason: "", replacedByAssetId: "", ...(prev[assetId] || {}), outcome },
+  }));
+  const setField = (assetId, field, value) => setResults((prev) => ({
+    ...prev, [assetId]: { ...(prev[assetId] || {}), [field]: value },
+  }));
+
   const submit = async () => {
+    /* ⚠️ ทุกเครื่องที่ยังใช้งานอยู่ต้องมีคำตอบก่อนปิด — ไม่งั้นสถานะที่สรุปจากลูก
+       จะสรุปจากข้อมูลไม่ครบ แล้วใบที่ "ทำไม่ครบ" จะถูกปิดเป็น "เสร็จ" */
+    if (pending.length) {
+      setError(`ยังไม่ได้ระบุผลของ ${pending.length} รายการ: ${pending.map((a) => a.label).join(" · ")}`);
+      return;
+    }
+    for (const row of resultRows) {
+      const { error: invalid } = normalizeAssetResult(row);
+      if (invalid) { setError(invalid); return; }
+    }
     setBusy(true);
     setError("");
     try {
-      await onSubmit({ ...form, status: "done" });
+      /* บันทึกผลรายเครื่อง **ก่อน** ปิดใบ — server สรุปสถานะจากแถวจริงใน DB
+         (closeFromAssets) ไม่ใช่จากค่าที่จอส่งมา ⇒ ลำดับนี้สลับไม่ได้ */
+      if (activeAssets.length) {
+        const res = await fetch(`/api/service/visits/${visit.id}/assets`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results: resultRows }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || "บันทึกผลรายเครื่องไม่สำเร็จ");
+      }
+      await onSubmit({ ...form, closeFromAssets: activeAssets.length > 0, status: derived });
     } catch (e) {
       setError(e.message || "ปิดงานไม่สำเร็จ");
     } finally {
@@ -179,6 +235,80 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         </dl>
       </section>
 
+      {/* ⭐ ปิดงาน **รายเครื่อง** (มติ 2026-08-02 ข้อ 6) — จากใบส่งงานจริง: เครื่อง 4 ตัว
+          ทำแล้ว Reed 6 ขวดยังไม่ได้ทำ ⇒ ปิด done ก็โกหก ปิด unable ก็โกหก
+          ⚠️ ไม่มีปุ่มให้เลือกสถานะของใบ — ใบสรุปจากลูกเสมอ ถ้าให้เลือกเอง คนจะกด
+          "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุด แล้ว "ทำไม่ครบ" จะไม่มีวันปรากฏ */}
+      {activeAssets.length > 0 && (
+        <section className={styles.block}>
+          <h3 className={styles.blockTitle}>
+            อุปกรณ์ในไซต์
+            <span className={styles.progress}>{resultRows.length} / {activeAssets.length}</span>
+          </h3>
+          <p className={styles.note}>ติ๊กทีละตัว — สถานะของใบจะสรุปจากตรงนี้เอง</p>
+          {activeAssets.map((asset) => {
+            const row = results[asset.id] || {};
+            return (
+              <div key={asset.id} className={styles.assetRow}>
+                <div className={styles.assetHead}>
+                  <span className={styles.assetName}>
+                    {asset.label}
+                    <small>
+                      {naText([asset.model, asset.serial, asset.qty ? `${fmtNumber(asset.qty)} จุด` : null]
+                        .filter(Boolean).join(" · "))}
+                    </small>
+                  </span>
+                  <span className="segmented" role="group" aria-label={`ผลของ ${asset.label}`}>
+                    {ASSET_OUTCOMES.map((outcome) => (
+                      <button key={outcome} type="button" aria-pressed={row.outcome === outcome}
+                        onClick={() => setOutcome(asset.id, outcome)}>
+                        {ASSET_OUTCOME_LABELS[outcome]}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+
+                {row.outcome === "swapped" && (
+                  <label className={styles.assetField}>
+                    <span>เปลี่ยนเป็นเครื่องไหน *</span>
+                    {/* เลือกได้เฉพาะเครื่องในไซต์เดียวกัน — เพิ่มเครื่องใหม่เข้าไซต์ก่อน
+                        แล้วค่อยกลับมาเลือก (server ตรวจซ้ำอีกชั้น) */}
+                    <Select value={row.replacedByAssetId || ""}
+                      onChange={(e) => setField(asset.id, "replacedByAssetId", e.target.value)}>
+                      <option value="">— เลือกเครื่องที่เอามาแทน —</option>
+                      {assets.filter((a) => a.id !== asset.id).map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label}{a.serial ? ` · ${a.serial}` : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
+
+                {row.outcome && row.outcome !== "done" && (
+                  <label className={styles.assetField}>
+                    <span>เหตุผล *</span>
+                    <Input as="textarea" rows={2} value={row.reason || ""}
+                      onChange={(e) => setField(asset.id, "reason", e.target.value)}
+                      maxLength={500}
+                      placeholder={row.outcome === "swapped"
+                        ? "เช่น เครื่องชำรุด ไม่พ่น นำเครื่องสำรองมาเปลี่ยน"
+                        : "เช่น ยังอยู่ในขั้นตอนปรับสูตร ทีม RD ขอให้รอรอบหน้า"} />
+                  </label>
+                )}
+              </div>
+            );
+          })}
+
+          {resultRows.length > 0 && (
+            <p className={`${styles.derived} ${derived === "done" ? "" : styles.derivedWarn}`}>
+              ใบนี้จะปิดเป็น <b>{VISIT_STATUS_LABELS[derived]}</b>
+              {pending.length > 0 && ` · ยังไม่ได้ระบุผลอีก ${pending.length} รายการ`}
+            </p>
+          )}
+        </section>
+      )}
+
       <section className={styles.block}>
         <h3 className={styles.blockTitle}>ของที่ใช้</h3>
         <p className={styles.note}>บันทึกไว้เป็นหลักฐานอย่างเดียว — ระบบไม่ตัดสต็อกและไม่ออกบิลจากรายการนี้</p>
@@ -202,6 +332,23 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
             placeholder="หน่วย" aria-label="หน่วย" className={styles.unitInput} />
           <Button tone="neutral" size="sm" onClick={addItem} disabled={busy}>เพิ่ม</Button>
         </div>
+        {/* 🐞 `service_visit_items.assetId` มีในสคีมามาตั้งแต่ mig 0188 และ API รับอยู่แล้ว
+            แต่ **จอไม่เคยส่งมาเลย** ⇒ ทุกแถวใน production มี assetId เป็น NULL และ
+            เส้นทาง item → asset → zone ที่ mig 0298 เขียนไว้ (และเทสต์ยามปกป้องอยู่)
+            ยังไม่เคยมีขาแรก · ไม่บังคับ เพราะของบางอย่างใช้กับทั้งไซต์ ไม่ใช่กับเครื่องใดเครื่องหนึ่ง */}
+        {activeAssets.length > 0 && (
+          <label className={styles.assetField}>
+            <span>ใช้กับเครื่องไหน</span>
+            <Select value={draftItem.assetId}
+              onChange={(e) => setDraftItem((p) => ({ ...p, assetId: e.target.value }))}>
+              <option value="">— ใช้กับทั้งไซต์ / ไม่ระบุ —</option>
+              {activeAssets.map((a) => (
+                <option key={a.id} value={a.id}>{a.label}</option>
+              ))}
+            </Select>
+            <small className={styles.note}>ระบุแล้วยอดที่ใช้จะถูกนับเป็นของโซนที่เครื่องนั้นอยู่</small>
+          </label>
+        )}
       </section>
 
       <section className={styles.block}>
