@@ -100,11 +100,13 @@ test('ยิง query ตาราง customers ด้วย customerId ที�
 /* ── ชื่อลูกค้าบนร่างที่ยังไม่ยื่น อ่านสดจากทะเบียน ────────────────────────
    เคสจริง 2026-08-27: สร้างลูกค้าชื่อ '… (สำนักงานใหญ่)' → ออกใบ 11:26 → ตัดคำออกจาก
    ชื่อ 12:29 · ใบที่ยื่น/ส่งแล้วต้องคงชื่อเก่า (หลักฐาน) แต่ร่างที่ไม่เคยยื่นไม่ควรค้าง */
+// เลียนแบบลูกโซ่จริง: .from().select().in().limit() — ตัว limit คือขอบเขตของคำสั่ง
+// (ดูเหตุผลที่ customerSnapshotFallback.js) ถ้าลูกโซ่เปลี่ยน เทสต์ต้องรู้ตัว
 const customerListStub = (result) => ({
   from() {
     return {
       select() {
-        return { in() { return result; } };
+        return { in() { return { limit() { return result; } }; } };
       },
     };
   },
@@ -142,7 +144,7 @@ test('ใบที่ไม่ผูกลูกค้า / ไม่มีใ�
       called = true;
       return {
         select() {
-          return { in() { return { data: [], error: null }; } };
+          return { in() { return { limit() { return { data: [], error: null }; } }; } };
         },
       };
     },

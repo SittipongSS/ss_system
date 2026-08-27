@@ -77,7 +77,12 @@ export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
   const targets = quotes.filter((q) => q?.customerId && isEditableQuotation(q));
   const ids = [...new Set(targets.map((q) => q.customerId))];
   if (!ids.length) return quotes;
-  const { data, error } = await supabase.from('customers').select('id, name').in('id', ids);
+  /* `.limit(ids.length)` = ขอบเขตจริงของคำสั่งนี้ ไม่ใช่เลขที่ตั้งให้ผ่านด่าน — `.in('id', …)`
+     คืนได้มากสุดเท่าจำนวน id ที่ส่งไปอยู่แล้ว (1 ใบ = 1 id · รายการใบของดีล = จำนวนลูกค้า
+     ที่ไม่ซ้ำ ซึ่งมักเป็น 1) · เขียนให้ชัดเพราะ check:rowcap อ่านจากคำสั่ง ไม่ได้รู้ว่า
+     `in()` มีขอบเขตในตัว และ `customers` เป็นตารางที่โตได้ */
+  const { data, error } = await supabase
+    .from('customers').select('id, name').in('id', ids).limit(ids.length);
   // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้ (กติกาเดียวกับ refreshFgLinesForDisplay)
   if (error) return quotes;
   const byId = new Map((data || []).map((c) => [c.id, c.name]));
