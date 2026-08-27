@@ -1,0 +1,72 @@
+/* บล็อก "ข้อมูลลูกค้าในเอกสาร" — ใช้ร่วมกันระหว่างหน้าสร้างใบและหน้าแก้ใบ
+   ⚠️ คลาสชุดนี้เคยอยู่ใน page.module.css ของสองหน้าแยกกัน แล้วเพี้ยนกันจริง:
+   หน้าสร้างเรียกช่องที่มีป้ายว่า `.contactField` ส่วนหน้าแก้เรียก `.addressField`
+   ทั้งที่เป็นของอย่างเดียวกัน ⇒ ย้ายมาไว้ที่เดียวพร้อมตัว component */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-6);
+}
+
+/* ช่องที่มีป้าย + ดรอปดาวน์ (ที่อยู่ / ผู้ติดต่อ) */
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-bold);
+}
+
+.field > * {
+  margin-top: var(--space-1-5);
+}
+
+/* ตัวที่อยู่ที่เลือกอยู่ — ป้ายใน dropdown เป็นชื่อเรียก/สาขา ซึ่งบอกไม่ได้ว่าที่ไหนจริง ๆ
+   จึงต้องกางข้อความเต็มไว้ใต้ช่อง (ชั้นพิมพ์เดียวกับ .info ที่มันมาแทน) */
+.preview {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-text);
+  white-space: pre-wrap;
+}
+
+/* ช่องที่ยังไม่ได้เลือก — บอกว่าทำไมต้องเลือก แทนที่จะโชว์ค่าที่ระบบเดาให้ */
+.previewEmpty {
+  composes: preview;
+  color: var(--text-3);
+}
+
+/* ช่องอ่านอย่างเดียว (ใบที่ปิดแล้ว / ค่าที่ไม่มีให้เลือก) */
+.info {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  line-height: var(--lh-text);
+}
+
+.info svg {
+  flex: 0 0 auto;
+  margin-top: var(--space-0-5);
+  color: var(--accent-ink);
+}
+
+.info small {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-medium);
+}
+
+/* จอแคบเหลือคอลัมน์เดียว — กฎนี้เคยอยู่ใน media query ของสองหน้าคนละ breakpoint
+   (หน้าสร้าง 640px · หน้าแก้ 680px) ทั้งที่เป็นกริดเดียวกัน ⇒ ย้ายมาอยู่กับตัวกริดที่เดียว */
+@media (max-width: 768px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}

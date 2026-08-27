@@ -7,10 +7,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, MapPin, Package, Plus, UserRound } from "lucide-react";
+import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, Package, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
+import QuotationCustomerFields from "@/components/salesPlanning/QuotationCustomerFields";
 import Input from "@/components/ui/Input";
 import SaveStatus from "@/components/ui/SaveStatus";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -35,9 +36,8 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
-  addressLabel, customerAddresses, isBillingAddress, isShippingAddress, pickDocumentAddresses,
+  pickDocumentAddresses,
 } from "@/lib/master/addresses";
-import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { openQuotePrintWindowPreferIssued, prepareQuotePrintWindow, showQuotePrintError } from "@/lib/sales/quotePrint";
@@ -234,10 +234,6 @@ export default function QuotationEditorPage() {
 
   // ตัวเลือกที่อยู่ (0202) — แยกตามหน้าที่เหมือนหน้าสร้างใบ · preview ใช้กติกาเดียวกับ
   // ฝั่ง server (pickDocumentAddresses) จะได้ไม่โชว์คนละอย่างกับที่บันทึกจริง
-  const addressBook = customerAddresses(customer);
-  const billingOptions = addressBook.filter(isBillingAddress);
-  const shippingOptions = addressBook.filter(isShippingAddress);
-  const contactOptions = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const pickedAddresses = pickDocumentAddresses(customer, {
     billingAddressId: form.billingAddressId,
     shippingAddressId: form.shippingAddressId,
@@ -789,54 +785,22 @@ export default function QuotationEditorPage() {
                   </Link>
                 )}
               </div>
-              <div className={styles.customerGrid}>
-                {/* สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติผู้ใช้ 2026-08-06 ที่กลับมติ
-                    2026-08-05 — ดูเหตุผลยาวที่ lib/master/addresses.js) · ค่าถูกตรึงไว้ใน
-                    snapshot ตอนออกใบแล้วโดย pickDocumentAddresses
-                    ⚠️ ผ่าน branchLabel เสมอ — `branchCode` **มีค่าเสมอ ไม่เคยว่าง** เพราะ
-                    unique (taxId, branchCode) บังคับ not null แล้วตกไป '00000' ⇒ เขียน
-                    `สาขา ${...}` ตรง ๆ จะได้ "สาขา 00000" บนใบเกือบทุกใบ ขณะที่หน้าทะเบียน
-                    ลูกค้าเรียก branchLabel แล้วขึ้น "สำนักงานใหญ่" = ข้อมูลตัวเดียวกันสองคำ */}
-                {/* ระหว่างแก้ร่าง สาขาต้องเดินตามช่อง "ที่อยู่ออกบิล" ที่กำลังเลือกอยู่
-                    (กติกาเดียวกับข้อความที่อยู่ใต้ช่องนั้น) ไม่ใช่ค้างที่ค่าที่บันทึกไว้
-                    — ไม่งั้นสลับไปสาขาแล้วบรรทัดนี้ยังบอก "สำนักงานใหญ่" จนกว่าจะกดบันทึก
-                    ⚠️ ใบที่แก้ไม่ได้แล้วต้องโชว์ **ค่าที่ตรึงไว้** เสมอ (หลักฐานการค้า)
-                    ห้ามคำนวณสดจากทะเบียนลูกค้าที่อาจถูกแก้ไปแล้วหลังออกใบ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}{` · ${branchLabel(editable && billingOptions.length ? pickedAddresses.snapshot.branchCode : quote.branchCode)}`}</span></div>
-                {/* ผู้ติดต่อแก้ได้ระหว่างยังเป็นร่าง — เหตุผลเดียวกับที่อยู่ในบล็อกเดียวกันนี้
-                    (มติผู้ใช้ 2026-08-27) · เดิมเลือกได้เฉพาะตอนสร้างใบ พอเป็นร่างแล้วแก้ไม่ได้เลย
-                    ⚠️ ยังไม่แตะ = โชว์ค่าที่ตรึงบนใบ ไม่ใช่เด้งไปผู้ติดต่อคนแรกของทะเบียน */}
-                {editable && contactOptions.length ? (
-                  <label className={styles.addressField}>ผู้ติดต่อ
-                    <Select value={form.contactIndex} onChange={(e) => setF({ contactIndex: e.target.value === "" ? "" : Number(e.target.value) })} aria-label="เลือกผู้ติดต่อ">
-                      <option value="">{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))} (คงเดิม)</option>
-                      {contactOptions.map((c, i) => <option key={i} value={i}>{[c.name, c.role, c.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${i + 1}`}</option>)}
-                    </Select>
-                  </label>
-                ) : (
-                  <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))}</span></div>
-                )}
-                {editable && billingOptions.length ? (
-                  <label className={styles.addressField}>ที่อยู่ออกบิล
-                    <Select value={form.billingAddressId} onChange={(e) => setF({ billingAddressId: e.target.value })} aria-label="เลือกที่อยู่ออกบิล">
-                      {billingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
-                    </Select>
-                    <span className={styles.addressPreview}>{naText(pickedAddresses.snapshot.billingAddress)}</span>
-                  </label>
-                ) : (
-                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่ออกบิล</small>{naText(quote.billingAddress)}</span></div>
-                )}
-                {editable && shippingOptions.length ? (
-                  <label className={styles.addressField}>ที่อยู่จัดส่ง
-                    <Select value={form.shippingAddressId} onChange={(e) => setF({ shippingAddressId: e.target.value })} aria-label="เลือกที่อยู่จัดส่ง">
-                      {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
-                    </Select>
-                    <span className={styles.addressPreview}>{naText(pickedAddresses.snapshot.shippingAddress)}</span>
-                  </label>
-                ) : (
-                  <div className={styles.infoBlock}><MapPin size={16} /><span><small>ที่อยู่จัดส่ง</small>{quote.shippingAddress || naText(quote.billingAddress)}</span></div>
-                )}
-              </div>
+              {/* ชื่อลูกค้าอยู่นอก component เพราะเป็นของ "ใบ" ไม่ใช่ช่องที่เลือกได้
+                  (หน้าสร้างยังไม่มีใบ จึงไม่มีบรรทัดนี้) */}
+              <div className={styles.infoBlock}><UserRound size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}</span></div>
+              <QuotationCustomerFields
+                mode="edit"
+                editable={editable}
+                customer={customer}
+                value={{
+                  billingAddressId: form.billingAddressId,
+                  shippingAddressId: form.shippingAddressId,
+                  contactIndex: form.contactIndex,
+                }}
+                picked={pickedAddresses}
+                snapshot={quote}
+                onChange={setF}
+              />
             </section>
           )}
 
