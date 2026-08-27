@@ -24,7 +24,7 @@ import { QUOTATION_DOC_LANGUAGES } from '@/lib/sales/quotationMasterTemplate';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
-import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
+import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { loadSignatureImageDataUri, reissueQuotationDocumentForLanguage } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
@@ -98,6 +98,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   // บรรทัด FG โชว์คำอธิบายสดจาก master (แบรนด์ · ชื่อสินค้า · ปริมาตร) เฉพาะใบที่ยัง
   // แก้ได้ — ใบเก่าที่ snapshot แค่ชื่อจะแสดง/พิมพ์ครบโดยไม่ต้องบันทึกใหม่
   await refreshFgLinesForDisplay(supabase, [filledQuote]);
+  // ชื่อลูกค้าบนร่างที่ยังไม่ยื่น อ่านสดจากทะเบียน (ดูเหตุผลที่ customerSnapshotFallback.js)
+  await refreshCustomerNameForDisplay(supabase, [filledQuote]);
   const baseNumber = filledQuote.baseNumber || filledQuote.quoteNumber;
   // ⚠️ ไล่ทีละหน้า — ประวัติ Rev. ของเลขใบเดียว สะสมได้ไม่จำกัด
   const { data: revisionHistory, error: revisionError } = await fetchAllResult(() => supabase

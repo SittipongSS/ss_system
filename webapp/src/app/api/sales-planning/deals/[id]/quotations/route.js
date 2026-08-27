@@ -5,6 +5,7 @@ import { canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel, isWonStage 
 import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
+import { refreshCustomerNameForDisplay } from '@/lib/sales/customerSnapshotFallback';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { dealAwaitsCustomer, dealCustomerAdoptError } from '@/lib/sales/dealCustomerAdopt';
 import { caretakerTeamsOf, hasTeam, userTeams, viewScopeUser } from '@/lib/permissions';
@@ -32,7 +33,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     .order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
   // บรรทัด FG โชว์คำอธิบายสดจาก master เฉพาะใบที่ยังแก้ได้ (แสดงผลเท่านั้น ไม่บันทึก)
-  return ok(await refreshFgLinesForDisplay(supabase, latestQuotationRevisions(data || [])));
+  const listed = await refreshFgLinesForDisplay(supabase, latestQuotationRevisions(data || []));
+  // ร่างที่ยังไม่ยื่นโชว์ชื่อลูกค้าปัจจุบัน — รายการกับหน้ารายละเอียดต้องบอกตรงกัน
+  return ok(await refreshCustomerNameForDisplay(supabase, listed));
 });
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
