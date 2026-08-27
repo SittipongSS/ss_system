@@ -580,3 +580,43 @@ test('V4 doc: preview ของใบสั่งขายก็มีบรร�
   const html = renderQuotationMasterDocumentHTML(model, { documentLabel: 'ใบสั่งขาย' });
   assert.match(html, /<p class="amountWords">/);
 });
+
+// ── สวิตช์ภาษาเปิดได้แม้ใบอนุมัติแล้ว (มติผู้ใช้ 2026-08-27) ──────────────────
+const switchableApproved = (over = {}) => ({
+  ...baseQuote([lineOf('a')]), id: 'QT-1', status: 'sent', approvalStatus: 'approved', ...over,
+});
+
+test('สวิตช์ภาษา: ใบอนุมัติแล้วต้องได้ปุ่มจริง ไม่ใช่ป้าย "เปลี่ยนไม่ได้แล้ว"', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: true });
+  assert.match(html, /class="langSwitch"/);
+  assert.doesNotMatch(html, /เปลี่ยนไม่ได้แล้ว/);
+});
+
+test('สวิตช์ภาษา: ปิดสวิตช์แล้วต้องไม่มีทั้งปุ่ม สคริปต์ และกล่องยืนยัน', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: false });
+  assert.match(html, /เปลี่ยนไม่ได้แล้ว/);
+  // เทียบที่ markup ไม่ใช่ทั้งไฟล์ — CSS ของกล่องยืนยันอยู่ในเปลือกเอกสารทุกใบอยู่แล้ว
+  assert.doesNotMatch(html, /id="langConfirm"/);
+  assert.doesNotMatch(html, /ssSetDocLanguage/);
+});
+
+test('กล่องยืนยันขึ้นเมื่อบรรทัดสินค้าไม่มีชื่ออังกฤษ', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: true });
+  assert.match(html, /id="langConfirm"/);
+  assert.match(html, /ชื่อสินค้าทั้ง 1 บรรทัด ยังไม่มีชื่ออังกฤษ/);
+  // ข้อจำกัดเรื่องลูกค้าต้องขึ้นเสมอ — เอกสารไม่มีทางเดินภาษาอังกฤษของลูกค้าเลย
+  assert.match(html, /ชื่อและที่อยู่ลูกค้าพิมพ์เป็นภาษาไทยเสมอ/);
+});
+
+// ขากลับเป็นไทยไม่มีอะไรตกหล่น จึงต้องไม่ถาม
+test('กล่องยืนยันถามเฉพาะขาไปอังกฤษ', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: true });
+  assert.match(html, /if \(lang === 'en'\) \{ pending = lang; box\.hidden = false; return; \}/);
+});
+
+test('กล่องยืนยันอยู่นอกกระดาษและเป็น no-print', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: true });
+  const paper = html.slice(html.indexOf('<div class="document'), html.indexOf('id="langConfirm"'));
+  assert.ok(!paper.includes('langConfirmBox'), 'ห้ามอยู่ใน .document ไม่งั้นติดไปกับกระดาษ');
+  assert.match(html, /class="langConfirm no-print"/);
+});

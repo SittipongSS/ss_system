@@ -44,6 +44,25 @@ export function isRevisableQuotation(quotation) {
     && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
 }
 
+/**
+ * เปลี่ยน **ภาษาเอกสาร** ได้ไหม — คนละด่านกับ `isEditableQuotation` โดยตั้งใจ
+ *
+ * ⭐ มติผู้ใช้ 2026-08-27: ภาษาไม่ใช่ "เนื้อหาที่ต้องอนุมัติใหม่" — ราคา เงื่อนไข และ
+ * รายการเหมือนกันทุกตัวอักษร เปลี่ยนแค่กระดาษที่พิมพ์ออกไป ⇒ ใบที่อนุมัติแล้วก็เปลี่ยนได้
+ * โดยไม่ต้องออก Rev. และไม่ล้างการอนุมัติ (ของเดิมล็อกไว้ ต้องออก Rev. เพื่อเปลี่ยนแค่ภาษา
+ * ซึ่งแพงเกินเหตุ) · ระบบตรึงไฟล์เอกสารของภาษาใหม่ให้เอง ฉบับเก่ายังอยู่ในประวัติ
+ *
+ * ⚠️ ยังต้องมีด่าน — ใบที่ **ยื่นอนุมัติค้างอยู่** ห้ามเปลี่ยน เพราะผู้อนุมัติกำลังเปิดใบนั้น
+ * อยู่ · ส่วนใบที่ยกเลิกไปแล้วตกด่านที่ `EDITABLE_QUOTATION_STATUSES` อยู่แล้ว
+ * (ตาราง `quotations` ไม่มีตัวชี้ไปข้างหน้าแบบ `supersededById` ของใบสั่งขาย — ฉบับที่ถูก
+ * Rev. ทับยังนับเป็นใบปกติ จึงเปลี่ยนภาษาได้ ซึ่งถูกแล้ว: ฉบับเก่าก็ยังพิมพ์ซ้ำได้อยู่)
+ */
+export function canSwitchQuotationDocLanguage(quotation) {
+  return Boolean(quotation)
+    && quotation.approvalStatus !== 'pending'
+    && EDITABLE_QUOTATION_STATUSES.has(quotation.status);
+}
+
 export function isQuotationSubmitter(quotation, userId) {
   return Boolean(userId)
     && quotation?.approvalStatus === 'pending'

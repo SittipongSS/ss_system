@@ -7,7 +7,7 @@ import {
   quotationForcePreview, cleanupQuotationOrphans,
   exciseFilingBlockMessage, exciseFilingsOfQuotation,
 } from '@/lib/forceDelete';
-import { isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
+import { canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import {
@@ -26,7 +26,9 @@ import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
-import { loadSignatureImageDataUri } from '@/lib/sales/issuedQuotationSnapshot';
+import { loadSignatureImageDataUri, reissueQuotationDocumentForLanguage } from '@/lib/sales/issuedQuotationSnapshot';
+import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
@@ -147,7 +149,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     && before.status === 'draft'
     && ['approved', 'not_required'].includes(before.approvalStatus)
     && bodyKeys.every((key) => key === 'status');
-  if (before.approvalStatus !== 'not_submitted' && !statusOnlySend) {
+  /* ⭐ เปลี่ยน **ภาษาเอกสารอย่างเดียว** ผ่านด่านนี้ได้แม้ใบอนุมัติแล้ว (มติผู้ใช้ 2026-08-27)
+     ภาษาเปลี่ยนแค่กระดาษที่พิมพ์ ไม่ใช่ข้อเสนอ ⇒ ไม่ต้องออก Rev. ไม่ล้างการอนุมัติ
+     ⚠️ ต้อง **คีย์เดียวจริง ๆ** — ยัด docLanguage ไปพร้อมช่องอื่นแล้วปล่อยผ่าน คือช่องแก้
+     ใบที่อนุมัติแล้วโดยไม่มีใครรู้ · ด่านของตัวเอง (`canSwitchQuotationDocLanguage`) บล็อก
+     ใบที่ยื่นอนุมัติค้างอยู่ เพราะผู้อนุมัติกำลังเปิดใบนั้นอยู่ */
+  const docLanguageOnly = bodyKeys.length > 0 && bodyKeys.every((key) => key === 'docLanguage');
+  if (docLanguageOnly && !canSwitchQuotationDocLanguage(before)) {
+    return fail('ใบนี้เปลี่ยนภาษาเอกสารไม่ได้ในสถานะปัจจุบัน', 409);
+  }
+  if (before.approvalStatus !== 'not_submitted' && !statusOnlySend && !docLanguageOnly) {
     if (before.approvalStatus === 'pending') {
       return fail('ใบเสนอราคานี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนแก้ไข', 409);
     }
@@ -169,9 +180,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('notes' in body) patch.notes = (body.notes || '').trim() || null;
   // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
   if ('referenceNote' in body) patch.referenceNote = (body.referenceNote || '').trim() || null;
-  // ภาษาเอกสาร (mig 0238) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น เหมือนช่องเนื้อหาอื่น
-  // (ด่านหัว PATCH คุมไว้แล้ว: approvalStatus ต้องเป็น not_submitted)
-  // ค่านอกลิสต์ทิ้งไปเงียบ ๆ ไม่ได้ — DB มี CHECK อยู่ ปล่อยผ่านคือ 500 ที่อ่านไม่รู้เรื่อง
+  /* ภาษาเอกสาร (mig 0238) — เปลี่ยนได้ตลอด รวมใบที่อนุมัติแล้ว (มติผู้ใช้ 2026-08-27)
+     ด่านอยู่ที่หัว PATCH: ถ้าใบไม่ใช่ร่าง คำขอต้องมี **คีย์นี้คีย์เดียว** และผ่าน
+     `canSwitchQuotationDocLanguage` · ไม่อยู่ใน QUOTATION_APPROVAL_INVALIDATING_FIELDS แล้ว
+     ค่านอกลิสต์ทิ้งไปเงียบ ๆ ไม่ได้ — DB มี CHECK อยู่ ปล่อยผ่านคือ 500 ที่อ่านไม่รู้เรื่อง */
   if ('docLanguage' in body) {
     if (!QUOTATION_DOC_LANGUAGES.includes(body.docLanguage)) {
       return badRequest('ภาษาเอกสารต้องเป็น "th" หรือ "en" เท่านั้น');
@@ -274,9 +286,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // Editing document content after it was sent creates a new draft state.
   // ที่อยู่บนใบนับเป็น "เนื้อหาเอกสาร" ด้วย — เปลี่ยนที่อยู่ = เอกสารคนละใบในสายตาลูกค้า
   // ภาษาเอกสารนับเป็นเนื้อหาด้วย — เปลี่ยนภาษา = ใบที่ลูกค้าได้รับหน้าตาคนละใบ
+  // ⚠️ **ไม่มี `docLanguage` ในลิสต์นี้แล้ว** (มติผู้ใช้ 2026-08-27) — เปลี่ยนภาษาไม่ล้าง
+  // การอนุมัติ · แทนที่จะรีเซ็ต ระบบไปตรึงไฟล์เอกสารของภาษาใหม่ให้แทน (ด้านล่าง)
   const contentChanged = moneyChanged || 'paymentPlan' in body || 'paymentTerms' in body
     || 'notes' in body || 'quoteDate' in body || 'validUntil' in body || addressPicked
-    || 'docLanguage' in body || 'referenceNote' in body;
+    || 'referenceNote' in body;
   // แก้เนื้อหาที่กระทบเอกสาร/ยอด → ต้องยื่นและอนุมัติใหม่ (มติ 2026-07-18 + ข้อ 7 ของ
   // มติ 2026-07-25): ล้างการอนุมัติเดิม กลับเป็น **'not_submitted' = ร่างที่ต้องยื่นใหม่**
   // ไม่ใช่ 'pending' — หลักฐานการยื่นรอบก่อนผูกกับ fingerprint ของเนื้อหาที่เปลี่ยนไปแล้ว
@@ -336,6 +350,30 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
 
   const after = await loadQuote(supabase, id);
+
+  /* ⭐ เปลี่ยนภาษาของใบที่อนุมัติแล้ว = ตรึงเอกสารฉบับใหม่ในภาษานั้นทันที (มติ 2026-08-27)
+     ถ้าไม่ตรึง ปุ่มพิมพ์ของใบที่อนุมัติแล้วจะเล่นฉบับตรึงเดิมซึ่งยังเป็นภาษาเก่า ⇒ จอบอก
+     อังกฤษ แต่ไฟล์ที่ส่งลูกค้าเป็นไทย · best-effort แบบเดียวกับตอนอนุมัติ: ค่าถูกบันทึกไป
+     แล้ว ตรึงพลาดต้องไม่ตอบ error กลับไป (เส้นทางพิมพ์มี fallback สร้างใหม่ให้อยู่แล้ว) */
+  const languageChanged = 'docLanguage' in patch && patch.docLanguage !== before.docLanguage;
+  if (languageChanged && after?.approvalStatus === 'approved') {
+    try {
+      const company = await getPublishedCompanyProfile(supabase);
+      const snap = await reissueQuotationDocumentForLanguage(supabase, {
+        quote: { ...after, lines: after.lines || finalLines },
+        user,
+        company,
+      });
+      const snapshotId = snap?.snapshot?.id;
+      const html = snap?.artifact?.content;
+      if (snapshotId && html) {
+        await captureIssuedQuotationPdf(supabase, { quotationId: id, snapshotId, html });
+      }
+    } catch (reissueError) {
+      console.error('reissue quotation for language failed', id, reissueError);
+    }
+  }
+
   await recordAudit({ user, action: 'update', entityType: 'quotation', entityId: id, before, after, summary: `แก้ไขใบเสนอราคา ${before.quoteNumber}`, request: req });
   return ok(after);
 });
