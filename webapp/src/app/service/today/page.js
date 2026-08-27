@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CheckCircle2, FileText, MapPin, Phone, Play, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileText, MapPin, Phone, Play, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -248,6 +248,12 @@ export default function TodayPage() {
                         <Button tone={done ? "neutral" : "primary"} variant={done ? "quiet" : undefined} size="sm"
                           onClick={() => setClosing(visit)}>
                           {done ? "แก้ผลการเข้า" : "ปิดงาน"}
+                        </Button>
+                      )}
+                      {done && (
+                        <Button as="a" href={`/service/visits/${visit.id}`} tone="neutral" variant="quiet" size="sm"
+                          icon={<ClipboardList size={14} aria-hidden="true" />}>
+                          ใบส่งงาน
                         </Button>
                       )}
                     </div>

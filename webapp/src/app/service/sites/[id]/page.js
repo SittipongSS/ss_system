@@ -520,7 +520,7 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>สถานะ</th><th>สรุปงาน</th></tr>
+                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" /></tr>
               </thead>
               <tbody>
                 {history.map((visit) => (
@@ -532,6 +532,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td>{naText(visit.assigneeName)}</td>
                     <td><span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span></td>
                     <td>{naText(visit.summary)}</td>
+                    {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
+                        คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
+                    <td><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
                   </tr>
                 ))}
               </tbody>

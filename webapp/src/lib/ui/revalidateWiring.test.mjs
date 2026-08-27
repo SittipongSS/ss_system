@@ -27,6 +27,7 @@ const WIRED = [
   // F-1 2026-08-27: ย้ายจาก app/service/my-visits/page.js (เปลี่ยนชื่อ route
   // เป็น "งานวันนี้") — หน้าเดิมหน้าเดียวกัน สัญญาณยังติดครบ ไม่ใช่การถอดออกจากลิสต์
   "app/service/today/page.js",
+  "app/service/visits/[id]/page.js",
   "app/sales-planning/deals/page.js",
   "app/sales-planning/leads/page.js",
   "app/sales-planning/targets/page.js",
