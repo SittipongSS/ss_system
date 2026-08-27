@@ -174,15 +174,19 @@ test('V4 doc: ใบที่ยังไม่ยื่น (not_submitted) ก�
   assert.ok(!html.includes('ค้างจากรอบก่อน'), 'ยังไม่ยื่น = ยังไม่มีผู้อนุมัติบนเอกสาร');
 });
 
-test('V4 doc: ช่องผู้เสนอราคาได้วันที่ + Evidence จากหลักฐานการยื่น', () => {
+/* ⭐ 2026-08-27: **เลิกพิมพ์ Evidence id ลงกระดาษ** — ใช้ประโยชน์ไม่ได้ (ไม่มีหน้า verify
+   สาธารณะ) · ตัวข้อมูลยังเก็บครบ ตัดแค่การพิมพ์ ดูเหตุผลเต็มที่ signBox() */
+test('V4 doc: ช่องผู้เสนอราคาได้ชื่อ + วันที่จากหลักฐานการยื่น (ไม่พิมพ์ Evidence id)', () => {
   const png = 'data:image/png;base64,UFJPUA==';
   const html = buildQuotationMasterHTML(baseQuote([lineOf('1')]), {
     proposerSignatureImage: png,
     proposerEvidence: { id: 'DSE-9', signerName: 'ผู้ยื่นจริง', signedAt: '2026-07-26T04:00:00.000Z' },
   });
   assert.match(html, /ผู้ยื่นจริง/);
-  assert.match(html, /DSE-9/);
   assert.match(html, /26\/07\/2026/);
+  // เลข evidence ต้องไม่ขึ้นกระดาษ แม้จะส่งเข้ามาครบ
+  assert.doesNotMatch(html, /DSE-9/);
+  assert.doesNotMatch(html, /Evidence/);
   // ไม่มีหลักฐาน (ใบเก่า) → stamp เชิงภาพ ไม่มี Evidence
   const legacy = buildQuotationMasterHTML(baseQuote([lineOf('1')]), { proposerSignatureImage: png });
   assert.doesNotMatch(legacy, /DSE-9/);

@@ -47,10 +47,11 @@ test('approved Sale Order stamps the approver e-signature image when the server 
       evidenceId: 'DSE-0001',
     },
   });
-  // รูปลายเซ็นจริงถูกฝัง + ชื่อผู้ลงนาม + Evidence
+  // รูปลายเซ็นจริงถูกฝัง + ชื่อผู้ลงนาม (เลข Evidence ไม่ขึ้นกระดาษแล้ว — 2026-08-27)
   assert.match(html, /<img class="signatureImage" src="data:image\/png;base64,/);
   assert.match(html, /ลายเซ็น สมชาย ผู้อนุมัติ/);
-  assert.match(html, /Evidence DSE-0001/);
+  assert.doesNotMatch(html, /Evidence/, 'เลข evidence ไม่ขึ้นกระดาษ');
+  assert.doesNotMatch(html, /DSE-0001/);
   // ไม่หล่นไปช่องเซ็นเปล่า
   assert.doesNotMatch(html, /ผู้อนุมัติ <span>ผู้จัดการฝ่ายขาย<\/span>[\s\S]*?\(ผู้อนุมัติ\)/);
 });
@@ -179,7 +180,7 @@ test('บัญชีเซ็นแล้ว = ฝังรูปลายเ�
   }, null, null);
   assert.match(html, /Saowalak Muangsri/);
   assert.match(html, /data:image\/png;base64,AAAA/);
-  assert.match(html, /DSE-fin-1/, 'ต้องอ้าง Evidence id เหมือนช่องผู้อนุมัติ');
+  assert.doesNotMatch(html, /DSE-fin-1/, 'เลข evidence ไม่ขึ้นกระดาษ เหมือนช่องผู้อนุมัติ');
 });
 
 /* ⚠️ ลายเซ็นบัญชีต้อง **ไม่** ไปโผล่ในช่องผู้อนุมัติหรือผู้จัดทำ — สามช่องคนละคน */

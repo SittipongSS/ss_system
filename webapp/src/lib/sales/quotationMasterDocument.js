@@ -209,15 +209,25 @@ function signBox(signer, L) {
   const esigMark = signer.esignature?.imageDataUri
     ? `<img class="signatureImage" src="${signer.esignature.imageDataUri}" alt="${esc(L.t('signatureOf'))} ${esc(signer.esignature.signerName || '')}" />`
     : `<div class="signaturePreview" aria-label="${esc(L.isEnglish ? 'Electronic signature placeholder' : 'ตำแหน่งภาพลายเซ็นอิเล็กทรอนิกส์')}">${esc(L.t('esignature'))}</div>`;
-  // แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
-  // มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ ไม่มี Evidence
+  /* แถวรายละเอียด: ตำแหน่ง + เวลาลงนาม (มีเฉพาะที่มีจริง) — ผู้อนุมัติ evidence-backed
+     มีครบ; ผู้เสนอราคาเป็น stamp เชิงภาพ ส่ง role/เวลาว่าง → โชว์แค่รูป+ชื่อ
+
+     ⭐ **ไม่พิมพ์ Evidence id ลงกระดาษแล้ว** (มติผู้ใช้ 2026-08-27) — เดิมมีบรรทัด
+     `Evidence DSE-…` ใต้ลายเซ็นผู้อนุมัติ แต่มันใช้ประโยชน์ไม่ได้เลย:
+       · **ไม่มีหน้าตรวจสอบสาธารณะ** — `document_signature_evidence` อ่านได้เฉพาะ API
+         ที่ต้องล็อกอิน และ OPEN_PAGES ของ proxy ไม่มีหน้า verify ⇒ ลูกค้าถือกระดาษ
+         ที่มีเลขนี้ไปทำอะไรไม่ได้
+       · หลักฐานจริงอยู่ที่แถว evidence + contentFingerprint ของฉบับตรึงในระบบ
+         ไม่ได้อยู่ที่การพิมพ์เลขลงกระดาษ
+       · เป็น id ภายใน ลูกค้าอ่านไม่รู้เรื่อง
+     ⚠️ **ตัวข้อมูลยังเก็บครบเหมือนเดิม** — ตัดแค่การพิมพ์ · ถ้าวันหนึ่งทำหน้า verify
+     สาธารณะแล้วอยากพิมพ์กลับมา ให้เอา evidenceId มาจาก signer.esignature ที่ยังส่งมาถึงนี่ */
   const esigMeta = [signer.esignature?.signerRole, signer.esignature?.signedAt].filter(Boolean).map(esc).join(' · ');
   const body = signer.esignature
     ? `
         ${esigMark}
         <strong>${val(signer.esignature.signerName)}</strong>
-        ${esigMeta ? `<p>${esigMeta}</p>` : ''}
-        ${signer.esignature.evidenceId ? `<small>Evidence ${esc(signer.esignature.evidenceId)}</small>` : ''}`
+        ${esigMeta ? `<p>${esigMeta}</p>` : ''}`
     : `
         <div class="signatureSpace">${esc(L.t('signHere'))}</div>
         <strong>${signer.name ? `(${esc(signer.name)})` : '(____________________________)'}</strong>
