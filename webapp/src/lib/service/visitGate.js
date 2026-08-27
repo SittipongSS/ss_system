@@ -78,12 +78,18 @@ export function evaluateVisitGate(visit, { site = null, contractPhaseReady = CON
    โดยไม่ต้องแก้ตรรกะตรงนี้ */
 export const gatePassed = (items = []) => !items.some((i) => i.state === 'blocked');
 
+/* รายการเหตุที่ยังไม่ผ่าน — ใช้ตรงจุดที่บริบท "ยังเข้าคิวไม่ได้" ชัดอยู่แล้ว
+   (แถวในคิวรอจัด) จะได้ไม่อ่านเป็น "ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกช่าง…"
+   ที่มีขีดคั่นซ้อนกันสามชั้น */
+export const gateReasons = (items = []) =>
+  items.filter((i) => i.state === 'blocked').map((i) => i.detail || i.label);
+
 /* ข้อความบอกเหตุสำหรับปุ่มที่กดไม่ได้ (GatedAction) — ต้องบอก**ทุกข้อที่ขาดในครั้งเดียว**
    ไม่ใช่ทีละข้อให้แก้แล้วเจอข้อถัดไป (กฎฟอร์มของ repo) */
 export function gateBlocker(items = []) {
-  const blocked = items.filter((i) => i.state === 'blocked');
-  if (!blocked.length) return '';
-  return `ยังเข้าคิวไม่ได้ — ${blocked.map((i) => i.detail || i.label).join(' · ')}`;
+  const reasons = gateReasons(items);
+  if (!reasons.length) return '';
+  return `ยังเข้าคิวไม่ได้ — ${reasons.join(' · ')}`;
 }
 
 export const gateSummary = (items = []) => ({

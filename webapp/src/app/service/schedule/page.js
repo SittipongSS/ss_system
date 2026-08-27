@@ -29,7 +29,7 @@ import {
   visitWarnings,
   routeZoneSplit,
 } from "@/lib/service/rounds";
-import { evaluateVisitGate, gateBlocker, gatePassed } from "@/lib/service/visitGate";
+import { evaluateVisitGate, gatePassed, gateReasons } from "@/lib/service/visitGate";
 import { isDraftVisit } from "@/lib/service/visitStatus";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
@@ -258,7 +258,7 @@ export default function ServiceSchedulePage() {
                     <b>{site?.name || visit.siteId}</b>
                     <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
                     <span className={styles.queueReason}>
-                      {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateBlocker(gate)}
+                      {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
                     </span>
                   </button>
                 </li>

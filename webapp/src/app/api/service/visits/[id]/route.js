@@ -5,7 +5,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
-import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit } from '@/lib/service/visitStatus';
+import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit, isLiveVisit } from '@/lib/service/visitStatus';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
@@ -54,7 +54,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ก็ข้ามการสรุปได้ทันที (แพตเทิร์นเดียวกับที่ billing-request-flow §3.5 บันทึกไว้) */
     if (body.closeFromAssets) {
       const { data: results, error: resErr } = await supabase
-        .from('service_visit_assets').select('assetId, outcome').eq('visitId', id);
+        /* 🐞 เดิม select แค่ assetId, outcome แล้วบรรทัดล่างไปอ่าน `r.reason` ⇒ เหตุผล
+           เป็น undefined เสมอ ใบ unable ทุกใบจึงได้ข้อความสำรอง "ทำไม่ได้สักรายการ"
+           ทั้งที่ช่างพิมพ์เหตุผลจริงไว้แล้วรายเครื่อง */
+        .from('service_visit_assets').select('assetId, outcome, reason').eq('visitId', id);
       if (resErr) return fail(resErr.message, 500);
       body.status = deriveVisitStatus(results || []);
       if (body.status === 'unable' && !String(body.unableReason ?? '').trim()) {
@@ -63,15 +66,34 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       }
     }
 
+    /* ปุ่มจับเวลาใช้กับใบที่ยังไม่ปิดเท่านั้น — ใบที่ปิดแล้วยิง `stamp` ซ้ำ จะเขียนทับ
+       เวลาจริงด้วย "ตอนนี้" (แก้ผลรายเครื่องตอนเย็น = เวลาจบกลายเป็นตอนเย็น) หรือไม่ก็
+       ชน CHECK actual_time_window แล้วโผล่เป็นข้อความ Postgres ดิบให้ผู้ใช้อ่าน
+       ⇒ ตอบให้ชัดว่าต้องไปทางไหนแทน (แก้ย้อนหลังผ่านฟอร์มแก้นัด ซึ่งติดธง actualTimeEdited) */
+    if (body.stamp && isClosedVisit(before)) {
+      return conflict('ใบนี้ปิดงานแล้ว — แก้เวลาย้อนหลังที่ฟอร์มแก้นัด ปุ่มจับเวลาใช้ได้เฉพาะใบที่ยังไม่ปิด');
+    }
+
+    /* ⭐ กด "เริ่มงาน" = **server เป็นคนตั้งสถานะ** ไม่ใช่ค่าที่จอส่งมา
+       🐞 ของเดิมรอให้ client ส่ง `status: 'in_progress'` มาคู่กับ `stamp: 'start'`
+       (หน้า "งานวันนี้" ส่งมาจริง) ⇒ ผู้เรียกที่ส่งแต่ `stamp` ได้ใบที่มีเวลาเริ่ม
+       แต่สถานะยังเป็น "นัดไว้" = แถวที่ขัดกันเอง และ `in_progress` กลายเป็นค่าที่
+       ต้องพึ่งความสุจริตของจอ ทั้งที่ mig 0300 ทำมาเพื่อไม่ต้องพึ่ง */
+    if (body.stamp === 'start' && !isClosedVisit(before)) body.status = 'in_progress';
+
     const { value, error } = normalizeVisitInput({ ...before, ...body });
     if (error) return badRequest(error);
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
        ⚠️ ตรวจจาก **ค่าหลังแก้** (`value`) ไม่ใช่ค่าเดิม — คนกดปล่อยเข้าคิวพร้อมกับ
        เลือกช่างในคำขอเดียวกันได้ ถ้าตรวจจาก `before` จะบอกว่ายังไม่มีช่างทั้งที่เพิ่งใส่
-       ⚠️ ด่านตัวเดียวกับที่จอใช้ขึ้นปุ่ม — ห้ามเขียนเงื่อนไขซ้ำที่นี่ */
+       ⚠️ ด่านตัวเดียวกับที่จอใช้ขึ้นปุ่ม — ห้ามเขียนเงื่อนไขซ้ำที่นี่
+       🐞 ของเดิมดักแค่ `draft → scheduled` ⇒ ยิง `status: 'in_progress'` (หรือ
+       `closeFromAssets`) ใส่ร่างตรง ๆ ข้ามด่านได้ทั้งดุ้น — ร่างที่ยังไม่มีช่างและ
+       นัดวันที่ไซต์ปิด กลายเป็น "กำลังทำงาน" ได้ใน request เดียว
+       ⇒ ด่านคุม **ทุกทางออกจากร่างไปสู่สถานะที่มีชีวิต** ไม่ใช่ทางเดียว */
     let gateTrail = null;
-    if (before.status === 'draft' && value.status === 'scheduled') {
+    if (before.status === 'draft' && isLiveVisit(value)) {
       const site = await findSite(supabase, before.siteId);
       const gate = evaluateVisitGate({ ...before, ...value }, { site });
       const override = String(body.gateOverrideReason ?? '').trim();

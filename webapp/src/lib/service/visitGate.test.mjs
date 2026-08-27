@@ -11,6 +11,7 @@ import {
   evaluateVisitGate,
   gateBlocker,
   gatePassed,
+  gateReasons,
   gateSummary,
   initialVisitStatus,
 } from './visitGate.js';
@@ -87,4 +88,11 @@ test('นับผลรวมได้ครบ 4 ข้อเสมอ — จ
   assert.equal(s.total, 4);
   assert.equal(s.parked, 2);
   assert.equal(s.blocked >= 1, true);
+});
+
+test('รายการเหตุแยกจากประโยคเต็ม — จอที่บอกบริบทอยู่แล้วไม่ต้องอ่านขีดซ้อนสามชั้น', () => {
+  const items = evaluateVisitGate({ ...ok, assigneeId: '' }, { site });
+  assert.deepEqual(gateReasons(items), ['ยังไม่มอบหมาย — เลือกช่างก่อนปล่อยเข้าคิว']);
+  assert.equal(gateBlocker(items), 'ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกช่างก่อนปล่อยเข้าคิว');
+  assert.deepEqual(gateReasons(evaluateVisitGate(ok, { site })), []);
 });

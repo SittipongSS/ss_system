@@ -60,11 +60,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
          · `service_visit_assets.assetId` เป็น RESTRICT ⇒ Postgres จะโยน 23503 ดิบ ๆ
            ภาษาอังกฤษให้ผู้ใช้เห็นแทน
        ⇒ เช็คก่อนแล้วบอกทางออก (ปิดใช้งาน/ถอดออก) เหมือนที่ไซต์กับโซนทำอยู่แล้ว */
-    const [{ count: resultCount }, { count: itemCount }] = await Promise.all([
+    /* 🐞 ต้องนับ `replacedByAssetId` ด้วย ไม่ใช่แค่ `assetId` — เครื่องสำรองที่เคยถูก
+       เอาไปแทนเครื่องเสีย ไม่มีแถวที่ assetId ชี้หามันเลย ด่านจึงปล่อยผ่าน แล้วไปตาย
+       ที่ FK SET NULL ของ 0301 ซึ่งดัน CHECK swap_needs_target ให้ล้ม ⇒ ผู้ใช้เห็น
+       ข้อความ Postgres ดิบ ๆ (เจอตอนเก็บกวาดข้อมูลทดสอบ 2026-08-28 · mig 0303 ปิด
+       รูฝั่ง DB ให้เป็น RESTRICT ตรงกับ assetId แล้ว ที่นี่คือชั้นที่พูดกับคน) */
+    const [{ count: resultCount }, { count: itemCount }, { count: swapCount }] = await Promise.all([
       supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
       supabase.from('service_visit_items').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
+      supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('replacedByAssetId', assetId),
     ]);
-    const used = (resultCount || 0) + (itemCount || 0);
+    const used = (resultCount || 0) + (itemCount || 0) + (swapCount || 0);
     if (used > 0) {
       return conflict(
         `อุปกรณ์นี้มีประวัติการเข้าบริการอยู่ ${used} รายการ ลบไม่ได้ — `
