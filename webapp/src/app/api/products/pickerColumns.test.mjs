@@ -23,12 +23,22 @@ test('products: manage ได้ทั้งแถว · picker ได้ชุ�
     'หน้าทะเบียน (?manage=1) ต้องยังได้ทุกคอลัมน์');
 });
 
-test('products picker: ห้ามพกช่องต้นทุน/ภาษีที่คำนวณไว้ล่วงหน้า', () => {
+test('products picker: ห้ามพกช่องต้นทุนที่ถูก redact อยู่แล้ว', () => {
   assert.ok(pickerList.length > 0, 'หา PRODUCT_PICKER_COLUMNS ไม่เจอ');
   for (const col of ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit',
-    'retailPriceExVat', 'exciseTax', 'localTax']) {
+    'retailPriceExVat']) {
     assert.doesNotMatch(pickerList, new RegExp(`'${col}'`),
       `${col} ถูก redactProductMargin ตัดทิ้งอยู่แล้ว — ไม่ต้องดึงมา`);
+  }
+});
+
+// 🔴 regression #1474: ตัดสองช่องนี้ออกแล้วคอลัมน์ "ภาษี/ชิ้น" บนหน้าทะเบียน
+// สรรพสามิตกลายเป็น ฿0.00 ทั้งตารางเงียบ ๆ — จอไม่ได้เขียนชื่อช่องตรง ๆ แต่ส่งแถว
+// เข้า `exciseTaxLineForRegistration()` ซึ่งอ่าน product.exciseTax/localTax ข้างใน
+test('products picker: ต้องมี exciseTax/localTax — หน้าทะเบียนสรรพสามิตคิดภาษี/ชิ้นจากตรงนี้', () => {
+  for (const col of ['exciseTax', 'localTax']) {
+    assert.match(pickerList, new RegExp(`'${col}'`),
+      `ขาด ${col} — /tax/registrations จะโชว์ภาษี/ชิ้นเป็น ฿0.00 ทั้งตาราง`);
   }
 });
 
