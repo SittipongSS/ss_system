@@ -2,7 +2,7 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeAssetInput } from '@/lib/service/sites';
-import { findAsset, requireSite } from '@/lib/service/sitesRepo';
+import { findAsset, findZone, requireSite } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +18,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const body = await req.json().catch(() => ({}));
     const { value, error } = normalizeAssetInput({ ...before, ...body });
     if (error) return badRequest(error);
+
+    // ⚠️ โซนต้องเป็นของไซต์เดียวกัน — เชื่อ id จาก client ตรง ๆ ไม่ได้
+    if (value.zoneId && value.zoneId !== before.zoneId && !(await findZone(supabase, id, value.zoneId))) {
+      return badRequest('โซนที่เลือกไม่อยู่ในไซต์นี้');
+    }
 
     const { data, error: updateError } = await supabase
       .from('service_assets')

@@ -68,6 +68,23 @@ export async function assetCountsBySite(supabase, siteIds = []) {
   return counts;
 }
 
+export async function findZone(supabase, siteId, zoneId) {
+  const { data, error } = await supabase
+    .from('service_zones').select('*')
+    .eq('id', zoneId).eq('siteId', siteId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function loadZones(supabase, siteId) {
+  const { data, error } = await supabase
+    .from('service_zones').select('*').eq('siteId', siteId)
+    .order('isActive', { ascending: false })
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function findAsset(supabase, siteId, assetId) {
   const { data, error } = await supabase
     .from('service_assets').select('*')

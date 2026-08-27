@@ -28,6 +28,17 @@
 
 .wide { grid-column: 1 / -1; }
 
+/* ติ๊กเปิด/ปิดพร้อมคำอธิบายในบรรทัดเดียว (ฟอร์มโซน) */
+.inlineCheck {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+.inlineCheck input { margin-top: 0.3em; }
+.inlineCheck > span { color: var(--text-2); }
+
 .fieldset {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

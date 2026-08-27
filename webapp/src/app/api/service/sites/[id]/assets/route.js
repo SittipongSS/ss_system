@@ -3,7 +3,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { normalizeAssetInput } from '@/lib/service/sites';
-import { loadAssets, requireSite } from '@/lib/service/sitesRepo';
+import { findZone, loadAssets, requireSite } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
-// POST { label, model?, serial?, productId?, bottleMl?, mlPerDay?, installedAt?, status? }
+// POST { label, kind?, qty?, zoneId?, model?, serial?, colour?, floor?, spot?,
+//        settings?, productId?, bottleMl?, mlPerDay?, installedAt?, status? }
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   try {
@@ -28,6 +29,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const body = await req.json().catch(() => ({}));
     const { value, error } = normalizeAssetInput(body);
     if (error) return badRequest(error);
+
+    // ⚠️ โซนต้องเป็นของไซต์เดียวกัน — เชื่อ id จาก client ตรง ๆ ไม่ได้
+    // (normalizeAssetInput ส่งผ่านอย่างเดียว ด่านความเป็นเจ้าของอยู่ที่นี่)
+    if (value.zoneId && !(await findZone(supabase, id, value.zoneId))) {
+      return badRequest('โซนที่เลือกไม่อยู่ในไซต์นี้');
+    }
 
     const row = {
       id: genId('SVA'),
