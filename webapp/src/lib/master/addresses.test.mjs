@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   addressLabel,
+  addressText,
   addressesFromLegacy,
   customerAddresses,
   legacyAddressMirror,
@@ -319,4 +320,33 @@ test('แถวยุคเก่าที่ยังไม่ backfill: กร
   // กระจกเป็นสำนักงานใหญ่ = ไม่มีอะไรให้กู้ ⇒ ใช้ของที่อยู่ตามปกติ
   const hq = { branchCode: '00000', addresses: [{ id: 'ADR-1', address: '1 ถนนทดสอบ', useFor: 'both' }] };
   assert.equal(pickDocumentAddresses(hq, {}).snapshot.branchCode, '00000');
+});
+
+// 🐞 แถวที่พิมพ์บ้านเลขที่ไว้แล้วแต่ยังไม่ได้เลือกจังหวัด เคยกลายเป็นแถวว่าง
+// (พบตอน UAT 2026-08-27) แล้วโดน normalizeAddresses ตัดทิ้ง ⇒ บันทึกลูกค้าใหม่
+// ไม่ผ่าน พร้อมข้อความที่ไม่ได้บอกเหตุจริง และบ้านเลขที่ที่พิมพ์ไปหายเงียบ
+test('ยังไม่เลือกจังหวัด แต่พิมพ์บ้านเลขที่แล้ว — ต้องได้ข้อความกลับมา ไม่ใช่ค่าว่าง', () => {
+  assert.equal(addressText({ line1: '99/9 ถนนทดสอบ' }), '99/9 ถนนทดสอบ');
+});
+
+test('แถวแบบนั้นต้องรอดจาก normalizeAddresses ไม่ใช่ถูกตัดทิ้ง', () => {
+  const rows = normalizeAddresses([{ line1: '99/9 ถนนทดสอบ' }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].address, '99/9 ถนนทดสอบ');
+});
+
+test('และต้องกลายเป็นที่อยู่ออกเอกสารได้จริง (ด่านที่เคยตีกลับ)', () => {
+  const mirror = legacyAddressMirror(normalizeAddresses([{ line1: '99/9 ถนนทดสอบ' }]));
+  assert.equal(mirror.address, '99/9 ถนนทดสอบ');
+});
+
+// ⚠️ ของเดิมต้องไม่เสีย — แถวยุคเก่าที่มีข้อความเต็มอยู่แล้วห้ามถูกประกอบทับ
+test('ยังไม่เลือกจังหวัด แต่มีข้อความที่พิมพ์เองอยู่ — คืนของเดิม ไม่ประกอบทับ', () => {
+  assert.equal(addressText({ address: 'ที่อยู่เต็มยุคเก่า' }), 'ที่อยู่เต็มยุคเก่า');
+  assert.equal(addressText({ address: 'ที่อยู่เต็มยุคเก่า', line1: '99/9' }), 'ที่อยู่เต็มยุคเก่า');
+});
+
+test('แถวว่างจริง ๆ ยังคงถูกตัดทิ้งเหมือนเดิม', () => {
+  assert.equal(addressText({}), '');
+  assert.equal(normalizeAddresses([{ label: 'สำนักงานใหญ่' }]).length, 0);
 });
