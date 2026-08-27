@@ -101,6 +101,20 @@ export default function SalesReportPage() {
   const company = data?.company || null;
   const companyStat = rowStat(company);
 
+  /* 🐞 **% และส่วนต่างต้องเทียบเฉพาะเดือนที่ "มีเป้า"** (UAT 2026-08-27)
+     ช่วงที่คร่อมยุคก่อนตั้งเป้า (2023–2025 ไม่มีเป้าเลย) จะเอายอดของทุกเดือนไปหาร
+     เป้าของไม่กี่เดือน — ของจริงที่เจอ: ธ.ค. 2023 – ม.ค. 2026 ขึ้น **2,367%**
+     เพราะ 26 เดือนมียอด แต่มีเป้าแค่เดือนเดียว
+     ⇒ "ขายจริง" ยังเป็นยอดรวมทุกเดือนที่จบแล้ว (เป็นข้อเท็จจริง ไม่ได้เทียบกับอะไร)
+        ส่วน % กับส่วนต่างจำกัดเฉพาะเดือนที่ตั้งเป้าไว้ และบอกจำนวนเดือนกำกับ */
+  const targetIdx = useMemo(() => months
+    .map((_, i) => i)
+    .filter((i) => i < closedCount && Number(company?.target[i] || 0) > 0), [months, closedCount, company]);
+  const cmp = useMemo(() => ({
+    target: targetIdx.reduce((sum, i) => sum + Number(company?.target[i] || 0), 0),
+    actual: targetIdx.reduce((sum, i) => sum + Number(company?.actual[i] || 0), 0),
+  }), [targetIdx, company]);
+
   /* 🪤 **เดือนที่ "แยกยอดรายคน" จริง ๆ ไม่ใช่ทุกเดือนในช่วง** — ก่อนย้ายเข้าระบบ (ส.ค. 2026)
      ยอดถูกกรอกไว้ระดับบริษัทอย่างเดียว แถวรายคนของเดือนพวกนั้นจึงเป็น 0 ทั้งแถว
      ถ้าเอา 0 ไปหารเป้าที่ตั้งไว้ (ก.ค. มีเป้ารายคนแล้ว) รายงานจะบอกว่า "ทุกคนทำได้ 0%"
@@ -148,26 +162,31 @@ export default function SalesReportPage() {
             <span className="ui-metric-icon"><ChartColumn size={16} /></span>
             <span>
               <small>เป้าของงวดที่จบแล้ว</small>
-              <strong>{money(companyStat.target)}</strong>
-              <em>{closedCount ? `${closedCount} เดือนที่จบแล้ว` : "ยังไม่มีเดือนที่จบในช่วงนี้"}</em>
+              <strong>{money(cmp.target)}</strong>
+              <em>{targetIdx.length ? `ตั้งเป้าไว้ ${targetIdx.length} เดือน` : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em>
             </span>
           </span>
           <span className="ui-metric">
             <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span><small>ขายจริง</small><strong>{money(companyStat.actual)}</strong><em>ไม่รวม VAT ที่บวกท้ายใบ</em></span>
+            <span><small>ขายจริง</small><strong>{money(companyStat.actual)}</strong>
+              <em>{closedCount} เดือนที่จบแล้ว · ไม่รวม VAT ท้ายใบ</em></span>
           </span>
           <span className="ui-metric">
             <span className="ui-metric-icon"><ChartColumn size={16} /></span>
-            <span><small>% ทำได้</small><strong>{pct(companyStat.actual, companyStat.target)}</strong>
-              <em>{companyStat.target > 0 ? (companyStat.actual >= companyStat.target ? "ถึงเป้า" : "ต่ำกว่าเป้า") : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em></span>
+            <span><small>% ทำได้</small><strong>{pct(cmp.actual, cmp.target)}</strong>
+              <em>{cmp.target > 0
+                ? `เทียบเฉพาะ ${targetIdx.length} เดือนที่ตั้งเป้า${cmp.actual >= cmp.target ? " · ถึงเป้า" : " · ต่ำกว่าเป้า"}`
+                : "ยังไม่ได้ตั้งเป้าในช่วงนี้"}</em></span>
           </span>
           <span className="ui-metric">
             <span className="ui-metric-icon"><ChartColumn size={16} /></span>
             <span><small>ส่วนต่าง</small>
-              <strong className={companyStat.actual - companyStat.target >= 0 ? styles.up : styles.down}>
-                {money(companyStat.actual - companyStat.target)}
+              {/* ไม่มีเป้า = เทียบไม่ได้ ต้องขึ้นขีดเหมือน % — ของเดิมโชว์ (ยอดจริง − 0)
+                  ซึ่งอ่านเป็น "เกินเป้า 135 ล้าน" ในช่วงปี 2023–2024 ที่ยังไม่เคยตั้งเป้า */}
+              <strong className={cmp.target > 0 ? (cmp.actual - cmp.target >= 0 ? styles.up : styles.down) : undefined}>
+                {cmp.target > 0 ? money(cmp.actual - cmp.target) : NA}
               </strong>
-              <em>เทียบเป้าของงวดที่จบแล้ว</em></span>
+              <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
           </span>
         </section>
 
@@ -325,7 +344,9 @@ function GroupTable({ rows, idx, months, kind }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {/* เรียงตามยอดขายจริงมากไปน้อย — รายงานนี้ใช้ประชุมสรุปยอดและคิดคอมมิชชั่น
+                  ลำดับตามที่ฐานข้อมูลคืนมาอ่านไม่รู้เรื่องเวลากางในที่ประชุม */}
+              {[...rows].sort((a, b) => pick(b.actual) - pick(a.actual)).map((row) => {
                 const target = pick(row.target);
                 const actual = pick(row.actual);
                 const diff = actual - target;
@@ -343,6 +364,21 @@ function GroupTable({ rows, idx, months, kind }) {
                 );
               })}
             </tbody>
+            {/* แถวรวม — ต้องมี เพราะคนอ่านต้องกระทบยอดกับหัวรายงานได้ทันทีในที่ประชุม */}
+            <tfoot>
+              <tr>
+                <td>รวม {rows.length} {kind === "team" ? "ทีม" : "คน"}</td>
+                {kind === "person" && <td>{NA}</td>}
+                <td className={`num ${styles.colMoneySm}`}>{money(rows.reduce((s, r) => s + pick(r.target), 0))}</td>
+                <td className={`num ${styles.colMoney}`}>{money(rows.reduce((s, r) => s + pick(r.actual), 0))}</td>
+                <td className="num">
+                  {money(rows.reduce((s, r) => s + pick(r.actual) - pick(r.target), 0))}
+                </td>
+                <td className="num">
+                  {pct(rows.reduce((s, r) => s + pick(r.actual), 0), rows.reduce((s, r) => s + pick(r.target), 0))}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </TableScroll>
       )}
