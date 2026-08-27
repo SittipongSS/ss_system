@@ -18,6 +18,31 @@ import { naText } from "@/lib/format";
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
+
+/* คอลัมน์ของลิสต์ picker — ไล่จากจุดอ่านจริงทุกจอที่กิน `GET /api/products`
+   (ทะเบียนสรรพสามิต · ใบยื่น · คำร้อง สร้าง/แก้ · ต้นทุน · โครงการ · ใบเสนอราคา ·
+   `components/master/productOption.js` · `lib/sales/quoteLines.js`)
+   ที่ตัดออกคือช่องที่ **ไม่มีจอไหนอ่านจากลิสต์นี้เลย** — ต้นทุน/ภาษีที่คำนวณไว้ล่วงหน้า
+   (`materialCost` `laborCost` `shippingCost` `factoryProfit` `retailPriceExVat`
+   `exciseTax` `localTax` `taxableOverride`) · ร่องรอยการอนุมัติที่ลิสต์ไม่โชว์
+   (`approvedBy` `approvedAt` `submittedBy` `submittedByName` `firstApprovedAt`)
+   · ของหน้ารายละเอียด (`formulaId` `formulaName` `formulaDate` `piecesPerCase`
+   `driveFolderId` `address`) — วัด 27/08: 492 KB -> 318 KB (-35%) ต่อการโหลดหนึ่งครั้ง
+   ⚠️ ช่องต้นทุนพวกนี้ `redactProductMargin` ตัดทิ้งให้ role ส่วนใหญ่อยู่แล้ว — ดึงมา
+   แล้วโยนทิ้งทุกครั้ง · ฝั่ง server ที่ต้องใช้จริง (soFiling · reports · PATCH) query
+   ตาราง `products` เอง ไม่ได้กิน endpoint นี้
+   🪤 เพิ่มช่องใหม่แล้วอยากให้จอเห็น ต้องเติมชื่อที่นี่ด้วย ไม่งั้นช่องว่างเงียบ ๆ ไม่มี
+   error · `?manage=1` (หน้าทะเบียนสินค้า) ยังได้ทั้งแถวเสมอ */
+const PRODUCT_PICKER_COLUMNS = [
+  'id', 'fgCode', 'categoryCode', 'customerId', 'customerName', 'taxId',
+  'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
+  'volume', 'volumeUnit', 'saleUnit',
+  'price', 'costPrice', 'retailPriceIncVat',
+  'scentId', 'formulaCode', 'metadata',
+  'status', 'isActive', 'approvalStatus', 'approvalNumber', 'rejectionReason',
+  'isExciseTaxable', 'assignee', 'team', 'ownerId', 'approvedByName',
+  'createdAt', 'updatedAt',
+].join(',');
 // Approval gate: by default GET returns only APPROVED products, so downstream
 // consumers (excise registration, PM pickers, order lines) never see a pending
 // row. The management page passes ?manage=1 to see all statuses.
@@ -38,7 +63,7 @@ export async function GET(request) {
      ลูกค้าเดิมที่สั่งซ้ำจะหาสินค้าตัวเองไม่เจอในทุก dropdown ของระบบ
      พ่วง `id` ให้ลำดับนิ่ง ไม่งั้นไล่หน้าแล้วได้แถวซ้ำ+แถวหายพร้อมกัน */
   const buildQuery = () => {
-    let query = supabase.from('products').select('*')
+    let query = supabase.from('products').select(manage ? '*' : PRODUCT_PICKER_COLUMNS)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true });
     if (customerId) query = query.eq('customerId', customerId);
