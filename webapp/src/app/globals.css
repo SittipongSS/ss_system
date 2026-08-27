@@ -6733,6 +6733,23 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   z-index: 5;
 }
 
+/* แถว "ยังไม่ได้แยกทีม" — เป้า/ยอดระดับบริษัทที่ยังไม่ได้ลงรายทีม (ดู unallocatedRow)
+   เอียงเพื่อบอกว่าไม่ใช่หน่วยงานจริง แต่คอลัมน์ตัวเลขยังตั้งตรงให้อ่านเทียบแถวอื่นได้ */
+.performance-tracking-table .fz-table tr.perf-rest-row {
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-style: italic;
+}
+.performance-tracking-table .fz-table tr.perf-rest-row .mono { font-style: normal; }
+.perf-rest-label { font-weight: var(--fw-semibold); }
+.perf-rest-note {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-style: normal;
+  font-weight: var(--fw-normal);
+}
+
 @media (max-width: 680px) {
   .table-row-link,
   .table-metric-button { min-height: 40px; }

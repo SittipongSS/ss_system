@@ -93,6 +93,128 @@ export function buildMatrix(yearDashboards, { months } = {}) {
   return { people: sortedPeople, teams: sortedTeams, company, months: axis };
 }
 
+/* ── ทับเส้น Actual ด้วยยอดที่กรอกย้อนหลัง (sales_history periodType='month') ──────
+   ยกมาจาก `PerformanceTab` (2026-08-27) — เป็นคณิต ไม่ใช่การประกอบ UI จึงต้องอยู่ที่นี่
+   พร้อมเทสต์ ตามกติกาเดิมของแท็บ ("คณิตทั้งหมดอยู่ใน performanceMath")
+
+   ⚠️ สามระดับเป็น *เส้นแยกกัน* ใน matrix (บริษัทมาจาก totals · ทีมจาก byTeam ·
+   คนจาก byOwner) ไม่ได้บวกกันขึ้นไป — เขียนทับทีละระดับจึงไม่นับซ้ำ
+
+   🐞 **แต่เดิมทับได้แค่บริษัทกับรายคน** ⇒ เดือนที่กรอกมือแล้วแถวทีมยังเป็นยอดจากดีล
+   (= 0 ถ้าเดือนนั้นยังไม่ได้ใช้ระบบ) · ของจริงบน prod 27/08/2026: บริษัทสะสม
+   90,682,633 แต่ผลรวมรายทีมได้ 12,188,720 และคอลัมน์ "สถานะ" ของ **ทุกทีม** ขึ้น
+   0.00% ทั้งที่บริษัททำได้ 112.75% — อ่านแล้วเข้าใจว่าทุกทีมไม่ทำยอดเลยครึ่งปี
+
+   ⭐ กติกาที่ใช้แทน — "แถวที่กรอกละเอียดกว่าเป็นคำตอบสุดท้ายของเดือนนั้น":
+   1. แถวรายคน/รายทีม/บริษัท ที่กรอกไว้ตรง ๆ ชนะเสมอ (พฤติกรรมเดิม)
+   2. เดือน+ทีมไหน **มีแถวรายคน** แต่ไม่มีแถวของทีมเอง ⇒ ยอดทีม = ผลรวมคนในทีมนั้น
+   3. เดือนไหนมีระดับทีมขยับ แต่ไม่มีแถวบริษัท ⇒ ยอดบริษัท = ผลรวมทุกทีม
+   ⚠️ ส่วนที่ยัง**ไม่**กระทบกัน (เช่น แถวบริษัทใหญ่กว่าผลรวมทีม เพราะครึ่งปีแรกกรอก
+   มาแค่ระดับบริษัท) ไม่ถูกกลบเงียบ — `unallocatedRow` ดึงออกมาเป็นแถวของตัวเอง */
+export function overlayHistory(matrix, rows) {
+  const axis = matrix?.company?.months || [];
+  const size = matrix?.company?.target?.length || axis.length || 12;
+  const blank = () => ({ months: axis, target: zeros(size), fcTotal: zeros(size), forecast: zeros(size), actual: zeros(size) });
+  // งวดของแถวประวัติ: หาในแกนก่อน แล้วค่อยถอยไปเลขเดือน (ผู้เรียกดึงประวัติทีละปีอยู่แล้ว)
+  const indexOf = (period) => {
+    const key = String(period || '').slice(0, 7);
+    const onAxis = axis.indexOf(key);
+    if (onAxis >= 0) return onAxis;
+    if (axis.length) return -1;
+    const mi = Number(key.slice(5, 7)) - 1;
+    return mi >= 0 && mi < size ? mi : -1;
+  };
+  // คีย์ทีมต้องตรงกับที่ buildMatrix ใช้ ไม่งั้นแถวที่ roll up ขึ้นไปจะไปสร้างทีมซ้อน
+  const teamKeyOf = (team) => team || 'ไม่ระบุทีม';
+  const teamRowOf = (team) => {
+    const key = teamKeyOf(team);
+    let t = matrix.teams.find((x) => x.team === key);
+    if (!t) { t = { team: key, ...blank() }; matrix.teams.push(t); }
+    return t;
+  };
+
+  const personTouched = new Map(); // teamKey → Set(index) ที่มีแถวรายคนกรอกไว้
+  const teamExplicit = new Map();  // teamKey → Set(index) ที่มีแถวของทีมเองกรอกไว้
+  const companyExplicit = new Set();
+
+  for (const row of rows || []) {
+    const mi = indexOf(row.period);
+    if (mi < 0) continue;
+    const amt = Number(row.actualAmount || 0);
+
+    if (row.ownerId) {
+      let person = matrix.people.find((x) => x.id === row.ownerId);
+      if (!person) {
+        // คนที่ไม่มีดีลในปีนั้นเลย (เข้าใหม่/ลาออก) ยังต้องมีแถว ไม่งั้นยอดที่กรอกหาย
+        person = { id: row.ownerId, name: row.ownerName || row.ownerId, team: row.team || null, ...blank() };
+        matrix.people.push(person);
+      }
+      person.actual[mi] = amt;
+      const key = teamKeyOf(person.team);
+      if (!personTouched.has(key)) personTouched.set(key, new Set());
+      personTouched.get(key).add(mi);
+      continue;
+    }
+
+    if (!row.team) { matrix.company.actual[mi] = amt; companyExplicit.add(mi); continue; }
+    teamRowOf(row.team).actual[mi] = amt;
+    const key = teamKeyOf(row.team);
+    if (!teamExplicit.has(key)) teamExplicit.set(key, new Set());
+    teamExplicit.get(key).add(mi);
+  }
+
+  // 2. ทีมที่ไม่ได้กรอกเอง แต่มีคนในทีมกรอกไว้ ⇒ ยอดทีมของเดือนนั้น = ผลรวมคนในทีม
+  const teamMoved = new Set();
+  for (const [key, indexes] of personTouched) {
+    const explicit = teamExplicit.get(key);
+    const team = teamRowOf(key);
+    for (const mi of indexes) {
+      if (explicit?.has(mi)) continue;
+      team.actual[mi] = matrix.people
+        .filter((p) => teamKeyOf(p.team) === key)
+        .reduce((sum, p) => sum + Number(p.actual[mi] || 0), 0);
+      teamMoved.add(mi);
+    }
+  }
+  for (const indexes of teamExplicit.values()) for (const mi of indexes) teamMoved.add(mi);
+
+  // 3. เดือนที่ระดับทีมขยับแต่ไม่มีแถวบริษัท ⇒ ยอดบริษัท = ผลรวมทุกทีม
+  for (const mi of teamMoved) {
+    if (companyExplicit.has(mi)) continue;
+    matrix.company.actual[mi] = matrix.teams.reduce((sum, t) => sum + Number(t.actual[mi] || 0), 0);
+  }
+
+  return matrix;
+}
+
+/* แถว "ยังไม่ได้แยกทีม" = ยอดบริษัท − ผลรวมรายทีม ของแต่ละงวด
+
+   ⭐ ตารางติดตามวางแถวทีมกับแถวรวมบริษัทไว้ด้วยกัน คนอ่านจึงบวกแถวทีมแล้วคาดว่า
+   จะได้แถวล่างสุด — ซึ่ง **ไม่จริง** และไม่เคยมีอะไรบอก สองทางที่ทำให้ต่าง:
+   · เป้า: `saTarget` (เป้ารวมบริษัท ownerId/team ว่าง) ชนะเป้ารายทีมทั้งชุด
+     (route: `saWideTarget > 0 ? saWideTarget : teamTargetSum`) — ปี 2026 ม.ค.–มิ.ย.
+     กรอกไว้แค่ระดับบริษัท แถวทีมจึงเป็น 0 ทั้งหกเดือน
+   · Actual: ยอดกรอกย้อนหลังระดับบริษัทที่ยังไม่ได้แตกลงทีม (`overlayHistory` ข้อ 3)
+   ⇒ ดึงส่วนต่างออกมาเป็นแถวของตัวเอง แถวทีม + แถวนี้ = แถวรวมบริษัทเป๊ะทุกคอลัมน์
+   ห้ามเอาไปบวกใส่ทีมไหนเป็นการเดา — ข้อมูลว่าเป็นของทีมไหนไม่มีอยู่จริง */
+export function unallocatedRow(matrix) {
+  const company = matrix?.company || {};
+  const size = company.target?.length || 0;
+  const minus = (key) => Array.from({ length: size }, (_, i) => (
+    Number(company[key]?.[i] || 0) - (matrix.teams || []).reduce((sum, t) => sum + Number(t[key]?.[i] || 0), 0)
+  ));
+  return { team: null, months: company.months || null, target: minus('target'), fcTotal: minus('fcTotal'), forecast: minus('forecast'), actual: minus('actual') };
+}
+
+/** แถวนี้มีอะไรให้แสดงไหมในช่วง [startIdx..endIdx] (ทุกค่าเป็น 0 = ซ่อนแถวทิ้ง) */
+export function rowHasValue(row, startIdx, endIdx) {
+  const keys = ['target', 'fcTotal', 'forecast', 'actual'];
+  for (let i = Math.max(0, startIdx); i <= endIdx; i += 1) {
+    for (const key of keys) if (Math.abs(Number(row?.[key]?.[i] || 0)) > 1e-9) return true;
+  }
+  return false;
+}
+
 // จำนวนเดือนที่ "จบแล้ว" ของปีหนึ่ง ๆ (เดือนปัจจุบันยังไม่จบ ไม่นับ) —
 // ใช้ตัดสินยอดทบ/สถานะ. now = { year, monthIdx } (monthIdx 0-11).
 export function closedMonths(year, now) {

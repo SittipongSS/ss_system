@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   buildMatrix,
+  overlayHistory,
+  unallocatedRow,
+  rowHasValue,
   closedCountOnAxis,
   indexOfMonth,
   monthsOfDashboards,
@@ -434,4 +437,116 @@ test('closedCountOnAxis นับเฉพาะงวดที่จบแล�
   assert.equal(closedCountOnAxis(months, { year: 2025, monthIdx: 10 }), 0);
   assert.equal(indexOfMonth(months, '2026-01'), 2);
   assert.equal(indexOfMonth(months, '2024-01'), -1);
+});
+
+
+/* ---------- overlayHistory + unallocatedRow (ยอดที่กรอกย้อนหลัง) ---------- */
+
+// ปีจำลองที่ล้อของจริงบน prod (27/08/2026): ครึ่งปีแรกกรอกไว้ระดับบริษัทอย่างเดียว
+// เดือนถัดมากรอกรายคน ส่วนเดือนล่าสุดมียอดจากดีลตามปกติ
+const yearMonths = (year) => [
+  {
+    month: `${year}-01`,
+    totals: { targetAmount: 100, fullForecast: 0, weightedForecast: 0, wonValue: 0 },
+    byOwner: [], byTeam: [{ team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0 }],
+  },
+  {
+    month: `${year}-02`,
+    totals: { targetAmount: 100, fullForecast: 0, weightedForecast: 0, wonValue: 0 },
+    byOwner: [
+      { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 40, won: 0, weighted: 0, fcTotal: 0 },
+      { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 20, won: 0, weighted: 0, fcTotal: 0 },
+    ],
+    byTeam: [
+      { team: 'KA', target: 40, won: 0, weighted: 0, fcTotal: 0 },
+      { team: 'SV', target: 20, won: 0, weighted: 0, fcTotal: 0 },
+    ],
+  },
+  {
+    month: `${year}-03`,
+    totals: { targetAmount: 100, fullForecast: 90, weightedForecast: 30, wonValue: 60 },
+    byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 60, won: 60, weighted: 30, fcTotal: 90 }],
+    byTeam: [{ team: 'KA', target: 60, won: 60, weighted: 30, fcTotal: 90 }],
+  },
+];
+
+test('overlayHistory: แถวรายคนดันขึ้นเป็นยอดทีม เมื่อทีมนั้นไม่ได้กรอกเอง', () => {
+  const m = overlayHistory(buildMatrix(yearMonths('2026')), [
+    { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
+    { period: '2026-02', team: 'SV', ownerId: 'u2', ownerName: 'บี', actualAmount: 15 },
+  ]);
+  const ka = m.teams.find((t) => t.team === 'KA');
+  const sv = m.teams.find((t) => t.team === 'SV');
+  assert.equal(ka.actual[1], 45, 'ยอดทีมของเดือนที่กรอกรายคน = ผลรวมคนในทีม');
+  assert.equal(sv.actual[1], 15);
+  assert.equal(m.company.actual[1], 60, 'ไม่มีแถวบริษัท ⇒ ยอดบริษัท = ผลรวมทีม');
+});
+
+test('overlayHistory: แถวที่กรอกตรง ๆ ชนะการ roll up เสมอ', () => {
+  const m = overlayHistory(buildMatrix(yearMonths('2026')), [
+    { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
+    { period: '2026-02', team: 'KA', ownerId: null, actualAmount: 70 }, // แถวของทีมเอง
+    { period: '2026-02', team: null, ownerId: null, actualAmount: 500 }, // แถวบริษัท
+  ]);
+  assert.equal(m.teams.find((t) => t.team === 'KA').actual[1], 70, 'แถวทีมชนะผลรวมรายคน');
+  assert.equal(m.company.actual[1], 500, 'แถวบริษัทชนะผลรวมทีม');
+  assert.equal(m.people.find((p) => p.id === 'u1').actual[1], 45);
+});
+
+test('overlayHistory: เดือนที่ไม่มีแถวประวัติเลย ยังใช้ยอดจากดีลตามเดิม', () => {
+  const m = overlayHistory(buildMatrix(yearMonths('2026')), [
+    { period: '2026-01', team: null, ownerId: null, actualAmount: 80 },
+  ]);
+  assert.equal(m.company.actual[2], 60, 'มี.ค. ไม่ถูกแตะ');
+  assert.equal(m.teams.find((t) => t.team === 'KA').actual[2], 60);
+  assert.equal(m.company.actual[0], 80);
+});
+
+test('overlayHistory: คนที่ไม่มีดีลในปีนั้นเลย ยังได้แถวของตัวเอง', () => {
+  const m = overlayHistory(buildMatrix(yearMonths('2026')), [
+    { period: '2026-01', team: 'SV', ownerId: 'u9', ownerName: 'ซี', actualAmount: 25 },
+  ]);
+  const person = m.people.find((p) => p.id === 'u9');
+  assert.equal(person.actual[0], 25, 'ยอดที่กรอกให้คนที่ยังไม่มีดีลต้องไม่หาย');
+  assert.equal(person.actual.length, 12);
+  assert.equal(m.teams.find((t) => t.team === 'SV').actual[0], 25, 'และดันขึ้นทีมที่เพิ่งเกิดด้วย');
+});
+
+test('unallocatedRow: แถวทีมทุกแถว + ส่วนที่ยังไม่ได้แยก = แถวรวมบริษัท ทุกงวด', () => {
+  /* ก.พ. ล้อของจริงบน prod: มีทั้งแถวบริษัทและแถวรายคน แต่รายคนรวมกันไม่ถึงยอดบริษัท
+     (27/08/2026 ก.ค.: บริษัท 9,732,781 · รวมรายคน 8,511,698 ⇒ เหลือ 1,221,083) */
+  const m = overlayHistory(buildMatrix(yearMonths('2026')), [
+    { period: '2026-01', team: null, ownerId: null, actualAmount: 80 }, // บริษัทล้วน
+    { period: '2026-02', team: null, ownerId: null, actualAmount: 60 },
+    { period: '2026-02', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 45 },
+  ]);
+  const rest = unallocatedRow(m);
+  for (const key of ['target', 'fcTotal', 'forecast', 'actual']) {
+    for (let i = 0; i < 12; i += 1) {
+      const teams = m.teams.reduce((sum, t) => sum + Number(t[key][i] || 0), 0);
+      assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1} ต้องกระทบกันได้`);
+    }
+  }
+  assert.equal(rest.target[0], 100, 'ม.ค. ตั้งเป้าไว้แค่ระดับบริษัท ⇒ ตกมาที่แถวนี้ทั้งก้อน');
+  assert.equal(rest.actual[0], 80);
+  assert.equal(rest.actual[1], 15, 'ก.พ. บริษัท 60 − ทีม (45+0) = 15 ที่ยังไม่รู้ว่าของใคร');
+  assert.equal(m.company.actual[1], 60, 'แถวบริษัทที่กรอกไว้ต้องไม่ถูก roll up ทับ');
+});
+
+test('unallocatedRow: บริษัทที่แยกครบทุกทีมได้แถวศูนย์ (UI ซ่อนทิ้ง)', () => {
+  const m = buildMatrix([{
+    month: '2026-01',
+    totals: { targetAmount: 60, fullForecast: 30, weightedForecast: 10, wonValue: 20 },
+    byOwner: [],
+    byTeam: [{ team: 'KA', target: 60, won: 20, weighted: 10, fcTotal: 30 }],
+  }]);
+  const rest = unallocatedRow(m);
+  assert.equal(rowHasValue(rest, 0, 11), false);
+});
+
+test('rowHasValue: จับได้ทั้งค่าบวกและค่าลบ เฉพาะในช่วงที่ถาม', () => {
+  const r = { target: fill(0), fcTotal: fill(0), forecast: fill(0), actual: fill(0) };
+  r.actual[5] = -3;
+  assert.equal(rowHasValue(r, 0, 4), false);
+  assert.equal(rowHasValue(r, 5, 5), true, 'ยอดติดลบ (ทีมรวมกันเกินบริษัท) ก็ต้องโชว์');
 });
