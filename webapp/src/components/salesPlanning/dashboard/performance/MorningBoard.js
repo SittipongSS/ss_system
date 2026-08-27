@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useMemo } from "react";
 import { Sun } from "lucide-react";
-import { windowStat, yearSummary } from "@/lib/sales/performanceMath";
+import { rowHasValue, unallocatedRow, windowStat, yearSummary } from "@/lib/sales/performanceMath";
 import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar } from "./shared";
 import { NA } from "@/lib/format";
 
@@ -15,6 +15,12 @@ import { NA } from "@/lib/format";
 // ของเดิมเป็นสองตารางแถวเดียวกัน คอลัมน์ซ้ำกัน 6 จาก 9 ต่างกันแค่ตารางล่างล็อกงวด
 // "ทั้งปี" ไว้ตายตัว · กดสวิตช์งวดเป็น "ปี" ที่นี่ได้ผลเท่ากัน จึงย้าย 3 คอลัมน์ที่มี
 // เฉพาะตารางล่าง (ต้องทำ/เดือน · YoY · สถานะ) เข้ามาโผล่เฉพาะโหมดปี
+//
+// 🧮 **แถวทีมทั้งหมด + "ยังไม่ได้แยกทีม" = แถวรวมบริษัทเป๊ะ** (เพิ่ม 2026-08-27)
+// ของเดิมวางแถวทีมกับแถวรวมไว้ด้วยกันโดยที่สองระดับกระทบกันไม่ได้ (prod 27/08:
+// เป้าทั้งปี บริษัท 137.35M vs ผลรวมทีม 72.35M · Actual สะสม 90.68M vs 12.19M)
+// ⇒ ส่วนต่างเป็นแถวของตัวเองจาก `unallocatedRow` ไม่ใช่ตัวเลขที่หายไปเฉย ๆ
+// ⚠️ ห้ามยัดส่วนต่างเข้าทีมไหนเป็นการเดา — ข้อมูลว่าเป็นของทีมไหนไม่มีอยู่จริง
 //
 // ⚠️ **สองนิยามของ "ขาด" อยู่ในแถวเดียวกัน** อย่าเอามารวมเป็นคอลัมน์เดียว:
 // · "ขาด / เกิน" = Actual − เป้า**ทั้งงวด** (โหมดปี = เป้าทั้ง 12 เดือน) — เหลืออีกเท่าไรถึงปิดปี
@@ -52,9 +58,15 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
 
   const teamRow = (team) => matrix.teams.find((t) => t.team === team);
 
+  /* ส่วนที่ยังไม่ได้แตกลงทีม — โชว์เฉพาะเมื่อมีจริงในงวดที่ดู (บริษัทที่แยกครบไม่ต้องเห็น) */
+  const rest = useMemo(() => unallocatedRow(matrix), [matrix]);
+  const prevRest = useMemo(() => (prevMatrix ? unallocatedRow(prevMatrix) : null), [prevMatrix]);
+  const showRest = rowHasValue(rest, win.startIdx, win.endIdx);
+
   // Actual ปีก่อนของแถวเดียวกัน — ฐานของ YoY (ไม่มีฐาน = คอลัมน์แสดง "–")
-  const lastYearActualOf = (row, isTeam, isTotal) => {
+  const lastYearActualOf = (row, isTeam, isTotal, isRest) => {
     if (isTotal) return prevMatrix?.company?.actual || null;
+    if (isRest) return prevRest?.actual || null;
     if (isTeam) return prevMatrix?.teams.find((x) => x.team === row.team)?.actual || null;
     return prevMatrix?.people.find((x) => x.id === row.id)?.actual || null;
   };
@@ -72,13 +84,14 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
       label: row.id === "company" ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name,
     });
 
-  const Row = ({ row, isTeam = false, isTotal = false }) => {
+  const Row = ({ row, isTeam = false, isTotal = false, isRest = false }) => {
     const s = statOf(row);
-    const y = isYear ? yearSummary(row, { closedCount, ytdCount, lastYearActual: lastYearActualOf(row, isTeam, isTotal) }) : null;
-    const label = isTotal ? "รวมทั้งบริษัท" : isTeam ? `ทีม ${row.team}` : row.name;
-    const clickable = !isTotal;
+    const y = isYear ? yearSummary(row, { closedCount, ytdCount, lastYearActual: lastYearActualOf(row, isTeam, isTotal, isRest) }) : null;
+    const label = isTotal ? "รวมทั้งบริษัท" : isRest ? "ยังไม่ได้แยกทีม" : isTeam ? `ทีม ${row.team}` : row.name;
+    const clickable = !isTotal && !isRest;
     const cellClass = (base = "") => `${base}${isTotal ? " fz-foot" : ""}`.trim();
-    const metricButton = (value, metric, color, metricLabel) => value > 0 ? (
+    // แถว "ยังไม่ได้แยกทีม" กดดูรายดีลไม่ได้ — มันคือส่วนต่างของยอดที่กรอกมือ ไม่ใช่ดีล
+    const metricButton = (value, metric, color, metricLabel) => value > 0 && !isRest ? (
       <button
         type="button"
         className="table-metric-button mono"
@@ -91,7 +104,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
     ) : <span className="mono" style={{ color }}>{money(value)}</span>;
     return (
       <tr
-        className="premium-row"
+        className={`premium-row${isRest ? " perf-rest-row" : ""}`}
         style={isTotal
           ? { background: "var(--panel-2)", fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }
           : isTeam
@@ -108,8 +121,13 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
             >
               {label}
             </button>
+          ) : isRest ? (
+            <>
+              <strong className="perf-rest-label">{label}</strong>
+              <span className="perf-rest-note">ยอดระดับบริษัทที่ยังไม่ได้ลงทีม</span>
+            </>
           ) : <strong>{label}</strong>}
-          {!isTeam && !isTotal && row.team && (
+          {!isTeam && !isTotal && !isRest && row.team && (
             <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-4)", fontWeight: "var(--fw-normal)" }}>{row.team}</span>
           )}
         </td>
@@ -169,6 +187,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
         {" "}· แถบ: เขียว = Actual · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"} · คลิกตัวเลขเพื่อดูรายการดีล
         {isYear && ` · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้าเฉพาะเดือนที่จบแล้ว (${through}) — เดือนที่กำลังวิ่งไม่นับ`}
+        {showRest && ' · แถว "ยังไม่ได้แยกทีม" คือเป้า/ยอดที่กรอกไว้ระดับบริษัทแต่ยังไม่ได้ลงรายทีม — แถวทีมทุกแถวบวกกับแถวนี้จะได้แถวรวมท้ายตารางพอดี'}
       </p>
 
       <div className="fz-box premium-glass-table performance-tracking-table" style={{ "--fz-c1w": "150px" }}>
@@ -203,6 +222,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
                 </Fragment>
               );
             })}
+            {showRest && <Row row={rest} isRest />}
           </tbody>
           <tfoot>
             <Row row={{ ...matrix.company, id: "company" }} isTotal />
