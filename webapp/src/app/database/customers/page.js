@@ -146,6 +146,14 @@ export default function CustomerDirectory() {
       arCode: formData.arCode,
       name: formData.name,
       nameEn: formData.nameEn,               // ชื่ออังกฤษ (mig 0283) — อย่างน้อยหนึ่งภาษา
+      /* คำนำหน้า + ชื่อเปล่าของลูกค้าบุคคล (mig 0296) — `name` ข้างบนเป็นกระจกที่ฟอร์ม
+         ประกอบไว้แล้ว แต่ **สองช่องนี้ต้องส่งไปด้วย** ไม่งั้นเซิร์ฟเวอร์เขียน null ลงฐาน
+         แล้วเปิดฟอร์มรอบหน้าจะไปแยกจากชื่อเต็มใหม่ทุกครั้ง (ผลลัพธ์เหมือนกันจนกว่า
+         จะเจอชื่อที่แยกไม่เข้ารูปเดิม แล้วค่าจะเพี้ยนเงียบ ๆ)
+         🪤 payload ตัวนี้เป็น whitelist — เพิ่มคอลัมน์ใหม่ให้ลูกค้าต้องเติมชื่อที่นี่ด้วย
+            ทั้งหน้าสร้างและหน้าแก้ ไม่งั้นค่าหายเงียบไม่มี error */
+      nameTitle: formData.nameTitle,
+      namePerson: formData.namePerson,
 
       customerType: formData.customerType || "company",
       taxId: formData.taxId,
