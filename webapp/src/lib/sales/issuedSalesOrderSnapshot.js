@@ -38,6 +38,11 @@ export function buildIssuedSalesOrderPayload(order = {}, company) {
       orderNumber: trimOrNull(order.orderNumber),
       orderDate: order.orderDate || null,
       paymentDueDate: order.paymentDueDate || null,
+      /* ภาษาที่ใบนี้ถูกออกจริง (mig 0295) — **ต้องอยู่ในลายนิ้วมือ** ไม่งั้นเปลี่ยนภาษา
+         แล้ว RPC มองว่าเนื้อหาเหมือนเดิม คืนฉบับเดิมกลับมา (reused) แล้วไฟล์ที่ตรึงไว้
+         ยังเป็นภาษาเก่าค้างอยู่ · คีย์ใหม่กระทบ contentFingerprint ของฉบับที่จะตรึง
+         ต่อจากนี้เท่านั้น ของเก่าเก็บค่าไว้ในตารางแล้ว ไม่เคยคำนวณซ้ำ */
+      docLanguage: order.docLanguage === 'en' ? 'en' : 'th',
     },
     content: {
       lines: lines
@@ -200,7 +205,8 @@ export async function captureIssuedSalesOrderSnapshot(supabase, { order: rawOrde
     p_artifact_sha256: artifactSha256(html),
     p_signature_evidence_id: evidence.id,
     p_layout_version: ISSUED_SALES_ORDER_LAYOUT_VERSION,
-    p_locale: ISSUED_SALES_ORDER_LOCALE,
+    // ทะเบียนเอกสารที่ออกจริงต้องบอกภาษาให้ตรง ไม่งั้นใบอังกฤษถูกบันทึกว่าเป็นใบไทย
+    p_locale: order.docLanguage === 'en' ? 'en-US' : ISSUED_SALES_ORDER_LOCALE,
     p_actor_id: user?.id || order.approvedBy || null,
     p_actor_name: user?.name || order.approvedByName || null,
   });
