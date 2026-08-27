@@ -1108,6 +1108,12 @@ export default function SalesOrderDetailPage() {
             busy={busy}
             onStart={startPaymentTracking}
             onAction={runInstallmentAction}
+            /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
+               งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
+               อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
+               รอบนี้ยกให้ครบทุกโมดัลของแผงนี้ ⇒ ส่งข้อความเข้าไปในโมดัลด้วย */
+            error={error}
+            onClearError={() => setError("")}
           />
 
           {/* ข้อมูลควบคุม + ประวัติฉบับแก้ไข — ข้อมูล "เย็น" ที่ไม่ใช่คำถามแรกของใคร
