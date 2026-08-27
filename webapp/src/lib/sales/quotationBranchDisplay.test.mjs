@@ -43,8 +43,10 @@ const pageSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8'
 
 test('หน้าสร้างใบ: ช่องสาขาอ่านจากที่อยู่ที่เลือกอยู่ ไม่ใช่ช่องระดับลูกค้า', () => {
   const src = pageSource('../../app/sales-planning/quotations/new/page.js');
-  // ป้าย "สาขา" มีอยู่แล้ว ⇒ ใช้ branchValue (เลขเปล่า) ไม่ใช่ branchLabel ที่เติม "สาขาที่"
-  assert.match(src, /<small>สาขา<\/small>\{branchValue\(pickedAddresses\.snapshot\.branchCode\)\}/);
+  /* ป้าย "สาขา" มีอยู่แล้ว ⇒ ใช้ branchValue (เลขเปล่า) ไม่ใช่ branchLabel ที่เติม "สาขาที่"
+     ⚠️ และต้องกั้นด้วย billingAddressId — ยังไม่เลือกที่อยู่ก็ยังไม่มีสาขาให้โชว์
+     (2026-08-27: ทุกช่องในบล็อกนี้เริ่มที่ "ยังไม่เลือก") */
+  assert.match(src, /billingAddressId \? branchValue\(pickedAddresses\.snapshot\.branchCode\) : naText\(""\)/);
   assert.doesNotMatch(src, /branchLabel\(customer\.branchCode\)/);
 });
 
