@@ -37,6 +37,7 @@ import styles from "./SalesOrderPaymentPanel.module.css";
    ⚠️ ยอด "เก็บแล้ว" นับเฉพาะที่บัญชีคอนเฟิร์ม — `reported` ไม่นับ */
 export default function SalesOrderPaymentPanel({
   order, installments, user, todayIso, canStart, busy, onStart, onAction,
+  error = "", onClearError,
 }) {
   const [reportFor, setReportFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
@@ -256,7 +257,7 @@ export default function SalesOrderPaymentPanel({
                         : reportsAsConfirmed
                           ? "บันทึกการรับชำระ"
                           : row.status === "rejected" ? "แจ้งใหม่" : "แจ้งลูกค้าจ่ายแล้ว",
-                      onClick: () => setReportFor({ row, paidOn: todayIso, files: [] }) }
+                      onClick: () => { onClearError?.(); setReportFor({ row, paidOn: todayIso, files: [] }); } }
                   : canConfirm
                     ? {
                       label: "บัญชีคอนเฟิร์ม",
@@ -266,7 +267,7 @@ export default function SalesOrderPaymentPanel({
                       /* ⭐ โมดัลตัวเดียวกับคิวบนทะเบียนการชำระ (มติผู้ใช้ 2026-08-13) —
                          และมัน **โชว์หลักฐานก่อนกด** ซึ่งของเดิมไม่มี ทั้งที่หน้านี้เป็น
                          ที่ที่หลักฐานอยู่ · เขียนสองชุดเมื่อไรมันเพี้ยนหากัน (AGENTS.md) */
-                      onClick: () => setConfirmFor({ row }),
+                      onClick: () => { onClearError?.(); setConfirmFor({ row }); },
                     }
                     : null;
 
@@ -274,7 +275,7 @@ export default function SalesOrderPaymentPanel({
                   !gate(row, "schedule") && {
                     id: "schedule", icon: CalendarClock,
                     label: row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",
-                    onClick: () => setScheduleFor({ row, dueDate: row.dueDate || "" }),
+                    onClick: () => { onClearError?.(); setScheduleFor({ row, dueDate: row.dueDate || "" }); },
                   },
                   !gate(row, "withdraw") && {
                     id: "withdraw", icon: Undo2, tone: "warning",
@@ -284,14 +285,14 @@ export default function SalesOrderPaymentPanel({
                   },
                   !gate(row, "reject", { reason: "x".repeat(MIN_REJECT_REASON) }) && {
                     id: "reject", icon: XCircle, tone: "danger", label: "ตีกลับให้แก้",
-                    onClick: () => setRejectFor({ row, reason: "" }),
+                    onClick: () => { onClearError?.(); setRejectFor({ row, reason: "" }); },
                   },
                   /* ถอนคำรับรอง (มติผู้ใช้ 2026-08-13) — **อยู่ในเมนู `⋯` ไม่ใช่ปุ่มหลัก**
                      งวดที่คอนเฟิร์มแล้วคือ "จบแล้ว" ปุ่มหลักของแถวจึงต้องไม่มี ·
                      การถอยเป็นทางออกฉุกเฉิน ไม่ใช่ก้าวถัดไปที่ชวนให้กด */
                   !gate(row, "unconfirm", { reason: "x".repeat(MIN_REJECT_REASON) }) && {
                     id: "unconfirm", icon: Undo2, tone: "warning", label: "ถอนคำรับรอง",
-                    onClick: () => setUnconfirmFor({ row, reason: "" }),
+                    onClick: () => { onClearError?.(); setUnconfirmFor({ row, reason: "" }); },
                   },
                   /* ── คำร้องขอเอกสารการเงิน (B-5) ────────────────────────────
                      ⭐ **สองทางเข้า คนละสถานการณ์** — ยังไม่เคยขอ = เปิดใบใหม่ ·
@@ -305,7 +306,7 @@ export default function SalesOrderPaymentPanel({
                   !row.billingRequestId && linkableRequests.length > 0
                     && !gate(row, "link", { billingRequestId: "x" }) && {
                     id: "link-doc", icon: Link2, label: "แนบคำร้องที่ขอไว้แล้ว",
-                    onClick: () => setLinkFor({ row, billingRequestId: "" }),
+                    onClick: () => { onClearError?.(); setLinkFor({ row, billingRequestId: "" }); },
                   },
                   !gate(row, "unlink") && {
                     id: "unlink-doc", icon: Unlink, tone: "warning", label: "ถอดคำร้องออกจากงวด",
@@ -437,6 +438,7 @@ export default function SalesOrderPaymentPanel({
             : (single ? "แจ้งลูกค้าจ่ายแล้ว" : `แจ้งชำระ งวดที่ ${reportFor.row.seq}`)}
           size="sm" dismissible={!busy}>
           <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
             {/* ⭐ งวดร่างต้องบอกให้ครบว่า "เก็บไว้แล้วเกิดอะไรต่อ" — ไม่งั้นคนกดจะรอคิว
                 บัญชีที่ยังไม่มี แล้วโทรตามว่าทำไมบัญชีไม่ตรวจสักที (มติผู้ใช้ 2026-08-19) */}
             <p className="form-note">
@@ -471,6 +473,7 @@ export default function SalesOrderPaymentPanel({
       {scheduleFor ? (
         <Modal open onClose={() => setScheduleFor(null)} title="กำหนดชำระ" size="sm" dismissible={!busy}>
           <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
             <p className="form-note">ใบเสนอราคาระบุแค่สัดส่วนของแต่ละงวด ไม่มีวัน — กรอกที่นี่</p>
             <label className={styles.field}>
               <span>วันครบกำหนด</span>
@@ -495,6 +498,7 @@ export default function SalesOrderPaymentPanel({
       {linkFor ? (
         <Modal open onClose={() => setLinkFor(null)} title="แนบคำร้องขอเอกสารการเงิน" size="sm" dismissible={!busy}>
           <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
             <p className="form-note">
               งวดที่ {linkFor.row.seq} · {fmtMoney(linkFor.row.amount)} — เลือกคำร้องของใบเสนอราคาเดียวกันนี้
             </p>
@@ -534,6 +538,7 @@ export default function SalesOrderPaymentPanel({
         order={order}
         multi={rows.length > 1}
         busy={!!busy}
+        error={error}
         onClose={() => setConfirmFor(null)}
         onConfirm={async (target) => {
           const done = await onAction(target, "confirm");
@@ -548,6 +553,7 @@ export default function SalesOrderPaymentPanel({
         label="เหตุผลที่ถอนคำรับรอง"
         value={unconfirmFor?.reason || ""}
         onChange={(reason) => setUnconfirmFor((f) => ({ ...f, reason }))}
+        submitError={error}
         onClose={() => setUnconfirmFor(null)}
         onConfirm={async () => {
           const done = await onAction(unconfirmFor.row, "unconfirm", { reason: unconfirmFor.reason });
@@ -568,6 +574,7 @@ export default function SalesOrderPaymentPanel({
         label="เหตุผลที่ตีกลับ"
         value={rejectFor?.reason || ""}
         onChange={(reason) => setRejectFor((f) => ({ ...f, reason }))}
+        submitError={error}
         onClose={() => setRejectFor(null)}
         onConfirm={async () => {
           const done = await onAction(rejectFor.row, "reject", { reason: rejectFor.reason });
