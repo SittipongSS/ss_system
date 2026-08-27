@@ -700,6 +700,8 @@ export default function SalesOrderDetailPage() {
   // ยื่น = ลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้ แต่ต้องส่งต่อ
   // ให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05) · server บังคับซ้ำที่ action submit
   const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, order.deal);
+  // ชื่อเจ้าของดีลที่ต้องเป็นคนกดยื่น — ใช้ตัวเดียวกับที่การ์ดดีลแสดง
+  const dealOwnerName = livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName);
   const editable = canEditDocument && editMode;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
@@ -756,9 +758,15 @@ export default function SalesOrderDetailPage() {
           label: "ยื่นอนุมัติ",
           disabled: !canSubmitThis || !!confirmationGate,
           /* ⭐ เอกสารยืนยันคำสั่งซื้อเป็นด่านของ "ยื่นอนุมัติ" ไม่ใช่ของการสร้างใบ
-             (มติ 2026-08-24) — เหตุผลขึ้นติดปุ่มเป็นตัวหนังสือ ไม่ใช่ tooltip */
+             (มติ 2026-08-24) — เหตุผลขึ้นติดปุ่มเป็นตัวหนังสือ ไม่ใช่ tooltip
+             ⭐ **บอกชื่อเจ้าของดีลไปเลย** — AC สร้างใบแทนได้แต่ยื่นเองไม่ได้ (มติ
+             2026-08-05) ⇒ คนที่เจอปุ่มจางคือคนที่ต้องไปตามอีกคน ถ้าไม่บอกว่าใคร
+             เขาต้องเปิดการ์ดดีลไปหาเอง · ชื่อมาจาก directory สด (ชื่อในแถวเป็นสำเนา
+             ที่ค้างได้เมื่อผู้ใช้เปลี่ยนชื่อ) แล้วถอยไปชื่อที่เก็บไว้ */
           disabledReason: !canSubmitThis
-            ? "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น"
+            ? (dealOwnerName
+              ? `ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้ ${dealOwnerName} กดยื่น`
+              : "ยื่นได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้เจ้าของดีลกดยื่น")
             : (confirmationGate || undefined),
           onClick: openSubmitConfirm,
         }
