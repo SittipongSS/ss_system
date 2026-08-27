@@ -64,7 +64,10 @@ function NewQuotationInner() {
   const [dealId, setDealId] = useState("");
 
   const [customer, setCustomer] = useState(null); // snapshot preview (read-only)
-  const [contactIndex, setContactIndex] = useState(0);
+  /* ⭐ ทุกช่องในบล็อก "ข้อมูลลูกค้าในเอกสาร" เริ่มที่ **ยังไม่เลือก** (มติผู้ใช้ 2026-08-27)
+     ค่าตั้งต้นที่ระบบเดาให้ = คนทำใบผ่านตาไปโดยไม่ได้อ่าน แล้วใบออกไปผิดคนผิดที่
+     "" = ยังไม่เลือก (ไม่ใช่ 0 ซึ่งเป็นผู้ติดต่อคนแรกที่ใช้ได้จริง) */
+  const [contactIndex, setContactIndex] = useState("");
   // ที่อยู่ที่ใบนี้จะใช้ (0202/0203) — ตั้งต้นเป็นที่อยู่หลักของลูกค้าตอนโหลด snapshot
   const [billingAddressId, setBillingAddressId] = useState("");
   const [shippingAddressId, setShippingAddressId] = useState("");
@@ -218,17 +221,15 @@ function NewQuotationInner() {
       const data = res?.ok ? await res.json() : null;
       const next = data?.customer || data || null;
       setCustomer(next);
-      setContactIndex(0);
-      /* ⭐ **ไม่เลือกให้ล่วงหน้าเมื่อมีให้เลือกมากกว่าหนึ่ง** (มติผู้ใช้ 2026-08-27)
-         เดิมตั้งต้นเป็น "ที่อยู่หลัก" ให้เลย ⇒ คนทำใบเห็นช่องที่กรอกไว้แล้วก็ผ่านไป
-         โดยไม่ได้อ่าน ⇒ ใบออกไปที่อยู่ผิดโดยไม่มีใครรู้ตัว (สาขา/คลังคนละที่กัน)
-         ⚠️ ลูกค้าที่มีที่อยู่เดียวยังเลือกให้เหมือนเดิม — บังคับกดในสิ่งที่ไม่มีทางเลือก
-         คือความรำคาญเปล่า ๆ ไม่ได้เพิ่มความระวังอะไร */
-      const options = customerAddresses(next);
-      const onlyBilling = options.filter(isBillingAddress);
-      const onlyShipping = options.filter(isShippingAddress);
-      setBillingAddressId(onlyBilling.length === 1 ? onlyBilling[0].id : "");
-      setShippingAddressId(onlyShipping.length === 1 ? onlyShipping[0].id : "");
+      /* ⭐ **ไม่เลือกให้ล่วงหน้าเลยสักช่อง** (มติผู้ใช้ 2026-08-27)
+         เดิมตั้งต้นเป็น "ที่อยู่หลัก / ผู้ติดต่อคนแรก" ให้ทันที ⇒ คนทำใบเห็นช่องที่กรอก
+         ไว้แล้วก็ผ่านไปโดยไม่ได้อ่าน ⇒ ใบออกไปผิดที่ผิดคนโดยไม่มีใครรู้ตัว — ที่อยู่
+         ออกบิลขึ้นบนใบกำกับภาษีด้วย (สาขา/คลังคนละที่กัน)
+         ⚠️ **ไม่ยกเว้นแม้มีตัวเลือกเดียว** — กติกาเดียวทั้งบล็อก อ่านง่ายกว่ามีข้อยกเว้น
+         และการกดยืนยันหนึ่งครั้งคือการอ่านหนึ่งครั้ง ซึ่งคือสิ่งที่ต้องการ */
+      setContactIndex("");
+      setBillingAddressId("");
+      setShippingAddressId("");
     })();
     return () => { alive = false; };
   }, [dealId, customerId]);
@@ -309,8 +310,13 @@ function NewQuotationInner() {
        ⚠️ ด่านนี้อยู่ฝั่งจอเท่านั้นโดยตั้งใจ — ฝั่ง server ยังถอยไปที่อยู่หลักเมื่อไม่ส่ง id
        มา เพราะสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร → ออก QT) ต้องออกใบได้ต่อ
        ที่อยู่จัดส่งไม่บังคับ: ว่าง = ใช้ที่อยู่ออกบิล ซึ่งเป็นความหมายเดิมของช่องนี้ */
-    if (billingOptions.length && !billingAddressId) {
-      setError("เลือกที่อยู่ออกบิลก่อน — ที่อยู่นี้จะขึ้นบนใบกำกับภาษี");
+    const unpicked = [
+      billingOptions.length && !billingAddressId ? "ที่อยู่ออกบิล" : null,
+      shippingOptions.length && !shippingAddressId ? "ที่อยู่จัดส่ง" : null,
+      contacts.length && contactIndex === "" ? "ผู้ติดต่อ" : null,
+    ].filter(Boolean);
+    if (unpicked.length) {
+      setError(`เลือก${unpicked.join(" · ")}ก่อน — ข้อมูลชุดนี้ถูกตรึงลงใบและขึ้นบนใบกำกับภาษี`);
       return;
     }
     const paymentValidation = validatePaymentPlan(paymentPlan);
@@ -328,7 +334,7 @@ function NewQuotationInner() {
           /* ดีลที่ยังไม่มีลูกค้า: ส่งลูกค้าที่เลือกบนฟอร์มไปให้ server ตั้งให้ดีลด้วย
              (ด่านจริงอยู่ที่นั่น — ที่นี่แค่ไม่ปล่อยให้ค่าหาย) */
           ...(dealAwaitsCustomer(selectedDeal) ? { customerId } : {}),
-          contactIndex,
+          ...(contactIndex === "" ? {} : { contactIndex }),
           // ที่อยู่ที่ใบนี้เลือก (0203) — server ตรวจซ้ำว่า id เป็นของลูกค้ารายนี้จริง
           // และใช้ได้กับหน้าที่นั้น ไม่งั้นถอยไปที่อยู่หลัก
           billingAddressId: billingAddressId || null,
@@ -369,7 +375,7 @@ function NewQuotationInner() {
       setError(e.message || "สร้างใบเสนอราคาไม่สำเร็จ");
       setCreating(false);
     }
-  }, [dealId, selectedDeal, customerId, contactIndex, billingAddressId, billingOptions.length, shippingAddressId, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
+  }, [dealId, selectedDeal, customerId, contactIndex, contacts.length, billingAddressId, billingOptions.length, shippingAddressId, shippingOptions.length, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
   if (!canEdit) {
     return (
@@ -534,13 +540,15 @@ function NewQuotationInner() {
                 <label className={styles.contactField}>ที่อยู่จัดส่ง
                   {shippingOptions.length
                     ? <Select value={shippingAddressId} onChange={(e) => setShippingAddressId(e.target.value)} aria-label="เลือกที่อยู่จัดส่ง">
-                        {/* ว่าง = ใช้ที่อยู่ออกบิล — ความหมายเดิมของช่องนี้บนเอกสาร
-                            (ดู pickDocumentAddresses) เขียนให้เห็นตรง ๆ ไม่ใช่ให้เดา */}
-                        <option value="">— ใช้ที่อยู่ออกบิล —</option>
+                        <option value="">— เลือกที่อยู่จัดส่ง —</option>
                         {shippingOptions.map((a) => <option key={a.id} value={a.id}>{addressLabel(a)}</option>)}
                       </Select>
                     : null}
-                  <span className={styles.addressPreview}>{naText(shippingAddress)}</span>
+                  <span className={styles.addressPreview}>
+                    {shippingOptions.length && !shippingAddressId
+                      ? "ยังไม่ได้เลือก — เลือกให้ตรงกับที่ลูกค้าจะรับของ"
+                      : naText(shippingAddress)}
+                  </span>
                 </label>
                 {/* สาขา = ของ **ที่อยู่ออกบิลที่ใบนี้เลือก** (มติผู้ใช้ 2026-08-06 กลับมติ
                     2026-08-05 — ดูเหตุผลยาวที่ lib/master/addresses.js)
@@ -551,8 +559,8 @@ function NewQuotationInner() {
                     ⚠️ ผ่าน branchValue เสมอ — ค่าดิบ '00000' ต้องอ่านว่า "สำนักงานใหญ่"
                     ให้ตรงกับตัวเอกสาร · ใช้ branchValue ไม่ใช่ branchLabel เพราะช่องนี้
                     มีป้าย "สาขา" กำกับอยู่แล้ว เติม "สาขาที่" อีกคือพูดซ้ำสองรอบ */}
-                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{branchValue(pickedAddresses.snapshot.branchCode)}</span></div>
-                <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(Number(e.target.value))}>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
+                <div className={styles.infoBlock}><Building2 size={16} /><span><small>สาขา</small>{billingAddressId ? branchValue(pickedAddresses.snapshot.branchCode) : naText("")}</span></div>
+                <label className={styles.contactField}>ผู้ติดต่อ{contacts.length ? <Select className="premium-select" value={contactIndex} onChange={(e) => setContactIndex(e.target.value === "" ? "" : Number(e.target.value))} aria-label="เลือกผู้ติดต่อ"><option value="">— เลือกผู้ติดต่อ —</option>{contacts.map((contact, index) => <option key={index} value={index}>{[contact.name, contact.role, contact.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${index + 1}`}</option>)}</Select> : <input className="premium-input" readOnly value={naText(customer.contactPerson)} />}</label>
               </div>
             </section>
           )}

@@ -10,24 +10,39 @@ import { readFileSync } from 'node:fs';
    เพราะสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร → ออก QT) ต้องออกใบได้ต่อ */
 const src = readFileSync(new URL('../../app/sales-planning/quotations/new/page.js', import.meta.url), 'utf8');
 
-test('มีที่อยู่ให้เลือกมากกว่าหนึ่ง = ไม่เลือกให้ล่วงหน้า · มีอันเดียว = เลือกให้', () => {
-  assert.match(src, /setBillingAddressId\(onlyBilling\.length === 1 \? onlyBilling\[0\]\.id : ""\)/);
-  assert.match(src, /setShippingAddressId\(onlyShipping\.length === 1 \? onlyShipping\[0\]\.id : ""\)/);
+test('โหลดลูกค้าแล้วทุกช่องกลับไป "ยังไม่เลือก" — ไม่ยกเว้นแม้มีตัวเลือกเดียว', () => {
+  assert.match(src, /setContactIndex\(""\);\s*\n\s*setBillingAddressId\(""\);\s*\n\s*setShippingAddressId\(""\);/);
   // ⚠️ ห้ามกลับไปตั้งต้นจาก pickDocumentAddresses ตอนโหลดลูกค้า (นั่นคือ "ที่อยู่หลัก")
   assert.doesNotMatch(src, /setBillingAddressId\(picked\./);
+  // ผู้ติดต่อเริ่มที่ "" ไม่ใช่ 0 — 0 คือผู้ติดต่อคนแรกที่ใช้ได้จริง แยกจาก "ยังไม่เลือก" ไม่ออก
+  assert.match(src, /useState\(""\);/);
+  assert.doesNotMatch(src, /const \[contactIndex, setContactIndex\] = useState\(0\)/);
 });
 
-test('ดรอปดาวน์มีตัวเลือกว่างให้เห็นว่ายังไม่ได้เลือก', () => {
-  assert.match(src, /<option value="">— เลือกที่อยู่ออกบิล —<\/option>/);
-  // ที่อยู่จัดส่งว่างได้ — ความหมายเดิมคือ "ใช้ที่อยู่ออกบิล" เขียนให้เห็นตรง ๆ
-  assert.match(src, /<option value="">— ใช้ที่อยู่ออกบิล —<\/option>/);
+test('ทั้งสามช่องมีตัวเลือกว่างให้เห็นว่ายังไม่ได้เลือก', () => {
+  for (const label of ['เลือกที่อยู่ออกบิล', 'เลือกที่อยู่จัดส่ง', 'เลือกผู้ติดต่อ']) {
+    assert.match(src, new RegExp(`<option value="">— ${label} —</option>`), label);
+  }
 });
 
-test('กดสร้างโดยยังไม่เลือกที่อยู่ออกบิล = ถูกบล็อกพร้อมเหตุผล', () => {
-  assert.match(src, /if \(billingOptions\.length && !billingAddressId\) \{/);
-  assert.match(src, /setError\("เลือกที่อยู่ออกบิลก่อน/);
+test('กดสร้างโดยยังไม่เลือกครบ = ถูกบล็อกพร้อมบอกว่าขาดช่องไหน', () => {
+  assert.match(src, /const unpicked = \[/);
+  for (const field of ['ที่อยู่ออกบิล', 'ที่อยู่จัดส่ง', 'ผู้ติดต่อ']) {
+    assert.ok(src.includes(`? "${field}" : null`), `ด่านต้องครอบ ${field}`);
+  }
   // ด่านต้องอยู่ **ก่อน** ยิง POST ไม่ใช่หลัง
-  const guard = src.indexOf('billingOptions.length && !billingAddressId');
+  const guard = src.indexOf('const unpicked = [');
   const post = src.indexOf('method: "POST"', guard);
   assert.ok(guard > 0 && post > guard, 'ด่านต้องมาก่อนการยิง POST');
+});
+
+test('ช่องสาขาไม่โชว์ค่าของที่อยู่ที่ยังไม่ได้เลือก', () => {
+  // pickDocumentAddresses ถอยไปที่อยู่หลักเสมอ ⇒ ถ้าไม่กั้น ช่องสาขาจะโชว์เลขของ
+  // ที่อยู่ที่คนทำใบยังไม่ได้เลือก ซึ่งคือการเดาให้แบบเดิมในรูปอื่น
+  assert.match(src, /billingAddressId \? branchValue\(pickedAddresses\.snapshot\.branchCode\) : naText\(""\)/);
+});
+
+test('ยังไม่เลือกผู้ติดต่อ = ไม่ส่ง contactIndex ไป server', () => {
+  // server มีค่าตั้งต้นของตัวเองสำหรับสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร)
+  assert.match(src, /\.\.\.\(contactIndex === "" \? \{\} : \{ contactIndex \}\)/);
 });
