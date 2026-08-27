@@ -315,7 +315,8 @@ export function ensureVisits(plan, existing = [], { from = null, horizonDays = 9
       scheduledDate: date,
       assigneeId: plan.assigneeId || null,
       assigneeName: plan.assigneeName || null,
-      status: 'scheduled',
+      /* ⚠️ ไม่ใส่ status ที่นี่ — **ด่านเป็นคนตัดสิน** (`initialVisitStatus` ที่ planGen)
+         ของเดิมยัด 'scheduled' ตรงนี้ ⇒ นัดที่ไม่มีช่างขึ้นตารางไปเงียบ ๆ แล้วไม่มีใครไป */
     }));
 }
 

@@ -160,3 +160,66 @@
 .kind_repair { background: var(--red-soft); }
 .kind_inspect { background: var(--teal-soft); }
 .kind_remove { background: var(--amber-soft); }
+
+/* ── คิวรอจัด (ร่างที่ยังไม่ผ่านด่าน) ──────────────────────────────────────
+   อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่ช่างออกไปทำ */
+.queue {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.queueTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.queueTitle > span {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-regular);
+  color: var(--text-3);
+}
+
+.queueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.queueRow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+  min-height: var(--ctl-h);
+}
+
+.queueRow:hover { border-color: var(--text-3); }
+
+.queueReason {
+  grid-column: 1 / -1;
+  font-size: var(--fs-label);
+  color: var(--amber);
+}
+
+.queueList > li[data-ready="yes"] .queueReason { color: var(--green); }

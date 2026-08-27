@@ -7,7 +7,9 @@ import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit } from '@/lib/service/visitStatus';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
-import { loadAssets, loadZones } from '@/lib/service/sitesRepo';
+import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
+import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
+import { isSuperuser } from '@/lib/permissions';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
 import { businessTimeKey } from '@/lib/datePeriods';
@@ -64,6 +66,43 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { value, error } = normalizeVisitInput({ ...before, ...body });
     if (error) return badRequest(error);
 
+    /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
+       ⚠️ ตรวจจาก **ค่าหลังแก้** (`value`) ไม่ใช่ค่าเดิม — คนกดปล่อยเข้าคิวพร้อมกับ
+       เลือกช่างในคำขอเดียวกันได้ ถ้าตรวจจาก `before` จะบอกว่ายังไม่มีช่างทั้งที่เพิ่งใส่
+       ⚠️ ด่านตัวเดียวกับที่จอใช้ขึ้นปุ่ม — ห้ามเขียนเงื่อนไขซ้ำที่นี่ */
+    let gateTrail = null;
+    if (before.status === 'draft' && value.status === 'scheduled') {
+      const site = await findSite(supabase, before.siteId);
+      const gate = evaluateVisitGate({ ...before, ...value }, { site });
+      const override = String(body.gateOverrideReason ?? '').trim();
+
+      if (!gatePassed(gate)) {
+        if (!override) return badRequest(gateBlocker(gate));
+        /* ข้ามด่านเป็นสิทธิ์ของหัวหน้า ไม่ใช่ของทุกคนที่แก้งานบริการได้ —
+           ของจริงมี 25 จุดที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรกงานหยุดทันที
+           แต่ถ้าใครก็ข้ามได้ ด่านก็ไม่มีความหมายตั้งแต่วันแรกเหมือนกัน */
+        if (!isSuperuser(user?.role)) {
+          return badRequest('ข้ามด่านได้เฉพาะหัวหน้า — ให้หัวหน้าเป็นคนกด หรือแก้ให้ครบก่อน');
+        }
+        if (override.length < 10) {
+          return badRequest('การข้ามด่านต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร — เหตุผลนี้จะติดกับใบถาวร');
+        }
+        gateTrail = {
+          gateOverrideById: user.id ? String(user.id) : null,
+          gateOverrideByName: user.name || null,
+          gateOverrideAt: new Date().toISOString(),
+          gateOverrideReason: override,
+          skipped: gate.filter((i) => i.state === 'blocked').map((i) => i.label),
+        };
+      }
+      gateTrail = {
+        ...(gateTrail || {}),
+        queuedById: user.id ? String(user.id) : null,
+        queuedByName: user.name || null,
+        queuedAt: new Date().toISOString(),
+      };
+    }
+
     // ⭐ เลื่อนนัดต้องมีเหตุผล (S-5) — ลูกค้าถามว่า "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่า
     // เลื่อนกี่ครั้งเพราะอะไรบ้าง · เหตุผลลง**เธรด** ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียว
     // ถูกเขียนทับทุกครั้งที่เลื่อน = ประวัติเลื่อน 5 ครั้งเหลือ 1
@@ -83,6 +122,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ถ้าต่างจากของเดิมให้ติดธง actualTimeEdited ไว้ ไม่ใช่กลืนเงียบ */
     const nowIso = new Date().toISOString();
     const patch = { ...value };
+    if (gateTrail) {
+      const { skipped, ...cols } = gateTrail;
+      Object.assign(patch, cols);
+    }
     if (body.stamp === 'start') {
       patch.actualDate = patch.actualDate || businessDate(nowIso);
       patch.actualStartTime = businessTimeKey(nowIso);
@@ -127,6 +170,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           `${VISIT_STATUS_LABELS[data.status]} · เข้าจริง ${data.actualDate}`,
           data.unableReason, data.summary,
         ].filter(Boolean).join(' — '),
+        user,
+      });
+    }
+    /* ⭐ ปล่อยเข้าคิว/ข้ามด่านต้องอยู่ในเธรด — "ทำไมนัดนี้ขึ้นตารางทั้งที่ยังไม่จ่าย"
+       เป็นคำถามที่ต้องตอบได้ทีหลัง และคอลัมน์เดียวถูกเขียนทับทุกครั้งที่ปล่อย */
+    if (gateTrail) {
+      await appendUpdate(supabase, {
+        entityType: 'service_visit', entityId: id, kind: 'queue',
+        body: gateTrail.skipped?.length
+          ? `ข้ามด่านแล้วปล่อยเข้าคิว (ข้าม: ${gateTrail.skipped.join(' · ')}) — ${gateTrail.gateOverrideReason}`
+          : 'ปล่อยเข้าคิว — ด่านครบ',
         user,
       });
     }

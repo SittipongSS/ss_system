@@ -29,6 +29,8 @@ import {
   visitWarnings,
   routeZoneSplit,
 } from "@/lib/service/rounds";
+import { evaluateVisitGate, gateBlocker, gatePassed } from "@/lib/service/visitGate";
+import { isDraftVisit } from "@/lib/service/visitStatus";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort } from "@/lib/format";
@@ -131,12 +133,19 @@ export default function ServiceSchedulePage() {
   }, [formVisit, technicians.length]);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
-  const overlapIds = useMemo(() => overlappingVisitIds(visits), [visits]);
+
+  /* ⭐ ร่างไม่ขึ้นกริดและ **ไม่นับภาระของช่าง** (มติผู้ใช้ 2026-08-28) — ถ้านับ
+     ตัวเลข "เกินภาระ" จะเตือนจากงานที่ยังไม่แน่ว่าจะได้ไป และหัวหน้าจะเลิกเชื่อคำเตือน
+     ⚠️ ตัวตัดสินคือ `isDraftVisit` ตัวเดียวกับที่ server ใช้ ห้ามเทียบสตริงตรงนี้ */
+  const drafts = useMemo(() => visits.filter(isDraftVisit), [visits]);
+  const boardVisits = useMemo(() => visits.filter((v) => !isDraftVisit(v)), [visits]);
+
+  const overlapIds = useMemo(() => overlappingVisitIds(boardVisits), [boardVisits]);
 
   // แถวของปฏิทิน = ช่างที่มีนัดในสัปดาห์นี้ + แถว "ยังไม่มอบหมาย" (ถ้ามี)
   const rows = useMemo(() => {
     const map = new Map();
-    for (const visit of visits) {
+    for (const visit of boardVisits) {
       const key = visit.assigneeId || UNASSIGNED;
       if (!map.has(key)) {
         map.set(key, { key, name: visit.assigneeName || "ยังไม่มอบหมาย", visits: [] });
@@ -149,23 +158,23 @@ export default function ServiceSchedulePage() {
       return a.name.localeCompare(b.name, "th");
     });
     return list;
-  }, [visits]);
+  }, [boardVisits]);
 
   const loads = useMemo(() => {
     const map = new Map();
-    for (const entry of dayLoad(visits)) {
+    for (const entry of dayLoad(boardVisits)) {
       map.set(`${entry.assigneeId || UNASSIGNED}|${entry.date}`, entry);
     }
     return map;
-  }, [visits]);
+  }, [boardVisits]);
 
   const crossRouteZone = useMemo(() => {
     const set = new Set();
-    for (const entry of routeZoneSplit(visits, sitesById)) {
+    for (const entry of routeZoneSplit(boardVisits, sitesById)) {
       if (entry.crossRouteZone) set.add(`${entry.assigneeId || UNASSIGNED}|${entry.date}`);
     }
     return set;
-  }, [visits, sitesById]);
+  }, [boardVisits, sitesById]);
 
   const saveVisit = async (form) => {
     const editing = !!formVisit;
@@ -223,11 +232,41 @@ export default function ServiceSchedulePage() {
           <strong className={styles.weekLabel}>{weekLabel}</strong>
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
-          <span className={styles.count}>{visits.length} นัด</span>
+          <span className={styles.count}>{boardVisits.length} นัด</span>
         </div>
       )}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
+
+      {/* ⭐ คิวรอจัด — ร่างที่ยังไม่ผ่านด่าน อยู่ **ข้างกริด ไม่ใช่ในกริด**
+          ถ้าวางปนกับนัดจริง ช่างจะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
+          แยกสองกลุ่ม (ผ่านแล้ว / ติดอะไรอยู่) เพราะสองกลุ่มนี้ต้องการคนละการกระทำ */}
+      {!loading && !loadError && drafts.length > 0 && (
+        <section className={styles.queue} aria-label="คิวรอจัด">
+          <h2 className={styles.queueTitle}>
+            คิวรอจัด {drafts.length} ใบ
+            <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้</span>
+          </h2>
+          <ul className={styles.queueList}>
+            {drafts.map((visit) => {
+              const site = sitesById.get(visit.siteId);
+              const gate = evaluateVisitGate(visit, { site });
+              const ready = gatePassed(gate);
+              return (
+                <li key={visit.id} data-ready={ready ? "yes" : "no"}>
+                  <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
+                    <b>{site?.name || visit.siteId}</b>
+                    <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
+                    <span className={styles.queueReason}>
+                      {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateBlocker(gate)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
         /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css

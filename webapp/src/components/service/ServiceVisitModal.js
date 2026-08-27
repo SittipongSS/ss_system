@@ -7,17 +7,19 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
+import GatedAction from "@/components/ui/GatedAction";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import TimeInput from "@/components/ui/TimeInput";
 import { accessWindowText } from "@/lib/service/sites";
+import { evaluateVisitGate, gateBlocker, gatePassed } from "@/lib/service/visitGate";
 import {
   TIME_PRESETS,
   VISIT_KINDS,
   VISIT_KIND_LABELS,
-  VISIT_STATUSES,
+  VISIT_STATUSES_MANUAL,
   VISIT_STATUS_LABELS,
   isReschedule,
   normalizeVisitInput,
@@ -85,6 +87,15 @@ export default function ServiceVisitModal({
     [visit, form],
   );
 
+  // ⭐ ด่านคำนวณจาก **ค่าที่กำลังกรอก** ไม่ใช่ค่าที่บันทึกไว้ — เลือกช่างในฟอร์มแล้ว
+  // ข้อ 3 ต้องติ๊กทันที ไม่ต้องกดบันทึกก่อนถึงจะรู้ว่าผ่านหรือยัง
+  // ⚠️ ตัวเดียวกับที่ server ใช้ปฏิเสธ (visitGate.js) — ห้ามคิดเงื่อนไขซ้ำตรงนี้
+  const gate = useMemo(
+    () => evaluateVisitGate({ ...form, id: visit?.id }, { site }),
+    [form, site, visit?.id],
+  );
+  const canQueue = gatePassed(gate);
+
   const applyPreset = (preset) =>
     setForm((prev) => ({ ...prev, startTime: preset.startTime, endTime: preset.endTime }));
 
@@ -93,8 +104,9 @@ export default function ServiceVisitModal({
     setForm((prev) => ({ ...prev, assigneeId: id, assigneeName: tech?.name || "" }));
   };
 
-  const submit = async () => {
-    const { error: invalid } = normalizeVisitInput(form);
+  const submit = async (override = null) => {
+    const payload = override ? { ...form, ...override } : form;
+    const { error: invalid } = normalizeVisitInput(payload);
     if (invalid) { setError(invalid); return; }
     // ตรวจฝั่งหน้าจอด้วย เพื่อให้ผู้ใช้เห็นก่อนกด ไม่ใช่โดน server ตีกลับ
     if (rescheduling && !form.rescheduleReason.trim()) {
@@ -104,7 +116,7 @@ export default function ServiceVisitModal({
     setSaving(true);
     setError("");
     try {
-      await onSave(form);
+      await onSave(payload);
       onClose();
     } catch (e) {
       setError(e.message || "บันทึกไม่สำเร็จ");
@@ -204,14 +216,50 @@ export default function ServiceVisitModal({
         {/* โหมดสร้างไม่มีสถานะ/ผลการเข้า — นัดใหม่เริ่มที่ "นัดไว้" เสมอ (กฎ AGENTS.md) */}
         {editing && (
           <>
+            {/* ⚠️ ไม่ใช่ทุกสถานะเลือกมือได้ — `in_progress` · `done` · `partial` เกิดจาก
+                **ปุ่มที่ประทับเวลา** เท่านั้น ถ้าปล่อยให้เลือกจากดรอปดาวน์ ทั้งเจตนา
+                ของการ stamp ที่ server ก็หมดความหมาย (มติ 2026-08-02 ข้อ 5) */}
             <label className={styles.field}>
               <span>สถานะ</span>
-              <Select value={form.status} onChange={change("status")}>
-                {VISIT_STATUSES.map((status) => (
+              <Select value={form.status} onChange={change("status")}
+                disabled={!VISIT_STATUSES_MANUAL.includes(form.status)}>
+                {(VISIT_STATUSES_MANUAL.includes(form.status)
+                  ? VISIT_STATUSES_MANUAL
+                  : [form.status]
+                ).map((status) => (
                   <option key={status} value={status}>{VISIT_STATUS_LABELS[status]}</option>
                 ))}
               </Select>
+              {!VISIT_STATUSES_MANUAL.includes(form.status) && (
+                <small className={styles.hint}>สถานะนี้มาจากปุ่มเริ่มงาน/ปิดงานของช่าง แก้จากที่นี่ไม่ได้</small>
+              )}
             </label>
+
+            {/* ⭐ ด่านเข้าไซต์ — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน (มติผู้ใช้ 2026-08-28)
+                แสดงเป็น **รายการติ๊กพร้อมชื่อคนที่แก้ได้** ไม่ใช่ปุ่มเทา —
+                ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม (§6 ข้อบังคับ 1) */}
+            {visit?.status === "draft" && (
+              <fieldset className={`${styles.field} ${styles.wide} ${styles.fieldset}`}>
+                <legend>ด่านก่อนขึ้นตาราง</legend>
+                <p className={styles.hint}>
+                  ร่างไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยเข้าคิว”
+                </p>
+                <ul className={styles.gate}>
+                  {gate.map((item) => (
+                    <li key={item.key} data-state={item.state}>
+                      <span className={styles.gateMark} aria-hidden="true">
+                        {item.state === "ok" ? "✓" : item.state === "parked" ? "–" : "!"}
+                      </span>
+                      <span className={styles.gateText}>
+                        <b>{item.label}</b>
+                        {item.detail && <span>{item.detail}</span>}
+                      </span>
+                      <span className={styles.gateOwner}>{item.owner}</span>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+            )}
 
             <fieldset className={`${styles.field} ${styles.wide} ${styles.fieldset}`}>
               <legend>ผลการเข้าจริง</legend>
@@ -276,7 +324,18 @@ export default function ServiceVisitModal({
 
       <div className="form-actions">
         <Button tone="neutral" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-        <Button tone="primary" onClick={submit} disabled={saving}>
+        {/* ⭐ ปุ่มนี้ **โชว์เสมอตอนเป็นร่าง** ต่อให้ยังผ่านด่านไม่ครบ — บอกเหตุตอนกด
+            ปุ่มที่หายไปไม่ได้สอนใครว่าต้องไปแก้อะไร (GatedAction §มติ 2026-08-22) */}
+        {visit?.status === "draft" && (
+          <GatedAction
+            tone="primary" variant="quiet" disabled={saving}
+            blocker={canQueue ? "" : gateBlocker(gate)}
+            onClick={() => submit({ status: "scheduled" })}
+          >
+            ปล่อยเข้าคิว
+          </GatedAction>
+        )}
+        <Button tone="primary" onClick={() => submit()} disabled={saving}>
           {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : "สร้างนัด"}
         </Button>
       </div>
