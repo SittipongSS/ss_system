@@ -192,7 +192,7 @@ test('⭐ นัดที่ไม่ระบุเวลา หรือยั
 
 // ── ข้ามโซน ──────────────────────────────────────────────────────────────
 test('วิ่งข้ามโซนในวันเดียว → ขึ้นป้ายเตือน', () => {
-  const sites = new Map([['S1', { zone: 'BKK-E' }], ['S2', { zone: 'ปริมณฑล' }]]);
+  const sites = new Map([['S1', { routeZone: 'BKK-E' }], ['S2', { routeZone: 'ปริมณฑล' }]]);
   const [row] = zoneSplit([visit({ id: 'V1' }), visit({ id: 'V2', siteId: 'S2' })], sites);
   assert.equal(row.crossZone, true);
   assert.deepEqual(row.zones.sort(), ['BKK-E', 'ปริมณฑล'].sort());

@@ -408,7 +408,7 @@ export function zoneSplit(visits = [], sitesById = new Map()) {
   for (const visit of visits) {
     if (!isLive(visit)) continue;
     const key = `${visit.assigneeId || 'unassigned'}|${visit.scheduledDate}`;
-    const zone = sitesById.get(visit.siteId)?.zone || null;
+    const zone = sitesById.get(visit.siteId)?.routeZone || null;
     const entry = map.get(key) || {
       assigneeId: visit.assigneeId || null,
       assigneeName: visit.assigneeName || null,

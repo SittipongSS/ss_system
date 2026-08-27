@@ -123,7 +123,7 @@ export default function ServiceVisitModal({
             onChange={(value) => setForm((prev) => ({ ...prev, siteId: value }))}
             options={sites.map((s) => ({
               value: s.id,
-              label: s.zone ? `${s.name} · ${s.zone}` : s.name,
+              label: s.routeZone ? `${s.name} · ${s.routeZone}` : s.name,
             }))}
             placeholder="เลือกไซต์"
             ariaLabel="ไซต์ที่จะเข้า"

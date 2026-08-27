@@ -280,7 +280,7 @@ export default function ServiceOverviewPage() {
                           <button type="button" className={styles.siteLink} onClick={() => router.push(`/service/sites/${site.id}`)}>
                             {site.name}
                           </button>
-                          <span className={styles.sub}>{site.code}{site.zone ? ` · ${site.zone}` : ""}</span>
+                          <span className={styles.sub}>{site.code}{site.routeZone ? ` · ${site.routeZone}` : ""}</span>
                         </th>
                         <td>{naText(site.customerName)}</td>
                         <td className="num">

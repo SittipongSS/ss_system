@@ -164,7 +164,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     <Modal open={open} onClose={onClose} title={`ปิดงาน ${visit.code || ""}`.trim()} size="md">
       <p className={styles.site}>
         {site?.name || visit.siteId}
-        {site?.zone ? ` · ${site.zone}` : ""} · {VISIT_KIND_LABELS[visit.kind] || visit.kind}
+        {site?.routeZone ? ` · ${site.routeZone}` : ""} · {VISIT_KIND_LABELS[visit.kind] || visit.kind}
       </p>
 
       <section className={styles.block}>
