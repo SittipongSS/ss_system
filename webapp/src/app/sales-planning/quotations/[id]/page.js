@@ -75,7 +75,7 @@ export default function QuotationEditorPage() {
     // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
     referenceNote: "",
     // ที่อยู่ที่ใบนี้เลือก (0203) — เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่น (canEditDocument)
-    billingAddressId: "", shippingAddressId: "",
+    billingAddressId: "", shippingAddressId: "", contactIndex: "",
   });
   // ทะเบียนลูกค้าสด — โหลดมาเพื่อ "ตัวเลือกที่อยู่" เท่านั้น ตัวเอกสารยังใช้ snapshot บนใบ
   const [customer, setCustomer] = useState(null);
@@ -122,6 +122,8 @@ export default function QuotationEditorPage() {
         vatRate: Number(q.vatRate || 0),
         billingAddressId: q.billingAddressId || "",
         shippingAddressId: q.shippingAddressId || "",
+        // "" = ยังไม่แตะ ⇒ ไม่ส่ง contactIndex ไป server ⇒ ผู้ติดต่อบนใบไม่ขยับ
+        contactIndex: "",
       });
       const pp = q.paymentPlan;
       setPayment({
@@ -235,6 +237,7 @@ export default function QuotationEditorPage() {
   const addressBook = customerAddresses(customer);
   const billingOptions = addressBook.filter(isBillingAddress);
   const shippingOptions = addressBook.filter(isShippingAddress);
+  const contactOptions = Array.isArray(customer?.contacts) ? customer.contacts : [];
   const pickedAddresses = pickDocumentAddresses(customer, {
     billingAddressId: form.billingAddressId,
     shippingAddressId: form.shippingAddressId,
@@ -278,6 +281,7 @@ export default function QuotationEditorPage() {
     // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0203)
     billingAddressId: form.billingAddressId || null,
     shippingAddressId: form.shippingAddressId || null,
+    ...(form.contactIndex === "" ? {} : { contactIndex: form.contactIndex }),
     paymentPlan: paymentPlanPayload(),
     // ชุดเงื่อนไขการค้าที่ใบนี้ตั้งต้นมาจาก — server ตรวจว่ามีจริง+เผยแพร่ก่อนตรึง
     metadata: {
@@ -799,7 +803,19 @@ export default function QuotationEditorPage() {
                     ⚠️ ใบที่แก้ไม่ได้แล้วต้องโชว์ **ค่าที่ตรึงไว้** เสมอ (หลักฐานการค้า)
                     ห้ามคำนวณสดจากทะเบียนลูกค้าที่อาจถูกแก้ไปแล้วหลังออกใบ */}
                 <div className={styles.infoBlock}><Building2 size={16} /><span><small>ลูกค้า</small>{naText(quote.customerName)}{` · ${branchLabel(editable && billingOptions.length ? pickedAddresses.snapshot.branchCode : quote.branchCode)}`}</span></div>
-                <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))}</span></div>
+                {/* ผู้ติดต่อแก้ได้ระหว่างยังเป็นร่าง — เหตุผลเดียวกับที่อยู่ในบล็อกเดียวกันนี้
+                    (มติผู้ใช้ 2026-08-27) · เดิมเลือกได้เฉพาะตอนสร้างใบ พอเป็นร่างแล้วแก้ไม่ได้เลย
+                    ⚠️ ยังไม่แตะ = โชว์ค่าที่ตรึงบนใบ ไม่ใช่เด้งไปผู้ติดต่อคนแรกของทะเบียน */}
+                {editable && contactOptions.length ? (
+                  <label className={styles.addressField}>ผู้ติดต่อ
+                    <Select value={form.contactIndex} onChange={(e) => setF({ contactIndex: e.target.value === "" ? "" : Number(e.target.value) })} aria-label="เลือกผู้ติดต่อ">
+                      <option value="">{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))} (คงเดิม)</option>
+                      {contactOptions.map((c, i) => <option key={i} value={i}>{[c.name, c.role, c.phone].filter(Boolean).join(" · ") || `ผู้ติดต่อ ${i + 1}`}</option>)}
+                    </Select>
+                  </label>
+                ) : (
+                  <div className={styles.infoBlock}><UserRound size={16} /><span><small>ผู้ติดต่อ</small>{naText([quote.contactName, quote.contactPhone].filter(Boolean).join(" · "))}</span></div>
+                )}
                 {editable && billingOptions.length ? (
                   <label className={styles.addressField}>ที่อยู่ออกบิล
                     <Select value={form.billingAddressId} onChange={(e) => setF({ billingAddressId: e.target.value })} aria-label="เลือกที่อยู่ออกบิล">

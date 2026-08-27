@@ -222,12 +222,35 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // เปลี่ยนได้เฉพาะร่างที่ยังไม่ยื่นอนุมัติ — ด่านหัว PATCH คุมไว้แล้ว (not_submitted)
   // ตัวข้อความอ่านสดจากทะเบียนตอนเลือก ไม่ใช่ให้ client ส่งข้อความมาเอง
   const addressPicked = 'billingAddressId' in body || 'shippingAddressId' in body;
-  if (addressPicked) {
+  /* ผู้ติดต่อบนใบ — เหตุผลเดียวกับที่อยู่ทุกประการ: ไม่ใช่การ "แก้ข้อมูลลูกค้า" แต่คือ
+     "ใบนี้ติดต่อใคร" ซึ่งเป็นข้อมูลของเอกสารเอง · เดิมเลือกได้เฉพาะตอนสร้างใบ พอเป็น
+     ร่างแล้วแก้ไม่ได้เลย ทั้งที่ที่อยู่ในบล็อกเดียวกันแก้ได้ (มติผู้ใช้ 2026-08-27)
+     ⚠️ รับเป็น **index** ไม่ใช่ชื่อ/เบอร์ที่ client ส่งมาเอง — ข้อความอ่านสดจากทะเบียน
+     ตอนเลือก กติกาเดียวกับที่อยู่ ไม่งั้นใบจะมีชื่อผู้ติดต่อที่ไม่มีอยู่ในทะเบียนจริง */
+  const contactPicked = 'contactIndex' in body;
+  if (contactPicked || addressPicked) {
     const { data: cust } = before.customerId
       ? await supabase.from('customers')
-        .select('addresses, address, shippingAddress, branchCode')
+        .select('addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
         .eq('id', before.customerId).maybeSingle()
       : { data: null };
+    if (contactPicked) {
+      const contacts = Array.isArray(cust?.contacts) ? cust.contacts : [];
+      const index = Number(body.contactIndex);
+      if (!Number.isInteger(index) || index < 0 || (contacts.length && index >= contacts.length)) {
+        return badRequest('ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้');
+      }
+      // ลูกค้าที่ยังไม่มีลิสต์ contacts (แถวยุคเก่า) ถอยไปช่องเดี่ยวเดิม — กติกาเดียว
+      // กับ createQuotationDraft ไม่งั้นใบของลูกค้าเก่าจะเลือกผู้ติดต่อไม่ได้เลย
+      const contact = contacts[index] || (contacts.length ? null : {
+        name: cust?.contactPerson || '', phone: cust?.contactPhone || '', email: '',
+      });
+      if (!contact) return badRequest('ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้');
+      patch.contactName = contact.name || null;
+      patch.contactPhone = contact.phone || null;
+      patch.contactEmail = contact.email || null;
+    }
+    if (!addressPicked) { /* เลือกแต่ผู้ติดต่อ — ไม่ต้องแตะที่อยู่ */ } else {
     const picked = pickDocumentAddresses(cust, {
       billingAddressId: 'billingAddressId' in body ? body.billingAddressId : before.billingAddressId,
       shippingAddressId: 'shippingAddressId' in body ? body.shippingAddressId : before.shippingAddressId,
@@ -236,6 +259,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('ลูกค้ารายนี้ยังไม่มีที่อยู่สำหรับออกเอกสาร — เพิ่มที่ฐานข้อมูลลูกค้าก่อน');
     }
     Object.assign(patch, picked.snapshot);
+    }
   }
 
   // บรรทัด + ส่วนลด + VAT → คิดยอดใหม่

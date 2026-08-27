@@ -46,3 +46,34 @@ test('ยังไม่เลือกผู้ติดต่อ = ไม่�
   // server มีค่าตั้งต้นของตัวเองสำหรับสายที่ไม่มีหน้าจอให้เลือก (ยืนยัน PO สหมิตร)
   assert.match(src, /\.\.\.\(contactIndex === "" \? \{\} : \{ contactIndex \}\)/);
 });
+
+/* ── ผู้ติดต่อบนใบต้องแก้ได้ระหว่างยังเป็นร่าง (มติผู้ใช้ 2026-08-27) ────────
+   เดิมเลือกได้เฉพาะตอน **สร้าง** ใบ พอกลายเป็นร่างแล้วแก้ไม่ได้เลย ทั้งที่ที่อยู่ใน
+   บล็อกเดียวกันแก้ได้ — คนทำใบต้องลบร่างทิ้งแล้วสร้างใหม่เพียงเพื่อเปลี่ยนผู้ติดต่อ */
+const detailSrc = readFileSync(new URL('../../app/sales-planning/quotations/[id]/page.js', import.meta.url), 'utf8');
+const routeSrc = readFileSync(new URL('../../app/api/sales-planning/quotations/[id]/route.js', import.meta.url), 'utf8');
+
+test('หน้ารายละเอียด: ร่างที่แก้ได้มีช่องเลือกผู้ติดต่อ', () => {
+  assert.match(detailSrc, /editable && contactOptions\.length \?/);
+  assert.match(detailSrc, /aria-label="เลือกผู้ติดต่อ"/);
+  // ใบที่แก้ไม่ได้แล้วยังโชว์ค่าที่ตรึงไว้แบบอ่านอย่างเดียว
+  assert.match(detailSrc, /<small>ผู้ติดต่อ<\/small>\{naText\(\[quote\.contactName, quote\.contactPhone\]/);
+});
+
+test('ยังไม่แตะช่องผู้ติดต่อ = ไม่ส่ง contactIndex ⇒ ค่าบนใบไม่ขยับ', () => {
+  assert.match(detailSrc, /\.\.\.\(form\.contactIndex === "" \? \{\} : \{ contactIndex: form\.contactIndex \}\)/);
+  // ตัวเลือกแรกคือ "คงเดิม" ไม่ใช่เด้งไปผู้ติดต่อคนแรกของทะเบียน
+  assert.match(detailSrc, /\(คงเดิม\)/);
+});
+
+test('PATCH รับ contactIndex แล้วอ่านชื่อ/เบอร์สดจากทะเบียน ไม่เชื่อ client', () => {
+  assert.match(routeSrc, /const contactPicked = 'contactIndex' in body;/);
+  // ต้องเขียนจาก contact ที่อ่านมาจากตาราง customers เท่านั้น
+  assert.match(routeSrc, /patch\.contactName = contact\.name \|\| null;/);
+  assert.match(routeSrc, /patch\.contactPhone = contact\.phone \|\| null;/);
+  // ⚠️ ห้ามรับชื่อ/เบอร์ที่ client ส่งมาตรง ๆ
+  assert.doesNotMatch(routeSrc, /patch\.contactName = body\./);
+  assert.doesNotMatch(routeSrc, /patch\.contactPhone = body\./);
+  // index นอกลิสต์ต้องถูกปฏิเสธ ไม่ใช่เขียน undefined ลงใบ
+  assert.match(routeSrc, /ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้/);
+});
