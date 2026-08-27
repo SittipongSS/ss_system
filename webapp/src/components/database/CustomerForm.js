@@ -27,6 +27,7 @@ import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
 import {
   isCompleteTaxId, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError, taxIdOtherBranchWarning,
 } from "@/lib/master/customerTaxId";
+import { customerNameBranchWarning } from "@/lib/master/customerName";
 import { normalizeBrands } from "@/lib/master/brands";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import {
@@ -124,6 +125,8 @@ export default function CustomerForm({
   });
   const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
   const taxWarning = taxIdOtherBranchWarning(otherBranch);
+  // เตือนอย่างเดียว ไม่บล็อก — เหตุผลอยู่ที่ lib/master/customerName.js
+  const nameBranchWarning = customerNameBranchWarning(form);
 
   return (
     <>
@@ -248,6 +251,11 @@ export default function CustomerForm({
               placeholder="ชื่อลูกค้า บริษัท หรือบุคคล..."
               className="premium-input w-full"
             />
+            {/* เตือนเฉย ๆ (สีเดียวกับคำเตือนเลขภาษีคนละสาขา) — ครอบทั้งช่องไทยและอังกฤษ
+                เพราะสองช่องอยู่ติดกัน และตัวข้อความบอกอยู่แล้วว่าโดนช่องไหน */}
+            {nameBranchWarning && (
+              <span className="text-[11px] text-[var(--amber)] mt-1">{nameBranchWarning}</span>
+            )}
           </div>
           <div className="form-group">
             <label>
