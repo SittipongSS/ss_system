@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   SALES_ORDER_CANCEL_REASONS,
   WON_REVERSAL_TARGETS,
@@ -304,4 +307,25 @@ test('SO: ฉบับที่ถูก Rev. ทับแล้ว เปลี
   assert.equal(canSwitchSalesOrderDocLanguage({ status: 'approved', supersededById: 'SO-2' }), false);
   assert.equal(canSwitchSalesOrderDocLanguage({ status: 'revised' }), false);
   assert.equal(canSwitchSalesOrderDocLanguage(null), false);
+});
+
+/* ── ปุ่มยื่นที่กดไม่ได้ ต้องบอกว่า "ต้องไปตามใคร" ────────────────────────────
+   AC ออกใบแทน AE ได้ แต่ยื่นเองไม่ได้ (มติ 2026-08-05) ⇒ คนที่เจอปุ่มจางคือคนที่
+   ต้องส่งต่อ · ของเดิมเขียนแค่ "เจ้าของดีล" ลอย ๆ ทั้งที่ชื่ออยู่ในมือแล้ว */
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
+
+test('ปุ่มยื่นที่กดไม่ได้ บอกชื่อเจ้าของดีลที่ต้องไปตาม', () => {
+  const page = read('app/sales-planning/sales-orders/[id]/page.js');
+  assert.match(page, /const dealOwnerName = livePersonName\(directory, order\.deal\?\.ownerId, order\.deal\?\.ownerName\)/,
+    'ชื่อมาจาก directory สด แล้วถอยไปชื่อที่เก็บในแถว — ชุดเดียวกับการ์ดดีล');
+  assert.match(page, /ส่งต่อให้ \$\{dealOwnerName\} กดยื่น/, 'ข้อความติดปุ่มต้องมีชื่อคน');
+  assert.match(page, /ส่งต่อให้เจ้าของดีลกดยื่น/, 'ไม่มีชื่อ (directory ยังไม่มา/บัญชีถูกลบ) ต้องถอยไปข้อความเดิม');
+});
+
+test('ด่านฝั่ง API บอกชื่อเจ้าของดีลด้วย — ข้อความสองฝั่งต้องไม่ขัดกัน', () => {
+  const route = read('app/api/sales-planning/sales-orders/[id]/route.js');
+  assert.match(route, /ส่งต่อให้ \$\{ownerName\} กดยื่น/, 'ข้อความ 403 ต้องมีชื่อคน');
+  assert.match(route, /const ownerName = String\(before\.deal\?\.ownerName \|\| ''\)\.trim\(\)/,
+    'อ่านชื่อจากดีลที่ route โหลดมาแล้ว ไม่ยิงถามใหม่');
 });
