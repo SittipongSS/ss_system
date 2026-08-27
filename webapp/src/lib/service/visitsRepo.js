@@ -1,6 +1,11 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
 import { notFound } from '@/lib/http';
+import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
+/* ⚠️ PostgREST ต้องการ **ลิสต์ค่า** ไม่ใช่ฟังก์ชัน — ประกอบจากนิยามกลางที่
+   visitStatus.js เพื่อไม่ให้มีชุดสถานะชุดที่หกในระบบ */
+const CLOSED_VISITED = VISIT_STATUSES.filter((s) => isClosedVisit({ status: s }));
+const OPEN_STATUSES = VISIT_STATUSES.filter((s) => isOpenVisit({ status: s }));
 
 // ── นัด ──────────────────────────────────────────────────────────────────
 // ปฏิทินอ่านเป็นช่วงวันเสมอ · siteId ใช้ตอนดูประวัติของไซต์เดียว
@@ -87,7 +92,9 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     .from('service_visits')
     .select('siteId, actualDate')
     .in('siteId', ids)
-    .eq('status', 'done')
+    /* 🐞 เดิม `.eq('status','done')` ⇒ นัดที่เติมได้ 4 จาก 10 เครื่อง (partial) ไม่นับเป็น
+       วันเติมล่าสุด ทั้งที่เติมจริง แล้วระบบเตือน "น้ำหอมจะหมด" ซ้ำทั้งที่เพิ่งไปเติมมา */
+    .in('status', CLOSED_VISITED)
     .in('kind', ['refill', 'maintenance', 'install'])
     .order('actualDate', { ascending: false });
   if (doneError) throw doneError;
@@ -102,7 +109,10 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     .from('service_visits')
     .select('siteId, scheduledDate')
     .in('siteId', ids)
-    .eq('status', 'scheduled')
+    /* 🐞 เดิม `.eq('status','scheduled')` ⇒ นัดที่ช่างกดเริ่มงานแล้ว (in_progress) ไม่นับเป็น
+       "มีนัดครอบ" ⇒ refillStatus เด้ง soon/overdue ขณะที่ช่างยืนอยู่หน้าเครื่องพอดี
+       ⚠️ ร่างไม่นับ — ยังไม่ผ่านด่าน ยังไม่ใช่นัดที่ครอบอะไรได้ */
+    .in('status', OPEN_STATUSES)
     .gte('scheduledDate', todayIso)
     .order('scheduledDate', { ascending: true });
   if (upcomingError) throw upcomingError;

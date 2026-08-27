@@ -34,31 +34,74 @@ const ALLOWED = new Map([
   // แก้แล้วต้องทดสอบเส้นทางอนุมัติทั้งเส้น จึงแยกเป็นงานของตัวเอง
   ['src/app/api/sa/costing/[id]/submit/route.js', 1],
   ['src/app/api/sa/costing/[id]/components/route.js', 1],
+  // ⏸ หัวกระดาษรายงานภาษี — เวลาที่พิมพ์บนกระดาษ ไม่ได้ถูกเก็บลง DB และไม่มีด่านไหน
+  // คิดจากมัน · แก้พร้อมงานสายภาษีรอบหน้า (เจอตอนขยายด่านนี้ 2026-08-28)
+  ['src/lib/tax/reportPrint.js', 1],
 ]);
 
 const FILES = execSync('git ls-files "src/**/*.js" "src/**/*.jsx"', { cwd: ROOT, encoding: 'utf8' })
   .split('\n')
   .filter((f) => f && !f.includes('.test.'));
 
-/* จับสองรูปที่เป็นบั๊กจริง:
+/* จับสี่รูปที่เป็นบั๊กจริง:
  *   1. `new Date().toISOString().slice(0, 10|7)` — "วันนี้/เดือนนี้" ตามนาฬิกา UTC
  *   2. `<ตัวแปรที่เป็นจุดเวลา>.slice(0, 10|7)` — ตัดวันออกจาก timestamp ตรง ๆ
+ *   3. `.slice(11, 16)` — ตัด **เวลา** HH:MM ออกจาก ISO = เวลา UTC ช้ากว่าไทย 7 ชม.
+ *   4. `new Date().getHours()/getMinutes()` — **นาฬิกาของเครื่องผู้ใช้** ไม่ใช่เวลาไทย
+ *      (เปลี่ยนโซนเวลาในมือถือแล้วเวลาที่บันทึกเพี้ยนโดยไม่มีอะไรจับได้)
+ * ⇒ เวลาของจุดเวลาต้องมาจาก `businessTimeKey()` (lib/datePeriods.js) เสมอ คู่กับวันไทย
+ *
+ * 🐞 เพิ่มข้อ 3–4 เมื่อ 2026-08-28 ตอนทำปุ่ม "เริ่มงาน/ปิดงาน" ของช่าง — ก่อนหน้านั้น
+ * `CloseVisitSheet` ประทับเวลาเข้าไซต์ด้วย `d.getHours()` มาตลอดและ **CI เขียว**
+ * ซึ่งเป็นอาการเดียวกับบั๊กตี 3 ข้างบนเป๊ะ แค่ย้ายจาก "วัน" มาเป็น "เวลา"
+ *
  * ไม่จับ `.toISOString().slice()` ที่ตามหลัง `Date.UTC(` หรือ `setUTCDate(` ในบรรทัดเดียวกัน
  * (ประกอบวันในปฏิทินจากตัวเลข — ไม่เกี่ยวกับโซนเวลา) */
 const NOW_UTC = /new Date\(\)\s*\.toISOString\(\)\s*\.slice\(0,\s*(?:10|7)\)/;
 const TS_SLICE = /\b(?:now|nowIso|iso|createdAt|updatedAt|\w+At)\s*\.slice\(0,\s*(?:10|7)\)/;
+const TIME_SLICE = /\.slice\(11,\s*(?:16|19)\)/;
+const LOCAL_CLOCK = /new Date\(\)\s*\.get(?:Hours|Minutes)\(\)|\bd\.get(?:Hours|Minutes)\(\)/;
 const CALENDAR_MATH = /Date\.UTC\(|setUTCDate\(|T00:00:00Z/;
+/* ตัวแปลงกลางเองต้องไม่ถูกจับ — `businessDayKey`/`businessTimeKey` บวก offset ไทย
+   ก่อนแล้วค่อยตัด ซึ่งคือวิธีที่ถูก · และคอมเมนต์ที่ *พูดถึง* รูปผิดก็ไม่ใช่โค้ดผิด */
+const SANCTIONED = /BUSINESS_OFFSET_MS/;
+const LINE_COMMENT = /^\s*\/\//;
 
 const hits = new Map();
 for (const file of FILES) {
   const src = readFileSync(`${ROOT}/${file}`, 'utf8');
   let count = 0;
-  src.split('\n').forEach((line, index) => {
-    if (CALENDAR_MATH.test(line)) return;
-    if (!NOW_UTC.test(line) && !TS_SLICE.test(line)) return;
+  /* คอมเมนต์ที่ **พูดถึง** รูปผิด (เช่นคอมเมนต์ที่อธิบายว่าทำไมถึงเลิกใช้ getHours)
+     ไม่ใช่โค้ดผิด — ลอกส่วนที่เป็นคอมเมนต์ออกก่อนตรวจ แทนการเดาจากตัวอักษรตัวแรก
+     ⚠️ ลอกเฉพาะส่วนคอมเมนต์ ไม่ทิ้งทั้งบรรทัด — โค้ดที่อยู่ซ้ายของ // ยังต้องถูกตรวจ */
+  let inBlock = false;
+  const codeOnly = (raw) => {
+    let out = '';
+    let i = 0;
+    while (i < raw.length) {
+      if (inBlock) {
+        const end = raw.indexOf('*/', i);
+        if (end === -1) return out;
+        inBlock = false; i = end + 2; continue;
+      }
+      const block = raw.indexOf('/*', i);
+      const line = raw.indexOf('//', i);
+      if (line !== -1 && (block === -1 || line < block)) return out + raw.slice(i, line);
+      if (block === -1) return out + raw.slice(i);
+      out += raw.slice(i, block);
+      inBlock = true; i = block + 2;
+    }
+    return out;
+  };
+  src.split('\n').forEach((raw, index) => {
+    const line = codeOnly(raw);
+    if (!line.trim()) return;
+    if (CALENDAR_MATH.test(line) || SANCTIONED.test(line)) return;
+    if (!NOW_UTC.test(line) && !TS_SLICE.test(line)
+        && !TIME_SLICE.test(line) && !LOCAL_CLOCK.test(line)) return;
     count += 1;
     if (!hits.has(file)) hits.set(file, []);
-    hits.get(file).push(`${file}:${index + 1}  ${line.trim().slice(0, 96)}`);
+    hits.get(file).push(`${file}:${index + 1}  ${raw.trim().slice(0, 96)}`);
   });
   if (count) hits.get(file).count = count;
 }

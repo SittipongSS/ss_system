@@ -5,6 +5,7 @@
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { sortByTime } from './rounds';
 import { businessDate } from '@/lib/businessDate';
+import { isClosedVisit, isDraftVisit } from './visitStatus';
 
 export const VISIT_SCOPES = ['mine', 'team'];
 export const VISIT_SCOPE_LABELS = { mine: 'ของฉัน', team: 'ทั้งทีม' };
@@ -33,10 +34,15 @@ export function groupVisits(visits = [], todayIso = businessDate()) {
 
   for (const visit of visits) {
     if (visit.status === 'cancelled' || visit.status === 'rescheduled') continue;
+    /* 🔴 ร่างไม่โผล่ในคิวของช่าง — TS ไม่ใช่ต้นทางของงาน และร่างที่ยังไม่ผ่านด่าน
+       ไม่ใช่งานที่ใครควรออกไปทำ (มติผู้ใช้ 2026-08-28) */
+    if (isDraftVisit(visit)) continue;
     const date = String(visit.scheduledDate || '');
     if (date < todayIso) {
-      // เลยวันแล้ว: ปิดไปแล้ว = ประวัติ (ไม่ต้องทวง) · ยังไม่ปิด = ค้าง
-      if (visit.status !== 'done') overdue.push(visit);
+      /* เลยวันแล้ว: ไปถึงไซต์แล้วและได้ข้อสรุป = ประวัติ (ไม่ต้องทวง) · ที่เหลือ = ค้าง
+         🐞 ของเดิมเช็ค `!== 'done'` ⇒ ใบ partial/unable จะค้างในกลุ่ม "ค้างอยู่"
+         ของช่างตลอดกาล ทั้งที่ไปมาแล้วและปิดจบไปแล้ว */
+      if (!isClosedVisit(visit)) overdue.push(visit);
       continue;
     }
     if (date === todayIso) { today.push(visit); continue; }
@@ -79,7 +85,7 @@ export function overdueDays(visit, todayIso = businessDate()) {
 
 // นัดที่ยังต้องทำจริง ๆ วันนี้ — ตัวเลขบนหัวหน้าจอ (ปิดแล้วไม่นับ)
 export function openCount(groups) {
-  const open = (rows = []) => rows.filter((v) => v.status !== 'done').length;
+  const open = (rows = []) => rows.filter((v) => !isClosedVisit(v)).length;
   return {
     overdue: open(groups?.overdue),
     today: open(groups?.today),

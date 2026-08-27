@@ -5,7 +5,10 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
+import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit } from '@/lib/service/visitStatus';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
+import { businessDate } from '@/lib/businessDate';
+import { businessTimeKey } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,9 +43,34 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('เลื่อนนัดต้องระบุเหตุผล — ประวัติการเลื่อนคือสิ่งที่ต้องตอบลูกค้าทีหลัง');
     }
 
+    /* ⭐ เวลาที่เข้าจริง **ประทับที่ server** (มติ 2026-08-02 ข้อ 5) — ปุ่ม "เริ่มงาน"/
+       "ปิดงาน" ไม่ได้เพิ่มข้อมูลใหม่ มันทำให้ช่องที่มีอยู่แล้วเชื่อถือได้ · ของเดิมช่าง
+       กรอกทีเดียวตอนปิดงานจากนาฬิกาเครื่องตัวเอง = เลขที่พิมพ์ย้อนหลัง เปลี่ยนเวลาใน
+       มือถือแล้วเพี้ยนโดยไม่มีอะไรจับได้
+       ⚠️ ต้องเป็น **นาฬิกาไทย** (businessDate/businessTimeKey) — ตารางนี้เก็บ date+time
+       แยกกันเป็นเวลาไทยล้วนตามการตัดสินใจของ mig 0187/0188 ไม่ใช่ timestamptz
+       ⚠️ `stamp: false` (ค่าตั้งต้น) = คำขอนี้มาจากฟอร์มแก้ ⇒ เวลาที่ส่งมาคือค่าที่คนพิมพ์
+       ถ้าต่างจากของเดิมให้ติดธง actualTimeEdited ไว้ ไม่ใช่กลืนเงียบ */
+    const nowIso = new Date().toISOString();
+    const patch = { ...value };
+    if (body.stamp === 'start') {
+      patch.actualDate = patch.actualDate || businessDate(nowIso);
+      patch.actualStartTime = businessTimeKey(nowIso);
+    } else if (body.stamp === 'end') {
+      patch.actualDate = patch.actualDate || businessDate(nowIso);
+      patch.actualEndTime = businessTimeKey(nowIso);
+      // เผลอปิดงานโดยไม่เคยกดเริ่ม — ยังต้องมีเวลาเริ่มไว้คิดชั่วโมงงาน
+      if (!patch.actualStartTime) patch.actualStartTime = businessTimeKey(nowIso);
+    } else {
+      const touched = ['actualStartTime', 'actualEndTime']
+        .some((k) => String(patch[k] ?? '') !== String(before[k] ?? '').slice(0, 5));
+      // ⚠️ ธงติดค้างทางเดียว — แก้แล้วคือแก้แล้ว ย้อนค่ากลับไม่ได้ล้างประวัติ
+      if (touched && (before.actualStartTime || before.actualEndTime)) patch.actualTimeEdited = true;
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
-      .update({ ...value, updatedAt: new Date().toISOString() })
+      .update({ ...patch, updatedAt: nowIso })
       .eq('id', id).select().single();
     if (updateError) return fail(updateError.message, 500);
 
@@ -60,10 +88,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         body: rescheduleSummary(before, data, reason), user,
       });
     }
-    if (data.status === 'done' && before.status !== 'done') {
+    /* 🐞 ของเดิมบันทึกเธรดเฉพาะ `done` ⇒ `partial`/`unable` ไม่ทิ้งร่องรอยเลย
+       ทั้งที่เป็นสองสถานะที่ต้องอธิบายลูกค้ามากที่สุด */
+    if (isClosedVisit(data) && !isClosedVisit(before)) {
       await appendUpdate(supabase, {
         entityType: 'service_visit', entityId: id, kind: 'done',
-        body: [`ปิดงาน · เข้าจริง ${data.actualDate}`, data.summary].filter(Boolean).join(' — '),
+        body: [
+          `${VISIT_STATUS_LABELS[data.status]} · เข้าจริง ${data.actualDate}`,
+          data.unableReason, data.summary,
+        ].filter(Boolean).join(' — '),
         user,
       });
     }
@@ -76,8 +109,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     // ⭐ ปิดงานแล้วเสนอนัดรอบถัดไป — **เสนอ ไม่สร้างให้เอง** เพราะรอบอาจถูกยกเลิก
     // ระหว่างทาง หรือช่างรู้ว่าลูกค้าจะย้ายไซต์ · ผู้ใช้กดยืนยันแล้วค่อย POST
+    /* 🐞 ของเดิมยิงเฉพาะ `done` ⇒ ปิดเป็น `partial` แล้วไม่มีการเสนอรอบถัดไป
+       ทั้งที่เป็นเคสที่ต้องกลับไปแน่นอนที่สุด */
     let suggestion = null;
-    if (data.status === 'done' && before.status !== 'done' && data.planId) {
+    if (isClosedVisit(data) && !isClosedVisit(before) && data.planId) {
       const plan = await findPlan(supabase, data.planId);
       if (plan) suggestion = nextAfterDone(plan, data);
     }
@@ -96,8 +131,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
     // ⚠️ นัดที่ปิดงานแล้วคือ **ประวัติการเข้าไซต์** ซึ่งเป็นของมีค่าที่สุดของโมดูลนี้
     // ยกเลิกได้ (status) แต่ลบทิ้งไม่ได้
-    if (before.status === 'done') {
-      return conflict('นัดที่ปิดงานแล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
+    /* 🐞 ของเดิมบล็อกเฉพาะ `done` ⇒ `partial`/`unable`/`in_progress` ลบทิ้งได้
+       = ประวัติการเข้าไซต์หาย ซึ่งคอมเมนต์บรรทัดบนบอกเองว่ามีค่าที่สุดของโมดูล */
+    if (!canDeleteVisit(before)) {
+      return conflict('นัดที่ช่างไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
     }
 
     const { error } = await supabase.from('service_visits').delete().eq('id', id);

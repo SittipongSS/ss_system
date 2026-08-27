@@ -8,21 +8,14 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Camera, Trash2 } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
-import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
-import TimeInput from "@/components/ui/TimeInput";
 import SignaturePad from "./SignaturePad";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { ATTACHMENT_KIND_LABELS, VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
-import { fmtNumber } from "@/lib/format";
-
-const nowHHMM = () => {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+import { fmtNumber, naText } from "@/lib/format";
 
 export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }) {
   const [form, setForm] = useState(() => closeFormDefaults(null));
@@ -38,7 +31,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     if (!open || !visit) return;
     setError("");
     setDraftItem({ label: "", qty: "", unit: "" });
-    setForm(closeFormDefaults(visit, { nowHHMM: nowHHMM() }));
+    setForm(closeFormDefaults(visit));
     (async () => {
       try {
         const res = await fetch(`/api/service/visits/${visit.id}/items`);
@@ -167,27 +160,23 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
         {site?.routeZone ? ` · ${site.routeZone}` : ""} · {VISIT_KIND_LABELS[visit.kind] || visit.kind}
       </p>
 
+      {/* ⭐ เวลาที่เข้าจริง **ประทับที่ server** ตอนกดเริ่ม/ปิดงาน (มติ 2026-08-02 ข้อ 5)
+          🐞 ของเดิมเป็นช่องกรอกสามช่อง + ปุ่ม "ตอนนี้" ที่อ่าน `d.getHours()` =
+          นาฬิกาของเครื่องช่าง — เปลี่ยนโซนเวลาในมือถือแล้วเวลาที่บันทึกเพี้ยนโดยไม่มี
+          อะไรจับได้ และช่างที่ยืนอยู่หน้างานก็ไม่ได้พิมพ์เวลาเองอยู่แล้ว (กรอกทีเดียว
+          ตอนปิดงาน = เลขที่พิมพ์ย้อนหลัง ไม่ใช่เวลาจริง)
+          ⇒ แสดงอย่างเดียว · แก้ย้อนหลังทำได้จากหน้ารายละเอียดนัด และใบจะติดธง
+          `actualTimeEdited` ให้เห็นว่าแก้ (ด่าน check:thaitime กันรูปเดิมไว้แล้ว) */}
       <section className={styles.block}>
         <h3 className={styles.blockTitle}>เวลาที่เข้าจริง</h3>
-        <div className={styles.row}>
-          <label className={styles.field}>
-            <span>วันที่</span>
-            <DateInput value={form.actualDate} onChange={(iso) => setForm((p) => ({ ...p, actualDate: iso }))} />
-          </label>
-          <label className={styles.field}>
-            <span>เริ่ม</span>
-            <TimeInput value={form.actualStartTime} onChange={(v) => setForm((p) => ({ ...p, actualStartTime: v }))} />
-          </label>
-          <label className={styles.field}>
-            <span>เสร็จ</span>
-            <TimeInput value={form.actualEndTime} onChange={(v) => setForm((p) => ({ ...p, actualEndTime: v }))} />
-          </label>
-          {/* ช่างที่ยืนอยู่หน้างานจะไม่พิมพ์เวลาเอง */}
-          <Button tone="neutral" variant="quiet" size="sm"
-            onClick={() => setForm((p) => ({ ...p, actualEndTime: nowHHMM() }))}>
-            ตอนนี้
-          </Button>
-        </div>
+        <p className={styles.note}>
+          ระบบจับเวลาให้ตอนคุณกด “เริ่มงาน” และ “บันทึกและปิดงาน” — ไม่ต้องกรอกเอง
+        </p>
+        <dl className={styles.stamp}>
+          <div><dt>วันที่</dt><dd>{naText(form.actualDate)}</dd></div>
+          <div><dt>เริ่ม</dt><dd>{naText(String(form.actualStartTime || "").slice(0, 5))}</dd></div>
+          <div><dt>เสร็จ</dt><dd>{visit?.actualEndTime ? String(visit.actualEndTime).slice(0, 5) : "จะจับตอนกดปิดงาน"}</dd></div>
+        </dl>
       </section>
 
       <section className={styles.block}>

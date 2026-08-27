@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { AlertTriangle, CheckCircle2, FileText, MapPin, Phone, Wrench } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, MapPin, Phone, Play, Wrench } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -24,6 +24,7 @@ import CloseVisitSheet from "@/components/service/CloseVisitSheet";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
+import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
 import { groupVisits, openCount, overdueDays } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
@@ -96,20 +97,44 @@ export default function TodayPage() {
     return visits.find((v) => v.assigneeName)?.assigneeName || "ช่างคนอื่น";
   }, [viewingOther, visits]);
 
+  /* ⭐ ปุ่ม "เริ่มงาน" — ส่ง `stamp: 'start'` ให้ server ประทับเวลาไทยเอง
+     ช่างไม่พิมพ์เวลา และค่าที่ได้ไม่ขึ้นกับนาฬิกาในมือถือที่ตั้งผิดได้ (มติข้อ 5) */
+  const [starting, setStarting] = useState(null);
+  const startVisit = async (visit) => {
+    setStarting(visit.id);
+    try {
+      const res = await fetch(`/api/service/visits/${visit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress", stamp: "start" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "เริ่มงานไม่สำเร็จ");
+      setToast({ kind: "success", msg: `เริ่มงานแล้ว · ${data?.visit?.actualStartTime || ""} น.` });
+      await load();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setStarting(null);
+    }
+  };
+
   const closeVisit = async (form) => {
     const res = await fetch(`/api/service/visits/${closing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      // stamp:'end' = ให้ server ประทับเวลาจบด้วยนาฬิกาไทย · ฟอร์มไม่ส่งเวลามาเอง
+      body: JSON.stringify({ ...form, stamp: "end" }),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "ปิดงานไม่สำเร็จ");
 
     // ⭐ server เสนอนัดรอบถัดไปมา — บอกวันให้เห็น แต่ไม่สร้างให้เอง
     const suggestion = data?.nextVisitSuggestion;
+    const closedAs = VISIT_STATUS_LABELS[data?.visit?.status] || "ปิดงาน";
     setToast(suggestion
-      ? { kind: "success", msg: `ปิดงานแล้ว · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวช่าง` }
-      : { kind: "success", msg: "ปิดงานแล้ว" });
+      ? { kind: "success", msg: `${closedAs} · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวช่าง` }
+      : { kind: "success", msg: `${closedAs}แล้ว` });
     setClosing(null);
     await load();
   };
@@ -151,18 +176,19 @@ export default function TodayPage() {
               {rows.map((visit) => {
                 const site = sitesById.get(visit.siteId);
                 const warnings = visitWarnings(visit, { site });
-                const done = visit.status === "done";
+                const done = isClosedVisit(visit);
+                const running = visit.status === "in_progress";
                 const late = overdueDays(visit, todayIso);
                 return (
-                  <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${late && !done ? styles.cardLate : ""}`}>
+                  <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${running ? styles.cardLive : ""} ${late && !done && !running ? styles.cardLate : ""}`}>
                     <div className={styles.cardHead}>
                       {/* ⚠️ **วันที่ต้องอยู่บนการ์ด** — กลุ่ม "ค้างอยู่" กับ "ถัดไป" รวมหลายวัน
                           ไว้ด้วยกัน ถ้ามีแต่เวลา นัดที่ค้างมาสองเดือนจะหน้าตาเหมือนนัดเมื่อวาน */}
                       <span className={styles.date}>{fmtDayMonth(visit.scheduledDate)}</span>
                       <span className={styles.time}>{visitTimeText(visit)}</span>
                       <span className={styles.kind}>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</span>
-                      {late && !done && <span className="ui-badge danger">ค้าง {late} วัน</span>}
-                      {done && <span className="ui-badge">ปิดงานแล้ว</span>}
+                      {late && !done && !running && <span className="ui-badge danger">ค้าง {late} วัน</span>}
+                      {done && <span className={`ui-badge ${visit.status === "done" ? "success" : "warning"}`}>{VISIT_STATUS_LABELS[visit.status]}</span>}
                     </div>
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
@@ -179,6 +205,13 @@ export default function TodayPage() {
                       <p className={styles.note}>
                         <FileText size={13} aria-hidden="true" />
                         <span>{visit.note}</span>
+                      </p>
+                    )}
+
+                    {running && (
+                      <p className={styles.running}>
+                        <span className={styles.pulse} aria-hidden="true" />
+                        กำลังทำอยู่ · เริ่ม {String(visit.actualStartTime || "").slice(0, 5)} น.
                       </p>
                     )}
 
@@ -201,7 +234,17 @@ export default function TodayPage() {
                           โทร
                         </Button>
                       )}
-                      {canEdit && (
+                      {/* ⭐ สองปุ่มคนละจังหวะ: ยังไม่เริ่ม = "เริ่มงาน" (ประทับเวลาเริ่มที่ server)
+                          · กำลังทำอยู่ = "ปิดงาน" · ปิดแล้ว = "แก้ผลการเข้า"
+                          ไม่มีปุ่มไหนให้พิมพ์เวลาเอง — นั่นคือทั้งเหตุผลของการมีปุ่มเริ่มงาน */}
+                      {canEdit && !done && !running && (
+                        <Button tone="accent" size="sm" disabled={starting === visit.id}
+                          icon={<Play size={14} aria-hidden="true" />}
+                          onClick={() => startVisit(visit)}>
+                          {starting === visit.id ? "กำลังเริ่ม…" : "เริ่มงาน"}
+                        </Button>
+                      )}
+                      {canEdit && (running || done) && (
                         <Button tone={done ? "neutral" : "primary"} variant={done ? "quiet" : undefined} size="sm"
                           onClick={() => setClosing(visit)}>
                           {done ? "แก้ผลการเข้า" : "ปิดงาน"}

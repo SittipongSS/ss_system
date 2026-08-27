@@ -96,3 +96,29 @@
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
+
+/* เวลาที่ระบบประทับให้ — อ่านอย่างเดียว ไม่ใช่ช่องกรอก (มติ 2026-08-02 ข้อ 5) */
+.stamp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-2) 0 0;
+}
+
+.stamp > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.stamp dt {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+.stamp dd {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}

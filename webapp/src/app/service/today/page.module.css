@@ -58,6 +58,36 @@
 /* นัดที่เลยวันแล้วยังไม่ปิด — แถบซ้ายสีแดงให้เห็นตั้งแต่กวาดตา ไม่ต้องอ่านป้าย */
 .cardLate { border-inline-start: 3px solid var(--red); }
 
+/* กำลังทำอยู่ — ใบเดียวบนจอที่ช่างต้องกลับมาปิด จึงเน้นด้วยขอบสีแบรนด์ทั้งใบ */
+.cardLive { border-color: var(--accent); }
+
+.running {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.pulse {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  animation: pulse var(--motion-slow) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+@keyframes pulse { from { opacity: 1; } to { opacity: var(--op-disabled); } }
+
 /* หมายเหตุจากคนจัดคิว = คำสั่ง ไม่ใช่คำขยาย จึงไม่ใช้ .meta ที่เป็นสีจางสุด */
 .note {
   display: flex;
