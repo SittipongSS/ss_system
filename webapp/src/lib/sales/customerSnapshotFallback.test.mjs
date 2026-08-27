@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fillCustomerSnapshotFromMaster } from './customerSnapshotFallback.js';
+import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from './customerSnapshotFallback.js';
 
 // mock supabase: .from('customers').select(...).eq('id', x).maybeSingle() → { data }
 function mockSupabase(customerRow, spy = {}) {
@@ -95,4 +95,59 @@ test('ยิง query ตาราง customers ด้วย customerId ที�
   assert.equal(spy.table, 'customers');
   assert.equal(spy.eqCol, 'id');
   assert.equal(spy.eqVal, 'C9');
+});
+
+/* ── ชื่อลูกค้าบนร่างที่ยังไม่ยื่น อ่านสดจากทะเบียน ────────────────────────
+   เคสจริง 2026-08-27: สร้างลูกค้าชื่อ '… (สำนักงานใหญ่)' → ออกใบ 11:26 → ตัดคำออกจาก
+   ชื่อ 12:29 · ใบที่ยื่น/ส่งแล้วต้องคงชื่อเก่า (หลักฐาน) แต่ร่างที่ไม่เคยยื่นไม่ควรค้าง */
+const customerListStub = (result) => ({
+  from() {
+    return {
+      select() {
+        return { in() { return result; } };
+      },
+    };
+  },
+});
+const customersReturning = (rows) => customerListStub({ data: rows, error: null });
+
+test('ร่างที่ยังไม่ยื่น → ชื่อลูกค้าเดินตามทะเบียน', async () => {
+  const quote = { customerId: 'CUS-1', customerName: 'บริษัท ก จำกัด (สำนักงานใหญ่)', status: 'draft', approvalStatus: 'not_submitted' };
+  await refreshCustomerNameForDisplay(customersReturning([{ id: 'CUS-1', name: 'บริษัท ก จำกัด' }]), [quote]);
+  assert.equal(quote.customerName, 'บริษัท ก จำกัด');
+});
+
+test('ยื่น/ส่ง/รับแล้ว → ชื่อบนใบตรึง ไม่ขยับตามทะเบียน', async () => {
+  const frozen = [
+    { customerId: 'CUS-1', customerName: 'ชื่อ ณ วันออกใบ', status: 'draft', approvalStatus: 'pending' },
+    { customerId: 'CUS-1', customerName: 'ชื่อ ณ วันออกใบ', status: 'sent', approvalStatus: 'approved' },
+    { customerId: 'CUS-1', customerName: 'ชื่อ ณ วันออกใบ', status: 'accepted', approvalStatus: 'approved' },
+    { customerId: 'CUS-1', customerName: 'ชื่อ ณ วันออกใบ', status: 'revised', approvalStatus: 'approved' },
+  ];
+  await refreshCustomerNameForDisplay(customersReturning([{ id: 'CUS-1', name: 'ชื่อใหม่' }]), frozen);
+  for (const q of frozen) assert.equal(q.customerName, 'ชื่อ ณ วันออกใบ', `${q.status}/${q.approvalStatus}`);
+});
+
+test('โหลดทะเบียนไม่สำเร็จ = คืนของเดิม ไม่ทำให้ GET ล้ม', async () => {
+  const quote = { customerId: 'CUS-1', customerName: 'ชื่อเดิม', status: 'draft', approvalStatus: 'not_submitted' };
+  const broken = customerListStub({ data: null, error: { message: 'boom' } });
+  await refreshCustomerNameForDisplay(broken, [quote]);
+  assert.equal(quote.customerName, 'ชื่อเดิม');
+});
+
+test('ใบที่ไม่ผูกลูกค้า / ไม่มีใบเลย = ไม่ยิง query', async () => {
+  let called = false;
+  const spy = {
+    from() {
+      called = true;
+      return {
+        select() {
+          return { in() { return { data: [], error: null }; } };
+        },
+      };
+    },
+  };
+  await refreshCustomerNameForDisplay(spy, [{ status: 'draft', approvalStatus: 'not_submitted' }]);
+  await refreshCustomerNameForDisplay(spy, []);
+  assert.equal(called, false);
 });
