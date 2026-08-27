@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -533,6 +533,10 @@ export default function AppLayout({ children }) {
         // แคบเป็น canEditService เพราะเป็นหน้าลงมือจัดคิว ไม่ใช่หน้าอ่าน · ฝ่ายขายที่
         // อยากรู้ว่า "ช่างเข้าเมื่อไหร่" ดูจากหน้าไซต์บริการซึ่งยังเปิดตามสิทธิ์อ่านเดิม
         { href: '/service/schedule', name: 'จัดคิวช่าง', icon: CalendarDays, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/schedule') },
+        // งานเข้าใหม่ = ทางที่ใบสั่งขายสายบริการเดินมาถึงฝ่าย TS (เฟส 4 · 2026-08-28)
+        // ⚠️ ไม่ใช่หน้า "สร้างงาน" — TS ไม่ใช่ต้นทางของงาน ทุกแถวมีต้นเรื่องเป็นใบที่
+        // อนุมัติแล้ว · แคบเป็น canEditService เพราะเป็นหน้าลงมือผูกไซต์/โซน
+        { href: '/service/intake', name: 'งานเข้าใหม่', icon: ArrowDownToLine, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/intake') },
         // ⚠️ ต้องมี visible: canViewService/canEditService ทุกรายการ — cap service:view
         // ถือกว้างระดับ role (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService ·
         // ถ้าเช็คแค่ cap ฝ่ายคลัง/QC จะเห็นเมนูของทีมช่าง ซึ่งขัดมติแยกทีม (PD ≠ TS)

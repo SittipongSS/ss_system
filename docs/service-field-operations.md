@@ -3,7 +3,7 @@
 **สถานะ: กำลังดำเนินการ** — F-1 เสร็จ (2026-08-27) · F-2 เสร็จ (2026-08-27 · mig 0298
 ชนิดอุปกรณ์/qty/settings) · **F-3 เสร็จ (2026-08-28 · mig 0300)** ·
 **F-4 เสร็จ (2026-08-28 · mig 0301)** · **F-5 เสร็จ (2026-08-28 · ไม่มี migration)** ·
-F-6…F-8 รอดำเนินการ · ✅ mig 0297–0304 รันบน Supabase แล้ว 2026-08-28 (ใบ route_zone ย้ายเลข 0296→0304 เพราะชนกับ `0296_customer_name_title` บน main)
+F-6…F-8 รอดำเนินการ · **เฟส 4 งานเข้าใหม่เสร็จ 2026-08-28 → `docs/service-intake-phase4.md`** · ✅ mig 0297–0304 รันบน Supabase แล้ว 2026-08-28 (ใบ route_zone ย้ายเลข 0296→0304 เพราะชนกับ `0296_customer_name_title` บน main)
 
 - เขียน: 2026-08-02
 - ต่อจาก: `docs/service-business-system-plan.md` (#872 merged), `docs/business-line-vs-project-seam.md` (#868 merged)

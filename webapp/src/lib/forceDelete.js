@@ -393,13 +393,18 @@ export async function quotationForcePreview(supabase, quote) {
 // พรีวิวการลบใบสั่งขายหนึ่งใบ (ของใหม่ — เดิม SO ไม่มีเส้นทาง force เลย).
 // sales_order_lines เป็น FK CASCADE จึงไม่ต้องนับ; ที่ต้องเตือนคือหลักฐาน+ฉบับตรึง
 export async function salesOrderForcePreview(supabase, order) {
-  const [evidence, issued, filings, installments, paidInstallments] = await Promise.all([
+  const [evidence, issued, filings, installments, paidInstallments, zoneTerms] = await Promise.all([
     countBy(supabase, 'document_signature_evidence', 'salesOrderId', order.id),
     countBy(supabase, 'issued_documents', 'salesOrderId', order.id),
     exciseFilingsOfSalesOrder(supabase, order.id),
     countBy(supabase, 'sales_order_installments', 'salesOrderId', order.id),
     // งวดที่บัญชีคอนเฟิร์มแล้ว = เงินที่รับมาจริง ต้องขึ้นให้เห็นเป็นบรรทัดของตัวเอง
     countBy(supabase, 'sales_order_installments', 'salesOrderId', order.id, (q) => q.eq('status', 'confirmed')),
+    /* 🐞 รอบขายของโซนบริการหายตาม CASCADE โดยพรีวิวไม่เคยบอก — mig 0297:48 สั่งไว้
+       ตั้งแต่วันสร้างตารางว่า dryRun ต้องนับแถวนี้ แต่เฟส 4 เพิ่งมาต่อของจริง
+       ⚠️ โซนกับประวัติการเข้าไซต์ **ไม่หาย** (FK เป็น RESTRICT) — ที่หายคือสะพาน
+       ที่บอกว่าโซนนั้นขายอยู่ในรอบไหน ⇒ โซนจะเด้งกลับไปคิว "รอตั้งไซต์/โซน" เงียบ ๆ */
+    countBy(supabase, 'service_zone_terms', 'salesOrderId', order.id),
   ]);
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
@@ -409,6 +414,7 @@ export async function salesOrderForcePreview(supabase, order) {
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
     line('งวดชำระของใบนี้', installments),
     line('— ในนั้นเป็นงวดที่บัญชีคอนเฟิร์มแล้ว', paidInstallments),
+    line('รอบขายของโซนบริการที่ผูกกับใบนี้ (โซนและประวัติการเข้าไซต์ยังอยู่)', zoneTerms),
   ].filter((r) => r.count > 0);
   const notes = [];
   if (evidence > 0 || issued > 0) {
@@ -416,6 +422,9 @@ export async function salesOrderForcePreview(supabase, order) {
   }
   if (paidInstallments > 0) {
     notes.push(`🔴 มีงวดที่บัญชีคอนเฟิร์มแล้ว ${paidInstallments} งวด = เงินที่รับมาจริง — ลบแล้วร่องรอยการรับเงินหายถาวร`);
+  }
+  if (zoneTerms > 0) {
+    notes.push(`🔴 ใบนี้เป็นต้นเรื่องของรอบบริการ ${zoneTerms} รอบ — ลบแล้วโซนเหล่านั้นจะกลับไปเป็น “ขายแล้วแต่ยังไม่ผูก” และคิวงานเข้าใหม่จะทวงซ้ำ`);
   }
   if (order.status === 'approved') {
     notes.push('ใบนี้อนุมัติแล้ว = แหล่งยอด Actual ของดีล — ปกติควรใช้ “ยกเลิก SO” แทน');

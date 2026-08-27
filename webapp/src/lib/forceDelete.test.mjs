@@ -120,6 +120,17 @@ test('salesOrderForcePreview: นับหลักฐาน+ฉบับตร�
   assert.ok(notes.some((n) => n.includes('Actual')));
 });
 
+test('⭐ salesOrderForcePreview: บอกด้วยว่ารอบบริการที่ผูกใบนี้จะหายตาม (mig 0297 สั่งไว้)', async () => {
+  const supabase = stubCount({ 'service_zone_terms:salesOrderId': 3 });
+  const { cascade, notes } = await salesOrderForcePreview(supabase, { id: 'SO1', status: 'approved' });
+  const row = cascade.find((c) => c.label.includes('รอบขายของโซนบริการ'));
+  assert.ok(row, 'พรีวิวต้องมีบรรทัดรอบขายของโซน');
+  assert.equal(row.count, 3);
+  // ต้องบอกด้วยว่าอะไร **ไม่** หาย ไม่งั้นคนอ่านจะคิดว่าโซนกับประวัติหายไปทั้งหมด
+  assert.match(row.label, /โซนและประวัติการเข้าไซต์ยังอยู่/);
+  assert.ok(notes.some((n) => n.includes('คิวงานเข้าใหม่จะทวงซ้ำ')));
+});
+
 test('cleanupDealOrphans: ลบเธรด+งาน+คำร้องของดีล และปลด parentDealId', async () => {
   const calls = [];
   const rpcCalls = [];
