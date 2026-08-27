@@ -2,7 +2,6 @@
    ไฟล์นี้เหลือไว้เฉพาะความกว้างคอลัมน์กับสีตัวเลข ซึ่งเป็นของเฉพาะหน้านี้ */
 
 .toolbarRow { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.toolbarNote { color: var(--text-3); font-size: var(--fs-5); }
 
 /* ความกว้างขั้นต่ำของคอลัมน์ — ตัวเลขเงินต้องไม่ตัดบรรทัดกลางจำนวน */
 .colPeriod { min-width: 120px; }
@@ -20,3 +19,9 @@
 
 .footNote { color: var(--text-3); font-size: var(--fs-5); }
 .emptyBox { margin: var(--space-4); }
+
+.resultNote {
+  margin-bottom: var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-6);
+}
