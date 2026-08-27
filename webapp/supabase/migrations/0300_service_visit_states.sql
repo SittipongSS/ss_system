@@ -48,7 +48,7 @@ ALTER TABLE public.service_visits
   ADD COLUMN IF NOT EXISTS "unableReason" text;
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'service_visits_unable_needs_reason') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.service_visits'::regclass AND conname = 'service_visits_unable_needs_reason') THEN
     ALTER TABLE public.service_visits
       ADD CONSTRAINT service_visits_unable_needs_reason CHECK (
         status <> 'unable' OR (
@@ -59,7 +59,7 @@ BEGIN
 END $$;
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'service_visits_unable_reason_len') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.service_visits'::regclass AND conname = 'service_visits_unable_reason_len') THEN
     ALTER TABLE public.service_visits
       ADD CONSTRAINT service_visits_unable_reason_len CHECK (
         "unableReason" IS NULL OR length("unableReason") <= 500

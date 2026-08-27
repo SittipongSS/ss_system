@@ -33,7 +33,7 @@ ALTER TABLE public.service_visits
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'service_visits_gate_override_reason') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.service_visits'::regclass AND conname = 'service_visits_gate_override_reason') THEN
     ALTER TABLE public.service_visits
       ADD CONSTRAINT service_visits_gate_override_reason CHECK (
         "gateOverrideAt" IS NULL OR (

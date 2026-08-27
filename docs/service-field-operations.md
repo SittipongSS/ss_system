@@ -3,7 +3,7 @@
 **สถานะ: กำลังดำเนินการ** — F-1 เสร็จ (2026-08-27) · F-2 เสร็จ (2026-08-27 · mig 0298
 ชนิดอุปกรณ์/qty/settings) · **F-3 เสร็จ (2026-08-28 · mig 0300)** ·
 **F-4 เสร็จ (2026-08-28 · mig 0301)** · **F-5 เสร็จ (2026-08-28 · ไม่มี migration)** ·
-F-6…F-8 รอดำเนินการ · ⚠️ **mig 0296–0301 ยังไม่ได้รันบน Supabase**
+F-6…F-8 รอดำเนินการ · ✅ mig 0297–0304 รันบน Supabase แล้ว 2026-08-28 (ใบ route_zone ย้ายเลข 0296→0304 เพราะชนกับ `0296_customer_name_title` บน main)
 
 - เขียน: 2026-08-02
 - ต่อจาก: `docs/service-business-system-plan.md` (#872 merged), `docs/business-line-vs-project-seam.md` (#868 merged)
@@ -318,7 +318,7 @@ service_assets.kind  →  diffuser | reed | soap | alcohol | …
 
 | PR | ได้อะไร | migration |
 |---|---|---|
-| ~~**F-1**~~ ✅ | เปลี่ยนชื่อเมนู + route + ตัดปุ่ม "ทั้งทีม" — เสร็จ 2026-08-27: เมนู `ภาพรวม · งานวันนี้ (/service/today) · จัดคิวช่าง · ไซต์บริการ` · ไปแทนกันผ่านลิงก์ชื่อช่างในหน้าจัดคิว (`?user=`) · ปุ่มหน้าช่างสูง `--ctl-h-touch` · แถม rename `service_sites.zone`→`routeZone` "เขตวิ่งงาน" (mig 0296) กันชนกับ Zone ใหม่ + ปลด `disabled` การ์ดระบบ | ✅ 0296 |
+| ~~**F-1**~~ ✅ | เปลี่ยนชื่อเมนู + route + ตัดปุ่ม "ทั้งทีม" — เสร็จ 2026-08-27: เมนู `ภาพรวม · งานวันนี้ (/service/today) · จัดคิวช่าง · ไซต์บริการ` · ไปแทนกันผ่านลิงก์ชื่อช่างในหน้าจัดคิว (`?user=`) · ปุ่มหน้าช่างสูง `--ctl-h-touch` · แถม rename `service_sites.zone`→`routeZone` "เขตวิ่งงาน" (mig 0304 · เดิม 0296) กันชนกับ Zone ใหม่ + ปลด `disabled` การ์ดระบบ | ✅ 0304 |
 | **F-2** | `service_assets.kind` + `qty` + `settings jsonb` + คอลัมน์ร่วม (colour · floor/spot) · ทะเบียนชนิดในโค้ด | ✅ |
 | ~~**F-3**~~ ✅ | สถานะ `in_progress`/`partial`/`unable` (+`draft` เตรียมด่าน) · **stamp ที่ server ด้วยนาฬิกาไทย** (`stamp:'start'|'end'`) · ธง `actualTimeEdited` · เหตุผลบังคับของ `unable` · ปุ่ม 44px — เสร็จ 2026-08-28 · **รวมนิยาม “นัดที่ยังมีชีวิต” 5 ชุดเป็นชุดเดียวที่ `lib/service/visitStatus.js`** · ขยายด่าน `check:thaitime` ให้จับ `.slice(11,16)` และ `getHours()` ซึ่งเดิมจับไม่ได้เลย | ✅ 0300 |
 | ~~**F-4**~~ ✅ | ปิดงานรายเครื่อง + เปลี่ยนเครื่องเข้าทะเบียน — เสร็จ 2026-08-28 (mig 0301) · **สถานะใบสรุปจากลูก** (`deriveVisitStatus`) ไม่มีปุ่มให้ช่างเลือกเอง · swap เขียน `removedAt` ตัวเก่า + `installedAt` ตัวใหม่จริง · เปิดใช้ `service_visit_items.assetId` ที่ตายมาตั้งแต่ 0188 (ขาแรกของ consumption rollup) · เพิ่มด่านลบอุปกรณ์ที่ไม่เคยมี | ✅ 0301 |
