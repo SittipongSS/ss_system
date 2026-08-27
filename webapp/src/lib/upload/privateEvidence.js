@@ -15,6 +15,13 @@ export const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCK
 
 const safeId = (value) => String(value).replace(/[^a-zA-Z0-9_-]+/g, '_');
 
+/* สถานะของใบสั่งขายที่ **ไม่มีเงินให้เก็บอีกแล้ว** ⇒ แนบหลักฐานการชำระไม่ได้
+   (`sales_orders_status_check` ของ 0166: draft · pending_approval · approved ·
+   rejected · cancelled · revised · approval_revoked)
+   ⚠️ `approval_revoked` **ไม่อยู่ในนี้** — ใบที่ย้อนการอนุมัติยังเป็นใบเดิมและงวดยัง
+   อยู่ครบ คนที่กำลังตามเก็บเงินไม่ควรถูกตัดมือระหว่างที่ใบรอออก Rev. */
+export const SO_PAYMENT_EVIDENCE_CLOSED = ['cancelled', 'rejected', 'revised'];
+
 const TARGETS = {
   // หลักฐาน Won แนบได้เฉพาะตอนใบยังเปิดอยู่ — หลัง accept ใบกลายเป็นแหล่งของ Actual
   // แล้วหลักฐานต้องนิ่ง (mig 0138 เก็บไว้แม้ถูก unaccept)
@@ -38,12 +45,25 @@ const TARGETS = {
       ? null : 'แนบเอกสารยืนยันคำสั่งซื้อได้เมื่อใบเสนอราคาปิด Won แล้ว'),
     prefix: (entityId) => `quotations/${safeId(entityId)}/order-confirmation/`,
   },
-  // งวดชำระเกิดตอนใบสั่งขายอนุมัติ — ก่อนหน้านั้นไม่มีอะไรให้แนบ
+  /* หลักฐานการชำระรายงวดของใบสั่งขาย (mig 0245)
+   *
+   * 🐞 เดิมด่านนี้เขียนว่า `status === 'approved'` ตามกติกาแรกของ 0245 ("งวดชำระเกิด
+   * ตอนใบอนุมัติ ก่อนหน้านั้นไม่มีอะไรให้แนบ") · B-4 (#1328 · มติผู้ใช้ 2026-08-19)
+   * ย้ายจุดนั้นไปแล้ว — **งวดร่างบันทึกเงินที่ลูกค้าจ่ายมาแล้วได้** เพราะของจริงลูกค้า
+   * โอนมัดจำก่อนการอนุมัติภายในเป็นเรื่องปกติ — แต่ไม่มีใครกลับมาแก้ด่านอัปไฟล์
+   * ⇒ ปุ่ม "บันทึกว่าลูกค้าจ่ายแล้ว" ขึ้นให้กดตามปกติ แล้วตายเงียบที่ 409 ของ
+   * `/api/upload/session` ทุกครั้ง · ฟีเจอร์ไม่เคยทำงานเลยตั้งแต่วันที่ merge
+   *
+   * ⭐ **ด่านของไฟล์ต้องไม่แคบกว่าด่านของคำสั่ง** — คนตัดสินว่างวดไหนแจ้งได้คือ
+   * `installmentActionError` ซึ่งไม่ดูสถานะใบเลย · ที่นี่จึงเหลือแค่ตัดใบที่ไม่มีเงิน
+   * ให้เก็บอีกแล้ว: ยกเลิก/ตีกลับ (ชุดเดียวกับที่ POST /installments ปฏิเสธ) และใบที่
+   * ถูกออก Rev. ทับไปแล้ว ซึ่งหลักฐานต้องไปแขวนบนใบใหม่ ไม่ใช่ใบที่ตายไปแล้ว */
   sales_order_payment_evidence: {
     table: 'sales_orders',
     notFound: 'ไม่พบใบสั่งขาย',
-    gate: (row) => (row.status === 'approved'
-      ? null : 'แนบหลักฐานการชำระได้หลังใบสั่งขายอนุมัติแล้ว'),
+    gate: (row) => (SO_PAYMENT_EVIDENCE_CLOSED.includes(row.status)
+      ? 'ใบสั่งขายนี้ยกเลิก/ตีกลับ/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
+      : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/payments/`,
   },
 };
@@ -83,6 +103,18 @@ export function isQuotationEvidencePath(storagePath, quotationId = null) {
 }
 
 export { QUOTATION_EVIDENCE_FOLDERS };
+
+/**
+ * ด่าน **สถานะเอกสาร** ของ entityType นั้น — คืนข้อความผิดพลาด หรือ null เมื่อผ่าน
+ *
+ * ยกออกมาจาก `checkPrivateEvidenceScope` เพื่อให้ทดสอบได้โดยไม่ต้องมีฐานข้อมูล —
+ * ด่านนี้คือที่ที่กติกาของ UI กับกติกาของไฟล์เคยเดินคนละทางจนฟีเจอร์ตายเงียบ
+ */
+export function privateEvidenceStatusError(entityType, row) {
+  const target = TARGETS[entityType];
+  if (!target) return 'forbidden';
+  return target.gate(row || {});
+}
 
 /** โฟลเดอร์ที่ไฟล์ของเอกสารใบนั้นต้องอยู่ — ใช้ทั้งตอนสร้าง path และตอนตรวจ path ที่ client ส่งมา */
 export function privateEvidencePrefix(entityType, entityId) {
