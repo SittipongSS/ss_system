@@ -11,16 +11,19 @@ import { attachReworkRows } from '@/lib/requests/reworkRows';
 export const dynamic = 'force-dynamic';
 
 /* ── ตัวช่วยของไฟล์นี้: อ่านงานให้ครบทุกแถว ─────────────────────────────────
-   🐞 เพดาน Max rows = 1000 ของ PostgREST ตัดผลลัพธ์เงียบ ๆ และ `project_tasks`
-   เกินเพดานไปแล้ว (2,820 แถว เมื่อ 2026-08-16) ⇒ scope ทีม/ทั้งหมด และงานที่
-   assign ทั้งฝ่าย เคยได้คืนมาแค่ 1,000 งานแรกตาม `stepOrder` โดยไม่มี error
-   ⚠️ `stepOrder` ซ้ำกันได้ทั้งตาราง — ต้องพ่วง `id` ให้ลำดับนิ่ง ไม่งั้นการไล่ทีละหน้า
-   จะได้แถวซ้ำและแถวหายพร้อมกัน (ดู lib/supabaseFetchAll)
+   🐞 เพดาน Max rows = 1000 ของ PostgREST ตัดผลลัพธ์เงียบ ๆ ⇒ ต้องไล่ทีละหน้า
    ⚠️ คืน `{ data, error }` เหมือน query เดิม — ผู้เรียกในไฟล์นี้ยอมให้ error เงียบแล้ว
-   ปล่อยลิสต์ว่าง ซึ่งเป็นพฤติกรรมเดิมที่ไม่ได้ตั้งใจเปลี่ยนในงานนี้ */
-const allTasks = (supabase, where = (q) => q) => fetchAllResult(() => where(
-  supabase.from('project_tasks').select('*'),
-).order('stepOrder', { ascending: true }).order('id', { ascending: true }));
+   ปล่อยลิสต์ว่าง ซึ่งเป็นพฤติกรรมเดิมที่ไม่ได้ตั้งใจเปลี่ยนในงานนี้
+
+   🪤 **เคยดึง `project_tasks` ทั้งตารางที่นี่ด้วย — ถอดออกแล้ว (egress)**
+   จอเดียวที่เรียก route นี้คือ `app/pm/tasks/page.js` ซึ่งเลิกอ่าน `projectTasks`
+   ไปตั้งแต่ cb3f37a0 ("หน้างานเป็นรายการเดียวจาก personal_tasks") แต่ฝั่ง server
+   ยังดึงต่ออีกหลายเดือน · `scope=all` = 4,653 แถว × `select('*')` = 3.45 MB
+   ต่อการเปิดหน้าหนึ่งครั้ง ที่ไม่มีใครอ่าน
+   ถ้าจะเอากลับมา ต้องเอากลับ **สองสาขา** ไม่ใช่สาขาเดียว: `projectId` (งานผูก
+   โครงการ) และ `dealId` (ไทม์ไลน์ลอยของดีลที่ยังไม่ผูกโครงการ — DL1 ใน
+   lib/pm/status.js) · กรองด้วย `projectId` ล้วนเคยทำงาน 81 แถวบน production
+   หายจากสายตาหัวหน้าทีมมาแล้ว (2026-08-22) */
 
 /* งานส่วนตัวเรียงตาม `createdAt` (ไม่มี `stepOrder`) — พ่วง `id` ด้วยเหตุผลเดียวกัน
    `personal_tasks` = 1,045 แถวตอนพบบั๊ก จึงเกินเพดานแล้วเช่นกัน */
@@ -29,7 +32,7 @@ const allPersonal = (supabase, where = (q) => q) => fetchAllResult(() => where(
 ).order('createdAt', { ascending: false }).order('id', { ascending: true }));
 
 // GET /api/pm/my-work?scope=mine|team|all
-// คืน { scope, projectTasks, personalTasks, projects } — scope ถูกบังคับตาม role
+// คืน { scope, personalTasks, inquiries, projects, deals } — scope ถูกบังคับตาม role
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -40,56 +43,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // Fall back to the role's first (default) allowed scope, not a hardcoded 'mine':
   // a viewer's only scope is 'all', so requesting 'mine' must resolve to 'all'.
   if (!allowed.includes(scope)) scope = allowed[0];
-
-  // ── project tasks ตาม scope ──
-  let projectTasks = [];
-  if (scope === 'mine') {
-    // งานของฉัน = แมตช์ทั้ง assigneeId (มอบหมายผ่าน dropdown) และ assignee (ชื่อ —
-    // ที่ template gen ให้ AE owner โดยไม่ตั้ง assigneeId). ใช้ 2 query แล้ว merge
-    // กันชื่อที่มี comma/วงเล็บทำ .or() พัง + กันแมตช์ทั้งหมดเมื่อชื่อว่าง.
-    const byId = allTasks(supabase, (q) => q.eq('assigneeId', user.id));
-    const byName = user.name
-      ? allTasks(supabase, (q) => q.eq('assignee', user.name))
-      : Promise.resolve({ data: [] });
-    // staff/rd (ฝ่ายจัดซื้อ/ผลิต/คลัง/วิจัย/QC) ไม่ได้ถูก assign รายคนเสมอ — รวมงานที่
-    // "assign ให้ฝ่าย" คือขั้นตอนที่ role === ฝ่ายของเขา เข้ามาในงานของฉันด้วย.
-    const dept = normalizeDepartment(user.department);
-    const byDept = ((user.role === 'staff' || user.role === 'rd') && dept)
-      ? allTasks(supabase, (q) => q.eq('role', dept))
-      : Promise.resolve({ data: [] });
-    const [{ data: a }, { data: b }, { data: c }] = await Promise.all([byId, byName, byDept]);
-    const seen = new Set();
-    projectTasks = [...(a || []), ...(b || []), ...(c || [])].filter((t) => (seen.has(t.id) ? false : seen.add(t.id)));
-  } else if (scope === 'team') {
-    const dept = normalizeDepartment(user.department);
-    if (user.role === 'rd' && dept) {
-      const { data } = await allTasks(supabase, (q) => q.eq('role', dept));
-      projectTasks = data || [];
-    } else {
-      /* 🐞 ดึงด้วย `projectId` ล้วนไม่พอ — ไทม์ไลน์ "ลอย" ของดีลที่ยังไม่ผูกโครงการ
-         (`project_tasks.projectId = null` + `dealId` — ดู lib/pm/status.js DL1) ไม่โผล่ใน
-         "งานของทีม" เลย ทั้งที่เป็นงานจริงที่มีคนทำอยู่ · งานส่วนตัวข้างล่างมีสาขา
-         `dealId` คู่กับ `projectId` มาตั้งแต่แรก ตรงนี้ขาดไปข้างเดียว
-         ⚠️ ดีลของทีมที่ไปผูกโครงการของทีมอื่น จะติดมาด้วยทางสาขา `dealId` —
-         ตั้งใจ (งานของดีลทีมเรา = งานของเรา) และเป็นพฤติกรรมเดียวกับงานส่วนตัว */
-      const [projIds, { data: teamDeals }] = await Promise.all([
-        teamProjectIds(supabase, user.teams),
-        whereTeamIn(supabase.from('sales_deals').select('id'), user),
-      ]);
-      const dealIds = (teamDeals || []).map((deal) => deal.id);
-      const wheres = [];
-      if (projIds.length) wheres.push((q) => q.in('projectId', projIds));
-      if (dealIds.length) wheres.push((q) => q.in('dealId', dealIds));
-      const results = await Promise.all(wheres.map((where) => allTasks(supabase, where)));
-      const seenTask = new Set();
-      projectTasks = results
-        .flatMap((r) => r.data || [])
-        .filter((t) => (seenTask.has(t.id) ? false : seenTask.add(t.id)));
-    }
-  } else { // all
-    const { data } = await allTasks(supabase);
-    projectTasks = data || [];
-  }
 
   // ── งาน personal_tasks (ระบบติดตามงาน — ผู้มีสิทธิ์ต้องเห็น "งาน" ทั้งหมดในขอบเขต) ──
   //   • mine = งานที่ฉันเป็นเจ้าของ หรือถูกมอบหมายให้ฉัน
@@ -173,10 +126,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโครงการที่งานเพิ่มเติมผูกไว้ด้วย) ──
-  const projIds = [...new Set([
-    ...projectTasks.map((t) => t.projectId),
-    ...personalTasks.map((t) => t.projectId),
-  ].filter(Boolean))];
+  const projIds = [...new Set(personalTasks.map((t) => t.projectId).filter(Boolean))];
   let projects = {};
   if (projIds.length) {
     const { data: ps } = await supabase
@@ -185,10 +135,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // ── deals map สำหรับงานที่ผูกดีล ──
-  const dealIds = [...new Set([
-    ...projectTasks.map((t) => t.dealId),
-    ...personalTasks.map((t) => t.dealId),
-  ].filter(Boolean))];
+  const dealIds = [...new Set(personalTasks.map((t) => t.dealId).filter(Boolean))];
   let deals = {};
   if (dealIds.length) {
     const { data: ds } = await supabase
@@ -200,7 +147,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     scope,
     allowedScopes: allowed,
     me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, teams: user.teams ?? [], department: normalizeDepartment(user.department) },
-    projectTasks,
     personalTasks: personalTasks || [],
     inquiries,
     projects,
