@@ -100,3 +100,23 @@ test('ป้ายในข้อความเปลี่ยนตามง�
 test('normalizeRejectionReason: ตัดหัวท้าย + ยุบช่องว่างซ้อน', () => {
   assert.equal(normalizeRejectionReason('  เลขภาษี   ผิด  '), 'เลขภาษี ผิด');
 });
+
+// 🐞 jsonb คืนคีย์คนละลำดับกับที่โค้ดสร้าง (2026-08-27) — เทียบด้วย JSON.stringify
+// ตรง ๆ ทำให้ "ไม่ได้แก้อะไร" ถูกนับเป็นแก้ แล้วลูกค้าที่อนุมัติแล้วเด้งเป็นรออนุมัติ
+test('changedFieldsAgainst: คีย์สลับลำดับใน jsonb ต้องไม่นับว่าแก้', () => {
+  const record = { brands: [{ en: 'RAM', th: 'ร่ำ' }] };
+  const updates = { brands: [{ th: 'ร่ำ', en: 'RAM' }] };
+  assert.deepEqual(changedFieldsAgainst(record, updates), []);
+});
+
+test('changedFieldsAgainst: ลำดับในอาร์เรย์ยังมีความหมาย — สลับแถว = แก้', () => {
+  const record = { brands: [{ th: 'ก' }, { th: 'ข' }] };
+  const updates = { brands: [{ th: 'ข' }, { th: 'ก' }] };
+  assert.deepEqual(changedFieldsAgainst(record, updates), ['brands']);
+});
+
+test('changedFieldsAgainst: คีย์สลับลำดับใน object ซ้อน (addresses) ก็ต้องไม่นับว่าแก้', () => {
+  const record = { addresses: [{ id: 'ADR-1', line1: 'ก', branchCode: '00000' }] };
+  const updates = { addresses: [{ branchCode: '00000', line1: 'ก', id: 'ADR-1' }] };
+  assert.deepEqual(changedFieldsAgainst(record, updates), []);
+});
