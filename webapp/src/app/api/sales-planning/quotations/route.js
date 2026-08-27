@@ -14,13 +14,44 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const params = new URL(req.url).searchParams;
   const status = params.get('status');
 
+  /* ⚠️ **ระบุคอลัมน์เอง ห้ามกลับไปใช้ `select('*')`** — ลิสต์นี้ 500 ใบ และคอลัมน์
+     หนักที่จอไม่ได้ใช้กินเกือบทั้งก้อน (วัด 27/08 บน 213 ใบ: `notes` 152 KB ·
+     `paymentTerms` 61 KB · `metadata` 67 KB · ที่อยู่บิล/ส่ง 82 KB · `paymentPlan`
+     36 KB · `wonAttachments` 21 KB · `approvalFingerprint` 15 KB) ⇒ `select('*')`
+     พร้อม join = 994 KB ต่อการเปิดหน้าหนึ่งครั้ง · เนื้อใบเต็มอยู่ที่ GET รายใบแล้ว
+     🪤 เพิ่มช่องใหม่บนจอทะเบียน = ต้องเติมชื่อคอลัมน์ที่นี่ด้วย ไม่งั้นช่องจะว่าง
+     เงียบ ๆ (ไม่ error) · จอที่กิน endpoint นี้: /sa/quotations · คำร้อง (สร้าง/แก้) */
+  const LIST_COLUMNS = [
+    'id', 'dealId', 'quoteNumber', 'status', 'quoteDate', 'validUntil',
+    'customerId', 'customerName',
+    'subtotal', 'vatRate', 'vatAmount', 'totalAmount',
+    'discountType', 'discountValue', 'discountAmount',
+    'baseNumber', 'revisionNo', 'revisedFromId', 'docLanguage',
+    'createdBy', 'createdByName', 'createdAt', 'updatedAt',
+    'approvalStatus', 'approvalRequestedBy', 'approvalRequestedByName', 'approvalRequestedAt',
+    'approvedBy', 'approvedByName', 'approvedAt',
+    'rejectedBy', 'rejectedByName', 'rejectedAt', 'rejectionReason',
+    'acceptedAt', 'acceptedBy',
+    'wonDocType', 'wonDocNo', 'wonDocDate', 'wonPaymentDueDate',
+  ].join(',');
+  /* ดีลเอาเท่าที่ด่านขอบเขต + จอใช้ · `metadata` ของดีลทั้งก้อน = 80 KB แต่ที่ใช้จริง
+     มีคีย์เดียว (`projectType` — ทางถอยของ `dealTypeOf` เมื่อ `dealType` ว่าง)
+     ⇒ ดึงเฉพาะคีย์นั้นแล้วประกอบ `metadata` กลับข้างล่าง ให้จอเห็นทรงเดิมเป๊ะ */
+  const DEAL_COLUMNS = 'id,title,stage,dealType,team,ownerId,ownerName,customerName,projectType:metadata->>projectType';
+
   let query = supabase
     .from('quotations')
-    .select('*, lines:quotation_lines(id), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerName, metadata)')
+    .select(`${LIST_COLUMNS},lines:quotation_lines(id),deal:sales_deals(${DEAL_COLUMNS})`)
     .order('createdAt', { ascending: false })
     .limit(500);
-  const { data, error } = await query;
+  const { data: rawRows, error } = await query;
   if (error) return fail(error.message, 500);
+
+  // คืนทรง `deal.metadata.projectType` ให้เหมือนตอน select ทั้งก้อน — `dealTypeOf()`
+  // ฝั่งจอกับฝั่ง server อ่านที่เดียวกัน จะได้ไม่ต้องมีกติกาสองชุด
+  const data = (rawRows || []).map((q) => (q.deal
+    ? { ...q, deal: { ...q.deal, projectType: undefined, metadata: { projectType: q.deal.projectType ?? null } } }
+    : q));
 
   const visibleRows = (data || []).filter((q) => q.deal && inSalesViewScope(user, q.deal));
   const rows = latestQuotationRevisions(visibleRows)
