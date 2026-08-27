@@ -183,6 +183,24 @@ export function canSalesOrderTransition(status, action, { reviewer = false, admi
  * (ดึงกลับ) ใช้แค่สิทธิ์อ่าน — ด่านจริงของแต่ละคำสั่งอยู่ที่ตัวมันเอง
  * (`financeActionError` · `canWithdrawSalesOrderSubmission`) ซึ่งแคบด้วยฝ่าย/ตัวตน
  */
+/**
+ * เปลี่ยน **ภาษาเอกสาร** ของใบสั่งขายได้ไหม — คู่ขนานกับ `canSwitchQuotationDocLanguage`
+ *
+ * ⭐ มติผู้ใช้ 2026-08-27: ภาษาเปลี่ยนแค่กระดาษที่พิมพ์ ไม่ใช่ข้อเสนอ ⇒ ใบที่อนุมัติแล้ว
+ * ก็เปลี่ยนได้ ไม่ต้องออก Rev. · ระบบตรึงเอกสารฉบับใหม่ให้เอง
+ *
+ * ⚠️ ต่างจากใบเสนอราคาตรงที่ SO **มี `supersededById` จริง** — ฉบับที่ถูก Rev. ทับแล้ว
+ * ไม่ใช่ใบที่มีชีวิต ห้ามงอกเอกสารใหม่จากมัน (กติกาเดียวกับ handoffQueue)
+ * ⚠️ `pending_approval` ห้ามเปลี่ยน — ผู้อนุมัติกำลังเปิดใบนั้นอยู่
+ */
+const SWITCHABLE_SO_STATUSES = new Set(['draft', 'rejected', 'approved', 'approval_revoked']);
+
+export function canSwitchSalesOrderDocLanguage(order) {
+  return Boolean(order)
+    && SWITCHABLE_SO_STATUSES.has(order.status)
+    && !order.supersededById;
+}
+
 export function salesOrderActionNeedsEditScope(action) {
   const name = String(action || '');
   if (name === 'withdraw') return false;

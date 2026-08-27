@@ -496,9 +496,11 @@ test('พรีวิว: ใบที่ยังแก้ได้มีสว
   const html = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
   assert.match(html, /class="langSwitch"/);
   assert.match(html, /ssSetDocLanguage/);
-  assert.match(html, /'\/api\/sales-planning\/quotations\/' \+ encodeURIComponent\("QT-abc123"\)/);
+  assert.match(html, /var url = "\/api\/sales-planning\/quotations\/QT-abc123"/);
   assert.match(html, /method: 'PATCH'/);
-  assert.match(html, /JSON\.stringify\(\{ docLanguage: lang \}\)/);
+  // เนื้อคำขอเป็นเทมเพลตที่แทน __LANG__ ตอนกด — รูปเดียวใช้ได้ทั้งใบเสนอราคาและใบสั่งขาย
+  assert.match(html, /bodyTpl\.replace\(\/__LANG__\/g, lang\)/);
+  assert.match(html, /\\"docLanguage\\":\\"__LANG__\\"/);
   // บันทึกไม่ผ่านต้องมีทางบอกผู้ใช้ ไม่ใช่กลืนเงียบ
   assert.match(html, /บันทึกไม่สำเร็จ/);
 });
@@ -522,8 +524,10 @@ test('พรีวิว: id ของใบถูก escape ก่อนฝั�
     switchableQuote({ id: 'QT-x");alert(1);//' }),
     { editable: true },
   );
-  assert.ok(html.includes('encodeURIComponent("QT-x\\");alert(1);//")'), 'ฝังเป็นสตริง JSON ที่ปลอดภัย');
-  assert.doesNotMatch(html, /\);alert\(1\);\/\/"\)\)/, 'ไม่มีวงเล็บที่หลุดออกมาเป็นโค้ด');
+  // id ถูก encodeURIComponent ตั้งแต่ตอนประกอบ URL แล้วค่อย JSON.stringify ⇒ ไม่มีทาง
+  // หลุดออกจากสตริงไปเป็นโค้ด · เครื่องหมายอันตรายต้องกลายเป็น %xx ทั้งหมด
+  assert.match(html, /var url = "\/api\/sales-planning\/quotations\/QT-x%22\)%3Balert\(1\)%3B%2F%2F"/);
+  assert.doesNotMatch(html, /alert\(1\);\/\//, 'ห้ามมีโค้ดดิบหลงเหลือในไฟล์');
 });
 
 test('พรีวิว: ชื่อไฟล์ตอนบันทึก PDF เท่ากันทั้งสองภาษา — ไฟล์เดียวกันคนละมุมมอง', () => {

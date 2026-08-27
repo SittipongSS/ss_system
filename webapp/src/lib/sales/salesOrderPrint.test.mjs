@@ -222,3 +222,35 @@ test('ใบเก่าไม่มีอัตรา + ฐานภาษี�
   assert.match(html, /ภาษีมูลค่าเพิ่ม 0%/);
   assert.doesNotMatch(html, /NaN/);
 });
+
+// ── ภาษาเอกสารของใบสั่งขาย (มติผู้ใช้ 2026-08-27 · mig 0295) ─────────────────
+test('SO: ไม่ส่งภาษา = ไทยเหมือนเดิม (ใบเก่าก่อนมีคอลัมน์)', () => {
+  const html = buildSalesOrderPrintHTML(order);
+  assert.match(html, /<html lang="th">/);
+  assert.match(html, /ใบสั่งขาย/);
+});
+
+test('SO: docLanguage=en → ป้ายบนกระดาษเป็นอังกฤษ', () => {
+  const html = buildSalesOrderPrintHTML({ ...order, docLanguage: 'en' });
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, /Grand Total/);
+});
+
+test('SO: โหมดสวิตช์ยิง PATCH ไปที่ route ของใบสั่งขาย ไม่ใช่ของใบเสนอราคา', () => {
+  const html = buildSalesOrderPrintHTML(
+    { ...order, id: 'SO-abc' }, null, null, { switchable: true, editable: true },
+  );
+  assert.match(html, /class="langSwitch"/);
+  assert.match(html, /var url = "\/api\/sales-planning\/sales-orders\/SO-abc"/);
+  assert.match(html, /\\"action\\":\\"set-doc-language\\"/);
+  assert.match(html, /\\"language\\":\\"__LANG__\\"/);
+  assert.doesNotMatch(html, /sales-planning\/quotations\//);
+});
+
+test('SO: สวิตช์ปิด = เป็นป้ายอ่านอย่างเดียว ไม่มีสคริปต์', () => {
+  const html = buildSalesOrderPrintHTML(
+    { ...order, id: 'SO-abc' }, null, null, { switchable: true, editable: false },
+  );
+  assert.match(html, /เปลี่ยนไม่ได้แล้ว/);
+  assert.doesNotMatch(html, /ssSetDocLanguage/);
+});

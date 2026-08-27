@@ -10,7 +10,6 @@
 //          pdr-ref-manual (RD กรอก/แก้เลขเองในช่วงเปลี่ยนผ่าน mig 0272)
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { dueIsStale } from '@/lib/requests/dueRound';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import {
@@ -276,9 +275,15 @@ export async function PATCH(request, { params }) {
       if (!canAnswerRequest(user, before)) {
         return Response.json({ error: `แจ้งกำหนดส่งได้เฉพาะฝ่าย ${before.dept}` }, { status: 403 });
       }
-      /* ⭐ **รอบแก้เปิดก้าวนี้ใหม่** (มติผู้ใช้ 2026-08-25) — ต้องอ่าน `dueIsStale`
-         **ก่อน** เขียน patch เพราะพอเขียนแล้ววันเก่าหายไปจากมือ */
-      const rework = dueIsStale(before, before.items);
+      /* ⭐ **รอบแก้เปิดก้าวนี้ใหม่** (มติผู้ใช้ 2026-08-25) — อ่าน **ก่อน** เขียน patch
+         เพราะพอเขียนแล้ววันเก่าหายไปจากมือ
+         ⚠️ **ใช้ "มีวันเดิมอยู่ไหม" ไม่ใช่ `dueIsStale` ซ้ำอีกตัว** (เก็บกวาด 2026-08-27)
+         — `commitDueRequestError` ปล่อยผ่านแค่สองกรณี: ยังไม่มีวันเลย หรือวันที่มีเป็น
+         ของรอบที่ส่งไปแล้ว ⇒ ถึงบรรทัดนี้แล้ว "มีวันเดิม" กับ "เป็นรอบแก้" คือเรื่อง
+         เดียวกันเสมอ · และเป็นตัวเดียวกับที่เธรดใช้ (`previousDueDate` ที่ส่งให้
+         `appendRequestEvent` ข้างล่าง) ⇒ audit log กับเธรดพูดตรงกันเชิงโครงสร้าง
+         ไม่ใช่เพราะมีคนคอยดูให้ตรง */
+      const rework = !!String(before.committedDueDate ?? '').trim();
       const err = commitDueRequestError(before, { committedDueDate: body.committedDueDate });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
       patch.committedDueDate = String(body.committedDueDate).trim();
