@@ -20,7 +20,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceZoneModal from "@/components/service/ServiceZoneModal";
-import { STANDARD_ML_HINT_TEXT, suggestStandardMl } from "@/lib/service/terms";
+import { STANDARD_ML_HINT_TEXT, fgSummary, spreadAllocation, suggestStandardMl } from "@/lib/service/terms";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./IntakeWizard.module.css";
 
@@ -32,9 +32,11 @@ export default function IntakeWizard({
 }) {
   const [step, setStep] = useState(1);
   const [siteId, setSiteId] = useState("");
-  const [rows, setRows] = useState([]);           // [{ lineId, zoneId, standardMlPerMonth }]
+  /* ⭐ จัดสรร **ระดับ FG** ไม่ใช่ระดับบรรทัด (มติผู้ใช้ 2026-08-29)
+     [{ id, groupKey, zoneId, qty, standardMlPerMonth }] — หนึ่งแถว = ของกลุ่มนี้ไปโซนนี้กี่หน่วย */
+  const [allocs, setAllocs] = useState([]);
   const [siteModal, setSiteModal] = useState(false);
-  const [zoneModalFor, setZoneModalFor] = useState(null);  // lineId ที่กำลังสร้างโซนให้
+  const [zoneModalFor, setZoneModalFor] = useState(null);  // allocation id ที่กำลังสร้างโซนให้
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -43,7 +45,7 @@ export default function IntakeWizard({
     setStep(1);
     setSiteId("");
     setError("");
-    setRows((order?.lines || []).map((line) => ({ lineId: line.id, zoneId: "", standardMlPerMonth: "" })));
+    setAllocs([]);
   }, [open, order]);
 
   /* ไซต์ของลูกค้ารายนี้เท่านั้น — ไซต์ของลูกค้าอื่นโผล่มาในดรอปดาวน์เมื่อไร
@@ -63,24 +65,61 @@ export default function IntakeWizard({
     onReloadRegistry?.ensureZones?.(siteId);
   }, [open, siteId, onReloadRegistry]);
 
-  const setRow = (lineId, patch) =>
-    setRows((prev) => prev.map((r) => (r.lineId === lineId ? { ...r, ...patch } : r)));
+  /* กลุ่ม FG ของใบนี้ — คิวส่งมาให้แล้ว (`order.fg`) ถ้าไม่มีก็คำนวณเองจากบรรทัด */
+  const groups = useMemo(
+    () => (order?.fg?.length ? order.fg : fgSummary(order?.lines || [])),
+    [order],
+  );
 
-  const ready = rows.every((r) => r.zoneId && r.zoneId !== NEW_ZONE);
+  const setAlloc = (id, patch) =>
+    setAllocs((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  const addAlloc = (groupKey) =>
+    setAllocs((prev) => [...prev, {
+      id: `${groupKey}-${prev.length}-${prev.reduce((n, a) => n + (a.groupKey === groupKey ? 1 : 0), 0)}`,
+      groupKey, zoneId: "", qty: "", standardMlPerMonth: "",
+    }]);
+  const removeAlloc = (id) => setAllocs((prev) => prev.filter((a) => a.id !== id));
+
+  /* เหลือให้จัดสรรอีกเท่าไรของแต่ละกลุ่ม — คิดสด ๆ จากที่กรอกอยู่
+     ⚠️ ช่องจำนวนที่เว้นว่าง = "ยกที่เหลือทั้งหมด" ⇒ นับเป็นใช้หมดกลุ่ม */
+  const leftOf = (group) => {
+    const mine = allocs.filter((a) => a.groupKey === group.key && a.zoneId);
+    if (mine.some((a) => String(a.qty ?? "").trim() === "")) return 0;
+    const used = mine.reduce((sum, a) => sum + (Number(a.qty) || 0), 0);
+    return Math.max(0, group.remaining - used);
+  };
+
+  const overAllocated = groups.filter((g) => {
+    const mine = allocs.filter((a) => a.groupKey === g.key && a.zoneId);
+    if (mine.some((a) => String(a.qty ?? "").trim() === "")) return false;
+    return mine.reduce((sum, a) => sum + (Number(a.qty) || 0), 0) > g.remaining;
+  });
+
+  const placed = allocs.filter((a) => a.zoneId && a.zoneId !== NEW_ZONE);
+  const ready = placed.length > 0 && !overAllocated.length;
 
   const submit = async () => {
-    if (!ready) { setError("ยังมีบรรทัดที่ยังไม่ได้เลือกโซน"); return; }
+    if (!placed.length) { setError("ยังไม่ได้จัดสรรของลงโซนไหนเลย"); return; }
+    if (overAllocated.length) {
+      setError(`จัดสรรเกินจำนวนที่ขาย: ${overAllocated.map((g) => g.fgCode || g.description).join(" · ")}`);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await onDone({
-        salesOrderId: order.id,
-        bindings: rows.map((r) => ({
-          salesOrderLineId: r.lineId,
-          zoneId: r.zoneId,
-          standardMlPerMonth: String(r.standardMlPerMonth ?? "").trim() || null,
-        })),
-      });
+      /* แปลง "จัดสรรระดับ FG" เป็น "ระดับบรรทัด" ที่ API ต้องการ — คนทำงานไม่ต้องรู้
+         ว่าเอกสารขายแบ่งบรรทัดยังไง (spreadAllocation มีเทสต์ของตัวเอง) */
+      const allocations = groups.flatMap((group) => spreadAllocation(
+        group,
+        placed
+          .filter((a) => a.groupKey === group.key)
+          .map((a) => ({
+            zoneId: a.zoneId,
+            qty: String(a.qty ?? "").trim() === "" ? null : Number(a.qty),
+            standardMlPerMonth: String(a.standardMlPerMonth ?? "").trim() || null,
+          })),
+      ));
+      await onDone({ salesOrderId: order.id, allocations });
       onClose();
     } catch (e) {
       setError(e.message || "บันทึกไม่สำเร็จ");
@@ -104,14 +143,16 @@ export default function IntakeWizard({
             <Building2 size={14} aria-hidden="true" /> ของไปตั้งที่ไหน
           </li>
           <li data-active={step === 2 ? "yes" : undefined}>
-            <MapPin size={14} aria-hidden="true" /> บรรทัดไหนอยู่โซนไหน
+            <MapPin size={14} aria-hidden="true" /> ของไหนลงโซนไหน
           </li>
         </ol>
 
         {step === 1 && (
           <div className={styles.pane}>
             <p className={styles.lead}>
-              ลูกค้า <strong>{naText(order.customerName)}</strong> · ใบนี้มี {order.pendingLines} บรรทัดที่ยังไม่ผูกโซน
+              {/* ⚠️ บอกขนาดงานเป็น **FG + จำนวน** ไม่ใช่จำนวนบรรทัดเอกสารขาย */}
+              ลูกค้า <strong>{naText(order.customerName)}</strong> · ใบนี้มีของรอจัดสรร{" "}
+              <strong>{fmtNumber(groups.length)} ชนิด · {fmtNumber(groups.reduce((n, g) => n + g.remaining, 0))} หน่วย</strong>
             </p>
             {/* ⭐ **ไทล์ ไม่ใช่ดรอปดาวน์** — ลูกค้าหนึ่งรายมีไซต์ไม่กี่แห่ง และคนเลือก
                 ต้องเห็นว่าแต่ละไซต์มีโซน/อุปกรณ์อยู่แล้วเท่าไร ถึงจะรู้ว่าควรผูกกับ
@@ -177,63 +218,100 @@ export default function IntakeWizard({
         {step === 2 && (
           <div className={styles.pane}>
             <p className={styles.lead}>
-              ไซต์ <strong>{naText(site?.name)}</strong> · จับคู่ทีละบรรทัด — บรรทัดที่ผูกโซนเดิม
-              คือ<strong>การต่อสัญญา</strong> ประวัติและยอดการใช้ของโซนนั้นเดินต่อไม่ขาดตอน
+              ไซต์ <strong>{naText(site?.name)}</strong> · จัดสรรของลงโซนเอง — ของชนิดเดียวกัน
+              แบ่งลงหลายโซนได้ · ลงโซนเดิมคือ<strong>การต่อสัญญา</strong> ประวัติและยอดการใช้เดินต่อไม่ขาดตอน
             </p>
+            {/* ⭐ หน่วยของหน้านี้คือ **FG** ไม่ใช่บรรทัดเอกสารขาย (มติผู้ใช้ 2026-08-29)
+                ของจริง: ใบหนึ่งมี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด — ไล่จับคู่ทีละบรรทัด
+                คือให้ TS ทำงานตามรูปร่างเอกสารของฝ่ายขาย */}
             <ul className={styles.lines}>
-              {(order.lines || []).map((line) => {
-                const row = rows.find((r) => r.lineId === line.id) || {};
-                const suggestion = suggestStandardMl(line.qty, line.unit);
+              {groups.map((group) => {
+                const mine = allocs.filter((a) => a.groupKey === group.key);
+                const left = leftOf(group);
+                const suggestion = suggestStandardMl(group.remaining, group.unit);
                 return (
-                  <li key={line.id} className={styles.line}>
+                  <li key={group.key} className={styles.line}>
                     <div className={styles.lineHead}>
-                      <b>{naText(line.fgCode)}</b>
-                      <span>{naText(line.description)}</span>
+                      <b>{naText(group.fgCode)}</b>
+                      <span>{naText(group.description)}</span>
                       <span className={styles.qty}>
-                        {line.qty == null ? naText(null) : `${fmtNumber(line.qty)}${line.unit ? ` ${line.unit}` : ""}`}
+                        {fmtNumber(group.remaining)}{group.unit ? ` ${group.unit}` : ""}
+                        {group.lines.length > 1 && (
+                          <em className={styles.fromLines}> · จาก {fmtNumber(group.lines.length)} บรรทัด</em>
+                        )}
                       </span>
                     </div>
-                    <div className={styles.lineFields}>
-                      <label className={styles.field}>
-                        <span>โซน *</span>
-                        <Select
-                          value={row.zoneId || ""}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            if (value === NEW_ZONE) { setZoneModalFor(line.id); return; }
-                            setRow(line.id, { zoneId: value });
-                          }}
-                        >
-                          <option value="">เลือกโซน</option>
-                          {zones.map((z) => (
-                            <option key={z.id} value={z.id}>
-                              {z.name}{z.isActive === false ? " (ปิดใช้งาน)" : ""}
-                            </option>
-                          ))}
-                          <option value={NEW_ZONE}>+ สร้างโซนใหม่…</option>
-                        </Select>
-                      </label>
-                      <label className={styles.field}>
-                        <span>มาตรฐานต่อเดือน (ml)</span>
-                        <Input
-                          value={row.standardMlPerMonth ?? ""}
-                          onChange={(e) => setRow(line.id, { standardMlPerMonth: e.target.value })}
-                          inputMode="numeric"
-                          placeholder="ยังไม่ระบุก็ได้"
-                        />
-                        {/* ⚠️ ระบบ **ไม่เติมค่านี้ให้เอง** — ไม่มีสูตรที่เป็นทางการ
-                            มีแค่หลักฐานจากชีตที่ลงตัว 10 ใน 13 แถว ⇒ เสนอให้กดรับ
-                            ไม่ใช่เขียนเงียบ ๆ แล้วให้คนมารู้ทีหลังว่าตัวเลขมาจากไหน */}
-                        {suggestion != null && (
-                          <small>
-                            <button type="button" className={styles.suggest}
-                              onClick={() => setRow(line.id, { standardMlPerMonth: String(suggestion) })}>
-                              ใช้ {fmtNumber(suggestion)} ml
-                            </button>
-                            {" — "}{STANDARD_ML_HINT_TEXT}
-                          </small>
-                        )}
-                      </label>
+
+                    {mine.map((a) => (
+                      <div key={a.id} className={styles.lineFields}>
+                        <label className={styles.field}>
+                          <span>โซน *</span>
+                          <Select
+                            value={a.zoneId || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === NEW_ZONE) { setZoneModalFor(a.id); return; }
+                              setAlloc(a.id, { zoneId: value });
+                            }}
+                          >
+                            <option value="">เลือกโซน</option>
+                            {zones.map((z) => (
+                              <option key={z.id} value={z.id}>
+                                {z.name}{z.isActive === false ? " (ปิดใช้งาน)" : ""}
+                              </option>
+                            ))}
+                            <option value={NEW_ZONE}>+ สร้างโซนใหม่…</option>
+                          </Select>
+                        </label>
+                        <label className={styles.field}>
+                          <span>จำนวน{group.unit ? ` (${group.unit})` : ""}</span>
+                          <Input
+                            value={a.qty ?? ""}
+                            onChange={(e) => setAlloc(a.id, { qty: e.target.value })}
+                            inputMode="numeric"
+                            placeholder="เว้นว่าง = ที่เหลือทั้งหมด"
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>มาตรฐานต่อเดือน (ml)</span>
+                          <Input
+                            value={a.standardMlPerMonth ?? ""}
+                            onChange={(e) => setAlloc(a.id, { standardMlPerMonth: e.target.value })}
+                            inputMode="numeric"
+                            placeholder="ยังไม่ระบุก็ได้"
+                          />
+                          {/* ⚠️ ระบบ **ไม่เติมค่านี้ให้เอง** — ไม่มีสูตรที่เป็นทางการ
+                              มีแค่หลักฐานจากชีตที่ลงตัว 10 ใน 13 แถว ⇒ เสนอให้กดรับ
+                              ไม่ใช่เขียนเงียบ ๆ แล้วให้คนมารู้ทีหลังว่าตัวเลขมาจากไหน */}
+                          {suggestion != null && (
+                            <small>
+                              <button type="button" className={styles.suggest}
+                                onClick={() => setAlloc(a.id, { standardMlPerMonth: String(suggestion) })}>
+                                ใช้ {fmtNumber(suggestion)} ml
+                              </button>
+                              {" — "}{STANDARD_ML_HINT_TEXT}
+                            </small>
+                          )}
+                        </label>
+                        <Button tone="neutral" variant="quiet" size="sm"
+                          onClick={() => removeAlloc(a.id)} aria-label="เอาโซนนี้ออก">
+                          เอาออก
+                        </Button>
+                      </div>
+                    ))}
+
+                    <div className={styles.inlineAction}>
+                      <Button tone="neutral" variant="quiet" size="sm"
+                        icon={<Plus size={15} aria-hidden="true" />}
+                        onClick={() => addAlloc(group.key)}>
+                        {mine.length ? "เพิ่มโซน" : "เลือกโซน"}
+                      </Button>
+                      {/* เหลือเท่าไรต้องอ่านออกตลอดเวลา ไม่ใช่รู้ตอนกดบันทึกแล้วโดนตีกลับ */}
+                      <small className={left > 0 ? styles.left : styles.leftDone}>
+                        {left > 0
+                          ? `เหลือให้จัดสรรอีก ${fmtNumber(left)}${group.unit ? ` ${group.unit}` : ""}`
+                          : "จัดสรรครบแล้ว"}
+                      </small>
                     </div>
                   </li>
                 );
@@ -251,7 +329,7 @@ export default function IntakeWizard({
           {step === 1 ? (
             <Button tone="primary" onClick={() => setStep(2)} disabled={!siteId}
               icon={<ArrowRight size={15} aria-hidden="true" />}>
-              จับคู่บรรทัดกับโซน
+              จัดสรรลงโซน
             </Button>
           ) : (
             <Button tone="primary" onClick={submit} disabled={saving || !ready}>
@@ -281,7 +359,7 @@ export default function IntakeWizard({
         onClose={() => setZoneModalFor(null)}
         onSave={async (form) => {
           const created = await onReloadRegistry.createZone(siteId, form);
-          setRow(zoneModalFor, { zoneId: created.id });
+          setAlloc(zoneModalFor, { zoneId: created.id });
           setZoneModalFor(null);
         }}
       />

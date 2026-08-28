@@ -212,7 +212,7 @@ export default function ServiceIntakePage() {
                       <th scope="col">ใบสั่งขาย</th>
                       <th scope="col">ลูกค้า</th>
                       <th scope="col">อนุมัติเมื่อ</th>
-                      <th scope="col" className={styles.numCol}>บรรทัดค้าง</th>
+                      <th scope="col">ของที่ต้องจัดสรร</th>
                       <th scope="col" aria-label="การกระทำ" />
                     </tr>
                   </thead>
@@ -222,7 +222,14 @@ export default function ServiceIntakePage() {
                         <th scope="row">{row.code}</th>
                         <td>{naText(row.customerName)}</td>
                         <td>{naText((row.approvedAt || row.orderDate || "").slice(0, 10))}</td>
-                        <td className={styles.numCol}>{fmtNumber(row.pendingLines)}</td>
+                        {/* ⭐ นับ **FG + จำนวน** ไม่ใช่จำนวนบรรทัด (มติผู้ใช้ 2026-08-29)
+                            บรรทัดเป็นรูปร่างของเอกสารขาย ไม่ใช่ขนาดของงาน — ใบจริงใบหนึ่ง
+                            มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย */}
+                        <td>
+                          {row.fgKinds
+                            ? `${fmtNumber(row.fgKinds)} ชนิด · ${fmtNumber(row.remainingQty)} หน่วย`
+                            : naText(null)}
+                        </td>
                         <td>
                           {canEdit && (
                             <Button tone="neutral" size="sm" onClick={() => openWizard(row)}

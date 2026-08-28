@@ -1,7 +1,15 @@
 // ── ผูกบรรทัดใบสั่งขายเข้ากับโซน (เฟส 4) ─────────────────────────────────
 //
-// ⭐ นี่คือ **สะพานเส้นเดียว** ระหว่างฝ่ายขายกับฝ่ายบริการ: 1 บรรทัด = 1 รอบขาย
-//   ที่ผูกโซนหนึ่งโซน · ต่อสัญญา = ใบใหม่ผูกโซนเดิม (โซนไม่เกิดใหม่ ประวัติต่อเนื่อง)
+// ⭐ นี่คือ **สะพานเส้นเดียว** ระหว่างฝ่ายขายกับฝ่ายบริการ
+//   ต่อสัญญา = ใบใหม่ผูกโซนเดิม (โซนไม่เกิดใหม่ ประวัติต่อเนื่อง)
+//
+// ⭐ **จัดสรรได้ ไม่ใช่จับคู่** (mig 0312 · มติผู้ใช้ 2026-08-29)
+//   > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
+//   บรรทัดเดียวแบ่งลงได้หลายโซน โซนละกี่หน่วยก็ได้ · `packageQty` ของ term =
+//   **จำนวนที่ลงโซนนั้น** ไม่ใช่จำนวนทั้งบรรทัด
+//
+// ⚠️ **ผลรวมห้ามเกินจำนวนในบรรทัด** และต้องนับ **ของที่จัดสรรไปแล้วรอบก่อน** ด้วย
+//   (จัดสรรทีละส่วนคนละวันได้) · DB กันได้แค่ "โซนเดิมซ้ำในบรรทัดเดียว" (unique index)
 //
 // ⚠️ **รับทั้งใบในคำขอเดียว** ไม่ใช่ยิงทีละบรรทัด — คนกรอกจับคู่ทั้งใบแล้วกดครั้งเดียว
 //   ถ้าปล่อยให้ยิงทีละบรรทัด ใบที่ล้มกลางทางจะเหลือครึ่งผูกครึ่งไม่ผูก แล้วคิวจะโชว์
@@ -15,7 +23,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { requireService } from '@/lib/service/sitesRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
-import { normalizeTermInput, termSnapshotFromLine } from '@/lib/service/terms';
+import { allocatedByLine, normalizeTermInput, remainingOfLine, termSnapshotFromLine } from '@/lib/service/terms';
 import { orderReceivable } from '@/lib/service/intake';
 
 export const dynamic = 'force-dynamic';
@@ -26,9 +34,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const body = await req.json().catch(() => ({}));
   const salesOrderId = String(body.salesOrderId ?? '').trim();
-  const rows = Array.isArray(body.bindings) ? body.bindings : [];
+  /* รับได้ทั้งชื่อเดิม (`bindings`) และชื่อใหม่ (`allocations`) — ความหมายเดียวกัน
+     ต่างกันแค่ตอนนี้บรรทัดเดิมโผล่ได้หลายแถว (คนละโซน) */
+  const rows = Array.isArray(body.allocations) ? body.allocations
+    : (Array.isArray(body.bindings) ? body.bindings : []);
   if (!salesOrderId) return badRequest('ต้องระบุใบสั่งขาย');
-  if (!rows.length) return badRequest('ยังไม่ได้จับคู่บรรทัดไหนกับโซน');
+  if (!rows.length) return badRequest('ยังไม่ได้จัดสรรของลงโซนไหนเลย');
 
   try {
     const { data: order, error: orderError } = await supabase
@@ -56,21 +67,48 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (zoneError) return fail(zoneError.message, 500);
     const zonesById = new Map((zones || []).map((z) => [z.id, z]));
 
-    const taken = new Set((await loadTerms(supabase)).map((t) => t.salesOrderLineId));
-    const seen = new Set();
+    /* ของที่จัดสรรไปแล้ว (รอบก่อน ๆ) — ต้องนับรวมด้วย ไม่งั้นจัดสรรเกินได้ด้วยการ
+       แบ่งกดหลายครั้ง · อ่านจาก DB เสมอ ไม่เชื่อค่าที่จอส่งมา */
+    const already = allocatedByLine(await loadTerms(supabase));
+    const seenLineZone = new Set();
+    const addedByLine = new Map();
     const payload = [];
+
+    const label = (line, id) => line?.fgCode || line?.description || id;
 
     for (const row of rows) {
       const lineId = String(row.salesOrderLineId ?? '').trim();
       const line = linesById.get(lineId);
       if (!line) return badRequest('มีบรรทัดที่ไม่ได้อยู่ในใบสั่งขายใบนี้');
-      if (seen.has(lineId)) return badRequest(`บรรทัด ${line.fgCode || line.description || lineId} ถูกจับคู่ซ้ำในคำขอเดียวกัน`);
-      seen.add(lineId);
-      if (taken.has(lineId)) {
-        return conflict(`บรรทัด ${line.fgCode || line.description || lineId} ถูกผูกกับโซนไปแล้ว — เปิดหน้าโซนเพื่อดูรอบที่มีอยู่`);
-      }
-      const zone = zonesById.get(String(row.zoneId ?? '').trim());
+      const zoneId = String(row.zoneId ?? '').trim();
+      const zone = zonesById.get(zoneId);
       if (!zone) return badRequest('มีโซนที่ไม่พบในทะเบียน — สร้างโซนก่อนแล้วค่อยผูก');
+
+      /* โซนเดิมของบรรทัดเดิมซ้ำในคำขอเดียว = ต้องรวมเป็นแถวเดียวแล้วบวกจำนวน
+         (unique index ที่ DB เป็นด่านสุดท้าย ข้อความ 23505 ดิบไม่บอกว่าแถวไหน) */
+      const pairKey = `${lineId}|${zoneId}`;
+      if (seenLineZone.has(pairKey)) {
+        return badRequest(`${label(line, lineId)} ถูกจัดสรรลงโซน ${zone.name} ซ้ำในคำขอเดียวกัน — รวมเป็นรายการเดียวแล้วใส่จำนวนรวม`);
+      }
+      seenLineZone.add(pairKey);
+
+      /* ⚠️ **ผลรวมห้ามเกินจำนวนในบรรทัด** — นับของเดิม + ของที่กำลังจะใส่ในคำขอนี้
+         บรรทัดที่ไม่มีจำนวน (บริการ "1 งาน") จัดสรรได้โซนเดียว ตามกติกา remainingOfLine */
+      const qtyRaw = row.packageQty ?? row.qty;
+      const qty = qtyRaw === undefined || qtyRaw === null || String(qtyRaw).trim() === ''
+        ? null : Number(qtyRaw);
+      if (qty !== null && (!Number.isFinite(qty) || qty <= 0)) {
+        return badRequest(`จำนวนที่จัดสรรของ ${label(line, lineId)} ต้องเป็นตัวเลขมากกว่า 0`);
+      }
+      const remaining = remainingOfLine(line, already.get(lineId));
+      const usedHere = addedByLine.get(lineId) || 0;
+      const want = qty ?? remaining;
+      if (want > remaining - usedHere) {
+        return conflict(
+          `จัดสรร ${label(line, lineId)} เกินจำนวนที่ขาย — เหลือให้จัดสรรอีก ${Math.max(0, remaining - usedHere)} ${line.unit || 'หน่วย'}`,
+        );
+      }
+      addedByLine.set(lineId, usedHere + want);
 
       /* snapshot มาจาก **แถวจริงใน DB** ไม่ใช่จาก body — เชื่อค่าที่จอส่งมาเมื่อไร
          ก็ผูกยอดที่ไม่ตรงกับใบได้ทันที (แพตเทิร์นเดียวกับ closeFromAssets) */
@@ -80,8 +118,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
         ...row,
         salesOrderId,
         salesOrderLineId: lineId,
-        // จำนวนแพ็คมาจากบรรทัดขายเสมอ — ช่องนี้บนจอเป็นตัวอ่านอย่างเดียว
-        packageQty: snapshot.packageQty,
+        /* ⭐ จำนวนที่ **จัดสรรลงโซนนี้** (mig 0312) — ไม่ใช่จำนวนทั้งบรรทัดอีกแล้ว
+           ไม่ระบุมา = ยกที่เหลือทั้งหมดลงโซนนี้ (เคสที่พบบ่อยที่สุด: ของทั้งบรรทัดไปที่เดียว) */
+        packageQty: want,
         productId: snapshot.productId,
         fgCode: snapshot.fgCode,
         description: snapshot.description,
@@ -100,9 +139,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const { data: inserted, error: insertError } = await supabase
       .from('service_zone_terms').insert(payload).select();
     if (insertError) {
-      // 23505 = UNIQUE ของ salesOrderLineId — มีคนผูกบรรทัดเดียวกันแทรกเข้ามาก่อน
+      // 23505 = unique (salesOrderLineId, zoneId) — มีคนจัดสรรของเดิมลงโซนเดิมแทรกมาก่อน
       if (insertError.code === '23505') {
-        return conflict('มีบรรทัดที่เพิ่งถูกผูกโดยคนอื่น — โหลดคิวใหม่แล้วลองอีกครั้ง');
+        return conflict('มีของที่เพิ่งถูกจัดสรรลงโซนเดียวกันโดยคนอื่น — โหลดคิวใหม่แล้วลองอีกครั้ง');
       }
       return fail(insertError.message, 500);
     }
@@ -110,7 +149,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     await recordAudit({
       user, action: 'create', entityType: 'service_zone_term', entityId: salesOrderId,
       after: { salesOrderId, count: payload.length },
-      summary: `ผูก ${payload.length} บรรทัดของใบสั่งขาย ${order.orderNumber || salesOrderId} เข้ากับโซนบริการ`,
+      summary: `จัดสรรของจากใบสั่งขาย ${order.orderNumber || salesOrderId} ลงโซนบริการ ${payload.length} รายการ`,
       request: req,
     });
 
