@@ -28,6 +28,7 @@ import {
 } from "@/lib/master/masterCodes";
 import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney, naText, NA } from "@/lib/format";
+import CostVatLines from "@/components/database/CostVatLines";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -46,13 +47,16 @@ const EMPTY = [];
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
   const canMargin = useCan("products:margin");
+  // FN (ฝ่ายบัญชี) เห็นราคาผลิตด้วย cap ของตัวเอง — ไม่ได้ products:margin ไปด้วย
+  const canCost = useCan("products:cost");
   const role = useRole();
   const myTeam = useTeam();
   const myTeams = useTeams();
-  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + RA/admin หรือผู้ที่ได้รับสิทธิ์
-  // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
+  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) · RA/admin หรือผู้ที่ได้รับสิทธิ์
+  // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร) · FN (products:cost).
+  // ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
   // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
-  const canSeeCost = canEdit || canMargin;
+  const canSeeCost = canEdit || canMargin || canCost;
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
   const canApproveRow = (rec) =>
@@ -460,9 +464,13 @@ export default function ProductRegistry() {
                   <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</span>
                 </div>
                 {canSeeCost && (
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-start justify-between text-xs">
                     <span className="text-[var(--text-3)]">ราคาผลิต</span>
-                    <span className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</span>
+                    <div className="text-right">
+                      {/* ค่าที่เก็บคือ "ก่อน VAT" — อีกสองบรรทัดคำนวณสด (มติผู้ใช้ 2026-08-28) */}
+                      <div className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</div>
+                      <CostVatLines costPrice={p.costPrice} />
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center justify-between text-xs">
@@ -503,7 +511,8 @@ export default function ProductRegistry() {
                   <SortTh label="หมวดหมู่" sortKey="category" sort={sort} />
                   <SortTh label="แบรนด์" sortKey="brand" sort={sort} />
                   <SortTh label="ปริมาตร" sortKey="volume" sort={sort} className="num" />
-                  {canSeeCost && <SortTh label="ราคาผลิต" sortKey="cost" sort={sort} className="num" />}
+                  {/* หัวบอกว่าเลขหลัก (ตัวที่เรียง) คือราคาก่อน VAT — อีกสองบรรทัดอยู่ในช่อง */}
+                  {canSeeCost && <SortTh label="ราคาผลิต (ก่อน VAT)" sortKey="cost" sort={sort} className="num" />}
                   <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
                   <th>สถานะ</th>
                 </tr>
@@ -531,7 +540,12 @@ export default function ProductRegistry() {
                       </td>
                       <td className="text-[var(--text-2)]">{naText(brandBoth(p.brandName, p.brandNameEn))}</td>
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
-                      {canSeeCost && <td className="num mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</td>}
+                      {canSeeCost && (
+                        <td className="num mono text-[var(--text-2)]">
+                          {fmtMoney(p.costPrice)}
+                          <CostVatLines costPrice={p.costPrice} />
+                        </td>
+                      )}
                       <td className="num mono text-[var(--text-2)]">
                         {fmtMoney(p.retailPriceIncVat)}
                         {(isExciseCat || flags.requiresFdaNotice) && (
