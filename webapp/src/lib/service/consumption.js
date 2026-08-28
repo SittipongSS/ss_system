@@ -13,7 +13,15 @@
 //   บวกข้ามหน่วยได้ตัวเลขที่ดูน่าเชื่อแต่ผิด ⇒ แถวที่แปลงไม่ได้ **ไม่ถูกกลืน**
 //   แต่ถูกนับแยกไว้ใน `unconverted` ให้จอบอกผู้ใช้ว่ายังมีของที่ตัวเลขนี้ไม่ครอบ
 //   (กติกาเดียวกับ "แถวที่แปลงไม่ได้ต้องค้างให้คนตัดสิน ห้ามใส่ค่า default แล้วเงียบ")
-import { businessMonthKey } from '@/lib/datePeriods';
+/* 🐞 **สองโมดูลมีฟังก์ชันชื่อ `businessMonthKey` เหมือนกันแต่คนละสัญญา** (พบตอน UAT
+   2026-08-28 — หน้าโซนพังทั้งหน้าตั้งแต่วันแรก ไม่มีใครเปิดเจอ):
+     `@/lib/datePeriods`  → `businessMonthKey(value)` **ต้องส่ง timestamp**
+                            ไม่ส่ง = `Date.parse(undefined)` = NaN ⇒ คืน **null**
+     `@/lib/businessDate` → `businessMonthKey()` ไม่รับอาร์กิวเมนต์ คืน 'YYMM' (ใช้ออกรหัส)
+   ที่นี่ต้องการ "เดือนของวันนี้ตามนาฬิกาไทย" รูป `YYYY-MM` ⇒ ใช้ `businessDate()`
+   แล้วตัดเอง ชัดเจนกว่าและไม่ชนกับชื่อที่ซ้ำกันสองที่ */
+import { businessMonthKey } from '@/lib/datePeriods';   // ← รับ timestamp (ใช้กับวันที่เข้าจริง)
+import { businessDate } from '@/lib/businessDate';      // ← วันนี้ตามนาฬิกาไทย
 
 /* หน่วยที่แปลงเป็น ml ได้ตรง ๆ — ไม่มี "ขวด/กระป๋อง" เพราะขนาดขวดไม่คงที่
    ⚠️ กรัม/กิโลกรัมก็ไม่แปลง: น้ำหอมแต่ละสูตรความหนาแน่นไม่เท่ากัน การคูณ 1.0
@@ -70,7 +78,7 @@ export function usageVsStandard({
   months = 6, todayMonth = null,
 } = {}) {
   const usage = monthlyUsageOfZone({ zoneId, items, assets, visits });
-  const anchor = todayMonth || businessMonthKey();
+  const anchor = todayMonth || businessDate().slice(0, 7);
   const [year, month] = anchor.split('-').map(Number);
 
   const rows = [];

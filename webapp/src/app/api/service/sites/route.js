@@ -8,7 +8,7 @@ import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
-import { assetCountsBySite, findCustomer, loadSites, requireService } from '@/lib/service/sitesRepo';
+import { assetCountsBySite, findCustomer, loadSites, requireService, zoneCountsBySite } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
 
@@ -27,14 +27,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       includeInactive: url.searchParams.get('includeInactive') !== '0',
     });
     const siteIds = sites.map((s) => s.id);
-    // นับเครื่องรวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
-    const counts = await assetCountsBySite(supabase, siteIds);
+    // นับเครื่อง+โซนรวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)
+    const [counts, zoneCounts] = await Promise.all([
+      assetCountsBySite(supabase, siteIds),
+      zoneCountsBySite(supabase, siteIds),
+    ]);
 
     if (url.searchParams.get('withSchedule') !== '1') {
       return ok(sites.map((site) => ({
         ...site,
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
+        zoneCount: zoneCounts.get(site.id) || 0,
       })));
     }
 
@@ -50,6 +54,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         ...site,
         assetCount: counts.get(site.id)?.total || 0,
         activeAssetCount: counts.get(site.id)?.active || 0,
+        zoneCount: zoneCounts.get(site.id) || 0,
         lastRefillDate: ctx.lastRefillDate,
         nextVisitDate: ctx.nextVisitDate,
         refill: siteRefillSummary(assets.get(site.id) || [], {

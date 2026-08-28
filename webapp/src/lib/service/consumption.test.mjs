@@ -109,3 +109,17 @@ test('ป้ายสรุปบอกทิศทาง ไม่ตัดส�
   assert.equal(usageBadge({ avgRatio: null }), null);
   assert.equal(usageBadge(null), null);
 });
+
+/* 🐞 **หน้าโซนพังทั้งหน้าตั้งแต่วันแรก** (พบตอน UAT 2026-08-28)
+   `usageVsStandard` เรียก `businessMonthKey()` จาก `@/lib/datePeriods` ซึ่ง **ต้องส่ง
+   timestamp** — ไม่ส่งได้ `null` แล้ว `null.split('-')` โยน TypeError ⇒ ErrorBoundary
+   กินทั้งหน้า ("หน้านี้ทำงานต่อไม่ได้") · อีกโมดูลหนึ่ง (`@/lib/businessDate`) มีฟังก์ชัน
+   **ชื่อเดียวกัน** ที่ไม่รับอาร์กิวเมนต์ ⇒ import ผิดตัวแล้วไม่มีอะไรเตือน
+   เทสต์นี้เรียกแบบที่หน้าจอเรียกจริง: ไม่ส่ง todayMonth */
+test('⭐ ไม่ส่งเดือนอ้างอิงมา ต้องใช้เดือนของวันนี้ตามนาฬิกาไทย — ห้ามพัง', () => {
+  const rows = usageVsStandard({ zoneId: 'Z1' });
+  assert.equal(rows.length, 6);
+  assert.match(rows[rows.length - 1].month, /^\d{4}-\d{2}$/);
+  // เดือนต้องเรียงจากเก่าไปใหม่ และเดือนสุดท้ายคือเดือนปัจจุบัน
+  assert.ok(rows[0].month < rows[rows.length - 1].month);
+});

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { departmentFor, normalizeRole, sanitizeExtraCaps, userTeams } from '@/lib/permissions';
+import { devBypassUser } from '@/lib/devBypass';
 
 // ลด round-trip ไป Supabase Auth (GoTrue): ก่อนหน้านี้ทุก API request จ่าย getUser()
 // 2 รอบ (proxy + route handler). รอบของ route handler cache ได้ 60 วิ ต่อ access
@@ -10,6 +11,7 @@ import { departmentFor, normalizeRole, sanitizeExtraCaps, userTeams } from '@/li
 // ที่ row-scope ช้าสุด 60 วิ (token เปลี่ยน = key เปลี่ยน = cache miss โดยธรรมชาติ).
 const identityCache = new Map(); // sha256(auth cookies) -> { at, user }
 const IDENTITY_TTL_MS = 60 * 1000;
+
 
 // Server-side identity for API route handlers. Reads the signed-in user from
 // the Supabase session cookie and returns the fields needed for access checks:
@@ -20,12 +22,17 @@ const IDENTITY_TTL_MS = 60 * 1000;
 //
 // Dev fallback: if Supabase isn't configured (local dev), return a supervisor
 // so the app keeps working without auth — mirrors AppLayout/proxy behavior.
+//
+// ⭐ `NEXT_PUBLIC_DEV_BYPASS_ROLE` / `_DEPARTMENT` / `_TEAM` — เปลี่ยน "คนที่
+//   สวมบทอยู่" ตอน UAT ได้โดย**ไม่ต้องแตะรหัสผ่านของใคร** (คอมเมนต์ `NEXT_PUBLIC_SUPABASE_*`
+//   สองตัวใน .env.local เพื่อเปิด bypass แล้วตั้งสามตัวนี้)
+//   ⚠️ มีผล **เฉพาะตอน Supabase ไม่ได้ตั้งค่า** เท่านั้น — บน production ทั้งสอง
+//      ตัวแปรมีค่าเสมอ โค้ดจึงไม่มีวันเดินมาถึงบรรทัดนี้ · ค่าตั้งต้นยังเป็น
+//      ae_supervisor เหมือนเดิมทุกประการ (devBypass.test.mjs ตรึงไว้)
 export async function getCurrentUser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    return { id: 'local-dev', role: 'ae_supervisor', team: null, teams: [], department: 'SALES', name: 'Local Dev', devBypass: true };
-  }
+  if (!url || !anon) return devBypassUser();
 
   const cookieStore = await cookies();
   const authCookies = cookieStore.getAll().filter((c) => c.name.includes('-auth-token'));

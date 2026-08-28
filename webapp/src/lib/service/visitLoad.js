@@ -28,7 +28,17 @@ export function siteWorkload({ siteId, assets = [], zones = [], terms = [], acti
     if (Number.isFinite(qty) && qty > 0) packs += qty;
   }
 
-  return { assets: liveAssets.length, packs };
+  /* 🐞 **นับ "จุด" ไม่ใช่ "แถว"** (พบตอน UAT 2026-08-28): ของเดิมคืน `liveAssets.length`
+     ⇒ ชุดเครื่องกดสบู่ 242 จุด (1 แถว + `qty`) ขึ้นเป็น **1 จุด** ทั้งที่เอกสารระบุว่า
+     งานนั้นคือ 900 คน-นาที = หนึ่งวันเต็มของสามคน (doc §2.5 · §2A.3)
+     ⇒ ตารางจัดคิวประเมินงานต่ำจนเพดานภาระไม่มีความหมายกับไซต์ชนิดนี้เลย
+     ⚠️ diffuser ไม่มี `qty` (1 แถว = 1 เครื่อง ตามมติข้อ 13) จึงนับเป็น 1 เหมือนเดิมทุกประการ */
+  const points = liveAssets.reduce((sum, asset) => {
+    const qty = Number(asset.qty);
+    return sum + (Number.isFinite(qty) && qty > 0 ? qty : 1);
+  }, 0);
+
+  return { assets: points, packs };
 }
 
 /* ภาระรายคน-รายวันของตาราง — คืน Map<'assigneeId|date', {visits, assets, packs}>
@@ -65,7 +75,10 @@ export function overloaded(row, { maxAssets = MAX_ASSETS_PER_DAY } = {}) {
 export function workloadText(row) {
   if (!row) return '';
   const parts = [`${row.visits} นัด`];
-  if (row.assets > 0) parts.push(`${row.assets} เครื่อง`);
+  /* ⚠️ คำว่า **"จุด" ไม่ใช่ "เครื่อง"** — หน่วยนี้รวมจุดของชุดอุปกรณ์ที่ 1 แถว =
+     หลายจุด (สบู่ 242 จุด) ⇒ เรียกว่า "เครื่อง" จะอ่านผิดทันทีที่ไซต์ไม่ได้มีแต่
+     เครื่องกระจายกลิ่น (doc §2 สี่หน่วยนับ: "จุดบริการ = ภาระช่าง") */
+  if (row.assets > 0) parts.push(`${row.assets} จุด`);
   if (row.packs > 0) parts.push(`${row.packs} แพ็ค`);
   return parts.join(' · ');
 }

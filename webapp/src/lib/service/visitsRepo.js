@@ -146,7 +146,10 @@ export async function assetsForSites(supabase, siteIds = []) {
   if (!ids.length) return out;
   const { data, error } = await supabase
     .from('service_assets')
-    .select('id, siteId, label, status, bottleMl, mlPerDay, installedAt, productName')
+    /* ⚠️ ต้องมี `qty` ด้วย — ภาระของช่างนับเป็น **จุด** ไม่ใช่แถว (visitLoad.js)
+       ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด) · ไม่ดึงมา = ตารางจัดคิวประเมินงานต่ำ
+       โดยไม่มีอะไรฟ้อง (พบตอน UAT 2026-08-28: ไซต์ 14 จุด ขึ้นเป็น "3 จุด") */
+    .select('id, siteId, label, status, qty, bottleMl, mlPerDay, installedAt, productName')
     .in('siteId', ids);
   if (error) throw error;
   for (const row of data || []) {
