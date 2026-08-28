@@ -234,7 +234,7 @@ export default function ProductDetails() {
      ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%) ⇒ ไม่มีราคา = ยื่นภาษีขาด
      · ราคานี้กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้ มันมาทีหลัง ระบบจึงบล็อกที่ "ยื่นขึ้นทะเบียน"
      (lib/tax/requirements.js) — ที่นี่คือให้คนที่เปิดสินค้ามาเห็นก่อนว่าต้องเติม
-     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่าย RAยกเว้นรายตัวไว้ */
+     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่าย RA ยกเว้นรายตัวไว้ */
   const needsRetailPrice = catFlags.isExcise
     && product.isExciseTaxable !== false
     && !(Number(product.retailPriceIncVat) > 0);
@@ -251,19 +251,19 @@ export default function ProductDetails() {
     incomplete: {
       tone: "amber",
       title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ",
-      detail: `สถานะ: ${statusMeta(exciseRec.reg?.status).label} — แนบเอกสารให้ครบแล้วส่งให้ฝ่าย RAตรวจ`,
+      detail: `สถานะ: ${statusMeta(exciseRec.reg?.status).label} — แนบเอกสารให้ครบแล้วส่งให้ฝ่าย RA ตรวจ`,
       linkLabel: "ไปทำต่อ",
     },
     rejected: {
       tone: "amber",
       title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ — ถูกตีกลับ ต้องแก้ไข",
-      detail: `สถานะ: ${statusMeta("rejected").label} — แก้ไขตามเหตุผลที่ฝ่าย RAแจ้ง แล้วส่งตรวจใหม่`,
+      detail: `สถานะ: ${statusMeta("rejected").label} — แก้ไขตามเหตุผลที่ฝ่าย RA แจ้ง แล้วส่งตรวจใหม่`,
       linkLabel: "ไปแก้ไข",
     },
     pending: {
       tone: "blue",
       title: "ทะเบียนอยู่ระหว่างนิติกรรมตรวจ",
-      detail: `สถานะ: ${statusMeta("pending_legal").label} — ฝ่าย RAกำลังตรวจทะเบียนนี้`,
+      detail: `สถานะ: ${statusMeta("pending_legal").label} — ฝ่าย RA กำลังตรวจทะเบียนนี้`,
       linkLabel: "ดูสถานะ",
     },
   }[exciseRec.kind];

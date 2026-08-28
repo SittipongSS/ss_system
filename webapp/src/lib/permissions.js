@@ -101,17 +101,17 @@ export const DEPARTMENT_NAMES_TH = {
 // Legacy app_metadata.department values written before the codes were shortened.
 /* ⚠️ **LG → RA (2026-08-28)**: ฝ่ายกฎหมายเปลี่ยนชื่อเป็นฝ่ายกฎระเบียบและขึ้นทะเบียน
    ผลิตภัณฑ์ (Regulatory Affairs) · ค่าที่เก็บไว้แล้วใน `app_metadata.department`
-   ยังเป็น `RA` อยู่ ⇒ แปลงตอนอ่านเหมือนที่ `SALES`/`LEGAL` เคยทำ **ไม่ต้องย้ายข้อมูล** */
+   ยังเป็น `LG` อยู่ ⇒ แปลงตอนอ่านเหมือนที่ `SALES`/`LEGAL` เคยทำ **ไม่ต้องย้ายข้อมูล** */
 const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'RA', LG: 'RA', VIEWER: 'Viewer' };
 // Normalise a stored/incoming department to a current code (migrates on read).
 /* ── role เก่าที่ยังค้างอยู่บนบัญชีจริง ─────────────────────────────────────
- * ⭐ `RA` → `ra` (2026-08-28) · แปลง **ตอนอ่าน** เหมือนที่ `normalizeDepartment`
+ * ⭐ `legal` → `ra` (2026-08-28) · แปลง **ตอนอ่าน** เหมือนที่ `normalizeDepartment`
  * ทำกับรหัสฝ่าย ⇒ ไม่มีช่วงเวลาที่บัญชีเก่าเข้าระบบไม่ได้ ไม่ว่าโค้ดกับข้อมูลจะขึ้น
  * ไม่พร้อมกันแค่ไหน (role อยู่ใน `app_metadata` ของ Supabase Auth ไม่ใช่ตารางในฐาน
  * จึงไม่มี migration SQL ให้รันพร้อม deploy)
  * ⚠️ ต้องเรียกทุกจุดที่อ่าน `app_metadata.role` ออกมาเป็นตัวตนของผู้ใช้ —
  *    `roleReadPoints.test.mjs` ไล่ตรวจให้แล้ว
- * 🗑 ถอดออกได้เมื่อไม่มีบัญชีไหนเหลือ role `RA` (เช็คด้วย Admin API) */
+ * 🗑 ถอดออกได้เมื่อไม่มีบัญชีไหนเหลือ role `legal` (เช็คด้วย Admin API) */
 const LEGACY_ROLE = { legal: 'ra' };
 
 /** แปลง role ที่เก็บไว้/รับเข้ามา ให้เป็นชื่อปัจจุบัน (แปลงตอนอ่าน) */

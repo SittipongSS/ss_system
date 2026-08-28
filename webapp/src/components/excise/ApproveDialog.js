@@ -33,7 +33,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
   if (!registration) return null;
   const autoTaxable = isExciseCategory(categoryOf(registration.fgCode), productTypes);
   // ภาษี/ชิ้น มาจากทะเบียนสินค้า (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้) — จอที่
-  // ฝ่าย RAใช้ตัดสินใจอนุมัติต้องเห็นเลขเดียวกับที่ใบยื่นจะคิดจริง ไม่ใช่สำเนาเก่า
+  // ฝ่าย RA ใช้ตัดสินใจอนุมัติต้องเห็นเลขเดียวกับที่ใบยื่นจะคิดจริง ไม่ใช่สำเนาเก่า
   const taxPerUnit = exciseTaxLineForRegistration({
     registration, product, quantity: 1,
   }).totalTax;

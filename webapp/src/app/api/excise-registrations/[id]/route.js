@@ -9,14 +9,30 @@ import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { normalizeRejectionReason, rejectionReasonError } from '@/lib/master/approval';
+import { loadUserDirectory } from '@/lib/usersRepo';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { notifyRegistration } from '@/lib/tax/registrationNotify';
 
 export const dynamic = 'force-dynamic';
 
+/* สถานะปลายทาง → การกระทำที่คนอีกฝั่งต้องรู้ · `draft` ไม่อยู่ในนี้เพราะทางเดียวที่
+   ทะเบียนกลับเป็นร่างคือ "ปลดอนุมัติ" ซึ่งมีเส้นทางของตัวเองข้างล่าง (แจ้งที่นั่น) */
+const ACTION_OF_STATUS = {
+  pending_legal: 'submit',
+  approved: 'approve',
+  rejected: 'reject',
+};
+
 // GET /api/excise-registrations/[id]
+// ?full=1 — แนบของที่ **หน้ารายละเอียด** ต้องใช้มาในคำขอเดียว: สินค้า (ฐานราคา +
+// อัตราภาษี) · ลูกค้า (เลขผู้เสียภาษี/สาขา) · โครงการ · ใบยื่นที่อ้างทะเบียนนี้
+// 🐞 ของเดิมหน้ารายละเอียดอ่านทะเบียนจาก **ลิสต์ทั้งตาราง** แล้ว find(id) และยัง
+// โหลด `/api/products` + `/api/customers` เต็มทั้งสองลิสต์เพื่อใช้แค่แถวเดียว
 export async function GET(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
+  const full = new URL(request.url).searchParams.get('full') === '1';
   const { data, error } = await supabase
     .from('excise_registrations').select('*').eq('id', id).maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -26,7 +42,73 @@ export async function GET(request, { params }) {
   }
   // canDelete = อำนาจลบราย record คำนวณฝั่ง server (scope 'own' ต้องเทียบ user.id
   // ซึ่ง client ไม่มี) — จอใช้ค่านี้ซ่อนปุ่มลบ ไม่ต้องเดาสิทธิ์ซ้ำแล้วเพี้ยนจาก server
-  return Response.json({ ...data, canDelete: canDeleteRecord(user, 'registrations', data) });
+  const row = { ...data, canDelete: canDeleteRecord(user, 'registrations', data) };
+  if (!full) return Response.json(row);
+
+  try {
+    return Response.json(await withRegistrationContext(supabase, row));
+  } catch (e) {
+    // query พังต้องดัง — หน้าที่โชว์ "ยังไม่มีใบยื่นอ้างถึง" เพราะ query ล้มเงียบ
+    // จะทำให้คนกดลบทะเบียนที่มีใบยื่นผูกอยู่จริง
+    return Response.json({ error: e?.message || 'อ่านข้อมูลประกอบทะเบียนไม่สำเร็จ' }, { status: 500 });
+  }
+}
+
+/* ของประกอบที่หน้ารายละเอียดต้องเห็น — อ่านทีเดียวจบ ไม่ให้จอไปไล่ยิงเอง
+   ⚠️ ทุก query กรองด้วย id ของใบเดียว ⇒ ไม่แตะเพดาน 1,000 แถว */
+async function withRegistrationContext(supabase, reg) {
+  const [product, customer, project, lines] = await Promise.all([
+    reg.productId
+      ? supabase.from('products')
+        .select('id, "fgCode", "retailPriceIncVat", "exciseTax", "localTax", "isExciseTaxable", "isActive"')
+        .eq('id', reg.productId).maybeSingle()
+      : { data: null },
+    reg.customerId
+      ? supabase.from('customers')
+        .select('id, name, "taxId", "branchCode", "customerType", email, phone, "contactPhone"')
+        .eq('id', reg.customerId).maybeSingle()
+      : { data: null },
+    reg.projectId
+      ? supabase.from('projects').select('id, code, name').eq('id', reg.projectId).maybeSingle()
+      : { data: null },
+    /* ไล่ทีละหน้า — ทะเบียนหนึ่งใบถูกอ้างได้จากหลายใบยื่นไม่จำกัดจำนวน ⇒ ตัดที่
+       เพดาน PostgREST เมื่อไร การ์ด "ใบยื่นที่อ้างทะเบียนนี้" จะบอกน้อยกว่าความจริง */
+    fetchAllResult(() => supabase.from('order_items')
+      .select('id, "orderId", quantity, "totalTax"')
+      .eq('registrationId', reg.id).order('id', { ascending: true })),
+  ]);
+  for (const res of [product, customer, project, lines]) {
+    if (res?.error) throw res.error;
+  }
+
+  /* ใบยื่นที่อ้างทะเบียนใบนี้ — คำตอบของ "ทะเบียนนี้ถูกใช้ไปแล้วหรือยัง" ซึ่งเป็น
+     เหตุผลที่ลบไม่ได้ (ดูด่านใน DELETE) · ก่อนหน้านี้หน้าจอไม่บอกเลย */
+  const orderIds = [...new Set((lines.data || []).map((l) => l.orderId).filter(Boolean))];
+  let orders = [];
+  if (orderIds.length) {
+    const { data, error } = await supabase
+      .from('orders').select('id, "quotationRef", status, "totalTax", "createdAt"')
+      .in('id', orderIds).limit(orderIds.length);
+    if (error) throw error;
+    orders = data || [];
+  }
+  const linesByOrder = new Map();
+  for (const line of lines.data || []) {
+    const bucket = linesByOrder.get(line.orderId) || { quantity: 0, totalTax: 0 };
+    bucket.quantity += Number(line.quantity) || 0;
+    bucket.totalTax += Number(line.totalTax) || 0;
+    linesByOrder.set(line.orderId, bucket);
+  }
+
+  return {
+    ...reg,
+    product: product.data || null,
+    customer: customer.data || null,
+    project: project.data || null,
+    filings: orders
+      .map((o) => ({ ...o, ...(linesByOrder.get(o.id) || { quantity: 0, totalTax: 0 }) }))
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
+  };
 }
 
 // PATCH /api/excise-registrations/[id] — RA approves/rejects; SA resubmits.
@@ -97,9 +179,12 @@ export async function PATCH(request, { params }) {
         summary: `ปลดอนุมัติทะเบียน ${reg.fgCode || id} (อนุมัติแล้ว → ร่าง): ${reason}`, request,
       });
       // ปลดอนุมัติ = SO ที่รอออกใบยื่นหลุดจากตัวเลือกทันที ฝ่ายขายต้องรู้
+      await notifyRegistration(supabase, {
+        action: 'revoke', registration: data, directory: await loadUserDirectory(supabase), actor: user, reason,
+      });
       return Response.json(data);
     }
-    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่าย RAปลดอนุมัติก่อน' }, { status: 403 });
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่าย RA ปลดอนุมัติก่อน' }, { status: 403 });
   }
 
   // SA owns the link fields; RA owns the approval/tax fields (allowedEditFields).
@@ -176,7 +261,7 @@ export async function PATCH(request, { params }) {
     updated.rejectionReason = null;
   }
 
-  // ฝ่าย RAสั่งยกเว้น/ไม่ยกเว้นภาษี — ทะเบียนเก็บเฉพาะ **คำตัดสิน** ไม่เก็บอัตรา
+  // ฝ่าย RA สั่งยกเว้น/ไม่ยกเว้นภาษี — ทะเบียนเก็บเฉพาะ **คำตัดสิน** ไม่เก็บอัตรา
   //
   // อัตราภาษีคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้เหมือนราคาผลิต (มติผู้ใช้ 2026-07-29)
   // ⇒ มีแหล่งเดียวคือ products.exciseTax/localTax · ทะเบียนไม่เก็บสำเนาอีกแล้ว
@@ -213,13 +298,17 @@ export async function PATCH(request, { params }) {
   }
   await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
 
-  // แจ้งข้ามเลน SA ↔ RA — ทั้งสองทางเคยเงียบสนิท แปลว่า
-  // ฝ่าย RAไม่รู้ว่ามีทะเบียนรออนุมัติ และฝ่ายขายไม่รู้ผลจนกว่าจะเปิดหน้าเช็คเอง
+  /* แจ้งข้ามเลน SA ↔ RA
+     🐞 บล็อกนี้เคยเป็น `if` ว่างเปล่าทั้งสองกิ่ง (ตัวส่งถูกถอดตอนเลิกใช้ Chat) ⇒
+     ทั้งสองทางเงียบสนิท: ฝ่าย RA ไม่รู้ว่ามีทะเบียนรออนุมัติ ฝ่ายขายไม่รู้ผล
+     จนกว่าจะเปิดหน้าเช็คเอง — ตรวจระบบ 2026-08-28 เจอ 9 ใบค้าง 28–34 วันเพราะเหตุนี้ */
   if (data.status !== reg.status) {
-    const subtitle = `${data.fgCode || id} · ${data.customerName || ''}`.trim();
-    if (data.status === 'pending_legal') {
-    } else if (data.status === 'approved' || data.status === 'rejected') {
-      const approvedNow = data.status === 'approved';
+    const action = ACTION_OF_STATUS[data.status] || null;
+    if (action) {
+      const directory = await loadUserDirectory(supabase);
+      await notifyRegistration(supabase, {
+        action, registration: data, directory, actor: user, reason: body.rejectionReason,
+      });
     }
   }
   return Response.json(data);

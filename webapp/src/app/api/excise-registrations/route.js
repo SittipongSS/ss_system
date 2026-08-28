@@ -5,19 +5,31 @@ import { teamInClause } from '@/lib/teamScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
+import { registrationRequirementsBatch } from '@/lib/tax/requirements';
+import { exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/excise-registrations — team-scoped list (RA/supervisor see all).
 // ?slim=1: เฉพาะคอลัมน์ที่จอสรุป (/tax) ใช้ — ตัด snapshot ภาษี/metadata/เอกสาร
 // ออกจาก payload (ลด traffic); โหมดเต็มพฤติกรรมเดิม.
+// ⚠️ `updatedAt`/`approvedAt` อยู่ในชุดนี้เพราะหน้าภาพรวมคิด "ค้างมากี่วัน" จากจุดที่
+// สถานะปัจจุบันเริ่ม ไม่ใช่วันเปิดใบ — ใบที่ถูกตีกลับแล้วส่งกลับมาใหม่ต้องนับรอบล่าสุด
+// ไม่งั้นตัวเลข "ค้างนาน" จะโป่งด้วยใบที่เพิ่งแก้เสร็จเมื่อวาน แล้วไม่มีใครเชื่อมัน
 const REGISTRATION_SELECT_SLIM =
-  'id, status, createdAt, fgCode, productName, customerName, rejectionReason, team, ownerId, metadata';
+  'id, status, createdAt, updatedAt, approvedAt, fgCode, productName, customerName, rejectionReason, team, ownerId, metadata';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
-  const slim = new URL(request.url).searchParams.get('slim') === '1';
+  const params = new URL(request.url).searchParams;
+  const slim = params.get('slim') === '1';
+  /* ?view=queue — เติมของที่ "หน้าคิว" ต้องใช้ทุกแถว: ภาษี/ชิ้น · ราคาขายปลีก (ฐานภาษี)
+     · ความพร้อมเอกสาร
+     🐞 ก่อนหน้านี้หน้าคิวคิดเองฝั่งจอ จึงต้องโหลด `/api/products` (342 แถวเต็ม) +
+     `/api/customers` (508 แถวเต็ม) ทุกครั้งที่เปิด เพื่อเอามาใช้จริงแค่ 17 แถว
+     ⇒ ย้ายมาคิดที่ server แล้วส่งเฉพาะตัวเลขที่ใช้ (ดู egress budget ใน docs) */
+  const queueView = params.get('view') === 'queue';
 
   let query = supabase
     .from('excise_registrations')
@@ -41,7 +53,14 @@ export async function GET(request) {
   // canDelete ต่อแถว: หน้ารายละเอียดทะเบียนอ่านข้อมูลจาก "ลิสต์นี้" แล้ว find(id)
   // (ไม่ได้ยิง endpoint รายตัว) — ถ้าไม่แนบที่นี่ ปุ่มลบจะไม่ขึ้นกับใครเลย.
   // ownerId จึงต้องอยู่ในชุดคอลัมน์ slim ด้วย เผื่อ scope กลับไปเป็น 'own' วันหน้า
-  return Response.json((data || []).map((r) => ({ ...r, canDelete: canDeleteRecord(user, 'registrations', r) })));
+  const rows = (data || []).map((r) => ({ ...r, canDelete: canDeleteRecord(user, 'registrations', r) }));
+  if (!queueView || slim) return Response.json(rows);
+  try {
+    return Response.json(await withQueueFacts(supabase, rows));
+  } catch (e) {
+    // query พังต้องดัง — คิวที่โชว์ "ครบทุกใบ" เพราะตัวตรวจล้มเงียบ อันตรายกว่าไม่โชว์
+    return Response.json({ error: e?.message || 'อ่านข้อมูลประกอบคิวไม่สำเร็จ' }, { status: 500 });
+  }
 }
 
 // POST /api/excise-registrations — SA submits a master FG product for excise
@@ -56,7 +75,7 @@ export async function POST(request) {
   // Pull the master product (source of truth for FG + tax + owner customer).
   const { data: product, error: prodErr } = await supabase
     .from('products').select('*').eq('id', body.productId).maybeSingle();
-  if (prodErr) return Response.json({ error: prodErr.message }, { status: 500 });
+  if (prodErr) throw prodErr;
   if (!product) return Response.json({ error: 'ไม่พบสินค้าที่เลือก' }, { status: 404 });
 
   // The customer is derived from the FG's master owner (products.customerId FK),
@@ -138,4 +157,36 @@ export async function POST(request) {
     summary: `ขึ้นทะเบียน ${data.fgCode || ''} (${data.customerName || ''})`.trim(), request,
   });
   return Response.json(data, { status: 201 });
+}
+
+/* เติมข้อมูลที่หน้าคิวต้องเห็นทุกแถว — ภาษี/ชิ้น · ฐานราคา · ความพร้อมเอกสาร
+   ⚠️ อัตราภาษีมาจาก **สินค้า** เสมอ (ทะเบียนไม่เก็บสำเนา — mig 0180) ตัวคิดคือตัว
+   เดียวกับที่ใบยื่นใช้ตอนออกจริง ตัวเลขบนคิวจึงตรงกับที่จะถูกเรียกเก็บเสมอ */
+async function withQueueFacts(supabase, rows) {
+  if (!rows.length) return rows;
+  const productIds = [...new Set(rows.map((r) => r.productId).filter(Boolean))];
+  const [{ data: products, error: prodErr }, readiness] = await Promise.all([
+    productIds.length
+      // จำกัดแถวชัดเจน — อ่านได้อย่างมากเท่าจำนวน id ที่ขอ (ดู check:rowcap)
+      ? supabase.from('products')
+        .select('id, "retailPriceIncVat", "exciseTax", "localTax", "isExciseTaxable"')
+        .in('id', productIds).limit(productIds.length)
+      : Promise.resolve({ data: [] }),
+    registrationRequirementsBatch(supabase, rows),
+  ]);
+  if (prodErr) throw prodErr;
+  const productOf = new Map((products || []).map((p) => [p.id, p]));
+
+  return rows.map((r) => {
+    const product = productOf.get(r.productId) || null;
+    const req = readiness.get(r.id) || null;
+    return {
+      ...r,
+      taxPerUnit: exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax,
+      retailPriceIncVat: product?.retailPriceIncVat ?? null,
+      docsReady: req ? req.ready : null,
+      // ป้ายบนคิวต้องบอกได้ว่า "ขาดอะไร" ไม่ใช่แค่ "ไม่ครบ" — ไม่งั้นต้องเปิดใบถึงรู้
+      missingLabels: req ? req.missing.map((m) => m.label) : [],
+    };
+  });
 }

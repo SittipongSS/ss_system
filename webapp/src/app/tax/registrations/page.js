@@ -5,33 +5,38 @@ import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtMoney, naText } from "@/lib/format";
+import { fmtDate, fmtMoney, NA, naText } from "@/lib/format";
+import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
 import { deptOf, isTaxWaitingOnMe, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
+import { ageLabel, ageTone, registrationAge } from "@/lib/tax/registrationQueue";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
+import { toneColor } from "@/lib/ui/tone";
+import styles from "./page.module.css";
 
-// ภาษี/ชิ้น อ่านจาก **ทะเบียนสินค้า** เสมอ (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้
-// เหมือนราคาผลิต) — ทะเบียนสรรพสามิตเป็นแค่ผู้ตัดสินว่า "เสียภาษีไหม" ผ่าน
-// isExciseTaxable · ตัวคิดตัวเดียวกับที่ API ใช้ตอนออกใบยื่น ตัวเลขบนสองหน้าจึงตรงกันเสมอ
-const taxPerUnit = (r, product) =>
-  exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax;
+// ⭐ **ภาษี/ชิ้นกับความพร้อมเอกสารคิดที่ server แล้ว** (`?view=queue`)
+// 🐞 ของเดิมคิดฝั่งจอ จึงต้องโหลด `/api/products` (342 แถวเต็ม) + `/api/customers`
+// (508 แถวเต็ม) ทุกครั้งที่เปิดหน้า เพื่อใช้จริงแค่ 17 แถว — สองลิสต์นั้นเหลือไว้ให้
+// picker ของโมดัลเท่านั้น และโหลด **ตอนเปิดโมดัลครั้งแรก** ไม่ใช่ตอนเปิดหน้า
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
 const registrationProduct = (r) => productDisplayName(r);
+const taxText = (r) => (r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(r.taxPerUnit || 0));
 
 export default function RegistrationsPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("products:edit");   // SA: create / edit / resubmit / delete
 
-  const { data: regs, loading, reload } = useApiList("/api/excise-registrations");
-  const { data: products } = useApiList("/api/products");
-  const { data: customers } = useApiList("/api/customers");
+  const { data: regs, loading, reload } = useApiList("/api/excise-registrations?view=queue");
+
+  /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกา **ไทย** — ห้ามอ่านนาฬิกาตอนเรนเดอร์
+     (ค่าจะขยับระหว่างเรนเดอร์ และเครื่องที่ตั้งโซนเวลาอื่นจะได้คนละวัน) */
+  const todayIso = useMemo(() => businessDate(), []);
 
   const [userName, setUserName] = useState("");
   // RA lands on their queue; everyone else sees all. A ?status= deep-link
@@ -55,6 +60,11 @@ export default function RegistrationsPage() {
   }, [router]);
   const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
+  // โหลดลิสต์ของ picker ตอนเปิดโมดัลครั้งแรกแล้วค้างไว้ (ปิดแล้วเปิดใหม่ไม่โหลดซ้ำ)
+  const [pickerReady, setPickerReady] = useState(false);
+  const { data: products } = useApiList(pickerReady ? "/api/products" : null);
+  const { data: customers } = useApiList(pickerReady ? "/api/customers" : null);
+  const openForm = () => { setPickerReady(true); setFormOpen(true); };
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -63,7 +73,7 @@ export default function RegistrationsPage() {
         if (!isTaxWaitingOnMe(r, "registration", myDept)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
       if (!q) return true;
-      return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber,
+      return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
@@ -77,8 +87,39 @@ export default function RegistrationsPage() {
     if (created && saved?.id) router.push(`/tax/registrations/${saved.id}`);
   };
 
-  // อัตราภาษีมาจากสินค้า ไม่ใช่สำเนาบนทะเบียน — หาสินค้าจาก productId ของทะเบียน
-  const productOf = (r) => products.find((p) => p.id === r?.productId) || null;
+  const ageOf = (r) => registrationAge(r, todayIso);
+
+  /* ── ป้ายอายุงาน ────────────────────────────────────────────────────────
+     🐞 คิวเดิมไม่มีวันที่เลย ⇒ ใบที่ค้าง 34 วันหน้าตาเหมือนใบที่เพิ่งยื่นเมื่อวาน
+     (ตรวจระบบ 2026-08-28: 9 ใบค้าง 28–34 วันโดยไม่มีอะไรฟ้อง) */
+  const AgeCell = ({ row }) => {
+    const days = ageOf(row);
+    const tone = ageTone(days);
+    return (
+      <div>
+        {/* โทนมาจากข้อมูล (จำนวนวัน) จึงเป็น inline style โดยเจตนา */}
+        <div className={tone === "neutral" ? "muted" : undefined} style={tone === "neutral" ? undefined : { color: toneColor(tone), fontWeight: "var(--fw-semibold)" }}>
+          {naText(ageLabel(days))}
+        </div>
+        <div className="cell-sub">{naText(fmtDate(row.updatedAt || row.createdAt, { short: true }))}</div>
+      </div>
+    );
+  };
+
+  /* เอกสาร: บอกว่า "ขาดอะไร" ไม่ใช่แค่ "ไม่ครบ" — ไม่งั้นต้องเปิดใบถึงจะรู้
+     ⚠️ ใบที่อนุมัติแล้วไม่ต้องทวงเอกสาร ด่านนี้มีผลเฉพาะก่อนยื่น */
+  const DocsCell = ({ row }) => {
+    if (row.status === "approved" || row.docsReady === null || row.docsReady === undefined) {
+      return <span className="cell-quiet">{NA}</span>;
+    }
+    if (row.docsReady) return <span className={styles.docsReady}>ครบ</span>;
+    const labels = row.missingLabels || [];
+    return (
+      <span className={styles.docsMissing} title={labels.join("\n")}>
+        ขาด {labels.length}
+      </span>
+    );
+  };
 
   const columns = [
     {
@@ -86,41 +127,80 @@ export default function RegistrationsPage() {
       render: (r) => (
         <div>
           <div className="font-semibold font-mono">{r.fgCode}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }}>{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
+          <div className="cell-sub">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
         </div>
       ),
     },
-    { key: "customerName", label: "ลูกค้า", render: (r) => <span style={{ color: "var(--text-2)" }}>{r.customerName}</span> },
+    { key: "customerName", label: "ลูกค้า", render: (r) => <span className="muted">{naText(r.customerName)}</span> },
     {
       key: "tax", label: "ภาษี/ชิ้น", align: "right",
-      sortValue: (r) => taxPerUnit(r, productOf(r)),
-      render: (r) => <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>,
+      sortValue: (r) => r.taxPerUnit || 0,
+      render: (r) => (
+        <div>
+          <div className="font-mono">{taxText(r)}</div>
+          {/* ฐานที่ใช้คิด — ฝ่าย RA อนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ */}
+          <div className="cell-sub">
+            {r.retailPriceIncVat ? `ปลีก ${fmtMoney(r.retailPriceIncVat)}` : NA}
+          </div>
+        </div>
+      ),
     },
-    { key: "approvalNumber", label: "เลขที่อนุมัติ", render: (r) => <span className="font-mono" style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{naText(r.approvalNumber)}</span> },
-    { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
+    { key: "docs", label: "เอกสาร", align: "center", sortValue: (r) => (r.docsReady ? 1 : 0), render: (r) => <DocsCell row={r} /> },
+    {
+      key: "assignee", label: "ผู้ยื่น",
+      render: (r) => (
+        <div>
+          <div className="muted">{naText(r.assignee)}</div>
+          <div className="cell-sub">{naText(r.team)}</div>
+        </div>
+      ),
+    },
+    { key: "age", label: "ค้างมา", sortValue: (r) => ageOf(r) ?? -1, render: (r) => <AgeCell row={r} /> },
+    {
+      key: "status", label: "สถานะ",
+      render: (r) => (
+        <div className={styles.stack}>
+          <StatusBadge status={r.status} />
+          {r.approvalNumber && <span className="cell-sub mono">{r.approvalNumber}</span>}
+        </div>
+      ),
+    },
   ];
 
-  const card = (r) => (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-semibold font-mono text-sm">{r.fgCode}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="truncate">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
+  const card = (r) => {
+    const days = ageOf(r);
+    return (
+      <div className="flex flex-col gap-2">
+        <div className={styles.cardHead}>
+          <div className="min-w-0">
+            <div className={styles.cardCode}>{r.fgCode}</div>
+            <div className="cell-sub truncate">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
+          </div>
+          <StatusBadge status={r.status} />
         </div>
-        <StatusBadge status={r.status} />
+        <div className={styles.cardLine}>
+          <span className="muted truncate">{naText(r.customerName)}</span>
+          <span className="font-mono">{taxText(r)}</span>
+        </div>
+        <div className={styles.cardMeta}>
+          <span className="truncate">{naText(r.assignee)}</span>
+          <span className="flex items-center gap-2">
+            <DocsCell row={r} />
+            {/* โทนมาจากข้อมูล (จำนวนวัน) */}
+            <span style={ageTone(days) === "neutral" ? undefined : { color: toneColor(ageTone(days)) }}>
+              ค้างมา {naText(ageLabel(days))}
+            </span>
+          </span>
+        </div>
       </div>
-      <div className="flex items-center justify-between" style={{ fontSize: "var(--fs-5)" }}>
-        <span style={{ color: "var(--text-2)" }} className="truncate">{r.customerName}</span>
-        <span className="font-mono">{r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit(r, productOf(r)))}</span>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const headerRight = (
     <>
       <span className="ui-badge">{regs.length} รายการ</span>
       {canEdit && (
-        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}>
+        <button className="btn btn-primary flex items-center gap-1.5" onClick={openForm}>
           <Plus size={16} /> สร้างทะเบียน
         </button>
       )}
@@ -141,7 +221,7 @@ export default function RegistrationsPage() {
           onFilter={setFilter}
           search={search}
           onSearch={setSearch}
-          searchPlaceholder="ค้นหา FG / ลูกค้า / เลขอนุมัติ..."
+          searchPlaceholder="ค้นหา FG / ลูกค้า / ผู้ยื่น / เลขอนุมัติ..."
         />
       }
     >
@@ -151,7 +231,8 @@ export default function RegistrationsPage() {
         rowKey={(r) => r.id}
         onRowClick={(r) => router.push(`/tax/registrations/${r.id}`)}
         card={card}
-        initialSort={{ key: "fgCode", dir: "asc" }}
+        /* เรียงเก่าสุดขึ้นก่อน — คิวงานที่เรียงตามรหัสสินค้าไม่ได้ตอบว่า "ทำอันไหนก่อน" */
+        initialSort={{ key: "age", dir: "desc" }}
         empty={search || filter !== "all" ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
         emptyIcon={ClipboardCheck}
       />

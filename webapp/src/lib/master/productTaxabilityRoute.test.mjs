@@ -27,7 +27,7 @@ test('ทั้งตอนสร้างและตอนแก้ ตัด�
   }
 });
 
-test('PATCH ห้ามคิดธงเสียภาษีใหม่จากหมวดล้วน — override ของฝ่าย RAจะหาย', () => {
+test('PATCH ห้ามคิดธงเสียภาษีใหม่จากหมวดล้วน — override ของฝ่าย RA จะหาย', () => {
   assert.doesNotMatch(
     codeOnly(patchRoute),
     /isExciseTaxable\s*=\s*\(await categoryFlagsOf\([^)]*\)\)\.isExcise/,

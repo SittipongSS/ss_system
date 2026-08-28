@@ -22,7 +22,7 @@ function* walk(dir) {
 }
 
 import {
-  LEAD_BELL_KINDS,
+  EXCISE_BELL_KINDS, LEAD_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -262,7 +262,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
-    + LEAD_BELL_KINDS.map((k) => `kind.eq.${k}`).join(','),
+    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS].map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
 
@@ -270,7 +270,8 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   // เธรดงาน 92% เป็นเหตุการณ์ระบบ (เปลี่ยนสถานะ/เลื่อนกำหนด) — ลากเข้ามาทั้ง entity
   // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
-  assert.deepEqual(NOTIFICATION_BOXES.bell.kinds, ['task_assign', ...LEAD_BELL_KINDS]);
+  assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
+    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -312,6 +313,44 @@ test('LEAD_BELL_KINDS ครบทุก kind ที่ยิงจริง —
       `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน LEAD_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
   }
 });
+
+/* ── ทะเบียนสรรพสามิตเข้ากระดิ่ง (2026-08-28) ──────────────────────────────
+   เหตุผลเดียวกับลีด: เอา **เหตุการณ์ที่ต้องลงมือ** ไม่เอาทั้ง entity
+   🪤 ใส่ 'excise_registration' ลง entityTypes เมื่อไร เธรดกลางของทะเบียน (เปิดอยู่
+   ทุกใบ) จะไหลเข้ากระดิ่งทั้งหมด แล้วคำร้องถูกดันตกขอบกล่อง 30 แถวอีกรอบ */
+test('⭐ ทะเบียนสรรพสามิตเข้ากระดิ่งด้วย kind ไม่ใช่ทั้ง entity', () => {
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('excise_registration'), false);
+  for (const kind of EXCISE_BELL_KINDS) {
+    assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
+  }
+});
+
+/* ⚠️ ดริฟต์แบบเดียวกับ LEAD_BELL_KINDS: เพิ่ม action ใหม่ใน `registrationNotice`
+   แล้วลืมเติมลิสต์ ⇒ แถวถูกเขียนลงตารางตามปกติแต่ไม่โผล่ในกระดิ่ง ไม่มีอะไรฟ้อง
+   · กวาดทั้ง src หาไฟล์ที่ยิง entityType นี้ ไม่ไล่ตามชื่อไฟล์ (ผู้ยิงรายใหม่จะได้
+   ไม่หลุดจากการตรวจ) */
+test('EXCISE_BELL_KINDS ครบทุก kind ที่ยิงจริง', () => {
+  const notify = readFileSync(new URL('./tax/registrationNotify.js', import.meta.url), 'utf8');
+  const actions = [...notify.matchAll(/action === '([a-z_]+)'/g)].map((m) => m[1]);
+  assert.ok(actions.length >= 4, 'อ่าน action จากซอร์สไม่ได้ — เทสต์นี้ตาบอดแล้ว');
+  for (const action of actions) {
+    assert.ok(EXCISE_BELL_KINDS.includes(`excise_${action}`), `excise_${action} ยังไม่อยู่ในกระดิ่ง`);
+  }
+  /* ฝั่งกลับ: kind ที่ยิงจริงจากทุกไฟล์ต้องอยู่ในลิสต์ · `notifyRegistration` ยิงด้วย
+     template `excise_${action}` ⇒ อ่าน kind ตรง ๆ ไม่เจอ ต้องไล่จาก action ข้างบน
+     ที่นี่จึงตรวจว่าไม่มีใคร "ยิง kind ดิบ" ที่หลุดทะเบียนเพิ่มเข้ามาทีหลัง */
+  const raw = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    if (!src.includes("entityType: 'excise_registration'")) continue;
+    for (const [, kind] of src.matchAll(/kind: '(excise_[a-z_]+)'/g)) raw.add(kind);
+  }
+  for (const kind of raw) {
+    assert.ok(EXCISE_BELL_KINDS.includes(kind),
+      `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน EXCISE_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+});
+
 
 test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {
   const { calls, supabase } = pageStub([]);

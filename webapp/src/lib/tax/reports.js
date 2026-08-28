@@ -219,7 +219,7 @@ export async function missingRetailPriceReport(filter = {}) {
 
   const rows = (products || [])
     .filter((p) => {
-      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่าย RAบังคับรายตัว
+      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่าย RA บังคับรายตัว
       const taxable = p.isExciseTaxable === true
         || (p.isExciseTaxable !== false && isExciseCategory(p.categoryCode, types));
       if (!taxable) return false;

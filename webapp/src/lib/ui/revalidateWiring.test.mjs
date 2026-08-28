@@ -35,6 +35,15 @@ const WIRED = [
   "app/sales-planning/targets/plan/page.js",
 ];
 
+/* ── ฮุกที่ถือสัญญาณแทนหน้าทั้งโมดูล ─────────────────────────────────────────
+ * โมดูลภาษี (/tax) อ่านข้อมูลทุกหน้าผ่าน `useApiList` ตัวเดียว ⇒ ติดสัญญาณที่ฮุก
+ * ครั้งเดียวได้ครบทั้งโมดูล และหน้าใหม่ที่ใช้ฮุกนี้ได้ฟรีโดยไม่ต้องมาเติมทะเบียนข้างบน
+ * ⚠️ **ลิสต์นี้เพิ่มได้อย่างเดียว** เหมือนทะเบียนหน้า — หลุดออกไปแปลว่ามีคนถอดสัญญาณทิ้ง
+ */
+const WIRED_HOOKS = [
+  "lib/excise/useApiList.js",
+];
+
 const src = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel) => readFileSync(join(src, rel), "utf8");
 
@@ -43,6 +52,17 @@ test("ทุกหน้าในทะเบียนต้องติดส�
     const text = read(rel);
     assert.match(text, /import useRevalidateOnFocus from "@\/lib\/ui\/useRevalidateOnFocus"/, `${rel}: ไม่ได้ import`);
     assert.match(text, /useRevalidateOnFocus\(/, `${rel}: ไม่ได้เรียกใช้`);
+  }
+});
+
+test("ฮุกที่ถือสัญญาณแทนทั้งโมดูลต้องยังติดสัญญาณอยู่", () => {
+  for (const rel of WIRED_HOOKS) {
+    const text = read(rel);
+    assert.match(text, /import useRevalidateOnFocus from "@\/lib\/ui\/useRevalidateOnFocus"/, `${rel}: ไม่ได้ import`);
+    assert.match(text, /useRevalidateOnFocus\(/, `${rel}: ไม่ได้เรียกใช้`);
+    // กติกาเดียวกับหน้า: รอบเบื้องหลังห้ามพาจอไปอยู่สถานะโหลด และห้ามพ่น error ทับของเดิม
+    assert.match(text, /if \(!opts\?\.background\) setLoading\(true\);/, `${rel}: ยังสั่ง setLoading(true) โดยไม่ดูโหมด`);
+    assert.match(text, /if \(!opts\?\.background\) setError\(/, `${rel}: รอบเบื้องหลังยังพ่น error ทับของเดิม`);
   }
 });
 

@@ -113,7 +113,7 @@ test("missing product data is reported and never invents a tax amount", () => {
   assert.equal(result.warnings[0].code, "missing_product");
 });
 
-// ── override ของฝ่าย RAต้องทำงานสองทาง (แก้ 2026-08-16) ─────────────────
+// ── override ของฝ่าย RA ต้องทำงานสองทาง (แก้ 2026-08-16) ─────────────────
 test("RA บังคับเก็บภาษีบนหมวดที่ไม่ใช่สรรพสามิต → ต้องเข้าใบยื่น ไม่ใช่ถูกข้าม", () => {
   // 🐞 เดิมใช้ธงของหมวดเป็นตัวตั้ง ⇒ ยกเว้นได้ แต่บังคับเก็บไม่ได้
   const out = resolveSoFiling({
