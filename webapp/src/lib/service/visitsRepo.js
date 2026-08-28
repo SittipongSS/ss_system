@@ -140,7 +140,7 @@ export async function sitesForVisits(supabase, visits = []) {
   if (!ids.length) return new Map();
   const { data, error } = await supabase
     .from('service_sites')
-    .select('id, code, name, zone, customerName, accessFrom, accessTo, accessDays, accessNote, mapUrl, contactName, contactPhone')
+    .select('id, code, name, routeZone, customerName, accessFrom, accessTo, accessDays, accessNote, mapUrl, contactName, contactPhone')
     .in('id', ids);
   if (error) throw error;
   return new Map((data || []).map((row) => [row.id, row]));

@@ -699,7 +699,7 @@ export default function CustomerDetails() {
                       onClick={() => router.push(`/service/sites/${site.id}`)}
                       title={site.name}
                       subtitle={[
-                        site.zone,
+                        site.routeZone,
                         `เครื่อง ${site.activeAssetCount ?? 0} ตัว`,
                         site.nextVisitDate ? `ครั้งหน้า ${site.nextVisitDate}` : "ยังไม่มีนัดครั้งหน้า",
                         site.isActive === false ? "ปิดใช้งาน" : null,
