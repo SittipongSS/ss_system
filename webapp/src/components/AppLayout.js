@@ -399,6 +399,9 @@ export default function AppLayout({ children }) {
            แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
         { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
+        // จัดทีม (mig 0308 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
+        // grant จัดทีมเองได้ ไม่ต้องรอแอดมิน · เป็น utility เพราะไม่ใช่งานรายวัน
+        { href: '/sa/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', utility: true, match: (p) => p.startsWith('/sa/teams') },
       ],
     },
     {
