@@ -51,9 +51,13 @@
 // Capability strings: "<resource>:<action>"
 //   customers:view | customers:edit | customers:delete
 //   products:view  | products:edit  | products:delete | products:margin
-//     (products:margin = see the factory cost BREAKDOWN + profit. costPrice
-//      itself stays visible to anyone with products:view; only the derived
-//      material/labor/shipping split and factoryProfit are gated — RA + admin.)
+//                  | products:cost
+//     (products:margin = see the factory cost BREAKDOWN + profit — RA + admin.
+//      products:cost = see the factory costPrice ALONE, without the breakdown.
+//      ⚠️ products:view is NOT enough to see costPrice — ดู canSeeProductCost:
+//      ต้องถือ products:edit (SA) หรือ products:margin (RA/admin) หรือ
+//      products:cost (FN — มติผู้ใช้ 2026-08-28: บัญชีต้องเห็นราคาผลิต แต่ไม่เห็น
+//      โครงสร้างต้นทุน/กำไรโรงงาน).)
 //   ra:view     | ra:approve
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
@@ -302,7 +306,7 @@ const SALES_OPS = [
 // Every capability in the system. Held in full only by `admin`.
 const SUPERUSER_CAPS = [
   'customers:view', 'customers:edit', 'customers:delete',
-  'products:view', 'products:edit', 'products:delete', 'products:margin',
+  'products:view', 'products:edit', 'products:delete', 'products:margin', 'products:cost',
   'sales:view', 'sales:act', 'sales:delete',
   'ra:view', 'ra:approve',
   'history:view', 'audit:view',
@@ -420,6 +424,10 @@ const ROLE_CAPS = {
   finance: [
     'products:view', 'customers:view', 'salesplan:view',
     'requests:answer', 'payments:confirm',
+    // ⭐ products:cost (มติผู้ใช้ 2026-08-28) — บัญชีเห็น **ราคาผลิตเปล่า ๆ** บนทะเบียน
+    // สินค้าเท่ากับฝ่ายขาย · ตั้งใจ **ไม่ให้** products:margin: โครงสร้างต้นทุน
+    // (วัตถุดิบ/ค่าแรง/ค่าส่ง) + กำไรโรงงาน ยังเป็นของ RA + admin เท่านั้น
+    'products:cost',
   ],
   rd: [
     'pm:view', 'products:view', 'customers:view', 'salesplan:view',
@@ -1285,8 +1293,9 @@ export function allowedEditFields(user, resource, salesEditable) {
 // ── Cost redaction (two tiers) ────────────────────────────────────────
 // Factory cost data is confidential to the EXCISE TAX system. Two tiers:
 //   • costPrice  — the factory cost. Visible to SA + RA + admin (anyone who
-//     works the tax/sales flow). Hidden from other departments (staff) and
-//     plain viewers, even though they may browse the product catalog.
+//     works the tax/sales flow) และ FN ผ่าน cap `products:cost` (มติผู้ใช้
+//     2026-08-28). Hidden from other departments (staff) and plain viewers,
+//     even though they may browse the product catalog.
 //   • MARGIN_FIELDS — the cost breakdown + resulting profit. Stricter still:
 //     RA + admin only (products:margin). Even SA sees costPrice but not these.
 // Redaction happens server-side so the data never leaves the API; hiding the
@@ -1294,16 +1303,18 @@ export function allowedEditFields(user, resource, salesEditable) {
 export const MARGIN_FIELDS = ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit'];
 
 // May this role see the factory costPrice? SA (products:edit) own it; RA/admin
-// (products:margin) see it too. Staff/viewers with read-only catalog access
-// (products:view but neither edit nor margin) do NOT.
+// (products:margin) see it too; FN (products:cost) เห็นราคาผลิตอย่างเดียวโดยไม่เห็น
+// โครงสร้างต้นทุน. Staff/viewers with read-only catalog access (products:view but
+// none of the three) do NOT.
 export function canSeeProductCost(role) {
-  return can(role, 'products:margin') || can(role, 'products:edit');
+  return can(role, 'products:margin') || can(role, 'products:edit') || can(role, 'products:cost');
 }
 
 // User-aware variant — honours a per-user products:margin grant (needed so a
 // grantee sees costPrice both in the API redaction below and in the client UI).
 export function canSeeProductCostUser(user) {
-  return canUser(user, 'products:margin') || canUser(user, 'products:edit');
+  return canUser(user, 'products:margin') || canUser(user, 'products:edit')
+    || canUser(user, 'products:cost');
 }
 
 // Return a copy of `product` redacted for `user`: strip MARGIN_FIELDS unless

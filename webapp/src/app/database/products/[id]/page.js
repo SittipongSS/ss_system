@@ -12,6 +12,7 @@ import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/maste
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
+import CostVatLines from "@/components/database/CostVatLines";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -46,10 +47,13 @@ export default function ProductDetails() {
   const role = useRole();
   const canToggleActive = isSuperuser(role);
   // Factory cost data is confidential to the tax system. Two tiers (mirrors the
-  // server-side redaction): costPrice is visible to SA + RA + admin; the cost
+  // server-side redaction): costPrice is visible to SA + RA + admin + FN; the cost
   // breakdown + profit is RA + admin only. Other departments see neither.
   const canSeeMargin = useCan("products:margin");
-  const canSeeCost = canSeeMargin || canEditProducts; // SA (edit) + RA/admin (margin)
+  // FN (ฝ่ายบัญชี) เห็นราคาผลิตด้วย cap ของตัวเอง — ไม่พ่วง margin (มติผู้ใช้ 2026-08-28)
+  // ⚠️ เรียก useCan แยกบรรทัด ห้ามยัดหลัง `||` — ลัดวงจรแล้วฮุคถูกข้าม ลำดับฮุคเพี้ยน
+  const canSeeCostOnly = useCan("products:cost");
+  const canSeeCost = canSeeMargin || canEditProducts || canSeeCostOnly;
   // Excise tax data (per-unit tax, registrations, breakdown) is confidential to
   // the tax workflow — shown only to roles that can see the tax system
   // (SA/RA/admin via history:view). Other depts (staff/viewer) never see it.
@@ -476,8 +480,9 @@ export default function ProductDetails() {
                   (การ์ดต้นทุน+กำไรยังเป็นของหมวดสรรพสามิตเหมือนเดิมตามมติ 2026-07-19) */}
               {canSeeCost && (
                 <div>
-                  <span className="text-[var(--text-3)] block mb-1">ราคาผลิต (ต่อ{unit})</span>
+                  <span className="text-[var(--text-3)] block mb-1">ราคาผลิต (ต่อ{unit} · ก่อน VAT)</span>
                   <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.costPrice)}</span>
+                  <CostVatLines costPrice={product.costPrice} />
                 </div>
               )}
             </div>

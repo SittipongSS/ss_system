@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -495,6 +495,30 @@ test('executive: ไม่มี products:margin — กำไรโรงงา
   assert.equal(redacted.costPrice, undefined); // ไม่มีทั้ง margin และ products:edit
   // ยังเปิดให้ grant รายคนได้ถ้าวันหน้าจำเป็น
   assert.ok(GRANTABLE_CAPS.includes('products:margin'));
+});
+
+test('finance (FN) เห็นราคาผลิต แต่ไม่เห็นโครงสร้างต้นทุน/กำไร (products:cost)', () => {
+  const fn = { role: 'finance' };
+  assert.equal(canUser(fn, 'products:cost'), true);
+  assert.equal(canUser(fn, 'products:margin'), false);
+  assert.equal(canSeeProductCost('finance'), true);
+  const redacted = redactProductMargin(fn, {
+    id: 'p1', costPrice: 100, materialCost: 65, laborCost: 5, shippingCost: 1, factoryProfit: 29,
+  });
+  assert.equal(redacted.costPrice, 100); // ราคาผลิตต้องรอด
+  for (const f of ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit']) {
+    assert.equal(redacted[f], undefined, `${f} ต้องถูกตัด`);
+  }
+});
+
+// ฝ่ายที่ไม่ควรเห็นราคาผลิต — กันไม่ให้ cap ใหม่หลุดไปติดใครโดยไม่ตั้งใจ
+test('ราคาผลิตยังปิดสำหรับ staff / rd / viewer / marketing / secretary', () => {
+  for (const role of ['staff', 'rd', 'viewer', 'marketing', 'secretary', 'executive']) {
+    assert.equal(canSeeProductCost(role), false, role);
+  }
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'ra', 'admin', 'finance']) {
+    assert.equal(canSeeProductCost(role), true, role);
+  }
 });
 
 test('isReadOnlyObserver: viewer + executive เท่านั้น', () => {
