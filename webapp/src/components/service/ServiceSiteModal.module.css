@@ -189,3 +189,40 @@
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* บรรทัดสรุปความคืบหน้าของด่าน — ตัวเลข ไม่ใช่ให้ไล่นับติ๊กเอง */
+.gateSummary {
+  margin: 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--amber);
+}
+
+.gateSummary[data-ready="yes"] { color: var(--green); }
+
+/* แผ่นข้ามด่าน — อยู่ในโมดัลเดิม แต่แยกพื้นให้เห็นว่าเป็นการตัดสินใจคนละเรื่อง */
+.overrideSheet {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.overrideSheet > h4 {
+  margin: 0;
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.overrideList {
+  list-style: disc;
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}

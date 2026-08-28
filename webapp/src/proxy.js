@@ -266,7 +266,7 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
    ตั้งแต่บรรทัดแรกของ `lockedOut`
    ⚠️ อ่านอย่างเดียวจริง ๆ — route มีแต่ `export const GET` และตัวเลขทุกตัวถูกตัด
    ขอบเขตด้วย `user.id` ในตัว handler อยู่แล้ว */
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav'];
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav', '/api/teams'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
@@ -324,7 +324,15 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
   // role — so mgmt checks go through canUser, not can(role, …).
   const mgmtUser = { role, extraCaps };
+  /* ⭐ ย้ายทีมของคนหนึ่งคน (mig 0310 · docs/team-management-plan.md) — เส้นแคบที่
+     คนถือ `team:manage` เขียนได้ **ต้องอยู่ก่อนด่าน users:manage ข้างล่าง**
+     ไม่งั้น proxy ตัดทิ้งตั้งแต่ยังไม่ถึง handler
+     ⚠️ proxy เห็นแค่ method+path — ตัวตัดสินว่า "คนนี้อยู่ฝ่ายเดียวกับเป้าหมายไหม"
+     อยู่ใน handler (canManageTeams กับฝ่ายของ **คนที่จะถูกย้าย**) */
+  if (/^\/api\/users\/[^/]+\/team$/.test(path)) return canUser(mgmtUser, 'team:manage');
   if (path.startsWith('/api/users')) return can(role, 'users:manage');
+  // ทะเบียนทีม — ด่านจริง (ฝ่ายไหน) อยู่ใน handler เหมือนกัน
+  if (path.startsWith('/api/teams')) return canUser(mgmtUser, 'team:manage');
   if (path.startsWith('/api/customers')) {
     if (method === 'DELETE') return can(role, 'customers:delete');
     return can(role, 'customers:edit');

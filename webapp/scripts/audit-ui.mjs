@@ -697,7 +697,11 @@ const { over: budgetOver, under: budgetUnder } = compareBudget(legacyCounts, bud
    เปลือกที่ **ประกอบจากของกลาง** (`Workspace` + `DetailPage` + `DocumentControlCard`)
    แล้วให้สองทะเบียนใช้ร่วมกัน · เจตนาของกฎนี้คือ "ห้ามหน้าเขียนเปลือกเอง" ไม่ใช่
    "ห้ามยกเปลือกที่ใช้ซ้ำออกมาเป็นคอมโพเนนต์" — ซึ่งเป็นสิ่งที่ AGENTS.md สั่งให้ทำ */
-const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
+/* `TeamManager` เข้าเกณฑ์เดียวกับ `RegistryDetailShell` — เปลือกที่ประกอบจากของกลาง
+   (`Workspace`) แล้วให้หน้าจัดทีมของหลายฝ่ายใช้ร่วมกัน (`/sa/teams` · `/service/teams`)
+   ⚠️ ถ้าเขียนหน้าแยกฝ่ายละไฟล์แทน มันจะเพี้ยนหากันภายในสองเดือน ซึ่งเป็นสิ่งที่
+   AGENTS.md สั่งห้ามไว้ตรง ๆ */
+const shellPattern = /components\/ui\/(?:Workspace|DetailPage)|RegistryDetailShell|TeamManager|salesPlanning\/SaWorkspace|<Workspace\b|<SaWorkspace\b|<SaPageShell\b|premium-header|home-hub|login-/;
 const redirectPagePattern = /from\s+["']next\/navigation["'][\s\S]*\bredirect\s*\(/;
 const visualPageFiles = pageFiles.filter((file) => !redirectPagePattern.test(fs.readFileSync(file, "utf8")));
 const shellPages = visualPageFiles.filter((file) => shellPattern.test(fs.readFileSync(file, "utf8")));

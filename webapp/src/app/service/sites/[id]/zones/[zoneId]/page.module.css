@@ -1,0 +1,70 @@
+/* ── หน้าโซน ────────────────────────────────────────────────────────────── */
+
+.muted {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ป้ายสรุปเทียบมาตรฐาน — โทนบอกทิศทาง ไม่ได้บอกว่าใครผิด */
+.badgeLine {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  font-weight: var(--fw-bold);
+  color: var(--text-2);
+}
+
+.badgeLine[data-tone="warning"] { color: var(--amber); }
+.badgeLine[data-tone="good"] { color: var(--green); }
+.badgeLine[data-tone="info"] { color: var(--blue); }
+
+.warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* เดือนที่ไม่ได้เข้าเลย — จางลงแต่ยังอ่านออก เพราะแถวว่างคือคำตอบ ไม่ใช่ข้อมูลขาด */
+.num[data-diff="over"] { color: var(--amber); }
+.num[data-diff="under"] { color: var(--blue); }
+.num[data-diff="even"] { color: var(--green); }
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.historyLink {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.historyLink:hover { border-color: var(--text-3); }
+
+.used {
+  grid-column: 1 / -1;
+  color: var(--text-3);
+}

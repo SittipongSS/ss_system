@@ -1,0 +1,132 @@
+/* ── หน้าจัดทีม (ใช้ร่วมทุกฝ่าย) ─────────────────────────────────────────
+   ทีมเป็น "การ์ด" ไม่ใช่แถวตาราง — สมาชิกต้องอ่านเป็นกลุ่ม ไม่ใช่รายการยาว */
+.team {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* ทีมที่ปิดแล้วจางลง แต่ยังอยู่บนจอ — รหัสยังถูกอ้างในรายงานย้อนหลัง */
+.team[data-inactive="yes"] { opacity: var(--op-disabled); }
+
+/* ถัง "ยังไม่อยู่ทีมไหน" — ขอบประเพื่อบอกว่าไม่ใช่ทีมจริง แต่ต้องเห็นเสมอ */
+.team[data-bucket="unassigned"] {
+  border-style: dashed;
+  background: var(--surface-2);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.head h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.code {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.warn { color: var(--amber); }
+
+.headActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.members > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--fw-bold);
+}
+
+.leadTag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--accent);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-1);
+}
+
+.role {
+  color: var(--text-3);
+  margin-inline-start: auto;
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.field > small { color: var(--text-3); line-height: var(--lh-thai); }
+
+/* ของที่จะค้างอยู่ทีมเดิม — โทนเตือน เพราะระบบไม่ย้ายให้ ต้องมีคนไปตามเก็บ */
+.impact {
+  list-style: disc;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}

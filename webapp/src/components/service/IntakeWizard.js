@@ -16,6 +16,7 @@ import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceZoneModal from "@/components/service/ServiceZoneModal";
@@ -25,7 +26,10 @@ import styles from "./IntakeWizard.module.css";
 
 const NEW_ZONE = "__new__";
 
-export default function IntakeWizard({ open, order, sites = [], zonesBySite = new Map(), onClose, onDone, onReloadRegistry }) {
+export default function IntakeWizard({
+  open, order, sites = [], zonesBySite = new Map(), customerAddresses = [],
+  onClose, onDone, onReloadRegistry,
+}) {
   const [step, setStep] = useState(1);
   const [siteId, setSiteId] = useState("");
   const [rows, setRows] = useState([]);           // [{ lineId, zoneId, standardMlPerMonth }]
@@ -109,27 +113,62 @@ export default function IntakeWizard({ open, order, sites = [], zonesBySite = ne
             <p className={styles.lead}>
               ลูกค้า <strong>{naText(order.customerName)}</strong> · ใบนี้มี {order.pendingLines} บรรทัดที่ยังไม่ผูกโซน
             </p>
-            <label className={styles.field}>
-              <span>ไซต์ที่ของไปตั้ง *</span>
-              <SearchableSelect
-                value={siteId}
-                onChange={setSiteId}
-                options={customerSites.map((s) => ({
-                  value: s.id,
-                  label: s.routeZone ? `${s.name} · ${s.routeZone}` : s.name,
-                }))}
-                placeholder={customerSites.length ? "เลือกไซต์ของลูกค้ารายนี้" : "ลูกค้ารายนี้ยังไม่มีไซต์"}
-                ariaLabel="ไซต์ที่ของไปตั้ง"
-              />
-              <small>
-                เห็นเฉพาะไซต์ของลูกค้ารายนี้ · ที่อยู่ของไซต์ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น
-                แล้วแก้ได้เอง — ไม่ผูกให้เปลี่ยนตามกัน
-              </small>
-            </label>
+            {/* ⭐ **ไทล์ ไม่ใช่ดรอปดาวน์** — ลูกค้าหนึ่งรายมีไซต์ไม่กี่แห่ง และคนเลือก
+                ต้องเห็นว่าแต่ละไซต์มีโซน/อุปกรณ์อยู่แล้วเท่าไร ถึงจะรู้ว่าควรผูกกับ
+                ไซต์เดิมหรือตั้งใหม่ (กติกาของระบบ: ตัวเลือกน้อย = ไทล์ที่เห็นข้อมูล ·
+                ดรอปดาวน์เก็บไว้ให้รายการยาวที่ต้องค้นหา)
+                ⚠️ เกิน 8 ไซต์เมื่อไรค่อยกลับไปใช้ช่องค้นหา — ไทล์ 20 ใบไม่ได้อ่านง่ายกว่า */}
+            {customerSites.length > 8 ? (
+              <label className={styles.field}>
+                <span>ไซต์ที่ของไปตั้ง *</span>
+                <SearchableSelect
+                  value={siteId}
+                  onChange={setSiteId}
+                  options={customerSites.map((s) => ({
+                    value: s.id,
+                    label: s.routeZone ? `${s.name} · ${s.routeZone}` : s.name,
+                  }))}
+                  placeholder="ค้นหาไซต์ของลูกค้ารายนี้"
+                  ariaLabel="ไซต์ที่ของไปตั้ง"
+                />
+              </label>
+            ) : (
+              <div className={styles.field}>
+                <span>
+                  ไซต์ที่ของไปตั้ง *
+                  {customerSites.length > 0 && (
+                    <span className={styles.countHint}> · ลูกค้ามีไซต์เดิม {customerSites.length} แห่ง</span>
+                  )}
+                </span>
+                {customerSites.length === 0 ? (
+                  <p className={styles.lead}>ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ตั้งไซต์ใหม่ได้ที่ปุ่มข้างล่าง</p>
+                ) : (
+                  <OptionTiles
+                    value={siteId}
+                    onChange={setSiteId}
+                    ariaLabel="ไซต์ที่ของไปตั้ง"
+                    options={customerSites.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                      description: [
+                        s.code,
+                        s.routeZone,
+                        `${(zonesBySite.get(s.id) || []).length || 0} โซน`,
+                        s.assetCount != null ? `${s.assetCount} อุปกรณ์` : null,
+                      ].filter(Boolean).join(" · "),
+                    }))}
+                  />
+                )}
+              </div>
+            )}
+            <small className={styles.lead}>
+              เห็นเฉพาะไซต์ของลูกค้ารายนี้ · ที่อยู่ของไซต์ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น
+              แล้วแก้ได้เอง — ไม่ผูกให้เปลี่ยนตามกัน
+            </small>
             <div className={styles.inlineAction}>
               <Button tone="neutral" variant="quiet" size="sm" icon={<Plus size={15} aria-hidden="true" />}
                 onClick={() => setSiteModal(true)}>
-                ไซต์ใหม่
+                ตั้งไซต์ใหม่
               </Button>
             </div>
           </div>
@@ -227,6 +266,7 @@ export default function IntakeWizard({ open, order, sites = [], zonesBySite = ne
         open={siteModal}
         site={null}
         customers={order.customerId ? [{ id: order.customerId, name: order.customerName }] : []}
+        customerAddresses={customerAddresses}
         defaults={{ customerId: order.customerId, customerName: order.customerName }}
         onClose={() => setSiteModal(false)}
         onSave={async (form) => {

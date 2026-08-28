@@ -31,9 +31,17 @@ import {
 } from "@/lib/service/rounds";
 import { evaluateVisitGate, gatePassed, gateReasons } from "@/lib/service/visitGate";
 import { isDraftVisit } from "@/lib/service/visitStatus";
+import {
+  ALL_TEAMS,
+  filterRowsByTeam,
+  teamByUser,
+  teamFilterOptions,
+  teamLoad,
+} from "@/lib/service/crewTeams";
+import Segmented from "@/components/ui/Segmented";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtMonthShort } from "@/lib/format";
+import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -63,6 +71,10 @@ export default function ServiceSchedulePage() {
   const [formVisit, setFormVisit] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [formDefaults, setFormDefaults] = useState(null);
   const [toast, setToast] = useState(null);
+  /* ⭐ ทีมช่าง (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
+     ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
+  const [crew, setCrew] = useState({ teams: [], members: [] });
+  const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -97,6 +109,18 @@ export default function ServiceSchedulePage() {
   }, [range.from, range.to, startRun]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
+
+  /* ทะเบียนทีมช่างโหลดครั้งเดียว — ไม่ผูกกับสัปดาห์ที่เลื่อนไปมา
+     ⚠️ โหลดไม่ได้ = ไม่มีตัวกรองทีม ไม่ใช่หน้าพัง (ทีมเป็นมุมมอง ไม่ใช่ด่าน) */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/teams?department=TS");
+        const body = await res.json().catch(() => null);
+        if (res.ok) setCrew({ teams: body?.teams || [], members: body?.members || [] });
+      } catch { /* เงียบได้ — ตารางยังใช้งานได้เต็มที่โดยไม่มีทีม */ }
+    })();
+  }, []);
 
   // รายชื่อช่าง + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น
   useEffect(() => {
@@ -159,6 +183,20 @@ export default function ServiceSchedulePage() {
     });
     return list;
   }, [boardVisits]);
+
+  const crewByUser = useMemo(() => teamByUser(crew.members), [crew.members]);
+  const teamOptions = useMemo(
+    () => teamFilterOptions(crew.teams, rows, crewByUser),
+    [crew.teams, rows, crewByUser],
+  );
+  const teamRows = useMemo(
+    () => filterRowsByTeam(rows, teamFilter, crewByUser),
+    [rows, teamFilter, crewByUser],
+  );
+  const crewLoad = useMemo(
+    () => teamLoad({ teams: crew.teams, rows, members: crew.members, byUser: crewByUser }),
+    [crew.teams, crew.members, rows, crewByUser],
+  );
 
   const loads = useMemo(() => {
     const map = new Map();
@@ -233,10 +271,34 @@ export default function ServiceSchedulePage() {
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
           <span className={styles.count}>{boardVisits.length} นัด</span>
+          {/* ⭐ ตัวกรองทีมช่าง — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
+              ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
+          {teamOptions.length > 1 && (
+            <Segmented
+              value={teamFilter}
+              onChange={setTeamFilter}
+              options={teamOptions}
+              ariaLabel="กรองตามทีมช่าง"
+            />
+          )}
         </div>
       )}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
+
+      {/* ⭐ ภาระรายทีมของสัปดาห์ที่เปิดอยู่ — ทีมที่มีคนแต่ไม่มีนัดขึ้นเป็น 0
+          ไม่ใช่หายไป เพราะทีมว่างคือทีมที่รับงานเพิ่มได้ ซึ่งเป็นสิ่งที่คนจัดคิวหาอยู่ */}
+      {!loading && !loadError && crewLoad.length > 0 && (
+        <ul className={styles.teamLoad} aria-label="ภาระรายทีม">
+          {crewLoad.map((team) => (
+            <li key={team.code} data-empty={team.visits === 0 ? "yes" : undefined}>
+              <b>{team.name}</b>
+              <span>{fmtNumber(team.visits)} นัด</span>
+              <span>{team.people ? `${fmtNumber(team.people)} คน` : naText(null)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* ⭐ คิวรอจัด — ร่างที่ยังไม่ผ่านด่าน อยู่ **ข้างกริด ไม่ใช่ในกริด**
           ถ้าวางปนกับนัดจริง ช่างจะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
@@ -288,13 +350,13 @@ export default function ServiceSchedulePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {teamRows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className={styles.emptyRow}>
                     สัปดาห์นี้ยังไม่มีนัดเข้าบริการ
                   </td>
                 </tr>
-              ) : rows.map((row) => (
+              ) : teamRows.map((row) => (
                 <tr key={row.key}>
                   {/* ชื่อช่างกดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
                       มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าช่าง (มติ 2026-08-02 ข้อ 2)
