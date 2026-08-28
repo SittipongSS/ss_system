@@ -74,6 +74,20 @@ DETAIL: Failing row contains (... ขึ้นทะเบียนสรรพ�
 `RA` ⇒ มันบล็อก **ตัว UPDATE เอง** ไม่ใช่บล็อกตอน `ADD` อย่างที่เข้าใจตอนแรก
 ทั้งใบอยู่ในทรานแซกชันเดียว ⇒ ระหว่างที่ CHECK ถูกถอด ไม่มีใครเขียนแทรกได้
 
+🔴 **CHECK ไม่ใช่ด่านเดียวบนตาราง** — `guard_workflow_template_step` (0121:202) บล็อก
+INSERT/UPDATE/DELETE **ทุกชนิด** บนขั้นตอนที่เวอร์ชันแม่ไม่ใช่ `draft` โดยไม่ดูว่าแก้
+คอลัมน์ไหน:
+
+```
+ERROR: P0001: workflow_template_steps_immutable
+CONTEXT: PL/pgSQL function guard_workflow_template_step() line 6 at RAISE
+```
+
+สามแถวที่ต้องย้ายอยู่ใต้เวอร์ชันที่ published แล้วทั้งหมด ⇒ ต้องปิด trigger ชั่วคราว
+แล้วเปิดคืน **ในทรานแซกชันเดียวกัน** (ล้มกลางคัน = trigger กลับมาเองพร้อม rollback)
+0193 เคยล้มบน prod ด้วยเหตุเดียวกันมาแล้ว และเทสต์ของมันบันทึกบทเรียนไว้ —
+**ใบไหนที่แก้ข้อมูลตารางที่มี trigger ต้องไปอ่านก่อน ไม่ใช่ดูแค่ CHECK**
+
 ⚠️ `workflow_template_versions` **ไม่มีคอลัมน์ `steps`** — ขั้นตอนอยู่ในตาราง
 `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง)
 

@@ -32,6 +32,12 @@
 --  ⚠️ `workflow_template_versions` **ไม่มีคอลัมน์ `steps`** — ขั้นตอนอยู่ในตาราง
 --     `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง)
 --
+--  🔴 **CHECK ไม่ใช่ด่านเดียวบนตารางนี้** — `guard_workflow_template_step` บล็อก
+--     การเขียนทุกชนิดบนขั้นตอนที่เวอร์ชันแม่ไม่ใช่ draft (P0001
+--     workflow_template_steps_immutable) · สามแถวที่ต้องย้ายอยู่ใต้เวอร์ชัน published
+--     ⇒ ต้องปิด trigger ชั่วคราวแล้วเปิดคืนในทรานแซกชันเดียวกัน
+--     (0193 เคยล้มบน prod ด้วยเหตุเดียวกันมาแล้ว — เทสต์ของมันบันทึกไว้)
+--
 --  ของจริงบนฐาน ณ 2026-08-28: project_tasks 26 แถว · workflow_template_steps 3 แถว
 --
 --  Idempotent (รันซ้ำได้)
@@ -46,8 +52,19 @@ ALTER TABLE public.project_tasks
   DROP CONSTRAINT IF EXISTS project_tasks_role_check;
 
 -- ── 2) ย้ายแถว ───────────────────────────────────────────────────────────
+-- project_tasks ไม่มี trigger — update ตรง ๆ ได้
 UPDATE public.project_tasks SET role = 'RA' WHERE role = 'LG';
+
+/* 🔴 **บทเรียนซ้ำรอบสองของใบนี้** (และซ้ำรอย 0193 ที่เคยล้มบน prod ด้วยเหตุเดียวกัน):
+   `guard_workflow_template_step` (0121:202) บล็อก INSERT/UPDATE/DELETE **ทุกชนิด**
+   บนขั้นตอนที่เวอร์ชันแม่ไม่ใช่ `draft` โดยไม่ดูว่าแก้คอลัมน์ไหน:
+     ERROR: P0001: workflow_template_steps_immutable
+   สามแถวที่ต้องย้ายอยู่ใต้เวอร์ชันที่ published แล้วทั้งหมด ⇒ ต้องปิด trigger ชั่วคราว
+   ⚠️ ปิดแล้วต้องเปิดคืน **ในทรานแซกชันเดียวกัน** — ล้มกลางคันแล้ว trigger กลับมาเอง
+      พร้อมกับ rollback (ท่าเดียวกับที่ 0193 ทำกับ workflow_template_versions_guard) */
+ALTER TABLE public.workflow_template_steps DISABLE TRIGGER workflow_template_steps_guard;
 UPDATE public.workflow_template_steps SET role = 'RA' WHERE role = 'LG';
+ALTER TABLE public.workflow_template_steps ENABLE TRIGGER workflow_template_steps_guard;
 
 -- ── 3) ใส่ CHECK ชุดใหม่ (ทั้งสองตารางใช้ชุดเดียวกัน) ──────────────────────
 ALTER TABLE public.workflow_template_steps

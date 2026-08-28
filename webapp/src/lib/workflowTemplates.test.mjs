@@ -164,6 +164,25 @@ test('workflow summary reports counts without pretending summed days are critica
 
   /* `workflow_template_versions` ไม่มีคอลัมน์ `steps` — ขั้นตอนอยู่ใน
      `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง) */
+  /* 🔴 **บทเรียนซ้ำรอบสอง** — `guard_workflow_template_step` (0121:202) บล็อกการเขียน
+     ทุกชนิดบนขั้นตอนที่เวอร์ชันแม่ไม่ใช่ draft โดยไม่ดูว่าแก้คอลัมน์ไหน:
+       ERROR: P0001: workflow_template_steps_immutable
+     สามแถวที่ต้องย้ายอยู่ใต้เวอร์ชัน published ⇒ ต้องปิด trigger ชั่วคราว
+     (0193 เคยล้มบน prod ด้วยเหตุเดียวกัน — ดูเทสต์ของมันข้างล่าง)
+     ⚠️ CHECK ไม่ใช่ด่านเดียวบนตาราง — ใบไหนที่แก้ข้อมูลตารางนี้ต้องคิดถึง trigger ด้วย */
+  test('0308: ปิด trigger ของขั้นตอนแล้วเปิดคืนครบคู่ ในทรานแซกชันเดียว', () => {
+    const flat = sql.replace(/\s+/g, ' ');
+    const disable = 'ALTER TABLE public.workflow_template_steps DISABLE TRIGGER workflow_template_steps_guard';
+    const enable = 'ALTER TABLE public.workflow_template_steps ENABLE TRIGGER workflow_template_steps_guard';
+    const update = "UPDATE public.workflow_template_steps SET role = 'RA'";
+    assert.ok(flat.includes(disable), 'ไม่ได้ปิด trigger — จะล้มด้วย workflow_template_steps_immutable');
+    assert.ok(flat.includes(enable), 'ปิด trigger แล้วไม่ได้เปิดคืน — ด่านของตารางจะหายถาวร');
+    assert.ok(flat.indexOf(disable) < flat.indexOf(update), 'ต้องปิดก่อน UPDATE');
+    assert.ok(flat.indexOf(update) < flat.indexOf(enable), 'ต้องเปิดคืนหลัง UPDATE');
+    assert.ok(flat.indexOf('BEGIN;') < flat.indexOf(disable) && flat.indexOf(enable) < flat.indexOf('COMMIT;'),
+      'disable/enable ต้องอยู่ระหว่าง BEGIN…COMMIT — ล้มกลางคันแล้ว trigger ต้องกลับมาเอง');
+  });
+
   test('0308: ไม่แตะคอลัมน์ที่ไม่มีอยู่จริง', () => {
     // ⚠️ ตัว RPC เขียน `UPDATE public.workflow_template_versions SET "nameTh" = …`
     // อยู่แล้วโดยชอบ — ที่ห้ามคือการอ้าง **คอลัมน์ `steps`** ซึ่งตารางนี้ไม่มี
