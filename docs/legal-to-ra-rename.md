@@ -38,6 +38,20 @@ export function normalizeRole(role) { return role ? (LEGACY_ROLE[role] || role) 
 `lib/roleReadPoints.test.mjs` อ่านซอร์สจริงมาไล่ตรวจ จุดใหม่ที่ลืมจะแดงก่อน merge
 
 ✅ **ย้ายบัญชีครบแล้ว 2026-08-28** — `sittipong0510@gmail.com` · `rd@scentandsense.co.th`
+
+### 🐞 ของที่ตกค้าง: สิทธิ์รายคน (`extraCaps`) ไม่ได้ถูกเปลี่ยนชื่อไปด้วย
+
+รอบแรกเปลี่ยนชื่อ **role** ครบ แต่ `app_metadata.extraCaps` ของคนที่ถูก grant ให้ทำงาน
+แทนฝ่าย RA ยังเขียน `legal:view` / `legal:approve` อยู่ · ชื่อพวกนี้ไม่อยู่ใน
+`GRANTABLE_CAPS` แล้ว ⇒ `sanitizeExtraCaps` **ตัดทิ้งเงียบ ๆ** ⇒ สามคนนั้นไม่ได้สิทธิ์ที่
+ตั้งใจให้จริง และไม่มี error ให้ใครเห็น — `npm run check:users` เป็นตัวที่จับได้
+
+⚠️ **บทเรียน: เปลี่ยนชื่อ cap ต้องไล่ `extraCaps` ด้วย ไม่ใช่แค่ `role`** — cap ที่ถูก
+grant รายคนไม่มีทะเบียนกลางคอยเตือน ต่างจาก role ที่ตกไป `DEFAULT_CAPS` แล้วคนใช้รู้ทันที
+เพราะเข้าหน้าไหนไม่ได้เลย · การเงียบคือสิ่งที่ทำให้มันค้างอยู่หลายวัน
+
+✅ แก้แล้ว 2026-08-28 — `node scripts/migrate-legal-caps-to-ra.mjs`
+(3 บัญชี: `nicha@` · `chonthicha@` · `sittipong@`)
 เป็น `role=ra` `department=RA` · ตรวจ Admin API แล้วไม่เหลือ `legal` สักบัญชี (รวมที่ปิดแล้ว)
 ⇒ ทะเบียน `LEGACY_ROLE` ว่างแล้ว
 
