@@ -272,7 +272,7 @@ export default function ServiceSchedulePage() {
                                 onClick={() => setFormVisit(visit)}
                                 title={[
                                   site?.name,
-                                  site?.zone,
+                                  site?.routeZone,
                                   VISIT_KIND_LABELS[visit.kind],
                                   VISIT_STATUS_LABELS[visit.status],
                                   ...warnings.map((w) => `⚠ ${w.message}`),

@@ -260,9 +260,14 @@ function SummaryCard({ scope, onScope, data, months, closedCount, splitIdx }) {
           <Segmented ariaLabel="มุมมองสรุป" options={SCOPES} value={scope} onChange={onScope} />
         </div>
       </div>
-      {scope === "month" && <MonthTable data={data} closedCount={closedCount} />}
-      {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" />}
-      {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" />}
+      {/* ⚠️ ต้องอยู่ใน `.ui-section-body` — เปลือกการ์ดใส่ระยะขอบให้ตัวเลื่อนตารางที่เป็น
+          *ลูกตรง* ของ `.ui-section` โดยคิดว่าไม่มีชั้นนี้ พอไม่มี body ตารางจะกว้างเกินการ์ด
+          32px แล้วโดน `overflow: hidden` ตัดคอลัมน์ขวาสุดทิ้งโดยเลื่อนตามไปดูไม่ได้ */}
+      <div className="ui-section-body">
+        {scope === "month" && <MonthTable data={data} closedCount={closedCount} />}
+        {scope === "team" && <GroupTable rows={data?.teams || []} idx={splitIdx} months={months} kind="team" />}
+        {scope === "person" && <GroupTable rows={data?.people || []} idx={splitIdx} months={months} kind="person" />}
+      </div>
     </section>
   );
 }
