@@ -9,7 +9,7 @@ import {
 } from './salesOrderFinanceApproval.js';
 
 const FN = { id: 'u-fn', role: 'finance', department: 'FN' };
-const FN_STAFF = { id: 'u-fn2', role: 'staff', department: 'FN' };
+const FN_STAFF = { id: 'u-fn2', role: 'finance', department: 'FN' };
 const AE_SUP = { id: 'u-sup', role: 'ae_supervisor', department: 'SA' };
 const AE = { id: 'u-ae', role: 'ae' };
 const ADMIN = { id: 'u-admin', role: 'admin' };

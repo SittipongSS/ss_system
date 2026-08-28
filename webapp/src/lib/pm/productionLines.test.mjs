@@ -105,31 +105,31 @@ test('capacityRange รวมกำลังเฉพาะวันทำกา
 });
 
 // ── ฝ่าย TS + สิทธิ์ (แผน §6) ────────────────────────────────────────────
-const pc = { role: 'staff', department: 'PC' };
-const pd = { role: 'staff', department: 'PD' };
-const wh = { role: 'staff', department: 'WH' };
-const ts = { role: 'staff', department: 'TS' };
+const pc = { role: 'pc', department: 'PC' };
+const pd = { role: 'pd', department: 'PD' };
+const wh = { role: 'wh', department: 'WH' };
+const ts = { role: 'ts', department: 'TS' };
 const aeSv = { role: 'ae', team: 'SV' };
 const aeKa = { role: 'ae', team: 'KA' };
 
-test('ฝ่าย TS มีจริงและรับได้เฉพาะ role staff', () => {
+test('ฝ่าย TS มีจริงและรับได้เฉพาะ role ts', () => {
   assert.ok(DEPARTMENTS.includes('TS'));
   assert.equal(DEPARTMENT_NAMES_TH.TS, 'ฝ่ายเทคนิคบริการ');
-  assert.deepEqual(rolesForDepartment('TS'), ['staff']);
-  assert.equal(validateIdentity('staff', null, 'TS'), null);
+  assert.deepEqual(rolesForDepartment('TS'), ['ts']);
+  assert.equal(validateIdentity('ts', null, 'TS'), null);
 });
 
 test('⭐ ช่างฝ่าย TS ต้องไม่ต้องถือ role ขาย — ไม่งั้นได้ cap ขายมาทั้งชุด', () => {
   // ทีมมีได้เฉพาะ role ขาย ถ้าจับช่างเป็น "ทีม" ช่างต้องเป็น ae แล้วเห็นดีล/ราคาทั้งทีม
-  assert.match(validateIdentity('staff', 'SV', 'TS'), /ไม่ต้องระบุทีม/);
+  assert.match(validateIdentity('ts', 'SV', 'TS'), /ไม่ต้องระบุทีม/);
 });
 
-test('⭐ PC/PD แก้ตารางผลิตได้ ทั้งที่ pmEditScope ของ staff = none', () => {
+test('⭐ PC/PD แก้ตารางผลิตได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
   assert.equal(canEditProduction(pc), true);
   assert.equal(canEditProduction(pd), true);
 });
 
-test('⭐ staff ฝ่ายอื่น (WH) ถือ cap แต่แก้ตารางผลิตไม่ได้ — cap กว้าง ฝ่ายเป็นตัวกั้น', () => {
+test('⭐ ฝ่ายอื่น (WH) แก้ตารางผลิตไม่ได้ — ไม่มี production:edit ตั้งแต่ชั้น role', () => {
   assert.equal(canEditProduction(wh), false);
 });
 

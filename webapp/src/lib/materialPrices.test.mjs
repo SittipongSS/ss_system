@@ -197,7 +197,7 @@ test('normalize ข้อมูลวัสดุ: ผูกฝ่ายตา�
 
 test('สิทธิ์ตอบราคาวัสดุ: เฉพาะฝ่ายเจ้าของ (RD=RM, PC=PM)', () => {
   const rd = { role: 'rd', department: 'RD' };
-  const pc = { role: 'staff', department: 'PC' };
+  const pc = { role: 'pc', department: 'PC' };
   assert.equal(canQuoteMaterial(rd, 'RM_F'), true);
   assert.equal(canQuoteMaterial(rd, 'PM'), false, 'RD ตอบราคา PM ไม่ได้');
   assert.equal(canQuoteMaterial(pc, 'PM'), true);

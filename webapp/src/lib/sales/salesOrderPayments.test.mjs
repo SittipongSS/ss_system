@@ -31,9 +31,9 @@ const frozen = (row) => ({ frozenAt: FROZEN, ...row });
 const SA = { id: 'u-sa', role: 'ae' };
 const SA_OTHER = { id: 'u-sa2', role: 'ae' };
 const AE_SUP = { id: 'u-sup', role: 'ae_supervisor', department: 'SA' };
-const FN_STAFF = { id: 'u-fn', role: 'staff', department: 'FN' };
+const FN_STAFF = { id: 'u-fn', role: 'finance', department: 'FN' };
 const FN_ROLE = { id: 'u-fn2', role: 'finance', department: 'FN' };
-const PC_STAFF = { id: 'u-pc', role: 'staff', department: 'PC' };
+const PC_STAFF = { id: 'u-pc', role: 'pc', department: 'PC' };
 const ADMIN = { id: 'u-admin', role: 'admin' };
 
 // ── สร้างงวดจากแผนของ QT ────────────────────────────────────────────────

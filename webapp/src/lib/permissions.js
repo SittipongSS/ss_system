@@ -126,10 +126,31 @@ const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'RA', LG: 'RA', VIEWER: 'Viewer'
  * วิธีใช้ครั้งหน้า: เติม `{ ชื่อเก่า: 'ชื่อใหม่' }` แล้วลบออกเมื่อย้ายบัญชีครบ */
 const LEGACY_ROLE = {};
 
-/** แปลง role ที่เก็บไว้/รับเข้ามา ให้เป็นชื่อปัจจุบัน (แปลงตอนอ่าน) */
-export function normalizeRole(role) {
+/* ⭐ **`staff` แปลงด้วย "ฝ่าย" ไม่ใช่ตารางชื่อ** (มติผู้ใช้ 2026-08-28 · ยกเลิก role
+   `staff` ทุกฝ่าย) — role เดียวเคยครอบห้าฝ่าย ⇒ ปลายทางขึ้นกับ `department` ของคนนั้น
+   ⚠️ ไม่มีฝ่ายให้เทียบ = **คืน `staff` ตามเดิม** ไม่เดาเป็น role ไหน · role ที่ระบบ
+   ไม่รู้จักตกไป `DEFAULT_CAPS` (อ่านทะเบียนอย่างเดียว) ซึ่งเป็นฝั่งที่ปลอดภัย
+   🐞 เคยเขียน fallback เป็น `viewer` ⇒ **เปิดกว้างขึ้น** เพราะ viewer คือผู้สังเกตการณ์
+   ทั้งระบบ (เห็นงานบริหารด้วย) — ตรงข้ามกับที่ตั้งใจ
+   🗑️ ลบทิ้งได้เมื่อบัญชีที่เคยเป็น staff login ใหม่ครบ (2 บัญชี: PC · PD) */
+const LEGACY_STAFF_ROLE_BY_DEPARTMENT = {
+  PC: 'pc', PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts', RD: 'rd', FN: 'finance',
+};
+
+/** แปลง role ที่เก็บไว้/รับเข้ามา ให้เป็นชื่อปัจจุบัน (แปลงตอนอ่าน)
+ *
+ * ⚠️ `department` จำเป็นเฉพาะกับ `staff` เก่า — จุดอ่านที่มีฝ่ายในมือควรส่งมาด้วยเสมอ */
+export function normalizeRole(role, department) {
   if (!role) return role;
+  if (role === 'staff') {
+    return LEGACY_STAFF_ROLE_BY_DEPARTMENT[normalizeDepartment(department)] || role;
+  }
   return LEGACY_ROLE[role] || role;
+}
+
+/** role ที่ใช้จริงของผู้ใช้คนนี้ (จาก object ที่มีทั้ง role และ department) */
+export function roleOf(user) {
+  return normalizeRole(user?.role, user?.department);
 }
 
 export function normalizeDepartment(department) {
@@ -138,7 +159,7 @@ export function normalizeDepartment(department) {
 }
 
 // Roles allowed in each department (drives the dependent role dropdown). Teams
-// (ODM/KA/SV) live only under SA; RA/Viewer/staff-departments have no teams.
+// (ODM/KA/SV) live only under SA; every other department has no teams.
 const DEPARTMENT_ROLES = {
   AD: ['admin'],
   SEC: ['secretary'],
@@ -149,28 +170,30 @@ const DEPARTMENT_ROLES = {
   // EX = ฝ่ายบริหาร — ผู้อนุมัติราคาผลิตในระบบขอราคาผลิต (ไม่มี operation อื่น)
   EX: ['executive'],
   Viewer: ['viewer'],
-  // RD ได้ role เฉพาะ (rd) — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีมเพื่อตอบ
-  // ข้อสอบถาม; ยังอนุญาต staff ไว้สำหรับข้อมูลเก่า/คนที่ไม่ต้องเข้าระบบขาย.
-  PC: ['staff'], PD: ['staff'], WH: ['staff'], RD: ['rd', 'staff'], QC: ['staff'],
+  /* ⭐ **ทุกฝ่ายมี role ของตัวเอง** (มติผู้ใช้ 2026-08-28: *"จะไม่มีตำแหน่ง staff แล้วทุกฝ่าย"*)
+     — เดิม PC/PD/WH/QC/TS ใช้ role `staff` ร่วมกันตัวเดียว ⇒ cap ต้องถือกว้างระดับ role
+     แล้วไปแคบด้วย **ฝ่าย** ที่ helper ทุกตัว (`canViewCosting` · `canViewProduction` ·
+     `canViewService`) · พลาดที่ไหนที่หนึ่ง = คลัง/QC เห็นต้นทุน หรือช่างแก้ตารางผลิตได้
+     ⇒ แยกเป็น role รายฝ่าย แล้ว **ให้ cap ตรงกับงานจริงของฝ่ายนั้นตั้งแต่แรก**
+     ⚠️ RD ได้ role เฉพาะ (rd) มาก่อนแล้ว — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีม
+     เพื่อตอบข้อสอบถาม จึงมี cap มากกว่าฝ่ายโรงงานอื่น */
+  PC: ['pc'], PD: ['pd'], WH: ['wh'], RD: ['rd'], QC: ['qc'],
   // TS = ฝ่ายเทคนิคบริการ — ช่างที่เข้าไซต์ลูกค้า (แผน service-production-scheduling §6).
   // ⚠️ เป็น **ฝ่าย** ไม่ใช่ทีมใต้ SA โดยเจตนา: ทีมมีได้เฉพาะ role ฝ่ายขาย (TEAM_ROLES)
   // ดังนั้นถ้าจับช่างไปเป็นทีม ช่างต้องถือ role `ae` แล้วจะได้ cap ขายมาทั้งชุด
   // (เห็นดีล/ใบเสนอราคา/มูลค่าทั้งทีม) ซึ่งไม่ใช่สิ่งที่ตั้งใจ.
   // ทีม SV (Services) ยังเป็นทีม**ขาย**ธุรกิจบริการเหมือนเดิม — TS คือฝ่ายที่รับงานต่อ.
-  TS: ['staff'],
+  TS: ['ts'],
   // FN = ฝ่ายบัญชีและการเงิน — รับคำร้องขอเอกสารการเงิน (P7) + คอนเฟิร์มงวดชำระของ SO (mig 0245)
   // ⚠️ **ไม่ได้อยู่ใน COSTING_SOURCE_DEPARTMENTS โดยตั้งใจ** — บัญชีไม่ใช่แหล่งราคา
-  // จึงถือ costing:* ระดับ role (จาก staff) แต่ผ่านด่าน canViewCosting ไม่ได้เลย
-  //
   // ⭐ `finance` เป็น role ของฝ่ายนี้เอง (มติผู้ใช้ 2026-08-13: *"ไม่อยากใช้คำว่า Staff"*)
-  // และจำเป็นทางเทคนิคด้วย — `staff` ไม่มี `salesplan:view` ⇒ บัญชีเปิดใบสั่งขายไม่ได้เลย
-  // จึงคอนเฟิร์มงวดไม่ได้ · คง `staff` ไว้ให้ผู้ใช้ FN เดิมที่ยังไม่ได้ย้าย role
-  FN: ['finance', 'staff'],
+  // — ฝ่ายแรกที่แยกออกจาก `staff` · ที่เหลือตามมาทั้งหมดเมื่อ 2026-08-28
+  FN: ['finance'],
 };
 
 // A role's home/default department — used to display legacy users whose
-// department wasn't stored. `staff` spans 5 departments so it has no default;
-// staff users always carry an explicit department.
+// department wasn't stored. ⭐ ตั้งแต่ยกเลิก `staff` (2026-08-28) **ทุก role มีฝ่าย
+// ของตัวเองครบ** ⇒ ผู้ใช้ที่ไม่มี department เก็บไว้ก็ยังรู้ฝ่ายจาก role ได้
 const ROLE_DEFAULT_DEPARTMENT = {
   admin: 'AD',
   secretary: 'SEC',
@@ -179,6 +202,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   ra: 'RA', executive: 'EX', viewer: 'Viewer',
   rd: 'RD',
   finance: 'FN',
+  pc: 'PC', pd: 'PD', wh: 'WH', qc: 'QC', ts: 'TS',
 };
 
 export function departmentFor(role) {
@@ -200,7 +224,13 @@ export const TEAMS = ['KA', 'ODM', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'executive', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'executive', 'viewer'];
+
+/* ── role ของฝ่ายปฏิบัติการ (ไม่ใช่ฝ่ายขาย ไม่ใช่ผู้สังเกตการณ์) ──────────────
+   ⭐ แทน role `staff` ตัวเดียวที่ห้าฝ่ายเคยใช้ร่วมกัน (มติผู้ใช้ 2026-08-28)
+   ⚠️ ที่เดียวที่ประกาศ — helper ที่เคยถาม `role === 'staff'` ต้องถามลิสต์นี้แทน
+   ไม่ใช่ไล่เขียนชื่อ role ห้าตัวซ้ำทุกจุด (จุดที่ตกหล่นจะเงียบ ไม่ error) */
+export const OPS_ROLES = ['pc', 'pd', 'wh', 'qc', 'ts'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -214,7 +244,11 @@ export const ROLE_LABELS = {
   finance: 'บัญชีและการเงิน (Finance)',
   executive: 'ผู้บริหาร (Executive)',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
-  staff: 'พนักงาน (Staff)',
+  pc: 'จัดซื้อ (PC)',
+  pd: 'ผลิต (PD)',
+  wh: 'คลังสินค้า (WH)',
+  qc: 'ควบคุมคุณภาพ (QC)',
+  ts: 'เทคนิคบริการ (TS)',
 };
 
 // Roles that operate inside a team (at least one team is required for them).
@@ -450,31 +484,37 @@ const ROLE_CAPS = {
     // เพื่อไม่ให้ใครเสียสิทธิ์ตอนแยก · ฝ่ายที่ใช้จริงถูกแคบด้วย department อีกชั้น
     'requests:answer',
   ],
-  // staff: a member of a non-sales department (PC/PD/WH/RD/QC). Logs in to see
-  // PM + the tasks assigned to them, and may READ the shared master data
-  // (products/customers) — but never the cost margin (no products:margin).
-  // costing:* is held at role level because ฝ่ายจัดซื้อ (PC) — the source of PM
-  // prices — has no role of its own; ACCESS is then narrowed to department
-  // RD/PC by canViewCosting/canQuoteCosting, the same "cap broad, gate narrow"
-  // shape as sahamit (cap on every sales role, team===KA narrows). PD/WH/QC hold
-  // the cap but reach nothing: always gate through those two helpers, never
-  // through can(role, 'costing:view') alone, or their cost data leaks.
-  // + production:* / service:* ถือระดับ role ด้วยเหตุผลเดียวกับ costing:* —
-  //   ฝ่ายผลิต (PD) / จัดซื้อ (PC) / เทคนิคบริการ (TS) ไม่มี role ของตัวเอง
-  //   **ACCESS แคบด้วยฝ่าย** ที่ canEditProduction / canEditService เสมอ
-  //   ⚠️ ห้าม gate ด้วย can(role, 'production:edit') ล้วน ไม่งั้น WH/QC แก้ตารางผลิตได้
-  staff: [
-    'pm:view', 'products:view', 'customers:view', 'costing:view', 'costing:quote',
-    // ⭐ ถือกว้างระดับ role แล้ว **แคบด้วยฝ่าย** ที่ canAnswerRequestsFor เสมอ
-    // (รูปเดียวกับ costing:*) — PD/WH/QC ถือ cap แต่ไม่มีคำร้องฝ่ายไหนให้ตอบ
-    'requests:answer',
+  /* ── ฝ่ายปฏิบัติการ: หนึ่งฝ่าย หนึ่ง role (มติผู้ใช้ 2026-08-28) ──────────────
+     เดิมห้าฝ่ายใช้ role `staff` ตัวเดียว ⇒ ต้องถือ cap กว้าง (costing:* · production:* ·
+     service:* · payments:confirm) แล้วไปแคบด้วยฝ่ายที่ helper ปลายทาง · แปลว่า **ทุก
+     endpoint ใหม่ที่เผลอ gate ด้วย `can(role, cap)` ล้วน จะเปิดให้ห้าฝ่ายพร้อมกัน**
+     ⇒ ตอนนี้ cap ตรงกับงานจริงของแต่ละฝ่ายตั้งแต่ชั้น role: คลังไม่มี costing:view
+     ให้หลุด · QC ไม่มี production:edit ให้แก้ตาราง · ช่างไม่มี production:* เลย
+     ⚠️ ด่านระดับฝ่าย (`canViewCosting` · `canEditProduction` · `canEditService`)
+     **ยังอยู่ครบ** — มันกันฝ่ายขาย/admin ที่ถือ cap เดียวกันด้วยเหตุผลอื่น
+     ⚠️ ทุก role ที่นี่ไม่มี `products:margin` ⇒ ไม่เห็นต้นทุน/กำไรของทะเบียนสินค้า */
+
+  // PC = ฝ่ายจัดซื้อ — แหล่งราคา PM ของใบขอราคาผลิต + วางคิวของเข้า/ผลิต
+  // (COSTING_SOURCE_DEPARTMENTS · REQUEST_ANSWER_DEPARTMENTS · PRODUCTION_PLANNER_DEPARTMENTS)
+  pc: [
+    'pm:view', 'products:view', 'customers:view',
+    'costing:view', 'costing:quote', 'requests:answer',
     'production:view', 'production:edit',
+  ],
+  // PD = ฝ่ายผลิต — วางคิวไลน์ผลิตจริง · ไม่ใช่แหล่งราคา จึงไม่มี costing:*
+  pd: [
+    'pm:view', 'products:view', 'customers:view',
+    'production:view', 'production:edit',
+  ],
+  // WH = ฝ่ายคลัง · QC = ฝ่ายควบคุมคุณภาพ — อยู่ในสายงานโรงงาน ต้อง **อ่าน** ตารางผลิต
+  // เพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31) แต่ไม่ใช่คนวางคิว ⇒ ไม่มี production:edit
+  wh: ['pm:view', 'products:view', 'customers:view', 'production:view'],
+  qc: ['pm:view', 'products:view', 'customers:view', 'production:view'],
+  // TS = ฝ่ายเทคนิคบริการ — ช่างที่เข้าไซต์ · **ไม่อยู่ในสายโรงงาน** จึงไม่เห็นตารางผลิต
+  // (มติผู้ใช้ 2026-07-31 · เดิมต้องเขียนด่านแคบ TS ทิ้งไว้ใน canViewProduction)
+  ts: [
+    'pm:view', 'products:view', 'customers:view',
     'service:view', 'service:edit',
-    // ⭐ ให้ผู้ใช้ฝ่าย FN เดิมที่ยังถือ role `staff` คอนเฟิร์มงวดได้ทันทีโดยไม่ต้องรอย้าย role
-    // **แคบด้วยฝ่ายที่ canConfirmPayment เสมอ** (รูปเดียวกับ costing:* / production:*)
-    // ⚠️ staff ฝ่ายอื่นถือ cap นี้แต่ไปไม่ถึงไหน — และเปิดใบสั่งขายไม่ได้อยู่แล้ว
-    //    เพราะไม่มี `salesplan:view` (อีกเหตุผลที่ role `finance` จำเป็น ไม่ใช่แค่ชื่อสวย)
-    'payments:confirm',
   ],
 };
 
@@ -545,7 +585,7 @@ export function sanitizeExtraCaps(extraCaps) {
 // A user's EFFECTIVE capabilities = role caps ∪ sanitized per-user grants.
 // Prefer this over can(role, …) wherever a `user` object is in hand.
 export function capsForUser(user) {
-  const base = capsFor(user?.role);
+  const base = capsFor(roleOf(user));
   const extra = sanitizeExtraCaps(user?.extraCaps);
   return extra.length ? [...new Set([...base, ...extra])] : base;
 }
@@ -596,8 +636,8 @@ export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN'];
 // ฝ่ายขาย ถ้าเขาคอนเฟิร์มเงินเข้าได้เอง ด่านนี้ก็ไม่มีความหมาย (เหตุผลเดียวกับที่
 // `isSalesOrderSelfApproval` ห้ามผู้สร้างอนุมัติใบตัวเอง) · admin เท่านั้นที่ break-glass ได้
 //
-// รูปเดียวกับ costing:* — ถือ cap กว้างระดับ role แล้วแคบด้วย **ฝ่าย** ที่นี่
-// (ผู้ใช้ FN เดิมที่ยังถือ role `staff` จึงผ่านได้ทันทีโดยไม่ต้อง migrate ข้อมูลผู้ใช้)
+// ⚠️ ด่านฝ่ายยังอยู่ แม้วันนี้จะมีแค่ role `finance` ที่ถือ cap นี้ — ฝ่ายอื่นที่ได้ cap
+// มาวันหน้า (หรือ grant รายคน) ต้องยังติดด่าน FN ตรงนี้
 export function canConfirmPayment(user) {
   if (user?.role === 'admin') return true;
   if (!canUser(user, 'payments:confirm')) return false;
@@ -628,12 +668,14 @@ export function canViewRequests(user) {
   return canAnswerRequestsFor(user, departmentOf(user));
 }
 
-// เห็นใบขอราคาผลิต (รวมต้นทุนเต็มใบ). staff ถือ cap ระดับ role เพราะฝ่ายจัดซื้อ
-// (PC) ไม่มี role ของตัวเอง จึงต้องแคบด้วยฝ่ายตรงนี้ ไม่งั้น PD/WH/QC เห็นต้นทุนไปด้วย
+/* เห็นใบขอราคาผลิต (รวมต้นทุนเต็มใบ)
+   ⭐ ตั้งแต่แยก role รายฝ่าย (2026-08-28) **cap คือด่านจริง** — มีเฉพาะฝ่ายขาย · RD · PC
+   (เดิมต้องเขียน `if (role !== 'staff')` ทิ้งไว้ตรงนี้เพราะ PD/WH/QC/TS ถือ cap
+   เดียวกันมาจาก role `staff` แล้วจะเห็นต้นทุนไปด้วย)
+   ⚠️ ยังคงเป็นฟังก์ชัน ไม่ใช่ให้เรียก `canUser(user,'costing:view')` ตรง ๆ ที่ปลายทาง —
+   ที่นี่คือจุดเดียวที่จะเพิ่มด่านฝ่ายกลับมาได้ ถ้าวันหน้ามี role อื่นได้ cap นี้ */
 export function canViewCosting(user) {
-  if (!canUser(user, 'costing:view')) return false;
-  if (user?.role !== 'staff') return true;
-  return COSTING_SOURCE_DEPARTMENTS.includes(departmentOf(user));
+  return canUser(user, 'costing:view');
 }
 
 // ตอบราคาบนบรรทัดของฝ่ายตน (RD = RM, PC = PM). ตัว cap อย่างเดียวไม่พอ —
@@ -658,8 +700,8 @@ export const PRODUCTION_VIEWER_DEPARTMENTS = ['PC', 'PD', 'WH', 'QC'];
 // อ่านตารางผลิตได้กว้างโดยเจตนา: ฝ่ายขายต้องตอบลูกค้าได้ว่าผลิตวันไหน
 // โดยไม่ต้องเดินไปถามโรงงาน (ข้อมูลกำหนดการ ไม่ใช่ต้นทุน — ต่างจาก costing)
 //
-// ⚠️ แต่ `staff` ต้องแคบด้วยฝ่ายเหมือน canViewService — cap `production:view` อยู่ที่
-// role ซึ่ง PC/PD/WH/QC/**TS** ใช้ร่วมกันหมด
+// ⭐ ตั้งแต่แยก role รายฝ่าย (2026-08-28) ฝ่ายโรงงานถือ cap นี้เฉพาะ PC/PD/WH/QC —
+// `ts` ไม่มี `production:view` ตั้งแต่ชั้น role ⇒ ไม่ต้องมีด่านแคบ TS ตรงนี้อีก
 //
 // ⭐ **แผนการผลิต กับ ธุรกิจบริการ (TS) เป็นคนละทีมปฏิบัติงาน** (มติผู้ใช้ 2026-07-31)
 // — ของเดิมไม่แคบตรงนี้ ช่าง TS จึงอ่านตารางผลิตได้ทั้งระบบ · วันนี้ยังไม่มีใครเห็น
@@ -669,18 +711,17 @@ export const PRODUCTION_VIEWER_DEPARTMENTS = ['PC', 'PD', 'WH', 'QC'];
 // ⚠️ แคบ **เฉพาะ TS** ไม่ใช่กวาดทุกฝ่ายที่ไม่ได้วางแผน — WH/QC อยู่ในสายงานโรงงาน
 // เดียวกันและต้องอ่านตารางเพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31)
 export function canViewProduction(user) {
-  if (!canUser(user, 'production:view')) return false;
-  if (user?.role !== 'staff') return true;
-  return PRODUCTION_VIEWER_DEPARTMENTS.includes(departmentOf(user));
+  return canUser(user, 'production:view');
 }
 
-// แก้ไลน์/กำลังผลิต/คิวผลิต. ⚠️ cap อย่างเดียวไม่พอ — `staff` ถือ cap นี้ทั้ง
-// PC/PD/WH/QC/TS ต้องแคบด้วยฝ่ายตรงนี้เสมอ ไม่งั้นคลัง/QC แก้ตารางโรงงานได้
+// แก้ไลน์/กำลังผลิต/คิวผลิต — ฝ่ายที่วางคิวจริงคือ PC/PD
+// ⚠️ **ด่านฝ่ายยังจำเป็น** แม้ cap จะแคบแล้ว (wh/qc ไม่มี production:edit) เพราะ
+// `isSuperuser` ข้างล่างเปิดให้ admin/หัวหน้าฝ่ายขาย และวันหน้าถ้ามี role อื่นได้ cap นี้
 //
-// ⚠️⚠️ บทเรียนตรงที่ห้ามกลับไปทำซ้ำ: ห้ามกั้นด้วย pmEditScope() แทน —
-// PC/PD เป็น role `staff` ซึ่ง pmEditScope = 'none' แปลว่า **คนที่วางคิวผลิตจริง
-// จะเป็นกลุ่มเดียวที่แก้ไม่ได้** (เกิดมาแล้วกับ /api/pm/my-work ที่กั้นด้วย
-// inquiries:respond จน PC ไม่เคยเห็นคิวตัวเอง — แก้ไปใน #790)
+// ⚠️⚠️ บทเรียนตรงที่ห้ามกลับไปทำซ้ำ: ห้ามกั้นด้วย pmEditScope() แทน — PC/PD มี
+// pmEditScope = 'none' แปลว่า **คนที่วางคิวผลิตจริงจะเป็นกลุ่มเดียวที่แก้ไม่ได้**
+// (เกิดมาแล้วกับ /api/pm/my-work ที่กั้นด้วย inquiries:respond จน PC ไม่เคยเห็นคิว
+// ตัวเอง — แก้ไปใน #790)
 export function canEditProduction(user) {
   if (!canUser(user, 'production:edit')) return false;
   if (isSuperuser(user?.role)) return true; // admin / หัวหน้าฝ่ายขาย
@@ -717,13 +758,11 @@ export const SERVICE_DEPARTMENT = 'TS';
 export const SERVICE_SALES_TEAM = 'SV';
 
 // อ่านธุรกิจบริการ: ฝ่ายขายทุกตำแหน่งอ่านได้ (ต้องตอบลูกค้าได้ว่าช่างเข้าเมื่อไหร่)
-// ⚠️ แต่ `staff` ต้องแคบด้วยฝ่าย — cap อยู่ที่ role ซึ่งใช้ร่วมกันทั้ง PC/PD/WH/QC/TS
-// ถ้าไม่กั้น คลัง/QC/จัดซื้อจะได้ระบบธุรกิจบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
-// (รูปเดียวกับ canViewCosting ที่แคบ staff เหลือ RD/PC)
+// ⭐ ฝ่ายโรงงานไม่มี `service:view` ตั้งแต่ชั้น role แล้ว (มีแค่ `ts`) — เดิมต้องกั้น
+// ตรงนี้เพราะ PC/PD/WH/QC/TS ใช้ role `staff` ร่วมกัน ⇒ คลัง/QC/จัดซื้อจะได้ระบบ
+// ธุรกิจบริการติดมาทั้งระบบโดยไม่มีใครสังเกต
 export function canViewService(user) {
-  if (!canUser(user, 'service:view')) return false;
-  if (user?.role !== 'staff') return true;
-  return departmentOf(user) === SERVICE_DEPARTMENT;
+  return canUser(user, 'service:view');
 }
 
 // แก้ไซต์/เครื่อง/รอบ/นัด — ช่างฝ่าย TS หรือคนขายทีม SV
@@ -919,7 +958,7 @@ export function homeSystemForUser(user) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || role === 'staff' || role === 'rd') return 'all';
+  if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || OPS_ROLES.includes(role) || role === 'rd') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
@@ -930,7 +969,7 @@ export function viewScope(role) {
 // handlers that have the full user object and cover RA-touchable resources.
 export function viewScopeUser(user) {
   if (canUser(user, 'ra:view')) return 'all';
-  return viewScope(user?.role);
+  return viewScope(roleOf(user));
 }
 
 export function editScope(role) {
@@ -1254,12 +1293,12 @@ export function pmTaskEditTier(user, task, project) {
   // assigned to them.
   if (isReadOnlyObserver(user?.role)) return 'none';
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
-  // staff + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department) นับเป็น
-  // งานของเขา — rd คือ staff ฝ่าย RD ที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน
-  const workflowRole = user?.role === 'staff' || user?.role === 'rd';
+  // ฝ่ายปฏิบัติการ + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department)
+  // นับเป็นงานของเขา — rd คือฝ่ายที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน
+  const workflowRole = OPS_ROLES.includes(roleOf(user)) || roleOf(user) === 'rd';
   const sameDept = workflowRole && !!user?.department
     && normalizeDepartment(user.department) === task?.role;
-  if (can(user?.role, 'pm:view') && (ownsTask || sameDept)) return 'workflow';
+  if (can(roleOf(user), 'pm:view') && (ownsTask || sameDept)) return 'workflow';
   return 'none';
 }
 

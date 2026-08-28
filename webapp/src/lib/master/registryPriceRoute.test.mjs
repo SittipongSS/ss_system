@@ -123,7 +123,7 @@ const call = ({ user, id = 'SCT-1', body = { price: 1200 }, supabase = fakeSupab
     ctx: { params: Promise.resolve({ id }) },
   });
 
-const RD = { id: 'U1', name: 'RD Staff', role: 'staff', department: 'RD' };
+const RD = { id: 'U1', name: 'RD Staff', role: 'rd', department: 'RD' };
 
 test('ฝ่ายที่ไม่ใช่ RD ใส่ราคาไม่ได้', async () => {
   const res = await call({ user: { id: 'U2', role: 'ae', department: 'SA' } });
