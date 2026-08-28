@@ -83,7 +83,13 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ดีล')], blocked: true };
   }
 
-  const contracts = await contractsOfDeal(supabase, id);
+  // ตรวจไม่ได้ = บล็อกไว้ก่อน (ไม่ใช่ "ไม่มีสัญญา") — พรีวิวเป็นสิ่งที่ผู้ใช้อ่านก่อนกดทำลาย
+  let contracts;
+  try {
+    contracts = await contractsOfDeal(supabase, id);
+  } catch (contractError) {
+    return { cascade: [], notes: [contractError.message], blocked: true };
+  }
   if (contracts.length) {
     return { cascade: [], notes: [contractBlockMessage(contracts, 'ดีล')], blocked: true };
   }
@@ -232,17 +238,21 @@ export async function exciseFilingsOfQuotation(supabase, quotationId) {
 // สัญญาเป็นเอกสารผูกพันตามกฎหมาย ⇒ ห้ามหายตามดีล/ใบเสนอราคาไปเงียบ ๆ และห้ามให้
 // break-glass ทำลายให้ด้วย · ปล่อยไว้เฉย ๆ = ลบจริงตายกลางทางด้วย error ดิบจาก
 // Postgres (บทเรียนเดียวกับ document_signature_evidence ที่หลุดขึ้นหน้าดีลทั้งดุ้น)
+/* ⚠️ **อ่านไม่สำเร็จต้องดัง ไม่ใช่คืน []** — สองตัวนี้ถูกใช้เป็น *ด่านหน้างานทำลาย*
+   (ดักก่อนลบดีล/ใบเสนอราคา) การกลืน error แล้วคืนอาร์เรย์ว่างแปลว่า "ไม่มีสัญญา"
+   ⇒ เน็ตหลุดชั่ววินาทีเดียวก็เปิดทางให้ cleanup วิ่งต่อจนข้อมูลหาย (ตรวจ 2026-08-28)
+   ผู้เรียกฝั่งพรีวิวจับ error เองแล้วแสดงว่าตรวจไม่ได้ ดีกว่าบอกว่า "ไม่มี" */
 export async function contractsOfDeal(supabase, dealId) {
   const { data, error } = await supabase
     .from('sales_contracts').select('id, "contractNo", status').eq('dealId', dealId);
-  if (error) return [];
+  if (error) throw new Error(`ตรวจสัญญาของดีลไม่สำเร็จ: ${error.message}`);
   return data || [];
 }
 
 export async function contractsOfQuotation(supabase, quotationId) {
   const { data, error } = await supabase
     .from('sales_contracts').select('id, "contractNo", status').eq('quotationId', quotationId);
-  if (error) return [];
+  if (error) throw new Error(`ตรวจสัญญาของใบเสนอราคาไม่สำเร็จ: ${error.message}`);
   return data || [];
 }
 
@@ -350,13 +360,18 @@ export async function forceDeleteDealDocuments(supabase, dealId, actor = {}) {
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
 // ที่ระดับ DB — โชว์ให้ผู้ดูแลเห็นชัดก่อน.
 export async function quotationForcePreview(supabase, quote) {
+  // ⚠️ contractsOfQuotation โยน error เมื่ออ่านไม่สำเร็จ — จับไว้แล้วบล็อก ไม่ใช่ปล่อยให้
+  //    Promise.all พาทั้งพรีวิวพัง (และไม่ใช่แปลว่า "ไม่มีสัญญา")
   const [salesOrders, evidence, issued, filings, contracts] = await Promise.all([
     countBy(supabase, 'sales_orders', 'quotationId', quote.id),
     countBy(supabase, 'document_signature_evidence', 'quotationId', quote.id),
     countBy(supabase, 'issued_documents', 'quotationId', quote.id),
     exciseFilingsOfQuotation(supabase, quote.id),
-    contractsOfQuotation(supabase, quote.id),
+    contractsOfQuotation(supabase, quote.id).catch((e) => ({ readError: e.message })),
   ]);
+  if (contracts?.readError) {
+    return { cascade: [], notes: [contracts.readError], blocked: true };
+  }
   // สัญญาที่อ้างใบนี้ = ด่านที่ break-glass ข้ามไม่ได้เช่นกัน (FK RESTRICT ของ mig 0278)
   if (contracts.length) {
     return { cascade: [], notes: [contractBlockMessage(contracts, 'ใบเสนอราคา')], blocked: true };

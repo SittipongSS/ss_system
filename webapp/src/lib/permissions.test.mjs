@@ -688,9 +688,14 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   assert.equal(canAccessRd({ role: 'ae_supervisor' }), false);
   assert.equal(canAccessRd({ role: 'ae', team: 'ODM' }), false);
   assert.equal(canAccessRd({ role: 'viewer' }), false);
-  // ⚠️ admin ไม่ถือ requests:answer — ถ้าเช็คแต่ cap แอดมินจะเห็นการ์ดระบบแต่เมนูว่าง
-  assert.equal(can('admin', 'requests:answer'), false);
+  // admin ถือ requests:answer ตั้งแต่ 2026-08-28 (มติ "admin ทำได้ทุกอย่าง") —
+  // แต่ด่านจริงของโมดูลยังเป็น **ฝ่าย** ไม่ใช่ cap: canAccessRd ให้ admin ผ่าน
+  // ด้วยทางลัด role === 'admin' ไม่ใช่เพราะถือ cap
+  assert.equal(can('admin', 'requests:answer'), true);
   assert.equal(canAccessRd({ role: 'admin' }), true);
+  // ⚠️ หัวหน้าฝ่ายขายต้องไม่ได้ cap นี้ติดมือไปด้วยตอน admin ได้เพิ่ม
+  assert.equal(can('ae_supervisor', 'requests:answer'), false);
+  assert.equal(can('ae_supervisor', 'users:view'), false);
   // PC ถือ requests:answer เหมือน RD — ด่านฝ่ายเป็นตัวแยกว่าใครตอบคำร้องของใคร
   assert.equal(can('pc', 'requests:answer'), true);
   // ⭐ ฝ่ายโรงงานที่ไม่รับคำร้อง ไม่มี cap นี้แล้วตั้งแต่ชั้น role (เดิมถือผ่าน `staff`)

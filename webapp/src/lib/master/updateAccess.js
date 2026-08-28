@@ -376,6 +376,13 @@ export async function canPostUpdate(supabase, entityType, parent, user) {
 // ข้อความที่ระบบเขียน (kind อื่นที่ไม่ใช่ comment) แก้ไม่ได้เลย มันคือบันทึกเหตุการณ์
 export async function canMutateUpdate(supabase, entityType, parent, user, row) {
   if (!row || row.deletedAt) return false;
+  /* ⭐ **ผู้ดูแลระบบมาก่อนทุกด่าน** (มติผู้ใช้ 2026-08-28 "ขอสิทธิ์ทุกอย่างให้แอดมิน
+     รวมลบด้วย") — ของเดิมเช็ค `isAuthorableKind` ก่อน ⇒ แถวที่ **ระบบเขียนเอง**
+     (เปลี่ยนสถานะ · อนุมัติ · เหตุการณ์) ลบไม่ได้เลยแม้แต่แอดมิน ทั้งที่บรรทัดถัดไป
+     เขียนไว้ว่า superuser ผ่านหมด
+     ⚠️ ใช้ `role === 'admin'` ไม่ใช่ `isSuperuser` — isSuperuser ครอบ ae_supervisor
+     ด้วย และหัวหน้าฝ่ายขายไม่ควรลบบันทึกเหตุการณ์ของระบบทิ้งได้ */
+  if (user?.role === 'admin') return true;
   // เทียบกับ "ชนิดที่คนเลือกเองได้ของ entity นี้" ไม่ใช่ 'comment' ตัวเดียว —
   // ไม่งั้นบันทึกการโทรในฟีดดีล (kind='call') จะกลายเป็นข้อความที่เจ้าของแก้ไม่ได้
   if (!isAuthorableKind(entityType, row.kind)) return false;

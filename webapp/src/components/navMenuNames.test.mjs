@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { canUser } from '@/lib/permissions';
 
 const SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'AppLayout.js'), 'utf8');
 
@@ -141,13 +142,20 @@ test('⭐ คิวคำร้องสองระบบต้องใช้�
 });
 
 test('เมนูของระบบวิจัยและพัฒนาแคบด้วยฝ่าย และเปิดให้ admin ได้ด้วย', () => {
-  // ⚠️ admin ไม่ถือ `requests:answer` ⇒ ถ้า caps มีตัวเดียว เมนูจะถูกกรองทิ้งหมด
-  // แล้วกลุ่มถูกตัดออกทั้งก้อน = แถบว่างสำหรับ admin ทั้งที่เห็นการ์ดระบบ
+  // 🐞 เดิมเมนูกลุ่มนี้ต้องพ่วง `'users:manage'` เข้าไปใน caps เพราะ **admin ไม่ถือ
+  //    `requests:answer`** ⇒ ใส่ cap เดียวแล้วเมนูถูกกรองทิ้งหมด กลุ่มถูกตัดออกทั้งก้อน
+  //    = แถบว่างสำหรับ admin ทั้งที่เห็นการ์ดระบบ
+  // ✅ แก้ที่ต้นเหตุแล้ว 2026-08-28 (admin ถือทุก cap — adminHoldsEveryCap.test.mjs)
+  //    เทสต์นี้จึงเลิกจับสตริงทางอ้อม แล้วถาม **คุณสมบัติจริง**: admin ผ่าน caps ไหม
   const lines = SOURCE.split(/\r?\n/).filter((row) => /href: '\/rd(\/|')/.test(row));
   assert.ok(lines.length >= 2, 'ควรเจอเมนูของระบบวิจัยและพัฒนาอย่างน้อย 2 รายการ');
   for (const line of lines) {
     assert.match(line, /visible: canAccessRd/, line.trim());
-    assert.match(line, /'users:manage'/, line.trim());
+    const caps = [...line.matchAll(/'([a-z]+:[a-z]+)'/g)].map((m) => m[1]);
+    assert.ok(caps.length > 0, `เมนูต้องมี cap กำกับ: ${line.trim()}`);
+    // ตัวกรองใน AppLayout ผ่านเมื่อถือ cap ใดก็ได้ในลิสต์
+    assert.ok(caps.some((cap) => canUser({ role: 'admin' }, cap)),
+      `admin ต้องผ่าน caps ของเมนูนี้: ${line.trim()}`);
   }
 });
 
