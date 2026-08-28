@@ -34,7 +34,11 @@ test('system visibility covers every supported role and sales team', () => {
     ['marketing', null, ['salesplan', 'master', 'support']],
     ['ra', null, ['tax', 'master', 'support']],
     // ⭐ ฝ่าย R&D ได้บ้านของตัวเองแล้ว (ม-29) — การ์ดขึ้นจาก **ฝ่าย** ไม่ใช่ role
-    ['rd', null, ['salesplan', 'rd', 'master', 'support']],
+    /* ⭐ **ฝ่ายที่มีบ้านของตัวเองไม่เห็นการ์ดงานขาย** (มติผู้ใช้ 2026-08-29) — RD เข้า
+       เงื่อนไขเดียวกับ FN ที่ทำไปเมื่อ 2026-08-22 · ใบสั่งขายที่ฝ่ายต้องดูอยู่ในโมดูล
+       ตัวเองแล้ว (`/rd/sales-orders`) และ `salesplan:view` ยังอยู่ครบ ⇒ ลิงก์จากใบ
+       คำร้องไปดีล/โครงการ/ใบสั่งขาย ยังเข้าได้เหมือนเดิม */
+    ['rd', null, ['rd', 'master', 'support']],
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
     ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
@@ -173,17 +177,22 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
    ⇒ เอกสารสี่ชนิดของเขาย้ายไปอยู่ในกลุ่มเมนูของโมดูล "บัญชีและการเงิน" แล้ว
    การ์ด "บริหารงานขาย" จึงไม่มีของเหลือให้เขา และต้องไม่ขึ้นอีกต่อไป
    ⚠️ **ไม่ใช่การตัดสิทธิ์** — `salesplan:view` ยังอยู่ครบ (ดูเทสต์ข้างล่าง) */
-test('⭐ ฝ่ายบัญชีไม่มีการ์ด "บริหารงานขาย" — เอกสารของเขาอยู่ในโมดูลตัวเองแล้ว', () => {
+test('⭐ ฝ่ายที่มีบ้านของตัวเองไม่มีการ์ด "บริหารงานขาย" — งานของเขาอยู่ในโมดูลตัวเองแล้ว', () => {
   const FN = { role: 'finance', department: 'FN', team: null, extraCaps: [] };
+  const RD = { role: 'rd', department: 'RD', team: null, extraCaps: [] };
   assert.deepEqual(keysFor(FN), ['finance', 'master', 'support']);
-  // สิทธิ์อ่านยังอยู่ — ที่ตัดคือ *เมนู* ไม่ใช่ *cap* (กฎข้อ 7)
+  /* ⭐ **RD ตามมาเป็นฝ่ายที่สอง** (มติผู้ใช้ 2026-08-29 · กลับมติเดิมที่เคยล็อกไว้ตรงนี้ว่า
+     "กฎนี้แคบเฉพาะ FN") — ใบสั่งขายที่ฝ่ายต้องดูย้ายเข้าโมดูลตัวเองแล้ว
+     (`/rd/sales-orders` = ใบที่คำร้องของฝ่ายอ้างถึง) ⇒ การ์ดงานขายไม่มีของเหลือให้เขา */
+  assert.deepEqual(keysFor(RD), ['rd', 'master', 'support']);
+  // สิทธิ์อ่านยังอยู่ทั้งคู่ — ที่ตัดคือ *เมนู* ไม่ใช่ *cap* (กฎข้อ 7)
   assert.ok(canUser(FN, 'salesplan:view'));
-  // ฝ่ายขายและ RD ยังลงที่เดิมทุกอย่าง — กฎนี้แคบเฉพาะ FN โดยตั้งใจ
-  // (ความกว้างของ RD เป็นมติที่ตัดสินไว้แล้ว อย่ายุบเป็นกฎเดียวกับ FN)
+  assert.ok(canUser(RD, 'salesplan:view'));
+  // ฝ่ายขาย/admin ยังลงที่เดิมทุกอย่าง — landing ของระบบไม่ได้ผูกกับการ์ดที่ซ่อน
   assert.equal(systemLandingForUser('salesplan', { role: 'ae', team: 'SV', extraCaps: [] }), '/sa');
-  assert.equal(systemLandingForUser('salesplan', { role: 'rd', team: null, extraCaps: [] }), '/sa');
   assert.equal(systemLandingForUser('salesplan', { role: 'admin', team: null, extraCaps: [] }), '/sa');
-  assert.ok(keysFor({ role: 'rd', department: 'RD', team: null, extraCaps: [] }).includes('salesplan'));
+  // ⚠️ ฝ่ายโรงงานยังเห็นการ์ด — เขาไม่มีโมดูลบ้านของตัวเอง (homeSystemForUser = null)
+  assert.ok(keysFor({ role: 'pc', department: 'PC', team: null, extraCaps: [] }).includes('salesplan'));
 });
 
 // ── landing ต้องไม่ชี้หน้าที่เมนูเทาไว้ ────────────────────────────────────

@@ -7,6 +7,7 @@ import { ArrowRight, LayoutGrid, LogOut, Settings, ShieldCheck, TriangleAlert, U
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import { canUser, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from "@/lib/permissions";
+import { devBypassUser } from "@/lib/devBypass";
 import { fmtName } from "@/lib/format";
 import {
   recentSystemForUser,
@@ -69,7 +70,23 @@ export default function HomeHubPage() {
     setLoadError("");
 
     if (!SUPABASE_CONFIGURED) {
-      setSession({ role: "ae_supervisor", team: null, teams: [], extraCaps: [], userName: "Local Dev" });
+      /* 🐞 เดิมตรึง `ae_supervisor` ไว้ตรงนี้ ⇒ **สวมบทบาทตอน UAT แล้วหน้าแรกไม่เปลี่ยน**
+         (แถบเมนูใน `AppLayout` เชื่อ `NEXT_PUBLIC_DEV_BYPASS_ROLE` แต่การ์ดระบบหน้านี้
+         ไม่เชื่อ) ⇒ ได้จอที่การ์ดกับเมนูเล่าคนละเรื่อง ซึ่งเป็นอาการเดียวกับที่คอมเมนต์
+         ของ `devBypass.js` เตือนไว้ว่า "UAT ที่เชื่อไม่ได้" · ใช้ตัวประกอบผู้ใช้ตัวเดียวกัน */
+      const bypass = devBypassUser({
+        NEXT_PUBLIC_DEV_BYPASS_ROLE: process.env.NEXT_PUBLIC_DEV_BYPASS_ROLE,
+        NEXT_PUBLIC_DEV_BYPASS_DEPARTMENT: process.env.NEXT_PUBLIC_DEV_BYPASS_DEPARTMENT,
+        NEXT_PUBLIC_DEV_BYPASS_TEAM: process.env.NEXT_PUBLIC_DEV_BYPASS_TEAM,
+      });
+      setSession({
+        role: bypass.role,
+        team: bypass.team,
+        teams: bypass.teams,
+        department: bypass.department,
+        extraCaps: [],
+        userName: bypass.name,
+      });
       setLoading(false);
       return;
     }

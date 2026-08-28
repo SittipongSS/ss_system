@@ -148,13 +148,19 @@ test('⭐ เอกสารร่วม: FN ยืนอยู่ในบ้�
   }
 });
 
-test('⭐ RD รับเฉพาะใบคำร้อง — เอกสารขายอื่นยังเป็นเปลือกงานขายตามเดิม', () => {
+test('⭐ RD รับใบคำร้อง + ใบสั่งขาย — ดีล/โครงการยังเป็นเปลือกงานขายตามเดิม', () => {
   assert.equal(systemForPathname('/requests/DR-1', RD), 'rd');
   assert.equal(systemForPathname('/rd/requests', RD), 'rd');
-  // ⚠️ ความกว้างของ RD เป็นมติที่ตัดสินไว้แล้ว (เห็นดีล/โครงการทุกทีมเพื่อมีบริบท)
-  // ⇒ เขายังมีเมนูงานขายครบและอ่านในเปลือกนั้น — อย่ายุบเป็นกฎเดียวกับ FN
-  assert.equal(systemForPathname('/sa/sales-orders/1', RD), 'salesplan');
+  /* ⭐ **ใบสั่งขายถูกรับเข้าบ้าน RD 2026-08-29** (กลับมติเดิมที่เคยล็อกไว้ตรงนี้) —
+     ฝ่ายไม่มีเมนู "บริหารงานขาย" อีกแล้ว ⇒ ถ้าไม่รับเส้นนี้ กดใบสั่งขายจากคิวตัวเอง
+     จะได้เปลือกของระบบที่เขาไม่มีกลุ่มเมนู = แถบว่าง (เจอจริงตอน UAT)
+     ⚠️ ต้องมาคู่กับเมนู `/rd/sales-orders` ใน AppLayout เสมอ — เทสต์ข้างล่างล็อกคู่นี้ */
+  assert.equal(systemForPathname('/sa/sales-orders/1', RD), 'rd');
+  assert.equal(systemForPathname('/sales-planning/sales-orders/2', RD), 'rd');
+  // ⚠️ ดีล/โครงการ **ไม่ได้ถูกรับ** — RD เปิดดูเพื่อบริบทตอนตอบคำร้อง ไม่ใช่งานประจำ
+  // ⇒ ยังอ่านในเปลือกงานขายตามเดิม (กดจากลิงก์บนใบได้เหมือนเดิมทุกอย่าง)
   assert.equal(systemForPathname('/sa/deals/1', RD), 'salesplan');
+  assert.equal(systemForPathname('/sa/projects/1', RD), 'salesplan');
 });
 
 test('⭐ ฝ่ายขาย · admin · และการเรียกแบบไม่ส่ง user = พฤติกรรมเดิมทุกประการ', () => {
@@ -232,7 +238,10 @@ test('adoptsPathname ไม่จับครึ่งคำ — /requests ต�
   assert.ok(adoptsPathname('rd', '/requests'));
   assert.ok(adoptsPathname('rd', '/requests/DR-1'));
   assert.equal(adoptsPathname('rd', '/requests-archive'), false);
-  assert.equal(adoptsPathname('rd', '/sa/sales-orders/1'), false);
+  // ⭐ ใบสั่งขายถูกรับเข้าบ้าน RD แล้ว (2026-08-29) — แต่ยังต้องไม่จับครึ่งคำเหมือนกัน
+  assert.ok(adoptsPathname('rd', '/sa/sales-orders/1'));
+  assert.equal(adoptsPathname('rd', '/sa/sales-orders-archive'), false);
+  assert.equal(adoptsPathname('rd', '/sa/deals/1'), false);
   assert.equal(adoptsPathname('salesplan', '/requests'), false);
   assert.equal(adoptsPathname(null, '/requests'), false);
 });
@@ -248,7 +257,8 @@ test('⭐ เมนูเอกสารร่วมขึ้นได้กล�
        ไม่เปิดคำร้องเอง · เทสต์ "ใบคำร้องของ RD/FN ไฮไลต์ที่คิวของฝ่าย" คุมข้อนั้นไว้ */
     ['/requests', RD, { salesplan: false, finance: false, rd: true }],
     ['/requests', FN, { salesplan: false, finance: true, rd: false }],
-    ['/sa/sales-orders', RD, { salesplan: true, finance: false, rd: false }],
+    // ⭐ RD รับใบสั่งขายแล้ว ⇒ ตัดออกจากเมนูงานขายเหมือนที่ FN เป็น (2026-08-29)
+    ['/sa/sales-orders', RD, { salesplan: false, finance: false, rd: true }],
     ['/sa/sales-orders', AE, { salesplan: true, finance: false, rd: false }],
     ['/requests', ADMIN, { salesplan: true, finance: false, rd: false }],
   ];

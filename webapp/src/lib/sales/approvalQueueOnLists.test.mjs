@@ -59,16 +59,19 @@ test('การ์ดบนทะเบียนใบสั่งขายถ�
   assert.match(page, /financeShell \? row\._awaitingFinanceReview : row\._awaitingMyApproval/);
   assert.match(page, /financeShell \? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"/, 'คำบนปุ่มต้องตรงกับงานของคนที่ยืนอยู่');
 
-  /* 🪤 **บ้านของคนดูอย่างเดียวไม่พอ** — RD รับแค่ `/requests` (ADOPTED_SHARED_PATHS)
-     ⇒ RD ที่เปิดทะเบียนใบสั่งขายยังอยู่ในเปลือกงานขาย · ถ้าตัดสินด้วย home ลอย ๆ
-     วันที่ลิสต์การรับเปลี่ยน เนื้อหาจะพูดภาษาเปลือกที่ไม่ได้ครอบมันอยู่ */
+  /* 🪤 **บ้านของคนดูอย่างเดียวไม่พอ ต้องดูลิสต์เส้นทางที่บ้านนั้นรับด้วย** —
+     ตัวอย่างที่เปลี่ยนจริง: RD เคยรับแค่ `/requests` แล้ว 2026-08-29 รับใบสั่งขายเพิ่ม
+     ⇒ เปลือกของหน้าเดียวกันเปลี่ยนตามลิสต์ ไม่ใช่ตาม role · ถ้าตัดสินด้วย home ลอย ๆ
+     วันที่ลิสต์การรับเปลี่ยน เนื้อหาจะพูดภาษาเปลือกที่ไม่ได้ครอบมันอยู่
+     ⚠️ การ์ด "ตรวจใบ" ยังเป็นของเปลือก `finance` เท่านั้น — RD ที่เปิดทะเบียนนี้อยู่ใน
+     เปลือกของตัวเอง (`rd`) จึงไม่เข้าเงื่อนไข ซึ่งถูกแล้ว: เขาไม่ใช่ผู้ตรวจใบ */
   const ctx = read('lib/roleContext.js');
   assert.match(ctx, /export function useShellSystem\(pathname\)/);
   assert.match(ctx, /adoptsPathname\(home, pathname\)/, 'ต้องเช็คลิสต์เส้นทางที่บ้านนั้นรับไปด้วย');
   assert.match(ctx, /homeSystemForUser\(\{ role, department \}\)/, 'hook ต้องเรียกตัวเดียวกับ config/navigation');
   const nav = read('config/navigation.js');
   assert.match(nav, /homeSystemForUser\(user\)/, 'เมนูยังตัดสินด้วยฟังก์ชันเดิม');
-  assert.match(nav, /rd: \['\/requests'\]/, 'RD รับแค่ใบคำร้อง — เอกสารขายยังเป็นเปลือกงานขาย');
+  assert.match(nav, /rd: \['\/requests', '\/sa\/sales-orders'/, 'RD รับใบคำร้อง + ใบสั่งขาย');
 });
 
 test('ทะเบียนทั้งห้าใช้คิวตัวเดียวกัน และเอกสารขายกดเปิดใบ ไม่ใช่ติ๊กอนุมัติในลิสต์', () => {
