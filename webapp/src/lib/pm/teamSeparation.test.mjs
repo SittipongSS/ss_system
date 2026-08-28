@@ -16,7 +16,11 @@ import {
 } from '../permissions.js';
 import { systemsForUser } from '../../config/systems.js';
 
-const at = (department) => ({ role: 'staff', department, extraCaps: [] });
+/* ⭐ หนึ่งฝ่าย หนึ่ง role (2026-08-28) — เดิมทั้งห้าฝ่ายเป็น role `staff` ตัวเดียว
+   จึงต้องพิสูจน์ว่าด่าน **ฝ่าย** กันถูก · ตอนนี้ cap แคบตั้งแต่ role แล้ว เทสต์ชุดนี้
+   จึงกลายเป็นตัวล็อกว่า "ให้ cap ถูกฝ่าย" ซึ่งยังต้องคุมเหมือนเดิม */
+const ROLE_OF = { PC: 'pc', PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts' };
+const at = (department) => ({ role: ROLE_OF[department], department, extraCaps: [] });
 const keys = (user) => systemsForUser(user).map((s) => s.key);
 
 test('⭐ ฝ่ายผลิต/จัดซื้อ (PD/PC) เห็นแต่ระบบวางแผนผลิต — ไม่แตะธุรกิจบริการเลย', () => {
@@ -30,7 +34,7 @@ test('⭐ ฝ่ายผลิต/จัดซื้อ (PD/PC) เห็นแ
   }
 });
 
-test('⭐ TS เป็นฝ่ายเดียวในกลุ่ม staff ที่ถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน', () => {
+test('⭐ TS เป็นฝ่ายเดียวในกลุ่มฝ่ายปฏิบัติการที่ถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน', () => {
   // ⚠️ จุดที่พลาดง่าย: กันเฉพาะ TS ไม่ใช่กวาดทุกฝ่ายที่ไม่ได้วางแผน (WH/QC ต้องอ่านได้)
   assert.equal(canViewProduction(at('TS')), false);
   for (const dept of ['PC', 'PD', 'WH', 'QC']) {

@@ -12,7 +12,7 @@ import {
 import { REQUEST_DEPTS } from '../master/requestTypes.js';
 import { canAnswerRequest, canManageRequest, canReadRequestRow, canViewRequest } from './access.js';
 
-// ฝ่ายที่ role `staff` ครอบ — ต้องลองให้ครบ ไม่ใช่แค่ RD/PC ที่รู้ว่าผ่าน
+// ฝ่ายโรงงานทุกฝ่าย — ต้องลองให้ครบ ไม่ใช่แค่ RD/PC ที่รู้ว่าผ่าน
 const STAFF_DEPARTMENTS = ['PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
 
 test('ฝ่ายที่เปิดใบใหม่ได้ ต้องเป็นฝ่ายที่ตอบคำร้องได้เสมอ', () => {
@@ -41,14 +41,14 @@ test('ไม่มีใครเสียสิทธิ์ — ทุก role 
 
 test('ตอบคำร้องได้เฉพาะฝ่ายของตัวเอง — และเฉพาะฝ่ายที่รับคำร้อง', () => {
   const rd = { id: 'U1', role: 'rd', department: 'RD' };
-  const pc = { id: 'U2', role: 'staff', department: 'PC' };
+  const pc = { id: 'U2', role: 'pc', department: 'PC' };
   assert.ok(canAnswerRequest(rd, { dept: 'RD' }));
   assert.ok(!canAnswerRequest(rd, { dept: 'PC' }));
   assert.ok(canAnswerRequest(pc, { dept: 'PC' }));
   assert.ok(!canAnswerRequest(pc, { dept: 'RD' }));
 
   // ⚠️ ฝ่ายโรงงานอื่นถือ cap เท่ากับ PC ทุกประการ — ที่กันไว้คือ **ฝ่าย** ไม่ใช่ cap
-  const fn = { id: 'U6', role: 'staff', department: 'FN' };
+  const fn = { id: 'U6', role: 'finance', department: 'FN' };
   assert.ok(canAnswerRequest(fn, { dept: 'FN' }));
   assert.ok(!canAnswerRequest(fn, { dept: 'RD' }));
   // ⭐ บัญชีตอบคำร้องได้ **โดยไม่ผ่านด่านราคา** — นี่คือทั้งหมดที่ R-1 มีไว้เพื่อ
@@ -56,7 +56,7 @@ test('ตอบคำร้องได้เฉพาะฝ่ายของ�
   assert.ok(canViewRequests(fn), 'ฝ่ายบัญชีต้องเข้าระบบคำร้องได้');
 
   for (const department of ['PD', 'WH', 'QC', 'TS']) {
-    const staff = { id: 'U3', role: 'staff', department };
+    const staff = { id: 'U3', role: { PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts' }[department], department };
     for (const dept of REQUEST_ANSWER_DEPARTMENTS) {
       assert.ok(!canAnswerRequest(staff, { dept }), `${department} ไม่ควรตอบคำร้องของ ${dept}`);
     }
@@ -84,7 +84,7 @@ test('🐞 ฝ่ายบัญชีต้องกดปุ่มบนรา
   // ยังถาม `canQuoteMaterial` อยู่ ⇒ FN ยิง API ผ่าน แต่บนจอเห็นแต่ป้าย "รอฝ่าย
   // ปลายทางรับเรื่อง" และกดอะไรไม่ได้เลย · เขียวทั้ง CI เพราะไม่มีเทสต์ไหนถาม
   // คำถามนี้ — เจอตอนไล่โค้ดสาย SA↔RD ไม่ใช่ตอนเทสต์
-  const fn = { id: 'U7', role: 'staff', department: 'FN' };
+  const fn = { id: 'U7', role: 'finance', department: 'FN' };
   const request = { dept: 'FN', requestedById: 'someone-else' };
 
   // `owner` ของหน้ารายละเอียด และ `isDept` ของ nextStepForRow ใช้ตัวนี้ตัวเดียวกัน

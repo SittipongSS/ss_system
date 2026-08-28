@@ -17,7 +17,7 @@ const OWNER = { id: 'U-AE', role: 'ae', department: 'SA', team: 'KA' };
 const SAME_TEAM_LEAD = { id: 'U-SUP', role: 'ae_supervisor', department: 'SA', team: 'KA' };
 const OTHER_TEAM = { id: 'U-AE2', role: 'ae', department: 'SA', team: 'KB' };
 const ADMIN = { id: 'U-AD', role: 'admin', department: 'SA' };
-const OUTSIDER = { id: 'U-ST', role: 'staff', department: 'PC' };
+const OUTSIDER = { id: 'U-ST', role: 'pc', department: 'PC' };
 
 const deal = (over = {}) => ({ id: 'D1', team: 'KA', ownerId: 'U-AE', ...over });
 

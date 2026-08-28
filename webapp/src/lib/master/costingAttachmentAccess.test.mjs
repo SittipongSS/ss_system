@@ -11,7 +11,7 @@ import { canAttachToCosting, canViewCostingAttachment } from './costingAttachmen
 const OWNER = { id: 'U-AE', role: 'ae', department: 'SA' };
 const OTHER_SALES = { id: 'U-AE2', role: 'ae', department: 'SA' };
 const RD = { id: 'U-RD', role: 'rd', department: 'RD' };
-const PC = { id: 'U-PC', role: 'staff', department: 'PC' };
+const PC = { id: 'U-PC', role: 'pc', department: 'PC' };
 const EXEC = { id: 'U-EX', role: 'executive', department: 'EX' };
 const MARKETING = { id: 'U-MK', role: 'marketing', department: 'MK' };
 
@@ -60,7 +60,7 @@ test('ใบขอราคาผลิตคงเดิม — คุมด้
 //
 // เป็นกับดักเดียวกับที่ R-1 เขียนเตือนไว้เอง ("ปลดด่านคือปิดที่เนื้อ ไม่ใช่เปิดที่เมนู"):
 // แยกด่านคำร้องออกจากด่านราคาแล้วที่ตัว endpoint แต่สายไฟล์แนบยังวิ่งผ่านด่านราคาอยู่
-const FN = { id: 'U-FN', role: 'staff', department: 'FN' };
+const FN = { id: 'U-FN', role: 'finance', department: 'FN' };
 const FN_REQ = { id: 'DR-9', status: 'pending', dept: 'FN', requestedById: 'U-AE' };
 const fnDb = {
   from: () => ({

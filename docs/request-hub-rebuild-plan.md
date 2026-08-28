@@ -110,7 +110,7 @@
   (มติรอบธุรกิจบริการเลือก `FN` เป็นฝ่ายบัญชีไว้แล้ว แต่ยังไม่เคยลงโค้ด)
 - `dept_requests.dept` → `CHECK (dept IN ('RD','PC'))` (`0158:31`)
 - เมนู `คำร้อง` ใน `AppLayout.js:246` → `cap: 'costing:view'` + `visible: canViewCosting`
-- `canViewCosting`: ต้องมี cap **และ** ถ้าเป็น `staff` ต้องอยู่ `RD`/`PC` (`permissions.js:406`)
+- `canViewCosting`: ต้องมี cap (ตั้งแต่ 2026-08-28 cap คือด่านจริง — มีเฉพาะฝ่ายขาย · RD · PC · ดู [role-per-department.md](role-per-department.md) · เดิมต้องแคบ `staff` ด้วยฝ่ายอีกชั้น)
 
 ### อื่น ๆ ที่ใช้ประกอบการตัดสิน
 

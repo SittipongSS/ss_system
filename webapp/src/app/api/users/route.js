@@ -40,12 +40,12 @@ export async function GET() {
         lastName: u.user_metadata?.lastName || (u.user_metadata?.name ? u.user_metadata.name.substring(u.user_metadata.name.indexOf(' ') + 1) : ''),
         // เบอร์โทรผู้ใช้ — ใช้แสดงในเอกสาร ISO (เบอร์มือถือของ AE ผู้ดูแล) ฯลฯ.
         phone: u.user_metadata?.phone || '',
-        role: normalizeRole(u.app_metadata?.role) || null,
+        role: normalizeRole(u.app_metadata?.role, u.app_metadata?.department) || null,
         // team = ทีมหลัก (ยอดของใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
         // บัญชีเก่าที่ยังไม่มี teams ถอยไปใช้ [team] เอง — ไม่ต้องแบ็คฟิล
         team: u.app_metadata?.team || null,
         teams: userTeams({ team: u.app_metadata?.team, teams: u.app_metadata?.teams }),
-        department: normalizeDepartment(u.app_metadata?.department) || departmentFor(normalizeRole(u.app_metadata?.role)) || null,
+        department: normalizeDepartment(u.app_metadata?.department) || departmentFor(normalizeRole(u.app_metadata?.role, u.app_metadata?.department)) || null,
         // Per-user capability grants (e.g. an SA granted the RA ra:approve).
         extraCaps: sanitizeExtraCaps(u.app_metadata?.extraCaps),
         createdAt: u.created_at,

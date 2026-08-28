@@ -7,7 +7,7 @@ import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteR
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
   assert.equal(canManageProductCategories('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ac', 'ae', 'secretary', 'ra', 'rd', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ac', 'ae', 'secretary', 'ra', 'rd', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(canManageProductCategories(role), false, role);
   }
 });
@@ -15,7 +15,7 @@ test('canManageProductCategories: AE Supervisor และ Admin เท่าน�
 test('canManageDocumentStandards: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageDocumentStandards('admin'), true);
   assert.equal(canManageDocumentStandards('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ae', 'ac', 'secretary', 'ra', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'secretary', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(canManageDocumentStandards(role), false, role);
   }
 });
@@ -23,7 +23,7 @@ test('canManageDocumentStandards: AE Supervisor และ Admin เท่าน�
 test('canManageCommercialPresets: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageCommercialPresets('admin'), true);
   assert.equal(canManageCommercialPresets('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(canManageCommercialPresets(role), false, role);
   }
 });
@@ -66,7 +66,7 @@ test('canAssignTask: มอบหมายข้ามฝ่ายไม่ไ�
   const ae = { id: 'u1', role: 'ae', team: 'KA' };
   const rd = { id: 'r1', role: 'rd' };
   const rdMate = { id: 'r2', role: 'rd' };
-  const qcStaff = { id: 'q1', role: 'staff', department: 'QC' };
+  const qcStaff = { id: 'q1', role: 'qc', department: 'QC' };
 
   // แม้แต่หัวหน้าฝ่ายขายก็มอบงานตรงให้ RD/QC ไม่ได้ (มติผู้ใช้ 2026-07-17)
   assert.equal(canAssignTask(supervisor, rd), false);
@@ -86,7 +86,7 @@ test('canAssignTask: ฝ่ายอนุมานจาก role ได้เ�
   // แล้วบล็อกการมอบหมายทั้งระบบเงียบ ๆ
   assert.equal(canAssignTask({ id: 'r1', role: 'rd' }, { id: 'r2', role: 'rd' }), true);
   // department ที่ตั้งไว้ตรง ๆ ต้องชนะค่าที่อนุมานจาก role
-  assert.equal(canAssignTask({ id: 'r1', role: 'rd' }, { id: 'x', role: 'staff', department: 'RD' }), true);
+  assert.equal(canAssignTask({ id: 'r1', role: 'rd' }, { id: 'x', role: 'rd', department: 'RD' }), true);
   // ค่าเก่า (SALES) ต้อง normalize เป็น SA ก่อนเทียบ
   assert.equal(canAssignTask({ id: 's', role: 'ae_supervisor', department: 'SALES' }, { id: 'u1', role: 'ae', team: 'KA' }), true);
   // ไม่รู้ฝ่ายทั้งคู่ = มอบไม่ได้ (ไม่ใช่ "ผ่านเพราะ null เท่ากัน")
@@ -214,7 +214,7 @@ test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
   // ae who owns neither project nor edit-scope, but IS the task assignee
   assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: 'u1' }, { ownerId: 'u2' }), 'workflow');
   // staff in the same department as the step
-  assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
+  assert.equal(pmTaskEditTier({ role: 'pc', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
 });
 
 test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
@@ -227,6 +227,10 @@ test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
   assert.equal(canAccessMgmt({ role: 'ra' }), false);
   // viewer is a read-only observer of the WHOLE system → sees mgmt too (read-only)
   assert.equal(canAccessMgmt({ role: 'viewer' }), true);
+  for (const role of ['pc', 'pd', 'wh', 'qc', 'ts', 'rd', 'finance']) {
+    assert.equal(canAccessMgmt({ role }), false, role);
+  }
+  // ⚠️ โทเคนเก่าที่ยังเขียนว่า `staff` และไม่มีฝ่าย = role ที่ระบบไม่รู้จัก ⇒ อ่านอย่างเดียว
   assert.equal(canAccessMgmt({ role: 'staff' }), false);
 });
 
@@ -321,7 +325,7 @@ test('canSeeTaskKpi: oversight roles + read-only monitor, not the rank-and-file'
   assert.equal(canSeeTaskKpi('viewer'), true);
   assert.equal(canSeeTaskKpi('ae'), false);
   assert.equal(canSeeTaskKpi('ac'), false);
-  assert.equal(canSeeTaskKpi('staff'), false);
+  assert.equal(canSeeTaskKpi('pc'), false);
   assert.equal(canSeeTaskKpi('ra'), false);
 });
 
@@ -417,7 +421,7 @@ test('pmTaskEditTier: none for outsiders', () => {
   // ae who neither owns the project nor is the assignee
   assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: 'u9' }, { ownerId: 'u2' }), 'none');
   // staff in a different department than the step
-  assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'QC' }, { ownerId: 'u2' }), 'none');
+  assert.equal(pmTaskEditTier({ role: 'pc', id: 'p', department: 'PC' }, { assigneeId: null, role: 'QC' }, { ownerId: 'u2' }), 'none');
   // RA has no pm:view → never edits PM tasks
   assert.equal(pmTaskEditTier({ role: 'ra', id: 'l' }, { assigneeId: 'l', role: 'RA' }, { ownerId: 'l' }), 'none');
 });
@@ -428,7 +432,7 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   assert.equal(canApproveMasterData('admin'), true);
   // senior_ae เคยอนุมัติของทีมตัวเองได้ — ตัดออกแล้ว
   assert.equal(canApproveMasterData('senior_ae'), false);
-  for (const role of ['ae', 'ac', 'marketing', 'ra', 'rd', 'viewer', 'staff', 'secretary']) {
+  for (const role of ['ae', 'ac', 'marketing', 'ra', 'rd', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts', 'secretary']) {
     assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
   }
 });
@@ -439,7 +443,7 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
 test('canEditIssuedMasterCode: admin เท่านั้น ไม่รวมหัวหน้าฝ่ายขาย', () => {
   assert.equal(canEditIssuedMasterCode('admin'), true);
   assert.equal(canEditIssuedMasterCode('ae_supervisor'), false);
-  for (const role of ['senior_ae', 'ae', 'ac', 'marketing', 'ra', 'rd', 'finance', 'executive', 'viewer', 'staff', 'secretary']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'marketing', 'ra', 'rd', 'finance', 'executive', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts', 'secretary']) {
     assert.equal(canEditIssuedMasterCode(role), false, `${role} ต้องแก้รหัสที่ระบบออกให้ไม่ได้`);
   }
 });
@@ -513,7 +517,7 @@ test('finance (FN) เห็นราคาผลิต แต่ไม่เห
 
 // ฝ่ายที่ไม่ควรเห็นราคาผลิต — กันไม่ให้ cap ใหม่หลุดไปติดใครโดยไม่ตั้งใจ
 test('ราคาผลิตยังปิดสำหรับ staff / rd / viewer / marketing / secretary', () => {
-  for (const role of ['staff', 'rd', 'viewer', 'marketing', 'secretary', 'executive']) {
+  for (const role of ['pc', 'pd', 'wh', 'qc', 'ts', 'rd', 'viewer', 'marketing', 'secretary', 'executive']) {
     assert.equal(canSeeProductCost(role), false, role);
   }
   for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'ra', 'admin', 'finance']) {
@@ -524,7 +528,7 @@ test('ราคาผลิตยังปิดสำหรับ staff / rd / 
 test('isReadOnlyObserver: viewer + executive เท่านั้น', () => {
   assert.equal(isReadOnlyObserver('viewer'), true);
   assert.equal(isReadOnlyObserver('executive'), true);
-  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ra', 'rd', 'staff', 'marketing', 'secretary']) {
+  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ra', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'marketing', 'secretary']) {
     assert.equal(isReadOnlyObserver(role), false, role);
   }
 });
@@ -533,13 +537,13 @@ test('costing: ใครเห็นใบ / ใครตอบราคา / �
   const exec = { role: 'executive' };
   const sa = { role: 'ae', team: 'KA' };
   const rd = { role: 'rd', department: 'RD' };
-  const pc = { role: 'staff', department: 'PC' };
-  const wh = { role: 'staff', department: 'WH' };
+  const pc = { role: 'pc', department: 'PC' };
+  const wh = { role: 'wh', department: 'WH' };
 
   // เห็นใบ: ฝ่ายขาย + RD + PC + ผู้บริหาร; ฝ่ายอื่นที่ถือ cap ผ่าน role staff ต้องไม่เห็น
   for (const u of [exec, sa, rd, pc]) assert.equal(canViewCosting(u), true, u.role + (u.department || ''));
   assert.equal(canViewCosting(wh), false, 'staff ฝ่าย WH ต้องไม่เห็นต้นทุน');
-  assert.equal(canViewCosting({ role: 'staff', department: 'QC' }), false);
+  assert.equal(canViewCosting({ role: 'qc', department: 'QC' }), false);
   assert.equal(canViewCosting({ role: 'marketing' }), false);
 
   // ตอบราคา: เฉพาะฝ่ายแหล่งราคา RD/PC — ฝ่ายขาย/ผู้บริหารกรอกแทนไม่ได้
@@ -687,10 +691,12 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   // ⚠️ admin ไม่ถือ requests:answer — ถ้าเช็คแต่ cap แอดมินจะเห็นการ์ดระบบแต่เมนูว่าง
   assert.equal(can('admin', 'requests:answer'), false);
   assert.equal(canAccessRd({ role: 'admin' }), true);
-  // staff ถือ requests:answer แต่ต้องอยู่ฝ่าย RD จริงเท่านั้น
-  assert.equal(can('staff', 'requests:answer'), true);
-  assert.equal(canAccessRd({ role: 'staff', department: 'RD' }), true);
-  assert.equal(canAccessRd({ role: 'staff', department: 'PC' }), false);
+  // PC ถือ requests:answer เหมือน RD — ด่านฝ่ายเป็นตัวแยกว่าใครตอบคำร้องของใคร
+  assert.equal(can('pc', 'requests:answer'), true);
+  // ⭐ ฝ่ายโรงงานที่ไม่รับคำร้อง ไม่มี cap นี้แล้วตั้งแต่ชั้น role (เดิมถือผ่าน `staff`)
+  for (const role of ['pd', 'wh', 'qc', 'ts']) assert.equal(can(role, 'requests:answer'), false, role);
+  assert.equal(canAccessRd({ role: 'rd', department: 'RD' }), true);
+  assert.equal(canAccessRd({ role: 'pc', department: 'PC' }), false);
   assert.equal(canAccessRd(null), false);
 });
 

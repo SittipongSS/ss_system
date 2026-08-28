@@ -41,7 +41,7 @@ test('canSeeLeadKpi: ผู้กำกับดูแล + ทีม intake + �
   for (const role of ['admin', 'ae_supervisor', 'marketing', 'viewer', 'executive']) {
     assert.equal(canSeeLeadKpi(role), true, `${role} ต้องเห็น KPI`);
   }
-  for (const role of ['senior_ae', 'ac', 'ae', 'rd', 'ra', 'staff', 'secretary']) {
+  for (const role of ['senior_ae', 'ac', 'ae', 'rd', 'ra', 'pc', 'pd', 'wh', 'qc', 'ts', 'secretary']) {
     assert.equal(canSeeLeadKpi(role), false, `${role} ต้องไม่เห็น KPI`);
   }
 });

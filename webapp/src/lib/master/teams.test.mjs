@@ -76,10 +76,10 @@ test('⭐ ย้ายทีมต้องบอกของที่ค้า�
 
 // ── ด่านสิทธิ์ ───────────────────────────────────────────────────────────
 test('⭐ จัดทีมได้เฉพาะฝ่ายตัวเอง — และ "ผู้ช่วย" คือคนที่ถูก grant', () => {
-  const assistant = { role: 'staff', department: 'TS', extraCaps: ['team:manage'] };
+  const assistant = { role: 'ts', department: 'TS', extraCaps: ['team:manage'] };
   assert.equal(canManageTeams(assistant, 'TS'), true);
   assert.equal(canManageTeams(assistant, 'SA'), false);
-  assert.equal(canManageTeams({ role: 'staff', department: 'TS' }, 'TS'), false, 'ไม่ได้ grant = ทำไม่ได้');
+  assert.equal(canManageTeams({ role: 'ts', department: 'TS' }, 'TS'), false, 'ไม่ได้ grant = ทำไม่ได้');
 });
 
 test('⭐ หัวหน้าฝ่ายขายจัดทีมช่างไม่ได้ — isSuperuser ไม่ใช่ด่านของเรื่องนี้', () => {
@@ -90,7 +90,7 @@ test('⭐ หัวหน้าฝ่ายขายจัดทีมช่า�
 });
 
 test('⚠️ ฝ่ายว่างต้องไม่ "ตรงกัน" กับฝ่ายว่าง — บั๊กรูปเดิมของการเทียบทีม', () => {
-  assert.equal(canManageTeams({ role: 'staff', extraCaps: ['team:manage'] }, ''), false);
-  assert.equal(canManageTeams({ role: 'staff', extraCaps: ['team:manage'] }, null), false);
-  assert.equal(canManageTeams({ role: 'staff', department: 'TS', extraCaps: ['team:manage'] }, null), false);
+  assert.equal(canManageTeams({ role: 'pc', extraCaps: ['team:manage'] }, ''), false);
+  assert.equal(canManageTeams({ role: 'pc', extraCaps: ['team:manage'] }, null), false);
+  assert.equal(canManageTeams({ role: 'ts', department: 'TS', extraCaps: ['team:manage'] }, null), false);
 });
