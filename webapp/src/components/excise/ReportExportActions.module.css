@@ -1,0 +1,69 @@
+/* ปุ่มโหลดไฟล์ของคิวภาษี — ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง */
+
+.wrap { position: relative; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: var(--z-inline-menu);
+  width: min(90vw, 300px);
+  padding: var(--space-2-5);
+}
+
+.menuTitle {
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+  margin-bottom: var(--space-1-5);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-7);
+  text-align: left;
+  cursor: pointer;
+}
+.option:hover { background: var(--panel-2); }
+.optionOn { background: var(--accent-soft); color: var(--accent); }
+.optionOn:hover { background: var(--accent-soft); }
+
+.tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.tickOn { border: none; background: var(--accent); color: var(--accent-fg); }
+
+.menuFoot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.caret { opacity: var(--op-muted); transition: transform var(--motion-medium); }
+.caretOpen { transform: rotate(180deg); }
