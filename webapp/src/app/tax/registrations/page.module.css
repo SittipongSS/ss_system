@@ -15,6 +15,12 @@
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--space-2); font-size: var(--fs-5);
 }
+/* ค่าฝั่งขวาของ `.cardLine` ที่มีบรรทัดรอง (ราคาปลีก · ราคาผลิต/กำไร) —
+   ชิดขวาทั้งก้อน ไม่งั้นบรรทัดรองที่สั้นกว่าจะลอยไปกลางคอลัมน์ */
+.cardStack {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: var(--space-1); text-align: right; min-width: 0;
+}
 .cardMeta {
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--space-2); font-size: var(--fs-3); color: var(--text-3);

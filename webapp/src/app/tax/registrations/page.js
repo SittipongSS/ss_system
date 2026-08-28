@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, NA, naText } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
 import { deptOf, isTaxWaitingOnMe, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
@@ -26,6 +26,24 @@ import styles from "./page.module.css";
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
 const registrationProduct = (r) => productDisplayName(r);
 const taxText = (r) => (r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(r.taxPerUnit || 0));
+/* ⭐ **คิวเล่าเรื่องเดียวกับรายงาน** (มติผู้ใช้ 2026-08-28) — เดิมต้องเปิด /tax/reports
+   อีกหน้าเพื่อดู ขนาด · เลขผู้เสียภาษี · ราคาถอด VAT · ต้นทุน/กำไร ทั้งที่กำลังตัดสินใจ
+   อยู่บนคิว · ตัวเลขทุกตัวคิดที่ server (`registrationProductFacts`) จอแค่วาด */
+const sizeText = (r) => (r.volume != null ? `${fmtNumber(r.volume)} ${r.volumeUnit || "ml"}` : null);
+const retailText = (r) => (r.retailPriceIncVat ? fmtMoney(r.retailPriceIncVat) : null);
+const retailExText = (r) => (r.retailPriceExVat ? `ถอด VAT ${fmtMoney(r.retailPriceExVat)}` : null);
+/* ราคาผลิต/กำไร: บรรทัดหลักคือสองตัวที่คนดูคิว ๆ ต้องเทียบ · แจกแจงอยู่บรรทัดรอง
+   ⚠️ ค่าที่ไม่มีสิทธิ์ถูกตัดตั้งแต่ server (`redactProductMargin`) ⇒ ที่นี่ทดสอบ
+   "มีค่าไหม" อย่างเดียว ห้ามตัดสินสิทธิ์ซ้ำที่จอ ไม่งั้นสองชั้นจะเลื่อนออกจากกัน */
+const factoryMain = (f) => [
+  f.costPrice != null && `ราคาผลิต ${fmtMoney(f.costPrice)}`,
+  f.factoryProfit != null && `กำไร ${fmtMoney(f.factoryProfit)}`,
+].filter(Boolean).join(" · ");
+const factoryParts = (f) => [
+  f.materialCost != null && `วัตถุดิบ ${fmtMoney(f.materialCost)}`,
+  f.laborCost != null && `ค่าแรง ${fmtMoney(f.laborCost)}`,
+  f.shippingCost != null && `ค่าจัดส่ง ${fmtMoney(f.shippingCost)}`,
+].filter(Boolean).join(" · ");
 
 export default function RegistrationsPage() {
   const role = useRole();
@@ -73,7 +91,7 @@ export default function RegistrationsPage() {
         if (!isTaxWaitingOnMe(r, "registration", myDept)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
       if (!q) return true;
-      return [r.fgCode, r.productName, r.brandName, r.customerName, r.approvalNumber, r.assignee,
+      return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
@@ -121,6 +139,10 @@ export default function RegistrationsPage() {
     );
   };
 
+  /* คอลัมน์ต้นทุน/กำไรขึ้นเฉพาะคนที่ server ส่งค่ามาให้ — ถามจากชุดเต็ม (`regs`)
+     ไม่ใช่ `rows` ที่ผ่านตัวกรอง ไม่งั้นคอลัมน์จะโผล่ ๆ หาย ๆ ตามชิปที่กด */
+  const showFactory = useMemo(() => regs.some((r) => r.factory), [regs]);
+
   const columns = [
     {
       key: "fgCode", label: "รหัสสินค้า (FG)",
@@ -131,20 +153,44 @@ export default function RegistrationsPage() {
         </div>
       ),
     },
-    { key: "customerName", label: "ลูกค้า", render: (r) => <span className="muted">{naText(r.customerName)}</span> },
+    { key: "size", label: "ขนาด", sortValue: (r) => r.volume ?? -1, render: (r) => naText(sizeText(r)) },
     {
-      key: "tax", label: "ภาษี/ชิ้น", align: "right",
-      sortValue: (r) => r.taxPerUnit || 0,
+      key: "customerName", label: "ลูกค้า",
       render: (r) => (
         <div>
-          <div className="font-mono">{taxText(r)}</div>
-          {/* ฐานที่ใช้คิด — ฝ่าย RA อนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ */}
-          <div className="cell-sub">
-            {r.retailPriceIncVat ? `ปลีก ${fmtMoney(r.retailPriceIncVat)}` : NA}
-          </div>
+          <div className="muted">{naText(r.customerName)}</div>
+          {/* เลขผู้เสียภาษีคือสิ่งที่ต้องตรงกับเอกสารสรรพสามิต — อยู่บนแถวเดียวกับชื่อ */}
+          <div className="cell-sub font-mono">{naText(r.taxId)}</div>
         </div>
       ),
     },
+    {
+      key: "tax", label: "ภาษี/ชิ้น", align: "right",
+      sortValue: (r) => r.taxPerUnit || 0,
+      render: (r) => <span className="font-mono">{taxText(r)}</span>,
+    },
+    {
+      /* ฐานที่ใช้คิดภาษี — ฝ่าย RA อนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ
+         (เดิมเป็นบรรทัดรองใต้ "ภาษี/ชิ้น" และมีแต่ราคารวม VAT) */
+      key: "retail", label: "ราคาขายปลีก", align: "right",
+      sortValue: (r) => r.retailPriceIncVat ?? -1,
+      render: (r) => (
+        <div>
+          <div className="font-mono">{naText(retailText(r))}</div>
+          <div className="cell-sub font-mono">{naText(retailExText(r))}</div>
+        </div>
+      ),
+    },
+    ...(showFactory ? [{
+      key: "factory", label: "ราคาผลิต / กำไร", align: "right",
+      sortValue: (r) => r.factory?.costPrice ?? -1,
+      render: (r) => (r.factory ? (
+        <div>
+          <div className="font-mono">{naText(factoryMain(r.factory) || null)}</div>
+          <div className="cell-sub font-mono">{naText(factoryParts(r.factory) || null)}</div>
+        </div>
+      ) : <span className="cell-quiet">{NA}</span>),
+    }] : []),
     { key: "docs", label: "เอกสาร", align: "center", sortValue: (r) => (r.docsReady ? 1 : 0), render: (r) => <DocsCell row={r} /> },
     {
       key: "assignee", label: "ผู้ยื่น",
@@ -174,14 +220,43 @@ export default function RegistrationsPage() {
         <div className={styles.cardHead}>
           <div className="min-w-0">
             <div className={styles.cardCode}>{r.fgCode}</div>
-            <div className="cell-sub truncate">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
+            {/* ⚠️ ขนาดขึ้น **ก่อน** ชื่อสินค้า — ชื่อยาวกว่าการ์ดเสมอบนจอแคบและถูก
+                truncate ⇒ อะไรที่ต่อท้ายชื่อจะหายไปกับ "…" ทุกแถว (ต่อท้ายรหัส FG ก็
+                ตกบรรทัดเป็น "· 5 ml" ลอย ๆ เพราะรหัสยาวเต็มความกว้างพอดี) */}
+            <div className="cell-sub truncate">
+              {sizeText(r) ? `${sizeText(r)} · ` : ""}{registrationProduct(r)} ({naText(registrationBrand(r))})
+            </div>
           </div>
           <StatusBadge status={r.status} />
         </div>
         <div className={styles.cardLine}>
-          <span className="muted truncate">{naText(r.customerName)}</span>
+          <span className="muted truncate">
+            {naText(r.customerName)}
+            {r.taxId ? <span className="cell-sub font-mono"> · {r.taxId}</span> : null}
+          </span>
           <span className="font-mono">{taxText(r)}</span>
         </div>
+        {/* ตัวเลขชุดเดียวกับตาราง — การ์ดกับตารางต้องเล่าเรื่องเดียวกัน ไม่ใช่คนละชุด
+            ⚠️ ป้ายอยู่ซ้าย ค่าอยู่ขวาแบบซ้อนสองบรรทัด (ทรงเดียวกับ `cardLine` อื่น) —
+            เอาบรรทัดรองไปต่อท้ายบรรทัดเดียวกันแล้วมันตัดบรรทัดเอง ทิ้ง "·" ค้างหัวบรรทัด */}
+        {retailText(r) && (
+          <div className={styles.cardLine}>
+            <span className="cell-sub">ราคาขายปลีก</span>
+            <span className={styles.cardStack}>
+              <span className="font-mono">{retailText(r)}</span>
+              {retailExText(r) && <span className="cell-sub font-mono">{retailExText(r)}</span>}
+            </span>
+          </div>
+        )}
+        {r.factory && (
+          <div className={styles.cardLine}>
+            <span className="cell-sub">ราคาผลิต / กำไร</span>
+            <span className={styles.cardStack}>
+              <span className="font-mono">{naText(factoryMain(r.factory) || null)}</span>
+              {factoryParts(r.factory) && <span className="cell-sub font-mono">{factoryParts(r.factory)}</span>}
+            </span>
+          </div>
+        )}
         <div className={styles.cardMeta}>
           <span className="truncate">{naText(r.assignee)}</span>
           <span className="flex items-center gap-2">
@@ -221,7 +296,7 @@ export default function RegistrationsPage() {
           onFilter={setFilter}
           search={search}
           onSearch={setSearch}
-          searchPlaceholder="ค้นหา FG / ลูกค้า / ผู้ยื่น / เลขอนุมัติ..."
+          searchPlaceholder="ค้นหา FG / ลูกค้า / เลขผู้เสียภาษี / ผู้ยื่น / เลขอนุมัติ..."
         />
       }
     >

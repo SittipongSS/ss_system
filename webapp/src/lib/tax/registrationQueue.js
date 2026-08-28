@@ -68,3 +68,43 @@ export function lateRegistrations(rows = [], todayIso, { minDays = AGE_LATE_DAYS
     .filter((x) => Number.isFinite(x.days) && x.days >= minDays)
     .sort((a, b) => b.days - a.days);
 }
+
+/* ── ข้อมูลสินค้าที่คิวต้องเห็นทุกแถว ────────────────────────────────────────
+ *
+ * ⭐ **คิวกับรายงานต้องเล่าเรื่องเดียวกัน** (มติผู้ใช้ 2026-08-28) — เดิมคิวโชว์แค่
+ * ภาษี/ชิ้น + ราคาปลีกรวม VAT ส่วนรายงาน (`lib/tax/reports.js`) มี ขนาด · เลขผู้เสียภาษี ·
+ * ราคาปลีกถอด VAT · ราคาผลิตแจกแจง+กำไร ⇒ คนอ่านคิวต้องเปิดรายงานอีกหน้าเพื่อดูเลข
+ * ที่ตัดสินใจจริง ๆ · ตัวเลขชุดนี้จึงคิด **ที่เดียว** แล้วส่งให้จอ
+ *
+ * ⚠️ **ถอด VAT ใช้กติกาเดียวกับรายงาน**: มีค่าที่ทะเบียนสินค้าเก็บไว้ใช้ค่านั้น ·
+ * ไม่มีถึงหารกลับด้วย `EXCISE_VAT_RATE` (ห้าม hardcode 1.07 ซ้ำที่นี่)
+ * ⚠️ **ไม่ตัดสินสิทธิ์ในนี้** — `factory` คืนครบเสมอ แล้วให้ route กรองด้วย
+ * `redactProductMargin(user, …)` ซึ่งเป็นด่านเดียวกับทะเบียนสินค้า ⇒ กติกาว่าใครเห็น
+ * ต้นทุน/กำไรอยู่ที่เดียวของทั้งระบบ ไม่ใช่สองชุดที่เลื่อนออกจากกัน
+ */
+export function registrationProductFacts(product, { vatRate }) {
+  const p = product || {};
+  const incVat = Number(p.retailPriceIncVat);
+  const hasIncVat = Number.isFinite(incVat) && incVat > 0;
+  const exVat = p.retailPriceExVat != null
+    ? Number(p.retailPriceExVat)
+    : (hasIncVat ? incVat / (1 + vatRate) : null);
+  return {
+    volume: p.volume ?? null,
+    volumeUnit: p.volumeUnit ?? null,
+    retailPriceIncVat: hasIncVat ? incVat : (p.retailPriceIncVat ?? null),
+    retailPriceExVat: Number.isFinite(exVat) ? exVat : null,
+    factory: {
+      costPrice: p.costPrice ?? null,
+      materialCost: p.materialCost ?? null,
+      laborCost: p.laborCost ?? null,
+      shippingCost: p.shippingCost ?? null,
+      factoryProfit: p.factoryProfit ?? null,
+    },
+  };
+}
+
+/** เหลืออะไรให้โชว์ไหมหลังโดนกรองสิทธิ์ — คิวซ่อนทั้งคอลัมน์เมื่อไม่มีใครเห็นสักค่า */
+export function hasFactoryFacts(factory) {
+  return !!factory && Object.values(factory).some((v) => v != null);
+}
