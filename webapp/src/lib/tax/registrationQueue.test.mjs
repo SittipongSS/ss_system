@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  AGE_LATE_DAYS, ageAnchor, ageInDays, ageLabel, ageTone, lateRegistrations, registrationAge,
+  AGE_LATE_DAYS, ageAnchor, ageInDays, ageLabel, ageTone, hasFactoryFacts, lateRegistrations,
+  registrationAge, registrationProductFacts,
 } from "./registrationQueue.js";
+import { EXCISE_VAT_RATE } from "./exciseBilling.js";
 
 test("อายุงานนับเป็นวันเต็มจากวันไทยที่ส่งเข้ามา", () => {
   assert.equal(ageInDays("2026-08-01", "2026-08-28"), 27);
@@ -71,4 +73,38 @@ test("ค้างนาน = เฉพาะใบที่รอฝ่าย R
 test("ไม่มีแถวก็ต้องไม่ระเบิด", () => {
   assert.deepEqual(lateRegistrations([], "2026-08-28"), []);
   assert.deepEqual(lateRegistrations(undefined, "2026-08-28"), []);
+});
+
+// ── ตัวเลขสินค้าบนคิว (ให้เท่ารายงาน) ─────────────────────────────────────
+test("ราคาถอด VAT ใช้ค่าที่ทะเบียนเก็บไว้ก่อน ไม่มีถึงหารกลับ", () => {
+  const stored = registrationProductFacts(
+    { retailPriceIncVat: 107, retailPriceExVat: 99 }, { vatRate: EXCISE_VAT_RATE },
+  );
+  assert.equal(stored.retailPriceExVat, 99);
+
+  // ไม่มีค่าเก็บไว้ → หารกลับด้วยอัตราเดียวกับที่ใบยื่นใช้ (ห้าม hardcode 1.07 ซ้ำ)
+  const derived = registrationProductFacts({ retailPriceIncVat: 107 }, { vatRate: EXCISE_VAT_RATE });
+  assert.equal(Math.round(derived.retailPriceExVat), 100);
+});
+
+test("สินค้าที่ยังไม่มีราคา/ขนาด ต้องได้ null ไม่ใช่ 0 หรือ NaN", () => {
+  const empty = registrationProductFacts(null, { vatRate: EXCISE_VAT_RATE });
+  assert.equal(empty.retailPriceIncVat, null);
+  assert.equal(empty.retailPriceExVat, null);
+  assert.equal(empty.volume, null);
+  // 🐞 ราคา 0 = "ยังไม่มีฐานภาษี" ⇒ ถอด VAT ต้องไม่กลายเป็น 0 ที่ดูเหมือนราคาจริง
+  assert.equal(registrationProductFacts({ retailPriceIncVat: 0 }, { vatRate: EXCISE_VAT_RATE }).retailPriceExVat, null);
+});
+
+test("คอลัมน์ต้นทุนหายทั้งคอลัมน์เมื่อสิทธิ์ถูกกรองออกหมด", () => {
+  const { factory } = registrationProductFacts(
+    { costPrice: 120, materialCost: 60, laborCost: 30, shippingCost: 10, factoryProfit: 20 },
+    { vatRate: EXCISE_VAT_RATE },
+  );
+  assert.equal(hasFactoryFacts(factory), true);
+  // เลียนแบบผลของ redactProductMargin กับคนที่ไม่มีสิทธิ์เลย — เหลือ {} ⇒ ไม่ต้องมีคอลัมน์
+  assert.equal(hasFactoryFacts({}), false);
+  assert.equal(hasFactoryFacts(null), false);
+  // FN เห็นราคาผลิตอย่างเดียว (ไม่เห็นแจกแจง) ⇒ คอลัมน์ยังต้องขึ้น
+  assert.equal(hasFactoryFacts({ costPrice: 120 }), true);
 });
