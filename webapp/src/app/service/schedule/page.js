@@ -10,6 +10,7 @@ import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
@@ -76,6 +77,9 @@ export default function ServiceSchedulePage() {
      ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
   const [crew, setCrew] = useState({ teams: [], members: [] });
   const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
+  /* ⭐ มุมมอง (F-6) — กริดสัปดาห์อ่านภาพรวมได้ดี แต่ **บนมือถือกับตอนแจกงานรายวัน
+     มันคือตารางที่ต้องเลื่อนสองแกน** · "รายการ" คือมุมมองเดียวที่ใช้ได้จริงบนจอแคบ */
+  const [view, setView] = useState("week");
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -277,6 +281,15 @@ export default function ServiceSchedulePage() {
           <span className={styles.count}>{boardVisits.length} นัด</span>
           {/* ⭐ ตัวกรองทีมช่าง — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
               ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
+          <Segmented
+            value={view}
+            onChange={setView}
+            ariaLabel="มุมมองตาราง"
+            options={[
+              { value: "week", label: "สัปดาห์" },
+              { value: "list", label: "รายการ" },
+            ]}
+          />
           {teamOptions.length > 1 && (
             <Segmented
               value={teamFilter}
@@ -358,7 +371,7 @@ export default function ServiceSchedulePage() {
         </section>
       )}
 
-      {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
+      {loading ? <SkeletonRows rows={4} /> : loadError || view !== "week" ? null : (
         /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
            ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
            มาครึ่งเดียว: คอลัมน์ชื่อช่างไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
@@ -435,6 +448,11 @@ export default function ServiceSchedulePage() {
                               >
                                 <span className={styles.visitTime}>{visitTimeText(visit)}</span>
                                 <span className={styles.visitSite}>{site?.name || visit.siteId}</span>
+                                {/* งานที่ไปกันหลายคน — คนจัดคิวต้องเห็นว่านัดนี้กินช่างไปกี่คน
+                                    ก่อนจะแจกงานอื่นให้คนที่ถูกดึงไปช่วยแล้ว */}
+                                {visit.assistantIds?.length > 0 && (
+                                  <span className={styles.visitCrew}>+{visit.assistantIds.length}</span>
+                                )}
                                 {warnings.length > 0 && <AlertTriangle size={11} aria-hidden="true" />}
                               </button>
                             );
@@ -454,9 +472,62 @@ export default function ServiceSchedulePage() {
         </TableScroll>
       )}
 
+      {/* ⭐ มุมมองรายการ (F-6) — เรียงตามวันแล้วตามเวลา · ใช้ได้จริงบนจอแคบซึ่งกริด
+          สัปดาห์ทำไม่ได้ (ต้องเลื่อนสองแกน) · ข้อมูลชุดเดียวกับกริดทุกอย่าง
+          รวมทั้งตัวกรองทีมและการซ่อนร่าง */}
+      {!loading && !loadError && view === "list" && (
+        teamRows.length === 0 ? (
+          <EmptyState icon={CalendarDays}>สัปดาห์นี้ยังไม่มีนัดเข้าบริการ</EmptyState>
+        ) : (
+          <ul className={styles.listView}>
+            {days.map((day) => {
+              const dayVisits = sortByTime(
+                teamRows.flatMap((row) => row.visits.filter((v) => v.scheduledDate === day.iso)),
+              );
+              if (!dayVisits.length) return null;
+              return (
+                <li key={day.iso}>
+                  <h3 className={styles.listDay} data-today={day.iso === todayIso ? "yes" : undefined}>
+                    {DAY_LABELS[day.date.getDay()]} {day.date.getDate()} {fmtMonthShort(day.iso)}
+                    <span>{dayVisits.length} นัด</span>
+                  </h3>
+                  <ul className={styles.listRows}>
+                    {dayVisits.map((visit) => {
+                      const site = sitesById.get(visit.siteId);
+                      const warnings = visitWarnings(visit, { site, overlapIds });
+                      const load = workload[visit.siteId];
+                      return (
+                        <li key={visit.id}>
+                          <button type="button" className={styles.listRow} onClick={() => setFormVisit(visit)}>
+                            <span className={styles.listTime}>{visitTimeText(visit) || "ทั้งวัน"}</span>
+                            <span className={styles.listSite}>
+                              <b>{site?.name || visit.siteId}</b>
+                              <span>
+                                {VISIT_KIND_LABELS[visit.kind]}
+                                {site?.routeZone ? ` · ${site.routeZone}` : ""}
+                                {load?.assets ? ` · ${load.assets} เครื่อง` : ""}
+                              </span>
+                            </span>
+                            <span className={styles.listWho}>
+                              {naText(visit.assigneeName)}
+                              {visit.assistantIds?.length > 0 ? ` +${visit.assistantIds.length}` : ""}
+                            </span>
+                            {warnings.length > 0 && <AlertTriangle size={13} aria-hidden="true" />}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      )}
+
       {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
           บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
-      {!loading && !loadError && visits.length > 0 && (
+      {!loading && !loadError && view === "week" && visits.length > 0 && (
         <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
           {VISIT_KINDS.map((kind) => (
             <li key={kind} className={styles.legendItem}>

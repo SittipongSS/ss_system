@@ -14,7 +14,20 @@ export async function loadVisits(supabase, { from = null, to = null, siteId = nu
   if (from) query = query.gte('scheduledDate', from);
   if (to) query = query.lte('scheduledDate', to);
   if (siteId) query = query.eq('siteId', siteId);
-  if (assigneeId) query = query.eq('assigneeId', assigneeId);
+  /* ⭐ **ช่างที่ไปด้วยต้องเห็นงานของตัวเองด้วย** (F-6 · มอบหมายหลายคน) — ของเดิม
+     กรองเฉพาะ `assigneeId` ⇒ คนที่ถูกใส่เป็นผู้ช่วยจะไม่เห็นนัดนั้นในงานวันนี้เลย
+     แล้ววันนั้นเขาจะไม่รู้ว่าต้องไปไหน · `assistantIds` เป็น jsonb array จึงใช้ `cs`
+     (contains) ไม่ใช่ `eq` · `.or()` ก้อนเดียวเพราะสองเงื่อนไขนี้เป็น "อย่างใดอย่างหนึ่ง" */
+  if (assigneeId) {
+    /* ⚠️ **ค่าถูกยัดลงสตริงตัวกรองของ PostgREST ตรง ๆ** — id ที่มีวงเล็บหรือจุลภาค
+       จะแตกไวยากรณ์ `or()` แล้วกลายเป็นตัวกรองอื่นที่เราไม่ได้ตั้งใจ · id ของระบบ
+       เป็น uuid/สตริงรหัสเสมอ จึงกรองอักขระให้เหลือชุดที่ปลอดภัยก่อนเสมอ
+       (ค่านี้มาจาก query param `assignee` ได้ด้วย ไม่ได้มาจาก session อย่างเดียว) */
+    const safeId = String(assigneeId).replace(/[^A-Za-z0-9_-]/g, '');
+    if (safeId) {
+      query = query.or(`assigneeId.eq.${safeId},assistantIds.cs.["${safeId}"]`);
+    }
+  }
   const { data, error } = await query
     .order('scheduledDate', { ascending: true })
     .order('startTime', { ascending: true, nullsFirst: false });

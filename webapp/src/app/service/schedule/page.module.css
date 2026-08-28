@@ -284,3 +284,89 @@
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
+
+/* จำนวนช่างที่ไปด้วยบนชิปนัด — "+2" อ่านเร็วกว่ารายชื่อในช่องที่กว้าง 100px */
+.visitCrew {
+  margin-inline-start: auto;
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: var(--fs-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── มุมมองรายการ (F-6) — ใช้ได้จริงบนจอแคบซึ่งกริดสัปดาห์ทำไม่ได้ ────── */
+.listView {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.listDay {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-section-title);
+  line-height: var(--lh-thai);
+}
+
+.listDay > span {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.listDay[data-today="yes"] { color: var(--accent); }
+
+.listRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.listRow {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: var(--ctl-h-touch);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.listRow:hover { border-color: var(--text-3); }
+
+.listTime {
+  min-width: 92px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.listSite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  flex: 1;
+}
+
+.listSite > span { color: var(--text-3); font-size: var(--fs-label); }
+
+.listWho { color: var(--text-2); white-space: nowrap; }
