@@ -297,6 +297,8 @@ const SUPERUSER_CAPS = [
   'service:view', 'service:edit',         // ตารางเข้า service — ช่างฝ่าย TS + ทีมขาย SV
   'payments:confirm',                     // คอนเฟิร์มงวดชำระ SO — ของจริงคือฝ่าย FN (แคบด้วยฝ่าย)
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
+  // จัดทีมของฝ่าย — หัวหน้าฝ่ายขายได้ตาม role · ฝ่ายอื่นได้ด้วย grant รายคน
+  'team:manage',
 ];
 
 // Admin-only system capabilities — account management, master taxonomy, and the
@@ -475,7 +477,13 @@ export function can(role, cap) {
 //
 // Only these caps may be granted per-user. Anything else is ignored (defense
 // against a stale/tampered app_metadata array escalating privilege).
-export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view'];
+/* ⭐ `team:manage` (มติผู้ใช้ 2026-08-28 · docs/team-management-plan.md) — จัดทีม
+   **ของฝ่ายตัวเอง** ได้โดยไม่ต้องรอแอดมิน · grant ได้เพราะมันแคบกว่า users:manage
+   คนละชั้น: ตั้งชื่อทีม/หัวหน้า/ย้ายคนเข้าออกทีม แต่ **สร้าง/ลบบัญชี · เปลี่ยน role ·
+   เปลี่ยนฝ่าย · รีเซ็ตรหัส · แก้ extraCaps ยังทำไม่ได้** (ยังเป็น users:manage เท่านั้น)
+   ⚠️ ตัวจำกัดขอบเขตอยู่ที่ `canManageTeams(user, department)` ไม่ได้อยู่ที่ cap —
+   ถือ cap แล้วยังจัดได้เฉพาะฝ่ายตัวเอง */
+export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view', 'team:manage'];
 export const GRANTABLE_CAP_LABELS = {
   'legal:view': 'ดูสถานะภาษีทุกทีม (LG)',
   'legal:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่ายกฎหมาย (LG)',
@@ -484,6 +492,7 @@ export const GRANTABLE_CAP_LABELS = {
   'mgmt:edit': 'เพิ่ม/แก้ไขข้อมูลในระบบงานบริหาร (mgmt)',
   'audit:view': 'ดูบันทึกการใช้งาน (audit log) — อ่านอย่างเดียว',
   'users:view': 'ดูรายชื่อผู้ใช้ (/users) — อ่านอย่างเดียว ไม่เพิ่ม/แก้/ลบ',
+  'team:manage': 'จัดทีมของฝ่ายตัวเอง (สร้าง/ปิดทีม · ย้ายคน · ตั้งหัวหน้าทีม)',
 };
 
 // Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].
@@ -639,6 +648,30 @@ export function canEditProduction(user) {
 
 // ── ตารางเข้า service (Technic Service) ─────────────────────────────
 // ฝ่ายช่างที่เข้าไซต์ + ทีมขายธุรกิจบริการที่เป็นเจ้าของสัญญา
+/* ── จัดทีม (มติผู้ใช้ 2026-08-28 · docs/team-management-plan.md) ──────────
+   ⭐ *"อยากย้ายการจัดทีมออกมาเป็นของแต่ละระบบ ให้ Supervisor/หัวหน้า/ผู้ช่วยตั้งเองได้
+   ไม่ต้องรอแอดมิน และแยกเฉพาะฝ่ายได้ด้วย"* + *"TS ก็มีแยกทีม"*
+
+   ⚠️ **ไม่ใช่ users:manage** — cap นั้นเปิดสร้าง/ลบบัญชี รีเซ็ตรหัส เปลี่ยน role มาด้วย
+   ทั้งชุด และถูกกันไม่ให้ grant ไว้ด้วยเหตุผล SECURITY ที่เขียนกำกับข้างบน
+   ⇒ ของใหม่เป็น cap แคบที่ grant รายคนได้ ("ผู้ช่วย" ที่ผู้ใช้พูดถึง)
+
+   ⚠️ **ขอบเขตคือฝ่ายของตัวเอง** — หัวหน้าฝ่ายขายจัดทีมช่างไม่ได้ และกลับกัน
+   (admin ข้ามได้ตามปกติ) · ฝ่ายที่ส่งเข้ามาต้องไม่ว่าง ไม่งั้น null เทียบ null
+   จะ "ตรงกัน" แล้วคนไร้ฝ่ายจัดได้ทุกฝ่าย — บั๊กรูปเดิมที่เคยเกิดกับการเทียบทีม */
+export function canManageTeams(user, department = null) {
+  if (!canUser(user, 'team:manage')) return false;
+  /* ⚠️ **admin เท่านั้นที่ข้ามฝ่ายได้ ไม่ใช่ isSuperuser** — `isSuperuser` นับ
+     `ae_supervisor` รวมอยู่ด้วย ซึ่งเป็น *หัวหน้าฝ่ายขาย ไม่ใช่คนดูแลระบบ*
+     (มติเดียวกับที่ระบบแจ้งปัญหาเขียนไว้ว่าห้ามใช้ isSuperuser เป็นด่านของโมดูล)
+     ⇒ หัวหน้าฝ่ายขายจัดได้เฉพาะทีมของฝ่ายขาย ไม่ใช่ทีมช่าง */
+  if (user?.role === 'admin') return true;
+  const mine = departmentOf(user);
+  const target = String(department ?? '').trim();
+  if (!mine || !target) return false;
+  return mine === target;
+}
+
 export const SERVICE_DEPARTMENT = 'TS';
 export const SERVICE_SALES_TEAM = 'SV';
 
