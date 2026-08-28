@@ -77,9 +77,9 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
       return Response.json({ error: 'forbidden' }, { status: 403 });
     }
     // Registration lock (stricter): can't remove docs from an APPROVED reg unless
-    // LG — others must press "ขอแก้ไข" first.
-    if (att.entityType === 'registration' && parent?.status === 'approved' && !can(user?.role, 'legal:approve')) {
-      return Response.json({ error: `ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่ายกฎหมายปลดอนุมัติก่อนจึงจะ${actionLabel}ได้` }, { status: 403 });
+    // RA — others must press "ขอแก้ไข" first.
+    if (att.entityType === 'registration' && parent?.status === 'approved' && !can(user?.role, 'ra:approve')) {
+      return Response.json({ error: `ทะเบียนนี้อนุมัติแล้ว ถูกล็อก — ต้องให้ฝ่าย RA ปลดอนุมัติก่อนจึงจะ${actionLabel}ได้` }, { status: 403 });
     }
   }
   return null;

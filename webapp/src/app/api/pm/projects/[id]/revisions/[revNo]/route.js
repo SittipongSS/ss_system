@@ -9,7 +9,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id, revNo } = await ctx.params;
 
   if (!user) return unauthorized();
-  if (!can(user.role, 'pm:view')) return forbidden(); // legal/unknown ไม่มีสิทธิ์ดู snapshot PM
+  if (!can(user.role, 'pm:view')) return forbidden(); // RA/unknown ไม่มีสิทธิ์ดู snapshot PM
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโครงการ');

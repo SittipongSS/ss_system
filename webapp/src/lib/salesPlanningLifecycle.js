@@ -86,7 +86,7 @@ function buildSteps(stage) {
 // สถานะทะเบียนสรรพสามิต (จาก excise workflow): draft→pending_legal→approved (rejected=ตีกลับ)
 const REG_STATUS_HINT = {
   draft: 'ทะเบียนฉบับร่าง — แนบเอกสาร/ส่งอนุมัติ',
-  pending_legal: 'รอฝ่ายกฎหมายอนุมัติ',
+  pending_legal: 'รอฝ่าย RA อนุมัติ',
   rejected: 'ถูกตีกลับ — แก้ไขแล้วส่งใหม่',
 };
 

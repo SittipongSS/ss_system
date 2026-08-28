@@ -58,7 +58,7 @@ export function registrationAge(registration, todayIso) {
 }
 
 /**
- * ใบที่ "ค้างนาน" ในคิวของฝ่ายกฎหมาย — ตัวเลขที่หน้าภาพรวมต้องกล้าโชว์
+ * ใบที่ "ค้างนาน" ในคิวของฝ่าย RA — ตัวเลขที่หน้าภาพรวมต้องกล้าโชว์
  * (สถานะอื่นไม่นับ: ฉบับร่างค้างเป็นเรื่องของฝ่ายขายเอง · อนุมัติแล้วจบงาน)
  */
 export function lateRegistrations(rows = [], todayIso, { minDays = AGE_LATE_DAYS } = {}) {

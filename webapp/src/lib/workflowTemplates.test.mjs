@@ -94,7 +94,7 @@ test('validator ยอมรับคู่ either-or ที่ใช้ token f
 
 test('category validation rejects a visible step whose ONLY dependency is filtered out', () => {
   const rows = [
-    { stepKey: 'excise', name: 'Excise', role: 'LG', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
+    { stepKey: 'excise', name: 'Excise', role: 'RA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
     { stepKey: 'finish', name: 'Finish', role: 'SA', durationDays: 1, dependencyMode: 'custom', dependsOnStepKeys: ['excise'] },
   ];
   assert.match(validateWorkflowTemplateSteps(rows).join(' '), /dependency excise ไม่อยู่ใน หมวดทั่วไป/);
@@ -127,24 +127,81 @@ test('workflow summary reports counts without pretending summed days are critica
 // ถ้าแก้ไม่ครบ อาการคือ "เลือกได้ในหน้าตั้งค่า แต่กดบันทึกแล้วเด้ง
 // workflow_template_steps_invalid" ซึ่งอ่านไม่ออกว่าเป็นเพราะอะไร
 {
-  const sqlUrl = new URL('../../supabase/migrations/0192_workflow_step_role_ts.sql', import.meta.url);
+  /* ⚠️ ชี้ที่ **ใบล่าสุดที่นิยาม CHECK/RPC ชุดนี้** เสมอ — ไม่ใช่ใบแรกที่สร้างมัน
+     ใบใหม่ที่แก้รายชื่อ role ต้องย้าย path นี้ตามด้วย ไม่งั้นเทสต์จะเทียบกับใบเก่า
+     แล้วผ่านทั้งที่ของจริงบนฐานเป็นอีกชุด (0121 → 0192 → 0308) */
+  const sqlUrl = new URL('../../supabase/migrations/0308_workflow_step_role_lg_to_ra.sql', import.meta.url);
   const sql = readFileSync(sqlUrl, 'utf8');
   // ดึงรายชื่อ role จากคำสั่ง SQL แบบเดียวกับที่ Postgres อ่าน — ไม่ใช่ regex หลวม ๆ
   const rolesFrom = (pattern) => {
     const match = sql.match(pattern);
-    assert.ok(match, `หาไม่เจอใน 0192: ${pattern}`);
+    assert.ok(match, `หาไม่เจอใน 0308: ${pattern}`);
     return match[1].split(',').map((value) => value.trim().replace(/^'|'$/g, ''));
   };
 
-  test('0192: CHECK ของตารางมี TS และครบทุกค่าที่โค้ดยอมรับ', () => {
+  test('0308: CHECK ของตารางมี TS/RA และครบทุกค่าที่โค้ดยอมรับ', () => {
     const checkRoles = rolesFrom(/ADD CONSTRAINT workflow_template_steps_role_check\s*\n\s*CHECK \(role IN \(([^)]+)\)\)/);
     assert.ok(checkRoles.includes('TS'), 'CHECK ของตารางยังไม่มี TS');
+    assert.ok(checkRoles.includes('RA'), 'CHECK ของตารางยังไม่มี RA');
+    assert.equal(checkRoles.includes('LG'), false, 'LG ถูกเปลี่ยนเป็น RA แล้ว ห้ามเหลือค้าง');
     assert.deepEqual(checkRoles, [...WORKFLOW_TEMPLATE_ROLES], 'CHECK ของตารางกับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
   });
 
-  test('0192: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
+  /* 🪤 **บั๊กจริงตอนรันใบนี้รอบแรก (2026-08-28)** — เขียน UPDATE ไว้ก่อน DROP CHECK
+     แล้วล้มทันทีที่บรรทัดแรก:
+       ERROR: new row for relation "project_tasks" violates check constraint
+              "project_tasks_role_check" · Failing row contains (... RA ...)
+     เพราะ CHECK **เดิม** (0009) ไม่มี 'RA' ⇒ มันบล็อกตัว UPDATE เอง ไม่ใช่ตอน ADD
+     ⇒ ลำดับต้องเป็น DROP → UPDATE → ADD เสมอเวลาเปลี่ยนค่าในคอลัมน์ที่มี CHECK คุม */
+  test('0308: ถอด CHECK ก่อน UPDATE แล้วค่อยใส่กลับ — สลับลำดับแล้วล้มทั้งใบ', () => {
+    const firstDrop = sql.search(/DROP CONSTRAINT IF EXISTS/);
+    const firstUpdate = sql.search(/^UPDATE public\./m);
+    const firstAdd = sql.search(/ADD CONSTRAINT/);
+    assert.ok(firstDrop >= 0 && firstUpdate >= 0 && firstAdd >= 0, 'อ่านคำสั่งจากไฟล์ไม่เจอ');
+    assert.ok(firstDrop < firstUpdate, 'ต้อง DROP CHECK ก่อน UPDATE');
+    assert.ok(firstUpdate < firstAdd, 'ต้อง UPDATE ก่อน ADD CHECK กลับ');
+  });
+
+  /* `workflow_template_versions` ไม่มีคอลัมน์ `steps` — ขั้นตอนอยู่ใน
+     `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง) */
+  /* 🔴 **บทเรียนซ้ำรอบสอง** — `guard_workflow_template_step` (0121:202) บล็อกการเขียน
+     ทุกชนิดบนขั้นตอนที่เวอร์ชันแม่ไม่ใช่ draft โดยไม่ดูว่าแก้คอลัมน์ไหน:
+       ERROR: P0001: workflow_template_steps_immutable
+     สามแถวที่ต้องย้ายอยู่ใต้เวอร์ชัน published ⇒ ต้องปิด trigger ชั่วคราว
+     (0193 เคยล้มบน prod ด้วยเหตุเดียวกัน — ดูเทสต์ของมันข้างล่าง)
+     ⚠️ CHECK ไม่ใช่ด่านเดียวบนตาราง — ใบไหนที่แก้ข้อมูลตารางนี้ต้องคิดถึง trigger ด้วย */
+  test('0308: ปิด trigger ของขั้นตอนแล้วเปิดคืนครบคู่ ในทรานแซกชันเดียว', () => {
+    const flat = sql.replace(/\s+/g, ' ');
+    const disable = 'ALTER TABLE public.workflow_template_steps DISABLE TRIGGER workflow_template_steps_guard';
+    const enable = 'ALTER TABLE public.workflow_template_steps ENABLE TRIGGER workflow_template_steps_guard';
+    const update = "UPDATE public.workflow_template_steps SET role = 'RA'";
+    assert.ok(flat.includes(disable), 'ไม่ได้ปิด trigger — จะล้มด้วย workflow_template_steps_immutable');
+    assert.ok(flat.includes(enable), 'ปิด trigger แล้วไม่ได้เปิดคืน — ด่านของตารางจะหายถาวร');
+    assert.ok(flat.indexOf(disable) < flat.indexOf(update), 'ต้องปิดก่อน UPDATE');
+    assert.ok(flat.indexOf(update) < flat.indexOf(enable), 'ต้องเปิดคืนหลัง UPDATE');
+    assert.ok(flat.indexOf('BEGIN;') < flat.indexOf(disable) && flat.indexOf(enable) < flat.indexOf('COMMIT;'),
+      'disable/enable ต้องอยู่ระหว่าง BEGIN…COMMIT — ล้มกลางคันแล้ว trigger ต้องกลับมาเอง');
+  });
+
+  test('0308: ไม่แตะคอลัมน์ที่ไม่มีอยู่จริง', () => {
+    // ⚠️ ตัว RPC เขียน `UPDATE public.workflow_template_versions SET "nameTh" = …`
+    // อยู่แล้วโดยชอบ — ที่ห้ามคือการอ้าง **คอลัมน์ `steps`** ซึ่งตารางนี้ไม่มี
+    assert.doesNotMatch(sql, /SET\s+steps\s*=/, 'workflow_template_versions ไม่มีคอลัมน์ steps');
+    assert.doesNotMatch(sql, /jsonb_typeof\(steps\)/, 'workflow_template_versions ไม่มีคอลัมน์ steps');
+  });
+
+  /* CHECK ของ project_tasks ไม่เคยมี 'TS' เลย (0009 เขียนก่อน TS เกิด · 0192 แก้เฉพาะ
+     ฝั่งแม่แบบ) ⇒ ขั้นตอนแม่แบบที่เป็น TS แตกลงเป็นงานจริงไม่ได้ · ใบนี้ยกให้ตรงกัน */
+  test('0308: CHECK ของ project_tasks ตรงกับของแม่แบบ — ไม่งั้นขั้นตอน TS แตกเป็นงานไม่ได้', () => {
+    const taskRoles = rolesFrom(/ADD CONSTRAINT project_tasks_role_check\s*\n\s*CHECK \("role" IN \(([^)]+)\)\)/);
+    assert.deepEqual(taskRoles, [...WORKFLOW_TEMPLATE_ROLES],
+      'CHECK ของ project_tasks กับของแม่แบบต้องเป็นชุดเดียวกัน');
+  });
+
+  test('0308: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
     const rpcRoles = rolesFrom(/\(s->>'role'\) NOT IN \(([^)]+)\)/);
     assert.ok(rpcRoles.includes('TS'), 'RPC ยังไม่รับ TS — เลือกได้แต่บันทึกไม่ผ่าน');
+    assert.ok(rpcRoles.includes('RA'), 'RPC ยังไม่รับ RA — เลือกได้แต่บันทึกไม่ผ่าน');
     assert.deepEqual(rpcRoles, [...WORKFLOW_TEMPLATE_ROLES], 'RPC กับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
   });
 

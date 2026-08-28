@@ -15,7 +15,7 @@ const fromSalesOrderRoute = read('../../app/api/tax/orders/from-sales-order/rout
 
 // 🐞 บั๊กจริง: `.eq('team', user?.team ?? null)` พลาดสองชั้นพร้อมกัน (ยืนยันกับ PostgREST จริง)
 //  1. แถว team = null หายจากลิสต์ของ **ทุกทีม** — ซึ่งเกิดทุกครั้งที่คนไม่มีทีม
-//     (admin/legal/staff · prod มี 10 บัญชี) เป็นคนสร้าง เพราะ POST ตรึง team = user.team
+//     (admin/RA/staff · prod มี 10 บัญชี) เป็นคนสร้าง เพราะ POST ตรึง team = user.team
 //  2. คนที่ scope 'team' แต่ไม่มีทีม จะได้ `team=eq.null` ซึ่ง PostgREST แปลเป็น `= NULL`
 //     → 0 แถว (มีแต่ `is.null` ที่ทำงาน) = ลิสต์ว่างเปล่าโดยไม่มี error เตือน
 test('ลิสต์ใบยื่น: ทีมตัวเอง + แถวไม่มีทีม (ของกลาง) — ห้ามใช้ eq(team, null)', () => {

@@ -48,7 +48,7 @@ export function masterReapprovalUpdate(changedFields = []) {
 
 // ── ทะเบียนสรรพสามิต ────────────────────────────────────────────────────
 export function registrationStatusUpdate(status, { reason = null } = {}) {
-  if (status === 'pending_legal') return { kind: 'submit', body: 'ยื่นให้ฝ่ายกฎหมายตรวจ', meta: {} };
+  if (status === 'pending_legal') return { kind: 'submit', body: 'ยื่นให้ฝ่าย RA ตรวจ', meta: {} };
   if (status === 'approved') return { kind: 'approve', body: 'ขึ้นทะเบียนแล้ว', meta: {} };
   if (status === 'rejected') {
     return { kind: 'reject', body: `ตีกลับให้แก้ไข${withReason(reason)}`, meta: {} };

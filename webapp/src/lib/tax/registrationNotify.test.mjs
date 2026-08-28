@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { registrationNotice } from "./registrationNotify.js";
 
 const directory = new Map([
-  ["u-lg1", { id: "u-lg1", role: "legal" }],
-  ["u-lg2", { id: "u-lg2", role: "legal" }],
-  ["u-lg-off", { id: "u-lg-off", role: "legal", disabled: true }],
+  ["u-lg1", { id: "u-lg1", role: "ra" }],
+  ["u-lg2", { id: "u-lg2", role: "ra" }],
+  ["u-lg-off", { id: "u-lg-off", role: "ra", disabled: true }],
   ["u-admin", { id: "u-admin", role: "admin" }],
   ["u-sa", { id: "u-sa", role: "ae" }],
 ]);
@@ -15,7 +15,7 @@ const reg = {
   ownerId: "u-sa", approvalNumber: null,
 };
 
-test("ยื่นขึ้นทะเบียน → ฝ่ายกฎหมายทุกคนที่ยังทำงานอยู่", () => {
+test("ยื่นขึ้นทะเบียน → ฝ่าย RA ทุกคนที่ยังทำงานอยู่", () => {
   const n = registrationNotice({ action: "submit", registration: reg, directory, actorId: "u-sa" });
   assert.deepEqual(n.userIds.sort(), ["u-lg1", "u-lg2"]);
   assert.match(n.title, /รอตรวจขึ้นทะเบียน/);
@@ -23,8 +23,8 @@ test("ยื่นขึ้นทะเบียน → ฝ่ายกฎหม
 });
 
 /* ⚠️ ไม่มีใครรับแจ้งเตือน = ความล้มเหลวเงียบแบบเดียวกับที่ไฟล์นี้เกิดมาแก้
-   (ทะเบียน 17 ใบค้างเพราะไม่มีใครรู้) ⇒ ไม่มี legal ต้องตกไปที่ admin ไม่ใช่เงียบ */
-test("ไม่มีฝ่ายกฎหมายในระบบ → ตกไปที่แอดมิน ไม่ใช่ไม่ส่งใคร", () => {
+   (ทะเบียน 17 ใบค้างเพราะไม่มีใครรู้) ⇒ ไม่มี RA ต้องตกไปที่ admin ไม่ใช่เงียบ */
+test("ไม่มีฝ่าย RA ในระบบ → ตกไปที่แอดมิน ไม่ใช่ไม่ส่งใคร", () => {
   const noLegal = new Map([["u-admin", { id: "u-admin", role: "admin" }], ["u-sa", { id: "u-sa", role: "ae" }]]);
   const n = registrationNotice({ action: "submit", registration: reg, directory: noLegal, actorId: "u-sa" });
   assert.deepEqual(n.userIds, ["u-admin"]);
@@ -38,7 +38,7 @@ test("บัญชีที่ถูกปิดไม่ได้รับแ�
 test("คนกดเองไม่ต้องแจ้งตัวเอง", () => {
   const n = registrationNotice({ action: "submit", registration: reg, directory, actorId: "u-lg1" });
   assert.deepEqual(n.userIds, ["u-lg2"]);
-  // ฝ่ายกฎหมายอนุมัติใบของตัวเอง (ทั้งยื่นทั้งอนุมัติ) = ไม่มีใครต้องรู้
+  // ฝ่าย RA อนุมัติใบของตัวเอง (ทั้งยื่นทั้งอนุมัติ) = ไม่มีใครต้องรู้
   assert.equal(registrationNotice({
     action: "approve", registration: reg, directory, actorId: "u-sa",
   }), null);

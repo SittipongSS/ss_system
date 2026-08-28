@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/pm/projects — team-scoped list (supervisor sees all).
 export const GET = withUser(async ({ user, supabase }) => {
   // PM is a sales-only tool: gate on the pm:view capability (not just scope).
-  // legal has viewScope 'all' but no pm:view — without this it would read every
+  // RA has viewScope 'all' but no pm:view — without this it would read every
   // team's projects. viewer/staff hold pm:view and pass.
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden();

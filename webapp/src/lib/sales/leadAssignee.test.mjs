@@ -62,7 +62,7 @@ test('บัญชีที่ถูกระงับ (ลาออก) มอ�
 
 test('role ที่ทำงานคิวลีดไม่ได้ → ปฏิเสธ ไม่ปล่อยให้ลีดค้างถาวร', async () => {
   // ⭐ `ac` อยู่ในกองนี้ตั้งแต่มติ 2026-08-08 — หลังบ้านของทีม ไม่รับเป็นเจ้าของลีด
-  for (const role of ['legal', 'staff', 'rd', 'marketing', 'viewer', 'executive', 'secretary', 'ae_supervisor', 'ac']) {
+  for (const role of ['ra', 'staff', 'rd', 'marketing', 'viewer', 'executive', 'secretary', 'ae_supervisor', 'ac']) {
     const result = await validateLeadAssignee(
       stub({ 'U-1': authUser({ app_metadata: { role, team: 'ODM' } }) }), 'U-1',
     );
@@ -94,7 +94,7 @@ const NARROWED_BY_DECISION = ['ac'];
 
 test('ลิสต์แคบกว่า canWorkLead ได้เฉพาะรายที่มีมติกำกับ — ที่เหลือต้องทำงานลีดไม่ได้จริง', () => {
   const lead = { team: 'ODM', assigneeId: 'U-1' };
-  for (const role of ['legal', 'staff', 'rd', 'marketing', 'viewer', 'ae_supervisor']) {
+  for (const role of ['ra', 'staff', 'rd', 'marketing', 'viewer', 'ae_supervisor']) {
     assert.equal(
       canWorkLead({ role, id: 'U-1', team: 'ODM' }, lead), false,
       `${role} ทำงานลีดได้แต่ถูกกันออกจากลิสต์ผู้รับผิดชอบ`,

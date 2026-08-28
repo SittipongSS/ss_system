@@ -236,7 +236,7 @@ export const UPDATE_KINDS = {
   // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
   excise_registration: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
-    submit: { label: 'ยื่นให้ฝ่ายกฎหมาย', color: 'var(--blue)' },
+    submit: { label: 'ยื่นให้ฝ่าย RA', color: 'var(--blue)' },
     approve: { label: 'ขึ้นทะเบียนแล้ว', color: 'var(--green)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     revoke: { label: 'ปลดอนุมัติ', color: 'var(--red)' },

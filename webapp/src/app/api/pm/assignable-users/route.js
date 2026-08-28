@@ -1,4 +1,4 @@
-import { can, canUser, departmentFor, normalizeDepartment, userTeams } from '@/lib/permissions';
+import { can, canUser, departmentFor, normalizeDepartment, normalizeRole, userTeams } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden } from '@/lib/http';
 import { cachedJson } from '@/lib/serverCache';
 
@@ -18,7 +18,7 @@ async function loadAssignableUsers(supabase) {
     const users = data?.users || [];
     if (!users.length) break;
     for (const u of users) {
-      const role = u.app_metadata?.role || null;
+      const role = normalizeRole(u.app_metadata?.role) || null;
       if (!role || role === 'user') continue; // ข้าม account ที่ยังไม่กำหนดบทบาท
       rows.push({
         id: u.id,

@@ -11,9 +11,9 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 // Read-only detail of one PO (orders row) and its line items.
 // `order` is expected to carry `items: [{ ..., product }]`.
 export default function OrderDetailModal({ order, open, onClose }) {
-  // Receipts/filing docs are managed by sales (filing) + legal (tax approval).
+  // Receipts/filing docs are managed by sales (filing) + RA (tax approval).
   const canActSales = useCan("sales:act");
-  const canApproveLegal = useCan("legal:approve");
+  const canApproveLegal = useCan("ra:approve");
   const canEditOrderDocs = canActSales || canApproveLegal;
   if (!order) return null;
   const items = order.items || [];

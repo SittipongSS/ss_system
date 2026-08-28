@@ -74,7 +74,7 @@ test('ไม่มีขนาดกระดาษชนิดอื่นโ�
   for (const file of sourceFiles()) {
     if (/\.test\.mjs$/.test(file)) continue;
     const source = fs.readFileSync(file, 'utf8');
-    for (const hit of source.matchAll(/size:\s*(letter|legal|a3|a5)\b/gi)) {
+    for (const hit of source.matchAll(/size:\s*(letter|RA|a3|a5)\b/gi)) {
       bad.push(`${rel(file)}: ${hit[0]}`);
     }
   }

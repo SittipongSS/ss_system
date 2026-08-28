@@ -60,7 +60,7 @@ const buildGridBg = (px) => {
 
 const roleColor = (role) => ({
   SA: "var(--accent)", RD: "var(--purple)", PC: "var(--blue)", PD: "var(--blue)",
-  QC: "var(--green)", LG: "var(--amber)", WH: "var(--text-2)", ALL: "var(--red)",
+  QC: "var(--green)", RA: "var(--amber)", WH: "var(--text-2)", ALL: "var(--red)",
 }[role] || "var(--text-2)");
 
 const statusFill = taskStatusColor;

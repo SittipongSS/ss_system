@@ -81,7 +81,7 @@ export const EXCISE_CATEGORY_TOKEN = 'flag:excise';
 //
 // `TS` = ฝ่ายเทคนิคบริการ (mig 0192) — เปิดให้แม่แบบสายบริการมอบขั้น
 // "ประเมินพื้นที่หน้างาน" / "ติดตั้งหน้างาน" ให้ช่างได้
-export const WORKFLOW_TEMPLATE_ROLES = Object.freeze(['SA', 'RD', 'PC', 'PD', 'QC', 'LG', 'WH', 'TS', 'ALL']);
+export const WORKFLOW_TEMPLATE_ROLES = Object.freeze(['SA', 'RD', 'PC', 'PD', 'QC', 'RA', 'WH', 'TS', 'ALL']);
 export const WORKFLOW_DEPENDENCY_MODES = Object.freeze(['sequential', 'root', 'custom']);
 
 export const WORKFLOW_TEMPLATE_LIMITS = Object.freeze({

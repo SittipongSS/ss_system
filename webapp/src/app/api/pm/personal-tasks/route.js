@@ -1,7 +1,7 @@
 import { withUser, ok, fail, unauthorized, badRequest, forbidden } from '@/lib/http';
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { can, canAssignTask, isReadOnlyObserver, userTeams } from '@/lib/permissions';
+import { can, canAssignTask, isReadOnlyObserver, normalizeRole, userTeams } from '@/lib/permissions';
 import { PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, normalizeDifficulty } from '@/lib/pm/tasks';
 import { chainStatusOnLink } from '@/lib/pm/taskChain';
 import { canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -90,7 +90,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       // ต้องมี teams — canAssignTask ตัดชุดทีมสองฝั่ง ส่งแต่ทีมหลักจะปฏิเสธเพื่อนร่วมทีมจริง
       teams: userTeams(au.user.app_metadata),
       // role ต้องส่งไปด้วย — ฝ่ายส่วนใหญ่ไม่ได้ตั้งไว้ตรง ๆ canAssignTask อนุมานจาก role ให้
-      role: au.user.app_metadata?.role ?? null,
+      role: normalizeRole(au.user.app_metadata?.role) ?? null,
       department: au.user.app_metadata?.department ?? null,
     };
     if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');

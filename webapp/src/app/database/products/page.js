@@ -49,7 +49,7 @@ export default function ProductRegistry() {
   const role = useRole();
   const myTeam = useTeam();
   const myTeams = useTeams();
-  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + LG/admin หรือผู้ที่ได้รับสิทธิ์
+  // ราคาผลิตเป็นข้อมูลลับ — โชว์เฉพาะ SA (products:edit) + RA/admin หรือผู้ที่ได้รับสิทธิ์
   // products:margin (เช่น SA ที่ทำรายงานผู้บริหาร). ใช้ useCan เพื่อให้ตรงกับ redactProductMargin
   // ฝั่ง server (รวม per-user grant) — ฟิลด์ costPrice จะไม่ถูกส่งมาเลยถ้าไม่มีสิทธิ์.
   const canSeeCost = canEdit || canMargin;

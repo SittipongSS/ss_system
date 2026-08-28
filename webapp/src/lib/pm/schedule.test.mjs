@@ -195,7 +195,7 @@ for (const type of ['SCENT', 'NPD', 'RE-ORDER']) {
 test('versioned sequential dependency follows previous visible category row', () => {
   const template = [
     { stepKey: 'a', name: 'A', role: 'SA', durationDays: 1, dependencyMode: 'root' },
-    { stepKey: 'excise', name: 'Excise', role: 'LG', durationDays: 1, dependencyMode: 'sequential', categoryOnly: '01-002' },
+    { stepKey: 'excise', name: 'Excise', role: 'RA', durationDays: 1, dependencyMode: 'sequential', categoryOnly: '01-002' },
     { stepKey: 'finish', name: 'Finish', role: 'WH', durationDays: 1, dependencyMode: 'sequential' },
   ];
   const nonExcise = buildProjectTasks(

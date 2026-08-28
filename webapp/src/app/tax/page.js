@@ -26,7 +26,7 @@ import styles from "./tax.module.css";
 
 export default function TaxDashboard() {
   const canSA = useCan("sales:act");
-  const canLG = useCan("legal:approve");
+  const canLG = useCan("ra:approve");
   const router = useRouter();
 
   // โหมด slim: จอนี้ใช้แค่สถานะ/ตัวเลขสรุป/ชื่อในคิวงาน — ไม่ต้องดาวน์โหลด
@@ -165,7 +165,7 @@ export default function TaxDashboard() {
                 ทะเบียนค้างรออนุมัติเกิน {AGE_LATE_DAYS} วัน · {late.length} ใบ
               </div>
               <div className={styles.alertNote}>
-                ใบที่นานที่สุดค้างมา {ageLabel(oldestLate)} — เอกสารครบแล้วรอฝ่ายกฎหมายตรวจอย่างเดียว
+                ใบที่นานที่สุดค้างมา {ageLabel(oldestLate)} — เอกสารครบแล้วรอฝ่าย RA ตรวจอย่างเดียว
               </div>
             </div>
             <ChevronRight size={18} className={styles.alertIcon} />

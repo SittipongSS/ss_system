@@ -35,8 +35,8 @@ test('เอกสารธุรกิจ — ทุกคนที่ผ่า
   const other = { role: 'ae', teams: ['ODM'] };
   assert.equal(canViewAttachmentRow(att('company_certificate'), customer(['Services']), other), true);
   assert.equal(canViewAttachmentRow(att('address_map'), customer(['Services']), other), true);
-  // legal ไม่มีทีมเลย แต่ต้องเปิดเอกสารธุรกิจได้ (หน้าทะเบียนสรรพสามิตดึงไปใช้)
-  assert.equal(canViewAttachmentRow(att('vat_pp20'), customer(['Services']), { role: 'legal' }), true);
+  // RA ไม่มีทีมเลย แต่ต้องเปิดเอกสารธุรกิจได้ (หน้าทะเบียนสรรพสามิตดึงไปใช้)
+  assert.equal(canViewAttachmentRow(att('vat_pp20'), customer(['Services']), { role: 'ra' }), true);
 });
 
 test('เอกสารส่วนบุคคล — เห็นเฉพาะทีมผู้ดูแลลูกค้ารายนั้น', () => {
@@ -46,7 +46,7 @@ test('เอกสารส่วนบุคคล — เห็นเฉพา
   // อ่านอย่างเดียวแต่อยู่ในทีม = เปิดได้ (ไม่ต้องมีสิทธิ์แก้)
   assert.equal(canViewAttachmentRow(att('bank_book'), cus, { role: 'viewer', teams: ['Services'] }), true);
   // ไม่มีทีมเลย = ไม่ใช่คนของลูกค้ารายนี้
-  assert.equal(canViewAttachmentRow(att('house_reg'), cus, { role: 'legal' }), false);
+  assert.equal(canViewAttachmentRow(att('house_reg'), cus, { role: 'ra' }), false);
   assert.equal(canViewAttachmentRow(att('id_card'), cus, {}), false);
 });
 

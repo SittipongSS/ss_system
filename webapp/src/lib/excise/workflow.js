@@ -42,7 +42,7 @@ export const TRACKS = {
     stages: [
       { key: "draft", label: "ฉบับร่าง (รอแนบเอกสาร)", owner: "SA" },
       { key: "rejected", label: "รอแก้ไข (ตีกลับ)", owner: "SA" },
-      { key: "pending_legal", label: "รออนุมัติ", owner: "LG" },
+      { key: "pending_legal", label: "รออนุมัติ", owner: "RA" },
       { key: "approved", label: "ขึ้นทะเบียนแล้ว", owner: null, done: true },
     ],
   },
@@ -53,8 +53,8 @@ export const TRACKS = {
     stages: [
       { key: "draft", label: "เตรียมใบยื่น", owner: "SA" },
       { key: "pending", label: "รอรับเงิน", owner: "SA" },
-      { key: "received", label: "รอยื่น", owner: "LG" },
-      { key: "filing", label: "กำลังยื่น", owner: "LG" },
+      { key: "received", label: "รอยื่น", owner: "RA" },
+      { key: "filing", label: "กำลังยื่น", owner: "RA" },
       { key: "complete", label: "ชำระแล้ว", owner: "SA" },
       { key: "delivered", label: "ส่งเอกสารแล้ว", owner: null, done: true },
     ],
@@ -62,16 +62,16 @@ export const TRACKS = {
 };
 
 // Map a role to its department code for stage-ownership + action gating.
-//   SA = sales lane, LG = legal lane, AD = admin (sees both, owns nothing)
+//   SA = sales lane, RA = regulatory lane, AD = admin (sees both, owns nothing)
 export function deptOf(role) {
-  if (role === "legal") return "LG";
+  if (role === "ra") return "RA";
   if (["ae_supervisor", "senior_ae", "ac", "ae"].includes(role)) return "SA";
   if (role === "admin") return "AD";
   return null;
 }
 
 /* ── "รอฉันลงมือ" ของโมดูลภาษี — เจ้าของขั้นเป็นตัวตัดสิน (ม-117) ──────────
-   TRACKS ประกาศ `owner` ของทุกขั้นอยู่แล้ว (SA / LG) ⇒ ไม่ต้องมีลิสต์สถานะชุดที่สอง
+   TRACKS ประกาศ `owner` ของทุกขั้นอยู่แล้ว (SA / RA) ⇒ ไม่ต้องมีลิสต์สถานะชุดที่สอง
    ที่ต้องคอยไล่แก้ให้ตรงกัน · ขั้นที่ `done` ไม่นับ มันจบแล้ว
    ⚠️ **AD (แอดมิน) ได้ลิสต์ว่างโดยตั้งใจ** — โมดูลนี้ประกาศไว้เองว่าแอดมิน "เห็นทั้งสอง
    เลนแต่ไม่เป็นเจ้าของอะไร" ⇒ ป้ายที่ขึ้นกับแอดมินคือการทวงงานที่ไม่ใช่ของเขา */
@@ -86,7 +86,7 @@ export function isTaxWaitingOnMe(row, trackKey, dept) {
 }
 
 export const seesSA = (dept) => dept === "SA" || dept === "AD";
-export const seesLG = (dept) => dept === "LG" || dept === "AD";
+export const seesRA = (dept) => dept === "RA" || dept === "AD";
 
 // Filter chip option lists for each track's list page (+ "all").
 export const MINE_FILTER = { key: "mine", label: "รอฉันลงมือ" };

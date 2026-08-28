@@ -1,6 +1,6 @@
 // ── Excise registrations ──────────────────────────────────────────────
 // Access layer for the excise-tax registration workflow. A registration
-// binds a master product (FG) to a customer and carries the LG approval
+// binds a master product (FG) to a customer and carries the RA approval
 // state + the tax snapshot used by the sales/order rollup.
 //
 // Server-only: uses the service-role admin client. Never import client-side.

@@ -44,7 +44,7 @@ export default function FilingDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const canAct = useCan("sales:act");        // SA: receive / edit
-  const canApprove = useCan("legal:approve"); // LG: file / reject / due date
+  const canApprove = useCan("ra:approve"); // RA: file / reject / due date
   const canDelete = useCan("sales:delete");  // Senior AE+ / admin: delete
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
@@ -113,7 +113,7 @@ export default function FilingDetailPage() {
   const workflowSteps = workflowStepsFromIndex([
     { id: "draft", label: "เตรียมใบยื่น", hint: "ตรวจรายการและยอดที่ดึงจาก ใบสั่งขาย" },
     { id: "pending", label: "รอรับเงิน", hint: o?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "ฝ่ายขายตรวจยอดและหลักฐาน" },
-    { id: "received", label: "รับเงินแล้ว", hint: "ฝ่ายกฎหมายเตรียมแบบยื่น" },
+    { id: "received", label: "รับเงินแล้ว", hint: "ฝ่าย RA เตรียมแบบยื่น" },
     { id: "filing", label: "กำลังยื่น", hint: "ยื่นกรมสรรพสามิต" },
     { id: "complete", label: "ชำระแล้ว", hint: "บันทึกเลขที่และวันที่ชำระ" },
     { id: "delivered", label: "ส่งเอกสารแล้ว", hint: "ส่งหลักฐานการชำระให้ลูกค้าแล้ว" },
@@ -308,7 +308,7 @@ export default function FilingDetailPage() {
             />
           </div>
 
-          {/* เธรดกลาง (mig 0163) — ใบยื่นเดินข้ามเลน ขาย ↔ กฎหมาย/บัญชี หลายรอบ
+          {/* เธรดกลาง (mig 0163) — ใบยื่นเดินข้ามเลน ขาย ↔ RA/บัญชี หลายรอบ
               และ `rejectionReason` ถูกล้างทุกครั้งที่ยื่นใหม่หลังถูกตีกลับ */}
           <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
             <UpdateThread

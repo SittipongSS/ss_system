@@ -36,7 +36,7 @@ const allPersonal = (supabase, where = (q) => q) => fetchAllResult(() => where(
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — legal ไม่มีสิทธิ์
+  if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — RA ไม่มีสิทธิ์
 
   const allowed = pmTaskScopes(user.role);
   let scope = new URL(req.url).searchParams.get('scope') || 'mine';
