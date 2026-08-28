@@ -54,12 +54,25 @@ export function rejectionReasonError(value, { label = 'ที่ตีกลั�
   return '';
 }
 
+/* 🐞 **jsonb คืนคีย์คนละลำดับกับที่โค้ดสร้าง** (พบ 2026-08-27 ตอนไล่กดฟอร์มลูกค้า)
+   Postgres เก็บ jsonb แบบเรียงคีย์เอง ⇒ `brands` ที่อ่านกลับมาเป็น
+   `[{"en":"RAM","th":"ร่ำ"}]` แต่ `normalizeBrands` สร้าง `[{"th":...,"en":...}]`
+   JSON.stringify ตรง ๆ จึงไม่เท่ากันทั้งที่เป็นค่าเดียวกัน ⇒ ทุกครั้งที่กดบันทึก
+   ลูกค้าที่ **มีแบรนด์** จะถูกนับว่า "แก้ฟิลด์ brands" แม้ไม่ได้แตะอะไรเลย
+   ผลจริง: เปิดฟอร์มแล้วกดบันทึกเฉย ๆ ลูกค้าที่อนุมัติแล้วเด้งกลับเป็น "รออนุมัติ"
+   และหลุดจากทุก picker ทันที (วัดกับ AR-802 ซึ่งมีแบรนด์ RAM)
+   ⇒ ต้องเรียงคีย์ก่อนเทียบ · ลำดับใน **อาร์เรย์** ยังมีความหมาย ไม่เรียง */
+const stableJson = (value) => JSON.stringify(value ?? null, (_key, val) => {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
+  return Object.fromEntries(Object.keys(val).sort().map((k) => [k, val[k]]));
+});
+
 const sameValue = (a, b) => {
   if (a === b) return true;
   if (a == null && b == null) return true;
   if ((a && typeof a === 'object') || (b && typeof b === 'object')) {
     try {
-      return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+      return stableJson(a) === stableJson(b);
     } catch {
       return false;
     }

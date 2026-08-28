@@ -16,6 +16,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fetchSchema } from './schemaFetch.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
@@ -44,12 +45,7 @@ if (!url || !key) {
   process.exit(0);
 }
 
-const res = await fetch(`${url}/rest/v1/`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
-if (!res.ok) {
-  console.error(`อ่าน schema ไม่สำเร็จ: ${res.status}`);
-  process.exit(1);
-}
-const spec = await res.json();
+const spec = await fetchSchema({ url, key, label: 'อ่านสคีมาจากฐาน' });
 const tables = Object.fromEntries(
   Object.entries(spec.definitions || {}).map(([name, def]) => [name, new Set(Object.keys(def.properties || {}))]),
 );
