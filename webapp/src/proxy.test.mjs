@@ -353,6 +353,20 @@ test('ผู้สังเกตการณ์อ่านอย่างเ�
   }
 });
 
+/* ⭐ **บั๊กจริง (พบ 2026-08-28):** `/api/nav/counts` ตกทุกลิสต์ ⇒ default-deny ตอบ 403
+   ให้ทุก role ที่ไม่ใช่แอดมิน **ทั้งเว็บ** ⇒ ป้ายตัวเลขบนเมนูหลักว่างเปล่าสำหรับทุกคน
+   ที่ไม่ใช่แอดมิน โดยไม่มีอะไรฟ้อง (`useNavCounts` กลืน error เงียบตามกติกาของมันเอง
+   และแอดมินผ่านตั้งแต่บรรทัดแรกของ lockedOut จึงไม่มีวันเจอ)
+   🪤 อาการนี้ดูเหมือน "ยังไม่มีงานค้าง" ซึ่งอ่านผิดยิ่งกว่าเมนูพัง */
+test('ป้ายตัวเลขบนเมนูอ่านได้ทุก role — ไม่งั้นเมนูดูเหมือนไม่มีงานค้าง', () => {
+  for (const role of ['ae', 'ac', 'legal', 'rd', 'finance', 'staff', 'senior_ae', 'ae_supervisor']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/nav/counts', 'GET', true), false, role);
+  }
+  // อ่านอย่างเดียว — route มีแต่ GET การเขียนต้องยังปิด
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, '/api/nav/counts', 'POST', true), true);
+});
+
 test('ทะเบียนจังหวัด/อำเภอ/ตำบล อ่านได้ทุก role — ไม่งั้น dropdown ที่อยู่ว่างเปล่าเงียบ ๆ', () => {
   // default-deny: prefix ใหม่ที่ลืมลง OPEN_READ_APIS จะทำให้ non-admin โดน 403
   // แล้วช่องจังหวัดว่างโดยไม่มีข้อความบอกสาเหตุ (บทเรียนเดียวกับ /api/company-profile)

@@ -35,6 +35,20 @@ export default function WorkQueue({ items = [] }) {
               </div>
             )}
           </div>
+          {/* ⭐ อายุงาน — ของเดิมไม่มี ⇒ ใบที่ค้าง 34 วันหน้าตาเหมือนใบที่เพิ่งเข้ามาเมื่อวาน
+              (ตรวจระบบ 2026-08-28 เจอ 9 ใบค้าง 28–34 วันโดยไม่มีอะไรฟ้อง) */}
+          {it.age && (
+            <span
+              style={{
+                color: it.age.color || "var(--text-3)", fontSize: "var(--fs-6)",
+                fontWeight: it.age.color ? "var(--fw-semibold)" : undefined, flexShrink: 0,
+                whiteSpace: "nowrap",
+              }}
+              title="ค้างอยู่ในสถานะนี้มานานเท่าไร"
+            >
+              {it.age.label}
+            </span>
+          )}
           <span className="flex items-center gap-1" style={{ color: "var(--accent)", fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", flexShrink: 0 }}>
             {it.cta} <ChevronRight size={15} />
           </span>

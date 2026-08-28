@@ -258,7 +258,15 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
 // /api/finance = ทะเบียนการชำระรวมทุกใบ (โมดูลบัญชี) — **อ่านอย่างเดียว** ทางเขียน
 // ยังอยู่ที่ /api/sales-planning/.../installments ที่เดิม · ด่านจริงคือ `canAccessFinance`
 // ในตัว route เอง ซึ่งแคบกว่าที่นี่ (proxy เห็นแค่ method+path)
-const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance'];
+/* 🐞 **บั๊กจริง (พบตอนรื้อระบบสรรพสามิต 2026-08-28):** `/api/nav/counts` ไม่เคยอยู่ใน
+   ลิสต์ไหนเลย ⇒ default-deny ตอบ 403 ให้ **ทุก role ที่ไม่ใช่แอดมิน ทั้งเว็บ**
+   ⇒ ป้ายตัวเลขบนเมนูหลัก (คำร้อง · ใบเสนอราคา · ทะเบียนภาษี · งาน …) ว่างเปล่า
+   สำหรับทุกคนที่ไม่ใช่แอดมิน โดยไม่มีอะไรฟ้อง — `useNavCounts` กลืน error เงียบ ๆ
+   ตามกติกา "ตัวนับพังต้องไม่ทำให้เมนูทั้งแถบพัง" และแอดมินไม่มีทางเจอเพราะผ่าน
+   ตั้งแต่บรรทัดแรกของ `lockedOut`
+   ⚠️ อ่านอย่างเดียวจริง ๆ — route มีแต่ `export const GET` และตัวเลขทุกตัวถูกตัด
+   ขอบเขตด้วย `user.id` ในตัว handler อยู่แล้ว */
+const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav'];
 
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).

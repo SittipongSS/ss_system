@@ -1,6 +1,7 @@
 import { notifyToast } from "@/lib/feedback";
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { fmtDate, fmtNumber } from "@/lib/format";
+import { businessDayKey, businessTimeKey } from "@/lib/datePeriods";
 import {
   documentFooter,
   documentHeader,
@@ -22,11 +23,18 @@ import { printPlaceholderHtml } from "@/lib/printTheme";
 // ⚠️ รายงาน "ไม่ใช่เอกสารควบคุม" — ไม่มีรหัสแบบฟอร์ม/Revision/ลายเซ็น/ลายน้ำ และไม่ผูก
 // กับมาตรฐานเอกสารในหน้าตั้งค่า จึงไม่ส่ง formLine เข้าเปลือก (หัวใบจะข้ามบรรทัดนั้นให้)
 
-// เวลาพิมพ์เอกสาร → DD/MM/YYYY HH:MM (ค.ศ.)
+/* เวลาพิมพ์เอกสาร → DD/MM/YYYY HH:MM (ค.ศ.) **ตามเวลาไทย**
+   🐞 ของเดิมใช้ `new Date().getHours()` = นาฬิกาของเครื่องผู้ใช้ ⇒ คนที่ตั้งโซนเวลา
+   อื่น (หรือเปิดจากมือถือที่โรมมิ่ง) พิมพ์รายงานออกมาแล้วหัวกระดาษเป็นเวลาคนละที่
+   กับที่ระบบบันทึก · เดิมพักไว้ที่เพดาน check:thaitime — รอบนี้คือ "งานสายภาษี
+   รอบหน้า" ที่คอมเมนต์เดิมนัดไว้ */
 const genAt = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const now = new Date().toISOString();
+  const day = businessDayKey(now);              // YYYY-MM-DD ตามวันไทย
+  const time = businessTimeKey(now);            // HH:MM ตามเวลาไทย
+  if (!day || !time) return "";
+  const [year, month, date] = day.split("-");
+  return `${date}/${month}/${year} ${time}`;
 };
 const cellText = (c, value) => {
   if (c.money) return money(value);
