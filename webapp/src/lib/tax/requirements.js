@@ -22,7 +22,7 @@ import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTyp
  */
 export function missingRetailPriceEntry(registration, product) {
   if (!registration?.productId) return null;
-  // ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
+  // ทะเบียนที่ฝ่าย RA ยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
   if (registration.isExciseTaxable === false) return null;
   const retail = Number(product?.retailPriceIncVat);
   if (Number.isFinite(retail) && retail > 0) return null;
@@ -84,7 +84,7 @@ export function registrationMissing({
       missing.push({ entity: 'customer', docType: 'branchCode', label: 'รหัสสาขาของลูกค้า (เช่น 00000 = สำนักงานใหญ่)' });
     }
 
-    // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่ายกฎหมายตามลูกค้าได้.
+    // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่าย RA ตามลูกค้าได้.
     if (!customer.email) warnings.push({ field: 'customerEmail', message: 'ยังไม่มีอีเมลลูกค้า' });
     if (!customer.phone && !customer.contactPhone) warnings.push({ field: 'customerPhone', message: 'ยังไม่มีเบอร์โทรลูกค้า' });
   }
@@ -114,7 +114,7 @@ export async function registrationRequirements(supabase, regId) {
      ต่อสรรพสามิต — ไม่มีราคา = ยื่นไม่ได้อยู่แล้วโดยธรรมชาติของเอกสาร
      และเมื่อทะเบียนผ่าน ราคาก็มีครบก่อนถึงขั้นขาย/ยื่นชำระเสมอ
 
-     ⚠️ ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ (`isExciseTaxable === false`) ไม่ต้องมีราคา
+     ⚠️ ทะเบียนที่ฝ่าย RA ยกเว้นภาษีไว้ (`isExciseTaxable === false`) ไม่ต้องมีราคา
      — ภาษีเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด */
   let product = null;
   if (reg.productId && reg.isExciseTaxable !== false) {
@@ -145,7 +145,7 @@ export async function registrationRequirements(supabase, regId) {
 /* ── ตัวโหลดเป็นชุด — สำหรับหน้าคิวที่ต้องรู้ความพร้อมของทุกใบพร้อมกัน ───────
  *
  * ⭐ ทำไมต้องมี: หน้าคิวเดิมไม่รู้เลยว่าใบไหนพร้อม/ขาดอะไร ต้องเปิดทีละใบถึงเห็น
- * ⇒ ฝ่ายกฎหมายเปิด 17 ใบเพื่อหาว่าใบไหนตรวจได้ · เรียก `registrationRequirements`
+ * ⇒ ฝ่าย RA เปิด 17 ใบเพื่อหาว่าใบไหนตรวจได้ · เรียก `registrationRequirements`
  * วนลูปแทนก็ได้คำตอบเดียวกัน แต่เป็น 4 query × จำนวนใบ (17 ใบ = 68 query)
  *
  * ⚠️ ใช้กฎเดียวกับตัวรายใบ (`registrationMissing`) เสมอ — คิวกับด่านตอนกดยื่น

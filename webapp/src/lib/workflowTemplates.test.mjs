@@ -94,7 +94,7 @@ test('validator ยอมรับคู่ either-or ที่ใช้ token f
 
 test('category validation rejects a visible step whose ONLY dependency is filtered out', () => {
   const rows = [
-    { stepKey: 'excise', name: 'Excise', role: 'LG', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
+    { stepKey: 'excise', name: 'Excise', role: 'RA', durationDays: 1, dependencyMode: 'root', dependsOnStepKeys: [], categoryOnly: '01-002' },
     { stepKey: 'finish', name: 'Finish', role: 'SA', durationDays: 1, dependencyMode: 'custom', dependsOnStepKeys: ['excise'] },
   ];
   assert.match(validateWorkflowTemplateSteps(rows).join(' '), /dependency excise ไม่อยู่ใน หมวดทั่วไป/);
@@ -127,24 +127,30 @@ test('workflow summary reports counts without pretending summed days are critica
 // ถ้าแก้ไม่ครบ อาการคือ "เลือกได้ในหน้าตั้งค่า แต่กดบันทึกแล้วเด้ง
 // workflow_template_steps_invalid" ซึ่งอ่านไม่ออกว่าเป็นเพราะอะไร
 {
-  const sqlUrl = new URL('../../supabase/migrations/0192_workflow_step_role_ts.sql', import.meta.url);
+  /* ⚠️ ชี้ที่ **ใบล่าสุดที่นิยาม CHECK/RPC ชุดนี้** เสมอ — ไม่ใช่ใบแรกที่สร้างมัน
+     ใบใหม่ที่แก้รายชื่อ role ต้องย้าย path นี้ตามด้วย ไม่งั้นเทสต์จะเทียบกับใบเก่า
+     แล้วผ่านทั้งที่ของจริงบนฐานเป็นอีกชุด (0121 → 0192 → 0308) */
+  const sqlUrl = new URL('../../supabase/migrations/0308_workflow_step_role_lg_to_ra.sql', import.meta.url);
   const sql = readFileSync(sqlUrl, 'utf8');
   // ดึงรายชื่อ role จากคำสั่ง SQL แบบเดียวกับที่ Postgres อ่าน — ไม่ใช่ regex หลวม ๆ
   const rolesFrom = (pattern) => {
     const match = sql.match(pattern);
-    assert.ok(match, `หาไม่เจอใน 0192: ${pattern}`);
+    assert.ok(match, `หาไม่เจอใน 0308: ${pattern}`);
     return match[1].split(',').map((value) => value.trim().replace(/^'|'$/g, ''));
   };
 
-  test('0192: CHECK ของตารางมี TS และครบทุกค่าที่โค้ดยอมรับ', () => {
+  test('0308: CHECK ของตารางมี TS/RA และครบทุกค่าที่โค้ดยอมรับ', () => {
     const checkRoles = rolesFrom(/ADD CONSTRAINT workflow_template_steps_role_check\s*\n\s*CHECK \(role IN \(([^)]+)\)\)/);
     assert.ok(checkRoles.includes('TS'), 'CHECK ของตารางยังไม่มี TS');
+    assert.ok(checkRoles.includes('RA'), 'CHECK ของตารางยังไม่มี RA');
+    assert.equal(checkRoles.includes('LG'), false, 'LG ถูกเปลี่ยนเป็น RA แล้ว ห้ามเหลือค้าง');
     assert.deepEqual(checkRoles, [...WORKFLOW_TEMPLATE_ROLES], 'CHECK ของตารางกับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
   });
 
-  test('0192: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
+  test('0308: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
     const rpcRoles = rolesFrom(/\(s->>'role'\) NOT IN \(([^)]+)\)/);
     assert.ok(rpcRoles.includes('TS'), 'RPC ยังไม่รับ TS — เลือกได้แต่บันทึกไม่ผ่าน');
+    assert.ok(rpcRoles.includes('RA'), 'RPC ยังไม่รับ RA — เลือกได้แต่บันทึกไม่ผ่าน');
     assert.deepEqual(rpcRoles, [...WORKFLOW_TEMPLATE_ROLES], 'RPC กับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
   });
 

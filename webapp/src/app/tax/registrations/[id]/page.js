@@ -57,7 +57,7 @@ export default function RegistrationDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const canEdit = useCan("products:edit");
-  const canApprove = useCan("legal:approve");
+  const canApprove = useCan("ra:approve");
 
   /* ⭐ อ่าน **ใบเดียว** พร้อมของประกอบ (สินค้า/ลูกค้า/โครงการ/ใบยื่นที่อ้างถึง)
      🐞 ของเดิมโหลดทะเบียนทั้งตารางแล้ว find(id) + โหลด /api/products (342 แถว) และ
@@ -131,7 +131,7 @@ export default function RegistrationDetailPage() {
   };
   const submitDraft = () => patch({ status: "pending_legal" }, "ยื่นไม่สำเร็จ");
   const resubmit = () => patch({ status: "pending_legal" }, "ส่งกลับไม่สำเร็จ");
-  // ปลดอนุมัติ = สิทธิ์ฝ่ายกฎหมาย + ต้องมีเหตุผล (มติ B2 2026-07-27) — ทะเบียนคือหลักฐาน
+  // ปลดอนุมัติ = สิทธิ์ฝ่าย RA + ต้องมีเหตุผล (มติ B2 2026-07-27) — ทะเบียนคือหลักฐาน
   // ที่ใบยื่นชำระภาษีอ้างถึง การปลดจึงต้องหนักเท่ากับด่านอื่นในระบบ ไม่ใช่กดผ่านเงียบ ๆ
   const revokeApproval = (reason) => patch({ status: "draft", reason }, "ไม่สามารถปลดอนุมัติได้");
   const rejectReg = (reason) => patch({ status: "rejected", rejectionReason: reason }, "ไม่สามารถทำรายการได้");
@@ -160,7 +160,7 @@ export default function RegistrationDetailPage() {
   const workflowIndex = s?.status === "approved" ? 2 : s?.status === "pending_legal" ? 1 : 0;
   const workflowSteps = workflowStepsFromIndex([
     { id: "draft", label: "จัดเตรียมทะเบียน", hint: s?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "แนบเอกสารให้ครบ" },
-    { id: "review", label: "ฝ่ายกฎหมายตรวจ", hint: "ตรวจข้อมูลและเอกสารประกอบ" },
+    { id: "review", label: "ฝ่าย RA ตรวจ", hint: "ตรวจข้อมูลและเอกสารประกอบ" },
     { id: "approved", label: "ขึ้นทะเบียนแล้ว", hint: "มีเลขที่อนุมัติพร้อมใช้งาน" },
   ], workflowIndex);
 
@@ -275,7 +275,7 @@ export default function RegistrationDetailPage() {
 
           {/* ── เหตุผลที่ต้องอ่านก่อนลงมือ — แสดงทุกสถานะที่เกี่ยวข้อง ไม่ใช่เฉพาะ draft ── */}
           {s.status === "rejected" && s.rejectionReason && (
-            <StatusNotice tone="error" title="ฝ่ายกฎหมายตีกลับ">{s.rejectionReason}</StatusNotice>
+            <StatusNotice tone="error" title="ฝ่าย RA ตีกลับ">{s.rejectionReason}</StatusNotice>
           )}
           {/* ⭐ เหตุผลปลดอนุมัติ — เดิมเก็บใน metadata แล้วไม่มีจอไหนแสดงเลย */}
           {revoke?.reason && s.status !== "approved" && (
@@ -311,7 +311,7 @@ export default function RegistrationDetailPage() {
           </div>
 
           {/* ── ฐานของภาษี: ที่มาของตัวเลข ────────────────────────────────────
-              ⭐ ฝ่ายกฎหมายกดอนุมัติโดยเห็นแค่ "ภาษี/ชิ้น" ตัวเดียวมาตลอด — ไม่เห็นว่า
+              ⭐ ฝ่าย RA กดอนุมัติโดยเห็นแค่ "ภาษี/ชิ้น" ตัวเดียวมาตลอด — ไม่เห็นว่า
               คิดจากราคาไหน อัตราเท่าไร ⇒ ตรวจไม่ได้จริงว่าเลขถูกหรือเปล่า
               ⚠️ อัตรามาจาก **สินค้า** เสมอ ทะเบียนไม่เก็บสำเนา (mig 0180) ราคาขายปลีก
               ขยับเมื่อไร ตัวเลขตรงนี้ขยับตามทันที */}
@@ -319,7 +319,7 @@ export default function RegistrationDetailPage() {
             meta={exempt ? "ทะเบียนนี้ได้รับยกเว้นภาษี" : `อัตรารวม ${pct(EXCISE_TOTAL_RATE)} ของราคาขายปลีกถอด VAT`}>
             {exempt ? (
               <div className={styles.exemptNote}>
-                ฝ่ายกฎหมายกำหนดให้ทะเบียนนี้ <b className={styles.exemptWord}>ยกเว้นภาษี</b> — ภาษีต่อชิ้นเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด
+                ฝ่าย RA กำหนดให้ทะเบียนนี้ <b className={styles.exemptWord}>ยกเว้นภาษี</b> — ภาษีต่อชิ้นเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด
               </div>
             ) : !taxProduct?.retailPriceIncVat ? (
               <StatusNotice
@@ -343,7 +343,7 @@ export default function RegistrationDetailPage() {
             )}
             {s.taxableOverride !== null && s.taxableOverride !== undefined && (
               <div className={styles.overrideNote}>
-                ฝ่ายกฎหมายกำหนดเอง: {s.taxableOverride ? "ต้องเสียภาษี" : "ยกเว้นภาษี"} (ไม่ได้ใช้ค่าตามพิกัดอัตโนมัติ)
+                ฝ่าย RA กำหนดเอง: {s.taxableOverride ? "ต้องเสียภาษี" : "ยกเว้นภาษี"} (ไม่ได้ใช้ค่าตามพิกัดอัตโนมัติ)
               </div>
             )}
           </DetailCard>
@@ -353,7 +353,7 @@ export default function RegistrationDetailPage() {
               <StatusNotice tone={missingDocs.length ? "warning" : "success"}>
                 {missingDocs.length
                   ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
-                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
+                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่าย RA ตรวจ"}
               </StatusNotice>
               {warnings.length > 0 && (
                 <StatusNotice tone="info">
@@ -421,7 +421,7 @@ export default function RegistrationDetailPage() {
             ) : null}
           </DetailCard>
 
-          {/* เธรดกลาง (mig 0163) — เธรดสองฝ่าย SA ↔ LG · `rejectionReason` ถูกล้าง
+          {/* เธรดกลาง (mig 0163) — เธรดสองฝ่าย SA ↔ RA · `rejectionReason` ถูกล้าง
               เป็น null ตอนอนุมัติ และเหตุผลปลดอนุมัติไปอยู่ใน metadata ที่หน้าจอ
               ไม่แสดง → รอบก่อน ๆ หายหมด ทั้งที่คนแก้รอบถัดไปคือคนที่ต้องอ่านที่สุด */}
           <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">

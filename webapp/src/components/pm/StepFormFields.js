@@ -11,7 +11,7 @@ import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
 import Textarea from "@/components/ui/Textarea";
 
-export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "LG", "WH", "ALL"];
+export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "RA", "WH", "ALL"];
 
 // ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (staff 1 คนต่อฝ่าย). ขั้นตอนของ
 // ฝ่ายเหล่านี้ถูกมอบหมายอัตโนมัติให้ตัวแทนฝ่ายนั้น (ไม่ต้องเลือกคน — เห็นใน My Work เอง)

@@ -1,4 +1,4 @@
-import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, userTeams } from '@/lib/permissions';
+import { can, canAssignTask, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, normalizeRole, userTeams } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
 import { recordAudit } from '@/lib/audit';
@@ -258,7 +258,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         // ต้องมี teams — canAssignTask ตัดชุดทีมสองฝั่ง (ดู personal-tasks/route.js)
         teams: userTeams(au.user.app_metadata),
         // role ต้องส่งไปด้วย — ฝ่ายส่วนใหญ่ไม่ได้ตั้งไว้ตรง ๆ canAssignTask อนุมานจาก role ให้
-        role: au.user.app_metadata?.role ?? null,
+        role: normalizeRole(au.user.app_metadata?.role) ?? null,
         department: au.user.app_metadata?.department ?? null,
       };
       if (!canAssignTask(user, assignee)) return forbidden('ไม่มีสิทธิ์มอบหมายงานให้ผู้ใช้นี้');

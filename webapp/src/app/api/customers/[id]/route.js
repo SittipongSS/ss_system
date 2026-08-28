@@ -82,7 +82,7 @@ export async function GET(request, { params }) {
       productDescription: r?.productName ?? p.productDescription,
       brandName: r?.brandName ?? p.brandName,
       status: r?.status ?? p.approvalStatus,
-      // ทะเบียนตัดสินว่า "เสียภาษีไหม" (ฝ่ายกฎหมาย override ได้) ส่วน **อัตรา** มาจาก
+      // ทะเบียนตัดสินว่า "เสียภาษีไหม" (ฝ่าย RA override ได้) ส่วน **อัตรา** มาจาก
       // ทะเบียนสินค้าเสมอ — คิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้เหมือนราคาผลิต
       // (เดิมอ่านสำเนาบนทะเบียนก่อน → ราคาขยับแล้วหน้านี้ค้างเลขเก่า ไม่ตรงกับใบยื่น)
       isExciseTaxable: r ? r.isExciseTaxable : p.isExciseTaxable,

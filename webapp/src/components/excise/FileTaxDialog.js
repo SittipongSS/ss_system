@@ -10,7 +10,7 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
 
-// LG records the excise payment and marks the order 'complete': receipt number,
+// RA records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
 // + optional receipt file. Exempt orders complete without a receipt.
 export default function FileTaxDialog({ open, onClose, onDone, order }) {

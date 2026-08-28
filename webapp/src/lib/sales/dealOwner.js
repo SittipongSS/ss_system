@@ -16,7 +16,7 @@
 //
 // แพตเทิร์นเดียวกับ `validateLeadAssignee` — ตรวจด้วย id แล้ว **คืนชื่อจาก server**
 // ให้ผู้เรียกเขียนลงแถว ไม่รับชื่อจาก client อีก
-import { attributionTeam, hasTeam, userTeams, ROLES } from '@/lib/permissions';
+import { attributionTeam, hasTeam, normalizeRole, userTeams, ROLES } from '@/lib/permissions';
 import { salesPlanningEditScope } from '@/lib/salesPlanning';
 
 /* role ที่มี edit scope กับดีล (ไม่ใช่ 'none') — คำนวณจากของจริง ไม่พิมพ์รายชื่อทิ้งไว้ */
@@ -114,7 +114,7 @@ export async function validateDealOwner(supabase, ownerId, actor = null, request
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้รับผิดชอบคนอื่น' };
 
-  const role = user.app_metadata?.role || null;
+  const role = normalizeRole(user.app_metadata?.role) || null;
   if (!DEAL_HOLDER_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้รับผิดชอบดีลต้องเป็น AE / Senior AE — ดีลเป็นหน้าที่ของสองตำแหน่งนี้ (มติ 2026-08-08)' };
   }

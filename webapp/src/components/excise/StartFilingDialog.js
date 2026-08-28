@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 
-// LG "เริ่มยื่น" (received → filing). Forces the เลขที่ใบกำกับภาษี (tax invoice no.)
+// RA "เริ่มยื่น" (received → filing). Forces the เลขที่ใบกำกับภาษี (tax invoice no.)
 // — 1 ใบกำกับ ต่อ 1 ใบเสนอราคา — which is shown in the filing report. The server
 // also enforces this on the received → filing transition.
 export default function StartFilingDialog({ open, onClose, onDone, order }) {

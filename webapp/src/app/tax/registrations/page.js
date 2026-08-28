@@ -39,16 +39,16 @@ export default function RegistrationsPage() {
   const todayIso = useMemo(() => businessDate(), []);
 
   const [userName, setUserName] = useState("");
-  // LG lands on their queue; everyone else sees all. A ?status= deep-link
+  // RA lands on their queue; everyone else sees all. A ?status= deep-link
   // (from the dashboard) overrides the default after mount.
-  /* เลนของผู้ใช้ (SA / LG) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
+  /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
   const myDept = deptOf(role);
   const filterOptions = useMemo(
-    () => REGISTRATION_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "LG"),
+    () => REGISTRATION_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "pending_legal" : "all"));
+  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "pending_legal" : "all"));
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     const params = new URLSearchParams(window.location.search);
@@ -138,7 +138,7 @@ export default function RegistrationsPage() {
       render: (r) => (
         <div>
           <div className="font-mono">{taxText(r)}</div>
-          {/* ฐานที่ใช้คิด — ฝ่ายกฎหมายอนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ */}
+          {/* ฐานที่ใช้คิด — ฝ่าย RA อนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ */}
           <div className="cell-sub">
             {r.retailPriceIncVat ? `ปลีก ${fmtMoney(r.retailPriceIncVat)}` : NA}
           </div>

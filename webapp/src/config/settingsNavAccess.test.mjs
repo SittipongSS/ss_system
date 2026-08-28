@@ -14,7 +14,7 @@ import { lockedOut } from '../proxy.js';
 
 const ROLES = [
   'admin', 'ae_supervisor', 'ae', 'senior_ae', 'ac', 'rd', 'pc', 'pd', 'qc',
-  'lg', 'wh', 'ts', 'legal', 'staff', 'viewer', 'secretary', 'executive', 'finance',
+  'lg', 'wh', 'ts', 'ra', 'staff', 'viewer', 'secretary', 'executive', 'finance',
 ];
 
 // สิทธิ์รายคนที่ผู้ดูแลระบบให้กันจริงในระบบนี้ (ดู sanitizeExtraCaps)

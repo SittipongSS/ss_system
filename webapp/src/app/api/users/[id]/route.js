@@ -29,7 +29,7 @@ export async function PATCH(request, { params }) {
   // role + team + teams always travel together. NOTE: Supabase admin.updateUserById
   // MERGES app_metadata top-level keys — it does NOT replace the object. So a
   // key we omit keeps its old value. When a role drops its team (e.g. senior_ae
-  // → viewer/legal), we must send team: null AND teams: [] explicitly to overwrite
+  // → viewer/RA), we must send team: null AND teams: [] explicitly to overwrite
   // the stale values, otherwise the user keeps their old team scope after the
   // role change — teams[] คือช่องที่คุมขอบเขตจริง ลืมล้างแล้วสิทธิ์ค้างเงียบ ๆ
   // Per-user capability grants: use the sanitized body value if the client sent

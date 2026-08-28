@@ -18,14 +18,14 @@ const build = (users, { signed = [], deals = [], pending = [], submittable = [] 
     submittableCounts: new Map(submittable),
   });
 
-test('cohort ครอบทั้งผู้อนุมัติและผู้ยื่น — ac นับด้วย, legal/viewer ไม่นับ', () => {
+test('cohort ครอบทั้งผู้อนุมัติและผู้ยื่น — ac นับด้วย, RA/viewer ไม่นับ', () => {
   assert.ok(isSignatureCohortRole('admin'));
   assert.ok(isSignatureCohortRole('ae_supervisor'));
   assert.ok(isSignatureCohortRole('ae'));
   assert.ok(isSignatureCohortRole('senior_ae'));
   // AC อนุมัติไม่ได้ แต่ "ยื่นอนุมัติ" ได้ และการยื่นบันทึกหลักฐานลายเซ็น → ต้องอยู่ใน cohort
   assert.ok(isSignatureCohortRole('ac'));
-  assert.equal(isSignatureCohortRole('legal'), false);
+  assert.equal(isSignatureCohortRole('ra'), false);
   assert.equal(isSignatureCohortRole('viewer'), false);
 });
 

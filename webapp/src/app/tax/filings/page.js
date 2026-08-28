@@ -22,14 +22,14 @@ export default function FilingsPage() {
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
 
-  /* เลนของผู้ใช้ (SA / LG) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
+  /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
   const myDept = deptOf(role);
   const filterOptions = useMemo(
-    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "LG"),
+    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
+  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
@@ -119,7 +119,7 @@ export default function FilingsPage() {
         onRowClick={(o) => router.push(`/tax/filings/${o.id}`)}
         card={card}
         initialSort={{ key: "quotationRef", dir: "asc" }}
-        /* 🐞 LG ตกลงมาที่ชิป "รอยื่น" เป็นค่าตั้งต้น ⇒ เห็น "ไม่พบรายการ" เสมอ แม้ทั้ง
+        /* 🐞 RA ตกลงมาที่ชิป "รอยื่น" เป็นค่าตั้งต้น ⇒ เห็น "ไม่พบรายการ" เสมอ แม้ทั้ง
            ระบบยังไม่เคยมีใบยื่นสักใบ ซึ่งอ่านเหมือน "กรองแล้วไม่เจอ" ไม่ใช่ "ยังไม่มี"
            ⇒ ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง */
         empty={orders.length === 0

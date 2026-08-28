@@ -111,7 +111,7 @@ async function withRegistrationContext(supabase, reg) {
   };
 }
 
-// PATCH /api/excise-registrations/[id] — LG approves/rejects; SA resubmits.
+// PATCH /api/excise-registrations/[id] — RA approves/rejects; SA resubmits.
 export async function PATCH(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -131,7 +131,7 @@ export async function PATCH(request, { params }) {
   // Re-approval rule (ทุกระบบ, stricter): an APPROVED registration is LOCKED.
   // The only permitted change is the explicit "ขอแก้ไข" (revise): SA reverts it
   // to 'draft', clearing the approval, which re-enters draft → submit → approve.
-  // มติ B2 (2026-07-27): การปลดอนุมัติเป็น **สิทธิ์ของฝ่ายกฎหมาย** + ต้องมีเหตุผล + แจ้งเตือน
+  // มติ B2 (2026-07-27): การปลดอนุมัติเป็น **สิทธิ์ของฝ่าย RA** + ต้องมีเหตุผล + แจ้งเตือน
   // เดิมใครก็ได้ที่มี products:edit กดปลดได้ฟรี ไม่ต้องบอกเหตุ ไม่มีใครรู้ — ทั้งที่ทะเบียน
   // คือหลักฐานที่ใบยื่นชำระภาษีอ้างถึง (orders.registrationId) และการถอนอนุมัติ SO ซึ่ง
   // เบากว่านี้มากยังต้องเป็นผู้รีวิว + เหตุผล 10–500 + แจ้ง chat
@@ -140,9 +140,9 @@ export async function PATCH(request, { params }) {
   // rejectionReason = "ผู้อนุมัติตีกลับ" ซึ่งหน้าเว็บแสดงเป็นป้ายตีกลับ) จึงไม่ต้อง migration
   if (reg.status === 'approved') {
     if (body.status === 'draft') {
-      if (!can(user?.role, 'legal:approve')) {
+      if (!can(user?.role, 'ra:approve')) {
         return Response.json({
-          error: 'ปลดอนุมัติทะเบียนได้เฉพาะฝ่ายกฎหมาย — ทะเบียนนี้เป็นหลักฐานที่ใบยื่นชำระภาษีอ้างถึง',
+          error: 'ปลดอนุมัติทะเบียนได้เฉพาะฝ่าย RA — ทะเบียนนี้เป็นหลักฐานที่ใบยื่นชำระภาษีอ้างถึง',
         }, { status: 403 });
       }
       const reasonError = rejectionReasonError(body.reason ?? body.revokeReason, { label: 'ที่ปลดอนุมัติ' });
@@ -184,10 +184,10 @@ export async function PATCH(request, { params }) {
       });
       return Response.json(data);
     }
-    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่ายกฎหมายปลดอนุมัติก่อน' }, { status: 403 });
+    return Response.json({ error: 'ทะเบียนนี้อนุมัติแล้ว ถูกล็อก กรุณาให้ฝ่าย RA ปลดอนุมัติก่อน' }, { status: 403 });
   }
 
-  // SA owns the link fields; LG owns the approval/tax fields (allowedEditFields).
+  // SA owns the link fields; RA owns the approval/tax fields (allowedEditFields).
   const salesEditable = ['assignee', 'metadata', 'productId', 'customerId'];
   const allowed = allowedEditFields(user, 'registrations', salesEditable);
 
@@ -244,8 +244,8 @@ export async function PATCH(request, { params }) {
     }
   }
 
-  // Submit for approval: SA (products:edit, no legal:approve) moves a draft (first
-  // submit) or a rejected (resubmit) registration into the LG queue. Hard-blocked
+  // Submit for approval: SA (products:edit, no ra:approve) moves a draft (first
+  // submit) or a rejected (resubmit) registration into the RA queue. Hard-blocked
   // until the required docs are present: ฉลาก/Artwork on the registration, AND the
   // company map (address_map) on the CUSTOMER record (shared master data — the map
   // is attached once to the customer, never duplicated per registration).
@@ -261,7 +261,7 @@ export async function PATCH(request, { params }) {
     updated.rejectionReason = null;
   }
 
-  // ฝ่ายกฎหมายสั่งยกเว้น/ไม่ยกเว้นภาษี — ทะเบียนเก็บเฉพาะ **คำตัดสิน** ไม่เก็บอัตรา
+  // ฝ่าย RA สั่งยกเว้น/ไม่ยกเว้นภาษี — ทะเบียนเก็บเฉพาะ **คำตัดสิน** ไม่เก็บอัตรา
   //
   // อัตราภาษีคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้เหมือนราคาผลิต (มติผู้ใช้ 2026-07-29)
   // ⇒ มีแหล่งเดียวคือ products.exciseTax/localTax · ทะเบียนไม่เก็บสำเนาอีกแล้ว
@@ -287,7 +287,7 @@ export async function PATCH(request, { params }) {
   const summary = data.status !== reg.status
     ? `เปลี่ยนสถานะทะเบียน ${reg.fgCode || id}: ${reg.status} → ${data.status}` : null;
   // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา
-  // ⭐ `rejectionReason` ถูกล้างเป็น null ตอนอนุมัติ → เหตุผลที่ LG ตีกลับรอบก่อน
+  // ⭐ `rejectionReason` ถูกล้างเป็น null ตอนอนุมัติ → เหตุผลที่ RA ตีกลับรอบก่อน
   // หายถาวร ทั้งที่รอบถัดไปคือคนที่ต้องอ่านมันที่สุด · ใช้ `body.rejectionReason`
   // เพราะแถวหลังอัปเดตอาจโดนล้างไปแล้ว
   if (data.status !== reg.status) {
@@ -298,9 +298,9 @@ export async function PATCH(request, { params }) {
   }
   await recordAudit({ user, action: 'update', entityType: 'registration', entityId: id, before: reg, after: data, summary, request });
 
-  /* แจ้งข้ามเลน SA ↔ LG
+  /* แจ้งข้ามเลน SA ↔ RA
      🐞 บล็อกนี้เคยเป็น `if` ว่างเปล่าทั้งสองกิ่ง (ตัวส่งถูกถอดตอนเลิกใช้ Chat) ⇒
-     ทั้งสองทางเงียบสนิท: ฝ่ายกฎหมายไม่รู้ว่ามีทะเบียนรออนุมัติ ฝ่ายขายไม่รู้ผล
+     ทั้งสองทางเงียบสนิท: ฝ่าย RA ไม่รู้ว่ามีทะเบียนรออนุมัติ ฝ่ายขายไม่รู้ผล
      จนกว่าจะเปิดหน้าเช็คเอง — ตรวจระบบ 2026-08-28 เจอ 9 ใบค้าง 28–34 วันเพราะเหตุนี้ */
   if (data.status !== reg.status) {
     const action = ACTION_OF_STATUS[data.status] || null;
@@ -329,7 +329,7 @@ export async function DELETE(request, { params }) {
   if (!reg) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
 
   // Authority lives entirely in deleteScope: superuser (all) / senior_ae (team) /
-  // ae (own). Deliberately NOT canEditRecord — that would let legal + ac delete.
+  // ae (own). Deliberately NOT canEditRecord — that would let RA + ac delete.
   if (!canDeleteRecord(user, 'registrations', reg)) {
     return Response.json({
       error: 'ลบทะเบียนนี้ไม่ได้ — ลบได้เฉพาะทีมเจ้าของทะเบียน (ฝ่ายขาย) หรือหัวหน้าฝ่ายขาย/แอดมิน',

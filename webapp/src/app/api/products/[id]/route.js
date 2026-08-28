@@ -76,7 +76,7 @@ export async function PATCH(request, { params }) {
   // Row-level scope: the product is edited by the team that CARES FOR its owning
   // customer (product.team only records who created it — มติ 2026-07-20), every
   // sales role in that team incl. AE; teamless customer = shared. Superuser +
-  // legal-approval span all. The proxy already verified the coarse capability.
+  // RA-approval span all. The proxy already verified the coarse capability.
   const caretakerTeams = await productCaretakerTeams(product, supabase);
   if (!canEditRecord(user, 'products', product, caretakerTeams)) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -283,7 +283,7 @@ export async function PATCH(request, { params }) {
   Object.assign(updated, clearedBrandFields(updated));
 
   // ธง "เสียภาษีไหม": ค่าตั้งต้นจากธง isExcise ของหมวด (mig 0131 — ไม่ parse จาก
-  // fgCode ซ้ำ ไม่มีรหัสหมวดตายตัว) แต่ **การยกเว้นรายตัวของฝ่ายกฎหมายที่ตรึงไว้บน
+  // fgCode ซ้ำ ไม่มีรหัสหมวดตายตัว) แต่ **การยกเว้นรายตัวของฝ่าย RA ที่ตรึงไว้บน
   // สินค้า (taxableOverride) ต้องอยู่รอดการแก้สเปค** — กติกาเดียวกับตอนสร้าง
   // (resolveProductTaxable) · เขียนค่า override ใหม่ทำที่ทะเบียนสรรพสามิต ไม่ใช่ที่นี่
   const isExciseTaxable = resolveProductTaxable({

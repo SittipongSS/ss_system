@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 test('⭐ "รอฉันลงมือ" ของภาษี = ขั้นที่เลนฉันเป็นเจ้าของและยังไม่จบ', async () => {
   const { ownedStages, isTaxWaitingOnMe } = await import('./workflow.js');
 
-  // ขึ้นทะเบียน: SA ถือร่าง+ตีกลับ · LG ถือใบที่รออนุมัติ
+  // ขึ้นทะเบียน: SA ถือร่าง+ตีกลับ · RA ถือใบที่รออนุมัติ
   assert.deepEqual(ownedStages('registration', 'SA'), ['draft', 'rejected']);
-  assert.deepEqual(ownedStages('registration', 'LG'), ['pending_legal']);
-  // ยื่นชำระ: SA ถือเตรียมใบ/รอรับเงิน/ชำระแล้ว(รอส่งเอกสาร) · LG ถือรอยื่น/กำลังยื่น
-  assert.deepEqual(ownedStages('payment', 'LG'), ['received', 'filing']);
+  assert.deepEqual(ownedStages('registration', 'RA'), ['pending_legal']);
+  // ยื่นชำระ: SA ถือเตรียมใบ/รอรับเงิน/ชำระแล้ว(รอส่งเอกสาร) · RA ถือรอยื่น/กำลังยื่น
+  assert.deepEqual(ownedStages('payment', 'RA'), ['received', 'filing']);
   assert.deepEqual(ownedStages('payment', 'SA'), ['draft', 'pending', 'complete']);
 
   // ขั้นจบแล้วไม่นับ — ไม่มีใครต้องทำอะไรต่อ
@@ -21,7 +21,7 @@ test('⭐ "รอฉันลงมือ" ของภาษี = ขั้น�
   assert.deepEqual(ownedStages('registration', null), []);
   assert.deepEqual(ownedStages('nope', 'SA'), []);
 
-  assert.equal(isTaxWaitingOnMe({ status: 'pending_legal' }, 'registration', 'LG'), true);
+  assert.equal(isTaxWaitingOnMe({ status: 'pending_legal' }, 'registration', 'RA'), true);
   assert.equal(isTaxWaitingOnMe({ status: 'pending_legal' }, 'registration', 'SA'), false);
-  assert.equal(isTaxWaitingOnMe(null, 'registration', 'LG'), false);
+  assert.equal(isTaxWaitingOnMe(null, 'registration', 'RA'), false);
 });

@@ -17,7 +17,7 @@
 // ด่านทีมของมันวัดคนสั่งด้วย `salesPlanningEditScope` ซึ่ง AE = 'own' (ด่านไม่ทำงาน)
 // ส่วนงาน PM วัดด้วย `pmEditScope` ซึ่ง AE = 'team' (PM เป็นงานร่วมทั้งทีม) ⇒ ใช้ตัวของ
 // ดีลจะปล่อยให้ AE ยกโครงการข้ามทีมได้เงียบ ๆ แล้วตัวเองมองไม่เห็นอีกเลย
-import { attributionTeam, pmEditScope, userTeams } from '@/lib/permissions';
+import { attributionTeam, normalizeRole, pmEditScope, userTeams } from '@/lib/permissions';
 import { DEAL_HOLDER_ROLES } from '@/lib/sales/dealOwner';
 
 /* ผู้ดูแลโครงการ = AE / Senior AE — ชุดเดียวกับ "คนถือดีล" (มติผู้ใช้ 2026-08-08)
@@ -56,7 +56,7 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ดูแลคนอื่น' };
 
-  const role = user.app_metadata?.role || null;
+  const role = normalizeRole(user.app_metadata?.role) || null;
   if (!PROJECT_OWNER_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้ดูแลโครงการต้องเป็น AE / Senior AE — โครงการที่ตกไปอยู่กับผู้ประสาน/ผู้กำกับ ไม่มี AE คนไหนเห็นในลิสต์ตัวเอง' };
   }

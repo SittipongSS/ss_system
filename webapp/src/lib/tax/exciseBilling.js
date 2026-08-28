@@ -97,9 +97,9 @@ export function exciseTaxLine({ exciseRatePerUnit, localTaxRatePerUnit, quantity
 }
 
 // บรรทัดของใบยื่นที่อ้าง "ทะเบียน" — แบ่งหน้าที่ให้ชัด:
-//   ทะเบียน = ตัดสินว่า **เสียภาษีไหม** (ฝ่ายกฎหมาย override ได้ผ่าน taxableOverride)
+//   ทะเบียน = ตัดสินว่า **เสียภาษีไหม** (ฝ่าย RA override ได้ผ่าน taxableOverride)
 //   สินค้า   = ให้ **ตัวเลขอัตรา** ซึ่งคิดจากราคาขายปลีกของ FG
-// ⚠️ อ่านอัตราจากสินค้าอย่างเดียวโดยไม่ดูธงของทะเบียน = override ของ LG หายเงียบ ๆ
+// ⚠️ อ่านอัตราจากสินค้าอย่างเดียวโดยไม่ดูธงของทะเบียน = override ของ RA หายเงียบ ๆ
 // (เดิมไม่มีใครเห็นเพราะ reg.exciseTax ถูกตั้งเป็น 0 ไปแล้วตอน override)
 export function exciseTaxLineForRegistration({ registration, product, quantity } = {}) {
   const taxable = registration?.isExciseTaxable !== false;

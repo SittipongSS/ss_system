@@ -54,7 +54,7 @@ test("อายุนับจากจุดที่สถานะปัจ�
   assert.equal(ageAnchor(done), "2026-08-20");
 });
 
-test("ค้างนาน = เฉพาะใบที่รอฝ่ายกฎหมาย และเรียงเก่าสุดขึ้นก่อน", () => {
+test("ค้างนาน = เฉพาะใบที่รอฝ่าย RA และเรียงเก่าสุดขึ้นก่อน", () => {
   const rows = [
     { id: "a", status: "pending_legal", updatedAt: "2026-08-27" },  // 1 วัน
     { id: "b", status: "pending_legal", updatedAt: "2026-07-25" },  // 34 วัน

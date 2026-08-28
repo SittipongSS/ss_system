@@ -18,12 +18,12 @@
 //   ae_supervisor — Sales dept head. Controls ALL teams' sales/PM work (data
 //                   scope 'all', like admin) and can VIEW tax status, but is NOT
 //                   a system admin (no users:manage / master:manage / audit:view)
-//                   and cannot approve tax (legal:approve is the legal role's).
+//                   and cannot approve tax (ra:approve is the RA role's).
 //                   During the phased rollout sees only the PM hub card.
 //   senior_ae     — team lead (team = ODM | KA | SV). Edits whole team.
 //   ac            — Account Coordinate (back-office). Edits whole team, no delete.
 //   ae            — Account Executive (front-office). Edits only own records.
-//   legal         — Legal dept. Views all teams; approves / files tax. No edits.
+//   RA         — Legal dept. Views all teams; approves / files tax. No edits.
 //   rd            — ฝ่ายวิจัยและพัฒนา (RD). Sales' primary technical counterpart:
 //                   READS every team's deals/projects/quotations (salesplan:view at
 //                   'all' scope — full context to answer Sales' inquiries) and works
@@ -34,7 +34,7 @@
 //                   capability across all modules (all teams' data, via viewScope
 //                   'all') but cannot add / edit / delete anywhere. Confidential
 //                   factory cost/margin is OFF by default; an admin may tick the
-//                   per-user grant (products:margin) to give one viewer LG-level
+//                   per-user grant (products:margin) to give one viewer RA-level
 //                   cost sight. Own department.
 //   executive     — ผู้บริหาร (ฝ่าย EX). Read-only observer like `viewer`, plus the
 //                   ONE authority that is exclusively theirs: approving the
@@ -53,8 +53,8 @@
 //   products:view  | products:edit  | products:delete | products:margin
 //     (products:margin = see the factory cost BREAKDOWN + profit. costPrice
 //      itself stays visible to anyone with products:view; only the derived
-//      material/labor/shipping split and factoryProfit are gated — LG + admin.)
-//   legal:view     | legal:approve
+//      material/labor/shipping split and factoryProfit are gated — RA + admin.)
+//   ra:view     | ra:approve
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
@@ -75,23 +75,23 @@
 // app_metadata.department.
 //
 // Department is NO LONGER 1:1 with role. The tax-system roles still imply a
-// home department (SA/LG/Viewer), but the org also has departments that carry
+// home department (SA/RA/Viewer), but the org also has departments that carry
 // NO tax permissions — PC/PD/WH/RD/QC. People in those departments exist so PM
 // tasks can pull a "ผู้รับผิดชอบ" by ฝ่าย; they share one baseline role (`staff`)
 // that only grants read access to Project Management. Codes are kept short
-// (matching the PM step-role codes SA/RD/PC/PD/QC/LG/WH) and shown as-is.
-//   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · LG = ฝ่ายกฎหมาย · Viewer = ผู้ดูข้อมูล
+// (matching the PM step-role codes SA/RD/PC/PD/QC/RA/WH) and shown as-is.
+//   AD = ผู้ดูแลระบบ · SEC = ฝ่ายเลขานุการ · SA = ฝ่ายขาย · RA = ฝ่ายกฎระเบียบและขึ้นทะเบียนผลิตภัณฑ์ · Viewer = ผู้ดูข้อมูล
 //   EX = ฝ่ายบริหาร · PC = ฝ่ายจัดซื้อ · PD = ฝ่ายผลิต · WH = ฝ่ายคลัง · RD = ฝ่ายวิจัยและพัฒนา · QC = ฝ่ายควบคุมคุณภาพ
 //   TS = ฝ่ายเทคนิคบริการ (Technic Service) — ช่างที่เข้าไซต์ลูกค้าดูแลระบบกระจายกลิ่น
-export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'LG', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
+export const DEPARTMENTS = ['AD', 'SEC', 'SA', 'MK', 'RA', 'EX', 'Viewer', 'PC', 'PD', 'WH', 'RD', 'QC', 'TS', 'FN'];
 // Display label is the code itself (พนักงานคุ้นกับโค้ดบน timeline อยู่แล้ว).
 export const DEPARTMENT_LABELS = {
-  AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', LG: 'LG', EX: 'EX', Viewer: 'Viewer',
+  AD: 'Admin', SEC: 'SEC', SA: 'SA', MK: 'MK', RA: 'RA', EX: 'EX', Viewer: 'Viewer',
   PC: 'PC', PD: 'PD', WH: 'WH', RD: 'RD', QC: 'QC', TS: 'TS', FN: 'FN',
 };
 // Thai names — used only for tooltips/help text, not the primary display.
 export const DEPARTMENT_NAMES_TH = {
-  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', LG: 'ฝ่ายกฎหมาย',
+  AD: 'ผู้ดูแลระบบ', SEC: 'ฝ่ายเลขานุการ', SA: 'ฝ่ายขาย', MK: 'ฝ่ายการตลาด', RA: 'ฝ่ายกฎระเบียบและขึ้นทะเบียนผลิตภัณฑ์',
   EX: 'ฝ่ายบริหาร', Viewer: 'ผู้ดูข้อมูล',
   PC: 'ฝ่ายจัดซื้อ', PD: 'ฝ่ายผลิต', WH: 'ฝ่ายคลัง',
   RD: 'ฝ่ายวิจัยและพัฒนา', QC: 'ฝ่ายควบคุมคุณภาพ', FN: 'ฝ่ายบัญชีและการเงิน',
@@ -99,22 +99,41 @@ export const DEPARTMENT_NAMES_TH = {
 };
 
 // Legacy app_metadata.department values written before the codes were shortened.
-const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'LG', VIEWER: 'Viewer' };
+/* ⚠️ **LG → RA (2026-08-28)**: ฝ่ายกฎหมายเปลี่ยนชื่อเป็นฝ่ายกฎระเบียบและขึ้นทะเบียน
+   ผลิตภัณฑ์ (Regulatory Affairs) · ค่าที่เก็บไว้แล้วใน `app_metadata.department`
+   ยังเป็น `LG` อยู่ ⇒ แปลงตอนอ่านเหมือนที่ `SALES`/`LEGAL` เคยทำ **ไม่ต้องย้ายข้อมูล** */
+const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'RA', LG: 'RA', VIEWER: 'Viewer' };
 // Normalise a stored/incoming department to a current code (migrates on read).
+/* ── role เก่าที่ยังค้างอยู่บนบัญชีจริง ─────────────────────────────────────
+ * ⭐ `legal` → `ra` (2026-08-28) · แปลง **ตอนอ่าน** เหมือนที่ `normalizeDepartment`
+ * ทำกับรหัสฝ่าย ⇒ ไม่มีช่วงเวลาที่บัญชีเก่าเข้าระบบไม่ได้ ไม่ว่าโค้ดกับข้อมูลจะขึ้น
+ * ไม่พร้อมกันแค่ไหน (role อยู่ใน `app_metadata` ของ Supabase Auth ไม่ใช่ตารางในฐาน
+ * จึงไม่มี migration SQL ให้รันพร้อม deploy)
+ * ⚠️ ต้องเรียกทุกจุดที่อ่าน `app_metadata.role` ออกมาเป็นตัวตนของผู้ใช้ —
+ *    `roleReadPoints.test.mjs` ไล่ตรวจให้แล้ว
+ * 🗑 ถอดออกได้เมื่อไม่มีบัญชีไหนเหลือ role `legal` (เช็คด้วย Admin API) */
+const LEGACY_ROLE = { legal: 'ra' };
+
+/** แปลง role ที่เก็บไว้/รับเข้ามา ให้เป็นชื่อปัจจุบัน (แปลงตอนอ่าน) */
+export function normalizeRole(role) {
+  if (!role) return role;
+  return LEGACY_ROLE[role] || role;
+}
+
 export function normalizeDepartment(department) {
   if (!department) return null;
   return LEGACY_DEPARTMENT[department] || department;
 }
 
 // Roles allowed in each department (drives the dependent role dropdown). Teams
-// (ODM/KA/SV) live only under SA; LG/Viewer/staff-departments have no teams.
+// (ODM/KA/SV) live only under SA; RA/Viewer/staff-departments have no teams.
 const DEPARTMENT_ROLES = {
   AD: ['admin'],
   SEC: ['secretary'],
   SA: ['ae_supervisor', 'senior_ae', 'ac', 'ae'],
   // MK = ฝ่ายการตลาด (เฟส C มติ #2): กรอกลีดรายวัน — เห็นเฉพาะเมนูลีด
   MK: ['marketing'],
-  LG: ['legal'],
+  RA: ['ra'],
   // EX = ฝ่ายบริหาร — ผู้อนุมัติราคาผลิตในระบบขอราคาผลิต (ไม่มี operation อื่น)
   EX: ['executive'],
   Viewer: ['viewer'],
@@ -145,7 +164,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   secretary: 'SEC',
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
   marketing: 'MK',
-  legal: 'LG', executive: 'EX', viewer: 'Viewer',
+  ra: 'RA', executive: 'EX', viewer: 'Viewer',
   rd: 'RD',
   finance: 'FN',
 };
@@ -163,7 +182,7 @@ export const TEAMS = ['ODM', 'KA', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'legal', 'rd', 'finance', 'executive', 'viewer', 'staff'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'executive', 'viewer', 'staff'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -172,7 +191,7 @@ export const ROLE_LABELS = {
   ac: 'Account Coordinate',
   ae: 'Account Executive',
   marketing: 'การตลาด (Marketing)',
-  legal: 'ฝ่ายกฎหมาย',
+  ra: 'เจ้าหน้าที่ฝ่ายกฎระเบียบและขึ้นทะเบียนผลิตภัณฑ์ (RA)',
   rd: 'วิจัยและพัฒนา (RD)',
   finance: 'บัญชีและการเงิน (Finance)',
   executive: 'ผู้บริหาร (Executive)',
@@ -252,9 +271,9 @@ export function resolveTeamAssignment(role, { team, teams } = {}) {
   return { team: valid.includes(team) ? team : (valid[0] || null), teams: valid };
 }
 
-// Sales operational base (no delete, no legal). Shared by ae / ac.
+// Sales operational base (no delete, no RA). Shared by ae / ac.
 // PM (project management) is a SALES-only tool — every sales role views+edits it
-// (row-level team scope still applies via editScope); legal has no PM access.
+// (row-level team scope still applies via editScope); RA has no PM access.
 const SALES_OPS = [
   'customers:view', 'customers:edit',
   'products:view', 'products:edit',
@@ -285,7 +304,7 @@ const SUPERUSER_CAPS = [
   'customers:view', 'customers:edit', 'customers:delete',
   'products:view', 'products:edit', 'products:delete', 'products:margin',
   'sales:view', 'sales:act', 'sales:delete',
-  'legal:view', 'legal:approve',
+  'ra:view', 'ra:approve',
   'history:view', 'audit:view',
   'users:manage',
   'master:manage',  // edit category taxonomy (product_types) + master config
@@ -305,21 +324,21 @@ const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
 
 // Capabilities a sales head does NOT inherit from the full superuser set:
 //   - the admin-system caps (account/master/audit management)
-//   - legal:approve — tax approval is reserved for the `legal` role (admin keeps
-//     it as a break-glass). ae_supervisor still has legal:view (sees tax status).
+//   - ra:approve — tax approval is reserved for the `RA` role (admin keeps
+//     it as a break-glass). ae_supervisor still has ra:view (sees tax status).
 //   - products:margin — the factory cost breakdown + profit is restricted to
-//     LG + admin; even the sales head sees only costPrice, not the margin split.
+//     RA + admin; even the sales head sees only costPrice, not the margin split.
 //   - the งานบริหาร module caps (mgmt:*) — that module is admin + secretary only,
 //     the sales head has no role in it.
 //   - costing:approve — ราคาผลิตอนุมัติโดยผู้บริหาร (executive) เท่านั้น มติ 2026-07-22
-//     (admin คงไว้ break-glass เหมือน legal:approve)
+//     (admin คงไว้ break-glass เหมือน ra:approve)
 //   - costing:quote — ราคา RM/PM เป็นคำตอบของ RD/PC หัวหน้าฝ่ายขายตอบแทนไม่ได้
 const SALES_HEAD_EXCLUDED = [
-  ...ADMIN_SYSTEM_CAPS, 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit',
+  ...ADMIN_SYSTEM_CAPS, 'ra:approve', 'products:margin', 'mgmt:view', 'mgmt:edit',
   'costing:approve', 'costing:quote',
 ];
 
-// Sales head (ae_supervisor): every remaining sales/legal-view/PM capability
+// Sales head (ae_supervisor): every remaining sales/RA-view/PM capability
 // across ALL teams. Data scope stays 'all' via isSuperuser().
 const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includes(c));
 
@@ -328,7 +347,7 @@ const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includ
 // this set PLUS its costing authority (see ROLE_CAPS.executive).
 const OBSERVER_CAPS = [
   'customers:view', 'products:view',
-  'sales:view', 'legal:view', 'history:view',
+  'sales:view', 'ra:view', 'history:view',
   'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   'production:view', 'service:view',
 ];
@@ -355,15 +374,15 @@ const ROLE_CAPS = {
   // + products:view อ่านอย่างเดียว (มติ 2026-07-20) — ต้องรู้ว่าบริษัทขายอะไร
   //   ตอนคุยลีด; ไม่มี products:edit / products:margin (ดู secretary)
   marketing: ['salesplan:lead', 'products:view'],
-  // legal views registries + does tax approval; no edit/delete of sales data.
-  // legal is the cost-margin authority (sees the factory cost breakdown + profit).
-  legal: ['customers:view', 'products:view', 'products:margin', 'legal:view', 'legal:approve', 'history:view'],
+  // RA views registries + does tax approval; no edit/delete of sales data.
+  // RA is the cost-margin authority (sees the factory cost breakdown + profit).
+  ra: ['customers:view', 'products:view', 'products:margin', 'ra:view', 'ra:approve', 'history:view'],
   // viewer: read-only observer of the WHOLE system — holds every :view capability
   // across all modules (database / tax / sales / PM / sahamit / mgmt) at 'all'-team
   // scope, but NO edit/act/delete/approve/manage. add/edit/delete is impossible
   // everywhere: the proxy's capability write-gate (apiWriteAllowed) blocks writes
   // for lack of the :edit/:act/:delete caps. Confidential factory cost/margin is
-  // NOT here by default — it's grantable per-user (products:margin), same as LG.
+  // NOT here by default — it's grantable per-user (products:margin), same as RA.
   viewer: OBSERVER_CAPS,
   // executive: ผู้บริหาร — observer เต็มระบบเหมือน viewer + อำนาจเดียวที่เป็นของเขา
   // คนเดียว คืออนุมัติราคาผลิตในใบขอราคาผลิต. costing:view เปิดต้นทุนเต็มใบให้
@@ -395,7 +414,7 @@ const ROLE_CAPS = {
   // **ฐานข้อมูล** กับ **บริหารงานขาย** (บวกบ้านของตัวเอง และ "แจ้งปัญหาระบบ"
   // ซึ่งทุกคนที่ล็อกอินเห็นเสมอโดยกฎของระบบ)
   // ผลข้างเคียงที่ยอมรับแล้ว: ไม่เห็นสถานะทะเบียนสรรพสามิตบนหน้าสินค้า/ลูกค้า
-  // (`registrationStatus` แนบมาเฉพาะคนที่ถือ history:view) — งานนั้นเป็นของฝ่ายกฎหมาย
+  // (`registrationStatus` แนบมาเฉพาะคนที่ถือ history:view) — งานนั้นเป็นของฝ่าย RA
   finance: [
     'products:view', 'customers:view', 'salesplan:view',
     'requests:answer', 'payments:confirm',
@@ -462,7 +481,7 @@ export function can(role, cap) {
 // ── Per-user capability grants (app_metadata.extraCaps) ───────────────
 // A user keeps their base role but an admin may GRANT a small, whitelisted set
 // of extra capabilities on top — e.g. a Sales lead who must also do the ฝ่าย
-// กฎหมาย (LG) work while LG is short-staffed, or a Viewer/auditor who needs the
+// RA work while RA is short-staffed, or a Viewer/auditor who needs the
 // admin-only READ surfaces (audit log, user list). Grants are additive only;
 // they never remove a role's caps.
 //
@@ -475,10 +494,10 @@ export function can(role, cap) {
 //
 // Only these caps may be granted per-user. Anything else is ignored (defense
 // against a stale/tampered app_metadata array escalating privilege).
-export const GRANTABLE_CAPS = ['legal:view', 'legal:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view'];
+export const GRANTABLE_CAPS = ['ra:view', 'ra:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view'];
 export const GRANTABLE_CAP_LABELS = {
-  'legal:view': 'ดูสถานะภาษีทุกทีม (LG)',
-  'legal:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่ายกฎหมาย (LG)',
+  'ra:view': 'ดูสถานะภาษีทุกทีม (RA)',
+  'ra:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่าย RA',
   'products:margin': 'เห็นต้นทุน/กำไรโรงงาน (ทำรายงานผู้บริหาร)',
   'mgmt:view': 'เข้าดูระบบงานบริหาร (mgmt)',
   'mgmt:edit': 'เพิ่ม/แก้ไขข้อมูลในระบบงานบริหาร (mgmt)',
@@ -845,17 +864,17 @@ export function homeSystemForUser(user) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (isSuperuser(role) || role === 'legal' || isReadOnlyObserver(role) || role === 'staff' || role === 'rd') return 'all';
+  if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || role === 'staff' || role === 'rd') return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
-// User-aware view scope: a per-user grant of legal:view (an SA acting as LG)
-// widens visibility to ALL teams, exactly like the built-in `legal` role — so a
+// User-aware view scope: a per-user grant of ra:view (an SA acting as RA)
+// widens visibility to ALL teams, exactly like the built-in `RA` role — so a
 // grantee sees every team's tax records they now have to approve. Falls back to
 // the role-only viewScope for everyone else. Use this (not viewScope(role)) in
-// handlers that have the full user object and cover legal-touchable resources.
+// handlers that have the full user object and cover RA-touchable resources.
 export function viewScopeUser(user) {
-  if (canUser(user, 'legal:view')) return 'all';
+  if (canUser(user, 'ra:view')) return 'all';
   return viewScope(user?.role);
 }
 
@@ -863,7 +882,7 @@ export function editScope(role) {
   if (isSuperuser(role)) return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
-  return 'none'; // legal (acts via approval only) + viewer
+  return 'none'; // RA (acts via approval only) + viewer
 }
 
 // PM (project management) edit scope. PM is a collaborative TEAM tool, so it is
@@ -875,7 +894,7 @@ export function editScope(role) {
 export function pmEditScope(role) {
   if (isSuperuser(role)) return 'all';
   if (role === 'senior_ae' || role === 'ac' || role === 'ae') return 'team';
-  return 'none'; // legal / viewer; staff edits assigned tasks via the
+  return 'none'; // RA / viewer; staff edits assigned tasks via the
                  // 'workflow' tier in pmTaskEditTier, not the project plan.
 }
 
@@ -893,8 +912,8 @@ export function inPmProjectScope(user, project) {
 //     สร้างผิดแล้วต้องรอเจ้าของ/หัวหน้ามาลบ. เหตุผลเดียวกับ pmEditScope ที่ยก AE
 //     เป็นระดับทีมเพราะเป็นงานร่วม. เงื่อนไข "ลบได้เฉพาะร่าง + ไม่มีบรรทัดใบสั่ง
 //     อ้างถึง" ไม่ได้อยู่ที่นี่ — บังคับที่ registrationDeleteBlock (lib/deletion).
-//     NOTE: ยังห้าม fallback ไป canEditRecord — legal (legal:approve bypass) ต้อง
-//     ไม่หลุดเข้ามาในเส้นทางลบ หน้าที่ LG คือตรวจอนุมัติ/ตีกลับ ไม่ใช่ลบงานฝ่ายขาย.
+//     NOTE: ยังห้าม fallback ไป canEditRecord — RA (ra:approve bypass) ต้อง
+//     ไม่หลุดเข้ามาในเส้นทางลบ หน้าที่ RA คือตรวจอนุมัติ/ตีกลับ ไม่ใช่ลบงานฝ่ายขาย.
 export function deleteScope(role, resource) {
   if (isSuperuser(role)) return 'all';
   if ((resource === 'orders' || resource === 'projects') && role === 'senior_ae') return 'team';
@@ -986,10 +1005,10 @@ export function caretakerTeamsOf(record) {
 }
 
 export function canEditRecord(user, resource, record, caretakerTeams) {
-  // Legal tax approval spans all teams (legal processes tax for everyone),
-  // but legal does not edit the customer registry. Honours a per-user
-  // legal:approve grant (an SA acting as LG) the same as the built-in role.
-  if (resource !== 'customers' && canUser(user, 'legal:approve')) return true;
+  // Legal tax approval spans all teams (RA processes tax for everyone),
+  // but RA does not edit the customer registry. Honours a per-user
+  // ra:approve grant (an SA acting as RA) the same as the built-in role.
+  if (resource !== 'customers' && canUser(user, 'ra:approve')) return true;
 
   // ── Master data (customers / products): CARETAKER-TEAM scoped ────────
   // Edit is gated by the team that CARES FOR the record, not who created it:
@@ -1190,15 +1209,15 @@ export function pmTaskEditTier(user, task, project) {
 }
 
 // ── Field-level edit gating ───────────────────────────────────────────
-// canEditRecord answers "may this user touch the row at all". But legal and
+// canEditRecord answers "may this user touch the row at all". But RA and
 // sales touch DIFFERENT columns: sales own the commercial fields (price, cost,
-// quotation…), legal owns the tax/approval fields. A legal user must NOT be
+// quotation…), RA owns the tax/approval fields. A RA user must NOT be
 // able to rewrite costPrice just because they can approve. These lists are the
 // columns each side may set; routes union the lists the user's caps unlock.
 
-// Fields LG sets while approving / filing tax (not the commercial data).
+// Fields RA sets while approving / filing tax (not the commercial data).
 export const LEGAL_PRODUCT_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
-// Excise registrations: LG owns the approval/tax columns; SA owns the link
+// Excise registrations: RA owns the approval/tax columns; SA owns the link
 // (which product + which customer it's submitted for).
 export const LEGAL_REGISTRATION_FIELDS = ['status', 'approvalNumber', 'taxableOverride', 'rejectionReason'];
 export const LEGAL_ORDER_FIELDS = [
@@ -1207,7 +1226,7 @@ export const LEGAL_ORDER_FIELDS = [
 ];
 
 // The capability a sales user needs to write a resource's commercial fields,
-// and the LG-owned field list, per resource.
+// and the RA-owned field list, per resource.
 const RESOURCE_SALES_CAP = {
   orders: 'sales:act',
   registrations: 'products:edit', // SA submits/edits the registration link
@@ -1219,12 +1238,12 @@ const LEGAL_FIELDS_BY_RESOURCE = {
 
 // Compute the set of body fields `user` may write to a record, given the
 // resource's full sales-editable list. Supervisor gets both (full edit cap +
-// legal cap). `salesEditable` is the route's existing commercial field list.
+// RA cap). `salesEditable` is the route's existing commercial field list.
 export function allowedEditFields(user, resource, salesEditable) {
   const allowed = new Set();
   const salesActCap = RESOURCE_SALES_CAP[resource] || `${resource}:edit`;
   if (canUser(user, salesActCap)) salesEditable.forEach((f) => allowed.add(f));
-  if (canUser(user, 'legal:approve')) {
+  if (canUser(user, 'ra:approve')) {
     (LEGAL_FIELDS_BY_RESOURCE[resource] || LEGAL_PRODUCT_FIELDS).forEach((f) => allowed.add(f));
   }
   return allowed;
@@ -1232,16 +1251,16 @@ export function allowedEditFields(user, resource, salesEditable) {
 
 // ── Cost redaction (two tiers) ────────────────────────────────────────
 // Factory cost data is confidential to the EXCISE TAX system. Two tiers:
-//   • costPrice  — the factory cost. Visible to SA + LG + admin (anyone who
+//   • costPrice  — the factory cost. Visible to SA + RA + admin (anyone who
 //     works the tax/sales flow). Hidden from other departments (staff) and
 //     plain viewers, even though they may browse the product catalog.
 //   • MARGIN_FIELDS — the cost breakdown + resulting profit. Stricter still:
-//     LG + admin only (products:margin). Even SA sees costPrice but not these.
+//     RA + admin only (products:margin). Even SA sees costPrice but not these.
 // Redaction happens server-side so the data never leaves the API; hiding the
 // UI card alone would still leak it via a direct fetch.
 export const MARGIN_FIELDS = ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit'];
 
-// May this role see the factory costPrice? SA (products:edit) own it; LG/admin
+// May this role see the factory costPrice? SA (products:edit) own it; RA/admin
 // (products:margin) see it too. Staff/viewers with read-only catalog access
 // (products:view but neither edit nor margin) do NOT.
 export function canSeeProductCost(role) {
