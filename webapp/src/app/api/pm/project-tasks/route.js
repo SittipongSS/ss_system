@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/pm/project-tasks?projectId=...  — team-scoped (via parent project).
 // Without projectId: all tasks the user may see (own team / all).
 export const GET = withUser(async ({ user, supabase, req }) => {
-  // PM is sales-only: gate on pm:view (legal/unknown have scope but no cap).
+  // PM is sales-only: gate on pm:view (RA/unknown have scope but no cap).
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden();
 

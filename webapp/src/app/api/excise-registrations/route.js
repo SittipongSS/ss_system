@@ -8,7 +8,7 @@ import { productBrandName, productDisplayName } from '@/lib/master/productIdenti
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/excise-registrations — team-scoped list (legal/supervisor see all).
+// GET /api/excise-registrations — team-scoped list (RA/supervisor see all).
 // ?slim=1: เฉพาะคอลัมน์ที่จอสรุป (/tax) ใช้ — ตัด snapshot ภาษี/metadata/เอกสาร
 // ออกจาก payload (ลด traffic); โหมดเต็มพฤติกรรมเดิม.
 const REGISTRATION_SELECT_SLIM =
@@ -27,7 +27,7 @@ export async function GET(request) {
      (/api/orders) และกับ `canViewRecord` ที่ถือว่า registrations ไร้ทีม = shared
      (TEAMLESS_SHARED_RESOURCES) อยู่แล้ว
      🐞 ของเดิม `.in('team', ทีมของฉัน)` เฉย ๆ ⇒ ซ่อนแถว team = null จาก **ทุกทีม**
-     ซึ่งเกิดทุกครั้งที่คนไม่มีทีม (admin/legal/staff) เป็นคนสร้าง เพราะ POST เขียน
+     ซึ่งเกิดทุกครั้งที่คนไม่มีทีม (admin/RA/staff) เป็นคนสร้าง เพราะ POST เขียน
      `attributionTeam(user, …)` ซึ่งคืน null ให้คนที่ไม่สังกัดทีมไหนเลย — ตรงกับที่
      คอมเมนต์ของ canViewRecord เล่าไว้ว่าทะเบียนที่ Admin สร้างค้าง "รออนุมัติ" 6 วัน
      โดยไม่มีใครในทีมเห็น (ด่านรายแถวถูกแก้ไปแล้ว ตัวกรองของลิสต์ยังค้างของเดิม)
@@ -88,7 +88,7 @@ export async function POST(request) {
     return Response.json({ error: 'สินค้านี้ถูกขึ้นทะเบียนให้ลูกค้ารายนี้แล้ว' }, { status: 409 });
   }
 
-  // ทะเบียนเก็บเฉพาะ "เสียภาษีไหม" — ฝ่ายกฎหมาย override ได้ทีหลัง
+  // ทะเบียนเก็บเฉพาะ "เสียภาษีไหม" — ฝ่าย RA override ได้ทีหลัง
   // **อัตราไม่ก๊อปมาเก็บ**: คิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้ จึงมีแหล่งเดียวคือ
   // products.exciseTax/localTax (มติผู้ใช้ 2026-07-29 · คอลัมน์สำเนาปลดระวางที่ mig 0180)
   const isExciseTaxable = product.isExciseTaxable !== false;

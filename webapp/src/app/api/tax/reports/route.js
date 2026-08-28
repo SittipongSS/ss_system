@@ -57,7 +57,7 @@ export async function GET(request) {
     ids: (searchParams.get('ids') || '').split(',').map((s) => s.trim()).filter(Boolean),
     // Optional doc-type filter for the ZIP export (which attachment types to include).
     docTypes: (searchParams.get('docTypes') || '').split(',').map((s) => s.trim()).filter(Boolean),
-    // Factory cost/profit columns are confidential — LG + admin (and any user
+    // Factory cost/profit columns are confidential — RA + admin (and any user
     // granted products:margin, e.g. an SA making management reports).
     margin: canUser(user, 'products:margin'),
   };

@@ -349,7 +349,7 @@ test('เพิ่มลีดได้เฉพาะ MKT + admin/หัวห�
   assert.equal(canCreateLead('marketing'), true);
   assert.equal(canCreateLead('admin'), true);
   assert.equal(canCreateLead('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ac', 'ae', 'rd', 'legal', 'executive', 'viewer', 'secretary', 'staff', undefined]) {
+  for (const role of ['senior_ae', 'ac', 'ae', 'rd', 'ra', 'executive', 'viewer', 'secretary', 'staff', undefined]) {
     assert.equal(canCreateLead(role), false, `${role} ต้องเพิ่มลีดไม่ได้`);
   }
 });

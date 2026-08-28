@@ -5,7 +5,7 @@
 //   1. ปลอมชื่อได้ — `assigneeName` เป็นสตริงอิสระที่ถูกเก็บเป็น snapshot แล้วโชว์
 //      บนคิวลีด/KPI (`byAssignee` จัดกลุ่มด้วยค่านี้) โดยไม่มีอะไรผูกกับบัญชีจริง
 //   2. มอบให้ id มั่ว/คนที่ลาออกแล้ว ได้ — ลีดหายเข้ากลีบเมฆ ไม่มีใครเห็นในคิวตัวเอง
-//   3. มอบให้ role ที่ `canWorkLead()` **ไม่มีวันคืน true** (legal / staff / rd /
+//   3. มอบให้ role ที่ `canWorkLead()` **ไม่มีวันคืน true** (RA / staff / rd /
 //      marketing / ae_supervisor) ⇒ ลีดค้างถาวร: ผู้รับกดติดต่อ/นัดไม่ได้ และคนอื่น
 //      ก็ไม่ใช่เจ้าของงาน ต้องให้แอดมินมาตีกลับให้อย่างเดียว
 //
@@ -28,7 +28,7 @@
 // ต่างกันที่ลีดผูกด้วย **id** ซึ่งแข็งแรงกว่าชื่อ จึงตรวจด้วย id แล้ว *คืนชื่อจาก
 // server* ให้ผู้เรียกเขียนลงแถว (ไม่รับชื่อจาก client อีกต่อไป)
 
-import { userTeams } from '@/lib/permissions';
+import { normalizeRole, userTeams } from '@/lib/permissions';
 
 export const LEAD_ASSIGNEE_ROLES = ['admin', 'senior_ae', 'ae'];
 
@@ -63,7 +63,7 @@ export async function validateLeadAssignee(supabase, assigneeId, lead = null) {
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้รับผิดชอบคนอื่น' };
 
-  const role = user.app_metadata?.role || null;
+  const role = normalizeRole(user.app_metadata?.role) || null;
   if (!LEAD_ASSIGNEE_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้รับผิดชอบลีดต้องเป็น AE หรือ Senior AE เท่านั้น (AC เป็นหลังบ้านของทีม ไม่รับเป็นเจ้าของลีด)' };
   }

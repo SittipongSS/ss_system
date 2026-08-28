@@ -32,7 +32,7 @@ function isWithinRange(dateStr, range) {
 
 export default function TaxDashboard() {
   const canSA = useCan("sales:act");
-  const canLG = useCan("legal:approve");
+  const canLG = useCan("ra:approve");
   const router = useRouter();
   
   // โหมด slim: จอนี้ใช้แค่สถานะ/ตัวเลขสรุป/ชื่อในคิวงาน — ไม่ต้องดาวน์โหลด

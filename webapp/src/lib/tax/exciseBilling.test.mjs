@@ -135,9 +135,9 @@ test('exciseTaxTotals: รวมหลายบรรทัดแล้วยั
   assert.equal(totals.totalTax, round2(totals.totalExciseTax + totals.totalLocalTax));
 });
 
-// ทะเบียนตัดสินว่า "เสียภาษีไหม" (LG override) · สินค้าให้ "ตัวเลขอัตรา"
-// ⚠️ ถ้าอ่านอัตราจากสินค้าอย่างเดียวโดยไม่ดูธงของทะเบียน override ของ LG จะหายเงียบ ๆ
-test('taxableOverride ของฝ่ายกฎหมายชนะอัตราของสินค้า', () => {
+// ทะเบียนตัดสินว่า "เสียภาษีไหม" (RA override) · สินค้าให้ "ตัวเลขอัตรา"
+// ⚠️ ถ้าอ่านอัตราจากสินค้าอย่างเดียวโดยไม่ดูธงของทะเบียน override ของ RA จะหายเงียบ ๆ
+test('taxableOverride ของฝ่าย RAชนะอัตราของสินค้า', () => {
   const product = { exciseTax: 8.04, localTax: 0.8 };
   const taxed = exciseTaxLineForRegistration({
     registration: { isExciseTaxable: true }, product, quantity: 10,
@@ -177,14 +177,14 @@ test('ทุกทางที่สร้างบรรทัดภาษี�
   }
 });
 
-// ── การยกเว้นรายตัวของฝ่ายกฎหมายต้องอยู่รอดการแก้สเปค ────────────────────
+// ── การยกเว้นรายตัวของฝ่าย RAต้องอยู่รอดการแก้สเปค ────────────────────
 test('ไม่มี override = ใช้ธงของหมวด', () => {
   assert.equal(resolveProductTaxable({ taxableOverride: null, autoTaxable: true }), true);
   assert.equal(resolveProductTaxable({ taxableOverride: undefined, autoTaxable: false }), false);
   assert.equal(resolveProductTaxable(), false);
 });
 
-test('override ของฝ่ายกฎหมายชนะธงของหมวดทั้งสองทาง', () => {
+test('override ของฝ่าย RAชนะธงของหมวดทั้งสองทาง', () => {
   // ยกเว้นสินค้าในหมวดที่ต้องเสียภาษี
   assert.equal(resolveProductTaxable({ taxableOverride: false, autoTaxable: true }), false);
   // บังคับให้เสียภาษีทั้งที่หมวดไม่ได้ติ๊ก

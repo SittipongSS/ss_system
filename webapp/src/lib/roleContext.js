@@ -17,11 +17,11 @@ export const TeamContext = createContext(null);
 export const TeamsContext = createContext(null);
 
 // Per-user capability grants (app_metadata.extraCaps) — additive caps on top of
-// the role, e.g. an SA granted the LG legal:approve. useCan unions these so the
+// the role, e.g. an SA granted the RA ra:approve. useCan unions these so the
 // approve/reject buttons show for a grantee, mirroring the server's canUser.
 export const ExtraCapsContext = createContext(null);
 
-// The signed-in user's department/ฝ่าย (SA/RD/PC/PD/QC/LG/WH/AD/...) — from
+// The signed-in user's department/ฝ่าย (SA/RD/PC/PD/QC/RA/WH/AD/...) — from
 // app_metadata.department with fallback departmentFor(role), same rule as the
 // server (assignable-users). Used e.g. by the timeline "เฉพาะฝ่ายของฉัน" toggle.
 export const DepartmentContext = createContext(null);

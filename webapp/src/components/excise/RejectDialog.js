@@ -7,7 +7,7 @@ import Textarea from "@/components/ui/Textarea";
 // required reason and calls async `onConfirm(reason)`; surfaces errors inline.
 // โมดัล "กรอกเหตุผลแล้วยืนยัน" ตัวเดียวของโมดูลภาษี — ต่างกันได้แค่ข้อความผ่าน props
 // (กฎ AGENTS.md: โหมดผ่าน props ไม่ใช่คนละไฟล์) ใช้ทั้งตอนตีกลับการขึ้นทะเบียน
-// และตอนฝ่ายกฎหมายปลดอนุมัติทะเบียนที่อนุมัติแล้ว (มติ B2 2026-07-27)
+// และตอนฝ่าย RAปลดอนุมัติทะเบียนที่อนุมัติแล้ว (มติ B2 2026-07-27)
 export default function RejectDialog({
   open,
   onClose,

@@ -23,7 +23,7 @@ test('system catalog keeps the agreed global order and role visibility', () => {
   assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
   assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt', 'support']);
-  assert.deepEqual(keysFor({ role: 'legal', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
+  assert.deepEqual(keysFor({ role: 'ra', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
 });
 
 test('system visibility covers every supported role and sales team', () => {
@@ -32,7 +32,7 @@ test('system visibility covers every supported role and sales team', () => {
     ['secretary', null, ['master', 'mgmt', 'support']],
     ['ae_supervisor', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'support']],
     ['marketing', null, ['salesplan', 'master', 'support']],
-    ['legal', null, ['tax', 'master', 'support']],
+    ['ra', null, ['tax', 'master', 'support']],
     // ⭐ ฝ่าย R&D ได้บ้านของตัวเองแล้ว (ม-29) — การ์ดขึ้นจาก **ฝ่าย** ไม่ใช่ role
     ['rd', null, ['salesplan', 'rd', 'master', 'support']],
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
@@ -118,7 +118,7 @@ test('ฐานข้อมูล lands on the product list when the user has no
   assert.equal(systemLandingForUser('master', marketing), '/database/products');
 
   // ส่วนบทบาทที่ดูลูกค้าได้ ยังลงหน้าภาพรวมเหมือนเดิม
-  for (const role of ['admin', 'ae_supervisor', 'ae', 'legal', 'viewer', 'staff', 'rd']) {
+  for (const role of ['admin', 'ae_supervisor', 'ae', 'ra', 'viewer', 'staff', 'rd']) {
     assert.equal(systemLandingForUser('master', { role, team: 'ODM', extraCaps: [] }), '/database', role);
   }
 });

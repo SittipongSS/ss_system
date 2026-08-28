@@ -20,9 +20,9 @@ const sqlCodeOnly = (src) => src.replace(/--.*$/gm, '');
 
 // 🐞 บั๊กจริง 2026-07-29: เงื่อนไข recompute เป็น `allowed.has('taxableOverride')` =
 // "ผู้ใช้มีสิทธิ์แก้ช่องนี้" ไม่ใช่ "ผู้ใช้สั่งแก้" — taxableOverride อยู่ใน
-// LEGAL_REGISTRATION_FIELDS แปลว่าทุกครั้งที่ฝ่ายกฎหมายอนุมัติ/ตีกลับ/ใส่เลขอนุมัติ
+// LEGAL_REGISTRATION_FIELDS แปลว่าทุกครั้งที่ฝ่าย RAอนุมัติ/ตีกลับ/ใส่เลขอนุมัติ
 // อัตราภาษีจะถูกคิดใหม่จากราคา ณ วินาทีนั้นแล้วเขียนทับเงียบ ๆ โดยไม่มีใครสั่ง
-test('อัตราภาษีคิดใหม่เฉพาะเมื่อ LG ส่ง taxableOverride มาจริง ไม่ใช่แค่มีสิทธิ์', () => {
+test('อัตราภาษีคิดใหม่เฉพาะเมื่อ RA ส่ง taxableOverride มาจริง ไม่ใช่แค่มีสิทธิ์', () => {
   assert.match(
     detailRoute,
     /if \(body\.taxableOverride !== undefined\) \{/,
@@ -90,14 +90,14 @@ test('ทะเบียนเลิกเก็บสำเนาอัตร�
     assert.doesNotMatch(codeOnly(src), /^\s*exciseTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
     assert.doesNotMatch(codeOnly(src), /^\s*localTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
   }
-  // PATCH ก็เช่นกัน — เหลือแค่ธง isExciseTaxable ซึ่งเป็นคำตัดสินของฝ่ายกฎหมาย
+  // PATCH ก็เช่นกัน — เหลือแค่ธง isExciseTaxable ซึ่งเป็นคำตัดสินของฝ่าย RA
   assert.doesNotMatch(detailCode, /updated\.exciseTax/);
   assert.doesNotMatch(detailCode, /updated\.localTax/);
   assert.match(detailCode, /updated\.isExciseTaxable = typeof ovr === 'boolean'/);
 });
 
 // จอทุกจอที่โชว์ "ภาษี/ชิ้น" ต้องคิดด้วยตัวกลางตัวเดียวกับที่ API ใช้ตอนออกใบยื่น
-// ไม่งั้นเลขบนจอกับเลขบนใบจะเดินหนีกันอีกรอบ (จอ LG สำคัญสุด — ใช้ตัดสินใจอนุมัติ)
+// ไม่งั้นเลขบนจอกับเลขบนใบจะเดินหนีกันอีกรอบ (จอ RA สำคัญสุด — ใช้ตัดสินใจอนุมัติ)
 test('ทุกจอที่โชว์ภาษี/ชิ้น อ่านอัตราจากสินค้าผ่านตัวคิดกลาง', () => {
   for (const path of [
     '../../app/tax/registrations/page.js',
@@ -116,7 +116,7 @@ test('ทุกจอที่โชว์ภาษี/ชิ้น อ่าน
 
 /* ทะเบียนไร้ทีม = "ของกลาง" — `canViewRecord` ถือแบบนั้นมาตั้งแต่ TEAMLESS_SHARED_RESOURCES
    แต่ตัวกรองของลิสต์ยังเป็น `.in('team', ทีมของฉัน)` เฉย ๆ ซึ่งไม่มีวันแมตช์ NULL ⇒
-   ทะเบียนที่คนไม่มีทีม (admin/legal/staff) สร้าง หายจากลิสต์ของทุกทีม ทั้งที่เปิดรายตัวได้
+   ทะเบียนที่คนไม่มีทีม (admin/RA/staff) สร้าง หายจากลิสต์ของทุกทีม ทั้งที่เปิดรายตัวได้
    — เคสจริงที่คอมเมนต์ของ canViewRecord เล่าไว้ (ค้าง "รออนุมัติ" 6 วันโดยไม่มีใครเห็น) */
 test('ลิสต์ทะเบียนโชว์แถวไร้ทีมให้ทุกทีม — กฎเดียวกับใบยื่น (/api/orders)', () => {
   assert.match(listRoute, /team\.is\.null/, 'ต้องมีสาขาแถวไร้ทีม');

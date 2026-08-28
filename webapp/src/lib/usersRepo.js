@@ -1,6 +1,6 @@
 // Lightweight auth-user lookups for server routes (task assignment / KPI).
 // Wraps supabase.auth.admin.listUsers paging so callers don't re-implement it.
-import { userTeams } from '@/lib/permissions';
+import { normalizeRole, userTeams } from '@/lib/permissions';
 
 // user id → { id, name, email, role, team, teams, department } for everyone with a real role.
 export async function loadUserDirectory(supabase) {
@@ -12,7 +12,7 @@ export async function loadUserDirectory(supabase) {
     const users = data?.users || [];
     if (!users.length) break;
     for (const u of users) {
-      const role = u.app_metadata?.role || null;
+      const role = normalizeRole(u.app_metadata?.role) || null;
       if (!role || role === 'user') continue;
       map.set(u.id, {
         id: u.id,

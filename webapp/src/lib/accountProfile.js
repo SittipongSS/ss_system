@@ -1,7 +1,8 @@
 import { userTeams } from "@/lib/permissions";
 
 const MAX_NAME_LENGTH = 80;
-const LEGACY_DEPARTMENTS = { SALES: "SA", LEGAL: "LG", VIEWER: "Viewer" };
+// RA → RA (2026-08-28) — ค่าที่เก็บไว้แล้วยังใช้ได้ ดู LEGACY_DEPARTMENT ใน permissions.js
+const LEGACY_DEPARTMENTS = { SALES: "SA", LEGAL: "RA", LG: "RA", VIEWER: "Viewer" };
 
 function cleanNamePart(value) {
   return String(value || "").trim().replace(/\s+/g, " ");

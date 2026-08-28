@@ -11,7 +11,7 @@
 //
 // Server-only: uses the service-role admin client. The API route decides team
 // scope (บังคับตาม role → `scopeTeam`) แยกจากตัวกรองทีมที่ผู้ใช้เลือก (`team`) — ดู
-// reportFilters.js · และตัดสินว่าเห็นราคาผลิต/กำไรไหม (`margin` — LG/admin เท่านั้น)
+// reportFilters.js · และตัดสินว่าเห็นราคาผลิต/กำไรไหม (`margin` — RA/admin เท่านั้น)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { applyTeamScope, asList } from '@/lib/tax/reportFilters';
 import { ORDER_SELECT } from '@/lib/tax/orders';
@@ -219,7 +219,7 @@ export async function missingRetailPriceReport(filter = {}) {
 
   const rows = (products || [])
     .filter((p) => {
-      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่ายกฎหมายบังคับรายตัว
+      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่าย RAบังคับรายตัว
       const taxable = p.isExciseTaxable === true
         || (p.isExciseTaxable !== false && isExciseCategory(p.categoryCode, types));
       if (!taxable) return false;

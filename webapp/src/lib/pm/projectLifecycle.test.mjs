@@ -86,13 +86,13 @@ test("รออนุมัติปิด: ผู้ยื่นถอนได
 test("เส้นทางการปิดตรงกับ canProjectCloseTransition ตัวจริงทุกช่อง", () => {
   for (const from of PROJECT_CLOSE_STATUSES) {
     for (const [id, action] of Object.entries(PROJECT_CLOSE_ACTIONS)) {
-      const legal = canProjectCloseTransition(from, action, { approver: true });
+      const RA = canProjectCloseTransition(from, action, { approver: true });
       const declared = lifecycle.get(id).from;
       const here = declared === "*"
         || declared.includes(from)
         || (from === "open" && declared.some((s) => PROJECT_WORK_STATUSES.includes(s)));
-      assert.equal(here, legal,
-        `${id} จาก ${from}: lifecycle ว่า ${here} แต่กติกากลางว่า ${legal}`);
+      assert.equal(here, RA,
+        `${id} จาก ${from}: lifecycle ว่า ${here} แต่กติกากลางว่า ${RA}`);
     }
   }
 });

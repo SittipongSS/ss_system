@@ -68,7 +68,7 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
             <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{isExempt ? "ยกเว้นภาษี" : fmtMoney(order.totalTax)}</span>
           </div>
           {isExempt ? (
-            <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันว่ารับเงินจากลูกค้าแล้ว เพื่อส่งต่อให้ฝ่ายกฎหมาย</p>
+            <p style={{ fontSize: "var(--fs-6)", color: "var(--text-3)" }}>ออเดอร์นี้ได้รับยกเว้นภาษี — ยืนยันว่ารับเงินจากลูกค้าแล้ว เพื่อส่งต่อให้ฝ่าย RA</p>
           ) : (
             <div className="form-group">
               <label>เลขที่ Invoice / Receipt (S&amp;S) <span style={{ color: "var(--red)" }}>*</span></label>

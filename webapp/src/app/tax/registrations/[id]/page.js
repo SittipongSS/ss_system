@@ -39,7 +39,7 @@ export default function RegistrationDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const canEdit = useCan("products:edit");
-  const canApprove = useCan("legal:approve");
+  const canApprove = useCan("ra:approve");
 
   const { data: regs, loading, reload } = useApiList("/api/excise-registrations");
   const { data: products } = useApiList("/api/products");
@@ -97,7 +97,7 @@ export default function RegistrationDetailPage() {
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ส่งกลับไม่สำเร็จ");
     await reload();
   };
-  // ปลดอนุมัติ = สิทธิ์ฝ่ายกฎหมาย + ต้องมีเหตุผล (มติ B2 2026-07-27) — ทะเบียนคือหลักฐาน
+  // ปลดอนุมัติ = สิทธิ์ฝ่าย RA + ต้องมีเหตุผล (มติ B2 2026-07-27) — ทะเบียนคือหลักฐาน
   // ที่ใบยื่นชำระภาษีอ้างถึง การปลดจึงต้องหนักเท่ากับด่านอื่นในระบบ ไม่ใช่กดผ่านเงียบ ๆ
   const revokeApproval = async (reason) => {
     const res = await fetch(`/api/excise-registrations/${s.id}`, {
@@ -140,7 +140,7 @@ export default function RegistrationDetailPage() {
   const workflowIndex = s?.status === "approved" ? 2 : s?.status === "pending_legal" ? 1 : 0;
   const workflowSteps = workflowStepsFromIndex([
     { id: "draft", label: "จัดเตรียมทะเบียน", hint: s?.status === "rejected" ? "แก้ไขตามเหตุผลที่ตีกลับ" : "แนบเอกสารให้ครบ" },
-    { id: "review", label: "ฝ่ายกฎหมายตรวจ", hint: "ตรวจข้อมูลและเอกสารประกอบ" },
+    { id: "review", label: "ฝ่าย RAตรวจ", hint: "ตรวจข้อมูลและเอกสารประกอบ" },
     { id: "approved", label: "ขึ้นทะเบียนแล้ว", hint: "มีเลขที่อนุมัติพร้อมใช้งาน" },
   ], workflowIndex);
 
@@ -260,7 +260,7 @@ export default function RegistrationDetailPage() {
               >
                 {missingDocs.length
                   ? `ยังขาดเอกสารที่จำเป็น: ${missingDocs.join(", ")} — แนบให้ครบก่อนกด “ยื่นขึ้นทะเบียน”`
-                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่ายกฎหมายตรวจ"}
+                  : "เอกสารที่จำเป็นครบแล้ว — กด “ยื่นขึ้นทะเบียน” เพื่อส่งให้ฝ่าย RAตรวจ"}
               </div>
               {warnings.length > 0 && (
                 <div
@@ -301,7 +301,7 @@ export default function RegistrationDetailPage() {
             </div>
           )}
 
-          {/* เธรดกลาง (mig 0163) — เธรดสองฝ่าย SA ↔ LG · `rejectionReason` ถูกล้าง
+          {/* เธรดกลาง (mig 0163) — เธรดสองฝ่าย SA ↔ RA · `rejectionReason` ถูกล้าง
               เป็น null ตอนอนุมัติ และเหตุผลปลดอนุมัติไปอยู่ใน metadata ที่หน้าจอ
               ไม่แสดง → รอบก่อน ๆ หายหมด ทั้งที่คนแก้รอบถัดไปคือคนที่ต้องอ่านที่สุด */}
           <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">

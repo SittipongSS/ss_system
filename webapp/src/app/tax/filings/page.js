@@ -22,14 +22,14 @@ export default function FilingsPage() {
 
   const { data: orders, loading, reload } = useApiList("/api/orders");
 
-  /* เลนของผู้ใช้ (SA / LG) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
+  /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
      AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
   const myDept = deptOf(role);
   const filterOptions = useMemo(
-    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "LG"),
+    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "LG" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
+  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");

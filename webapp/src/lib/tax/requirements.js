@@ -21,7 +21,7 @@ import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTyp
  */
 export function missingRetailPriceEntry(registration, product) {
   if (!registration?.productId) return null;
-  // ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
+  // ทะเบียนที่ฝ่าย RAยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
   if (registration.isExciseTaxable === false) return null;
   const retail = Number(product?.retailPriceIncVat);
   if (Number.isFinite(retail) && retail > 0) return null;
@@ -57,7 +57,7 @@ export async function registrationRequirements(supabase, regId) {
      ต่อสรรพสามิต — ไม่มีราคา = ยื่นไม่ได้อยู่แล้วโดยธรรมชาติของเอกสาร
      และเมื่อทะเบียนผ่าน ราคาก็มีครบก่อนถึงขั้นขาย/ยื่นชำระเสมอ
 
-     ⚠️ ทะเบียนที่ฝ่ายกฎหมายยกเว้นภาษีไว้ (`isExciseTaxable === false`) ไม่ต้องมีราคา
+     ⚠️ ทะเบียนที่ฝ่าย RAยกเว้นภาษีไว้ (`isExciseTaxable === false`) ไม่ต้องมีราคา
      — ภาษีเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด */
   if (reg.productId && reg.isExciseTaxable !== false) {
     const { data: product, error: productError } = await supabase
@@ -106,7 +106,7 @@ export async function registrationRequirements(supabase, regId) {
       missing.push({ entity: 'customer', docType: 'branchCode', label: 'รหัสสาขาของลูกค้า (เช่น 00000 = สำนักงานใหญ่)' });
     }
 
-    // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่ายกฎหมายตามลูกค้าได้.
+    // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่าย RAตามลูกค้าได้.
     if (!cust.email) warnings.push({ field: 'customerEmail', message: 'ยังไม่มีอีเมลลูกค้า' });
     if (!cust.phone && !cust.contactPhone) warnings.push({ field: 'customerPhone', message: 'ยังไม่มีเบอร์โทรลูกค้า' });
   }

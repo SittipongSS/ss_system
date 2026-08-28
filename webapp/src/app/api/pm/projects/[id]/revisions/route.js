@@ -12,7 +12,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
   if (!user) return unauthorized();
-  if (!can(user.role, 'pm:view')) return forbidden(); // legal/unknown ไม่มีสิทธิ์ดูประวัติ PM
+  if (!can(user.role, 'pm:view')) return forbidden(); // RA/unknown ไม่มีสิทธิ์ดูประวัติ PM
 
   const project = await loadProject(supabase, id);
   if (!project) return notFound('ไม่พบโครงการ');

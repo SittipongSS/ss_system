@@ -2,7 +2,7 @@
 // ไม่ได้ จึงล็อกด้วยการอ่าน source (แพตเทิร์นเดียวกับ registrationRoute.test.mjs)
 //
 // 🐞 บั๊กจริง: PATCH เคยเขียน `const isExciseTaxable = (await categoryFlagsOf(...)).isExcise`
-// = คิดใหม่จากธงของหมวดล้วนทุกครั้งที่บันทึก ⇒ **การยกเว้นรายตัวของฝ่ายกฎหมาย
+// = คิดใหม่จากธงของหมวดล้วนทุกครั้งที่บันทึก ⇒ **การยกเว้นรายตัวของฝ่าย RA
 // (taxableOverride) หายทันทีที่มีคนแก้อะไรก็ตามในสินค้า** แม้แต่แก้ชื่อ
 //
 // ทำไมถึงเป็นเรื่องเงิน: product.exciseTax ถูกใช้เป็น **อัตราจริง** ตอนสร้างใบยื่นจาก
@@ -27,7 +27,7 @@ test('ทั้งตอนสร้างและตอนแก้ ตัด�
   }
 });
 
-test('PATCH ห้ามคิดธงเสียภาษีใหม่จากหมวดล้วน — override ของฝ่ายกฎหมายจะหาย', () => {
+test('PATCH ห้ามคิดธงเสียภาษีใหม่จากหมวดล้วน — override ของฝ่าย RAจะหาย', () => {
   assert.doesNotMatch(
     codeOnly(patchRoute),
     /isExciseTaxable\s*=\s*\(await categoryFlagsOf\([^)]*\)\)\.isExcise/,

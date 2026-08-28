@@ -30,7 +30,7 @@ export async function GET(request) {
   // Team-scoped roles only see their own team's orders; 'all' sees everything.
   // ใบยื่นที่ไม่มีทีม (team = null) เป็น "ของกลาง" ทุกทีมเห็น — กฎเดียวกับ /api/customers
   // GET · เดิม `.eq('team', user?.team ?? null)` พลาดสองชั้น: (1) ซ่อนแถว team = null จาก
-  // **ทุกทีม** ซึ่งเกิดทุกครั้งที่คนไม่มีทีม (admin/legal/staff — prod มี 10 บัญชี) เป็นคน
+  // **ทุกทีม** ซึ่งเกิดทุกครั้งที่คนไม่มีทีม (admin/RA/staff — prod มี 10 บัญชี) เป็นคน
   // สร้าง เพราะ POST ตรึง team = user.team · (2) คนที่ scope 'team' แต่ไม่มีทีมจะได้
   // `team=eq.null` ซึ่ง PostgREST แปลเป็น `= NULL` = ไม่มีอะไรตรงเลย → 0 แถว (ต้อง is.null)
   // → scope ไม่ได้ ก็แสดงทั้งหมด
@@ -116,7 +116,7 @@ export async function POST(request) {
 
   const orderId = 'PO-' + Date.now().toString().slice(-6);
 
-  // ทีมของใบยื่น: ปกติคือทีมของคนกด แต่คนที่ไม่มีทีม (admin/legal/staff) กดสร้างได้ด้วย
+  // ทีมของใบยื่น: ปกติคือทีมของคนกด แต่คนที่ไม่มีทีม (admin/RA/staff) กดสร้างได้ด้วย
   // — เดิมใบนั้นจะได้ team = null แล้วหายจากลิสต์ของทุกทีม จึงถอยไปใช้ทีมที่ดูแลลูกค้า
   // เจ้าของใบแทน · เอาเฉพาะกรณีลูกค้ามีทีมดูแล **ทีมเดียว**: หลายทีมแปลว่าเดาไม่ได้ว่า
   // ใบนี้เป็นของใคร ปล่อย null (= ของกลาง ทุกทีมเห็น) ดีกว่าตรึงผิดทีมแล้วทีมจริงมองไม่เห็น

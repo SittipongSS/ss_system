@@ -175,13 +175,13 @@ test('⭐ สินค้า: ทีมผู้ดูแลมาจาก **�
     'คนสร้างที่อยู่คนละทีมกับลูกค้าเจ้าของต้องโพสต์ไม่ได้');
 });
 
-test('⭐ ทะเบียน/ใบยื่นภาษี: เธรดเป็นของสองฝ่าย SA ↔ LG — ห้ามใช้ canEditRecord', async () => {
+test('⭐ ทะเบียน/ใบยื่นภาษี: เธรดเป็นของสองฝ่าย SA ↔ RA — ห้ามใช้ canEditRecord', async () => {
   // 🪤 `canEditRecord('registrations')` ตกไปที่ inScope(editScope) ซึ่งเทียบ
   // `record.ownerId` ที่ทะเบียน**ไม่มี** (มีแต่ createdBy) → AE ทุกคนโพสต์ไม่ได้เลย
-  // เธรดจะเหลือแค่ LG กับ supervisor · ด่านจริงต้องตรงกับปุ่มบนหน้าจอ
+  // เธรดจะเหลือแค่ RA กับ supervisor · ด่านจริงต้องตรงกับปุ่มบนหน้าจอ
   const reg = { id: 'REG-1', team: 'KA', createdBy: 'u-sa' };
   const order = { id: 'ORD-1', team: 'KA', createdBy: 'u-sa' };
-  const lg = { id: 'u-lg', role: 'legal', team: null };
+  const lg = { id: 'u-lg', role: 'ra', team: null };
   const sa = { id: 'u-other-ae', role: 'ae', team: 'KA' };   // ไม่ใช่คนสร้างใบนี้
   const viewer = { id: 'u-v', role: 'viewer' };
 

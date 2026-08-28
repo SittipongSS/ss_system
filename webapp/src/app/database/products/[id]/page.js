@@ -46,13 +46,13 @@ export default function ProductDetails() {
   const role = useRole();
   const canToggleActive = isSuperuser(role);
   // Factory cost data is confidential to the tax system. Two tiers (mirrors the
-  // server-side redaction): costPrice is visible to SA + LG + admin; the cost
-  // breakdown + profit is LG + admin only. Other departments see neither.
+  // server-side redaction): costPrice is visible to SA + RA + admin; the cost
+  // breakdown + profit is RA + admin only. Other departments see neither.
   const canSeeMargin = useCan("products:margin");
-  const canSeeCost = canSeeMargin || canEditProducts; // SA (edit) + LG/admin (margin)
+  const canSeeCost = canSeeMargin || canEditProducts; // SA (edit) + RA/admin (margin)
   // Excise tax data (per-unit tax, registrations, breakdown) is confidential to
   // the tax workflow — shown only to roles that can see the tax system
-  // (SA/LG/admin via history:view). Other depts (staff/viewer) never see it.
+  // (SA/RA/admin via history:view). Other depts (staff/viewer) never see it.
   const canViewTax = useCan("history:view");
 
   const [product, setProduct] = useState(null);
@@ -234,7 +234,7 @@ export default function ProductDetails() {
      ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%) ⇒ ไม่มีราคา = ยื่นภาษีขาด
      · ราคานี้กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้ มันมาทีหลัง ระบบจึงบล็อกที่ "ยื่นขึ้นทะเบียน"
      (lib/tax/requirements.js) — ที่นี่คือให้คนที่เปิดสินค้ามาเห็นก่อนว่าต้องเติม
-     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่ายกฎหมายยกเว้นรายตัวไว้ */
+     ⚠️ ขึ้นเฉพาะหมวดที่ต้องเสียภาษีจริง และไม่ขึ้นถ้าฝ่าย RAยกเว้นรายตัวไว้ */
   const needsRetailPrice = catFlags.isExcise
     && product.isExciseTaxable !== false
     && !(Number(product.retailPriceIncVat) > 0);
@@ -251,19 +251,19 @@ export default function ProductDetails() {
     incomplete: {
       tone: "amber",
       title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ",
-      detail: `สถานะ: ${statusMeta(exciseRec.reg?.status).label} — แนบเอกสารให้ครบแล้วส่งให้ฝ่ายกฎหมายตรวจ`,
+      detail: `สถานะ: ${statusMeta(exciseRec.reg?.status).label} — แนบเอกสารให้ครบแล้วส่งให้ฝ่าย RAตรวจ`,
       linkLabel: "ไปทำต่อ",
     },
     rejected: {
       tone: "amber",
       title: "ทะเบียนสรรพสามิตยังทำไม่เสร็จ — ถูกตีกลับ ต้องแก้ไข",
-      detail: `สถานะ: ${statusMeta("rejected").label} — แก้ไขตามเหตุผลที่ฝ่ายกฎหมายแจ้ง แล้วส่งตรวจใหม่`,
+      detail: `สถานะ: ${statusMeta("rejected").label} — แก้ไขตามเหตุผลที่ฝ่าย RAแจ้ง แล้วส่งตรวจใหม่`,
       linkLabel: "ไปแก้ไข",
     },
     pending: {
       tone: "blue",
       title: "ทะเบียนอยู่ระหว่างนิติกรรมตรวจ",
-      detail: `สถานะ: ${statusMeta("pending_legal").label} — ฝ่ายกฎหมายกำลังตรวจทะเบียนนี้`,
+      detail: `สถานะ: ${statusMeta("pending_legal").label} — ฝ่าย RAกำลังตรวจทะเบียนนี้`,
       linkLabel: "ดูสถานะ",
     },
   }[exciseRec.kind];
@@ -338,7 +338,7 @@ export default function ProductDetails() {
       )}
 
       {/* แบนเนอร์แนะนำขึ้นทะเบียนสรรพสามิต (ช่องเดียวกับ callout พักใช้งาน) —
-          amber = มีงานต้องลงมือ, blue = รอฝ่ายกฎหมาย; approved ไม่มีแบนเนอร์ */}
+          amber = มีงานต้องลงมือ, blue = รอฝ่าย RA; approved ไม่มีแบนเนอร์ */}
       {exciseBanner && (
         <div
           className="my-[18px] rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 text-sm"
@@ -484,7 +484,7 @@ export default function ProductDetails() {
           </DetailCard>
 
           {/* Cost breakdown — เฉพาะหมวดสรรพสามิต (ธง isExcise — มติ 2026-07-19); สิทธิ์เดิม: SA เห็น
-              costPrice, LG + admin เห็น breakdown + กำไร. แผนกอื่นไม่เห็นเลย. */}
+              costPrice, RA + admin เห็น breakdown + กำไร. แผนกอื่นไม่เห็นเลย. */}
           {canSeeCost && isExciseCat && (
           <div className="glass-panel p-[20px]">
             <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">

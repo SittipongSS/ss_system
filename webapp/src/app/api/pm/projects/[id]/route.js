@@ -45,7 +45,7 @@ const EDITABLE = [
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
-  // PM is sales-only: gate on pm:view. legal/unknown roles have viewScope 'all'
+  // PM is sales-only: gate on pm:view. RA/unknown roles have viewScope 'all'
   // (or none) but no pm:view — without this they'd read any project's full
   // snapshot (tasks + products + personal tasks) by id.
   if (!user) return unauthorized();

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { departmentFor, sanitizeExtraCaps, userTeams } from '@/lib/permissions';
+import { departmentFor, normalizeRole, sanitizeExtraCaps, userTeams } from '@/lib/permissions';
 
 // ลด round-trip ไป Supabase Auth (GoTrue): ก่อนหน้านี้ทุก API request จ่าย getUser()
 // 2 รอบ (proxy + route handler). รอบของ route handler cache ได้ 60 วิ ต่อ access
@@ -55,14 +55,15 @@ export async function getCurrentUser() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const role = user.app_metadata?.role || 'user';
+  // แปลง role เก่าตอนอ่าน (RA → ra) — บัญชีที่ยังไม่ถูกย้ายต้องเข้าระบบได้ตามปกติ
+  const role = normalizeRole(user.app_metadata?.role) || 'user';
   const identity = {
     id: user.id,
     role,
     team: user.app_metadata?.team || null,
     teams: userTeams({ team: user.app_metadata?.team, teams: user.app_metadata?.teams }),
     department: user.app_metadata?.department || departmentFor(role) || null,
-    // Per-user capability grants (e.g. an SA granted the LG legal:approve). The
+    // Per-user capability grants (e.g. an SA granted the RA ra:approve). The
     // effective caps are role caps ∪ these — see capsForUser/canUser.
     extraCaps: sanitizeExtraCaps(user.app_metadata?.extraCaps),
     name: user.user_metadata?.name || user.email || 'user',

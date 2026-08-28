@@ -237,7 +237,7 @@ const OPEN_PAGES = ['/account', '/home', '/notifications', '/sa', '/pm', '/rd', 
 // the excise tax tracks (registrations + orders). Row-level scope + the per-role
 // capability gate (apiWriteAllowed) still apply: AE/AC need customers:edit/
 // products:edit to create (lands as 'pending'), AE Supervisor to approve; excise
-// registrations are SA-submit / LG-approve, filings are sales:act / legal:approve.
+// registrations are SA-submit / RA-approve, filings are sales:act / ra:approve.
 // Holiday/product-type writes stay supervisor-only.
 // ⚠️ /api/scents + /api/formulas = ทะเบียนกลิ่น/สูตร (mig 0171) เข้าถึงจริงผ่าน
 // /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อนี้ — ไม่ลงทะเบียนที่นี่ = non-admin
@@ -323,8 +323,8 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   }
   if (path.startsWith('/api/orders')) {
     if (method === 'DELETE') return can(role, 'sales:delete');
-    // PATCH covers both sales clearance (sales:act) and legal tax payment (legal:approve)
-    if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'legal:approve');
+    // PATCH covers both sales clearance (sales:act) and RA tax payment (ra:approve)
+    if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'ra:approve');
     return can(role, 'sales:act'); // create
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
@@ -429,23 +429,23 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/commercial-presets')) return canManageCommercialPresets(role);
   // Holiday calendar (working-day source for PM timeline) — supervisor-only writes.
   if (path.startsWith('/api/holidays')) return can(role, 'master:manage');
-  // Excise registrations: SA submits/edits the link, LG approves (PATCH).
+  // Excise registrations: SA submits/edits the link, RA approves (PATCH).
   if (path.startsWith('/api/excise-registrations')) {
     // ลบทะเบียน = อำนาจของโมดูลภาษี (superuser / senior_ae ในทีม / ae ของตัวเอง)
     // ไม่ใช่ products:delete ของแคตตาล็อกสินค้า — ด่านจริงราย record อยู่ที่ handler
     if (method === 'DELETE') return canDeleteRegistrationRole(role);
-    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
+    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'ra:approve');
     return can(role, 'products:edit'); // create
   }
   if (path.startsWith('/api/products')) {
     if (method === 'DELETE') return can(role, 'products:delete');
-    // PATCH covers both edit (sa) and approve (legal)
-    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'legal:approve');
+    // PATCH covers both edit (sa) and approve (RA)
+    if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'ra:approve');
     return can(role, 'products:edit'); // create
   }
   // Attachments (polymorphic, migration 0028). Coarse gate: anyone who may edit
   // ANY supported parent entity passes here (customer/product = master editors;
-  // order receipts = sales filing / legal tax approval). The route handler then
+  // order receipts = sales filing / RA tax approval). The route handler then
   // enforces the precise per-entity row scope (canEditRecord on the parent).
   //
   // 🐞 ลิสต์นี้เคยมีแต่ cap ของ "ฝ่ายขาย + master data + mgmt" ⇒ **RD และ staff
@@ -464,7 +464,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
       can(role, 'customers:edit') ||
       can(role, 'products:edit') ||
       can(role, 'sales:act') ||
-      can(role, 'legal:approve') ||
+      can(role, 'ra:approve') ||
       can(role, 'pm:edit') ||
       canUser(mgmtUser, 'mgmt:edit') ||
       // ระบบขอราคา + คำร้องข้ามฝ่าย — ชุด cap เดียวกับด่าน /api/sa/requests ข้างบน

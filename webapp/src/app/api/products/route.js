@@ -217,7 +217,7 @@ export async function POST(request) {
   }
 
   // Taxability is auto-derived from the category's isExcise flag (mig 0131 —
-  // not re-parsed from fgCode, and no hardcoded category code), but LG may
+  // not re-parsed from fgCode, and no hardcoded category code), but RA may
   // override it.
   const autoTaxable = (await categoryFlagsOf(categoryCode)).isExcise;
   const taxableOverride =

@@ -113,27 +113,27 @@ test("missing product data is reported and never invents a tax amount", () => {
   assert.equal(result.warnings[0].code, "missing_product");
 });
 
-// ── override ของฝ่ายกฎหมายต้องทำงานสองทาง (แก้ 2026-08-16) ─────────────────
-test("LG บังคับเก็บภาษีบนหมวดที่ไม่ใช่สรรพสามิต → ต้องเข้าใบยื่น ไม่ใช่ถูกข้าม", () => {
+// ── override ของฝ่าย RAต้องทำงานสองทาง (แก้ 2026-08-16) ─────────────────
+test("RA บังคับเก็บภาษีบนหมวดที่ไม่ใช่สรรพสามิต → ต้องเข้าใบยื่น ไม่ใช่ถูกข้าม", () => {
   // 🐞 เดิมใช้ธงของหมวดเป็นตัวตั้ง ⇒ ยกเว้นได้ แต่บังคับเก็บไม่ได้
   const out = resolveSoFiling({
     salesOrder: { status: "approved", customerId: "CUS-1" },
     lines: [{ id: "L1", productId: "P1", fgCode: "FG-1", qty: 10 }],
     products: [{
       id: "P1", fgCode: "FG-1", name: "สินค้าบังคับเก็บ",
-      // LG บังคับเก็บ → resolveProductTaxable เขียน isExciseTaxable = true ตอนบันทึกสินค้า
+      // RA บังคับเก็บ → resolveProductTaxable เขียน isExciseTaxable = true ตอนบันทึกสินค้า
       taxableOverride: true, isExciseTaxable: true, exciseTax: 8, localTax: 0.8,
     }],
     productTypes: [], // หมวดไม่ติ๊ก isExcise
     registrations: [],
   });
-  assert.equal(out.lines.length, 1, "บรรทัดที่ LG สั่งเก็บภาษีต้องอยู่ในใบยื่น");
+  assert.equal(out.lines.length, 1, "บรรทัดที่ RA สั่งเก็บภาษีต้องอยู่ในใบยื่น");
   assert.equal(out.totalExciseTax, 80);
   assert.equal(out.totalLocalTax, 8);
   assert.equal(out.totalTax, 88);
 });
 
-test("LG ยกเว้นภาษีบนหมวดสรรพสามิต → ยังต้องถูกข้ามเหมือนเดิม", () => {
+test("RA ยกเว้นภาษีบนหมวดสรรพสามิต → ยังต้องถูกข้ามเหมือนเดิม", () => {
   const out = resolveSoFiling({
     salesOrder: { status: "approved", customerId: "CUS-1" },
     lines: [{ id: "L1", productId: "P1", fgCode: "FG-1", qty: 10 }],

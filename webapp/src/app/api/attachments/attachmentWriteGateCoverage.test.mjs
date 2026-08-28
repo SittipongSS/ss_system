@@ -55,7 +55,7 @@ test('⭐ ทุก entityType มีสาขาดักตอนลบ/แก
 test('ชนิดที่เดินเข้าบล็อก PARENT_TABLE ต้องมีคู่ใน RESOURCE หรือมีสาขาของตัวเอง', () => {
   /* บล็อกนั้นเรียก `canEditRecord(user, RESOURCE[type], parent)` — resource ที่เป็น
      undefined จะตกไปใช้กฎรวมของ canEditRecord ซึ่งกว้างกว่าที่ตั้งใจ (เช่น ผู้ถือ
-     legal:approve ผ่านทุก resource ที่ไม่ใช่ customers) · วันนี้ไม่มีตัวไหนตก
+     ra:approve ผ่านทุก resource ที่ไม่ใช่ customers) · วันนี้ไม่มีตัวไหนตก
      เพราะ personal_task มีสาขาของตัวเอง — ล็อกไว้ไม่ให้มีตัวที่สอง */
   const parentTypes = localMapKeys('PARENT_TABLE');
   const resourceTypes = localMapKeys('RESOURCE');

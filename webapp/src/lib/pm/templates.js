@@ -1,6 +1,6 @@
 // PM task templates (ported from ss-cj). role = ป้ายแผนก:
 //   SA=Sales, RD=R&D, PC=Production Control, PD=Production, QC=Quality Control,
-//   LG=Legal, WH=Warehouse, ALL=ทุกแผนก.
+//   RA=Legal, WH=Warehouse, ALL=ทุกแผนก.
 // dependsOnSteps = step ที่ต้องเสร็จก่อน (แปลงเป็น predecessors ตอน gen).
 //   [] ว่าง = เริ่มที่จุดเริ่มโครงการ (ขนานกับแถวแรก), ไม่ใส่ = ต่อจากแถวก่อนหน้า.
 // categoryOnly / categoryExclude = แสดง step ตามหมวดสินค้า (productMainCategory).
@@ -42,7 +42,7 @@ export const NPD_TEMPLATE = [
   { step: 28, name: 'ใบสั่งขายผลิต',                        role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 29, name: 'FM-SA-04 เอกสารระบุรายละเอียดผลิตภัณฑ์', role: 'SA', durationDays: 1, phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
   { step: 30, name: 'FM-SA-07 ใบรายงานติดตามคำสั่งซื้อ',    role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต', dependsOnSteps: [28] },
-  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'LG',  durationDays: 7,  isMilestone: true, phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: EXCISE_CATEGORY_TOKEN },
+  { step: 31, name: 'ขึ้นทะเบียนสรรพสามิต [Optional]',      role: 'RA',  durationDays: 7,  isMilestone: true, phase: 'เตรียมการผลิต', dependsOnSteps: [29, 30], categoryOnly: EXCISE_CATEGORY_TOKEN },
   { step: 32, name: 'ส่ง Check list Planner',               role: 'SA',  durationDays: 1,  phase: 'เตรียมการผลิต' },
   { step: 33, name: 'นัดประชุมระหว่างแผนก',                 role: 'ALL', durationDays: 1,  phase: 'เตรียมการผลิต' },
   // Phase 4.1: ผลิต — New Product

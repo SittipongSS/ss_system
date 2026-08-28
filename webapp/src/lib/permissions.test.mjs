@@ -7,7 +7,7 @@ import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteR
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
   assert.equal(canManageProductCategories('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ac', 'ae', 'secretary', 'legal', 'rd', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ac', 'ae', 'secretary', 'ra', 'rd', 'viewer', 'staff']) {
     assert.equal(canManageProductCategories(role), false, role);
   }
 });
@@ -15,7 +15,7 @@ test('canManageProductCategories: AE Supervisor และ Admin เท่าน�
 test('canManageDocumentStandards: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageDocumentStandards('admin'), true);
   assert.equal(canManageDocumentStandards('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ae', 'ac', 'secretary', 'legal', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'secretary', 'ra', 'viewer', 'staff']) {
     assert.equal(canManageDocumentStandards(role), false, role);
   }
 });
@@ -23,7 +23,7 @@ test('canManageDocumentStandards: AE Supervisor และ Admin เท่าน�
 test('canManageCommercialPresets: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageCommercialPresets('admin'), true);
   assert.equal(canManageCommercialPresets('ae_supervisor'), true);
-  for (const role of ['senior_ae', 'ae', 'ac', 'legal', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'staff']) {
     assert.equal(canManageCommercialPresets(role), false, role);
   }
 });
@@ -181,8 +181,8 @@ test('canDeleteRegistrationRole ตรงกับ deleteScope ของ registr
   assert.equal(canDeleteRegistrationRole('senior_ae'), true);
   assert.equal(canDeleteRegistrationRole('ae'), true);
   assert.equal(canDeleteRegistrationRole('ac'), true);
-  // LG ตรวจอนุมัติ/ตีกลับ ไม่ลบงานฝ่ายขาย; observer ลบไม่ได้อยู่แล้ว
-  assert.equal(canDeleteRegistrationRole('legal'), false);
+  // RA ตรวจอนุมัติ/ตีกลับ ไม่ลบงานฝ่ายขาย; observer ลบไม่ได้อยู่แล้ว
+  assert.equal(canDeleteRegistrationRole('ra'), false);
   assert.equal(canDeleteRegistrationRole('viewer'), false);
 });
 
@@ -195,7 +195,7 @@ test('ลบทะเบียน: ทุก role ฝ่ายขายลบข
     assert.equal(canDeleteRecord({ role, id: 'u2', team: 'ODM' }, 'registrations', reg), false, role);
   }
   assert.equal(canDeleteRecord({ role: 'admin', team: null }, 'registrations', reg), true);
-  assert.equal(canDeleteRecord({ role: 'legal', team: 'KA' }, 'registrations', reg), false);
+  assert.equal(canDeleteRecord({ role: 'ra', team: 'KA' }, 'registrations', reg), false);
 });
 
 test('pmTaskEditTier: full edit for admin / scoped sales', () => {
@@ -224,13 +224,13 @@ test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
   assert.equal(canAccessMgmt({ role: 'ae_supervisor' }), false);
   assert.equal(canAccessMgmt({ role: 'senior_ae' }), false);
   assert.equal(canAccessMgmt({ role: 'ae' }), false);
-  assert.equal(canAccessMgmt({ role: 'legal' }), false);
+  assert.equal(canAccessMgmt({ role: 'ra' }), false);
   // viewer is a read-only observer of the WHOLE system → sees mgmt too (read-only)
   assert.equal(canAccessMgmt({ role: 'viewer' }), true);
   assert.equal(canAccessMgmt({ role: 'staff' }), false);
 });
 
-test('canAccessMgmt: honours a per-user mgmt:view grant (like LG)', () => {
+test('canAccessMgmt: honours a per-user mgmt:view grant (like RA)', () => {
   // an SA granted mgmt:view to help the secretary — no role change
   assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:view'] }), true);
   assert.equal(canAccessMgmt({ role: 'ae_supervisor', extraCaps: ['mgmt:view', 'mgmt:edit'] }), true);
@@ -281,7 +281,7 @@ test('sales targets are limited to admin and sales head', () => {
 test('viewer: sees every module read-only, but can never write', () => {
   // Holds every :view capability across all modules...
   for (const cap of [
-    'customers:view', 'products:view', 'sales:view', 'legal:view', 'history:view',
+    'customers:view', 'products:view', 'sales:view', 'ra:view', 'history:view',
     'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   ]) {
     assert.equal(can('viewer', cap), true, `viewer should hold ${cap}`);
@@ -291,7 +291,7 @@ test('viewer: sees every module read-only, but can never write', () => {
   // ...but holds NO write/act/delete/approve/manage capability.
   for (const cap of [
     'customers:edit', 'customers:delete', 'products:edit', 'products:delete',
-    'sales:act', 'sales:delete', 'legal:approve', 'pm:edit', 'salesplan:edit',
+    'sales:act', 'sales:delete', 'ra:approve', 'pm:edit', 'salesplan:edit',
     'salesplan:target', 'salesplan:review', 'sahamit:edit', 'mgmt:edit',
     'users:manage', 'master:manage', 'audit:view', 'products:margin',
   ]) {
@@ -322,10 +322,10 @@ test('canSeeTaskKpi: oversight roles + read-only monitor, not the rank-and-file'
   assert.equal(canSeeTaskKpi('ae'), false);
   assert.equal(canSeeTaskKpi('ac'), false);
   assert.equal(canSeeTaskKpi('staff'), false);
-  assert.equal(canSeeTaskKpi('legal'), false);
+  assert.equal(canSeeTaskKpi('ra'), false);
 });
 
-test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิทธิ like LG)', () => {
+test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิทธิ like RA)', () => {
   const plain = { role: 'viewer' };
   const granted = { role: 'viewer', extraCaps: ['products:margin'] };
   // off by default...
@@ -333,10 +333,10 @@ test('viewer: cost/margin stays a per-user grant (ติ๊กเปิดสิ
   // ...but an admin may tick the grant (products:margin is whitelisted)...
   assert.ok(GRANTABLE_CAPS.includes('products:margin'));
   assert.deepEqual(sanitizeExtraCaps(['products:margin']), ['products:margin']);
-  // ...and then the viewer sees cost/margin, LG-style — without gaining any write cap.
+  // ...and then the viewer sees cost/margin, RA-style — without gaining any write cap.
   assert.equal(canUser(granted, 'products:margin'), true);
   assert.equal(canUser(granted, 'products:edit'), false);
-  assert.equal(canUser(granted, 'legal:approve'), false);
+  assert.equal(canUser(granted, 'ra:approve'), false);
 });
 
 test('admin read surfaces (audit/users) are grantable per-user — read only, no write escalation', () => {
@@ -370,7 +370,7 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
   for (const cap of [
     'salesplan:edit', 'salesplan:lead', 'salesplan:target', 'pm:edit',
     'customers:edit', 'products:edit', 'products:margin', 'sales:view', 'sales:act',
-    'legal:view', 'legal:approve', 'history:view', 'sahamit:view', 'mgmt:view',
+    'ra:view', 'ra:approve', 'history:view', 'sahamit:view', 'mgmt:view',
     'users:manage', 'master:manage', 'audit:view',
   ]) {
     assert.equal(can('rd', cap), false, `rd must NOT hold ${cap}`);
@@ -418,8 +418,8 @@ test('pmTaskEditTier: none for outsiders', () => {
   assert.equal(pmTaskEditTier({ role: 'ae', id: 'u1' }, { assigneeId: 'u9' }, { ownerId: 'u2' }), 'none');
   // staff in a different department than the step
   assert.equal(pmTaskEditTier({ role: 'staff', id: 'p', department: 'PC' }, { assigneeId: null, role: 'QC' }, { ownerId: 'u2' }), 'none');
-  // legal has no pm:view → never edits PM tasks
-  assert.equal(pmTaskEditTier({ role: 'legal', id: 'l' }, { assigneeId: 'l', role: 'LG' }, { ownerId: 'l' }), 'none');
+  // RA has no pm:view → never edits PM tasks
+  assert.equal(pmTaskEditTier({ role: 'ra', id: 'l' }, { assigneeId: 'l', role: 'RA' }, { ownerId: 'l' }), 'none');
 });
 
 // ── สิทธิ์อนุมัติข้อมูลหลัก (มติผู้ใช้ 2026-07-17: รวมศูนย์ที่ AE Supervisor) ──
@@ -428,7 +428,7 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
   assert.equal(canApproveMasterData('admin'), true);
   // senior_ae เคยอนุมัติของทีมตัวเองได้ — ตัดออกแล้ว
   assert.equal(canApproveMasterData('senior_ae'), false);
-  for (const role of ['ae', 'ac', 'marketing', 'legal', 'rd', 'viewer', 'staff', 'secretary']) {
+  for (const role of ['ae', 'ac', 'marketing', 'ra', 'rd', 'viewer', 'staff', 'secretary']) {
     assert.equal(canApproveMasterData(role), false, `${role} ต้องอนุมัติไม่ได้`);
   }
 });
@@ -439,7 +439,7 @@ test('canApproveMasterData: เฉพาะ AE Supervisor (+ admin break-glass)'
 test('canEditIssuedMasterCode: admin เท่านั้น ไม่รวมหัวหน้าฝ่ายขาย', () => {
   assert.equal(canEditIssuedMasterCode('admin'), true);
   assert.equal(canEditIssuedMasterCode('ae_supervisor'), false);
-  for (const role of ['senior_ae', 'ae', 'ac', 'marketing', 'legal', 'rd', 'finance', 'executive', 'viewer', 'staff', 'secretary']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'marketing', 'ra', 'rd', 'finance', 'executive', 'viewer', 'staff', 'secretary']) {
     assert.equal(canEditIssuedMasterCode(role), false, `${role} ต้องแก้รหัสที่ระบบออกให้ไม่ได้`);
   }
 });
@@ -469,7 +469,7 @@ test('executive: observer เต็มระบบเหมือน viewer + co
   // เขียนอะไรไม่ได้เลยนอกเส้นอนุมัติ
   for (const cap of ['customers:edit', 'products:edit', 'sales:act', 'pm:edit',
     'salesplan:edit', 'sahamit:edit', 'mgmt:edit', 'costing:edit', 'costing:quote',
-    'users:manage', 'master:manage', 'legal:approve']) {
+    'users:manage', 'master:manage', 'ra:approve']) {
     assert.equal(can('executive', cap), false, `executive ต้องไม่มี ${cap}`);
   }
   assert.equal(viewScope('executive'), 'all');
@@ -500,7 +500,7 @@ test('executive: ไม่มี products:margin — กำไรโรงงา
 test('isReadOnlyObserver: viewer + executive เท่านั้น', () => {
   assert.equal(isReadOnlyObserver('viewer'), true);
   assert.equal(isReadOnlyObserver('executive'), true);
-  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'legal', 'rd', 'staff', 'marketing', 'secretary']) {
+  for (const role of ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ra', 'rd', 'staff', 'marketing', 'secretary']) {
     assert.equal(isReadOnlyObserver(role), false, role);
   }
 });
@@ -631,8 +631,8 @@ test('canEditRecord (customers): ทั้งทีมที่ดูแลแ�
   // ไม่มี cap edit → แก้ไม่ได้ (defense-in-depth)
   assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'KA' }, 'customers', kaCustomer), false);
   assert.equal(canEditRecord({ role: 'marketing', id: 'm', team: 'KA' }, 'customers', kaCustomer), false);
-  // legal แก้ทะเบียนลูกค้าไม่ได้ (ไม่มี customers:edit; bypass legal:approve ไม่ครอบ customers)
-  assert.equal(canEditRecord({ role: 'legal', id: 'l', extraCaps: [] }, 'customers', kaCustomer), false);
+  // RA แก้ทะเบียนลูกค้าไม่ได้ (ไม่มี customers:edit; bypass ra:approve ไม่ครอบ customers)
+  assert.equal(canEditRecord({ role: 'ra', id: 'l', extraCaps: [] }, 'customers', kaCustomer), false);
 });
 
 test('canEditRecord (products): ยึดทีมของลูกค้าเจ้าของ (caller ส่ง caretakerTeams)', () => {
@@ -647,9 +647,9 @@ test('canEditRecord (products): ยึดทีมของลูกค้าเ
   // UNRESOLVED (caller ลืมส่ง) → fail closed
   assert.equal(canEditRecord({ role: 'senior_ae', id: 'me', team: 'KA' }, 'products', product), false);
   assert.equal(canEditRecord({ role: 'senior_ae', id: 'me', team: 'KA' }, 'products', product, undefined), false);
-  // superuser + legal(approve) ข้ามได้เหมือนเดิม (ไม่ต้องพึ่ง caretakerTeams)
+  // superuser + RA(approve) ข้ามได้เหมือนเดิม (ไม่ต้องพึ่ง caretakerTeams)
   assert.equal(canEditRecord({ role: 'ae_supervisor', id: 's' }, 'products', product), true);
-  assert.equal(canEditRecord({ role: 'legal', id: 'l' }, 'products', product), true);
+  assert.equal(canEditRecord({ role: 'ra', id: 'l' }, 'products', product), true);
   // viewer แก้ไม่ได้แม้ teamless
   assert.equal(canEditRecord({ role: 'viewer', id: 'v', team: 'KA' }, 'products', product, []), false);
 });
@@ -745,7 +745,7 @@ test('validateIdentity: ตำแหน่งสายทีมต้องม�
   assert.equal(validateIdentity('ae', 'ODM', 'SA'), null, 'ค่าเดียวยังใช้ได้');
   assert.match(validateIdentity('ae', [], 'SA'), /ต้องระบุทีม/);
   assert.match(validateIdentity('ae', ['ODM', 'XX'], 'SA'), /ทีมไม่ถูกต้อง/);
-  assert.match(validateIdentity('legal', ['ODM'], 'LG'), /ไม่ต้องระบุทีม/);
+  assert.match(validateIdentity('ra', ['ODM'], 'RA'), /ไม่ต้องระบุทีม/);
 });
 
 test('resolveTeamAssignment: ทีมหลักต้องอยู่ในชุดที่สังกัดเสมอ · ตำแหน่งไม่ผูกทีมถูกล้าง', () => {

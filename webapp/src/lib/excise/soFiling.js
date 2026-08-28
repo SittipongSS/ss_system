@@ -45,7 +45,7 @@ export function resolveSoFiling({
   );
   /* ⭐ เก็บทะเบียน **ทุกสถานะ** ไว้ด้วย ไม่ใช่เฉพาะที่อนุมัติแล้ว (2026-08-17) —
      ของเดิมทิ้งแถวที่ยังไม่อนุมัติตั้งแต่บรรทัดนี้ ปลายทางจึงบอกได้แค่ "ไม่มีทะเบียน"
-     ทั้งที่ฝ่ายกฎหมายอาจกำลังตรวจอยู่ · ตัวเลข eligible/ภาษี ไม่ขยับ เพิ่มแต่ข้อมูลอ่าน */
+     ทั้งที่ฝ่าย RAอาจกำลังตรวจอยู่ · ตัวเลข eligible/ภาษี ไม่ขยับ เพิ่มแต่ข้อมูลอ่าน */
   const registrationsByProduct = new Map();
   for (const row of registrations) {
     if (!row?.productId || !ownRegistration(row)) continue;
@@ -61,8 +61,8 @@ export function resolveSoFiling({
     const fgCode = line.fgCode || product?.fgCode || "";
     const flags = categoryFlags(categoryOf(fgCode), productTypes);
     /* 🐞 **แก้ 2026-08-16:** เดิมเขียน `!flags.isExcise || product?.isExciseTaxable === false`
-       ซึ่งเอาธงของ **หมวด** เป็นตัวตั้ง ⇒ override ของฝ่ายกฎหมายทำงานทางเดียว:
-       "ยกเว้น" ได้ แต่ **"บังคับเก็บ" ไม่ได้** — สินค้าที่ LG สั่งเก็บภาษีบนหมวดที่ไม่ได้
+       ซึ่งเอาธงของ **หมวด** เป็นตัวตั้ง ⇒ override ของฝ่าย RAทำงานทางเดียว:
+       "ยกเว้น" ได้ แต่ **"บังคับเก็บ" ไม่ได้** — สินค้าที่ RA สั่งเก็บภาษีบนหมวดที่ไม่ได้
        ติ๊ก isExcise ถูกข้ามทั้งบรรทัด ทั้งที่ product.exciseTax มีค่าอยู่จริง
        ⇒ ใบยื่นจาก SO ตกรายการที่กฎหมายสั่งให้เก็บ ขัดกับกฎที่ exciseBilling เขียนไว้เอง
        ว่า override **ชนะเสมอ**

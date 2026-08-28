@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can } from '@/lib/permissions';
+import { can, normalizeRole } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { businessDate } from '@/lib/businessDate';
@@ -42,7 +42,7 @@ export async function POST(request, { params }) {
   if (toErr || !toRes?.user) return Response.json({ error: 'ไม่พบผู้รับโอน' }, { status: 404 });
 
   const toUser = toRes.user;
-  const toRole = toUser.app_metadata?.role || null;
+  const toRole = normalizeRole(toUser.app_metadata?.role) || null;
   const toDisabled = !!toUser.banned_until && new Date(toUser.banned_until) > new Date();
   if (!toRole || toRole === 'user' || toDisabled) {
     return Response.json({ error: 'ผู้รับโอนต้องเป็นบัญชีที่ใช้งานอยู่และมีบทบาทแล้ว' }, { status: 400 });

@@ -49,13 +49,13 @@ export async function PATCH(request, { params }) {
 
   const body = await request.json();
 
-  // Sales own the PO header + S&S receipt; legal own the excise/tax fields.
+  // Sales own the PO header + S&S receipt; RA own the excise/tax fields.
   // allowedEditFields keeps a sales user out of the excise columns and a
-  // legal user out of the commercial header. Status is handled explicitly
+  // RA user out of the commercial header. Status is handled explicitly
   // below (per-capability transition gate), not via this generic copy.
   const salesEditable = ['quotationRef', 'poReference', 'deliveryDate', 'remarks', 'assignee', 'receiptNumber'];
   const allowed = allowedEditFields(user, 'orders', salesEditable);
-  const isLegal = can(user?.role, 'legal:approve');
+  const isLegal = can(user?.role, 'ra:approve');
   const isSales = can(user?.role, 'sales:act');
 
   const updates = {};
@@ -77,7 +77,7 @@ export async function PATCH(request, { params }) {
 
   // ── Status transition gate ──
   // sales:act  : draft → pending → received, rejected → received, complete → delivered
-  // legal:approve : received → filing → complete, + rejected, + revert to received
+  // ra:approve : received → filing → complete, + rejected, + revert to received
   if (body.status !== undefined && body.status !== order.status) {
     const target = body.status;
     const salesTargets = ['pending', 'received', 'delivered'];
@@ -96,7 +96,7 @@ export async function PATCH(request, { params }) {
     if (target === 'delivered' && order.status !== 'complete') {
       return Response.json({ error: 'ยืนยันส่งเอกสารได้หลังชำระภาษีแล้วเท่านั้น' }, { status: 400 });
     }
-    // เริ่มยื่น (received → filing): LG must record the เลขที่ใบกำกับภาษี first.
+    // เริ่มยื่น (received → filing): RA must record the เลขที่ใบกำกับภาษี first.
     // Accept it from this request or an already-stored value. Exempt orders skip
     // 'filing' entirely (received → complete) so they're never gated here.
     if (target === 'filing' && order.status === 'received') {
@@ -128,7 +128,7 @@ export async function PATCH(request, { params }) {
         return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
       }
     }
-    // Resubmit: Sales fixed a rejected order and sends it back to LG's queue.
+    // Resubmit: Sales fixed a rejected order and sends it back to RA's queue.
     if (target === 'received' && order.status === 'rejected') {
       updates.rejectionReason = null;
     }

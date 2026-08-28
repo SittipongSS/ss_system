@@ -6,7 +6,7 @@ import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, Clipbo
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
-import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -76,7 +76,7 @@ export default function AppLayout({ children }) {
   const [team, setTeam] = useState(null);
   const [teams, setTeams] = useState([]);
   const [department, setDepartment] = useState(null); // ฝ่ายของผู้ใช้ (SA/RD/PC/...)
-  const [extraCaps, setExtraCaps] = useState(null); // per-user LG/margin grants
+  const [extraCaps, setExtraCaps] = useState(null); // per-user RA/margin grants
   const [userName, setUserName] = useState('');
   const [userInitials, setUserInitials] = useState('');
   const [isDark, setIsDark] = useState(false);
@@ -157,11 +157,11 @@ export default function AppLayout({ children }) {
 
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       // team = ทีมหลัก (attribution) · teams = ทุกทีมที่สังกัด (ขอบเขตแถว) — คนอยู่หลายทีมได้
-      setRole(user.app_metadata?.role || 'user');
+      setRole(normalizeRole(user.app_metadata?.role) || 'user');
       setTeam(user.app_metadata?.team || null);
       setTeams(userTeams({ team: user.app_metadata?.team, teams: user.app_metadata?.teams }));
       // ฝ่าย: กติกาเดียวกับ server (assignable-users) — department ตรง หรืออนุมานจาก role
-      setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(user.app_metadata?.role) || null);
+      setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(normalizeRole(user.app_metadata?.role)) || null);
       setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);
@@ -889,7 +889,7 @@ export default function AppLayout({ children }) {
               roleLabel={teams.length
                 ? `${ROLE_LABELS[role] || role} · ${teams.map((t) => TEAM_LABELS[t] || t).join(' + ')}`
                 : (ROLE_LABELS[role] || role)}
-              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'legal' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
+              roleTone={role === 'admin' || role === 'ae_supervisor' || role === 'ra' || role === 'secretary' || role === 'executive' ? 'admin' : (role === 'senior_ae' || role === 'ac' || role === 'ae') ? 'editor' : 'viewer'}
               isDark={isDark}
               canChangePassword={SUPABASE_CONFIGURED}
               onToggleTheme={toggleTheme}

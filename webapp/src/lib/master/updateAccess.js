@@ -210,13 +210,13 @@ export const UPDATE_ENTITIES = {
     },
     // ⚠️ **ห้ามใช้ `canEditRecord`** ตรงนี้ — สำหรับ registrations มันตกไปที่
     // `inScope(editScope(role), …)` ซึ่งเทียบ `record.ownerId` ที่ทะเบียน**ไม่มี**
-    // (มีแต่ `createdBy`) ⇒ AE ทุกคนโพสต์ไม่ได้เลย เธรดจะเหลือแค่ LG กับ supervisor
+    // (มีแต่ `createdBy`) ⇒ AE ทุกคนโพสต์ไม่ได้เลย เธรดจะเหลือแค่ RA กับ supervisor
     // → ใช้ด่านชุดเดียวกับที่ *หน้าจอ* ใช้ตัดสินปุ่ม: products:edit (SA ผู้จัดเตรียม)
-    // + legal:approve (LG ผู้ตรวจ) — สองฝ่ายที่คุยกันจริงบนทะเบียนใบหนึ่ง
+    // + ra:approve (RA ผู้ตรวจ) — สองฝ่ายที่คุยกันจริงบนทะเบียนใบหนึ่ง
     async canPost(supabase, parent, user) {
       if (!canViewRecord(user, 'registrations', parent)) return false;
       if (isReadOnlyObserver(user?.role)) return false;
-      return canUser(user, 'products:edit') || canUser(user, 'legal:approve');
+      return canUser(user, 'products:edit') || canUser(user, 'ra:approve');
     },
     recipients: (parent) => [parent?.createdBy, parent?.approvedBy],
   },
@@ -227,11 +227,11 @@ export const UPDATE_ENTITIES = {
       return canViewRecord(user, 'orders', parent);
     },
     // เหตุผลเดียวกับทะเบียน — ยึดด่านของหน้าจอ: sales:act (SA รับเงิน/แก้ใบ)
-    // + legal:approve (LG ยื่น/ตีกลับ)
+    // + ra:approve (RA ยื่น/ตีกลับ)
     async canPost(supabase, parent, user) {
       if (!canViewRecord(user, 'orders', parent)) return false;
       if (isReadOnlyObserver(user?.role)) return false;
-      return canUser(user, 'sales:act') || canUser(user, 'legal:approve');
+      return canUser(user, 'sales:act') || canUser(user, 'ra:approve');
     },
     recipients: (parent) => [parent?.createdBy],
   },
