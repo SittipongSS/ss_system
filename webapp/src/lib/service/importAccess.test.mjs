@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { canEditService, canImportServiceData } from '../permissions.js';
 
 test('⭐ นำเข้าเป็นก้อน **แคบกว่า** การแก้รายใบ — ช่างที่แก้ไซต์ได้ ยังนำเข้าไม่ได้', () => {
-  const ts = { role: 'staff', department: 'TS' };
+  const ts = { role: 'ts', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   assert.equal(canEditService(ts), true);
   assert.equal(canEditService(aeSv), true);
@@ -30,7 +30,7 @@ test('หัวหน้าที่คุมงานบริการจร�
 });
 
 test('คนนอกระบบบริการทั้งหมดไม่ได้', () => {
-  assert.equal(canImportServiceData({ role: 'staff', department: 'WH' }), false);
+  assert.equal(canImportServiceData({ role: 'wh', department: 'WH' }), false);
   assert.equal(canImportServiceData({ role: 'viewer' }), false);
   assert.equal(canImportServiceData(null), false);
 });

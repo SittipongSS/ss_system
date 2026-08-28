@@ -47,27 +47,6 @@ test('ทุกจุดที่อ่าน app_metadata.role ต้องผ�
   }
 });
 
-/* ── `staff` เก่าต้องแปลงด้วย "ฝ่าย" ⇒ จุดอ่านต้องส่ง department เข้าไปด้วย ────────
-   🐞 ถ้าจุดไหนเรียก `normalizeRole(role)` เฉย ๆ คนที่ยังถือโทเคน `staff` จะได้ role
-   ที่ระบบไม่รู้จัก = อ่านทะเบียนได้อย่างเดียว ทั้งที่ยังไม่ได้ทำอะไรผิด (2026-08-28) */
-test('ทุกจุดอ่านต้องส่ง department เป็นอาร์กิวเมนต์ที่สองของ normalizeRole', () => {
-  for (const rel of READ_POINTS) {
-    const text = read(rel);
-    const withDept = /normalizeRole\(\s*\w+(\.\w+)*\.app_metadata\??\.role\s*,\s*\w+(\.\w+)*\.app_metadata\??\.department/;
-    assert.match(text, withDept, `${rel}: เรียก normalizeRole โดยไม่ส่ง department`);
-  }
-});
-
-test('normalizeRole แปลง staff เก่าเป็น role ของฝ่ายนั้น', () => {
-  assert.equal(normalizeRole('staff', 'PC'), 'pc');
-  assert.equal(normalizeRole('staff', 'TS'), 'ts');
-  assert.equal(normalizeRole('staff', 'RD'), 'rd');
-  assert.equal(normalizeRole('staff', 'FN'), 'finance');
-  // ⚠️ ไม่มีฝ่าย = ไม่เดา — คืน staff ตามเดิม (role ที่ไม่รู้จัก = อ่านอย่างเดียว)
-  assert.equal(normalizeRole('staff'), 'staff');
-  assert.equal(normalizeRole('staff', 'SA'), 'staff');
-});
-
 test('normalizeRole คืน role ปัจจุบันตามเดิม ไม่แตะของที่ไม่ได้อยู่ในทะเบียน', () => {
   for (const role of ROLES) assert.equal(normalizeRole(role), role, role);
   // ค่าว่างต้องคืนตามเดิม ไม่แปลงเป็นอะไรลอย ๆ

@@ -63,7 +63,7 @@ export async function validateLeadAssignee(supabase, assigneeId, lead = null) {
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้รับผิดชอบคนอื่น' };
 
-  const role = normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || null;
+  const role = normalizeRole(user.app_metadata?.role) || null;
   if (!LEAD_ASSIGNEE_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้รับผิดชอบลีดต้องเป็น AE หรือ Senior AE เท่านั้น (AC เป็นหลังบ้านของทีม ไม่รับเป็นเจ้าของลีด)' };
   }

@@ -53,6 +53,122 @@ export function termSnapshotFromLine(line = {}) {
   };
 }
 
+/* ── จัดสรรบรรทัดขายลงโซน (mig 0312 · มติผู้ใช้ 2026-08-29) ─────────────────
+   > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
+
+   "บรรทัด" เป็นรูปร่างของ **เอกสารขาย** (แยกตามราคา/ส่วนลด) ไม่ใช่รูปร่างของ **งาน**
+   ของจริง: SO-26080077-0 มี 10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย
+   ⇒ หน่วยที่ TS ทำงานด้วยคือ **FG + จำนวน** ส่วนบรรทัดเป็นแค่ที่มา
+
+   ⚠️ `packageQty` ของ term = **จำนวนที่จัดสรรลงโซนนั้น** ไม่ใช่จำนวนทั้งบรรทัด
+      (เปลี่ยนความหมายที่ mig 0312 — แถวเก่าคือ "จัดสรรทั้งบรรทัดลงโซนเดียว"
+      ซึ่งเป็นกรณีเฉพาะของกติกาใหม่อยู่แล้ว จึงไม่ต้องแปลงข้อมูล) */
+
+/* สิ่งที่จัดสรรไปแล้วของแต่ละบรรทัด — Map<lineId, { qty, whole }>
+   ⚠️ **`whole`** = มี term ที่ไม่ได้ระบุจำนวน ⇒ ถือว่ากินทั้งบรรทัด
+      แถวที่เกิดก่อน mig 0312 เป็นแบบนี้ทั้งหมด (ตอนนั้น 1 บรรทัด = 1 โซนเสมอ
+      และ `packageQty` เป็น snapshot ที่บรรทัดอาจไม่มีค่า) · ถ้านับเป็น 0
+      ใบเก่าทุกใบจะเด้งกลับเข้าคิวพร้อมกันทั้งกอง */
+export function allocatedByLine(terms = []) {
+  const map = new Map();
+  for (const term of terms) {
+    const lineId = term.salesOrderLineId;
+    if (!lineId) continue;
+    const entry = map.get(lineId) || { qty: 0, whole: false };
+    const qty = Number(term.packageQty);
+    if (Number.isFinite(qty) && qty > 0) entry.qty += qty;
+    else entry.whole = true;
+    map.set(lineId, entry);
+  }
+  return map;
+}
+
+/* จำนวนของบรรทัดที่ "ยังไม่ถูกจัดสรร"
+   ⚠️ บรรทัดที่ไม่มีจำนวน (qty ว่าง/0) ถือว่า **จัดสรรครบเมื่อมีอย่างน้อยหนึ่งโซน** —
+      ของแบบนี้มีจริง (บริการรายเดือน "1 งาน") การบังคับให้กรอกจำนวนจะทำให้ผูกไม่ได้เลย */
+export function remainingOfLine(line = {}, allocated = 0) {
+  const entry = typeof allocated === 'object' && allocated
+    ? allocated
+    : { qty: Number(allocated) || 0, whole: false };
+  if (entry.whole) return 0;
+  const qty = Number(line.qty);
+  if (!Number.isFinite(qty) || qty <= 0) return entry.qty > 0 ? 0 : 1;
+  return Math.max(0, qty - entry.qty);
+}
+
+/* บรรทัดนี้ยังต้องจัดสรรอยู่ไหม */
+export function lineNeedsAllocation(line, allocatedMap = new Map()) {
+  return remainingOfLine(line, allocatedMap.get(line?.id)) > 0;
+}
+
+/* สรุป "ของที่ต้องจัดสรร" ของใบหนึ่ง — รวมตาม **FG** ไม่ใช่ตามบรรทัด
+   คืน [{ key, fgCode, description, unit, qty, remaining, lines: [...] }]
+   ⚠️ จัดกลุ่มด้วย fgCode ก่อน ถ้าไม่มีจึงใช้คำบรรยาย — บรรทัดที่ไม่มีรหัสมีจริง
+      (บริการ/ค่าออกแบบ) และต้องไม่ถูกยุบรวมกับของคนละอย่างที่บังเอิญไม่มีรหัสเหมือนกัน */
+export function fgSummary(lines = [], allocatedMap = new Map()) {
+  const groups = new Map();
+  for (const line of lines) {
+    const key = line.fgCode || `desc:${line.description || line.id}`;
+    const row = groups.get(key) || {
+      key,
+      fgCode: line.fgCode || null,
+      description: line.description || null,
+      unit: line.unit || null,
+      qty: 0,
+      remaining: 0,
+      lines: [],
+    };
+    const qty = Number(line.qty);
+    row.qty += Number.isFinite(qty) && qty > 0 ? qty : 0;
+    row.remaining += remainingOfLine(line, allocatedMap.get(line.id));
+    row.lines.push(line);
+    /* หน่วยต่างกันในกลุ่มเดียวกัน = บวกกันไม่ได้ ⇒ บอกว่าปนหน่วย ไม่ใช่เงียบ
+       (กติกาเดียวกับตัวนำเข้าข้อมูลเก่า: แปลงไม่ได้ต้องบอก ห้ามเดา) */
+    if (row.unit && line.unit && row.unit !== line.unit) row.unit = 'ปนหน่วย';
+    groups.set(key, row);
+  }
+  return [...groups.values()];
+}
+
+/* กระจาย "จัดสรรระดับ FG" ลงเป็น "จัดสรรระดับบรรทัด" ที่ API ต้องการ
+
+   ⭐ **คนทำงานคิดเป็น FG ระบบเก็บเป็นบรรทัด** — TS บอกว่า "FG-1 ลงโซน A 5 หน่วย"
+   แต่ FG-1 อาจกระจายอยู่ใน 10 บรรทัดของเอกสารขาย ⇒ ที่นี่แปลงให้ โดยไล่ตัดจาก
+   บรรทัดแรกที่ยังเหลือก่อน (greedy) · ผู้ใช้ไม่ต้องรู้ว่าเอกสารขายแบ่งบรรทัดยังไง
+
+   entries = [{ zoneId, qty, standardMlPerMonth }] ของ **กลุ่ม FG เดียว**
+   คืน [{ salesOrderLineId, zoneId, packageQty, standardMlPerMonth }]
+   ⚠️ ถ้าของในกลุ่มไม่พอ จะคืนเท่าที่มี — ตัวห้ามเกินอยู่ที่ API (อ่านของจริงจาก DB) */
+export function spreadAllocation(group = {}, entries = [], allocatedMap = new Map()) {
+  const pool = (group.lines || []).map((line) => ({
+    id: line.id,
+    left: remainingOfLine(line, allocatedMap.get(line.id)),
+  })).filter((l) => l.left > 0);
+
+  const out = [];
+  for (const entry of entries) {
+    const zoneId = String(entry.zoneId ?? '').trim();
+    if (!zoneId) continue;
+    let want = Number(entry.qty);
+    if (!Number.isFinite(want) || want <= 0) want = null;   // ไม่ระบุ = ยกที่เหลือทั้งกลุ่ม
+
+    for (const line of pool) {
+      if (line.left <= 0) continue;
+      if (want !== null && want <= 0) break;
+      const take = want === null ? line.left : Math.min(line.left, want);
+      out.push({
+        salesOrderLineId: line.id,
+        zoneId,
+        packageQty: take,
+        standardMlPerMonth: entry.standardMlPerMonth ?? null,
+      });
+      line.left -= take;
+      if (want !== null) want -= take;
+    }
+  }
+  return out;
+}
+
 /* ── มาตรฐานการใช้ต่อเดือน ──────────────────────────────────────────────
    ⚠️ **ไม่มีสูตรที่เป็นทางการ** — บรรทัดขายไม่มีคอลัมน์ ml และไม่มีเอกสารไหน
    กำหนดที่มาไว้ · หลักฐานเดียวที่มีคือชีตของทีม: 10 จาก 13 แถว "แพ็ค = ลิตร/เดือน"
