@@ -33,6 +33,7 @@ import {
 import { buildStandardPreviewHTML } from "@/lib/documents/standardPreview";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = {
   titleTh: "",
@@ -202,7 +203,7 @@ export default function DocumentStandardsPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/document-standards", { cache: "no-store" });
+      const response = await apiFetch("/api/document-standards", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดมาตรฐานเอกสารไม่สำเร็จ");
       setStandards(Array.isArray(payload.standards) ? payload.standards : []);
@@ -216,7 +217,7 @@ export default function DocumentStandardsPage() {
   useEffect(() => { if (canManage) load(); }, [canManage, load]);
 
   const request = async (url, options, fallback) => {
-    const response = await fetch(url, options);
+    const response = await apiFetch(url, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || fallback);
     return payload;

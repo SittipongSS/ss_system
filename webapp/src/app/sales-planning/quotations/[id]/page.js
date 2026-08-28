@@ -55,6 +55,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalPrompt } from "@/lib/approvalPrompt";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const money = (v) => fmtMoney(v);
 
@@ -103,7 +104,7 @@ export default function QuotationEditorPage() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}`);
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดใบเสนอราคาไม่สำเร็จ");
       const q = await res.json();
       setQuote(q);
@@ -150,7 +151,7 @@ export default function QuotationEditorPage() {
     if (!customerId) { setCustomer(null); return; }
     let alive = true;
     (async () => {
-      const res = await fetch(`/api/customers/${customerId}`).catch(() => null);
+      const res = await apiFetch(`/api/customers/${customerId}`).catch(() => null);
       if (!alive) return;
       const data = res?.ok ? await res.json() : null;
       const next = data?.customer || data || null;
@@ -296,7 +297,7 @@ export default function QuotationEditorPage() {
     setBusy("save");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(quotationPayload(extra)),
@@ -370,7 +371,7 @@ export default function QuotationEditorPage() {
      ตอนทำรายการไม่ผ่านจะกลายเป็นการกลืนงานที่ยังไม่บันทึก */
   const refreshQuote = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}`);
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}`);
       if (!res.ok) return;
       const fresh = await res.json().catch(() => null);
       if (fresh) setQuote(fresh);
@@ -382,7 +383,7 @@ export default function QuotationEditorPage() {
     setError("");
     setErrorActionUrl("");
     try {
-      const res = await fetch(url, opts);
+      const res = await apiFetch(url, opts);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || "ทำรายการไม่สำเร็จ");
@@ -507,7 +508,7 @@ export default function QuotationEditorPage() {
     setBusy("revise");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}/revise`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}/revise`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(quotationPayload({
@@ -541,7 +542,7 @@ export default function QuotationEditorPage() {
         setError("กรุณาบันทึกการแก้ไขก่อนออกเอกสาร");
         return;
       }
-      const res = await fetch(`/api/sales-planning/quotations/${id}`);
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
       await openQuotePrintWindowPreferIssued(data, printWindow);

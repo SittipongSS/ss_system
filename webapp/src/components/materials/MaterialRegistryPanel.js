@@ -33,6 +33,7 @@ import {
 } from "@/lib/materialPrices";
 import { pmTypeLabel } from "@/lib/master/materialTypes";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 const money = (v) => (v == null ? "—" : fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const qtyText = (v) => (v == null ? "ทุกจำนวน" : `≥ ${fmtNumber(v)}`);
@@ -93,7 +94,7 @@ export default function MaterialRegistryPanel({
   const call = async (url, options, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(url, options);
+      const res = await apiFetch(url, options);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
       setToast({ kind: "success", msg: okMsg });

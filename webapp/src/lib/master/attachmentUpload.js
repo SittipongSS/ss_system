@@ -1,5 +1,6 @@
 import { describeResponseError } from '@/lib/fetchError';
 import { uploadFileBytes } from '@/lib/master/uploadFile';
+import { apiFetch } from "@/lib/apiFetch";
 
 // ── อัปไฟล์แนบ 1 ไฟล์: storage → แถว metadata ──────────────────────────
 //
@@ -30,7 +31,7 @@ export async function uploadAttachment({
     return { ok: false, error: err?.message || 'อัปโหลดไฟล์ไม่สำเร็จ' };
   }
 
-  const res = await fetch('/api/master/attachments', {
+  const res = await apiFetch('/api/master/attachments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -47,7 +48,7 @@ export async function uploadAttachment({
   });
   if (!res.ok) {
     if (driveFileId) {
-      fetch('/api/upload', {
+      apiFetch('/api/upload', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ driveFileId }),

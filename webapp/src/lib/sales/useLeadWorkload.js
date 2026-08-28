@@ -8,6 +8,7 @@
 // กล่องยังต้องเปิดได้และมอบหมายได้แม้ตัวเลขไม่มา (ขึ้น 0 ทุกช่อง)
 import { useEffect, useState } from "react";
 import { isSuperuser } from "@/lib/permissions";
+import { apiFetch } from "@/lib/apiFetch";
 
 export const canReadLeadWorkload = (role) =>
   isSuperuser(role) || role === "senior_ae" || role === "ac";
@@ -19,7 +20,7 @@ export default function useLeadWorkload(role) {
   useEffect(() => {
     if (!allowed) { setWorkload(null); return undefined; }
     let alive = true;
-    fetch("/api/sales-planning/leads/workload", { cache: "no-store" })
+    apiFetch("/api/sales-planning/leads/workload", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => { if (alive) setWorkload(body?.workload || null); })
       .catch(() => { if (alive) setWorkload(null); });

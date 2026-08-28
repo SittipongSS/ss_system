@@ -91,6 +91,7 @@ import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPayment
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt } from "@/lib/approvalPrompt";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
   financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep, salesOrderWorkflowIndex,
@@ -169,8 +170,8 @@ export default function SalesOrderDetailPage() {
   const load = useCallback(async () => {
     setError("");
     const [res, filingRes] = await Promise.all([
-      fetch(`/api/sales-planning/sales-orders/${id}`),
-      fetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(id)}`),
+      apiFetch(`/api/sales-planning/sales-orders/${id}`),
+      apiFetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(id)}`),
     ]);
     const data = await res.json().catch(() => ({}));
     const filingData = await filingRes.json().catch(() => ({}));
@@ -218,7 +219,7 @@ export default function SalesOrderDetailPage() {
      พิมพ์ค้างไว้ แล้วยังบอกว่า "ไม่มีอะไรค้าง" ต่อหน้าเขาอีกที */
   const refreshOrder = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sales-planning/sales-orders/${id}`);
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`);
       if (!res.ok) return;
       const fresh = await res.json().catch(() => null);
       if (fresh) setOrder(fresh);
@@ -229,7 +230,7 @@ export default function SalesOrderDetailPage() {
     setBusy("filing");
     setError("");
     setToast(null);
-    const res = await fetch("/api/tax/orders/from-sales-order", {
+    const res = await apiFetch("/api/tax/orders/from-sales-order", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ salesOrderId: id }),
@@ -270,7 +271,7 @@ export default function SalesOrderDetailPage() {
     setErrorActionUrl("");
     setToast(null);
     if (action === "save") setSaveState("saving");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}`, {
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action, ...payload }),
@@ -378,7 +379,7 @@ export default function SalesOrderDetailPage() {
   async function startPaymentTracking() {
     setBusy("start-payments");
     setError("");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, { method: "POST" });
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     setBusy("");
     if (!res.ok) { setError(data.error || "เริ่มติดตามการชำระไม่สำเร็จ"); return false; }
@@ -399,7 +400,7 @@ export default function SalesOrderDetailPage() {
         evidence = [];
         for (const file of options.files || []) evidence.push(await uploadPaymentEvidence(file));
       }
-      const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ installmentId: row.id, action, ...options, files: undefined, evidence }),
@@ -521,7 +522,7 @@ export default function SalesOrderDetailPage() {
   async function deleteOrder(url) {
     setBusy("delete");
     setError("");
-    const res = await fetch(url, { method: "DELETE" });
+    const res = await apiFetch(url, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setBusy(""); setError(data.error || "ลบใบสั่งขายไม่สำเร็จ"); return false; }
     router.push("/sa/sales-orders");
@@ -544,7 +545,7 @@ export default function SalesOrderDetailPage() {
   async function forceRemove() {
     setBusy("delete");
     setError("");
-    const preview = await fetch(`/api/sales-planning/sales-orders/${id}?dryRun=1`, { method: "DELETE" })
+    const preview = await apiFetch(`/api/sales-planning/sales-orders/${id}?dryRun=1`, { method: "DELETE" })
       .then((r) => r.json()).catch(() => null);
     setBusy("");
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }
@@ -570,7 +571,7 @@ export default function SalesOrderDetailPage() {
     }
     try {
       const [res, company] = await Promise.all([
-        fetch(`/api/sales-planning/sales-orders/${id}`),
+        apiFetch(`/api/sales-planning/sales-orders/${id}`),
         getCompanyProfileForPrint(),
       ]);
       const data = await res.json().catch(() => ({}));
@@ -602,7 +603,7 @@ export default function SalesOrderDetailPage() {
   const [production, setProduction] = useState({ jobs: [], lines: [] });
   useEffect(() => {
     if (!order?.id) return;
-    fetch(`/api/production/jobs?salesOrderId=${order.id}`)
+    apiFetch(`/api/production/jobs?salesOrderId=${order.id}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProduction({ jobs: d?.jobs || [], lines: d?.lines || [] }))
       .catch(() => {});

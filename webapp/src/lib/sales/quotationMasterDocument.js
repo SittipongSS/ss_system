@@ -17,6 +17,7 @@ import {
 import { amountInWords } from '@/lib/documents/amountInWords';
 import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
 import { fmtNumber, fmtPhone } from '@/lib/format';
+import { apiFetch } from "@/lib/apiFetch";
 import {
   DOCUMENT_ACCENT_THEMES,
   documentFileName,
@@ -402,7 +403,7 @@ function langSwitchScript(save, hasConfirm) {
     if (doc.getAttribute('data-active-lang') === lang) return;
     paint(lang, true);
     say('กำลังบันทึก…');
-    fetch(url, {
+    apiFetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: bodyTpl.replace(/__LANG__/g, lang),

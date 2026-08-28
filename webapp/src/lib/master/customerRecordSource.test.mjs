@@ -37,7 +37,8 @@ for (const [label, path] of DOCUMENT_PAGES) {
 
 test("useCustomerRecord ยิง /api/customers/[id] และมี fallback ระหว่างโหลด", () => {
   const hook = read("./useCustomerRecord.js");
-  assert.match(hook, /fetch\(`\/api\/customers\/\$\{encodeURIComponent\(customerId\)\}`\)/);
+  // apiFetch = ตัวห่อกลาง (lib/apiFetch) — ยังเป็นการยิงรายตัวเหมือนเดิม
+  assert.match(hook, /apiFetch\(`\/api\/customers\/\$\{encodeURIComponent\(customerId\)\}`\)/);
   assert.match(hook, /return record \|\| fallback \|\| \{\}/);
 });
 

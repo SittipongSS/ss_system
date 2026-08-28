@@ -31,6 +31,7 @@ import { statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
+import { apiFetch } from "@/lib/apiFetch";
 
 const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
 // ยอดเรียกเก็บ = ค่าภาษี + VAT 7% ตรงกับ "ยอดแจ้งชำระสุทธิ" บนเอกสารที่พิมพ์เสมอ
@@ -68,7 +69,7 @@ export default function FilingDetailPage() {
   const [deliverOpen, setDeliverOpen] = useState(false);
 
   const transition = async (status) => {
-    const res = await fetch(`/api/orders/${o.id}`, {
+    const res = await apiFetch(`/api/orders/${o.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
@@ -77,16 +78,16 @@ export default function FilingDetailPage() {
     await reload();
   };
   const setDue = async (value) => {
-    await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
+    await apiFetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
     await reload();
   };
   const reject = async (reason) => {
-    const res = await fetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected", rejectionReason: reason }) });
+    const res = await apiFetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected", rejectionReason: reason }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
     await reload();
   };
   const doDelete = async () => {
-    const res = await fetch(`/api/orders/${o.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/orders/${o.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
     router.push("/tax/filings");
   };

@@ -25,6 +25,7 @@ import { notifyToast } from "@/lib/feedback";
 import { ADDENDUM_DOC_TITLE, canDeleteAddendum, canSignAddendum } from "@/lib/sales/contractAddenda";
 import { buildAddendumLifecycle } from "@/lib/sales/addendumLifecycle";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function AddendumDetailPage() {
   const { id } = useParams();
@@ -45,7 +46,7 @@ export default function AddendumDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sales-planning/addenda/${id}`);
+      const res = await apiFetch(`/api/sales-planning/addenda/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดบันทึกไม่สำเร็จ");
       setAddendum(data);
@@ -65,7 +66,7 @@ export default function AddendumDetailPage() {
   const act = async (path, body, okMessage) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/addenda/${id}${path}`, {
+      const res = await apiFetch(`/api/sales-planning/addenda/${id}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body || {}),
@@ -104,7 +105,7 @@ export default function AddendumDetailPage() {
   const removeDraft = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/addenda/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/addenda/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ลบบันทึกไม่สำเร็จ");
       notifyToast.success("ลบร่างบันทึกแล้ว");

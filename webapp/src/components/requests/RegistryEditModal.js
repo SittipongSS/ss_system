@@ -18,6 +18,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import ScentForm, { scentToForm } from "@/components/database/ScentForm";
 import FormulaForm, { formulaToForm } from "@/components/database/FormulaForm";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { apiFetch } from "@/lib/apiFetch";
 
 const API = { scent: "/api/master/scents", formula: "/api/master/formulas" };
 
@@ -31,7 +32,7 @@ export default function RegistryEditModal({ target, canSetCode = false, onClose,
   const load = useCallback(async () => {
     if (!target?.id) return;
     setError("");
-    const res = await fetch(`${API[kind]}/${target.id}`, { cache: "no-store" });
+    const res = await apiFetch(`${API[kind]}/${target.id}`, { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setError(data.error || "โหลดข้อมูลทะเบียนไม่สำเร็จ"); return; }
     setValue(kind === "formula" ? formulaToForm(data) : scentToForm(data));
@@ -62,7 +63,7 @@ export default function RegistryEditModal({ target, canSetCode = false, onClose,
   const save = async () => {
     setBusy(true); setError("");
     try {
-      const res = await fetch(`${API[kind]}/${target.id}`, {
+      const res = await apiFetch(`${API[kind]}/${target.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "edit", ...value }),

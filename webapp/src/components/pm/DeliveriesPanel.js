@@ -27,6 +27,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import styles from "./DeliveriesPanel.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = { kind: "PM", label: "", qty: "", unit: "", poRef: "", salesOrderId: "", dueDate: "", note: "" };
 
@@ -68,7 +69,7 @@ export default function DeliveriesPanel({
   const call = async (path, init, okMsg) => {
     setBusy(path);
     try {
-      const res = await fetch(`/api/pm/projects/${projectId}/deliveries${path}`, {
+      const res = await apiFetch(`/api/pm/projects/${projectId}/deliveries${path}`, {
         headers: { "Content-Type": "application/json" },
         ...init,
       });

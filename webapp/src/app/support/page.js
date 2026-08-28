@@ -29,6 +29,7 @@ import {
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
 } from "@/lib/issues/statuses";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // อายุเรื่องเป็นคำที่คนอ่านแล้วรู้ทันทีว่า "ค้างนานไหม" — วันที่เต็มอยู่ใน title
 function ageOf(createdAt) {
@@ -62,7 +63,7 @@ export default function SupportPage() {
   const [busyId, setBusyId] = useState(null);
 
   const fetchIssues = async (url) => {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await apiFetch(url, { cache: "no-store" });
     // ⚠️ **ห้ามกลืน error เป็นลิสต์ว่าง** — ของเดิมทำ `r.ok ? r.json() : { items: [] }`
     // ⇒ API ล่มแล้วหน้าขึ้นว่า "ไม่มีเรื่องในถังนี้" · แอดมินอ่านว่าไม่มีงานค้าง
     if (!res.ok) throw new Error(await describeResponseError(res, "โหลดรายการไม่สำเร็จ"));
@@ -115,7 +116,7 @@ export default function SupportPage() {
   const acknowledge = async (id) => {
     setBusyId(id);
     try {
-      const res = await fetch(`/api/issues/${id}`, {
+      const res = await apiFetch(`/api/issues/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "acknowledge" }),

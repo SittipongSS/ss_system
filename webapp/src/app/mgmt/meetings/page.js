@@ -12,6 +12,7 @@ import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
+import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -39,7 +40,7 @@ export default function MgmtMeetingsPage() {
   useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   useEffect(() => {
-    fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
     cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
@@ -51,7 +52,7 @@ export default function MgmtMeetingsPage() {
        จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
     if (!opts?.background) setLoading(true);
     try {
-      const res = await fetch(`/api/mgmt/meetings?year=${year}`);
+      const res = await apiFetch(`/api/mgmt/meetings?year=${year}`);
       const rows = res.ok ? await res.json() : [];
       if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
       setMeetings(rows);

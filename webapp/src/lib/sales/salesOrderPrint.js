@@ -7,6 +7,7 @@ import { docLanguageOf, quotationDocLabels } from '@/lib/sales/quotationMasterTe
 import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
+import { apiFetch } from "@/lib/apiFetch";
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -227,7 +228,7 @@ export async function openSalesOrderPrintWindowPreferIssued(order, preparedWindo
   const id = order?.id;
   if (!id) return openSalesOrderPrintWindow(order, win, company, await liveSalesOrderStandard());
   try {
-    const res = await fetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${encodeURIComponent(id)}/issued?render=latest`, {
       cache: 'no-store',
     });
     if (res.ok) {

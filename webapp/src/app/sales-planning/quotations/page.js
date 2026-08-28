@@ -30,6 +30,7 @@ import { isEditableQuotation } from "@/lib/sales/quotationWorkflow";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
 const statusBadge = (s, className) => quoteStatusBadge(s, className);
@@ -119,7 +120,7 @@ export default function QuotationsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sales-planning/quotations");
+      const res = await apiFetch("/api/sales-planning/quotations");
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดใบเสนอราคาไม่สำเร็จ");
       setRows(await res.json());
     } catch (e) {
@@ -133,7 +134,7 @@ export default function QuotationsPage() {
   // (แถบเตือนหายไปเฉย ๆ ตารางใบเสนอราคายังใช้งานได้ครบ)
   useEffect(() => {
     let alive = true;
-    fetch("/api/sales-planning/sales-orders")
+    apiFetch("/api/sales-planning/sales-orders")
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => { if (alive) setSalesOrders(Array.isArray(data) ? data : []); })
       .catch(() => {});
@@ -273,7 +274,7 @@ export default function QuotationsPage() {
                           const printWindow = prepareQuotePrintWindow();
                           if (!printWindow) return;
                           try {
-                            const res = await fetch(`/api/sales-planning/quotations/${r.id}`);
+                            const res = await apiFetch(`/api/sales-planning/quotations/${r.id}`);
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok) throw new Error(data?.error || "ไม่สามารถโหลดข้อมูลใบเสนอราคาได้");
                             await openQuotePrintWindowPreferIssued(data, printWindow);

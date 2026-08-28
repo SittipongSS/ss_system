@@ -16,6 +16,7 @@ import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { SYSTEM_DOCUMENT_LOGO_URL } from "@/lib/documentBrand";
 import { PageShell as SaPageShell } from "@/components/ui/Workspace";
+import { apiFetch } from "@/lib/apiFetch";
 
 const num = (value) => fmtNumber(value || 0);
 const paginateShipmentLines = (lines = []) => {
@@ -38,7 +39,7 @@ export default function ShipmentPrepPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/pm/projects/${id}/shipment-prep`);
+    const res = await apiFetch(`/api/pm/projects/${id}/shipment-prep`);
     if (res.ok) {
       const payload = await res.json();
       setProject(payload.project || null);
@@ -54,7 +55,7 @@ export default function ShipmentPrepPage() {
   const createPrep = async () => {
     setCreating(true);
     try {
-      const res = await fetch(`/api/pm/projects/${id}/shipment-prep`, { method: "POST" });
+      const res = await apiFetch(`/api/pm/projects/${id}/shipment-prep`, { method: "POST" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: payload.error || "สร้างเอกสารเตรียมส่งของไม่สำเร็จ" });

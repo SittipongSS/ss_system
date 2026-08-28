@@ -40,6 +40,7 @@ import { ageLabel, ageTone, registrationAge } from "@/lib/tax/registrationQueue"
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ภาษี/ชิ้น อ่านจากทะเบียนสินค้าเสมอ (ดูเหตุผลเต็มที่หน้ารายการทะเบียน) — ทะเบียน
 // สรรพสามิตตัดสินแค่ว่า "เสียภาษีไหม" ส่วนตัวเลขอัตรามาจากราคาขายปลีกของ FG
@@ -68,7 +69,7 @@ export default function RegistrationDetailPage() {
   const load = useCallback(async (opts) => {
     if (!opts?.background) setLoading(true);
     try {
-      const res = await fetch(`/api/excise-registrations/${id}?full=1`);
+      const res = await apiFetch(`/api/excise-registrations/${id}?full=1`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "โหลดทะเบียนไม่สำเร็จ");
       setS(await res.json());
       setLoadError(null);
@@ -113,7 +114,7 @@ export default function RegistrationDetailPage() {
   useEffect(() => {
     if (!s?.id) { setReq(null); return; }
     let alive = true;
-    fetch(`/api/excise-registrations/${s.id}/requirements`)
+    apiFetch(`/api/excise-registrations/${s.id}/requirements`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d) setReq(d); })
       .catch(() => {});
@@ -123,7 +124,7 @@ export default function RegistrationDetailPage() {
   const warnings = req?.warnings || [];
 
   const patch = async (body, failMessage) => {
-    const res = await fetch(`/api/excise-registrations/${s.id}`, {
+    const res = await apiFetch(`/api/excise-registrations/${s.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || failMessage);
@@ -136,7 +137,7 @@ export default function RegistrationDetailPage() {
   const revokeApproval = (reason) => patch({ status: "draft", reason }, "ไม่สามารถปลดอนุมัติได้");
   const rejectReg = (reason) => patch({ status: "rejected", rejectionReason: reason }, "ไม่สามารถทำรายการได้");
   const doDelete = async () => {
-    const res = await fetch(`/api/excise-registrations/${s.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/excise-registrations/${s.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
     router.push("/tax/registrations");
   };

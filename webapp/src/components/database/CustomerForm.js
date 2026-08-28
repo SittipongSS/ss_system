@@ -37,6 +37,7 @@ import {
   arCodeParts, codeModeOf, formatArCode,
 } from "@/lib/master/masterCodes";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ที่อยู่/สาขา ไม่อยู่ในนี้แล้ว — ย้ายไป addresses[] (mig 0202) ทั้งก้อน
 // server เป็นคนกระจกกลับลง address/shippingAddress/branchCode ให้เอง
@@ -140,7 +141,7 @@ export default function CustomerForm({
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/master/customers/by-tax-id?taxId=${taxKey}`, { signal: controller.signal });
+        const res = await apiFetch(`/api/master/customers/by-tax-id?taxId=${taxKey}`, { signal: controller.signal });
         setTaxMatches(res.ok ? await res.json() : []);
       } catch {
         // ถามไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — ด่านจริงยังอยู่ที่ API ตอนบันทึก

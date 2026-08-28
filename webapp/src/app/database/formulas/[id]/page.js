@@ -16,6 +16,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate, NA } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaFormPayload, formulaSourceLabel,
   isFormulaRegistrar, isFormulaUsable,
@@ -50,7 +51,7 @@ export default function FormulaDetailPage() {
   });
   const openEdit = async () => {
     setForm({ mode: "edit", formula, value: formulaToForm(formula) });
-    const get = (url) => fetch(url, { cache: "no-store" })
+    const get = (url) => apiFetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
@@ -64,7 +65,7 @@ export default function FormulaDetailPage() {
     setSaving(true);
     try {
       const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me) });
-      const res = await fetch(`/api/master/formulas/${formula.id}`, {
+      const res = await apiFetch(`/api/master/formulas/${formula.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "edit", ...payload }),
@@ -85,7 +86,7 @@ export default function FormulaDetailPage() {
   const removeFormula = async () => {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/master/formulas/${formula.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/master/formulas/${formula.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });
@@ -99,14 +100,14 @@ export default function FormulaDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/master/formulas/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/master/formulas/${id}`, { cache: "no-store" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลสูตรไม่สำเร็จ");
       setFormula(data);
       // ⚠️ ชื่อกลิ่นไม่ได้ติดมากับแถวสูตร — ยิงต่อเฉพาะตอนผูกกลิ่นจริง และ
       // ล้มแล้วไม่ทำให้ทั้งหน้าพัง (แค่โชว์ id แทนชื่อ)
       if (data?.scentId) {
-        const sRes = await fetch(`/api/master/scents/${data.scentId}`, { cache: "no-store" });
+        const sRes = await apiFetch(`/api/master/scents/${data.scentId}`, { cache: "no-store" });
         const sData = await sRes.json().catch(() => null);
         if (sRes.ok && sData) setScentName(sData.code ? `${sData.code} · ${sData.name}` : sData.name);
       } else setScentName("");

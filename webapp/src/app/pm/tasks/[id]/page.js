@@ -22,6 +22,7 @@ import { fmtDateNumeric, fmtDateTime, naText } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_LABELS = TASK_STATUS_TH;
 const STATUS_COLORS = {
@@ -72,7 +73,7 @@ export default function TaskDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/pm/personal-tasks/${id}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) {
         // อย่าโชว์คำว่า "forbidden" ดิบ ๆ — แปลเป็นข้อความที่คนอ่านรู้เรื่อง
@@ -87,7 +88,7 @@ export default function TaskDetailPage() {
   useEffect(() => { load(); }, [load]);
 
   const loadFormOptions = () => {
-    const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+    const json = (url) => apiFetch(url).then((r) => (r.ok ? r.json() : [])).catch(() => []);
     return Promise.all([
       cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       json("/api/pm/task-deals"),   // ดีลที่ผูกงานได้ (scope ทีม) — ตัวเดียวกับหน้ารายการ

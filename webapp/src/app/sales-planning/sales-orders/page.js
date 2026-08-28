@@ -21,6 +21,7 @@ import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
@@ -137,7 +138,7 @@ export default function SalesOrdersPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sales-planning/sales-orders");
+      const res = await apiFetch("/api/sales-planning/sales-orders");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "โหลดใบสั่งขายไม่สำเร็จ");
       setRows(data);
@@ -156,7 +157,7 @@ export default function SalesOrdersPage() {
   const [awaitingFiling, setAwaitingFiling] = useState(0);
   useEffect(() => {
     let alive = true;
-    fetch("/api/tax/orders/from-sales-order?available=1")
+    apiFetch("/api/tax/orders/from-sales-order?available=1")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => { if (alive && data?.schemaReady) setAwaitingFiling((data.salesOrders || []).length); })
       .catch(() => {});

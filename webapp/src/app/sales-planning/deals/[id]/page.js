@@ -58,6 +58,7 @@ import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -202,7 +203,7 @@ export default function DealOverviewPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${id}/overview`);
+      const res = await apiFetch(`/api/sales-planning/deals/${id}/overview`);
       if (!res.ok) throw new Error((await res.json()).error || "load project center failed");
       setData(await res.json());
     } catch (e) {
@@ -218,9 +219,9 @@ export default function DealOverviewPage() {
 
   // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ — โหลดครั้งเดียว
   useEffect(() => {
-    fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
+    apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
+    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
@@ -434,7 +435,7 @@ export default function DealOverviewPage() {
     setActionBusy(key);
     setError("");
     try {
-      const res = await fetch(url, opts);
+      const res = await apiFetch(url, opts);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
       await load();
       return true;
@@ -488,7 +489,7 @@ export default function DealOverviewPage() {
     setLinkProjectId("");
     setLinkStartDate(businessDate());
     try {
-      const res = await fetch("/api/pm/projects");
+      const res = await apiFetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
       const mine = (Array.isArray(rows) ? rows : []).filter((p) => (
         (!deal.customerId || !p.customerId || p.customerId === deal.customerId)
@@ -592,14 +593,14 @@ export default function DealOverviewPage() {
       // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback
       // ไปชื่อเดิมของดีลก่อน null (เหมือน logic ในหน้า list)
       const customerName = selected?.name || deal?.customerName || deal?.customer?.name || null;
-      const res = await fetch(`/api/sales-planning/deals/${id}`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...dealForm, customerName }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       if (dealForm.projectId && !deal.projectId) {
-        const linkRes = await fetch(`/api/sales-planning/deals/${id}/link-project`, {
+        const linkRes = await apiFetch(`/api/sales-planning/deals/${id}/link-project`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
@@ -658,7 +659,7 @@ export default function DealOverviewPage() {
     setActionBusy("excise");
     setError("");
     try {
-      const res = await fetch(`/api/excise-registrations/from-project`, {
+      const res = await apiFetch(`/api/excise-registrations/from-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: deal.projectId, ...(productId ? { productId } : {}) }),

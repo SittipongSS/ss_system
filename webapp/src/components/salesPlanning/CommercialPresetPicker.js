@@ -14,6 +14,7 @@ import { Library } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { COMMERCIAL_PRESET_KIND_LABELS } from "@/lib/commercialPresets";
 import styles from "./CommercialPresetPicker.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function CommercialPresetPicker({
   kind,
@@ -36,7 +37,7 @@ export default function CommercialPresetPicker({
       setLoading(true);
       setLoadError("");
       try {
-        const response = await fetch(`/api/commercial-presets/options?kind=${kind}`, { cache: "no-store" });
+        const response = await apiFetch(`/api/commercial-presets/options?kind=${kind}`, { cache: "no-store" });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || `โหลด${label}ไม่สำเร็จ`);
         if (alive) setOptions(Array.isArray(payload.options) ? payload.options : []);

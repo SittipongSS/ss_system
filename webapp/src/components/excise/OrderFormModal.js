@@ -11,6 +11,7 @@ import { productSelectOptions } from "@/components/master/productOption";
 import { exciseTaxLineForRegistration, exciseTaxTotals } from "@/lib/tax/exciseBilling";
 import Textarea from "@/components/ui/Textarea";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { apiFetch } from "@/lib/apiFetch";
 
 const blankItem = () => ({ registrationId: "", quantity: "" });
 
@@ -89,9 +90,9 @@ export default function OrderFormModal({ open, onClose, onSaved, order, registra
       if (editing) {
         const body = { ...form, items: clean };
         if (order.status === "rejected") body.status = "received"; // resubmit
-        res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        res = await apiFetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       } else {
-        res = await fetch("/api/orders", {
+        res = await apiFetch("/api/orders", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ customerId, ...form, items: clean, assignee: userName }),
         });

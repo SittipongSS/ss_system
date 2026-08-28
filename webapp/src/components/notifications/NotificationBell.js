@@ -18,6 +18,7 @@ import { Bell, Check } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { fmtDateTime } from "@/lib/format";
 import styles from "./NotificationBell.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const POLL_MS = 120_000;
 const BOX = "bell";
@@ -32,7 +33,7 @@ export default function NotificationBell() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/notifications?box=${BOX}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/notifications?box=${BOX}`, { cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json().catch(() => null);
       setItems(d?.items || []);
@@ -62,7 +63,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", outside);
   }, [open]);
 
-  const patch = (body) => fetch("/api/notifications", {
+  const patch = (body) => apiFetch("/api/notifications", {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
 

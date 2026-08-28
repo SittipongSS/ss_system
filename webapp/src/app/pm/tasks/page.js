@@ -40,6 +40,7 @@ import { RequestStatusBadge, requestDueTone } from "@/components/requests/reques
 import Textarea from "@/components/ui/Textarea";
 import { liveDueDate } from "@/lib/requests/dueRound";
 import { REQUEST_OPEN_STATUSES } from "@/lib/requests/statuses";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -234,7 +235,7 @@ export default function TasksPage() {
        จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร คิวงานต้องไม่หายแล้วโผล่ใหม่ */
     if (!opts?.background) setLoading(true);
     try {
-      const res = await fetch(`/api/pm/my-work?scope=${sc}`);
+      const res = await apiFetch(`/api/pm/my-work?scope=${sc}`);
       const d = res.ok ? await res.json() : {};
       if (!isLatest()) return;
       setPersonalTasks(d.personalTasks || []);
@@ -256,8 +257,8 @@ export default function TasksPage() {
       setUsers(u || []);
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, compactPersonName(x.name)])));
     }).catch(() => {});
-    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
-    fetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
+    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
+    apiFetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
   }, []);
 
   // ผู้ใช้ที่ "ฉันมอบหมายงานให้ได้" — กติกาเดียวกับ server (เดิมเขียนเงื่อนไขซ้ำที่นี่เอง)
@@ -304,7 +305,7 @@ export default function TasksPage() {
 
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, assigneeId: me?.id, assignedBy: me?.id, proxyBy: null } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ responsibilityAction: "take" }),
       });
@@ -320,7 +321,7 @@ export default function TasksPage() {
 
   const releaseLegacyProxy = async (t) => {
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyAction: "release" }),
       });
@@ -474,14 +475,14 @@ export default function TasksPage() {
       // ยังชื่อ inquiryId ตามคอลัมน์ personal_tasks.inquiryId (หนี้ที่รู้ตัว ดู
       // api/pm/personal-tasks/route.js) แต่ค่าคือ id ของคำร้อง
       (async () => {
-        const res = await fetch(`/api/sa/requests/${inquiryId}`);
+        const res = await apiFetch(`/api/sa/requests/${inquiryId}`);
         const req = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(req.error || "โหลดคำร้องต้นทางไม่สำเร็จ");
         // เธรดไม่ได้ติดมากับคำร้อง — อยู่ตารางกลาง entity_updates ต้องขอแยก
         // (ขอเฉพาะตอนมี messageId จะได้ไม่ยิงฟรีทุกครั้งที่เปิดจากหัวเรื่อง)
         let message = null;
         if (messageId) {
-          const msgRes = await fetch(`/api/updates?entityType=dept_request&entityId=${encodeURIComponent(inquiryId)}`);
+          const msgRes = await apiFetch(`/api/updates?entityType=dept_request&entityId=${encodeURIComponent(inquiryId)}`);
           const thread = await msgRes.json().catch(() => ({}));
           if (!msgRes.ok) throw new Error(thread.error || "โหลดข้อความต้นทางไม่สำเร็จ");
           message = (thread.items || []).find((item) => item.id === messageId && !item.deletedAt) || null;
@@ -523,7 +524,7 @@ export default function TasksPage() {
   const applyStatus = async (t, status, { lateReason, blockedReason } = {}) => {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -639,7 +640,7 @@ export default function TasksPage() {
 
   const deletePersonal = async (t) => {
     if (!(await askConfirm({ title: "ลบงาน", message: `ลบงาน "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
-    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
     else setToast({ kind: "error", msg: "ลบไม่สำเร็จ" });
   };

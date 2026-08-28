@@ -48,6 +48,7 @@ import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConf
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* คีย์ที่เป็น "ตัวกรองของข้อมูล" — ชุดนี้ตัวเดียวที่ส่งขึ้น API และที่ปุ่มล้างจะลบ
    (ที่เหลือ `group` `sort` `dir` เป็นมุมมองบนจอ ล้างตัวกรองแล้วต้องยังอยู่) */
@@ -131,7 +132,7 @@ export default function FinancePaymentsPage() {
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/finance/payments?${query}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/finance/payments?${query}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
       if (!isLatest()) return; // ตัวกรองขยับระหว่างรอ — ทะเบียนต้องตรงกับตัวกรองที่เห็นอยู่
       if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนการชำระไม่สำเร็จ");
@@ -183,7 +184,7 @@ export default function FinancePaymentsPage() {
     try {
       const sp = new URLSearchParams(query);
       sp.set("format", "xlsx");
-      const res = await fetch(`/api/finance/payments?${sp}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/finance/payments?${sp}`, { cache: "no-store" });
       if (!res.ok) throw new Error("ดาวน์โหลดไม่สำเร็จ");
       const blob = await res.blob();
       const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1]
@@ -212,7 +213,7 @@ export default function FinancePaymentsPage() {
   const runAction = useCallback(async (row, action, extra = {}) => {
     setActing(true); setActionError("");
     try {
-      const res = await fetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ installmentId: row.id, action, ...extra }),

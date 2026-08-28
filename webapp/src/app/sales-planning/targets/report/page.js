@@ -31,6 +31,7 @@ import { currentMonth, formatMonthLabel, monthRangeOfWholeYear } from "@/lib/dat
 import { fmtMoney, fmtPercent, NA } from "@/lib/format";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* รายงานยอดขาย — เป้าเทียบยอดจริงตามช่วงเดือน แล้วเจาะลงถึงใบสั่งขาย
  *
@@ -89,7 +90,7 @@ export default function SalesReportPage() {
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/report?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
+      const res = await apiFetch(`/api/sales-planning/report?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดรายงานไม่สำเร็จ");
       const json = await res.json();
       if (!isLatest()) return; // ช่วงเปลี่ยนระหว่างรอ — ทิ้งคำตอบรอบเก่าทั้งก้อน

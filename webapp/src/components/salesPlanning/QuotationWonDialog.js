@@ -10,6 +10,7 @@ import { quotationWonAmount } from "@/lib/sales/quotationWonAmount";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
 import styles from "./QuotationWonDialog.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // โมดัลยืนยันปิด Won (มติผู้ใช้ 2026-08-24)
 //
@@ -49,7 +50,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const res = await fetch("/api/pm/projects");
+      const res = await apiFetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
       const usable = selectableProjectsForWon(rows, { customerId: dealCustomerId, line: deal?.line || null });
       setProjects(usable);
@@ -95,7 +96,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(needsProject ? { projectId } : {}),

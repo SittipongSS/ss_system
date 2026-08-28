@@ -21,6 +21,7 @@ import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { fmtNumber, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }) {
   const [form, setForm] = useState(() => closeFormDefaults(null));
@@ -44,7 +45,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       try {
         /* GET นัดคืน visit + items + assets + zones + results มาในคำขอเดียว —
            ฟอร์มต้องรู้ว่าไซต์นี้มีอะไรให้ทำบ้างก่อนจะให้ติ๊กรายเครื่องได้ */
-        const res = await fetch(`/api/service/visits/${visit.id}`);
+        const res = await apiFetch(`/api/service/visits/${visit.id}`);
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลนัดไม่สำเร็จ");
         setItems(Array.isArray(data?.items) ? data.items : []);
@@ -83,7 +84,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/service/visits/${visit.id}/items`, {
+      const res = await apiFetch(`/api/service/visits/${visit.id}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draftItem),
@@ -102,7 +103,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
   const removeItem = async (itemId) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/service/visits/${visit.id}/items/${itemId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/service/visits/${visit.id}/items/${itemId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || "ลบไม่สำเร็จ");
@@ -191,7 +192,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       /* บันทึกผลรายเครื่อง **ก่อน** ปิดใบ — server สรุปสถานะจากแถวจริงใน DB
          (closeFromAssets) ไม่ใช่จากค่าที่จอส่งมา ⇒ ลำดับนี้สลับไม่ได้ */
       if (activeAssets.length) {
-        const res = await fetch(`/api/service/visits/${visit.id}/assets`, {
+        const res = await apiFetch(`/api/service/visits/${visit.id}/assets`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ results: resultRows }),

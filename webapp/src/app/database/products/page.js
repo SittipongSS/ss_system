@@ -32,6 +32,7 @@ import {
 import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/format";
 import CostVatLines from "@/components/database/CostVatLines";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -91,13 +92,13 @@ export default function ProductRegistry() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch(MANAGE_KEY);
+      const res = await apiFetch(MANAGE_KEY);
       if (res.ok) {
         const data = await res.json();
         apiCache.set(MANAGE_KEY, data);
         setProducts(data);
       }
-      const typeRes = await fetch("/api/master/product-types");
+      const typeRes = await apiFetch("/api/master/product-types");
       if (typeRes.ok) {
         const typeData = await typeRes.json();
         apiCache.set("/api/master/product-types", typeData);
@@ -140,11 +141,11 @@ export default function ProductRegistry() {
     setUserName(localStorage.getItem("userName") || "SA User");
     fetchProducts();
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ดึงมาเป็นรายการแนะนำของช่องแบรนด์
-    fetch("/api/master/customers")
+    apiFetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set("/api/master/customers", d || []); setCustomers(d || []); })
       .catch(() => {});
-    fetch(FORMULA_KEY)
+    apiFetch(FORMULA_KEY)
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set(FORMULA_KEY, d || []); setFormulas(d || []); })
       .catch(() => {});
@@ -176,7 +177,7 @@ export default function ProductRegistry() {
     setNextFgRunNo(null);
     setShowForm(true);
     try {
-      const res = await fetch("/api/master/products/next-code");
+      const res = await apiFetch("/api/master/products/next-code");
       if (res.ok) setNextFgRunNo((await res.json()).number ?? null);
     } catch {
       // อ่านไม่ได้ = ท่อนเลขรันบนแถบเป็นช่องว่าง ไม่ใช่ตัวเลขมั่ว — บันทึกได้ตามปกติ
@@ -262,7 +263,7 @@ export default function ProductRegistry() {
       retailPriceIncVat: formData.retailPriceIncVat === "" ? null : parseFloat(formData.retailPriceIncVat),
     };
     try {
-      const res = await fetch("/api/master/products", {
+      const res = await apiFetch("/api/master/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

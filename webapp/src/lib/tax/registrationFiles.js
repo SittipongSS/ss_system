@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { listAttachments } from '@/lib/master/attachments';
 import { applyTeamScope } from '@/lib/tax/reportFilters';
 import JSZip from 'jszip';
+import { apiFetch } from "@/lib/apiFetch";
 
 const sanitize = (s) =>
   String(s || '').replace(/[\\/:*?"<>|\n\r\t]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 90) || 'item';
@@ -73,7 +74,7 @@ export async function buildRegistrationFilesZip(filter = {}) {
           for await (const c of stream) chunks.push(c);
           buf = Buffer.concat(chunks);
         } else {
-          const res = await fetch(a.fileUrl);
+          const res = await apiFetch(a.fileUrl);
           if (!res.ok) continue;
           buf = Buffer.from(await res.arrayBuffer());
         }

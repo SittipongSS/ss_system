@@ -33,6 +33,7 @@ import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => fmtNumber(n || 0);
@@ -386,7 +387,7 @@ export default function PoDetailPage() {
     setLinkProjects([]);
     setLinkProjectId("");
     try {
-      const res = await fetch("/api/pm/projects");
+      const res = await apiFetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
       const mine = (Array.isArray(rows) ? rows : []).filter((p) => p.customerId && p.customerId === po.customerId);
       setLinkProjects(mine);
@@ -448,7 +449,7 @@ export default function PoDetailPage() {
     // โหลดโครงการของลูกค้าไว้เผื่อ PO นี้ยังไม่มีโครงการ — จะได้เลือกผูกในโมดัลเลย
     setInlineLoading(true);
     setInlineProjectId("");
-    fetch("/api/pm/projects")
+    apiFetch("/api/pm/projects")
       .then((r) => (r.ok ? r.json() : []))
       .then((rows) => setInlineProjects(
         (Array.isArray(rows) ? rows : []).filter((p) => p.customerId && p.customerId === po.customerId),

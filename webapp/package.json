@@ -18,6 +18,7 @@
     "gen:document-fonts": "node scripts/generate-document-fonts.mjs",
     "check:rowcap": "node scripts/check-row-cap.mjs",
     "check:thaitime": "node scripts/check-thai-time.mjs",
+    "check:apifetch": "node scripts/check-api-fetch.mjs",
     "check:refs": "node scripts/check-reference-tables.mjs",
     "deploy:status": "node scripts/deploy-status.mjs",
     "check:teams": "node scripts/check-team-registry.mjs"

@@ -7,6 +7,7 @@ import Workspace from "@/components/ui/Workspace";
 import MonthGrid, { isoOf } from "@/components/ui/MonthGrid";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 
@@ -30,8 +31,8 @@ export default function MgmtCalendarPage() {
   // tasks + meetings ตามปีของ cursor
   useEffect(() => {
     const y = cursor.y;
-    fetch(`/api/mgmt/tasks?year=${y}`).then((r) => (r.ok ? r.json() : [])).then((d) => setTasks(Array.isArray(d) ? d : [])).catch(() => {});
-    fetch(`/api/mgmt/meetings?year=${y}`).then((r) => (r.ok ? r.json() : [])).then((d) => setMeetings(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`/api/mgmt/tasks?year=${y}`).then((r) => (r.ok ? r.json() : [])).then((d) => setTasks(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch(`/api/mgmt/meetings?year=${y}`).then((r) => (r.ok ? r.json() : [])).then((d) => setMeetings(Array.isArray(d) ? d : [])).catch(() => {});
   }, [cursor.y]);
 
   const holidaySet = useMemo(() => {

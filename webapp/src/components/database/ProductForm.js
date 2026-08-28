@@ -43,6 +43,7 @@ import {
 import { fmtMoney, naText } from "@/lib/format";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { apiFetch } from "@/lib/apiFetch";
 
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
@@ -157,7 +158,7 @@ export default function ProductForm({
     const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch(`/api/master/products/by-customer?customerId=${encodeURIComponent(form.customerId)}`, { signal: controller.signal });
+        const res = await apiFetch(`/api/master/products/by-customer?customerId=${encodeURIComponent(form.customerId)}`, { signal: controller.signal });
         setCustomerProducts(res.ok ? await res.json() : []);
       } catch {
         // โหลดไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — รหัส FG ยังกันซ้ำที่ระดับ DB อยู่

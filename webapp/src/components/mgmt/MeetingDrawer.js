@@ -8,6 +8,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -19,7 +20,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
   const loadUpdates = useCallback(async () => {
     if (!meeting?.id) return;
     try {
-      const res = await fetch(`/api/mgmt/updates?entityType=meeting&entityId=${encodeURIComponent(meeting.id)}`);
+      const res = await apiFetch(`/api/mgmt/updates?entityType=meeting&entityId=${encodeURIComponent(meeting.id)}`);
       if (res.ok) setUpdates(await res.json());
     } catch { /* ignore */ }
   }, [meeting?.id]);
@@ -38,7 +39,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
     if (!text) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/mgmt/updates", {
+      const res = await apiFetch("/api/mgmt/updates", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType: "meeting", entityId: meeting.id, body: text }),
       });
@@ -51,7 +52,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
     if (!(await confirmAction(`สร้างงานติดตามจากการประชุม "${meeting.title}"?`))) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/mgmt/tasks", {
+      const res = await apiFetch("/api/mgmt/tasks", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `ติดตามจากประชุม: ${meeting.title}`,
@@ -64,12 +65,12 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
       if (!res.ok) { notifyToast.error((await res.json().catch(() => ({}))).error || "สร้างงานไม่สำเร็จ"); return; }
       const task = await res.json();
       // บันทึกลง feed ของการประชุม + ตั้ง followUp='follow' ถ้ายังไม่ใช่
-      await fetch("/api/mgmt/updates", {
+      await apiFetch("/api/mgmt/updates", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType: "meeting", entityId: meeting.id, body: `สร้างงานติดตาม: ${task.title}` }),
       });
       if (meeting.followUp !== "follow") {
-        const up = await fetch(`/api/mgmt/meetings/${meeting.id}`, {
+        const up = await apiFetch(`/api/mgmt/meetings/${meeting.id}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ followUp: "follow" }),
         });
@@ -85,7 +86,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
     if (!(await confirmAction("ย้ายการประชุมนี้ลงถังขยะ?"))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/meetings/${meeting.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/mgmt/meetings/${meeting.id}`, { method: "DELETE" });
       if (res.ok) { onDeleted?.(meeting.id); onClose?.(); }
       else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }

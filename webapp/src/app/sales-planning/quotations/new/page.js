@@ -38,6 +38,7 @@ import { dealAwaitsCustomer, dealCustomerAdoptNote, isQuotableCustomer } from "@
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import SkeletonRows from "@/components/ui/Skeleton";
+import { apiFetch } from "@/lib/apiFetch";
 
 function NewQuotationInner() {
   const router = useRouter();
@@ -97,8 +98,8 @@ function NewQuotationInner() {
       setLoading(true);
       try {
         const [dRes, pRes, customerData, registryData] = await Promise.all([
-          fetch("/api/sales-planning/deals").catch(() => null),
-          fetch("/api/pm/projects").catch(() => null),
+          apiFetch("/api/sales-planning/deals").catch(() => null),
+          apiFetch("/api/pm/projects").catch(() => null),
           cachedFetchJson("/api/customers").catch(() => []),
           // ทะเบียนทั้งหมด — ใช้ตอบ "ทำไมลูกค้ารายนี้ไม่โผล่ในลิสต์เลย" เท่านั้น
           // (รออนุมัติ/พักใช้/ทีมอื่นดูแล) **ห้ามใช้เป็นตัวเลือกให้เลือก**
@@ -216,7 +217,7 @@ function NewQuotationInner() {
     if (!dealId || !customerId) { setCustomer(null); return; }
     let alive = true;
     (async () => {
-      const res = await fetch(`/api/customers/${customerId}`).catch(() => null);
+      const res = await apiFetch(`/api/customers/${customerId}`).catch(() => null);
       if (!alive) return;
       const data = res?.ok ? await res.json() : null;
       const next = data?.customer || data || null;
@@ -327,7 +328,7 @@ function NewQuotationInner() {
     setCreating(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${dealId}/quotations`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${dealId}/quotations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

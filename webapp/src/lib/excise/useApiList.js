@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiCache, primeCache } from "@/lib/apiCache";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Cache-first list fetch (stale-while-revalidate): paints instantly from
 // apiCache, then refreshes in the background. `reload()` forces a refetch and is
@@ -28,7 +29,7 @@ export function useApiList(url) {
     // ถ้าปล่อยให้เข้า loading ตารางจะหายแล้วโผล่ใหม่ทุกครั้งที่สลับแท็บกลับมา
     if (!opts?.background) setLoading(true);
     try {
-      const r = await fetch(url);
+      const r = await apiFetch(url);
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `โหลดข้อมูลไม่สำเร็จ (${r.status})`);
       const json = await r.json();
       const arr = Array.isArray(json) ? json : [];

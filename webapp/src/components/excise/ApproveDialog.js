@@ -6,6 +6,7 @@ import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
+import { apiFetch } from "@/lib/apiFetch";
 
 // RA approval for an excise registration: approval number + taxability override.
 // PATCH contract unchanged from the old ApproveProductModal.
@@ -24,7 +25,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/product-types")
+    apiFetch("/api/product-types")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setProductTypes(d || []))
       .catch(() => {});
@@ -46,7 +47,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
     const body = { status: "approved", approvalNumber: approvalNumber.trim() };
     if (taxable !== "auto") body.taxableOverride = taxable === "taxable";
     try {
-      const res = await fetch(`/api/excise-registrations/${registration.id}`, {
+      const res = await apiFetch(`/api/excise-registrations/${registration.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถอนุมัติได้");

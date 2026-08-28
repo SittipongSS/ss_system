@@ -9,6 +9,7 @@ import { describeResponseError } from "@/lib/fetchError";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 // RA records the excise payment and marks the order 'complete': receipt number,
 // actual paid amount, actual payment date (taxPaidDate, additive), ภส. form ref,
@@ -62,13 +63,13 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
         if (paidDate) body.taxPaidDate = paidDate;
         if (formRef.trim()) body.taxFormRef = formRef.trim();
       }
-      const res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(await describeResponseError(res, "ไม่สามารถบันทึกได้"));
       // 3) แนบไฟล์ใบเสร็จเข้าตาราง attachments (order/tax_receipt) — โผล่รวมใน
       //    AttachmentsPanel. best-effort: ปิดงานสำเร็จแล้ว ถ้าแนบพลาดแนบเองได้.
       if (receiptUrl) {
         try {
-          const sv = await fetch("/api/master/attachments", {
+          const sv = await apiFetch("/api/master/attachments", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -90,7 +91,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
           if (!sv.ok) {
             // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
             if (receiptDriveFileId) {
-              fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: receiptDriveFileId }) }).catch(() => {});
+              apiFetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId: receiptDriveFileId }) }).catch(() => {});
             }
             throw new Error(await describeResponseError(sv, "แนบใบเสร็จเข้าออเดอร์ไม่สำเร็จ"));
           }

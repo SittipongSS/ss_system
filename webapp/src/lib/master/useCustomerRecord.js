@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ลูกค้าของ "เอกสาร/ทะเบียนที่มีอยู่แล้ว" ต้องอ่านรายตัวจาก /api/customers/[id]
 // ห้าม find จากลิสต์ /api/customers เพราะลิสต์นั้นกรอง 3 ชั้นโดยเจตนา (ทีมที่ดูแล +
@@ -21,7 +22,7 @@ export function useCustomerRecord(customerId, fallback = null) {
       return undefined;
     }
     let alive = true;
-    fetch(`/api/customers/${encodeURIComponent(customerId)}`)
+    apiFetch(`/api/customers/${encodeURIComponent(customerId)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => { if (alive) setRecord(data?.customer || null); })
       .catch(() => { if (alive) setRecord(null); });

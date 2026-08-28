@@ -42,6 +42,7 @@ import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/maste
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
   formulaFormPayload, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable,
@@ -154,10 +155,10 @@ export default function FormulasPage() {
     setLoading(true); setLoadError("");
     try {
       const [fRes, uRes, sRes, cRes] = await Promise.all([
-        fetch("/api/master/formulas", { cache: "no-store" }),
-        fetch("/api/master/formulas/unsorted", { cache: "no-store" }),
-        fetch("/api/master/scents", { cache: "no-store" }),
-        fetch("/api/customers", { cache: "no-store" }),
+        apiFetch("/api/master/formulas", { cache: "no-store" }),
+        apiFetch("/api/master/formulas/unsorted", { cache: "no-store" }),
+        apiFetch("/api/master/scents", { cache: "no-store" }),
+        apiFetch("/api/customers", { cache: "no-store" }),
       ]);
       const fData = await fRes.json().catch(() => null);
       if (!fRes.ok) throw new Error(fData?.error || "โหลดทะเบียนสูตรไม่สำเร็จ");
@@ -262,7 +263,7 @@ export default function FormulasPage() {
   const call = async (url, options, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(url, options);
+      const res = await apiFetch(url, options);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
       setToast({ kind: "success", msg: okMsg });
@@ -306,7 +307,7 @@ export default function FormulasPage() {
   const submitSorting = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/master/formulas/unsorted", {
+      const res = await apiFetch("/api/master/formulas/unsorted", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: sorting.row.productId,

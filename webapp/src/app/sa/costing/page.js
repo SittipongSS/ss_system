@@ -24,6 +24,7 @@ import CostingRequestForm, {
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import { TEAMS, TEAM_LABELS } from "@/lib/permissions";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   COSTING_STATUSES,
   COSTING_STATUS_LABELS,
@@ -61,7 +62,7 @@ export default function CostingListPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/sa/costing", { cache: "no-store" });
+      const res = await apiFetch("/api/sa/costing", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดรายการไม่สำเร็จ");
       setRows(Array.isArray(d) ? d : []);
@@ -77,7 +78,7 @@ export default function CostingListPage() {
   const adminDelete = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: "ลบใบแล้ว" });
@@ -92,9 +93,9 @@ export default function CostingListPage() {
     setForm(costingFormFromRequest(null));
     try {
       const [dealRes, typeRes, tplRes] = await Promise.all([
-        fetch("/api/sales-planning/deals", { cache: "no-store" }),
-        fetch("/api/product-types", { cache: "no-store" }),
-        fetch("/api/cost-templates", { cache: "no-store" }),
+        apiFetch("/api/sales-planning/deals", { cache: "no-store" }),
+        apiFetch("/api/product-types", { cache: "no-store" }),
+        apiFetch("/api/cost-templates", { cache: "no-store" }),
       ]);
       const dealRows = await dealRes.json().catch(() => []);
       // เปิดใบได้เฉพาะดีลที่ตัวเองแก้ได้ — ตรงกับด่านฝั่ง server
@@ -110,7 +111,7 @@ export default function CostingListPage() {
   const create = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/sa/costing", {
+      const res = await apiFetch("/api/sa/costing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(costingPayloadFrom(form)),

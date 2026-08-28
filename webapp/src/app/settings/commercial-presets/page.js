@@ -26,6 +26,7 @@ import {
 } from "@/lib/commercialPresets";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const KIND_HINTS = Object.freeze({
   payment: "วิธีชำระและข้อความเงื่อนไข — ไม่รวมงวดการชำระของใบ",
@@ -123,7 +124,7 @@ export default function CommercialPresetsPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const response = await fetch("/api/commercial-presets", { cache: "no-store" });
+      const response = await apiFetch("/api/commercial-presets", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดคลังเงื่อนไขการค้าไม่สำเร็จ");
       setPresets(Array.isArray(payload.presets) ? payload.presets : []);
@@ -140,7 +141,7 @@ export default function CommercialPresetsPage() {
   const drawerKind = drawer?.kind || drawerPreset?.kind || kind;
 
   const request = async (url, options, fallback) => {
-    const response = await fetch(url, options);
+    const response = await apiFetch(url, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || fallback);
     return payload;

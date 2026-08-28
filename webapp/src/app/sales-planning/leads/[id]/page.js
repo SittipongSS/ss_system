@@ -29,6 +29,7 @@ import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABEL
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
@@ -103,7 +104,7 @@ export default function LeadDetailPage() {
   const [dealOptions, setDealOptions] = useState({ customers: [], projects: [], categories: [] });
 
   useEffect(() => {
-    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
+    apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
       .then((me) => setMeId(me?.id || null)).catch(() => setMeId(null));
   }, []);
 
@@ -119,7 +120,7 @@ export default function LeadDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
       /* บริบทการตีกลับ — หน้ารายการได้มาจาก API (แนบให้ทีละหลายใบ) แต่หน้านี้มี
@@ -155,7 +156,7 @@ export default function LeadDetailPage() {
     setBusy(true); setError("");
     try {
       const payload = Object.fromEntries(Object.keys(blank).map((key) => [key, form[key]]));
-      const res = await fetch(`/api/sales-planning/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
       setEditing(false); await load();
@@ -169,7 +170,7 @@ export default function LeadDetailPage() {
 
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${id}/transition`, {
+      const res = await apiFetch(`/api/sales-planning/leads/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
@@ -196,7 +197,7 @@ export default function LeadDetailPage() {
     if (!ok) return;
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ลบไม่สำเร็จ");
       router.push("/sa/leads");
     } catch (e) { setError(e.message); setBusy(false); }
@@ -224,9 +225,9 @@ export default function LeadDetailPage() {
      ตัวเลือกที่ประกอบฟอร์มโหลดตอนกดจริงเท่านั้น — คนส่วนใหญ่เข้าหน้านี้มาอ่าน ไม่ได้เปิดดีล */
   function openDealForm() {
     Promise.all([
-      fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      fetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).catch(() => []),
     ]).then(([customerRows, projectRows, categoryRows]) => setDealOptions({
       customers: Array.isArray(customerRows) ? customerRows : [],
       projects: Array.isArray(projectRows) ? projectRows : projectRows?.items || [],

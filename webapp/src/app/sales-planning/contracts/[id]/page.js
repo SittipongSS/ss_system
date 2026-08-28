@@ -32,6 +32,7 @@ import {
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ContractDetailPage() {
   const { id } = useParams();
@@ -54,7 +55,7 @@ export default function ContractDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}`);
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดสัญญาไม่สำเร็จ");
       setContract(data);
@@ -82,7 +83,7 @@ export default function ContractDetailPage() {
   const act = async (path, body, okMessage) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}${path}`, {
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body || {}),
@@ -112,7 +113,7 @@ export default function ContractDetailPage() {
   const revise = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}/revise`, { method: "POST" });
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}/revise`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ออกฉบับแก้ไขไม่สำเร็จ");
       notifyToast.success(`ออกฉบับแก้ไขแล้ว — แก้ข้อมูลแล้วกดออกสัญญาอีกครั้ง`);
@@ -129,7 +130,7 @@ export default function ContractDetailPage() {
   const save = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}`, {
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ fields: form.fields, contractDate: form.contractDate }),
@@ -168,7 +169,7 @@ export default function ContractDetailPage() {
   const removeDraft = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ลบสัญญาไม่สำเร็จ");
       notifyToast.success("ลบร่างสัญญาแล้ว");

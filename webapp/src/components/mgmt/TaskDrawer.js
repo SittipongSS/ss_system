@@ -8,6 +8,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -20,7 +21,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
   const loadUpdates = useCallback(async () => {
     if (!task?.id) return;
     try {
-      const res = await fetch(`/api/mgmt/updates?entityType=task&entityId=${encodeURIComponent(task.id)}`);
+      const res = await apiFetch(`/api/mgmt/updates?entityType=task&entityId=${encodeURIComponent(task.id)}`);
       if (res.ok) setUpdates(await res.json());
     } catch { /* ignore */ }
   }, [task?.id]);
@@ -40,7 +41,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
     if (!task || status === task.status) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/tasks/${task.id}`, {
+      const res = await apiFetch(`/api/mgmt/tasks/${task.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
@@ -54,7 +55,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
     if (!text) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/mgmt/updates", {
+      const res = await apiFetch("/api/mgmt/updates", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType: "task", entityId: task.id, body: text }),
       });
@@ -66,7 +67,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
     if (!(await confirmAction("ย้ายงานนี้ลงถังขยะ?"))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/tasks/${task.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/mgmt/tasks/${task.id}`, { method: "DELETE" });
       if (res.ok) { onDeleted?.(task.id); onClose?.(); }
       else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }

@@ -20,6 +20,7 @@ import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCov
 import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 import { naText, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -65,7 +66,7 @@ export default function HolidaysPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/holidays");
+      const res = await apiFetch("/api/holidays");
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดปฏิทินวันหยุดไม่สำเร็จ");
       setHolidays(Array.isArray(data) ? data : []);
@@ -115,7 +116,7 @@ export default function HolidaysPage() {
   }, []);
 
   const addHoliday = async (date, name) => {
-    const res = await fetch("/api/holidays", {
+    const res = await apiFetch("/api/holidays", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, name: name || "" }),
     });
@@ -129,7 +130,7 @@ export default function HolidaysPage() {
   };
 
   const removeHoliday = async (date) => {
-    const res = await fetch(`/api/holidays/${date}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/holidays/${date}`, { method: "DELETE" });
     if (res.ok) {
       applyHolidays(holidays.filter((holiday) => holiday.date !== date));
       return true;

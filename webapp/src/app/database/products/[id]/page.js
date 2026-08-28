@@ -29,6 +29,7 @@ import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
 import { statusMeta } from "@/lib/excise/workflow";
 import { apiCache } from "@/lib/apiCache";
+import { apiFetch } from "@/lib/apiFetch";
 
 // หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/FG/แบรนด์/สร้างเมื่อ) + ตัวเลขความสัมพันธ์ (โครงการ/ใบสั่งซื้อ/ภาษี)
@@ -77,7 +78,7 @@ export default function ProductDetails() {
 
   const fetchProduct = async () => {
     try {
-      const res = await fetch(`/api/master/products/${id}`);
+      const res = await apiFetch(`/api/master/products/${id}`);
       if (res.ok) {
         setProduct(await res.json());
       } else {
@@ -96,7 +97,7 @@ export default function ProductDetails() {
   // history:view, projects → pm:view), so no extra client-side gate is needed.
   useEffect(() => {
     if (!id) { setRegs([]); setOrders([]); setProjects([]); return; }
-    fetch(`/api/master/products/${id}/relations`)
+    apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setProjects(d.projects || []); } })
       .catch(() => {});
@@ -105,12 +106,12 @@ export default function ProductDetails() {
   useEffect(() => {
     if (id) fetchProduct();
     // หมวดสินค้า — เอาธง isExcise/requiresFdaNotice มาคุมการ์ดภาษี + ป้าย (mig 0131)
-    fetch("/api/master/product-types")
+    apiFetch("/api/master/product-types")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
       .catch(() => {});
     // แบรนด์เป็นของลูกค้า (customers.brands[]) — ใช้เป็นรายการแนะนำตอนแก้แบรนด์สินค้า
-    fetch("/api/master/customers")
+    apiFetch("/api/master/customers")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
         setCustomers(d || []);
@@ -127,7 +128,7 @@ export default function ProductDetails() {
     const next = !(product.isActive !== false);
     setIsUpdating(true);
     try {
-      const res = await fetch(`/api/master/products/${id}`, {
+      const res = await apiFetch(`/api/master/products/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: next }),
@@ -160,7 +161,7 @@ export default function ProductDetails() {
   const sendToExcise = async () => {
     setSendingExcise(true);
     try {
-      const res = await fetch("/api/excise-registrations", {
+      const res = await apiFetch("/api/excise-registrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: id }),
@@ -189,7 +190,7 @@ export default function ProductDetails() {
     onConfirm: async () => {
       setIsUpdating(true);
       try {
-        const res = await fetch(`/api/master/products/${id}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/master/products/${id}`, { method: "DELETE" });
         if (res.ok) {
           router.push("/database/products");
         } else {

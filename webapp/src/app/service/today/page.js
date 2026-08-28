@@ -30,6 +30,7 @@ import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const SECTIONS = [
   { key: "overdue", title: "ค้างอยู่", tone: "danger" },
@@ -69,7 +70,7 @@ export default function TodayPage() {
     setLoadError("");
     try {
       const assignee = viewingOther ? `&assignee=${encodeURIComponent(viewUserId)}` : "";
-      const res = await fetch(`/api/service/my-visits?scope=mine${assignee}`);
+      const res = await apiFetch(`/api/service/my-visits?scope=mine${assignee}`);
       const data = await res.json().catch(() => null);
       if (!isLatest()) return; // เปลี่ยนคนดูระหว่างรอ — คิวต้องตรงกับลิงก์ล่าสุด
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานไม่สำเร็จ");
@@ -103,7 +104,7 @@ export default function TodayPage() {
   const startVisit = async (visit) => {
     setStarting(visit.id);
     try {
-      const res = await fetch(`/api/service/visits/${visit.id}`, {
+      const res = await apiFetch(`/api/service/visits/${visit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "in_progress", stamp: "start" }),
@@ -120,7 +121,7 @@ export default function TodayPage() {
   };
 
   const closeVisit = async (form) => {
-    const res = await fetch(`/api/service/visits/${closing.id}`, {
+    const res = await apiFetch(`/api/service/visits/${closing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       // stamp:'end' = ให้ server ประทับเวลาจบด้วยนาฬิกาไทย · ฟอร์มไม่ส่งเวลามาเอง

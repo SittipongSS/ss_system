@@ -17,6 +17,7 @@ import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, th
 import { fmtNumber, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 const thisYear = () => thisMonth().slice(0, 4);
@@ -55,7 +56,7 @@ export default function SalesPlanningTargetsPage() {
     setError("");
     try {
       const [targetsRes, users] = await Promise.all([
-        fetch(`/api/sales-planning/targets?year=${encodeURIComponent(year)}`),
+        apiFetch(`/api/sales-planning/targets?year=${encodeURIComponent(year)}`),
         cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!targetsRes.ok) throw new Error((await targetsRes.json()).error || "โหลด target ไม่สำเร็จ");
@@ -294,7 +295,7 @@ export default function SalesPlanningTargetsPage() {
   const BULK_LIMIT = 24;
   const postItems = async (items) => {
     for (let i = 0; i < items.length; i += BULK_LIMIT) {
-      const res = await fetch("/api/sales-planning/targets/bulk", {
+      const res = await apiFetch("/api/sales-planning/targets/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: items.slice(i, i + BULK_LIMIT) }),

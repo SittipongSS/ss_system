@@ -59,6 +59,7 @@ import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerHeadline } from "@/lib/master/customerAr";
+import { apiFetch } from "@/lib/apiFetch";
 
 const money = (value) => (value == null
   ? "—"
@@ -117,10 +118,10 @@ export default function CostingDetailPage() {
     setLoadError("");
     try {
       const [reqRes, typeRes, tplRes, matRes] = await Promise.all([
-        fetch(`/api/sa/costing/${id}`, { cache: "no-store" }),
-        fetch("/api/product-types", { cache: "no-store" }),
-        fetch("/api/cost-templates", { cache: "no-store" }),
-        fetch("/api/sa/materials", { cache: "no-store" }),
+        apiFetch(`/api/sa/costing/${id}`, { cache: "no-store" }),
+        apiFetch("/api/product-types", { cache: "no-store" }),
+        apiFetch("/api/cost-templates", { cache: "no-store" }),
+        apiFetch("/api/sa/materials", { cache: "no-store" }),
       ]);
       const d = await reqRes.json().catch(() => null);
       if (!reqRes.ok) throw new Error(d?.error || "โหลดใบขอราคาไม่สำเร็จ");
@@ -173,7 +174,7 @@ export default function CostingDetailPage() {
   const runAction = useCallback(async (path, init, successMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${id}${path}`, {
+      const res = await apiFetch(`/api/sa/costing/${id}${path}`, {
         headers: { "Content-Type": "application/json" }, ...init,
       });
       const d = await res.json().catch(() => ({}));
@@ -195,7 +196,7 @@ export default function CostingDetailPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${id}`, {
+      const res = await apiFetch(`/api/sa/costing/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(costingPayloadFrom(form)),
@@ -215,7 +216,7 @@ export default function CostingDetailPage() {
   const cancelRequest = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${id}`, {
+      const res = await apiFetch(`/api/sa/costing/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel", cancelReason }),
@@ -316,7 +317,7 @@ export default function CostingDetailPage() {
   const openLinkFg = async (item) => {
     setPendingLink({ item });
     try {
-      const res = await fetch("/api/products", { cache: "no-store" });
+      const res = await apiFetch("/api/products", { cache: "no-store" });
       const rows = await res.json().catch(() => []);
       const list = Array.isArray(rows) ? rows : (rows.items || rows.data || []);
       // กรองเฉพาะสินค้าของลูกค้าใบนี้ ถ้าใบผูกลูกค้าไว้

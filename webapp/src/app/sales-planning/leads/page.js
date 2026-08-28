@@ -50,6 +50,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
 const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
@@ -107,7 +108,7 @@ export default function LeadsPage() {
   const [meId, setMeId] = useState(null);
 
   useEffect(() => {
-    fetch("/api/users/me")
+    apiFetch("/api/users/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((me) => setMeId(me?.id || null))
       .catch(() => setMeId(null));
@@ -209,7 +210,7 @@ export default function LeadsPage() {
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sales-planning/leads");
+      const res = await apiFetch("/api/sales-planning/leads");
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดลีดไม่สำเร็จ");
       const rows = await res.json();
       if (!isLatest()) return;
@@ -233,7 +234,7 @@ export default function LeadsPage() {
     try {
       // ติ๊ก "ทุกเดือน" = ทุกเดือนของปีที่เลือก (เดิมส่ง month=all = ทุกปีตั้งแต่เปิดระบบ)
       // โหมดช่วงวันส่ง from/to ซึ่ง API ให้มาก่อน month/year (IS-26080023)
-      const res = await fetch(periodMode === "range"
+      const res = await apiFetch(periodMode === "range"
         ? `/api/sales-planning/leads/kpi?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
         : allMonths
           ? `/api/sales-planning/leads/kpi?year=${encodeURIComponent(yearOfMonth(month) || "")}`
@@ -258,10 +259,10 @@ export default function LeadsPage() {
   // รายชื่อ AE (มอบหมาย) + ลูกค้า (qualify) — โหลดเมื่อ role ทำงานคิวได้เท่านั้น
   useEffect(() => {
     if (role === "marketing" || !canLead) return;
-    fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
     // โครงการ — โมดัลแตกดีลจากลีดเลือกโครงการได้เหมือนหน้ารวมดีล (ไม่งั้นดีลที่มาจาก
     // ลีดจะไม่มีโครงการติดมาเลย แล้วสอบถาม RD ในนามดีลนั้นไม่ได้)
-    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
   }, [role, canLead]);
 
   // ชื่อผู้รับผิดชอบที่ควรขึ้นจอ — อ่านจาก `assigneeId` ไม่ใช่สำเนาชื่อในแถว
@@ -376,7 +377,7 @@ export default function LeadsPage() {
     setBusy("save");
     setError("");
     try {
-      const res = await fetch(form.id ? `/api/sales-planning/leads/${form.id}` : "/api/sales-planning/leads", {
+      const res = await apiFetch(form.id ? `/api/sales-planning/leads/${form.id}` : "/api/sales-planning/leads", {
         method: form.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -422,7 +423,7 @@ export default function LeadsPage() {
     setBusy("action");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${lead.id}/transition`, {
+      const res = await apiFetch(`/api/sales-planning/leads/${lead.id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
@@ -445,7 +446,7 @@ export default function LeadsPage() {
   const deleteLead = async (lead) => {
     if (!(await confirmAction(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`))) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json().catch(() => ({}))).error || "ลบลีดไม่สำเร็จ");
     await load();
   };

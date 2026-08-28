@@ -19,6 +19,7 @@ import {
 } from "@/lib/sales/historyEntry";
 import { fmtMoney, fmtMoneyCompact, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // บันทึกยอดขายจริงย้อนหลัง → sales_history · ใช้เติมเส้น Actual และกราฟเทียบการเติบโต
 // ในแท็บผลงานขาย
@@ -75,8 +76,8 @@ export default function SalesHistoryMonthlyPage() {
     setInfo("");
     try {
       const [histRes, dashRes] = await Promise.all([
-        fetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`),
-        fetch(`/api/sales-planning/dashboard?year=${encodeURIComponent(year)}`),
+        apiFetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`),
+        apiFetch(`/api/sales-planning/dashboard?year=${encodeURIComponent(year)}`),
       ]);
       if (!histRes.ok) throw new Error((await histRes.json().catch(() => ({}))).error || "โหลดประวัติไม่สำเร็จ");
       const { rows } = await histRes.json();
@@ -184,7 +185,7 @@ export default function SalesHistoryMonthlyPage() {
     try {
       const items = historySaveItems({ rows: rowDefs, values, year, now });
       if (!items.length) throw new Error("ยังไม่มีตัวเลขให้บันทึก");
-      const res = await fetch("/api/sales-planning/history", {
+      const res = await apiFetch("/api/sales-planning/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),

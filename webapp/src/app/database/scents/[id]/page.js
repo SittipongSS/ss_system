@@ -18,6 +18,7 @@ import Toast from "@/components/ui/Toast";
 import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable,
   scentFormPayload, scentSourceLabel,
@@ -51,7 +52,7 @@ export default function ScentDetailPage() {
   const [registryData, setRegistryData] = useState({ customers: [], scents: [] });
   const openEdit = async () => {
     setForm({ mode: "edit", scent, value: scentToForm(scent) });
-    const get = (url) => fetch(url, { cache: "no-store" })
+    const get = (url) => apiFetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
@@ -70,7 +71,7 @@ export default function ScentDetailPage() {
         mode: "edit",
         customerName: registryData.customers.find((c) => c.id === form.value.customerId)?.name || null,
       });
-      const res = await fetch(`/api/master/scents/${scent.id}`, {
+      const res = await apiFetch(`/api/master/scents/${scent.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "edit", ...payload }),
@@ -91,7 +92,7 @@ export default function ScentDetailPage() {
   const removeScent = async () => {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/master/scents/${scent.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/master/scents/${scent.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });
@@ -105,7 +106,7 @@ export default function ScentDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/master/scents/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/master/scents/${id}`, { cache: "no-store" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลกลิ่นไม่สำเร็จ");
       setScent(data);

@@ -24,6 +24,7 @@ import {
   normalizeToPercent,
 } from "@/lib/salesForecast";
 import { planNodes, summarizeOverwrite } from "@/lib/sales/targetPlanWrite";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
@@ -94,7 +95,7 @@ export default function SalesTargetPlanPage() {
     setError("");
     try {
       const [histRes, users] = await Promise.all([
-        fetch(`/api/sales-planning/history?years=${historyYears.join(",")}`),
+        apiFetch(`/api/sales-planning/history?years=${historyYears.join(",")}`),
         cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!histRes.ok) throw new Error((await histRes.json()).error || "โหลดประวัติไม่สำเร็จ");
@@ -243,7 +244,7 @@ export default function SalesTargetPlanPage() {
     for (const t of SALES_TEAMS) {
       items.push({ period: latestHistYear, periodType: "year", team: t, ownerId: null, actualAmount: Number(teamHist[t] || 0), source: "manual" });
     }
-    const res = await fetch("/api/sales-planning/history", {
+    const res = await apiFetch("/api/sales-planning/history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
@@ -299,7 +300,7 @@ export default function SalesTargetPlanPage() {
     let readFailed = false;
     setPreparing(true);
     try {
-      const res = await fetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
+      const res = await apiFetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
       if (res.ok) existingRows = await res.json();
       else readFailed = true;
     } catch {
@@ -355,7 +356,7 @@ export default function SalesTargetPlanPage() {
           ownerName: ownerName || null,
           targetAmount: monthAmounts[i],
         }));
-        const res = await fetch("/api/sales-planning/targets/bulk", {
+        const res = await apiFetch("/api/sales-planning/targets/bulk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items }),

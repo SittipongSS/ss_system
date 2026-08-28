@@ -12,6 +12,7 @@ import { fmtPercent, naText } from "@/lib/format";
 import { CHART_LINE_TYPE, CHART_SERIES } from "@/lib/chartTheme";
 
 import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
+import { apiFetch } from "@/lib/apiFetch";
 
 const today = new Date();
 const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -47,7 +48,7 @@ export default function SalesKpiDashboard() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/task-kpi?${query}`);
+      const res = await apiFetch(`/api/sales-planning/task-kpi?${query}`);
       const text = await res.text();
       let d = {};
       try { d = text ? JSON.parse(text) : {}; } catch { d = {}; }

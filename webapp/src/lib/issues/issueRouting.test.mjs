@@ -95,7 +95,7 @@ test('มีฟอร์มแจ้งเรื่องชุดเดีย�
 // ไล่ตาม cap ของ role ซึ่ง viewer ไม่มีสักตัว
 test('โมดัลแนบไฟล์ผ่านเส้นเธรด ไม่ใช่ /api/attachments', () => {
   const modal = readFileSync(join(here, '../../components/issues/ReportIssueModal.js'), 'utf8');
-  assert.match(modal, /fetch\("\/api\/updates"/);
+  assert.match(modal, /apiFetch\("\/api\/updates"/);
   // มองหา "การเรียก" ไม่ใช่คำในคอมเมนต์ (เหตุผลที่ไม่ใช้เส้นนั้นเขียนอยู่ในไฟล์)
   assert.ok(!/fetch\(["'`]\/api\/attachments/.test(modal), 'ห้ามใช้เส้นไฟล์แนบที่ viewer ผ่านไม่ได้');
   // ไฟล์ขึ้นที่เก็บผ่านท่อกลาง (uploadFileBytes) โดยประกาศ entityType ตัวนี้ —

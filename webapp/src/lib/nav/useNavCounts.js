@@ -9,6 +9,7 @@
 // ไม่ใช่ค้างอีกสองนาที (ป้ายที่ค้างคือป้ายที่คนเลิกเชื่อ)
 // ⚠️ มีคอกกั้น MIN_GAP_MS — หน้าที่เด้ง redirect ต่อกันสองสามทีจะได้ไม่ยิงรัว
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 const POLL_MS = 120_000;
 const MIN_GAP_MS = 10_000;
@@ -68,7 +69,7 @@ export default function useNavCounts(pathname) {
     if (!force && now - lastAt.current < MIN_GAP_MS) return;
     lastAt.current = now;
     try {
-      const res = await fetch("/api/nav/counts", { cache: "no-store" });
+      const res = await apiFetch("/api/nav/counts", { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
       // ⚠️ แทนที่ทั้งก้อน ไม่ merge — คีย์ที่หายไปแปลว่า "ไม่เหลืออะไรให้ทำแล้ว"

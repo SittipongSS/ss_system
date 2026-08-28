@@ -44,6 +44,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
+import { apiFetch } from "@/lib/apiFetch";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
@@ -118,7 +119,7 @@ export default function AttachmentsPanel({
     try {
       // no-store: กันเบราว์เซอร์ cache รายการไฟล์แนบ — ไม่งั้นคำตอบ [] ตอนเปิดหน้าครั้งแรก
       // ถูก cache ไว้ แล้วหลังแนบไฟล์+refresh เบราว์เซอร์หยิบ [] เก่ามาแสดง = ไฟล์ "หาย"
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/master/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
         { cache: "no-store" },
       );
@@ -149,7 +150,7 @@ export default function AttachmentsPanel({
   const addGoogleDoc = async (google) => {
     setAddingDoc(true);
     try {
-      const res = await fetch("/api/attachments", {
+      const res = await apiFetch("/api/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType, entityId, docType: "other", google }),
@@ -278,7 +279,7 @@ export default function AttachmentsPanel({
   const handleDelete = async (id) => {
     if (!(await confirmAction("ยืนยันการลบเอกสารนี้?"))) return;
     try {
-      const res = await fetch(`/api/master/attachments/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/master/attachments/${id}`, { method: "DELETE" });
       if (res.ok) setItems((prev) => prev.filter((it) => it.id !== id));
       // `(await res.json()).error` เดิมโยน exception เองถ้า body ไม่ใช่ JSON —
       // สาเหตุจริงเลยหายไปกลายเป็น "เกิดข้อผิดพลาดในการลบ" ของ catch ข้างล่าง
@@ -296,7 +297,7 @@ export default function AttachmentsPanel({
     const next = { ...before, [ISSUED_DATE_FIELD]: value };
     setItems((prev) => prev.map((row) => (row.id === it.id ? { ...row, metadata: next } : row)));
     try {
-      const res = await fetch(`/api/master/attachments/${it.id}`, {
+      const res = await apiFetch(`/api/master/attachments/${it.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ metadata: { [ISSUED_DATE_FIELD]: value } }),

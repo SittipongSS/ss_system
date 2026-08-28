@@ -1,4 +1,5 @@
 import { uploadFileBytes } from '@/lib/master/uploadFile';
+import { apiFetch } from "@/lib/apiFetch";
 
 // ── ส่งอัปเดตหนึ่งข้อความพร้อมไฟล์แนบ ────────────────────────────────────
 //
@@ -37,7 +38,7 @@ export async function postUpdateWithFiles({
   entityType, entityId, body = '', files = [], ...rest
 }) {
   const attachments = await uploadUpdateFiles({ entityType, entityId, files });
-  const res = await fetch('/api/updates', {
+  const res = await apiFetch('/api/updates', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ entityType, entityId, body: body.trim(), attachments, ...rest }),

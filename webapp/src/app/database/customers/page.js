@@ -26,6 +26,7 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerNameIn } from "@/lib/master/customerName";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Management view sees every status (pending/approved/rejected); the default
 // GET (used everywhere else) returns only approved rows.
@@ -76,7 +77,7 @@ export default function CustomerDirectory() {
 
   const fetchCustomers = async () => {
     try {
-      const res = await fetch(MANAGE_KEY);
+      const res = await apiFetch(MANAGE_KEY);
       if (res.ok) {
         const data = await res.json();
         apiCache.set(MANAGE_KEY, data);
@@ -123,7 +124,7 @@ export default function CustomerDirectory() {
     setNextArNumber(null);
     setShowForm(true);
     try {
-      const res = await fetch("/api/master/customers/next-code");
+      const res = await apiFetch("/api/master/customers/next-code");
       if (res.ok) setNextArNumber((await res.json()).number ?? null);
     } catch {
       // อ่านเลขถัดไปไม่ได้ = แถบรหัสโชว์ช่องว่าง ไม่ใช่ตัวเลขมั่ว — บันทึกได้ตามปกติ
@@ -169,7 +170,7 @@ export default function CustomerDirectory() {
     };
 
     try {
-      const res = await fetch("/api/master/customers", {
+      const res = await apiFetch("/api/master/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

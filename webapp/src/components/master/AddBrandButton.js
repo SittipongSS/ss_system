@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ปุ่ม "+" เพิ่มแบรนด์ใหม่เข้า customers.brands[] จากฟอร์มที่กำลังเลือกแบรนด์
 // (กฎ ลูกค้า›แบรนด์›สินค้า: แบรนด์เกิดที่ลูกค้าเสมอ — ฟอร์มสินค้า/โครงการ/ดีล
@@ -71,7 +72,7 @@ export default function AddBrandButton({ customerId, onAdded, disabled }) {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(`/api/customers/${customerId}`, {
+      const res = await apiFetch(`/api/customers/${customerId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ addBrand: brand }),

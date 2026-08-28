@@ -11,6 +11,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -25,7 +26,7 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
   const save = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/rocks/${row.id}`, {
+      const res = await apiFetch(`/api/mgmt/rocks/${row.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ improved, goals }),
       });
@@ -37,7 +38,7 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
     if (!(await confirmAction(`ลบข้อมูล Rock & Improve ของแผนก ${deptLabel}?`))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/rocks/${row.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/mgmt/rocks/${row.id}`, { method: "DELETE" });
       if (res.ok) onDeleted?.(row.id);
       else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
@@ -97,7 +98,7 @@ export default function MgmtRocksPage() {
 
   useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
   useEffect(() => {
-    fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
@@ -108,7 +109,7 @@ export default function MgmtRocksPage() {
        จอมีของอยู่แล้วและผู้ใช้ไม่ได้สั่งอะไร ตารางต้องไม่หายแล้วโผล่ใหม่ */
     if (!opts?.background) setLoading(true);
     try {
-      const res = await fetch(`/api/mgmt/rocks?year=${year}`);
+      const res = await apiFetch(`/api/mgmt/rocks?year=${year}`);
       const data = res.ok ? await res.json() : [];
       if (!isLatest()) return; // เปลี่ยนปีระหว่างรอ — คำตอบนี้เป็นของปีเก่า
       setRows(data);
@@ -126,7 +127,7 @@ export default function MgmtRocksPage() {
 
   const addRow = async () => {
     if (!addDept) return;
-    const res = await fetch("/api/mgmt/rocks", {
+    const res = await apiFetch("/api/mgmt/rocks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ year, deptCode: addDept, goals: [] }),
     });

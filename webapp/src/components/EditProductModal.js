@@ -7,6 +7,7 @@ import ProductForm, { PRODUCT_EDIT_FIELDS } from "@/components/database/ProductF
 import { brandTh, brandEn, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { isAutoFgCode } from "@/lib/master/masterCodes";
 import { fmtMoney } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
@@ -42,13 +43,13 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
 
       // Fetch product types if not already fetched
       if (productTypes.length === 0) {
-        fetch("/api/master/product-types")
+        apiFetch("/api/master/product-types")
           .then(res => res.json())
           .then(data => setProductTypes(data))
           .catch(err => console.error("Failed to fetch product types", err));
       }
       if (formulas.length === 0) {
-        fetch("/api/master/formulas")
+        apiFetch("/api/master/formulas")
           .then(res => (res.ok ? res.json() : []))
           .then(data => setFormulas(Array.isArray(data) ? data : []))
           .catch(err => console.error("Failed to fetch formulas", err));
@@ -96,7 +97,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       retailPriceIncVat: form.retailPriceIncVat === "" ? null : parseFloat(form.retailPriceIncVat),
     };
     try {
-      const res = await fetch(`/api/master/products/${product.id}`, {
+      const res = await apiFetch(`/api/master/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -129,7 +130,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     setPriceError(null);
     setPriceSaved(false);
     try {
-      const res = await fetch(`/api/master/products/${product.id}`, {
+      const res = await apiFetch(`/api/master/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ costPrice: nextPrice }),

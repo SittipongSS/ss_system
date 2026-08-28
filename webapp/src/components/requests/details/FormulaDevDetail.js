@@ -23,6 +23,7 @@ import RequestRows from "./RequestRows";
 import { ListChecks, Send } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
@@ -44,7 +45,7 @@ export default function FormulaDevDetail({
     if (!deleteRow) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/sa/requests/${request.id}/items/${deleteRow.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sa/requests/${request.id}/items/${deleteRow.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || "ลบรายการไม่สำเร็จ"); return; }
       setDeleteRow(null);

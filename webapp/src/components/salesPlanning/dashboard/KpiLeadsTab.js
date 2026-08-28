@@ -21,6 +21,7 @@ import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { leadDailyBuckets, leadDailyTotals } from "@/lib/sales/leadDailyBuckets";
 import { fmtDate } from "@/lib/format";
 import styles from "./KpiLeadsTab.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const pct = (hit, total) => (total ? fmtPercent((hit / total) * 100) : NA);
 
@@ -115,7 +116,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
         : allMonths ? new URLSearchParams({ year: yearOfMonth(month) || "" })
           : new URLSearchParams({ month });
       if (teamFilter && teamFilter !== "all") q.set("team", teamFilter);
-      const res = await fetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
+      const res = await apiFetch(`/api/sales-planning/leads/kpi?${q.toString()}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลด KPI ลีดไม่สำเร็จ");
       setKpi(await res.json());
     } catch (e) {

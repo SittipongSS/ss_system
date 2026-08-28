@@ -17,6 +17,7 @@ import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/
 import { branchLabel } from "@/lib/master/thaiAddress";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = {
   legalNameTh: "",
@@ -62,7 +63,7 @@ export default function CompanySettingsPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/organization-settings", { cache: "no-store" });
+      const response = await apiFetch("/api/organization-settings", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดข้อมูลบริษัทไม่สำเร็จ");
       setData({ published: payload.published || null, draft: payload.draft || null, versions: payload.versions || [] });
@@ -87,7 +88,7 @@ export default function CompanySettingsPage() {
   };
 
   const request = async (url, options, fallback) => {
-    const response = await fetch(url, options);
+    const response = await apiFetch(url, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || fallback);
     return payload;

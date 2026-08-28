@@ -31,6 +31,7 @@ import {
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
 } from "@/lib/issues/statuses";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const IMPACT_OPTIONS = ISSUE_IMPACTS.map((value) => ({ value, label: ISSUE_IMPACT_LABELS[value] }));
 
@@ -53,7 +54,7 @@ export default function IssueDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/issues/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/issues/${id}`, { cache: "no-store" });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         // อย่าโชว์คำว่า forbidden ดิบ ๆ — แปลเป็นข้อความที่คนอ่านรู้เรื่อง
@@ -75,7 +76,7 @@ export default function IssueDetailPage() {
     setAssignee(issue?.assigneeId || "");
     setAssigning(true);
     if (admins.length) return;
-    fetch("/api/users", { cache: "no-store" })
+    apiFetch("/api/users", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((list) => setAdmins((Array.isArray(list) ? list : []).filter((u) => u.role === "admin")))
       .catch(() => setAdmins([]));
@@ -95,7 +96,7 @@ export default function IssueDetailPage() {
     if (busy) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/issues/${id}`, {
+      const res = await apiFetch(`/api/issues/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...extra }),

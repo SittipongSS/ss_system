@@ -43,6 +43,7 @@ import { dayWorkload, overloaded, workloadText } from "@/lib/service/visitLoad";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -98,7 +99,7 @@ export default function ServiceSchedulePage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/service/visits?from=${range.from}&to=${range.to}`);
+      const res = await apiFetch(`/api/service/visits?from=${range.from}&to=${range.to}`);
       const data = await res.json().catch(() => null);
       if (!isLatest()) return; // เลื่อนสัปดาห์ระหว่างรอ — ตารางต้องเป็นของช่วงที่ค้างอยู่
       if (!res.ok) throw new Error(data?.error || "โหลดตารางไม่สำเร็จ");
@@ -122,7 +123,7 @@ export default function ServiceSchedulePage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/teams?department=TS");
+        const res = await apiFetch("/api/teams?department=TS");
         const body = await res.json().catch(() => null);
         if (res.ok) setCrew({ teams: body?.teams || [], members: body?.members || [] });
       } catch { /* เงียบได้ — ตารางยังใช้งานได้เต็มที่โดยไม่มีทีม */ }
@@ -135,7 +136,7 @@ export default function ServiceSchedulePage() {
     if (!technicians.length) {
       (async () => {
         try {
-          const res = await fetch("/api/pm/assignable-users");
+          const res = await apiFetch("/api/pm/assignable-users");
           const data = await res.json().catch(() => null);
           if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
           // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
@@ -149,7 +150,7 @@ export default function ServiceSchedulePage() {
     }
     (async () => {
       try {
-        const res = await fetch("/api/service/sites?includeInactive=0");
+        const res = await apiFetch("/api/service/sites?includeInactive=0");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อไซต์ไม่สำเร็จ");
         setSites((prev) => {
@@ -224,7 +225,7 @@ export default function ServiceSchedulePage() {
 
   const saveVisit = async (form) => {
     const editing = !!formVisit;
-    const res = await fetch(editing ? `/api/service/visits/${formVisit.id}` : "/api/service/visits", {
+    const res = await apiFetch(editing ? `/api/service/visits/${formVisit.id}` : "/api/service/visits", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),

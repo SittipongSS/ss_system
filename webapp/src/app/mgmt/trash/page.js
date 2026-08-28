@@ -7,6 +7,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { fmtDateTime } from "@/lib/format";
 import Workspace from "@/components/ui/Workspace";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fmt = (d) => (d ? fmtDateTime(d) : "");
 
@@ -24,7 +25,7 @@ export default function MgmtTrashPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/mgmt/trash");
+      const res = await apiFetch("/api/mgmt/trash");
       setData(res.ok ? await res.json() : { tasks: [], meetings: [], rocks: [] });
     } catch { setData({ tasks: [], meetings: [], rocks: [] }); }
     setLoading(false);
@@ -34,7 +35,7 @@ export default function MgmtTrashPage() {
   const restore = async (entity, id) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/mgmt/trash", {
+      const res = await apiFetch("/api/mgmt/trash", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entity, id }),
       });
