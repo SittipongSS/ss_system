@@ -20,7 +20,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes, productDocTypes } from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
-import { fmtDate, fmtMoney, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -472,7 +472,7 @@ export default function ProductDetails() {
                   <span className="text-[var(--text-3)] block mb-1">
                     ราคาขายปลีก{isExciseCat ? " (ฐานคำนวณสรรพสามิต)" : ""}
                   </span>
-                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.retailPriceIncVat)}</span>
+                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
                 </div>
               )}
               {/* ราคาผลิตเคยโผล่เฉพาะการ์ดต้นทุนซึ่งขึ้นเฉพาะหมวดสรรพสามิต ⇒ สินค้าหมวด
@@ -481,7 +481,7 @@ export default function ProductDetails() {
               {canSeeCost && (
                 <div>
                   <span className="text-[var(--text-3)] block mb-1">ราคาผลิต (ต่อ{unit} · ก่อน VAT)</span>
-                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoney(product.costPrice)}</span>
+                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoneyOrDash(product.costPrice)}</span>
                   <CostVatLines costPrice={product.costPrice} />
                 </div>
               )}
@@ -499,18 +499,18 @@ export default function ProductDetails() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--text-3)]">ราคาทุนโรงงาน (Cost Price)</span>
-                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoney(product.costPrice)}</span>
+                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.costPrice)}</span>
                 </div>
                 {canSeeMargin && (
                   <>
                     <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                      <span>↳ ค่าวัตถุดิบ (65%)</span><span className="font-mono">{fmtMoney(product.materialCost)}</span>
+                      <span>↳ ค่าวัตถุดิบ (65%)</span><span className="font-mono">{fmtMoneyOrDash(product.materialCost)}</span>
                     </div>
                     <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                      <span>↳ ค่าแรงบรรจุ (Labor Cost)</span><span className="font-mono">{fmtMoney(product.laborCost)}</span>
+                      <span>↳ ค่าแรงบรรจุ (Labor Cost)</span><span className="font-mono">{fmtMoneyOrDash(product.laborCost)}</span>
                     </div>
                     <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                      <span>↳ ค่าจัดส่งสินค้า (Shipping)</span><span className="font-mono">{fmtMoney(product.shippingCost)}</span>
+                      <span>↳ ค่าจัดส่งสินค้า (Shipping)</span><span className="font-mono">{fmtMoneyOrDash(product.shippingCost)}</span>
                     </div>
                   </>
                 )}
@@ -518,7 +518,7 @@ export default function ProductDetails() {
               {canSeeMargin && (
                 <div className="flex flex-col justify-between bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)]">
                   <span className="text-[var(--green)] font-semibold block text-[10px] uppercase tracking-wider">กำไรของโรงงานต่อ{unit} (Factory Profit)</span>
-                  <div className="text-2xl font-bold font-mono text-[var(--green)] mt-2">{fmtMoney(product.factoryProfit)}</div>
+                  <div className="text-2xl font-bold font-mono text-[var(--green)] mt-2">{fmtMoneyOrDash(product.factoryProfit)}</div>
                 </div>
               )}
             </div>
@@ -634,19 +634,19 @@ export default function ProductDetails() {
               <div className="space-y-4 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--text-3)]">ราคาขายปลีกรวม VAT</span>
-                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoney(product.retailPriceIncVat)}</span>
+                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                  <span>ราคาขายปลีกก่อน VAT (7%)</span><span className="font-mono">{fmtMoney(product.retailPriceExVat)}</span>
+                  <span>ราคาขายปลีกก่อน VAT (7%)</span><span className="font-mono">{fmtMoneyOrDash(product.retailPriceExVat)}</span>
                 </div>
                 <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--text-3)]">ภาษีสรรพสามิต (8%)</span>
-                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoney(product.exciseTax)}</span>
+                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.exciseTax)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[var(--text-3)]">ภาษีบำรุงท้องถิ่น (10% ของสรรพสามิต)</span>
-                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoney(product.localTax)}</span>
+                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.localTax)}</span>
                 </div>
                 <div className="bg-[var(--red-soft)] p-4 rounded-xl border border-[var(--border)] mt-4">
                   <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (Total Tax Rate)</span>
