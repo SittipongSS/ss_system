@@ -223,3 +223,31 @@
 }
 
 .queueList > li[data-ready="yes"] .queueReason { color: var(--green); }
+
+/* ── ภาระรายทีมช่าง (mig 0308 · T-4) ────────────────────────────────────
+   ทีมว่างต้องอ่านออกทันที — มันคือทีมที่รับงานเพิ่มได้ */
+.teamLoad {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.teamLoad > li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.teamLoad > li > span { color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* ทีมที่ยังไม่มีนัดในสัปดาห์นี้ — เน้นเบา ๆ ว่าว่างอยู่ ไม่ใช่จางจนมองไม่เห็น */
+.teamLoad > li[data-empty="yes"] { border-color: var(--green); }
