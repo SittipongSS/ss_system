@@ -13,7 +13,7 @@
 //   ใบสายสินค้าจะไหลเข้าคิวบริการ หรือใบบริการจะหายไปเงียบ ๆ ทั้งสองทางแย่พอกัน
 import { businessDate } from '@/lib/businessDate';
 import { isBusinessLine } from '@/lib/master/businessLines';
-import { termIsActive } from './terms';
+import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
 
@@ -45,10 +45,20 @@ export function orderBusinessLine(order, { projectsById = new Map(), dealsById =
    เพราะยอด/ของยังขยับได้ แล้ว snapshot ที่ก๊อปไปจะกลายเป็นของปลอมทันที */
 export const orderReceivable = (order) => order?.status === 'approved' && !order?.supersededById;
 
-/* ── ถังที่ 1: บรรทัดขายที่ยังไม่ผูกโซน ─────────────────────────────────
-   หน่วยของคิวคือ **ใบ** (คนทำงานเปิดทีละใบ) แต่ตัวนับคือ **บรรทัด** */
+/* ── ถังที่ 1: ของที่ขายแล้วแต่ยังไม่ได้จัดสรรลงโซน ────────────────────────
+   หน่วยของคิวคือ **ใบ** (คนทำงานเปิดทีละใบ)
+
+   ⭐ **ตัวนับคือ FG + จำนวน ไม่ใช่จำนวนบรรทัด** (มติผู้ใช้ 2026-08-29)
+   > *"ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ เพื่อให้ทาง TS จัดสรร ส่งโซนเอง"*
+
+   "บรรทัด" เป็นรูปร่างของเอกสารขาย (แยกตามราคา/ส่วนลด) ไม่ใช่รูปร่างของงาน —
+   ของจริง SO-26080077-0 มี **10 บรรทัด แต่เป็น FG แค่ 2 ชนิด รวม 13 หน่วย**
+   ⇒ โชว์ "10" ให้ TS คือบอกขนาดของงานผิดไปห้าเท่า
+
+   ⚠️ "ยังไม่ผูก" เปลี่ยนนิยามจาก **"บรรทัดไม่มี term"** เป็น **"จัดสรรยังไม่ครบจำนวน"**
+      (mig 0312 ปลด UNIQUE ของบรรทัดแล้ว — บรรทัดเดียวลงได้หลายโซน) */
 export function bindQueue({ orders = [], lines = [], terms = [], projectsById, dealsById } = {}) {
-  const boundLineIds = new Set(terms.map((t) => t.salesOrderLineId));
+  const allocated = allocatedByLine(terms);
   const linesByOrder = new Map();
   for (const line of lines) {
     const list = linesByOrder.get(line.salesOrderId) || [];
@@ -60,8 +70,9 @@ export function bindQueue({ orders = [], lines = [], terms = [], projectsById, d
   const unknownLine = [];
   for (const order of orders) {
     if (!orderReceivable(order)) continue;
-    const pending = (linesByOrder.get(order.id) || []).filter((l) => !boundLineIds.has(l.id));
+    const pending = (linesByOrder.get(order.id) || []).filter((l) => lineNeedsAllocation(l, allocated));
     if (!pending.length) continue;
+    const fg = fgSummary(pending, allocated);
 
     const line = orderBusinessLine(order, { projectsById, dealsById });
     const row = {
@@ -74,7 +85,12 @@ export function bindQueue({ orders = [], lines = [], terms = [], projectsById, d
       approvedAt: order.approvedAt || null,
       orderDate: order.orderDate || null,
       line,
+      /* ⚠️ เก็บ `pendingLines` ไว้เพื่อความเข้ากันได้ของผู้เรียกเดิม แต่ **จอไม่ควรโชว์** —
+         ตัวเลขที่บอกขนาดงานจริงคือ fgKinds/remainingQty */
       pendingLines: pending.length,
+      fgKinds: fg.length,
+      remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
+      fg,
       lines: pending,
     };
     if (line === 'SERVICE') rows.push(row);

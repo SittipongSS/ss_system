@@ -61,6 +61,8 @@
 
 .inlineAction {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
 }
 
@@ -123,4 +125,23 @@
 .countHint {
   color: var(--text-3);
   font-weight: var(--fw-regular);
+}
+
+/* ── จัดสรรระดับ FG (มติผู้ใช้ 2026-08-29) ─────────────────────────────── */
+
+/* บรรทัดเอกสารขายเป็นแค่ที่มา ไม่ใช่หน่วยงาน — บอกไว้เบา ๆ ให้ตรวจย้อนได้ */
+.fromLines {
+  color: var(--text-3);
+  font-style: normal;
+}
+
+/* เหลือเท่าไรต้องอ่านออกตลอด ไม่ใช่รู้ตอนโดนตีกลับ */
+.left {
+  color: var(--amber);
+  line-height: var(--lh-thai);
+}
+
+.leftDone {
+  color: var(--green);
+  line-height: var(--lh-thai);
 }
