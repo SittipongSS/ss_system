@@ -23,6 +23,7 @@ import { resolvePersonalTaskLink } from "@/lib/pm/taskLink";
 import { requiresDealLink } from "@/lib/pm/taskDealScope";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
+import { apiJson } from "@/lib/apiFetch";
 import Textarea from "@/components/ui/Textarea";
 
 export const TASK_BLANK = {
@@ -187,13 +188,15 @@ export default function TaskFormModal({
       }
       if (needLateReason) payload.lateReason = lateReason.trim();
 
-      const res = await fetch(editing ? `/api/pm/personal-tasks/${task.id}` : "/api/pm/personal-tasks", {
+      // apiJson = ลองใหม่ให้เอง 1 ครั้งเมื่อ "ต่อไม่ติด" และแปลง `Failed to fetch`
+      // ของเบราว์เซอร์เป็นข้อความไทย (ของจริงบน production 2026-08-28: กดเพิ่มงาน
+      // แล้วคอนเนกชันสะดุด → toast ขึ้นคำอังกฤษดิบ ๆ และงานทั้งใบเด้งกลับ)
+      // งานซ้ำจากการลองใหม่ = แถวที่ลบทิ้งได้ จึงยอมได้ (ดูคำเตือนใน lib/apiFetch)
+      const saved = await apiJson(editing ? `/api/pm/personal-tasks/${task.id}` : "/api/pm/personal-tasks", {
         method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        json: payload,
+        fallbackError: "บันทึกไม่สำเร็จ",
       });
-      const saved = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(saved.error || "บันทึกไม่สำเร็จ");
 
       // ไฟล์ที่เลือกไว้ตอนสร้าง — อัปหลังได้ id งานแล้ว
       const failed = [];

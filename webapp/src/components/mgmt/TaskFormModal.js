@@ -6,6 +6,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITIES, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import Textarea from "@/components/ui/Textarea";
+import { apiJson } from "@/lib/apiFetch";
 import { NA } from "@/lib/format";
 
 // สร้าง/แก้ไขงาน. task=null → สร้างใหม่. onSaved(row) เรียกหลังบันทึกสำเร็จ.
@@ -50,14 +51,18 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
         priority: form.priority,
         notes: form.notes || null,
       };
-      const res = await fetch(editing ? `/api/mgmt/tasks/${task.id}` : "/api/mgmt/tasks", {
+      // 🐞 เดิมจับแค่ `!res.ok` — พอ fetch โยนเอง (เน็ตสะดุด/คอนเนกชันถูกตัด) ไม่มี catch
+      // เลย toast ไม่ขึ้นสักตัว ผู้ใช้เห็นแค่โมดัลค้างเหมือนกดไม่ติด · apiJson ลองใหม่ให้
+      // 1 ครั้งแล้วค่อยโยนเป็นข้อความไทย
+      const saved = await apiJson(editing ? `/api/mgmt/tasks/${task.id}` : "/api/mgmt/tasks", {
         method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        json: payload,
+        fallbackError: "บันทึกไม่สำเร็จ",
       });
-      if (!res.ok) { notifyToast.error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ"); return; }
-      onSaved?.(await res.json());
+      onSaved?.(saved);
       onClose?.();
+    } catch (e) {
+      notifyToast.error(e.message || "บันทึกไม่สำเร็จ");
     } finally {
       setSaving(false);
     }
