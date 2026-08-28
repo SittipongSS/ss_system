@@ -85,7 +85,7 @@ sales_order_installments
 | คอนเฟิร์ม / ตีกลับ | **ฝ่ายบัญชี (department `FN`)** | 🔴 **ยังไม่มีด่านนี้ในระบบ ต้องสร้าง** |
 
 🔴 **จุดที่ต้องตัดสินก่อนเขียนโค้ด** — ระบบวันนี้ไม่มี role บัญชี มีแต่ **department `FN`**
-ที่ถือ role `staff` (`permissions.js` · `DEPARTMENT_ROLES.FN = ['staff']`)
+ที่ถือ role `staff` (`permissions.js` · `DEPARTMENT_ROLES.FN = ['staff']`) — ⚠️ ยกเลิก role `staff` ไปแล้ว 2026-08-28 ([role-per-department.md](role-per-department.md))
 และ FN โผล่ในระบบแค่สองที่: `REQUEST_ANSWER_DEPARTMENTS` กับหัวข้อคำร้อง `billing_doc`
 ⇒ ต้องเพิ่ม predicate ใหม่ (เช่น `canConfirmPayment(user)` = department FN หรือ admin)
 **อย่าใช้ role `staff` ล้วนเป็นด่าน** — staff กระจายอยู่ 6 ฝ่าย (PC/PD/WH/RD/QC/TS/FN)

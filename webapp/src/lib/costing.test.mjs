@@ -149,13 +149,13 @@ const req = (extra = {}) => ({
 
 test('เห็นใบ: RD/PC เห็นคิวทั้งฝ่าย, ผู้บริหารเห็นหมด, ฝ่ายขายตาม scope ดีล', () => {
   assert.equal(canViewCostingRequest({ role: 'rd', department: 'RD' }, req()), true);
-  assert.equal(canViewCostingRequest({ role: 'staff', department: 'PC' }, req()), true);
+  assert.equal(canViewCostingRequest({ role: 'pc', department: 'PC' }, req()), true);
   assert.equal(canViewCostingRequest({ role: 'executive' }, req()), true);
   // AE เจ้าของใบเห็น; AE ทีมอื่นไม่เห็น
   assert.equal(canViewCostingRequest({ id: 'u-ae', role: 'ae', team: 'KA' }, req()), true);
   assert.equal(canViewCostingRequest({ id: 'u-other', role: 'ae', team: 'ODM' }, req()), false);
   // ฝ่ายที่ไม่เกี่ยวข้องเลย (คลัง) ไม่เห็น แม้ถือ cap ผ่าน role staff
-  assert.equal(canViewCostingRequest({ role: 'staff', department: 'WH' }, req()), false);
+  assert.equal(canViewCostingRequest({ role: 'wh', department: 'WH' }, req()), false);
 });
 
 // ── ขั้นตอนการเดินใบ ──────────────────────────────────────────────────

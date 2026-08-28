@@ -16,13 +16,13 @@ import {
 } from './deliveries.js';
 
 const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
-const pc = { id: 'u-pc', role: 'staff', department: 'PC' };
+const pc = { id: 'u-pc', role: 'pc', department: 'PC' };
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
 const viewer = { id: 'u-v', role: 'viewer' };
 const project = { id: 'PRJ-1', team: 'KA', ownerId: 'u-ae' };
 
 // ── สิทธิ์ ───────────────────────────────────────────────────────────────
-test('⭐ PC ต้องแก้กำหนดของเข้าได้ ทั้งที่ pmEditScope ของ staff = none', () => {
+test('⭐ PC ต้องแก้กำหนดของเข้าได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
   // ถ้ากั้นด้วย scope ของ PM อย่างเดียว คนที่รู้กำหนดจริงจะเป็นคนเดียวที่แก้ไม่ได้
   // (บทเรียนเดียวกับ /api/pm/my-work ที่ PC ไม่เคยเห็นคิวตัวเอง — #790)
   assert.equal(canEditDeliveries(pc, project), true);

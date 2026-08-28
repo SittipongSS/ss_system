@@ -37,11 +37,11 @@ test('personal task files follow creator, assignee, proxy and viewer permissions
   assert.equal(await canViewPersonalTask(db, task, { id: 'other', role: 'ae' }), false);
 });
 
-test('staff/rd manage their OWN tasks without pm:edit (งานของฉันใช้ได้จริง)', async () => {
+test('ฝ่ายโรงงาน/rd manage their OWN tasks without pm:edit (งานของฉันใช้ได้จริง)', async () => {
   const db = fakeSupabase();
   // เจ้าของ/ผู้รับมอบ (rd/staff) จัดการงานตัวเองได้ แม้ role ไม่มี pm:edit
   assert.equal(await canManagePersonalTask(db, task, { id: 'owner', role: 'rd', department: 'RD' }), true);
-  assert.equal(await canManagePersonalTask(db, task, { id: 'worker', role: 'staff', department: 'PC' }), true);
+  assert.equal(await canManagePersonalTask(db, task, { id: 'worker', role: 'pc', department: 'PC' }), true);
   // แต่จัดการงานของคนอื่นไม่ได้ (สายบังคับบัญชายังต้องมี pm:edit)
   assert.equal(await canManagePersonalTask(db, task, { id: 'other', role: 'rd', department: 'RD' }), false);
   // viewer เป็น observer อ่านอย่างเดียว — ต่อให้ถูกระบุเป็นเจ้าของก็ไม่จัดการ

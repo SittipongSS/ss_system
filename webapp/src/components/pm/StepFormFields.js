@@ -10,13 +10,21 @@ import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
 import Textarea from "@/components/ui/Textarea";
+import { OPS_ROLES } from "@/lib/permissions";
 
 export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "RA", "WH", "ALL"];
 
-// ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (staff 1 คนต่อฝ่าย). ขั้นตอนของ
+// ฝ่ายอื่นที่ไม่ใช่ SA — เข้ามาในนาม "ตัวแทนฝ่าย" (1 คนต่อฝ่าย). ขั้นตอนของ
 // ฝ่ายเหล่านี้ถูกมอบหมายอัตโนมัติให้ตัวแทนฝ่ายนั้น (ไม่ต้องเลือกคน — เห็นใน My Work เอง)
+//
+// ⚠️ **หาโดยดูฝ่าย ไม่ใช่ดู role ตัวเดียว** — เดิมมองหา `role === "staff"` ซึ่งใช้ได้
+// ตอนที่ห้าฝ่ายใช้ role เดียวกัน · ตั้งแต่แยก role รายฝ่าย (2026-08-28) คนฝ่าย PC ถือ
+// role `pc` ⇒ เงื่อนไขเดิมจะหาไม่เจอสักคน แล้วขั้นตอนของฝ่ายจะไม่ถูกมอบหมายเงียบ ๆ
 const STAFF_DEPTS = ["PC", "PD", "WH", "RD", "QC"];
-const deptRep = (users, dept) => users.find((u) => u.role === "staff" && u.department === dept) || null;
+const DEPT_REP_ROLES = [...OPS_ROLES, "rd"];
+const deptRep = (users, dept) => users.find(
+  (u) => DEPT_REP_ROLES.includes(u.role) && u.department === dept,
+) || null;
 
 /** ค่าตั้งต้นของฟอร์มขั้นตอน — ต้องมีครบทุกคีย์ที่ฟอร์มแตะ ไม่งั้น input จะสลับ controlled/uncontrolled */
 /* ไม่มี `dueDate` — ขั้นตอนไทม์ไลน์ไม่มี "กำหนดเสร็จ" แยกจากวันจบตามแผน

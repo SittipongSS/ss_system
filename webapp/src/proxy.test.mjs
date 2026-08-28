@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { can } from '@/lib/permissions';
+import { can, roleOf } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -35,7 +35,7 @@ test('ด่านที่ข้ามได้ต้องแคบ — เป
    ตกจาก OPEN_PAGES ตอนส่ง #1193 ⇒ ด่าน default-deny เด้ง non-admin ทุกคน
    ⚠️ ทดสอบด้วย admin ไม่มีวันเห็น (ผ่านตั้งแต่บรรทัดแรกของ lockedOut) — ต้องไล่ role จริง */
 test('⭐ กล่องแจ้งเตือนของตัวเองต้องเปิดได้ทุก role ที่ล็อกอิน', () => {
-  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'ra', 'staff', 'viewer', 'secretary', 'marketing', 'executive']) {
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'ra', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'secretary', 'marketing', 'executive']) {
     assert.equal(
       lockedOut({ role, extraCaps: [] }, '/notifications', 'GET', false),
       false,
@@ -50,7 +50,7 @@ test('⭐ กล่องแจ้งเตือนของตัวเอง�
 });
 
 test('every signed-in role can open its own account page', () => {
-  const roles = ['ae', 'ac', 'rd', 'ra', 'staff', 'viewer', 'secretary'];
+  const roles = ['ae', 'ac', 'rd', 'ra', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'secretary'];
 
   for (const role of roles) {
     assert.equal(
@@ -73,7 +73,7 @@ test('account and central settings hub are open without broadening restricted ch
 test('holidays keeps its open-page access after moving under /settings', () => {
   // เดิมสองหน้านี้อยู่ /database/* ซึ่งเปิดผ่าน OPEN_PAGES ให้ทุก role ที่ล็อกอิน —
   // ย้าย URL แล้วสิทธิ์ต้องเท่าเดิม (ปฏิทินวันหยุดเป็นข้อมูลอ้างอิงของไทม์ไลน์)
-  for (const role of ['ae', 'ac', 'rd', 'ra', 'staff', 'viewer', 'secretary', 'ae_supervisor']) {
+  for (const role of ['ae', 'ac', 'rd', 'ra', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'secretary', 'ae_supervisor']) {
     assert.equal(lockedOut({ role, extraCaps: [] }, '/settings/holidays', 'GET', false), false, `${role} /settings/holidays`);
   }
   // เปิดเฉพาะสอง path นี้ ไม่ใช่ /settings/* ทั้งชุด
@@ -83,7 +83,7 @@ test('holidays keeps its open-page access after moving under /settings', () => {
 test('ต้นแบบดีไซน์ระบบเปิดให้ทุก role — หน้าตั้งค่าลิงก์ให้ทุกคนอยู่แล้ว', () => {
   /* 🐞 ของเดิม proxy ไม่ได้เปิด path นี้ ⇒ คนที่ไม่ใช่แอดมินกดจากหน้าตั้งค่าแล้วเด้ง
      ไป /home เงียบ ๆ (ผู้ใช้รายงาน 2026-08-21) · หน้านี้ไม่มีข้อมูลจริง ไม่ยิง API เลย */
-  for (const role of ['ae', 'ac', 'rd', 'ra', 'staff', 'viewer', 'secretary', 'ae_supervisor']) {
+  for (const role of ['ae', 'ac', 'rd', 'ra', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer', 'secretary', 'ae_supervisor']) {
     assert.equal(lockedOut({ role, extraCaps: [] }, '/settings/design-preview', 'GET', false), false, `${role} /settings/design-preview`);
   }
   // เปิดเฉพาะหน้านี้ ไม่ใช่ /settings/* ทั้งชุด
@@ -94,7 +94,7 @@ test('คำร้องย้าย /sa/requests → /requests แล้วย�
   // ⚠️ proxy เป็น allowlist แบบ default-deny — prefix ใหม่ที่ไม่ลงทะเบียนจะ 403 **เงียบ**
   // build ผ่าน เทสต์อื่นผ่าน และทดสอบด้วย admin ก็ผ่าน เพราะ admin ข้ามด่านนี้ไปเลย
   // ⇒ ต้องยึดด้วยเทสต์ที่ไล่ role จริงของคนที่ใช้หน้านี้ (ฝ่ายขายเปิด · RD/PC ตอบ)
-  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'staff', 'secretary']) {
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'secretary']) {
     assert.equal(lockedOut({ role, extraCaps: [] }, '/requests', 'GET', false), false, `${role} /requests`);
     assert.equal(lockedOut({ role, extraCaps: [] }, '/requests/DR-1', 'GET', false), false, `${role} /requests/DR-1`);
   }
@@ -108,7 +108,7 @@ test('AE Supervisor can open document standards while other business roles canno
     lockedOut({ role: 'ae_supervisor', extraCaps: [] }, '/settings/document-standards', 'GET', false),
     false,
   );
-  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(
       lockedOut({ role, extraCaps: [] }, '/settings/document-standards', 'GET', false),
       true,
@@ -122,7 +122,7 @@ test('AE Supervisor can open commercial presets while other business roles canno
     lockedOut({ role: 'ae_supervisor', extraCaps: [] }, '/settings/commercial-presets', 'GET', false),
     false,
   );
-  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'staff']) {
+  for (const role of ['senior_ae', 'ae', 'ac', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(
       lockedOut({ role, extraCaps: [] }, '/settings/commercial-presets', 'GET', false),
       true,
@@ -204,10 +204,15 @@ test('secretary/marketing เปิดหน้ารายการสินค
 test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั้งที่ไม่มี costing:edit (regression บั๊ก 403)', () => {
   // บั๊กเดิม: /api/sa/materials กั้นด้วย costing:edit อย่างเดียว แต่ RD/PC ถือแค่
   // costing:quote → กด "แก้ราคา" ในทะเบียนแล้ว 403 ทุกครั้ง ทั้งที่เป็นเจ้าของราคา
-  for (const role of ['rd', 'staff']) {
+  // ⭐ เจ้าของราคาคือ RD (RM) กับ PC (PM) เท่านั้น — ตั้งแต่แยก role รายฝ่าย (2026-08-28)
+  // ฝ่ายโรงงานอื่นไม่ได้ costing:* ติดมาอีกแล้ว (เดิมถือผ่าน role `staff` ร่วมกัน)
+  for (const role of ['rd', 'pc']) {
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), true, `${role} เพิ่มวัสดุ`);
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials/MAT-1/revisions', role, []), true, `${role} ออกราคา`);
     assert.equal(apiWriteAllowed('PATCH', '/api/sa/materials/MAT-1', role, []), true, `${role} รับวัสดุร่าง`);
+  }
+  for (const role of ['pd', 'wh', 'qc', 'ts']) {
+    assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), false, `${role} ต้องไม่ผ่าน`);
   }
   // ฝ่ายขายยังเปิดคำขอ/เสนอวัสดุร่างได้เหมือนเดิม (costing:edit)
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ae', []), true);
@@ -266,7 +271,7 @@ test('ทางสร้างใบยื่นจาก Sale Order เปิ�
     assert.equal(apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []), true, role);
   }
   // role ที่ไม่ได้ทำงานขายยังเขียนไม่ได้ (ด่าน cap ต้องยังทำงาน ไม่ใช่เปิดหมด)
-  for (const role of ['viewer', 'executive', 'marketing', 'secretary', 'rd', 'staff']) {
+  for (const role of ['viewer', 'executive', 'marketing', 'secretary', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     const open = !lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true)
       && apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []);
     assert.equal(open, false, `${role} ต้องไม่ผ่าน`);
@@ -277,7 +282,7 @@ test('ทางสร้างใบยื่นจาก Sale Order เปิ�
 // alias เขียนกำกับไว้ว่า "behaves identically" — สิทธิ์จึงต้องเท่ากันทุกเมธอด/ทุก role
 // ไม่งั้นชื่อที่เรียกตัดสินสิทธิ์ ซึ่งเป็นบั๊กที่หาต้นตอยากมาก
 test('alias /api/tax/* ได้สิทธิ์เท่ากับชื่อเดิมเป๊ะ ทุกเมธอด', () => {
-  const ROLES_ALL = ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ra', 'rd', 'staff', 'secretary', 'marketing', 'executive', 'viewer'];
+  const ROLES_ALL = ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ra', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'secretary', 'marketing', 'executive', 'viewer'];
   const pairs = [
     ['/api/tax/registrations', '/api/excise-registrations'],
     ['/api/tax/registrations/REG-1', '/api/excise-registrations/REG-1'],
@@ -305,7 +310,7 @@ test('alias /api/tax/* ได้สิทธิ์เท่ากับชื่
 // /api/tax/reports เป็นรายงาน (อ่านอย่างเดียว) ไม่ใช่ alias — ห้ามถูกยุบไปเป็น
 // /api/orders ไม่งั้นจะได้สิทธิ์เขียนใบยื่นติดมาโดยไม่มีใครสั่ง
 test('/api/tax/reports ไม่ถูกยุบเป็น alias — อ่านได้ทุก role เขียนไม่ได้', () => {
-  for (const role of ['ae', 'ra', 'viewer', 'staff']) {
+  for (const role of ['ae', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(lockedOut({ role, extraCaps: [] }, '/api/tax/reports', 'GET', true), false, `${role} อ่านรายงาน`);
     assert.equal(lockedOut({ role, extraCaps: [] }, '/api/tax/reports', 'POST', true), true, `${role} เขียนรายงานไม่ได้`);
   }
@@ -321,7 +326,7 @@ test('/api/tax/reports ไม่ถูกยุบเป็น alias — อ่�
 // กระทบหนักสุดที่ "คำร้องข้ามฝ่าย" ซึ่งสร้างที่แนบไฟล์ขึ้นมาเพื่อฝ่ายเหล่านี้โดยเฉพาะ
 // (บรีฟกลิ่น/Mock-up ต้องมีรูปอ้างอิง) — ที่ผ่านมาเลยยังต้องส่งกันทาง LINE เหมือนเดิม
 test('⭐ RD/staff ต้องแนบและลบไฟล์แนบได้ — ด่านหยาบห้ามตัดคนที่มีสิทธิ์จริงรายแถว', () => {
-  for (const role of ['rd', 'staff']) {
+  for (const role of ['rd', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     assert.equal(apiWriteAllowed('POST', '/api/attachments', role, []), true, `${role} แนบไฟล์`);
     assert.equal(apiWriteAllowed('DELETE', '/api/attachments/ATT-1', role, []), true, `${role} ลบไฟล์`);
     // หน้าจอยิงผ่าน namespace /api/master ซึ่ง normalizePath ตัดเป็นชื่อเดียวกัน
@@ -332,7 +337,9 @@ test('⭐ RD/staff ต้องแนบและลบไฟล์แนบไ�
 // ผูกด่านไฟล์แนบเข้ากับด่านคำร้อง: ใครตอบคำร้อง/ตอบราคาได้ ย่อมต้องแนบรูปประกอบได้
 // — ไม่งั้นเพิ่ม role ผู้ตอบใหม่แล้วจะเสียความสามารถนี้ไปเงียบ ๆ อีกรอบ
 test('ทุก role ที่รับ/ตอบคำร้องได้ ต้องผ่านด่านไฟล์แนบด้วย', () => {
-  const answerers = ['rd', 'staff', 'ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin'];
+  // ⭐ ผู้ตอบคำร้องคือ RD · PC · ฝ่ายขาย (+admin) — ฝ่ายโรงงานอื่นไม่ได้ requests:answer
+  // อีกแล้วตั้งแต่แยก role รายฝ่าย (2026-08-28)
+  const answerers = ['rd', 'pc', 'ae', 'ac', 'senior_ae', 'ae_supervisor', 'admin'];
   for (const role of answerers) {
     assert.equal(
       apiWriteAllowed('POST', '/api/sa/requests/DR-1/items', role, []),
@@ -359,7 +366,7 @@ test('ผู้สังเกตการณ์อ่านอย่างเ�
    และแอดมินผ่านตั้งแต่บรรทัดแรกของ lockedOut จึงไม่มีวันเจอ)
    🪤 อาการนี้ดูเหมือน "ยังไม่มีงานค้าง" ซึ่งอ่านผิดยิ่งกว่าเมนูพัง */
 test('ป้ายตัวเลขบนเมนูอ่านได้ทุก role — ไม่งั้นเมนูดูเหมือนไม่มีงานค้าง', () => {
-  for (const role of ['ae', 'ac', 'ra', 'rd', 'finance', 'staff', 'senior_ae', 'ae_supervisor']) {
+  for (const role of ['ae', 'ac', 'ra', 'rd', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'senior_ae', 'ae_supervisor']) {
     const user = { role, extraCaps: [] };
     assert.equal(lockedOut(user, '/api/nav/counts', 'GET', true), false, role);
   }
@@ -370,7 +377,7 @@ test('ป้ายตัวเลขบนเมนูอ่านได้ท�
 test('ทะเบียนจังหวัด/อำเภอ/ตำบล อ่านได้ทุก role — ไม่งั้น dropdown ที่อยู่ว่างเปล่าเงียบ ๆ', () => {
   // default-deny: prefix ใหม่ที่ลืมลง OPEN_READ_APIS จะทำให้ non-admin โดน 403
   // แล้วช่องจังหวัดว่างโดยไม่มีข้อความบอกสาเหตุ (บทเรียนเดียวกับ /api/company-profile)
-  for (const role of ['ae', 'ac', 'rd', 'pc', 'staff']) {
+  for (const role of ['ae', 'ac', 'rd', 'pc', 'pc', 'pd', 'wh', 'qc', 'ts']) {
     const user = { role, extraCaps: [] };
     assert.equal(lockedOut(user, '/api/thai-address', 'GET', true), false, role);
     // เข้าถึงจริงผ่าน /api/master/* ซึ่ง normalizeMaster ตัดเป็นชื่อข้างบน
@@ -404,7 +411,7 @@ test('ทุกระบบใน SYSTEM_CATALOG ต้องเปิดหน�
 });
 
 test('ฝ่าย R&D เปิดโมดูลของตัวเองได้ทั้งหน้าภาพรวมและหน้าลูก', () => {
-  for (const role of ['rd', 'ae', 'staff', 'viewer']) {
+  for (const role of ['rd', 'ae', 'pc', 'pd', 'wh', 'qc', 'ts', 'viewer']) {
     const user = { role, extraCaps: [] };
     assert.equal(lockedOut(user, '/rd', 'GET', false), false, `${role} /rd`);
     assert.equal(lockedOut(user, '/rd/requests', 'GET', false), false, `${role} /rd/requests`);
@@ -422,8 +429,14 @@ test('ฝ่ายบัญชีคอนเฟิร์มงวดและ�
 
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/installments', FN, []), true);
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', FN, []), true);
-  // คน FN ที่ยังถือ role `staff` (ยังไม่ย้าย role) ต้องผ่านด้วย — ถือ payments:confirm เหมือนกัน
-  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'staff', []), true);
+  /* ⚠️ **ฟังก์ชันนี้รับ role ดิบ** — `staff` เก่าจึงตกที่นี่ (role ที่ระบบไม่รู้จัก =
+     อ่านอย่างเดียว) · ตัวแปลงอยู่ที่ **ผู้เรียก**: proxy ส่ง `roleOf(user)` เข้ามา
+     ซึ่งเปลี่ยน staff+FN เป็น `finance` ให้แล้ว ⇒ คนที่ยังถือโทเคนเก่ายังทำงานได้ */
+  assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'staff', []), false);
+  assert.equal(
+    apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', roleOf({ role: 'staff', department: 'FN' }), []),
+    true,
+  );
 });
 
 /* ⚠️ ด่านนี้หยาบโดยตั้งใจ แต่ต้อง **ไม่หยาบเกินขอบเขต** — เปิดแค่ PATCH ของใบเดียว
