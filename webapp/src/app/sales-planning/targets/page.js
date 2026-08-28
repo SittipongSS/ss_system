@@ -12,13 +12,13 @@ import { ChevronDown, ChevronRight, Save, Sparkles, Target, X } from "lucide-rea
 import Workspace from "@/components/ui/Workspace";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
-import { userTeams } from "@/lib/permissions";
+import { userTeams, TEAM_LABELS } from "@/lib/permissions";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { fmtNumber, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 
-const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
+
 const thisYear = () => thisMonth().slice(0, 4);
 const compact = (n) => fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nodeKey = (n) => (n.level === "sa" ? "sa" : n.level === "team" ? `team:${n.team}` : `ae:${n.ownerId}`);

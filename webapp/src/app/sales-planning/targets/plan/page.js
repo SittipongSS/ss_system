@@ -11,7 +11,7 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles, Target, TrendingUp }
 import Workspace from "@/components/ui/Workspace";
 import StandardMoneyInput from "@/components/ui/MoneyInput";
 import { useCan, useRole } from "@/lib/roleContext";
-import { userTeams } from "@/lib/permissions";
+import { userTeams, TEAM_LABELS } from "@/lib/permissions";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, monthsForYear, thisMonth } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
@@ -25,7 +25,7 @@ import {
 } from "@/lib/salesForecast";
 import { planNodes, summarizeOverwrite } from "@/lib/sales/targetPlanWrite";
 
-const TEAM_LABELS = { ODM: "New ODM", KA: "Key Account", SV: "Services" };
+
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
 const fmt = (n) => fmtNumber(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n) => fmtPercent(Number(n || 0) * 100);
