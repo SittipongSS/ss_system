@@ -270,7 +270,7 @@ export default function TimelineWorkspace({
     const failed = {};
     for (const [taskId, body] of entries) {
       try {
-        const res = await fetch(`/api/pm/project-tasks/${taskId}`, {
+        const res = await apiFetch(`/api/pm/project-tasks/${taskId}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
         if (!res.ok) failed[taskId] = body;

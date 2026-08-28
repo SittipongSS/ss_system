@@ -225,7 +225,7 @@ export default function ServiceSchedulePage() {
 
   const saveVisit = async (form) => {
     const editing = !!formVisit;
-    const res = await fetch(editing ? `/api/service/visits/${formVisit.id}` : "/api/service/visits", {
+    const res = await apiFetch(editing ? `/api/service/visits/${formVisit.id}` : "/api/service/visits", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),

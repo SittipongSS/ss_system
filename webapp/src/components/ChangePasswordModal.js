@@ -3,6 +3,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabaseBrowser";
 import { apiCache } from "@/lib/apiCache";
 import Modal from "@/components/Modal";
+import { apiFetch } from "@/lib/apiFetch";
 
 const SUPABASE_CONFIGURED =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -56,7 +57,7 @@ export default function ChangePasswordModal({ open, forced = false, onClose, onC
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/account/password", {
+      const res = await apiFetch("/api/account/password", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

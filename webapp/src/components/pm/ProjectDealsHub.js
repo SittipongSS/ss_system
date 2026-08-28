@@ -487,7 +487,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     setLinking(true);
     setLinkError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${dealId}/link-project`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${dealId}/link-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: p.id, startDate, ...(moving ? { move: true } : {}) }),
@@ -511,7 +511,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     setReorderBusy(true);
     setReorderError("");
     try {
-      const res = await fetch(`/api/pm/projects/${p.id}/deal-order`, {
+      const res = await apiFetch(`/api/pm/projects/${p.id}/deal-order`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dealIds }),

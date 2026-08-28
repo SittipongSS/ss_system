@@ -213,7 +213,7 @@ export default function FinancePaymentsPage() {
   const runAction = useCallback(async (row, action, extra = {}) => {
     setActing(true); setActionError("");
     try {
-      const res = await fetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${row.orderId}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ installmentId: row.id, action, ...extra }),

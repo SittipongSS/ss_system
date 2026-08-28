@@ -102,7 +102,7 @@ export default function UserManagement() {
       ...teamPayload(createForm),
     };
     try {
-      const res = await fetch("/api/users", {
+      const res = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -150,7 +150,7 @@ export default function UserManagement() {
     };
     if (editForm.password) payload.password = editForm.password;
     try {
-      const res = await fetch(`/api/users/${editUser.id}`, {
+      const res = await apiFetch(`/api/users/${editUser.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -171,7 +171,7 @@ export default function UserManagement() {
   const handleDelete = async (u) => {
     if (!(await confirmAction(`ลบผู้ใช้ ${u.email}?\nการกระทำนี้ย้อนกลับไม่ได้`))) return;
     try {
-      const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/users/${u.id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) await fetchUsers();
       else notifyToast.error(data.error || "ลบไม่สำเร็จ");
@@ -187,7 +187,7 @@ export default function UserManagement() {
       `ถอนสิทธิ์เอกสารร่วมทั้งหมดของ ${u.email}?\n\nเขาจะเปิดเอกสาร Google ที่เคยเข้าถึงไม่ได้อีก จนกว่าจะเปิดจากในระบบใหม่ (ถ้ายังมีสิทธิ์เห็นใบนั้นอยู่)`,
     ))) return;
     try {
-      const res = await fetch(`/api/users/${u.id}/revoke-doc-access`, { method: "POST" });
+      const res = await apiFetch(`/api/users/${u.id}/revoke-doc-access`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "ถอนสิทธิ์ไม่สำเร็จ");
       // ⚠️ บอกตัวเลขจริงเสมอ — "สำเร็จ" ลอย ๆ ปิดบังกรณีที่ยังค้างบางใบ
@@ -213,7 +213,7 @@ export default function UserManagement() {
       : `เปิดใช้บัญชี ${u.email} อีกครั้ง?`;
     if (!(await confirmAction(msg))) return;
     try {
-      const res = await fetch(`/api/users/${u.id}`, {
+      const res = await apiFetch(`/api/users/${u.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabled: next }),
@@ -235,7 +235,7 @@ export default function UserManagement() {
     if (!(await confirmAction(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)`))) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/users/${transferUser.id}/transfer`, {
+      const res = await apiFetch(`/api/users/${transferUser.id}/transfer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(transferForm),

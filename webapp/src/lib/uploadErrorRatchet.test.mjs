@@ -35,7 +35,7 @@ function jsFiles(dir, out = []) {
 // ไฟล์ที่ "อัปโหลดจริง" = ยิง POST ไป /api/upload (เส้นสำรอง) · /api/upload/session
 // (ขอทางอัปตรง) · /api/upload/commit (ย้ายจากที่พักเข้า Drive) · การเรียกแบบ DELETE
 // (rollback ไฟล์กำพร้า) ไม่นับ เพราะเป็น best-effort ที่ตั้งใจเงียบ
-const UPLOAD_FETCH = /fetch\(\s*["']\/api\/upload(\/session|\/commit)?["']\s*,\s*\{\s*method:\s*["']POST["']/;
+const UPLOAD_FETCH = /\bapiFetch\(\s*["']\/api\/upload(\/session|\/commit)?["']\s*,\s*\{\s*method:\s*["']POST["']/;
 
 const uploaders = jsFiles(SRC).filter((f) => UPLOAD_FETCH.test(readFileSync(f, 'utf8')));
 

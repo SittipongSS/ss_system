@@ -24,6 +24,7 @@ import { STAGE_LABELS, isClosedStage } from "@/lib/salesPlanning";
 import { ROW_EDITABLE_STAGES } from "@/lib/sales/dealLifecycle";
 import { stageBadge } from "@/components/salesPlanning/ui";
 import styles from "./StageCell.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function StageCell({ deal, canEdit = false, className = "", onSaved }) {
   const [editing, setEditing] = useState(false);
@@ -39,7 +40,7 @@ export default function StageCell({ deal, canEdit = false, className = "", onSav
     if (value === deal.stage) { setEditing(false); return; }
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: value }),

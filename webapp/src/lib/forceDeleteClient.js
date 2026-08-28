@@ -1,4 +1,5 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { apiFetch } from "@/lib/apiFetch";
 // ── Client: บังคับลบสำหรับผู้ดูแลระบบ (break-glass) ───────────────────
 // ลบตามปกติก่อน; ถ้าถูกบล็อกด้วยกฎธุรกิจ (409/400) และผู้ใช้เป็น admin จะดึง
 // พรีวิว (?dryRun=1) มาแสดงว่าจะลบอะไรพ่วงบ้าง แล้วถาม window.confirm ก่อนยิงซ้ำ
@@ -10,7 +11,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 //   cancelled=true → ผู้ใช้กดยกเลิกตอนถามยืนยัน force
 // โยน Error เมื่อ (ก) ผู้ใช้ทั่วไปโดนบล็อก หรือ (ข) force แล้วยังพลาด.
 export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
-  let res = await fetch(baseUrl, { method: 'DELETE' });
+  let res = await apiFetch(baseUrl, { method: 'DELETE' });
   if (res.ok) return { ok: true, forced: false, data: await res.json().catch(() => ({})) };
 
   const payload = await res.json().catch(() => ({}));
@@ -20,7 +21,7 @@ export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
   if (!isAdmin || !businessBlock) throw new Error(blockedMsg);
 
   // พรีวิว cascade (best-effort — ถ้าดึงไม่ได้ก็ยังถาม confirm แบบไม่มีรายการ)
-  const preview = await fetch(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}dryRun=1`, { method: 'DELETE' })
+  const preview = await apiFetch(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}dryRun=1`, { method: 'DELETE' })
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
 
@@ -45,7 +46,7 @@ export async function deleteWithForce(baseUrl, { isAdmin = false } = {}) {
     return { ok: false, cancelled: true };
   }
 
-  res = await fetch(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}force=1`, { method: 'DELETE' });
+  res = await apiFetch(`${baseUrl}${baseUrl.includes('?') ? '&' : '?'}force=1`, { method: 'DELETE' });
   const forcedPayload = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(forcedPayload.error || 'บังคับลบไม่สำเร็จ');
   return { ok: true, forced: true, data: forcedPayload };

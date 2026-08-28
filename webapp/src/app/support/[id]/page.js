@@ -96,7 +96,7 @@ export default function IssueDetailPage() {
     if (busy) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/issues/${id}`, {
+      const res = await apiFetch(`/api/issues/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...extra }),

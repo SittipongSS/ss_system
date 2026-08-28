@@ -185,7 +185,7 @@ export default function SalesHistoryMonthlyPage() {
     try {
       const items = historySaveItems({ rows: rowDefs, values, year, now });
       if (!items.length) throw new Error("ยังไม่มีตัวเลขให้บันทึก");
-      const res = await fetch("/api/sales-planning/history", {
+      const res = await apiFetch("/api/sales-planning/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),

@@ -7,6 +7,7 @@ import DateInput from "@/components/ui/DateInput";
 import { MEETING_FOLLOWUPS, MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import Textarea from "@/components/ui/Textarea";
 import { NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function MeetingFormModal({ open, onClose, onSaved, meeting, departments = [], users = [] }) {
   const editing = !!meeting;
@@ -48,7 +49,7 @@ export default function MeetingFormModal({ open, onClose, onSaved, meeting, depa
         followUp: form.followUp,
         summary: form.summary || null,
       };
-      const res = await fetch(editing ? `/api/mgmt/meetings/${meeting.id}` : "/api/mgmt/meetings", {
+      const res = await apiFetch(editing ? `/api/mgmt/meetings/${meeting.id}` : "/api/mgmt/meetings", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

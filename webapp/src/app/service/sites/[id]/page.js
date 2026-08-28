@@ -123,7 +123,7 @@ export default function ServiceSiteDetailPage({ params }) {
   }, [editingSite, customers.length]);
 
   const saveSite = async (form) => {
-    const res = await fetch(`/api/service/sites/${id}`, {
+    const res = await apiFetch(`/api/service/sites/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -139,7 +139,7 @@ export default function ServiceSiteDetailPage({ params }) {
     const url = editing
       ? `/api/service/sites/${id}/assets/${formAsset.id}`
       : `/api/service/sites/${id}/assets`;
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -155,7 +155,7 @@ export default function ServiceSiteDetailPage({ params }) {
     const url = editing
       ? `/api/service/sites/${id}/zones/${formZone.id}`
       : `/api/service/sites/${id}/zones`;
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -169,7 +169,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeZone = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: `ลบโซน ${pendingDelete.row.name} แล้ว` });
@@ -185,7 +185,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeAsset = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: `ลบเครื่อง ${pendingDelete.row.label} แล้ว` });
@@ -202,7 +202,7 @@ export default function ServiceSiteDetailPage({ params }) {
     const editing = !!formPlan;
     // ⚠️ แก้รอบ **ไม่ลบนัดที่ gen ไปแล้ว** — เติมเพิ่มอย่างเดียว (generate=1)
     // นัดที่คนย้ายวัน/มอบหมายไปแล้วต้องไม่ถูก gen ทับ
-    const res = await fetch(editing ? `/api/service/plans/${formPlan.id}?generate=1` : "/api/service/plans", {
+    const res = await apiFetch(editing ? `/api/service/plans/${formPlan.id}?generate=1` : "/api/service/plans", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -220,7 +220,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const removePlan = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/service/plans/${pendingDelete.row.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/service/plans/${pendingDelete.row.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: "ลบรอบแล้ว — นัดที่สร้างไว้ยังอยู่ในฐานะงานนอกรอบ" });

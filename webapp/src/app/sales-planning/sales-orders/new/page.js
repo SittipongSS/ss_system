@@ -157,7 +157,7 @@ function NewSalesOrderInner() {
       const firstEvidence = [];
       for (const file of firstFiles) { const ref = await uploadOne(file); uploaded.push(ref); firstEvidence.push(ref); }
 
-      const res = await fetch("/api/sales-planning/sales-orders", {
+      const res = await apiFetch("/api/sales-planning/sales-orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -178,7 +178,7 @@ function NewSalesOrderInner() {
       router.push(`/sa/sales-orders/${data.id}`);
     } catch (e) {
       // ⚠️ ล้มแล้วต้องเก็บกวาดไฟล์ที่อัปไปแล้ว ไม่งั้นไฟล์ลอยค้างใน bucket โดยไม่มีใบไหนอ้าง
-      await Promise.allSettled(uploaded.map((att) => fetch("/api/upload", {
+      await Promise.allSettled(uploaded.map((att) => apiFetch("/api/upload", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...att, entityType: "sales_order_confirmation", entityId: quotationId }),

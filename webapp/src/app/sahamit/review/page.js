@@ -8,6 +8,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { fmtDate, fmtNumber } from "@/lib/format";
 import { FLAG_KIND_LABEL, FLAG_STATUS_LABEL } from "@/lib/sahamit/flags";
 import { useCan } from "@/lib/roleContext";
+import { apiFetch } from "@/lib/apiFetch";
 
 const nf = (n) => fmtNumber(n || 0);
 const KIND_COLOR = { drop: "var(--red)", po_filled: "var(--green)", shift_suspect: "var(--blue)", lockedBreak: "var(--amber)" };
@@ -26,7 +27,7 @@ function FlagRow({ flag, onSaved, canEdit }) {
     if (status === "confirmed_shift" && !d.shiftToMonth) { notifyToast.error("ระบุเดือนปลายทางที่เลื่อนไป"); return; }
     setBusy(true);
     try {
-      const res = await fetch(`/api/sahamit/flags/${flag.id}`, {
+      const res = await apiFetch(`/api/sahamit/flags/${flag.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, shiftToMonth: d.shiftToMonth, note: d.note, customerResponse: d.customerResponse }),
       });

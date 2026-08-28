@@ -104,7 +104,7 @@ export default function TodayPage() {
   const startVisit = async (visit) => {
     setStarting(visit.id);
     try {
-      const res = await fetch(`/api/service/visits/${visit.id}`, {
+      const res = await apiFetch(`/api/service/visits/${visit.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "in_progress", stamp: "start" }),
@@ -121,7 +121,7 @@ export default function TodayPage() {
   };
 
   const closeVisit = async (form) => {
-    const res = await fetch(`/api/service/visits/${closing.id}`, {
+    const res = await apiFetch(`/api/service/visits/${closing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       // stamp:'end' = ให้ server ประทับเวลาจบด้วยนาฬิกาไทย · ฟอร์มไม่ส่งเวลามาเอง

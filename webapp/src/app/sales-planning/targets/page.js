@@ -295,7 +295,7 @@ export default function SalesPlanningTargetsPage() {
   const BULK_LIMIT = 24;
   const postItems = async (items) => {
     for (let i = 0; i < items.length; i += BULK_LIMIT) {
-      const res = await fetch("/api/sales-planning/targets/bulk", {
+      const res = await apiFetch("/api/sales-planning/targets/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: items.slice(i, i + BULK_LIMIT) }),

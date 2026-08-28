@@ -66,7 +66,7 @@ export default function AddendumDetailPage() {
   const act = async (path, body, okMessage) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/addenda/${id}${path}`, {
+      const res = await apiFetch(`/api/sales-planning/addenda/${id}${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body || {}),
@@ -105,7 +105,7 @@ export default function AddendumDetailPage() {
   const removeDraft = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/sales-planning/addenda/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/addenda/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "ลบบันทึกไม่สำเร็จ");
       notifyToast.success("ลบร่างบันทึกแล้ว");

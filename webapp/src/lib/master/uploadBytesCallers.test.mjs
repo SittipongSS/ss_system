@@ -80,7 +80,7 @@ test('ทะเบียนต้องไม่มีของตายค้�
 test('ตัวกลางที่ทำครบสองขั้นต้องยังอยู่ และยังบันทึกแถว metadata ต่อให้', () => {
   const helper = readFileSync(path.join(SRC, 'lib/master/attachmentUpload.js'), 'utf8');
   assert.match(helper, /uploadFileBytes\(/, 'ขั้นแรกต้องยังยิงผ่านทางกลาง');
-  assert.match(helper, /fetch\('\/api\/master\/attachments'/, 'ขั้นสองคือขั้นที่ทำให้ไฟล์มีอยู่จริง');
+  assert.match(helper, /apiFetch\('\/api\/master\/attachments'/, 'ขั้นสองคือขั้นที่ทำให้ไฟล์มีอยู่จริง');
   assert.match(
     helper,
     /if \(!res\.ok\)[\s\S]{0,200}method: 'DELETE'/,

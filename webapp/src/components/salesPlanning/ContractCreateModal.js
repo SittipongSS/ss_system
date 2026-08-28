@@ -151,7 +151,7 @@ export default function ContractCreateModal({
   const create = async () => {
     setBusy(true);
     try {
-      const res = await fetch("/api/sales-planning/contracts", {
+      const res = await apiFetch("/api/sales-planning/contracts", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ dealId: activeDeal, kind, quotationId: quoteId || undefined }),

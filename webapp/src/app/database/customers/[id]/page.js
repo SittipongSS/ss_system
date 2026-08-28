@@ -206,7 +206,7 @@ export default function CustomerDetails() {
     };
 
     try {
-      const res = await fetch(`/api/master/customers/${id}`, {
+      const res = await apiFetch(`/api/master/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -265,7 +265,7 @@ export default function CustomerDetails() {
   const toggleActive = async () => {
     const next = !(customer.isActive !== false);
     try {
-      const res = await fetch(`/api/master/customers/${id}`, {
+      const res = await apiFetch(`/api/master/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: next }),
@@ -306,7 +306,7 @@ export default function CustomerDetails() {
     danger: true,
     onConfirm: async () => {
       try {
-        const res = await fetch(`/api/master/customers/${id}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/master/customers/${id}`, { method: "DELETE" });
         if (res.ok) {
           router.push("/database/customers");
         } else {

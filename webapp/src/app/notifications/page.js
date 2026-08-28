@@ -117,7 +117,7 @@ export default function NotificationsPage() {
   };
 
   const patch = async (payload, fallback) => {
-    const res = await fetch("/api/notifications", {
+    const res = await apiFetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

@@ -112,7 +112,7 @@ export default function ProductCategoryImportPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const response = await fetch("/api/product-types/import/preview", { method: "POST", body: form });
+      const response = await apiFetch("/api/product-types/import/preview", { method: "POST", body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "ตรวจไฟล์ไม่สำเร็จ");
       setPreview(payload);
@@ -131,7 +131,7 @@ export default function ProductCategoryImportPage() {
     setBusy("commit");
     setError("");
     try {
-      const response = await fetch("/api/product-types/import/commit", {
+      const response = await apiFetch("/api/product-types/import/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runId: preview.runId, fileHash: preview.fileHash }),

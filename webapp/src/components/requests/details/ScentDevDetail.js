@@ -39,6 +39,7 @@ import {
   PDR_SECTIONS, pdrRailSectionsFromRequest,
 } from "@/lib/requests/pdrFields";
 import styles from "./details.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ScentDevDetail({
   request, board, canEditAttachments, saving, rowStep, onReload, onDeliver, today = null, due = null,
@@ -71,7 +72,7 @@ export default function ScentDevDetail({
     if (!deleteRow) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/sa/requests/${request.id}/items/${deleteRow.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sa/requests/${request.id}/items/${deleteRow.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError(data.error || "ลบรายการไม่สำเร็จ"); return; }
       setDeleteRow(null);

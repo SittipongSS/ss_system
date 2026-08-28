@@ -230,7 +230,7 @@ export default function SalesOrderDetailPage() {
     setBusy("filing");
     setError("");
     setToast(null);
-    const res = await fetch("/api/tax/orders/from-sales-order", {
+    const res = await apiFetch("/api/tax/orders/from-sales-order", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ salesOrderId: id }),
@@ -271,7 +271,7 @@ export default function SalesOrderDetailPage() {
     setErrorActionUrl("");
     setToast(null);
     if (action === "save") setSaveState("saving");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}`, {
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action, ...payload }),
@@ -379,7 +379,7 @@ export default function SalesOrderDetailPage() {
   async function startPaymentTracking() {
     setBusy("start-payments");
     setError("");
-    const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, { method: "POST" });
+    const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     setBusy("");
     if (!res.ok) { setError(data.error || "เริ่มติดตามการชำระไม่สำเร็จ"); return false; }
@@ -400,7 +400,7 @@ export default function SalesOrderDetailPage() {
         evidence = [];
         for (const file of options.files || []) evidence.push(await uploadPaymentEvidence(file));
       }
-      const res = await fetch(`/api/sales-planning/sales-orders/${id}/installments`, {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}/installments`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ installmentId: row.id, action, ...options, files: undefined, evidence }),
@@ -522,7 +522,7 @@ export default function SalesOrderDetailPage() {
   async function deleteOrder(url) {
     setBusy("delete");
     setError("");
-    const res = await fetch(url, { method: "DELETE" });
+    const res = await apiFetch(url, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { setBusy(""); setError(data.error || "ลบใบสั่งขายไม่สำเร็จ"); return false; }
     router.push("/sa/sales-orders");
@@ -545,7 +545,7 @@ export default function SalesOrderDetailPage() {
   async function forceRemove() {
     setBusy("delete");
     setError("");
-    const preview = await fetch(`/api/sales-planning/sales-orders/${id}?dryRun=1`, { method: "DELETE" })
+    const preview = await apiFetch(`/api/sales-planning/sales-orders/${id}?dryRun=1`, { method: "DELETE" })
       .then((r) => r.json()).catch(() => null);
     setBusy("");
     if (!preview) { setError("ขอพรีวิวการลบไม่สำเร็จ"); return; }

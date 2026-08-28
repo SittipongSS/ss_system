@@ -13,6 +13,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { approvalPrompt } from "@/lib/approvalPrompt";
 import { notifyToast } from "@/components/ui/Toast";
 import { MIN_OVERRIDE_REASON } from "@/lib/master/attachmentTypes";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function useApprovalDecision({ endpoint, onDone }) {
   const [blocked, setBlocked] = useState(null); // { id, message }
@@ -21,7 +22,7 @@ export default function useApprovalDecision({ endpoint, onDone }) {
   const [error, setError] = useState("");
 
   const patch = async (id, payload) => {
-    const res = await fetch(`${endpoint}/${id}`, {
+    const res = await apiFetch(`${endpoint}/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

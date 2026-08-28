@@ -170,7 +170,7 @@ export default function CustomerDirectory() {
     };
 
     try {
-      const res = await fetch("/api/master/customers", {
+      const res = await apiFetch("/api/master/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

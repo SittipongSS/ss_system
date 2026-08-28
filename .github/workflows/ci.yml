@@ -93,6 +93,12 @@ jobs:
       - name: Thai-time ratchet
         run: npm run check:thaitime
 
+      # ด่านกัน fetch ดิบฝั่งเบราว์เซอร์ — เส้นที่ไม่ผ่าน apiFetch จะโยน
+      # `TypeError: Failed to fetch` ดิบ ๆ ขึ้น toast (คนใช้อ่านไม่รู้เรื่อง) และไม่มี
+      # การลองใหม่ให้ตอนคอนเนกชันสะดุด ⇒ ทั้งหน้าพังเพราะเน็ตกระตุกครั้งเดียว
+      - name: Browser fetch goes through apiFetch
+        run: npm run check:apifetch
+
       # คอลัมน์ที่ `.select()` อ้างถึงต้องมีอยู่จริงบนฐาน — คอลัมน์ที่พิมพ์ผิด/ถูกลบ
       # ทำให้ PostgREST ตอบ 500 ทั้งเส้น และ JS ไม่มีทางจับได้ตอน build
       - name: Schema drift (select columns)

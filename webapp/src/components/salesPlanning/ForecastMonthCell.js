@@ -19,6 +19,7 @@ import DateInput from "@/components/ui/DateInput";
 import Button from "@/components/ui/Button";
 import { forecastDueState } from "@/lib/sales/forecastDue";
 import styles from "./ForecastMonthCell.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ForecastMonthCell({ deal, currentMonth, canEdit = false, onSaved }) {
   const [editing, setEditing] = useState(false);
@@ -37,7 +38,7 @@ export default function ForecastMonthCell({ deal, currentMonth, canEdit = false,
   const save = async () => {
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         // ส่งเฉพาะช่องเดียว — PATCH เป็น partial update และการส่งทั้งฟอร์มจากตาราง

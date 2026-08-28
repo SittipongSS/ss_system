@@ -8,6 +8,7 @@ import { productSelectOptions } from "@/components/master/productOption";
 import TeamPickerField from "@/components/ui/TeamPickerField";
 import { useTeam, useTeams } from "@/lib/roleContext";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Create or edit an excise registration (master FG product × customer).
 // ลำดับกรอก = ลูกค้า → FG (มติผู้ใช้ 2026-07-22): ผู้ใช้คิดจาก "ขึ้นทะเบียนให้ลูกค้า
@@ -85,7 +86,7 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         editing ? `/api/excise-registrations/${registration.id}` : "/api/excise-registrations",
         {
           method: editing ? "PATCH" : "POST",

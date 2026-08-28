@@ -55,7 +55,7 @@ export default function ShipmentPrepPage() {
   const createPrep = async () => {
     setCreating(true);
     try {
-      const res = await fetch(`/api/pm/projects/${id}/shipment-prep`, { method: "POST" });
+      const res = await apiFetch(`/api/pm/projects/${id}/shipment-prep`, { method: "POST" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: payload.error || "สร้างเอกสารเตรียมส่งของไม่สำเร็จ" });

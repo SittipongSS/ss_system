@@ -305,7 +305,7 @@ export default function TasksPage() {
 
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, assigneeId: me?.id, assignedBy: me?.id, proxyBy: null } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ responsibilityAction: "take" }),
       });
@@ -321,7 +321,7 @@ export default function TasksPage() {
 
   const releaseLegacyProxy = async (t) => {
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxyAction: "release" }),
       });
@@ -524,7 +524,7 @@ export default function TasksPage() {
   const applyStatus = async (t, status, { lateReason, blockedReason } = {}) => {
     setPersonalTasks((prev) => prev.map((x) => x.id === t.id ? { ...x, status } : x));
     try {
-      const res = await fetch(`/api/pm/personal-tasks/${t.id}`, {
+      const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -640,7 +640,7 @@ export default function TasksPage() {
 
   const deletePersonal = async (t) => {
     if (!(await askConfirm({ title: "ลบงาน", message: `ลบงาน "${t.title}" ?`, confirmLabel: "ลบ" }))) return;
-    const res = await fetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/pm/personal-tasks/${t.id}`, { method: "DELETE" });
     if (res.ok) setPersonalTasks((prev) => prev.filter((x) => x.id !== t.id));
     else setToast({ kind: "error", msg: "ลบไม่สำเร็จ" });
   };

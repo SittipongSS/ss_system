@@ -593,14 +593,14 @@ export default function DealOverviewPage() {
       // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback
       // ไปชื่อเดิมของดีลก่อน null (เหมือน logic ในหน้า list)
       const customerName = selected?.name || deal?.customerName || deal?.customer?.name || null;
-      const res = await fetch(`/api/sales-planning/deals/${id}`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...dealForm, customerName }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "บันทึกไม่สำเร็จ");
       if (dealForm.projectId && !deal.projectId) {
-        const linkRes = await fetch(`/api/sales-planning/deals/${id}/link-project`, {
+        const linkRes = await apiFetch(`/api/sales-planning/deals/${id}/link-project`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
@@ -659,7 +659,7 @@ export default function DealOverviewPage() {
     setActionBusy("excise");
     setError("");
     try {
-      const res = await fetch(`/api/excise-registrations/from-project`, {
+      const res = await apiFetch(`/api/excise-registrations/from-project`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: deal.projectId, ...(productId ? { productId } : {}) }),

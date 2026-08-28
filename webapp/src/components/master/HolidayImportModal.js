@@ -15,6 +15,7 @@ import Select from "@/components/ui/Select";
 import SkeletonRows from "@/components/ui/Skeleton";
 import styles from "./HolidayImportModal.module.css";
 import { naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 // ใช้ป้ายกลาง (.ui-badge) ไม่ทำรูปทรงเอง — สีสื่อความหมายเดียวกับทั้งระบบ
@@ -50,7 +51,7 @@ export default function HolidayImportModal({ open, initialYear, onClose, onDone 
     setError("");
     setPreview(null);
     try {
-      const res = await fetch("/api/holidays/import/preview", {
+      const res = await apiFetch("/api/holidays/import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year: Number(targetYear) }),
@@ -98,7 +99,7 @@ export default function HolidayImportModal({ open, initialYear, onClose, onDone 
   const save = async () => {
     setBusy(true);
     try {
-      const res = await fetch("/api/holidays/import/commit", {
+      const res = await apiFetch("/api/holidays/import/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

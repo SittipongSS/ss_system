@@ -26,6 +26,7 @@ import { canImportServiceData } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_LABEL = { ok: "จะสร้าง", skip: "มีอยู่แล้ว", error: "นำเข้าไม่ได้" };
 
@@ -57,9 +58,9 @@ export default function ServiceImportPage() {
       form.append("file", file);
       if (sheetName) form.append("sheetName", sheetName);
       if (expected) form.append("expected", JSON.stringify(expected));
-      return fetch(path, { method: "POST", body: form });
+      return apiFetch(path, { method: "POST", body: form });
     }
-    return fetch(path, {
+    return apiFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: pasted, expected }),
@@ -75,9 +76,9 @@ export default function ServiceImportPage() {
       if (file) {
         form.append("file", file);
         if (nextSheet) form.append("sheetName", nextSheet);
-        res = await fetch("/api/service/import/preview", { method: "POST", body: form });
+        res = await apiFetch("/api/service/import/preview", { method: "POST", body: form });
       } else {
-        res = await fetch("/api/service/import/preview", {
+        res = await apiFetch("/api/service/import/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: pasted }),

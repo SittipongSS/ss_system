@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import { apiFetch } from "@/lib/apiFetch";
 
 // RA "เริ่มยื่น" (received → filing). Forces the เลขที่ใบกำกับภาษี (tax invoice no.)
 // — 1 ใบกำกับ ต่อ 1 ใบเสนอราคา — which is shown in the filing report. The server
@@ -25,7 +26,7 @@ export default function StartFilingDialog({ open, onClose, onDone, order }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/orders/${order.id}`, {
+      const res = await apiFetch(`/api/orders/${order.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "filing", taxInvoiceNumber: taxInvoiceNumber.trim() }),
       });

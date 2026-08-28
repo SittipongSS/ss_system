@@ -35,7 +35,7 @@ export default function MgmtTrashPage() {
   const restore = async (entity, id) => {
     setBusy(true);
     try {
-      const res = await fetch("/api/mgmt/trash", {
+      const res = await apiFetch("/api/mgmt/trash", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entity, id }),
       });
