@@ -6,6 +6,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans,
   exciseFilingBlockMessage, exciseFilingsOfQuotation,
+  contractsOfQuotation, contractBlockMessage,
 } from '@/lib/forceDelete';
 import { canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
@@ -430,6 +431,20 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // เป็น 500). ดักก่อนทุกเส้นทาง ทั้งลบปกติและ ?force=1
   const filings = await exciseFilingsOfQuotation(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบเสนอราคา'), 409);
+
+  /* 🐞 รูฝาแฝดของดีล (พบ 2026-08-28): `quotationForcePreview` ตรวจสัญญาและตอบ
+     `blocked` ถูก แต่เส้นลบจริงไม่ตรวจ ⇒ `force_delete_quotation` ล้มด้วย 23503
+     (`sales_contracts_quotationId_fkey`) แล้วตกลง catch ที่ตอบข้อความชี้ไป
+     "ใบยื่นชำระภาษี" ทั้งที่ตัวขวางคือสัญญา
+     ⚠️ ไม่ครอบด้วย force — สัญญาเป็นเอกสารผูกพันที่ break-glass ก็ข้ามไม่ได้ (mig 0278) */
+  let quoteContracts;
+  try {
+    quoteContracts = await contractsOfQuotation(supabase, id);
+  } catch (contractError) {
+    // ตรวจไม่ได้ ≠ ไม่มี — หยุดไว้ก่อน ดีกว่าเดินหน้าลบแล้วพบทีหลังว่ามีสัญญาอยู่
+    return fail(contractError.message, 500);
+  }
+  if (quoteContracts.length) return fail(contractBlockMessage(quoteContracts, 'ใบเสนอราคา'), 409);
 
   // หลักฐานลายเซ็น (mig 0125) เป็น immutable child ที่อ้างกลับมาใบนี้ — ใบที่เคย
   // อนุมัติ+เซ็นห้าม hard-delete แม้ pointer บนใบถูกล้างหลังแก้/ยกเลิก (Decision 0008).

@@ -74,8 +74,22 @@ test('ใบเสนอราคา/ใบสั่งขาย ตรวจผ
 
 test('ใบที่ไม่มีดีล = พิสูจน์สิทธิ์ไม่ได้ → ปฏิเสธ ไม่ใช่ปล่อยผ่าน', async () => {
   const orphan = { id: 'SO-1', deal: null };
-  const { response } = await loadScoped(db(orphan), 'sales_orders', 'SO-1', admin);
+  const { response } = await loadScoped(db(orphan), 'sales_orders', 'SO-1', aeOdm);
   assert.equal(response.status, 403);
+});
+
+/* ⭐ **ยกเว้นผู้ดูแลระบบ** (มติผู้ใช้ 2026-08-28 "ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย")
+   แถวกำพร้าคือเคสเดียวที่ต้องใช้แอดมินเข้าไปเก็บกวาดจริง ๆ แต่ของเดิมปฏิเสธแอดมิน
+   ไปพร้อมกับทุกคน ⇒ ไม่มีใครในระบบลบแถวกำพร้าได้เลย */
+test('⭐ แถวกำพร้า: แอดมินเข้าถึงได้ · คนอื่นได้ข้อความที่บอกว่าเป็นแถวไร้ต้นสังกัด', async () => {
+  const orphan = { id: 'SO-1', deal: null };
+  const adminRes = await loadScoped(db(orphan), 'sales_orders', 'SO-1', admin);
+  assert.equal(adminRes.response, undefined);
+  assert.equal(adminRes.row.id, 'SO-1');
+
+  const denied = await loadScoped(db(orphan), 'sales_orders', 'SO-1', aeOdm);
+  const body = await denied.response.json();
+  assert.match(body.error, /ไม่มีดีลต้นสังกัด/, 'ข้อความต้องชี้ว่าเป็นแถวกำพร้า ไม่ใช่ forbidden เปล่า ๆ');
 });
 
 test('โหมด view กว้างกว่า edit — คนนอกทีมที่เห็นได้ ต้องแก้ไม่ได้', async () => {

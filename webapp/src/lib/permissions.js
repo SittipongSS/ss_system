@@ -324,7 +324,13 @@ const SUPERUSER_CAPS = [
   'sales:view', 'sales:act', 'sales:delete',
   'ra:view', 'ra:approve',
   'history:view', 'audit:view',
-  'users:manage',
+  'users:manage', 'users:view',
+  // ⭐ ตอบคำร้องของฝ่าย — admin ถือไว้ด้วยเพราะ **"admin ทำได้ทุกอย่าง"** (มติผู้ใช้
+  //   2026-08-28) · ก่อนหน้านี้ไม่มี ทำให้ต้องเขียน `caps: ['requests:answer',
+  //   'users:manage']` ตามเมนูฝ่าย RD/FN เพื่อให้ admin เห็นเมนู ซึ่งเป็นทางอ้อม
+  //   ที่อ่านแล้วไม่รู้เรื่อง · ตัวแคบจริงยังเป็น canAnswerRequestsFor (ต้องอยู่ฝ่ายนั้น
+  //   หรือเป็น superuser) เหมือนเดิม
+  'requests:answer',
   'master:manage',  // edit category taxonomy (product_types) + master config
   'pm:view', 'pm:edit',
   'salesplan:view', 'salesplan:edit', 'salesplan:review', 'salesplan:target', 'salesplan:lead',
@@ -356,6 +362,11 @@ const ADMIN_SYSTEM_CAPS = ['users:manage', 'master:manage', 'audit:view'];
 const SALES_HEAD_EXCLUDED = [
   ...ADMIN_SYSTEM_CAPS, 'ra:approve', 'products:margin', 'mgmt:view', 'mgmt:edit',
   'costing:approve', 'costing:quote',
+  // ⚠️ สองตัวนี้เพิ่งเติมเข้า SUPERUSER_CAPS ตอนให้ admin ถือครบทุกสิทธิ์ (2026-08-28)
+  //    ต้องกันออกจากหัวหน้าฝ่ายขาย ไม่งั้น **ae_supervisor ได้ของใหม่ไปด้วยเงียบ ๆ**:
+  //    `users:view` เปิดหน้า /users + /api/users ให้เขาทันที (proxy.js) ซึ่งไม่เคยเป็น
+  //    สิทธิ์ของเขา · `requests:answer` เขาผ่านทาง isSuperuser อยู่แล้วจึงไม่ต้องถือ cap
+  'users:view', 'requests:answer',
 ];
 
 // Sales head (ae_supervisor): every remaining sales/RA-view/PM capability

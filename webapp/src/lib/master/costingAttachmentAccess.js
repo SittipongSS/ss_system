@@ -92,6 +92,11 @@ export async function canAttachToCosting(supabase, entityType, parent, user) {
 // ปิด/ยกเลิกแล้วถือเป็นหลักฐาน ไม่ให้แก้ของแนบย้อนหลัง (กฎเดียวกับเธรดใน updateAccess)
 function canAttachToRequest(req, user) {
   if (!req) return false;
+  /* ⭐ ผู้ดูแลระบบผ่านก่อนด่านสถานะ (มติผู้ใช้ 2026-08-28) — ของเดิมตัดที่บรรทัด
+     สถานะ **ก่อน** ถึง canManageRequest ที่มีทางลัด superuser ⇒ แอดมินเก็บกวาด
+     ไฟล์ที่แนบผิดใบบนคำร้องที่ปิดไปแล้วไม่ได้เลย ซึ่งเป็นเคสเดียวที่ต้องใช้แอดมินจริง
+     ⚠️ `role === 'admin'` ไม่ใช่ isSuperuser — หัวหน้าฝ่ายขายไม่ควรแก้ของแนบบนใบที่ปิดแล้ว */
+  if (user?.role === 'admin') return true;
   if (['closed', 'cancelled'].includes(req.status)) return false;
   return canManageRequest(user, req) || canAnswerRequest(user, req);
 }

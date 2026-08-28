@@ -465,13 +465,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!canDeleteRecord(user, 'projects', project)) {
     return forbidden();
   }
-  // ด่านหลังปิด (เฟส F): โครงการที่ปิดอนุมัติแล้วลบไม่ได้ (รวม force) — reopen ก่อน
-  const closedErr = projectWriteBlockedError(project);
-  if (closedErr) return conflict(closedErr);
-
   // force = ทางลัดผู้ดูแลระบบ (admin): ลบโครงการที่ยังผูกดีลได้ (ดีลจะถูกปลดลิงก์
   // projectId→null ผ่าน FK SET NULL — ไม่กำพร้า) + ลบทะเบียนสรรพสามิตพ่วง.
   const force = isForceRequest(req) && canForceDelete(user);
+
+  /* ด่านหลังปิด (เฟส F): โครงการที่ปิดอนุมัติแล้วลบไม่ได้ — ต้อง reopen ก่อน
+     ⭐ **ยกเว้นผู้ดูแลระบบที่กด ?force=1** (มติผู้ใช้ 2026-08-28 "ขอสิทธิ์ทุกอย่างให้
+     แอดมิน รวมลบด้วย") — ของเดิมด่านนี้อยู่ **ก่อน** ตัวแปร force และคอมเมนต์กำกับ
+     ไว้เองว่า "รวม force" ⇒ แอดมินต้องไปเปิดโครงการที่ปิดแล้วใหม่ก่อนเสมอ ซึ่งเป็น
+     การแก้สถานะเอกสารจริงเพื่อจะลบทิ้ง = ทิ้งร่องรอยผิดไว้ในประวัติ */
+  const closedErr = projectWriteBlockedError(project);
+  if (closedErr && !force) return conflict(closedErr);
 
   // ผูกดีลอยู่ (กี่ใบก็ตาม — เฟส B หลายดีลต่อโครงการ) → ปฏิเสธ ให้ไปลบดีลก่อน
   // กันการลบ project ทิ้งไว้ให้ดีลกำพร้า. โครงการกำพร้า (0 ดีล) เท่านั้นที่ลบตรงนี้ได้.

@@ -14,7 +14,9 @@ const APPROVABLE_STATUSES = ['draft', 'sent', 'rejected'];
 // อิเล็กทรอนิกส์ทั้งที่ต้องอนุมัติเอกสาร (mig 0125). อ่านอย่างเดียวล้วน — ลายเซ็นเป็น
 // ของส่วนตัว เจ้าตัวต้องอัปเองที่ /account เท่านั้น (ADR 0006) รายงานนี้แค่ชี้เป้า
 // gate เดียวกับ GET /api/users ผ่าน canViewSignatureCoverage (users:manage หรือ grant
-// users:view) — เช็ค users:view ตัวเดียวไม่ได้ เพราะไม่มี role ไหนถือ cap นั้นเลย
+// users:view) — เดิมเช็ค users:view ตัวเดียวไม่ได้ เพราะไม่มี role ไหนถือ cap นั้นเลย
+// (แก้แล้ว 2026-08-28: admin ถือครบทุก cap) แต่ยังต้องเช็คสองตัวอยู่ดี เพราะ
+// users:view เป็น grant รายคนที่ role ปกติไม่มี
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });

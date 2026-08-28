@@ -415,11 +415,13 @@ export default function AppLayout({ children }) {
       // ที่เคยหลุดไปอยู่ใต้เมนูระบบภาษี) · เทสต์ "ทุกระบบต้องมีกลุ่มเมนูของตัวเอง"
       // ใน navMenuNames.test.mjs กันไม่ให้ระบบตัวถัดไปซ้ำรอย
       //
-      // ⚠️ **caps ต้องมี `users:manage` ด้วย** — admin ไม่ถือ `requests:answer`
-      // (ตรวจ 2026-08-08) ⇒ ใส่ cap เดียวแล้ว admin จะเห็นการ์ดระบบแต่เมนูถูกกรอง
+      // ⚠️ เคยต้องพ่วง `users:manage` เข้าไปใน caps เพราะ admin
+      // **ไม่ถือ `requests:answer`** (ตรวจ 2026-08-08) ใส่ cap เดียวแล้วเมนูถูกกรอง
       // ทิ้งจนเหลือศูนย์ แล้ว `.filter((g) => g.items.length > 0)` ตัดทั้งกลุ่ม =
-      // แถบว่างเหมือนเดิม · ตัวแคบจริงคือ `visible: canAccessRd` ซึ่งเป็นด่าน
-      // **ตัวเดียวกับที่การ์ดระบบใช้** จึงเพี้ยนหากันไม่ได้
+      // แถบว่าง · **แก้ที่ต้นเหตุแล้ว 2026-08-28** — admin ถือทุก cap ในระบบ
+      // (adminHoldsEveryCap.test.mjs คุมไว้) จึงเหลือ cap เดียวตามความหมายจริง
+      // ตัวแคบจริงคือ `visible: canAccessRd` ซึ่งเป็นด่าน **ตัวเดียวกับที่การ์ด
+      // ระบบใช้** จึงเพี้ยนหากันไม่ได้
       //
       // ⚠️ ทะเบียนกลิ่น/สูตรไม่อยู่ในเมนูนี้ทั้งที่ RD เป็นคนเขียน — มันเป็นข้อมูล
       // กลางที่อยู่ใต้ "ฐานข้อมูล" (ม-30) · ลิงก์ข้ามระบบจะสลับเปลือกทั้งแถบแล้ว
@@ -432,7 +434,7 @@ export default function AppLayout({ children }) {
            ⚠️ ซ่อนทิ้งไม่ได้ — คนที่เคยเห็นจะนึกว่าสิทธิ์ตัวเองหาย (เหตุผลเดียวกับการ์ดระบบ)
            ⚠️ **ต้องแก้ `landing` ของการ์ดระบบ `rd` พร้อมกันเสมอ** ไม่งั้นกดการ์ดแล้ว
            เด้งเข้าหน้าที่เมนูบอกว่ากดไม่ได้ — systems.test.mjs กันไว้แล้ว */
-        { href: '/rd', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, disabled: true, match: (p) => p === '/rd' },
+        { href: '/rd', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['requests:answer'], visible: canAccessRd, disabled: true, match: (p) => p === '/rd' },
         // ชื่อต้องไม่ซ้ำกับ "คำร้อง" ของระบบบริหารงานขาย — คนละมุมของตารางเดียวกัน:
         // ฝั่งขาย = ใบที่ฉันเปิด · ฝั่งนี้ = ใบที่ส่งมาถึงฝ่ายฉัน (กฎเดียวกับที่
         // "งานของฉัน" กับ "นัดของฉัน" เคยชนกันแล้วคนเปิดผิดหน้าประจำ)
@@ -444,7 +446,7 @@ export default function AppLayout({ children }) {
            *"บัญชี กับ RD ไม่มีที่ต้องเปิดเอง มีแต่ SA ที่ต้องเปิดมาหา"* ⇒ แท็บ
            "ที่ฉันเปิด" ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ประวัติงานของฝ่าย
            อยู่ในแท็บ "ประวัติ" ของคิวนี้แล้ว */
-        { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
+        { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
       ],
     },
     {
@@ -481,7 +483,7 @@ export default function AppLayout({ children }) {
            ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
         /* `match` กินใบคำร้องด้วย และ **ไม่มีเมนู "คำร้อง" (คิวรวม)** — เหตุผลเดียว
            กับของ RD ข้างบน (มติผู้ใช้ 2026-08-22: บัญชีไม่เปิดคำร้องเอง) */
-        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') || p.startsWith('/requests') },
+        { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') || p.startsWith('/requests') },
         /* ⭐ เอกสารขายที่ฝ่ายบัญชีทำงานด้วยจริง — **ย้ายมาจากกลุ่ม "บริหารงานขาย"**
            (มติผู้ใช้ 2026-08-22) · กฎข้อ 7 (2026-08-13) ตัดสินไปแล้วว่าเมนูของ FN
            คือใบเสนอราคา · ใบสั่งขาย · คำร้อง — แต่รายการเหล่านั้นถูกประกาศไว้ใน
