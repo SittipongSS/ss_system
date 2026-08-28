@@ -1,4 +1,4 @@
-import { can, hasTeam, inScope, isReadOnlyObserver, isSuperuser, primaryTeam } from '@/lib/permissions';
+import { can, hasTeam, inScope, isReadOnlyObserver, isSuperuser, primaryTeam, TEAMS } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberSlots, publishedNumberingPattern } from '@/lib/documentStandards';
@@ -309,8 +309,9 @@ export function dealTypeOf(deal) {
   return normalizeDealType(deal?.dealType || deal?.metadata?.projectType);
 }
 
-// ลำดับทีมมาตรฐานทั้งระบบ: KA → ODM → SV (ทีมที่ไม่รู้จักไปท้ายสุด).
-export const TEAM_ORDER = ['KA', 'ODM', 'SV'];
+/* ลำดับทีมมาตรฐานทั้งระบบ (ทีมที่ไม่รู้จักไปท้ายสุด)
+   ⚠️ **ไม่ประกาศรายการเอง** — ชี้ไปที่ `TEAMS` ตัวเดียว (งวด T-5) */
+export const TEAM_ORDER = TEAMS;
 export function teamRank(team) {
   const i = TEAM_ORDER.indexOf(team);
   return i < 0 ? TEAM_ORDER.length : i;

@@ -19,7 +19,8 @@
     "check:rowcap": "node scripts/check-row-cap.mjs",
     "check:thaitime": "node scripts/check-thai-time.mjs",
     "check:refs": "node scripts/check-reference-tables.mjs",
-    "deploy:status": "node scripts/deploy-status.mjs"
+    "deploy:status": "node scripts/deploy-status.mjs",
+    "check:teams": "node scripts/check-team-registry.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",
