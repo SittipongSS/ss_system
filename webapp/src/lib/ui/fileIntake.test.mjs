@@ -71,6 +71,7 @@ const ALLOWED = new Set([
   "components/service/CloseVisitSheet.js",
   "components/sahamit/ForecastForm.js",
   "app/database/product-categories/import/page.js",
+  "app/service/import/page.js",
 ]);
 
 test("จุดแนบไฟล์ใหม่ต้องผ่าน useFileIntake ไม่เขียน <input type=\"file\"> เอง", () => {

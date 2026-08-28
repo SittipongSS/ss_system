@@ -736,6 +736,20 @@ export function canEditService(user) {
   return TEAM_ROLES.includes(user?.role) && hasTeam(user, SERVICE_SALES_TEAM);
 }
 
+// นำเข้าข้อมูลเก่าเป็นก้อน (F-8) — **แคบกว่าการแก้รายใบ**
+// เขียนทีเดียวหลายร้อยแถวและไม่มีปุ่ม undo (ระบบไม่มีถังขยะ — กู้ได้จาก audit_logs
+// เท่านั้น) ⇒ ให้เฉพาะระดับหัวหน้าขึ้นไปที่ทำงานบริการอยู่จริง
+//
+// ⚠️ **คูณกับ canEditService ไม่ได้แคบ ae_supervisor เลย** — canEditService คืน true
+//    ให้ isSuperuser ตั้งแต่บรรทัดแรก ⇒ ต้องถามฝ่าย/ทีมของตัวเองซ้ำที่นี่
+//    ไม่งั้นหัวหน้าสายขายที่ไม่เกี่ยวกับงานบริการเลย เขียนทะเบียนไซต์ทั้งก้อนได้
+export function canImportServiceData(user) {
+  if (!canEditService(user)) return false;
+  if (user?.role === 'admin') return true;              // ผู้ดูแลระบบ (คนตั้งระบบตอนแรก)
+  if (!isSuperuser(user?.role)) return false;           // ช่าง/คนขายรายคนไม่ได้
+  return departmentOf(user) === SERVICE_DEPARTMENT || hasTeam(user, SERVICE_SALES_TEAM);
+}
+
 // คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ฝ่ายช่าง TS **หรือ** ทีมขาย SV
 //
 // 🐞 บั๊กจริงบน prod (2026-07-31): ของเดิมกรองเฉพาะฝ่าย TS แต่ **ยังไม่มีบัญชี
