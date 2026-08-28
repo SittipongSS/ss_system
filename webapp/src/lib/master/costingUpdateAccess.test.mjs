@@ -14,7 +14,7 @@ const EXEC = { id: 'U-EX', role: 'executive', department: 'EX' };
 const OWNER = { id: 'U-AE', role: 'ae', department: 'SA', team: 'KA' };
 const OTHER_SALES = { id: 'U-AE2', role: 'ae', department: 'SA', team: 'KA' };
 const RD = { id: 'U-RD', role: 'rd', department: 'RD' };
-const PC = { id: 'U-PC', role: 'staff', department: 'PC' };
+const PC = { id: 'U-PC', role: 'pc', department: 'PC' };
 const ADMIN = { id: 'U-AD', role: 'admin', department: 'SA' };
 
 // ── เคสขอราคาวัสดุ ───────────────────────────────────────────────────────

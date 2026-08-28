@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, NA } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, isoDateToDisplay, normalizeTime, parseNumberInput, isBlank, naText, fmtMoneyOrDash, NA } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -177,4 +177,16 @@ test("naText: ค่าที่เก็บคำว่า N/A มาจาก�
 test("naText ไม่ใช่ `value || NA` — เลข 0 คือจุดที่ต่างกัน", () => {
   assert.notEqual(naText(0), 0 || NA);
   assert.equal(0 || NA, NA, "`||` กลืน 0 ทิ้ง — นี่คือเหตุผลที่ต้องมี naText");
+});
+
+/* 🐞 fmtMoney(null) คืน ฿0.00 ⇒ "ยังไม่ตั้งราคา" กับ "ตั้งไว้ศูนย์บาท" หน้าตาเหมือนกัน
+   บนทะเบียนสินค้ามีของจริงทั้งสองแบบปนกัน (พบตอน UAT บัญชี FN 28/08) */
+test("fmtMoneyOrDash: ยังไม่มีราคา = ขีด · ศูนย์บาท = ฿0.00", () => {
+  for (const v of [null, undefined, "", NaN, "N/A", "-"]) {
+    assert.equal(fmtMoneyOrDash(v), NA, `${JSON.stringify(v)} ควรเป็นขีด`);
+  }
+  assert.equal(fmtMoneyOrDash(0), fmtMoney(0));      // ศูนย์คือคำตอบ ไม่ใช่การไม่มีคำตอบ
+  assert.equal(fmtMoneyOrDash("0"), fmtMoney(0));
+  assert.equal(fmtMoneyOrDash(100), fmtMoney(100));
+  assert.equal(fmtMoneyOrDash(-50.5), fmtMoney(-50.5)); // ติดลบยังเป็นตัวเลข
 });

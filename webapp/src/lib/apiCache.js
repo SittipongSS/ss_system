@@ -1,3 +1,5 @@
+import { apiFetch } from "./apiFetch";
+
 // In-memory cache for API list data, shared across client-side navigations
 // (this module loads once per browser session). Enables a stale-while-
 // revalidate pattern: pages show cached data instantly, then refresh in the
@@ -23,7 +25,9 @@ export async function cachedFetchJson(url, ttlMs = 2 * 60 * 1000) {
   const at = fetchedAt.get(url);
   if (apiCache.has(url) && at && Date.now() - at < ttlMs) return apiCache.get(url);
   if (inflight.has(url)) return inflight.get(url);
-  const request = fetch(url)
+  // apiFetch = ลองใหม่ 1 ครั้งเมื่อต่อไม่ติด/เจอ 502-504 (GET ลองซ้ำได้ ไม่มีผลข้างเคียง)
+  // — master data ที่โหลดตอนเปิดหน้าไม่ควรพังทั้งหน้าเพราะคอนเนกชันสะดุดครั้งเดียว
+  const request = apiFetch(url)
     .then(async (r) => {
       if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `โหลดข้อมูลไม่สำเร็จ (${r.status})`);
       const json = await r.json();

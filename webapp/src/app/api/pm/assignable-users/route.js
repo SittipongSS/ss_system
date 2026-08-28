@@ -18,7 +18,7 @@ async function loadAssignableUsers(supabase) {
     const users = data?.users || [];
     if (!users.length) break;
     for (const u of users) {
-      const role = normalizeRole(u.app_metadata?.role) || null;
+      const role = normalizeRole(u.app_metadata?.role, u.app_metadata?.department) || null;
       if (!role || role === 'user') continue; // ข้าม account ที่ยังไม่กำหนดบทบาท
       rows.push({
         id: u.id,

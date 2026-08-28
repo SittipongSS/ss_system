@@ -56,7 +56,7 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้ดูแลคนอื่น' };
 
-  const role = normalizeRole(user.app_metadata?.role) || null;
+  const role = normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || null;
   if (!PROJECT_OWNER_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้ดูแลโครงการต้องเป็น AE / Senior AE — โครงการที่ตกไปอยู่กับผู้ประสาน/ผู้กำกับ ไม่มี AE คนไหนเห็นในลิสต์ตัวเอง' };
   }

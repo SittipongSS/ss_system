@@ -2,6 +2,7 @@
 // Approval-status badge for master data (customers & products) — migration 0027.
 // Legacy/NULL status is treated as 'approved' (rows created before the workflow).
 import { ActionButton } from "@/components/ui/ActionButtons";
+import { approvalStatusOf } from "@/lib/master/approvalStatus";
 
 export const APPROVAL_META = {
   pending: { label: "รออนุมัติ", cls: "status-pill warning" },
@@ -9,9 +10,9 @@ export const APPROVAL_META = {
   rejected: { label: "ไม่อนุมัติ", cls: "status-pill danger" },
 };
 
-export function approvalStatusOf(record) {
-  return record?.approvalStatus || "approved";
-}
+// นิยามอยู่ที่ lib/master/approvalStatus (ฝั่ง server ต้องใช้ตัวเดียวกัน) —
+// re-export ไว้ที่นี่เพื่อไม่ให้จอที่ import จากไฟล์นี้อยู่แล้วต้องแก้ตาม
+export { approvalStatusOf };
 
 export function ApprovalBadge({ status }) {
   const meta = APPROVAL_META[status || "approved"] || APPROVAL_META.approved;

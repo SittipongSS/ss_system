@@ -42,7 +42,7 @@ export async function POST(request, { params }) {
   if (toErr || !toRes?.user) return Response.json({ error: 'ไม่พบผู้รับโอน' }, { status: 404 });
 
   const toUser = toRes.user;
-  const toRole = normalizeRole(toUser.app_metadata?.role) || null;
+  const toRole = normalizeRole(toUser.app_metadata?.role, toUser.app_metadata?.department) || null;
   const toDisabled = !!toUser.banned_until && new Date(toUser.banned_until) > new Date();
   if (!toRole || toRole === 'user' || toDisabled) {
     return Response.json({ error: 'ผู้รับโอนต้องเป็นบัญชีที่ใช้งานอยู่และมีบทบาทแล้ว' }, { status: 400 });

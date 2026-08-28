@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
+import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, roleOf } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -141,14 +141,21 @@ export async function proxy(request) {
   // (users:manage) reach everything. Non-admins also get the hub (/home), their
   // own-account API, and the master/holiday data the PM forms depend on. The
   // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
-  if (user && !isLogin && lockedOut({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
+  /* ⚠️ **แปลง role ก่อนส่งเข้าด่าน** — `roleOf` เปลี่ยน `staff` เก่าเป็น role ของฝ่ายเขา
+     (2026-08-28) · ด่านสองตัวข้างล่างรับแค่ role ไม่ได้มองฝ่ายเอง ⇒ ถ้าไม่แปลงตรงนี้
+     คนที่ยังถือโทเคนเก่าจะโดน 403 ทั้งที่ยังไม่ได้ทำอะไรผิด จนกว่าจะ login ใหม่ */
+  const effectiveRole = roleOf({
+    role: user?.app_metadata?.role,
+    department: user?.app_metadata?.department,
+  });
+  if (user && !isLogin && lockedOut({ role: effectiveRole, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
-  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role, user.app_metadata?.extraCaps)) {
+  if (user && isApi && !apiWriteAllowed(request.method, path, effectiveRole, user.app_metadata?.extraCaps)) {
     return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
   }
 
@@ -345,9 +352,10 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
   // วางแผนผลิต — ระบบแยกจาก PM ของฝ่ายขาย (มติ 2026-07-30). คนวางคิวคือฝ่าย PC/PD
-  // ซึ่งเป็น role `staff` **ไม่มี pm:edit** จึงต้องมีกฎของตัวเอง
-  // ⚠️ ด่านนี้หยาบ (เห็นแค่ role) — `staff` ทุกฝ่ายผ่านตรงนี้หมด รวม WH/QC
-  //    **ตัวกั้นจริงคือ canEditProduction() ใน handler** ที่เห็น department
+  // ซึ่ง **ไม่มี pm:edit** จึงต้องมีกฎของตัวเอง
+  // ⚠️ ด่านนี้หยาบ (เห็นแค่ role ไม่เห็น department) — ตั้งแต่แยก role รายฝ่าย
+  //    (2026-08-28) มีแค่ `pc`/`pd` ที่ถือ production:edit จึงแคบพอสมควรแล้ว
+  //    แต่ **ตัวกั้นจริงยังเป็น canEditProduction() ใน handler** ที่เห็น department
   //    (รูปเดียวกับ /api/sahamit ที่ proxy มองไม่เห็น team) ห้ามลืมด่านนั้น
   if (path.startsWith('/api/production')) {
     return canUser({ role, extraCaps }, 'production:edit');
@@ -359,7 +367,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   }
   if (path.startsWith('/api/pm')) {
     if (can(role, 'pm:edit')) return true;
-    // staff/rd (ฝ่ายที่ไม่ใช่ sales) ต้องใช้ "งานของฉัน" ได้จริง — เปิดเฉพาะสอง
+    // ฝ่ายที่ไม่ใช่ sales (PC/PD/WH/QC/TS/RD) ต้องใช้ "งานของฉัน" ได้จริง — เปิดเฉพาะสอง
     // เส้นที่ handler บังคับสิทธิ์รายแถวเองครบ: งานส่วนตัว (canAssignTask — มอบได้
     // เฉพาะตัวเอง) + อัปเดตขั้นตอนรายตัว (pmTaskEditTier 'workflow' — เฉพาะงานที่
     // มอบให้เขา/ฝ่ายเขา แก้ได้แค่สถานะ/โน้ต). viewer คงอ่านอย่างเดียวทุกเส้น.
@@ -464,7 +472,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // order receipts = sales filing / RA tax approval). The route handler then
   // enforces the precise per-entity row scope (canEditRecord on the parent).
   //
-  // 🐞 ลิสต์นี้เคยมีแต่ cap ของ "ฝ่ายขาย + master data + mgmt" ⇒ **RD และ staff
+  // 🐞 ลิสต์นี้เคยมีแต่ cap ของ "ฝ่ายขาย + master data + mgmt" ⇒ **RD และฝ่ายโรงงาน
   // (PC/PD/WH/QC/TS) แนบไฟล์ไม่ได้เลยทั้งระบบ** ทั้งที่ทะเบียนไฟล์แนบเปิดทางให้
   // ครบทุกจุดแล้ว: /api/upload ผ่าน (ตกท้ายไฟล์นี้ = ทุกคนที่ล็อกอิน) ไฟล์ขึ้น Drive
   // จริง แล้วมาตายตอนบันทึกแถวที่ด่านนี้ ⇒ ระบบลบไฟล์ทิ้ง แล้วเด้งคำว่า "forbidden"

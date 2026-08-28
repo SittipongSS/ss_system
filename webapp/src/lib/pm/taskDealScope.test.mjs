@@ -29,7 +29,7 @@ test('ฝ่ายที่ไม่มีทีม (RD/PC/WH/QC/TS/FN) เล�
 // ⭐ ไม่มีข้อยกเว้นตาม role — รอบแรกยกเว้น admin/เลขาไว้ แล้วกลายเป็นว่าบัญชีที่
 // สร้างงานมากที่สุดคือบัญชีเดียวที่กติกาบังคับไม่ถึง (ผู้ใช้เจอเองบนของจริง)
 test('ทุกงานต้องผูกดีล — ทุก role ไม่มีข้อยกเว้น', () => {
-  for (const role of ['ae', 'ac', 'ae_supervisor', 'senior_ae', 'rd', 'staff', 'marketing', 'admin', 'secretary']) {
+  for (const role of ['ae', 'ac', 'ae_supervisor', 'senior_ae', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'marketing', 'admin', 'secretary']) {
     assert.equal(requiresDealLink({ role }), true, `${role} ต้องถูกบังคับผูกดีล`);
   }
   // ไม่มีผู้ใช้ = ไม่มีอะไรให้บังคับ (ด่านสิทธิ์ที่ route จัดการก่อนหน้าอยู่แล้ว)

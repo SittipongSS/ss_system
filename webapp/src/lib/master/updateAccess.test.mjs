@@ -270,7 +270,7 @@ test('ข้อความที่ลบแล้วต้องไม่ห�
 // (ถ้าเผลอตัด `ownerId` ออกจาก select ของหน้าโครงการ AE จะเห็นเธรดตัวเองไม่ได้)
 test('เธรดดีล: staff อ่านไม่ได้ · AE เจ้าของดีลอ่านได้ (ด่านที่หน้าโครงการต้องใช้)', async () => {
   const deal = { id: 'D-1', team: 'KA', ownerId: 'u-ae' };
-  const staff = { id: 'u-staff', role: 'staff', team: 'KA', department: 'PC' };
+  const staff = { id: 'u-staff', role: 'pc', team: 'KA', department: 'PC' };
   const owner = { id: 'u-ae', role: 'ae', team: 'KA' };
   const otherAe = { id: 'u-other', role: 'ae', team: 'KA' };
 
@@ -287,7 +287,7 @@ test('เธรดดีล: staff อ่านไม่ได้ · AE เจ�
 // เห็นความเคลื่อนไหวของดีลที่ไหลเข้ามาแสดงรวม (กรองรายใบด้วยทะเบียนของ 'deal')
 test('เธรดโครงการ: staff อ่านได้แต่โพสต์ไม่ได้ · AE ในทีมโพสต์ได้', async () => {
   const project = { id: 'PRJ-1', team: 'KA', ownerId: 'u-pm' };
-  const staff = { id: 'u-staff', role: 'staff', team: 'PC', department: 'PC' };
+  const staff = { id: 'u-staff', role: 'pc', team: 'PC', department: 'PC' };
   const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
   const aeOtherTeam = { id: 'u-ae2', role: 'ae', team: 'ODM' };
   const s = stub(project);

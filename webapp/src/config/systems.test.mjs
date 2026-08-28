@@ -38,8 +38,15 @@ test('system visibility covers every supported role and sales team', () => {
     // ⭐ viewer/executive อ่านได้ทุกระบบ แต่ **ยังไม่เห็น "วางแผนผลิต"** ตอนนี้ —
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
     ['viewer', null, ['salesplan', 'production', 'service', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
-    // staff ที่ไม่ระบุฝ่าย = ไม่ใช่ PC/PD → ไม่เห็นระบบผลิต (ดูเคส PC/PD ข้างล่าง)
-    ['staff', null, ['salesplan', 'master', 'support']],
+    /* ⭐ หนึ่งฝ่าย หนึ่ง role (2026-08-28) — เดิมทั้งห้าฝ่ายเป็น `staff` ตัวเดียว
+       การ์ดจึงต้องขึ้นกับ **ฝ่าย** · ตอนนี้ role บอกฝ่ายอยู่แล้ว การ์ดจึงตรงกับ role */
+    ['pc', null, ['salesplan', 'production', 'master', 'support']],
+    ['pd', null, ['salesplan', 'production', 'master', 'support']],
+    // WH/QC อ่านบอร์ดผลิตเพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31) แต่แก้ไม่ได้
+    ['wh', null, ['salesplan', 'production', 'master', 'support']],
+    ['qc', null, ['salesplan', 'production', 'master', 'support']],
+    // ⭐ TS เป็นฝ่ายเดียวที่ไม่อยู่สายโรงงาน — ได้ธุรกิจบริการแทนวางแผนผลิต
+    ['ts', null, ['salesplan', 'service', 'master', 'support']],
     /* ⭐ ฝ่ายบัญชี (มติผู้ใช้ 2026-08-13): *"เปิดระบบให้บัญชีเห็นแค่ฐานข้อมูลกับ
        บริหารงานขาย"* + บ้านของตัวเอง · **ห้ามมี `tax`** — เคยมีเพราะ role ถือ
        `history:view` ซึ่งเป็นตัวเปิดโมดูลภาษีทั้งโมดูล ไม่ใช่งานของฝ่ายนี้ */
@@ -61,36 +68,39 @@ test('system visibility covers every supported role and sales team', () => {
   }
 });
 
-test('⭐ ระบบของฝ่ายขึ้นกับ *ฝ่าย* ไม่ใช่ role — cap ของ staff ใช้ร่วมกันทั้ง 5 ฝ่าย', () => {
-  // `staff` ถือ production:* / service:* ทั้งก้อน ฝ่ายคือตัวกั้นจริง
-  // ถ้าวันไหนกฎนี้หลุด คลัง/QC จะได้ระบบโรงงาน + ระบบธุรกิจบริการมาโดยไม่มีใครสังเกต
-  const at = (department) => keysFor({ role: 'staff', team: null, department, extraCaps: [] });
+test('⭐ ฝ่ายโรงงานกับฝ่ายช่างไม่เห็นระบบของกันและกัน', () => {
+  /* 🐞 ที่ต้องมีเทสต์นี้: เดิม PC/PD/WH/QC/TS ใช้ role `staff` ร่วมกัน ⇒ ถือ
+     production:* / service:* ทั้งก้อน แล้วต้องหวังให้ด่าน **ฝ่าย** กันถูกทุกจุด ·
+     หลุดที่ไหนที่หนึ่ง คลัง/QC จะได้ระบบโรงงาน + ธุรกิจบริการมาโดยไม่มีใครสังเกต
+     ⭐ ตอนนี้ cap แคบตั้งแต่ role แล้ว เทสต์นี้จึงล็อกว่า "ให้ cap ถูก role" แทน */
+  const at = (role) => keysFor({ role, team: null, extraCaps: [] });
 
   // ⭐ สายงานโรงงาน (PC/PD/WH/QC) เห็นระบบวางแผนผลิต — WH/QC อ่านบอร์ดเพื่อวางแผน
   // งานตัวเอง (มติผู้ใช้ 2026-07-31) · **TS เป็นฝ่ายเดียวที่ถูกกันออก** เพราะคนละทีม
-  for (const dept of ['PC', 'PD', 'WH', 'QC']) {
-    assert.ok(at(dept).includes('production'), dept);
+  for (const role of ['pc', 'pd', 'wh', 'qc']) {
+    assert.ok(at(role).includes('production'), role);
   }
-  assert.ok(!at('TS').includes('production'));
+  assert.ok(!at('ts').includes('production'));
 
   // ฝ่ายเทคนิคบริการเห็นระบบธุรกิจบริการ · ฝ่ายโรงงานไม่เห็น
-  assert.ok(at('TS').includes('service'));
-  for (const dept of ['PC', 'PD', 'WH', 'QC']) {
-    assert.ok(!at(dept).includes('service'), dept);
+  assert.ok(at('ts').includes('service'));
+  for (const role of ['pc', 'pd', 'wh', 'qc']) {
+    assert.ok(!at(role).includes('service'), role);
   }
 });
 
 test('specialized users land on the one workspace they can use', () => {
   const marketing = { role: 'marketing', team: null, extraCaps: [] };
-  const staff = { role: 'staff', team: null, extraCaps: [] };
+  // ฝ่ายคลัง: ระบบขายที่เขาเห็นคือ "งานของฉัน" ไม่ใช่ลีด/ดีล
+  const warehouse = { role: 'wh', team: null, department: 'WH', extraCaps: [] };
 
   assert.deepEqual(keysFor(marketing), ['salesplan', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', marketing), '/sa/leads');
-  assert.deepEqual(keysFor(staff), ['salesplan', 'master', 'support']);
-  assert.equal(systemLandingForUser('salesplan', staff), '/sa/tasks');
+  assert.deepEqual(keysFor(warehouse), ['salesplan', 'production', 'master', 'support']);
+  assert.equal(systemLandingForUser('salesplan', warehouse), '/sa/tasks');
 
   // ช่างฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
-  const tech = { role: 'staff', team: null, department: 'TS', extraCaps: [] };
+  const tech = { role: 'ts', team: null, department: 'TS', extraCaps: [] };
   assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master', 'support']);
   assert.equal(systemLandingForUser('service', tech), '/service');
 });
@@ -98,8 +108,8 @@ test('specialized users land on the one workspace they can use', () => {
 test('X-1: สองระบบลงที่หน้าภาพรวมของตัวเอง — ไม่มีปลายทางร่วม', () => {
   // ⚠️ มติผู้ใช้ 2026-08-01: เลิกทำปฏิทินรวม · ถ้าวันหนึ่งมีคนทำ landing ของสอง
   // ระบบให้ชี้ที่เดียวกัน เทสต์นี้จะดับ — นั่นคือการกลับไปรวมสองทีมเข้าด้วยกันอีก
-  const planner = { role: 'staff', team: null, department: 'PC', extraCaps: [] };
-  const tech = { role: 'staff', team: null, department: 'TS', extraCaps: [] };
+  const planner = { role: 'pc', team: null, department: 'PC', extraCaps: [] };
+  const tech = { role: 'ts', team: null, department: 'TS', extraCaps: [] };
   const admin = { role: 'admin', team: null, extraCaps: [] };
 
   assert.equal(systemLandingForUser('production', planner), '/production');
@@ -118,7 +128,7 @@ test('ฐานข้อมูล lands on the product list when the user has no
   assert.equal(systemLandingForUser('master', marketing), '/database/products');
 
   // ส่วนบทบาทที่ดูลูกค้าได้ ยังลงหน้าภาพรวมเหมือนเดิม
-  for (const role of ['admin', 'ae_supervisor', 'ae', 'ra', 'viewer', 'staff', 'rd']) {
+  for (const role of ['admin', 'ae_supervisor', 'ae', 'ra', 'viewer', 'pc', 'pd', 'wh', 'qc', 'ts', 'rd']) {
     assert.equal(systemLandingForUser('master', { role, team: 'ODM', extraCaps: [] }), '/database', role);
   }
 });

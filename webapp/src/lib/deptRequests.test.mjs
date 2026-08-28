@@ -55,7 +55,7 @@ import {
 } from './master/requestTypes.js';
 
 const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
-const pc = { id: 'u-pc', role: 'staff', department: 'PC' };
+const pc = { id: 'u-pc', role: 'pc', department: 'PC' };
 const sale = { id: 'u-sale', role: 'ae', team: 'KA' };
 const admin = { id: 'u-admin', role: 'admin' };
 
@@ -615,7 +615,7 @@ test('canReadRequestRow: เปิดตรงด้วย id ต้องดู
   // และไม่ได้อยู่ฝ่ายที่ต้องตอบ
   assert.equal(canReadRequestRow({ id: 'u-other', role: 'ae' }, req), false);
   // ฝ่ายอื่นที่ไม่ใช่ปลายทางของใบนี้
-  assert.equal(canReadRequestRow({ id: 'u-pc', role: 'staff', department: 'PC' }, req), false);
+  assert.equal(canReadRequestRow({ id: 'u-pc', role: 'pc', department: 'PC' }, req), false);
 });
 
 

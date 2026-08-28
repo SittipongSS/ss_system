@@ -53,7 +53,7 @@
 
 ⚠️ **แต่มติข้อ 2 ของแผนนั้นเพี้ยนจากของจริง** — แผนเขียนว่า role ชื่อ `accountant`
 โค้ดที่ลงจริงใช้ `finance` (มติผู้ใช้ 2026-08-13: *"ไม่อยากใช้คำว่า Staff"*) ·
-`ROLES` มี `finance` · `DEPARTMENT_ROLES.FN = ['finance','staff']`
+`ROLES` มี `finance` · `DEPARTMENT_ROLES.FN = ['finance']` (ตัด `staff` ออก 2026-08-28 — ดู [role-per-department.md](role-per-department.md))
 ⇒ ต้องแก้บรรทัดนั้นในแผนเดิม ไม่งั้นคนอ่านจะไปสร้าง role ที่สอง
 
 ### 1.2 สายงาน "สองลายเซ็น" ของแผน §5 — **สร้างแล้ว แต่สร้างบนใบสั่งขาย**
