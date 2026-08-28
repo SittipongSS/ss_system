@@ -92,7 +92,7 @@ export async function PATCH(request, { params }) {
        · เมทริกซ์สหมิตรเทียบ `row.fgCode === fgCode` ⇒ แถวไม่แมตช์
        · ZIP รายงานภาษีตั้งชื่อโฟลเดอร์จากรหัส ⇒ ได้ `FG-…-2009__ ชื่อสินค้า`
      POST trim อยู่แล้ว (`String(body.fgCode || '').trim()`) — ทางแก้ไขเคยหลุด
-     ⇒ ล้างของเก่าใน DB ที่ mig 0306 และกันของใหม่ตรงนี้ */
+     ⇒ ล้างของเก่าใน DB ที่ mig 0307 และกันของใหม่ตรงนี้ */
   if (typeof body.fgCode === 'string') body.fgCode = body.fgCode.trim();
 
   // ── Approval action (approve / reject a pending product) ─────────────
