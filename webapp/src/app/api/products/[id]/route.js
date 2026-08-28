@@ -84,6 +84,17 @@ export async function PATCH(request, { params }) {
 
   const body = await request.json();
 
+  /* 🐞 รหัส FG ที่มีช่องว่าง/แท็บติดท้าย — ของจริงบนฐาน 53 จาก 342 ตัวเป็นแบบนี้
+     (ก๊อปมาจาก Excel ทั้งช่อง) เช่น `"FG-108-01-002-2009\t\t"` · ตาเปล่ามองไม่เห็น
+     แต่ทุกด่านที่เทียบรหัส **ตรงตัว** พังหมด:
+       · ด่านกันรหัสซ้ำที่นี่และที่ POST ใช้ `.eq('fgCode', …)` ⇒ พิมพ์รหัสสะอาดเข้าไป
+         ไม่ชนของเดิม แล้วเปิดสินค้ารหัสซ้ำได้
+       · เมทริกซ์สหมิตรเทียบ `row.fgCode === fgCode` ⇒ แถวไม่แมตช์
+       · ZIP รายงานภาษีตั้งชื่อโฟลเดอร์จากรหัส ⇒ ได้ `FG-…-2009__ ชื่อสินค้า`
+     POST trim อยู่แล้ว (`String(body.fgCode || '').trim()`) — ทางแก้ไขเคยหลุด
+     ⇒ ล้างของเก่าใน DB ที่ mig 0307 และกันของใหม่ตรงนี้ */
+  if (typeof body.fgCode === 'string') body.fgCode = body.fgCode.trim();
+
   // ── Approval action (approve / reject a pending product) ─────────────
   // Setting approvalStatus is reserved for AE Supervisor — AE/AC/Senior hold products:edit
   // but must not approve. Row-level scope is already enforced above by

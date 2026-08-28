@@ -13,8 +13,10 @@ export const dynamic = 'force-dynamic';
 // command center): เลือกเฉพาะคอลัมน์ที่ใช้จริง + นับจำนวนรายการแทนการฝัง
 // order_items ทั้งแถวพร้อม master product เต็มตัว และไม่ join registrations เลย.
 // โหมดเต็ม (ไม่ส่ง param) พฤติกรรมเดิมทุกประการ.
+// ⚠️ `updatedAt` อยู่ในชุดนี้เพราะคิวงานบนหน้าภาพรวมคิด "ค้างมากี่วัน" จากจุดที่
+// สถานะปัจจุบันเริ่ม ไม่ใช่วันเปิดใบ (ใบที่แก้แล้วส่งกลับต้องนับรอบล่าสุด)
 const ORDER_SELECT_SLIM =
-  'id, status, createdAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
+  'id, status, createdAt, updatedAt, totalTax, quotationRef, customerName, rejectionReason, team, items:order_items(count)';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();

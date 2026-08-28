@@ -1,0 +1,48 @@
+/* ชั้นสไตล์ของหน้าภาพรวมภาษีสรรพสามิต
+   ⚠️ ข้อความรอง/หรี่ใช้คลาสร่วมของทั้งเว็บ (globals.css) — ที่นี่มีเฉพาะของหน้านี้ */
+
+/* ── แถบ "ค้างนาน" ─────────────────────────────────────────────────────────
+   ไม่ใช่ glass-panel เพราะไม่ใช่พื้นผิวข้อมูล — เป็นคำเตือนที่ต้องอ่านก่อนของอื่น */
+.alertBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3-5) var(--space-4);
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--red);
+  border-radius: var(--radius-lg);
+  background: var(--red-soft);
+}
+.alertBar:hover { background: color-mix(in srgb, var(--red) 14%, transparent); }
+.alertIcon { color: var(--red); flex-shrink: 0; }
+.alertBody { flex: 1; min-width: 0; }
+.alertTitle { font-weight: var(--fw-semibold); color: var(--red); }
+.alertNote { font-size: var(--fs-6); color: var(--text-2); }
+
+/* ── หัวข้อกลุ่ม ────────────────────────────────────────────────────────── */
+.sectionHead, .queueHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-1);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-10);
+}
+.sectionHead { margin-bottom: var(--space-4); }
+.queueHead { margin-bottom: var(--space-3); }
+.sectionLink {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  font-size: var(--fs-6);
+  color: var(--accent);
+}
+.sectionLink:hover { text-decoration: underline; }
+.chartTitle {
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+  margin-bottom: var(--space-2);
+}

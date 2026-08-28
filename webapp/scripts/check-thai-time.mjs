@@ -34,9 +34,8 @@ const ALLOWED = new Map([
   // แก้แล้วต้องทดสอบเส้นทางอนุมัติทั้งเส้น จึงแยกเป็นงานของตัวเอง
   ['src/app/api/sa/costing/[id]/submit/route.js', 1],
   ['src/app/api/sa/costing/[id]/components/route.js', 1],
-  // ⏸ หัวกระดาษรายงานภาษี — เวลาที่พิมพ์บนกระดาษ ไม่ได้ถูกเก็บลง DB และไม่มีด่านไหน
-  // คิดจากมัน · แก้พร้อมงานสายภาษีรอบหน้า (เจอตอนขยายด่านนี้ 2026-08-28)
-  ['src/lib/tax/reportPrint.js', 1],
+  // ✅ หัวกระดาษรายงานภาษี — แก้แล้วในรอบรื้อระบบสรรพสามิต 2026-08-28 (เพดานรูดเป็น 0
+  // แล้วถอดออกจากลิสต์) · `genAt` ใช้ businessDayKey/businessTimeKey แล้ว
 ]);
 
 const FILES = execSync('git ls-files "src/**/*.js" "src/**/*.jsx"', { cwd: ROOT, encoding: 'utf8' })
