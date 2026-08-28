@@ -22,7 +22,6 @@ import {
   VISIT_KINDS,
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
-  dayLoad,
   overlappingVisitIds,
   sortByTime,
   visitTimeText,
@@ -39,6 +38,7 @@ import {
   teamLoad,
 } from "@/lib/service/crewTeams";
 import Segmented from "@/components/ui/Segmented";
+import { dayWorkload, overloaded, workloadText } from "@/lib/service/visitLoad";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
@@ -65,6 +65,7 @@ export default function ServiceSchedulePage() {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [visits, setVisits] = useState([]);
   const [sites, setSites] = useState([]);
+  const [workload, setWorkload] = useState({});
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -99,6 +100,8 @@ export default function ServiceSchedulePage() {
       if (!res.ok) throw new Error(data?.error || "โหลดตารางไม่สำเร็จ");
       setVisits(Array.isArray(data?.visits) ? data.visits : []);
       setSites(Array.isArray(data?.sites) ? data.sites : []);
+      // ภาระรายไซต์ (เครื่อง/แพ็ค) — server นับมาให้แล้ว ไม่ต้องไล่ยิงรายไซต์
+      setWorkload(data?.workload && typeof data.workload === "object" ? data.workload : {});
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ตารางเปล่า — "โหลดพัง" กับ "สัปดาห์นี้ไม่มีนัด"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่าง
@@ -198,13 +201,14 @@ export default function ServiceSchedulePage() {
     [crew.teams, crew.members, rows, crewByUser],
   );
 
-  const loads = useMemo(() => {
-    const map = new Map();
-    for (const entry of dayLoad(boardVisits)) {
-      map.set(`${entry.assigneeId || UNASSIGNED}|${entry.date}`, entry);
-    }
-    return map;
-  }, [boardVisits]);
+  /* ⭐ ภาระนับเป็น **เครื่อง + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมีเครื่องตัวเดียว
+     อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้เลยว่าช่างคนนั้นทำไหวไหม
+     ⚠️ `dayLoad` เดิม (นับนัด/คน/วัน) ยังใช้อยู่ที่อื่น — ที่นี่เปลี่ยนมาใช้ตัวที่
+     รู้จักของหน้างาน แล้วเตือน "เกินภาระ" จากจำนวนเครื่อง */
+  const loads = useMemo(
+    () => dayWorkload(boardVisits, (siteId) => workload[siteId]),
+    [boardVisits, workload],
+  );
 
   const crossRouteZone = useMemo(() => {
     const set = new Set();
@@ -286,6 +290,13 @@ export default function ServiceSchedulePage() {
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
+      {/* ⭐ กติกาที่ตัดสินไปแล้วต้องอ่านได้จากบนจอ ไม่ใช่อยู่แต่ในคอมเมนต์โค้ด
+          (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน) */}
+      <p className={styles.placeNote}>
+        หน้านี้ <b>“วาง”</b> งาน ไม่ได้ <b>“สร้าง”</b> งาน — นัดเกิดจากรอบบริการของไซต์
+        หรือจากงานนอกรอบที่มีต้นเรื่อง และขึ้นตารางไม่ได้จนกว่าจะผ่านด่าน
+      </p>
+
       {/* ⭐ ภาระรายทีมของสัปดาห์ที่เปิดอยู่ — ทีมที่มีคนแต่ไม่มีนัดขึ้นเป็น 0
           ไม่ใช่หายไป เพราะทีมว่างคือทีมที่รับงานเพิ่มได้ ซึ่งเป็นสิ่งที่คนจัดคิวหาอยู่ */}
       {!loading && !loadError && crewLoad.length > 0 && (
@@ -309,24 +320,41 @@ export default function ServiceSchedulePage() {
             คิวรอจัด {drafts.length} ใบ
             <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้</span>
           </h2>
-          <ul className={styles.queueList}>
-            {drafts.map((visit) => {
-              const site = sitesById.get(visit.siteId);
-              const gate = evaluateVisitGate(visit, { site });
-              const ready = gatePassed(gate);
-              return (
-                <li key={visit.id} data-ready={ready ? "yes" : "no"}>
-                  <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
-                    <b>{site?.name || visit.siteId}</b>
-                    <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
-                    <span className={styles.queueReason}>
-                      {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          {/* ⭐ แยกสองกลุ่ม (F-6) — "ผ่านด่านแล้ว" กับ "ติดด่าน" ต้องการคนละการกระทำ:
+              กลุ่มแรกแค่กดปล่อย · กลุ่มหลังต้องไปแก้อะไรบางอย่างก่อน
+              ⚠️ กองรวมกันเมื่อไร คนจัดคิวจะไล่กดทีละใบเพื่อหาว่าอันไหนกดได้ */}
+          {["ready", "blocked"].map((bucket) => {
+            const rows = drafts
+              .map((visit) => {
+                const site = sitesById.get(visit.siteId);
+                const gate = evaluateVisitGate(visit, { site });
+                return { visit, site, gate, ready: gatePassed(gate) };
+              })
+              .filter((row) => (bucket === "ready" ? row.ready : !row.ready));
+            if (!rows.length) return null;
+            return (
+              <div key={bucket} className={styles.queueGroup}>
+                <h3 className={styles.queueGroupTitle} data-bucket={bucket}>
+                  {bucket === "ready"
+                    ? `ผ่านด่านแล้ว ${rows.length} ใบ — กดเพื่อปล่อยเข้าคิว`
+                    : `ติดด่าน ${rows.length} ใบ — ต้องแก้ก่อน`}
+                </h3>
+                <ul className={styles.queueList}>
+                  {rows.map(({ visit, site, gate, ready }) => (
+                    <li key={visit.id} data-ready={ready ? "yes" : "no"}>
+                      <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
+                        <b>{site?.name || visit.siteId}</b>
+                        <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
+                        <span className={styles.queueReason}>
+                          {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </section>
       )}
 
@@ -375,13 +403,18 @@ export default function ServiceSchedulePage() {
                     return (
                       <td key={day.iso} className={day.weekend ? styles.weekend : undefined}>
                         <div className={styles.cell}>
-                          {(load?.over || crossRouteZone.has(loadKey)) && (
+                          {(overloaded(load) || crossRouteZone.has(loadKey)) && (
                             <p className={styles.cellWarn}>
                               <AlertTriangle size={12} aria-hidden="true" />
-                              {load?.over ? `${load.count} นัด` : null}
-                              {load?.over && crossRouteZone.has(loadKey) ? " · " : null}
+                              {overloaded(load) ? workloadText(load) : null}
+                              {overloaded(load) && crossRouteZone.has(loadKey) ? " · " : null}
                               {crossRouteZone.has(loadKey) ? "ข้ามเขต" : null}
                             </p>
+                          )}
+                          {/* วันที่ยังไม่เกินภาระก็ต้องอ่านออกว่าหนักแค่ไหน — ไม่ใช่
+                              เห็นตัวเลขเฉพาะตอนที่สายไปแล้ว */}
+                          {!overloaded(load) && load?.assets > 0 && (
+                            <p className={styles.cellLoad}>{workloadText(load)}</p>
                           )}
                           {cellVisits.map((visit) => {
                             const site = sitesById.get(visit.siteId);

@@ -9,6 +9,8 @@ import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
 import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
+import { siteWorkload } from '@/lib/service/visitLoad';
+import { termIsActive } from '@/lib/service/terms';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +28,47 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     // ปฏิทินต้องรู้ชื่อ/โซน/ช่วงเวลาเข้าไซต์เพื่อขึ้นป้ายเตือน — ส่งไปพร้อมกัน
     // ไม่งั้นหน้าจอต้องยิงตามรายนัด (สัปดาห์หนึ่ง 40 นัด = 40 คำขอ)
     const sites = await sitesForVisits(supabase, visits);
-    return ok({ visits, sites: [...sites.values()] });
+    const siteIds = [...sites.keys()];
+
+    /* ⭐ ภาระของช่างนับเป็น **เครื่อง + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมี
+       เครื่องตัวเดียว อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้ว่าไหวไหม
+       ⇒ ส่งจำนวนเครื่องที่ยังอยู่หน้างาน + แพ็คตามรอบขายของโซนมาพร้อมกัน
+       ⚠️ นับที่ server ทีเดียว ไม่ให้จอไล่ยิงรายไซต์ (200 ไซต์ = 200 คำขอ) */
+    const [assets, zones] = siteIds.length ? await Promise.all([
+      supabase.from('service_assets').select('id, siteId, status').in('siteId', siteIds)
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+      supabase.from('service_zones').select('id, siteId').in('siteId', siteIds)
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+    ]) : [[], []];
+
+    const zoneIds = zones.map((z) => z.id);
+    const terms = zoneIds.length
+      ? await supabase.from('service_zone_terms').select('id, zoneId, packageQty, salesOrderId')
+        .in('zoneId', zoneIds)
+        .then(({ data, error }) => { if (error) throw error; return data || []; })
+      : [];
+
+    /* ⚠️ "รอบไหนยังมีผล" ตัดสินที่ terms.js ที่เดียว — ที่นี่แค่หยิบใบสั่งขายแม่มาให้
+       (ไม่มีใบ = ตัวตัดสินตอบ false ตามที่ออกแบบ ไม่ใช่เดาว่าใช่) */
+    const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+    const orders = orderIds.length
+      ? await supabase.from('sales_orders').select('id, status, supersededById')
+        .in('id', orderIds).limit(1000)
+        .then(({ data, error }) => { if (error) throw error; return data || []; })
+      : [];
+    const ordersById = new Map(orders.map((o) => [o.id, o]));
+    const activeTermIds = terms
+      .filter((term) => termIsActive(term, ordersById.get(term.salesOrderId)))
+      .map((term) => term.id);
+
+    const workload = {};
+    for (const siteId of siteIds) {
+      workload[siteId] = siteWorkload({
+        siteId, assets, zones, terms, activeTermIds: new Set(activeTermIds),
+      });
+    }
+
+    return ok({ visits, sites: [...sites.values()], workload });
   } catch (e) {
     return fail(e.message, 500);
   }

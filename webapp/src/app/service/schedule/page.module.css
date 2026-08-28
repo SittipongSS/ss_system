@@ -251,3 +251,36 @@
 
 /* ทีมที่ยังไม่มีนัดในสัปดาห์นี้ — เน้นเบา ๆ ว่าว่างอยู่ ไม่ใช่จางจนมองไม่เห็น */
 .teamLoad > li[data-empty="yes"] { border-color: var(--green); }
+
+/* ── F-6: ภาระในช่อง · คิวแยกกลุ่ม · แถบประกาศ ────────────────────────── */
+
+/* ภาระที่ยังไม่เกิน — อ่านออกว่าวันนั้นหนักแค่ไหนก่อนจะสาย */
+.cellLoad {
+  margin: 0 0 var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-1);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+.queueGroup { margin-bottom: var(--space-3); }
+.queueGroup:last-child { margin-bottom: 0; }
+
+.queueGroupTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--green);
+}
+
+/* กลุ่มที่ติดด่านใช้โทนเตือน — คนละการกระทำกับกลุ่มที่กดปล่อยได้เลย */
+.queueGroupTitle[data-bucket="blocked"] { color: var(--amber); }
+
+.placeNote {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 2px solid var(--accent);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
