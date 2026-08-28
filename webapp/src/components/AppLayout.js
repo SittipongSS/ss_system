@@ -456,6 +456,14 @@ export default function AppLayout({ children }) {
            "ที่ฉันเปิด" ของคิวรวมว่างเปล่าตลอดกาลสำหรับเขา · ประวัติงานของฝ่าย
            อยู่ในแท็บ "ประวัติ" ของคิวนี้แล้ว */
         { href: '/rd/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/requests') || p.startsWith('/requests') },
+        /* ⭐ **ใบสั่งขายที่เกี่ยวข้อง** (มติผู้ใช้ 2026-08-29) — บรีฟกลิ่นเกิดจากใบสั่งขาย
+           ฝ่ายจึงต้องเห็นว่าออร์เดอร์นั้นสั่ง FG อะไร · มาคู่กับการปิดเมนู "บริหารงานขาย"
+           ของฝ่ายนี้ (แพตเทิร์นเดียวกับที่ฝ่าย FN ได้เอกสารของตัวเองไปไว้ในโมดูลตัวเอง)
+           ⚠️ **เอกสารไม่ได้ย้ายบ้าน** — กดแล้วไปที่ `/sa/sales-orders/[id]` ตามเดิม
+           (กฎสามชั้น ชั้น 2) · เปลือกเดินตามคนดู ⇒ RD ยังยืนอยู่ในโมดูลตัวเอง
+           ⚠️ `match` กินหน้าใบสั่งขายด้วย เพราะนั่นคือทางเดียวที่ฝ่ายเข้าถึงใบได้จริง
+           (กฎข้อ 8 — ไฮไลต์ที่เมนูที่พาเขาไป ไม่ใช่เมนูที่เขากดไม่ได้) */
+        { href: '/rd/sales-orders', name: 'ใบสั่งขายที่เกี่ยวข้อง', icon: FileText, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/sales-orders') || p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
       ],
     },
     {
