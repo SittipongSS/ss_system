@@ -47,27 +47,31 @@ test('ทุกจุดที่อ่าน app_metadata.role ต้องผ�
   }
 });
 
-test('normalizeRole แปลงเฉพาะชื่อเก่า ไม่แตะของอื่น', () => {
-  assert.equal(normalizeRole('legal'), 'ra');
-  assert.equal(normalizeRole('ra'), 'ra');
-  assert.equal(normalizeRole('ae'), 'ae');
-  assert.equal(normalizeRole('admin'), 'admin');
+test('normalizeRole คืน role ปัจจุบันตามเดิม ไม่แตะของที่ไม่ได้อยู่ในทะเบียน', () => {
+  for (const role of ROLES) assert.equal(normalizeRole(role), role, role);
   // ค่าว่างต้องคืนตามเดิม ไม่แปลงเป็นอะไรลอย ๆ
   assert.equal(normalizeRole(null), null);
   assert.equal(normalizeRole(undefined), undefined);
   assert.equal(normalizeRole(''), '');
 });
 
-/* ⭐ หัวใจของการย้ายแบบไม่มีช่วงล่ม: บัญชีที่ยังเป็น `legal` ต้องได้สิทธิ์เท่ากับ `ra`
-   หลังผ่าน normalizeRole — ไม่ใช่ได้ลิสต์ว่างแล้วเข้าหน้าไหนไม่ได้ */
-test('บัญชีเก่า (legal) ที่ยังไม่ถูกย้าย ต้องได้สิทธิ์เท่ากับ ra', () => {
-  const legacy = normalizeRole('legal');
+/* ⚠️ ทะเบียนว่างตอนนี้เพราะย้าย `legal` → `ra` ครบแล้ว (2026-08-28) — **ตะเข็บยังอยู่
+   โดยตั้งใจ** ไม่ใช่ลืมลบ · เทสต์นี้ยืนยันว่าตะเข็บยังทำงานถ้ามีคนเติมทะเบียนวันหน้า
+   ไม่ใช่กลายเป็นฟังก์ชันที่ถูกลดรูปจนแปลงอะไรไม่ได้อีก */
+test('ตะเข็บยังทำงาน — เติมทะเบียนแล้วต้องแปลงได้ทันที', () => {
+  const src = readFileSync(new URL('./permissions.js', import.meta.url), 'utf8');
+  assert.match(src, /const LEGACY_ROLE = \{/, 'ทะเบียน role เก่าหายไปจากไฟล์');
+  assert.match(src, /return LEGACY_ROLE\[role\] \|\| role;/,
+    'normalizeRole ต้องยังอ่านจากทะเบียน ไม่ใช่คืนค่าเดิมตรง ๆ');
+});
+
+test('role ra ถือสิทธิ์ครบตามที่ฝ่ายนี้ต้องใช้', () => {
   for (const cap of ['ra:approve', 'ra:view', 'products:view', 'products:margin', 'history:view']) {
-    assert.equal(can(legacy, cap), true, `legal ที่ normalize แล้วต้องได้ ${cap}`);
+    assert.equal(can('ra', cap), true, `ra ต้องได้ ${cap}`);
   }
   // และต้องไม่ได้สิทธิ์ที่ไม่เคยมี
-  assert.equal(can(legacy, 'users:manage'), false);
-  assert.equal(can(legacy, 'products:edit'), false);
+  assert.equal(can('ra', 'users:manage'), false);
+  assert.equal(can('ra', 'products:edit'), false);
 });
 
 test('ra อยู่ในทะเบียน role และผูกกับฝ่าย RA', () => {
