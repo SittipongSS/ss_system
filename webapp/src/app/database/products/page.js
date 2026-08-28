@@ -2,8 +2,10 @@
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import Button from "@/components/ui/Button";
 import useStickyState from "@/lib/ui/useStickyState";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2 } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2, Download } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -23,11 +25,12 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
+import { filterProducts, productCategoryLabel } from "@/lib/master/productFilter";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
 import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
-import { productNameBoth, fmtMoney, naText, NA } from "@/lib/format";
+import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/format";
 import CostVatLines from "@/components/database/CostVatLines";
 
 // Management view sees every status; the default GET (used by registration / PM
@@ -130,14 +133,8 @@ export default function ProductRegistry() {
   // Main category (เช่น ODM) + sub-category name for the list — prefers the
   // stored categoryCode (set on save), falls back to deriving it from fgCode
   // for legacy rows saved before that column existed.
-  const categoryLabelOf = (p) => {
-    const code = p.categoryCode || categoryOf(p.fgCode);
-    if (!code) return null;
-    const info = productTypes.find(t => `${t.mainCategoryCode}-${t.typeCode}` === code);
-    if (!info) return null;
-    // sub = "EN · TH" (มติ 2026-08-12) — หมวดชื่อว่างทั้งคู่ถอยไปโชว์รหัส
-    return { main: info.mainCategoryName, sub: categoryNameBoth(info) || code };
-  };
+  // นิยามอยู่ที่ lib/master/productFilter — ตัวเดียวกับที่ปุ่มส่งออก Excel ใช้
+  const categoryLabelOf = (p) => productCategoryLabel(p, productTypes);
 
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
@@ -302,21 +299,11 @@ export default function ProductRegistry() {
   // registrationStatus แนบมาจาก server เฉพาะผู้ที่เห็นระบบภาษี (history:view) —
   // การมี field เป็นสัญญาณเปิดตัวกรอง "การขึ้นทะเบียน"; role อื่นไม่เห็นตัวกรองเลย
   const hasRegData = products.some((p) => p.registrationStatus !== undefined);
-  const filteredProducts = products.filter((p) => {
-    if (!showInactive && p.isActive === false) return false;
-    if (statusFilter.length && !statusFilter.includes(approvalStatusOf(p))) return false;
-    // ตัวกรองขึ้นทะเบียนใช้ได้กับหมวดสรรพสามิตเท่านั้น — เลือกแล้วหมวดอื่นตัดออก
-    if (regFilter.length) {
-      const excise = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes).isExcise;
-      if (!excise || !regFilter.includes(p.registrationStatus || "none")) return false;
-    }
-    if (!q) return true;
-    // ค้นหมวดได้ทั้งรหัสและชื่อสองภาษา (มติ 2026-08-12) — cat อาจเป็น null
-    const cat = categoryLabelOf(p);
-    return [
-      p.fgCode, p.productDescription, p.productDescriptionEn, p.brandName, p.brandNameEn,
-      p.categoryCode, cat?.main, cat?.sub,
-    ].some((v) => (v || "").toLowerCase().includes(q));
+  /* ⚠️ ตัวกรองอยู่ที่ lib/master/productFilter ตัวเดียว — ปุ่ม "ส่งออก Excel" ส่ง
+     ตัวกรองชุดนี้ไปให้ server แล้วกรองด้วยฟังก์ชันเดียวกัน ไฟล์จึงมีแถวเท่าที่ตาเห็น
+     ถ้าย้ายตรรกะกลับมาเขียนสดตรงนี้ ไฟล์กับตารางจะเดินหนีกันเงียบ ๆ */
+  const filteredProducts = filterProducts(products, {
+    search: q, statuses: statusFilter, registrations: regFilter, showInactive, productTypes,
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -344,9 +331,33 @@ export default function ProductRegistry() {
   const open = (p) => (window.location.href = `/database/products/${p.id}`);
   const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
 
+  /* ปุ่มส่งออกพกตัวกรองปัจจุบันไปด้วย — server กรองซ้ำด้วย filterProducts ตัวเดียวกัน
+     (ส่งเป็น query ไม่ใช่ POST พร้อมรายการ id: proxy กั้น POST ของ /api/products ไว้ที่
+     products:edit ⇒ ฝ่ายบัญชีจะกดโหลดไม่ได้เลย) */
+  const exportHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (statusFilter.length) params.set("status", statusFilter.join(","));
+    if (regFilter.length) params.set("reg", regFilter.join(","));
+    if (showInactive) params.set("inactive", "1");
+    const qs = params.toString();
+    return `/api/products/export${qs ? `?${qs}` : ""}`;
+  }, [q, statusFilter, regFilter, showInactive]);
+
   const headerRight = (
     <>
       <span className="ui-badge">{products.length} รายการ</span>
+      {/* ใช้ Button primitive (as=Link) — ที่เดียวที่ได้รับอนุญาตให้เขียนคลาส btn */}
+      <Button
+        as={Link}
+        prefetch={false}
+        href={exportHref}
+        variant="quiet"
+        icon={<Download size={16} />}
+        title={`ดาวน์โหลด ${filteredProducts.length} รายการที่กรองอยู่เป็นไฟล์ Excel`}
+      >
+        ส่งออก Excel
+      </Button>
       {canEdit && (
         <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
           <Plus size={16} /> เพิ่มสินค้า
@@ -468,7 +479,7 @@ export default function ProductRegistry() {
                     <span className="text-[var(--text-3)]">ราคาผลิต</span>
                     <div className="text-right">
                       {/* ค่าที่เก็บคือ "ก่อน VAT" — อีกสองบรรทัดคำนวณสด (มติผู้ใช้ 2026-08-28) */}
-                      <div className="font-mono text-[var(--text-2)]">{fmtMoney(p.costPrice)}</div>
+                      <div className="font-mono text-[var(--text-2)]">{fmtMoneyOrDash(p.costPrice)}</div>
                       <CostVatLines costPrice={p.costPrice} />
                     </div>
                   </div>
@@ -476,7 +487,7 @@ export default function ProductRegistry() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[var(--text-3)]">ราคาขายปลีก</span>
                   <div className="text-right">
-                    <div className="font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</div>
+                    <div className="font-mono text-[var(--text-2)]">{fmtMoneyOrDash(p.retailPriceIncVat)}</div>
                     {/* ป้ายเฉพาะหมวดที่ติ๊กธง (ส่วนน้อยที่ต้องขึ้นทะเบียน+ชำระสรรพสามิต / จดแจ้ง อย.) — เรื่องยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
                     {(isExciseCat || flags.requiresFdaNotice) && (
                       <div className="mt-0.5 flex items-center justify-end gap-1.5">
@@ -542,12 +553,12 @@ export default function ProductRegistry() {
                       <td className="num font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"}</td>
                       {canSeeCost && (
                         <td className="num mono text-[var(--text-2)]">
-                          {fmtMoney(p.costPrice)}
+                          {fmtMoneyOrDash(p.costPrice)}
                           <CostVatLines costPrice={p.costPrice} />
                         </td>
                       )}
                       <td className="num mono text-[var(--text-2)]">
-                        {fmtMoney(p.retailPriceIncVat)}
+                        {fmtMoneyOrDash(p.retailPriceIncVat)}
                         {(isExciseCat || flags.requiresFdaNotice) && (
                           <div className="mt-0.5 flex items-center justify-end gap-1.5">
                             {isExciseCat && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
