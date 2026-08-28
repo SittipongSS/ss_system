@@ -104,12 +104,18 @@ jobs:
         if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
         run: npm run check:refs
 
-      # ⚠️ ไม่มี secret = สองด่านบนถูกข้าม · ต้องส่งเสียงให้เห็นในหน้า run ไม่ใช่
+      # ทะเบียนทีม (mig 0310/0311) ต้องตรงกับค่าคงที่ TEAMS ในโค้ด — ทีมขายมีสองที่
+      # โดยเจตนา (ด่านสิทธิ์อ่านแบบ sync จากฐานไม่ได้) ด่านนี้กันไม่ให้สองฝั่งเพี้ยน
+      - name: Team registry
+        if: env.SUPABASE_URL != '' && env.SUPABASE_SERVICE_ROLE_KEY != ''
+        run: npm run check:teams
+
+      # ⚠️ ไม่มี secret = สามด่านบนถูกข้าม · ต้องส่งเสียงให้เห็นในหน้า run ไม่ใช่
       # ปล่อยให้ทั้ง job เขียวแล้วเข้าใจว่าตรวจครบ
       - name: เตือนเมื่อด่านที่ต้องใช้ฐานข้อมูลถูกข้าม
         if: env.SUPABASE_URL == '' || env.SUPABASE_SERVICE_ROLE_KEY == ''
         run: |
-          echo "::warning title=ด่าน schema ถูกข้าม::check:columns และ check:refs ไม่ได้รัน เพราะยังไม่ได้ตั้ง secret SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — คอลัมน์ที่พิมพ์ผิดหรือถูกลบจะหลุดขึ้น production ได้"
+          echo "::warning title=ด่าน schema ถูกข้าม::check:columns · check:refs · check:teams ไม่ได้รัน เพราะยังไม่ได้ตั้ง secret SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — คอลัมน์ที่พิมพ์ผิดหรือถูกลบจะหลุดขึ้น production ได้"
 
       - name: Test
         run: npm test

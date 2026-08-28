@@ -182,7 +182,13 @@ export function rolesForDepartment(department) {
   return DEPARTMENT_ROLES[normalizeDepartment(department)] || [];
 }
 
-export const TEAMS = ['ODM', 'KA', 'SV'];
+/* ⭐ **ลำดับเดียวของทั้งระบบ: KA → ODM → SV** (งวด T-5 · 2026-08-28)
+   🐞 ของเดิมมีสามชุดที่เรียงไม่ตรงกัน — `TEAMS` เรียง ODM→KA→SV ส่วน `SALES_TEAMS`
+   (salesPlanning/ui.js) กับ `TEAM_ORDER` (salesPlanning.js) เรียง KA→ODM→SV ซึ่ง
+   คอมเมนต์ของมันเองเขียนว่าเป็น "ลำดับทีมมาตรฐานทั้งระบบ" ⇒ หน้าวางเป้ากับหน้าผู้ใช้
+   เรียงทีมคนละแบบมาตลอดโดยไม่มีใครสังเกต · ยุบเหลือชุดนี้ชุดเดียว
+   ⚠️ ลำดับนี้ต้องตรงกับ `sortOrder` ในทะเบียน `teams` (mig 0311) — มีด่าน CI คุม */
+export const TEAMS = ['KA', 'ODM', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
@@ -1340,7 +1346,7 @@ export function validateIdentity(role, team, department) {
   const teams = userTeams(team);
   if (TEAM_ROLES.includes(role)) {
     if (!teams.length) return 'ตำแหน่งนี้ต้องระบุทีม (ODM/KA/SV)';
-    if (teams.some((t) => !TEAMS.includes(t))) return 'ทีมไม่ถูกต้อง (ODM/KA/SV)';
+    if (teams.some((t) => !TEAMS.includes(t))) return `ทีมไม่ถูกต้อง (${TEAMS.join('/')})`;
   } else if (teams.length) {
     return 'ตำแหน่งนี้ไม่ต้องระบุทีม';
   }

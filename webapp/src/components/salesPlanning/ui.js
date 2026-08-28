@@ -10,6 +10,7 @@ import UiKpiCard from "@/components/ui/KpiCard";
 export { default as MonthPicker } from "@/components/ui/MonthPicker";
 export { MONTH_LABELS, monthsForYear, thisMonth, yearOfMonth } from "@/lib/datePeriods";
 import { businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
+import { TEAMS } from "@/lib/permissions";
 
 // Shared presentational helpers for the Sales Planning pages (overview / deals /
 // targets). Kept in one place so the split pages render identical badges/cards.
@@ -110,9 +111,13 @@ export function forecastBadge(probability, className = "") {
 // Roles that can own a per-person sales target. AC (Account Coordinate) is
 // back-office and does not carry a sales target, so it is excluded; ae_supervisor
 // sets team-level targets, not per-person, so it is excluded too.
+
 export const TARGET_OWNER_ROLES = ["senior_ae", "ae"];
-// ลำดับทีมมาตรฐาน KA → ODM → SV (ใช้ทั้งคอลัมน์/แถวหน้าวางเป้า และการจัดกลุ่มภาพรวม)
-export const SALES_TEAMS = ["KA", "ODM", "SV"];
+/* ลำดับทีมมาตรฐาน KA → ODM → SV (คอลัมน์/แถวหน้าวางเป้า และการจัดกลุ่มภาพรวม)
+   ⚠️ **ไม่ประกาศรายการเอง** — เป็นชื่อเรียกอีกชื่อของ `TEAMS` (งวด T-5)
+   ของเดิมเขียนรายการซ้ำไว้ที่นี่แล้วเรียงไม่ตรงกับตัวแม่ ⇒ หน้าวางเป้ากับหน้าผู้ใช้
+   เรียงทีมคนละแบบมาตลอด */
+export const SALES_TEAMS = TEAMS;
 
 /* ป้ายของตัวสลับขอบเขต — หน้าคิวลีดกับหน้าไปป์ไลน์ดีลใช้ชุดเดียวกัน
    (ตัวเลือกที่แต่ละ role ได้มาจาก leadScopes/salesDealScopes ใน permissions.js) */
