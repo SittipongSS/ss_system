@@ -61,7 +61,25 @@ normalizeDepartment(user.department) === task?.role
 
 แก้ไม่ครบชั้นใดชั้นหนึ่ง = บันทึกแม่แบบไม่ผ่านโดยไม่มีข้อความบอกสาเหตุ
 
-🪤 **อัปเดตแถวก่อน แล้วค่อยเปลี่ยน CHECK** — สลับลำดับแล้ว `ADD CONSTRAINT` ล้มทั้งใบ
+🪤 **ลำดับที่ถูกคือ DROP → UPDATE → ADD** — รอบแรกเขียน UPDATE ไว้ก่อน DROP แล้วล้ม
+ทันทีที่บรรทัดแรกตอนรันจริง:
+
+```
+ERROR: 23514: new row for relation "project_tasks" violates check constraint
+       "project_tasks_role_check"
+DETAIL: Failing row contains (... ขึ้นทะเบียนสรรพสามิต [Op..., RA, ...)
+```
+
+เพราะ CHECK **เดิม** ของ 0009 คือ `('SA','RD','PC','PD','QC','LG','WH','ALL')` ซึ่งไม่มี
+`RA` ⇒ มันบล็อก **ตัว UPDATE เอง** ไม่ใช่บล็อกตอน `ADD` อย่างที่เข้าใจตอนแรก
+ทั้งใบอยู่ในทรานแซกชันเดียว ⇒ ระหว่างที่ CHECK ถูกถอด ไม่มีใครเขียนแทรกได้
+
+⚠️ `workflow_template_versions` **ไม่มีคอลัมน์ `steps`** — ขั้นตอนอยู่ในตาราง
+`workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง)
+
+⭐ ระหว่างทางแก้ latent bug: CHECK ของ `project_tasks` **ไม่เคยมี `TS` เลย** (0009 เขียน
+ก่อน TS เกิด · 0192 แก้เฉพาะฝั่งแม่แบบ) ⇒ ขั้นตอนแม่แบบที่เป็น TS แตกลงเป็นงานจริง
+ในโครงการไม่ได้ · ใบนี้ยกให้สองตารางใช้ชุดเดียวกัน
 
 ของจริงบนฐาน 2026-08-28: `project_tasks` 26 แถว · `workflow_template_steps` 3 แถว
 
