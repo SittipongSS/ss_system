@@ -27,7 +27,7 @@ test("ด่านของเธรดงานไม่ใช่ด่าน�
 
   const sameTeam = { id: "U-AE2", role: "ae", department: "SA", team: "KA" };
   const otherTeam = { id: "U-AE3", role: "ae", department: "SA", team: "KB" };
-  const factory = { id: "U-PC", role: "staff", department: "PC" };
+  const factory = { id: "U-PC", role: "pc", department: "PC" };
 
   assert.equal(await canViewUpdates(db, "personal_task", task, sameTeam), true,
     "ทีมเดียวกันเห็นได้ (ตรงกับขอบเขตที่หน้างานของฉันเปิดให้)");

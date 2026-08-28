@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
-import { can, roleOf } from '@/lib/permissions';
+import { can } from '@/lib/permissions';
 
 /* 🐞 ของจริงที่หลุด prod: proxy ตอบ 401 ให้ทุก request ที่ไม่มี cookie session รวม
    Vercel Cron ซึ่งยืนยันตัวด้วย `Authorization: Bearer $CRON_SECRET` เท่านั้น
@@ -429,14 +429,9 @@ test('ฝ่ายบัญชีคอนเฟิร์มงวดและ�
 
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/installments', FN, []), true);
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', FN, []), true);
-  /* ⚠️ **ฟังก์ชันนี้รับ role ดิบ** — `staff` เก่าจึงตกที่นี่ (role ที่ระบบไม่รู้จัก =
-     อ่านอย่างเดียว) · ตัวแปลงอยู่ที่ **ผู้เรียก**: proxy ส่ง `roleOf(user)` เข้ามา
-     ซึ่งเปลี่ยน staff+FN เป็น `finance` ให้แล้ว ⇒ คนที่ยังถือโทเคนเก่ายังทำงานได้ */
+  /* ⚠️ role ที่ระบบไม่รู้จัก (เช่น `staff` ที่ยกเลิกไปแล้ว 2026-08-28) = อ่านอย่างเดียว
+     — ตัวแปลงช่วงเปลี่ยนผ่านถูกถอดแล้ว 2026-08-29 · คนที่ยังถือโทเคนเก่าต้อง login ใหม่ */
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'staff', []), false);
-  assert.equal(
-    apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', roleOf({ role: 'staff', department: 'FN' }), []),
-    true,
-  );
 });
 
 /* ⚠️ ด่านนี้หยาบโดยตั้งใจ แต่ต้อง **ไม่หยาบเกินขอบเขต** — เปิดแค่ PATCH ของใบเดียว
