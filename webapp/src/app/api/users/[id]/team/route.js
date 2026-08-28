@@ -10,10 +10,10 @@
 // ⚠️ **ระบบไม่ย้ายดีล/เป้าให้อัตโนมัติ** — จอต้องบอกจำนวนที่ค้างก่อนกด (teamMoveImpact)
 //   ย้ายให้เอง = เขียนทับเจ้าของงานหลายสิบใบในคลิกเดียว และมติเดิมบอกว่าดีลเดือนเก่า
 //   รายงานใต้ทีมเดิมถูกต้องแล้ว
-import { recordAudit } from '@/lib/audit';
+import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
-import { TEAM_ROLES, canManageTeams, resolveTeamAssignment, userAuditSnapshot } from '@/lib/permissions';
+import { TEAM_ROLES, canManageTeams, resolveTeamAssignment } from '@/lib/permissions';
 import { loadTeams } from '@/lib/master/teamsRepo';
 
 export const dynamic = 'force-dynamic';
