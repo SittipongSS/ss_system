@@ -56,3 +56,12 @@
    (คนตาบอดสีต้องได้ข้อมูลเท่ากัน) */
 .overdue { color: var(--red); font-weight: var(--fw-semibold); }
 .soon { color: var(--amber); font-weight: var(--fw-semibold); }
+
+/* ชื่อโซนเป็นทางเข้าหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */
+.zoneLink {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.zoneLink:hover { border-bottom-color: var(--accent); color: var(--accent); }

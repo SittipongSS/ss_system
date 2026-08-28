@@ -14,7 +14,9 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import TimeInput from "@/components/ui/TimeInput";
 import { accessWindowText } from "@/lib/service/sites";
-import { evaluateVisitGate, gateBlocker, gatePassed } from "@/lib/service/visitGate";
+import { evaluateVisitGate, gateBlocker, gatePassed, gateReasons, gateSummary } from "@/lib/service/visitGate";
+import { isSuperuser } from "@/lib/permissions";
+import { useRole } from "@/lib/roleContext";
 import {
   TIME_PRESETS,
   VISIT_KINDS,
@@ -42,6 +44,9 @@ export default function ServiceVisitModal({
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [overriding, setOverriding] = useState(false);   // เปิดโมดัลข้ามด่าน
+  const [overrideReason, setOverrideReason] = useState("");
+  const role = useRole();
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +100,10 @@ export default function ServiceVisitModal({
     [form, site, visit?.id],
   );
   const canQueue = gatePassed(gate);
+  const gateCount = useMemo(() => gateSummary(gate), [gate]);
+  /* ข้ามด่านเป็นสิทธิ์ของหัวหน้า ไม่ใช่ของทุกคนที่แก้งานบริการได้ — ด่านฝั่ง server
+     ปฏิเสธอยู่แล้ว (route PATCH) ที่นี่แค่ไม่โชว์ปุ่มที่กดยังไงก็ไม่ผ่าน */
+  const canOverride = isSuperuser(role);
 
   const applyPreset = (preset) =>
     setForm((prev) => ({ ...prev, startTime: preset.startTime, endTime: preset.endTime }));
@@ -241,6 +250,13 @@ export default function ServiceVisitModal({
             {visit?.status === "draft" && (
               <fieldset className={`${styles.field} ${styles.wide} ${styles.fieldset}`}>
                 <legend>ด่านก่อนขึ้นตาราง</legend>
+                {/* ⭐ บอกความคืบหน้าเป็นตัวเลข ไม่ใช่ให้ไล่นับติ๊กเอง — คนที่เปิดมาเจอ
+                    เช็คลิสต์ 4 ข้อต้องรู้ทันทีว่าเหลืออีกกี่ข้อถึงจะปล่อยได้ */}
+                <p className={styles.gateSummary} data-ready={canQueue ? "yes" : "no"}>
+                  <b>ผ่าน {gateCount.ok} จาก {gateCount.total} ข้อ</b>
+                  {canQueue ? " — ปล่อยเข้าคิวได้" : " — ยังเข้าคิวไม่ได้"}
+                  {gateCount.parked > 0 && ` · ${gateCount.parked} ข้อรอระบบสัญญา (ไม่บล็อก)`}
+                </p>
                 <p className={styles.hint}>
                   ร่างไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยเข้าคิว”
                 </p>
@@ -327,18 +343,68 @@ export default function ServiceVisitModal({
         {/* ⭐ ปุ่มนี้ **โชว์เสมอตอนเป็นร่าง** ต่อให้ยังผ่านด่านไม่ครบ — บอกเหตุตอนกด
             ปุ่มที่หายไปไม่ได้สอนใครว่าต้องไปแก้อะไร (GatedAction §มติ 2026-08-22) */}
         {visit?.status === "draft" && (
-          <GatedAction
-            tone="primary" variant="quiet" disabled={saving}
-            blocker={canQueue ? "" : gateBlocker(gate)}
-            onClick={() => submit({ status: "scheduled" })}
-          >
-            ปล่อยเข้าคิว
-          </GatedAction>
+          <>
+            {/* ⭐ หัวหน้าข้ามด่านได้ พร้อมเหตุผลบังคับที่ติดกับใบถาวร — ของจริงมี 25 จุด
+                ที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรก งานหยุดทันที
+                ⚠️ โชว์เฉพาะหัวหน้า เพราะ server ปฏิเสธคนอื่นอยู่แล้ว (ปุ่มที่กดยังไง
+                ก็ไม่ผ่านไม่ได้สอนอะไรใคร ต่างจากปุ่มที่ติดเงื่อนไข *ข้อมูล* ซึ่งต้องโชว์) */}
+            {!canQueue && canOverride && (
+              <Button tone="neutral" variant="quiet" disabled={saving}
+                onClick={() => { setOverrideReason(""); setOverriding(true); }}>
+                ข้ามด่าน (หัวหน้า)
+              </Button>
+            )}
+            <GatedAction
+              tone="primary" variant="quiet" disabled={saving}
+              blocker={canQueue ? "" : gateBlocker(gate)}
+              onClick={() => submit({ status: "scheduled" })}
+            >
+              ปล่อยเข้าคิว
+            </GatedAction>
+          </>
         )}
         <Button tone="primary" onClick={() => submit()} disabled={saving}>
           {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : "สร้างนัด"}
         </Button>
       </div>
+
+      {/* ⭐ แผ่นข้ามด่าน — แยกจากฟอร์มโดยตั้งใจ เพราะเป็นการตัดสินใจคนละเรื่องกับ
+          การแก้นัด: ชื่อคนกดกับเหตุผลจะติดกับใบถาวรและขึ้นบนใบส่งงาน
+          ⚠️ ต้องบอกว่า "ข้ามอะไรบ้าง" ก่อนให้กด — คนที่ข้ามโดยไม่รู้ว่าข้ามอะไร
+          คือคนที่จะข้ามทุกใบภายในสัปดาห์เดียว */}
+      {overriding && (
+        <div className={styles.overrideSheet} role="group" aria-label="ข้ามด่านเข้าคิว">
+          <h4>ข้ามด่านเข้าคิว</h4>
+          <p className={styles.hint}>
+            นัดนี้จะขึ้นตารางทั้งที่ยังไม่ผ่านด่าน — ใบจะติดร่องรอย “ข้ามด่าน” ถาวร
+            พร้อมชื่อคุณและเหตุผล
+          </p>
+          <ul className={styles.overrideList}>
+            {gateReasons(gate).map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+          <label className={styles.field}>
+            <span>เหตุผลที่ต้องข้าม *</span>
+            <Input
+              as="textarea" rows={3} value={overrideReason} maxLength={500}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              placeholder="เช่น ลูกค้าโอนแล้วส่งสลิปมาทางไลน์ บัญชีติดปิดงบสิ้นเดือน ยืนยันกับบัญชีแล้วว่าจะกดรับรองต้นเดือนหน้า"
+            />
+            <small>อย่างน้อย 10 ตัวอักษร · ลงบันทึกและขึ้นบนใบส่งงาน</small>
+          </label>
+          <div className="form-actions">
+            <Button tone="neutral" onClick={() => setOverriding(false)} disabled={saving}>ยกเลิก</Button>
+            <Button
+              tone="primary" disabled={saving || overrideReason.trim().length < 10}
+              onClick={async () => {
+                await submit({ status: "scheduled", gateOverrideReason: overrideReason.trim() });
+                setOverriding(false);
+              }}
+            >
+              ข้ามด่านและเข้าคิว
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

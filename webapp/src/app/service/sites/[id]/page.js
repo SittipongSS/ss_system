@@ -1,6 +1,7 @@
 "use client";
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { use } from "react";
 import { Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -328,7 +329,11 @@ export default function ServiceSiteDetailPage({ params }) {
                   return (
                     <tr key={zone.id} className={zone.isActive === false ? styles.inactive : undefined}>
                       <td>
-                        {zone.name}
+                        {/* ⭐ ชื่อโซนกดเข้าหน้าโซน — รอบขาย/ยอดใช้จริง/ประวัติของโซนนั้น
+                            อยู่ในฐานข้อมูลมาตั้งแต่ mig 0297 แต่ไม่มีทางเข้ามาก่อนหน้านี้ */}
+                        <Link href={`/service/sites/${site.id}/zones/${zone.id}`} className={styles.zoneLink}>
+                          {zone.name}
+                        </Link>
                         {zone.code ? <span className={styles.serial}> · {zone.code}</span> : null}
                         {zone.note ? <div className={styles.muted}>{zone.note}</div> : null}
                       </td>
