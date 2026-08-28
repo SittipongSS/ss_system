@@ -1,12 +1,13 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { attributionTeam, canDeleteRecord, userTeams, viewScopeUser } from '@/lib/permissions';
+import { attributionTeam, canDeleteRecord, redactProductMargin, userTeams, viewScopeUser } from '@/lib/permissions';
 import { teamInClause } from '@/lib/teamScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { registrationRequirementsBatch } from '@/lib/tax/requirements';
-import { exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
+import { EXCISE_VAT_RATE, exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
+import { hasFactoryFacts, registrationProductFacts } from '@/lib/tax/registrationQueue';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,7 @@ export async function GET(request) {
   const rows = (data || []).map((r) => ({ ...r, canDelete: canDeleteRecord(user, 'registrations', r) }));
   if (!queueView || slim) return Response.json(rows);
   try {
-    return Response.json(await withQueueFacts(supabase, rows));
+    return Response.json(await withQueueFacts(supabase, rows, user));
   } catch (e) {
     // query พังต้องดัง — คิวที่โชว์ "ครบทุกใบ" เพราะตัวตรวจล้มเงียบ อันตรายกว่าไม่โชว์
     return Response.json({ error: e?.message || 'อ่านข้อมูลประกอบคิวไม่สำเร็จ' }, { status: 500 });
@@ -162,14 +163,20 @@ export async function POST(request) {
 /* เติมข้อมูลที่หน้าคิวต้องเห็นทุกแถว — ภาษี/ชิ้น · ฐานราคา · ความพร้อมเอกสาร
    ⚠️ อัตราภาษีมาจาก **สินค้า** เสมอ (ทะเบียนไม่เก็บสำเนา — mig 0180) ตัวคิดคือตัว
    เดียวกับที่ใบยื่นใช้ตอนออกจริง ตัวเลขบนคิวจึงตรงกับที่จะถูกเรียกเก็บเสมอ */
-async function withQueueFacts(supabase, rows) {
+async function withQueueFacts(supabase, rows, user) {
   if (!rows.length) return rows;
   const productIds = [...new Set(rows.map((r) => r.productId).filter(Boolean))];
   const [{ data: products, error: prodErr }, readiness] = await Promise.all([
     productIds.length
       // จำกัดแถวชัดเจน — อ่านได้อย่างมากเท่าจำนวน id ที่ขอ (ดู check:rowcap)
+      /* ⭐ **คอลัมน์เพิ่มไม่ใช่แถวเพิ่ม** (มติผู้ใช้ 2026-08-28) — คิวโชว์ข้อมูลชุด
+         เดียวกับรายงานแล้ว (ขนาด · ราคาปลีกรวม/ถอด VAT · ต้นทุนแจกแจง+กำไร) ยังเป็น
+         query เดิมก้อนเดิม ⇒ ไม่กระทบงบ egress ที่เพิ่งลดมา (ดู docs) และไม่ย้อนกลับ
+         ไปโหลด `/api/products` ทั้งทะเบียนแบบก่อนหน้า */
       ? supabase.from('products')
-        .select('id, "retailPriceIncVat", "exciseTax", "localTax", "isExciseTaxable"')
+        .select('id, volume, "volumeUnit", "retailPriceIncVat", "retailPriceExVat", "costPrice",'
+          + ' "materialCost", "laborCost", "shippingCost", "factoryProfit",'
+          + ' "exciseTax", "localTax", "isExciseTaxable"')
         .in('id', productIds).limit(productIds.length)
       : Promise.resolve({ data: [] }),
     registrationRequirementsBatch(supabase, rows),
@@ -180,10 +187,20 @@ async function withQueueFacts(supabase, rows) {
   return rows.map((r) => {
     const product = productOf.get(r.productId) || null;
     const req = readiness.get(r.id) || null;
+    const facts = registrationProductFacts(product, { vatRate: EXCISE_VAT_RATE });
+    /* ⚠️ **ต้นทุน/กำไรกรองที่ server ไม่ใช่ที่จอ** — ด่านเดียวกับทะเบียนสินค้า
+       (`redactProductMargin`): ไม่มี products:margin ตัดแจกแจงทิ้ง · ไม่มี
+       products:cost/edit ตัดราคาผลิตทิ้งด้วย ⇒ ค่าที่คนไม่มีสิทธิ์ไม่ควรเห็น
+       **ไม่ถูกส่งลง browser เลย** ไม่ใช่ส่งไปแล้วซ่อนด้วย CSS */
+    const factory = redactProductMargin(user, facts.factory);
     return {
       ...r,
       taxPerUnit: exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax,
-      retailPriceIncVat: product?.retailPriceIncVat ?? null,
+      retailPriceIncVat: facts.retailPriceIncVat,
+      retailPriceExVat: facts.retailPriceExVat,
+      volume: facts.volume,
+      volumeUnit: facts.volumeUnit,
+      factory: hasFactoryFacts(factory) ? factory : null,
       docsReady: req ? req.ready : null,
       // ป้ายบนคิวต้องบอกได้ว่า "ขาดอะไร" ไม่ใช่แค่ "ไม่ครบ" — ไม่งั้นต้องเปิดใบถึงรู้
       missingLabels: req ? req.missing.map((m) => m.label) : [],
