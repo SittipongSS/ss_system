@@ -1,6 +1,6 @@
 # ฝ่ายกฎหมาย (LG) → ฝ่ายกฎระเบียบและขึ้นทะเบียนผลิตภัณฑ์ (RA)
 
-สถานะ: **รอตรวจ** · เขียน 2026-08-28 · แบรนช์ `claude/legal-to-ra`
+สถานะ: **เสร็จสมบูรณ์** · เขียน 2026-08-28 · [PR #1487](https://github.com/SittipongSS/ss_system/pull/1487)
 
 มติผู้ใช้ 2026-08-28: เปลี่ยนชื่อฝ่ายทั้งชั้น — ทั้ง role, รหัสฝ่าย, ชื่อความสามารถ และป้ายบนจอ
 
@@ -37,7 +37,13 @@ export function normalizeRole(role) { return role ? (LEGACY_ROLE[role] || role) 
 ⚠️ ต้องเรียก `normalizeRole` ที่ **ทุกจุดที่ดึง role ออกจาก app_metadata** (12 จุด) —
 `lib/roleReadPoints.test.mjs` อ่านซอร์สจริงมาไล่ตรวจ จุดใหม่ที่ลืมจะแดงก่อน merge
 
-🗑 ถอด `LEGACY_ROLE` ออกได้เมื่อไม่มีบัญชีไหนเหลือ role `legal` (เช็คด้วย Admin API)
+✅ **ย้ายบัญชีครบแล้ว 2026-08-28** — `sittipong0510@gmail.com` · `rd@scentandsense.co.th`
+เป็น `role=ra` `department=RA` · ตรวจ Admin API แล้วไม่เหลือ `legal` สักบัญชี (รวมที่ปิดแล้ว)
+⇒ ทะเบียน `LEGACY_ROLE` ว่างแล้ว
+
+⚠️ **แต่ตะเข็บยังอยู่โดยตั้งใจ ไม่ได้ลืมลบ** — จุดเรียกทั้ง 12 จุดถูกตรึงด้วยเทสต์
+⇒ เปลี่ยนชื่อ role ครั้งหน้าเหลือแค่เติมหนึ่งบรรทัดในทะเบียน ไม่ต้องไล่หาจุดอ่าน
+`app_metadata.role` ใหม่ทั้งระบบ และไม่ต้องเรียนบทเรียน "ไม่มี migration ให้ role" ซ้ำ
 
 ---
 
@@ -121,6 +127,7 @@ CONTEXT: PL/pgSQL function guard_workflow_template_step() line 6 at RAISE
 3. deploy
 4. ย้าย `app_metadata.role` ของ 2 บัญชี (`legal` → `ra`) ผ่าน Admin API
    — ทำเมื่อไรก็ได้ ไม่มีผลต่อการเข้าใช้งานเพราะ `normalizeRole` รับไว้แล้ว
-5. เมื่อไม่เหลือบัญชี `legal` — ถอด `LEGACY_ROLE` ออกจาก `permissions.js`
+5. ล้างทะเบียน `LEGACY_ROLE` เมื่อไม่เหลือบัญชี `legal`
 
-บัญชีที่ต้องย้าย (ณ 2026-08-28): `sittipong0510@gmail.com` · `rd@scentandsense.co.th`
+**ทำครบทั้ง 5 ข้อแล้ว 2026-08-28** · `mig 0308` รันบน production แล้ว (ล้มสองรอบก่อนผ่าน
+— ดู §2) · ย้ายสองบัญชีแล้ว · ทะเบียน `LEGACY_ROLE` ว่างแล้ว
