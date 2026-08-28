@@ -126,31 +126,15 @@ const LEGACY_DEPARTMENT = { SALES: 'SA', LEGAL: 'RA', LG: 'RA', VIEWER: 'Viewer'
  * วิธีใช้ครั้งหน้า: เติม `{ ชื่อเก่า: 'ชื่อใหม่' }` แล้วลบออกเมื่อย้ายบัญชีครบ */
 const LEGACY_ROLE = {};
 
-/* ⭐ **`staff` แปลงด้วย "ฝ่าย" ไม่ใช่ตารางชื่อ** (มติผู้ใช้ 2026-08-28 · ยกเลิก role
-   `staff` ทุกฝ่าย) — role เดียวเคยครอบห้าฝ่าย ⇒ ปลายทางขึ้นกับ `department` ของคนนั้น
-   ⚠️ ไม่มีฝ่ายให้เทียบ = **คืน `staff` ตามเดิม** ไม่เดาเป็น role ไหน · role ที่ระบบ
-   ไม่รู้จักตกไป `DEFAULT_CAPS` (อ่านทะเบียนอย่างเดียว) ซึ่งเป็นฝั่งที่ปลอดภัย
-   🐞 เคยเขียน fallback เป็น `viewer` ⇒ **เปิดกว้างขึ้น** เพราะ viewer คือผู้สังเกตการณ์
-   ทั้งระบบ (เห็นงานบริหารด้วย) — ตรงข้ามกับที่ตั้งใจ
-   🗑️ ลบทิ้งได้เมื่อบัญชีที่เคยเป็น staff login ใหม่ครบ (2 บัญชี: PC · PD) */
-const LEGACY_STAFF_ROLE_BY_DEPARTMENT = {
-  PC: 'pc', PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts', RD: 'rd', FN: 'finance',
-};
-
 /** แปลง role ที่เก็บไว้/รับเข้ามา ให้เป็นชื่อปัจจุบัน (แปลงตอนอ่าน)
  *
- * ⚠️ `department` จำเป็นเฉพาะกับ `staff` เก่า — จุดอ่านที่มีฝ่ายในมือควรส่งมาด้วยเสมอ */
-export function normalizeRole(role, department) {
+ * 🗑️ **ตัวแปลง `staff` ถูกถอดแล้ว 2026-08-29** (ใช้ระหว่าง 28–29 ส.ค. ตอนยกเลิก role
+ * `staff` — ดู docs/role-per-department.md) · บัญชีย้ายครบและ login ใหม่แล้วทั้งสองคน
+ * ⇒ โทเคนที่ยังเขียน `staff` (ถ้ามีหลงเหลือ) ตกไป `DEFAULT_CAPS` = อ่านทะเบียนอย่างเดียว
+ * แล้ว login ใหม่ครั้งเดียวจบ — ฝั่งที่ปลอดภัยกว่าการเดา role ให้เขา */
+export function normalizeRole(role) {
   if (!role) return role;
-  if (role === 'staff') {
-    return LEGACY_STAFF_ROLE_BY_DEPARTMENT[normalizeDepartment(department)] || role;
-  }
   return LEGACY_ROLE[role] || role;
-}
-
-/** role ที่ใช้จริงของผู้ใช้คนนี้ (จาก object ที่มีทั้ง role และ department) */
-export function roleOf(user) {
-  return normalizeRole(user?.role, user?.department);
 }
 
 export function normalizeDepartment(department) {
@@ -596,7 +580,7 @@ export function sanitizeExtraCaps(extraCaps) {
 // A user's EFFECTIVE capabilities = role caps ∪ sanitized per-user grants.
 // Prefer this over can(role, …) wherever a `user` object is in hand.
 export function capsForUser(user) {
-  const base = capsFor(roleOf(user));
+  const base = capsFor(user?.role);
   const extra = sanitizeExtraCaps(user?.extraCaps);
   return extra.length ? [...new Set([...base, ...extra])] : base;
 }
@@ -994,7 +978,7 @@ export function viewScope(role) {
 // handlers that have the full user object and cover RA-touchable resources.
 export function viewScopeUser(user) {
   if (canUser(user, 'ra:view')) return 'all';
-  return viewScope(roleOf(user));
+  return viewScope(user?.role);
 }
 
 export function editScope(role) {
@@ -1320,10 +1304,10 @@ export function pmTaskEditTier(user, task, project) {
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   // ฝ่ายปฏิบัติการ + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department)
   // นับเป็นงานของเขา — rd คือฝ่ายที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน
-  const workflowRole = OPS_ROLES.includes(roleOf(user)) || roleOf(user) === 'rd';
+  const workflowRole = OPS_ROLES.includes(user?.role) || user?.role === 'rd';
   const sameDept = workflowRole && !!user?.department
     && normalizeDepartment(user.department) === task?.role;
-  if (can(roleOf(user), 'pm:view') && (ownsTask || sameDept)) return 'workflow';
+  if (can(user?.role, 'pm:view') && (ownsTask || sameDept)) return 'workflow';
   return 'none';
 }
 

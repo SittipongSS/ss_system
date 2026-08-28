@@ -84,7 +84,7 @@ export default function HomeHubPage() {
 
       const meta = user.user_metadata || {};
       setSession({
-        role: normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || "user",
+        role: normalizeRole(user.app_metadata?.role) || "user",
         team: user.app_metadata?.team || null,
         // ทุกทีมที่สังกัด — การ์ดระบบบางใบกั้นด้วยทีม (สหมิตร = KA) ขาดช่องนี้แล้ว
         // คนที่ KA เป็นทีมรองจะไม่เห็นการ์ด ทั้งที่กดเข้าหน้าและ API ผ่าน

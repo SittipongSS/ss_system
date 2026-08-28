@@ -167,11 +167,11 @@ export default function AppLayout({ children }) {
 
       // Role + team come from app_metadata (service-role-only; users cannot self-edit it).
       // team = ทีมหลัก (attribution) · teams = ทุกทีมที่สังกัด (ขอบเขตแถว) — คนอยู่หลายทีมได้
-      setRole(normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || 'user');
+      setRole(normalizeRole(user.app_metadata?.role) || 'user');
       setTeam(user.app_metadata?.team || null);
       setTeams(userTeams({ team: user.app_metadata?.team, teams: user.app_metadata?.teams }));
       // ฝ่าย: กติกาเดียวกับ server (assignable-users) — department ตรง หรืออนุมานจาก role
-      setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(normalizeRole(user.app_metadata?.role, user.app_metadata?.department)) || null);
+      setDepartment(normalizeDepartment(user.app_metadata?.department) || departmentFor(normalizeRole(user.app_metadata?.role)) || null);
       setExtraCaps(Array.isArray(user.app_metadata?.extraCaps) ? user.app_metadata.extraCaps : []);
       // Force a password change on first login / after an admin reset.
       setMustChangePwd(!!user.app_metadata?.must_change_password);

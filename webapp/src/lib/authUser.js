@@ -65,7 +65,7 @@ export async function getCurrentUser() {
   /* แปลง role เก่าตอนอ่าน — บัญชีที่ยังไม่ถูกย้ายต้องเข้าระบบได้ตามปกติ
      ⚠️ ส่ง `department` เข้าไปด้วยเสมอ — `staff` เก่า (ยกเลิก 2026-08-28) แปลงเป็น role
      ของฝ่ายเขา ซึ่งชื่อตารางอย่างเดียวบอกไม่ได้ */
-  const role = normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || 'user';
+  const role = normalizeRole(user.app_metadata?.role) || 'user';
   const identity = {
     id: user.id,
     role,
