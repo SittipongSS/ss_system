@@ -20,6 +20,7 @@ import { TASK_STATUS_META, taskStatusColor } from "@/components/pm/StatusSelect"
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import ReadableText from "@/components/ui/ReadableText";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast, { notifyToast } from "@/components/ui/Toast";
@@ -391,14 +392,19 @@ export default function ProjectDetailPage() {
      lib/pm/projectLifecycle.js แล้ว ทั้งกล่องยืนยันและช่องกรอกเหตุผล ที่นี่เหลือ
      runControlTransition ตัวเดียวเป็นทางออกสู่ API */
 
+  /* 🐞 ของเดิมยิง DELETE เปล่า ๆ **ไม่เคยส่ง `?force=1`** ทั้งที่ API รองรับมาตั้งแต่ต้น
+     ⇒ ความสามารถบังคับลบของผู้ดูแลระบบเป็นโค้ดตายที่ไม่มีทางเข้าถึงจากหน้าจอ
+     (พบตอนตรวจสิทธิ์แอดมินทั้งระบบ 2026-08-28) · ใช้ `deleteWithForce` ตัวเดียวกับ
+     ดีล/ใบเสนอราคา/กลิ่น/สูตร/คำร้อง/วัสดุ: ลบปกติก่อน ติดกฎธุรกิจแล้วค่อยขอพรีวิว
+     ว่าจะกระทบอะไร แล้วถามยืนยันบังคับลบ */
   const handleDeleteProject = async () => {
     if (!data) return;
     if (!(await askConfirm({ title: "ลบโครงการ", message: `ต้องการลบโครงการ "${data.code} — ${data.name}" และขั้นตอนทั้งหมดใช่หรือไม่?`, confirmLabel: "ลบ" }))) return;
-    const res = await fetch(`/api/pm/projects/${data.id}`, { method: "DELETE" });
-    if (res.ok) {
-      router.push("/sa/deals");
-    } else {
-      setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ" });
+    try {
+      const result = await deleteWithForce(`/api/pm/projects/${data.id}`, { isAdmin: userRole === "admin" });
+      if (result.ok) router.push("/sa/deals");
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "ลบไม่สำเร็จ" });
     }
   };
 
@@ -577,11 +583,15 @@ export default function ProjectDetailPage() {
       id: "delete", kind: "delete", slot: "danger", label: "ลบโครงการนี้", icon: Trash2,
       /* ⚠️ ใช้ canDelete ที่ API ส่งมา ห้ามเดาจาก canEdit — ของเดิมเดา แล้ว AE ที่
          deleteScope='none' เห็นปุ่มลบ กดแล้วเจอ 403 (คอมเมนต์ที่ canDeleteProject) */
-      visible: canDeleteProject(p) && closeStatus !== "closed",
+      // ⭐ แอดมินเห็นปุ่มเสมอ แม้โครงการปิดแล้ว — เส้นบังคับลบเป็นของเขาโดยเฉพาะ
+      //   (มติผู้ใช้ 2026-08-28 "ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย")
+      visible: canDeleteProject(p) && (closeStatus !== "closed" || userRole === "admin"),
       // ผูกดีลอยู่ = API ตอบ 409 — บอกเหตุผลไว้บนปุ่มแทนที่จะให้กดแล้วค่อยรู้
       // (ของเดิมสลับปุ่มลบเป็นไอคอนลิงก์ไปหน้าดีล ซึ่งอ่านไม่ออกว่าแปลว่าอะไร)
-      disabled: !!closeBusy || linkedDealCount > 0,
-      disabledReason: linkedDealCount > 0
+      // ⚠️ **ไม่ปิดปุ่มสำหรับแอดมิน** — กดแล้วจะได้พรีวิวว่าจะปลดดีลกี่ใบ แล้วเลือกเอง
+      //   ว่าจะบังคับลบไหม · ปุ่มเทาคือทางตันที่ไม่บอกทางออก (กติกา GatedAction)
+      disabled: !!closeBusy || (linkedDealCount > 0 && userRole !== "admin"),
+      disabledReason: linkedDealCount > 0 && userRole !== "admin"
         ? `โครงการนี้ยังผูกดีลอยู่ ${linkedDealCount} ใบ — ลบดีลทั้งหมดที่หน้าบริหารงานขายก่อน`
         : undefined,
       onClick: handleDeleteProject,

@@ -7,6 +7,7 @@ import {
   dealForcePreview, cleanupDealOrphans,
   dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
   exciseFilingsOfDeal, exciseFilingBlockMessage,
+  contractsOfDeal, contractBlockMessage,
 } from '@/lib/forceDelete';
 import { resolveProbability } from '@/lib/sales/dealProbability';
 import { validateDealOwner } from '@/lib/sales/dealOwner';
@@ -448,6 +449,21 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ทั้งสองเส้นทาง ไม่งั้น error ดิบจาก Postgres หลุดขึ้นหน้าดีลเป็น 500
   const filings = await exciseFilingsOfDeal(supabase, id);
   if (filings.length) return conflict(exciseFilingBlockMessage(filings, 'ดีล'));
+
+  /* 🐞 **สัญญาเป็น FK RESTRICT เหมือนกัน แต่เส้นลบจริงไม่เคยตรวจ** (พบ 2026-08-28)
+     `dealForcePreview` (?dryRun=1) ตรวจและตอบ `blocked:true` ถูกต้อง แต่พอกดลบจริง
+     ไปตายที่ `sales_contracts_dealId_fkey` แล้วตกลง catch ที่ตอบข้อความชี้ผิดทาง
+     ("หลักฐานลายเซ็น/ฉบับตรึง") ⇒ แอดมินลบไม่ได้ และไม่รู้ว่าติดอะไร
+     ⚠️ **ไม่ครอบด้วย `if (!force)`** — สัญญาเป็นเอกสารผูกพันตามกฎหมาย break-glass
+     ก็ข้ามไม่ได้ตามเจตนา mig 0278 · ด่านนี้จึงบอก "ทางออก" ไม่ใช่ "ปฏิเสธเปล่า ๆ" */
+  let dealContracts;
+  try {
+    dealContracts = await contractsOfDeal(supabase, id);
+  } catch (contractError) {
+    // ตรวจไม่ได้ ≠ ไม่มี — หยุดไว้ก่อน ดีกว่าเดินหน้าลบแล้วพบทีหลังว่ามีสัญญาอยู่
+    return fail(contractError.message, 500);
+  }
+  if (dealContracts.length) return conflict(contractBlockMessage(dealContracts, 'ดีล'));
 
   // ใบเสนอราคา/ใบสั่งขายที่มีหลักฐานลายเซ็น (0125) หรือฉบับตรึง (0130/0148): ลูกพวกนี้
   // เป็น FK RESTRICT ⇒ cascade จากการลบดีลถูกฐานข้อมูลปฏิเสธกลางทาง แล้วข้อความดิบ

@@ -105,9 +105,23 @@ export async function loadScoped(supabase, table, id, user, mode = 'edit') {
 
   const predicate = mode === 'view' ? entry.view : entry.edit;
   const target = entry.scopeOf(row);
-  /* ⚠️ scope object หายไป (เช่น ใบที่ไม่ได้ผูกดีล) = **ยังพิสูจน์สิทธิ์ไม่ได้** ⇒ ปฏิเสธ
-     ไม่ใช่ปล่อยผ่าน — เส้นทางที่ตั้งใจให้มีใบไร้ดีลต้องเขียนด่านของตัวเอง ไม่ใช้ตัวนี้ */
-  if (!target || !predicate(user, target)) {
+  /* ⚠️ scope object หายไป (เช่น ใบที่ไม่ได้ผูกดีล หรือดีลแม่ถูกลบไปแล้ว) = **ยังพิสูจน์
+     สิทธิ์ไม่ได้** ⇒ ปฏิเสธ ไม่ใช่ปล่อยผ่าน — เส้นทางที่ตั้งใจให้มีใบไร้ดีลต้องเขียน
+     ด่านของตัวเอง ไม่ใช้ตัวนี้
+     ⭐ **ยกเว้นผู้ดูแลระบบ** (มติผู้ใช้ 2026-08-28) — แถวกำพร้าคือเคสเดียวที่ต้องใช้
+     แอดมินเข้าไปเก็บกวาดจริง ๆ แต่ของเดิมปฏิเสธแอดมินไปพร้อมกับทุกคน ⇒ ไม่มีใคร
+     ลบแถวกำพร้าได้เลยทั้งระบบ · ข้อความบอกให้ชัดว่าเป็นแถวไร้ต้นสังกัด ไม่ใช่ 'forbidden'
+     เปล่า ๆ ที่พาไปตรวจสิทธิ์ผิดที่ */
+  if (!target) {
+    if (user?.role === 'admin') return { row };
+    return {
+      response: Response.json(
+        { error: `${entry.label}นี้ไม่มีดีลต้นสังกัด จึงตรวจสิทธิ์ไม่ได้ — แจ้งผู้ดูแลระบบ` },
+        { status: 403 },
+      ),
+    };
+  }
+  if (!predicate(user, target)) {
     return { response: Response.json({ error: 'forbidden' }, { status: 403 }) };
   }
   return { row };

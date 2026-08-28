@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans, quotationForcePreview, salesOrderForcePreview,
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseFilingsOfDeal,
   dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
   scentForcePreview, formulaForcePreview, requestForcePreview, materialForcePreview,
-  contractBlockMessage,
+  contractBlockMessage, contractsOfDeal, contractsOfQuotation,
 } from './forceDelete.js';
 
 test('isForceRequest / isDryRun: อ่าน query flag', () => {
@@ -454,4 +455,44 @@ test('contractBlockMessage: ร่างที่ยังไม่มีเล�
   const message = contractBlockMessage([{ id: 'CTR-9', contractNo: null }], 'ดีล');
   assert.match(message, /CTR-9/);
   assert.match(message, /ลบ.*ดีล/);
+});
+
+/* ── ด่านสัญญาต้องอยู่บน "เส้นลบจริง" ไม่ใช่แค่พรีวิว (ตรวจสิทธิ์แอดมิน 2026-08-28) ──
+   🐞 ของเดิม: `dealForcePreview`/`quotationForcePreview` ตรวจสัญญาและตอบ blocked ถูก
+   แต่ **เส้น DELETE ไม่เคยเรียก contractsOf*() เลย** ⇒ แอดมินกด "บังคับลบ" แล้วไปตาย
+   ที่ FK RESTRICT (`sales_contracts_dealId_fkey`) จากนั้นตกลง catch ที่ตอบข้อความ
+   ชี้ผิดทาง ("หลักฐานลายเซ็น/ฉบับตรึง") = ลบไม่ได้และไม่รู้ว่าติดอะไร */
+test('⭐ เส้นลบดีล/ใบเสนอราคาต้องเรียกด่านสัญญาเอง ไม่พึ่งพรีวิว', () => {
+  const dealRoute = readFileSync(new URL('../app/api/sales-planning/deals/[id]/route.js', import.meta.url), 'utf8');
+  const quoteRoute = readFileSync(new URL('../app/api/sales-planning/quotations/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(dealRoute, /contractsOfDeal\(/, 'เส้นลบดีลต้องตรวจสัญญาเอง');
+  assert.match(dealRoute, /contractBlockMessage\(/);
+  assert.match(quoteRoute, /contractsOfQuotation\(/, 'เส้นลบใบเสนอราคาต้องตรวจสัญญาเอง');
+  assert.match(quoteRoute, /contractBlockMessage\(/);
+});
+
+/* ⚠️ ด่านหน้างานทำลาย: อ่านฐานไม่สำเร็จต้อง **ดัง** ไม่ใช่คืน [] แล้วแปลว่า "ไม่มีสัญญา"
+   — เน็ตสะดุดวินาทีเดียวก็เปิดทางให้ cleanup วิ่งต่อจนข้อมูลหาย */
+test('⭐ contractsOfDeal/contractsOfQuotation: อ่านพลาดต้องโยน ไม่ใช่คืนอาร์เรย์ว่าง', async () => {
+  const boom = {
+    from: () => ({
+      select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'network down' } }) }),
+    }),
+  };
+  await assert.rejects(() => contractsOfDeal(boom, 'D-1'), /ตรวจสัญญาของดีลไม่สำเร็จ/);
+  await assert.rejects(() => contractsOfQuotation(boom, 'QT-1'), /ตรวจสัญญาของใบเสนอราคาไม่สำเร็จ/);
+});
+
+test('พรีวิวใบเสนอราคาที่อ่านสัญญาไม่ได้ ต้องบล็อกพร้อมบอกเหตุ ไม่ใช่บอกว่าไม่มีสัญญา', async () => {
+  const flaky = {
+    from(table) {
+      if (table === 'sales_contracts') {
+        return { select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'timeout' } }) }) };
+      }
+      return stubCount({}).from(table);
+    },
+  };
+  const preview = await quotationForcePreview(flaky, { id: 'QT-1', status: 'draft' });
+  assert.equal(preview.blocked, true);
+  assert.match(preview.notes[0], /ตรวจสัญญาของใบเสนอราคาไม่สำเร็จ/);
 });
