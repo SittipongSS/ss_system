@@ -357,7 +357,6 @@ export default function AppLayout({ children }) {
         // shortName ไม่ต้องมี — ระบบภาษีมี 4 เมนู ช่องบนแถบล่างจึงกว้าง 93.8px
         // ซึ่งพอดีป้ายนี้ (73.3px) · วัดในแอปจริง 2026-08-02
         { href: '/tax/filings', name: 'การยื่นชำระภาษี', countHref: '/tax/filings?status=mine', icon: ReceiptText, cap: 'history:view', match: (p) => p.startsWith('/tax/filings') },
-        { href: '/tax/reports', name: 'รายงาน', icon: BarChart3, cap: 'history:view', match: (p) => p === '/tax/reports' },
       ],
     },
     {
@@ -671,7 +670,7 @@ export default function AppLayout({ children }) {
      ⚠️ ใช้ `match` ของทะเบียนเมนูเอง ไม่ใช่เทียบ href ตรง ๆ — หน้ารายละเอียด
      (`/sa/deals/DEAL-x`) ต้องยังนับเป็นเมนู "ดีล" · เมนูตั้งค่ามี match ของตัวเอง
      ที่คิดจาก `activeSettingsHref` (ยาวสุดชนะ) อยู่แล้ว
-     ⚠️ อันสุดท้ายที่แมตช์ชนะ — ทะเบียนเรียงจากกว้างไปแคบ (`/tax` ก่อน `/tax/reports`)
+     ⚠️ อันสุดท้ายที่แมตช์ชนะ — ทะเบียนเรียงจากกว้างไปแคบ (`/tax` ก่อน `/tax/registrations`)
      เอาอันแรกจะได้ชื่อกว้างเกินจริงในหน้าลูก */
   const hereItem = [...menuItems].reverse().find((item) => item.match(pathname)) || null;
   /* ที่ว่างข้างโลโก้ยาว ~900px จึงเป็นที่ของป้ายนี้ · ไม่มีเมนูที่แมตช์ (เช่น /home

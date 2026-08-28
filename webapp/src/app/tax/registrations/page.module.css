@@ -26,3 +26,13 @@
   gap: var(--space-2); font-size: var(--fs-3); color: var(--text-3);
 }
 .cardCode { font-weight: var(--fw-semibold); font-family: var(--font-mono); font-size: var(--fs-5); }
+
+/* ป้ายช่วงวันที่ในแถบตัวกรอง — ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง */
+.rangeLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-6);
+  color: var(--text-3);
+  white-space: nowrap;
+}

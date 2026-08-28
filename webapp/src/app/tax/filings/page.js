@@ -7,7 +7,13 @@ import Workspace from "@/components/ui/Workspace";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
-import { deptOf, isTaxWaitingOnMe, FILING_FILTERS } from "@/lib/excise/workflow";
+import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
+import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
+import ReportExportActions from "@/components/excise/ReportExportActions";
+import DateInput from "@/components/ui/DateInput";
+import FilterPopover from "@/components/ui/FilterPopover";
+import { Building2 } from "lucide-react";
+import styles from "./page.module.css";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
@@ -39,6 +45,15 @@ export default function FilingsPage() {
   }, [router]);
   const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
+  /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
+     — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
+  const [customerIds, setCustomerIds] = useState([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+  // ลิสต์ลูกค้าโหลดตอนกางตัวกรองครั้งแรก ไม่ใช่ตอนเปิดหน้า (508 แถว)
+  const [customersReady, setCustomersReady] = useState(false);
+  const { data: customers } = useApiList(customersReady ? "/api/customers" : null);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -46,12 +61,57 @@ export default function FilingsPage() {
       if (filter === "mine") {
         if (!isTaxWaitingOnMe(o, "payment", myDept)) return false;
       } else if (filter !== "all" && o.status !== filter) return false;
+      if (customerIds.length && !customerIds.includes(o.customerId)) return false;
+      const day = (o.createdAt || "").slice(0, 10);
+      if (from && day && day < from) return false;
+      if (to && day && day > to) return false;
       if (!q) return true;
       return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [orders, filter, search, myDept]);
+  }, [orders, filter, search, myDept, customerIds, from, to]);
+
+  /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นโหลดแถวที่มองไม่เห็นออกไป */
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to]);
+
+  const allIds = useMemo(() => rows.map((o) => o.id), [rows]);
+  const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const toggleOne = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const exportParams = useMemo(() => ({
+    status: queueStatusParam(filter, ownedStages("payment", myDept)),
+    customerId: customerIds,
+    from,
+    to,
+  }), [filter, myDept, customerIds, from, to]);
+  const exportIds = useMemo(
+    () => queueExportIds({ selected, visibleIds: allIds, searching: !!search.trim() }),
+    [selected, allIds, search],
+  );
 
   const columns = [
+    {
+      key: "_sel",
+      label: (
+        <input
+          type="checkbox"
+          checked={allChecked}
+          onChange={() => setSelected(allChecked ? new Set() : new Set(allIds))}
+          aria-label="เลือกทั้งหมด"
+        />
+      ),
+      sortValue: null,
+      align: "center",
+      thStyle: { width: 34 },
+      // หยุด event ไม่ให้ไหลไปเปิดหน้ารายละเอียด (ทั้งแถวกดได้)
+      render: (o) => (
+        <span onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} aria-label={`เลือก ${o.quotationRef}`} />
+        </span>
+      ),
+    },
     {
       key: "quotationRef", label: "เลขที่ใบเสนอราคา",
       render: (o) => (
@@ -83,9 +143,22 @@ export default function FilingsPage() {
     </div>
   );
 
+  const customerName = customerIds.length === 1
+    ? customers.find((c) => c.id === customerIds[0])?.name
+    : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
+
   const headerRight = (
     <>
-      <span className="ui-badge">{orders.length} รายการ</span>
+      <span className="ui-badge">
+        {selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${orders.length} รายการ`}
+      </span>
+      <ReportExportActions
+        type="filing"
+        params={exportParams}
+        ids={exportIds}
+        rowCount={rows.length}
+        printMeta={{ from, to, customerName }}
+      />
       {canAct && (
         <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}>
           <Plus size={16} /> ยื่นชำระ
@@ -109,7 +182,25 @@ export default function FilingsPage() {
           search={search}
           onSearch={setSearch}
           searchPlaceholder="ค้นหา Ref / PO / ลูกค้า / ใบเสร็จ..."
-        />
+        >
+          <FilterPopover
+            count={customerIds.length}
+            onOpen={() => setCustomersReady(true)}
+            onClear={() => setCustomerIds([])}
+            groups={[{
+              key: "customer", label: "ลูกค้า", icon: Building2,
+              options: customers.map((c) => ({ value: c.id, label: c.name })),
+              selected: customerIds,
+              onChange: setCustomerIds,
+            }]}
+          />
+          <label className={styles.rangeLabel}>
+            จาก <DateInput value={from} onChange={setFrom} />
+          </label>
+          <label className={styles.rangeLabel}>
+            ถึง <DateInput value={to} onChange={setTo} />
+          </label>
+        </FilterBar>
       }
     >
       <DataList
