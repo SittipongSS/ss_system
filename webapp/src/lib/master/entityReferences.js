@@ -77,6 +77,13 @@ export const REFERENCE_REGISTRY = {
       { table: 'sahamit_forecast_lines', label: 'บรรทัดพยากรณ์สหมิตร', sample: null },
       { table: 'sahamit_po_lines', label: 'บรรทัด PO สหมิตร', sample: null },
       { table: 'orders', label: 'ใบยื่นภาษี', sample: 'id' },
+      /* 🐞 **ตกทะเบียนแบบเดียวกับ sales_contracts** (พบ 2026-08-28 ตอน check:refs แดง) —
+         ตารางถูกสร้างบนฐานจริงแล้ว (mig 0297 ของงานบริการ) แต่บรรทัดทะเบียนยังค้างอยู่
+         บนแบรนช์ที่ยังไม่ merge ⇒ ด่านเห็นตารางอ้าง productId ที่ไม่มีใครประกาศ
+         `productId` เป็น snapshot จากบรรทัดใบสั่งขายตอนผูกรอบ (ไม่มี FK) — ลบสินค้าแล้ว
+         รอบขายที่ยังเดินอยู่จะชี้ไปยังของที่ไม่มีแล้วเงียบ ๆ จึงต้องกันการลบเหมือน
+         `sales_order_lines` ที่เป็น snapshot เหมือนกัน */
+      { table: 'service_zone_terms', label: 'รอบขายของโซนบริการ', sample: 'salesOrderId' },
     ],
     ignored: {
       /* ⚠️ **ห้ามเอามาบล็อกการลบ** — เป็นสมุดประวัติ *ของตัวสินค้าเอง* ไม่ใช่ของที่อื่น
