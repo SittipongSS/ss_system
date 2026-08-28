@@ -14,8 +14,6 @@
 .colDoc { min-width: 160px; }
 .colCount { min-width: 84px; }
 
-.up { color: var(--green); }
-.down { color: var(--red); }
 
 .footNote { color: var(--text-3); font-size: var(--fs-5); }
 .emptyBox { margin: var(--space-4); }

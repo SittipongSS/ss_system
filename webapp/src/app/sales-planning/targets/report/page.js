@@ -59,6 +59,12 @@ const sum = (arr) => (arr || []).reduce((s, v) => s + Number(v || 0), 0);
 const money = (v) => fmtMoney(v);
 const pct = (actual, target) => (target > 0 ? fmtPercent((actual / target) * 100) : NA);
 
+/* สีเขียว/แดงของ "ส่วนต่าง"
+   ⚠️ ต้องอยู่บน <span> ใน <td> ไม่ใช่บน <td> เอง — `.…scroll[data-family] td` ของเปลือกตาราง
+   กับ `.ui-metric strong` ของแถบตัวเลข ต่างก็จำเพาะกว่าคลาสสีเดี่ยว ๆ แล้วกลืนสีทิ้งเงียบ ๆ
+   (คลาสอยู่ใน DOM ครบ แต่ตัวเลขออกมาสีเดียวกันหมด) · `cell-num-ok/bad` เป็นของกลางใน globals */
+const tone = (diff) => (diff >= 0 ? "cell-num-ok" : "cell-num-bad");
+
 export default function SalesReportPage() {
   const canTarget = useCan("salesplan:target");
   const role = useRole();
@@ -198,8 +204,10 @@ export default function SalesReportPage() {
             <span><small>ส่วนต่าง</small>
               {/* ไม่มีเป้า = เทียบไม่ได้ ต้องขึ้นขีดเหมือน % — ของเดิมโชว์ (ยอดจริง − 0)
                   ซึ่งอ่านเป็น "เกินเป้า 135 ล้าน" ในช่วงปี 2023–2024 ที่ยังไม่เคยตั้งเป้า */}
-              <strong className={cmp.target > 0 ? (cmp.actual - cmp.target >= 0 ? styles.up : styles.down) : undefined}>
-                {cmp.target > 0 ? money(cmp.actual - cmp.target) : NA}
+              <strong>
+                {cmp.target > 0
+                  ? <span className={tone(cmp.actual - cmp.target)}>{money(cmp.actual - cmp.target)}</span>
+                  : NA}
               </strong>
               <em>{cmp.target > 0 ? `เทียบเป้าของ ${targetIdx.length} เดือนนั้น` : "ไม่มีเป้าให้เทียบ"}</em></span>
           </span>
@@ -314,8 +322,8 @@ function MonthTable({ data, closedCount }) {
                   <td className="num">{carry ? money(carry) : NA}</td>
                   <td className="num">{mustClose ? money(mustClose) : NA}</td>
                   <td className="num">{actual ? money(actual) : NA}</td>
-                  <td className={`num ${closed && mustClose ? (diff >= 0 ? styles.up : styles.down) : ""}`.trim()}>
-                    {closed && mustClose ? money(diff) : NA}
+                  <td className="num">
+                    {closed && mustClose ? <span className={tone(diff)}>{money(diff)}</span> : NA}
                   </td>
                   <td className="num">{closed ? pct(actual, mustClose) : NA}</td>
                   <td>
@@ -380,8 +388,8 @@ function GroupTable({ rows, idx, months, kind }) {
                     {kind === "person" && <td>{TEAM_LABELS[row.team] || row.team || NA}</td>}
                     <td className="num">{target ? money(target) : NA}</td>
                     <td className="num">{actual ? money(actual) : NA}</td>
-                    <td className={`num ${target ? (diff >= 0 ? styles.up : styles.down) : ""}`.trim()}>
-                      {target ? money(diff) : NA}
+                    <td className="num">
+                      {target ? <span className={tone(diff)}>{money(diff)}</span> : NA}
                     </td>
                     <td className="num">{pct(actual, target)}</td>
                   </tr>
