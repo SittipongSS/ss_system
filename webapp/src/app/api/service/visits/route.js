@@ -30,12 +30,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const sites = await sitesForVisits(supabase, visits);
     const siteIds = [...sites.keys()];
 
-    /* ⭐ ภาระของช่างนับเป็น **เครื่อง + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมี
+    /* ⭐ ภาระของช่างนับเป็น **จุด + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมี
        เครื่องตัวเดียว อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้ว่าไหวไหม
-       ⇒ ส่งจำนวนเครื่องที่ยังอยู่หน้างาน + แพ็คตามรอบขายของโซนมาพร้อมกัน
-       ⚠️ นับที่ server ทีเดียว ไม่ให้จอไล่ยิงรายไซต์ (200 ไซต์ = 200 คำขอ) */
+       ⇒ ส่งจำนวนจุดที่ยังอยู่หน้างาน + แพ็คตามรอบขายของโซนมาพร้อมกัน
+       ⚠️ นับที่ server ทีเดียว ไม่ให้จอไล่ยิงรายไซต์ (200 ไซต์ = 200 คำขอ)
+       ⚠️ **ต้องเลือก `qty` มาด้วย** — ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด)
+          ไม่ดึงมา = ประเมินงานต่ำเงียบ ๆ (พบตอน UAT 2026-08-28) */
     const [assets, zones] = siteIds.length ? await Promise.all([
-      supabase.from('service_assets').select('id, siteId, status').in('siteId', siteIds)
+      supabase.from('service_assets').select('id, siteId, status, qty').in('siteId', siteIds)
         .then(({ data, error }) => { if (error) throw error; return data || []; }),
       supabase.from('service_zones').select('id, siteId').in('siteId', siteIds)
         .then(({ data, error }) => { if (error) throw error; return data || []; }),

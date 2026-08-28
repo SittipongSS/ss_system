@@ -37,9 +37,17 @@ export function allowedKindsFor(department) {
    (ทีมขายเดิม ODM/KA/SV ไม่มีคำนำหน้า เพราะรหัสถูกเขียนลง 19 ตารางไปแล้ว) */
 export function suggestTeamCode(department, name, existingCodes = []) {
   const dept = String(department ?? '').trim().toUpperCase();
+  /* 🐞 ของเดิมยอมให้ **ภาษาไทยเข้ารหัส** แล้ว `.slice(0, 12)` ตัดกลางคำ ⇒ ตั้งทีมชื่อ
+     "ทีมกรุงเทพตะวันออก" ได้รหัส `TS-UAT-ทีมกรุงเ` (พบตอน UAT 2026-08-28)
+     - รหัสนี้เป็น **route param** (`/api/teams/[code]`) ⇒ ไทยใน URL ต้อง percent-encode
+     - และขัดกับรหัสอื่นทั้งระบบที่เป็น ASCII ล้วน (`SS-26080005` · `ZN-…` · `AR-306`)
+     ⇒ เอาเฉพาะ A-Z0-9 · ตัดที่ขอบคำ (ไม่ตัดกลางท่อน) · ชื่อไทยล้วนถอยไปใช้เลขรัน */
   const base = String(name ?? '').trim().toUpperCase()
-    .replace(/[^A-Z0-9ก-๙]+/g, '-')
+    .replace(/[^A-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+    .split('-').reduce((acc, part) => (
+      !part ? acc : (!acc ? part : (`${acc}-${part}`.length <= 12 ? `${acc}-${part}` : acc))
+    ), '')
     .slice(0, 12);
   const stem = base ? `${dept}-${base}` : dept;
   if (!existingCodes.includes(stem)) return stem;

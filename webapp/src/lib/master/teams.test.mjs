@@ -33,10 +33,28 @@ test('ต้องมีชื่อทีมและฝ่ายเสมอ',
 });
 
 test('รหัสทีมมีฝ่ายนำหน้า และไม่ชนของเดิม', () => {
-  assert.equal(suggestTeamCode('TS', 'ทีม A'), 'TS-ทีม-A');
+  assert.equal(suggestTeamCode('TS', 'ทีม A'), 'TS-A', 'ตัดภาษาไทยทิ้ง เหลือส่วนที่เป็น ASCII');
   assert.equal(suggestTeamCode('TS', 'Alpha'), 'TS-ALPHA');
   assert.equal(suggestTeamCode('TS', 'Alpha', ['TS-ALPHA']), 'TS-ALPHA-2');
   assert.equal(suggestTeamCode('TS', ''), 'TS');
+});
+
+/* 🐞 พบตอน UAT 2026-08-28: ตั้งทีมชื่อไทยล้วนได้รหัส `TS-UAT-ทีมกรุงเ` — ภาษาไทย
+   หลุดเข้ารหัสแล้วถูก `.slice(0, 12)` **ตัดกลางคำ**
+   รหัสนี้เป็น route param (`/api/teams/[code]`) และรหัสอื่นทั้งระบบเป็น ASCII ล้วน */
+test('⭐ รหัสทีมต้องเป็น ASCII และไม่ตัดกลางคำ', () => {
+  // ชื่อไทยล้วน = ไม่มีอะไรให้ทำรหัส ⇒ ถอยไปใช้เลขรันแบบเดียวกับทีมเดิม
+  assert.equal(suggestTeamCode('TS', 'ทีมกรุงเทพตะวันออก'), 'TS');
+  assert.equal(suggestTeamCode('TS', 'ทีมกรุงเทพตะวันออก', ['TS']), 'TS-2');
+  assert.equal(suggestTeamCode('TS', 'ทีมกรุงเทพ', ['TS', 'TS-2']), 'TS-3');
+
+  // ยาวเกินเพดาน = ตัดที่ **ขอบคำ** ไม่ใช่กลางคำ
+  assert.equal(suggestTeamCode('TS', 'Bangkok East Crew Alpha'), 'TS-BANGKOK-EAST');
+
+  // ไม่มีตัวอักษรไทยหลงเข้ารหัสได้อีกไม่ว่าชื่อจะเป็นอะไร
+  for (const name of ['[UAT] ทีมกรุงเทพตะวันออก', 'ทีม A ภาคเหนือ', 'สาย 2']) {
+    assert.doesNotMatch(suggestTeamCode('TS', name), /[\u0e00-\u0e7f]/, name);
+  }
 });
 
 test('⭐ ทีมที่ยังมีคนอยู่ ปิดไม่ได้ และต้องบอกเหตุ ไม่ใช่แค่ปฏิเสธ', () => {

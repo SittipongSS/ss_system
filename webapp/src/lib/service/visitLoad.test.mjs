@@ -23,6 +23,26 @@ test('⭐ นับเฉพาะเครื่องที่ยังอย�
   assert.equal(siteWorkload({ siteId: 'S1', assets, zones, terms }).assets, 2);
 });
 
+/* 🐞 พบตอน UAT 2026-08-28: ของเดิมนับ **จำนวนแถว** ⇒ ชุดเครื่องกดสบู่ 242 จุด
+   (1 แถว + qty ตามมติข้อ 13) ขึ้นเป็น 1 ทั้งที่เอกสารวัดไว้ว่าเป็นงานหนึ่งวันของสามคน */
+test('⭐ ชุดอุปกรณ์ที่ 1 แถว = หลายจุด ต้องนับตาม qty ไม่ใช่นับเป็น 1', () => {
+  const soapSite = [
+    { id: 'X1', siteId: 'SX', status: 'active', kind: 'soap', qty: 242 },
+    { id: 'X2', siteId: 'SX', status: 'active', kind: 'diffuser' },        // ไม่มี qty = 1 จุด
+    { id: 'X3', siteId: 'SX', status: 'removed', kind: 'soap', qty: 50 },  // ถอดแล้ว ไม่นับ
+  ];
+  assert.equal(siteWorkload({ siteId: 'SX', assets: soapSite }).assets, 243);
+});
+
+test('qty ที่อ่านไม่ได้ถอยเป็น 1 จุด ไม่ใช่ 0 (แถวที่มีอยู่จริงต้องมีน้ำหนักเสมอ)', () => {
+  const odd = [
+    { id: 'Y1', siteId: 'SY', status: 'active', qty: null },
+    { id: 'Y2', siteId: 'SY', status: 'active', qty: 0 },
+    { id: 'Y3', siteId: 'SY', status: 'active', qty: 'สาม' },
+  ];
+  assert.equal(siteWorkload({ siteId: 'SY', assets: odd }).assets, 3);
+});
+
 test('แพ็คมาจากรอบขายของโซนในไซต์นั้น', () => {
   assert.equal(siteWorkload({ siteId: 'S1', assets, zones, terms }).packs, 3);
   assert.equal(siteWorkload({ siteId: 'S2', assets, zones, terms }).packs, 4);
@@ -66,7 +86,7 @@ test('⭐ เตือนเกินภาระนับจาก **เคร�
 
 test('⭐ ไซต์ที่ยังไม่ลงทะเบียนเครื่อง ต้องอ่านออกว่า "ไม่มีข้อมูล" ไม่ใช่ "งานเบา"', () => {
   assert.equal(workloadText({ visits: 2, assets: 0, packs: 0 }), '2 นัด');
-  assert.equal(workloadText({ visits: 2, assets: 5, packs: 3 }), '2 นัด · 5 เครื่อง · 3 แพ็ค');
-  assert.equal(workloadText({ visits: 1, assets: 4, packs: 0 }), '1 นัด · 4 เครื่อง');
+  assert.equal(workloadText({ visits: 2, assets: 5, packs: 3 }), '2 นัด · 5 จุด · 3 แพ็ค');
+  assert.equal(workloadText({ visits: 1, assets: 4, packs: 0 }), '1 นัด · 4 จุด');
   assert.equal(workloadText(null), '');
 });

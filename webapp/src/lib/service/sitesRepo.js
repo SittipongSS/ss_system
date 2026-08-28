@@ -68,6 +68,22 @@ export async function assetCountsBySite(supabase, siteIds = []) {
   return counts;
 }
 
+/* จำนวนโซนของหลายไซต์ในคำสั่งเดียว — คู่กับ assetCountsBySite
+   🐞 ที่มา (UAT 2026-08-28): ไทล์เลือกไซต์ในวิซาร์ด "งานเข้าใหม่" โชว์ **"0 โซน" เสมอ**
+   เพราะหน้าจอมีโซนเฉพาะของไซต์ที่ "เลือกไปแล้ว" (ensureZones โหลดทีละไซต์) แต่ตัวเลข
+   นี้คือสิ่งที่คนใช้ **ตัดสินใจก่อนเลือก** ว่าจะผูกโซนเดิมหรือสร้างใหม่ ⇒ ต้องมาพร้อมรายการ
+   ⚠️ นับ **ทุกโซน** ไม่กรอง isActive — โซนที่พักไว้ก็ยังผูกใหม่ได้ และเป็นเหตุผลที่ไม่ควร
+      สร้างโซนชื่อซ้ำ (unique index กันไว้ที่ mig 0297) */
+export async function zoneCountsBySite(supabase, siteIds = []) {
+  const counts = new Map();
+  if (!siteIds.length) return counts;
+  const { data, error } = await supabase
+    .from('service_zones').select('siteId').in('siteId', siteIds);
+  if (error) throw error;
+  for (const row of data || []) counts.set(row.siteId, (counts.get(row.siteId) || 0) + 1);
+  return counts;
+}
+
 export async function findZone(supabase, siteId, zoneId) {
   const { data, error } = await supabase
     .from('service_zones').select('*')

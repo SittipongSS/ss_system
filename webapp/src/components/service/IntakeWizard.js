@@ -153,7 +153,7 @@ export default function IntakeWizard({
                       description: [
                         s.code,
                         s.routeZone,
-                        `${(zonesBySite.get(s.id) || []).length || 0} โซน`,
+                        `${s.zoneCount ?? (zonesBySite.get(s.id) || []).length} โซน`,
                         s.assetCount != null ? `${s.assetCount} อุปกรณ์` : null,
                       ].filter(Boolean).join(" · "),
                     }))}

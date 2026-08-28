@@ -6,6 +6,7 @@ import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, Clipbo
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
+import { devBypassUser } from '@/lib/devBypass';
 import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
@@ -127,8 +128,17 @@ export default function AppLayout({ children }) {
     // Auth: read the signed-in user from Supabase. If Supabase isn't configured
     // yet (local dev before setup), fall back to a permissive local session.
     if (!SUPABASE_CONFIGURED) {
-      setRole('ae_supervisor');
-      setDepartment(departmentFor('ae_supervisor'));
+      /* ⚠️ ต้องอ่านจากตัวเดียวกับฝั่ง server (`lib/devBypass.js`) — ถ้าสองฝั่งคิดว่า
+         เป็นคนละคน จะได้หน้าจอที่ปุ่มหายแต่ API ยอม (หรือกลับกัน) ซึ่ง UAT เชื่อไม่ได้ */
+      const bypass = devBypassUser({
+        NEXT_PUBLIC_DEV_BYPASS_ROLE: process.env.NEXT_PUBLIC_DEV_BYPASS_ROLE,
+        NEXT_PUBLIC_DEV_BYPASS_DEPARTMENT: process.env.NEXT_PUBLIC_DEV_BYPASS_DEPARTMENT,
+        NEXT_PUBLIC_DEV_BYPASS_TEAM: process.env.NEXT_PUBLIC_DEV_BYPASS_TEAM,
+      });
+      setRole(bypass.role);
+      setDepartment(bypass.department);
+      setTeam(bypass.team);
+      setTeams(bypass.teams);
       setUserName('Local D.');
       setUserInitials('LD');
       return;
