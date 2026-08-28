@@ -1300,19 +1300,30 @@ button, select, input, textarea {
    ⚠️ วางบนแถวโลโก้เพราะที่ตรงนั้นว่างยาว ~900px อยู่แล้ว ⇒ ได้ข้อมูลโดยไม่กิน
    ความสูงเพิ่ม และหัวเลิกอ่านเป็นรูปทแยง (ของเทียบสี่แบบอยู่ในม็อก 2026-08-26)
    ⚠️ เป็น **ข้อความ ไม่ใช่ปุ่ม** — การเดินทางเป็นงานของแถบระบบข้างล่าง */
+/* ⚠️ **ไม่มีเส้นคั่นของตัวเอง** — `.topnav-brand` มี `border-right` ปิดท้ายโลโก้อยู่
+   ก่อนแล้ว เคยประกาศ `border-inline-start` ตรงนี้ด้วยจนขึ้นสองเส้นห่างกัน 14px
+   (เห็นเฉพาะจอ ≥1200 ซึ่งเป็นชั้นจอเดียวที่ป้ายนี้โผล่ จึงหลุดตาตอนทำ) */
 .topnav-here {
   display: none;
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  padding-inline-start: var(--space-3-5);
-  border-inline-start: 1px solid color-mix(in srgb, var(--navy-fg) 22%, transparent);
   font-size: var(--fs-6);
   line-height: var(--lh-thai);
 }
+/* ชื่อระบบเป็นลิงก์ไปหน้าแรกของระบบนั้น — จางกว่าชื่อเมนูเพราะเป็นที่มา ไม่ใช่ที่ยืนอยู่
+   แล้วสว่างขึ้นตอนชี้ เพื่อบอกว่ากดได้โดยไม่ต้องขีดเส้นใต้ค้างไว้ตลอดเวลา */
 .topnav-here-sys {
   color: color-mix(in srgb, var(--navy-fg) 72%, transparent);
   white-space: nowrap;
+  text-decoration: none;
+  border-radius: var(--radius);
+  transition: color var(--motion-fast);
+}
+a.topnav-here-sys:hover { color: var(--navy-fg); text-decoration: underline; text-underline-offset: 3px; }
+a.topnav-here-sys:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--navy-fg) 70%, transparent);
+  outline-offset: 3px;
 }
 .topnav-here-sep { color: color-mix(in srgb, var(--navy-fg) 45%, transparent); }
 /* ชื่อเมนูคือของที่มาอ่าน — เข้มกว่าและหนากว่าชื่อระบบที่นำหน้า
