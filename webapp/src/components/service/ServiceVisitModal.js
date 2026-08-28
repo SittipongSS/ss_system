@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
+import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import TimeInput from "@/components/ui/TimeInput";
@@ -32,7 +33,7 @@ import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
   siteId: "", kind: "refill", scheduledDate: "", startTime: "", endTime: "",
-  assigneeId: "", assigneeName: "", status: "scheduled",
+  assigneeId: "", assigneeName: "", assistantIds: [], status: "scheduled",
   actualDate: "", actualStartTime: "", actualEndTime: "", summary: "", note: "",
   rescheduleReason: "",
 };
@@ -60,6 +61,7 @@ export default function ServiceVisitModal({
         endTime: (visit.endTime || "").slice(0, 5),
         assigneeId: visit.assigneeId || "",
         assigneeName: visit.assigneeName || "",
+        assistantIds: Array.isArray(visit.assistantIds) ? visit.assistantIds : [],
         status: visit.status || "scheduled",
         actualDate: visit.actualDate || "",
         actualStartTime: (visit.actualStartTime || "").slice(0, 5),
@@ -220,6 +222,25 @@ export default function ServiceVisitModal({
             placeholder="ยังไม่มอบหมาย"
             ariaLabel="ช่างผู้รับผิดชอบ"
           />
+          <small>คนนี้คือเจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้</small>
+        </label>
+
+        {/* ⭐ ช่างที่ไปด้วย (F-6) — คอลัมน์ `assistantIds` มีมาตั้งแต่ mig 0188
+            แต่ไม่เคยมีจอไหนให้กรอก ⇒ งานสองคนถูกบันทึกเป็นงานคนเดียวมาตลอด
+            ⚠️ ไม่ใช่ "เจ้าของงานคนที่สอง" — ใบส่งงานและรอบถัดไปยังนับจากคนแรกคนเดียว
+            สิ่งที่เปลี่ยนคือคนที่ไปด้วย **เห็นงานนี้ในงานวันนี้ของตัวเอง** */}
+        <label className={`${styles.field} ${styles.wide}`}>
+          <span>ช่างที่ไปด้วย</span>
+          <OptionTiles
+            multiple
+            value={form.assistantIds}
+            onChange={(ids) => setForm((prev) => ({ ...prev, assistantIds: ids }))}
+            ariaLabel="ช่างที่ไปด้วย"
+            options={technicians
+              .filter((tech) => tech.id !== form.assigneeId)
+              .map((tech) => ({ value: tech.id, label: tech.name }))}
+          />
+          <small>เว้นว่าง = ไปคนเดียว · คนที่ติ๊กไว้จะเห็นนัดนี้ในงานวันนี้ของตัวเอง</small>
         </label>
 
         {/* โหมดสร้างไม่มีสถานะ/ผลการเข้า — นัดใหม่เริ่มที่ "นัดไว้" เสมอ (กฎ AGENTS.md) */}
