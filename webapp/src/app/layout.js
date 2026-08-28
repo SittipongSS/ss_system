@@ -27,8 +27,14 @@ export const dynamic = "force-dynamic";
    แล้ว (`fontWeightScale.test.mjs` ยังผูกไว้) */
 
 export const metadata = {
-  title: "ระบบ Scent and Sense",
+  title: "SUK · Scent and Sense",
   description: "ระบบจัดการทะเบียนสินค้า ลูกค้า ขออนุมัติและยื่นชำระภาษีสรรพสามิต",
+  /* ⭐ ชื่อใต้ไอคอนตอน "เพิ่มไปยังหน้าจอโฮม" บน iOS — ถ้าไม่ตั้ง iOS จะเอา `title`
+     มาใช้แล้วตัดเหลือ ~12 ตัว กลายเป็น "SUK · Scent…"
+     ⚠️ `capable: false` ตั้งใจ — ปล่อยเป็นค่าเริ่มต้น (true) แล้วหน้าจะเปิดแบบ
+     standalone คือไม่มีแถบ Safari ⇒ **ไม่มีปุ่มย้อนกลับ** ทั้งระบบพึ่ง back ของ
+     เบราว์เซอร์อยู่หลายจุด (โมดัล/ตัวกรอง/หน้ารายละเอียด) จะเดินหลงทันที */
+  appleWebApp: { title: "SUK", capable: false },
 };
 
 export default function RootLayout({ children }) {

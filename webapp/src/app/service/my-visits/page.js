@@ -158,7 +158,7 @@ export default function MyVisitsPage() {
 
                     <p className={styles.siteName}>{site?.name || visit.siteId}</p>
                     <p className={styles.meta}>
-                      {naText([site?.zone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
+                      {naText([site?.routeZone, site?.customerName, accessWindowText(site) && `เข้าได้ ${accessWindowText(site)}`]
                         .filter(Boolean).join(" · "))}
                     </p>
                     {site?.accessNote && <p className={styles.meta}>{site.accessNote}</p>}

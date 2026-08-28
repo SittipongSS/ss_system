@@ -64,7 +64,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 });
 
-// POST { customerId, name, zone?, address?, mapUrl?, contactName?, contactPhone?,
+// POST { customerId, name, routeZone?, address?, mapUrl?, contactName?, contactPhone?,
 //        accessFrom?, accessTo?, accessDays?, accessNote?, note? }
 export const POST = withUser(async ({ user, supabase, req }) => {
   const access = requireService({ user, edit: true });
