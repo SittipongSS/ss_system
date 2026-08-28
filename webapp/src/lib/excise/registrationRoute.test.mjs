@@ -40,7 +40,14 @@ test('อัตราภาษีคิดใหม่เฉพาะเมื�
 // สำเนาด้วย · เดิมคิดสูตรเอง (retailPriceIncVat / 1.07 * 0.08) = สำเนาที่สองของสูตรที่
 // products PATCH ใช้ (retailPriceExVat * 0.08) คนละฐานราคา เพี้ยนกันได้ทันที
 test('ทะเบียนไม่คิดสูตรภาษีเอง — อัตรามาจากทะเบียนสินค้าที่เดียว', () => {
-  assert.doesNotMatch(detailCode, /retailPriceIncVat/, 'ห้ามคิดจากราคาขายปลีกเองซ้ำ');
+  /* ⚠️ **อ่าน** ราคาขายปลีกมาส่งให้จอโชว์เป็นคนละเรื่องกับ **คิดสูตรเอง** — หน้า
+     รายละเอียดต้องกางที่มาของภาษีให้ฝ่ายกฎหมายเห็น (ราคาปลีก → ถอด VAT → 8% → 10%)
+     ไม่งั้นเขากดอนุมัติโดยเห็นแต่ตัวเลขลอย ๆ ⇒ route แนบราคามาให้ได้
+     สิ่งที่ยังห้ามคือ **เอาไปคำนวณต่อในไฟล์นี้** และ **ฝังอัตราเป็นเลขดิบ**
+     (ของเดิมคิด `retailPriceIncVat / 1.07 * 0.08` = สำเนาที่สองของสูตรที่ products ใช้) */
+  const withoutSelects = detailCode.replace(/\.select\((['"`])[\s\S]*?\1\)/g, '.select()');
+  assert.doesNotMatch(withoutSelects, /retailPriceIncVat\s*[/*+-]/, 'ห้ามเอาราคาขายปลีกไปคิดสูตรต่อในไฟล์นี้');
+  assert.doesNotMatch(withoutSelects, /[/*]\s*1\.07/, 'ห้ามถอด VAT เองในไฟล์นี้');
   assert.doesNotMatch(detailCode, /\* 0\.08/, 'อัตรา 8% ห้ามฝังในไฟล์นี้');
   assert.doesNotMatch(detailCode, /\* 0\.1\b/, 'อัตราท้องถิ่น 10% ห้ามฝังในไฟล์นี้');
 });
@@ -99,19 +106,50 @@ test('ทะเบียนเลิกเก็บสำเนาอัตร�
 // จอทุกจอที่โชว์ "ภาษี/ชิ้น" ต้องคิดด้วยตัวกลางตัวเดียวกับที่ API ใช้ตอนออกใบยื่น
 // ไม่งั้นเลขบนจอกับเลขบนใบจะเดินหนีกันอีกรอบ (จอ LG สำคัญสุด — ใช้ตัดสินใจอนุมัติ)
 test('ทุกจอที่โชว์ภาษี/ชิ้น อ่านอัตราจากสินค้าผ่านตัวคิดกลาง', () => {
+  /* ⭐ "ผ่านตัวคิดกลาง" มีสองท่า ทั้งคู่ให้เลขเดียวกับที่ใบยื่นจะคิดจริง:
+       · จอเรียก `exciseTaxLineForRegistration({...})` เอง (ต้องมีสินค้าอยู่ในมือ)
+       · จออ่าน `taxPerUnit` ที่ API คิดมาให้ — ท่านี้ไม่ต้องดาวน์โหลดสินค้าทั้งตาราง
+         มาที่เบราว์เซอร์เพื่อคิดเลขเดียว (หน้าคิวย้ายมาใช้ท่านี้ 2026-08-28)
+     ⚠️ ท่าที่สองย้ายภาระพิสูจน์ไปที่ route ⇒ ต้องล็อกว่า route คิดด้วยตัวกลางจริง */
   for (const path of [
     '../../app/tax/registrations/page.js',
     '../../app/tax/registrations/[id]/page.js',
     '../../components/excise/ApproveDialog.js',
   ]) {
     const code = codeOnly(read(path));
-    assert.match(code, /exciseTaxLineForRegistration\(\{/, `${path} ต้องเรียกตัวคิดกลาง`);
+    assert.ok(
+      /exciseTaxLineForRegistration\(\{/.test(code) || /taxPerUnit/.test(code),
+      `${path} ต้องเรียกตัวคิดกลาง หรืออ่านค่าที่ API คิดด้วยตัวกลางมาให้`,
+    );
     assert.doesNotMatch(code, /r\.exciseTax|registration\.exciseTax/, `${path} ห้ามอ่านสำเนาบนทะเบียน`);
   }
+  // ฝั่ง API ที่คิด `taxPerUnit` ให้หน้าคิว ต้องใช้ตัวกลางตัวเดียวกัน ไม่ใช่สูตรของตัวเอง
+  const listCode = codeOnly(listRoute);
+  assert.match(listCode, /exciseTaxLineForRegistration\(\{/, 'route ที่คิด taxPerUnit ต้องใช้ตัวคิดกลาง');
   // หน้าลูกค้า (API) ก็ต้องส่งอัตราของสินค้า ไม่ใช่ของทะเบียน
   const customersRoute = codeOnly(read('../../app/api/customers/[id]/route.js'));
   assert.doesNotMatch(customersRoute, /r\.exciseTax|r\.localTax/);
   assert.match(customersRoute, /\? p\.exciseTax : 0/);
+});
+
+/* ⭐ แจ้งข้ามเลน SA ↔ LG — บล็อกนี้เคยเป็น `if` ว่างเปล่าทั้งสองกิ่ง (ตัวส่งถูกถอด
+   ตอนเลิกใช้ Chat) ⇒ ทั้งสองทางเงียบสนิท · ของจริงตอนตรวจระบบ 2026-08-28: ทะเบียน
+   17 ใบค้าง `pending_legal` ทั้งหมด เก้าใบค้าง 28–34 วัน ทั้งที่เอกสารครบทุกใบ
+   ⚠️ เทสต์นี้กันการถอดตัวส่งซ้ำ — ตรรกะว่า "ใครได้รับ" อยู่ใน
+   lib/tax/registrationNotify.test.mjs (ฟังก์ชันบริสุทธิ์ เทสต์ตรงได้) */
+test('เปลี่ยนสถานะทะเบียนต้องยิงแจ้งเตือนจริง ไม่ใช่ if ว่างเปล่า', () => {
+  assert.match(detailCode, /import \{ notifyRegistration \} from '@\/lib\/tax\/registrationNotify'/);
+  // ทั้งสี่จังหวะต้องมีทางไปถึงตัวส่ง: submit / approve / reject มาจากตารางสถานะ
+  for (const action of ['submit', 'approve', 'reject']) {
+    assert.match(detailCode, new RegExp(`'${action}'`), `ขาดจังหวะ ${action}`);
+  }
+  // ปลดอนุมัติมีเส้นทางของตัวเอง (approved → draft) จึงต้องเรียกแยก
+  assert.match(detailCode, /action: 'revoke', registration: data/, 'ปลดอนุมัติต้องแจ้งเจ้าของใบ');
+  // 🪤 กิ่งว่างเปล่าแบบเดิมห้ามกลับมา
+  assert.doesNotMatch(detailCode, /if \(data\.status === 'pending_legal'\) \{\s*\}/,
+    'กิ่งว่างเปล่าแบบเดิมกลับมาแล้ว');
+  // ผู้รับคำนวณจากไดเรกทอรีผู้ใช้จริง ไม่ใช่รายชื่อที่ก๊อปไว้ในไฟล์
+  assert.match(detailCode, /loadUserDirectory\(supabase\)/);
 });
 
 /* ทะเบียนไร้ทีม = "ของกลาง" — `canViewRecord` ถือแบบนั้นมาตั้งแต่ TEAMLESS_SHARED_RESOURCES

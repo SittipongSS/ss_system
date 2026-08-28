@@ -1,0 +1,15 @@
+/* ชั้นสไตล์ของหน้ารายละเอียดทะเบียน
+   ⚠️ ข้อความหรี่/โมโนสเปซใช้คลาสร่วมของทั้งเว็บ (globals.css) */
+
+.panel { padding: var(--space-4); }
+.fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+
+/* ยอดภาษีต่อชิ้น — ตัวเลขสรุปของการ์ดฐานภาษี */
+.taxTotal { font-family: var(--font-mono); font-size: var(--fs-9); }
+
+.sourceLinks { display: flex; flex-direction: column; gap: var(--space-2); }
+.numeric { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.exemptNote { font-size: var(--fs-6); color: var(--text-2); }
+.exemptWord { color: var(--green); }
+.overrideNote { font-size: var(--fs-5); color: var(--text-3); margin-top: var(--space-2); }

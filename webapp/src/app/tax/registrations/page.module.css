@@ -1,0 +1,22 @@
+/* ชั้นสไตล์ของหน้าคิวขึ้นทะเบียน
+   ⚠️ บรรทัดรอง/ข้อความหรี่ใช้คลาสร่วมของทั้งเว็บ (`cell-sub` · `cell-quiet` · `muted`
+   ใน globals.css) — ที่นี่มีเฉพาะของที่หน้านี้ใช้จริงเท่านั้น */
+
+/* ป้ายความพร้อมเอกสาร — สีบอกสถานะ คู่กับ title ที่บอกว่าขาดอะไร (กฎ A11y) */
+.docsReady { color: var(--green); }
+.docsMissing { color: var(--amber); }
+
+/* เซลล์สองบรรทัด: สถานะบน เลขที่อนุมัติล่าง */
+.stack { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; }
+
+/* การ์ดในมุมมองแนวตั้ง */
+.cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.cardLine {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); font-size: var(--fs-5);
+}
+.cardMeta {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); font-size: var(--fs-3); color: var(--text-3);
+}
+.cardCode { font-weight: var(--fw-semibold); font-family: var(--font-mono); font-size: var(--fs-5); }

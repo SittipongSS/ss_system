@@ -25,8 +25,8 @@
     "tax": {
       "legacyTable": 1,
       "legacySurface": 13,
-      "inlineStyle": 152,
-      "rawButtonClass": 30,
+      "inlineStyle": 138,
+      "rawButtonClass": 28,
       "rawInputClass": 9
     },
     "mgmt": {
