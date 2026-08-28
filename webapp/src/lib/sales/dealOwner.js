@@ -114,7 +114,7 @@ export async function validateDealOwner(supabase, ownerId, actor = null, request
   const disabled = !!user.banned_until && new Date(user.banned_until) > new Date();
   if (disabled) return { ok: false, error: 'ผู้ใช้รายนี้ถูกระงับบัญชีแล้ว — เลือกผู้รับผิดชอบคนอื่น' };
 
-  const role = normalizeRole(user.app_metadata?.role, user.app_metadata?.department) || null;
+  const role = normalizeRole(user.app_metadata?.role) || null;
   if (!DEAL_HOLDER_ROLES.includes(role)) {
     return { ok: false, error: 'ผู้รับผิดชอบดีลต้องเป็น AE / Senior AE — ดีลเป็นหน้าที่ของสองตำแหน่งนี้ (มติ 2026-08-08)' };
   }

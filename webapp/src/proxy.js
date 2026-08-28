@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, roleOf } from '@/lib/permissions';
+import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -141,21 +141,14 @@ export async function proxy(request) {
   // (users:manage) reach everything. Non-admins also get the hub (/home), their
   // own-account API, and the master/holiday data the PM forms depend on. The
   // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
-  /* ⚠️ **แปลง role ก่อนส่งเข้าด่าน** — `roleOf` เปลี่ยน `staff` เก่าเป็น role ของฝ่ายเขา
-     (2026-08-28) · ด่านสองตัวข้างล่างรับแค่ role ไม่ได้มองฝ่ายเอง ⇒ ถ้าไม่แปลงตรงนี้
-     คนที่ยังถือโทเคนเก่าจะโดน 403 ทั้งที่ยังไม่ได้ทำอะไรผิด จนกว่าจะ login ใหม่ */
-  const effectiveRole = roleOf({
-    role: user?.app_metadata?.role,
-    department: user?.app_metadata?.department,
-  });
-  if (user && !isLogin && lockedOut({ role: effectiveRole, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
+  if (user && !isLogin && lockedOut({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
     return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
   // hides actions). GET is always allowed for any signed-in user.
-  if (user && isApi && !apiWriteAllowed(request.method, path, effectiveRole, user.app_metadata?.extraCaps)) {
+  if (user && isApi && !apiWriteAllowed(request.method, path, user.app_metadata?.role, user.app_metadata?.extraCaps)) {
     return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
   }
 

@@ -95,7 +95,7 @@ test("from ที่ไม่ระบุ = ทำได้ทุกสถาน
 });
 
 test("visible=false ซ่อนปุ่มทั้งอัน — ไม่ใช่ทำให้กดไม่ได้", () => {
-  const ids = lifecycle.available({ status: "pending" }, { role: "staff" }).map((entry) => entry.id);
+  const ids = lifecycle.available({ status: "pending" }, { role: "wh" }).map((entry) => entry.id);
   assert.ok(!ids.includes("approve"), "คนไม่มีสิทธิ์ต้องไม่เห็นปุ่มอนุมัติเลย");
   assert.ok(!ids.includes("reject"), "คนไม่มีสิทธิ์ต้องไม่เห็นปุ่มตีกลับเลย");
   assert.ok(ids.includes("withdraw"), "ปุ่มที่ไม่จำกัดสิทธิ์ต้องยังอยู่");

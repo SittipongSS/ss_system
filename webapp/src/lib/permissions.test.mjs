@@ -54,7 +54,7 @@ test('canAssignTask: teammates assign to each other; sup/admin to anyone', () =>
 
   // read-only / non-sales roles cannot assign to others (even same team)
   assert.equal(canAssignTask({ id: 'v', role: 'viewer', team: 'KA' }, acMate), false);
-  assert.equal(canAssignTask({ id: 'w', role: 'staff', team: 'KA' }, acMate), false);
+  assert.equal(canAssignTask({ id: 'w', role: 'wh', team: 'KA' }, acMate), false);
 
   // missing ids → false
   assert.equal(canAssignTask(null, acMate), false);
@@ -134,7 +134,7 @@ test('canPullTask: a teammate may pull a task nobody else holds', () => {
   assert.equal(canPullTask({ id: 's', role: 'admin', team: null }, task, 'ODM'), true);
   // read-only / non-sales roles cannot pull even in the same team
   assert.equal(canPullTask({ id: 'x', role: 'viewer', team: 'KA' }, task, 'KA'), false);
-  assert.equal(canPullTask({ id: 'y', role: 'staff', team: 'KA' }, task, 'KA'), false);
+  assert.equal(canPullTask({ id: 'y', role: 'wh', team: 'KA' }, task, 'KA'), false);
 });
 
 test('canReleaseTask: proxy, responsible, or manager may release', () => {
@@ -230,7 +230,7 @@ test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
   for (const role of ['pc', 'pd', 'wh', 'qc', 'ts', 'rd', 'finance']) {
     assert.equal(canAccessMgmt({ role }), false, role);
   }
-  // ⚠️ โทเคนเก่าที่ยังเขียนว่า `staff` และไม่มีฝ่าย = role ที่ระบบไม่รู้จัก ⇒ อ่านอย่างเดียว
+  // ⚠️ role ที่ระบบไม่รู้จัก (เช่น `staff` ที่ยกเลิกไปแล้ว) ⇒ อ่านอย่างเดียว
   assert.equal(canAccessMgmt({ role: 'staff' }), false);
 });
 
