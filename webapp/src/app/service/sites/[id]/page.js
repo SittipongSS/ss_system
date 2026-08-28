@@ -403,7 +403,11 @@ export default function ServiceSiteDetailPage({ params }) {
                   return (
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
                       <td>
-                        {asset.label}
+                        {/* ชื่อเครื่องกดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
+                            (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น) อยู่ที่นั่น */}
+                        <Link href={`/service/sites/${site.id}/assets/${asset.id}`} className={styles.zoneLink}>
+                          {asset.label}
+                        </Link>
                         {kindText ? <div className={styles.muted}>{kindText}</div> : null}
                       </td>
                       <td>{asset.zoneId ? naText(zonesById.get(asset.zoneId)?.name) : <span className={styles.muted}>ยังไม่ระบุ</span>}</td>
