@@ -28,6 +28,7 @@ import { TEAM_KIND_HINTS, TEAM_KIND_LABELS, sortTeams } from "@/lib/master/teams
 import { ROLE_LABELS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./TeamManager.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function TeamManager({ department, title, subtitle }) {
   const [data, setData] = useState(null);
@@ -51,7 +52,7 @@ export default function TeamManager({ department, title, subtitle }) {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/teams?department=${encodeURIComponent(department)}`);
+      const res = await apiFetch(`/api/teams?department=${encodeURIComponent(department)}`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนทีมไม่สำเร็จ");
@@ -92,7 +93,7 @@ export default function TeamManager({ department, title, subtitle }) {
   const call = async (url, options, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(url, options);
+      const res = await apiFetch(url, options);
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
       setToast({ kind: "success", msg: okMsg });
@@ -113,7 +114,7 @@ export default function TeamManager({ department, title, subtitle }) {
     /* ⭐ บอกของที่จะค้างอยู่ทีมเดิม **ก่อนกด** — ปุ่มย้ายที่แก้แค่บัญชีจะทิ้งดีล/เป้า
        ค้างโดยไม่มีอะไรฟ้อง (คู่มือบอกว่าย้ายทีมมี 4 ขั้น 3 ขั้นเป็นงานมือ) */
     try {
-      const res = await fetch(`/api/users/${person.id}/team/impact`);
+      const res = await apiFetch(`/api/users/${person.id}/team/impact`);
       const body = await res.json().catch(() => null);
       if (res.ok && Array.isArray(body?.effects)) setMoveImpact(body.effects);
     } catch { /* ดูผลข้างเคียงไม่ได้ ไม่ใช่เหตุให้ย้ายไม่ได้ — แค่ไม่มีตัวเลขให้ดู */ }

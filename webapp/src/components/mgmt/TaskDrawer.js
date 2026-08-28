@@ -8,6 +8,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send } from "lucide-react";
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -20,7 +21,7 @@ export default function TaskDrawer({ open, onClose, task, canEdit, onEdit, onCha
   const loadUpdates = useCallback(async () => {
     if (!task?.id) return;
     try {
-      const res = await fetch(`/api/mgmt/updates?entityType=task&entityId=${encodeURIComponent(task.id)}`);
+      const res = await apiFetch(`/api/mgmt/updates?entityType=task&entityId=${encodeURIComponent(task.id)}`);
       if (res.ok) setUpdates(await res.json());
     } catch { /* ignore */ }
   }, [task?.id]);

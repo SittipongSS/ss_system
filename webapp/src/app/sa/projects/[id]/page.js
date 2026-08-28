@@ -56,6 +56,7 @@ import { brandDisplayFromList } from "@/lib/master/brands";
 import { PageShell as SaPageShell, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ความยาวเหตุผล 10–500 ย้ายไปอยู่ที่ recordLifecycle (ค่าเริ่มต้นของ reasonPolicy)
 // แล้ว — TransitionDialog บังคับให้เอง หน้านี้ไม่ต้องถือเลขของตัวเองอีก
@@ -162,7 +163,7 @@ export default function ProjectDetailPage() {
      ถือ collapsedPhases ของตัวเองและตั้งค่าเริ่มต้นเอง */
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/pm/projects/${id}`);
+      const res = await apiFetch(`/api/pm/projects/${id}`);
       if (res.ok) setData(await res.json());
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -182,7 +183,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (!id || closeStatusNow === "closed") { setCloseReadiness(null); return undefined; }
     let alive = true;
-    fetch(`/api/pm/projects/${id}/close`)
+    apiFetch(`/api/pm/projects/${id}/close`)
       .then((res) => (res.ok ? res.json() : null))
       .then((payload) => { if (alive) setCloseReadiness(payload); })
       .catch(() => {});
@@ -247,7 +248,7 @@ export default function ProjectDetailPage() {
     const url = projectCustomerId
       ? `/api/products?customerId=${encodeURIComponent(projectCustomerId)}`
       : "/api/products";
-    fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
+    apiFetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => setAllProducts(d || [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCustomerId]);
 
@@ -323,7 +324,7 @@ export default function ProjectDetailPage() {
   };
   // ดึงประวัติเวอร์ชันใหม่ (ใช้ซ้ำหลัง ออก Rev / ย้อน / บันทึก เพื่อไม่ให้ลิสต์ค้างเก่า)
   const refreshRevisions = async () => {
-    const res = await fetch(`/api/pm/projects/${id}/revisions`);
+    const res = await apiFetch(`/api/pm/projects/${id}/revisions`);
     if (res.ok) { const d = await res.json(); setRevisions(d.revisions || []); }
   };
   const openRevisions = async () => {
@@ -332,7 +333,7 @@ export default function ProjectDetailPage() {
   };
   // พิมพ์เวอร์ชันเก่า: ดึง snapshot แล้วส่งเข้า print เหมือนเอกสารปัจจุบัน
   const printRevision = async (revNo) => {
-    const res = await fetch(`/api/pm/projects/${id}/revisions/${revNo}`);
+    const res = await apiFetch(`/api/pm/projects/${id}/revisions/${revNo}`);
     if (!res.ok) { setToast({ kind: "error", msg: "ดึงเวอร์ชันไม่สำเร็จ" }); return; }
     const revRow = await res.json();
     const snapshot = revRow?.snapshot;

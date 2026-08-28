@@ -15,6 +15,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { naText, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -53,7 +54,7 @@ export default function MgmtTasksPage() {
   useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
 
   useEffect(() => {
-    fetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
+    apiFetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
     cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
 
@@ -69,7 +70,7 @@ export default function MgmtTasksPage() {
     if (filters.status) p.set("status", filters.status);
     if (filters.priority) p.set("priority", filters.priority);
     try {
-      const res = await fetch(`/api/mgmt/tasks?${p}`);
+      const res = await apiFetch(`/api/mgmt/tasks?${p}`);
       const rows = res.ok ? await res.json() : [];
       if (!isLatest()) return; // ตัวกรอง/ปีเปลี่ยนไปแล้ว — คำตอบนี้เป็นของชุดเก่า
       setTasks(rows);

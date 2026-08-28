@@ -13,6 +13,7 @@ import { TableEmpty, TableShell } from "@/components/ui/Table";
 import { fmtDate, naText } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { addendumStatusLabel } from "@/lib/sales/contractAddenda";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ContractAddendaCard({ contract, canEdit = false }) {
   const [rows, setRows] = useState([]);
@@ -25,7 +26,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   const load = useCallback(async () => {
     if (!contract?.id) return;
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${contract.id}/addenda`);
+      const res = await apiFetch(`/api/sales-planning/contracts/${contract.id}/addenda`);
       const data = await res.json().catch(() => []);
       setRows(Array.isArray(data) ? data : []);
     } catch {
@@ -41,7 +42,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
   const loadSource = useCallback(async () => {
     if (!contract?.id) return;
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${contract.id}/addenda/options`);
+      const res = await apiFetch(`/api/sales-planning/contracts/${contract.id}/addenda/options`);
       const data = await res.json().catch(() => ({}));
       setSource(data && typeof data === "object" ? data : null);
     } catch {

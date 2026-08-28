@@ -26,6 +26,7 @@ import {
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
 } from "@/lib/issues/statuses";
 import styles from "./ReportIssueModal.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const KIND_OPTIONS = ISSUE_KINDS.map((value) => ({ value, label: ISSUE_KIND_LABELS[value] }));
 const IMPACT_OPTIONS = ISSUE_IMPACTS.map((value) => ({ value, label: ISSUE_IMPACT_LABELS[value] }));
@@ -60,7 +61,7 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
   useEffect(() => {
     if (!open || !context?.pageUrl) return;
     let alive = true;
-    fetch(`/api/issues?pageUrl=${encodeURIComponent(context.pageUrl)}`, { cache: "no-store" })
+    apiFetch(`/api/issues?pageUrl=${encodeURIComponent(context.pageUrl)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => { if (alive) setRelated(d.items || []); })
       .catch(() => {});

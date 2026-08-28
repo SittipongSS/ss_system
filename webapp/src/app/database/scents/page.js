@@ -47,6 +47,7 @@ import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, NA } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
   isScentRegistrar, isScentUsable, matchesScentSource, scentFormPayload, scentSourceLabel,
@@ -113,7 +114,7 @@ export default function ScentsPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch("/api/master/scents", { cache: "no-store" });
+      const res = await apiFetch("/api/master/scents", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดทะเบียนกลิ่นไม่สำเร็จ");
       setScents(Array.isArray(d) ? d : []);
@@ -247,7 +248,7 @@ export default function ScentsPage() {
   const call = async (url, options, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(url, options);
+      const res = await apiFetch(url, options);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ทำรายการไม่สำเร็จ");
       setToast({ kind: "success", msg: okMsg });

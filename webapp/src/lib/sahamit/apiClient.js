@@ -1,6 +1,7 @@
 "use client";
 
 import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { apiFetch } from "@/lib/apiFetch";
 
 // fetch สำหรับ "การเขียน" ในโมดูลสหมิตร. ถ้าเจอ 401/403 (เซสชันหมดอายุ / โทเคน
 // หลุดชั่วคราว — ดู [[auth-session-model]]) จะเด้งข้อความเป็นมิตร + เสนอโหลดหน้าใหม่
@@ -9,7 +10,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 export async function sahamitFetch(url, opts) {
   let res;
   try {
-    res = await fetch(url, opts);
+    res = await apiFetch(url, opts);
   } catch {
     throw new Error("เชื่อมต่อไม่ได้ — ตรวจอินเทอร์เน็ตแล้วลองใหม่");
   }

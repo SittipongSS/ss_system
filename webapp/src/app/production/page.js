@@ -33,6 +33,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, fmtNumber, naText, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const OPEN_STATUSES = "draft,planned,in_progress";
 const ATTENTION_LIMIT = 8;
@@ -81,8 +82,8 @@ export default function ProductionOverviewPage() {
       // ตัวเลข "ร่าง" บนหน้านี้จะน้อยกว่าที่หน้าคิวโชว์ แล้วภาพรวมก็กลายเป็นหน้าที่โกหก
       // (API กันไว้แล้วว่าคนอ่านอย่างเดียวไม่ทำให้เกิดการเขียน)
       const [queueRes, boardRes] = await Promise.all([
-        fetch(`/api/production/jobs?autoDraft=1&status=${OPEN_STATUSES}`),
-        fetch(`/api/production/board?from=${todayIso}&to=${weekEnd}`),
+        apiFetch(`/api/production/jobs?autoDraft=1&status=${OPEN_STATUSES}`),
+        apiFetch(`/api/production/board?from=${todayIso}&to=${weekEnd}`),
       ]);
       const queue = await queueRes.json().catch(() => null);
       if (!queueRes.ok) throw new Error(queue?.error || "โหลดคิวงานผลิตไม่สำเร็จ");

@@ -35,6 +35,7 @@ import StepTrack from "@/components/ui/StepTrack";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { contractListTrack } from "@/lib/sales/contractListTrack";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
   daysAwaitingSignature, contractStatusLabel,
@@ -64,7 +65,7 @@ export default function ContractsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/sales-planning/contracts");
+      const res = await apiFetch("/api/sales-planning/contracts");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดทะเบียนสัญญาไม่สำเร็จ");
       setRows(Array.isArray(data) ? data : []);

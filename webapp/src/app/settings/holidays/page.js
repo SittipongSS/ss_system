@@ -20,6 +20,7 @@ import { defaultHolidayYear, missingHolidayYears } from "@/lib/master/holidayCov
 import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 import { naText, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -65,7 +66,7 @@ export default function HolidaysPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/holidays");
+      const res = await apiFetch("/api/holidays");
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดปฏิทินวันหยุดไม่สำเร็จ");
       setHolidays(Array.isArray(data) ? data : []);

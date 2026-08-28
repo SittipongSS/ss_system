@@ -24,6 +24,7 @@ import {
   normalizeToPercent,
 } from "@/lib/salesForecast";
 import { planNodes, summarizeOverwrite } from "@/lib/sales/targetPlanWrite";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 const thisYearNum = () => Number(thisMonth().slice(0, 4));
@@ -94,7 +95,7 @@ export default function SalesTargetPlanPage() {
     setError("");
     try {
       const [histRes, users] = await Promise.all([
-        fetch(`/api/sales-planning/history?years=${historyYears.join(",")}`),
+        apiFetch(`/api/sales-planning/history?years=${historyYears.join(",")}`),
         cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!histRes.ok) throw new Error((await histRes.json()).error || "โหลดประวัติไม่สำเร็จ");
@@ -299,7 +300,7 @@ export default function SalesTargetPlanPage() {
     let readFailed = false;
     setPreparing(true);
     try {
-      const res = await fetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
+      const res = await apiFetch(`/api/sales-planning/targets?year=${encodeURIComponent(targetYear)}`);
       if (res.ok) existingRows = await res.json();
       else readFailed = true;
     } catch {

@@ -40,6 +40,7 @@ import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor } from "@/lib/permissions";
 import { deptsInSharedQueue } from "@/lib/requests/modules";
 import { compareRequestUrgency } from "@/lib/deptRequests";
+import { apiFetch } from "@/lib/apiFetch";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
@@ -131,7 +132,7 @@ export default function RequestsPage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/sa/requests?scope=${scope}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/sa/requests?scope=${scope}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       /* กดสลับ ของฉัน→ทีม→ทั้งหมด รัว ๆ แล้วคำตอบมาสลับลำดับ = **ป้ายขอบเขตกับแถว
          หลุดจากกัน** เพราะป้ายอ่านจากเฮดเดอร์ของคำตอบ (X-Request-Scope) ⇒ ทิ้งทั้งก้อน */
@@ -204,7 +205,7 @@ export default function RequestsPage() {
   useEffect(() => {
     if (!dealIdParam) { setDealParam(null); return undefined; }
     let alive = true;
-    fetch(`/api/sales-planning/deals/${encodeURIComponent(dealIdParam)}`, { cache: "no-store" })
+    apiFetch(`/api/sales-planning/deals/${encodeURIComponent(dealIdParam)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive) setDealParam(d || null); })
       .catch(() => { if (alive) setDealParam(null); });

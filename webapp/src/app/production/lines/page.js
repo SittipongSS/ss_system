@@ -21,6 +21,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditProduction } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { fmtNumber, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const todayIso = () => {
   const now = new Date();
@@ -53,7 +54,7 @@ export default function ProductionLinesPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/production/lines");
+      const res = await apiFetch("/api/production/lines");
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลไลน์ผลิตไม่สำเร็จ");
       setLines(Array.isArray(data?.lines) ? data.lines : []);
@@ -69,7 +70,7 @@ export default function ProductionLinesPage() {
 
   const loadDays = useCallback(async (lineId) => {
     try {
-      const res = await fetch(`/api/production/lines/${lineId}/capacity`);
+      const res = await apiFetch(`/api/production/lines/${lineId}/capacity`);
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดวันปรับกำลังไม่สำเร็จ");
       setCapacityDays(Array.isArray(data) ? data : []);

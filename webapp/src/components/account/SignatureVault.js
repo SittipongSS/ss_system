@@ -20,6 +20,7 @@ import SignatureCropper from "./SignatureCropper";
 import styles from "./SignatureVault.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 const ACTION_LABELS = {
   upload: "เพิ่มลายเซ็น",
@@ -73,7 +74,7 @@ export default function SignatureVault() {
     setLoading(true);
     setLoadError("");
     try {
-      const response = await fetch("/api/account/signature", { cache: "no-store" });
+      const response = await apiFetch("/api/account/signature", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดข้อมูลลายเซ็นไม่สำเร็จ");
       setData(payload);

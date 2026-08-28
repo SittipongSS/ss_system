@@ -30,6 +30,7 @@ import { fmtDate, fmtMoney } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { CONTRACT_KINDS, CONTRACT_KIND_LABELS } from "@/lib/sales/contracts";
 import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from "@/lib/sales/contractTemplates";
+import { apiFetch } from "@/lib/apiFetch";
 
 // โทนเดียวกับป้ายชนิดสัญญาในตาราง — ป้ายกดกับป้ายอ่านต้องเป็นสีเดียวกัน
 const KIND_TONE = { scent_design: "amber", manufacturing: "blue", service: "teal" };
@@ -63,7 +64,7 @@ export default function ContractCreateModal({
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/api/sales-planning/contracts/options");
+        const res = await apiFetch("/api/sales-planning/contracts/options");
         const data = await res.json().catch(() => ({}));
         /* ⚠️ `dealIds` = ขอบเขตของ *ที่ที่กดมา* ไม่ใช่ด่านสิทธิ์ — เปิดจากหน้าโครงการ
            ต้องเห็นเฉพาะดีลของโครงการนั้น · ด่านจริง (`contractEligibility`) ยังกรอง
@@ -98,7 +99,7 @@ export default function ContractCreateModal({
     setLoading(true);
     (async () => {
       try {
-        const res = await fetch(`/api/sales-planning/contracts/options?dealId=${encodeURIComponent(activeDeal)}`);
+        const res = await apiFetch(`/api/sales-planning/contracts/options?dealId=${encodeURIComponent(activeDeal)}`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || "โหลดตัวเลือกสัญญาไม่สำเร็จ");
         if (!alive) return;

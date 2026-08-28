@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PenLine } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 // active = แสดงเฉพาะตอนที่ผู้ใช้คนนี้กำลังจะเป็นผู้อนุมัติจริง ๆ
 // (ไม่ยิง API ทิ้งทุกครั้งที่เปิดหน้าเอกสาร)
@@ -19,7 +20,7 @@ export default function SignatureReadyNotice({ active = true, docLabel = "เอ
     const ctrl = new AbortController();
     (async () => {
       try {
-        const res = await fetch("/api/account/signature", { signal: ctrl.signal, cache: "no-store" });
+        const res = await apiFetch("/api/account/signature", { signal: ctrl.signal, cache: "no-store" });
         if (!res.ok) return; // โหลดไม่ได้ = ไม่เดา ปล่อยให้ 409 ตอนกดเป็นตัวบอกแทน
         const data = await res.json();
         setMissing(!data.active);

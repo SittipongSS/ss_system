@@ -20,6 +20,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceSitesPage() {
   const role = useRole();
@@ -47,7 +48,7 @@ export default function ServiceSitesPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/service/sites");
+      const res = await apiFetch("/api/service/sites");
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "โหลดทะเบียนไซต์ไม่สำเร็จ");
       setSites(Array.isArray(data) ? data : []);
@@ -66,7 +67,7 @@ export default function ServiceSitesPage() {
     if (formSite === undefined || customers.length) return;
     (async () => {
       try {
-        const res = await fetch("/api/customers");
+        const res = await apiFetch("/api/customers");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อลูกค้าไม่สำเร็จ");
         setCustomers(Array.isArray(data) ? data : (data?.rows || []));

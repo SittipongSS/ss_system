@@ -21,6 +21,7 @@ import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 // ป้ายไทยของสถานะไฟล์ที่ตรวจเจอ — 'ok' ไม่ต้องมีเพราะไม่ถูกส่งกลับมา
@@ -46,7 +47,7 @@ export default function StoragePage() {
   const [error, setError] = useState("");
 
   const call = useCallback(async (url, init) => {
-    const res = await fetch(url, { cache: "no-store", ...init });
+    const res = await apiFetch(url, { cache: "no-store", ...init });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "เรียกใช้งานไม่สำเร็จ");
     return data;

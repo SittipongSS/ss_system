@@ -32,6 +32,7 @@ import {
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ContractDetailPage() {
   const { id } = useParams();
@@ -54,7 +55,7 @@ export default function ContractDetailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sales-planning/contracts/${id}`);
+      const res = await apiFetch(`/api/sales-planning/contracts/${id}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดสัญญาไม่สำเร็จ");
       setContract(data);

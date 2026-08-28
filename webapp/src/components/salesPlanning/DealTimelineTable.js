@@ -32,6 +32,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -236,7 +237,7 @@ export default function TimelineWorkspace({
   const call = async (label, url, opts) => {
     setBusyId(label);
     try {
-      const res = await fetch(url, opts);
+      const res = await apiFetch(url, opts);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
       await onChanged?.();
       return true;

@@ -10,6 +10,7 @@ import { snapForecastLevel, forecastToneClass, stageBadge, money } from "@/compo
 import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import { isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner } from "@/lib/sales/dashboardMetrics";
 import { fmtDateTime, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function DealDrillDownModal({ filter, onClose }) {
   const [deals, setDeals] = useState([]);
@@ -27,7 +28,7 @@ export default function DealDrillDownModal({ filter, onClose }) {
       setLoading(true);
       setLoadError(false);
       try {
-        const res = await fetch(new URL("/api/sales-planning/deals", window.location.origin), {
+        const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.origin), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("โหลดข้อมูลผิดพลาด");

@@ -28,6 +28,7 @@ import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
 import { businessMonthKey } from "@/lib/datePeriods";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceZonePage({ params }) {
   const { id, zoneId } = use(params);
@@ -41,7 +42,7 @@ export default function ServiceZonePage({ params }) {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/service/sites/${id}/zones/${zoneId}/detail`);
+      const res = await apiFetch(`/api/service/sites/${id}/zones/${zoneId}/detail`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลโซนไม่สำเร็จ");

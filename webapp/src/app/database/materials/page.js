@@ -17,6 +17,7 @@ import { Boxes } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import MaterialRegistryPanel from "@/components/materials/MaterialRegistryPanel";
 import { cachedFetchJson } from "@/lib/apiCache";
+import { apiFetch } from "@/lib/apiFetch";
 
 // มติผู้ใช้ 2026-08-10: ทะเบียนนี้เหลือ **บรรจุภัณฑ์ (PM) อย่างเดียว** เตรียมต่อ
 // โมดูลจัดซื้อ · ราคา RM (หัวน้ำหอม F / เนื้อสาร FB) จัดการที่ทะเบียนกลิ่น/สูตร
@@ -32,7 +33,7 @@ export default function MaterialsPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch("/api/sa/materials", { cache: "no-store" });
+      const res = await apiFetch("/api/sa/materials", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดทะเบียนไม่สำเร็จ");
       // แถว RM ที่สายคำร้อง/ปุ่มใส่ราคาสร้างไว้ยังอยู่ใน DB (ใบขอราคาผลิตอ้างต่อ)

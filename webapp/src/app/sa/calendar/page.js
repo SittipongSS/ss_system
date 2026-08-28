@@ -29,6 +29,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -79,7 +80,7 @@ export default function SalesCalendarPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
+    apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
       .then((me) => setMeId(me?.id || null)).catch(() => setMeId(null));
   }, []);
 
@@ -99,7 +100,7 @@ export default function SalesCalendarPage() {
     const last = new Date(cursor.y, cursor.m + 1, 0).getDate();
     const to = `${cursor.y}-${pad(cursor.m + 1)}-${pad(last)}`;
     try {
-      const res = await fetch(`/api/sales-planning/calendar?from=${from}&to=${to}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/sales-planning/calendar?from=${from}&to=${to}`, { cache: "no-store" });
       const body = await res.json();
       if (!isLatest()) return; // กดลูกศรเดือนรัว ๆ — ปฏิทินต้องเป็นของเดือนที่ค้างอยู่จริง
       if (!res.ok) throw new Error(body?.error || "โหลดปฏิทินไม่สำเร็จ");

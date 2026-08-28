@@ -29,6 +29,7 @@ import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const asArray = (d) => (Array.isArray(d) ? d : []);
 
@@ -94,7 +95,7 @@ export default function NewRequestPage() {
   const [me, setMe] = useState(null);
 
   useEffect(() => {
-    const grab = (url, set) => fetch(url, { cache: "no-store" })
+    const grab = (url, set) => apiFetch(url, { cache: "no-store" })
       .then((r) => r.json()).then((d) => set(asArray(d))).catch(() => {});
     grab("/api/pm/projects", setProjects);
     grab("/api/sales-planning/deals", setDeals);
@@ -108,7 +109,7 @@ export default function NewRequestPage() {
     grab("/api/sa/requests/mentionable", setMentionPeople);
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
-    fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
+    apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
   }, []);
 
   // ⭐ บล็อกบรีฟของใบที่ prefill มา — ตอนเลือก SO เองในฟอร์ม `onChange` เป็นคนงอก

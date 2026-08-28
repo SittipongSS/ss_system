@@ -8,6 +8,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { Pencil, Trash2, Send, ListPlus } from "lucide-react";
 import { MEETING_FOLLOWUP_LABELS } from "@/lib/mgmt/constants";
 import { fmtDate as formatDate, fmtDateTime, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fmtDate = (d) => formatDate(d);
 
@@ -19,7 +20,7 @@ export default function MeetingDrawer({ open, onClose, meeting, canEdit, onEdit,
   const loadUpdates = useCallback(async () => {
     if (!meeting?.id) return;
     try {
-      const res = await fetch(`/api/mgmt/updates?entityType=meeting&entityId=${encodeURIComponent(meeting.id)}`);
+      const res = await apiFetch(`/api/mgmt/updates?entityType=meeting&entityId=${encodeURIComponent(meeting.id)}`);
       if (res.ok) setUpdates(await res.json());
     } catch { /* ignore */ }
   }, [meeting?.id]);

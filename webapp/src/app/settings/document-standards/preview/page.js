@@ -16,6 +16,7 @@ import {
 } from '@/lib/documents/standardPreview';
 import { QUOTATION_PREVIEW_SCENARIOS, QUOTATION_PREVIEW_STATES } from '@/lib/sales/quotationMasterTemplate';
 import styles from './page.module.css';
+import { apiFetch } from "@/lib/apiFetch";
 
 // หน้าพรีวิวเต็มจอของมาตรฐานเอกสาร — เรนเดอร์ด้วย "เครื่องยนต์เอกสารตัวจริง" ใน iframe
 // จึงตรงกับใบที่พิมพ์/ตรึง 100%
@@ -43,7 +44,7 @@ export default function DocumentStandardPreviewPage() {
   // จึงต้องโชว์ "ของที่ใช้งานอยู่จริง" ไม่ใช่ของที่ยังไม่ได้ตัดสินใจ
   const loadStandard = useCallback(async () => {
     try {
-      const response = await fetch('/api/document-standards', { cache: 'no-store' });
+      const response = await apiFetch('/api/document-standards', { cache: 'no-store' });
       if (!response.ok) return;
       const data = await response.json();
       const row = (data.standards || []).find((item) => item.documentKey === documentKey);

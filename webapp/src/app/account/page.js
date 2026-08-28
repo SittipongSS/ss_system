@@ -11,6 +11,7 @@ import SignatureVault from "@/components/account/SignatureVault";
 import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, TEAM_LABELS, userTeams } from "@/lib/permissions";
 import { fmtDateTime, fmtName, naText, NA } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = { firstName: "", lastName: "", phone: "" };
 const SUPABASE_CONFIGURED =
@@ -43,7 +44,7 @@ export default function AccountPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const response = await fetch("/api/account/profile", { cache: "no-store" });
+      const response = await apiFetch("/api/account/profile", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "โหลดข้อมูลบัญชีไม่สำเร็จ");
       setProfile(data.profile);

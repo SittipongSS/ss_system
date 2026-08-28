@@ -42,6 +42,7 @@ import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard } from "@/components/ui/DetailPage";
+import { apiFetch } from "@/lib/apiFetch";
 
 // หน้า detail ลูกค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/AR/ประเภท/สร้างเมื่อ) + ตัวเลขความสัมพันธ์
@@ -115,7 +116,7 @@ export default function CustomerDetails() {
 
   const fetchCustomerData = async () => {
     try {
-      const res = await fetch(`/api/master/customers/${id}`);
+      const res = await apiFetch(`/api/master/customers/${id}`);
       if (res.ok) {
         const data = await res.json();
         setCustomer(data.customer);
@@ -139,7 +140,7 @@ export default function CustomerDetails() {
     if (id) {
       fetchCustomerData();
     }
-    fetch("/api/master/product-types")
+    apiFetch("/api/master/product-types")
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
       .catch(() => {});
@@ -152,7 +153,7 @@ export default function CustomerDetails() {
   // extra client-side capability gate is needed here.
   useEffect(() => {
     if (!id) { setRegs([]); setProjects([]); setScents([]); setFormulas([]); return; }
-    fetch(`/api/master/customers/${id}/relations`)
+    apiFetch(`/api/master/customers/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return;
@@ -167,7 +168,7 @@ export default function CustomerDetails() {
   // (แพตเทิร์นเดียวกับ relations ที่คืน [] สำหรับความสัมพันธ์ที่ผู้ใช้ไม่มีสิทธิ์เห็น)
   useEffect(() => {
     if (!id) { setServiceSites([]); return; }
-    fetch(`/api/service/sites?customerId=${id}&withSchedule=1`)
+    apiFetch(`/api/service/sites?customerId=${id}&withSchedule=1`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setServiceSites(Array.isArray(d) ? d : []))
       .catch(() => {});

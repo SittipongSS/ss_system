@@ -25,6 +25,7 @@ import {
 } from "@/lib/pm/productionPlan";
 import styles from "./page.module.css";
 import { fmtNumber, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 // คิวเปิดมาเห็น "งานที่ยังต้องตัดสินใจ" ก่อน — จบ/ยกเลิกไม่ใช่คิว
 const OPEN_STATUSES = "draft,planned,in_progress";
@@ -62,7 +63,7 @@ export default function ProductionJobsPage() {
       // autoDraft=1 — กวาด SO ที่อนุมัติแล้วมาเป็นงานร่างก่อนคืนคิว
       // คิวที่ต้องกดปุ่มก่อนถึงจะครบ คือคิวที่คนจะเชื่อว่าว่างทั้งที่มีงานรออยู่
       const status = showDone ? "" : `&status=${OPEN_STATUSES}`;
-      const res = await fetch(`/api/production/jobs?autoDraft=1${status}`);
+      const res = await apiFetch(`/api/production/jobs?autoDraft=1${status}`);
       const data = await res.json().catch(() => null);
       if (!isLatest()) return; // สลับ "แสดงงานที่จบแล้ว" ระหว่างรอ — คิวต้องตรงกับสวิตช์
       if (!res.ok) throw new Error(data?.error || "โหลดคิวงานผลิตไม่สำเร็จ");

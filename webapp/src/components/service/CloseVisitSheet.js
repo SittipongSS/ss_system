@@ -21,6 +21,7 @@ import { closeFormDefaults, missingEvidence } from "@/lib/service/myVisits";
 import styles from "./CloseVisitSheet.module.css";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { fmtNumber, naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }) {
   const [form, setForm] = useState(() => closeFormDefaults(null));
@@ -44,7 +45,7 @@ export default function CloseVisitSheet({ open, visit, site, onClose, onSubmit }
       try {
         /* GET นัดคืน visit + items + assets + zones + results มาในคำขอเดียว —
            ฟอร์มต้องรู้ว่าไซต์นี้มีอะไรให้ทำบ้างก่อนจะให้ติ๊กรายเครื่องได้ */
-        const res = await fetch(`/api/service/visits/${visit.id}`);
+        const res = await apiFetch(`/api/service/visits/${visit.id}`);
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดข้อมูลนัดไม่สำเร็จ");
         setItems(Array.isArray(data?.items) ? data.items : []);

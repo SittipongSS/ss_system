@@ -7,6 +7,7 @@ import { canSwitchQuotationDocLanguage } from '@/lib/sales/quotationWorkflow';
 import { getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { notifyToast } from '@/lib/feedback';
 import { printPlaceholderHtml } from '@/lib/printTheme';
+import { apiFetch } from "@/lib/apiFetch";
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -109,7 +110,7 @@ export async function openQuotePrintWindowPreferIssued(quote, preparedWindow = n
     return openQuotePrintWindow(quote, win, company, standard);
   }
   try {
-    const res = await fetch(`/api/sales-planning/quotations/${encodeURIComponent(id)}/issued?render=latest`, {
+    const res = await apiFetch(`/api/sales-planning/quotations/${encodeURIComponent(id)}/issued?render=latest`, {
       cache: 'no-store',
     });
     // 404 = ยังไม่เคยออกจริง (ฉบับร่าง/รออนุมัติ) → สร้างจากข้อมูลสดตามปกติ

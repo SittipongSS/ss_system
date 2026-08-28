@@ -23,6 +23,7 @@ import TaskFormModal from "@/components/pm/TaskFormModal";
 import { assignableUsersFor } from "@/lib/permissions";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { notifyToast } from "@/lib/feedback";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function TaskCreateButton({
   // โหมดหน้าดีล — ดีลถูกกำหนดมาแล้ว
@@ -52,9 +53,9 @@ export default function TaskCreateButton({
        ปฏิเสธ · ใช้ผิดตัวแล้วดีลจะโผล่ให้เลือกทั้งที่กดบันทึกจะโดน 403 */
     Promise.all([
       cachedFetchJson("/api/pm/assignable-users").catch(() => []),
-      projectDeals ? Promise.resolve(null) : fetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      fetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      projectDeals ? Promise.resolve(null) : apiFetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]).then(([u, d, p, meRow]) => {
       setUsers(u || []);
       if (d) setDeals(d || []);

@@ -24,6 +24,7 @@ import { buildVisitReport } from "@/lib/service/visitReport";
 import { accessWindowText } from "@/lib/service/sites";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function VisitReportPage({ params }) {
   const { id } = use(params);
@@ -38,13 +39,13 @@ export default function VisitReportPage({ params }) {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/service/visits/${id}`);
+      const res = await apiFetch(`/api/service/visits/${id}`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดใบส่งงานไม่สำเร็จ");
       setData(body);
       // ไซต์ยิงแยกเพราะ GET นัดคืนแค่ของที่อยู่ใต้ไซต์ ไม่ได้คืนตัวไซต์เอง
-      const siteRes = await fetch(`/api/service/sites/${body.visit.siteId}`);
+      const siteRes = await apiFetch(`/api/service/sites/${body.visit.siteId}`);
       const siteBody = await siteRes.json().catch(() => null);
       if (isLatest() && siteRes.ok) setSite(siteBody?.site || null);
     } catch (e) {

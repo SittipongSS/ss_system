@@ -22,6 +22,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { useCan, useRole } from "@/lib/roleContext";
 import { accessState } from "@/lib/accessGate";
 import { fmtDateTime, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 import {
   COST_LINE_KINDS,
@@ -257,8 +258,8 @@ export default function CostTemplatesPage() {
     setLoadError("");
     try {
       const [tplRes, typeRes] = await Promise.all([
-        fetch("/api/cost-templates?includeHidden=1", { cache: "no-store" }),
-        fetch("/api/product-types", { cache: "no-store" }),
+        apiFetch("/api/cost-templates?includeHidden=1", { cache: "no-store" }),
+        apiFetch("/api/product-types", { cache: "no-store" }),
       ]);
       const tpl = await tplRes.json().catch(() => null);
       if (!tplRes.ok) throw new Error(tpl?.error || "โหลดแม่แบบไม่สำเร็จ");

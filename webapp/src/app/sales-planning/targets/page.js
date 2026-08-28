@@ -17,6 +17,7 @@ import { MONTH_LABELS, SALES_TEAMS, TARGET_OWNER_ROLES, money, monthsForYear, th
 import { fmtNumber, naText, NA } from "@/lib/format";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 const thisYear = () => thisMonth().slice(0, 4);
@@ -55,7 +56,7 @@ export default function SalesPlanningTargetsPage() {
     setError("");
     try {
       const [targetsRes, users] = await Promise.all([
-        fetch(`/api/sales-planning/targets?year=${encodeURIComponent(year)}`),
+        apiFetch(`/api/sales-planning/targets?year=${encodeURIComponent(year)}`),
         cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       ]);
       if (!targetsRes.ok) throw new Error((await targetsRes.json()).error || "โหลด target ไม่สำเร็จ");
