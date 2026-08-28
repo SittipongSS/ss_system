@@ -190,8 +190,9 @@ export default function ServiceIntakePage() {
         <>
           {tab === "bind" && (
             (data?.bind || []).length === 0 ? (
-              <EmptyState icon={ArrowDownToLine} title="ไม่มีใบสั่งขายรอผูกโซน"
-                description="ใบสายบริการที่อนุมัติใหม่จะมาโผล่ที่นี่เอง" />
+              <EmptyState icon={ArrowDownToLine}>
+                ไม่มีใบสั่งขายรอผูกโซน — ใบสายบริการที่อนุมัติใหม่จะมาโผล่ที่นี่เอง
+              </EmptyState>
             ) : (
               <TableScroll family="list" minWidth={720}>
                 <table>
@@ -229,8 +230,9 @@ export default function ServiceIntakePage() {
 
           {tab === "plan" && (
             (data?.plan || []).length === 0 ? (
-              <EmptyState icon={CalendarPlus} title="ทุกไซต์ที่ขายแล้วมีรอบครบ"
-                description="โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบเข้าบริการจะมาอยู่ที่นี่" />
+              <EmptyState icon={CalendarPlus}>
+                ทุกไซต์ที่ขายแล้วมีรอบครบ — โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบจะมาอยู่ที่นี่
+              </EmptyState>
             ) : (
               <TableScroll family="list" minWidth={720}>
                 <table>
@@ -263,8 +265,9 @@ export default function ServiceIntakePage() {
 
           {tab === "visit" && (
             (data?.visit || []).length === 0 ? (
-              <EmptyState icon={MapPin} title="ทุกรอบมีนัดข้างหน้าแล้ว"
-                description="รอบที่เดินอยู่แต่ไม่มีนัดล่วงหน้าเลยจะมาอยู่ที่นี่" />
+              <EmptyState icon={MapPin}>
+                ทุกรอบมีนัดข้างหน้าแล้ว — รอบที่เดินอยู่แต่ไม่มีนัดล่วงหน้าเลยจะมาอยู่ที่นี่
+              </EmptyState>
             ) : (
               <TableScroll family="list" minWidth={720}>
                 <table>
@@ -307,7 +310,7 @@ export default function ServiceIntakePage() {
         onReloadRegistry={registryActions}
       />
 
-      {toast && <Toast kind={toast.kind} message={toast.msg} onClose={() => setToast(null)} />}
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }
