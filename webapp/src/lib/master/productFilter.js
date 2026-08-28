@@ -9,6 +9,7 @@
 import { categoryOf, categoryFlags } from '@/lib/master/categoryOf';
 import { categoryNameBoth } from '@/lib/master/productCategoryOptions';
 import { approvalStatusOf } from '@/lib/master/approvalStatus';
+import { isMissingRetailPrice } from '@/lib/tax/taxableProducts';
 
 /** รหัสหมวดของสินค้า — ใช้ค่าที่บันทึกไว้ก่อน ถอยไปถอดจาก fgCode ให้แถวเก่า */
 export function productCategoryCode(product) {
@@ -45,17 +46,26 @@ function searchHaystack(product, productTypes) {
  * @param statuses  สถานะอนุมัติที่เลือก — ว่าง = ทั้งหมด
  * @param registrations สถานะขึ้นทะเบียนสรรพสามิตที่เลือก — ว่าง = ทั้งหมด
  *   ⚠️ มิตินี้มีความหมายเฉพาะหมวดสรรพสามิต: เลือกแล้ว **หมวดอื่นถูกตัดออกทั้งหมด**
+ * @param missingRetailPrice true = เอาเฉพาะสินค้าที่ **ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก**
+ *   ⭐ ย้ายมาจากแท็บในหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29) — รายการนี้
+ *   เป็นข้อมูลของ **สินค้า** ไม่ใช่ของทะเบียน (สินค้าพวกนี้ยังไม่มีทะเบียนด้วยซ้ำ
+ *   เพราะยื่นไม่ได้จนกว่าจะเติมราคา) บ้านมันจึงอยู่ที่นี่
+ *   ⚠️ ไม่มีราคา = ภาษีคิดออกมา 0 ⇒ ถ้าขายแล้วยื่นจะยื่นขาดโดยไม่มีอะไรฟ้อง
  * @param showInactive true = รวมสินค้าที่เลิกใช้
  * @param productTypes ทะเบียนหมวด — ต้องส่งมาด้วย ไม่งั้นค้นชื่อหมวดไม่เจอ
  *   และตัวกรองขึ้นทะเบียนจะตัดทุกแถวทิ้ง (categoryFlags หาไม่เจอ = ไม่ใช่สรรพสามิต)
  */
 export function filterProducts(products = [], {
   search = '', statuses = [], registrations = [], showInactive = false, productTypes = [],
+  missingRetailPrice = false,
 } = {}) {
   const q = String(search || '').trim().toLowerCase();
   return products.filter((p) => {
     if (!showInactive && p.isActive === false) return false;
     if (statuses.length && !statuses.includes(approvalStatusOf(p))) return false;
+    if (missingRetailPrice && !isMissingRetailPrice({ ...p, categoryCode: productCategoryCode(p) }, productTypes)) {
+      return false;
+    }
     if (registrations.length) {
       const excise = categoryFlags(productCategoryCode(p), productTypes).isExcise;
       if (!excise || !registrations.includes(p.registrationStatus || 'none')) return false;

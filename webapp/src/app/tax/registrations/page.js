@@ -8,7 +8,12 @@ import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
-import { deptOf, isTaxWaitingOnMe, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
+import { deptOf, isTaxWaitingOnMe, ownedStages, REGISTRATION_FILTERS } from "@/lib/excise/workflow";
+import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
+import ReportExportActions from "@/components/excise/ReportExportActions";
+import DateInput from "@/components/ui/DateInput";
+import FilterPopover from "@/components/ui/FilterPopover";
+import { Building2 } from "lucide-react";
 import { ageLabel, ageTone, registrationAge } from "@/lib/tax/registrationQueue";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
@@ -78,7 +83,15 @@ export default function RegistrationsPage() {
   }, [router]);
   const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
-  // โหลดลิสต์ของ picker ตอนเปิดโมดัลครั้งแรกแล้วค้างไว้ (ปิดแล้วเปิดใหม่ไม่โหลดซ้ำ)
+  /* ⭐ ตัวกรองที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
+     — ลูกค้า + ช่วงวันที่ · ทำงานร่วมกับชิปและช่องค้นหาเป็น **ชุดเดียว**
+     ไม่มีตัวกรองชุดที่สองสำหรับ "รายงาน" ให้ตั้งค่าซ้ำแล้วสงสัยว่าอันไหนมีผล */
+  const [customerIds, setCustomerIds] = useState([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+  /* ลิสต์ลูกค้าโหลดเมื่อ **กางตัวกรอง** หรือเปิดโมดัลครั้งแรก — ไม่ใช่ตอนเปิดหน้า
+     (508 แถว · เหตุผลเดียวกับ picker ของโมดัล) */
   const [pickerReady, setPickerReady] = useState(false);
   const { data: products } = useApiList(pickerReady ? "/api/products" : null);
   const { data: customers } = useApiList(pickerReady ? "/api/customers" : null);
@@ -90,13 +103,22 @@ export default function RegistrationsPage() {
       if (filter === "mine") {
         if (!isTaxWaitingOnMe(r, "registration", myDept)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
+      if (customerIds.length && !customerIds.includes(r.customerId)) return false;
+      // ช่วงวันที่นับจาก **วันที่สร้าง** เหมือนที่รายงานเดิมใช้ (ตัดเป็นวันก่อนเทียบ)
+      const day = (r.createdAt || "").slice(0, 10);
+      if (from && day && day < from) return false;
+      if (to && day && day > to) return false;
       if (!q) return true;
       return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [regs, filter, search, myDept]);
+  }, [regs, filter, search, myDept, customerIds, from, to]);
+
+  /* เลือกไว้แล้วตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง
+     ไม่งั้นจะโหลดแถวที่มองไม่เห็นออกไปโดยไม่รู้ตัว */
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to]);
 
   // After saving the form: a freshly created draft opens its full detail page so
   // the user lands on the attachment cards and can submit once they're complete.
@@ -143,7 +165,51 @@ export default function RegistrationsPage() {
      ไม่ใช่ `rows` ที่ผ่านตัวกรอง ไม่งั้นคอลัมน์จะโผล่ ๆ หาย ๆ ตามชิปที่กด */
   const showFactory = useMemo(() => regs.some((r) => r.factory), [regs]);
 
+  const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
+  const toggleOne = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  /* ── สิ่งที่ปุ่มโหลดจะได้ ────────────────────────────────────────────────
+     ตัวกรองของจอ → พารามิเตอร์ที่ server เข้าใจ · คำค้น/การติ๊กเลือก → ids
+     (ดูเหตุผลเต็มใน lib/tax/exportUrl.js) */
+  const exportParams = useMemo(() => ({
+    status: queueStatusParam(filter, ownedStages("registration", myDept)),
+    customerId: customerIds,
+    from,
+    to,
+  }), [filter, myDept, customerIds, from, to]);
+  const exportIds = useMemo(
+    () => queueExportIds({ selected, visibleIds: allIds, searching: !!search.trim() }),
+    [selected, allIds, search],
+  );
+
+  const selectColumn = {
+    key: "_sel",
+    label: (
+      <input
+        type="checkbox"
+        checked={allChecked}
+        onChange={() => setSelected(allChecked ? new Set() : new Set(allIds))}
+        aria-label="เลือกทั้งหมด"
+      />
+    ),
+    sortValue: null,
+    align: "center",
+    thStyle: { width: 34 },
+    // หยุด event ไม่ให้ไหลไปเปิดหน้ารายละเอียด (ทั้งแถวกดได้)
+    render: (r) => (
+      <span onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} aria-label={`เลือก ${r.fgCode}`} />
+      </span>
+    ),
+  };
+
   const columns = [
+    selectColumn,
     {
       key: "fgCode", label: "รหัสสินค้า (FG)",
       render: (r) => (
@@ -271,9 +337,22 @@ export default function RegistrationsPage() {
     );
   };
 
+  const customerName = customerIds.length === 1
+    ? customers.find((c) => c.id === customerIds[0])?.name
+    : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
+
   const headerRight = (
     <>
-      <span className="ui-badge">{regs.length} รายการ</span>
+      <span className="ui-badge">
+        {selected.size ? `เลือก ${selected.size}/${rows.length} รายการ` : `${regs.length} รายการ`}
+      </span>
+      <ReportExportActions
+        type="registration"
+        params={exportParams}
+        ids={exportIds}
+        rowCount={rows.length}
+        printMeta={{ from, to, customerName }}
+      />
       {canEdit && (
         <button className="btn btn-primary flex items-center gap-1.5" onClick={openForm}>
           <Plus size={16} /> สร้างทะเบียน
@@ -297,7 +376,25 @@ export default function RegistrationsPage() {
           search={search}
           onSearch={setSearch}
           searchPlaceholder="ค้นหา FG / ลูกค้า / เลขผู้เสียภาษี / ผู้ยื่น / เลขอนุมัติ..."
-        />
+        >
+          <FilterPopover
+            count={customerIds.length}
+            onOpen={() => setPickerReady(true)}
+            onClear={() => setCustomerIds([])}
+            groups={[{
+              key: "customer", label: "ลูกค้า", icon: Building2,
+              options: customers.map((c) => ({ value: c.id, label: c.name })),
+              selected: customerIds,
+              onChange: setCustomerIds,
+            }]}
+          />
+          <label className={styles.rangeLabel}>
+            จาก <DateInput value={from} onChange={setFrom} />
+          </label>
+          <label className={styles.rangeLabel}>
+            ถึง <DateInput value={to} onChange={setTo} />
+          </label>
+        </FilterBar>
       }
     >
       <DataList

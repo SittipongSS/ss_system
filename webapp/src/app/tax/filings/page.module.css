@@ -1,0 +1,9 @@
+/* ป้ายช่วงวันที่ในแถบตัวกรอง — ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง */
+.rangeLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-6);
+  color: var(--text-3);
+  white-space: nowrap;
+}

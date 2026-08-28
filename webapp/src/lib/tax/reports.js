@@ -20,8 +20,8 @@ import { TEAM_LABELS } from '@/lib/permissions';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
-import { isExciseCategory } from '@/lib/master/categoryOf';
 import { EXCISE_VAT_RATE, round2 } from '@/lib/tax/exciseBilling';
+import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
 
 const inRange = (value, from, to) => {
   if (!value) return false;
@@ -217,15 +217,9 @@ export async function missingRetailPriceReport(filter = {}) {
   ]);
   if (error) throw error;
 
-  const rows = (products || [])
-    .filter((p) => {
-      // ต้องเสียภาษีจริง: หมวดติ๊ก isExcise **หรือ** ฝ่าย RA บังคับรายตัว
-      const taxable = p.isExciseTaxable === true
-        || (p.isExciseTaxable !== false && isExciseCategory(p.categoryCode, types));
-      if (!taxable) return false;
-      const retail = Number(p.retailPriceIncVat);
-      return !Number.isFinite(retail) || retail <= 0;
-    })
+  // ⚠️ กฎ "ต้องเสียภาษีไหม / ขาดราคาไหม" อยู่ที่ `lib/tax/taxableProducts.js` ที่เดียว
+  // — หน้าสินค้าใน /database ใช้ตัวเดียวกัน ไม่งั้นสองจอตอบคนละเลข (เคยเป็นแบบนั้นมาแล้ว)
+  const rows = missingRetailPriceProducts(products, types)
     .map((p) => ({
       id: p.id,
       product: [p.fgCode || '-', brandLabel(p.brandName, p.brandNameEn)].filter(Boolean).join(' · ')

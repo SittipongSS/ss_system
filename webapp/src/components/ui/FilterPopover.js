@@ -10,7 +10,9 @@ import Button from "./Button";
 //   count  : จำนวนตัวกรองที่ active (badge + ติดสีปุ่ม)
 //   onClear: ล้างทั้งหมด
 //   label  : ป้ายปุ่ม (ดีฟอลต์ "ตัวกรอง")
-export default function FilterPopover({ groups = [], count = 0, onClear, label = "ตัวกรอง" }) {
+//   onOpen : เรียกตอนกางแผงครั้งแรก ๆ — ให้ผู้เรียกโหลดตัวเลือกแบบ lazy ได้
+//            (ลิสต์ลูกค้า 508 แถวไม่ควรถูกโหลดตอนเปิดหน้าเพียงเพื่อรอว่าจะมีคนกาง)
+export default function FilterPopover({ groups = [], count = 0, onClear, label = "ตัวกรอง", onOpen }) {
   const [open, setOpen] = useState(false);
   const [activeKey, setActiveKey] = useState(groups[0]?.key);
   const [query, setQuery] = useState("");
@@ -92,7 +94,7 @@ export default function FilterPopover({ groups = [], count = 0, onClear, label =
     <div ref={ref} className="ui-filter-root" style={{ position: "relative" }}>
       <Button
         className={`ui-filter-trigger ${active ? "active" : ""}`.trim()}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen((v) => { if (!v) onOpen?.(); return !v; })}
         title="ตัวกรอง"
       >
         <SlidersHorizontal size={14} />

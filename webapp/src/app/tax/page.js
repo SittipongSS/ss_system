@@ -145,7 +145,6 @@ export default function TaxDashboard() {
               {PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </Select>
           </div>
-          <Link href="/tax/reports" className="btn btn-secondary flex items-center gap-1.5"><BarChart3 size={16} /> รายงาน</Link>
         </div>
       }
     >

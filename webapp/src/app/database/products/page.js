@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import useStickyState from "@/lib/ui/useStickyState";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, FileCheck2, Download } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -25,7 +25,8 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
-import { filterProducts, productCategoryLabel } from "@/lib/master/productFilter";
+import { filterProducts, productCategoryCode, productCategoryLabel } from "@/lib/master/productFilter";
+import { missingRetailPriceProducts } from "@/lib/tax/taxableProducts";
 import {
   CODE_MODE_AUTO, DEFAULT_CODE_MODE, customerCodeSegment, fgCodeError,
 } from "@/lib/master/masterCodes";
@@ -79,6 +80,7 @@ export default function ProductRegistry() {
   // หมวดสรรพสามิต: เลือกแล้วสินค้าหมวดอื่นถูกตัดออกทั้งหมด
   const [regFilter, setRegFilter] = useStickyState("regFilter", EMPTY);
   const [showInactive, setShowInactive] = useState(false);
+  const [missingPrice, setMissingPrice] = useState(false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const emptyForm = EMPTY_PRODUCT;
@@ -300,11 +302,22 @@ export default function ProductRegistry() {
   // registrationStatus แนบมาจาก server เฉพาะผู้ที่เห็นระบบภาษี (history:view) —
   // การมี field เป็นสัญญาณเปิดตัวกรอง "การขึ้นทะเบียน"; role อื่นไม่เห็นตัวกรองเลย
   const hasRegData = products.some((p) => p.registrationStatus !== undefined);
+  /* ⭐ "ขาดราคาขายปลีก" ย้ายมาจากแท็บในหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
+     — รายการนี้เป็นข้อมูลของ **สินค้า** ไม่ใช่ของทะเบียน (สินค้าพวกนี้ยังไม่มีทะเบียน
+     ด้วยซ้ำ เพราะยื่นไม่ได้จนกว่าจะเติมราคา) และการแก้คือมากดที่หน้านี้อยู่แล้ว
+     ⚠️ นับด้วยกฎเดียวกับที่ Excel ของโมดูลภาษีใช้ (`lib/tax/taxableProducts`) */
+  const missingPriceCount = useMemo(
+    () => missingRetailPriceProducts(
+      products.map((p) => ({ ...p, categoryCode: productCategoryCode(p) })), productTypes,
+    ).length,
+    [products, productTypes],
+  );
   /* ⚠️ ตัวกรองอยู่ที่ lib/master/productFilter ตัวเดียว — ปุ่ม "ส่งออก Excel" ส่ง
      ตัวกรองชุดนี้ไปให้ server แล้วกรองด้วยฟังก์ชันเดียวกัน ไฟล์จึงมีแถวเท่าที่ตาเห็น
      ถ้าย้ายตรรกะกลับมาเขียนสดตรงนี้ ไฟล์กับตารางจะเดินหนีกันเงียบ ๆ */
   const filteredProducts = filterProducts(products, {
     search: q, statuses: statusFilter, registrations: regFilter, showInactive, productTypes,
+    missingRetailPrice: missingPrice,
   });
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -341,9 +354,10 @@ export default function ProductRegistry() {
     if (statusFilter.length) params.set("status", statusFilter.join(","));
     if (regFilter.length) params.set("reg", regFilter.join(","));
     if (showInactive) params.set("inactive", "1");
+    if (missingPrice) params.set("missingPrice", "1");
     const qs = params.toString();
     return `/api/products/export${qs ? `?${qs}` : ""}`;
-  }, [q, statusFilter, regFilter, showInactive]);
+  }, [q, statusFilter, regFilter, showInactive, missingPrice]);
 
   const headerRight = (
     <>
@@ -376,8 +390,8 @@ export default function ProductRegistry() {
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
       <FilterPopover
-        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0)}
-        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); }}
+        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0) + (missingPrice ? 1 : 0)}
+        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); setMissingPrice(false); }}
         groups={[
           {
             key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
@@ -398,6 +412,14 @@ export default function ProductRegistry() {
               { value: "approved", label: "อนุมัติแล้ว" },
             ],
             selected: regFilter, onChange: setRegFilter,
+          }] : []),
+          /* ⚠️ ขึ้นเฉพาะตอนมีของค้างจริง — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ
+             ⭐ ไม่มีราคาขายปลีก = ภาษีคิดออกมา 0 ⇒ ขายแล้วยื่นจะยื่นขาดโดยไม่มีอะไรฟ้อง */
+          ...(missingPriceCount > 0 ? [{
+            key: "missingPrice", label: "ราคาขายปลีก", icon: CircleDollarSign,
+            options: [{ value: "missing", label: `ขาดราคาขายปลีก (${missingPriceCount})` }],
+            selected: missingPrice ? ["missing"] : [],
+            onChange: (vals) => setMissingPrice(vals.includes("missing")),
           }] : []),
           ...(counts.inactive > 0 ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
