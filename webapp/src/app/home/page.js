@@ -165,7 +165,7 @@ export default function HomeHubPage() {
     <main className="home-hub">
       <div className="home-hub-shell">
         <header className="home-hub-topbar">
-          <Link href="/home" className="home-hub-brand-link" aria-label="ศูนย์รวมระบบ Scent and Sense">
+          <Link href="/home" className="home-hub-brand-link" aria-label="ระบบสุข · SUK">
             <BrandMark height={42} className="brand-mark home-hub-brand" />
           </Link>
           <nav className="home-hub-shortcuts" aria-label="บัญชีและการตั้งค่าส่วนกลาง">
@@ -182,8 +182,8 @@ export default function HomeHubPage() {
 
         <section className={`home-hub-hero glass-panel${recentSystem ? ' has-continue' : ''}`} aria-labelledby="home-greeting">
           <div className="home-hub-greeting">
-            <span className="home-hub-eyebrow">ศูนย์รวมการทำงาน</span>
-            <h1 id="home-greeting">สวัสดี, {session.userName}</h1>
+            <span className="home-hub-eyebrow">ศูนย์รวมการทำงานระบบสุข</span>
+            <h1 id="home-greeting">สวัสดี {session.userName}</h1>
             <p>เลือกพื้นที่ทำงานที่ต้องการ ระบบจะแสดงเฉพาะส่วนที่บัญชีนี้มีสิทธิ์เข้าถึง</p>
             <div className="home-user-context" aria-label="บริบทผู้ใช้งาน">
               <span className="chip"><ShieldCheck size={14} /> {roleLabel}</span>
