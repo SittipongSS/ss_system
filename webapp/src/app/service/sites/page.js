@@ -6,7 +6,7 @@
 // 12 สาขาเก็บไม่ได้ตั้งแต่ต้น
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Plus, Search } from "lucide-react";
+import { MapPin, Plus, Search, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
@@ -17,7 +17,7 @@ import Workspace from "@/components/ui/Workspace";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canEditService } from "@/lib/permissions";
+import { canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
 
@@ -29,6 +29,11 @@ export default function ServiceSitesPage() {
   // ⚠️ cap อย่างเดียวไม่พอ — service:edit ถือกว้างทั้ง staff และ sales role
   // ฝ่าย TS / ทีม SV คือตัวกั้นจริง (เหมือนที่ server ทำใน requireService)
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
+  // นำเข้าเป็นก้อนแคบกว่าการแก้รายใบ — หัวหน้าฝ่ายบริการขึ้นไปเท่านั้น (F-8)
+  const canImport = useMemo(
+    () => canImportServiceData({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
 
   const [sites, setSites] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -97,9 +102,19 @@ export default function ServiceSitesPage() {
       title="ไซต์บริการ"
       subtitle="จุดติดตั้งระบบกระจายกลิ่นของลูกค้า และเครื่องที่อยู่หน้างาน"
       headerRight={canEdit ? (
-        <Button tone="primary" onClick={() => setFormSite(null)} icon={<Plus size={15} aria-hidden="true" />}>
-          เพิ่มไซต์
-        </Button>
+        <>
+          {/* ⚠️ นำเข้าเป็น **ปุ่มรอง** — เทอราคอตตาหนึ่งปุ่มต่อหน้า และของที่คนทำ
+              ทุกวันคือเพิ่มไซต์ทีละแห่ง ส่วนนำเข้าเป็นงานตั้งต้นครั้งเดียว */}
+          {canImport && (
+            <Button tone="neutral" as={Link} href="/service/import"
+              icon={<Upload size={15} aria-hidden="true" />}>
+              นำเข้าข้อมูลเก่า
+            </Button>
+          )}
+          <Button tone="primary" onClick={() => setFormSite(null)} icon={<Plus size={15} aria-hidden="true" />}>
+            เพิ่มไซต์
+          </Button>
+        </>
       ) : null}
       toolbar={(
         <div className="toolbar">
