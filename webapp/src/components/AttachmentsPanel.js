@@ -44,6 +44,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { businessDate } from "@/lib/businessDate";
 import PhotoThumb from "@/components/ui/PhotoThumb";
+import { apiFetch } from "@/lib/apiFetch";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 function tooLarge(file) {
@@ -118,7 +119,7 @@ export default function AttachmentsPanel({
     try {
       // no-store: กันเบราว์เซอร์ cache รายการไฟล์แนบ — ไม่งั้นคำตอบ [] ตอนเปิดหน้าครั้งแรก
       // ถูก cache ไว้ แล้วหลังแนบไฟล์+refresh เบราว์เซอร์หยิบ [] เก่ามาแสดง = ไฟล์ "หาย"
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/master/attachments?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
         { cache: "no-store" },
       );

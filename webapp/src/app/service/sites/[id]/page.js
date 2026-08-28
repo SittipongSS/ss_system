@@ -33,6 +33,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -66,9 +67,9 @@ export default function ServiceSiteDetailPage({ params }) {
     setLoadError("");
     try {
       const [siteRes, planRes, visitRes] = await Promise.all([
-        fetch(`/api/service/sites/${id}`),
-        fetch(`/api/service/plans?siteId=${id}`),
-        fetch(`/api/service/visits?siteId=${id}`),
+        apiFetch(`/api/service/sites/${id}`),
+        apiFetch(`/api/service/plans?siteId=${id}`),
+        apiFetch(`/api/service/visits?siteId=${id}`),
       ]);
       const siteData = await siteRes.json().catch(() => null);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดข้อมูลไซต์ไม่สำเร็จ");
@@ -97,7 +98,7 @@ export default function ServiceSiteDetailPage({ params }) {
     if (formPlan === undefined || technicians.length) return;
     (async () => {
       try {
-        const res = await fetch("/api/pm/assignable-users");
+        const res = await apiFetch("/api/pm/assignable-users");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
         setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
@@ -111,7 +112,7 @@ export default function ServiceSiteDetailPage({ params }) {
     if (!editingSite || customers.length) return;
     (async () => {
       try {
-        const res = await fetch("/api/customers");
+        const res = await apiFetch("/api/customers");
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อลูกค้าไม่สำเร็จ");
         setCustomers(Array.isArray(data) ? data : (data?.rows || []));

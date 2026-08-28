@@ -32,6 +32,7 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
+import { apiFetch } from "@/lib/apiFetch";
 
 // team = ทีมหลัก (ยอด/เจ้าของงานที่สร้างใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
 // (ขอบเขตการเห็น/แก้) — คนเดียวอยู่ได้หลายทีม เช่น AE ที่อยู่ทั้ง ODM และ Services
@@ -75,7 +76,7 @@ export default function UserManagement() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch("/api/users");
+      const res = await apiFetch("/api/users");
       if (res.ok) setUsers(await res.json());
     } catch (err) {
       console.error(err);

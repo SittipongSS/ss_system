@@ -23,6 +23,7 @@ import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceAssetPage({ params }) {
   const { id, assetId } = use(params);
@@ -36,7 +37,7 @@ export default function ServiceAssetPage({ params }) {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/service/sites/${id}/assets/${assetId}/detail`);
+      const res = await apiFetch(`/api/service/sites/${id}/assets/${assetId}/detail`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลอุปกรณ์ไม่สำเร็จ");

@@ -40,6 +40,7 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { describeResponseError } from "@/lib/fetchError";
 import AccessDenied from "@/components/ui/AccessDenied";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_CONFIRMATION = { docType: "", docNo: "", docDate: "", attachments: [] };
 
@@ -76,7 +77,7 @@ function NewSalesOrderInner() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/sales-planning/quotations/${quotationId}`, { cache: "no-store" });
+        const res = await apiFetch(`/api/sales-planning/quotations/${quotationId}`, { cache: "no-store" });
         if (!res.ok) throw new Error(await describeResponseError(res, "โหลดใบเสนอราคาไม่สำเร็จ"));
         const data = await res.json();
         if (!alive) return;

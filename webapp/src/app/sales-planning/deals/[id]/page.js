@@ -58,6 +58,7 @@ import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -202,7 +203,7 @@ export default function DealOverviewPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${id}/overview`);
+      const res = await apiFetch(`/api/sales-planning/deals/${id}/overview`);
       if (!res.ok) throw new Error((await res.json()).error || "load project center failed");
       setData(await res.json());
     } catch (e) {
@@ -218,9 +219,9 @@ export default function DealOverviewPage() {
 
   // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ — โหลดครั้งเดียว
   useEffect(() => {
-    fetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
+    apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    fetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
+    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
@@ -434,7 +435,7 @@ export default function DealOverviewPage() {
     setActionBusy(key);
     setError("");
     try {
-      const res = await fetch(url, opts);
+      const res = await apiFetch(url, opts);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "ทำรายการไม่สำเร็จ");
       await load();
       return true;
@@ -488,7 +489,7 @@ export default function DealOverviewPage() {
     setLinkProjectId("");
     setLinkStartDate(businessDate());
     try {
-      const res = await fetch("/api/pm/projects");
+      const res = await apiFetch("/api/pm/projects");
       const rows = res.ok ? await res.json() : [];
       const mine = (Array.isArray(rows) ? rows : []).filter((p) => (
         (!deal.customerId || !p.customerId || p.customerId === deal.customerId)

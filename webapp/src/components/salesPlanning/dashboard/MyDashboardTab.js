@@ -32,6 +32,7 @@ import {
 } from "@/lib/salesPlanning/myQueue";
 import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const ACTIVITY_KIND_LABEL = {
   note: "บันทึก",
@@ -61,7 +62,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
          (ยังส่ง `month` ไปด้วยเสมอ — route ใช้เป็นค่าถอยและใช้บอกงวดกลับมา) */
       const query = new URLSearchParams({ month });
       if (allMonths) query.set("year", yearOfMonth(month) || "");
-      const response = await fetch(`/api/sales-planning/my-dashboard?${query.toString()}`);
+      const response = await apiFetch(`/api/sales-planning/my-dashboard?${query.toString()}`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "ไม่สามารถโหลดภาพรวมส่วนตัวได้");
       setData(payload);

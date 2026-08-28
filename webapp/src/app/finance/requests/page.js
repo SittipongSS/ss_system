@@ -21,6 +21,7 @@ import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import { businessDate } from "@/lib/businessDate";
 import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs, queueCounts } from "@/lib/requests/queueBoard";
 import { compareRequestUrgency } from "@/lib/deptRequests";
+import { apiFetch } from "@/lib/apiFetch";
 
 const DEPT = "FN";
 
@@ -49,7 +50,7 @@ export default function FinanceRequestsPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch("/api/sa/requests", { cache: "no-store" });
+      const res = await apiFetch("/api/sa/requests", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);

@@ -35,6 +35,7 @@ import { categoryFlags } from "@/lib/master/categoryOf";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* ปุ่มเลือกแม่แบบจัดเป็นกลุ่มตามสาย — ลำดับกลุ่มคงที่: ของใช้ร่วมก่อน แล้วสายสินค้า
    แล้วสายบริการ (คนอ่านคาดหวังลำดับเดิมทุกครั้งที่เปิดหน้า) */
@@ -204,7 +205,7 @@ export default function WorkflowTemplatesPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/workflow-templates", { cache: "no-store" });
+      const response = await apiFetch("/api/workflow-templates", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลด Workflow Template ไม่สำเร็จ");
       setTemplates(payload.templates || []);
@@ -225,7 +226,7 @@ export default function WorkflowTemplatesPage() {
   useEffect(() => { setEditor(selected?.draft ? toEditor(selected.draft) : null); }, [selected]);
 
   const request = async (url, options, fallback) => {
-    const response = await fetch(url, options);
+    const response = await apiFetch(url, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const requestError = new Error(payload.error || fallback);

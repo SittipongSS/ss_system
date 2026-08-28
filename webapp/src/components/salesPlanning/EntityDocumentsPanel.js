@@ -17,6 +17,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { DOCUMENT_SOURCES } from "@/lib/sales/entityDocuments";
 import { fmtDate } from "@/lib/format";
 import styles from "./entityDocuments.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // รับ `dealId` (แท็บบนหน้าดีล) หรือ `projectId` (แท็บบนหน้าโครงการ · ม-88) —
 // โหมดโครงการรวมของทุกดีลข้างใน และบรรทัดรองบอกว่าแถวไหนมาจากดีลไหน
@@ -33,7 +34,7 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
     const query = dealId
       ? `dealId=${encodeURIComponent(dealId)}`
       : `projectId=${encodeURIComponent(projectId)}`;
-    fetch(`/api/sales-planning/documents/all?${query}`, { cache: "no-store" })
+    apiFetch(`/api/sales-planning/documents/all?${query}`, { cache: "no-store" })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (!r.ok) throw new Error(d?.error || "โหลดเอกสารไม่สำเร็จ");

@@ -16,6 +16,7 @@ import { canManageProductCategories } from "@/lib/permissions";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = {
   mainSelection: "",
@@ -56,7 +57,7 @@ export default function ProductCategoriesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/product-types?manage=1", { cache: "no-store" });
+      const response = await apiFetch("/api/product-types?manage=1", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดหมวดสินค้าไม่สำเร็จ");
       setItems(payload.items || []);

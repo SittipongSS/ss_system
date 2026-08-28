@@ -32,6 +32,7 @@ import OwnerWorkloadPanel from "@/components/requests/OwnerWorkloadPanel";
 import DueWeekPanel from "@/components/requests/DueWeekPanel";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   deptPipeline, ownerWorkload, stageNote, stageValue,
 } from "@/lib/requests/deptOverview";
@@ -48,7 +49,7 @@ export default function RdOverviewPage() {
   const reload = useCallback(async () => {
     setLoading(true); setLoadError("");
     try {
-      const res = await fetch("/api/sa/requests", { cache: "no-store" });
+      const res = await apiFetch("/api/sa/requests", { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setRequests(Array.isArray(d) ? d : []);

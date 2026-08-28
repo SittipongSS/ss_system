@@ -37,6 +37,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, naText, NA } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ⚠️ ต้องย้อนหลังพอที่จะเห็น **นัดค้าง** ทั้งหมด ไม่ใช่แค่สัปดาห์ที่แล้ว —
 // นัดที่ค้างมา 2 เดือนคือนัดที่เจ็บที่สุด ถ้าช่วงที่ดึงสั้นไปมันจะหายไปเงียบ ๆ
@@ -86,8 +87,8 @@ export default function ServiceOverviewPage() {
     setLoadError("");
     try {
       const [visitRes, siteRes] = await Promise.all([
-        fetch(`/api/service/visits?from=${range.from}&to=${range.to}`),
-        fetch("/api/service/sites?withSchedule=1"),
+        apiFetch(`/api/service/visits?from=${range.from}&to=${range.to}`),
+        apiFetch("/api/service/sites?withSchedule=1"),
       ]);
       const visitData = await visitRes.json().catch(() => null);
       if (!visitRes.ok) throw new Error(visitData?.error || "โหลดตารางนัดไม่สำเร็จ");

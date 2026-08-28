@@ -82,6 +82,7 @@ import styles from "./page.module.css";
 import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/documentControlModel";
 import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -208,7 +209,7 @@ export default function RequestDetailPage() {
   const needsCustomers = hasFormulaRows || req?.kind === "scent_dev";
   useEffect(() => {
     if (!needsCustomers) return;
-    const get = (url) => fetch(url, { cache: "no-store" })
+    const get = (url) => apiFetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
@@ -236,7 +237,7 @@ export default function RequestDetailPage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/sa/requests/${id}`, { cache: "no-store" });
+      const res = await apiFetch(`/api/sa/requests/${id}`, { cache: "no-store" });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error || "โหลดคำร้องไม่สำเร็จ");
       setReq(d);
@@ -249,7 +250,7 @@ export default function RequestDetailPage() {
   // ที่ต้นทางเลย ไม่ปล่อยให้เลือกผิดแล้วค่อยให้ server ตีกลับ)
   useEffect(() => {
     if (!req?.customerId || !requestNeedsOutcome(req?.kind)) { setScentOptions([]); return; }
-    fetch(`/api/master/scents?customerId=${encodeURIComponent(req.customerId)}`, { cache: "no-store" })
+    apiFetch(`/api/master/scents?customerId=${encodeURIComponent(req.customerId)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setScentOptions(Array.isArray(d) ? d : []))
       .catch(() => setScentOptions([]));
@@ -259,7 +260,7 @@ export default function RequestDetailPage() {
      ⚠️ ล้มแล้วไม่โยน — ช่องอ้างอิงเป็นของ "ถ้ามี" · ดรอปดาวน์ว่างดีกว่าฟอร์มไม่ขึ้น */
   useEffect(() => {
     if (!editDraft || editRefs.loaded) return;
-    const get = (url) => fetch(url, { cache: "no-store" })
+    const get = (url) => apiFetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
@@ -274,7 +275,7 @@ export default function RequestDetailPage() {
 
   useEffect(() => {
     if (req?.kind !== "scent_dev") { setAllScents([]); return; }
-    fetch("/api/master/scents", { cache: "no-store" })
+    apiFetch("/api/master/scents", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setAllScents(Array.isArray(d) ? d : []))
       .catch(() => setAllScents([]));
@@ -283,7 +284,7 @@ export default function RequestDetailPage() {
   const call = useCallback(async (path, init, okMsg) => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/requests/${id}${path}`, {
+      const res = await apiFetch(`/api/sa/requests/${id}${path}`, {
         headers: { "Content-Type": "application/json" }, ...init,
       });
       const d = await res.json().catch(() => ({}));
@@ -2253,7 +2254,7 @@ export default function RequestDetailPage() {
                   // ⚠️ อัปพังไม่ย้อนอะไร — กลิ่น/แถวบันทึกแล้ว การ์ดรายการยังแนบ
                   // ต่อได้ (สายพัฒนาแนบบนการ์ดได้ตาม ม-90)
                   if (!delivery.some((r) => (r._files || []).length)) return;
-                  const after = await fetch(`/api/sa/requests/${id}`)
+                  const after = await apiFetch(`/api/sa/requests/${id}`)
                     .then((r) => (r.ok ? r.json() : null)).catch(() => null);
                   const freshRows = ((after && after.items) || [])
                     .filter((x) => !prevIds.has(x.id))

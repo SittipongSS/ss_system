@@ -36,6 +36,7 @@ import {
   scheduleRange, scheduleTotals, shiftAnchor, weekIndex,
 } from "@/lib/salesPlanning/mySchedule";
 import styles from "./ScheduleSection.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -101,7 +102,7 @@ export default function ScheduleSection() {
     setError("");
     try {
       const query = new URLSearchParams({ from: range.from, to: range.to });
-      const response = await fetch(`/api/sales-planning/my-schedule?${query.toString()}`, { cache: "no-store" });
+      const response = await apiFetch(`/api/sales-planning/my-schedule?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดกำหนดการไม่สำเร็จ");
       setData(payload);

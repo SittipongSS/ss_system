@@ -28,6 +28,7 @@ import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { BUSINESS_LINES, businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
    ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
@@ -115,9 +116,9 @@ export default function ProjectsIndexPage() {
     setError("");
     try {
       const [res, custRes, catRes] = await Promise.all([
-        fetch("/api/pm/projects"),
-        fetch("/api/master/customers"),
-        fetch("/api/master/product-types"),
+        apiFetch("/api/pm/projects"),
+        apiFetch("/api/master/customers"),
+        apiFetch("/api/master/product-types"),
       ]);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดโครงการไม่สำเร็จ");
       setRows(await res.json());

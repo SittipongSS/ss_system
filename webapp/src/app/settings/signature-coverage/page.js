@@ -19,6 +19,7 @@ import Workspace, { Metric, MetricStrip } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import { naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 const FILTERS = [
@@ -57,7 +58,7 @@ export default function SignatureCoveragePage() {
   const load = useCallback(async (signal) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/signature-coverage", { signal, cache: "no-store" });
+      const res = await apiFetch("/api/admin/signature-coverage", { signal, cache: "no-store" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(ERROR_TEXT[data.error] || data.error || "โหลดข้อมูลไม่สำเร็จ");
       setRows(data.rows || []);

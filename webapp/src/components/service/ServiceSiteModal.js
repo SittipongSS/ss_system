@@ -13,6 +13,7 @@ import TimeInput from "@/components/ui/TimeInput";
 import { WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, toHHMM } from "@/lib/service/sites";
 import { ADDRESS_USE_LABELS, addressText, addressUse } from "@/lib/master/addresses";
 import styles from "./ServiceSiteModal.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ไทล์ "ที่อยู่อื่น" = ตั้งใจไม่ก๊อปจากทะเบียน (ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี)
 const OWN_ADDRESS = "__own__";
@@ -90,7 +91,7 @@ export default function ServiceSiteModal({
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(`/api/customers/${customerId}`);
+        const res = await apiFetch(`/api/customers/${customerId}`);
         const body = await res.json().catch(() => null);
         if (alive && res.ok) setFetchedAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
       } catch {

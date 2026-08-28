@@ -39,6 +39,7 @@ import { useFileIntake } from "@/lib/ui/useFileIntake";
 import { postUpdateWithFiles } from "@/lib/master/updatePost";
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { threadPollDelay, threadSignature } from "@/lib/ui/threadPollSchedule";
+import { apiFetch } from "@/lib/apiFetch";
 
 const fileHref = (row, i) => `/api/updates/${row.id}/file?i=${i}`;
 
@@ -130,7 +131,7 @@ export default function UpdateThread({
     if (!entityType || !entityId) return;
     lastLoadAt.current = Date.now();
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/updates?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
         { cache: "no-store" },
       );
@@ -287,7 +288,7 @@ export default function UpdateThread({
   const loadPeople = useCallback(async () => {
     if (people) return people;
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/updates/mentionable?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`,
         { cache: "no-store" },
       );
@@ -391,7 +392,7 @@ export default function UpdateThread({
   const mutate = async (id, init, okThen) => {
     setBusy(true); setErr("");
     try {
-      const res = await fetch(`/api/updates/${id}`, {
+      const res = await apiFetch(`/api/updates/${id}`, {
         headers: { "Content-Type": "application/json" }, ...init,
       });
       const d = await res.json().catch(() => ({}));

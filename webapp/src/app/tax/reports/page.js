@@ -10,6 +10,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { REGISTRATION_FILTERS, FILING_FILTERS } from "@/lib/excise/workflow";
 import { ATTACHMENT_TYPES } from "@/lib/master/attachmentTypes";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ประเภทเอกสารที่เลือกรวมใน ZIP ได้ — เอกสารทะเบียน + แผนที่ที่อยู่ (เอกสารลูกค้า
 // ที่ผูกกับทะเบียน ไม่ใช่การ์ดของทะเบียนเอง จึงเติมเป็นตัวเลือกพิเศษท้ายลิสต์).
@@ -134,7 +135,7 @@ export default function ReportsPage() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetch(`/api/tax/reports?${query}`)
+    apiFetch(`/api/tax/reports?${query}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (alive) { setReport(j); setLoading(false); } })
       .catch(() => { if (alive) setLoading(false); });
@@ -215,7 +216,7 @@ export default function ReportsPage() {
       openReportPrintWindow(report, { from, to, customerName });
       return;
     }
-    const res = await fetch(`/api/tax/reports?${query}${idsParam}`);
+    const res = await apiFetch(`/api/tax/reports?${query}${idsParam}`);
     if (!res.ok) return;
     const data = await res.json();
     openReportPrintWindow(data, { from, to, customerName });

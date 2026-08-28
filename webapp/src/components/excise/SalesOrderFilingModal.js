@@ -6,6 +6,7 @@ import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_RESOLUTION = {
   loading: false,
@@ -35,7 +36,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     setCustomerId("");
     setSalesOrderId("");
     setResolution(EMPTY_RESOLUTION);
-    fetch("/api/tax/orders/from-sales-order?available=1")
+    apiFetch("/api/tax/orders/from-sales-order?available=1")
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "โหลดใบสั่งขายไม่สำเร็จ");
@@ -59,7 +60,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     }
     const controller = new AbortController();
     setResolution({ ...EMPTY_RESOLUTION, loading: true });
-    fetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(salesOrderId)}`, {
+    apiFetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(salesOrderId)}`, {
       signal: controller.signal,
     })
       .then(async (res) => {

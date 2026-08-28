@@ -29,6 +29,7 @@ import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceIntakePage() {
   const role = useRole();
@@ -53,7 +54,7 @@ export default function ServiceIntakePage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch("/api/service/intake");
+      const res = await apiFetch("/api/service/intake");
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดคิวงานเข้าใหม่ไม่สำเร็จ");
@@ -71,7 +72,7 @@ export default function ServiceIntakePage() {
 
   // ทะเบียนไซต์/โซนโหลดตอนจะ "เลือก" เท่านั้น — คิวอย่างเดียวไม่ต้องใช้
   const loadRegistry = useCallback(async (siteId = null) => {
-    const res = await fetch("/api/service/sites");
+    const res = await apiFetch("/api/service/sites");
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนไซต์ไม่สำเร็จ");
     /* ⚠️ /api/service/sites คืน **อาร์เรย์ตรง ๆ** ไม่ได้ห่อใน { sites } — ต่างจาก
@@ -79,7 +80,7 @@ export default function ServiceIntakePage() {
     const rows = Array.isArray(body) ? body : (Array.isArray(body?.sites) ? body.sites : []);
     setSites(rows);
     if (siteId) {
-      const zoneRes = await fetch(`/api/service/sites/${siteId}/zones`);
+      const zoneRes = await apiFetch(`/api/service/sites/${siteId}/zones`);
       const zoneBody = await zoneRes.json().catch(() => null);
       if (zoneRes.ok) {
         setZonesBySite((prev) => new Map(prev).set(siteId, Array.isArray(zoneBody?.zones) ? zoneBody.zones : []));
@@ -96,7 +97,7 @@ export default function ServiceIntakePage() {
          jsonb ก้อนใหญ่ — วัดจริง 136 KB บนลูกค้า 191 ราย) */
       setCustomerAddresses([]);
       if (order.customerId) {
-        const res = await fetch(`/api/customers/${order.customerId}`);
+        const res = await apiFetch(`/api/customers/${order.customerId}`);
         const body = await res.json().catch(() => null);
         if (res.ok) setCustomerAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
       }
@@ -114,7 +115,7 @@ export default function ServiceIntakePage() {
     let known = false;
     setZonesBySite((prev) => { known = prev.has(siteId); return prev; });
     if (known) return;
-    const res = await fetch(`/api/service/sites/${siteId}/zones`);
+    const res = await apiFetch(`/api/service/sites/${siteId}/zones`);
     const body = await res.json().catch(() => null);
     if (!res.ok) return;
     const rows = Array.isArray(body) ? body : (Array.isArray(body?.zones) ? body.zones : []);

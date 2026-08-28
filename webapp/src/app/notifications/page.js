@@ -22,6 +22,7 @@ import { notifyToast } from "@/lib/feedback";
 import { describeResponseError } from "@/lib/fetchError";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const pad = (n) => String(n).padStart(2, "0");
 /** คีย์วันตาม **เวลาท้องถิ่น** — ห้ามใช้ toISOString().slice(0,10) (นั่นคือวัน UTC) */
@@ -42,7 +43,7 @@ async function fetchPage({ scope, cursor }) {
   const params = new URLSearchParams();
   if (scope === "unread") params.set("scope", "unread");
   if (cursor) params.set("cursor", cursor);
-  const res = await fetch(`/api/notifications?${params}`, { cache: "no-store" });
+  const res = await apiFetch(`/api/notifications?${params}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await describeResponseError(res, "โหลดแจ้งเตือนไม่สำเร็จ"));
   const body = await res.json().catch(() => ({}));
   if (body.unavailable) throw new Error("อ่านกล่องแจ้งเตือนไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง");

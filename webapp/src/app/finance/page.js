@@ -22,6 +22,7 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { awaitsFinanceReview } from "@/lib/sales/salesOrderFinanceApproval";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function FinanceOverviewPage() {
   const router = useRouter();
@@ -34,8 +35,8 @@ export default function FinanceOverviewPage() {
     setLoading(true); setError("");
     try {
       const [ledgerRes, orderRes] = await Promise.all([
-        fetch("/api/finance/payments", { cache: "no-store" }),
-        fetch("/api/sales-planning/sales-orders", { cache: "no-store" }),
+        apiFetch("/api/finance/payments", { cache: "no-store" }),
+        apiFetch("/api/sales-planning/sales-orders", { cache: "no-store" }),
       ]);
       const ledgerBody = await ledgerRes.json().catch(() => null);
       if (!ledgerRes.ok) throw new Error(ledgerBody?.error || "โหลดทะเบียนการชำระไม่สำเร็จ");

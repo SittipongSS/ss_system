@@ -23,10 +23,11 @@ import { useCapUser } from "@/lib/roleContext";
 import { settingsNavForUser } from "@/config/settingsNav";
 import { canUser } from "@/lib/permissions";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const jsonOrNull = async (url, signal) => {
   try {
-    const res = await fetch(url, { cache: "no-store", signal });
+    const res = await apiFetch(url, { cache: "no-store", signal });
     if (!res.ok) return null;
     return await res.json();
   } catch {

@@ -32,6 +32,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { createClient } from "@/lib/supabaseBrowser";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./ProjectDealsHub.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const STAGE_COLORS = {
   lead: "var(--text-3)", qualified: "var(--blue)", quotation: "var(--amber)",
@@ -432,7 +433,7 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
   // รายชื่อสำหรับดรอปดาวน์ในฟอร์ม — โหลดตอนจะเปิดฟอร์มเท่านั้น (หน้าโครงการส่วนใหญ่ไม่ได้เปิด)
   useEffect(() => {
     if (!createOpen) return;
-    fetch("/api/master/customers").then((res) => (res.ok ? res.json() : [])).then((rows) => setCustomers(rows || [])).catch(() => {});
+    apiFetch("/api/master/customers").then((res) => (res.ok ? res.json() : [])).then((rows) => setCustomers(rows || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((rows) => setCategories(rows || [])).catch(() => {});
   }, [createOpen]);
 
@@ -443,8 +444,8 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
     // ดีลของลูกค้ารายนี้ + ชื่อโครงการที่แต่ละใบอยู่ตอนนี้ — ดีลที่อยู่โครงการอื่น
     // "ย้ายมาได้" แล้ว (มติผู้ใช้ 2026-08-06) แต่ต้องบอกให้ชัดว่ากำลังดึงมาจากไหน
     Promise.all([
-      fetch("/api/sales-planning/deals").then((res) => (res.ok ? res.json() : [])),
-      fetch("/api/pm/projects").then((res) => (res.ok ? res.json() : [])).catch(() => []),
+      apiFetch("/api/sales-planning/deals").then((res) => (res.ok ? res.json() : [])),
+      apiFetch("/api/pm/projects").then((res) => (res.ok ? res.json() : [])).catch(() => []),
     ])
       .then(([rows, projects]) => {
         const byId = new Map((Array.isArray(projects) ? projects : []).map((row) => [row.id, row]));

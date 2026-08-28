@@ -15,6 +15,7 @@ import { TableEmpty, TableShell } from "@/components/ui/Table";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { fmtDate } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function DealContractsCard({ dealId, canEdit = false, quotationId = "" }) {
   const [rows, setRows] = useState([]);
@@ -23,7 +24,7 @@ export default function DealContractsCard({ dealId, canEdit = false, quotationId
   const load = useCallback(async () => {
     if (!dealId) return;
     try {
-      const res = await fetch(`/api/sales-planning/contracts?dealId=${encodeURIComponent(dealId)}`);
+      const res = await apiFetch(`/api/sales-planning/contracts?dealId=${encodeURIComponent(dealId)}`);
       const data = await res.json().catch(() => []);
       setRows(Array.isArray(data) ? data : []);
     } catch {

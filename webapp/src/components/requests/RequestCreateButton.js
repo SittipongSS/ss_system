@@ -22,6 +22,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import DealPicker from "@/components/pm/DealPicker";
 import { dealRequestEntries } from "@/lib/requests/dealRequestEntries";
 import styles from "./RequestCreateButton.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function RequestCreateButton({
   // โหมดหน้าดีล — ดีลถูกกำหนดมาแล้ว
@@ -53,7 +54,7 @@ export default function RequestCreateButton({
      ⭐ ขอตอนกดปุ่มเท่านั้น — คนส่วนใหญ่เปิดหน้าดีลมาอ่าน ไม่ได้มาเปิดคำร้อง */
   useEffect(() => {
     if (!open || salesOrders.length) return;
-    fetch("/api/sales-planning/sales-orders", { cache: "no-store" })
+    apiFetch("/api/sales-planning/sales-orders", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((rows) => setSalesOrders(Array.isArray(rows) ? rows : []))
       .catch(() => {});

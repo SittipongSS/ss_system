@@ -14,6 +14,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import Modal from "@/components/Modal";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ป้ายภาษาไทยของ entity / action ที่ audit log บันทึก (ตอนนี้ครอบ customer/product/order).
 const ENTITY_LABELS = {
@@ -62,7 +63,7 @@ export default function AuditLogPage() {
         if (action) sp.set("action", action);
         if (actor) sp.set("actor", actor);
         if (q.trim()) sp.set("q", q.trim());
-        const res = await fetch(`/api/audit?${sp.toString()}`, { signal: ctrl.signal });
+        const res = await apiFetch(`/api/audit?${sp.toString()}`, { signal: ctrl.signal });
         if (res.ok) {
           const data = await res.json();
           setRows(data.rows || []);

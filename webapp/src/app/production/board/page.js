@@ -24,6 +24,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort, fmtNumber } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const WEEKS = 4;
@@ -68,7 +69,7 @@ export default function ProductionBoardPage() {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await fetch(`/api/production/board?from=${range.from}&to=${range.to}`);
+      const res = await apiFetch(`/api/production/board?from=${range.from}&to=${range.to}`);
       const data = await res.json().catch(() => null);
       if (!isLatest()) return; // เลื่อนช่วงวันที่ระหว่างรอ — บอร์ดต้องเป็นของช่วงที่ค้างอยู่
       if (!res.ok) throw new Error(data?.error || "โหลดบอร์ดไม่สำเร็จ");

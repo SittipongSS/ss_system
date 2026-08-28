@@ -9,6 +9,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
 import { naText } from "@/lib/format";
+import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
@@ -35,7 +36,7 @@ export default function MgmtOverviewPage() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetch(`/api/mgmt/overview?year=${year}`)
+    apiFetch(`/api/mgmt/overview?year=${year}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive) { setData(d); setLoading(false); } })
       .catch(() => { if (alive) setLoading(false); });

@@ -11,6 +11,7 @@ import YearProgressBar from "./YearProgressBar";
 import MorningBoard from "./MorningBoard";
 import YearHeatmap from "./YearHeatmap";
 import DrillSection from "./DrillSection";
+import { apiFetch } from "@/lib/apiFetch";
 
 // แท็บ "ผลงานขาย" (/sa/dashboard?tab=performance) — แทน "KPI ดีล" เดิม (2026-07-18).
 // ดีไซน์จากไฟล์ HTML ของผู้ใช้: บอร์ดประชุมเช้า + ทบยอด + heatmap + เจาะรายคน/ทีม.
@@ -23,7 +24,7 @@ import DrillSection from "./DrillSection";
 // ดึง dashboard ปีหนึ่ง ๆ แบบ stale-while-revalidate (แพตเทิร์นเดียวกับ load() เดิมของหน้า /sa)
 async function fetchYear(year) {
   const key = `/api/sales-planning/dashboard?year=${encodeURIComponent(year)}`;
-  const res = await fetch(key);
+  const res = await apiFetch(key);
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "โหลดภาพรวมไม่สำเร็จ");
   const months = (await res.json()).months || [];
   apiCache.set(key, months);
@@ -31,7 +32,7 @@ async function fetchYear(year) {
 }
 
 function fetchHistory(year) {
-  return fetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`)
+  return apiFetch(`/api/sales-planning/history?monthsOf=${encodeURIComponent(year)}`)
     .then((r) => (r.ok ? r.json() : { rows: [] }))
     .catch(() => ({ rows: [] })); // ไม่มีประวัติ = กราฟใช้ยอดระบบล้วน ไม่ใช่ error
 }

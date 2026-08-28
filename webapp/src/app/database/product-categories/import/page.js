@@ -19,6 +19,7 @@ import { useRole } from "@/lib/roleContext";
 import { canManageProductCategories } from "@/lib/permissions";
 import { fmtDateTime, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 const ACTION_META = {
   create: { label: "เพิ่มใหม่", tone: "green" },
@@ -73,7 +74,7 @@ export default function ProductCategoryImportPage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const response = await fetch("/api/product-types/imports?pageSize=50", { cache: "no-store" });
+      const response = await apiFetch("/api/product-types/imports?pageSize=50", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดประวัติไม่สำเร็จ");
       setHistory({ items: payload.items || [], total: payload.total || 0 });
@@ -153,7 +154,7 @@ export default function ProductCategoryImportPage() {
     setDetail({ ...run, rows: null });
     setDetailLoading(true);
     try {
-      const response = await fetch(`/api/product-types/imports/${run.id}`, { cache: "no-store" });
+      const response = await apiFetch(`/api/product-types/imports/${run.id}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "โหลดรายละเอียดไม่สำเร็จ");
       setDetail(payload);
