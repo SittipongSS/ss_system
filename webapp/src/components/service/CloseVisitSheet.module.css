@@ -11,6 +11,9 @@
 .block { margin-bottom: var(--space-4); }
 
 .blockTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0 0 var(--space-2);
   font-size: var(--fs-label);
   font-weight: var(--fw-bold);
@@ -96,3 +99,90 @@
   font-size: var(--fs-label);
   line-height: var(--lh-thai);
 }
+
+/* เวลาที่ระบบประทับให้ — อ่านอย่างเดียว ไม่ใช่ช่องกรอก (มติ 2026-08-02 ข้อ 5) */
+.stamp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-2) 0 0;
+}
+
+.stamp > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.stamp dt {
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+.stamp dd {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+}
+
+/* ── ปิดงานรายเครื่อง (F-4) ─────────────────────────────────────────── */
+.progress {
+  margin-inline-start: auto;
+  color: var(--text-3);
+  font-weight: var(--fw-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.assetRow {
+  padding: var(--space-2-5) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.assetRow:last-of-type { border-bottom: 0; }
+
+.assetHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.assetName {
+  flex: 1 1 160px;
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+.assetName small {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-normal);
+}
+
+.assetField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.assetField > span {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+/* สถานะที่ใบจะถูกปิด — บอกผลก่อนกด ไม่ใช่ให้เซอร์ไพรส์หลังบันทึก */
+.derived {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-2-5);
+  border-radius: var(--radius);
+  background: var(--green-soft);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.derivedWarn { background: var(--amber-soft); }

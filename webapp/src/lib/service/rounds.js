@@ -1,16 +1,25 @@
 // ── รอบบริการ + ตารางนัดเข้าไซต์ (mig 0188) — logic ล้วน ──────────────────
 //
 // ⭐ `service_visits` คือ "ตาราง" ที่ผู้ใช้ขอ · ไฟล์นี้คือกฎทั้งหมดของมัน:
-// gen นัดตามรอบ · เตือนเวลาทับกัน · เตือนวิ่งข้ามโซน · เตือนนอกช่วงที่ไซต์ให้เข้า
+// gen นัดตามรอบ · เตือนเวลาทับกัน · เตือนวิ่งข้ามเขต · เตือนนอกช่วงที่ไซต์ให้เข้า
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ปฏิทิน/ฟอร์ม) และ server (validate + gen)
 import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
 import { accessConflict, minutesOf, toHHMM } from './sites';
 import { businessDate } from '@/lib/businessDate';
+import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
 export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove'];
-export const VISIT_STATUSES = ['scheduled', 'done', 'rescheduled', 'cancelled'];
+/* สถานะย้ายไปอยู่ที่ lib/service/visitStatus.js ทั้งชุด (mig 0300) — ที่นั่นเป็น
+   ที่เดียวที่ตอบว่า "อยู่บนตาราง" / "ปิดจบแล้ว" / "ยังรอลงมือ" หมายถึงอะไร
+   re-export ไว้เพื่อไม่ให้ผู้เรียกเดิม 2 ที่ต้องแก้ import พร้อมกัน */
+export {
+  VISIT_STATUSES, VISIT_STATUS_LABELS, VISIT_STATUSES_MANUAL,
+  isDraftVisit, isLiveVisit, isClosedVisit, isOpenVisit,
+  canRescheduleVisit, canDeleteVisit,
+} from './visitStatus';
+
 
 // ชนิดรูปหน้างาน — ก่อน/หลัง คือสิ่งที่ลูกค้าถามย้อนหลังจริง
 export const ATTACHMENT_KINDS = ['before', 'after', 'other'];
@@ -23,13 +32,6 @@ export const VISIT_KIND_LABELS = {
   repair: 'ซ่อม',
   inspect: 'ตรวจเช็ค',
   remove: 'ถอดเครื่อง',
-};
-
-export const VISIT_STATUS_LABELS = {
-  scheduled: 'นัดไว้',
-  done: 'เข้าแล้ว',
-  rescheduled: 'เลื่อนแล้ว',
-  cancelled: 'ยกเลิก',
 };
 
 // ⭐ "เช้า/บ่าย/เต็มวัน" เป็น **ปุ่มลัดที่เติมเวลาให้** ไม่ใช่คอลัมน์ใน DB —
@@ -102,7 +104,11 @@ export function normalizePlanInput(body = {}) {
 // (ขยับ 30 นาทีเพราะรถติดไม่ใช่เรื่องที่ต้องอธิบายให้ลูกค้าฟัง)
 export function isReschedule(before, after) {
   if (!before || !after) return false;
-  if (before.status === 'done' || before.status === 'cancelled') return false;
+  /* 🐞 ของเดิมกันแค่ done/cancelled ⇒ แก้วันย้อนหลังของใบ partial/unable จะถูกบังคับ
+     กรอกเหตุผล แล้วระบบเขียนเธรดว่า "เลื่อนนัด" ทั้งที่ไม่มีการเลื่อนเกิดขึ้น ·
+     และ draft ที่ยังไม่มีลูกค้ารู้เรื่อง เปลี่ยนวันทีต้องพิมพ์เหตุผลที
+     ⇒ นิยามเดียวอยู่ที่ visitStatus.canRescheduleVisit */
+  if (!canRescheduleVisit(before)) return false;
   return !!before.scheduledDate && !!after.scheduledDate
     && String(before.scheduledDate) !== String(after.scheduledDate);
 }
@@ -143,15 +149,33 @@ export function normalizeVisitInput(body = {}) {
     ['startTime', 'endTime', 'เวลานัด'],
     ['actualStartTime', 'actualEndTime', 'เวลาที่เข้าจริง'],
   ]) {
-    if (times[from] && times[to] && minutesOf(times[from]) >= minutesOf(times[to])) {
-      return { value: null, error: `${label}: เวลาเริ่มต้องก่อนเวลาสิ้นสุด` };
+    /* ⚠️ เวลา "ที่นัดไว้" ยังบังคับเริ่ม < สิ้นสุด (คนกรอกเอง ช่วงศูนย์นาทีไม่มีความหมาย)
+       แต่เวลา "ที่เข้าจริง" ยอมให้เท่ากันได้ (mig 0300) — เมื่อเวลามาจากการประทับจริง
+       งานที่เริ่มและจบในนาทีเดียวกันมีจริง (เปลี่ยนก้าน reed จุดเดียว · เข้าไปดูแล้วออก) */
+    const strict = from === 'startTime';
+    const bad = strict
+      ? minutesOf(times[from]) >= minutesOf(times[to])
+      : minutesOf(times[from]) > minutesOf(times[to]);
+    if (times[from] && times[to] && bad) {
+      return { value: null, error: `${label}: เวลาเริ่มต้องไม่หลังเวลาสิ้นสุด` };
     }
   }
 
   // ⚠️ ปิดงานต้องรู้ว่าเข้าจริงวันไหน — `nextAfterDone` นับรอบถัดไปจากวันที่ทำจริง
   // ถ้าปล่อยว่างได้ รอบถัดไปจะเงียบ ๆ กลับไปอิงวันนัดเดิม แล้วตารางเลื่อนสะสมทั้งปี
-  const actualDate = status === 'done' ? (body.actualDate || body.scheduledDate) : (body.actualDate || null);
-  if (status === 'done' && !actualDate) return { value: null, error: 'ปิดงานต้องระบุวันที่เข้าจริง' };
+  // 🐞 ของเดิมบังคับเฉพาะ `done` ⇒ partial/unable บันทึกได้โดยไม่มีวันที่เข้าจริง ทั้งที่
+  // ช่างไปถึงไซต์แล้ว · ประวัติจะมีแถวที่ไม่รู้ว่าไปวันไหน และจอแสดงว่า "ยังไม่ปิดงาน"
+  // ให้ใบที่ปิดไปแล้วจริง ๆ (DB มี CHECK คู่กันที่ mig 0300)
+  const visited = isClosedVisit({ status });
+  const actualDate = visited ? (body.actualDate || body.scheduledDate) : (body.actualDate || null);
+  if (visited && !actualDate) return { value: null, error: 'ปิดงานต้องระบุวันที่เข้าจริง' };
+
+  // "ไปแล้วทำไม่ได้" ต้องอธิบายได้เสมอ — ใบที่ไม่มีเหตุผลคือใบที่ตอบลูกค้าไม่ได้
+  const unableReason = String(body.unableReason ?? '').trim();
+  if (status === 'unable' && unableReason.length < 10) {
+    return { value: null, error: 'สถานะ “ทำไม่ได้” ต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร' };
+  }
+  if (unableReason.length > 500) return { value: null, error: 'เหตุผลยาวเกิน 500 ตัวอักษร' };
 
   const summary = String(body.summary ?? '').trim();
   if (summary.length > 2000) return { value: null, error: 'สรุปงานยาวเกิน 2000 ตัวอักษร' };
@@ -198,6 +222,7 @@ export function normalizeVisitInput(body = {}) {
       actualDate,
       actualStartTime: times.actualStartTime,
       actualEndTime: times.actualEndTime,
+      unableReason: unableReason || null,
       summary: summary || null,
       note: note || null,
       attachments,
@@ -290,7 +315,8 @@ export function ensureVisits(plan, existing = [], { from = null, horizonDays = 9
       scheduledDate: date,
       assigneeId: plan.assigneeId || null,
       assigneeName: plan.assigneeName || null,
-      status: 'scheduled',
+      /* ⚠️ ไม่ใส่ status ที่นี่ — **ด่านเป็นคนตัดสิน** (`initialVisitStatus` ที่ planGen)
+         ของเดิมยัด 'scheduled' ตรงนี้ ⇒ นัดที่ไม่มีช่างขึ้นตารางไปเงียบ ๆ แล้วไม่มีใครไป */
     }));
 }
 
@@ -321,15 +347,14 @@ export function nextAfterDone(plan, visit) {
   };
 }
 
-// นัดที่ยังนับว่า "อยู่บนตาราง" — ยกเลิก/เลื่อนแล้วไม่กินคิวของใคร
-const isLive = (visit) => visit?.status === 'scheduled' || visit?.status === 'done';
+// "อยู่บนตาราง" มีนิยามเดียวอยู่ที่ visitStatus.js — ห้ามเขียนซ้ำที่นี่
 
 // ── โหลดงานรายคนรายวัน ───────────────────────────────────────────────────
 // เตือนเมื่อช่างคนเดียวถูกนัดเกินที่ทำไหวในวันเดียว
 export function dayLoad(visits = [], { perPersonPerDay = 5 } = {}) {
   const map = new Map();
   for (const visit of visits) {
-    if (!isLive(visit)) continue;
+    if (!isLiveVisit(visit)) continue;
     const key = `${visit.assigneeId || 'unassigned'}|${visit.scheduledDate}`;
     const entry = map.get(key) || {
       assigneeId: visit.assigneeId || null,
@@ -359,7 +384,7 @@ export function dayLoad(visits = [], { perPersonPerDay = 5 } = {}) {
 export function overlaps(visits = []) {
   const byPerson = new Map();
   for (const visit of visits) {
-    if (!isLive(visit)) continue;
+    if (!isLiveVisit(visit)) continue;
     if (!visit.assigneeId) continue;
     const start = minutesOf(visit.startTime);
     const end = minutesOf(visit.endTime);
@@ -400,30 +425,32 @@ export function overlappingVisitIds(visits = []) {
   return ids;
 }
 
-// ── วิ่งข้ามโซนในวันเดียว ────────────────────────────────────────────────
-// จัดกลุ่มนัดของช่างคนหนึ่งในวันหนึ่งตามโซนของไซต์ · ≥2 โซน = ขึ้นป้ายเตือน
-// (สาเหตุที่ตารางเลื่อนบ่อยที่สุดคือรถติดระหว่างโซน ไม่ใช่งานที่ไซต์นาน)
-export function zoneSplit(visits = [], sitesById = new Map()) {
+// ── วิ่งข้ามเขตในวันเดียว ────────────────────────────────────────────────
+// จัดกลุ่มนัดของช่างคนหนึ่งในวันหนึ่งตาม **เขตวิ่งงาน** ของไซต์ (routeZone —
+// 'BKK-E' / 'ปริมณฑล') · ≥2 เขต = ขึ้นป้ายเตือน
+// (สาเหตุที่ตารางเลื่อนบ่อยที่สุดคือรถติดระหว่างเขต ไม่ใช่งานที่ไซต์นาน)
+// ⚠️ คนละเรื่องกับ "โซน" (service_zones) ที่เป็นพื้นที่ย่อยในไซต์
+export function routeZoneSplit(visits = [], sitesById = new Map()) {
   const map = new Map();
   for (const visit of visits) {
-    if (!isLive(visit)) continue;
+    if (!isLiveVisit(visit)) continue;
     const key = `${visit.assigneeId || 'unassigned'}|${visit.scheduledDate}`;
-    const zone = sitesById.get(visit.siteId)?.routeZone || null;
+    const routeZone = sitesById.get(visit.siteId)?.routeZone || null;
     const entry = map.get(key) || {
       assigneeId: visit.assigneeId || null,
       assigneeName: visit.assigneeName || null,
       date: visit.scheduledDate,
-      zones: new Set(),
+      routeZones: new Set(),
       count: 0,
     };
     entry.count += 1;
-    if (zone) entry.zones.add(zone);
+    if (routeZone) entry.routeZones.add(routeZone);
     map.set(key, entry);
   }
   return [...map.values()].map((entry) => ({
     ...entry,
-    zones: [...entry.zones],
-    crossZone: entry.zones.size > 1,
+    routeZones: [...entry.routeZones],
+    crossRouteZone: entry.routeZones.size > 1,
   }));
 }
 

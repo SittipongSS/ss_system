@@ -1,0 +1,162 @@
+/* ใบส่งงาน (F-5)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
+   โทนของแถบ "ต้องดู" ส่งผ่าน data-tone ไม่ใช่ inline style — ratchet ของ audit:ui
+   นับ style={{}} เป็นชั้นเก่าและขึ้นไม่ได้ */
+
+/* แถบ "ต้องดู" — ชั้นเดียวกับที่ตัดสินว่าใบไหนถูกดันขึ้นกระดิ่ง */
+.flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4-5);
+}
+
+.flag {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2-5) var(--space-3);
+  --flag: var(--text-3);
+  border: 1px solid color-mix(in srgb, var(--flag) 30%, transparent);
+  border-inline-start: 3px solid var(--flag);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--flag) 8%, transparent);
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  line-height: var(--lh-thai);
+}
+
+.flag[data-tone="danger"] { --flag: var(--red); }
+.flag[data-tone="warning"] { --flag: var(--amber); }
+.flag[data-tone="info"] { --flag: var(--blue); }
+
+.flag svg { flex: none; margin-top: var(--space-0-5); color: var(--flag); }
+.flag b { color: var(--text); font-weight: var(--fw-semibold); }
+
+/* หัวใบ — คู่ป้าย/ค่า ที่ระบบดึงมาทั้งหมด */
+.head {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+@media (min-width: 560px) { .head { grid-template-columns: 1fr 1fr; } }
+
+.head > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.head dt {
+  flex: none;
+  width: 116px;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+}
+
+.head dd {
+  margin: 0;
+  min-width: 0;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+}
+
+/* อุปกรณ์รายตัว */
+.line {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.line:last-child { border-bottom: 0; }
+.line[data-outcome="unable"] { border-inline-start: 3px solid var(--red); padding-inline-start: var(--space-3); }
+.line[data-outcome="swapped"] { border-inline-start: 3px solid var(--violet); padding-inline-start: var(--space-3); }
+
+.lineHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.lineHead b { font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
+
+.lineMeta {
+  margin: var(--space-1) 0 0;
+  color: var(--text-3);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.lineNote {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.lineUsed {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+/* ของกลางของไซต์ */
+.shared { margin: 0; padding: 0; list-style: none; }
+
+.shared li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+  line-height: var(--lh-thai);
+}
+
+.shared li:last-child { border-bottom: 0; }
+.shared span { color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ส่วนที่ช่างเขียนเอง — ต้องแยกออกจากของที่ระบบประกอบด้วยตา */
+.authored {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-inline-start: 3px solid var(--border-strong);
+  background: var(--panel-2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+.authored:last-child { margin-bottom: 0; }
+
+.photos { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.photo {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  text-decoration: none;
+}
+
+.photo:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+.muted { margin: 0; color: var(--text-3); line-height: var(--lh-thai); }
+
+/* พิมพ์ใบ — ตัดเปลือกของแอปออก เหลือแต่เนื้อใบ
+   ⚠️ ใบนี้เป็นเอกสารภายใน (แทนข้อความ 20 บรรทัดใน LINE) ไม่ใช่เอกสารที่ต้องตรึงเลข
+   จึงใช้หน้าต่างพิมพ์ของเบราว์เซอร์ ไม่ผ่านเครื่องยนต์เอกสารของระบบ */
+@media print {
+  .flags { break-inside: avoid; }
+  .line { break-inside: avoid; }
+  .photo { display: none; }
+}

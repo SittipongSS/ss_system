@@ -107,6 +107,9 @@ const nextConfig = {
       // ของลิงก์เก่าและ bookmark ยังทำงานครบ
       { source: '/sa/requests', destination: '/requests', permanent: false },
       { source: '/sa/requests/:path*', destination: '/requests/:path*', permanent: false },
+      // F-1 2026-08-27: "นัดของฉัน" เปลี่ยนชื่อ+เส้นทางเป็น "งานวันนี้" — ลิงก์เก่า
+      // ใน toast/แจ้งเตือน/bookmark ของช่างต้องไม่ตายกลางอากาศ
+      { source: '/service/my-visits', destination: '/service/today', permanent: false },
     ];
   },
 };

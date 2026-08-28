@@ -102,12 +102,12 @@ export default function ServiceSitesPage() {
         </Button>
       ) : null}
       toolbar={(
-        <div className={styles.toolbar}>
+        <div className="toolbar">
           <Search size={15} aria-hidden="true" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อไซต์ ลูกค้า โซน หรือรหัส"
+            placeholder="ค้นหาชื่อไซต์ ลูกค้า เขตวิ่งงาน หรือรหัส"
             aria-label="ค้นหาไซต์บริการ"
             className={styles.searchInput}
           />
@@ -133,7 +133,7 @@ export default function ServiceSitesPage() {
                 <th>รหัส</th>
                 <th>ไซต์</th>
                 <th>ลูกค้า</th>
-                <th>โซน</th>
+                <th>เขตวิ่งงาน</th>
                 <th className={styles.numCol}>เครื่อง</th>
                 <th>ช่วงเวลาที่เข้าได้</th>
                 <th>สถานะ</th>

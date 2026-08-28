@@ -5,6 +5,7 @@
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { sortByTime } from './rounds';
 import { businessDate } from '@/lib/businessDate';
+import { isClosedVisit, isDraftVisit } from './visitStatus';
 
 export const VISIT_SCOPES = ['mine', 'team'];
 export const VISIT_SCOPE_LABELS = { mine: 'ของฉัน', team: 'ทั้งทีม' };
@@ -33,10 +34,15 @@ export function groupVisits(visits = [], todayIso = businessDate()) {
 
   for (const visit of visits) {
     if (visit.status === 'cancelled' || visit.status === 'rescheduled') continue;
+    /* 🔴 ร่างไม่โผล่ในคิวของช่าง — TS ไม่ใช่ต้นทางของงาน และร่างที่ยังไม่ผ่านด่าน
+       ไม่ใช่งานที่ใครควรออกไปทำ (มติผู้ใช้ 2026-08-28) */
+    if (isDraftVisit(visit)) continue;
     const date = String(visit.scheduledDate || '');
     if (date < todayIso) {
-      // เลยวันแล้ว: ปิดไปแล้ว = ประวัติ (ไม่ต้องทวง) · ยังไม่ปิด = ค้าง
-      if (visit.status !== 'done') overdue.push(visit);
+      /* เลยวันแล้ว: ไปถึงไซต์แล้วและได้ข้อสรุป = ประวัติ (ไม่ต้องทวง) · ที่เหลือ = ค้าง
+         🐞 ของเดิมเช็ค `!== 'done'` ⇒ ใบ partial/unable จะค้างในกลุ่ม "ค้างอยู่"
+         ของช่างตลอดกาล ทั้งที่ไปมาแล้วและปิดจบไปแล้ว */
+      if (!isClosedVisit(visit)) overdue.push(visit);
       continue;
     }
     if (date === todayIso) { today.push(visit); continue; }
@@ -62,9 +68,24 @@ export function groupVisits(visits = [], todayIso = businessDate()) {
   };
 }
 
+/* ⭐ นัดค้างมากี่วัน — ⚠️ **รูที่ใหญ่ที่สุดของหน้าช่างเดิม**: การ์ดแสดงแต่ "เวลา"
+   ไม่มีวันที่เลย และกลุ่ม "ค้างอยู่" รวมหลายวันไว้ด้วยกัน ⇒ นัดที่ค้างมาสองเดือน
+   หน้าตาเหมือนนัดของเมื่อวานเป๊ะ · คืน null เมื่อยังไม่เลยวัน (ไม่ใช่ 0 —
+   "ไม่ค้าง" กับ "ค้างศูนย์วัน" คนละความหมาย และป้ายต้องไม่ขึ้นเลย)
+   วันฐานมาจากนาฬิกาไทยเสมอ (businessDate) ไม่ใช่นาฬิกาเครื่องช่าง */
+export function overdueDays(visit, todayIso = businessDate()) {
+  const date = String(visit?.scheduledDate || '');
+  if (!date || date >= todayIso) return null;
+  const from = new Date(`${date}T00:00:00`);
+  const to = new Date(`${todayIso}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+  const days = Math.round((to - from) / 86400000);
+  return days > 0 ? days : null;
+}
+
 // นัดที่ยังต้องทำจริง ๆ วันนี้ — ตัวเลขบนหัวหน้าจอ (ปิดแล้วไม่นับ)
 export function openCount(groups) {
-  const open = (rows = []) => rows.filter((v) => v.status !== 'done').length;
+  const open = (rows = []) => rows.filter((v) => !isClosedVisit(v)).length;
   return {
     overdue: open(groups?.overdue),
     today: open(groups?.today),

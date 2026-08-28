@@ -12,9 +12,13 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { accessConflict } from './sites';
 import { dayLoad, overlaps, sortByTime } from './rounds';
 import { businessDate } from '@/lib/businessDate';
+import { isOpenVisit } from './visitStatus';
 
-const OPEN_STATUSES = ['scheduled'];
-const isOpen = (visit) => OPEN_STATUSES.includes(visit?.status);
+/* 🐞 เดิมประกาศ `OPEN_STATUSES = ['scheduled']` ที่นี่เอง = นิยาม "งานที่ยังรอลงมือ"
+   ชุดที่สองของโมดูล (อีกชุดคือ isLive ใน rounds.js) ⇒ พอเพิ่ม in_progress เข้ามา
+   นัดที่ช่างกำลังทำอยู่จะหายจากตัวเลขหัวจอ ตาราง "วันนี้ใครไปไหน" และคิว
+   "ต้องจัดการก่อน" ทั้งหมด · ตอนนี้ใช้ชุดเดียวจาก visitStatus.js */
+const isOpen = isOpenVisit;
 
 const shiftDays = (iso, days) => {
   const d = new Date(`${iso}T00:00:00`);

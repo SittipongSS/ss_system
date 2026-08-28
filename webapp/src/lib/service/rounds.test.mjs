@@ -14,7 +14,7 @@ import {
   visitMinutes,
   visitTimeText,
   visitWarnings,
-  zoneSplit,
+  routeZoneSplit,
 } from './rounds.js';
 
 const plan = (over = {}) => ({
@@ -190,15 +190,15 @@ test('⭐ นัดที่ไม่ระบุเวลา หรือยั
   assert.deepEqual(overlaps(noOwner), []);
 });
 
-// ── ข้ามโซน ──────────────────────────────────────────────────────────────
-test('วิ่งข้ามโซนในวันเดียว → ขึ้นป้ายเตือน', () => {
+// ── ข้ามเขตวิ่งงาน ───────────────────────────────────────────────────────
+test('วิ่งข้ามเขตในวันเดียว → ขึ้นป้ายเตือน', () => {
   const sites = new Map([['S1', { routeZone: 'BKK-E' }], ['S2', { routeZone: 'ปริมณฑล' }]]);
-  const [row] = zoneSplit([visit({ id: 'V1' }), visit({ id: 'V2', siteId: 'S2' })], sites);
-  assert.equal(row.crossZone, true);
-  assert.deepEqual(row.zones.sort(), ['BKK-E', 'ปริมณฑล'].sort());
+  const [row] = routeZoneSplit([visit({ id: 'V1' }), visit({ id: 'V2', siteId: 'S2' })], sites);
+  assert.equal(row.crossRouteZone, true);
+  assert.deepEqual(row.routeZones.sort(), ['BKK-E', 'ปริมณฑล'].sort());
 
-  const same = zoneSplit([visit({ id: 'V1' }), visit({ id: 'V2' })], sites);
-  assert.equal(same[0].crossZone, false);
+  const same = routeZoneSplit([visit({ id: 'V1' }), visit({ id: 'V2' })], sites);
+  assert.equal(same[0].crossRouteZone, false);
 });
 
 // ── ป้ายเตือนรวมของนัดใบเดียว ────────────────────────────────────────────

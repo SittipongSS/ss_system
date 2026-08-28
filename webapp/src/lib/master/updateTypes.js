@@ -260,6 +260,9 @@ export const UPDATE_KINDS = {
   service_visit: {
     comment: { label: 'บันทึกหน้างาน', color: 'var(--accent)', authorable: true },
     reschedule: { label: 'เลื่อนนัด', color: 'var(--amber)' },
+    /* ปล่อยร่างเข้าคิว (ผ่านด่าน หรือหัวหน้าข้ามด่าน) — "ทำไมนัดนี้ขึ้นตารางทั้งที่
+       ยังไม่จ่าย" เป็นคำถามที่ต้องตอบได้ทีหลัง (mig 0302) */
+    queue: { label: 'เข้าคิว', color: 'var(--blue)' },
     done: { label: 'ปิดงาน', color: 'var(--green)' },
     cancel: { label: 'ยกเลิกนัด', color: 'var(--red)' },
   },

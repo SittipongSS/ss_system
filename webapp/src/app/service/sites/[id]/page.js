@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { use } from "react";
-import { MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
@@ -14,11 +14,13 @@ import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
+import ServiceZoneModal from "@/components/service/ServiceZoneModal";
 import {
   ASSET_STATUS_LABELS,
   accessWindowText,
   assetRollup,
 } from "@/lib/service/sites";
+import { ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
 import {
   VISIT_KIND_LABELS,
@@ -40,6 +42,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
   const [site, setSite] = useState(null);
+  const [zones, setZones] = useState([]);
   const [assets, setAssets] = useState([]);
   // เข้าเติมล่าสุด + นัดครั้งหน้า — ตัวตั้งของการประเมินว่าน้ำหอมจะหมดวันไหน (S-4)
   const [schedule, setSchedule] = useState({ lastRefillDate: null, nextVisitDate: null });
@@ -51,6 +54,7 @@ export default function ServiceSiteDetailPage({ params }) {
   const [loadError, setLoadError] = useState("");
   const [editingSite, setEditingSite] = useState(false);
   const [formAsset, setFormAsset] = useState(undefined); // undefined = ปิด · null = สร้าง
+  const [formZone, setFormZone] = useState(undefined);
   const [formPlan, setFormPlan] = useState(undefined);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -68,6 +72,7 @@ export default function ServiceSiteDetailPage({ params }) {
       const siteData = await siteRes.json().catch(() => null);
       if (!siteRes.ok) throw new Error(siteData?.error || "โหลดข้อมูลไซต์ไม่สำเร็จ");
       setSite(siteData?.site || null);
+      setZones(Array.isArray(siteData?.zones) ? siteData.zones : []);
       setAssets(Array.isArray(siteData?.assets) ? siteData.assets : []);
       setSchedule(siteData?.schedule || { lastRefillDate: null, nextVisitDate: null });
 
@@ -143,6 +148,38 @@ export default function ServiceSiteDetailPage({ params }) {
     await load();
   };
 
+  const saveZone = async (form) => {
+    const editing = !!formZone;
+    const url = editing
+      ? `/api/service/sites/${id}/zones/${formZone.id}`
+      : `/api/service/sites/${id}/zones`;
+    const res = await fetch(url, {
+      method: editing ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
+    setToast({ kind: "success", msg: editing ? `บันทึกโซน ${data.name} แล้ว` : `เพิ่มโซน ${data.name} แล้ว` });
+    await load();
+  };
+
+  const removeZone = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      setToast({ kind: "success", msg: `ลบโซน ${pendingDelete.row.name} แล้ว` });
+      setPendingDelete(null);
+      await load();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removeAsset = async () => {
     setBusy(true);
     try {
@@ -196,6 +233,12 @@ export default function ServiceSiteDetailPage({ params }) {
 
   const rollup = useMemo(() => assetRollup(assets), [assets]);
   const accessText = site ? accessWindowText(site) : "";
+  const zonesById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
+  // เครื่องที่ยังใช้งานแต่ไม่สังกัดโซน — แถบ backfill: ของเก่าเกิดก่อนมีโซน (mig 0298)
+  const unzonedActive = useMemo(
+    () => assets.filter((a) => a.status !== "removed" && !a.zoneId).length,
+    [assets],
+  );
 
   // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("ช่างจะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
   const todayIso = businessDate();
@@ -235,7 +278,7 @@ export default function ServiceSiteDetailPage({ params }) {
     >
       <WorkspaceSection title="ข้อมูลไซต์">
         <dl className={styles.info}>
-          <div><dt>โซน</dt><dd>{naText(site.routeZone)}</dd></div>
+          <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{naText(site.address)}</dd></div>
           <div><dt>ผู้ติดต่อ</dt><dd>{naText(site.contactName)}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>
@@ -256,24 +299,86 @@ export default function ServiceSiteDetailPage({ params }) {
       </WorkspaceSection>
 
       <WorkspaceSection
-        title="เครื่องในไซต์"
-        subtitle={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
+        title="โซนในไซต์"
+        subtitle="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
         actions={canEdit ? (
-          <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
-            เพิ่มเครื่อง
+          <Button tone="primary" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
+            เพิ่มโซน
           </Button>
         ) : null}
       >
-        {assets.length === 0 ? (
-          <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
-            {canEdit ? "ยังไม่มีเครื่องในไซต์นี้ — กดเพื่อเพิ่มเครื่องแรก" : "ยังไม่มีเครื่องในไซต์นี้"}
+        {zones.length === 0 ? (
+          <EmptyState icon={Layers} dashed={canEdit} onClick={canEdit ? () => setFormZone(null) : undefined} plain>
+            {canEdit ? "ยังไม่มีโซนในไซต์นี้ — เช่น Lobby · Reception · ห้องน้ำชั้น 2" : "ยังไม่มีโซนในไซต์นี้"}
           </EmptyState>
         ) : (
           <TableShell>
             <table>
               <thead>
                 <tr>
-                  <th>เครื่อง</th>
+                  <th>โซน</th>
+                  <th className={styles.numCol}>อุปกรณ์</th>
+                  <th>สถานะ</th>
+                  {canEdit && <th aria-label="การทำงาน" />}
+                </tr>
+              </thead>
+              <tbody>
+                {zones.map((zone) => {
+                  const zoneAssets = assets.filter((a) => a.zoneId === zone.id && a.status !== "removed");
+                  return (
+                    <tr key={zone.id} className={zone.isActive === false ? styles.inactive : undefined}>
+                      <td>
+                        {zone.name}
+                        {zone.code ? <span className={styles.serial}> · {zone.code}</span> : null}
+                        {zone.note ? <div className={styles.muted}>{zone.note}</div> : null}
+                      </td>
+                      <td className={styles.numCol}>{zoneAssets.length}</td>
+                      <td><span className="ui-badge">{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>
+                      {canEdit && (
+                        <td>
+                          <div className={styles.rowActions}>
+                            <Button iconOnly tone="neutral" variant="quiet" aria-label={`แก้ไขโซน ${zone.name}`} onClick={() => setFormZone(zone)} icon={<Pencil size={14} aria-hidden="true" />} />
+                            <Button iconOnly tone="danger" variant="quiet" aria-label={`ลบโซน ${zone.name}`} onClick={() => setPendingDelete({ type: "zone", row: zone })} icon={<Trash2 size={14} aria-hidden="true" />} />
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableShell>
+        )}
+      </WorkspaceSection>
+
+      <WorkspaceSection
+        title="อุปกรณ์ในไซต์"
+        subtitle={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
+        actions={canEdit ? (
+          <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
+            เพิ่มอุปกรณ์
+          </Button>
+        ) : null}
+      >
+        {/* แถบ backfill — อุปกรณ์เก่าเกิดก่อนมีโซน (mig 0298) ต้องมีคนไล่จัดเข้าโซน
+            โชว์เฉพาะเมื่อไซต์เริ่มมีโซนแล้ว (ไซต์ที่ยังไม่ใช้โซนไม่ต้องโดนทวง) */}
+        {zones.length > 0 && unzonedActive > 0 && (
+          <p className={styles.backfillNote} role="status">
+            อุปกรณ์ {unzonedActive} รายการยังไม่ระบุโซน — กดแก้ไขรายตัวเพื่อเลือกโซน
+            แล้วการใช้ต่อรอบจะเริ่มนับเป็นของโซนนั้น
+          </p>
+        )}
+        {assets.length === 0 ? (
+          <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormAsset(null) : undefined} plain>
+            {canEdit ? "ยังไม่มีอุปกรณ์ในไซต์นี้ — กดเพื่อเพิ่มรายการแรก" : "ยังไม่มีอุปกรณ์ในไซต์นี้"}
+          </EmptyState>
+        ) : (
+          <TableShell>
+            <table>
+              <thead>
+                <tr>
+                  <th>อุปกรณ์</th>
+                  <th>โซน</th>
                   <th>รุ่น / Serial</th>
                   <th>กลิ่นที่ใช้</th>
                   <th className={styles.numCol}>ขวด / อัตราใช้</th>
@@ -288,11 +393,18 @@ export default function ServiceSiteDetailPage({ params }) {
                     lastSiteRefillDate: schedule.lastRefillDate,
                     nextVisitDate: schedule.nextVisitDate,
                   });
+                  // ชนิดแถวรวม (reed/สบู่/แอลกอฮอล์) โชว์จำนวนจุดคู่ชนิดเสมอ
+                  const kindText = `${ASSET_KIND_LABELS[asset.kind] || asset.kind || ""}${!assetKindPerUnitRow(asset.kind) && asset.qty ? ` · ${fmtNumber(asset.qty)} จุด` : ""}`;
                   return (
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
-                      <td>{asset.label}</td>
+                      <td>
+                        {asset.label}
+                        {kindText ? <div className={styles.muted}>{kindText}</div> : null}
+                      </td>
+                      <td>{asset.zoneId ? naText(zonesById.get(asset.zoneId)?.name) : <span className={styles.muted}>ยังไม่ระบุ</span>}</td>
                       <td>
                         {naText(asset.model)}
+                        {asset.colour ? ` (${asset.colour})` : ""}
                         {asset.serial ? <span className={styles.serial}> · {asset.serial}</span> : null}
                       </td>
                       <td>{naText(asset.productName)}</td>
@@ -408,7 +520,7 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>สถานะ</th><th>สรุปงาน</th></tr>
+                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" /></tr>
               </thead>
               <tbody>
                 {history.map((visit) => (
@@ -420,6 +532,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td>{naText(visit.assigneeName)}</td>
                     <td><span className="ui-badge">{VISIT_STATUS_LABELS[visit.status] || visit.status}</span></td>
                     <td>{naText(visit.summary)}</td>
+                    {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
+                        คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
+                    <td><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
                   </tr>
                 ))}
               </tbody>
@@ -448,25 +563,39 @@ export default function ServiceSiteDetailPage({ params }) {
       <ServiceAssetModal
         open={formAsset !== undefined}
         asset={formAsset}
+        zones={zones}
         onClose={() => setFormAsset(undefined)}
         onSave={saveAsset}
+      />
+
+      <ServiceZoneModal
+        open={formZone !== undefined}
+        zone={formZone}
+        onClose={() => setFormZone(undefined)}
+        onSave={saveZone}
       />
 
       <ConfirmDialog
         open={!!pendingDelete}
         danger
-        title={pendingDelete?.type === "plan" ? "ลบรอบบริการ" : "ลบเครื่องออกจากไซต์"}
+        title={pendingDelete?.type === "plan" ? "ลบรอบบริการ"
+          : pendingDelete?.type === "zone" ? "ลบโซนออกจากไซต์"
+            : "ลบอุปกรณ์ออกจากไซต์"}
         message={pendingDelete
           ? (pendingDelete.type === "plan"
             ? `ลบรอบทุก ${pendingDelete.row.everyDays} วัน?`
-            : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
+            : pendingDelete.type === "zone"
+              ? `ลบโซน ${pendingDelete.row.name}?`
+              : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
           : ""}
         detail={pendingDelete?.type === "plan"
           ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าช่างจะมา จะไม่ถูกยกเลิกเงียบ ๆ"
-          : "ถ้าเครื่องถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
-        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : "ลบเครื่อง"}
+          : pendingDelete?.type === "zone"
+            ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
+            : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
+        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : "ลบอุปกรณ์"}
         busy={busy}
-        onConfirm={pendingDelete?.type === "plan" ? removePlan : removeAsset}
+        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : removeAsset}
         onClose={() => setPendingDelete(null)}
       />
 

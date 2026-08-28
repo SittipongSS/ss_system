@@ -5,7 +5,14 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
+import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit, isLiveVisit } from '@/lib/service/visitStatus';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
+import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
+import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
+import { isSuperuser } from '@/lib/permissions';
+import { deriveVisitStatus } from '@/lib/service/visitAssets';
+import { businessDate } from '@/lib/businessDate';
+import { businessTimeKey } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +21,18 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try {
     const access = await requireVisit({ user, supabase, id });
     if (access.response) return access.response;
-    return ok({ visit: access.visit, items: await loadVisitItems(supabase, id) });
+    /* ⭐ ส่งอุปกรณ์ + โซนของไซต์มาด้วย — ฟอร์มปิดงานรายเครื่องต้องรู้ว่าที่ไซต์นี้มี
+       อะไรให้ทำบ้าง · ของเดิมหน้าปิดงานได้แค่ `visit` + `site` จาก /my-visits ซึ่ง
+       select แค่ 12 คอลัมน์และไม่มี assets เลย ⇒ ยิงจากที่นี่ทีเดียวดีกว่าให้จอ
+       ไปเรียก /sites/[id]/assets เพิ่มอีกใบ */
+    const [items, assets, zones, results] = await Promise.all([
+      loadVisitItems(supabase, id),
+      loadAssets(supabase, access.visit.siteId),
+      loadZones(supabase, access.visit.siteId),
+      supabase.from('service_visit_assets').select('*').eq('visitId', id)
+        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+    ]);
+    return ok({ visit: access.visit, items, assets, zones, results });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -28,8 +46,84 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const before = access.visit;
 
     const body = await req.json().catch(() => ({}));
+
+    /* ⭐ **สถานะของใบสรุปจากลูก ไม่ใช่จากปุ่มที่ช่างเลือก** (มติ 2026-08-02 ข้อ 6)
+       ถ้าให้เลือกเอง คนจะกด "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุดเสมอ แล้ว "ทำไม่ครบ"
+       จะไม่มีวันปรากฏในระบบทั้งที่ของจริงเกิดทุกเดือน
+       ⚠️ อ่านผลจาก **แถวจริงใน DB** ไม่ใช่จาก body — เชื่อค่าที่ client ส่งมาเมื่อไร
+       ก็ข้ามการสรุปได้ทันที (แพตเทิร์นเดียวกับที่ billing-request-flow §3.5 บันทึกไว้) */
+    if (body.closeFromAssets) {
+      const { data: results, error: resErr } = await supabase
+        /* 🐞 เดิม select แค่ assetId, outcome แล้วบรรทัดล่างไปอ่าน `r.reason` ⇒ เหตุผล
+           เป็น undefined เสมอ ใบ unable ทุกใบจึงได้ข้อความสำรอง "ทำไม่ได้สักรายการ"
+           ทั้งที่ช่างพิมพ์เหตุผลจริงไว้แล้วรายเครื่อง */
+        .from('service_visit_assets').select('assetId, outcome, reason').eq('visitId', id);
+      if (resErr) return fail(resErr.message, 500);
+      body.status = deriveVisitStatus(results || []);
+      if (body.status === 'unable' && !String(body.unableReason ?? '').trim()) {
+        const reasons = (results || []).map((r) => r.reason).filter(Boolean);
+        body.unableReason = reasons[0] || 'ไปถึงไซต์แล้วแต่ทำไม่ได้สักรายการ';
+      }
+    }
+
+    /* ปุ่มจับเวลาใช้กับใบที่ยังไม่ปิดเท่านั้น — ใบที่ปิดแล้วยิง `stamp` ซ้ำ จะเขียนทับ
+       เวลาจริงด้วย "ตอนนี้" (แก้ผลรายเครื่องตอนเย็น = เวลาจบกลายเป็นตอนเย็น) หรือไม่ก็
+       ชน CHECK actual_time_window แล้วโผล่เป็นข้อความ Postgres ดิบให้ผู้ใช้อ่าน
+       ⇒ ตอบให้ชัดว่าต้องไปทางไหนแทน (แก้ย้อนหลังผ่านฟอร์มแก้นัด ซึ่งติดธง actualTimeEdited) */
+    if (body.stamp && isClosedVisit(before)) {
+      return conflict('ใบนี้ปิดงานแล้ว — แก้เวลาย้อนหลังที่ฟอร์มแก้นัด ปุ่มจับเวลาใช้ได้เฉพาะใบที่ยังไม่ปิด');
+    }
+
+    /* ⭐ กด "เริ่มงาน" = **server เป็นคนตั้งสถานะ** ไม่ใช่ค่าที่จอส่งมา
+       🐞 ของเดิมรอให้ client ส่ง `status: 'in_progress'` มาคู่กับ `stamp: 'start'`
+       (หน้า "งานวันนี้" ส่งมาจริง) ⇒ ผู้เรียกที่ส่งแต่ `stamp` ได้ใบที่มีเวลาเริ่ม
+       แต่สถานะยังเป็น "นัดไว้" = แถวที่ขัดกันเอง และ `in_progress` กลายเป็นค่าที่
+       ต้องพึ่งความสุจริตของจอ ทั้งที่ mig 0300 ทำมาเพื่อไม่ต้องพึ่ง */
+    if (body.stamp === 'start' && !isClosedVisit(before)) body.status = 'in_progress';
+
     const { value, error } = normalizeVisitInput({ ...before, ...body });
     if (error) return badRequest(error);
+
+    /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
+       ⚠️ ตรวจจาก **ค่าหลังแก้** (`value`) ไม่ใช่ค่าเดิม — คนกดปล่อยเข้าคิวพร้อมกับ
+       เลือกช่างในคำขอเดียวกันได้ ถ้าตรวจจาก `before` จะบอกว่ายังไม่มีช่างทั้งที่เพิ่งใส่
+       ⚠️ ด่านตัวเดียวกับที่จอใช้ขึ้นปุ่ม — ห้ามเขียนเงื่อนไขซ้ำที่นี่
+       🐞 ของเดิมดักแค่ `draft → scheduled` ⇒ ยิง `status: 'in_progress'` (หรือ
+       `closeFromAssets`) ใส่ร่างตรง ๆ ข้ามด่านได้ทั้งดุ้น — ร่างที่ยังไม่มีช่างและ
+       นัดวันที่ไซต์ปิด กลายเป็น "กำลังทำงาน" ได้ใน request เดียว
+       ⇒ ด่านคุม **ทุกทางออกจากร่างไปสู่สถานะที่มีชีวิต** ไม่ใช่ทางเดียว */
+    let gateTrail = null;
+    if (before.status === 'draft' && isLiveVisit(value)) {
+      const site = await findSite(supabase, before.siteId);
+      const gate = evaluateVisitGate({ ...before, ...value }, { site });
+      const override = String(body.gateOverrideReason ?? '').trim();
+
+      if (!gatePassed(gate)) {
+        if (!override) return badRequest(gateBlocker(gate));
+        /* ข้ามด่านเป็นสิทธิ์ของหัวหน้า ไม่ใช่ของทุกคนที่แก้งานบริการได้ —
+           ของจริงมี 25 จุดที่วิ่งอยู่ทั้งที่หมดสัญญา ถ้าบล็อกแข็งวันแรกงานหยุดทันที
+           แต่ถ้าใครก็ข้ามได้ ด่านก็ไม่มีความหมายตั้งแต่วันแรกเหมือนกัน */
+        if (!isSuperuser(user?.role)) {
+          return badRequest('ข้ามด่านได้เฉพาะหัวหน้า — ให้หัวหน้าเป็นคนกด หรือแก้ให้ครบก่อน');
+        }
+        if (override.length < 10) {
+          return badRequest('การข้ามด่านต้องระบุเหตุผลอย่างน้อย 10 ตัวอักษร — เหตุผลนี้จะติดกับใบถาวร');
+        }
+        gateTrail = {
+          gateOverrideById: user.id ? String(user.id) : null,
+          gateOverrideByName: user.name || null,
+          gateOverrideAt: new Date().toISOString(),
+          gateOverrideReason: override,
+          skipped: gate.filter((i) => i.state === 'blocked').map((i) => i.label),
+        };
+      }
+      gateTrail = {
+        ...(gateTrail || {}),
+        queuedById: user.id ? String(user.id) : null,
+        queuedByName: user.name || null,
+        queuedAt: new Date().toISOString(),
+      };
+    }
 
     // ⭐ เลื่อนนัดต้องมีเหตุผล (S-5) — ลูกค้าถามว่า "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่า
     // เลื่อนกี่ครั้งเพราะอะไรบ้าง · เหตุผลลง**เธรด** ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียว
@@ -40,9 +134,38 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('เลื่อนนัดต้องระบุเหตุผล — ประวัติการเลื่อนคือสิ่งที่ต้องตอบลูกค้าทีหลัง');
     }
 
+    /* ⭐ เวลาที่เข้าจริง **ประทับที่ server** (มติ 2026-08-02 ข้อ 5) — ปุ่ม "เริ่มงาน"/
+       "ปิดงาน" ไม่ได้เพิ่มข้อมูลใหม่ มันทำให้ช่องที่มีอยู่แล้วเชื่อถือได้ · ของเดิมช่าง
+       กรอกทีเดียวตอนปิดงานจากนาฬิกาเครื่องตัวเอง = เลขที่พิมพ์ย้อนหลัง เปลี่ยนเวลาใน
+       มือถือแล้วเพี้ยนโดยไม่มีอะไรจับได้
+       ⚠️ ต้องเป็น **นาฬิกาไทย** (businessDate/businessTimeKey) — ตารางนี้เก็บ date+time
+       แยกกันเป็นเวลาไทยล้วนตามการตัดสินใจของ mig 0187/0188 ไม่ใช่ timestamptz
+       ⚠️ `stamp: false` (ค่าตั้งต้น) = คำขอนี้มาจากฟอร์มแก้ ⇒ เวลาที่ส่งมาคือค่าที่คนพิมพ์
+       ถ้าต่างจากของเดิมให้ติดธง actualTimeEdited ไว้ ไม่ใช่กลืนเงียบ */
+    const nowIso = new Date().toISOString();
+    const patch = { ...value };
+    if (gateTrail) {
+      const { skipped, ...cols } = gateTrail;
+      Object.assign(patch, cols);
+    }
+    if (body.stamp === 'start') {
+      patch.actualDate = patch.actualDate || businessDate(nowIso);
+      patch.actualStartTime = businessTimeKey(nowIso);
+    } else if (body.stamp === 'end') {
+      patch.actualDate = patch.actualDate || businessDate(nowIso);
+      patch.actualEndTime = businessTimeKey(nowIso);
+      // เผลอปิดงานโดยไม่เคยกดเริ่ม — ยังต้องมีเวลาเริ่มไว้คิดชั่วโมงงาน
+      if (!patch.actualStartTime) patch.actualStartTime = businessTimeKey(nowIso);
+    } else {
+      const touched = ['actualStartTime', 'actualEndTime']
+        .some((k) => String(patch[k] ?? '') !== String(before[k] ?? '').slice(0, 5));
+      // ⚠️ ธงติดค้างทางเดียว — แก้แล้วคือแก้แล้ว ย้อนค่ากลับไม่ได้ล้างประวัติ
+      if (touched && (before.actualStartTime || before.actualEndTime)) patch.actualTimeEdited = true;
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
-      .update({ ...value, updatedAt: new Date().toISOString() })
+      .update({ ...patch, updatedAt: nowIso })
       .eq('id', id).select().single();
     if (updateError) return fail(updateError.message, 500);
 
@@ -60,10 +183,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         body: rescheduleSummary(before, data, reason), user,
       });
     }
-    if (data.status === 'done' && before.status !== 'done') {
+    /* 🐞 ของเดิมบันทึกเธรดเฉพาะ `done` ⇒ `partial`/`unable` ไม่ทิ้งร่องรอยเลย
+       ทั้งที่เป็นสองสถานะที่ต้องอธิบายลูกค้ามากที่สุด */
+    if (isClosedVisit(data) && !isClosedVisit(before)) {
       await appendUpdate(supabase, {
         entityType: 'service_visit', entityId: id, kind: 'done',
-        body: [`ปิดงาน · เข้าจริง ${data.actualDate}`, data.summary].filter(Boolean).join(' — '),
+        body: [
+          `${VISIT_STATUS_LABELS[data.status]} · เข้าจริง ${data.actualDate}`,
+          data.unableReason, data.summary,
+        ].filter(Boolean).join(' — '),
+        user,
+      });
+    }
+    /* ⭐ ปล่อยเข้าคิว/ข้ามด่านต้องอยู่ในเธรด — "ทำไมนัดนี้ขึ้นตารางทั้งที่ยังไม่จ่าย"
+       เป็นคำถามที่ต้องตอบได้ทีหลัง และคอลัมน์เดียวถูกเขียนทับทุกครั้งที่ปล่อย */
+    if (gateTrail) {
+      await appendUpdate(supabase, {
+        entityType: 'service_visit', entityId: id, kind: 'queue',
+        body: gateTrail.skipped?.length
+          ? `ข้ามด่านแล้วปล่อยเข้าคิว (ข้าม: ${gateTrail.skipped.join(' · ')}) — ${gateTrail.gateOverrideReason}`
+          : 'ปล่อยเข้าคิว — ด่านครบ',
         user,
       });
     }
@@ -76,8 +215,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     // ⭐ ปิดงานแล้วเสนอนัดรอบถัดไป — **เสนอ ไม่สร้างให้เอง** เพราะรอบอาจถูกยกเลิก
     // ระหว่างทาง หรือช่างรู้ว่าลูกค้าจะย้ายไซต์ · ผู้ใช้กดยืนยันแล้วค่อย POST
+    /* 🐞 ของเดิมยิงเฉพาะ `done` ⇒ ปิดเป็น `partial` แล้วไม่มีการเสนอรอบถัดไป
+       ทั้งที่เป็นเคสที่ต้องกลับไปแน่นอนที่สุด */
     let suggestion = null;
-    if (data.status === 'done' && before.status !== 'done' && data.planId) {
+    if (isClosedVisit(data) && !isClosedVisit(before) && data.planId) {
       const plan = await findPlan(supabase, data.planId);
       if (plan) suggestion = nextAfterDone(plan, data);
     }
@@ -96,8 +237,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
     // ⚠️ นัดที่ปิดงานแล้วคือ **ประวัติการเข้าไซต์** ซึ่งเป็นของมีค่าที่สุดของโมดูลนี้
     // ยกเลิกได้ (status) แต่ลบทิ้งไม่ได้
-    if (before.status === 'done') {
-      return conflict('นัดที่ปิดงานแล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
+    /* 🐞 ของเดิมบล็อกเฉพาะ `done` ⇒ `partial`/`unable`/`in_progress` ลบทิ้งได้
+       = ประวัติการเข้าไซต์หาย ซึ่งคอมเมนต์บรรทัดบนบอกเองว่ามีค่าที่สุดของโมดูล */
+    if (!canDeleteVisit(before)) {
+      return conflict('นัดที่ช่างไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
     }
 
     const { error } = await supabase.from('service_visits').delete().eq('id', id);

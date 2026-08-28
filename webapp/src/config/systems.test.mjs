@@ -146,7 +146,9 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
   const admin = { role: 'admin', team: null, extraCaps: [] };
   const disabledKeys = SYSTEM_CATALOG.filter((system) => system.disabled).map((system) => system.key);
 
-  assert.deepEqual(disabledKeys, ['production', 'service', 'mgmt']);
+  // `service` ถูกปลดออกจากลิสต์นี้ 2026-08-27 (แผนระบบธุรกิจบริการ เฟส 1 — มติผู้ใช้):
+  // ฝ่าย TS เริ่มใช้เมนู "งานวันนี้ / จัดคิวช่าง" จริงแล้ว การ์ดจึงต้องกดได้
+  assert.deepEqual(disabledKeys, ['production', 'mgmt']);
 
   for (const key of disabledKeys) {
     assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์การ์ด`);

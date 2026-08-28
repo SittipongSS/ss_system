@@ -4,6 +4,8 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { insertRowsWithEntityCode } from '@/lib/entityCode';
 import { ensureVisits } from './rounds';
+import { initialVisitStatus } from './visitGate';
+import { findSite } from './sitesRepo';
 import { loadVisits } from './visitsRepo';
 
 // gen นัดของรอบหนึ่งภายใน horizon — ใช้ทั้งตอนสร้างรอบและตอนกดปุ่ม "เติมนัด"
@@ -18,10 +20,18 @@ export async function generateVisitsForPlan({ supabase, plan, user, req, horizon
   const rows = ensureVisits(plan, existing, { horizonDays });
   if (!rows.length) return [];
 
+  /* ⭐ นัดที่ระบบ gen เองก็ต้องผ่านด่านเหมือนกัน (มติผู้ใช้ 2026-08-28)
+     รอบที่มีช่างประจำและวันตกในช่วงที่ไซต์ให้เข้า ⇒ ขึ้นตารางเลย
+     รอบที่ไม่มีช่าง หรือวันชนช่วงเข้าไซต์ ⇒ จอดเป็นร่างให้คนจัดคิวเห็นและจัดการ
+     ⚠️ ของเดิม gen เป็น `scheduled` ตรง ๆ ⇒ นัดที่ไม่มีคนรับผิดชอบขึ้นตารางไปเงียบ ๆ
+     แล้วไม่มีใครไป (prod วันนี้ `assigneeId = null` ทุกใบ) */
+  const site = await findSite(supabase, plan.siteId);
+
   const payload = [];
   for (const draft of rows) {
     payload.push({
       id: genId('SVV'),
+      status: initialVisitStatus(draft, { site }),
       // ⚠️ ไม่ใส่ code ตรงนี้ — รหัสออกทีละใบในฟังก์ชัน SQL ตอน insert (mig 0240)
       // ห้ามคำนวณเลขรันเองแล้วบวกทีละ 1 (สองคนกดเติมนัดพร้อมกันจะได้รหัสชนกัน)
       // และห้ามจองเลขไว้ก่อนตรงนี้ — ชุดนี้ล้มทั้งชุด เลขที่จองไว้จะหายไปทั้งหมด

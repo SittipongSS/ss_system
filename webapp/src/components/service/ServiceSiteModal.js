@@ -19,7 +19,10 @@ const EMPTY = {
   note: "", isActive: true,
 };
 
-export default function ServiceSiteModal({ open, site = null, customers = [], onClose, onSave }) {
+/* `defaults` = ค่าตั้งต้นของโหมด **สร้าง** เท่านั้น (แพตเทิร์นเดียวกับ ServiceVisitModal)
+   ใช้ตอนที่ผู้เรียกรู้คำตอบอยู่แล้ว เช่น wizard รับใบสั่งขายซึ่งรู้ว่าลูกค้าคือใคร —
+   ไม่ใช่ฟอร์มคนละชุด แค่โหมดที่กรอกช่องที่ตอบได้แล้วให้ล่วงหน้า */
+export default function ServiceSiteModal({ open, site = null, customers = [], defaults = null, onClose, onSave }) {
   const editing = !!site;
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
@@ -45,8 +48,8 @@ export default function ServiceSiteModal({ open, site = null, customers = [], on
         note: site.note || "",
         isActive: site.isActive !== false,
       }
-      : EMPTY);
-  }, [open, site]);
+      : { ...EMPTY, ...(defaults || {}) });
+  }, [open, site, defaults]);
 
   const change = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -104,7 +107,7 @@ export default function ServiceSiteModal({ open, site = null, customers = [], on
         </label>
 
         <label className={styles.field}>
-          <span>โซน</span>
+          <span>เขตวิ่งงาน</span>
           <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
           <small>ใช้จัดรอบวิ่งให้ช่างไม่ต้องข้ามเมืองในวันเดียว</small>
         </label>

@@ -5,6 +5,7 @@
 // ⚠️ รอบแรก **ยังไม่ทำ time-grid พิกเซลต่อชั่วโมง** — งานวิ่งไซต์ 3–5 นัดต่อวัน
 //    ไม่ต้องการความละเอียดระดับนั้น · ชิปเรียงตามเวลาในช่องวันพอแล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
@@ -18,6 +19,7 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
+  VISIT_KINDS,
   VISIT_KIND_LABELS,
   VISIT_STATUS_LABELS,
   dayLoad,
@@ -25,8 +27,10 @@ import {
   sortByTime,
   visitTimeText,
   visitWarnings,
-  zoneSplit,
+  routeZoneSplit,
 } from "@/lib/service/rounds";
+import { evaluateVisitGate, gatePassed, gateReasons } from "@/lib/service/visitGate";
+import { isDraftVisit } from "@/lib/service/visitStatus";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtMonthShort } from "@/lib/format";
@@ -105,7 +109,7 @@ export default function ServiceSchedulePage() {
           if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
           // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
           // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
-          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "นัดของฉัน" ก็ว่างตลอดกาล
+          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของช่างก็ว่างตลอดกาล
           setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
         } catch (e) {
           setToast({ kind: "error", msg: e.message });
@@ -129,12 +133,19 @@ export default function ServiceSchedulePage() {
   }, [formVisit, technicians.length]);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
-  const overlapIds = useMemo(() => overlappingVisitIds(visits), [visits]);
+
+  /* ⭐ ร่างไม่ขึ้นกริดและ **ไม่นับภาระของช่าง** (มติผู้ใช้ 2026-08-28) — ถ้านับ
+     ตัวเลข "เกินภาระ" จะเตือนจากงานที่ยังไม่แน่ว่าจะได้ไป และหัวหน้าจะเลิกเชื่อคำเตือน
+     ⚠️ ตัวตัดสินคือ `isDraftVisit` ตัวเดียวกับที่ server ใช้ ห้ามเทียบสตริงตรงนี้ */
+  const drafts = useMemo(() => visits.filter(isDraftVisit), [visits]);
+  const boardVisits = useMemo(() => visits.filter((v) => !isDraftVisit(v)), [visits]);
+
+  const overlapIds = useMemo(() => overlappingVisitIds(boardVisits), [boardVisits]);
 
   // แถวของปฏิทิน = ช่างที่มีนัดในสัปดาห์นี้ + แถว "ยังไม่มอบหมาย" (ถ้ามี)
   const rows = useMemo(() => {
     const map = new Map();
-    for (const visit of visits) {
+    for (const visit of boardVisits) {
       const key = visit.assigneeId || UNASSIGNED;
       if (!map.has(key)) {
         map.set(key, { key, name: visit.assigneeName || "ยังไม่มอบหมาย", visits: [] });
@@ -147,23 +158,23 @@ export default function ServiceSchedulePage() {
       return a.name.localeCompare(b.name, "th");
     });
     return list;
-  }, [visits]);
+  }, [boardVisits]);
 
   const loads = useMemo(() => {
     const map = new Map();
-    for (const entry of dayLoad(visits)) {
+    for (const entry of dayLoad(boardVisits)) {
       map.set(`${entry.assigneeId || UNASSIGNED}|${entry.date}`, entry);
     }
     return map;
-  }, [visits]);
+  }, [boardVisits]);
 
-  const crossZone = useMemo(() => {
+  const crossRouteZone = useMemo(() => {
     const set = new Set();
-    for (const entry of zoneSplit(visits, sitesById)) {
-      if (entry.crossZone) set.add(`${entry.assigneeId || UNASSIGNED}|${entry.date}`);
+    for (const entry of routeZoneSplit(boardVisits, sitesById)) {
+      if (entry.crossRouteZone) set.add(`${entry.assigneeId || UNASSIGNED}|${entry.date}`);
     }
     return set;
-  }, [visits, sitesById]);
+  }, [boardVisits, sitesById]);
 
   const saveVisit = async (form) => {
     const editing = !!formVisit;
@@ -200,30 +211,70 @@ export default function ServiceSchedulePage() {
     return next;
   });
 
+  /* ⚠️ ปุ่มบนหัวหน้านี้เป็น **ปุ่มรอง** โดยเจตนา (มติผู้ใช้ 2026-08-28):
+     *TS ไม่ใช่ต้นทางของงาน* — นัดเกิดจากรอบบริการของไซต์ หรือจากงานนอกรอบที่มี
+     ต้นเรื่อง (ลูกค้าแจ้งเสีย · ติดตั้งตามใบสั่งขาย) แล้วทุกใบต้องผ่านด่านก่อน
+     ขึ้นตาราง · หน้านี้ทำหน้าที่ **วาง** งานที่มีอยู่แล้ว ไม่ใช่ **สร้าง** งาน
+     จึงไม่มีปุ่มสีแบรนด์ (สีแบรนด์ = เริ่มของใหม่ หน้าละหนึ่งปุ่ม) */
   return (
     <Workspace
       icon={<CalendarDays size={20} aria-hidden="true" />}
-      title="ตารางเข้าบริการ"
-      subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามโซน และนัดนอกช่วงที่ไซต์ให้เข้า"
+      title="จัดคิวช่าง"
+      subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
       headerRight={canEdit ? (
-        <Button tone="primary" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
-          นัดเข้าบริการ
+        <Button tone="neutral" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
+          งานนอกรอบ
         </Button>
       ) : null}
       toolbar={(
-        <div className={styles.toolbar}>
+        <div className="toolbar">
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
           <strong className={styles.weekLabel}>{weekLabel}</strong>
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
-          <span className={styles.count}>{visits.length} นัด</span>
+          <span className={styles.count}>{boardVisits.length} นัด</span>
         </div>
       )}
     >
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
+      {/* ⭐ คิวรอจัด — ร่างที่ยังไม่ผ่านด่าน อยู่ **ข้างกริด ไม่ใช่ในกริด**
+          ถ้าวางปนกับนัดจริง ช่างจะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
+          แยกสองกลุ่ม (ผ่านแล้ว / ติดอะไรอยู่) เพราะสองกลุ่มนี้ต้องการคนละการกระทำ */}
+      {!loading && !loadError && drafts.length > 0 && (
+        <section className={styles.queue} aria-label="คิวรอจัด">
+          <h2 className={styles.queueTitle}>
+            คิวรอจัด {drafts.length} ใบ
+            <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้</span>
+          </h2>
+          <ul className={styles.queueList}>
+            {drafts.map((visit) => {
+              const site = sitesById.get(visit.siteId);
+              const gate = evaluateVisitGate(visit, { site });
+              const ready = gatePassed(gate);
+              return (
+                <li key={visit.id} data-ready={ready ? "yes" : "no"}>
+                  <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
+                    <b>{site?.name || visit.siteId}</b>
+                    <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
+                    <span className={styles.queueReason}>
+                      {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {loading ? <SkeletonRows rows={4} /> : loadError ? null : (
-        <TableScroll family="grid" minWidth={900}>
+        /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
+           ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
+           มาครึ่งเดียว: คอลัมน์ชื่อช่างไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
+           ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อช่างเหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
+           ในหน้า · ตัวที่ตรึงคอลัมน์แรกคือ matrix · ชิดบนทั้งแถวคือ cells stacked */
+        <TableScroll family="matrix" cells="stacked" minWidth={900}>
           <table className={styles.board}>
             <thead>
               <tr>
@@ -245,7 +296,16 @@ export default function ServiceSchedulePage() {
                 </tr>
               ) : rows.map((row) => (
                 <tr key={row.key}>
-                  <th scope="row" className={styles.techCol}>{row.name}</th>
+                  {/* ชื่อช่างกดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
+                      มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าช่าง (มติ 2026-08-02 ข้อ 2)
+                      แถว "ยังไม่มอบหมาย" ไม่มีเจ้าของ จึงไม่มีลิงก์ */}
+                  <th scope="row" className={styles.techCol}>
+                    {row.key === UNASSIGNED ? row.name : (
+                      <Link href={`/service/today?user=${encodeURIComponent(row.key)}`} className={styles.techLink}>
+                        {row.name}
+                      </Link>
+                    )}
+                  </th>
                   {days.map((day) => {
                     const cellVisits = sortByTime(row.visits.filter((v) => v.scheduledDate === day.iso));
                     const loadKey = `${row.key}|${day.iso}`;
@@ -253,12 +313,12 @@ export default function ServiceSchedulePage() {
                     return (
                       <td key={day.iso} className={day.weekend ? styles.weekend : undefined}>
                         <div className={styles.cell}>
-                          {(load?.over || crossZone.has(loadKey)) && (
+                          {(load?.over || crossRouteZone.has(loadKey)) && (
                             <p className={styles.cellWarn}>
                               <AlertTriangle size={12} aria-hidden="true" />
                               {load?.over ? `${load.count} นัด` : null}
-                              {load?.over && crossZone.has(loadKey) ? " · " : null}
-                              {crossZone.has(loadKey) ? "ข้ามโซน" : null}
+                              {load?.over && crossRouteZone.has(loadKey) ? " · " : null}
+                              {crossRouteZone.has(loadKey) ? "ข้ามเขต" : null}
                             </p>
                           )}
                           {cellVisits.map((visit) => {
@@ -284,20 +344,10 @@ export default function ServiceSchedulePage() {
                               </button>
                             );
                           })}
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className={styles.addCell}
-                              aria-label={`เพิ่มนัดให้ ${row.name} วันที่ ${day.iso}`}
-                              onClick={() => openNew({
-                                scheduledDate: day.iso,
-                                assigneeId: row.key === UNASSIGNED ? "" : row.key,
-                                assigneeName: row.key === UNASSIGNED ? "" : row.name,
-                              })}
-                            >
-                              +
-                            </button>
-                          )}
+                          {/* 🔴 เดิมมีปุ่ม "+" อยู่ **ทุกช่องว่าง** ของกริด ซึ่งอ่านได้ว่า
+                              จิ้มตรงไหนก็สร้างงานได้ตามใจ — ขัดกติกา "TS ไม่ใช่ต้นทางของงาน"
+                              (มติผู้ใช้ 2026-08-28) · ถอดออกแล้ว การวางงานลงช่องจะมาจาก
+                              คิวรอจัดเท่านั้น ซึ่งแสดงเฉพาะร่างที่ผ่านด่านแล้ว */}
                         </div>
                       </td>
                     );
@@ -307,6 +357,19 @@ export default function ServiceSchedulePage() {
             </tbody>
           </table>
         </TableScroll>
+      )}
+
+      {/* ชิปนัดสื่อชนิดงานด้วยสีอย่างเดียว และรายละเอียดที่เหลืออยู่ใน `title=` ซึ่ง
+          บนจอสัมผัสไม่มีอยู่จริง — คำอธิบายสีจึงเป็นทางเดียวที่อ่านสีออกโดยไม่ต้องเปิดทีละใบ */}
+      {!loading && !loadError && visits.length > 0 && (
+        <ul className={styles.legend} aria-label="คำอธิบายสีของชนิดงาน">
+          {VISIT_KINDS.map((kind) => (
+            <li key={kind} className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles[`kind_${kind}`] || ""}`} aria-hidden="true" />
+              {VISIT_KIND_LABELS[kind] || kind}
+            </li>
+          ))}
+        </ul>
       )}
 
       <ServiceVisitModal

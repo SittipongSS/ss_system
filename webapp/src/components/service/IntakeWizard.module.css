@@ -1,0 +1,120 @@
+/* ── wizard รับใบสั่งขายเข้าไซต์/โซน (เฟส 4) ─────────────────────────────
+   สองจังหวะ: "ของไปตั้งที่ไหน" แล้วค่อย "บรรทัดไหนอยู่โซนไหน"
+   ⚠️ ตัวบอกจังหวะเป็นรายการบอกตำแหน่ง ไม่ใช่ปุ่มกด — กดข้ามจังหวะไม่ได้เพราะ
+   จังหวะสองต้องรู้ไซต์ก่อนถึงจะรู้ว่ามีโซนอะไรให้เลือก */
+.steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+
+.steps > li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.steps > li[data-active="yes"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.steps > li[data-done="yes"] {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.lead {
+  margin: 0;
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.field > small {
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+.inlineAction {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.line {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lineHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-thai);
+}
+
+.lineHead > span {
+  color: var(--text-3);
+}
+
+.qty {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+/* ปุ่มรับข้อเสนอมาตรฐานต่อเดือน — เป็นลิงก์ในข้อความ ไม่ใช่ปุ่มเต็มตัว
+   เพราะมันคือ "กดรับค่าที่เสนอ" ไม่ใช่การกระทำหลักของฟอร์ม */
+.suggest {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

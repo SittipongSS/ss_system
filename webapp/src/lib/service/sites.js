@@ -5,6 +5,7 @@
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ฟอร์ม/ปฏิทิน) และ server (validate ก่อน insert)
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
+import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow, normalizeAssetSettings } from './assetKinds';
 
 export const ASSET_STATUSES = ['active', 'repair', 'removed'];
 export const ASSET_STATUS_LABELS = {
@@ -73,7 +74,7 @@ export function normalizeSiteInput(body = {}) {
 
   const fields = {};
   for (const [field, label, max] of [
-    ['routeZone', 'โซน', 50],
+    ['routeZone', 'เขตวิ่งงาน', 50],
     ['address', 'ที่อยู่', 500],
     ['mapUrl', 'ลิงก์แผนที่', 500],
     ['contactName', 'ชื่อผู้ติดต่อ', 100],
@@ -125,21 +126,41 @@ export function normalizeAssetInput(body = {}) {
   const status = body.status ?? 'active';
   if (!ASSET_STATUSES.includes(status)) return { value: null, error: 'สถานะเครื่องไม่ถูกต้อง' };
 
+  // ชนิดอุปกรณ์ (mig 0298) — ทะเบียนอยู่ assetKinds.js ไม่ใช่ CHECK ใน DB
+  const kind = body.kind ?? 'diffuser';
+  if (!ASSET_KINDS.includes(kind)) return { value: null, error: 'ชนิดอุปกรณ์ไม่ถูกต้อง' };
+  const perUnitRow = assetKindPerUnitRow(kind);
+
   const model = String(body.model ?? '').trim();
   if (model.length > 100) return { value: null, error: 'รุ่นยาวเกิน 100 ตัวอักษร' };
   const serial = String(body.serial ?? '').trim();
   if (serial.length > 100) return { value: null, error: 'Serial ยาวเกิน 100 ตัวอักษร' };
+  // serial เป็นของรายเครื่อง — ชนิดแถวรวม (reed/สบู่/แอลกอฮอล์) ไม่มี serial รายจุด
+  if (serial && !perUnitRow) return { value: null, error: `${ASSET_KIND_LABELS[kind]}เป็นแถวรวมทั้งชุด ไม่มี Serial รายจุด — ใส่รายละเอียดในหมายเหตุแทน` };
+
+  const colour = String(body.colour ?? '').trim();
+  if (colour.length > 50) return { value: null, error: 'สียาวเกิน 50 ตัวอักษร' };
+  const floor = String(body.floor ?? '').trim();
+  if (floor.length > 50) return { value: null, error: 'ชั้นยาวเกิน 50 ตัวอักษร' };
+  const spot = String(body.spot ?? '').trim();
+  if (spot.length > 150) return { value: null, error: 'จุดติดตั้งยาวเกิน 150 ตัวอักษร' };
 
   // ⚠️ ปริมาณเป็นตัวเลือก — เครื่องที่ยังไม่รู้อัตราสิ้นเปลืองมีจริง
   //    ห้ามแปลงค่าว่างเป็น 0 (0 ml/วัน = ไม่มีวันหมด → ระบบจะไม่เตือนเลย)
   const numbers = {};
-  for (const [field, label2] of [['bottleMl', 'ขนาดขวด'], ['mlPerDay', 'อัตราใช้ต่อวัน']]) {
+  for (const [field, label2] of [['bottleMl', 'ขนาดขวด'], ['mlPerDay', 'อัตราใช้ต่อวัน'], ['qty', 'จำนวนจุด']]) {
     const raw = body[field];
     if (raw === undefined || raw === null || String(raw).trim() === '') { numbers[field] = null; continue; }
     const value = Number(raw);
     if (!Number.isFinite(value) || value <= 0) return { value: null, error: `${label2}ต้องเป็นตัวเลขมากกว่า 0` };
     numbers[field] = value;
   }
+  // จำนวนจุดเป็นของชนิดแถวรวมเท่านั้น — diffuser หนึ่งแถวคือหนึ่งเครื่องเสมอ
+  if (perUnitRow && numbers.qty !== null) return { value: null, error: 'เครื่องกระจายกลิ่นนับแถวละเครื่อง — ไม่มีช่องจำนวนจุด' };
+  if (!perUnitRow && numbers.qty === null) return { value: null, error: `ต้องระบุจำนวนจุดของ${ASSET_KIND_LABELS[kind]} (ชนิดนี้เก็บเป็นแถวเดียวทั้งชุด)` };
+
+  const { value: settings, error: settingsError } = normalizeAssetSettings(kind, body.settings);
+  if (settingsError) return { value: null, error: settingsError };
 
   for (const [field, label2] of [['installedAt', 'วันที่ติดตั้ง'], ['removedAt', 'วันที่ถอด']]) {
     const err = dateError(body[field], label2);
@@ -155,8 +176,16 @@ export function normalizeAssetInput(body = {}) {
   return {
     value: {
       label,
+      kind,
       model: model || null,
       serial: serial || null,
+      colour: colour || null,
+      floor: floor || null,
+      spot: spot || null,
+      // ⚠️ โซนตรวจความเป็นเจ้าของ (อยู่ไซต์เดียวกัน) ที่ route — ที่นี่ส่งผ่านอย่างเดียว
+      zoneId: body.zoneId || null,
+      qty: numbers.qty,
+      settings,
       productId: body.productId || null,
       productName: String(body.productName ?? '').trim() || null,
       scentId: body.scentId || null,

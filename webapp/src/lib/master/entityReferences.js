@@ -73,6 +73,9 @@ export const REFERENCE_REGISTRY = {
       { table: 'production_jobs', label: 'คิวงานผลิต', sample: 'code' },
       { table: 'service_assets', label: 'อุปกรณ์ที่ไซต์บริการ', sample: null },
       { table: 'service_visit_items', label: 'รายการในใบเข้าบริการ', sample: null },
+      /* รอบขายของโซน (mig 0297) เก็บ snapshot ของบรรทัดขาย ⇒ บล็อกเหมือน
+         `sales_order_lines` ที่มันก๊อปมา — ลบสินค้าแล้วรอบที่ขายไปยังต้องอ่านย้อนได้ว่าขายอะไร */
+      { table: 'service_zone_terms', label: 'รอบขายของโซนบริการ', sample: null },
       { table: 'shipment_prep_lines', label: 'บรรทัดงานเตรียมจัดส่ง', sample: null },
       { table: 'sahamit_forecast_lines', label: 'บรรทัดพยากรณ์สหมิตร', sample: null },
       { table: 'sahamit_po_lines', label: 'บรรทัด PO สหมิตร', sample: null },

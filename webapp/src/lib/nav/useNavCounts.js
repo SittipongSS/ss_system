@@ -27,8 +27,8 @@ export const NAV_COUNT_KEYS = {
   "/database/scents": "scents",
   "/database/formulas": "formulas",
   "/database/customers": "customers",
-  // เฟส 2 — บริการ + งานบริหาร
-  "/service/my-visits": "visits",
+  // เฟส 2 — บริการ + งานบริหาร (F-1: /service/my-visits เปลี่ยนเส้นทางเป็น /service/today)
+  "/service/today": "visits",
   "/mgmt/tasks": "mgmtTasks",
   // เฟส 3 — ภาษีสรรพสามิต
   "/tax/registrations": "taxRegistrations",
@@ -52,7 +52,7 @@ export const SYSTEM_COUNT_HREFS = {
   ],
   rd: ["/rd/requests"],
   master: ["/database/scents", "/database/formulas", "/database/customers"],
-  service: ["/service/my-visits"],
+  service: ["/service/today"],
   mgmt: ["/mgmt/tasks"],
   tax: ["/tax/registrations", "/tax/filings"],
   support: ["/support"],

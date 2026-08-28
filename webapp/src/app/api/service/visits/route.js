@@ -6,6 +6,7 @@ import { recordAudit } from '@/lib/audit';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { normalizeVisitInput } from '@/lib/service/rounds';
+import { initialVisitStatus } from '@/lib/service/visitGate';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
 import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 
@@ -52,10 +53,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       if (plan.siteId !== value.siteId) return badRequest('รอบบริการที่เลือกเป็นของไซต์อื่น');
     }
 
-    // รหัส SV ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
+    /* ⭐ **ทุกใบเกิดผ่านด่าน** (มติผู้ใช้ 2026-08-28: TS ไม่ใช่ต้นทางของงาน)
+       ผ่านตั้งแต่แรก = ขึ้นตารางเลย · ไม่ผ่าน = จอดเป็นร่างรอคนจัดการ
+       ⚠️ ไม่ใช่ "สร้างเป็นร่างเสมอแล้วให้คนมากดปล่อยทีละใบ" — รอบบริการที่มีช่างประจำ
+       และวันอยู่ในช่วงเข้าได้ ต้องไหลผ่านเอง ไม่งั้นกติกานี้กลายเป็นแรงเสียดทานรายวัน
+       ⚠️ ผู้เรียกกำหนดสถานะเองไม่ได้ — ด่านเป็นคนตัดสิน (client ส่ง status มาก็ถูกทับ) */
     const row = {
       id: genId('SVV'),
       ...value,
+      status: initialVisitStatus(value, { site }),
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };

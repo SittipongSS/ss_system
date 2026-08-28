@@ -139,12 +139,12 @@ export default function ServiceOverviewPage() {
       headerRight={(
         <div className={styles.headerActions}>
           {canEdit && (
-            <Button tone="neutral" variant="quiet" onClick={() => router.push("/service/my-visits")} icon={<UserRound size={15} aria-hidden="true" />}>
-              นัดของฉัน
+            <Button tone="neutral" variant="quiet" onClick={() => router.push("/service/today")} icon={<UserRound size={15} aria-hidden="true" />}>
+              งานวันนี้
             </Button>
           )}
           <Button tone="primary" onClick={() => router.push("/service/schedule")} icon={<CalendarDays size={15} aria-hidden="true" />}>
-            ตารางเข้าบริการ
+            จัดคิวช่าง
           </Button>
         </div>
       )}

@@ -1,12 +1,12 @@
 // ── API ไซต์บริการรายตัว (mig 0187) ──────────────────────────────────────
-// GET    : ไซต์ + เครื่องทั้งหมดในไซต์
+// GET    : ไซต์ + โซน + เครื่องทั้งหมดในไซต์
 // PATCH  : แก้ข้อมูลไซต์
 // DELETE : ลบไซต์ — บล็อกถ้ายังมีเครื่องอยู่ (ให้ปิดใช้งานแทน)
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
-import { findCustomer, loadAssets, requireSite } from '@/lib/service/sitesRepo';
+import { findCustomer, loadAssets, loadZones, requireSite } from '@/lib/service/sitesRepo';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
 
@@ -23,6 +23,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const schedule = await siteScheduleContext(supabase, [id], todayIso);
     return ok({
       site: access.site,
+      zones: await loadZones(supabase, id),
       assets: await loadAssets(supabase, id),
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
     });
@@ -80,6 +81,13 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const assets = await loadAssets(supabase, id);
     if (assets.length) {
       return conflict(`ไซต์นี้ยังมีเครื่องอยู่ ${assets.length} เครื่อง — ปิดใช้งานแทนการลบ`);
+    }
+
+    // โซนก็ RESTRICT เหมือนนัด (mig 0297) — เช็คก่อนเพื่อให้ข้อความบอกทางออก
+    // ไม่ใช่ error ดิบจาก Postgres
+    const zones = await loadZones(supabase, id);
+    if (zones.length) {
+      return conflict(`ไซต์นี้ยังมีโซนอยู่ ${zones.length} โซน — ปิดใช้งานแทนการลบ เพื่อไม่ให้ประวัติของโซนหาย`);
     }
 
     // 🐞 ของเดิมเช็คแค่เครื่อง แต่ FK ของ **นัด** เป็น RESTRICT → ไซต์ที่ไม่มีเครื่อง
