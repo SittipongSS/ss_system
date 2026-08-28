@@ -24,16 +24,33 @@ const NO_WAIT = { retryDelayMs: 0 };
 
 test("ต่อไม่ติดแล้วลองใหม่ผ่าน = คนเรียกไม่เห็น error เลย", async () => {
   const calls = stubFetch([failedToFetch(), jsonResponse({ id: "PST-1" }, 201)]);
-  const saved = await apiJson("/api/pm/personal-tasks", { json: { title: "งาน" }, ...NO_WAIT });
+  const saved = await apiJson("/api/pm/personal-tasks", { json: { title: "งาน" }, retry: true, ...NO_WAIT });
   assert.deepEqual(saved, { id: "PST-1" });
   assert.equal(calls.length, 2);
   assert.equal(calls[1].init.method, "POST");
   assert.equal(calls[1].init.body, JSON.stringify({ title: "งาน" }));
 });
 
+// ⭐ ด่านของกติกาหลัก: เมธอดที่เขียนข้อมูลต้องไม่ลองใหม่เองโดยไม่มีใครสั่ง
+test("ค่าตั้งต้น: GET ลองใหม่ · POST/PATCH/DELETE ไม่ลอง", async () => {
+  const get = stubFetch([failedToFetch(), jsonResponse([1])]);
+  assert.deepEqual(await apiJson("/api/products", NO_WAIT), [1]);
+  assert.equal(get.length, 2);
+
+  for (const method of ["POST", "PATCH", "DELETE"]) {
+    const calls = stubFetch([failedToFetch(), jsonResponse({ id: "ซ้ำ" })]);
+    await assert.rejects(
+      () => apiFetch("/api/sales-planning/quotations", { method, ...NO_WAIT }),
+      (e) => e instanceof ApiNetworkError,
+      method,
+    );
+    assert.equal(calls.length, 1, method);
+  }
+});
+
 test("ลองใหม่แค่ครั้งเดียว แล้วโยนข้อความไทยแทน Failed to fetch", async () => {
   const calls = stubFetch([failedToFetch(), failedToFetch()]);
-  const err = await apiJson("/api/pm/personal-tasks", { json: {}, ...NO_WAIT }).then(
+  const err = await apiJson("/api/pm/personal-tasks", { json: {}, retry: true, ...NO_WAIT }).then(
     () => null,
     (e) => e,
   );
@@ -43,10 +60,10 @@ test("ลองใหม่แค่ครั้งเดียว แล้ว�
   assert.equal(calls.length, 2);
 });
 
-test("retry: false = ยิงครั้งเดียวจบ (endpoint ที่ซ้ำแล้วเสียหาย)", async () => {
-  const calls = stubFetch([failedToFetch(), jsonResponse({ id: "ซ้ำ" })]);
+test("retry: false ปิดการลองใหม่ได้แม้เป็น GET (คนเรียกสั่งเองชนะค่าตั้งต้น)", async () => {
+  const calls = stubFetch([failedToFetch(), jsonResponse([1, 2])]);
   await assert.rejects(
-    () => apiJson("/api/finance/payments", { json: {}, retry: false, ...NO_WAIT }),
+    () => apiJson("/api/products", { retry: false, ...NO_WAIT }),
     (e) => e instanceof ApiNetworkError,
   );
   assert.equal(calls.length, 1);
@@ -107,7 +124,7 @@ test("body ที่ส่งซ้ำไม่ได้ (stream) ไม่ล�
   const stream = new ReadableStream({ start(c) { c.close(); } });
   const calls = stubFetch([failedToFetch(), jsonResponse({})]);
   await assert.rejects(
-    () => apiFetch("/api/upload", { method: "POST", body: stream, duplex: "half", ...NO_WAIT }),
+    () => apiFetch("/api/upload", { method: "POST", body: stream, duplex: "half", retry: true, ...NO_WAIT }),
     (e) => e instanceof ApiNetworkError,
   );
   assert.equal(calls.length, 1);

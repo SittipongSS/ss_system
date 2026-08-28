@@ -78,7 +78,7 @@ export default function CostingListPage() {
   const adminDelete = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sa/costing/${pendingDelete.id}?force=1`, { method: "DELETE" });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: "ลบใบแล้ว" });
@@ -111,7 +111,7 @@ export default function CostingListPage() {
   const create = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/sa/costing", {
+      const res = await apiFetch("/api/sa/costing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(costingPayloadFrom(form)),

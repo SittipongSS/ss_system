@@ -63,7 +63,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", outside);
   }, [open]);
 
-  const patch = (body) => fetch("/api/notifications", {
+  const patch = (body) => apiFetch("/api/notifications", {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
 

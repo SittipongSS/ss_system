@@ -297,7 +297,7 @@ export default function QuotationEditorPage() {
     setBusy("save");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(quotationPayload(extra)),
@@ -508,7 +508,7 @@ export default function QuotationEditorPage() {
     setBusy("revise");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${id}/revise`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${id}/revise`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(quotationPayload({

@@ -196,7 +196,7 @@ export default function CostingDetailPage() {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${id}`, {
+      const res = await apiFetch(`/api/sa/costing/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(costingPayloadFrom(form)),
@@ -216,7 +216,7 @@ export default function CostingDetailPage() {
   const cancelRequest = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/sa/costing/${id}`, {
+      const res = await apiFetch(`/api/sa/costing/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel", cancelReason }),

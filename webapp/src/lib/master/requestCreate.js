@@ -10,6 +10,7 @@ import {
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { pdrArtworkError } from '@/lib/requests/pdrFields';
 import { uploadAttachment } from '@/lib/master/attachmentUpload';
+import { apiFetch } from "@/lib/apiFetch";
 
 /**
  * เหตุผลเดียวที่ยังส่งคำร้องไม่ได้ — คืนข้อความไทย หรือ null ถ้าพร้อมส่ง
@@ -195,7 +196,7 @@ export async function uploadDraftFiles(id, files = []) {
  * เก็บในฟอร์มมาก่อนแล้ว และไม่มีจอให้กลับไปกดส่ง
  */
 export async function createRequestDraft(form, extra = {}) {
-  const res = await fetch('/api/sa/requests', {
+  const res = await apiFetch('/api/sa/requests', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestPayload(form, extra)),
@@ -208,7 +209,7 @@ export async function createRequestDraft(form, extra = {}) {
 // ส่งร่างที่มีอยู่แล้ว — ออกเลขที่ · ลงเธรด · แจ้งคนที่ถูก @ · คืน { error }
 // รับ mentions ได้ทั้ง [{id,name}] (จากฟอร์ม) และ [id] (จากหน้ารายละเอียด)
 export async function submitRequest(id, { mentions = [] } = {}) {
-  const sent = await fetch(`/api/sa/requests/${id}`, {
+  const sent = await apiFetch(`/api/sa/requests/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

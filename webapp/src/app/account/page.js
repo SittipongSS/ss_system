@@ -77,7 +77,7 @@ export default function AccountPage() {
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const response = await fetch("/api/account/profile", {
+      const response = await apiFetch("/api/account/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

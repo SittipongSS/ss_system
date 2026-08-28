@@ -128,7 +128,7 @@ export default function ProductDetails() {
     const next = !(product.isActive !== false);
     setIsUpdating(true);
     try {
-      const res = await fetch(`/api/master/products/${id}`, {
+      const res = await apiFetch(`/api/master/products/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: next }),
@@ -161,7 +161,7 @@ export default function ProductDetails() {
   const sendToExcise = async () => {
     setSendingExcise(true);
     try {
-      const res = await fetch("/api/excise-registrations", {
+      const res = await apiFetch("/api/excise-registrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId: id }),
@@ -190,7 +190,7 @@ export default function ProductDetails() {
     onConfirm: async () => {
       setIsUpdating(true);
       try {
-        const res = await fetch(`/api/master/products/${id}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/master/products/${id}`, { method: "DELETE" });
         if (res.ok) {
           router.push("/database/products");
         } else {

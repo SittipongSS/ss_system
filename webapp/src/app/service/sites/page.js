@@ -79,7 +79,7 @@ export default function ServiceSitesPage() {
 
   const saveSite = async (form) => {
     const editing = !!formSite;
-    const res = await fetch(editing ? `/api/service/sites/${formSite.id}` : "/api/service/sites", {
+    const res = await apiFetch(editing ? `/api/service/sites/${formSite.id}` : "/api/service/sites", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),

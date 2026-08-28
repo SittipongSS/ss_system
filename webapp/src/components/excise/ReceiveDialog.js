@@ -6,6 +6,7 @@ import { fmtMoney } from "@/lib/format";
 import { describeResponseError } from "@/lib/fetchError";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { notifyToast } from "@/components/ui/Toast";
+import { apiFetch } from "@/lib/apiFetch";
 
 // SA "เงินเข้าแล้ว" — records the S&S invoice/receipt number and moves the order
 // to 'received'. Exempt orders confirm without a receipt. PATCH unchanged.
@@ -27,7 +28,7 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
     const body = { status: "received" };
     if (!isExempt) body.receiptNumber = receiptNumber.trim();
     try {
-      const res = await fetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch(`/api/orders/${order.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
       // หลักฐานการชำระจากลูกค้า → เก็บเข้า attachments ของออเดอร์ (best-effort)
       if (file) {
@@ -36,14 +37,14 @@ export default function ReceiveDialog({ open, onClose, onDone, order }) {
           const { url, driveFileId } = await uploadFileBytes({
             file, entityType: "order", entityId: order.id,
           });
-          const sv = await fetch("/api/master/attachments", {
+          const sv = await apiFetch("/api/master/attachments", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ entityType: "order", entityId: order.id, docType: "excise_proof", fileUrl: url, driveFileId, fileName: file.name, mimeType: file.type || null, sizeBytes: file.size }),
           });
           if (!sv.ok) {
             // rollback: บันทึก metadata ล้ม → ลบไฟล์ Drive กัน orphan.
             if (driveFileId) {
-              fetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId }) }).catch(() => {});
+              apiFetch("/api/upload", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ driveFileId }) }).catch(() => {});
             }
             throw new Error(await describeResponseError(sv, "บันทึกหลักฐานการชำระไม่สำเร็จ"));
           }

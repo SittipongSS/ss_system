@@ -263,7 +263,7 @@ export default function ProductRegistry() {
       retailPriceIncVat: formData.retailPriceIncVat === "" ? null : parseFloat(formData.retailPriceIncVat),
     };
     try {
-      const res = await fetch("/api/master/products", {
+      const res = await apiFetch("/api/master/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

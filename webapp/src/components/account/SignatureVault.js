@@ -160,7 +160,7 @@ export default function SignatureVault() {
       const body = new FormData();
       body.append("file", candidate);
       body.append("expectedActiveVersionId", data?.active?.id || "");
-      const response = await fetch("/api/account/signature", { method: "POST", body });
+      const response = await apiFetch("/api/account/signature", { method: "POST", body });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "บันทึกลายเซ็นไม่สำเร็จ");
       setData(payload);
@@ -179,7 +179,7 @@ export default function SignatureVault() {
   const revoke = async () => {
     setBusy("revoke");
     try {
-      const response = await fetch("/api/account/signature", {
+      const response = await apiFetch("/api/account/signature", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

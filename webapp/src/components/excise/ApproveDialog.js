@@ -47,7 +47,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
     const body = { status: "approved", approvalNumber: approvalNumber.trim() };
     if (taxable !== "auto") body.taxableOverride = taxable === "taxable";
     try {
-      const res = await fetch(`/api/excise-registrations/${registration.id}`, {
+      const res = await apiFetch(`/api/excise-registrations/${registration.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถอนุมัติได้");

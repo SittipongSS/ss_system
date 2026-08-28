@@ -79,7 +79,7 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
     if (!detail.trim() || busy) return;
     setBusy(true); setErr("");
     try {
-      const res = await fetch("/api/issues", {
+      const res = await apiFetch("/api/issues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind, impact, title, detail, errorStack, ...context }),
@@ -215,7 +215,7 @@ async function attachToThread(issueId, files) {
       sizeBytes: file.size,
     });
   }
-  const res = await fetch("/api/updates", {
+  const res = await apiFetch("/api/updates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

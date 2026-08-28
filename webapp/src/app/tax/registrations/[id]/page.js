@@ -124,7 +124,7 @@ export default function RegistrationDetailPage() {
   const warnings = req?.warnings || [];
 
   const patch = async (body, failMessage) => {
-    const res = await fetch(`/api/excise-registrations/${s.id}`, {
+    const res = await apiFetch(`/api/excise-registrations/${s.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || failMessage);
@@ -137,7 +137,7 @@ export default function RegistrationDetailPage() {
   const revokeApproval = (reason) => patch({ status: "draft", reason }, "ไม่สามารถปลดอนุมัติได้");
   const rejectReg = (reason) => patch({ status: "rejected", rejectionReason: reason }, "ไม่สามารถทำรายการได้");
   const doDelete = async () => {
-    const res = await fetch(`/api/excise-registrations/${s.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/excise-registrations/${s.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
     router.push("/tax/registrations");
   };

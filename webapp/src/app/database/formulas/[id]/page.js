@@ -65,7 +65,7 @@ export default function FormulaDetailPage() {
     setSaving(true);
     try {
       const payload = formulaFormPayload(form.value, { canSetCode: isFormulaRegistrar(me) });
-      const res = await fetch(`/api/master/formulas/${formula.id}`, {
+      const res = await apiFetch(`/api/master/formulas/${formula.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "edit", ...payload }),
@@ -86,7 +86,7 @@ export default function FormulaDetailPage() {
   const removeFormula = async () => {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/master/formulas/${formula.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/master/formulas/${formula.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });

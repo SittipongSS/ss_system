@@ -156,7 +156,7 @@ export default function LeadDetailPage() {
     setBusy(true); setError("");
     try {
       const payload = Object.fromEntries(Object.keys(blank).map((key) => [key, form[key]]));
-      const res = await fetch(`/api/sales-planning/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
       setEditing(false); await load();
@@ -170,7 +170,7 @@ export default function LeadDetailPage() {
 
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${id}/transition`, {
+      const res = await apiFetch(`/api/sales-planning/leads/${id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
@@ -197,7 +197,7 @@ export default function LeadDetailPage() {
     if (!ok) return;
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ลบไม่สำเร็จ");
       router.push("/sa/leads");
     } catch (e) { setError(e.message); setBusy(false); }

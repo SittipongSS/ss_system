@@ -103,7 +103,7 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     if (!salesOrderId || !resolution.eligible) return;
     setBusy(true);
     setError("");
-    const res = await fetch("/api/tax/orders/from-sales-order", {
+    const res = await apiFetch("/api/tax/orders/from-sales-order", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ salesOrderId }),

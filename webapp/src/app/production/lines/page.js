@@ -90,7 +90,7 @@ export default function ProductionLinesPage() {
   const saveLine = async (form) => {
     const editing = !!formLine;
     const url = editing ? `/api/production/lines/${formLine.id}` : "/api/production/lines";
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -104,7 +104,7 @@ export default function ProductionLinesPage() {
   const removeLine = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/production/lines/${pendingDelete.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/production/lines/${pendingDelete.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
       setToast({ kind: "success", msg: `ลบไลน์ ${pendingDelete.code} แล้ว` });
@@ -120,7 +120,7 @@ export default function ProductionLinesPage() {
   const saveDay = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/production/lines/${expanded}/capacity`, {
+      const res = await apiFetch(`/api/production/lines/${expanded}/capacity`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dayForm),
@@ -139,7 +139,7 @@ export default function ProductionLinesPage() {
   const removeDay = async (date) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/production/lines/${expanded}/capacity/${date}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/production/lines/${expanded}/capacity/${date}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
       await loadDays(expanded);

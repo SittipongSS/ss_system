@@ -116,7 +116,7 @@ export default function HolidaysPage() {
   }, []);
 
   const addHoliday = async (date, name) => {
-    const res = await fetch("/api/holidays", {
+    const res = await apiFetch("/api/holidays", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date, name: name || "" }),
     });
@@ -130,7 +130,7 @@ export default function HolidaysPage() {
   };
 
   const removeHoliday = async (date) => {
-    const res = await fetch(`/api/holidays/${date}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/holidays/${date}`, { method: "DELETE" });
     if (res.ok) {
       applyHolidays(holidays.filter((holiday) => holiday.date !== date));
       return true;

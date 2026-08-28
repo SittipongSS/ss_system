@@ -377,7 +377,7 @@ export default function LeadsPage() {
     setBusy("save");
     setError("");
     try {
-      const res = await fetch(form.id ? `/api/sales-planning/leads/${form.id}` : "/api/sales-planning/leads", {
+      const res = await apiFetch(form.id ? `/api/sales-planning/leads/${form.id}` : "/api/sales-planning/leads", {
         method: form.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -423,7 +423,7 @@ export default function LeadsPage() {
     setBusy("action");
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/leads/${lead.id}/transition`, {
+      const res = await apiFetch(`/api/sales-planning/leads/${lead.id}/transition`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildLeadTransitionPayload({ action: actionId, values, users })),
@@ -446,7 +446,7 @@ export default function LeadsPage() {
   const deleteLead = async (lead) => {
     if (!(await confirmAction(`ลบลีด "${lead.contactName}"? การลบย้อนกลับไม่ได้`))) return;
     setError("");
-    const res = await fetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/sales-planning/leads/${lead.id}`, { method: "DELETE" });
     if (!res.ok) setError((await res.json().catch(() => ({}))).error || "ลบลีดไม่สำเร็จ");
     await load();
   };

@@ -58,6 +58,8 @@ export default function TaskFormModal({ open, onClose, onSaved, task, department
         method: editing ? "PATCH" : "POST",
         json: payload,
         fallbackError: "บันทึกไม่สำเร็จ",
+        // เหตุผลเดียวกับโมดัลงานฝั่ง pm — งานซ้ำลบทิ้งได้ ฟอร์มที่หายทั้งใบแพงกว่า
+        retry: true,
       });
       onSaved?.(saved);
       onClose?.();

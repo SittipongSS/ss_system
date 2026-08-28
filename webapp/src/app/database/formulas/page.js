@@ -307,7 +307,7 @@ export default function FormulasPage() {
   const submitSorting = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/master/formulas/unsorted", {
+      const res = await apiFetch("/api/master/formulas/unsorted", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: sorting.row.productId,

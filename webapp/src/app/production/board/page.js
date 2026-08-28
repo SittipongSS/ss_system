@@ -104,7 +104,7 @@ export default function ProductionBoardPage() {
   const jobsById = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs]);
 
   const saveJob = async (form) => {
-    const res = await fetch(`/api/production/jobs/${formJob.id}`, {
+    const res = await apiFetch(`/api/production/jobs/${formJob.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),

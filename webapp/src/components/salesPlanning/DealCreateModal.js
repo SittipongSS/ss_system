@@ -30,6 +30,7 @@ import { initialDealForm } from "@/components/salesPlanning/ui";
 import { CREATABLE_STAGES } from "@/lib/salesPlanning";
 import { TEAM_LABELS } from "@/lib/permissions";
 import styles from "./DealCreateModal.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
@@ -188,7 +189,7 @@ export default function DealCreateModal({
             ...(lead ? { leadId: lead.id, source: "lead", leadChannel: lead.channel } : {}),
             ...(legacy ? { legacy: true } : {}),
           };
-          const res = await fetch("/api/sales-planning/deals", {
+          const res = await apiFetch("/api/sales-planning/deals", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
@@ -207,7 +208,7 @@ export default function DealCreateModal({
         // deal-POST ไม่รับ projectId — ผูกโครงการผ่าน link-project (ต่อ segment ไทม์ไลน์
         // ให้ด้วย) แพตเทิร์นเดียวกับหน้ารวมดีล
         if (draft.projectId && !state.linked) {
-          const linkRes = await fetch(`/api/sales-planning/deals/${state.dealId}/link-project`, {
+          const linkRes = await apiFetch(`/api/sales-planning/deals/${state.dealId}/link-project`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ projectId: draft.projectId, startDate: draft.startDate || undefined }),

@@ -26,7 +26,7 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
   const save = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/rocks/${row.id}`, {
+      const res = await apiFetch(`/api/mgmt/rocks/${row.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ improved, goals }),
       });
@@ -38,7 +38,7 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
     if (!(await confirmAction(`ลบข้อมูล Rock & Improve ของแผนก ${deptLabel}?`))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/mgmt/rocks/${row.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/mgmt/rocks/${row.id}`, { method: "DELETE" });
       if (res.ok) onDeleted?.(row.id);
       else notifyToast.error((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
     } finally { setBusy(false); }
@@ -127,7 +127,7 @@ export default function MgmtRocksPage() {
 
   const addRow = async () => {
     if (!addDept) return;
-    const res = await fetch("/api/mgmt/rocks", {
+    const res = await apiFetch("/api/mgmt/rocks", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ year, deptCode: addDept, goals: [] }),
     });

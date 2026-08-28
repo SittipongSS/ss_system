@@ -1,4 +1,5 @@
 import { describeResponseError } from '@/lib/fetchError';
+import { apiFetch } from "@/lib/apiFetch";
 import {
   LEGACY_UPLOAD_MAX_BYTES,
   checkUploadCandidate,
@@ -68,7 +69,7 @@ async function uploadThroughApi({ file, entityType, entityId }) {
   fd.append('file', file);
   fd.append('entityType', entityType);
   fd.append('entityId', entityId);
-  const up = await fetch('/api/upload', { method: 'POST', body: fd });
+  const up = await apiFetch('/api/upload', { method: 'POST', body: fd });
   if (!up.ok) throw new Error(await describeResponseError(up, 'อัปโหลดไฟล์ไม่สำเร็จ'));
   const payload = await up.json();
   return {
@@ -87,7 +88,7 @@ export async function uploadFileBytes({ file, entityType, entityId, onProgress =
   });
   if (!verdict.ok) throw new Error(verdict.error);
 
-  const res = await fetch('/api/upload/session', {
+  const res = await apiFetch('/api/upload/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -122,7 +123,7 @@ export async function uploadFileBytes({ file, entityType, entityId, onProgress =
     // เมื่อไบต์ขึ้นครบ ไม่ให้แถบค้างที่ 99% ระหว่างรอ commit
     await putWithProgress(session.signedUrl, file, session.contentType, onProgress);
     onProgress?.(1);
-    const commit = await fetch('/api/upload/commit', {
+    const commit = await apiFetch('/api/upload/commit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

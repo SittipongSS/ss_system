@@ -404,7 +404,7 @@ export default function SalesPlanningPipelinePage() {
     const selectedCustomer = customers.find((c) => c.id === dealForm.customerId);
     const payload = { ...dealForm, customerName: selectedCustomer?.name || dealForm.customerName || null };
     try {
-      const res = await fetch(dealForm.id ? `/api/sales-planning/deals/${dealForm.id}` : "/api/sales-planning/deals", {
+      const res = await apiFetch(dealForm.id ? `/api/sales-planning/deals/${dealForm.id}` : "/api/sales-planning/deals", {
         method: dealForm.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -412,7 +412,7 @@ export default function SalesPlanningPipelinePage() {
       const savedDeal = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(savedDeal.error || "บันทึกดีลไม่สำเร็จ");
       if (dealForm.projectId && !dealForm.lockedProjectId) {
-        const linkRes = await fetch(`/api/sales-planning/deals/${savedDeal.id || dealForm.id}/link-project`, {
+        const linkRes = await apiFetch(`/api/sales-planning/deals/${savedDeal.id || dealForm.id}/link-project`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
@@ -473,7 +473,7 @@ export default function SalesPlanningPipelinePage() {
     setQuoteLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${quoteDeal.id}/quotations`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${quoteDeal.id}/quotations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -499,7 +499,7 @@ export default function SalesPlanningPipelinePage() {
     setShippingDealId(deal.id);
     setError("");
     try {
-      const res = await fetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
+      const res = await apiFetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -566,7 +566,7 @@ export default function SalesPlanningPipelinePage() {
     if (!DEAL_PATCH_TRANSITIONS.includes(actionId)) return false;
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/deals/${deal.id}`, {
+      const res = await apiFetch(`/api/sales-planning/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stage: "lost", lostReason: values.reason?.trim() || null }),
@@ -586,7 +586,7 @@ export default function SalesPlanningPipelinePage() {
     setDocLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sales-planning/documents", {
+      const res = await apiFetch("/api/sales-planning/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...docForm, dealId: docDeal.id }),
@@ -605,7 +605,7 @@ export default function SalesPlanningPipelinePage() {
     setDocLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/documents/${doc.id}`, {
+      const res = await apiFetch(`/api/sales-planning/documents/${doc.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -624,7 +624,7 @@ export default function SalesPlanningPipelinePage() {
     setDocLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sales-planning/documents/${doc.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error((await res.json()).error || "delete document failed");
       await loadDocuments(docDeal);
     } catch (e) {

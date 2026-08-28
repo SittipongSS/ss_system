@@ -63,7 +63,7 @@ export default function RegistryEditModal({ target, canSetCode = false, onClose,
   const save = async () => {
     setBusy(true); setError("");
     try {
-      const res = await fetch(`${API[kind]}/${target.id}`, {
+      const res = await apiFetch(`${API[kind]}/${target.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "edit", ...value }),

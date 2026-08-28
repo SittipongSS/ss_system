@@ -96,7 +96,7 @@ export default function QuotationWonDialog({ open, onClose, quote, deal: dealPro
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
+      const res = await apiFetch(`/api/sales-planning/quotations/${quote.id}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(needsProject ? { projectId } : {}),

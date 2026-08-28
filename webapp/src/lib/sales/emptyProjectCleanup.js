@@ -1,4 +1,5 @@
 import { confirmAction } from '@/components/ui/ConfirmDialog';
+import { apiFetch } from "@/lib/apiFetch";
 
 // ── ลบดีลใบสุดท้ายแล้ว โครงการเหลือโครงเปล่า ───────────────────────────────
 // เฟส B ตั้งใจ "ลบดีลไม่ลบโครงการ" เพราะโครงการเป็นเอนทิตีอิสระที่อาจมีดีลใหม่มาผูก
@@ -28,7 +29,7 @@ export async function offerDeleteEmptyProject(emptyProject) {
   if (!confirmed) return { deleted: false, error: null };
 
   try {
-    const res = await fetch(`/api/pm/projects/${emptyProject.id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/pm/projects/${emptyProject.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}));
       return { deleted: false, error: payload.error || 'ลบโครงการเปล่าไม่สำเร็จ' };

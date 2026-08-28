@@ -474,7 +474,7 @@ export default function RequestDetailPage() {
     try {
       for (const row of bulkReady.rows) {
         try {
-          const res = await fetch(`/api/sa/requests/${id}/items/${row.item.id}`, {
+          const res = await apiFetch(`/api/sa/requests/${id}/items/${row.item.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

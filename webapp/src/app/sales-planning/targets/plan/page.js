@@ -244,7 +244,7 @@ export default function SalesTargetPlanPage() {
     for (const t of SALES_TEAMS) {
       items.push({ period: latestHistYear, periodType: "year", team: t, ownerId: null, actualAmount: Number(teamHist[t] || 0), source: "manual" });
     }
-    const res = await fetch("/api/sales-planning/history", {
+    const res = await apiFetch("/api/sales-planning/history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
@@ -356,7 +356,7 @@ export default function SalesTargetPlanPage() {
           ownerName: ownerName || null,
           targetAmount: monthAmounts[i],
         }));
-        const res = await fetch("/api/sales-planning/targets/bulk", {
+        const res = await apiFetch("/api/sales-planning/targets/bulk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items }),

@@ -30,6 +30,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { fmtDate } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { apiFetch } from "@/lib/apiFetch";
 
 const today = () => {
   const now = new Date();
@@ -161,7 +162,7 @@ export default function SalesProjectCreateModal({
     setError("");
     try {
       const customer = customers.find((row) => row.id === form.customerId);
-      const res = await fetch(editingId ? `/api/pm/projects/${editingId}` : createEndpoint, {
+      const res = await apiFetch(editingId ? `/api/pm/projects/${editingId}` : createEndpoint, {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

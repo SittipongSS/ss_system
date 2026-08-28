@@ -166,7 +166,7 @@ export default function ProductCategoriesPage() {
             note: form.note,
             ...compliance,
           };
-      const response = await fetch(editing ? `/api/product-types/${drawer.row.id}` : "/api/product-types", {
+      const response = await apiFetch(editing ? `/api/product-types/${drawer.row.id}` : "/api/product-types", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -200,7 +200,7 @@ export default function ProductCategoriesPage() {
     setSaving(true);
     try {
       const nextActive = confirmRow.isActive === false;
-      const response = await fetch(`/api/product-types/${confirmRow.id}`, {
+      const response = await apiFetch(`/api/product-types/${confirmRow.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: nextActive }),

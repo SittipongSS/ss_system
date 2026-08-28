@@ -125,7 +125,7 @@ export default function ServiceIntakePage() {
   const registryActions = useMemo(() => ({
     ensureZones,
     createSite: async (form) => {
-      const res = await fetch("/api/service/sites", {
+      const res = await apiFetch("/api/service/sites", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
       });
       const body = await res.json().catch(() => null);
@@ -134,7 +134,7 @@ export default function ServiceIntakePage() {
       return body;
     },
     createZone: async (siteId, form) => {
-      const res = await fetch(`/api/service/sites/${siteId}/zones`, {
+      const res = await apiFetch(`/api/service/sites/${siteId}/zones`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
       });
       const body = await res.json().catch(() => null);
@@ -146,7 +146,7 @@ export default function ServiceIntakePage() {
 
   const bindOrder = async (payload) => {
     await ensureZones(payload.siteId);
-    const res = await fetch("/api/service/intake/bind", {
+    const res = await apiFetch("/api/service/intake/bind", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     });
     const body = await res.json().catch(() => null);

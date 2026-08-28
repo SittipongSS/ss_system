@@ -71,7 +71,7 @@ export default function ScentDetailPage() {
         mode: "edit",
         customerName: registryData.customers.find((c) => c.id === form.value.customerId)?.name || null,
       });
-      const res = await fetch(`/api/master/scents/${scent.id}`, {
+      const res = await apiFetch(`/api/master/scents/${scent.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "edit", ...payload }),
@@ -92,7 +92,7 @@ export default function ScentDetailPage() {
   const removeScent = async () => {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/master/scents/${scent.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/master/scents/${scent.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast({ kind: "error", msg: data.error || "ลบไม่สำเร็จ" });

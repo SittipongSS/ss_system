@@ -97,7 +97,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       retailPriceIncVat: form.retailPriceIncVat === "" ? null : parseFloat(form.retailPriceIncVat),
     };
     try {
-      const res = await fetch(`/api/master/products/${product.id}`, {
+      const res = await apiFetch(`/api/master/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -130,7 +130,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     setPriceError(null);
     setPriceSaved(false);
     try {
-      const res = await fetch(`/api/master/products/${product.id}`, {
+      const res = await apiFetch(`/api/master/products/${product.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ costPrice: nextPrice }),

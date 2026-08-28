@@ -326,7 +326,7 @@ export default function CostTemplatesPage() {
     setSaving(true);
     try {
       const isCreate = editing.mode === "create";
-      const res = await fetch(isCreate ? "/api/cost-templates" : `/api/cost-templates/${editing.id}`, {
+      const res = await apiFetch(isCreate ? "/api/cost-templates" : `/api/cost-templates/${editing.id}`, {
         method: isCreate ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -350,7 +350,7 @@ export default function CostTemplatesPage() {
   const hide = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/api/cost-templates/${pendingHide.id}`, {
+      const res = await apiFetch(`/api/cost-templates/${pendingHide.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "hide" }),

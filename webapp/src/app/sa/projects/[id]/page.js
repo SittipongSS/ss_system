@@ -194,7 +194,7 @@ export default function ProjectDetailPage() {
   const closeAction = useCallback(async (action, payload = {}) => {
     setCloseBusy(action);
     try {
-      const res = await fetch(`/api/pm/projects/${id}/close`, {
+      const res = await apiFetch(`/api/pm/projects/${id}/close`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }),
       });
       const d = await res.json().catch(() => ({}));
@@ -215,7 +215,7 @@ export default function ProjectDetailPage() {
     if (!PROJECT_PATCH_TRANSITIONS.includes(actionId)) return false;
     setCloseBusy(actionId);
     try {
-      const res = await fetch(`/api/pm/projects/${id}`, {
+      const res = await apiFetch(`/api/pm/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(actionId === "drop"
@@ -254,7 +254,7 @@ export default function ProjectDetailPage() {
   }, [projectCustomerId]);
 
   const updateProject = async (patch) => {
-    const res = await fetch(`/api/pm/projects/${id}`, {
+    const res = await apiFetch(`/api/pm/projects/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
     });
     if (res.ok) { const updated = await res.json(); setData((d) => ({ ...d, ...updated })); }
@@ -265,7 +265,7 @@ export default function ProjectDetailPage() {
     if (!p?.id) return;
     setCreatingTaxReg(true);
     try {
-      const res = await fetch("/api/excise-registrations/from-project", {
+      const res = await apiFetch("/api/excise-registrations/from-project", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: p.id }),
@@ -310,7 +310,7 @@ export default function ProjectDetailPage() {
   const confirmIssueRev = async () => {
     setIssuingRev(true); setRevError("");
     try {
-      const res = await fetch(`/api/pm/projects/${id}/revisions`, {
+      const res = await apiFetch(`/api/pm/projects/${id}/revisions`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: revNote }),
       });
       if (!res.ok) { setRevError((await res.json().catch(() => ({}))).error || "ออกเวอร์ชันไม่สำเร็จ"); return; }
@@ -364,7 +364,7 @@ export default function ProjectDetailPage() {
   const restoreSnapshot = async (row) => {
     const label = row.kind === "rev" ? `Rev. ${row.revNo}` : `บันทึกเมื่อ ${fmtDateTime(row.createdAt)}`;
     if (!(await askConfirm({ title: "ย้อนกลับไปจุดนี้?", message: `งานทั้งหมดจะกลับไปเท่ากับ "${label}" (สร้าง/ลบ/แก้ขั้นตอนให้ตรง). จุดบันทึก/Rev อื่นยังอยู่ครบ ย้อนไปจุดอื่นได้อีก.` }))) return;
-    const res = await fetch(`/api/pm/projects/${id}/restore`, {
+    const res = await apiFetch(`/api/pm/projects/${id}/restore`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshotId: row.id }),
     });
     if (!res.ok) { setToast({ kind: "error", msg: (await res.json().catch(() => ({}))).error || "ย้อนเวอร์ชันไม่สำเร็จ" }); return; }

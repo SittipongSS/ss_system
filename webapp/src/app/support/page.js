@@ -116,7 +116,7 @@ export default function SupportPage() {
   const acknowledge = async (id) => {
     setBusyId(id);
     try {
-      const res = await fetch(`/api/issues/${id}`, {
+      const res = await apiFetch(`/api/issues/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "acknowledge" }),

@@ -19,6 +19,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
 import { DEFAULT_PRICE_TTL_DAYS } from "@/lib/materialPrices";
 import styles from "./registryForm.module.css";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function RegistryPriceModal({
   open,
@@ -39,7 +40,7 @@ export default function RegistryPriceModal({
   const submit = async () => {
     setSaving(true); setError("");
     try {
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

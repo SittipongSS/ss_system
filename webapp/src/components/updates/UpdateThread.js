@@ -195,7 +195,7 @@ export default function UpdateThread({
   // "เปิดหน้าตรงจาก URL" · พลาดแล้วเงียบได้ — แค่ตัวเลขบนกระดิ่งไม่ลด
   useEffect(() => {
     if (!entityType || !entityId) return;
-    fetch("/api/notifications", {
+    apiFetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "read_thread", entityType, entityId }),

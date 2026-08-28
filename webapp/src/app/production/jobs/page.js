@@ -91,7 +91,7 @@ export default function ProductionJobsPage() {
 
   const saveJob = async (form) => {
     const editing = !!formJob;
-    const res = await fetch(editing ? `/api/production/jobs/${formJob.id}` : "/api/production/jobs", {
+    const res = await apiFetch(editing ? `/api/production/jobs/${formJob.id}` : "/api/production/jobs", {
       method: editing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
