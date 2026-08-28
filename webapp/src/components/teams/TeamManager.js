@@ -41,6 +41,8 @@ export default function TeamManager({ department, title, subtitle }) {
   const [moveTarget, setMoveTarget] = useState([]);
   const [moveImpact, setMoveImpact] = useState([]);
   const [closing, setClosing] = useState(null);
+  const [crewTeam, setCrewTeam] = useState(null);   // ทีมปฏิบัติงานที่กำลังจัดสมาชิก
+  const [crewIds, setCrewIds] = useState([]);
   const [saving, setSaving] = useState(false);
 
   const startRun = useLatestRun();
@@ -160,6 +162,12 @@ export default function TeamManager({ department, title, subtitle }) {
                   </div>
                   {canManage && (
                     <div className={styles.headActions}>
+                      {team.kind === "crew" && team.isActive !== false && (
+                        <Button tone="neutral" variant="quiet" size="sm"
+                          onClick={() => { setCrewTeam(team); setCrewIds(members.map((m) => m.id)); }}>
+                          จัดสมาชิก
+                        </Button>
+                      )}
                       <Button tone="neutral" variant="quiet" size="sm" onClick={() => setEditTeam(team)}>แก้ทีม</Button>
                       {team.isActive !== false && (
                         <Button tone="neutral" variant="quiet" size="sm"
@@ -192,6 +200,8 @@ export default function TeamManager({ department, title, subtitle }) {
                         {canManage && team.kind === "sales" && (
                           <Button tone="neutral" variant="quiet" size="sm" onClick={() => openMove(person)}>ย้าย</Button>
                         )}
+                        {/* ทีมปฏิบัติงานย้ายคนทีละคนไม่ได้ — จัดทั้งทีมทีเดียวจากปุ่ม
+                            "จัดสมาชิก" บนหัวการ์ด (คนจัดคิดเป็น "ทีมนี้มีใครบ้าง") */}
                       </li>
                     ))}
                   </ul>
@@ -217,7 +227,9 @@ export default function TeamManager({ department, title, subtitle }) {
                     <UserRound size={14} aria-hidden="true" />
                     <span className={styles.name}>{person.name}</span>
                     <span className={styles.role}>{ROLE_LABELS[person.role] || person.role}</span>
-                    {canManage && <Button tone="neutral" variant="quiet" size="sm" onClick={() => openMove(person)}>จัดเข้าทีม</Button>}
+                    {canManage && department === "SA" && (
+                      <Button tone="neutral" variant="quiet" size="sm" onClick={() => openMove(person)}>จัดเข้าทีม</Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -335,6 +347,48 @@ export default function TeamManager({ department, title, subtitle }) {
                   if (done) setMovingUser(null);
                 }}>
                 ย้ายทีม
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ── จัดสมาชิกทีมปฏิบัติงาน ─────────────────────────────────────
+          ⚠️ ติ๊กทั้งทีมแล้วกดครั้งเดียว ไม่ใช่ย้ายทีละคน — คนจัดคิดเป็น "ทีมนี้มีใครบ้าง"
+          และการยิงทีละคนแล้วล้มกลางทางจะเหลือทีมครึ่ง ๆ ที่คนกดไม่รู้ว่าถึงไหน */}
+      <Modal open={!!crewTeam} onClose={() => setCrewTeam(null)}
+        title={`จัดสมาชิก ${crewTeam?.name || ""}`} size="md">
+        {crewTeam && (
+          <>
+            <p className={styles.meta}>
+              ติ๊กคนที่อยู่ทีมนี้ · คนหนึ่งอยู่ได้ทีมเดียวในฝ่ายเดียวกัน
+              (ต่างจากทีมขายที่ซ้อนได้ เพราะทีมขายคือขอบเขตการเห็นข้อมูล)
+            </p>
+            <div className={styles.field}>
+              <span>สมาชิก</span>
+              <OptionTiles
+                multiple
+                value={crewIds}
+                onChange={setCrewIds}
+                ariaLabel="สมาชิกทีม"
+                options={(data?.people || []).map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  description: ROLE_LABELS[p.role] || p.role,
+                }))}
+              />
+            </div>
+            <div className="form-actions">
+              <Button tone="neutral" onClick={() => setCrewTeam(null)} disabled={saving}>ยกเลิก</Button>
+              <Button tone="primary" disabled={saving}
+                onClick={async () => {
+                  const done = await call(`/api/teams/${encodeURIComponent(crewTeam.code)}/members`, {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userIds: crewIds }),
+                  }, `จัดสมาชิกทีม ${crewTeam.name} แล้ว`);
+                  if (done) setCrewTeam(null);
+                }}>
+                บันทึกสมาชิก
               </Button>
             </div>
           </>

@@ -546,6 +546,9 @@ export default function AppLayout({ children }) {
         // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
         // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
+        // จัดทีมช่าง (mig 0308 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
+        // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของช่าง
+        { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/teams') },
       ],
     },
     {
