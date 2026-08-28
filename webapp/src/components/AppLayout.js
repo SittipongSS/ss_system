@@ -399,7 +399,7 @@ export default function AppLayout({ children }) {
            แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
         { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
-        // จัดทีม (mig 0309 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
+        // จัดทีม (mig 0310 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
         // grant จัดทีมเองได้ ไม่ต้องรอแอดมิน · เป็น utility เพราะไม่ใช่งานรายวัน
         { href: '/sa/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', utility: true, match: (p) => p.startsWith('/sa/teams') },
       ],
@@ -546,7 +546,7 @@ export default function AppLayout({ children }) {
         // ทะเบียนไซต์ = cap อ่าน เพราะฝ่ายขายต้องตอบได้ว่าลูกค้ามีเครื่องกี่จุด
         // ปุ่มแก้ในหน้าซ่อนตาม canEditService เอง
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
-        // จัดทีมช่าง (mig 0309 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
+        // จัดทีมช่าง (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของช่าง
         { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/teams') },
       ],

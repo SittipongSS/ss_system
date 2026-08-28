@@ -324,7 +324,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // mgmt access may be a per-user grant (app_metadata.extraCaps), not just the
   // role — so mgmt checks go through canUser, not can(role, …).
   const mgmtUser = { role, extraCaps };
-  /* ⭐ ย้ายทีมของคนหนึ่งคน (mig 0309 · docs/team-management-plan.md) — เส้นแคบที่
+  /* ⭐ ย้ายทีมของคนหนึ่งคน (mig 0310 · docs/team-management-plan.md) — เส้นแคบที่
      คนถือ `team:manage` เขียนได้ **ต้องอยู่ก่อนด่าน users:manage ข้างล่าง**
      ไม่งั้น proxy ตัดทิ้งตั้งแต่ยังไม่ถึง handler
      ⚠️ proxy เห็นแค่ method+path — ตัวตัดสินว่า "คนนี้อยู่ฝ่ายเดียวกับเป้าหมายไหม"
