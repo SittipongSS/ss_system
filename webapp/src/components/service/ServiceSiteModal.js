@@ -7,10 +7,15 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import TimeInput from "@/components/ui/TimeInput";
 import { WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, toHHMM } from "@/lib/service/sites";
+import { ADDRESS_USE_LABELS, addressText, addressUse } from "@/lib/master/addresses";
 import styles from "./ServiceSiteModal.module.css";
+
+// ไทล์ "ที่อยู่อื่น" = ตั้งใจไม่ก๊อปจากทะเบียน (ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี)
+const OWN_ADDRESS = "__own__";
 
 const EMPTY = {
   customerId: "", name: "", routeZone: "", address: "", mapUrl: "",
@@ -22,9 +27,16 @@ const EMPTY = {
 /* `defaults` = ค่าตั้งต้นของโหมด **สร้าง** เท่านั้น (แพตเทิร์นเดียวกับ ServiceVisitModal)
    ใช้ตอนที่ผู้เรียกรู้คำตอบอยู่แล้ว เช่น wizard รับใบสั่งขายซึ่งรู้ว่าลูกค้าคือใคร —
    ไม่ใช่ฟอร์มคนละชุด แค่โหมดที่กรอกช่องที่ตอบได้แล้วให้ล่วงหน้า */
-export default function ServiceSiteModal({ open, site = null, customers = [], defaults = null, onClose, onSave }) {
+export default function ServiceSiteModal({
+  open, site = null, customers = [], customerAddresses = [], defaults = null, onClose, onSave,
+}) {
   const editing = !!site;
   const [form, setForm] = useState(EMPTY);
+  const [pickedAddressId, setPickedAddressId] = useState("");
+  /* ⭐ ที่อยู่ของลูกค้าที่เลือกอยู่ — ผู้เรียกส่งมาก็ได้ (wizard รู้ลูกค้าอยู่แล้ว)
+     ไม่ส่งก็ดึงเองเมื่อผู้ใช้เลือกลูกค้าในฟอร์ม ⇒ ทุกทางเข้าได้ไทล์เหมือนกัน
+     ไม่ใช่ฟีเจอร์ที่มีเฉพาะบางหน้า (โรคเดียวกับฟอร์มสร้าง/แก้ที่เพี้ยนหากัน) */
+  const [fetchedAddresses, setFetchedAddresses] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +62,43 @@ export default function ServiceSiteModal({ open, site = null, customers = [], de
       }
       : { ...EMPTY, ...(defaults || {}) });
   }, [open, site, defaults]);
+
+  const addressOptions = customerAddresses.length ? customerAddresses : fetchedAddresses;
+
+  /* กดไทล์ = เติมสี่ช่องที่ก๊อปได้ให้ครั้งเดียว แล้วปล่อยให้แก้ต่อ
+     ⚠️ ไม่เก็บ customerAddressId ลงแถวไซต์ในรอบนี้ — คอลัมน์ยังไม่มี และการอ้าง
+     ที่มาแบบผูกกลับต้องมาพร้อมปุ่ม "ดึงใหม่" ซึ่งเป็นงานของรอบถัดไป */
+  const applyCustomerAddress = (id) => {
+    setPickedAddressId(id);
+    if (id === OWN_ADDRESS) return;
+    const row = addressOptions.find((a) => a.id === id);
+    if (!row) return;
+    setForm((prev) => ({
+      ...prev,
+      address: addressText(row) || prev.address,
+      mapUrl: row.mapUrl || prev.mapUrl,
+      contactName: row.contactName || prev.contactName,
+      contactPhone: row.contactPhone || prev.contactPhone,
+    }));
+  };
+
+  useEffect(() => {
+    if (!open || site) return;                    // โหมดแก้ไม่ต้องเสนอที่อยู่ใหม่
+    if (customerAddresses.length) return;         // ผู้เรียกส่งมาแล้ว
+    const customerId = form.customerId;
+    if (!customerId) { setFetchedAddresses([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/customers/${customerId}`);
+        const body = await res.json().catch(() => null);
+        if (alive && res.ok) setFetchedAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
+      } catch {
+        if (alive) setFetchedAddresses([]);       // ดึงไม่ได้ = ไม่มีไทล์ ไม่ใช่ฟอร์มพัง
+      }
+    })();
+    return () => { alive = false; };
+  }, [open, site, form.customerId, customerAddresses.length]);
 
   const change = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -112,9 +161,38 @@ export default function ServiceSiteModal({ open, site = null, customers = [], de
           <small>ใช้จัดรอบวิ่งให้ช่างไม่ต้องข้ามเมืองในวันเดียว</small>
         </label>
 
+        {/* ⭐ **ตั้งจากที่อยู่ในทะเบียนลูกค้า** (มติ 2026-08-28) — เลิกพิมพ์ที่อยู่
+            ซ้ำสองที่ · กดไทล์แล้วช่องข้างล่างถูกเติมให้ แล้วแก้ต่อได้เอง
+            ⚠️ **ก๊อปมาตั้งต้นเท่านั้น ไม่ผูกให้เปลี่ยนตามกัน** — ที่อยู่ทางภาษีกับ
+            ที่อยู่หน้างานเป็นคนละความจริง เครื่องย้ายชั้นไม่ได้แปลว่าบริษัทย้าย
+            ⚠️ ที่นี่ **เลือกได้อย่างเดียว** เพิ่มที่อยู่ต้องไปทะเบียนลูกค้า — ไม่งั้น
+            ที่อยู่หน้างานจะไหลกลับเข้าไปอยู่ในเอกสารภาษี */}
+        {!editing && addressOptions.length > 0 && (
+          <div className={`${styles.field} ${styles.wide}`}>
+            <span>ตั้งจากที่อยู่ในทะเบียนลูกค้า</span>
+            <OptionTiles
+              value={pickedAddressId}
+              onChange={applyCustomerAddress}
+              ariaLabel="ที่อยู่จากทะเบียนลูกค้า"
+              options={[
+                ...addressOptions.map((row) => ({
+                  value: row.id,
+                  label: row.label || row.branchCode || "ที่อยู่",
+                  description: [ADDRESS_USE_LABELS[addressUse(row)], addressText(row)]
+                    .filter(Boolean).join(" · ").slice(0, 120),
+                })),
+                { value: OWN_ADDRESS, label: "ที่อยู่อื่น — พิมพ์เอง", description: "ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี เช่น ล็อบบี้ห้างที่เช่าพื้นที่" },
+              ]}
+            />
+          </div>
+        )}
+
         <label className={`${styles.field} ${styles.wide}`}>
           <span>ที่อยู่</span>
           <Input as="textarea" rows={2} value={form.address} onChange={change("address")} maxLength={500} />
+          {pickedAddressId && pickedAddressId !== OWN_ADDRESS && (
+            <small>ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น — แก้ต่อได้ ไม่กระทบทะเบียน</small>
+          )}
         </label>
 
         <label className={styles.field}>

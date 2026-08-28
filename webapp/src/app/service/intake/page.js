@@ -44,6 +44,7 @@ export default function ServiceIntakePage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [wizardOrder, setWizardOrder] = useState(null);
+  const [customerAddresses, setCustomerAddresses] = useState([]);
   const [toast, setToast] = useState(null);
 
   const startRun = useLatestRun();
@@ -90,6 +91,15 @@ export default function ServiceIntakePage() {
   const openWizard = async (order) => {
     try {
       await loadRegistry();
+      /* ⭐ ที่อยู่ในทะเบียนลูกค้า — ฟอร์มไซต์ใหม่เอาไปทำไทล์ "ตั้งจากที่อยู่ไหน"
+         โหลดตอนเปิด wizard เท่านั้น (คิวอย่างเดียวไม่ต้องใช้ และ addresses เป็น
+         jsonb ก้อนใหญ่ — วัดจริง 136 KB บนลูกค้า 191 ราย) */
+      setCustomerAddresses([]);
+      if (order.customerId) {
+        const res = await fetch(`/api/customers/${order.customerId}`);
+        const body = await res.json().catch(() => null);
+        if (res.ok) setCustomerAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
+      }
       setWizardOrder(order);
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
@@ -305,6 +315,7 @@ export default function ServiceIntakePage() {
         order={wizardOrder}
         sites={sites}
         zonesBySite={zonesBySite}
+        customerAddresses={customerAddresses}
         onClose={() => setWizardOrder(null)}
         onDone={bindOrder}
         onReloadRegistry={registryActions}
