@@ -147,6 +147,38 @@ test('workflow summary reports counts without pretending summed days are critica
     assert.deepEqual(checkRoles, [...WORKFLOW_TEMPLATE_ROLES], 'CHECK ของตารางกับ WORKFLOW_TEMPLATE_ROLES ไม่ตรงกัน');
   });
 
+  /* 🪤 **บั๊กจริงตอนรันใบนี้รอบแรก (2026-08-28)** — เขียน UPDATE ไว้ก่อน DROP CHECK
+     แล้วล้มทันทีที่บรรทัดแรก:
+       ERROR: new row for relation "project_tasks" violates check constraint
+              "project_tasks_role_check" · Failing row contains (... RA ...)
+     เพราะ CHECK **เดิม** (0009) ไม่มี 'RA' ⇒ มันบล็อกตัว UPDATE เอง ไม่ใช่ตอน ADD
+     ⇒ ลำดับต้องเป็น DROP → UPDATE → ADD เสมอเวลาเปลี่ยนค่าในคอลัมน์ที่มี CHECK คุม */
+  test('0308: ถอด CHECK ก่อน UPDATE แล้วค่อยใส่กลับ — สลับลำดับแล้วล้มทั้งใบ', () => {
+    const firstDrop = sql.search(/DROP CONSTRAINT IF EXISTS/);
+    const firstUpdate = sql.search(/^UPDATE public\./m);
+    const firstAdd = sql.search(/ADD CONSTRAINT/);
+    assert.ok(firstDrop >= 0 && firstUpdate >= 0 && firstAdd >= 0, 'อ่านคำสั่งจากไฟล์ไม่เจอ');
+    assert.ok(firstDrop < firstUpdate, 'ต้อง DROP CHECK ก่อน UPDATE');
+    assert.ok(firstUpdate < firstAdd, 'ต้อง UPDATE ก่อน ADD CHECK กลับ');
+  });
+
+  /* `workflow_template_versions` ไม่มีคอลัมน์ `steps` — ขั้นตอนอยู่ใน
+     `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง) */
+  test('0308: ไม่แตะคอลัมน์ที่ไม่มีอยู่จริง', () => {
+    // ⚠️ ตัว RPC เขียน `UPDATE public.workflow_template_versions SET "nameTh" = …`
+    // อยู่แล้วโดยชอบ — ที่ห้ามคือการอ้าง **คอลัมน์ `steps`** ซึ่งตารางนี้ไม่มี
+    assert.doesNotMatch(sql, /SET\s+steps\s*=/, 'workflow_template_versions ไม่มีคอลัมน์ steps');
+    assert.doesNotMatch(sql, /jsonb_typeof\(steps\)/, 'workflow_template_versions ไม่มีคอลัมน์ steps');
+  });
+
+  /* CHECK ของ project_tasks ไม่เคยมี 'TS' เลย (0009 เขียนก่อน TS เกิด · 0192 แก้เฉพาะ
+     ฝั่งแม่แบบ) ⇒ ขั้นตอนแม่แบบที่เป็น TS แตกลงเป็นงานจริงไม่ได้ · ใบนี้ยกให้ตรงกัน */
+  test('0308: CHECK ของ project_tasks ตรงกับของแม่แบบ — ไม่งั้นขั้นตอน TS แตกเป็นงานไม่ได้', () => {
+    const taskRoles = rolesFrom(/ADD CONSTRAINT project_tasks_role_check\s*\n\s*CHECK \("role" IN \(([^)]+)\)\)/);
+    assert.deepEqual(taskRoles, [...WORKFLOW_TEMPLATE_ROLES],
+      'CHECK ของ project_tasks กับของแม่แบบต้องเป็นชุดเดียวกัน');
+  });
+
   test('0308: validation ใน RPC save_workflow_template_draft ตรงกับ CHECK และโค้ด', () => {
     const rpcRoles = rolesFrom(/\(s->>'role'\) NOT IN \(([^)]+)\)/);
     assert.ok(rpcRoles.includes('TS'), 'RPC ยังไม่รับ TS — เลือกได้แต่บันทึกไม่ผ่าน');

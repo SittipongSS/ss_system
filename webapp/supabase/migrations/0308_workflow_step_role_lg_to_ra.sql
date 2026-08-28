@@ -13,12 +13,24 @@
 --
 --  ⚠️ ค่านี้ถูกบังคับ **สามชั้น** (บทเรียนจาก 0192 ซึ่งเจอปัญหาเดียวกันตอนเพิ่ม TS):
 --     1. CHECK ของ `workflow_template_steps.role`   (0121:51 → 0192:37)
---     2. CHECK ของ `project_tasks.role`             (0009:15)
+--     2. CHECK ของ `project_tasks.role`             (0009:15 — ยังไม่เคยแก้เลย)
 --     3. validation ใน RPC `save_workflow_template_draft` (0121:256 → 0192:42)
 --     แก้ไม่ครบชั้นใดชั้นหนึ่ง = บันทึกแม่แบบไม่ผ่านโดยไม่มีข้อความบอกสาเหตุ
 --
---  ⚠️ **อัปเดตแถวก่อน แล้วค่อยเปลี่ยน CHECK** — สลับลำดับแล้วแถวเดิมที่ยังเป็น 'LG'
---     จะทำให้ ADD CONSTRAINT ล้มทั้งใบ
+--  🪤 **DROP CHECK ก่อน แล้วค่อย UPDATE แล้วค่อย ADD** — รอบแรกเขียนสลับ
+--     (UPDATE ก่อน) แล้วล้มทันทีที่บรรทัดแรก:
+--       ERROR: new row for relation "project_tasks" violates check constraint
+--              "project_tasks_role_check" · DETAIL: Failing row contains (... RA ...)
+--     เพราะ CHECK **เดิม** ของ 0009 คือ ('SA','RD','PC','PD','QC','LG','WH','ALL')
+--     ซึ่งไม่มี 'RA' ⇒ มันบล็อกตัว UPDATE เอง ไม่ใช่บล็อกตอน ADD
+--     ทั้งใบอยู่ในทรานแซกชันเดียว ⇒ ระหว่างที่ CHECK ถูกถอด ไม่มีใครเขียนแทรกได้
+--
+--  ⭐ ระหว่างทางแก้ latent bug ด้วย: CHECK ของ `project_tasks` ไม่เคยมี 'TS' เลย
+--     (0009 เขียนไว้ก่อน TS เกิด และ 0192 แก้เฉพาะฝั่งแม่แบบ) ⇒ ขั้นตอนแม่แบบที่เป็น
+--     TS แตกลงเป็นงานจริงในโครงการไม่ได้ · ชุดใหม่ยกให้ทั้งสองตารางตรงกัน
+--
+--  ⚠️ `workflow_template_versions` **ไม่มีคอลัมน์ `steps`** — ขั้นตอนอยู่ในตาราง
+--     `workflow_template_steps` อย่างเดียว (รอบแรกเขียน UPDATE ลง jsonb ที่ไม่มีอยู่จริง)
 --
 --  ของจริงบนฐาน ณ 2026-08-28: project_tasks 26 แถว · workflow_template_steps 3 แถว
 --
@@ -27,34 +39,25 @@
 
 BEGIN;
 
--- ── 1) ย้ายแถวเดิมก่อน ────────────────────────────────────────────────────
-UPDATE public.project_tasks SET role = 'RA' WHERE role = 'LG';
-UPDATE public.workflow_template_steps SET role = 'RA' WHERE role = 'LG';
--- แม่แบบเก็บขั้นตอนเป็น jsonb ด้วยในบางเวอร์ชัน — กวาดให้ตรงกัน
-UPDATE public.workflow_template_versions
-SET steps = (
-  SELECT jsonb_agg(
-    CASE WHEN s->>'role' = 'LG' THEN jsonb_set(s, '{role}', '"RA"'::jsonb) ELSE s END
-    ORDER BY ordinality
-  )
-  FROM jsonb_array_elements(steps) WITH ORDINALITY AS t(s, ordinality)
-)
-WHERE jsonb_typeof(steps) = 'array' AND steps::text LIKE '%"role": "LG"%';
-
--- ── 2) CHECK ทั้งสองตาราง ────────────────────────────────────────────────
+-- ── 1) ถอด CHECK เดิมก่อน — ไม่งั้นมันบล็อก UPDATE ข้างล่าง ────────────────
 ALTER TABLE public.workflow_template_steps
   DROP CONSTRAINT IF EXISTS workflow_template_steps_role_check;
+ALTER TABLE public.project_tasks
+  DROP CONSTRAINT IF EXISTS project_tasks_role_check;
+
+-- ── 2) ย้ายแถว ───────────────────────────────────────────────────────────
+UPDATE public.project_tasks SET role = 'RA' WHERE role = 'LG';
+UPDATE public.workflow_template_steps SET role = 'RA' WHERE role = 'LG';
+
+-- ── 3) ใส่ CHECK ชุดใหม่ (ทั้งสองตารางใช้ชุดเดียวกัน) ──────────────────────
 ALTER TABLE public.workflow_template_steps
   ADD CONSTRAINT workflow_template_steps_role_check
   CHECK (role IN ('SA', 'RD', 'PC', 'PD', 'QC', 'RA', 'WH', 'TS', 'ALL'));
-
-ALTER TABLE public.project_tasks
-  DROP CONSTRAINT IF EXISTS project_tasks_role_check;
 ALTER TABLE public.project_tasks
   ADD CONSTRAINT project_tasks_role_check
   CHECK ("role" IN ('SA', 'RD', 'PC', 'PD', 'QC', 'RA', 'WH', 'TS', 'ALL'));
 
--- ── 3) validation ใน RPC (คัดจาก 0192 ทั้งดวง เปลี่ยนเฉพาะบรรทัด role) ──
+-- ── 4) validation ใน RPC (คัดจาก 0192 ทั้งดวง เปลี่ยนเฉพาะบรรทัด role) ──
 CREATE OR REPLACE FUNCTION public.save_workflow_template_draft(
   p_version_id text, p_expected_updated_at timestamptz, p_name_th text, p_description text,
   p_change_note text, p_steps jsonb, p_actor_id text, p_actor_name text, p_actor_role text
