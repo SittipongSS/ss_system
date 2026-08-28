@@ -16,6 +16,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { TableScroll } from "@/components/ui/Table";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -245,33 +246,48 @@ export default function AddendumDetailPage() {
           />
         </DetailCard>
 
-        {signOpen && (
-          <DetailCard icon={FileSignature} title="บันทึกการลงนาม" meta="กรอกวันที่บนบันทึกที่ลูกค้าเซ็นกลับมา">
-            <div className="form-grid">
-              <label className="form-field">
-                <span className="form-field-label">วันที่ลงนาม <span className="required-mark">*</span></span>
-                <DateInput value={signDate} onChange={setSignDate} disabled={busy} />
-              </label>
-              <div className="form-field">
-                <span className="form-field-label">ไฟล์ฉบับลงนาม <span className="required-mark">*</span></span>
-                <span className="hint">
-                  {signFileId ? "ใช้ไฟล์ชนิด “บันทึกที่ลงนามแล้ว” ที่แนบไว้ด้านบน" : "ยังไม่มีไฟล์ — แนบที่การ์ดด้านบนก่อน"}
-                </span>
-              </div>
-            </div>
-            <div className="form-actions">
-              <div className="form-actions-buttons">
-                <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
-                <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId}>บันทึกการลงนาม</Button>
-              </div>
-            </div>
-          </DetailCard>
-        )}
-
         <div className={styles.backLink}>
           <Link href={`/sa/contracts/${addendum.contractId}`} className="linklike">← กลับไปที่สัญญา</Link>
         </div>
       </DetailPageLayout>
+
+      {/* ขั้นลงนามเป็นโมดัลเหมือนหน้าสัญญา (มติผู้ใช้ 2026-08-28) — การ์ดที่แทรกท้าย
+          คอลัมน์อยู่ต่ำกว่าปุ่มหลายจอ กดแล้วหน้าจอไม่ขยับ คนอ่านว่าปุ่มเสีย */}
+      <Modal
+        open={signOpen}
+        onClose={() => !busy && setSignOpen(false)}
+        title="บันทึกการลงนาม"
+        subtitle="กรอกวันที่บนบันทึกที่ลูกค้าเซ็นกลับมา"
+        footer={(
+          <div className="form-actions-buttons">
+            <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
+            <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
+              บันทึกการลงนาม
+            </Button>
+          </div>
+        )}
+      >
+        <div className="form-grid">
+          <label className="form-field span-2">
+            <span className="form-field-label">วันที่ลงนาม <span className="required-mark">*</span></span>
+            <DateInput value={signDate} onChange={setSignDate} disabled={busy} />
+            <span className="hint">วันที่ที่เขียนบนกระดาษ ไม่ใช่วันที่อัปโหลดไฟล์</span>
+          </label>
+          <div className="form-field span-2">
+            <span className="form-field-label">ไฟล์ฉบับลงนาม <span className="required-mark">*</span></span>
+            {signFileId ? (
+              <StatusNotice tone="success" title="พร้อมลงนาม">
+                ใช้ไฟล์ชนิด “บันทึกที่ลงนามแล้ว” ที่แนบไว้ในการ์ด “ไฟล์ของบันทึก”
+              </StatusNotice>
+            ) : (
+              <StatusNotice tone="warning" title="ยังไม่มีไฟล์ฉบับลงนาม">
+                ปิดหน้าต่างนี้ แล้วแนบไฟล์ที่การ์ด “ไฟล์ของบันทึก” โดยเลือกชนิด
+                “บันทึกที่ลงนามแล้ว” จากนั้นกลับมากดบันทึกการลงนามอีกครั้ง
+              </StatusNotice>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={deleteOpen}

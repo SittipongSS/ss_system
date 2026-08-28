@@ -18,6 +18,7 @@ import RecordControlCard from "@/components/ui/RecordControlCard";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard";
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
@@ -396,31 +397,6 @@ export default function ContractDetailPage() {
           />
         </DetailCard>
 
-        {signOpen && (
-          <DetailCard icon={FileSignature} title="บันทึกการลงนาม" meta="กรอกวันที่บนสัญญาที่ลูกค้าเซ็นกลับมา">
-            <div className="form-grid">
-              <label className="form-field">
-                <span className="form-field-label">วันที่ลงนาม <span className="required-mark">*</span></span>
-                <DateInput value={signDate} onChange={setSignDate} disabled={busy} />
-              </label>
-              <div className="form-field">
-                <span className="form-field-label">ไฟล์ฉบับลงนาม <span className="required-mark">*</span></span>
-                <span className="hint">
-                  {signFileId
-                    ? "ใช้ไฟล์ชนิด “สัญญาที่ลงนามแล้ว” ที่แนบไว้ในการ์ดด้านบน"
-                    : "ยังไม่มีไฟล์ — แนบที่การ์ด “ไฟล์ของสัญญา” ด้านบนก่อน"}
-                </span>
-              </div>
-            </div>
-            <div className="form-actions">
-              <div className="form-actions-buttons">
-                <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
-                <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId}>บันทึกการลงนาม</Button>
-              </div>
-            </div>
-          </DetailCard>
-        )}
-
         {contract.status === "signed" && (
           <DetailCard icon={FileSignature} title="การลงนาม">
             <dl className={styles.factList}>
@@ -436,6 +412,47 @@ export default function ContractDetailPage() {
           <Link href="/sa/contracts" className="linklike">← กลับไปทะเบียนสัญญา</Link>
         </div>
       </DetailPageLayout>
+
+      {/* ⭐ ขั้นลงนามเป็น **โมดัล** (มติผู้ใช้ 2026-08-28) — เดิมเป็นการ์ดที่แทรกอยู่ท้าย
+          คอลัมน์เนื้อหา ซึ่งอยู่ต่ำกว่าปุ่มที่กดหลายจอ ⇒ กดแล้วหน้าจอไม่ขยับ คนอ่านว่า
+          "ปุ่มเสีย" · โมดัลบังคับให้ของที่ต้องกรอกมาอยู่ตรงหน้าเสมอ */}
+      <Modal
+        open={signOpen}
+        onClose={() => !busy && setSignOpen(false)}
+        title="บันทึกการลงนาม"
+        subtitle="กรอกวันที่บนสัญญาที่ลูกค้าเซ็นกลับมา แล้วระบบจะปิดใบนี้เป็น “ลงนามแล้ว”"
+        footer={(
+          <div className="form-actions-buttons">
+            <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
+            <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
+              บันทึกการลงนาม
+            </Button>
+          </div>
+        )}
+      >
+        <div className="form-grid">
+          <label className="form-field span-2">
+            <span className="form-field-label">วันที่ลงนาม <span className="required-mark">*</span></span>
+            <DateInput value={signDate} onChange={setSignDate} disabled={busy} />
+            <span className="hint">วันที่ที่เขียนบนกระดาษ ไม่ใช่วันที่อัปโหลดไฟล์</span>
+          </label>
+          <div className="form-field span-2">
+            <span className="form-field-label">ไฟล์ฉบับลงนาม <span className="required-mark">*</span></span>
+            {/* ⚠️ ไฟล์มาจากการ์ดไฟล์แนบ ไม่ใช่ช่องอัปโหลดของตัวเอง — ทางอัปไฟล์ที่สอง
+                จะไม่ผ่านด่านเดียวกับของเดิม · ถ้ายังไม่มี ต้องบอกว่าไปแนบที่ไหน */}
+            {signFileId ? (
+              <StatusNotice tone="success" title="พร้อมลงนาม">
+                ใช้ไฟล์ชนิด “สัญญาที่ลงนามแล้ว” ที่แนบไว้ในการ์ด “ไฟล์ของสัญญา”
+              </StatusNotice>
+            ) : (
+              <StatusNotice tone="warning" title="ยังไม่มีไฟล์ฉบับลงนาม">
+                ปิดหน้าต่างนี้ แล้วแนบไฟล์ที่การ์ด “ไฟล์ของสัญญา” โดยเลือกชนิด
+                “สัญญาที่ลงนามแล้ว” จากนั้นกลับมากดบันทึกการลงนามอีกครั้ง
+              </StatusNotice>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={deleteOpen}
