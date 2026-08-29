@@ -622,7 +622,7 @@ border-top:3px solid var(--border);margin-right:var(--space-3)}
 
 /* ── ช่องกรอกจำนวนแพ็คเกจ (จอ 07) ────────────────────────────
    ตัวนับ ไม่ใช่ดรอปดาวน์ ไม่ใช่ช่องเปล่า — จำนวนเป็นเลขเต็มเล็ก ๆ (1–10)
-   ⚠️ **ไม่มีค่าตั้งต้น** — จำนวนแพ็คเป็นการตัดสินใจ ค่าที่กรอกไว้ให้แล้วคือ
+   ⚠️ **ไม่มีค่าตั้งต้น** — จำนวนแพ็คเกจเป็นการตัดสินใจ ค่าที่กรอกไว้ให้แล้วคือ
       คำตอบที่ไม่มีใครอ่าน · ค่าที่ระบบคำนวณได้อยู่ข้าง ๆ ในฐานะปุ่ม "ใช้ค่านี้" */
 .step{display:inline-flex;align-items:stretch;border:1px solid var(--border-strong);
 border-radius:var(--radius);overflow:hidden;background:var(--panel-solid);height:var(--ctl-h)}
@@ -696,7 +696,7 @@ padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:n
 white-space:nowrap;margin-top:2px}
 
 /* ── หนึ่งโซนวัดได้หลายส่วน (พื้นที่รูปตัว L · เพดานสูงไม่เท่ากัน) ─────────
-   ⚠️ ปัดเศษครั้งเดียวที่ระดับโซน — ปัดรายส่วนจะได้แพ็คเป็นเท่าตัว */
+   ⚠️ ปัดเศษครั้งเดียวที่ระดับโซน — ปัดรายส่วนจะได้แพ็คเกจเป็นเท่าตัว */
 .parts{display:flex;flex-direction:column;gap:var(--space-2)}
 .part{display:grid;grid-template-columns:22px 1fr auto;gap:var(--space-2-5);align-items:center;
 padding:var(--space-2) var(--space-2-5);border:1px solid var(--border);border-radius:var(--radius);
@@ -847,7 +847,7 @@ line-height:var(--lh-thai)}
             <div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>SA · ชื่องาน ลูกค้า สถานที่ พื้นที่ที่ต้องประเมิน แบบแปลน</span></div>
             <div class="rail-i" data-s="done"><b>2 · รอรับเรื่อง</b><span>TS กดรับ = ตัดรอบ · ใบเข้าคิวของฝ่าย</span></div>
             <div class="rail-i" data-s="now"><b>3 · ลงคิว</b><span>TS ระบุวัน–เวลา–ช่างที่ไป · แก้ได้ ทุกครั้งที่แก้ SA ได้กระดิ่ง</span></div>
-            <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span>ช่างวัด+ถ่ายรูป → หัวหน้าเลือกจุด+แพ็ค</span></div>
+            <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span>ช่างวัด+ถ่ายรูป → หัวหน้าเลือกจุด+แพ็คเกจ</span></div>
             <div class="rail-i" data-s="wait"><b>5 · ปิดเรื่อง</b><span>SA รับผล → ปิดฝั่งตัวเอง · ปิดครบสองฝั่งถึงจบ</span></div>
           </div>
         </div>
@@ -865,8 +865,8 @@ line-height:var(--lh-thai)}
               <tr><td><b>รับเรื่อง</b></td><td>TS</td><td>ผู้รับผิดชอบ</td><td><span class="mono">dept_requests.assigneeId</span> (มีคอลัมน์อยู่แล้ว)</td></tr>
               <tr><td><b>ลงคิว</b></td><td>TS</td><td>วันที่ · เวลา · ช่างที่ไป</td><td><span class="mono">service_visits</span> <span class="mono">kind='survey'</span></td></tr>
               <tr><td><b>หน้างาน</b></td><td>ช่าง</td><td>กว้าง × ยาว × สูง (เมตร) · รูป 3 หัวข้อ · <b>จุดที่ติดตั้งได้</b> · เพิ่ม/ตัดโซน</td><td><span class="mono">service_survey_zones</span> 🆕</td></tr>
-              <tr><td><b>สรุป</b></td><td><b>หัวหน้า TS</b></td><td>เลือก<b>จุดติดตั้งจริง</b> + <b>จำนวนแพ็คเกจ</b> (สูตร 2,400 ลบ.ม. = 1 แพ็ค · ทับได้)</td><td><span class="mono">spots[].selected</span> · <span class="mono">packageQty</span></td></tr>
-              <tr><td><b>เสนอราคา</b></td><td>SA</td><td>ออก QT บนดีลใบเดิม — แพ็ครวมเดินตรงไปเป็นบรรทัดขาย</td><td>QT ผูกดีลอยู่แล้ว จึงอ้างกลับมาถึงใบประเมินได้</td></tr>
+              <tr><td><b>สรุป</b></td><td><b>หัวหน้า TS</b></td><td>เลือก<b>จุดติดตั้งจริง</b> + <b>จำนวนแพ็คเกจ</b> (สูตร 2,400 ลบ.ม. = 1 แพ็คเกจ · ทับได้)</td><td><span class="mono">spots[].selected</span> · <span class="mono">packageQty</span></td></tr>
+              <tr><td><b>เสนอราคา</b></td><td>SA</td><td>ออก QT บนดีลใบเดิม — แพ็คเกจรวมเดินตรงไปเป็นบรรทัดขาย</td><td>QT ผูกดีลอยู่แล้ว จึงอ้างกลับมาถึงใบประเมินได้</td></tr>
               <tr><td><b>ขายได้</b></td><td>SA → TS</td><td>ใบสั่งขายอนุมัติ</td><td>ตัวช่วยงานเข้าใหม่เติมช่องจัดสรรจากตัวเลขที่ประเมินไว้</td></tr>
             </tbody>
           </table></div>
@@ -1018,7 +1018,7 @@ line-height:var(--lh-thai)}
                   <div class="hist-r" data-now="1"><span class="rn">ครั้งที่ 2</span>
                     <span>รอบนี้ · <span class="mono">AS-26090002</span></span><span class="meta">รอวัด</span></div>
                   <div class="hist-r"><span class="rn">ครั้งที่ 1</span>
-                    <span>432.0 ตร.ม. · 2 แพ็ค · 3 จุดติดตั้ง</span>
+                    <span>432.0 ตร.ม. · 2 แพ็คเกจ · 3 จุดติดตั้ง</span>
                     <span class="meta">12 มี.ค. 69 · <span class="mono">AS-26030004</span></span></div>
                 </div>
               </div>
@@ -1365,12 +1365,12 @@ line-height:var(--lh-thai)}
       <li><span class="mk new">+</span><span><b>เมตรอย่างเดียว</b> — ไม่มีดรอปดาวน์เลือกหน่วย · หน่วยที่เลือกได้คือหน่วยที่กรอกผิดได้ และชีตเก่ามีทั้ง “500 ML” กับ “2 KG” ปนกันมาแล้ว</span></li>
       <li><span class="mk new">+</span><span>⭐ <b>หนึ่งโซนวัดได้หลายส่วน</b> (มติ 2026-08-29) — พื้นที่จริงไม่ใช่กล่องสี่เหลี่ยม · รูปตัว L แบ่งสองก้อนแล้วบวกกัน ·
       และ<b>แต่ละส่วนมีความสูงของตัวเอง</b> ⇒ ล็อบบี้ที่โถงกลางสูง 6.5 ม. ทางเดินข้างสูง 2.6 ม. คิดได้ถูกต้อง (ต่างจากคิดสูงเดียวทั้งโซนถึง 11%)</span></li>
-      <li><span class="mk new">+</span><span>ปริมาตรรวมคำนวณให้ทันทีพร้อมบอกว่าสูตรได้กี่แพ็ค ·
-      🔴 <b>ปัดเศษครั้งเดียวที่ระดับโซน ไม่ใช่รายส่วน</b> — สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็ค ไม่ใช่ 2</span></li>
+      <li><span class="mk new">+</span><span>ปริมาตรรวมคำนวณให้ทันทีพร้อมบอกว่าสูตรได้กี่แพ็คเกจ ·
+      🔴 <b>ปัดเศษครั้งเดียวที่ระดับโซน ไม่ใช่รายส่วน</b> — สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็คเกจ ไม่ใช่ 2</span></li>
       <li><span class="mk new">+</span><span><b>รูปแยกสามหัวข้อต่อโซน</b> (มติ 2026-08-29): ภาพกว้าง · ภาพผัง · <b>จุดที่ติดตั้งได้</b> —
       หัวข้อสุดท้าย<b>เพิ่มรายการจุดเองได้</b> จุดละชื่อ จุดละรูป</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>ช่างแจ้งว่า “ติดตั้งได้ตรงไหนบ้าง” ไม่ใช่ “จะติดตั้งตรงไหน”</b> —
-      คนเลือกจุดจริงคือ<b>หัวหน้า TS</b> ที่จอ 07 โครงเดียวกับจำนวนแพ็คเป๊ะ: ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ</span></li>
+      คนเลือกจุดจริงคือ<b>หัวหน้า TS</b> ที่จอ 07 โครงเดียวกับจำนวนแพ็คเกจเป๊ะ: ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ</span></li>
       <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดประเมินได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>จอนี้บล็อกสามอย่าง</b> (มติ 2026-08-29): <b>ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้ ≥ 1 จุด</b> —
       ทั้งสามอย่างต้องยืนอยู่หน้างานถึงทำได้ ⇒ ต้องดักตอนที่เขายังอยู่ในที่นั้น</span></li>
@@ -1418,7 +1418,7 @@ line-height:var(--lh-thai)}
               <div class="partsum"><span class="lab">รวม 2 ส่วน</span>
                 <b>347.2</b> <span class="lab">ตร.ม.</span>
                 <b>972.2</b> <span class="lab">ลบ.ม.</span>
-                <span class="pack">→ สูตรได้ 1 แพ็ค</span></div>
+                <span class="pack">→ สูตรได้ 1 แพ็คเกจ</span></div>
             </div>
             <p class="hint" style="margin-top:var(--space-2)">⚠️ <b>แบ่งให้ไม่ทับกัน</b> — มุมที่สองส่วนชนกันนับครั้งเดียว · ระบบตรวจให้ไม่ได้</p>
 
@@ -1498,7 +1498,7 @@ line-height:var(--lh-thai)}
               <div class="partsum"><span class="lab">รวม 2 ส่วน</span>
                 <b>432.0</b> <span class="lab">ตร.ม.</span>
                 <b>2,527.2</b> <span class="lab">ลบ.ม.</span>
-                <span class="pack">→ สูตรได้ 2 แพ็ค</span></div>
+                <span class="pack">→ สูตรได้ 2 แพ็คเกจ</span></div>
             </div>
             <p class="hint" style="margin-top:var(--space-2)">⭐ <b>นี่คือเหตุผลที่ความสูงอยู่รายส่วน ไม่ใช่รายโซน</b> —
             ถ้าบังคับให้ใส่ 6.50 ทั้งโซนจะได้ 2,808 ลบ.ม. เกินจริงไป 11%</p>
@@ -1547,7 +1547,7 @@ line-height:var(--lh-thai)}
               <div class="partsum"><span class="lab">รวม 1 ส่วน</span>
                 <b>25.2</b> <span class="lab">ตร.ม.</span>
                 <b>70.6</b> <span class="lab">ลบ.ม.</span>
-                <span class="pack">→ สูตรได้ 1 แพ็ค</span></div>
+                <span class="pack">→ สูตรได้ 1 แพ็คเกจ</span></div>
             </div>
             <div class="photogrp">
               <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 รูป</span></div>
@@ -1649,18 +1649,18 @@ line-height:var(--lh-thai)}
       <h2>สรุปแล้วส่งผล</h2>
       <div class="route">/service/surveys/[id] · ผู้ใช้ = <b>หัวหน้า TS</b> · จังหวะที่สองของงานเดียวกัน</div>
       <p>ช่างส่งข้อเท็จจริงมาจากหน้างาน — ขนาด รูป และจุดที่ติดตั้งได้ ·
-      หน้านี้คือที่ที่ <b>หัวหน้าตัดสินใจสองอย่าง</b>: จะติดตั้งจุดไหนบ้าง และแต่ละโซนใช้กี่แพ็ค</p>
+      หน้านี้คือที่ที่ <b>หัวหน้าตัดสินใจสองอย่าง</b>: จะติดตั้งจุดไหนบ้าง และแต่ละโซนใช้กี่แพ็คเกจ</p>
     </div>
     <ul class="fixes">
       <li><span class="mk new">+</span><span>🔴 <b>สองคอลัมน์ที่ต้องกรอก ไม่ใช่คอลัมน์เดียว</b> — <b>จุดติดตั้ง</b> (เลือกจากที่ช่างแจ้งมา) และ <b>แพ็คเกจ</b> ·
       โครงเดียวกันเป๊ะ: ช่างรายงาน หัวหน้าตัดสิน</span></li>
-      <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็ค</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
-      <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็ค</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คแกว่ง” · หนึ่งแพ็คกระจายหลายจุดได้ หลายแพ็คลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
+      <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็คเกจ</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
+      <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็คเกจ</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คเกจแกว่ง” · หนึ่งแพ็คเกจกระจายหลายจุดได้ หลายแพ็คเกจลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
       <li><span class="mk new">+</span><span>โซนที่วัดซ้ำโชว์ <b>“วัดครั้งที่ N” + ตัวเลขรอบก่อน + ส่วนต่าง</b> — หัวหน้าเห็นทันทีว่าพื้นที่โตขึ้นจริงไหม
       หรือแค่รอบก่อนวัดหยาบ · ของเดิมไม่ถูกทับ (มติ 8)</span></li>
-      <li><span class="mk new">+</span><span>ตัวเลขแพ็คที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
+      <li><span class="mk new">+</span><span>ตัวเลขแพ็คเกจที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>ด่านหกข้อ บล็อกหมด</b> (มติ 2026-08-29) — แต่<b>ดักคนละที่ตามว่าใครแก้ได้</b>:
-      ขนาด/ภาพกว้าง/จุดที่ติดตั้งได้ ดักที่จอหน้างาน · ผัง/จุดที่เลือก/แพ็ค ดักที่จอนี้</span></li>
+      ขนาด/ภาพกว้าง/จุดที่ติดตั้งได้ ดักที่จอหน้างาน · ผัง/จุดที่เลือก/แพ็คเกจ ดักที่จอนี้</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>ผังห้ามใช้ไฟล์ที่ SA แนบ</b> — ผังที่ SA แนบคือผังเปล่าของอาคาร
       แต่ที่ใบนี้ต้องการคือผังที่ TS มาร์กจุดติดตั้งลงไปแล้ว · ปุ่มลัดนั้นจะทำให้ด่านผ่านโดยไม่มีงานเกิดขึ้นจริง</span></li>
       <li><span class="mk">✓</span><span>จอนี้ต้องมี<b>ด่านสิทธิ์ของตัวเอง</b> ไม่ใช่ <span class="mono">canEditService</span> ที่ช่างทุกคนผ่าน</span></li>
@@ -1681,20 +1681,20 @@ line-height:var(--lh-thai)}
         <span class="sep"></span>
         <span><span class="lab">ปริมาตรรวม</span><span class="big">11,123</span><span class="lab">ลบ.ม. · 7 ส่วนวัด</span></span>
         <span class="sep"></span>
-        <span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">8</span><span class="lab">แพ็ค · คิดรายโซน</span></span>
+        <span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">8</span><span class="lab">แพ็คเกจ · คิดรายโซน</span></span>
         <span class="sep"></span>
         <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จาก 11 จุดที่ช่างแจ้ง</span></span>
         <span class="sep"></span>
-        <span><span class="lab">แพ็คเกจ</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
+        <span><span class="lab">แพ็คเกจ</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็คเกจ/เดือน</span></span>
       </div>
 
       <div class="notice" data-tone="info" style="margin-top:var(--space-4)">
         <span class="ic"><svg class="i"><use href="#pkg"/></svg></span>
-        <div><b>สูตร: ปริมาตร ÷ 2,400 ลบ.ม. ปัดขึ้น · อย่างน้อย 1 แพ็คต่อโซน</b>
+        <div><b>สูตร: ปริมาตร ÷ 2,400 ลบ.ม. ปัดขึ้น · อย่างน้อย 1 แพ็คเกจต่อโซน</b>
         <span>⭐ <b>ขอบของการปัดเศษ = ขอบที่กลิ่นข้ามไม่ได้ = ผนังของโซน</b>
-        · <b>รวมข้ามโซนไม่ได้</b> — รวมทั้งใบก่อนหารได้ 11,123 ÷ 2,400 = 5 แพ็ค แต่กลิ่นไม่ทะลุผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายโซนได้ 8
-        · <b>แยกในโซนก็ไม่ได้</b> — โซนที่วัดหลายส่วนต้อง<b>บวกปริมาตรก่อนแล้วค่อยปัดครั้งเดียว</b> สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็ค ไม่ใช่ 2
-        ⚠️ สูตรมีขั้นบันได — 2,401 ลบ.ม. กระโดดเป็น 2 แพ็คทันที นี่คือเหตุผลที่ต้องมีช่องให้ทับ</span></div>
+        · <b>รวมข้ามโซนไม่ได้</b> — รวมทั้งใบก่อนหารได้ 11,123 ÷ 2,400 = 5 แพ็คเกจ แต่กลิ่นไม่ทะลุผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายโซนได้ 8
+        · <b>แยกในโซนก็ไม่ได้</b> — โซนที่วัดหลายส่วนต้อง<b>บวกปริมาตรก่อนแล้วค่อยปัดครั้งเดียว</b> สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็คเกจ ไม่ใช่ 2
+        ⚠️ สูตรมีขั้นบันได — 2,401 ลบ.ม. กระโดดเป็น 2 แพ็คเกจทันที นี่คือเหตุผลที่ต้องมีช่องให้ทับ</span></div>
       </div>
 
       <div class="ui-section" style="margin-top:var(--space-4)">
@@ -1747,11 +1747,11 @@ line-height:var(--lh-thai)}
                 </div></td>
                 <td class="mono">1 / <b style="color:var(--red)">0</b> / 1<span class="cell-sub" style="color:var(--red)">ไม่มีผัง</span></td></tr>
 
-              <!-- ④ แพ็คสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
+              <!-- ④ แพ็คเกจสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span>
                 <span class="cell-sub mono">ZN-26030021</span>
                 <span class="ui-badge success">วัดครั้งที่ 2</span>
-                <span class="cell-sub">ครั้งที่ 1 · 12 มี.ค. 69 · 432.0 ตร.ม. · 2 แพ็ค</span></td>
+                <span class="cell-sub">ครั้งที่ 1 · 12 มี.ค. 69 · 432.0 ตร.ม. · 2 แพ็คเกจ</span></td>
                 <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · <b>2 ส่วน สูงต่างกัน</b></span>
                 <span class="delta same">พื้นที่เท่าเดิม · ปริมาตร −281 ลบ.ม. (วัดละเอียดขึ้น)</span></td><td class="num mono">2,527.2</td>
                 <td class="num mono" style="color:var(--text-3)">2</td>
@@ -1764,11 +1764,11 @@ line-height:var(--lh-thai)}
                 <td><div class="packcell">
                   <span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span>
                   <span class="diffhint">สูงกว่าสูตร 1</span>
-                  <span class="delta up">รอบก่อน 2 แพ็ค → +1</span>
+                  <span class="delta up">รอบก่อน 2 แพ็คเกจ → +1</span>
                 </div></td>
                 <td class="mono">3 / <b style="color:var(--green)">1</b> / 4</td></tr>
 
-              <!-- ⑤ แพ็คต่ำกว่าสูตร → บังคับเหตุผล -->
+              <!-- ⑤ แพ็คเกจต่ำกว่าสูตร → บังคับเหตุผล -->
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span><span class="cell-sub">อาคาร A · ชั้น G</span></td>
                 <td class="mono">30.00 × 40.00 × 6.00</td><td class="num mono">7,200.0</td>
                 <td class="num mono" style="color:var(--text-3)">3</td>
@@ -1883,8 +1883,8 @@ line-height:var(--lh-thai)}
             <span>ตัด <b>1</b> (ห้องน้ำชาย) · เพิ่ม <b>1</b> (โถงลิฟต์) ⇒ <b>ประเมินจริง 5 โซน</b> — ส่งผลแล้วฝ่ายขายได้กระดิ่งพร้อมบรรทัดนี้</span>
           </div>
           <div class="field"><label>ข้อสังเกตจากหน้างาน</label>
-            <div class="inp ta">โถงจอดรถรับส่งกึ่งกลางแจ้ง ลมโกรกสามด้าน — สูตรคิดได้ 3 แพ็คแต่กลิ่นไม่อยู่ เอาจุดตรงประตูจุดเดียวพอ
-ล็อบบี้ชั้น 1 เพดาน 6.5 ม. เปิดสองด้าน ขอเพิ่มเป็น 3 แพ็ค กระจาย 3 จุด · ห้องน้ำชายชั้น 3 ตัดออก อาคารมีระบบของรายอื่นอยู่แล้ว</div></div>
+            <div class="inp ta">โถงจอดรถรับส่งกึ่งกลางแจ้ง ลมโกรกสามด้าน — สูตรคิดได้ 3 แพ็คเกจแต่กลิ่นไม่อยู่ เอาจุดตรงประตูจุดเดียวพอ
+ล็อบบี้ชั้น 1 เพดาน 6.5 ม. เปิดสองด้าน ขอเพิ่มเป็น 3 แพ็คเกจ กระจาย 3 จุด · ห้องน้ำชายชั้น 3 ตัดออก อาคารมีระบบของรายอื่นอยู่แล้ว</div></div>
         </div>
       </div>
 
@@ -1910,7 +1910,7 @@ line-height:var(--lh-thai)}
     <ul class="fixes">
       <li><span class="mk new">+</span><span>รูปแยกตามหัวข้อ <b>กว้าง / ผัง / จุดติดตั้ง</b> — SA เปิดดูได้ว่าเครื่องจะไปตรงไหนบ้างก่อนคุยราคากับลูกค้า</span></li>
       <li><span class="mk new">+</span><span>ตารางเทียบ <b>“ที่ขอไป” กับ “ที่ได้กลับมา”</b> ในตารางเดียว — จุดที่ TS ตัดออกและจุดที่เพิ่มเข้ามาต้องเห็นทันที ไม่ใช่ให้ไปนับเอง</span></li>
-      <li><span class="mk new">+</span><span>ปุ่ม <b>“สร้างใบเสนอราคาบนดีลเดิม”</b> — QT ผูกดีลอยู่แล้ว ⇒ ใบประเมินกับใบเสนอราคาอ้างถึงกันได้ผ่านดีลใบเดียว และแพ็ครวมเดินตรงไปเป็นบรรทัดขาย ไม่ต้องพิมพ์ตัวเลขซ้ำ</span></li>
+      <li><span class="mk new">+</span><span>ปุ่ม <b>“สร้างใบเสนอราคาบนดีลเดิม”</b> — QT ผูกดีลอยู่แล้ว ⇒ ใบประเมินกับใบเสนอราคาอ้างถึงกันได้ผ่านดีลใบเดียว และแพ็คเกจรวมเดินตรงไปเป็นบรรทัดขาย ไม่ต้องพิมพ์ตัวเลขซ้ำ</span></li>
       <li><span class="mk">✓</span><span>ปิดสองฝั่งตามกติกาเดิม — TS ตอบแล้วยังไม่พอ ต้องให้ SA กดรับผลด้วยถึงจะจบ</span></li>
     </ul>
   </div>
@@ -1943,7 +1943,7 @@ line-height:var(--lh-thai)}
       <div class="packsum">
         <span><span class="lab">พื้นที่รวม</span><span class="big">2,130</span><span class="lab">ตร.ม.</span></span>
         <span class="sep"></span>
-        <span><span class="lab">แพ็คเกจที่ต้องใช้</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
+        <span><span class="lab">แพ็คเกจที่ต้องใช้</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็คเกจ/เดือน</span></span>
         <span class="sep"></span>
         <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จุด · จาก 11 จุดที่ติดตั้งได้</span></span>
         <span style="margin-left:auto"><button class="btn btn-accent" data-jump="quote"><svg class="i"><use href="#arrow"/></svg> สร้างใบเสนอราคาบนดีล DL-2608017</button></span>
@@ -1957,7 +1957,7 @@ line-height:var(--lh-thai)}
       </div>
 
       <div class="ui-section" style="margin-top:var(--space-4)">
-        <div class="ui-section-header"><div><h2>ผลประเมินรายโซน</h2><p>เทียบกับที่ขอไปเมื่อ 1 ก.ย. · สูตร 2,400 ลบ.ม. = 1 แพ็ค</p></div></div>
+        <div class="ui-section-header"><div><h2>ผลประเมินรายโซน</h2><p>เทียบกับที่ขอไปเมื่อ 1 ก.ย. · สูตร 2,400 ลบ.ม. = 1 แพ็คเกจ</p></div></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
             <thead><tr><th>โซน</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
@@ -2003,7 +2003,7 @@ line-height:var(--lh-thai)}
           <div class="ui-section-body">
             <div class="tl">
               <div class="tl-i"><span class="tl-d">8 ก.ย. 16:40</span><span class="tl-t"><b>สมชาย ป. ส่งผลประเมิน</b>
-                <span>5 พื้นที่ · 7 แพ็ค · ตัดห้องน้ำชายชั้น 3 ออก · เพิ่มโถงลิฟต์</span></span></div>
+                <span>5 พื้นที่ · 7 แพ็คเกจ · ตัดห้องน้ำชายชั้น 3 ออก · เพิ่มโถงลิฟต์</span></span></div>
               <div class="tl-i"><span class="tl-d">8 ก.ย. 09:12</span><span class="tl-t"><b>ถึงหน้างาน</b><span>นัด SV-26090041</span></span></div>
               <div class="tl-i"><span class="tl-d">2 ก.ย. 14:05</span><span class="tl-t"><b>วรรณา (TS) ลงคิว</b>
                 <span>8 ก.ย. 09:00–12:00 · สมชาย ปัญญาดี + อนุชา กิตติวงศ์</span></span></div>
@@ -2053,13 +2053,13 @@ line-height:var(--lh-thai)}
     <div class="ui-workspace">
       <div class="premium-header">
         <div><h1><span class="premium-header-icon"><svg class="i"><use href="#inbox"/></svg></span>งานเข้าใหม่</h1>
-        <p>SO-26100014 · บริษัท ทรู คอร์ปอเรชั่น จำกัด · ดีล <span class="mono">DL-2608017</span> · 6 แพ็ค</p></div>
+        <p>SO-26100014 · บริษัท ทรู คอร์ปอเรชั่น จำกัด · ดีล <span class="mono">DL-2608017</span> · 6 แพ็คเกจ</p></div>
       </div>
 
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#check"/></svg></span>
         <div><b>ใบนี้เคยผ่านการประเมินพื้นที่มาแล้ว</b>
-        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 โซน · ประเมินไว้ 7 แพ็ค · 7 จุดติดตั้ง เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว
+        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 โซน · ประเมินไว้ 7 แพ็คเกจ · 7 จุดติดตั้ง เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว
         ⚠️ ดีลนี้มีใบประเมินใบเดียว — ถ้ามีหลายใบ ตัวช่วยต้องรวมทุกใบ ไม่ใช่หยิบใบล่าสุด</span></div>
         <span class="act"><button class="btn sm btn-accent">ใช้ผลประเมินนี้</button></span>
       </div>
@@ -2067,30 +2067,30 @@ line-height:var(--lh-thai)}
       <div class="ui-section">
         <div class="ui-section-header"><div><h2>จัดสรรลงโซน</h2>
         <p>ช่องจำนวนเติมจากใบประเมินให้แล้ว — แก้ได้ถ้าลูกค้าซื้อไม่เท่าที่ประเมิน</p></div>
-          <span class="ui-badge info">6 / 6 แพ็คถูกจัดสรร</span></div>
+          <span class="ui-badge info">6 / 6 แพ็คเกจถูกจัดสรร</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
             <thead><tr><th>โซน</th><th>ที่ประเมินไว้</th><th class="num">จัดสรร</th><th>สินค้าจากใบสั่งขาย</th><th></th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span><span class="cell-sub mono">ZN-26090021 · 972.2 ลบ.ม.</span></td>
-                <td class="mono">1 แพ็ค</td><td class="num"><b>1</b></td>
-                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="mono">1 แพ็คเกจ</td><td class="num"><b>1</b></td>
+                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็คเกจ · 1 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge success">ตรงกัน</span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span><span class="cell-sub mono">ZN-26090022 · 352.8 ลบ.ม.</span></td>
-                <td class="mono">1 แพ็ค</td><td class="num"><b>1</b></td>
-                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="mono">1 แพ็คเกจ</td><td class="num"><b>1</b></td>
+                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็คเกจ · 1 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge success">ตรงกัน</span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span><span class="cell-sub mono">ZN-26090023 · 70.6 ลบ.ม.</span></td>
-                <td class="mono">1 แพ็ค</td><td class="num"><b>1</b></td>
-                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="mono">1 แพ็คเกจ</td><td class="num"><b>1</b></td>
+                <td>FG-1042 Signature Scent<span class="cell-sub">แพ็คเกจ · 1 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge success">ตรงกัน</span></td></tr>
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub mono">ZN-26090024 · 2,527.2 ลบ.ม. · 2 ส่วน</span></td>
-                <td class="mono">3 แพ็ค</td><td class="num"><b style="color:var(--amber)">2</b></td>
-                <td>FG-1044 Grand Lobby<span class="cell-sub">แพ็ค · 2 ลิตร/เดือน</span></td>
+                <td class="mono">3 แพ็คเกจ</td><td class="num"><b style="color:var(--amber)">2</b></td>
+                <td>FG-1044 Grand Lobby<span class="cell-sub">แพ็คเกจ · 2 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge warning">ซื้อน้อยกว่าที่ประเมิน 1</span></td></tr>
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span><span class="cell-sub mono">ZN-26090025 · 7,200.0 ลบ.ม.</span></td>
-                <td class="mono">1 แพ็ค</td><td class="num"><b>1</b></td>
-                <td>FG-1044 Grand Lobby<span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="mono">1 แพ็คเกจ</td><td class="num"><b>1</b></td>
+                <td>FG-1044 Grand Lobby<span class="cell-sub">แพ็คเกจ · 1 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge success">ตรงกัน</span></td></tr>
             </tbody>
           </table></div>
@@ -2114,7 +2114,7 @@ line-height:var(--lh-thai)}
       <h2>ของที่ต้องเพิ่มจริง ๆ</h2>
       <div class="route">สรุปสำหรับตัดสินใจก่อนลงมือ</div>
       <p>เกือบทั้งหมดของสายงานนี้ <b>มีอยู่แล้ว</b> — คำร้อง เธรด ไฟล์แนบ เลขที่เอกสาร กระดิ่ง
-      ตารางช่าง ไซต์ โซน การจัดสรรแพ็ค · สิ่งที่ต้องเพิ่มมีเท่าที่อยู่ในตารางนี้</p>
+      ตารางช่าง ไซต์ โซน การจัดสรรแพ็คเกจ · สิ่งที่ต้องเพิ่มมีเท่าที่อยู่ในตารางนี้</p>
     </div>
     <ul class="fixes">
       <li><span class="mk">✓</span><span>ไม่มีตารางใหม่แม้แต่ตารางเดียว — เพิ่มคอลัมน์กับขยาย CHECK เท่านั้น</span></li>
@@ -2163,7 +2163,7 @@ line-height:var(--lh-thai)}
             <tbody>
               <tr><td class="mono">lib/requests/kinds/ts/siteSurvey.js</td><td>หัวข้อใหม่ — บ้านของฝ่าย TS โฟลเดอร์ใหม่ (กติกา “1 ฝ่าย = 1 โฟลเดอร์”)</td></tr>
               <tr><td class="mono">lib/requests/kinds/registry.js</td><td>เพิ่ม <span class="mono">'TS'</span> ใน VALID_DEPTS + ต่อ TS_KINDS</td></tr>
-              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คตามสูตร 2,400 · <b>ด่านส่งผล</b> (ขนาด + แพ็ค + <b>ผัง</b> บล็อก · กว้าง/จุด เตือน) — ตัวเดียวที่ทั้งปุ่มและ server ถาม</td></tr>
+              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คเกจตามสูตร 2,400 · <b>ด่านส่งผล</b> (ขนาด + แพ็คเกจ + <b>ผัง</b> บล็อก · กว้าง/จุด เตือน) — ตัวเดียวที่ทั้งปุ่มและ server ถาม</td></tr>
               <tr><td class="mono">lib/master/attachments.js</td><td>เพิ่ม <span class="mono">service_zone: 'service_zones'</span> ใน PARENT_TABLE <b>+ สาขาสิทธิ์ของตัวเองใน route ไฟล์</b> — ขาดบรรทัดนี้ = แนบได้แต่เปิดดูไม่ได้สักไฟล์ (โรคที่หัวคำร้องเคยโดนมาแล้ว)</td></tr>
               <tr><td class="mono">lib/master/attachmentTypes.js</td><td>ชนิดเอกสารใหม่ 3 ตัว — ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง</td></tr>
               <tr><td class="mono">components/service/SurveyPlacesField.js</td><td>บล็อกสถานที่/จุด บนฟอร์ม SA (สร้าง = แก้ ตัวเดียว)</td></tr>
@@ -2220,7 +2220,7 @@ line-height:var(--lh-thai)}
         <div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#layers"/></svg></span>
           <span class="ui-metric-txt"><strong>8</strong><span>โซนที่ประเมินแล้ว</span></span></div>
         <div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span>
-          <span class="ui-metric-txt"><strong>5</strong><span>ขายแล้ว · 9 แพ็ค/เดือน</span></span></div>
+          <span class="ui-metric-txt"><strong>5</strong><span>ขายแล้ว · 9 แพ็คเกจ/เดือน</span></span></div>
         <div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></span>
           <span class="ui-metric-txt"><strong>3</strong><span>ประเมินแล้วยังไม่ขาย</span></span></div>
       </div>
@@ -2238,7 +2238,7 @@ line-height:var(--lh-thai)}
           <span class="ui-badge info">5 โซน</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็ค</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
+            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td>
                 <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 1 ส่วน · รวม 2 ส่วน</span></td><td class="num mono">432.0</td>
@@ -2275,7 +2275,7 @@ line-height:var(--lh-thai)}
           <span class="ui-badge info">3 โซน</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็ค</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
+            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">โถงต้อนรับชั้น G</span><span class="cell-sub mono">ZN-26030031</span></td>
                 <td class="mono">12.00 × 15.00 × 4.50</td><td class="num mono">180.0</td>
@@ -2539,7 +2539,7 @@ line-height:var(--lh-thai)}
             <div><b>ขนาด ก×ย×ส</b><span>ช่างวัดหน้างาน — หลายส่วนได้ถ้าเป็นรูปตัว L (จอ 06)</span></div>
             <div><b>จุดติดตั้ง</b><span>ช่างแจ้งว่าติดตั้งได้ตรงไหนบ้าง · หัวหน้าเลือกว่าจะติดจริงกี่จุด</span></div>
             <div><b>รูป</b><span>ภาพกว้าง + จุดติดตั้ง จากหน้างาน · ผังจากหัวหน้า</span></div>
-            <div><b>จำนวนแพ็ค</b><span>หัวหน้า TS กรอกหลังได้ขนาด (จอ 07)</span></div>
+            <div><b>จำนวนแพ็คเกจ</b><span>หัวหน้า TS กรอกหลังได้ขนาด (จอ 07)</span></div>
             <div><b>รหัส ZN</b><span>ออกตอนกดส่งใบ ไม่ใช่ตอนกดบันทึกในโมดัลนี้</span></div>
           </div>
 
@@ -2605,7 +2605,7 @@ line-height:var(--lh-thai)}
       <li><span class="mk new">+</span><span>⭐ <b>1 บรรทัด = 1 พื้นที่ · FG ตามกลิ่น</b> (มติ 2026-08-29) —
       ไซต์เดียวหลายพื้นที่ใช้กลิ่นเดียว <b>FG ซ้ำได้หลายบรรทัด</b> เพราะ FG คือกลิ่น ไม่ใช่พื้นที่ ·
       ลูกค้าเห็นบนใบว่าจ่ายค่าอะไรที่พื้นที่ไหน และตั้งราคาต่างกันรายพื้นที่ได้</span></li>
-      <li><span class="mk new">+</span><span>⇒ ใบประเมิน<b>สร้างบรรทัดให้ได้จริง</b> — ชื่อพื้นที่ · จำนวนแพ็ค · หน่วย · ร่องรอยกลับไปหาโซน
+      <li><span class="mk new">+</span><span>⇒ ใบประเมิน<b>สร้างบรรทัดให้ได้จริง</b> — ชื่อพื้นที่ · จำนวนแพ็คเกจ · หน่วย · ร่องรอยกลับไปหาโซน
       ครบทุกช่องยกเว้น <b>กลิ่น</b> กับ <b>ราคา</b></span></li>
       <li><span class="mk new">+</span><span>✅ <b>ไม่ต้องมีกลไกราคาพิเศษ</b> (มติ 2026-08-29) — ช่องราคา<b>ถูกปิดตายเมื่อมีสินค้า</b>
       (<span class="mono">QuotationLineItems.js:281</span>) ⇒ เลือกกลิ่นแล้วราคามาเอง · เหลือด่านเดียวคือ <b>บรรทัดชนิดสินค้าต้องเลือกสินค้าก่อนยื่น</b></span></li>
@@ -2628,7 +2628,7 @@ line-height:var(--lh-thai)}
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#bldg"/></svg></span>
         <div><b>อ้างอิงผลประเมินพื้นที่ <span class="mono">AS-26090002</span></b>
-        <span>ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <b>7 แพ็ค/เดือน</b> · วัดเมื่อ 8 ก.ย. 69 —
+        <span>ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <b>7 แพ็คเกจ/เดือน</b> · วัดเมื่อ 8 ก.ย. 69 —
         ดีล ลูกค้า ที่อยู่ ผู้ติดต่อ เติมให้จากดีลอยู่แล้ว</span></div>
         <span class="act"><button class="btn sm">ดูใบประเมิน</button></span>
       </div>
@@ -2642,24 +2642,24 @@ line-height:var(--lh-thai)}
             <thead><tr><th>พื้นที่ (จากใบประเมิน)</th><th>สินค้า / กลิ่น</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวม</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021 · 432.0 ตร.ม.</span></td>
-                <td>FG-1044 Grand Lobby</td><td class="num"><b>3</b> <span class="cell-sub">แพ็ค</span></td>
+                <td>FG-1044 Grand Lobby</td><td class="num"><b>3</b> <span class="cell-sub">แพ็คเกจ</span></td>
                 <td class="num mono">5,200</td><td class="num mono">15,600</td></tr>
               <tr><td><span class="t-strong">โซนออฟฟิศชั้น 5</span><span class="cell-sub mono">ZN-26090021 · 347.2 ตร.ม.</span></td>
-                <td>FG-1042 Signature Scent</td><td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td>FG-1042 Signature Scent</td><td class="num"><b>1</b> <span class="cell-sub">แพ็คเกจ</span></td>
                 <td class="num mono">4,500</td><td class="num mono">4,500</td></tr>
               <tr><td><span class="t-strong">ห้องประชุมใหญ่</span><span class="cell-sub mono">ZN-26090022 · 126.0 ตร.ม.</span></td>
                 <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
-                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็คเกจ</span></td>
                 <td class="num" style="color:var(--text-3)"><b>—</b><span class="cell-sub">ช่องปิดจนกว่าจะเลือกสินค้า</span></td>
                 <td class="num mono" style="color:var(--text-3)">—</td></tr>
               <tr><td><span class="t-strong">โถงลิฟต์</span><span class="cell-sub mono">ZN-26090023 · 25.2 ตร.ม.</span></td>
                 <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
-                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็คเกจ</span></td>
                 <td class="num" style="color:var(--text-3)"><b>—</b><span class="cell-sub">ช่องปิดจนกว่าจะเลือกสินค้า</span></td>
                 <td class="num mono" style="color:var(--text-3)">—</td></tr>
               <tr><td><span class="t-strong">โถงจอดรถรับส่ง</span><span class="cell-sub mono">ZN-26090025 · 1,200.0 ตร.ม.</span></td>
                 <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
-                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็คเกจ</span></td>
                 <td class="num" style="color:var(--text-3)"><b>—</b><span class="cell-sub">ช่องปิดจนกว่าจะเลือกสินค้า</span></td>
                 <td class="num mono" style="color:var(--text-3)">—</td></tr>
             </tbody>
@@ -2696,8 +2696,8 @@ line-height:var(--lh-thai)}
         <div class="ui-section-header"><div><h2>ถ้าลูกค้าซื้อไม่ครบ</h2></div></div>
         <div class="ui-section-body">
           <div class="ctxstrip">
-            <span class="done"><svg class="i"><use href="#check"/></svg>ประเมินไว้ 7 แพ็ค</span>
-            <span>ลบบรรทัดโถงจอดรถออก ⇒ บนใบเหลือ <b>6 แพ็ค</b> — <b>ทัก ไม่บล็อก</b> เพราะซื้อไม่ครบเป็นเรื่องปกติ (มติข้อ 4) ·
+            <span class="done"><svg class="i"><use href="#check"/></svg>ประเมินไว้ 7 แพ็คเกจ</span>
+            <span>ลบบรรทัดโถงจอดรถออก ⇒ บนใบเหลือ <b>6 แพ็คเกจ</b> — <b>ทัก ไม่บล็อก</b> เพราะซื้อไม่ครบเป็นเรื่องปกติ (มติข้อ 4) ·
             พื้นที่ที่ไม่ได้ขายยังอยู่ในทะเบียนพร้อมเสนอรอบหน้า ไม่ต้องกลับไปวัดใหม่</span>
           </div>
         </div>
