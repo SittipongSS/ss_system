@@ -684,6 +684,16 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
 .spot .sd{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
 .spot[data-empty="1"]{border-style:dashed}
 .spot[data-empty="1"] b{color:var(--text-3)}
+
+/* ชิปเลือกจุดติดตั้ง (จอ 07) — ชุดเล็กตายตัวต้องกางให้เห็น ไม่ใช่ดรอปดาวน์ */
+.spotpick{display:flex;flex-wrap:wrap;gap:var(--space-1-5);justify-content:flex-end}
+.spotchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);
+border-radius:var(--radius-full);background:var(--panel-2);color:var(--text-3);
+padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap}
+.spotchip[aria-pressed="true"]{border-color:var(--navy);background:var(--navy);color:#fff}
+.spotchip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.spotcount{font-size:var(--fs-2);color:var(--text-3);font-variant-numeric:tabular-nums;
+white-space:nowrap;margin-top:2px}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -740,6 +750,7 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
       <li><span class="mk new">+</span><span><b>ไม่สร้างระบบใหม่</b> — เป็น “หัวข้อคำร้อง” ตัวที่ 6 ในระบบคำร้องที่มีอยู่แล้ว
       (ร่าง → ส่ง → รับเรื่อง → กำหนดวัน → ตอบ → ปิดสองฝั่ง) ครบทุกขั้นที่ต้องใช้ พร้อมเธรด ไฟล์แนบ เลขที่เอกสาร และกระดิ่ง</span></li>
       <li><span class="mk new">+</span><span>ฝ่าย <b>TS</b> เป็นผู้ตอบหัวข้อนี้ — วันนี้ตาราง <span class="mono">dept_requests</span> ยอมแค่ RD/PC/FN ⇒ ต้องมี migration ขยาย CHECK</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>หนึ่งดีลมีใบประเมินได้หลายใบ</b> (มติ 8) — ใบเสนอราคาใบเดียวรวมผลประเมินสองครั้งได้ ⇒ ผลวัดเก็บ<b>รายใบ ไม่ใช่รายโซน</b> ประเมินซ้ำไม่ทับของเดิม</span></li>
       <li><span class="mk new">+</span><span><b>ผลประเมินไม่ได้จบที่กระดาษ</b> — จำนวนแพ็คเกจต่อโซนที่ TS ตอบกลับ คือตัวเลขเดียวกับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้ (mig 0312)</span></li>
       <li><span class="mk new">+</span><span><b>ใบผูกดีล</b> — QT ผูกดีลอยู่แล้ว ⇒ ใบประเมิน ใบเสนอราคา และใบสั่งขาย อ้างถึงกันได้ตลอดสายผ่านดีลใบเดียว · <span class="mono">dept_requests.dealId</span> มีคอลัมน์อยู่แล้ว ไม่ต้อง migration</span></li>
       <li><span class="mk">✓</span><span>นัดไปประเมินเป็น <b>นัดในตารางช่างตัวเดิม</b> ไม่ใช่ปฏิทินที่สอง — ช่างเห็นงานประเมินปนกับงานเติมน้ำหอมในหน้า “งานวันนี้” หน้าเดียว</span></li>
@@ -757,7 +768,7 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
             <div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>SA · ชื่องาน ลูกค้า สถานที่ จุดที่ต้องประเมิน แบบแปลน</span></div>
             <div class="rail-i" data-s="done"><b>2 · รอรับเรื่อง</b><span>TS กดรับ = ตัดรอบ · ใบเข้าคิวของฝ่าย</span></div>
             <div class="rail-i" data-s="now"><b>3 · ลงคิว</b><span>TS ระบุวัน–เวลา–ช่างที่ไป · แก้ได้ ทุกครั้งที่แก้ SA ได้กระดิ่ง</span></div>
-            <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span>ขนาด ก×ย×ส ทุกจุด + รูปหน้างาน + จำนวนแพ็คเกจ</span></div>
+            <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span>ช่างวัด+ถ่ายรูป → หัวหน้าเลือกจุด+แพ็ค</span></div>
             <div class="rail-i" data-s="wait"><b>5 · ปิดเรื่อง</b><span>SA รับผล → ปิดฝั่งตัวเอง · ปิดครบสองฝั่งถึงจบ</span></div>
           </div>
         </div>
@@ -774,8 +785,8 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
                 <td><span class="mono">dept_requests.dealId</span> (คอลัมน์มีอยู่แล้ว) + ไซต์/โซน <span class="ui-badge warning">ยังไม่ขาย</span></td></tr>
               <tr><td><b>รับเรื่อง</b></td><td>TS</td><td>ผู้รับผิดชอบ</td><td><span class="mono">dept_requests.assigneeId</span> (มีคอลัมน์อยู่แล้ว)</td></tr>
               <tr><td><b>ลงคิว</b></td><td>TS</td><td>วันที่ · เวลา · ช่างที่ไป</td><td><span class="mono">service_visits</span> <span class="mono">kind='survey'</span></td></tr>
-              <tr><td><b>หน้างาน</b></td><td>ช่าง</td><td>กว้าง × ยาว × สูง (เมตร) · รูป · เพิ่ม/ตัดจุดได้</td><td><span class="mono">service_zones</span> ช่องขนาด</td></tr>
-              <tr><td><b>สรุป</b></td><td>TS</td><td>จำนวนแพ็คเกจต่อจุด (สูตร 2,400 ลบ.ม. = 1 แพ็ค · ทับได้)</td><td><span class="mono">service_zones.surveyPackageQty</span></td></tr>
+              <tr><td><b>หน้างาน</b></td><td>ช่าง</td><td>กว้าง × ยาว × สูง (เมตร) · รูป 3 หัวข้อ · <b>จุดที่ติดตั้งได้</b> · เพิ่ม/ตัดโซน</td><td><span class="mono">service_survey_zones</span> 🆕</td></tr>
+              <tr><td><b>สรุป</b></td><td><b>หัวหน้า TS</b></td><td>เลือก<b>จุดติดตั้งจริง</b> + <b>จำนวนแพ็คเกจ</b> (สูตร 2,400 ลบ.ม. = 1 แพ็ค · ทับได้)</td><td><span class="mono">spots[].selected</span> · <span class="mono">packageQty</span></td></tr>
               <tr><td><b>เสนอราคา</b></td><td>SA</td><td>ออก QT บนดีลใบเดิม — แพ็ครวมเดินตรงไปเป็นบรรทัดขาย</td><td>QT ผูกดีลอยู่แล้ว จึงอ้างกลับมาถึงใบประเมินได้</td></tr>
               <tr><td><b>ขายได้</b></td><td>SA → TS</td><td>ใบสั่งขายอนุมัติ</td><td>ตัวช่วยงานเข้าใหม่เติมช่องจัดสรรจากตัวเลขที่ประเมินไว้</td></tr>
             </tbody>
@@ -808,7 +819,8 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
       <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีจุดที่ต้องประเมิน (= โซน)
       · โจทย์เขียนว่า “1 รายการ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 จุดต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่า 6 จุดนั้นอยู่ตึกเดียวกัน</span></li>
       <li><span class="mk new">+</span><span>ที่อยู่ของสถานที่ <b>ดึงจากทะเบียนลูกค้า</b> ด้วยไทล์ชุดเดียวกับฟอร์มไซต์ — ก๊อปมาตั้งต้น แก้ต่อได้ ไม่ผูกให้เปลี่ยนตามกัน · มีไทล์ “ที่อยู่อื่น” สำหรับล็อบบี้ห้าง/พื้นที่เช่า</span></li>
-      <li><span class="mk new">+</span><span>วันที่ + <b>เวลา</b> ที่อยากให้เข้าประเมิน — ระบบคำร้องวันนี้มีแต่วัน · เวลาสำคัญกับงานนี้เพราะห้างเปิด 10:00 และโรงงานพักเที่ยง</span></li>
+      <li><span class="mk new">+</span><span><b>สามวันเรียกคนละชื่อ</b> — “ส่งเรื่อง” ระบบบันทึกเอง · “วันที่ต้องการให้เข้าพื้นที่” SA กรอก · “วันนัดเข้าพื้นที่” TS ใส่ตอนลงคิว ·
+      ส่วน <b>“ช่วงเวลาที่เข้าสถานที่ได้”</b> ย้ายไปอยู่ในบล็อกสถานที่ เพราะเป็นข้อจำกัดถาวรของอาคาร ไม่ใช่ของใบนี้</span></li>
       <li><span class="mk">✓</span><span>ไฟล์แนบใช้ทางเดิมของคำร้อง (แบบแปลน · รูปเก่า · ข้อกำหนดลูกค้า) — เพดาน 25 MB ต่อไฟล์</span></li>
     </ul>
   </div>
@@ -830,7 +842,8 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
           <div class="field"><label>ดีล <b class="req">*</b></label>
             <div class="inp sel">DL-2609003 · ดิ เอ็มควอเทียร์ ระบบกระจายกลิ่นโซนค้าปลีก
               <span class="mono" style="color:var(--text-3)">สายบริการ · ปาริชาต</span></div>
-            <small><b>ต้นทางของทั้งใบ</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ เลือกดีลที่นี่ ผลประเมินจึงเดินต่อเข้า QT ได้โดยไม่ต้องพิมพ์อะไรซ้ำ</small></div>
+            <small><b>ต้นทางของทั้งใบ · บังคับเสมอ</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ ผลประเมินเดินต่อเข้า QT ได้โดยไม่ต้องพิมพ์อะไรซ้ำ ·
+            <b>ใช้ดีลเดิมซ้ำได้</b> ถ้าเป็นการประเมินรอบที่สองของงานเดียวกัน (ใบเสนอราคาใบเดียวรวมผลได้หลายใบ)</small></div>
 
           <div class="lockrow">
             <span class="src"><svg class="i"><use href="#check"/></svg>ลูกค้าเติมจากดีล</span>
@@ -843,12 +856,17 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
           <div class="field"><label>ชื่องาน <b class="req">*</b></label>
             <div class="inp">ประเมินพื้นที่ ดิ เอ็มควอเทียร์ — โซนค้าปลีกชั้น G–2</div></div>
           <div class="two" style="margin-top:var(--space-3-5)">
-            <div class="field"><label>วันที่อยากให้เข้าประเมิน <b class="req">*</b></label>
+            <div class="field"><label>วันที่ต้องการให้เข้าพื้นที่ <b class="req">*</b></label>
               <div class="inp">08/09/2569</div>
-              <small>TS จะยืนยันวันจริงกลับมาในขั้น “ลงคิว” — วันนี้คือวันที่ขอ ไม่ใช่วันที่นัดแล้ว</small></div>
-            <div class="field"><label>ช่วงเวลาที่เข้าได้</label>
-              <div class="dim"><span class="box"><i>ตั้งแต่</i> <b>10:00</b></span><span class="x">–</span><span class="box"><i>ถึง</i> <b>16:00</b></span></div>
-              <small>ห้างเปิด 10:00 · เว้นว่าง = เข้าได้ตลอดเวลาทำการ</small></div>
+              <small>TS จะยืนยัน <b>วันนัดจริง</b> กลับมาในขั้น “ลงคิว” — ช่องนี้คือวันที่<b>ต้องการ</b> ไม่ใช่วันที่นัดแล้ว</small></div>
+            <div class="field"><label>เวลาที่ต้องการ</label>
+              <div class="dim"><span class="box"><i>ช่วง</i> <b>บ่าย</b></span><span class="x">·</span><span class="box"><i>ประมาณ</i> <b>13:00</b></span></div>
+              <small>เว้นว่าง = แล้วแต่ TS จัด</small></div>
+          </div>
+          <div class="ctxstrip" style="margin:var(--space-3) 0 0">
+            <span class="done"><svg class="i"><use href="#check"/></svg>ระบบบันทึกให้เอง</span>
+            <span><b>วันที่ส่งเรื่อง</b> — ประทับตอนกดส่ง เหมือนคำร้องหัวข้ออื่นทุกใบ · <b>ไม่มีช่องให้กรอก</b>
+            และเป็นคนละอย่างกับ “วันที่ต้องการให้เข้าพื้นที่” ข้างบน</span>
           </div>
           <div class="field" style="margin-top:var(--space-3-5)"><label>รายละเอียดเพิ่มเติม</label>
             <div class="inp ta">ลูกค้าจะเปิดโซนใหม่ชั้น 2 ปลายปี · ขอตัวเลขแพ็คเกจไปทำใบเสนอราคาภายใน 15 ก.ย. · ติดต่อคุณแนน ฝ่ายอาคาร 081-234-5678</div></div>
@@ -877,6 +895,14 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
                 <button class="tile own">
                   <span class="th"><b>ที่อยู่อื่น — พิมพ์เอง</b></span>
                   <span class="adr">พื้นที่เช่าที่ไม่ใช่สถานประกอบการทางภาษี</span></button>
+              </div>
+
+              <div class="two" style="margin-bottom:var(--space-3-5)">
+                <div class="field"><label>ช่วงเวลาที่เข้าสถานที่นี้ได้</label>
+                  <div class="dim"><span class="box"><i>ตั้งแต่</i> <b>10:00</b></span><span class="x">–</span><span class="box"><i>ถึง</i> <b>22:00</b></span></div>
+                  <small>ข้อจำกัดถาวรของสถานที่ (ห้างเปิด 10:00) — กรอกครั้งเดียวใช้ตลอด ไม่ใช่ของใบนี้ใบเดียว</small></div>
+                <div class="field"><label>วันที่เข้าได้</label>
+                  <div class="inp ro">ทุกวัน</div></div>
               </div>
 
               <div class="zlist">
@@ -1208,8 +1234,10 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
     <ul class="fixes">
       <li><span class="mk new">+</span><span><b>เมตรอย่างเดียว</b> — ไม่มีดรอปดาวน์เลือกหน่วย · หน่วยที่เลือกได้คือหน่วยที่กรอกผิดได้ และชีตเก่ามีทั้ง “500 ML” กับ “2 KG” ปนกันมาแล้ว</span></li>
       <li><span class="mk new">+</span><span>ปริมาตรคำนวณให้ทันที (ก×ย×ส) พร้อมบอกว่าสูตรได้กี่แพ็ค — ช่างเห็นเลยถ้าพิมพ์ผิดหลัก</span></li>
-      <li><span class="mk new">+</span><span><b>รูปแยกสามหัวข้อต่อโซน</b> (มติ 2026-08-29): ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง —
+      <li><span class="mk new">+</span><span><b>รูปแยกสามหัวข้อต่อโซน</b> (มติ 2026-08-29): ภาพกว้าง · ภาพผัง · <b>จุดที่ติดตั้งได้</b> —
       หัวข้อสุดท้าย<b>เพิ่มรายการจุดเองได้</b> จุดละชื่อ จุดละรูป</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ช่างแจ้งว่า “ติดตั้งได้ตรงไหนบ้าง” ไม่ใช่ “จะติดตั้งตรงไหน”</b> —
+      คนเลือกจุดจริงคือ<b>หัวหน้า TS</b> ที่จอ 07 โครงเดียวกับจำนวนแพ็คเป๊ะ: ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ</span></li>
       <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดประเมินได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
       <li><span class="mk">✓</span><span>รูป <b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ที่บล็อกคือ<b>ขนาด</b> เพราะไม่มีขนาดก็คิดแพ็คไม่ได้</span></li>
     </ul>
@@ -1261,7 +1289,7 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
             </div>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span>
                 <span class="cnt">3 จุด · 4 รูป</span></div>
 
               <div class="spot"><span class="sn">1</span>
@@ -1288,7 +1316,8 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
                   </span></div>
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
 
-              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+              <p class="hint" style="margin-top:var(--space-2)">แจ้งมาให้ครบทุกจุดที่ทำได้ — หัวหน้าเป็นคนเลือกว่าจะติดตั้งจริงกี่จุด</p>
             </div>
 
             <div class="field" style="margin-top:var(--space-3)"><label>บันทึกหน้างาน</label>
@@ -1316,10 +1345,10 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
               <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span>
                 <span class="cnt">ยังไม่มีจุด</span></div>
-              <p class="hint">ยังไม่ได้ระบุจุดติดตั้งสักจุด — ตอนไปติดตั้งจะไม่มีอะไรบอกว่าเครื่องไปตรงไหน</p>
-              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+              <p class="hint">ยังไม่ได้ระบุจุดสักจุด — หัวหน้าจะไม่มีอะไรให้เลือกตอนสรุป</p>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
             </div>
           </div>
         </div>
@@ -1341,13 +1370,13 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
                 <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 จุด · 1 รูป</span></div>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 จุด · 1 รูป</span></div>
               <div class="spot"><span class="sn">1</span>
                 <div><b>ข้างประตูลิฟต์ตัวที่ 2</b>
                   <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
                     <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
             </div>
           </div>
         </div>
@@ -1380,114 +1409,137 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
 <section class="screen" id="pack">
   <div class="brief">
     <div>
-      <h2>สรุปแพ็คเกจแล้วส่งผล</h2>
-      <div class="route">/service/surveys/[id] · ผู้ใช้ = TS ที่โต๊ะ · จังหวะที่สองของงานเดียวกัน</div>
-      <p>โจทย์แยกสองจังหวะไว้ชัด — <b>“เมื่อได้รับขนาดมาแล้ว TS จะต้องมากรอกจำนวนแพ็คเกจ”</b>
-      หน้านี้จึงเปิดใช้ไม่ได้จนกว่าทุกจุดจะมีขนาด และเป็นจอเดสก์ท็อป ไม่ใช่จอหน้างาน</p>
+      <h2>สรุปแล้วส่งผล</h2>
+      <div class="route">/service/surveys/[id] · ผู้ใช้ = <b>หัวหน้า TS</b> · จังหวะที่สองของงานเดียวกัน</div>
+      <p>ช่างส่งข้อเท็จจริงมาจากหน้างาน — ขนาด รูป และจุดที่ติดตั้งได้ ·
+      หน้านี้คือที่ที่ <b>หัวหน้าตัดสินใจสองอย่าง</b>: จะติดตั้งจุดไหนบ้าง และแต่ละโซนใช้กี่แพ็ค</p>
     </div>
     <ul class="fixes">
+      <li><span class="mk new">+</span><span>🔴 <b>สองคอลัมน์ที่ต้องกรอก ไม่ใช่คอลัมน์เดียว</b> — <b>จุดติดตั้ง</b> (เลือกจากที่ช่างแจ้งมา) และ <b>แพ็คเกจ</b> ·
+      โครงเดียวกันเป๊ะ: ช่างรายงาน หัวหน้าตัดสิน</span></li>
       <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็ค</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
-      <li><span class="mk new">+</span><span>ตัวเลขที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้ — กรอกครั้งเดียวใช้สองรอบ</span></li>
-      <li><span class="mk new">+</span><span>ปุ่ม “ส่งผล” ล็อกจนกว่า <b>ทุกจุดจะมีทั้งขนาดและจำนวนแพ็คเกจ</b> — ส่งครึ่งเดียวไป SA ก็ตั้งราคาไม่ได้อยู่ดี</span></li>
+      <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็ค</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คแกว่ง” · หนึ่งแพ็คกระจายหลายจุดได้ หลายแพ็คลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
+      <li><span class="mk new">+</span><span>ตัวเลขแพ็คที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
+      <li><span class="mk">✓</span><span>จอนี้ต้องมี<b>ด่านสิทธิ์ของตัวเอง</b> ไม่ใช่ <span class="mono">canEditService</span> ที่ช่างทุกคนผ่าน</span></li>
     </ul>
   </div>
 
   <div class="frame">
-    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-cap">เดสก์ท็อป · หัวหน้า TS</div>
     <div class="frame-body">
     <div class="ui-workspace">
       <div class="premium-header">
-        <div><h1><span class="premium-header-icon"><svg class="i"><use href="#pkg"/></svg></span>สรุปแพ็คเกจ</h1>
-        <p><span class="mono">AS-26090002</span> · ทรู ดิจิทัล พาร์ค · <span class="mono">DL-2608017</span> · วัดครบ 5 จุด เมื่อ 8 ก.ย. 12:20</p></div>
+        <div><h1><span class="premium-header-icon"><svg class="i"><use href="#pkg"/></svg></span>สรุปผลประเมิน</h1>
+        <p><span class="mono">AS-26090002</span> · ทรู ดิจิทัล พาร์ค · <span class="mono">DL-2608017</span> · ช่างวัดครบ 5 โซน เมื่อ 8 ก.ย. 12:20</p></div>
       </div>
 
       <div class="packsum">
         <span><span class="lab">พื้นที่รวม</span><span class="big">2,130</span><span class="lab">ตร.ม.</span></span>
         <span class="sep"></span>
-        <span><span class="lab">ปริมาตรรวม</span><span class="big">11,404</span><span class="lab">ลบ.ม.</span></span>
+        <span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">8</span><span class="lab">แพ็ค · คิดรายโซน</span></span>
         <span class="sep"></span>
-        <span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">8</span><span class="lab">แพ็ค · คิดรายจุด ไม่ใช่จากยอดรวม</span></span>
+        <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จาก 11 จุดที่ช่างแจ้ง</span></span>
         <span class="sep"></span>
-        <span><span class="lab">TS สรุป</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
+        <span><span class="lab">แพ็คเกจ</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
       </div>
 
       <div class="notice" data-tone="info" style="margin-top:var(--space-4)">
         <span class="ic"><svg class="i"><use href="#pkg"/></svg></span>
-        <div><b>สูตร: ปริมาตร ÷ 2,400 ลบ.ม. ปัดขึ้น · อย่างน้อย 1 แพ็คต่อจุด</b>
-        <span>🔴 <b>คิดรายจุด ห้ามคิดจากปริมาตรรวม</b> — รวมก่อนหารได้ 11,404 ÷ 2,400 = 5 แพ็ค
-        แต่กลิ่นไม่ข้ามผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายจุดได้ 8
+        <div><b>สูตร: ปริมาตร ÷ 2,400 ลบ.ม. ปัดขึ้น · อย่างน้อย 1 แพ็คต่อโซน</b>
+        <span>🔴 <b>คิดรายโซน ห้ามคิดจากปริมาตรรวม</b> — รวมก่อนหารได้ 11,404 ÷ 2,400 = 5 แพ็ค
+        แต่กลิ่นไม่ข้ามผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายโซนได้ 8
         ⚠️ สูตรมีขั้นบันได — 2,401 ลบ.ม. กระโดดเป็น 2 แพ็คทันที นี่คือเหตุผลที่ต้องมีช่องให้ทับ</span></div>
       </div>
 
       <div class="ui-section" style="margin-top:var(--space-4)">
-        <div class="ui-section-header"><div><h2>รายจุด — กรอกจำนวนแพ็คเกจที่นี่</h2>
-        <p>ช่องนี้คือช่องเดียวของทั้งจอที่ต้องกรอก · ที่เหลือมาจากหน้างานทั้งหมด</p></div>
-          <span class="ui-badge warning">เหลืออีก 1 จุด</span></div>
+        <div class="ui-section-header"><div><h2>รายโซน — สองช่องที่หัวหน้าต้องตัดสิน</h2>
+        <p>ขนาด · รูป · จุดที่ติดตั้งได้ มาจากหน้างานทั้งหมด · ที่ต้องกรอกคือ <b>จุดติดตั้ง</b> กับ <b>แพ็คเกจ</b></p></div>
+          <span class="ui-badge warning">เหลืออีก 1 โซน</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>จุด (โซน)</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">ลบ.ม.</th>
-              <th class="num">สูตร</th><th class="num" style="width:190px">แพ็คเกจ/เดือน</th><th>รูป · กว้าง/ผัง/จุด</th></tr></thead>
+            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th>
+              <th style="width:230px">จุดติดตั้ง</th><th class="num" style="width:180px">แพ็คเกจ/เดือน</th><th>รูป</th></tr></thead>
             <tbody>
 
-              <!-- ① กรอกแล้ว ตรงกับสูตร -->
+              <!-- ① ครบแล้ว ตรงกับสูตร -->
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
-                <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">347.2</td><td class="num mono">972.2</td>
+                <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">972.2</td>
                 <td class="num mono" style="color:var(--text-3)">1</td>
+                <td><div class="spotpick">
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นที่ 3</button>
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เหนือเคาน์เตอร์</button>
+                    <button class="spotchip" type="button"><span class="dot"></span>ท่อแอร์กลางห้อง</button>
+                  </div><div class="spotcount" style="text-align:right">เลือก 2 / 3</div></td>
                 <td><div class="packcell">
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
                 <td class="mono">2 / 1 / 3</td></tr>
 
-              <!-- ② ยังไม่กรอก — ช่องว่าง + ปุ่มรับค่าที่สูตรบอก -->
+              <!-- ② ยังไม่กรอกอะไรเลย -->
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
-                <td class="mono">9.00 × 14.00 × 2.80</td><td class="num mono">126.0</td><td class="num mono">352.8</td>
+                <td class="mono">9.00 × 14.00 × 2.80</td><td class="num mono">352.8</td>
                 <td class="num mono" style="color:var(--text-3)">1</td>
+                <td><div class="spotpick"><span class="spotcount">ช่างยังไม่แจ้งจุดสักจุด</span></div></td>
                 <td><div class="packcell">
                   <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
                   <button class="useit" type="button">ใช้ 1 ที่สูตรบอก</button>
                 </div></td>
                 <td class="mono" style="color:var(--amber)">0 / 0 / 0</td></tr>
 
-              <!-- ③ จุดที่ช่างเพิ่มหน้างาน -->
+              <!-- ③ โซนที่ช่างเพิ่มหน้างาน -->
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span><span class="cell-sub">อาคาร A · ชั้น 5</span>
-                <span class="ui-badge accent">จุดใหม่</span></td>
-                <td class="mono">4.20 × 6.00 × 2.80</td><td class="num mono">25.2</td><td class="num mono">70.6</td>
+                <span class="ui-badge accent">โซนใหม่</span></td>
+                <td class="mono">4.20 × 6.00 × 2.80</td><td class="num mono">70.6</td>
                 <td class="num mono" style="color:var(--text-3)">1</td>
+                <td><div class="spotpick">
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>ข้างประตูลิฟต์ตัวที่ 2</button>
+                  </div><div class="spotcount" style="text-align:right">เลือก 1 / 1</div></td>
                 <td><div class="packcell">
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
                 <td class="mono">1 / 0 / 1</td></tr>
 
-              <!-- ④ สูงกว่าสูตร — ไม่ต้องมีเหตุผล -->
+              <!-- ④ แพ็คสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
-                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">432.0</td><td class="num mono">2,808.0</td>
+                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">2,808.0</td>
                 <td class="num mono" style="color:var(--text-3)">2</td>
+                <td><div class="spotpick">
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาคู่ทางเข้า</button>
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เหนือโซฟารับรอง</button>
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>ฝั่งบันไดเลื่อน</button>
+                    <button class="spotchip" type="button"><span class="dot"></span>ใต้ช่องแสง</button>
+                  </div><div class="spotcount" style="text-align:right">เลือก 3 / 4</div></td>
                 <td><div class="packcell">
                   <span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span>
                   <span class="diffhint">สูงกว่าสูตร 1</span>
                 </div></td>
-                <td class="mono">3 / 1 / 2</td></tr>
+                <td class="mono">3 / 1 / 4</td></tr>
 
-              <!-- ⑤ ต่ำกว่าสูตร — ช่องเหตุผลโผล่ขึ้นมาและบังคับ -->
+              <!-- ⑤ แพ็คต่ำกว่าสูตร → บังคับเหตุผล -->
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span><span class="cell-sub">อาคาร A · ชั้น G</span></td>
-                <td class="mono">30.00 × 40.00 × 6.00</td><td class="num mono">1,200.0</td><td class="num mono">7,200.0</td>
+                <td class="mono">30.00 × 40.00 × 6.00</td><td class="num mono">7,200.0</td>
                 <td class="num mono" style="color:var(--text-3)">3</td>
+                <td><div class="spotpick">
+                    <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>ประตูทางเข้าหลัก</button>
+                    <button class="spotchip" type="button"><span class="dot"></span>กลางโถง</button>
+                    <button class="spotchip" type="button"><span class="dot"></span>ฝั่งทางออก</button>
+                  </div><div class="spotcount" style="text-align:right">เลือก 1 / 3</div></td>
                 <td><div class="packcell">
                   <span class="step" data-tone="under"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="diffhint">ต่ำกว่าสูตร 2</span>
                 </div></td>
-                <td class="mono">2 / 0 / 1</td></tr>
+                <td class="mono">2 / 0 / 3</td></tr>
               <tr><td colspan="7" style="padding-top:0">
                 <div class="whyfield"><span class="tag">ต้องบอกเหตุผล</span>
-                  <span>กึ่งกลางแจ้ง เปิดสามด้าน ลมโกรกตลอด — ใส่เท่าที่สูตรบอกก็ไม่อยู่ · เสนอ 1 จุดตรงประตูทางเข้าพอ</span></div>
+                  <span>กึ่งกลางแจ้ง เปิดสามด้าน ลมโกรกตลอด — ใส่เท่าที่สูตรบอกก็ไม่อยู่ · เอาจุดตรงประตูทางเข้าจุดเดียวพอ</span></div>
               </td></tr>
 
-              <!-- ⑥ จุดที่ตัดออกหน้างาน — ไม่มีช่องให้กรอก -->
+              <!-- ⑥ โซนที่ตัดออกหน้างาน -->
               <tr><td><span class="t-strong" style="text-decoration:line-through;color:var(--text-3)">ชั้น 3 · ห้องน้ำชาย</span>
-                <span class="cell-sub">ตัดออกหน้างาน — อาคารมีระบบของรายอื่นแล้ว</span></td>
-                <td colspan="6" style="color:var(--text-3)">ไม่นับรวมในใบเสนอราคา</td></tr>
+                <span class="cell-sub">TS ตัดออกหน้างาน — อาคารมีระบบของรายอื่นแล้ว</span></td>
+                <td colspan="6" style="color:var(--text-3)">ไม่นับรวมในใบเสนอราคา · โซนยังอยู่ในทะเบียน ปีหน้าประเมินใหม่ได้</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -1495,30 +1547,31 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
 
       <div class="notice" data-tone="warning">
         <span class="ic"><svg class="i"><use href="#cam"/></svg></span>
-        <div><b>ห้องประชุมใหญ่ยังไม่มีรูปสักหัวข้อ และยังไม่ได้ระบุจุดติดตั้ง</b>
-        <span><b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ส่งผลได้ แต่ตอนไปติดตั้งจะไม่มีอะไรบอกว่าเครื่องไปตรงไหน</span></div>
+        <div><b>ห้องประชุมใหญ่ยังไม่มีรูปสักหัวข้อ และช่างยังไม่แจ้งจุดที่ติดตั้งได้</b>
+        <span><b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ที่บล็อกคือ<b>ขนาด</b>กับ<b>แพ็คเกจ</b> เพราะไม่มีสองอย่างนี้ฝ่ายขายตั้งราคาไม่ได้</span></div>
         <span class="act"><button class="btn sm">แจ้งช่างให้กลับไปถ่าย</button></span>
       </div>
 
       <div class="ui-section">
-        <div class="ui-section-header"><div><h2>ส่วนประกอบของช่องแพ็คเกจ</h2>
-        <p>ทำไมเป็นตัวนับ ไม่ใช่ดรอปดาวน์ และทำไมไม่กรอกค่าไว้ให้</p></div></div>
+        <div class="ui-section-header"><div><h2>ส่วนประกอบของสองช่องที่ต้องกรอก</h2></div></div>
         <div class="ui-section-body">
           <div class="anat">
-            <div><b>ตัวนับ ไม่ใช่ดรอปดาวน์</b>
+            <div><b>จุดติดตั้ง = ชิปกดเลือก</b>
+              <span class="spotpick" style="justify-content:flex-start">
+                <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นที่ 3</button>
+                <button class="spotchip" type="button"><span class="dot"></span>ท่อแอร์</button>
+              </span>
+              <p>ชุดตัวเลือกมาจากที่ช่างแจ้ง ซึ่งเล็กและตายตัว ⇒ <b>กางให้เห็นทั้งชุด</b> ไม่ใช่ดรอปดาวน์ ·
+              จุดที่ไม่เลือกยังอยู่ในใบ เผื่อเปลี่ยนใจหรือขายเพิ่มรอบหน้า</p></div>
+
+            <div><b>แพ็คเกจ = ตัวนับ</b>
               <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
-              <p>จำนวนแพ็คเป็นเลขเต็มเล็ก ๆ · ดรอปดาวน์ซ่อนตัวเลือกไว้จนกว่าจะกด และเพดานที่ตั้งไว้
-              จะกลายเป็นเพดานจริงในวันที่มีโถงต้องใช้ 12 · กดปุ่มหรือพิมพ์ทับก็ได้ทั้งคู่</p></div>
+              <p>เลขเต็มเล็ก ๆ · ดรอปดาวน์ซ่อนตัวเลือกและเพดานที่ตั้งไว้จะกลายเป็นเพดานจริง
+              ในวันที่มีโถงต้องใช้ 12</p></div>
 
             <div><b>ว่างเสมอตอนเปิด</b>
               <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
-              <p>ค่าตั้งต้นของสิ่งที่เป็นการตัดสินใจ คือคำตอบที่ไม่มีใครอ่าน — กติกาฟอร์มของระบบนี้
-              ⇒ สูตรคำนวณให้ได้ แต่ต้องมีคนกดรับ</p></div>
-
-            <div><b>ปุ่มรับค่าที่สูตรบอก</b>
-              <button class="useit" type="button">ใช้ 1 ที่สูตรบอก</button>
-              <p>แพตเทิร์นเดียวกับที่หน้าจัดสรรใช้อยู่แล้ว (“1 แพ็ค = 1 ลิตร/เดือน — กดใช้ได้ถ้าตรง ไม่ตรงก็พิมพ์ทับ”)
-              กดครั้งเดียวจบสำหรับจุดที่ไม่มีอะไรพิเศษ ซึ่งเป็นส่วนใหญ่</p></div>
+              <p>ค่าตั้งต้นของสิ่งที่เป็นการตัดสินใจ คือคำตอบที่ไม่มีใครอ่าน ⇒ สูตรคำนวณให้ได้ แต่ต้องมีคนกดรับ</p></div>
 
             <div><b>ต่ำกว่าสูตร = ต้องบอกเหตุผล</b>
               <span class="diffhint">ต่ำกว่าสูตร 2</span>
@@ -1531,14 +1584,18 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
       <div class="ui-section">
         <div class="ui-section-header"><div><h2>สรุปถึงฝ่ายขาย</h2></div></div>
         <div class="ui-section-body">
+          <div class="ctxstrip">
+            <span class="done"><svg class="i"><use href="#check"/></svg>ขอไป 5 โซน</span>
+            <span>ตัด <b>1</b> (ห้องน้ำชาย) · เพิ่ม <b>1</b> (โถงลิฟต์) ⇒ <b>ประเมินจริง 5 โซน</b> — ส่งผลแล้วฝ่ายขายได้กระดิ่งพร้อมบรรทัดนี้</span>
+          </div>
           <div class="field"><label>ข้อสังเกตจากหน้างาน</label>
-            <div class="inp ta">โถงจอดรถรับส่งกึ่งกลางแจ้ง ลมโกรกสามด้าน — สูตรคิดได้ 3 แพ็คแต่กลิ่นไม่อยู่ เสนอ 1 จุดตรงประตูพอ
-ล็อบบี้ชั้น 1 เพดาน 6.5 ม. เปิดสองด้าน ขอเพิ่มเป็น 3 · ห้องน้ำชายชั้น 3 ตัดออก อาคารมีระบบของรายอื่นอยู่แล้ว</div></div>
+            <div class="inp ta">โถงจอดรถรับส่งกึ่งกลางแจ้ง ลมโกรกสามด้าน — สูตรคิดได้ 3 แพ็คแต่กลิ่นไม่อยู่ เอาจุดตรงประตูจุดเดียวพอ
+ล็อบบี้ชั้น 1 เพดาน 6.5 ม. เปิดสองด้าน ขอเพิ่มเป็น 3 แพ็ค กระจาย 3 จุด · ห้องน้ำชายชั้น 3 ตัดออก อาคารมีระบบของรายอื่นอยู่แล้ว</div></div>
         </div>
       </div>
 
       <div class="sticky-acts">
-        <span class="ui-badge warning">เหลืออีก 1 จุด</span>
+        <span class="ui-badge warning">เหลืออีก 1 โซน</span>
         <span style="margin-left:auto"></span>
         <button class="btn">บันทึก</button>
         <button class="btn btn-primary" disabled>ส่งผลให้ฝ่ายขาย</button>
@@ -1594,41 +1651,53 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
         <span class="sep"></span>
         <span><span class="lab">แพ็คเกจที่ต้องใช้</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
         <span class="sep"></span>
-        <span><span class="lab">จุดที่ติดตั้งได้</span><span class="big">5</span><span class="lab">จุด · ขอไป 5 ตัด 1 เพิ่ม 1</span></span>
+        <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จุด · จาก 11 จุดที่ติดตั้งได้</span></span>
         <span style="margin-left:auto"><button class="btn btn-accent"><svg class="i"><use href="#arrow"/></svg> สร้างใบเสนอราคาบนดีล DL-2608017</button></span>
       </div>
 
+      <div class="notice" data-tone="info" style="margin-top:var(--space-4)">
+        <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+        <div><b>ขอไป 5 โซน · TS ตัด 1 · เพิ่ม 1 ⇒ ประเมินจริง 5 โซน</b>
+        <span>TS ตัด/เพิ่มโซนเองได้โดยไม่ต้องรออนุมัติ แต่<b>ต้องเห็นชัด</b> — บรรทัดนี้ + ป้ายบนแถว + กระดิ่งตอนส่งผล ·
+        ตัดออกต้องมีเหตุผลเสมอ เพิ่มไม่ต้อง</span></div>
+      </div>
+
       <div class="ui-section" style="margin-top:var(--space-4)">
-        <div class="ui-section-header"><div><h2>ผลประเมินรายจุด</h2><p>เทียบกับที่ขอไปเมื่อ 1 ก.ย. · สูตร 2,400 ลบ.ม. = 1 แพ็ค</p></div></div>
+        <div class="ui-section-header"><div><h2>ผลประเมินรายโซน</h2><p>เทียบกับที่ขอไปเมื่อ 1 ก.ย. · สูตร 2,400 ลบ.ม. = 1 แพ็ค</p></div></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>จุด</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">แพ็คเกจ</th><th>รูป · จุดติดตั้ง</th></tr></thead>
+            <thead><tr><th>โซน</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">972.2</td>
-                <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
+                <td class="num mono" style="color:var(--text-3)">1</td>
+                <td class="num"><b>2</b><span class="cell-sub">จาก 3</span></td><td class="num"><b>1</b></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>3</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">9.00 × 14.00 × 2.80</td><td class="num mono">352.8</td>
-                <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
+                <td class="num mono" style="color:var(--text-3)">1</td>
+                <td class="num"><b>1</b><span class="cell-sub">จาก 1</span></td><td class="num"><b>1</b></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>1</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span></td><td><span class="ui-badge accent">TS เพิ่มหน้างาน</span></td>
                 <td class="mono">4.20 × 6.00 × 2.80</td><td class="num mono">70.6</td>
-                <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
+                <td class="num mono" style="color:var(--text-3)">1</td>
+                <td class="num"><b>1</b><span class="cell-sub">จาก 1</span></td><td class="num"><b>1</b></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>1</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">2,808.0</td>
-                <td class="num mono" style="color:var(--text-3)">2</td><td class="num"><b>3</b>
+                <td class="num mono" style="color:var(--text-3)">2</td>
+                <td class="num"><b>3</b><span class="cell-sub">จาก 4</span></td><td class="num"><b>3</b>
                 <span class="cell-sub">เพิ่มจากสูตร — โถงเปิดสองด้าน</span></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>2</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">30.00 × 40.00 × 6.00</td><td class="num mono">7,200.0</td>
-                <td class="num mono" style="color:var(--text-3)">3</td><td class="num"><b style="color:var(--amber)">1</b>
+                <td class="num mono" style="color:var(--text-3)">3</td>
+                <td class="num"><b>1</b><span class="cell-sub">จาก 3</span></td><td class="num"><b style="color:var(--amber)">1</b>
                 <span class="cell-sub">กึ่งกลางแจ้ง ลมโกรกสามด้าน ใส่มากก็ไม่อยู่</span></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>2</em></span></span></span></td></tr>
               <tr><td><span class="t-strong" style="text-decoration:line-through;color:var(--text-3)">ชั้น 3 · ห้องน้ำชาย</span></td>
                 <td><span class="ui-badge danger">TS ตัดออก</span></td>
-                <td colspan="5" style="color:var(--text-3)">อาคารติดตั้งระบบของผู้ให้บริการรายอื่นไว้แล้ว</td></tr>
+                <td colspan="6" style="color:var(--text-3)">อาคารติดตั้งระบบของผู้ให้บริการรายอื่นไว้แล้ว · โซนยังอยู่ในทะเบียน ปีหน้าประเมินใหม่ได้</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -1678,7 +1747,9 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
     <ul class="fixes">
       <li><span class="mk new">+</span><span><b>เจอใบประเมินจากดีล</b> — SO ผูกดีล ใบประเมินก็ผูกดีล ⇒ ตัวช่วยหาเจอเองโดยไม่ต้องให้ใครจำเลขใบ · ไซต์/โซนอยู่ในทะเบียนแล้วในกลุ่ม “ยังไม่ขาย”</span></li>
       <li><span class="mk new">+</span><span>ช่องจัดสรร<b>เติมมาจากตัวเลขที่ประเมินไว้</b> · ต่างกับที่ขายจริงเมื่อไรระบบทัก ไม่ใช่เงียบ (ลูกค้าซื้อน้อยกว่าที่ประเมินเป็นเรื่องปกติ)</span></li>
-      <li><span class="mk">✓</span><span>ดีลที่ไม่ปิด = ไซต์อยู่ในกลุ่ม “ยังไม่ขาย” ต่อไป ไม่รกคิวจัดนัดเพราะยังไม่มีรอบบริการ · ปีหน้ากลับมาขายใหม่ ขนาดพื้นที่ยังอยู่</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ซื้อไม่ครบเป็นเรื่องปกติ</b> (มติ 2026-08-29) — โซนที่ลูกค้ายังไม่ซื้ออยู่ในทะเบียนต่อไปในกลุ่ม “ยังไม่ขาย”
+      พร้อมขนาด รูป และจุดติดตั้งครบ ⇒ ขายรอบหน้าได้โดยไม่ต้องกลับไปวัดใหม่</span></li>
+      <li><span class="mk">✓</span><span>ดีลที่ไม่ปิด = ไซต์อยู่ในกลุ่ม “ยังไม่ขาย” ต่อไป ไม่รกคิวจัดนัดเพราะยังไม่มีรอบบริการ</span></li>
     </ul>
   </div>
 
@@ -1694,7 +1765,8 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#check"/></svg></span>
         <div><b>ใบนี้เคยผ่านการประเมินพื้นที่มาแล้ว</b>
-        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 จุด · ประเมินไว้ 7 แพ็ค เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว ไม่ต้องสร้างใหม่</span></div>
+        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 โซน · ประเมินไว้ 7 แพ็ค 7 จุด เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว
+        ⚠️ ดีลนี้มีใบประเมินใบเดียว — ถ้ามีหลายใบ ตัวช่วยต้องรวมทุกใบ ไม่ใช่หยิบใบล่าสุด</span></div>
         <span class="act"><button class="btn sm btn-accent">ใช้ผลประเมินนี้</button></span>
       </div>
 
@@ -1765,22 +1837,23 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
           <div class="tblwrap"><table class="tbl">
             <thead><tr><th>ตาราง</th><th>เพิ่มอะไร</th><th>ทำไม</th></tr></thead>
             <tbody>
+              <tr><td class="mono">dept_requests</td><td><span class="ui-badge success">ไม่ต้องเพิ่ม</span> <span class="mono">dealId</span> · <span class="mono">assigneeId</span> มีอยู่แล้ว</td>
+                <td>ประกาศ <span class="mono">needs: ['deal']</span> ในไฟล์หัวข้อก็พอ</td></tr>
               <tr><td class="mono">dept_requests</td><td>ขยาย CHECK <span class="mono">dept</span> รับ <span class="mono">'TS'</span></td>
                 <td>วันนี้รับแค่ RD/PC/FN — ไม่ขยาย ใบเปิดไม่ได้เลยสักใบ</td></tr>
-              <tr><td class="mono">dept_requests</td><td><span class="ui-badge success">ไม่ต้องเพิ่ม</span> <span class="mono">dealId</span> มีอยู่แล้ว</td>
-                <td>ใบผูกดีลได้เลย — ประกาศ <span class="mono">needs: ['deal']</span> ในไฟล์หัวข้อก็พอ</td></tr>
               <tr><td class="mono">dept_requests</td><td><span class="mono">requestedDueTime</span> · <span class="mono">committedDueTime</span></td>
-                <td>ระบบคำร้องมีแต่วัน · งานนี้เวลาสำคัญ (ห้างเปิด 10:00 · โรงงานพักเที่ยง)</td></tr>
-              <tr><td class="mono">service_visits</td><td>ขยาย CHECK <span class="mono">kind</span> รับ <span class="mono">'survey'</span> + คอลัมน์ <span class="mono">requestId</span></td>
-                <td>นัดประเมินขึ้นตารางช่างตัวเดียวกับงานบริการ · <span class="mono">requestId</span> ทำให้เลื่อนนัดแล้วใบคำร้องขยับตาม</td></tr>
+                <td>ใช้คอลัมน์วันที่เดิม <b>เปลี่ยนแค่ป้าย</b> ("วันที่ต้องการให้เข้าพื้นที่" / "วันนัดเข้าพื้นที่") — เพิ่มคอลัมน์วันที่ใหม่จะได้ฟอร์มที่มีช่องวันที่สองช่อง ซึ่งคือความสับสนที่กำลังแก้พอดี</td></tr>
+              <tr><td class="mono">service_visits</td><td>ขยาย CHECK <span class="mono">kind</span> รับ <span class="mono">'survey'</span> + <span class="mono">requestId</span></td>
+                <td>นัดประเมินขึ้นตารางช่างตัวเดียวกับงานบริการ · <span class="mono">requestId</span> ทำให้เลื่อนนัดแล้วใบขยับตาม</td></tr>
               <tr><td class="mono">service_sites</td><td><span class="mono">surveyRequestId</span></td>
-                <td>บอกว่าไซต์นี้เกิดจากใบประเมินใบไหน — แพตเทิร์นเดียวกับ <span class="mono">projectId</span>/<span class="mono">customerAddressId</span></td></tr>
-              <tr><td class="mono">service_zones</td><td><span class="mono">widthM · lengthM · heightM</span><br><span class="mono">surveyPackageQty · surveyedAt/By</span></td>
-                <td>ขนาดเป็นคุณสมบัติของโซนจริง ๆ ไม่ใช่ของใบประเมิน — เก็บที่โซนแล้วประเมินซ้ำปีหน้าทับได้ ไม่ต้องก๊อปข้ามตาราง</td></tr>
-              <tr><td class="mono">service_zones</td><td><span class="mono">surveySpots jsonb</span><br><span class="mono">[{id, label, note}]</span></td>
-                <td>รายการจุดติดตั้งที่เพิ่มเองได้ · <b>จุดต้องมีตัวตนแม้ยังไม่มีรูป</b> ไม่งั้นช่างไม่รู้ว่าเหลือถ่ายอะไร (ถ้าจุดคือ “รูปที่มีป้าย” จุดที่ยังไม่ถ่ายจะไม่มีอยู่)</td></tr>
-              <tr><td class="mono">attachments</td><td><span class="ui-badge success">ไม่ต้องเพิ่มคอลัมน์</span><br>ใช้ <span class="mono">docType</span> + <span class="mono">metadata</span> ที่มีอยู่</td>
-                <td>รูปเข้าระบบไฟล์แนบกลาง (Drive · 25 MB · สิทธิ์ · พรีวิว): <span class="mono">entityType='service_zone'</span> · <span class="mono">docType</span> = <span class="mono">survey_wide</span> / <span class="mono">survey_plan</span> / <span class="mono">survey_spot</span> · รูปของจุดผูกด้วย <span class="mono">metadata.spotId</span></td></tr>
+                <td>บอกที่มา — แพตเทิร์นเดียวกับ <span class="mono">projectId</span> / <span class="mono">customerAddressId</span></td></tr>
+              <tr><td class="mono"><span class="ui-badge accent">ใหม่</span> service_survey_zones</td>
+                <td>ผลวัด <b>รายใบ × รายโซน</b><br><span class="mono">requestId · zoneId · widthM/lengthM/heightM · spots jsonb · packageQty · status · cutReason</span></td>
+                <td>🔴 <b>ประเมินซ้ำห้ามทับค่า</b> (มติ 8) — หนึ่งดีลมีใบประเมินได้หลายใบ หนึ่งโซนถูกวัดได้หลายรอบ · เก็บที่โซนเมื่อไร ใบที่สองจะลบผลของใบแรกทิ้ง แล้วใบเสนอราคาที่อ้างใบแรกจะอ่านตัวเลขผิด</td></tr>
+              <tr><td class="mono">service_zones</td><td><span class="ui-badge success">ไม่ต้องเพิ่มอะไร</span></td>
+                <td>ขนาด "ล่าสุด" ของโซน = อ่านจากแถวใบที่ใหม่ที่สุด · <b>ห้ามเก็บเป็นคอลัมน์</b> (กติกาเดิมของ repo: ค่าที่คำนวณได้ห้ามเก็บ)</td></tr>
+              <tr><td class="mono">attachments</td><td><span class="ui-badge success">ไม่ต้องเพิ่มคอลัมน์</span> ใช้ <span class="mono">docType</span> + <span class="mono">metadata</span> ที่มีอยู่</td>
+                <td><span class="mono">entityType='service_survey_zone'</span> · <span class="mono">docType</span> = <span class="mono">survey_wide</span>/<span class="mono">survey_plan</span>/<span class="mono">survey_spot</span> · รูปของจุดผูกด้วย <span class="mono">metadata.spotId</span> — ผูกที่แถวผลวัด ไม่ใช่ที่โซน ไม่งั้นรูปสองรอบกองรวมกัน</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -1805,13 +1878,13 @@ color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-w
         </div>
       </div>
 
-      <div class="notice" data-tone="danger">
-        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
-        <div><b>สี่ข้อที่ต้องเคาะก่อนเขียนโค้ด</b>
-        <span>① ไซต์/โซนเกิดตอน SA เปิดใบ (ม็อกนี้) หรือตอนขายได้ — เกิดช้าแปลว่านัดประเมินใช้ตารางช่างไม่ได้
-        ② “วันที่ร้องขอ เวลาร้องขอ” = วันที่อยากให้ไป (ม็อกนี้ตีความแบบนี้) หรือวันที่กดส่ง
-        ③ ใครกรอกแพ็คเกจ — ช่างที่ไปวัด หรือหัวหน้า TS
-        ④ จุดติดตั้งที่ประเมินไว้ ควรกลายเป็นแถวอุปกรณ์ตอนติดตั้งเลยไหม — วันนี้เป็นแค่รายการ+รูป</span></div>
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#check"/></svg></span>
+        <div><b>✅ มติครบแล้วทั้ง 9 ข้อ (2026-08-29) — พร้อมลงมือ</b>
+        <span>ไซต์/โซนเกิดตอน SA กดส่ง · วันเวลาที่ต้องการให้เข้าพื้นที่ (วันที่ส่งเรื่องระบบบันทึกเอง) ·
+        ดีลบังคับเสมอใช้ดีลเดิมซ้ำได้ · ซื้อไม่ครบก็ปิดใบทั้งใบ โซนที่เหลืออยู่ในทะเบียนต่อ ·
+        หัวหน้า TS กรอกแพ็คเกจ ช่างแค่วัด+ถ่ายรูป · TS ตัด/เพิ่มโซนเองได้แต่ต้องมีป้ายบอก ·
+        จุดติดตั้งสองชั้น (ช่างแจ้ง "ได้" หัวหน้าเลือก "จริง") · ประเมินซ้ำไม่ทับค่า · ไม่คิดค่าบริการประเมิน</span></div>
       </div>
     </div>
   </div>
