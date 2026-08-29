@@ -85,5 +85,41 @@ export function regionLabel(regionCode) {
   return REGIONS[String(regionCode ?? '').trim()] || null;
 }
 
+/* ── หาจังหวัดจาก **ข้อความที่อยู่** ────────────────────────────────────
+   ⭐ ที่มา (มติผู้ใช้ 2026-08-30): "สถานที่ที่จะขอประเมิน ต้องดึงมาจากฐานข้อมูลลูกค้าก่อน"
+      — ที่อยู่ลูกค้าส่วนใหญ่มี `provinceCode` แบบมีโครงสร้างอยู่แล้ว (สุ่ม 60 ราย เจอ
+      59 ราย) แต่ที่เหลือมีแต่ข้อความ ⇒ ตัวนี้คือ **ทางถอย** ให้แถวที่ยังไม่มีรหัส
+      ไม่งั้นคนเปิดใบต้องเลือกจังหวัดซ้ำเองทั้งที่ข้อมูลอยู่ตรงหน้าแล้ว
+
+   ⚠️ **เดาไม่ได้ = คืน null** ไม่ใช่เลือกตัวที่ใกล้เคียง — จังหวัดผิดถูกตรึงในรหัสไซต์
+      ถาวร · คืน null แล้วให้คนเลือกเองปลอดภัยกว่าเสมอ
+   ⚠️ เทียบ **ชื่อยาวก่อน** — 'นครศรีธรรมราช' ต้องชนะก่อน 'นคร...' ตัวสั้นกว่าจะไป
+      แมตช์กลางคำ (กับดักเดียวกับที่ `buildAddressIndex` เรียงไว้ให้)
+   ⚠️ กรุงเทพฯ เขียนกันสี่ห้าแบบในที่อยู่จริง — รับทุกแบบที่เจอบน production */
+const BANGKOK_ALIASES = ['กรุงเทพมหานคร', 'กรุงเทพฯ', 'กรุงเทพ', 'กทม.', 'กทม'];
+
+export function provinceFromText(value, provinces = []) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const lower = text.toLowerCase();
+
+  for (const alias of BANGKOK_ALIASES) {
+    if (text.includes(alias)) return { code: '10', th: 'กรุงเทพมหานคร' };
+  }
+  if (lower.includes('bangkok')) return { code: '10', th: 'กรุงเทพมหานคร' };
+
+  const rows = [...(provinces || [])]
+    .filter((p) => p?.code && p?.th)
+    .sort((a, b) => String(b.th).length - String(a.th).length);
+  for (const province of rows) {
+    if (!PROVINCES[keyOf(province.code)]) continue;   // ไม่อยู่ในทะเบียนของเรา = ไม่ใช้
+    if (text.includes(province.th)) return { code: String(province.code), th: province.th };
+    if (province.en && lower.includes(String(province.en).toLowerCase())) {
+      return { code: String(province.code), th: province.th };
+    }
+  }
+  return null;
+}
+
 /** รหัสจังหวัดทั้งหมดที่ทะเบียนนี้รู้จัก — เทสต์ใช้ตรวจความครบ */
 export const PROVINCE_CODES = Object.keys(PROVINCES).map((k) => String(k).padStart(2, '0'));

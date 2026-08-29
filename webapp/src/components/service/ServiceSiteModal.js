@@ -15,6 +15,7 @@ import {
   WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, siteAddressCarry, siteAddressDrift, toHHMM,
 } from "@/lib/service/sites";
 import { ADDRESS_USE_LABELS, addressText, addressUse } from "@/lib/master/addresses";
+import { provinceFromText } from "@/lib/master/thaiProvinces";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { SITE_CODE_HINT } from "@/lib/service/siteCode";
 import styles from "./ServiceSiteModal.module.css";
@@ -22,6 +23,28 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ไทล์ "ที่อยู่อื่น" = ตั้งใจไม่ก๊อปจากทะเบียน (ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี)
 const OWN_ADDRESS = "__own__";
+
+/* ── ที่อยู่ของลูกค้าที่เอามาตั้งต้นไซต์ได้ ────────────────────────────────
+   ⭐ ทางหลักคือ `addresses[]` (mig 0202/0217) ซึ่งลูกค้าจริงกรอกไว้ครบ — สุ่มวัด 60 ราย
+      เมื่อ 30/08/2026: มีแถวทุกราย และ 59/60 มี `provinceCode` แบบมีโครงสร้างด้วย
+   ⚠️ **แต่ต้องมีทางถอย** — แถวที่ไม่มี `provinceCode` มีจริง (เจอ 1/60) และลูกค้าที่
+      ยังไม่มีแถวเลยก็เป็นไปได้ ⇒ สังเคราะห์ไทล์จาก `address`/`shippingAddress`
+      (ช่องข้อความที่ทุกรายมี) แล้วให้ `provinceFromText` แกะจังหวัดจากข้อความแทน
+   ⚠️ แถวสังเคราะห์ใช้ id คงที่ — ค่านี้ถูกเก็บลง `service_sites.customerAddressId`
+      เพื่อบอก *ที่มา* เท่านั้น ไม่มี FK และไม่มีใครเอาไป join (mig 0313) */
+function customerAddressRows(customer) {
+  if (!customer) return [];
+  const rows = Array.isArray(customer.addresses) ? customer.addresses.filter(Boolean) : [];
+  if (rows.length) return rows;
+  const out = [];
+  const main = String(customer.address || "").trim();
+  if (main) out.push({ id: "__main__", label: "ที่อยู่จดทะเบียน", address: main, useFor: "billing" });
+  const shipping = String(customer.shippingAddress || "").trim();
+  if (shipping && shipping !== main) {
+    out.push({ id: "__shipping__", label: "ที่อยู่จัดส่ง", address: shipping, useFor: "shipping" });
+  }
+  return out;
+}
 
 const EMPTY = {
   customerId: "", name: "", routeZone: "", address: "", mapUrl: "",
@@ -111,7 +134,22 @@ export default function ServiceSiteModal({
     }
     const row = addressOptions.find((a) => a.id === id);
     if (!row) return;
-    setForm((prev) => ({ ...prev, customerAddressId: id, ...siteAddressCarry(prev, row) }));
+    /* ⭐ **จังหวัดมาจากที่อยู่ที่เลือกด้วย** (มติผู้ใช้ 2026-08-30: "ต้องดึงมาจาก
+       ฐานข้อมูลลูกค้าก่อน") — ใช้ค่าที่กรอกแบบมีโครงสร้างก่อน (mig 0217) ไม่มีก็แกะจาก
+       **ข้อความที่อยู่** ซึ่งเป็นรูปเดียวที่ลูกค้าจริงทุกรายมีอยู่วันนี้
+       ⚠️ แกะไม่ได้ = ไม่เติม ปล่อยให้คนเลือกเอง (จังหวัดผิดถูกตรึงในรหัสถาวร)
+       ⚠️ **โหมดสร้างเท่านั้น** — ไซต์ที่ออกรหัสไปแล้วตรึงจังหวัดไว้ในรหัส ดึงใหม่ทับ
+          เมื่อไรจะได้ช่องที่ขัดกับรหัสของตัวเอง (จึงไม่อยู่ใน SITE_ADDRESS_FIELDS) */
+    const detected = row.provinceCode
+      ? { code: String(row.provinceCode), th: row.province || "" }
+      : provinceFromText(addressText(row), provinces);
+    const carried = editing || !detected ? {} : {
+      provinceCode: detected.code,
+      province: detected.th || provinces.find((p) => p.code === detected.code)?.th || "",
+    };
+    setForm((prev) => ({
+      ...prev, customerAddressId: id, ...siteAddressCarry(prev, row), ...carried,
+    }));
   };
 
   /* ⭐ **ย้ายลูกค้า = ที่มาเดิมใช้ไม่ได้แล้ว** — id ชี้เข้า addresses[] ของคนเดิม
@@ -136,7 +174,11 @@ export default function ServiceSiteModal({
       try {
         const res = await apiFetch(`/api/customers/${customerId}`);
         const body = await res.json().catch(() => null);
-        if (alive && res.ok) setFetchedAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
+        /* 🐞 **เคยอ่าน `body.addresses` ตรง ๆ แล้วได้ undefined เสมอ** — endpoint นี้
+           คืน `{ customer, products, orders }` ไม่ใช่แถวลูกค้า ⇒ ไทล์ที่อยู่ไม่เคยขึ้น
+           เลยในทุกที่ที่ผู้เรียกไม่ได้ส่ง `customerAddresses` มาเอง (เช่นฟอร์มในใบคำร้อง)
+           · รองรับทั้งสองรูป เผื่อ endpoint เปลี่ยนกลับ */
+        if (alive && res.ok) setFetchedAddresses(customerAddressRows(body?.customer || body));
       } catch {
         if (alive) setFetchedAddresses([]);       // ดึงไม่ได้ = ไม่มีไทล์ ไม่ใช่ฟอร์มพัง
       }
@@ -201,6 +243,40 @@ export default function ServiceSiteModal({
           />
         </label>
 
+        {/* ⭐ **ตั้งจากที่อยู่ในทะเบียนลูกค้า** (มติ 2026-08-28) — เลิกพิมพ์ที่อยู่
+            ซ้ำสองที่ · กดไทล์แล้วชื่อ/จังหวัด/ที่อยู่ถูกเติมให้ แล้วแก้ต่อได้เอง
+            ⚠️ **ก๊อปมาตั้งต้นเท่านั้น ไม่ผูกให้เปลี่ยนตามกัน** — ที่อยู่ทางภาษีกับ
+            ที่อยู่หน้างานเป็นคนละความจริง เครื่องย้ายชั้นไม่ได้แปลว่าบริษัทย้าย
+            ⚠️ ที่นี่ **เลือกได้อย่างเดียว** เพิ่มที่อยู่ต้องไปทะเบียนลูกค้า — ไม่งั้น
+            ที่อยู่หน้างานจะไหลกลับเข้าไปอยู่ในเอกสารภาษี
+            ⭐ **โหมดแก้ก็เห็นไทล์** (มติ 2026-08-29) — ไซต์ที่พิมพ์เองไว้ก่อน ผูกกลับ
+            เข้าทะเบียนทีหลังได้ · ไทล์ที่ติดอยู่คือที่มาที่บันทึกไว้ (mig 0313)
+            ⭐ **อยู่เหนือช่องกรอกทุกช่องตั้งแต่ 2026-08-30** (มติผู้ใช้: "ต้องดึงมาจาก
+            ฐานข้อมูลลูกค้าก่อน ถ้านอกเหนือค่อยเพิ่มเอง") — ลำดับบนจอคือลำดับที่อยากให้คิด:
+            หาที่อยู่ที่ลูกค้ามีอยู่แล้วก่อน แล้วค่อยตกลงมาที่ "ที่อยู่อื่น — พิมพ์เอง" */}
+        {addressOptions.length > 0 && (
+          <div className={`${styles.field} ${styles.wide}`}>
+            <span>{editing ? "ที่อยู่ต้นทางจากทะเบียนลูกค้า" : "ตั้งจากที่อยู่ในทะเบียนลูกค้า"}</span>
+            <OptionTiles
+              value={pickedAddressId}
+              onChange={applyCustomerAddress}
+              ariaLabel="ที่อยู่จากทะเบียนลูกค้า"
+              options={[
+                ...addressOptions.map((row) => ({
+                  value: row.id,
+                  label: row.label || row.branchCode || "ที่อยู่",
+                  description: [ADDRESS_USE_LABELS[addressUse(row)], addressText(row)]
+                    .filter(Boolean).join(" · ").slice(0, 120),
+                })),
+                { value: OWN_ADDRESS, label: "ที่อยู่อื่น — พิมพ์เอง", description: "ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี เช่น ล็อบบี้ห้างที่เช่าพื้นที่" },
+              ]}
+            />
+            {editing && !pickedAddressId && (
+              <small>ยังไม่รู้ที่มา — เลือกไทล์เพื่อผูกกับทะเบียน หรือปล่อยไว้ถ้าที่อยู่นี้พิมพ์เอง</small>
+            )}
+          </div>
+        )}
+
         <label className={styles.field}>
           <span>ชื่อไซต์ *</span>
           <Input value={form.name} onChange={change("name")} placeholder="สาขาเอ็มควอเทียร์ ชั้น 3" maxLength={150} />
@@ -235,37 +311,6 @@ export default function ServiceSiteModal({
           <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
           <small>ใช้จัดรอบวิ่งให้ช่างไม่ต้องข้ามเมืองในวันเดียว</small>
         </label>
-
-        {/* ⭐ **ตั้งจากที่อยู่ในทะเบียนลูกค้า** (มติ 2026-08-28) — เลิกพิมพ์ที่อยู่
-            ซ้ำสองที่ · กดไทล์แล้วช่องข้างล่างถูกเติมให้ แล้วแก้ต่อได้เอง
-            ⚠️ **ก๊อปมาตั้งต้นเท่านั้น ไม่ผูกให้เปลี่ยนตามกัน** — ที่อยู่ทางภาษีกับ
-            ที่อยู่หน้างานเป็นคนละความจริง เครื่องย้ายชั้นไม่ได้แปลว่าบริษัทย้าย
-            ⚠️ ที่นี่ **เลือกได้อย่างเดียว** เพิ่มที่อยู่ต้องไปทะเบียนลูกค้า — ไม่งั้น
-            ที่อยู่หน้างานจะไหลกลับเข้าไปอยู่ในเอกสารภาษี
-            ⭐ **โหมดแก้ก็เห็นไทล์** (มติ 2026-08-29) — ไซต์ที่พิมพ์เองไว้ก่อน ผูกกลับ
-            เข้าทะเบียนทีหลังได้ · ไทล์ที่ติดอยู่คือที่มาที่บันทึกไว้ (mig 0313) */}
-        {addressOptions.length > 0 && (
-          <div className={`${styles.field} ${styles.wide}`}>
-            <span>{editing ? "ที่อยู่ต้นทางจากทะเบียนลูกค้า" : "ตั้งจากที่อยู่ในทะเบียนลูกค้า"}</span>
-            <OptionTiles
-              value={pickedAddressId}
-              onChange={applyCustomerAddress}
-              ariaLabel="ที่อยู่จากทะเบียนลูกค้า"
-              options={[
-                ...addressOptions.map((row) => ({
-                  value: row.id,
-                  label: row.label || row.branchCode || "ที่อยู่",
-                  description: [ADDRESS_USE_LABELS[addressUse(row)], addressText(row)]
-                    .filter(Boolean).join(" · ").slice(0, 120),
-                })),
-                { value: OWN_ADDRESS, label: "ที่อยู่อื่น — พิมพ์เอง", description: "ไซต์ที่ไม่ใช่สถานประกอบการทางภาษี เช่น ล็อบบี้ห้างที่เช่าพื้นที่" },
-              ]}
-            />
-            {editing && !pickedAddressId && (
-              <small>ยังไม่รู้ที่มา — เลือกไทล์เพื่อผูกกับทะเบียน หรือปล่อยไว้ถ้าที่อยู่นี้พิมพ์เอง</small>
-            )}
-          </div>
-        )}
 
         {/* ── ทะเบียนขยับหลังไซต์ถูกสร้าง ────────────────────────────────
             ไม่อัปเดตให้เอง (ที่อยู่ทางภาษี ≠ ที่อยู่หน้างาน) แต่ต้อง **บอกว่าต่าง**

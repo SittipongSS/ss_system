@@ -45,7 +45,6 @@ export default function ServiceIntakePage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [wizardOrder, setWizardOrder] = useState(null);
-  const [customerAddresses, setCustomerAddresses] = useState([]);
   const [toast, setToast] = useState(null);
 
   const startRun = useLatestRun();
@@ -92,15 +91,10 @@ export default function ServiceIntakePage() {
   const openWizard = async (order) => {
     try {
       await loadRegistry();
-      /* ⭐ ที่อยู่ในทะเบียนลูกค้า — ฟอร์มไซต์ใหม่เอาไปทำไทล์ "ตั้งจากที่อยู่ไหน"
-         โหลดตอนเปิด wizard เท่านั้น (คิวอย่างเดียวไม่ต้องใช้ และ addresses เป็น
-         jsonb ก้อนใหญ่ — วัดจริง 136 KB บนลูกค้า 191 ราย) */
-      setCustomerAddresses([]);
-      if (order.customerId) {
-        const res = await apiFetch(`/api/customers/${order.customerId}`);
-        const body = await res.json().catch(() => null);
-        if (res.ok) setCustomerAddresses(Array.isArray(body?.addresses) ? body.addresses : []);
-      }
+      /* ⚠️ **เลิกโหลดที่อยู่ลูกค้าที่นี่แล้ว** (มติ 2026-08-30) — มันมีไว้ทำไทล์
+         "ตั้งจากที่อยู่ไหน" ของฟอร์มสร้างไซต์ ซึ่งถูกถอดออกจาก wizard นี้แล้ว
+         (ไซต์เกิดจากใบคำร้องประเมินพื้นที่ทางเดียว) · `addresses` เป็น jsonb ก้อนใหญ่
+         — วัดจริง 136 KB บนลูกค้า 191 ราย ⇒ ไม่ดึงของที่ไม่มีใครใช้ */
       setWizardOrder(order);
     } catch (e) {
       setToast({ kind: "error", msg: e.message });
@@ -122,17 +116,10 @@ export default function ServiceIntakePage() {
     setZonesBySite((prev) => new Map(prev).set(siteId, rows));
   }, []);
 
+  /* ⚠️ **ไม่มี `createSite` แล้ว** (มติผู้ใช้ 2026-08-30) — ไซต์เกิดจากใบคำร้อง
+     "ประเมินพื้นที่" ทางเดียว · เหลือเฉพาะโซน ซึ่งเป็นรายละเอียดของไซต์ที่มีต้นเรื่องแล้ว */
   const registryActions = useMemo(() => ({
     ensureZones,
-    createSite: async (form) => {
-      const res = await apiFetch("/api/service/sites", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "สร้างไซต์ไม่สำเร็จ");
-      await loadRegistry(body.id);
-      return body;
-    },
     createZone: async (siteId, form) => {
       const res = await apiFetch(`/api/service/sites/${siteId}/zones`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
@@ -323,7 +310,6 @@ export default function ServiceIntakePage() {
         order={wizardOrder}
         sites={sites}
         zonesBySite={zonesBySite}
-        customerAddresses={customerAddresses}
         onClose={() => setWizardOrder(null)}
         onDone={bindOrder}
         onReloadRegistry={registryActions}

@@ -6,7 +6,7 @@
 // 12 สาขาเก็บไม่ได้ตั้งแต่ต้น
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Plus, Search, Upload } from "lucide-react";
+import { MapPin, Search, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
@@ -17,7 +17,7 @@ import Workspace from "@/components/ui/Workspace";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canCreateServiceSite, canEditService, canImportServiceData } from "@/lib/permissions";
+import { canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
@@ -30,12 +30,6 @@ export default function ServiceSitesPage() {
   // ⚠️ cap อย่างเดียวไม่พอ — service:edit ถือกว้างทั้ง staff และ sales role
   // ฝ่าย TS / ทีม SV คือตัวกั้นจริง (เหมือนที่ server ทำใน requireService)
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
-  /* ⭐ **สร้างกว้างกว่าแก้** (มติผู้ใช้ 2026-08-29) — ฝ่ายขายเพิ่มไซต์ของลูกค้าได้
-     แต่ยังแก้/ลบไม่ได้ · ปุ่ม "เพิ่มไซต์" จึงอ่านสิทธิ์คนละตัวกับปุ่มแก้ในแถว */
-  const canCreate = useMemo(
-    () => canCreateServiceSite({ role, team, teams, department }),
-    [role, team, teams, department],
-  );
   // นำเข้าเป็นก้อนแคบกว่าการแก้รายใบ — หัวหน้าฝ่ายบริการขึ้นไปเท่านั้น (F-8)
   const canImport = useMemo(
     () => canImportServiceData({ role, team, teams, department }),
@@ -47,7 +41,8 @@ export default function ServiceSitesPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
-  const [formSite, setFormSite] = useState(undefined); // undefined = ปิด · null = สร้าง
+  // undefined = ปิด · แถวไซต์ = แก้ · **ไม่มีโหมดสร้างที่หน้านี้** (มติ 2026-08-30)
+  const [formSite, setFormSite] = useState(undefined);
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
@@ -83,16 +78,18 @@ export default function ServiceSitesPage() {
     })();
   }, [formSite, customers.length]);
 
+  /* ⚠️ **แก้อย่างเดียว — หน้านี้สร้างไซต์ไม่ได้แล้ว** (มติผู้ใช้ 2026-08-30)
+     เดิมฟังก์ชันนี้แยกสองทาง (POST/PATCH) ตาม `formSite` · เหลือทางเดียวโดยตั้งใจ
+     เพื่อไม่ให้มีเส้นทางสร้างที่ยังต่ออยู่เงียบ ๆ รอวันที่ใครเผลอเติมปุ่มกลับมา */
   const saveSite = async (form) => {
-    const editing = !!formSite;
-    const res = await apiFetch(editing ? `/api/service/sites/${formSite.id}` : "/api/service/sites", {
-      method: editing ? "PATCH" : "POST",
+    const res = await apiFetch(`/api/service/sites/${formSite.id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
-    setToast({ kind: "success", msg: editing ? `บันทึกไซต์ ${data.name} แล้ว` : `เพิ่มไซต์ ${data.name} แล้ว` });
+    setToast({ kind: "success", msg: `บันทึกไซต์ ${data.name} แล้ว` });
     await load();
   };
 
@@ -109,20 +106,17 @@ export default function ServiceSitesPage() {
       icon={<MapPin size={20} aria-hidden="true" />}
       title="ไซต์บริการ"
       subtitle="จุดติดตั้งระบบกระจายกลิ่นของลูกค้า และเครื่องที่อยู่หน้างาน"
-      headerRight={canCreate ? (
-        <>
-          {/* ⚠️ นำเข้าเป็น **ปุ่มรอง** — เทอราคอตตาหนึ่งปุ่มต่อหน้า และของที่คนทำ
-              ทุกวันคือเพิ่มไซต์ทีละแห่ง ส่วนนำเข้าเป็นงานตั้งต้นครั้งเดียว */}
-          {canImport && (
-            <Button tone="neutral" as={Link} href="/service/import"
-              icon={<Upload size={15} aria-hidden="true" />}>
-              นำเข้าข้อมูลเก่า
-            </Button>
-          )}
-          <Button tone="primary" onClick={() => setFormSite(null)} icon={<Plus size={15} aria-hidden="true" />}>
-            เพิ่มไซต์
-          </Button>
-        </>
+      /* 🔴 **ไม่มีปุ่ม "เพิ่มไซต์" ที่ทะเบียนอีกแล้ว** (มติผู้ใช้ 2026-08-30:
+         "สร้างที่คำร้องเท่านั้น ห้ามสร้างผ่านทะเบียนไซต์")
+         ⭐ เหตุผลเชิงระบบ: ไซต์ต้องมี **ต้นเรื่อง** เสมอ — เกิดจากใบประเมินพื้นที่ที่
+            ฝ่ายขายเปิดให้ลูกค้ารายนั้น · ทะเบียนเป็นที่ *ดู* ไม่ใช่ที่ *เริ่ม*
+            (กติกาเดียวกับที่หน้าจัดคิวช่างเป็นที่ "วาง" ไม่ใช่ "สร้าง")
+         ⚠️ ปุ่มแก้/ลบในแถวยังอยู่ตามเดิม (canEditService) — ที่ถอดคือทางเกิดใหม่เท่านั้น */
+      headerRight={canImport ? (
+        <Button tone="neutral" as={Link} href="/service/import"
+          icon={<Upload size={15} aria-hidden="true" />}>
+          นำเข้าข้อมูลเก่า
+        </Button>
       ) : null}
       toolbar={(
         <div className="toolbar">
@@ -143,10 +137,8 @@ export default function ServiceSitesPage() {
       {loading || loadError ? (
         loading ? <SkeletonRows rows={5} /> : null
       ) : sites.length === 0 ? (
-        <EmptyState icon={MapPin} dashed={canCreate} onClick={canCreate ? () => setFormSite(null) : undefined}>
-          {canCreate
-            ? "ยังไม่มีไซต์บริการในระบบ — กดเพื่อเพิ่มไซต์แรก"
-            : "ยังไม่มีไซต์บริการในระบบ"}
+        <EmptyState icon={MapPin}>
+          ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
         </EmptyState>
       ) : (
         /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้

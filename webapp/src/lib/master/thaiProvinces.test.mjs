@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PROVINCE_CODES, REGIONS, provinceAbbr, provinceRegion, regionLabel,
+  PROVINCE_CODES, REGIONS, provinceAbbr, provinceFromText, provinceRegion, regionLabel,
 } from './thaiProvinces.js';
 
 // อ่านทะเบียนจังหวัดจริงของระบบ (ไฟล์ generate 650KB) — ไม่ import เพราะหนัก
@@ -70,4 +70,32 @@ test('ปริมณฑลอยู่ภาค 01 ไม่ใช่ภาค�
   assert.equal(provinceRegion('14'), '02');   // อยุธยา = ภาคกลาง
   assert.equal(regionLabel('01'), 'กรุงเทพฯ และปริมณฑล');
   assert.equal(regionLabel('09'), null);
+});
+
+// ── แกะจังหวัดจากข้อความที่อยู่ (มติผู้ใช้ 2026-08-30) ─────────────────────
+const SAMPLE = [
+  { code: '10', th: 'กรุงเทพมหานคร', en: 'Bangkok' },
+  { code: '50', th: 'เชียงใหม่', en: 'Chiang Mai' },
+  { code: '80', th: 'นครศรีธรรมราช', en: 'Nakhon Si Thammarat' },
+  { code: '60', th: 'นครสวรรค์', en: 'Nakhon Sawan' },
+  { code: '20', th: 'ชลบุรี', en: 'Chon Buri' },
+];
+
+test('แกะจังหวัดจากที่อยู่ข้อความล้วน — ทางถอยของแถวที่ยังไม่มี provinceCode', () => {
+  assert.equal(provinceFromText('45,47 ถนนนราธิวาส แขวงสีลม เขตบางรัก กรุงเทพมหานคร 10500', SAMPLE).code, '10');
+  assert.equal(provinceFromText('191 ถ.สีลม เขตบางรัก กทม. 10500', SAMPLE).code, '10');
+  assert.equal(provinceFromText('12 ถ.นิมมานเหมินท์ อ.เมือง จ.เชียงใหม่ 50200', SAMPLE).code, '50');
+  assert.equal(provinceFromText('99/1 Moo 5, Chon Buri 20150', SAMPLE).code, '20');
+});
+
+test('🔴 ชื่อยาวต้องชนะชื่อสั้น — ไม่งั้น "นครศรีธรรมราช" กลายเป็น "นครสวรรค์"', () => {
+  assert.equal(provinceFromText('88 ต.ปากพูน อ.เมือง จ.นครศรีธรรมราช 80000', SAMPLE).code, '80');
+});
+
+test('🔴 เดาไม่ได้ต้องคืน null — จังหวัดผิดถูกตรึงในรหัสไซต์ถาวร', () => {
+  assert.equal(provinceFromText('123 หมู่ 4', SAMPLE), null);
+  assert.equal(provinceFromText('', SAMPLE), null);
+  assert.equal(provinceFromText(null, SAMPLE), null);
+  // จังหวัดที่ไม่อยู่ในทะเบียนภาคของเรา (รหัสมั่ว) ต้องไม่ถูกหยิบมาใช้
+  assert.equal(provinceFromText('เมืองสมมติ', [{ code: '99', th: 'เมืองสมมติ' }]), null);
 });
