@@ -160,6 +160,9 @@
 .kind_repair { background: var(--red-soft); }
 .kind_inspect { background: var(--teal-soft); }
 .kind_remove { background: var(--amber-soft); }
+/* 🐞 ชนิดที่เพิ่มทีหลังแล้วลืมให้สี = ชิปโปร่งใสบนกริด และแถวคำอธิบายสีมีป้ายแต่ไม่มีสี
+   (เจอตอนรีเช็ค 30/08 — `survey` เพิ่งเข้า VISIT_KINDS ตอนเฟส 2) */
+.kind_survey { background: var(--green-soft); }
 
 /* ── คิวรอจัด (ร่างที่ยังไม่ผ่านด่าน) ──────────────────────────────────────
    อยู่เหนือกริด **นอกตาราง** — ร่างที่วางปนกับนัดจริงคือร่างที่ช่างออกไปทำ */
