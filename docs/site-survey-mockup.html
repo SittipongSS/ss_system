@@ -709,6 +709,32 @@ padding-top:var(--space-2);border-top:1px dashed var(--border);font-variant-nume
 .partsum b{font-size:var(--fs-9);font-weight:var(--fw-semibold)}
 .partsum .lab{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
 .partsum .pack{color:var(--accent-ink);font-weight:var(--fw-semibold);font-size:var(--fs-4)}
+
+/* ── ไทล์เลือกโซนเดิม — มีสถานะสองแกน (ประเมิน × ขาย) ────────────────── */
+.tile[data-lock="1"]{opacity:.62;cursor:not-allowed;border-style:dashed}
+.tile[data-lock="1"]:hover{border-color:var(--border);background:var(--panel-2)}
+.tile .why2{display:block;margin-top:var(--space-1-5);font-size:var(--fs-2);line-height:var(--lh-thai)}
+.tile[data-lock="1"] .why2{color:var(--amber)}
+.tile[data-hot="1"]{border-color:var(--green);background:var(--green-soft)}
+.tile[data-hot="1"] .why2{color:var(--green);font-weight:var(--fw-semibold)}
+.tile[data-odd="1"] .why2{color:var(--red)}
+.tile .acts{display:flex;gap:var(--space-1-5);margin-top:var(--space-2);flex-wrap:wrap}
+/* กล่องสถานะ 3×2 */
+.matrix{width:100%;border-collapse:separate;border-spacing:0}
+.matrix th,.matrix td{border:1px solid var(--border);padding:var(--space-3);vertical-align:top;
+font-size:var(--fs-5);line-height:var(--lh-thai)}
+.matrix th{background:var(--panel-2);font-weight:var(--fw-semibold);font-size:var(--fs-4);text-align:left}
+.matrix td b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);margin-bottom:3px}
+.matrix td span{display:block;font-size:var(--fs-3);color:var(--text-3)}
+.matrix td .no{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
+background:var(--panel-3);color:var(--text-2);font-size:var(--fs-2);font-weight:var(--fw-bold);
+margin-inline-end:6px;vertical-align:1px}
+.matrix td[data-t="hot"]{background:var(--green-soft)}
+.matrix td[data-t="hot"] .no{background:var(--green);color:#fff}
+.matrix td[data-t="bad"]{background:var(--red-soft)}
+.matrix td[data-t="bad"] .no{background:var(--red);color:#fff}
+.matrix td[data-t="lock"]{background:var(--amber-soft)}
+.matrix td[data-t="lock"] .no{background:var(--amber);color:#fff}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -892,31 +918,86 @@ padding-top:var(--space-2);border-top:1px dashed var(--border);font-variant-nume
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>ลูกค้ารายนี้เคยประเมินไว้แล้ว</h2><p>ดึงจากทะเบียนพื้นที่ของลูกค้า — ติ๊กว่ารอบนี้จะประเมินที่เดิมซ้ำอันไหน</p></div>
-          <span class="ui-badge info">2 สถานที่ · 8 โซน</span>
+          <div><h2>พื้นที่เดิมของลูกค้ารายนี้</h2><p>ดึงมาตอนเลือกดีล — ติ๊กว่ารอบนี้จะไปวัดโซนไหนบ้าง</p></div>
+          <span class="ui-badge info">2 สถานที่ · 6 โซน</span>
         </div>
         <div class="ui-section-body">
-          <div class="tiles">
-            <button class="tile">
-              <span class="th"><b>ดิ เอ็มควอเทียร์ · ล็อบบี้ชั้น G</b><span class="ui-badge success">ขายแล้ว</span></span>
-              <span class="adr">432.0 ตร.ม. · 2 แพ็ค · 3 จุด · ประเมิน 12 มี.ค. 69 โดย AS-26030004</span></button>
-            <button class="tile" aria-pressed="true">
-              <span class="th"><b>ดิ เอ็มควอเทียร์ · โซนค้าปลีกชั้น 2</b><span class="ui-badge warning">ยังไม่ขาย</span></span>
-              <span class="adr">210.0 ตร.ม. · 1 แพ็ค · 2 จุด · ประเมิน 12 มี.ค. 69 — <b>วัดใหม่รอบนี้</b></span></button>
-            <button class="tile">
-              <span class="th"><b>ดิ เอ็มสเฟียร์ · โถงต้อนรับ</b><span class="ui-badge success">ขายแล้ว</span></span>
-              <span class="adr">180.0 ตร.ม. · 1 แพ็ค · 2 จุด · ประเมิน 12 มี.ค. 69</span></button>
+          <div class="scope-row" style="padding:0 0 var(--space-3)">
+            <span class="segmented">
+              <button aria-pressed="true">ทั้งหมด <span class="seg-count">6</span></button>
+              <button>ประเมินแล้วยังไม่ขาย <span class="seg-count">2</span></button>
+              <button>ยังไม่เคยวัด <span class="seg-count">2</span></button>
+            </span>
+            <span class="search-glass"><svg class="i"><use href="#search"/></svg><span>ค้นหาสถานที่ / โซน</span></span>
           </div>
+
+          <div class="qgroup"><h4><svg class="i"><use href="#pin"/></svg>ดิ เอ็มควอเทียร์ — 4 โซน · วัดแล้ว 3 · ขายแล้ว 2</h4>
+            <div class="tiles">
+
+              <!-- ④ วัดแล้ว ยังไม่ขาย — กรณีที่ต้องชูขึ้นก่อนใคร -->
+              <button class="tile" data-hot="1">
+                <span class="th"><span class="ui-badge plain">④</span><b>โซนค้าปลีกชั้น 2</b>
+                  <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
+                <span class="adr">210.0 ตร.ม. · 1 แพ็ค · 3 จุด · วัดเมื่อ 12 มี.ค. 69 โดย AS-26030004</span>
+                <span class="why2">⭐ ไม่ต้องไปวัดใหม่ — เสนอราคาได้เลย</span>
+                <span class="acts"><span class="btn sm btn-accent">ใช้ตัวเลขนี้เสนอราคา</span>
+                  <span class="btn sm">วัดซ้ำรอบนี้</span></span></button>
+
+              <!-- ⑤ วัดแล้ว ขายแล้ว -->
+              <button class="tile" aria-pressed="true">
+                <span class="th"><span class="ui-badge plain">⑤</span><b>ล็อบบี้ชั้น G</b>
+                  <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge success">ขายแล้ว</span></span>
+                <span class="adr">432.0 ตร.ม. · 2 แพ็ค · 3 จุด · SO-26040022 · วัดเมื่อ 12 มี.ค. 69</span>
+                <span class="why2">ติ๊กแล้ว — <b>ลูกค้าขยายพื้นที่ วัดซ้ำรอบนี้</b> · ผลรอบเก่ายังอยู่ครบ</span></button>
+
+              <!-- ③ มีใบค้าง -->
+              <button class="tile" data-lock="1" disabled>
+                <span class="th"><span class="ui-badge plain">③</span><b>ลานจอดรถชั้น B1</b>
+                  <span class="ui-badge info">มีใบค้าง</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
+                <span class="adr">ยังไม่เคยวัด</span>
+                <span class="why2">🔒 อยู่ในใบ AS-26090003 แล้ว — นัดไว้ 8 ก.ย. · ติ๊กซ้ำไม่ได้ ไม่งั้นช่างไปสองรอบ</span>
+                <span class="acts"><span class="btn sm btn-quiet">เปิดใบ AS-26090003</span></span></button>
+
+              <!-- ② ยังไม่วัด ยังไม่ขาย -->
+              <button class="tile">
+                <span class="th"><span class="ui-badge plain">②</span><b>ห้องน้ำรวมชั้น 3</b>
+                  <span class="ui-badge plain">ยังไม่เคยวัด</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
+                <span class="adr">เคยขอไว้ในใบ AS-26030004 แต่ TS ตัดออกหน้างาน</span>
+                <span class="why2">เหตุผลที่ถูกตัด: อาคารมีระบบของรายอื่นอยู่แล้ว — ถ้าเปลี่ยนแล้วค่อยติ๊กใหม่</span></button>
+            </div>
+          </div>
+
+          <div class="qgroup"><h4><svg class="i"><use href="#pin"/></svg>ดิ เอ็มสเฟียร์ — 2 โซน · วัดแล้ว 1 · ขายแล้ว 2</h4>
+            <div class="tiles">
+
+              <!-- ⑦ มีใบค้าง ขายแล้ว -->
+              <button class="tile" data-lock="1" disabled>
+                <span class="th"><span class="ui-badge plain">⑦</span><b>โซนอาหารชั้น 5</b>
+                  <span class="ui-badge info">มีใบค้าง</span><span class="ui-badge success">ขายแล้ว</span></span>
+                <span class="adr">600.0 ตร.ม. · 3 แพ็ค · SO-26070008</span>
+                <span class="why2">🔒 นัดวัดซ้ำไว้แล้วในใบ AS-26090007 — 15 ก.ย.</span></button>
+
+              <!-- ⑥ ขายแล้วแต่ไม่เคยวัด -->
+              <button class="tile" data-odd="1">
+                <span class="th"><span class="ui-badge plain">⑥</span><b>โถงต้อนรับชั้น G</b>
+                  <span class="ui-badge danger">ไม่เคยวัด</span><span class="ui-badge success">ขายแล้ว</span></span>
+                <span class="adr">1 แพ็ค · SO-26040022 · นำเข้าจากชีตเก่า ไม่มีขนาด</span>
+                <span class="why2">🔴 ขายไปแล้วแต่ไม่มีใครเคยวัด — ของนำเข้า 380 จุดเก่าเป็นแบบนี้ทั้งชุด · ไปวัดเก็บข้อมูลได้</span></button>
+            </div>
+          </div>
+
           <p class="hint" style="margin-top:var(--space-3)">
-            ⚠️ ติ๊กแล้ว = <b>วัดใหม่ทับรอบนี้ ไม่ลบของเดิม</b> — ผลรอบเก่ายังอยู่ครบสำหรับใบเสนอราคาที่อ้างไปแล้ว ·
-            ไม่ติ๊ก = ข้ามไป ใช้ตัวเลขเดิมได้จากแท็บ “พื้นที่บริการ” บนหน้าลูกค้า</p>
-          <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมดของลูกค้ารายนี้</button></p>
+            ⚠️ ติ๊ก = <b>วัดรอบนี้ ไม่ลบของเดิม</b> — ผลรอบเก่ายังอยู่ครบสำหรับใบเสนอราคาที่อ้างไปแล้ว ·
+            ไม่ติ๊ก = ข้ามไป ตัวเลขเดิมยังใช้ได้จากแท็บ “พื้นที่บริการ”</p>
+          <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมด</button>
+            <button class="btn sm btn-quiet" data-jump="cases"><svg class="i"><use href="#layers"/></svg> ดูเมทริกซ์สถานะทั้งเจ็ดกรณี</button></p>
         </div>
       </div>
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>ที่ใหม่ที่ต้องไปประเมิน</h2><p>1 จุด = 1 โซน · เพิ่มสถานที่ได้มากกว่า 1 แห่งในใบเดียว</p></div>
+          <div><h2>ที่ใหม่ที่ต้องไปประเมิน</h2>
+          <p>① เพิ่มจุดในสถานที่เดิม = “ประเมินเพิ่ม” · เพิ่มสถานที่ใหม่ = ไซต์ใหม่</p></div>
           <span class="ui-badge accent">2 สถานที่ · 5 จุดใหม่</span>
         </div>
         <div class="ui-section-body">
@@ -2217,13 +2298,113 @@ padding-top:var(--space-2);border-top:1px dashed var(--border);font-variant-nume
   </div>
 </section>
 
+<!-- ═══ 12 เมทริกซ์สถานะ + การดึงข้อมูล ═════════════════════════════ -->
+<section class="screen" id="cases">
+  <div class="brief">
+    <div>
+      <h2>เจ็ดกรณีของโซน</h2>
+      <div class="route">ตรรกะที่อยู่หลังฟอร์ม — ไม่ใช่จอที่ผู้ใช้เห็น</div>
+      <p>โจทย์ลิสต์เงื่อนไขมาเป็นชุด ๆ (site ใหม่/เก่า · ประเมินแล้ว/ยังไม่ · ขายแล้ว/ยังไม่ · ประเมินเพิ่ม)
+      พอแยกแกนออกมาแล้วมันเป็น <b>สองแกนที่ตั้งฉากกัน</b> คูณกันได้ครบทุกช่อง ไม่ต้องไล่จำเป็นรายกรณี</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>🔴 <b>หน่วยของสถานะคือโซน ไม่ใช่ไซต์</b> — ห้างหนึ่งขายล็อบบี้ไปแล้วแต่ชั้น 2 ยังไม่ขาย ·
+      “ไซต์ขายแล้ว” เป็นคำถามที่ไม่มีคำตอบเดียว ⇒ สถานะของไซต์เป็นแค่สรุปจากลูก</span></li>
+      <li><span class="mk new">+</span><span>⚠️ แกนประเมินมี <b>สามค่า ไม่ใช่สองค่า</b> — “มีใบอื่นสั่งวัดไว้แล้ว” เป็นสถานะของตัวเอง ·
+      ยุบรวมกับ “ยังไม่วัด” เมื่อไร สองใบจะสั่งวัดโซนเดียวกันซ้อนกัน</span></li>
+      <li><span class="mk new">+</span><span>⭐ กรณี ④ <b>วัดแล้วยังไม่ขาย</b> คือของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน — ต้องชูขึ้นก่อนใครทั้งบนฟอร์มและบนหน้าลูกค้า</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">สองแกน × เจ็ดกรณี</div>
+    <div class="frame-body">
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>เมทริกซ์</h2>
+        <p>① อยู่นอกตาราง เพราะยังไม่มีตัวตนในระบบ</p></div></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="matrix">
+            <thead><tr><th style="width:150px"></th><th>ยังไม่ขาย</th><th>ขายแล้ว</th></tr></thead>
+            <tbody>
+              <tr><th>ยังไม่เคยวัด</th>
+                <td><span class="no">2</span><b>ค้างจากใบก่อน</b>
+                  <span>ใบก่อนถูกยกเลิก หรือ TS ตัดออกหน้างาน · ฟอร์มโชว์เหตุผลที่เคยถูกตัด แล้วให้ติ๊กใหม่</span></td>
+                <td data-t="bad"><span class="no">6</span><b>🔴 ขายแล้วแต่ไม่เคยวัด</b>
+                  <span>ของนำเข้า F-8 (380 จุดเก่า) หรือขายด้วยตาเปล่า · ไม่ใช่ error แต่เป็นหนี้ข้อมูล — ชวนไปวัดเก็บ</span></td></tr>
+              <tr><th>มีใบอื่นสั่งวัดไว้</th>
+                <td data-t="lock"><span class="no">3</span><b>🔒 นัดไว้แล้ว</b>
+                  <span>ติ๊กไม่ได้ · บอกเลขใบ + วันนัด + ลิงก์ไปใบนั้น</span></td>
+                <td data-t="lock"><span class="no">7</span><b>🔒 นัดวัดซ้ำไว้แล้ว</b>
+                  <span>เหมือน ③ ทุกอย่าง ต่างแค่มีเครื่องอยู่แล้ว</span></td></tr>
+              <tr><th>วัดแล้ว</th>
+                <td data-t="hot"><span class="no">4</span><b>⭐ เสนอราคาได้เลย</b>
+                  <span>ประเมินแล้วดีลไม่ปิด หรือลูกค้าซื้อไม่ครบ · <b>ไม่ต้องไปวัดใหม่</b> — ปุ่ม “ใช้ตัวเลขนี้เสนอราคา”</span></td>
+                <td><span class="no">5</span><b>มีเครื่องอยู่</b>
+                  <span>ติ๊กเมื่อลูกค้าขยาย/ปรับพื้นที่ · วัดซ้ำ<b>ไม่ทับ</b>ของเดิม</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>① ยังไม่มีในระบบ — และ “ประเมินเพิ่ม” คืออะไรกันแน่</h2></div></div>
+        <div class="ui-section-body">
+          <div class="anat">
+            <div><b>ไซต์ใหม่ + โซนใหม่</b>
+              <p>ลูกค้าใหม่ หรือสาขาที่ยังไม่เคยแตะ ⇒ ปุ่ม <b>“เพิ่มสถานที่”</b></p></div>
+            <div><b>ไซต์เดิม + โซนใหม่</b>
+              <p>🎯 นี่คือ <b>“ประเมินเพิ่ม”</b> ในโจทย์ — ห้างเดิมเปิดโซนใหม่ ⇒ ปุ่ม <b>“เพิ่มจุดในสถานที่นี้”</b>
+              ต้องแยกจากปุ่มบนให้ชัด ไม่งั้นจะได้ไซต์ซ้ำสองใบของห้างเดียวกัน</p></div>
+            <div><b>ไซต์เดิม + โซนเดิม</b>
+              <p>ทุกกรณี ②–⑦ ในเมทริกซ์ — ไม่สร้างอะไรใหม่ แค่สั่งวัดรอบใหม่</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ฟอร์มดึงข้อมูลตอนไหน</h2>
+        <p>ดึงครั้งเดียว ตอน <span class="mono">dealId</span> เปลี่ยน — ไม่ใช่ตอนเปิดฟอร์ม</p></div></div>
+        <div class="ui-section-body">
+          <div class="ctxstrip">
+            <span class="done"><svg class="i"><use href="#check"/></svg>เลือกดีล</span>
+            <span>ลูกค้ามาจากดีล ⇒ ก่อนเลือกดีลยังไม่รู้ว่าลูกค้าใคร <b>ยังไม่มีอะไรให้ดึง</b> · ดึงตอนเปิดฟอร์ม = ยิงเปล่าทุกครั้ง</span>
+          </div>
+          <div class="doc" style="margin-bottom:var(--space-4)">
+            <h4>คำขอเดียว</h4>
+            <div class="line"><span class="mono">GET</span><span class="mono">/api/service/customer-areas?customerId=…</span></div>
+            <div class="line"><span>คืน</span><span class="mono">[{ site, zones: [{ id, name, parts, packageQty, spots,<br>
+              &nbsp;&nbsp;surveyState: 'none' | 'pending' | 'done',<br>
+              &nbsp;&nbsp;soldState: 'unsold' | 'sold',<br>
+              &nbsp;&nbsp;lastSurvey: { docNo, at }, openRequest: { docNo, visitDate } }] }]</span></div>
+            <div class="line"><span>สองสถานะ</span><span>🔴 <b>คำนวณตอนอ่าน ห้ามเก็บเป็นคอลัมน์</b> — จาก <span class="mono">service_survey_zones</span> + <span class="mono">service_zone_terms</span></span></div>
+          </div>
+
+          <div class="ui-section-header" style="padding-inline:0"><div><h2 style="font-size:var(--fs-9)">ห้าพฤติกรรมที่ต้องเขียนไว้</h2></div></div>
+          <ul class="gate">
+            <li data-s="ok"><span class="gate-mk">✓</span>
+              <span class="gate-t"><b>ลูกค้าใหม่ ไม่มีพื้นที่เลย</b><span><b>ซ่อนบล็อกทั้งบล็อก</b> ไม่ใช่โชว์กล่องว่าง — กติกาเดิมของระบบ</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>ดึงไม่ได้ เน็ตสะดุด</b><span>🔴 <b>ห้ามบล็อกการเปิดใบ</b> — โชว์ “ดึงของเดิมไม่ได้ · เพิ่มที่ใหม่ได้ตามปกติ” + ปุ่มลองใหม่ (apiFetch ลองซ้ำ GET ให้อยู่แล้ว)</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>เปลี่ยนดีลกลางคัน ข้ามลูกค้า</b><span><b>ล้างที่ติ๊กไว้ทั้งหมด</b> — id ชี้ไปโซนของลูกค้าคนเดิม (โรคเดียวกับ customerAddressId ที่เพิ่งแก้ในงานไซต์)</span></span></li>
+            <li data-s="park"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>ลูกค้ามีพื้นที่เป็นร้อย</b><span>เซ็นทรัล 30 สาขา ⇒ ยุบตามสถานที่ + ช่องค้นหา · ⚠️ ต้องใช้ fetchAll เพราะ PostgREST ตัดที่ 1,000 แถวเงียบ ๆ</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">✕</span>
+              <span class="gate-t"><b>โซนอยู่ในใบอื่นที่ยังไม่ปิด</b><span>🔒 ติ๊กไม่ได้ + บอกเลขใบและวันนัด · <b>ต้องตรวจซ้ำที่ server ตอนกดส่ง</b> ไม่ใช่แค่ปิดปุ่ม — ระหว่างที่ SA กรอกอยู่ อีกคนอาจเปิดใบสั่งวัดโซนเดียวกันไปแล้ว</span></span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <script>
 const SCREENS = [
   ["flow","สายงาน"],["saform","ฟอร์ม SA"],["queue","คิว TS"],["book","ลงคิว"],
   ["sched","ตารางช่าง"],["field","หน้างาน"],["pack","สรุปแพ็คเกจ"],["result","ผลถึง SA"],
-  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["data","ของที่ต้องเพิ่ม"]
+  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["cases","เจ็ดกรณี"],["data","ของที่ต้องเพิ่ม"]
 ];
 const nav = document.getElementById("nav");
 SCREENS.forEach(([id,label],i)=>{
