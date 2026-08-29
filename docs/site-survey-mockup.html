@@ -1239,7 +1239,9 @@ white-space:nowrap;margin-top:2px}
       <li><span class="mk new">+</span><span>🔴 <b>ช่างแจ้งว่า “ติดตั้งได้ตรงไหนบ้าง” ไม่ใช่ “จะติดตั้งตรงไหน”</b> —
       คนเลือกจุดจริงคือ<b>หัวหน้า TS</b> ที่จอ 07 โครงเดียวกับจำนวนแพ็คเป๊ะ: ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ</span></li>
       <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดประเมินได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
-      <li><span class="mk">✓</span><span>รูป <b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ที่บล็อกคือ<b>ขนาด</b> เพราะไม่มีขนาดก็คิดแพ็คไม่ได้</span></li>
+      <li><span class="mk new">+</span><span><b>ผังไม่บังคับที่หน้างาน</b> (มติ 2026-08-29) — ช่างไม่ได้ถือผังไปด้วย · ผังมาจากฝ่ายอาคารหรือไฟล์ที่ SA แนบมา
+      ⇒ ด่านผังไปอยู่ที่<b>ปุ่มส่งผลของหัวหน้า</b> ซึ่งเป็นคนที่ไปตามผังมาได้</span></li>
+      <li><span class="mk">✓</span><span>ที่บล็อกหน้างานมีอย่างเดียวคือ<b>ขนาด</b> เพราะไม่มีขนาดก็คิดแพ็คไม่ได้ · รูปกับจุดเตือนอย่างเดียว</span></li>
     </ul>
   </div>
 
@@ -1280,12 +1282,13 @@ white-space:nowrap;margin-top:2px}
             </div>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ถ้ามี</span>
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span>
                 <span class="cnt">1 รูป</span></div>
               <div class="shots">
                 <span class="shot"><svg viewBox="0 0 24 24"><use href="#file"/></svg></span>
                 <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
               </div>
+              <p class="hint" style="margin-top:var(--space-2)">ไม่มีติดตัวก็ข้ามได้ — แต่<b>หัวหน้าต้องมีผังก่อนกดส่งผล</b> (ขอจากอาคาร หรือใช้ไฟล์ที่ฝ่ายขายแนบมา)</p>
             </div>
 
             <div class="photogrp">
@@ -1341,7 +1344,7 @@ white-space:nowrap;margin-top:2px}
               <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ถ้ามี</span><span class="cnt">ยังไม่มี</span></div>
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span><span class="cnt">ยังไม่มี</span></div>
               <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
@@ -1420,6 +1423,8 @@ white-space:nowrap;margin-top:2px}
       <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็ค</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
       <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็ค</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คแกว่ง” · หนึ่งแพ็คกระจายหลายจุดได้ หลายแพ็คลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
       <li><span class="mk new">+</span><span>ตัวเลขแพ็คที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ภาพผังบล็อกที่นี่</b> (มติ 2026-08-29) — หน้างานไม่บังคับ เพราะช่างไม่ได้ถือผังไปด้วย ·
+      แต่ผลที่ไม่มีผังเอาไปใช้ต่อไม่ได้จริง ⇒ ด่านอยู่ที่ปุ่มส่งผลของหัวหน้า พร้อมทางลัด “ใช้ไฟล์ที่ SA แนบมา”</span></li>
       <li><span class="mk">✓</span><span>จอนี้ต้องมี<b>ด่านสิทธิ์ของตัวเอง</b> ไม่ใช่ <span class="mono">canEditService</span> ที่ช่างทุกคนผ่าน</span></li>
     </ul>
   </div>
@@ -1458,7 +1463,7 @@ white-space:nowrap;margin-top:2px}
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
             <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th>
-              <th style="width:230px">จุดติดตั้ง</th><th class="num" style="width:180px">แพ็คเกจ/เดือน</th><th>รูป</th></tr></thead>
+              <th style="width:230px">จุดติดตั้ง</th><th class="num" style="width:180px">แพ็คเกจ/เดือน</th><th>รูป<span class="cell-sub">กว้าง / ผัง / จุด</span></th></tr></thead>
             <tbody>
 
               <!-- ① ครบแล้ว ตรงกับสูตร -->
@@ -1474,7 +1479,7 @@ white-space:nowrap;margin-top:2px}
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
-                <td class="mono">2 / 1 / 3</td></tr>
+                <td class="mono">2 / <b style="color:var(--green)">1</b> / 3</td></tr>
 
               <!-- ② ยังไม่กรอกอะไรเลย -->
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
@@ -1485,7 +1490,7 @@ white-space:nowrap;margin-top:2px}
                   <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
                   <button class="useit" type="button">ใช้ 1 ที่สูตรบอก</button>
                 </div></td>
-                <td class="mono" style="color:var(--amber)">0 / 0 / 0</td></tr>
+                <td class="mono">0 / <b style="color:var(--red)">0</b> / 0<span class="cell-sub" style="color:var(--red)">ไม่มีผัง</span></td></tr>
 
               <!-- ③ โซนที่ช่างเพิ่มหน้างาน -->
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span><span class="cell-sub">อาคาร A · ชั้น 5</span>
@@ -1499,7 +1504,7 @@ white-space:nowrap;margin-top:2px}
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
-                <td class="mono">1 / 0 / 1</td></tr>
+                <td class="mono">1 / <b style="color:var(--red)">0</b> / 1<span class="cell-sub" style="color:var(--red)">ไม่มีผัง</span></td></tr>
 
               <!-- ④ แพ็คสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
@@ -1515,7 +1520,7 @@ white-space:nowrap;margin-top:2px}
                   <span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span>
                   <span class="diffhint">สูงกว่าสูตร 1</span>
                 </div></td>
-                <td class="mono">3 / 1 / 4</td></tr>
+                <td class="mono">3 / <b style="color:var(--green)">1</b> / 4</td></tr>
 
               <!-- ⑤ แพ็คต่ำกว่าสูตร → บังคับเหตุผล -->
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span><span class="cell-sub">อาคาร A · ชั้น G</span></td>
@@ -1530,7 +1535,7 @@ white-space:nowrap;margin-top:2px}
                   <span class="step" data-tone="under"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="diffhint">ต่ำกว่าสูตร 2</span>
                 </div></td>
-                <td class="mono">2 / 0 / 3</td></tr>
+                <td class="mono">2 / <b style="color:var(--red)">0</b> / 3<span class="cell-sub" style="color:var(--red)">ไม่มีผัง</span></td></tr>
               <tr><td colspan="7" style="padding-top:0">
                 <div class="whyfield"><span class="tag">ต้องบอกเหตุผล</span>
                   <span>กึ่งกลางแจ้ง เปิดสามด้าน ลมโกรกตลอด — ใส่เท่าที่สูตรบอกก็ไม่อยู่ · เอาจุดตรงประตูทางเข้าจุดเดียวพอ</span></div>
@@ -1545,11 +1550,43 @@ white-space:nowrap;margin-top:2px}
         </div>
       </div>
 
-      <div class="notice" data-tone="warning">
-        <span class="ic"><svg class="i"><use href="#cam"/></svg></span>
-        <div><b>ห้องประชุมใหญ่ยังไม่มีรูปสักหัวข้อ และช่างยังไม่แจ้งจุดที่ติดตั้งได้</b>
-        <span><b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ที่บล็อกคือ<b>ขนาด</b>กับ<b>แพ็คเกจ</b> เพราะไม่มีสองอย่างนี้ฝ่ายขายตั้งราคาไม่ได้</span></div>
-        <span class="act"><button class="btn sm">แจ้งช่างให้กลับไปถ่าย</button></span>
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ด่านก่อนกด “ส่งผลให้ฝ่ายขาย”</h2>
+        <p>สามข้อบนบล็อก · สองข้อล่างเตือนอย่างเดียว</p></div>
+          <span class="ui-badge danger">ติด 2 ข้อ</span></div>
+        <div class="ui-section-body">
+          <ul class="gate">
+            <li data-s="ok"><span class="gate-mk">✓</span>
+              <span class="gate-t"><b>ขนาด ก × ย × ส ครบทุกโซน</b><span>5 / 5 · ช่างวัดครบเมื่อ 8 ก.ย. 12:20</span></span>
+              <span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">✕</span>
+              <span class="gate-t"><b>ภาพผังครบทุกโซน</b>
+                <span>2 / 5 — ขาด ห้องประชุมใหญ่ · โถงลิฟต์ · โถงจอดรถรับส่ง</span></span>
+              <span class="gate-who"><span class="owner">หัวหน้า TS</span>
+                <button class="btn sm btn-accent">ใช้ไฟล์ที่ SA แนบมา</button></span></li>
+            <li data-s="blocked"><span class="gate-mk">✕</span>
+              <span class="gate-t"><b>จำนวนแพ็คเกจครบทุกโซน</b><span>4 / 5 — ขาด ห้องประชุมใหญ่</span></span>
+              <span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
+            <li data-s="park"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>ภาพกว้าง</b><span>4 / 5 — เตือนอย่างเดียว ยังตั้งราคาได้</span></span>
+              <span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="park"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>จุดที่ติดตั้งได้ / จุดที่เลือก</b><span>4 / 5 — เตือนอย่างเดียว แต่วันติดตั้งจะไม่มีอะไรอ้างอิง</span></span>
+              <span class="gate-who"><span class="owner">ช่าง</span>
+                <button class="btn sm">แจ้งช่างให้กลับไปถ่าย</button></span></li>
+          </ul>
+          <p class="hint" style="margin-top:var(--space-3)">⚠️ ด่านนี้อยู่ที่ตรรกะตัวเดียวกับที่ฝั่ง server ใช้ตรวจ —
+          เงื่อนไขที่ปุ่มรู้แต่ server ไม่รู้ คือปุ่มที่จางเงียบโดยไม่บอกเหตุ (กติกาเดิมของระบบคำร้อง)</p>
+        </div>
+      </div>
+
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#file"/></svg></span>
+        <div><b>ทำไมผังบล็อกที่นี่ ไม่ใช่ที่หน้างาน</b>
+        <span>ช่างไม่ได้ถือผังไปด้วย — ผังมาจากฝ่ายอาคารหรือไฟล์ที่ SA แนบมากับใบ ขอแล้วอาจได้วันรุ่งขึ้น ·
+        แต่ผลที่ส่งออกไปโดยไม่มีผัง SA คุยกับลูกค้าไม่ได้ว่าเครื่องลงตรงไหน และวันติดตั้งช่างอีกคนไม่มีอะไรอ้างอิง
+        ⇒ ด่านอยู่ที่ปุ่มส่งผล ซึ่งเป็นของคนที่ไปตามผังมาได้ ·
+        <b>ห้าโซนบนชั้นเดียวกันใช้ผังแผ่นเดียวได้</b> กด “ใช้ผังเดียวกับโซนอื่น” ไม่ต้องอัปซ้ำห้ารอบ</span></div>
       </div>
 
       <div class="ui-section">
@@ -1595,7 +1632,7 @@ white-space:nowrap;margin-top:2px}
       </div>
 
       <div class="sticky-acts">
-        <span class="ui-badge warning">เหลืออีก 1 โซน</span>
+        <span class="ui-badge danger">ติดด่าน 2 ข้อ — ผัง 2/5 · แพ็ค 4/5</span>
         <span style="margin-left:auto"></span>
         <button class="btn">บันทึก</button>
         <button class="btn btn-primary" disabled>ส่งผลให้ฝ่ายขาย</button>
@@ -1867,7 +1904,7 @@ white-space:nowrap;margin-top:2px}
             <tbody>
               <tr><td class="mono">lib/requests/kinds/ts/siteSurvey.js</td><td>หัวข้อใหม่ — บ้านของฝ่าย TS โฟลเดอร์ใหม่ (กติกา “1 ฝ่าย = 1 โฟลเดอร์”)</td></tr>
               <tr><td class="mono">lib/requests/kinds/registry.js</td><td>เพิ่ม <span class="mono">'TS'</span> ใน VALID_DEPTS + ต่อ TS_KINDS</td></tr>
-              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คตามสูตร 2,400 · ด่าน “ส่งผลได้หรือยัง” · สรุปรูปที่ยังขาด</td></tr>
+              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คตามสูตร 2,400 · <b>ด่านส่งผล</b> (ขนาด + แพ็ค + <b>ผัง</b> บล็อก · กว้าง/จุด เตือน) — ตัวเดียวที่ทั้งปุ่มและ server ถาม</td></tr>
               <tr><td class="mono">lib/master/attachments.js</td><td>เพิ่ม <span class="mono">service_zone: 'service_zones'</span> ใน PARENT_TABLE <b>+ สาขาสิทธิ์ของตัวเองใน route ไฟล์</b> — ขาดบรรทัดนี้ = แนบได้แต่เปิดดูไม่ได้สักไฟล์ (โรคที่หัวคำร้องเคยโดนมาแล้ว)</td></tr>
               <tr><td class="mono">lib/master/attachmentTypes.js</td><td>ชนิดเอกสารใหม่ 3 ตัว — ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง</td></tr>
               <tr><td class="mono">components/service/SurveyPlacesField.js</td><td>บล็อกสถานที่/จุด บนฟอร์ม SA (สร้าง = แก้ ตัวเดียว)</td></tr>
