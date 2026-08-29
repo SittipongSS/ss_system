@@ -856,8 +856,12 @@ margin-inline-end:6px;vertical-align:1px}
       ซึ่งเป็นบล็อกเฉพาะหัวข้อ แบบเดียวกับที่ PDR มีบล็อกของตัวเอง</p>
     </div>
     <ul class="fixes">
-      <li><span class="mk new">+</span><span>⭐ <b>จังหวะแรกคือ “ของเดิม” ไม่ใช่ “พิมพ์ใหม่”</b> (มติ 2026-08-29) — ลูกค้าที่เคยประเมินแล้วจะเห็นสถานที่/โซนเดิม
-      พร้อมขนาด แพ็ค จุด และ<b>ขายแล้ว/ยังไม่ขาย</b> ⇒ ตอบได้ทันทีว่ารอบนี้ “ที่เดิม” หรือ “เพิ่มที่ใหม่”</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>หนึ่งใบ = หนึ่งไซต์</b> (มติ 2026-08-29) — <span class="mono">1 ดีล : N ใบ : 1 ไซต์ : N โซน</span> ·
+      ลูกค้าต้องประเมิน 3 สาขา = 3 ใบบนดีลใบเดียวกัน · เข้ากับมติ “หนึ่งดีลมีใบประเมินได้หลายใบ” พอดี</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>นี่อุดรูที่ร่างเดิมไม่ได้ตอบ</b> — <span class="mono">service_visits.siteId</span> เป็นรายไซต์ ⇒ ใบที่มีสามสถานที่ต้องมีสามนัด
+      แต่ใบมี “วันกำหนด” ช่องเดียว · พอเป็นไซต์เดียว <b>หนึ่งใบ = หนึ่งนัด</b> ตรงกับโครงที่มีอยู่เป๊ะ</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>จังหวะแรกคือ “ของเดิม” ไม่ใช่ “พิมพ์ใหม่”</b> — เลือกไซต์แล้วเห็นโซนเดิมพร้อมสถานะสองแกน
+      ⇒ ตอบได้ทันทีว่ารอบนี้วัดที่เดิมอันไหน และเพิ่มจุดใหม่อะไร</span></li>
       <li><span class="mk new">+</span><span><b>ดีลเป็นช่องแรก ลูกค้าเติมจากดีล</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ ผลประเมินเดินต่อเข้า QT ได้ทันที · <span class="mono">dept_requests.dealId</span> มีอยู่แล้ว ไม่ต้อง migration</span></li>
       <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีจุดที่ต้องประเมิน (= โซน)
       · โจทย์เขียนว่า “1 รายการ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 จุดต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่า 6 จุดนั้นอยู่ตึกเดียวกัน</span></li>
@@ -918,23 +922,45 @@ margin-inline-end:6px;vertical-align:1px}
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>พื้นที่เดิมของลูกค้ารายนี้</h2><p>ดึงมาตอนเลือกดีล — ติ๊กว่ารอบนี้จะไปวัดโซนไหนบ้าง</p></div>
-          <span class="ui-badge info">2 สถานที่ · 6 โซน</span>
+          <div><h2>สถานที่ — เลือกได้ที่เดียวต่อใบ</h2>
+          <p>ลูกค้าต้องประเมิน 3 สาขา = <b>3 ใบ บนดีลใบเดียวกัน</b> · หนึ่งใบ = หนึ่งนัด</p></div>
+          <span class="ui-badge accent">เลือก ดิ เอ็มควอเทียร์</span>
         </div>
         <div class="ui-section-body">
-          <div class="scope-row" style="padding:0 0 var(--space-3)">
-            <span class="segmented">
-              <button aria-pressed="true">ทั้งหมด <span class="seg-count">6</span></button>
-              <button>ประเมินแล้วยังไม่ขาย <span class="seg-count">2</span></button>
-              <button>ยังไม่เคยวัด <span class="seg-count">2</span></button>
-            </span>
-            <span class="search-glass"><svg class="i"><use href="#search"/></svg><span>ค้นหาสถานที่ / โซน</span></span>
+          <div class="tiles">
+            <button class="tile" aria-pressed="true">
+              <span class="th"><b>ดิ เอ็มควอเทียร์</b><span class="ui-badge plain mono">SS-26030011</span>
+                <span class="ui-badge success">เลือกแล้ว</span></span>
+              <span class="adr">693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา · เขตวิ่งงาน BKK-C</span>
+              <span class="why2">4 โซน · วัดแล้ว 3 · ขายแล้ว 2</span></button>
+            <button class="tile">
+              <span class="th"><b>ดิ เอ็มสเฟียร์</b><span class="ui-badge plain mono">SS-26030012</span></span>
+              <span class="adr">628 ถ.สุขุมวิท แขวงคลองตัน เขตคลองเตย · เขตวิ่งงาน BKK-C</span>
+              <span class="why2">2 โซน · วัดแล้ว 1 · ขายแล้ว 2</span></button>
+            <button class="tile own">
+              <span class="th"><b><svg class="i"><use href="#plus"/></svg> สถานที่ใหม่</b></span>
+              <span class="adr">สาขาที่ยังไม่เคยแตะ — ตั้งที่อยู่จากทะเบียนลูกค้า</span></button>
           </div>
+          <div class="ctxstrip" style="margin:var(--space-3-5) 0 0">
+            <span class="done"><svg class="i"><use href="#check"/></svg>ไซต์เดิม</span>
+            <span>ที่อยู่ · แผนที่ · ผู้ติดต่อ · <b>ช่วงเวลาที่เข้าได้ 10:00–22:00 ทุกวัน</b> มีอยู่แล้วในทะเบียน ไม่ต้องกรอกซ้ำ</span>
+            <span class="btn sm btn-quiet">แก้ทะเบียนไซต์</span>
+          </div>
+          <p class="hint" style="margin-top:var(--space-2)">⚠️ เปลี่ยนไซต์ = <b>โซนที่ติ๊กไว้ข้างล่างถูกล้างทั้งชุด</b> เพราะเป็นของไซต์เดิม — ระบบจะถามยืนยันก่อน</p>
+        </div>
+      </div>
 
-          <div class="qgroup"><h4><svg class="i"><use href="#pin"/></svg>ดิ เอ็มควอเทียร์ — 4 โซน · วัดแล้ว 3 · ขายแล้ว 2</h4>
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>จุดที่ต้องประเมิน</h2><p>ทุกจุดอยู่ใต้ <b>ดิ เอ็มควอเทียร์</b> · 1 จุด = 1 โซน</p></div>
+          <span class="ui-badge info">เดิม 2 · ใหม่ 2</span>
+        </div>
+        <div class="ui-section-body">
+
+          <div class="qgroup"><h4><svg class="i"><use href="#layers"/></svg>โซนเดิมของไซต์นี้ — ติ๊กว่ารอบนี้จะไปวัดอันไหน</h4>
             <div class="tiles">
 
-              <!-- ④ วัดแล้ว ยังไม่ขาย — กรณีที่ต้องชูขึ้นก่อนใคร -->
+              <!-- ④ วัดแล้ว ยังไม่ขาย -->
               <button class="tile" data-hot="1">
                 <span class="th"><span class="ui-badge plain">④</span><b>โซนค้าปลีกชั้น 2</b>
                   <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
@@ -955,119 +981,35 @@ margin-inline-end:6px;vertical-align:1px}
                 <span class="th"><span class="ui-badge plain">③</span><b>ลานจอดรถชั้น B1</b>
                   <span class="ui-badge info">มีใบค้าง</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
                 <span class="adr">ยังไม่เคยวัด</span>
-                <span class="why2">🔒 อยู่ในใบ AS-26090003 แล้ว — นัดไว้ 8 ก.ย. · ติ๊กซ้ำไม่ได้ ไม่งั้นช่างไปสองรอบ</span>
-                <span class="acts"><span class="btn sm btn-quiet">เปิดใบ AS-26090003</span></span></button>
+                <span class="why2">🔒 อยู่ในใบ AS-26090001 แล้ว — นัดไว้ 5 ก.ย. · ติ๊กซ้ำไม่ได้ ไม่งั้นช่างไปสองรอบ</span>
+                <span class="acts"><span class="btn sm btn-quiet">เปิดใบ AS-26090001</span></span></button>
 
               <!-- ② ยังไม่วัด ยังไม่ขาย -->
-              <button class="tile">
+              <button class="tile" aria-pressed="true">
                 <span class="th"><span class="ui-badge plain">②</span><b>ห้องน้ำรวมชั้น 3</b>
                   <span class="ui-badge plain">ยังไม่เคยวัด</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
                 <span class="adr">เคยขอไว้ในใบ AS-26030004 แต่ TS ตัดออกหน้างาน</span>
-                <span class="why2">เหตุผลที่ถูกตัด: อาคารมีระบบของรายอื่นอยู่แล้ว — ถ้าเปลี่ยนแล้วค่อยติ๊กใหม่</span></button>
+                <span class="why2">เหตุผลที่ถูกตัด: อาคารมีระบบของรายอื่นอยู่แล้ว — ลูกค้าแจ้งว่าถอดออกแล้ว ติ๊กใหม่รอบนี้</span></button>
             </div>
           </div>
 
-          <div class="qgroup"><h4><svg class="i"><use href="#pin"/></svg>ดิ เอ็มสเฟียร์ — 2 โซน · วัดแล้ว 1 · ขายแล้ว 2</h4>
-            <div class="tiles">
-
-              <!-- ⑦ มีใบค้าง ขายแล้ว -->
-              <button class="tile" data-lock="1" disabled>
-                <span class="th"><span class="ui-badge plain">⑦</span><b>โซนอาหารชั้น 5</b>
-                  <span class="ui-badge info">มีใบค้าง</span><span class="ui-badge success">ขายแล้ว</span></span>
-                <span class="adr">600.0 ตร.ม. · 3 แพ็ค · SO-26070008</span>
-                <span class="why2">🔒 นัดวัดซ้ำไว้แล้วในใบ AS-26090007 — 15 ก.ย.</span></button>
-
-              <!-- ⑥ ขายแล้วแต่ไม่เคยวัด -->
-              <button class="tile" data-odd="1">
-                <span class="th"><span class="ui-badge plain">⑥</span><b>โถงต้อนรับชั้น G</b>
-                  <span class="ui-badge danger">ไม่เคยวัด</span><span class="ui-badge success">ขายแล้ว</span></span>
-                <span class="adr">1 แพ็ค · SO-26040022 · นำเข้าจากชีตเก่า ไม่มีขนาด</span>
-                <span class="why2">🔴 ขายไปแล้วแต่ไม่มีใครเคยวัด — ของนำเข้า 380 จุดเก่าเป็นแบบนี้ทั้งชุด · ไปวัดเก็บข้อมูลได้</span></button>
+          <div class="qgroup"><h4><svg class="i"><use href="#plus"/></svg>โซนใหม่ที่พิมพ์เพิ่ม — “ประเมินเพิ่ม” ในไซต์เดิม</h4>
+            <div class="zlist">
+              <div class="zrow" data-new="1"><span class="zn">1</span>
+                <div><b>โซนอาหารชั้น 4</b>
+                  <span class="zd">อาคาร A · ชั้น 4 · ฝั่งทิศเหนือ · เปิดใหม่ไตรมาส 4</span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="zrow" data-new="1"><span class="zn">2</span>
+                <div><b>ทางเชื่อม BTS ชั้น 1</b>
+                  <span class="zd">อาคาร A · ชั้น 1 · ทางเดินยาว มีลมจากภายนอก</span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-accent" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดในสถานที่นี้</button>
             </div>
+            <p class="hint" style="margin-top:var(--space-2)">⚠️ ปุ่มนี้เพิ่ม<b>จุดในไซต์เดิม</b>เท่านั้น — สาขาอื่นต้องเปิดใบใหม่ ไม่ใช่เพิ่มที่นี่</p>
           </div>
 
-          <p class="hint" style="margin-top:var(--space-3)">
-            ⚠️ ติ๊ก = <b>วัดรอบนี้ ไม่ลบของเดิม</b> — ผลรอบเก่ายังอยู่ครบสำหรับใบเสนอราคาที่อ้างไปแล้ว ·
-            ไม่ติ๊ก = ข้ามไป ตัวเลขเดิมยังใช้ได้จากแท็บ “พื้นที่บริการ”</p>
-          <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมด</button>
+          <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมดของลูกค้า</button>
             <button class="btn sm btn-quiet" data-jump="cases"><svg class="i"><use href="#layers"/></svg> ดูเมทริกซ์สถานะทั้งเจ็ดกรณี</button></p>
-        </div>
-      </div>
-
-      <div class="ui-section">
-        <div class="ui-section-header">
-          <div><h2>ที่ใหม่ที่ต้องไปประเมิน</h2>
-          <p>① เพิ่มจุดในสถานที่เดิม = “ประเมินเพิ่ม” · เพิ่มสถานที่ใหม่ = ไซต์ใหม่</p></div>
-          <span class="ui-badge accent">2 สถานที่ · 5 จุดใหม่</span>
-        </div>
-        <div class="ui-section-body">
-
-          <div class="place">
-            <div class="place-h"><span class="n">1</span><b>ดิ เอ็มควอเทียร์</b>
-              <span class="ui-badge plain mono">00012</span>
-              <span class="sp"><button class="btn sm btn-quiet"><svg class="i"><use href="#pencil"/></svg> แก้ที่อยู่</button></span></div>
-            <div class="place-b">
-              <div class="tiles" style="margin-bottom:var(--space-3-5)">
-                <button class="tile" aria-pressed="true">
-                  <span class="th"><b>สาขาเอ็มควอเทียร์</b><span class="ui-badge info">ออกบิล + จัดส่ง</span></span>
-                  <span class="adr">693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพฯ 10110</span></button>
-                <button class="tile">
-                  <span class="th"><b>สำนักงานใหญ่</b><span class="ui-badge plain mono">00000</span></span>
-                  <span class="adr">507 ถ.ศรีอยุธยา แขวงถนนพญาไท เขตราชเทวี กรุงเทพฯ 10400</span></button>
-                <button class="tile own">
-                  <span class="th"><b>ที่อยู่อื่น — พิมพ์เอง</b></span>
-                  <span class="adr">พื้นที่เช่าที่ไม่ใช่สถานประกอบการทางภาษี</span></button>
-              </div>
-
-              <div class="two" style="margin-bottom:var(--space-3-5)">
-                <div class="field"><label>ช่วงเวลาที่เข้าสถานที่นี้ได้</label>
-                  <div class="dim"><span class="box"><i>ตั้งแต่</i> <b>10:00</b></span><span class="x">–</span><span class="box"><i>ถึง</i> <b>22:00</b></span></div>
-                  <small>ข้อจำกัดถาวรของสถานที่ (ห้างเปิด 10:00) — กรอกครั้งเดียวใช้ตลอด ไม่ใช่ของใบนี้ใบเดียว</small></div>
-                <div class="field"><label>วันที่เข้าได้</label>
-                  <div class="inp ro">ทุกวัน</div></div>
-              </div>
-
-              <div class="zlist">
-                <div class="zrow"><span class="zn">1</span>
-                  <div><b>ล็อบบี้หลัก ชั้น G</b>
-                    <span class="zd">อาคาร A · ชั้น G · ฝั่งทางเข้าสุขุมวิท · เพดานสูง โถงเปิด 2 ชั้น</span></div>
-                  <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-                <div class="zrow"><span class="zn">2</span>
-                  <div><b>ทางเชื่อม BTS ชั้น 1</b>
-                    <span class="zd">อาคาร A · ชั้น 1 · ทางเดินยาว มีลมจากภายนอก</span></div>
-                  <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-                <div class="zrow"><span class="zn">3</span>
-                  <div><b>โซนค้าปลีกใหม่ ชั้น 2</b>
-                    <span class="zd">อาคาร A · ชั้น 2 · ยังไม่เปิด · ผนังกระจกทั้งด้าน</span></div>
-                  <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-                <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดในสถานที่นี้</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="place">
-            <div class="place-h"><span class="n">2</span><b>ดิ เอ็มสเฟียร์</b>
-              <span class="ui-badge accent">ที่อยู่พิมพ์เอง</span>
-              <span class="sp"><button class="btn sm btn-quiet"><svg class="i"><use href="#pencil"/></svg> แก้ที่อยู่</button></span></div>
-            <div class="place-b">
-              <div class="doc" style="margin-bottom:var(--space-3-5)">
-                <div class="line"><span>ที่อยู่</span><span>628 ถ.สุขุมวิท แขวงคลองตัน เขตคลองเตย กรุงเทพฯ 10110</span></div>
-                <div class="line"><span>แผนที่</span><span class="linklike">maps.app.goo.gl/qE4…</span></div>
-                <div class="line"><span>ผู้ติดต่อ</span><span>คุณแนน · 081-234-5678</span></div>
-              </div>
-              <div class="zlist">
-                <div class="zrow"><span class="zn">1</span>
-                  <div><b>โถงต้อนรับชั้น G</b><span class="zd">ชั้น G · ติดประตูหมุน</span></div>
-                  <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-                <div class="zrow"><span class="zn">2</span>
-                  <div><b>ห้องน้ำรวม ชั้น 3</b><span class="zd">ชั้น 3 · ชาย 1 หญิง 1 · ขอกลิ่นคนละตัว</span></div>
-                  <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-                <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดในสถานที่นี้</button>
-              </div>
-            </div>
-          </div>
-
-          <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มสถานที่</button>
         </div>
       </div>
 
@@ -1149,11 +1091,11 @@ margin-inline-end:6px;vertical-align:1px}
         <div class="ui-section-header"><div><h2>คิวงานประเมิน</h2><p>10 ใบที่ยังไม่ปิด</p></div></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>เลขที่</th><th>ชื่องาน / ลูกค้า / ดีล</th><th class="num">จุด</th><th>ขั้นที่เดินไป</th><th>นัดไป</th><th>ช่าง</th><th></th></tr></thead>
+            <thead><tr><th>เลขที่</th><th>ชื่องาน / ลูกค้า / สถานที่ / ดีล</th><th class="num">จุด</th><th>ขั้นที่เดินไป</th><th>นัดไป</th><th>ช่าง</th><th></th></tr></thead>
             <tbody>
               <tr>
                 <td><span class="t-strong mono">AS-26090003</span><span class="cell-sub">ขอโดย ปาริชาต · 2 ก.ย.</span></td>
-                <td><span class="t-strong">ประเมินพื้นที่ ดิ เอ็มควอเทียร์</span><span class="cell-sub">บริษัท เดอะ มอลล์ กรุ๊ป จำกัด · 2 สถานที่ · <span class="mono">DL-2609003</span></span></td>
+                <td><span class="t-strong">ประเมินพื้นที่ ดิ เอ็มควอเทียร์</span><span class="cell-sub">บริษัท เดอะ มอลล์ กรุ๊ป จำกัด · ดิ เอ็มควอเทียร์ · <span class="mono">DL-2609003</span></span></td>
                 <td class="num"><b>5</b></td>
                 <td><span class="steps"><s class="done"></s><s class="now"></s><s></s><s></s><em>รอรับเรื่อง</em></span></td>
                 <td><span style="color:var(--text-3)">—</span><span class="cell-sub">ขอ 8 ก.ย. 10:00–16:00</span></td>
@@ -1162,7 +1104,7 @@ margin-inline-end:6px;vertical-align:1px}
               </tr>
               <tr>
                 <td><span class="t-strong mono">AS-26090002</span><span class="cell-sub">ขอโดย ธนวัฒน์ · 1 ก.ย.</span></td>
-                <td><span class="t-strong">สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค</span><span class="cell-sub">บริษัท ทรู คอร์ปอเรชั่น จำกัด · 1 สถานที่ · <span class="mono">DL-2608017</span></span></td>
+                <td><span class="t-strong">สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค</span><span class="cell-sub">บริษัท ทรู คอร์ปอเรชั่น จำกัด · สำนักงานใหญ่ · <span class="mono">DL-2608017</span></span></td>
                 <td class="num"><b>5</b></td>
                 <td><span class="steps"><s class="done"></s><s class="done"></s><s class="now"></s><s></s><em>ยังไม่ลงวัน</em></span></td>
                 <td><span class="ui-badge warning">ยังไม่ลงวัน</span></td>
@@ -1330,7 +1272,7 @@ margin-inline-end:6px;vertical-align:1px}
             <h4><svg class="i"><use href="#bldg"/></svg>งานประเมินพื้นที่</h4>
             <div class="tiles">
               <div class="qitem ready"><b>AS-26090003 · ดิ เอ็มควอเทียร์</b>
-                <span class="cell-sub">5 จุด · 2 สถานที่ · ขอ 8 ก.ย. 10:00–16:00</span>
+                <span class="cell-sub">ดิ เอ็มควอเทียร์ · 5 จุด · ขอ 8 ก.ย. บ่าย</span>
                 <span class="why">ช่วงที่ขอยังมีช่างว่าง</span></div>
               <div class="qitem blocked"><b>AS-26090005 · โรงงานสมุทรสาคร</b>
                 <span class="cell-sub">3 จุด · ขอ 9 ก.ย.</span>
@@ -1993,7 +1935,7 @@ margin-inline-end:6px;vertical-align:1px}
               <div class="tl-i"><span class="tl-d">2 ก.ย. 14:05</span><span class="tl-t"><b>วรรณา (TS) ลงคิว</b>
                 <span>8 ก.ย. 09:00–12:00 · สมชาย ปัญญาดี + อนุชา กิตติวงศ์</span></span></div>
               <div class="tl-i"><span class="tl-d">2 ก.ย. 09:30</span><span class="tl-t"><b>วรรณา (TS) รับเรื่อง</b></span></div>
-              <div class="tl-i"><span class="tl-d">1 ก.ย. 17:20</span><span class="tl-t"><b>ธนวัฒน์ ส่งคำร้อง</b><span>5 จุด · ดีล DL-2608017 · แนบผังชั้น</span></span></div>
+              <div class="tl-i"><span class="tl-d">1 ก.ย. 17:20</span><span class="tl-t"><b>ธนวัฒน์ ส่งคำร้อง</b><span>สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค · 5 จุด · ดีล DL-2608017 · แนบผังชั้น</span></span></div>
             </div>
           </div>
         </div>
@@ -2118,6 +2060,8 @@ margin-inline-end:6px;vertical-align:1px}
             <tbody>
               <tr><td class="mono">dept_requests</td><td><span class="ui-badge success">ไม่ต้องเพิ่ม</span> <span class="mono">dealId</span> · <span class="mono">assigneeId</span> มีอยู่แล้ว</td>
                 <td>ประกาศ <span class="mono">needs: ['deal']</span> ในไฟล์หัวข้อก็พอ</td></tr>
+              <tr><td class="mono">dept_requests</td><td><span class="mono">siteId</span> (nullable · ไม่มี FK)</td>
+                <td>หนึ่งใบ = หนึ่งไซต์ · แพตเทิร์นเดียวกับ <span class="mono">scentId</span>/<span class="mono">quotationId</span>/<span class="mono">salesOrderId</span> ที่มีอยู่แล้วสำหรับหัวข้ออื่น — ไม่ใช่โรค pdr* 40 คอลัมน์</td></tr>
               <tr><td class="mono">dept_requests</td><td>ขยาย CHECK <span class="mono">dept</span> รับ <span class="mono">'TS'</span></td>
                 <td>วันนี้รับแค่ RD/PC/FN — ไม่ขยาย ใบเปิดไม่ได้เลยสักใบ</td></tr>
               <tr><td class="mono">dept_requests</td><td><span class="mono">requestedDueTime</span> · <span class="mono">committedDueTime</span></td>
@@ -2160,7 +2104,7 @@ margin-inline-end:6px;vertical-align:1px}
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#check"/></svg></span>
         <div><b>✅ มติครบแล้วทั้ง 9 ข้อ (2026-08-29) — พร้อมลงมือ</b>
-        <span>ไซต์/โซนเกิดตอน SA กดส่ง · วันเวลาที่ต้องการให้เข้าพื้นที่ (วันที่ส่งเรื่องระบบบันทึกเอง) ·
+        <span>หนึ่งใบหนึ่งไซต์ · ไซต์/โซนเกิดตอน SA กดส่ง · วันเวลาที่ต้องการให้เข้าพื้นที่ (วันที่ส่งเรื่องระบบบันทึกเอง) ·
         ดีลบังคับเสมอใช้ดีลเดิมซ้ำได้ · ซื้อไม่ครบก็ปิดใบทั้งใบ โซนที่เหลืออยู่ในทะเบียนต่อ ·
         หัวหน้า TS กรอกแพ็คเกจ ช่างแค่วัด+ถ่ายรูป · TS ตัด/เพิ่มโซนเองได้แต่ต้องมีป้ายบอก ·
         จุดติดตั้งสองชั้น (ช่างแจ้ง "ได้" หัวหน้าเลือก "จริง") · ประเมินซ้ำไม่ทับค่า · ไม่คิดค่าบริการประเมิน</span></div>
@@ -2181,6 +2125,7 @@ margin-inline-end:6px;vertical-align:1px}
     <ul class="fixes">
       <li><span class="mk">✓</span><span>🔴 <b>ไม่ต้องสร้างที่เก็บใหม่</b> — <span class="mono">service_sites.customerId</span> → <span class="mono">service_zones</span> → <span class="mono">service_survey_zones</span>
       ผูกกับลูกค้าอยู่แล้วโดยโครงสร้าง · สร้าง “ที่รวบรวม” อีกชุดตอนปิดใบ = ได้ความจริงชุดที่สองที่ต้องคอยซิงก์ (โรคเดียวกับกระจกชื่อลูกค้าที่เจอมาแล้วห้าตาราง)</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>นี่คือที่เดียวที่เห็นภาพรวมข้ามใบ</b> — หนึ่งใบครอบหนึ่งสถานที่ ⇒ ลูกค้าที่มี 5 สาขาจะมีใบประเมินอย่างน้อย 5 ใบ · หน้านี้รวมให้เห็นในจอเดียว</span></li>
       <li><span class="mk new">+</span><span><b>ขายแล้ว / ยังไม่ขาย</b> คำนวณจากการมีรอบขายจริง — ไม่ใช่คอลัมน์สถานะที่ต้องมีคนมาอัปเดต</span></li>
       <li><span class="mk new">+</span><span>ไม่ต้องรอ “ปิดเรื่อง” — ข้อมูลใช้ได้ตั้งแต่ TS ส่งผล · <b>สถานะของใบเป็นเรื่องของใบ</b> ไม่ใช่เงื่อนไขว่าข้อมูลจะโผล่หรือไม่</span></li>
       <li><span class="mk">✓</span><span>แท็บนี้อยู่ <span class="mono">/database</span> = <b>ของกลาง</b> ตามกฎ module-ownership · TS ยังเป็นเจ้าของคิว/ฟอร์ม/การแก้ที่ <span class="mono">/service</span> เหมือนเดิม</span></li>
@@ -2263,7 +2208,7 @@ margin-inline-end:6px;vertical-align:1px}
                 <td class="mono">12.00 × 15.00 × 4.50</td><td class="num mono">180.0</td>
                 <td class="num">2<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
                 <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022</span></td>
-                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030005</span></td></tr>
               <tr><td><span class="t-strong">โซนอาหารชั้น 5</span><span class="cell-sub mono">ZN-26030032</span></td>
                 <td class="mono">20.00 × 30.00 × 4.00</td><td class="num mono">600.0</td>
                 <td class="num">4<span class="cell-sub">จาก 5</span></td><td class="num"><b>3</b></td>
@@ -2273,7 +2218,7 @@ margin-inline-end:6px;vertical-align:1px}
                 <td class="mono">7.00 × 9.00 × 2.80</td><td class="num mono">63.0</td>
                 <td class="num">1<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
                 <td><span class="ui-badge warning">ยังไม่ขาย</span></td>
-                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030005</span></td></tr>
             </tbody>
           </table></div>
         </div>
@@ -2281,15 +2226,17 @@ margin-inline-end:6px;vertical-align:1px}
 
       <div class="ui-section">
         <div class="ui-section-header"><div><h2>ประวัติการประเมิน</h2>
-        <p>โซนเดียววัดได้หลายรอบ — ผลเก่าไม่ถูกทับ (มติ 2026-08-29)</p></div></div>
+        <p>โซนเดียววัดได้หลายรอบ ผลเก่าไม่ถูกทับ · <b>หนึ่งใบครอบหนึ่งสถานที่</b> — สองสาขาวันเดียวกันคือสองใบบนดีลเดียว</p></div></div>
         <div class="ui-section-body">
           <div class="tl">
             <div class="tl-i"><span class="tl-d">8 ก.ย. 69</span><span class="tl-t"><b>AS-26090003 · รอ TS เข้าพื้นที่</b>
               <span>ลานจอดรถชั้น B1 (ใหม่) · ดีล DL-2609003</span></span></div>
             <div class="tl-i"><span class="tl-d">02 ก.ค. 69</span><span class="tl-t"><b>AS-26060012 · ปิดแล้ว</b>
               <span>โซนอาหารชั้น 5 — <b>วัดรอบสอง</b> ลูกค้าขยายพื้นที่ · ผลรอบแรกยังอยู่ครบ · ดีล DL-2606008</span></span></div>
+            <div class="tl-i"><span class="tl-d">12 มี.ค. 69</span><span class="tl-t"><b>AS-26030005 · ปิดแล้ว</b>
+              <span>ดิ เอ็มสเฟียร์ · 3 โซน · ขายได้ 2 · ดีล DL-2602015</span></span></div>
             <div class="tl-i"><span class="tl-d">12 มี.ค. 69</span><span class="tl-t"><b>AS-26030004 · ปิดแล้ว</b>
-              <span>8 โซน 2 สถานที่ · ขายได้ 5 โซน · ดีล DL-2602015</span></span></div>
+              <span>ดิ เอ็มควอเทียร์ · 5 โซน · ขายได้ 3 · ดีล DL-2602015</span></span></div>
           </div>
         </div>
       </div>
@@ -2308,6 +2255,8 @@ margin-inline-end:6px;vertical-align:1px}
       พอแยกแกนออกมาแล้วมันเป็น <b>สองแกนที่ตั้งฉากกัน</b> คูณกันได้ครบทุกช่อง ไม่ต้องไล่จำเป็นรายกรณี</p>
     </div>
     <ul class="fixes">
+      <li><span class="mk new">+</span><span>🔴 <b>หนึ่งใบ = หนึ่งไซต์</b> — <span class="mono">1 ดีล : N ใบ : 1 ไซต์ : N โซน</span> ·
+      ไซต์เลือกที่หัวใบครั้งเดียว เมทริกซ์ข้างล่างจึงเป็นเรื่องของ <b>โซนใต้ไซต์นั้น</b> ล้วน ๆ</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>หน่วยของสถานะคือโซน ไม่ใช่ไซต์</b> — ห้างหนึ่งขายล็อบบี้ไปแล้วแต่ชั้น 2 ยังไม่ขาย ·
       “ไซต์ขายแล้ว” เป็นคำถามที่ไม่มีคำตอบเดียว ⇒ สถานะของไซต์เป็นแค่สรุปจากลูก</span></li>
       <li><span class="mk new">+</span><span>⚠️ แกนประเมินมี <b>สามค่า ไม่ใช่สองค่า</b> — “มีใบอื่นสั่งวัดไว้แล้ว” เป็นสถานะของตัวเอง ·
@@ -2351,10 +2300,10 @@ margin-inline-end:6px;vertical-align:1px}
         <div class="ui-section-body">
           <div class="anat">
             <div><b>ไซต์ใหม่ + โซนใหม่</b>
-              <p>ลูกค้าใหม่ หรือสาขาที่ยังไม่เคยแตะ ⇒ ปุ่ม <b>“เพิ่มสถานที่”</b></p></div>
+              <p>ลูกค้าใหม่ หรือสาขาที่ยังไม่เคยแตะ ⇒ เลือกไทล์ <b>“สถานที่ใหม่”</b> ที่<b>บล็อกสถานที่</b> (หัวใบ)</p></div>
             <div><b>ไซต์เดิม + โซนใหม่</b>
-              <p>🎯 นี่คือ <b>“ประเมินเพิ่ม”</b> ในโจทย์ — ห้างเดิมเปิดโซนใหม่ ⇒ ปุ่ม <b>“เพิ่มจุดในสถานที่นี้”</b>
-              ต้องแยกจากปุ่มบนให้ชัด ไม่งั้นจะได้ไซต์ซ้ำสองใบของห้างเดียวกัน</p></div>
+              <p>🎯 นี่คือ <b>“ประเมินเพิ่ม”</b> ในโจทย์ — ห้างเดิมเปิดโซนใหม่ ⇒ เลือกไซต์เดิมแล้วกด <b>“เพิ่มจุดในสถานที่นี้”</b>
+              ⚠️ สองปุ่มนี้ต้องอยู่<b>คนละบล็อก</b> ไม่งั้นจะได้ไซต์ซ้ำสองใบของห้างเดียวกัน</p></div>
             <div><b>ไซต์เดิม + โซนเดิม</b>
               <p>ทุกกรณี ②–⑦ ในเมทริกซ์ — ไม่สร้างอะไรใหม่ แค่สั่งวัดรอบใหม่</p></div>
           </div>
@@ -2388,7 +2337,9 @@ margin-inline-end:6px;vertical-align:1px}
             <li data-s="blocked"><span class="gate-mk">!</span>
               <span class="gate-t"><b>เปลี่ยนดีลกลางคัน ข้ามลูกค้า</b><span><b>ล้างที่ติ๊กไว้ทั้งหมด</b> — id ชี้ไปโซนของลูกค้าคนเดิม (โรคเดียวกับ customerAddressId ที่เพิ่งแก้ในงานไซต์)</span></span></li>
             <li data-s="park"><span class="gate-mk">!</span>
-              <span class="gate-t"><b>ลูกค้ามีพื้นที่เป็นร้อย</b><span>เซ็นทรัล 30 สาขา ⇒ ยุบตามสถานที่ + ช่องค้นหา · ⚠️ ต้องใช้ fetchAll เพราะ PostgREST ตัดที่ 1,000 แถวเงียบ ๆ</span></span></li>
+              <span class="gate-t"><b>ลูกค้ามีพื้นที่เป็นร้อย</b><span>เซ็นทรัล 30 สาขา ⇒ <b>เลือกไซต์ก่อน แล้วค่อยโหลดโซนของไซต์นั้น</b> + ช่องค้นหาไซต์ · ⚠️ ต้องใช้ fetchAll เพราะ PostgREST ตัดที่ 1,000 แถวเงียบ ๆ</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>เปลี่ยนไซต์กลางคัน</b><span>โซนที่ติ๊กไว้เป็นของไซต์เดิมทั้งชุด ⇒ <b>ล้างทิ้ง</b> · ถามยืนยันก่อนถ้าติ๊กไว้แล้ว เพราะเป็นงานที่หายไปทั้งชุด</span></span></li>
             <li data-s="blocked"><span class="gate-mk">✕</span>
               <span class="gate-t"><b>โซนอยู่ในใบอื่นที่ยังไม่ปิด</b><span>🔒 ติ๊กไม่ได้ + บอกเลขใบและวันนัด · <b>ต้องตรวจซ้ำที่ server ตอนกดส่ง</b> ไม่ใช่แค่ปิดปุ่ม — ระหว่างที่ SA กรอกอยู่ อีกคนอาจเปิดใบสั่งวัดโซนเดียวกันไปแล้ว</span></span></li>
           </ul>
