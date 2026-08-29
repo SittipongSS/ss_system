@@ -51,12 +51,21 @@ test('ตอบคำร้องได้เฉพาะฝ่ายของ�
   const fn = { id: 'U6', role: 'finance', department: 'FN' };
   assert.ok(canAnswerRequest(fn, { dept: 'FN' }));
   assert.ok(!canAnswerRequest(fn, { dept: 'RD' }));
+  // ⭐ ฝ่ายธุรกิจบริการรับคำร้อง "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายเดียวกันเป๊ะ
+  const ts = { id: 'U7', role: 'ts', department: 'TS' };
+  assert.ok(canAnswerRequest(ts, { dept: 'TS' }));
+  assert.ok(!canAnswerRequest(ts, { dept: 'RD' }), 'TS ต้องไม่ตอบคำร้องของ RD');
+  assert.ok(!canAnswerRequest(rd, { dept: 'TS' }), 'RD ต้องไม่ตอบคำร้องของ TS');
+  assert.ok(!canViewCosting(ts), 'ฝ่ายบริการต้องไม่เห็นข้อมูลต้นทุน');
+
   // ⭐ บัญชีตอบคำร้องได้ **โดยไม่ผ่านด่านราคา** — นี่คือทั้งหมดที่ R-1 มีไว้เพื่อ
   assert.ok(!canViewCosting(fn), 'ฝ่ายบัญชีต้องไม่เห็นข้อมูลต้นทุน');
   assert.ok(canViewRequests(fn), 'ฝ่ายบัญชีต้องเข้าระบบคำร้องได้');
 
-  for (const department of ['PD', 'WH', 'QC', 'TS']) {
-    const staff = { id: 'U3', role: { PD: 'pd', WH: 'wh', QC: 'qc', TS: 'ts' }[department], department };
+  // ⚠️ TS ออกจากลิสต์นี้แล้ว — ฝ่ายบริการรับคำร้อง "ประเมินพื้นที่" ตั้งแต่ mig 0314
+  //   (ยืนยันข้างบนว่ายังตอบได้เฉพาะของฝ่ายตัวเอง) · ที่เหลือคือฝ่ายโรงงานที่ไม่รับคำร้อง
+  for (const department of ['PD', 'WH', 'QC']) {
+    const staff = { id: 'U3', role: { PD: 'pd', WH: 'wh', QC: 'qc' }[department], department };
     for (const dept of REQUEST_ANSWER_DEPARTMENTS) {
       assert.ok(!canAnswerRequest(staff, { dept }), `${department} ไม่ควรตอบคำร้องของ ${dept}`);
     }

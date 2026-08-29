@@ -510,6 +510,9 @@ const ROLE_CAPS = {
   ts: [
     'pm:view', 'products:view', 'customers:view',
     'service:view', 'service:edit',
+    // รับ/ตอบคำร้องหัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายอยู่ที่
+    // canAnswerRequestsFor ซึ่งบังคับ department === 'TS' อีกชั้น
+    'requests:answer',
   ],
 };
 
@@ -620,7 +623,7 @@ export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
 //
 // ⚠️ ต้องตรงกับ `REQUEST_DEPTS` ใน lib/master/requestTypes.js เสมอ — มีเทสต์คุม
 // (แยกลิสต์เพราะ permissions.js เป็นชั้นล่างสุด ห้าม import ทะเบียนหัวข้อกลับมา)
-export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN'];
+export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN', 'TS'];
 
 // ── คอนเฟิร์ม/ตีกลับงวดชำระของใบสั่งขาย (mig 0245) ──────────────────────
 //

@@ -162,7 +162,7 @@ export function requestStepLabel(kind) {
 // `PLANNED_REQUEST_DEPTS` ข้างล่าง ซึ่งฟอร์มโชว์แบบจางและกดไม่ได้ · CHECK ของ
 // `dept_requests.dept` รับทั้งสามค่าอยู่แล้ว (mig 0212) ⇒ เปิดคืน = ย้ายชื่อกลับมา
 // บรรทัดนี้ ไม่ต้องแตะ migration
-export const REQUEST_DEPTS = ['RD', 'FN'];
+export const REQUEST_DEPTS = ['RD', 'FN', 'TS'];
 
 /**
  * ฝ่ายตั้งต้นของฟอร์มเปิดคำร้อง — หัวข้อที่ล็อกฝ่ายไว้ใช้ฝ่ายนั้น · ไม่ล็อกก็ให้
@@ -187,6 +187,7 @@ export const REQUEST_DEPT_LABELS = {
   RD: { code: 'RD', name: 'วิจัยและพัฒนา' },
   PC: { code: 'PC', name: 'จัดซื้อ' },
   FN: { code: 'FN', name: 'บัญชี' },
+  TS: { code: 'TS', name: 'ธุรกิจบริการ' },
 };
 
 // ⚠️ ฝ่ายที่ **ยังเปิดไม่ได้** — โผล่ในฟอร์มแบบจางและกดไม่ได้ ไม่ใช่ซ่อน (มติผู้ใช้:

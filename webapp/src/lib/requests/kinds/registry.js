@@ -13,11 +13,12 @@
 import RD_KINDS from './rd/kinds';
 import PC_KINDS from './pc/kinds';
 import FN_KINDS from './fn/kinds';
+import TS_KINDS from './ts/kinds';
 import SHARED_KINDS from './shared/kinds';
 
 // ลำดับ: ของกลางก่อน แล้วเรียงตามฝ่าย — ⚠️ **ลำดับนี้ไม่ใช่ลำดับที่ผู้ใช้เห็น**
 // ดรอปดาวน์จัดกลุ่มตามตระกูลเองที่ `kindsForDept` (ดู requestTypes.js)
-const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
+const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS, ...TS_KINDS];
 
 // ── ด่านตอนโหลด ────────────────────────────────────────────────────────
 //
@@ -27,7 +28,7 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS];
 //
 // ⚠️ ห้ามเปลี่ยนเป็น "ข้ามหัวข้อที่ผิดแล้วเดินต่อ" — หัวข้อที่หายไปเงียบ ๆ คือใบที่
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
-const VALID_DEPTS = ['RD', 'PC', 'FN'];
+const VALID_DEPTS = ['RD', 'PC', 'FN', 'TS'];
 const VALID_REFS = ['project', 'deal', 'salesOrder', 'quotation', 'scent', 'formula'];
 // อ้างอิงเพิ่มแบบไม่บังคับ (ม-88) — คนละชุดกับ needs: ของพวกนี้ **ว่างได้เสมอ**
 // ⚠️ `quotation` อยู่ได้ทั้งสองชุด — เป็นอ้างอิงเสริมของขอเอกสาร RD (ม-88) แต่เป็น
@@ -119,6 +120,10 @@ const FORM_DEFAULTS = {
   bodyLabel: 'รายละเอียด',
   bodyPlaceholder: 'อธิบายสิ่งที่ต้องการให้ฝ่ายปลายทางทำ',
   itemsLabel: 'รายการที่ขอ',
+  // ป้ายของช่องวันที่ — หัวข้อส่วนใหญ่พูดถึง "งาน" แต่บางหัวข้อกำหนด **นัดเข้าพื้นที่**
+  // ⇒ เปลี่ยนป้ายได้ที่ทะเบียน แทนที่จะเพิ่มคอลัมน์วันที่ตัวที่สองให้ฟอร์มสับสน
+  dueLabel: 'วันที่ต้องการรับงาน',
+  committedDueLabel: 'วันกำหนดส่ง',
   scentLabel: 'กลิ่นที่ลูกค้าคอนเฟิร์ม',
   formulaLabel: 'สูตรที่ลูกค้าคอนเฟิร์ม',
 };
@@ -142,5 +147,6 @@ export const KINDS_BY_OWNER = Object.freeze({
   RD: RD_KINDS.map((k) => k.key),
   PC: PC_KINDS.map((k) => k.key),
   FN: FN_KINDS.map((k) => k.key),
+  TS: TS_KINDS.map((k) => k.key),
   shared: SHARED_KINDS.map((k) => k.key),
 });

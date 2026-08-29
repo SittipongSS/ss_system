@@ -214,6 +214,15 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
   for (const role of ['pd', 'wh', 'qc', 'ts']) {
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), false, `${role} ต้องไม่ผ่าน`);
   }
+  /* 🔴 **เส้นคำร้องกับเส้นทะเบียนวัสดุต้องแยกกันตลอดไป** (2026-08-29)
+     เดิมสองเส้นใช้กฎบรรทัดเดียวกัน โดยอ้างว่า "ใครถือ requests:answer ก็ถือ costing:quote
+     อยู่แล้ว" — ข้อสมมตินั้นตายทันทีที่ฝ่าย TS ได้ requests:answer เพื่อรับคำร้อง
+     ประเมินพื้นที่ (mig 0314) โดยไม่มี costing:* เลย ⇒ ทะเบียนวัสดุจะเปิดให้เขียนทั้งทะเบียน
+     ⚠️ ถ้าเทสต์นี้แดง แปลว่ามีคนรวมสองเส้นกลับเข้าด้วยกัน — อย่าแก้เทสต์ ให้แก้ proxy */
+  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'ts', []), true, 'TS ต้องรับคำร้องได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ts', []), false, 'แต่ต้องแตะทะเบียนวัสดุไม่ได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'finance', []), true, 'FN ต้องรับคำร้องได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'finance', []), false, 'FN ก็ต้องแตะทะเบียนวัสดุไม่ได้');
   // ฝ่ายขายยังเปิดคำขอ/เสนอวัสดุร่างได้เหมือนเดิม (costing:edit)
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ae', []), true);
   // role ที่ไม่เกี่ยวกับระบบขอราคาเลยยังเข้าไม่ได้

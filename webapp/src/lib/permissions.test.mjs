@@ -699,7 +699,11 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   // PC ถือ requests:answer เหมือน RD — ด่านฝ่ายเป็นตัวแยกว่าใครตอบคำร้องของใคร
   assert.equal(can('pc', 'requests:answer'), true);
   // ⭐ ฝ่ายโรงงานที่ไม่รับคำร้อง ไม่มี cap นี้แล้วตั้งแต่ชั้น role (เดิมถือผ่าน `staff`)
-  for (const role of ['pd', 'wh', 'qc', 'ts']) assert.equal(can(role, 'requests:answer'), false, role);
+  for (const role of ['pd', 'wh', 'qc']) assert.equal(can(role, 'requests:answer'), false, role);
+  // ⭐ TS ถือ cap ตั้งแต่หัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านจริงยังเป็น **ฝ่าย**
+  //   เหมือน RD/PC/FN ทุกประการ ⇒ ถือ cap แต่เข้าโมดูล RD ไม่ได้
+  assert.equal(can('ts', 'requests:answer'), true);
+  assert.equal(canAccessRd({ role: 'ts', department: 'TS' }), false);
   assert.equal(canAccessRd({ role: 'rd', department: 'RD' }), true);
   assert.equal(canAccessRd({ role: 'pc', department: 'PC' }), false);
   assert.equal(canAccessRd(null), false);
