@@ -303,14 +303,20 @@ export async function findRequest(supabase, id) {
      ⚠️ โหลดคู่กับบรีฟด้วยเหตุผลเดียวกัน: ทั้งจอ TS และจอ SA อ่านก้อนเดียวกัน
      ⚠️ **โหลดเฉพาะตอนเปิดใบเดียว** — คิวโชว์จำนวนจาก `surveyZoneCount` ที่ประทับ
         ไว้บนแถวไม่ได้ (ไม่มีคอลัมน์นั้น) ⇒ คิวไม่โชว์จำนวน แทนที่จะยิงรายใบ 100 ครั้ง */
-  const { data: surveyZones, error: surveyError } = await supabase
-    .from('service_survey_zones').select('*').eq('requestId', id)
-    .order('sortOrder', { ascending: true }).order('id', { ascending: true });
-  if (surveyError) throw surveyError;
+  /* ⚠️ **เฉพาะใบประเมิน** — ของเดิมยิงทุกใบทุกหัวข้อแล้วได้ 0 แถวเสมอ = คำสั่งส่วนเกิน
+     หนึ่งครั้งต่อการเปิดใบ ทั้งที่ 5 หัวข้อจาก 6 ไม่มีทางมีแถวนี้เลย */
+  let surveyZones = [];
+  if (row.kind === 'site_survey') {
+    const { data, error: surveyError } = await supabase
+      .from('service_survey_zones').select('*').eq('requestId', id)
+      .order('sortOrder', { ascending: true }).order('id', { ascending: true });
+    if (surveyError) throw surveyError;
+    surveyZones = data || [];
+  }
   /* ⚠️ **รหัส ZN ต้องมาด้วย ไม่ใช่ id ดิบ** — จอโชว์ "รหัส · ชื่อ" ตามกติกาของทั้งระบบ
      · แถวเก็บแค่ `zoneId` ซึ่งเป็น id ภายใน (SZN-…) ที่ไม่มีใครอ่านออก
      ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงแถว — รหัสเป็นตัวชี้กลับทะเบียน (กติกาเดียวกับ AR) */
-  const surveyZoneIds = [...new Set((surveyZones || []).map((z) => z.zoneId).filter(Boolean))];
+  const surveyZoneIds = [...new Set(surveyZones.map((z) => z.zoneId).filter(Boolean))];
   if (surveyZoneIds.length) {
     const { data: zoneRows, error: zoneError } = await supabase
       .from('service_zones').select('id, code').in('id', surveyZoneIds);
@@ -344,7 +350,7 @@ export async function findRequest(supabase, id) {
     ...row,
     briefs: briefs || [],
     targets: targets || [],
-    surveyZones: surveyZones || [],
+    surveyZones,
     surveySite,
     surveyVisit,
   };
