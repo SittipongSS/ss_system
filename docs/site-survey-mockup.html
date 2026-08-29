@@ -659,6 +659,31 @@ margin-bottom:var(--space-1);line-height:var(--lh-thai)}
 .anat p{margin:var(--space-2-5) 0 0;font-size:var(--fs-4);color:var(--text-3);
 line-height:var(--lh-thai)}
 .inp{gap:var(--space-2)}
+
+/* ── หัวข้อภาพหน้างานต่อโซน (จอ 06) ───────────────────────────────────────
+   สามหัวข้อคงที่ + จุดติดตั้งที่เพิ่มรายการเองได้ (มติผู้ใช้ 2026-08-29)
+   ⚠️ **จุดต้องมีอยู่ได้แม้ยังไม่มีรูป** — ถ้าจุดคือ "รูปที่มีป้าย" จุดที่ยังไม่ถ่าย
+      จะไม่มีตัวตน แล้วช่างไม่มีทางรู้ว่าเหลืออะไร ⇒ รายการจุดเก็บที่โซน รูปผูกเข้าจุด */
+.photogrp{border-top:1px solid var(--border);padding-top:var(--space-3);margin-top:var(--space-3)}
+.photogrp:first-child{border-top:0;padding-top:0;margin-top:0}
+.photogrp-h{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+margin-bottom:var(--space-2)}
+.photogrp-h b{font-size:var(--fs-6);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.photogrp-h .req-tag{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-full);padding:1px 8px}
+.photogrp-h .req-tag[data-need="1"]{color:var(--accent-ink);border-color:var(--accent)}
+.photogrp-h .cnt{margin-left:auto;font-size:var(--fs-3);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+/* หนึ่งจุดติดตั้ง = หนึ่งแถว ชื่อจุดอยู่บน รูปอยู่ล่าง */
+.spot{display:grid;grid-template-columns:24px 1fr auto;gap:var(--space-2-5);align-items:start;
+padding:var(--space-2-5);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2);margin-bottom:var(--space-2)}
+.spot .sn{width:24px;height:24px;border-radius:var(--radius);background:var(--panel-3);
+color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-weight:var(--fw-bold)}
+.spot b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.spot .sd{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.spot[data-empty="1"]{border-style:dashed}
+.spot[data-empty="1"] b{color:var(--text-3)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -1177,14 +1202,16 @@ line-height:var(--lh-thai)}
     <div>
       <h2>บันทึกหน้างาน</h2>
       <div class="route">/service/today → เปิดนัดประเมิน · ผู้ใช้ = ช่างที่ไป · ออกแบบจากมือถือก่อน</div>
-      <p>ช่างยืนอยู่หน้างาน ถือมือถือ มือหนึ่งถือตลับเมตร — ฟอร์มจึงมีของแค่สองอย่างต่อจุด:
-      <b>ตัวเลขสามช่อง</b> กับ <b>ปุ่มถ่ายรูป</b> · เรื่องแพ็คเกจไม่อยู่หน้านี้ เพราะเป็นงานที่ทำที่โต๊ะหลังกลับ</p>
+      <p>ช่างยืนอยู่หน้างาน ถือมือถือ มือหนึ่งถือตลับเมตร — ต่อจุดจึงมีของแค่สองอย่าง:
+      <b>ตัวเลขสามช่อง</b> กับ <b>รูปสามหัวข้อ</b> · เรื่องแพ็คเกจไม่อยู่หน้านี้ เพราะเป็นงานที่ทำที่โต๊ะหลังกลับ</p>
     </div>
     <ul class="fixes">
       <li><span class="mk new">+</span><span><b>เมตรอย่างเดียว</b> — ไม่มีดรอปดาวน์เลือกหน่วย · หน่วยที่เลือกได้คือหน่วยที่กรอกผิดได้ และชีตเก่ามีทั้ง “500 ML” กับ “2 KG” ปนกันมาแล้ว</span></li>
-      <li><span class="mk new">+</span><span>ปริมาตรคำนวณให้ทันที (ก×ย×ส) — ช่างไม่ต้องคิดเลขหน้างาน และเห็นเลยถ้าพิมพ์ผิดหลัก</span></li>
-      <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
-      <li><span class="mk">✓</span><span>ยังไม่ครบทุกจุดก็บันทึกได้ — ปุ่ม “ส่งผล” ต่างหากที่ล็อกจนกว่าจะครบ</span></li>
+      <li><span class="mk new">+</span><span>ปริมาตรคำนวณให้ทันที (ก×ย×ส) พร้อมบอกว่าสูตรได้กี่แพ็ค — ช่างเห็นเลยถ้าพิมพ์ผิดหลัก</span></li>
+      <li><span class="mk new">+</span><span><b>รูปแยกสามหัวข้อต่อโซน</b> (มติ 2026-08-29): ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง —
+      หัวข้อสุดท้าย<b>เพิ่มรายการจุดเองได้</b> จุดละชื่อ จุดละรูป</span></li>
+      <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดประเมินได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
+      <li><span class="mk">✓</span><span>รูป <b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ที่บล็อกคือ<b>ขนาด</b> เพราะไม่มีขนาดก็คิดแพ็คไม่ได้</span></li>
     </ul>
   </div>
 
@@ -1202,6 +1229,7 @@ line-height:var(--lh-thai)}
           <span>วัดแล้ว 3 / 5 จุด</span>
         </div>
 
+        <!-- ── โซนที่วัดครบและถ่ายรูปครบสามหัวข้อ ─────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 5 · โซนออฟฟิศ</h2></div>
             <span class="ui-badge success">วัดแล้ว</span></div>
@@ -1210,18 +1238,65 @@ line-height:var(--lh-thai)}
               <span class="box"><i>กว้าง</i> <b>12.40</b> <em>ม.</em></span><span class="x">×</span>
               <span class="box"><i>ยาว</i> <b>28.00</b> <em>ม.</em></span><span class="x">×</span>
               <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
-              <span class="eq">= 347.2 ตร.ม. · 972.2 ลบ.ม.</span>
             </div>
-            <div class="shots">
-              <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
-              <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
-              <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
+            <p class="hint" style="margin-top:var(--space-2)">347.2 ตร.ม. · 972.2 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span>
+                <span class="cnt">2 รูป</span></div>
+              <div class="shots">
+                <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
+              </div>
             </div>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ถ้ามี</span>
+                <span class="cnt">1 รูป</span></div>
+              <div class="shots">
+                <span class="shot"><svg viewBox="0 0 24 24"><use href="#file"/></svg></span>
+                <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
+              </div>
+            </div>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span>
+                <span class="cnt">3 จุด · 4 รูป</span></div>
+
+              <div class="spot"><span class="sn">1</span>
+                <div><b>เสาต้นที่ 3 ฝั่งลิฟต์</b><span class="sd">ปลั๊กอยู่ใต้เสา · สูงจากพื้น 2.2 ม.</span>
+                  <span class="shots">
+                    <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                    <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+
+              <div class="spot"><span class="sn">2</span>
+                <div><b>เหนือเคาน์เตอร์ต้อนรับ</b><span class="sd">ต้องเดินสายจากฝ้า</span>
+                  <span class="shots">
+                    <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+
+              <div class="spot" data-empty="1"><span class="sn">3</span>
+                <div><b>ท่อแอร์กลางห้อง</b><span class="sd">ยังไม่ได้ถ่าย — ต้องขอบันไดจากอาคาร</span>
+                  <span class="shots">
+                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+            </div>
+
             <div class="field" style="margin-top:var(--space-3)"><label>บันทึกหน้างาน</label>
               <div class="inp ta">เพดานเปิด ท่อแอร์เดินกลาง · ปลั๊กอยู่เสาต้นที่ 3</div></div>
           </div>
         </div>
 
+        <!-- ── โซนที่ยังไม่แตะเลย ─────────────────────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 5 · ห้องประชุมใหญ่</h2></div>
             <span class="ui-badge warning">ยังไม่วัด</span></div>
@@ -1231,23 +1306,25 @@ line-height:var(--lh-thai)}
               <span class="box empty"><i>ยาว</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
               <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
             </div>
-            <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
-          </div>
-        </div>
-
-        <div class="ui-section">
-          <div class="ui-section-header"><div><h2>ชั้น G · โถงจอดรถรับส่ง</h2></div>
-            <span class="ui-badge warning">ยังไม่วัด</span></div>
-          <div class="ui-section-body">
-            <div class="dim">
-              <span class="box empty"><i>กว้าง</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box empty"><i>ยาว</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span>
+                <span class="cnt">ยังไม่มี</span></div>
+              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
             </div>
-            <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ถ้ามี</span><span class="cnt">ยังไม่มี</span></div>
+              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span>
+                <span class="cnt">ยังไม่มีจุด</span></div>
+              <p class="hint">ยังไม่ได้ระบุจุดติดตั้งสักจุด — ตอนไปติดตั้งจะไม่มีอะไรบอกว่าเครื่องไปตรงไหน</p>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+            </div>
           </div>
         </div>
 
+        <!-- ── โซนที่ช่างเพิ่มเองหน้างาน ───────────────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 5 · โถงลิฟต์</h2><p>ช่างเพิ่มเองหน้างาน</p></div>
             <span class="ui-badge accent">จุดใหม่</span></div>
@@ -1256,13 +1333,26 @@ line-height:var(--lh-thai)}
               <span class="box"><i>กว้าง</i> <b>4.20</b> <em>ม.</em></span><span class="x">×</span>
               <span class="box"><i>ยาว</i> <b>6.00</b> <em>ม.</em></span><span class="x">×</span>
               <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
-              <span class="eq">= 25.2 ตร.ม. · 70.6 ลบ.ม.</span>
             </div>
-            <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
-              <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            <p class="hint" style="margin-top:var(--space-2)">25.2 ตร.ม. · 70.6 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพจุดติดตั้ง</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 จุด · 1 รูป</span></div>
+              <div class="spot"><span class="sn">1</span>
+                <div><b>ข้างประตูลิฟต์ตัวที่ 2</b>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดติดตั้ง</button>
+            </div>
           </div>
         </div>
 
+        <!-- ── โซนที่ตัดออกหน้างาน ─────────────────────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 3 · ห้องน้ำชาย</h2></div>
             <span class="ui-badge plain">ตัดออก</span></div>
@@ -1287,7 +1377,6 @@ line-height:var(--lh-thai)}
   </div>
 </section>
 
-<!-- ═══ 07 สรุปแพ็คเกจ ═══════════════════════════════════════ -->
 <section class="screen" id="pack">
   <div class="brief">
     <div>
@@ -1337,7 +1426,7 @@ line-height:var(--lh-thai)}
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
             <thead><tr><th>จุด (โซน)</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">ลบ.ม.</th>
-              <th class="num">สูตร</th><th class="num" style="width:190px">แพ็คเกจ/เดือน</th><th>รูป</th></tr></thead>
+              <th class="num">สูตร</th><th class="num" style="width:190px">แพ็คเกจ/เดือน</th><th>รูป · กว้าง/ผัง/จุด</th></tr></thead>
             <tbody>
 
               <!-- ① กรอกแล้ว ตรงกับสูตร -->
@@ -1348,7 +1437,7 @@ line-height:var(--lh-thai)}
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
-                <td>2</td></tr>
+                <td class="mono">2 / 1 / 3</td></tr>
 
               <!-- ② ยังไม่กรอก — ช่องว่าง + ปุ่มรับค่าที่สูตรบอก -->
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
@@ -1358,7 +1447,7 @@ line-height:var(--lh-thai)}
                   <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
                   <button class="useit" type="button">ใช้ 1 ที่สูตรบอก</button>
                 </div></td>
-                <td>1</td></tr>
+                <td class="mono" style="color:var(--amber)">0 / 0 / 0</td></tr>
 
               <!-- ③ จุดที่ช่างเพิ่มหน้างาน -->
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span><span class="cell-sub">อาคาร A · ชั้น 5</span>
@@ -1369,7 +1458,7 @@ line-height:var(--lh-thai)}
                   <span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="samehint">✓ ตรงกับสูตร</span>
                 </div></td>
-                <td>1</td></tr>
+                <td class="mono">1 / 0 / 1</td></tr>
 
               <!-- ④ สูงกว่าสูตร — ไม่ต้องมีเหตุผล -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
@@ -1379,7 +1468,7 @@ line-height:var(--lh-thai)}
                   <span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span>
                   <span class="diffhint">สูงกว่าสูตร 1</span>
                 </div></td>
-                <td>3</td></tr>
+                <td class="mono">3 / 1 / 2</td></tr>
 
               <!-- ⑤ ต่ำกว่าสูตร — ช่องเหตุผลโผล่ขึ้นมาและบังคับ -->
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span><span class="cell-sub">อาคาร A · ชั้น G</span></td>
@@ -1389,7 +1478,7 @@ line-height:var(--lh-thai)}
                   <span class="step" data-tone="under"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span>
                   <span class="diffhint">ต่ำกว่าสูตร 2</span>
                 </div></td>
-                <td>2</td></tr>
+                <td class="mono">2 / 0 / 1</td></tr>
               <tr><td colspan="7" style="padding-top:0">
                 <div class="whyfield"><span class="tag">ต้องบอกเหตุผล</span>
                   <span>กึ่งกลางแจ้ง เปิดสามด้าน ลมโกรกตลอด — ใส่เท่าที่สูตรบอกก็ไม่อยู่ · เสนอ 1 จุดตรงประตูทางเข้าพอ</span></div>
@@ -1402,6 +1491,13 @@ line-height:var(--lh-thai)}
             </tbody>
           </table></div>
         </div>
+      </div>
+
+      <div class="notice" data-tone="warning">
+        <span class="ic"><svg class="i"><use href="#cam"/></svg></span>
+        <div><b>ห้องประชุมใหญ่ยังไม่มีรูปสักหัวข้อ และยังไม่ได้ระบุจุดติดตั้ง</b>
+        <span><b>เตือน ไม่บล็อก</b> — กติกาเดียวกับฟอร์มปิดงานที่มีอยู่แล้ว · ส่งผลได้ แต่ตอนไปติดตั้งจะไม่มีอะไรบอกว่าเครื่องไปตรงไหน</span></div>
+        <span class="act"><button class="btn sm">แจ้งช่างให้กลับไปถ่าย</button></span>
       </div>
 
       <div class="ui-section">
@@ -1461,6 +1557,7 @@ line-height:var(--lh-thai)}
       ที่เพิ่มคือ <b>ตารางสรุปผลประเมิน</b> ซึ่งเป็นของที่ SA เอาไปตั้งราคาได้ทันที</p>
     </div>
     <ul class="fixes">
+      <li><span class="mk new">+</span><span>รูปแยกตามหัวข้อ <b>กว้าง / ผัง / จุดติดตั้ง</b> — SA เปิดดูได้ว่าเครื่องจะไปตรงไหนบ้างก่อนคุยราคากับลูกค้า</span></li>
       <li><span class="mk new">+</span><span>ตารางเทียบ <b>“ที่ขอไป” กับ “ที่ได้กลับมา”</b> ในตารางเดียว — จุดที่ TS ตัดออกและจุดที่เพิ่มเข้ามาต้องเห็นทันที ไม่ใช่ให้ไปนับเอง</span></li>
       <li><span class="mk new">+</span><span>ปุ่ม <b>“สร้างใบเสนอราคาบนดีลเดิม”</b> — QT ผูกดีลอยู่แล้ว ⇒ ใบประเมินกับใบเสนอราคาอ้างถึงกันได้ผ่านดีลใบเดียว และแพ็ครวมเดินตรงไปเป็นบรรทัดขาย ไม่ต้องพิมพ์ตัวเลขซ้ำ</span></li>
       <li><span class="mk">✓</span><span>ปิดสองฝั่งตามกติกาเดิม — TS ตอบแล้วยังไม่พอ ต้องให้ SA กดรับผลด้วยถึงจะจบ</span></li>
@@ -1505,30 +1602,30 @@ line-height:var(--lh-thai)}
         <div class="ui-section-header"><div><h2>ผลประเมินรายจุด</h2><p>เทียบกับที่ขอไปเมื่อ 1 ก.ย. · สูตร 2,400 ลบ.ม. = 1 แพ็ค</p></div></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>จุด</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
+            <thead><tr><th>จุด</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">แพ็คเกจ</th><th>รูป · จุดติดตั้ง</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">972.2</td>
                 <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
-                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg></span><span class="thumb"><svg class="i"><use href="#cam"/></svg></span></span></td></tr>
+                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>3</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">9.00 × 14.00 × 2.80</td><td class="num mono">352.8</td>
                 <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
-                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg></span></span></td></tr>
+                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>1</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span></td><td><span class="ui-badge accent">TS เพิ่มหน้างาน</span></td>
                 <td class="mono">4.20 × 6.00 × 2.80</td><td class="num mono">70.6</td>
                 <td class="num mono" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td>
-                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg></span></span></td></tr>
+                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>1</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">2,808.0</td>
                 <td class="num mono" style="color:var(--text-3)">2</td><td class="num"><b>3</b>
                 <span class="cell-sub">เพิ่มจากสูตร — โถงเปิดสองด้าน</span></td>
-                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg></span><span class="thumb"><svg class="i"><use href="#cam"/></svg></span></span></td></tr>
+                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>2</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น G · โถงจอดรถรับส่ง</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
                 <td class="mono">30.00 × 40.00 × 6.00</td><td class="num mono">7,200.0</td>
                 <td class="num mono" style="color:var(--text-3)">3</td><td class="num"><b style="color:var(--amber)">1</b>
                 <span class="cell-sub">กึ่งกลางแจ้ง ลมโกรกสามด้าน ใส่มากก็ไม่อยู่</span></td>
-                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg></span><span class="thumb"><svg class="i"><use href="#cam"/></svg></span></span></td></tr>
+                <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>2</em></span></span></span></td></tr>
               <tr><td><span class="t-strong" style="text-decoration:line-through;color:var(--text-3)">ชั้น 3 · ห้องน้ำชาย</span></td>
                 <td><span class="ui-badge danger">TS ตัดออก</span></td>
                 <td colspan="5" style="color:var(--text-3)">อาคารติดตั้งระบบของผู้ให้บริการรายอื่นไว้แล้ว</td></tr>
@@ -1557,7 +1654,9 @@ line-height:var(--lh-thai)}
           <div class="ui-section-body">
             <div class="thumbs">
               <div class="thumb"><svg class="i"><use href="#file"/></svg><span>ผังชั้น<em>SA</em></span></div>
-              <div class="thumb"><svg class="i"><use href="#cam"/></svg><span>หน้างาน<em>×7</em></span></div>
+              <div class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×8</em></span></div>
+              <div class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×2</em></span></div>
+              <div class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>×9</em></span></div>
             </div>
           </div>
         </div>
@@ -1678,6 +1777,10 @@ line-height:var(--lh-thai)}
                 <td>บอกว่าไซต์นี้เกิดจากใบประเมินใบไหน — แพตเทิร์นเดียวกับ <span class="mono">projectId</span>/<span class="mono">customerAddressId</span></td></tr>
               <tr><td class="mono">service_zones</td><td><span class="mono">widthM · lengthM · heightM</span><br><span class="mono">surveyPackageQty · surveyedAt/By</span></td>
                 <td>ขนาดเป็นคุณสมบัติของโซนจริง ๆ ไม่ใช่ของใบประเมิน — เก็บที่โซนแล้วประเมินซ้ำปีหน้าทับได้ ไม่ต้องก๊อปข้ามตาราง</td></tr>
+              <tr><td class="mono">service_zones</td><td><span class="mono">surveySpots jsonb</span><br><span class="mono">[{id, label, note}]</span></td>
+                <td>รายการจุดติดตั้งที่เพิ่มเองได้ · <b>จุดต้องมีตัวตนแม้ยังไม่มีรูป</b> ไม่งั้นช่างไม่รู้ว่าเหลือถ่ายอะไร (ถ้าจุดคือ “รูปที่มีป้าย” จุดที่ยังไม่ถ่ายจะไม่มีอยู่)</td></tr>
+              <tr><td class="mono">attachments</td><td><span class="ui-badge success">ไม่ต้องเพิ่มคอลัมน์</span><br>ใช้ <span class="mono">docType</span> + <span class="mono">metadata</span> ที่มีอยู่</td>
+                <td>รูปเข้าระบบไฟล์แนบกลาง (Drive · 25 MB · สิทธิ์ · พรีวิว): <span class="mono">entityType='service_zone'</span> · <span class="mono">docType</span> = <span class="mono">survey_wide</span> / <span class="mono">survey_plan</span> / <span class="mono">survey_spot</span> · รูปของจุดผูกด้วย <span class="mono">metadata.spotId</span></td></tr>
             </tbody>
           </table></div>
         </div>
@@ -1691,7 +1794,9 @@ line-height:var(--lh-thai)}
             <tbody>
               <tr><td class="mono">lib/requests/kinds/ts/siteSurvey.js</td><td>หัวข้อใหม่ — บ้านของฝ่าย TS โฟลเดอร์ใหม่ (กติกา “1 ฝ่าย = 1 โฟลเดอร์”)</td></tr>
               <tr><td class="mono">lib/requests/kinds/registry.js</td><td>เพิ่ม <span class="mono">'TS'</span> ใน VALID_DEPTS + ต่อ TS_KINDS</td></tr>
-              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คที่เสนอ · ด่าน “ส่งผลได้หรือยัง”</td></tr>
+              <tr><td class="mono">lib/service/survey.js</td><td>ตรรกะล้วน: ปริมาตร · แพ็คตามสูตร 2,400 · ด่าน “ส่งผลได้หรือยัง” · สรุปรูปที่ยังขาด</td></tr>
+              <tr><td class="mono">lib/master/attachments.js</td><td>เพิ่ม <span class="mono">service_zone: 'service_zones'</span> ใน PARENT_TABLE <b>+ สาขาสิทธิ์ของตัวเองใน route ไฟล์</b> — ขาดบรรทัดนี้ = แนบได้แต่เปิดดูไม่ได้สักไฟล์ (โรคที่หัวคำร้องเคยโดนมาแล้ว)</td></tr>
+              <tr><td class="mono">lib/master/attachmentTypes.js</td><td>ชนิดเอกสารใหม่ 3 ตัว — ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง</td></tr>
               <tr><td class="mono">components/service/SurveyPlacesField.js</td><td>บล็อกสถานที่/จุด บนฟอร์ม SA (สร้าง = แก้ ตัวเดียว)</td></tr>
               <tr><td class="mono">components/service/SurveyWorkForm.js</td><td>ฟอร์มหน้างานของช่าง + ฟอร์มสรุปแพ็คเกจ (สองโหมดของ component เดียว)</td></tr>
               <tr><td class="mono">app/service/surveys/</td><td>คิวของ TS + หน้ารายละเอียด</td></tr>
@@ -1705,8 +1810,8 @@ line-height:var(--lh-thai)}
         <div><b>สี่ข้อที่ต้องเคาะก่อนเขียนโค้ด</b>
         <span>① ไซต์/โซนเกิดตอน SA เปิดใบ (ม็อกนี้) หรือตอนขายได้ — เกิดช้าแปลว่านัดประเมินใช้ตารางช่างไม่ได้
         ② “วันที่ร้องขอ เวลาร้องขอ” = วันที่อยากให้ไป (ม็อกนี้ตีความแบบนี้) หรือวันที่กดส่ง
-        ③ รูปหน้างานเก็บผ่านระบบไฟล์แนบกลาง หรือเก็บเป็น jsonb ที่โซน
-        ④ ใครกรอกแพ็คเกจ — ช่างที่ไปวัด หรือหัวหน้า TS</span></div>
+        ③ ใครกรอกแพ็คเกจ — ช่างที่ไปวัด หรือหัวหน้า TS
+        ④ จุดติดตั้งที่ประเมินไว้ ควรกลายเป็นแถวอุปกรณ์ตอนติดตั้งเลยไหม — วันนี้เป็นแค่รายการ+รูป</span></div>
       </div>
     </div>
   </div>
