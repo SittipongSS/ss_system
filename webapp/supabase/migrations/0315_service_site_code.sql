@@ -102,41 +102,37 @@ ALTER TABLE public.service_survey_zones
   CHECK ("zoneId" IS NOT NULL
          OR (floor IS NOT NULL AND floor ~ '^(0[1-9]|[1-9][0-9]|B[1-9]|GF|MZ|RF)$'));
 
--- ── 4) จังหวัดของไซต์ที่มีอยู่ (2 ใบบน production ณ 29/08/2026 · กรุงเทพฯ ทั้งคู่) ──
+-- ── 4+5) ไซต์รูปเดิม → จังหวัด + รหัสใหม่ ในคำสั่งเดียว ─────────────────────
 --
--- ⚠️ เติมด้วยมือเพราะที่อยู่เดิมเป็น **ข้อความล้วน** — แกะด้วย SQL แล้วผิดเงียบ ๆ
---   อันตรายกว่าเติมสองแถวเอง · ไซต์ที่เพิ่มหลังจากนี้กรอกจังหวัดบนฟอร์มเสมอ
-UPDATE public.service_sites
-   SET "provinceCode" = '10', province = 'กรุงเทพมหานคร'
- WHERE "provinceCode" IS NULL
-   AND code IN ('SS-26070001', 'SS-26080005');
-
--- ── 5) แปลงรหัสเดิมเป็นรูปแบบใหม่ (มติผู้ใช้: แปลงทั้งหมด) ────────────────────
---
--- ⭐ ทำเป็นก้อนเดียวกับการ seed เคาน์เตอร์ ไม่งั้นเลขรันของไซต์ที่แปลงกับของไซต์ใหม่
---   จะทับกัน · เรียงตามรหัสเดิมเพื่อให้ผลลัพธ์เหมือนกันทุกครั้งที่รัน (deterministic)
--- ⚠️ ท่อน AA/BBB ของสองใบนี้เป็น 01/BKK เพราะทั้งคู่อยู่กรุงเทพฯ — ใบนี้ไม่ได้พก
---   ทะเบียน 77 จังหวัดเข้ามาใน SQL โดยตั้งใจ (ที่เดียวที่รู้ตัวย่อคือ
---   webapp/src/lib/master/thaiProvinces.js — สองที่รู้เมื่อไรก็ไม่ตรงกันเมื่อนั้น)
--- 🔴 **เดินต่อจากเคาน์เตอร์ ไม่ใช่เริ่มนับใหม่ทุกรอบ** — ใบนี้รันซ้ำได้ก็จริงเพราะ
---   `WHERE code LIKE 'SS-%'` ข้ามของที่แปลงแล้ว · แต่ถ้ารอบแรกมีไซต์ที่แปลงไม่ได้
---   (ยังไม่มีจังหวัด) แล้วมาเติมค่าทีหลังรันอีกรอบ `row_number()` จะเริ่มที่ 1001 ใหม่
---   แล้วชนรหัสที่ออกไปแล้ว (unique บน code จะตีกลับทั้งใบ)
-WITH ranked AS (
-  SELECT s.id,
+-- ⭐ **ทะเบียนแปลงมืออยู่ก้อนเดียวข้างล่างนี้** — เจอไซต์รูปเดิมใบใหม่เมื่อไร เติมอีก
+--   หนึ่งแถวแล้วรันซ้ำ จบ · เดิมเขียนเป็น `code IN (...)` + `'-01-BKK-'` ตายตัว ซึ่ง
+--   แปลว่าไซต์ต่างจังหวัดใบเดียวก็ทำให้ทั้งใบล้มโดยที่ทำตามข้อความ error ไม่ได้จริง
+-- ⚠️ **ไม่ยกทะเบียน 77 จังหวัดเข้ามาใน SQL** ตามเจตนาหัวไฟล์ — ที่นี่มีเฉพาะแถวที่
+--   ต้องแปลงจริง (ลอกค่า ภาค/ตัวย่อ มาจาก src/lib/master/thaiProvinces.js)
+-- ⚠️ รหัส AR ต้องอยู่ในรูปที่ `customerCodeSegment()` ยอมรับ — ไม่มี CHECK ที่ระดับ DB
+--   กันไว้ ⇒ ค่าเพี้ยนจะกลายเป็นท่อน XXXX ที่ผิดแล้วตรึงถาวร · ให้ตกไปเข้าด่านข้อ 7
+-- 🔴 **เลขรันเดินต่อจากเคาน์เตอร์ ไม่ใช่เริ่มนับใหม่ทุกรอบ** — รอบแรกมีใบที่แปลงไม่ได้
+--   แล้วมาเติมทะเบียนรันอีกรอบ ถ้า `row_number()` เริ่มที่ 1001 ใหม่จะชนรหัสที่ออกไปแล้ว
+WITH map(code, province_code, province, region, abbr) AS (VALUES
+  ('SS-26070001', '10', 'กรุงเทพมหานคร', '01', 'BKK'),   -- Scent and Sense Office
+  ('SS-26080005', '10', 'กรุงเทพมหานคร', '01', 'BKK')    -- [UAT] สาขาสีลม ชั้น G
+), ranked AS (
+  SELECT s.id, m.province_code, m.province, m.region, m.abbr,
          COALESCE((SELECT c2."lastNo" FROM public.entity_number_counters c2
                     WHERE c2.scope = 'SS' AND c2.month = '-'), 1000)
            + row_number() OVER (ORDER BY s.code) AS run,
          -- ⚠️ เขียนกฎของ `customerCodeSegment()` ซ้ำในภาษาที่สอง — ยอมเฉพาะใบแปลง
          --    ครั้งเดียวนี้ · เส้นทางปกติทั้งหมดออกรหัสจากฝั่งแอปที่เดียว
-         lpad(split_part(c."arCode", '-', 2), 4, '0')  AS customer
+         lpad(split_part(c."arCode", '-', 2), 4, '0') AS customer
     FROM public.service_sites s
+    JOIN map m ON m.code = s.code
     JOIN public.customers c ON c.id = s."customerId"
-   WHERE s.code LIKE 'SS-%'
-     AND s."provinceCode" = '10'
+   WHERE c."arCode" ~ '^AR-[0-9]{3,4}$'
 )
 UPDATE public.service_sites s
-   SET code = 'ST-' || r.customer || '-01-BKK-' || lpad(r.run::text, 4, '0')
+   SET "provinceCode" = r.province_code,
+       province       = r.province,
+       code = 'ST-' || r.customer || '-' || r.region || '-' || r.abbr || '-' || lpad(r.run::text, 4, '0')
   FROM ranked r
  WHERE s.id = r.id;
 
@@ -187,23 +183,18 @@ ON CONFLICT (scope, month) DO UPDATE
 -- ── 7) ตรวจว่าไม่มีของค้างรูปเดิม — เหลือแม้ใบเดียวคือรหัสสองรูปในระบบเดียว ────
 DO $$
 DECLARE
-  v_should int;   -- ควรแปลงได้แต่ไม่แปลง = ใบนี้มีบั๊ก
-  v_left   text;  -- ยังไม่รู้จังหวัด = ต้องให้คนไปเติมแล้วรันซ้ำ
+  v_sites text;
+  v_zones int;
 BEGIN
-  SELECT count(*) INTO v_should
-    FROM public.service_sites WHERE code LIKE 'SS-%' AND "provinceCode" = '10';
-  IF v_should > 0 THEN
-    RAISE EXCEPTION 'ไซต์ % ใบ มีจังหวัดครบแต่แปลงรหัสไม่สำเร็จ — ตรวจว่าลูกค้ามีรหัส AR ครบไหม', v_should;
-  END IF;
-
-  /* ⚠️ **ไซต์จังหวัดอื่นไม่ถูกแปลงโดยใบนี้** — ท่อน AA/BBB ต้องใช้ทะเบียนตัวย่อ 77
-     จังหวัดซึ่งอยู่ฝั่งแอปที่เดียว (thaiProvinces.js) · ใบนี้จึงรองรับเฉพาะกรุงเทพฯ
-     ซึ่งครอบไซต์ทั้งหมดที่มีจริง ณ วันที่เขียน · ถ้ามีใบอื่นโผล่มา ให้ **แจ้งเตือน
-     ไม่ใช่ล้มทั้งใบ** — ล้มแล้วคอลัมน์/CHECK ที่เหลือก็ไม่ได้ลงด้วย ซึ่งแย่กว่า */
-  SELECT string_agg(code, ' · ') INTO v_left
+  SELECT string_agg(code, ' · ' ORDER BY code) INTO v_sites
     FROM public.service_sites WHERE code LIKE 'SS-%';
-  IF v_left IS NOT NULL THEN
-    RAISE NOTICE 'ยังมีไซต์รหัสรูปเดิมที่ใบนี้แปลงให้ไม่ได้ (จังหวัดนอกกรุงเทพฯ): % — แปลงต่อด้วย migration ใบถัดไป', v_left;
+  SELECT count(*) INTO v_zones
+    FROM public.service_zones WHERE code LIKE 'ZN-________';
+  IF v_sites IS NOT NULL OR v_zones > 0 THEN
+    /* ⚠️ ข้อความต้องบอก **สิ่งที่ทำตามได้จริง** — ของเดิมเขียนว่า "เติมค่าแล้วรันซ้ำ"
+       ทั้งที่ตัวแปลงกรองด้วยรหัสตายตัว ⇒ เติมค่ายังไงก็ไม่ผ่าน */
+    RAISE EXCEPTION 'ยังมีรหัสรูปเดิมค้างอยู่ — ไซต์: % · โซน % ใบ · เติมแถวของไซต์เหล่านั้นในทะเบียน VALUES ข้อ 4+5 ของไฟล์นี้ (หรือลูกค้ายังไม่มีรหัส AR ที่ถูกรูป) แล้วรันซ้ำ',
+      COALESCE(v_sites, '—'), v_zones;
   END IF;
 END $$;
 

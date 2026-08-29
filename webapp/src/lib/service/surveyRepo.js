@@ -80,23 +80,33 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
   if (siteError) return { created: 0, error: siteError.message };
   if (!site) return { created: 0, error: 'ไม่พบสถานที่ของใบนี้' };
 
-  // ⚠️ ตรวจชื่อชนอีกรอบ **ที่จังหวะส่ง** — ระหว่างที่ใบเป็นร่างอยู่ อาจมีคนสร้างโซน
-  //    ชื่อเดียวกันในไซต์นั้นไปแล้ว · ปล่อยไปจะได้ error ดิบจาก unique index (mig 0297)
+  /* ── โซนชื่อเดียวกันมีอยู่แล้วในไซต์ = **ผูกเข้าอันเดิม ไม่ใช่ตีกลับ** ───────
+     🐞 กับดักที่ปิดตรงนี้: การสร้างโซนกับการเขียน `zoneId` กลับเข้าแถวของใบ เป็นคนละ
+        คำสั่ง (PostgREST ไม่มีทรานแซกชัน) ⇒ ล้มคั่นกลางเมื่อไร จะได้ **โซนที่สร้างแล้ว
+        แต่ใบยังไม่รู้จัก** · รอบส่งถัดไปแถวนั้นยังนับเป็น pending แล้วชนด่านชื่อซ้ำ
+        ⇒ ใบนั้นส่งไม่ได้ตลอดกาล และหน้าคำร้องไม่มีปุ่มไหนแก้ได้เลย
+     ⭐ ผูกเข้าโซนเดิมแทน ทำให้ทั้งฟังก์ชัน **รันซ้ำได้จริง** ตามที่หัวฟังก์ชันสัญญาไว้
+     ⚠️ ชื่อซ้ำ *ภายในใบเดียวกัน* ยังตีกลับตั้งแต่ตอนกรอก (`normalizeSurveyZones`) */
   const existing = await loadSiteZones(supabase, siteId);
-  const taken = new Set(existing.map((z) => zoneNameKey(z.name)));
+  const byName = new Map(existing.map((z) => [zoneNameKey(z.name), z]));
+  const toCreate = [];
   for (const row of pending) {
-    if (taken.has(zoneNameKey(row.zoneName))) {
-      return { created: 0, error: `สถานที่นี้มีพื้นที่ชื่อ "${row.zoneName}" อยู่แล้ว — แก้ชื่อหรือเลือกจากพื้นที่เดิม` };
-    }
-    taken.add(zoneNameKey(row.zoneName));
+    const hit = byName.get(zoneNameKey(row.zoneName));
+    if (!hit) { toCreate.push(row); continue; }
+    const { error: linkError } = await supabase
+      .from('service_survey_zones')
+      .update({ zoneId: hit.id, updatedAt: new Date().toISOString() })
+      .eq('id', row.id);
+    if (linkError) return { created: 0, error: linkError.message };
   }
+  if (!toCreate.length) return { created: 0, error: null };
 
   /* ⚠️ **ยิงทีละแถว ไม่ใช่ทั้งชุด** (mig 0315) — รหัสโซนมีชั้นอยู่ในท่อนหน้าเลขรัน
      ⇒ พื้นที่คนละชั้นใช้ prefix คนละตัว และ RPC รับ prefix เดียวต่อหนึ่งคำสั่ง
      ⭐ ล้มกลางทางไม่เป็นไร: แถวที่สำเร็จได้ `zoneId` แล้ว รอบถัดไปข้ามให้เอง
         (ตัวนี้ออกแบบให้รันซ้ำได้อยู่แล้ว — ดูหัวฟังก์ชัน) */
   let created = 0;
-  for (const row of pending) {
+  for (const row of toCreate) {
     const { prefix, error: codeError } = zoneCodePrefix({ siteCode: site.code, floor: row.floor });
     if (codeError) return { created, error: `พื้นที่ "${row.zoneName}": ${codeError}` };
 

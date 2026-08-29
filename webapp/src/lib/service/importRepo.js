@@ -2,6 +2,7 @@
 import { genId } from '@/lib/id';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { findProvinceByName } from '@/lib/master/thaiAdmin';
+import { customerCodeSegment } from '@/lib/master/masterCodes';
 import { SITE_RUN_BUCKET, SITE_RUN_WIDTH, siteCodePrefix } from '@/lib/service/siteCode';
 import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, normalizeFloor, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { fetchAll } from '@/lib/supabaseFetchAll';
@@ -11,7 +12,8 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
       จริงมีเป็นร้อย ลูกค้าเป็นพัน ⇒ ตัดแถวทิ้ง = เห็นว่า "ยังไม่มี" แล้วสร้างซ้ำ */
 export async function loadImportSnapshot(supabase) {
   const [customers, sites, zones, assets] = await Promise.all([
-    fetchAll(() => supabase.from('customers').select('id, name').order('id')),
+    // `arCode` มาด้วย (mig 0315) — รหัสไซต์ประกอบจากรหัสลูกค้า ⇒ ไม่ต้องยิงรายแถว
+    fetchAll(() => supabase.from('customers').select('id, name, "arCode"').order('id')),
     fetchAll(() => supabase.from('service_sites').select('id, code, "customerId", name').order('id')),
     fetchAll(() => supabase.from('service_zones').select('id, code, "siteId", name').order('id')),
     fetchAll(() => supabase.from('service_assets').select('id, "siteId", "zoneId", kind, status').order('id')),
@@ -23,7 +25,7 @@ export async function loadImportSnapshot(supabase) {
    คืน { sites, zones, assets, errors } นับจำนวนที่สร้างจริง
    ⚠️ **ไม่มีทรานแซกชันครอบทั้งงาน** (PostgREST ทำให้ไม่ได้) ⇒ ออกแบบให้ล้ม
       กลางทางแล้ว "รันซ้ำได้" แทน: ของที่สร้างไปแล้วรอบหน้าจะขึ้นเป็น skip */
-export async function applyImportPlan(supabase, rows, { user, now = new Date() } = {}) {
+export async function applyImportPlan(supabase, rows, { user, now = new Date(), snapshot = null } = {}) {
   const created = { sites: 0, zones: 0, assets: 0 };
   const errors = [];
   const siteIdByRef = new Map();
@@ -38,8 +40,22 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
      ลูกค้าและจังหวัดอยู่ในท่อนหน้าเลขรัน ⇒ แต่ละแถวใช้ prefix คนละตัว
      ⚠️ แถวที่ประกอบรหัสไม่ได้ (ไม่มีจังหวัด / ลูกค้าไม่มีรหัส AR) **ออกเป็นรายงาน**
         ไม่ใช่ยัดลง DB ด้วยรหัสมั่ว — กติกาเดิมของสายนำเข้า (F-8) */
+  /* รหัส AR ของลูกค้า — มาจาก snapshot ที่ผู้เรียกโหลดไว้แล้ว ถ้าไม่ได้ส่งมาค่อยยิงเอง
+     ⚠️ **ห้ามยิงรายแถว** เมื่อมี snapshot — ไฟล์นำเข้าจริงมีหลายร้อยแถว */
+  const arByCustomer = new Map((snapshot?.customers || []).map((c) => [c.id, c.arCode || null]));
+  /* รหัสไซต์ — ไว้ประกอบรหัสโซน · เติมจาก snapshot ก่อน แล้วเติมของที่เพิ่งสร้างระหว่างทาง
+     ⚠️ ต้องประกาศ **ก่อน** ลูปสร้างไซต์ เพราะลูปนั้นเขียนลงตัวนี้ */
+  const siteCodeCache = new Map((snapshot?.sites || []).map((row) => [row.id, row.code || null]));
+  const siteCodeOf = async (siteId) => {
+    if (siteCodeCache.has(siteId)) return siteCodeCache.get(siteId);
+    const { data } = await supabase.from('service_sites').select('code').eq('id', siteId).maybeSingle();
+    const value = data?.code || null;
+    siteCodeCache.set(siteId, value);
+    return value;
+  };
   const customerCache = new Map();
   const arCodeOf = async (customerId) => {
+    if (arByCustomer.has(customerId)) return arByCustomer.get(customerId);
     if (customerCache.has(customerId)) return customerCache.get(customerId);
     const { data } = await supabase.from('customers').select('arCode').eq('id', customerId).maybeSingle();
     const value = data?.arCode || null;
@@ -51,13 +67,20 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
     if (row.site?.action !== 'create') continue;
     if (siteIdByRef.has(row.site.ref)) continue;      // ไซต์เดียวกันโผล่หลายแถวในไฟล์
 
+    /* ⚠️ **สามเหตุที่สร้างไม่ได้ พูดคนละเรื่องกัน** — ลูกค้าไม่มีรหัส AR / ชีตไม่มี
+       คอลัมน์จังหวัด / ชื่อจังหวัดสะกดไม่ตรงทะเบียน · รวบเป็นข้อความเดียวเมื่อไร
+       คนแก้ไฟล์จะไปแก้ผิดที่ · `siteCodePrefix` ตรวจ AR ก่อนจังหวัดอยู่แล้ว
+       ⇒ ปล่อยข้อความของมันผ่านมาเมื่อ AR ยังไม่ผ่าน */
+    const arCode = await arCodeOf(row.site.customerId);
     const province = findProvinceByName(row.site.province);
-    const { prefix, error: codeError } = siteCodePrefix({
-      arCode: await arCodeOf(row.site.customerId),
-      provinceCode: province?.code,
-    });
+    const { prefix, error: codeError } = siteCodePrefix({ arCode, provinceCode: province?.code });
     if (codeError) {
-      errors.push(`ไซต์ "${row.site.name}": ${row.site.province ? codeError : 'ยังไม่มีคอลัมน์จังหวัด — รหัสไซต์ประกอบจากภาคและจังหวัด'}`);
+      const reason = customerCodeSegment(arCode) === null
+        ? codeError                                     // ลูกค้าไม่มีรหัส AR ที่ใช้ได้
+        : (row.site.province
+          ? `จังหวัด "${row.site.province}" ไม่ตรงกับทะเบียนจังหวัด`
+          : 'ชีตไม่มีคอลัมน์จังหวัด — รหัสไซต์ประกอบจากภาคและจังหวัด');
+      errors.push(`ไซต์ "${row.site.name}": ${reason}`);
       continue;
     }
 
@@ -83,6 +106,8 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
       continue;
     }
     siteIdByRef.set(row.site.ref, data.id);
+    // รหัสไซต์ที่เพิ่งออก — โซนของไฟล์เดียวกันอ้างต่อได้เลย ไม่ต้องยิงถามกลับ
+    siteCodeCache.set(data.id, data.code || null);
     created.sites += 1;
   }
   // ไซต์ที่มีอยู่แล้ว/ถูกใช้ซ้ำในไฟล์เดียวกัน — ผูก ref กับ id จริงให้ครบก่อนไปต่อ
@@ -94,14 +119,6 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
 
   // ── โซน ──
   // รหัสโซนอ้าง **เลขรันของไซต์** ⇒ ต้องรู้รหัสไซต์ที่เพิ่งสร้าง/ที่มีอยู่ก่อน
-  const siteCodeCache = new Map();
-  const siteCodeOf = async (siteId) => {
-    if (siteCodeCache.has(siteId)) return siteCodeCache.get(siteId);
-    const { data } = await supabase.from('service_sites').select('code').eq('id', siteId).maybeSingle();
-    const value = data?.code || null;
-    siteCodeCache.set(siteId, value);
-    return value;
-  };
 
   for (const row of rows) {
     if (row.zone?.action !== 'create') continue;

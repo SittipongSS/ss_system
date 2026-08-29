@@ -26,6 +26,7 @@ import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtNumber, naText } from "@/lib/format";
+import { floorLabel } from "@/lib/service/zoneCode";
 import { businessMonthKey } from "@/lib/datePeriods";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
@@ -145,6 +146,9 @@ export default function ServiceZonePage({ params }) {
                 { label: "รหัสไซต์", value: site?.code },
                 { label: "เขตวิ่งงาน", value: site?.routeZone },
                 { label: "รหัสโซน", value: zone.code },
+                // ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสในรูปย่อ (GF/04) บรรทัดนี้อ่านออก
+                { label: "ชั้น", value: floorLabel(zone.floor) },
+                { label: "อาคาร", value: zone.building },
               ]}
             />
             <ContextCard

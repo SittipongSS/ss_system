@@ -282,6 +282,9 @@ export default function ServiceSiteDetailPage({ params }) {
       <WorkspaceSection title="ข้อมูลไซต์">
         <dl className={styles.info}>
           <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
+          {/* จังหวัด (mig 0315) — ตัวตนถาวรของไซต์ ตรึงอยู่ในรหัส · คนละช่องกับที่อยู่
+              ซึ่งเป็นข้อความหน้างาน (ไซต์เก่าก่อน 0315 ยังไม่มีค่า จึงขึ้นขีด) */}
+          <div><dt>จังหวัด</dt><dd>{naText(site.province)}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{naText(site.address)}</dd></div>
           <div><dt>ผู้ติดต่อ</dt><dd>{naText(site.contactName)}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>
