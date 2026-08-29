@@ -1946,7 +1946,7 @@ line-height:var(--lh-thai)}
         <span><span class="lab">แพ็คเกจที่ต้องใช้</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็ค/เดือน</span></span>
         <span class="sep"></span>
         <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จุด · จาก 11 จุดที่ติดตั้งได้</span></span>
-        <span style="margin-left:auto"><button class="btn btn-accent"><svg class="i"><use href="#arrow"/></svg> สร้างใบเสนอราคาบนดีล DL-2608017</button></span>
+        <span style="margin-left:auto"><button class="btn btn-accent" data-jump="quote"><svg class="i"><use href="#arrow"/></svg> สร้างใบเสนอราคาบนดีล DL-2608017</button></span>
       </div>
 
       <div class="notice" data-tone="info" style="margin-top:var(--space-4)">
@@ -2592,13 +2592,127 @@ line-height:var(--lh-thai)}
   </div>
 </section>
 
+<!-- ═══ 14 กดสร้างใบเสนอราคาแล้วได้อะไร ═══════════════════════════════ -->
+<section class="screen" id="quote">
+  <div class="brief">
+    <div>
+      <h2>กดสร้างใบเสนอราคาแล้วได้อะไร</h2>
+      <div class="route">จอ 08 → <span class="mono">/sales-planning/quotations/new?dealId=…&amp;surveyId=…</span></div>
+      <p><b>ได้หน้าสร้างใบที่กรอกดีลไว้แล้ว พร้อมตัวเลขจากการประเมินติดมาด้วย</b> —
+      ยังไม่มีใบเกิดขึ้นจนกว่า SA จะกดบันทึกเอง · หน้านี้<b>มีอยู่แล้วและรองรับ prefill จาก query อยู่แล้ว</b>
+      (<span class="mono">?dealId</span>) เพิ่มแค่การอ่าน <span class="mono">surveyId</span></p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>⭐ <b>ใบประเมินให้ “จำนวน” ไม่ให้ “สินค้า” และไม่ให้ “ราคา”</b> — ต้องพูดให้ชัดตั้งแต่แรก
+      ไม่งั้นจะมีคนคาดหวังใบเสนอราคาสำเร็จรูปแล้วผิดหวัง</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ไม่สร้างบรรทัดให้ล่วงหน้า</b> — <span class="mono">unitPrice NOT NULL DEFAULT 0</span> (mig 0065)
+      ⇒ บรรทัดที่สร้างให้จะมีราคา ฿0 เสมอ ซึ่งบนเอกสารที่ส่งลูกค้าอ่านว่า <b>“ฟรี”</b> ไม่ใช่ “ยังไม่ใส่ราคา”</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ห้ามสร้างบรรทัดรายพื้นที่</b> — 5 พื้นที่ ≠ 5 บรรทัด · เป็นรูปที่เพิ่งสั่งรื้อไปเมื่อ 29 ส.ค.
+      (“ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ”)</span></li>
+      <li><span class="mk new">+</span><span>ปุ่มต้องเป็น <b>GatedAction</b> — ดีล Won/Lost แล้ว API ตีกลับ ⇒ โชว์ปุ่มเสมอ บอกเหตุตอนกด พร้อมทางออก</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">หน้าสร้างใบเสนอราคา · หลังกดปุ่มจากใบประเมิน</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="premium-header">
+        <div><h1><span class="premium-header-icon"><svg class="i"><use href="#file"/></svg></span>สร้างใบเสนอราคา</h1>
+        <p>ร่างใหม่ · ยังไม่บันทึก</p></div>
+      </div>
+
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#bldg"/></svg></span>
+        <div><b>อ้างอิงผลประเมินพื้นที่ <span class="mono">AS-26090002</span></b>
+        <span>ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <b>ต้องใช้ 7 แพ็ค/เดือน</b> · 7 จุดติดตั้ง · วัดเมื่อ 8 ก.ย. 69
+        — ตัวเลขนี้คือสิ่งที่ทั้งกระบวนการทำมาเพื่อมัน</span></div>
+        <span class="act"><button class="btn sm">ดูใบประเมิน</button></span>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>เติมให้แล้วจากดีล</h2></div>
+          <span class="ui-badge success">ไม่ต้องกรอกซ้ำ</span></div>
+        <div class="ui-section-body">
+          <div class="doc">
+            <div class="line"><span>ดีล</span><span class="mono">DL-2608017</span></div>
+            <div class="line"><span>ลูกค้า</span><span>บริษัท ทรู คอร์ปอเรชั่น จำกัด · <span class="mono">AR-318</span></span></div>
+            <div class="line"><span>ผู้เสนอ</span><span>ธนวัฒน์ (AE เจ้าของดีล)</span></div>
+            <div class="line"><span>ที่อยู่ออกบิล</span><span>101 ทรู ดิจิทัล พาร์ค ถ.สุขุมวิท แขวงบางจาก เขตพระโขนง กรุงเทพฯ 10260</span></div>
+            <div class="line"><span>ผู้ติดต่อ</span><span>คุณแนน · 081-234-5678</span></div>
+            <div class="line"><span>หมายเหตุอ้างอิง</span><span>อ้างอิงผลประเมินพื้นที่ AS-26090002 · 5 พื้นที่ · 7 แพ็ค/เดือน</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>รายการ</h2>
+        <p>ว่างเปล่าโดยตั้งใจ — ใบประเมินไม่รู้ว่าลูกค้าจะเลือกกลิ่นไหน และราคามาจากทะเบียนราคา</p></div>
+          <span class="ui-badge warning">ยังไม่มีบรรทัด</span></div>
+        <div class="ui-section-body">
+          <div class="empty-state">
+            <b>ยังไม่มีรายการ — เลือกสินค้าก่อน</b>
+            <span>ผลประเมินบอกว่าต้องใช้ <b>7 แพ็ค/เดือน</b> · เลือกกลิ่นแล้วกดปุ่มข้างล่างเพื่อใส่จำนวนให้</span>
+          </div>
+          <div class="pick">
+            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มรายการ</button>
+            <button class="btn" disabled>ใส่จำนวน 7 ลงบรรทัดที่เลือก <span class="ui-badge plain">เลือกสินค้าก่อน</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ถ้ากรอกแล้วจำนวนไม่ตรงกับที่ประเมิน</h2></div></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวม</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">FG-1042 Signature Scent</span><span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="num"><b>4</b></td><td class="num mono">4,500</td><td class="num mono">18,000</td><td></td></tr>
+              <tr><td><span class="t-strong">FG-1044 Grand Lobby</span><span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
+                <td class="num"><b>2</b></td><td class="num mono">5,200</td><td class="num mono">10,400</td><td></td></tr>
+              <tr><td colspan="2"><span class="t-strong">รวมบนใบ 6 แพ็ค</span></td>
+                <td colspan="3"><span class="ui-badge warning">ต่างจากที่ประเมินไว้ 7 แพ็ค — น้อยกว่า 1</span>
+                  <span class="cell-sub">⚠️ <b>ทัก ไม่บล็อก</b> — ลูกค้าซื้อไม่ครบเป็นเรื่องปกติ (มติข้อ 4) · โซนที่ไม่ได้ขายยังอยู่ในทะเบียนพร้อมขายรอบหน้า</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="sticky-acts">
+        <span class="ui-badge plain">ยังไม่บันทึก</span>
+        <span style="margin-left:auto"></span>
+        <button class="btn">ยกเลิก</button>
+        <button class="btn btn-primary">บันทึกร่างใบเสนอราคา</button>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เคสที่ต้องกันไว้ — ดีลปิดไปแล้ว</div>
+    <div class="frame-body">
+      <div class="notice" data-tone="danger">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ดีล DL-2608017 ปิด Won ไปแล้วเมื่อ 12 ส.ค. — เพิ่มใบเสนอราคาใหม่ไม่ได้</b>
+        <span>API ตีกลับตรง ๆ (<i>“ดีลนี้ปิด Won แล้ว — ใบเสนอราคาถูกล็อก”</i>) ·
+        เคสจริงที่จะเจอคือ <b>ประเมินเสร็จหลังดีลปิดไปแล้ว</b> ซึ่งแปลว่างานนี้เป็นรายได้ก้อนใหม่
+        ⇒ ข้อความต้อง<b>แนะทางออก</b> ไม่ใช่แค่บอกว่าทำไม่ได้</span></div>
+        <span class="act"><button class="btn sm btn-accent">เปิดดีลใหม่ให้ลูกค้ารายนี้</button></span>
+      </div>
+      <p class="hint" style="margin-top:var(--space-3)">⚠️ ปุ่มบนจอ 08 ต้อง<b>โชว์เสมอ</b> แล้วบอกเหตุตอนกด (GatedAction) —
+      ปุ่มเทาที่ไม่บอกเหตุคือปุ่มที่ทุกคนมาถามหัวหน้าคนเดียวกัน</p>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <script>
 const SCREENS = [
   ["flow","สายงาน"],["saform","ฟอร์ม SA"],["queue","คิว TS"],["book","ลงคิว"],
   ["sched","ตารางช่าง"],["field","หน้างาน"],["pack","สรุปแพ็คเกจ"],["result","ผลถึง SA"],
-  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["cases","เจ็ดกรณี"],["zoneform","ฟอร์มพื้นที่"],["data","ของที่ต้องเพิ่ม"]
+  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["cases","เจ็ดกรณี"],["zoneform","ฟอร์มพื้นที่"],["quote","สร้าง QT"],["data","ของที่ต้องเพิ่ม"]
 ];
 const nav = document.getElementById("nav");
 SCREENS.forEach(([id,label],i)=>{
