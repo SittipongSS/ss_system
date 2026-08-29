@@ -55,7 +55,7 @@ import { toHHMM } from '@/lib/service/sites';
 import { normalizeSurveyTime } from '@/lib/service/surveyRequest';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import {
-  CLOSED_VISIT_STATES, createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
+  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
@@ -312,9 +312,13 @@ export async function PATCH(request, { params }) {
       /* ⭐ **ลงคิวซ้ำได้เมื่อใบมีวันแต่ไม่มีนัด** — พิสูจน์จากของจริง ไม่ใช่จากธงที่
          client ส่งมา · เส้นนี้คือทางกู้เมื่อครึ่งหลังของการลงคิวล้ม (สร้างนัดไม่สำเร็จ
          หรือนัดถูกลบทิ้ง) ⇒ กดยืนยัน **วันเดิม** ได้โดยไม่ต้องเลื่อนวันปลอม */
+      /* ⚠️ **"ไม่มีนัด" = ไม่มีนัดที่ยัง *เปิด* อยู่** ไม่ใช่ "ไม่เคยมีนัด" — ใบที่ไป
+         แล้วเข้าไม่ได้ (`unable`) หรือยกเลิกนัดไป ต้องลงคิวใหม่ได้ทันที รวมถึงวันเดิม
+         (ไปเช้าเข้าไม่ได้ แล้วนัดใหม่บ่ายวันเดียวกันเป็นเรื่องปกติของงานจริง) ·
+         ชุดที่ตัดสินคือชุดเดียวกับ index ของ mig 0316 */
       const requeue = requestNeedsRef(before.kind, 'site')
         && !!String(before.committedDueDate ?? '').trim()
-        && !(await findSurveyVisit(supabase, id));
+        && !(await findSurveyVisit(supabase, id, { openOnly: true }));
       // รอบแก้ ≠ ลงคิวซ้ำเพราะนัดไม่เกิด — ไม่งั้นเธรดขึ้น "แจ้งกำหนดส่งรอบแก้" ทั้งที่ไม่ใช่
       const rework = !requeue && !!String(before.committedDueDate ?? '').trim();
       const err = commitDueRequestError(before, {
@@ -900,8 +904,9 @@ export async function PATCH(request, { params }) {
        ⚠️ ทำก่อนบล็อกวัน/นัดข้างล่าง เพราะเป็นคนละ action กัน (ไม่มีทางเข้าพร้อมกัน) */
     if (requestNeedsRef(before.kind, 'site') && action === 'assign') {
       try {
-        const visit = await findSurveyVisit(supabase, id);
-        if (visit && !CLOSED_VISIT_STATES.includes(visit.status)) {
+        // ⚠️ ถามหานัดที่ยังเปิดโดยตรง — ของที่ปิดจบแล้วห้ามถูกเขียนชื่อช่างใหม่ทับ
+        const visit = await findSurveyVisit(supabase, id, { openOnly: true });
+        if (visit) {
           const { error: assignError } = await supabase.from('service_visits').update({
             assigneeId: patch.assigneeId || null,
             assigneeName: patch.assigneeName || null,

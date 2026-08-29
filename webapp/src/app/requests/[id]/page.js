@@ -87,6 +87,7 @@ import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/d
 import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
 import { apiFetch } from "@/lib/apiFetch";
+import { holdsRequestSlot } from "@/lib/service/visitStatus";
 
 const STATUS_TONE = {
   draft: "var(--text-3)",
@@ -356,7 +357,12 @@ export default function RequestDetailPage() {
   /* ⭐ **ใบมีวันแล้วแต่นัดไม่เกิด** — ครึ่งหลังของการลงคิวล้ม (หรือนัดถูกลบ) ⇒ ต้องมี
      ปุ่มให้กดใหม่ **ด้วยวันเดิม** · ไม่มีปุ่มนี้ ใบจะค้างแบบที่ทุกจอบอกว่าลงคิวแล้ว
      แต่ช่างไม่มีงานบนตาราง (ด่านฝั่ง server เปิดทางไว้แล้วด้วยธง `requeue`) */
-  const needsRequeue = isScheduling && !!req.committedDueDate && !req.surveyVisit;
+  /* 🐞 **"ไม่มีนัด" ต้องหมายถึงไม่มีนัดที่ยัง *มีชีวิต*** ไม่ใช่ "ไม่มีแถวนัดเลย" —
+     ของเดิมเช็ค `!req.surveyVisit` ⇒ ใบที่ช่างไปแล้วเข้าไม่ได้ (`unable`) หรือนัดถูกยกเลิก
+     จะไม่เหลือปุ่มลงคิวให้กดอีกเลยทั้งใบ ทั้งที่ฝั่ง API เปิดทางไว้แล้ว (ธง `requeue`)
+     ⚠️ ถามด้วยตัวเดียวกับ server และกับ index ของ mig 0316 (`holdsRequestSlot`) */
+  const needsRequeue = isScheduling && !!req.committedDueDate
+    && !holdsRequestSlot(req.surveyVisit);
   const dueLabels = requestKindMeta(req.kind)?.form || {};
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);

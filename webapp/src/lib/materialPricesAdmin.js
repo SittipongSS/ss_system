@@ -1,5 +1,6 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
+import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
   materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
@@ -337,14 +338,28 @@ export async function findRequest(supabase, id) {
     surveySite = data || null;
     /* ⭐ **นัดของช่างที่ผูกกับใบนี้** (เฟส 2) — ใบต้องบอกได้เองว่าลงคิวไปแล้วหรือยัง
        และนัดนั้นขึ้นตารางจริงไหม · ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวช่างอีกแท็บ
-       ⚠️ หนึ่งใบ = หนึ่งนัด ⇒ เอาแถวล่าสุดแถวเดียว */
-    const { data: visitRows } = await supabase
-      .from('service_visits')
-      .select('id, code, "scheduledDate", "startTime", status, "assigneeName"')
+       ⚠️ หนึ่งใบมี **นัดที่ยังมีชีวิตได้ใบเดียว** (index mig 0316) แต่มีนัดที่จบไปแล้ว
+          กี่ใบก็ได้ (ไปแล้วเข้าไม่ได้ → นัดใหม่)
+       🐞 **เอาแถวล่าสุดเฉย ๆ ไม่พอ** — นัดที่ปิดแล้วถูกเปิดกลับมาได้จากโมดัลนัด ⇒ แถวที่
+          ยังมีชีวิตเป็นแถวเก่ากว่าแถวที่ปิดได้ · จอที่เห็นแถวที่ปิดจะโชว์ปุ่ม "ลงคิวใหม่"
+          ซึ่ง server ตีกลับ 409 ทุกครั้ง (มันเห็นนัดที่ยังเปิดอยู่) ⇒ ถามนัดที่ยังมีชีวิต
+          ก่อน ไม่มีค่อยเอาแถวล่าสุดมาโชว์เป็น *ประวัติ* */
+    const visitCols = 'id, code, "scheduledDate", "startTime", status, "assigneeName"';
+    const { data: liveRows } = await supabase
+      .from('service_visits').select(visitCols)
       .eq('requestId', id)
+      .in('status', REQUEST_SLOT_VISIT_STATES)
       .order('createdAt', { ascending: false })
       .limit(1);
-    surveyVisit = (visitRows || [])[0] || null;
+    surveyVisit = (liveRows || [])[0] || null;
+    if (!surveyVisit) {
+      const { data: lastRows } = await supabase
+        .from('service_visits').select(visitCols)
+        .eq('requestId', id)
+        .order('createdAt', { ascending: false })
+        .limit(1);
+      surveyVisit = (lastRows || [])[0] || null;
+    }
   }
   const withBriefs = {
     ...row,

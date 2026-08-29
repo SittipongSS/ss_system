@@ -13,8 +13,10 @@ import { genId } from '@/lib/id';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { toHHMM } from '@/lib/service/sites';
 import { initialVisitStatus } from '@/lib/service/visitGate';
+import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 
 export const SURVEY_VISIT_KIND = 'survey';
+
 
 /**
  * ตรวจของที่ต้องมีก่อนลงคิว — คืนข้อความไทย หรือ `null` ถ้าผ่าน
@@ -33,13 +35,20 @@ export function surveyScheduleError(body = {}, request = {}) {
   return null;
 }
 
-/** นัดของใบนี้ (ถ้ามี) — ใบเดียวมีนัดเดียวตามมติ ⇒ คืนแถวเดียว */
-export async function findSurveyVisit(supabase, requestId) {
-  const { data, error } = await supabase
+/**
+ * นัดของใบนี้ (ถ้ามี) — ใบเดียวมีนัด **ที่ยังไม่ปิด** ได้ใบเดียวตามมติ ⇒ คืนแถวเดียว
+ *
+ * ⚠️ `openOnly` = ถามว่า "ตอนนี้ใบนี้มีนัดค้างอยู่ไหม" ซึ่ง **ไม่เท่ากับ** "เคยมีนัดไหม" —
+ *    ใบที่ไปแล้วเข้าไม่ได้ (`unable`) หรือยกเลิกไป มีประวัตินัดอยู่ แต่ไม่มีนัดค้าง
+ *    ⇒ ต้องลงคิวใหม่ได้ · ตัวที่ตัดสินคือชุดเดียวกับ index ของ mig 0316
+ * ⚠️ ไม่ใช้ `.eq('status', ...)` หลายรอบ — PostgREST ต้องการ `not.in.(a,b)` ก้อนเดียว
+ */
+export async function findSurveyVisit(supabase, requestId, { openOnly = false } = {}) {
+  let query = supabase
     .from('service_visits').select('*')
-    .eq('requestId', requestId)
-    .order('createdAt', { ascending: false })
-    .limit(1);
+    .eq('requestId', requestId);
+  if (openOnly) query = query.in('status', REQUEST_SLOT_VISIT_STATES);
+  const { data, error } = await query.order('createdAt', { ascending: false }).limit(1);
   if (error) throw error;
   return (data || [])[0] || null;
 }
@@ -51,9 +60,36 @@ export async function findSurveyVisit(supabase, requestId) {
  *    ขึ้นตารางเลย · ไม่ผ่าน (เช่นวันอยู่นอกช่วงที่ไซต์ให้เข้า) จอดเป็นร่างให้คนจัดการ
  *    ซึ่งเป็นกติกาเดียวกับนัดทุกชนิดในโมดูลนี้
  */
+/**
+ * แปลง error ของ index `service_visits_survey_open_request_uk` (mig 0316) เป็นภาษาคน
+ *
+ * ⚠️ **จังหวะที่มาถึงตรงนี้จริงคือการกดพร้อมกันสองที่** — ด่านข้างบนตรวจไปแล้ว แต่
+ *    ระหว่าง "ตรวจ" กับ "เขียน" มีช่องว่างเสมอ · ปล่อยข้อความดิบของ Postgres ขึ้นจอ
+ *    (`duplicate key value violates unique constraint …`) = คนอ่านไม่รู้ว่าเกิดอะไร
+ *    และจะกดซ้ำอีกรอบ
+ */
+export function surveyVisitInsertError(error) {
+  const raw = String(error?.message || '');
+  if (raw.includes('service_visits_survey_open_request_uk')) {
+    return 'ใบนี้เพิ่งถูกลงคิวจากอีกหน้าจอ — เปิดใบใหม่อีกครั้งเพื่อดูนัดล่าสุด';
+  }
+  return raw;
+}
+
 export async function createSurveyVisit(supabase, {
   request, site, date, time, assigneeId, assigneeName, user,
 }) {
+  /* 🔴 **ห้ามมีนัดเปิดค้างสองใบต่อหนึ่งคำร้อง** — ทั้งโมดูลอ่าน "นัดของใบ" เป็นแถวเดียว
+     ⇒ ใบที่สองจะมองไม่เห็นบนจอ แต่ยังอยู่บนตารางช่างอีกคน · ยามจริงคือ index ของ
+     mig 0316 · ตัวนี้อยู่เพื่อ **ข้อความไทย** ไม่ใช่เพื่อกันแทน (ตรวจแล้วค่อยเขียน
+     ยังมีช่องว่างเสมอ — ดูการแปลง error ข้างล่าง) */
+  const open = await findSurveyVisit(supabase, request.id, { openOnly: true });
+  if (open) {
+    return {
+      visit: null,
+      error: `ใบนี้มีนัดที่ยังไม่ปิดอยู่แล้ว (${open.code || open.id}) — ใช้ปุ่มเลื่อนวันนัดแทนการลงคิวใหม่`,
+    };
+  }
   const draft = {
     siteId: request.siteId,
     requestId: request.id,
@@ -73,12 +109,9 @@ export async function createSurveyVisit(supabase, {
     createdByName: user?.name || null,
   };
   const { data, error } = await insertRowWithEntityCode(supabase, 'SV', row);
-  if (error) return { visit: null, error: error.message };
+  if (error) return { visit: null, error: surveyVisitInsertError(error) };
   return { visit: data, error: null };
 }
-
-/** นัดที่ "จบไปแล้ว" — ขยับวันไม่ได้ เพราะเป็นประวัติของสิ่งที่เกิดขึ้นจริง */
-export const CLOSED_VISIT_STATES = ['done', 'partial', 'unable', 'cancelled'];
 
 /**
  * ขยับนัดที่มีอยู่ให้ตรงกับวันใหม่บนใบ — คืน `{ visit, error, needsNew }`
@@ -91,12 +124,15 @@ export const CLOSED_VISIT_STATES = ['done', 'partial', 'unable', 'cancelled'];
  *       ซึ่งแย่กว่าปฏิเสธ เพราะไม่มีใครรู้ว่าต้องไปทำอะไรต่อ
  */
 export async function moveSurveyVisit(supabase, { requestId, date, time }) {
-  const visit = await findSurveyVisit(supabase, requestId);
-  // ยังไม่เคยลงคิว หรือนัดถูกลบทิ้ง = ต้องสร้างใบใหม่ ไม่ใช่เงียบแล้วปล่อยใบไม่มีนัด
+  /* 🐞 **ต้องถามหาแถวที่ยังกินสิทธิ์ตรง ๆ ไม่ใช่ "แถวล่าสุดแล้วค่อยดูสถานะ"** —
+     "มีใบเดียว" ไม่ได้แปลว่า "เป็นใบล่าสุด": นัดที่ถูกปิดไปแล้วถูกเปิดกลับเป็น
+     `scheduled` ได้จากโมดัลนัด (สถานะเลือกมือได้) ⇒ แถวที่ยังมีชีวิตกลายเป็นแถว *เก่ากว่า*
+     แถวที่ปิดแล้ว · อ่านแถวล่าสุดจะเห็นแถวที่ปิด แล้วสั่งสร้างนัดใหม่ ซึ่งไปตกด่าน
+     "ใบนี้มีนัดที่ยังไม่ปิดอยู่แล้ว" ⇒ ปุ่มสองปุ่มชี้ไปหากันเอง กดทางไหนก็ไม่ผ่าน
+     ⚠️ ผู้เรียกมองสองเคสนี้เหมือนกันอยู่แล้ว (ไม่มีนัด · นัดจบไปแล้ว ⇒ สร้างใบใหม่) */
+  const visit = await findSurveyVisit(supabase, requestId, { openOnly: true });
+  // ยังไม่เคยลงคิว · นัดถูกลบ · นัดเดิมจบไปแล้ว = ต้องสร้างใบใหม่ ไม่ใช่เงียบ
   if (!visit) return { visit: null, error: null, needsNew: true };
-  if (CLOSED_VISIT_STATES.includes(visit.status)) {
-    return { visit, error: null, needsNew: true };
-  }
   const patch = { scheduledDate: date, updatedAt: new Date().toISOString() };
   if (time !== undefined) patch.startTime = time ? toHHMM(time) : null;
   const { data, error } = await supabase

@@ -5,7 +5,10 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
-import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit, isLiveVisit } from '@/lib/service/visitStatus';
+import {
+  VISIT_STATUS_LABELS, canDeleteVisit, holdsRequestSlot, isClosedVisit, isLiveVisit,
+} from '@/lib/service/visitStatus';
+import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
@@ -165,11 +168,34 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (touched && (before.actualStartTime || before.actualEndTime)) patch.actualTimeEdited = true;
     }
 
+    /* ── เปิดนัดประเมินที่ปิดไปแล้วกลับมา = อาจได้นัดเปิดสองใบต่อหนึ่งคำร้อง ────
+       ⭐ ยามจริงคือ index ของ mig 0316 · ตัวนี้อยู่เพื่อ **ข้อความไทยและสถานะ 409**
+          และเพื่อให้แอปทำงานเหมือนกันในช่วงที่ยังไม่ได้รัน migration
+       ⚠️ ยิงเฉพาะ transition ที่ *ฟื้น* นัดจริง ๆ — ไม่ใช่ทุกครั้งที่แก้นัด */
+    if (before.kind === SURVEY_VISIT_KIND && before.requestId
+      && patch.status && patch.status !== before.status
+      && holdsRequestSlot({ status: patch.status }) && !holdsRequestSlot(before)) {
+      const other = await findSurveyVisit(supabase, before.requestId, { openOnly: true });
+      if (other && other.id !== id) {
+        return conflict(`ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว (${other.code || other.id}) — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้`);
+      }
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
       .update({ ...patch, updatedAt: nowIso })
       .eq('id', id).select().single();
-    if (updateError) return fail(updateError.message, 500);
+    /* 🐞 **แก้สถานะก็ชน index ได้ ไม่ใช่แค่ตอนสร้าง** (mig 0316) — เปิดนัดที่ปิดไปแล้ว
+       กลับมาเป็น "นัดไว้" ในขณะที่ใบนั้นมีนัดอื่นเปิดอยู่ = สองนัดเปิดพร้อมกัน ⇒ DB
+       ตีกลับ · ปล่อยข้อความดิบขึ้นจอ (`duplicate key value violates unique constraint …`
+       พร้อมสถานะ 500) คนอ่านไม่รู้ว่าต้องทำอะไรต่อ และ 500 อ่านเหมือนระบบพัง
+       ทั้งที่เป็นกติกาของงาน ⇒ 409 พร้อมข้อความไทย */
+    if (updateError) {
+      if (String(updateError.message || '').includes('service_visits_survey_open_request_uk')) {
+        return conflict('ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้');
+      }
+      return fail(updateError.message, 500);
+    }
 
     /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
        🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวช่าง
