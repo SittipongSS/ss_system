@@ -140,3 +140,40 @@ test('แถวว่างล้วนถูกข้าม และเลข�
   assert.equal(drafts.length, 2);
   assert.deepEqual(drafts.map((d) => d.rowNumber), [2, 4]);
 });
+
+// ── จังหวัด + ชั้น (mig 0315) ─────────────────────────────────────────────
+//
+// ⭐ สองช่องนี้กลายเป็น **ส่วนหนึ่งของรหัส** — ไซต์ใหม่ต้องมีจังหวัด · โซนใหม่ต้องมีชั้น
+// ⚠️ ชีตเก่ามีคอลัมน์ "ชั้น" อยู่แล้วแต่เดิมลงที่ *เครื่อง* อย่างเดียว ⇒ ตั้งแต่ 0315
+//    เซลล์เดียวกันเดินไปสองที่ (ชั้นของโซน กับ ชั้นที่ช่างจดไว้ที่เครื่อง)
+const geoHeaders = [...headers, 'จังหวัด', 'ชั้น'];
+const geoMap = matchHeaders(geoHeaders).map;
+const geoRow = (values) => {
+  const cells = new Array(geoHeaders.length).fill('');
+  Object.entries(values).forEach(([header, value]) => { cells[geoHeaders.indexOf(header)] = value; });
+  return cells;
+};
+
+test('⭐ คอลัมน์จังหวัดถูกจับและเดินทางไปถึงร่างของไซต์', () => {
+  const draft = buildDraft(geoRow({
+    ลูกค้า: 'บริษัท ก', ชื่อไซต์: 'สาขาเชียงใหม่', จังหวัด: 'เชียงใหม่',
+  }), geoMap, 2);
+  assert.equal(draft.site.province, 'เชียงใหม่');
+});
+
+test('⭐ ชั้นเดินไปทั้งโซนและเครื่อง — เซลล์เดียว สองปลายทาง', () => {
+  const draft = buildDraft(geoRow({
+    ลูกค้า: 'บริษัท ก', ชื่อไซต์: 'สาขาสีลม', โซน: 'ล็อบบี้', ชั้น: 'G', จำนวนเครื่อง: '1',
+  }), geoMap, 2);
+  assert.equal(draft.zone.floor, 'G');
+  // ⚠️ ที่เครื่องยังเก็บ **ข้อความดิบ** ตามที่ชีตเขียน (ของเก่า 380 จุดเก็บแบบนี้)
+  //    ส่วนโซนจะถูก normalize เป็น 'GF' ตอนสร้างจริงใน importRepo
+  assert.equal(draft.assets[0].floor, 'G');
+});
+
+test('ชีตที่ไม่มีคอลัมน์จังหวัด/ชั้น ยังอ่านได้ตามเดิม — ตกด่านตอนสร้าง ไม่ใช่ตอนอ่าน', () => {
+  const draft = buildDraft(row({ ลูกค้า: 'บริษัท ก', ชื่อไซต์: 'สาขาเก่า', โซน: 'ล็อบบี้' }), map, 2);
+  assert.equal(draft.site.province, null);
+  assert.equal(draft.zone.floor, null);
+  assert.deepEqual(draft.issues, []);
+});
