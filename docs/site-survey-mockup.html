@@ -757,6 +757,22 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
 .delta{font-size:var(--fs-3);font-variant-numeric:tabular-nums}
 .delta.up{color:var(--accent-ink)}
 .delta.same{color:var(--text-3)}
+
+/* ── ฟอร์มเพิ่มพื้นที่ — ตัวอย่างผลลัพธ์สด ─────────────────────────────── */
+.preview{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-3) var(--space-3-5);border:1px dashed var(--border-strong);
+border-radius:var(--radius-md);background:var(--panel-2);margin-top:var(--space-1)}
+.preview .lab{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);flex:none}
+.preview .val{font-size:var(--fs-9);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.preview .val em{font-style:normal;color:var(--text-3);font-weight:var(--fw-normal)}
+.warnline{display:flex;gap:var(--space-2);align-items:flex-start;margin-top:var(--space-1-5);
+font-size:var(--fs-3);line-height:var(--lh-thai);color:var(--amber)}
+.notfield{display:flex;flex-direction:column;gap:var(--space-1-5)}
+.notfield > div{display:flex;gap:var(--space-2);align-items:baseline;font-size:var(--fs-4);
+line-height:var(--lh-thai)}
+.notfield b{flex:none;width:104px;color:var(--text-2);font-weight:var(--fw-semibold)}
+.notfield span{color:var(--text-3)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -1040,7 +1056,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
           </div>
 
           <div class="pick">
-            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มพื้นที่ใหม่</button>
+            <button class="btn btn-accent" data-jump="zoneform"><svg class="i"><use href="#plus"/></svg> เพิ่มพื้นที่ใหม่</button>
             <button class="btn"><svg class="i"><use href="#layers"/></svg> เลือกจากโซนเดิม <span class="ui-badge plain">เหลือ 2</span></button>
           </div>
 
@@ -2460,13 +2476,129 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
   </div>
 </section>
 
+<!-- ═══ 13 ฟอร์มเพิ่มพื้นที่ ═══════════════════════════════════════════ -->
+<section class="screen" id="zoneform">
+  <div class="brief">
+    <div>
+      <h2>ฟอร์มเพิ่มพื้นที่ใหม่</h2>
+      <div class="route">โมดัลบนฟอร์มคำร้อง (จอ 02) · ผู้ใช้ = SA</div>
+      <p>ฟอร์มนี้ตอบคำถามเดียว: <b>“ที่ไหน”</b> — ไม่ใช่ “เท่าไร” · ทุกอย่างที่เป็นตัวเลขมาจากหน้างาน
+      ⇒ ฟอร์มสั้นโดยตั้งใจ สามช่องบังคับหนึ่ง</p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk new">+</span><span>🔴 <b>ชั้น/อาคารเป็นช่องแยก ไม่ใช่พิมพ์ในชื่อ</b> — ของจริงคนพิมพ์ “ล็อบบี้ชั้น G” รวมกันหมด
+      แล้วเรียงตามชั้นไม่ได้ · ช่างที่เดินไล่ชั้นต้องอ่านชื่อเดา</span></li>
+      <li><span class="mk new">+</span><span><b>ตัวอย่างผลลัพธ์สด</b> — เห็นเลยว่าพื้นที่นี้จะขึ้นบนใบงานช่างว่ายังไง ⇒ ไม่มีใครพิมพ์ชั้นซ้ำลงในชื่อ</span></li>
+      <li><span class="mk new">+</span><span>ยาม <b>ชื่อซ้ำในไซต์นี้</b> ทำงานตอนพิมพ์ — ฐานข้อมูลมี <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> (mig 0297) ปล่อยไปถึงบันทึกจะได้ error ดิบ</span></li>
+      <li><span class="mk">✓</span><span>ฟอร์มเดียวใช้ทั้ง <b>เพิ่ม</b> และ <b>แก้</b> ตามกฎข้อแรกของ repo — ต่างกันแค่โหมด</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">โมดัล · โหมดเพิ่ม</div>
+    <div class="frame-body">
+      <div class="ui-section" style="max-width:620px;margin:0 auto">
+        <div class="ui-section-header"><div><h2>เพิ่มพื้นที่ใหม่</h2>
+        <p>ใต้สถานที่ <b>ดิ เอ็มควอเทียร์</b> <span class="mono">SS-26030011</span></p></div>
+          <span class="ui-badge plain">ยังไม่มีรหัส ZN</span></div>
+        <div class="ui-section-body">
+
+          <div class="field"><label>ชื่อพื้นที่ <b class="req">*</b></label>
+            <div class="inp">โซนออฟฟิศ</div>
+            <small>ใส่เฉพาะสิ่งที่ทำให้แยกออกจากพื้นที่อื่นในตึกเดียวกัน — <b>ไม่ต้องใส่ชั้น</b> มีช่องแยกให้แล้ว</small></div>
+
+          <div class="two">
+            <div class="field"><label>อาคาร</label><div class="inp">A</div>
+              <small>ตึกเดียวก็เว้นว่างได้</small></div>
+            <div class="field"><label>ชั้น</label><div class="inp">5</div>
+              <small>G · B1 · M ก็ได้ ไม่ใช่แค่ตัวเลข</small></div>
+          </div>
+
+          <div class="field"><label>ตำแหน่ง / รายละเอียด</label>
+            <div class="inp ta">ฝั่งทิศเหนือ ติดหน้าต่างกระจก · เข้าทางลิฟต์ตัวที่ 2 · ต้องแลกบัตรที่ รปภ. ชั้น G</div>
+            <small>ของที่ช่างต้องรู้ก่อนไป — ทางเข้า ข้อจำกัด คนที่ต้องติดต่อ</small></div>
+
+          <span class="lab" style="font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)">พื้นที่นี้จะขึ้นบนใบงานช่างแบบนี้</span>
+          <div class="preview">
+            <span class="val">อาคาร A · ชั้น 5 — <b>โซนออฟฟิศ</b></span>
+            <span class="lab" style="margin-left:auto">รหัสออกตอนกดส่งใบ</span>
+          </div>
+
+          <div class="notice" data-tone="warning" style="margin-top:var(--space-4)">
+            <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+            <div><b>ถ้าพิมพ์ชื่อที่มีอยู่แล้ว จะทักตรงนี้ทันที</b>
+            <span>เช่นพิมพ์ “ล็อบบี้ชั้น G” → <i>“ไซต์นี้มีพื้นที่ชื่อนี้อยู่แล้ว (<span class="mono">ZN-26030021</span> · วัดแล้ว · ขายแล้ว) —
+            ต้องการวัดพื้นที่เดิมใช่ไหม”</i> + ปุ่มสลับไปเลือกจากพื้นที่เดิม ·
+            และถ้าพิมพ์คำว่า “ชั้น” ลงในช่องชื่อ จะเตือนเบา ๆ ว่ามีช่องชั้นแยกแล้ว</span></div>
+          </div>
+
+          <div class="ui-section-header" style="padding-inline:0;margin-top:var(--space-4)">
+            <div><h2 style="font-size:var(--fs-9)">ที่ไม่มีในฟอร์มนี้โดยตั้งใจ</h2>
+            <p>SA ตอบว่า “ที่ไหน” · ที่เหลือมาจากคนที่ไปเห็นของจริง</p></div></div>
+          <div class="notfield">
+            <div><b>ขนาด ก×ย×ส</b><span>ช่างวัดหน้างาน — หลายส่วนได้ถ้าเป็นรูปตัว L (จอ 06)</span></div>
+            <div><b>จุดติดตั้ง</b><span>ช่างแจ้งว่าติดตั้งได้ตรงไหนบ้าง · หัวหน้าเลือกว่าจะติดจริงกี่จุด</span></div>
+            <div><b>รูป</b><span>ภาพกว้าง + จุดติดตั้ง จากหน้างาน · ผังจากหัวหน้า</span></div>
+            <div><b>จำนวนแพ็ค</b><span>หัวหน้า TS กรอกหลังได้ขนาด (จอ 07)</span></div>
+            <div><b>รหัส ZN</b><span>ออกตอนกดส่งใบ ไม่ใช่ตอนกดบันทึกในโมดัลนี้</span></div>
+          </div>
+
+          <div class="sticky-acts">
+            <span class="ui-badge plain">ร่าง — ยังไม่ลงทะเบียน</span>
+            <span style="margin-left:auto"></span>
+            <button class="btn">ยกเลิก</button>
+            <button class="btn btn-primary">เพิ่มลงรายการ</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">โมดัลตัวเดียวกัน · โหมดแก้ (พื้นที่ที่ลงทะเบียนแล้ว)</div>
+    <div class="frame-body">
+      <div class="ui-section" style="max-width:620px;margin:0 auto">
+        <div class="ui-section-header"><div><h2>แก้ไขพื้นที่ ล็อบบี้ชั้น G</h2>
+        <p><span class="mono">ZN-26030021</span> · ดิ เอ็มควอเทียร์</p></div>
+          <span class="ui-badge success">ขายแล้ว</span></div>
+        <div class="ui-section-body">
+          <div class="ctxstrip">
+            <span class="done"><svg class="i"><use href="#check"/></svg>ลงทะเบียนแล้ว</span>
+            <span>แก้ชื่อที่นี่ = <b>แก้ทะเบียนจริง</b> — ใบเก่ายังอ่านชื่อ ณ ตอนนั้นได้จาก <span class="mono">zoneName</span> ที่เก็บไว้บนแถวของใบ</span>
+          </div>
+          <div class="field"><label>ชื่อพื้นที่ <b class="req">*</b></label><div class="inp">ล็อบบี้</div></div>
+          <div class="two">
+            <div class="field"><label>อาคาร</label><div class="inp">A</div></div>
+            <div class="field"><label>ชั้น</label><div class="inp">G</div></div>
+          </div>
+          <div class="preview">
+            <span class="val">อาคาร A · ชั้น G — <b>ล็อบบี้</b></span>
+            <span class="lab" style="margin-left:auto"><span class="mono">ZN-26030021</span></span>
+          </div>
+          <div class="notice" data-tone="danger" style="margin-top:var(--space-4)">
+            <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+            <div><b>ปิดใช้งานพื้นที่นี้ไม่ได้</b>
+            <span>มีเครื่อง 3 ตัว · รอบบริการ · ประวัติการเข้า ผูกอยู่ ·
+            พื้นที่ถูกกั้นใหม่จริง ๆ ต้องแก้ที่ทะเบียนโดยฝ่ายบริการ ไม่ใช่ที่ใบประเมิน</span></div>
+          </div>
+          <div class="sticky-acts">
+            <span style="margin-left:auto"></span>
+            <button class="btn">ยกเลิก</button>
+            <button class="btn btn-primary">บันทึกการแก้ไข</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <script>
 const SCREENS = [
   ["flow","สายงาน"],["saform","ฟอร์ม SA"],["queue","คิว TS"],["book","ลงคิว"],
   ["sched","ตารางช่าง"],["field","หน้างาน"],["pack","สรุปแพ็คเกจ"],["result","ผลถึง SA"],
-  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["cases","เจ็ดกรณี"],["data","ของที่ต้องเพิ่ม"]
+  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["cases","เจ็ดกรณี"],["zoneform","ฟอร์มพื้นที่"],["data","ของที่ต้องเพิ่ม"]
 ];
 const nav = document.getElementById("nav");
 SCREENS.forEach(([id,label],i)=>{
