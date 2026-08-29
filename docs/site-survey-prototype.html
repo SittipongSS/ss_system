@@ -773,6 +773,12 @@ font-size:var(--fs-3);line-height:var(--lh-thai);color:var(--amber)}
 line-height:var(--lh-thai)}
 .notfield b{flex:none;width:104px;color:var(--text-2);font-weight:var(--fw-semibold)}
 .notfield span{color:var(--text-3)}
+
+/* ── ทางแยก: เส้นทางที่ไม่ราบรื่น ─────────────────────────────── */
+.steps2 .sep2{width:1px;background:var(--border);margin:0 var(--space-2);align-self:stretch}
+.steps2 button[data-b="1"][aria-current="true"]{background:var(--amber);border-color:var(--amber);color:#fff}
+.stepnote[data-b="1"]{background:var(--amber)}
+.stepnote[data-b="2"]{background:var(--red)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -871,7 +877,7 @@ color:#fff;padding:4px 12px;font:inherit;font-size:var(--fs-4);cursor:pointer;wh
 </style>
 
 <div class="stepbar"><div class="stepbar-in">
-  <h1>เดินเรื่องใบประเมินพื้นที่<small>AS-26090003 · ดิ เอ็มควอเทียร์ · จากคำร้องถึงผลกลับถึงฝ่ายขาย</small></h1>
+  <h1>เดินเรื่องใบประเมินพื้นที่<small>AS-26090003 · ดิ เอ็มควอเทียร์ · 9 ขั้น + 4 ทางแยกที่ไม่ราบรื่น</small></h1>
   <nav class="steps2" id="nav" aria-label="ขั้นตอน"></nav>
   <button class="themebtn" id="theme" title="สลับธีมสว่าง/มืด" aria-label="สลับธีมสว่าง/มืด">◐</button>
 </div></div>
@@ -1471,15 +1477,179 @@ color:#fff;padding:4px 12px;font:inherit;font-size:var(--fs-4);cursor:pointer;wh
     </div>
   </div>
 </section>
+<section class="scene" id="b1">
+  <div class="app mobile">
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานวันนี้ › ประเมินพื้นที่</span><span class="who2"><span class="av">สช</span>สมชาย · ช่าง</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ทางแยก ก · ช่าง</span><span>8 ก.ย. 13:20 · ไปถึงแล้วแต่ รปภ. ไม่ให้เข้า เพราะยังไม่มีใบขออนุญาตจากฝ่ายอาคาร</span></div>
+      <div class="page">
+        <div class="premium-header"><div><h1 style="font-size:var(--fs-12)"><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่</h1><p>ดิ เอ็มควอเทียร์ · <span class="mono">AS-26090003</span></p></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>เข้าพื้นที่ไม่ได้</h2><p>บอกเหตุผลก่อน — ฝ่ายขายจะเห็นเหตุผลนี้ ไม่ใช่แค่รู้ว่าวันเปลี่ยน</p></div></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผล <b class="req">*</b></label><div class="tiles"><button class="tile" aria-pressed="true"><span class="th"><b>อาคารไม่ให้เข้า</b></span><span class="adr">ต้องมีใบขออนุญาตล่วงหน้า</span></button><button class="tile"><span class="th"><b>ลูกค้าเลื่อน</b></span><span class="adr">ติดต่อแล้วขอเปลี่ยนวัน</span></button><button class="tile"><span class="th"><b>พื้นที่ใช้งานอยู่</b></span><span class="adr">มีอีเวนต์ เข้าวัดไม่ได้</span></button><button class="tile own"><span class="th"><b>อื่น ๆ — พิมพ์เอง</b></span></button></div></div>
+            <div class="field"><label>รายละเอียด <b class="req">*</b></label><div class="inp ta">รปภ. ชั้น G แจ้งว่าต้องมีใบขออนุญาตเข้าพื้นที่จากฝ่ายอาคารล่วงหน้า 3 วัน · คุยกับคุณแนนแล้ว จะส่งใบให้ภายในพรุ่งนี้ · เข้าใหม่ได้เร็วสุด 12 ก.ย.</div></div>
+            <div class="notice" data-tone="warning"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>กดแล้วจะเกิดสามอย่าง</b><span>① นัด <span class="mono">SV-26090044</span> ปิดเป็น <b>“เข้าไม่ได้”</b> ค้างไว้ในประวัติ ไม่ถูกลบ ② ใบ <span class="mono">AS-26090003</span> <b>ถอยกลับไปขั้น “ลงคิว”</b> รอ TS ลงวันใหม่ ③ ปาริชาตได้กระดิ่งพร้อมเหตุผลนี้</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ยกเลิก</button><button class="btn btn-danger">บันทึกว่าเข้าไม่ได้</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ผลลัพธ์</span><span>ใบกลับเข้าคิว “รับแล้ว ยังไม่ลงวัน” เอง — ไม่ต้องมีใครจำว่าต้องลงวันใหม่</span></div>
+      <div class="page">
+        <div class="ui-metric-strip"><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#inbox"/></svg></span><span class="ui-metric-txt"><strong>0</strong><span>รอรับเรื่อง</span></span></div><div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#cal"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>รับแล้ว ยังไม่ลงวัน</span></span></div><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#wrench"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>นัดไว้แล้ว</span></span></div><div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span><span class="ui-metric-txt"><strong>1</strong><span>ส่งผลแล้ว</span></span></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>คิวงานประเมิน</h2></div></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>เลขที่</th><th>ชื่องาน / สถานที่</th><th class="num">พื้นที่</th><th>ขั้นที่เดินไป</th><th>นัดไป</th><th></th></tr></thead><tbody><tr style="background:var(--amber-soft)"><td><span class="t-strong mono">AS-26090003</span><span class="cell-sub">ปาริชาต · 2 ก.ย.</span></td><td><span class="t-strong">ประเมินพื้นที่ ดิ เอ็มควอเทียร์</span><span class="cell-sub">เดอะ มอลล์ กรุ๊ป · ดิ เอ็มควอเทียร์</span></td><td class="num"><b>4</b></td><td><span class="steps"><s class="done"></s><s class="done"></s><s class="now"></s><s></s><em>ถอยกลับ · ยังไม่ลงวัน</em></span></td><td><span class="ui-badge danger">เข้าไม่ได้ 8 ก.ย.</span><span class="cell-sub">อาคารไม่ให้เข้า — ไปใหม่ได้ 12 ก.ย.</span></td><td><button class="btn sm btn-accent">ลงวันใหม่</button></td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="info"><span class="ic"><svg class="i"><use href="#clock"/></svg></span><div><b>นัดเดิมไม่ถูกลบ</b><span><span class="mono">SV-26090044</span> ค้างไว้เป็น “เข้าไม่ได้” · นัดใหม่จะเป็นคนละแถวที่ชี้กลับด้วย <span class="mono">rescheduledFromId</span> ⇒ อ่านย้อนได้ว่าไปกี่รอบกว่าจะเข้าได้ ซึ่งใช้เถียงกับอาคารได้</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b2">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003 › ยกเลิกใบ</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ทางแยก ข · ก่อน TS รับเรื่อง</span><span>3 ก.ย. 08:50 · ลูกค้าแจ้งเลื่อนโครงการออกไปปีหน้า — ปาริชาตยกเลิกใบทัน เพราะ TS ยังไม่ได้กดรับ</span></div>
+      <div class="page">
+        <div class="ui-section" style="max-width:680px;margin:0 auto">
+          <div class="ui-section-header"><div><h2>ยกเลิกคำร้อง</h2><p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · 4 พื้นที่</p></div><span class="ui-badge info">TS ยังไม่รับเรื่อง</span></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผลที่ยกเลิก <b class="req">*</b></label><div class="inp ta">ลูกค้าแจ้งเลื่อนโครงการขยายโซนออกไปปีหน้า · ยังไม่มีกำหนดใหม่</div></div>
+            <div class="ui-section-header" style="padding-inline:0"><div><h2 style="font-size:var(--fs-9)">พื้นที่ที่ใบนี้สร้างไว้ — จะเกิดอะไรขึ้น</h2><p>ลบเฉพาะที่ยังไม่มีใครใช้ · ที่มีอะไรผูกอยู่จะถูกเก็บไว้เสมอ</p></div></div>
+            <div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th>ที่มา</th><th>ผูกอยู่กับอะไร</th><th>ผลของการยกเลิก</th></tr></thead><tbody><tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub mono">ZN-26090031</span></td><td><span class="ui-badge accent">ใบนี้สร้าง</span></td><td><span style="color:var(--text-3)">— ไม่มี —</span></td><td><span class="ui-badge danger">ลบทิ้ง</span></td></tr><tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26090032</span></td><td><span class="ui-badge accent">ใบนี้สร้าง</span></td><td><span style="color:var(--text-3)">— ไม่มี —</span></td><td><span class="ui-badge danger">ลบทิ้ง</span></td></tr><tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td><td><span class="ui-badge plain">โซนเดิม</span></td><td>รอบขาย SO-26040022 · เครื่อง 3 ตัว · ประวัติเข้า 14 ครั้ง</td><td><span class="ui-badge success">คงไว้</span></td></tr><tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023</span></td><td><span class="ui-badge plain">โซนเดิม</span></td><td>ผลวัดของใบ AS-26030004</td><td><span class="ui-badge success">คงไว้</span></td></tr></tbody></table></div>
+            <div class="notice" data-tone="warning" style="margin-top:var(--space-4)"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ลบได้เฉพาะพื้นที่ที่ไม่มีอะไรผูกอยู่</b><span>ฐานข้อมูลกันไว้ให้แล้วสามชั้น — รอบขาย (RESTRICT) · เครื่อง · ประวัตินัด · พื้นที่ที่มีอะไรผูก<b>ลบไม่ได้ต่อให้ยกเลิกใบ</b> · ถ้าไม่ต้องการใช้แล้วให้ปิดใช้งานแทน</span></div></div>
+            <div class="sticky-acts"><span class="ui-badge warning">ลบ 2 · คงไว้ 2</span><span style="margin-left:auto"></span><button class="btn">ไม่ยกเลิก</button><button class="btn btn-danger">ยกเลิกคำร้อง</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ทางแยก ข · หลัง TS รับเรื่องแล้ว</span><span>ถ้าดีลล่มหลังจากนี้ ยกเลิกไม่ได้แล้ว — เพราะมีคนลงแรงไปแล้ว · ทางออกคือปิดใบโดยไม่ได้ประเมิน</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ยกเลิกคำร้องไม่ได้แล้ว — TS รับเรื่องไปตั้งแต่ 3 ก.ย. 09:20</b><span>ปุ่มยกเลิกโชว์อยู่แต่กดแล้วบอกเหตุ (ไม่ใช่ปุ่มเทาเงียบ) · 🔴 <b>ถ้าไม่มีทางออกอื่น ใบจะค้างตลอดกาล</b> ⇒ ต้องมีปุ่ม “ปิดใบโดยไม่ได้ประเมิน” ให้ TS</span></div></div>
+        <div class="ui-section" style="max-width:680px;margin:var(--space-4) auto 0">
+          <div class="ui-section-header"><div><h2>ปิดใบโดยไม่ได้ประเมิน</h2><p>ไม่ใช่ “ยกเลิก” — งานเกิดขึ้นจริงแล้ว แค่ไม่ได้ผล</p></div><span class="ui-badge warning">ต้องมีเหตุผล</span></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผล <b class="req">*</b></label><div class="inp ta">ลูกค้าแจ้งเลื่อนโครงการออกไปปีหน้าหลังจากที่รับเรื่องแล้ว · ยังไม่ได้เข้าพื้นที่ · ปาริชาตรับทราบทางโทรศัพท์ 3 ก.ย.</div></div>
+            <div class="doc"><h4>ผลของการปิดแบบนี้</h4><div class="line"><span>ใบ</span><span>ปิดพร้อมป้าย <b>“ไม่ได้ประเมิน”</b> — อ่านย้อนได้ว่าเคยจะไปแล้วไม่ได้ไป</span></div><div class="line"><span>พื้นที่</span><span><b>คงไว้ทั้งหมด</b> — ไม่ลบ เพราะใบเดินไปไกลกว่าขั้นร่างแล้ว</span></div><div class="line"><span>นัด</span><span>ถ้ามีนัดค้าง จะถูกยกเลิกพร้อมเหตุผลเดียวกัน</span></div><div class="line"><span>ฝ่ายขาย</span><span>ได้กระดิ่งพร้อมเหตุผล และเปิดใบใหม่ได้ทุกเมื่อ</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ไม่ปิด</button><button class="btn btn-danger">ปิดใบโดยไม่ได้ประเมิน</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b3">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">1</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้าทีมช่าง</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ทางแยก ค · หลังปิดใบไปแล้ว</span><span>11 ก.ย. · สมชายทักว่าล็อบบี้จดผิดห้อง วัดได้ 2,527 แต่ที่ถูกคือ 1,890 ลบ.ม. ⇒ แพ็คเกจต้องลดจาก 3 เหลือ 2</span></div>
+      <div class="page">
+        <div class="ui-section" style="max-width:700px;margin:0 auto">
+          <div class="ui-section-header"><div><h2>ดึงใบกลับมาแก้</h2><p><span class="mono">AS-26090003</span> · ปิดครบสองฝั่งเมื่อ 9 ก.ย.</p></div><span class="ui-badge danger">ใบปิดแล้ว</span></div>
+          <div class="ui-section-body">
+            <div class="ctxstrip"><span class="done"><svg class="i"><use href="#check"/></svg>คนที่ส่งเอาคืนเอง</span><span>คำนี้ล็อกไว้ทั้งระบบ — <b>ตีกลับ</b> = ผู้รับส่งคืน · <b>ดึงกลับ</b> = คนที่ส่งเอาคืนเอง ⇒ TS เป็นคนดึง</span></div>
+            <div class="field"><label>เหตุผลที่ดึงกลับ <b class="req">*</b> <small>อย่างน้อย 10 ตัวอักษร</small></label><div class="inp ta">จดขนาดล็อบบี้ผิดห้อง — ตัวเลข 18×20 เป็นของโถงชั้น 2 ไม่ใช่ชั้น G · ชั้น G จริงคือ 14×20×6.50 + 14×4×2.60 = 1,890.4 ลบ.ม. ⇒ สูตรได้ 1 แพ็คเกจ ปรับเป็น 2 ตามลมโถงเปิด</div></div>
+            <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>🔴 ฝ่ายขายอาจเอาตัวเลขนี้ไปเสนอราคาไปแล้ว</b><span>กระดิ่งที่ส่งไปต้องบอก<b>ส่วนต่างตรง ๆ</b> ไม่ใช่แค่ “ใบถูกแก้” · และหน้ารายละเอียดฝั่งฝ่ายขายจะมีแถบเตือนค้างไว้จนกว่าจะกดรับผลใหม่</span></div></div>
+            <div class="doc"><h4>ดึงกลับแล้วจะเกิดอะไร</h4><div class="line"><span>ใบ</span><span>ถอยไปขั้น <b>4 “ส่งผลประเมิน”</b> — ไม่ถอยถึงลงคิว เพราะขนาดวัดมาแล้ว แค่ตัวเลขผิด</span></div><div class="line"><span>ผลวัด</span><span><b>แก้ทับรอบเดิมได้</b> — ไม่ขัดกติกา “ประเมินซ้ำไม่ทับ” เพราะนั่นพูดถึงคนละรอบวัด ส่วนนี่คือรอบเดิมที่กรอกผิด</span></div><div class="line"><span>ประวัติ</span><span>ค่าเดิมกับค่าใหม่ถูกบันทึกไว้ทั้งคู่ อ่านย้อนได้ว่าใครแก้ เมื่อไร เพราะอะไร</span></div><div class="line"><span>ตราปิด</span><span>ตราของทั้งสองฝั่งถูกถอน — ฝ่ายขายต้องกดรับผลใหม่ถึงจะปิดอีกครั้ง</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ไม่ดึง</button><button class="btn btn-danger">ดึงใบกลับมาแก้</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง<span class="bdg">1</span></a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ผลลัพธ์ · ฝั่งฝ่ายขาย</span><span>กระดิ่งบอกส่วนต่างตรง ๆ — ไม่ใช่แค่บอกว่าใบถูกแก้</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ผลประเมิน AS-26090003 ถูกดึงกลับไปแก้ — ตัวเลขเปลี่ยน</b><span><b>ล็อบบี้ชั้น G · 3 → 2 แพ็คเกจ</b> (ปริมาตร 2,527.2 → 1,890.4 ลบ.ม.) · รวมทั้งใบ <b>7 → 6 แพ็คเกจ/เดือน</b><br>เหตุผล: จดขนาดผิดห้อง — ตัวเลขเดิมเป็นของโถงชั้น 2 · แก้โดย วรรณา 11 ก.ย. 10:15</span></div><span class="act"><button class="btn sm btn-accent">ดูผลที่แก้แล้ว</button></span></div>
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่ ดิ เอ็มควอเทียร์</h1><p><span class="mono">AS-26090003</span> · ดีล <span class="mono">DL-2609003</span></p></div><div class="ui-workspace-header-actions"><span class="ui-badge warning">รอรับผลใหม่</span><button class="btn btn-primary">รับผล &amp; ปิดเรื่องอีกครั้ง</button></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>สิ่งที่เปลี่ยน</h2><p>เทียบกับผลที่รับไปเมื่อ 9 ก.ย.</p></div></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th>ขนาดเดิม</th><th>ขนาดใหม่</th><th class="num">แพ็คเกจ</th></tr></thead><tbody><tr style="background:var(--red-soft)"><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td><td class="mono" style="text-decoration:line-through;color:var(--text-3)">2,527.2 ลบ.ม.</td><td class="mono">1,890.4 ลบ.ม.<span class="cell-sub">14.00 × 20.00 × 6.50 + 14.00 × 4.00 × 2.60</span></td><td class="num"><b style="color:var(--red)">3 → 2</b></td></tr><tr><td colspan="3"><span class="t-strong">อีก 3 พื้นที่ไม่เปลี่ยน</span></td><td class="num"><b>4</b> <span class="cell-sub">เท่าเดิม</span></td></tr><tr><td colspan="3"><span class="t-strong">รวมทั้งใบ</span></td><td class="num"><b style="color:var(--red)">7 → 6</b></td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="warning"><span class="ic"><svg class="i"><use href="#file"/></svg></span><div><b>ถ้าเสนอราคาไปแล้ว ต้องตามแก้เอง</b><span>ระบบบอกได้แค่ว่าตัวเลขเปลี่ยน — ไม่ไล่แก้ใบเสนอราคาให้เอง เพราะใบที่ยื่นไปแล้วมี Rev. ของตัวเอง 🅿️ สายใบเสนอราคาพักไว้ในรอบนี้</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b4">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">1</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003 › สรุปผล</span><span class="who2"><span class="av">สช</span>สมชาย · ช่าง</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">สถานะที่บล็อกอยู่วันนี้</span><span>ทีมช่างทั้งสองทีมยังไม่ได้ตั้งหัวหน้า (teams.leadId เป็น null) ⇒ ยังไม่มีใครกดจอสรุปได้เลย</span></div>
+      <div class="page">
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#pkg"/></svg></span>สรุปผลประเมิน</h1><p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · ช่างวัดครบ 4 พื้นที่แล้ว</p></div></div>
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ทีม A ยังไม่ได้ตั้งหัวหน้าทีม — ยังไม่มีใครสรุปผลใบนี้ได้</b><span>จอนี้เป็นของ<b>หัวหน้าทีมช่าง</b>เท่านั้น (เลือกจุดติดตั้ง · ใส่จำนวนแพ็คเกจ · แนบผัง · กดส่งผล) · ช่างวัดหน้างานได้ตามปกติ แต่สรุปไม่ได้<br>⚠️ <b>ห้ามเป็นปุ่มเทาเงียบ</b> — ต้องบอกว่าใครแก้และแก้ที่ไหน</span></div><span class="act"><button class="btn sm btn-accent">ไปตั้งหัวหน้าทีม A</button></span></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>ข้อมูลจากหน้างาน</h2><p>ดูได้ · แก้ไม่ได้</p></div><span class="ui-badge plain">อ่านอย่างเดียว</span></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th>จุดที่ติดตั้งได้</th><th class="num">แพ็คเกจ</th></tr></thead><tbody><tr><td><span class="t-strong">ล็อบบี้ชั้น G</span></td><td class="num mono">2,527.2</td><td class="num mono" style="color:var(--text-3)">2</td><td>4 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span></td><td class="num mono">630.0</td><td class="num mono" style="color:var(--text-3)">1</td><td>3 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">โซนอาหารชั้น 4</span></td><td class="num mono">2,402.4</td><td class="num mono" style="color:var(--text-3)">2</td><td>3 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span></td><td class="num mono">768.0</td><td class="num mono" style="color:var(--text-3)">1</td><td>2 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="info"><span class="ic"><svg class="i"><use href="#users"/></svg></span><div><b>ทางออกสองทาง</b><span>① ตั้งหัวหน้าทีมที่ทะเบียนทีม (<span class="mono">teams.leadId</span> · mig 0310) ② แอดมินเข้ามาสรุปแทนได้เสมอ ตามมติ “แอดมินทำได้ทุกอย่าง” (#1501)</span></div></div>
+        <div class="sticky-acts"><span class="ui-badge danger">ไม่มีสิทธิ์สรุปผล</span><span style="margin-left:auto"></span><button class="btn btn-primary" disabled>ส่งผลให้ฝ่ายขาย</button></div>
+      </div>
+    </div>
+  </div>
+</section>
 </div>
 
 <script>
 const STEPS = [["s1","เปิดคำร้อง","SA"],["s2","ใบถูกส่ง","SA"],["s3","คิว TS","TS"],["s4","ลงคิว","TS"],["s5","ตารางช่าง","TS"],["s6","หน้างาน","ช่าง"],["s7","สรุปผล","หัวหน้า TS"],["s8","ผลถึงฝ่ายขาย","SA"],["s9","ปิดเรื่อง","SA"]];
+const BRANCHES = [["b1","เข้าพื้นที่ไม่ได้","ช่าง"],["b2","ยกเลิก / ปิดไม่ได้ประเมิน","SA · TS"],["b3","ดึงใบกลับมาแก้","TS"],["b4","ทีมไม่มีหัวหน้า","บล็อกวันนี้"]];
 const nav = document.getElementById("nav");
 STEPS.forEach(([id,label,who],i)=>{
   const b=document.createElement("button");
   b.type="button"; b.dataset.go=id; b.setAttribute("aria-current", i===0?"true":"false");
   b.innerHTML=(i+1)+". "+label+' <span class="who">'+who+"</span>";
+  nav.appendChild(b);
+});
+nav.appendChild(Object.assign(document.createElement("span"),{className:"sep2"}));
+BRANCHES.forEach(([id,label,who])=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.dataset.b="1"; b.setAttribute("aria-current","false");
+  b.innerHTML="⚠ "+label+' <span class="who">'+who+"</span>";
   nav.appendChild(b);
 });
 function show(id){
