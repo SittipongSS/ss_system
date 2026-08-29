@@ -815,6 +815,8 @@ white-space:nowrap;margin-top:2px}
       ซึ่งเป็นบล็อกเฉพาะหัวข้อ แบบเดียวกับที่ PDR มีบล็อกของตัวเอง</p>
     </div>
     <ul class="fixes">
+      <li><span class="mk new">+</span><span>⭐ <b>จังหวะแรกคือ “ของเดิม” ไม่ใช่ “พิมพ์ใหม่”</b> (มติ 2026-08-29) — ลูกค้าที่เคยประเมินแล้วจะเห็นสถานที่/โซนเดิม
+      พร้อมขนาด แพ็ค จุด และ<b>ขายแล้ว/ยังไม่ขาย</b> ⇒ ตอบได้ทันทีว่ารอบนี้ “ที่เดิม” หรือ “เพิ่มที่ใหม่”</span></li>
       <li><span class="mk new">+</span><span><b>ดีลเป็นช่องแรก ลูกค้าเติมจากดีล</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ ผลประเมินเดินต่อเข้า QT ได้ทันที · <span class="mono">dept_requests.dealId</span> มีอยู่แล้ว ไม่ต้อง migration</span></li>
       <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีจุดที่ต้องประเมิน (= โซน)
       · โจทย์เขียนว่า “1 รายการ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 จุดต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่า 6 จุดนั้นอยู่ตึกเดียวกัน</span></li>
@@ -875,8 +877,32 @@ white-space:nowrap;margin-top:2px}
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>สถานที่และจุดที่ต้องประเมิน</h2><p>1 จุด = 1 โซน · เพิ่มสถานที่ได้มากกว่า 1 แห่งในใบเดียว</p></div>
-          <span class="ui-badge info">2 สถานที่ · 5 จุด</span>
+          <div><h2>ลูกค้ารายนี้เคยประเมินไว้แล้ว</h2><p>ดึงจากทะเบียนพื้นที่ของลูกค้า — ติ๊กว่ารอบนี้จะประเมินที่เดิมซ้ำอันไหน</p></div>
+          <span class="ui-badge info">2 สถานที่ · 8 โซน</span>
+        </div>
+        <div class="ui-section-body">
+          <div class="tiles">
+            <button class="tile">
+              <span class="th"><b>ดิ เอ็มควอเทียร์ · ล็อบบี้ชั้น G</b><span class="ui-badge success">ขายแล้ว</span></span>
+              <span class="adr">432.0 ตร.ม. · 2 แพ็ค · 3 จุด · ประเมิน 12 มี.ค. 69 โดย AS-26030004</span></button>
+            <button class="tile" aria-pressed="true">
+              <span class="th"><b>ดิ เอ็มควอเทียร์ · โซนค้าปลีกชั้น 2</b><span class="ui-badge warning">ยังไม่ขาย</span></span>
+              <span class="adr">210.0 ตร.ม. · 1 แพ็ค · 2 จุด · ประเมิน 12 มี.ค. 69 — <b>วัดใหม่รอบนี้</b></span></button>
+            <button class="tile">
+              <span class="th"><b>ดิ เอ็มสเฟียร์ · โถงต้อนรับ</b><span class="ui-badge success">ขายแล้ว</span></span>
+              <span class="adr">180.0 ตร.ม. · 1 แพ็ค · 2 จุด · ประเมิน 12 มี.ค. 69</span></button>
+          </div>
+          <p class="hint" style="margin-top:var(--space-3)">
+            ⚠️ ติ๊กแล้ว = <b>วัดใหม่ทับรอบนี้ ไม่ลบของเดิม</b> — ผลรอบเก่ายังอยู่ครบสำหรับใบเสนอราคาที่อ้างไปแล้ว ·
+            ไม่ติ๊ก = ข้ามไป ใช้ตัวเลขเดิมได้จากแท็บ “พื้นที่บริการ” บนหน้าลูกค้า</p>
+          <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมดของลูกค้ารายนี้</button></p>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header">
+          <div><h2>ที่ใหม่ที่ต้องไปประเมิน</h2><p>1 จุด = 1 โซน · เพิ่มสถานที่ได้มากกว่า 1 แห่งในใบเดียว</p></div>
+          <span class="ui-badge accent">2 สถานที่ · 5 จุดใหม่</span>
         </div>
         <div class="ui-section-body">
 
@@ -1239,9 +1265,11 @@ white-space:nowrap;margin-top:2px}
       <li><span class="mk new">+</span><span>🔴 <b>ช่างแจ้งว่า “ติดตั้งได้ตรงไหนบ้าง” ไม่ใช่ “จะติดตั้งตรงไหน”</b> —
       คนเลือกจุดจริงคือ<b>หัวหน้า TS</b> ที่จอ 07 โครงเดียวกับจำนวนแพ็คเป๊ะ: ช่างรายงานข้อเท็จจริง หัวหน้าตัดสินใจ</span></li>
       <li><span class="mk new">+</span><span><b>เพิ่ม/ตัดจุดประเมินได้</b> — ของจริงหน้างานมักไม่ตรงกับที่ฝ่ายขายจด · ตัดจุดต้องใส่เหตุผล เพราะมันเปลี่ยนสิ่งที่ SA จะเอาไปเสนอราคา</span></li>
-      <li><span class="mk new">+</span><span><b>ผังไม่บังคับที่หน้างาน</b> (มติ 2026-08-29) — ช่างไม่ได้ถือผังไปด้วย · ผังมาจากฝ่ายอาคารหรือไฟล์ที่ SA แนบมา
-      ⇒ ด่านผังไปอยู่ที่<b>ปุ่มส่งผลของหัวหน้า</b> ซึ่งเป็นคนที่ไปตามผังมาได้</span></li>
-      <li><span class="mk">✓</span><span>ที่บล็อกหน้างานมีอย่างเดียวคือ<b>ขนาด</b> เพราะไม่มีขนาดก็คิดแพ็คไม่ได้ · รูปกับจุดเตือนอย่างเดียว</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>จอนี้บล็อกสามอย่าง</b> (มติ 2026-08-29): <b>ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้ ≥ 1 จุด</b> —
+      ทั้งสามอย่างต้องยืนอยู่หน้างานถึงทำได้ ⇒ ต้องดักตอนที่เขายังอยู่ในที่นั้น</span></li>
+      <li><span class="mk new">+</span><span><b>ผังไม่บังคับที่นี่</b> — ช่างไม่ได้ถือผังไปด้วย · ด่านผังไปอยู่ที่ปุ่มส่งผลของหัวหน้า ซึ่งเป็นคนที่ไปตามผังมาได้</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>ด่านต้องบล็อกเฉพาะของที่คนตรงหน้าด่านแก้เองได้</b> — เอาทุกข้อไปกองที่ปุ่มส่งผล
+      หัวหน้าจะเจอด่านที่ตัวเองแก้ไม่ได้ แล้วต้องส่งช่างกลับไปใหม่ทั้งรอบ</span></li>
     </ul>
   </div>
 
@@ -1272,7 +1300,7 @@ white-space:nowrap;margin-top:2px}
             <p class="hint" style="margin-top:var(--space-2)">347.2 ตร.ม. · 972.2 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span>
                 <span class="cnt">2 รูป</span></div>
               <div class="shots">
                 <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
@@ -1292,7 +1320,7 @@ white-space:nowrap;margin-top:2px}
             </div>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span>
                 <span class="cnt">3 จุด · 4 รูป</span></div>
 
               <div class="spot"><span class="sn">1</span>
@@ -1320,7 +1348,7 @@ white-space:nowrap;margin-top:2px}
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
 
               <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
-              <p class="hint" style="margin-top:var(--space-2)">แจ้งมาให้ครบทุกจุดที่ทำได้ — หัวหน้าเป็นคนเลือกว่าจะติดตั้งจริงกี่จุด</p>
+              <p class="hint" style="margin-top:var(--space-2)">แจ้งมาให้ครบทุกจุดที่ทำได้ — หัวหน้าเป็นคนเลือกว่าจะติดตั้งจริงกี่จุด · <b>อย่างน้อย 1 จุดต่อโซน ไม่งั้นส่งงานไม่ได้</b></p>
             </div>
 
             <div class="field" style="margin-top:var(--space-3)"><label>บันทึกหน้างาน</label>
@@ -1339,7 +1367,7 @@ white-space:nowrap;margin-top:2px}
               <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span>
                 <span class="cnt">ยังไม่มี</span></div>
               <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
             </div>
@@ -1348,9 +1376,9 @@ white-space:nowrap;margin-top:2px}
               <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span>
                 <span class="cnt">ยังไม่มีจุด</span></div>
-              <p class="hint">ยังไม่ได้ระบุจุดสักจุด — หัวหน้าจะไม่มีอะไรให้เลือกตอนสรุป</p>
+              <p class="hint" style="color:var(--red)">🔴 ยังไม่ได้ระบุจุดสักจุด — <b>ส่งงานไม่ได้จนกว่าจะมีอย่างน้อย 1 จุด</b> · หัวหน้าจะไม่มีอะไรให้เลือกตอนสรุป</p>
               <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
             </div>
           </div>
@@ -1368,12 +1396,12 @@ white-space:nowrap;margin-top:2px}
             </div>
             <p class="hint" style="margin-top:var(--space-2)">25.2 ตร.ม. · 70.6 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 รูป</span></div>
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 รูป</span></div>
               <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
                 <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">ควรมี</span><span class="cnt">1 จุด · 1 รูป</span></div>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 จุด · 1 รูป</span></div>
               <div class="spot"><span class="sn">1</span>
                 <div><b>ข้างประตูลิฟต์ตัวที่ 2</b>
                   <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
@@ -1399,10 +1427,10 @@ white-space:nowrap;margin-top:2px}
         <button class="btn btn-quiet" style="width:100%"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่เจอหน้างาน</button>
 
         <div class="sticky-acts">
-          <span class="ui-badge warning">3 / 5 จุด</span>
+          <span class="ui-badge danger">ยังไม่ครบ 2 โซน — ขนาด · ภาพกว้าง · จุด</span>
           <span style="margin-left:auto"></span>
           <button class="btn">บันทึก</button>
-          <button class="btn btn-primary" disabled>วัดครบแล้วไปสรุปแพ็คเกจ</button>
+          <button class="btn btn-primary" disabled>ส่งให้หัวหน้าสรุป</button>
         </div>
       </div>
     </div>
@@ -1423,8 +1451,10 @@ white-space:nowrap;margin-top:2px}
       <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็ค</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
       <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็ค</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คแกว่ง” · หนึ่งแพ็คกระจายหลายจุดได้ หลายแพ็คลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
       <li><span class="mk new">+</span><span>ตัวเลขแพ็คที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
-      <li><span class="mk new">+</span><span>🔴 <b>ภาพผังบล็อกที่นี่</b> (มติ 2026-08-29) — หน้างานไม่บังคับ เพราะช่างไม่ได้ถือผังไปด้วย ·
-      แต่ผลที่ไม่มีผังเอาไปใช้ต่อไม่ได้จริง ⇒ ด่านอยู่ที่ปุ่มส่งผลของหัวหน้า พร้อมทางลัด “ใช้ไฟล์ที่ SA แนบมา”</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ด่านหกข้อ บล็อกหมด</b> (มติ 2026-08-29) — แต่<b>ดักคนละที่ตามว่าใครแก้ได้</b>:
+      ขนาด/ภาพกว้าง/จุดที่ติดตั้งได้ ดักที่จอหน้างาน · ผัง/จุดที่เลือก/แพ็ค ดักที่จอนี้</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>ผังห้ามใช้ไฟล์ที่ SA แนบ</b> — ผังที่ SA แนบคือผังเปล่าของอาคาร
+      แต่ที่ใบนี้ต้องการคือผังที่ TS มาร์กจุดติดตั้งลงไปแล้ว · ปุ่มลัดนั้นจะทำให้ด่านผ่านโดยไม่มีงานเกิดขึ้นจริง</span></li>
       <li><span class="mk">✓</span><span>จอนี้ต้องมี<b>ด่านสิทธิ์ของตัวเอง</b> ไม่ใช่ <span class="mono">canEditService</span> ที่ช่างทุกคนผ่าน</span></li>
     </ul>
   </div>
@@ -1552,41 +1582,52 @@ white-space:nowrap;margin-top:2px}
 
       <div class="ui-section">
         <div class="ui-section-header"><div><h2>ด่านก่อนกด “ส่งผลให้ฝ่ายขาย”</h2>
-        <p>สามข้อบนบล็อก · สองข้อล่างเตือนอย่างเดียว</p></div>
-          <span class="ui-badge danger">ติด 2 ข้อ</span></div>
+        <p>หกข้อ <b>บล็อกหมดทุกข้อ</b> — แต่ดักคนละที่ ตามว่าใครแก้ได้</p></div>
+          <span class="ui-badge danger">ติด 3 ข้อ</span></div>
         <div class="ui-section-body">
+          <h4 class="qgroup" style="margin:0 0 var(--space-2)"><svg class="i"><use href="#wrench"/></svg>ดักที่จอหน้างานแล้ว — ช่างเท่านั้นที่แก้ได้</h4>
           <ul class="gate">
             <li data-s="ok"><span class="gate-mk">✓</span>
-              <span class="gate-t"><b>ขนาด ก × ย × ส ครบทุกโซน</b><span>5 / 5 · ช่างวัดครบเมื่อ 8 ก.ย. 12:20</span></span>
+              <span class="gate-t"><b>ขนาด ก × ย × ส ครบทุกโซน</b><span>5 / 5 · วัดครบเมื่อ 8 ก.ย. 12:20</span></span>
               <span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="blocked"><span class="gate-mk">✕</span>
+              <span class="gate-t"><b>ภาพกว้างครบทุกโซน</b><span>4 / 5 — ขาด ห้องประชุมใหญ่</span></span>
+              <span class="gate-who"><span class="owner">ช่าง</span>
+                <button class="btn sm">แจ้งช่างให้กลับไป</button></span></li>
+            <li data-s="blocked"><span class="gate-mk">✕</span>
+              <span class="gate-t"><b>จุดที่ติดตั้งได้ อย่างน้อย 1 จุด/โซน</b><span>4 / 5 — ห้องประชุมใหญ่ยังไม่มีจุดสักจุด</span></span>
+              <span class="gate-who"><span class="owner">ช่าง</span>
+                <button class="btn sm">แจ้งช่างให้กลับไป</button></span></li>
+          </ul>
+          <p class="hint" style="margin:var(--space-2) 0 var(--space-4)">
+            ปกติสามข้อนี้ติ๊กมาแล้วตั้งแต่จอหน้างาน — ที่ยังติดอยู่เพราะช่างกดข้ามด้วยสิทธิ์หัวหน้า ·
+            <b>หัวหน้าแก้เองไม่ได้</b> จึงต้องมีปุ่มแจ้งกลับตรงนี้ ไม่ใช่ปุ่มเทาเงียบ</p>
+
+          <h4 class="qgroup" style="margin:0 0 var(--space-2)"><svg class="i"><use href="#users"/></svg>ดักที่จอนี้ — หัวหน้า TS แก้ได้เอง</h4>
+          <ul class="gate">
             <li data-s="blocked"><span class="gate-mk">✕</span>
               <span class="gate-t"><b>ภาพผังครบทุกโซน</b>
                 <span>2 / 5 — ขาด ห้องประชุมใหญ่ · โถงลิฟต์ · โถงจอดรถรับส่ง</span></span>
               <span class="gate-who"><span class="owner">หัวหน้า TS</span>
-                <button class="btn sm btn-accent">ใช้ไฟล์ที่ SA แนบมา</button></span></li>
+                <button class="btn sm btn-accent">ใช้ผังเดียวกับโซนอื่น</button></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span>
+              <span class="gate-t"><b>เลือกจุดติดตั้งอย่างน้อย 1 จุด/โซน</b><span>4 / 4 โซนที่มีจุดให้เลือก</span></span>
+              <span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
             <li data-s="blocked"><span class="gate-mk">✕</span>
               <span class="gate-t"><b>จำนวนแพ็คเกจครบทุกโซน</b><span>4 / 5 — ขาด ห้องประชุมใหญ่</span></span>
               <span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
-            <li data-s="park"><span class="gate-mk">!</span>
-              <span class="gate-t"><b>ภาพกว้าง</b><span>4 / 5 — เตือนอย่างเดียว ยังตั้งราคาได้</span></span>
-              <span class="gate-who"><span class="owner">ช่าง</span></span></li>
-            <li data-s="park"><span class="gate-mk">!</span>
-              <span class="gate-t"><b>จุดที่ติดตั้งได้ / จุดที่เลือก</b><span>4 / 5 — เตือนอย่างเดียว แต่วันติดตั้งจะไม่มีอะไรอ้างอิง</span></span>
-              <span class="gate-who"><span class="owner">ช่าง</span>
-                <button class="btn sm">แจ้งช่างให้กลับไปถ่าย</button></span></li>
           </ul>
-          <p class="hint" style="margin-top:var(--space-3)">⚠️ ด่านนี้อยู่ที่ตรรกะตัวเดียวกับที่ฝั่ง server ใช้ตรวจ —
+          <p class="hint" style="margin-top:var(--space-3)">⚠️ ด่านทั้งหกอยู่ที่ตรรกะตัวเดียวกับที่ฝั่ง server ใช้ตรวจ —
           เงื่อนไขที่ปุ่มรู้แต่ server ไม่รู้ คือปุ่มที่จางเงียบโดยไม่บอกเหตุ (กติกาเดิมของระบบคำร้อง)</p>
         </div>
       </div>
 
-      <div class="notice" data-tone="info">
+      <div class="notice" data-tone="danger">
         <span class="ic"><svg class="i"><use href="#file"/></svg></span>
-        <div><b>ทำไมผังบล็อกที่นี่ ไม่ใช่ที่หน้างาน</b>
-        <span>ช่างไม่ได้ถือผังไปด้วย — ผังมาจากฝ่ายอาคารหรือไฟล์ที่ SA แนบมากับใบ ขอแล้วอาจได้วันรุ่งขึ้น ·
-        แต่ผลที่ส่งออกไปโดยไม่มีผัง SA คุยกับลูกค้าไม่ได้ว่าเครื่องลงตรงไหน และวันติดตั้งช่างอีกคนไม่มีอะไรอ้างอิง
-        ⇒ ด่านอยู่ที่ปุ่มส่งผล ซึ่งเป็นของคนที่ไปตามผังมาได้ ·
-        <b>ห้าโซนบนชั้นเดียวกันใช้ผังแผ่นเดียวได้</b> กด “ใช้ผังเดียวกับโซนอื่น” ไม่ต้องอัปซ้ำห้ารอบ</span></div>
+        <div><b>🔴 ผังต้องเป็นไฟล์ที่ TS อัปเอง — ห้ามใช้ไฟล์ที่ SA แนบมา</b>
+        <span>ผังที่ SA แนบคือ<b>ผังเปล่าของอาคาร</b> · ผังที่ใบประเมินต้องการคือ<b>ผังที่ทำเครื่องหมายจุดติดตั้งลงไปแล้ว</b> — คนละของกัน
+        ปุ่มลัด “ใช้ไฟล์ที่ SA แนบ” จะทำให้<b>ด่านผ่านโดยไม่มีงานเกิดขึ้นจริง</b> ซึ่งแย่กว่าไม่มีด่านเลย เพราะระบบจะรายงานว่า “ครบ” ทั้งที่ไม่มีใครรู้ว่าเครื่องลงตรงไหน ·
+        ทางลัดที่เหลือได้อย่างเดียวคือ <b>ใช้ผังที่มาร์กแล้วแผ่นเดียวกับโซนอื่นในสถานที่นี้</b> (ยังเป็นไฟล์ของ TS)</span></div>
       </div>
 
       <div class="ui-section">
@@ -1632,7 +1673,7 @@ white-space:nowrap;margin-top:2px}
       </div>
 
       <div class="sticky-acts">
-        <span class="ui-badge danger">ติดด่าน 2 ข้อ — ผัง 2/5 · แพ็ค 4/5</span>
+        <span class="ui-badge danger">ติดด่าน 3 ข้อ — ภาพกว้าง · จุด · ผัง</span>
         <span style="margin-left:auto"></span>
         <button class="btn">บันทึก</button>
         <button class="btn btn-primary" disabled>ส่งผลให้ฝ่ายขาย</button>
@@ -1927,13 +1968,142 @@ white-space:nowrap;margin-top:2px}
   </div>
 </section>
 
+<!-- ═══ 11 ทะเบียนพื้นที่ของลูกค้า ═══════════════════════════════════ -->
+<section class="screen" id="areas">
+  <div class="brief">
+    <div>
+      <h2>ทะเบียนพื้นที่ของลูกค้า</h2>
+      <div class="route">/database/customers/[id] · แท็บใหม่ “พื้นที่บริการ” · <b>อ่านอย่างเดียว</b></div>
+      <p>คำถามคือ *"ข้อมูล site zone package จุดติดตั้ง ควรถูกรวบรวมมาที่ลูกค้ารายนั้น เพื่อให้ดีลอื่นดึงมาใช้ได้"* —
+      <b>ใช่ และของนั้นอยู่ตรงนั้นอยู่แล้ว</b> ตั้งแต่วันที่ SA กดส่งใบ · ที่ขาดคือ<b>หน้าจอ ไม่ใช่ตาราง</b></p>
+    </div>
+    <ul class="fixes">
+      <li><span class="mk">✓</span><span>🔴 <b>ไม่ต้องสร้างที่เก็บใหม่</b> — <span class="mono">service_sites.customerId</span> → <span class="mono">service_zones</span> → <span class="mono">service_survey_zones</span>
+      ผูกกับลูกค้าอยู่แล้วโดยโครงสร้าง · สร้าง “ที่รวบรวม” อีกชุดตอนปิดใบ = ได้ความจริงชุดที่สองที่ต้องคอยซิงก์ (โรคเดียวกับกระจกชื่อลูกค้าที่เจอมาแล้วห้าตาราง)</span></li>
+      <li><span class="mk new">+</span><span><b>ขายแล้ว / ยังไม่ขาย</b> คำนวณจากการมีรอบขายจริง — ไม่ใช่คอลัมน์สถานะที่ต้องมีคนมาอัปเดต</span></li>
+      <li><span class="mk new">+</span><span>ไม่ต้องรอ “ปิดเรื่อง” — ข้อมูลใช้ได้ตั้งแต่ TS ส่งผล · <b>สถานะของใบเป็นเรื่องของใบ</b> ไม่ใช่เงื่อนไขว่าข้อมูลจะโผล่หรือไม่</span></li>
+      <li><span class="mk">✓</span><span>แท็บนี้อยู่ <span class="mono">/database</span> = <b>ของกลาง</b> ตามกฎ module-ownership · TS ยังเป็นเจ้าของคิว/ฟอร์ม/การแก้ที่ <span class="mono">/service</span> เหมือนเดิม</span></li>
+    </ul>
+  </div>
+
+  <div class="frame">
+    <div class="frame-cap">เดสก์ท็อป</div>
+    <div class="frame-body">
+    <div class="ui-workspace">
+      <div class="premium-header">
+        <div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>บริษัท เดอะ มอลล์ กรุ๊ป จำกัด</h1>
+        <p><span class="mono">AR-241</span> · แท็บ พื้นที่บริการ</p></div>
+      </div>
+
+      <div class="ui-metric-strip">
+        <div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#pin"/></svg></span>
+          <span class="ui-metric-txt"><strong>2</strong><span>สถานที่</span></span></div>
+        <div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#layers"/></svg></span>
+          <span class="ui-metric-txt"><strong>8</strong><span>โซนที่ประเมินแล้ว</span></span></div>
+        <div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span>
+          <span class="ui-metric-txt"><strong>5</strong><span>ขายแล้ว · 9 แพ็ค/เดือน</span></span></div>
+        <div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></span>
+          <span class="ui-metric-txt"><strong>3</strong><span>ประเมินแล้วยังไม่ขาย</span></span></div>
+      </div>
+
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#arrow"/></svg></span>
+        <div><b>3 โซนที่ประเมินไว้แล้วแต่ยังไม่ได้ขาย</b>
+        <span>วัดแล้ว มีรูป มีจุดติดตั้งครบ — เสนอราคาได้เลยโดยไม่ต้องกลับไปวัดใหม่</span></div>
+        <span class="act"><button class="btn sm btn-accent">เสนอราคาโซนที่ยังไม่ขาย</button></span>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ดิ เอ็มควอเทียร์</h2>
+        <p><span class="mono">SS-26030011</span> · 693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา · เขตวิ่งงาน BKK-C</p></div>
+          <span class="ui-badge info">5 โซน</span></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็ค</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td>
+                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">432.0</td>
+                <td class="num">3<span class="cell-sub">จาก 4</span></td><td class="num"><b>2</b></td>
+                <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+              <tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26030022</span></td>
+                <td class="mono">6.00 × 40.00 × 3.20</td><td class="num mono">240.0</td>
+                <td class="num">2<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
+                <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+              <tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023</span></td>
+                <td class="mono">14.00 × 15.00 × 3.00</td><td class="num mono">210.0</td>
+                <td class="num">2<span class="cell-sub">จาก 3</span></td><td class="num"><b>1</b></td>
+                <td><span class="ui-badge warning">ยังไม่ขาย</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+              <tr><td><span class="t-strong">ห้องน้ำรวมชั้น 3</span><span class="cell-sub mono">ZN-26030024</span></td>
+                <td class="mono">8.00 × 12.00 × 2.80</td><td class="num mono">96.0</td>
+                <td class="num">2<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
+                <td><span class="ui-badge warning">ยังไม่ขาย</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+              <tr><td><span class="t-strong">ลานจอดรถชั้น B1</span><span class="cell-sub mono">ZN-26030025</span></td>
+                <td colspan="4" style="color:var(--text-3)">ยังไม่เคยวัด — อยู่ในใบ AS-26090003 ที่กำลังรอ TS เข้าไป</td>
+                <td><span class="ui-badge plain">รอประเมิน</span></td>
+                <td class="mono">—<span class="cell-sub">นัด 8 ก.ย.</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ดิ เอ็มสเฟียร์</h2>
+        <p><span class="mono">SS-26030012</span> · 628 ถ.สุขุมวิท แขวงคลองตัน เขตคลองเตย · เขตวิ่งงาน BKK-C</p></div>
+          <span class="ui-badge info">3 โซน</span></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็ค</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">โถงต้อนรับชั้น G</span><span class="cell-sub mono">ZN-26030031</span></td>
+                <td class="mono">12.00 × 15.00 × 4.50</td><td class="num mono">180.0</td>
+                <td class="num">2<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
+                <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+              <tr><td><span class="t-strong">โซนอาหารชั้น 5</span><span class="cell-sub mono">ZN-26030032</span></td>
+                <td class="mono">20.00 × 30.00 × 4.00</td><td class="num mono">600.0</td>
+                <td class="num">4<span class="cell-sub">จาก 5</span></td><td class="num"><b>3</b></td>
+                <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26070008</span></td>
+                <td class="mono">02 ก.ค. 69<span class="cell-sub">AS-26060012 · <b>วัดรอบสอง</b></span></td></tr>
+              <tr><td><span class="t-strong">ห้องน้ำรวมชั้น 3</span><span class="cell-sub mono">ZN-26030033</span></td>
+                <td class="mono">7.00 × 9.00 × 2.80</td><td class="num mono">63.0</td>
+                <td class="num">1<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td>
+                <td><span class="ui-badge warning">ยังไม่ขาย</span></td>
+                <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ประวัติการประเมิน</h2>
+        <p>โซนเดียววัดได้หลายรอบ — ผลเก่าไม่ถูกทับ (มติ 2026-08-29)</p></div></div>
+        <div class="ui-section-body">
+          <div class="tl">
+            <div class="tl-i"><span class="tl-d">8 ก.ย. 69</span><span class="tl-t"><b>AS-26090003 · รอ TS เข้าพื้นที่</b>
+              <span>ลานจอดรถชั้น B1 (ใหม่) · ดีล DL-2609003</span></span></div>
+            <div class="tl-i"><span class="tl-d">02 ก.ค. 69</span><span class="tl-t"><b>AS-26060012 · ปิดแล้ว</b>
+              <span>โซนอาหารชั้น 5 — <b>วัดรอบสอง</b> ลูกค้าขยายพื้นที่ · ผลรอบแรกยังอยู่ครบ · ดีล DL-2606008</span></span></div>
+            <div class="tl-i"><span class="tl-d">12 มี.ค. 69</span><span class="tl-t"><b>AS-26030004 · ปิดแล้ว</b>
+              <span>8 โซน 2 สถานที่ · ขายได้ 5 โซน · ดีล DL-2602015</span></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
 </div>
 
 <script>
 const SCREENS = [
   ["flow","สายงาน"],["saform","ฟอร์ม SA"],["queue","คิว TS"],["book","ลงคิว"],
   ["sched","ตารางช่าง"],["field","หน้างาน"],["pack","สรุปแพ็คเกจ"],["result","ผลถึง SA"],
-  ["handoff","ขายได้แล้ว"],["data","ของที่ต้องเพิ่ม"]
+  ["handoff","ขายได้แล้ว"],["areas","พื้นที่ของลูกค้า"],["data","ของที่ต้องเพิ่ม"]
 ];
 const nav = document.getElementById("nav");
 SCREENS.forEach(([id,label],i)=>{
