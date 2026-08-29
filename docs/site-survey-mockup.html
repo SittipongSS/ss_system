@@ -735,6 +735,28 @@ margin-inline-end:6px;vertical-align:1px}
 .matrix td[data-t="bad"] .no{background:var(--red);color:#fff}
 .matrix td[data-t="lock"]{background:var(--amber-soft)}
 .matrix td[data-t="lock"] .no{background:var(--amber);color:#fff}
+
+/* ── รายการ "จุดที่ต้องประเมิน" — หนึ่งแถว = หนึ่งโซน ────────────────────
+   รวมโซนเดิมที่เลือกมาวัดซ้ำ กับโซนใหม่ที่พิมพ์เพิ่ม ไว้ในลิสต์เดียว
+   ⚠️ ลิสต์นี้ = ใบงานของช่างรอบนี้ · โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก */
+.pick{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
+.zn-code{font-size:var(--fs-2);letter-spacing:var(--ls-tabular);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+/* ประวัติการวัดของโซน — ไม่ใช่ Rev. ของเอกสาร แค่แถวเรียงตามเวลา */
+.hist{margin-top:var(--space-2);padding:var(--space-2) var(--space-2-5);
+border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2)}
+.hist-h{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-3);
+color:var(--text-3);margin-bottom:var(--space-1-5)}
+.hist-r{display:grid;grid-template-columns:64px 1fr auto;gap:var(--space-2);
+font-size:var(--fs-3);line-height:var(--lh-thai);padding:3px 0;
+border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
+.hist-r:first-of-type{border-top:0}
+.hist-r .rn{font-weight:var(--fw-semibold);color:var(--text-2)}
+.hist-r[data-now="1"] .rn{color:var(--accent-ink)}
+.hist-r .meta{color:var(--text-3)}
+.delta{font-size:var(--fs-3);font-variant-numeric:tabular-nums}
+.delta.up{color:var(--accent-ink)}
+.delta.same{color:var(--text-3)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -860,8 +882,12 @@ margin-inline-end:6px;vertical-align:1px}
       ลูกค้าต้องประเมิน 3 สาขา = 3 ใบบนดีลใบเดียวกัน · เข้ากับมติ “หนึ่งดีลมีใบประเมินได้หลายใบ” พอดี</span></li>
       <li><span class="mk new">+</span><span>⭐ <b>นี่อุดรูที่ร่างเดิมไม่ได้ตอบ</b> — <span class="mono">service_visits.siteId</span> เป็นรายไซต์ ⇒ ใบที่มีสามสถานที่ต้องมีสามนัด
       แต่ใบมี “วันกำหนด” ช่องเดียว · พอเป็นไซต์เดียว <b>หนึ่งใบ = หนึ่งนัด</b> ตรงกับโครงที่มีอยู่เป๊ะ</span></li>
-      <li><span class="mk new">+</span><span>⭐ <b>จังหวะแรกคือ “ของเดิม” ไม่ใช่ “พิมพ์ใหม่”</b> — เลือกไซต์แล้วเห็นโซนเดิมพร้อมสถานะสองแกน
-      ⇒ ตอบได้ทันทีว่ารอบนี้วัดที่เดิมอันไหน และเพิ่มจุดใหม่อะไร</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>“จุดที่ต้องประเมิน” เป็นลิสต์เดียว</b> — 1 รายการ = 1 โซน · รวมโซนเดิมที่เลือกมาวัดซ้ำกับโซนใหม่ที่พิมพ์เพิ่มไว้ด้วยกัน
+      เพราะลิสต์นี้คือ<b>ใบงานของช่างรอบนี้</b> · โซนเดิมที่ไม่ได้เลือกไม่ต้องโผล่มารก</span></li>
+      <li><span class="mk new">+</span><span>สองปุ่มใต้ลิสต์: <b>เพิ่มจุดใหม่</b> กับ <b>เลือกจากโซนเดิม</b> (บอกจำนวนที่เหลือให้เลือก) ·
+      แถวโซนเดิมโชว์ <span class="mono">ZN-…</span> เสมอ จะได้รู้ว่ากำลังวัดทับโซนไหน</span></li>
+      <li><span class="mk new">+</span><span><b>ประวัติการวัดอยู่บนแถว</b> — ครั้งที่ 1 วัดอะไรไว้ ครั้งที่ 2 คือรอบนี้ ·
+      ⚠️ ไม่ใช่ Rev. ของเอกสาร (ไม่มีตรึง ไม่มีอนุมัติใหม่) แค่แถวเรียงตามเวลาจาก <span class="mono">service_survey_zones</span></span></li>
       <li><span class="mk new">+</span><span><b>ดีลเป็นช่องแรก ลูกค้าเติมจากดีล</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ ผลประเมินเดินต่อเข้า QT ได้ทันที · <span class="mono">dept_requests.dealId</span> มีอยู่แล้ว ไม่ต้อง migration</span></li>
       <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีจุดที่ต้องประเมิน (= โซน)
       · โจทย์เขียนว่า “1 รายการ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 จุดต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่า 6 จุดนั้นอยู่ตึกเดียวกัน</span></li>
@@ -952,78 +978,73 @@ margin-inline-end:6px;vertical-align:1px}
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>จุดที่ต้องประเมิน</h2><p>ทุกจุดอยู่ใต้ <b>ดิ เอ็มควอเทียร์</b> · 1 จุด = 1 โซน</p></div>
-          <span class="ui-badge info">เดิม 2 · ใหม่ 2 · ชนชื่อ 1</span>
+          <div><h2>จุดที่ต้องประเมิน</h2>
+          <p><b>1 รายการ = 1 โซน</b> · ลิสต์นี้คือใบงานของช่างรอบนี้ — โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก</p></div>
+          <span class="ui-badge info">4 จุด · โซนเดิม 2 · โซนใหม่ 2</span>
         </div>
         <div class="ui-section-body">
+          <div class="zlist">
 
-          <div class="notice" data-tone="info">
-            <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
-            <div><b>โชว์โซนเดิมทั้งหมด แม้อันที่วัดแล้วและขายแล้ว — แต่ไม่ติ๊กมาให้</b>
-            <span>ฐานข้อมูลมี <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> อยู่แล้ว (mig 0297) ⇒ <b>ไม่โชว์ = คนพิมพ์ “ล็อบบี้ชั้น G” เป็นโซนใหม่แล้วบันทึกไม่ผ่าน</b>
-            ได้ error ดิบจาก Postgres ที่ไม่บอกว่าต้องทำอะไรต่อ · ส่วนที่ห้ามติ๊กให้เพราะ<b>ติ๊กให้ = สั่งช่างไปเสียเที่ยว</b></span></div>
-          </div>
+            <!-- โซนเดิม — วัดทับ · เห็น ZN และประวัติ -->
+            <div class="zrow"><span class="zn">1</span>
+              <div>
+                <b>ล็อบบี้ชั้น G</b>
+                <span class="zd"><span class="zn-code mono">ZN-26030021</span> ·
+                  <span class="ui-badge success">วัดซ้ำ</span><span class="ui-badge success">ขายแล้ว</span></span>
+                <span class="zd">อาคาร A · ชั้น G · ลูกค้าขยายพื้นที่ฝั่งทิศใต้</span>
+                <div class="hist">
+                  <div class="hist-h"><svg class="i"><use href="#clock"/></svg>ประวัติการวัด — วัดทับ ของเดิมไม่หาย</div>
+                  <div class="hist-r" data-now="1"><span class="rn">ครั้งที่ 2</span>
+                    <span>รอบนี้ · <span class="mono">AS-26090002</span></span><span class="meta">รอวัด</span></div>
+                  <div class="hist-r"><span class="rn">ครั้งที่ 1</span>
+                    <span>432.0 ตร.ม. · 2 แพ็ค · 3 จุดติดตั้ง</span>
+                    <span class="meta">12 มี.ค. 69 · <span class="mono">AS-26030004</span></span></div>
+                </div>
+              </div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
 
-          <div class="qgroup"><h4><svg class="i"><use href="#layers"/></svg>โซนเดิมของไซต์นี้ — ติ๊กว่ารอบนี้จะไปวัดอันไหน</h4>
-            <div class="tiles">
-
-              <!-- ④ วัดแล้ว ยังไม่ขาย -->
-              <button class="tile" data-hot="1">
-                <span class="th"><span class="ui-badge plain">④</span><b>โซนค้าปลีกชั้น 2</b>
-                  <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
-                <span class="adr">210.0 ตร.ม. · 1 แพ็ค · 3 จุด · วัดเมื่อ 12 มี.ค. 69 โดย AS-26030004</span>
-                <span class="why2">⭐ ไม่ต้องไปวัดใหม่ — เสนอราคาได้เลย</span>
-                <span class="acts"><span class="btn sm btn-accent">ใช้ตัวเลขนี้เสนอราคา</span>
-                  <span class="btn sm">วัดซ้ำรอบนี้</span>
-                  <span class="btn sm btn-quiet">พื้นที่ถูกกั้นใหม่ — ปิดโซนนี้แล้วสร้างใหม่</span></span></button>
-
-              <!-- ⑤ วัดแล้ว ขายแล้ว -->
-              <button class="tile" aria-pressed="true">
-                <span class="th"><span class="ui-badge plain">⑤</span><b>ล็อบบี้ชั้น G</b>
-                  <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge success">ขายแล้ว</span></span>
-                <span class="adr">432.0 ตร.ม. · 2 แพ็ค · 3 จุด · SO-26040022 · วัดเมื่อ 12 มี.ค. 69</span>
-                <span class="why2">ติ๊กแล้ว — <b>ลูกค้าขยายพื้นที่ วัดซ้ำรอบนี้</b> · ผลรอบเก่ายังอยู่ครบ</span>
-                <span class="why2" style="color:var(--text-3)">🔒 โซนที่ขายแล้ว<b>แทนด้วยโซนใหม่ไม่ได้</b> — เครื่อง 3 ตัว รอบบริการ และประวัติการเข้า ผูกอยู่กับโซนนี้ · มีทางเดียวคือวัดซ้ำ</span></button>
-
-              <!-- ③ มีใบค้าง -->
-              <button class="tile" data-lock="1" disabled>
-                <span class="th"><span class="ui-badge plain">③</span><b>ลานจอดรถชั้น B1</b>
-                  <span class="ui-badge info">มีใบค้าง</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
-                <span class="adr">ยังไม่เคยวัด</span>
-                <span class="why2">🔒 อยู่ในใบ AS-26090001 แล้ว — นัดไว้ 5 ก.ย. · ติ๊กซ้ำไม่ได้ ไม่งั้นช่างไปสองรอบ</span>
-                <span class="acts"><span class="btn sm btn-quiet">เปิดใบ AS-26090001</span></span></button>
-
-              <!-- ② ยังไม่วัด ยังไม่ขาย -->
-              <button class="tile" aria-pressed="true">
-                <span class="th"><span class="ui-badge plain">②</span><b>ห้องน้ำรวมชั้น 3</b>
+            <!-- โซนเดิม — ยังไม่เคยวัด -->
+            <div class="zrow"><span class="zn">2</span>
+              <div>
+                <b>ห้องน้ำรวมชั้น 3</b>
+                <span class="zd"><span class="zn-code mono">ZN-26030024</span> ·
                   <span class="ui-badge plain">ยังไม่เคยวัด</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
-                <span class="adr">เคยขอไว้ในใบ AS-26030004 แต่ TS ตัดออกหน้างาน</span>
-                <span class="why2">เหตุผลที่ถูกตัด: อาคารมีระบบของรายอื่นอยู่แล้ว — ลูกค้าแจ้งว่าถอดออกแล้ว ติ๊กใหม่รอบนี้</span></button>
-            </div>
+                <span class="zd">เคยขอไว้ในใบ AS-26030004 แต่ TS ตัดออกหน้างาน — ลูกค้าแจ้งว่าถอดระบบเดิมออกแล้ว</span>
+              </div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+
+            <!-- โซนใหม่ -->
+            <div class="zrow" data-new="1"><span class="zn">3</span>
+              <div>
+                <b>โซนอาหารชั้น 4</b>
+                <span class="zd"><span class="ui-badge accent">โซนใหม่</span> — ยังไม่มีรหัส ZN จนกว่าจะกดส่งใบ</span>
+                <span class="zd">อาคาร A · ชั้น 4 · ฝั่งทิศเหนือ · เปิดใหม่ไตรมาส 4</span>
+              </div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+
+            <!-- โซนใหม่ที่ชนชื่อกับโซนเดิม -->
+            <div class="zrow" data-new="1" style="border-color:var(--amber);background:var(--amber-soft)"><span class="zn">4</span>
+              <div>
+                <b>ล็อบบี้ชั้น G</b>
+                <span class="zd" style="color:var(--amber)">⚠️ ไซต์นี้มีโซนชื่อนี้อยู่แล้ว (<span class="mono">ZN-26030021</span>) —
+                  ต้องการวัดโซนเดิมใช่ไหม · <b>ตอนนี้อยู่ในลิสต์เป็นรายการที่ 1 แล้วด้วย</b></span>
+                <span class="acts"><span class="btn sm btn-accent">ลบรายการนี้ ใช้รายการที่ 1</span>
+                  <span class="btn sm btn-quiet">ไม่ใช่ ตั้งชื่ออื่น</span></span>
+              </div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
           </div>
 
-          <div class="qgroup"><h4><svg class="i"><use href="#plus"/></svg>โซนใหม่ที่พิมพ์เพิ่ม — “ประเมินเพิ่ม” ในไซต์เดิม</h4>
-            <div class="zlist">
-              <div class="zrow" data-new="1"><span class="zn">1</span>
-                <div><b>โซนอาหารชั้น 4</b>
-                  <span class="zd">อาคาร A · ชั้น 4 · ฝั่งทิศเหนือ · เปิดใหม่ไตรมาส 4</span></div>
-                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-              <div class="zrow" data-new="1"><span class="zn">2</span>
-                <div><b>ทางเชื่อม BTS ชั้น 1</b>
-                  <span class="zd">อาคาร A · ชั้น 1 · ทางเดินยาว มีลมจากภายนอก</span></div>
-                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-              <div class="zrow" data-new="1" style="border-color:var(--amber);background:var(--amber-soft)"><span class="zn">3</span>
-                <div><b>ล็อบบี้ชั้น G</b>
-                  <span class="zd" style="color:var(--amber)">⚠️ ไซต์นี้มีโซนชื่อนี้อยู่แล้ว (วัดแล้ว · ขายแล้ว) — ต้องการวัดโซนเดิมใช่ไหม</span>
-                  <span class="acts"><span class="btn sm btn-accent">ใช่ ติ๊กโซนเดิมให้</span>
-                    <span class="btn sm btn-quiet">ไม่ใช่ ตั้งชื่ออื่น</span></span></div>
-                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
-              <button class="btn sm btn-accent" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดในสถานที่นี้</button>
-            </div>
-            <p class="hint" style="margin-top:var(--space-2)">⚠️ ทักตอนพิมพ์ ไม่ใช่ตอนกดบันทึก — ปล่อยไปถึงบันทึกจะได้ error ดิบจากฐานข้อมูล</p>
-            <p class="hint" style="margin-top:var(--space-2)">⚠️ ปุ่มนี้เพิ่ม<b>จุดในไซต์เดิม</b>เท่านั้น — สาขาอื่นต้องเปิดใบใหม่ ไม่ใช่เพิ่มที่นี่</p>
+          <div class="pick">
+            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดใหม่</button>
+            <button class="btn"><svg class="i"><use href="#layers"/></svg> เลือกจากโซนเดิม <span class="ui-badge plain">เหลือ 2</span></button>
           </div>
 
+          <p class="hint" style="margin-top:var(--space-3)">
+            ⚠️ <b>ทักตอนพิมพ์ ไม่ใช่ตอนกดบันทึก</b> — ฐานข้อมูลมี <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> (mig 0297)
+            ปล่อยไปถึงบันทึกจะได้ error ดิบที่ไม่บอกว่าต้องทำอะไรต่อ</p>
+          <p class="hint">
+            🔒 <b>ที่เลือกจากโซนเดิมไม่ได้</b>: ลานจอดรถชั้น B1 — อยู่ในใบ AS-26090001 ที่นัดไว้ 5 ก.ย. แล้ว ·
+            ติ๊กซ้ำไม่ได้ ไม่งั้นช่างไปสองรอบ</p>
           <p class="hint"><button class="btn sm btn-quiet" data-jump="areas"><svg class="i"><use href="#layers"/></svg> ดูทะเบียนพื้นที่ทั้งหมดของลูกค้า</button>
             <button class="btn sm btn-quiet" data-jump="cases"><svg class="i"><use href="#layers"/></svg> ดูเมทริกซ์สถานะทั้งเจ็ดกรณี</button></p>
         </div>
@@ -1606,6 +1627,8 @@ margin-inline-end:6px;vertical-align:1px}
       โครงเดียวกันเป๊ะ: ช่างรายงาน หัวหน้าตัดสิน</span></li>
       <li><span class="mk new">+</span><span><b>สูตร: 2,400 ลบ.ม. = 1 แพ็ค</b> ปัดขึ้น อย่างน้อย 1 — ระบบคำนวณให้แต่<b>ไม่กรอกให้</b> ต้องมีคนกดรับ</span></li>
       <li><span class="mk new">+</span><span>⚠️ <b>จำนวนจุด ≠ จำนวนแพ็ค</b> — เอกสารเดิมบันทึกไว้แล้วว่า “จำนวนเครื่องต่อแพ็คแกว่ง” · หนึ่งแพ็คกระจายหลายจุดได้ หลายแพ็คลงจุดเดียวได้ ⇒ <b>ห้ามผูกสองเลขนี้เข้าหากัน</b></span></li>
+      <li><span class="mk new">+</span><span>โซนที่วัดซ้ำโชว์ <b>“วัดครั้งที่ N” + ตัวเลขรอบก่อน + ส่วนต่าง</b> — หัวหน้าเห็นทันทีว่าพื้นที่โตขึ้นจริงไหม
+      หรือแค่รอบก่อนวัดหยาบ · ของเดิมไม่ถูกทับ (มติ 8)</span></li>
       <li><span class="mk new">+</span><span>ตัวเลขแพ็คที่กรอกที่นี่คือ <b>ตัวเลขเดียว</b>กับที่ตัวช่วย “งานเข้าใหม่” จะขอให้จัดสรรลงโซนหลังขายได้</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>ด่านหกข้อ บล็อกหมด</b> (มติ 2026-08-29) — แต่<b>ดักคนละที่ตามว่าใครแก้ได้</b>:
       ขนาด/ภาพกว้าง/จุดที่ติดตั้งได้ ดักที่จอหน้างาน · ผัง/จุดที่เลือก/แพ็ค ดักที่จอนี้</span></li>
@@ -1696,8 +1719,12 @@ margin-inline-end:6px;vertical-align:1px}
                 <td class="mono">1 / <b style="color:var(--red)">0</b> / 1<span class="cell-sub" style="color:var(--red)">ไม่มีผัง</span></td></tr>
 
               <!-- ④ แพ็คสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
-              <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
-                <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · <b>2 ส่วน สูงต่างกัน</b></span></td><td class="num mono">2,527.2</td>
+              <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span>
+                <span class="cell-sub mono">ZN-26030021</span>
+                <span class="ui-badge success">วัดครั้งที่ 2</span>
+                <span class="cell-sub">ครั้งที่ 1 · 12 มี.ค. 69 · 432.0 ตร.ม. · 2 แพ็ค</span></td>
+                <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · <b>2 ส่วน สูงต่างกัน</b></span>
+                <span class="delta same">พื้นที่เท่าเดิม · ปริมาตร −281 ลบ.ม. (วัดละเอียดขึ้น)</span></td><td class="num mono">2,527.2</td>
                 <td class="num mono" style="color:var(--text-3)">2</td>
                 <td><div class="spotpick">
                     <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาคู่ทางเข้า</button>
@@ -1708,6 +1735,7 @@ margin-inline-end:6px;vertical-align:1px}
                 <td><div class="packcell">
                   <span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span>
                   <span class="diffhint">สูงกว่าสูตร 1</span>
+                  <span class="delta up">รอบก่อน 2 แพ็ค → +1</span>
                 </div></td>
                 <td class="mono">3 / <b style="color:var(--green)">1</b> / 4</td></tr>
 
