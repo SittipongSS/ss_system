@@ -736,7 +736,7 @@ margin-inline-end:6px;vertical-align:1px}
 .matrix td[data-t="lock"]{background:var(--amber-soft)}
 .matrix td[data-t="lock"] .no{background:var(--amber);color:#fff}
 
-/* ── รายการ "จุดที่ต้องประเมิน" — หนึ่งแถว = หนึ่งโซน ────────────────────
+/* ── รายการ "พื้นที่ที่ต้องประเมิน" — หนึ่งแถว = หนึ่งโซน ────────────────────
    รวมโซนเดิมที่เลือกมาวัดซ้ำ กับโซนใหม่ที่พิมพ์เพิ่ม ไว้ในลิสต์เดียว
    ⚠️ ลิสต์นี้ = ใบงานของช่างรอบนี้ · โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก */
 .pick{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
@@ -828,7 +828,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
         <p>ที่เพิ่มมีอย่างเดียว: ขั้น “กำหนดส่ง” ของหัวข้อนี้ต้องระบุ <b>เวลา</b> และ <b>ผู้รับผิดชอบ</b> ด้วย ไม่ใช่แค่วัน</p></div></div>
         <div class="ui-section-body">
           <div class="rail">
-            <div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>SA · ชื่องาน ลูกค้า สถานที่ จุดที่ต้องประเมิน แบบแปลน</span></div>
+            <div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>SA · ชื่องาน ลูกค้า สถานที่ พื้นที่ที่ต้องประเมิน แบบแปลน</span></div>
             <div class="rail-i" data-s="done"><b>2 · รอรับเรื่อง</b><span>TS กดรับ = ตัดรอบ · ใบเข้าคิวของฝ่าย</span></div>
             <div class="rail-i" data-s="now"><b>3 · ลงคิว</b><span>TS ระบุวัน–เวลา–ช่างที่ไป · แก้ได้ ทุกครั้งที่แก้ SA ได้กระดิ่ง</span></div>
             <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span>ช่างวัด+ถ่ายรูป → หัวหน้าเลือกจุด+แพ็ค</span></div>
@@ -844,7 +844,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
             <thead><tr><th>ขั้น</th><th>ใคร</th><th>เพิ่มข้อมูลอะไร</th><th>ตกลงที่ไหน</th></tr></thead>
             <tbody>
               <tr><td><b>เปิดใบ</b></td><td>SA</td>
-                <td><b>ดีล</b> (ลูกค้าเติมจากดีล) · ชื่องาน · สถานที่ (≥1) · จุดที่ต้องประเมิน (= โซน) · วัน–เวลาที่อยากให้ไป · แบบแปลน</td>
+                <td><b>ดีล</b> (ลูกค้าเติมจากดีล) · ชื่องาน · สถานที่ (≥1) · พื้นที่ที่ต้องประเมิน (= โซน) · วัน–เวลาที่อยากให้ไป · แบบแปลน</td>
                 <td><span class="mono">dept_requests.dealId</span> (คอลัมน์มีอยู่แล้ว) + ไซต์/โซน <span class="ui-badge warning">ยังไม่ขาย</span></td></tr>
               <tr><td><b>รับเรื่อง</b></td><td>TS</td><td>ผู้รับผิดชอบ</td><td><span class="mono">dept_requests.assigneeId</span> (มีคอลัมน์อยู่แล้ว)</td></tr>
               <tr><td><b>ลงคิว</b></td><td>TS</td><td>วันที่ · เวลา · ช่างที่ไป</td><td><span class="mono">service_visits</span> <span class="mono">kind='survey'</span></td></tr>
@@ -874,7 +874,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
     <div>
       <h2>ฟอร์มเปิดคำร้อง</h2>
       <div class="route">/requests/new?kind=site_survey · ผู้ใช้ = SA/ฝ่ายขาย</div>
-      <p>ฟอร์มเดียวกับคำร้องหัวข้ออื่นทุกช่อง ต่างกันเฉพาะบล็อก <b>“สถานที่และจุดที่ต้องประเมิน”</b>
+      <p>ฟอร์มเดียวกับคำร้องหัวข้ออื่นทุกช่อง ต่างกันเฉพาะบล็อก <b>“สถานที่และพื้นที่ที่ต้องประเมิน”</b>
       ซึ่งเป็นบล็อกเฉพาะหัวข้อ แบบเดียวกับที่ PDR มีบล็อกของตัวเอง</p>
     </div>
     <ul class="fixes">
@@ -882,15 +882,19 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
       ลูกค้าต้องประเมิน 3 สาขา = 3 ใบบนดีลใบเดียวกัน · เข้ากับมติ “หนึ่งดีลมีใบประเมินได้หลายใบ” พอดี</span></li>
       <li><span class="mk new">+</span><span>⭐ <b>นี่อุดรูที่ร่างเดิมไม่ได้ตอบ</b> — <span class="mono">service_visits.siteId</span> เป็นรายไซต์ ⇒ ใบที่มีสามสถานที่ต้องมีสามนัด
       แต่ใบมี “วันกำหนด” ช่องเดียว · พอเป็นไซต์เดียว <b>หนึ่งใบ = หนึ่งนัด</b> ตรงกับโครงที่มีอยู่เป๊ะ</span></li>
-      <li><span class="mk new">+</span><span>⭐ <b>“จุดที่ต้องประเมิน” เป็นลิสต์เดียว</b> — 1 รายการ = 1 โซน · รวมโซนเดิมที่เลือกมาวัดซ้ำกับโซนใหม่ที่พิมพ์เพิ่มไว้ด้วยกัน
+      <li><span class="mk new">+</span><span>⭐ <b>“พื้นที่ที่ต้องประเมิน” เป็นลิสต์เดียว</b> — 1 รายการ = 1 พื้นที่ = 1 โซน · รวมโซนเดิมที่เลือกมาวัดซ้ำกับโซนใหม่ที่พิมพ์เพิ่มไว้ด้วยกัน
       เพราะลิสต์นี้คือ<b>ใบงานของช่างรอบนี้</b> · โซนเดิมที่ไม่ได้เลือกไม่ต้องโผล่มารก</span></li>
-      <li><span class="mk new">+</span><span>สองปุ่มใต้ลิสต์: <b>เพิ่มจุดใหม่</b> กับ <b>เลือกจากโซนเดิม</b> (บอกจำนวนที่เหลือให้เลือก) ·
+      <li><span class="mk new">+</span><span>สองปุ่มใต้ลิสต์: <b>เพิ่มพื้นที่ใหม่</b> กับ <b>เลือกจากโซนเดิม</b> (บอกจำนวนที่เหลือให้เลือก) ·
       แถวโซนเดิมโชว์ <span class="mono">ZN-…</span> เสมอ จะได้รู้ว่ากำลังวัดทับโซนไหน</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>คำว่า “จุด” ถูกใช้กับสองอย่าง</b> — เปลี่ยนคำแล้ว: <b>พื้นที่</b> = โซนที่ต้องประเมิน (<span class="mono">ZN-…</span>) ·
+      <b>จุดติดตั้ง</b> = ตำแหน่งวางเครื่องข้างในพื้นที่นั้น · คำเดียวสองความหมายบนจอเดียวคือที่มาของการกรอกผิด</span></li>
+      <li><span class="mk new">+</span><span><b>เลข ZN ออกตอนกดส่ง ไม่ใช่ตอนพิมพ์</b> — ร่างที่ไม่ได้ส่งไม่ทิ้งอะไรไว้ในทะเบียนโซน ·
+      ส่วน <b>ไซต์ใหม่ได้เลข SS ทันที</b> เพราะมีที่อยู่/แผนที่/ผู้ติดต่อ/เวลาเข้า ซึ่งเป็นของทะเบียนไม่ใช่ของใบ</span></li>
       <li><span class="mk new">+</span><span><b>ประวัติการวัดอยู่บนแถว</b> — ครั้งที่ 1 วัดอะไรไว้ ครั้งที่ 2 คือรอบนี้ ·
       ⚠️ ไม่ใช่ Rev. ของเอกสาร (ไม่มีตรึง ไม่มีอนุมัติใหม่) แค่แถวเรียงตามเวลาจาก <span class="mono">service_survey_zones</span></span></li>
       <li><span class="mk new">+</span><span><b>ดีลเป็นช่องแรก ลูกค้าเติมจากดีล</b> — ใบเสนอราคาผูกดีลอยู่แล้ว ⇒ ผลประเมินเดินต่อเข้า QT ได้ทันที · <span class="mono">dept_requests.dealId</span> มีอยู่แล้ว ไม่ต้อง migration</span></li>
-      <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีจุดที่ต้องประเมิน (= โซน)
-      · โจทย์เขียนว่า “1 รายการ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 จุดต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่า 6 จุดนั้นอยู่ตึกเดียวกัน</span></li>
+      <li><span class="mk new">+</span><span><b>สองชั้น ไม่ใช่ลิสต์แบน</b> — สถานที่ (= ไซต์) ข้างในมีพื้นที่ที่ต้องประเมิน (= โซน)
+      · โจทย์เขียนว่า “1 รายการ = 1 พื้นที่ = 1 โซน” ซึ่งถูก แต่ถ้าให้พิมพ์ที่อยู่ซ้ำทุกโซน ห้างเดียว 6 พื้นที่ต้องพิมพ์ที่อยู่ 6 รอบ และไม่มีอะไรบอกทีหลังว่าทั้งหกอยู่ตึกเดียวกัน</span></li>
       <li><span class="mk new">+</span><span>ที่อยู่ของสถานที่ <b>ดึงจากทะเบียนลูกค้า</b> ด้วยไทล์ชุดเดียวกับฟอร์มไซต์ — ก๊อปมาตั้งต้น แก้ต่อได้ ไม่ผูกให้เปลี่ยนตามกัน · มีไทล์ “ที่อยู่อื่น” สำหรับล็อบบี้ห้าง/พื้นที่เช่า</span></li>
       <li><span class="mk new">+</span><span><b>สามวันเรียกคนละชื่อ</b> — “ส่งเรื่อง” ระบบบันทึกเอง · “วันที่ต้องการให้เข้าพื้นที่” SA กรอก · “วันนัดเข้าพื้นที่” TS ใส่ตอนลงคิว ·
       ส่วน <b>“ช่วงเวลาที่เข้าสถานที่ได้”</b> ย้ายไปอยู่ในบล็อกสถานที่ เพราะเป็นข้อจำกัดถาวรของอาคาร ไม่ใช่ของใบนี้</span></li>
@@ -965,7 +969,8 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
               <span class="why2">2 โซน · วัดแล้ว 1 · ขายแล้ว 2</span></button>
             <button class="tile own">
               <span class="th"><b><svg class="i"><use href="#plus"/></svg> สถานที่ใหม่</b></span>
-              <span class="adr">สาขาที่ยังไม่เคยแตะ — ตั้งที่อยู่จากทะเบียนลูกค้า</span></button>
+              <span class="adr">สาขาที่ยังไม่เคยแตะ — ตั้งที่อยู่จากทะเบียนลูกค้า</span>
+              <span class="why2" style="color:var(--text-3)">ได้เลข <b>SS-…</b> ทันทีที่กดสร้าง — ต่างจากโซน เพราะไซต์มีที่อยู่ แผนที่ ผู้ติดต่อ และช่วงเวลาที่เข้าได้ ซึ่งเป็นของทะเบียน ไม่ใช่ของใบ</span></button>
           </div>
           <div class="ctxstrip" style="margin:var(--space-3-5) 0 0">
             <span class="done"><svg class="i"><use href="#check"/></svg>ไซต์เดิม</span>
@@ -978,9 +983,9 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
 
       <div class="ui-section">
         <div class="ui-section-header">
-          <div><h2>จุดที่ต้องประเมิน</h2>
-          <p><b>1 รายการ = 1 โซน</b> · ลิสต์นี้คือใบงานของช่างรอบนี้ — โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก</p></div>
-          <span class="ui-badge info">4 จุด · โซนเดิม 2 · โซนใหม่ 2</span>
+          <div><h2>พื้นที่ที่ต้องประเมิน</h2>
+          <p><b>1 รายการ = 1 พื้นที่ = 1 โซน</b> · ลิสต์นี้คือใบงานของช่างรอบนี้ — โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก</p></div>
+          <span class="ui-badge info">4 พื้นที่ · โซนเดิม 2 · โซนใหม่ 2</span>
         </div>
         <div class="ui-section-body">
           <div class="zlist">
@@ -1035,8 +1040,16 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
           </div>
 
           <div class="pick">
-            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดใหม่</button>
+            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มพื้นที่ใหม่</button>
             <button class="btn"><svg class="i"><use href="#layers"/></svg> เลือกจากโซนเดิม <span class="ui-badge plain">เหลือ 2</span></button>
+          </div>
+
+          <div class="notice" data-tone="info" style="margin-top:var(--space-3-5)">
+            <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+            <div><b>เลข <span class="mono">ZN-…</span> ออกตอนกดส่งใบ ไม่ใช่ตอนพิมพ์</b>
+            <span><b>เลือกจากโซนเดิม</b> = มีเลขอยู่แล้ว เพราะลงทะเบียนไปตั้งแต่ใบก่อน ·
+            <b>เพิ่มพื้นที่ใหม่</b> = ยังไม่มีเลข เป็นแค่ข้อความบนใบจนกว่าจะกดส่ง
+            ⇒ ร่างที่ไม่ได้ส่ง <b>ไม่ทิ้งอะไรไว้ในทะเบียนโซนเลย</b> · กดส่งเมื่อไร ทุกแถวที่ยังไม่มีเลขได้รหัสพร้อมกันทั้งชุด</span></div>
           </div>
 
           <p class="hint" style="margin-top:var(--space-3)">
@@ -1197,7 +1210,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
       <div>
         <div class="ui-section" style="max-width:640px;margin:0 auto">
           <div class="ui-section-header"><div><h2>ลงคิวงานประเมิน</h2>
-          <p><span class="mono">AS-26090002</span> · สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค · 5 จุด · <span class="mono">DL-2608017</span></p></div></div>
+          <p><span class="mono">AS-26090002</span> · สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <span class="mono">DL-2608017</span></p></div></div>
           <div class="ui-section-body">
             <div class="ctxstrip">
               <span class="done"><svg class="i"><use href="#check"/></svg>รับเรื่องแล้ว</span>
@@ -1213,7 +1226,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
               <span class="eq">อยู่ในช่วงที่เข้าได้</span></div></div>
             <div class="field"><label>ช่างที่ไปด้วย</label><div class="inp">อนุชา กิตติวงศ์</div></div>
             <div class="field"><label>บันทึกถึงฝ่ายขาย</label>
-              <div class="inp ta">5 จุดใช้เวลาประมาณ 3 ชม. · ขอให้ประสานอาคารเรื่องบัตรเข้าออกล่วงหน้า</div></div>
+              <div class="inp ta">5 พื้นที่ใช้เวลาประมาณ 3 ชม. · ขอให้ประสานอาคารเรื่องบัตรเข้าออกล่วงหน้า</div></div>
 
             <div class="notice" data-tone="info">
               <span class="ic"><svg class="i"><use href="#cal"/></svg></span>
@@ -1276,7 +1289,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
               <tr>
                 <td><b>สมชาย ปัญญาดี</b><span class="cell-sub">BKK-C</span></td>
                 <td><span class="vchip refill">09:00 เอ็มควอเทียร์<em>3 เครื่อง</em></span></td>
-                <td><span class="vchip survey">09:00 ทรู ดิจิทัล พาร์ค<em>ประเมิน · 5 จุด</em></span></td>
+                <td><span class="vchip survey">09:00 ทรู ดิจิทัล พาร์ค<em>ประเมิน · 5 พื้นที่</em></span></td>
                 <td><span class="vchip refill">10:00 สยามพารากอน<em>5 เครื่อง</em></span></td>
                 <td><span class="dropcell">ว่าง</span></td>
                 <td><span class="vchip repair">13:00 เซ็นทรัลลาดพร้าว<em>ซ่อม</em></span></td>
@@ -1309,10 +1322,10 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
             <h4><svg class="i"><use href="#bldg"/></svg>งานประเมินพื้นที่</h4>
             <div class="tiles">
               <div class="qitem ready"><b>AS-26090003 · ดิ เอ็มควอเทียร์</b>
-                <span class="cell-sub">ดิ เอ็มควอเทียร์ · 5 จุด · ขอ 8 ก.ย. บ่าย</span>
+                <span class="cell-sub">ดิ เอ็มควอเทียร์ · 5 พื้นที่ · ขอ 8 ก.ย. บ่าย</span>
                 <span class="why">ช่วงที่ขอยังมีช่างว่าง</span></div>
               <div class="qitem blocked"><b>AS-26090005 · โรงงานสมุทรสาคร</b>
-                <span class="cell-sub">3 จุด · ขอ 9 ก.ย.</span>
+                <span class="cell-sub">3 พื้นที่ · ขอ 9 ก.ย.</span>
                 <span class="why">ยังไม่มีใครในทีมที่วิ่งเขตสมุทรสาครในวันนั้น</span></div>
             </div>
           </div>
@@ -1362,7 +1375,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
 
         <div class="ctxstrip">
           <span class="done"><svg class="i"><use href="#check"/></svg>ถึงหน้างาน 09:12</span>
-          <span>วัดแล้ว 3 / 5 จุด</span>
+          <span>วัดแล้ว 3 / 5 พื้นที่</span>
         </div>
 
         <!-- ── ① วัดครบ · พื้นที่รูปตัว L สองส่วน ────────────────────── -->
@@ -1974,12 +1987,12 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
           <div class="ui-section-body">
             <div class="tl">
               <div class="tl-i"><span class="tl-d">8 ก.ย. 16:40</span><span class="tl-t"><b>สมชาย ป. ส่งผลประเมิน</b>
-                <span>5 จุด · 7 แพ็ค · ตัดห้องน้ำชายชั้น 3 ออก · เพิ่มโถงลิฟต์</span></span></div>
+                <span>5 พื้นที่ · 7 แพ็ค · ตัดห้องน้ำชายชั้น 3 ออก · เพิ่มโถงลิฟต์</span></span></div>
               <div class="tl-i"><span class="tl-d">8 ก.ย. 09:12</span><span class="tl-t"><b>ถึงหน้างาน</b><span>นัด SV-26090041</span></span></div>
               <div class="tl-i"><span class="tl-d">2 ก.ย. 14:05</span><span class="tl-t"><b>วรรณา (TS) ลงคิว</b>
                 <span>8 ก.ย. 09:00–12:00 · สมชาย ปัญญาดี + อนุชา กิตติวงศ์</span></span></div>
               <div class="tl-i"><span class="tl-d">2 ก.ย. 09:30</span><span class="tl-t"><b>วรรณา (TS) รับเรื่อง</b></span></div>
-              <div class="tl-i"><span class="tl-d">1 ก.ย. 17:20</span><span class="tl-t"><b>ธนวัฒน์ ส่งคำร้อง</b><span>สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค · 5 จุด · ดีล DL-2608017 · แนบผังชั้น</span></span></div>
+              <div class="tl-i"><span class="tl-d">1 ก.ย. 17:20</span><span class="tl-t"><b>ธนวัฒน์ ส่งคำร้อง</b><span>สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · ดีล DL-2608017 · แนบผังชั้น</span></span></div>
             </div>
           </div>
         </div>
@@ -2030,7 +2043,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#check"/></svg></span>
         <div><b>ใบนี้เคยผ่านการประเมินพื้นที่มาแล้ว</b>
-        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 โซน · ประเมินไว้ 7 แพ็ค 7 จุด เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว
+        <span>เจอจาก<b>ดีลใบเดียวกัน</b> — <span class="mono">DL-2608017</span> → <span class="mono">AS-26090002</span> · 5 โซน · ประเมินไว้ 7 แพ็ค · 7 จุดติดตั้ง เมื่อ 8 ก.ย. · ไซต์และโซนพร้อมอยู่แล้ว
         ⚠️ ดีลนี้มีใบประเมินใบเดียว — ถ้ามีหลายใบ ตัวช่วยต้องรวมทุกใบ ไม่ใช่หยิบใบล่าสุด</span></div>
         <span class="act"><button class="btn sm btn-accent">ใช้ผลประเมินนี้</button></span>
       </div>
@@ -2325,7 +2338,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
                 <td><span class="no">2</span><b>ค้างจากใบก่อน</b>
                   <span>ใบก่อนถูกยกเลิก หรือ TS ตัดออกหน้างาน · ฟอร์มโชว์เหตุผลที่เคยถูกตัด แล้วให้ติ๊กใหม่</span></td>
                 <td data-t="bad"><span class="no">6</span><b>🔴 ขายแล้วแต่ไม่เคยวัด</b>
-                  <span>ของนำเข้า F-8 (380 จุดเก่า) หรือขายด้วยตาเปล่า · ไม่ใช่ error แต่เป็นหนี้ข้อมูล — ชวนไปวัดเก็บ</span></td></tr>
+                  <span>ของนำเข้า F-8 (380 จุดติดตั้งเก่า) หรือขายด้วยตาเปล่า · ไม่ใช่ error แต่เป็นหนี้ข้อมูล — ชวนไปวัดเก็บ</span></td></tr>
               <tr><th>มีใบอื่นสั่งวัดไว้</th>
                 <td data-t="lock"><span class="no">3</span><b>🔒 นัดไว้แล้ว</b>
                   <span>ติ๊กไม่ได้ · บอกเลขใบ + วันนัด + ลิงก์ไปใบนั้น</span></td>
@@ -2348,7 +2361,7 @@ border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
             <div><b>ไซต์ใหม่ + โซนใหม่</b>
               <p>ลูกค้าใหม่ หรือสาขาที่ยังไม่เคยแตะ ⇒ เลือกไทล์ <b>“สถานที่ใหม่”</b> ที่<b>บล็อกสถานที่</b> (หัวใบ)</p></div>
             <div><b>ไซต์เดิม + โซนใหม่</b>
-              <p>🎯 นี่คือ <b>“ประเมินเพิ่ม”</b> ในโจทย์ — ห้างเดิมเปิดโซนใหม่ ⇒ เลือกไซต์เดิมแล้วกด <b>“เพิ่มจุดในสถานที่นี้”</b>
+              <p>🎯 นี่คือ <b>“ประเมินเพิ่ม”</b> ในโจทย์ — ห้างเดิมเปิดโซนใหม่ ⇒ เลือกไซต์เดิมแล้วกด <b>“เพิ่มพื้นที่ในสถานที่นี้”</b>
               ⚠️ สองปุ่มนี้ต้องอยู่<b>คนละบล็อก</b> ไม่งั้นจะได้ไซต์ซ้ำสองใบของห้างเดียวกัน</p></div>
             <div><b>ไซต์เดิม + โซนเดิม</b>
               <p>ทุกกรณี ②–⑦ ในเมทริกซ์ — ไม่สร้างอะไรใหม่ แค่สั่งวัดรอบใหม่</p></div>
