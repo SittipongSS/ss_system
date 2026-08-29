@@ -619,6 +619,45 @@ border-top:3px solid var(--border);margin-right:var(--space-3)}
 .vchip.refill{background:var(--teal)}
 .vchip em{display:block;font-style:normal;opacity:.85;font-size:var(--fs-1)}
 @media(min-width:980px){.split.rev{grid-template-columns:1fr 236px}}
+
+/* ── ช่องกรอกจำนวนแพ็คเกจ (จอ 07) ────────────────────────────
+   ตัวนับ ไม่ใช่ดรอปดาวน์ ไม่ใช่ช่องเปล่า — จำนวนเป็นเลขเต็มเล็ก ๆ (1–10)
+   ⚠️ **ไม่มีค่าตั้งต้น** — จำนวนแพ็คเป็นการตัดสินใจ ค่าที่กรอกไว้ให้แล้วคือ
+      คำตอบที่ไม่มีใครอ่าน · ค่าที่ระบบคำนวณได้อยู่ข้าง ๆ ในฐานะปุ่ม "ใช้ค่านี้" */
+.step{display:inline-flex;align-items:stretch;border:1px solid var(--border-strong);
+border-radius:var(--radius);overflow:hidden;background:var(--panel-solid);height:var(--ctl-h)}
+.step button{width:32px;border:0;background:var(--panel-2);color:var(--text-2);
+font:inherit;font-size:var(--fs-10);cursor:pointer;line-height:1}
+.step button:hover{background:var(--panel-3);color:var(--text)}
+.step .v{width:52px;display:grid;place-items:center;font-size:var(--fs-10);
+font-weight:var(--fw-semibold);font-variant-numeric:tabular-nums;
+border-inline:1px solid var(--border)}
+.step.empty .v{color:var(--text-3);font-weight:var(--fw-normal)}
+.step[data-tone="under"]{border-color:var(--amber)}
+.step[data-tone="under"] .v{color:var(--amber)}
+.packcell{display:flex;flex-direction:column;gap:var(--space-1-5);align-items:flex-end}
+/* ปุ่มรับค่าที่ระบบเสนอ — แพตเทิร์นเดียวกับ "1 แพ็ค = 1 ลิตร/เดือน" ของหน้าจัดสรร */
+.useit{display:inline-flex;align-items:center;gap:5px;border:1px dashed var(--accent);
+background:transparent;color:var(--accent-ink);border-radius:var(--radius-full);
+padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap}
+.useit:hover{background:var(--accent-soft)}
+.samehint{font-size:var(--fs-2);color:var(--green);white-space:nowrap}
+.diffhint{font-size:var(--fs-2);color:var(--amber);white-space:nowrap}
+/* ช่องเหตุผล — โผล่เฉพาะแถวที่กรอกต่ำกว่าที่ระบบเสนอ */
+.whyfield{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);
+padding:var(--space-2) var(--space-2-5);border:1px solid var(--amber);
+border-radius:var(--radius);background:var(--amber-soft);font-size:var(--fs-4);
+line-height:var(--lh-thai)}
+.whyfield .tag{flex:none;font-size:var(--fs-2);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--amber);font-weight:var(--fw-semibold)}
+/* แผงอธิบายส่วนประกอบของคอนโทรล */
+.anat{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.anat > div{border:1px solid var(--border);border-radius:var(--radius-md);
+background:var(--panel-2);padding:var(--space-3-5)}
+.anat b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);
+margin-bottom:var(--space-1);line-height:var(--lh-thai)}
+.anat p{margin:var(--space-2-5) 0 0;font-size:var(--fs-4);color:var(--text-3);
+line-height:var(--lh-thai)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -1256,32 +1295,100 @@ border-top:3px solid var(--border);margin-right:var(--space-3)}
         <span><span class="lab">แพ็คเกจรวม</span><span class="big" style="color:var(--accent-ink)">19</span><span class="lab">แพ็ค/เดือน</span></span>
       </div>
 
+      <div class="notice" data-tone="danger" style="margin-top:var(--space-4)">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>🔴 ตัวเลข “ที่ปริมาตรบอก” ยังไม่มีสูตร — ต้องให้ทีมบอกก่อน</b>
+        <span>ทั้งระบบและเอกสารทุกฉบับ<b>ไม่มีกฎว่ากี่ ลบ.ม. ต่อ 1 แพ็ค</b> — หลักฐานที่มีคือ “1 แพ็ค = 1 ลิตร/เดือน”
+        ซึ่งเป็นความสัมพันธ์ระหว่างแพ็คกับน้ำหอม ไม่ใช่ระหว่างแพ็คกับพื้นที่ · ตัวเลขในม็อกนี้เป็นของสมมติ
+        ⇒ ถ้ายังไม่มีสูตร ให้<b>ตัดคอลัมน์ที่เสนอกับปุ่ม “ใช้ค่านี้” ออกทั้งชุด</b> เหลือแค่ตัวนับให้ TS กรอกจากประสบการณ์
+        (เพิ่มทีหลังได้โดยไม่ต้องแก้ฐานข้อมูล) — เสนอตัวเลขที่คำนวณจากสูตรที่เดาเอาเองอันตรายกว่าไม่เสนอเลย</span></div>
+      </div>
+
       <div class="ui-section" style="margin-top:var(--space-4)">
-        <div class="ui-section-header"><div><h2>รายจุด</h2>
-        <p>ช่องเสนอมาจากปริมาตร — พิมพ์ทับได้เสมอ ระบบไม่กรอกให้เอง</p></div></div>
+        <div class="ui-section-header"><div><h2>รายจุด — กรอกจำนวนแพ็คเกจที่นี่</h2>
+        <p>ช่องนี้คือช่องเดียวของทั้งจอที่ต้องกรอก · ที่เหลือมาจากหน้างานทั้งหมด</p></div>
+          <span class="ui-badge warning">เหลืออีก 1 จุด</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>จุด (โซน)</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">ลบ.ม.</th><th class="num">ระบบเสนอ</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
+            <thead><tr><th>จุด (โซน)</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">ลบ.ม.</th>
+              <th class="num" style="width:190px">แพ็คเกจ/เดือน</th><th>รูป</th></tr></thead>
             <tbody>
+
+              <!-- ① กรอกแล้ว ตรงกับที่ระบบเสนอ -->
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
                 <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">347.2</td><td class="num mono">972.2</td>
-                <td class="num" style="color:var(--text-3)">5</td><td class="num"><b>5</b></td><td>2</td></tr>
+                <td><div class="packcell">
+                  <span class="step"><button type="button">−</button><span class="v">5</span><button type="button">+</button></span>
+                  <span class="samehint">✓ ตรงกับที่ปริมาตรบอก</span>
+                </div></td>
+                <td>2</td></tr>
+
+              <!-- ② ยังไม่กรอก — ช่องว่าง + ปุ่มรับค่าที่เสนอ -->
               <tr><td><span class="t-strong">ชั้น 5 · ห้องประชุมใหญ่</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
                 <td class="mono">9.00 × 14.00 × 2.80</td><td class="num mono">126.0</td><td class="num mono">352.8</td>
-                <td class="num" style="color:var(--text-3)">2</td><td class="num"><b>3</b></td><td>1</td></tr>
+                <td><div class="packcell">
+                  <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
+                  <button class="useit" type="button">ใช้ 2 ที่ปริมาตรบอก</button>
+                </div></td>
+                <td>1</td></tr>
+
+              <!-- ③ กรอกสูงกว่าที่เสนอ — ไม่ต้องมีเหตุผล ขายได้มากขึ้น -->
               <tr><td><span class="t-strong">ชั้น 5 · โถงลิฟต์</span><span class="cell-sub">อาคาร A · ชั้น 5</span>
                 <span class="ui-badge accent">จุดใหม่</span></td>
                 <td class="mono">4.20 × 6.00 × 2.80</td><td class="num mono">25.2</td><td class="num mono">70.6</td>
-                <td class="num" style="color:var(--text-3)">1</td><td class="num"><b>1</b></td><td>1</td></tr>
+                <td><div class="packcell">
+                  <span class="step"><button type="button">−</button><span class="v">2</span><button type="button">+</button></span>
+                  <span class="diffhint">สูงกว่าที่ปริมาตรบอก 1</span>
+                </div></td>
+                <td>1</td></tr>
+
+              <!-- ④ กรอกต่ำกว่าที่เสนอ — ช่องเหตุผลโผล่ขึ้นมาและบังคับ -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
                 <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">432.0</td><td class="num mono">2,808.0</td>
-                <td class="num" style="color:var(--text-3)">8</td><td class="num"><b style="color:var(--amber)">6</b>
-                <span class="cell-sub">โถงเปิด ลมพัดผ่าน</span></td><td>3</td></tr>
+                <td><div class="packcell">
+                  <span class="step" data-tone="under"><button type="button">−</button><span class="v">6</span><button type="button">+</button></span>
+                  <span class="diffhint">ต่ำกว่าที่ปริมาตรบอก 2</span>
+                </div></td>
+                <td>3</td></tr>
+              <tr><td colspan="6" style="padding-top:0">
+                <div class="whyfield"><span class="tag">ต้องบอกเหตุผล</span>
+                  <span>โถงเปิดสองด้าน เพดาน 6.5 ม. ลมพัดกลิ่นออกเร็ว — เริ่มที่ 6 แล้วตามผลหลังติดตั้ง 1 เดือน</span></div>
+              </td></tr>
+
+              <!-- ⑤ จุดที่ตัดออกหน้างาน — ไม่มีช่องให้กรอก -->
               <tr><td><span class="t-strong" style="text-decoration:line-through;color:var(--text-3)">ชั้น 3 · ห้องน้ำชาย</span>
-                <span class="cell-sub">ตัดออก — มีระบบของรายอื่นแล้ว</span></td>
+                <span class="cell-sub">ตัดออกหน้างาน — อาคารมีระบบของรายอื่นแล้ว</span></td>
                 <td colspan="5" style="color:var(--text-3)">ไม่นับรวมในใบเสนอราคา</td></tr>
             </tbody>
           </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ส่วนประกอบของช่องแพ็คเกจ</h2>
+        <p>ทำไมเป็นตัวนับ ไม่ใช่ดรอปดาวน์ และทำไมไม่กรอกค่าไว้ให้ล่วงหน้า</p></div></div>
+        <div class="ui-section-body">
+          <div class="anat">
+            <div><b>ตัวนับ ไม่ใช่ดรอปดาวน์</b>
+              <span class="step"><button type="button">−</button><span class="v">5</span><button type="button">+</button></span>
+              <p>จำนวนแพ็คเป็นเลขเต็มเล็ก ๆ (ของจริง 1–8) · ดรอปดาวน์ซ่อนตัวเลือกไว้จนกว่าจะกด
+              และเพดานที่ตั้งไว้จะกลายเป็นเพดานจริงในวันที่มีล็อบบี้ต้องใช้ 12 · กดปุ่มหรือพิมพ์ทับก็ได้ทั้งคู่</p></div>
+
+            <div><b>ว่างเสมอตอนเปิด</b>
+              <span class="step empty"><button type="button">−</button><span class="v">—</span><button type="button">+</button></span>
+              <p>ค่าตั้งต้นของสิ่งที่เป็นการตัดสินใจ คือคำตอบที่ไม่มีใครอ่าน — กติกาฟอร์มของระบบนี้
+              ⇒ ระบบคำนวณให้ได้ แต่ต้องมีคนกดรับ</p></div>
+
+            <div><b>ปุ่มรับค่าที่คำนวณได้</b>
+              <button class="useit" type="button">ใช้ 2 ที่ปริมาตรบอก</button>
+              <p>แพตเทิร์นเดียวกับที่หน้าจัดสรรใช้อยู่แล้ว (“1 แพ็ค = 1 ลิตร/เดือน — กดใช้ได้ถ้าตรง ไม่ตรงก็พิมพ์ทับ”)
+              กดครั้งเดียวจบสำหรับจุดที่ไม่มีอะไรพิเศษ ซึ่งเป็นส่วนใหญ่</p></div>
+
+            <div><b>ต่ำกว่าที่คำนวณได้ = ต้องบอกเหตุผล</b>
+              <span class="diffhint">ต่ำกว่าที่ปริมาตรบอก 2</span>
+              <p>ตัวเลขที่ต่ำกว่าคือสิ่งที่ลูกค้าจะถามฝ่ายขาย และฝ่ายขายไม่ได้ไปหน้างาน ·
+              <b>สูงกว่าไม่ต้องบอก</b> — ขายได้มากขึ้นไม่ใช่เรื่องที่ต้องอธิบาย</p></div>
+          </div>
         </div>
       </div>
 
