@@ -7,7 +7,7 @@ import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, Clipbo
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
-import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -552,6 +552,14 @@ export default function AppLayout({ children }) {
         // ⚠️ ไม่ใช่หน้า "สร้างงาน" — TS ไม่ใช่ต้นทางของงาน ทุกแถวมีต้นเรื่องเป็นใบที่
         // อนุมัติแล้ว · แคบเป็น canEditService เพราะเป็นหน้าลงมือผูกไซต์/โซน
         { href: '/service/intake', name: 'งานเข้าใหม่', icon: ArrowDownToLine, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/intake') },
+        /* คิวคำร้องประเมินพื้นที่จาก SA (mig 0314) — ทางที่ *งานของฝ่ายขาย* เดินมาถึง TS
+           ⚠️ `match` กินใบคำร้อง (`/requests/[id]`) ด้วย เหมือน `/rd/requests` และ
+              `/finance/requests` — เปิดใบแล้วเมนูต้องไม่ทิ้งคนไว้กลางอากาศ
+           ⚠️ ไอคอนตัวเดียวกับคำร้องทุกที่ในระบบ — หนึ่ง entity หนึ่งไอคอน
+           ⚠️ **visible เป็น canAnswerServiceRequests ไม่ใช่ canEditService** — คนที่เห็น
+              คิวนี้คือคนที่ *ตอบ* ใบได้ (ฝ่าย TS) · ทีมขาย SV ถือ service:edit ด้วยแต่
+              ไม่ใช่คนตอบคำร้องของฝ่าย TS ⇒ เห็นเมนูที่กดเข้าไปแล้วตอบอะไรไม่ได้เลย */
+        { href: '/service/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, cap: 'requests:answer', visible: canAnswerServiceRequests, match: (p) => p.startsWith('/service/requests') || p.startsWith('/requests') },
         // ⚠️ ต้องมี visible: canViewService/canEditService ทุกรายการ — cap service:view
         // ถือกว้างระดับ role (staff ทุกฝ่ายถือ) แล้วแคบด้วย **ฝ่าย TS** ที่ canViewService ·
         // ถ้าเช็คแค่ cap ฝ่ายคลัง/QC จะเห็นเมนูของทีมช่าง ซึ่งขัดมติแยกทีม (PD ≠ TS)

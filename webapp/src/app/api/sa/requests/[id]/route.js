@@ -50,6 +50,7 @@ import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
+import { materializeSurveyZones } from '@/lib/service/surveyRepo';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
@@ -228,6 +229,21 @@ export async function PATCH(request, { params }) {
       // (ดูเหตุผลเต็มที่ `lib/requests/scentBriefs.js`)
       const briefNameError = scentBriefNameError(before.briefs, { stage: 'submit' });
       if (briefNameError) return Response.json({ error: briefNameError }, { status: 409 });
+
+      /* ⭐ **พื้นที่ใหม่ได้รหัส ZN ตรงนี้** (mig 0314) — จังหวะเดียวกับเลขใบ ด้วยเหตุผล
+         เดียวกันเป๊ะ: ร่างที่ถูกทิ้งต้องไม่ทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า
+         ⚠️ ทำ **ก่อน** `issueDocNo` — ล้มตรงนี้แล้วเลขใบยังไม่ออก ⇒ กดส่งใหม่ได้เลย
+         ⚠️ ตัวมันรันซ้ำได้ (ข้ามแถวที่มี `zoneId` แล้ว) ⇒ ใบที่ถูกตีกลับแล้วส่งใหม่
+            จะไม่สร้างโซนซ้อน */
+      if (before.kind === 'site_survey') {
+        if (!before.siteId) {
+          return Response.json({ error: 'ใบนี้ยังไม่มีสถานที่ — แก้ใบแล้วเลือกสถานที่ก่อนส่ง' }, { status: 409 });
+        }
+        const { error: zoneError } = await materializeSurveyZones(supabase, {
+          requestId: id, siteId: before.siteId, user,
+        });
+        if (zoneError) return Response.json({ error: zoneError }, { status: 409 });
+      }
       // เลขออกตอนนี้เท่านั้น — ร่างที่ถูกทิ้งจะได้ไม่กินเลขจนขาดช่วง
       // ⚠️ ใบที่ถูก **ตีกลับ** เป็นร่างที่มีเลขอยู่แล้ว ⇒ ต้องใช้เลขเดิม ไม่ใช่ออกใหม่
       // (`docNo` แก้ไม่ได้ที่ระดับ trigger — ดูเหตุผลเต็มใน `assignRequestDocNo`)

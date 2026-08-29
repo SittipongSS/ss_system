@@ -299,7 +299,41 @@ export async function findRequest(supabase, id) {
     .from('dept_request_pdr_targets').select('*').eq('requestId', id)
     .order('sortOrder', { ascending: true });
   if (targetError) throw targetError;
-  const withBriefs = { ...row, briefs: briefs || [], targets: targets || [] };
+  /* ⭐ พื้นที่ที่ต้องประเมิน (mig 0314) — ของ **ใบ** ไม่ใช่ของทะเบียนโซน
+     ⚠️ โหลดคู่กับบรีฟด้วยเหตุผลเดียวกัน: ทั้งจอ TS และจอ SA อ่านก้อนเดียวกัน
+     ⚠️ **โหลดเฉพาะตอนเปิดใบเดียว** — คิวโชว์จำนวนจาก `surveyZoneCount` ที่ประทับ
+        ไว้บนแถวไม่ได้ (ไม่มีคอลัมน์นั้น) ⇒ คิวไม่โชว์จำนวน แทนที่จะยิงรายใบ 100 ครั้ง */
+  const { data: surveyZones, error: surveyError } = await supabase
+    .from('service_survey_zones').select('*').eq('requestId', id)
+    .order('sortOrder', { ascending: true }).order('id', { ascending: true });
+  if (surveyError) throw surveyError;
+  /* ⚠️ **รหัส ZN ต้องมาด้วย ไม่ใช่ id ดิบ** — จอโชว์ "รหัส · ชื่อ" ตามกติกาของทั้งระบบ
+     · แถวเก็บแค่ `zoneId` ซึ่งเป็น id ภายใน (SZN-…) ที่ไม่มีใครอ่านออก
+     ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงแถว — รหัสเป็นตัวชี้กลับทะเบียน (กติกาเดียวกับ AR) */
+  const surveyZoneIds = [...new Set((surveyZones || []).map((z) => z.zoneId).filter(Boolean))];
+  if (surveyZoneIds.length) {
+    const { data: zoneRows, error: zoneError } = await supabase
+      .from('service_zones').select('id, code').in('id', surveyZoneIds);
+    if (zoneError) throw zoneError;
+    const codeById = new Map((zoneRows || []).map((z) => [z.id, z.code]));
+    for (const row of surveyZones) row.zoneCode = row.zoneId ? codeById.get(row.zoneId) || null : null;
+  }
+  /* ป้ายสถานที่ — จอโชว์ **รหัส SS · ชื่อ** ไม่ใช่ id (กติกา entity display)
+     ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงใบ — ไซต์ถูกเปลี่ยนชื่อแล้วใบต้องพาไปหาที่ถูก */
+  let surveySite = null;
+  if (row.siteId) {
+    const { data } = await supabase
+      .from('service_sites').select('id, code, name, address, "contactName", "contactPhone"')
+      .eq('id', row.siteId).maybeSingle();
+    surveySite = data || null;
+  }
+  const withBriefs = {
+    ...row,
+    briefs: briefs || [],
+    targets: targets || [],
+    surveyZones: surveyZones || [],
+    surveySite,
+  };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)
   //

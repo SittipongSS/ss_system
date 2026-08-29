@@ -29,7 +29,7 @@ const ALL = [...SHARED_KINDS, ...RD_KINDS, ...PC_KINDS, ...FN_KINDS, ...TS_KINDS
 // ⚠️ ห้ามเปลี่ยนเป็น "ข้ามหัวข้อที่ผิดแล้วเดินต่อ" — หัวข้อที่หายไปเงียบ ๆ คือใบที่
 // เปิดไม่ได้โดยไม่มีข้อความบอกเหตุผล ซึ่งเป็นบั๊กที่หายากที่สุดในระบบนี้
 const VALID_DEPTS = ['RD', 'PC', 'FN', 'TS'];
-const VALID_REFS = ['project', 'deal', 'salesOrder', 'quotation', 'scent', 'formula'];
+const VALID_REFS = ['project', 'deal', 'salesOrder', 'quotation', 'scent', 'formula', 'site'];
 // อ้างอิงเพิ่มแบบไม่บังคับ (ม-88) — คนละชุดกับ needs: ของพวกนี้ **ว่างได้เสมอ**
 // ⚠️ `quotation` อยู่ได้ทั้งสองชุด — เป็นอ้างอิงเสริมของขอเอกสาร RD (ม-88) แต่เป็น
 // **ต้นทาง** ของขอเอกสารการเงิน (ม-ค) · หัวข้อเดียวประกาศได้ข้างเดียว (ด่านข้างล่าง)

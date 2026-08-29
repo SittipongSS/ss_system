@@ -36,7 +36,8 @@ import {
   RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
 } from "./RequestEditableFields";
 import TeamPickerField from "@/components/ui/TeamPickerField";
-import { userTeams } from "@/lib/permissions";
+import { canEditService, userTeams } from "@/lib/permissions";
+import SurveySiteFields from "@/components/requests/SurveySiteFields";
 import PdrForm from "@/components/requests/PdrForm";
 import { pdrRailSections } from "@/lib/requests/pdrFields";
 import { emptyPdr, pdrContext } from "@/lib/requests/pdrFields";
@@ -102,6 +103,10 @@ export const emptyRequestForm = (over = {}) => ({
   urgent: false,
   urgentReason: "",
   requestedDueDate: "",
+  // ประเมินพื้นที่ (mig 0314) — เวลาเป็นของหัวข้อนี้ ส่วนวันที่ใช้ช่องเดิมข้างบน
+  requestedDueTime: "",
+  siteId: "",
+  zones: [],
   scentId: "",
   formulaId: "",
   productId: "",
@@ -217,6 +222,8 @@ export default function RequestForm({
   // อ้างอิงเพิ่มไม่บังคับ (ม-88) — QT/SO/FG ของหัวข้อขอเอกสาร
   const optionalRefs = requestOptionalRefs(kind);
   const needsScent = requestNeedsRef(kind, "scent");
+  // ประเมินพื้นที่ — ไซต์ + พื้นที่ที่ต้องวัด (ธงจากทะเบียนหัวข้อ ไม่ใช่ชื่อหัวข้อ)
+  const needsSite = requestNeedsRef(kind, "site");
   const needsFormula = requestNeedsRef(kind, "formula");
   // ⚠️ **หลับอยู่ตั้งแต่ 0204** — คอลัมน์ `dept_requests.productTypeId` ถูก DROP ทิ้ง
   // `productType` จึงถูกถอดออกจาก REQUEST_NEEDS ⇒ ตัวนี้เป็น false เสมอ และช่อง
@@ -700,6 +707,20 @@ export default function RequestForm({
         })()}
       />
 
+      {/* ── สถานที่ + พื้นที่ที่ต้องประเมิน (mig 0314) ──────────────────────
+          อยู่ในบล็อกดีลเพราะเป็นคำถาม "งานไหน" เหมือนกัน และรายการสถานที่มาจาก
+          **ลูกค้าของดีลที่เพิ่งเลือก** ⇒ วางไว้ก่อนดีลจะได้ลิสต์ว่างเสมอ */}
+      {needsSite && (
+        <SurveySiteFields
+          customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
+          customerName={selectedDeal?.customerName || lockedRefs.customer || ""}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          canCreateSite={canEditService(me)}
+        />
+      )}
+
       {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────
           ⭐ มติผู้ใช้ 2026-08-08: เอกสารอย่าง COA/IFRA มักผูกกับใบเสนอราคา ใบสั่งขาย
           หรือสินค้า (FG) ตัวใดตัวหนึ่ง — ให้อ้างจากระบบจริง ไม่ใช่พิมพ์เลขที่ลงช่อง
@@ -1070,7 +1091,15 @@ export default function RequestForm({
       {activeTab === "due" && (
       <div className="form-grid cols-2">
         {/* ⭐ ช่องเดียวกับที่โมดัล "แก้ไข" ใช้ — ห้ามวางซ้ำที่นี่ */}
-        <RequestDueUrgentFields value={value} onChange={onChange} disabled={disabled} />
+        <RequestDueUrgentFields
+          value={value} onChange={onChange} disabled={disabled}
+          /* ป้าย/คำอธิบายมาจากทะเบียนหัวข้อ — ทะเบียนเติมค่ากลางให้ครบทุกคีย์แล้ว */
+          dueLabel={copy.dueLabel}
+          showTime={needsSite}
+          dueHint={needsSite
+            ? "ช่างจะยืนยันวัน/เวลาจริงตอนกด \"แจ้งกำหนดส่ง\" — ใส่ช่วงที่อาคารเข้าได้จะช่วยให้ตรงรอบเดียว"
+            : undefined}
+        />
 
         {/* ทีมเจ้าของคำร้อง — โผล่เฉพาะคนที่อยู่หลายทีม (มติ 2026-08-11)
             คำถามเชิง "ความรับผิดชอบ" จึงอยู่ท้ายฟอร์มตามกติกาลำดับช่องข้อ 4 */}

@@ -600,3 +600,90 @@
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* ── บล็อกสถานที่/พื้นที่ของใบประเมินพื้นที่ (mig 0314) ────────────────────
+   ⚠️ ลิสต์เดียวใส่ทั้งโซนเดิมและพื้นที่ใหม่ — ต่างกันที่ป้ายในแถว ไม่ใช่คนละกล่อง
+   (แยกกล่องเมื่อไร คนต้องบวกเลขเองว่าใบนี้ให้ไปวัดกี่จุด) */
+.siteOption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  line-height: var(--lh-thai);
+}
+
+.zoneList {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.zoneRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* ลำดับในใบ ไม่ใช่รหัส — รหัส ZN อยู่ในบรรทัดรายละเอียดข้างใต้ชื่อ */
+.zoneNo {
+  min-width: 1.6em;
+  text-align: center;
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.zoneBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+  line-height: var(--lh-thai);
+}
+
+.zoneActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.zoneDraft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* ช่องชื่อกินพื้นที่ที่เหลือ · ช่องหมายเหตุยาวรองลงมา — ปุ่มไม่ตกบรรทัดเองบนจอกว้าง */
+.zoneDraft > :global(input):first-of-type { flex: 2 1 220px; }
+.zoneDraft > :global(input) { flex: 1 1 180px; }
+.zoneDraft > small { flex-basis: 100%; }
+
+.zonePick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* ช่องเวลาใต้ช่องวันในกลุ่มเดียวกัน — วันกับเวลาเป็นคำตอบเดียวกันของคำถามเดียว
+   (แยกเป็น form-group ที่สองแล้วเวลาจะไปยืนคู่กับ "ความเร่งด่วน" ซึ่งคนละเรื่อง) */
+.dueTime {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}

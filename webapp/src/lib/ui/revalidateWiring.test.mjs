@@ -28,6 +28,8 @@ const WIRED = [
   // เป็น "งานวันนี้") — หน้าเดิมหน้าเดียวกัน สัญญาณยังติดครบ ไม่ใช่การถอดออกจากลิสต์
   "app/service/today/page.js",
   "app/service/visits/[id]/page.js",
+  // คิวคำร้องประเมินพื้นที่ (mig 0314) — ใบใหม่จาก SA เข้ามาระหว่างที่แท็บเปิดค้าง
+  "app/service/requests/page.js",
   "app/sales-planning/deals/page.js",
   "app/sales-planning/leads/page.js",
   "app/sales-planning/targets/page.js",

@@ -41,7 +41,7 @@ import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFa
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
-import { requestHasPdr } from "@/lib/master/requestTypes";
+import { requestHasPdr, requestLineNoun } from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import {
@@ -546,7 +546,11 @@ export default function RequestDetailPage() {
     if (confirm.kind === "submit") {
       return {
         title: "ส่งคำร้อง",
-        description: `${(req.items || []).length} รายการ → ${req.dept}`,
+        /* หน่วยของใบมาจากทะเบียนหัวข้อ (`lineNoun`) — ประเมินพื้นที่ไม่มีบรรทัด
+           `dept_request_items` เลย เนื้ออยู่ที่พื้นที่ ⇒ นับพื้นที่แทน ไม่งั้นโมดัลยืนยัน
+           ขึ้น "0 รายการ" ทุกใบ ซึ่งอ่านเหมือนข้อมูลหาย (โรคเดียวกับที่ `submitScope` แก้) */
+        description: `${(req.surveyZones || []).length || (req.items || []).length} `
+          + `${requestLineNoun(req.kind)} → ${req.dept}`,
         detail: "ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้",
         confirmLabel: "ส่งคำร้อง",
       };

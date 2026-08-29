@@ -13,7 +13,7 @@
 // `requestShapeError`/`requestFormBlocker` ที่ server ใช้ · เทสต์ผูกไว้ว่า
 // "ไม่มีแท็บไหนขาด ⟺ requestFormBlocker ผ่าน" ถ้าใครเพิ่มกฎข้างเดียวเทสต์จะแตก
 import {
-  lineShapeForKind, requestHasItems, requestHasPdr, requestNeedsRef,
+  lineShapeForKind, requestHasItems, requestHasPdr, requestKindMeta, requestNeedsRef,
 } from '@/lib/master/requestTypes';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { PDR_SECTIONS, pdrArtworkError, pdrFormProgress } from '@/lib/requests/pdrFields';
@@ -82,6 +82,17 @@ export function requiredChecks(form = {}) {
       tab: 'work', label: 'โครงการของดีล',
       applies: requestNeedsRef(kind, 'project') && hasDeal, ok: filled(form.projectId),
     },
+    /* ประเมินพื้นที่ (mig 0314) — สถานที่กับพื้นที่เป็นคนละช่อง ต้องขึ้น "ยังขาด"
+       แยกกัน · รวมเป็นข้อเดียวแล้วคนเลือกสถานที่แล้วยังเห็นข้อเดิมค้าง ไม่รู้ว่าขาดอะไร */
+    {
+      tab: 'work', label: 'สถานที่ที่จะให้เข้าไปประเมิน',
+      applies: requestNeedsRef(kind, 'site'), ok: filled(form.siteId),
+    },
+    {
+      tab: 'work', label: 'พื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ',
+      applies: requestNeedsRef(kind, 'site') && filled(form.siteId),
+      ok: (form.zones || []).length > 0,
+    },
     // ── แท็บ "เรื่องที่ขอ" ──────────────────────────────────────────────
     { tab: 'subject', label: 'ชื่อเรื่อง', applies: true, ok: filled(form.title) },
     {
@@ -94,7 +105,9 @@ export function requiredChecks(form = {}) {
     },
     // ── แท็บ "กำหนดและไฟล์" ─────────────────────────────────────────────
     {
-      tab: 'due', label: 'วันที่ต้องการรับงาน',
+      // ป้ายเดินตามทะเบียนหัวข้อ — งานที่ฝ่ายต้องเดินทางไปทำเองไม่ได้ "รับงาน" ที่ไหน
+      // (ตัวเดียวกับป้ายบนช่องจริง — `RequestDueUrgentFields` อ่าน `copy.dueLabel`)
+      tab: 'due', label: requestKindMeta(kind)?.form?.dueLabel || 'วันที่ต้องการรับงาน',
       applies: true, ok: filled(form.requestedDueDate),
     },
     {

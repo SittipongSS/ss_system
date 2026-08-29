@@ -31,7 +31,7 @@ const siteSurvey = {
   // `next_request_running_no` (mig 0243) รับ scope ใหม่ได้โดยไม่ต้องมี migration
   scope: 'AS',
   hasItems: false,
-  needs: ['deal'],
+  needs: ['deal', 'site'],
   lineNoun: 'พื้นที่',
   form: {
     titleLabel: 'ชื่องาน',

@@ -58,6 +58,10 @@ export const REQUEST_NEEDS = {
   quotation: { field: 'quotationId', error: 'ต้องเลือกใบเสนอราคา' },
   salesOrder: { field: 'salesOrderId', error: 'ต้องเลือกใบสั่งขาย (SO) ที่ครอบค่าบริการออกแบบกลิ่น' },
   scent: { field: 'scentId', error: 'ต้องเลือกกลิ่นจากทะเบียน' },
+  /* ⭐ สถานที่ของงานประเมินพื้นที่ (mig 0314) — **หนึ่งใบหนึ่งไซต์** (มติผู้ใช้)
+     ⚠️ ไม่ derive จากดีล: ลูกค้ารายเดียวมีได้หลายไซต์ ⇒ ต้องเลือกเอง · ด่านที่ว่า
+        ไซต์นั้นเป็นของลูกค้าเจ้าของดีลจริงไหม อยู่ที่ handler (`loadSurveySite`) */
+  site: { field: 'siteId', error: 'ต้องเลือกสถานที่ที่จะให้เข้าไปประเมิน' },
   formula: { field: 'formulaId', error: 'ต้องเลือกสูตรจากทะเบียน' },
 };
 
@@ -360,6 +364,14 @@ export function requestShapeError(kind, body = {}) {
   // handler ด้วย `resolveBillAmount` ซึ่งเห็นยอดจริงของแถว ไม่ใช่ค่าที่ client แนบมา
   if (meta.needs?.includes('quotation') && !(Number(body.billAmount) > 0)) {
     return 'ต้องระบุยอดที่ขอวางบิล';
+  }
+
+  /* ⭐ ใบประเมินต้องบอกว่า **จะให้วัดตรงไหน** — ไซต์เปล่า ๆ ไม่ใช่งานที่ TS รับไปทำได้
+     ⚠️ อยู่คู่กับ needs 'site' ไม่ใช่ `kind === 'site_survey'` — รูปเดียวกับยอดวางบิล
+        ข้างบน · รายละเอียดของแต่ละแถว (ชื่อซ้ำ · เกินเพดาน) อยู่ที่
+        `lib/service/surveyRequest.js` ซึ่งทั้งจอและ handler เรียกตัวเดียวกัน */
+  if (meta.needs?.includes('site') && !(Array.isArray(body.zones) && body.zones.length)) {
+    return 'ต้องมีพื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ';
   }
 
   // ชื่อเรื่องบังคับ**ทุกหัวข้อ** — เดิมหัวข้อขอราคายกเว้นไว้เพราะสื่อความด้วยบรรทัด

@@ -650,6 +650,14 @@ export function canAnswerRequestsFor(user, dept) {
   return departmentOf(user) === dept;
 }
 
+/* คิวคำร้องของฝ่าย TS (mig 0314) — คนที่ **ตอบ** ใบประเมินพื้นที่ได้
+   ⚠️ แคบกว่า `canEditService` ที่เมนูอื่นของโมดูลใช้: ทีมขาย SV ถือ `service:edit`
+      ด้วย แต่ไม่ใช่คนตอบคำร้องของฝ่าย TS ⇒ ถ้าใช้ตัวเดียวกัน เขาจะเห็นเมนูคิวที่
+      กดเข้าไปแล้วรับเรื่องไม่ได้สักใบ (ปุ่มหายทั้งแถบ ไม่มีอะไรบอกว่าทำไม) */
+export function canAnswerServiceRequests(user) {
+  return canAnswerRequestsFor(user, SERVICE_DEPARTMENT);
+}
+
 // เห็นระบบคำร้องไหม — **ด่านชั้นนอกของทุก endpoint ใต้ /api/sa/requests**
 //
 // ⭐ ของเดิมคือ `canViewCosting` ล้วน ซึ่งผูกคำร้องไว้กับระบบขอราคาผลิตทั้งที่เป็น

@@ -16,6 +16,7 @@ import FormulaPanel from './FormulaPanel';
 import ScentPanel from './ScentPanel';
 import FormulaDevDetail from './FormulaDevDetail';
 import ScentDevDetail from './ScentDevDetail';
+import SurveyDetail from './SurveyDetail';
 import SharedRequestDetail from './SharedRequestDetail';
 
 const BY_KIND = {
@@ -25,6 +26,9 @@ const BY_KIND = {
   // ของบรรทัดเหมือนกันทุกข้อ ⇒ จอเดียวกัน (ดู docVocabulary)
   document: DocumentDetail,
   billing_doc: DocumentDetail,
+  // ประเมินพื้นที่ (mig 0314) — ไม่มีบรรทัด `dept_request_items` เลย เนื้ออยู่ที่
+  // ตารางลูก `service_survey_zones` ⇒ ตัวกลางจะแสดงหน้าว่าง
+  site_survey: SurveyDetail,
 };
 
 // ── การ์ด panel รายหัวข้อ (ม-94) — ใต้การ์ด control กลางบนรางขวา ──────────

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Flame } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
+import TimeInput from "@/components/ui/TimeInput";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
@@ -82,7 +83,18 @@ export function RequestTitleBodyFields({ value = {}, onChange, disabled = false,
 }
 
 /** วันที่ต้องการรับงาน + ธงด่วน (+ เหตุผลที่งอกมาเมื่อติดธง) */
-export function RequestDueUrgentFields({ value = {}, onChange, disabled = false, idPrefix = "req" }) {
+export function RequestDueUrgentFields({
+  value = {}, onChange, disabled = false, idPrefix = "req",
+  /* ป้ายวันที่มาจาก **ทะเบียนหัวข้อ** (`copy.dueLabel`) — "วันที่ต้องการรับงาน" ยังเป็น
+     ค่ากลางของทุกหัวข้อ แต่งานที่ฝ่ายต้องเดินทางไปทำเองไม่ได้ "รับงาน" ที่ไหน
+     (ประเมินพื้นที่ = "วันที่ต้องการให้เข้าพื้นที่") */
+  dueLabel = "วันที่ต้องการรับงาน",
+  /* ⭐ **เวลามีเฉพาะหัวข้อที่ต้องนัดเข้าไปหาลูกค้า** (mig 0314) — วันเดียวกันแต่คนละ
+     ช่วงคือคนละงานสำหรับช่างที่ต้องวิ่งข้ามเมือง · หัวข้ออื่นไม่มีความหมาย จึงไม่ใช่
+     ช่องกลางที่ทุกใบต้องมองข้าม */
+  showTime = false,
+  dueHint = 'เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกด "แจ้งกำหนดส่ง"',
+}) {
   const set = (patch) => onChange?.({ ...value, ...patch });
 
   return (
@@ -93,14 +105,24 @@ export function RequestDueUrgentFields({ value = {}, onChange, disabled = false,
         {/* ⚠️ **คำที่ล็อกไว้: "วันที่ต้องการรับงาน"** (มติผู้ใช้ 2026-08-19) — ของเดิม
             เขียนว่า "อยากได้คำตอบภายใน" ซึ่งจริงเฉพาะหัวข้อสอบถาม · หัวข้อที่ฝ่ายต้อง
             ส่งของ (กลิ่น · สูตร · เอกสาร) ไม่ได้รอคำตอบ แต่รองาน */}
-        <label htmlFor={`${idPrefix}-due`}>วันที่ต้องการรับงาน (บังคับ)</label>
+        <label htmlFor={`${idPrefix}-due`}>{dueLabel} (บังคับ)</label>
         <DateInput
           id={`${idPrefix}-due`} value={value.requestedDueDate || ""} disabled={disabled}
           onChange={(v) => set({ requestedDueDate: v })}
         />
-        <small className={styles.hint}>
-          เป็นความคาดหวัง — ฝ่ายปลายทางจะรับปากวันจริงตอนกด "แจ้งกำหนดส่ง"
-        </small>
+        {/* ⚠️ เวลา **ไม่บังคับ** — "วันไหนก็ได้ทั้งวัน" เป็นคำตอบที่ถูกต้องของงานจริง
+            บังคับเมื่อไรคนก็กรอกเวลามั่ว ๆ ให้ผ่านด่าน แล้วช่างวางแผนจากตัวเลขที่ไม่จริง */}
+        {showTime && (
+          <div className={styles.dueTime}>
+            <span className={styles.fieldLabel}>ช่วงเวลาที่ต้องการ (ไม่บังคับ)</span>
+            <TimeInput
+              value={value.requestedDueTime || ""} disabled={disabled}
+              ariaLabel="เวลาที่ต้องการให้เข้าพื้นที่"
+              onChange={(v) => set({ requestedDueTime: v })}
+            />
+          </div>
+        )}
+        <small className={styles.hint}>{dueHint}</small>
       </div>
       <div className="form-group">
         <span className={styles.fieldLabel}>ความเร่งด่วน</span>
