@@ -36,6 +36,32 @@ export function insertRowsWithEntityCode(supabase, scope, rows, now = new Date()
   });
 }
 
+/* ── รหัสที่ประกอบเอง (มติผู้ใช้ 2026-08-29 · ไซต์ ST- / โซน ZN-) ──────────
+   ⭐ **ตัวออกรหัสไม่รู้จักรูปแบบ** อยู่แล้วโดยเจตนา (mig 0240) — มันแค่ต่อเลขรันท้าย
+      `p_prefix` แล้วเขียนลงคอลัมน์ `code` ⇒ รหัสรูปใหม่ที่ **เลขรันอยู่ท้ายสุด**
+      ออกได้โดยไม่ต้องแก้ SQL สักบรรทัด
+   ⚠️ `bucket` คือ **คีย์ถังนับ** (คอลัมน์ `month` ของ entity_number_counters ซึ่งเป็น
+      text อิสระ) — `'-'` = นับยาวตัวเดียวตลอดกาล แบบเดียวกับ AR/FG (mig 0230)
+      ห้ามเปลี่ยนคีย์ถังของ scope ที่ออกรหัสไปแล้ว: เลขจะเริ่มนับใหม่แล้วชนของเดิม
+   ⚠️ **prefix ต่างกันรายแถว = ต้องยิงทีละแถว** — RPC รับ prefix เดียวต่อหนึ่ง call
+      ⇒ ผู้เรียกที่สร้างหลายแถวคนละไซต์/คนละชั้น ต้องวนเอง และรับผลว่าล้มกลางทางได้
+      (ต่างจาก `insertRowsWithEntityCode` ที่ทั้งชุดล้มพร้อมกัน) */
+export function insertRowsWithComposedCode(supabase, { scope, bucket, prefix, width }, rows) {
+  return supabase.rpc('create_entity_rows_with_code', {
+    p_scope: scope,
+    p_month: bucket,
+    p_prefix: prefix,
+    p_width: width,
+    p_rows: rows,
+  });
+}
+
+export async function insertRowWithComposedCode(supabase, options, row) {
+  const { data, error } = await insertRowsWithComposedCode(supabase, options, [row]);
+  if (error) return { data: null, error };
+  return { data: Array.isArray(data) ? (data[0] ?? null) : null, error: null };
+}
+
 // ใบเดี่ยว — คืนแถวเดียวแทน array ให้ผู้เรียกใช้แทน .insert().select().single() ได้ตรง ๆ
 export async function insertRowWithEntityCode(supabase, scope, row, now = new Date()) {
   const { data, error } = await insertRowsWithEntityCode(supabase, scope, [row], now);

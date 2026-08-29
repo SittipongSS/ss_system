@@ -143,6 +143,15 @@ export function normalizeSiteInput(body = {}) {
   const days = normalizeAccessDays(body.accessDays);
   if (days.error) return { value: null, error: days.error };
 
+  /* ── จังหวัด (mig 0315) — **ไม่ใช่ที่อยู่ แต่เป็นตัวตน** ────────────────
+     รหัสไซต์ `ST-XXXX-AA-BBB-CCCC` ประกอบจากภาค/จังหวัด ⇒ ขาดไม่ได้ตอนสร้าง
+     ⚠️ บังคับที่ **route** ไม่ใช่ที่นี่ — ไฟล์นี้ตรวจรูปร่างล้วน และโหมดแก้ของไซต์เก่า
+        (ก่อน 0315) ต้องยังบันทึกได้แม้ยังไม่ได้เลือกจังหวัด · ที่นี่ตรวจแค่ "รูปถูกไหม" */
+  const provinceCode = String(body.provinceCode ?? '').trim();
+  if (provinceCode && !/^\d{2}$/.test(provinceCode)) {
+    return { value: null, error: 'รหัสจังหวัดไม่ถูกต้อง' };
+  }
+
   /* ── สองช่องที่ "ระบบรู้เอง" ไม่ใช่ช่องให้คนกรอก ──────────────────────
      customerAddressId = แถวที่อยู่ในทะเบียนลูกค้าที่ใช้ตั้งต้นไซต์ (mig 0313) —
        บอกที่มาอย่างเดียว ไม่ผูกให้เปลี่ยนตามกัน · ฟอร์มใช้เทียบค่าแล้วเสนอ "ดึงใหม่"
@@ -170,6 +179,10 @@ export function normalizeSiteInput(body = {}) {
       accessFrom: accessFrom ? toHHMM(accessFrom) : null,
       accessTo: accessTo ? toHHMM(accessTo) : null,
       accessDays: days.value,
+      provinceCode: provinceCode || null,
+      // ชื่อจังหวัดเก็บคู่รหัสเสมอ — จอ/รายงานประกอบข้อความได้โดยไม่ต้องเปิดทะเบียน
+      // 650KB ฝั่ง client (แพตเทิร์นเดียวกับที่อยู่ลูกค้า mig 0217)
+      province: String(body.province ?? '').trim().slice(0, 100) || null,
       isActive: body.isActive === undefined ? true : !!body.isActive,
       ownerId: body.ownerId || null,
       ownerName: body.ownerName || null,

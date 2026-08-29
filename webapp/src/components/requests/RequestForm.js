@@ -36,7 +36,7 @@ import {
   RequestBillAmountFields, RequestDueUrgentFields, RequestLineFields, RequestTitleBodyFields,
 } from "./RequestEditableFields";
 import TeamPickerField from "@/components/ui/TeamPickerField";
-import { canEditService, userTeams } from "@/lib/permissions";
+import { canCreateServiceSite, userTeams } from "@/lib/permissions";
 import SurveySiteFields from "@/components/requests/SurveySiteFields";
 import PdrForm from "@/components/requests/PdrForm";
 import { pdrRailSections } from "@/lib/requests/pdrFields";
@@ -717,7 +717,7 @@ export default function RequestForm({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          canCreateSite={canEditService(me)}
+          canCreateSite={canCreateServiceSite(me)}
         />
       )}
 

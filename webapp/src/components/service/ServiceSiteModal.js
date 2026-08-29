@@ -15,6 +15,8 @@ import {
   WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, siteAddressCarry, siteAddressDrift, toHHMM,
 } from "@/lib/service/sites";
 import { ADDRESS_USE_LABELS, addressText, addressUse } from "@/lib/master/addresses";
+import { cachedFetchJson } from "@/lib/apiCache";
+import { SITE_CODE_HINT } from "@/lib/service/siteCode";
 import styles from "./ServiceSiteModal.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -23,6 +25,8 @@ const OWN_ADDRESS = "__own__";
 
 const EMPTY = {
   customerId: "", name: "", routeZone: "", address: "", mapUrl: "",
+  // จังหวัด (mig 0315) — ไม่ใช่ที่อยู่ แต่เป็นท่อนหนึ่งของ **รหัสไซต์**
+  provinceCode: "", province: "",
   contactName: "", contactPhone: "",
   accessFrom: "", accessTo: "", accessDays: [], accessNote: "",
   note: "", isActive: true,
@@ -43,6 +47,8 @@ export default function ServiceSiteModal({
      ไม่ส่งก็ดึงเองเมื่อผู้ใช้เลือกลูกค้าในฟอร์ม ⇒ ทุกทางเข้าได้ไทล์เหมือนกัน
      ไม่ใช่ฟีเจอร์ที่มีเฉพาะบางหน้า (โรคเดียวกับฟอร์มสร้าง/แก้ที่เพี้ยนหากัน) */
   const [fetchedAddresses, setFetchedAddresses] = useState([]);
+  // ทะเบียนจังหวัด (~60KB) — แคชไว้ 24 ชม. แบบเดียวกับฟอร์มที่อยู่ลูกค้า
+  const [provinces, setProvinces] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -65,6 +71,8 @@ export default function ServiceSiteModal({
         accessNote: site.accessNote || "",
         note: site.note || "",
         isActive: site.isActive !== false,
+        provinceCode: site.provinceCode || "",
+        province: site.province || "",
         customerAddressId: site.customerAddressId || null,
       }
       : { ...EMPTY, ...(defaults || {}) });
@@ -72,6 +80,17 @@ export default function ServiceSiteModal({
     // ซึ่งเป็นเรื่องปกติของไซต์ยุคก่อน mig 0313 — ไม่ใช่ "ที่อยู่อื่น")
     setPickedAddressId(site?.customerAddressId || (defaults?.customerAddressId ?? ""));
   }, [open, site, defaults]);
+
+  /* ทะเบียนจังหวัดโหลดครั้งเดียวตอนเปิดโมดัล — ห้าม import ทะเบียน 650KB ตรง ๆ
+     (server-only) · โหลดไม่ได้ = ช่องว่างแล้วบันทึกไม่ผ่านด่าน ซึ่งบอกเหตุอยู่แล้ว */
+  useEffect(() => {
+    if (!open) return undefined;
+    let alive = true;
+    cachedFetchJson("/api/master/thai-address", 24 * 60 * 60 * 1000)
+      .then((d) => { if (alive) setProvinces(d?.provinces || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open]);
 
   const addressOptions = customerAddresses.length ? customerAddresses : fetchedAddresses;
   const sourceAddress = pickedAddressId && pickedAddressId !== OWN_ADDRESS
@@ -145,6 +164,13 @@ export default function ServiceSiteModal({
   );
 
   const submit = async () => {
+    /* ⚠️ **จังหวัดบังคับเฉพาะตอนสร้าง** — `normalizeSiteInput` จงใจไม่บังคับ (ไซต์ยุค
+       ก่อน mig 0315 ต้องยังแก้ช่องอื่นได้) ⇒ ด่านของ "ใบใหม่" อยู่ที่ route และที่นี่
+       ⭐ บอกตั้งแต่บนจอ ดีกว่าปล่อยให้กดบันทึกแล้วเจอ 400 จาก server */
+    if (!editing && !form.provinceCode) {
+      setError('ต้องเลือกจังหวัดของไซต์ — รหัสไซต์ประกอบจากภาคและจังหวัด');
+      return;
+    }
     // validate ด้วยตัวเดียวกับฝั่ง server — ข้อความผิดพลาดตรงกันคำต่อคำ
     const { error: invalid } = normalizeSiteInput(form);
     if (invalid) { setError(invalid); return; }
@@ -178,6 +204,30 @@ export default function ServiceSiteModal({
         <label className={styles.field}>
           <span>ชื่อไซต์ *</span>
           <Input value={form.name} onChange={change("name")} placeholder="สาขาเอ็มควอเทียร์ ชั้น 3" maxLength={150} />
+        </label>
+
+        {/* ── จังหวัด (mig 0315) ────────────────────────────────────────────
+            ⭐ **ไม่ใช่ช่องที่อยู่ แต่เป็นตัวตน** — รหัสไซต์ `ST-XXXX-AA-BBB-CCCC`
+               ประกอบจากภาคและจังหวัด ⇒ ขาดไม่ได้ตอนสร้าง
+            ⚠️ **แก้ทีหลังไม่เปลี่ยนรหัสที่ออกไปแล้ว** — บอกไว้ใต้ช่องในโหมดแก้
+               ไม่งั้นคนจะคาดหวังว่าแก้จังหวัดแล้วรหัสตามไปด้วย */}
+        <label className={styles.field}>
+          <span>จังหวัด {editing ? "" : "*"}</span>
+          <SearchableSelect
+            value={form.provinceCode}
+            onChange={(code) => {
+              const row = provinces.find((p) => p.code === code);
+              setForm((prev) => ({ ...prev, provinceCode: code, province: row?.th || "" }));
+            }}
+            options={provinces.map((p) => ({ value: p.code, label: p.th, search: `${p.th} ${p.en}` }))}
+            placeholder="เลือกจังหวัด"
+            ariaLabel="จังหวัดของไซต์"
+          />
+          <small>
+            {editing
+              ? "แก้ได้ แต่รหัสไซต์ที่ออกไปแล้วไม่เปลี่ยนตาม — รหัสคือตัวตน ไม่ใช่สรุปที่อยู่ปัจจุบัน"
+              : `ใช้ประกอบรหัสไซต์ ${SITE_CODE_HINT} — เลือกแล้วเปลี่ยนภายหลังได้ แต่รหัสจะไม่เปลี่ยนตาม`}
+          </small>
         </label>
 
         <label className={styles.field}>

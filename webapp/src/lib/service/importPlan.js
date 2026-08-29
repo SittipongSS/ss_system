@@ -113,6 +113,7 @@ export function planImport(drafts = [], snapshot = {}) {
         action: 'create', ref: siteRef, name: draft.site.name,
         customerId: customer.id, customerName: customer.name,
         routeZone: draft.site.routeZone, address: draft.site.address,
+        province: draft.site.province || null,
         contactName: draft.site.contactName, contactPhone: draft.site.contactPhone,
       };
     }
@@ -133,7 +134,7 @@ export function planImport(drafts = [], snapshot = {}) {
       } else {
         zoneRef = `new-zone-${plannedZones.size + 1}`;
         plannedZones.set(zKey, { ref: zoneRef, name: draft.zone.name });
-        zonePlan = { action: 'create', ref: zoneRef, siteRef, name: draft.zone.name };
+        zonePlan = { action: 'create', ref: zoneRef, siteRef, name: draft.zone.name, floor: draft.zone.floor || null };
       }
     }
 

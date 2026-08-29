@@ -17,7 +17,7 @@ import Workspace from "@/components/ui/Workspace";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canEditService, canImportServiceData } from "@/lib/permissions";
+import { canCreateServiceSite, canEditService, canImportServiceData } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
@@ -30,6 +30,12 @@ export default function ServiceSitesPage() {
   // ⚠️ cap อย่างเดียวไม่พอ — service:edit ถือกว้างทั้ง staff และ sales role
   // ฝ่าย TS / ทีม SV คือตัวกั้นจริง (เหมือนที่ server ทำใน requireService)
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
+  /* ⭐ **สร้างกว้างกว่าแก้** (มติผู้ใช้ 2026-08-29) — ฝ่ายขายเพิ่มไซต์ของลูกค้าได้
+     แต่ยังแก้/ลบไม่ได้ · ปุ่ม "เพิ่มไซต์" จึงอ่านสิทธิ์คนละตัวกับปุ่มแก้ในแถว */
+  const canCreate = useMemo(
+    () => canCreateServiceSite({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
   // นำเข้าเป็นก้อนแคบกว่าการแก้รายใบ — หัวหน้าฝ่ายบริการขึ้นไปเท่านั้น (F-8)
   const canImport = useMemo(
     () => canImportServiceData({ role, team, teams, department }),
@@ -93,7 +99,8 @@ export default function ServiceSitesPage() {
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("th");
     if (!needle) return sites;
-    return sites.filter((site) => [site.name, site.customerName, site.routeZone, site.code]
+    // จังหวัดเข้าชุดค้นด้วย (mig 0315) — เป็นตัวตนถาวรของไซต์ คนถามหา "ไซต์ที่เชียงใหม่"
+    return sites.filter((site) => [site.name, site.customerName, site.routeZone, site.code, site.province]
       .filter(Boolean).some((field) => String(field).toLocaleLowerCase("th").includes(needle)));
   }, [sites, search]);
 
@@ -102,7 +109,7 @@ export default function ServiceSitesPage() {
       icon={<MapPin size={20} aria-hidden="true" />}
       title="ไซต์บริการ"
       subtitle="จุดติดตั้งระบบกระจายกลิ่นของลูกค้า และเครื่องที่อยู่หน้างาน"
-      headerRight={canEdit ? (
+      headerRight={canCreate ? (
         <>
           {/* ⚠️ นำเข้าเป็น **ปุ่มรอง** — เทอราคอตตาหนึ่งปุ่มต่อหน้า และของที่คนทำ
               ทุกวันคือเพิ่มไซต์ทีละแห่ง ส่วนนำเข้าเป็นงานตั้งต้นครั้งเดียว */}
@@ -123,7 +130,7 @@ export default function ServiceSitesPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อไซต์ ลูกค้า เขตวิ่งงาน หรือรหัส"
+            placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
             aria-label="ค้นหาไซต์บริการ"
             className={styles.searchInput}
           />
@@ -136,13 +143,15 @@ export default function ServiceSitesPage() {
       {loading || loadError ? (
         loading ? <SkeletonRows rows={5} /> : null
       ) : sites.length === 0 ? (
-        <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormSite(null) : undefined}>
-          {canEdit
+        <EmptyState icon={MapPin} dashed={canCreate} onClick={canCreate ? () => setFormSite(null) : undefined}>
+          {canCreate
             ? "ยังไม่มีไซต์บริการในระบบ — กดเพื่อเพิ่มไซต์แรก"
             : "ยังไม่มีไซต์บริการในระบบ"}
         </EmptyState>
       ) : (
-        <TableShell>
+        /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
+           ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
+        <TableShell minWidth={960}>
           <table>
             <thead>
               <tr>

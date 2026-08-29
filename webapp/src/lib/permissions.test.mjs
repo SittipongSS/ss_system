@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -856,3 +856,40 @@ test('attributionTeam: อ้างอิง "คนที่จะเป็น�
   assert.equal(attributionTeam(owner, 'ODM'), 'SV', 'ทีมของคนกดไม่มีผลกับทีมของงาน');
   assert.equal(attributionTeam(actor, 'SV'), 'ODM');
 });
+
+// ── สร้างไซต์บริการ (มติผู้ใช้ 2026-08-29) ─────────────────────────────────
+test('🔴 ฝ่ายขายสร้างไซต์ได้ แต่ยังแก้ไม่ได้ — สองสิทธิ์คนละตัว', () => {
+  const ae = { role: 'ae', department: 'SA', team: 'ODM' };
+  assert.equal(canCreateServiceSite(ae), true);
+  // ⚠️ ต้องไม่พลอยได้สิทธิ์แก้ทั้งโมดูล (นัด/รอบ/เครื่อง/การผูกโซน)
+  assert.equal(canEditService(ae), false);
+
+  // ช่าง TS และทีมขาย SV ยังสร้างได้เหมือนเดิมผ่านทางเดิม
+  assert.equal(canCreateServiceSite({ role: 'ts', department: 'TS' }), true);
+  assert.equal(canCreateServiceSite({ role: 'ae', department: 'SA', team: 'SV', teams: ['SV'] }), true);
+});
+
+test('🔴 คนที่ไม่ใช่ฝ่ายขายและไม่ใช่ฝ่ายบริการ สร้างไซต์ไม่ได้ — แม้ถือ cap ครบ', () => {
+  // viewer/executive ถือ customers:view + salesplan:view ครบ แต่เป็นสิทธิ์อ่านล้วน
+  assert.equal(canCreateServiceSite({ role: 'viewer' }), false);
+  assert.equal(canCreateServiceSite({ role: 'executive' }), false);
+  /* 🐞 **สองตัวนี้เคยหลุด** ตอนที่ด่านถาม cap (`customers:view && salesplan:view`) —
+     RD กับบัญชีถือ cap ทั้งคู่ไว้อ่านดีลตอนตอบคำร้อง ⇒ กดปุ่มได้แล้วเจอ forbidden ดิบ */
+  assert.equal(canCreateServiceSite({ role: 'rd', department: 'RD' }), false);
+  assert.equal(canCreateServiceSite({ role: 'finance', department: 'FN' }), false);
+  // ฝ่ายโรงงานไม่เกี่ยวกับงานบริการเลย
+  assert.equal(canCreateServiceSite({ role: 'wh', department: 'WH' }), false);
+  assert.equal(canCreateServiceSite({ role: 'qc', department: 'QC' }), false);
+  assert.equal(canCreateServiceSite({ role: 'pc', department: 'PC' }), false);
+  assert.equal(canCreateServiceSite({ role: 'secretary' }), false);
+  assert.equal(canCreateServiceSite({}), false);
+})
+
+/* 🔴 สแนปช็อตทั้งชุด — ลิสต์ที่ไล่ทีละตัวข้างบนบอกได้แค่ว่า "ตัวที่เรานึกออกไม่ผ่าน"
+   ⇒ role ใหม่ที่ถูกเพิ่มเข้าระบบแล้วเผลอได้สิทธิ์ จะโผล่ที่นี่ทันที ไม่ต้องรอให้ใครนึกถึง */
+test('🔴 ชุด role ที่สร้างไซต์บริการได้ — เปลี่ยนเมื่อไรต้องตั้งใจ', () => {
+  assert.deepEqual(
+    ROLES.filter((role) => canCreateServiceSite({ role })),
+    ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ts'],
+  );
+})

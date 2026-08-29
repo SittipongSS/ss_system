@@ -7,6 +7,7 @@
 // `UNIQUE (siteId, lower(btrim(name)))` (mig 0297) ⇒ ปล่อยไปถึง insert จะได้ error ดิบ
 // จาก Postgres ที่ไม่บอกว่าต้องทำอะไรต่อ
 import { toHHMM } from '@/lib/service/sites';
+import { normalizeFloor } from '@/lib/service/zoneCode';
 
 // เทียบชื่อโซนแบบเดียวกับ unique index ของ DB เป๊ะ ๆ — ไม่งั้นด่านบนจอกับด่านที่ DB
 // จะไม่ตรงกัน แล้วจะมีเคสที่ผ่านตรงนี้แต่ไปตายตอนบันทึก
@@ -34,10 +35,11 @@ export function normalizeSurveySite(input = {}) {
 
 /* ── พื้นที่ที่ต้องประเมิน ────────────────────────────────────────────────
    แถวหนึ่งเป็นได้สองแบบ: โซนเดิม (`zoneId`) หรือพื้นที่ใหม่ (`name`)
-   ⚠️ พื้นที่ใหม่ **ยังไม่มีรหัส ZN** จนกว่าจะกดส่งใบ — ที่นี่เก็บแค่ชื่อ
-   ⭐ **ไม่มีช่องอาคาร/ชั้นบนใบ** ทั้งที่ `service_zones` มีคอลัมน์นั้น (mig 0314) —
-      สองช่องนั้นเป็นของ *ทะเบียน* ที่ TS กรอกตอนไปยืนอยู่หน้างานจริง · ให้ SA เดา
-      จากออฟฟิศแล้วเขียนทับทะเบียนคือทางที่ข้อมูลผิดเข้าระบบเงียบ ๆ */
+   ⚠️ พื้นที่ใหม่ **ยังไม่มีรหัส ZN** จนกว่าจะกดส่งใบ — ที่นี่เก็บชื่อกับชั้น
+   ⭐ **ชั้นบังคับเฉพาะพื้นที่ใหม่** (mig 0315) — รหัสโซน `ZN-CCCC-FF-DDDDD` มีชั้น
+      อยู่ในตัวรหัส ⇒ ไม่มีชั้นก็ออกรหัสไม่ได้ · โซนเดิมไม่ต้องถามซ้ำ ชั้นอยู่ในทะเบียนแล้ว
+      (เดิมไฟล์นี้จงใจไม่มีช่องชั้น โดยให้เหตุผลว่าเป็นของทะเบียนที่ TS กรอกหน้างาน —
+       มติรหัสใหม่ 2026-08-29 ทำให้เหตุผลนั้นใช้ไม่ได้: ชั้นกลายเป็น *ตัวตน* ของโซน) */
 export function normalizeSurveyZones(input) {
   const rows = Array.isArray(input) ? input : [];
   if (!rows.length) return { value: null, error: 'ต้องมีพื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ' };
@@ -56,7 +58,7 @@ export function normalizeSurveyZones(input) {
       // โซนเดิม — ชื่อมาจากทะเบียน ไม่ใช่จาก client (ชื่อที่ client ส่งอาจเก่า)
       if (seenZone.has(zoneId)) return { value: null, error: `${at}: เลือกพื้นที่เดิมซ้ำกับรายการก่อนหน้า` };
       seenZone.add(zoneId);
-      out.push({ zoneId, name: null, sortOrder: index, note: text(raw?.note, 1000) });
+      out.push({ zoneId, name: null, floor: null, sortOrder: index, note: text(raw?.note, 1000) });
       continue;
     }
 
@@ -66,7 +68,11 @@ export function normalizeSurveyZones(input) {
       return { value: null, error: `${at}: ชื่อ "${name}" ซ้ำกับรายการที่ ${seenName.get(key) + 1} ในใบเดียวกัน` };
     }
     seenName.set(key, index);
-    out.push({ zoneId: null, name, sortOrder: index, note: text(raw?.note, 1000) });
+    // ⚠️ ตรวจชั้น **หลัง** ด่านชื่อซ้ำ — ชื่อซ้ำเป็นเรื่องของ "รายการไหนชนกับรายการไหน"
+    //    ซึ่งผู้ใช้ต้องเห็นก่อน ไม่งั้นแก้ชั้นเสร็จแล้วเจอเรื่องชื่อซ้ำอีกรอบ
+    const floor = normalizeFloor(raw?.floor);
+    if (floor.error) return { value: null, error: `${at}: ${floor.error}` };
+    out.push({ zoneId: null, name, floor: floor.value, sortOrder: index, note: text(raw?.note, 1000) });
   }
   return { value: out, error: null };
 }

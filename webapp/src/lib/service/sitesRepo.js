@@ -115,7 +115,10 @@ export async function findAsset(supabase, siteId, assetId) {
 //    รายนี้จริง (mig 0313) · เป็น jsonb ในแถวเดียวกัน ไม่มีคำสั่งเพิ่ม
 export async function findCustomer(supabase, customerId) {
   const { data, error } = await supabase
-    .from('customers').select('id, name, arCode, addresses').eq('id', customerId).maybeSingle();
+    // ⚠️ `team`/`teams` ต้องมาด้วย — ด่าน "ไซต์ของลูกค้าที่ฉันดูแล" อ่านจากสองช่องนี้
+    //    ไม่มีมาแล้ว `caretakerTeamsOf` คืน [] ซึ่งแปลว่า "ของกลาง ใครก็แก้ได้"
+    .from('customers').select('id, name, arCode, addresses, team, teams')
+    .eq('id', customerId).maybeSingle();
   if (error) throw error;
   return data || null;
 }

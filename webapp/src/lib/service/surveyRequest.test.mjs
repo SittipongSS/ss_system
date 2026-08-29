@@ -40,7 +40,7 @@ test('พื้นที่ใหม่ต้องมีชื่อ · พื�
 
 test('🔴 ชื่อพื้นที่ใหม่ซ้ำกันเองในใบเดียว — ต้องตีกลับก่อนถึง DB', () => {
   // เทียบแบบเดียวกับ UNIQUE (siteId, lower(btrim(name))) ของ mig 0297 เป๊ะ ๆ
-  const dup = normalizeSurveyZones([{ name: 'ล็อบบี้ ชั้น G' }, { name: '  ล็อบบี้   ชั้น g  ' }]);
+  const dup = normalizeSurveyZones([{ name: 'ล็อบบี้ ชั้น G', floor: 'G' }, { name: '  ล็อบบี้   ชั้น g  ', floor: 'G' }]);
   assert.match(dup.error, /ซ้ำกับรายการที่ 1/);
   assert.equal(zoneNameKey('  ล็อบบี้   ชั้น G '), zoneNameKey('ล็อบบี้ ชั้น g'));
 });
@@ -56,7 +56,7 @@ test('เพดานกันใบที่ใหญ่เกินจริ�
 
 // ── ชนกับโซนที่มีอยู่แล้วในไซต์ ─────────────────────────────────────────
 test('🔴 ชื่อใหม่ชนกับโซนเดิมของไซต์ — ข้อความต้องบอกรหัส ZN ของตัวที่ชน', () => {
-  const zones = normalizeSurveyZones([{ zoneId: 'ZN-9' }, { name: 'ล็อบบี้ชั้น G' }]).value;
+  const zones = normalizeSurveyZones([{ zoneId: 'ZN-9' }, { name: 'ล็อบบี้ชั้น G', floor: 'G' }]).value;
   const clash = surveyZoneNameClash(zones, [{ id: 'ZN-1', code: 'ZN-26030021', name: 'ล็อบบี้ชั้น G' }]);
   assert.match(clash, /ZN-26030021/);
   assert.match(clash, /เลือกจากพื้นที่เดิมแทน/);
@@ -76,12 +76,23 @@ test('payload ที่ถูกต้องผ่านครบ', () => {
   const { value, error } = normalizeSurveyRequest({
     siteId: 'SVS-1',
     requestedDueTime: '13:00',
-    zones: [{ zoneId: 'ZN-1' }, { name: 'โซนอาหารชั้น 4' }],
+    zones: [{ zoneId: 'ZN-1' }, { name: 'โซนอาหารชั้น 4', floor: '4' }],
   });
   assert.equal(error, null);
   assert.equal(value.siteId, 'SVS-1');
   assert.equal(value.zones.length, 2);
-  // อาคาร/ชั้นไม่อยู่บนใบ — TS กรอกลงทะเบียนตอนอยู่หน้างาน
-  assert.equal(value.zones[1].building, undefined);
+  // ชั้นของพื้นที่ใหม่เก็บเป็นค่ามาตรฐาน — เป็นท่อน FF ของรหัสโซน (mig 0315)
+  assert.equal(value.zones[1].floor, '04');
+  assert.equal(value.zones[0].floor, null);   // โซนเดิมไม่ต้องถามชั้นซ้ำ
   assert.equal(value.requestedDueTime, '13:00');
+});
+
+// ── ชั้นของพื้นที่ใหม่ (mig 0315) ──────────────────────────────────────────
+test('🔴 พื้นที่ใหม่ต้องมีชั้น — ชั้นเป็นท่อนหนึ่งของรหัสโซน ไม่ใช่ข้อมูลเสริม', () => {
+  const noFloor = normalizeSurveyZones([{ name: 'โซนอาหาร' }]);
+  assert.match(noFloor.error, /พื้นที่รายการที่ 1: ต้องระบุชั้น/);
+  // ชั้นรูปผิดก็ตีกลับพร้อมบอกว่ารายการไหน
+  assert.match(normalizeSurveyZones([{ name: 'โซนอาหาร', floor: 'ชั้นบน' }]).error, /รายการที่ 1/);
+  // โซนเดิมไม่ต้องมีชั้น — ทะเบียนรู้อยู่แล้ว
+  assert.equal(normalizeSurveyZones([{ zoneId: 'ZN-1' }]).error, null);
 });

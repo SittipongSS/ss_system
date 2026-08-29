@@ -12,14 +12,16 @@
 // ⚠️ **โหลดของเองในคอมโพเนนต์นี้** (ไม่รับผ่าน props เหมือนดีล/SO) — ทะเบียนไซต์
 //    ผูกกับ *ลูกค้าของดีลที่เพิ่งเลือก* ⇒ ผู้เรียกทุกที่ (หน้าเปิดคำร้อง + โมดัลใน
 //    หน้าอื่น) จะต้องรู้จัก /api/service/sites เหมือนกันหมดถ้าให้ส่งมาทางพรอป
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Layers, Plus, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { apiJson } from "@/lib/apiFetch";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
+import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import styles from "./requestForm.module.css";
 
 // เกินเท่านี้แล้วแผ่นเลือกยาวกว่าหน้าจอ — ค่อยเปลี่ยนเป็นช่องค้นหา
@@ -42,14 +44,16 @@ export default function SurveySiteFields({
   const [picking, setPicking] = useState(false);
   // `adding` แยกจากเนื้อของร่าง — ช่องเปล่ากับ "ยังไม่เปิดช่อง" คนละสถานะ
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: "", note: "" });
+  // โมดัลสร้างสถานที่ — **ฟอร์มตัวเดียวกับทะเบียนไซต์** (กฎ AGENTS.md) ไม่ใช่ฟอร์มที่สอง
+  const [creatingSite, setCreatingSite] = useState(false);
+  const [draft, setDraft] = useState({ name: "", floor: "", note: "" });
 
   const set = (patch) => onChange({ ...value, ...patch });
 
   // ทะเบียนไซต์ของลูกค้าเจ้าของดีล — เปลี่ยนดีลข้ามลูกค้าแล้วต้องล้างที่เลือกไว้
   // (ไม่ล้าง = ใบไปเกาะไซต์ของลูกค้าคนก่อน แล้วโดน handler ตีกลับตอนกดบันทึก)
   useEffect(() => {
-    if (!customerId) { setSites([]); return; }
+    if (!customerId) { setSites([]); return undefined; }
     let alive = true;
     setLoading(true);
     apiJson(`/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`)
@@ -58,6 +62,17 @@ export default function SurveySiteFields({
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [customerId]);
+
+  /* 🐞 **เปลี่ยนดีลข้ามลูกค้าแล้วไซต์เดิมค้างอยู่** — คอมเมนต์เดิมอ้างว่าล้างให้ แต่
+     effect ข้างบนแตะแค่ลิสต์ · ใบจะเกาะไซต์ของลูกค้าคนก่อนแล้วโดน handler ตีกลับ
+     ตอนกดบันทึก โดยที่จอยังโชว์ชื่อไซต์เดิมอยู่
+     ⚠️ ตัดสินจาก **ลิสต์ที่โหลดมาแล้ว** ไม่ใช่จากการที่ customerId เปลี่ยน — โหมดแก้
+        โหลดใบก่อนแล้ว customerId ตามมาทีหลัง ถ้าล้างทันทีจะลบของที่บันทึกไว้ทิ้ง */
+  useEffect(() => {
+    if (!siteId || loading || !customerId) return;
+    if (sites.some((row) => row.id === siteId)) return;
+    set({ siteId: "", zones: [] });
+  });
 
   // โซนของไซต์ที่เลือก — ใช้ทั้งปุ่ม "เลือกจากพื้นที่เดิม" และป้ายชื่อบนแถว
   useEffect(() => {
@@ -70,13 +85,29 @@ export default function SurveySiteFields({
     return () => { alive = false; };
   }, [siteId]);
 
+  /* ⭐ **สร้างสถานที่ได้ตรงนี้เลย** (มติผู้ใช้ 2026-08-29 — เปิดสิทธิ์ให้ SA สร้างไซต์)
+     จังหวะที่คนขายรู้ว่าลูกค้าจะติดตั้งที่ไหนคือตอนกำลังเปิดใบประเมินนี่เอง ⇒ ให้เดิน
+     ต่อได้โดยไม่ต้องออกไปทะเบียนแล้วกลับมาเปิดใบใหม่
+     ⚠️ ยิง POST เส้นเดียวกับทะเบียน (`/api/service/sites`) ⇒ ด่านสิทธิ์/ด่านรหัสเป็น
+        ตัวเดียวกันเป๊ะ ไม่มีทางลัดที่ตรวจน้อยกว่า */
+  const createSite = async (payload) => {
+    const created = await apiJson("/api/service/sites", {
+      method: "POST",
+      json: { ...payload, customerId },
+      fallbackError: "สร้างสถานที่ไม่สำเร็จ",
+    });
+    setSites((prev) => [...prev, created]);
+    set({ siteId: created.id, zones: [] });
+    return created;
+  };
+
   const pickSite = (id) => {
     if (id === siteId) return;
     // ⚠️ เปลี่ยนไซต์ = ล้างพื้นที่ทั้งลิสต์ — โซนเดิมที่เลือกไว้เป็นของไซต์เก่า
     //    (handler ตรวจซ้ำอยู่แล้ว แต่ให้ผู้ใช้เห็นผลทันทีดีกว่าถูกตีกลับตอนกดส่ง)
     set({ siteId: id, zones: [] });
     setAdding(false);
-    setDraft({ name: "", note: "" });
+    setDraft({ name: "", floor: "", note: "" });
   };
 
   const addZone = (row) => set({ zones: [...zones, row] });
@@ -96,13 +127,26 @@ export default function SurveySiteFields({
     const name = draft.name.trim().replace(/\s+/g, " ");
     if (!name) return;
     if (takenNames.has(zoneNameKey(name))) return;   // ปุ่มจางอยู่แล้ว — กันซ้ำอีกชั้น
-    addZone({ name, note: draft.note.trim() || null });
-    setDraft({ name: "", note: "" });
+    const floor = normalizeFloor(draft.floor);
+    if (floor.error) return;
+    addZone({ name, floor: floor.value, note: draft.note.trim() || null });
+    setDraft({ name: "", floor: "", note: "" });
     setAdding(false);
   };
 
   const draftName = draft.name.trim().replace(/\s+/g, " ");
   const draftClash = !!draftName && takenNames.has(zoneNameKey(draftName));
+  // ชั้นของพื้นที่ใหม่ (mig 0315) — เป็นท่อนหนึ่งของรหัสโซนที่จะออกตอนกดส่ง
+  const draftFloor = normalizeFloor(draft.floor);
+
+  /* ⚠️ **`defaults` ต้องเป็นตัวเดิมข้ามเรนเดอร์** — `ServiceSiteModal` มีมันอยู่ใน deps
+     ของ effect ที่ `setForm(...)` ⇒ object literal ใหม่ทุกเรนเดอร์ = ฟอร์มถูกล้าง
+     ทุกครั้งที่ผู้ใช้พิมพ์ (state ของพ่อขยับ → พ่อเรนเดอร์ใหม่ → defaults ใหม่ → รีเซ็ต) */
+  const siteDefaults = useMemo(() => ({ customerId }), [customerId]);
+  const siteCustomers = useMemo(
+    () => (customerId ? [{ id: customerId, name: customerName || customerId }] : []),
+    [customerId, customerName],
+  );
 
   const siteOptions = sites.map((s) => ({
     value: s.id,
@@ -121,13 +165,12 @@ export default function SurveySiteFields({
         ) : loading ? (
           <small className={styles.hint}>กำลังโหลดทะเบียนไซต์ของ {customerName || "ลูกค้ารายนี้"}…</small>
         ) : !sites.length ? (
-          /* ⭐ ทางตันต้องบอกทางออก ไม่ใช่ช่องว่าง — SA ส่วนใหญ่สร้างไซต์เองไม่ได้
-             (สิทธิ์แก้ทะเบียนบริการอยู่ที่ฝ่าย TS กับทีมขาย SV — canEditService) */
+          /* ทางตันต้องบอกทางออก ไม่ใช่ช่องว่าง — คนที่สร้างไม่ได้ต้องรู้ว่าไปขอใคร */
           <small className={styles.hint}>
             {customerName || "ลูกค้ารายนี้"} ยังไม่มีสถานที่ในทะเบียนไซต์บริการ —
             {canCreateSite
-              ? " สร้างที่ /service/sites แล้วกลับมาเลือก"
-              : " ขอให้ฝ่ายบริการ (TS) หรือทีมขาย SV สร้างให้ก่อน แล้วกลับมาเลือก"}
+              ? ' กดปุ่ม "สร้างสถานที่ใหม่" ข้างล่างได้เลย'
+              : " บัญชีของคุณเป็นสิทธิ์อ่านอย่างเดียว — ให้ฝ่ายขายหรือฝ่ายบริการเป็นคนสร้าง"}
           </small>
         ) : siteOptions.length > TILE_LIMIT ? (
           <SearchableSelect
@@ -155,7 +198,27 @@ export default function SurveySiteFields({
             ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
           />
         )}
+        {canCreateSite && !!customerId && (
+          <div className={styles.zoneActions}>
+            <Button
+              type="button" size="sm" variant="outline" disabled={disabled}
+              icon={<Plus size={16} />}
+              onClick={() => setCreatingSite(true)}
+            >
+              สร้างสถานที่ใหม่
+            </Button>
+          </div>
+        )}
       </div>
+
+      {/* ฟอร์มไซต์ตัวเดียวกับทะเบียน — ล็อกลูกค้าไว้ที่ลูกค้าของดีล (ใบนี้เป็นของเขา) */}
+      <ServiceSiteModal
+        open={creatingSite}
+        customers={siteCustomers}
+        defaults={siteDefaults}
+        onClose={() => setCreatingSite(false)}
+        onSave={createSite}
+      />
 
       {!!siteId && (
         <div className="form-group col-span-2">
@@ -174,7 +237,7 @@ export default function SurveySiteFields({
                     <small className={styles.hint}>
                       {row.zoneId
                         ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · วัดซ้ำพื้นที่เดิม`
-                        : "พื้นที่ใหม่ — ได้รหัส ZN ตอนกดส่งใบ"}
+                        : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"} — ได้รหัส ZN ตอนกดส่งใบ`}
                       {row.note ? ` · ${row.note}` : ""}
                     </small>
                   </span>
@@ -220,6 +283,16 @@ export default function SurveySiteFields({
                 onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitDraft(); } }}
               />
+              {/* ⚠️ ชั้นบังคับ — เป็นท่อน FF ของรหัสโซน (ไม่มีชั้นก็ออกรหัสไม่ได้ตอนกดส่ง) */}
+              <Input
+                value={draft.floor}
+                disabled={disabled}
+                placeholder="ชั้น เช่น 4 หรือ G"
+                aria-label="ชั้นของพื้นที่"
+                invalid={!!draft.floor && !!draftFloor.error}
+                onChange={(e) => setDraft((d) => ({ ...d, floor: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitDraft(); } }}
+              />
               <Input
                 value={draft.note}
                 disabled={disabled}
@@ -227,12 +300,16 @@ export default function SurveySiteFields({
                 aria-label="หมายเหตุของพื้นที่"
                 onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
               />
-              <Button type="button" tone="primary" size="sm" disabled={disabled || !draftName || draftClash} onClick={submitDraft}>
+              <Button
+                type="button" tone="primary" size="sm"
+                disabled={disabled || !draftName || draftClash || !!draftFloor.error}
+                onClick={submitDraft}
+              >
                 เพิ่ม
               </Button>
               <Button
                 type="button" variant="ghost" size="sm" disabled={disabled}
-                onClick={() => { setAdding(false); setDraft({ name: "", note: "" }); }}
+                onClick={() => { setAdding(false); setDraft({ name: "", floor: "", note: "" }); }}
               >
                 ยกเลิก
               </Button>
@@ -240,6 +317,10 @@ export default function SurveySiteFields({
                 <small className={styles.hint}>
                   สถานที่นี้มีพื้นที่ชื่อนี้อยู่แล้ว — เลือกจากพื้นที่เดิมแทน
                 </small>
+              )}
+              {/* ⚠️ ปุ่มจางต้องบอกเหตุเสมอ — ช่องชั้นว่างอยู่ก็เข้าข่าย ไม่ใช่เฉพาะตอนพิมพ์ผิด */}
+              {!draftClash && !!draftFloor.error && (!!draft.floor || !!draftName) && (
+                <small className={styles.hint}>{draftFloor.error}</small>
               )}
             </div>
           )}

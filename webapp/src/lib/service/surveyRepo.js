@@ -8,7 +8,8 @@
 // "เกิดตอน SA **กดส่ง**" ไม่ใช่ตอนบันทึกร่าง ⇒ ห้ามย้ายการสร้างโซนไปไว้ตอนสร้างร่าง
 // (ถ้าย้าย ร่างที่ถูกทิ้งจะกินรหัส ZN และทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า)
 import { genId } from '@/lib/id';
-import { insertRowsWithEntityCode } from '@/lib/entityCode';
+import { insertRowWithComposedCode } from '@/lib/entityCode';
+import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { zoneNameKey } from '@/lib/service/surveyRequest';
 
 /* ไซต์ที่ใบอ้าง ต้องมีจริง **และเป็นของลูกค้ารายเดียวกับดีล**
@@ -52,6 +53,9 @@ export async function insertSurveyZones(supabase, { requestId, zones, existingZo
     zoneId: zone.zoneId || null,
     // โซนเดิมใช้ชื่อจากทะเบียน · พื้นที่ใหม่ใช้ชื่อที่พิมพ์มา
     zoneName: zone.zoneId ? (byId.get(zone.zoneId)?.name || zone.zoneId) : zone.name,
+    // ชั้นของ **พื้นที่ใหม่** เท่านั้น (mig 0315) — โซนเดิมมีชั้นอยู่ในทะเบียนแล้ว
+    // ⚠️ ไม่มีชั้น = ตอนกดส่งออกรหัสโซนไม่ได้ · CHECK ของตารางกันไว้อีกชั้น
+    floor: zone.zoneId ? null : (zone.floor || null),
     note: zone.note || null,
     sortOrder: zone.sortOrder ?? 0,
   }));
@@ -70,6 +74,12 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
   const pending = rows.filter((r) => !r.zoneId);
   if (!pending.length) return { created: 0, error: null };
 
+  // รหัสโซนอ้าง **เลขรันของไซต์** ⇒ ต้องรู้รหัสไซต์ก่อนออกรหัสโซน (mig 0315)
+  const { data: site, error: siteError } = await supabase
+    .from('service_sites').select('id, code').eq('id', siteId).maybeSingle();
+  if (siteError) return { created: 0, error: siteError.message };
+  if (!site) return { created: 0, error: 'ไม่พบสถานที่ของใบนี้' };
+
   // ⚠️ ตรวจชื่อชนอีกรอบ **ที่จังหวะส่ง** — ระหว่างที่ใบเป็นร่างอยู่ อาจมีคนสร้างโซน
   //    ชื่อเดียวกันในไซต์นั้นไปแล้ว · ปล่อยไปจะได้ error ดิบจาก unique index (mig 0297)
   const existing = await loadSiteZones(supabase, siteId);
@@ -81,27 +91,38 @@ export async function materializeSurveyZones(supabase, { requestId, siteId, user
     taken.add(zoneNameKey(row.zoneName));
   }
 
-  const zoneRows = pending.map((row) => ({
-    id: genId('SZN'),
-    siteId,
-    name: row.zoneName,
-    createdById: user?.id ? String(user.id) : null,
-    createdByName: user?.name || null,
-  }));
-  // รหัส ZN ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
-  const { data: created, error } = await insertRowsWithEntityCode(supabase, 'ZN', zoneRows);
-  if (error) return { created: 0, error: error.message };
+  /* ⚠️ **ยิงทีละแถว ไม่ใช่ทั้งชุด** (mig 0315) — รหัสโซนมีชั้นอยู่ในท่อนหน้าเลขรัน
+     ⇒ พื้นที่คนละชั้นใช้ prefix คนละตัว และ RPC รับ prefix เดียวต่อหนึ่งคำสั่ง
+     ⭐ ล้มกลางทางไม่เป็นไร: แถวที่สำเร็จได้ `zoneId` แล้ว รอบถัดไปข้ามให้เอง
+        (ตัวนี้ออกแบบให้รันซ้ำได้อยู่แล้ว — ดูหัวฟังก์ชัน) */
+  let created = 0;
+  for (const row of pending) {
+    const { prefix, error: codeError } = zoneCodePrefix({ siteCode: site.code, floor: row.floor });
+    if (codeError) return { created, error: `พื้นที่ "${row.zoneName}": ${codeError}` };
 
-  // ⚠️ จับคู่ด้วย **id ที่เราสร้างเอง** ไม่ใช่ลำดับที่ RPC คืนมา — ลำดับไม่ใช่สัญญา
-  const byId = new Map((created || []).map((z) => [z.id, z]));
-  for (const [index, row] of pending.entries()) {
-    const zone = byId.get(zoneRows[index].id);
-    if (!zone) return { created: 0, error: 'สร้างพื้นที่ไม่สำเร็จ — ลองกดส่งอีกครั้ง' };
+    const zoneRow = {
+      id: genId('SZN'),
+      siteId,
+      name: row.zoneName,
+      floor: row.floor,
+      createdById: user?.id ? String(user.id) : null,
+      createdByName: user?.name || null,
+    };
+    // รหัสออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
+    const { data: zone, error } = await insertRowWithComposedCode(
+      supabase,
+      { scope: 'ZN', bucket: ZONE_RUN_BUCKET, prefix, width: ZONE_RUN_WIDTH },
+      zoneRow,
+    );
+    if (error) return { created, error: error.message };
+    if (!zone) return { created, error: 'สร้างพื้นที่ไม่สำเร็จ — ลองกดส่งอีกครั้ง' };
+
     const { error: linkError } = await supabase
       .from('service_survey_zones')
       .update({ zoneId: zone.id, updatedAt: new Date().toISOString() })
       .eq('id', row.id);
-    if (linkError) return { created: 0, error: linkError.message };
+    if (linkError) return { created, error: linkError.message };
+    created += 1;
   }
-  return { created: pending.length, error: null };
+  return { created, error: null };
 }
