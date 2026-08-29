@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SURVEY_VISIT_KIND, createSurveyVisit, moveSurveyVisit, surveyScheduleError } from './surveyVisit.js';
-import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS } from './rounds.js';
+import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS, normalizeVisitInput } from './rounds.js';
 
 const request = { id: 'DR-1', docNo: 'AS-26080002', siteId: 'SVS-1' };
 const site = { id: 'SVS-1', name: 'สาขาสีลม', accessDays: [], accessFrom: null, accessTo: null };
@@ -123,6 +123,22 @@ test('🔴 "ประเมินพื้นที่" ต้องไม่อ
   assert.ok(VISIT_KINDS.includes('survey'), 'ระบบต้องรู้จักชนิดนี้ (ป้าย/สี/ตัวกรอง)');
   assert.equal(VISIT_KINDS_MANUAL.includes('survey'), false);
   assert.equal(VISIT_KIND_LABELS.survey, 'ประเมินพื้นที่');
+});
+
+test('🐞 ด่าน "สร้างมือไม่ได้" ต้องไม่ล็อกการ *แก้* นัดที่ลงคิวไปแล้ว', () => {
+  const row = { siteId: 'SVS-1', kind: 'survey', scheduledDate: '2026-09-12' };
+  // สร้าง = ตีกลับ
+  assert.match(normalizeVisitInput(row).error, /สร้างที่นี่ไม่ได้/);
+  /* แก้ = ผ่าน — PATCH ส่ง {...before, ...body} ⇒ kind มาจากแถวเดิมเสมอ
+     ถ้าด่านยิงตรงนี้ด้วย ช่างจะเลื่อนนัดประเมินจากตารางไม่ได้เลย */
+  const edit = normalizeVisitInput({ ...row, scheduledDate: '2026-09-17' }, { existingKind: 'survey' });
+  assert.equal(edit.error, null);
+  assert.equal(edit.value.scheduledDate, '2026-09-17');
+  // แต่แปลงชนิดทิ้งต้นเรื่องไม่ได้ (ทั้งสองทาง)
+  assert.match(normalizeVisitInput({ ...row, kind: 'refill' }, { existingKind: 'survey' }).error, /เปลี่ยนชนิด/);
+  assert.match(normalizeVisitInput({ ...row, kind: 'survey' }, { existingKind: 'refill' }).error, /เปลี่ยนชนิด/);
+  // ชนิดที่สร้างมือได้ ยังสลับกันเองได้เหมือนเดิม
+  assert.equal(normalizeVisitInput({ ...row, kind: 'refill' }, { existingKind: 'install' }).error, null);
 });
 
 test('เลื่อนสำเร็จต้องไม่บอกให้สร้างใบใหม่', async () => {

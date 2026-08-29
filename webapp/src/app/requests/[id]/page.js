@@ -353,6 +353,10 @@ export default function RequestDetailPage() {
      ⚠️ ธงมาจาก **ทะเบียนหัวข้อ** (`needs` มี `site`) ไม่ใช่ `kind === '...'` กลางหน้า
         — กติกา ม-34 ของหน้านี้ (เทสต์ registry.test.mjs คุมไว้) */
   const isScheduling = requestNeedsRef(req.kind, "site");
+  /* ⭐ **ใบมีวันแล้วแต่นัดไม่เกิด** — ครึ่งหลังของการลงคิวล้ม (หรือนัดถูกลบ) ⇒ ต้องมี
+     ปุ่มให้กดใหม่ **ด้วยวันเดิม** · ไม่มีปุ่มนี้ ใบจะค้างแบบที่ทุกจอบอกว่าลงคิวแล้ว
+     แต่ช่างไม่มีงานบนตาราง (ด่านฝั่ง server เปิดทางไว้แล้วด้วยธง `requeue`) */
+  const needsRequeue = isScheduling && !!req.committedDueDate && !req.surveyVisit;
   const dueLabels = requestKindMeta(req.kind)?.form || {};
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
@@ -581,8 +585,13 @@ export default function RequestDetailPage() {
         title: "รับเรื่อง",
         description: req.docNo || "",
         detail: `ใบนี้จะเข้าคิวของ ${req.dept} ทันที และนับเป็นงานที่ ${req.dept} รับไว้แล้ว`
-          + " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
-          + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง"
+          /* ⚠️ ชื่อปุ่มขั้นถัดไป **ต่างตามหัวข้อ** — ใบประเมินไม่มีปุ่มชื่อ "แจ้งกำหนดส่ง"
+             บนจอเลย (ปุ่มจริงคือ "ลงคิวเข้าพื้นที่") ⇒ สั่งให้ไปกดปุ่มที่ไม่มีอยู่ */
+          + (isScheduling
+            ? " · ยังไม่ต้องระบุวันตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
+              + " แล้วกด \"ลงคิวเข้าพื้นที่\" เมื่อรู้วัน เวลา และช่างที่จะไป"
+            : " · ยังไม่ต้องระบุวันกำหนดส่งตอนนี้ — ใบจะไปอยู่สถานะ \"รอกำหนดส่ง\""
+              + " แล้วกด \"แจ้งกำหนดส่ง\" เมื่อรู้วันจริง")
           /* ⭐ บอกด้วยว่ากดแล้ว **ได้เลขที่เอกสารหรือยัง** — สองโหมดคนละเรื่องกันเลย
              (mig 0271 · 0272) · เลขอัตโนมัติใช้วันที่ของวินาทีที่กดและแก้ทีหลังไม่ได้
              ส่วนช่วงกรอกเองต้องบอกให้ชัดว่ายังต้องไปกดอีกปุ่ม ไม่งั้นคนกดจะเข้าใจว่า
@@ -767,20 +776,29 @@ export default function RequestDetailPage() {
          ⚠️ **คนแจ้งวันคือฝ่าย ไม่ใช่คนบันทึก feedback** — `outcome` เป็นก้าวของผู้ขอ
          (`HOP_OWNER`) ส่วน `commit-due` กันด้วย `canAnswerRequest` ⇒ ถามวันในโมดัล
          บันทึกคำตอบไม่ได้ มันจะเป็นฟอร์มที่กรอกแล้วยิงไม่ผ่านด่าน 403 */
-      : owner && requestAwaitingDue(req)
+      : owner && (requestAwaitingDue(req) || needsRequeue)
         ? {
           id: "commit-due",
-          label: isScheduling
-            ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
-            : (dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง"),
-          hint: dueStale ? `รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : undefined,
+          label: needsRequeue
+            ? "ลงคิวใหม่"
+            : (isScheduling
+              ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
+              : (dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง")),
+          hint: needsRequeue
+            ? "ใบมีวันแล้วแต่นัดยังไม่ขึ้นตารางช่าง"
+            : (dueStale ? `รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : undefined),
           kind: "approve",
           icon: CalendarClock,
           /* ⭐ ตั้งต้นด้วย **วันที่ผู้ขอต้องการ** สำหรับใบประเมิน — คนลงคิวส่วนใหญ่
              ตอบรับวันนั้นอยู่แล้ว · หัวข้ออื่นตั้งต้นวันนี้เหมือนเดิม (ฝ่ายเป็นคนกำหนด) */
           onClick: () => setCommitDue({
-            date: (isScheduling && req.requestedDueDate) || businessDate(),
-            time: isScheduling ? (req.requestedDueTime || "") : "",
+            // ตอนกู้ ตั้งต้นด้วย **ของเดิมบนใบ** — คนกดจะได้ยืนยันวันเดิมได้ทันที
+            date: needsRequeue
+              ? req.committedDueDate
+              : ((isScheduling && req.requestedDueDate) || businessDate()),
+            time: needsRequeue
+              ? String(req.committedDueTime || "").slice(0, 5)
+              : (isScheduling ? (req.requestedDueTime || "") : ""),
             assigneeId: req.assigneeId || "",
             reason: "",
           }),
@@ -929,6 +947,19 @@ export default function RequestDetailPage() {
               title: req.title || "",
               body: req.body || "",
               requestedDueDate: req.requestedDueDate || "",
+              /* ⭐ ของใบประเมิน — พาเข้าโหมดแก้ด้วย ไม่งั้นบล็อกสถานที่/พื้นที่เปิดมา
+                 **เปล่า** ทั้งที่ใบมีของอยู่ (อ่านเหมือนของหาย) และช่องเวลาที่ผู้ขอ
+                 ต้องการจะถูกล้างทิ้งตอนกดบันทึก
+                 ⚠️ บล็อกนั้นเป็น **อ่านอย่างเดียว** ในโหมดแก้ (ดู RequestForm) —
+                    ทางแก้ใบเขียนได้แค่หัวใบ ⇒ ค่าพวกนี้มีไว้ให้อ่าน ไม่ใช่ให้แก้ */
+              requestedDueTime: req.requestedDueTime ? String(req.requestedDueTime).slice(0, 5) : "",
+              siteId: req.siteId || "",
+              zones: (req.surveyZones || []).map((z) => ({
+                zoneId: z.zoneId || null,
+                name: z.zoneId ? null : z.zoneName,
+                floor: z.floor || null,
+                note: z.note || null,
+              })),
               urgent: !!req.urgent,
               urgentReason: req.urgentReason || "",
               /* ⭐ **บรรทัดเข้าโหมดแก้ด้วย** (มติผู้ใช้ 2026-08-24) — หัวข้อที่เนื้องาน

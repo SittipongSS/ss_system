@@ -52,6 +52,7 @@ import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { toHHMM } from '@/lib/service/sites';
+import { normalizeSurveyTime } from '@/lib/service/surveyRequest';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import {
   CLOSED_VISIT_STATES, createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
@@ -308,8 +309,17 @@ export async function PATCH(request, { params }) {
          เดียวกันเสมอ · และเป็นตัวเดียวกับที่เธรดใช้ (`previousDueDate` ที่ส่งให้
          `appendRequestEvent` ข้างล่าง) ⇒ audit log กับเธรดพูดตรงกันเชิงโครงสร้าง
          ไม่ใช่เพราะมีคนคอยดูให้ตรง */
-      const rework = !!String(before.committedDueDate ?? '').trim();
-      const err = commitDueRequestError(before, { committedDueDate: body.committedDueDate });
+      /* ⭐ **ลงคิวซ้ำได้เมื่อใบมีวันแต่ไม่มีนัด** — พิสูจน์จากของจริง ไม่ใช่จากธงที่
+         client ส่งมา · เส้นนี้คือทางกู้เมื่อครึ่งหลังของการลงคิวล้ม (สร้างนัดไม่สำเร็จ
+         หรือนัดถูกลบทิ้ง) ⇒ กดยืนยัน **วันเดิม** ได้โดยไม่ต้องเลื่อนวันปลอม */
+      const requeue = requestNeedsRef(before.kind, 'site')
+        && !!String(before.committedDueDate ?? '').trim()
+        && !(await findSurveyVisit(supabase, id));
+      // รอบแก้ ≠ ลงคิวซ้ำเพราะนัดไม่เกิด — ไม่งั้นเธรดขึ้น "แจ้งกำหนดส่งรอบแก้" ทั้งที่ไม่ใช่
+      const rework = !requeue && !!String(before.committedDueDate ?? '').trim();
+      const err = commitDueRequestError(before, {
+        committedDueDate: body.committedDueDate, requeue,
+      });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
 
       /* ── ประเมินพื้นที่: ก้าวนี้คือ **"ลงคิว"** ไม่ใช่แค่แจ้งวัน (แผน เฟส 2) ─────
@@ -381,6 +391,19 @@ export async function PATCH(request, { params }) {
       if (denied) return Response.json({ error: denied }, { status: 403 });
 
       const next = requestEditPatch(body);
+
+      /* ── เวลาที่ต้องการให้เข้าพื้นที่ (หัวข้อที่มีสถานที่) ────────────────────
+         🐞 ช่อง "ช่วงเวลาที่ต้องการ" **กางอยู่บนฟอร์มแก้** (`showTime` ของ
+            RequestEditableFields) แต่ `requestEditPatch` ไม่มีคีย์นี้ ⇒ คนแก้เวลาแล้ว
+            กดบันทึกได้ 200 โดยค่าไม่เคยถึง DB — อาการ "แก้แล้วหายเงียบ" ตัวเดียวกับที่
+            บล็อกอ้างอิง QT/SO ข้างล่างเขียนเตือนไว้
+         ⚠️ ถามทะเบียน (`requestNeedsRef(..., 'site')`) ไม่ใช่เทียบ kind ตรง ๆ (ม-34)
+         ⚠️ ไม่ส่งคีย์มา = ไม่แตะของเดิม (ผู้เรียกที่แก้แค่ช่องอื่น) */
+      if (requestNeedsRef(before.kind, 'site') && body.requestedDueTime !== undefined) {
+        const parsed = normalizeSurveyTime(body.requestedDueTime);
+        if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
+        next.requestedDueTime = parsed.value;
+      }
 
       /* ── บรรทัด (มติผู้ใช้ 2026-08-24) ───────────────────────────────────
          ⭐ **หัวข้อที่เนื้องานอยู่ในบรรทัดต้องแก้บรรทัดได้** — ขอเอกสาร/ขอใบวางบิล

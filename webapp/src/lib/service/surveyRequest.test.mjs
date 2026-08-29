@@ -7,21 +7,19 @@ import {
 } from './surveyRequest.js';
 
 // ── สถานที่: หนึ่งใบ หนึ่งไซต์ ──────────────────────────────────────────
-test('ต้องเลือกสถานที่ — ไม่เลือกเลยไม่ได้', () => {
-  assert.match(normalizeSurveySite({}).error, /ต้องเลือกสถานที่/);
+test('ต้องเลือกสถานที่ — ไม่เลือกเลยไม่ได้ และบอกทางออกที่ทำได้จริง', () => {
+  const err = normalizeSurveySite({}).error;
+  assert.match(err, /ต้องเลือกสถานที่/);
+  /* 🔴 ข้อความต้องชี้ปุ่มในฟอร์มนี้ ไม่ใช่ทะเบียนไซต์ — ตั้งแต่มติ 2026-08-30
+     ทะเบียนไม่มีฟอร์มสร้างแล้ว ⇒ ข้อความเก่าสั่งให้ทำสิ่งที่ทำไม่ได้ */
+  assert.match(err, /ในฟอร์มนี้/);
+  assert.doesNotMatch(err, /ทะเบียนไซต์/);
 });
 
-test('⭐ เลือกของเดิมหรือสร้างใหม่ อย่างใดอย่างหนึ่ง — ส่งมาทั้งคู่ต้องตีกลับ', () => {
-  const both = normalizeSurveySite({ siteId: 'SVS-1', newSite: { name: 'ใหม่' } });
-  assert.match(both.error, /อย่างใดอย่างหนึ่ง/);
-  // ⚠️ ห้ามเดาว่าอันไหนคือของจริง — เดาผิดคือใบไปผูกคนละสถานที่กับที่คนกรอกเห็น
-  assert.equal(both.value, null);
-});
-
-test('สถานที่ใหม่ต้องมีชื่อ', () => {
-  assert.match(normalizeSurveySite({ newSite: { name: '   ' } }).error, /ต้องมีชื่อ/);
-  assert.equal(normalizeSurveySite({ newSite: { name: '  ดิ เอ็มควอเทียร์ ' } }).value.newSite.name,
-    'ดิ เอ็มควอเทียร์');
+test('ใบถือแต่ siteId — ร่างสถานที่แนบมากับใบไม่ใช่ทางที่มีอยู่', () => {
+  assert.deepEqual(normalizeSurveySite({ siteId: ' SVS-1 ' }).value, { siteId: 'SVS-1' });
+  // ส่ง newSite มาเฉย ๆ ไม่ทำให้ผ่าน — ไซต์ต้องมีแถวจริงก่อนใบจะอ้างได้
+  assert.match(normalizeSurveySite({ newSite: { name: 'ดิ เอ็มควอเทียร์' } }).error, /ต้องเลือกสถานที่/);
 });
 
 // ── พื้นที่ ─────────────────────────────────────────────────────────────

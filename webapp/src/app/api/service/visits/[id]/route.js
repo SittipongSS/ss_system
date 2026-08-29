@@ -12,6 +12,7 @@ import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitG
 import { isSuperuser } from '@/lib/permissions';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
+import { fmtDate } from '@/lib/format';
 import { businessTimeKey } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
@@ -81,7 +82,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ต้องพึ่งความสุจริตของจอ ทั้งที่ mig 0300 ทำมาเพื่อไม่ต้องพึ่ง */
     if (body.stamp === 'start' && !isClosedVisit(before)) body.status = 'in_progress';
 
-    const { value, error } = normalizeVisitInput({ ...before, ...body });
+    // ⚠️ `existingKind` = นี่คือการ *แก้* ของเดิม ไม่ใช่การสร้าง (ดูคอมเมนต์ในตัวด่าน)
+    const { value, error } = normalizeVisitInput({ ...before, ...body }, { existingKind: before.kind });
     if (error) return badRequest(error);
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
@@ -189,7 +191,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           committedDueTime: nextTime,
           updatedAt: nowIso,
         }).eq('id', data.requestId);
-        if (syncError) console.error('[service-visits] ซิงก์วันกลับใบคำร้องไม่สำเร็จ:', syncError.message);
+        if (syncError) {
+          console.error('[service-visits] ซิงก์วันกลับใบคำร้องไม่สำเร็จ:', syncError.message);
+        } else {
+          /* 🐞 **ซิงก์เงียบคือวันที่เปลี่ยนเองบนใบ** — ของเดิมเขียนวันใหม่ลง
+             `dept_requests` โดยไม่ลงเธรดของใบเลย ⇒ ฝ่ายขายเปิดใบมาเห็น "TS กำหนดส่ง"
+             เป็นอีกวันโดยไม่มีแถวไหนบอกว่าใครเลื่อนและเพราะอะไร (เธรดของ *นัด* มี
+             แต่คนอ่านใบไม่ได้เปิดดู) · เหตุผลที่ TS พิมพ์ตอนเลื่อนนัดถูกส่งต่อมาด้วย */
+          const from = reqRow.committedDueDate ? fmtDate(reqRow.committedDueDate) : '(ไม่เคยระบุ)';
+          const to = nextDate ? fmtDate(nextDate) : '(ไม่ระบุ)';
+          await appendUpdate(supabase, {
+            entityType: 'dept_request', entityId: data.requestId, kind: 'reschedule',
+            body: `TS เลื่อนวันนัดจากตารางช่าง ${from} → ${to}`
+              + (nextTime ? ` ${nextTime} น.` : '')
+              + (String(reason || '').trim() ? ` — ${String(reason).trim().slice(0, 300)}` : ''),
+            user,
+          });
+        }
       }
     }
 

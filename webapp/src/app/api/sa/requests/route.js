@@ -131,16 +131,11 @@ export async function POST(request) {
     const parsed = normalizeSurveyRequest(body);
     if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
     survey = parsed.value;
-    /* 🅿️ รอบนี้รองรับ **เลือกสถานที่เดิม** เท่านั้น — สร้างสถานที่ใหม่ใช้ฟอร์มไซต์เดิม
-       (`ServiceSiteModal` + POST /api/service/sites) แล้วค่อยเลือกกลับมา
-       ⭐ ตรงกับแผน §4D: ไซต์ได้รหัส SS **ทันทีที่กดสร้าง** เพราะมีที่อยู่/แผนที่/ผู้ติดต่อ/
-          เวลาเข้า ซึ่งเป็นข้อมูลของ *ทะเบียน* ไม่ใช่ของ *ใบ* — ลอกมาแปะบน dept_requests
-          อีกสิบช่องคือโรค pdr* 40 คอลัมน์ */
-    if (!survey.siteId) {
-      return Response.json({
-        error: 'ยังไม่ได้เลือกสถานที่ — สร้างสถานที่ใหม่ที่ทะเบียนไซต์บริการก่อน แล้วกลับมาเลือก',
-      }, { status: 400 });
-    }
+    /* ⭐ **ไซต์ต้องมีแถวจริงก่อนใบจะอ้างได้** — สถานที่ใหม่ถูกสร้างจากโมดัลใน *ฟอร์มใบนี้*
+       (POST /api/service/sites) แล้วส่งกลับมาเป็น `siteId` ⇒ ที่อยู่/แผนที่/ผู้ติดต่อ/
+       เวลาเข้า อยู่ในทะเบียน ไม่ถูกลอกมาแปะบน dept_requests อีกสิบช่อง (โรค pdr* 40 คอลัมน์)
+       ⚠️ ด่าน "ไม่ได้เลือกสถานที่" อยู่ที่ `normalizeSurveySite` ที่เดียว — จอกับ route
+          จึงพูดประโยคเดียวกัน */
   }
 
   const requestId = `DR-${randomUUID()}`;

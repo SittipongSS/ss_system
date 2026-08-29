@@ -129,10 +129,28 @@ export function rescheduleSummary(before, after, reason) {
 }
 
 // ── ตรวจข้อมูลนัด ────────────────────────────────────────────────────────
-export function normalizeVisitInput(body = {}) {
+export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
   const siteId = String(body.siteId ?? '').trim();
   if (!siteId) return { value: null, error: 'ต้องระบุไซต์' };
   if (!VISIT_KINDS.includes(body.kind)) return { value: null, error: 'ชนิดงานไม่ถูกต้อง' };
+  /* 🔴 **ด่านของ "สร้างมือไม่ได้" ต้องอยู่ที่ API ไม่ใช่แค่ดรอปดาวน์** — ตัดออกจาก
+     ตัวเลือกบนจอกันคนกดพลาดได้ แต่ไม่กันการยิง API ตรง ๆ · นัดประเมินที่ไม่มีใบ
+     ต้นเรื่องคือนัดที่ผลวัดไม่รู้จะส่งกลับไปที่ไหน
+     ⚠️ เส้นที่ถูกต้อง (`createSurveyVisit`) ไม่ผ่านตัวนี้ — มันประกอบแถวเองพร้อม
+        `requestId` ⇒ ด่านนี้ไม่ขวางเส้นนั้น
+     🐞 **ด่านนี้เป็นของ "สร้าง" เท่านั้น** — PATCH ส่ง `{...before, ...body}` เข้ามา
+        ⇒ `kind` มาจากแถวเดิม · เผลอบังคับตอนแก้ด้วยเมื่อไร **นัดประเมินที่ลงคิวไปแล้ว
+        จะแก้/เลื่อนจากตารางช่างไม่ได้เลย** (เจอตอนทดสอบสด 2026-08-30) ⇒ ผู้เรียกที่แก้
+        ของเดิมส่ง `existingKind` เข้ามาบอกว่านี่คือการแก้ ไม่ใช่การสร้าง */
+  if (existingKind === null) {
+    if (!VISIT_KINDS_MANUAL.includes(body.kind)) {
+      return { value: null, error: 'นัดประเมินพื้นที่สร้างที่นี่ไม่ได้ — เกิดจากใบคำร้องตอน TS ลงคิว' };
+    }
+  } else if (body.kind !== existingKind
+      && (!VISIT_KINDS_MANUAL.includes(body.kind) || !VISIT_KINDS_MANUAL.includes(existingKind))) {
+    // สลับชนิดข้ามฝั่งไม่ได้ — นัดประเมินผูกใบคำร้องอยู่ · แปลงเป็นชนิดอื่นคือทิ้งต้นเรื่อง
+    return { value: null, error: 'เปลี่ยนชนิดของนัดประเมินพื้นที่ไม่ได้ — นัดนี้เกิดจากใบคำร้อง' };
+  }
   if (!body.scheduledDate) return { value: null, error: 'ต้องระบุวันที่นัด' };
 
   const status = body.status ?? 'scheduled';

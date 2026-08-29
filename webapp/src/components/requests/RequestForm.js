@@ -717,7 +717,12 @@ export default function RequestForm({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          canCreateSite={canCreateServiceSite(me)}
+          /* 🔴 **โหมดแก้ = อ่านอย่างเดียว** — ทางแก้ใบเขียนได้แค่หัวใบ
+             (`REQUEST_EDIT_PATCH_FIELDS`) ⇒ ถ้าปล่อยให้กดเปลี่ยนสถานที่/เพิ่มพื้นที่
+             ตรงนี้ ของที่กรอกจะหายเงียบตอนกดบันทึก และปุ่ม "สร้างสถานที่ใหม่" จะได้
+             **ไซต์กำพร้า** ที่เกิดจริงในทะเบียนแต่ไม่มีใบไหนอ้าง */
+          readOnly={isEdit}
+          canCreateSite={!isEdit && canCreateServiceSite(me)}
         />
       )}
 

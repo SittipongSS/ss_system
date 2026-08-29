@@ -20,6 +20,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { apiJson } from "@/lib/apiFetch";
+import { naText } from "@/lib/format";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import styles from "./requestForm.module.css";
@@ -35,6 +36,9 @@ export default function SurveySiteFields({
   onChange,
   disabled = false,
   canCreateSite = false,
+  /* โหมดอ่านอย่างเดียว (ทางแก้ใบ) — บล็อกนี้แสดงของที่ใบถืออยู่ แต่แก้ไม่ได้
+     ⚠️ เหตุผลอยู่ที่ผู้เรียก (`RequestForm`) — ทางแก้ใบเขียนได้แค่หัวใบ */
+  readOnly = false,
 }) {
   const siteId = value.siteId || "";
   const zones = value.zones || [];
@@ -63,16 +67,24 @@ export default function SurveySiteFields({
     return () => { alive = false; };
   }, [customerId]);
 
-  /* 🐞 **เปลี่ยนดีลข้ามลูกค้าแล้วไซต์เดิมค้างอยู่** — คอมเมนต์เดิมอ้างว่าล้างให้ แต่
-     effect ข้างบนแตะแค่ลิสต์ · ใบจะเกาะไซต์ของลูกค้าคนก่อนแล้วโดน handler ตีกลับ
-     ตอนกดบันทึก โดยที่จอยังโชว์ชื่อไซต์เดิมอยู่
+  /* 🐞 **เปลี่ยนดีลข้ามลูกค้าแล้วไซต์เดิมค้างอยู่** — ใบจะเกาะไซต์ของลูกค้าคนก่อน
+     แล้วโดน handler ตีกลับตอนกดบันทึก โดยที่จอยังโชว์ชื่อไซต์เดิมอยู่
      ⚠️ ตัดสินจาก **ลิสต์ที่โหลดมาแล้ว** ไม่ใช่จากการที่ customerId เปลี่ยน — โหมดแก้
-        โหลดใบก่อนแล้ว customerId ตามมาทีหลัง ถ้าล้างทันทีจะลบของที่บันทึกไว้ทิ้ง */
+        โหลดใบก่อนแล้ว customerId ตามมาทีหลัง ถ้าล้างทันทีจะลบของที่บันทึกไว้ทิ้ง
+     🐞 **effect นี้เคยไม่มี dependency array** ⇒ รันทุกเรนเดอร์ · พอ `/api/service/sites`
+        ล้มชั่วคราว (หรือคืนลิสต์ว่างจังหวะหนึ่ง) มันจะล้างไซต์ **และพื้นที่ที่พิมพ์ไว้ทั้งหมด**
+        ทิ้งกลางที่คนกำลังกรอก · ตอนนี้ผูกกับ [sites, siteId, loading, customerId] และ
+        ไม่แตะอะไรเลยในโหมดอ่านอย่างเดียว
+     ⚠️ ลิสต์ว่างไม่ใช่หลักฐานว่าไซต์ผิดลูกค้า — โหลดพลาดก็ว่างเหมือนกัน ⇒ ล้างเฉพาะตอน
+        ลิสต์ **มีของ** แล้วไม่มีไซต์นี้อยู่ในนั้น */
   useEffect(() => {
+    if (readOnly) return;
     if (!siteId || loading || !customerId) return;
+    if (!sites.length) return;
     if (sites.some((row) => row.id === siteId)) return;
     set({ siteId: "", zones: [] });
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sites, siteId, loading, customerId, readOnly]);
 
   // โซนของไซต์ที่เลือก — ใช้ทั้งปุ่ม "เลือกจากพื้นที่เดิม" และป้ายชื่อบนแถว
   useEffect(() => {
@@ -155,6 +167,41 @@ export default function SurveySiteFields({
     // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
     search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
   }));
+
+  /* ── โหมดอ่านอย่างเดียว ─────────────────────────────────────────────────
+     ⭐ แสดง **ของจริงที่ใบถืออยู่** ไม่ใช่ช่องเปล่า — ช่องเปล่าอ่านว่า "ยังไม่ได้เลือก"
+        ทั้งที่ใบมีสถานที่อยู่ และถ้ากดบันทึกทับจะดูเหมือนของหาย */
+  if (readOnly) {
+    const picked = sites.find((row) => row.id === siteId) || null;
+    return (
+      <div className="form-group col-span-2">
+        <span className={styles.fieldLabel}>สถานที่และพื้นที่ที่ต้องประเมิน</span>
+        <small className={styles.hint}>
+          {loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
+        </small>
+        {zones.length > 0 && (
+          <ol className={styles.zoneList}>
+            {zones.map((row, index) => (
+              <li key={row.zoneId || `ro-${index}`} className={styles.zoneRow}>
+                <span className={styles.zoneNo}>{index + 1}</span>
+                <span className={styles.zoneBody}>
+                  <b>{zoneName(row)}</b>
+                  <small className={styles.hint}>
+                    {row.zoneId
+                      ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")
+                      : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"}`}
+                  </small>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+        <small className={styles.hint}>
+          สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
+        </small>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -261,13 +308,25 @@ export default function SurveySiteFields({
             >
               เพิ่มพื้นที่ใหม่
             </Button>
+            {/* ⚠️ ปุ่มจางต้องบอกเหตุ (กติกาของรีโป) — "ไม่มีพื้นที่เดิมให้เลือก" กับ
+                "เลือกครบแล้ว" คนละเรื่องกัน และทางแก้คนละทาง */}
             <Button
               type="button" size="sm" disabled={disabled || !restZones.length}
               icon={<Layers size={16} />}
+              title={restZones.length ? undefined : (siteZones.length
+                ? "เลือกพื้นที่เดิมของสถานที่นี้ครบทุกรายการแล้ว"
+                : "สถานที่นี้ยังไม่มีพื้นที่ในทะเบียน — กด \"เพิ่มพื้นที่ใหม่\"")}
               onClick={() => setPicking((on) => !on)}
             >
               เลือกจากพื้นที่เดิม{restZones.length ? ` (${restZones.length})` : ""}
             </Button>
+            {!restZones.length && (
+              <small className={styles.hint}>
+                {siteZones.length
+                  ? "เลือกพื้นที่เดิมครบทุกรายการแล้ว"
+                  : "สถานที่นี้ยังไม่มีพื้นที่ในทะเบียน — เริ่มที่ “เพิ่มพื้นที่ใหม่”"}
+              </small>
+            )}
           </div>
 
           {/* พื้นที่ใหม่ — ชื่ออย่างเดียวพอ (อาคาร/ชั้นเป็นของทะเบียนที่ TS กรอกหน้างาน) */}

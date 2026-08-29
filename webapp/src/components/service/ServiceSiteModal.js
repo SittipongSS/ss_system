@@ -72,6 +72,7 @@ export default function ServiceSiteModal({
   const [fetchedAddresses, setFetchedAddresses] = useState([]);
   // ทะเบียนจังหวัด (~60KB) — แคชไว้ 24 ชม. แบบเดียวกับฟอร์มที่อยู่ลูกค้า
   const [provinces, setProvinces] = useState([]);
+  const [provinceError, setProvinceError] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -109,9 +110,13 @@ export default function ServiceSiteModal({
   useEffect(() => {
     if (!open) return undefined;
     let alive = true;
+    setProvinceError("");
     cachedFetchJson("/api/master/thai-address", 24 * 60 * 60 * 1000)
       .then((d) => { if (alive) setProvinces(d?.provinces || []); })
-      .catch(() => {});
+      /* 🐞 โหลดทะเบียนจังหวัดไม่ได้ = **สร้างไซต์ไม่ได้ทั้งระบบ** (จังหวัดบังคับ) ·
+         ของเดิมกลืน error เงียบ ⇒ ช่องจังหวัดว่าง ป้ายบอก "เลือกจังหวัด" แล้วกดบันทึก
+         เจอ "ต้องเลือกจังหวัด" วนไม่จบ โดยไม่มีอะไรบอกว่าโหลดพลาด */
+      .catch(() => { if (alive) setProvinceError("โหลดทะเบียนจังหวัดไม่สำเร็จ — รีเฟรชหน้าแล้วลองใหม่"); });
     return () => { alive = false; };
   }, [open]);
 
@@ -300,9 +305,10 @@ export default function ServiceSiteModal({
             ariaLabel="จังหวัดของไซต์"
           />
           <small>
-            {editing
-              ? "แก้ได้ แต่รหัสไซต์ที่ออกไปแล้วไม่เปลี่ยนตาม — รหัสคือตัวตน ไม่ใช่สรุปที่อยู่ปัจจุบัน"
-              : `ใช้ประกอบรหัสไซต์ ${SITE_CODE_HINT} — เลือกแล้วเปลี่ยนภายหลังได้ แต่รหัสจะไม่เปลี่ยนตาม`}
+            {provinceError
+              || (editing
+                ? "แก้ได้ แต่รหัสไซต์ที่ออกไปแล้วไม่เปลี่ยนตาม — รหัสคือตัวตน ไม่ใช่สรุปที่อยู่ปัจจุบัน"
+                : `ใช้ประกอบรหัสไซต์ ${SITE_CODE_HINT} — เลือกแล้วเปลี่ยนภายหลังได้ แต่รหัสจะไม่เปลี่ยนตาม`)}
           </small>
         </label>
 

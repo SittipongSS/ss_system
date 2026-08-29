@@ -82,7 +82,13 @@ export default function ServiceIntakePage() {
       const zoneRes = await apiFetch(`/api/service/sites/${siteId}/zones`);
       const zoneBody = await zoneRes.json().catch(() => null);
       if (zoneRes.ok) {
-        setZonesBySite((prev) => new Map(prev).set(siteId, Array.isArray(zoneBody?.zones) ? zoneBody.zones : []));
+        /* 🐞 **เคยอ่าน `zoneBody.zones` ตัวเดียว** ทั้งที่ endpoint คืนอาร์เรย์ตรง ๆ
+           (คอมเมนต์เหนือบรรทัด 79 เตือนเรื่องนี้ไว้เองแล้วสำหรับไซต์ แต่ท่อนโซนพลาด)
+           ⇒ สร้างโซนใหม่ใน wizard แล้วดรอปดาวน์โซน **ว่างเปล่า** จัดสรรของต่อไม่ได้ */
+        const zoneRows = Array.isArray(zoneBody)
+          ? zoneBody
+          : (Array.isArray(zoneBody?.zones) ? zoneBody.zones : []);
+        setZonesBySite((prev) => new Map(prev).set(siteId, zoneRows));
       }
     }
     return rows;

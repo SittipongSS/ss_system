@@ -6,6 +6,7 @@
 // 🔴 **ยามชื่อซ้ำต้องอยู่ที่นี่ด้วย ไม่ใช่ปล่อยให้ DB ตีกลับ** — `service_zones` มี
 // `UNIQUE (siteId, lower(btrim(name)))` (mig 0297) ⇒ ปล่อยไปถึง insert จะได้ error ดิบ
 // จาก Postgres ที่ไม่บอกว่าต้องทำอะไรต่อ
+import { SITE_REQUIRED_ERROR } from '@/lib/master/requestTypes';
 import { toHHMM } from '@/lib/service/sites';
 import { normalizeFloor } from '@/lib/service/zoneCode';
 
@@ -18,19 +19,19 @@ const text = (value, max) => {
   return v.length > max ? null : (v || null);
 };
 
-/* ── สถานที่: เลือกของเดิม หรือสร้างใหม่ — อย่างใดอย่างหนึ่งเท่านั้น ─────
-   ⚠️ ส่งมาทั้งคู่ = ฟอร์มกับใบไม่ตรงกัน ต้องตีกลับ ไม่ใช่เดาว่าอันไหนคือของจริง */
+/* ── สถานที่ของใบ ────────────────────────────────────────────────────────
+   ⭐ **ใบถือแต่ `siteId`** — สถานที่ที่ยังไม่มีในทะเบียนถูกสร้างจาก *ในฟอร์มนี้*
+      (โมดัลไซต์ ⇒ POST /api/service/sites) แล้วค่อยถูกเลือกกลับมา ⇒ พอมาถึงตรงนี้
+      ไซต์มีแถวจริงและมีรหัส ST เสมอ
+   🐞 เดิมมีสาขา `newSite` (ร่างสถานที่แนบมากับใบ) ที่ **ไม่มีใครส่งและ route ก็ตีกลับ**
+      ทุกครั้ง โดยข้อความสั่งให้ไปสร้างที่ทะเบียนไซต์ ซึ่งตั้งแต่มติ 2026-08-30 ทำไม่ได้
+      แล้ว (ทะเบียนไม่มีฟอร์มสร้าง) — โค้ดตายแบบนั้นทำให้คนอ่านเชื่อว่ามีทางที่สอง */
 export function normalizeSurveySite(input = {}) {
   const siteId = String(input.siteId ?? '').trim();
-  const draft = input.newSite && typeof input.newSite === 'object' ? input.newSite : null;
-  if (siteId && draft) {
-    return { value: null, error: 'เลือกสถานที่เดิมหรือสร้างใหม่ได้อย่างใดอย่างหนึ่ง' };
+  if (!siteId) {
+    return { value: null, error: SITE_REQUIRED_ERROR };
   }
-  if (siteId) return { value: { siteId, newSite: null }, error: null };
-  if (!draft) return { value: null, error: 'ต้องเลือกสถานที่ที่จะให้เข้าไปประเมิน' };
-  const name = text(draft.name, 150);
-  if (!name) return { value: null, error: 'สถานที่ใหม่ต้องมีชื่อ' };
-  return { value: { siteId: null, newSite: { ...draft, name } }, error: null };
+  return { value: { siteId }, error: null };
 }
 
 /* ── พื้นที่ที่ต้องประเมิน ────────────────────────────────────────────────

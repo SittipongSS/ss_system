@@ -14,7 +14,6 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
-import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
@@ -37,12 +36,9 @@ export default function ServiceSitesPage() {
   );
 
   const [sites, setSites] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
-  // undefined = ปิด · แถวไซต์ = แก้ · **ไม่มีโหมดสร้างที่หน้านี้** (มติ 2026-08-30)
-  const [formSite, setFormSite] = useState(undefined);
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
@@ -63,35 +59,10 @@ export default function ServiceSitesPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // รายชื่อลูกค้าโหลดเฉพาะตอนจะ "เลือก" เท่านั้น (กติกา customer lookup ของระบบ)
-  useEffect(() => {
-    if (formSite === undefined || customers.length) return;
-    (async () => {
-      try {
-        const res = await apiFetch("/api/customers");
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อลูกค้าไม่สำเร็จ");
-        setCustomers(Array.isArray(data) ? data : (data?.rows || []));
-      } catch (e) {
-        setToast({ kind: "error", msg: e.message });
-      }
-    })();
-  }, [formSite, customers.length]);
-
-  /* ⚠️ **แก้อย่างเดียว — หน้านี้สร้างไซต์ไม่ได้แล้ว** (มติผู้ใช้ 2026-08-30)
-     เดิมฟังก์ชันนี้แยกสองทาง (POST/PATCH) ตาม `formSite` · เหลือทางเดียวโดยตั้งใจ
-     เพื่อไม่ให้มีเส้นทางสร้างที่ยังต่ออยู่เงียบ ๆ รอวันที่ใครเผลอเติมปุ่มกลับมา */
-  const saveSite = async (form) => {
-    const res = await apiFetch(`/api/service/sites/${formSite.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
-    setToast({ kind: "success", msg: `บันทึกไซต์ ${data.name} แล้ว` });
-    await load();
-  };
+  /* ⚠️ **หน้านี้ไม่มีฟอร์มไซต์แล้ว** (มติ 2026-08-30) — สร้างไม่ได้ (ไซต์เกิดจาก
+     ใบคำร้อง) และ *แก้* อยู่ที่หน้ารายละเอียดของไซต์นั้น ⇒ ทะเบียนลูกค้า · โมดัล ·
+     ตัวบันทึก ถูกถอดออกทั้งชุด ไม่ใช่ปล่อยไว้เป็นโค้ดที่ไม่มีทางถูกเรียก
+     🐞 โค้ดตายแบบนั้นคือสิ่งที่ทำให้คนอ่านเชื่อว่าหน้านี้ยังแก้ไซต์ได้ */
 
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("th");
@@ -140,6 +111,11 @@ export default function ServiceSitesPage() {
         <EmptyState icon={MapPin}>
           ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
         </EmptyState>
+      ) : visible.length === 0 ? (
+        /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
+        <EmptyState icon={Search}>
+          ไม่มีไซต์ที่ตรงกับ “{search.trim()}” — ลองค้นด้วยรหัส ชื่อไซต์ ลูกค้า หรือจังหวัด
+        </EmptyState>
       ) : (
         /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
            ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
@@ -183,14 +159,6 @@ export default function ServiceSitesPage() {
           </table>
         </TableShell>
       )}
-
-      <ServiceSiteModal
-        open={formSite !== undefined}
-        site={formSite}
-        customers={customers}
-        onClose={() => setFormSite(undefined)}
-        onSave={saveSite}
-      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
