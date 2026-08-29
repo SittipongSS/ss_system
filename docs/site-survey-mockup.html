@@ -694,6 +694,21 @@ padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:n
 .spotchip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
 .spotcount{font-size:var(--fs-2);color:var(--text-3);font-variant-numeric:tabular-nums;
 white-space:nowrap;margin-top:2px}
+
+/* ── หนึ่งโซนวัดได้หลายส่วน (พื้นที่รูปตัว L · เพดานสูงไม่เท่ากัน) ─────────
+   ⚠️ ปัดเศษครั้งเดียวที่ระดับโซน — ปัดรายส่วนจะได้แพ็คเป็นเท่าตัว */
+.parts{display:flex;flex-direction:column;gap:var(--space-2)}
+.part{display:grid;grid-template-columns:22px 1fr auto;gap:var(--space-2-5);align-items:center;
+padding:var(--space-2) var(--space-2-5);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2)}
+.part .pn{width:22px;height:22px;border-radius:var(--radius);background:var(--panel-3);
+color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-weight:var(--fw-bold)}
+.part .plabel{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai);margin-bottom:3px}
+.partsum{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+padding-top:var(--space-2);border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
+.partsum b{font-size:var(--fs-9);font-weight:var(--fw-semibold)}
+.partsum .lab{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+.partsum .pack{color:var(--accent-ink);font-weight:var(--fw-semibold);font-size:var(--fs-4)}
 </style>
 
 <svg style="display:none" aria-hidden="true">
@@ -1259,7 +1274,10 @@ white-space:nowrap;margin-top:2px}
     </div>
     <ul class="fixes">
       <li><span class="mk new">+</span><span><b>เมตรอย่างเดียว</b> — ไม่มีดรอปดาวน์เลือกหน่วย · หน่วยที่เลือกได้คือหน่วยที่กรอกผิดได้ และชีตเก่ามีทั้ง “500 ML” กับ “2 KG” ปนกันมาแล้ว</span></li>
-      <li><span class="mk new">+</span><span>ปริมาตรคำนวณให้ทันที (ก×ย×ส) พร้อมบอกว่าสูตรได้กี่แพ็ค — ช่างเห็นเลยถ้าพิมพ์ผิดหลัก</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>หนึ่งโซนวัดได้หลายส่วน</b> (มติ 2026-08-29) — พื้นที่จริงไม่ใช่กล่องสี่เหลี่ยม · รูปตัว L แบ่งสองก้อนแล้วบวกกัน ·
+      และ<b>แต่ละส่วนมีความสูงของตัวเอง</b> ⇒ ล็อบบี้ที่โถงกลางสูง 6.5 ม. ทางเดินข้างสูง 2.6 ม. คิดได้ถูกต้อง (ต่างจากคิดสูงเดียวทั้งโซนถึง 11%)</span></li>
+      <li><span class="mk new">+</span><span>ปริมาตรรวมคำนวณให้ทันทีพร้อมบอกว่าสูตรได้กี่แพ็ค ·
+      🔴 <b>ปัดเศษครั้งเดียวที่ระดับโซน ไม่ใช่รายส่วน</b> — สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็ค ไม่ใช่ 2</span></li>
       <li><span class="mk new">+</span><span><b>รูปแยกสามหัวข้อต่อโซน</b> (มติ 2026-08-29): ภาพกว้าง · ภาพผัง · <b>จุดที่ติดตั้งได้</b> —
       หัวข้อสุดท้าย<b>เพิ่มรายการจุดเองได้</b> จุดละชื่อ จุดละรูป</span></li>
       <li><span class="mk new">+</span><span>🔴 <b>ช่างแจ้งว่า “ติดตั้งได้ตรงไหนบ้าง” ไม่ใช่ “จะติดตั้งตรงไหน”</b> —
@@ -1287,21 +1305,36 @@ white-space:nowrap;margin-top:2px}
           <span>วัดแล้ว 3 / 5 จุด</span>
         </div>
 
-        <!-- ── โซนที่วัดครบและถ่ายรูปครบสามหัวข้อ ─────────────────────── -->
+        <!-- ── ① วัดครบ · พื้นที่รูปตัว L สองส่วน ────────────────────── -->
         <div class="ui-section">
-          <div class="ui-section-header"><div><h2>ชั้น 5 · โซนออฟฟิศ</h2></div>
+          <div class="ui-section-header"><div><h2>ชั้น 5 · โซนออฟฟิศ</h2><p>รูปตัว L</p></div>
             <span class="ui-badge success">วัดแล้ว</span></div>
           <div class="ui-section-body">
-            <div class="dim">
-              <span class="box"><i>กว้าง</i> <b>12.40</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box"><i>ยาว</i> <b>28.00</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
+            <div class="parts">
+              <div class="part"><span class="pn">1</span>
+                <div><span class="plabel">ปีกทิศเหนือ</span><span class="dim">
+                    <span class="box"><i>กว้าง</i> <b>12.40</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>ยาว</i> <b>18.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="part"><span class="pn">2</span>
+                <div><span class="plabel">ปีกทิศตะวันออก</span><span class="dim">
+                    <span class="box"><i>กว้าง</i> <b>8.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>ยาว</i> <b>15.50</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 2 ส่วน</span>
+                <b>347.2</b> <span class="lab">ตร.ม.</span>
+                <b>972.2</b> <span class="lab">ลบ.ม.</span>
+                <span class="pack">→ สูตรได้ 1 แพ็ค</span></div>
             </div>
-            <p class="hint" style="margin-top:var(--space-2)">347.2 ตร.ม. · 972.2 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
+            <p class="hint" style="margin-top:var(--space-2)">⚠️ <b>แบ่งให้ไม่ทับกัน</b> — มุมที่สองส่วนชนกันนับครั้งเดียว · ระบบตรวจให้ไม่ได้</p>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span>
-                <span class="cnt">2 รูป</span></div>
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">2 รูป</span></div>
               <div class="shots">
                 <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
                 <span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
@@ -1310,18 +1343,16 @@ white-space:nowrap;margin-top:2px}
             </div>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span>
-                <span class="cnt">1 รูป</span></div>
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span><span class="cnt">1 รูป</span></div>
               <div class="shots">
                 <span class="shot"><svg viewBox="0 0 24 24"><use href="#file"/></svg></span>
                 <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span>
               </div>
-              <p class="hint" style="margin-top:var(--space-2)">ไม่มีติดตัวก็ข้ามได้ — แต่<b>หัวหน้าต้องมีผังก่อนกดส่งผล</b> (ขอจากอาคาร หรือใช้ไฟล์ที่ฝ่ายขายแนบมา)</p>
+              <p class="hint" style="margin-top:var(--space-2)">ไม่มีติดตัวก็ข้ามได้ — แต่<b>หัวหน้าต้องมีผังก่อนกดส่งผล</b> และต้องเป็นผังที่มาร์กจุดแล้ว ไม่ใช่ผังเปล่าที่ฝ่ายขายแนบมา</p>
             </div>
 
             <div class="photogrp">
-              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span>
-                <span class="cnt">3 จุด · 4 รูป</span></div>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">3 จุด · 4 รูป</span></div>
 
               <div class="spot"><span class="sn">1</span>
                 <div><b>เสาต้นที่ 3 ฝั่งลิฟต์</b><span class="sd">ปลั๊กอยู่ใต้เสา · สูงจากพื้น 2.2 ม.</span>
@@ -1342,9 +1373,7 @@ white-space:nowrap;margin-top:2px}
 
               <div class="spot" data-empty="1"><span class="sn">3</span>
                 <div><b>ท่อแอร์กลางห้อง</b><span class="sd">ยังไม่ได้ถ่าย — ต้องขอบันไดจากอาคาร</span>
-                  <span class="shots">
-                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
-                  </span></div>
+                  <span class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></span></div>
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
 
               <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
@@ -1356,45 +1385,81 @@ white-space:nowrap;margin-top:2px}
           </div>
         </div>
 
-        <!-- ── โซนที่ยังไม่แตะเลย ─────────────────────────────────────── -->
+        <!-- ── ② วัดครบ · เพดานสูงไม่เท่ากันในโซนเดียว ────────────────── -->
         <div class="ui-section">
-          <div class="ui-section-header"><div><h2>ชั้น 5 · ห้องประชุมใหญ่</h2></div>
-            <span class="ui-badge warning">ยังไม่วัด</span></div>
+          <div class="ui-section-header"><div><h2>ชั้น 1 · ล็อบบี้</h2><p>โถงกลางสูง ทางเดินข้างเตี้ย</p></div>
+            <span class="ui-badge success">วัดแล้ว</span></div>
           <div class="ui-section-body">
-            <div class="dim">
-              <span class="box empty"><i>กว้าง</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box empty"><i>ยาว</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
+            <div class="parts">
+              <div class="part"><span class="pn">1</span>
+                <div><span class="plabel">โถงกลาง เพดานสูง</span><span class="dim">
+                    <span class="box"><i>กว้าง</i> <b>18.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>ยาว</i> <b>20.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>สูง</i> <b>6.50</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="part"><span class="pn">2</span>
+                <div><span class="plabel">ทางเดินข้าง ใต้ฝ้า</span><span class="dim">
+                    <span class="box"><i>กว้าง</i> <b>18.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>ยาว</i> <b>4.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>สูง</i> <b>2.60</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 2 ส่วน</span>
+                <b>432.0</b> <span class="lab">ตร.ม.</span>
+                <b>2,527.2</b> <span class="lab">ลบ.ม.</span>
+                <span class="pack">→ สูตรได้ 2 แพ็ค</span></div>
+            </div>
+            <p class="hint" style="margin-top:var(--space-2)">⭐ <b>นี่คือเหตุผลที่ความสูงอยู่รายส่วน ไม่ใช่รายโซน</b> —
+            ถ้าบังคับให้ใส่ 6.50 ทั้งโซนจะได้ 2,808 ลบ.ม. เกินจริงไป 11%</p>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">3 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
+                <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
             </div>
             <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span>
-                <span class="cnt">ยังไม่มี</span></div>
-              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
-            </div>
-            <div class="photogrp">
-              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span><span class="cnt">ยังไม่มี</span></div>
-              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
-            </div>
-            <div class="photogrp">
-              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span>
-                <span class="cnt">ยังไม่มีจุด</span></div>
-              <p class="hint" style="color:var(--red)">🔴 ยังไม่ได้ระบุจุดสักจุด — <b>ส่งงานไม่ได้จนกว่าจะมีอย่างน้อย 1 จุด</b> · หัวหน้าจะไม่มีอะไรให้เลือกตอนสรุป</p>
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">4 จุด · 5 รูป</span></div>
+              <div class="spot"><span class="sn">1</span>
+                <div><b>เสาคู่ทางเข้า</b>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">2</span>
+                <div><b>เหนือโซฟารับรอง</b>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">3</span>
+                <div><b>ฝั่งบันไดเลื่อน</b>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">4</span>
+                <div><b>ใต้ช่องแสง</b>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
               <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
             </div>
           </div>
         </div>
 
-        <!-- ── โซนที่ช่างเพิ่มเองหน้างาน ───────────────────────────────── -->
+        <!-- ── ③ โซนที่ช่างเพิ่มเองหน้างาน ───────────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 5 · โถงลิฟต์</h2><p>ช่างเพิ่มเองหน้างาน</p></div>
-            <span class="ui-badge accent">จุดใหม่</span></div>
+            <span class="ui-badge accent">โซนใหม่</span></div>
           <div class="ui-section-body">
-            <div class="dim">
-              <span class="box"><i>กว้าง</i> <b>4.20</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box"><i>ยาว</i> <b>6.00</b> <em>ม.</em></span><span class="x">×</span>
-              <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
+            <div class="parts">
+              <div class="part"><span class="pn">1</span>
+                <div><span class="dim">
+                    <span class="box"><i>กว้าง</i> <b>4.20</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>ยาว</i> <b>6.00</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box"><i>สูง</i> <b>2.80</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 1 ส่วน</span>
+                <b>25.2</b> <span class="lab">ตร.ม.</span>
+                <b>70.6</b> <span class="lab">ลบ.ม.</span>
+                <span class="pack">→ สูตรได้ 1 แพ็ค</span></div>
             </div>
-            <p class="hint" style="margin-top:var(--space-2)">25.2 ตร.ม. · 70.6 ลบ.ม. → สูตรได้ <b>1 แพ็ค</b></p>
             <div class="photogrp">
               <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 รูป</span></div>
               <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
@@ -1404,15 +1469,67 @@ white-space:nowrap;margin-top:2px}
               <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 จุด · 1 รูป</span></div>
               <div class="spot"><span class="sn">1</span>
                 <div><b>ข้างประตูลิฟต์ตัวที่ 2</b>
-                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span>
-                    <span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
+                  <span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div>
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
               <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
             </div>
           </div>
         </div>
 
-        <!-- ── โซนที่ตัดออกหน้างาน ─────────────────────────────────────── -->
+        <!-- ── ④ ยังไม่แตะเลย — ติดด่านสามข้อ ────────────────────────── -->
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>ชั้น 5 · ห้องประชุมใหญ่</h2></div>
+            <span class="ui-badge danger">ยังไม่วัด</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span>
+                <div><span class="dim">
+                    <span class="box empty"><i>กว้าง</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box empty"><i>ยาว</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">ยังไม่มี</span></div>
+              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span><span class="cnt">ยังไม่มี</span></div>
+              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">ยังไม่มีจุด</span></div>
+              <p class="hint" style="color:var(--red)">🔴 ยังไม่ได้ระบุจุดสักจุด — <b>ส่งงานไม่ได้จนกว่าจะมีอย่างน้อย 1 จุด</b> · หัวหน้าจะไม่มีอะไรให้เลือกตอนสรุป</p>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── ⑤ ยังไม่แตะ ────────────────────────────────────────────── -->
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>ชั้น G · โถงจอดรถรับส่ง</h2></div>
+            <span class="ui-badge danger">ยังไม่วัด</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span>
+                <div><span class="dim">
+                    <span class="box empty"><i>กว้าง</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box empty"><i>ยาว</i> <b>—</b> <em>ม.</em></span><span class="x">×</span>
+                    <span class="box empty"><i>สูง</i> <b>—</b> <em>ม.</em></span>
+                  </span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">ยังไม่มี</span></div>
+              <div class="shots"><span class="shot add"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── ⑥ ตัดออกหน้างาน ────────────────────────────────────────── -->
         <div class="ui-section">
           <div class="ui-section-header"><div><h2>ชั้น 3 · ห้องน้ำชาย</h2></div>
             <span class="ui-badge plain">ตัดออก</span></div>
@@ -1424,7 +1541,7 @@ white-space:nowrap;margin-top:2px}
           </div>
         </div>
 
-        <button class="btn btn-quiet" style="width:100%"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่เจอหน้างาน</button>
+        <button class="btn btn-quiet" style="width:100%"><svg class="i"><use href="#plus"/></svg> เพิ่มโซนที่เจอหน้างาน</button>
 
         <div class="sticky-acts">
           <span class="ui-badge danger">ยังไม่ครบ 2 โซน — ขนาด · ภาพกว้าง · จุด</span>
@@ -1471,6 +1588,8 @@ white-space:nowrap;margin-top:2px}
       <div class="packsum">
         <span><span class="lab">พื้นที่รวม</span><span class="big">2,130</span><span class="lab">ตร.ม.</span></span>
         <span class="sep"></span>
+        <span><span class="lab">ปริมาตรรวม</span><span class="big">11,123</span><span class="lab">ลบ.ม. · 7 ส่วนวัด</span></span>
+        <span class="sep"></span>
         <span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">8</span><span class="lab">แพ็ค · คิดรายโซน</span></span>
         <span class="sep"></span>
         <span><span class="lab">จุดติดตั้ง</span><span class="big">7</span><span class="lab">จาก 11 จุดที่ช่างแจ้ง</span></span>
@@ -1481,8 +1600,9 @@ white-space:nowrap;margin-top:2px}
       <div class="notice" data-tone="info" style="margin-top:var(--space-4)">
         <span class="ic"><svg class="i"><use href="#pkg"/></svg></span>
         <div><b>สูตร: ปริมาตร ÷ 2,400 ลบ.ม. ปัดขึ้น · อย่างน้อย 1 แพ็คต่อโซน</b>
-        <span>🔴 <b>คิดรายโซน ห้ามคิดจากปริมาตรรวม</b> — รวมก่อนหารได้ 11,404 ÷ 2,400 = 5 แพ็ค
-        แต่กลิ่นไม่ข้ามผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายโซนได้ 8
+        <span>⭐ <b>ขอบของการปัดเศษ = ขอบที่กลิ่นข้ามไม่ได้ = ผนังของโซน</b>
+        · <b>รวมข้ามโซนไม่ได้</b> — รวมทั้งใบก่อนหารได้ 11,123 ÷ 2,400 = 5 แพ็ค แต่กลิ่นไม่ทะลุผนัง ห้องเล็กห้าห้องยังต้องมีห้าเครื่อง · หารรายโซนได้ 8
+        · <b>แยกในโซนก็ไม่ได้</b> — โซนที่วัดหลายส่วนต้อง<b>บวกปริมาตรก่อนแล้วค่อยปัดครั้งเดียว</b> สองส่วนส่วนละ 100 ลบ.ม. = 1 แพ็ค ไม่ใช่ 2
         ⚠️ สูตรมีขั้นบันได — 2,401 ลบ.ม. กระโดดเป็น 2 แพ็คทันที นี่คือเหตุผลที่ต้องมีช่องให้ทับ</span></div>
       </div>
 
@@ -1498,7 +1618,7 @@ white-space:nowrap;margin-top:2px}
 
               <!-- ① ครบแล้ว ตรงกับสูตร -->
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span><span class="cell-sub">อาคาร A · ชั้น 5</span></td>
-                <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">972.2</td>
+                <td class="mono">12.40 × 18.00 × 2.80<span class="cell-sub">+ 8.00 × 15.50 × 2.80 · <b>2 ส่วน (ตัว L)</b></span></td><td class="num mono">972.2</td>
                 <td class="num mono" style="color:var(--text-3)">1</td>
                 <td><div class="spotpick">
                     <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นที่ 3</button>
@@ -1538,7 +1658,7 @@ white-space:nowrap;margin-top:2px}
 
               <!-- ④ แพ็คสูงกว่าสูตร · จุดเลือกน้อยกว่าที่แจ้ง -->
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
-                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">2,808.0</td>
+                <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · <b>2 ส่วน สูงต่างกัน</b></span></td><td class="num mono">2,527.2</td>
                 <td class="num mono" style="color:var(--text-3)">2</td>
                 <td><div class="spotpick">
                     <button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาคู่ทางเข้า</button>
@@ -1747,7 +1867,7 @@ white-space:nowrap;margin-top:2px}
             <thead><tr><th>โซน</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ชั้น 5 · โซนออฟฟิศ</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
-                <td class="mono">12.40 × 28.00 × 2.80</td><td class="num mono">972.2</td>
+                <td class="mono">12.40 × 18.00 × 2.80<span class="cell-sub">+ 8.00 × 15.50 × 2.80 · <b>2 ส่วน (ตัว L)</b></span></td><td class="num mono">972.2</td>
                 <td class="num mono" style="color:var(--text-3)">1</td>
                 <td class="num"><b>2</b><span class="cell-sub">จาก 3</span></td><td class="num"><b>1</b></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>3</em></span></span></span></td></tr>
@@ -1762,7 +1882,7 @@ white-space:nowrap;margin-top:2px}
                 <td class="num"><b>1</b><span class="cell-sub">จาก 1</span></td><td class="num"><b>1</b></td>
                 <td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>1</em></span></span></span></td></tr>
               <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td>
-                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">2,808.0</td>
+                <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · <b>2 ส่วน สูงต่างกัน</b></span></td><td class="num mono">2,527.2</td>
                 <td class="num mono" style="color:var(--text-3)">2</td>
                 <td class="num"><b>3</b><span class="cell-sub">จาก 4</span></td><td class="num"><b>3</b>
                 <span class="cell-sub">เพิ่มจากสูตร — โถงเปิดสองด้าน</span></td>
@@ -1868,7 +1988,7 @@ white-space:nowrap;margin-top:2px}
                 <td class="mono">1 แพ็ค</td><td class="num"><b>1</b></td>
                 <td>FG-1042 Signature Scent<span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge success">ตรงกัน</span></td></tr>
-              <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub mono">ZN-26090024 · 2,808.0 ลบ.ม.</span></td>
+              <tr><td><span class="t-strong">ชั้น 1 · ล็อบบี้</span><span class="cell-sub mono">ZN-26090024 · 2,527.2 ลบ.ม. · 2 ส่วน</span></td>
                 <td class="mono">3 แพ็ค</td><td class="num"><b style="color:var(--amber)">2</b></td>
                 <td>FG-1044 Grand Lobby<span class="cell-sub">แพ็ค · 2 ลิตร/เดือน</span></td>
                 <td><span class="ui-badge warning">ซื้อน้อยกว่าที่ประเมิน 1</span></td></tr>
@@ -1926,7 +2046,7 @@ white-space:nowrap;margin-top:2px}
               <tr><td class="mono">service_sites</td><td><span class="mono">surveyRequestId</span></td>
                 <td>บอกที่มา — แพตเทิร์นเดียวกับ <span class="mono">projectId</span> / <span class="mono">customerAddressId</span></td></tr>
               <tr><td class="mono"><span class="ui-badge accent">ใหม่</span> service_survey_zones</td>
-                <td>ผลวัด <b>รายใบ × รายโซน</b><br><span class="mono">requestId · zoneId · widthM/lengthM/heightM · spots jsonb · packageQty · status · cutReason</span></td>
+                <td>ผลวัด <b>รายใบ × รายโซน</b><br><span class="mono">requestId · zoneId · parts jsonb · spots jsonb · packageQty · status · cutReason</span></td>
                 <td>🔴 <b>ประเมินซ้ำห้ามทับค่า</b> (มติ 8) — หนึ่งดีลมีใบประเมินได้หลายใบ หนึ่งโซนถูกวัดได้หลายรอบ · เก็บที่โซนเมื่อไร ใบที่สองจะลบผลของใบแรกทิ้ง แล้วใบเสนอราคาที่อ้างใบแรกจะอ่านตัวเลขผิด</td></tr>
               <tr><td class="mono">service_zones</td><td><span class="ui-badge success">ไม่ต้องเพิ่มอะไร</span></td>
                 <td>ขนาด "ล่าสุด" ของโซน = อ่านจากแถวใบที่ใหม่ที่สุด · <b>ห้ามเก็บเป็นคอลัมน์</b> (กติกาเดิมของ repo: ค่าที่คำนวณได้ห้ามเก็บ)</td></tr>
@@ -2022,7 +2142,7 @@ white-space:nowrap;margin-top:2px}
             <thead><tr><th>โซน</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็ค</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
             <tbody>
               <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td>
-                <td class="mono">18.00 × 24.00 × 6.50</td><td class="num mono">432.0</td>
+                <td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 1 ส่วน · รวม 2 ส่วน</span></td><td class="num mono">432.0</td>
                 <td class="num">3<span class="cell-sub">จาก 4</span></td><td class="num"><b>2</b></td>
                 <td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022</span></td>
                 <td class="mono">12 มี.ค. 69<span class="cell-sub">AS-26030004</span></td></tr>
