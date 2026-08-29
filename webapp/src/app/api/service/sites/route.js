@@ -8,6 +8,7 @@ import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
+import { checkSiteReferences } from '@/lib/service/siteReferences';
 import { assetCountsBySite, findCustomer, loadSites, requireService, zoneCountsBySite } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
@@ -70,7 +71,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 // POST { customerId, name, routeZone?, address?, mapUrl?, contactName?, contactPhone?,
-//        accessFrom?, accessTo?, accessDays?, accessNote?, note? }
+//        accessFrom?, accessTo?, accessDays?, accessNote?, note?,
+//        customerAddressId?, projectId? }
+//   สองช่องท้ายไม่ใช่ช่องกรอก — ฟอร์มส่งมาเองจากไทล์ที่อยู่ (mig 0313) และวิซาร์ด
+//   รับใบสั่งขายส่ง projectId ของใบที่เปิดอยู่ (mig 0299)
 export const POST = withUser(async ({ user, supabase, req }) => {
   const access = requireService({ user, edit: true });
   if (access.response) return access.response;
@@ -84,6 +88,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // (ชื่อที่ client ส่งอาจเก่าหรือถูกแก้ระหว่างทาง)
     const customer = await findCustomer(supabase, value.customerId);
     if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
+
+    // ที่อยู่ต้นทาง (mig 0313) + โครงการที่คลอดไซต์ (mig 0299) — ไม่มี FK ทั้งคู่
+    const refError = await checkSiteReferences(supabase, value, customer);
+    if (refError) return badRequest(refError);
 
     // รหัส SS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {

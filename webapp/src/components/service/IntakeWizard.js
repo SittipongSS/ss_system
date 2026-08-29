@@ -55,6 +55,18 @@ export default function IntakeWizard({
     [sites, order?.customerId],
   );
   const zones = useMemo(() => (siteId ? (zonesBySite.get(siteId) || []) : []), [zonesBySite, siteId]);
+
+  /* ⭐ **ประทับโครงการให้เอง** (mig 0299 · มติ 2026-08-29) — ที่นี่คือจุดเดียวที่ระบบ
+     รู้คำตอบโดยไม่ต้องถามคน: ไซต์ใบนี้เกิดจากใบสั่งขายใบนี้ ซึ่งรู้โครงการต้นสังกัด
+     อยู่แล้ว · **ไม่มีช่องกรอกบนจอ และไม่บังคับ** — ไซต์ที่มาทางอื่น (นำเข้าของเก่า
+     380 จุด · ลูกค้าโทรมาให้ไปติดตั้ง) ไม่มีโครงการ และต้องลงทะเบียนได้ตามปกติ
+     ⚠️ ต้อง memo — `defaults` อยู่ใน deps ของ useEffect ที่ตั้งค่าฟอร์มไซต์ · ส่ง
+        อ็อบเจกต์ใหม่ทุกเรนเดอร์ = ฟอร์มถูกรีเซ็ตกลางที่คนกำลังพิมพ์ */
+  const siteDefaults = useMemo(() => ({
+    customerId: order?.customerId || "",
+    customerName: order?.customerName || "",
+    projectId: order?.projectId || null,
+  }), [order?.customerId, order?.customerName, order?.projectId]);
   const site = customerSites.find((s) => s.id === siteId) || null;
 
   /* 🐞 เลือกไซต์แล้วดรอปดาวน์โซนว่างเปล่า — ของเดิมโหลดโซนตอน "สร้างโซนใหม่" กับ
@@ -345,7 +357,7 @@ export default function IntakeWizard({
         site={null}
         customers={order.customerId ? [{ id: order.customerId, name: order.customerName }] : []}
         customerAddresses={customerAddresses}
-        defaults={{ customerId: order.customerId, customerName: order.customerName }}
+        defaults={siteDefaults}
         onClose={() => setSiteModal(false)}
         onSave={async (form) => {
           const created = await onReloadRegistry.createSite(form);

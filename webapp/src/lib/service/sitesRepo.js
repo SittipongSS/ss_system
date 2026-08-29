@@ -111,9 +111,12 @@ export async function findAsset(supabase, siteId, assetId) {
 
 // ลูกค้าที่ไซต์ผูกอยู่ต้องมีจริง — ผูกไปยัง id มั่วแล้วไซต์จะกลายเป็นเด็กกำพร้า
 // ที่ไม่โผล่ในแท็บของลูกค้ารายไหนเลย (คืน { name } หรือ null)
+// ⭐ ดึง `addresses` มาด้วย — ใช้ตรวจว่า customerAddressId ที่ส่งมาเป็นแถวของลูกค้า
+//    รายนี้จริง (mig 0313) · เป็น jsonb ในแถวเดียวกัน ไม่มีคำสั่งเพิ่ม
 export async function findCustomer(supabase, customerId) {
   const { data, error } = await supabase
-    .from('customers').select('id, name, arCode').eq('id', customerId).maybeSingle();
+    .from('customers').select('id, name, arCode, addresses').eq('id', customerId).maybeSingle();
   if (error) throw error;
   return data || null;
 }
+

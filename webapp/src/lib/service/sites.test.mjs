@@ -9,6 +9,8 @@ import {
   normalizeAssetInput,
   normalizeSiteInput,
   refillDueDate,
+  siteAddressCarry,
+  siteAddressDrift,
   toHHMM,
 } from './sites.js';
 import { canBeServiceAssignee, canEditService, canViewService } from '../permissions.js';
@@ -41,6 +43,50 @@ test('เวลาถูกตัดวินาทีทิ้งเสมอ (
   assert.equal(value.accessTo, '17:30');
   assert.equal(toHHMM('10:00:00'), '10:00');
   assert.equal(minutesOf('10:30'), 630);
+});
+
+// ── ที่มาของที่อยู่ + โครงการที่ประทับเอง (mig 0313 / 0299) ──────────────
+test('ที่มาของที่อยู่และโครงการเดินทางถึง DB — ไม่ถูกตัดทิ้งกลางทาง', () => {
+  const { value } = normalizeSiteInput({
+    customerId: 'C1', name: 'A', customerAddressId: ' ADDR-1 ', projectId: 'PJ-9',
+  });
+  assert.equal(value.customerAddressId, 'ADDR-1');
+  assert.equal(value.projectId, 'PJ-9');
+});
+
+test('⭐ ไม่ส่งมา = null ไม่ใช่สตริงว่าง — ไซต์ที่ไม่มีโครงการเป็นเรื่องปกติ', () => {
+  const { value } = normalizeSiteInput({ customerId: 'C1', name: 'A' });
+  assert.equal(value.customerAddressId, null);
+  assert.equal(value.projectId, null);
+});
+
+test('ค่าอ้างอิงที่ยาวผิดปกติถูกตีกลับ ไม่ใช่เขียนลงแถว', () => {
+  const { error } = normalizeSiteInput({ customerId: 'C1', name: 'A', projectId: 'P'.repeat(61) });
+  assert.match(error, /โครงการไม่ถูกต้อง/);
+});
+
+const registryAddress = {
+  id: 'ADDR-1', address: '191 ถ.สีลม แขวงสีลม เขตบางรัก กทม. 10500', addressOverride: true,
+  mapUrl: '', contactName: 'คุณสมชาย', contactPhone: '021234567',
+};
+
+test('⭐ ทะเบียนว่าง ห้ามล้างค่าที่กรอกเอง — หมุดแผนที่ของช่างต้องอยู่', () => {
+  const carried = siteAddressCarry({ mapUrl: 'https://maps.app.goo.gl/x', address: '' }, registryAddress);
+  assert.equal(carried.mapUrl, 'https://maps.app.goo.gl/x');
+  assert.equal(carried.address, registryAddress.address);
+  assert.equal(carried.contactName, 'คุณสมชาย');
+});
+
+test('⭐ ความต่างนับเฉพาะช่องที่ "ดึงใหม่" เปลี่ยนได้จริง — ไม่งั้นปุ่มกดแล้วนิ่ง', () => {
+  const site = { ...registryAddress, mapUrl: 'https://maps.app.goo.gl/x', contactPhone: '' };
+  // ทะเบียนไม่มี mapUrl ⇒ ไม่ใช่ความต่าง · เบอร์บนไซต์ว่างแต่ทะเบียนมี ⇒ ใช่
+  const drift = siteAddressDrift(site, registryAddress);
+  assert.deepEqual(drift.map((d) => d.field), ['contactPhone']);
+});
+
+test('ตรงกันหมด หรือไม่รู้ที่มา = ไม่มีความต่างให้เตือน', () => {
+  assert.deepEqual(siteAddressDrift({ ...registryAddress, contactPhone: '021234567' }, registryAddress), []);
+  assert.deepEqual(siteAddressDrift({ address: 'อะไรก็ได้' }, null), []);
 });
 
 // ── ตรวจข้อมูลเครื่อง ────────────────────────────────────────────────────

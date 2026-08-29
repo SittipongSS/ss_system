@@ -6,6 +6,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
+import { checkSiteReferences } from '@/lib/service/siteReferences';
 import { findCustomer, loadAssets, loadZones, requireSite } from '@/lib/service/sitesRepo';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
@@ -46,12 +47,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (error) return badRequest(error);
 
     // ย้ายไซต์ข้ามลูกค้าได้ (สาขาถูกโอนกิจการเกิดขึ้นจริง) แต่ปลายทางต้องมีจริง
+    const moved = value.customerId !== before.customerId;
     let customerName = before.customerName;
-    if (value.customerId !== before.customerId) {
-      const customer = await findCustomer(supabase, value.customerId);
-      if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
-      customerName = customer.name || null;
-    }
+    const customer = await findCustomer(supabase, value.customerId);
+    if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
+    if (moved) customerName = customer.name || null;
+
+    /* ⚠️ **ย้ายลูกค้า = ล้างที่อยู่ต้นทาง** (mig 0313) — `customerAddressId` ชี้เข้า
+       `addresses[]` ของลูกค้าคนเดิม · ปล่อยไว้แล้วปุ่ม "ดึงใหม่" จะเทียบกับที่อยู่
+       ของคนละบริษัท · ข้อความที่อยู่ที่ก๊อปไว้แล้วยังอยู่ครบ หายแค่ "ที่มา" */
+    if (moved) value.customerAddressId = null;
+
+    const refError = await checkSiteReferences(supabase, value, customer);
+    if (refError) return badRequest(refError);
 
     const { data, error: updateError } = await supabase
       .from('service_sites')
