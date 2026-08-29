@@ -2598,18 +2598,19 @@ line-height:var(--lh-thai)}
     <div>
       <h2>กดสร้างใบเสนอราคาแล้วได้อะไร</h2>
       <div class="route">จอ 08 → <span class="mono">/sales-planning/quotations/new?dealId=…&amp;surveyId=…</span></div>
-      <p><b>ได้หน้าสร้างใบที่กรอกดีลไว้แล้ว พร้อมตัวเลขจากการประเมินติดมาด้วย</b> —
-      ยังไม่มีใบเกิดขึ้นจนกว่า SA จะกดบันทึกเอง · หน้านี้<b>มีอยู่แล้วและรองรับ prefill จาก query อยู่แล้ว</b>
-      (<span class="mono">?dealId</span>) เพิ่มแค่การอ่าน <span class="mono">surveyId</span></p>
+      <p><b>ได้ร่างใบที่มีบรรทัดครบทุกพื้นที่พร้อมจำนวนแล้ว</b> — SA เหลือแค่เลือกกลิ่นกับใส่ราคา ·
+      หน้านี้<b>รองรับ prefill จาก query อยู่แล้ว</b> (<span class="mono">?dealId</span>) เพิ่มแค่การอ่าน <span class="mono">surveyId</span></p>
     </div>
     <ul class="fixes">
-      <li><span class="mk new">+</span><span>⭐ <b>ใบประเมินให้ “จำนวน” ไม่ให้ “สินค้า” และไม่ให้ “ราคา”</b> — ต้องพูดให้ชัดตั้งแต่แรก
-      ไม่งั้นจะมีคนคาดหวังใบเสนอราคาสำเร็จรูปแล้วผิดหวัง</span></li>
-      <li><span class="mk new">+</span><span>🔴 <b>ไม่สร้างบรรทัดให้ล่วงหน้า</b> — <span class="mono">unitPrice NOT NULL DEFAULT 0</span> (mig 0065)
-      ⇒ บรรทัดที่สร้างให้จะมีราคา ฿0 เสมอ ซึ่งบนเอกสารที่ส่งลูกค้าอ่านว่า <b>“ฟรี”</b> ไม่ใช่ “ยังไม่ใส่ราคา”</span></li>
-      <li><span class="mk new">+</span><span>🔴 <b>ห้ามสร้างบรรทัดรายพื้นที่</b> — 5 พื้นที่ ≠ 5 บรรทัด · เป็นรูปที่เพิ่งสั่งรื้อไปเมื่อ 29 ส.ค.
-      (“ไม่ต้องนับบรรทัดแล้ว นับแค่จำนวน FG พอ”)</span></li>
-      <li><span class="mk new">+</span><span>ปุ่มต้องเป็น <b>GatedAction</b> — ดีล Won/Lost แล้ว API ตีกลับ ⇒ โชว์ปุ่มเสมอ บอกเหตุตอนกด พร้อมทางออก</span></li>
+      <li><span class="mk new">+</span><span>⭐ <b>1 บรรทัด = 1 พื้นที่ · FG ตามกลิ่น</b> (มติ 2026-08-29) —
+      ไซต์เดียวหลายพื้นที่ใช้กลิ่นเดียว <b>FG ซ้ำได้หลายบรรทัด</b> เพราะ FG คือกลิ่น ไม่ใช่พื้นที่ ·
+      ลูกค้าเห็นบนใบว่าจ่ายค่าอะไรที่พื้นที่ไหน และตั้งราคาต่างกันรายพื้นที่ได้</span></li>
+      <li><span class="mk new">+</span><span>⇒ ใบประเมิน<b>สร้างบรรทัดให้ได้จริง</b> — ชื่อพื้นที่ · จำนวนแพ็ค · หน่วย · ร่องรอยกลับไปหาโซน
+      ครบทุกช่องยกเว้น <b>กลิ่น</b> กับ <b>ราคา</b></span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>กับดัก ฿0</b> — <span class="mono">unitPrice NOT NULL DEFAULT 0</span> (mig 0065)
+      และระบบรองรับใบยอดศูนย์จริง (mig 0137) ⇒ ต้องแยก “ยังไม่ใส่ราคา” ออกจาก “ตั้งใจศูนย์” ด้วยเครื่องหมายบนบรรทัด</span></li>
+      <li><span class="mk">✓</span><span>🪤 ร่างก่อนหน้าของแผนเขียนผิดว่าห้ามแยกบรรทัดรายพื้นที่ โดยอ้างมติ “นับ FG ไม่นับบรรทัด” —
+      <b>อ้างผิดเรื่อง</b> มตินั้นพูดถึงตัวนับบนคิวงานเข้าใหม่ ไม่ได้ห้าม 1 บรรทัดต่อ 1 โซน</span></li>
     </ul>
   </div>
 
@@ -2625,65 +2626,78 @@ line-height:var(--lh-thai)}
       <div class="notice" data-tone="info">
         <span class="ic"><svg class="i"><use href="#bldg"/></svg></span>
         <div><b>อ้างอิงผลประเมินพื้นที่ <span class="mono">AS-26090002</span></b>
-        <span>ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <b>ต้องใช้ 7 แพ็ค/เดือน</b> · 7 จุดติดตั้ง · วัดเมื่อ 8 ก.ย. 69
-        — ตัวเลขนี้คือสิ่งที่ทั้งกระบวนการทำมาเพื่อมัน</span></div>
+        <span>ทรู ดิจิทัล พาร์ค · 5 พื้นที่ · <b>7 แพ็ค/เดือน</b> · วัดเมื่อ 8 ก.ย. 69 —
+        ดีล ลูกค้า ที่อยู่ ผู้ติดต่อ เติมให้จากดีลอยู่แล้ว</span></div>
         <span class="act"><button class="btn sm">ดูใบประเมิน</button></span>
       </div>
 
       <div class="ui-section">
-        <div class="ui-section-header"><div><h2>เติมให้แล้วจากดีล</h2></div>
-          <span class="ui-badge success">ไม่ต้องกรอกซ้ำ</span></div>
-        <div class="ui-section-body">
-          <div class="doc">
-            <div class="line"><span>ดีล</span><span class="mono">DL-2608017</span></div>
-            <div class="line"><span>ลูกค้า</span><span>บริษัท ทรู คอร์ปอเรชั่น จำกัด · <span class="mono">AR-318</span></span></div>
-            <div class="line"><span>ผู้เสนอ</span><span>ธนวัฒน์ (AE เจ้าของดีล)</span></div>
-            <div class="line"><span>ที่อยู่ออกบิล</span><span>101 ทรู ดิจิทัล พาร์ค ถ.สุขุมวิท แขวงบางจาก เขตพระโขนง กรุงเทพฯ 10260</span></div>
-            <div class="line"><span>ผู้ติดต่อ</span><span>คุณแนน · 081-234-5678</span></div>
-            <div class="line"><span>หมายเหตุอ้างอิง</span><span>อ้างอิงผลประเมินพื้นที่ AS-26090002 · 5 พื้นที่ · 7 แพ็ค/เดือน</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="ui-section">
-        <div class="ui-section-header"><div><h2>รายการ</h2>
-        <p>ว่างเปล่าโดยตั้งใจ — ใบประเมินไม่รู้ว่าลูกค้าจะเลือกกลิ่นไหน และราคามาจากทะเบียนราคา</p></div>
-          <span class="ui-badge warning">ยังไม่มีบรรทัด</span></div>
-        <div class="ui-section-body">
-          <div class="empty-state">
-            <b>ยังไม่มีรายการ — เลือกสินค้าก่อน</b>
-            <span>ผลประเมินบอกว่าต้องใช้ <b>7 แพ็ค/เดือน</b> · เลือกกลิ่นแล้วกดปุ่มข้างล่างเพื่อใส่จำนวนให้</span>
-          </div>
-          <div class="pick">
-            <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มรายการ</button>
-            <button class="btn" disabled>ใส่จำนวน 7 ลงบรรทัดที่เลือก <span class="ui-badge plain">เลือกสินค้าก่อน</span></button>
-          </div>
-        </div>
-      </div>
-
-      <div class="ui-section">
-        <div class="ui-section-header"><div><h2>ถ้ากรอกแล้วจำนวนไม่ตรงกับที่ประเมิน</h2></div></div>
+        <div class="ui-section-header"><div><h2>รายการ — 1 บรรทัด = 1 พื้นที่</h2>
+        <p>ชื่อพื้นที่และจำนวนมาจากใบประเมิน · <b>เหลือเลือกกลิ่นกับใส่ราคา</b></p></div>
+          <span class="ui-badge danger">ยังไม่ได้ใส่ราคา 3 บรรทัด</span></div>
         <div class="ui-section-body flush">
           <div class="tblwrap"><table class="tbl">
-            <thead><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวม</th><th></th></tr></thead>
+            <thead><tr><th>พื้นที่ (จากใบประเมิน)</th><th>สินค้า / กลิ่น</th><th class="num">จำนวน</th><th class="num">ราคา/หน่วย</th><th class="num">รวม</th></tr></thead>
             <tbody>
-              <tr><td><span class="t-strong">FG-1042 Signature Scent</span><span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
-                <td class="num"><b>4</b></td><td class="num mono">4,500</td><td class="num mono">18,000</td><td></td></tr>
-              <tr><td><span class="t-strong">FG-1044 Grand Lobby</span><span class="cell-sub">แพ็ค · 1 ลิตร/เดือน</span></td>
-                <td class="num"><b>2</b></td><td class="num mono">5,200</td><td class="num mono">10,400</td><td></td></tr>
-              <tr><td colspan="2"><span class="t-strong">รวมบนใบ 6 แพ็ค</span></td>
-                <td colspan="3"><span class="ui-badge warning">ต่างจากที่ประเมินไว้ 7 แพ็ค — น้อยกว่า 1</span>
-                  <span class="cell-sub">⚠️ <b>ทัก ไม่บล็อก</b> — ลูกค้าซื้อไม่ครบเป็นเรื่องปกติ (มติข้อ 4) · โซนที่ไม่ได้ขายยังอยู่ในทะเบียนพร้อมขายรอบหน้า</span></td></tr>
+              <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021 · 432.0 ตร.ม.</span></td>
+                <td>FG-1044 Grand Lobby</td><td class="num"><b>3</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num mono">5,200</td><td class="num mono">15,600</td></tr>
+              <tr><td><span class="t-strong">โซนออฟฟิศชั้น 5</span><span class="cell-sub mono">ZN-26090021 · 347.2 ตร.ม.</span></td>
+                <td>FG-1042 Signature Scent</td><td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num mono">4,500</td><td class="num mono">4,500</td></tr>
+              <tr><td><span class="t-strong">ห้องประชุมใหญ่</span><span class="cell-sub mono">ZN-26090022 · 126.0 ตร.ม.</span></td>
+                <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num" style="color:var(--red)"><b>฿0</b><span class="cell-sub" style="color:var(--red)">ยังไม่ใส่ราคา</span></td>
+                <td class="num mono" style="color:var(--text-3)">—</td></tr>
+              <tr><td><span class="t-strong">โถงลิฟต์</span><span class="cell-sub mono">ZN-26090023 · 25.2 ตร.ม.</span></td>
+                <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num" style="color:var(--red)"><b>฿0</b><span class="cell-sub" style="color:var(--red)">ยังไม่ใส่ราคา</span></td>
+                <td class="num mono" style="color:var(--text-3)">—</td></tr>
+              <tr><td><span class="t-strong">โถงจอดรถรับส่ง</span><span class="cell-sub mono">ZN-26090025 · 1,200.0 ตร.ม.</span></td>
+                <td><span class="ui-badge warning">ยังไม่เลือกกลิ่น</span></td>
+                <td class="num"><b>1</b> <span class="cell-sub">แพ็ค</span></td>
+                <td class="num" style="color:var(--red)"><b>฿0</b><span class="cell-sub" style="color:var(--red)">ยังไม่ใส่ราคา</span></td>
+                <td class="num mono" style="color:var(--text-3)">—</td></tr>
             </tbody>
           </table></div>
         </div>
       </div>
 
+      <div class="notice" data-tone="info">
+        <span class="ic"><svg class="i"><use href="#pkg"/></svg></span>
+        <div><b>FG-1042 ซ้ำสี่บรรทัด — และนั่นถูกต้อง</b>
+        <span>FG คือ<b>กลิ่น</b> ไม่ใช่พื้นที่ · ไซต์เดียวใช้กลิ่นเดียวทั้งตึกก็ยังแยกบรรทัดตามพื้นที่
+        เพราะลูกค้าต้องเห็นว่าจ่ายค่าอะไรที่ไหน และส่วนลดเฉพาะโซนทำได้</span></div>
+      </div>
+
+      <div class="notice" data-tone="danger">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>ยื่นใบไม่ได้จนกว่าจะใส่ราคาครบ — 3 บรรทัดยังเป็น ฿0</b>
+        <span><span class="mono">unitPrice</span> เป็น <span class="mono">NOT NULL DEFAULT 0</span> ⇒ บรรทัดที่ระบบสร้างให้จะเป็น ฿0 เสมอ
+        และบนเอกสารที่ส่งลูกค้า ฿0 อ่านว่า <b>“ฟรี”</b> ไม่ใช่ “ยังไม่ใส่ราคา” ·
+        ⚠️ ระบบนี้<b>รองรับใบยอดศูนย์จริง</b> (ของแถม/ตัวอย่าง) ⇒ ด่านนี้ต้องแคบเฉพาะ<b>บรรทัดที่มาจากใบประเมินและยังไม่ถูกแตะ</b>
+        (<span class="mono">metadata.survey</span>) ไม่ใช่ห้ามยอดศูนย์ทั้งระบบ</span></div>
+        <span class="act"><button class="btn sm btn-accent">ไปที่บรรทัดแรกที่ยังไม่ใส่ราคา</button></span>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ถ้าลูกค้าซื้อไม่ครบ</h2></div></div>
+        <div class="ui-section-body">
+          <div class="ctxstrip">
+            <span class="done"><svg class="i"><use href="#check"/></svg>ประเมินไว้ 7 แพ็ค</span>
+            <span>ลบบรรทัดโถงจอดรถออก ⇒ บนใบเหลือ <b>6 แพ็ค</b> — <b>ทัก ไม่บล็อก</b> เพราะซื้อไม่ครบเป็นเรื่องปกติ (มติข้อ 4) ·
+            พื้นที่ที่ไม่ได้ขายยังอยู่ในทะเบียนพร้อมเสนอรอบหน้า ไม่ต้องกลับไปวัดใหม่</span>
+          </div>
+        </div>
+      </div>
+
       <div class="sticky-acts">
-        <span class="ui-badge plain">ยังไม่บันทึก</span>
+        <span class="ui-badge danger">3 บรรทัดยังไม่มีราคา</span>
         <span style="margin-left:auto"></span>
-        <button class="btn">ยกเลิก</button>
-        <button class="btn btn-primary">บันทึกร่างใบเสนอราคา</button>
+        <button class="btn">บันทึกร่าง</button>
+        <button class="btn btn-primary" disabled>ยื่นใบเสนอราคา</button>
       </div>
     </div>
     </div>
@@ -2696,12 +2710,15 @@ line-height:var(--lh-thai)}
         <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
         <div><b>ดีล DL-2608017 ปิด Won ไปแล้วเมื่อ 12 ส.ค. — เพิ่มใบเสนอราคาใหม่ไม่ได้</b>
         <span>API ตีกลับตรง ๆ (<i>“ดีลนี้ปิด Won แล้ว — ใบเสนอราคาถูกล็อก”</i>) ·
-        เคสจริงที่จะเจอคือ <b>ประเมินเสร็จหลังดีลปิดไปแล้ว</b> ซึ่งแปลว่างานนี้เป็นรายได้ก้อนใหม่
+        เคสจริงคือ <b>ประเมินเสร็จหลังดีลปิดไปแล้ว</b> ซึ่งแปลว่างานนี้เป็นรายได้ก้อนใหม่
         ⇒ ข้อความต้อง<b>แนะทางออก</b> ไม่ใช่แค่บอกว่าทำไม่ได้</span></div>
         <span class="act"><button class="btn sm btn-accent">เปิดดีลใหม่ให้ลูกค้ารายนี้</button></span>
       </div>
       <p class="hint" style="margin-top:var(--space-3)">⚠️ ปุ่มบนจอ 08 ต้อง<b>โชว์เสมอ</b> แล้วบอกเหตุตอนกด (GatedAction) —
       ปุ่มเทาที่ไม่บอกเหตุคือปุ่มที่ทุกคนมาถามหัวหน้าคนเดียวกัน</p>
+      <p class="hint">🔗 <b>ของแถม</b>: บรรทัด QT รายพื้นที่ ⇒ บรรทัด SO รายพื้นที่ ⇒ ตอนถึง “งานเข้าใหม่”
+      การจัดสรรลงโซนเป็น <b>1:1 ที่ตอบไว้แล้ว</b> ไม่ใช่ปริศนาที่ TS ต้องมานั่งจับคู่ ·
+      🅿️ ยังไม่ทำรอบนี้ แต่ <span class="mono">metadata.zoneId</span> ต้องใส่ตั้งแต่ตอนนี้ ไม่งั้นต่อไม่ติดทีหลัง</p>
     </div>
   </div>
 </section>
