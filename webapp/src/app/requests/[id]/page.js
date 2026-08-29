@@ -307,8 +307,12 @@ export default function RequestDetailPage() {
         load({ background: true });
         throw new Error(d.error || "ทำรายการไม่สำเร็จ");
       }
+      /* ⚠️ **งานที่สำเร็จครึ่งเดียวต้องไม่ขึ้นว่า "สำเร็จ"** — บางก้าวเขียนสองที่
+         (ใบ + นัดของช่าง) แล้วไม่มีทรานแซกชันครอบ · server ส่ง `_warning` มาบอก
+         ⇒ ทักด้วยน้ำเสียงเตือน ไม่ใช่เขียว */
+      if (d?._warning) setToast({ kind: "error", msg: d._warning });
       // okMsg = null ⇒ เงียบไว้ (ขั้นกลางของงานที่ยิงหลายครั้ง — ทักครั้งเดียวตอนจบ)
-      if (okMsg) setToast({ kind: "success", msg: okMsg });
+      else if (okMsg) setToast({ kind: "success", msg: okMsg });
       await load();
       return true;
     } catch (e) { setToast({ kind: "error", msg: e.message }); return false; }

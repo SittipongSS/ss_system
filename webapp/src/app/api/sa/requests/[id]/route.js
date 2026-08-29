@@ -207,6 +207,10 @@ export async function PATCH(request, { params }) {
   let ackFanOut = false;
   // เหตุผลที่ต้องไหลไปถึงเธรด (นอกเหนือจาก cancel/bounce ที่เก็บลง patch อยู่แล้ว)
   let eventReason = null;
+  /* ⚠️ **ครึ่งหลังของ "ลงคิว" ล้มได้โดยที่ใบบันทึกไปแล้ว** — ใบกับนัดอยู่คนละคำสั่ง
+     (PostgREST ไม่มีทรานแซกชันครอบ) ⇒ ต้อง **บอกผู้ใช้** ไม่ใช่ log เงียบ ๆ
+     แล้วปล่อยให้คนคิดว่าช่างเห็นงานแล้วทั้งที่ตารางว่าง */
+  let visitWarning = null;
 
   try {
     if (action === 'submit') {
@@ -848,11 +852,11 @@ export async function PATCH(request, { params }) {
             date: patch.committedDueDate,
             time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
           });
-          if (moveError) console.error('[requests] เลื่อนนัดประเมินไม่สำเร็จ:', moveError);
+          if (moveError) visitWarning = `ใบเลื่อนวันแล้ว แต่ขยับนัดของช่างไม่สำเร็จ: ${moveError}`;
         } else {
           const { site, error: siteError } = await loadSurveySite(supabase, before.siteId, null);
           if (siteError || !site) {
-            console.error('[requests] หาไซต์ของใบประเมินไม่เจอ:', siteError);
+            visitWarning = 'ใบลงวันแล้ว แต่หาสถานที่ของใบไม่เจอ — นัดยังไม่ขึ้นตารางช่าง';
           } else {
             const { visit, error: visitError } = await createSurveyVisit(supabase, {
               request: { ...before, ...patch },
@@ -863,13 +867,22 @@ export async function PATCH(request, { params }) {
               assigneeName: patch.assigneeName,
               user,
             });
-            if (visitError) console.error('[requests] สร้างนัดประเมินไม่สำเร็จ:', visitError);
-            else if (visit?.code) summary += ` · นัด ${visit.code}`;
+            if (visitError) visitWarning = `ใบลงวันแล้ว แต่สร้างนัดไม่สำเร็จ: ${visitError}`;
+            else if (visit?.code) {
+              summary += ` · นัด ${visit.code}`;
+              /* ⚠️ นัดที่ไม่ผ่านด่านเข้าไซต์จอดเป็น **ร่าง** — ไม่ขึ้นตารางใคร
+                 ⇒ ต้องบอกตรงนั้น ไม่ใช่ให้คนไปค้นเองว่าทำไมช่างไม่เห็นงาน */
+              if (visit.status === 'draft') {
+                visitWarning = `นัด ${visit.code} ยังเป็นร่าง — ยังไม่ขึ้นตารางช่าง `
+                  + '(ตรวจช่วงเวลาที่ไซต์ให้เข้า หรือช่างที่เลือก) แก้ได้ที่หน้าจัดคิวช่าง';
+              }
+            }
           }
         }
       } catch (e) {
-        console.error('[requests] สายนัดประเมินล้ม:', e.message);
+        visitWarning = `ใบลงวันแล้ว แต่สายนัดล้ม: ${e.message}`;
       }
+      if (visitWarning) console.error('[requests] สายนัดประเมิน:', visitWarning);
     }
 
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
@@ -912,6 +925,8 @@ export async function PATCH(request, { params }) {
 
     return Response.json({
       ...after,
+      // ครึ่งหลังของงานล้ม — จอต้องทักเป็นคำเตือน ไม่ใช่ขึ้น "สำเร็จ" เฉย ๆ
+      ...(visitWarning ? { _warning: visitWarning } : {}),
       _mine: canManageRequest(user, after),
       _canEditPdr: canEditPdr(user, after),
       // ต้องคืนคู่กับ `_editPdrBlocker` เสมอ — จอตัดสินว่าจะโชว์ปุ่มแก้แบบกดไม่ได้

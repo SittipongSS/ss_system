@@ -12,7 +12,7 @@
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
 // เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วช่างตัดทิ้งเพราะอะไร
 import { TableScroll } from "@/components/ui/Table";
-import { fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
 import styles from "./details.module.css";
 
@@ -23,9 +23,21 @@ const num = (value) => (value
   ? fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   : null);
 
+const VISIT_STATE = {
+  draft: { label: 'ยังไม่ขึ้นตาราง', tone: 'warning' },
+  scheduled: { label: 'อยู่บนตารางช่าง', tone: 'info' },
+  in_progress: { label: 'ช่างกำลังเข้าพื้นที่', tone: 'info' },
+  done: { label: 'เข้าพื้นที่แล้ว', tone: 'success' },
+  partial: { label: 'เข้าแล้วบางส่วน', tone: 'warning' },
+  unable: { label: 'เข้าไม่ได้', tone: 'danger' },
+  rescheduled: { label: 'เลื่อนแล้ว', tone: 'plain' },
+  cancelled: { label: 'ยกเลิก', tone: 'plain' },
+};
+
 export default function SurveyDetail({ request }) {
   const zones = request.surveyZones || [];
   const site = request.surveySite || null;
+  const visit = request.surveyVisit || null;
   if (!zones.length && !site) return null;
   const totals = surveyTotals(zones);
   const measured = zones.some((z) => surveyZoneSummary(z).volumeCbm > 0);
@@ -40,6 +52,26 @@ export default function SurveyDetail({ request }) {
           {site.contactName || site.contactPhone ? (
             <span>{[site.contactName, site.contactPhone].filter(Boolean).join(" · ")}</span>
           ) : null}
+        </p>
+      )}
+
+      {/* ── นัดของช่าง (เฟส 2) ────────────────────────────────────────────
+          ⭐ ใบต้องตอบเองได้ว่า **ลงคิวไปแล้วหรือยัง และนัดขึ้นตารางจริงไหม** —
+             ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวช่างอีกแท็บเพื่อตอบคำถามเดียว
+          ⚠️ สถานะ `draft` = นัดยังไม่ขึ้นตารางใคร ⇒ ต้องเห็นชัดว่าไม่ใช่ "ลงคิวแล้วจบ" */}
+      {visit && (
+        <p className={styles.surveyVisit}>
+          <span className={`ui-badge ${VISIT_STATE[visit.status]?.tone || 'plain'}`}>
+            {VISIT_STATE[visit.status]?.label || visit.status}
+          </span>
+          <span>
+            {[
+              visit.code,
+              fmtDate(visit.scheduledDate),
+              visit.startTime ? String(visit.startTime).slice(0, 5) : 'ทั้งวัน',
+              visit.assigneeName,
+            ].filter(Boolean).join(' · ')}
+          </span>
         </p>
       )}
 

@@ -320,12 +320,25 @@ export async function findRequest(supabase, id) {
   }
   /* ป้ายสถานที่ — จอโชว์ **รหัส SS · ชื่อ** ไม่ใช่ id (กติกา entity display)
      ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงใบ — ไซต์ถูกเปลี่ยนชื่อแล้วใบต้องพาไปหาที่ถูก */
+  /* ⚠️ **โหลดเฉพาะใบประเมิน** — เช็คชนิดก่อน ไม่ใช่เช็คว่ามี `siteId` ไหม
+     หัวข้ออื่นไม่มีคอลัมน์นี้อยู่แล้ว แต่การถามชนิดทำให้อ่านออกว่าทำไมถึงโหลด */
   let surveySite = null;
-  if (row.siteId) {
+  let surveyVisit = null;
+  if (row.kind === 'site_survey' && row.siteId) {
     const { data } = await supabase
       .from('service_sites').select('id, code, name, address, "contactName", "contactPhone"')
       .eq('id', row.siteId).maybeSingle();
     surveySite = data || null;
+    /* ⭐ **นัดของช่างที่ผูกกับใบนี้** (เฟส 2) — ใบต้องบอกได้เองว่าลงคิวไปแล้วหรือยัง
+       และนัดนั้นขึ้นตารางจริงไหม · ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวช่างอีกแท็บ
+       ⚠️ หนึ่งใบ = หนึ่งนัด ⇒ เอาแถวล่าสุดแถวเดียว */
+    const { data: visitRows } = await supabase
+      .from('service_visits')
+      .select('id, code, "scheduledDate", "startTime", status, "assigneeName"')
+      .eq('requestId', id)
+      .order('createdAt', { ascending: false })
+      .limit(1);
+    surveyVisit = (visitRows || [])[0] || null;
   }
   const withBriefs = {
     ...row,
@@ -333,6 +346,7 @@ export async function findRequest(supabase, id) {
     targets: targets || [],
     surveyZones: surveyZones || [],
     surveySite,
+    surveyVisit,
   };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)
