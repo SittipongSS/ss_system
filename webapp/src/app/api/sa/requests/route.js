@@ -293,7 +293,10 @@ export async function POST(request) {
         รายอื่น" จะเทียบกับ null แล้วผ่านทุกใบ */
   let surveyZoneRows = null;
   if (survey) {
-    const { site, error: siteError } = await loadSurveySite(supabase, survey.siteId, customerId);
+    // ⚠️ `requireCustomer` — ใบที่ไม่รู้ว่าเป็นของลูกค้าไหน ผูกสถานที่ไม่ได้
+    const { site, error: siteError } = await loadSurveySite(
+      supabase, survey.siteId, customerId, { requireCustomer: true },
+    );
     if (siteError) return Response.json({ error: siteError }, { status: 400 });
     const existing = await loadSiteZones(supabase, site.id);
     // โซนเดิมที่เลือกมา ต้องเป็นของไซต์นี้จริง — id หลุดมาจากไซต์อื่นได้ถ้าเปลี่ยนไซต์กลางคัน

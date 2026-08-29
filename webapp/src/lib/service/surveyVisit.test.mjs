@@ -97,19 +97,25 @@ test('ไม่ส่งเวลามา = ไม่แตะเวลาเ�
   assert.equal(db2._state.patch.startTime, null);
 });
 
-test('🔴 นัดที่ปิดจบแล้วไม่ถูกวันใหม่เขียนทับ — ประวัติการเข้าจริงเป็นของมีค่าที่สุด', async () => {
+test('🔴 นัดที่ปิดจบแล้วไม่ถูกวันใหม่เขียนทับ — และต้องบอกว่าต้องมีนัดใบใหม่', async () => {
   for (const status of ['done', 'partial', 'unable', 'cancelled']) {
     const db = fakeVisitDb({ id: 'SVV-1', status, scheduledDate: '2026-09-08' });
-    await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12' });
+    const { needsNew, error } = await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12' });
     assert.equal(db._state.patch, null, status);
+    assert.equal(error, null, status);
+    /* 🐞 ของเดิมคืน error:null แล้วจบ ⇒ ใบบอกว่าเลื่อนแล้วทั้งที่ตารางช่างไม่ขยับ
+       (เคส "ไปแล้วเข้าไม่ได้" คือคำตอบของงานจริง ไม่ใช่เคสสมมติ) */
+    assert.equal(needsNew, true, status);
   }
 });
 
-test('ยังไม่เคยลงคิว = ไม่มีอะไรให้ขยับ ไม่ใช่ error', async () => {
+test('🔴 ไม่มีนัด (สร้างไม่สำเร็จรอบก่อน · ถูกลบ) = ต้องสร้างใบใหม่ ไม่ใช่เงียบ', async () => {
   const db = fakeVisitDb(null);
-  const { visit, error } = await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12' });
+  const { visit, error, needsNew } = await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12' });
   assert.equal(visit, null);
   assert.equal(error, null);
+  // ถ้าเงียบ ใบจะค้างสถานะ "ลงวันแล้วแต่ไม่มีนัด" แบบกู้ไม่ได้ (commit-due กดซ้ำไม่ได้)
+  assert.equal(needsNew, true);
 });
 
 /* ── นัดประเมินสร้างมือไม่ได้ ──────────────────────────────────────────── */
@@ -117,4 +123,10 @@ test('🔴 "ประเมินพื้นที่" ต้องไม่อ
   assert.ok(VISIT_KINDS.includes('survey'), 'ระบบต้องรู้จักชนิดนี้ (ป้าย/สี/ตัวกรอง)');
   assert.equal(VISIT_KINDS_MANUAL.includes('survey'), false);
   assert.equal(VISIT_KIND_LABELS.survey, 'ประเมินพื้นที่');
+});
+
+test('เลื่อนสำเร็จต้องไม่บอกให้สร้างใบใหม่', async () => {
+  const db = fakeVisitDb({ id: 'SVV-1', status: 'scheduled', scheduledDate: '2026-09-08' });
+  const { needsNew } = await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12' });
+  assert.equal(needsNew, false);
 });

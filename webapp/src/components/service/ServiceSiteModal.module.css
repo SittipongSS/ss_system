@@ -250,3 +250,15 @@
 }
 
 .stale > small { flex-basis: 100%; }
+
+/* ค่าที่ฟอร์มนี้แก้ไม่ได้ (ชนิดงานของนัดที่เกิดจากใบคำร้อง) — แสดงเป็นข้อความ
+   ⚠️ ไม่ใช่ช่องกรอกที่ disabled: ช่องเทาอ่านว่า "แก้ได้แต่ตอนนี้ยังไม่ให้แก้"
+      ส่วนของจริงคือ "ค่านี้ไม่ได้เป็นของฟอร์มนี้" */
+.readonlyValue {
+  margin: 0;
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+}

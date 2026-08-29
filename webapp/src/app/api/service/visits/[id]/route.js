@@ -169,6 +169,30 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       .eq('id', id).select().single();
     if (updateError) return fail(updateError.message, 500);
 
+    /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
+       🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวช่าง
+          (ซึ่งเป็นที่ที่ TS ทำงานจริง) ใบยังถือวันเก่า ⇒ ฝ่ายขายอ่านใบแล้วบอกลูกค้าผิดวัน
+          และตัวนับ "เลยกำหนด" ก็นับจากวันที่ไม่มีใครจะไปแล้ว
+       ⚠️ เขียนกลับเฉพาะ **วัน/เวลา** — สถานะของใบเป็นเรื่องของก้าวคำร้อง ไม่ใช่ของนัด */
+    if (data.requestId && data.kind === 'survey') {
+      const nextDate = data.scheduledDate || null;
+      const nextTime = data.startTime ? String(data.startTime).slice(0, 5) : null;
+      const { data: reqRow } = await supabase
+        .from('dept_requests').select('id, "committedDueDate", "committedDueTime"')
+        .eq('id', data.requestId).maybeSingle();
+      const changed = reqRow
+        && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
+          || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
+      if (changed) {
+        const { error: syncError } = await supabase.from('dept_requests').update({
+          committedDueDate: nextDate,
+          committedDueTime: nextTime,
+          updatedAt: nowIso,
+        }).eq('id', data.requestId);
+        if (syncError) console.error('[service-visits] ซิงก์วันกลับใบคำร้องไม่สำเร็จ:', syncError.message);
+      }
+    }
+
     await recordAudit({
       user, action: 'update', entityType: 'service_visit', entityId: id, before, after: data,
       summary: `แก้นัดเข้าบริการ ${data.code || id} · ${data.scheduledDate}`, request: req,

@@ -77,24 +77,30 @@ export async function createSurveyVisit(supabase, {
   return { visit: data, error: null };
 }
 
+/** นัดที่ "จบไปแล้ว" — ขยับวันไม่ได้ เพราะเป็นประวัติของสิ่งที่เกิดขึ้นจริง */
+export const CLOSED_VISIT_STATES = ['done', 'partial', 'unable', 'cancelled'];
+
 /**
- * ขยับนัดที่มีอยู่ให้ตรงกับวันใหม่บนใบ — คืน `{ visit, error }`
+ * ขยับนัดที่มีอยู่ให้ตรงกับวันใหม่บนใบ — คืน `{ visit, error, needsNew }`
  *
- * ⚠️ **แก้แถวเดิม ไม่สร้างแถวใหม่** — "หนึ่งใบ = หนึ่งนัด" · การเลื่อนวันของงานที่ยัง
- *    ไม่ได้ไปคือ *แก้คำสัญญา* ไม่ใช่การไปครั้งที่สอง (ต่างจากตอนไปแล้วเข้าไม่ได้
- *    ซึ่งนัดเดิมค้างเป็น `unable` แล้วลงคิวใหม่ — แผน §5E · เฟส 3)
- * ⚠️ นัดที่ปิดจบไปแล้วไม่ขยับ — ประวัติการเข้าจริงห้ามถูกวันใหม่เขียนทับ
+ * ⚠️ **แก้แถวเดิม ไม่สร้างแถวใหม่** — การเลื่อนวันของงานที่ยังไม่ได้ไปคือ *แก้คำสัญญา*
+ *    ไม่ใช่การไปครั้งที่สอง
+ * ⭐ **แต่ถ้านัดจบไปแล้ว (ไปแล้วเข้าไม่ได้ · ยกเลิก) ต้องเป็นนัดใบใหม่** — ประวัติการ
+ *    เข้าจริงห้ามถูกวันใหม่เขียนทับ ⇒ คืน `needsNew: true` ให้ผู้เรียกสร้างใบใหม่
+ *    🐞 ของเดิมคืน `{ error: null }` เฉย ๆ ⇒ ใบบอกว่าเลื่อนแล้วทั้งที่ตารางช่างไม่ขยับ
+ *       ซึ่งแย่กว่าปฏิเสธ เพราะไม่มีใครรู้ว่าต้องไปทำอะไรต่อ
  */
 export async function moveSurveyVisit(supabase, { requestId, date, time }) {
   const visit = await findSurveyVisit(supabase, requestId);
-  if (!visit) return { visit: null, error: null };          // ยังไม่เคยลงคิว = ไม่มีอะไรให้ขยับ
-  if (['done', 'partial', 'unable', 'cancelled'].includes(visit.status)) {
-    return { visit, error: null };
+  // ยังไม่เคยลงคิว หรือนัดถูกลบทิ้ง = ต้องสร้างใบใหม่ ไม่ใช่เงียบแล้วปล่อยใบไม่มีนัด
+  if (!visit) return { visit: null, error: null, needsNew: true };
+  if (CLOSED_VISIT_STATES.includes(visit.status)) {
+    return { visit, error: null, needsNew: true };
   }
   const patch = { scheduledDate: date, updatedAt: new Date().toISOString() };
   if (time !== undefined) patch.startTime = time ? toHHMM(time) : null;
   const { data, error } = await supabase
     .from('service_visits').update(patch).eq('id', visit.id).select().maybeSingle();
-  if (error) return { visit: null, error: error.message };
-  return { visit: data, error: null };
+  if (error) return { visit: null, error: error.message, needsNew: false };
+  return { visit: data, error: null, needsNew: false };
 }

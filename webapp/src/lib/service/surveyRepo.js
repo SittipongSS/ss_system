@@ -14,12 +14,23 @@ import { zoneNameKey } from '@/lib/service/surveyRequest';
 
 /* ไซต์ที่ใบอ้าง ต้องมีจริง **และเป็นของลูกค้ารายเดียวกับดีล**
    ⚠️ ไม่ตรวจข้อหลัง = ใบเกาะไซต์ของลูกค้าคนอื่นได้ แล้วผลวัดไปโผล่ในทะเบียนผิดบ้าน */
-export async function loadSurveySite(supabase, siteId, customerId) {
+export async function loadSurveySite(supabase, siteId, customerId, { requireCustomer = false } = {}) {
   const { data, error } = await supabase
     .from('service_sites').select('id, code, name, customerId').eq('id', siteId).maybeSingle();
   if (error) throw error;
   if (!data) return { site: null, error: 'ไม่พบสถานที่ที่เลือก' };
-  if (customerId && data.customerId !== customerId) {
+  /* 🐞 **ยามหลุดทั้งข้อเมื่อดีลไม่มีลูกค้า** — ของเดิมเขียน `if (customerId && …)`
+     ⇒ `customerId` เป็น null (ดีลลอยที่ยังไม่ผูกลูกค้า) แปลว่า "ไม่ต้องตรวจ" ⇒ ใบเกาะ
+     ไซต์ของลูกค้ารายไหนก็ได้ แล้วผลวัดไปโผล่ในทะเบียนผิดบ้าน
+     ⇒ เส้นที่ *ต้อง* ตรวจ (ตอนเปิดใบ) ส่ง `requireCustomer` มาแล้วปฏิเสธไปเลย
+     ⚠️ เส้นที่เรียกทีหลัง (สร้างนัด) ไม่ต้องตรวจซ้ำ — ใบผ่านด่านนี้มาตั้งแต่ตอนเปิดแล้ว */
+  if (!customerId) {
+    if (requireCustomer) {
+      return { site: null, error: 'ดีลของใบนี้ยังไม่มีลูกค้า — ผูกลูกค้าที่ดีลก่อนจึงเลือกสถานที่ได้' };
+    }
+    return { site: data, error: null };
+  }
+  if (data.customerId !== customerId) {
     return { site: null, error: `สถานที่ ${data.code || data.id} เป็นของลูกค้ารายอื่น` };
   }
   return { site: data, error: null };

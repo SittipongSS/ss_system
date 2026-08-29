@@ -156,13 +156,25 @@ export default function ServiceVisitModal({
           )}
         </label>
 
+        {/* ⭐ ชนิดงานที่ **คนเลือกเองไม่ได้** (ประเมินพื้นที่ — เกิดจากใบคำร้อง) แสดง
+            เป็นข้อความ ไม่ใช่ดรอปดาวน์
+            🐞 ของเดิมใช้ลิสต์ที่ตัดชนิดนั้นออก ⇒ เปิดฟอร์มแก้นัดประเมินแล้วช่องขึ้นค่าว่าง
+               และถ้าเผลอแตะ ชนิดของนัดจะเปลี่ยนเป็น "ติดตั้ง" ทันที · จุดนี้คือทางเดียว
+               ที่จะปล่อยร่างเข้าคิว ⇒ เส้นทางกู้วิ่งผ่านฟอร์มที่ทำลายข้อมูลอยู่ตรงกลาง */}
         <label className={styles.field}>
           <span>ชนิดงาน *</span>
-          <Select value={form.kind} onChange={change("kind")}>
-            {VISIT_KINDS_MANUAL.map((kind) => (
-              <option key={kind} value={kind}>{VISIT_KIND_LABELS[kind]}</option>
-            ))}
-          </Select>
+          {VISIT_KINDS_MANUAL.includes(form.kind) ? (
+            <Select value={form.kind} onChange={change("kind")}>
+              {VISIT_KINDS_MANUAL.map((kind) => (
+                <option key={kind} value={kind}>{VISIT_KIND_LABELS[kind]}</option>
+              ))}
+            </Select>
+          ) : (
+            <>
+              <p className={styles.readonlyValue}>{VISIT_KIND_LABELS[form.kind] || form.kind}</p>
+              <small>ชนิดนี้เกิดจากใบคำร้อง เปลี่ยนที่นี่ไม่ได้ — วัน/เวลา/ช่าง ยังแก้ได้ตามปกติ</small>
+            </>
+          )}
         </label>
 
         <label className={styles.field}>

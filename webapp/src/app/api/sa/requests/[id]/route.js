@@ -11,7 +11,7 @@
 // DELETE : ร่างที่ยังไม่ส่ง (+ admin ?force=1 ผ่าน RPC)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { canViewRequests } from '@/lib/permissions';
+import { canBeServiceAssignee, canViewRequests } from '@/lib/permissions';
 import {
   canForceDelete, cleanupRequestOrphans, isDryRun, isForceRequest, requestForcePreview,
 } from '@/lib/forceDelete';
@@ -50,9 +50,11 @@ import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
+import { loadUserDirectory } from '@/lib/usersRepo';
+import { toHHMM } from '@/lib/service/sites';
 import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
 import {
-  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
+  CLOSED_VISIT_STATES, createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
 } from '@/lib/service/surveyVisit';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
@@ -242,7 +244,7 @@ export async function PATCH(request, { params }) {
          ⚠️ ทำ **ก่อน** `issueDocNo` — ล้มตรงนี้แล้วเลขใบยังไม่ออก ⇒ กดส่งใหม่ได้เลย
          ⚠️ ตัวมันรันซ้ำได้ (ข้ามแถวที่มี `zoneId` แล้ว) ⇒ ใบที่ถูกตีกลับแล้วส่งใหม่
             จะไม่สร้างโซนซ้อน */
-      if (before.kind === 'site_survey') {
+      if (requestNeedsRef(before.kind, 'site')) {
         if (!before.siteId) {
           return Response.json({ error: 'ใบนี้ยังไม่มีสถานที่ — แก้ใบแล้วเลือกสถานที่ก่อนส่ง' }, { status: 409 });
         }
@@ -315,9 +317,25 @@ export async function PATCH(request, { params }) {
             เมื่อไรจะมีใบที่แจ้งวันแล้วแต่ไม่มีนัด (ช่างไม่เห็นงาน) หรือมีนัดที่ใบไม่รู้
          ⚠️ ตรวจให้ครบ **ก่อน** เขียนอะไรลงใบ — ตกด่านกลางทางแล้วใบจะถือวันของนัดที่
             ไม่มีอยู่จริง */
-      if (before.kind === 'site_survey') {
+      let technician = null;
+      if (requestNeedsRef(before.kind, 'site')) {
         const scheduleError = surveyScheduleError(body, before);
         if (scheduleError) return Response.json({ error: scheduleError }, { status: 400 });
+        /* 🔴 **ช่างต้องมีจริงและรับงานเข้าไซต์ได้** — ของเดิมตรวจแค่ว่า `assigneeId`
+           ไม่ว่าง และเชื่อ `assigneeName` ที่ client ส่งมาตรง ๆ ⇒ ยิง API เองใส่ id
+           อะไรก็ได้ แล้วนัดจะถือชื่อที่ไม่ตรงกับใคร (ตารางช่างชี้คนที่ไม่มีอยู่)
+           ⚠️ ชื่อเอาจากทะเบียนเสมอ ไม่ใช่จาก body — แพตเทิร์นเดียวกับ customerName
+              ที่ทุก route ในรีโปนี้อ่านจากทะเบียนแทนค่าที่จอส่งมา */
+        const directory = await loadUserDirectory(supabase);
+        technician = directory.get(String(body.assigneeId).trim()) || null;
+        if (!technician || technician.disabled) {
+          return Response.json({ error: 'ไม่พบบัญชีช่างที่เลือก' }, { status: 400 });
+        }
+        if (!canBeServiceAssignee(technician)) {
+          return Response.json({
+            error: `${technician.name} รับงานเข้าไซต์ไม่ได้ — ต้องเป็นฝ่ายบริการ (TS) หรือทีมขาย SV`,
+          }, { status: 400 });
+        }
       }
 
       patch.committedDueDate = String(body.committedDueDate).trim();
@@ -329,10 +347,10 @@ export async function PATCH(request, { params }) {
       /* เวลานัด + ช่าง ของใบประเมิน — เก็บบนใบด้วย ไม่ใช่เฉพาะบนนัด
          ⚠️ คิว/หน้ารายละเอียดอ่านจากใบ ไม่ได้ join นัดทุกแถว ⇒ ค่าที่ใบไม่มี = ค่าที่
             ไม่มีใครเห็นจนกว่าจะเปิดหน้าตารางช่าง */
-      if (before.kind === 'site_survey') {
+      if (requestNeedsRef(before.kind, 'site')) {
         patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
-        patch.assigneeId = String(body.assigneeId).trim();
-        patch.assigneeName = String(body.assigneeName ?? '').trim() || null;
+        patch.assigneeId = technician.id;
+        patch.assigneeName = technician.name || null;
         patch.assignedAt = nowIso;
       }
 
@@ -348,7 +366,7 @@ export async function PATCH(request, { params }) {
         ? `แจ้งกำหนดส่งรอบแก้ ${patch.committedDueDate} (รอบก่อน ${before.committedDueDate})`
           + (note ? ` — ${note}` : '')
         : `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
-      if (before.kind === 'site_survey') {
+      if (requestNeedsRef(before.kind, 'site')) {
         summary = `ลงคิวเข้าพื้นที่ ${patch.committedDueDate}`
           + (patch.committedDueTime ? ` ${patch.committedDueTime}` : '')
           + (patch.assigneeName ? ` · ${patch.assigneeName}` : '')
@@ -435,7 +453,13 @@ export async function PATCH(request, { params }) {
       // ด่วนต้องมีเหตุผล · ส่งของเดิมที่ไม่ได้แก้เข้าไปด้วยเพื่อให้ด่านเห็นใบทั้งใบ
       // ⚠️ ใช้ **บรรทัดชุดใหม่** — ลบแถวจนหมดต้องตกที่ "ต้องมีรายการอย่างน้อย 1 รายการ"
       // ไม่ใช่ผ่านเพราะด่านมองแถวเดิมที่กำลังจะถูกลบ
+      /* 🐞 **ใบประเมินแก้ไม่ได้เลยสักครั้ง** — ด่านรูปทรงมีข้อ "ต้องมีพื้นที่อย่างน้อย
+         1 รายการ" ซึ่งอ่านจาก `body.zones` · ทางแก้ใบไม่ได้ส่งคีย์นั้นมา (พื้นที่แก้ที่
+         บล็อกของมันเอง ไม่ใช่ผ่านฟอร์มแก้หัวใบ) ⇒ ทุกการกดบันทึกตกด่านทันที
+         ⇒ ส่ง **แถวพื้นที่ที่มีอยู่จริง** เข้าไปให้ด่านเห็นใบทั้งใบตามเจตนาของมัน
+         (`findRequest` โหลด `surveyZones` มาให้แล้วสำหรับหัวข้อนี้) */
       const shapeError = requestShapeError(before.kind, {
+        zones: before.surveyZones || [],
         ...before, ...next, items: nextItems,
       });
       if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
@@ -575,9 +599,15 @@ export async function PATCH(request, { params }) {
       /* ⭐ ใบประเมิน: เลื่อนวันบนใบ = **เลื่อนนัดของช่างด้วย** (แผน เฟส 2)
          ⚠️ เวลาแก้ได้พร้อมกัน — ไม่ส่งมา = ไม่แตะเวลาเดิม (ต่างจากส่งค่าว่างที่แปลว่า
             "เอาเวลาออก ไปทั้งวัน") */
-      if (before.kind === 'site_survey') {
-        if (String(body.committedDueTime ?? '') !== '' || body.committedDueTime === null) {
-          patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
+      if (requestNeedsRef(before.kind, 'site')) {
+        /* เวลาเปลี่ยนพร้อมวันได้ — **คีย์ต้องถูกส่งมาจริง** ถึงจะถือว่า "ตั้งใจแก้เวลา"
+           (ค่าว่าง = เอาเวลาออก ไปทั้งวัน · ไม่ส่งคีย์เลย = ไม่แตะเวลาเดิม) */
+        if ('committedDueTime' in body) {
+          const raw = String(body.committedDueTime ?? '').trim();
+          if (raw && !toHHMM(raw)) {
+            return Response.json({ error: 'เวลานัดไม่ถูกต้อง' }, { status: 400 });
+          }
+          patch.committedDueTime = raw ? toHHMM(raw) : null;
         }
         summary = `เลื่อนวันนัดเข้าพื้นที่ ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
           + (reason ? ` — ${reason}` : '');
@@ -843,17 +873,50 @@ export async function PATCH(request, { params }) {
           งานบนตาราง · เขียน error ลง log แล้วให้ audit summary บอกว่านัดยังไม่เกิด
        ⚠️ `commit-due` รอบสอง (รอบแก้) ไม่สร้างนัดซ้ำ — มีนัดอยู่แล้วก็ขยับตัวเดิม
           ("หนึ่งใบ = หนึ่งนัด") */
-    if (before.kind === 'site_survey' && (action === 'commit-due' || action === 'reschedule')) {
+    /* ⭐ **เปลี่ยนช่างบนใบ = เปลี่ยนช่างบนนัดด้วย** — ใบกับตารางช่างชี้คนละคนไม่ได้
+       ⚠️ ทำก่อนบล็อกวัน/นัดข้างล่าง เพราะเป็นคนละ action กัน (ไม่มีทางเข้าพร้อมกัน) */
+    if (requestNeedsRef(before.kind, 'site') && action === 'assign') {
       try {
-        const existing = await findSurveyVisit(supabase, id);
-        if (existing) {
-          const { error: moveError } = await moveSurveyVisit(supabase, {
-            requestId: id,
-            date: patch.committedDueDate,
-            time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
-          });
-          if (moveError) visitWarning = `ใบเลื่อนวันแล้ว แต่ขยับนัดของช่างไม่สำเร็จ: ${moveError}`;
-        } else {
+        const visit = await findSurveyVisit(supabase, id);
+        if (visit && !CLOSED_VISIT_STATES.includes(visit.status)) {
+          const { error: assignError } = await supabase.from('service_visits').update({
+            assigneeId: patch.assigneeId || null,
+            assigneeName: patch.assigneeName || null,
+            updatedAt: nowIso,
+          }).eq('id', visit.id);
+          if (assignError) {
+            visitWarning = `ใบเปลี่ยนผู้รับผิดชอบแล้ว แต่นัด ${visit.code || ''} ยังเป็นชื่อเดิม`;
+          }
+        }
+      } catch (e) {
+        visitWarning = `ใบเปลี่ยนผู้รับผิดชอบแล้ว แต่แก้ชื่อบนนัดไม่สำเร็จ: ${e.message}`;
+      }
+      if (visitWarning) console.error('[requests] สายนัดประเมิน:', visitWarning);
+    }
+
+    if (requestNeedsRef(before.kind, 'site') && (action === 'commit-due' || action === 'reschedule')) {
+      try {
+        /* ⚠️ ค่าที่นัดต้องใช้ หยิบจาก **ใบหลังแก้** เสมอ — `reschedule` เลื่อนวันอย่างเดียว
+           ไม่ได้ส่งช่างมาด้วย ⇒ อ่านจากค่าที่ใบถือไว้ตั้งแต่ลงคิว
+           🐞 ของเดิมอ่านจาก `patch` ล้วน ⇒ เส้นที่ต้องสร้างนัดใหม่ตอน reschedule จะได้
+              นัดไม่มีช่าง แล้วตกด่านเข้าไซต์กลายเป็นร่างที่ไม่ขึ้นตารางใคร */
+        const date = patch.committedDueDate;
+        const time = 'committedDueTime' in patch ? patch.committedDueTime : before.committedDueTime;
+        const assigneeId = patch.assigneeId ?? before.assigneeId ?? null;
+        const assigneeName = patch.assigneeName ?? before.assigneeName ?? null;
+
+        const moved = await moveSurveyVisit(supabase, {
+          requestId: id,
+          date,
+          time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
+        });
+        if (moved.error) {
+          visitWarning = `ใบลงวันแล้ว แต่ขยับนัดของช่างไม่สำเร็จ: ${moved.error}`;
+        } else if (moved.needsNew) {
+          /* ⭐ **เส้นกู้** — ไม่มีนัด (สร้างไม่สำเร็จรอบก่อน · ถูกลบ) หรือนัดเดิมจบไปแล้ว
+             (ไปแล้วเข้าไม่ได้ · ยกเลิก) ⇒ สร้างใบใหม่ตรงนี้
+             🐞 ไม่มีเส้นนี้ = ใบค้างสถานะ "ลงวันแล้วแต่ไม่มีนัด" แบบกู้ไม่ได้ เพราะ
+                `commit-due` กดซ้ำไม่ได้อีกแล้วเมื่อใบมีวันอยู่ */
           const { site, error: siteError } = await loadSurveySite(supabase, before.siteId, null);
           if (siteError || !site) {
             visitWarning = 'ใบลงวันแล้ว แต่หาสถานที่ของใบไม่เจอ — นัดยังไม่ขึ้นตารางช่าง';
@@ -861,10 +924,10 @@ export async function PATCH(request, { params }) {
             const { visit, error: visitError } = await createSurveyVisit(supabase, {
               request: { ...before, ...patch },
               site,
-              date: patch.committedDueDate,
-              time: patch.committedDueTime,
-              assigneeId: patch.assigneeId,
-              assigneeName: patch.assigneeName,
+              date,
+              time,
+              assigneeId,
+              assigneeName,
               user,
             });
             if (visitError) visitWarning = `ใบลงวันแล้ว แต่สร้างนัดไม่สำเร็จ: ${visitError}`;
