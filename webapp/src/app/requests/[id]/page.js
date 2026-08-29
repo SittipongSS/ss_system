@@ -35,13 +35,17 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
-import { canAnswerRequestsFor } from "@/lib/permissions";
+import TimeInput from "@/components/ui/TimeInput";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { canAnswerRequestsFor, canBeServiceAssignee } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
-import { requestHasPdr, requestLineNoun } from "@/lib/master/requestTypes";
+import {
+  requestHasPdr, requestKindMeta, requestLineNoun, requestNeedsRef,
+} from "@/lib/master/requestTypes";
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import {
@@ -174,6 +178,10 @@ export default function RequestDetailPage() {
   // ใบนี้อยู่ที่ใคร — ผู้รับผิดชอบก่อน แล้วถอยไปคนที่กดรับเรื่อง (กฎเดียวกับคิว)
   const assignee = requestAssignee(req || {});
   const activePeople = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
+  /* คนที่ "ถูกมอบหมายให้เข้าไซต์" ได้ — ใช้ตัวกรองเดียวกับหน้าจัดคิวช่างและหน้าไซต์
+     ⚠️ สองจอต้องเห็นรายชื่อชุดเดียวกัน ไม่งั้นคนที่เลือกได้ที่นี่จะหายไปจากตารางอีกที่
+     ⭐ ไม่ยิง API เพิ่ม — ทะเบียนคนโหลดมาแล้วสำหรับโมดัลมอบหมาย */
+  const technicians = useMemo(() => activePeople.filter(canBeServiceAssignee), [activePeople]);
   // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
   const [editDraft, setEditDraft] = useState(null);
   const [confirm, setConfirm] = useState(null);     // { kind }
@@ -336,6 +344,12 @@ export default function RequestDetailPage() {
      ตัวเดียวกับที่ราง คิว และด่านฝั่ง server ใช้ ⇒ ปุ่มกับ API เห็นตรงกันเสมอ */
   const dueStale = dueIsStale(req, req.items);
   const showPdr = requestHasPdr(req.kind);
+  /* ⭐ **ก้าว "แจ้งกำหนดส่ง" ของใบประเมินคือ "ลงคิว"** (แผน เฟส 2) — วัน เวลา ช่าง
+     และนัดบนตารางเกิดพร้อมกัน ⇒ โมดัลเดียวกันแต่ถามครบสามอย่าง
+     ⚠️ ธงมาจาก **ทะเบียนหัวข้อ** (`needs` มี `site`) ไม่ใช่ `kind === '...'` กลางหน้า
+        — กติกา ม-34 ของหน้านี้ (เทสต์ registry.test.mjs คุมไว้) */
+  const isScheduling = requestNeedsRef(req.kind, "site");
+  const dueLabels = requestKindMeta(req.kind)?.form || {};
   // เลือกเนื้อของหน้าจากทะเบียน ไม่ใช่ `kind === '...'` กลางหน้า (ม-34)
   const KindDetail = detailForKind(req.kind);
   // การ์ด panel รายหัวข้อ (ม-94) — null = มีแค่การ์ด control กลาง + การ์ดบริบท
@@ -752,11 +766,20 @@ export default function RequestDetailPage() {
       : owner && requestAwaitingDue(req)
         ? {
           id: "commit-due",
-          label: dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง",
+          label: isScheduling
+            ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
+            : (dueStale ? "แจ้งวันส่งรอบแก้" : "แจ้งกำหนดส่ง"),
           hint: dueStale ? `รอบก่อนแจ้งไว้ ${fmtDate(req.committedDueDate)}` : undefined,
           kind: "approve",
           icon: CalendarClock,
-          onClick: () => setCommitDue({ date: businessDate(), reason: "" }),
+          /* ⭐ ตั้งต้นด้วย **วันที่ผู้ขอต้องการ** สำหรับใบประเมิน — คนลงคิวส่วนใหญ่
+             ตอบรับวันนั้นอยู่แล้ว · หัวข้ออื่นตั้งต้นวันนี้เหมือนเดิม (ฝ่ายเป็นคนกำหนด) */
+          onClick: () => setCommitDue({
+            date: (isScheduling && req.requestedDueDate) || businessDate(),
+            time: isScheduling ? (req.requestedDueTime || "") : "",
+            assigneeId: req.assigneeId || "",
+            reason: "",
+          }),
         }
       /* ⚠️ **ปุ่ม "ส่งงาน" ไม่อยู่บน Control Panel แล้ว** (มติผู้ใช้ 2026-08-18) —
          ย้ายไปอยู่ **ในแถวของบรีฟ** ที่ตารางสรุปทั้งใบ (ดู `openDelivery` ข้างล่าง)
@@ -1586,12 +1609,14 @@ export default function RequestDetailPage() {
           ⇒ ฝ่ายที่ยังตอบวันไม่ได้ต้องเดาวันไปก่อน หรือไม่ก็ไม่กดรับเลย */}
       <Modal
         open={commitDue !== null} onClose={() => setCommitDue(null)} size="sm" dismissible={!saving}
-        title={dueStale ? "แจ้งวันส่งของรอบแก้" : "แจ้งกำหนดส่ง"}
+        title={isScheduling
+          ? (dueStale ? "ลงคิวรอบใหม่" : "ลงคิวเข้าพื้นที่")
+          : (dueStale ? "แจ้งวันส่งของรอบแก้" : "แจ้งกำหนดส่ง")}
       >
         {commitDue && (
           <>
             <div className="form-group">
-              <label htmlFor="commit-due">วันกำหนดส่ง</label>
+              <label htmlFor="commit-due">{dueLabels.committedDueLabel || "วันกำหนดส่ง"}</label>
               <DateInput
                 id="commit-due" value={commitDue.date} disabled={saving}
                 onChange={(v) => setCommitDue({ ...commitDue, date: v })}
@@ -1605,6 +1630,38 @@ export default function RequestDetailPage() {
                 {req.requestedDueDate ? ` · ผู้ขอต้องการรับงาน ${fmtDate(req.requestedDueDate)}` : ""}
               </small>
             </div>
+            {/* ── ลงคิว: เวลา + ช่าง (แผน เฟส 2) ────────────────────────────
+                ⭐ **สามอย่างในจังหวะเดียว** — กดปุ่มเดียวแล้วใบได้วัน ช่างได้นัดบนตาราง
+                ⚠️ ช่างบังคับ · เวลาไม่บังคับ ("ไปทั้งวัน" เป็นคำตอบที่ถูกของงานจริง)
+                   — ด่านเดียวกับ `surveyScheduleError` ฝั่ง server */}
+            {isScheduling && (
+              <>
+                <div className="form-group">
+                  <span className={styles.hint}>เวลานัด (ไม่บังคับ)</span>
+                  <TimeInput
+                    value={commitDue.time || ""} disabled={saving}
+                    ariaLabel="เวลานัดเข้าพื้นที่"
+                    onChange={(v) => setCommitDue({ ...commitDue, time: v })}
+                  />
+                  <small className={styles.hint}>
+                    เว้นว่าง = ไปทั้งวัน
+                    {req.requestedDueTime ? ` · ผู้ขอต้องการช่วง ${req.requestedDueTime}` : ""}
+                  </small>
+                </div>
+                <div className="form-group">
+                  <span className={styles.hint}>ช่างผู้รับผิดชอบ *</span>
+                  <SearchableSelect
+                    value={commitDue.assigneeId || ""}
+                    onChange={(value) => setCommitDue({ ...commitDue, assigneeId: value })}
+                    options={technicians.map((t) => ({ value: t.id, label: t.name || t.email || t.id }))}
+                    placeholder="เลือกช่าง"
+                    ariaLabel="ช่างผู้รับผิดชอบ"
+                    emptyText="ยังไม่มีบัญชีที่รับงานเข้าไซต์ได้ — เปิดบัญชีฝ่าย TS หรือใส่ทีม SV ก่อน"
+                  />
+                </div>
+              </>
+            )}
+
             <div className="form-group">
               <label htmlFor="commit-why">หมายเหตุ (ไม่บังคับ)</label>
               <Textarea
@@ -1617,17 +1674,24 @@ export default function RequestDetailPage() {
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" disabled={saving} onClick={() => setCommitDue(null)}>ยกเลิก</Button>
               <Button
-                tone="primary" disabled={saving || !commitDue.date}
+                tone="primary"
+                disabled={saving || !commitDue.date || (isScheduling && !commitDue.assigneeId)}
                 onClick={() => call("", {
                   method: "PATCH",
                   body: JSON.stringify({
                     action: "commit-due",
                     committedDueDate: commitDue.date,
                     reason: commitDue.reason,
+                    ...(isScheduling ? {
+                      committedDueTime: commitDue.time || null,
+                      assigneeId: commitDue.assigneeId,
+                      assigneeName: technicians.find((t) => t.id === commitDue.assigneeId)?.name || null,
+                    } : {}),
                   }),
-                }, "แจ้งกำหนดส่งแล้ว").then((ok) => { if (ok) setCommitDue(null); })}
+                }, isScheduling ? "ลงคิวแล้ว — นัดขึ้นตารางช่างเรียบร้อย" : "แจ้งกำหนดส่งแล้ว")
+                  .then((ok) => { if (ok) setCommitDue(null); })}
               >
-                แจ้งกำหนดส่ง
+                {isScheduling ? "ลงคิว" : "แจ้งกำหนดส่ง"}
               </Button>
             </div>
           </>

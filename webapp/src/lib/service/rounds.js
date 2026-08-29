@@ -10,7 +10,14 @@ import { businessDate } from '@/lib/businessDate';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
-export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove'];
+export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove', 'survey'];
+
+/* ชนิดที่ **คนเลือกเองได้ในโมดัลนัด** — `survey` ไม่อยู่ในนี้โดยตั้งใจ (mig 0314)
+   ⭐ นัดประเมินพื้นที่เกิดจาก **ใบคำร้อง** ตอน TS ลงคิว ไม่ใช่จากการกดสร้างนัดเปล่า
+      ⇒ วันบนนัดกับวันบนใบเป็นค่าเดียวกันเสมอ · ปล่อยให้สร้างมือได้เมื่อไร จะมีนัด
+      ประเมินที่ไม่มีใบต้นเรื่อง แล้วผลวัดไม่รู้จะส่งกลับไปที่ไหน
+   (กติกาเดียวกับที่ไซต์เกิดจากคำร้องทางเดียว — มติ 2026-08-30) */
+export const VISIT_KINDS_MANUAL = VISIT_KINDS.filter((kind) => kind !== 'survey');
 /* สถานะย้ายไปอยู่ที่ lib/service/visitStatus.js ทั้งชุด (mig 0300) — ที่นั่นเป็น
    ที่เดียวที่ตอบว่า "อยู่บนตาราง" / "ปิดจบแล้ว" / "ยังรอลงมือ" หมายถึงอะไร
    re-export ไว้เพื่อไม่ให้ผู้เรียกเดิม 2 ที่ต้องแก้ import พร้อมกัน */
@@ -32,6 +39,7 @@ export const VISIT_KIND_LABELS = {
   repair: 'ซ่อม',
   inspect: 'ตรวจเช็ค',
   remove: 'ถอดเครื่อง',
+  survey: 'ประเมินพื้นที่',
 };
 
 // ⭐ "เช้า/บ่าย/เต็มวัน" เป็น **ปุ่มลัดที่เติมเวลาให้** ไม่ใช่คอลัมน์ใน DB —

@@ -20,7 +20,7 @@ import { isSuperuser } from "@/lib/permissions";
 import { useRole } from "@/lib/roleContext";
 import {
   TIME_PRESETS,
-  VISIT_KINDS,
+  VISIT_KINDS_MANUAL,
   VISIT_KIND_LABELS,
   VISIT_STATUSES_MANUAL,
   VISIT_STATUS_LABELS,
@@ -159,7 +159,7 @@ export default function ServiceVisitModal({
         <label className={styles.field}>
           <span>ชนิดงาน *</span>
           <Select value={form.kind} onChange={change("kind")}>
-            {VISIT_KINDS.map((kind) => (
+            {VISIT_KINDS_MANUAL.map((kind) => (
               <option key={kind} value={kind}>{VISIT_KIND_LABELS[kind]}</option>
             ))}
           </Select>

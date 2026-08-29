@@ -50,7 +50,10 @@ import { createScent } from '@/lib/master/scentFormulaAdmin';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { attachRegistryLinks, registryIdsFromItems } from '@/lib/requests/registryLinks';
-import { materializeSurveyZones } from '@/lib/service/surveyRepo';
+import { loadSurveySite, materializeSurveyZones } from '@/lib/service/surveyRepo';
+import {
+  createSurveyVisit, findSurveyVisit, moveSurveyVisit, surveyScheduleError,
+} from '@/lib/service/surveyVisit';
 import { syncCostingPricingStatus } from '@/lib/costingAdmin';
 import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
@@ -302,12 +305,33 @@ export async function PATCH(request, { params }) {
       const rework = !!String(before.committedDueDate ?? '').trim();
       const err = commitDueRequestError(before, { committedDueDate: body.committedDueDate });
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
+
+      /* ── ประเมินพื้นที่: ก้าวนี้คือ **"ลงคิว"** ไม่ใช่แค่แจ้งวัน (แผน เฟส 2) ─────
+         ⭐ วัน + เวลา + ช่าง + นัดบนตาราง เกิดพร้อมกันในจังหวะเดียว — แยกเป็นสองปุ่ม
+            เมื่อไรจะมีใบที่แจ้งวันแล้วแต่ไม่มีนัด (ช่างไม่เห็นงาน) หรือมีนัดที่ใบไม่รู้
+         ⚠️ ตรวจให้ครบ **ก่อน** เขียนอะไรลงใบ — ตกด่านกลางทางแล้วใบจะถือวันของนัดที่
+            ไม่มีอยู่จริง */
+      if (before.kind === 'site_survey') {
+        const scheduleError = surveyScheduleError(body, before);
+        if (scheduleError) return Response.json({ error: scheduleError }, { status: 400 });
+      }
+
       patch.committedDueDate = String(body.committedDueDate).trim();
       /* ⭐ **ตราเวลาที่ลงวัน** (mig 0288) — ตัวเดียวที่ตอบได้ว่าวันที่ถืออยู่เป็นของ
          รอบไหน · ขาดไปเมื่อไร ใบจะค้างอยู่ขั้น "แจ้งกำหนดส่ง" ตลอดกาลเพราะแถวรอบแก้
          เกิดหลัง `dueCommittedAt` ที่ยังเป็น NULL ไม่ได้ (NULL = ไม่ค้าง) แต่ใบที่เคย
          มีค่าแล้วจะไม่มีอะไรมาขยับให้ */
       patch.dueCommittedAt = nowIso;
+      /* เวลานัด + ช่าง ของใบประเมิน — เก็บบนใบด้วย ไม่ใช่เฉพาะบนนัด
+         ⚠️ คิว/หน้ารายละเอียดอ่านจากใบ ไม่ได้ join นัดทุกแถว ⇒ ค่าที่ใบไม่มี = ค่าที่
+            ไม่มีใครเห็นจนกว่าจะเปิดหน้าตารางช่าง */
+      if (before.kind === 'site_survey') {
+        patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
+        patch.assigneeId = String(body.assigneeId).trim();
+        patch.assigneeName = String(body.assigneeName ?? '').trim() || null;
+        patch.assignedAt = nowIso;
+      }
+
       // เหตุผลไม่บังคับ — ครั้งแรกยังไม่มีคำสัญญาเดิมให้ต้องอธิบาย (ต่างจากการเลื่อน)
       const note = String(body.reason ?? '').trim();
       if (note.length > 500) {
@@ -320,6 +344,12 @@ export async function PATCH(request, { params }) {
         ? `แจ้งกำหนดส่งรอบแก้ ${patch.committedDueDate} (รอบก่อน ${before.committedDueDate})`
           + (note ? ` — ${note}` : '')
         : `แจ้งกำหนดส่ง ${patch.committedDueDate}${note ? ` — ${note}` : ''}`;
+      if (before.kind === 'site_survey') {
+        summary = `ลงคิวเข้าพื้นที่ ${patch.committedDueDate}`
+          + (patch.committedDueTime ? ` ${patch.committedDueTime}` : '')
+          + (patch.assigneeName ? ` · ${patch.assigneeName}` : '')
+          + (note ? ` — ${note}` : '');
+      }
     } else if (action === 'update') {
       // ⭐ **แก้คำร้องที่ยังไม่ถูกรับเรื่อง** (มติผู้ใช้ 2026-08-09) — ก่อนหน้านี้
       // ใบที่บันทึกแล้วแก้ไม่ได้เลยสักช่อง ต้องลบทิ้งแล้วเปิดใหม่
@@ -538,6 +568,16 @@ export async function PATCH(request, { params }) {
       // ต้องเห็นว่าเลื่อนไปกี่ครั้งและครั้งละกี่วัน โดยไม่ต้องไปขุด audit log
       summary = `เลื่อนวันกำหนดส่ง ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
         + (reason ? ` — ${reason}` : '');
+      /* ⭐ ใบประเมิน: เลื่อนวันบนใบ = **เลื่อนนัดของช่างด้วย** (แผน เฟส 2)
+         ⚠️ เวลาแก้ได้พร้อมกัน — ไม่ส่งมา = ไม่แตะเวลาเดิม (ต่างจากส่งค่าว่างที่แปลว่า
+            "เอาเวลาออก ไปทั้งวัน") */
+      if (before.kind === 'site_survey') {
+        if (String(body.committedDueTime ?? '') !== '' || body.committedDueTime === null) {
+          patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
+        }
+        summary = `เลื่อนวันนัดเข้าพื้นที่ ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
+          + (reason ? ` — ${reason}` : '');
+      }
     } else if (action === 'assign') {
       /* ⭐ **มอบหมายให้คนในฝ่าย** (mig 0230 · มติผู้ใช้ 2026-08-12) — คนละเรื่องกับ
          "รับเรื่อง": รับเรื่องคือคำสัญญาของ *ฝ่าย* ต่อผู้ขอ · มอบหมายคือการจัดคน
@@ -790,6 +830,46 @@ export async function PATCH(request, { params }) {
         updatedAt: nowIso,
       }).eq('requestId', id).is('ackAt', null);
       if (ackError) console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
+    }
+
+    /* ── นัดของช่าง: เกิด/ขยับตามวันบนใบ (แผน เฟส 2) ─────────────────────
+       ⭐ **ลงคิว = ใบได้วัน + ช่างได้นัด** ⇒ เขียนนัดหลังหัวใบผ่าน ด้วยเหตุผลเดียวกับ
+          `ackFanOut`: ใบถูกบันทึกไปแล้วจริง ย้อนไม่ได้
+       ⚠️ ล้มแล้ว **ไม่ throw** — แต่ต้อง **ไม่เงียบ**: ใบที่มีวันแต่ไม่มีนัด = ช่างไม่เห็น
+          งานบนตาราง · เขียน error ลง log แล้วให้ audit summary บอกว่านัดยังไม่เกิด
+       ⚠️ `commit-due` รอบสอง (รอบแก้) ไม่สร้างนัดซ้ำ — มีนัดอยู่แล้วก็ขยับตัวเดิม
+          ("หนึ่งใบ = หนึ่งนัด") */
+    if (before.kind === 'site_survey' && (action === 'commit-due' || action === 'reschedule')) {
+      try {
+        const existing = await findSurveyVisit(supabase, id);
+        if (existing) {
+          const { error: moveError } = await moveSurveyVisit(supabase, {
+            requestId: id,
+            date: patch.committedDueDate,
+            time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
+          });
+          if (moveError) console.error('[requests] เลื่อนนัดประเมินไม่สำเร็จ:', moveError);
+        } else {
+          const { site, error: siteError } = await loadSurveySite(supabase, before.siteId, null);
+          if (siteError || !site) {
+            console.error('[requests] หาไซต์ของใบประเมินไม่เจอ:', siteError);
+          } else {
+            const { visit, error: visitError } = await createSurveyVisit(supabase, {
+              request: { ...before, ...patch },
+              site,
+              date: patch.committedDueDate,
+              time: patch.committedDueTime,
+              assigneeId: patch.assigneeId,
+              assigneeName: patch.assigneeName,
+              user,
+            });
+            if (visitError) console.error('[requests] สร้างนัดประเมินไม่สำเร็จ:', visitError);
+            else if (visit?.code) summary += ` · นัด ${visit.code}`;
+          }
+        }
+      } catch (e) {
+        console.error('[requests] สายนัดประเมินล้ม:', e.message);
+      }
     }
 
     // เลขจริงรู้ได้หลังฟังก์ชันออกให้เท่านั้น (ใบใหม่ยังไม่มีเลขตอนประกอบ summary)
