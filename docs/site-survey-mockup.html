@@ -953,9 +953,16 @@ margin-inline-end:6px;vertical-align:1px}
       <div class="ui-section">
         <div class="ui-section-header">
           <div><h2>จุดที่ต้องประเมิน</h2><p>ทุกจุดอยู่ใต้ <b>ดิ เอ็มควอเทียร์</b> · 1 จุด = 1 โซน</p></div>
-          <span class="ui-badge info">เดิม 2 · ใหม่ 2</span>
+          <span class="ui-badge info">เดิม 2 · ใหม่ 2 · ชนชื่อ 1</span>
         </div>
         <div class="ui-section-body">
+
+          <div class="notice" data-tone="info">
+            <span class="ic"><svg class="i"><use href="#layers"/></svg></span>
+            <div><b>โชว์โซนเดิมทั้งหมด แม้อันที่วัดแล้วและขายแล้ว — แต่ไม่ติ๊กมาให้</b>
+            <span>ฐานข้อมูลมี <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> อยู่แล้ว (mig 0297) ⇒ <b>ไม่โชว์ = คนพิมพ์ “ล็อบบี้ชั้น G” เป็นโซนใหม่แล้วบันทึกไม่ผ่าน</b>
+            ได้ error ดิบจาก Postgres ที่ไม่บอกว่าต้องทำอะไรต่อ · ส่วนที่ห้ามติ๊กให้เพราะ<b>ติ๊กให้ = สั่งช่างไปเสียเที่ยว</b></span></div>
+          </div>
 
           <div class="qgroup"><h4><svg class="i"><use href="#layers"/></svg>โซนเดิมของไซต์นี้ — ติ๊กว่ารอบนี้จะไปวัดอันไหน</h4>
             <div class="tiles">
@@ -967,14 +974,16 @@ margin-inline-end:6px;vertical-align:1px}
                 <span class="adr">210.0 ตร.ม. · 1 แพ็ค · 3 จุด · วัดเมื่อ 12 มี.ค. 69 โดย AS-26030004</span>
                 <span class="why2">⭐ ไม่ต้องไปวัดใหม่ — เสนอราคาได้เลย</span>
                 <span class="acts"><span class="btn sm btn-accent">ใช้ตัวเลขนี้เสนอราคา</span>
-                  <span class="btn sm">วัดซ้ำรอบนี้</span></span></button>
+                  <span class="btn sm">วัดซ้ำรอบนี้</span>
+                  <span class="btn sm btn-quiet">พื้นที่ถูกกั้นใหม่ — ปิดโซนนี้แล้วสร้างใหม่</span></span></button>
 
               <!-- ⑤ วัดแล้ว ขายแล้ว -->
               <button class="tile" aria-pressed="true">
                 <span class="th"><span class="ui-badge plain">⑤</span><b>ล็อบบี้ชั้น G</b>
                   <span class="ui-badge success">วัดแล้ว</span><span class="ui-badge success">ขายแล้ว</span></span>
                 <span class="adr">432.0 ตร.ม. · 2 แพ็ค · 3 จุด · SO-26040022 · วัดเมื่อ 12 มี.ค. 69</span>
-                <span class="why2">ติ๊กแล้ว — <b>ลูกค้าขยายพื้นที่ วัดซ้ำรอบนี้</b> · ผลรอบเก่ายังอยู่ครบ</span></button>
+                <span class="why2">ติ๊กแล้ว — <b>ลูกค้าขยายพื้นที่ วัดซ้ำรอบนี้</b> · ผลรอบเก่ายังอยู่ครบ</span>
+                <span class="why2" style="color:var(--text-3)">🔒 โซนที่ขายแล้ว<b>แทนด้วยโซนใหม่ไม่ได้</b> — เครื่อง 3 ตัว รอบบริการ และประวัติการเข้า ผูกอยู่กับโซนนี้ · มีทางเดียวคือวัดซ้ำ</span></button>
 
               <!-- ③ มีใบค้าง -->
               <button class="tile" data-lock="1" disabled>
@@ -1003,8 +1012,15 @@ margin-inline-end:6px;vertical-align:1px}
                 <div><b>ทางเชื่อม BTS ชั้น 1</b>
                   <span class="zd">อาคาร A · ชั้น 1 · ทางเดินยาว มีลมจากภายนอก</span></div>
                 <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="zrow" data-new="1" style="border-color:var(--amber);background:var(--amber-soft)"><span class="zn">3</span>
+                <div><b>ล็อบบี้ชั้น G</b>
+                  <span class="zd" style="color:var(--amber)">⚠️ ไซต์นี้มีโซนชื่อนี้อยู่แล้ว (วัดแล้ว · ขายแล้ว) — ต้องการวัดโซนเดิมใช่ไหม</span>
+                  <span class="acts"><span class="btn sm btn-accent">ใช่ ติ๊กโซนเดิมให้</span>
+                    <span class="btn sm btn-quiet">ไม่ใช่ ตั้งชื่ออื่น</span></span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
               <button class="btn sm btn-accent" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดในสถานที่นี้</button>
             </div>
+            <p class="hint" style="margin-top:var(--space-2)">⚠️ ทักตอนพิมพ์ ไม่ใช่ตอนกดบันทึก — ปล่อยไปถึงบันทึกจะได้ error ดิบจากฐานข้อมูล</p>
             <p class="hint" style="margin-top:var(--space-2)">⚠️ ปุ่มนี้เพิ่ม<b>จุดในไซต์เดิม</b>เท่านั้น — สาขาอื่นต้องเปิดใบใหม่ ไม่ใช่เพิ่มที่นี่</p>
           </div>
 
@@ -2261,6 +2277,8 @@ margin-inline-end:6px;vertical-align:1px}
       “ไซต์ขายแล้ว” เป็นคำถามที่ไม่มีคำตอบเดียว ⇒ สถานะของไซต์เป็นแค่สรุปจากลูก</span></li>
       <li><span class="mk new">+</span><span>⚠️ แกนประเมินมี <b>สามค่า ไม่ใช่สองค่า</b> — “มีใบอื่นสั่งวัดไว้แล้ว” เป็นสถานะของตัวเอง ·
       ยุบรวมกับ “ยังไม่วัด” เมื่อไร สองใบจะสั่งวัดโซนเดียวกันซ้อนกัน</span></li>
+      <li><span class="mk new">+</span><span>🔴 <b>โชว์โซนเดิมทั้งหมด แต่ไม่ติ๊กให้</b> — ไม่โชว์ = คนพิมพ์ชื่อซ้ำแล้วชน <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> ของ mig 0297 ·
+      ติ๊กให้ = สั่งช่างไปเสียเที่ยว</span></li>
       <li><span class="mk new">+</span><span>⭐ กรณี ④ <b>วัดแล้วยังไม่ขาย</b> คือของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน — ต้องชูขึ้นก่อนใครทั้งบนฟอร์มและบนหน้าลูกค้า</span></li>
     </ul>
   </div>
@@ -2311,6 +2329,54 @@ margin-inline-end:6px;vertical-align:1px}
       </div>
 
       <div class="ui-section">
+        <div class="ui-section-header"><div><h2>โซนเดิม หรือ โซนใหม่ — ตัดสินยังไง</h2>
+        <p>ตัวชี้ขาดคือ <b>“พื้นที่จริงยังเป็นก้อนเดิมไหม”</b> ไม่ใช่ “ตัวเลขเปลี่ยนไหม” — ตัวเลขเปลี่ยนเป็นเรื่องปกติของการวัดซ้ำ</p></div></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>ของจริงเกิดอะไรขึ้น</th><th>ทำอะไร</th><th>ทำได้เมื่อ</th></tr></thead>
+            <tbody>
+              <tr><td>พื้นที่เดิม วัดใหม่ — ต่อสัญญา · วัดละเอียดขึ้น · ลูกค้าต่อเติมในโซนเดิม</td>
+                <td><span class="t-strong">โซนเดิม + แถวผลวัดใหม่</span><span class="cell-sub">ผลรอบเก่ายังอยู่ครบ (มติ 8)</span></td>
+                <td><span class="ui-badge success">ได้เสมอ</span></td></tr>
+              <tr><td>พื้นที่ที่ไม่เคยมี — เปิดชั้นใหม่ · ขยายปีก</td>
+                <td><span class="t-strong">โซนใหม่</span><span class="cell-sub">“ประเมินเพิ่ม” ในไซต์เดิม</span></td>
+                <td><span class="ui-badge success">ได้เสมอ</span></td></tr>
+              <tr><td>โซนเดิมถูกกั้นเป็นสอง · สองโซนทุบผนังรวมเป็นหนึ่ง</td>
+                <td><span class="t-strong">ปิดโซนเดิม + สร้างโซนใหม่</span><span class="cell-sub">isActive = false · ประวัติยังอยู่</span></td>
+                <td><span class="ui-badge warning">เฉพาะโซนที่ยังไม่ขาย</span></td></tr>
+              <tr><td><span class="t-strong">โซนที่ขายแล้ว</span> — อยากแทนด้วยโซนใหม่</td>
+                <td colspan="2"><span class="ui-badge danger">🔒 ทำไม่ได้</span> มีทางเดียวคือ<b>วัดซ้ำที่โซนเดิม</b></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="ui-section">
+        <div class="ui-section-header"><div><h2>ทำไมโซนที่ขายแล้วถึงแทนด้วยโซนใหม่ไม่ได้</h2>
+        <p>ฐานข้อมูลกันไว้แล้วส่วนหนึ่ง และเหตุผลก็อยู่ตรงนั้น</p></div></div>
+        <div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl">
+            <thead><tr><th>ของที่ผูกกับ <span class="mono">zoneId</span></th><th>ถ้าสร้างโซนใหม่ทับ</th></tr></thead>
+            <tbody>
+              <tr><td><span class="mono">service_zone_terms.zoneId</span><span class="cell-sub">ON DELETE <b>RESTRICT</b></span></td>
+                <td>ลบโซนเดิมไม่ได้อยู่แล้ว ⇒ ได้<b>โซนซ้ำสองแถวสำหรับพื้นที่เดียว</b> แล้วไม่มีใครรู้ว่าอันไหนของจริง</td></tr>
+              <tr><td><span class="mono">service_assets.zoneId</span><span class="cell-sub">ON DELETE <b>SET NULL</b></span></td>
+                <td>เครื่องที่ติดตั้งจริงกลายเป็น<b>เครื่องไร้โซน</b></td></tr>
+              <tr><td>รอบบริการ + ประวัติการเข้า</td>
+                <td>ยังชี้โซนเก่า ⇒ <b>ประวัติแยกร่าง</b> — ของมีค่าที่สุดของโมดูลนี้</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="notice" data-tone="warning">
+        <span class="ic"><svg class="i"><use href="#warn"/></svg></span>
+        <div><b>เคส “ทุบผนังรวมโซนที่ขายไปแล้ว” มีจริง แต่อยู่นอกสายประเมิน</b>
+        <span>ต้องย้ายเครื่อง ย้าย term และแก้รอบบริการ ⇒ เป็นงานของโมดูลบริการ ไม่ใช่ของใบประเมิน ·
+        <b>ใบประเมินได้แค่บันทึกว่าเจออะไร</b> แล้วส่งต่อให้คนแก้ทะเบียน</span></div>
+      </div>
+
+      <div class="ui-section">
         <div class="ui-section-header"><div><h2>ฟอร์มดึงข้อมูลตอนไหน</h2>
         <p>ดึงครั้งเดียว ตอน <span class="mono">dealId</span> เปลี่ยน — ไม่ใช่ตอนเปิดฟอร์ม</p></div></div>
         <div class="ui-section-body">
@@ -2330,6 +2396,10 @@ margin-inline-end:6px;vertical-align:1px}
 
           <div class="ui-section-header" style="padding-inline:0"><div><h2 style="font-size:var(--fs-9)">ห้าพฤติกรรมที่ต้องเขียนไว้</h2></div></div>
           <ul class="gate">
+            <li data-s="blocked"><span class="gate-mk">!</span>
+              <span class="gate-t"><b>พิมพ์ชื่อโซนใหม่ชนกับโซนเดิมของไซต์นั้น</b>
+                <span>🔴 <span class="mono">UNIQUE (siteId, ชื่อโซน)</span> ของ mig 0297 จะตีกลับตอนบันทึกด้วย error ดิบ ⇒
+                <b>ต้องทักตอนพิมพ์</b> “ไซต์นี้มีโซนชื่อนี้อยู่แล้ว — ต้องการวัดโซนเดิมใช่ไหม” + ปุ่มสลับไปติ๊กโซนเดิม</span></span></li>
             <li data-s="ok"><span class="gate-mk">✓</span>
               <span class="gate-t"><b>ลูกค้าใหม่ ไม่มีพื้นที่เลย</b><span><b>ซ่อนบล็อกทั้งบล็อก</b> ไม่ใช่โชว์กล่องว่าง — กติกาเดิมของระบบ</span></span></li>
             <li data-s="blocked"><span class="gate-mk">!</span>
