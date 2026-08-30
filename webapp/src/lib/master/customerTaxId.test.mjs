@@ -11,6 +11,7 @@ import {
   taxIdMatchFilter,
   taxIdMatches,
   taxIdOtherBranchWarning,
+  taxIdRetiredWarning,
   taxIdStore,
 } from './customerTaxId.js';
 
@@ -111,6 +112,25 @@ test('คำเตือนคนละสาขาต้องขึ้นเ�
   assert.match(warning, /AR-306 .*\(สาขา 00000\)/);
   assert.match(warning, /AR-307 .*\(สาขา 00002\)/);
   assert.match(warning, /บันทึกต่อได้/);
+});
+
+test('ใบที่พักใช้ไม่นับว่าซ้ำ — แค่เตือนให้เปิดใบเดิมกลับ', () => {
+  // ต้องตรงกับ unique partial ของ mig 0318 (`where isActive is distinct from false`)
+  // ไม่งั้นใบที่ถูกพักตอนยุบซ้ำ จะกันไม่ให้สร้างใบใหม่ให้สถานประกอบการนั้นได้อีกเลย
+  const rows = [
+    { id: 'CUS-R', arCode: 'AR-002', name: 'อาเตโพเล่', taxId: '0105560000069', branchCode: '00000', isActive: false },
+    { id: 'CUS-X', arCode: 'AR-777', name: 'อาเตโพเล่ (สาขา)', taxId: '0105560000069', branchCode: '00009', isActive: false },
+  ];
+  const hit = splitTaxIdMatches(rows, { taxId: '0105560000069', branchCode: '00000' });
+  assert.deepEqual(hit.sameBranch, []);
+  assert.deepEqual(hit.retired.map((r) => r.arCode), ['AR-002']);
+  // ใบพักใช้ของสาขาอื่นไม่เกี่ยวกับใบที่กำลังกรอก — ไม่ต้องรายงาน
+  assert.deepEqual(hit.otherBranch, []);
+
+  const warning = taxIdRetiredWarning(hit.retired);
+  assert.match(warning, /AR-002/);
+  assert.match(warning, /เปิดใช้ใบเดิมกลับ/);
+  assert.equal(taxIdRetiredWarning([]), null);
 });
 
 test('ด่านรูปแบบ: ลูกค้าไทยต้อง 13 หลักล้วน · ต่างชาติผ่านหมด · ว่างผ่าน', () => {

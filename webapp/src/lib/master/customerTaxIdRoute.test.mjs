@@ -45,11 +45,22 @@ test('PATCH เช็คซ้ำเมื่อ "คีย์" ขยับ ไ
   // ฟอร์มส่งค่าที่ normalize แล้วกลับมาเสมอ ⇒ เทียบสตริงดิบจะนับว่า "เปลี่ยนเลข" ทุกครั้ง
   // แล้วใบนั้นไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนบันทึกอะไรไม่ได้เลย
   assert.match(patchRoute, /taxKeyChanged\s*=\s*taxIdKey\(nextTaxId\)\s*!==\s*taxIdKey\(customer\.taxId\)/);
-  assert.match(patchRoute, /if\s*\(nextTaxId\s*&&\s*taxKeyChanged\)/);
+  assert.match(patchRoute, /if\s*\(nextTaxId\s*&&\s*\(taxKeyChanged\s*\|\|\s*reactivating\)\)/);
 });
 
 test('ฟอร์มเตือนตอนเลขตรงแต่คนละสาขา — ไม่บล็อก', () => {
   assert.match(form, /taxIdOtherBranchWarning\(otherBranch\)/);
+});
+
+test('ใบที่พักใช้ไม่บล็อก แต่การเปิดใช้กลับต้องเช็คซ้ำ', () => {
+  // unique ของ mig 0318 เป็น partial เฉพาะใบที่ยังใช้งาน ⇒ ใบที่พักไว้ต้องไม่บล็อก
+  // แต่ถ้าไม่เช็คตอนเปิดกลับ ใบที่ถูกพักเพราะยุบซ้ำจะเด้งกลับมาชนใบหลักด้วยสวิตช์เดียว
+  assert.match(patchRoute, /reactivating\s*=\s*updates\.isActive === true && customer\.isActive === false/);
+  assert.match(patchRoute, /taxKeyChanged \|\| reactivating/);
+  // ต้องดึง isActive มาด้วย ไม่งั้นแยกใบที่พักใช้ออกจากใบที่ยังใช้งานไม่ได้
+  for (const [label, src] of [['POST', createRoute], ['PATCH', patchRoute]]) {
+    assert.match(src, /select\('id, arCode, name, taxId, branchCode, isActive'\)/, `${label} ต้องดึง isActive`);
+  }
 });
 
 test('เขียนลงฐานผ่าน taxIdStore เสมอ — ห้ามถอดตัวอักษรของเลขต่างชาติทิ้ง', () => {

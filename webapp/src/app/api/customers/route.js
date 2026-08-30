@@ -181,7 +181,7 @@ export async function POST(request) {
   if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
   if (taxId) {
     const { data: sameTax, error: taxError } = await supabase
-      .from('customers').select('id, arCode, name, taxId, branchCode').or(taxIdMatchFilter(taxId));
+      .from('customers').select('id, arCode, name, taxId, branchCode, isActive').or(taxIdMatchFilter(taxId));
     if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
     const { sameBranch } = splitTaxIdMatches(sameTax, { taxId, branchCode: mirror.branchCode });
     const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: mirror.branchCode });

@@ -26,7 +26,7 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
 import {
   isCompleteTaxId, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError,
-  taxIdKey, taxIdOtherBranchWarning,
+  taxIdKey, taxIdOtherBranchWarning, taxIdRetiredWarning,
 } from "@/lib/master/customerTaxId";
 import {
   CUSTOMER_NAME_TITLES, composeCustomerName, customerNameBranchWarning, splitCustomerName,
@@ -154,11 +154,12 @@ export default function CustomerForm({
 
   // สาขาที่ใช้เทียบ = สาขาของที่อยู่ออกบิลหลักในฟอร์มนี้ (คีย์ซ้ำคือ เลขภาษี + สาขา)
   const formBranchCode = legacyAddressMirror(form.addresses || []).branchCode;
-  const { sameBranch, otherBranch } = splitTaxIdMatches(taxRows, {
+  const { sameBranch, otherBranch, retired } = splitTaxIdMatches(taxRows, {
     taxId: taxKey, branchCode: formBranchCode, excludeId: selfId,
   });
   const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
-  const taxWarning = taxIdOtherBranchWarning(otherBranch);
+  // ใบที่พักใช้ในสาขาเดียวกันมาก่อน — ตรงประเด็นกว่าใบของสาขาอื่นที่ยังใช้งานอยู่
+  const taxWarning = taxIdRetiredWarning(retired) || taxIdOtherBranchWarning(otherBranch);
   // ลูกค้าไทย = ที่อยู่ออกบิลหลักเลือกจังหวัดจากทะเบียนไทย ⇒ บังคับ 13 หลัก ·
   // ต่างประเทศกรอกอิสระ (มติผู้ใช้ 2026-08-30)
   const thaiTaxEntity = isThaiTaxEntity(form.addresses || []);

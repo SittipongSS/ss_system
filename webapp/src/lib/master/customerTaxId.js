@@ -108,7 +108,18 @@ export function taxIdFormatError(value, { thaiEntity = true } = {}) {
 export const branchKeyOf = (value) => branchValue(value) || HEAD_OFFICE_BRANCH;
 
 /**
- * แยกแถวที่เลขผู้เสียภาษีตรงกัน ออกเป็น "สาขาเดียวกัน" กับ "คนละสาขา"
+ * แยกแถวที่เลขผู้เสียภาษีตรงกัน ออกเป็นสามกอง
+ *
+ *   sameBranch  ใบที่ยังใช้งาน สาขาเดียวกัน = ซ้ำจริง ตีกลับ
+ *   otherBranch ใบที่ยังใช้งาน คนละสาขา     = เตือน ไม่บล็อก
+ *   retired     ใบที่ **พักใช้** สาขาเดียวกัน = เตือน ไม่บล็อก
+ *
+ * ⚠️ ใบที่พักใช้ (`isActive === false`) ต้องไม่บล็อก — ต้องตรงกับ unique index ของ DB
+ * ซึ่งเป็น partial `where "isActive" is distinct from false` (mig 0318) · การยุบใบซ้ำ
+ * ในทะเบียนทำด้วยการ "พักใช้" ไม่ใช่ลบทิ้ง (ลบไม่ได้ เพราะแต่ละใบถือเนื้อในของตัวเอง)
+ * ⇒ ถ้าฝั่งแอปยังนับใบที่พักใช้ว่าซ้ำ จะไม่มีวันสร้างใบใหม่ให้สถานประกอบการนั้นได้อีก
+ * แต่ **ต้องเตือน** เพราะคนที่กำลังจะสร้างใบใหม่ ส่วนใหญ่อยากได้ใบเดิมกลับมามากกว่า
+ * ⚠️ ใบพักใช้ที่คนละสาขา ไม่ต้องรายงาน — ไม่เกี่ยวกับใบที่กำลังกรอกเลย
  *
  * @param rows แถวลูกค้าที่ดึงมาแบบหลวม ๆ (ดู taxIdMatchFilter) — กรองจริงที่นี่
  * @param taxId เลขที่กำลังจะบันทึก · branchCode สาขาของที่อยู่ออกบิลหลัก
@@ -117,13 +128,19 @@ export const branchKeyOf = (value) => branchValue(value) || HEAD_OFFICE_BRANCH;
 export function splitTaxIdMatches(rows, { taxId, branchCode, excludeId = null } = {}) {
   const key = taxIdKey(taxId);
   const branch = branchKeyOf(branchCode);
-  if (!key) return { sameBranch: [], otherBranch: [] };
+  const empty = { sameBranch: [], otherBranch: [], retired: [] };
+  if (!key) return empty;
   return (rows || []).reduce((acc, row) => {
     if (!row || row.id === excludeId) return acc;
     if (taxIdKey(row.taxId) !== key) return acc;
-    acc[branchKeyOf(row.branchCode) === branch ? 'sameBranch' : 'otherBranch'].push(row);
+    const sameBranch = branchKeyOf(row.branchCode) === branch;
+    if (row.isActive === false) {
+      if (sameBranch) acc.retired.push(row);
+      return acc;
+    }
+    acc[sameBranch ? 'sameBranch' : 'otherBranch'].push(row);
     return acc;
-  }, { sameBranch: [], otherBranch: [] });
+  }, { sameBranch: [], otherBranch: [], retired: [] });
 }
 
 /** แถวที่ใช้เลขเดียวกัน ไม่สนสาขา — ใช้ตอนที่ผู้เรียกจะแยกสาขาเอง (by-tax-id) */
@@ -148,6 +165,16 @@ export function taxIdDuplicateError(rows, { branchCode } = {}) {
   const others = rows.length > 1 ? ` (และอีก ${rows.length - 1} ราย)` : '';
   return `เลขประจำตัวผู้เสียภาษีนี้ใช้กับสาขา ${branch} อยู่แล้วที่ ${nameOf(rows[0])}${others}`
     + ' — ถ้าเป็นบริษัทเดิม ให้แก้ที่รายเดิม หรือเปลี่ยนเลขสาขาของที่อยู่ออกบิล';
+}
+
+// ข้อความเตือนตอนเจอใบเดิมที่ "พักใช้" อยู่ในสาขาเดียวกัน — ไม่บล็อก (DB ก็ไม่บล็อก)
+// แต่ทางที่ถูกเกือบทุกครั้งคือเปิดใบเดิมกลับ ไม่ใช่สร้างใบใหม่ให้บริษัทเดิมอีกรอบ
+export function taxIdRetiredWarning(rows) {
+  if (!rows?.length) return null;
+  const list = rows.slice(0, 3).map(labelOf).join(' · ');
+  const more = rows.length > 3 ? ` และอีก ${rows.length - 3} ราย` : '';
+  return `เลขนี้เคยมีในระบบแต่ถูกพักใช้ไว้: ${list}${more}`
+    + ' — ถ้าเป็นบริษัทเดิม ให้เปิดใช้ใบเดิมกลับแทนการสร้างใบใหม่';
 }
 
 // ข้อความเตือนบนฟอร์มตอนเลขตรงแต่คนละสาขา — ไม่บล็อก

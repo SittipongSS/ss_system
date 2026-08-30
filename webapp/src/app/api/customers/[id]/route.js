@@ -388,17 +388,26 @@ export async function PATCH(request, { params }) {
   //      ต้อง **แก้ต่อได้** — ฟอร์มส่งค่าที่ normalize แล้วกลับมาเสมอ ถ้าเทียบสตริงดิบ
   //      จะนับเป็น "เปลี่ยนเลข" ทุกครั้งแล้วไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนใบนั้น
   //      บันทึกไม่ได้อีกเลย (คีย์เท่าเดิม = ปล่อยผ่าน แต่ค่าที่เขียนลงเป็นรูปที่สะอาดแล้ว)
+  //
+  // ⚠️ **เปิดใช้ใบที่พักไว้กลับ ก็ต้องเช็คด้วย** — ใบที่พักใช้ไม่ถูกนับว่าซ้ำ (ทั้งด่านนี้
+  // และ unique partial ของ mig 0318) ⇒ ถ้าไม่เช็คตอนเปิดกลับ ใบที่ถูกพักเพราะยุบซ้ำ
+  // จะเด้งกลับมาชนใบหลักได้เงียบ ๆ ด้วยการกดสวิตช์เดียว
   if (updates.taxId !== undefined) updates.taxId = taxIdStore(updates.taxId);
   const nextTaxId = updates.taxId !== undefined ? updates.taxId : customer.taxId;
   const nextBranch = updates.branchCode !== undefined ? updates.branchCode : customer.branchCode;
+  const reactivating = updates.isActive === true && customer.isActive === false;
   const taxKeyChanged = taxIdKey(nextTaxId) !== taxIdKey(customer.taxId)
     || branchKeyOf(nextBranch) !== branchKeyOf(customer.branchCode);
-  if (nextTaxId && taxKeyChanged) {
-    const thaiEntity = isThaiTaxEntity(updates.addresses ?? customer.addresses);
-    const taxFormatError = taxIdFormatError(nextTaxId, { thaiEntity });
-    if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
+  if (nextTaxId && (taxKeyChanged || reactivating)) {
+    // ด่านรูปแบบผูกกับ "แก้เลข" เท่านั้น — การเปิดใช้ใบเก่ากลับต้องไม่ถูกบล็อกเพราะ
+    // เลขในใบนั้นเป็นรูปยุคเก่า (ยังไม่ได้แตะเลย ก็ไม่ควรถูกบังคับให้แก้ตรงนี้)
+    if (taxKeyChanged) {
+      const thaiEntity = isThaiTaxEntity(updates.addresses ?? customer.addresses);
+      const taxFormatError = taxIdFormatError(nextTaxId, { thaiEntity });
+      if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
+    }
     const { data: sameTax, error: taxError } = await supabase
-      .from('customers').select('id, arCode, name, taxId, branchCode').or(taxIdMatchFilter(nextTaxId));
+      .from('customers').select('id, arCode, name, taxId, branchCode, isActive').or(taxIdMatchFilter(nextTaxId));
     if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
     const { sameBranch } = splitTaxIdMatches(sameTax, {
       taxId: nextTaxId, branchCode: nextBranch, excludeId: customer.id,
