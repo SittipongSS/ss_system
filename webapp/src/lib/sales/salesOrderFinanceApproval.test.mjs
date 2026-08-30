@@ -4,9 +4,15 @@ import { readFileSync } from 'node:fs';
 
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUSES, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
-  awaitsFinanceReview, financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep,
-  salesOrderWorkflowIndex,
+  awaitsFinanceReview, financeActionError, financeStatusOf, financeWorkflowStep,
+  salesOrderFullyPaid, salesOrderPaymentProgress, salesOrderWorkflowIndex,
 } from './salesOrderFinanceApproval.js';
+
+/* ⭐ **มติผู้ใช้ 2026-08-30 — บัญชีย้ายมาอยู่ท้ายวง**: AE Sup → เก็บเงินครบ → บัญชีปิดใบ
+   ⇒ ทุกด่านของบัญชีต้องได้ `installments` ด้วย · ไม่ส่ง = ปฏิเสธ ไม่ใช่ปล่อยผ่าน
+   ⇒ `finance_reject` / `finance_resubmit` ถอดออกแล้ว (ตีกลับเหลือรายงวด) */
+const PAID = [{ status: 'confirmed' }];
+const HALF = [{ status: 'confirmed' }, { status: 'pending' }];
 
 const FN = { id: 'u-fn', role: 'finance', department: 'FN' };
 const FN_STAFF = { id: 'u-fn2', role: 'finance', department: 'FN' };
@@ -23,7 +29,7 @@ const approved = (extra = {}) => ({ status: 'approved', financeStatus: 'pending'
 test('ใบเก่าที่ไม่มี financeStatus = ยังไม่เข้าแกนบัญชี ไม่ใช่รอตรวจ', () => {
   assert.equal(financeStatusOf({ status: 'approved' }), null);
   assert.equal(awaitsFinanceReview({ status: 'approved' }), false);
-  assert.equal(awaitsFinanceReview({ status: 'approved', financeStatus: 'pending', totalAmount: 53500 }), true);
+  assert.equal(awaitsFinanceReview({ status: 'approved', financeStatus: 'pending', totalAmount: 53500 }, PAID), true);
   assert.equal(financeWorkflowStep({ status: 'approved' }), null);
 });
 
@@ -37,8 +43,8 @@ test('ใบที่ยังไม่ผ่าน AE Sup ไม่ถือว
 
 // ── ด่านของบัญชี ────────────────────────────────────────────────────────
 test('บัญชีอนุมัติได้ทั้ง role finance และผู้ใช้ FN เดิมที่ยังเป็น staff', () => {
-  assert.equal(financeActionError(approved(), 'finance_approve', FN), null);
-  assert.equal(financeActionError(approved(), 'finance_approve', FN_STAFF), null);
+  assert.equal(financeActionError(approved(), 'finance_approve', FN, { installments: PAID }), null);
+  assert.equal(financeActionError(approved(), 'finance_approve', FN_STAFF, { installments: PAID }), null);
 });
 
 /* 🔴 แยกหน้าที่ — ฝ่ายขายตรวจแทนบัญชีไม่ได้ ไม่ว่าตำแหน่งอะไร
@@ -61,34 +67,35 @@ test('ใบที่ยังไม่เข้าคิว (NULL) บัญช
   assert.match(financeActionError({ status: 'approved' }, 'finance_approve', FN), /ยังไม่เข้าคิว/);
 });
 
-test('ตีกลับต้องมีเหตุผลอย่างน้อย 10 ตัวอักษร', () => {
-  assert.match(financeActionError(approved(), 'finance_reject', FN, { reason: 'สั้น' }), /10 ตัวอักษร/);
-  assert.equal(financeActionError(approved(), 'finance_reject', FN, { reason: 'ที่อยู่ออกบิลไม่ตรงกับทะเบียน' }), null);
+/* 🔴 หัวใจของมติใหม่ — ปิดใบได้ต่อเมื่อเก็บครบทุกงวด */
+test('⭐ ยังเก็บเงินไม่ครบ ปิดใบไม่ได้ และบอกว่าเหลือกี่งวด', () => {
+  const err = financeActionError(approved(), 'finance_approve', FN, { installments: HALF });
+  assert.match(err, /ยังเก็บเงินไม่ครบ \(1\/2 งวด\)/);
+  assert.equal(financeActionError(approved(), 'finance_approve', FN, { installments: PAID }), null);
 });
 
-// ── ส่งตรวจใหม่ ─────────────────────────────────────────────────────────
-/* 🔴 ถ้าบัญชีกดส่งตรวจใหม่เองได้ = ตีกลับแล้วส่งเข้าคิวตัวเองครบวง ด่านไม่มีความหมาย */
-test('ส่งตรวจใหม่เป็นของฝั่งขาย บัญชีกดเองไม่ได้', () => {
-  const row = approved({ financeStatus: 'rejected' });
-  assert.equal(financeActionError(row, 'finance_resubmit', AE_SUP), null);
-  assert.equal(financeActionError(row, 'finance_resubmit', ADMIN), null);
-  assert.match(financeActionError(row, 'finance_resubmit', FN), /AE Supervisor หรือ Admin/);
+/* ⚠️ ไม่ส่งงวดมา = ปฏิเสธ ไม่ใช่ปล่อยผ่าน — ผู้เรียกที่ไม่มีบริบทงวดไม่ควรตัดสินใจปิดใบ */
+test('ไม่ส่งงวดเข้าด่าน = ปิดใบไม่ได้ (fail-closed)', () => {
+  assert.match(financeActionError(approved(), 'finance_approve', FN), /ยังไม่มีงวดชำระ/);
+  assert.match(financeActionError(approved(), 'finance_approve', FN, { installments: [] }), /ยังไม่มีงวดชำระ/);
 });
 
-/* 🔴 ใบที่อนุมัติไปก่อนมีขั้นนี้ค้าง financeStatus = null · ถ้าไม่เปิดทางส่งเข้าคิว
-   มันจะไม่มีวันถึงมือบัญชีเลย (ตอนเจอ: ทุกใบในระบบเป็นแบบนี้ทั้งหมด) */
-test('ใบที่อนุมัติไปแล้วแต่ยังไม่เข้าแกน ส่งเข้าคิวบัญชีได้', () => {
-  const legacy = approved({ financeStatus: null });
-  assert.equal(financeActionError(legacy, 'finance_resubmit', AE_SUP), null);
-  assert.equal(financeSendLabel(legacy), 'ส่งให้บัญชีตรวจ');
-  assert.equal(financeSendLabel(approved({ financeStatus: 'rejected' })), 'ส่งให้บัญชีตรวจใหม่');
-  // ยังต้องผ่าน AE Supervisor ก่อน — ใบร่างส่งข้ามหัวไปหาบัญชีไม่ได้
-  assert.match(financeActionError({ status: 'draft' }, 'finance_resubmit', AE_SUP), /ยังไม่ผ่าน AE Supervisor/);
+/* งวดที่แค่ "แจ้งแล้ว" หรือถูกตีกลับ ยังไม่นับว่าเก็บได้ — ลายเซ็นบัญชีคือเส้นแบ่งเสมอ */
+test('งวดที่ยังไม่ confirmed ไม่นับว่าเก็บครบ', () => {
+  assert.equal(salesOrderFullyPaid({ totalAmount: 100 }, [{ status: 'reported' }]), false);
+  assert.equal(salesOrderFullyPaid({ totalAmount: 100 }, [{ status: 'rejected' }]), false);
+  assert.equal(salesOrderFullyPaid({ totalAmount: 100 }, PAID), true);
+  // ใบยอด 0 = ครบโดยปริยาย (ไม่มีเงินให้เก็บ)
+  assert.equal(salesOrderFullyPaid({ totalAmount: 0 }, []), true);
+  // ยอดไม่เป็นศูนย์แต่ไม่มีงวดเลย = ยังไม่ครบ (ใบเก่าที่ยังไม่เริ่มติดตาม)
+  assert.equal(salesOrderFullyPaid({ totalAmount: 100 }, []), false);
+  assert.deepEqual(salesOrderPaymentProgress(HALF), { done: 1, total: 2 });
 });
 
-test('ส่งเข้าคิวซ้ำไม่ได้ ทั้งใบที่รอตรวจอยู่และใบที่ตรวจผ่านแล้ว', () => {
-  assert.match(financeActionError(approved(), 'finance_resubmit', AE_SUP), /อยู่ในคิวของบัญชีอยู่แล้ว/);
-  assert.match(financeActionError(approved({ financeStatus: 'approved' }), 'finance_resubmit', AE_SUP), /อนุมัติใบนี้ไปแล้ว/);
+/* คำสั่งเก่าถูกถอดออกแล้ว — ต้องตกเป็น "คำสั่งไม่ถูกต้อง" ไม่ใช่ยังทำงานเงียบ ๆ */
+test('⭐ ตีกลับทั้งใบและส่งตรวจใหม่ถูกถอดออกแล้ว', () => {
+  assert.match(financeActionError(approved(), 'finance_reject', FN, { reason: 'x'.repeat(20) }), /ไม่ถูกต้อง/);
+  assert.match(financeActionError(approved({ financeStatus: 'rejected' }), 'finance_resubmit', AE_SUP), /ไม่ถูกต้อง/);
 });
 
 test('คำสั่งที่ไม่รู้จักถูกปฏิเสธ ไม่ใช่ผ่านเงียบ ๆ', () => {
@@ -99,9 +106,10 @@ test('คำสั่งที่ไม่รู้จักถูกปฏิ�
 // ── ขั้นบนรางก้าว ───────────────────────────────────────────────────────
 test('ขั้นบัญชีขึ้นเมื่อใบเข้าแกนแล้วเท่านั้น และบอกสถานะตรงตัว', () => {
   assert.equal(financeWorkflowStep(approved()).status, 'pending');
-  assert.match(financeWorkflowStep(approved()).hint, /รอฝ่ายบัญชี/);
+  assert.match(financeWorkflowStep(approved()).hint, /รอเก็บเงินครบ/);
   const ok = financeWorkflowStep(approved({ financeStatus: 'approved', financeApprovedByName: 'บัญชี ก' }));
   assert.equal(ok.hint, 'บัญชี ก');
+  // ค่า rejected เขียนใหม่ไม่ได้แล้ว แต่ของเก่าต้องยังอ่านออก
   assert.match(financeWorkflowStep(approved({ financeStatus: 'rejected' })).hint, /AE Supervisor/);
 });
 
@@ -158,12 +166,14 @@ test('บัญชีอนุมัติแล้ว = ✓ ทั้งรา�
    ซึ่งใบยอด 0 ไม่มีสักข้อ · กติกาเดียวกับงวดชำระที่ตัดใบยอด 0 ออกตั้งแต่ 2026-08-18 */
 test('ใบยอด 0 ไม่ต้องให้บัญชีตรวจ — ทั้งที่ธงเคยถูกประทับไว้แล้ว', () => {
   const zero = { status: 'approved', financeStatus: 'pending', totalAmount: 0 };
-  assert.equal(awaitsFinanceReview(zero), false);
-  // ใบยอดปกติยังเข้าคิวเหมือนเดิม
-  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: 1 }), true);
+  assert.equal(awaitsFinanceReview(zero, PAID), false);
+  // ใบยอดปกติที่เก็บครบแล้วยังเข้าคิวเหมือนเดิม
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: 1 }, PAID), true);
   // ⚠️ "ไม่รู้ยอด" ≠ "ยอด 0" — แถวที่ยังโหลดไม่ครบต้องไม่ถูกตัดออกจากคิวเงียบ ๆ
-  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: null }), true);
-  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: undefined }), true);
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: null }, PAID), true);
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: undefined }, PAID), true);
+  // ⭐ เก็บไม่ครบ = ยังไม่ใช่งานของบัญชีวันนี้ (มติ 2026-08-30)
+  assert.equal(awaitsFinanceReview({ ...zero, totalAmount: 1 }, HALF), false);
 });
 
 test('ต้นทางไม่ประทับ pending ให้ใบยอด 0 ตอนอนุมัติ', () => {
@@ -171,8 +181,18 @@ test('ต้นทางไม่ประทับ pending ให้ใบย�
   assert.match(route, /if \(!paymentNotRequired\(before\.totalAmount\)\) \{[\s\S]{0,220}financeStatus: 'pending'/);
 });
 
-test('หน้าภาพรวมบัญชีใช้ helper ตัวเดียวกับคิวบนทะเบียน ไม่เขียนเงื่อนไขซ้ำ', () => {
+/* ⭐ ตั้งแต่มติ 2026-08-30 คิวบัญชีขึ้นกับ **งวดชำระ** ซึ่งจอไม่ได้โหลดมาด้วย
+   ⇒ ธงย้ายไปคิดที่ server (`_awaitingFinanceReview`) แล้วจอแค่กรองตามธง
+   ⚠️ ห้ามจอกลับไปคิดเองด้วย `awaitsFinanceReview(o)` มือเปล่า — จะได้ false ทุกใบ */
+test('หน้าภาพรวมบัญชีกรองตามธงจาก server ไม่คิดเงื่อนไขเอง', () => {
   const page = readFileSync(new URL('../../app/finance/page.js', import.meta.url), 'utf8');
-  assert.match(page, /orders\.filter\(\(o\) => awaitsFinanceReview\(o\)\)/);
+  assert.match(page, /_awaitingFinanceReview/);
+  assert.doesNotMatch(page, /awaitsFinanceReview\(/, 'จอไม่มีงวดในมือ คิดเองได้ false เสมอ');
   assert.doesNotMatch(page, /financeStatus === "pending"/, 'ห้ามมีนิยามที่สอง');
+});
+
+/* ต้นทางของธง: ทะเบียน SO ต้องโหลดงวดมาป้อนด่านเดียวกัน ไม่ใช่เดา */
+test('ทะเบียน SO คิดธงคิวบัญชีจากงวดจริง', () => {
+  const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/route.js', import.meta.url), 'utf8');
+  assert.match(route, /_awaitingFinanceReview:[\s\S]{0,120}awaitsFinanceReview\(row,/);
 });

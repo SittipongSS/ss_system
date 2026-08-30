@@ -94,7 +94,8 @@ import { approvalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch } from "@/lib/apiFetch";
 import {
   FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
-  financeActionError, financeSendLabel, financeStatusOf, financeWorkflowStep, salesOrderWorkflowIndex,
+  financeActionError, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
+  salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
 
 const STATUS = {
@@ -117,10 +118,9 @@ const ACTION_MESSAGE = {
   revise: "ออก Rev. ใหม่แล้ว",
   cancel: "ยกเลิก SO และคำนวณ Actual ใหม่แล้ว",
   restore: "คืน SO เป็นฉบับร่างแล้ว",
-  // ขั้นบัญชี (mig 0250) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
-  finance_approve: "บัญชีอนุมัติใบนี้แล้ว",
-  finance_reject: "ส่งกลับให้ AE Supervisor ดูใหม่แล้ว",
-  finance_resubmit: "ส่งให้บัญชีตรวจใหม่แล้ว",
+  /* ขั้นบัญชี (mig 0250) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
+     ⚠️ `finance_reject`/`finance_resubmit` ถอดออกแล้ว (มติ 2026-08-30: ไม่มีตีกลับทั้งใบ) */
+  finance_approve: "ปิดใบสั่งขายแล้ว",
 };
 
 export default function SalesOrderDetailPage() {
@@ -450,7 +450,7 @@ export default function SalesOrderDetailPage() {
           effects: [
             `ยอด Actual ${fmtMoney(order.actualAmount)} เข้าดีลทันที`,
             "สร้างงวดชำระตามแผนการชำระที่ระบุไว้ใน QT",
-            "ส่งใบเข้าคิวบัญชีตรวจอัตโนมัติ",
+            "เปิดขั้นของบัญชีบนใบนี้ — บัญชีปิดใบได้เมื่อเก็บเงินครบทุกงวด",
             "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
           ],
           confirmLabel: "อนุมัติและนับ Actual",
@@ -743,7 +743,12 @@ export default function SalesOrderDetailPage() {
   const confirmationGate = ["draft", "rejected"].includes(order.status)
     ? salesOrderConfirmationGate(order, order.quotation)
     : null;
-  const financeGate = (action, options) => financeActionError(order, action, { id: order.meId, role, department: order.meDepartment }, options);
+  /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
+     "เก็บครบทุกงวดหรือยัง" ไม่ส่ง = ด่านปฏิเสธ ⇒ ปุ่มบนจอกับ API พูดตรงกันเสมอ */
+  const financeGate = (action, options) => financeActionError(
+    order, action, { id: order.meId, role, department: order.meDepartment },
+    { ...options, installments },
+  );
   const primaryAction = editable
     ? {
         id: "save",
@@ -806,43 +811,36 @@ export default function SalesOrderDetailPage() {
     { id: "print", kind: "print", label: "ออกเอกสาร", variant: "ghost", disabled: dirty, disabledReason: dirty ? "บันทึกข้อมูลล่าสุดก่อนออกเอกสาร" : undefined, onClick: printDocument },
     /* ── ขั้นบัญชีตรวจใบ (mig 0250) ────────────────────────────────────────
        ⚠️ **ไม่ใช่ปุ่มหลัก** — ปุ่มหลักของใบยังเป็นสายอนุมัติเอกสาร บัญชีเป็นคนละแกน
-       ⚠️ ปุ่มโผล่จาก `financeActionError` ตัวเดียวกับที่ API ใช้ปฏิเสธ ⇒ ขัดกันไม่ได้ */
+       ⚠️ ทั้งการโผล่และการกดได้ มาจากด่านตัวเดียวกับที่ API ใช้ปฏิเสธ ⇒ ขัดกันไม่ได้ */
     {
-      id: "finance-approve", kind: "approve", label: "บัญชีอนุมัติใบนี้", variant: "outline",
-      visible: !financeGate("finance_approve"),
+      id: "finance-approve", kind: "approve", label: "ปิดใบสั่งขาย", variant: "outline",
+      /* ⭐ **โชว์เสมอกับคนที่เป็นเจ้าของขั้น** แล้วบอกเหตุตอนกด (กติกา GatedAction) —
+         ถ้าเอาด่านเงินมาคุมการมองเห็นด้วย บัญชีจะเปิดใบที่ยังเก็บไม่ครบแล้วไม่เจอ
+         อะไรเลย ไม่รู้ว่าต้องรออะไร · เจ้าของขั้น = ฝ่ายบัญชี + ใบผ่าน AE Sup + ยังไม่ปิด */
+      visible: !financeStepOwnerError(order, { id: order.meId, role, department: order.meDepartment }),
+      disabled: !!financeGate("finance_approve"),
+      disabledReason: financeGate("finance_approve") || undefined,
       /* ⚠️ ขั้นบัญชีเป็นปลายทาง — อนุมัติแล้วบัญชีตีกลับเองไม่ได้ และ AE Sup ส่งตรวจใหม่
          ก็ไม่ได้ (ทั้งสองทาง API ตอบ "บัญชีอนุมัติใบนี้ไปแล้ว") ⇒ ต้องบอกว่าย้อนไม่ได้ */
       onClick: () => setConfirmState({
         ...approvalPrompt({
-          title: "บัญชีอนุมัติใบสั่งขาย",
+          title: "ปิดใบสั่งขาย",
           subject: `ใบสั่งขาย ${order.orderNumber}`,
           irreversible: true,
           checklist: FINANCE_REVIEW_POINTS,
           effects: [
             "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
-            "ขั้น “บัญชีตรวจใบ” บนรางเดินงานขึ้นเครื่องหมายถูก",
-            "ยอด Actual ไม่เปลี่ยนจากการกดนี้",
+            "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ ไม่มีการตีกลับหลังจากนี้",
+            "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
           ],
-          confirmLabel: "ยืนยันว่าตรวจแล้ว",
+          confirmLabel: "ยืนยันปิดใบ",
         }),
         action: () => requestAction("finance_approve"),
       }),
     },
-    /* ปุ่มเดียวสองหน้าที่ — ส่งใบเข้าคิวบัญชีครั้งแรก (ใบที่อนุมัติก่อนมีขั้นนี้)
-       และส่งตรวจใหม่หลังถูกตีกลับ · ป้ายเปลี่ยนตามสถานะ ดู financeSendLabel */
-    {
-      id: "finance-resubmit", kind: "submit", label: financeSendLabel(order), variant: "outline",
-      visible: !financeGate("finance_resubmit"),
-      onClick: () => requestAction("finance_resubmit"),
-    },
   ];
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
-    {
-      id: "finance-reject", kind: "reject", label: "บัญชีตีกลับใบนี้",
-      visible: !financeGate("finance_reject", { reason: "x".repeat(10) }),
-      onClick: () => setWorkflowForm({ action: "finance_reject", reason: "" }),
-    },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
     { id: "force-delete", kind: "delete", icon: ShieldAlert, label: "บังคับลบพร้อมหลักฐาน", visible: role === "admin" && !canHardDeleteSalesOrder(order), onClick: forceRemove },
     {
@@ -1183,22 +1181,18 @@ export default function SalesOrderDetailPage() {
         </Modal>
       )}
 
-      {/* โมดัลใส่เหตุผลใช้ร่วมสามคำสั่ง — ย้อนการอนุมัติ · ดึงกลับ · บัญชีตีกลับ
-          ⚠️ **บัญชีตีกลับไม่ถอน Actual** ต่างจากย้อนการอนุมัติ ⇒ ข้อความต้องไม่พูดถึงยอด
-          ไม่งั้นบัญชีจะเข้าใจว่ากดแล้วยอดขายหลุด (มติ 2026-08-13: คนละแกน) */}
+      {/* โมดัลใส่เหตุผลใช้ร่วมสองคำสั่ง — ย้อนการอนุมัติ · ดึงกลับ
+          (เดิมมี "บัญชีตีกลับใบ" ด้วย · ถอดออกตามมติ 2026-08-30 — ตีกลับเหลือรายงวด) */}
       <ReasonDialog
         open={!!workflowForm}
         title={{
           revoke: "ย้อนการอนุมัติ ใบสั่งขาย",
-          finance_reject: "บัญชีตีกลับ ใบสั่งขาย",
         }[workflowForm?.action] || "ดึงกลับ ใบสั่งขาย"}
         description={{
           revoke: `SO ${order.orderNumber} จะหลุดจากยอด Actual ทันที และแก้ฉบับเดิมไม่ได้ — ขั้นถัดไปคือกด "ออก Rev."`,
-          finance_reject: `SO ${order.orderNumber} จะถูกส่งกลับให้ AE Supervisor ดูใหม่`,
         }[workflowForm?.action] || `SO ${order.orderNumber} จะกลับเป็นฉบับร่างและแก้ไขได้`}
         detail={{
           revoke: `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
-          finance_reject: "ยอด Actual ไม่เปลี่ยน — ใบยังอนุมัติอยู่ นี่เป็นการส่งกลับให้แก้เฉพาะเรื่องที่บัญชีติดใจ",
         }[workflowForm?.action] || "หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่"}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
@@ -1207,7 +1201,6 @@ export default function SalesOrderDetailPage() {
         onConfirm={submitWorkflowAction}
         confirmLabel={{
           revoke: "ยืนยันย้อนการอนุมัติ",
-          finance_reject: "ยืนยันตีกลับ",
         }[workflowForm?.action] || "ยืนยันดึงกลับ"}
         placeholder="ระบุเหตุผลอย่างน้อย 10 ตัวอักษร"
         minLength={10}
