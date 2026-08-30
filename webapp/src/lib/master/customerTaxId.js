@@ -71,17 +71,35 @@ export const isCompleteTaxId = (value) => {
 };
 
 /**
- * นิติบุคคล/บุคคลไทยไหม — ดูจาก **ที่อยู่ออกเอกสารหลัก** ว่าเลือกจังหวัดจากทะเบียนไทย
- * หรือเปล่า (ที่อยู่ต่างประเทศเป็นข้อความล้วน ไม่มี provinceCode)
+ * ลูกค้าไทยไหม — **ตัดสินจากธง `isForeign` ที่คนกรอกเป็นคนสั่ง** (mig 0319)
  *
- * ⚠️ ไม่มีคอลัมน์ "ประเทศ" ในทะเบียนลูกค้า และเลข 13 หลักคือเลขที่ **กรมสรรพากรไทย**
- * ออกให้ ⇒ ที่อยู่คือสัญญาณเดียวที่มีอยู่จริง · ไม่รู้ = ถือว่าไทย (ค่าตั้งต้นของระบบ)
- * ยกเว้นที่อยู่ที่พิมพ์เองล้วน ๆ ซึ่งปล่อยผ่านด่านรูปแบบไป — ด่านกันซ้ำยังคุมทุกกรณี
+ * 🐞 รอบ #1512 เดาเอาจากที่อยู่ (ไม่มี `provinceCode` = ต่างชาติ) ซึ่งชนกับ "ยังไม่ได้
+ * เลือกจังหวัด" พอดี ⇒ ระหว่างกรอกใบใหม่ ช่องเลขสลับชนิดไปมาเอง (mask 13 หลักหาย
+ * แล้วโผล่กลับ) — UAT 30/08 เจอของจริง · และสัญญาณนั้นก็ไม่แม่นอยู่ดี: ลูกค้าต่างประเทศ
+ * ทั้ง 4 รายในฐานไม่ได้ตั้งธง `addressOverride` ไว้เลยสักราย
+ *
+ * ⇒ ที่อยู่ไม่ตัดสินอะไรอีกแล้ว เหลือเป็นแค่ "คำใบ้" (ดู foreignAddressHint)
+ *
+ * ค่าที่ **มีตัวอักษรอยู่แล้ว** ก็ถือว่าไม่ใช่เลขไทย — แถวยุคเก่าที่นำเข้ามาก่อนมีธงนี้
+ * ต้องเปิดแก้ต่อได้โดยไม่ติดด่าน 13 หลักของตัวเอง
  */
-export function isThaiTaxEntity(addresses) {
+export function isThaiTaxEntity(customer = {}) {
+  if (customer?.isForeign) return false;
+  return !/[A-Za-z]/.test(String(customer?.taxId ?? ''));
+}
+
+/**
+ * คำใบ้บนฟอร์ม (ไม่บล็อก ไม่เปลี่ยนชนิดช่อง) — ที่อยู่ออกเอกสารหลักดูเป็นต่างประเทศ
+ * แต่ธงยังไม่ได้เปิด · ตั้งใจให้ "เตือนแล้วให้คนตัดสิน" แทนการสลับช่องให้เงียบ ๆ
+ */
+export function foreignAddressHint(addresses, { isForeign = false } = {}) {
+  if (isForeign) return null;
   const billing = primaryBillingAddress(addresses || []);
-  if (!billing) return true;
-  return Boolean(String(billing.provinceCode || '').trim() || String(billing.province || '').trim());
+  if (!billing) return null;
+  const hasProvince = String(billing.provinceCode || '').trim() || String(billing.province || '').trim();
+  const hasText = String(billing.address || billing.line1 || '').trim();
+  if (hasProvince || !hasText) return null;
+  return 'ที่อยู่ออกเอกสารยังไม่ได้เลือกจังหวัดของไทย — ถ้าเป็นลูกค้าต่างประเทศ ให้เปิดสวิตช์ "ลูกค้าต่างประเทศ"';
 }
 
 /**

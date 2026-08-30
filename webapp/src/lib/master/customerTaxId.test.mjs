@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   branchKeyOf,
   isCompleteTaxId,
+  foreignAddressHint,
   isThaiTaxEntity,
   splitTaxIdMatches,
   taxIdDuplicateError,
@@ -142,12 +143,29 @@ test('ด่านรูปแบบ: ลูกค้าไทยต้อง 13
   assert.equal(taxIdFormatError('415023377', { thaiEntity: false }), null);
 });
 
-test('ลูกค้าไทย = ที่อยู่ออกบิลหลักมีจังหวัดจากทะเบียนไทย', () => {
-  assert.equal(isThaiTaxEntity([{ id: 'a', useFor: 'both', provinceCode: '10', province: 'กรุงเทพมหานคร' }]), true);
-  assert.equal(isThaiTaxEntity([{ id: 'a', useFor: 'both', address: '12 Kimball Ave, NY' }]), false);
-  // ยังไม่กรอกที่อยู่ = ถือว่าไทย (ค่าตั้งต้นของระบบ)
-  assert.equal(isThaiTaxEntity([]), true);
-  assert.equal(isThaiTaxEntity(null), true);
+test('ไทย/ต่างชาติ ตัดสินจากธง isForeign ไม่ใช่ที่อยู่ (mig 0319)', () => {
+  assert.equal(isThaiTaxEntity({ isForeign: false, taxId: '0105560000069' }), true);
+  assert.equal(isThaiTaxEntity({ isForeign: true, taxId: '415023377' }), false);
+  // ยังไม่กรอกอะไร = ไทย (ค่าตั้งต้นของระบบ)
+  assert.equal(isThaiTaxEntity({}), true);
+  assert.equal(isThaiTaxEntity(), true);
+  // ค่าที่มีตัวอักษรอยู่แล้ว (แถวยุคเก่าก่อนมีธง) ต้องไม่ติดด่าน 13 หลักของตัวเอง
+  assert.equal(isThaiTaxEntity({ taxId: 'PA0374073' }), false);
+});
+
+test('🐞 ที่อยู่ไม่ตัดสินชนิดช่องอีกแล้ว — ของเดิมสลับ mask ไปมาระหว่างกรอก', () => {
+  // เคสที่ UAT 30/08 เจอ: กรอกเลขไทยครบแล้ว พิมพ์ที่อยู่ต่อแต่ยังไม่เลือกจังหวัด
+  const half = { isForeign: false, taxId: '0105561194100' };
+  assert.equal(isThaiTaxEntity(half), true, 'ยังต้องเป็นไทย = ช่องมาสก์ไม่หาย');
+});
+
+test('ที่อยู่ที่ดูเป็นต่างประเทศ = แค่คำใบ้ ไม่เปลี่ยนอะไรให้เอง', () => {
+  const foreign = [{ id: 'a', useFor: 'both', address: '91 Goose Rocks Rd, Maine' }];
+  assert.match(foreignAddressHint(foreign, { isForeign: false }), /ลูกค้าต่างประเทศ/);
+  // เปิดสวิตช์แล้วไม่ต้องใบ้ซ้ำ · ที่อยู่ไทย/ที่อยู่ว่าง ก็ไม่ใบ้
+  assert.equal(foreignAddressHint(foreign, { isForeign: true }), null);
+  assert.equal(foreignAddressHint([{ id: 'a', useFor: 'both', address: '53 ซอยเจริญใจ', province: 'กรุงเทพมหานคร' }]), null);
+  assert.equal(foreignAddressHint([]), null);
 });
 
 test('ตัวกรองดึงแถวต้องคลุมทั้งรูปที่มีขีดและรูปที่ศูนย์นำหน้าหาย', () => {

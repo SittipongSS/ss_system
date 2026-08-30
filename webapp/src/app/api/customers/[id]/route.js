@@ -322,6 +322,7 @@ export async function PATCH(request, { params }) {
     'contactPerson', 'contactPhone', 'email', 'creditTerms', 'metadata',  // master-data fields (0005, 0025)
     'team', 'ownerId',
     'isActive',  // lifecycle flag (0030) — พักใช้/เปิดใช้ลูกค้า; edit-level gate (canEditRecord above)
+    'isForeign', // ต่างประเทศ = เลขผู้เสียภาษีไม่ใช่ 13 หลักของไทย (migration 0319)
   ]) {
     if (body[k] !== undefined) {
       // ช่องที่ "ว่าง = ยังไม่กรอก" ต้องลง null ไม่ใช่ '' — ไม่งั้น falsy เหมือนกัน
@@ -402,7 +403,8 @@ export async function PATCH(request, { params }) {
     // ด่านรูปแบบผูกกับ "แก้เลข" เท่านั้น — การเปิดใช้ใบเก่ากลับต้องไม่ถูกบล็อกเพราะ
     // เลขในใบนั้นเป็นรูปยุคเก่า (ยังไม่ได้แตะเลย ก็ไม่ควรถูกบังคับให้แก้ตรงนี้)
     if (taxKeyChanged) {
-      const thaiEntity = isThaiTaxEntity(updates.addresses ?? customer.addresses);
+      const nextForeign = updates.isForeign !== undefined ? updates.isForeign : customer.isForeign;
+      const thaiEntity = isThaiTaxEntity({ isForeign: nextForeign, taxId: nextTaxId });
       const taxFormatError = taxIdFormatError(nextTaxId, { thaiEntity });
       if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
     }
