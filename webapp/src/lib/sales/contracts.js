@@ -60,11 +60,18 @@ export const contractSourceOf = (contract) =>
 export const isExternalContract = (contract) => contractSourceOf(contract) === 'external';
 export const externalDocKindLabel = (kind) => EXTERNAL_DOC_KIND_LABELS[kind] || '—';
 
-export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'revised', 'cancelled']);
+/* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ขั้น "รอหัวหน้ารับรอง" ของ
+   สาย generated · ของเดิม SA กดบันทึกลงนามแล้วจบเลย = ไม่มีด่านที่สอง ทั้งที่
+   `signed` เป็นตัวปลดล็อกของจริงหลายอย่าง
+   ⚠️ สาย external ไม่มีขั้นนี้ (มติผู้ใช้) — เอกสารเซ็นมาจากข้างนอกแล้ว การกดของ
+   AE Sup ที่นั่นคือด่านที่สองอยู่ในตัว ⇒ draft → signed ทีเดียว
+   ⇒ **สองสายจบที่ "signed + มีคนรับรอง" เหมือนกัน** ต่างแค่จำนวนคลิก */
+export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'awaiting_approval', 'signed', 'revised', 'cancelled']);
 
 export const CONTRACT_STATUS_LABELS = Object.freeze({
   draft: 'ร่าง',
   awaiting_signature: 'รอลงนาม',
+  awaiting_approval: 'รอหัวหน้ารับรอง',
   signed: 'ลงนามแล้ว',
   revised: 'ออกฉบับแก้ไขแล้ว',
   cancelled: 'ยกเลิก',
@@ -74,6 +81,8 @@ export const CONTRACT_STATUS_LABELS = Object.freeze({
 export const CONTRACT_STATUS_TONES = Object.freeze({
   draft: 'muted',
   awaiting_signature: 'warning',
+  // โทนคนละตัวกับ "รอลงนาม" โดยตั้งใจ — สองขั้นนี้รอคนละคนทำคนละเรื่อง
+  awaiting_approval: 'info',
   signed: 'success',
   revised: 'muted',
   cancelled: 'danger',
@@ -86,14 +95,69 @@ export const isContractKind = (kind) => CONTRACT_KINDS.includes(kind);
 
 // ── เลขที่สัญญา ────────────────────────────────────────────────────────────
 //
-// CT-YYMMXXXX (รีเซ็ตต่อเดือน scope 'CT' ใน entity_number_counters)
+// CT-AAAA-BB-XXXXX-R (AAAA = เลขรหัสลูกค้า · BB = ชนิดสัญญา · เลขรันเดินยาวไม่ตัดรอบ)
 //
 // ⚠️ **ไม่ได้อยู่ในทะเบียน "มาตรฐานเอกสาร"** (DOCUMENT_STANDARD_KEYS) โดยเจตนา —
 //    ทะเบียนนั้นบังคับให้มีรหัสแบบฟอร์มควบคุม (FM-xx-nn) ซึ่งสัญญายังไม่มี และการ
 //    กุรหัสขึ้นเองแปลว่ามีเอกสารควบคุมปลอมโผล่ในระบบคุณภาพ · วันไหนฝ่ายเอกสารออก
 //    รหัสจริงให้ ค่อยย้ายรูปแบบนี้เข้าทะเบียนแล้วให้หน้าตั้งค่าคุมแทน
-export const CONTRACT_NUMBER_PATTERN = 'CT-{YY}{MM}{RUNNING:4}';
+/* ⭐ **มติผู้ใช้ 2026-08-31: แทรกอักษรย่อชนิดสัญญาเข้าไปในเลขที่** —
+   `CT-YYMMXXXX-R` → **`CT-AA-YYMMXXXX-R`** ⇒ อ่านเลขแล้วรู้ทันทีว่าเป็นสัญญาอะไร
+   โดยไม่ต้องเปิดใบ (เลขสัญญาถูกอ้างในอีเมล ใบวางบิล และบันทึกเพิ่มเติม)
+
+   ⚠️ **SR ไม่ใช่ SV** (ผู้ใช้เลือกเอง) — `SV` เป็นรหัส**ทีมขาย** Services อยู่แล้ว
+   และโผล่ในชื่อดีลทุกใบ (`SV_ลูกค้า_งาน`) ⇒ ใช้ซ้ำเมื่อไรคนอ่านเลขจะไม่แน่ใจว่า
+   หมายถึงชนิดสัญญาหรือทีมที่ขาย */
+export const CONTRACT_KIND_CODES = Object.freeze({
+  scent_design: 'SD',
+  manufacturing: 'MF',
+  service: 'SR',
+});
+
+export const contractKindCode = (kind) => CONTRACT_KIND_CODES[kind] || null;
+
+/** รูปแบบเลขที่ของสัญญาชนิดนั้น — `CT-BB-YYMM{RUNNING:4}`
+ *
+ * ⭐ **มติผู้ใช้ 2026-08-31 (รอบสอง): กลับมาใช้ทรงนี้ + เลขรันไม่ตัดรอบ**
+ *   เคยลองทรง `CT-AAAA-BB-XXXXX` ที่มีรหัสลูกค้านำหน้าแล้วถอยกลับ — ทรงนี้สั้นกว่า
+ *   และยังบอกเดือนที่ออกสัญญาได้ ซึ่งทรงที่มีรหัสลูกค้าทำไม่ได้ (ไม่มี YYMM)
+ *
+ * ⚠️ **YYMM ในเลขคือ "เดือนที่ออก" ไม่ใช่ตัวตัดรอบเลขรัน** (ดู `CONTRACT_NUMBER_MONTH`)
+ * ⚠️ คืน `null` เมื่อชนิดไม่รู้จัก — ผู้เรียกต้องปฏิเสธ ไม่ใช่ปล่อยให้ออกเลขที่มี
+ *   อักษรย่อมั่ว ๆ ซึ่งลบทิ้งไม่ได้แล้วเมื่อออกไป
+ */
+export function contractNumberPattern(kind) {
+  const code = contractKindCode(kind);
+  return code ? `CT-${code}-{YY}{MM}{RUNNING:4}` : null;
+}
+
+/* ⚠️ **เคาน์เตอร์เป็นบ่อเดียวทั้งบริษัท** (มติผู้ใช้ 2026-08-31: "นับรวมทั้งบริษัท") —
+   ทั้งรหัสลูกค้าและอักษรย่อชนิดเปลี่ยนแค่ *หน้าตาเลข* ไม่ได้แยกสายเลขรัน
+   ⇒ `CT-0121-SR-00042` แปลว่าเป็นสัญญาใบที่ 42 **ของบริษัท** ไม่ใช่ของลูกค้ารายนั้น
+   ⇒ **ห้ามเปลี่ยน scope เป็นรายลูกค้า/รายชนิดโดยไม่ถามก่อน** — RPC สองตัวใน SQL
+   (`issue_sales_contract` · `approve_external_sales_contract`) ฮาร์ดโค้ด `'CT'` ไว้
+   การแยกสายต้องมี migration แก้ทั้งคู่ ไม่ใช่แก้ฝั่ง JS อย่างเดียว */
 export const CONTRACT_NUMBER_SCOPE = 'CT';
+
+/* ⭐ **เลขรันเดินยาว ไม่ตัดรอบเดือน** (มติผู้ใช้ 2026-08-31: "XXXX รันเรื่อยๆ")
+   🔴 **นี่คือจุดที่คนอ่านโค้ดพลาดง่ายที่สุดของเลขชุดนี้** — เลขมี `YYMM` อยู่ในตัว
+   แต่ `YYMM` นั้นมาจาก **prefix** (เดือนที่ออกใบ) ส่วนตัวตัดรอบของเลขรันคือ
+   **คีย์ `month` ของ `entity_number_counters`** ซึ่งเป็นคนละค่ากันสิ้นเชิง
+   ⇒ ตั้ง `'-'` = ตัวนับไม่มีวันตัดรอบ · ผลคือเลขเดินต่อข้ามเดือน:
+     `CT-SR-26080001` → (เดือนถัดไป) `CT-SR-26090002` ไม่ใช่ย้อนกลับเป็น 0001
+   ⚠️ แพตเทิร์น `'-'` ไม่ใช่ท่าที่คิดขึ้นใหม่ — AR กับ FG บนฐานใช้อยู่แล้ว
+
+   🪤 ตัวนับของเลขยุคก่อนคือ (CT, '2608') ส่วนของชุดนี้คือ (CT, '-') — **คนละแถวกัน**
+   ⇒ ชุดใหม่เริ่มที่ 0001 · ไม่ชนกับเลขเก่าเพราะ `CT-26080001` (ยุคแรก ไม่มีอักษรย่อ)
+     คนละสตริงกับ `CT-SR-26080001`
+   🪤 กิ่ง seed ของ RPC ใช้ `LIKE p_prefix || '%'` ซึ่งผูกกับเดือน ⇒ ถ้าแถวตัวนับ
+     (CT, '-') หายไป มันจะ seed จากเลขของ *เดือนปัจจุบัน* เท่านั้นแล้วนับซ้ำ ·
+     กิ่งนั้นทำงานเฉพาะตอนแถวหาย ซึ่ง trigger ของ mig 0241 กันไว้ไม่ให้ลบอยู่แล้ว
+
+   ⚠️ **เพดาน 9,999 ใบตลอดอายุระบบ** (ไม่ใช่ต่อเดือนแล้ว) — เกินแล้ว RPC โยน
+     `contract_monthly_sequence_exhausted` · ปัจจุบันมีสัญญา 4 ใบ จึงยังห่างมาก
+     แต่วันที่ใกล้ ให้ขยายเป็น 5 หลัก **ในเลขชุดใหม่** ไม่ใช่แก้ความกว้างของชุดเดิม */
+export const CONTRACT_NUMBER_MONTH = '-';
 
 // ── ประเภทดีล/สายธุรกิจ → ชนิดสัญญาที่ออกได้ ──────────────────────────────
 //
@@ -172,7 +236,39 @@ export const canIssueContract = (contract) =>
   contract?.status === 'draft' && !isExternalContract(contract);
 export const canSignContract = (contract) =>
   contract?.status === 'awaiting_signature' && !isExternalContract(contract);
-export const canCancelContract = (contract) => ['draft', 'awaiting_signature'].includes(contract?.status);
+
+/* ── ขั้น "หัวหน้ารับรองการลงนาม" (mig 0323 · มติผู้ใช้ 2026-08-31) ──────────
+   *"ต้องมีขั้น Approve จาก AE sup ด้วย ไม่งั้นไปทำงานต่อไม่ได้"*
+   🔴 **ด่านเดียวกับอนุมัติเอกสารภายนอก และห้ามยืม `canEditSalesPlanning`** — เหตุผล
+   เดียวกันเป๊ะ: `/sign` ที่อยู่ก่อนหน้าใช้ cap นั้น ซึ่ง AE/AC ผ่านหมด ⇒ ถ้าขั้นนี้
+   ใช้ตัวเดียวกัน คนที่กดลงนามก็กดรับรองตัวเองได้ = ด่านที่สองไม่มีอยู่จริง */
+export const canApproveSignedContract = (contract) => contract?.status === 'awaiting_approval';
+
+export function signedApproveError(contract, user) {
+  if (!contract) return 'ไม่พบสัญญา';
+  if (!canApproveExternalContract(user)) return 'รับรองการลงนามได้เฉพาะ AE Supervisor';
+  if (contract.status === 'signed') return 'ใบนี้ถูกรับรองไปแล้ว';
+  if (contract.status === 'awaiting_signature') return 'ยังไม่ได้บันทึกการลงนาม — ฝ่ายขายต้องแนบไฟล์ฉบับลงนามก่อน';
+  if (contract.status !== 'awaiting_approval') return 'ใบนี้ยังไม่เข้าขั้นรับรองการลงนาม';
+  /* ฐานบังคับไว้อีกชั้นด้วย CHECK `sales_contracts_awaiting_approval_signed` —
+     ตรวจซ้ำที่นี่เพื่อให้ผู้ใช้ได้ข้อความไทย ไม่ใช่ 23514 ดิบ ๆ */
+  if (!contract.signedFileId) return 'ใบนี้ยังไม่มีไฟล์ฉบับลงนามแนบอยู่';
+  if (!contract.signedDate) return 'ใบนี้ยังไม่มีวันที่ลงนาม';
+  return null;
+}
+
+/** ปุ่มรับรองควรโผล่ไหม — เจ้าของขั้นเห็นเสมอ แล้วบอกเหตุตอนกด (GatedAction) */
+export const showSignedApprove = (contract, user) =>
+  contract?.status === 'awaiting_approval' && canApproveExternalContract(user);
+
+/** สัญญาใบนี้ "ใช้งานได้" แล้วหรือยัง — จุดเดียวที่ปลายน้ำควรถาม
+ *  ⚠️ ยังเท่ากับ `status === 'signed'` เป๊ะ ๆ เพราะ mig 0323 บังคับที่ฐานแล้วว่า
+ *  signed ต้องมีคนรับรอง ⇒ ของที่เคยเช็ค `status === 'signed'` ไม่ต้องแก้สักจุด
+ *  มีตัวนี้ไว้เพื่อให้ **ความหมาย** อยู่ที่เดียว ถ้าวันหนึ่งเงื่อนไขซับซ้อนขึ้น */
+export const contractInForce = (contract) => contract?.status === 'signed';
+/* ⚠️ ยกเลิกได้ถึงขั้น "รอหัวหน้ารับรอง" ด้วย — ใบที่ลงนามผิดฉบับต้องมีทางออก
+   ก่อนที่มันจะกลายเป็นสัญญาที่ใช้งานได้ (ใบที่ signed แล้วต้องทำบันทึกเพิ่มเติมแทน) */
+export const canCancelContract = (contract) => ['draft', 'awaiting_signature', 'awaiting_approval'].includes(contract?.status);
 /* ลบได้ตราบใดที่ยังเป็นร่าง (มติผู้ใช้ 2026-08-21: "ถ้าร่างให้ลบได้ จนกว่าจะกดออกสัญญา")
    ร่างไม่มีทางมีเลขที่อยู่แล้ว — เงื่อนไขเลขที่คงไว้เป็นเข็มขัดนิรภัยของข้อมูลเก่า */
 export const canDeleteContract = (contract) => contract?.status === 'draft' && !contract?.contractNo;

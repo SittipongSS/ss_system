@@ -3,13 +3,13 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import {
-  CONTRACT_NUMBER_PATTERN,
+  CONTRACT_NUMBER_MONTH,
   contractKindLabel,
+  contractNumberPattern,
   externalApproveError,
   externalDocKindLabel,
 } from '@/lib/sales/contracts';
 import { documentNumberSlots } from '@/lib/documentStandards';
-import { businessMonthKey } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,11 +76,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const now = new Date();
-  const { prefix, width } = documentNumberSlots(CONTRACT_NUMBER_PATTERN, { date: now });
+  /* เลขที่ของสาย external ใช้รูปแบบเดียวกับสายเจนทุกประการ รวมอักษรย่อชนิดสัญญา —
+     ต่างกันแค่ *เมื่อไรที่ออกเลข* (ตอนอนุมัติ ไม่ใช่ตอนกดออกสัญญา) */
+  const pattern = contractNumberPattern(before.kind);
+  if (!pattern) return fail('ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้', 409);
+  const { prefix, width } = documentNumberSlots(pattern, { date: now });
 
   const { data: approved, error: rpcError } = await supabase.rpc('approve_external_sales_contract', {
     p_id: id,
-    p_month: businessMonthKey(now),
+    p_month: CONTRACT_NUMBER_MONTH,
     p_prefix: prefix,
     p_width: width,
     p_patch: {

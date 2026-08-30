@@ -86,7 +86,7 @@ const PDR_PREVIEW_BRIEF = {
 };
 
 const pdrPreviewRequest = () => ({
-  docNo: 'SB-26070001',
+  docNo: 'RQ-SB-26070001',
   customerName: 'บริษัท ตัวอย่าง จำกัด',
   status: 'pending',
   submittedAt: '2026-07-20T09:00:00+07:00',

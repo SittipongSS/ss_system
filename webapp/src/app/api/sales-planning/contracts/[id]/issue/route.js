@@ -1,11 +1,12 @@
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
-import { businessMonthKey } from '@/lib/businessDate';
 import { documentNumberSlots } from '@/lib/documentStandards';
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
-import { CONTRACT_NUMBER_PATTERN, canIssueContract, contractKindLabel } from '@/lib/sales/contracts';
+import {
+  CONTRACT_NUMBER_MONTH, canIssueContract, contractKindLabel, contractNumberPattern,
+} from '@/lib/sales/contracts';
 import { buildContractHTML } from '@/lib/sales/contractDocument';
 import { contractTemplate, hasContractTemplate, missingContractFields, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 
@@ -45,7 +46,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const company = await getPublishedCompanyProfile(supabase);
   const now = new Date();
-  const { prefix, width } = documentNumberSlots(CONTRACT_NUMBER_PATTERN, { date: now });
+  /* ⭐ อักษรย่อชนิดสัญญาอยู่ในเลขที่ (มติผู้ใช้ 2026-08-31) ⇒ รูปแบบขึ้นกับ `kind`
+     ⚠️ ชนิดที่ไม่รู้จักต้อง **ปฏิเสธ** ไม่ใช่ออกเลขที่มีอักษรย่อมั่ว — เลขที่ออกไปแล้วลบไม่ได้ */
+  const pattern = contractNumberPattern(contract.kind);
+  if (!pattern) return fail('ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้', 409);
+  const { prefix, width } = documentNumberSlots(pattern, { date: now });
 
   /* ⭐ สองจังหวะโดยเจตนา: **ออกเลขก่อน แล้วค่อยตรึงเนื้อ**
      หัวเอกสารต้องพิมพ์เลขที่จริง ⇒ เรนเดอร์ก่อนรู้เลขไม่ได้ และการเดาเลขจากตัวนับ
@@ -55,7 +60,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ให้เองได้ (idempotent) ไม่ใช่ใบเสีย */
   const { data: issued, error: issueError } = await supabase.rpc('issue_sales_contract', {
     p_id: id,
-    p_month: businessMonthKey(now),
+    /* 🔴 `YYMM` ที่โผล่ในเลขมาจาก **prefix** (เดือนที่ออกใบ) — ส่วนค่านี้คือ
+       **คีย์ตัวนับ** ซึ่งตั้ง `'-'` ให้เลขรันเดินยาวไม่ตัดรอบ · คนละเรื่องกัน */
+    p_month: CONTRACT_NUMBER_MONTH,
     p_prefix: prefix,
     p_width: width,
     p_patch: {

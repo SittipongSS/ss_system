@@ -4680,6 +4680,29 @@ button.empty-state { width: 100%; font: inherit; }
 .form-zone-rule { flex: 1; height: 1px; background: var(--border); }
 .form-zone-note { font-size: var(--fs-3); color: var(--text-3); }
 
+/* ── ขั้นที่ตัดสินใจไปแล้ว ยุบเป็นแถบบรรทัดเดียว ─────────────────────────────
+   docs/form-design-rules §5: *"ขั้นที่ตัดสินใจไปแล้วยังกินจอแรกทั้งที่กดอะไรไม่ได้"*
+   ⇒ ยุบเป็นแถบบริบท + ปุ่มเปลี่ยนอยู่ในแถบ (ไม่ใช่ล็อกช่องไว้เฉย ๆ ซึ่งยังกินที่เท่าเดิม)
+
+   ⭐ **ปุ่มอยู่ในแถบ ไม่ใช่ท้ายฟอร์ม** — คนที่อยากแก้จะมองที่ค่าที่ตัวเองเลือกไว้ก่อนเสมอ
+   ⚠️ ค่าที่เลือกต้อง **อ่านได้เต็ม** ไม่ใช่ตัดด้วย ellipsis — แถบนี้แทนที่ช่องกรอก
+      ถ้าอ่านค่าไม่ครบก็ต้องกดเปิดทุกครั้ง ซึ่งแพ้การไม่ยุบตั้งแต่แรก */
+.form-step-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.form-step-summary-label { font-size: var(--fs-3); color: var(--text-3); white-space: nowrap; }
+.form-step-summary-value { font-weight: var(--fw-semibold); color: var(--text-1); min-width: 0; }
+/* ดันปุ่มไปชิดขวาโดยไม่ต้องมี spacer เปล่า ๆ ที่ screen reader ต้องข้าม */
+.form-step-summary-edit { margin-inline-start: auto; }
+
 /* ── ช่องทางที่รับลีด: ชิป 8 ตัวแบ่ง 3 กลุ่มที่มีสีประจำอยู่แล้ว ──────────────
    หัวกลุ่มใช้สีของกลุ่ม (ชุดเดียวกับป้ายช่องทางในตารางคิวลีด) — สีบอก "กลุ่มไหน"
    ไม่ใช่ประดับ · ตัวชิปเองยังใช้ accent ตอนถูกเลือกเหมือนชิปทุกที่ในระบบ */

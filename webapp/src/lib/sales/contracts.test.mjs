@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  CONTRACT_KINDS,
   approvedQuotationsForContract,
   canApproveExternalContract,
   canCancelContract,
@@ -11,12 +12,18 @@ import {
   canSignContract,
   contractEligibility,
   contractKindsForDeal,
+  CONTRACT_NUMBER_MONTH,
+  contractKindCode,
+  contractNumberPattern,
+  contractInForce,
   contractSourceOf,
   daysAwaitingSignature,
   externalApproveError,
   isContractWaitingOnMe,
   isExternalContract,
   showExternalApprove,
+  showSignedApprove,
+  signedApproveError,
 } from './contracts';
 
 const approvedQuote = { id: 'Q1', approvalStatus: 'approved', status: 'sent' };
@@ -411,7 +418,138 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
     new URL('../../components/salesPlanning/ContractCreateModal.js', import.meta.url),
     'utf8',
   );
-  assert.match(modal, /disabled: !customerId \|\| !usable \|\| \(!external && !hasContractTemplate\(item\)\)/);
+  /* ⚠️ ยึด **เจตนา** ไม่ใช่รูปประโยค — เคยปักนิพจน์ตรงตัวแล้วเทสต์แตกตอนยกออกมา
+     เป็นตัวแปร `needsTemplate` ทั้งที่พฤติกรรมเหมือนเดิมเป๊ะ */
+  assert.match(modal, /const needsTemplate = !external && !hasContractTemplate\(item\);/);
+  assert.match(modal, /disabled: [^\n]*needsTemplate/, 'ต้องกันที่ disabled ไม่ใช่แค่คำอธิบาย');
   // สาย external ต้องไม่ถูกด่านแม่แบบแตะเลย
   assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
+});
+
+/* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────
+   `CT-YYMMXXXX-R` → `CT-AA-YYMMXXXX-R` — อ่านเลขแล้วรู้ว่าสัญญาอะไรโดยไม่ต้องเปิดใบ */
+test('⭐ เลขที่สัญญา CT-BB-YYMMXXXX — อักษรย่อชนิดสัญญาอยู่กลาง', () => {
+  assert.equal(contractNumberPattern('scent_design'), 'CT-SD-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('manufacturing'), 'CT-MF-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('service'), 'CT-SR-{YY}{MM}{RUNNING:4}');
+  /* ⚠️ **SR ไม่ใช่ SV** — SV เป็นรหัสทีมขาย Services ที่โผล่ในชื่อดีลทุกใบ
+     ใช้ซ้ำเมื่อไรคนอ่านเลขจะไม่แน่ใจว่าหมายถึงชนิดสัญญาหรือทีมที่ขาย */
+  assert.equal(contractKindCode('service'), 'SR');
+  assert.notEqual(contractKindCode('service'), 'SV');
+});
+
+/* 🔴 ชนิดที่ไม่รู้จักต้องตัน ไม่ใช่ออกเลขที่มีอักษรย่อมั่ว — เลขที่ออกไปแล้วลบไม่ได้ */
+test('ชนิดที่ไม่รู้จักคืน null ไม่ใช่เดาอักษรย่อให้', () => {
+  for (const bad of [null, undefined, '', 'มั่ว', 'SERVICE']) {
+    assert.equal(contractNumberPattern(bad), null, String(bad));
+  }
+});
+
+/* 🔴 **เลขรันไม่ตัดรอบเดือน** (มติผู้ใช้ 2026-08-31: "XXXX รันเรื่อยๆ")
+   จุดที่พลาดง่ายที่สุด: เลขมี `YYMM` อยู่ในตัว แต่ตัวตัดรอบคือ **คีย์ month ของตัวนับ**
+   ซึ่งเป็นคนละค่า ⇒ ต้องเป็น `'-'` ไม่ใช่ `businessMonthKey()`
+   เผลอกลับไปใช้เดือนเมื่อไร เลขจะรีเซ็ตทุกเดือนแล้วชนกับใบเดือนก่อนทันที */
+test('⭐ คีย์ตัวนับต้องเป็น "-" ไม่ใช่เดือน — เลขรันเดินยาวข้ามเดือน', () => {
+  assert.equal(CONTRACT_NUMBER_MONTH, '-');
+  assert.doesNotMatch(CONTRACT_NUMBER_MONTH, /^\d{4}$/, 'ห้ามเป็น YYMM');
+});
+
+test('ทุกชนิดที่ระบบรองรับต้องมีอักษรย่อครบ และไม่ซ้ำกัน', () => {
+  const codes = CONTRACT_KINDS.map(contractKindCode);
+  assert.ok(codes.every(Boolean), 'มีชนิดที่ยังไม่มีอักษรย่อ');
+  assert.equal(new Set(codes).size, codes.length, 'อักษรย่อซ้ำกัน');
+});
+
+/* ทั้งสองเส้นที่ออกเลขต้องใช้รูปแบบรายชนิด ไม่ใช่ค่าคงที่ตัวเดียวแบบเดิม */
+test('route ออกเลขทั้งสองเส้นใช้รูปแบบตามชนิด + ตัวนับไม่ตัดรอบ', () => {
+  for (const rel of ['issue', 'approve-external']) {
+    const route = readFileSync(
+      new URL(`../../app/api/sales-planning/contracts/[id]/${rel}/route.js`, import.meta.url),
+      'utf8',
+    );
+    assert.match(route, /contractNumberPattern\([^,)]+\)/, rel);
+    assert.doesNotMatch(route, /CONTRACT_NUMBER_PATTERN/, `${rel}: ค่าคงที่เดิมถูกถอดแล้ว`);
+    // ชนิด/รหัสที่ไม่ครบต้องถูกปฏิเสธก่อนถึง RPC
+    assert.match(route, /if \(!pattern\) return fail\(/, rel);
+    /* 🪤 เลขรันเดินยาว ⇒ คีย์ตัวนับต้องเป็น `'-'` **ห้ามกลับไปใช้เดือน**
+       เผลอเมื่อไรเลขจะตัดรอบทุกเดือนแล้วชนกับใบเดือนก่อนทันที */
+    assert.match(route, /p_month: CONTRACT_NUMBER_MONTH/, rel);
+    assert.doesNotMatch(route, /businessMonthKey\(/, `${rel}: เลขไม่ผูกเดือนแล้ว`);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ขั้น "หัวหน้ารับรองการลงนาม" (mig 0323 · มติผู้ใช้ 2026-08-31)
+   *"ต้องมีขั้น Approve จาก AE sup ด้วย ไม่งั้นไปทำงานต่อไม่ได้"*
+   ═══════════════════════════════════════════════════════════════════════ */
+const waiting = (extra = {}) => ({
+  status: 'awaiting_approval', source: 'generated',
+  signedDate: '2026-08-20', signedFileId: 'ATT-9', ...extra,
+});
+
+/* 🔴 ด่านที่ต้องไม่รั่ว — `/sign` ที่อยู่ก่อนหน้าใช้ `canEditSalesPlanning` ซึ่ง AE/AC
+   ผ่านหมด · ถ้าขั้นนี้ใช้ตัวเดียวกัน คนที่กดลงนามก็กดรับรองตัวเองได้ = ไม่มีด่านที่สอง */
+test('⭐ รับรองการลงนามได้เฉพาะ AE Supervisor (กับ admin)', () => {
+  assert.equal(signedApproveError(waiting(), AE_SUP), null);
+  assert.equal(signedApproveError(waiting(), ADMIN), null);
+  for (const u of [AE, AC, FN]) {
+    assert.match(signedApproveError(waiting(), u), /เฉพาะ AE Supervisor/, u.role);
+  }
+});
+
+test('รับรองได้เฉพาะใบที่บันทึกลงนามแล้ว', () => {
+  assert.match(signedApproveError(waiting({ status: 'awaiting_signature' }), AE_SUP), /ยังไม่ได้บันทึกการลงนาม/);
+  assert.match(signedApproveError(waiting({ status: 'signed' }), AE_SUP), /รับรองไปแล้ว/);
+  assert.match(signedApproveError(waiting({ status: 'draft' }), AE_SUP), /ยังไม่เข้าขั้นรับรอง/);
+});
+
+/* ⭐ ไฟล์บังคับ — ฐานบังคับด้วย CHECK `sales_contracts_awaiting_approval_signed`
+   ตรวจซ้ำที่นี่เพื่อให้ผู้ใช้ได้ข้อความไทย ไม่ใช่ 23514 ดิบ ๆ */
+test('ใบที่ไม่มีไฟล์/วันที่ลงนาม รับรองไม่ได้', () => {
+  assert.match(signedApproveError(waiting({ signedFileId: null }), AE_SUP), /ไฟล์ฉบับลงนาม/);
+  assert.match(signedApproveError(waiting({ signedDate: null }), AE_SUP), /วันที่ลงนาม/);
+});
+
+/* ⚠️ สาย external ไม่มีขั้นนี้ (มติผู้ใช้) — กดทีเดียว draft → signed */
+test('สอง "ปุ่มอนุมัติ" ไม่มีทางขึ้นพร้อมกัน — คนละสถานะกัน', () => {
+  assert.equal(showSignedApprove(waiting(), AE_SUP), true);
+  assert.equal(showExternalApprove(waiting(), AE_SUP), false);
+  const extDraft = { status: 'draft', source: 'external', externalDocKind: 'customer_po' };
+  assert.equal(showExternalApprove(extDraft, AE_SUP), true);
+  assert.equal(showSignedApprove(extDraft, AE_SUP), false);
+});
+
+/* 🪤 `signed` ยังแปลว่า "ใช้งานได้" เหมือนเดิม เพราะ mig 0323 บังคับที่ฐานแล้วว่า
+   signed ต้องมีคนรับรอง ⇒ ของที่เคยเช็ค status==='signed' ไม่ต้องแก้สักจุด */
+test('contractInForce = signed เท่านั้น — ขั้นรอรับรองยังใช้งานไม่ได้', () => {
+  assert.equal(contractInForce({ status: 'signed' }), true);
+  assert.equal(contractInForce(waiting()), false);
+  assert.equal(contractInForce({ status: 'awaiting_signature' }), false);
+});
+
+test('ยกเลิกได้ถึงขั้นรอรับรอง — ใบที่ลงนามผิดฉบับต้องมีทางออก', () => {
+  assert.equal(canCancelContract(waiting()), true);
+  assert.equal(canCancelContract({ status: 'signed' }), false);
+});
+
+/* ยามของ route รับรอง — เหตุผลเดียวกับยามของ approve-external */
+test('🔴 route รับรองการลงนามถามด่านของตัวเอง ไม่ยืม canEditSalesPlanning', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/approve-signed/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /signedApproveError\(before, user\)/);
+  assert.doesNotMatch(route, /canEditSalesPlanning\(/);
+  // กันสองคนกดชน — ต้องเขียนทับเฉพาะใบที่ยังอยู่ขั้นรับรอง
+  assert.match(route, /\.eq\('status', 'awaiting_approval'\)/);
+});
+
+/* ต้นทาง: /sign ต้องไม่ปิดเป็น signed เองอีกแล้ว */
+test('⭐ /sign หยุดที่ "รอหัวหน้ารับรอง" ไม่ปิดเป็นลงนามแล้วเอง', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/sign/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /status: 'awaiting_approval'/);
+  assert.doesNotMatch(route, /status: 'signed'/, 'สายนี้ต้องไม่มีทางลัดไป signed');
 });

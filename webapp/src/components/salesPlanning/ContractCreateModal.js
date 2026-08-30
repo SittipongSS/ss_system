@@ -25,6 +25,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
+import FormZone from "@/components/ui/FormZone";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -188,6 +189,15 @@ export default function ContractCreateModal({
 
   const dealKinds = options?.kinds || [];
   const blocked = !dealPicker && !!options && !options.ok;
+  /* ── ยุบขั้นที่ตัดสินใจไปแล้ว (docs/form-design-rules §5) ────────────────────
+     ⭐ **เกณฑ์คือ "ไปถึงโซนถัดไปแล้ว" ไม่ใช่ "ช่องนี้มีค่าแล้ว"** — ยุบทันทีที่จิ้ม
+       จะหุบของที่เพิ่งกดใต้มือคนกด และ "ที่มาของสัญญา" มีค่าตั้งต้นอยู่แล้ว
+       (generated) ⇒ ถ้าใช้เกณฑ์ "มีค่า" มันจะยุบตั้งแต่ยังไม่มีใครเลือกอะไรเลย
+     ⇒ ยุบเมื่อคำถามของ **ทั้งสองโซนแรก** ตอบครบ = คนกำลังอยู่ที่โซน "อ้างอิงจากงานไหน"
+     ⚠️ ปุ่ม "แก้" กางกลับอย่างเดียว **ห้ามล้างค่า** — คนกดเพราะอยากดู/เปลี่ยน
+       ไม่ใช่อยากเริ่มใหม่ (บทเรียนจากปุ่มเปลี่ยนหัวข้อในฟอร์มคำร้องที่ล้างช่องทิ้ง
+       ซึ่งที่นั่นถูกเพราะชุดช่องเปลี่ยนทั้งชุด แต่ที่นี่ไม่เปลี่ยน) */
+  const [reopened, setReopened] = useState(null); // 'who' | 'what' | null
   const external = source === "external";
   /* ⭐ **สาย external ไม่ผ่านด่านแม่แบบ** — เหตุผลทั้งหมดที่มันมีอยู่คือใบที่ไม่มีแม่แบบ
      ให้เจน (สัญญาบริการยังไม่มีต้นฉบับ) ถ้ายังบังคับ `hasContractTemplate` ทางนี้ก็ตัน
@@ -201,24 +211,30 @@ export default function ContractCreateModal({
   /* ป้ายกดสามป้ายเสมอในโหมดเลือกเอง (มติผู้ใช้: "สัญญาเป็นป้ายกดสามป้ายก็ได้")
      ⚠️ ชนิดที่ลูกค้ารายนี้ไม่มีดีลรองรับ **ยังต้องเห็น** แต่กดไม่ได้พร้อมเหตุผล —
         ซ่อนทิ้งแล้วคนจะไม่รู้ว่ามันมีอยู่ และไม่รู้ว่าต้องไปทำอะไรมาก่อน */
+  /* ⚠️ **ทุกแผ่นต้องมีคำอธิบายเสมอ ห้ามปล่อย null** — แผ่นในกริดเดียวกันสูงเท่ากัน
+     (`grid-auto-rows: 1fr`) แต่ถ้าแผ่นหนึ่งไม่มีบรรทัดคำอธิบาย ป้ายชื่อของมันจะลอย
+     อยู่คนละระดับกับเพื่อน (ผู้ใช้ทักจากจอจริง 2026-08-31: แผ่นที่กดได้ป้ายลอยกลาง
+     ขณะที่แผ่นเทาป้ายชิดบน) · กติกาเดียวกับที่ `.option-groups` จองไว้สองบรรทัด
+     ⚠️ เหตุผลบนแผ่นเทาต้อง **สั้นและต่างกัน** — ของเดิมยาวเท่ากันสองแผ่นจนอ่านเหมือน
+     สาเหตุเดียวกัน ทั้งที่ "ไม่มีต้นฉบับ" กับ "ไม่มีดีล" แก้คนละทาง */
   const kindTiles = dealPicker
     ? CONTRACT_KINDS.map((item) => {
-      const usable = dealsOfCustomer.some((deal) => (deal.kinds || []).includes(item));
+      const usable = dealsOfCustomer.filter((deal) => (deal.kinds || []).includes(item)).length;
+      /* ความพร้อมของแม่แบบเป็นเรื่องของ **ที่มา** ที่เลือกไว้ข้างบน ไม่ใช่ของชนิดสัญญา
+         ⇒ สาย external ข้ามด่านนี้ · สายเจนยังต้องมีต้นฉบับเหมือนเดิม */
+      const needsTemplate = !external && !hasContractTemplate(item);
       return {
         value: item,
         label: CONTRACT_KIND_LABELS[item],
         tone: KIND_TONE[item],
-        /* ⚠️ **ความพร้อมของแม่แบบต้องอยู่ในเงื่อนไข disabled ด้วย ไม่ใช่แค่คำอธิบาย** —
-           ตั้งแต่ `/contracts/options` เลิกกรอง `kinds` ด้วยแม่แบบ (แก้บั๊กที่มันฆ่า
-           เส้น external ทั้งเส้น) ชนิดที่ยังไม่มีต้นฉบับจะ "ใช้ได้" ในสายตาของ `usable`
-           ⇒ ถ้าไม่กันตรงนี้ คนเลือกที่มา "ระบบเจนจากแม่แบบ" จะกดป้ายสัญญาบริการได้
-           แล้วไปเจอปุ่มสร้างที่ตายอยู่โดยไม่รู้ว่าทำไม */
-        disabled: !customerId || !usable || (!external && !hasContractTemplate(item)),
-        description: !external && !hasContractTemplate(item)
-          ? MISSING_TEMPLATE_NOTE
+        disabled: !customerId || !usable || needsTemplate,
+        description: needsTemplate
+          ? "ยังไม่มีต้นฉบับในระบบ — เลือกที่มาเป็นเอกสารภายนอกแทนได้"
           : !customerId
             ? "เลือกลูกค้าก่อน"
-            : usable ? null : "ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญาชนิดนี้ได้",
+            : usable
+              ? `${usable} ดีลของลูกค้ารายนี้รองรับ`
+              : "ลูกค้ารายนี้ไม่มีดีลที่รองรับ",
       };
     })
     : dealKinds.map((item) => ({
@@ -226,9 +242,32 @@ export default function ContractCreateModal({
       label: item.label,
       tone: KIND_TONE[item.kind],
       // สาย external: เหตุที่ "ยังไม่พร้อม" ของฝั่ง server คือเรื่องแม่แบบ ซึ่งไม่เกี่ยว
-      description: external ? null : (item.ready ? null : item.note),
+      description: external
+        ? "ใช้เอกสารภายนอกแทนได้"
+        : (item.ready ? "ออกจากแม่แบบได้" : item.note),
       disabled: external ? false : !item.ready,
     }));
+
+  const stepsAnswered = !!kind && (!dealPicker || !!customerId) && (!external || !!externalDocKind);
+  const foldWho = dealPicker && stepsAnswered && reopened !== "who";
+  const foldWhat = stepsAnswered && reopened !== "what";
+  const customerLabel = customers.find((c) => c.value === customerId)?.label || "";
+  /* ค่าที่โชว์บนแถบยุบต้องเป็น **คำเดียวกับที่อยู่บนแผ่นที่เลือก** ไม่ใช่คำย่อของตัวเอง
+     ไม่งั้นคนกดเปิดมาเทียบแล้วไม่แน่ใจว่าใช่อันเดิมไหม */
+  const whatLabel = [
+    CONTRACT_KIND_LABELS[kind],
+    external ? EXTERNAL_DOC_KIND_LABELS[externalDocKind] : "ระบบเจนจากแม่แบบ",
+  ].filter(Boolean).join(" · ");
+
+  const StepSummary = ({ label, value, onEdit }) => (
+    <div className="form-step-summary">
+      <span className="form-step-summary-label">{label}</span>
+      <span className="form-step-summary-value">{value}</span>
+      <Button variant="quiet" size="sm" className="form-step-summary-edit" onClick={onEdit} disabled={busy}>
+        แก้
+      </Button>
+    </div>
+  );
 
   return (
     <Modal
@@ -254,8 +293,25 @@ export default function ContractCreateModal({
         <StatusNotice tone="warning" title="ยังออกสัญญาจากดีลนี้ไม่ได้">{error || options?.reason}</StatusNotice>
       )}
 
-      <div className="form-grid">
-        {dealPicker && (
+      {/* ── สามโซนตามลำดับที่คนคิด (docs/form-design-rules §1) ────────────────
+          "ออกให้ใคร" → "สัญญาอะไร มาจากไหน" → "อ้างอิงจากงานไหน"
+          ⚠️ โซนขึ้นเฉพาะโหมดเลือกเอง — เปิดจากในดีลเหลือ 2–3 ช่อง การใส่หัวโซน
+             ให้ของที่มีช่องเดียวใต้หัวคือพิธีที่ไม่ช่วยอะไร (กติกาใน `ui/FormZone`)
+          🐞 **ต้องมี `cols-2` แม้ทุกช่องจะกินเต็มแถว** (ผู้ใช้ทักจากจอจริง 2026-08-31:
+             *"มันไม่เต็ม modal มั้ย"*) — `.form-grid` เปล่า ๆ ไม่มี track ที่ประกาศไว้เลย
+             ⇒ `.form-field.span-2 { grid-column: 1 / -1 }` หา "เส้นสุดท้ายของกริดที่
+             ประกาศไว้" ไม่เจอ ช่องจึงตกไปอยู่คอลัมน์โดยปริยายที่กว้างตามเนื้อ
+             **วัดจริง: กริด 552px แต่ทุกช่องกว้าง 399px — เหลือที่ว่างขวามือ 153px**
+             ⇒ `cols-2` ให้ track จริงสองเส้น แล้ว `span-2` ถึงจะกินเต็มได้จริง
+             ⚠️ **ไม่ได้แปลว่าจะจับคู่ช่อง** — ทุกช่องยังเป็น `span-2` เต็มแถวเหมือนเดิม
+             เพราะป้ายตัวเลือกยาวจริง: วัดแล้วป้ายดีลต้องการ 450px · ใบเสนอราคา 289px
+             ขณะที่ครึ่งกริดให้ที่ข้อความแค่ 243px ⇒ จับคู่เมื่อไรตัดกลางทั้งสองช่อง */}
+      <div className="form-grid cols-2">
+        {foldWho && (
+          <StepSummary label="ออกให้" value={customerLabel} onEdit={() => setReopened("who")} />
+        )}
+        {dealPicker && !foldWho && <FormZone title="ออกสัญญาให้ใคร" className="col-span-2" />}
+        {dealPicker && !foldWho && (
           <label className="form-field span-2">
             <span className="form-field-label">ลูกค้า <span className="required-mark">*</span></span>
             {/* ลูกค้ามีเป็นร้อยราย ⇒ ช่องค้นหา ไม่ใช่ดรอปดาวน์ยาว */}
@@ -277,10 +333,17 @@ export default function ContractCreateModal({
           </label>
         )}
 
-        {/* ── ที่มาของสัญญา — ขั้นแรกสุด (มติผู้ใช้ 2026-08-30) ────────────────
-            ⭐ ถามก่อนชนิด เพราะคำตอบเปลี่ยนความหมายของทุกช่องที่ตามมา: เส้นเจน
-              ต้องมีแม่แบบ · เส้นเอกสารภายนอกไม่ต้อง แต่ต้องบอกว่าใช้เอกสารอะไร
-            ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ (กติกาเดียวกับชนิดสัญญาข้างล่าง) */}
+        {foldWhat && (
+          <StepSummary label="สัญญา" value={whatLabel} onEdit={() => setReopened("what")} />
+        )}
+        {dealPicker && !foldWhat && <FormZone title="สัญญาอะไร มาจากไหน" className="col-span-2" />}
+
+        {/* ── ที่มาของสัญญา — ถามก่อนชนิด (มติผู้ใช้ 2026-08-30) ────────────────
+            ⭐ เป็น "ตัวกำหนดบริบท" ตาม docs/form-design-rules §1 ข้อ 1: คำตอบ
+              เปลี่ยน **ชุดตัวเลือก** ของชนิดสัญญาข้างล่าง (เจนต้องมีแม่แบบ ·
+              เอกสารภายนอกไม่ต้อง) ⇒ ต้องถามก่อน ไม่ใช่ถามทีหลังแล้วชนิดเด้ง
+            ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ */}
+        {!foldWhat && (
         <div className="form-field span-2">
           <span className="form-field-label">ที่มาของสัญญา <span className="required-mark">*</span></span>
           <OptionTiles
@@ -299,13 +362,35 @@ export default function ContractCreateModal({
                 value: "external",
                 label: "เอกสารภายนอกใช้แทนสัญญา",
                 tone: "amber",
-                description: "PO ลูกค้า · อีเมล · สัญญากระดาษเก่า — ต้องผ่าน AE Supervisor อนุมัติ",
+                description: "PO · อีเมล · สัญญากระดาษเก่า — ต้องผ่าน AE Supervisor",
               },
             ]}
           />
         </div>
+        )}
 
-        {external && (
+        {!foldWhat && (
+        <div className="form-field span-2">
+          <span className="form-field-label">ชนิดสัญญา <span className="required-mark">*</span></span>
+          <OptionTiles
+            ariaLabel="ชนิดสัญญา"
+            value={kind}
+            onChange={setKind}
+            disabled={busy}
+            options={kindTiles}
+          />
+          {!dealPicker && !dealKinds.length && !loading
+            ? <span className="hint">ดีลนี้ยังไม่มีชนิดสัญญาที่ออกได้</span>
+            : null}
+        </div>
+        )}
+
+        {/* ⚠️ **บล็อกนี้อยู่ใต้ "ชนิดสัญญา" โดยตั้งใจ ไม่ใช่ใต้ "ที่มา" ทันที** —
+            กติกาคือช่องที่โผล่ตามเงื่อนไขต้องอยู่ใต้ตัวที่ทำให้มันโผล่ (§1 ข้อ 3)
+            ซึ่งยังจริงอยู่ · แต่ถ้าแทรกคั่นกลางระหว่างสองคำถามที่คนอ่านคู่กัน
+            (ที่มา ↔ ชนิด) การกดสลับที่มาจะดันแผ่นชนิดสัญญาลงไป ~200px ใต้มือ
+            คนที่กำลังจะจิ้มต่อ — อาการ "ฟอร์มเปลี่ยนรูปใต้มือ" ที่หัวไฟล์เตือนไว้เอง */}
+        {external && !foldWhat && (
           <>
             <div className="form-field span-2">
               <span className="form-field-label">ใช้เอกสารอะไรแทน <span className="required-mark">*</span></span>
@@ -330,24 +415,12 @@ export default function ContractCreateModal({
                 autoComplete="off"
                 placeholder="เช่น PO-2569-0142 หรือหัวข้ออีเมลที่ลูกค้ายืนยัน"
               />
-              <span className="hint">ไฟล์เอกสารแนบที่หน้าสัญญาหลังสร้างร่าง</span>
+              <span className="hint">ตัวไฟล์แนบทีหลังที่หน้าสัญญา — ยังไม่ต้องมีตอนนี้</span>
             </label>
           </>
         )}
 
-        <div className="form-field span-2">
-          <span className="form-field-label">ชนิดสัญญา <span className="required-mark">*</span></span>
-          <OptionTiles
-            ariaLabel="ชนิดสัญญา"
-            value={kind}
-            onChange={setKind}
-            disabled={busy}
-            options={kindTiles}
-          />
-          {!dealPicker && !dealKinds.length && !loading
-            ? <span className="hint">ดีลนี้ยังไม่มีชนิดสัญญาที่ออกได้</span>
-            : null}
-        </div>
+        {dealPicker && <FormZone title="อ้างอิงจากงานไหน" className="col-span-2" />}
 
         {dealPicker && (
           <label className="form-field span-2">
@@ -367,10 +440,10 @@ export default function ContractCreateModal({
             />
             <span className="hint">
               {!customerId || !kind
-                ? "เลือกลูกค้าและชนิดสัญญาก่อน แล้วดีลที่เกี่ยวข้องจะขึ้นให้เลือก"
+                ? "เลือกลูกค้าและชนิดสัญญาก่อน"
                 : dealChoices.length
-                  ? `${dealChoices.length} ดีลของลูกค้ารายนี้ที่ออกสัญญาชนิดนี้ได้`
-                  : "ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญาชนิดนี้ได้"}
+                  ? `${dealChoices.length} ดีลที่ออกสัญญาชนิดนี้ได้`
+                  : "ไม่มีดีลที่ออกสัญญาชนิดนี้ได้"}
             </span>
           </label>
         )}
@@ -391,7 +464,7 @@ export default function ContractCreateModal({
               ? "กำลังโหลดใบเสนอราคาของดีลนี้…"
               : activeDeal
                 ? "แสดงเฉพาะใบที่อนุมัติแล้วและยังมีผล"
-                : "เลือกดีลก่อน แล้วใบเสนอราคาของดีลนั้นจะขึ้นให้เลือก"}
+                : "เลือกดีลก่อน"}
           </span>
         </label>
       </div>

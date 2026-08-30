@@ -79,17 +79,30 @@ test('🔴 ทุกหัวข้อต้องประกาศ scope เ�
   assert.equal(requestDocScope('ไม่มีหัวข้อนี้'), null);
 });
 
-test('เลขที่: SB- · FD- · DC- · DF- แยกกัน · RQ- เหลือของสอบถาม', () => {
-  // ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
-  // หัวข้อเก่าของ RD (0220) ⇒ เหลือสาม scope ที่มีหัวข้อจริงใช้อยู่
+test('ตัวย่อหัวข้อ: SB · FD · DC · DF · AS · IQ — ทุกใบขึ้นต้น RQ- เหมือนกัน', () => {
+  /* ⭐ มติผู้ใช้ 2026-08-31: เลขเป็น `RQ-AA-YYMMXXXX` ⇒ `RQ` เป็นคำนำหน้าของ
+     **ตระกูลคำร้อง** ส่วนตัวย่อรายหัวข้ออยู่กลาง
+     ⚠️ **ตัวย่อนี้ไม่ใช่คีย์ตัวนับแล้ว** (มติรอบสอง: เลขรันรวมก้อนเดียว ตัดทุกปี) —
+     เหลือหน้าที่เดียวคืออยู่ในเลขให้คนอ่าน · คีย์ตัวนับอยู่ที่ `REQUEST_NUMBER_SCOPE`
+     ⇒ ที่ยังต้องไม่ซ้ำกันคือเพื่อให้ **อ่านออกว่าเป็นหัวข้อไหน** ไม่ใช่เพื่อกันเลขชนกัน
+     ⚠️ `RM`/`PM` หายไปกับหัวข้อขอราคา (0219 · ม-28) · `MU`/`scent_brief` หายไปกับ
+     หัวข้อเก่าของ RD (0220) */
   assert.equal(requestDocScope('scent_dev'), 'SB');
   assert.equal(requestDocScope('formula_dev'), 'FD');
-  assert.equal(requestDocScope('info'), 'RQ');
+  assert.equal(requestDocScope('site_survey'), 'AS');
+  /* ⭐ `info` ย้าย RQ → IQ (Inquiry) เพราะไม่งั้นเลขกลายเป็น `RQ-RQ-…` อ่านเหมือนพิมพ์ผิด */
+  assert.equal(requestDocScope('info'), 'IQ');
   // ⭐ แยกจากสอบถาม (มติผู้ใช้ 2026-08-18) — เดิมทั้งคู่เป็น RQ- จนแยกไม่ออกในคิว
   assert.equal(requestDocScope('document'), 'DC');
   // ⚠️ ขอเอกสารสองสายใช้คนละ scope โดยตั้งใจ — ตัวนับแยกของใครของมัน (ม-135)
   assert.equal(requestDocScope('billing_doc'), 'DF');
+  /* หัวข้อปลดระวาง — ยังถือ RQ อยู่ (ออกเลขใหม่ไม่ได้) · เปิดคืนเมื่อไรต้องตั้งตัวย่อเอง */
   assert.equal(requestDocScope('material_eta'), 'RQ');
+  /* 🪤 ตัวย่อต้องไม่ซ้ำกันในหัวข้อที่ยังใช้งานจริง — ซ้ำเมื่อไรคนอ่านเลขแยกไม่ออกว่า
+     ใบไหนเป็นหัวข้ออะไร (เคยเกิดตอน info กับ document ใช้ RQ ทั้งคู่) */
+  const live = ['info', 'scent_dev', 'formula_dev', 'document', 'billing_doc', 'site_survey'];
+  const codes = live.map(requestDocScope);
+  assert.equal(new Set(codes).size, codes.length, `ตัวย่อซ้ำ: ${codes.join(', ')}`);
 });
 
 test('ฝ่ายผู้ตอบ: หัวข้อที่ล็อกไว้ใช้ค่านั้น · ที่ไม่ล็อกให้ผู้ขอเลือก', () => {
