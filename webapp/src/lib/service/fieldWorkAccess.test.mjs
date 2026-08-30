@@ -6,7 +6,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  canDoFieldWork, canEditService, canUser, canViewService, canWorkOwnVisit,
+  canCreateServiceSite, canDoFieldWork, canEditService, canPickServiceSite, canUser,
+  canViewService, canWorkOwnVisit,
 } from '../permissions.js';
 import {
   PLANNING_FIELD_ERROR, VISIT_PLANNING_FIELDS, planningFieldsIn, visitWriteAccess,
@@ -52,16 +53,18 @@ test('🔴 นัดของคนอื่น = แก้ไม่ได้ �
   assert.equal(canWorkOwnVisit(tech, null), false);
 });
 
-test('คนนอกฝ่ายที่บังเอิญถือ cap ไม่ผ่านด่านรายใบ', () => {
-  // ทีมขาย SV แก้ได้อยู่แล้วผ่าน service:edit — ไม่ต้องผ่านเส้นของเจ้าหน้าที่
-  assert.equal(canEditService(aeSv), true);
+test('🔴 คนนอกฝ่าย TS ไม่ผ่านทั้งด่านโมดูลและด่านรายใบ', () => {
+  /* มติผู้ใช้ 2026-08-30: "ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS" — ทีมขาย SV ที่เคย
+     ดูแลงานบริการแทนตอนฝ่ายยังไม่มีคน ถูกตัดออกทั้งเส้น */
+  assert.equal(canEditService(aeSv), false);
+  assert.equal(canViewService(aeSv), false);
   assert.equal(canWorkOwnVisit({ ...aeSv, id: 'U-TECH' }, visitOf()), false);
 });
 
 test('canDoFieldWork = "มีงานหน้างานของตัวเองไหม" — ใช้ตัดสินเมนู ไม่ใช่การเขียน', () => {
   assert.equal(canDoFieldWork(tech), true);
   assert.equal(canDoFieldWork(planner), true);
-  assert.equal(canDoFieldWork(aeSv), true);
+  assert.equal(canDoFieldWork(aeSv), false);
   assert.equal(canDoFieldWork({ role: 'wh', department: 'WH' }), false);
   assert.equal(canDoFieldWork(null), false);
 });
@@ -133,4 +136,27 @@ test('🔴 เมนู "จัดทีม" ของบริหารงา�
      แล้วกดเข้าไปเจอ "ดูทีมของฝ่ายอื่นไม่ได้" ทุกครั้ง */
   const src = readFileSync(new URL('../../components/AppLayout.js', import.meta.url), 'utf8');
   assert.match(src, /href: '\/sa\/teams'[\s\S]{0,140}visible: \(u\) => canManageTeams\(u, 'SA'\)/);
+});
+
+/* ── โมดูลเป็นของฝ่าย TS เท่านั้น (มติผู้ใช้ 2026-08-30) ───────────────────── */
+test('🔴 ฝ่ายขายยังเลือก/สร้างสถานที่จากในใบคำร้องได้ แม้เข้าโมดูลไม่ได้แล้ว', () => {
+  /* 🐞 ถ้าปิดทางอ่านนี้ไปด้วย ฟอร์มใบประเมินพื้นที่จะกางรายการสถานที่ไม่ได้เลย —
+     ว่างเปล่าโดยไม่มีข้อความบอกว่าทำไม ทั้งที่ปุ่ม "สร้างสถานที่ใหม่" ยังอยู่ตรงนั้น */
+  assert.equal(canViewService(aeSv), false);
+  assert.equal(canPickServiceSite(aeSv), true);
+  assert.equal(canCreateServiceSite(aeSv), true);
+  // ฝ่าย TS เองก็ยังอ่านได้ตามปกติ
+  assert.equal(canPickServiceSite(tech), true);
+  // คนที่ไม่เกี่ยวเลยยังปิดสนิททั้งสองทาง
+  assert.equal(canPickServiceSite({ role: 'wh', department: 'WH' }), false);
+  assert.equal(canPickServiceSite({ role: 'viewer' }), false);
+});
+
+test('🔴 ด่านอ่านของฟอร์มใบคำร้องต้องถูกต่อจริงที่ route ไม่ใช่มีแต่ฟังก์ชัน', () => {
+  const sites = readFileSync(new URL('../../app/api/service/sites/route.js', import.meta.url), 'utf8');
+  assert.match(sites, /requireService\(\{ user, forRequestForm: true \}\)/);
+  const zones = readFileSync(
+    new URL('../../app/api/service/sites/[id]/zones/route.js', import.meta.url), 'utf8',
+  );
+  assert.match(zones, /forRequestForm: true/);
 });

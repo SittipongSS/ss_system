@@ -68,15 +68,18 @@ test('⭐ ฝ่ายคลัง/QC อยู่ในสายงานโร
   }
 });
 
-test('ฝ่ายขายอ่านได้ทั้งสองระบบเพื่อตอบลูกค้า แต่แก้ไม่ได้ (ยกเว้นทีม SV กับงานบริการ)', () => {
+test('🔴 ฝ่ายขายอ่านตารางผลิตได้เพื่อตอบลูกค้า — แต่ธุรกิจบริการเข้าไม่ได้เลย', () => {
   const ka = { role: 'ae', team: 'KA', department: 'SA', extraCaps: [] };
   const sv = { role: 'ae', team: 'SV', department: 'SA', extraCaps: [] };
   assert.equal(canViewProduction(ka), true);
   assert.equal(canEditProduction(ka), false);   // ขายไม่แก้ตารางโรงงาน
-  assert.equal(canViewService(ka), true);
+  /* 🔴 มติผู้ใช้ 2026-08-30: "ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS" — ต่างจากตารางผลิต
+     ที่ฝ่ายขายยัง **อ่าน** ได้เพื่อตอบลูกค้าว่าผลิตวันไหน · งานบริการปิดทั้งอ่านและเขียน
+     ⚠️ ทีม SV เคยเป็นเจ้าของงานบริการแทนฝ่ายที่ยังไม่มีคน — เหตุผลนั้นหมดอายุแล้ว */
+  assert.equal(canViewService(ka), false);
   assert.equal(canEditService(ka), false);
-  // ทีม SV เป็นเจ้าของสัญญาบริการ → แก้งานบริการได้ แต่ยังแตะตารางผลิตไม่ได้
-  assert.equal(canEditService(sv), true);
+  assert.equal(canViewService(sv), false);
+  assert.equal(canEditService(sv), false);
   assert.equal(canEditProduction(sv), false);
 });
 

@@ -898,6 +898,9 @@ test('🔴 คนที่ไม่ใช่ฝ่ายขายและไม
 test('🔴 ชุด role ที่สร้างไซต์บริการได้ — เปลี่ยนเมื่อไรต้องตั้งใจ', () => {
   assert.deepEqual(
     ROLES.filter((role) => canCreateServiceSite({ role })),
-    ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
+    /* ⚠️ `ae_supervisor` หลุดออกไปตั้งแต่โมดูลเป็นของฝ่าย TS เท่านั้น (2026-08-30) —
+       หัวหน้าฝ่ายขายไม่ได้อยู่ในสายงานบริการ และไม่ได้เป็น role ที่มีทีม (TEAM_ROLES)
+       จึงไม่เหลือทางไหนให้ผ่าน · คนขายที่เปิดใบจริง (senior_ae/ac/ae) ยังสร้างได้ */
+    ['admin', 'senior_ae', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
   );
 })

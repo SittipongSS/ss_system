@@ -158,7 +158,7 @@ test('สรุปเครื่องแยกตามสถานะ', () =>
 });
 
 // ── สิทธิ์ (แผน §6) ──────────────────────────────────────────────────────
-test('⭐ Planner/หัวหน้า TS แก้ธุรกิจบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
+test('🔴 โมดูลธุรกิจบริการเป็นของฝ่าย TS เท่านั้น — ทีมขาย SV ก็เข้าไม่ได้', () => {
   const ts = { role: 'ts', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   const aeKa = { role: 'ae', team: 'KA' };
@@ -166,33 +166,43 @@ test('⭐ Planner/หัวหน้า TS แก้ธุรกิจบริ�
   assert.equal(canViewService(ts), true);
   assert.equal(canEditService(ts), false);
   assert.equal(canEditService({ role: 'ts_planner', department: 'TS' }), true);
-  assert.equal(canEditService(aeSv), true);
+  /* มติผู้ใช้ 2026-08-30 — ของเดิมเปิดถึงทีมขาย SV เพราะตอนนั้นฝ่าย TS ยังไม่มีคน
+     วันนี้ฝ่ายมีครบห้าตำแหน่งแล้ว เหตุผลนั้นหมดอายุ */
+  assert.equal(canEditService(aeSv), false);
+  assert.equal(canViewService(aeSv), false);
   assert.equal(canEditService(aeKa), false);
-  assert.equal(canViewService(aeKa), true);
+  assert.equal(canViewService(aeKa), false);
+  // แอดมินยังเข้าได้ (มติ "admin ทำได้ทุกอย่าง") · หัวหน้าฝ่ายขายไม่ได้
+  assert.equal(canEditService({ role: 'admin' }), true);
+  assert.equal(canViewService({ role: 'ae_supervisor', department: 'SA' }), false);
 });
 
-test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
-  // 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
-  // dropdown ว่าง → ทุกนัด assigneeId = null → "นัดของฉัน" ว่างตลอดกาล
-  assert.equal(canBeServiceAssignee({ role: 'ts', department: 'TS' }), true);
-  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'SV' }), true);
-  assert.equal(canBeServiceAssignee({ role: 'senior_ae', team: 'SV' }), true);
+test('🔴 รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS เท่านั้น', () => {
+  /* 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
+     dropdown ว่าง → ทุกนัด assigneeId = null → "งานวันนี้" ว่างตลอดกาล
+     ⇒ ตอนนั้นเปิดทีมขาย SV เป็นทางสำรอง · **ปิดแล้ว 2026-08-30** เพราะฝ่ายมีคนจริง
+     ครบห้าตำแหน่ง และคนขายไม่ควรถูกมอบหมายให้ขับรถเข้าไซต์ */
+  for (const role of ['ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager']) {
+    assert.equal(canBeServiceAssignee({ role, department: 'TS' }), true, role);
+  }
+  assert.equal(canBeServiceAssignee({ role: 'ae', team: 'SV', teams: ['SV'] }), false);
+  assert.equal(canBeServiceAssignee({ role: 'senior_ae', team: 'SV', teams: ['SV'] }), false);
   assert.equal(canBeServiceAssignee({ role: 'ae', team: 'KA' }), false);
   assert.equal(canBeServiceAssignee({ role: 'admin' }), false);   // แอดมินไม่ได้ออกหน้างาน
   assert.equal(canBeServiceAssignee({ role: 'wh', department: 'WH' }), false);
 });
 
-test('⭐ เมนู "นัดของฉัน" กว้างกว่าคนที่รับงานได้หนึ่งขั้น — หัวหน้าเปิดดูได้ ทีมขายอื่นไม่เห็น', () => {
-  // มติผู้ใช้ 2026-07-31: เห็นเมนู = คนที่ "แก้งานบริการได้" (canEditService)
-  // ⚠️ ต่างจาก canBeServiceAssignee ตรงที่ admin/หัวหน้าฝ่ายขายเห็นด้วย แม้ไม่เคย
-  // ถูกมอบหมายนัด — เปิดเข้าไปจะว่าง ซึ่งยอมรับได้เพราะเขาเข้าไปดูของทีม (สลับ "ทั้งทีม")
+test('เมนูงานบริการ = คนที่แก้งานบริการได้ — แอดมินเห็นด้วย แม้ไม่เคยถูกมอบหมายนัด', () => {
+  // ⚠️ ต่างจาก canBeServiceAssignee ตรงที่ admin เห็นด้วย แม้ไม่เคยถูกมอบหมาย —
+  // เปิดเข้าไปจะว่าง ซึ่งยอมรับได้เพราะเขาเข้าไปดูของทั้งฝ่าย
   assert.equal(canEditService({ role: 'admin' }), true);
-  assert.equal(canEditService({ role: 'ae_supervisor' }), true);
+  // 🔴 หัวหน้าฝ่ายขายไม่ใช่คนของโมดูลนี้ (มติ 2026-08-30)
+  assert.equal(canEditService({ role: 'ae_supervisor', department: 'SA' }), false);
   assert.equal(canBeServiceAssignee({ role: 'admin' }), false);
-  // ⚠️ ทีมขายที่ไม่ใช่ SV ยังไม่เห็นเมนูนี้ (เช่น senior_ae ทีม KA) — อ่านระบบได้
-  // แต่ไม่ใช่คนทำงานบริการ
+  // ฝ่ายขายไม่เห็นโมดูลนี้แล้วทั้งอ่านและเขียน — ของที่เขายังต้องใช้คือการเลือก/สร้าง
+  // สถานที่จาก **ในใบคำร้อง** ซึ่งไปทาง canPickServiceSite / canCreateServiceSite
   assert.equal(canEditService({ role: 'senior_ae', team: 'KA' }), false);
-  assert.equal(canViewService({ role: 'senior_ae', team: 'KA' }), true);
+  assert.equal(canViewService({ role: 'senior_ae', team: 'KA' }), false);
 });
 
 test('ฝ่ายโรงงานอื่นแตะธุรกิจบริการไม่ได้ — ไม่มี service:* ตั้งแต่ชั้น role', () => {

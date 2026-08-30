@@ -14,7 +14,8 @@ export const dynamic = 'force-dynamic';
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
   try {
-    const access = await requireSite({ user, supabase, id });
+    // ฟอร์มใบประเมินพื้นที่อ่านพื้นที่เดิมของไซต์มาให้ติ๊ก — ฝ่ายขายจึงต้องอ่านได้
+    const access = await requireSite({ user, supabase, id, forRequestForm: true });
     if (access.response) return access.response;
     return ok(await loadZones(supabase, id));
   } catch (e) {
