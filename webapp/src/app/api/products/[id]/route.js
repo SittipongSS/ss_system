@@ -222,6 +222,11 @@ export async function PATCH(request, { params }) {
   ];
   const updated = { ...product };
   for (const k of catalogEditable) if (body[k] !== undefined) updated[k] = body[k];
+  /* หมายเหตุที่ถูกล้างต้องเป็น null ไม่ใช่สตริงว่าง — ฝั่ง POST ทำแบบนี้อยู่แล้ว
+     (mig 0317) · ถ้าปล่อยเป็น '' ค่าที่เก็บจะต่างกันตามทางที่บันทึกเข้ามา */
+  for (const k of PRODUCT_DOC_NOTE_FIELDS) {
+    if (body[k] !== undefined) updated[k] = String(body[k] ?? '').trim() || null;
+  }
   // ข้อมูลสูตร (0112 → ทะเบียน 0171) — ฟอร์มส่งมาแค่ formulaId ชื่อ/รหัส/วันที่
   // derive ใหม่ทุกครั้ง จึงตาม RD ที่แก้ตัวสูตรในทะเบียนได้เอง ไม่ค้างเป็นค่าเก่า
   //

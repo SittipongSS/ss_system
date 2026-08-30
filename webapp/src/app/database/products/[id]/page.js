@@ -27,6 +27,7 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { approvalControlView } from "@/lib/master/approvalControl";
 import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
@@ -301,23 +302,12 @@ export default function ProductDetails() {
        · ด่านอนุมัติ (approvalStatus) — คุมว่าสินค้าโผล่ใน picker ของระบบอื่นไหม
        · วงจรชีวิต (isActive) — พักใช้/เปิดใช้ ซึ่งคนละเรื่องกับการอนุมัติ
      ⇒ การ์ด control ถือแกนอนุมัติ (มีรางสามขั้น) · การ์ดสรุปถือแกนใช้งาน */
-  const approvalView = {
-    approved: { label: "อนุมัติแล้ว", color: "var(--green)" },
-    pending: { label: "รออนุมัติ", color: "var(--amber)" },
-    rejected: { label: "ถูกตีกลับ ต้องแก้ไข", color: "var(--red)" },
-  }[product.approvalStatus] || { label: "ไม่ระบุ", color: "var(--text-3)" };
-  const approvalIndex = product.approvalStatus === "approved" ? 2 : 1;
-  const workflowSteps = workflowStepsFromIndex([
-    { id: "created", label: "บันทึกสินค้า", hint: "ทะเบียน FG ถูกสร้างแล้ว" },
-    {
-      id: "review",
-      label: product.approvalStatus === "rejected" ? "ถูกตีกลับ ต้องแก้ไข" : "รออนุมัติ",
-      hint: product.approvalStatus === "rejected"
-        ? "แก้ตามเหตุผลที่ผู้อนุมัติแจ้ง แล้วบันทึกเพื่อส่งตรวจใหม่"
-        : "หัวหน้าฝ่ายขายตรวจสเปคและราคาก่อนเปิดให้ทุกระบบเลือกใช้",
-    },
-    { id: "approved", label: "อนุมัติแล้ว", hint: "สินค้าพร้อมให้ทุกระบบเลือกใช้" },
-  ], approvalIndex);
+  const approvalView = approvalControlView(product, {
+    noun: "สินค้า",
+    savedHint: "ทะเบียน FG ถูกสร้างแล้ว",
+    doneHint: "สินค้าพร้อมให้ทุกระบบเลือกใช้",
+  });
+  const workflowSteps = workflowStepsFromIndex(approvalView.steps, approvalView.currentIndex);
 
   /* ⚠️ **แก้ของที่อนุมัติแล้วแม้ช่องเดียว = หลุดกลับไปรออนุมัติ** (resetApprovalOnEdit)
      ⇒ สินค้าหายจาก picker ทุกหน้าทันที · บอกไว้ใต้ปุ่มแก้ไข ไม่ใช่ให้คนไปเจอเอง
@@ -389,17 +379,17 @@ export default function ProductDetails() {
         title="จัดการสินค้า"
         status={approvalView.label}
         statusColor={approvalView.color}
-        statusDescription={workflowSteps[approvalIndex]?.hint}
+        statusDescription={workflowSteps[approvalView.currentIndex]?.hint}
         workflowSteps={workflowSteps}
         primaryAction={productActions.primaryAction}
         secondaryActions={productActions.secondaryActions}
         dangerActions={productActions.dangerActions}
         busy={isUpdating}
         /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด */
-        notices={product.approvalStatus === "rejected" && product.rejectionReason
+        notices={approvalView.rejected && product.rejectionReason
           ? <span className="ui-badge">เหตุผลที่ตีกลับ: {product.rejectionReason}</span>
           : null}
-        footer={product.approvalStatus === "approved" && canEditProducts
+        footer={approvalView.status === "approved" && canEditProducts
           ? <span>แก้ข้อมูลสินค้าที่อนุมัติแล้ว = กลับไปรออนุมัติใหม่ และสินค้าจะหลุดจากรายการเลือกของทุกระบบจนกว่าจะอนุมัติอีกครั้ง (ยกเว้นหมายเหตุบนเอกสารขาย)</span>
           : null}
       />
