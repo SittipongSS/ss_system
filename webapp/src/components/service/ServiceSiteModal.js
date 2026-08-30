@@ -60,8 +60,14 @@ const EMPTY = {
 /* `defaults` = ค่าตั้งต้นของโหมด **สร้าง** เท่านั้น (แพตเทิร์นเดียวกับ ServiceVisitModal)
    ใช้ตอนที่ผู้เรียกรู้คำตอบอยู่แล้ว เช่น wizard รับใบสั่งขายซึ่งรู้ว่าลูกค้าคือใคร —
    ไม่ใช่ฟอร์มคนละชุด แค่โหมดที่กรอกช่องที่ตอบได้แล้วให้ล่วงหน้า */
+/* `noun` = คำที่ **จอผู้เรียกใช้เรียกของสิ่งนี้**
+   🐞 ปุ่มในใบคำร้องเขียน "สร้างสถานที่ใหม่" แต่โมดัลที่เปิดขึ้นมาหัวเรื่อง "เพิ่มไซต์บริการ"
+      และปุ่มบันทึก "เพิ่มไซต์" ⇒ สามคำสำหรับของชิ้นเดียวในสองคลิก · ผู้ขอที่ไม่ได้อยู่ฝ่าย
+      TS ไม่รู้ว่า "ไซต์" คือสิ่งเดียวกับ "สถานที่" ที่เขาเพิ่งกด
+   ⚠️ ค่าตั้งต้นยังเป็น "ไซต์บริการ" — ทะเบียนของฝ่าย TS เรียกแบบนั้นจริง ไม่ใช่คำที่ผิด */
 export default function ServiceSiteModal({
-  open, site = null, customers = [], customerAddresses = [], defaults = null, onClose, onSave,
+  open, site = null, customers = [], customerAddresses = [], defaults = null,
+  noun = 'ไซต์บริการ', onClose, onSave,
 }) {
   const editing = !!site;
   const [form, setForm] = useState(EMPTY);
@@ -234,7 +240,7 @@ export default function ServiceSiteModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? `แก้ไขไซต์ ${site.name}` : "เพิ่มไซต์บริการ"} size="lg">
+    <Modal open={open} onClose={onClose} title={editing ? `แก้ไข${noun} ${site.name}` : `เพิ่ม${noun}`} size="lg">
       <div className={styles.grid}>
         <label className={`${styles.field} ${styles.wide}`}>
           <span>ลูกค้า *</span>
@@ -407,7 +413,7 @@ export default function ServiceSiteModal({
       <div className="form-actions">
         <Button tone="neutral" onClick={onClose} disabled={saving}>ยกเลิก</Button>
         <Button tone="primary" onClick={submit} disabled={saving}>
-          {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : "เพิ่มไซต์"}
+          {saving ? "กำลังบันทึก…" : editing ? "บันทึกการแก้ไข" : `เพิ่ม${noun}`}
         </Button>
       </div>
     </Modal>

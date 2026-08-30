@@ -263,6 +263,9 @@ export default function SurveySiteFields({
         open={creatingSite}
         customers={siteCustomers}
         defaults={siteDefaults}
+        /* ⚠️ ใบคำร้องเรียกของสิ่งนี้ว่า **สถานที่** ทั้งฟอร์ม — โมดัลต้องพูดคำเดียวกัน
+           ไม่งั้นกดปุ่ม "สร้างสถานที่ใหม่" แล้วเจอหัวเรื่อง "เพิ่มไซต์บริการ" */
+        noun="สถานที่"
         onClose={() => setCreatingSite(false)}
         onSave={createSite}
       />

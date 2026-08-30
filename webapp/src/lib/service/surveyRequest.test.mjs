@@ -1,5 +1,6 @@
 // ── ตรวจ payload ใบประเมินพื้นที่ (mig 0314) — รูปร่างล้วน ไม่แตะ DB
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {
   normalizeSurveyRequest, normalizeSurveySite, normalizeSurveyTime,
@@ -14,6 +15,14 @@ test('ต้องเลือกสถานที่ — ไม่เลือ
      ทะเบียนไม่มีฟอร์มสร้างแล้ว ⇒ ข้อความเก่าสั่งให้ทำสิ่งที่ทำไม่ได้ */
   assert.match(err, /ในฟอร์มนี้/);
   assert.doesNotMatch(err, /ทะเบียนไซต์/);
+  /* 🐞 ข้อความต้องเรียกปุ่มด้วย **ชื่อที่อยู่บนปุ่มจริง** — เคยเขียนว่า "เพิ่มสถานที่ใหม่"
+     ทั้งที่ปุ่มเขียน "สร้างสถานที่ใหม่" ⇒ คนกวาดตาหาคำที่ไม่มีอยู่บนจอ */
+  const field = readFileSync(
+    new URL('../../components/requests/SurveySiteFields.js', import.meta.url), 'utf8',
+  );
+  const label = err.match(/“(.+?)”/)?.[1];
+  assert.ok(label, 'ข้อความต้องอ้างชื่อปุ่มในเครื่องหมายคำพูด');
+  assert.ok(field.includes(label), `ไม่มีปุ่มชื่อ “${label}” ในฟอร์ม`);
 });
 
 test('ใบถือแต่ siteId — ร่างสถานที่แนบมากับใบไม่ใช่ทางที่มีอยู่', () => {
