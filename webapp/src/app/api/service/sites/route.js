@@ -21,7 +21,9 @@ export const dynamic = 'force-dynamic';
 //   withSchedule = แนบ เข้าล่าสุด / ครั้งหน้า / สรุปน้ำหอมใกล้หมด มาด้วย (S-4)
 //   ⚠️ ไม่ทำเป็นค่าตั้งต้น — หน้าทะเบียนที่มีไซต์เป็นร้อยไม่ต้องใช้ 3 คำสั่งเพิ่มทุกครั้ง
 export const GET = withUser(async ({ user, supabase, req }) => {
-  const access = requireService({ user });
+  /* ⚠️ `forRequestForm` — ฝ่ายขายไม่ได้เข้าโมดูลแล้ว (มติ 2026-08-30) แต่ฟอร์มใบ
+     ประเมินพื้นที่ต้องกางรายการไซต์ **ของลูกค้าที่เขาเลือก** ให้เลือก · อ่านอย่างเดียว */
+  const access = requireService({ user, forRequestForm: true });
   if (access.response) return access.response;
   const url = new URL(req.url);
   try {

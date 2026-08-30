@@ -1,15 +1,23 @@
 // ── Data access + ด่านสิทธิ์ของทะเบียนไซต์บริการ (mig 0187) ───────────────
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditService, canViewService } from '@/lib/permissions';
+import { canEditService, canPickServiceSite, canViewService } from '@/lib/permissions';
 
 // ⚠️ ด่านจริงของโมดูลบริการอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
 // ผ่านมาถึงนี่ (รวม PC/PD/WH/QC) · canEditService เป็นตัวที่เห็น department/team
-export function requireService({ user, edit = false }) {
+/**
+ * ด่านของโมดูลธุรกิจบริการ
+ *
+ * ⚠️ `forRequestForm` = "อ่านทะเบียนไซต์/พื้นที่เพื่อ **ผูกกับใบคำร้อง**" ซึ่งฝ่ายขาย
+ *    ทำได้ ทั้งที่เข้าโมดูลไม่ได้แล้ว (มติ 2026-08-30 "ระบบธุรกิจบริการเข้าได้เฉพาะ TS")
+ *    🐞 ไม่มีทางนี้ ฟอร์มใบประเมินพื้นที่จะกางรายการสถานที่ไม่ได้เลย — ว่างเปล่าโดยไม่มี
+ *       ข้อความบอกว่าทำไม ทั้งที่ปุ่ม "สร้างสถานที่ใหม่" ยังอยู่ตรงนั้น
+ */
+export function requireService({ user, edit = false, forRequestForm = false }) {
   if (!user) return { response: unauthorized() };
   if (edit) {
     if (!canEditService(user)) return { response: forbidden('ไม่มีสิทธิ์แก้ข้อมูลธุรกิจบริการ') };
-  } else if (!canViewService(user)) {
+  } else if (forRequestForm ? !canPickServiceSite(user) : !canViewService(user)) {
     return { response: forbidden() };
   }
   return {};
@@ -34,8 +42,8 @@ export async function findSite(supabase, id) {
 }
 
 // โหลดไซต์ + กันกรณีไม่พบในที่เดียว (ทุก route ของเครื่องต้องผ่านตรงนี้)
-export async function requireSite({ user, supabase, id, edit = false }) {
-  const access = requireService({ user, edit });
+export async function requireSite({ user, supabase, id, edit = false, forRequestForm = false }) {
+  const access = requireService({ user, edit, forRequestForm });
   if (access.response) return access;
   const site = await findSite(supabase, id);
   if (!site) return { response: notFound('ไม่พบไซต์บริการ') };

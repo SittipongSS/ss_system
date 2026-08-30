@@ -3,31 +3,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canEditService, canImportServiceData } from '../permissions.js';
 
-test('⭐ นำเข้าเป็นก้อน **แคบกว่า** การแก้รายใบ — เจ้าหน้าที่ที่แก้ไซต์ได้ ยังนำเข้าไม่ได้', () => {
-  // หัวหน้าฝ่าย TS แก้รายใบได้ทุกอย่าง แต่ "นำเข้าเป็นก้อน" ยังเป็นของแอดมินคนเดียว
-  const ts = { role: 'ts_manager', department: 'TS' };
-  const aeSv = { role: 'ae', team: 'SV' };
-  assert.equal(canEditService(ts), true);
-  assert.equal(canEditService(aeSv), true);
-  assert.equal(canImportServiceData(ts), false, 'เขียนทีเดียวหลายร้อยแถว ย้อนกลับไม่ได้');
-  assert.equal(canImportServiceData(aeSv), false);
+test('⭐ นำเข้าเป็นก้อน **แคบกว่า** การแก้รายใบ — ฝ่าย TS แก้ไซต์ได้ แต่นำเข้าไม่ได้', () => {
+  /* เขียนทีเดียวหลายร้อยแถวและย้อนกลับไม่ได้ ⇒ เหลือแอดมินคนเดียว
+     ⚠️ ตั้งแต่โมดูลเป็นของฝ่าย TS เท่านั้น (มติ 2026-08-30) คนนอกฝ่ายตกตั้งแต่
+        `canEditService` แล้ว — ด่านนี้จึงเหลือหน้าที่กัน *คนในฝ่าย* อย่างเดียว */
+  for (const role of ['ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager']) {
+    assert.equal(canImportServiceData({ role, department: 'TS' }), false, role);
+  }
+  assert.equal(canEditService({ role: 'ts_manager', department: 'TS' }), true);
 });
 
 test('ผู้ดูแลระบบนำเข้าได้ — เป็นคนตั้งระบบตอนแรก', () => {
   assert.equal(canImportServiceData({ role: 'admin' }), true);
 });
 
-test('🔴 หัวหน้าสายขายที่ไม่เกี่ยวกับงานบริการ ห้ามเขียนทะเบียนไซต์ทั้งก้อน', () => {
-  // canEditService คืน true ให้ isSuperuser ตั้งแต่บรรทัดแรก ⇒ ถ้าไม่ถามทีม/ฝ่าย
-  // ซ้ำที่นี่ หัวหน้าทีม KA จะนำเข้าได้ทั้งที่ไม่มีส่วนกับงานบริการเลย
-  assert.equal(canEditService({ role: 'ae_supervisor', team: 'KA' }), true);
+test('🔴 คนนอกฝ่าย TS นำเข้าไม่ได้ — รวมหัวหน้าฝ่ายขายและทีมขาย SV', () => {
+  /* ⚠️ ทีม SV เคยนำเข้าได้ตอนที่เขาดูแลงานบริการแทนฝ่ายที่ยังไม่มีคน (มติ 2026-07-30)
+     · ปิดพร้อมกับการปิดโมดูลทั้งก้อน (มติ 2026-08-30) */
   assert.equal(canImportServiceData({ role: 'ae_supervisor', team: 'KA' }), false);
-});
-
-test('หัวหน้าที่คุมงานบริการจริงนำเข้าได้ (ทีม SV หรือฝ่าย TS)', () => {
-  assert.equal(canImportServiceData({ role: 'ae_supervisor', team: 'SV' }), true);
-  assert.equal(canImportServiceData({ role: 'ae_supervisor', teams: ['KA', 'SV'] }), true);
-  assert.equal(canImportServiceData({ role: 'ae_supervisor', department: 'TS' }), true);
+  assert.equal(canImportServiceData({ role: 'ae_supervisor', team: 'SV', teams: ['SV'] }), false);
+  assert.equal(canImportServiceData({ role: 'ae', team: 'SV', teams: ['SV'] }), false);
+  assert.equal(canImportServiceData({ role: 'ae_supervisor', department: 'TS' }), false);
 });
 
 test('คนนอกระบบบริการทั้งหมดไม่ได้', () => {

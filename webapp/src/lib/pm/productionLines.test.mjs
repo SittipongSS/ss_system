@@ -149,7 +149,7 @@ test('ฝ่ายขายอ่านตารางผลิตได้ แ�
   assert.equal(canEditProduction(aeKa), false);
 });
 
-test('🔴 คนจัดตาราง service = Planner/หัวหน้า TS + ทีมขาย SV — เจ้าหน้าที่หน้างานไม่ใช่', () => {
+test('🔴 คนจัดตาราง service = Planner/หัวหน้า TS เท่านั้น — ไม่ใช่เจ้าหน้าที่หน้างาน ไม่ใช่ทีมขาย', () => {
   /* มติ 2026-08-30: "ลงคิว/มอบหมายเจ้าหน้าที่ = Planner + หัวหน้าเท่านั้น" ·
      เจ้าหน้าที่หน้างานปิดงาน *ของตัวเอง* ได้ผ่าน service:work (canWorkOwnVisit) ไม่ใช่ service:edit
      🐞 ถ้าเจ้าหน้าที่ถือ service:edit เมื่อไร เขาจะแก้คิวของเพื่อน แก้ทะเบียนไซต์ และลบนัดได้ */
@@ -157,8 +157,11 @@ test('🔴 คนจัดตาราง service = Planner/หัวหน้�
   for (const role of ['ts_planner', 'ts_senior', 'ts_audit', 'ts_manager']) {
     assert.equal(canEditService({ role, department: 'TS' }), true, role);
   }
-  assert.equal(canEditService(aeSv), true);
+  /* 🔴 มติ 2026-08-30: "ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS" — ทีมขาย SV ที่เคยดูแล
+     งานบริการแทนตอนฝ่ายยังไม่มีคน ถูกตัดออก · แอดมินยังเข้าได้ */
+  assert.equal(canEditService(aeSv), false);
   assert.equal(canEditService(aeKa), false);
+  assert.equal(canEditService({ role: 'admin' }), true);
 });
 
 test('เจ้าหน้าที่ฝ่าย TS ไม่ได้สิทธิ์แก้ตารางผลิตติดมา (คนละโมดูล)', () => {
