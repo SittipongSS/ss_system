@@ -6,7 +6,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import {
   DEFAULT_EVIDENCE_BUCKET, salesOrderConfirmationGate, validateOrderConfirmation,
 } from '@/lib/sales/orderConfirmationDocs';
-import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
+import { missingStoredEvidence, purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
 import { departmentOf } from '@/lib/permissions';
 import {
   canEditSalesPlanning,
@@ -957,6 +957,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบไม่มีเธรดของตัวเองแล้ว (มติ 2026-08-04) แต่แถวเก่าก่อนหน้านั้นยังค้างในตาราง
   // กลาง (polymorphic ไม่มี FK) — กวาดตอนลบใบต่อไป ไม่งั้นค้างเป็นขยะถาวร
   await purgeUpdates(supabase, 'sales_order', id);
+  /* ไฟล์หลักฐานใน bucket ไม่มี FK ให้ cascade — ต้องกวาดเอง ไม่งั้นกลายเป็นไฟล์
+     กำพร้าถาวร (พบ 2026-08-30 · ดู purgePrivateEvidence)
+     · หลักฐานการชำระอยู่ใต้โฟลเดอร์ของใบสั่งขายเอง ⇒ กวาดทั้งโฟลเดอร์
+     · เอกสารยืนยันคำสั่งซื้ออยู่ใต้ **ใบเสนอราคาต้นทาง** (อัปตั้งแต่ใบยังไม่เกิด)
+       ⇒ ลบเฉพาะไฟล์ที่ใบนี้อ้างไว้ ห้ามกวาดทั้งโฟลเดอร์ เพราะใบเสนอราคายังอยู่
+       และอาจออกใบสั่งขายใหม่ที่มีไฟล์ของตัวเองอยู่ในโฟลเดอร์เดียวกัน */
+  await purgePrivateEvidence(supabase, 'sales_orders', id);
+  await removeEvidenceRefs(supabase, Array.isArray(before.confirmAttachments) ? before.confirmAttachments : []);
   await recordAudit({
     user, action: 'delete', entityType: 'sales_order', entityId: id, before, after: null,
     summary: force
