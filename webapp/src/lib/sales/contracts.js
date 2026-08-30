@@ -34,6 +34,32 @@ export const CONTRACT_KIND_DOC_TITLES_EN = Object.freeze({
   service: 'SERVICE AGREEMENT',
 });
 
+/* ── ที่มาของสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30) ──────────────────────
+   *"(PO ลูกค้า / อีเมล / สัญญากระดาษเก่า / หรืออาจมีอื่นๆ)"* — ผู้ใช้ตอบ "เอา" ว่าเอกสาร
+   อื่นใช้แทนสัญญาได้ โดยมีเงื่อนไขว่า **ต้องผ่าน AE Sup อนุมัติ**
+   ⇒ เปิดทางให้งานบริการเดินได้โดยไม่ต้องรอต้นฉบับสัญญาจ้างบริการ (ยังไม่มี) และ
+     ไม่ต้องกุสัญญาปลอมขึ้นมาในระบบ */
+export const CONTRACT_SOURCES = Object.freeze(['generated', 'external']);
+
+export const CONTRACT_SOURCE_LABELS = Object.freeze({
+  generated: 'ระบบเจนจากแม่แบบ',
+  external: 'เอกสารภายนอกใช้แทนสัญญา',
+});
+
+export const EXTERNAL_DOC_KINDS = Object.freeze(['customer_po', 'email', 'paper_contract', 'other']);
+
+export const EXTERNAL_DOC_KIND_LABELS = Object.freeze({
+  customer_po: 'ใบสั่งซื้อของลูกค้า (PO)',
+  email: 'อีเมลยืนยันจากลูกค้า',
+  paper_contract: 'สัญญากระดาษฉบับเดิม',
+  other: 'เอกสารอื่น',
+});
+
+export const contractSourceOf = (contract) =>
+  (CONTRACT_SOURCES.includes(contract?.source) ? contract.source : 'generated');
+export const isExternalContract = (contract) => contractSourceOf(contract) === 'external';
+export const externalDocKindLabel = (kind) => EXTERNAL_DOC_KIND_LABELS[kind] || '—';
+
 export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'revised', 'cancelled']);
 
 export const CONTRACT_STATUS_LABELS = Object.freeze({
@@ -138,8 +164,14 @@ export function contractEligibility({ kind, deal, project = null, quotations = [
 // จุดเดียวที่ตอบว่า "ปุ่มไหนขึ้น" ทั้งหน้าจอและ API — แยกสองชุดเมื่อไรได้ปุ่มที่กดแล้ว
 // ระบบปฏิเสธ (หรือแย่กว่า: ปุ่มที่ไม่ขึ้นทั้งที่ทำได้)
 export const isContractEditable = (contract) => contract?.status === 'draft';
-export const canIssueContract = (contract) => contract?.status === 'draft';
-export const canSignContract = (contract) => contract?.status === 'awaiting_signature';
+/* ⚠️ **ออกเลขแบบเจนได้เฉพาะสาย generated** — ใบ external ออกเลขตอน AE Sup อนุมัติ
+   ผ่าน RPC คนละตัว (`approve_external_sales_contract`) เพราะมันจบที่ `signed` ไม่ใช่
+   `awaiting_signature` · ปล่อยให้ปุ่ม "ออกสัญญา" ขึ้นบนใบ external เมื่อไร คนจะกดแล้ว
+   ได้ใบที่ค้างอยู่สถานะ "รอลงนาม" ซึ่งไม่มีปุ่มไหนพาออกมาเลย */
+export const canIssueContract = (contract) =>
+  contract?.status === 'draft' && !isExternalContract(contract);
+export const canSignContract = (contract) =>
+  contract?.status === 'awaiting_signature' && !isExternalContract(contract);
 export const canCancelContract = (contract) => ['draft', 'awaiting_signature'].includes(contract?.status);
 /* ลบได้ตราบใดที่ยังเป็นร่าง (มติผู้ใช้ 2026-08-21: "ถ้าร่างให้ลบได้ จนกว่าจะกดออกสัญญา")
    ร่างไม่มีทางมีเลขที่อยู่แล้ว — เงื่อนไขเลขที่คงไว้เป็นเข็มขัดนิรภัยของข้อมูลเก่า */
@@ -203,3 +235,56 @@ export function daysAwaitingSignature(contract, now = new Date()) {
   if (Number.isNaN(issued.getTime())) return null;
   return Math.max(0, Math.floor((now - issued) / 86400000));
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   อนุมัติให้ "เอกสารภายนอก" ใช้แทนสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30)
+   ══════════════════════════════════════════════════════════════════════════
+
+   🔴 **ด่านนี้ต้องเป็นของ AE Supervisor เท่านั้น — ห้ามลอก `canEditSalesPlanning`**
+   route `/contracts/[id]/sign` ที่มีอยู่ใช้ `canEditSalesPlanning` ซึ่ง **AE กับ AC ผ่านหมด**
+   ซึ่งถูกสำหรับการ *บันทึกว่าเซ็นแล้ว* (งานธุรการของใบที่ผ่านขั้นตอนมาครบ) แต่ผิดสำหรับ
+   ใบนี้ เพราะการกดนี้คือการ **ตัดสินว่าเอกสารที่ไม่ใช่สัญญาผูกพันพอที่จะเดินงานได้**
+   ซึ่งปลดล็อกด่าน "จ่ายก่อนบริการ" ของทั้งเส้น ⇒ AE กดเองได้เมื่อไร ด่านทั้งเฟสรั่ว
+   ⚠️ กับดักจริง: ถ้าเขียนตามความเคยชินจะได้ปุ่มที่ AE กดผ่าน และ **เทสต์เดิมจับไม่ได้เลย**
+   เพราะไม่มีเทสต์ไหนล็อกด่านของ route นี้ไว้ (มีแล้วในไฟล์เทสต์ของโมดูลนี้)
+
+   ⚠️ ไม่ใช้ `isSuperuser` เดี่ยว ๆ เป็นด่าน (บทเรียน `canConfirmPayment`) — admin ผ่าน
+   เพราะเป็น superuser ของทั้งระบบ (#1501) ไม่ใช่เพราะเป็น "หัวหน้าฝ่ายขายอีกคน" */
+export const canApproveExternalContract = (user) =>
+  user?.role === 'ae_supervisor' || user?.role === 'admin';
+
+/** ด่านเดียวที่ทั้งปุ่มบนจอและ API ใช้ร่วมกัน — คืนข้อความไทยเมื่อทำไม่ได้ หรือ null เมื่อผ่าน
+ *
+ * ⭐ **บังคับวันมีผล/วันสิ้นสุดตอนอนุมัติ** (ต่างจากใบ generated ที่กรอกทีหลังได้) —
+ *   ใบ external คือสิ่งเดียวที่บอกได้ว่า "สัญญานี้ครอบช่วงไหน" และ `paidThrough` กับ
+ *   ทะเบียนต่อสัญญา 90 วันอ่านสองค่านี้ตรง ๆ ⇒ ปล่อยว่าง = ใบที่ปลดล็อกงานได้แต่
+ *   ตอบไม่ได้ว่าปลดถึงเมื่อไร
+ * ⭐ **บังคับไฟล์แนบ** — "เอกสารภายนอกใช้แทนสัญญา" โดยไม่มีเอกสารแนบ คือคำพูดลอย ๆ
+ */
+export function externalApproveError(contract, user, payload = {}) {
+  if (!contract) return 'ไม่พบสัญญา';
+  if (!canApproveExternalContract(user)) {
+    return 'อนุมัติเอกสารแทนสัญญาได้เฉพาะ AE Supervisor';
+  }
+  if (!isExternalContract(contract)) {
+    return 'ใบนี้เป็นสัญญาที่ระบบเจนจากแม่แบบ — ใช้ขั้นออกสัญญาและลงนามตามปกติ';
+  }
+  if (contract.status === 'signed') return 'เอกสารของใบนี้ถูกอนุมัติไปแล้ว';
+  if (contract.status === 'cancelled') return 'ใบนี้ถูกยกเลิกแล้ว';
+  if (contract.status !== 'draft') return 'อนุมัติได้เฉพาะใบที่ยังเป็นร่าง';
+  if (!contract.externalDocKind) return 'ยังไม่ได้ระบุว่าใช้เอกสารชนิดไหนแทนสัญญา';
+  if (!payload.signedFileId) return 'แนบไฟล์เอกสารก่อนอนุมัติ';
+  if (!payload.effectiveDate) return 'ระบุวันที่เริ่มมีผลก่อนอนุมัติ';
+  if (!payload.expiryDate) return 'ระบุวันที่สิ้นสุดก่อนอนุมัติ';
+  if (payload.effectiveDate > payload.expiryDate) {
+    return 'วันที่เริ่มมีผลต้องไม่เกินวันที่สิ้นสุด';
+  }
+  return null;
+}
+
+/** ปุ่ม "อนุมัติเอกสารแทนสัญญา" ควรโผล่ไหม — แยกจากด่านกดได้ตามกติกา GatedAction
+ *  (คนที่เป็นเจ้าของขั้นต้องเห็นปุ่มเสมอแล้วบอกเหตุตอนกด ไม่ใช่ปุ่มหายเงียบ ๆ) */
+export const showExternalApprove = (contract, user) =>
+  isExternalContract(contract)
+  && contract?.status === 'draft'
+  && canApproveExternalContract(user);
