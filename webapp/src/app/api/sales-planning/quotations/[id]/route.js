@@ -495,7 +495,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
      การชำระอยู่ใต้ `sales-orders/<id>/payments/` ซึ่งไม่ได้อยู่ใต้โฟลเดอร์ของใบ
      เสนอราคา · เส้นนี้ไม่ได้เดินผ่าน DELETE ของใบสั่งขาย จึงต้องเก็บ id ไว้ก่อนลบ */
   const childOrderIds = await (async () => {
-    const { data } = await supabase.from('sales_orders').select('id').eq('quotationId', id);
+    // ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap —
+    // จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย
+    const { data } = await fetchAllResult(() => supabase
+      .from('sales_orders').select('id')
+      .eq('quotationId', id)
+      .order('id', { ascending: true }));
     return (data || []).map((row) => row.id);
   })().catch(() => []);
 
