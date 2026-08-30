@@ -15,7 +15,17 @@ export function requestDocNoParts(kind, dept, now = new Date()) {
   // ดีกว่าปล่อยไปให้ SQL โยน `request_scope_invalid` ตอนผู้ใช้กดส่ง
   if (!scope) throw new Error(`หัวข้อ "${kind}" ไม่มี scope ของเลขที่`);
   const month = businessMonthKey(now);
-  return { scope, month, prefix: `${scope}-${month}`, width: REQUEST_RUNNING_WIDTH };
+  /* ⭐ **มติผู้ใช้ 2026-08-31: `RQ-AA-YYMMXXXX`** — ทุกใบขึ้นต้น `RQ` เหมือนกันหมด
+     แล้วตัวย่อหัวข้อ (`AA`) อยู่กลาง · ของเดิมตัวย่อหัวข้อ *แทนที่* `RQ` ⇒ เลขคำร้อง
+     ขึ้นต้นไม่เหมือนกันสักใบ (SB- FD- DC- DF- AS- RQ-) มองผ่าน ๆ ไม่รู้ว่าเป็นคำร้อง
+
+     ⚠️ **`scope` กับ `prefix` เป็นคนละเรื่องโดยตั้งใจ** — `scope` เป็นคีย์ของตัวนับ
+     (`entity_number_counters`) ส่วน `prefix` เป็นแค่สตริงที่เอาไปต่อหน้าเลขรัน
+     ⇒ เติม `RQ-` ที่ prefix อย่างเดียว **ตัวนับเดินต่อไม่สะดุด และไม่ต้องมี migration**
+     (RPC 0243 รับ p_scope กับ p_prefix แยกกัน ต่างจาก RPC ของสัญญาที่ฮาร์ดโค้ด scope)
+     🪤 ห้ามเผลอเอา `RQ-` ไปใส่ใน `scope` — ตัวนับจะกลายเป็นคีย์ใหม่แล้วเริ่มนับ 1
+     ใหม่ทุกหัวข้อ และ SQL จะเตะทิ้งเพราะ `^[A-Z]{2,4}$` ไม่ยอมให้มีขีด */
+  return { scope, month, prefix: `RQ-${scope}-${month}`, width: REQUEST_RUNNING_WIDTH };
 }
 
 /**
