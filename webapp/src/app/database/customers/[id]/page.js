@@ -103,9 +103,11 @@ export default function CustomerDetails() {
   const canDelete = useCan("customers:delete");
   /* ⭐ ผู้อนุมัติกดตัดสินจากหน้านี้ได้ (มติผู้ใช้ 2026-08-30) — ตรรกะ/โมดัลอยู่ในฮุค
      ชุดเดียวกับหน้าทะเบียน ห้ามเขียนซ้ำ */
+  // เหตุผลเดียวกับหน้าสินค้า — คนที่เพิ่งกดต้องเห็นแถวของตัวเองในเธรดทันที
+  const [threadToken, setThreadToken] = useState(0);
   const { decide: sendDecision, overrideDialog } = useApprovalDecision({
     endpoint: "/api/master/customers",
-    onDone: () => fetchCustomerData(),
+    onDone: () => { fetchCustomerData(); setThreadToken((n) => n + 1); },
   });
   // Excise tax data (rollups, orders/filings, per-item tax) is confidential to
   // the tax workflow — shown only to roles allowed to see the tax system.
@@ -983,6 +985,7 @@ export default function CustomerDetails() {
             <UpdateThread
               entityType="customer"
               entityId={id}
+              reloadToken={threadToken}
               order="desc"
               placeholder="พิมพ์ข้อความ เช่น ลูกค้าแจ้งเปลี่ยนที่อยู่ออกใบกำกับ..."
               emptyText="ยังไม่มีความเคลื่อนไหว"

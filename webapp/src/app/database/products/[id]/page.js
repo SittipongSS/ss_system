@@ -152,9 +152,12 @@ export default function ProductDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  /* เธรดดึงเองตามจังหวะ poll — แต่คนที่เพิ่งกดอนุมัติ/ตีกลับต้องเห็นผลของตัวเอง
+     เดี๋ยวนั้น (พบตอน UAT 2026-08-30: ต้องโหลดหน้าใหม่ถึงเห็นแถวที่เพิ่งเกิด) */
+  const [threadToken, setThreadToken] = useState(0);
   const { decide: sendDecision, overrideDialog } = useApprovalDecision({
     endpoint: "/api/master/products",
-    onDone: fetchProduct,
+    onDone: () => { fetchProduct(); setThreadToken((n) => n + 1); },
   });
 
   // Retire / reactivate a product (parity with customers). Retired products drop
@@ -847,6 +850,7 @@ export default function ProductDetails() {
             <UpdateThread
               entityType="product"
               entityId={id}
+              reloadToken={threadToken}
               order="desc"
               placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
               emptyText="ยังไม่มีความเคลื่อนไหว"
