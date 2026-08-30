@@ -16,13 +16,14 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan, useShellSystem } from "@/lib/roleContext";
+import { useRole, useCan, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
 function statusBadge(status, className = "") {
   const color = { draft: "var(--text-3)", pending_approval: "var(--amber)", approved: "var(--green)", rejected: "var(--red)", cancelled: "var(--red)" }[status] || "var(--text-3)";
@@ -118,6 +119,7 @@ function compareOrders(a, b, key, dir) {
 const EMPTY = [];
 
 export default function SalesOrdersPage() {
+  const role = useRole();
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -309,7 +311,18 @@ export default function SalesOrdersPage() {
     );
   };
 
-  if (!canView) return <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></SaWorkspace>;
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canView) === "denied") {
+    return (
+      <AccessDenied
+        icon={<ClipboardList size={22} />}
+        title="ใบสั่งขาย"
+        message="ทะเบียนใบสั่งขายเปิดให้ทีมขายและผู้ที่ได้รับสิทธิ์ดูงานขายเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
+    );
+  }
 
   return (
     <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" subtitle="สร้างจาก QT Won ตรวจสอบเอกสาร และนับ Actual หลัง AE Supervisor อนุมัติเท่านั้น">

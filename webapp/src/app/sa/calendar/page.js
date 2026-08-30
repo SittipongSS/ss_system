@@ -30,7 +30,8 @@ import MonthGrid from "@/components/ui/MonthGrid";
 import styles from "./page.module.css";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
   "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -70,9 +71,6 @@ export default function SalesCalendarPage() {
   const [meId, setMeId] = useState(null);
   const [view, setView] = useState("month");
   const [scope, setScope] = useState(null);
-
-  useEffect(() => { if (role && !canLead) router.replace("/home"); }, [role, canLead, router]);
-
   /* มือถือเริ่มที่มุมมองรายการ — ตาราง 7 คอลัมน์บนจอ 375px อ่านไม่ออก
      ตั้งครั้งเดียวตอน mount แล้วปล่อยให้ผู้ใช้สลับเอง (ไม่บังคับซ้ำตอนหมุนจอ) */
   useEffect(() => {
@@ -164,9 +162,18 @@ export default function SalesCalendarPage() {
     TEAM_LABELS[entry.team] || entry.team,
     LEAD_STATUS_LABELS[entry.status] || entry.status,
   ].filter(Boolean).join(" · ");
-
-  if (role && !canLead) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canLead) === "denied") {
+    return (
+      <AccessDenied
+        icon={<CalendarDays size={22} />}
+        title="ปฏิทินนัด"
+        message="ปฏิทินนัดเปิดให้ทีมขายและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
+    );
+  }
   return (
     <Workspace
       icon={<CalendarDays size={22} />}

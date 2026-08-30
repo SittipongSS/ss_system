@@ -5,14 +5,14 @@ import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { useRouter } from "next/navigation";
 import { Target, Plus, Trash2, X, Check } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import Textarea from "@/components/ui/Textarea";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
 
@@ -87,7 +87,6 @@ function RockCard({ row, deptLabel, canEdit, onSaved, onDeleted }) {
 
 export default function MgmtRocksPage() {
   const role = useRole();
-  const router = useRouter();
   const canEdit = useCan("mgmt:edit");
   const canMgmt = useCan("mgmt:view");
   const [year, setYear] = useState(nowYear);
@@ -95,8 +94,6 @@ export default function MgmtRocksPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addDept, setAddDept] = useState("");
-
-  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
   useEffect(() => {
     apiFetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
   }, []);
@@ -134,9 +131,18 @@ export default function MgmtRocksPage() {
     if (res.ok) { const created = await res.json(); setRows((p) => [...p, created]); setAddDept(""); }
     else notifyToast.error((await res.json().catch(() => ({}))).error || "เพิ่มไม่สำเร็จ");
   };
-
-  if (role && !canMgmt) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canMgmt) === "denied") {
+    return (
+      <AccessDenied
+        icon={<Target size={22} />}
+        title="Rock & Improve"
+        message="งานบริหารเปิดให้ผู้บริหารและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}
+      />
+    );
+  }
   return (
     <Workspace
       icon={<Target size={22} />}

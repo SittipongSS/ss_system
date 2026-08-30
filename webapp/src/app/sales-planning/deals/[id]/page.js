@@ -18,7 +18,7 @@ import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
 import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType } from "@/lib/salesPlanning";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -1216,9 +1216,17 @@ export default function DealOverviewPage() {
                     <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
                       <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
                     </button>
-                    <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป" : "ต้องผูกลูกค้าก่อน"}>
+                    {/* หรี่เงียบ ๆ ตอนไม่มีลูกค้า = เหตุอยู่ใน tooltip ซึ่งจอสัมผัสไม่มีวันเห็น
+                        (กฎ: docs/ui-visibility-rule.md) */}
+                    <GatedAction
+                      variant="quiet"
+                      blocker={deal?.customerId ? "" : "ต้องผูกลูกค้าเข้าดีลก่อน — โครงการเดิมค้นจากลูกค้าของดีล (แก้ที่ปุ่มแก้ไขดีล)"}
+                      onClick={openLinkProject}
+                      disabled={!!actionBusy}
+                      title="ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป"
+                    >
                       <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                    </button>
+                    </GatedAction>
                   </div>
                 )}
               </>
@@ -1232,20 +1240,24 @@ export default function DealOverviewPage() {
                       title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
                       <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
                     </button>
-                    {/* เดิมเป็นลิสต์ชื่อ stage ฮาร์ดโค้ด — พอสลับลำดับ (B4) "เสนอราคา" ย้ายไป
-                        อยู่หลัง "เสนอไทม์ไลน์" แต่ไม่มีในลิสต์ ดีลที่ออกใบแล้วจะกดสร้าง/ผูก
-                        โครงการไม่ได้เลย. เทียบตำแหน่งแทนชื่อ = ลำดับขยับอีกกี่ครั้งก็ไม่พัง */}
-                    {stageAtLeast(deal?.stage, 'timeline_proposed') && (
-                      <>
-                        <button type="button" className="btn ghost" onClick={openCreatePM} disabled={!!actionBusy}>
-                          <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
-                        </button>
-                        {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
-                        <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy} title="ผูกดีลเข้าโครงการที่มีอยู่">
-                          <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                        </button>
-                      </>
-                    )}
+                    {/* เดิมซ่อนสองปุ่มนี้จนกว่าดีลจะถึงขั้น "เสนอไทม์ไลน์" — แต่ด่านฝั่ง server
+                        (`create-project`) ไม่ได้ตรวจ stage เลย จอจึงเข้มกว่าของจริงและ
+                        ปุ่มหายเงียบ ๆ โดยไม่มีอะไรบอกว่าต้องทำอะไรก่อน. เหลือด่านจริง
+                        อย่างเดียว = ต้องมีลูกค้าก่อนจึงหาโครงการเดิมของลูกค้าเจอ
+                        (กฎ: docs/ui-visibility-rule.md) */}
+                    <Button variant="quiet" onClick={openCreatePM} disabled={!!actionBusy}>
+                      <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
+                    </Button>
+                    {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
+                    <GatedAction
+                      variant="quiet"
+                      blocker={deal?.customerId ? "" : "ต้องผูกลูกค้าเข้าดีลก่อน — โครงการเดิมค้นจากลูกค้าของดีล (แก้ที่ปุ่มแก้ไขดีล)"}
+                      onClick={openLinkProject}
+                      disabled={!!actionBusy}
+                      title="ผูกดีลเข้าโครงการที่มีอยู่"
+                    >
+                      <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
+                    </GatedAction>
                   </div>
                 )}
               </Empty>

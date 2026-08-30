@@ -297,3 +297,63 @@ test('กฎ 7: createFormula ที่ส่ง scentId ต้องส่ง c
     'สร้างสูตรจากกลิ่นโดยไม่ส่งลูกค้า — ด่าน formulaScentCustomerError จะตีกลับทุกครั้ง\n'
     + bad.join('\n'));
 });
+
+// ── 8. หน้าที่ปฏิเสธสิทธิ์ต้องใช้จอกลาง ไม่ใช่จอของตัวเอง ────────────────────
+//
+// 🐞 **ตรวจระบบ 2026-08-30** — จอ "ไม่มีสิทธิ์" ระดับหน้ามีอยู่ **8 แบบ** พร้อมกัน:
+// `AccessDenied` · กล่อง glass-panel ลอย ๆ ไม่มีทางกลับ · `empty-state dashed` ที่เขียน
+// inline style เอง · `StatusNotice` · และที่หนักสุดคือ **`return null` = จอขาวสนิท**
+// (9 หน้า) ซึ่งผู้ใช้แยกไม่ออกว่า "เข้าไม่ได้" หรือ "ระบบค้าง" · หน้างานบริหารยังเด้งไป
+// /home เงียบ ๆ จนดูเหมือนกดลิงก์ผิด
+//
+// กฎ (docs/ui-visibility-rule.md): **ไม่มีสิทธิ์ = ไม่โชว์ · ติดด่าน = โชว์แล้วบอกเหตุ**
+// และการปฏิเสธ *ทั้งหน้า* มีหน้าตาเดียว = `components/ui/AccessDenied`
+//
+// ⚠️ ข้อนี้จับ "หน้าที่เขียนคำปฏิเสธเอง" — ไม่ได้จับหน้าที่ลืมด่านไปเลย (ด่านจริงอยู่
+// ที่ API ซึ่งกฎ 1 คุมอยู่แล้ว) · ที่นี่คุมแค่ว่า *เมื่อจะบอกผู้ใช้ ต้องบอกด้วยจอเดียวกัน*
+
+/* หน้าที่พูดคำว่า "ไม่มีสิทธิ์" ได้โดยไม่ต้องใช้ AccessDenied — ต้องเขียนเหตุผลกำกับ
+   ทุกบรรทัด เพราะทั้งสี่แบบนี้ *ไม่ใช่* การปิดประตูทั้งหน้า */
+const PAGES_WITH_OWN_DENIAL_TEXT = {
+  'pm/tasks/[id]/page.js': 'ข้อความจาก 403 ของ API รายใบ (อยู่นอกทีม) — หน้าเปิดได้ ของในหน้าต่างหาก',
+  'support/[id]/page.js': 'ข้อความจาก 403 ของ API รายใบ — ใบแจ้งปัญหาเห็นได้เฉพาะเรื่องที่ตัวเองแจ้ง',
+  'sa/dashboard/page.js': 'ปฏิเสธราย *แท็บ* ในหน้าที่เข้าได้ — บอกว่าแท็บไหนไม่มีสิทธิ์ แล้วพาไปแท็บที่ได้',
+  'sales-planning/targets/page.js': 'ไม่ได้ปฏิเสธ — เข้าได้แบบอ่านอย่างเดียว ตามกฎ "แก้ไม่ได้แต่ดูได้ = โชว์"',
+  'sales-planning/deals/[id]/page.js': 'ป้ายบอกจำนวนงานที่ถูกกรองออกเพราะสิทธิ์ ตามกฎ "ของที่ถูกกรองออก ให้บอกจำนวน"',
+};
+
+const DENIAL_TEXT = /ไม่มีสิทธิ์|ไม่ได้รับสิทธิ์/;
+
+test('กฎ 8: หน้าที่บอกผู้ใช้ว่าไม่มีสิทธิ์ ต้องบอกผ่าน AccessDenied', () => {
+  const bad = [];
+  for (const rel of listFiles('app', 'page.js')) {
+    if (rel.includes('/api/')) continue;
+    const key = rel.replace(/^app\//, '');
+    if (PAGES_WITH_OWN_DENIAL_TEXT[key]) continue;
+    const text = stripComments(read(rel));
+    if (!DENIAL_TEXT.test(text)) continue;
+    if (text.includes('AccessDenied')) continue;
+    bad.push(rel);
+  }
+  assert.deepEqual(bad, [],
+    'หน้าเขียนจอปฏิเสธสิทธิ์ของตัวเอง — ใช้ <AccessDenied icon title message back /> แทน\n'
+    + '(ถ้าไม่ใช่การปิดประตูทั้งหน้า ให้ลงทะเบียนใน PAGES_WITH_OWN_DENIAL_TEXT พร้อมเหตุผล)\n'
+    + bad.join('\n'));
+});
+
+// ── 9. ไม่มีสิทธิ์ ห้ามจบด้วยจอขาว ─────────────────────────────────────────
+//
+// คู่กับข้อ 8 แต่จับอีกด้าน: `return null` ตอนด่านสิทธิ์ไม่ผ่าน = ไม่มีทั้งคำอธิบายและ
+// ทางกลับ · proxy เปิด URL หลายเส้นให้ทุก role กดถึงได้อยู่แล้ว ⇒ ทางตันจริง ไม่ใช่ทฤษฎี
+test('กฎ 9: หน้าห้าม return null เมื่อด่านสิทธิ์ไม่ผ่าน', () => {
+  const bad = [];
+  const silent = /if\s*\([^)]*\bcan[A-Z][A-Za-z]*\b[^)]*\)\s*return null;/;
+  for (const rel of listFiles('app', 'page.js')) {
+    if (rel.includes('/api/')) continue;
+    const text = stripComments(read(rel));
+    if (silent.test(text)) bad.push(rel);
+  }
+  assert.deepEqual(bad, [],
+    'หน้าคืน null ตอนไม่มีสิทธิ์ = จอขาวสนิท · ใช้ accessState() + <AccessDenied /> แทน\n'
+    + bad.join('\n'));
+});

@@ -20,7 +20,8 @@ import { canManageProductCategories } from "@/lib/permissions";
 import { fmtDateTime, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const ACTION_META = {
   create: { label: "เพิ่มใหม่", tone: "green" },
   update: { label: "แก้ไข", tone: "blue" },
@@ -173,8 +174,20 @@ export default function ProductCategoryImportPage() {
     if (filter === "unchanged") return rows.filter((row) => row.action === "unchanged");
     return rows;
   }, [filter, preview]);
-
-  if (!role || !canManage) return null;
+  /* ⛔ เดิม return null = จอขาวสนิท ทั้งตอนยังไม่รู้ว่าใครเข้ามาและตอนไม่มีสิทธิ์จริง
+     (กฎ: docs/ui-visibility-rule.md) */
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<Upload size={22} />}
+        title="นำเข้าหมวดสินค้า"
+        message="หน้านี้สำหรับผู้ดูแลระบบและผู้ที่ได้รับสิทธิ์จัดการหมวดสินค้าเท่านั้น"
+        back={{ href: "/database/product-categories", label: "กลับหน้าหมวดสินค้า" }}
+      />
+    );
+  }
   const step = committed ? 4 : preview ? 3 : file ? 2 : 1;
   const summary = preview?.summary || {};
   const issueCount = (summary.error || 0) + (summary.conflict || 0);

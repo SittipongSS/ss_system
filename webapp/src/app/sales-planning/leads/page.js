@@ -51,7 +51,8 @@ import Pager from "@/components/ui/Pager";
 import DetailRow from "@/components/ui/DetailRow";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 /* ไอคอนของสามด่าน — ป้ายกับกติกาอยู่ที่ `LEAD_SLA_STAGES` (lib ฝั่งข้อมูลไม่ import react) */
 const SLA_STAGE_ICONS = { screen: <Filter />, assign: <Users />, contact: <PhoneCall /> };
 
@@ -491,11 +492,16 @@ export default function LeadsPage() {
     ? `${fmtDate(range.from)} – ${fmtDate(range.to)}`
     : allMonths ? `ทั้งปี ${yearOfMonth(month) || ""}`.trim() : `เดือน ${month}`;
 
-  if (!canLead && !canView) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canLead || canView) === "denied") {
     return (
-      <SaWorkspace icon={<Inbox size={22} />} title="ลีด">
-        <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </SaWorkspace>
+      <AccessDenied
+        icon={<Inbox size={22} />}
+        title="ลีด"
+        message="คิวลีดเปิดให้ทีมขายและผู้ที่ได้รับสิทธิ์ดูงานขายเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
     );
   }
 

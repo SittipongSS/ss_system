@@ -4,6 +4,7 @@ import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Button from "@/components/ui/Button";
+import GatedAction from "@/components/ui/GatedAction";
 import styles from "./page.module.css";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
@@ -220,6 +221,7 @@ export default function PoDetailPage() {
   const { data: products } = useApiList("/api/sahamit/products");
   const prodIdx = useMemo(() => indexProducts(products), [products]);
   const po = useMemo(() => pos.find((p) => p.id === id) || null, [pos, id]);
+  const poEmptyBlocker = po?.lines?.length ? "" : "PO ใบนี้ยังไม่มีรายการสินค้า — เพิ่มรายการที่หน้าแก้ PO ก่อน";
   const trackByLine = useMemo(() => {
     const m = new Map();
     for (const r of material) m.set(r.poLineId, r.tracking || null);
@@ -581,9 +583,12 @@ export default function PoDetailPage() {
                     {po.projectId ? (
                       <Link className="btn ghost sm" href={`/sa/projects/${po.projectId}`}><ExternalLink size={13} /> เปิด PM Project</Link>
                     ) : canCreateProject ? (
+                      /* PO เปล่ายังผูก/สร้างโครงการไม่ได้ (ไม่มีบรรทัดให้ยกไป) — เดิมหรี่ปุ่ม
+                         เงียบ ๆ ไม่มีอะไรบอกว่าต้องไปเพิ่มรายการที่หน้าแก้ PO ก่อน
+                         (กฎ: docs/ui-visibility-rule.md) */
                       <>
-                        <button type="button" className="btn ghost sm" onClick={openLinkProject} disabled={!po.lines?.length}><PackageCheck size={13} /> เลือกโครงการเดิม</button>
-                        <button type="button" className="btn ghost sm" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}><PackageCheck size={13} /> สร้างโครงการใหม่</button>
+                        <GatedAction variant="quiet" size="sm" blocker={poEmptyBlocker} onClick={openLinkProject}><PackageCheck size={13} /> เลือกโครงการเดิม</GatedAction>
+                        <GatedAction variant="quiet" size="sm" blocker={poEmptyBlocker} onClick={() => setProjectConfirmOpen(true)}><PackageCheck size={13} /> สร้างโครงการใหม่</GatedAction>
                       </>
                     ) : null}
                     {/* ⚠️ เดิมปุ่มนี้ disabled ตอนยังไม่มีโครงการ → เปิดโมดัลไม่ได้เลย
@@ -591,9 +596,9 @@ export default function PoDetailPage() {
                         แล้วไปแก้ในโมดัล (ยังบังคับว่าต้องมีโครงการก่อนยืนยัน — ปุ่มยืนยัน
                         ยัง disabled อยู่ · มติผู้ใช้ 2026-07-29: ห้ามสร้างโครงการให้เอง) */}
                     {canSettle ? (
-                      <button type="button" className="btn ghost sm" onClick={openSettleModal} disabled={!po.lines?.length}>
+                      <GatedAction variant="quiet" size="sm" blocker={poEmptyBlocker} onClick={openSettleModal}>
                         <PackageCheck size={13} /> {po.salesDealId ? "เชื่อมบรรทัดที่เหลือ" : "ยืนยันดีล + ออกใบเสนอราคา"}
-                      </button>
+                      </GatedAction>
                     ) : null}
                     {po.salesDealId ? <Link className="btn ghost sm" href={`/sa/deals/${po.salesDealId}`}><ExternalLink size={13} /> เปิดดีลขาย</Link> : null}
                   </div>

@@ -17,7 +17,9 @@ import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import { NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
+import SkeletonRows from "@/components/ui/Skeleton";
 const EMPTY_FORM = {
   mainSelection: "",
   mainCategoryCode: "",
@@ -216,9 +218,20 @@ export default function ProductCategoriesPage() {
       setSaving(false);
     }
   };
-
-  if (!role || !canManage) return null;
-
+  /* ⛔ เดิม return null = จอขาวสนิท ทั้งตอนยังไม่รู้ว่าใครเข้ามาและตอนไม่มีสิทธิ์จริง
+     (กฎ: docs/ui-visibility-rule.md) */
+  const gate = accessState(role, canManage);
+  if (gate === "loading") return <SkeletonRows rows={6} />;
+  if (gate === "denied") {
+    return (
+      <AccessDenied
+        icon={<Tags size={22} />}
+        title="หมวดสินค้า"
+        message="หน้านี้สำหรับผู้ดูแลระบบและผู้ที่ได้รับสิทธิ์จัดการหมวดสินค้าเท่านั้น"
+        back={{ href: "/database", label: "กลับหน้าฐานข้อมูล" }}
+      />
+    );
+  }
   const editing = drawer?.mode === "edit";
   return (
     <Workspace

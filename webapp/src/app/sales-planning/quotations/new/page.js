@@ -24,7 +24,7 @@ import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTe
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { customerSelectOptions } from "@/components/master/customerOption";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
@@ -39,10 +39,12 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 function NewQuotationInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const role = useRole();
   const canEdit = useCan("salesplan:edit");
 
   /* ⭐ **กลับไปที่เดิมเมื่อยกเลิก** — แพตเทิร์นเดียวกับ `/requests/new` และปุ่มบรีฟกลิ่น
@@ -381,11 +383,16 @@ function NewQuotationInner() {
     }
   }, [dealId, selectedDeal, customerId, contactIndex, contacts.length, billingAddressId, billingOptions.length, shippingAddressId, shippingOptions.length, lines, quoteDate, validUntil, discountType, discountValue, vatRate, payment, paymentPlan, notes, referenceNote, notesPresetVersionId, router]);
 
-  if (!canEdit) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canEdit) === "denied") {
     return (
-      <Workspace icon={<FileText size={22} />} title="สร้างใบเสนอราคา">
-        <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์สร้างใบเสนอราคา</div>
-      </Workspace>
+      <AccessDenied
+        icon={<FileText size={22} />}
+        title="สร้างใบเสนอราคา"
+        message="การออกใบเสนอราคาเปิดให้ทีมขายที่มีสิทธิ์แก้ไขงานขายเท่านั้น"
+        back={{ href: "/sales-planning/quotations", label: "กลับทะเบียนใบเสนอราคา" }}
+      />
     );
   }
 

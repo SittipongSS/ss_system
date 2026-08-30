@@ -3,16 +3,16 @@
   "modules": {
     "sales": {
       "legacyTable": 41,
-      "legacySurface": 73,
-      "inlineStyle": 893,
-      "rawButtonClass": 156,
+      "legacySurface": 68,
+      "inlineStyle": 888,
+      "rawButtonClass": 153,
       "rawInputClass": 49
     },
     "sahamit": {
       "legacyTable": 21,
       "legacySurface": 34,
-      "inlineStyle": 670,
-      "rawButtonClass": 67,
+      "inlineStyle": 654,
+      "rawButtonClass": 64,
       "rawInputClass": 25
     },
     "database": {
@@ -38,7 +38,7 @@
     },
     "settings": {
       "legacyTable": 8,
-      "legacySurface": 29,
+      "legacySurface": 28,
       "inlineStyle": 72,
       "rawButtonClass": 90,
       "rawInputClass": 37

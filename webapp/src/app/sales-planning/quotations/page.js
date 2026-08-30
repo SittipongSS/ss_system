@@ -31,7 +31,8 @@ import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrou
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 // ป้ายสถานะใช้ชุดกลาง QUOTE_STATUS_LABELS/quoteStatusBadge จาก components/salesPlanning/ui
 const statusBadge = (s, className) => quoteStatusBadge(s, className);
 
@@ -306,11 +307,16 @@ export default function QuotationsPage() {
                 </DetailRow>
   );
 
-  if (!canView) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canView) === "denied") {
     return (
-      <SaWorkspace icon={<FileText size={22} />} title="ใบเสนอราคา">
-        <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </SaWorkspace>
+      <AccessDenied
+        icon={<FileText size={22} />}
+        title="ใบเสนอราคา"
+        message="ทะเบียนใบเสนอราคาเปิดให้ทีมขายและผู้ที่ได้รับสิทธิ์ดูงานขายเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
     );
   }
 

@@ -1,27 +1,23 @@
 "use client";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Trash2, RotateCcw, ListTodo, Users, Target } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { fmtDateTime } from "@/lib/format";
 import Workspace from "@/components/ui/Workspace";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const fmt = (d) => (d ? fmtDateTime(d) : "");
 
 export default function MgmtTrashPage() {
   const role = useRole();
-  const router = useRouter();
   const canEdit = useCan("mgmt:edit");
   const canMgmt = useCan("mgmt:view");
   const [data, setData] = useState({ tasks: [], meetings: [], rocks: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -68,9 +64,18 @@ export default function MgmtTrashPage() {
       )}
     </div>
   );
-
-  if (role && !canMgmt) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canMgmt) === "denied") {
+    return (
+      <AccessDenied
+        icon={<Trash2 size={22} />}
+        title="ถังขยะ"
+        message="งานบริหารเปิดให้ผู้บริหารและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}
+      />
+    );
+  }
   return (
     <Workspace
       icon={<Trash2 size={22} />}

@@ -12,13 +12,15 @@ import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { apiCache } from "@/lib/apiCache";
 import { lineLockReason } from "@/lib/sahamit/poEdit";
 import { ppcOf } from "@/lib/sahamit/units";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { fmtNumber } from "@/lib/format";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 export default function PoEditPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id;
+  const role = useRole();
   const canEdit = useCan("sahamit:edit");
   const { data: pos, loading } = useApiList("/api/sahamit/po");
   const { data: products } = useApiList("/api/sahamit/products");
@@ -102,13 +104,15 @@ export default function PoEditPage() {
     </Workspace>
   );
 
-  if (!canEdit) {
-    return shell(
-      <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-        <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-        <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์แก้ PO</div>
-        <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
-      </div>,
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canEdit) === "denied") {
+    return (
+      <AccessDenied
+        icon={<ShoppingCart size={22} />}
+        title="แก้ PO"
+        message="การแก้ PO เปิดให้ผู้ที่มีสิทธิ์แก้ไขข้อมูลสหมิตรเท่านั้น — บัญชีนี้ดูข้อมูลได้อย่างเดียว"
+        back={{ href: "/sahamit/po", label: "Purchase Orders" }}
+      />
     );
   }
   if (loading && !po) return shell(<div style={{ padding: 24, color: "var(--text-3)" }}>กำลังโหลด...</div>);

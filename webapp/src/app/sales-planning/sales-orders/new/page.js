@@ -29,7 +29,7 @@ import DateInput from "@/components/ui/DateInput";
 import PendingFiles from "@/components/ui/PendingFiles";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableScroll } from "@/components/ui/Table";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
@@ -39,6 +39,7 @@ import { validateOrderConfirmation, MAX_CONFIRM_ATTACHMENTS } from "@/lib/sales/
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import { describeResponseError } from "@/lib/fetchError";
 import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -47,6 +48,7 @@ const EMPTY_CONFIRMATION = { docType: "", docNo: "", docDate: "", attachments: [
 function NewSalesOrderInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const role = useRole();
   const canEdit = useCan("salesplan:edit");
   const quotationId = params.get("quotationId") || "";
   // กลับไปที่เดิมเมื่อยกเลิก (แพตเทิร์นเดียวกับ /sa/quotations/new) — ค่าที่ไม่ใช่
@@ -188,7 +190,17 @@ function NewSalesOrderInner() {
     }
   }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, confirmation, plannedInstallments, dues, firstPaid, firstPaidOn, router]);
 
-  if (!canEdit) return <AccessDenied title="สร้างใบสั่งขาย" message="ไม่มีสิทธิ์สร้างใบสั่งขาย" />;
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canEdit) === "denied") {
+    return (
+      <AccessDenied
+        icon={<ClipboardList size={22} />}
+        title="สร้างใบสั่งขาย"
+        message="การออกใบสั่งขายเปิดให้ทีมขายที่มีสิทธิ์แก้ไขงานขายเท่านั้น"
+        back={{ href: "/sales-planning/sales-orders", label: "กลับทะเบียนใบสั่งขาย" }}
+      />
+    );
+  }
 
   if (loading) {
     return (

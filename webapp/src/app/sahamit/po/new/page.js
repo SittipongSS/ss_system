@@ -7,12 +7,14 @@ import PoForm, { emptyPoHeader, rowsToLines } from "@/components/sahamit/PoForm"
 import { useApiList } from "@/lib/excise/useApiList";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { ppcOf } from "@/lib/sahamit/units";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { fmtNumber } from "@/lib/format";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 // สร้าง PO — หน้าเต็ม. ฟอร์มมาจาก PoForm (ตัวเดียวกับหน้าแก้ /sahamit/po/[id]/edit)
 export default function PoCreatePage() {
   const router = useRouter();
+  const role = useRole();
   const canEdit = useCan("sahamit:edit");
   const { data: products } = useApiList("/api/sahamit/products");
 
@@ -57,20 +59,15 @@ export default function PoCreatePage() {
   };
 
   // viewer (ไม่มี sahamit:edit) เข้าหน้าสร้าง PO ไม่ได้ — โชว์ข้อความอย่างเดียว
-  if (!canEdit) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canEdit) === "denied") {
     return (
-      <Workspace
+      <AccessDenied
         icon={<ShoppingCart size={22} />}
         title="บันทึก PO ใหม่"
-        subtitle="กำหนดรับ + สถานที่ส่ง = ทั้ง PO · รายการใส่แค่จำนวน (ลูกค้า AR-109)"
+        message="การสร้าง PO เปิดให้ผู้ที่มีสิทธิ์แก้ไขข้อมูลสหมิตรเท่านั้น — บัญชีนี้ดูข้อมูลได้อย่างเดียว"
         back={{ href: "/sahamit/po", label: "Purchase Orders" }}
-      >
-        <div className="empty-state dashed" style={{ padding: 48, textAlign: "center", color: "var(--text-3)" }}>
-          <ShoppingCart size={28} strokeWidth={1.5} style={{ marginBottom: 10 }} />
-          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-9)" }}>ไม่มีสิทธิ์สร้าง PO</div>
-          <div style={{ fontSize: "var(--fs-7)", marginTop: 6 }}>บัญชีนี้ดูข้อมูลได้อย่างเดียว</div>
-        </div>
-      </Workspace>
+      />
     );
   }
 

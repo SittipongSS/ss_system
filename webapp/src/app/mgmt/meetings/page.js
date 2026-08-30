@@ -3,7 +3,6 @@ import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { useRouter } from "next/navigation";
 import { Users, Plus, Calendar, Clock3 } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
 import MeetingFormModal from "@/components/mgmt/MeetingFormModal";
@@ -13,7 +12,8 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
 const fmt = (d) => {
@@ -24,7 +24,6 @@ const fmt = (d) => {
 
 export default function MgmtMeetingsPage() {
   const role = useRole();
-  const router = useRouter();
   const canEdit = useCan("mgmt:edit");
   const canMgmt = useCan("mgmt:view");
 
@@ -36,9 +35,6 @@ export default function MgmtMeetingsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMeeting, setFormMeeting] = useState(null);
   const [selected, setSelected] = useState(null);
-
-  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
-
   useEffect(() => {
     apiFetch("/api/mgmt/departments").then((r) => (r.ok ? r.json() : [])).then((d) => setDepartments(Array.isArray(d) ? d : [])).catch(() => {});
     cachedFetchJson("/api/pm/assignable-users").then((d) => setUsers(Array.isArray(d) ? d : [])).catch(() => {});
@@ -71,9 +67,18 @@ export default function MgmtMeetingsPage() {
 
   const openCreate = () => { setFormMeeting(null); setFormOpen(true); };
   const openEdit = (m) => { setSelected(null); setFormMeeting(m); setFormOpen(true); };
-
-  if (role && !canMgmt) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canMgmt) === "denied") {
+    return (
+      <AccessDenied
+        icon={<Users size={22} />}
+        title="การประชุม"
+        message="งานบริหารเปิดให้ผู้บริหารและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}
+      />
+    );
+  }
   return (
     <Workspace
       icon={<Users size={22} />}

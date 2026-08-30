@@ -32,7 +32,8 @@ import { fmtMoney, fmtPercent, NA } from "@/lib/format";
 import StatusNotice from "@/components/ui/StatusNotice";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 /* รายงานยอดขาย — เป้าเทียบยอดจริงตามช่วงเดือน แล้วเจาะลงถึงใบสั่งขาย
  *
  * ⭐ **หน้าของตัวเอง ไม่ใช่ส่วนขยายของแท็บผลงานขาย** (มติผู้ใช้ 2026-08-26 หลังรื้อรอบสอง)
@@ -149,13 +150,16 @@ export default function SalesReportPage() {
   const peopleActualTotal = sum((data?.people || []).map((p) => sum(splitIdx.map((i) => p.actual[i]))));
   const companySplitActual = sum(splitIdx.map((i) => company?.actual[i]));
 
-  if (!canTarget) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canTarget) === "denied") {
     return (
-      <Workspace icon={<ChartColumn size={22} />} title="รายงานยอดขาย" back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}>
-        <StatusNotice tone="warning" title="ไม่มีสิทธิ์เปิดรายงานนี้">
-          เปิดได้เฉพาะหัวหน้าฝ่ายขายและผู้ดูแลระบบ{role ? ` — บัญชีนี้เป็น ${role}` : ""}
-        </StatusNotice>
-      </Workspace>
+      <AccessDenied
+        icon={<ChartColumn size={22} />}
+        title="รายงานยอดขาย"
+        message="รายงานนี้เปิดให้หัวหน้าฝ่ายขายและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/sa/targets", label: "กลับหน้าวางเป้า" }}
+      />
     );
   }
 

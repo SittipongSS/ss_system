@@ -7,7 +7,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { useEffect, useState } from "react";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff } from "lucide-react";
 import { nextMonthKey } from "@/lib/usersTransfer";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
   TEAMS,
@@ -33,7 +33,8 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 // team = ทีมหลัก (ยอด/เจ้าของงานที่สร้างใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
 // (ขอบเขตการเห็น/แก้) — คนเดียวอยู่ได้หลายทีม เช่น AE ที่อยู่ทั้ง ODM และ Services
 const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", teams: ["ODM"], extraCaps: [] };
@@ -49,6 +50,7 @@ const personLabel = (u) => [u.firstName, u.lastName].filter(Boolean).join(" ")
   || (u.loginPhone ? `เบอร์ ${u.loginPhone}` : u.email);
 
 export default function UserManagement() {
+  const role = useRole();
   const canManage = useCan("users:manage");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -269,11 +271,16 @@ export default function UserManagement() {
     }
   };
 
-  if (!canManage) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canManage) === "denied") {
     return (
-      <div className="glass-panel p-12 text-center text-[var(--text-3)]">
-        คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการผู้ใช้
-      </div>
+      <AccessDenied
+        icon={<Users size={22} />}
+        title="จัดการผู้ใช้"
+        message="หน้านี้สำหรับผู้ดูแลระบบและผู้ที่ได้รับสิทธิ์จัดการบัญชีผู้ใช้เท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
     );
   }
 

@@ -20,7 +20,7 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan } from "@/lib/roleContext";
+import { useRole, useCan } from "@/lib/roleContext";
 import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectDealTypes";
 import styles from "./page.module.css";
 import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
@@ -29,7 +29,8 @@ import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
 import { BUSINESS_LINES, businessLineLabel, businessLineTone, isBusinessLine } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 /* เงินเต็มรูปแบบ ไม่ย่อ K/M (มติผู้ใช้ 2026-08-02) — ตัวเลขที่ย่อแล้วเอาไปเทียบกับ
    ใบเสนอราคา/SO ไม่ได้ ต้องเปิดหน้าอื่นดูเลขจริงอยู่ดี · คอลัมน์จัดการที่ถอดออกไป
    คืนความกว้างมาให้พอดี */
@@ -82,6 +83,7 @@ function compareProjects(a, b, key, dir) {
 const EMPTY = [];
 
 export default function ProjectsIndexPage() {
+  const role = useRole();
   const canView = useCan("salesplan:view");
   /* ⚠️ หน้านี้ "อ่านอย่างเดียว" โดยเจตนา (มติผู้ใช้ 2026-08-02) — ต่างจากหน้ารายการ
      ลีด/ดีล ที่ยังมีปุ่มก้าวถัดไป + เมนู "…" ในแถว
@@ -290,11 +292,16 @@ export default function ProjectsIndexPage() {
                 );
   };
 
-  if (!canView) {
+  /* ⛔ จอปฏิเสธสิทธิ์มีหน้าตาเดียวทั้งระบบ (กฎ: docs/ui-visibility-rule.md)
+     เดิมเป็นกล่องข้อความลอย ๆ ไม่มีทางกลับ และฟ้องตั้งแต่ยังไม่รู้ว่าใครเข้ามา */
+  if (accessState(role, canView) === "denied") {
     return (
-      <SaWorkspace icon={<FolderKanban size={22} />} title="โครงการ">
-        <div className="glass-panel" style={{ padding: 16, color: "var(--text-3)" }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div>
-      </SaWorkspace>
+      <AccessDenied
+        icon={<FolderKanban size={22} />}
+        title="โครงการ"
+        message="หน้าโครงการเปิดให้ทีมขายและผู้ที่ได้รับสิทธิ์ดูงานขายเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
     );
   }
 

@@ -8,7 +8,8 @@ import MonthGrid, { isoOf } from "@/components/ui/MonthGrid";
 import { cachedFetchJson } from "@/lib/apiCache";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
 
 export default function MgmtCalendarPage() {
@@ -20,9 +21,6 @@ export default function MgmtCalendarPage() {
   const [tasks, setTasks] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [holidays, setHolidays] = useState([]);
-
-  useEffect(() => { if (role && !canMgmt) router.replace("/home"); }, [role, canMgmt, router]);
-
   // holidays (ทั้งหมด) โหลดครั้งเดียว
   useEffect(() => {
     cachedFetchJson("/api/holidays").then((d) => setHolidays(Array.isArray(d) ? d : [])).catch(() => {});
@@ -57,9 +55,18 @@ export default function MgmtCalendarPage() {
   });
 
   const todayISO = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
-
-  if (role && !canMgmt) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canMgmt) === "denied") {
+    return (
+      <AccessDenied
+        icon={<CalendarDays size={22} />}
+        title="ปฏิทินงานบริหาร"
+        message="งานบริหารเปิดให้ผู้บริหารและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}
+      />
+    );
+  }
   return (
     <Workspace hideHeader back={{ href: "/mgmt", label: "กลับหน้าภาพรวมงานบริหาร" }}>
       <div className="premium-header">

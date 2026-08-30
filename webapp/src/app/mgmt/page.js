@@ -10,7 +10,8 @@ import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
 import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
-
+import AccessDenied from "@/components/ui/AccessDenied";
+import { accessState } from "@/lib/accessGate";
 const nowYear = new Date().getFullYear();
 const YEAR_OPTIONS = [nowYear + 1, nowYear, nowYear - 1, nowYear - 2, nowYear - 3];
 
@@ -30,7 +31,6 @@ export default function MgmtOverviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (role && !canMgmt) router.replace("/home");
   }, [role, canMgmt, router]);
 
   useEffect(() => {
@@ -56,9 +56,18 @@ export default function MgmtOverviewPage() {
     });
     return `conic-gradient(${stops.join(", ")})`;
   }, [counts]);
-
-  if (role && !canMgmt) return null;
-
+  /* ⛔ ไม่มีสิทธิ์ = บอกให้รู้ พร้อมทางกลับ — เดิมเด้งไป /home เงียบ ๆ จนแยกไม่ออก
+     ว่าเข้าไม่ได้หรือกดลิงก์ผิด (กฎ: docs/ui-visibility-rule.md) */
+  if (accessState(role, canMgmt) === "denied") {
+    return (
+      <AccessDenied
+        icon={<LayoutDashboard size={22} />}
+        title="ภาพรวมงานบริหาร"
+        message="งานบริหารเปิดให้ผู้บริหารและผู้ดูแลระบบเท่านั้น"
+        back={{ href: "/home", label: "กลับหน้าแรก" }}
+      />
+    );
+  }
   return (
     <Workspace
       icon={<LayoutDashboard size={22} />}
