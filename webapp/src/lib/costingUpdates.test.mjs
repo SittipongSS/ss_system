@@ -190,3 +190,18 @@ test('ออก Rev. เขียนสองเธรด — ใบเก่า
   assert.equal(empty.onBase, null);
   assert.equal(empty.onNew, null);
 });
+
+/* ── ลงคิวใหม่ ≠ รอบแก้ (เจอตอนซ้อม UAT 2026-08-30) ─────────────────────── */
+test('🔴 ลงคิวใหม่หลังนัดปิด/หาย ต้องไม่เล่าว่าเป็น "รอบแก้" ที่วันซ้ำกันเอง', () => {
+  const ask = { committedDueDate: '2026-10-14' };
+  const requeued = askActionUpdate('commit-due', ask, {
+    dept: 'TS', previousDueDate: '2026-10-14', requeue: true,
+  });
+  assert.match(requeued.body, /ลงคิวใหม่ 14\/10\/2026/);
+  assert.doesNotMatch(requeued.body, /รอบแก้/);
+  assert.equal(requeued.meta.requeue, true);
+
+  // รอบแก้ของผู้ขอยังเล่าแบบเดิม — วันต่างกันจริง และคำว่า "รอบก่อน" มีความหมาย
+  const rework = askActionUpdate('commit-due', ask, { dept: 'TS', previousDueDate: '2026-10-08' });
+  assert.match(rework.body, /รอบแก้ 14\/10\/2026 \(รอบก่อน 08\/10\/2026\)/);
+});
