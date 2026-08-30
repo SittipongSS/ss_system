@@ -29,8 +29,12 @@ import { ROLE_LABELS } from "@/lib/permissions";
 import { fmtNumber, naText } from "@/lib/format";
 import styles from "./TeamManager.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { useRole } from "@/lib/roleContext";
 
 export default function TeamManager({ department, title, subtitle }) {
+  /* ⚠️ ลบทีมเป็นของ **แอดมิน** อย่างเดียว — หัวหน้าฝ่ายปิดทีมได้ แต่ลบไม่ได้
+     (ด่านจริงอยู่ที่ DELETE /api/teams/[code] · ตรงนี้แค่ไม่วาดปุ่มให้คนที่กดไม่ผ่าน) */
+  const isAdmin = useRole() === "admin";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -42,6 +46,7 @@ export default function TeamManager({ department, title, subtitle }) {
   const [moveTarget, setMoveTarget] = useState([]);
   const [moveImpact, setMoveImpact] = useState([]);
   const [closing, setClosing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const [crewTeam, setCrewTeam] = useState(null);   // ทีมปฏิบัติงานที่กำลังจัดสมาชิก
   const [crewIds, setCrewIds] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -174,6 +179,15 @@ export default function TeamManager({ department, title, subtitle }) {
                         <Button tone="neutral" variant="quiet" size="sm"
                           onClick={() => setClosing({ team, members: members.length })}>
                           ปิดทีม
+                        </Button>
+                      )}
+                      {/* ⭐ **ลบทีม = ของแอดมิน** (มติผู้ใช้ 2026-08-30) — ใช้กับทีมที่
+                          ตั้งผิดแล้วยังไม่มีใครใช้ · ทีมที่มีประวัติแล้ว server จะตีกลับ
+                          พร้อมบอกว่าติดอะไรอยู่ (ปุ่มไม่ซ่อน เพื่อให้เหตุผลถูกอ่าน) */}
+                      {isAdmin && (
+                        <Button tone="danger" variant="quiet" size="sm"
+                          onClick={() => setDeleting({ team, members: members.length })}>
+                          ลบทีม
                         </Button>
                       )}
                     </div>
@@ -395,6 +409,25 @@ export default function TeamManager({ department, title, subtitle }) {
           </>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title={`ลบทีม ${deleting?.team?.name || ""}`}
+        /* ⚠️ บอกกติกาให้ครบ **ก่อน** กด — ไม่ใช่ให้กดแล้วค่อยเจอ 409
+           (รหัสทีมถูกก๊อปลงหลายตาราง ลบทีมที่มีประวัติแล้วป้ายย้อนหลังจะกลายเป็นรหัสดิบ) */
+        message={deleting?.members
+          ? `ทีมนี้ยังมีสมาชิก ${deleting.members} คน — ย้ายคนออกให้หมดก่อน`
+          : "ลบได้เฉพาะทีมที่ยังไม่มีใครใช้ (ไม่มีดีล ลีด เป้า สัญญา หรือคนสังกัด) — ถ้าเคยใช้แล้วระบบจะตีกลับ ให้ใช้ “ปิดทีม” แทน"}
+        confirmLabel="ลบทีม"
+        tone="danger"
+        onClose={() => setDeleting(null)}
+        onConfirm={deleting?.members ? undefined : async () => {
+          const done = await call(`/api/teams/${encodeURIComponent(deleting.team.code)}`, {
+            method: "DELETE",
+          }, `ลบทีม ${deleting.team.name} แล้ว`);
+          if (done) setDeleting(null);
+        }}
+      />
 
       <ConfirmDialog
         open={!!closing}
