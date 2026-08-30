@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, FileWarning, Settings, Signature, Workflow } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import DeniedNotice from "@/components/ui/DeniedNotice";
 import { useCapUser } from "@/lib/roleContext";
 import { settingsNavForUser } from "@/config/settingsNav";
 import { canUser } from "@/lib/permissions";
@@ -107,6 +108,7 @@ export default function SettingsOverviewPage() {
           ระหว่างก้อนมาจากตัวห่อ `flex flex-col gap-4` เหมือนหน้าอื่นที่ใช้คู่นี้
           (RD · ใบสั่งขาย · โครงการ) ไม่มีตัวห่อ = ขอบสองกล่องชนกันเป็นเส้นคู่ */}
       <div className="flex flex-col gap-4">
+      <DeniedNotice />
       {attention.length > 0 && (
         <WorkspaceSection
           icon={<AlertTriangle size={18} />}

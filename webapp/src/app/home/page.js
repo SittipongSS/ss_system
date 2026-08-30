@@ -18,6 +18,7 @@ import {
 } from "@/config/systems";
 import useNavCounts, { navCountForSystem } from "@/lib/nav/useNavCounts";
 import BrandMark from "@/components/BrandMark";
+import DeniedNotice from "@/components/ui/DeniedNotice";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import EmptyState from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -197,6 +198,7 @@ export default function HomeHubPage() {
           </nav>
         </header>
 
+        <DeniedNotice />
         <section className={`home-hub-hero glass-panel${recentSystem ? ' has-continue' : ''}`} aria-labelledby="home-greeting">
           <div className="home-hub-greeting">
             <span className="home-hub-eyebrow">ศูนย์รวมการทำงานระบบสุข</span>

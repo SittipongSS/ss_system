@@ -13,6 +13,7 @@ import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ProductForm, { EMPTY_PRODUCT } from "@/components/database/ProductForm";
 import Workspace from "@/components/ui/Workspace";
+import DeniedNotice from "@/components/ui/DeniedNotice";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
@@ -442,6 +443,7 @@ export default function ProductRegistry() {
       loading={loading}
       rail={
         <>
+          <DeniedNotice />
           <StatCards
             items={[
               { label: "ทั้งหมด", value: products.length },

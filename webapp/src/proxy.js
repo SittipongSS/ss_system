@@ -2,6 +2,17 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
 
+/* ปลายทางของการ "เด้งออก" ต้องบอกได้ว่าเด้งเพราะอะไร — เดิม redirect ไป /home
+   หรือ /settings เปล่า ๆ ผู้ใช้จึงเห็นแค่หน้าที่ไม่ได้กด แล้วเดาเองว่าลิงก์เสีย
+   หรือสิทธิ์ไม่ถึง (เคยกลายเป็นใบแจ้งปัญหาจริงมาแล้วสองรอบ: /rd และ /notifications
+   ตกจาก OPEN_PAGES) · `?denied=` ให้หน้าปลายทางขึ้นแถบบอกเหตุได้
+   กฎ: docs/ui-visibility-rule.md — ติดด่านแล้วต้องแจ้ง ห้ามเงียบ */
+const deniedUrl = (dest, path, request) => {
+  const target = new URL(dest, request.url);
+  target.searchParams.set('denied', path);
+  return target;
+};
+
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
 //   1. Refresh the Supabase auth session cookie on each request.
@@ -85,15 +96,11 @@ export async function proxy(request) {
     return withRefreshedCookies(NextResponse.redirect(redirectUrl));
   }
 
-  // Business taxonomy management belongs to the Sales head and the break-glass
-  // admin account. Other signed-in users still read categories through the API
-  // for forms, but a direct URL must not expose the management surface.
-  if (
-    user && !isApi && path.startsWith('/database/product-categories') &&
-    !canManageProductCategories(user.app_metadata?.role)
-  ) {
-    return withRefreshedCookies(NextResponse.redirect(new URL('/database', request.url)));
-  }
+  /* หน้าจัดการหมวดสินค้าเคย **redirect ไป /database เงียบ ๆ** — ผู้ใช้ได้หน้าภาพรวม
+     ที่ไม่เกี่ยวอะไรกับสิ่งที่กด แล้วเดาเอาเองว่าลิงก์เสียหรือสิทธิ์ไม่ถึง
+     ตอนนี้ปล่อยผ่านมาให้หน้าโชว์ `AccessDenied` ของตัวเอง (กฎ: docs/ui-visibility-rule.md)
+     ⚠️ ไม่ได้เปิดข้อมูลเพิ่ม — หน้านี้ return AccessDenied ก่อนยิง API และ
+     `/api/product-types?manage=1` ยังมีด่านของตัวเองเหมือนเดิม */
 
   // มติ 2026-07-20: secretary/marketing ได้ products:view (อ่านแคตตาล็อกอย่างเดียว)
   // แต่ไม่มี customers:view — หน้าภาพรวม /database และหน้าลูกค้าโชว์ข้อมูลลูกค้า
@@ -104,7 +111,7 @@ export async function proxy(request) {
     !can(user.app_metadata?.role, 'customers:view') &&
     can(user.app_metadata?.role, 'products:view')
   ) {
-    return withRefreshedCookies(NextResponse.redirect(new URL('/database/products', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(deniedUrl('/database/products', path, request)));
   }
 
   // Phase 4 versioned settings are system configuration. Keep these pages
@@ -118,21 +125,21 @@ export async function proxy(request) {
     (path.startsWith('/settings/company') || path.startsWith('/settings/workflow-templates')) &&
     !canUser({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, 'master:manage')
   ) {
-    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(deniedUrl('/home', path, request)));
   }
 
   if (
     user && !isApi && path.startsWith('/settings/document-standards') &&
     !canManageDocumentStandards(user.app_metadata?.role)
   ) {
-    return withRefreshedCookies(NextResponse.redirect(new URL('/settings', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(deniedUrl('/settings', path, request)));
   }
 
   if (
     user && !isApi && path.startsWith('/settings/commercial-presets') &&
     !canManageCommercialPresets(user.app_metadata?.role)
   ) {
-    return withRefreshedCookies(NextResponse.redirect(new URL('/settings', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(deniedUrl('/settings', path, request)));
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
@@ -143,7 +150,7 @@ export async function proxy(request) {
   // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
   if (user && !isLogin && lockedOut({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
-    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(deniedUrl('/home', path, request)));
   }
 
   // Role-based write protection for API routes (defense-in-depth; the UI also

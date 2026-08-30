@@ -324,10 +324,15 @@ const PAGES_WITH_OWN_DENIAL_TEXT = {
 
 const DENIAL_TEXT = /ไม่มีสิทธิ์|ไม่ได้รับสิทธิ์/;
 
+/* 🐞 รอบแรกสแกนแค่ `page.js` ⇒ **พลาด `app/sahamit/layout.js`** ซึ่งเด้งทั้งโมดูล
+   ไป /home เงียบ ๆ ด้วย `router.replace` + `return null` · ด่านระดับโมดูลอยู่ที่
+   layout เสมอ ต้องนับด้วย */
+const guardedScreens = () => [...listFiles('app', 'page.js'), ...listFiles('app', 'layout.js')]
+  .filter((rel) => !rel.includes('/api/'));
+
 test('กฎ 8: หน้าที่บอกผู้ใช้ว่าไม่มีสิทธิ์ ต้องบอกผ่าน AccessDenied', () => {
   const bad = [];
-  for (const rel of listFiles('app', 'page.js')) {
-    if (rel.includes('/api/')) continue;
+  for (const rel of guardedScreens()) {
     const key = rel.replace(/^app\//, '');
     if (PAGES_WITH_OWN_DENIAL_TEXT[key]) continue;
     const text = stripComments(read(rel));
@@ -347,9 +352,8 @@ test('กฎ 8: หน้าที่บอกผู้ใช้ว่าไม�
 // ทางกลับ · proxy เปิด URL หลายเส้นให้ทุก role กดถึงได้อยู่แล้ว ⇒ ทางตันจริง ไม่ใช่ทฤษฎี
 test('กฎ 9: หน้าห้าม return null เมื่อด่านสิทธิ์ไม่ผ่าน', () => {
   const bad = [];
-  const silent = /if\s*\([^)]*\bcan[A-Z][A-Za-z]*\b[^)]*\)\s*return null;/;
-  for (const rel of listFiles('app', 'page.js')) {
-    if (rel.includes('/api/')) continue;
+  const silent = /if\s*\([^)]*\bcan[A-Z][A-Za-z]*\b[^)]*\)\s*return null;|\ballowed === false\) return null;/;
+  for (const rel of guardedScreens()) {
     const text = stripComments(read(rel));
     if (silent.test(text)) bad.push(rel);
   }
