@@ -24,7 +24,9 @@ import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { DetailCard } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
@@ -37,7 +39,27 @@ import { apiFetch } from "@/lib/apiFetch";
 //   - คอลัมน์หลักซ้าย = การ์ดรายละเอียดสเปค "พระเอกของหน้า" ตามด้วยต้นทุน/ใบสั่งซื้อ/
 //     โครงการ/เอกสาร — ไม่มีแถบ KPI (StatCards) กับแถวการ์ดโครงการ (ContextCard) ที่
 //     เคยโชว์ข้อมูลซ้ำ 2-3 รอบอีกแล้ว
-//   - rail ขวา = ของประกอบด้านภาษี (breakdown + ทะเบียน) — เฉพาะหมวดสรรพสามิต (ธง isExcise)
+//   - rail ขวา = สรุปสินค้า + Control Panel + ของประกอบด้านภาษี
+//
+// รอบจัดหน้าใหม่ (มติผู้ใช้ 2026-08-30): หน้านี้เคยเป็นหน้า master data หน้าเดียวที่
+// **ไม่ได้ใช้ Control Panel กลาง** — ปุ่มระดับสินค้า (แก้ไข/พักใช้/ลบ) เป็นไอคอนเปล่า
+// สามตัวมุมขวาบน ไม่มีป้ายกำกับ ไม่มีสถานะอนุมัติให้เห็น และปุ่ม "ส่งขึ้นทะเบียน
+// สรรพสามิต" ยังซ้ำอยู่สองที่ (แบนเนอร์ + การ์ดทะเบียนในราง)
+//   ⇒ ยกมาใช้ `DocumentSummaryCard` + `DocumentControlCard` ชุดเดียวกับใบเสนอราคา /
+//     ใบสั่งขาย / คำร้อง / ทะเบียนสรรพสามิต · ปุ่มระดับสินค้าทุกปุ่มอยู่ในการ์ดเดียว
+//   ⚠️ กติกา ม-49/ม-57: ปุ่มระดับ record อยู่ **ที่เดียว** — แบนเนอร์กับการ์ดทะเบียน
+//     จึงเหลือแค่ข้อความและลิงก์ไปดูของที่มีอยู่แล้ว ห้ามวางปุ่มซ้ำกลับไป
+/* หัวข้อย่อยในการ์ดสเปค — กินเต็มแถวของกริดสองคอลัมน์ ไม่งั้นหัวข้อไปนั่งครึ่งแถว
+   แล้วช่องข้อมูลช่องแรกขึ้นมาอยู่ข้าง ๆ หัวข้อของตัวเอง */
+function SpecGroup({ label, hint = null }) {
+  return (
+    <div className="md:col-span-2 border-b border-[var(--border)] pb-2 mt-2 first:mt-0">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-2)]">{label}</span>
+      {hint ? <p className="text-[11px] text-[var(--text-3)] mt-1">{hint}</p> : null}
+    </div>
+  );
+}
+
 export default function ProductDetails() {
   const params = useParams();
   const router = useRouter();
@@ -274,11 +296,190 @@ export default function ProductDetails() {
     },
   }[exciseRec.kind];
 
+  /* ── Control Panel ของสินค้า ───────────────────────────────────────────────
+     สถานะสองแกนของสินค้าหนึ่งตัว ต้องไม่ยัดเป็นป้ายเดียวกัน:
+       · ด่านอนุมัติ (approvalStatus) — คุมว่าสินค้าโผล่ใน picker ของระบบอื่นไหม
+       · วงจรชีวิต (isActive) — พักใช้/เปิดใช้ ซึ่งคนละเรื่องกับการอนุมัติ
+     ⇒ การ์ด control ถือแกนอนุมัติ (มีรางสามขั้น) · การ์ดสรุปถือแกนใช้งาน */
+  const approvalView = {
+    approved: { label: "อนุมัติแล้ว", color: "var(--green)" },
+    pending: { label: "รออนุมัติ", color: "var(--amber)" },
+    rejected: { label: "ถูกตีกลับ ต้องแก้ไข", color: "var(--red)" },
+  }[product.approvalStatus] || { label: "ไม่ระบุ", color: "var(--text-3)" };
+  const approvalIndex = product.approvalStatus === "approved" ? 2 : 1;
+  const workflowSteps = workflowStepsFromIndex([
+    { id: "created", label: "บันทึกสินค้า", hint: "ทะเบียน FG ถูกสร้างแล้ว" },
+    {
+      id: "review",
+      label: product.approvalStatus === "rejected" ? "ถูกตีกลับ ต้องแก้ไข" : "รออนุมัติ",
+      hint: product.approvalStatus === "rejected"
+        ? "แก้ตามเหตุผลที่ผู้อนุมัติแจ้ง แล้วบันทึกเพื่อส่งตรวจใหม่"
+        : "หัวหน้าฝ่ายขายตรวจสเปคและราคาก่อนเปิดให้ทุกระบบเลือกใช้",
+    },
+    { id: "approved", label: "อนุมัติแล้ว", hint: "สินค้าพร้อมให้ทุกระบบเลือกใช้" },
+  ], approvalIndex);
+
+  /* ⚠️ **แก้ของที่อนุมัติแล้วแม้ช่องเดียว = หลุดกลับไปรออนุมัติ** (resetApprovalOnEdit)
+     ⇒ สินค้าหายจาก picker ทุกหน้าทันที · บอกไว้ใต้ปุ่มแก้ไข ไม่ใช่ให้คนไปเจอเอง
+     ยกเว้นหมายเหตุบนเอกสารขาย (mig 0317 · PRODUCT_DOC_NOTE_FIELDS) */
+  const productActions = {
+    primaryAction: canEditProducts && {
+      id: "edit",
+      kind: "edit",
+      label: "แก้ไขข้อมูลสินค้า",
+      variant: "filled",
+      onClick: () => setShowEdit(true),
+      disabled: isUpdating,
+    },
+    secondaryActions: [
+      canEditProducts && exciseRec?.kind === "unregistered" && {
+        id: "excise",
+        kind: "submit",
+        label: sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต",
+        onClick: sendToExcise,
+        disabled: sendingExcise,
+      },
+      exciseRec?.reg?.id && {
+        id: "excise-open",
+        kind: "goto",
+        label: "ดูทะเบียนสรรพสามิตของสินค้านี้",
+        href: `/tax/registrations/${exciseRec.reg.id}`,
+      },
+      canToggleActive && (product.isActive === false
+        ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive, disabled: isUpdating }
+        : { id: "pause", kind: "pause", icon: Archive, label: "พักใช้งานสินค้า", onClick: handleToggleActive, disabled: isUpdating }),
+    ].filter(Boolean),
+    dangerActions: [
+      canDeleteProducts && {
+        id: "delete",
+        kind: "delete",
+        label: "ลบสินค้า",
+        onClick: handleDelete,
+        disabled: isUpdating,
+      },
+    ].filter(Boolean),
+  };
+
+  const summaryRows = [
+    { id: "unit", label: "หน่วยขาย", value: unit },
+    ...(showPackaging ? [{ id: "volume", label: "ปริมาตร/น้ำหนัก", value: formatVolume(product) }] : []),
+    { id: "category", label: "หมวดสินค้า", value: product.categoryCode },
+    ...(showRetailPrice ? [{ id: "retail", label: "ราคาขายปลีก", value: fmtMoneyOrDash(product.retailPriceIncVat) }] : []),
+    ...(canViewTax && isExciseCat
+      ? [{ id: "tax", label: `ภาษีต่อ${unit}`, value: isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0)) }]
+      : []),
+  ];
+
+  const productAside = (
+    <>
+      <DocumentSummaryCard
+        title="สรุปสินค้า"
+        total={canSeeCost ? fmtMoneyOrDash(product.costPrice) : undefined}
+        totalCaption={canSeeCost ? `ราคาผลิตต่อ${unit} · ก่อน VAT` : null}
+        rows={summaryRows}
+        status={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"}
+        statusColor={product.isActive === false ? "var(--text-3)" : "var(--green)"}
+        statusLabel="สถานะการใช้งาน"
+      />
+
+      <DocumentControlCard
+        /* การ์ดตัวเดียวกับหน้าเอกสาร แต่ของนี้ไม่ใช่เอกสาร — ป้ายบนหัวจึงต้องพูดว่า
+           สินค้า ไม่ใช่ "DOCUMENT CONTROL" (ค่าตั้งต้นของการ์ด) */
+        eyebrow="PRODUCT CONTROL"
+        title="จัดการสินค้า"
+        status={approvalView.label}
+        statusColor={approvalView.color}
+        statusDescription={workflowSteps[approvalIndex]?.hint}
+        workflowSteps={workflowSteps}
+        primaryAction={productActions.primaryAction}
+        secondaryActions={productActions.secondaryActions}
+        dangerActions={productActions.dangerActions}
+        busy={isUpdating}
+        /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด */
+        notices={product.approvalStatus === "rejected" && product.rejectionReason
+          ? <span className="ui-badge">เหตุผลที่ตีกลับ: {product.rejectionReason}</span>
+          : null}
+        footer={product.approvalStatus === "approved" && canEditProducts
+          ? <span>แก้ข้อมูลสินค้าที่อนุมัติแล้ว = กลับไปรออนุมัติใหม่ และสินค้าจะหลุดจากรายการเลือกของทุกระบบจนกว่าจะอนุมัติอีกครั้ง (ยกเว้นหมายเหตุบนเอกสารขาย)</span>
+          : null}
+      />
+
+      {/* ของประกอบด้านภาษี — เฉพาะหมวดสรรพสามิต (ธง isExcise) + tax-gated
+          อยู่ท้ายราง ใต้การ์ดจัดการ: เป็นข้อมูลอ้างอิง ไม่ใช่ก้าวถัดไปของคนที่เปิดหน้า */}
+      {canViewTax && isExciseCat && (
+        <>
+          <DetailCard icon={Package} eyebrow="EXCISE" title="ภาษีสรรพสามิตต่อหน่วย">
+            {isExempt ? (
+              <div className="bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)] text-center text-xs">
+                <span className="font-bold text-[var(--green)] block text-sm">ได้รับการยกเว้นภาษีสรรพสามิต</span>
+                <p className="text-[10px] text-[var(--text-3)] mt-1">สินค้านี้ได้รับยกเว้น ไม่ต้องชำระภาษีสรรพสามิต</p>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--text-3)]">ราคาขายปลีกรวม VAT</span>
+                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
+                </div>
+                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
+                  <span>ราคาขายปลีกก่อน VAT (7%)</span><span className="font-mono">{fmtMoneyOrDash(product.retailPriceExVat)}</span>
+                </div>
+                <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--text-3)]">ภาษีสรรพสามิต (8%)</span>
+                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.exciseTax)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--text-3)]">ภาษีบำรุงท้องถิ่น (10% ของสรรพสามิต)</span>
+                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.localTax)}</span>
+                </div>
+                <div className="bg-[var(--red-soft)] p-4 rounded-xl border border-[var(--border)] mt-4">
+                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (Total Tax Rate)</span>
+                  <div className="text-2xl font-bold font-mono text-[var(--red)] mt-1">{fmtMoney((product.exciseTax || 0) + (product.localTax || 0))}</div>
+                </div>
+              </div>
+            )}
+          </DetailCard>
+
+          <DetailCard icon={Package} eyebrow="EXCISE" title={`การขึ้นทะเบียนภาษีของสินค้านี้ (${regs.length})`}>
+            {regs.length === 0 ? (
+              /* ⚠️ ปุ่ม "ส่งขึ้นทะเบียนสรรพสามิต" เคยอยู่ตรงนี้ด้วย — ย้ายไป Control
+                 Panel ที่เดียว (ม-49/ม-57) · ตรงนี้เหลือข้อความบอกสถานะอย่างเดียว */
+              <p className="text-xs text-[var(--text-3)] italic">
+                {canEditProducts && exciseRec?.kind === "unregistered"
+                  ? "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — กด “ส่งขึ้นทะเบียนสรรพสามิต” ที่การ์ดจัดการสินค้าด้านบน"
+                  : "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”"}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {regs.map((r) => (
+                  <div
+                    key={r.id}
+                    onClick={() => router.push(`/tax/registrations?open=${r.id}`)}
+                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                  >
+                    <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
+                    <div className="flex items-center gap-3">
+                      {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
+                      <ProductStatusPill status={r.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DetailCard>
+        </>
+      )}
+    </>
+  );
+
   return (
     <>
       <Toast toast={toast} onClose={() => setToast(null)} />
-      {/* แถวย้อนกลับ + action ระดับ entity (แก้ไข/พัก/ลบ) ตามกติกา Page Header
-          — ใช้ปุ่ม router.back() ไม่ใช่ Workspace.back เพราะหน้านี้เข้าได้จากหลายทาง */}
+      {/* แถวย้อนกลับอย่างเดียว — ใช้ปุ่ม router.back() ไม่ใช่ Workspace.back เพราะ
+          หน้านี้เข้าได้จากหลายทาง
+          ⚠️ **ปุ่มระดับสินค้าไม่อยู่ที่นี่แล้ว** (2026-08-30) — ย้ายเข้า Control Panel
+          ที่รางขวาทั้งชุด · เดิมเป็นไอคอนเปล่าสามตัวที่ต้องเอาเมาส์ไปค้างถึงจะรู้ว่า
+          ปุ่มไหนคืออะไร และบนจอสัมผัสไม่มีทางรู้เลย · ห้ามวางกลับ (ม-49/ม-57) */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "14px" }}>
         <button
           type="button"
@@ -287,19 +488,6 @@ export default function ProductDetails() {
         >
           <ArrowLeft size={16} /> กลับ
         </button>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          {canEditProducts && (
-            <ActionButton kind="edit" iconOnly label="แก้ไขข้อมูล" title="แก้ไขข้อมูล" disabled={isUpdating} onClick={() => setShowEdit(true)} />
-          )}
-          {canToggleActive && (
-            product.isActive === false
-              ? <ActionButton kind="resume" iconOnly icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" title="เปิดใช้อีกครั้ง" disabled={isUpdating} onClick={handleToggleActive} />
-              : <ActionButton kind="pause" iconOnly icon={Archive} label="พักใช้" title="พักใช้" disabled={isUpdating} onClick={handleToggleActive} />
-          )}
-          {canDeleteProducts && (
-            <ActionButton kind="delete" iconOnly label="ลบสินค้า" title="ลบสินค้า" disabled={isUpdating} onClick={handleDelete} />
-          )}
-        </div>
       </div>
       <SalesDetailOverview
         eyebrow="PRODUCT MASTER"
@@ -361,28 +549,34 @@ export default function ProductDetails() {
             <div className="font-semibold">{exciseBanner.title}</div>
             <div className="text-xs text-[var(--text-2)] mt-0.5">{exciseBanner.detail}</div>
           </div>
-          <div className="ml-auto shrink-0">
-            {exciseRec.kind === "unregistered" ? (
-              canEditProducts && (
-                <button type="button" className="btn btn-warning flex items-center gap-1.5" disabled={sendingExcise} onClick={sendToExcise}>
-                  <Send size={14} /> {sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต"}
-                </button>
-              )
-            ) : (
+          {/* ⚠️ **ไม่มีปุ่ม "ส่งขึ้นทะเบียน" ที่แบนเนอร์แล้ว** — ปุ่มระดับสินค้าอยู่ที่
+              Control Panel ที่เดียว (ม-49/ม-57) · ที่เหลือตรงนี้คือลิงก์ไปดูทะเบียนที่
+              มีอยู่แล้ว ซึ่งเป็นการเดินทาง ไม่ใช่การลงมือกับตัวสินค้า */}
+          {exciseRec.kind !== "unregistered" && (
+            <div className="ml-auto shrink-0">
               <Link href={`/tax/registrations/${exciseRec.reg?.id}`} className="btn flex items-center gap-1.5">
                 {exciseBanner.linkLabel}
               </Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px] mt-[18px]">
-        {/* คอลัมน์หลัก — รายละเอียดสินค้าคือพระเอกของหน้า detail จึงขึ้นการ์ดแรก
-            (ไม่มี rail ภาษี — หมวดอื่น/ไม่มีสิทธิ์ — ก็กางเต็มความกว้าง) */}
-        <div className={`space-y-6 ${canViewTax && isExciseCat ? "lg:col-span-2" : "lg:col-span-3"}`}>
+      {/* ผังเดียวกับใบเสนอราคา/ใบสั่งขาย/คำร้อง: เนื้อซ้าย + รางขวาปักหมุด
+          ⚠️ ไม่เปิด `controlFirst` — คนเปิดหน้าสินค้ามาอ่าน "สเปคคืออะไร" ก่อน
+          ไม่ได้มาเพื่อกดก้าวถัดไปเหมือนหน้าเอกสาร (ดูเหตุผลเต็มที่ DetailPageLayout) */}
+      <div className="mt-[18px]">
+      <DetailPageLayout
+        asideLabel="สรุปสินค้าและการดำเนินการ"
+        aside={productAside}
+      >
+          {/* ⭐ การ์ดสเปคเรียงตาม **ลำดับเดียวกับฟอร์มสินค้า** (ProductForm section 1-3)
+              — คนกรอกกับคนอ่านเดินสายตาชุดเดียวกัน · เดิมเป็นตารางยาว 12 ช่องรวด
+              ไม่มีหัวข้อคั่น จึงอ่านไม่ออกว่าช่องไหนเป็นเรื่องเดียวกัน (ชื่อสูตร ·
+              รหัสสูตร · วันที่สูตร กระจายอยู่คนละมุมกับปริมาตร/หน่วยขาย) */}
           <DetailCard icon={Package} eyebrow="Product specification" title="ข้อมูลสเปคสินค้า">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+              <SpecGroup label="1. ข้อมูลหลักสินค้า" />
               <div className="md:col-span-2">
                 <span className="text-[var(--text-3)] block mb-1">{CUSTOMER_NAME_LABEL} (เจ้าของสินค้า)</span>
                 {product.customerId ? (
@@ -397,12 +591,18 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">รหัสสำเร็จรูป FG Code</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm bg-[var(--panel-2)] px-2 py-0.5 rounded">{product.fgCode}</span>
               </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.categoryCode)}</span>
+              </div>
               {showBrand && (
-                <div>
+                <div className="md:col-span-2">
                   <span className="text-[var(--text-3)] block mb-1">แบรนด์ (Brand Name)</span>
                   <span className="font-semibold text-[var(--text)] text-sm">{naText(brandBoth(product.brandName, product.brandNameEn))}</span>
                 </div>
               )}
+
+              <SpecGroup label="2. สูตรและบรรจุภัณฑ์" />
               {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
                   โชว์ — ได้ · ชื่อ/รหัส/วันที่เป็น snapshot จากทะเบียน จึงยังอ่านจาก
                   แถวสินค้าตรง ๆ เหมือนเดิม ต่างแค่มีลิงก์กลับไปตัวสูตรเมื่อผูกแล้ว */}
@@ -465,18 +665,8 @@ export default function ProductDetails() {
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.piecesPerCase ? `${fmtNumber(product.piecesPerCase)} ${unit}/ลัง` : NA}</span>
               </div>
               )}
-              <div>
-                <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
-                <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.categoryCode)}</span>
-              </div>
-              {showRetailPrice && (
-                <div>
-                  <span className="text-[var(--text-3)] block mb-1">
-                    ราคาขายปลีก{isExciseCat ? " (ฐานคำนวณสรรพสามิต)" : ""}
-                  </span>
-                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
-                </div>
-              )}
+
+              <SpecGroup label="3. ราคา" />
               {/* ราคาผลิตเคยโผล่เฉพาะการ์ดต้นทุนซึ่งขึ้นเฉพาะหมวดสรรพสามิต ⇒ สินค้าหมวด
                   อื่นกรอกราคาผลิตได้แต่ไม่มีที่ไหนให้ดู ต้องเปิดโมดัลแก้ถึงจะรู้
                   (การ์ดต้นทุน+กำไรยังเป็นของหมวดสรรพสามิตเหมือนเดิมตามมติ 2026-07-19) */}
@@ -487,18 +677,27 @@ export default function ProductDetails() {
                   <CostVatLines costPrice={product.costPrice} />
                 </div>
               )}
+              {showRetailPrice && (
+                <div>
+                  <span className="text-[var(--text-3)] block mb-1">
+                    ราคาขายปลีก{isExciseCat ? " (ฐานคำนวณสรรพสามิต)" : ""}
+                  </span>
+                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
+                </div>
+              )}
+
               {/* หมายเหตุบนเอกสารขาย (mig 0317) — ตั้งไว้ที่นี่ ระบบเติมลงรายการใน
-                  ใบเสนอราคา/ใบสั่งขายตอนเลือกสินค้า · เหตุผลเดียวกับหน่วยขาย/ราคาผลิต
-                  ที่ยกมาโชว์: ตั้งได้ในฟอร์มแต่ไม่มีที่ไหนให้ดู ต้องเปิดโมดัลแก้ถึงจะรู้
+                  ใบเสนอราคา/ใบสั่งขายตอนเลือกสินค้า
                   ⚠️ สองภาษาแยกกล่อง — ใบภาษาอังกฤษพิมพ์ช่อง EN ไม่ใช่คำแปลอัตโนมัติ */}
+              <SpecGroup label="4. หมายเหตุบนเอกสารขาย" hint="เติมให้อัตโนมัติใต้รายการสินค้าในใบเสนอราคา/ใบสั่งขาย — คนออกใบแก้เฉพาะใบนั้นได้" />
               <div className="md:col-span-2">
-                <span className="text-[var(--text-3)] block mb-1">หมายเหตุบนเอกสารขาย (ไทย)</span>
+                <span className="text-[var(--text-3)] block mb-1">ภาษาไทย</span>
                 <div className="readable-field is-compact text-sm">
                   <ReadableText text={product.docNote} lines={3} />
                 </div>
               </div>
               <div className="md:col-span-2">
-                <span className="text-[var(--text-3)] block mb-1">หมายเหตุบนเอกสารขาย (อังกฤษ)</span>
+                <span className="text-[var(--text-3)] block mb-1">ภาษาอังกฤษ</span>
                 <div className="readable-field is-compact text-sm">
                   <ReadableText text={product.docNoteEn} lines={3} />
                 </div>
@@ -509,10 +708,11 @@ export default function ProductDetails() {
           {/* Cost breakdown — เฉพาะหมวดสรรพสามิต (ธง isExcise — มติ 2026-07-19); สิทธิ์เดิม: SA เห็น
               costPrice, RA + admin เห็น breakdown + กำไร. แผนกอื่นไม่เห็นเลย. */}
           {canSeeCost && isExciseCat && (
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              {canSeeMargin ? `โครงสร้างต้นทุนโรงงานและกำไรต่อ${unit} (Cost & Profit Breakdown)` : `ราคาทุนโรงงานต่อ${unit} (Cost Price)`}
-            </h3>
+          <DetailCard
+            icon={Package}
+            eyebrow="Cost"
+            title={canSeeMargin ? `โครงสร้างต้นทุนโรงงานและกำไรต่อ${unit}` : `ราคาทุนโรงงานต่อ${unit}`}
+          >
             <div className={canSeeMargin ? "grid grid-cols-1 md:grid-cols-2 gap-6 text-xs" : "text-xs"}>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -540,15 +740,12 @@ export default function ProductDetails() {
                 </div>
               )}
             </div>
-          </div>
+          </DetailCard>
           )}
 
           {/* Orders this product appears in (information) — tax-gated, read-only. */}
           {canViewTax && (
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <ShoppingCart size={16} className="text-[var(--accent)]" /> ใบสั่งซื้อที่มีสินค้านี้ ({orders.length})
-            </h3>
+          <DetailCard icon={ShoppingCart} eyebrow="Orders" title={`ใบสั่งซื้อที่มีสินค้านี้ (${orders.length})`}>
             {orders.length === 0 ? (
               <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีใบสั่งซื้อที่อ้างถึงสินค้านี้</p>
             ) : (
@@ -571,15 +768,12 @@ export default function ProductDetails() {
                 ))}
               </div>
             )}
-          </div>
+          </DetailCard>
           )}
 
           {/* PM projects this product is part of — read-only, deep-link to /sa. */}
           {projects.length > 0 && (
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <FolderKanban size={16} className="text-[var(--accent)]" /> โครงการที่เกี่ยวข้อง ({projects.length})
-            </h3>
+          <DetailCard icon={FolderKanban} eyebrow="Projects" title={`โครงการที่เกี่ยวข้อง (${projects.length})`}>
             <div className="space-y-2">
               {projects.map((p) => (
                 <div
@@ -595,7 +789,7 @@ export default function ProductDetails() {
                 </div>
               ))}
             </div>
-          </div>
+          </DetailCard>
           )}
 
           {/* เอกสารของสินค้า — สัญญาจ้างผลิต / Artwork ฯลฯ */}
@@ -634,83 +828,7 @@ export default function ProductDetails() {
               emptyText="ยังไม่มีความเคลื่อนไหว"
             />
           </DetailCard>
-        </div>
-
-        {/* rail ขวา: ของประกอบด้านภาษี — เฉพาะหมวดสรรพสามิต (ธง isExcise) + tax-gated */}
-        {canViewTax && isExciseCat && (
-        <div className="space-y-6">
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              ภาษีสรรพสามิตต่อหน่วย (Excise Tax Breakdown)
-            </h3>
-            {isExempt ? (
-              <div className="bg-[var(--green-soft)] p-4 rounded-xl border border-[var(--border)] text-center text-xs">
-                <span className="font-bold text-[var(--green)] block text-sm">ได้รับการยกเว้นภาษีสรรพสามิต</span>
-                <p className="text-[10px] text-[var(--text-3)] mt-1">สินค้านี้ได้รับยกเว้น ไม่ต้องชำระภาษีสรรพสามิต</p>
-              </div>
-            ) : (
-              <div className="space-y-4 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">ราคาขายปลีกรวม VAT</span>
-                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
-                </div>
-                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                  <span>ราคาขายปลีกก่อน VAT (7%)</span><span className="font-mono">{fmtMoneyOrDash(product.retailPriceExVat)}</span>
-                </div>
-                <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">ภาษีสรรพสามิต (8%)</span>
-                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.exciseTax)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">ภาษีบำรุงท้องถิ่น (10% ของสรรพสามิต)</span>
-                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.localTax)}</span>
-                </div>
-                <div className="bg-[var(--red-soft)] p-4 rounded-xl border border-[var(--border)] mt-4">
-                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (Total Tax Rate)</span>
-                  <div className="text-2xl font-bold font-mono text-[var(--red)] mt-1">{fmtMoney((product.exciseTax || 0) + (product.localTax || 0))}</div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-              การขึ้นทะเบียนภาษีของสินค้านี้ ({regs.length})
-            </h3>
-            {regs.length === 0 ? (
-              // ผู้แก้สินค้าได้ (products:edit) ส่งขึ้นทะเบียนจากตรงนี้ได้เลย (handler
-              // เดียวกับแบนเนอร์); tax viewer อ่านอย่างเดียวยังได้ข้อความชี้ทางเดิม
-              canEditProducts && exciseRec?.kind === "unregistered" ? (
-                <div className="text-xs">
-                  <p className="text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด</p>
-                  <button type="button" className="btn btn-warning flex items-center gap-1.5 mt-3" disabled={sendingExcise} onClick={sendToExcise}>
-                    <Send size={14} /> {sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต"}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”</p>
-              )
-            ) : (
-              <div className="space-y-2">
-                {regs.map((r) => (
-                  <div
-                    key={r.id}
-                    onClick={() => router.push(`/tax/registrations?open=${r.id}`)}
-                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
-                  >
-                    <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
-                    <div className="flex items-center gap-3">
-                      {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
-                      <ProductStatusPill status={r.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        )}
+      </DetailPageLayout>
       </div>
 
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
