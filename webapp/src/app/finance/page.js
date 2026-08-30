@@ -21,7 +21,6 @@ import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
-import { awaitsFinanceReview } from "@/lib/sales/salesOrderFinanceApproval";
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function FinanceOverviewPage() {
@@ -49,16 +48,18 @@ export default function FinanceOverviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ใบที่รอบัญชีตรวจ — `financeStatus === 'pending'` เท่านั้น
-     ⚠️ **ไม่รวม `null`** ซึ่งแปลว่า "ออกก่อนมีขั้นนี้" ไม่ใช่ "รอตรวจ" (มติเดิม
-     ตอน mig 0250 ที่จงใจไม่ backfill) · นับรวมเมื่อไรบัญชีจะเปิดมาเจอคิวค้าง
-     ทั้งกองที่ไม่มีใครตั้งใจสร้าง */
+  /* ใบที่รอบัญชี **ปิดใบ** (มติผู้ใช้ 2026-08-30 — บัญชีย้ายมาอยู่ท้ายวง)
+     = อนุมัติแล้ว · financeStatus 'pending' · **เก็บเงินครบทุกงวดแล้ว**
+     ⚠️ **ไม่รวม `null`** ซึ่งแปลว่า "ออกก่อนมีขั้นนี้" ไม่ใช่ "รอปิด" (มติเดิม mig 0250)
+     ⚠️ อ่านธงที่ **server คำนวณมาให้** (`_awaitingFinanceReview`) ไม่คำนวณซ้ำที่นี่ —
+     เงื่อนไขใหม่ต้องใช้งวดชำระของใบซึ่งจอนี้ไม่มี · เรียก helper ตรง ๆ โดยไม่ส่งงวด
+     จะได้ false ทุกใบแล้วคิวว่างเงียบ ๆ */
   const awaitingReview = useMemo(
-    // ⚠️ ใช้ helper ตัวเดียวกับคิวบนทะเบียนใบสั่งขาย — เขียนเงื่อนไขซ้ำเมื่อไร
-    // สองจอจะนับคนละชุด (ใบยอด 0 เคยโผล่ที่หนึ่งแต่ไม่โผล่อีกที่ก็เพราะแบบนี้)
-    () => orders.filter((o) => awaitsFinanceReview(o)),
+    () => orders.filter((o) => o._awaitingFinanceReview),
     [orders],
   );
+  /* ⚠️ "บัญชีตีกลับทั้งใบ" ถอดออกแล้ว (มติ 2026-08-30) — เหลือแต่ตีกลับ *รายงวด*
+     ที่ทะเบียนการชำระ · เก็บลิสต์ไว้อ่านของเก่าเผื่อมีแถวค้าง (วัดบนฐาน 30/08: ไม่มีสักใบ) */
   const bounced = useMemo(
     () => orders.filter((o) => o.financeStatus === "rejected"),
     [orders],
@@ -88,8 +89,8 @@ export default function FinanceOverviewPage() {
           <MetricStrip aria-label="งานที่รอฝ่ายบัญชี และยอดเงิน">
             <Metric
               as="button" type="button"
-              icon={<ClipboardCheck />} label="ใบรอบัญชีตรวจ" value={`${awaitingReview.length} ใบ`}
-              note="ผ่าน AE Supervisor แล้ว รอตรวจข้อมูลบนใบ"
+              icon={<ClipboardCheck />} label="ใบรอปิด" value={`${awaitingReview.length} ใบ`}
+              note="เก็บเงินครบทุกงวดแล้ว รอบัญชีกดปิดใบ"
               tone={awaitingReview.length ? "warning" : "good"}
               onClick={() => router.push("/sa/sales-orders")}
             />
@@ -118,8 +119,8 @@ export default function FinanceOverviewPage() {
 
         <WorkspaceSection
           icon={<ClipboardCheck size={17} />}
-          title="ใบที่รอบัญชีตรวจ"
-          subtitle="ตรวจข้อมูลลูกค้า เงื่อนไขชำระ ยอดและ VAT ก่อนกดผ่าน — ยอด Actual ไม่เปลี่ยนจากขั้นนี้"
+          title="ใบที่รอบัญชีปิด"
+          subtitle="เก็บครบทุกงวดแล้ว — ตรวจข้อมูลลูกค้า เงื่อนไขชำระ ยอดและ VAT ครั้งสุดท้ายแล้วปิดใบ · ยอด Actual ไม่เปลี่ยนจากขั้นนี้"
           actions={<Link href="/finance/payments" className="linklike">เปิดทะเบียนการชำระ</Link>}
         >
           <TableScroll surface="embedded" cells="stacked" aria-busy={loading}>
@@ -141,8 +142,10 @@ export default function FinanceOverviewPage() {
                   {!awaitingReview.length && !loading && (
                     <TableEmpty
                       colSpan={5}
-                      title="ไม่มีใบรอตรวจ"
-                      description="ใบจะเข้าคิวนี้เองทันทีที่ AE Supervisor อนุมัติ"
+                      title="ไม่มีใบรอปิด"
+                      /* ⭐ มติ 2026-08-30 — คิวนี้ไม่ใช่ "ทุกใบที่อนุมัติ" อีกแล้ว
+                         คิวว่าง = ยังไม่มีใบไหนเก็บครบ ไม่ใช่ระบบพัง ⇒ ต้องบอกให้ตรง */
+                      description="ใบจะเข้าคิวนี้เองเมื่อบัญชีรับรองงวดชำระครบทุกงวด — ดูงวดที่ยังค้างได้ที่ทะเบียนการชำระ"
                     />
                   )}
                 </tbody>

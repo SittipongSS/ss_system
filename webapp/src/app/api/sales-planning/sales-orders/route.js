@@ -147,7 +147,10 @@ export const GET = withUser(async ({ user, supabase }) => {
          ทะเบียนใบสั่งขายอยู่ในเมนูของฝ่ายบัญชีตั้งแต่มติ 2026-08-22 และหน้าสวมเปลือก
          ตามคนดู ⇒ คิวบนหัวหน้าต้องพูดงานของคนที่ยืนอยู่ ไม่ใช่ของสายขายเสมอ
          ⚠️ ด่านจริงยังอยู่ที่ `financeActionError` บนใบ — ธงนี้เป็นแค่ "มีอะไรรอฉัน" */
-      _awaitingFinanceReview: canConfirmPayment(user) && awaitsFinanceReview(row),
+      /* ⚠️ ส่งงวดของใบเข้าไปด้วย (มติ 2026-08-30) — คิวบัญชีคือ "ใบที่เก็บครบแล้ว
+         รอปิด" ไม่ใช่ทุกใบที่อนุมัติ · ไม่ส่งงวด = ด่านตอบ false ⇒ คิวจะว่างเงียบ ๆ */
+      _awaitingFinanceReview: canConfirmPayment(user)
+        && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || []),
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 

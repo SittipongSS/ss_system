@@ -44,8 +44,10 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
   assert.match(quotes, /_awaitingMyApproval: isQuotationAwaitingMyApproval\(/);
   assert.match(orders, /_awaitingMyApproval: isSalesOrderReviewer\(user\.role\)/);
   assert.match(orders, /!isSalesOrderSelfApproval\(row, user\.id\)/, 'ใบของตัวเองต้องถูกตัดที่ server');
-  // แกนที่สองของใบเดียวกัน — ขั้นบัญชีตรวจ (mig 0250)
-  assert.match(orders, /_awaitingFinanceReview: canConfirmPayment\(user\) && awaitsFinanceReview\(row\)/);
+  /* แกนที่สองของใบเดียวกัน — ขั้นบัญชีปิดใบ (mig 0250)
+     ⭐ ตั้งแต่มติ 2026-08-30 ด่านนี้ขึ้นกับ **งวดชำระ** ⇒ ต้องป้อนงวดของใบนั้นเข้าไปด้วย
+     🪤 เรียกมือเปล่าได้ false ทุกใบ = คิวบัญชีว่างเงียบ ๆ ทั้งที่มีงานรออยู่ */
+  assert.match(orders, /_awaitingFinanceReview: canConfirmPayment\(user\)\s*\n?\s*&& awaitsFinanceReview\(row, installmentsByOrder\.get\(row\.id\) \|\| \[\]\)/);
 });
 
 /* ── คิวเดินตามเปลือกของคนดู (มติผู้ใช้ 2026-08-25) ─────────────────────────

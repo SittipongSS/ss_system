@@ -774,14 +774,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
-  /* ── ขั้นบัญชีตรวจใบ (mig 0250) — คนละแกนกับ status ────────────────────
-     ⚠️ **ไม่มี action ไหนในบล็อกนี้แตะ `status` หรือ `actualAmount`** — ยอดขายของ SA
-     ไม่ขยับตามการตัดสินของบัญชี (มติผู้ใช้ 2026-08-13) · ตีกลับ = ส่งกลับให้ AE Sup
-     ดูใหม่ ไม่ใช่ถอยเอกสาร
-     ⭐ ด่านอยู่ที่ `financeActionError` ตัวเดียวกับที่หน้าเว็บใช้ซ่อนปุ่ม */
-  if (action === 'finance_approve' || action === 'finance_reject' || action === 'finance_resubmit') {
-    const reason = String(body.reason || '').trim();
-    const gate = financeActionError(before, action, user, { reason });
+  /* ── ขั้นบัญชีปิดใบ (mig 0250 · สลับมาอยู่ท้ายวงตามมติผู้ใช้ 2026-08-30) ────
+     ⚠️ **ไม่แตะ `status` หรือ `actualAmount`** — ยอดขายของ SA เข้าตั้งแต่ AE Sup
+     อนุมัติและไม่ขยับตามการตัดสินของบัญชี (มติผู้ใช้ 2026-08-13 ยังใช้อยู่)
+     ⭐ ด่านอยู่ที่ `financeActionError` ตัวเดียวกับที่หน้าเว็บใช้ซ่อนปุ่ม
+     ⚠️ **ต้องอ่านงวดชำระสดส่งเข้าด่าน** — เงื่อนไขปิดใบคือ "เก็บครบทุกงวด"
+        อ่านจากฐานที่นี่ ไม่เชื่อค่าที่ client ส่งมา (แพตเทิร์นเดียวกับด่านไล่ลำดับงวด)
+     ⚠️ `finance_reject`/`finance_resubmit` ถอดออกแล้ว — ไม่มีตีกลับทั้งใบอีก
+        ของที่ตีกลับได้คือ *รายงวด* ที่ route `/installments` */
+  if (action === 'finance_approve') {
+    const installments = await loadInstallments(supabase, id);
+    const gate = financeActionError(before, action, user, { installments });
     if (gate) return badRequest(gate);
 
     /* ⭐ **บัญชีอนุมัติ = การลงนามในช่อง "ฝ่ายบัญชี" ของเอกสาร** (mig 0251 · มติผู้ใช้
@@ -841,55 +844,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         entityId: id,
         before,
         after: data,
-        summary: `บัญชีอนุมัติ ${before.orderNumber} (ลงนามแล้ว)`,
+        summary: `บัญชีปิดใบ ${before.orderNumber} (ลงนามแล้ว · เก็บครบทุกงวด)`,
         request: req,
       });
       return ok(data);
     }
 
-    const now = new Date().toISOString();
-    const actorName = user.name || null;
-    /* เหลือแค่ตีกลับกับส่งตรวจใหม่ — `finance_approve` แยกไปทาง RPC ลงลายเซ็นข้างบนแล้ว */
-    const patch = action === 'finance_reject'
-        ? {
-          financeStatus: 'rejected',
-          financeRejectedBy: user.id, financeRejectedByName: actorName, financeRejectedAt: now,
-          financeRejectReason: reason,
-        }
-        : {
-          // ส่งตรวจใหม่ — เก็บเหตุผลรอบก่อนไว้ให้บัญชีอ่านประกอบ ไม่ล้างทิ้ง
-          financeStatus: 'pending',
-        };
-
-    /* กันสองคนกดชนกัน — อัปเดตต่อเมื่อสถานะยังเป็นค่าที่เราอ่านมา
-       🐞 `.eq(col, null)` ใช้ไม่ได้: PostgREST แปลเป็น `col = null` ซึ่งไม่จริงเสมอใน SQL
-       ⇒ ใบที่ financeStatus ยังว่าง (อนุมัติก่อนมีขั้นนี้) จะอัปเดตไม่ติดสักครั้ง
-       ต้องใช้ `.is(col, null)` เท่านั้น */
-    const guarded = supabase
-      .from('sales_orders').update({ ...patch, updatedAt: now })
-      .eq('id', id);
-    const { data, error } = await (before.financeStatus == null
-      ? guarded.is('financeStatus', null)
-      : guarded.eq('financeStatus', before.financeStatus))
-      .select('*').maybeSingle();
-    if (error) return fail(error.message, 500);
-    if (!data) return badRequest('สถานะการตรวจของบัญชีเปลี่ยนแล้ว กรุณาโหลดใหม่');
-
-    await logThread(action, { reason });
-    await recordAudit({
-      user,
-      action: 'update',
-      entityType: 'sales_order',
-      entityId: id,
-      before,
-      after: data,
-      summary: {
-        finance_reject: `บัญชีตีกลับ ${before.orderNumber}: ${reason}`,
-        finance_resubmit: `ส่ง ${before.orderNumber} ให้บัญชีตรวจใหม่`,
-      }[action],
-      request: req,
-    });
-    return ok(data);
   }
 
   if (action === 'restore') {
