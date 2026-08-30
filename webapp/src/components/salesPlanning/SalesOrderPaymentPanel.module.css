@@ -87,3 +87,24 @@
 .dialog { display: grid; gap: var(--space-3); padding: var(--space-4); }
 .field { display: grid; gap: var(--space-1); }
 .field > span { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+
+/* ── ช่วงครอบบริการที่แก้ได้ในตาราง (mig 0320 · มติ 2026-08-30 รอบสอง) ────────
+   สองช่องวันที่ในเซลล์เดียว — บนจอแคบตารางเป็น cells="stacked" อยู่แล้ว
+   ช่องจึงตกบรรทัดเองโดยไม่ต้องมีจุดตัดจอใหม่ (ห้ามเพิ่ม breakpoint — เพดาน audit:ui) */
+.coverCell { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+/* ความกว้างอยู่ที่นี่ ไม่ใช่ style={{}} ในเซลล์ — เพดาน inlineStyle ของ audit:ui
+   เป็น ratchet ขึ้นไม่ได้ (โมดูล "บริหารงานขาย" เต็มพอดีอยู่แล้ว) */
+.coverDate { width: 116px; }
+
+/* แถวที่แก้ค้างยังไม่บันทึก — บอกด้วยพื้น ไม่ใช่ขอบ (ขอบชนกับเส้นตารางของ primitive) */
+.coverEdited { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+
+.coverBar {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-top: var(--space-3); padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  font-size: var(--fs-6); line-height: var(--lh-thai);
+}
+.coverBar > span { flex: 1; min-width: 0; color: var(--text-2); }
