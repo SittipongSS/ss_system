@@ -72,6 +72,77 @@ export function isPrivateEvidence(entityType) {
   return Boolean(TARGETS[entityType]);
 }
 
+/* ── เก็บกวาดไฟล์ตอนลบเอกสาร ───────────────────────────────────────────────
+ *
+ * 🐞 ของจริงที่เจอ (2026-08-30 · ตอนล้างข้อมูล UAT): ลบใบสั่งขายแล้วลบใบเสนอราคา
+ * ต้นทางตามไปอีกใบ **ไฟล์ยังอยู่ครบใน bucket** — `sales-evidence/quotations/<id>/
+ * order-confirmation/…` · เส้นลบทั้งสองเส้นเก็บกวาดแค่แถวในตาราง (`purgeUpdates`,
+ * FK cascade, RPC break-glass) ไม่มีใครแตะ Storage เลยตั้งแต่มีฟีเจอร์นี้มา
+ * ⇒ ทุกใบที่ถูกลบทิ้งไฟล์กำพร้าไว้ถาวร: ไม่มีแถวไหนอ้างถึงอีกแล้ว จึงไม่มีทาง
+ * หาเจอจากในระบบ และไม่มีใครรู้ว่ามันคือของใคร
+ *
+ * ⚠️ **กวาดทั้งโฟลเดอร์ ไม่ใช่ไล่ตาม ref ใน jsonb** — ไฟล์ที่อัปสำเร็จแล้วผู้ใช้ปิด
+ * หน้าจอทิ้ง (ยังไม่กดสร้างใบ) ไม่มี ref อยู่ในแถวไหนเลย · ไล่ตาม ref จะเก็บไม่หมด
+ * ⚠️ ชื่อโฟลเดอร์อ่านจาก TARGETS ตัวเดียวกับที่ใช้ตอนเขียน — โฟลเดอร์ที่สี่ที่จะเพิ่ม
+ * วันหน้าเข้ามาเองโดยไม่ต้องมีใครนึกออกว่ามีจุดเก็บกวาดซ่อนอยู่ตรงไหน (บทเรียน
+ * เดียวกับด่านอ่านของ `payment-file` ที่เคยตกโฟลเดอร์ที่สาม)
+ * ⚠️ **best-effort เสมอ** — ลบแถวสำเร็จไปแล้ว ถ้าโยน error ที่นี่ ผู้ใช้จะเห็น
+ * "ลบไม่สำเร็จ" ทั้งที่เอกสารหายไปจริง (แพตเทิร์นเดียวกับ releaseAttachmentFile) */
+async function removeStorageFolder(supabase, bucket, prefix) {
+  if (!prefix) return 0;
+  const folder = prefix.replace(/\/$/, '');
+  const { data: items, error } = await supabase.storage.from(bucket).list(folder, { limit: 1000 });
+  if (error || !items?.length) return 0;
+  /* Storage list คืนทั้งไฟล์และ "โฟลเดอร์" (prefix ปลอม — id เป็น null) ⇒ ต้องกรอง
+     ไม่งั้นสั่งลบ path ที่ไม่ใช่ object แล้วได้ 0 ไฟล์เงียบ ๆ */
+  const paths = items.filter((item) => item?.id).map((item) => `${folder}/${item.name}`);
+  if (!paths.length) return 0;
+  const { error: removeError } = await supabase.storage.from(bucket).remove(paths);
+  if (removeError) {
+    console.error('[evidence] ลบไฟล์ใน bucket ไม่สำเร็จ', bucket, folder, removeError.message);
+    return 0;
+  }
+  return paths.length;
+}
+
+/** ไฟล์หลักฐานทั้งหมดของเอกสารใบหนึ่ง (ทุกโฟลเดอร์ของ entityType ที่ผูกกับตารางนั้น) */
+export async function purgePrivateEvidence(supabase, table, entityId) {
+  if (!supabase?.storage || !entityId) return 0;
+  let removed = 0;
+  for (const [entityType, target] of Object.entries(TARGETS)) {
+    if (target.table !== table) continue;
+    try {
+      removed += await removeStorageFolder(supabase, PRIVATE_EVIDENCE_BUCKET, privateEvidencePrefix(entityType, entityId));
+    } catch (err) {
+      console.error('[evidence] เก็บกวาดไฟล์ไม่สำเร็จ', entityType, entityId, err?.message);
+    }
+  }
+  return removed;
+}
+
+/** ไฟล์ที่เอกสารอ้างไว้ตรง ๆ — ใช้กับของที่ไฟล์ไม่ได้อยู่ใต้โฟลเดอร์ของตัวเอง
+ *  (เอกสารยืนยันคำสั่งซื้อของใบสั่งขาย: ไฟล์อยู่ใต้ใบเสนอราคาต้นทาง เพราะอัปตั้งแต่
+ *  ใบสั่งขายยังไม่เกิด) */
+export async function removeEvidenceRefs(supabase, refs = []) {
+  const byBucket = new Map();
+  for (const ref of refs || []) {
+    if (!ref?.storagePath) continue;
+    const bucket = ref.storageBucket || PRIVATE_EVIDENCE_BUCKET;
+    byBucket.set(bucket, [...(byBucket.get(bucket) || []), ref.storagePath]);
+  }
+  let removed = 0;
+  for (const [bucket, paths] of byBucket) {
+    try {
+      const { error } = await supabase.storage.from(bucket).remove(paths);
+      if (error) console.error('[evidence] ลบไฟล์ที่อ้างไว้ไม่สำเร็จ', bucket, error.message);
+      else removed += paths.length;
+    } catch (err) {
+      console.error('[evidence] ลบไฟล์ที่อ้างไว้ไม่สำเร็จ', bucket, err?.message);
+    }
+  }
+  return removed;
+}
+
 /* ── ไฟล์ของงวดชำระที่ "ยืมมาจากใบเสนอราคาต้นทาง" ──────────────────────────
  *
  * 🐞 ผู้ใช้แจ้ง 2026-08-25: กดดูสลิปของงวดแรกแล้วได้ `{"error":"ไม่พบไฟล์แนบ"}`

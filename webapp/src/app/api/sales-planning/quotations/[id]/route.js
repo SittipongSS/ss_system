@@ -29,6 +29,7 @@ import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from '@
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { loadSignatureImageDataUri, reissueQuotationDocumentForLanguage } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
+import { purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
@@ -487,6 +488,33 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
+  /* ⚠️ **อ่าน ref ของไฟล์ PDF ฉบับตรึงก่อนลบแถว** — `force_delete_quotation` ลบทั้ง
+     issued_documents และ artifacts ในทรานแซกชันเดียว ⇒ หลังลบเสร็จไม่มีทางรู้แล้วว่า
+     ไฟล์ไหนเป็นของใบนี้ (path มี snapshotId ที่หายไปพร้อมแถว) */
+  /* ⚠️ **SO ลูกที่ cascade หายไปพร้อมใบ ต้องกวาดโฟลเดอร์ของมันด้วย** — หลักฐาน
+     การชำระอยู่ใต้ `sales-orders/<id>/payments/` ซึ่งไม่ได้อยู่ใต้โฟลเดอร์ของใบ
+     เสนอราคา · เส้นนี้ไม่ได้เดินผ่าน DELETE ของใบสั่งขาย จึงต้องเก็บ id ไว้ก่อนลบ */
+  const childOrderIds = await (async () => {
+    // ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap —
+    // จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย
+    const { data } = await fetchAllResult(() => supabase
+      .from('sales_orders').select('id')
+      .eq('quotationId', id)
+      .order('id', { ascending: true }));
+    return (data || []).map((row) => row.id);
+  })().catch(() => []);
+
+  const issuedPdfRefs = await (async () => {
+    const { data: snapshots } = await supabase
+      .from('issued_documents').select('id').eq('documentType', 'quotation').eq('documentId', id);
+    const ids = (snapshots || []).map((row) => row.id);
+    if (!ids.length) return [];
+    const { data: artifacts } = await supabase
+      .from('issued_document_pdf_artifacts')
+      .select('storageBucket, storagePath').in('issuedDocumentId', ids);
+    return artifacts || [];
+  })().catch(() => []);
+
   // force: ปลด logical ref (metadata.acceptedQuotationId) ที่ชี้มาใบนี้ก่อนลบ.
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
   if (force) await cleanupQuotationOrphans(supabase, before);
@@ -518,6 +546,14 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ใบไม่มีเธรดของตัวเองแล้ว (มติ 2026-08-04) แต่แถวเก่าก่อนหน้านั้นยังค้างในตาราง
   // กลาง (polymorphic ไม่มี FK) — กวาดตอนลบใบต่อไป ไม่งั้นค้างเป็นขยะถาวร
   await purgeUpdates(supabase, 'quotation', id);
+  /* ไฟล์หลักฐานใน bucket ไม่มี FK ให้ cascade — กวาดทั้งโฟลเดอร์ของใบนี้
+     (หลักฐาน Won + เอกสารยืนยันคำสั่งซื้อของ SO ที่ออกจากใบนี้ ซึ่งพักไฟล์ไว้ใต้ใบ
+     เสนอราคา) · SO ลูกถูก cascade ไปพร้อมใบอยู่แล้ว ⇒ ไม่มีใครอ้างไฟล์พวกนี้อีก
+     ⚠️ ไฟล์ PDF ฉบับตรึงอยู่คนละ bucket และผูกกับ issued_document_pdf_artifacts —
+     เก็บกวาดแยกด้านล่าง เพราะต้องอ่านแถวก่อนที่ RPC จะลบทิ้ง */
+  await purgePrivateEvidence(supabase, 'quotations', id);
+  for (const orderId of childOrderIds) await purgePrivateEvidence(supabase, 'sales_orders', orderId);
+  await removeEvidenceRefs(supabase, issuedPdfRefs);
   const summary = force
     ? `ลบใบเสนอราคา ${before.quoteNumber} (สถานะ ${before.status} — บังคับลบ สิทธิ์ผู้ดูแลระบบ)`
     : (isSuperuser(user.role) && before.status !== 'draft'
