@@ -18,6 +18,7 @@ import CodeStrip from "@/components/ui/CodeStrip";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import Select from "@/components/ui/Select";
+import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
@@ -56,6 +57,8 @@ export const EMPTY_PRODUCT = {
   // สินค้าที่ยังไม่ผูกทะเบียนเท่านั้น)
   formulaId: "", formulaName: "", formulaCode: "", formulaDate: "",
   volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
+  // หมายเหตุประจำสินค้า (mig 0317) — ติดไปกับรายการบนใบเสนอราคา/ใบสั่งขาย
+  docNote: "", docNoteEn: "",
 };
 
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
@@ -63,6 +66,7 @@ export const PRODUCT_EDIT_FIELDS = [
   "customerId", "fgCode", "categoryCode", "productDescription", "productDescriptionEn",
   "brandName", "brandNameEn", "formulaId", "formulaName", "formulaCode", "formulaDate",
   "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
+  "docNote", "docNoteEn",
 ];
 
 export const productToForm = (p) => {
@@ -377,6 +381,22 @@ export default function ProductForm({
             {!duplicateWarning && otherSizeHint && (
               <span className="text-xs text-[var(--text-3)] mt-1">{otherSizeHint}</span>
             )}
+          </div>
+          {/* หมายเหตุประจำสินค้า (mig 0317) — ตั้งที่นี่ครั้งเดียว ระบบเติมลงรายการ
+              ตอนเลือกสินค้าในใบเสนอราคา แล้วก๊อปต่อไปใบสั่งขายพร้อมบรรทัด
+              ⚠️ สองภาษาเพราะเอกสารเลือกภาษาได้ — ใบอังกฤษพิมพ์ช่องขวา
+              ⚠️ แก้สองช่องนี้ **ไม่ทำให้ต้องอนุมัติสินค้าใหม่** (PRODUCT_DOC_NOTE_FIELDS)
+              แต่ก็ไม่ย้อนไปแก้ใบที่ออกไปแล้ว — ข้อความถูกตรึงลงบรรทัดตอนสร้าง */}
+          <div className="form-group">
+            <label>หมายเหตุบนเอกสารขาย (ไทย)</label>
+            <Textarea rows={3} name="docNote" value={form.docNote ?? ""} onChange={set("docNote")} placeholder="เช่น บรรจุขวดแก้วพร้อมกล่อง ตามตัวอย่างที่ลูกค้าอนุมัติ" className="w-full" />
+          </div>
+          <div className="form-group">
+            <label>หมายเหตุบนเอกสารขาย (อังกฤษ)</label>
+            <Textarea rows={3} name="docNoteEn" value={form.docNoteEn ?? ""} onChange={set("docNoteEn")} placeholder="e.g. Packed in glass bottle with gift box, per approved sample" className="w-full" />
+          </div>
+          <div className="form-group col-span-2">
+            <span className="text-xs text-[var(--text-3)]">ไม่บังคับ — ถ้ากรอกไว้ ระบบจะเติมให้เองใต้รายการสินค้าในใบเสนอราคา/ใบสั่งขาย และคนออกใบแก้เฉพาะใบนั้นได้</span>
           </div>
         </div>
       </div>

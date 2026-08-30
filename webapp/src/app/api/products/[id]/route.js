@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRecord, canEditRecord, canDeleteRecord, canApproveMasterData, redactProductMargin, isSuperuser } from '@/lib/permissions';
 import {
+  PRODUCT_DOC_NOTE_FIELDS,
   changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
@@ -216,6 +217,7 @@ export async function PATCH(request, { params }) {
     'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
     'volume', 'volumeUnit', 'saleUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
+    'docNote', 'docNoteEn', // หมายเหตุประจำสินค้า (mig 0317) — ยกเว้นจากด่านอนุมัติด้านล่าง
     'isActive', // lifecycle flag (0036) — พัก/เลิกใช้สินค้า
   ];
   const updated = { ...product };
@@ -310,16 +312,20 @@ export async function PATCH(request, { params }) {
   // force a fresh approval just to resume it).
   const isLifecycleToggleOnly =
     body.isActive !== undefined && Object.keys(body).every((k) => k === 'isActive');
-  const reapproval = isLifecycleToggleOnly ? null : resetApprovalOnEdit(product, user);
+  /* ฟิลด์ที่ "เปลี่ยนค่าจริง" — ใช้สองงาน: บอกในเธรดว่าแก้อะไรจนต้องอนุมัติใหม่ และ
+     ตัดสินว่าการแก้รอบนี้เข้าข้อยกเว้นไหม (mig 0317: แก้เฉพาะหมายเหตุประจำสินค้า
+     ไม่ต้องอนุมัติใหม่ — ท่าเดียวกับ CUSTOMER_CONTACT_FIELDS ฝั่งลูกค้า)
+     ⚠️ คอลัมน์ต้นทุนที่ derive จาก factoryPrice ถูกคำนวณใหม่ทุกครั้ง = ไม่ใช่สิ่งที่คนแก้
+     ⚠️ ผลพลอยได้ที่ตั้งใจ: กดบันทึกโดยไม่แก้อะไรเลยไม่ทำให้สินค้าหลุดจาก picker อีก
+     (changedFields ว่าง ⇒ resetApprovalOnEdit คืน null) */
+  const changedFields = changedFieldsAgainst(product, updated, {
+    ignore: ['updatedAt', 'laborCost', 'shippingCost', 'materialCost', 'factoryProfit',
+      'approvalStatus', 'submittedBy', 'submittedByName', 'approvedBy', 'approvedByName', 'approvedAt', 'rejectionReason'],
+  });
+  const reapproval = isLifecycleToggleOnly
+    ? null
+    : resetApprovalOnEdit(product, user, { changedFields, exemptFields: PRODUCT_DOC_NOTE_FIELDS });
   if (reapproval) Object.assign(updated, reapproval);
-  // ใช้บอกใน chat ว่า "แก้อะไรจนต้องอนุมัติใหม่" เท่านั้น ไม่ได้ใช้ตัดสินว่าจะ reset ไหม
-  // (คอลัมน์ต้นทุนที่ derive จาก factoryPrice ถูกคำนวณใหม่ทุกครั้ง = ไม่ใช่สิ่งที่คนแก้)
-  const changedFields = reapproval
-    ? changedFieldsAgainst(product, updated, {
-      ignore: ['updatedAt', 'laborCost', 'shippingCost', 'materialCost', 'factoryProfit',
-        'approvalStatus', 'submittedBy', 'submittedByName', 'approvedBy', 'approvedByName', 'approvedAt', 'rejectionReason'],
-    })
-    : [];
 
   const { data, error } = await supabase
     .from('products')

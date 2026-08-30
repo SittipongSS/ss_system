@@ -4,6 +4,7 @@ import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { lineNoteFor } from '@/lib/sales/quoteLines';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import {
   DEFAULT_NUMBERING_PATTERNS,
@@ -991,7 +992,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       description: (language === 'en'
         ? line.metadata?.descriptionEn
         : line.metadata?.descriptionTh) || line.description || '',
-      note: line.metadata?.note || line.note || '',
+      /* หมายเหตุรายบรรทัด: ใบภาษาอังกฤษพิมพ์คู่ภาษาของ master ได้เฉพาะตอนที่ข้อความ
+         ยังไม่ถูกแก้ (noteAuto) — ข้อความที่คนออกใบพิมพ์เองไม่มีคู่แปล จึงพิมพ์ตามที่
+         พิมพ์ไว้ทั้งสองภาษา (mig 0317) */
+      note: lineNoteFor(line, language),
       qty: Number(line.qty || 0),
       // หน่วยแปลตามภาษาใบ (IS-26080025) — ต่างจากข้อความที่คนกรอกตรงที่มันมาจากลิสต์ปิด
       // ของ lib/master/units.js จึงแปลได้โดยไม่ต้องให้ใครกรอกเพิ่ม · ค่าที่ไม่อยู่ในลิสต์

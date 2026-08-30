@@ -47,6 +47,38 @@ export function fgLineBrand(product) {
   return productBrandName(product);
 }
 
+/* ── หมายเหตุประจำสินค้า (mig 0317) ────────────────────────────────────────
+   ทะเบียนสินค้าตั้งหมายเหตุไว้สองภาษา (`docNote` / `docNoteEn`) แล้วระบบก๊อปลง
+   บรรทัด **ตอนสร้างบรรทัดเท่านั้น** (เลือกสินค้าบนฟอร์ม · seed จากโครงการ)
+   ⚠️ ห้ามก๊อปซ้ำตอนบันทึก/แสดงผล — คนออกใบที่ลบหมายเหตุทิ้งจะได้ของเดิมกลับมา
+   ทุกครั้งที่กดบันทึก และใบที่ออกไปแล้วจะเปลี่ยนข้อความเองเมื่อ master ถูกแก้
+   (หลักการเดียวกับราคา/ชื่อที่ตรึงลงบรรทัด)
+
+   `noteAuto: true` = ข้อความบนบรรทัดยังเป็นของ master ตัวเดิม ⇒ ใบภาษาอังกฤษ
+   พิมพ์ `noteEn` แทนได้ · คนออกใบแก้ข้อความเมื่อไร ธงกับคู่ภาษาถูกทิ้งทันที
+   (`lineNoteEdit`) เพราะข้อความที่พิมพ์เองไม่มีคู่แปลให้สลับ */
+export function fgLineNoteMeta(product) {
+  const th = String(product?.docNote || '').trim();
+  const en = String(product?.docNoteEn || '').trim();
+  if (!th && !en) return {};
+  return { note: th || en, noteEn: en || th, noteAuto: true };
+}
+
+/* แก้หมายเหตุบนบรรทัด — คืน metadata ชุดใหม่ (ไม่ใช่ patch) เพราะต้อง **ลบ** คีย์
+   ของ master ทิ้ง ไม่ใช่ทับด้วยค่าว่าง */
+export function lineNoteEdit(metadata, note) {
+  const { noteAuto, noteEn, ...rest } = metadata || {};
+  return { ...rest, note };
+}
+
+/* หมายเหตุที่จะพิมพ์ลงเอกสารตามภาษาของใบ — บรรทัดเก่าก่อน mig 0317 ไม่มีคู่ภาษา
+   จึงพิมพ์ข้อความเดิมทั้งสองภาษา (ไม่แปลให้เอง — กติกาเดียวกับชื่อสินค้า) */
+export function lineNoteFor(line, language) {
+  const meta = line?.metadata || {};
+  const note = meta.note || line?.note || '';
+  return (language === 'en' && meta.noteAuto && meta.noteEn) ? meta.noteEn : note;
+}
+
 function qtyFromProjectProduct(row) {
   const raw = row?.orderQty || row?.productionQty || 1;
   const n = Number(String(raw).replace(/,/g, ''));
@@ -59,7 +91,7 @@ export async function seedLinesFromProject(supabase, deal) {
   if (!deal.projectId) return [];
   const { data } = await supabase
     .from('project_products')
-    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice)')
+    .select('*, product:products(id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice, "docNote", "docNoteEn")')
     .eq('projectId', deal.projectId);
   return (data || []).map((row, index) => {
     const qty = qtyFromProjectProduct(row);
@@ -80,6 +112,8 @@ export async function seedLinesFromProject(supabase, deal) {
       sortOrder: index,
       metadata: {
         ...fgLineLanguageMeta(row.product),
+        // หมายเหตุประจำสินค้า (mig 0317) — เส้นนี้เป็น "ตอนสร้างบรรทัด" เหมือนกัน
+        ...fgLineNoteMeta(row.product),
         projectProductId: row.id,
         productBrand: fgLineBrand(row.product),
       },

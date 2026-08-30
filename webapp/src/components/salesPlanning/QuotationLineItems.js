@@ -14,7 +14,9 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
-import { fgLineBrand, fgLineDescription, fgLineLanguageMeta, masterPriceState } from "@/lib/sales/quoteLines";
+import {
+  fgLineBrand, fgLineDescription, fgLineLanguageMeta, fgLineNoteMeta, lineNoteEdit, masterPriceState,
+} from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
@@ -154,6 +156,13 @@ export default function QuotationLineItems({
   const selectLineProduct = (index, productId) => {
     const product = products.find((item) => item.id === productId);
     if (!product) return;
+    /* หมายเหตุประจำสินค้า (mig 0317) — เติมให้ตอนเลือกสินค้าเท่านั้น
+       ⚠️ เปลี่ยนสินค้าบนบรรทัดเดิม: หมายเหตุที่ระบบเติมให้ต้องตามสินค้าตัวใหม่
+       แต่ข้อความที่คนพิมพ์เองห้ามถูกทับ (ธง noteAuto เป็นตัวแยกสองอย่างนี้) */
+    const prevMeta = lines[index]?.metadata || {};
+    const typedNote = !prevMeta.noteAuto && prevMeta.note ? prevMeta.note : null;
+    const noteMeta = typedNote ? { note: typedNote } : fgLineNoteMeta(product);
+    const { note: _note, noteEn: _noteEn, noteAuto: _noteAuto, ...keptMeta } = prevMeta;
     setLine(index, {
       productId: product.id,
       fgCode: product.fgCode || null,
@@ -162,9 +171,10 @@ export default function QuotationLineItems({
       // ชื่อสองภาษาติดไปกับบรรทัดตั้งแต่ตอนเลือกสินค้า (server sync ซ้ำตอนบันทึกอยู่แล้ว
       // — ที่นี่มีไว้ให้พรีวิวภาษาอังกฤษถูกตั้งแต่ยังไม่กดบันทึก)
       metadata: {
-        ...(lines[index]?.metadata || {}),
+        ...keptMeta,
         ...fgLineLanguageMeta(product),
         productBrand: fgLineBrand(product),
+        ...noteMeta,
       },
       // หน่วยขายผูกกับสินค้า (มติ 2026-07-23) — server enforce ทับด้วย master.saleUnit ตอนบันทึก
       unit: product.saleUnit || "ชิ้น",
@@ -241,10 +251,20 @@ export default function QuotationLineItems({
                         </div>
                       )
                     )}
-                    {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา */}
+                    {/* หมายเหตุรายบรรทัด (metadata.note) — โชว์ใต้รายการในใบเสนอราคา
+                        บรรทัดที่ผูกสินค้าได้ข้อความตั้งต้นจากทะเบียนสินค้า (mig 0317)
+                        แก้ทับได้เสมอ · แก้แล้วธง noteAuto หลุด (lineNoteEdit) ⇒ ใบภาษา
+                        อังกฤษพิมพ์ข้อความที่พิมพ์เอง ไม่ใช่คู่แปลของสินค้า */}
                     {editable
                       ? ((line._noteOpen || line.metadata?.note)
-                        ? <Textarea rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: { ...(line.metadata || {}), note: event.target.value } })} />
+                        ? (
+                          <>
+                            <Textarea rows={2} value={line.metadata?.note || ""} placeholder="หมายเหตุรายการนี้ — แสดงใต้รายการในใบเสนอราคา" aria-label={`หมายเหตุ รายการ ${index + 1}`} onChange={(event) => setLine(index, { metadata: lineNoteEdit(line.metadata, event.target.value) })} />
+                            {line.metadata?.noteAuto && (
+                              <span className={styles.noteFromMaster}>หมายเหตุตั้งต้นจากทะเบียนสินค้า — แก้เฉพาะใบนี้ได้</span>
+                            )}
+                          </>
+                        )
                         : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
                       : (line.metadata?.note && (
                         <div className={styles.noteReadonly}>

@@ -345,7 +345,10 @@ function NewQuotationInner() {
             // หมายเหตุรายบรรทัดเก็บใน metadata.note — ตัดช่องว่าง/คีย์เปล่าก่อนส่ง
             const note = (line.metadata?.note || "").trim();
             const metadata = { ...(line.metadata || {}) };
-            if (note) metadata.note = note; else delete metadata.note;
+            // ลบหมายเหตุทิ้ง = ทิ้งคู่ภาษาของสินค้าไปด้วย (mig 0317) ไม่งั้นใบภาษา
+            // อังกฤษยังพิมพ์หมายเหตุที่คนสั่งลบไปแล้ว
+            if (note) metadata.note = note;
+            else { delete metadata.note; delete metadata.noteEn; delete metadata.noteAuto; }
             return { ...line, metadata };
           }),
           quoteDate,

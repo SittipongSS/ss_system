@@ -108,6 +108,12 @@
   font-size: var(--fs-6);
 }
 
+/* คำอธิบายใต้ช่องหมายเหตุตอนข้อความยังเป็นของทะเบียนสินค้า (mig 0317) */
+.noteFromMaster {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
 .noteReadonly strong {
   font-weight: var(--fw-bold);
 }

@@ -264,7 +264,9 @@ export default function QuotationEditorPage() {
       // หมายเหตุรายบรรทัดเก็บใน metadata.note — ตัดช่องว่าง/คีย์เปล่าก่อนส่ง
       const note = (payloadLine.metadata?.note || "").trim();
       payloadLine.metadata = { ...(payloadLine.metadata || {}) };
-      if (note) payloadLine.metadata.note = note; else delete payloadLine.metadata.note;
+      // ลบหมายเหตุทิ้ง = ทิ้งคู่ภาษาของสินค้าไปด้วย (mig 0317)
+      if (note) payloadLine.metadata.note = note;
+      else { delete payloadLine.metadata.note; delete payloadLine.metadata.noteEn; delete payloadLine.metadata.noteAuto; }
       return payloadLine;
     }),
     quoteDate: form.quoteDate,

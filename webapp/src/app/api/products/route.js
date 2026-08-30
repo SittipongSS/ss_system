@@ -46,6 +46,8 @@ const PRODUCT_PICKER_COLUMNS = [
   'id', 'fgCode', 'categoryCode', 'customerId', 'customerName', 'taxId',
   'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
   'volume', 'volumeUnit', 'saleUnit',
+  // หมายเหตุประจำสินค้า (mig 0317) — ฟอร์มใบเสนอราคาอ่านจากลิสต์นี้ตอนเลือกสินค้า
+  'docNote', 'docNoteEn',
   'price', 'costPrice', 'retailPriceIncVat', 'exciseTax', 'localTax',
   'scentId', 'formulaCode', 'metadata',
   'status', 'isActive', 'approvalStatus', 'approvalNumber', 'rejectionReason',
@@ -266,6 +268,10 @@ export async function POST(request) {
     volumeUnit: body.volumeUnit || 'ml',
     // หน่วยขายที่แสดงบนใบเสนอราคา/ใบสั่งขาย (0146) — ต่างจาก volumeUnit (ปริมาตรบรรจุ)
     saleUnit: body.saleUnit?.trim() || 'ชิ้น',
+    // หมายเหตุที่จะติดไปกับรายการบนใบเสนอราคา/ใบสั่งขาย (mig 0317) — สองภาษาเพราะ
+    // เอกสารเลือกภาษาได้; ว่างได้ทั้งคู่ = สินค้าตัวนี้ไม่มีหมายเหตุประจำตัว
+    docNote: String(body.docNote || '').trim() || null,
+    docNoteEn: String(body.docNoteEn || '').trim() || null,
     // ชิ้นต่อลัง (ตัวแปลงหน่วยฝั่งสหมิตร, migration 0075) — optional, null = ยังไม่ตั้ง.
     piecesPerCase:
       body.piecesPerCase == null || body.piecesPerCase === '' ? null : Number(body.piecesPerCase),
