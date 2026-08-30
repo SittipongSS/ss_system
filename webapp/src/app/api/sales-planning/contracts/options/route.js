@@ -111,8 +111,19 @@ async function listDealsThatCanIssue({ user, supabase }) {
       quotationCount: (row.eligibility.quotations || []).length,
       /* ⭐ ชนิดสัญญาที่ดีลนี้ออกได้ (มติผู้ใช้ 2026-08-22 รอบสอง) — จอถามเรียง
          ลูกค้า → ชนิดสัญญา → ดีล ⇒ ต้องรู้ตั้งแต่ตอนโหลดว่าดีลไหนตอบชนิดไหนได้
-         ⚠️ เอาเฉพาะชนิดที่ **มีแม่แบบจริง** — ชนิดที่ยังไม่มีต้นฉบับเลือกไปก็ออกไม่ได้ */
-      kinds: contractKindsForDeal(row.deal, row.project).filter(hasContractTemplate),
+
+         🐞 **เคยกรองด้วย `hasContractTemplate` ที่นี่ แล้วมันฆ่าเส้น external ทั้งเส้น**
+         (เจอบนจอจริง 2026-08-31 หลัง #1529 ขึ้น production): สัญญาบริการยังไม่มีแม่แบบ
+         ⇒ `kinds` ของดีลสาย SERVICE ว่างเปล่า ⇒ `.filter(row => row.kinds.length)`
+         ตัดดีลบริการทิ้งทั้งหมด ⇒ ป้าย "สัญญาบริการ" เทาทุกลูกค้าพร้อมเหตุผลที่ผิด
+         ("ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญาชนิดนี้ได้" ทั้งที่มีดีลอยู่ 29 ดีล)
+         ⇒ ฟีเจอร์ที่เพิ่งทำมาเพื่อ *ข้าม* ข้อจำกัดแม่แบบ ถูกข้อจำกัดเดิมปิดตายเสียเอง
+
+         ⚠️ **ความพร้อมของแม่แบบไม่ใช่เรื่องของ "ดีลนี้ออกชนิดไหนได้"** — มันเป็นเรื่องของ
+         *ที่มา* ที่ผู้ใช้เลือกทีหลัง (เจนต้องมีแม่แบบ · เอกสารภายนอกไม่ต้อง)
+         ⇒ ที่นี่ตอบเฉพาะ "ดีลรองรับชนิดไหน" · จอเป็นคนบวกเงื่อนไขแม่แบบตามที่มาที่เลือก
+            (`ContractCreateModal` — `!external && !hasContractTemplate(item)`) */
+      kinds: contractKindsForDeal(row.deal, row.project),
     }))
     .filter((row) => row.kinds.length)
     .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));

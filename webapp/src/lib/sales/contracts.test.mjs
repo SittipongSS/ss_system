@@ -385,3 +385,33 @@ test('🔴 route อนุมัติเอกสารภายนอกต้
   assert.match(route, /approve_external_sales_contract/, 'ต้องใช้ RPC ที่จบที่ signed');
   assert.doesNotMatch(route, /rpc\('issue_sales_contract'/, 'RPC เดิมจบที่ awaiting_signature — ใบจะค้าง');
 });
+
+/* ── 🐞 บั๊กที่เจอบนจอจริง 2026-08-31 (หลัง #1529 ขึ้น production) ────────────
+   ป้าย "สัญญาบริการ" เทาทุกลูกค้าพร้อมเหตุผลผิด ("ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญา
+   ชนิดนี้ได้") ทั้งที่ฐานมีดีลสาย SERVICE ที่ออกได้ 29 ดีล
+   ต้นเหตุ: `/contracts/options` กรอง `kinds` ด้วย `hasContractTemplate` แล้วดีลบริการ
+   `kinds` ว่าง ⇒ ถูก `.filter(row => row.kinds.length)` ตัดทิ้งทั้งหมด
+   ⇒ ฟีเจอร์ที่ทำมาเพื่อ **ข้าม** ข้อจำกัดแม่แบบ ถูกข้อจำกัดเดิมปิดตายเสียเอง */
+test('🐞 /contracts/options ต้องไม่กรองชนิดสัญญาด้วยแม่แบบ — ไม่งั้นเส้น external ตาย', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/options/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /kinds: contractKindsForDeal\(row\.deal, row\.project\),/);
+  assert.doesNotMatch(
+    route,
+    /contractKindsForDeal\([^)]*\)\.filter\(hasContractTemplate\)/,
+    'ความพร้อมของแม่แบบเป็นเรื่องของ "ที่มา" ที่จอถามทีหลัง ไม่ใช่ของ "ดีลนี้ออกชนิดไหนได้"',
+  );
+});
+
+/* จอต้องเป็นคนบวกเงื่อนไขแม่แบบตามที่มาที่เลือก — และต้องกันที่ `disabled` ไม่ใช่แค่คำอธิบาย */
+test('โมดัลสร้างสัญญากันแม่แบบตามที่มา ไม่ใช่ปล่อยให้กดแล้วปุ่มตาย', () => {
+  const modal = readFileSync(
+    new URL('../../components/salesPlanning/ContractCreateModal.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(modal, /disabled: !customerId \|\| !usable \|\| \(!external && !hasContractTemplate\(item\)\)/);
+  // สาย external ต้องไม่ถูกด่านแม่แบบแตะเลย
+  assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
+});
