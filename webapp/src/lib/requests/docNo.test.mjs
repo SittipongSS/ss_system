@@ -28,16 +28,24 @@ test('scope มาจากทะเบียนหัวข้อที่เ�
   /* ⭐ มติผู้ใช้ 2026-08-31: `RQ-AA-YYMMXXXX` — ทุกใบขึ้นต้น RQ เหมือนกันหมด
      แล้วตัวย่อหัวข้ออยู่กลาง · `info` เปลี่ยนจาก RQ เป็น IQ เพราะไม่งั้นได้ `RQ-RQ-` */
   assert.deepEqual(requestDocNoParts('info', 'RD', AUG), {
-    scope: 'IQ', month: '2608', prefix: 'RQ-IQ-2608', width: 4,
+    // คีย์ตัวนับ = (RQ, ปี) · ส่วนที่โผล่ในเลขคือตัวย่อหัวข้อ + เดือนที่กดส่ง
+    scope: 'RQ', month: '26', prefix: 'RQ-IQ-2608', width: 4,
   });
   // ขอเอกสารสองสายแยกตัวย่อกัน (มติผู้ใช้ 2026-08-18)
   assert.equal(requestDocNoParts('document', 'RD', AUG).prefix, 'RQ-DC-2608');
   assert.equal(requestDocNoParts('billing_doc', 'FN', AUG).prefix, 'RQ-DF-2608');
-  /* 🪤 `scope` ต้องเป็นตัวย่อล้วน **ห้ามมี `RQ-` ติดไป** — มันเป็นคีย์ของตัวนับ
-     และ SQL เตะด้วย `^[A-Z]{2,4}$` · เผลอเมื่อไรตัวนับเริ่มใหม่ทุกหัวข้อ */
+  /* 🔴 **เลขรันเป็นก้อนเดียวทุกหัวข้อ ตัดรอบทุกปี** (มติผู้ใช้ 2026-08-31 รอบสอง)
+     ⇒ คีย์ตัวนับต้องเหมือนกันหมดทุกหัวข้อ และ `month` ต้องเป็น **ปี** ไม่ใช่ YYMM
+     เผลอกลับไปใช้ตัวย่อหัวข้อเป็น scope เมื่อไร เลขจะแยกก้อนแล้วซ้ำกันข้ามหัวข้อ */
   for (const kind of ['info', 'document', 'billing_doc', 'scent_dev', 'site_survey']) {
-    assert.match(requestDocNoParts(kind, 'RD', AUG).scope, /^[A-Z]{2,4}$/, kind);
+    const parts = requestDocNoParts(kind, 'RD', AUG);
+    assert.equal(parts.scope, 'RQ', kind);
+    assert.equal(parts.month, '26', kind);
+    assert.match(parts.scope, /^[A-Z]{2,4}$/, `${kind}: SQL เตะรูปทรงนี้`);
   }
+  // ข้ามปีต้องได้คีย์ใหม่ (ตัดรอบ) แต่ข้ามเดือนในปีเดียวกันต้องไม่ตัด
+  assert.equal(requestDocNoParts('info', 'RD', new Date('2026-12-31T09:00:00Z')).month, '26');
+  assert.equal(requestDocNoParts('info', 'RD', new Date('2027-01-01T09:00:00Z')).month, '27');
   /* 🐞 เดิมหัวข้อที่ไม่รู้จักตกไปเป็น `PM-`/`RM-` ตามฝ่าย (ซากยุคขอราคาวัสดุ) ⇒
      ลืมประกาศ scope แล้วได้เลขคำนำหน้าผิดเงียบ ๆ และเลขที่ออกไปแล้วแก้ไม่ได้
      ⇒ ตอนนี้โยนทิ้งตั้งแต่ประกอบเลข ไม่ปล่อยไปให้ SQL ตายตอนผู้ใช้กดส่ง */
@@ -57,7 +65,7 @@ test('กดส่ง: ยิงฟังก์ชันเดียวพร้
   assert.deepEqual(supabase.calls[0], {
     fn: 'assign_dept_request_doc_no',
     args: {
-      p_id: 'DR-1', p_scope: 'IQ', p_month: '2608', p_prefix: 'RQ-IQ-2608', p_width: 4, p_patch: patch,
+      p_id: 'DR-1', p_scope: 'RQ', p_month: '26', p_prefix: 'RQ-IQ-2608', p_width: 4, p_patch: patch,
     },
   });
   // เลขจริงมาจากฟังก์ชัน ไม่ใช่จากที่ฝั่ง JS เดาไว้
@@ -79,6 +87,7 @@ test('เปิดแล้วส่งในจังหวะเดียว: 
      ⚠️ หัวข้อนี้ปลดระวางแล้วจึงยังถือ `RQ` อยู่ ⇒ ได้ `RQ-RQ-` ซึ่งตั้งใจให้เห็นชัด
      ว่าต้องตั้งตัวย่อของตัวเองก่อนถ้าจะเปิดคืน (ดูคอมเมนต์ใน materialEta.js) */
   assert.equal(supabase.calls[0].args.p_scope, 'RQ');
+  assert.equal(supabase.calls[0].args.p_month, '26');
   assert.equal(supabase.calls[0].args.p_prefix, 'RQ-RQ-2608');
   assert.equal(supabase.calls[0].args.p_width, 4);
   assert.equal('docNo' in supabase.calls[0].args.p_row, false);
