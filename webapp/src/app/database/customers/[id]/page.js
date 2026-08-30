@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Package, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, Users, Tag, FlaskConical, Beaker } from "lucide-react";
+import { ArrowLeft, Building2, Package, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, FlaskConical, Beaker } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
@@ -41,18 +41,42 @@ import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formul
 import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
-import { DetailCard } from "@/components/ui/DetailPage";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { approvalControlView } from "@/lib/master/approvalControl";
 import { apiFetch } from "@/lib/apiFetch";
 
 // หน้า detail ลูกค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/AR/ประเภท/สร้างเมื่อ) + ตัวเลขความสัมพันธ์
-//   - คอลัมน์หลักซ้าย = การ์ดข้อมูลบริษัท "พระเอกของหน้า" ตามด้วยแท็บความสัมพันธ์ + เอกสาร
-//   - rail ขวา = ของหยิบเร็ว: ผู้ติดต่อ / แบรนด์ / ภาระภาษี — แทนแถบ KPI (StatCards)
-//     กับแถวการ์ดโครงการ (ContextCard) เดิมที่โชว์ตัวเลขซ้ำกับแถบหัวและแท็บ
+//   - คอลัมน์หลักซ้าย = การ์ดข้อมูลลูกค้า "พระเอกของหน้า" ตามด้วยแท็บความสัมพันธ์ + เอกสาร
+//   - rail ขวา = สรุปลูกค้า + Control Panel + ภาระภาษี
+//
+// รอบจัดหน้าใหม่ (มติผู้ใช้ 2026-08-30 · ทำต่อจากหน้าสินค้า): สองหน้านี้เป็น master
+// data ที่เดินด่านอนุมัติชุดเดียวกัน จึงต้องหน้าตาเดียวกัน
+//   · ปุ่มระดับลูกค้า (แก้ไข/พักใช้/ลบ) เคยเป็นไอคอนเปล่าในแถวปุ่มย้อนกลับ ⇒ ย้ายเข้า
+//     Control Panel ทั้งชุด (ม-49/ม-57: ปุ่มระดับ record อยู่ที่เดียว ห้ามวางกลับ)
+//   · **สถานะอนุมัติไม่เคยโผล่บนหน้านี้เลย** ทั้งที่เป็นตัวตัดสินว่าลูกค้าจะขึ้นใน
+//     picker ของทุกหน้าไหม · เหตุผลที่ถูกตีกลับก็ต้องไปหาในเธรด ⇒ ขึ้นการ์ดจัดการ
+//   · **ผู้ติดต่อกับแบรนด์ย้ายออกจากราง** มาอยู่ในการ์ดข้อมูลลูกค้า — เป็นข้อมูลของ
+//     ลูกค้า (section 1 และ 3 ของฟอร์ม) ไม่ใช่สถานะหรือปุ่ม · การ์ดเรียงตามลำดับ
+//     เดียวกับฟอร์ม: ข้อมูลหลัก → ที่อยู่ → ผู้ติดต่อ
 
 // แถวความสัมพันธ์ในแท็บ 360-view: ชื่อ + บรรทัดรอง + ของฝั่งขวา · ทุกแท็บทรงเดียวกัน
 // เดิมก๊อปมาร์กอัปชุดนี้ซ้ำทีละแท็บ ซึ่งเป็นวิธีที่แท็บพวกนี้เพี้ยนหากันทีละนิด
 // (กฎเดียวกับ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
+/* หัวข้อย่อยในการ์ดข้อมูลลูกค้า — กินเต็มแถวของกริดสามคอลัมน์ ไม่งั้นหัวข้อไปนั่ง
+   หนึ่งในสามของแถว แล้วช่องข้อมูลช่องแรกขึ้นมาอยู่ข้าง ๆ หัวข้อของตัวเอง
+   (ตัวเดียวกับ SpecGroup ของหน้าสินค้า ต่างแค่จำนวนคอลัมน์ที่ต้อง span) */
+function ProfileGroup({ label, hint = null }) {
+  return (
+    <div className="md:col-span-3 border-b border-[var(--border)] pb-2 mt-2 first:mt-0">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-2)]">{label}</span>
+      {hint ? <p className="text-[11px] text-[var(--text-3)] mt-1">{hint}</p> : null}
+    </div>
+  );
+}
+
 function RelationRow({ title, subtitle, right, onClick }) {
   return (
     <div
@@ -370,22 +394,106 @@ export default function CustomerDetails() {
   const primaryBillingIndex = addresses.findIndex(isBillingAddress);
   const primaryShippingIndex = addresses.findIndex(isShippingAddress);
 
+  /* ── Control Panel ของลูกค้า ───────────────────────────────────────────────
+     สองแกนเหมือนหน้าสินค้า: ด่านอนุมัติ (คุมว่าขึ้น picker ไหม) กับวงจรชีวิต
+     (พักใช้/เปิดใช้) · การ์ด control ถือแกนอนุมัติ · การ์ดสรุปถือแกนใช้งาน */
+  const approvalView = approvalControlView(customer, {
+    noun: "ลูกค้า",
+    savedHint: "ทะเบียนลูกค้าถูกสร้างแล้ว",
+    doneHint: "ลูกค้าพร้อมให้ออกเอกสารและผูกสินค้าได้",
+  });
+  const workflowSteps = workflowStepsFromIndex(approvalView.steps, approvalView.currentIndex);
+
+  const customerActions = {
+    primaryAction: canEdit && {
+      id: "edit",
+      kind: "edit",
+      label: "แก้ไขข้อมูลลูกค้า",
+      variant: "filled",
+      onClick: () => setIsEditing(true),
+    },
+    secondaryActions: [
+      canEdit && (customer.isActive === false
+        ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive }
+        : { id: "pause", kind: "pause", icon: Archive, label: "พักใช้งานลูกค้า", onClick: handleToggleActive }),
+    ].filter(Boolean),
+    dangerActions: [
+      canEdit && canDelete && { id: "delete", kind: "delete", label: "ลบลูกค้า", onClick: handleDelete },
+    ].filter(Boolean),
+  };
+
+  const customerAside = (
+    <>
+      <DocumentSummaryCard
+        title="สรุปลูกค้า"
+        rows={[
+          { id: "type", label: "ประเภทลูกค้า", value: customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล" },
+          { id: "team", label: "ทีมดูแล", value: teamsLabel },
+          { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
+          { id: "credit", label: "เงื่อนไขเครดิต", value: customer.creditTerms },
+          { id: "addresses", label: "ที่อยู่", value: `${addresses.length} รายการ` },
+          { id: "contacts", label: "ผู้ติดต่อ", value: `${(customer.contacts || []).length} คน` },
+        ]}
+        status={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"}
+        statusColor={customer.isActive === false ? "var(--text-3)" : "var(--green)"}
+        statusLabel="สถานะการใช้งาน"
+      />
+
+      <DocumentControlCard
+        /* การ์ดตัวเดียวกับหน้าเอกสาร แต่ของนี้ไม่ใช่เอกสาร — ป้ายบนหัวต้องพูดว่าลูกค้า */
+        eyebrow="CUSTOMER CONTROL"
+        title="จัดการลูกค้า"
+        status={approvalView.label}
+        statusColor={approvalView.color}
+        statusDescription={workflowSteps[approvalView.currentIndex]?.hint}
+        workflowSteps={workflowSteps}
+        primaryAction={customerActions.primaryAction}
+        secondaryActions={customerActions.secondaryActions}
+        dangerActions={customerActions.dangerActions}
+        /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด
+           ⚠️ ช่องนี้ถูกล้างทุกครั้งที่อนุมัติ/แก้ (resetApprovalOnEdit) — รอบก่อน ๆ
+           อ่านย้อนได้ที่เธรดเท่านั้น */
+        notices={approvalView.rejected && customer.rejectionReason
+          ? <span className="ui-badge">เหตุผลที่ตีกลับ: {customer.rejectionReason}</span>
+          : null}
+        /* ⚠️ ต่างจากสินค้า: ผู้ติดต่อ/ที่อยู่ลิสต์ **ยกเว้น** จากการอนุมัติใหม่
+           (CUSTOMER_CONTACT_FIELDS + CUSTOMER_ADDRESS_EXEMPT_FIELDS) — ชื่อ เลขภาษี
+           สาขา ที่อยู่ออกเอกสาร รหัส AR ไม่ยกเว้น เพราะไปโผล่บนเอกสารถึงกรมสรรพสามิต */
+        footer={approvalView.status === "approved" && canEdit
+          ? <span>แก้ชื่อ · เลขผู้เสียภาษี · ที่อยู่ออกเอกสาร · รหัส AR = กลับไปรออนุมัติใหม่ และลูกค้าจะหลุดจากรายการเลือกทุกหน้าจนกว่าจะอนุมัติอีกครั้ง (แก้ผู้ติดต่อหรือที่อยู่จัดส่งไม่กระทบ)</span>
+          : null}
+      />
+
+      {/* ภาระภาษีสะสม — แทนแถบ KPI เดิม (tax-gated เหมือนเดิม) */}
+      {canViewTax && hasTaxObligation && (
+        <DetailCard icon={Package} eyebrow="EXCISE" title="ภาระภาษีสรรพสามิต">
+          <div className="space-y-3 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--text-3)]">ชำระแล้ว</span>
+              <span className="font-semibold font-mono text-[var(--green)]">{fmtMoney(totalPaidTax)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--text-3)]">ค้างชำระ</span>
+              <span className={`font-semibold font-mono ${totalPendingTax ? "text-[var(--amber)]" : "text-[var(--text)]"}`}>{fmtMoney(totalPendingTax)}</span>
+            </div>
+            <div className="border-t border-dashed border-[var(--border)] my-2 pt-2 flex justify-between items-center">
+              <span className="text-[var(--text-3)]">สะสมทั้งหมด</span>
+              <span className="font-bold font-mono text-[var(--text)]">{fmtMoney(totalTaxAccrued)}</span>
+            </div>
+            <p className="text-[10px] text-[var(--text-3)]">สรรพสามิต {fmtMoney(totalExciseTax)} + ท้องถิ่น {fmtMoney(totalLocalTax)}</p>
+          </div>
+        </DetailCard>
+      )}
+    </>
+  );
+
   return (
     <Workspace
       hideHeader
       back={{ href: "/database/customers", label: "กลับไปข้อมูลลูกค้า" }}
-      // action ระดับ entity (แก้ไข/พัก/ลบ) เป็นไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
-      backActions={canEdit ? (
-        <>
-          <ActionButton kind="edit" iconOnly label="แก้ไขข้อมูล" title="แก้ไขข้อมูล" onClick={() => setIsEditing(true)} />
-          {customer.isActive === false
-            ? <ActionButton kind="resume" iconOnly icon={ArchiveRestore} label="เปิดใช้อีกครั้ง" title="เปิดใช้อีกครั้ง" onClick={handleToggleActive} />
-            : <ActionButton kind="pause" iconOnly icon={Archive} label="พักใช้" title="พักใช้" onClick={handleToggleActive} />}
-          {canDelete && (
-            <ActionButton kind="delete" iconOnly label="ลบลูกค้า" title="ลบลูกค้า" onClick={handleDelete} />
-          )}
-        </>
-      ) : null}
+      /* ⚠️ **ปุ่มระดับลูกค้าไม่อยู่แถวนี้แล้ว** (2026-08-30) — ย้ายเข้า Control Panel
+         ที่รางขวาทั้งชุด · เดิมเป็นไอคอนเปล่าที่ต้องเอาเมาส์ไปค้างถึงจะรู้ว่าปุ่มไหน
+         คืออะไร และบนจอสัมผัสไม่มีทางรู้เลย · ห้ามวางกลับ (ม-49/ม-57) */
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
       <SalesDetailOverview
@@ -410,11 +518,17 @@ export default function CustomerDetails() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-[22px] mt-[18px]">
-        {/* คอลัมน์หลัก — ข้อมูลลูกค้าคือพระเอกของหน้า detail จึงขึ้นการ์ดแรก */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* ผังเดียวกับหน้าสินค้า/ใบเสนอราคา/ใบสั่งขาย: เนื้อซ้าย + รางขวาปักหมุด
+          ⚠️ ไม่เปิด `controlFirst` — คนเปิดหน้าลูกค้ามาอ่านข้อมูลลูกค้าก่อน ไม่ได้มา
+          เพื่อกดก้าวถัดไปเหมือนหน้าเอกสาร (เหตุผลเต็มอยู่ที่ DetailPageLayout) */}
+      <div className="mt-[18px]">
+      <DetailPageLayout asideLabel="สรุปลูกค้าและการดำเนินการ" aside={customerAside}>
+          {/* ⭐ การ์ดนี้เรียงตาม **ลำดับเดียวกับฟอร์มลูกค้า** (CustomerForm section 1-3)
+              — คนกรอกกับคนอ่านเดินสายตาชุดเดียวกัน · แบรนด์กับผู้ติดต่อเคยอยู่ในราง
+              ขวา ทั้งที่เป็นช่องในฟอร์มนี้ ไม่ใช่สถานะหรือปุ่ม */}
           <DetailCard icon={Building2} eyebrow="Customer profile" title="ข้อมูลลูกค้า บริษัท/บุคคล">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
+              <ProfileGroup label="1. ข้อมูลหลัก" />
               {/* ชื่ออังกฤษ (mig 0283) — ช่องของเอกสาร IFRA/MSDS · ว่าง = ขีดตามกติกา
                   ค่าว่างของทั้งระบบ (ต่างจากบรรทัดอังกฤษใต้ที่อยู่ ซึ่งเป็นบรรทัดเสริม
                   ไม่ใช่ช่อง จึงตัดทิ้งเมื่อว่าง) */}
@@ -425,6 +539,24 @@ export default function CustomerDetails() {
               <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
               <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
               <Field label="เงื่อนไขเครดิต (Credit Terms)" value={customer.creditTerms} />
+              {/* แบรนด์เป็นของลูกค้า (customers.brands[]) — สินค้าหยิบไปเป็นตัวเลือก
+                  ตอนตั้งแบรนด์ของ FG · เคยอยู่ในรางขวา ซึ่งทำให้คนหาไม่เจอตอนกรอกฟอร์ม */}
+              <div className="md:col-span-3">
+                <span className="text-[var(--text-3)] block mb-2 text-[11px]">แบรนด์สินค้าที่ดูแล ({(customer.brands || []).length})</span>
+                {customer.brands && customer.brands.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {customer.brands.map((b, i) => (
+                      <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
+                        {brandBothOf(b)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีแบรนด์</span>
+                )}
+              </div>
+
+              <ProfileGroup label="2. ที่อยู่" hint="ป้าย “หลัก” คือที่อยู่ที่เอกสารใหม่จะตั้งต้นให้" />
               {/* ที่อยู่หลายรายการ (0202) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
               <div className="md:col-span-3">
                 <span className="text-[var(--text-3)] block mb-2 text-[11px]">ที่อยู่ ({addresses.length})</span>
@@ -472,6 +604,34 @@ export default function CustomerDetails() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+
+              {/* ⚠️ ผู้ติดต่อคนแรก = ค่า mirror ของ contactPerson/contactPhone/email
+                  (mig 0033) ที่เอกสารหยิบไปใช้ตั้งต้น ⇒ ป้าย "(หลัก)" ไม่ใช่แค่ลำดับ */}
+              <ProfileGroup label="3. ผู้ติดต่อ" hint="คนแรกคือผู้ติดต่อหลัก — เอกสารใหม่ตั้งต้นให้จากคนนี้" />
+              <div className="md:col-span-3">
+                <span className="text-[var(--text-3)] block mb-2 text-[11px]">ผู้ติดต่อ ({(customer.contacts || []).length})</span>
+                {(customer.contacts || []).length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {customer.contacts.map((c, i) => (
+                      <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          {c.role && <span className="ui-badge">{c.role}</span>}
+                          <span className="font-medium text-[var(--text)] text-sm">{naText(c.name)}</span>
+                          {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(หลัก)</span>}
+                        </div>
+                        {(c.phone || c.email) && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[var(--text-2)] text-[12px]">
+                            {c.phone && <span className="font-mono">{fmtPhone(c.phone)}</span>}
+                            {c.email && <span className="break-all">{c.email}</span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีผู้ติดต่อ — เพิ่มได้ที่ “แก้ไขข้อมูลลูกค้า”</span>
                 )}
               </div>
             </div>
@@ -800,78 +960,7 @@ export default function CustomerDetails() {
               emptyText="ยังไม่มีความเคลื่อนไหว"
             />
           </DetailCard>
-        </div>
-
-        {/* rail ขวา: ของหยิบเร็ว — ผู้ติดต่อ / แบรนด์ / ภาระภาษี */}
-        <div className="space-y-6">
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <Users size={16} className="text-[var(--accent)]" /> ผู้ติดต่อ ({(customer.contacts || []).length})
-            </h3>
-            {(customer.contacts || []).length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {customer.contacts.map((c, i) => (
-                  <div key={i} className="text-xs border border-[var(--border)] rounded-lg px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {c.role && <span className="ui-badge">{c.role}</span>}
-                      <span className="font-medium text-[var(--text)]">{naText(c.name)}</span>
-                      {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(หลัก)</span>}
-                    </div>
-                    {(c.phone || c.email) && (
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[var(--text-2)]">
-                        {c.phone && <span className="font-mono">{fmtPhone(c.phone)}</span>}
-                        {c.email && <span>{c.email}</span>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span className="text-[var(--text-3)] text-xs italic">ไม่มีข้อมูลผู้ติดต่อ — เพิ่มได้ที่ “แก้ไขข้อมูล”</span>
-            )}
-          </div>
-
-          <div className="glass-panel p-[20px]">
-            <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4 flex items-center gap-2">
-              <Tag size={16} className="text-[var(--accent)]" /> แบรนด์สินค้าที่ดูแล
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {customer.brands && customer.brands.length > 0 ? (
-                customer.brands.map((b, i) => (
-                  <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
-                    {brandBothOf(b)}
-                  </span>
-                ))
-              ) : (
-                <span className="text-[var(--text-3)] text-xs italic">ไม่มีข้อมูลแบรนด์</span>
-              )}
-            </div>
-          </div>
-
-          {/* ภาระภาษีสะสม — แทนแถบ KPI เดิม (tax-gated เหมือนเดิม) */}
-          {canViewTax && hasTaxObligation && (
-            <div className="glass-panel p-[20px]">
-              <h3 className="font-semibold text-sm text-[var(--text)] border-b border-[var(--border)] pb-3 mb-4">
-                ภาระภาษีสรรพสามิต
-              </h3>
-              <div className="space-y-3 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">ชำระแล้ว</span>
-                  <span className="font-semibold font-mono text-[var(--green)]">{fmtMoney(totalPaidTax)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">ค้างชำระ</span>
-                  <span className={`font-semibold font-mono ${totalPendingTax ? "text-[var(--amber)]" : "text-[var(--text)]"}`}>{fmtMoney(totalPendingTax)}</span>
-                </div>
-                <div className="border-t border-dashed border-[var(--border)] my-2 pt-2 flex justify-between items-center">
-                  <span className="text-[var(--text-3)]">สะสมทั้งหมด</span>
-                  <span className="font-bold font-mono text-[var(--text)]">{fmtMoney(totalTaxAccrued)}</span>
-                </div>
-                <p className="text-[10px] text-[var(--text-3)]">สรรพสามิต {fmtMoney(totalExciseTax)} + ท้องถิ่น {fmtMoney(totalLocalTax)}</p>
-              </div>
-            </div>
-          )}
-        </div>
+      </DetailPageLayout>
       </div>
 
       {/* Edit modal */}
