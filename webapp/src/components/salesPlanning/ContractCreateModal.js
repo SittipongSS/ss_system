@@ -208,7 +208,12 @@ export default function ContractCreateModal({
         value: item,
         label: CONTRACT_KIND_LABELS[item],
         tone: KIND_TONE[item],
-        disabled: !customerId || !usable,
+        /* ⚠️ **ความพร้อมของแม่แบบต้องอยู่ในเงื่อนไข disabled ด้วย ไม่ใช่แค่คำอธิบาย** —
+           ตั้งแต่ `/contracts/options` เลิกกรอง `kinds` ด้วยแม่แบบ (แก้บั๊กที่มันฆ่า
+           เส้น external ทั้งเส้น) ชนิดที่ยังไม่มีต้นฉบับจะ "ใช้ได้" ในสายตาของ `usable`
+           ⇒ ถ้าไม่กันตรงนี้ คนเลือกที่มา "ระบบเจนจากแม่แบบ" จะกดป้ายสัญญาบริการได้
+           แล้วไปเจอปุ่มสร้างที่ตายอยู่โดยไม่รู้ว่าทำไม */
+        disabled: !customerId || !usable || (!external && !hasContractTemplate(item)),
         description: !external && !hasContractTemplate(item)
           ? MISSING_TEMPLATE_NOTE
           : !customerId
