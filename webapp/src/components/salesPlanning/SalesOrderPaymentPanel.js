@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, CalendarRange, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
+import { CalendarClock, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -47,7 +47,11 @@ export default function SalesOrderPaymentPanel({
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
   const [linkFor, setLinkFor] = useState(null);
-  const [coverageFor, setCoverageFor] = useState(null);
+  /* ⭐ ร่างช่วงครอบที่ยังไม่บันทึก (มติผู้ใช้ 2026-08-30 รอบสอง — แก้ในตารางแทนโมดัล)
+     ⚠️ **ไม่ auto-save** ตามกฎฟอร์มของ repo — พิมพ์ลงร่างก่อน แล้วกดปุ่มบันทึกรวมทีเดียว
+     ท่าเดียวกับตารางไทม์ไลน์ของดีล (`DealTimelineTable`: drafts → saveDrafts) */
+  const [coverDrafts, setCoverDrafts] = useState({});
+  const [savingCover, setSavingCover] = useState(false);
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -144,6 +148,43 @@ export default function SalesOrderPaymentPanel({
     if (warnings.some((w) => w.kind === "half_range")) notes.push("มีงวดที่กรอกช่วงครอบมาข้างเดียว");
     return notes.length ? notes.join(" · ") : null;
   })();
+
+  /* ── ช่องแก้ช่วงครอบในตาราง ────────────────────────────────────────────
+     ค่าที่โชว์ = ร่าง (ถ้ามี) ไม่งั้นค่าจากฐาน · ร่างที่เท่าของเดิมถูกถอดออกเอง
+     เพื่อให้ "มีของค้าง" นับจากความต่างจริง ไม่ใช่จากการที่เคยแตะช่อง */
+  const coverOf = (row) => coverDrafts[row.id]
+    || { coversFrom: row.coversFrom || "", coversTo: row.coversTo || "" };
+  const setCover = (row, patch) => setCoverDrafts((current) => {
+    const next = { ...coverOf(row), ...patch };
+    const same = next.coversFrom === (row.coversFrom || "") && next.coversTo === (row.coversTo || "");
+    const out = { ...current };
+    if (same) delete out[row.id]; else out[row.id] = next;
+    return out;
+  });
+  const coverDirty = Object.keys(coverDrafts).length;
+  /* ช่วงกลับหัวห้ามส่งขึ้น API — ด่านจะตีกลับอยู่แล้ว แต่บอกตั้งแต่บนจอเร็วกว่า
+     (ช่อง "ถึง" มี min อยู่แล้ว เคสนี้เกิดได้เฉพาะตอนแก้ช่อง "ตั้งแต่" ให้เลยวันจบ) */
+  const coverInvalid = Object.values(coverDrafts)
+    .some((d) => d.coversFrom && d.coversTo && d.coversFrom > d.coversTo);
+
+  const saveCoverDrafts = async () => {
+    const entries = Object.entries(coverDrafts);
+    if (!entries.length || coverInvalid) return;
+    setSavingCover(true);
+    const failed = {};
+    for (const [rowId, draft] of entries) {
+      const row = saved.find((r) => r.id === rowId);
+      if (!row) continue;
+      /* ทีละงวดตามลำดับโดยตั้งใจ — ด่านของ API อ่านงวดพี่น้องสดทุกครั้ง ยิงพร้อมกันแล้วผลไม่นิ่ง */
+      const done = await onAction(row, "coverage", {
+        coversFrom: draft.coversFrom || null,
+        coversTo: draft.coversTo || null,
+      });
+      if (!done) failed[rowId] = draft;
+    }
+    setCoverDrafts(failed);
+    setSavingCover(false);
+  };
 
   /* ── ใบยอด 0 จบที่อนุมัติใบ (มติผู้ใช้ 2026-08-18) ────────────────────────
      ไม่มีเงินให้เก็บ ⇒ ไม่มีงวด ไม่มีการแจ้ง/ยืนยัน · การ์ดยังอยู่เพื่อ **บอกว่าทำไม
@@ -328,16 +369,6 @@ export default function SalesOrderPaymentPanel({
                     label: row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",
                     onClick: () => { onClearError?.(); setScheduleFor({ row, dueDate: row.dueDate || "" }); },
                   },
-                  /* ช่วงครอบบริการ — เฉพาะใบสายบริการ · งวดที่บัญชีรับรองแล้วเป็นของบัญชี
-                     (ด่านจริงอยู่ที่ `installmentActionError` ตัวเดียวกับที่ API ใช้) */
-                  hasServiceRounds && !gate(row, "coverage") && {
-                    id: "coverage", icon: CalendarRange,
-                    label: row.coversFrom || row.coversTo ? "แก้ช่วงครอบบริการ" : "ระบุช่วงครอบบริการ",
-                    onClick: () => {
-                      onClearError?.();
-                      setCoverageFor({ row, coversFrom: row.coversFrom || "", coversTo: row.coversTo || "" });
-                    },
-                  },
                   !gate(row, "withdraw") && {
                     id: "withdraw", icon: Undo2, tone: "warning",
                     // งวดร่างยังไม่ได้ส่งให้ใคร ⇒ "ดึงกลับ" ไม่ตรงกับสิ่งที่เกิดจริง
@@ -416,24 +447,40 @@ export default function SalesOrderPaymentPanel({
                         (มติ 2026-08-30: รอบเลื่อน/งดได้ตลอดอายุสัญญา ผูกเลขรอบแล้วเพี้ยนเงียบ)
                         ⚠️ งวดที่บัญชีรับรองแล้วแต่ช่องนี้ว่าง = ไม่ถูกนับเข้า "จ่ายถึง" ⇒ ต้องเห็นว่าว่าง
                         ไม่ใช่เงียบ ๆ (ขีดของระบบผ่าน NA ไม่ใช่ "-" ดิบ) */}
-                    {hasServiceRounds ? (
-                      <td>
-                        {row.coversFrom && row.coversTo ? (
-                          <span>{fmtDate(row.coversFrom)} – {fmtDate(row.coversTo)}</span>
-                        ) : row.coversFrom || row.coversTo ? (
-                          /* กรอกมาข้างเดียว — `fmtDate` ของช่องที่ว่างคืนยัติภังค์ดิบ "-"
-                             ซึ่งไปวางคู่กับขีดคั่นช่วงแล้วอ่านเป็นสองขีดติดกัน · ขีดของระบบ
-                             คือ NA (`—`) และเคสนี้มีคำเตือน half_range รออยู่แล้วบนหัวการ์ด */
-                          <span className={styles.overdue}>
-                            {row.coversFrom ? `ตั้งแต่ ${fmtDate(row.coversFrom)}` : `ถึง ${fmtDate(row.coversTo)}`} · ยังไม่ครบช่วง
-                          </span>
-                        ) : (
-                          <span className={row.status === "confirmed" ? styles.overdue : styles.none}>
-                            {row.status === "confirmed" ? "ยังไม่ระบุ" : NA}
-                          </span>
-                        )}
-                      </td>
-                    ) : null}
+                    {hasServiceRounds ? (() => {
+                      /* ⭐ แก้ได้ในตารางเลย (มติผู้ใช้ 2026-08-30 รอบสอง) — ท่าเดียวกับ
+                         ตารางไทม์ไลน์ของดีล: `DateInput compact` ในเซลล์ + ร่าง + ปุ่มบันทึกรวม
+                         ⚠️ **ด่านเดียวกับ API** (`gate(row,"coverage")`) ⇒ งวดที่บัญชีรับรองแล้ว
+                         ฝ่ายขายจะเห็นเป็นข้อความล็อกพร้อมเหตุ ไม่ใช่ช่องหาย (ล็อกดีกว่าซ่อน)
+                         ⚠️ `min` ของช่อง "ถึง" กันช่วงกลับหัวตั้งแต่บนจอ ไม่ต้องรอด่านตอบ */
+                      const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : gate(row, "coverage");
+                      const draft = row.preview ? { coversFrom: "", coversTo: "" } : coverOf(row);
+                      const edited = !row.preview && !!coverDrafts[row.id];
+                      return (
+                        <td className={edited ? styles.coverEdited : undefined}>
+                          {lock ? (
+                            <span className={row.status === "confirmed" && !row.coversTo ? styles.overdue : styles.none}
+                              title={lock}>
+                              {row.coversFrom || row.coversTo
+                                ? `${row.coversFrom ? fmtDate(row.coversFrom) : "…"} – ${row.coversTo ? fmtDate(row.coversTo) : "…"}`
+                                : row.status === "confirmed" ? "ยังไม่ระบุ" : NA}
+                            </span>
+                          ) : (
+                            <span className={styles.coverCell}>
+                              <DateInput compact value={draft.coversFrom} className={styles.coverDate}
+                                ariaLabel={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq}`}
+                                disabled={!!busy || savingCover}
+                                onChange={(iso) => setCover(row, { coversFrom: iso })} />
+                              <DateInput compact value={draft.coversTo} className={styles.coverDate}
+                                min={draft.coversFrom || undefined}
+                                ariaLabel={`ครอบบริการถึง · งวดที่ ${row.seq}`}
+                                disabled={!!busy || savingCover}
+                                onChange={(iso) => setCover(row, { coversTo: iso })} />
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })() : null}
                     <td className="num">{fmtMoney(row.amount)}</td>
                     <td>
                       {evidence.length ? (
@@ -495,6 +542,25 @@ export default function SalesOrderPaymentPanel({
           </table>
         </TableScroll>
       )}
+
+      {/* ⭐ แถบบันทึกช่วงครอบที่แก้ค้าง — **ไม่ auto-save** (กฎฟอร์มของ repo)
+          ขึ้นเฉพาะตอนมีของค้างจริง ⇒ ตารางที่ไม่ได้แตะจะไม่มีแถบนี้มากินที่
+          ⚠️ บันทึกทีละงวดตามลำดับ เพราะด่านของ API อ่านงวดพี่น้องสดทุกครั้ง
+          ⚠️ งวดที่บันทึกไม่ผ่านจะ **ค้างไว้ในร่างต่อ** ไม่ถูกล้างทิ้งพร้อมของที่สำเร็จ */}
+      {coverDirty ? (
+        <div className={styles.coverBar}>
+          <span>
+            แก้ช่วงครอบบริการค้างไว้ {coverDirty} งวด
+            {coverInvalid ? " — มีงวดที่วันเริ่มเลยวันสิ้นสุด" : ""}
+          </span>
+          <Button variant="ghost" size="sm" disabled={savingCover || !!busy}
+            onClick={() => setCoverDrafts({})}>ยกเลิกที่แก้</Button>
+          <Button tone="accent" size="sm" disabled={savingCover || !!busy || coverInvalid}
+            onClick={saveCoverDrafts}>
+            {savingCover ? "กำลังบันทึก…" : "บันทึกช่วงครอบ"}
+          </Button>
+        </div>
+      ) : null}
 
       {/* ⭐ **ปุ่มนี้เป็นทางกู้ ไม่ใช่ก้าวปกติ** (มติผู้ใช้ 2026-08-19) — งวดถูกสร้างให้
           ตั้งแต่ตอนออกใบจาก QT แล้ว (ดู POST `/api/sales-planning/sales-orders`)
@@ -577,44 +643,6 @@ export default function SalesOrderPaymentPanel({
         </Modal>
       ) : null}
 
-      {/* ⭐ ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) — กรอกเอง 2 ช่อง
-          ⚠️ **ไม่มีค่าตั้งต้น** ตามกฎฟอร์มของ repo: ช่วงครอบเป็นการตัดสินใจ ไม่ใช่ค่าที่เดาได้
-          (ปุ่ม "แบ่งช่วงอัตโนมัติ" จากช่วงสัญญาเป็นงาน PR-B ตอนที่ใบผูกสัญญาได้แล้ว
-           ตัวคำนวณอยู่ที่ `splitCoverageEvenly` ใน lib/sales/paymentCoverage.js รอเสียบ)
-          ⚠️ ล้างช่องทั้งคู่แล้วบันทึกได้ = ถอนช่วงครอบออก (ค่า "จ่ายถึง" จะถอยตาม) */}
-      {coverageFor ? (
-        <Modal open onClose={() => setCoverageFor(null)} title="ช่วงครอบบริการของงวดนี้" size="sm" dismissible={!busy}>
-          <div className={styles.dialog}>
-            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-            <p className="form-note">
-              เงินงวดนี้จ่ายค่าบริการช่วงวันไหน — ระบบใช้วันสิ้นสุดของงวดที่บัญชีรับรองแล้ว
-              เป็นค่า “จ่ายถึง” ซึ่งเป็นด่านว่านัดบริการวันไหนลงคิวได้
-            </p>
-            <label className={styles.field}>
-              <span>ครอบตั้งแต่</span>
-              <DateInput value={coverageFor.coversFrom} ariaLabel="วันเริ่มช่วงครอบบริการ"
-                onChange={(iso) => setCoverageFor((f) => ({ ...f, coversFrom: iso }))} />
-            </label>
-            <label className={styles.field}>
-              <span>ถึง</span>
-              <DateInput value={coverageFor.coversTo} ariaLabel="วันสิ้นสุดช่วงครอบบริการ"
-                min={coverageFor.coversFrom || undefined}
-                onChange={(iso) => setCoverageFor((f) => ({ ...f, coversTo: iso }))} />
-            </label>
-            <div className="action-bar">
-              <Button variant="ghost" onClick={() => setCoverageFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="accent" disabled={!!busy}
-                onClick={async () => {
-                  const done = await onAction(coverageFor.row, "coverage", {
-                    coversFrom: coverageFor.coversFrom || null,
-                    coversTo: coverageFor.coversTo || null,
-                  });
-                  if (done) setCoverageFor(null);
-                }}>บันทึก</Button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
 
       {/* ⭐ แนบคำร้องที่ขอไว้แล้ว (B-5) — โชว์ **ยอดของคำร้อง** คู่กับยอดของงวดเสมอ
           เพราะสองอย่างนี้ไม่จำเป็นต้องเท่ากัน (ขอวางบิลรวมสองงวดก็มี) ⇒ คนกดต้องเห็น
