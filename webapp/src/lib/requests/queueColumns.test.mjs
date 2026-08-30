@@ -62,6 +62,9 @@ test('🔴 ตารางคำร้องต้องมีชุดเดี
   const ALLOWED = {
     'components/salesPlanning/DealTimelineTable.js':
       'ตารางขั้นตอนไทม์ไลน์ (ไม่ใช่ตารางคำร้อง) — ใช้ชื่อชนิดแค่ใน tooltip ของหมุดคำร้องบนขั้นตอน',
+    'app/rd/sales-orders/page.js':
+      'ตาราง **ใบสั่งขาย** ของโมดูล R&D — หนึ่งแถวคือหนึ่งใบสั่งขาย · ชื่อชนิดคำร้องโผล่'
+      + ' แค่ในลิงก์ย้อนกลับไปใบที่อ้างถึงใบสั่งขายนั้น ไม่ใช่คอลัมน์ของคำร้อง',
   };
   const offenders = files.filter((file) => {
     if (file === PANEL) return false;

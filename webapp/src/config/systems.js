@@ -26,7 +26,10 @@ export const SYSTEM_CATALOG = [
        สวมเปลือก "บัญชีและการเงิน" ⇒ ป้ายบนการ์ดกับเปลือกที่ได้ไม่ตรงกัน
        ⚠️ **ไม่ได้ตัดสิทธิ์อ่านอะไรเลย** — `salesplan:view` ยังอยู่ครบ กดลิงก์จากใบ
        ไปดีล/โครงการยังเข้าได้เหมือนเดิม (เหตุผลเดียวกับกฎข้อ 7: ตัดที่เมนู ไม่ใช่ที่ cap) */
-    isVisible: (user) => homeSystemForUser(user) !== 'finance'
+    /* ⭐ ฝ่ายที่มีบ้านของตัวเองไม่เห็นการ์ดนี้ — เดิมเขียนชื่อ `'finance'` ตรง ๆ ·
+       ฝ่าย R&D เข้าเงื่อนไขเดียวกันตั้งแต่ 2026-08-29 ⇒ ถามจากตัวตัดสิน "บ้านของใคร"
+       แทนการไล่เติมชื่อระบบทีละตัว (ตัวเดียวกับที่ `worksInSalesPipeline` ใช้) */
+    isVisible: (user) => homeSystemForUser(user) === null
       && ['salesplan:view', 'salesplan:lead', 'pm:view'].some((cap) => canUser(user, cap)),
     landing: (user) => {
       if (canUser(user, 'salesplan:view')) return '/sa';

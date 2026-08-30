@@ -43,6 +43,9 @@ export async function GET(request) {
     statuses: csv(url.searchParams.get('status')),
     registrations: csv(url.searchParams.get('reg')),
     showInactive: url.searchParams.get('inactive') === '1',
+    // ⭐ "ขาดราคาขายปลีก" ย้ายมาจากแท็บของ /tax/reports (มติผู้ใช้ 2026-08-29)
+    // — ต้องรับที่นี่ด้วย ไม่งั้นไฟล์กับตารางเดินหนีกันทันทีที่ผู้ใช้ติ๊กตัวกรองนี้
+    missingRetailPrice: url.searchParams.get('missingPrice') === '1',
     productTypes: productTypes || [],
   }).sort((a, b) => String(a.fgCode || '').localeCompare(String(b.fgCode || ''), 'th'));
 
