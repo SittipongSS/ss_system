@@ -6,7 +6,7 @@
 // 12 สาขาเก็บไม่ได้ตั้งแต่ต้น
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MapPin, Plus, Search, Upload } from "lucide-react";
+import { MapPin, Search, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
@@ -14,7 +14,6 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
-import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import { accessWindowText } from "@/lib/service/sites";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService, canImportServiceData } from "@/lib/permissions";
@@ -37,11 +36,9 @@ export default function ServiceSitesPage() {
   );
 
   const [sites, setSites] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
-  const [formSite, setFormSite] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
@@ -62,38 +59,16 @@ export default function ServiceSitesPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // รายชื่อลูกค้าโหลดเฉพาะตอนจะ "เลือก" เท่านั้น (กติกา customer lookup ของระบบ)
-  useEffect(() => {
-    if (formSite === undefined || customers.length) return;
-    (async () => {
-      try {
-        const res = await apiFetch("/api/customers");
-        const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อลูกค้าไม่สำเร็จ");
-        setCustomers(Array.isArray(data) ? data : (data?.rows || []));
-      } catch (e) {
-        setToast({ kind: "error", msg: e.message });
-      }
-    })();
-  }, [formSite, customers.length]);
-
-  const saveSite = async (form) => {
-    const editing = !!formSite;
-    const res = await apiFetch(editing ? `/api/service/sites/${formSite.id}` : "/api/service/sites", {
-      method: editing ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
-    setToast({ kind: "success", msg: editing ? `บันทึกไซต์ ${data.name} แล้ว` : `เพิ่มไซต์ ${data.name} แล้ว` });
-    await load();
-  };
+  /* ⚠️ **หน้านี้ไม่มีฟอร์มไซต์แล้ว** (มติ 2026-08-30) — สร้างไม่ได้ (ไซต์เกิดจาก
+     ใบคำร้อง) และ *แก้* อยู่ที่หน้ารายละเอียดของไซต์นั้น ⇒ ทะเบียนลูกค้า · โมดัล ·
+     ตัวบันทึก ถูกถอดออกทั้งชุด ไม่ใช่ปล่อยไว้เป็นโค้ดที่ไม่มีทางถูกเรียก
+     🐞 โค้ดตายแบบนั้นคือสิ่งที่ทำให้คนอ่านเชื่อว่าหน้านี้ยังแก้ไซต์ได้ */
 
   const visible = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("th");
     if (!needle) return sites;
-    return sites.filter((site) => [site.name, site.customerName, site.routeZone, site.code]
+    // จังหวัดเข้าชุดค้นด้วย (mig 0315) — เป็นตัวตนถาวรของไซต์ คนถามหา "ไซต์ที่เชียงใหม่"
+    return sites.filter((site) => [site.name, site.customerName, site.routeZone, site.code, site.province]
       .filter(Boolean).some((field) => String(field).toLocaleLowerCase("th").includes(needle)));
   }, [sites, search]);
 
@@ -102,20 +77,17 @@ export default function ServiceSitesPage() {
       icon={<MapPin size={20} aria-hidden="true" />}
       title="ไซต์บริการ"
       subtitle="จุดติดตั้งระบบกระจายกลิ่นของลูกค้า และเครื่องที่อยู่หน้างาน"
-      headerRight={canEdit ? (
-        <>
-          {/* ⚠️ นำเข้าเป็น **ปุ่มรอง** — เทอราคอตตาหนึ่งปุ่มต่อหน้า และของที่คนทำ
-              ทุกวันคือเพิ่มไซต์ทีละแห่ง ส่วนนำเข้าเป็นงานตั้งต้นครั้งเดียว */}
-          {canImport && (
-            <Button tone="neutral" as={Link} href="/service/import"
-              icon={<Upload size={15} aria-hidden="true" />}>
-              นำเข้าข้อมูลเก่า
-            </Button>
-          )}
-          <Button tone="primary" onClick={() => setFormSite(null)} icon={<Plus size={15} aria-hidden="true" />}>
-            เพิ่มไซต์
-          </Button>
-        </>
+      /* 🔴 **ไม่มีปุ่ม "เพิ่มไซต์" ที่ทะเบียนอีกแล้ว** (มติผู้ใช้ 2026-08-30:
+         "สร้างที่คำร้องเท่านั้น ห้ามสร้างผ่านทะเบียนไซต์")
+         ⭐ เหตุผลเชิงระบบ: ไซต์ต้องมี **ต้นเรื่อง** เสมอ — เกิดจากใบประเมินพื้นที่ที่
+            ฝ่ายขายเปิดให้ลูกค้ารายนั้น · ทะเบียนเป็นที่ *ดู* ไม่ใช่ที่ *เริ่ม*
+            (กติกาเดียวกับที่หน้าจัดคิวช่างเป็นที่ "วาง" ไม่ใช่ "สร้าง")
+         ⚠️ ปุ่มแก้/ลบในแถวยังอยู่ตามเดิม (canEditService) — ที่ถอดคือทางเกิดใหม่เท่านั้น */
+      headerRight={canImport ? (
+        <Button tone="neutral" as={Link} href="/service/import"
+          icon={<Upload size={15} aria-hidden="true" />}>
+          นำเข้าข้อมูลเก่า
+        </Button>
       ) : null}
       toolbar={(
         <div className="toolbar">
@@ -123,7 +95,7 @@ export default function ServiceSitesPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาชื่อไซต์ ลูกค้า เขตวิ่งงาน หรือรหัส"
+            placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
             aria-label="ค้นหาไซต์บริการ"
             className={styles.searchInput}
           />
@@ -136,13 +108,18 @@ export default function ServiceSitesPage() {
       {loading || loadError ? (
         loading ? <SkeletonRows rows={5} /> : null
       ) : sites.length === 0 ? (
-        <EmptyState icon={MapPin} dashed={canEdit} onClick={canEdit ? () => setFormSite(null) : undefined}>
-          {canEdit
-            ? "ยังไม่มีไซต์บริการในระบบ — กดเพื่อเพิ่มไซต์แรก"
-            : "ยังไม่มีไซต์บริการในระบบ"}
+        <EmptyState icon={MapPin}>
+          ยังไม่มีไซต์บริการในระบบ — ไซต์เกิดจากใบคำร้อง &ldquo;ประเมินพื้นที่&rdquo; ที่ฝ่ายขายเปิดให้ลูกค้า
+        </EmptyState>
+      ) : visible.length === 0 ? (
+        /* ⚠️ ค้นไม่เจอ ≠ ไม่มีไซต์ — ตารางว่างเปล่าโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
+        <EmptyState icon={Search}>
+          ไม่มีไซต์ที่ตรงกับ “{search.trim()}” — ลองค้นด้วยรหัส ชื่อไซต์ ลูกค้า หรือจังหวัด
         </EmptyState>
       ) : (
-        <TableShell>
+        /* ⚠️ `minWidth` — รหัสรูปใหม่ยาว 19 ตัว (ST-0121-01-BKK-1001) ไม่ส่งค่านี้
+           ตารางจะบีบคอลัมน์จนรหัสตัดบรรทัด แทนที่จะเลื่อนแนวนอน (Table.module.css) */
+        <TableShell minWidth={960}>
           <table>
             <thead>
               <tr>
@@ -182,14 +159,6 @@ export default function ServiceSitesPage() {
           </table>
         </TableShell>
       )}
-
-      <ServiceSiteModal
-        open={formSite !== undefined}
-        site={formSite}
-        customers={customers}
-        onClose={() => setFormSite(undefined)}
-        onSave={saveSite}
-      />
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

@@ -7,7 +7,7 @@
 // ⚠️ **ใบบอกว่า "รอใคร" · แถวบอกว่า "แต่ละ direction ไปถึงไหน"** — ขั้น แก้ไข/คอนเฟิร์ม/
 // ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
-import { requestDeliversRows } from '@/lib/master/requestTypes';
+import { requestDeliversRows, requestKindMeta } from '@/lib/master/requestTypes';
 import { requestAwaitingDue } from '@/lib/requests/statuses';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
@@ -106,6 +106,8 @@ function middleStep(request) {
  * สถานะตรง ๆ ไม่มี offset ให้พลาดอีก (บั๊ก "จุดไฮไลต์ชี้ผิดขั้น" เกิดจากตรงนั้น)
  */
 export function requestRailSteps(request, { hasItems = false } = {}) {
+  // ชื่อขั้น "กำหนดส่ง" ต่างตามหัวข้อ (ประเมินพื้นที่ = "ลงคิว") — อ่านจากทะเบียน
+  const commitStepLabel = requestKindMeta(request.kind)?.form?.commitStepLabel || 'กำหนดส่ง';
   const steps = [
     {
       id: 'draft',
@@ -132,7 +134,9 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
        (`queueTrack`) · สองที่เล่าจำนวนขั้นไม่ตรงกันเมื่อไร คนอ่านจะนับขั้นไม่ตรงกัน */
     {
       id: 'commitDue',
-      label: 'กำหนดส่ง',
+      /* ชื่อขั้นมาจาก **ทะเบียนหัวข้อ** — ฝ่ายที่ต้องจัดคนไปหน้างานไม่ได้ "ส่งของ"
+         (ประเมินพื้นที่ = "ลงคิว") · ค่ากลางยังเป็น "กำหนดส่ง" เหมือนเดิมทุกหัวข้อ */
+      label: commitStepLabel,
       /* ⭐ **รอบแก้ดึงขั้นนี้กลับมา** (มติผู้ใช้ 2026-08-25) — วันที่ใบถืออยู่เป็นของ
          งานที่ส่งไปแล้ว ⇒ โชว์เป็นหลักฐานเฉย ๆ ไม่ได้ ต้องบอกว่ารออะไรอยู่ตอนนี้
          ⚠️ ยังโชว์วันเดิมต่อท้าย — คนอ่านต้องรู้ว่ารอบก่อนตกลงวันไหนไว้ ไม่ใช่ให้
@@ -141,8 +145,8 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
         ? `${requestWaitLabel(request, 'dept', 'แจ้งวันของรอบแก้')} · รอบก่อน ${fmtDate(request.committedDueDate)}`
         : evidence(request.committedDueDate && fmtDate(request.committedDueDate))
         || (request.acknowledgedAt
-          ? requestWaitLabel(request, 'dept', 'แจ้งวัน')
-          : `${request.dept} แจ้งวันส่งหลังรับเรื่อง`),
+          ? requestWaitLabel(request, 'dept', commitStepLabel === 'ลงคิว' ? 'ลงคิว' : 'แจ้งวัน')
+          : `${request.dept} ${commitStepLabel === 'ลงคิว' ? 'ลงคิวหลังรับเรื่อง' : 'แจ้งวันส่งหลังรับเรื่อง'}`),
     },
     // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
     // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม

@@ -226,3 +226,39 @@
   line-height: var(--lh-thai);
   color: var(--text-2);
 }
+
+/* ── ทะเบียนลูกค้าขยับหลังไซต์ถูกสร้าง (mig 0313) ─────────────────────────
+   น้ำเสียง **กลาง ไม่ใช่ amber** โดยตั้งใจ — ที่อยู่หน้างานต่างจากที่อยู่จดทะเบียน
+   เป็นเรื่องปกติของงานจริง (ล็อบบี้ห้าง · พื้นที่เช่า) ไม่ใช่ข้อผิดพลาดที่ต้องรีบแก้ */
+.stale {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.stale > span {
+  flex: 1 1 220px;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.stale > small { flex-basis: 100%; }
+
+/* ค่าที่ฟอร์มนี้แก้ไม่ได้ (ชนิดงานของนัดที่เกิดจากใบคำร้อง) — แสดงเป็นข้อความ
+   ⚠️ ไม่ใช่ช่องกรอกที่ disabled: ช่องเทาอ่านว่า "แก้ได้แต่ตอนนี้ยังไม่ให้แก้"
+      ส่วนของจริงคือ "ค่านี้ไม่ได้เป็นของฟอร์มนี้" */
+.readonlyValue {
+  margin: 0;
+  min-height: var(--ctl-h);
+  display: flex;
+  align-items: center;
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-thai);
+}

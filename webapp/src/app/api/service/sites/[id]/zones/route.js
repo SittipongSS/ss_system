@@ -3,7 +3,8 @@
 // รหัส ZN- ออกด้วย RPC atomic (0240/0297) — ห้ามจองเลขเองแล้วค่อย insert
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
-import { insertRowWithEntityCode } from '@/lib/entityCode';
+import { insertRowWithComposedCode } from '@/lib/entityCode';
+import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { genId } from '@/lib/id';
 import { normalizeZoneInput } from '@/lib/service/zones';
 import { loadZones, requireSite } from '@/lib/service/sitesRepo';
@@ -31,13 +32,26 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const { value, error } = normalizeZoneInput(body);
     if (error) return badRequest(error);
 
-    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'ZN', {
-      id: genId('SZN'),
-      siteId: id,
-      ...value,
-      createdById: user.id ? String(user.id) : null,
-      createdByName: user.name || null,
+    /* รหัส `ZN-CCCC-FF-DDDDD` (mig 0315) — CCCC มาจากรหัสไซต์แม่ · FF คือชั้นที่เพิ่งกรอก
+       ⚠️ ประกอบก่อน insert: ไซต์ที่ยังเป็นรหัสรูปเดิมต้องถูกตีกลับพร้อมเหตุผล
+          ไม่ใช่ได้โซนที่รหัสอ่านไม่ออก */
+    const { prefix, error: codeError } = zoneCodePrefix({
+      siteCode: access.site.code,
+      floor: value.floor,
     });
+    if (codeError) return badRequest(codeError);
+
+    const { data, error: insertError } = await insertRowWithComposedCode(
+      supabase,
+      { scope: 'ZN', bucket: ZONE_RUN_BUCKET, prefix, width: ZONE_RUN_WIDTH },
+      {
+        id: genId('SZN'),
+        siteId: id,
+        ...value,
+        createdById: user.id ? String(user.id) : null,
+        createdByName: user.name || null,
+      },
+    );
     if (insertError) {
       // unique (siteId, lower(name)) — Lobby สองแถวในไซต์เดียว = ประวัติแยกร่างเงียบ ๆ
       if (insertError.code === '23505') {

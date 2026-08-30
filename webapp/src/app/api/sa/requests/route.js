@@ -22,6 +22,8 @@ import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
+import { normalizeSurveyRequest, surveyZoneNameClash } from '@/lib/service/surveyRequest';
+import { insertSurveyZones, loadSiteZones, loadSurveySite } from '@/lib/service/surveyRepo';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, lineShapeForKind, requestHasPdr, requestKindLabel, requestNeedsRef,
@@ -118,6 +120,23 @@ export async function POST(request) {
   // เพราะมันแตะ supabase · ย้ายพร้อมกันในใบเดียวคือแตะ route กับด่านพร้อมกัน
   // ซึ่งเป็นทางที่บั๊ก #973 เดินมา
   const isProductDev = lineShape === 'product_dev';
+
+  /* ── หัวข้อประเมินพื้นที่: สถานที่ + พื้นที่ (mig 0314) ─────────────────
+     ⭐ **ตรวจก่อน insert เสมอ** — กติกาเดียวกับ PDR/บรีฟที่คอมเมนต์ข้างล่างเล่าไว้:
+        ตกด่านหลัง insert = ได้ใบร่างค้างที่ผู้ใช้ต้องมาลบเอง
+     ⚠️ "กรอกครบไหม / ชื่อซ้ำกันเองไหม" อยู่ที่ `normalizeSurveyRequest` (ตรรกะล้วน)
+        ส่วน "ของที่เลือกมีจริงและเป็นของลูกค้ารายเดียวกันไหม" ต้องอ่าน DB จึงอยู่ที่นี่ */
+  let survey = null;
+  if (kind === 'site_survey') {
+    const parsed = normalizeSurveyRequest(body);
+    if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
+    survey = parsed.value;
+    /* ⭐ **ไซต์ต้องมีแถวจริงก่อนใบจะอ้างได้** — สถานที่ใหม่ถูกสร้างจากโมดัลใน *ฟอร์มใบนี้*
+       (POST /api/service/sites) แล้วส่งกลับมาเป็น `siteId` ⇒ ที่อยู่/แผนที่/ผู้ติดต่อ/
+       เวลาเข้า อยู่ในทะเบียน ไม่ถูกลอกมาแปะบน dept_requests อีกสิบช่อง (โรค pdr* 40 คอลัมน์)
+       ⚠️ ด่าน "ไม่ได้เลือกสถานที่" อยู่ที่ `normalizeSurveySite` ที่เดียว — จอกับ route
+          จึงพูดประโยคเดียวกัน */
+  }
 
   const requestId = `DR-${randomUUID()}`;
 
@@ -264,6 +283,33 @@ export async function POST(request) {
     customerName = refRow?.customerName || null;
   }
 
+  /* ── ของที่ใบประเมินอ้าง ต้องมีจริงและอยู่บ้านเดียวกัน ────────────────
+     ⚠️ อยู่ **หลัง** ที่ `customerId` ถูก derive จากดีลแล้ว — ไม่งั้นด่าน "ไซต์ของลูกค้า
+        รายอื่น" จะเทียบกับ null แล้วผ่านทุกใบ */
+  let surveyZoneRows = null;
+  if (survey) {
+    // ⚠️ `requireCustomer` — ใบที่ไม่รู้ว่าเป็นของลูกค้าไหน ผูกสถานที่ไม่ได้
+    const { site, error: siteError } = await loadSurveySite(
+      supabase, survey.siteId, customerId, { requireCustomer: true },
+    );
+    if (siteError) return Response.json({ error: siteError }, { status: 400 });
+    const existing = await loadSiteZones(supabase, site.id);
+    // โซนเดิมที่เลือกมา ต้องเป็นของไซต์นี้จริง — id หลุดมาจากไซต์อื่นได้ถ้าเปลี่ยนไซต์กลางคัน
+    const byId = new Map(existing.map((z) => [z.id, z]));
+    for (const [index, zone] of survey.zones.entries()) {
+      if (zone.zoneId && !byId.has(zone.zoneId)) {
+        return Response.json({
+          error: `พื้นที่รายการที่ ${index + 1}: ไม่ใช่พื้นที่ของสถานที่ ${site.code || site.id}`,
+        }, { status: 400 });
+      }
+    }
+    /* 🔴 ยามชื่อชนต้องยิงที่นี่ ไม่ใช่ปล่อยให้ unique index ของ mig 0297 ตีกลับ —
+       error ดิบจาก Postgres ไม่บอกว่าต้องทำอะไรต่อ · ข้อความนี้บอกรหัส ZN ที่ชนด้วย */
+    const clash = surveyZoneNameClash(survey.zones, existing);
+    if (clash) return Response.json({ error: clash }, { status: 400 });
+    surveyZoneRows = { zones: survey.zones, existingZones: existing, site };
+  }
+
   try {
     // 1) ชนิดขอราคา: ทุกรายการต้องมีวัสดุในทะเบียน — ของใหม่เข้าเป็นร่างรอ RD/PC รับ
     //
@@ -381,6 +427,10 @@ export async function POST(request) {
       requestedById: user?.id ?? null,
       requestedByName: user?.name ?? null,
       requestedDueDate: body.requestedDueDate || null,
+      /* ประเมินพื้นที่ (mig 0314) — สถานที่ที่จะเข้า + **เวลา** ที่อยากให้เข้า
+         วันที่ยังเป็น `requestedDueDate` ตัวเดิม เปลี่ยนแค่ป้ายบนฟอร์ม
+         ⚠️ ใส่คีย์เฉพาะหัวข้อนี้ ด้วยเหตุผลเดียวกับ `quotationId` ข้างบน */
+      ...(survey ? { siteId: survey.siteId, requestedDueTime: survey.requestedDueTime } : {}),
       /* ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
          (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
          ⭐ คนที่ **ไม่มีทีมเลย** (admin/หัวหน้าฝ่ายขาย/RD/PC) เปิดใบแล้วเคยได้ team = null
@@ -436,6 +486,21 @@ export async function POST(request) {
       if (targetInsertError) {
         await supabase.from('dept_requests').delete().eq('id', requestId);
         throw targetInsertError;
+      }
+    }
+
+    /* 2.2) พื้นที่ที่ต้องประเมิน — กติกาเดียวกับบรีฟ/เป้า รวมถึงลบหัวทิ้งเมื่อล้ม
+       ⭐ แถวพวกนี้เป็นของ **ใบ** ยังไม่ใช่ของทะเบียน · พื้นที่ใหม่ได้รหัส ZN ตอนกดส่ง
+          (`materializeSurveyZones`) ไม่ใช่ตอนนี้ — ร่างที่ถูกทิ้งต้องไม่กินเลข ZN */
+    if (surveyZoneRows) {
+      const { error: zoneError } = await insertSurveyZones(supabase, {
+        requestId,
+        zones: surveyZoneRows.zones,
+        existingZones: surveyZoneRows.existingZones,
+      });
+      if (zoneError) {
+        await supabase.from('dept_requests').delete().eq('id', requestId);
+        throw zoneError;
       }
     }
 

@@ -26,8 +26,13 @@ const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
  * ตั้งแต่แรก (โรคเดียวกับ "รายการ 0 · ตอบแล้ว 0/0" ที่หัวใบเคยเป็น)
  *
  * ⇒ หัวข้อพวกนั้นเล่าด้วยของที่ผู้ขอส่งมาจริง คือ **ก้อนบรีฟ** · ไม่มีบรีฟก็ไม่ต้องมีเลข
+ *
+ * ⚠️ อาการเดียวกันกับ **ประเมินพื้นที่** (mig 0314) — ใบนั้นไม่มี `dept_request_items`
+ * เลยตั้งแต่ออกแบบ เนื้ออยู่ที่ `service_survey_zones` ⇒ ต้องนับพื้นที่ ไม่ใช่ "รายการ"
  */
 function submitScope(ask) {
+  const zones = (ask?.surveyZones || []).length;
+  if (zones) return `${zones} พื้นที่`;
   const items = (ask?.items || []).length;
   if (!requestDeliversRows(ask?.kind)) return `${items} รายการ`;
   const briefs = (ask?.briefs || []).length;

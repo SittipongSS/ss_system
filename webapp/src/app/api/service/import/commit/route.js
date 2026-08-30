@@ -55,7 +55,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   let applied;
   try {
-    applied = await applyImportPlan(supabase, toCreate, { user });
+    // snapshot ก้อนเดียวกับที่ใช้วางแผน — รหัส AR/รหัสไซต์อยู่ในนั้นแล้ว (mig 0315)
+    applied = await applyImportPlan(supabase, toCreate, { user, snapshot: result.snapshot });
   } catch (e) {
     console.error('[service-import-commit] apply', e);
     return fail(e.message || 'นำเข้าไม่สำเร็จ', 500);

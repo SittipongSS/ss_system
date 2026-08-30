@@ -39,6 +39,21 @@ export function subdistrictsOf(districtCode) {
   return district.subdistricts.map((s) => ({ code: s.code, th: s.th, en: s.en, zip: s.zip }));
 }
 
+/* ชื่อจังหวัด (ไทย/อังกฤษ) → แถวจังหวัดในทะเบียน — คืน null ถ้าไม่รู้จัก
+   ⭐ ใช้กับ **ข้อมูลนำเข้า** ที่มีแต่ชื่อจังหวัดเป็นข้อความ (ชีตเก่าของงานบริการ)
+   ⚠️ ตัดคำนำหน้า "จังหวัด"/"จ." ให้ก่อน เพราะชีตจริงเขียนปนกันทั้งสองแบบ
+   ⚠️ **ไม่เดา** — สะกดผิดคือไม่รู้จัก ผู้เรียกต้องรายงานให้คนไปแก้ ไม่ใช่เลือกตัวที่
+      คล้ายที่สุด (จังหวัดผิดในรหัสไซต์แก้ทีหลังไม่ได้ เพราะรหัสถูกตรึงตั้งแต่วันสร้าง) */
+export function findProvinceByName(name) {
+  const raw = String(name ?? '').trim().replace(/^(จังหวัด|จ\.)\s*/, '').replace(/\s+/g, ' ');
+  if (!raw) return null;
+  const key = raw.toLowerCase();
+  for (const province of buildThaiAdminIndex().provinces) {
+    if (province.th === raw || String(province.en).toLowerCase() === key) return province;
+  }
+  return null;
+}
+
 // ตรวจว่ารหัส/ชื่อที่ client ส่งมาเป็นของจริง แล้วคืน "ชื่อจากทะเบียน" ทับค่าที่ส่งมา
 // — client แก้ payload ได้เสมอ และชื่อที่เพี้ยนจะไปโผล่บนใบกำกับภาษี
 // คืน null เมื่อรหัสไม่มีในทะเบียน (ผู้เรียกตัดสินเองว่าจะปฏิเสธหรือปล่อยเป็นข้อความเปล่า)

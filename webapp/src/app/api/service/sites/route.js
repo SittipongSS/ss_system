@@ -1,13 +1,16 @@
 // ── API ทะเบียนไซต์บริการ (mig 0187) ─────────────────────────────────────
 // GET  : รายการไซต์ + จำนวนเครื่องต่อไซต์ (กรองด้วย ?customerId=)
-// POST : เพิ่มไซต์ (ฝ่าย TS หรือทีมขาย SV — ดู canEditService)
+// POST : เพิ่มไซต์ (ฝ่าย TS · ทีมขาย SV · **ฝ่ายขาย** — ดู canCreateServiceSite)
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { insertRowWithEntityCode } from '@/lib/entityCode';
-import { withUser, ok, fail, badRequest } from '@/lib/http';
+import { insertRowWithComposedCode } from '@/lib/entityCode';
+import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { canCreateServiceSite } from '@/lib/permissions';
+import { SITE_RUN_BUCKET, SITE_RUN_WIDTH, siteCodePrefix } from '@/lib/service/siteCode';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { siteRefillSummary } from '@/lib/service/refill';
+import { checkSiteReferences } from '@/lib/service/siteReferences';
 import { assetCountsBySite, findCustomer, loadSites, requireService, zoneCountsBySite } from '@/lib/service/sitesRepo';
 import { assetsForSites, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { businessDate } from '@/lib/businessDate';
@@ -70,10 +73,16 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 });
 
 // POST { customerId, name, routeZone?, address?, mapUrl?, contactName?, contactPhone?,
-//        accessFrom?, accessTo?, accessDays?, accessNote?, note? }
+//        accessFrom?, accessTo?, accessDays?, accessNote?, note?,
+//        customerAddressId?, projectId? }
+//   สองช่องท้ายไม่ใช่ช่องกรอก — ฟอร์มส่งมาเองจากไทล์ที่อยู่ (mig 0313) และวิซาร์ด
+//   รับใบสั่งขายส่ง projectId ของใบที่เปิดอยู่ (mig 0299)
 export const POST = withUser(async ({ user, supabase, req }) => {
-  const access = requireService({ user, edit: true });
-  if (access.response) return access.response;
+  /* ⚠️ **ด่านของ POST กว้างกว่าที่อื่นในโมดูลนี้โดยตั้งใจ** (มติผู้ใช้ 2026-08-29) —
+     ฝ่ายขายสร้างไซต์ของลูกค้าได้ แต่ยัง *แก้/ลบ* ไม่ได้ (PATCH/DELETE ยังใช้
+     requireService edit ตามเดิม) · เหตุผลเต็มอยู่ที่ `canCreateServiceSite` */
+  if (!user) return unauthorized();
+  if (!canCreateServiceSite(user)) return forbidden('ไม่มีสิทธิ์เพิ่มไซต์บริการ');
 
   const body = await req.json().catch(() => ({}));
   const { value, error } = normalizeSiteInput(body);
@@ -85,7 +94,21 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const customer = await findCustomer(supabase, value.customerId);
     if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
 
-    // รหัส SS ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
+    // ที่อยู่ต้นทาง (mig 0313) + โครงการที่คลอดไซต์ (mig 0299) — ไม่มี FK ทั้งคู่
+    const refError = await checkSiteReferences(supabase, value, customer);
+    if (refError) return badRequest(refError);
+
+    /* ── รหัส `ST-XXXX-AA-BBB-CCCC` (mig 0315) ────────────────────────
+       ⭐ ท่อนหน้าเลขรันประกอบจาก **รหัสลูกค้าในทะเบียน** (ไม่ใช่ค่าที่ client ส่ง)
+          กับ **จังหวัดที่เลือกบนฟอร์ม** ⇒ รหัสตรงกับของจริงเสมอ
+       ⚠️ ประกอบก่อน insert — ตกด่านตรงนี้ยังไม่มีแถวและยังไม่กินเลขรัน */
+    const { prefix, error: codeError } = siteCodePrefix({
+      arCode: customer.arCode,
+      provinceCode: value.provinceCode,
+    });
+    if (codeError) return badRequest(codeError);
+
+    // รหัสออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
     const row = {
       id: genId('SVS'),
       ...value,
@@ -93,7 +116,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
-    const { data, error: insertError } = await insertRowWithEntityCode(supabase, 'SS', row);
+    const { data, error: insertError } = await insertRowWithComposedCode(
+      supabase,
+      { scope: 'SS', bucket: SITE_RUN_BUCKET, prefix, width: SITE_RUN_WIDTH },
+      row,
+    );
     if (insertError) return fail(insertError.message, 500);
 
     await recordAudit({

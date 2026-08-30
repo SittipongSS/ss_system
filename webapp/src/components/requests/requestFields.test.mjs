@@ -31,6 +31,7 @@ const FLAG_FOR = {
   quotation: 'needsQuotation',
   scent: 'needsScent',
   formula: 'needsFormula',
+  site: 'needsSite',
 };
 
 test('⭐ ทุกอย่างที่หัวข้อ "ต้องอ้าง" ต้องมีธงเปิดช่องของตัวเองในฟอร์ม', () => {

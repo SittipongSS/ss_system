@@ -74,6 +74,21 @@ export const canRescheduleVisit = (visit) => (
   visit?.status === 'scheduled'
 );
 
+/* ── "นัดของใบคำร้อง" — ชุดที่ยามระดับ DB ใช้ (mig 0316) ────────────────────
+   ⭐ กติกา **หนึ่งใบ = หนึ่งนัด** ห้ามเฉพาะนัดที่ *ยังมีชีวิต* ซ้ำกัน · นัดที่จบไปแล้ว
+      (เข้าแล้ว · ทำไม่ครบ · เข้าไม่ได้ · ยกเลิก · เลื่อนแล้ว) เป็น **ประวัติ** ⇒ ใบเดียว
+      มีได้หลายใบตามรอบที่ไปจริง และต้องลงคิวรอบใหม่ได้เสมอ
+   ⚠️ **คนละคำถามกับ `isOpenVisit`** ข้างบน ซึ่งเป็นตัวนับ "คิวที่ต้องจัดการ"
+      (scheduled|in_progress) — ร่างไม่ขึ้นตัวเลขนั้น แต่ยังเป็นนัดของใบอยู่จริง
+      ⇒ ใช้ผิดตัวเมื่อไร ใบที่มีนัดร่างค้างจะลงคิวซ้ำได้แล้วได้นัดสองใบ
+   🔴 **ชุดนี้ต้องตรงกับ predicate ของ index `service_visits_survey_open_request_uk`**
+      เป๊ะ ๆ (เทสต์ surveyVisit.test.mjs อ่านไฟล์ .sql มาเทียบ) — เพี้ยนเมื่อไรจะได้เคส
+      ที่แอปยอมให้สร้างแต่ DB ตีกลับ หรือแอปห้ามทั้งที่ DB ยอม */
+export const REQUEST_SLOT_VISIT_STATES = ['draft', 'scheduled', 'in_progress'];
+
+/** นัดใบนี้ยังกินสิทธิ์ "หนึ่งใบ = หนึ่งนัด" อยู่ไหม (null/undefined = ไม่มีนัด) */
+export const holdsRequestSlot = (visit) => REQUEST_SLOT_VISIT_STATES.includes(visit?.status);
+
 /* ลบทิ้งได้ไหม — ประวัติการเข้าไซต์คือของมีค่าที่สุดของโมดูล
    🐞 ของเดิมบล็อกเฉพาะ done ⇒ partial/unable/in_progress ลบได้ = ประวัติหาย */
 export const canDeleteVisit = (visit) => !isClosedVisit(visit) && visit?.status !== 'in_progress';

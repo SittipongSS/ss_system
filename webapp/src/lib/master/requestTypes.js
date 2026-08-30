@@ -38,6 +38,9 @@ export { REQUEST_KINDS };
 
 // ของที่คำร้องอ้างถึงได้ → ช่องใน body + ข้อความตอนขาด
 // ⚠️ ที่เดียวของระบบ: เพิ่มของใหม่ต้องแก้ที่นี่แล้วทั้งฟอร์มและ API ได้ตามกันเอง
+export const SITE_REQUIRED_ERROR =
+  'ต้องเลือกสถานที่ที่จะให้เข้าไปประเมิน — ไม่มีในทะเบียนให้กด “สร้างสถานที่ใหม่” ในฟอร์มนี้';
+
 export const REQUEST_NEEDS = {
   // ⭐ **โครงการเป็นของที่ server derive จากดีล ไม่ใช่ของที่ client ส่งมา** —
   // `requestPayload` จงใจไม่ส่ง `projectId` (ปล่อยให้ส่งเองคือเปิดช่องให้ใบผูก
@@ -58,6 +61,13 @@ export const REQUEST_NEEDS = {
   quotation: { field: 'quotationId', error: 'ต้องเลือกใบเสนอราคา' },
   salesOrder: { field: 'salesOrderId', error: 'ต้องเลือกใบสั่งขาย (SO) ที่ครอบค่าบริการออกแบบกลิ่น' },
   scent: { field: 'scentId', error: 'ต้องเลือกกลิ่นจากทะเบียน' },
+  /* ⭐ สถานที่ของงานประเมินพื้นที่ (mig 0314) — **หนึ่งใบหนึ่งไซต์** (มติผู้ใช้)
+     ⚠️ ไม่ derive จากดีล: ลูกค้ารายเดียวมีได้หลายไซต์ ⇒ ต้องเลือกเอง · ด่านที่ว่า
+        ไซต์นั้นเป็นของลูกค้าเจ้าของดีลจริงไหม อยู่ที่ handler (`loadSurveySite`) */
+  /* ⚠️ ข้อความชี้ปุ่ม **ในฟอร์มนี้** — ทะเบียนไซต์ไม่มีฟอร์มสร้างแล้ว (มติ 2026-08-30)
+     ⇒ ส่งคนไปที่นั่นคือส่งไปเจอหน้าที่ทำสิ่งที่บอกไม่ได้ · `normalizeSurveySite`
+     ใช้ข้อความก้อนเดียวกันนี้ ไม่งั้นสองด่านพูดคนละประโยคกับเรื่องเดียวกัน */
+  site: { field: 'siteId', error: SITE_REQUIRED_ERROR },
   formula: { field: 'formulaId', error: 'ต้องเลือกสูตรจากทะเบียน' },
 };
 
@@ -162,7 +172,7 @@ export function requestStepLabel(kind) {
 // `PLANNED_REQUEST_DEPTS` ข้างล่าง ซึ่งฟอร์มโชว์แบบจางและกดไม่ได้ · CHECK ของ
 // `dept_requests.dept` รับทั้งสามค่าอยู่แล้ว (mig 0212) ⇒ เปิดคืน = ย้ายชื่อกลับมา
 // บรรทัดนี้ ไม่ต้องแตะ migration
-export const REQUEST_DEPTS = ['RD', 'FN'];
+export const REQUEST_DEPTS = ['RD', 'FN', 'TS'];
 
 /**
  * ฝ่ายตั้งต้นของฟอร์มเปิดคำร้อง — หัวข้อที่ล็อกฝ่ายไว้ใช้ฝ่ายนั้น · ไม่ล็อกก็ให้
@@ -187,6 +197,7 @@ export const REQUEST_DEPT_LABELS = {
   RD: { code: 'RD', name: 'วิจัยและพัฒนา' },
   PC: { code: 'PC', name: 'จัดซื้อ' },
   FN: { code: 'FN', name: 'บัญชี' },
+  TS: { code: 'TS', name: 'ธุรกิจบริการ' },
 };
 
 // ⚠️ ฝ่ายที่ **ยังเปิดไม่ได้** — โผล่ในฟอร์มแบบจางและกดไม่ได้ ไม่ใช่ซ่อน (มติผู้ใช้:
@@ -359,6 +370,14 @@ export function requestShapeError(kind, body = {}) {
   // handler ด้วย `resolveBillAmount` ซึ่งเห็นยอดจริงของแถว ไม่ใช่ค่าที่ client แนบมา
   if (meta.needs?.includes('quotation') && !(Number(body.billAmount) > 0)) {
     return 'ต้องระบุยอดที่ขอวางบิล';
+  }
+
+  /* ⭐ ใบประเมินต้องบอกว่า **จะให้วัดตรงไหน** — ไซต์เปล่า ๆ ไม่ใช่งานที่ TS รับไปทำได้
+     ⚠️ อยู่คู่กับ needs 'site' ไม่ใช่ `kind === 'site_survey'` — รูปเดียวกับยอดวางบิล
+        ข้างบน · รายละเอียดของแต่ละแถว (ชื่อซ้ำ · เกินเพดาน) อยู่ที่
+        `lib/service/surveyRequest.js` ซึ่งทั้งจอและ handler เรียกตัวเดียวกัน */
+  if (meta.needs?.includes('site') && !(Array.isArray(body.zones) && body.zones.length)) {
+    return 'ต้องมีพื้นที่ที่ต้องประเมินอย่างน้อย 1 รายการ';
   }
 
   // ชื่อเรื่องบังคับ**ทุกหัวข้อ** — เดิมหัวข้อขอราคายกเว้นไว้เพราะสื่อความด้วยบรรทัด

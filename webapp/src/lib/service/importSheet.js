@@ -39,6 +39,12 @@ export const IMPORT_FIELDS = [
     aliases: ['ชื่อไซต์', 'ไซต์', 'สาขา', 'ชื่อสาขา', 'site', 'site name', 'brand', 'location', 'สถานที่'] },
   { key: 'zoneName', label: 'โซน',
     aliases: ['โซน', 'zone', 'พื้นที่', 'area', 'ชั้น/โซน', 'จุดติดตั้ง'] },
+  /* ⭐ จังหวัดกลายเป็น **ของบังคับสำหรับไซต์ใหม่** ตั้งแต่ mig 0315 — รหัสไซต์
+     `ST-XXXX-AA-BBB-CCCC` ประกอบจากภาค/จังหวัด ⇒ ไม่มีจังหวัดก็ออกรหัสไม่ได้
+     ⚠️ ชีตเก่าไม่มีคอลัมน์นี้ ⇒ แถวที่ไซต์ยังไม่มีในทะเบียนจะขึ้นเป็น **ปัญหาของแถว**
+        (รายงานออกมาให้ไปเติม) ไม่ใช่เดาจังหวัดจากที่อยู่แล้วออกรหัสผิดเงียบ ๆ */
+  { key: 'province', label: 'จังหวัด',
+    aliases: ['จังหวัด', 'province', 'จ.'] },
   { key: 'routeZone', label: 'เขตวิ่งงาน',
     aliases: ['เขตวิ่งงาน', 'เขต', 'route', 'route zone', 'สายวิ่ง'] },
   { key: 'address', label: 'ที่อยู่', aliases: ['ที่อยู่', 'address', 'ที่ตั้ง'] },
@@ -153,8 +159,12 @@ export function buildDraft(row, map, { rowNumber = 0 } = {}) {
   if (!siteName) issues.push({ field: 'ชื่อไซต์', message: 'ต้องมีชื่อไซต์', raw: null });
 
   const zoneName = read('zoneName', parseText, { max: 150, label: 'ชื่อโซน' }).value;
+  const province = read('province', parseText, { max: 100, label: 'จังหวัด' }).value;
   const site = {
     name: siteName,
+    // ชื่อจังหวัดดิบจากชีต — แปลงเป็นรหัสที่ฝั่ง server (ทะเบียนจังหวัด 650KB
+    // เป็น server-only) · ที่นี่แค่พาไปให้ถึง ไม่ตีความ
+    province,
     routeZone: read('routeZone', parseText, { max: 50, label: 'เขตวิ่งงาน' }).value,
     address: read('address', parseText, { max: 500, label: 'ที่อยู่' }).value,
     contactName: read('contactName', parseText, { max: 100, label: 'ผู้ติดต่อ' }).value,
@@ -252,7 +262,14 @@ export function buildDraft(row, map, { rowNumber = 0 } = {}) {
     rowNumber,
     customerName,
     site,
-    zone: zoneName ? { name: zoneName } : null,
+    /* ชั้นของโซนมาจากคอลัมน์ 'ชั้น' แถวเดียวกัน (เดิมใช้กับ *เครื่อง* อย่างเดียว) —
+       ตั้งแต่ mig 0315 ชั้นเป็นท่อนหนึ่งของรหัสโซนด้วย
+       ⚠️ **เซลล์เดียวไปสองปลายทางคนละกติกา**: `service_zones.floor` ถูก normalize
+          เป็นค่ามาตรฐาน (`04` · `GF`) เพราะเข้าไปอยู่ในรหัส · ส่วน
+          `service_assets.floor` ยังเก็บข้อความดิบตามที่ชีตเขียน ('ชั้น 2') เหมือนเดิม
+          — ของเก่า 380 จุดเก็บแบบนั้นอยู่แล้ว และไม่มีรหัสไหนอ้างมัน
+       ⇒ ใบส่งงานจึงอาจเห็นสองรูปคู่กัน ซึ่งถูกต้อง: ชั้นของ *พื้นที่* กับที่ *ช่างจดไว้* */
+    zone: zoneName ? { name: zoneName, floor } : null,
     assets,
     carried,
     issues,

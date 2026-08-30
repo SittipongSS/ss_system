@@ -27,7 +27,7 @@ import styles from "./IntakeWizard.module.css";
 const NEW_ZONE = "__new__";
 
 export default function IntakeWizard({
-  open, order, sites = [], zonesBySite = new Map(), customerAddresses = [],
+  open, order, sites = [], zonesBySite = new Map(),
   onClose, onDone, onReloadRegistry,
 }) {
   const [step, setStep] = useState(1);
@@ -55,6 +55,7 @@ export default function IntakeWizard({
     [sites, order?.customerId],
   );
   const zones = useMemo(() => (siteId ? (zonesBySite.get(siteId) || []) : []), [zonesBySite, siteId]);
+
   const site = customerSites.find((s) => s.id === siteId) || null;
 
   /* 🐞 เลือกไซต์แล้วดรอปดาวน์โซนว่างเปล่า — ของเดิมโหลดโซนตอน "สร้างโซนใหม่" กับ
@@ -181,8 +182,13 @@ export default function IntakeWizard({
                     <span className={styles.countHint}> · ลูกค้ามีไซต์เดิม {customerSites.length} แห่ง</span>
                   )}
                 </span>
+                {/* ⚠️ ปุ่ม "ตั้งไซต์ใหม่" ถูกถอดไปแล้ว (มติ 2026-08-30) — ข้อความต้อง
+                    บอกทางที่มีอยู่จริง ไม่ใช่ชี้ไปที่ปุ่มที่ไม่มี */}
                 {customerSites.length === 0 ? (
-                  <p className={styles.lead}>ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ตั้งไซต์ใหม่ได้ที่ปุ่มข้างล่าง</p>
+                  <p className={styles.lead}>
+                    ลูกค้ารายนี้ยังไม่มีไซต์ในทะเบียน — ไซต์เกิดจากใบคำร้อง “ประเมินพื้นที่”
+                    ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้ แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้
+                  </p>
                 ) : (
                   <OptionTiles
                     value={siteId}
@@ -202,16 +208,18 @@ export default function IntakeWizard({
                 )}
               </div>
             )}
+            {/* 🔴 **ไม่มีปุ่ม "ตั้งไซต์ใหม่" แล้ว** (มติผู้ใช้ 2026-08-30) — ไซต์เกิดได้
+                ทางเดียวคือใบคำร้อง "ประเมินพื้นที่" ที่ฝ่ายขายเปิด ⇒ ทุกไซต์มีต้นเรื่อง
+                ⚠️ ลูกค้าที่ซื้อโดยไม่เคยประเมินพื้นที่ ต้องให้ SA เปิดใบย้อนหลังก่อน —
+                   บอกไว้ตรงนี้ ไม่ใช่ปล่อยให้เจอลิสต์ว่างแล้วเดาเอง */}
             <small className={styles.lead}>
               เห็นเฉพาะไซต์ของลูกค้ารายนี้ · ที่อยู่ของไซต์ก๊อปมาจากทะเบียนลูกค้าเป็นค่าตั้งต้น
               แล้วแก้ได้เอง — ไม่ผูกให้เปลี่ยนตามกัน
             </small>
-            <div className={styles.inlineAction}>
-              <Button tone="neutral" variant="quiet" size="sm" icon={<Plus size={15} aria-hidden="true" />}
-                onClick={() => setSiteModal(true)}>
-                ตั้งไซต์ใหม่
-              </Button>
-            </div>
+            <small className={styles.lead}>
+              ไม่มีไซต์ที่ต้องการ? ไซต์ใหม่เกิดจากใบคำร้อง <b>ประเมินพื้นที่</b> ที่ฝ่ายขายเปิดให้ลูกค้ารายนี้
+              — แจ้งฝ่ายขายเปิดใบก่อน แล้วกลับมาผูกใบสั่งขายนี้เข้ากับไซต์ที่ได้
+            </small>
           </div>
         )}
 
@@ -339,20 +347,9 @@ export default function IntakeWizard({
         </div>
       </Modal>
 
-      {/* ฟอร์มเดิมทั้งสองตัว — สร้างเสร็จแล้วเลือกให้ต่อทันที คนกรอกไม่ต้องกลับไปหาเอง */}
-      <ServiceSiteModal
-        open={siteModal}
-        site={null}
-        customers={order.customerId ? [{ id: order.customerId, name: order.customerName }] : []}
-        customerAddresses={customerAddresses}
-        defaults={{ customerId: order.customerId, customerName: order.customerName }}
-        onClose={() => setSiteModal(false)}
-        onSave={async (form) => {
-          const created = await onReloadRegistry.createSite(form);
-          setSiteId(created.id);
-          setSiteModal(false);
-        }}
-      />
+      {/* ⚠️ **เหลือฟอร์มโซนตัวเดียว** — ฟอร์มไซต์ถูกถอดออกตามมติ 2026-08-30
+          (ไซต์เกิดจากคำร้องเท่านั้น) · โซนยังเพิ่มที่นี่ได้ เพราะโซนเป็นรายละเอียด
+          ของไซต์ที่มีต้นเรื่องอยู่แล้ว ไม่ใช่ตัวงานใหม่ */}
       <ServiceZoneModal
         open={!!zoneModalFor}
         zone={null}

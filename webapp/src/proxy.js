@@ -414,12 +414,19 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // ⚠️ /api/sa/requests (mig 0173, เดิม /api/sa/materials/asks) ต้องมาก่อนกฎ
   // /api/sa ด้านล่างด้วยเหตุผลเดียวกับทะเบียนวัสดุ — RD/PC รับเรื่อง/ตอบได้ทั้งที่
   // ไม่มี costing:edit และไม่มีสิทธิ์แก้งานขายเลย
-  if (path.startsWith('/api/sa/requests') || path.startsWith('/api/sa/materials')) {
-    // ⭐ `requests:answer` เพิ่มเข้ามาตอนแยกด่านคำร้องออกจากด่านราคา (R-1) — วันนี้
-    // role ที่ถือมันถือ costing:quote อยู่แล้วทั้งคู่ ⇒ **ไม่มีใครได้สิทธิ์เพิ่ม** แต่
-    // ฝ่ายที่รับคำร้องโดยไม่ตอบราคา (บัญชี) จะผ่านชั้นนี้ได้โดยไม่ต้องแจก costing:*
-    // ⚠️ ชั้นนี้หยาบระดับ role · ฝ่ายจริงถูกแคบที่ handler ด้วย canAnswerRequestsFor
+  // ⭐ **แยกสองเส้นออกจากกันแล้ว** (2026-08-29) — เดิมใช้บรรทัดเดียวกันโดยอ้างว่า
+  // "role ที่ถือ requests:answer ถือ costing:quote อยู่แล้วทั้งคู่ ⇒ ไม่มีใครได้สิทธิ์เพิ่ม"
+  // 🔴 ข้อสมมตินั้นตายทันทีที่ฝ่าย TS ได้ `requests:answer` เพื่อรับคำร้องประเมินพื้นที่
+  // (mig 0314) โดยไม่มี costing:* เลย ⇒ ถ้ายังรวมเส้นกันอยู่ **ทะเบียนวัสดุจะเปิดให้
+  // ฝ่ายบริการเขียนได้ทั้งทะเบียน** ซึ่งเป็นกับดักเดียวกับที่คอมเมนต์ของ
+  // REQUEST_ANSWER_DEPARTMENTS เตือนไว้เอง ("ปลดด่านคือปิดที่เนื้อ ไม่ใช่เปิดที่เมนู")
+  // ⚠️ ชั้นนี้หยาบระดับ role · ฝ่ายจริงถูกแคบที่ handler ด้วย canAnswerRequestsFor
+  if (path.startsWith('/api/sa/requests')) {
     return can(role, 'costing:edit') || can(role, 'costing:quote') || can(role, 'requests:answer');
+  }
+  // ทะเบียนวัสดุ — **เจ้าของราคาเท่านั้น** ไม่รับ requests:answer
+  if (path.startsWith('/api/sa/materials')) {
+    return can(role, 'costing:edit') || can(role, 'costing:quote');
   }
   // ทะเบียนกลิ่น + ทะเบียนสูตร (mig 0171) — ข้อมูลหลักที่ **สองฝ่ายใช้เส้นเดียวกัน
   // คนละจุดประสงค์**: ฝ่ายขายเสนอเป็นร่าง (products:edit) · RD รับเข้าทะเบียน/ใส่รหัส/

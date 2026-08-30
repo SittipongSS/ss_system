@@ -34,5 +34,8 @@ export async function buildImportResult(supabase, table) {
 
   const snapshot = await loadImportSnapshot(supabase);
   const { rows, summary } = planImport(drafts, snapshot);
-  return { blocked: null, headerMatch, rows, summary, report: reportRows(rows) };
+  /* ⭐ ส่ง `snapshot` กลับไปด้วย — ตอนลงมือสร้าง (`applyImportPlan`) ต้องใช้รหัส AR
+     ของลูกค้าและรหัสของไซต์เพื่อประกอบรหัสใหม่ (mig 0315) · ของพวกนี้อยู่ในก้อนนี้แล้ว
+     ⇒ ไม่ต้องยิงถามรายแถวอีกรอบ (ไฟล์จริงมีหลายร้อยแถว) */
+  return { blocked: null, headerMatch, rows, summary, report: reportRows(rows), snapshot };
 }

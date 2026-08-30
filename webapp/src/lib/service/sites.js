@@ -5,6 +5,7 @@
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ฟอร์ม/ปฏิทิน) และ server (validate ก่อน insert)
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
+import { addressText } from '@/lib/master/addresses';
 import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow, normalizeAssetSettings } from './assetKinds';
 
 export const ASSET_STATUSES = ['active', 'repair', 'removed'];
@@ -57,6 +58,48 @@ function normalizeAccessDays(value) {
   return { value: days.sort((a, b) => a - b), error: null };
 }
 
+/* ── สี่ช่องที่ก๊อปได้จาก `customers.addresses[]` มาตั้งต้นไซต์ (mig 0313) ────
+   นอกจากสี่ช่องนี้ ไซต์กับที่อยู่ทางภาษีไม่มีอะไรตรงกันเลย — เขตวิ่งงาน · เวลาเข้า ·
+   ผู้ดูแล เป็นของไซต์ล้วน · เลขสาขา/ตำบล-อำเภอ เป็นของใบกำกับล้วน
+
+   ⚠️ **ก๊อปครั้งเดียวตอนคนกด ไม่ใช่ผูกให้เปลี่ยนตามกัน** — ห้างแก้ที่อยู่จดทะเบียน
+      ไม่ได้แปลว่าเครื่องย้ายชั้น (โรคเดียวกับกระจกชื่อลูกค้าบนเอกสาร) */
+export const SITE_ADDRESS_FIELDS = [
+  ['address', 'ที่อยู่', (row) => addressText(row)],
+  ['mapUrl', 'ลิงก์แผนที่', (row) => row?.mapUrl || ''],
+  ['contactName', 'ผู้ติดต่อหน้างาน', (row) => row?.contactName || ''],
+  ['contactPhone', 'เบอร์ผู้ติดต่อ', (row) => row?.contactPhone || ''],
+];
+
+const trimmed = (value) => String(value ?? '').trim();
+
+/* ค่าที่ควรถูกก๊อปลงไซต์เมื่อกด "ดึงใหม่" — **ทะเบียนว่าง = ไม่แตะ**
+   ⚠️ ไซต์จริงใบแรกบน production มี `mapUrl` แต่ไม่มี `address` ⇒ ถ้าดึงใหม่แล้วเอา
+      ค่าว่างจากทะเบียนไปทับ หมุดแผนที่ที่ช่างใช้จริงหายทันที */
+export function siteAddressCarry(site = {}, row) {
+  const next = {};
+  if (!row) return next;
+  for (const [field, , pick] of SITE_ADDRESS_FIELDS) {
+    next[field] = pick(row) || site[field] || '';
+  }
+  return next;
+}
+
+/* ช่องที่ **ทะเบียนมีค่า และไม่ตรงกับที่เก็บไว้บนไซต์** → [{ field, label }]
+   ⚠️ ต้องนับเฉพาะช่องที่ `siteAddressCarry` เปลี่ยนได้จริง ไม่งั้นจอจะขึ้นปุ่ม
+      "ดึงใหม่" แล้วกดไปไม่มีอะไรขยับ ซึ่งอ่านว่าปุ่มเสีย
+   ⚠️ ไม่ใช่ error — ที่อยู่หน้างานต่างจากที่อยู่จดทะเบียนเป็นเรื่องปกติ (ล็อบบี้ห้าง ·
+      พื้นที่เช่า) หน้าที่ของค่านี้คือ "บอกว่าต่าง" แล้วให้คนตัดสิน */
+export function siteAddressDrift(site = {}, row) {
+  if (!row) return [];
+  return SITE_ADDRESS_FIELDS
+    .filter(([field, , pick]) => {
+      const source = trimmed(pick(row));
+      return !!source && source !== trimmed(site[field]);
+    })
+    .map(([field, label]) => ({ field, label }));
+}
+
 // ── ตรวจข้อมูลไซต์ก่อนแตะ DB — คืนข้อความไทย หรือ null ถ้าผ่าน ────────────
 export function normalizeSiteInput(body = {}) {
   const customerId = String(body.customerId ?? '').trim();
@@ -100,6 +143,33 @@ export function normalizeSiteInput(body = {}) {
   const days = normalizeAccessDays(body.accessDays);
   if (days.error) return { value: null, error: days.error };
 
+  /* ── จังหวัด (mig 0315) — **ไม่ใช่ที่อยู่ แต่เป็นตัวตน** ────────────────
+     รหัสไซต์ `ST-XXXX-AA-BBB-CCCC` ประกอบจากภาค/จังหวัด ⇒ ขาดไม่ได้ตอนสร้าง
+     ⚠️ บังคับที่ **route** ไม่ใช่ที่นี่ — ไฟล์นี้ตรวจรูปร่างล้วน และโหมดแก้ของไซต์เก่า
+        (ก่อน 0315) ต้องยังบันทึกได้แม้ยังไม่ได้เลือกจังหวัด · ที่นี่ตรวจแค่ "รูปถูกไหม" */
+  const provinceCode = String(body.provinceCode ?? '').trim();
+  if (provinceCode && !/^\d{2}$/.test(provinceCode)) {
+    return { value: null, error: 'รหัสจังหวัดไม่ถูกต้อง' };
+  }
+
+  /* ── สองช่องที่ "ระบบรู้เอง" ไม่ใช่ช่องให้คนกรอก ──────────────────────
+     customerAddressId = แถวที่อยู่ในทะเบียนลูกค้าที่ใช้ตั้งต้นไซต์ (mig 0313) —
+       บอกที่มาอย่างเดียว ไม่ผูกให้เปลี่ยนตามกัน · ฟอร์มใช้เทียบค่าแล้วเสนอ "ดึงใหม่"
+     projectId = โครงการสายบริการที่คลอดไซต์นี้ (mig 0299) — วิซาร์ดรับใบสั่งขาย
+       ประทับให้เอง จากใบที่กำลังเปิดอยู่ · **ไม่มีช่องกรอกบนจอ** และไม่บังคับ
+       (ของเก่า 380 จุดติดตั้งไม่เคยมีโครงการ · ลูกค้าโทรมาให้ไปติดตั้งก็ไม่มี)
+     ⚠️ ทั้งคู่ตรวจ "มีจริงไหม" ที่ route ไม่ใช่ที่นี่ — ไฟล์นี้ไม่แตะ DB */
+  const reference = (field, label) => {
+    const value = String(body[field] ?? '').trim();
+    if (value.length > 60) return { error: `${label}ไม่ถูกต้อง` };
+    return { value: value || null };
+  };
+  for (const [field, label] of [['customerAddressId', 'ที่อยู่ต้นทาง'], ['projectId', 'โครงการ']]) {
+    const res = reference(field, label);
+    if (res.error) return { value: null, error: res.error };
+    fields[field] = res.value;
+  }
+
   return {
     value: {
       customerId,
@@ -109,6 +179,10 @@ export function normalizeSiteInput(body = {}) {
       accessFrom: accessFrom ? toHHMM(accessFrom) : null,
       accessTo: accessTo ? toHHMM(accessTo) : null,
       accessDays: days.value,
+      provinceCode: provinceCode || null,
+      // ชื่อจังหวัดเก็บคู่รหัสเสมอ — จอ/รายงานประกอบข้อความได้โดยไม่ต้องเปิดทะเบียน
+      // 650KB ฝั่ง client (แพตเทิร์นเดียวกับที่อยู่ลูกค้า mig 0217)
+      province: String(body.province ?? '').trim().slice(0, 100) || null,
       isActive: body.isActive === undefined ? true : !!body.isActive,
       ownerId: body.ownerId || null,
       ownerName: body.ownerName || null,

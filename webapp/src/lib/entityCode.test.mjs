@@ -4,6 +4,7 @@ import assert from 'node:assert';
 import {
   ymKey,
   entityCodeDisplay,
+  insertRowWithComposedCode,
   insertRowWithEntityCode,
   insertRowsWithEntityCode,
 } from './entityCode.js';
@@ -65,4 +66,32 @@ test('entityCodeDisplay: ไม่มีรหัส → "-"', () => {
   assert.equal(entityCodeDisplay(null, 0), '-');
   assert.equal(entityCodeDisplay('', 3), '-');
   assert.equal(entityCodeDisplay(undefined), '-');
+});
+
+// ── รหัสที่ประกอบเอง (ไซต์ ST- / โซน ZN- · มติผู้ใช้ 2026-08-29) ──────────
+test('รหัสประกอบเอง: ส่ง prefix/ถังนับ/ความกว้าง ที่ผู้เรียกกำหนด ไม่ใช่เดือน', async () => {
+  const calls = [];
+  const fake = { rpc: async (fn, args) => { calls.push([fn, args]); return { data: [{ code: 'ST-0121-01-BKK-10001' }], error: null }; } };
+
+  const one = await insertRowWithComposedCode(
+    fake,
+    { scope: 'SS', bucket: '-', prefix: 'ST-0121-01-BKK-', width: 5 },
+    { id: 'SVS-1' },
+  );
+  assert.deepEqual(calls[0], [
+    'create_entity_rows_with_code',
+    { p_scope: 'SS', p_month: '-', p_prefix: 'ST-0121-01-BKK-', p_width: 5, p_rows: [{ id: 'SVS-1' }] },
+  ]);
+  assert.deepEqual(one, { data: { code: 'ST-0121-01-BKK-10001' }, error: null });
+  // แถวที่ส่งไปต้องไม่มีคีย์ code ติดไปด้วย (กติกาเดียวกับรหัสรายเดือน)
+  assert.equal('code' in calls[0][1].p_rows[0], false);
+});
+
+test('รหัสประกอบเอง: error ส่งกลับตามเดิม ไม่กลืน', async () => {
+  const fake = { rpc: async () => ({ data: null, error: { code: '23505', message: 'duplicate key' } }) };
+  const { data, error } = await insertRowWithComposedCode(
+    fake, { scope: 'ZN', bucket: '-', prefix: 'ZN-10001-04-', width: 3 }, { id: 'SZN-1' },
+  );
+  assert.equal(data, null);
+  assert.equal(error.code, '23505');
 });

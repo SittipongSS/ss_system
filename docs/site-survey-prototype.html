@@ -1,0 +1,1667 @@
+<meta charset="utf-8">
+<title>เดินเรื่องใบประเมินพื้นที่</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap">
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ — ไม่มีสีใหม่ในม็อกนี้
+   ══════════════════════════════════════════════════════════════ */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--panel-float:#fffdf9;--panel-solid:#fefefd;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--glass-shadow:0 4px 16px 0 rgba(41,35,27,.07);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;--navy-ink:#243b63;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--teal:#377275;--teal-soft:#e0f0f0;--violet:#6f5e9f;--violet-soft:#eee9f6;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--space-0-5:2px;--space-1:4px;--space-1-5:6px;--space-2:8px;--space-2-5:10px;
+--space-3:12px;--space-3-5:14px;--space-4:16px;--space-4-5:18px;--space-5:20px;
+--space-6:24px;--space-7:28px;--space-8:32px;--space-9:40px;
+--radius:8px;--radius-md:10px;--radius-lg:13px;--radius-xl:16px;--radius-full:9999px;
+--fs-1:9.5px;--fs-2:10.5px;--fs-3:11px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;
+--fs-7:13px;--fs-8:14px;--fs-9:15px;--fs-10:16px;--fs-11:18px;--fs-12:20px;
+--fs-13:22px;--fs-14:24px;--fs-15:27px;
+--fw-normal:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;
+--lh-thai:1.65;--lh-text:1.6;--lh-flat:1;
+--ls-heading:-.02em;--ls-label:.08em;--ls-tabular:-.01em;
+--ctl-h:40px;--ctl-h-touch:44px;--panel-inset:var(--space-4);--rule:1px;
+--content-max:1480px;--op-disabled:.45;--op-muted:.55;
+--ok:var(--green);
+}
+:root:not([data-theme="light"]) .darkable{--x:0}
+@media (prefers-color-scheme: dark){
+:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}
+
+*{box-sizing:border-box}
+body{
+margin:0;background:var(--bg);color:var(--text);
+font-family:"Sarabun","IBM Plex Sans Thai",system-ui,sans-serif;
+font-size:var(--fs-8);line-height:var(--lh-thai);letter-spacing:.025em;
+}
+svg{flex:none}
+.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── เปลือกของเดคเอง (ไม่ใช่ของแอป) ────────────────────────── */
+.deck{max-width:1180px;margin:0 auto;padding:0 var(--space-4) var(--space-9)}
+.deckbar{
+position:sticky;top:0;z-index:50;background:var(--bg);
+border-bottom:1px solid var(--border);margin-bottom:var(--space-6);
+}
+.deckbar-in{max-width:1180px;margin:0 auto;padding:var(--space-3) var(--space-4);
+display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.deckbar h1{margin:0;font-size:var(--fs-9);font-weight:var(--fw-bold);letter-spacing:var(--ls-heading)}
+.deckbar h1 small{display:block;font-size:var(--fs-4);font-weight:var(--fw-normal);color:var(--text-3);letter-spacing:0}
+.navstrip{display:flex;gap:var(--space-1);overflow-x:auto;padding-bottom:2px;margin-left:auto;scrollbar-width:thin}
+.navstrip button{
+appearance:none;border:1px solid transparent;background:transparent;color:var(--text-2);
+font:inherit;font-size:var(--fs-4);font-weight:var(--fw-semibold);cursor:pointer;
+padding:var(--space-1-5) var(--space-2-5);border-radius:var(--radius-full);white-space:nowrap;
+}
+.navstrip button:hover{background:var(--panel-2);color:var(--text)}
+.navstrip button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+.navstrip button[aria-pressed="true"] .n{opacity:.65}
+.n{font-variant-numeric:tabular-nums;margin-inline-end:5px;opacity:.5}
+.themebtn{appearance:none;border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);
+border-radius:var(--radius-full);width:34px;height:34px;display:grid;place-items:center;cursor:pointer;font-size:15px}
+.themebtn:hover{color:var(--text)}
+
+.screen{display:none;animation:fade .2s ease-out}
+.screen.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.screen{animation:none}}
+
+/* แถบคำอธิบายของแต่ละจอ */
+.brief{
+display:grid;grid-template-columns:1fr;gap:var(--space-3);
+border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel);box-shadow:var(--glass-shadow);
+padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);
+}
+@media(min-width:760px){.brief{grid-template-columns:1.25fr 1fr}}
+.brief h2{margin:0 0 var(--space-1);font-size:var(--fs-13);letter-spacing:var(--ls-heading);font-weight:var(--fw-bold)}
+.brief .route{font-size:var(--fs-4);color:var(--text-3);font-variant-numeric:tabular-nums}
+.brief p{margin:var(--space-2) 0 0;color:var(--text-2);font-size:var(--fs-7);max-width:62ch}
+.fixes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-1-5)}
+.fixes li{display:flex;gap:var(--space-2);font-size:var(--fs-6);color:var(--text-2);line-height:var(--lh-thai)}
+.fixes .mk{flex:none;width:16px;text-align:center;font-weight:var(--fw-bold);color:var(--green)}
+.fixes .mk.new{color:var(--accent-ink)}
+.fixes b{color:var(--text);font-weight:var(--fw-semibold)}
+.briefhead{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)}
+.who{display:flex;gap:var(--space-1-5);flex-wrap:wrap;margin-top:var(--space-2)}
+
+/* กรอบอุปกรณ์ */
+.frame{border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden;
+background:var(--bg);box-shadow:var(--shadow-md);margin-bottom:var(--space-6)}
+.frame-cap{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);
+border-bottom:1px solid var(--border);background:var(--panel-2);
+font-size:var(--fs-3);color:var(--text-3);letter-spacing:var(--ls-label);text-transform:uppercase}
+.frame-body{padding:var(--space-5);overflow-x:auto}
+.frame.phone{max-width:400px;margin-inline:auto}
+.frame.phone .frame-body{padding:var(--space-3);background:var(--bg)}
+
+/* ══ ชั้นคลาสจริงของแอป (ชื่อตรงกับ globals.css) ══════════════ */
+.ui-workspace{width:100%;max-width:var(--content-max);min-width:0;margin:0 auto}
+.premium-header{
+min-width:0;margin-bottom:var(--space-4-5);padding:var(--space-5) 22px;
+border:1px solid var(--border);border-radius:var(--radius-lg);
+background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);flex-wrap:wrap;
+}
+.premium-header h1{display:flex;align-items:center;gap:var(--space-2-5);margin:0;
+font-size:clamp(var(--fs-12),2vw,var(--fs-14));line-height:var(--lh-thai);
+letter-spacing:var(--ls-heading);font-weight:var(--fw-bold);color:var(--text)}
+.premium-header p{margin:var(--space-1) 0 0;color:var(--text-3);font-size:var(--fs-7);max-width:820px}
+.premium-header-icon{width:34px;height:34px;flex:none;border-radius:var(--radius-md);
+background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent-ink);
+display:grid;place-items:center;font-size:19px}
+.ui-workspace-header-actions{display:flex;gap:var(--space-2);flex-wrap:wrap}
+
+.ui-section{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel);box-shadow:var(--glass-shadow)}
+.ui-section+.ui-section{margin-top:var(--space-4)}
+.ui-section-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+padding:var(--space-4) var(--panel-inset);border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--panel-2) 50%,transparent)}
+.ui-section-header h2{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);
+display:flex;align-items:center;gap:var(--space-2)}
+.ui-section-header p{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3)}
+.ui-section-body{min-width:0;padding:var(--space-4) var(--panel-inset)}
+.ui-section-body.flush{padding:0}
+
+.ui-metric-strip{display:grid;grid-template-columns:repeat(var(--c,4),minmax(0,1fr));gap:var(--rule);
+overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background-color:var(--panel);background-image:linear-gradient(var(--border),var(--border));
+box-shadow:var(--glass-shadow);margin-bottom:var(--space-4)}
+.ui-metric{display:flex;align-items:center;gap:11px;min-width:0;padding:var(--space-3-5) var(--space-4);
+border:0;background:var(--panel-solid);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.ui-metric:hover{background:var(--panel-2)}
+.ui-metric-ic{width:30px;height:30px;flex:none;border-radius:var(--radius);display:grid;place-items:center;
+background:var(--panel-2);color:var(--text-3);font-size:15px}
+.ui-metric-txt{min-width:0}
+.ui-metric-txt span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.ui-metric-txt strong{display:block;font-size:var(--fs-15);font-weight:var(--fw-bold);
+line-height:1.15;letter-spacing:var(--ls-tabular);font-variant-numeric:tabular-nums}
+.ui-metric-txt em{display:block;font-style:normal;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.ui-metric[data-tone="danger"] strong{color:var(--red)}
+.ui-metric[data-tone="danger"] .ui-metric-ic{background:var(--red-soft);color:var(--red)}
+.ui-metric[data-tone="warning"] strong{color:var(--amber)}
+.ui-metric[data-tone="warning"] .ui-metric-ic{background:var(--amber-soft);color:var(--amber)}
+.ui-metric[data-tone="accent"] strong{color:var(--accent-ink)}
+.ui-metric[data-tone="accent"] .ui-metric-ic{background:var(--accent-soft);color:var(--accent-ink)}
+.ui-metric[data-tone="good"] strong{color:var(--green)}
+.ui-metric[data-tone="good"] .ui-metric-ic{background:var(--green-soft);color:var(--green)}
+.ui-metric[data-tone="info"] .ui-metric-ic{background:var(--blue-soft);color:var(--blue)}
+
+.ui-badge,.status-pill,.chip{display:inline-flex;align-items:center;gap:5px;min-height:24px;
+padding:3px var(--space-2-5);border-radius:var(--radius-full);font-size:var(--fs-4);
+font-weight:var(--fw-semibold);line-height:var(--lh-thai);white-space:nowrap;
+background:color-mix(in srgb,currentColor 12%,transparent);
+border:1px solid color-mix(in srgb,currentColor 24%,transparent);color:var(--text-2)}
+.ui-badge.success{color:var(--green)}.ui-badge.warning{color:var(--amber)}
+.ui-badge.danger{color:var(--red)}.ui-badge.info{color:var(--blue)}
+.ui-badge.accent{color:var(--accent-ink)}.ui-badge.violet{color:var(--violet)}
+.ui-badge.teal{color:var(--teal)}.ui-badge.plain{color:var(--text-3)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1-5);
+min-height:var(--ctl-h);min-width:96px;padding:0 var(--space-3-5);border-radius:var(--radius);
+border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);
+font:inherit;font-size:var(--fs-5);font-weight:var(--fw-semibold);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--panel-3)}
+.btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn-quiet{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn-quiet:hover{background:var(--panel-2)}
+.btn-danger{background:transparent;border-color:color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}
+.btn.sm{min-height:30px;min-width:0;padding:0 var(--space-2-5);font-size:var(--fs-4);gap:5px}
+.btn.icon{min-width:0;width:var(--ctl-h);padding:0}
+.btn.icon.sm{width:30px}
+.btn.touch{min-height:var(--ctl-h-touch)}
+.btn.wide{flex:1}
+.btn[disabled],.btn.off{opacity:var(--op-disabled);cursor:not-allowed}
+
+.toolbar{display:flex;align-items:center;gap:var(--space-2-5);margin-bottom:var(--space-4);flex-wrap:wrap}
+.toolbar>.spacer{margin-left:auto}
+.toolbar .btn,.toolbar .search-glass,.toolbar .premium-select{min-height:var(--ctl-h);height:var(--ctl-h)}
+.search-glass{display:flex;align-items:center;gap:var(--space-2);min-width:210px;flex:0 1 260px;
+height:var(--ctl-h);padding:0 var(--space-3);border:1px solid var(--border);
+border-radius:var(--radius);background:var(--bg);color:var(--text-3)}
+.search-glass input{border:0;background:transparent;outline:none;font:inherit;font-size:var(--fs-8);
+color:var(--text);width:100%}
+.premium-select{display:inline-flex;align-items:center;gap:var(--space-2);height:var(--ctl-h);
+padding:0 var(--space-3);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2);font-size:var(--fs-5);font-weight:var(--fw-semibold);color:var(--text-2);cursor:pointer}
+.premium-select .cnt{background:var(--accent);color:var(--accent-fg);border-radius:var(--radius-full);
+min-width:18px;height:18px;display:grid;place-items:center;font-size:var(--fs-2);padding:0 4px}
+
+.segmented{display:inline-flex;align-items:center;gap:var(--space-0-5);padding:3px;
+background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg)}
+.segmented>button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1-5);
+min-height:30px;padding:0 var(--space-3);border:0;border-radius:var(--radius-md);background:transparent;
+color:var(--text-2);font:inherit;font-size:var(--fs-4);font-weight:var(--fw-semibold);cursor:pointer}
+.segmented>button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.segmented .seg-count{min-width:20px;font-variant-numeric:tabular-nums;opacity:.75}
+.scope-row{display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-bottom:var(--space-4)}
+
+table{width:100%;border-collapse:collapse}
+.tbl th{font-size:var(--fs-1);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);font-weight:var(--fw-semibold);text-align:left;padding:0 var(--space-3);
+height:42px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{font-size:var(--fs-3);padding:var(--space-2) var(--space-3);height:52px;
+border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text-2)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:hover td{background:color-mix(in srgb,var(--accent-soft) 25%,transparent)}
+.tbl .t-strong{color:var(--text);font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.cell-sub{display:block;font-size:var(--fs-2);color:var(--text-3);margin-top:1px}
+.num{text-align:right;font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.mono{font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.linklike{color:var(--navy-ink);text-decoration:none;font-weight:var(--fw-semibold);cursor:pointer}
+.linklike:hover{text-decoration:underline}
+.tblwrap{overflow-x:auto}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+gap:var(--space-2);padding:var(--space-9) var(--space-7);text-align:center;color:var(--text-3);
+font-size:var(--fs-7);line-height:var(--lh-text)}
+.empty-state b{color:var(--text-2);font-size:var(--fs-8)}
+
+.notice{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3-5) var(--space-4);
+border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+margin-bottom:var(--space-4);font-size:var(--fs-7);line-height:var(--lh-thai)}
+.notice .ic{flex:none;font-size:17px;margin-top:1px}
+.notice b{display:block;color:var(--text);font-weight:var(--fw-semibold)}
+.notice span{color:var(--text-2)}
+.notice .act{margin-left:auto;flex:none;align-self:center}
+.notice[data-tone="warning"]{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 30%,transparent)}
+.notice[data-tone="warning"] .ic{color:var(--amber)}
+.notice[data-tone="danger"]{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.notice[data-tone="danger"] .ic{color:var(--red)}
+.notice[data-tone="info"]{background:var(--blue-soft);border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
+.notice[data-tone="info"] .ic{color:var(--blue)}
+
+/* คิว "ต้องจัดการก่อน" */
+.aq{display:flex;flex-direction:column}
+.aq-row{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--panel-inset);
+border-bottom:1px solid var(--border)}
+.aq-row:last-child{border-bottom:0}
+.aq-row:hover{background:var(--panel-2)}
+.aq-ic{width:32px;height:32px;flex:none;border-radius:var(--radius);display:grid;place-items:center;font-size:16px}
+.aq-row[data-tone="danger"] .aq-ic{background:var(--red-soft);color:var(--red)}
+.aq-row[data-tone="warning"] .aq-ic{background:var(--amber-soft);color:var(--amber)}
+.aq-row[data-tone="info"] .aq-ic{background:var(--blue-soft);color:var(--blue)}
+.aq-txt{min-width:0;flex:1}
+.aq-txt b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);color:var(--text)}
+.aq-txt span{display:block;font-size:var(--fs-4);color:var(--text-3)}
+.aq-row .btn{flex:none}
+
+/* แถบภาระช่างรายวัน */
+.load{display:flex;flex-direction:column;gap:var(--space-1)}
+.load-row{display:grid;grid-template-columns:132px 1fr auto;gap:var(--space-3);align-items:center;
+padding:var(--space-2) var(--panel-inset)}
+.load-row:hover{background:var(--panel-2)}
+.load-name{font-size:var(--fs-7);font-weight:var(--fw-semibold);display:flex;align-items:center;gap:var(--space-2)}
+.load-name .dot{width:8px;height:8px;border-radius:var(--radius-full);flex:none;background:var(--teal)}
+.bar{position:relative;height:26px;border-radius:var(--radius);background:var(--panel-2);
+border:1px solid var(--border);overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;border-radius:3px;font-style:normal;font-size:var(--fs-2);
+color:#fff;display:grid;place-items:center;overflow:hidden;white-space:nowrap;padding:0 3px}
+.bar i.refill{background:var(--accent)}
+.bar i.repair{background:var(--red)}
+.bar i.install{background:var(--violet)}
+.bar i.inspect{background:var(--teal)}
+.load-sum{font-size:var(--fs-3);color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.load-sum b{color:var(--text-2)}
+.hours{display:grid;grid-template-columns:132px 1fr auto;gap:var(--space-3);
+padding:0 var(--panel-inset) var(--space-1)}
+.hours .marks{display:flex;justify-content:space-between;font-size:var(--fs-1);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-3) var(--panel-inset);
+border-top:1px solid var(--border);font-size:var(--fs-3);color:var(--text-3)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* ราง StepTrack */
+.steps{display:flex;align-items:center;gap:4px}
+.steps s{width:26px;height:4px;border-radius:2px;background:var(--border-strong);text-decoration:none;display:block}
+.steps s.done{background:var(--green)}
+.steps s.now{background:var(--accent)}
+.steps s.bad{background:var(--red)}
+.steps em{font-style:normal;font-size:var(--fs-2);color:var(--text-3);margin-left:var(--space-1)}
+
+/* ── การ์ดนัดของช่าง (มือถือ) ─────────────────────────────── */
+.grp{margin-bottom:var(--space-4)}
+.grp-h{display:flex;align-items:center;gap:var(--space-2);margin:0 0 var(--space-2);
+font-size:var(--fs-4);font-weight:var(--fw-bold);color:var(--text-2)}
+.grp-h.bad{color:var(--red)}
+.grp-h .c{margin-left:auto;color:var(--text-3);font-weight:var(--fw-normal);font-variant-numeric:tabular-nums}
+.vcard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+padding:var(--space-3);margin-bottom:var(--space-2);box-shadow:var(--shadow-sm)}
+.vcard.live{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.vcard.late{border-inline-start:3px solid var(--red)}
+.vcard.done{opacity:var(--op-muted)}
+.vcard-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+.vcard-when{font-size:var(--fs-8);font-weight:var(--fw-bold);font-variant-numeric:tabular-nums}
+.vcard-when small{font-weight:var(--fw-normal);color:var(--text-3);font-size:var(--fs-4)}
+.vcard h3{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.vcard .meta{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.vnote{margin-top:var(--space-2);padding:var(--space-2) var(--space-2-5);border-radius:var(--radius);
+background:var(--blue-soft);color:var(--text-2);font-size:var(--fs-4);line-height:var(--lh-thai);
+display:flex;gap:var(--space-2)}
+.vnote b{color:var(--text);font-weight:var(--fw-semibold)}
+.vwarn{margin-top:var(--space-2);display:flex;align-items:flex-start;gap:var(--space-1-5);
+color:var(--amber);font-size:var(--fs-4);line-height:var(--lh-thai)}
+.vacts{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+.running{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);
+padding:var(--space-2) var(--space-2-5);border-radius:var(--radius);background:var(--accent-soft);
+color:var(--accent-ink);font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.running .pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;
+animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.running .pulse{animation:none}}
+
+/* ── ฟอร์มปิดงาน (หน้าแยก) ───────────────────────────────── */
+.fstep{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+margin-bottom:var(--space-3);overflow:hidden}
+.fstep-h{display:flex;align-items:center;gap:var(--space-2-5);padding:var(--space-3) var(--space-3-5);
+border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--panel-2) 50%,transparent)}
+.fstep-h b{font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.fstep-h .no{width:22px;height:22px;flex:none;border-radius:50%;display:grid;place-items:center;
+background:var(--navy);color:#fff;font-size:var(--fs-3);font-weight:var(--fw-bold)}
+.fstep-h .ok{background:var(--green)}
+.fstep-b{padding:var(--space-3-5)}
+.fstep-b>p{margin:0 0 var(--space-2);font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.arow{display:flex;align-items:center;gap:var(--space-2-5);padding:var(--space-2-5) 0;
+border-bottom:1px solid var(--border)}
+.arow:last-child{border-bottom:0}
+.arow-t{flex:1;min-width:0}
+.arow-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.arow-t span{display:block;font-size:var(--fs-3);color:var(--text-3)}
+.tri{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex:none}
+.tri button{appearance:none;border:0;background:var(--panel-2);color:var(--text-3);font:inherit;
+font-size:var(--fs-3);font-weight:var(--fw-semibold);padding:0 var(--space-2);height:34px;cursor:pointer;
+border-inline-end:1px solid var(--border)}
+.tri button:last-child{border-inline-end:0}
+.tri button[aria-pressed="true"]{background:var(--green);color:#fff}
+.tri button.no[aria-pressed="true"]{background:var(--red)}
+.tri button.sw[aria-pressed="true"]{background:var(--violet)}
+.field{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-3)}
+.field>span{font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.inp{height:var(--ctl-h);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--bg);padding:0 var(--space-3);display:flex;align-items:center;
+font-size:var(--fs-8);color:var(--text)}
+.inp.ta{height:auto;min-height:76px;align-items:flex-start;padding:var(--space-2-5) var(--space-3);color:var(--text-3)}
+.inp.ro{background:transparent;border-style:dashed;color:var(--text-2)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.thumbs{display:flex;gap:var(--space-2);flex-wrap:wrap}
+.thumb{width:64px;height:64px;border-radius:var(--radius);border:1px solid var(--border);
+background:var(--panel-2);display:grid;place-items:center;color:var(--text-3);font-size:var(--fs-2);gap:2px}
+.thumb.add{border-style:dashed;color:var(--accent-ink)}
+.sticky-acts{position:sticky;bottom:0;display:flex;gap:var(--space-2);padding:var(--space-3);
+background:var(--panel-float);border-top:1px solid var(--border);
+border-radius:0 0 var(--radius-lg) var(--radius-lg);margin:0 calc(-1*var(--space-3)) calc(-1*var(--space-3))}
+
+/* ── ตารางจัดคิว (matrix) ─────────────────────────────────── */
+.board{border-collapse:separate;border-spacing:0;min-width:880px}
+.board th,.board td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);
+vertical-align:top;padding:var(--space-1-5)}
+.board th{background:var(--panel-2);font-size:var(--fs-4);font-weight:var(--fw-semibold);
+color:var(--text-2);text-align:center;position:sticky;top:0;z-index:2;height:auto;padding:var(--space-2)}
+.board th .d{display:block;font-size:var(--fs-2);color:var(--text-3);letter-spacing:var(--ls-label)}
+.board th .num2{display:block;font-size:var(--fs-9);font-weight:var(--fw-bold);font-variant-numeric:tabular-nums}
+.board th.today .num2{background:var(--accent);color:var(--accent-fg);border-radius:var(--radius-full);
+width:26px;height:26px;line-height:26px;margin:0 auto}
+.board .tech{position:sticky;left:0;z-index:3;background:var(--panel);width:150px;min-width:150px;
+text-align:left;vertical-align:middle;white-space:normal}
+.board thead .tech{z-index:4}
+.board .wknd{background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.cellload{display:flex;align-items:center;gap:4px;font-size:var(--fs-2);color:var(--text-3);
+margin-bottom:3px;font-variant-numeric:tabular-nums}
+.cellload.hot{color:var(--amber);font-weight:var(--fw-semibold)}
+.vchip{display:block;width:100%;text-align:left;border:0;border-radius:6px;padding:4px 6px;
+margin-bottom:3px;font:inherit;font-size:var(--fs-2);line-height:1.35;cursor:pointer;color:#fff}
+.vchip b{font-variant-numeric:tabular-nums;margin-inline-end:4px}
+.vchip.refill{background:var(--accent)}.vchip.repair{background:var(--red)}
+.vchip.install{background:var(--violet)}.vchip.inspect{background:var(--teal)}
+.vchip.maint{background:var(--blue)}
+.vchip.draft{background:var(--panel-2);color:var(--text-2);border:1px dashed var(--border-strong)}
+.addcell{display:block;width:100%;min-height:26px;border:1px dashed var(--border-strong);
+border-radius:6px;background:transparent;color:var(--text-3);cursor:pointer;font-size:var(--fs-3)}
+.addcell:hover{border-color:var(--accent);color:var(--accent-ink)}
+.queue{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+padding:var(--space-3);height:fit-content}
+.queue h3{margin:0 0 var(--space-1);font-size:var(--fs-7);font-weight:var(--fw-semibold);
+display:flex;align-items:center;gap:var(--space-2)}
+.queue p{margin:0 0 var(--space-3);font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.qitem{border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--space-2);
+margin-bottom:var(--space-2);cursor:grab;background:var(--panel-2)}
+.qitem b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold)}
+.qitem span{display:block;font-size:var(--fs-2);color:var(--text-3)}
+.split{display:grid;gap:var(--space-4);grid-template-columns:1fr}
+@media(min-width:980px){.split{grid-template-columns:236px 1fr}}
+
+/* ── หน้ารายละเอียด (DetailPage) ─────────────────────────── */
+.dlayout{display:grid;gap:var(--space-4);grid-template-columns:1fr;align-items:start}
+@media(min-width:1040px){.dlayout{grid-template-columns:minmax(0,1fr) 316px}}
+.dover{border:1px solid var(--border);border-radius:var(--radius-lg);
+background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+padding:var(--space-5);margin-bottom:var(--space-4-5);
+display:flex;justify-content:space-between;gap:var(--space-4);flex-wrap:wrap;align-items:flex-start}
+.dover .eyebrow{font-size:var(--fs-3);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);display:flex;align-items:center;gap:var(--space-1-5)}
+.dover h1{margin:var(--space-1) 0 0;font-size:clamp(var(--fs-12),2vw,var(--fs-14));
+font-weight:var(--fw-bold);letter-spacing:var(--ls-heading);line-height:var(--lh-thai)}
+.dover .desc{margin:var(--space-1) 0 0;color:var(--text-3);font-size:var(--fs-7)}
+.crumb{display:flex;align-items:center;gap:var(--space-1-5);font-size:var(--fs-4);
+color:var(--text-3);margin-bottom:var(--space-3)}
+.crumb a{color:var(--navy-ink);text-decoration:none;font-weight:var(--fw-semibold);cursor:pointer}
+.crumb a:hover{text-decoration:underline}
+.ctx{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+box-shadow:var(--glass-shadow);margin-bottom:var(--space-3);overflow:hidden}
+.ctx-h{padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--panel-2) 50%,transparent);
+display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.ctx-h .btn{margin-left:auto}
+.ctx-b{padding:var(--space-3) var(--space-4)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-3);
+font-size:var(--fs-6);align-items:baseline}
+.kv dt{color:var(--text-3);white-space:nowrap}
+.kv dd{margin:0;color:var(--text-2);text-align:right}
+.kv dd b{color:var(--text);font-weight:var(--fw-semibold)}
+.zgrid{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.zcard{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel-2);
+padding:var(--space-3);cursor:pointer}
+.zcard:hover{border-color:var(--accent);background:var(--panel)}
+.zcard b{display:flex;align-items:center;gap:var(--space-1-5);font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.zcard .code{font-size:var(--fs-2);color:var(--text-3);margin-top:1px;display:block}
+.zcard .row{display:flex;justify-content:space-between;font-size:var(--fs-3);color:var(--text-3);margin-top:var(--space-2)}
+.zcard .row b{font-size:var(--fs-3);color:var(--text-2);display:inline}
+.meter{height:6px;border-radius:3px;background:var(--panel-3);overflow:hidden;margin-top:var(--space-2)}
+.meter i{display:block;height:100%;background:var(--green)}
+.meter i.over{background:var(--red)}
+.meter i.warn{background:var(--amber)}
+.pager{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--panel-inset);
+border-top:1px solid var(--border);font-size:var(--fs-4);color:var(--text-3);flex-wrap:wrap}
+.pager .pg{display:flex;gap:4px;margin-left:auto}
+.pager .pg button{width:30px;height:30px;border-radius:var(--radius);border:1px solid var(--border);
+background:var(--panel-2);color:var(--text-2);font:inherit;font-size:var(--fs-4);cursor:pointer;
+font-variant-numeric:tabular-nums}
+.pager .pg button[aria-current="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.tl{display:flex;flex-direction:column;gap:0}
+.tl-i{display:flex;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--border)}
+.tl-i:last-child{border-bottom:0}
+.tl-d{flex:none;width:74px;font-size:var(--fs-3);color:var(--text-3);font-variant-numeric:tabular-nums;padding-top:2px}
+.tl-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.tl-t span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.doc{background:var(--panel-float);border:1px solid var(--border);border-radius:var(--radius-lg);
+padding:var(--space-5);font-size:var(--fs-7);line-height:var(--lh-thai)}
+.doc h4{margin:0 0 var(--space-1);font-size:var(--fs-4);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--text-3);font-weight:var(--fw-semibold)}
+.doc .line{display:flex;gap:var(--space-3);padding:var(--space-2) 0;border-bottom:1px dashed var(--border)}
+.doc .line:last-child{border-bottom:0}
+.doc .line span:first-child{flex:none;width:120px;color:var(--text-3)}
+
+/* ── OptionTiles: เลือกที่อยู่ลูกค้า ─────────────────────── */
+.tiles{display:grid;gap:var(--space-2-5);grid-template-columns:repeat(auto-fill,minmax(238px,1fr))}
+.tile{display:block;width:100%;text-align:left;border:1px solid var(--border);
+border-radius:var(--radius-md);background:var(--panel-2);padding:var(--space-3);
+font:inherit;color:inherit;cursor:pointer}
+.tile:hover{border-color:var(--border-strong);background:var(--panel-3)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+box-shadow:0 0 0 1px var(--accent) inset}
+.tile .th{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.tile b{font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.tile .adr{display:block;margin-top:var(--space-1-5);font-size:var(--fs-3);color:var(--text-3);
+line-height:var(--lh-thai)}
+.tile.own{border-style:dashed}
+.tile.own b{color:var(--accent-ink)}
+/* แถบบริบทของขั้นที่ผ่านไปแล้ว (กติกาฟอร์ม: ยุบขั้นที่จบแล้วเหลือบรรทัดเดียว) */
+.ctxstrip{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-2-5) var(--space-3-5);border:1px solid var(--border);
+border-radius:var(--radius-md);background:var(--panel-2);
+font-size:var(--fs-6);color:var(--text-2);margin-bottom:var(--space-4)}
+.ctxstrip .done{color:var(--green);display:inline-flex;align-items:center;gap:5px;font-weight:var(--fw-semibold)}
+.ctxstrip .btn{margin-left:auto}
+/* ช่องที่ระบบรู้ค่าแล้ว = เส้นประอ่านอย่างเดียว ไม่ใช่ dropdown ที่จางลง */
+.lockrow{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-1)}
+.lockrow .src{font-size:var(--fs-3);color:var(--text-3);display:inline-flex;align-items:center;gap:4px}
+.lockrow .btn{margin-left:auto}
+
+/* ── ด่านเข้าไซต์ (เช็คลิสต์ก่อนร่างขึ้นตาราง) ─────────────── */
+.gate{display:flex;flex-direction:column}
+.gate-i{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3) 0;
+border-bottom:1px solid var(--border)}
+.gate-i:last-child{border-bottom:0}
+.gate-mk{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;
+font-size:14px;margin-top:1px}
+.gate-i[data-s="ok"] .gate-mk{background:var(--green-soft);color:var(--green)}
+.gate-i[data-s="bad"] .gate-mk{background:var(--red-soft);color:var(--red)}
+.gate-i[data-s="park"] .gate-mk{background:var(--panel-3);color:var(--text-3)}
+.gate-t{flex:1;min-width:0}
+.gate-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.gate-t span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.gate-i[data-s="park"] .gate-t b{color:var(--text-3)}
+.gate-who{flex:none;display:flex;align-items:center;gap:var(--space-2);align-self:center}
+.owner{font-size:var(--fs-2);letter-spacing:var(--ls-label);color:var(--text-3);
+border:1px solid var(--border);border-radius:var(--radius-full);padding:2px 8px;white-space:nowrap}
+.qgroup{margin-bottom:var(--space-3)}
+.qgroup h4{margin:0 0 var(--space-1-5);font-size:var(--fs-3);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--text-3);display:flex;align-items:center;gap:5px}
+.qitem.blocked{border-style:solid;border-color:color-mix(in srgb,var(--red) 35%,transparent);
+background:var(--red-soft);cursor:not-allowed}
+.qitem.blocked .why{display:block;font-size:var(--fs-2);color:var(--red);margin-top:3px}
+.qitem.ready{border-style:solid;border-color:color-mix(in srgb,var(--green) 35%,transparent);
+background:var(--panel-2)}
+.qitem.ready .why{display:block;font-size:var(--fs-2);color:var(--green);margin-top:3px}
+.dropcell{display:block;width:100%;min-height:26px;border:1px dashed transparent;border-radius:6px;
+background:transparent;color:var(--text-3);cursor:default;font-size:var(--fs-2)}
+tr:hover .dropcell{border-color:var(--border-strong)}
+.dropcell.armed{border-color:var(--accent);color:var(--accent-ink);background:var(--accent-soft);cursor:pointer}
+
+/* ══ เฉพาะม็อกใบประเมินพื้นที่ ══════════════════════════════ */
+/* การ์ดสถานที่ = ระดับ "ไซต์" · การ์ดจุด = ระดับ "โซน" ซ้อนอยู่ข้างใน
+   ระดับต้องเห็นด้วยตาโดยไม่ต้องอ่านป้าย — เยื้องขวา + เส้นซ้าย */
+.place{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel-2);
+margin-bottom:var(--space-4)}
+.place-h{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border)}
+.place-h b{font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.place-h .n{width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;
+display:grid;place-items:center;font-size:var(--fs-2);font-weight:var(--fw-bold);flex:none}
+.place-h .sp{margin-left:auto;display:flex;gap:var(--space-2)}
+.place-b{padding:var(--space-4)}
+.zlist{display:flex;flex-direction:column;gap:var(--space-2-5);
+margin-left:var(--space-4);padding-left:var(--space-4);border-left:2px solid var(--border-strong)}
+.zrow{display:grid;grid-template-columns:26px 1fr auto;gap:var(--space-3);align-items:start;
+padding:var(--space-3);border:1px solid var(--border);border-radius:var(--radius-md);
+background:var(--panel-float)}
+.zrow .zn{width:26px;height:26px;border-radius:var(--radius);background:var(--panel-3);
+color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-3);font-weight:var(--fw-bold)}
+.zrow b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.zrow .zd{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.zrow[data-new="1"]{border-color:var(--accent);background:var(--accent-soft)}
+.zrow[data-cut="1"]{border-style:dashed;opacity:.62}
+.zrow[data-cut="1"] b{text-decoration:line-through}
+/* ช่องขนาด — เมตรเท่านั้น หน่วยติดในช่อง ไม่ใช่ดรอปดาวน์ให้เลือกหน่วยผิดได้ */
+.dim{display:flex;align-items:center;gap:var(--space-1-5);flex-wrap:wrap}
+.dim .box{display:inline-flex;align-items:baseline;gap:3px;border:1px solid var(--border);
+border-radius:var(--radius);background:var(--panel-solid);padding:5px var(--space-2);
+min-width:74px;font-variant-numeric:tabular-nums}
+.dim .box i{font-style:normal;font-size:var(--fs-2);color:var(--text-3);letter-spacing:var(--ls-label)}
+.dim .box b{font-size:var(--fs-8);font-weight:var(--fw-semibold)}
+.dim .box em{font-style:normal;font-size:var(--fs-3);color:var(--text-3)}
+.dim .x{color:var(--text-3);font-size:var(--fs-5)}
+.dim .eq{margin-left:var(--space-2);font-size:var(--fs-4);color:var(--text-2);
+font-variant-numeric:tabular-nums}
+.dim .box.empty{border-style:dashed;background:transparent}
+.dim .box.empty b{color:var(--text-3)}
+/* ช่องรูปหน้างาน */
+.shots{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-2-5)}
+.shot{width:64px;height:64px;border-radius:var(--radius);border:1px solid var(--border);
+background:linear-gradient(135deg,var(--panel-3),var(--panel-2));display:grid;place-items:center;
+color:var(--text-3);flex:none}
+.shot.add{border-style:dashed;color:var(--accent-ink);cursor:pointer;background:transparent}
+.shot svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7}
+/* แถบสรุปแพ็คเกจ */
+.packsum{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;
+padding:var(--space-3-5) var(--space-4);border:1px solid var(--border-strong);
+border-radius:var(--radius-lg);background:var(--panel-2)}
+.packsum .big{font-size:var(--fs-14);font-weight:var(--fw-bold);letter-spacing:var(--ls-heading);
+font-variant-numeric:tabular-nums;line-height:1.1}
+.packsum .lab{font-size:var(--fs-3);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+.packsum .sep{width:1px;align-self:stretch;background:var(--border)}
+/* รางของใบคำร้อง (5 ขั้น) */
+.rail{display:flex;gap:0;flex-wrap:wrap}
+.rail-i{flex:1 1 150px;min-width:150px;padding:var(--space-3) var(--space-3) var(--space-3) 0;
+border-top:3px solid var(--border);margin-right:var(--space-3)}
+.rail-i[data-s="done"]{border-top-color:var(--green)}
+.rail-i[data-s="now"]{border-top-color:var(--accent)}
+.rail-i b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.rail-i[data-s="wait"] b{color:var(--text-3)}
+.rail-i span{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+
+/* ป้าย/คำอธิบายในฟอร์มม็อกนี้ — ของเดิมมีแค่ .field>span */
+.field>label{font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.field>small{font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.req{color:var(--accent-ink)}
+.inp.sel{justify-content:space-between}
+.thumb span{display:grid;place-items:center;text-align:center;line-height:1.25;padding:0 3px}
+.thumb em{display:block;font-style:normal;font-size:var(--fs-1);color:var(--text-3)}
+.vchip.survey{background:var(--accent)}
+.vchip.refill{background:var(--teal)}
+.vchip em{display:block;font-style:normal;opacity:.85;font-size:var(--fs-1)}
+@media(min-width:980px){.split.rev{grid-template-columns:1fr 236px}}
+
+/* ── ช่องกรอกจำนวนแพ็คเกจ (จอ 07) ────────────────────────────
+   ตัวนับ ไม่ใช่ดรอปดาวน์ ไม่ใช่ช่องเปล่า — จำนวนเป็นเลขเต็มเล็ก ๆ (1–10)
+   ⚠️ **ไม่มีค่าตั้งต้น** — จำนวนแพ็คเกจเป็นการตัดสินใจ ค่าที่กรอกไว้ให้แล้วคือ
+      คำตอบที่ไม่มีใครอ่าน · ค่าที่ระบบคำนวณได้อยู่ข้าง ๆ ในฐานะปุ่ม "ใช้ค่านี้" */
+.step{display:inline-flex;align-items:stretch;border:1px solid var(--border-strong);
+border-radius:var(--radius);overflow:hidden;background:var(--panel-solid);height:var(--ctl-h)}
+.step button{width:32px;border:0;background:var(--panel-2);color:var(--text-2);
+font:inherit;font-size:var(--fs-10);cursor:pointer;line-height:1}
+.step button:hover{background:var(--panel-3);color:var(--text)}
+.step .v{width:52px;display:grid;place-items:center;font-size:var(--fs-10);
+font-weight:var(--fw-semibold);font-variant-numeric:tabular-nums;
+border-inline:1px solid var(--border)}
+.step.empty .v{color:var(--text-3);font-weight:var(--fw-normal)}
+.step[data-tone="under"]{border-color:var(--amber)}
+.step[data-tone="under"] .v{color:var(--amber)}
+.packcell{display:flex;flex-direction:column;gap:var(--space-1-5);align-items:flex-end}
+/* ปุ่มรับค่าที่ระบบเสนอ — แพตเทิร์นเดียวกับ "1 แพ็ค = 1 ลิตร/เดือน" ของหน้าจัดสรร */
+.useit{display:inline-flex;align-items:center;gap:5px;border:1px dashed var(--accent);
+background:transparent;color:var(--accent-ink);border-radius:var(--radius-full);
+padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap}
+.useit:hover{background:var(--accent-soft)}
+.samehint{font-size:var(--fs-2);color:var(--green);white-space:nowrap}
+.diffhint{font-size:var(--fs-2);color:var(--amber);white-space:nowrap}
+/* ช่องเหตุผล — โผล่เฉพาะแถวที่กรอกต่ำกว่าที่ระบบเสนอ */
+.whyfield{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);
+padding:var(--space-2) var(--space-2-5);border:1px solid var(--amber);
+border-radius:var(--radius);background:var(--amber-soft);font-size:var(--fs-4);
+line-height:var(--lh-thai)}
+.whyfield .tag{flex:none;font-size:var(--fs-2);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--amber);font-weight:var(--fw-semibold)}
+/* แผงอธิบายส่วนประกอบของคอนโทรล */
+.anat{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.anat > div{border:1px solid var(--border);border-radius:var(--radius-md);
+background:var(--panel-2);padding:var(--space-3-5)}
+.anat b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);
+margin-bottom:var(--space-1);line-height:var(--lh-thai)}
+.anat p{margin:var(--space-2-5) 0 0;font-size:var(--fs-4);color:var(--text-3);
+line-height:var(--lh-thai)}
+.inp{gap:var(--space-2)}
+
+/* ── หัวข้อภาพหน้างานต่อโซน (จอ 06) ───────────────────────────────────────
+   สามหัวข้อคงที่ + จุดติดตั้งที่เพิ่มรายการเองได้ (มติผู้ใช้ 2026-08-29)
+   ⚠️ **จุดต้องมีอยู่ได้แม้ยังไม่มีรูป** — ถ้าจุดคือ "รูปที่มีป้าย" จุดที่ยังไม่ถ่าย
+      จะไม่มีตัวตน แล้วช่างไม่มีทางรู้ว่าเหลืออะไร ⇒ รายการจุดเก็บที่โซน รูปผูกเข้าจุด */
+.photogrp{border-top:1px solid var(--border);padding-top:var(--space-3);margin-top:var(--space-3)}
+.photogrp:first-child{border-top:0;padding-top:0;margin-top:0}
+.photogrp-h{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+margin-bottom:var(--space-2)}
+.photogrp-h b{font-size:var(--fs-6);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.photogrp-h .req-tag{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-full);padding:1px 8px}
+.photogrp-h .req-tag[data-need="1"]{color:var(--accent-ink);border-color:var(--accent)}
+.photogrp-h .cnt{margin-left:auto;font-size:var(--fs-3);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+/* หนึ่งจุดติดตั้ง = หนึ่งแถว ชื่อจุดอยู่บน รูปอยู่ล่าง */
+.spot{display:grid;grid-template-columns:24px 1fr auto;gap:var(--space-2-5);align-items:start;
+padding:var(--space-2-5);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2);margin-bottom:var(--space-2)}
+.spot .sn{width:24px;height:24px;border-radius:var(--radius);background:var(--panel-3);
+color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-weight:var(--fw-bold)}
+.spot b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.spot .sd{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.spot[data-empty="1"]{border-style:dashed}
+.spot[data-empty="1"] b{color:var(--text-3)}
+
+/* ชิปเลือกจุดติดตั้ง (จอ 07) — ชุดเล็กตายตัวต้องกางให้เห็น ไม่ใช่ดรอปดาวน์ */
+.spotpick{display:flex;flex-wrap:wrap;gap:var(--space-1-5);justify-content:flex-end}
+.spotchip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);
+border-radius:var(--radius-full);background:var(--panel-2);color:var(--text-3);
+padding:3px 10px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap}
+.spotchip[aria-pressed="true"]{border-color:var(--navy);background:var(--navy);color:#fff}
+.spotchip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.spotcount{font-size:var(--fs-2);color:var(--text-3);font-variant-numeric:tabular-nums;
+white-space:nowrap;margin-top:2px}
+
+/* ── หนึ่งโซนวัดได้หลายส่วน (พื้นที่รูปตัว L · เพดานสูงไม่เท่ากัน) ─────────
+   ⚠️ ปัดเศษครั้งเดียวที่ระดับโซน — ปัดรายส่วนจะได้แพ็คเกจเป็นเท่าตัว */
+.parts{display:flex;flex-direction:column;gap:var(--space-2)}
+.part{display:grid;grid-template-columns:22px 1fr auto;gap:var(--space-2-5);align-items:center;
+padding:var(--space-2) var(--space-2-5);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--panel-2)}
+.part .pn{width:22px;height:22px;border-radius:var(--radius);background:var(--panel-3);
+color:var(--text-2);display:grid;place-items:center;font-size:var(--fs-2);font-weight:var(--fw-bold)}
+.part .plabel{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai);margin-bottom:3px}
+.partsum{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
+padding-top:var(--space-2);border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
+.partsum b{font-size:var(--fs-9);font-weight:var(--fw-semibold)}
+.partsum .lab{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+.partsum .pack{color:var(--accent-ink);font-weight:var(--fw-semibold);font-size:var(--fs-4)}
+
+/* ── ไทล์เลือกโซนเดิม — มีสถานะสองแกน (ประเมิน × ขาย) ────────────────── */
+.tile[data-lock="1"]{opacity:.62;cursor:not-allowed;border-style:dashed}
+.tile[data-lock="1"]:hover{border-color:var(--border);background:var(--panel-2)}
+.tile .why2{display:block;margin-top:var(--space-1-5);font-size:var(--fs-2);line-height:var(--lh-thai)}
+.tile[data-lock="1"] .why2{color:var(--amber)}
+.tile[data-hot="1"]{border-color:var(--green);background:var(--green-soft)}
+.tile[data-hot="1"] .why2{color:var(--green);font-weight:var(--fw-semibold)}
+.tile[data-odd="1"] .why2{color:var(--red)}
+.tile .acts{display:flex;gap:var(--space-1-5);margin-top:var(--space-2);flex-wrap:wrap}
+/* กล่องสถานะ 3×2 */
+.matrix{width:100%;border-collapse:separate;border-spacing:0}
+.matrix th,.matrix td{border:1px solid var(--border);padding:var(--space-3);vertical-align:top;
+font-size:var(--fs-5);line-height:var(--lh-thai)}
+.matrix th{background:var(--panel-2);font-weight:var(--fw-semibold);font-size:var(--fs-4);text-align:left}
+.matrix td b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold);margin-bottom:3px}
+.matrix td span{display:block;font-size:var(--fs-3);color:var(--text-3)}
+.matrix td .no{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
+background:var(--panel-3);color:var(--text-2);font-size:var(--fs-2);font-weight:var(--fw-bold);
+margin-inline-end:6px;vertical-align:1px}
+.matrix td[data-t="hot"]{background:var(--green-soft)}
+.matrix td[data-t="hot"] .no{background:var(--green);color:#fff}
+.matrix td[data-t="bad"]{background:var(--red-soft)}
+.matrix td[data-t="bad"] .no{background:var(--red);color:#fff}
+.matrix td[data-t="lock"]{background:var(--amber-soft)}
+.matrix td[data-t="lock"] .no{background:var(--amber);color:#fff}
+
+/* ── รายการ "พื้นที่ที่ต้องประเมิน" — หนึ่งแถว = หนึ่งโซน ────────────────────
+   รวมโซนเดิมที่เลือกมาวัดซ้ำ กับโซนใหม่ที่พิมพ์เพิ่ม ไว้ในลิสต์เดียว
+   ⚠️ ลิสต์นี้ = ใบงานของช่างรอบนี้ · โซนเดิมที่ไม่ได้เลือก ไม่ต้องโผล่มารก */
+.pick{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)}
+.zn-code{font-size:var(--fs-2);letter-spacing:var(--ls-tabular);color:var(--text-3);
+font-variant-numeric:tabular-nums}
+/* ประวัติการวัดของโซน — ไม่ใช่ Rev. ของเอกสาร แค่แถวเรียงตามเวลา */
+.hist{margin-top:var(--space-2);padding:var(--space-2) var(--space-2-5);
+border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-2)}
+.hist-h{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-3);
+color:var(--text-3);margin-bottom:var(--space-1-5)}
+.hist-r{display:grid;grid-template-columns:64px 1fr auto;gap:var(--space-2);
+font-size:var(--fs-3);line-height:var(--lh-thai);padding:3px 0;
+border-top:1px dashed var(--border);font-variant-numeric:tabular-nums}
+.hist-r:first-of-type{border-top:0}
+.hist-r .rn{font-weight:var(--fw-semibold);color:var(--text-2)}
+.hist-r[data-now="1"] .rn{color:var(--accent-ink)}
+.hist-r .meta{color:var(--text-3)}
+.delta{font-size:var(--fs-3);font-variant-numeric:tabular-nums}
+.delta.up{color:var(--accent-ink)}
+.delta.same{color:var(--text-3)}
+
+/* ── ฟอร์มเพิ่มพื้นที่ — ตัวอย่างผลลัพธ์สด ─────────────────────────────── */
+.preview{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-3) var(--space-3-5);border:1px dashed var(--border-strong);
+border-radius:var(--radius-md);background:var(--panel-2);margin-top:var(--space-1)}
+.preview .lab{font-size:var(--fs-2);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);flex:none}
+.preview .val{font-size:var(--fs-9);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.preview .val em{font-style:normal;color:var(--text-3);font-weight:var(--fw-normal)}
+.warnline{display:flex;gap:var(--space-2);align-items:flex-start;margin-top:var(--space-1-5);
+font-size:var(--fs-3);line-height:var(--lh-thai);color:var(--amber)}
+.notfield{display:flex;flex-direction:column;gap:var(--space-1-5)}
+.notfield > div{display:flex;gap:var(--space-2);align-items:baseline;font-size:var(--fs-4);
+line-height:var(--lh-thai)}
+.notfield b{flex:none;width:104px;color:var(--text-2);font-weight:var(--fw-semibold)}
+.notfield span{color:var(--text-3)}
+
+/* ── ทางแยก: เส้นทางที่ไม่ราบรื่น ─────────────────────────────── */
+.steps2 .sep2{width:1px;background:var(--border);margin:0 var(--space-2);align-self:stretch}
+.steps2 button[data-b="1"][aria-current="true"]{background:var(--amber);border-color:var(--amber);color:#fff}
+.stepnote[data-b="1"]{background:var(--amber)}
+.stepnote[data-b="2"]{background:var(--red)}
+</style>
+
+<svg style="display:none" aria-hidden="true">
+<symbol id="dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+<symbol id="wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></symbol>
+<symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+<symbol id="warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+<symbol id="phone" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+<symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+<symbol id="left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+<symbol id="pkg" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5M16 13H8M16 17H8M10 9H8"/></symbol>
+<symbol id="pencil" viewBox="0 0 24 24"><path d="M21.17 6.81a1 1 0 0 0-3.98-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/></symbol>
+<symbol id="drop" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></symbol>
+<symbol id="rot" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="bldg" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4"/></symbol>
+<symbol id="cam" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+<symbol id="play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9z"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></symbol>
+<symbol id="hand" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="M21 3v7M3 20l3-3M3 4l5 5"/></symbol>
+<symbol id="dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+</svg>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   เดินเรื่องเสมือนจริง — ไม่มีแผงอธิบาย มีแต่จอแอป
+   ══════════════════════════════════════════════════════════════ */
+.deck{max-width:none;padding:0}
+.stepbar{position:sticky;top:0;z-index:40;background:var(--panel-float);
+border-bottom:1px solid var(--border);padding:var(--space-2-5) var(--space-4)}
+.stepbar-in{max-width:1480px;margin:0 auto;display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.stepbar h1{margin:0;font-size:var(--fs-9);font-weight:var(--fw-bold);letter-spacing:var(--ls-heading);
+line-height:var(--lh-thai);flex:none}
+.stepbar h1 small{display:block;font-size:var(--fs-3);font-weight:var(--fw-normal);color:var(--text-3)}
+.steps2{display:flex;gap:2px;flex-wrap:wrap;flex:1;min-width:0}
+.steps2 button{display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;
+border-radius:var(--radius-full);background:transparent;color:var(--text-3);
+padding:5px 11px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap;
+line-height:var(--lh-thai)}
+.steps2 button:hover{background:var(--panel-2);color:var(--text-2)}
+.steps2 button[aria-current="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.steps2 .who{font-size:var(--fs-1);letter-spacing:var(--ls-label);opacity:.7}
+.steps2 button[aria-current="true"] .who{opacity:.85}
+.stepbar .themebtn{flex:none}
+/* ── เปลือกแอป ─────────────────────────────────────────────── */
+.app{display:grid;grid-template-columns:212px 1fr;min-height:calc(100vh - 58px);
+background:var(--bg)}
+.app.mobile{grid-template-columns:1fr;max-width:420px;margin:0 auto;
+border-inline:1px solid var(--border);min-height:auto}
+.rail{background:var(--panel-2);border-right:1px solid var(--border);padding:var(--space-3) 0;
+display:flex;flex-direction:column;gap:2px}
+.rail .brand{padding:var(--space-2) var(--space-4) var(--space-4);font-size:var(--fs-8);
+font-weight:var(--fw-bold);letter-spacing:var(--ls-heading)}
+.rail .grp{padding:var(--space-3) var(--space-4) var(--space-1);font-size:var(--fs-1);
+letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--text-3)}
+.rail a{display:flex;align-items:center;gap:9px;padding:7px var(--space-4);font-size:var(--fs-5);
+color:var(--text-2);text-decoration:none;line-height:var(--lh-thai);border-left:2px solid transparent}
+.rail a:hover{background:var(--panel-3)}
+.rail a[data-on="1"]{background:var(--panel-3);color:var(--text);border-left-color:var(--accent);
+font-weight:var(--fw-semibold)}
+.rail a .i{width:15px;height:15px;flex:none}
+.rail a .bdg{margin-left:auto;font-size:var(--fs-1);background:var(--accent);color:var(--accent-fg);
+border-radius:var(--radius-full);padding:1px 6px;font-variant-numeric:tabular-nums}
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2-5) var(--space-5);
+border-bottom:1px solid var(--border);background:var(--panel);flex-wrap:wrap}
+.topbar .crumb2{font-size:var(--fs-3);color:var(--text-3)}
+.topbar .who2{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-4);color:var(--text-2)}
+.topbar .av{width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;
+display:grid;place-items:center;font-size:var(--fs-3);font-weight:var(--fw-bold)}
+.page{padding:var(--space-5);max-width:1480px;width:100%;margin:0 auto;flex:1}
+.app.mobile .page{padding:var(--space-3)}
+.app.mobile .topbar{padding:var(--space-2-5) var(--space-3)}
+/* ── ตัวช่วยเล่าเรื่องแบบบาง ๆ ───────────────────────────────── */
+.stepnote{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-2-5) var(--space-4);background:var(--navy);color:#fff;
+font-size:var(--fs-4);line-height:var(--lh-thai)}
+.stepnote b{font-weight:var(--fw-semibold)}
+.stepnote .tag{font-size:var(--fs-1);letter-spacing:var(--ls-label);text-transform:uppercase;
+border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-full);padding:1px 8px;flex:none}
+.stepnote .go{margin-left:auto;display:inline-flex;align-items:center;gap:6px;
+border:1px solid rgba(255,255,255,.4);border-radius:var(--radius);background:rgba(255,255,255,.1);
+color:#fff;padding:4px 12px;font:inherit;font-size:var(--fs-4);cursor:pointer;white-space:nowrap}
+.stepnote .go:hover{background:rgba(255,255,255,.2)}
+.scene{display:none}
+.scene.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+</style>
+
+<div class="stepbar"><div class="stepbar-in">
+  <h1>เดินเรื่องใบประเมินพื้นที่<small>AS-26090003 · ดิ เอ็มควอเทียร์ · 9 ขั้น + 4 ทางแยกที่ไม่ราบรื่น</small></h1>
+  <nav class="steps2" id="nav" aria-label="ขั้นตอน"></nav>
+  <button class="themebtn" id="theme" title="สลับธีมสว่าง/มืด" aria-label="สลับธีมสว่าง/มืด">◐</button>
+</div></div>
+<div class="deck" id="deck">
+<section class="scene on" id="s1">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง<span class="bdg">2</span></a>
+      </nav>
+    <div class="main">
+      <div class="topbar">
+        <span class="crumb2">คำร้อง › เปิดคำร้องใหม่ › ประเมินพื้นที่</span>
+        <span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span>
+      </div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 1 · ฝ่ายขาย</span><span>ปาริชาตเปิดคำร้องขอให้ TS เข้าไปวัดพื้นที่ที่ ดิ เอ็มควอเทียร์ ก่อนทำใบเสนอราคา</span>
+        <button class="go" data-go="s2">กดส่งคำร้อง <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header">
+          <div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ขอประเมินพื้นที่</h1>
+          <p>ให้ฝ่ายธุรกิจบริการเข้าไปวัดพื้นที่จริง แล้วตอบกลับว่าแต่ละพื้นที่ต้องใช้กี่แพ็คเกจ</p></div>
+        </div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>เรื่องที่ขอ</h2></div></div>
+          <div class="ui-section-body">
+            <div class="field"><label>ดีล <b class="req">*</b></label>
+              <div class="inp sel">DL-2609003 · ดิ เอ็มควอเทียร์ ระบบกระจายกลิ่นโซนค้าปลีก
+                <span class="mono" style="color:var(--text-3)">สายบริการ · ปาริชาต</span></div></div>
+            <div class="lockrow">
+              <span class="src"><svg class="i"><use href="#check"/></svg>ลูกค้าเติมจากดีล</span>
+              <div class="inp ro" style="flex:1">บริษัท เดอะ มอลล์ กรุ๊ป จำกัด <span class="mono" style="color:var(--text-3)">· AR-241</span></div>
+            </div>
+            <div class="field" style="margin-top:var(--space-3-5)"><label>ชื่องาน <b class="req">*</b></label>
+              <div class="inp">ประเมินพื้นที่ ดิ เอ็มควอเทียร์ — ขยายโซนค้าปลีกและโซนอาหาร</div></div>
+            <div class="two">
+              <div class="field"><label>วันที่ต้องการให้เข้าพื้นที่ <b class="req">*</b></label><div class="inp">08/09/2569</div></div>
+              <div class="field"><label>เวลาที่ต้องการ</label>
+                <div class="dim"><span class="box"><i>ช่วง</i> <b>บ่าย</b></span><span class="x">·</span><span class="box"><i>ประมาณ</i> <b>13:00</b></span></div></div>
+            </div>
+            <div class="field"><label>รายละเอียดเพิ่มเติม</label>
+              <div class="inp ta">ลูกค้าจะเปิดโซนอาหารชั้น 4 ปลายปี · ขอตัวเลขแพ็คเกจไปทำใบเสนอราคาภายใน 15 ก.ย. · ติดต่อคุณแนน ฝ่ายอาคาร 081-234-5678</div></div>
+          </div>
+        </div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>สถานที่ — เลือกได้ที่เดียวต่อใบ</h2></div>
+            <span class="ui-badge accent">ดิ เอ็มควอเทียร์</span></div>
+          <div class="ui-section-body">
+            <div class="tiles">
+              <button class="tile" aria-pressed="true">
+                <span class="th"><b>ดิ เอ็มควอเทียร์</b><span class="ui-badge plain mono">SS-26030011</span><span class="ui-badge success">เลือกแล้ว</span></span>
+                <span class="adr">693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพฯ 10110 · BKK-C · เข้าได้ 10:00–22:00 ทุกวัน</span>
+                <span class="why2">4 พื้นที่ · วัดแล้ว 2 · ขายแล้ว 1</span></button>
+              <button class="tile"><span class="th"><b>ดิ เอ็มสเฟียร์</b><span class="ui-badge plain mono">SS-26030012</span></span>
+                <span class="adr">628 ถ.สุขุมวิท แขวงคลองตัน เขตคลองเตย · BKK-C</span></button>
+              <button class="tile own"><span class="th"><b><svg class="i"><use href="#plus"/></svg> สถานที่ใหม่</b></span>
+                <span class="adr">สาขาที่ยังไม่เคยแตะ</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>พื้นที่ที่ต้องประเมิน</h2><p>1 รายการ = 1 พื้นที่ = 1 โซน</p></div>
+            <span class="ui-badge info">4 พื้นที่ · เดิม 2 · ใหม่ 2</span></div>
+          <div class="ui-section-body">
+            <div class="zlist">
+              <div class="zrow"><span class="zn">1</span>
+                <div><b>ล็อบบี้ชั้น G</b>
+                  <span class="zd"><span class="zn-code mono">ZN-26030021</span> · <span class="ui-badge success">วัดซ้ำ</span><span class="ui-badge success">ขายแล้ว</span></span>
+                  <span class="zd">อาคาร A · ชั้น G · ลูกค้าขยายพื้นที่ฝั่งทิศใต้</span>
+                  <div class="hist"><div class="hist-h"><svg class="i"><use href="#clock"/></svg>ประวัติการวัด</div>
+                    <div class="hist-r" data-now="1"><span class="rn">ครั้งที่ 2</span><span>รอบนี้</span><span class="meta">รอวัด</span></div>
+                    <div class="hist-r"><span class="rn">ครั้งที่ 1</span><span>432.0 ตร.ม. · 2 แพ็คเกจ</span><span class="meta">12 มี.ค. 69 · <span class="mono">AS-26030004</span></span></div>
+                  </div></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="zrow"><span class="zn">2</span>
+                <div><b>โซนค้าปลีกชั้น 2</b>
+                  <span class="zd"><span class="zn-code mono">ZN-26030023</span> · <span class="ui-badge success">วัดซ้ำ</span><span class="ui-badge warning">ยังไม่ขาย</span></span>
+                  <span class="zd">อาคาร A · ชั้น 2 · เปลี่ยนผังร้านใหม่ ขอวัดซ้ำ</span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="zrow" data-new="1"><span class="zn">3</span>
+                <div><b>โซนอาหารชั้น 4</b><span class="zd"><span class="ui-badge accent">พื้นที่ใหม่</span> — ยังไม่มีรหัส ZN จนกว่าจะกดส่งใบ</span>
+                  <span class="zd">อาคาร A · ชั้น 4 · ฝั่งทิศเหนือ · เปิดใหม่ไตรมาส 4</span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="zrow" data-new="1"><span class="zn">4</span>
+                <div><b>ทางเชื่อม BTS ชั้น 1</b><span class="zd"><span class="ui-badge accent">พื้นที่ใหม่</span></span>
+                  <span class="zd">อาคาร A · ชั้น 1 · ทางเดินยาว มีลมจากภายนอก</span></div>
+                <button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+            </div>
+            <div class="pick">
+              <button class="btn btn-accent"><svg class="i"><use href="#plus"/></svg> เพิ่มพื้นที่ใหม่</button>
+              <button class="btn"><svg class="i"><use href="#layers"/></svg> เลือกจากโซนเดิม <span class="ui-badge plain">เหลือ 2</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>ไฟล์แนบ</h2></div></div>
+          <div class="ui-section-body">
+            <div class="thumbs">
+              <div class="thumb"><svg class="i"><use href="#file"/></svg><span>ผังชั้น G-4.pdf<em>2.4 MB</em></span></div>
+              <div class="thumb"><svg class="i"><use href="#file"/></svg><span>กฎอาคาร.pdf<em>640 KB</em></span></div>
+              <div class="thumb add"><svg class="i"><use href="#plus"/></svg><span>เพิ่มไฟล์</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sticky-acts">
+          <span class="ui-badge warning">ร่าง — ยังไม่ส่ง</span>
+          <span style="margin-left:auto"></span>
+          <button class="btn">บันทึกร่าง</button>
+          <button class="btn btn-primary" data-go="s2">ส่งคำร้องถึง TS</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s2">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง<span class="bdg">2</span></a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003</span>
+        <span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 2 · ฝ่ายขาย</span><span>ใบถูกสร้างแล้ว — พื้นที่ใหม่สองรายการได้รหัส ZN ตอนกดส่ง · ตอนนี้รอ TS รับเรื่อง</span>
+        <button class="go" data-go="s3">ไปดูฝั่ง TS <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header">
+          <div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่ ดิ เอ็มควอเทียร์</h1>
+          <p><span class="mono">AS-26090003</span> · บริษัท เดอะ มอลล์ กรุ๊ป จำกัด · ดีล <span class="mono">DL-2609003</span> · ส่งเรื่อง 2 ก.ย. 2569 16:40</p></div>
+          <div class="ui-workspace-header-actions"><span class="ui-badge info">รอ TS รับเรื่อง</span></div>
+        </div>
+
+        <div class="ui-section"><div class="ui-section-body">
+          <div class="rail">
+          <div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>ปาริชาต · 2 ก.ย.</span></div>
+            <div class="rail-i" data-s="now"><b>2 · รอรับเรื่อง</b><span>ส่งถึงฝ่าย TS แล้ว</span></div>
+            <div class="rail-i" data-s="wait"><b>3 · ลงคิว</b><span>รอ TS ระบุวันและช่าง</span></div>
+            <div class="rail-i" data-s="wait"><b>4 · ส่งผลประเมิน</b><span></span></div>
+            <div class="rail-i" data-s="wait"><b>5 · ปิดเรื่อง</b><span></span></div>
+          </div>
+        </div></div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>สถานที่ที่ขอให้ไป</h2></div>
+            <span class="ui-badge plain mono">SS-26030011</span></div>
+          <div class="ui-section-body">
+            <div class="doc">
+              <div class="line"><span>สถานที่</span><span>ดิ เอ็มควอเทียร์ · อาคาร A</span></div>
+              <div class="line"><span>ที่อยู่</span><span>693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา กรุงเทพฯ 10110</span></div>
+              <div class="line"><span>เข้าได้</span><span>10:00–22:00 ทุกวัน · ต้องแลกบัตรที่ รปภ. ชั้น G</span></div>
+              <div class="line"><span>วันที่ต้องการ</span><span>08/09/2569 ช่วงบ่าย ประมาณ 13:00</span></div>
+              <div class="line"><span>ผู้ติดต่อ</span><span>คุณแนน ฝ่ายอาคาร · 081-234-5678</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>พื้นที่ที่ขอให้ประเมิน</h2><p>4 พื้นที่ — พื้นที่ใหม่ได้รหัส ZN แล้วตอนกดส่ง</p></div></div>
+          <div class="ui-section-body flush">
+            <div class="tblwrap"><table class="tbl">
+              <thead><tr><th>พื้นที่</th><th>รหัส</th><th>ที่มา</th><th>สถานะ</th></tr></thead>
+              <tbody>
+                <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub">อาคาร A · ชั้น G</span></td>
+                  <td class="mono">ZN-26030021</td><td><span class="ui-badge plain">โซนเดิม</span></td>
+                  <td><span class="ui-badge success">ขายแล้ว</span> <span class="cell-sub">วัดครั้งที่ 2</span></td></tr>
+                <tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub">อาคาร A · ชั้น 2</span></td>
+                  <td class="mono">ZN-26030023</td><td><span class="ui-badge plain">โซนเดิม</span></td>
+                  <td><span class="ui-badge warning">ยังไม่ขาย</span> <span class="cell-sub">วัดครั้งที่ 2</span></td></tr>
+                <tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub">อาคาร A · ชั้น 4</span></td>
+                  <td class="mono">ZN-26090031</td><td><span class="ui-badge accent">เพิ่งสร้าง</span></td>
+                  <td><span class="ui-badge plain">ยังไม่เคยวัด</span></td></tr>
+                <tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub">อาคาร A · ชั้น 1</span></td>
+                  <td class="mono">ZN-26090032</td><td><span class="ui-badge accent">เพิ่งสร้าง</span></td>
+                  <td><span class="ui-badge plain">ยังไม่เคยวัด</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <div class="split rev">
+          <div class="ui-section"><div class="ui-section-header"><div><h2>ความเคลื่อนไหว</h2></div></div>
+            <div class="ui-section-body"><div class="tl">
+              <div class="tl-i"><span class="tl-d">2 ก.ย. 16:40</span><span class="tl-t"><b>ปาริชาต ส่งคำร้อง</b>
+                <span>ดิ เอ็มควอเทียร์ · 4 พื้นที่ · แนบผังชั้น G–4</span></span></div>
+            </div></div></div>
+          <div class="ui-section"><div class="ui-section-header"><div><h2>ไฟล์</h2></div></div>
+            <div class="ui-section-body"><div class="thumbs">
+              <div class="thumb"><svg class="i"><use href="#file"/></svg><span>ผังชั้น<em>SA</em></span></div>
+              <div class="thumb"><svg class="i"><use href="#file"/></svg><span>กฎอาคาร<em>SA</em></span></div>
+            </div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s3">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่</span>
+        <span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 3 · ฝ่าย TS</span><span>ใบใหม่เข้าคิว — วรรณากดรับเรื่องเพื่อตัดรอบ แล้วค่อยลงวัน</span>
+        <button class="go" data-go="s4">กดรับเรื่อง แล้วลงคิว <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header">
+          <div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>คำร้องประเมินพื้นที่</h1>
+          <p>งานที่ฝ่ายขายขอให้เข้าไปวัดพื้นที่ แล้วตอบกลับว่าต้องใช้กี่แพ็คเกจ</p></div>
+        </div>
+        <div class="ui-metric-strip">
+          <div class="ui-metric" data-tone="accent"><span class="ui-metric-ic"><svg class="i"><use href="#inbox"/></svg></span>
+            <span class="ui-metric-txt"><strong>1</strong><span>รอรับเรื่อง</span></span></div>
+          <div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#cal"/></svg></span>
+            <span class="ui-metric-txt"><strong>1</strong><span>รับแล้ว ยังไม่ลงวัน</span></span></div>
+          <div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#wrench"/></svg></span>
+            <span class="ui-metric-txt"><strong>3</strong><span>นัดไว้แล้ว</span></span></div>
+          <div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span>
+            <span class="ui-metric-txt"><strong>1</strong><span>ส่งผลแล้ว รอ SA ปิด</span></span></div>
+        </div>
+        <div class="scope-row">
+          <span class="segmented"><button aria-pressed="true">ทั้งฝ่าย <span class="seg-count">6</span></button>
+            <button>ของฉัน <span class="seg-count">2</span></button><button>ปิดแล้ว <span class="seg-count">14</span></button></span>
+          <span class="search-glass"><svg class="i"><use href="#search"/></svg><span>ค้นหาเลขที่ · ลูกค้า · สถานที่</span></span>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>คิวงานประเมิน</h2><p>6 ใบที่ยังไม่ปิด</p></div></div>
+          <div class="ui-section-body flush">
+            <div class="tblwrap"><table class="tbl">
+              <thead><tr><th>เลขที่</th><th>ชื่องาน / ลูกค้า / สถานที่</th><th class="num">พื้นที่</th><th>ขั้นที่เดินไป</th><th>นัดไป</th><th>ช่าง</th><th></th></tr></thead>
+              <tbody>
+                <tr style="background:var(--accent-soft)">
+                  <td><span class="t-strong mono">AS-26090003</span><span class="cell-sub">ขอโดย ปาริชาต · 2 ก.ย.</span></td>
+                  <td><span class="t-strong">ประเมินพื้นที่ ดิ เอ็มควอเทียร์</span>
+                    <span class="cell-sub">เดอะ มอลล์ กรุ๊ป · ดิ เอ็มควอเทียร์ · <span class="mono">DL-2609003</span></span></td>
+                  <td class="num"><b>4</b></td>
+                  <td><span class="steps"><s class="done"></s><s class="now"></s><s></s><s></s><em>รอรับเรื่อง</em></span></td>
+                  <td><span style="color:var(--text-3)">—</span><span class="cell-sub">ขอ 8 ก.ย. บ่าย</span></td>
+                  <td><span style="color:var(--text-3)">—</span></td>
+                  <td><button class="btn sm btn-accent" data-go="s4">รับเรื่อง</button></td></tr>
+                <tr><td><span class="t-strong mono">AS-26090002</span><span class="cell-sub">ธนวัฒน์ · 1 ก.ย.</span></td>
+                  <td><span class="t-strong">สำนักงานใหญ่ ทรู ดิจิทัล พาร์ค</span><span class="cell-sub">ทรู คอร์ปอเรชั่น · <span class="mono">DL-2608017</span></span></td>
+                  <td class="num"><b>5</b></td>
+                  <td><span class="steps"><s class="done"></s><s class="done"></s><s class="now"></s><s></s><em>ยังไม่ลงวัน</em></span></td>
+                  <td><span class="ui-badge warning">ยังไม่ลงวัน</span></td><td>สมชาย ป.</td>
+                  <td><button class="btn sm btn-accent">ลงคิว</button></td></tr>
+                <tr><td><span class="t-strong mono">AS-26080011</span><span class="cell-sub">ปาริชาต · 27 ส.ค.</span></td>
+                  <td><span class="t-strong">เซ็นทรัล เวสต์เกต</span><span class="cell-sub">เซ็นทรัลพัฒนา · <span class="mono">DL-2608004</span></span></td>
+                  <td class="num"><b>4</b></td>
+                  <td><span class="steps"><s class="done"></s><s class="done"></s><s class="done"></s><s class="now"></s><em>ไปแล้ว รอสรุป</em></span></td>
+                  <td class="mono">29 ส.ค. 13:00</td><td>อนุชา ก.</td>
+                  <td><button class="btn sm">สรุปผล</button></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s4">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003 › ลงคิว</span>
+        <span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 4 · ฝ่าย TS</span><span>รับเรื่องแล้ว · ลงวัน เวลา และช่างที่ไป — กดยืนยันแล้วนัดจะขึ้นตารางช่างทันที</span>
+        <button class="go" data-go="s5">ยืนยันวันนัด <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="ui-section" style="max-width:660px;margin:0 auto">
+          <div class="ui-section-header"><div><h2>ลงคิวงานประเมิน</h2>
+          <p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · 4 พื้นที่</p></div>
+            <span class="ui-badge success">รับเรื่องแล้ว 3 ก.ย. 09:20</span></div>
+          <div class="ui-section-body">
+            <div class="ctxstrip">
+              <span class="done"><svg class="i"><use href="#check"/></svg>ผู้รับผิดชอบ วรรณา</span>
+              <span>ปาริชาตขอวันที่ <b>8 ก.ย. ช่วงบ่าย</b> · สถานที่เข้าได้ 10:00–22:00 ทุกวัน</span>
+            </div>
+            <div class="two">
+              <div class="field"><label>วันนัดเข้าพื้นที่ <b class="req">*</b></label><div class="inp">08/09/2569</div></div>
+              <div class="field"><label>ช่างที่ไป <b class="req">*</b></label><div class="inp sel">สมชาย ปัญญาดี <span class="mono" style="color:var(--text-3)">TS</span></div></div>
+            </div>
+            <div class="field"><label>เวลานัด <b class="req">*</b></label>
+              <div class="dim"><span class="box"><i>เริ่ม</i> <b>13:00</b></span><span class="x">–</span><span class="box"><i>จบ</i> <b>16:00</b></span>
+                <span class="eq">อยู่ในช่วงที่เข้าได้</span></div></div>
+            <div class="field"><label>ช่างที่ไปด้วย</label><div class="inp">อนุชา กิตติวงศ์</div></div>
+            <div class="field"><label>บันทึกถึงฝ่ายขาย</label>
+              <div class="inp ta">4 พื้นที่ใช้เวลาประมาณ 3 ชม. · ขอให้ประสานคุณแนนเรื่องบัตรเข้าออกล่วงหน้า</div></div>
+            <div class="notice" data-tone="info">
+              <span class="ic"><svg class="i"><use href="#cal"/></svg></span>
+              <div><b>กดยืนยันแล้วจะเกิดสองอย่าง</b>
+              <span>① นัด <span class="mono">SV-26090044</span> ขึ้นตารางของสมชาย 8 ก.ย. 13:00
+              ② ใบ <span class="mono">AS-26090003</span> เดินไปขั้น “นัดแล้ว” และปาริชาตได้กระดิ่ง</span></div>
+            </div>
+            <div class="sticky-acts">
+              <span style="margin-left:auto"></span>
+              <button class="btn">ยกเลิก</button>
+              <button class="btn btn-primary" data-go="s5">ยืนยันวันนัด</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s5">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#" data-on="1"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › จัดคิวช่าง</span>
+        <span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 5 · ฝ่าย TS</span><span>นัดขึ้นตารางแล้ว — ปนกับงานเติมน้ำหอมและติดตั้ง ช่างมีปฏิทินเดียว</span>
+        <button class="go" data-go="s6">ถึงวันนัด · เปิดจอช่าง <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header">
+          <div><h1><span class="premium-header-icon"><svg class="i"><use href="#cal"/></svg></span>จัดคิวช่าง</h1>
+          <p>สัปดาห์ที่ 7–13 ก.ย. 2569</p></div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--teal)"></i>เติมน้ำหอม</span>
+          <span><i style="background:var(--violet)"></i>ติดตั้ง</span>
+          <span><i style="background:var(--accent)"></i>ประเมินพื้นที่</span>
+          <span><i style="background:var(--red)"></i>ซ่อม</span>
+        </div>
+        <div class="ui-section"><div class="ui-section-body flush">
+          <div class="tblwrap"><table class="tbl board">
+            <thead><tr><th style="text-align:left">ช่าง</th>
+              <th><span class="d">จ.</span><span class="num2">7</span></th>
+              <th class="today"><span class="d">อ.</span><span class="num2">8</span></th>
+              <th><span class="d">พ.</span><span class="num2">9</span></th>
+              <th><span class="d">พฤ.</span><span class="num2">10</span></th>
+              <th><span class="d">ศ.</span><span class="num2">11</span></th></tr></thead>
+            <tbody>
+              <tr><td><b>สมชาย ปัญญาดี</b><span class="cell-sub">BKK-C</span></td>
+                <td><span class="vchip refill">09:00 สยามพารากอน<em>5 เครื่อง</em></span></td>
+                <td><span class="vchip survey">13:00 ดิ เอ็มควอเทียร์<em>ประเมิน · 4 พื้นที่</em></span></td>
+                <td><span class="vchip refill">10:00 เอ็มสเฟียร์<em>2 เครื่อง</em></span></td>
+                <td><span class="dropcell">ว่าง</span></td>
+                <td><span class="vchip repair">13:00 เซ็นทรัลลาดพร้าว<em>ซ่อม</em></span></td></tr>
+              <tr><td><b>อนุชา กิตติวงศ์</b><span class="cell-sub">BKK-E</span></td>
+                <td><span class="vchip install">09:00 เมกาบางนา<em>ติดตั้ง 4</em></span></td>
+                <td><span class="vchip survey">13:00 ดิ เอ็มควอเทียร์<em>ไปด้วย</em></span></td>
+                <td><span class="dropcell armed">วางที่นี่</span></td>
+                <td><span class="vchip refill">09:30 เอ็มควอเทียร์<em>3 เครื่อง</em></span></td>
+                <td><span class="dropcell">ว่าง</span></td></tr>
+              <tr><td><b>ปิยะ ศรีสุข</b><span class="cell-sub">ปริมณฑล</span></td>
+                <td><span class="dropcell">ว่าง</span></td>
+                <td><span class="vchip refill">10:00 เซ็นทรัลเวสต์เกต<em>6 เครื่อง</em></span></td>
+                <td><span class="vchip refill">09:00 ฟิวเจอร์พาร์ค<em>4 เครื่อง</em></span></td>
+                <td><span class="dropcell">ว่าง</span></td>
+                <td><span class="dropcell">ว่าง</span></td></tr>
+            </tbody>
+          </table></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s6">
+  <div class="app mobile">
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานวันนี้ › ประเมินพื้นที่</span><span class="who2"><span class="av">สช</span>สมชาย</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 6 · ช่างหน้างาน</span><span>8 ก.ย. 13:12 · สมชายอยู่ที่ ดิ เอ็มควอเทียร์ — วัดขนาด ถ่ายรูป แจ้งจุดที่ติดตั้งได้</span><button class="go" data-go="s7">วัดครบ · ส่งให้หัวหน้า <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header"><div><h1 style="font-size:var(--fs-12)"><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่</h1><p>ดิ เอ็มควอเทียร์ · <span class="mono">AS-26090003</span></p></div></div>
+        <div class="ctxstrip"><span class="done"><svg class="i"><use href="#check"/></svg>ถึงหน้างาน 13:12</span><span>วัดแล้ว 4 / 4 พื้นที่</span></div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>ล็อบบี้ชั้น G</h2><p>อาคาร A · ชั้น G · วัดครั้งที่ 2</p></div><span class="ui-badge success">วัดแล้ว</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span><div><span class="plabel">โถงกลาง เพดานสูง</span><span class="dim"><span class="box"><i>กว้าง</i> <b>18.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>ยาว</i> <b>20.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>สูง</i> <b>6.50</b> <em>ม.</em></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="part"><span class="pn">2</span><div><span class="plabel">ทางเดินข้าง ใต้ฝ้า</span><span class="dim"><span class="box"><i>กว้าง</i> <b>18.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>ยาว</i> <b>4.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>สูง</i> <b>2.60</b> <em>ม.</em></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 2 ส่วน</span><b>432.0</b> <span class="lab">ตร.ม.</span><b>2,527.2</b> <span class="lab">ลบ.ม.</span><span class="pack">→ สูตรได้ 2 แพ็คเกจ</span></div>
+            </div>
+            <p class="hint" style="margin-top:var(--space-2)">รอบก่อนวัดเป็นก้อนเดียว 2,808 ลบ.ม. — รอบนี้แยกทางเดินข้างที่เพดานเตี้ยออกมา</p>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">2 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+            <div class="photogrp"><div class="photogrp-h"><b>ภาพผัง</b><span class="req-tag">ยังไม่ต้องมีตอนนี้</span><span class="cnt">หัวหน้าเป็นคนใส่</span></div></div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">4 จุด · 5 รูป</span></div>
+              <div class="spot"><span class="sn">1</span><div><b>เสาคู่ทางเข้า</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">2</span><div><b>เหนือโซฟารับรอง</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">3</span><div><b>ฝั่งบันไดเลื่อน</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">4</span><div><b>ใต้ช่องแสง</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+            </div>
+          </div>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>โซนค้าปลีกชั้น 2</h2><p>อาคาร A · ชั้น 2 · วัดครั้งที่ 2</p></div><span class="ui-badge success">วัดแล้ว</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span><div><span class="dim"><span class="box"><i>กว้าง</i> <b>14.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>ยาว</i> <b>15.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>สูง</i> <b>3.00</b> <em>ม.</em></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 1 ส่วน</span><b>210.0</b> <span class="lab">ตร.ม.</span><b>630.0</b> <span class="lab">ลบ.ม.</span><span class="pack">→ สูตรได้ 1 แพ็คเกจ</span></div>
+            </div>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">1 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">3 จุด · 3 รูป</span></div>
+              <div class="spot"><span class="sn">1</span><div><b>เสากลางโซน</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">2</span><div><b>เหนือทางเข้าร้าน</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">3</span><div><b>ฝั่งลิฟต์แก้ว</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+            </div>
+          </div>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>โซนอาหารชั้น 4</h2><p>อาคาร A · ชั้น 4</p></div><span class="ui-badge accent">พื้นที่ใหม่</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span><div><span class="dim"><span class="box"><i>กว้าง</i> <b>22.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>ยาว</i> <b>26.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>สูง</i> <b>4.20</b> <em>ม.</em></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 1 ส่วน</span><b>572.0</b> <span class="lab">ตร.ม.</span><b>2,402.4</b> <span class="lab">ลบ.ม.</span><span class="pack">→ สูตรได้ 2 แพ็คเกจ</span></div>
+            </div>
+            <p class="hint" style="margin-top:var(--space-2)">⚠️ 2,402.4 ลบ.ม. เกิน 2,400 อยู่แค่ <b>2.4</b> — สูตรกระโดดเป็น 2 แพ็คเกจ · หัวหน้าตัดสินอีกที</p>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">2 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">3 จุด · 4 รูป</span></div>
+              <div class="spot"><span class="sn">1</span><div><b>เสาต้นกลางโถง</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">2</span><div><b>เหนือเคาน์เตอร์สั่งอาหาร</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">3</span><div><b>ท่อแอร์ฝั่งครัว</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+            </div>
+          </div>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2>ทางเชื่อม BTS ชั้น 1</h2><p>อาคาร A · ชั้น 1</p></div><span class="ui-badge accent">พื้นที่ใหม่</span></div>
+          <div class="ui-section-body">
+            <div class="parts">
+              <div class="part"><span class="pn">1</span><div><span class="dim"><span class="box"><i>กว้าง</i> <b>6.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>ยาว</i> <b>40.00</b> <em>ม.</em></span><span class="x">×</span><span class="box"><i>สูง</i> <b>3.20</b> <em>ม.</em></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet" style="align-self:flex-start"><svg class="i"><use href="#plus"/></svg> เพิ่มส่วน</button>
+              <div class="partsum"><span class="lab">รวม 1 ส่วน</span><b>240.0</b> <span class="lab">ตร.ม.</span><b>768.0</b> <span class="lab">ลบ.ม.</span><span class="pack">→ สูตรได้ 1 แพ็คเกจ</span></div>
+            </div>
+            <p class="hint" style="margin-top:var(--space-2)">ทางเดินเปิดสองด้าน ลมจากภายนอกตลอด — บันทึกไว้ให้หัวหน้าพิจารณา</p>
+            <div class="photogrp">
+              <div class="photogrp-h"><b>ภาพกว้าง</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">2 รูป</span></div>
+              <div class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></div>
+            </div>
+
+            <div class="photogrp">
+              <div class="photogrp-h"><b>จุดที่ติดตั้งได้</b><span class="req-tag" data-need="1">บังคับ</span><span class="cnt">2 จุด · 2 รูป</span></div>
+              <div class="spot"><span class="sn">1</span><div><b>เสาต้นที่ 2 ฝั่งห้าง</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <div class="spot"><span class="sn">2</span><div><b>เสาต้นที่ 5 ฝั่ง BTS</b><span class="shots"><span class="shot"><svg viewBox="0 0 24 24"><use href="#cam"/></svg></span><span class="shot add"><svg viewBox="0 0 24 24"><use href="#plus"/></svg></span></span></div><button class="btn sm btn-quiet"><svg class="i"><use href="#dots"/></svg></button></div>
+              <button class="btn sm btn-quiet"><svg class="i"><use href="#plus"/></svg> เพิ่มจุดที่ติดตั้งได้</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-quiet" style="width:100%"><svg class="i"><use href="#plus"/></svg> เพิ่มพื้นที่ที่เจอหน้างาน</button>
+        <div class="sticky-acts"><span class="ui-badge success">ครบ 4 / 4 พื้นที่</span><span style="margin-left:auto"></span><button class="btn">บันทึก</button><button class="btn btn-primary" data-go="s7">ส่งให้หัวหน้าสรุป</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s7">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003 › สรุปผล</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 7 · หัวหน้า TS</span><span>ช่างส่งข้อเท็จจริงมาแล้ว — วรรณาเลือกจุดที่จะติดตั้งจริง ใส่จำนวนแพ็คเกจ และแนบผังที่มาร์กแล้ว</span><button class="go" data-go="s8">ส่งผลให้ฝ่ายขาย <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#pkg"/></svg></span>สรุปผลประเมิน</h1><p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · <span class="mono">DL-2609003</span> · ช่างวัดครบ 4 พื้นที่ เมื่อ 8 ก.ย. 16:05</p></div></div>
+        <div class="packsum"><span><span class="lab">พื้นที่รวม</span><span class="big">1,454</span><span class="lab">ตร.ม.</span></span><span class="sep"></span><span><span class="lab">ปริมาตรรวม</span><span class="big">6,328</span><span class="lab">ลบ.ม. · 5 ส่วนวัด</span></span><span class="sep"></span><span><span class="lab">สูตรบอก</span><span class="big" style="color:var(--text-3)">6</span><span class="lab">แพ็คเกจ · คิดรายพื้นที่</span></span><span class="sep"></span><span><span class="lab">จุดติดตั้ง</span><span class="big">9</span><span class="lab">จาก 12 ที่ช่างแจ้ง</span></span><span class="sep"></span><span><span class="lab">แพ็คเกจ</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็คเกจ/เดือน</span></span></div>
+        <div class="ui-section" style="margin-top:var(--space-4)">
+          <div class="ui-section-header"><div><h2>รายพื้นที่</h2><p>ขนาด · รูป · จุดที่ติดตั้งได้ มาจากหน้างาน · ที่ต้องกรอกคือ <b>จุดติดตั้ง</b> กับ <b>แพ็คเกจ</b></p></div><span class="ui-badge success">ครบ 4 / 4</span></div>
+          <div class="ui-section-body flush"><div class="tblwrap"><table class="tbl">
+            <thead><tr><th>พื้นที่</th><th>ขนาด (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th style="width:250px">จุดติดตั้ง</th><th class="num" style="width:170px">แพ็คเกจ/เดือน</th><th>รูป<span class="cell-sub">กว้าง / ผัง / จุด</span></th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021 · วัดครั้งที่ 2</span></td><td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · 2 ส่วน</span></td><td class="num mono">2,527.2</td><td class="num mono" style="color:var(--text-3)">2</td><td><div class="spotpick"><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาคู่ทางเข้า</button><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เหนือโซฟารับรอง</button><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>ฝั่งบันไดเลื่อน</button><button class="spotchip" type="button"><span class="dot"></span>ใต้ช่องแสง</button></div><div class="spotcount" style="text-align:right">เลือก 3 / 4</div></td><td><div class="packcell"><span class="step"><button type="button">−</button><span class="v">3</span><button type="button">+</button></span><span class="diffhint">สูงกว่าสูตร 1</span></div></td><td class="mono">2 / 1 / 4</td></tr>
+              <tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023 · วัดครั้งที่ 2</span></td><td class="mono">14.00 × 15.00 × 3.00</td><td class="num mono">630.0</td><td class="num mono" style="color:var(--text-3)">1</td><td><div class="spotpick"><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสากลางโซน</button><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เหนือทางเข้าร้าน</button><button class="spotchip" type="button"><span class="dot"></span>ฝั่งลิฟต์แก้ว</button></div><div class="spotcount" style="text-align:right">เลือก 2 / 3</div></td><td><div class="packcell"><span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span><span class="samehint">✓ ตรงกับสูตร</span></div></td><td class="mono">1 / 1 / 3</td></tr>
+              <tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub mono">ZN-26090031 · พื้นที่ใหม่</span></td><td class="mono">22.00 × 26.00 × 4.20</td><td class="num mono">2,402.4</td><td class="num mono" style="color:var(--text-3)">2</td><td><div class="spotpick"><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นกลางโถง</button><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เหนือเคาน์เตอร์สั่งอาหาร</button><button class="spotchip" type="button"><span class="dot"></span>ท่อแอร์ฝั่งครัว</button></div><div class="spotcount" style="text-align:right">เลือก 2 / 3</div></td><td><div class="packcell"><span class="step"><button type="button">−</button><span class="v">2</span><button type="button">+</button></span><span class="samehint">✓ ตรงกับสูตร</span></div></td><td class="mono">2 / 1 / 3</td></tr>
+              <tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26090032 · พื้นที่ใหม่</span></td><td class="mono">6.00 × 40.00 × 3.20</td><td class="num mono">768.0</td><td class="num mono" style="color:var(--text-3)">1</td><td><div class="spotpick"><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นที่ 2 ฝั่งห้าง</button><button class="spotchip" type="button" aria-pressed="true"><span class="dot"></span>เสาต้นที่ 5 ฝั่ง BTS</button></div><div class="spotcount" style="text-align:right">เลือก 2 / 2</div></td><td><div class="packcell"><span class="step"><button type="button">−</button><span class="v">1</span><button type="button">+</button></span><span class="samehint">✓ ตรงกับสูตร</span></div></td><td class="mono">2 / 1 / 2</td></tr>
+            </tbody>
+          </table></div></div>
+        </div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>ด่านก่อนส่งผล</h2></div><span class="ui-badge success">ผ่านครบ 6 ข้อ</span></div>
+          <div class="ui-section-body"><ul class="gate">
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>ขนาดครบทุกพื้นที่</b><span>4 / 4</span></span><span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>ภาพกว้างครบ</b><span>4 / 4 · 7 รูป</span></span><span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>จุดที่ติดตั้งได้ ≥ 1 จุด/พื้นที่</b><span>12 จุด</span></span><span class="gate-who"><span class="owner">ช่าง</span></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>ภาพผังครบทุกพื้นที่</b><span>4 / 4 — ผังชั้น G กับชั้น 2 ใช้แผ่นเดียวกัน มาร์กจุดแล้ว</span></span><span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>เลือกจุดติดตั้ง ≥ 1 จุด/พื้นที่</b><span>9 จุด</span></span><span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
+            <li data-s="ok"><span class="gate-mk">✓</span><span class="gate-t"><b>จำนวนแพ็คเกจครบ</b><span>4 / 4 · รวม 7</span></span><span class="gate-who"><span class="owner">หัวหน้า TS</span></span></li>
+          </ul></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>สรุปถึงฝ่ายขาย</h2></div></div><div class="ui-section-body"><div class="field"><label>ข้อสังเกตจากหน้างาน</label><div class="inp ta">ล็อบบี้ชั้น G เพดาน 6.5 ม. เปิดสองด้าน ขอเพิ่มเป็น 3 แพ็คเกจ กระจาย 3 จุด · โซนอาหารชั้น 4 ปริมาตร 2,402 ลบ.ม. เกินเส้น 2,400 มานิดเดียว แต่เป็นโถงปิดมีแอร์ ยืนตามสูตรที่ 2 แพ็คเกจ · ทางเชื่อม BTS ลมโกรก เริ่มที่ 1 แพ็คเกจแล้วตามผลหลังติดตั้ง 1 เดือน</div></div></div></div>
+        <div class="sticky-acts"><span class="ui-badge success">ครบ 4 / 4 พื้นที่</span><span style="margin-left:auto"></span><button class="btn">บันทึก</button><button class="btn btn-primary" data-go="s8">ส่งผลให้ฝ่ายขาย</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s8">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง<span class="bdg">1</span></a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 8 · ฝ่ายขาย</span><span>ผลกลับมาแล้ว — 7 แพ็คเกจ/เดือน · 9 จุดติดตั้ง · ปาริชาตตรวจแล้วกดรับผลเพื่อปิดเรื่อง</span><button class="go" data-go="s9">รับผล &amp; ปิดเรื่อง <svg class="i"><use href="#arrow"/></svg></button></div>
+      <div class="page">
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่ ดิ เอ็มควอเทียร์</h1><p><span class="mono">AS-26090003</span> · เดอะ มอลล์ กรุ๊ป · ดีล <span class="mono">DL-2609003</span></p></div><div class="ui-workspace-header-actions"><span class="ui-badge success">ส่งผลแล้ว</span><button class="btn btn-primary" data-go="s9">รับผล &amp; ปิดเรื่อง</button></div></div>
+        <div class="ui-section"><div class="ui-section-body"><div class="rail"><div class="rail-i" data-s="done"><b>1 · จัดทำคำร้อง</b><span>ปาริชาต · 2 ก.ย.</span></div><div class="rail-i" data-s="done"><b>2 · รับเรื่อง</b><span>วรรณา · 3 ก.ย.</span></div><div class="rail-i" data-s="done"><b>3 · ลงคิว</b><span>8 ก.ย. 13:00 · สมชาย ป.</span></div><div class="rail-i" data-s="done"><b>4 · ส่งผลประเมิน</b><span>วรรณา · 8 ก.ย. 17:20</span></div><div class="rail-i" data-s="now"><b>5 · ปิดเรื่อง</b><span>TS ปิดแล้ว — รอฝ่ายขายรับผล</span></div></div></div></div>
+        <div class="packsum"><span><span class="lab">พื้นที่รวม</span><span class="big">1,454</span><span class="lab">ตร.ม.</span></span><span class="sep"></span><span><span class="lab">แพ็คเกจที่ต้องใช้</span><span class="big" style="color:var(--accent-ink)">7</span><span class="lab">แพ็คเกจ/เดือน</span></span><span class="sep"></span><span><span class="lab">จุดติดตั้ง</span><span class="big">9</span><span class="lab">จุด · จาก 12 ที่ติดตั้งได้</span></span><span style="margin-left:auto"><button class="btn" disabled title="พักไว้ก่อน"><svg class="i"><use href="#arrow"/></svg> สร้างใบเสนอราคา · 🅿️ พักไว้ก่อน</button></span></div>
+        <div class="ui-section" style="margin-top:var(--space-4)"><div class="ui-section-header"><div><h2>ผลประเมินรายพื้นที่</h2><p>ขอไป 4 พื้นที่ · ไม่มีตัด ไม่มีเพิ่ม · สูตร 2,400 ลบ.ม. = 1 แพ็คเกจ</p></div></div>
+          <div class="ui-section-body flush"><div class="tblwrap"><table class="tbl">
+            <thead><tr><th>พื้นที่</th><th>ที่ขอไป</th><th>ขนาดจริง (ม.)</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ</th><th>รูป</th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td><td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60 · 2 ส่วน</span></td><td class="num mono">2,527.2</td><td class="num mono" style="color:var(--text-3)">2</td><td class="num">3 <span class='cell-sub'>จาก 4</span></td><td class="num"><b>3</b><span class="cell-sub">เพิ่มจากสูตร — โถงเปิดสองด้าน</span></td><td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>4</em></span></span></span></td></tr>
+              <tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023</span></td><td><span class="ui-badge plain">ตามที่ขอ</span></td><td class="mono">14.00 × 15.00 × 3.00</td><td class="num mono">630.0</td><td class="num mono" style="color:var(--text-3)">1</td><td class="num">2 <span class='cell-sub'>จาก 3</span></td><td class="num"><b>1</b></td><td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>3</em></span></span></span></td></tr>
+              <tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub mono">ZN-26090031</span></td><td><span class="ui-badge accent">พื้นที่ใหม่</span></td><td class="mono">22.00 × 26.00 × 4.20</td><td class="num mono">2,402.4</td><td class="num mono" style="color:var(--text-3)">2</td><td class="num">2 <span class='cell-sub'>จาก 3</span></td><td class="num"><b>2</b></td><td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>3</em></span></span></span></td></tr>
+              <tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26090032</span></td><td><span class="ui-badge accent">พื้นที่ใหม่</span></td><td class="mono">6.00 × 40.00 × 3.20</td><td class="num mono">768.0</td><td class="num mono" style="color:var(--text-3)">1</td><td class="num">2 <span class='cell-sub'>จาก 2</span></td><td class="num"><b>1</b><span class="cell-sub">ลมโกรก เริ่มที่ 1 ตามผล 1 เดือน</span></td><td><span class="thumbs"><span class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×2</em></span></span><span class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×1</em></span></span><span class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>2</em></span></span></span></td></tr>
+            </tbody></table></div></div></div>
+        <div class="split rev"><div class="ui-section"><div class="ui-section-header"><div><h2>ความเคลื่อนไหว</h2></div></div><div class="ui-section-body"><div class="tl"><div class="tl-i"><span class="tl-d">8 ก.ย. 17:20</span><span class="tl-t"><b>วรรณา ส่งผลประเมิน</b><span>4 พื้นที่ · 7 แพ็คเกจ · 9 จุดติดตั้ง · ไม่มีการตัดหรือเพิ่มพื้นที่</span></span></div><div class="tl-i"><span class="tl-d">8 ก.ย. 16:05</span><span class="tl-t"><b>สมชาย วัดครบ 4 พื้นที่</b><span>นัด SV-26090044</span></span></div><div class="tl-i"><span class="tl-d">8 ก.ย. 13:12</span><span class="tl-t"><b>ถึงหน้างาน</b></span></div><div class="tl-i"><span class="tl-d">3 ก.ย. 14:05</span><span class="tl-t"><b>วรรณา ลงคิว</b><span>8 ก.ย. 13:00–16:00 · สมชาย + อนุชา</span></span></div><div class="tl-i"><span class="tl-d">3 ก.ย. 09:20</span><span class="tl-t"><b>วรรณา รับเรื่อง</b></span></div><div class="tl-i"><span class="tl-d">2 ก.ย. 16:40</span><span class="tl-t"><b>ปาริชาต ส่งคำร้อง</b><span>4 พื้นที่ · แนบผังชั้น</span></span></div></div></div></div><div class="ui-section"><div class="ui-section-header"><div><h2>ไฟล์</h2></div></div><div class="ui-section-body"><div class="thumbs"><div class="thumb"><svg class="i"><use href="#cam"/></svg><span>กว้าง<em>×7</em></span></div><div class="thumb"><svg class="i"><use href="#file"/></svg><span>ผัง<em>×4</em></span></div><div class="thumb"><svg class="i"><use href="#pin"/></svg><span>จุด<em>×12</em></span></div></div></div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="s9">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ลูกค้า › บริษัท เดอะ มอลล์ กรุ๊ป จำกัด › พื้นที่บริการ</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote"><span class="tag">ขั้นที่ 9 · ปิดเรื่อง</span><span>ปาริชาตกดรับผลแล้ว — ใบปิดครบสองฝั่ง · ผลวัดไปอยู่ในทะเบียนพื้นที่ของลูกค้าเรียบร้อย</span></div>
+      <div class="page">
+        <div class="notice" data-tone="info"><span class="ic"><svg class="i"><use href="#check"/></svg></span><div><b><span class="mono">AS-26090003</span> ปิดเรื่องแล้ว — TS ตอบ 8 ก.ย. · ฝ่ายขายรับผล 9 ก.ย.</b><span>ผลวัดไม่ได้จบที่ใบ — ทุกตัวเลขไปอยู่ที่ทะเบียนพื้นที่ของลูกค้ารายนี้ ดีลอื่นในอนาคตดึงไปใช้ได้โดยไม่ต้องกลับไปวัดใหม่</span></div><span class="act"><button class="btn sm" data-go="s8">ย้อนดูใบ</button></span></div>
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>บริษัท เดอะ มอลล์ กรุ๊ป จำกัด</h1><p><span class="mono">AR-241</span> · แท็บ พื้นที่บริการ · อ่านอย่างเดียว</p></div></div>
+        <div class="ui-metric-strip"><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#pin"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>สถานที่</span></span></div><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#layers"/></svg></span><span class="ui-metric-txt"><strong>7</strong><span>พื้นที่ที่ประเมินแล้ว</span></span></div><div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>ขายแล้ว</span></span></div><div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></span><span class="ui-metric-txt"><strong>5</strong><span>ประเมินแล้วยังไม่ขาย</span></span></div></div>
+        <div class="notice" data-tone="warning"><span class="ic"><svg class="i"><use href="#arrow"/></svg></span><div><b>5 พื้นที่ประเมินแล้วแต่ยังไม่ได้ขาย — 7 แพ็คเกจ/เดือน</b><span>วัดแล้ว มีรูป มีจุดติดตั้งครบ · เสนอราคาได้เลยโดยไม่ต้องกลับไปวัดใหม่ 🅿️ ขั้นสร้างใบเสนอราคาพักไว้ก่อนตามที่ตกลง</span></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>ดิ เอ็มควอเทียร์</h2><p><span class="mono">SS-26030011</span> · 693 ถ.สุขุมวิท แขวงคลองตันเหนือ เขตวัฒนา · BKK-C</p></div><span class="ui-badge info">5 พื้นที่</span></div>
+          <div class="ui-section-body flush"><div class="tblwrap"><table class="tbl">
+            <thead><tr><th>พื้นที่</th><th>ขนาด (ม.)</th><th class="num">ตร.ม.</th><th class="num">จุดติดตั้ง</th><th class="num">แพ็คเกจ/เดือน</th><th>สถานะ</th><th>ประเมินล่าสุด</th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021 · 2 ส่วน</span></td><td class="mono">18.00 × 20.00 × 6.50<span class="cell-sub">+ 18.00 × 4.00 × 2.60</span></td><td class="num mono">432.0</td><td class="num">3<span class="cell-sub">จาก 4</span></td><td class="num"><b>3</b></td><td><span class="ui-badge success">ขายแล้ว</span><span class="cell-sub">SO-26040022 · ของเดิม 2 แพ็คเกจ</span></td><td class="mono">8 ก.ย. 69<span class="cell-sub">AS-26090003 · ครั้งที่ 2</span></td></tr>
+              <tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023</span></td><td class="mono">14.00 × 15.00 × 3.00</td><td class="num mono">210.0</td><td class="num">2<span class="cell-sub">จาก 3</span></td><td class="num"><b>1</b></td><td><span class="ui-badge warning">ยังไม่ขาย</span></td><td class="mono">8 ก.ย. 69<span class="cell-sub">AS-26090003 · ครั้งที่ 2</span></td></tr>
+              <tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub mono">ZN-26090031</span></td><td class="mono">22.00 × 26.00 × 4.20</td><td class="num mono">572.0</td><td class="num">2<span class="cell-sub">จาก 3</span></td><td class="num"><b>2</b></td><td><span class="ui-badge warning">ยังไม่ขาย</span></td><td class="mono">8 ก.ย. 69<span class="cell-sub">AS-26090003 · ครั้งแรก</span></td></tr>
+              <tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26090032</span></td><td class="mono">6.00 × 40.00 × 3.20</td><td class="num mono">240.0</td><td class="num">2<span class="cell-sub">จาก 2</span></td><td class="num"><b>1</b></td><td><span class="ui-badge warning">ยังไม่ขาย</span></td><td class="mono">8 ก.ย. 69<span class="cell-sub">AS-26090003 · ครั้งแรก</span></td></tr>
+              <tr><td><span class="t-strong">ลานจอดรถชั้น B1</span><span class="cell-sub mono">ZN-26030025</span></td><td colspan="4" style="color:var(--text-3)">ยังไม่เคยวัด — ไม่ได้อยู่ในใบนี้</td><td><span class="ui-badge plain">รอประเมิน</span></td><td class="mono">—</td></tr>
+            </tbody></table></div></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>ประวัติการประเมิน</h2><p>พื้นที่เดียววัดได้หลายรอบ ผลเก่าไม่ถูกทับ · หนึ่งใบครอบหนึ่งสถานที่</p></div></div>
+          <div class="ui-section-body"><div class="tl"><div class="tl-i"><span class="tl-d">8 ก.ย. 69</span><span class="tl-t"><b>AS-26090003 · ปิดแล้ว</b><span>ดิ เอ็มควอเทียร์ · 4 พื้นที่ · 7 แพ็คเกจ/เดือน · 9 จุดติดตั้ง · ดีล DL-2609003</span></span></div><div class="tl-i"><span class="tl-d">12 มี.ค. 69</span><span class="tl-t"><b>AS-26030004 · ปิดแล้ว</b><span>ดิ เอ็มควอเทียร์ · 3 พื้นที่ · ขายได้ 1 · ดีล DL-2602015</span></span></div><div class="tl-i"><span class="tl-d">12 มี.ค. 69</span><span class="tl-t"><b>AS-26030005 · ปิดแล้ว</b><span>ดิ เอ็มสเฟียร์ · 2 พื้นที่ · ขายได้ 1 · ดีล DL-2602015</span></span></div></div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b1">
+  <div class="app mobile">
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานวันนี้ › ประเมินพื้นที่</span><span class="who2"><span class="av">สช</span>สมชาย · ช่าง</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ทางแยก ก · ช่าง</span><span>8 ก.ย. 13:20 · ไปถึงแล้วแต่ รปภ. ไม่ให้เข้า เพราะยังไม่มีใบขออนุญาตจากฝ่ายอาคาร</span></div>
+      <div class="page">
+        <div class="premium-header"><div><h1 style="font-size:var(--fs-12)"><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่</h1><p>ดิ เอ็มควอเทียร์ · <span class="mono">AS-26090003</span></p></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>เข้าพื้นที่ไม่ได้</h2><p>บอกเหตุผลก่อน — ฝ่ายขายจะเห็นเหตุผลนี้ ไม่ใช่แค่รู้ว่าวันเปลี่ยน</p></div></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผล <b class="req">*</b></label><div class="tiles"><button class="tile" aria-pressed="true"><span class="th"><b>อาคารไม่ให้เข้า</b></span><span class="adr">ต้องมีใบขออนุญาตล่วงหน้า</span></button><button class="tile"><span class="th"><b>ลูกค้าเลื่อน</b></span><span class="adr">ติดต่อแล้วขอเปลี่ยนวัน</span></button><button class="tile"><span class="th"><b>พื้นที่ใช้งานอยู่</b></span><span class="adr">มีอีเวนต์ เข้าวัดไม่ได้</span></button><button class="tile own"><span class="th"><b>อื่น ๆ — พิมพ์เอง</b></span></button></div></div>
+            <div class="field"><label>รายละเอียด <b class="req">*</b></label><div class="inp ta">รปภ. ชั้น G แจ้งว่าต้องมีใบขออนุญาตเข้าพื้นที่จากฝ่ายอาคารล่วงหน้า 3 วัน · คุยกับคุณแนนแล้ว จะส่งใบให้ภายในพรุ่งนี้ · เข้าใหม่ได้เร็วสุด 12 ก.ย.</div></div>
+            <div class="notice" data-tone="warning"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>กดแล้วจะเกิดสามอย่าง</b><span>① นัด <span class="mono">SV-26090044</span> ปิดเป็น <b>“เข้าไม่ได้”</b> ค้างไว้ในประวัติ ไม่ถูกลบ ② ใบ <span class="mono">AS-26090003</span> <b>ถอยกลับไปขั้น “ลงคิว”</b> รอ TS ลงวันใหม่ ③ ปาริชาตได้กระดิ่งพร้อมเหตุผลนี้</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ยกเลิก</button><button class="btn btn-danger">บันทึกว่าเข้าไม่ได้</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ผลลัพธ์</span><span>ใบกลับเข้าคิว “รับแล้ว ยังไม่ลงวัน” เอง — ไม่ต้องมีใครจำว่าต้องลงวันใหม่</span></div>
+      <div class="page">
+        <div class="ui-metric-strip"><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#inbox"/></svg></span><span class="ui-metric-txt"><strong>0</strong><span>รอรับเรื่อง</span></span></div><div class="ui-metric" data-tone="warning"><span class="ui-metric-ic"><svg class="i"><use href="#cal"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>รับแล้ว ยังไม่ลงวัน</span></span></div><div class="ui-metric"><span class="ui-metric-ic"><svg class="i"><use href="#wrench"/></svg></span><span class="ui-metric-txt"><strong>2</strong><span>นัดไว้แล้ว</span></span></div><div class="ui-metric" data-tone="good"><span class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></span><span class="ui-metric-txt"><strong>1</strong><span>ส่งผลแล้ว</span></span></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>คิวงานประเมิน</h2></div></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>เลขที่</th><th>ชื่องาน / สถานที่</th><th class="num">พื้นที่</th><th>ขั้นที่เดินไป</th><th>นัดไป</th><th></th></tr></thead><tbody><tr style="background:var(--amber-soft)"><td><span class="t-strong mono">AS-26090003</span><span class="cell-sub">ปาริชาต · 2 ก.ย.</span></td><td><span class="t-strong">ประเมินพื้นที่ ดิ เอ็มควอเทียร์</span><span class="cell-sub">เดอะ มอลล์ กรุ๊ป · ดิ เอ็มควอเทียร์</span></td><td class="num"><b>4</b></td><td><span class="steps"><s class="done"></s><s class="done"></s><s class="now"></s><s></s><em>ถอยกลับ · ยังไม่ลงวัน</em></span></td><td><span class="ui-badge danger">เข้าไม่ได้ 8 ก.ย.</span><span class="cell-sub">อาคารไม่ให้เข้า — ไปใหม่ได้ 12 ก.ย.</span></td><td><button class="btn sm btn-accent">ลงวันใหม่</button></td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="info"><span class="ic"><svg class="i"><use href="#clock"/></svg></span><div><b>นัดเดิมไม่ถูกลบ</b><span><span class="mono">SV-26090044</span> ค้างไว้เป็น “เข้าไม่ได้” · นัดใหม่จะเป็นคนละแถวที่ชี้กลับด้วย <span class="mono">rescheduledFromId</span> ⇒ อ่านย้อนได้ว่าไปกี่รอบกว่าจะเข้าได้ ซึ่งใช้เถียงกับอาคารได้</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b2">
+  <div class="app">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003 › ยกเลิกใบ</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote" data-b="1"><span class="tag">ทางแยก ข · ก่อน TS รับเรื่อง</span><span>3 ก.ย. 08:50 · ลูกค้าแจ้งเลื่อนโครงการออกไปปีหน้า — ปาริชาตยกเลิกใบทัน เพราะ TS ยังไม่ได้กดรับ</span></div>
+      <div class="page">
+        <div class="ui-section" style="max-width:680px;margin:0 auto">
+          <div class="ui-section-header"><div><h2>ยกเลิกคำร้อง</h2><p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · 4 พื้นที่</p></div><span class="ui-badge info">TS ยังไม่รับเรื่อง</span></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผลที่ยกเลิก <b class="req">*</b></label><div class="inp ta">ลูกค้าแจ้งเลื่อนโครงการขยายโซนออกไปปีหน้า · ยังไม่มีกำหนดใหม่</div></div>
+            <div class="ui-section-header" style="padding-inline:0"><div><h2 style="font-size:var(--fs-9)">พื้นที่ที่ใบนี้สร้างไว้ — จะเกิดอะไรขึ้น</h2><p>ลบเฉพาะที่ยังไม่มีใครใช้ · ที่มีอะไรผูกอยู่จะถูกเก็บไว้เสมอ</p></div></div>
+            <div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th>ที่มา</th><th>ผูกอยู่กับอะไร</th><th>ผลของการยกเลิก</th></tr></thead><tbody><tr><td><span class="t-strong">โซนอาหารชั้น 4</span><span class="cell-sub mono">ZN-26090031</span></td><td><span class="ui-badge accent">ใบนี้สร้าง</span></td><td><span style="color:var(--text-3)">— ไม่มี —</span></td><td><span class="ui-badge danger">ลบทิ้ง</span></td></tr><tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span><span class="cell-sub mono">ZN-26090032</span></td><td><span class="ui-badge accent">ใบนี้สร้าง</span></td><td><span style="color:var(--text-3)">— ไม่มี —</span></td><td><span class="ui-badge danger">ลบทิ้ง</span></td></tr><tr><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td><td><span class="ui-badge plain">โซนเดิม</span></td><td>รอบขาย SO-26040022 · เครื่อง 3 ตัว · ประวัติเข้า 14 ครั้ง</td><td><span class="ui-badge success">คงไว้</span></td></tr><tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span><span class="cell-sub mono">ZN-26030023</span></td><td><span class="ui-badge plain">โซนเดิม</span></td><td>ผลวัดของใบ AS-26030004</td><td><span class="ui-badge success">คงไว้</span></td></tr></tbody></table></div>
+            <div class="notice" data-tone="warning" style="margin-top:var(--space-4)"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ลบได้เฉพาะพื้นที่ที่ไม่มีอะไรผูกอยู่</b><span>ฐานข้อมูลกันไว้ให้แล้วสามชั้น — รอบขาย (RESTRICT) · เครื่อง · ประวัตินัด · พื้นที่ที่มีอะไรผูก<b>ลบไม่ได้ต่อให้ยกเลิกใบ</b> · ถ้าไม่ต้องการใช้แล้วให้ปิดใช้งานแทน</span></div></div>
+            <div class="sticky-acts"><span class="ui-badge warning">ลบ 2 · คงไว้ 2</span><span style="margin-left:auto"></span><button class="btn">ไม่ยกเลิก</button><button class="btn btn-danger">ยกเลิกคำร้อง</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">3</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้า TS</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ทางแยก ข · หลัง TS รับเรื่องแล้ว</span><span>ถ้าดีลล่มหลังจากนี้ ยกเลิกไม่ได้แล้ว — เพราะมีคนลงแรงไปแล้ว · ทางออกคือปิดใบโดยไม่ได้ประเมิน</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ยกเลิกคำร้องไม่ได้แล้ว — TS รับเรื่องไปตั้งแต่ 3 ก.ย. 09:20</b><span>ปุ่มยกเลิกโชว์อยู่แต่กดแล้วบอกเหตุ (ไม่ใช่ปุ่มเทาเงียบ) · 🔴 <b>ถ้าไม่มีทางออกอื่น ใบจะค้างตลอดกาล</b> ⇒ ต้องมีปุ่ม “ปิดใบโดยไม่ได้ประเมิน” ให้ TS</span></div></div>
+        <div class="ui-section" style="max-width:680px;margin:var(--space-4) auto 0">
+          <div class="ui-section-header"><div><h2>ปิดใบโดยไม่ได้ประเมิน</h2><p>ไม่ใช่ “ยกเลิก” — งานเกิดขึ้นจริงแล้ว แค่ไม่ได้ผล</p></div><span class="ui-badge warning">ต้องมีเหตุผล</span></div>
+          <div class="ui-section-body">
+            <div class="field"><label>เหตุผล <b class="req">*</b></label><div class="inp ta">ลูกค้าแจ้งเลื่อนโครงการออกไปปีหน้าหลังจากที่รับเรื่องแล้ว · ยังไม่ได้เข้าพื้นที่ · ปาริชาตรับทราบทางโทรศัพท์ 3 ก.ย.</div></div>
+            <div class="doc"><h4>ผลของการปิดแบบนี้</h4><div class="line"><span>ใบ</span><span>ปิดพร้อมป้าย <b>“ไม่ได้ประเมิน”</b> — อ่านย้อนได้ว่าเคยจะไปแล้วไม่ได้ไป</span></div><div class="line"><span>พื้นที่</span><span><b>คงไว้ทั้งหมด</b> — ไม่ลบ เพราะใบเดินไปไกลกว่าขั้นร่างแล้ว</span></div><div class="line"><span>นัด</span><span>ถ้ามีนัดค้าง จะถูกยกเลิกพร้อมเหตุผลเดียวกัน</span></div><div class="line"><span>ฝ่ายขาย</span><span>ได้กระดิ่งพร้อมเหตุผล และเปิดใบใหม่ได้ทุกเมื่อ</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ไม่ปิด</button><button class="btn btn-danger">ปิดใบโดยไม่ได้ประเมิน</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b3">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">1</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003</span><span class="who2"><span class="av">วณ</span>วรรณา · หัวหน้าทีมช่าง</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ทางแยก ค · หลังปิดใบไปแล้ว</span><span>11 ก.ย. · สมชายทักว่าล็อบบี้จดผิดห้อง วัดได้ 2,527 แต่ที่ถูกคือ 1,890 ลบ.ม. ⇒ แพ็คเกจต้องลดจาก 3 เหลือ 2</span></div>
+      <div class="page">
+        <div class="ui-section" style="max-width:700px;margin:0 auto">
+          <div class="ui-section-header"><div><h2>ดึงใบกลับมาแก้</h2><p><span class="mono">AS-26090003</span> · ปิดครบสองฝั่งเมื่อ 9 ก.ย.</p></div><span class="ui-badge danger">ใบปิดแล้ว</span></div>
+          <div class="ui-section-body">
+            <div class="ctxstrip"><span class="done"><svg class="i"><use href="#check"/></svg>คนที่ส่งเอาคืนเอง</span><span>คำนี้ล็อกไว้ทั้งระบบ — <b>ตีกลับ</b> = ผู้รับส่งคืน · <b>ดึงกลับ</b> = คนที่ส่งเอาคืนเอง ⇒ TS เป็นคนดึง</span></div>
+            <div class="field"><label>เหตุผลที่ดึงกลับ <b class="req">*</b> <small>อย่างน้อย 10 ตัวอักษร</small></label><div class="inp ta">จดขนาดล็อบบี้ผิดห้อง — ตัวเลข 18×20 เป็นของโถงชั้น 2 ไม่ใช่ชั้น G · ชั้น G จริงคือ 14×20×6.50 + 14×4×2.60 = 1,890.4 ลบ.ม. ⇒ สูตรได้ 1 แพ็คเกจ ปรับเป็น 2 ตามลมโถงเปิด</div></div>
+            <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>🔴 ฝ่ายขายอาจเอาตัวเลขนี้ไปเสนอราคาไปแล้ว</b><span>กระดิ่งที่ส่งไปต้องบอก<b>ส่วนต่างตรง ๆ</b> ไม่ใช่แค่ “ใบถูกแก้” · และหน้ารายละเอียดฝั่งฝ่ายขายจะมีแถบเตือนค้างไว้จนกว่าจะกดรับผลใหม่</span></div></div>
+            <div class="doc"><h4>ดึงกลับแล้วจะเกิดอะไร</h4><div class="line"><span>ใบ</span><span>ถอยไปขั้น <b>4 “ส่งผลประเมิน”</b> — ไม่ถอยถึงลงคิว เพราะขนาดวัดมาแล้ว แค่ตัวเลขผิด</span></div><div class="line"><span>ผลวัด</span><span><b>แก้ทับรอบเดิมได้</b> — ไม่ขัดกติกา “ประเมินซ้ำไม่ทับ” เพราะนั่นพูดถึงคนละรอบวัด ส่วนนี่คือรอบเดิมที่กรอกผิด</span></div><div class="line"><span>ประวัติ</span><span>ค่าเดิมกับค่าใหม่ถูกบันทึกไว้ทั้งคู่ อ่านย้อนได้ว่าใครแก้ เมื่อไร เพราะอะไร</span></div><div class="line"><span>ตราปิด</span><span>ตราของทั้งสองฝั่งถูกถอน — ฝ่ายขายต้องกดรับผลใหม่ถึงจะปิดอีกครั้ง</span></div></div>
+            <div class="sticky-acts"><span style="margin-left:auto"></span><button class="btn">ไม่ดึง</button><button class="btn btn-danger">ดึงใบกลับมาแก้</button></div>
+          </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="app" style="margin-top:var(--space-5)">
+      <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#layers"/></svg>ดีล</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+        <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>คำร้อง<span class="bdg">1</span></a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">คำร้อง › AS-26090003</span><span class="who2"><span class="av">ปช</span>ปาริชาต · AE</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">ผลลัพธ์ · ฝั่งฝ่ายขาย</span><span>กระดิ่งบอกส่วนต่างตรง ๆ — ไม่ใช่แค่บอกว่าใบถูกแก้</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ผลประเมิน AS-26090003 ถูกดึงกลับไปแก้ — ตัวเลขเปลี่ยน</b><span><b>ล็อบบี้ชั้น G · 3 → 2 แพ็คเกจ</b> (ปริมาตร 2,527.2 → 1,890.4 ลบ.ม.) · รวมทั้งใบ <b>7 → 6 แพ็คเกจ/เดือน</b><br>เหตุผล: จดขนาดผิดห้อง — ตัวเลขเดิมเป็นของโถงชั้น 2 · แก้โดย วรรณา 11 ก.ย. 10:15</span></div><span class="act"><button class="btn sm btn-accent">ดูผลที่แก้แล้ว</button></span></div>
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#bldg"/></svg></span>ประเมินพื้นที่ ดิ เอ็มควอเทียร์</h1><p><span class="mono">AS-26090003</span> · ดีล <span class="mono">DL-2609003</span></p></div><div class="ui-workspace-header-actions"><span class="ui-badge warning">รอรับผลใหม่</span><button class="btn btn-primary">รับผล &amp; ปิดเรื่องอีกครั้ง</button></div></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>สิ่งที่เปลี่ยน</h2><p>เทียบกับผลที่รับไปเมื่อ 9 ก.ย.</p></div></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th>ขนาดเดิม</th><th>ขนาดใหม่</th><th class="num">แพ็คเกจ</th></tr></thead><tbody><tr style="background:var(--red-soft)"><td><span class="t-strong">ล็อบบี้ชั้น G</span><span class="cell-sub mono">ZN-26030021</span></td><td class="mono" style="text-decoration:line-through;color:var(--text-3)">2,527.2 ลบ.ม.</td><td class="mono">1,890.4 ลบ.ม.<span class="cell-sub">14.00 × 20.00 × 6.50 + 14.00 × 4.00 × 2.60</span></td><td class="num"><b style="color:var(--red)">3 → 2</b></td></tr><tr><td colspan="3"><span class="t-strong">อีก 3 พื้นที่ไม่เปลี่ยน</span></td><td class="num"><b>4</b> <span class="cell-sub">เท่าเดิม</span></td></tr><tr><td colspan="3"><span class="t-strong">รวมทั้งใบ</span></td><td class="num"><b style="color:var(--red)">7 → 6</b></td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="warning"><span class="ic"><svg class="i"><use href="#file"/></svg></span><div><b>ถ้าเสนอราคาไปแล้ว ต้องตามแก้เอง</b><span>ระบบบอกได้แค่ว่าตัวเลขเปลี่ยน — ไม่ไล่แก้ใบเสนอราคาให้เอง เพราะใบที่ยื่นไปแล้วมี Rev. ของตัวเอง 🅿️ สายใบเสนอราคาพักไว้ในรอบนี้</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="scene" id="b4">
+  <div class="app">
+      <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+        <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+        <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+        <a href="#" data-on="1"><svg class="i"><use href="#bldg"/></svg>ประเมินพื้นที่<span class="bdg">1</span></a>
+        <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">16</span></a>
+        <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวช่าง</a>
+        <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">ธุรกิจบริการ › ประเมินพื้นที่ › AS-26090003 › สรุปผล</span><span class="who2"><span class="av">สช</span>สมชาย · ช่าง</span></div>
+      <div class="stepnote" data-b="2"><span class="tag">สถานะที่บล็อกอยู่วันนี้</span><span>ทีมช่างทั้งสองทีมยังไม่ได้ตั้งหัวหน้า (teams.leadId เป็น null) ⇒ ยังไม่มีใครกดจอสรุปได้เลย</span></div>
+      <div class="page">
+        <div class="premium-header"><div><h1><span class="premium-header-icon"><svg class="i"><use href="#pkg"/></svg></span>สรุปผลประเมิน</h1><p><span class="mono">AS-26090003</span> · ดิ เอ็มควอเทียร์ · ช่างวัดครบ 4 พื้นที่แล้ว</p></div></div>
+        <div class="notice" data-tone="danger"><span class="ic"><svg class="i"><use href="#warn"/></svg></span><div><b>ทีม A ยังไม่ได้ตั้งหัวหน้าทีม — ยังไม่มีใครสรุปผลใบนี้ได้</b><span>จอนี้เป็นของ<b>หัวหน้าทีมช่าง</b>เท่านั้น (เลือกจุดติดตั้ง · ใส่จำนวนแพ็คเกจ · แนบผัง · กดส่งผล) · ช่างวัดหน้างานได้ตามปกติ แต่สรุปไม่ได้<br>⚠️ <b>ห้ามเป็นปุ่มเทาเงียบ</b> — ต้องบอกว่าใครแก้และแก้ที่ไหน</span></div><span class="act"><button class="btn sm btn-accent">ไปตั้งหัวหน้าทีม A</button></span></div>
+        <div class="ui-section"><div class="ui-section-header"><div><h2>ข้อมูลจากหน้างาน</h2><p>ดูได้ · แก้ไม่ได้</p></div><span class="ui-badge plain">อ่านอย่างเดียว</span></div><div class="ui-section-body flush"><div class="tblwrap"><table class="tbl"><thead><tr><th>พื้นที่</th><th class="num">ลบ.ม.</th><th class="num">สูตร</th><th>จุดที่ติดตั้งได้</th><th class="num">แพ็คเกจ</th></tr></thead><tbody><tr><td><span class="t-strong">ล็อบบี้ชั้น G</span></td><td class="num mono">2,527.2</td><td class="num mono" style="color:var(--text-3)">2</td><td>4 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">โซนค้าปลีกชั้น 2</span></td><td class="num mono">630.0</td><td class="num mono" style="color:var(--text-3)">1</td><td>3 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">โซนอาหารชั้น 4</span></td><td class="num mono">2,402.4</td><td class="num mono" style="color:var(--text-3)">2</td><td>3 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr><tr><td><span class="t-strong">ทางเชื่อม BTS ชั้น 1</span></td><td class="num mono">768.0</td><td class="num mono" style="color:var(--text-3)">1</td><td>2 จุด</td><td class="num" style="color:var(--text-3)">— รอหัวหน้า —</td></tr></tbody></table></div></div></div>
+        <div class="notice" data-tone="info"><span class="ic"><svg class="i"><use href="#users"/></svg></span><div><b>ทางออกสองทาง</b><span>① ตั้งหัวหน้าทีมที่ทะเบียนทีม (<span class="mono">teams.leadId</span> · mig 0310) ② แอดมินเข้ามาสรุปแทนได้เสมอ ตามมติ “แอดมินทำได้ทุกอย่าง” (#1501)</span></div></div>
+        <div class="sticky-acts"><span class="ui-badge danger">ไม่มีสิทธิ์สรุปผล</span><span style="margin-left:auto"></span><button class="btn btn-primary" disabled>ส่งผลให้ฝ่ายขาย</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<script>
+const STEPS = [["s1","เปิดคำร้อง","SA"],["s2","ใบถูกส่ง","SA"],["s3","คิว TS","TS"],["s4","ลงคิว","TS"],["s5","ตารางช่าง","TS"],["s6","หน้างาน","ช่าง"],["s7","สรุปผล","หัวหน้า TS"],["s8","ผลถึงฝ่ายขาย","SA"],["s9","ปิดเรื่อง","SA"]];
+const BRANCHES = [["b1","เข้าพื้นที่ไม่ได้","ช่าง"],["b2","ยกเลิก / ปิดไม่ได้ประเมิน","SA · TS"],["b3","ดึงใบกลับมาแก้","TS"],["b4","ทีมไม่มีหัวหน้า","บล็อกวันนี้"]];
+const nav = document.getElementById("nav");
+STEPS.forEach(([id,label,who],i)=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.setAttribute("aria-current", i===0?"true":"false");
+  b.innerHTML=(i+1)+". "+label+' <span class="who">'+who+"</span>";
+  nav.appendChild(b);
+});
+nav.appendChild(Object.assign(document.createElement("span"),{className:"sep2"}));
+BRANCHES.forEach(([id,label,who])=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.dataset.b="1"; b.setAttribute("aria-current","false");
+  b.innerHTML="⚠ "+label+' <span class="who">'+who+"</span>";
+  nav.appendChild(b);
+});
+function show(id){
+  document.querySelectorAll(".scene").forEach(s=>s.classList.toggle("on", s.id===id));
+  nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-current", String(b.dataset.go===id)));
+  window.scrollTo({top:0,behavior:"instant"});
+}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-go]"); if(b){e.preventDefault(); show(b.dataset.go);}});
+const root=document.documentElement;
+document.getElementById("theme").addEventListener("click",()=>{
+  const cur=root.getAttribute("data-theme");
+  const dark=cur? cur==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.setAttribute("data-theme", dark?"light":"dark");
+});
+</script>

@@ -131,3 +131,30 @@ test('เลขแถวในผลตรงกับเลขแถวใน�
   ]), snapshot);
   assert.deepEqual(rows.map((r) => r.rowNumber), [2, 3]);
 });
+
+// ── จังหวัด/ชั้น เดินทางถึงแผน (mig 0315) ────────────────────────────────
+//
+// ⭐ ตัววางแผนไม่ตัดสินว่าค่าถูกไหม — มันแค่ต้อง **ไม่ทำหาย** · ด่านจริงอยู่ตอนสร้าง
+//    (`importRepo` เรียก siteCodePrefix/zoneCodePrefix) เพราะที่นั่นเห็นทะเบียนจังหวัด
+const geoHeaders = ['ลูกค้า', 'ชื่อไซต์', 'โซน', 'จังหวัด', 'ชั้น'];
+const geoMap = matchHeaders(geoHeaders).map;
+const geoSheet = (rows) => buildDrafts(rows.map((v) => geoHeaders.map((h) => v[h] ?? '')), geoMap);
+
+test('⭐ จังหวัดและชั้นเดินทางเข้าแผนของไซต์/โซนที่จะสร้าง', () => {
+  const { rows } = planImport(geoSheet([
+    { 'ลูกค้า': 'CP LAND', 'ชื่อไซต์': 'สาขาเชียงใหม่', 'โซน': 'ล็อบบี้', 'จังหวัด': 'เชียงใหม่', 'ชั้น': 'G' },
+  ]), snapshot);
+  assert.equal(rows[0].site.action, 'create');
+  assert.equal(rows[0].site.province, 'เชียงใหม่');
+  assert.equal(rows[0].zone.action, 'create');
+  assert.equal(rows[0].zone.floor, 'G');
+});
+
+test('ไซต์ที่มีอยู่แล้วไม่ต้องมีจังหวัด — ไม่ได้สร้างใหม่จึงไม่ต้องออกรหัส', () => {
+  const { rows } = planImport(geoSheet([
+    { 'ลูกค้า': 'Jim Thompson', 'ชื่อไซต์': 'Outlet 93', 'โซน': 'โซนใหม่', 'ชั้น': '4' },
+  ]), snapshot);
+  assert.equal(rows[0].site.action, 'use');
+  assert.equal(rows[0].zone.action, 'create');
+  assert.equal(rows[0].zone.floor, '4');
+});

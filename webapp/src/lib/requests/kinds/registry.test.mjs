@@ -17,6 +17,7 @@ const EXPECTED = [
   'scent_dev', 'formula_dev',                          // RD
   'material_eta',                                      // PC
   'billing_doc',                                       // FN
+  'site_survey',                                       // TS
 ];
 
 test('ทะเบียนได้หัวข้อครบเท่าเดิม — แยกโฟลเดอร์แล้วต้องไม่มีตัวไหนหล่นหาย', () => {

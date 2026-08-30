@@ -112,7 +112,7 @@ export function acknowledgeRequestError(request) {
 // ที่ยังไม่มีใครรับปากวัน · วันที่ใบถืออยู่เป็นของงานที่ส่งไปแล้ว ⇒ ไม่ใช่การ "เลื่อน"
 // คำสัญญาเดิม แต่เป็นการ **แจ้งวันของงานชิ้นใหม่** ⇒ คำบนปุ่มและในเธรดต้องเป็น
 // "แจ้งวันส่ง" ไม่ใช่ "เลื่อนวัน" (`dueIsStale` ตัดสินให้ — ดู lib/requests/dueRound.js)
-export function commitDueRequestError(request, { committedDueDate = null } = {}) {
+export function commitDueRequestError(request, { committedDueDate = null, requeue = false } = {}) {
   if (!request) return 'ไม่พบคำร้อง';
   if (!request.acknowledgedAt) return 'ยังไม่ได้รับเรื่อง — รับเรื่องก่อนแจ้งกำหนดส่ง';
   if (!REQUEST_OPEN_STATUSES.includes(request.status)) {
@@ -120,7 +120,13 @@ export function commitDueRequestError(request, { committedDueDate = null } = {})
   }
   // ⚠️ อ่านแถวจากตัวใบ (`request.items`) ไม่ใช่พารามิเตอร์เพิ่ม — เหตุผลเดียวกับ
   // `requestAwaitingDue`: ผู้เรียกที่ลืมส่งจะทำให้ด่านกับปุ่มเห็นไม่ตรงกันเงียบ ๆ
-  if (String(request.committedDueDate ?? '').trim() && !dueIsStale(request, request.items)) {
+  /* ⭐ `requeue` = **ใบถือวันอยู่ แต่ของที่วันนั้นควรสร้างไม่มีจริง** (นัดของช่างสร้าง
+     ไม่สำเร็จ หรือถูกลบทิ้ง) ⇒ ก้าวนี้ยังไม่จบ กดซ้ำ **ด้วยวันเดิม** ได้
+     🐞 ไม่มีธงนี้ = ใบค้างสถานะ "ลงคิวแล้วแต่ไม่มีนัด" แล้วทางกู้ทางเดียวคือเลื่อนไป
+        วันปลอมแล้วเลื่อนกลับ ⇒ เธรดได้แถว "เลื่อนวัน" สองแถวที่ไม่มีใครเลื่อนจริง
+        ซึ่งขัดเหตุผลที่ด่านเลื่อนวันมีอยู่ตั้งแต่แรก (ห้ามเธรดโกหกเรื่องวัน)
+     ⚠️ **ผู้เรียกเป็นคนพิสูจน์** — ที่นี่ไม่รู้จักนัดและไม่ควรรู้จัก (กติกา ม-34) */
+  if (!requeue && String(request.committedDueDate ?? '').trim() && !dueIsStale(request, request.items)) {
     return 'ใบนี้แจ้งกำหนดส่งไปแล้ว — ใช้ปุ่มเลื่อนวันกำหนดส่งแทน';
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(committedDueDate ?? '').trim())) {

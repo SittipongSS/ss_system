@@ -10,10 +10,12 @@ import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import OptionTiles from "@/components/ui/OptionTiles";
 import { normalizeZoneInput } from "@/lib/service/zones";
+import { SPECIAL_FLOORS, normalizeFloor } from "@/lib/service/zoneCode";
 import styles from "./ServiceSiteModal.module.css";
 
-const EMPTY = { name: "", note: "", isActive: true };
+const EMPTY = { name: "", floor: "", building: "", note: "", isActive: true };
 
 export default function ServiceZoneModal({ open, zone = null, onClose, onSave }) {
   const editing = !!zone;
@@ -25,7 +27,13 @@ export default function ServiceZoneModal({ open, zone = null, onClose, onSave })
     if (!open) return;
     setError("");
     setForm(zone
-      ? { name: zone.name || "", note: zone.note || "", isActive: zone.isActive !== false }
+      ? {
+        name: zone.name || "",
+        floor: zone.floor || "",
+        building: zone.building || "",
+        note: zone.note || "",
+        isActive: zone.isActive !== false,
+      }
       : EMPTY);
   }, [open, zone]);
 
@@ -51,6 +59,45 @@ export default function ServiceZoneModal({ open, zone = null, onClose, onSave })
           <span>ชื่อโซน *</span>
           <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Lobby / ห้องน้ำชั้น 2" maxLength={150} />
           <small>พื้นที่ย่อยในไซต์ที่ติดตามการใช้/รอบบริการแยกกัน — ไม่ใช่เขตวิ่งงานของช่าง</small>
+        </label>
+
+        {/* ── ชั้น (mig 0315) ───────────────────────────────────────────────
+            ⭐ **ชั้นเป็นท่อนหนึ่งของรหัสโซน** `ZN-CCCC-FF-DDDDD` ⇒ บังคับกรอก
+            ⭐ ชั้นตัวเลขพิมพ์เอง (มี 99 ค่า) · ชั้นพิเศษเป็นชิปให้กด (มี 5 ค่าตายตัว)
+               — กติกา "ชุดเล็กกางให้เห็น ชุดยาวค่อยเป็นช่องพิมพ์"
+            ⚠️ แก้ชั้นทีหลัง **ไม่เปลี่ยนรหัสที่ออกไปแล้ว** */}
+        <label className={styles.field}>
+          <span>ชั้น *</span>
+          <Input
+            value={form.floor}
+            onChange={(e) => setForm((prev) => ({ ...prev, floor: e.target.value }))}
+            placeholder="4"
+            maxLength={10}
+          />
+          <OptionTiles
+            options={SPECIAL_FLOORS}
+            value={SPECIAL_FLOORS.some((f) => f.value === form.floor) ? form.floor : ""}
+            onChange={(value) => setForm((prev) => ({ ...prev, floor: value }))}
+            ariaLabel="ชั้นพิเศษ"
+          />
+          <small>
+            {editing
+              ? `รหัสโซนที่ออกไปแล้วไม่เปลี่ยนตามชั้นที่แก้ — ${zone.code || "รหัสเดิม"} ยังเป็นตัวเดิม`
+              /* ⚠️ โชว์ **ค่าที่จะลงรหัสจริง** (`normalizeFloor`) ไม่ใช่ป้ายที่คนอ่าน
+                 (`floorLabel`) — พิมพ์ "4" แล้วรหัสได้ `04` · พิมพ์ "G" แล้วได้ `GF` */
+              : `ตัวเลข 1–99 หรือกดเลือกชั้นพิเศษ — จะเข้าไปอยู่ในรหัสโซนเป็น ${normalizeFloor(form.floor).value || "FF"}`}
+          </small>
+        </label>
+
+        <label className={styles.field}>
+          <span>อาคาร</span>
+          <Input
+            value={form.building}
+            onChange={(e) => setForm((prev) => ({ ...prev, building: e.target.value }))}
+            placeholder="ตึก A"
+            maxLength={60}
+          />
+          <small>ไซต์ที่มีหลายตึก — ไม่อยู่ในรหัส แก้ได้ตลอด</small>
         </label>
 
         {/* โหมดสร้างไม่มีสถานะ — โซนใหม่เริ่มที่ "ใช้งาน" เสมอ (กฎ AGENTS.md) */}

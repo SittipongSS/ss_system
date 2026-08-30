@@ -214,6 +214,15 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
   for (const role of ['pd', 'wh', 'qc', 'ts']) {
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), false, `${role} ต้องไม่ผ่าน`);
   }
+  /* 🔴 **เส้นคำร้องกับเส้นทะเบียนวัสดุต้องแยกกันตลอดไป** (2026-08-29)
+     เดิมสองเส้นใช้กฎบรรทัดเดียวกัน โดยอ้างว่า "ใครถือ requests:answer ก็ถือ costing:quote
+     อยู่แล้ว" — ข้อสมมตินั้นตายทันทีที่ฝ่าย TS ได้ requests:answer เพื่อรับคำร้อง
+     ประเมินพื้นที่ (mig 0314) โดยไม่มี costing:* เลย ⇒ ทะเบียนวัสดุจะเปิดให้เขียนทั้งทะเบียน
+     ⚠️ ถ้าเทสต์นี้แดง แปลว่ามีคนรวมสองเส้นกลับเข้าด้วยกัน — อย่าแก้เทสต์ ให้แก้ proxy */
+  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'ts', []), true, 'TS ต้องรับคำร้องได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ts', []), false, 'แต่ต้องแตะทะเบียนวัสดุไม่ได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'finance', []), true, 'FN ต้องรับคำร้องได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'finance', []), false, 'FN ก็ต้องแตะทะเบียนวัสดุไม่ได้');
   // ฝ่ายขายยังเปิดคำขอ/เสนอวัสดุร่างได้เหมือนเดิม (costing:edit)
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ae', []), true);
   // role ที่ไม่เกี่ยวกับระบบขอราคาเลยยังเข้าไม่ได้
@@ -445,4 +454,21 @@ test('ช่องที่เปิดให้บัญชีต้องแ�
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1/issued', FN, []), false, 'เส้นลูกอื่นไม่เปิด');
   // role ที่ไม่มี payments:confirm เลย ต้องไม่ได้อะไรเพิ่มจากบรรทัดใหม่นี้
   assert.equal(apiWriteAllowed('PATCH', '/api/sales-planning/sales-orders/SOR-1', 'marketing', []), false);
+});
+
+/* ── ไซต์บริการ: ด่านหยาบของ proxy ต้องไม่แคบกว่าด่านจริงใน handler ───────────
+   🐞 กับดักที่เทสต์นี้ปิด — POST /api/service/sites เปลี่ยนไปใช้ `canCreateServiceSite`
+   (มติผู้ใช้ 2026-08-29: ฝ่ายขายสร้างไซต์ของลูกค้าได้) แต่ proxy ยังถาม cap
+   `service:edit` เหมือนเดิม · สองชั้นนี้เคยเป็นกฎเดียวกันโดยโครงสร้าง พอแยกกันแล้ว
+   วันไหนมีคนถอด `service:edit` ออกจาก role ฝ่ายขาย (ซึ่งดูเหมือนไม่เกี่ยวกัน)
+   ปุ่ม "เพิ่มไซต์" จะโดน proxy ตีกลับก่อนถึง handler โดยไม่มีอะไรบอกว่าทำไม */
+test('ฝ่ายขายต้องผ่านด่าน proxy ของ /api/service ได้ — ไม่งั้นสร้างไซต์ไม่ได้ทั้งที่มีสิทธิ์', () => {
+  for (const role of ['ae', 'senior_ae', 'ac']) {
+    assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), true, `${role} ต้องสร้างไซต์ได้`);
+  }
+  assert.equal(apiWriteAllowed('POST', '/api/service/sites', 'ts', []), true, 'ฝ่ายช่างเหมือนเดิม');
+  // ⚠️ ฝ่ายที่ไม่เกี่ยวกับงานบริการยังต้องถูกกั้นตั้งแต่ชั้นนี้
+  for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
+    assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), false, `${role} ต้องไม่ผ่าน`);
+  }
 });

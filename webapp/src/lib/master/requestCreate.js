@@ -138,6 +138,13 @@ export function requestPayload(form, extra = {}) {
     // หมวดสินค้า" ทั้งที่ผู้ใช้เลือกไปแล้ว ⇒ สองหัวข้อนั้นเปิดใบไม่ได้เลย
     // ⇒ ส่งแถวตามที่ตัวแก้ไขบรรทัดของหัวข้อนั้นประกอบไว้ **ไม่ตีความใหม่ที่นี่**
     // (ตัวตรวจจริงคือ `normalizeLinesFor` ฝั่ง server ซึ่งรู้จักทุกรูปร่างอยู่แล้ว)
+    /* ประเมินพื้นที่ (mig 0314) — สถานที่ + พื้นที่ที่ต้องวัด + เวลาที่อยากให้เข้า
+       ⚠️ ส่งเฉพาะหัวข้อที่ประกาศ `site` ด้วยเหตุผลเดียวกับ items/pdr ข้างบน */
+    ...(requestNeedsRef(form.kind, 'site') ? {
+      siteId: form.siteId || null,
+      zones: form.zones || [],
+      requestedDueTime: form.requestedDueTime || null,
+    } : {}),
     ...(requestHasItems(form.kind) ? { items: form.items || [] } : {}),
     ...extra,
   };

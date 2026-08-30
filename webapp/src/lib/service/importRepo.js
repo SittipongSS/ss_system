@@ -1,6 +1,10 @@
 // ── อ่าน/เขียนฐานสำหรับการนำเข้าข้อมูลเก่า (F-8) ──────────────────────────
 import { genId } from '@/lib/id';
-import { insertRowsWithEntityCode } from '@/lib/entityCode';
+import { insertRowWithComposedCode } from '@/lib/entityCode';
+import { findProvinceByName } from '@/lib/master/thaiAdmin';
+import { customerCodeSegment } from '@/lib/master/masterCodes';
+import { SITE_RUN_BUCKET, SITE_RUN_WIDTH, siteCodePrefix } from '@/lib/service/siteCode';
+import { ZONE_RUN_BUCKET, ZONE_RUN_WIDTH, normalizeFloor, zoneCodePrefix } from '@/lib/service/zoneCode';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 
 /* ภาพรวมของที่มีอยู่ ใช้เทียบว่าอะไรมีแล้ว/อะไรต้องสร้าง
@@ -8,7 +12,8 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
       จริงมีเป็นร้อย ลูกค้าเป็นพัน ⇒ ตัดแถวทิ้ง = เห็นว่า "ยังไม่มี" แล้วสร้างซ้ำ */
 export async function loadImportSnapshot(supabase) {
   const [customers, sites, zones, assets] = await Promise.all([
-    fetchAll(() => supabase.from('customers').select('id, name').order('id')),
+    // `arCode` มาด้วย (mig 0315) — รหัสไซต์ประกอบจากรหัสลูกค้า ⇒ ไม่ต้องยิงรายแถว
+    fetchAll(() => supabase.from('customers').select('id, name, "arCode"').order('id')),
     fetchAll(() => supabase.from('service_sites').select('id, code, "customerId", name').order('id')),
     fetchAll(() => supabase.from('service_zones').select('id, code, "siteId", name').order('id')),
     fetchAll(() => supabase.from('service_assets').select('id, "siteId", "zoneId", kind, status').order('id')),
@@ -20,7 +25,7 @@ export async function loadImportSnapshot(supabase) {
    คืน { sites, zones, assets, errors } นับจำนวนที่สร้างจริง
    ⚠️ **ไม่มีทรานแซกชันครอบทั้งงาน** (PostgREST ทำให้ไม่ได้) ⇒ ออกแบบให้ล้ม
       กลางทางแล้ว "รันซ้ำได้" แทน: ของที่สร้างไปแล้วรอบหน้าจะขึ้นเป็น skip */
-export async function applyImportPlan(supabase, rows, { user, now = new Date() } = {}) {
+export async function applyImportPlan(supabase, rows, { user, now = new Date(), snapshot = null } = {}) {
   const created = { sites: 0, zones: 0, assets: 0 };
   const errors = [];
   const siteIdByRef = new Map();
@@ -31,35 +36,79 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
   };
 
   // ── ไซต์ ──
-  const siteRows = [];
+  /* ⚠️ **ยิงทีละไซต์ ไม่ใช่ทั้งชุด** (mig 0315) — รหัส `ST-XXXX-AA-BBB-CCCC` มีรหัส
+     ลูกค้าและจังหวัดอยู่ในท่อนหน้าเลขรัน ⇒ แต่ละแถวใช้ prefix คนละตัว
+     ⚠️ แถวที่ประกอบรหัสไม่ได้ (ไม่มีจังหวัด / ลูกค้าไม่มีรหัส AR) **ออกเป็นรายงาน**
+        ไม่ใช่ยัดลง DB ด้วยรหัสมั่ว — กติกาเดิมของสายนำเข้า (F-8) */
+  /* รหัส AR ของลูกค้า — มาจาก snapshot ที่ผู้เรียกโหลดไว้แล้ว ถ้าไม่ได้ส่งมาค่อยยิงเอง
+     ⚠️ **ห้ามยิงรายแถว** เมื่อมี snapshot — ไฟล์นำเข้าจริงมีหลายร้อยแถว */
+  const arByCustomer = new Map((snapshot?.customers || []).map((c) => [c.id, c.arCode || null]));
+  /* รหัสไซต์ — ไว้ประกอบรหัสโซน · เติมจาก snapshot ก่อน แล้วเติมของที่เพิ่งสร้างระหว่างทาง
+     ⚠️ ต้องประกาศ **ก่อน** ลูปสร้างไซต์ เพราะลูปนั้นเขียนลงตัวนี้ */
+  const siteCodeCache = new Map((snapshot?.sites || []).map((row) => [row.id, row.code || null]));
+  const siteCodeOf = async (siteId) => {
+    if (siteCodeCache.has(siteId)) return siteCodeCache.get(siteId);
+    const { data } = await supabase.from('service_sites').select('code').eq('id', siteId).maybeSingle();
+    const value = data?.code || null;
+    siteCodeCache.set(siteId, value);
+    return value;
+  };
+  const customerCache = new Map();
+  const arCodeOf = async (customerId) => {
+    if (arByCustomer.has(customerId)) return arByCustomer.get(customerId);
+    if (customerCache.has(customerId)) return customerCache.get(customerId);
+    const { data } = await supabase.from('customers').select('arCode').eq('id', customerId).maybeSingle();
+    const value = data?.arCode || null;
+    customerCache.set(customerId, value);
+    return value;
+  };
+
   for (const row of rows) {
     if (row.site?.action !== 'create') continue;
-    siteRows.push({
-      ref: row.site.ref,
-      row: {
+    if (siteIdByRef.has(row.site.ref)) continue;      // ไซต์เดียวกันโผล่หลายแถวในไฟล์
+
+    /* ⚠️ **สามเหตุที่สร้างไม่ได้ พูดคนละเรื่องกัน** — ลูกค้าไม่มีรหัส AR / ชีตไม่มี
+       คอลัมน์จังหวัด / ชื่อจังหวัดสะกดไม่ตรงทะเบียน · รวบเป็นข้อความเดียวเมื่อไร
+       คนแก้ไฟล์จะไปแก้ผิดที่ · `siteCodePrefix` ตรวจ AR ก่อนจังหวัดอยู่แล้ว
+       ⇒ ปล่อยข้อความของมันผ่านมาเมื่อ AR ยังไม่ผ่าน */
+    const arCode = await arCodeOf(row.site.customerId);
+    const province = findProvinceByName(row.site.province);
+    const { prefix, error: codeError } = siteCodePrefix({ arCode, provinceCode: province?.code });
+    if (codeError) {
+      const reason = customerCodeSegment(arCode) === null
+        ? codeError                                     // ลูกค้าไม่มีรหัส AR ที่ใช้ได้
+        : (row.site.province
+          ? `จังหวัด "${row.site.province}" ไม่ตรงกับทะเบียนจังหวัด`
+          : 'ชีตไม่มีคอลัมน์จังหวัด — รหัสไซต์ประกอบจากภาคและจังหวัด');
+      errors.push(`ไซต์ "${row.site.name}": ${reason}`);
+      continue;
+    }
+
+    const { data, error } = await insertRowWithComposedCode(
+      supabase,
+      { scope: 'SS', bucket: SITE_RUN_BUCKET, prefix, width: SITE_RUN_WIDTH },
+      {
         id: genId('SVS'),
         customerId: row.site.customerId,
         customerName: row.site.customerName || null,
         name: row.site.name,
         routeZone: row.site.routeZone || null,
         address: row.site.address || null,
+        provinceCode: province.code,
+        province: province.th,
         contactName: row.site.contactName || null,
         contactPhone: row.site.contactPhone || null,
         ...actor,
       },
-    });
-  }
-  if (siteRows.length) {
-    const { data, error } = await insertRowsWithEntityCode(supabase, 'SS', siteRows.map((item) => item.row), now);
-    if (error) return { created, errors: [`สร้างไซต์ไม่สำเร็จ: ${error.message}`], siteIdByRef, zoneIdByRef };
-    // ⚠️ จับคู่ด้วย **id ที่เราออกเอง** ไม่ใช่ลำดับที่คืนมา — ลำดับผลของ RPC
-    //    ไม่มีอะไรรับประกัน และถ้าเลื่อนไปหนึ่งช่อง เครื่องจะไปลงผิดไซต์ทั้งไฟล์
-    const refById = new Map(siteRows.map((item) => [item.row.id, item.ref]));
-    for (const inserted of data || []) {
-      const ref = refById.get(inserted.id);
-      if (ref) siteIdByRef.set(ref, inserted.id);
+    );
+    if (error) {
+      errors.push(`สร้างไซต์ "${row.site.name}" ไม่สำเร็จ: ${error.message}`);
+      continue;
     }
-    created.sites = (data || []).length;
+    siteIdByRef.set(row.site.ref, data.id);
+    // รหัสไซต์ที่เพิ่งออก — โซนของไฟล์เดียวกันอ้างต่อได้เลย ไม่ต้องยิงถามกลับ
+    siteCodeCache.set(data.id, data.code || null);
+    created.sites += 1;
   }
   // ไซต์ที่มีอยู่แล้ว/ถูกใช้ซ้ำในไฟล์เดียวกัน — ผูก ref กับ id จริงให้ครบก่อนไปต่อ
   for (const row of rows) {
@@ -69,27 +118,38 @@ export async function applyImportPlan(supabase, rows, { user, now = new Date() }
   const resolveSite = (ref) => siteIdByRef.get(ref) || ref;
 
   // ── โซน ──
-  const zoneRows = [];
+  // รหัสโซนอ้าง **เลขรันของไซต์** ⇒ ต้องรู้รหัสไซต์ที่เพิ่งสร้าง/ที่มีอยู่ก่อน
+
   for (const row of rows) {
     if (row.zone?.action !== 'create') continue;
+    if (zoneIdByRef.has(row.zone.ref)) continue;      // โซนเดียวกันโผล่หลายแถวในไฟล์
     const siteId = resolveSite(row.zone.siteRef);
     if (!siteId || siteId.startsWith('new-site-')) {
       errors.push(`แถว ${row.rowNumber}: สร้างโซนไม่ได้เพราะไซต์ยังไม่ถูกสร้าง`);
       continue;
     }
-    zoneRows.push({ ref: row.zone.ref, row: { id: genId('SZN'), siteId, name: row.zone.name, ...actor } });
-  }
-  if (zoneRows.length) {
-    const { data, error } = await insertRowsWithEntityCode(supabase, 'ZN', zoneRows.map((item) => item.row), now);
-    if (error) errors.push(`สร้างโซนไม่สำเร็จ: ${error.message}`);
-    else {
-      const refById = new Map(zoneRows.map((item) => [item.row.id, item.ref]));
-      for (const inserted of data || []) {
-        const ref = refById.get(inserted.id);
-        if (ref) zoneIdByRef.set(ref, inserted.id);
-      }
-      created.zones = (data || []).length;
+
+    // ชั้นในรูปมาตรฐาน (04 · GF · B1) — ค่าเดียวกับที่ไปอยู่ในรหัสและในคอลัมน์ `floor`
+    const floor = normalizeFloor(row.zone.floor);
+    const { prefix, error: codeError } = floor.error
+      ? { prefix: null, error: floor.error }
+      : zoneCodePrefix({ siteCode: await siteCodeOf(siteId), floor: floor.value });
+    if (codeError) {
+      errors.push(`แถว ${row.rowNumber} · โซน "${row.zone.name}": ${codeError}`);
+      continue;
     }
+
+    const { data, error } = await insertRowWithComposedCode(
+      supabase,
+      { scope: 'ZN', bucket: ZONE_RUN_BUCKET, prefix, width: ZONE_RUN_WIDTH },
+      { id: genId('SZN'), siteId, name: row.zone.name, floor: floor.value, ...actor },
+    );
+    if (error) {
+      errors.push(`แถว ${row.rowNumber}: สร้างโซน "${row.zone.name}" ไม่สำเร็จ: ${error.message}`);
+      continue;
+    }
+    zoneIdByRef.set(row.zone.ref, data.id);
+    created.zones += 1;
   }
   for (const row of rows) {
     if (row.zone?.action === 'use') zoneIdByRef.set(row.zone.id, row.zone.id);

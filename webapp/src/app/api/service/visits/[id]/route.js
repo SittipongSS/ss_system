@@ -5,13 +5,17 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
-import { VISIT_STATUS_LABELS, canDeleteVisit, isClosedVisit, isLiveVisit } from '@/lib/service/visitStatus';
+import {
+  VISIT_STATUS_LABELS, canDeleteVisit, holdsRequestSlot, isClosedVisit, isLiveVisit,
+} from '@/lib/service/visitStatus';
+import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { isSuperuser } from '@/lib/permissions';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
+import { fmtDate } from '@/lib/format';
 import { businessTimeKey } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
@@ -81,7 +85,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        ต้องพึ่งความสุจริตของจอ ทั้งที่ mig 0300 ทำมาเพื่อไม่ต้องพึ่ง */
     if (body.stamp === 'start' && !isClosedVisit(before)) body.status = 'in_progress';
 
-    const { value, error } = normalizeVisitInput({ ...before, ...body });
+    // ⚠️ `existingKind` = นี่คือการ *แก้* ของเดิม ไม่ใช่การสร้าง (ดูคอมเมนต์ในตัวด่าน)
+    const { value, error } = normalizeVisitInput({ ...before, ...body }, { existingKind: before.kind });
     if (error) return badRequest(error);
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
@@ -163,11 +168,74 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (touched && (before.actualStartTime || before.actualEndTime)) patch.actualTimeEdited = true;
     }
 
+    /* ── เปิดนัดประเมินที่ปิดไปแล้วกลับมา = อาจได้นัดเปิดสองใบต่อหนึ่งคำร้อง ────
+       ⭐ ยามจริงคือ index ของ mig 0316 · ตัวนี้อยู่เพื่อ **ข้อความไทยและสถานะ 409**
+          และเพื่อให้แอปทำงานเหมือนกันในช่วงที่ยังไม่ได้รัน migration
+       ⚠️ ยิงเฉพาะ transition ที่ *ฟื้น* นัดจริง ๆ — ไม่ใช่ทุกครั้งที่แก้นัด */
+    if (before.kind === SURVEY_VISIT_KIND && before.requestId
+      && patch.status && patch.status !== before.status
+      && holdsRequestSlot({ status: patch.status }) && !holdsRequestSlot(before)) {
+      const other = await findSurveyVisit(supabase, before.requestId, { openOnly: true });
+      if (other && other.id !== id) {
+        return conflict(`ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว (${other.code || other.id}) — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้`);
+      }
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_visits')
       .update({ ...patch, updatedAt: nowIso })
       .eq('id', id).select().single();
-    if (updateError) return fail(updateError.message, 500);
+    /* 🐞 **แก้สถานะก็ชน index ได้ ไม่ใช่แค่ตอนสร้าง** (mig 0316) — เปิดนัดที่ปิดไปแล้ว
+       กลับมาเป็น "นัดไว้" ในขณะที่ใบนั้นมีนัดอื่นเปิดอยู่ = สองนัดเปิดพร้อมกัน ⇒ DB
+       ตีกลับ · ปล่อยข้อความดิบขึ้นจอ (`duplicate key value violates unique constraint …`
+       พร้อมสถานะ 500) คนอ่านไม่รู้ว่าต้องทำอะไรต่อ และ 500 อ่านเหมือนระบบพัง
+       ทั้งที่เป็นกติกาของงาน ⇒ 409 พร้อมข้อความไทย */
+    if (updateError) {
+      if (String(updateError.message || '').includes('service_visits_survey_open_request_uk')) {
+        return conflict('ใบคำร้องนี้มีนัดที่ยังไม่ปิดอยู่แล้ว — ปิดหรือยกเลิกนัดนั้นก่อน ถึงจะเปิดนัดนี้กลับมาได้');
+      }
+      return fail(updateError.message, 500);
+    }
+
+    /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
+       🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวช่าง
+          (ซึ่งเป็นที่ที่ TS ทำงานจริง) ใบยังถือวันเก่า ⇒ ฝ่ายขายอ่านใบแล้วบอกลูกค้าผิดวัน
+          และตัวนับ "เลยกำหนด" ก็นับจากวันที่ไม่มีใครจะไปแล้ว
+       ⚠️ เขียนกลับเฉพาะ **วัน/เวลา** — สถานะของใบเป็นเรื่องของก้าวคำร้อง ไม่ใช่ของนัด */
+    if (data.requestId && data.kind === 'survey') {
+      const nextDate = data.scheduledDate || null;
+      const nextTime = data.startTime ? String(data.startTime).slice(0, 5) : null;
+      const { data: reqRow } = await supabase
+        .from('dept_requests').select('id, "committedDueDate", "committedDueTime"')
+        .eq('id', data.requestId).maybeSingle();
+      const changed = reqRow
+        && (String(reqRow.committedDueDate ?? '') !== String(nextDate ?? '')
+          || String(reqRow.committedDueTime ?? '').slice(0, 5) !== String(nextTime ?? ''));
+      if (changed) {
+        const { error: syncError } = await supabase.from('dept_requests').update({
+          committedDueDate: nextDate,
+          committedDueTime: nextTime,
+          updatedAt: nowIso,
+        }).eq('id', data.requestId);
+        if (syncError) {
+          console.error('[service-visits] ซิงก์วันกลับใบคำร้องไม่สำเร็จ:', syncError.message);
+        } else {
+          /* 🐞 **ซิงก์เงียบคือวันที่เปลี่ยนเองบนใบ** — ของเดิมเขียนวันใหม่ลง
+             `dept_requests` โดยไม่ลงเธรดของใบเลย ⇒ ฝ่ายขายเปิดใบมาเห็น "TS กำหนดส่ง"
+             เป็นอีกวันโดยไม่มีแถวไหนบอกว่าใครเลื่อนและเพราะอะไร (เธรดของ *นัด* มี
+             แต่คนอ่านใบไม่ได้เปิดดู) · เหตุผลที่ TS พิมพ์ตอนเลื่อนนัดถูกส่งต่อมาด้วย */
+          const from = reqRow.committedDueDate ? fmtDate(reqRow.committedDueDate) : '(ไม่เคยระบุ)';
+          const to = nextDate ? fmtDate(nextDate) : '(ไม่ระบุ)';
+          await appendUpdate(supabase, {
+            entityType: 'dept_request', entityId: data.requestId, kind: 'reschedule',
+            body: `TS เลื่อนวันนัดจากตารางช่าง ${from} → ${to}`
+              + (nextTime ? ` ${nextTime} น.` : '')
+              + (String(reason || '').trim() ? ` — ${String(reason).trim().slice(0, 300)}` : ''),
+            user,
+          });
+        }
+      }
+    }
 
     await recordAudit({
       user, action: 'update', entityType: 'service_visit', entityId: id, before, after: data,

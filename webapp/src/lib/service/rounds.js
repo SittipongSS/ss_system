@@ -10,7 +10,14 @@ import { businessDate } from '@/lib/businessDate';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
 
 export const PLAN_KINDS = ['refill', 'maintenance', 'inspect'];
-export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove'];
+export const VISIT_KINDS = ['install', 'refill', 'maintenance', 'repair', 'inspect', 'remove', 'survey'];
+
+/* ชนิดที่ **คนเลือกเองได้ในโมดัลนัด** — `survey` ไม่อยู่ในนี้โดยตั้งใจ (mig 0314)
+   ⭐ นัดประเมินพื้นที่เกิดจาก **ใบคำร้อง** ตอน TS ลงคิว ไม่ใช่จากการกดสร้างนัดเปล่า
+      ⇒ วันบนนัดกับวันบนใบเป็นค่าเดียวกันเสมอ · ปล่อยให้สร้างมือได้เมื่อไร จะมีนัด
+      ประเมินที่ไม่มีใบต้นเรื่อง แล้วผลวัดไม่รู้จะส่งกลับไปที่ไหน
+   (กติกาเดียวกับที่ไซต์เกิดจากคำร้องทางเดียว — มติ 2026-08-30) */
+export const VISIT_KINDS_MANUAL = VISIT_KINDS.filter((kind) => kind !== 'survey');
 /* สถานะย้ายไปอยู่ที่ lib/service/visitStatus.js ทั้งชุด (mig 0300) — ที่นั่นเป็น
    ที่เดียวที่ตอบว่า "อยู่บนตาราง" / "ปิดจบแล้ว" / "ยังรอลงมือ" หมายถึงอะไร
    re-export ไว้เพื่อไม่ให้ผู้เรียกเดิม 2 ที่ต้องแก้ import พร้อมกัน */
@@ -32,6 +39,7 @@ export const VISIT_KIND_LABELS = {
   repair: 'ซ่อม',
   inspect: 'ตรวจเช็ค',
   remove: 'ถอดเครื่อง',
+  survey: 'ประเมินพื้นที่',
 };
 
 // ⭐ "เช้า/บ่าย/เต็มวัน" เป็น **ปุ่มลัดที่เติมเวลาให้** ไม่ใช่คอลัมน์ใน DB —
@@ -121,10 +129,28 @@ export function rescheduleSummary(before, after, reason) {
 }
 
 // ── ตรวจข้อมูลนัด ────────────────────────────────────────────────────────
-export function normalizeVisitInput(body = {}) {
+export function normalizeVisitInput(body = {}, { existingKind = null } = {}) {
   const siteId = String(body.siteId ?? '').trim();
   if (!siteId) return { value: null, error: 'ต้องระบุไซต์' };
   if (!VISIT_KINDS.includes(body.kind)) return { value: null, error: 'ชนิดงานไม่ถูกต้อง' };
+  /* 🔴 **ด่านของ "สร้างมือไม่ได้" ต้องอยู่ที่ API ไม่ใช่แค่ดรอปดาวน์** — ตัดออกจาก
+     ตัวเลือกบนจอกันคนกดพลาดได้ แต่ไม่กันการยิง API ตรง ๆ · นัดประเมินที่ไม่มีใบ
+     ต้นเรื่องคือนัดที่ผลวัดไม่รู้จะส่งกลับไปที่ไหน
+     ⚠️ เส้นที่ถูกต้อง (`createSurveyVisit`) ไม่ผ่านตัวนี้ — มันประกอบแถวเองพร้อม
+        `requestId` ⇒ ด่านนี้ไม่ขวางเส้นนั้น
+     🐞 **ด่านนี้เป็นของ "สร้าง" เท่านั้น** — PATCH ส่ง `{...before, ...body}` เข้ามา
+        ⇒ `kind` มาจากแถวเดิม · เผลอบังคับตอนแก้ด้วยเมื่อไร **นัดประเมินที่ลงคิวไปแล้ว
+        จะแก้/เลื่อนจากตารางช่างไม่ได้เลย** (เจอตอนทดสอบสด 2026-08-30) ⇒ ผู้เรียกที่แก้
+        ของเดิมส่ง `existingKind` เข้ามาบอกว่านี่คือการแก้ ไม่ใช่การสร้าง */
+  if (existingKind === null) {
+    if (!VISIT_KINDS_MANUAL.includes(body.kind)) {
+      return { value: null, error: 'นัดประเมินพื้นที่สร้างที่นี่ไม่ได้ — เกิดจากใบคำร้องตอน TS ลงคิว' };
+    }
+  } else if (body.kind !== existingKind
+      && (!VISIT_KINDS_MANUAL.includes(body.kind) || !VISIT_KINDS_MANUAL.includes(existingKind))) {
+    // สลับชนิดข้ามฝั่งไม่ได้ — นัดประเมินผูกใบคำร้องอยู่ · แปลงเป็นชนิดอื่นคือทิ้งต้นเรื่อง
+    return { value: null, error: 'เปลี่ยนชนิดของนัดประเมินพื้นที่ไม่ได้ — นัดนี้เกิดจากใบคำร้อง' };
+  }
   if (!body.scheduledDate) return { value: null, error: 'ต้องระบุวันที่นัด' };
 
   const status = body.status ?? 'scheduled';

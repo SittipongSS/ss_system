@@ -510,6 +510,9 @@ const ROLE_CAPS = {
   ts: [
     'pm:view', 'products:view', 'customers:view',
     'service:view', 'service:edit',
+    // รับ/ตอบคำร้องหัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายอยู่ที่
+    // canAnswerRequestsFor ซึ่งบังคับ department === 'TS' อีกชั้น
+    'requests:answer',
   ],
 };
 
@@ -620,7 +623,7 @@ export const COSTING_SOURCE_DEPARTMENTS = ['RD', 'PC'];
 //
 // ⚠️ ต้องตรงกับ `REQUEST_DEPTS` ใน lib/master/requestTypes.js เสมอ — มีเทสต์คุม
 // (แยกลิสต์เพราะ permissions.js เป็นชั้นล่างสุด ห้าม import ทะเบียนหัวข้อกลับมา)
-export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN'];
+export const REQUEST_ANSWER_DEPARTMENTS = ['RD', 'PC', 'FN', 'TS'];
 
 // ── คอนเฟิร์ม/ตีกลับงวดชำระของใบสั่งขาย (mig 0245) ──────────────────────
 //
@@ -645,6 +648,14 @@ export function canAnswerRequestsFor(user, dept) {
   if (isSuperuser(user?.role)) return true; // admin break-glass
   if (!canUser(user, 'requests:answer')) return false;
   return departmentOf(user) === dept;
+}
+
+/* คิวคำร้องของฝ่าย TS (mig 0314) — คนที่ **ตอบ** ใบประเมินพื้นที่ได้
+   ⚠️ แคบกว่า `canEditService` ที่เมนูอื่นของโมดูลใช้: ทีมขาย SV ถือ `service:edit`
+      ด้วย แต่ไม่ใช่คนตอบคำร้องของฝ่าย TS ⇒ ถ้าใช้ตัวเดียวกัน เขาจะเห็นเมนูคิวที่
+      กดเข้าไปแล้วรับเรื่องไม่ได้สักใบ (ปุ่มหายทั้งแถบ ไม่มีอะไรบอกว่าทำไม) */
+export function canAnswerServiceRequests(user) {
+  return canAnswerRequestsFor(user, SERVICE_DEPARTMENT);
 }
 
 // เห็นระบบคำร้องไหม — **ด่านชั้นนอกของทุก endpoint ใต้ /api/sa/requests**
@@ -768,6 +779,33 @@ export function canEditService(user) {
   if (isSuperuser(user?.role)) return true;
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
   return TEAM_ROLES.includes(user?.role) && hasTeam(user, SERVICE_SALES_TEAM);
+}
+
+/* ── สร้างไซต์บริการ (มติผู้ใช้ 2026-08-29) ────────────────────────────────
+   ⭐ **ฝ่ายขายสร้างไซต์ของลูกค้าที่ตัวเองเปิดดูได้** — เดิมต้องรอฝ่าย TS หรือทีม SV
+      สร้างให้ ทั้งที่คนที่รู้ว่าลูกค้าจะติดตั้งที่ไหนคือคนขายที่เพิ่งคุยมา · จังหวะที่
+      ต้องใช้จริงคือตอนเปิด **ใบประเมินพื้นที่** ซึ่งเลือกได้เฉพาะไซต์ที่มีอยู่แล้ว
+      (มติผู้ใช้: "เปิดสิทธิ์ให้ SA สร้างไซต์ของลูกค้าตัวเองได้เลย")
+
+   ⚠️ **แคบกว่า `canEditService` โดยตั้งใจ — และห้ามขยายตัวนั้นแทน**
+      `canEditService` เปิดพร้อมกันทั้งโมดูล: นัด · รอบบริการ · เครื่อง · การผูก
+      ใบสั่งขายเข้าโซน · เธรดของนัด ⇒ ขยายตัวนั้นเท่ากับให้คนขายทุกคนแก้คิวช่างได้
+
+   ⚠️ **สร้างอย่างเดียว ไม่ใช่แก้/ลบ** — ไซต์ที่ใช้งานแล้วมีนัด เครื่อง และสัญญาห้อยอยู่
+      การแก้จึงยังเป็นของฝ่ายบริการตามเดิม (ผิดตรงไหนแจ้ง TS แก้ให้ · ถ้าวันหนึ่ง
+      อยากให้แก้เองได้ ต้องคิดเรื่อง "ย้ายไซต์ข้ามลูกค้า" ให้จบก่อน)
+
+   ⚠️ ลูกค้าที่ *เปิดดูได้* วันนี้คือ **ทุกราย** (canViewRecord คืน true ให้ customers
+      ทั้งก้อน) ⇒ ด่านนี้จึงกว้างเท่าที่ผู้ใช้สั่งจริง ๆ ไม่ได้แคบกว่านั้นแบบเงียบ ๆ */
+export function canCreateServiceSite(user) {
+  if (canEditService(user)) return true;
+  /* 🔴 **ถามจาก role ของสายขายโดยตรง ไม่ใช่จาก cap** — เคยเขียนเป็น
+     `customers:view && salesplan:view` แล้วพบว่า **rd และ finance ผ่านด้วย**
+     (สองฝ่ายนั้นถือ cap ทั้งคู่ไว้อ่านดีลตอนตอบคำร้อง) · viewer/executive ก็ผ่าน
+     ทั้งที่เป็นสิทธิ์อ่านล้วน ⇒ cap ตอบคำถาม "เห็นอะไรได้" ไม่ได้ตอบ "เป็นใคร"
+     ⭐ `TEAM_ROLES` = ตำแหน่งขายที่มีทีม (senior_ae · ac · ae) ซึ่งตรงกับคำว่า
+     "ฝ่ายขาย" ในมติผู้ใช้เป๊ะ ๆ */
+  return TEAM_ROLES.includes(user?.role);
 }
 
 // นำเข้าข้อมูลเก่าเป็นก้อน (F-8) — **แคบกว่าการแก้รายใบ**

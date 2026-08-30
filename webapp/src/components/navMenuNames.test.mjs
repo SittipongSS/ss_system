@@ -50,7 +50,13 @@ test('⭐ ทุกเมนูของธุรกิจบริการต�
   const lines = SOURCE.split(/\r?\n/).filter((row) => /href: '\/service(\/|')/.test(row));
   assert.ok(lines.length >= 4, 'ควรเจอเมนูของระบบธุรกิจบริการอย่างน้อย 4 รายการ');
   for (const line of lines) {
-    assert.match(line, /visible: canViewService|visible: canEditService/, line.trim());
+    // `canAnswerServiceRequests` = แคบกว่าอีกขั้น (ฝ่าย TS เท่านั้น ไม่รวมทีมขาย SV)
+    // — คิวคำร้องเป็นที่ *ตอบ* ใบ ไม่ใช่ที่อ่านข้อมูลบริการ
+    assert.match(
+      line,
+      /visible: canViewService|visible: canEditService|visible: canAnswerServiceRequests/,
+      line.trim(),
+    );
   }
 });
 

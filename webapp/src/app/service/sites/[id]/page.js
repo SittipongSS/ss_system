@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
+import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
 import { Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -281,6 +282,9 @@ export default function ServiceSiteDetailPage({ params }) {
       <WorkspaceSection title="ข้อมูลไซต์">
         <dl className={styles.info}>
           <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
+          {/* จังหวัด (mig 0315) — ตัวตนถาวรของไซต์ ตรึงอยู่ในรหัส · คนละช่องกับที่อยู่
+              ซึ่งเป็นข้อความหน้างาน (ไซต์เก่าก่อน 0315 ยังไม่มีค่า จึงขึ้นขีด) */}
+          <div><dt>จังหวัด</dt><dd>{naText(site.province)}</dd></div>
           <div><dt>ที่อยู่</dt><dd>{naText(site.address)}</dd></div>
           <div><dt>ผู้ติดต่อ</dt><dd>{naText(site.contactName)}{site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}</dd></div>
           <div>
@@ -336,7 +340,12 @@ export default function ServiceSiteDetailPage({ params }) {
                           {zone.name}
                         </Link>
                         {zone.code ? <span className={styles.serial}> · {zone.code}</span> : null}
-                        {zone.note ? <div className={styles.muted}>{zone.note}</div> : null}
+                        {/* ชั้น/อาคาร (mig 0315) — ชั้นอยู่ในรหัสอยู่แล้วแต่ในรูปย่อ (GF/04)
+                            บรรทัดนี้อ่านออกโดยไม่ต้องแกะรหัส */}
+                        <div className={styles.muted}>
+                          {[zone.building, floorLabel(zone.floor)].filter(Boolean).join(" · ")}
+                          {zone.note ? `${zone.building || zone.floor ? " · " : ""}${zone.note}` : ""}
+                        </div>
                       </td>
                       <td className={styles.numCol}>{zoneAssets.length}</td>
                       <td><span className="ui-badge">{zone.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></td>

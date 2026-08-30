@@ -1,5 +1,6 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
+import { REQUEST_SLOT_VISIT_STATES } from '@/lib/service/visitStatus';
 import { randomUUID } from 'crypto';
 import {
   materialIdentityKey, normalizeMaterialInput, unitBasisForMaterialKind,
@@ -299,7 +300,75 @@ export async function findRequest(supabase, id) {
     .from('dept_request_pdr_targets').select('*').eq('requestId', id)
     .order('sortOrder', { ascending: true });
   if (targetError) throw targetError;
-  const withBriefs = { ...row, briefs: briefs || [], targets: targets || [] };
+  /* ⭐ พื้นที่ที่ต้องประเมิน (mig 0314) — ของ **ใบ** ไม่ใช่ของทะเบียนโซน
+     ⚠️ โหลดคู่กับบรีฟด้วยเหตุผลเดียวกัน: ทั้งจอ TS และจอ SA อ่านก้อนเดียวกัน
+     ⚠️ **โหลดเฉพาะตอนเปิดใบเดียว** — คิวโชว์จำนวนจาก `surveyZoneCount` ที่ประทับ
+        ไว้บนแถวไม่ได้ (ไม่มีคอลัมน์นั้น) ⇒ คิวไม่โชว์จำนวน แทนที่จะยิงรายใบ 100 ครั้ง */
+  /* ⚠️ **เฉพาะใบประเมิน** — ของเดิมยิงทุกใบทุกหัวข้อแล้วได้ 0 แถวเสมอ = คำสั่งส่วนเกิน
+     หนึ่งครั้งต่อการเปิดใบ ทั้งที่ 5 หัวข้อจาก 6 ไม่มีทางมีแถวนี้เลย */
+  let surveyZones = [];
+  if (row.kind === 'site_survey') {
+    const { data, error: surveyError } = await supabase
+      .from('service_survey_zones').select('*').eq('requestId', id)
+      .order('sortOrder', { ascending: true }).order('id', { ascending: true });
+    if (surveyError) throw surveyError;
+    surveyZones = data || [];
+  }
+  /* ⚠️ **รหัส ZN ต้องมาด้วย ไม่ใช่ id ดิบ** — จอโชว์ "รหัส · ชื่อ" ตามกติกาของทั้งระบบ
+     · แถวเก็บแค่ `zoneId` ซึ่งเป็น id ภายใน (SZN-…) ที่ไม่มีใครอ่านออก
+     ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงแถว — รหัสเป็นตัวชี้กลับทะเบียน (กติกาเดียวกับ AR) */
+  const surveyZoneIds = [...new Set(surveyZones.map((z) => z.zoneId).filter(Boolean))];
+  if (surveyZoneIds.length) {
+    const { data: zoneRows, error: zoneError } = await supabase
+      .from('service_zones').select('id, code').in('id', surveyZoneIds);
+    if (zoneError) throw zoneError;
+    const codeById = new Map((zoneRows || []).map((z) => [z.id, z.code]));
+    for (const row of surveyZones) row.zoneCode = row.zoneId ? codeById.get(row.zoneId) || null : null;
+  }
+  /* ป้ายสถานที่ — จอโชว์ **รหัส SS · ชื่อ** ไม่ใช่ id (กติกา entity display)
+     ⚠️ อ่านสดจากทะเบียน ไม่ประทับลงใบ — ไซต์ถูกเปลี่ยนชื่อแล้วใบต้องพาไปหาที่ถูก */
+  /* ⚠️ **โหลดเฉพาะใบประเมิน** — เช็คชนิดก่อน ไม่ใช่เช็คว่ามี `siteId` ไหม
+     หัวข้ออื่นไม่มีคอลัมน์นี้อยู่แล้ว แต่การถามชนิดทำให้อ่านออกว่าทำไมถึงโหลด */
+  let surveySite = null;
+  let surveyVisit = null;
+  if (row.kind === 'site_survey' && row.siteId) {
+    const { data } = await supabase
+      .from('service_sites').select('id, code, name, address, "contactName", "contactPhone"')
+      .eq('id', row.siteId).maybeSingle();
+    surveySite = data || null;
+    /* ⭐ **นัดของช่างที่ผูกกับใบนี้** (เฟส 2) — ใบต้องบอกได้เองว่าลงคิวไปแล้วหรือยัง
+       และนัดนั้นขึ้นตารางจริงไหม · ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวช่างอีกแท็บ
+       ⚠️ หนึ่งใบมี **นัดที่ยังมีชีวิตได้ใบเดียว** (index mig 0316) แต่มีนัดที่จบไปแล้ว
+          กี่ใบก็ได้ (ไปแล้วเข้าไม่ได้ → นัดใหม่)
+       🐞 **เอาแถวล่าสุดเฉย ๆ ไม่พอ** — นัดที่ปิดแล้วถูกเปิดกลับมาได้จากโมดัลนัด ⇒ แถวที่
+          ยังมีชีวิตเป็นแถวเก่ากว่าแถวที่ปิดได้ · จอที่เห็นแถวที่ปิดจะโชว์ปุ่ม "ลงคิวใหม่"
+          ซึ่ง server ตีกลับ 409 ทุกครั้ง (มันเห็นนัดที่ยังเปิดอยู่) ⇒ ถามนัดที่ยังมีชีวิต
+          ก่อน ไม่มีค่อยเอาแถวล่าสุดมาโชว์เป็น *ประวัติ* */
+    const visitCols = 'id, code, "scheduledDate", "startTime", status, "assigneeName"';
+    const { data: liveRows } = await supabase
+      .from('service_visits').select(visitCols)
+      .eq('requestId', id)
+      .in('status', REQUEST_SLOT_VISIT_STATES)
+      .order('createdAt', { ascending: false })
+      .limit(1);
+    surveyVisit = (liveRows || [])[0] || null;
+    if (!surveyVisit) {
+      const { data: lastRows } = await supabase
+        .from('service_visits').select(visitCols)
+        .eq('requestId', id)
+        .order('createdAt', { ascending: false })
+        .limit(1);
+      surveyVisit = (lastRows || [])[0] || null;
+    }
+  }
+  const withBriefs = {
+    ...row,
+    briefs: briefs || [],
+    targets: targets || [],
+    surveyZones,
+    surveySite,
+    surveyVisit,
+  };
 
   // ⭐ ค่าที่แบบฟอร์ม PDR เติมให้เอง (ผู้ดูแล AE · ผู้ประสานงาน AC · ผู้ติดต่อลูกค้า)
   //
