@@ -76,18 +76,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const now = new Date();
-  /* เลขที่ของสาย external ใช้รูปแบบเดียวกับสายเจนทุกประการ (รหัสลูกค้า + ชนิด + เลขรัน)
-     ต่างกันแค่ *เมื่อไรที่ออกเลข* — ตอนอนุมัติ ไม่ใช่ตอนกดออกสัญญา */
-  const { data: arRow, error: arError } = before.customerId
-    ? await supabase.from('customers').select('"arCode"').eq('id', before.customerId).maybeSingle()
-    : { data: null, error: null };
-  if (arError) return fail(arError.message, 500);
-  const pattern = contractNumberPattern(before.kind, arRow?.arCode);
-  if (!pattern) {
-    return fail(arRow?.arCode
-      ? 'ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้'
-      : 'ลูกค้าของสัญญาใบนี้ยังไม่มีรหัส AR — ตั้งรหัสในทะเบียนลูกค้าก่อนอนุมัติ', 409);
-  }
+  /* เลขที่ของสาย external ใช้รูปแบบเดียวกับสายเจนทุกประการ รวมอักษรย่อชนิดสัญญา —
+     ต่างกันแค่ *เมื่อไรที่ออกเลข* (ตอนอนุมัติ ไม่ใช่ตอนกดออกสัญญา) */
+  const pattern = contractNumberPattern(before.kind);
+  if (!pattern) return fail('ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้', 409);
   const { prefix, width } = documentNumberSlots(pattern, { date: now });
 
   const { data: approved, error: rpcError } = await supabase.rpc('approve_external_sales_contract', {

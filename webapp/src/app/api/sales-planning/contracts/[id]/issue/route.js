@@ -46,20 +46,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const company = await getPublishedCompanyProfile(supabase);
   const now = new Date();
-  /* ⭐ เลขที่เป็น `CT-AAAA-BB-XXXXX-R` (มติผู้ใช้ 2026-08-31) ⇒ ต้องรู้ **รหัส AR ของ
-     ลูกค้า** ตอนออกเลข · อ่านสดจากทะเบียน ไม่ใช่จากสำเนาบนสัญญา เพราะสัญญาเก็บแค่
-     ชื่อลูกค้า ณ วันที่ทำ ไม่ได้เก็บรหัส
-     ⚠️ ไม่มีรหัส = **ปฏิเสธ** ไม่ใช่ออกเลขที่มีช่องมั่ว ๆ ซึ่งลบทิ้งไม่ได้เมื่อออกไปแล้ว */
-  const { data: arRow, error: arError } = contract.customerId
-    ? await supabase.from('customers').select('"arCode"').eq('id', contract.customerId).maybeSingle()
-    : { data: null, error: null };
-  if (arError) return fail(arError.message, 500);
-  const pattern = contractNumberPattern(contract.kind, arRow?.arCode);
-  if (!pattern) {
-    return fail(arRow?.arCode
-      ? 'ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้'
-      : 'ลูกค้าของสัญญาใบนี้ยังไม่มีรหัส AR — ตั้งรหัสในทะเบียนลูกค้าก่อนออกสัญญา', 409);
-  }
+  /* ⭐ อักษรย่อชนิดสัญญาอยู่ในเลขที่ (มติผู้ใช้ 2026-08-31) ⇒ รูปแบบขึ้นกับ `kind`
+     ⚠️ ชนิดที่ไม่รู้จักต้อง **ปฏิเสธ** ไม่ใช่ออกเลขที่มีอักษรย่อมั่ว — เลขที่ออกไปแล้วลบไม่ได้ */
+  const pattern = contractNumberPattern(contract.kind);
+  if (!pattern) return fail('ชนิดสัญญาของใบนี้ไม่รู้จัก — ออกเลขที่ไม่ได้', 409);
   const { prefix, width } = documentNumberSlots(pattern, { date: now });
 
   /* ⭐ สองจังหวะโดยเจตนา: **ออกเลขก่อน แล้วค่อยตรึงเนื้อ**
@@ -70,7 +60,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ให้เองได้ (idempotent) ไม่ใช่ใบเสีย */
   const { data: issued, error: issueError } = await supabase.rpc('issue_sales_contract', {
     p_id: id,
-    /* เลขรันเดินยาวไม่ตัดรอบเดือน ⇒ คีย์ตัวนับใช้ `'-'` (แพตเทิร์นเดียวกับ AR/FG) */
+    /* 🔴 `YYMM` ที่โผล่ในเลขมาจาก **prefix** (เดือนที่ออกใบ) — ส่วนค่านี้คือ
+       **คีย์ตัวนับ** ซึ่งตั้ง `'-'` ให้เลขรันเดินยาวไม่ตัดรอบ · คนละเรื่องกัน */
     p_month: CONTRACT_NUMBER_MONTH,
     p_prefix: prefix,
     p_width: width,

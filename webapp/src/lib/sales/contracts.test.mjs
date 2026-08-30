@@ -12,8 +12,8 @@ import {
   canSignContract,
   contractEligibility,
   contractKindsForDeal,
+  CONTRACT_NUMBER_MONTH,
   contractKindCode,
-  customerNumberSlot,
   contractNumberPattern,
   contractInForce,
   contractSourceOf,
@@ -428,12 +428,10 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
 
 /* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────
    `CT-YYMMXXXX-R` → `CT-AA-YYMMXXXX-R` — อ่านเลขแล้วรู้ว่าสัญญาอะไรโดยไม่ต้องเปิดใบ */
-test('⭐ เลขที่สัญญา CT-AAAA-BB-XXXXX — รหัสลูกค้า + ชนิด + เลขรันเดินยาว', () => {
-  assert.equal(contractNumberPattern('scent_design', 'AR-121'), 'CT-0121-SD-{RUNNING:5}');
-  assert.equal(contractNumberPattern('manufacturing', 'AR-1020'), 'CT-1020-MF-{RUNNING:5}');
-  assert.equal(contractNumberPattern('service', 'AR-121'), 'CT-0121-SR-{RUNNING:5}');
-  /* ⭐ ไม่มี YYMM แล้ว (มติ 2026-08-31) — เลขรันเดินยาวไม่ตัดรอบเดือน */
-  assert.doesNotMatch(contractNumberPattern('service', 'AR-121'), /\{YY\}|\{MM\}/);
+test('⭐ เลขที่สัญญา CT-BB-YYMMXXXX — อักษรย่อชนิดสัญญาอยู่กลาง', () => {
+  assert.equal(contractNumberPattern('scent_design'), 'CT-SD-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('manufacturing'), 'CT-MF-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('service'), 'CT-SR-{YY}{MM}{RUNNING:4}');
   /* ⚠️ **SR ไม่ใช่ SV** — SV เป็นรหัสทีมขาย Services ที่โผล่ในชื่อดีลทุกใบ
      ใช้ซ้ำเมื่อไรคนอ่านเลขจะไม่แน่ใจว่าหมายถึงชนิดสัญญาหรือทีมที่ขาย */
   assert.equal(contractKindCode('service'), 'SR');
@@ -443,30 +441,17 @@ test('⭐ เลขที่สัญญา CT-AAAA-BB-XXXXX — รหัสล
 /* 🔴 ชนิดที่ไม่รู้จักต้องตัน ไม่ใช่ออกเลขที่มีอักษรย่อมั่ว — เลขที่ออกไปแล้วลบไม่ได้ */
 test('ชนิดที่ไม่รู้จักคืน null ไม่ใช่เดาอักษรย่อให้', () => {
   for (const bad of [null, undefined, '', 'มั่ว', 'SERVICE']) {
-    assert.equal(contractNumberPattern(bad, 'AR-121'), null, String(bad));
+    assert.equal(contractNumberPattern(bad), null, String(bad));
   }
 });
 
-/* 🔴 ลูกค้าที่ยังไม่มีรหัส AR ต้อง **ออกเลขไม่ได้** ไม่ใช่ได้ช่องว่าง/ศูนย์ล้วน —
-   เลขที่ออกไปแล้วลบทิ้งไม่ได้ (trigger กันไว้) จึงต้องตันตั้งแต่ยังไม่ออก */
-test('ลูกค้าไม่มีรหัส AR = ออกเลขไม่ได้', () => {
-  for (const bad of [null, undefined, '', 'ไม่มีเลข', 'AR-']) {
-    assert.equal(contractNumberPattern('service', bad), null, String(bad));
-  }
-});
-
-/* 🪤 รหัส AR ของจริงมีหลายทรง — ตัวแปลงต้องได้ 4 หลักเสมอ
-   ⚠️ **การกันชนไม่ได้อยู่ที่นี่** แต่อยู่ที่ทะเบียนลูกค้า (รหัสห้ามซ้ำ) —
-   วัดสด 31/08: `A-002`↔`AR-002` · `A-003`↔`AR-003` · `A-009`↔`AR-009` ·
-   `AR-005`↔`AR-K0005` ให้เลข 4 หลักเท่ากัน ⇒ มติผู้ใช้คือ **แก้รหัสลูกค้ากลุ่มนั้นก่อน** */
-test('แปลงรหัส AR เป็นช่อง 4 หลักได้ทุกทรงที่มีอยู่จริง', () => {
-  assert.equal(customerNumberSlot('AR-121'), '0121');
-  assert.equal(customerNumberSlot('AR-000'), '0000');
-  assert.equal(customerNumberSlot('AR-1020'), '1020');
-  assert.equal(customerNumberSlot('A-002'), '0002');
-  assert.equal(customerNumberSlot('AR-K0005'), '0005');
-  assert.equal(customerNumberSlot('AR-M006'), '0006');
-  assert.equal(customerNumberSlot(''), null);
+/* 🔴 **เลขรันไม่ตัดรอบเดือน** (มติผู้ใช้ 2026-08-31: "XXXX รันเรื่อยๆ")
+   จุดที่พลาดง่ายที่สุด: เลขมี `YYMM` อยู่ในตัว แต่ตัวตัดรอบคือ **คีย์ month ของตัวนับ**
+   ซึ่งเป็นคนละค่า ⇒ ต้องเป็น `'-'` ไม่ใช่ `businessMonthKey()`
+   เผลอกลับไปใช้เดือนเมื่อไร เลขจะรีเซ็ตทุกเดือนแล้วชนกับใบเดือนก่อนทันที */
+test('⭐ คีย์ตัวนับต้องเป็น "-" ไม่ใช่เดือน — เลขรันเดินยาวข้ามเดือน', () => {
+  assert.equal(CONTRACT_NUMBER_MONTH, '-');
+  assert.doesNotMatch(CONTRACT_NUMBER_MONTH, /^\d{4}$/, 'ห้ามเป็น YYMM');
 });
 
 test('ทุกชนิดที่ระบบรองรับต้องมีอักษรย่อครบ และไม่ซ้ำกัน', () => {
@@ -476,16 +461,16 @@ test('ทุกชนิดที่ระบบรองรับต้อง�
 });
 
 /* ทั้งสองเส้นที่ออกเลขต้องใช้รูปแบบรายชนิด ไม่ใช่ค่าคงที่ตัวเดียวแบบเดิม */
-test('route ออกเลขทั้งสองเส้นใช้รูปแบบตามชนิด + รหัสลูกค้า', () => {
+test('route ออกเลขทั้งสองเส้นใช้รูปแบบตามชนิด + ตัวนับไม่ตัดรอบ', () => {
   for (const rel of ['issue', 'approve-external']) {
     const route = readFileSync(
       new URL(`../../app/api/sales-planning/contracts/[id]/${rel}/route.js`, import.meta.url),
       'utf8',
     );
-    assert.match(route, /contractNumberPattern\([^,)]+, arRow\?\.arCode\)/, rel);
+    assert.match(route, /contractNumberPattern\([^,)]+\)/, rel);
     assert.doesNotMatch(route, /CONTRACT_NUMBER_PATTERN/, `${rel}: ค่าคงที่เดิมถูกถอดแล้ว`);
     // ชนิด/รหัสที่ไม่ครบต้องถูกปฏิเสธก่อนถึง RPC
-    assert.match(route, /if \(!pattern\) \{/, rel);
+    assert.match(route, /if \(!pattern\) return fail\(/, rel);
     /* 🪤 เลขรันเดินยาว ⇒ คีย์ตัวนับต้องเป็น `'-'` **ห้ามกลับไปใช้เดือน**
        เผลอเมื่อไรเลขจะตัดรอบทุกเดือนแล้วชนกับใบเดือนก่อนทันที */
     assert.match(route, /p_month: CONTRACT_NUMBER_MONTH/, rel);
