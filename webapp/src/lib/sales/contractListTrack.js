@@ -26,7 +26,11 @@ export function contractListTrack(contract = {}) {
   const status = contract?.status || 'draft';
   if (status === 'cancelled' || status === 'revised') return { closed: true, steps: [] };
 
-  const issued = status === 'awaiting_signature' || status === 'signed';
+  /* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ใบที่ SA บันทึกลงนามแล้ว
+     แต่ AE Sup ยังไม่รับรอง · ต้องนับว่า "ออกเลขแล้ว" ด้วย ไม่งั้นรางถอยกลับไปขั้นร่าง
+     🪤 ลืมเติมสถานะใหม่ตรงนี้ = ใบที่เดินหน้าไปแล้วโชว์รางย้อนหลัง โดยไม่มีเทสต์ไหนจับ */
+  const awaitingApproval = status === 'awaiting_approval';
+  const issued = status === 'awaiting_signature' || awaitingApproval || status === 'signed';
   const signed = status === 'signed';
   /* ⭐ ใบเสนอราคาที่อ้างถึงถูกปิด = **ธงแดงที่ขั้นที่ใบค้างอยู่** (มติผู้ใช้ 2026-08-22)
      ร่างถูกยกเลิกตามไปแล้ว ⇒ ที่เหลือคือใบที่ออกเลขแล้วซึ่งระบบไม่แตะ คนต้องเห็นว่ามีเรื่อง */
@@ -40,7 +44,7 @@ export function contractListTrack(contract = {}) {
      อ่านตัวเลข ⇒ เกิน 14 วันย้อมเป็นธงแดงพร้อมโน้ตจำนวนวัน (เกณฑ์เดียวกับการ์ดสรุป) */
   const waiting = daysAwaitingSignature(contract);
   const late = status === 'awaiting_signature' && Number(waiting) > SIGNATURE_LATE_DAYS;
-  const issueStep = signed
+  const issueStep = (signed || awaitingApproval)
     ? step('issue', 'รอลงนาม', 'done')
     : issued
       ? step('issue', 'รอลงนาม', late || closure ? 'bad' : 'now',
@@ -49,7 +53,11 @@ export function contractListTrack(contract = {}) {
 
   const signStep = signed
     ? step('sign', 'ลงนามแล้ว', 'done', contract?.signedDate ? null : 'ยังไม่มีวันที่ลงนาม')
-    : step('sign', 'ลงนามแล้ว', 'todo');
+    : awaitingApproval
+      /* ⭐ ขั้นนี้ **รอคนอื่น** ไม่ใช่รอฝ่ายขาย ⇒ ต้องบอกว่ารอใคร ไม่ใช่หมุดเหลืองเปล่า ๆ
+         (กติกาเดียวกับรางใบสั่งขายที่โน้ตบอกว่าติดอยู่ที่ขั้นไหนของใคร) */
+      ? step('sign', 'ลงนามแล้ว', 'now', 'รอ AE Supervisor รับรอง')
+      : step('sign', 'ลงนามแล้ว', 'todo');
 
   return { closed: false, steps: [draftStep, issueStep, signStep] };
 }

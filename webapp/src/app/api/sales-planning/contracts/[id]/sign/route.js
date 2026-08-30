@@ -39,7 +39,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (body.expiryDate && !isDate(body.expiryDate)) return badRequest('วันที่สิ้นสุดไม่ถูกต้อง');
 
   const patch = {
-    status: 'signed',
+    /* ⭐ **ไม่ใช่ `signed` แล้ว** (mig 0323 · มติผู้ใช้ 2026-08-31) — การกดนี้คือ
+       *บันทึกว่าลูกค้าเซ็นกลับมา* ซึ่งเป็นงานธุรการของฝ่ายขาย · ใบจะ "ใช้งานได้"
+       ต่อเมื่อ **AE Supervisor รับรอง** อีกที (`/approve-signed`)
+       ⇒ ของเดิมคนที่ออกสัญญากับคนที่ปิดสถานะเป็นคนเดียวกัน = ไม่มีด่านที่สองเลย */
+    status: 'awaiting_approval',
     signedDate,
     signedAt: new Date().toISOString(),
     signedFileId: body.signedFileId,
@@ -54,7 +58,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   await recordAudit({
     user, action: 'update', entityType: 'sales_contract', entityId: id,
     before, after: data,
-    summary: `บันทึกการลงนาม${contractKindLabel(data.kind)} ${data.contractNo} (${signedDate})`,
+    summary: `บันทึกการลงนาม${contractKindLabel(data.kind)} ${data.contractNo} (${signedDate}) — รอ AE Supervisor รับรอง`,
     request: req,
   });
   const { issuedHtml, ...rest } = data;

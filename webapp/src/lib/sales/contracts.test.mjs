@@ -14,12 +14,15 @@ import {
   contractKindsForDeal,
   contractKindCode,
   contractNumberPattern,
+  contractInForce,
   contractSourceOf,
   daysAwaitingSignature,
   externalApproveError,
   isContractWaitingOnMe,
   isExternalContract,
   showExternalApprove,
+  showSignedApprove,
+  signedApproveError,
 } from './contracts';
 
 const approvedQuote = { id: 'Q1', approvalStatus: 'approved', status: 'sent' };
@@ -459,4 +462,80 @@ test('route ออกเลขทั้งสองเส้นใช้รู�
     // ชนิดที่ไม่รู้จักต้องถูกปฏิเสธก่อนถึง RPC
     assert.match(route, /if \(!pattern\) return fail\(/, rel);
   }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ขั้น "หัวหน้ารับรองการลงนาม" (mig 0323 · มติผู้ใช้ 2026-08-31)
+   *"ต้องมีขั้น Approve จาก AE sup ด้วย ไม่งั้นไปทำงานต่อไม่ได้"*
+   ═══════════════════════════════════════════════════════════════════════ */
+const waiting = (extra = {}) => ({
+  status: 'awaiting_approval', source: 'generated',
+  signedDate: '2026-08-20', signedFileId: 'ATT-9', ...extra,
+});
+
+/* 🔴 ด่านที่ต้องไม่รั่ว — `/sign` ที่อยู่ก่อนหน้าใช้ `canEditSalesPlanning` ซึ่ง AE/AC
+   ผ่านหมด · ถ้าขั้นนี้ใช้ตัวเดียวกัน คนที่กดลงนามก็กดรับรองตัวเองได้ = ไม่มีด่านที่สอง */
+test('⭐ รับรองการลงนามได้เฉพาะ AE Supervisor (กับ admin)', () => {
+  assert.equal(signedApproveError(waiting(), AE_SUP), null);
+  assert.equal(signedApproveError(waiting(), ADMIN), null);
+  for (const u of [AE, AC, FN]) {
+    assert.match(signedApproveError(waiting(), u), /เฉพาะ AE Supervisor/, u.role);
+  }
+});
+
+test('รับรองได้เฉพาะใบที่บันทึกลงนามแล้ว', () => {
+  assert.match(signedApproveError(waiting({ status: 'awaiting_signature' }), AE_SUP), /ยังไม่ได้บันทึกการลงนาม/);
+  assert.match(signedApproveError(waiting({ status: 'signed' }), AE_SUP), /รับรองไปแล้ว/);
+  assert.match(signedApproveError(waiting({ status: 'draft' }), AE_SUP), /ยังไม่เข้าขั้นรับรอง/);
+});
+
+/* ⭐ ไฟล์บังคับ — ฐานบังคับด้วย CHECK `sales_contracts_awaiting_approval_signed`
+   ตรวจซ้ำที่นี่เพื่อให้ผู้ใช้ได้ข้อความไทย ไม่ใช่ 23514 ดิบ ๆ */
+test('ใบที่ไม่มีไฟล์/วันที่ลงนาม รับรองไม่ได้', () => {
+  assert.match(signedApproveError(waiting({ signedFileId: null }), AE_SUP), /ไฟล์ฉบับลงนาม/);
+  assert.match(signedApproveError(waiting({ signedDate: null }), AE_SUP), /วันที่ลงนาม/);
+});
+
+/* ⚠️ สาย external ไม่มีขั้นนี้ (มติผู้ใช้) — กดทีเดียว draft → signed */
+test('สอง "ปุ่มอนุมัติ" ไม่มีทางขึ้นพร้อมกัน — คนละสถานะกัน', () => {
+  assert.equal(showSignedApprove(waiting(), AE_SUP), true);
+  assert.equal(showExternalApprove(waiting(), AE_SUP), false);
+  const extDraft = { status: 'draft', source: 'external', externalDocKind: 'customer_po' };
+  assert.equal(showExternalApprove(extDraft, AE_SUP), true);
+  assert.equal(showSignedApprove(extDraft, AE_SUP), false);
+});
+
+/* 🪤 `signed` ยังแปลว่า "ใช้งานได้" เหมือนเดิม เพราะ mig 0323 บังคับที่ฐานแล้วว่า
+   signed ต้องมีคนรับรอง ⇒ ของที่เคยเช็ค status==='signed' ไม่ต้องแก้สักจุด */
+test('contractInForce = signed เท่านั้น — ขั้นรอรับรองยังใช้งานไม่ได้', () => {
+  assert.equal(contractInForce({ status: 'signed' }), true);
+  assert.equal(contractInForce(waiting()), false);
+  assert.equal(contractInForce({ status: 'awaiting_signature' }), false);
+});
+
+test('ยกเลิกได้ถึงขั้นรอรับรอง — ใบที่ลงนามผิดฉบับต้องมีทางออก', () => {
+  assert.equal(canCancelContract(waiting()), true);
+  assert.equal(canCancelContract({ status: 'signed' }), false);
+});
+
+/* ยามของ route รับรอง — เหตุผลเดียวกับยามของ approve-external */
+test('🔴 route รับรองการลงนามถามด่านของตัวเอง ไม่ยืม canEditSalesPlanning', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/approve-signed/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /signedApproveError\(before, user\)/);
+  assert.doesNotMatch(route, /canEditSalesPlanning\(/);
+  // กันสองคนกดชน — ต้องเขียนทับเฉพาะใบที่ยังอยู่ขั้นรับรอง
+  assert.match(route, /\.eq\('status', 'awaiting_approval'\)/);
+});
+
+/* ต้นทาง: /sign ต้องไม่ปิดเป็น signed เองอีกแล้ว */
+test('⭐ /sign หยุดที่ "รอหัวหน้ารับรอง" ไม่ปิดเป็นลงนามแล้วเอง', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/sign/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /status: 'awaiting_approval'/);
+  assert.doesNotMatch(route, /status: 'signed'/, 'สายนี้ต้องไม่มีทางลัดไป signed');
 });

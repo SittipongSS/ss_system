@@ -60,11 +60,18 @@ export const contractSourceOf = (contract) =>
 export const isExternalContract = (contract) => contractSourceOf(contract) === 'external';
 export const externalDocKindLabel = (kind) => EXTERNAL_DOC_KIND_LABELS[kind] || '—';
 
-export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'revised', 'cancelled']);
+/* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ขั้น "รอหัวหน้ารับรอง" ของ
+   สาย generated · ของเดิม SA กดบันทึกลงนามแล้วจบเลย = ไม่มีด่านที่สอง ทั้งที่
+   `signed` เป็นตัวปลดล็อกของจริงหลายอย่าง
+   ⚠️ สาย external ไม่มีขั้นนี้ (มติผู้ใช้) — เอกสารเซ็นมาจากข้างนอกแล้ว การกดของ
+   AE Sup ที่นั่นคือด่านที่สองอยู่ในตัว ⇒ draft → signed ทีเดียว
+   ⇒ **สองสายจบที่ "signed + มีคนรับรอง" เหมือนกัน** ต่างแค่จำนวนคลิก */
+export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'awaiting_approval', 'signed', 'revised', 'cancelled']);
 
 export const CONTRACT_STATUS_LABELS = Object.freeze({
   draft: 'ร่าง',
   awaiting_signature: 'รอลงนาม',
+  awaiting_approval: 'รอหัวหน้ารับรอง',
   signed: 'ลงนามแล้ว',
   revised: 'ออกฉบับแก้ไขแล้ว',
   cancelled: 'ยกเลิก',
@@ -74,6 +81,8 @@ export const CONTRACT_STATUS_LABELS = Object.freeze({
 export const CONTRACT_STATUS_TONES = Object.freeze({
   draft: 'muted',
   awaiting_signature: 'warning',
+  // โทนคนละตัวกับ "รอลงนาม" โดยตั้งใจ — สองขั้นนี้รอคนละคนทำคนละเรื่อง
+  awaiting_approval: 'info',
   signed: 'success',
   revised: 'muted',
   cancelled: 'danger',
@@ -201,7 +210,39 @@ export const canIssueContract = (contract) =>
   contract?.status === 'draft' && !isExternalContract(contract);
 export const canSignContract = (contract) =>
   contract?.status === 'awaiting_signature' && !isExternalContract(contract);
-export const canCancelContract = (contract) => ['draft', 'awaiting_signature'].includes(contract?.status);
+
+/* ── ขั้น "หัวหน้ารับรองการลงนาม" (mig 0323 · มติผู้ใช้ 2026-08-31) ──────────
+   *"ต้องมีขั้น Approve จาก AE sup ด้วย ไม่งั้นไปทำงานต่อไม่ได้"*
+   🔴 **ด่านเดียวกับอนุมัติเอกสารภายนอก และห้ามยืม `canEditSalesPlanning`** — เหตุผล
+   เดียวกันเป๊ะ: `/sign` ที่อยู่ก่อนหน้าใช้ cap นั้น ซึ่ง AE/AC ผ่านหมด ⇒ ถ้าขั้นนี้
+   ใช้ตัวเดียวกัน คนที่กดลงนามก็กดรับรองตัวเองได้ = ด่านที่สองไม่มีอยู่จริง */
+export const canApproveSignedContract = (contract) => contract?.status === 'awaiting_approval';
+
+export function signedApproveError(contract, user) {
+  if (!contract) return 'ไม่พบสัญญา';
+  if (!canApproveExternalContract(user)) return 'รับรองการลงนามได้เฉพาะ AE Supervisor';
+  if (contract.status === 'signed') return 'ใบนี้ถูกรับรองไปแล้ว';
+  if (contract.status === 'awaiting_signature') return 'ยังไม่ได้บันทึกการลงนาม — ฝ่ายขายต้องแนบไฟล์ฉบับลงนามก่อน';
+  if (contract.status !== 'awaiting_approval') return 'ใบนี้ยังไม่เข้าขั้นรับรองการลงนาม';
+  /* ฐานบังคับไว้อีกชั้นด้วย CHECK `sales_contracts_awaiting_approval_signed` —
+     ตรวจซ้ำที่นี่เพื่อให้ผู้ใช้ได้ข้อความไทย ไม่ใช่ 23514 ดิบ ๆ */
+  if (!contract.signedFileId) return 'ใบนี้ยังไม่มีไฟล์ฉบับลงนามแนบอยู่';
+  if (!contract.signedDate) return 'ใบนี้ยังไม่มีวันที่ลงนาม';
+  return null;
+}
+
+/** ปุ่มรับรองควรโผล่ไหม — เจ้าของขั้นเห็นเสมอ แล้วบอกเหตุตอนกด (GatedAction) */
+export const showSignedApprove = (contract, user) =>
+  contract?.status === 'awaiting_approval' && canApproveExternalContract(user);
+
+/** สัญญาใบนี้ "ใช้งานได้" แล้วหรือยัง — จุดเดียวที่ปลายน้ำควรถาม
+ *  ⚠️ ยังเท่ากับ `status === 'signed'` เป๊ะ ๆ เพราะ mig 0323 บังคับที่ฐานแล้วว่า
+ *  signed ต้องมีคนรับรอง ⇒ ของที่เคยเช็ค `status === 'signed'` ไม่ต้องแก้สักจุด
+ *  มีตัวนี้ไว้เพื่อให้ **ความหมาย** อยู่ที่เดียว ถ้าวันหนึ่งเงื่อนไขซับซ้อนขึ้น */
+export const contractInForce = (contract) => contract?.status === 'signed';
+/* ⚠️ ยกเลิกได้ถึงขั้น "รอหัวหน้ารับรอง" ด้วย — ใบที่ลงนามผิดฉบับต้องมีทางออก
+   ก่อนที่มันจะกลายเป็นสัญญาที่ใช้งานได้ (ใบที่ signed แล้วต้องทำบันทึกเพิ่มเติมแทน) */
+export const canCancelContract = (contract) => ['draft', 'awaiting_signature', 'awaiting_approval'].includes(contract?.status);
 /* ลบได้ตราบใดที่ยังเป็นร่าง (มติผู้ใช้ 2026-08-21: "ถ้าร่างให้ลบได้ จนกว่าจะกดออกสัญญา")
    ร่างไม่มีทางมีเลขที่อยู่แล้ว — เงื่อนไขเลขที่คงไว้เป็นเข็มขัดนิรภัยของข้อมูลเก่า */
 export const canDeleteContract = (contract) => contract?.status === 'draft' && !contract?.contractNo;

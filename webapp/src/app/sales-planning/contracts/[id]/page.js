@@ -20,6 +20,7 @@ import DateInput from "@/components/ui/DateInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { approvalPrompt } from "@/lib/approvalPrompt";
 import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard";
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
@@ -29,6 +30,7 @@ import { notifyToast } from "@/lib/feedback";
 import {
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
   externalApproveError, externalDocKindLabel, isExternalContract, showExternalApprove,
+  showSignedApprove, signedApproveError,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
@@ -58,6 +60,10 @@ export default function ContractDetailPage() {
   const [signFileId, setSignFileId] = useState("");
   /* อนุมัติเอกสารภายนอกใช้แทนสัญญา (mig 0322) — ช่วงมีผลบังคับที่นี่ ต่างจากใบ
      generated ที่กรอกทีหลังได้ เพราะ "จ่ายถึง" กับทะเบียนต่อสัญญาอ่านสองค่านี้ตรง ๆ */
+  /* โมดัลยืนยันของขั้นอนุมัติ — กติกา [[approval-confirm-modals]] (#1223):
+     ทุกการอนุมัติต้องมีโมดัลบอก **ผลลัพธ์** ไม่ใช่แค่ถาม "แน่ใจไหม" */
+  const [confirmState, setConfirmState] = useState(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [apEffective, setApEffective] = useState("");
   const [apExpiry, setApExpiry] = useState("");
@@ -167,6 +173,25 @@ export default function ContractDetailPage() {
   };
   /* ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ */
   const approveGate = contract ? externalApproveError(contract, user, approvePayload) : "ไม่พบสัญญา";
+
+  /* ── AE Sup รับรองการลงนาม (mig 0323 · มติผู้ใช้ 2026-08-31) ────────────────
+     ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ */
+  const signApproveGate = contract ? signedApproveError(contract, user) : "ไม่พบสัญญา";
+  const runConfirmed = async () => {
+    const action = confirmState?.action;
+    if (!action) return;
+    setConfirmBusy(true);
+    try {
+      const done = await action();
+      if (done !== false) setConfirmState(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  };
+
+  const submitSignApprove = async () => {
+    await act("/approve-signed", {}, "รับรองการลงนามแล้ว — สัญญาใช้งานได้");
+  };
 
   const submitApprove = async () => {
     const done = await act("/approve-external", approvePayload, "อนุมัติเอกสารใช้แทนสัญญาแล้ว");
@@ -292,6 +317,34 @@ export default function ContractDetailPage() {
                    ⚠️ โชว์เสมอกับคนที่เป็นเจ้าของขั้น แล้วบอกเหตุตอนกด (กติกา GatedAction)
                    ⚠️ นี่คือปุ่มที่ปลดล็อกด่าน "จ่ายก่อนบริการ" ของทั้งเฟส ⇒ ห้ามให้ AE/AC
                       กดได้ (เทสต์ยามล็อกไว้ที่ contracts.test.mjs) */
+                /* ⭐ รับรองการลงนาม — ด่านที่สองของสาย generated (มติผู้ใช้ 2026-08-31)
+                   ⚠️ คนละปุ่มกับ "อนุมัติเอกสารแทนสัญญา" ข้างล่างโดยตั้งใจ: อันนั้นตัดสิน
+                      ว่า *เอกสารอื่นใช้แทนสัญญาได้ไหม* อันนี้ตรวจ *ฉบับที่ลูกค้าเซ็นกลับมา*
+                      สองใบไม่มีทางขึ้นพร้อมกันเพราะอยู่คนละสถานะ */
+                {
+                  id: "approve-signed",
+                  label: "รับรองการลงนาม",
+                  kind: "approve",
+                  icon: ShieldCheck,
+                  slot: "primary",
+                  visible: showSignedApprove(contract, user),
+                  disabled: !!signApproveGate,
+                  disabledReason: signApproveGate || undefined,
+                  onClick: () => setConfirmState({
+                    ...approvalPrompt({
+                      title: "รับรองการลงนาม",
+                      subject: `${contractKindLabel(contract.kind)} ${contract.contractNo}`,
+                      irreversible: true,
+                      effects: [
+                        "**สัญญาใช้งานได้ทันที** — เปิดบันทึกเพิ่มเติมได้ และงานที่รอสัญญาใบนี้เดินต่อได้",
+                        "ชื่อคุณถูกบันทึกเป็นผู้รับรอง",
+                        "ตรวจไฟล์ฉบับลงนามที่การ์ด “ไฟล์ของสัญญา” ให้ตรงกับใบนี้ก่อนกด",
+                      ],
+                      confirmLabel: "ยืนยันรับรอง",
+                    }),
+                    action: submitSignApprove,
+                  }),
+                },
                 {
                   id: "approve-external",
                   label: "อนุมัติเอกสารแทนสัญญา",
@@ -483,16 +536,16 @@ export default function ContractDetailPage() {
         <div className="form-grid">
           <div className="form-field span-2">
             <span className="form-field-label">ไฟล์เอกสาร <span className="required-mark">*</span></span>
-            {externalFileId ? (
-              <StatusNotice tone="success" title="พร้อมอนุมัติ">
-                ใช้ไฟล์ชนิด “เอกสารที่ใช้แทนสัญญา” ที่แนบไว้ในการ์ด “ไฟล์ของสัญญา”
-              </StatusNotice>
-            ) : (
-              <StatusNotice tone="warning" title="ยังไม่มีไฟล์เอกสาร">
-                ปิดหน้าต่างนี้ แล้วแนบไฟล์ที่การ์ด “ไฟล์ของสัญญา” โดยเลือกชนิด
-                “เอกสารที่ใช้แทนสัญญา” จากนั้นกลับมากดอนุมัติอีกครั้ง
-              </StatusNotice>
-            )}
+            {/* เหตุผลเดียวกับโมดัลลงนาม — แนบตรงนี้ได้เลย ไม่ต้องไล่คนออกไปที่การ์ด */}
+            <AttachmentsPanel
+              entityType="contract"
+              entityId={contract.id}
+              canEdit={canEdit}
+              title="แนบเอกสารที่ใช้แทนสัญญา"
+              docTypes={[{ key: "external_doc", label: "เอกสารที่ใช้แทนสัญญา" }]}
+              cardColumns={1}
+              onItemsChange={handleAttachments}
+            />
           </div>
           <label className="form-field">
             <span className="form-field-label">เริ่มมีผล <span className="required-mark">*</span></span>
@@ -537,21 +590,37 @@ export default function ContractDetailPage() {
           </label>
           <div className="form-field span-2">
             <span className="form-field-label">ไฟล์ฉบับลงนาม <span className="required-mark">*</span></span>
-            {/* ⚠️ ไฟล์มาจากการ์ดไฟล์แนบ ไม่ใช่ช่องอัปโหลดของตัวเอง — ทางอัปไฟล์ที่สอง
-                จะไม่ผ่านด่านเดียวกับของเดิม · ถ้ายังไม่มี ต้องบอกว่าไปแนบที่ไหน */}
-            {signFileId ? (
-              <StatusNotice tone="success" title="พร้อมลงนาม">
-                ใช้ไฟล์ชนิด “สัญญาที่ลงนามแล้ว” ที่แนบไว้ในการ์ด “ไฟล์ของสัญญา”
-              </StatusNotice>
-            ) : (
-              <StatusNotice tone="warning" title="ยังไม่มีไฟล์ฉบับลงนาม">
-                ปิดหน้าต่างนี้ แล้วแนบไฟล์ที่การ์ด “ไฟล์ของสัญญา” โดยเลือกชนิด
-                “สัญญาที่ลงนามแล้ว” จากนั้นกลับมากดบันทึกการลงนามอีกครั้ง
-              </StatusNotice>
-            )}
+            {/* ⭐ **แนบได้ในโมดัลเลย** (มติผู้ใช้ 2026-08-31: *"ให้บังคับ ใส่ไฟล์ เลย ใน modal"*)
+                ของเดิมบอกให้ "ปิดหน้าต่างนี้ แล้วไปแนบที่การ์ด แล้วกลับมากดใหม่" ซึ่งคือ
+                การไล่คนออกจากงานที่กำลังทำอยู่ แล้วหวังว่าเขาจะเดินกลับมาถูกที่
+                ⚠️ **ยังเป็น `AttachmentsPanel` ตัวเดิม ไม่ใช่ช่องอัปโหลดตัวที่สอง** — ทางอัป
+                ไฟล์ที่เขียนใหม่จะไม่ผ่านด่าน/ขนาด/ปลายทางเดียวกับของเดิม · ที่ทำคือจำกัด
+                ชนิดให้เหลือใบเดียวแล้วยกมาวางในโมดัล ⇒ ไฟล์ที่แนบตรงนี้กับที่แนบจากการ์ด
+                เป็นของก้อนเดียวกัน (`onItemsChange` ตัวเดียวกันจึงอัปเดต `signFileId` ให้เอง) */}
+            <AttachmentsPanel
+              entityType="contract"
+              entityId={contract.id}
+              canEdit={canEdit}
+              title="แนบฉบับที่ลูกค้าเซ็นกลับมา"
+              docTypes={[{ key: "signed_contract", label: "สัญญาที่ลงนามแล้ว" }]}
+              cardColumns={1}
+              onItemsChange={handleAttachments}
+            />
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!confirmState}
+        title={confirmState?.title}
+        description={confirmState?.description}
+        detail={confirmState?.detail}
+        confirmLabel={confirmState?.confirmLabel}
+        tone={confirmState?.tone}
+        busy={confirmBusy}
+        onConfirm={runConfirmed}
+        onClose={() => { if (!confirmBusy) setConfirmState(null); }}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

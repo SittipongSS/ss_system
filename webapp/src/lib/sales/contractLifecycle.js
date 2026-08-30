@@ -20,6 +20,7 @@ import {
 const STATUS_TONE = {
   draft: "neutral",
   awaiting_signature: "warning",
+  awaiting_approval: "info",
   signed: "success",
   revised: "neutral",
   cancelled: "danger",
@@ -28,7 +29,8 @@ const STATUS_TONE = {
 const STATUS_DESCRIPTION = {
   draft: "ยังไม่ออกเลขที่ — แก้ข้อมูลในใบได้ตามต้องการ",
   awaiting_signature: "ออกเลขแล้ว เนื้อสัญญาถูกตรึง — พิมพ์ส่งลูกค้าเซ็นแล้วอัปโหลดฉบับลงนามกลับ",
-  signed: "มีไฟล์ฉบับลงนามครบแล้ว — สัญญามีผลตามวันที่ที่บันทึกไว้",
+  awaiting_approval: "มีไฟล์ฉบับลงนามแล้ว — รอ AE Supervisor รับรองก่อนสัญญาจึงใช้งานได้",
+  signed: "รับรองครบแล้ว — สัญญามีผลตามวันที่ที่บันทึกไว้",
   revised: "ถูกแทนที่ด้วยฉบับแก้ไขแล้ว — อ่านอย่างเดียว ฉบับตรึงยังพิมพ์ซ้ำได้",
   cancelled: "ยกเลิกแล้ว — เหตุผลอยู่ในใบและในประวัติ",
 };
@@ -36,6 +38,9 @@ const STATUS_DESCRIPTION = {
 const STEPS = [
   { id: "draft", label: "ร่าง", hint: "กรอกข้อมูลคู่สัญญาและเงื่อนไข", statuses: ["draft"] },
   { id: "sign", label: "รอลงนาม", hint: "พิมพ์ส่งลูกค้าเซ็น", statuses: ["awaiting_signature"] },
+  // ⭐ ขั้นรับรองของ AE Sup (mig 0323) — ต้องเป็นหมุดของตัวเองบนราง ไม่ใช่ซ่อนอยู่ใน
+  //    "รอลงนาม" ไม่งั้นคนที่รอจะไม่รู้ว่ารออะไรอยู่
+  { id: "approve", label: "รอหัวหน้ารับรอง", hint: "AE Supervisor ตรวจฉบับลงนาม", statuses: ["awaiting_approval"] },
   { id: "done", label: "ลงนามแล้ว", statuses: ["signed"] },
 ];
 
@@ -99,7 +104,7 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
         rowTone: "red",
         kind: "cancel",
         slot: "danger",
-        from: ["draft", "awaiting_signature"],
+        from: ["draft", "awaiting_signature", "awaiting_approval"],
         to: "cancelled",
         reason: "required",
         visible: () => canEdit,
