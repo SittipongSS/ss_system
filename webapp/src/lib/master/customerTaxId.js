@@ -5,22 +5,27 @@
 // ตราบใดที่ให้รหัส AR ใหม่** เลขผู้เสียภาษีคือเลขที่กรมสรรพากรออกให้ ซึ่งเป็นตัวชี้ตัว
 // นิติบุคคลจริง ๆ ตัวเดียวที่เรามี
 //
-// ⭐ มติผู้ใช้ 2026-08-30: **เลขซ้ำไม่ได้เลย ไม่แยกสาขา** — รอบ 12/08 ยอมให้เลขเดียวกัน
-// อยู่หลายใบถ้าคนละเลขสาขา (unique (taxId, branchCode), mig 0039) เพราะตอนนั้นถือว่า
-// "สาขา = ลูกค้าคนละแถว" · ตั้งแต่ mig 0202 ลูกค้าหนึ่งรายถือที่อยู่ได้หลายรายการและ
-// เลขสาขาอยู่บนที่อยู่ ⇒ การเปิดใบใหม่เพื่อสาขาไม่ใช่วิธีทำงานอีกต่อไป และเป็นทางที่
-// ทำให้บริษัทเดียวมีหลายใบจนยอดขาย/เครดิตกระจาย · สาขาใหม่ = เพิ่ม "ที่อยู่" ในใบเดิม
+// ⚠️ **ซ้ำ = เลขผู้เสียภาษี + สาขา ไม่ใช่เลขเดี่ยว ๆ** (มติผู้ใช้ 2026-08-12 ·
+// ยืนยันอีกรอบ 2026-08-30) — บริษัทเดียวมีสำนักงานใหญ่ (00000) กับสาขา (00012) เป็น
+// คนละสถานประกอบการโดยชอบ และ DB ตั้ง unique (taxId, branchCode) ไว้แบบนั้นตั้งแต่
+// mig 0039 · ถ้าบล็อกที่เลขเดี่ยว ๆ จะบล็อกการเปิดสาขาซึ่งเป็นงานปกติ จึงแยกสองระดับ:
+//
+//   สาขาเดียวกัน  = ซ้ำจริง — ตีกลับพร้อมบอกว่าไปชนกับรายไหน (DB ตีกลับอยู่แล้ว
+//                   แต่ข้อความจาก unique ไม่บอกว่าชนกับใคร คนกรอกจึงหาไม่เจอ)
+//   คนละสาขา      = เตือนบนฟอร์ม ไม่บล็อก — คนกรอกต้องเห็นว่ามีรายเดิมอยู่ เผื่อที่จริง
+//                   ตั้งใจจะแก้รายเดิม ไม่ใช่เปิดใหม่
 //
 // ── ทำไมต้องมี key ไม่ใช่เทียบสตริงตรง ๆ ──────────────────────────────────
-// คอลัมน์ `taxId` เก็บตามที่กรอก/นำเข้ามา ⇒ ในฐานจริงมีทั้ง '0105565024543',
-// '0-1055-65024-54-3' และ '105565024543' (ศูนย์นำหน้าหายตอนผ่าน Excel) ซึ่งเป็น
-// **บริษัทเดียวกัน** แต่ทั้ง `.eq('taxId', …)` และ unique index ของ DB เทียบสตริงตรง ๆ
-// จึงมองไม่เห็นว่าซ้ำ (วัดจากฐานจริง 2026-08-30: 20/496 แถวไม่ใช่ตัวเลข 13 หลักล้วน
-// และมีคู่ซ้ำที่หลุดด่านมาแล้วจริง) ⇒ ทุกการเทียบต้องผ่าน `taxIdKey` ก่อนเสมอ
+// **ทั้งสองครึ่งของคีย์เก็บตามที่กรอก/นำเข้ามา** ⇒ ในฐานจริงมี '0105565024543',
+// '0-1055-65024-54-3' และ '105565024543' (ศูนย์นำหน้าหายตอนผ่าน Excel) ปนกัน ส่วนช่อง
+// สาขามีทั้ง '00000' และ 'สำนักงานใหญ่' · `.eq(…)` และ unique index ของ DB เทียบสตริง
+// ตรง ๆ จึงมองไม่เห็นว่าซ้ำ (วัดจากฐานจริง 2026-08-30: 20/496 แถวไม่ใช่ตัวเลข 13 หลัก
+// ล้วน และมีคู่ที่หลุดด่านมาแล้ว 2 คู่ — อาเตโพเล่ · แอนตี้ฮีโร่ ทั้งคู่สาขา 00000)
+// ⇒ ทุกการเทียบต้องผ่าน `taxIdKey` + `branchKeyOf` ก่อนเสมอ
 //
 // ไม่มี import ฝั่ง server — ฟอร์มเรียกได้ตรง ๆ (แพตเทิร์นเดียวกับ masterCodes.js)
 import { primaryBillingAddress } from '@/lib/master/addresses';
-import { HEAD_OFFICE_BRANCH, normalizeBranchCode } from '@/lib/master/thaiAddress';
+import { HEAD_OFFICE_BRANCH, branchValue } from '@/lib/master/thaiAddress';
 
 export const TAX_ID_LENGTH = 13;
 
@@ -92,37 +97,67 @@ export function taxIdFormatError(value, { thaiEntity = true } = {}) {
     : `กรอกให้ครบ ${TAX_ID_LENGTH} หลัก (ตอนนี้ ${taxIdDigits(text).length} หลัก)`;
 }
 
-// สาขาที่ใช้เทียบ — ไม่ระบุ = สำนักงานใหญ่ (ความหมายเดิมของ '00000' และเป็นค่าที่
-// legacyAddressMirror เขียนลงคอลัมน์จริงเสมอ) · ตั้งแต่ 2026-08-30 สาขาไม่ใช่ส่วนหนึ่ง
-// ของคีย์ซ้ำแล้ว แต่ยังใช้บอกในข้อความว่าใบที่ไปชนเป็นสาขาไหน
-export const branchKeyOf = (value) => normalizeBranchCode(value) || HEAD_OFFICE_BRANCH;
+/**
+ * สาขาที่ใช้เทียบ — ครึ่งหลังของคีย์ซ้ำ
+ *
+ * ⚠️ ใช้ `branchValue` ไม่ใช่ `normalizeBranchCode` เปล่า ๆ: ในฐานมีทั้ง '00000',
+ * ค่าว่าง และ 'สำนักงานใหญ่' ซึ่งเป็นสาขาเดียวกันทั้งหมด — ถ้าไม่ยุบให้เหลือรูปเดียว
+ * บริษัทเดียวกันจะเปิดใบซ้ำที่สำนักงานใหญ่ได้ด้วยการพิมพ์ช่องสาขาเป็นคำแทนเลข
+ * (ชื่อสาขาที่เป็นข้อความจริง ๆ อย่าง 'แจ้งวัฒนะ' ยังคงไว้ตามเดิม — ดู thaiAddress.js)
+ */
+export const branchKeyOf = (value) => branchValue(value) || HEAD_OFFICE_BRANCH;
 
 /**
- * แถวที่ใช้เลขเดียวกัน (คีย์เดียวกัน) — ซ้ำทันทีไม่ว่าสาขาไหน
+ * แยกแถวที่เลขผู้เสียภาษีตรงกัน ออกเป็น "สาขาเดียวกัน" กับ "คนละสาขา"
  *
  * @param rows แถวลูกค้าที่ดึงมาแบบหลวม ๆ (ดู taxIdMatchFilter) — กรองจริงที่นี่
- * @param taxId เลขที่กำลังจะบันทึก · excludeId ตัวเอง (โหมดแก้) ไม่งั้นทุกใบซ้ำกับตัวเอง
+ * @param taxId เลขที่กำลังจะบันทึก · branchCode สาขาของที่อยู่ออกบิลหลัก
+ * @param excludeId ตัวเอง (โหมดแก้) — ไม่งั้นทุกใบจะรายงานว่าซ้ำกับตัวเอง
  */
+export function splitTaxIdMatches(rows, { taxId, branchCode, excludeId = null } = {}) {
+  const key = taxIdKey(taxId);
+  const branch = branchKeyOf(branchCode);
+  if (!key) return { sameBranch: [], otherBranch: [] };
+  return (rows || []).reduce((acc, row) => {
+    if (!row || row.id === excludeId) return acc;
+    if (taxIdKey(row.taxId) !== key) return acc;
+    acc[branchKeyOf(row.branchCode) === branch ? 'sameBranch' : 'otherBranch'].push(row);
+    return acc;
+  }, { sameBranch: [], otherBranch: [] });
+}
+
+/** แถวที่ใช้เลขเดียวกัน ไม่สนสาขา — ใช้ตอนที่ผู้เรียกจะแยกสาขาเอง (by-tax-id) */
 export function taxIdMatches(rows, { taxId, excludeId = null } = {}) {
   const key = taxIdKey(taxId);
   if (!key) return [];
   return (rows || []).filter((row) => row && row.id !== excludeId && taxIdKey(row.taxId) === key);
 }
 
+const labelOf = (row) => [row?.arCode, row?.name].filter(Boolean).join(' — ') || 'ลูกค้าที่มีอยู่';
+
 const nameOf = (row) => {
-  const label = [row?.arCode, row?.name].filter(Boolean).join(' — ') || 'ลูกค้าที่มีอยู่';
   const branch = branchKeyOf(row?.branchCode);
-  return branch === HEAD_OFFICE_BRANCH ? label : `${label} (สาขา ${branch})`;
+  return branch === HEAD_OFFICE_BRANCH ? labelOf(row) : `${labelOf(row)} (สาขา ${branch})`;
 };
 
-// ข้อความตีกลับตอนซ้ำ — **ต้องบอกว่าชนกับรายไหน** ไม่ใช่แค่ "มีในระบบแล้ว" (ข้อความ
-// จาก unique ของ DB บอกแค่ว่าซ้ำ คนกรอกจึงไม่รู้ว่าต้องไปแก้ใบไหน) และต้องบอกทางออก
-// ของเคสที่เจอบ่อยที่สุด: กำลังจะเปิดใบใหม่ให้ "สาขา" ของบริษัทที่มีอยู่แล้ว
-export function taxIdDuplicateError(rows) {
+// ข้อความตีกลับตอนซ้ำจริง — **ต้องบอกว่าชนกับรายไหน** ไม่ใช่แค่ "มีในระบบแล้ว"
+// (ข้อความจาก unique ของ DB บอกแค่ว่าซ้ำ คนกรอกจึงไม่รู้ว่าต้องไปแก้ใบไหน)
+export function taxIdDuplicateError(rows, { branchCode } = {}) {
   if (!rows?.length) return null;
+  const branch = branchKeyOf(branchCode);
   const others = rows.length > 1 ? ` (และอีก ${rows.length - 1} ราย)` : '';
-  return `เลขประจำตัวผู้เสียภาษีนี้มีอยู่แล้วที่ ${nameOf(rows[0])}${others}`
-    + ' — หนึ่งเลขมีได้ใบเดียว ถ้าเป็นสาขาของบริษัทเดิม ให้เพิ่มเป็นที่อยู่อีกรายการในใบเดิมแทน';
+  return `เลขประจำตัวผู้เสียภาษีนี้ใช้กับสาขา ${branch} อยู่แล้วที่ ${nameOf(rows[0])}${others}`
+    + ' — ถ้าเป็นบริษัทเดิม ให้แก้ที่รายเดิม หรือเปลี่ยนเลขสาขาของที่อยู่ออกบิล';
+}
+
+// ข้อความเตือนบนฟอร์มตอนเลขตรงแต่คนละสาขา — ไม่บล็อก
+export function taxIdOtherBranchWarning(rows) {
+  if (!rows?.length) return null;
+  // สาขาต้องขึ้นทุกแถวที่นี่ (รวมสำนักงานใหญ่) — คำเตือนนี้พูดเรื่อง "คนละสาขา" อยู่
+  const list = rows.slice(0, 3)
+    .map((row) => `${labelOf(row)} (สาขา ${branchKeyOf(row.branchCode)})`).join(' · ');
+  const more = rows.length > 3 ? ` และอีก ${rows.length - 3} ราย` : '';
+  return `เลขนี้มีลูกค้าในระบบแล้ว: ${list}${more} — บันทึกต่อได้ถ้าเป็นคนละสาขา`;
 }
 
 /**

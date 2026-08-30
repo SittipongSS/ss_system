@@ -15,7 +15,8 @@ import {
 } from '@/lib/master/masterCodes';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 import {
-  isThaiTaxEntity, taxIdDuplicateError, taxIdFormatError, taxIdKey, taxIdMatchFilter, taxIdMatches, taxIdStore,
+  branchKeyOf, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError, taxIdKey,
+  taxIdMatchFilter, taxIdStore,
 } from '@/lib/master/customerTaxId';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
@@ -375,18 +376,23 @@ export async function PATCH(request, { params }) {
     updates.addresses = addresses;
     Object.assign(updates, mirror);
   }
-  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12 · แก้ 2026-08-30) ──
-  // ต้องอยู่ **หลัง** บล็อกที่อยู่ เพราะด่านรูปแบบดูจากที่อยู่ว่าเป็นลูกค้าไทยไหม
+  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12 · ยืนยัน 2026-08-30) ──
+  // ต้องอยู่ **หลัง** บล็อกที่อยู่ เพราะสาขาที่ใช้เทียบอาจเพิ่งเปลี่ยนในใบแก้นี้เอง
+  // (แก้ที่อยู่ออกบิลจาก สนญ. ไปสาขา = ย้ายไปชนกับลูกค้าอีกรายได้) และที่อยู่ยังเป็น
+  // ตัวบอกด่านรูปแบบว่าเป็นลูกค้าไทยไหม
   //
-  // ⚠️ **เช็คเมื่อคีย์ขยับเท่านั้น** (`taxIdKey` ไม่ใช่สตริงดิบ) ด้วยสองเหตุผล:
+  // ⚠️ **เช็คเมื่อคีย์ขยับเท่านั้น** และคีย์ทั้งสองครึ่งต้องเทียบแบบ normalize แล้ว
+  // (`taxIdKey` / `branchKeyOf` ไม่ใช่สตริงดิบ) ด้วยสองเหตุผล:
   //   1. ใบที่แก้แค่ชื่อ/เบอร์ ไม่ต้องแตะฐานข้อมูลเพิ่ม
-  //   2. แถวยุคเก่าที่เก็บเลขคนละรูป ('0-1055-…' / ศูนย์นำหน้าหาย) ต้อง **แก้ต่อได้**
-  //      — ฟอร์มส่งเลขที่ถอดขีดแล้วกลับมาเสมอ ถ้าเทียบสตริงดิบจะนับเป็น "เปลี่ยนเลข"
-  //      ทุกครั้งแล้วไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนใบนั้นบันทึกไม่ได้อีกเลย
-  //      (คีย์เท่าเดิม = ปล่อยผ่าน แต่ค่าที่เขียนลงเป็นรูปที่สะอาดแล้ว)
+  //   2. แถวยุคเก่าที่เก็บคนละรูป ('0-1055-…' / ศูนย์นำหน้าหาย / สาขา 'สำนักงานใหญ่')
+  //      ต้อง **แก้ต่อได้** — ฟอร์มส่งค่าที่ normalize แล้วกลับมาเสมอ ถ้าเทียบสตริงดิบ
+  //      จะนับเป็น "เปลี่ยนเลข" ทุกครั้งแล้วไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนใบนั้น
+  //      บันทึกไม่ได้อีกเลย (คีย์เท่าเดิม = ปล่อยผ่าน แต่ค่าที่เขียนลงเป็นรูปที่สะอาดแล้ว)
   if (updates.taxId !== undefined) updates.taxId = taxIdStore(updates.taxId);
   const nextTaxId = updates.taxId !== undefined ? updates.taxId : customer.taxId;
-  const taxKeyChanged = taxIdKey(nextTaxId) !== taxIdKey(customer.taxId);
+  const nextBranch = updates.branchCode !== undefined ? updates.branchCode : customer.branchCode;
+  const taxKeyChanged = taxIdKey(nextTaxId) !== taxIdKey(customer.taxId)
+    || branchKeyOf(nextBranch) !== branchKeyOf(customer.branchCode);
   if (nextTaxId && taxKeyChanged) {
     const thaiEntity = isThaiTaxEntity(updates.addresses ?? customer.addresses);
     const taxFormatError = taxIdFormatError(nextTaxId, { thaiEntity });
@@ -394,7 +400,10 @@ export async function PATCH(request, { params }) {
     const { data: sameTax, error: taxError } = await supabase
       .from('customers').select('id, arCode, name, taxId, branchCode').or(taxIdMatchFilter(nextTaxId));
     if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
-    const taxDupError = taxIdDuplicateError(taxIdMatches(sameTax, { taxId: nextTaxId, excludeId: customer.id }));
+    const { sameBranch } = splitTaxIdMatches(sameTax, {
+      taxId: nextTaxId, branchCode: nextBranch, excludeId: customer.id,
+    });
+    const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: nextBranch });
     if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
   }
   // teams[] (0037): assigning caretaker teams is a cross-team management action —
@@ -433,7 +442,7 @@ export async function PATCH(request, { params }) {
     .single();
   if (error) {
     if (error.code === '23505') {
-      const msg = /taxId/i.test(error.message) ? 'เลขประจำตัวผู้เสียภาษีนี้มีในระบบแล้ว' : 'รหัสลูกค้านี้มีในระบบแล้ว';
+      const msg = /taxId/i.test(error.message) ? 'เลขประจำตัวผู้เสียภาษี + สาขานี้มีในระบบแล้ว' : 'รหัสลูกค้านี้มีในระบบแล้ว';
       return Response.json({ error: msg }, { status: 409 });
     }
     return Response.json({ error: error.message }, { status: 500 });

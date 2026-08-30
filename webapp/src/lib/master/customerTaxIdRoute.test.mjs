@@ -20,10 +20,10 @@ const patchRoute = codeOnly(read('../../app/api/customers/[id]/route.js'));
 const lookupRoute = codeOnly(read('../../app/api/customers/by-tax-id/route.js'));
 const form = codeOnly(read('../../components/database/CustomerForm.js'));
 
-test('ทุกด่านดึงแถวด้วย taxIdMatchFilter แล้วกรองด้วย taxIdMatches', () => {
+test('ทุกด่านดึงแถวด้วย taxIdMatchFilter แล้วกรองซ้ำด้วยคีย์', () => {
   for (const [label, src] of [['POST', createRoute], ['PATCH', patchRoute], ['by-tax-id', lookupRoute]]) {
     assert.match(src, /taxIdMatchFilter\(/, `${label} ต้องดึงแถวแบบคลุมรูปที่เก็บต่างกัน`);
-    assert.match(src, /taxIdMatches\(/, `${label} ต้องกรองซ้ำด้วยคีย์ ไม่ใช่เชื่อผลดิบ`);
+    assert.match(src, /splitTaxIdMatches\(|taxIdMatches\(/, `${label} ต้องกรองด้วยคีย์ ไม่ใช่เชื่อผลดิบ`);
   }
 });
 
@@ -33,17 +33,23 @@ test('ห้ามกลับไปเทียบ .eq สตริงดิบ
   }
 });
 
-test('สาขาไม่ใช่ส่วนหนึ่งของคีย์ซ้ำอีกแล้ว (มติผู้ใช้ 2026-08-30)', () => {
+test('คีย์ซ้ำ = เลข + สาขา — ทั้งสองครึ่งต้องเทียบแบบ normalize แล้ว', () => {
   for (const [label, src] of [['POST', createRoute], ['PATCH', patchRoute], ['ฟอร์ม', form]]) {
-    assert.doesNotMatch(src, /splitTaxIdMatches|taxIdOtherBranchWarning/, `${label} ต้องไม่แยกซ้ำตามสาขา`);
+    assert.match(src, /splitTaxIdMatches\(/, `${label} ต้องแยกซ้ำจริง/คนละสาขา`);
   }
+  // สาขาเทียบด้วย branchKeyOf ('00000' กับ 'สำนักงานใหญ่' ต้องเป็นสาขาเดียวกัน)
+  assert.match(patchRoute, /branchKeyOf\(nextBranch\)\s*!==\s*branchKeyOf\(customer\.branchCode\)/);
 });
 
 test('PATCH เช็คซ้ำเมื่อ "คีย์" ขยับ ไม่ใช่สตริงขยับ — ไม่งั้นแถวยุคเก่าแก้ไม่ได้อีกเลย', () => {
-  // ฟอร์มส่งเลขที่ถอดขีดแล้วกลับมาเสมอ ⇒ เทียบสตริงดิบจะนับว่า "เปลี่ยนเลข" ทุกครั้ง
+  // ฟอร์มส่งค่าที่ normalize แล้วกลับมาเสมอ ⇒ เทียบสตริงดิบจะนับว่า "เปลี่ยนเลข" ทุกครั้ง
   // แล้วใบนั้นไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนบันทึกอะไรไม่ได้เลย
   assert.match(patchRoute, /taxKeyChanged\s*=\s*taxIdKey\(nextTaxId\)\s*!==\s*taxIdKey\(customer\.taxId\)/);
   assert.match(patchRoute, /if\s*\(nextTaxId\s*&&\s*taxKeyChanged\)/);
+});
+
+test('ฟอร์มเตือนตอนเลขตรงแต่คนละสาขา — ไม่บล็อก', () => {
+  assert.match(form, /taxIdOtherBranchWarning\(otherBranch\)/);
 });
 
 test('เขียนลงฐานผ่าน taxIdStore เสมอ — ห้ามถอดตัวอักษรของเลขต่างชาติทิ้ง', () => {

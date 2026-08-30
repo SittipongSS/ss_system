@@ -23,9 +23,10 @@ import BrandsEditor from "@/components/database/BrandsEditor";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import PhoneInput from "@/components/ui/PhoneInput";
-import { customerAddresses } from "@/lib/master/addresses";
+import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
 import {
-  isCompleteTaxId, isThaiTaxEntity, taxIdDuplicateError, taxIdFormatError, taxIdKey, taxIdMatches,
+  isCompleteTaxId, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError,
+  taxIdKey, taxIdOtherBranchWarning,
 } from "@/lib/master/customerTaxId";
 import {
   CUSTOMER_NAME_TITLES, composeCustomerName, customerNameBranchWarning, splitCustomerName,
@@ -151,9 +152,15 @@ export default function CustomerForm({
     return () => { controller.abort(); clearTimeout(timer); };
   }, [taxKey]);
 
-  // เลขซ้ำ = ซ้ำทันทีไม่ว่าสาขาไหน (มติผู้ใช้ 2026-08-30) · ลูกค้าไทย = ที่อยู่ออกบิล
-  // หลักเลือกจังหวัดจากทะเบียนไทย ⇒ บังคับ 13 หลัก · ต่างประเทศกรอกอิสระ
-  const taxDupError = taxIdDuplicateError(taxIdMatches(taxRows, { taxId: taxKey, excludeId: selfId }));
+  // สาขาที่ใช้เทียบ = สาขาของที่อยู่ออกบิลหลักในฟอร์มนี้ (คีย์ซ้ำคือ เลขภาษี + สาขา)
+  const formBranchCode = legacyAddressMirror(form.addresses || []).branchCode;
+  const { sameBranch, otherBranch } = splitTaxIdMatches(taxRows, {
+    taxId: taxKey, branchCode: formBranchCode, excludeId: selfId,
+  });
+  const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
+  const taxWarning = taxIdOtherBranchWarning(otherBranch);
+  // ลูกค้าไทย = ที่อยู่ออกบิลหลักเลือกจังหวัดจากทะเบียนไทย ⇒ บังคับ 13 หลัก ·
+  // ต่างประเทศกรอกอิสระ (มติผู้ใช้ 2026-08-30)
   const thaiTaxEntity = isThaiTaxEntity(form.addresses || []);
   // เลขที่มีตัวอักษรอยู่แล้ว (แถวนำเข้ายุคเก่า) ต้องแก้/เก็บกลับได้เหมือนเดิม —
   // ช่อง 13 หลักจะกินตัวอักษรทิ้งเงียบ ๆ แล้วกลายเป็นเลขคนละตัวตอนกดบันทึก
@@ -375,13 +382,16 @@ export default function CustomerForm({
             ) : (
               <NationalIdInput name="taxId" value={form.taxId} onChange={(v) => onForm({ taxId: v })} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full" />
             )}
-            {/* เลขซ้ำ = บันทึกไม่ผ่านแน่นอนไม่ว่าสาขาไหน — บอกตั้งแต่ตรงนี้ว่าไปชนกับรายไหน
-                (สาขาของบริษัทเดิมเป็น "ที่อยู่" อีกรายการในใบเดิม ไม่ใช่ลูกค้าใบใหม่) */}
+            {/* ซ้ำจริง (เลขเดียวกัน + สาขาเดียวกัน) = บันทึกไม่ผ่านแน่นอน — บอกตั้งแต่ตรงนี้
+                ว่าไปชนกับรายไหน · คนละสาขา = เตือนเฉย ๆ เพราะเปิดสาขาเป็นงานปกติ */}
             {taxDupError && (
               <span className="text-[11px] text-[var(--red)] mt-1">{taxDupError}</span>
             )}
             {!taxDupError && taxFormatError && (
               <span className="text-[11px] text-[var(--amber)] mt-1">{taxFormatError}</span>
+            )}
+            {!taxDupError && !taxFormatError && taxWarning && (
+              <span className="text-[11px] text-[var(--amber)] mt-1">{taxWarning}</span>
             )}
           </div>
           <div className="form-group">

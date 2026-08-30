@@ -9,7 +9,7 @@ import {
   CODE_MODE_AUTO, arCodeError, codeModeOf, insertCustomerWithCode,
 } from '@/lib/master/masterCodes';
 import {
-  isThaiTaxEntity, taxIdDuplicateError, taxIdFormatError, taxIdMatchFilter, taxIdMatches, taxIdStore,
+  isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError, taxIdMatchFilter, taxIdStore,
 } from '@/lib/master/customerTaxId';
 import { recordAudit } from '@/lib/audit';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -170,12 +170,12 @@ export async function POST(request) {
     return Response.json({ error: 'ต้องมีที่อยู่สำหรับออกเอกสารอย่างน้อย 1 รายการ' }, { status: 400 });
   }
 
-  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12 · แก้ 2026-08-30) ──
-  // เลขซ้ำ = ตีกลับทันที **ไม่ว่าสาขาไหน** — สาขาของบริษัทเดิมเป็น "ที่อยู่" อีกรายการ
-  // ในใบเดิม ไม่ใช่ลูกค้าใบใหม่ (เหตุผลเต็มอยู่ที่ lib/master/customerTaxId.js)
-  // ⚠️ ต้องอยู่ **หลัง** บล็อกที่อยู่ เพราะด่านรูปแบบดูจากที่อยู่ว่าเป็นลูกค้าไทยไหม
-  // ⚠️ ดึงแบบหลวมด้วย taxIdMatchFilter แล้วกรองด้วย taxIdMatches — ในฐานมีเลขที่เก็บ
-  // คนละรูป (มีขีด/ศูนย์นำหน้าหาย) ซึ่ง `.eq` และ unique ของ DB มองไม่เห็นว่าซ้ำ
+  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12 · ยืนยัน 2026-08-30) ──
+  // ⚠️ ต้องเช็ค **หลัง** คำนวณ mirror.branchCode เพราะสาขาคือครึ่งหนึ่งของคีย์ซ้ำ
+  // (unique (taxId, branchCode), mig 0039) — บริษัทเดียวเปิดหลายสาขาได้โดยชอบ ·
+  // ที่อยู่ยังเป็นตัวบอกด่านรูปแบบด้วยว่าเป็นลูกค้าไทยไหม
+  // ⚠️ ดึงแบบหลวมด้วย taxIdMatchFilter แล้วกรองด้วยคีย์ — ในฐานมีเลขที่เก็บคนละรูป
+  // (มีขีด/ศูนย์นำหน้าหาย) ซึ่ง `.eq` และ unique ของ DB มองไม่เห็นว่าซ้ำ
   const taxId = taxIdStore(body.taxId);
   const taxFormatError = taxIdFormatError(taxId, { thaiEntity: isThaiTaxEntity(addresses) });
   if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
@@ -183,7 +183,8 @@ export async function POST(request) {
     const { data: sameTax, error: taxError } = await supabase
       .from('customers').select('id, arCode, name, taxId, branchCode').or(taxIdMatchFilter(taxId));
     if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
-    const taxDupError = taxIdDuplicateError(taxIdMatches(sameTax, { taxId }));
+    const { sameBranch } = splitTaxIdMatches(sameTax, { taxId, branchCode: mirror.branchCode });
+    const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: mirror.branchCode });
     if (taxDupError) return Response.json({ error: taxDupError }, { status: 409 });
   }
 
@@ -251,7 +252,7 @@ export async function POST(request) {
     // Unique violation (migration 0031): a concurrent insert beat the app-level
     // dup check above, or taxId already exists. Map to a friendly 409.
     if (error.code === '23505') {
-      const msg = /taxId/i.test(error.message) ? 'เลขประจำตัวผู้เสียภาษีนี้มีในระบบแล้ว' : 'รหัสลูกค้านี้มีในระบบแล้ว';
+      const msg = /taxId/i.test(error.message) ? 'เลขประจำตัวผู้เสียภาษี + สาขานี้มีในระบบแล้ว' : 'รหัสลูกค้านี้มีในระบบแล้ว';
       return Response.json({ error: msg }, { status: 409 });
     }
     return Response.json({ error: error.message }, { status: 500 });

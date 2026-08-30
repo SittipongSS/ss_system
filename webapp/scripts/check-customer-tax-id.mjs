@@ -4,14 +4,15 @@
 //   1. ก่อนรัน migration 0318 (unique index จะล้มถ้ายังมีเลขซ้ำ)
 //   2. ตรวจสุขภาพทะเบียนเป็นระยะ
 //
-// เทียบด้วย `taxIdKey` ตัวเดียวกับที่ฟอร์ม/API ใช้ ⇒ เห็นคู่ซ้ำที่ `.eq` และ unique
-// ของ DB มองไม่เห็น (เลขเดียวกันแต่เก็บคนละรูป: มีขีด / ศูนย์นำหน้าหายตอนผ่าน Excel)
+// เทียบด้วย `taxIdKey` + `branchKeyOf` ตัวเดียวกับที่ฟอร์ม/API ใช้ ⇒ เห็นคู่ซ้ำที่
+// `.eq` และ unique ของ DB มองไม่เห็น (เลขเดียวกันแต่เก็บคนละรูป: มีขีด / ศูนย์นำหน้า
+// หายตอนผ่าน Excel · สาขาเดียวกันแต่เขียน '00000' กับ 'สำนักงานใหญ่')
 //
 // Usage (รันจากโฟลเดอร์ webapp — loader map '@/' ไปที่ <cwd>/src):
 //   node --import ./scripts/test-loader.mjs scripts/check-customer-tax-id.mjs
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
-import { TAX_ID_LENGTH, taxIdKey } from '../src/lib/master/customerTaxId.js';
+import { TAX_ID_LENGTH, branchKeyOf, taxIdKey } from '../src/lib/master/customerTaxId.js';
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -47,20 +48,33 @@ const label = (row) => `${row.arCode || '(ไม่มีรหัส)'} ${Strin
 const withTax = rows.filter((r) => taxIdKey(r.taxId));
 console.log(`ลูกค้าทั้งหมด ${rows.length} ราย · มีเลขผู้เสียภาษี ${withTax.length} · ไม่มี ${rows.length - withTax.length}`);
 
-// ── เลขซ้ำ (เทียบด้วยคีย์) ────────────────────────────────────────────────
-const groups = new Map();
+// ── ซ้ำจริง = เลข + สาขา เทียบด้วยคีย์ทั้งสองครึ่ง ────────────────────────
+const line = (row) => `     · ${label(row)} · สาขา ${branchKeyOf(row.branchCode)}`
+  + ` · เก็บไว้เป็น "${row.taxId}" / "${row.branchCode ?? ''}"${row.isActive === false ? ' · พักใช้' : ''}`;
+
+const byPair = new Map();
+const byTax = new Map();
 for (const row of withTax) {
-  const k = taxIdKey(row.taxId);
-  groups.set(k, [...(groups.get(k) || []), row]);
+  const pair = `${taxIdKey(row.taxId)}|${branchKeyOf(row.branchCode)}`;
+  byPair.set(pair, [...(byPair.get(pair) || []), row]);
+  const tax = taxIdKey(row.taxId);
+  byTax.set(tax, [...(byTax.get(tax) || []), row]);
 }
-const duplicates = [...groups.entries()].filter(([, list]) => list.length > 1);
-console.log(`\n── เลขซ้ำ ${duplicates.length} เลข ${duplicates.length ? '(migration 0318 จะล้มจนกว่าจะเหลือ 0)' : '✓'}`);
+const duplicates = [...byPair.entries()].filter(([, list]) => list.length > 1);
+console.log(`\n── ซ้ำจริง (เลข + สาขาเดียวกัน) ${duplicates.length} คู่ ${duplicates.length ? '(migration 0318 จะล้มจนกว่าจะเหลือ 0)' : '✓'}`);
 for (const [k, list] of duplicates) {
+  console.log(`  ${k.replace('|', '  สาขา ')}`);
+  for (const row of list) console.log(line(row));
+}
+
+// เลขเดียวกันคนละสาขา = ถูกกติกา (บริษัทเดียวหลายสถานประกอบการ) — รายงานไว้เฉย ๆ
+// เพราะบางคู่เป็นการเปิดใบใหม่โดยไม่ตั้งใจแล้วบังเอิญเลขสาขาไม่ตรงกัน
+const spread = [...byTax.entries()]
+  .filter(([tax, list]) => list.length > 1 && !duplicates.some(([k]) => k.startsWith(`${tax}|`)));
+console.log(`\n── เลขเดียวกันคนละสาขา ${spread.length} เลข (ไม่บล็อก — ตรวจด้วยตาว่าตั้งใจ)`);
+for (const [k, list] of spread) {
   console.log(`  ${k}`);
-  for (const row of list) {
-    const branch = String(row.branchCode || '00000');
-    console.log(`     · ${label(row)} · สาขา ${branch} · เก็บไว้เป็น "${row.taxId}"${row.isActive === false ? ' · พักใช้' : ''}`);
-  }
+  for (const row of list) console.log(line(row));
 }
 
 // ── รูปแบบที่ต้องไล่แก้ ───────────────────────────────────────────────────
