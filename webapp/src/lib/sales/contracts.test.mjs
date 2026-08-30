@@ -1,14 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   approvedQuotationsForContract,
+  canApproveExternalContract,
   canCancelContract,
   canDeleteContract,
+  canIssueContract,
+  canSignContract,
   contractEligibility,
   contractKindsForDeal,
+  contractSourceOf,
   daysAwaitingSignature,
+  externalApproveError,
   isContractWaitingOnMe,
+  isExternalContract,
+  showExternalApprove,
 } from './contracts';
 
 const approvedQuote = { id: 'Q1', approvalStatus: 'approved', status: 'sent' };
@@ -277,4 +285,103 @@ test('บันทึกเพิ่มเติม: ร่างลบได้
   assert.equal(canIssueAddendum({ status: 'draft' }), true);
   assert.equal(canSignAddendum({ status: 'awaiting_signature' }), true);
   assert.equal(canSignAddendum({ status: 'signed' }), false);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   เอกสารภายนอกใช้แทนสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30)
+   *"3 โอเค (PO ลูกค้า / อีเมล / สัญญากระดาษเก่า/ หรืออาจมีอื่นๆ)"* + ต้องผ่าน AE Sup
+   ═══════════════════════════════════════════════════════════════════════ */
+const AE_SUP = { id: 'U-SUP', role: 'ae_supervisor' };
+const AE = { id: 'U-AE', role: 'ae' };
+const AC = { id: 'U-AC', role: 'ac' };
+const ADMIN = { id: 'U-AD', role: 'admin' };
+const FN = { id: 'U-FN', role: 'finance' };
+const ext = (extra = {}) => ({
+  status: 'draft', source: 'external', externalDocKind: 'customer_po', ...extra,
+});
+const OKAY = { signedFileId: 'ATT-1', effectiveDate: '2026-09-01', expiryDate: '2027-08-31' };
+
+/* 🔴 ด่านที่ต้องไม่รั่ว — route `/sign` ที่มีอยู่ใช้ `canEditSalesPlanning` ซึ่ง AE/AC ผ่านหมด
+   ถ้าลอกด่านนั้นมาใช้กับปุ่มนี้ตามความเคยชิน คนที่ขายงานเองจะอนุมัติเอกสารของตัวเองได้
+   = ด่าน "จ่ายก่อนบริการ" ของทั้งเฟสรั่วตั้งแต่ขั้นแรก */
+test('⭐ อนุมัติเอกสารแทนสัญญาได้เฉพาะ AE Supervisor (กับ admin)', () => {
+  assert.equal(canApproveExternalContract(AE_SUP), true);
+  assert.equal(canApproveExternalContract(ADMIN), true);
+  for (const user of [AE, AC, FN, null, {}]) {
+    assert.equal(canApproveExternalContract(user), false, JSON.stringify(user));
+  }
+  assert.match(externalApproveError(ext(), AE, OKAY), /เฉพาะ AE Supervisor/);
+  assert.match(externalApproveError(ext(), AC, OKAY), /เฉพาะ AE Supervisor/);
+  assert.equal(externalApproveError(ext(), AE_SUP, OKAY), null);
+});
+
+/* ⭐ วันมีผล/สิ้นสุดบังคับตอนอนุมัติ (ต่างจากใบ generated ที่กรอกทีหลังได้) —
+   `paidThrough` กับทะเบียนต่อสัญญา 90 วัน อ่านสองค่านี้ตรง ๆ */
+test('⭐ ต้องมีไฟล์ + วันมีผล + วันสิ้นสุด ครบถึงจะอนุมัติได้', () => {
+  assert.match(externalApproveError(ext(), AE_SUP, {}), /แนบไฟล์/);
+  assert.match(externalApproveError(ext(), AE_SUP, { signedFileId: 'A' }), /วันที่เริ่มมีผล/);
+  assert.match(
+    externalApproveError(ext(), AE_SUP, { signedFileId: 'A', effectiveDate: '2026-09-01' }),
+    /วันที่สิ้นสุด/,
+  );
+  // ช่วงกลับหัวต้องถูกจับ ไม่ใช่ปล่อยผ่านแล้วได้สัญญาที่หมดอายุก่อนเริ่ม
+  assert.match(
+    externalApproveError(ext(), AE_SUP, { ...OKAY, effectiveDate: '2027-01-01', expiryDate: '2026-01-01' }),
+    /ต้องไม่เกินวันที่สิ้นสุด/,
+  );
+});
+
+test('ใบที่ยังไม่บอกชนิดเอกสาร อนุมัติไม่ได้', () => {
+  assert.match(externalApproveError(ext({ externalDocKind: null }), AE_SUP, OKAY), /ชนิดไหน/);
+});
+
+test('อนุมัติได้เฉพาะใบร่างของสาย external', () => {
+  assert.match(externalApproveError(ext({ status: 'signed' }), AE_SUP, OKAY), /ถูกอนุมัติไปแล้ว/);
+  assert.match(externalApproveError(ext({ status: 'cancelled' }), AE_SUP, OKAY), /ยกเลิกแล้ว/);
+  // ใบที่ระบบเจนเองต้องเดินขั้นออกสัญญา/ลงนามตามปกติ ไม่ใช่ทางลัดนี้
+  assert.match(
+    externalApproveError({ status: 'draft', source: 'generated' }, AE_SUP, OKAY),
+    /เจนจากแม่แบบ/,
+  );
+});
+
+/* 🪤 ปุ่ม "ออกสัญญา" กับ "บันทึกการลงนาม" ต้องไม่ขึ้นบนใบ external —
+   ทั้งสองพาใบไปสถานะ `awaiting_signature` ซึ่งสาย external ไม่มี และไม่มีปุ่มไหนพาออกมา */
+test('🪤 ใบ external ไม่มีขั้นออกสัญญา/ลงนามแบบเดิม', () => {
+  assert.equal(canIssueContract(ext()), false);
+  assert.equal(canSignContract(ext({ status: 'awaiting_signature' })), false);
+  // ใบปกติยังเดินเส้นเดิมครบ
+  assert.equal(canIssueContract({ status: 'draft' }), true);
+  assert.equal(canSignContract({ status: 'awaiting_signature' }), true);
+});
+
+test('ใบเก่าที่ไม่มีช่อง source = ใบที่ระบบเจน ไม่ใช่ external', () => {
+  assert.equal(contractSourceOf({}), 'generated');
+  assert.equal(contractSourceOf({ source: 'มั่ว' }), 'generated', 'ค่าที่ไม่รู้จักต้องไม่กลายเป็น external');
+  assert.equal(isExternalContract({}), false);
+});
+
+/* กติกา GatedAction — เจ้าของขั้นเห็นปุ่มเสมอ คนอื่นไม่เห็น */
+test('ปุ่มโผล่เฉพาะ AE Sup บนใบ external ที่ยังเป็นร่าง', () => {
+  assert.equal(showExternalApprove(ext(), AE_SUP), true);
+  assert.equal(showExternalApprove(ext(), AE), false);
+  assert.equal(showExternalApprove(ext({ status: 'signed' }), AE_SUP), false);
+  assert.equal(showExternalApprove({ status: 'draft', source: 'generated' }, AE_SUP), false);
+});
+
+/* ── ยามของ route อนุมัติเอกสารภายนอก ───────────────────────────────────────
+   🔴 เทสต์นี้มีอยู่เพราะ **ไม่มีอะไรอื่นจับได้** — `/contracts/[id]/sign` ที่อยู่ข้าง ๆ
+   ใช้ `canEditSalesPlanning` ซึ่ง AE/AC ผ่านหมด · ถ้าใครลอกไฟล์นั้นมาแก้ต่อ ปุ่ม
+   "อนุมัติเอกสารแทนสัญญา" จะกลายเป็นปุ่มที่ AE กดของตัวเองได้ และเทสต์ตรรกะข้างบน
+   ก็ยังเขียวหมด เพราะ route ไม่ได้เรียก `externalApproveError` แล้ว */
+test('🔴 route อนุมัติเอกสารภายนอกต้องถามด่านของตัวเอง ไม่ใช่ยืม canEditSalesPlanning', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/approve-external/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /externalApproveError\(before, user,/, 'ต้องเรียกด่านตัวเดียวกับปุ่มบนจอ');
+  // จับ **การเรียกใช้** ไม่ใช่ตัวคำ — คอมเมนต์ในไฟล์อธิบายว่าทำไมถึงไม่ใช้ตัวนี้
+  assert.doesNotMatch(route, /canEditSalesPlanning\(/, 'ห้ามยืมด่านของ /sign — AE/AC จะผ่าน');
+  assert.match(route, /approve_external_sales_contract/, 'ต้องใช้ RPC ที่จบที่ signed');
+  assert.doesNotMatch(route, /rpc\('issue_sales_contract'/, 'RPC เดิมจบที่ awaiting_signature — ใบจะค้าง');
 });

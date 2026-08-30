@@ -7,7 +7,12 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import {
-  contractEligibility, contractKindLabel, isContractKind, isContractWaitingOnMe,
+  CONTRACT_SOURCES,
+  EXTERNAL_DOC_KINDS,
+  contractEligibility,
+  contractKindLabel,
+  isContractKind,
+  isContractWaitingOnMe,
   latestContractRevisions,
 } from '@/lib/sales/contracts';
 import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
@@ -71,7 +76,18 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json();
   if (!body?.dealId) return badRequest('ต้องระบุดีลของสัญญา');
   if (!isContractKind(body.kind)) return badRequest('ชนิดสัญญาไม่ถูกต้อง');
-  if (!hasContractTemplate(body.kind)) return badRequest(MISSING_TEMPLATE_NOTE);
+
+  /* ── ที่มาของสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30) ────────────────────
+     ⭐ **สาย external ข้ามด่านแม่แบบโดยเจตนา** — เหตุผลทั้งหมดที่มันมีอยู่คือใบที่
+     *ไม่มี* แม่แบบให้เจน (สัญญาบริการยังไม่มีต้นฉบับ) แต่ของจริงลูกค้าเซ็น PO/อีเมล
+     มาแล้ว ⇒ ถ้ายังบังคับ `hasContractTemplate` ทางนี้ก็ตันเหมือนเดิม ไม่มีประโยชน์
+     ⚠️ ใบ generated ยังต้องมีแม่แบบเหมือนเดิมทุกประการ — ห้ามผ่อนให้ทั้งสองสาย */
+  const source = CONTRACT_SOURCES.includes(body.source) ? body.source : 'generated';
+  const external = source === 'external';
+  if (!external && !hasContractTemplate(body.kind)) return badRequest(MISSING_TEMPLATE_NOTE);
+  if (external && !EXTERNAL_DOC_KINDS.includes(body.externalDocKind)) {
+    return badRequest('เลือกชนิดเอกสารที่ใช้แทนสัญญาก่อน');
+  }
 
   const { row: deal, response } = await loadScoped(supabase, 'sales_deals', body.dealId, user, 'edit');
   if (response) return response;
@@ -120,6 +136,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     id: genId('CTR'),
     kind: body.kind,
     status: 'draft',
+    source,
+    /* CHECK `sales_contracts_external_kind` บังคับให้ generated เป็น NULL —
+       ส่งค่าว่างมาก็ต้องเป็น null จริง ๆ ไม่ใช่ '' ไม่งั้นฐานตีกลับ 23514 */
+    externalDocKind: external ? body.externalDocKind : null,
+    externalRef: external ? (String(body.externalRef || '').trim().slice(0, 200) || null) : null,
     dealId: deal.id,
     quotationId: quotation.id,
     customerId,

@@ -23,12 +23,15 @@ import { useRouter } from "next/navigation";
 import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
-import { CONTRACT_KINDS, CONTRACT_KIND_LABELS } from "@/lib/sales/contracts";
+import {
+  CONTRACT_KINDS, CONTRACT_KIND_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
+} from "@/lib/sales/contracts";
 import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from "@/lib/sales/contractTemplates";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -50,6 +53,12 @@ export default function ContractCreateModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [kind, setKind] = useState("");
+  /* ที่มาของสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30) — ค่าตั้งต้นคือเส้นเดิมเสมอ
+     ⚠️ อย่าเดาให้เป็น external แม้ชนิดนั้นจะไม่มีแม่แบบ: "ใช้เอกสารอื่นแทนสัญญา"
+     เป็นการตัดสินใจของคน ไม่ใช่ทางหนีที่ระบบเลือกให้เพราะของขาด */
+  const [source, setSource] = useState("generated");
+  const [externalDocKind, setExternalDocKind] = useState("");
+  const [externalRef, setExternalRef] = useState("");
   const [quoteId, setQuoteId] = useState(quotationId);
   const [deals, setDeals] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -154,11 +163,19 @@ export default function ContractCreateModal({
       const res = await apiFetch("/api/sales-planning/contracts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dealId: activeDeal, kind, quotationId: quoteId || undefined }),
+        body: JSON.stringify({
+          dealId: activeDeal, kind, quotationId: quoteId || undefined,
+          source,
+          ...(source === "external"
+            ? { externalDocKind, externalRef: externalRef.trim() || undefined }
+            : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "สร้างร่างสัญญาไม่สำเร็จ");
-      notifyToast.success("สร้างร่างสัญญาแล้ว — กรอกรายละเอียดแล้วกดออกสัญญา");
+      notifyToast.success(source === "external"
+        ? "สร้างร่างแล้ว — แนบไฟล์เอกสารแล้วให้ AE Supervisor อนุมัติ"
+        : "สร้างร่างสัญญาแล้ว — กรอกรายละเอียดแล้วกดออกสัญญา");
       onCreated?.(data);
       onClose?.();
       router.push(`/sa/contracts/${data.id}`);
@@ -171,9 +188,15 @@ export default function ContractCreateModal({
 
   const dealKinds = options?.kinds || [];
   const blocked = !dealPicker && !!options && !options.ok;
-  const chosenReady = dealPicker
-    ? hasContractTemplate(kind)
-    : dealKinds.find((item) => item.kind === kind)?.ready;
+  const external = source === "external";
+  /* ⭐ **สาย external ไม่ผ่านด่านแม่แบบ** — เหตุผลทั้งหมดที่มันมีอยู่คือใบที่ไม่มีแม่แบบ
+     ให้เจน (สัญญาบริการยังไม่มีต้นฉบับ) ถ้ายังบังคับ `hasContractTemplate` ทางนี้ก็ตัน
+     เหมือนเดิม · ด่านที่เหลือ (ดีล/ใบเสนอราคาอนุมัติแล้ว) ยังต้องผ่านครบเหมือนกัน */
+  const chosenReady = external
+    ? !!kind && EXTERNAL_DOC_KINDS.includes(externalDocKind)
+    : dealPicker
+      ? hasContractTemplate(kind)
+      : dealKinds.find((item) => item.kind === kind)?.ready;
 
   /* ป้ายกดสามป้ายเสมอในโหมดเลือกเอง (มติผู้ใช้: "สัญญาเป็นป้ายกดสามป้ายก็ได้")
      ⚠️ ชนิดที่ลูกค้ารายนี้ไม่มีดีลรองรับ **ยังต้องเห็น** แต่กดไม่ได้พร้อมเหตุผล —
@@ -186,7 +209,7 @@ export default function ContractCreateModal({
         label: CONTRACT_KIND_LABELS[item],
         tone: KIND_TONE[item],
         disabled: !customerId || !usable,
-        description: !hasContractTemplate(item)
+        description: !external && !hasContractTemplate(item)
           ? MISSING_TEMPLATE_NOTE
           : !customerId
             ? "เลือกลูกค้าก่อน"
@@ -197,8 +220,9 @@ export default function ContractCreateModal({
       value: item.kind,
       label: item.label,
       tone: KIND_TONE[item.kind],
-      description: item.ready ? null : item.note,
-      disabled: !item.ready,
+      // สาย external: เหตุที่ "ยังไม่พร้อม" ของฝั่ง server คือเรื่องแม่แบบ ซึ่งไม่เกี่ยว
+      description: external ? null : (item.ready ? null : item.note),
+      disabled: external ? false : !item.ready,
     }));
 
   return (
@@ -246,6 +270,64 @@ export default function ContractCreateModal({
                 : "ยังไม่มีลูกค้าที่ออกสัญญาได้ — ต้องมีใบเสนอราคาที่อนุมัติแล้วก่อน"}
             </span>
           </label>
+        )}
+
+        {/* ── ที่มาของสัญญา — ขั้นแรกสุด (มติผู้ใช้ 2026-08-30) ────────────────
+            ⭐ ถามก่อนชนิด เพราะคำตอบเปลี่ยนความหมายของทุกช่องที่ตามมา: เส้นเจน
+              ต้องมีแม่แบบ · เส้นเอกสารภายนอกไม่ต้อง แต่ต้องบอกว่าใช้เอกสารอะไร
+            ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ (กติกาเดียวกับชนิดสัญญาข้างล่าง) */}
+        <div className="form-field span-2">
+          <span className="form-field-label">ที่มาของสัญญา <span className="required-mark">*</span></span>
+          <OptionTiles
+            ariaLabel="ที่มาของสัญญา"
+            value={source}
+            onChange={setSource}
+            disabled={busy}
+            options={[
+              {
+                value: "generated",
+                label: "ระบบเจนจากแม่แบบ",
+                tone: "blue",
+                description: "ออกเลขแล้วพิมพ์ไปเซ็น — เส้นทางปกติ",
+              },
+              {
+                value: "external",
+                label: "เอกสารภายนอกใช้แทนสัญญา",
+                tone: "amber",
+                description: "PO ลูกค้า · อีเมล · สัญญากระดาษเก่า — ต้องผ่าน AE Supervisor อนุมัติ",
+              },
+            ]}
+          />
+        </div>
+
+        {external && (
+          <>
+            <div className="form-field span-2">
+              <span className="form-field-label">ใช้เอกสารอะไรแทน <span className="required-mark">*</span></span>
+              <OptionTiles
+                ariaLabel="ชนิดเอกสารที่ใช้แทนสัญญา"
+                value={externalDocKind}
+                onChange={setExternalDocKind}
+                disabled={busy}
+                options={EXTERNAL_DOC_KINDS.map((item) => ({
+                  value: item,
+                  label: EXTERNAL_DOC_KIND_LABELS[item],
+                }))}
+              />
+            </div>
+            <label className="form-field span-2">
+              <span className="form-field-label">เลขที่/หัวข้ออ้างอิง</span>
+              <Input
+                value={externalRef}
+                onChange={(e) => setExternalRef(e.target.value)}
+                disabled={busy}
+                maxLength={200}
+                autoComplete="off"
+                placeholder="เช่น PO-2569-0142 หรือหัวข้ออีเมลที่ลูกค้ายืนยัน"
+              />
+              <span className="hint">ไฟล์เอกสารแนบที่หน้าสัญญาหลังสร้างร่าง</span>
+            </label>
+          </>
         )}
 
         <div className="form-field span-2">

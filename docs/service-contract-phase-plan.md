@@ -24,6 +24,22 @@
 5. **ด่านตัดสินราย SO และเปิดเฉพาะส่วนที่ครอบ** — ไซต์เดียวโดนหลาย SO ครอบ: จ่ายใบไหน เข้าบริการได้เฉพาะโซนใต้ใบนั้น
 6. **SO = ศูนย์กลางการทำงานของทุกฝ่าย** — *"ทุกฝ่ายทำงานในโมดูลตัวเอง เพื่อจะได้มองในทางเดียวกัน"*
    ไม่สร้างหน้าศูนย์รวมใหม่ ไม่ยุบเมนูบริการเข้าเมนูขาย · เพิ่ม toggle สายบนทะเบียน SO + ฝั่งบริการบนหน้าใบ
+   · **ยืนยันซ้ำ 2026-08-30** เมื่อผู้ใช้ทักว่า *"SO บริการที่มี 02-001 มันต้องถูกแยกออกมาด้วย
+   เพื่อให้ SA FN TS ทำงานร่วม"* — คำตอบคือ **toggle บนทะเบียนเดิม ไม่ใช่หน้าใหม่**
+
+   🔴 **แต่ข้อนี้เป็นจริงไม่ได้ตามที่เขียนไว้เดิม — วัดจากโค้ด 2026-08-30:** ไม่มี role ของฝ่าย TS
+   ตัวไหนถือ `salesplan:view` เลยสักตัว (`ts` · `ts_planner` · `ts_senior` · `ts_audit` · `ts_manager`)
+   ⇒ TS **เปิดทะเบียน SO และหน้าใบไม่ได้ทั้งหมด** เมนูไม่ขึ้น · เปิด URL ตรงก็โดนเด้ง · API 403
+   ⇒ toggle บนทะเบียนให้ผลกับ SA กับ FN เท่านั้น "สามฝ่ายมองใบเดียวกัน" ไม่เคยเป็นไปได้
+
+   ⭐ **มติเพิ่ม 2026-08-30 (ผู้ใช้เลือกเอง): TS เห็นทั้งใบเหมือน SA/FN** ⇒ เปิด `salesplan:view`
+   ให้ role ฝ่าย TS ทั้ง 5 ตัว · ผลที่ตามมาซึ่งต้องรู้ตัว:
+   - เมนูของ TS จะได้เอกสารร่วมสามชนิด (ใบเสนอราคา · ใบสั่งขาย · สัญญา) ทรงเดียวกับ FN
+     — ดีล/โครงการ/ภาพรวมไม่ขึ้น เพราะ `worksInSalesPipeline` ตัดฝ่ายที่มีบ้านของตัวเองอยู่แล้ว
+   - **TS เห็นราคาขาย ส่วนลด และยอดของลูกค้าทุกใบในระบบ ไม่ใช่แค่ใบบริการ**
+   - 🪤 **เปิด cap อย่างเดียวไม่พอ** — `salesPlanningViewScope()` ไม่รู้จัก role TS จะตกไป `'none'`
+     ⇒ เห็น **ศูนย์ใบ** ทั้งที่เมนูขึ้น (เหตุผลเดียวกับที่ `finance` ต้องมีบรรทัด `'all'` ของตัวเอง —
+     ฝ่ายที่ไม่ได้อยู่ใต้ SA ไม่มีทีมให้ scope `'team'`/`'own'` เกาะ)
 7. **เกณฑ์ "ใบไหนมีรอบบริการ"** — ดีลสาย SERVICE **และ** ใบมีบรรทัดสินค้าหมวด `02-001` อย่างน้อย 1 รายการ
    → **ทั้งใบ**นับเป็นใบมีรอบบริการ · ไม่แยกชนิดรายบรรทัด (บรรทัดอื่นจัดสรรลงโซนได้ตามเดิม)
    · ใบสาย SERVICE ที่ไม่มี 02-001 เลย = ไม่มีรอบ ไม่เข้าคิวรอบ ไม่บังคับสัญญา/งวดครอบ
@@ -201,12 +217,42 @@ max(coversTo) ของงวด status === 'confirmed'   → null ถ้าไ�
 **ตรวจรับ:** สร้าง SO บริการ → กรอกช่วงครอบ → FN รับรองงวด 1 → จ่ายถึงขึ้นถูก · ใบสายสินค้าไม่เห็นอะไรเปลี่ยน
 
 ### PR-B — สัญญาเอกสารภายนอก + ผูกกับใบ (mig M2)
-**แตะ:** `src/app/sales-planning/contracts/page.js` (โมดัลสร้าง — เพิ่มขั้น "ที่มา" บนสุด: เจนจากแม่แบบ /
-เอกสารภายนอก · แม่แบบบริการยัง null = ปุ่มเทาบอกเหตุ) · `src/app/sales-planning/contracts/[id]/page.js`
-(มุมมอง external: ไฟล์+อ้างอิง+วันที่ · ปุ่ม "อนุมัติเอกสารแทนสัญญา" เฉพาะ AE Sup + โมดัล effects) ·
-API `src/app/api/sales-planning/contracts/*` (สร้าง external · route อนุมัติใหม่ `[id]/approve-external`) ·
-หน้า SO: การ์ด/แท็บสัญญา — เลือกสัญญาของดีล (`/contracts/options` มีอยู่) → **apply ลง
-`service_zone_terms.serviceContractId` ทุก term ของใบ** (API ฝั่ง service — เพิ่มใน termsRepo)
+
+> 🔴 **แก้หลังสำรวจโค้ดจริง 2026-08-30 — ข้ออ้างเดิมของหัวข้อนี้ผิด 6 จาก 7 ข้อ**
+> (รอบ PR-A ก็ผิด 4 จุด · อย่าเชื่อ path/endpoint ในเอกสารโดยไม่เปิดไฟล์)
+>
+> | เดิมเขียนว่า | ของจริง |
+> |---|---|
+> | โมดัลสร้างอยู่ `contracts/page.js` | อยู่ `components/salesPlanning/ContractCreateModal.js` — **เป็นของกลาง มี 4 จุดเรียก** (ทะเบียนสัญญา · ดีล · ใบเสนอราคา · โครงการ) ⇒ เพิ่มขั้น "ที่มา" กระทบทั้งสี่ ต้องมีเคสตรวจโหมด `dealId` ด้วย |
+> | `[id]/document` เป็นสายอัปโหลดไฟล์ลงนาม | เป็น **GET ปั๊ม HTML สำหรับพิมพ์** ทั้งไฟล์มี `export const GET` ตัวเดียว ไม่มี POST/formData ไม่แตะ `attachments` เลย |
+> | (ไม่ได้พูดถึง) | **ท่อจริงมีอยู่แล้วและใช้ซ้ำได้ทั้งดุ้น**: `AttachmentsPanel` docType `signed_contract` → `POST /contracts/[id]/sign` ซึ่งเซ็ต `status='signed'` + `signedDate` + `signedFileId` + `effectiveDate`/`expiryDate` ให้ครบในคำขอเดียว |
+> | status มี 4 ค่า | **มี 5** — `draft · awaiting_signature · signed · revised · cancelled` (0280 เพิ่ม `revised`) · ลอก 4 ค่าไปทำตัวกรอง = ใบ revised หายจากจอ |
+> | `/contracts/options` ให้เลือกสัญญาของดีลได้ | คืน **ชนิดสัญญา + ใบเสนอราคา** ไม่ใช่รายการสัญญา · ตัวที่ใช้ได้จริงคือ `GET /contracts?dealId=` |
+> | หน้า SO เรียก options อยู่แล้ว | **หน้า SO กับ API SO ไม่มีคำว่า contract อยู่สักบรรทัดเดียว** (grep = 0) ⇒ การ์ดสัญญาคือของใหม่ทั้งก้อน |
+> | `service: null` คือเหตุที่เฟสถูกพัก | ตัวพักจริงคือ `CONTRACT_PHASE_READY` ใน `lib/service/visitGate.js` — ใส่แม่แบบแล้วด่านยังคืน parked อยู่ดี |
+> | ✅ `service_zone_terms.serviceContractId` มีแล้ว | **ข้อเดียวที่ถูก** (mig 0297 รันแล้ว) ⇒ **ห้ามเขียน ADD COLUMN ซ้ำใน M2** |
+> | ผู้อนุมัติ = ae_supervisor (มี helper ให้ใช้) | มติถูก แต่ **ไม่มี helper ด่านนี้ในระบบ ต้องเขียนใหม่** · ถ้าลอก `canEditSalesPlanning` ของ route `/sign` ตามความเคยชิน **AE/AC จะกดอนุมัติผ่าน = ด่าน "จ่ายก่อนบริการ" รั่วตั้งแต่ขั้นแรก** |
+
+**แตะ:** `src/components/salesPlanning/ContractCreateModal.js` (เพิ่มขั้น "ที่มา" บนสุด: เจนจากแม่แบบ /
+เอกสารภายนอก · แม่แบบบริการยัง null = ปุ่มเทาบอกเหตุ · **ระวัง regression 4 จุดเรียก**) ·
+`src/app/sales-planning/contracts/[id]/page.js` (มุมมอง external: ไฟล์+อ้างอิง+วันที่ · ปุ่ม
+"อนุมัติเอกสารแทนสัญญา" เฉพาะ AE Sup + โมดัล effects) ·
+API `src/app/api/sales-planning/contracts/*` (สร้าง external ต้องข้าม `MISSING_TEMPLATE_NOTE` ที่
+`route.js:74` · route อนุมัติใหม่ `[id]/approve-external` ล้อ `/sign` ที่มีอยู่ แต่**เปลี่ยนด่านเป็น AE Sup**) ·
+`src/lib/sales/contracts.js` (helper ด่านใหม่ + `source`/`externalDocKind` เข้า `EDITABLE_KEYS`) ·
+หน้า SO: การ์ดสัญญา — ดึงจาก **`GET /contracts?dealId=`** (ไม่ใช่ `/contracts/options`) → **apply ลง
+`service_zone_terms.serviceContractId` ทุก term ของใบ** (API ฝั่ง service)
+
+**🪤 กับดักของฐานที่ต้องแก้ในใบ M2 เดียวกัน** (ไม่ใช่แค่ `ADD COLUMN` 6 ตัว):
+- `sales_contracts_status_number` — status ที่ไม่ใช่ draft/cancelled **ต้องมี `contractNo`**
+- `sales_contracts_issued_complete` — `contractNo` กับ `issuedAt` ต้องมาคู่กัน
+- `sales_contracts_signed_needs_date` — `status='signed'` ต้องมี `signedDate`
+- RPC `issue_sales_contract` บังคับ `status='draft'` และ `contractNo` ว่าง ⇒ เส้น external เรียกซ้ำไม่ได้
+- เพิ่มค่า status ใหม่ต้อง `DROP CONSTRAINT` แล้ว `ADD` ชื่อเดิม (ท่าของ 0280) ไม่ใช่ `ADD CHECK` เฉย ๆ
+- 🔴 `master_row_assignments` สร้าง SET จาก `information_schema.columns` ⇒ **คีย์ที่ยังไม่มีคอลัมน์ถูกทิ้งเงียบ ไม่ error**
+  ⇒ **deploy โค้ดก่อนรัน migration = ค่าหายโดยไม่มีใครรู้** (ย้ำ: รัน M2 ก่อน deploy เสมอ)
+- `PATCH /contracts/[id]` เป็น allowlist `EDITABLE_KEYS` 7 ช่อง + `isContractEditable` = `draft` เท่านั้น
+  ⇒ ใบ external ที่อยู่ `signed` แล้วแก้ `externalRef` ไม่ได้เลย ถ้าต้องแก้ได้ ต้องขยายด่านด้วย
 **สิทธิ์:** ผู้อนุมัติ = ae_supervisor · ⚠️ อย่าใช้ `isSuperuser` เดี่ยว ๆ เป็นด่าน (บทเรียน `canConfirmPayment`)
 · admin ทำได้ทุกอย่าง (#1501 — เทสต์ยามมีอยู่)
 **กติกาวัน:** ตัวตัดสินช่วงเวลา = วันบน term · สัญญาเป็นซอง — term วันนอกซอง = เตือน ไม่บล็อก
@@ -233,7 +279,11 @@ FN รับรองงวดถัดไปแล้วนัดกลับ�
 เลือก SERVICE → คอลัมน์ สัญญา · จ่ายถึง · รอบ n/N (API list ต้องคืน line + สรุปย่อ — ระวัง `check:rowcap`/`check:columns`)
 · ฝั่ง TS: intake + ฟอร์มวางรอบ โชว์ "ขายไว้ N รอบ" + คำนวณ "ความถี่นี้จะได้ ~n นัด"
 **กติกา:** ตัวเลขเป็นข้อผูกพันอ้างอิง/กระทบยอด — **ไม่บังคับ** planGen (รอบจริงเลื่อน/งดได้)
+· **สิทธิ์ TS (มติ 2026-08-30):** `src/lib/permissions.js` — เพิ่ม `salesplan:view` ให้ role ฝ่าย TS
+ทั้ง 5 ตัว **และ** เพิ่มสาขา `'all'` ใน `salesPlanningViewScope()` ให้ฝ่าย TS (ไม่งั้นเห็นศูนย์ใบ)
+· ระวังเทสต์ยามที่ล็อกลิสต์ cap ราย role และเทสต์ที่ล็อกว่าใครเปิด `/api/sales-planning/*` ได้
 **ตรวจรับ:** ใบเข้าเกณฑ์เห็นช่อง ใบไม่เข้าไม่เห็น · toggle เปลี่ยนคอลัมน์ · ช่องค้นหามี `autoComplete="off"` (#1372)
+· สวมบท `ts_planner` แล้วเปิด `/sa/sales-orders` เห็นใบครบทุกทีม และเปิดใบรายใบได้
 
 ### PR-E — ทะเบียนต่อสัญญา + กระดิ่ง (mig M4 · อิสระ)
 **แตะ:** หน้าใหม่ `/sa/renewals` (`src/app/sales-planning/renewals/` — ตาม match pattern ของเมนู /sa/*) ·

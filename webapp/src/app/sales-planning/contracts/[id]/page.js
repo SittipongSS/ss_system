@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FileSignature, FileText, Handshake, Pencil, Printer, Trash2, X } from "lucide-react";
+import { FileSignature, FileText, Handshake, Pencil, Printer, ShieldCheck, Trash2, X } from "lucide-react";
 import SaWorkspace from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -28,6 +28,7 @@ import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
+  externalApproveError, externalDocKindLabel, isExternalContract, showExternalApprove,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
@@ -39,7 +40,11 @@ export default function ContractDetailPage() {
   const router = useRouter();
   const canView = useCan("salesplan:view");
   const canEditCap = useCan("salesplan:edit");
-  const { user } = useRole();
+  /* ⚠️ `RoleContext` ถือ **สตริงบทบาท** ไม่ใช่อ็อบเจกต์ผู้ใช้ — `const { user } = useRole()`
+     ที่เขียนไว้เดิมจึงได้ `undefined` มาตลอด (ไม่พังเพราะ `contractLifecycle` ไม่ได้ใช้
+     `user` เลยสักจุด) · ด่านอนุมัติเอกสารภายนอกอ่าน `role` จริง จึงต้องประกอบให้ถูก */
+  const role = useRole();
+  const user = useMemo(() => ({ role }), [role]);
 
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +56,13 @@ export default function ContractDetailPage() {
   const [signOpen, setSignOpen] = useState(false);
   const [signDate, setSignDate] = useState("");
   const [signFileId, setSignFileId] = useState("");
+  /* อนุมัติเอกสารภายนอกใช้แทนสัญญา (mig 0322) — ช่วงมีผลบังคับที่นี่ ต่างจากใบ
+     generated ที่กรอกทีหลังได้ เพราะ "จ่ายถึง" กับทะเบียนต่อสัญญาอ่านสองค่านี้ตรง ๆ */
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [apEffective, setApEffective] = useState("");
+  const [apExpiry, setApExpiry] = useState("");
+  const [apDocDate, setApDocDate] = useState("");
+  const [externalFileId, setExternalFileId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -147,6 +159,20 @@ export default function ContractDetailPage() {
     }
   };
 
+  const approvePayload = {
+    signedFileId: externalFileId,
+    effectiveDate: apEffective,
+    expiryDate: apExpiry,
+    signedDate: apDocDate || apEffective,
+  };
+  /* ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ */
+  const approveGate = contract ? externalApproveError(contract, user, approvePayload) : "ไม่พบสัญญา";
+
+  const submitApprove = async () => {
+    const done = await act("/approve-external", approvePayload, "อนุมัติเอกสารใช้แทนสัญญาแล้ว");
+    if (done) setApproveOpen(false);
+  };
+
   const submitSign = async () => {
     if (!signDate) { notifyToast.error("ระบุวันที่ลงนาม"); return; }
     if (!signFileId) { notifyToast.error("แนบไฟล์สัญญาที่ลงนามแล้วก่อน"); return; }
@@ -160,6 +186,9 @@ export default function ContractDetailPage() {
   const handleAttachments = useCallback((items) => {
     const signed = (items || []).find((item) => item.docType === "signed_contract");
     setSignFileId(signed?.id || "");
+    // เอกสารที่ใช้แทนสัญญาเป็นคีย์คนละตัว — ใบ external ไม่มี "สัญญาที่ลงนามแล้ว"
+    const external = (items || []).find((item) => item.docType === "external_doc");
+    setExternalFileId(external?.id || "");
   }, []);
 
   const openDocument = () => {
@@ -258,6 +287,21 @@ export default function ContractDetailPage() {
                   slot: "primary",
                   visible: canEdit && canSignContract(contract),
                   onClick: () => { setSignDate(""); setSignOpen(true); },
+                },
+                /* ⭐ อนุมัติเอกสารแทนสัญญา (มติผู้ใช้ 2026-08-30) — **เฉพาะ AE Supervisor**
+                   ⚠️ โชว์เสมอกับคนที่เป็นเจ้าของขั้น แล้วบอกเหตุตอนกด (กติกา GatedAction)
+                   ⚠️ นี่คือปุ่มที่ปลดล็อกด่าน "จ่ายก่อนบริการ" ของทั้งเฟส ⇒ ห้ามให้ AE/AC
+                      กดได้ (เทสต์ยามล็อกไว้ที่ contracts.test.mjs) */
+                {
+                  id: "approve-external",
+                  label: "อนุมัติเอกสารแทนสัญญา",
+                  kind: "approve",
+                  icon: ShieldCheck,
+                  slot: "primary",
+                  visible: showExternalApprove(contract, user),
+                  disabled: !!approveGate,
+                  disabledReason: approveGate || undefined,
+                  onClick: () => { setApDocDate(""); setApproveOpen(true); },
                 },
                 {
                   id: "edit",
@@ -413,6 +457,60 @@ export default function ContractDetailPage() {
           <Link href="/sa/contracts" className="linklike">← กลับไปทะเบียนสัญญา</Link>
         </div>
       </DetailPageLayout>
+
+      {/* ── อนุมัติเอกสารภายนอกใช้แทนสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30) ──────
+          ⭐ ใช้ `approvalPrompt` ไม่ได้เพราะขั้นนี้ **ต้องกรอกวัน** ก่อนยืนยัน (ช่วงมีผล
+            คือสิ่งที่ปลดล็อกงานบริการ) ⇒ เป็นโมดัลกรอกแบบเดียวกับกล่องลงนามข้าง ๆ
+            แต่บอกผลลัพธ์ให้ครบเหมือน approvalPrompt ในตัวเนื้อ */}
+      <Modal
+        open={approveOpen}
+        onClose={() => !busy && setApproveOpen(false)}
+        title="อนุมัติเอกสารแทนสัญญา"
+        subtitle={`ยืนยันว่า${externalDocKindLabel(contract.externalDocKind)}ฉบับที่แนบไว้ ผูกพันพอที่จะใช้แทนสัญญาได้`}
+        footer={(
+          <div className="form-actions-buttons">
+            <Button onClick={() => setApproveOpen(false)} disabled={busy}>ปิด</Button>
+            <Button variant="accent" onClick={submitApprove} disabled={busy || !!approveGate}>
+              ยืนยันอนุมัติ
+            </Button>
+          </div>
+        )}
+      >
+        <StatusNotice tone="warning" title="กดแล้วเกิดอะไรขึ้น">
+          ใบนี้จะได้เลขที่สัญญาของระบบและกลายเป็น “ลงนามแล้ว” ทันที · ชื่อคุณถูกบันทึกเป็น
+          ผู้อนุมัติ · งานบริการที่รอสัญญาใบนี้จะเดินต่อได้ตามช่วงเวลาที่ระบุด้านล่าง
+        </StatusNotice>
+        <div className="form-grid">
+          <div className="form-field span-2">
+            <span className="form-field-label">ไฟล์เอกสาร <span className="required-mark">*</span></span>
+            {externalFileId ? (
+              <StatusNotice tone="success" title="พร้อมอนุมัติ">
+                ใช้ไฟล์ชนิด “เอกสารที่ใช้แทนสัญญา” ที่แนบไว้ในการ์ด “ไฟล์ของสัญญา”
+              </StatusNotice>
+            ) : (
+              <StatusNotice tone="warning" title="ยังไม่มีไฟล์เอกสาร">
+                ปิดหน้าต่างนี้ แล้วแนบไฟล์ที่การ์ด “ไฟล์ของสัญญา” โดยเลือกชนิด
+                “เอกสารที่ใช้แทนสัญญา” จากนั้นกลับมากดอนุมัติอีกครั้ง
+              </StatusNotice>
+            )}
+          </div>
+          <label className="form-field">
+            <span className="form-field-label">เริ่มมีผล <span className="required-mark">*</span></span>
+            <DateInput value={apEffective} onChange={setApEffective} disabled={busy} />
+          </label>
+          <label className="form-field">
+            <span className="form-field-label">สิ้นสุด <span className="required-mark">*</span></span>
+            <DateInput value={apExpiry} onChange={setApExpiry} disabled={busy} />
+            <span className="hint">ทะเบียนต่อสัญญาเตือนล่วงหน้า 90 วันจากวันนี้</span>
+          </label>
+          <label className="form-field span-2">
+            <span className="form-field-label">วันที่บนเอกสาร</span>
+            <DateInput value={apDocDate} onChange={setApDocDate} disabled={busy} />
+            <span className="hint">ไม่กรอก = ใช้วันที่เริ่มมีผล</span>
+          </label>
+        </div>
+        {approveGate ? <span className="hint">{approveGate}</span> : null}
+      </Modal>
 
       {/* ⭐ ขั้นลงนามเป็น **โมดัล** (มติผู้ใช้ 2026-08-28) — เดิมเป็นการ์ดที่แทรกอยู่ท้าย
           คอลัมน์เนื้อหา ซึ่งอยู่ต่ำกว่าปุ่มที่กดหลายจอ ⇒ กดแล้วหน้าจอไม่ขยับ คนอ่านว่า
