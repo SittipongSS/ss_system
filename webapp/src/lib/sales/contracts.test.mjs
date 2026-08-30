@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  CONTRACT_KINDS,
   approvedQuotationsForContract,
   canApproveExternalContract,
   canCancelContract,
@@ -11,6 +12,8 @@ import {
   canSignContract,
   contractEligibility,
   contractKindsForDeal,
+  contractKindCode,
+  contractNumberPattern,
   contractSourceOf,
   daysAwaitingSignature,
   externalApproveError,
@@ -417,4 +420,43 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
   assert.match(modal, /disabled: [^\n]*needsTemplate/, 'ต้องกันที่ disabled ไม่ใช่แค่คำอธิบาย');
   // สาย external ต้องไม่ถูกด่านแม่แบบแตะเลย
   assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
+});
+
+/* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────
+   `CT-YYMMXXXX-R` → `CT-AA-YYMMXXXX-R` — อ่านเลขแล้วรู้ว่าสัญญาอะไรโดยไม่ต้องเปิดใบ */
+test('⭐ เลขที่สัญญาแยกรูปแบบตามชนิด — SD · MF · SR', () => {
+  assert.equal(contractNumberPattern('scent_design'), 'CT-SD-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('manufacturing'), 'CT-MF-{YY}{MM}{RUNNING:4}');
+  assert.equal(contractNumberPattern('service'), 'CT-SR-{YY}{MM}{RUNNING:4}');
+  /* ⚠️ **SR ไม่ใช่ SV** — SV เป็นรหัสทีมขาย Services ที่โผล่ในชื่อดีลทุกใบ
+     ใช้ซ้ำเมื่อไรคนอ่านเลขจะไม่แน่ใจว่าหมายถึงชนิดสัญญาหรือทีมที่ขาย */
+  assert.equal(contractKindCode('service'), 'SR');
+  assert.notEqual(contractKindCode('service'), 'SV');
+});
+
+/* 🔴 ชนิดที่ไม่รู้จักต้องตัน ไม่ใช่ออกเลขที่มีอักษรย่อมั่ว — เลขที่ออกไปแล้วลบไม่ได้ */
+test('ชนิดที่ไม่รู้จักคืน null ไม่ใช่เดาอักษรย่อให้', () => {
+  for (const bad of [null, undefined, '', 'มั่ว', 'SERVICE']) {
+    assert.equal(contractNumberPattern(bad), null, String(bad));
+  }
+});
+
+test('ทุกชนิดที่ระบบรองรับต้องมีอักษรย่อครบ และไม่ซ้ำกัน', () => {
+  const codes = CONTRACT_KINDS.map(contractKindCode);
+  assert.ok(codes.every(Boolean), 'มีชนิดที่ยังไม่มีอักษรย่อ');
+  assert.equal(new Set(codes).size, codes.length, 'อักษรย่อซ้ำกัน');
+});
+
+/* ทั้งสองเส้นที่ออกเลขต้องใช้รูปแบบรายชนิด ไม่ใช่ค่าคงที่ตัวเดียวแบบเดิม */
+test('route ออกเลขทั้งสองเส้นใช้รูปแบบตามชนิดสัญญา', () => {
+  for (const rel of ['issue', 'approve-external']) {
+    const route = readFileSync(
+      new URL(`../../app/api/sales-planning/contracts/[id]/${rel}/route.js`, import.meta.url),
+      'utf8',
+    );
+    assert.match(route, /contractNumberPattern\(/, rel);
+    assert.doesNotMatch(route, /CONTRACT_NUMBER_PATTERN/, `${rel}: ค่าคงที่เดิมถูกถอดแล้ว`);
+    // ชนิดที่ไม่รู้จักต้องถูกปฏิเสธก่อนถึง RPC
+    assert.match(route, /if \(!pattern\) return fail\(/, rel);
+  }
 });
