@@ -21,7 +21,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
 import CloseVisitSheet from "@/components/service/CloseVisitSheet";
-import { canEditService } from "@/lib/permissions";
+import { canDoFieldWork } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { VISIT_KIND_LABELS, visitTimeText, visitWarnings } from "@/lib/service/rounds";
 import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
@@ -44,7 +44,15 @@ export default function TodayPage() {
   const team = useTeam();
   const teams = useTeams();
   const department = useDepartment();
-  const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
+  /* 🐞 **ต้องเป็น `canDoFieldWork` ไม่ใช่ `canEditService`** — ตำแหน่งเจ้าหน้าที่บริการ
+     (Operation) ถือ `service:work` ไม่ใช่ `service:edit` (มติ 2026-08-30) · เช็คด้วย
+     ตัวเก่า เขาจะเห็นหน้านี้ (เมนูเปิดด้วย canDoFieldWork) แต่ **ไม่มีปุ่มเริ่มงาน/ปิดงาน
+     สักปุ่ม** ⇒ ตำแหน่งที่ตั้งใจให้ปิดงานของตัวเองได้ กลับทำงานไม่ได้ทั้งตำแหน่ง
+     ⚠️ ด่านจริงยังอยู่ที่ server รายใบ (`canWorkOwnVisit`) — หน้านี้แสดงเฉพาะงานของคนคนนั้น */
+  const canEdit = useMemo(
+    () => canDoFieldWork({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
 
   // ไปแทนกัน: หน้าจัดคิวลิงก์มาพร้อม ?user=<id> — หน้านี้กลายเป็น "งานวันนี้ของ <เจ้าหน้าที่>"
   // ไม่มี UI สลับคนบนหน้านี้เอง (มุมมองข้ามคนเป็นเรื่องของหน้าจัดคิว) · server เป็นคน

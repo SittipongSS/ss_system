@@ -117,3 +117,20 @@ test('🔴 route ของนัดต้องเรียกด่านนี
   assert.match(src, /planningFieldsIn\(body\)/);
   assert.match(src, /PLANNING_FIELD_ERROR/);
 });
+
+/* ── สองจุดที่เจอตอนซ้อม UAT (2026-08-30) ────────────────────────────────── */
+test('🔴 หน้า "งานวันนี้" ต้องเปิดปุ่มเริ่ม/ปิดงานให้เจ้าหน้าที่หน้างาน', () => {
+  /* 🐞 หน้านี้เคยเช็ค `canEditService` ⇒ ตำแหน่ง Operation เห็นเมนู (เปิดด้วย
+     canDoFieldWork) แต่ไม่มีปุ่มสักปุ่ม — ตำแหน่งที่ตั้งใจให้ปิดงานของตัวเองได้
+     กลับใช้งานไม่ได้ทั้งตำแหน่ง */
+  const src = readFileSync(new URL('../../app/service/today/page.js', import.meta.url), 'utf8');
+  assert.match(src, /canDoFieldWork\(\{ role, team, teams, department \}\)/);
+  assert.doesNotMatch(src, /canEditService\(\{ role/);
+});
+
+test('🔴 เมนู "จัดทีม" ของบริหารงานขาย ต้องไม่โผล่ให้หัวหน้าฝ่ายอื่น', () => {
+  /* 🐞 เมนูกั้นด้วย cap `team:manage` ล้วน ⇒ พอหัวหน้าฝ่าย TS ได้ cap นี้ เมนูก็โผล่
+     แล้วกดเข้าไปเจอ "ดูทีมของฝ่ายอื่นไม่ได้" ทุกครั้ง */
+  const src = readFileSync(new URL('../../components/AppLayout.js', import.meta.url), 'utf8');
+  assert.match(src, /href: '\/sa\/teams'[\s\S]{0,140}visible: \(u\) => canManageTeams\(u, 'SA'\)/);
+});

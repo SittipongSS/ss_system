@@ -7,7 +7,7 @@ import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, Clipbo
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
-import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canDoFieldWork,
+import { canUser, canManageTeams, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canDoFieldWork,
   canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
@@ -411,7 +411,11 @@ export default function AppLayout({ children }) {
         { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
         // จัดทีม (mig 0310 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
         // grant จัดทีมเองได้ ไม่ต้องรอแอดมิน · เป็น utility เพราะไม่ใช่งานรายวัน
-        { href: '/sa/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', utility: true, match: (p) => p.startsWith('/sa/teams') },
+        /* 🐞 **ต้องแคบด้วยฝ่ายด้วย ไม่ใช่ cap ล้วน** — ตั้งแต่หัวหน้าฝ่าย TS ได้
+           `team:manage` (มติ 2026-08-30) เมนูนี้โผล่ให้เขาเห็น แล้วกดเข้าไปเจอ
+           "ดูทีมของฝ่ายอื่นไม่ได้" ทุกครั้ง · เมนูที่กดแล้วเจอข้อความปฏิเสธเสมอ
+           ไม่ควรมีอยู่ — ทีมของฝ่าย TS อยู่ที่เมนู "จัดทีม" ของธุรกิจบริการ */
+        { href: '/sa/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'SA'), utility: true, match: (p) => p.startsWith('/sa/teams') },
       ],
     },
     {
