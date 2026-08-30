@@ -51,7 +51,7 @@ SA สร้าง SO (จำนวนรอบ) → ผูกสัญญา (�
 จองเลขตอนแตกแบรนช์จริงเท่านั้น** · ทุกไฟล์รันมือบน Supabase SQL Editor · เขียนแบบ additive + `IF NOT EXISTS`
 · จบไฟล์ต้องมี `NOTIFY pgrst, 'reload schema';` · CI มี `check:migrations`
 
-**M1 — ช่วงครอบของงวด** (`ALTER sales_order_installments`)
+**M1 — ช่วงครอบของงวด** (`ALTER sales_order_installments`) · ✅ **= mig 0320 · รันแล้ว 2026-08-30**
 ```sql
 ADD COLUMN "coversFrom" date, ADD COLUMN "coversTo" date;
 CHECK (coversFrom IS NULL OR coversTo IS NULL OR coversFrom <= coversTo)  -- ชื่อ constraint: sales_order_installments_covers_range
@@ -105,10 +105,14 @@ CREATE UNIQUE INDEX service_renewal_followups_open_uk ON ... ("siteId") WHERE st
 ### 3.1 `orderHasServiceRounds(order, lines)` — ใหม่ (วางที่ `src/lib/sales/serviceOrders.js`)
 ```
 สาย (orderBusinessLine จาก src/lib/service/intake.js — โครงการก่อน แล้วดีล) === 'SERVICE'
-AND lines.some(l => String(l.fgCode||'').startsWith('02-001-'))
+AND lines.some(l => categoryOf(l.fgCode) === '02-001')     // ✅ ของจริงที่ลงโค้ดแล้ว
 ```
 - อ่านจาก **fgCode snapshot บนบรรทัด** ไม่อ่าน products สด (สินค้าย้ายหมวด/ถูกลบ ใบตรึงแล้วต้องนิ่ง)
-- ใช้ร่วม: ฟอร์มสร้าง SO (โชว์คอลัมน์รอบ) · toggle สายทะเบียน · แท็บงานบริการ · คิว intake · ทะเบียนต่อสัญญา
+- ⚠️ **ห้ามใช้ `startsWith('02-001-')`** (แผนฉบับแรกเขียนไว้ผิด) — รหัสจริงเป็น `FG-AAAA-02-001-DDDDD`
+  หมวดอยู่กลางสตริง ⇒ ต้องผ่าน `categoryOf()` (lib/master/categoryOf.js) เท่านั้น
+- ใช้ร่วม: ฟอร์มสร้าง SO (โชว์คอลัมน์รอบ) · toggle สายทะเบียน · แท็บงานบริการ · ทะเบียนต่อสัญญา
+  · **คิว intake ยังไม่ได้ใช้และตั้งใจให้ต่างไปก่อน** (คิวนั้นถามคำถามกว้างกว่า: "ใบไหนต้องไปตั้งไซต์/โซน"
+  จึงตัดสินด้วยสายธุรกิจล้วน) — ถ้าจะยุบให้เหลือเกณฑ์เดียว ทำพร้อม PR-C ตอน intake รับชิปสัญญา/จ่ายถึง
 - ⚠️ `scripts/test-loader.mjs` ไม่ resolve `dir/index.js` — lib ใหม่ต้องเป็นไฟล์แบน + เทสต์ `.test.mjs` ข้างกัน
 
 ### 3.2 `paidThrough(installments)` — ใหม่ (วางที่ `src/lib/sales/paymentCoverage.js`)
@@ -118,9 +122,17 @@ max(coversTo) ของงวด status === 'confirmed'   → null ถ้าไ�
 - `reported`/`pending`/`rejected` ไม่นับ — **"แจ้งแล้ว" ไม่ปลดด่าน**
 - ฟังก์ชันคู่กัน: `overdueUnconfirmed(installments, todayIso)` = มีงวด `dueDate < วันนี้(ไทย)` ที่ยังไม่ confirmed
   · "วันนี้" ต้องมาจากนาฬิกาไทย (`businessDate` — ด่าน `check:thaitime` ใน CI จับ)
-- **SO ที่ไม่มีแถวงวดเลย** (ใบยอด 0 — ตั้งใจไม่มีงวดตั้งแต่ #1327) = ด่านเงิน**ผ่าน** (ไม่มีอะไรให้จ่าย)
+- 🔴 **`coversDate` fail-closed ทุกทาง** (แก้จากแผนฉบับแรกหลังรีวิว) — ไม่รู้วันนัด · ส่ง installments
+  มาไม่ใช่อาเรย์ (ยังไม่โหลด/ไม่ได้ select มา) · อาเรย์ว่าง · ไม่มีงวด confirmed ⇒ **ไม่ผ่าน** ทั้งหมด
+  · "ใบยอด 0 ไม่ต้องมีขั้นชำระ" **ไม่ตัดสินในไฟล์นี้** — ระบบมีตัวตัดสินตัวเดียวอยู่แล้วคือ
+  `paymentNotRequired(orderTotal)` ⇒ ผู้เรียกใน PR-C ประกอบเอง:
+  `paymentNotRequired(order.totalAmount) || coversDate(installments, visitDate)`
+  (แผนฉบับแรกให้ "ไม่มีแถว = ผ่าน" ซึ่งกว้างกว่าของจริง: ใบเก่าที่ยอดไม่เป็นศูนย์ก็ไม่มีแถวได้
+   แล้วด่านจะเปิดให้ใบที่ยังไม่เคยเก็บเงินสักบาท — fail-open ตรงข้ามกับมติทั้งเฟส)
 - default แบ่งช่วง: **ปุ่ม "แบ่งช่วงอัตโนมัติ"** แบ่ง [effectiveDate..expiryDate ของสัญญาที่ผูก] เท่า ๆ กันตามจำนวนงวด
-  — เป็นปุ่ม explicit ห้าม auto-fill เงียบ (กฎฟอร์ม: ไม่มีค่าตั้งต้นให้สิ่งที่เป็นการตัดสินใจ) · ยังไม่ผูกสัญญา = ปุ่มเทาบอกเหตุ
+  — เป็นปุ่ม explicit ห้าม auto-fill เงียบ (กฎฟอร์ม: ไม่มีค่าตั้งต้นให้สิ่งที่เป็นการตัดสินใจ)
+  · **ปุ่มยกไป PR-B** (มติผู้ใช้ 2026-08-30) เพราะ PR-A ยังไม่มีสัญญาให้ผูก จึงไม่มีช่วงให้แบ่ง
+    ตัวคำนวณ `splitCoverageEvenly` เขียน+เทสต์ไว้แล้วใน `paymentCoverage.js` รอเสียบอย่างเดียว
 - ช่วงซ้อน/เว้นระหว่างงวด = เตือนบนจอ ไม่บล็อก (แผนชำระจริงมี 29 รูปแบบ)
 
 ### 3.3 ปลดด่าน ①② ใน `src/lib/service/visitGate.js`
@@ -151,7 +163,8 @@ max(coversTo) ของงวด status === 'confirmed'   → null ถ้าไ�
 ## 4. งานราย PR
 
 ### PR-A — ช่วงครอบงวด + จ่ายถึง (mig M1) · **โค้ดเสร็จแล้ว รอ merge**
-> แบรนช์ `claude/payment-coverage` (worktree `ss_system-service`) · **mig 0320 ยังไม่ได้รันบนฐาน**
+> แบรนช์ `claude/payment-coverage` (worktree `ss_system-service`) · **mig 0320 รันบน Supabase แล้ว 2026-08-30**
+> (ยืนยันแล้ว: คอลัมน์ขึ้นครบ · PostgREST เห็นคอลัมน์ = schema cache รีโหลดแล้ว) ⇒ deploy โค้ดได้
 >
 > **สิ่งที่แก้จากแผนหลังไปอ่านโค้ดจริง — แผนเดิมผิด 4 จุด:**
 > 1. `/finance/payments` **ไม่ได้ใช้ `SalesOrderPaymentPanel`** — เขียน `<table>` เองในหน้า
