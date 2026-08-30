@@ -10,7 +10,7 @@ import { TableScroll } from "@/components/ui/Table";
 import { Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight,
   FolderKanban, MessageCircleQuestion, Search, Tag, User, Users,
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -149,8 +149,14 @@ export default function RequestQueuePanel({
   const filterCount = requestFilterCount(filters);
   // ⚠️ ตัวเลือกในแผงกรองสร้างจาก `rows` (ทั้งก้อนก่อนกรอง) ไม่ใช่ `visibleRows` —
   // ไม่งั้นพอเลือก "RD" แล้วตัวเลือก "PC" หายจากแผง = ยกเลิกตัวเลือกตัวเองไม่ได้
+  /* ⚠️ **ไม่มีหมวด "ฝ่ายที่ขอไป" ในแผงนี้แล้ว** (มติผู้ใช้ 2026-08-30) — คิวรวม
+     (`/requests`) ยกฝ่ายขึ้นไปเป็น **ปุ่มสลับที่เห็นได้บนแถวขอบเขต** เพราะเป็นคำถาม
+     ที่ถามทุกวันและมีคำตอบอย่างมาก 4 ตัว · ปล่อยไว้ที่นี่ด้วยจะได้ตัวคุมมิติเดียวกัน
+     สองที่ ที่ตัดกันเองได้ (ปุ่มเลือก RD · แผงติ๊ก PC ⇒ ตารางว่างโดยไม่มีอะไรบอก)
+     ⚠️ คิวรายฝ่าย (`/rd/requests` · `/finance/requests` · `/service/requests`) ไม่เสีย
+     อะไร — ที่นั่นทุกใบเป็นฝ่ายเดียวกันอยู่แล้ว หมวดนี้จึงมีตัวเลือกเดียวมาตลอด
+     ⚠️ **จัดกลุ่มตามฝ่ายยังอยู่** (`REQUEST_GROUP_OPTIONS`) — คนละแกนกับการกรอง */
   const facetGroups = useMemo(() => [
-    { key: "dept", label: "ฝ่ายที่ขอไป", icon: Building2 },
     { key: "kind", label: "ชนิดคำร้อง", icon: Tag },
     { key: "customer", label: "ลูกค้า", icon: Users },
     { key: "project", label: "โครงการ", icon: FolderKanban },
