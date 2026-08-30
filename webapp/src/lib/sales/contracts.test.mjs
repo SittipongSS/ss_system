@@ -411,7 +411,10 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
     new URL('../../components/salesPlanning/ContractCreateModal.js', import.meta.url),
     'utf8',
   );
-  assert.match(modal, /disabled: !customerId \|\| !usable \|\| \(!external && !hasContractTemplate\(item\)\)/);
+  /* ⚠️ ยึด **เจตนา** ไม่ใช่รูปประโยค — เคยปักนิพจน์ตรงตัวแล้วเทสต์แตกตอนยกออกมา
+     เป็นตัวแปร `needsTemplate` ทั้งที่พฤติกรรมเหมือนเดิมเป๊ะ */
+  assert.match(modal, /const needsTemplate = !external && !hasContractTemplate\(item\);/);
+  assert.match(modal, /disabled: [^\n]*needsTemplate/, 'ต้องกันที่ disabled ไม่ใช่แค่คำอธิบาย');
   // สาย external ต้องไม่ถูกด่านแม่แบบแตะเลย
   assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
 });

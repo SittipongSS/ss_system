@@ -25,6 +25,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
+import FormZone from "@/components/ui/FormZone";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -201,24 +202,30 @@ export default function ContractCreateModal({
   /* ป้ายกดสามป้ายเสมอในโหมดเลือกเอง (มติผู้ใช้: "สัญญาเป็นป้ายกดสามป้ายก็ได้")
      ⚠️ ชนิดที่ลูกค้ารายนี้ไม่มีดีลรองรับ **ยังต้องเห็น** แต่กดไม่ได้พร้อมเหตุผล —
         ซ่อนทิ้งแล้วคนจะไม่รู้ว่ามันมีอยู่ และไม่รู้ว่าต้องไปทำอะไรมาก่อน */
+  /* ⚠️ **ทุกแผ่นต้องมีคำอธิบายเสมอ ห้ามปล่อย null** — แผ่นในกริดเดียวกันสูงเท่ากัน
+     (`grid-auto-rows: 1fr`) แต่ถ้าแผ่นหนึ่งไม่มีบรรทัดคำอธิบาย ป้ายชื่อของมันจะลอย
+     อยู่คนละระดับกับเพื่อน (ผู้ใช้ทักจากจอจริง 2026-08-31: แผ่นที่กดได้ป้ายลอยกลาง
+     ขณะที่แผ่นเทาป้ายชิดบน) · กติกาเดียวกับที่ `.option-groups` จองไว้สองบรรทัด
+     ⚠️ เหตุผลบนแผ่นเทาต้อง **สั้นและต่างกัน** — ของเดิมยาวเท่ากันสองแผ่นจนอ่านเหมือน
+     สาเหตุเดียวกัน ทั้งที่ "ไม่มีต้นฉบับ" กับ "ไม่มีดีล" แก้คนละทาง */
   const kindTiles = dealPicker
     ? CONTRACT_KINDS.map((item) => {
-      const usable = dealsOfCustomer.some((deal) => (deal.kinds || []).includes(item));
+      const usable = dealsOfCustomer.filter((deal) => (deal.kinds || []).includes(item)).length;
+      /* ความพร้อมของแม่แบบเป็นเรื่องของ **ที่มา** ที่เลือกไว้ข้างบน ไม่ใช่ของชนิดสัญญา
+         ⇒ สาย external ข้ามด่านนี้ · สายเจนยังต้องมีต้นฉบับเหมือนเดิม */
+      const needsTemplate = !external && !hasContractTemplate(item);
       return {
         value: item,
         label: CONTRACT_KIND_LABELS[item],
         tone: KIND_TONE[item],
-        /* ⚠️ **ความพร้อมของแม่แบบต้องอยู่ในเงื่อนไข disabled ด้วย ไม่ใช่แค่คำอธิบาย** —
-           ตั้งแต่ `/contracts/options` เลิกกรอง `kinds` ด้วยแม่แบบ (แก้บั๊กที่มันฆ่า
-           เส้น external ทั้งเส้น) ชนิดที่ยังไม่มีต้นฉบับจะ "ใช้ได้" ในสายตาของ `usable`
-           ⇒ ถ้าไม่กันตรงนี้ คนเลือกที่มา "ระบบเจนจากแม่แบบ" จะกดป้ายสัญญาบริการได้
-           แล้วไปเจอปุ่มสร้างที่ตายอยู่โดยไม่รู้ว่าทำไม */
-        disabled: !customerId || !usable || (!external && !hasContractTemplate(item)),
-        description: !external && !hasContractTemplate(item)
-          ? MISSING_TEMPLATE_NOTE
+        disabled: !customerId || !usable || needsTemplate,
+        description: needsTemplate
+          ? "ยังไม่มีต้นฉบับในระบบ — เลือกที่มาเป็นเอกสารภายนอกแทนได้"
           : !customerId
             ? "เลือกลูกค้าก่อน"
-            : usable ? null : "ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญาชนิดนี้ได้",
+            : usable
+              ? `${usable} ดีลของลูกค้ารายนี้รองรับ`
+              : "ลูกค้ารายนี้ไม่มีดีลที่รองรับ",
       };
     })
     : dealKinds.map((item) => ({
@@ -226,7 +233,9 @@ export default function ContractCreateModal({
       label: item.label,
       tone: KIND_TONE[item.kind],
       // สาย external: เหตุที่ "ยังไม่พร้อม" ของฝั่ง server คือเรื่องแม่แบบ ซึ่งไม่เกี่ยว
-      description: external ? null : (item.ready ? null : item.note),
+      description: external
+        ? "ใช้เอกสารภายนอกแทนได้"
+        : (item.ready ? "ออกจากแม่แบบได้" : item.note),
       disabled: external ? false : !item.ready,
     }));
 
@@ -254,7 +263,18 @@ export default function ContractCreateModal({
         <StatusNotice tone="warning" title="ยังออกสัญญาจากดีลนี้ไม่ได้">{error || options?.reason}</StatusNotice>
       )}
 
+      {/* ── สามโซนตามลำดับที่คนคิด (docs/form-design-rules §1) ────────────────
+          "ออกให้ใคร" → "สัญญาอะไร มาจากไหน" → "อ้างอิงจากงานไหน"
+          ⚠️ โซนขึ้นเฉพาะโหมดเลือกเอง — เปิดจากในดีลเหลือ 2–3 ช่อง การใส่หัวโซน
+             ให้ของที่มีช่องเดียวใต้หัวคือพิธีที่ไม่ช่วยอะไร (กติกาใน `ui/FormZone`)
+          ⚠️ **คอลัมน์เดียวโดยตั้งใจ ห้ามยัด `.cols-2`** — กติกาทั่วไปคือฟอร์มไม่ควร
+             เต็มแถวทุกช่อง (docs/form-design-rules §5) แต่ที่นี่ทุกช่องเป็นตัวเลือกที่
+             **ป้ายยาวจริง** · วัดบนจอ 2026-08-31: โมดัลกว้าง 560px ⇒ สองคอลัมน์เหลือ
+             ที่ให้ข้อความ 243px ขณะที่ป้ายดีลจริงต้องการ 450px และป้ายใบเสนอราคา 289px
+             ⇒ จับคู่เมื่อไรได้ "DL-26080386 · SV_บริษัท สยาม…" ตัดกลางทั้งสองช่อง
+             ซึ่งแย่กว่าฟอร์มยาว · สิ่งที่ทำให้ฟอร์มสั้นลงจริงคือหัวโซนกับคำอธิบายที่สั้นลง */}
       <div className="form-grid">
+        {dealPicker && <FormZone title="ออกสัญญาให้ใคร" className="col-span-2" />}
         {dealPicker && (
           <label className="form-field span-2">
             <span className="form-field-label">ลูกค้า <span className="required-mark">*</span></span>
@@ -277,10 +297,13 @@ export default function ContractCreateModal({
           </label>
         )}
 
-        {/* ── ที่มาของสัญญา — ขั้นแรกสุด (มติผู้ใช้ 2026-08-30) ────────────────
-            ⭐ ถามก่อนชนิด เพราะคำตอบเปลี่ยนความหมายของทุกช่องที่ตามมา: เส้นเจน
-              ต้องมีแม่แบบ · เส้นเอกสารภายนอกไม่ต้อง แต่ต้องบอกว่าใช้เอกสารอะไร
-            ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ (กติกาเดียวกับชนิดสัญญาข้างล่าง) */}
+        {dealPicker && <FormZone title="สัญญาอะไร มาจากไหน" className="col-span-2" />}
+
+        {/* ── ที่มาของสัญญา — ถามก่อนชนิด (มติผู้ใช้ 2026-08-30) ────────────────
+            ⭐ เป็น "ตัวกำหนดบริบท" ตาม docs/form-design-rules §1 ข้อ 1: คำตอบ
+              เปลี่ยน **ชุดตัวเลือก** ของชนิดสัญญาข้างล่าง (เจนต้องมีแม่แบบ ·
+              เอกสารภายนอกไม่ต้อง) ⇒ ต้องถามก่อน ไม่ใช่ถามทีหลังแล้วชนิดเด้ง
+            ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ */}
         <div className="form-field span-2">
           <span className="form-field-label">ที่มาของสัญญา <span className="required-mark">*</span></span>
           <OptionTiles
@@ -299,12 +322,31 @@ export default function ContractCreateModal({
                 value: "external",
                 label: "เอกสารภายนอกใช้แทนสัญญา",
                 tone: "amber",
-                description: "PO ลูกค้า · อีเมล · สัญญากระดาษเก่า — ต้องผ่าน AE Supervisor อนุมัติ",
+                description: "PO · อีเมล · สัญญากระดาษเก่า — ต้องผ่าน AE Supervisor",
               },
             ]}
           />
         </div>
 
+        <div className="form-field span-2">
+          <span className="form-field-label">ชนิดสัญญา <span className="required-mark">*</span></span>
+          <OptionTiles
+            ariaLabel="ชนิดสัญญา"
+            value={kind}
+            onChange={setKind}
+            disabled={busy}
+            options={kindTiles}
+          />
+          {!dealPicker && !dealKinds.length && !loading
+            ? <span className="hint">ดีลนี้ยังไม่มีชนิดสัญญาที่ออกได้</span>
+            : null}
+        </div>
+
+        {/* ⚠️ **บล็อกนี้อยู่ใต้ "ชนิดสัญญา" โดยตั้งใจ ไม่ใช่ใต้ "ที่มา" ทันที** —
+            กติกาคือช่องที่โผล่ตามเงื่อนไขต้องอยู่ใต้ตัวที่ทำให้มันโผล่ (§1 ข้อ 3)
+            ซึ่งยังจริงอยู่ · แต่ถ้าแทรกคั่นกลางระหว่างสองคำถามที่คนอ่านคู่กัน
+            (ที่มา ↔ ชนิด) การกดสลับที่มาจะดันแผ่นชนิดสัญญาลงไป ~200px ใต้มือ
+            คนที่กำลังจะจิ้มต่อ — อาการ "ฟอร์มเปลี่ยนรูปใต้มือ" ที่หัวไฟล์เตือนไว้เอง */}
         {external && (
           <>
             <div className="form-field span-2">
@@ -330,24 +372,12 @@ export default function ContractCreateModal({
                 autoComplete="off"
                 placeholder="เช่น PO-2569-0142 หรือหัวข้ออีเมลที่ลูกค้ายืนยัน"
               />
-              <span className="hint">ไฟล์เอกสารแนบที่หน้าสัญญาหลังสร้างร่าง</span>
+              <span className="hint">ตัวไฟล์แนบทีหลังที่หน้าสัญญา — ยังไม่ต้องมีตอนนี้</span>
             </label>
           </>
         )}
 
-        <div className="form-field span-2">
-          <span className="form-field-label">ชนิดสัญญา <span className="required-mark">*</span></span>
-          <OptionTiles
-            ariaLabel="ชนิดสัญญา"
-            value={kind}
-            onChange={setKind}
-            disabled={busy}
-            options={kindTiles}
-          />
-          {!dealPicker && !dealKinds.length && !loading
-            ? <span className="hint">ดีลนี้ยังไม่มีชนิดสัญญาที่ออกได้</span>
-            : null}
-        </div>
+        {dealPicker && <FormZone title="อ้างอิงจากงานไหน" className="col-span-2" />}
 
         {dealPicker && (
           <label className="form-field span-2">
@@ -367,10 +397,10 @@ export default function ContractCreateModal({
             />
             <span className="hint">
               {!customerId || !kind
-                ? "เลือกลูกค้าและชนิดสัญญาก่อน แล้วดีลที่เกี่ยวข้องจะขึ้นให้เลือก"
+                ? "เลือกลูกค้าและชนิดสัญญาก่อน"
                 : dealChoices.length
-                  ? `${dealChoices.length} ดีลของลูกค้ารายนี้ที่ออกสัญญาชนิดนี้ได้`
-                  : "ลูกค้ารายนี้ยังไม่มีดีลที่ออกสัญญาชนิดนี้ได้"}
+                  ? `${dealChoices.length} ดีลที่ออกสัญญาชนิดนี้ได้`
+                  : "ไม่มีดีลที่ออกสัญญาชนิดนี้ได้"}
             </span>
           </label>
         )}
@@ -391,7 +421,7 @@ export default function ContractCreateModal({
               ? "กำลังโหลดใบเสนอราคาของดีลนี้…"
               : activeDeal
                 ? "แสดงเฉพาะใบที่อนุมัติแล้วและยังมีผล"
-                : "เลือกดีลก่อน แล้วใบเสนอราคาของดีลนั้นจะขึ้นให้เลือก"}
+                : "เลือกดีลก่อน"}
           </span>
         </label>
       </div>
