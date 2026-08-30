@@ -68,6 +68,13 @@ test('แก้ของที่อนุมัติแล้ว = เล่�
   // ไม่มีอะไรเปลี่ยน = ไม่ต้องมีแถว (กันเธรดรกด้วยข้อความว่างเปล่า)
   assert.equal(masterReapprovalUpdate([]), null);
   assert.equal(masterReapprovalUpdate(), null);
+
+  /* ⚠️ ตีกลับแล้วแก้ = "ส่งตรวจใหม่" คนละเรื่องกับ "ของที่เคยผ่านแล้วหลุด" —
+     คนอ่านเธรดกำลังไล่ว่ารอบนี้ใครต้องทำอะไรต่อ (2026-08-30) */
+  const resubmit = masterReapprovalUpdate(['costPrice'], { fromStatus: 'rejected' });
+  assert.match(resubmit.body, /ส่งตรวจใหม่/);
+  assert.doesNotMatch(resubmit.body, /หลังอนุมัติ/);
+  assert.equal(resubmit.meta.fromStatus, 'rejected');
 });
 
 test('ใบยื่น: ป้ายสถานะต้องพูดคำเดียวกับ STATUS บนหน้าจอ ไม่ใช่ชื่อ enum ดิบ', () => {

@@ -97,10 +97,21 @@ export function changedFieldsAgainst(record, updates = {}, { ignore = [] } = {})
     .filter((key) => !sameValue(updates[key], record?.[key]));
 }
 
+/* 🐞 **ระเบียนที่ถูกตีกลับเคยติดตาย** (พบตอน UAT 2026-08-30 — เดินครบวงเป็นครั้งแรก)
+   เดิมด่านนี้เช็คแค่ `=== 'approved'` ⇒ ของที่ถูก **ตีกลับ** แก้ตามเหตุผลแล้วกดบันทึก
+   สถานะยังเป็น 'rejected' เหมือนเดิม · คิวหน้าทะเบียนกรองเฉพาะ 'pending' และการ์ด
+   จัดการก็ซ่อนปุ่มด้วยเงื่อนไขเดียวกัน ⇒ **ไม่มีปุ่มไหนทั้งเว็บดันกลับเข้าคิวได้เลย**
+   ของที่ถูกตีกลับจึงค้างถาวรจนกว่าจะมีคนยิง API เอง
+   ⇒ แก้ของที่ถูกตีกลับ = ส่งตรวจใหม่ ซึ่งเป็นสิ่งที่ข้อความบนรางบอกไว้อยู่แล้ว
+   ("แก้ตามเหตุผลที่ผู้อนุมัติแจ้ง แล้วบันทึกเพื่อส่งตรวจใหม่")
+   ⚠️ ข้อยกเว้นรายฟิลด์ยังมีผลเหมือนเดิม — แก้เฉพาะช่องที่ยกเว้น (ผู้ติดต่อ/ที่อยู่
+   จัดส่ง/หมายเหตุเอกสาร) ไม่นับว่าแก้ตามที่ถูกตีกลับ จึงไม่ดันเข้าคิว */
+const RESUBMITTABLE = ['approved', 'rejected'];
+
 // changedFields = ผลจาก changedFieldsAgainst (ไม่ส่ง = พฤติกรรมเดิม: reset ทุกการแก้)
 // exemptFields = ฟิลด์ที่แก้แล้วไม่ต้องอนุมัติใหม่ (ดู CUSTOMER_CONTACT_FIELDS)
 export function resetApprovalOnEdit(record, user, { changedFields = null, exemptFields = [] } = {}) {
-  if (record?.approvalStatus !== 'approved') return null;
+  if (!RESUBMITTABLE.includes(record?.approvalStatus)) return null;
   if (Array.isArray(changedFields)) {
     // ไม่มีอะไรเปลี่ยน = กดบันทึกโดยไม่แก้อะไร ไม่ควรทำให้ของหลุดจากลิสต์
     if (changedFields.length === 0) return null;

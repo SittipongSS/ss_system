@@ -71,9 +71,29 @@ test('ไม่ส่ง changedFields = พฤติกรรมเดิม (r
   assert.equal(resetApprovalOnEdit(approvedCustomer, user)?.approvalStatus, 'pending');
 });
 
-test('แถวที่ยังไม่อนุมัติไม่ต้อง reset', () => {
+test('แถวที่รออนุมัติอยู่แล้วไม่ต้อง reset (ไม่มีอะไรให้เปลี่ยน)', () => {
   assert.equal(resetApprovalOnEdit({ approvalStatus: 'pending' }, user), null);
-  assert.equal(resetApprovalOnEdit({ approvalStatus: 'rejected' }, user), null);
+});
+
+/* 🐞 ก่อน 2026-08-30 ของที่ถูกตีกลับ "แก้แล้วก็ยังตีกลับอยู่" — คิวหน้าทะเบียนกับ
+   ปุ่มบนการ์ดกรองเฉพาะ pending ⇒ ไม่มีทางกลับเข้าคิวเลย (เจอตอน UAT เดินครบวง) */
+test('แก้ของที่ถูกตีกลับ = ส่งตรวจใหม่ (กลับเข้าคิว pending)', () => {
+  const rejected = { approvalStatus: 'rejected', rejectionReason: 'ราคาไม่ตรง' };
+  const patch = resetApprovalOnEdit(rejected, user, { changedFields: ['costPrice'], exemptFields: [] });
+  assert.equal(patch.approvalStatus, 'pending');
+  // เหตุผลรอบก่อนถูกล้างจากแถว (ประวัติยังอยู่ในเธรด) ไม่งั้นป้ายแดงค้างบนของที่แก้แล้ว
+  assert.equal(patch.rejectionReason, null);
+  assert.equal(patch.submittedByName, user.name);
+});
+
+test('แก้เฉพาะช่องที่ยกเว้น ไม่นับว่าแก้ตามที่ถูกตีกลับ', () => {
+  assert.equal(
+    resetApprovalOnEdit({ approvalStatus: 'rejected' }, user, {
+      changedFields: ['contacts'],
+      exemptFields: ['contacts'],
+    }),
+    null,
+  );
 });
 
 // ── เหตุผลตอนตีกลับข้อมูลหลัก (2026-07-27) ───────────────────────────────────

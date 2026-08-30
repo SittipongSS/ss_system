@@ -494,7 +494,7 @@ export async function PATCH(request, { params }) {
   if (reapproval) {
     // เธรดคือช่องทางเดียวที่เหลือหลังถอด Google Chat ออก (2026-08-12) — คนเปิดหน้าดู
     // ทีหลังต้องอ่านออกว่า "ทำไมของที่เคยอนุมัติแล้วกลับมา pending"
-    const resetEvent = masterReapprovalUpdate(changedFields);
+    const resetEvent = masterReapprovalUpdate(changedFields, { fromStatus: customer.approvalStatus });
     if (resetEvent) {
       await appendUpdate(supabase, { entityType: 'customer', entityId: id, ...resetEvent, user });
     }

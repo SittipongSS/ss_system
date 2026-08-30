@@ -36,13 +36,20 @@ export function masterApprovalUpdate(status, { reason = null } = {}) {
 // แก้ของที่อนุมัติแล้ว = หลุดกลับไปรออนุมัติใหม่ · เดิมเรื่องนี้ไปโผล่แค่ใน Chat
 // ของฝ่าย คนเปิดหน้าดูทีหลังจึงไม่มีทางรู้ว่า "ทำไมของที่เคยอนุมัติแล้วกลับมา pending"
 // changedFields = ผลจาก changedFieldsAgainst (ฟิลด์ที่เปลี่ยนค่าจริง)
-export function masterReapprovalUpdate(changedFields = []) {
+//
+// ⚠️ **สองเหตุการณ์คนละเรื่อง ต้องอ่านออกจากเธรด** (2026-08-30) — ระเบียนที่ถูก
+// ตีกลับแล้วแก้ตามเหตุผล คือ "ส่งตรวจใหม่" ไม่ใช่ "ของที่เคยผ่านแล้วหลุด" · ประโยค
+// เดียวใช้ทั้งสองทางไม่ได้ เพราะคนอ่านเธรดกำลังไล่ว่ารอบนี้ใครต้องทำอะไรต่อ
+export function masterReapprovalUpdate(changedFields = [], { fromStatus = 'approved' } = {}) {
   const fields = (changedFields || []).filter(Boolean);
   if (!fields.length) return null;
+  const changed = `${fields.slice(0, 8).join(', ')}${fields.length > 8 ? ` +${fields.length - 8}` : ''}`;
   return {
     kind: 'reset',
-    body: `แก้ข้อมูลหลังอนุมัติ — ต้องอนุมัติใหม่ (${fields.slice(0, 8).join(', ')}${fields.length > 8 ? ` +${fields.length - 8}` : ''})`,
-    meta: { changedFields: fields },
+    body: fromStatus === 'rejected'
+      ? `แก้ตามที่ถูกตีกลับ — ส่งตรวจใหม่ (${changed})`
+      : `แก้ข้อมูลหลังอนุมัติ — ต้องอนุมัติใหม่ (${changed})`,
+    meta: { changedFields: fields, fromStatus },
   };
 }
 

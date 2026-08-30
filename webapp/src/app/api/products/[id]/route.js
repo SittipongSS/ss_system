@@ -357,7 +357,7 @@ export async function PATCH(request, { params }) {
   // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ · เธรดคือช่องทางเดียว
   // ที่เหลือหลังถอด Google Chat ออก (2026-08-12) จึงต้องเขียนลงเธรดเสมอ
   if (reapproval) {
-    const resetEvent = masterReapprovalUpdate(changedFields);
+    const resetEvent = masterReapprovalUpdate(changedFields, { fromStatus: product.approvalStatus });
     if (resetEvent) {
       await appendUpdate(supabase, { entityType: 'product', entityId: id, ...resetEvent, user });
     }

@@ -13,6 +13,10 @@
 //   pinned               บล็อกปักหมุดหัวเธรด (คำอธิบายของใบนี้) — ไม่เข้าไปเรียงตามเวลา
 //   order                'asc' (เก่าก่อน — งาน/สอบถาม) | 'desc' (ใหม่ก่อน — ดีล)
 //   onPosted             เรียกหลังโพสต์/แก้/ลบสำเร็จ (ให้หน้าแม่ refresh ตัวนับ)
+//   reloadToken          เลขที่หน้าแม่บวกขึ้นเมื่อ "มีเหตุการณ์ที่เธรดควรเห็นทันที"
+//                        (เช่นกดอนุมัติ/ตีกลับจาก Control Panel) — เธรดดึงของใหม่เอง
+//                        ตามจังหวะ poll อยู่แล้ว แต่ผู้ใช้ที่เพิ่งกดปุ่มต้องเห็นผลของ
+//                        ตัวเองเดี๋ยวนั้น ไม่ใช่รออีกหลายวินาที (พบตอน UAT 2026-08-30)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Paperclip, X, Pencil, Reply, Trash2, Check, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
@@ -63,6 +67,8 @@ export default function UpdateThread({
   entityType,
   entityId,
   extraItems = [],
+  // ดูคำอธิบายบนหัวไฟล์ — ตัวกระตุ้นให้ดึงเธรดใหม่ทันทีจากหน้าแม่
+  reloadToken = 0,
   /* บล็อกปักหมุดหัวเธรด — "คำอธิบายของใบนี้" ที่ต้องอ่านก่อนไล่ไทม์ไลน์
      ต่างจาก `extraItems` ตรงที่ **ไม่มีเวลา ไม่เข้าไปเรียงในสาย** เพราะมันไม่ใช่
      เหตุการณ์ที่เกิดขึ้นตอนใดตอนหนึ่ง แต่เป็นค่าปัจจุบันของใบที่แก้ได้ตลอด
@@ -152,6 +158,15 @@ export default function UpdateThread({
   }, [entityType, entityId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* หน้าแม่บอกว่า "เพิ่งมีเหตุการณ์" ⇒ ดึงทันที ไม่ต้องรอรอบ poll ถัดไป
+     ⚠️ ข้ามรอบแรก (token = 0) — ไม่งั้นกลายเป็นยิงซ้ำทับ effect ข้างบนตอน mount */
+  const seenToken = useRef(0);
+  useEffect(() => {
+    if (reloadToken === seenToken.current) return;
+    seenToken.current = reloadToken;
+    if (reloadToken) load();
+  }, [reloadToken, load]);
 
   /* ดึงของใหม่เอง: ตามจังหวะของ `threadPollDelay` ระหว่างที่แท็บเปิดอยู่ + ทันทีที่กลับมามองแท็บ
      ⚠️ เช็ค `document.visibilityState` ใน tick ไม่ใช่ตอนตั้ง interval — แท็บที่ถูกซ่อน
