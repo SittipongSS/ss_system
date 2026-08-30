@@ -219,7 +219,7 @@ export default function SalesOrderPaymentPanel({
         <StatusNotice tone={coverage.paidThrough ? "success" : "warning"}>
           {coverage.paidThrough ? (
             <>
-              เงินครอบบริการถึง <b>{fmtDate(coverage.paidThrough)}</b> — นัดบริการหลังวันนี้จะลงคิวไม่ได้จนกว่าบัญชีจะรับรองงวดถัดไป
+              เงินครอบบริการถึง <b>{fmtDate(coverage.paidThrough)}</b> — นัดบริการหลังวันดังกล่าวจะลงคิวไม่ได้จนกว่าบัญชีจะรับรองงวดถัดไป
               {coverage.confirmedWithoutCoverage
                 ? ` · ยังมีอีก ${coverage.confirmedWithoutCoverage} งวดที่รับรองแล้วแต่ไม่ได้ระบุช่วงครอบ จึงยังไม่ถูกนับ`
                 : ""}
@@ -418,8 +418,15 @@ export default function SalesOrderPaymentPanel({
                         ไม่ใช่เงียบ ๆ (ขีดของระบบผ่าน NA ไม่ใช่ "-" ดิบ) */}
                     {hasServiceRounds ? (
                       <td>
-                        {row.coversFrom || row.coversTo ? (
+                        {row.coversFrom && row.coversTo ? (
                           <span>{fmtDate(row.coversFrom)} – {fmtDate(row.coversTo)}</span>
+                        ) : row.coversFrom || row.coversTo ? (
+                          /* กรอกมาข้างเดียว — `fmtDate` ของช่องที่ว่างคืนยัติภังค์ดิบ "-"
+                             ซึ่งไปวางคู่กับขีดคั่นช่วงแล้วอ่านเป็นสองขีดติดกัน · ขีดของระบบ
+                             คือ NA (`—`) และเคสนี้มีคำเตือน half_range รออยู่แล้วบนหัวการ์ด */
+                          <span className={styles.overdue}>
+                            {row.coversFrom ? `ตั้งแต่ ${fmtDate(row.coversFrom)}` : `ถึง ${fmtDate(row.coversTo)}`} · ยังไม่ครบช่วง
+                          </span>
                         ) : (
                           <span className={row.status === "confirmed" ? styles.overdue : styles.none}>
                             {row.status === "confirmed" ? "ยังไม่ระบุ" : NA}

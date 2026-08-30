@@ -109,7 +109,7 @@ export default function FinancePaymentsPage() {
   const setListFilter = useCallback((key, values) => setParam(key, values.join(",")), [setParam]);
 
   const filtering = FILTER_KEYS.some((key) => params.get(key));
-  const filterCount = statusFilter.length + orderStateFilter.length + (overdue ? 1 : 0);
+  const filterCount = statusFilter.length + orderStateFilter.length + lineFilter.length + (overdue ? 1 : 0);
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */

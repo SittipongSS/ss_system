@@ -47,12 +47,19 @@ export function paidThrough(installments = []) {
 }
 
 /* วันนัดนี้อยู่ในช่วงที่เงินครอบไหม — ตัวที่ด่านข้อ 2 เรียกจริง (PR-C)
-   ไม่มีงวดเลยทั้งใบ = **ผ่าน** (ใบยอด 0 ตั้งใจไม่มีงวดตั้งแต่ #1327 — ไม่มีอะไรให้จ่าย)
-   มีงวดแต่ยังไม่มีใบไหน confirmed = ไม่ผ่าน */
-export function coversDate(installments = [], dateIso) {
+   ⚠️ **fail-closed ทุกทางที่ไม่แน่ใจ**: ไม่รู้วันนัด · ส่ง installments มาไม่ใช่อาเรย์
+   (null/undefined = ผู้เรียกยังไม่ได้โหลด หรือ API นั้นไม่ได้ select มา) · อาเรย์ว่าง
+   · ไม่มีงวดไหน confirmed ⇒ ตอบ **ไม่ผ่าน** ทั้งหมด
+   ⭐ **"ใบยอด 0 ไม่มีงวด" ไม่ตัดสินที่นี่** — ระบบมีตัวตัดสินตัวเดียวของเรื่องนั้นอยู่แล้วคือ
+   `paymentNotRequired(orderTotal)` (lib/sales/salesOrderPayments.js) ซึ่ง `installmentActionError`
+   ใช้อยู่ · ถ้าที่นี่แปล "ไม่มีแถว = ผ่าน" เอง จะกลายเป็นกติกาที่สองที่กว้างกว่าของจริง:
+   ใบยอดไม่เป็นศูนย์ก็ไม่มีแถวได้ (ใบเก่าก่อน mig 0245 ที่ยังไม่มีใครกด "เริ่มติดตามการชำระ")
+   แล้วด่านจะเปิดให้ทุกนัดของใบที่ยังไม่เคยเก็บเงินสักบาท — fail-open ที่ตรงข้ามกับมติ
+   ⇒ ผู้เรียกใน PR-C ต้องประกอบเอง: `paymentNotRequired(order.totalAmount) || coversDate(...)` */
+export function coversDate(installments, dateIso) {
   const day = dateOf(dateIso);
   if (!day) return false;
-  if (!Array.isArray(installments) || installments.length === 0) return true;
+  if (!Array.isArray(installments)) return false;
   const through = paidThrough(installments);
   return !!through && !isBefore(through, day);
 }

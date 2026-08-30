@@ -369,6 +369,13 @@ export function installmentActionError(row, action, user, options = {}) {
     const from = String(options.coversFrom || '').trim();
     const to = String(options.coversTo || '').trim();
     if (from && to && from > to) return 'วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด';
+    /* ⚠️ ช่วงปีต้องตกที่นี่ด้วย ไม่ใช่แค่ช่วงกลับหัว — CHECK ของฐาน
+       (`sales_order_installments_covers_range`) กันปี 2000–2100 ไว้ และถ้าปล่อยให้ไป
+       ตายที่นั่น route จะ catch เป็น 500 พร้อมข้อความ Postgres ดิบภาษาอังกฤษ
+       (ปีพิมพ์เกินเป็นเคสจริงที่ระบบนี้เจอมาแล้ว: `formulaDate = '2202-08-06'`) */
+    const outOfRange = [from, to].filter(Boolean)
+      .some((day) => day < '2000-01-01' || day > '2100-12-31');
+    if (outOfRange) return 'ปีของช่วงครอบบริการไม่ถูกต้อง (รับปี ค.ศ. 2000–2100)';
     return null;
   }
 

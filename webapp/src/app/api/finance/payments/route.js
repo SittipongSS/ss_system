@@ -10,7 +10,7 @@
 // ⚠️ exceljs ต้องใช้ Node runtime — ห้ามเป็น edge
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canAccessFinance } from '@/lib/permissions';
-import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, undatedHiddenBy } from '@/lib/finance/paymentLedger';
+import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, sortLedger, stampOrderPaidThrough, undatedHiddenBy } from '@/lib/finance/paymentLedger';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
@@ -68,15 +68,21 @@ async function loadLedger(supabase, todayIso) {
   const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
   const projectsById = new Map();
   if (projectIds.length) {
+    /* ⚠️ `.order('id')` บังคับ — `fetchAll` ไล่ทีละหน้าด้วย `.range()` ซึ่ง PostgREST
+       ไม่การันตีลำดับถ้าไม่สั่ง ⇒ เกิน 1,000 แถวเมื่อไรได้แถวซ้ำและแถวหายพร้อมกัน
+       ซึ่งแย่กว่าถูกตัด เพราะมันดูเหมือนข้อมูลครบ (ดูหัวไฟล์ lib/supabaseFetchAll.js) */
     const { data: projects, error: projectError } = await fetchAllResult(() => supabase
-      .from('projects').select('id, line').in('id', projectIds));
+      .from('projects').select('id, line').in('id', projectIds).order('id'));
     if (projectError) throw projectError;
     (projects || []).forEach((p) => projectsById.set(p.id, p));
   }
   const dealsById = new Map([...dealById.entries()]);
 
+  /* ⚠️ ก้อนนี้ใหญ่แน่ — ใบจริงมีได้ถึง 10 บรรทัดต่อใบ คูณทุกใบที่มีงวดตรึงแล้วทั้งระบบ
+     ⇒ เกิน 1,000 แถวเป็นเรื่องปกติ ต้องมี `.order()` ที่นิ่ง ไม่งั้นบรรทัดหมวด 02-001
+     ของบางใบจะหายไปในหน้าที่สอง แล้วใบนั้นกลายเป็น "ไม่ใช่ใบบริการ" แบบสุ่มทุกครั้งที่รีเฟรช */
   const { data: orderLines, error: lineError } = await fetchAllResult(() => supabase
-    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', orderIds));
+    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', orderIds).order('id'));
   if (lineError) throw lineError;
   const linesByOrder = new Map();
   for (const line of orderLines || []) {
@@ -142,6 +148,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const all = await loadLedger(supabase, todayIso);
     /* ⚠️ ดัชนีสถานะระดับใบคิดจาก **ก่อนกรอง** — ดูเหตุผลที่ `orderStateIndex` */
     const orderStates = orderStateIndex(all);
+    /* ⚠️ "จ่ายถึง" ก็เป็นค่าระดับใบเหมือนกัน ⇒ ต้องประทับจากชุดก่อนกรองด้วยเหตุผลเดียวกัน
+       (กรองสถานะงวดแล้วงวด confirmed หลุด ค่าจะกลายเป็น "ยังไม่ครอบ" ทั้งที่เงินครอบอยู่) */
+    stampOrderPaidThrough(all);
     const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,

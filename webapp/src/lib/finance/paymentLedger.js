@@ -129,6 +129,12 @@ export const LEDGER_COLUMNS = [
   { key: 'percent', label: 'สัดส่วน (%)', num: true },
   { key: 'amount', label: 'ยอดงวด', money: true },
   { key: 'dueDate', label: 'กำหนดชำระ', date: true },
+  /* ช่วงบริการที่งวดครอบ (mig 0320) — ต้องอยู่ในไฟล์ด้วย ไม่ใช่เห็นแต่บนจอ:
+     บัญชีกรอง "สายของงาน = ใบมีรอบบริการ" แล้วโหลดไฟล์ ข้อมูลชุดที่เป็นเหตุผลของ
+     การกรองนั้นต้องติดไปด้วย (หัวไฟล์นี้เขียนกฎไว้เองว่าจอกับไฟล์ห้ามพูดคนละเรื่อง)
+     ⚠️ ใบสายสินค้าได้ช่องว่าง ซึ่งถูกแล้ว — ไม่ใช่ทุกใบที่มีช่วงครอบ */
+  { key: 'coversFrom', label: 'ครอบบริการตั้งแต่', date: true },
+  { key: 'coversTo', label: 'ครอบบริการถึง', date: true },
   { key: 'paidOn', label: 'วันที่จ่ายจริง', date: true },
   { key: 'statusLabel', label: 'สถานะ' },
   { key: 'reportedByName', label: 'ผู้แจ้งชำระ' },
@@ -177,6 +183,33 @@ export const LEDGER_ORDER_STATES = {
  * ⚠️ ต้องคิดจากงวด **ทั้งหมดก่อนกรอง** เสมอ · เก็บครบ = ทุกงวดของใบ `confirmed`
  * (กติกา mig 0245 — `reported` ยังไม่นับว่าเก็บได้)
  */
+/**
+ * "จ่ายถึง" รายใบ — คิดจาก **งวดทั้งหมดของใบก่อนกรอง** แล้วประทับลงทุกแถวของใบนั้น
+ *
+ * ⭐ เหตุผลเดียวกับ `orderStateIndex` เป๊ะ: เป็นค่าระดับ **ใบ** ที่ตารางเอาไปแสดง
+ * บนแถวที่ยุบแล้ว ⇒ คิดจากแถวที่เหลือหลังกรองเมื่อไร ค่าจะเพี้ยนตามตัวกรองที่ไม่เกี่ยวกัน
+ * (กรอง "สถานะงวด = รอชำระ" แล้วงวด confirmed หลุดหมด ⇒ "ยังไม่ครอบ" ทั้งที่เงินครอบอยู่)
+ *
+ * ⚠️ ประทับลงแถว (`orderPaidThrough`) แทนการส่ง Map ไปถึง `groupLedgerByOrder` เพราะ
+ * การจัดกลุ่มเกิด **ฝั่งจอ** หลังข้อมูลเดินทางข้าม API มาแล้ว — ส่ง Map ข้าม JSON ไม่ได้
+ * และค่านี้เป็นของใบ ทุกแถวของใบเดียวกันจึงถือค่าเดียวกันโดยนิยาม
+ */
+export function stampOrderPaidThrough(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    const through = paidThrough(group);
+    for (const row of group) row.orderPaidThrough = through;
+  }
+  return list;
+}
+
 export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -363,9 +396,13 @@ export function groupLedgerByOrder(rows = []) {
           .map((r) => r.dueDate)
           .sort()[0] || null,
         /* ⭐ "จ่ายถึง" ของใบ (mig 0320) — เงินที่บัญชีรับรองแล้วครอบบริการถึงวันไหน
-           ตัวตัดสินเดียวกับที่ด่านเข้าไซต์ของ TS ใช้ ⇒ เรียก `paidThrough` ตัวกลาง
-           ไม่คำนวณ max ซ้ำที่นี่ · ใบสายสินค้าได้ null เพราะไม่มีใครกรอกช่วงครอบ */
-        paidThrough: paidThrough(rowsInOrder),
+           🔴 **อ่านจากค่าที่ผู้เรียกคิดมาก่อนกรอง (`row.orderPaidThrough`) ห้ามคิดจาก
+           `rowsInOrder`** — นี่เป็นค่าระดับ **ใบ** แบบเดียวกับ orderState: แถวที่ถึงมือ
+           ฟังก์ชันนี้คือแถวที่ผ่าน `filterLedger` มาแล้ว ⇒ กรอง "สถานะงวด = รอชำระ"
+           หรือกรองช่วงวันเมื่อไร งวด confirmed หลุดหมด แล้วค่าจะกลายเป็น null
+           (หรือถอยไปวันเก่ากว่าความจริงแล้วติดสีแดงว่าบริการขาดช่วง) ทั้งที่เงินครอบอยู่
+           ⇒ ดูกติกาเดียวกันที่ `orderStateIndex` และ `paidThroughIndex` */
+        paidThrough: rowsInOrder.find((r) => r.orderPaidThrough)?.orderPaidThrough || null,
       };
     })
     .sort((a, b) => {
