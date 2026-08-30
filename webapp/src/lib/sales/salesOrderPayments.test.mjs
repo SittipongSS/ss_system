@@ -564,3 +564,41 @@ test('งวดยอด 0 ในใบที่มียอด ยังสร�
   const rows = buildInstallmentsForOrder({ type: 'installment', installments: [{ percent: 100 }, { percent: 0 }] }, 1000);
   assert.equal(rows.length, 2);
 });
+
+/* ── ช่วงบริการที่งวดครอบ (mig 0320 · มติ 2026-08-30 "จ่ายก่อนบริการเสมอ") ────
+   ⭐ ต่างจาก `schedule` ตรงที่ **แก้ได้แม้บัญชีคอนเฟิร์มแล้ว** — ใบเก่าทุกใบในระบบ
+   มีงวด confirmed ที่ยังไม่มีช่วงครอบ (คอลัมน์เพิ่งเกิด) ถ้าปิดตรงนี้ รอบเปลี่ยนผ่าน
+   ที่ต้องไล่กรอกให้ใบที่วิ่งอยู่จะทำไม่ได้ แล้วด่านเข้าไซต์จะบล็อกงานจริงทั้งกอง */
+test('⭐ งวดที่บัญชีรับรองแล้ว — ช่วงครอบเป็นของบัญชี ฝ่ายขายแตะไม่ได้', () => {
+  const done = { status: 'confirmed' };
+  const range = { coversFrom: '2026-09-01', coversTo: '2026-11-30' };
+  // ฝ่ายขายเลื่อน coversTo เอง = ปลดด่านเงินของตัวเอง ⇒ ต้องปิด
+  assert.match(installmentActionError(done, 'coverage', SA, range), /เฉพาะฝ่ายบัญชี/);
+  // แต่ยัง **แก้ได้** โดยบัญชี — ต่างจาก schedule ที่ล็อกตาย (ของเก่าต้องกรอกย้อนหลังได้)
+  assert.equal(installmentActionError(done, 'coverage', FN_ROLE, range), null);
+  assert.match(installmentActionError(done, 'schedule', SA), /คอนเฟิร์มแล้ว/);
+});
+
+test('งวดที่ยังไม่รับรอง — ทั้งฝ่ายขายและบัญชีกรอกช่วงครอบได้', () => {
+  const range = { coversFrom: '2026-09-01', coversTo: '2026-11-30' };
+  assert.equal(installmentActionError({ status: 'pending' }, 'coverage', SA, range), null);
+  assert.equal(installmentActionError({ status: 'reported' }, 'coverage', FN_ROLE, range), null);
+});
+
+test('คนที่ไม่มีสิทธิ์ทั้งสองฝั่ง แก้ช่วงครอบไม่ได้', () => {
+  const outsider = { id: 'u-x', role: 'viewer' };
+  assert.match(installmentActionError({ status: 'pending' }, 'coverage', outsider, {}), /ไม่มีสิทธิ์/);
+});
+
+test('ช่วงครอบกลับหัวต้องตกที่ด่าน ไม่ใช่ปล่อยไปตาย CHECK ของฐาน', () => {
+  assert.match(installmentActionError({ status: 'pending' }, 'coverage', SA, {
+    coversFrom: '2026-12-31', coversTo: '2026-09-01',
+  }), /ต้องไม่เกินวันสิ้นสุด/);
+});
+
+test('ล้างช่วงครอบ หรือกรอกมาข้างเดียว ยังผ่านด่าน (จอเป็นคนเตือน ไม่ใช่บล็อก)', () => {
+  const row = { status: 'pending' };
+  assert.equal(installmentActionError(row, 'coverage', SA, {}), null);
+  assert.equal(installmentActionError(row, 'coverage', SA, { coversFrom: '2026-09-01' }), null);
+  assert.equal(installmentActionError(row, 'coverage', SA, { coversTo: '2026-11-30' }), null);
+});

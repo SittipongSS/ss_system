@@ -72,11 +72,17 @@ async function loadOrder(supabase, id) {
   if (!order) return null;
 
   const [{ data: deal }, { data: quotation }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { data: customer }] = await Promise.all([
-    supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
+    /* `line` = สายธุรกิจ (PRODUCT|SERVICE|null) — หน้าใบใช้ตัดสินว่าเป็น "ใบมีรอบบริการ"
+       ไหม (มติ 2026-08-30: สาย SERVICE + มีบรรทัดหมวด 02-001 ≥1) ผ่าน `orderHasServiceRounds`
+       ⚠️ ตัวจริงของค่าอยู่ที่โครงการ ดีลเป็นสำเนาที่ใช้ตอนยังไม่มีโครงการ — ต้องดึงทั้งคู่
+       ⚠️ เพิ่มชื่อคอลัมน์ที่นี่ปลอดภัยกับฉบับตรึง: `buildIssuedSalesOrderPayload` หยิบจาก
+       deal/project แค่ `title`/`name` แบบระบุชื่อฟิลด์ ⇒ fingerprint ไม่ขยับ */
+    supabase.from('sales_deals').select('id, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย)
-      ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
+      // line: สายธุรกิจตัวจริง (โครงการเป็นเจ้าของค่า ดีลเป็นสำเนา) — ดู `orderBusinessLineOf`
+      ? supabase.from('projects').select('id, code, name, line, closeStatus').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
     // ⭐ คำร้องพัฒนากลิ่นที่เปิดจากใบนี้ — หน้า SO ใช้ตัดสินว่าโชว์ปุ่ม "เปิดคำร้อง"

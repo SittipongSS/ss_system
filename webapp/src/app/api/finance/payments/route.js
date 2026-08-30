@@ -14,6 +14,8 @@ import { filterLedger, ledgerReport, ledgerRow, ledgerSummary, orderStateIndex, 
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,7 +41,9 @@ async function loadLedger(supabase, todayIso) {
        ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
     /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
        ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
-    .select('id, "orderNumber", "quotationId", "dealId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
+    /* `projectId` เพิ่มมาเพื่อถามสายธุรกิจ — โครงการเป็นเจ้าของค่าสายจริง ดีลเป็นสำเนา
+       (ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง "สายบริการ" ของฝ่ายบัญชี) */
+    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
     .in('id', orderIds);
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));
@@ -50,10 +54,40 @@ async function loadLedger(supabase, todayIso) {
   const dealById = new Map();
   if (dealIds.length) {
     const { data: deals, error: dealError } = await supabase
-      .from('sales_deals').select('id, "ownerId", "ownerName", team').in('id', dealIds);
+      // `line` = สายธุรกิจ (สำเนาที่ดีลถือ) — ครึ่งหนึ่งของเกณฑ์ "ใบมีรอบบริการ"
+      .from('sales_deals').select('id, "ownerId", "ownerName", team, line').in('id', dealIds);
     if (dealError) throw dealError;
     (deals || []).forEach((d) => dealById.set(d.id, d));
   }
+
+  /* ── เกณฑ์ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30) ─────────────────────────
+     สาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อยหนึ่งบรรทัด ⇒ ต้องรู้สองอย่าง:
+     สายจากโครงการ/ดีล และบรรทัดของใบ · ตัวตัดสินคือ `orderHasServiceRounds` ตัวกลาง
+     ⚠️ ห่อ `fetchAllResult` ทั้งสองก้อน — PostgREST ตัดที่ 1,000 แถวเงียบ ๆ และ
+     `check:rowcap` เต็มเพดานพอดีทุกตาราง จุดอ่านไร้ขอบเขตใหม่เพิ่มไม่ได้แล้ว */
+  const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
+  const projectsById = new Map();
+  if (projectIds.length) {
+    const { data: projects, error: projectError } = await fetchAllResult(() => supabase
+      .from('projects').select('id, line').in('id', projectIds));
+    if (projectError) throw projectError;
+    (projects || []).forEach((p) => projectsById.set(p.id, p));
+  }
+  const dealsById = new Map([...dealById.entries()]);
+
+  const { data: orderLines, error: lineError } = await fetchAllResult(() => supabase
+    .from('sales_order_lines').select('id, "salesOrderId", "fgCode"').in('salesOrderId', orderIds));
+  if (lineError) throw lineError;
+  const linesByOrder = new Map();
+  for (const line of orderLines || []) {
+    const list = linesByOrder.get(line.salesOrderId) || [];
+    list.push(line);
+    linesByOrder.set(line.salesOrderId, list);
+  }
+  const serviceRoundsByOrder = new Map((orders || []).map((o) => [
+    o.id,
+    orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { projectsById, dealsById }),
+  ]));
 
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
   const quoteById = new Map();
@@ -88,6 +122,7 @@ async function loadLedger(supabase, todayIso) {
         customer: customerById.get(order.customerId) || null,
         deal: dealById.get(order.dealId) || null,
         todayIso,
+        serviceRounds: serviceRoundsByOrder.get(order.id) || false,
       });
     })
     .filter(Boolean);
@@ -114,6 +149,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       q: url.searchParams.get('q') || '',
       overdueOnly: url.searchParams.get('overdue') === '1',
       orderState: listParam(url.searchParams.get('orderState')),
+      // service | other — เกณฑ์เต็มของ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30)
+      line: listParam(url.searchParams.get('line')),
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));

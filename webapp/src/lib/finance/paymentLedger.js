@@ -14,6 +14,7 @@
 
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
+import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -31,7 +32,10 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
  * ⚠️ ทุกอย่างที่มาจาก QT เป็น **snapshot ตอนอนุมัติใบ** (`label` `percent` `amount`)
  * ห้ามคำนวณใหม่จาก QT ปัจจุบัน — ใบที่เซ็นไปแล้วต้องอ่านได้เท่าเดิมตลอดไป
  */
-export function ledgerRow({ installment, order, quotation, customer, deal = null, todayIso = null }) {
+export function ledgerRow({
+  installment, order, quotation, customer, deal = null, todayIso = null,
+  serviceRounds = false,
+}) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
   const due = installment.dueDate || null;
@@ -62,6 +66,14 @@ export function ledgerRow({ installment, order, quotation, customer, deal = null
     amount: Number(installment.amount) || 0,
 
     dueDate: due,
+    /* ── ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) ────────────
+       ⚠️ **ต้องอยู่ในรายชื่อนี้ถึงจะถึงจอ** — ตัวนี้เป็น whitelist ไม่ได้ spread แถวดิบมา
+       ค่าที่ลืมเติมจะหายเงียบ ๆ โดยไม่มี error ให้เห็น
+       `serviceRounds` = ใบนี้เข้าเกณฑ์ "มีรอบบริการ" ไหม (สาย SERVICE + บรรทัดหมวด
+       02-001 ≥1) — ผู้เรียกคำนวณมาให้ เพราะที่นี่ไม่มีบรรทัดของใบให้ดู */
+    coversFrom: installment.coversFrom || null,
+    coversTo: installment.coversTo || null,
+    serviceRounds: Boolean(serviceRounds),
     paidOn: installment.paidOn || null,
     status,
     statusLabel: LEDGER_STATUS[status]?.label || status,
@@ -190,13 +202,19 @@ export function orderStateIndex(rows = []) {
  */
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
-  orderState = [], orderStates = null,
+  orderState = [], orderStates = null, line = [],
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
   const wantedOrders = Array.isArray(orderState) ? orderState.filter(Boolean) : [];
+  /* สายของงาน — ค่าที่รับคือ 'service' (ใบที่เข้าเกณฑ์มีรอบบริการ) กับ 'other' (ที่เหลือ)
+     ⚠️ **ไม่ใช่ตัวกรองสายธุรกิจดิบ** — เกณฑ์เต็มคือ สาย SERVICE **และ** มีบรรทัดหมวด
+     02-001 (มติผู้ใช้ 2026-08-30) ⇒ ใบสาย SERVICE ที่ไม่มีแพ็คเกจบริการจะอยู่ถัง 'other'
+     เหมือนใบสายสินค้า เพราะมันไม่มีรอบบริการให้เงินไปครอบ */
+  const wantedLines = Array.isArray(line) ? line.filter(Boolean) : [];
   const needle = String(q || '').trim().toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((r) => {
     if (wanted.length && !wanted.includes(r.status)) return false;
+    if (wantedLines.length && !wantedLines.includes(r.serviceRounds ? 'service' : 'other')) return false;
     /* ⚠️ สถานะระดับ **ใบ** ต้องมาจากดัชนีที่คิดจากงวดทั้งหมดของใบ (`orderStateIndex`)
        ไม่ใช่จากงวดที่เหลือหลังกรอง — กรองสถานะงวดเป็น "รอชำระ" เมื่อไร ทุกใบจะดู
        เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
@@ -310,6 +328,8 @@ export function groupLedgerByOrder(rows = []) {
         ownerId: row.ownerId || null,
         ownerName: row.ownerName || '',
         team: row.team || null,
+        // ใบนี้เข้าเกณฑ์ "มีรอบบริการ" ไหม — ค่าของทั้งใบ ทุกงวดพกค่าเดียวกันมา
+        serviceRounds: Boolean(row.serviceRounds),
         rows: [],
       });
     }
@@ -342,6 +362,10 @@ export function groupLedgerByOrder(rows = []) {
           .filter((r) => r.status !== 'confirmed' && r.dueDate)
           .map((r) => r.dueDate)
           .sort()[0] || null,
+        /* ⭐ "จ่ายถึง" ของใบ (mig 0320) — เงินที่บัญชีรับรองแล้วครอบบริการถึงวันไหน
+           ตัวตัดสินเดียวกับที่ด่านเข้าไซต์ของ TS ใช้ ⇒ เรียก `paidThrough` ตัวกลาง
+           ไม่คำนวณ max ซ้ำที่นี่ · ใบสายสินค้าได้ null เพราะไม่มีใครกรอกช่วงครอบ */
+        paidThrough: paidThrough(rowsInOrder),
       };
     })
     .sort((a, b) => {
