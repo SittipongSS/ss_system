@@ -1,7 +1,7 @@
 // ── แผนการผลิต (PD/PC) กับ ธุรกิจบริการ (TS) ต้องแยกจากกัน ────────────────
 //
 // ⭐ มติผู้ใช้ 2026-07-31: **สองระบบนี้เป็นคนละทีมปฏิบัติงาน** — แผนการผลิตคือ PD
-// ธุรกิจบริการคือ TS · ช่างไม่ต้องเห็นตารางโรงงาน และคนโรงงานไม่ต้องเห็นนัดเข้าไซต์
+// ธุรกิจบริการคือ TS · เจ้าหน้าที่ไม่ต้องเห็นตารางโรงงาน และคนโรงงานไม่ต้องเห็นนัดเข้าไซต์
 //
 // 🐞 ที่ต้องมีเทสต์ชุดนี้: cap `production:view` / `service:view` อยู่ที่ **role `staff`**
 // ซึ่ง PC/PD/WH/QC/TS ใช้ร่วมกันทั้งหมด — ตัวกั้นจริงคือ *ฝ่าย* ที่เขียนไว้ในฟังก์ชัน
@@ -49,7 +49,10 @@ test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแ�
   assert.equal(canViewProduction(at('TS')), false);
   assert.equal(canEditProduction(at('TS')), false);
   assert.equal(canViewService(at('TS')), true);
-  assert.equal(canEditService(at('TS')), true);
+  /* ⚠️ `at('TS')` = **เจ้าหน้าที่หน้างาน** (role `ts`) ซึ่งตั้งแต่ 2026-08-30 ไม่ถือ service:edit
+     แล้ว — เขาปิดงานของตัวเองผ่าน service:work · คนแก้ตารางคือ Planner/หัวหน้า */
+  assert.equal(canEditService(at('TS')), false);
+  assert.equal(canEditService({ role: 'ts_planner', department: 'TS', extraCaps: [] }), true);
   assert.deepEqual(keys(at('TS')).filter((k) => k === 'production'), []);
   assert.ok(keys(at('TS')).includes('service'));
 });

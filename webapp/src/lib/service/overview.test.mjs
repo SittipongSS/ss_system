@@ -12,7 +12,7 @@ const TODAY = '2026-07-06'; // จันทร์
 
 const visit = (over = {}) => ({
   id: 'V1', code: 'SV-1', siteId: 'S1', status: 'scheduled',
-  scheduledDate: TODAY, assigneeId: 'U1', assigneeName: 'ช่างเอ', ...over,
+  scheduledDate: TODAY, assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ', ...over,
 });
 
 test('serviceCounts นับเฉพาะนัดที่ยังเปิดอยู่ — ปิด/ยกเลิก/เลื่อน ไม่ใช่งานค้าง', () => {
@@ -41,7 +41,7 @@ test('serviceCounts ไม่นับนัดค้างเป็น "สั�
   assert.equal(c.week, 0);
 });
 
-test('serviceCounts นับ "ยังไม่มอบหมาย" เฉพาะในสัปดาห์นี้ — นัดไกล ๆ ยังไม่ต้องมีช่าง', () => {
+test('serviceCounts นับ "ยังไม่มอบหมาย" เฉพาะในสัปดาห์นี้ — นัดไกล ๆ ยังไม่ต้องมีเจ้าหน้าที่', () => {
   const c = serviceCounts([
     visit({ id: 'a', assigneeId: null, scheduledDate: '2026-07-08' }),
     visit({ id: 'b', assigneeId: null, scheduledDate: '2026-09-01' }),
@@ -57,7 +57,7 @@ test('serviceAttention ดันนัดค้างขึ้นก่อนท
   assert.deepEqual(rows.map((r) => r.visit.id), ['late', 'soon']);
 });
 
-test('serviceAttention ฟ้องเวลาทับกันของช่างคนเดียวกัน', () => {
+test('serviceAttention ฟ้องเวลาทับกันของเจ้าหน้าที่คนเดียวกัน', () => {
   const rows = serviceAttention([
     visit({ id: 'a', startTime: '09:00', endTime: '11:00' }),
     visit({ id: 'b', startTime: '10:00', endTime: '12:00' }),
@@ -66,10 +66,10 @@ test('serviceAttention ฟ้องเวลาทับกันของช่
   assert.ok(rows.every((r) => r.reasons.some((x) => x.kind === 'overlap')));
 });
 
-test('serviceAttention ไม่ฟ้องทับเมื่อเป็นคนละช่าง แม้เวลาเดียวกันเป๊ะ', () => {
+test('serviceAttention ไม่ฟ้องทับเมื่อเป็นคนละเจ้าหน้าที่ แม้เวลาเดียวกันเป๊ะ', () => {
   const rows = serviceAttention([
     visit({ id: 'a', assigneeId: 'U1', startTime: '09:00', endTime: '11:00' }),
-    visit({ id: 'b', assigneeId: 'U2', assigneeName: 'ช่างบี', startTime: '09:00', endTime: '11:00' }),
+    visit({ id: 'b', assigneeId: 'U2', assigneeName: 'เจ้าหน้าที่บี', startTime: '09:00', endTime: '11:00' }),
   ], new Map(), TODAY);
   assert.equal(rows.length, 0);
 });
@@ -80,7 +80,7 @@ test('serviceAttention ฟ้องนัดที่ชนช่วงเวล
   assert.equal(rows[0].reasons[0].kind, 'time');
 });
 
-test('serviceAttention: นัดปกติที่มีช่างและไม่ชนอะไร ไม่ขึ้นรายการ', () => {
+test('serviceAttention: นัดปกติที่มีเจ้าหน้าที่และไม่ชนอะไร ไม่ขึ้นรายการ', () => {
   const rows = serviceAttention([visit({ scheduledDate: '2026-07-08' })], new Map(), TODAY);
   assert.equal(rows.length, 0);
 });
@@ -119,7 +119,7 @@ test('refillTotals รวมเครื่องข้ามไซต์ แล
 
 test('todayByTechnician ดันแถว "ยังไม่มอบหมาย" ขึ้นบนสุด', () => {
   const rows = todayByTechnician([
-    visit({ id: 'a', assigneeId: 'U1', assigneeName: 'ช่างเอ' }),
+    visit({ id: 'a', assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ' }),
     visit({ id: 'b', assigneeId: null, assigneeName: null }),
   ], TODAY);
   assert.equal(rows[0].assigneeId, null);

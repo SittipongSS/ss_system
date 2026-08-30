@@ -103,7 +103,7 @@ export function bindQueue({ orders = [], lines = [], terms = [], projectsById, d
 }
 
 /* ── ถังที่ 2: โซนที่ขายแล้วแต่ไซต์ยังไม่มีรอบ ──────────────────────────
-   ⚠️ รอบ (service_plans) ผูกกับ **ไซต์** ไม่ใช่โซน (mig 0188) — ช่างเข้าไซต์ทีเดียว
+   ⚠️ รอบ (service_plans) ผูกกับ **ไซต์** ไม่ใช่โซน (mig 0188) — เจ้าหน้าที่เข้าไซต์ทีเดียว
    ทำทุกโซน · คิวนี้จึงเป็น "ไซต์ที่มีโซนขายแล้วแต่ไม่มีรอบ" ไม่ใช่รายโซน */
 export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), todayIso = businessDate() } = {}) {
   const activePlanSites = new Set(plans.filter((p) => p.isActive !== false).map((p) => p.siteId));

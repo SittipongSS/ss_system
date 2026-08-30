@@ -1,4 +1,4 @@
-// ── ทีมช่างบนหน้าจัดคิว (งวด T-4) ─────────────────────────────────────────
+// ── ทีมเจ้าหน้าที่บริการบนหน้าจัดคิว (งวด T-4) ─────────────────────────────────────────
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ALL_TEAMS, NO_TEAM, filterRowsByTeam, teamByUser, teamFilterOptions, teamLoad } from './crewTeams.js';

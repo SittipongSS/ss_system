@@ -112,16 +112,27 @@ const ts = { role: 'ts', department: 'TS' };
 const aeSv = { role: 'ae', team: 'SV' };
 const aeKa = { role: 'ae', team: 'KA' };
 
-test('ฝ่าย TS มีจริงและรับได้เฉพาะ role ts', () => {
+test('ฝ่าย TS มีห้าตำแหน่ง — เจ้าหน้าที่หน้างานเป็นตัวตั้งต้นของฟอร์ม', () => {
   assert.ok(DEPARTMENTS.includes('TS'));
   assert.equal(DEPARTMENT_NAMES_TH.TS, 'ฝ่ายเทคนิคบริการ');
-  assert.deepEqual(rolesForDepartment('TS'), ['ts']);
-  assert.equal(validateIdentity('ts', null, 'TS'), null);
+  /* ⭐ มติ 2026-08-30: ตำแหน่งจริงของฝ่ายเป็นตัวกำหนดสิทธิ์ (เดิมมี role เดียว
+     หัวหน้ากับเจ้าหน้าที่จึงถือสิทธิ์ชุดเดียวกันเป๊ะ)
+     ⚠️ **ลำดับมีความหมาย** — ตัวแรกคือค่าที่ /users เลือกให้เองเมื่อสลับฝ่ายเป็น TS */
+  assert.deepEqual(
+    rolesForDepartment('TS'),
+    ['ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
+  );
+  for (const role of rolesForDepartment('TS')) {
+    assert.equal(validateIdentity(role, null, 'TS'), null, role);
+  }
 });
 
-test('⭐ ช่างฝ่าย TS ต้องไม่ต้องถือ role ขาย — ไม่งั้นได้ cap ขายมาทั้งชุด', () => {
-  // ทีมมีได้เฉพาะ role ขาย ถ้าจับช่างเป็น "ทีม" ช่างต้องเป็น ae แล้วเห็นดีล/ราคาทั้งทีม
-  assert.match(validateIdentity('ts', 'SV', 'TS'), /ไม่ต้องระบุทีม/);
+test('⭐ เจ้าหน้าที่ฝ่าย TS ต้องไม่ต้องถือ role ขาย — ไม่งั้นได้ cap ขายมาทั้งชุด', () => {
+  // ทีมมีได้เฉพาะ role ขาย ถ้าจับเจ้าหน้าที่เป็น "ทีม" เจ้าหน้าที่ต้องเป็น ae แล้วเห็นดีล/ราคาทั้งทีม
+  // ⚠️ ทีม *เจ้าหน้าที่* จัดที่ทะเบียนทีม (kind='crew') ไม่ใช่ช่องทีมของบัญชีผู้ใช้
+  for (const role of rolesForDepartment('TS')) {
+    assert.match(validateIdentity(role, 'SV', 'TS'), /ไม่ต้องระบุทีม/, role);
+  }
 });
 
 test('⭐ PC/PD แก้ตารางผลิตได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
@@ -138,12 +149,18 @@ test('ฝ่ายขายอ่านตารางผลิตได้ แ�
   assert.equal(canEditProduction(aeKa), false);
 });
 
-test('⭐ ช่างฝ่าย TS แก้ตาราง service ได้ · ทีมขาย SV ก็ได้ · ทีมขายอื่นไม่ได้', () => {
-  assert.equal(canEditService(ts), true);
+test('🔴 คนจัดตาราง service = Planner/หัวหน้า TS + ทีมขาย SV — เจ้าหน้าที่หน้างานไม่ใช่', () => {
+  /* มติ 2026-08-30: "ลงคิว/มอบหมายเจ้าหน้าที่ = Planner + หัวหน้าเท่านั้น" ·
+     เจ้าหน้าที่หน้างานปิดงาน *ของตัวเอง* ได้ผ่าน service:work (canWorkOwnVisit) ไม่ใช่ service:edit
+     🐞 ถ้าเจ้าหน้าที่ถือ service:edit เมื่อไร เขาจะแก้คิวของเพื่อน แก้ทะเบียนไซต์ และลบนัดได้ */
+  assert.equal(canEditService(ts), false);
+  for (const role of ['ts_planner', 'ts_senior', 'ts_audit', 'ts_manager']) {
+    assert.equal(canEditService({ role, department: 'TS' }), true, role);
+  }
   assert.equal(canEditService(aeSv), true);
   assert.equal(canEditService(aeKa), false);
 });
 
-test('ช่างฝ่าย TS ไม่ได้สิทธิ์แก้ตารางผลิตติดมา (คนละโมดูล)', () => {
+test('เจ้าหน้าที่ฝ่าย TS ไม่ได้สิทธิ์แก้ตารางผลิตติดมา (คนละโมดูล)', () => {
   assert.equal(canEditProduction(ts), false);
 });

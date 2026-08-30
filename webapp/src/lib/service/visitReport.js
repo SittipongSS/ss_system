@@ -1,10 +1,10 @@
 // ── ใบส่งงาน: ระบบประกอบเอง (F-5) — logic ล้วน ────────────────────────────
 //
 // ⭐ **คำตอบสั้นที่สุดของ docs/service-field-operations.md**:
-//   ข้อความ 20 บรรทัดที่ช่างพิมพ์ส่ง LINE ทุกครั้ง คือใบส่งงานที่ระบบควรประกอบให้เอง
-//   90% ของมันคือข้อมูลที่อยู่ในทะเบียนไซต์/เครื่องอยู่แล้ว ⇒ ช่างกรอกแค่ **สิ่งที่เปลี่ยนวันนี้**
+//   ข้อความ 20 บรรทัดที่เจ้าหน้าที่พิมพ์ส่ง LINE ทุกครั้ง คือใบส่งงานที่ระบบควรประกอบให้เอง
+//   90% ของมันคือข้อมูลที่อยู่ในทะเบียนไซต์/เครื่องอยู่แล้ว ⇒ เจ้าหน้าที่กรอกแค่ **สิ่งที่เปลี่ยนวันนี้**
 //
-//   แกะใบจริง (Jim Thompson Outlet 93 · 01/08/69) ทีละบรรทัดแล้วได้ว่าช่างพิมพ์ซ้ำ:
+//   แกะใบจริง (Jim Thompson Outlet 93 · 01/08/69) ทีละบรรทัดแล้วได้ว่าเจ้าหน้าที่พิมพ์ซ้ำ:
 //   วันที่ · ชื่อไซต์ · ชนิดงาน · ชื่อกลิ่น · จำนวนเครื่องแยกรุ่นแยกสี · ตำแหน่งเครื่อง ·
 //   ช่วงเวลาที่ไซต์เปิด · ค่าตั้งเครื่อง — ทั้งหมดอยู่ในทะเบียนแล้ว
 //
@@ -76,7 +76,7 @@ export function reportHeadline({ visit, site, flags = [] } = {}) {
   return what ? `${where} — ${what}` : `${where} — ส่งงานแล้ว`;
 }
 
-/* ⭐ ประกอบเนื้อใบจากทะเบียน — ทุกบรรทัดที่คืนจากที่นี่คือบรรทัดที่ช่าง **ไม่ต้องพิมพ์**
+/* ⭐ ประกอบเนื้อใบจากทะเบียน — ทุกบรรทัดที่คืนจากที่นี่คือบรรทัดที่เจ้าหน้าที่ **ไม่ต้องพิมพ์**
    คืนเป็นโครงสร้าง ไม่ใช่ข้อความ เพื่อให้จอกับ PDF ใช้ชุดเดียวกันโดยจัดหน้าคนละแบบได้ */
 export function buildVisitReport({
   visit, site, zones = [], assets = [], results = [], items = [],
@@ -96,7 +96,7 @@ export function buildVisitReport({
     { label: 'ไซต์', value: [site?.name, site?.routeZone].filter(Boolean).join(' · ') || visit.siteId },
     { label: 'ลูกค้า', value: site?.customerName || null },
     { label: 'งาน', value: VISIT_KIND_LABELS[visit.kind] || visit.kind },
-    { label: 'ช่าง', value: visit.assigneeName || null },
+    { label: 'เจ้าหน้าที่', value: visit.assigneeName || null },
     { label: 'ช่วงเวลาที่เข้าได้', value: accessWindowText(site) || null },
   ];
 
@@ -148,7 +148,7 @@ export function buildVisitReport({
     attachments: Array.isArray(visit.attachments) ? visit.attachments : [],
     signatureUrl: visit.customerSignatureUrl || null,
     flags,
-    // ⭐ สิ่งที่ช่างพิมพ์เองมีแค่สองอย่าง — ที่เหลือระบบประกอบให้
+    // ⭐ สิ่งที่เจ้าหน้าที่พิมพ์เองมีแค่สองอย่าง — ที่เหลือระบบประกอบให้
     authored: ['summary', 'reason'],
   };
 }

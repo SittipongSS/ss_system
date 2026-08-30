@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
    ⚠️ ไม่ได้ห้าม grid 7 คอลัมน์ทุกกรณี — ห้ามเฉพาะ "กริดเดือน" ที่ดูออกจากการ
    คำนวณช่องเว้นต้นเดือน (getDay ของวันที่ 1) คู่กับ repeat(7, …) ในไฟล์เดียวกัน
-   ตารางช่าง×วัน (service/schedule) และบอร์ดผลิตไม่เข้าเงื่อนไขนี้ */
+   ตารางเจ้าหน้าที่×วัน (service/schedule) และบอร์ดผลิตไม่เข้าเงื่อนไขนี้ */
 
 const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const ALLOWED = ["components/ui/MonthGrid.js"];

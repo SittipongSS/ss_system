@@ -94,14 +94,14 @@ export default function ServiceSiteDetailPage({ params }) {
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  // รายชื่อช่างโหลดเมื่อจะ "เลือก" เท่านั้น
+  // รายชื่อเจ้าหน้าที่บริการโหลดเมื่อจะ "เลือก" เท่านั้น
   useEffect(() => {
     if (formPlan === undefined || technicians.length) return;
     (async () => {
       try {
         const res = await apiFetch("/api/pm/assignable-users");
         const data = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
+        if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
         setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
       } catch (e) {
         setToast({ kind: "error", msg: e.message });
@@ -243,7 +243,7 @@ export default function ServiceSiteDetailPage({ params }) {
     [assets],
   );
 
-  // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("ช่างจะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
+  // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("เจ้าหน้าที่จะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
   const todayIso = businessDate();
   const upcoming = useMemo(
     () => visits.filter((v) => v.scheduledDate >= todayIso && v.status === "scheduled"),
@@ -478,7 +478,7 @@ export default function ServiceSiteDetailPage({ params }) {
                   <th>ชนิดงาน</th>
                   <th>รอบ</th>
                   <th>ช่วงเวลา</th>
-                  <th>ช่างประจำ</th>
+                  <th>เจ้าหน้าที่ประจำ</th>
                   <th>สถานะ</th>
                   {canEdit && <th aria-label="การทำงาน" />}
                 </tr>
@@ -514,7 +514,7 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th><th>ช่าง</th><th>รหัส</th></tr>
+                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th><th>เจ้าหน้าที่</th><th>รหัส</th></tr>
               </thead>
               <tbody>
                 {upcoming.map((visit) => (
@@ -539,7 +539,7 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>ช่าง</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" /></tr>
+                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" /></tr>
               </thead>
               <tbody>
                 {history.map((visit) => (
@@ -608,7 +608,7 @@ export default function ServiceSiteDetailPage({ params }) {
               : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
           : ""}
         detail={pendingDelete?.type === "plan"
-          ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าช่างจะมา จะไม่ถูกยกเลิกเงียบ ๆ"
+          ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ"
           : pendingDelete?.type === "zone"
             ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
             : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}

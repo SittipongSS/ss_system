@@ -32,7 +32,7 @@ export function termInWindow(term, todayIso = businessDate()) {
 
 /* รอบนี้ "มีผล" = ใบแม่ยังมีผล **และ** วันนี้อยู่ในช่วง
    ⚠️ ต้องส่งใบสั่งขายมาด้วยเสมอ — ไม่ส่ง = ตอบ false ไม่ใช่เดาว่าใช่
-   (การเดาว่าใช่คือที่มาของ "ส่งช่างไปที่ที่หมดสัญญา 25 จุด") */
+   (การเดาว่าใช่คือที่มาของ "ส่งเจ้าหน้าที่ไปที่ที่หมดสัญญา 25 จุด") */
 export function termIsActive(term, order, todayIso = businessDate()) {
   return termOrderActive(order) && termInWindow(term, todayIso);
 }

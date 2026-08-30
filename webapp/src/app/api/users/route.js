@@ -6,8 +6,12 @@ import { invalidateCache } from '@/lib/serverCache';
 
 export const dynamic = 'force-dynamic';
 
-// Only ae_supervisor / admin (users:manage) may MANAGE accounts (create/edit/
-// delete). The proxy gates writes; this guards the write handlers.
+/* บัญชีผู้ใช้ **สร้าง/แก้/ลบได้เฉพาะ `admin`** — `users:manage` อยู่ใน
+   ADMIN_SYSTEM_CAPS ซึ่งถูกกันออกจากหัวหน้าฝ่ายขายโดยตรง (permissions.js
+   SALES_HEAD_EXCLUDED) · proxy กันชั้นนอก ตัวนี้กัน handler ที่เขียนข้อมูล
+   ⚠️ คอมเมนต์เดิมเขียนว่า "ae_supervisor / admin" ซึ่งไม่จริงตั้งแต่รอบที่ตัด
+      users:manage ออกจากหัวหน้าฝ่ายขาย — คนอ่านจะไปนัดให้หัวหน้าขายเป็นคนเปิด
+      บัญชีให้ฝ่ายอื่น แล้วเจอ 403 หน้างาน */
 async function requireAdmin() {
   const user = await getCurrentUser();
   return can(user?.role, 'users:manage') ? user : null;
