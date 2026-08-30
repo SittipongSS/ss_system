@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   LEDGER_COLUMNS, LEDGER_GROUP_OPTIONS, LEDGER_SORT_OPTIONS, filterLedger, groupAsOrder,
   groupLedgerBuckets, groupLedgerByOrder, groupNote, ledgerReport, ledgerRow, ledgerSortDir,
-  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups, undatedHiddenBy
+  ledgerSummary, orderStateIndex, pendingConfirmations, sortLedger, sortLedgerGroups,
+  stampOrderPaidThrough, undatedHiddenBy
 } from './paymentLedger.js';
 
 const TODAY = '2026-08-13';
@@ -524,4 +525,92 @@ test('undatedHiddenBy: นับเฉพาะแถวที่ผ่านต
     undatedHiddenBy(rows, { from: '2026-08-01', q: 'ก' }),
     { count: 1, amount: 100 },
   );
+});
+
+/* ── ช่วงครอบบริการ + "จ่ายถึง" (mig 0320 · มติผู้ใช้ 2026-08-30) ──────────────
+   🔴 สองชั้นที่ค่าหายเงียบได้: `ledgerRow` เป็น whitelist (ไม่ spread แถวดิบ) และ
+   `groupLedgerByOrder` ประกอบก้อนด้วยรายชื่อฟิลด์ตายตัว — ลืมชั้นไหนก็ไม่มี error
+   ให้เห็น มีแต่คอลัมน์ว่างบนจอ ⇒ ปักไว้ทั้งสองชั้น */
+const svc = (extra = {}) => ledgerRow({
+  installment: {
+    id: `SOI-${extra.seq || 1}`, seq: extra.seq || 1, label: 'งวด', percent: 25, amount: 1000,
+    status: 'pending', evidence: [], ...extra,
+  },
+  order: { id: 'SOR-SVC', orderNumber: 'SO-26090012-0', quotationId: 'QT-9' },
+  quotation: { id: 'QT-9', quoteNumber: 'QT-26090005-0' },
+  customer: { name: 'เคพี อาร์ท เซ็นเตอร์', arCode: 'AR-233' },
+  todayIso: TODAY,
+  serviceRounds: true,
+});
+
+test('แถวพกช่วงครอบบริการและธง "ใบมีรอบบริการ" ไปถึงจอ', () => {
+  const row = svc({ coversFrom: '2026-09-01', coversTo: '2026-11-30' });
+  assert.equal(row.coversFrom, '2026-09-01');
+  assert.equal(row.coversTo, '2026-11-30');
+  assert.equal(row.serviceRounds, true);
+  // ใบที่ไม่ได้ส่งธงมา ต้องเป็น false ไม่ใช่ undefined (ตัวกรองเทียบค่าตรง ๆ)
+  assert.equal(make().serviceRounds, false);
+});
+
+test('⭐ "จ่ายถึง" ของใบ = coversTo ไกลสุดของงวดที่บัญชีรับรองแล้ว', () => {
+  const [group] = groupLedgerByOrder(stampOrderPaidThrough([
+    svc({ seq: 1, status: 'confirmed', coversFrom: '2026-09-01', coversTo: '2026-11-30' }),
+    svc({ seq: 2, status: 'reported', coversFrom: '2026-12-01', coversTo: '2027-02-28' }),
+  ]));
+  assert.equal(group.paidThrough, '2026-11-30'); // งวดที่ "แจ้งแล้ว" ไม่ขยับ
+  assert.equal(group.serviceRounds, true);
+});
+
+test('ใบที่ไม่มีงวดรับรอง หรือไม่ใช่ใบบริการ = ไม่มีจ่ายถึง', () => {
+  const [svcGroup] = groupLedgerByOrder(stampOrderPaidThrough([
+    svc({ status: 'reported', coversTo: '2026-11-30' }),
+  ]));
+  assert.equal(svcGroup.paidThrough, null);
+  const [plain] = groupLedgerByOrder(stampOrderPaidThrough([make({ status: 'confirmed' })]));
+  assert.equal(plain.paidThrough, null);
+  assert.equal(plain.serviceRounds, false);
+});
+
+test('ตัวกรองสายของงานแยกใบมีรอบบริการออกจากใบอื่น', () => {
+  const rows = [svc({ seq: 1 }), make({ seq: 2 })];
+  assert.deepEqual(filterLedger(rows, { line: ['service'] }).map((r) => r.orderNumber), ['SO-26090012-0']);
+  assert.deepEqual(filterLedger(rows, { line: ['other'] }).map((r) => r.orderNumber), ['SO-26080008-0']);
+  // ไม่เลือกอะไร = ไม่กรอง (เหมือนตัวกรองอื่นของทะเบียนนี้)
+  assert.equal(filterLedger(rows, { line: [] }).length, 2);
+  assert.equal(filterLedger(rows, {}).length, 2);
+});
+
+/* 🔴 "จ่ายถึง" เป็นค่าระดับ **ใบ** — ต้องคิดก่อนกรองเสมอ (บทเรียนเดียวกับ orderStateIndex)
+   เคยเขียนให้ groupLedgerByOrder คำนวณจากแถวที่ผ่านตัวกรองมาแล้ว ⇒ บัญชีกดกรอง
+   "สถานะงวด = รอชำระ" ทีเดียว งวด confirmed หลุดหมด ค่าเลยกลายเป็น "ยังไม่ครอบ"
+   ทั้งที่เงินครอบอยู่ — และค่าเดียวกันนี้คือด่านที่ห้าม TS ลงคิว */
+test('⭐ จ่ายถึงไม่เปลี่ยนตามตัวกรอง — ประทับจากงวดทั้งใบก่อนกรอง', () => {
+  const all = [
+    svc({ seq: 1, status: 'confirmed', dueDate: '2026-08-01', coversTo: '2026-11-30' }),
+    svc({ seq: 2, status: 'pending', dueDate: '2026-11-01' }),
+  ];
+  stampOrderPaidThrough(all);
+
+  const [full] = groupLedgerByOrder(all);
+  assert.equal(full.paidThrough, '2026-11-30');
+
+  // กรองสถานะจนงวด confirmed หลุด — ค่าระดับใบต้องไม่ขยับ
+  const onlyPending = filterLedger(all, { status: ['pending'] });
+  assert.equal(onlyPending.length, 1);
+  assert.equal(groupLedgerByOrder(onlyPending)[0].paidThrough, '2026-11-30');
+
+  // กรองช่วงวันจนงวด confirmed หลุด — เช่นกัน
+  const laterOnly = filterLedger(all, { from: '2026-10-01' });
+  assert.equal(groupLedgerByOrder(laterOnly)[0].paidThrough, '2026-11-30');
+});
+
+test('ใบที่ไม่มีงวดรับรองเลย ประทับแล้วยังเป็น null', () => {
+  const all = [svc({ seq: 1, status: 'reported', coversTo: '2026-11-30' })];
+  stampOrderPaidThrough(all);
+  assert.equal(groupLedgerByOrder(all)[0].paidThrough, null);
+});
+
+test('ไฟล์ที่บัญชีดาวน์โหลดมีช่วงครอบบริการด้วย ไม่ใช่เห็นแต่บนจอ', () => {
+  const keys = LEDGER_COLUMNS.map((c) => c.key);
+  assert.ok(keys.includes('coversFrom') && keys.includes('coversTo'));
 });

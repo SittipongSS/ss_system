@@ -14,6 +14,7 @@
 
 import { fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
+import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -31,7 +32,10 @@ export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
  * ⚠️ ทุกอย่างที่มาจาก QT เป็น **snapshot ตอนอนุมัติใบ** (`label` `percent` `amount`)
  * ห้ามคำนวณใหม่จาก QT ปัจจุบัน — ใบที่เซ็นไปแล้วต้องอ่านได้เท่าเดิมตลอดไป
  */
-export function ledgerRow({ installment, order, quotation, customer, deal = null, todayIso = null }) {
+export function ledgerRow({
+  installment, order, quotation, customer, deal = null, todayIso = null,
+  serviceRounds = false,
+}) {
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
   const due = installment.dueDate || null;
@@ -62,6 +66,14 @@ export function ledgerRow({ installment, order, quotation, customer, deal = null
     amount: Number(installment.amount) || 0,
 
     dueDate: due,
+    /* ── ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) ────────────
+       ⚠️ **ต้องอยู่ในรายชื่อนี้ถึงจะถึงจอ** — ตัวนี้เป็น whitelist ไม่ได้ spread แถวดิบมา
+       ค่าที่ลืมเติมจะหายเงียบ ๆ โดยไม่มี error ให้เห็น
+       `serviceRounds` = ใบนี้เข้าเกณฑ์ "มีรอบบริการ" ไหม (สาย SERVICE + บรรทัดหมวด
+       02-001 ≥1) — ผู้เรียกคำนวณมาให้ เพราะที่นี่ไม่มีบรรทัดของใบให้ดู */
+    coversFrom: installment.coversFrom || null,
+    coversTo: installment.coversTo || null,
+    serviceRounds: Boolean(serviceRounds),
     paidOn: installment.paidOn || null,
     status,
     statusLabel: LEDGER_STATUS[status]?.label || status,
@@ -117,6 +129,12 @@ export const LEDGER_COLUMNS = [
   { key: 'percent', label: 'สัดส่วน (%)', num: true },
   { key: 'amount', label: 'ยอดงวด', money: true },
   { key: 'dueDate', label: 'กำหนดชำระ', date: true },
+  /* ช่วงบริการที่งวดครอบ (mig 0320) — ต้องอยู่ในไฟล์ด้วย ไม่ใช่เห็นแต่บนจอ:
+     บัญชีกรอง "สายของงาน = ใบมีรอบบริการ" แล้วโหลดไฟล์ ข้อมูลชุดที่เป็นเหตุผลของ
+     การกรองนั้นต้องติดไปด้วย (หัวไฟล์นี้เขียนกฎไว้เองว่าจอกับไฟล์ห้ามพูดคนละเรื่อง)
+     ⚠️ ใบสายสินค้าได้ช่องว่าง ซึ่งถูกแล้ว — ไม่ใช่ทุกใบที่มีช่วงครอบ */
+  { key: 'coversFrom', label: 'ครอบบริการตั้งแต่', date: true },
+  { key: 'coversTo', label: 'ครอบบริการถึง', date: true },
   { key: 'paidOn', label: 'วันที่จ่ายจริง', date: true },
   { key: 'statusLabel', label: 'สถานะ' },
   { key: 'reportedByName', label: 'ผู้แจ้งชำระ' },
@@ -165,6 +183,33 @@ export const LEDGER_ORDER_STATES = {
  * ⚠️ ต้องคิดจากงวด **ทั้งหมดก่อนกรอง** เสมอ · เก็บครบ = ทุกงวดของใบ `confirmed`
  * (กติกา mig 0245 — `reported` ยังไม่นับว่าเก็บได้)
  */
+/**
+ * "จ่ายถึง" รายใบ — คิดจาก **งวดทั้งหมดของใบก่อนกรอง** แล้วประทับลงทุกแถวของใบนั้น
+ *
+ * ⭐ เหตุผลเดียวกับ `orderStateIndex` เป๊ะ: เป็นค่าระดับ **ใบ** ที่ตารางเอาไปแสดง
+ * บนแถวที่ยุบแล้ว ⇒ คิดจากแถวที่เหลือหลังกรองเมื่อไร ค่าจะเพี้ยนตามตัวกรองที่ไม่เกี่ยวกัน
+ * (กรอง "สถานะงวด = รอชำระ" แล้วงวด confirmed หลุดหมด ⇒ "ยังไม่ครอบ" ทั้งที่เงินครอบอยู่)
+ *
+ * ⚠️ ประทับลงแถว (`orderPaidThrough`) แทนการส่ง Map ไปถึง `groupLedgerByOrder` เพราะ
+ * การจัดกลุ่มเกิด **ฝั่งจอ** หลังข้อมูลเดินทางข้าม API มาแล้ว — ส่ง Map ข้าม JSON ไม่ได้
+ * และค่านี้เป็นของใบ ทุกแถวของใบเดียวกันจึงถือค่าเดียวกันโดยนิยาม
+ */
+export function stampOrderPaidThrough(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    const through = paidThrough(group);
+    for (const row of group) row.orderPaidThrough = through;
+  }
+  return list;
+}
+
 export function orderStateIndex(rows = []) {
   const tally = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -190,13 +235,19 @@ export function orderStateIndex(rows = []) {
  */
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
-  orderState = [], orderStates = null,
+  orderState = [], orderStates = null, line = [],
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
   const wantedOrders = Array.isArray(orderState) ? orderState.filter(Boolean) : [];
+  /* สายของงาน — ค่าที่รับคือ 'service' (ใบที่เข้าเกณฑ์มีรอบบริการ) กับ 'other' (ที่เหลือ)
+     ⚠️ **ไม่ใช่ตัวกรองสายธุรกิจดิบ** — เกณฑ์เต็มคือ สาย SERVICE **และ** มีบรรทัดหมวด
+     02-001 (มติผู้ใช้ 2026-08-30) ⇒ ใบสาย SERVICE ที่ไม่มีแพ็คเกจบริการจะอยู่ถัง 'other'
+     เหมือนใบสายสินค้า เพราะมันไม่มีรอบบริการให้เงินไปครอบ */
+  const wantedLines = Array.isArray(line) ? line.filter(Boolean) : [];
   const needle = String(q || '').trim().toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((r) => {
     if (wanted.length && !wanted.includes(r.status)) return false;
+    if (wantedLines.length && !wantedLines.includes(r.serviceRounds ? 'service' : 'other')) return false;
     /* ⚠️ สถานะระดับ **ใบ** ต้องมาจากดัชนีที่คิดจากงวดทั้งหมดของใบ (`orderStateIndex`)
        ไม่ใช่จากงวดที่เหลือหลังกรอง — กรองสถานะงวดเป็น "รอชำระ" เมื่อไร ทุกใบจะดู
        เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
@@ -310,6 +361,8 @@ export function groupLedgerByOrder(rows = []) {
         ownerId: row.ownerId || null,
         ownerName: row.ownerName || '',
         team: row.team || null,
+        // ใบนี้เข้าเกณฑ์ "มีรอบบริการ" ไหม — ค่าของทั้งใบ ทุกงวดพกค่าเดียวกันมา
+        serviceRounds: Boolean(row.serviceRounds),
         rows: [],
       });
     }
@@ -342,6 +395,14 @@ export function groupLedgerByOrder(rows = []) {
           .filter((r) => r.status !== 'confirmed' && r.dueDate)
           .map((r) => r.dueDate)
           .sort()[0] || null,
+        /* ⭐ "จ่ายถึง" ของใบ (mig 0320) — เงินที่บัญชีรับรองแล้วครอบบริการถึงวันไหน
+           🔴 **อ่านจากค่าที่ผู้เรียกคิดมาก่อนกรอง (`row.orderPaidThrough`) ห้ามคิดจาก
+           `rowsInOrder`** — นี่เป็นค่าระดับ **ใบ** แบบเดียวกับ orderState: แถวที่ถึงมือ
+           ฟังก์ชันนี้คือแถวที่ผ่าน `filterLedger` มาแล้ว ⇒ กรอง "สถานะงวด = รอชำระ"
+           หรือกรองช่วงวันเมื่อไร งวด confirmed หลุดหมด แล้วค่าจะกลายเป็น null
+           (หรือถอยไปวันเก่ากว่าความจริงแล้วติดสีแดงว่าบริการขาดช่วง) ทั้งที่เงินครอบอยู่
+           ⇒ ดูกติกาเดียวกันที่ `orderStateIndex` และ `paidThroughIndex` */
+        paidThrough: rowsInOrder.find((r) => r.orderPaidThrough)?.orderPaidThrough || null,
       };
     })
     .sort((a, b) => {

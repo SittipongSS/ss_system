@@ -1,6 +1,6 @@
 "use client";
 import { Fragment, useState } from "react";
-import { CalendarClock, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
+import { CalendarClock, CalendarRange, Link2, Paperclip, Receipt, Undo2, Unlink, Wallet, XCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -21,6 +21,8 @@ import {
   installmentActionError, installmentDisplayStatus, installmentPlanDrift, installmentPrepaid,
   installmentReportOutcome, paymentNotRequired, paymentRollup, previewInstallments,
 } from "@/lib/sales/salesOrderPayments";
+import { coverageRollup, coverageWarnings } from "@/lib/sales/paymentCoverage";
+import { orderHasServiceRounds } from "@/lib/sales/serviceOrders";
 import styles from "./SalesOrderPaymentPanel.module.css";
 
 /* การ์ด "การชำระ" ของใบสั่งขาย (mig 0245/0246) — **แบบ ข** (มติผู้ใช้ 2026-08-13)
@@ -45,6 +47,7 @@ export default function SalesOrderPaymentPanel({
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
   const [linkFor, setLinkFor] = useState(null);
+  const [coverageFor, setCoverageFor] = useState(null);
 
   const saved = Array.isArray(installments) ? installments : [];
   const rows = saved.length ? saved : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount);
@@ -123,6 +126,25 @@ export default function SalesOrderPaymentPanel({
 
   const pct = rollup.totalAmount > 0 ? Math.round((rollup.confirmedAmount / rollup.totalAmount) * 100) : 0;
 
+  /* ── ใบสายบริการ: งวดต้องบอกด้วยว่าครอบ "ช่วงบริการ" ไหน (mig 0320) ──────
+     ⭐ มติผู้ใช้ 2026-08-30 — จ่ายก่อนบริการเสมอ ⇒ ค่า "จ่ายถึง" (สูงสุดของ coversTo
+     ในงวดที่บัญชีรับรองแล้ว) คือด่านที่ TS ใช้ตัดสินว่านัดวันนั้นลงคิวได้ไหม
+     ⚠️ **โผล่เฉพาะใบที่เข้าเกณฑ์** (สาย SERVICE + มีบรรทัดหมวด 02-001) — ใบสายสินค้า
+     ต้องเห็นการ์ดนี้เหมือนเดิมเป๊ะ ไม่มีคอลัมน์ใหม่มากวน
+     ⚠️ เกณฑ์อ่านจากตัวตัดสินกลาง ไม่เขียนเงื่อนไขซ้ำที่นี่ (`orderHasServiceRounds`) */
+  const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
+  const coverage = coverageRollup(saved, todayIso);
+  /* ช่วงซ้อน/เว้น = เตือน ไม่บล็อก (แผนชำระจริงมี 29 รูปแบบพิมพ์มือ) ⇒ สรุปเป็นบรรทัดเดียว
+     ไม่ไล่ทีละงวด — คนอ่านต้องรู้ว่า "มีเรื่องต้องดู" แล้วไปดูที่คอลัมน์เอง */
+  const coverageAlert = !hasServiceRounds || isPreview ? null : (() => {
+    const notes = [];
+    const warnings = coverageWarnings(saved);
+    if (warnings.some((w) => w.kind === "overlap")) notes.push("มีช่วงครอบที่ซ้อนทับกัน");
+    if (warnings.some((w) => w.kind === "gap")) notes.push("มีช่วงบริการที่ไม่มีงวดไหนครอบ");
+    if (warnings.some((w) => w.kind === "half_range")) notes.push("มีงวดที่กรอกช่วงครอบมาข้างเดียว");
+    return notes.length ? notes.join(" · ") : null;
+  })();
+
   /* ── ใบยอด 0 จบที่อนุมัติใบ (มติผู้ใช้ 2026-08-18) ────────────────────────
      ไม่มีเงินให้เก็บ ⇒ ไม่มีงวด ไม่มีการแจ้ง/ยืนยัน · การ์ดยังอยู่เพื่อ **บอกว่าทำไม
      ไม่มีอะไรให้ทำ** ไม่ใช่ซ่อนทั้งการ์ด — การ์ดที่หายไปเฉย ๆ อ่านเหมือนระบบลืม
@@ -190,6 +212,34 @@ export default function SalesOrderPaymentPanel({
 
       {alert ? <StatusNotice tone="error">{alert}</StatusNotice> : null}
 
+      {/* ⭐ "จ่ายถึง" — ค่าที่ทั้งเส้นบริการห้อยอยู่ (มติผู้ใช้ 2026-08-30 "จ่ายก่อนบริการเสมอ")
+          บอกตรง ๆ ว่านัดหลังวันนี้จะลงคิวไม่ได้ เพื่อให้ฝ่ายขายรู้ก่อนที่ TS จะมาถาม
+          ⚠️ นับเฉพาะงวดที่ **บัญชีรับรองแล้ว** — "แจ้งแล้ว" ไม่ขยับค่านี้แม้แต่วันเดียว */}
+      {hasServiceRounds && !isPreview ? (
+        <StatusNotice tone={coverage.paidThrough ? "success" : "warning"}>
+          {coverage.paidThrough ? (
+            <>
+              เงินครอบบริการถึง <b>{fmtDate(coverage.paidThrough)}</b> — นัดบริการหลังวันดังกล่าวจะลงคิวไม่ได้จนกว่าบัญชีจะรับรองงวดถัดไป
+              {coverage.confirmedWithoutCoverage
+                ? ` · ยังมีอีก ${coverage.confirmedWithoutCoverage} งวดที่รับรองแล้วแต่ไม่ได้ระบุช่วงครอบ จึงยังไม่ถูกนับ`
+                : ""}
+            </>
+          ) : coverage.confirmedWithoutCoverage ? (
+            /* ⚠️ เคสนี้ต่างจาก "ยังไม่มีใครรับรอง" คนละเรื่องกันเลย — เงินเข้าแล้ว
+               แต่ไม่มีใครบอกว่าซื้อบริการช่วงไหน ระบบจึงตอบแทนไม่ได้ · เขียนรวมกัน
+               เมื่อไรฝ่ายขายจะไปตามบัญชีทั้งที่บัญชีทำงานเสร็จแล้ว (เจอตอนดูใบจริง) */
+            <>
+              งวดที่บัญชีรับรองแล้ว <b>{coverage.confirmedWithoutCoverage} งวด</b> ยังไม่ได้ระบุช่วงครอบบริการ
+              — ระบบจึงยังบอกไม่ได้ว่าเงินครอบถึงวันไหน และนัดบริการจะยังลงคิวไม่ได้
+            </>
+          ) : (
+            <>ยังไม่มีงวดที่บัญชีรับรอง — เงินยังไม่ครอบบริการช่วงไหนเลย นัดบริการทุกใบจะยังลงคิวไม่ได้</>
+          )}
+        </StatusNotice>
+      ) : null}
+
+      {coverageAlert ? <StatusNotice tone="warning">{coverageAlert}</StatusNotice> : null}
+
       {/* ⭐ บอกให้ตรงว่างวดร่างทำอะไรได้/ไม่ได้ — ไม่งั้นคนจะหาปุ่ม "แจ้งลูกค้าจ่ายแล้ว"
           ที่หายไปแล้วสรุปเองว่าระบบพัง (ด่านที่ไม่บอกเหตุผลคือด่านที่คนหาทางอ้อม) */}
       {isDraftPlan ? (
@@ -216,13 +266,14 @@ export default function SalesOrderPaymentPanel({
         /* surface="auto" = ตารางมีขอบ/มุมมน/พื้นของตัวเอง (ตัวแปรกลางใน Table.module.css)
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
-        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={680}>
+        <TableScroll family="editable" surface="auto" cells="stacked" minWidth={hasServiceRounds ? 820 : 680}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
             <thead>
               <tr>
                 {single ? null : <th className={styles.seqCol}>งวด</th>}
                 <th>รายละเอียด</th>
                 <th>กำหนด / จ่ายจริง</th>
+                {hasServiceRounds ? <th>ครอบคลุมบริการ</th> : null}
                 <th className="num">ยอด</th>
                 <th>หลักฐาน</th>
                 <th>สถานะ</th>
@@ -276,6 +327,16 @@ export default function SalesOrderPaymentPanel({
                     id: "schedule", icon: CalendarClock,
                     label: row.dueDate ? "แก้กำหนดชำระ" : "ตั้งกำหนดชำระ",
                     onClick: () => { onClearError?.(); setScheduleFor({ row, dueDate: row.dueDate || "" }); },
+                  },
+                  /* ช่วงครอบบริการ — เฉพาะใบสายบริการ · งวดที่บัญชีรับรองแล้วเป็นของบัญชี
+                     (ด่านจริงอยู่ที่ `installmentActionError` ตัวเดียวกับที่ API ใช้) */
+                  hasServiceRounds && !gate(row, "coverage") && {
+                    id: "coverage", icon: CalendarRange,
+                    label: row.coversFrom || row.coversTo ? "แก้ช่วงครอบบริการ" : "ระบุช่วงครอบบริการ",
+                    onClick: () => {
+                      onClearError?.();
+                      setCoverageFor({ row, coversFrom: row.coversFrom || "", coversTo: row.coversTo || "" });
+                    },
                   },
                   !gate(row, "withdraw") && {
                     id: "withdraw", icon: Undo2, tone: "warning",
@@ -351,6 +412,28 @@ export default function SalesOrderPaymentPanel({
                         </small>
                       ) : null}
                     </td>
+                    {/* ⭐ ช่วงบริการที่งวดนี้จ่ายค่าให้ (mig 0320) — **ผูกเป็นวันที่ ไม่ใช่เลขรอบ**
+                        (มติ 2026-08-30: รอบเลื่อน/งดได้ตลอดอายุสัญญา ผูกเลขรอบแล้วเพี้ยนเงียบ)
+                        ⚠️ งวดที่บัญชีรับรองแล้วแต่ช่องนี้ว่าง = ไม่ถูกนับเข้า "จ่ายถึง" ⇒ ต้องเห็นว่าว่าง
+                        ไม่ใช่เงียบ ๆ (ขีดของระบบผ่าน NA ไม่ใช่ "-" ดิบ) */}
+                    {hasServiceRounds ? (
+                      <td>
+                        {row.coversFrom && row.coversTo ? (
+                          <span>{fmtDate(row.coversFrom)} – {fmtDate(row.coversTo)}</span>
+                        ) : row.coversFrom || row.coversTo ? (
+                          /* กรอกมาข้างเดียว — `fmtDate` ของช่องที่ว่างคืนยัติภังค์ดิบ "-"
+                             ซึ่งไปวางคู่กับขีดคั่นช่วงแล้วอ่านเป็นสองขีดติดกัน · ขีดของระบบ
+                             คือ NA (`—`) และเคสนี้มีคำเตือน half_range รออยู่แล้วบนหัวการ์ด */
+                          <span className={styles.overdue}>
+                            {row.coversFrom ? `ตั้งแต่ ${fmtDate(row.coversFrom)}` : `ถึง ${fmtDate(row.coversTo)}`} · ยังไม่ครบช่วง
+                          </span>
+                        ) : (
+                          <span className={row.status === "confirmed" ? styles.overdue : styles.none}>
+                            {row.status === "confirmed" ? "ยังไม่ระบุ" : NA}
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
                     <td className="num">{fmtMoney(row.amount)}</td>
                     <td>
                       {evidence.length ? (
@@ -395,7 +478,9 @@ export default function SalesOrderPaymentPanel({
                       บอกว่าต้องแก้อะไรก่อนแจ้งใหม่ (กฎเดียวกับใบสั่งขายที่ถูกตีกลับ) */}
                   {row.status === "rejected" && row.rejectedReason ? (
                     <tr className={styles.detailRow}>
-                      <td className={styles.detail} colSpan={single ? 6 : 7}>
+                      {/* ⚠️ ตัวเลขนี้ต้องขยับทุกครั้งที่เพิ่ม/ลดคอลัมน์ — ไม่งั้นแถวเหตุผลตีกลับ
+                          กินความกว้างผิดเฉพาะแถวที่ถูกตีกลับ (เคสที่ไม่ได้เจอทุกวัน) */}
+                      <td className={styles.detail} colSpan={(single ? 6 : 7) + (hasServiceRounds ? 1 : 0)}>
                         <div className={styles.rejected}>
                           <strong>บัญชีตีกลับ · {row.rejectedByName || "ฝ่ายบัญชี"}</strong>
                           <ReadableText text={row.rejectedReason} lines={3} />
@@ -486,6 +571,45 @@ export default function SalesOrderPaymentPanel({
                 onClick={async () => {
                   const done = await onAction(scheduleFor.row, "schedule", { dueDate: scheduleFor.dueDate || null });
                   if (done) setScheduleFor(null);
+                }}>บันทึก</Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* ⭐ ช่วงบริการที่งวดนี้ครอบ (mig 0320 · มติผู้ใช้ 2026-08-30) — กรอกเอง 2 ช่อง
+          ⚠️ **ไม่มีค่าตั้งต้น** ตามกฎฟอร์มของ repo: ช่วงครอบเป็นการตัดสินใจ ไม่ใช่ค่าที่เดาได้
+          (ปุ่ม "แบ่งช่วงอัตโนมัติ" จากช่วงสัญญาเป็นงาน PR-B ตอนที่ใบผูกสัญญาได้แล้ว
+           ตัวคำนวณอยู่ที่ `splitCoverageEvenly` ใน lib/sales/paymentCoverage.js รอเสียบ)
+          ⚠️ ล้างช่องทั้งคู่แล้วบันทึกได้ = ถอนช่วงครอบออก (ค่า "จ่ายถึง" จะถอยตาม) */}
+      {coverageFor ? (
+        <Modal open onClose={() => setCoverageFor(null)} title="ช่วงครอบบริการของงวดนี้" size="sm" dismissible={!busy}>
+          <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+            <p className="form-note">
+              เงินงวดนี้จ่ายค่าบริการช่วงวันไหน — ระบบใช้วันสิ้นสุดของงวดที่บัญชีรับรองแล้ว
+              เป็นค่า “จ่ายถึง” ซึ่งเป็นด่านว่านัดบริการวันไหนลงคิวได้
+            </p>
+            <label className={styles.field}>
+              <span>ครอบตั้งแต่</span>
+              <DateInput value={coverageFor.coversFrom} ariaLabel="วันเริ่มช่วงครอบบริการ"
+                onChange={(iso) => setCoverageFor((f) => ({ ...f, coversFrom: iso }))} />
+            </label>
+            <label className={styles.field}>
+              <span>ถึง</span>
+              <DateInput value={coverageFor.coversTo} ariaLabel="วันสิ้นสุดช่วงครอบบริการ"
+                min={coverageFor.coversFrom || undefined}
+                onChange={(iso) => setCoverageFor((f) => ({ ...f, coversTo: iso }))} />
+            </label>
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setCoverageFor(null)} disabled={!!busy}>ยกเลิก</Button>
+              <Button tone="accent" disabled={!!busy}
+                onClick={async () => {
+                  const done = await onAction(coverageFor.row, "coverage", {
+                    coversFrom: coverageFor.coversFrom || null,
+                    coversTo: coverageFor.coversTo || null,
+                  });
+                  if (done) setCoverageFor(null);
                 }}>บันทึก</Button>
             </div>
           </div>

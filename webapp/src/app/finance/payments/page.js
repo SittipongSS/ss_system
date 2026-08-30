@@ -24,7 +24,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag, Receipt, Search, Wallet,
+  AlarmClock, CircleDollarSign, ExternalLink, FileSpreadsheet, Flag, Receipt, Search, Wallet, Wrench,
 } from "lucide-react";
 import Workspace, { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
@@ -52,7 +52,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 /* คีย์ที่เป็น "ตัวกรองของข้อมูล" — ชุดนี้ตัวเดียวที่ส่งขึ้น API และที่ปุ่มล้างจะลบ
    (ที่เหลือ `group` `sort` `dir` เป็นมุมมองบนจอ ล้างตัวกรองแล้วต้องยังอยู่) */
-const FILTER_KEYS = ["status", "orderState", "from", "to", "q", "overdue"];
+const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue"];
 
 export default function FinancePaymentsPage() {
   const router = useRouter();
@@ -70,6 +70,9 @@ export default function FinancePaymentsPage() {
      ทั้งสองชั้นอยู่ใน URL เหมือนกัน — ลิงก์ที่บัญชีส่งให้กันจึงเปิดมาเห็นภาพเดียวกัน */
   const status = params.get("status") || "";
   const orderState = params.get("orderState") || "";
+  /* สายของงาน (มติผู้ใช้ 2026-08-30) — "service" = ใบที่เข้าเกณฑ์มีรอบบริการ
+     (สาย SERVICE + มีบรรทัดหมวด 02-001) · เกณฑ์ตัดสินฝั่ง server ที่ตัวกลางตัวเดียว */
+  const line = params.get("line") || "";
   const from = params.get("from") || "";
   const to = params.get("to") || "";
   const q = params.get("q") || "";
@@ -80,17 +83,19 @@ export default function FinancePaymentsPage() {
 
   const statusFilter = useMemo(() => (status ? status.split(",").filter(Boolean) : []), [status]);
   const orderStateFilter = useMemo(() => (orderState ? orderState.split(",").filter(Boolean) : []), [orderState]);
+  const lineFilter = useMemo(() => (line ? line.split(",").filter(Boolean) : []), [line]);
 
   const query = useMemo(() => {
     const sp = new URLSearchParams();
     if (status) sp.set("status", status);
     if (orderState) sp.set("orderState", orderState);
+    if (line) sp.set("line", line);
     if (from) sp.set("from", from);
     if (to) sp.set("to", to);
     if (q) sp.set("q", q);
     if (overdue) sp.set("overdue", "1");
     return sp;
-  }, [status, orderState, from, to, q, overdue]);
+  }, [status, orderState, line, from, to, q, overdue]);
 
   /* เขียนกลับจาก **params ทั้งชุด** ไม่ใช่จาก `query` — เขียนจาก query เมื่อไร
      การกดตัวกรองหนึ่งครั้งจะลบ group/sort/dir ทิ้งเงียบ ๆ */
@@ -104,7 +109,7 @@ export default function FinancePaymentsPage() {
   const setListFilter = useCallback((key, values) => setParam(key, values.join(",")), [setParam]);
 
   const filtering = FILTER_KEYS.some((key) => params.get(key));
-  const filterCount = statusFilter.length + orderStateFilter.length + (overdue ? 1 : 0);
+  const filterCount = statusFilter.length + orderStateFilter.length + lineFilter.length + (overdue ? 1 : 0);
 
   /* ล้างตัวกรอง = ล้างเฉพาะชั้นข้อมูล **แต่คงมุมมองไว้** — คนกดล้างอยากเห็นของครบ
      ไม่ได้อยากให้การจัดกลุ่ม/การเรียงที่เพิ่งตั้งไว้หายไปด้วย */
@@ -139,6 +144,9 @@ export default function FinancePaymentsPage() {
       setData({
         rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0,
         undatedHidden: body.undatedHidden || null,
+        /* ⚠️ "วันนี้" มาจาก server (นาฬิกาไทย) ไม่ใช่จากเครื่องผู้ใช้ — คอลัมน์ "จ่ายถึง"
+           เทียบกับค่านี้ ถ้าอ่านนาฬิกาเบราว์เซอร์ คนที่ตั้งโซนเวลาอื่นจะเห็นสีคนละแบบ */
+        todayIso: body.todayIso || null,
       });
     } catch (loadError) { if (isLatest() && !opts?.background) setError(loadError.message); }
     if (isLatest()) setLoading(false);
@@ -149,6 +157,7 @@ export default function FinancePaymentsPage() {
 
   const rows = data.rows;
   const summary = data.summary;
+  const todayIso = data.todayIso;
   const undatedHidden = data.undatedHidden;
 
   /* ⭐ **จับกลุ่มตามใบ แล้วแบ่งหน้าที่ระดับ "ใบ" ไม่ใช่ระดับ "งวด"** (มติผู้ใช้ 2026-08-13)
@@ -286,6 +295,17 @@ export default function FinancePaymentsPage() {
             ⚠️ **เปิดแท็บใหม่** (มติผู้ใช้ 2026-08-13 · "ทำให้ลงมือได้เร็วขึ้น") —
             บัญชีไล่ทีละใบจากหน้านี้ เด้งออกแล้วกดย้อนกลับทุกครั้งคือเสียตัวกรอง
             · `#payment` พาไปยืนที่การ์ดการชำระพอดี ไม่ต้องเลื่อนหา */}
+        {/* ⭐ "จ่ายถึง" — เงินที่รับรองแล้วครอบบริการถึงวันไหน (mig 0320 · มติ 2026-08-30)
+            บัญชีกดรับรองงวดแล้ววันนี้ขยับ = คิวช่างของ TS ปลดตาม ⇒ ต้องเห็นบนทะเบียนนี้
+            ⚠️ โชว์ทุกแถวเพื่อให้ตารางมีทรงเดียว — ใบที่ไม่มีรอบบริการขึ้นขีดตามปกติ
+            ⚠️ ขาดแล้ว (จ่ายถึง < วันนี้) = แดง เพราะแปลว่าบริการหยุดอยู่ ณ ตอนนี้ */}
+        <td className={`num ${group.serviceRounds && group.paidThrough && String(group.paidThrough) < String(todayIso) ? "cell-num-bad" : ""}`.trim()}>
+          {group.serviceRounds
+            ? (group.paidThrough
+              ? fmtDate(group.paidThrough)
+              : <span className="cell-quiet">ยังไม่ครอบ</span>)
+            : <span className="cell-quiet">{NA}</span>}
+        </td>
         <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
           {group.nextDue ? fmtDate(group.nextDue) : <span className="cell-quiet">{NA}</span>}
           {note ? <span className="cell-sub">{note.label}</span> : null}
@@ -439,6 +459,19 @@ export default function FinancePaymentsPage() {
                   selected: orderStateFilter, onChange: (values) => setListFilter("orderState", values),
                 },
                 {
+                  /* ⭐ สายของงาน (มติผู้ใช้ 2026-08-30) — บัญชีต้องแยกใบที่ "เงินคุมคิวช่าง"
+                     ออกจากใบขายทั่วไปได้ · เกณฑ์เต็ม: สาย SERVICE + มีบรรทัดหมวด 02-001
+                     ⚠️ ใบที่ยังไม่ระบุสาย และใบสาย SERVICE ที่ไม่มีแพ็คเกจบริการ อยู่ถัง
+                     "ใบอื่น" ทั้งคู่ — ไม่มีถังที่สามโดยเจตนา เพราะคำถามของบัญชีคือ
+                     "ใบไหนที่เงินไปคุมคิวช่าง" ไม่ใช่ "สายธุรกิจของใบคืออะไร" */
+                  key: "line", label: "สายของงาน", icon: Wrench,
+                  options: [
+                    { value: "service", label: "ใบมีรอบบริการ" },
+                    { value: "other", label: "ใบอื่น" },
+                  ],
+                  selected: lineFilter, onChange: (values) => setListFilter("line", values),
+                },
+                {
                   key: "status", label: "สถานะงวด", icon: Flag,
                   options: LEDGER_STATUS_KEYS.map((key) => ({ value: key, label: LEDGER_STATUS[key].label })),
                   selected: statusFilter, onChange: (values) => setListFilter("status", values),
@@ -492,7 +525,7 @@ export default function FinancePaymentsPage() {
             <SortDirButton dir={sortDir} onToggle={() => setParam("dir", sortDir === "asc" ? "desc" : "asc")} />
           </div>
 
-          <TableScroll surface="embedded" cells="stacked" minWidth={1080} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={1200} aria-busy={loading}>
               <table className="w-full text-sm">
                 <thead>
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
@@ -506,6 +539,7 @@ export default function FinancePaymentsPage() {
                     <th>ลูกค้า</th>
                     <th className="num">งวด</th>
                     <th className="num">ค้างรับ</th>
+                    <th className="num">จ่ายถึง</th>
                     <th className="num">กำหนดถัดไป</th>
                     <th aria-label="เปิดใบ" />
                   </tr>
@@ -521,7 +555,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={6}
+                          colSpan={7}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -536,7 +570,7 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={6}
+                      colSpan={7}
                       title={filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
                       description={filtering
                         ? "ลองขยายช่วงวันหรือล้างตัวกรอง"

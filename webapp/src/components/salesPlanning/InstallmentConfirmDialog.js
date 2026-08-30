@@ -53,6 +53,21 @@ export default function InstallmentConfirmDialog({
           {order?.customerName ? <><dt>ลูกค้า</dt><dd>{order.customerName}</dd></> : null}
           <dt>งวด</dt><dd>{naText(row.label)}{row.percent ? ` · ${row.percent}%` : ""}</dd>
           <dt>ยอด</dt><dd className="mono">{fmtMoney(row.amount)}</dd>
+          {/* ⭐ ช่วงบริการที่งวดนี้ครอบ (mig 0320) — **ต้องอยู่ในโมดัลนี้**
+              เพราะลายเซ็นของบัญชีคือสิ่งที่ทำให้ค่านี้กลายเป็น "จ่ายถึง" ที่ปล่อยให้ TS
+              เข้าไซต์ได้ · ฝ่ายขายกรอกช่วงเองได้ตอนงวดยังไม่รับรอง ⇒ ถ้าโมดัลไม่โชว์
+              บัญชีจะรับรองช่วงที่ไม่เคยเห็น (กติกาเดิมของโมดัลนี้: "โชว์หลักฐานก่อนให้กด")
+              ⚠️ โผล่เฉพาะงวดที่มีค่า — ใบสายสินค้าไม่มีเรื่องนี้ ไม่ต้องเห็นแถวเปล่า */}
+          {row.coversFrom || row.coversTo ? (
+            <>
+              <dt>ครอบบริการ</dt>
+              <dd>
+                {row.coversFrom && row.coversTo
+                  ? `${fmtDate(row.coversFrom)} – ${fmtDate(row.coversTo)}`
+                  : <span className="cell-quiet">ยังกรอกไม่ครบช่วง</span>}
+              </dd>
+            </>
+          ) : null}
           <dt>วันที่ลูกค้าจ่าย</dt>
           <dd>{row.paidOn ? fmtDate(row.paidOn) : <span className="cell-quiet">ไม่ได้ระบุ</span>}</dd>
           <dt>ผู้แจ้ง</dt>

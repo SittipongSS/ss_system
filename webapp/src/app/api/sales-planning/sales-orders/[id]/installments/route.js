@@ -131,8 +131,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* งวดอื่นของใบเดียวกัน — ด่าน "ไล่ลำดับงวด" ต้องเห็นทั้งใบ ไม่ใช่แค่แถวที่กด
        (อ่านสดที่นี่ ไม่เชื่อค่าที่ client ส่งมา) */
     const siblings = await loadInstallments(supabase, order.id);
+    /* ช่วงบริการที่งวดนี้ครอบ (mig 0320) — อ่านก่อนด่าน เพราะด่านต้องตรวจว่าช่วงกลับหัวไหม */
+    const coversFrom = body.coversFrom || null;
+    const coversTo = body.coversTo || null;
     const gate = installmentActionError(row, action, user, {
-      paidOn, reason, billingRequestId, rows: siblings, orderTotal: order.totalAmount,
+      paidOn, reason, billingRequestId, coversFrom, coversTo,
+      rows: siblings, orderTotal: order.totalAmount,
     });
     if (gate) return badRequest(gate);
 
@@ -144,6 +148,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const dueDate = body.dueDate || null;
       if (dueDate && !isDate(dueDate)) return badRequest('รูปแบบกำหนดชำระไม่ถูกต้อง');
       patch = { dueDate };
+    } else if (action === 'coverage') {
+      /* ⭐ ช่วงบริการที่งวดนี้จ่ายค่าให้ (mig 0320 · มติผู้ใช้ 2026-08-30 "จ่ายก่อนบริการเสมอ")
+         max(coversTo) ของงวดที่ confirmed = ค่า "จ่ายถึง" ที่ด่านเข้าไซต์ใช้ตัดสิน
+         ⚠️ ล้างช่องได้ (ส่ง null ทั้งคู่) — ใบที่ไม่ใช่สายบริการไม่ควรถูกบังคับให้มีค่าค้าง */
+      if (coversFrom && !isDate(coversFrom)) return badRequest('รูปแบบวันเริ่มช่วงครอบไม่ถูกต้อง');
+      if (coversTo && !isDate(coversTo)) return badRequest('รูปแบบวันสิ้นสุดช่วงครอบไม่ถูกต้อง');
+      patch = { coversFrom, coversTo };
     } else if (action === 'report') {
       // หลักฐานผ่าน sanitize ตัวเดียวกับหลักฐาน Won — รับเฉพาะ ref ที่อัปผ่าน /api/upload แล้ว
       const evidence = sanitizeEvidenceAttachments(body.evidence);

@@ -1,0 +1,1179 @@
+<meta charset="utf-8">
+<title>เดินเรื่อง SO สายบริการ — สัญญา · งวด · ด่านเงิน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap">
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   โทเคนยกจาก webapp/src/app/globals.css ตรง ๆ — ไม่มีสีใหม่ในม็อกนี้
+   (เดินเรื่องเสมือนจริงคู่กับ service-contract-phase-plan.md /
+    ม็อกออกแบบรายจออยู่ที่ service-contract-phase-mockup.html)
+   ══════════════════════════════════════════════════════════════ */
+:root{
+--bg:#efe9dd;--panel:rgba(255,255,255,.94);--panel-2:#f7f4ee;--panel-3:#eee9e0;
+--panel-float:#fffdf9;--panel-solid:#fefefd;
+--border:rgba(49,55,69,.13);--border-strong:rgba(49,55,69,.24);
+--glass-shadow:0 4px 16px 0 rgba(41,35,27,.07);
+--text:#171d29;--text-2:#596170;--text-3:#6c7382;
+--accent:#c9794d;--accent-soft:#f7e8df;--accent-fg:#fff;--accent-ink:#9c5228;
+--navy:#243b63;--navy-fg:#fff;--navy-ink:#243b63;
+--green:#357558;--green-soft:#e2f1e9;--red:#a74747;--red-soft:#f7e4e2;
+--amber:#926024;--amber-soft:#f8eddc;--blue:#466990;--blue-soft:#e3ebf5;
+--teal:#377275;--teal-soft:#e0f0f0;--violet:#6f5e9f;--violet-soft:#eee9f6;
+--shadow-sm:0 1px 2px rgba(41,35,27,.06);--shadow-md:0 4px 16px rgba(41,35,27,.07);
+--space-0-5:2px;--space-1:4px;--space-1-5:6px;--space-2:8px;--space-2-5:10px;
+--space-3:12px;--space-3-5:14px;--space-4:16px;--space-4-5:18px;--space-5:20px;
+--space-6:24px;--space-7:28px;--space-8:32px;--space-9:40px;
+--radius:8px;--radius-md:10px;--radius-lg:13px;--radius-xl:16px;--radius-full:9999px;
+--fs-1:9.5px;--fs-2:10.5px;--fs-3:11px;--fs-4:11.5px;--fs-5:12px;--fs-6:12.5px;
+--fs-7:13px;--fs-8:14px;--fs-9:15px;--fs-10:16px;--fs-11:18px;--fs-12:20px;
+--fs-13:22px;--fs-14:24px;--fs-15:27px;
+--fw-normal:400;--fw-medium:500;--fw-semibold:600;--fw-bold:700;
+--lh-thai:1.65;--lh-text:1.6;--lh-flat:1;
+--ls-heading:-.02em;--ls-label:.08em;--ls-tabular:-.01em;
+--ctl-h:40px;--ctl-h-touch:44px;--panel-inset:var(--space-4);--rule:1px;
+--content-max:1480px;--op-disabled:.45;--op-muted:.55;--ok:var(--green);
+}
+@media (prefers-color-scheme: dark){
+:root:not([data-theme="light"]){
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}}
+:root[data-theme="dark"]{
+--bg:#121726;--panel:rgba(27,34,56,.96);--panel-2:#232b44;--panel-3:#2b3550;
+--panel-float:#1a213a;--panel-solid:#1b2237;
+--border:rgba(225,230,241,.12);--border-strong:rgba(225,230,241,.24);
+--glass-shadow:0 4px 16px 0 rgba(0,0,0,.3);
+--text:#f4f6fb;--text-2:#bdc5d4;--text-3:#8e99ad;
+--accent:#d38a61;--accent-soft:rgba(211,138,97,.12);--accent-fg:#121726;--accent-ink:#d38a61;
+--navy:#20365d;--navy-ink:#8fadde;
+--green:#4fad82;--green-soft:rgba(63,138,104,.18);--red:#cc8787;--red-soft:rgba(183,85,85,.18);
+--amber:#d08f41;--amber-soft:rgba(183,120,45,.18);--blue:#809ec1;--blue-soft:rgba(82,122,168,.18);
+--teal:#51a8ac;--teal-soft:rgba(63,131,134,.18);--violet:#9f94c0;--violet-soft:rgba(122,106,167,.18);
+--shadow-sm:0 2px 7px rgba(0,0,0,.18);--shadow-md:0 12px 30px rgba(0,0,0,.24);
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+font-family:"Sarabun","IBM Plex Sans Thai",system-ui,sans-serif;
+font-size:var(--fs-8);line-height:var(--lh-thai);letter-spacing:.025em}
+svg{flex:none}
+.i{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── แถบเดินเรื่อง (ของเดค ไม่ใช่ของแอป) ───────────────────── */
+.stepbar{position:sticky;top:0;z-index:40;background:var(--panel-float);
+border-bottom:1px solid var(--border);padding:var(--space-2-5) var(--space-4)}
+.stepbar-in{max-width:1480px;margin:0 auto;display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.stepbar h1{margin:0;font-size:var(--fs-9);font-weight:var(--fw-bold);letter-spacing:var(--ls-heading);
+line-height:var(--lh-thai);flex:none}
+.stepbar h1 small{display:block;font-size:var(--fs-3);font-weight:var(--fw-normal);color:var(--text-3)}
+.steps2{display:flex;gap:2px;flex-wrap:wrap;flex:1;min-width:0}
+.steps2 button{display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;
+border-radius:var(--radius-full);background:transparent;color:var(--text-3);
+padding:5px 11px;font:inherit;font-size:var(--fs-3);cursor:pointer;white-space:nowrap;line-height:var(--lh-thai)}
+.steps2 button:hover{background:var(--panel-2);color:var(--text-2)}
+.steps2 button[aria-current="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.steps2 button[data-b="1"][aria-current="true"]{background:var(--amber);border-color:var(--amber);color:#fff}
+.steps2 .who{font-size:var(--fs-1);letter-spacing:var(--ls-label);opacity:.7}
+.steps2 button[aria-current="true"] .who{opacity:.85}
+.steps2 .sep2{width:1px;background:var(--border);margin:0 var(--space-2);align-self:stretch}
+.themebtn{appearance:none;border:1px solid var(--border);background:var(--panel-2);color:var(--text-2);
+border-radius:var(--radius-full);width:34px;height:34px;display:grid;place-items:center;cursor:pointer;font-size:15px;flex:none}
+.themebtn:hover{color:var(--text)}
+.scene{display:none}
+.scene.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.scene.on{animation:none}}
+
+/* ── เปลือกแอป ─────────────────────────────────────────────── */
+.app{display:grid;grid-template-columns:212px 1fr;min-height:calc(100vh - 58px);background:var(--bg)}
+.app.mobile{grid-template-columns:1fr;max-width:420px;margin:0 auto;
+border-inline:1px solid var(--border);min-height:auto}
+.rail{background:var(--panel-2);border-right:1px solid var(--border);padding:var(--space-3) 0;
+display:flex;flex-direction:column;gap:2px}
+.rail .brand{padding:var(--space-2) var(--space-4) var(--space-4);font-size:var(--fs-8);
+font-weight:var(--fw-bold);letter-spacing:var(--ls-heading)}
+.rail a{display:flex;align-items:center;gap:9px;padding:7px var(--space-4);font-size:var(--fs-5);
+color:var(--text-2);text-decoration:none;line-height:var(--lh-thai);border-left:2px solid transparent}
+.rail a:hover{background:var(--panel-3)}
+.rail a[data-on="1"]{background:var(--panel-3);color:var(--text);border-left-color:var(--accent);
+font-weight:var(--fw-semibold)}
+.rail a .i{width:15px;height:15px;flex:none}
+.rail a .bdg{margin-left:auto;font-size:var(--fs-1);background:var(--accent);color:var(--accent-fg);
+border-radius:var(--radius-full);padding:1px 6px;font-variant-numeric:tabular-nums}
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2-5) var(--space-5);
+border-bottom:1px solid var(--border);background:var(--panel);flex-wrap:wrap}
+.topbar .crumb2{font-size:var(--fs-3);color:var(--text-3)}
+.topbar .who2{margin-left:auto;display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-4);color:var(--text-2)}
+.topbar .av{width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;
+display:grid;place-items:center;font-size:var(--fs-3);font-weight:var(--fw-bold)}
+.page{padding:var(--space-5);max-width:1140px;width:100%;margin:0 auto;flex:1}
+.app.mobile .page{padding:var(--space-3)}
+.app.mobile .topbar{padding:var(--space-2-5) var(--space-3)}
+.stepnote{display:flex;align-items:center;gap:var(--space-2-5);flex-wrap:wrap;
+padding:var(--space-2-5) var(--space-4);background:var(--navy);color:#fff;
+font-size:var(--fs-4);line-height:var(--lh-thai)}
+.stepnote b{font-weight:var(--fw-semibold)}
+.stepnote .tag{font-size:var(--fs-1);letter-spacing:var(--ls-label);text-transform:uppercase;
+border:1px solid rgba(255,255,255,.35);border-radius:var(--radius-full);padding:1px 8px;flex:none}
+.stepnote .go{margin-left:auto;display:inline-flex;align-items:center;gap:6px;
+border:1px solid rgba(255,255,255,.4);border-radius:var(--radius);background:rgba(255,255,255,.1);
+color:#fff;padding:4px 12px;font:inherit;font-size:var(--fs-4);cursor:pointer;white-space:nowrap}
+.stepnote .go:hover{background:rgba(255,255,255,.2)}
+.stepnote[data-b="1"]{background:var(--amber)}
+.stepnote[data-b="2"]{background:var(--red)}
+
+/* ── ชั้นคลาสจริงของแอป ───────────────────────────────────── */
+.ui-section{min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel);box-shadow:var(--glass-shadow)}
+.ui-section+.ui-section{margin-top:var(--space-4)}
+.ui-section-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);
+padding:var(--space-3-5) var(--panel-inset);border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--panel-2) 50%,transparent)}
+.ui-section-header h2{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);
+display:flex;align-items:center;gap:var(--space-2)}
+.ui-section-header p{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3)}
+.ui-section-body{min-width:0;padding:var(--space-4) var(--panel-inset)}
+.ui-section-body.flush{padding:0}
+.premium-header{min-width:0;margin-bottom:var(--space-4);padding:var(--space-4) 22px;
+border:1px solid var(--border);border-radius:var(--radius-lg);
+background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--accent) 12%,transparent),transparent 42%),var(--panel);
+display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);flex-wrap:wrap}
+.premium-header h1{display:flex;align-items:center;gap:var(--space-2-5);margin:0;
+font-size:var(--fs-12);line-height:var(--lh-thai);letter-spacing:var(--ls-heading);font-weight:var(--fw-bold)}
+.premium-header p{margin:var(--space-1) 0 0;color:var(--text-3);font-size:var(--fs-6)}
+.premium-header-icon{width:34px;height:34px;flex:none;border-radius:var(--radius-md);
+background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent-ink);
+display:grid;place-items:center;font-size:19px}
+
+.ui-badge,.chip{display:inline-flex;align-items:center;gap:5px;min-height:24px;
+padding:3px var(--space-2-5);border-radius:var(--radius-full);font-size:var(--fs-4);
+font-weight:var(--fw-semibold);line-height:var(--lh-thai);white-space:nowrap;
+background:color-mix(in srgb,currentColor 12%,transparent);
+border:1px solid color-mix(in srgb,currentColor 24%,transparent);color:var(--text-2)}
+.ui-badge.success{color:var(--green)}.ui-badge.warning{color:var(--amber)}
+.ui-badge.danger{color:var(--red)}.ui-badge.info{color:var(--blue)}
+.ui-badge.accent{color:var(--accent-ink)}.ui-badge.plain{color:var(--text-3)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-1-5);
+min-height:var(--ctl-h);min-width:96px;padding:0 var(--space-3-5);border-radius:var(--radius);
+border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);
+font:inherit;font-size:var(--fs-5);font-weight:var(--fw-semibold);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--panel-3)}
+.btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn-quiet{background:transparent;border-color:transparent;color:var(--text-2)}
+.btn-danger{background:transparent;border-color:color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}
+.btn.sm{min-height:30px;min-width:0;padding:0 var(--space-2-5);font-size:var(--fs-4);gap:5px}
+.btn[disabled]{opacity:var(--op-disabled);cursor:not-allowed}
+
+table{width:100%;border-collapse:collapse}
+.tbl th{font-size:var(--fs-1);letter-spacing:var(--ls-label);text-transform:uppercase;
+color:var(--text-3);font-weight:var(--fw-semibold);text-align:left;padding:0 var(--space-3);
+height:40px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{font-size:var(--fs-3);padding:var(--space-2) var(--space-3);height:50px;
+border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text-2)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:hover td{background:color-mix(in srgb,var(--accent-soft) 25%,transparent)}
+.tbl .t-strong{color:var(--text);font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.cell-sub{display:block;font-size:var(--fs-2);color:var(--text-3);margin-top:1px}
+.num{text-align:right;font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.mono{font-variant-numeric:tabular-nums;letter-spacing:var(--ls-tabular)}
+.linklike{color:var(--navy-ink);text-decoration:none;font-weight:var(--fw-semibold);cursor:pointer}
+.tblwrap{overflow-x:auto}
+tr.dim td{opacity:var(--op-muted)}
+
+.notice{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3) var(--space-4);
+border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+margin-bottom:var(--space-3-5);font-size:var(--fs-6);line-height:var(--lh-thai)}
+.notice .ic{flex:none;font-size:16px;margin-top:1px}
+.notice b{display:block;color:var(--text);font-weight:var(--fw-semibold)}
+.notice span{color:var(--text-2)}
+.notice .act{margin-left:auto;flex:none;align-self:center}
+.notice[data-tone="warning"]{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 30%,transparent)}
+.notice[data-tone="warning"] .ic{color:var(--amber)}
+.notice[data-tone="danger"]{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.notice[data-tone="danger"] .ic{color:var(--red)}
+.notice[data-tone="info"]{background:var(--blue-soft);border-color:color-mix(in srgb,var(--blue) 30%,transparent)}
+.notice[data-tone="info"] .ic{color:var(--blue)}
+.notice[data-tone="success"]{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 30%,transparent)}
+.notice[data-tone="success"] .ic{color:var(--green)}
+
+.field{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-3)}
+.field>span{font-size:var(--fs-4);font-weight:var(--fw-semibold)}
+.field>small{font-size:var(--fs-3);color:var(--text-3)}
+.inp{min-height:var(--ctl-h);border:1px solid var(--border);border-radius:var(--radius);
+background:var(--bg);padding:0 var(--space-3);display:flex;align-items:center;gap:6px;
+font-size:var(--fs-8);color:var(--text)}
+.inp.ta{min-height:64px;align-items:flex-start;padding:var(--space-2-5) var(--space-3);color:var(--text-2)}
+.inp.ro{background:transparent;border-style:dashed;color:var(--text-2)}
+.inp .ph{color:var(--text-3)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:var(--space-2) var(--space-3);
+font-size:var(--fs-6);align-items:baseline}
+.kv dt{color:var(--text-3);white-space:nowrap}
+.kv dd{margin:0;color:var(--text-2);text-align:right}
+.kv dd b{color:var(--text);font-weight:var(--fw-semibold)}
+.who{display:flex;gap:var(--space-1-5);flex-wrap:wrap}
+
+.ui-metric-strip{display:grid;grid-template-columns:repeat(var(--c,4),minmax(0,1fr));gap:var(--rule);
+overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-lg);
+background-color:var(--panel);background-image:linear-gradient(var(--border),var(--border));
+box-shadow:var(--glass-shadow);margin-bottom:var(--space-4)}
+.ui-metric{display:flex;align-items:center;gap:11px;min-width:0;padding:var(--space-3) var(--space-3-5);
+border:0;background:var(--panel-solid);color:inherit;font:inherit;text-align:left}
+.ui-metric-ic{width:28px;height:28px;flex:none;border-radius:var(--radius);display:grid;place-items:center;
+background:var(--panel-2);color:var(--text-3);font-size:14px}
+.ui-metric-txt span{display:block;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+.ui-metric-txt strong{display:block;font-size:var(--fs-13);font-weight:var(--fw-bold);
+line-height:1.15;font-variant-numeric:tabular-nums}
+.ui-metric[data-tone="danger"] strong{color:var(--red)}
+.ui-metric[data-tone="danger"] .ui-metric-ic{background:var(--red-soft);color:var(--red)}
+.ui-metric[data-tone="warning"] strong{color:var(--amber)}
+.ui-metric[data-tone="warning"] .ui-metric-ic{background:var(--amber-soft);color:var(--amber)}
+.ui-metric[data-tone="good"] strong{color:var(--green)}
+.ui-metric[data-tone="good"] .ui-metric-ic{background:var(--green-soft);color:var(--green)}
+.ui-metric[data-tone="accent"] strong{color:var(--accent-ink)}
+.ui-metric[data-tone="accent"] .ui-metric-ic{background:var(--accent-soft);color:var(--accent-ink)}
+
+.covbar{display:flex;height:28px;border:1px solid var(--border);border-radius:var(--radius);
+overflow:hidden;margin:var(--space-2) 0 var(--space-1)}
+.covbar i{font-style:normal;display:grid;place-items:center;font-size:var(--fs-2);
+color:#fff;white-space:nowrap;overflow:hidden;padding:0 4px}
+.covbar i.paid{background:var(--green)}
+.covbar i.due{background:var(--amber)}
+.covbar i.rest{background:var(--panel-3);color:var(--text-3)}
+.covscale{display:flex;justify-content:space-between;font-size:var(--fs-1);color:var(--text-3);
+font-variant-numeric:tabular-nums;margin-bottom:var(--space-2)}
+.paidline{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-6);flex-wrap:wrap}
+.paidline b{color:var(--green);font-weight:var(--fw-bold)}
+
+.gate{display:flex;flex-direction:column}
+.gate-i{display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-2-5) 0;
+border-bottom:1px solid var(--border)}
+.gate-i:last-child{border-bottom:0}
+.gate-mk{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;
+font-size:14px;margin-top:1px}
+.gate-i[data-s="ok"] .gate-mk{background:var(--green-soft);color:var(--green)}
+.gate-i[data-s="bad"] .gate-mk{background:var(--red-soft);color:var(--red)}
+.gate-t{flex:1;min-width:0}
+.gate-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.gate-t span{display:block;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.owner{font-size:var(--fs-2);letter-spacing:var(--ls-label);color:var(--text-3);
+border:1px solid var(--border);border-radius:var(--radius-full);padding:2px 8px;white-space:nowrap;align-self:center}
+
+.qgroup{margin-bottom:var(--space-3)}
+.qgroup h4{margin:0 0 var(--space-1-5);font-size:var(--fs-3);letter-spacing:var(--ls-label);
+text-transform:uppercase;color:var(--text-3);display:flex;align-items:center;gap:5px}
+.qitem{border:1px dashed var(--border-strong);border-radius:var(--radius);padding:var(--space-2);
+margin-bottom:var(--space-2);background:var(--panel-2)}
+.qitem b{display:block;font-size:var(--fs-6);font-weight:var(--fw-semibold)}
+.qitem span{display:block;font-size:var(--fs-2);color:var(--text-3)}
+.qitem.blocked{border-style:solid;border-color:color-mix(in srgb,var(--red) 35%,transparent);
+background:var(--red-soft);cursor:not-allowed;opacity:.92}
+.qitem.blocked .why{display:block;font-size:var(--fs-2);color:var(--red);margin-top:3px}
+.qitem.ready{border-style:solid;border-color:color-mix(in srgb,var(--green) 35%,transparent);cursor:grab}
+.qitem.ready .why{display:block;font-size:var(--fs-2);color:var(--green);margin-top:3px}
+.split{display:grid;gap:var(--space-4);grid-template-columns:1fr}
+@media(min-width:980px){.split{grid-template-columns:260px 1fr}}
+.board{border-collapse:separate;border-spacing:0;min-width:620px}
+.board th,.board td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);
+vertical-align:top;padding:var(--space-1-5)}
+.board th{background:var(--panel-2);font-size:var(--fs-4);font-weight:var(--fw-semibold);
+color:var(--text-2);text-align:center;padding:var(--space-2)}
+.board .tech{background:var(--panel);width:140px;min-width:140px;text-align:left;vertical-align:middle}
+.vchip{display:block;width:100%;text-align:left;border:0;border-radius:6px;padding:4px 6px;
+margin-bottom:3px;font:inherit;font-size:var(--fs-2);line-height:1.35;cursor:pointer;color:#fff}
+.vchip b{font-variant-numeric:tabular-nums;margin-inline-end:4px}
+.vchip.refill{background:var(--accent)}.vchip.inspect{background:var(--teal)}
+.vchip.draft{background:var(--panel-2);color:var(--text-2);border:1px dashed var(--border-strong);cursor:not-allowed}
+
+.arow{display:flex;align-items:center;gap:var(--space-2-5);padding:var(--space-2-5) 0;
+border-bottom:1px solid var(--border)}
+.arow:last-child{border-bottom:0}
+.arow-t{flex:1;min-width:0}
+.arow-t b{display:block;font-size:var(--fs-7);font-weight:var(--fw-semibold)}
+.arow-t span{display:block;font-size:var(--fs-3);color:var(--text-3)}
+.arow.off{opacity:.78}
+.arow.off .arow-t b{color:var(--red)}
+
+.tiles{display:grid;gap:var(--space-2-5);grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.tile{display:block;width:100%;text-align:left;border:1px solid var(--border);
+border-radius:var(--radius-md);background:var(--panel-2);padding:var(--space-2-5) var(--space-3);
+font:inherit;color:inherit;cursor:pointer}
+.tile:hover{border-color:var(--border-strong)}
+.tile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);
+box-shadow:0 0 0 1px var(--accent) inset}
+.tile b{font-size:var(--fs-7);font-weight:var(--fw-semibold);display:flex;gap:var(--space-1-5);align-items:center}
+.tile .adr{display:block;margin-top:2px;font-size:var(--fs-3);color:var(--text-3);line-height:var(--lh-thai)}
+
+/* โมดัลจริง (เปิดทับจอด้วย data-open) */
+.ovl{position:fixed;inset:0;background:color-mix(in srgb,var(--text) 42%,transparent);
+display:none;z-index:60;padding:5vh 16px;overflow:auto}
+.ovl.on{display:block}
+.modal{max-width:560px;margin:0 auto;border:1px solid var(--border);border-radius:var(--radius-lg);
+background:var(--panel-float);box-shadow:var(--shadow-md);overflow:hidden}
+.modal.lg{max-width:680px}
+.modal-h{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-3) var(--space-4);
+border-bottom:1px solid var(--border);font-size:var(--fs-9);font-weight:var(--fw-bold)}
+.modal-h .x{margin-left:auto;color:var(--text-3);cursor:pointer;border:0;background:none;font:inherit;font-size:15px}
+.modal-b{padding:var(--space-4)}
+.modal-f{display:flex;gap:var(--space-2);justify-content:flex-end;padding:var(--space-3) var(--space-4);
+border-top:1px solid var(--border);background:var(--panel-float)}
+.modal-f .lead{margin-right:auto;align-self:center;font-size:var(--fs-4);color:var(--text-3)}
+.fixes{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-1-5)}
+.fixes li{display:flex;gap:var(--space-2);font-size:var(--fs-6);color:var(--text-2);line-height:var(--lh-thai)}
+.fixes .mk{flex:none;width:16px;text-align:center;font-weight:var(--fw-bold);color:var(--green)}
+.fixes b{color:var(--text);font-weight:var(--fw-semibold)}
+.sticky-acts{display:flex;gap:var(--space-2);align-items:center;padding:var(--space-3) 0 0}
+.sticky-acts .sp{margin-left:auto}
+
+.vcard{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--panel);
+padding:var(--space-3);margin-bottom:var(--space-2);box-shadow:var(--shadow-sm)}
+.vcard-top{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;margin-bottom:var(--space-1)}
+.vcard-when{font-size:var(--fs-8);font-weight:var(--fw-bold);font-variant-numeric:tabular-nums}
+.vcard h3{margin:0;font-size:var(--fs-9);font-weight:var(--fw-semibold);line-height:var(--lh-thai)}
+.vcard .meta{margin:2px 0 0;font-size:var(--fs-4);color:var(--text-3);line-height:var(--lh-thai)}
+.vacts{display:flex;gap:var(--space-2);margin-top:var(--space-3)}
+</style>
+
+<svg style="display:none" aria-hidden="true">
+<symbol id="dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+<symbol id="cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></symbol>
+<symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+<symbol id="inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+<symbol id="wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+<symbol id="layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+<symbol id="pkg" viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5M16 13H8M16 17H8M10 9H8"/></symbol>
+<symbol id="users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="rot" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="bldg" viewBox="0 0 24 24"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4"/></symbol>
+<symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></symbol>
+<symbol id="dots" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+<symbol id="wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+<symbol id="sig" viewBox="0 0 24 24"><path d="M20 19.5v.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8.5L18 5.5"/><path d="M8 18h1"/><path d="M18.42 9.61a2.1 2.1 0 1 1 2.97 2.97L16.95 17 13 18l.99-3.95 4.43-4.44Z"/></symbol>
+<symbol id="bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+<symbol id="ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+<symbol id="mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+<symbol id="shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="paper" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+<symbol id="truck" viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></symbol>
+</svg>
+
+<div class="stepbar"><div class="stepbar-in">
+  <h1>เดินเรื่อง SO สายบริการ<small>สัญญา · งวดครอบ · ด่านเงิน — กดปุ่มในจอเพื่อเดินเรื่อง</small></h1>
+  <nav class="steps2" id="nav" aria-label="ขั้นของเรื่อง"></nav>
+  <button class="themebtn" id="theme" title="สลับธีมสว่าง/มืด" aria-label="สลับธีมสว่าง/มืด">◐</button>
+</div></div>
+
+<!-- ═══ s1 · SA สร้าง SO ═══════════════════════════════════════ -->
+<section class="scene on" id="s1">
+  <div class="stepnote"><span class="tag">ขั้นที่ 1 · SA · 30 ส.ค. 2569</span>
+    <span>QT-26090005 ของ เคพี อาร์ท เซ็นเตอร์ ปิด Won แล้ว — มณีรัตน์สร้างใบสั่งขาย ใบมีสินค้าหมวด 02-001 จึงต้องระบุจำนวนรอบบริการ</span>
+    <button class="go" data-go="s2">สร้างใบ <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#inbox"/></svg>ลีด</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ใบสั่งขาย › สร้างใบสั่งขาย</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="premium-header"><div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#file"/></svg></span>สร้างใบสั่งขาย — SO-26090012</h1>
+          <p>จาก QT-26090005 · เคพี อาร์ท เซ็นเตอร์ (AR-233) · ดีลสาย SERVICE</p></div>
+          <span class="ui-badge accent"><svg class="i"><use href="#rot"/></svg>ใบมีรอบบริการ — มีสินค้าหมวด 02-001</span>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#pkg"/></svg>รายการสินค้าและบริการ</h2><p>snapshot จาก QT Won · ระบุจำนวนรอบต่อบรรทัด</p></div></div>
+          <div class="ui-section-body flush tblwrap"><table class="tbl">
+            <thead><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">รวม</th><th style="width:150px">รอบบริการ</th></tr></thead>
+            <tbody>
+              <tr><td><span class="t-strong mono">02-001-0007</span><span class="cell-sub">SDS Package L — ห้องโถง</span></td>
+                <td class="num">6 แพ็ค</td><td class="num t-strong">600,912</td>
+                <td><div class="inp" style="min-height:34px"><span class="mono">12</span><span class="ph">รอบ / สัญญา</span></div></td></tr>
+              <tr><td><span class="t-strong mono">02-001-0002</span><span class="cell-sub">SDS Package S — ห้องน้ำ</span></td>
+                <td class="num">2 แพ็ค</td><td class="num t-strong">61,632</td>
+                <td><div class="inp" style="min-height:34px"><span class="mono">6</span><span class="ph">รอบ / สัญญา</span></div></td></tr>
+            </tbody></table></div>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#wallet"/></svg>งวดชำระ</h2><p>แผนจากใบเสนอราคา · 4 งวด งวดละ 25%</p></div></div>
+          <div class="ui-section-body">
+            <dl class="kv"><dt>ยอดสุทธิ</dt><dd><b>662,544</b></dd>
+            <dt>งวดละ</dt><dd><b>165,636</b> · รายไตรมาส</dd></dl>
+          </div>
+        </div>
+        <div class="sticky-acts"><span class="ui-badge warning">ร่าง — ยังไม่สร้าง</span><span class="sp"></span>
+          <button class="btn">บันทึกร่าง</button>
+          <button class="btn btn-accent" data-go="s2">สร้างใบสั่งขาย</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ s2 · SA ผูกสัญญา ═══════════════════════════════════════ -->
+<section class="scene" id="s2">
+  <div class="stepnote"><span class="tag">ขั้นที่ 2 · SA</span>
+    <span>ใบอนุมัติแล้ว แต่ยังไม่ผูกสัญญา — ไม่มีต้นฉบับสัญญาจ้างบริการในระบบ มณีรัตน์จึงบันทึก <b>PO ลูกค้า</b> เป็นเอกสารแทนสัญญา</span>
+    <button class="go" data-open="m-ext">บันทึกเอกสารภายนอก <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ใบสั่งขาย › SO-26090012</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="premium-header"><div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#file"/></svg></span>SO-26090012</h1>
+          <p>เคพี อาร์ท เซ็นเตอร์ · 662,544 บาท · อนุมัติแล้ว 30 ส.ค. 2569</p></div>
+          <span class="ui-badge accent"><svg class="i"><use href="#rot"/></svg>ใบมีรอบบริการ</span></div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#sig"/></svg>สัญญาบริการ</h2><p>ด่านข้อ 1 — นัดบริการยังขึ้นตารางไม่ได้จนกว่าสัญญามีผล</p></div>
+            <button class="btn btn-primary sm" data-open="m-ext">บันทึกเอกสารภายนอก</button></div>
+          <div class="ui-section-body">
+            <div class="notice" data-tone="warning" style="margin:0"><svg class="i ic"><use href="#warn"/></svg>
+              <div><b>ยังไม่ผูกสัญญา</b>
+              <span>เลือกสัญญาที่มีอยู่ · เจนจากแม่แบบ (ยังไม่มีต้นฉบับ — ปุ่มเทา) · หรือบันทึกเอกสารภายนอกแล้วส่งอนุมัติหัวหน้าฝ่ายขาย</span></div></div>
+          </div>
+        </div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#wallet"/></svg>งวดชำระ</h2><p>ระบบแบ่งช่วงครอบให้ 4 งวดเท่ากัน — แก้ได้รายงวด</p></div></div>
+          <div class="ui-section-body flush tblwrap"><table class="tbl">
+            <thead><tr><th>งวด</th><th>ครอบคลุมบริการ</th><th>กำหนด</th><th class="num">ยอด</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              <tr><td class="mono t-strong">1</td><td>1 ก.ย. – 30 พ.ย. 69 <span class="cell-sub">≈ รอบ 1–3</span></td><td class="mono">5 ก.ย. 69</td><td class="num">165,636</td><td><span class="ui-badge warning">รอชำระ</span></td></tr>
+              <tr class="dim"><td class="mono t-strong">2</td><td>1 ธ.ค. 69 – 28 ก.พ. 70</td><td class="mono">15 พ.ย. 69</td><td class="num">165,636</td><td><span class="ui-badge plain">รอถึงงวด</span></td></tr>
+              <tr class="dim"><td class="mono t-strong">3</td><td>1 มี.ค. – 31 พ.ค. 70</td><td class="mono">15 ก.พ. 70</td><td class="num">165,636</td><td><span class="ui-badge plain">รอถึงงวด</span></td></tr>
+              <tr class="dim"><td class="mono t-strong">4</td><td>1 มิ.ย. – 31 ส.ค. 70</td><td class="mono">15 พ.ค. 70</td><td class="num">165,636</td><td><span class="ui-badge plain">รอถึงงวด</span></td></tr>
+            </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-ext"><div class="modal lg">
+    <div class="modal-h"><svg class="i"><use href="#paper"/></svg>บันทึกเอกสารภายนอกแทนสัญญา<button class="x" data-close="m-ext">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><span>ชนิดเอกสาร</span></div>
+      <div class="tiles" style="margin-bottom:var(--space-3)">
+        <button class="tile" aria-pressed="true"><b><svg class="i"><use href="#file"/></svg>PO ลูกค้า</b></button>
+        <button class="tile"><b><svg class="i"><use href="#mail"/></svg>อีเมลยืนยัน</b></button>
+        <button class="tile"><b><svg class="i"><use href="#sig"/></svg>สัญญากระดาษเก่า</b></button>
+        <button class="tile"><b><svg class="i"><use href="#dots"/></svg>อื่น ๆ</b></button>
+      </div>
+      <div class="two">
+        <div class="field"><span>เลขที่ / อ้างอิง</span><div class="inp mono">KP-PO-690178</div></div>
+        <div class="field"><span>ไฟล์เอกสาร</span><div class="inp"><svg class="i"><use href="#file"/></svg>KP-PO-690178.pdf</div></div>
+      </div>
+      <div class="two">
+        <div class="field"><span>วันเริ่มสัญญา</span><div class="inp mono">01/09/2569</div></div>
+        <div class="field"><span>วันสิ้นสุดสัญญา</span><div class="inp mono">31/08/2570</div></div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="lead">สร้างเป็น CT-26090012 · ส่งอนุมัติหัวหน้าฝ่ายขาย</span>
+      <button class="btn btn-quiet" data-close="m-ext">ยกเลิก</button>
+      <button class="btn btn-accent" data-go="s3">บันทึก + ส่งอนุมัติ</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s3 · AE Sup อนุมัติ ════════════════════════════════════ -->
+<section class="scene" id="s3">
+  <div class="stepnote"><span class="tag">ขั้นที่ 3 · หัวหน้าฝ่ายขาย</span>
+    <span>ปรีชาเปิดหน้าสัญญา ตรวจ PO ที่แนบ แล้วอนุมัติให้นับเป็นสัญญามีผล — โมดัลบอกผลก่อนกดตามกติกาการอนุมัติ</span>
+    <button class="go" data-open="m-appr">อนุมัติ <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#sig"/></svg>สัญญา<span class="bdg">1</span></a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › สัญญา › CT-26090012</span>
+        <span class="who2"><span class="av" style="background:var(--violet)">ปช</span>ปรีชา · หัวหน้าฝ่ายขาย</span></div>
+      <div class="page">
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#paper"/></svg>CT-26090012 · เอกสารภายนอก (PO ลูกค้า)</h2>
+            <p>เคพี อาร์ท เซ็นเตอร์ · ครอบ 1 ก.ย. 2569 – 31 ส.ค. 2570</p></div>
+            <div style="display:flex;gap:8px;align-items:center"><span class="ui-badge warning">รออนุมัติ</span>
+            <button class="btn btn-primary sm" data-open="m-appr"><svg class="i"><use href="#shield"/></svg>อนุมัติเอกสารแทนสัญญา</button></div></div>
+          <div class="ui-section-body"><dl class="kv">
+            <dt>ไฟล์</dt><dd><a class="linklike">KP-PO-690178.pdf</a> · อัปโหลดโดย มณีรัตน์ (SA)</dd>
+            <dt>อ้างอิง</dt><dd class="mono">KP-PO-690178</dd>
+            <dt>ใช้กับ</dt><dd><b class="mono">SO-26090012</b> · จะผูกทุกไซต์/โซนของใบ</dd>
+            <dt>ที่มา</dt><dd>ดีล เคพี อาร์ท — สาย SERVICE · มณีรัตน์</dd>
+          </dl></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-appr"><div class="modal">
+    <div class="modal-h"><svg class="i"><use href="#shield"/></svg>อนุมัติเอกสารแทนสัญญา<button class="x" data-close="m-appr">✕</button></div>
+    <div class="modal-b">
+      <p style="margin:0 0 var(--space-3);font-size:var(--fs-7)">รับรอง <b class="mono">KP-PO-690178</b> เป็นสัญญาบริการของดีล เคพี อาร์ท เซ็นเตอร์</p>
+      <p style="margin:0 0 var(--space-1-5);font-size:var(--fs-4);font-weight:var(--fw-semibold);color:var(--text-2)">ผลของการอนุมัติ</p>
+      <ul class="fixes">
+        <li><span class="mk">✓</span><span>สัญญามีสถานะ "มีผล" ครอบ 1 ก.ย. 2569 – 31 ส.ค. 2570</span></li>
+        <li><span class="mk">✓</span><span>ด่าน "สัญญามีผล" ของนัดใต้ SO-26090012 เริ่มผ่านได้</span></li>
+        <li><span class="mk">✓</span><span>บันทึกผู้อนุมัติ + เวลาไว้บนสัญญาถาวร</span></li>
+      </ul>
+    </div>
+    <div class="modal-f"><button class="btn btn-quiet" data-close="m-appr">ยกเลิก</button>
+      <button class="btn btn-primary" data-go="s4">ยืนยันอนุมัติ</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s4 · SA แจ้งจ่ายงวด 1 ══════════════════════════════════ -->
+<section class="scene" id="s4">
+  <div class="stepnote"><span class="tag">ขั้นที่ 4 · SA</span>
+    <span>ลูกค้าโอนงวด 1 มาแล้ว (จ่ายก่อนเริ่มบริการ) — มณีรัตน์แนบสลิปแล้วกดแจ้ง · <b>"แจ้งแล้ว" ยังไม่ปลดด่าน</b> ต้องรอบัญชีรับรอง</span>
+    <button class="go" data-open="m-rep">แจ้งลูกค้าจ่ายแล้ว <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ใบสั่งขาย › SO-26090012 › งวดชำระ</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="notice" data-tone="success"><svg class="i ic"><use href="#sig"/></svg>
+          <div><b>สัญญามีผลแล้ว — CT-26090012 (อนุมัติโดย ปรีชา · หัวหน้าฝ่ายขาย)</b>
+          <span>เหลือด่านเงิน: ยังไม่มีงวดที่บัญชีรับรอง = จ่ายถึง — (ยังไม่ครอบอะไรเลย)</span></div></div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#wallet"/></svg>งวดชำระ</h2><p>เก็บแล้ว 0/4 งวด</p></div></div>
+          <div class="ui-section-body">
+            <div class="paidline"><svg class="i" style="color:var(--amber)"><use href="#warn"/></svg>
+              เงินครอบบริการถึง <b style="color:var(--amber)">—</b><span style="color:var(--text-3)">· ทุกนัดยังติดด่านเงิน</span></div>
+            <div class="covbar">
+              <i class="due" style="flex:3">งวด 1 · กำหนด 5 ก.ย.</i>
+              <i class="rest" style="flex:3">งวด 2</i><i class="rest" style="flex:3">งวด 3</i><i class="rest" style="flex:3">งวด 4</i>
+            </div>
+            <div class="covscale"><span>1 ก.ย. 2569</span><span>30 พ.ย.</span><span>28 ก.พ. 2570</span><span>31 พ.ค.</span><span>31 ส.ค. 2570</span></div>
+            <div class="tblwrap"><table class="tbl">
+              <thead><tr><th>งวด</th><th>ครอบคลุมบริการ</th><th>กำหนด / จ่ายจริง</th><th class="num">ยอด</th><th>สถานะ</th><th></th></tr></thead>
+              <tbody>
+                <tr><td class="mono t-strong">1</td><td><span class="t-strong">1 ก.ย. – 30 พ.ย. 2569</span><span class="cell-sub">≈ รอบ 1–3</span></td>
+                  <td><span class="mono">5 ก.ย. 69</span><span class="cell-sub">ลูกค้าโอนแล้ว 28 ส.ค.</span></td>
+                  <td class="num t-strong">165,636</td><td><span class="ui-badge warning">รอชำระ</span></td>
+                  <td><button class="btn sm btn-primary" data-open="m-rep">ลูกค้าจ่ายแล้ว</button></td></tr>
+                <tr class="dim"><td class="mono t-strong">2</td><td>1 ธ.ค. 69 – 28 ก.พ. 70</td><td class="mono">15 พ.ย. 69</td><td class="num">165,636</td><td><span class="ui-badge plain">รอถึงงวด</span></td><td></td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-rep"><div class="modal">
+    <div class="modal-h"><svg class="i"><use href="#wallet"/></svg>แจ้งการชำระ — งวด 1<button class="x" data-close="m-rep">✕</button></div>
+    <div class="modal-b">
+      <div class="two">
+        <div class="field"><span>วันที่ลูกค้าจ่าย</span><div class="inp mono">28/08/2569</div></div>
+        <div class="field"><span>หลักฐาน</span><div class="inp"><svg class="i"><use href="#file"/></svg>สลิปโอน 28-08.jpg</div></div>
+      </div>
+      <div class="notice" data-tone="info" style="margin:0"><svg class="i ic"><use href="#clock"/></svg>
+        <div><b>สถานะจะเป็น "รอบัญชีตรวจ"</b><span>ด่านเงินปลดเมื่อบัญชีรับรองเท่านั้น — ใบเข้าคิวฝ่ายการเงินทันที</span></div>
+    </div>
+    <div class="modal-f"><button class="btn btn-quiet" data-close="m-rep">ยกเลิก</button>
+      <button class="btn btn-primary" data-go="s5">แจ้งการชำระ</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s5 · FN รับรอง ═════════════════════════════════════════ -->
+<section class="scene" id="s5">
+  <div class="stepnote"><span class="tag">ขั้นที่ 5 · FN</span>
+    <span>อรทัยเห็นงวดที่ SA แจ้งในทะเบียนการชำระ ตรวจสลิปกับยอดเข้าบัญชี แล้วคอนเฟิร์ม — "จ่ายถึง" ขยับเป็น 30 พ.ย. 2569</span>
+    <button class="go" data-open="m-cf">คอนเฟิร์มรับเงิน <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">การเงิน</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#wallet"/></svg>ทะเบียนการชำระ<span class="bdg">1</span></a>
+      <a href="#"><svg class="i"><use href="#inbox"/></svg>คิวคำร้อง</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">การเงิน › ทะเบียนการชำระ</span>
+        <span class="who2"><span class="av" style="background:var(--green)">อท</span>อรทัย · FN</span></div>
+      <div class="page">
+        <div class="ui-metric-strip" style="--c:3">
+          <div class="ui-metric" data-tone="warning"><div class="ui-metric-ic"><svg class="i"><use href="#clock"/></svg></div>
+            <div class="ui-metric-txt"><span>รอบัญชีตรวจ</span><strong>1</strong></div></div>
+          <div class="ui-metric" data-tone="danger"><div class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></div>
+            <div class="ui-metric-txt"><span>เลยกำหนด</span><strong>0</strong></div></div>
+          <div class="ui-metric"><div class="ui-metric-ic"><svg class="i"><use href="#wallet"/></svg></div>
+            <div class="ui-metric-txt"><span>ค้างรับ (สายบริการ)</span><strong>662,544</strong></div></div>
+        </div>
+        <div class="ui-section"><div class="ui-section-body flush tblwrap"><table class="tbl">
+          <thead><tr><th>ใบสั่งขาย</th><th>งวด</th><th>ครอบคลุม</th><th>จ่ายถึง</th><th class="num">ยอด</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="t-strong mono">SO-26090012</span><span class="cell-sub">เคพี อาร์ท เซ็นเตอร์</span></td>
+              <td class="mono">1 / 4</td><td>1 ก.ย. – 30 พ.ย. 69</td>
+              <td><span class="ui-badge warning">— ยังไม่ครอบ</span></td>
+              <td class="num t-strong">165,636</td>
+              <td><span class="ui-badge warning">รอบัญชีตรวจ</span></td>
+              <td><button class="btn sm btn-primary" data-open="m-cf">ตรวจ + คอนเฟิร์ม</button></td></tr>
+          </tbody></table></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-cf"><div class="modal">
+    <div class="modal-h"><svg class="i"><use href="#check"/></svg>บัญชีคอนเฟิร์ม — SO-26090012 งวด 1<button class="x" data-close="m-cf">✕</button></div>
+    <div class="modal-b">
+      <dl class="kv" style="margin-bottom:var(--space-3)">
+        <dt>ยอด</dt><dd><b>165,636</b></dd>
+        <dt>หลักฐาน</dt><dd><a class="linklike">สลิปโอน 28-08.jpg</a></dd>
+        <dt>วันที่ลูกค้าจ่าย</dt><dd class="mono">28 ส.ค. 2569</dd></dl>
+      <div class="notice" data-tone="success" style="margin:0"><svg class="i ic"><use href="#check"/></svg>
+        <div><b>รับรองแล้ว "จ่ายถึง" ขยับเป็น 30 พ.ย. 2569</b>
+        <span>นัดบริการช่วง ก.ย.–พ.ย. ของใบนี้จะผ่านด่านเงิน — TS เริ่มจัดคิวได้</span></div>
+    </div>
+    <div class="modal-f"><button class="btn btn-quiet" data-close="m-cf">ตีกลับให้ SA</button>
+      <button class="btn btn-primary" data-go="s6">คอนเฟิร์มรับเงิน</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s6 · TS จัดสรร ═════════════════════════════════════════ -->
+<section class="scene" id="s6">
+  <div class="stepnote"><span class="tag">ขั้นที่ 6 · TS</span>
+    <span>ใบโผล่ในงานเข้าใหม่พร้อมชิปครบ — วิชัยตั้งไซต์/โซน แล้วจัดสรรแพ็คลงโซน (term รับช่วงวันที่จากสัญญา)</span>
+    <button class="go" data-open="m-al">จัดสรรลงโซน <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+      <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวเจ้าหน้าที่</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">1</span></a>
+      <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>จัดทีม</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">บริการ › งานเข้าใหม่</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">วช</span>วิชัย · หัวหน้า TS</span></div>
+      <div class="page">
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#file"/></svg>SO-26090012 · เคพี อาร์ท เซ็นเตอร์</h2>
+            <p>อนุมัติ 30 ส.ค. 2569 · FG 2 ชนิด รวม 8 แพ็ค</p></div>
+            <button class="btn btn-primary sm" data-open="m-al">จัดสรรลงโซน</button></div>
+          <div class="ui-section-body">
+            <div class="who" style="margin-bottom:var(--space-3)">
+              <span class="ui-badge success"><svg class="i"><use href="#sig"/></svg>สัญญามีผล · ถึง 31 ส.ค. 2570</span>
+              <span class="ui-badge success"><svg class="i"><use href="#wallet"/></svg>จ่ายถึง 30 พ.ย. 2569</span>
+              <span class="ui-badge info"><svg class="i"><use href="#rot"/></svg>ขายไว้ 12 + 6 รอบ</span></div>
+            <div class="tblwrap"><table class="tbl">
+              <thead><tr><th>FG</th><th class="num">จำนวน</th><th class="num">จัดสรรแล้ว</th><th>รอบที่ขาย</th></tr></thead>
+              <tbody>
+                <tr><td><span class="t-strong mono">02-001-0007</span><span class="cell-sub">SDS Package L</span></td><td class="num">6</td><td class="num">0 / 6</td><td>12 รอบ / สัญญา</td></tr>
+                <tr><td><span class="t-strong mono">02-001-0002</span><span class="cell-sub">SDS Package S</span></td><td class="num">2</td><td class="num">0 / 2</td><td>6 รอบ / สัญญา</td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-al"><div class="modal lg">
+    <div class="modal-h"><svg class="i"><use href="#layers"/></svg>จัดสรรลงโซน — SO-26090012<button class="x" data-close="m-al">✕</button></div>
+    <div class="modal-b">
+      <div class="tblwrap"><table class="tbl">
+        <thead><tr><th>ไซต์ / โซน</th><th>FG</th><th class="num">จัดสรร</th></tr></thead>
+        <tbody>
+          <tr><td><span class="t-strong">เคพี อาร์ท ห้องโถงชั้น 1</span><span class="cell-sub">SS-26090003 · โซน: โถงต้อนรับ</span></td><td class="mono">02-001-0007</td><td class="num">4</td></tr>
+          <tr><td><span class="cell-sub" style="font-size:var(--fs-3)">โซน: ทางเดิน A</span></td><td class="mono">02-001-0007</td><td class="num">2</td></tr>
+          <tr><td><span class="t-strong">เคพี อาร์ท ห้องน้ำชั้น 2</span><span class="cell-sub">SS-26090004 · โซน: ห้องน้ำรวม</span></td><td class="mono">02-001-0002</td><td class="num">2</td></tr>
+        </tbody></table></div>
+      <div class="notice" data-tone="info" style="margin:var(--space-3) 0 0"><svg class="i ic"><use href="#cal"/></svg>
+        <div><b>ช่วงบริการของทุกโซน: 1 ก.ย. 2569 – 31 ส.ค. 2570</b><span>รับค่าจากสัญญา CT-26090012 · แก้รายโซนได้ (1 สัญญาหลายไซต์ ระยะเวลาต่างกันได้)</span></div>
+    </div>
+    <div class="modal-f"><span class="lead">ครบ 8/8 แพ็ค</span>
+      <button class="btn btn-quiet" data-close="m-al">ยกเลิก</button>
+      <button class="btn btn-primary" data-go="s7">บันทึกการจัดสรร</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s7 · TS วางรอบ ═════════════════════════════════════════ -->
+<section class="scene" id="s7">
+  <div class="stepnote"><span class="tag">ขั้นที่ 7 · TS</span>
+    <span>จัดสรรเสร็จ ไซต์ขึ้นถัง "รอวางรอบ" <b>ในงานเข้าใหม่หน้าเดิม</b> — กดต่อจากงานนั้นเลย: ตั้งความถี่ ระบบเทียบกับที่ขายไว้ แล้ว gen นัดทั้งปี</span>
+    <button class="go" data-go="s8">สร้างรอบ + นัด <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+      <a href="#"><svg class="i"><use href="#cal"/></svg>จัดคิวเจ้าหน้าที่</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่<span class="bdg">1</span></a>
+      <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">บริการ › งานเข้าใหม่ › SO-26090012 › รอวางรอบ › เคพี อาร์ท ห้องโถงชั้น 1</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">วช</span>วิชัย · หัวหน้า TS</span></div>
+      <div class="page">
+        <div class="modal" style="margin:0 auto">
+          <div class="modal-h"><svg class="i"><use href="#rot"/></svg>วางรอบบริการ — เคพี อาร์ท ห้องโถงชั้น 1</div>
+          <div class="modal-b">
+            <div class="two">
+              <div class="field"><span>ชนิดรอบ</span><div class="inp">เติมน้ำหอม (refill)</div></div>
+              <div class="field"><span>ความถี่</span><div class="inp"><span class="mono">ทุก 30</span> วัน</div></div>
+            </div>
+            <div class="two">
+              <div class="field"><span>เริ่ม</span><div class="inp mono">01/09/2569</div><small>ตามช่วงสัญญา</small></div>
+              <div class="field"><span>สิ้นสุด</span><div class="inp mono">31/08/2570</div></div>
+            </div>
+            <div class="field"><span>เจ้าหน้าที่ประจำ</span><div class="inp">สมชาย อุดมทรัพย์ (T-2)</div></div>
+            <div class="notice" data-tone="info" style="margin:0"><svg class="i ic"><use href="#rot"/></svg>
+              <div><b>จะเกิด 12 นัด — ขายไว้ 12 รอบ/สัญญา ครบพอดี</b>
+              <span>นัด ก.ย.–พ.ย. (3 นัด) ผ่านด่านครบ ขึ้นตารางทันที · นัด ธ.ค. เป็นต้นไปจอดเป็น<b>ร่าง</b> — เกินจ่ายถึง 30 พ.ย. รองวด 2</span></div>
+          </div>
+          <div class="modal-f"><button class="btn btn-quiet">ยกเลิก</button>
+            <button class="btn btn-primary" data-go="s8">สร้างรอบ + นัดตามรอบ</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ s8 · TS จัดคิว + ด่าน ══════════════════════════════════ -->
+<section class="scene" id="s8">
+  <div class="stepnote"><span class="tag">ขั้นที่ 8 · TS</span>
+    <span>จัดคิวสัปดาห์แรกของเดือนกันยายน — นัดที่ผ่านด่านลากลงตารางได้ · เปิดดูด่านของนัดแรกก่อนปล่อย</span>
+    <button class="go" data-open="m-gate">ดูด่าน 4 ข้อ <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#cal"/></svg>จัดคิวเจ้าหน้าที่</a>
+      <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่</a>
+      <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">บริการ › จัดคิวเจ้าหน้าที่ · 1–5 ก.ย. 2569</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">วช</span>วิชัย · หัวหน้า TS</span></div>
+      <div class="page">
+        <div class="split">
+          <div>
+            <div class="qgroup"><h4><svg class="i" style="color:var(--green)"><use href="#check"/></svg>ผ่านด่านแล้ว · ลากวางได้</h4>
+              <div class="qitem ready" data-open="m-gate" style="cursor:pointer"><b>เคพี อาร์ท · ห้องโถงชั้น 1</b>
+                <span>เติมน้ำหอม · รอบที่ 1 · ช่วง 1–5 ก.ย.</span>
+                <span class="why">สัญญามีผล · จ่ายถึง 30 พ.ย. — กดดูด่าน</span></div>
+              <div class="qitem ready"><b>เคพี อาร์ท · ห้องน้ำชั้น 2</b>
+                <span>เติมน้ำหอม · รอบที่ 1</span><span class="why">ครบทุกข้อ</span></div>
+            </div>
+            <div class="qgroup"><h4><svg class="i" style="color:var(--red)"><use href="#ban"/></svg>ติดด่าน · วางไม่ได้</h4>
+              <div class="qitem blocked"><b>เคพี อาร์ท · โถงชั้น 1 (รอบ 4 · 1 ธ.ค.)</b>
+                <span>เติมน้ำหอม</span><span class="why">เกินจ่ายถึง 30 พ.ย. — รองวด 2 รับรอง (SA → FN)</span></div>
+            </div>
+          </div>
+          <div class="tblwrap"><table class="board">
+            <thead><tr><th class="tech">เจ้าหน้าที่</th><th>จ 1 ก.ย.</th><th>อ 2</th><th>พ 3</th><th>พฤ 4</th><th>ศ 5</th></tr></thead>
+            <tbody>
+              <tr><td class="tech"><b>สมชาย (T-2)</b></td>
+                <td><button class="vchip refill" data-open="m-gate"><b>09:00</b>เคพี อาร์ท · โถงชั้น 1</button></td>
+                <td><button class="vchip refill"><b>10:00</b>เคพี อาร์ท · ห้องน้ำชั้น 2</button></td>
+                <td></td><td></td><td></td></tr>
+              <tr><td class="tech"><b>วิรัตน์ (T-3)</b></td><td></td><td></td>
+                <td><button class="vchip inspect"><b>13:00</b>ดุสิต · ล็อบบี้</button></td><td></td><td></td></tr>
+            </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-gate"><div class="modal">
+    <div class="modal-h"><svg class="i"><use href="#check"/></svg>ปล่อยเข้าคิว — เคพี อาร์ท ห้องโถงชั้น 1 · 1 ก.ย.<button class="x" data-close="m-gate">✕</button></div>
+    <div class="modal-b">
+      <div class="gate">
+        <div class="gate-i" data-s="ok"><span class="gate-mk"><svg class="i"><use href="#check"/></svg></span>
+          <span class="gate-t"><b>ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด</b><span>CT-26090012 · ถึง 31 ส.ค. 2570</span></span><span class="owner">SA</span></div>
+        <div class="gate-i" data-s="ok"><span class="gate-mk"><svg class="i"><use href="#check"/></svg></span>
+          <span class="gate-t"><b>เงินครอบวันนัด และไม่มีงวดเลยกำหนดค้าง</b><span>จ่ายถึง 30 พ.ย. 2569 (งวด 1 รับรองแล้ว)</span></span><span class="owner">SA → FN</span></div>
+        <div class="gate-i" data-s="ok"><span class="gate-mk"><svg class="i"><use href="#check"/></svg></span>
+          <span class="gate-t"><b>มีเจ้าหน้าที่ผู้รับผิดชอบ</b><span>สมชาย (T-2)</span></span><span class="owner">TS</span></div>
+        <div class="gate-i" data-s="ok"><span class="gate-mk"><svg class="i"><use href="#check"/></svg></span>
+          <span class="gate-t"><b>วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า</b><span>ทุกวัน 08:00–18:00</span></span><span class="owner">TS</span></div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="lead">ผ่านครบ 4 ข้อ</span>
+      <button class="btn btn-quiet" data-close="m-gate">ปิด</button>
+      <button class="btn btn-primary" data-go="s9">ปล่อยเข้าคิว</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s9 · ช่างเข้าบริการ ════════════════════════════════════ -->
+<section class="scene" id="s9">
+  <div class="stepnote"><span class="tag">ขั้นที่ 9 · เจ้าหน้าที่บริการ · 1 ก.ย. 2569</span>
+    <span>สมชายเห็นงานในมือถือ เข้าไซต์ เติมน้ำหอม ปิดงานรายเครื่อง — ใบส่งงานเกิดตามปกติของโมดูล</span>
+    <button class="go" data-go="s10">ปิดงาน <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app mobile">
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานวันนี้ · จ 1 ก.ย.</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">สช</span>สมชาย · T-2</span></div>
+      <div class="page">
+        <div class="vcard" style="border-color:var(--accent)">
+          <div class="vcard-top"><span class="vcard-when">09:00</span>
+            <span class="ui-badge accent">เติมน้ำหอม</span><span class="ui-badge plain mono">SV-26090021</span></div>
+          <h3>เคพี อาร์ท ห้องโถงชั้น 1</h3>
+          <p class="meta">โถงต้อนรับ (SDS L × 4) · ทางเดิน A (SDS L × 2) · เข้าได้ 08:00–18:00</p>
+          <div class="vacts">
+            <button class="btn sm" style="flex:1"><svg class="i"><use href="#pin"/></svg>แผนที่</button>
+            <button class="btn sm btn-primary" style="flex:1" data-go="s10">ปิดงาน</button></div>
+        </div>
+        <div class="vcard">
+          <div class="vcard-top"><span class="vcard-when">11:30</span><span class="ui-badge accent">เติมน้ำหอม</span></div>
+          <h3>เคพี อาร์ท ห้องน้ำชั้น 2</h3>
+          <p class="meta">ห้องน้ำรวม (SDS S × 2)</p>
+        </div>
+        <div class="notice" data-tone="info" style="margin-top:var(--space-3)"><svg class="i ic"><use href="#check"/></svg>
+          <div><b>งานนี้ขึ้นตารางได้เพราะผ่านด่านครบ</b><span>สัญญามีผล + เงินครอบ + มีเจ้าหน้าที่ + อยู่ช่วงเข้าไซต์ — ไม่มีใครต้องจำเอง</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ s10 · 3 เดือนต่อมา นัดติดด่าน ═════════════════════════ -->
+<section class="scene" id="s10">
+  <div class="stepnote" data-b="1"><span class="tag">ขั้นที่ 10 · TS · ปลายพฤศจิกายน 2569</span>
+    <span>บริการรอบ 1–3 จบแล้ว · งวด 2 (กำหนด 15 พ.ย.) ยังไม่จ่าย — นัด ธ.ค. เป็นต้นไป<b>เกินจ่ายถึง</b> ทั้งหมดจอดเป็นเทา</span>
+    <button class="go" data-go="s11">ลูกค้าจ่ายงวด 2 → FN รับรอง <svg class="i"><use href="#arrow"/></svg></button>
+    <button class="go" data-go="b1">ลูกค้ายังไม่จ่าย <svg class="i"><use href="#warn"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#cal"/></svg>จัดคิวเจ้าหน้าที่</a>
+      <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่</a>
+      <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">บริการ › จัดคิวเจ้าหน้าที่ · 1–5 ธ.ค. 2569</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">วช</span>วิชัย · หัวหน้า TS</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><svg class="i ic"><use href="#ban"/></svg>
+          <div><b>เคพี อาร์ท — งวด 2 เลยกำหนด 16 วัน และเกินจ่ายถึง 30 พ.ย. 2569</b>
+          <span>นัด ธ.ค.–ก.พ. ทั้ง 3 นัดวางคิวไม่ได้จนกว่าบัญชีรับรองงวด 2 — เจ้าของเรื่อง: SA มณีรัตน์ → FN</span></div></div>
+        <div class="split">
+          <div>
+            <div class="qgroup"><h4><svg class="i" style="color:var(--red)"><use href="#ban"/></svg>ติดด่าน · วางไม่ได้</h4>
+              <div class="qitem blocked"><b>เคพี อาร์ท · โถงชั้น 1 (รอบ 4)</b><span>เติมน้ำหอม · 1 ธ.ค.</span>
+                <span class="why">เกินจ่ายถึง 30 พ.ย. — รองวด 2 รับรอง</span></div>
+              <div class="qitem blocked"><b>เคพี อาร์ท · ห้องน้ำชั้น 2 (รอบ 4)</b><span>เติมน้ำหอม · 1 ธ.ค.</span>
+                <span class="why">เกินจ่ายถึง 30 พ.ย. — รองวด 2 รับรอง</span></div>
+            </div>
+            <div class="qgroup"><h4><svg class="i" style="color:var(--green)"><use href="#check"/></svg>ผ่านด่านแล้ว</h4>
+              <div class="qitem ready"><b>ดุสิตปริ๊นเซส · ล็อบบี้</b><span>ตรวจเครื่อง · 3 ธ.ค.</span><span class="why">ครบทุกข้อ</span></div>
+            </div>
+          </div>
+          <div class="tblwrap"><table class="board">
+            <thead><tr><th class="tech">เจ้าหน้าที่</th><th>จ 1 ธ.ค.</th><th>อ 2</th><th>พ 3</th><th>พฤ 4</th><th>ศ 5</th></tr></thead>
+            <tbody>
+              <tr><td class="tech"><b>สมชาย (T-2)</b></td>
+                <td><button class="vchip draft"><b>—</b>เคพี อาร์ท (ร่าง · ติดด่านเงิน)</button></td>
+                <td></td><td></td><td></td><td></td></tr>
+              <tr><td class="tech"><b>วิรัตน์ (T-3)</b></td><td></td><td></td>
+                <td><button class="vchip inspect"><b>10:00</b>ดุสิต · ล็อบบี้</button></td><td></td><td></td></tr>
+            </tbody></table>
+            <p style="font-size:var(--fs-4);color:var(--text-3);margin-top:var(--space-2)">
+              ชิปเทาเส้นประ = ร่างค้างบนวันเดิม ไม่นับภาระ ไม่ขึ้นงานวันนี้ของเจ้าหน้าที่ — <b>นี่คือจุดที่ระบบกัน "ไม่จ่ายแต่ไปบริการ"</b></p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ s11 · SA ต่อสัญญา ══════════════════════════════════════ -->
+<section class="scene" id="s11">
+  <div class="stepnote"><span class="tag">ขั้นที่ 11 · SA · มิถุนายน 2570</span>
+    <span>งวด 2–4 จ่ายครบ บริการเดินตามรอบ · สัญญาจะหมด 31 ส.ค. 2570 — เข้าเขต 90 วัน กระดิ่งเด้งถึงมณีรัตน์ และไซต์ขึ้นทะเบียนต่อสัญญา</span>
+    <button class="go" data-open="m-rn">บันทึกผลติดตาม <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ<span class="bdg">2</span></a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ต่อสัญญาบริการ</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="notice" data-tone="warning"><svg class="i ic"><use href="#bell"/></svg>
+          <div><b>กระดิ่ง: สัญญาบริการ เคพี อาร์ท ห้องโถงชั้น 1 จะสิ้นสุด 31 ส.ค. 2570 (อีก 88 วัน)</b>
+          <span>เริ่มติดตามการต่อสัญญา — ยิงครั้งเดียวต่อ (ไซต์ × วันสิ้นสุด)</span></div></div>
+        <div class="ui-metric-strip" style="--c:4">
+          <div class="ui-metric" data-tone="warning"><div class="ui-metric-ic"><svg class="i"><use href="#clock"/></svg></div>
+            <div class="ui-metric-txt"><span>ใกล้หมด ≤90 วัน</span><strong>2</strong></div></div>
+          <div class="ui-metric" data-tone="danger"><div class="ui-metric-ic"><svg class="i"><use href="#warn"/></svg></div>
+            <div class="ui-metric-txt"><span>หมดแล้วยังไม่ปิด</span><strong>0</strong></div></div>
+          <div class="ui-metric" data-tone="accent"><div class="ui-metric-ic"><svg class="i"><use href="#rot"/></svg></div>
+            <div class="ui-metric-txt"><span>กำลังติดตาม</span><strong>1</strong></div></div>
+          <div class="ui-metric" data-tone="good"><div class="ui-metric-ic"><svg class="i"><use href="#check"/></svg></div>
+            <div class="ui-metric-txt"><span>ต่อแล้วเดือนนี้</span><strong>1</strong></div></div>
+        </div>
+        <div class="ui-section"><div class="ui-section-body flush tblwrap"><table class="tbl">
+          <thead><tr><th>ไซต์</th><th>สัญญา / SO</th><th>สิ้นสุด</th><th class="num">เหลือ</th><th>การติดตาม</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="t-strong">เคพี อาร์ท · ห้องโถงชั้น 1</span><span class="cell-sub mono">SS-26090003</span></td>
+              <td class="mono">CT-26090012<span class="cell-sub">SO-26090012</span></td>
+              <td class="mono">31 ส.ค. 2570</td><td class="num"><span class="ui-badge warning">88 วัน</span></td>
+              <td><span class="ui-badge plain">ยังไม่เริ่ม</span></td>
+              <td><button class="btn sm btn-accent" data-open="m-rn">เริ่มติดตาม</button></td></tr>
+            <tr><td><span class="t-strong">เคพี อาร์ท · ห้องน้ำชั้น 2</span><span class="cell-sub mono">SS-26090004</span></td>
+              <td class="mono">CT-26090012</td>
+              <td class="mono">31 ส.ค. 2570</td><td class="num"><span class="ui-badge warning">88 วัน</span></td>
+              <td><span class="ui-badge plain">ยังไม่เริ่ม</span></td>
+              <td><button class="btn sm">เริ่มติดตาม</button></td></tr>
+          </tbody></table></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" id="m-rn"><div class="modal">
+    <div class="modal-h"><svg class="i"><use href="#rot"/></svg>บันทึกผลติดตาม — เคพี อาร์ท ห้องโถงชั้น 1<button class="x" data-close="m-rn">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><span>ผลการติดตามครั้งนี้</span></div>
+      <div class="tiles" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:var(--space-3)">
+        <button class="tile"><b>ยังติดตามต่อ</b><span class="adr">คุยแล้ว ยังไม่สรุป</span></button>
+        <button class="tile" aria-pressed="true"><b style="color:var(--green)">ต่อสัญญา</b><span class="adr">เปิดดีล RE-ORDER สาย SERVICE</span></button>
+        <button class="tile" data-go="b3"><b style="color:var(--red)">ไม่ต่อ</b><span class="adr">ปิดเรื่อง + แจ้ง TS ถอน</span></button>
+      </div>
+      <div class="two">
+        <div class="field"><span>วันที่ติดต่อ</span><div class="inp mono">05/06/2570</div></div>
+        <div class="field"><span>รายละเอียด</span><div class="inp ta">ลูกค้าตกลงต่อ 1 ปี แพ็คเกจเดิม</div></div>
+      </div>
+    </div>
+    <div class="modal-f"><button class="btn btn-quiet" data-close="m-rn">ยกเลิก</button>
+      <button class="btn btn-primary" data-go="s12">บันทึก + เปิดดีล RE-ORDER</button></div>
+  </div></div>
+</section>
+
+<!-- ═══ s12 · จบสาย ════════════════════════════════════════════ -->
+<section class="scene" id="s12">
+  <div class="stepnote"><span class="tag">ขั้นที่ 12 · จบสาย → วนรอบใหม่</span>
+    <span>ดีล RE-ORDER เกิด → QT → Won → SO ใหม่ → term ใหม่ชี้<b>โซนเดิม</b> ประวัติการใช้ต่อเนื่อง — วงจรกลับไปขั้นที่ 1</span>
+    <button class="go" data-go="s1"><svg class="i"><use href="#rot"/></svg> เริ่มเรื่องใหม่</button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบเสนอราคา</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ดีล › DL-27060021</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="premium-header"><div>
+          <h1><span class="premium-header-icon"><svg class="i"><use href="#rot"/></svg></span>DL-27060021 · เคพี อาร์ท — ต่อสัญญา SDS ปี 2</h1>
+          <p>RE-ORDER · สาย SERVICE · เปิดจากทะเบียนต่อสัญญา — ผูกไซต์/โซนเดิมให้แล้ว</p></div>
+          <span class="ui-badge success">ต่อจาก SO-26090012</span></div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#check"/></svg>สรุปทั้งเส้นที่เพิ่งเดินมา</h2></div></div>
+          <div class="ui-section-body">
+            <ul class="fixes">
+              <li><span class="mk">✓</span><span><b>SA</b> สร้าง SO (จำนวนรอบ) → ผูกสัญญา/เอกสารภายนอก → กำหนดช่วงครอบงวด → แจ้งจ่าย → ติดตามต่อสัญญา</span></li>
+              <li><span class="mk">✓</span><span><b>AE Sup</b> อนุมัติเอกสารแทนสัญญา · ข้ามด่านได้เมื่อจำเป็น (ทางแยก)</span></li>
+              <li><span class="mk">✓</span><span><b>FN</b> รับรองงวด → "จ่ายถึง" ขยับ → นัดปลดเอง · เห็นครอบคลุมทุกงวดใน /finance</span></li>
+              <li><span class="mk">✓</span><span><b>TS</b> จัดสรรโซน → วางรอบ → จัดคิวเฉพาะนัดที่ผ่านด่าน → เข้าบริการ/ปิดงาน</span></li>
+              <li><span class="mk">✓</span><span><b>ระบบ</b> กัน "ไม่จ่ายแต่ไปบริการ" ที่ด่านเข้าคิว ไม่ใช่วินัยของคน</span></li>
+            </ul>
+            <div class="sticky-acts">
+              <button class="btn" data-go="b1"><svg class="i"><use href="#warn"/></svg>ทางแยก: ลูกค้าไม่จ่าย</button>
+              <button class="btn" data-go="b2"><svg class="i"><use href="#shield"/></svg>ทางแยก: หัวหน้าข้ามด่าน</button>
+              <button class="btn" data-go="b3"><svg class="i"><use href="#truck"/></svg>ทางแยก: ไม่ต่อสัญญา</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ b1 · ทางแยก ลูกค้าไม่จ่าย ══════════════════════════════ -->
+<section class="scene" id="b1">
+  <div class="stepnote" data-b="2"><span class="tag">ทางแยก · ลูกค้าไม่จ่าย</span>
+    <span>งวด 2 ค้างข้ามเดือน — ฝั่งขายเห็นเหตุเดียวกับ TS: ไม่มีใครออกไปบริการจนกว่าเงินเข้า · SA มีหน้าที่ไปตามลูกค้า ไม่ใช่ไปตามช่าง</span>
+    <button class="go" data-go="s10">กลับขั้นที่ 10</button>
+    <button class="go" data-go="b2">หัวหน้าข้ามด่าน <svg class="i"><use href="#arrow"/></svg></button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ใบสั่งขาย › SO-26090012 › งวดชำระ</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="notice" data-tone="danger"><svg class="i ic"><use href="#warn"/></svg>
+          <div><b>งวด 2 เลยกำหนด 16 วัน — บริการหยุดตั้งแต่ 1 ธ.ค.</b>
+          <span>นัด 3 นัดจอดเป็นร่าง · ใบติดสถานะเลยกำหนดใน /finance ด้วย — เหตุเดียวกัน เห็นตรงกันทุกฝ่าย</span></div></div>
+        <div class="ui-section">
+          <div class="ui-section-header"><div><h2><svg class="i"><use href="#wallet"/></svg>งวดชำระ</h2><p>เก็บแล้ว 1/4 · จ่ายถึง 30 พ.ย. 2569 (ขาดแล้ว)</p></div></div>
+          <div class="ui-section-body">
+            <div class="covbar">
+              <i class="paid" style="flex:3">งวด 1 · รับรองแล้ว</i>
+              <i class="due" style="flex:3">งวด 2 · เลยกำหนด</i>
+              <i class="rest" style="flex:3">งวด 3</i><i class="rest" style="flex:3">งวด 4</i></div>
+            <div class="covscale"><span>1 ก.ย. 2569</span><span>30 พ.ย.</span><span>28 ก.พ. 2570</span><span>31 พ.ค.</span><span>31 ส.ค. 2570</span></div>
+            <ul class="fixes" style="margin-top:var(--space-2)">
+              <li><span class="mk" style="color:var(--red)">✕</span><span>TS: นัด ธ.ค.–ก.พ. เทา วางคิวไม่ได้ — ไม่มีการแอบไปบริการ</span></li>
+              <li><span class="mk" style="color:var(--red)">✕</span><span>FN: ใบขึ้นกลุ่ม "เลยกำหนด" ในทะเบียนการชำระ</span></li>
+              <li><span class="mk">✓</span><span>SA: โทรตามลูกค้า → จ่ายเมื่อไหร่ แจ้ง → FN รับรอง → นัดปลดเองทั้งชุด ไม่ต้องตั้งอะไรใหม่</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ b2 · ทางแยก หัวหน้าข้ามด่าน ═══════════════════════════ -->
+<section class="scene" id="b2">
+  <div class="stepnote" data-b="1"><span class="tag">ทางแยก · หัวหน้าข้ามด่าน</span>
+    <span>ลูกค้ารายใหญ่ยืนยันว่าโอนแล้วแต่เอกสารยังไม่ถึงบัญชี — วิชัย (หัวหน้า TS) ตัดสินใจปล่อยนัดโดยข้ามด่าน กลไกเดิมของระบบ (mig 0302)</span>
+    <button class="go" data-go="s10">กลับขั้นที่ 10</button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ธุรกิจบริการ</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#wrench"/></svg>งานวันนี้</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#cal"/></svg>จัดคิวเจ้าหน้าที่</a>
+      <a href="#"><svg class="i"><use href="#inbox"/></svg>งานเข้าใหม่</a>
+      <a href="#"><svg class="i"><use href="#pin"/></svg>ไซต์บริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">บริการ › จัดคิวเจ้าหน้าที่ › ข้ามด่าน</span>
+        <span class="who2"><span class="av" style="background:var(--teal)">วช</span>วิชัย · หัวหน้า TS</span></div>
+      <div class="page">
+        <div class="modal" style="margin:0 auto">
+          <div class="modal-h"><svg class="i"><use href="#shield"/></svg>ข้ามด่าน — เคพี อาร์ท · รอบ 4 (1 ธ.ค.)</div>
+          <div class="modal-b">
+            <div class="notice" data-tone="warning" style="margin-bottom:var(--space-3)"><svg class="i ic"><use href="#warn"/></svg>
+              <div><b>ด่านที่ยังไม่ผ่าน: เงินครอบวันนัด</b><span>เกินจ่ายถึง 30 พ.ย. — งวด 2 รอบัญชีรับรอง</span></div>
+            <div class="field"><span>เหตุผล (บังคับ ≥10 ตัวอักษร · ติดใบถาวร + ขึ้นบนใบส่งงาน)</span>
+              <div class="inp ta">ลูกค้าส่งสลิปโอนวันที่ 30 พ.ย. แล้ว รอเอกสารเข้าระบบบัญชี — อนุมัติเข้าบริการตามรอบเดิมไปก่อน</div></div>
+            <p style="margin:0;font-size:var(--fs-4);color:var(--text-3)">บันทึก: ใคร · เมื่อไหร่ · เหตุผล — ตรวจย้อนหลังได้เสมอ ไม่ใช่ประตูเงียบ</p>
+          </div>
+          <div class="modal-f"><button class="btn btn-quiet" data-go="s10">ยกเลิก</button>
+            <button class="btn btn-primary" data-go="s10">ยืนยันข้ามด่าน + ปล่อยเข้าคิว</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ b3 · ทางแยก ไม่ต่อสัญญา ═══════════════════════════════ -->
+<section class="scene" id="b3">
+  <div class="stepnote" data-b="2"><span class="tag">ทางแยก · ไม่ต่อสัญญา</span>
+    <span>ลูกค้าย้ายอาคาร ไม่ต่อ — SA ปิดเรื่องพร้อมเหตุผล ระบบแจ้ง TS จัดงานถอนเครื่อง (นัดชนิดถอน<b>ไม่ติดด่านเงิน</b> — สัญญาหมดโดยนิยาม)</span>
+    <button class="go" data-go="s11">กลับขั้นที่ 11</button></div>
+  <div class="app">
+    <nav class="rail"><span class="brand">ระบบบริหารงานขาย</span>
+      <a href="#"><svg class="i"><use href="#dash"/></svg>ภาพรวม</a>
+      <a href="#"><svg class="i"><use href="#users"/></svg>ดีล</a>
+      <a href="#"><svg class="i"><use href="#file"/></svg>ใบสั่งขาย</a>
+      <a href="#"><svg class="i"><use href="#sig"/></svg>สัญญา</a>
+      <a href="#" data-on="1"><svg class="i"><use href="#rot"/></svg>ต่อสัญญาบริการ</a>
+    </nav>
+    <div class="main">
+      <div class="topbar"><span class="crumb2">งานขาย › ต่อสัญญาบริการ › ไม่ต่อ</span>
+        <span class="who2"><span class="av">มร</span>มณีรัตน์ · SA</span></div>
+      <div class="page">
+        <div class="modal" style="margin:0 auto">
+          <div class="modal-h"><svg class="i"><use href="#ban"/></svg>ไม่ต่อสัญญา — เคพี อาร์ท ห้องโถงชั้น 1</div>
+          <div class="modal-b">
+            <div class="field"><span>เหตุผล (บังคับ)</span>
+              <div class="inp ta">ลูกค้าย้ายอาคารสำนักงานไตรมาส 4 — เสนอย้ายจุดติดตั้งแล้ว รอติดต่อกลับหลังย้าย</div></div>
+            <p style="margin:0 0 var(--space-1-5);font-size:var(--fs-4);font-weight:var(--fw-semibold);color:var(--text-2)">ผลของการปิดเรื่อง</p>
+            <ul class="fixes">
+              <li><span class="mk">✓</span><span>ใบติดตามปิดเป็น "ไม่ต่อ" · ไซต์หลุดจากทะเบียนใกล้หมด</span></li>
+              <li><span class="mk">✓</span><span>แจ้ง TS จัดงานถอนเครื่อง — นัดชนิดถอน ใช้แค่ด่านมีเจ้าหน้าที่ + ช่วงเข้าไซต์</span></li>
+              <li><span class="mk">✓</span><span>ประวัติโซน/การใช้คงอยู่ — กลับมาทำใหม่เมื่อไหร่ term ใหม่ชี้โซนเดิม</span></li>
+            </ul>
+          </div>
+          <div class="modal-f"><button class="btn btn-quiet" data-go="s11">ยกเลิก</button>
+            <button class="btn btn-danger" data-go="s11" style="min-width:130px">ปิดเรื่อง — ไม่ต่อ</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const STEPS = [
+  ["s1","สร้าง SO","SA"],["s2","ผูกสัญญา","SA"],["s3","อนุมัติ","AE SUP"],["s4","แจ้งจ่าย","SA"],
+  ["s5","รับรองงวด","FN"],["s6","จัดสรรโซน","TS"],["s7","วางรอบ","TS"],["s8","จัดคิว+ด่าน","TS"],
+  ["s9","เข้าบริการ","ช่าง"],["s10","นัดติดด่าน","TS"],["s11","ต่อสัญญา","SA"],["s12","จบสาย","วนรอบ"]
+];
+const BRANCHES = [["b1","ลูกค้าไม่จ่าย","SA·TS"],["b2","ข้ามด่าน","หัวหน้า"],["b3","ไม่ต่อสัญญา","SA"]];
+const nav = document.getElementById("nav");
+STEPS.forEach(([id,label,who],i)=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.setAttribute("aria-current", i===0?"true":"false");
+  b.innerHTML=(i+1)+". "+label+' <span class="who">'+who+"</span>";
+  nav.appendChild(b);
+});
+nav.appendChild(Object.assign(document.createElement("span"),{className:"sep2"}));
+BRANCHES.forEach(([id,label,who])=>{
+  const b=document.createElement("button");
+  b.type="button"; b.dataset.go=id; b.dataset.b="1"; b.setAttribute("aria-current","false");
+  b.innerHTML="⚠ "+label+' <span class="who">'+who+"</span>";
+  nav.appendChild(b);
+});
+function closeOvls(){document.querySelectorAll(".ovl").forEach(o=>o.classList.remove("on"));}
+function show(id){
+  closeOvls();
+  document.querySelectorAll(".scene").forEach(s=>s.classList.toggle("on", s.id===id));
+  nav.querySelectorAll("button").forEach(b=>b.setAttribute("aria-current", String(b.dataset.go===id)));
+  window.scrollTo({top:0,behavior:"instant"});
+}
+document.addEventListener("click",e=>{
+  const g=e.target.closest("[data-go]");
+  if(g){e.preventDefault(); show(g.dataset.go); return;}
+  const o=e.target.closest("[data-open]");
+  if(o){e.preventDefault(); document.getElementById(o.dataset.open)?.classList.add("on"); return;}
+  const c=e.target.closest("[data-close]");
+  if(c){e.preventDefault(); document.getElementById(c.dataset.close)?.classList.remove("on"); return;}
+  const ovl=e.target.classList?.contains("ovl") ? e.target : null;
+  if(ovl) ovl.classList.remove("on");
+});
+const root=document.documentElement;
+document.getElementById("theme").addEventListener("click",()=>{
+  const cur=root.getAttribute("data-theme");
+  const dark=cur? cur==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.setAttribute("data-theme", dark?"light":"dark");
+});
+</script>
