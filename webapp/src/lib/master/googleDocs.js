@@ -9,6 +9,7 @@
 // ⚠️ server-only + ต้องรันบน Node runtime — โหลด `lib/drive` แบบ dynamic เพื่อไม่ให้
 // googleapis ถูก bundle เข้า route ที่ไม่ได้แตะ Drive
 import { driveEnvStatus } from '@/lib/drive';
+import { isPhoneLogin } from '@/lib/auth/loginIdentity';
 
 // error ที่ผู้เรียกเอา .status ไปตอบได้ตรง ๆ — แยก "ผู้ใช้ส่งมาผิด" (400) ออกจาก
 // "คุยกับ Drive ไม่สำเร็จ" (500) ไม่งั้นทุกอย่างกลายเป็น 500 แล้วตามต่อไม่ได้
@@ -125,7 +126,12 @@ export async function workspaceEmail(supabase, userId) {
   if (!userId) return null;
   try {
     const { data } = await supabase.auth.admin.getUserById(userId);
-    return data?.user?.email || null;
+    const email = data?.user?.email || null;
+    /* 🔴 **ที่อยู่ล็อกอินด้วยเบอร์ไม่ใช่อีเมลจริง** (lib/auth/loginIdentity.js) — โดเมน
+       ภายในไม่มีกล่องจดหมายและไม่ใช่บัญชี Google ⇒ เอาไปสั่งแชร์ Drive = สร้าง
+       permission ให้ที่อยู่ที่ไม่มีใครเปิดได้ (หรือโดน API ตีกลับ) แล้วระบบจะบอกว่า
+       "แชร์ให้แล้ว" ทั้งที่คนนั้นเปิดเอกสารไม่ได้ · คืน null = "คนนี้ไม่มีอีเมล" ซึ่งจริง */
+    return email && !isPhoneLogin(email) ? email : null;
   } catch {
     return null;
   }

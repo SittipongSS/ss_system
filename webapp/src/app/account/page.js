@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { loginPhoneOf } from "@/lib/auth/loginIdentity";
 import { AlertTriangle, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import PhoneInput from "@/components/ui/PhoneInput";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -154,10 +155,24 @@ export default function AccountPage() {
                 <label htmlFor="account-phone">เบอร์โทรศัพท์</label>
                 <PhoneInput id="account-phone" className="premium-input" value={form.phone} onChange={(value) => setForm((current) => ({ ...current, phone: value }))} autoComplete="tel" />
               </div>
+              {/* ⚠️ บัญชีที่เข้าระบบด้วย **เบอร์** ต้องเห็นเบอร์ ไม่ใช่ที่อยู่ภายใน
+                  (`66…@phone.scentandsense.co.th`) ซึ่งไม่มีกล่องจดหมายจริง — ไม่งั้น
+                  เจ้าตัวจะเชื่อว่ามีอีเมลบริษัทแล้วรอจดหมายที่ไม่มีวันมา */}
               <div className="form-group">
-                <label htmlFor="account-email">อีเมลสำหรับเข้าสู่ระบบ</label>
-                <input id="account-email" className="premium-input" value={profile.email} disabled />
-                <p className={styles.fieldNote}>หากต้องการเปลี่ยนอีเมล กรุณาติดต่อผู้ดูแลระบบ</p>
+                <label htmlFor="account-email">
+                  {loginPhoneOf(profile.email) ? "เบอร์สำหรับเข้าสู่ระบบ" : "อีเมลสำหรับเข้าสู่ระบบ"}
+                </label>
+                <input
+                  id="account-email"
+                  className="premium-input"
+                  value={loginPhoneOf(profile.email) || naText(profile.email)}
+                  disabled
+                />
+                <p className={styles.fieldNote}>
+                  {loginPhoneOf(profile.email)
+                    ? "เบอร์นี้ใช้เข้าระบบ — คนละช่องกับเบอร์โทรศัพท์ด้านบนที่ขึ้นบนเอกสาร · เปลี่ยนเบอร์เข้าระบบต้องแจ้งผู้ดูแลระบบ"
+                    : "หากต้องการเปลี่ยนอีเมล กรุณาติดต่อผู้ดูแลระบบ"}
+                </p>
               </div>
             </div>
 
