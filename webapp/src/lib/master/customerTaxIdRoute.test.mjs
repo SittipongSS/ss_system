@@ -19,6 +19,8 @@ const createRoute = codeOnly(read('../../app/api/customers/route.js'));
 const patchRoute = codeOnly(read('../../app/api/customers/[id]/route.js'));
 const lookupRoute = codeOnly(read('../../app/api/customers/by-tax-id/route.js'));
 const form = codeOnly(read('../../components/database/CustomerForm.js'));
+const createPage = codeOnly(read('../../app/database/customers/page.js'));
+const detailPage = codeOnly(read('../../app/database/customers/[id]/page.js'));
 
 test('ทุกด่านดึงแถวด้วย taxIdMatchFilter แล้วกรองซ้ำด้วยคีย์', () => {
   for (const [label, src] of [['POST', createRoute], ['PATCH', patchRoute], ['by-tax-id', lookupRoute]]) {
@@ -68,9 +70,19 @@ test('เขียนลงฐานผ่าน taxIdStore เสมอ — ห
   assert.match(patchRoute, /updates\.taxId = taxIdStore\(updates\.taxId\)/);
 });
 
-test('ด่านรูปแบบ 13 หลักอยู่ทั้งตอนสร้างและตอนแก้ และดูจากที่อยู่ว่าเป็นลูกค้าไทยไหม', () => {
+test('ด่านรูปแบบ 13 หลักอยู่ทั้งตอนสร้างและตอนแก้ และแยกไทย/ต่างชาติจากธง isForeign', () => {
   for (const [label, src] of [['POST', createRoute], ['PATCH', patchRoute]]) {
     assert.match(src, /taxIdFormatError\(/, `${label} ต้องมีด่านรูปแบบ`);
-    assert.match(src, /isThaiTaxEntity\(/, `${label} ต้องแยกลูกค้าไทย/ต่างชาติจากที่อยู่`);
+    assert.match(src, /isThaiTaxEntity\(\{ isForeign/, `${label} ต้องตัดสินจากธง ไม่ใช่ที่อยู่`);
   }
+});
+
+test('ธง isForeign ต้องวิ่งครบสาย ไม่งั้นสวิตช์บนจอกดแล้วไม่มีผล', () => {
+  // payload ของทั้งสองหน้าเป็น whitelist — ลืมเติมชื่อ = ค่าหายเงียบไม่มี error
+  assert.match(createRoute, /\n\s*isForeign,/, 'POST ต้องเขียนคอลัมน์ลงแถวใหม่');
+  assert.match(patchRoute, /'isForeign',/, 'PATCH ต้องรับช่องนี้ในลิสต์ที่แก้ได้');
+  for (const [label, src] of [['หน้าทะเบียน', createPage], ['หน้ารายละเอียด', detailPage]]) {
+    assert.match(src, /isForeign: formData\.isForeign === true/, `${label} ต้องส่งธงไปกับ payload`);
+  }
+  assert.match(form, /onForm\(\{ isForeign: !form\.isForeign \}\)/, 'ฟอร์มต้องมีสวิตช์');
 });

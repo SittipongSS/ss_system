@@ -25,7 +25,7 @@ import NationalIdInput from "@/components/ui/NationalIdInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
 import {
-  isCompleteTaxId, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError,
+  foreignAddressHint, isCompleteTaxId, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError,
   taxIdKey, taxIdOtherBranchWarning, taxIdRetiredWarning,
 } from "@/lib/master/customerTaxId";
 import {
@@ -45,7 +45,7 @@ import { apiFetch } from "@/lib/apiFetch";
 export const EMPTY_CUSTOMER = {
   arCode: "", name: "", nameEn: "", nameTitle: "", namePerson: "", customerType: "company", taxId: "",
   phone: "", addresses: [], brands: [], contacts: [], creditTerms: "",
-  teams: [],
+  teams: [], isForeign: false,
 };
 
 // แปลงลูกค้าจาก API → state ของฟอร์ม (โมดัลแก้ใช้ตอนเปิด).
@@ -66,6 +66,7 @@ export const customerToForm = (c) => ({
     : { nameTitle: "", namePerson: "" }),
   customerType: c.customerType || "company",
   taxId: c.taxId || "",
+  isForeign: c.isForeign === true,   // ต่างประเทศ (mig 0319)
   phone: c.phone || "",
   // addresses[] (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิมให้เห็นค่าเดิม
   addresses: customerAddresses(c),
@@ -160,13 +161,14 @@ export default function CustomerForm({
   const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
   // ใบที่พักใช้ในสาขาเดียวกันมาก่อน — ตรงประเด็นกว่าใบของสาขาอื่นที่ยังใช้งานอยู่
   const taxWarning = taxIdRetiredWarning(retired) || taxIdOtherBranchWarning(otherBranch);
-  // ลูกค้าไทย = ที่อยู่ออกบิลหลักเลือกจังหวัดจากทะเบียนไทย ⇒ บังคับ 13 หลัก ·
-  // ต่างประเทศกรอกอิสระ (มติผู้ใช้ 2026-08-30)
-  const thaiTaxEntity = isThaiTaxEntity(form.addresses || []);
-  // เลขที่มีตัวอักษรอยู่แล้ว (แถวนำเข้ายุคเก่า) ต้องแก้/เก็บกลับได้เหมือนเดิม —
-  // ช่อง 13 หลักจะกินตัวอักษรทิ้งเงียบ ๆ แล้วกลายเป็นเลขคนละตัวตอนกดบันทึก
-  const freeFormTaxId = !thaiTaxEntity || /[A-Za-z]/.test(String(form.taxId || ""));
+  /* ลูกค้าไทย = บังคับ 13 หลัก · ต่างประเทศกรอกอิสระ (มติผู้ใช้ 2026-08-30)
+     ⚠️ ตัดสินจาก **สวิตช์ที่คนกรอกกด** (mig 0319) ไม่ใช่เดาจากที่อยู่ — ของเดิมเดาจาก
+     "ไม่มีจังหวัด" ซึ่งชนกับ "ยังไม่ได้เลือกจังหวัด" ทำให้ช่องสลับชนิดไปมาระหว่างกรอก */
+  const thaiTaxEntity = isThaiTaxEntity(form);
+  const freeFormTaxId = !thaiTaxEntity;
   const taxFormatError = freeFormTaxId ? null : taxIdFormatError(form.taxId, { thaiEntity: true });
+  // ที่อยู่ดูเป็นต่างประเทศแต่ยังไม่ได้เปิดสวิตช์ — บอกเฉย ๆ ไม่เปลี่ยนอะไรให้เอง
+  const foreignHint = foreignAddressHint(form.addresses || [], { isForeign: !!form.isForeign });
   // เตือนอย่างเดียว ไม่บล็อก — เหตุผลอยู่ที่ lib/master/customerName.js
   const nameBranchWarning = customerNameBranchWarning(form);
 
@@ -371,7 +373,20 @@ export default function CustomerForm({
             </span>
           </div>
           <div className="form-group">
-            <label>{isCompany ? "เลขประจำตัวผู้เสียภาษี" : "เลขประจำตัวประชาชน"}</label>
+            <label className="flex items-center gap-2 flex-wrap">
+              <span>{isCompany ? "เลขประจำตัวผู้เสียภาษี" : "เลขประจำตัวประชาชน"}</span>
+              {/* เลข 13 หลักคือเลขที่กรมสรรพากร**ไทย**ออกให้ — ลูกค้าต่างประเทศบังคับ
+                  รูปแบบนั้นไม่ได้ · เป็นสวิตช์เพราะต้องเป็นสิ่งที่คนกรอกสั่ง ไม่ใช่ระบบเดา */}
+              <button
+                type="button"
+                className="ui-switch ml-auto"
+                data-on={form.isForeign ? "1" : undefined}
+                aria-pressed={!!form.isForeign}
+                onClick={() => onForm({ isForeign: !form.isForeign })}
+              >
+                <i aria-hidden="true" />ลูกค้าต่างประเทศ
+              </button>
+            </label>
             {/* ที่อยู่ออกบิลเป็นต่างประเทศ (ไม่มีจังหวัดจากทะเบียนไทย) = เลขไม่ใช่ 13 หลัก
                 ของกรมสรรพากร ⇒ ช่องข้อความธรรมดา ไม่ใช่ช่องมาสก์ 13 หลัก */}
             {freeFormTaxId ? (
@@ -393,6 +408,9 @@ export default function CustomerForm({
             )}
             {!taxDupError && !taxFormatError && taxWarning && (
               <span className="text-[11px] text-[var(--amber)] mt-1">{taxWarning}</span>
+            )}
+            {!taxDupError && !taxFormatError && !taxWarning && foreignHint && (
+              <span className="text-[11px] text-[var(--amber)] mt-1">{foreignHint}</span>
             )}
           </div>
           <div className="form-group">

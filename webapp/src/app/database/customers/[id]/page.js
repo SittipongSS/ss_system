@@ -220,6 +220,7 @@ export default function CustomerDetails() {
       customerType: formData.customerType || "company",
       teams: formData.teams,
       taxId: formData.taxId,
+      isForeign: formData.isForeign === true,   // ต่างประเทศ (mig 0319) — ตัวตัดสินด่าน 13 หลัก
       phone: formData.phone,
       // ที่อยู่ส่งเป็นลิสต์ก้อนเดียว (0202) — address/shippingAddress/branchCode
       // เป็นกระจกที่ server เขียนเองจากที่อยู่หลัก ไม่ให้ client ส่งสองทาง

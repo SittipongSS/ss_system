@@ -22,7 +22,7 @@ export const dynamic = 'force-dynamic';
    🪤 เพิ่มคอลัมน์ใหม่ให้ตาราง `customers` แล้วอยากให้ picker เห็น ต้องเติมชื่อที่นี่
    ด้วย ไม่งั้นช่องจะว่างเงียบ ๆ ไม่มี error (`?manage=1` ยังได้ทั้งแถวเสมอ) */
 const CUSTOMER_PICKER_COLUMNS = [
-  'id', 'arCode', 'name', 'nameEn', 'nameTitle', 'namePerson', 'taxId', 'address', 'shippingAddress', 'branchCode',
+  'id', 'arCode', 'name', 'nameEn', 'nameTitle', 'namePerson', 'taxId', 'isForeign', 'address', 'shippingAddress', 'branchCode',
   'brands', 'mapFileUrl', 'phone', 'email', 'contactPerson', 'contactPhone',
   'creditTerms', 'customerType', 'metadata', 'driveFolderId',
   'team', 'teams', 'ownerId', 'isActive',
@@ -176,8 +176,11 @@ export async function POST(request) {
   // ที่อยู่ยังเป็นตัวบอกด่านรูปแบบด้วยว่าเป็นลูกค้าไทยไหม
   // ⚠️ ดึงแบบหลวมด้วย taxIdMatchFilter แล้วกรองด้วยคีย์ — ในฐานมีเลขที่เก็บคนละรูป
   // (มีขีด/ศูนย์นำหน้าหาย) ซึ่ง `.eq` และ unique ของ DB มองไม่เห็นว่าซ้ำ
+  // ลูกค้าต่างประเทศ (mig 0319) — คนกรอกเป็นคนสั่ง ไม่ใช่ระบบเดาจากที่อยู่
+  // (เหตุผลเต็มอยู่ที่ lib/master/customerTaxId.js)
+  const isForeign = body.isForeign === true;
   const taxId = taxIdStore(body.taxId);
-  const taxFormatError = taxIdFormatError(taxId, { thaiEntity: isThaiTaxEntity(addresses) });
+  const taxFormatError = taxIdFormatError(taxId, { thaiEntity: isThaiTaxEntity({ isForeign, taxId }) });
   if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
   if (taxId) {
     const { data: sameTax, error: taxError } = await supabase
@@ -214,6 +217,7 @@ export async function POST(request) {
     shippingAddress: mirror.shippingAddress,  // null = ใช้ที่อยู่ออกเอกสาร
     brands: normalizeBrands(body.brands), // [{th,en}] (migration 0059)
     isActive: true, // ลูกค้าใหม่ใช้งานอยู่เสมอ (migration 0030)
+    isForeign,      // ต่างประเทศ = เลขผู้เสียภาษีไม่ใช่ 13 หลักของไทย (migration 0319)
     // แผนที่/เอกสารย้ายไปตาราง attachments (docType address_map) — ไม่เขียน mapFileUrl อีก.
     // Master-data contact / commercial fields (migration 0005, 0025, 0033).
     contacts,
