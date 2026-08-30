@@ -100,7 +100,7 @@ test('⭐ จัดทีมได้เฉพาะฝ่ายตัวเอ�
   assert.equal(canManageTeams({ role: 'ts', department: 'TS' }, 'TS'), false, 'ไม่ได้ grant = ทำไม่ได้');
 });
 
-test('⭐ หัวหน้าฝ่ายขายจัดทีมช่างไม่ได้ — isSuperuser ไม่ใช่ด่านของเรื่องนี้', () => {
+test('⭐ หัวหน้าฝ่ายขายจัดทีมเจ้าหน้าที่บริการไม่ได้ — isSuperuser ไม่ใช่ด่านของเรื่องนี้', () => {
   const salesHead = { role: 'ae_supervisor', department: 'SA' };
   assert.equal(canManageTeams(salesHead, 'SA'), true);
   assert.equal(canManageTeams(salesHead, 'TS'), false);

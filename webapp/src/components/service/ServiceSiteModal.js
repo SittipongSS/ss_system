@@ -321,7 +321,7 @@ export default function ServiceSiteModal({
         <label className={styles.field}>
           <span>เขตวิ่งงาน</span>
           <Input value={form.routeZone} onChange={change("routeZone")} placeholder="BKK-E / ปริมณฑล" maxLength={50} />
-          <small>ใช้จัดรอบวิ่งให้ช่างไม่ต้องข้ามเมืองในวันเดียว</small>
+          <small>ใช้จัดรอบวิ่งให้เจ้าหน้าที่ไม่ต้องข้ามเมืองในวันเดียว</small>
         </label>
 
         {/* ── ทะเบียนขยับหลังไซต์ถูกสร้าง ────────────────────────────────

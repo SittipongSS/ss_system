@@ -1,5 +1,7 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
-import { notFound } from '@/lib/http';
+import { forbidden, notFound } from '@/lib/http';
+import { canDoFieldWork } from '@/lib/permissions';
+import { visitWriteAccess } from './visitAccess';
 import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
 /* ⚠️ PostgREST ต้องการ **ลิสต์ค่า** ไม่ใช่ฟังก์ชัน — ประกอบจากนิยามกลางที่
@@ -14,7 +16,7 @@ export async function loadVisits(supabase, { from = null, to = null, siteId = nu
   if (from) query = query.gte('scheduledDate', from);
   if (to) query = query.lte('scheduledDate', to);
   if (siteId) query = query.eq('siteId', siteId);
-  /* ⭐ **ช่างที่ไปด้วยต้องเห็นงานของตัวเองด้วย** (F-6 · มอบหมายหลายคน) — ของเดิม
+  /* ⭐ **เจ้าหน้าที่ที่ไปด้วยต้องเห็นงานของตัวเองด้วย** (F-6 · มอบหมายหลายคน) — ของเดิม
      กรองเฉพาะ `assigneeId` ⇒ คนที่ถูกใส่เป็นผู้ช่วยจะไม่เห็นนัดนั้นในงานวันนี้เลย
      แล้ววันนั้นเขาจะไม่รู้ว่าต้องไปไหน · `assistantIds` เป็น jsonb array จึงใช้ `cs`
      (contains) ไม่ใช่ `eq` · `.or()` ก้อนเดียวเพราะสองเงื่อนไขนี้เป็น "อย่างใดอย่างหนึ่ง" */
@@ -42,12 +44,27 @@ export async function findVisit(supabase, id) {
   return data || null;
 }
 
+/**
+ * ด่านของ "นัดใบนี้" — คืน `{ visit, ownWorkOnly }` หรือ `{ response }`
+ *
+ * ⭐ **เจ้าหน้าที่หน้างานเขียนได้เฉพาะใบของตัวเอง** (มติผู้ใช้ 2026-08-30) — ตำแหน่ง Operation
+ *    ถือ `service:work` ไม่ใช่ `service:edit` ⇒ ตกด่านฝ่ายชั้นนอก แต่ต้องไปต่อได้ถ้า
+ *    นัดใบนี้เป็นของเขา · `ownWorkOnly: true` บอกผู้เรียกว่า **ต้องจำกัดช่องที่แก้ได้**
+ *    (ดู `FIELD_WORK_FIELDS` ใน route ของนัด) เพราะคนกลุ่มนี้ไม่ได้แก้ตาราง
+ * 🔴 อ่านแถวก่อนตัดสิน — ด่านนี้เป็นด่าน *รายใบ* ไม่ใช่ด่าน cap ล้วน
+ */
 export async function requireVisit({ user, supabase, id, edit = false }) {
   const access = requireService({ user, edit });
-  if (access.response) return access;
+  const blocked = !!access.response;
+  // ตกด่านชั้นนอกด้วยเหตุอื่นที่ไม่ใช่ "แก้ไม่ได้" (ไม่ล็อกอิน · อ่านไม่ได้) = จบตรงนี้
+  if (blocked && (!edit || !canDoFieldWork(user))) return access;
+
   const visit = await findVisit(supabase, id);
   if (!visit) return { response: notFound('ไม่พบนัดเข้าบริการ') };
-  return { visit };
+
+  const decision = visitWriteAccess({ user, visit, canEditAll: !blocked });
+  if (!decision.ok) return decision.error ? { response: forbidden(decision.error) } : access;
+  return { visit, ownWorkOnly: decision.ownWorkOnly };
 }
 
 // ── รอบบริการ ────────────────────────────────────────────────────────────
@@ -122,8 +139,8 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     .from('service_visits')
     .select('siteId, scheduledDate')
     .in('siteId', ids)
-    /* 🐞 เดิม `.eq('status','scheduled')` ⇒ นัดที่ช่างกดเริ่มงานแล้ว (in_progress) ไม่นับเป็น
-       "มีนัดครอบ" ⇒ refillStatus เด้ง soon/overdue ขณะที่ช่างยืนอยู่หน้าเครื่องพอดี
+    /* 🐞 เดิม `.eq('status','scheduled')` ⇒ นัดที่เจ้าหน้าที่กดเริ่มงานแล้ว (in_progress) ไม่นับเป็น
+       "มีนัดครอบ" ⇒ refillStatus เด้ง soon/overdue ขณะที่เจ้าหน้าที่ยืนอยู่หน้าเครื่องพอดี
        ⚠️ ร่างไม่นับ — ยังไม่ผ่านด่าน ยังไม่ใช่นัดที่ครอบอะไรได้ */
     .in('status', OPEN_STATUSES)
     .gte('scheduledDate', todayIso)
@@ -146,7 +163,7 @@ export async function assetsForSites(supabase, siteIds = []) {
   if (!ids.length) return out;
   const { data, error } = await supabase
     .from('service_assets')
-    /* ⚠️ ต้องมี `qty` ด้วย — ภาระของช่างนับเป็น **จุด** ไม่ใช่แถว (visitLoad.js)
+    /* ⚠️ ต้องมี `qty` ด้วย — ภาระของเจ้าหน้าที่นับเป็น **จุด** ไม่ใช่แถว (visitLoad.js)
        ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด) · ไม่ดึงมา = ตารางจัดคิวประเมินงานต่ำ
        โดยไม่มีอะไรฟ้อง (พบตอน UAT 2026-08-28: ไซต์ 14 จุด ขึ้นเป็น "3 จุด") */
     .select('id, siteId, label, status, qty, bottleMl, mlPerDay, installedAt, productName')

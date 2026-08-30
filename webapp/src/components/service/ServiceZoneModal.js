@@ -58,7 +58,7 @@ export default function ServiceZoneModal({ open, zone = null, onClose, onSave })
         <label className={`${styles.field} ${styles.wide}`}>
           <span>ชื่อโซน *</span>
           <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Lobby / ห้องน้ำชั้น 2" maxLength={150} />
-          <small>พื้นที่ย่อยในไซต์ที่ติดตามการใช้/รอบบริการแยกกัน — ไม่ใช่เขตวิ่งงานของช่าง</small>
+          <small>พื้นที่ย่อยในไซต์ที่ติดตามการใช้/รอบบริการแยกกัน — ไม่ใช่เขตวิ่งงานของเจ้าหน้าที่</small>
         </label>
 
         {/* ── ชั้น (mig 0315) ───────────────────────────────────────────────

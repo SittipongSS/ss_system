@@ -120,7 +120,7 @@
 .shared li:last-child { border-bottom: 0; }
 .shared span { color: var(--text-2); font-variant-numeric: tabular-nums; }
 
-/* ส่วนที่ช่างเขียนเอง — ต้องแยกออกจากของที่ระบบประกอบด้วยตา */
+/* ส่วนที่เจ้าหน้าที่เขียนเอง — ต้องแยกออกจากของที่ระบบประกอบด้วยตา */
 .authored {
   margin: 0 0 var(--space-2);
   padding: var(--space-2-5) var(--space-3);

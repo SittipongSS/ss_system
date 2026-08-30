@@ -20,12 +20,12 @@ import {
 const plan = (over = {}) => ({
   id: 'P1', siteId: 'S1', kind: 'refill', everyDays: 30,
   startDate: '2026-08-03', endDate: null, isActive: true,
-  assigneeId: 'U1', assigneeName: 'ช่างเอ', ...over,
+  assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ', ...over,
 });
 
 const visit = (over = {}) => ({
   id: 'V1', siteId: 'S1', kind: 'refill', scheduledDate: '2026-08-03',
-  status: 'scheduled', assigneeId: 'U1', assigneeName: 'ช่างเอ', ...over,
+  status: 'scheduled', assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ', ...over,
 });
 
 // ── ตรวจข้อมูลรอบ ────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ test('gen เฉพาะนัดที่ยังไม่มี ภายใ
   const existing = [visit({ id: 'V1', planId: 'P1', scheduledDate: '2026-08-03' })];
   const rows = ensureVisits(plan(), existing, { from: '2026-08-01', horizonDays: 90 });
   assert.deepEqual(rows.map((r) => r.scheduledDate), ['2026-09-02', '2026-10-02']);
-  assert.equal(rows[0].assigneeId, 'U1');   // ช่างประจำของรอบเป็นค่าตั้งต้น
+  assert.equal(rows[0].assigneeId, 'U1');   // เจ้าหน้าที่ประจำของรอบเป็นค่าตั้งต้น
   assert.equal(rows[0].planId, 'P1');
 });
 
@@ -123,7 +123,7 @@ test('รอบถัดไปที่ตกวันหยุดถูกเ�
 });
 
 // ── โหลดงานรายวัน ────────────────────────────────────────────────────────
-test('เตือนเมื่อช่างคนเดียวถูกนัดเกินที่ทำไหวในวันเดียว', () => {
+test('เตือนเมื่อเจ้าหน้าที่คนเดียวถูกนัดเกินที่ทำไหวในวันเดียว', () => {
   const visits = Array.from({ length: 6 }, (_, i) => visit({ id: `V${i}`, siteId: `S${i}` }));
   const [load] = dayLoad(visits, { perPersonPerDay: 5 });
   assert.equal(load.count, 6);
@@ -154,7 +154,7 @@ test('รวมนาทีงานต่อวัน และนับนั�
 });
 
 // ── เวลาทับกัน ───────────────────────────────────────────────────────────
-test('⭐ นัดของช่างคนเดียวกันที่เวลาทับกัน → เตือน', () => {
+test('⭐ นัดของเจ้าหน้าที่คนเดียวกันที่เวลาทับกัน → เตือน', () => {
   const visits = [
     visit({ id: 'V1', startTime: '10:00', endTime: '12:00' }),
     visit({ id: 'V2', siteId: 'S2', startTime: '11:00', endTime: '13:00' }),
@@ -172,7 +172,7 @@ test('⭐ ติดกันพอดี (11:00 จบ / 11:00 เริ่ม) 
   assert.deepEqual(overlaps(visits), []);
 });
 
-test('⭐ ช่างคนละคนไม่นับว่าทับ แม้เวลาเดียวกันเป๊ะ', () => {
+test('⭐ เจ้าหน้าที่คนละคนไม่นับว่าทับ แม้เวลาเดียวกันเป๊ะ', () => {
   const visits = [
     visit({ id: 'V1', assigneeId: 'U1', startTime: '10:00', endTime: '12:00' }),
     visit({ id: 'V2', assigneeId: 'U2', siteId: 'S2', startTime: '10:00', endTime: '12:00' }),

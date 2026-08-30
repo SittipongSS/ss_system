@@ -51,9 +51,12 @@ test('ตอบคำร้องได้เฉพาะฝ่ายของ�
   const fn = { id: 'U6', role: 'finance', department: 'FN' };
   assert.ok(canAnswerRequest(fn, { dept: 'FN' }));
   assert.ok(!canAnswerRequest(fn, { dept: 'RD' }));
-  // ⭐ ฝ่ายธุรกิจบริการรับคำร้อง "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายเดียวกันเป๊ะ
-  const ts = { id: 'U7', role: 'ts', department: 'TS' };
+  /* ⭐ ฝ่ายธุรกิจบริการรับคำร้อง "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายเดียวกันเป๊ะ
+     ⚠️ **คนรับเรื่องคือ Planner/หัวหน้า** (มติ 2026-08-30) — เจ้าหน้าที่หน้างานไม่ถือ
+        `requests:answer` เพราะเขารับงานจากนัดที่ถูกลงคิวให้แล้ว ไม่ใช่จากคิวใบคำร้อง */
+  const ts = { id: 'U7', role: 'ts_planner', department: 'TS' };
   assert.ok(canAnswerRequest(ts, { dept: 'TS' }));
+  assert.ok(!canAnswerRequest({ id: 'U8', role: 'ts', department: 'TS' }, { dept: 'TS' }));
   assert.ok(!canAnswerRequest(ts, { dept: 'RD' }), 'TS ต้องไม่ตอบคำร้องของ RD');
   assert.ok(!canAnswerRequest(rd, { dept: 'TS' }), 'RD ต้องไม่ตอบคำร้องของ TS');
   assert.ok(!canViewCosting(ts), 'ฝ่ายบริการต้องไม่เห็นข้อมูลต้นทุน');

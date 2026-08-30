@@ -1,4 +1,4 @@
-// ── ภาระของช่างนับเป็นเครื่อง+แพ็ค (F-6) ──────────────────────────────────
+// ── ภาระของเจ้าหน้าที่นับเป็นเครื่อง+แพ็ค (F-6) ──────────────────────────────────
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_ASSETS_PER_DAY, dayWorkload, overloaded, siteWorkload, workloadText } from './visitLoad.js';

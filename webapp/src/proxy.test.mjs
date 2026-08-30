@@ -211,7 +211,7 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials/MAT-1/revisions', role, []), true, `${role} ออกราคา`);
     assert.equal(apiWriteAllowed('PATCH', '/api/sa/materials/MAT-1', role, []), true, `${role} รับวัสดุร่าง`);
   }
-  for (const role of ['pd', 'wh', 'qc', 'ts']) {
+  for (const role of ['pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_manager']) {
     assert.equal(apiWriteAllowed('POST', '/api/sa/materials', role, []), false, `${role} ต้องไม่ผ่าน`);
   }
   /* 🔴 **เส้นคำร้องกับเส้นทะเบียนวัสดุต้องแยกกันตลอดไป** (2026-08-29)
@@ -219,7 +219,11 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
      อยู่แล้ว" — ข้อสมมตินั้นตายทันทีที่ฝ่าย TS ได้ requests:answer เพื่อรับคำร้อง
      ประเมินพื้นที่ (mig 0314) โดยไม่มี costing:* เลย ⇒ ทะเบียนวัสดุจะเปิดให้เขียนทั้งทะเบียน
      ⚠️ ถ้าเทสต์นี้แดง แปลว่ามีคนรวมสองเส้นกลับเข้าด้วยกัน — อย่าแก้เทสต์ ให้แก้ proxy */
-  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'ts', []), true, 'TS ต้องรับคำร้องได้');
+  /* ⚠️ ตั้งแต่แยกตำแหน่งของฝ่าย TS (2026-08-30) คนรับคำร้องคือ **Planner/หัวหน้า**
+     เจ้าหน้าที่หน้างาน (`ts`) ไม่ถือ requests:answer แล้ว — แต่ประเด็นของเทสต์นี้ไม่เปลี่ยน:
+     คนที่รับคำร้องได้ต้องไม่พลอยได้สิทธิ์เขียนทะเบียนวัสดุ */
+  assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'ts_planner', []), true, 'TS ต้องรับคำร้องได้');
+  assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ts_planner', []), false, 'แต่ต้องไม่เขียนทะเบียนวัสดุ');
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ts', []), false, 'แต่ต้องแตะทะเบียนวัสดุไม่ได้');
   assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'finance', []), true, 'FN ต้องรับคำร้องได้');
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'finance', []), false, 'FN ก็ต้องแตะทะเบียนวัสดุไม่ได้');
@@ -466,7 +470,7 @@ test('ฝ่ายขายต้องผ่านด่าน proxy ของ 
   for (const role of ['ae', 'senior_ae', 'ac']) {
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), true, `${role} ต้องสร้างไซต์ได้`);
   }
-  assert.equal(apiWriteAllowed('POST', '/api/service/sites', 'ts', []), true, 'ฝ่ายช่างเหมือนเดิม');
+  assert.equal(apiWriteAllowed('POST', '/api/service/sites', 'ts', []), true, 'ฝ่ายบริการเหมือนเดิม');
   // ⚠️ ฝ่ายที่ไม่เกี่ยวกับงานบริการยังต้องถูกกั้นตั้งแต่ชั้นนี้
   for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), false, `${role} ต้องไม่ผ่าน`);

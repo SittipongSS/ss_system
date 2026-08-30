@@ -1,5 +1,5 @@
 "use client";
-// ── หน้ามือถือของช่าง: งานวันนี้ (S-3 · เดิมชื่อ "นัดของฉัน" — F-1 2026-08-27) ──
+// ── หน้ามือถือของเจ้าหน้าที่: งานวันนี้ (S-3 · เดิมชื่อ "นัดของฉัน" — F-1 2026-08-27) ──
 //
 // ⭐ **จุดที่ข้อมูลจริงเข้าระบบ** — ถ้าหน้านี้ใช้ยาก ทั้งโมดูลตาย · ตารางสวยแค่ไหน
 // ก็ไม่มีค่าถ้าไม่มีใครปิดงาน แล้วทุกแถวค้างเป็น "นัดไว้" ตลอดกาล
@@ -9,7 +9,7 @@
 // จำไม่ได้ว่าของตัวเองอยู่เมนูไหน แล้วเปิดผิดหน้าประจำ
 //
 // ⚠️ ไม่มีปุ่มสลับ "ทั้งทีม" บนหน้านี้ (มติ 2026-08-02 ข้อ 2) — มุมมองทั้งฝ่ายอยู่ที่
-// หน้าจัดคิวช่าง · เคสไปแทนกันเข้าหน้านี้ด้วยลิงก์ ?user=<id> จากหน้าจัดคิวแทน
+// หน้าจัดคิวเจ้าหน้าที่ · เคสไปแทนกันเข้าหน้านี้ด้วยลิงก์ ?user=<id> จากหน้าจัดคิวแทน
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -46,7 +46,7 @@ export default function TodayPage() {
   const department = useDepartment();
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
 
-  // ไปแทนกัน: หน้าจัดคิวลิงก์มาพร้อม ?user=<id> — หน้านี้กลายเป็น "งานวันนี้ของ <ช่าง>"
+  // ไปแทนกัน: หน้าจัดคิวลิงก์มาพร้อม ?user=<id> — หน้านี้กลายเป็น "งานวันนี้ของ <เจ้าหน้าที่>"
   // ไม่มี UI สลับคนบนหน้านี้เอง (มุมมองข้ามคนเป็นเรื่องของหน้าจัดคิว) · server เป็นคน
   // เทียบว่า id นี้คือตัวเองหรือคนอื่น — ฝั่ง client ไม่มีทางรู้ id ตัวเอง (roleContext ไม่พก id)
   const searchParams = useSearchParams();
@@ -78,7 +78,7 @@ export default function TodayPage() {
       setSites(Array.isArray(data?.sites) ? data.sites : []);
     } catch (e) {
       // ⚠️ ห้ามกลืน error เป็นคิวว่าง — "โหลดพัง" กับ "วันนี้ไม่มีงาน" หน้าตาเหมือนกัน
-      // จนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่างทั้งที่มีนัดรออยู่
+      // จนแยกไม่ออก แล้วเจ้าหน้าที่จะเชื่อว่าตัวเองว่างทั้งที่มีนัดรออยู่
       if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดคิวงานไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
@@ -92,14 +92,14 @@ export default function TodayPage() {
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
 
-  // ชื่อช่างที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
+  // ชื่อเจ้าหน้าที่ที่กำลังดูแทน — เอาจากนัดใบแรกที่มีชื่อ (API กรองด้วย assignee อยู่แล้ว)
   const viewedName = useMemo(() => {
     if (!viewingOther) return "";
-    return visits.find((v) => v.assigneeName)?.assigneeName || "ช่างคนอื่น";
+    return visits.find((v) => v.assigneeName)?.assigneeName || "เจ้าหน้าที่คนอื่น";
   }, [viewingOther, visits]);
 
   /* ⭐ ปุ่ม "เริ่มงาน" — ส่ง `stamp: 'start'` ให้ server ประทับเวลาไทยเอง
-     ช่างไม่พิมพ์เวลา และค่าที่ได้ไม่ขึ้นกับนาฬิกาในมือถือที่ตั้งผิดได้ (มติข้อ 5) */
+     เจ้าหน้าที่ไม่พิมพ์เวลา และค่าที่ได้ไม่ขึ้นกับนาฬิกาในมือถือที่ตั้งผิดได้ (มติข้อ 5) */
   const [starting, setStarting] = useState(null);
   const startVisit = async (visit) => {
     setStarting(visit.id);
@@ -134,7 +134,7 @@ export default function TodayPage() {
     const suggestion = data?.nextVisitSuggestion;
     const closedAs = VISIT_STATUS_LABELS[data?.visit?.status] || "ปิดงาน";
     setToast(suggestion
-      ? { kind: "success", msg: `${closedAs} · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวช่าง` }
+      ? { kind: "success", msg: `${closedAs} · รอบถัดไปควรเข้า ${suggestion.scheduledDate} — สร้างนัดได้ที่หน้าจัดคิวเจ้าหน้าที่` }
       : { kind: "success", msg: `${closedAs}แล้ว` });
     setClosing(null);
     await load();
@@ -201,7 +201,7 @@ export default function TodayPage() {
 
                     {/* 🐞 หมายเหตุที่คนจัดคิวพิมพ์ไว้ **ไม่เคยถูกแสดงบนการ์ดเลย** ทั้งที่
                         เก็บลง service_visits.note และ API ส่งมาครบ (select '*') ⇒ ข้อความที่
-                        ตั้งใจสั่งงานช่างหายทั้งหมด · แยกทรงจาก .meta เพราะเป็นคำสั่ง ไม่ใช่คำขยาย */}
+                        ตั้งใจสั่งงานเจ้าหน้าที่หายทั้งหมด · แยกทรงจาก .meta เพราะเป็นคำสั่ง ไม่ใช่คำขยาย */}
                     {visit.note && (
                       <p className={styles.note}>
                         <FileText size={13} aria-hidden="true" />

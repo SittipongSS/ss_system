@@ -2,7 +2,7 @@
 // PATCH  : แก้นัด · ปิดงาน (status=done) จะ **เสนอ** นัดรอบถัดไปกลับไปให้ผู้ใช้ยืนยัน
 // DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import {
@@ -13,6 +13,7 @@ import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { isSuperuser } from '@/lib/permissions';
+import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
@@ -51,7 +52,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     const body = await req.json().catch(() => ({}));
 
-    /* ⭐ **สถานะของใบสรุปจากลูก ไม่ใช่จากปุ่มที่ช่างเลือก** (มติ 2026-08-02 ข้อ 6)
+    /* ── เจ้าหน้าที่หน้างานแก้ได้เฉพาะ "ผลของการไป" ไม่ใช่ "แผนว่าจะไปเมื่อไร/ใครไป" ────
+       ⭐ มติผู้ใช้ 2026-08-30: Operation = *ปิดงานของตัวเอง* · การจัดคิวเป็นของ
+          Planner/หัวหน้า ⇒ ด่านรายใบปล่อยเขาเข้ามาแล้ว (`ownWorkOnly`) แต่ต้องกันช่อง
+          ที่เป็นเรื่องของ **แผน**: วัน · เวลานัด · ผู้รับผิดชอบ · ไซต์ · ชนิดงาน
+       🐞 ไม่กัน = เจ้าหน้าที่เลื่อนนัดตัวเองหนีงานได้ และย้ายงานไปให้คนอื่นได้เงียบ ๆ
+          ซึ่งทั้งสองอย่างต้องผ่านคนจัดคิวเสมอ (ลูกค้าถูกแจ้งวันไปแล้ว) */
+    if (access.ownWorkOnly && planningFieldsIn(body).length) {
+      return forbidden(PLANNING_FIELD_ERROR);
+    }
+
+    /* ⭐ **สถานะของใบสรุปจากลูก ไม่ใช่จากปุ่มที่เจ้าหน้าที่เลือก** (มติ 2026-08-02 ข้อ 6)
        ถ้าให้เลือกเอง คนจะกด "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุดเสมอ แล้ว "ทำไม่ครบ"
        จะไม่มีวันปรากฏในระบบทั้งที่ของจริงเกิดทุกเดือน
        ⚠️ อ่านผลจาก **แถวจริงใน DB** ไม่ใช่จาก body — เชื่อค่าที่ client ส่งมาเมื่อไร
@@ -60,7 +71,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       const { data: results, error: resErr } = await supabase
         /* 🐞 เดิม select แค่ assetId, outcome แล้วบรรทัดล่างไปอ่าน `r.reason` ⇒ เหตุผล
            เป็น undefined เสมอ ใบ unable ทุกใบจึงได้ข้อความสำรอง "ทำไม่ได้สักรายการ"
-           ทั้งที่ช่างพิมพ์เหตุผลจริงไว้แล้วรายเครื่อง */
+           ทั้งที่เจ้าหน้าที่พิมพ์เหตุผลจริงไว้แล้วรายเครื่อง */
         .from('service_visit_assets').select('assetId, outcome, reason').eq('visitId', id);
       if (resErr) return fail(resErr.message, 500);
       body.status = deriveVisitStatus(results || []);
@@ -91,10 +102,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     /* ⭐ **ด่านเข้าไซต์** (มติผู้ใช้ 2026-08-28) — ร่างขึ้นตารางได้ต่อเมื่อผ่านด่าน
        ⚠️ ตรวจจาก **ค่าหลังแก้** (`value`) ไม่ใช่ค่าเดิม — คนกดปล่อยเข้าคิวพร้อมกับ
-       เลือกช่างในคำขอเดียวกันได้ ถ้าตรวจจาก `before` จะบอกว่ายังไม่มีช่างทั้งที่เพิ่งใส่
+       เลือกเจ้าหน้าที่บริการในคำขอเดียวกันได้ ถ้าตรวจจาก `before` จะบอกว่ายังไม่มีเจ้าหน้าที่ทั้งที่เพิ่งใส่
        ⚠️ ด่านตัวเดียวกับที่จอใช้ขึ้นปุ่ม — ห้ามเขียนเงื่อนไขซ้ำที่นี่
        🐞 ของเดิมดักแค่ `draft → scheduled` ⇒ ยิง `status: 'in_progress'` (หรือ
-       `closeFromAssets`) ใส่ร่างตรง ๆ ข้ามด่านได้ทั้งดุ้น — ร่างที่ยังไม่มีช่างและ
+       `closeFromAssets`) ใส่ร่างตรง ๆ ข้ามด่านได้ทั้งดุ้น — ร่างที่ยังไม่มีเจ้าหน้าที่และ
        นัดวันที่ไซต์ปิด กลายเป็น "กำลังทำงาน" ได้ใน request เดียว
        ⇒ ด่านคุม **ทุกทางออกจากร่างไปสู่สถานะที่มีชีวิต** ไม่ใช่ทางเดียว */
     let gateTrail = null;
@@ -130,7 +141,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       };
     }
 
-    // ⭐ เลื่อนนัดต้องมีเหตุผล (S-5) — ลูกค้าถามว่า "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่า
+    // ⭐ เลื่อนนัดต้องมีเหตุผล (S-5) — ลูกค้าถามว่า "ทำไมเจ้าหน้าที่ไม่มาสักที" ต้องตอบได้ว่า
     // เลื่อนกี่ครั้งเพราะอะไรบ้าง · เหตุผลลง**เธรด** ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียว
     // ถูกเขียนทับทุกครั้งที่เลื่อน = ประวัติเลื่อน 5 ครั้งเหลือ 1
     const rescheduled = isReschedule(before, value);
@@ -140,7 +151,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     /* ⭐ เวลาที่เข้าจริง **ประทับที่ server** (มติ 2026-08-02 ข้อ 5) — ปุ่ม "เริ่มงาน"/
-       "ปิดงาน" ไม่ได้เพิ่มข้อมูลใหม่ มันทำให้ช่องที่มีอยู่แล้วเชื่อถือได้ · ของเดิมช่าง
+       "ปิดงาน" ไม่ได้เพิ่มข้อมูลใหม่ มันทำให้ช่องที่มีอยู่แล้วเชื่อถือได้ · ของเดิมเจ้าหน้าที่
        กรอกทีเดียวตอนปิดงานจากนาฬิกาเครื่องตัวเอง = เลขที่พิมพ์ย้อนหลัง เปลี่ยนเวลาใน
        มือถือแล้วเพี้ยนโดยไม่มีอะไรจับได้
        ⚠️ ต้องเป็น **นาฬิกาไทย** (businessDate/businessTimeKey) — ตารางนี้เก็บ date+time
@@ -198,7 +209,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     /* ── นัดประเมินพื้นที่: ใบต้นเรื่องต้องตามวันด้วย (เฟส 2) ────────────────
-       🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวช่าง
+       🐞 ก่อนหน้านี้ซิงก์ **ทางเดียว** — เลื่อนวันบนใบขยับนัดให้ แต่แก้วันที่หน้าจัดคิวเจ้าหน้าที่
           (ซึ่งเป็นที่ที่ TS ทำงานจริง) ใบยังถือวันเก่า ⇒ ฝ่ายขายอ่านใบแล้วบอกลูกค้าผิดวัน
           และตัวนับ "เลยกำหนด" ก็นับจากวันที่ไม่มีใครจะไปแล้ว
        ⚠️ เขียนกลับเฉพาะ **วัน/เวลา** — สถานะของใบเป็นเรื่องของก้าวคำร้อง ไม่ใช่ของนัด */
@@ -228,7 +239,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           const to = nextDate ? fmtDate(nextDate) : '(ไม่ระบุ)';
           await appendUpdate(supabase, {
             entityType: 'dept_request', entityId: data.requestId, kind: 'reschedule',
-            body: `TS เลื่อนวันนัดจากตารางช่าง ${from} → ${to}`
+            body: `TS เลื่อนวันนัดจากตารางเจ้าหน้าที่ ${from} → ${to}`
               + (nextTime ? ` ${nextTime} น.` : '')
               + (String(reason || '').trim() ? ` — ${String(reason).trim().slice(0, 300)}` : ''),
             user,
@@ -282,7 +293,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
 
     // ⭐ ปิดงานแล้วเสนอนัดรอบถัดไป — **เสนอ ไม่สร้างให้เอง** เพราะรอบอาจถูกยกเลิก
-    // ระหว่างทาง หรือช่างรู้ว่าลูกค้าจะย้ายไซต์ · ผู้ใช้กดยืนยันแล้วค่อย POST
+    // ระหว่างทาง หรือเจ้าหน้าที่รู้ว่าลูกค้าจะย้ายไซต์ · ผู้ใช้กดยืนยันแล้วค่อย POST
     /* 🐞 ของเดิมยิงเฉพาะ `done` ⇒ ปิดเป็น `partial` แล้วไม่มีการเสนอรอบถัดไป
        ทั้งที่เป็นเคสที่ต้องกลับไปแน่นอนที่สุด */
     let suggestion = null;
@@ -308,7 +319,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     /* 🐞 ของเดิมบล็อกเฉพาะ `done` ⇒ `partial`/`unable`/`in_progress` ลบทิ้งได้
        = ประวัติการเข้าไซต์หาย ซึ่งคอมเมนต์บรรทัดบนบอกเองว่ามีค่าที่สุดของโมดูล */
     if (!canDeleteVisit(before)) {
-      return conflict('นัดที่ช่างไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
+      return conflict('นัดที่เจ้าหน้าที่ไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
     }
 
     const { error } = await supabase.from('service_visits').delete().eq('id', id);

@@ -3,8 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canEditService, canImportServiceData } from '../permissions.js';
 
-test('⭐ นำเข้าเป็นก้อน **แคบกว่า** การแก้รายใบ — ช่างที่แก้ไซต์ได้ ยังนำเข้าไม่ได้', () => {
-  const ts = { role: 'ts', department: 'TS' };
+test('⭐ นำเข้าเป็นก้อน **แคบกว่า** การแก้รายใบ — เจ้าหน้าที่ที่แก้ไซต์ได้ ยังนำเข้าไม่ได้', () => {
+  // หัวหน้าฝ่าย TS แก้รายใบได้ทุกอย่าง แต่ "นำเข้าเป็นก้อน" ยังเป็นของแอดมินคนเดียว
+  const ts = { role: 'ts_manager', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   assert.equal(canEditService(ts), true);
   assert.equal(canEditService(aeSv), true);

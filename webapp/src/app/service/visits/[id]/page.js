@@ -1,10 +1,10 @@
 "use client";
 // ── ใบส่งงาน (F-5) ────────────────────────────────────────────────────────
 //
-// ⭐ ที่มา: ช่างพิมพ์ข้อความ 20 บรรทัดส่ง LINE ทุกครั้ง แล้วแท็กหัวหน้า 4 คนท้ายใบ —
+// ⭐ ที่มา: เจ้าหน้าที่พิมพ์ข้อความ 20 บรรทัดส่ง LINE ทุกครั้ง แล้วแท็กหัวหน้า 4 คนท้ายใบ —
 // **90% ของข้อความนั้นคือข้อมูลที่อยู่ในทะเบียนอยู่แล้ว** (ชื่อไซต์ · ชนิดงาน · กลิ่น ·
 // จำนวนเครื่องแยกรุ่นแยกสี · ตำแหน่ง · ค่าตั้ง · ช่วงเวลาที่เข้าได้)
-// ⇒ ระบบประกอบใบให้เอง ช่างเขียนแค่ **สรุปงาน** กับ **เหตุผลของสิ่งที่ผิดปกติ**
+// ⇒ ระบบประกอบใบให้เอง เจ้าหน้าที่เขียนแค่ **สรุปงาน** กับ **เหตุผลของสิ่งที่ผิดปกติ**
 //
 // ⚠️ หน้านี้ยัง**ไม่ใช่ลิงก์สาธารณะ** — คนที่เปิดได้คือคนที่ผ่าน canViewService
 // (การแชร์ให้ลูกค้าต้องมีโทเคน = migration ซึ่งอยู่นอกขอบเขต F-5) · ปุ่มพิมพ์ใช้
@@ -63,7 +63,7 @@ export default function VisitReportPage({ params }) {
     results: data.results, items: data.items,
   }) : null), [data, site]);
 
-  const back = { href: "/service/schedule", label: "จัดคิวช่าง" };
+  const back = { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
 
   if (loading) {
     return <Workspace icon={<ClipboardList size={20} aria-hidden="true" />} title="ใบส่งงาน" back={back}><SkeletonRows rows={5} /></Workspace>;
@@ -141,7 +141,7 @@ export default function VisitReportPage({ params }) {
         )}
       >
         <DetailCard icon={ClipboardList} title="รายละเอียดงาน"
-          meta="ทุกบรรทัดในส่วนนี้ระบบดึงจากทะเบียน — ช่างไม่ได้พิมพ์">
+          meta="ทุกบรรทัดในส่วนนี้ระบบดึงจากทะเบียน — เจ้าหน้าที่ไม่ได้พิมพ์">
           <dl className={styles.head}>
             {report.head.map((row) => (
               <div key={row.label}>
@@ -153,7 +153,7 @@ export default function VisitReportPage({ params }) {
         </DetailCard>
 
         <DetailCard icon={Wrench} title={`อุปกรณ์ ${report.lines.length} รายการ`}
-          meta="ผลรายเครื่องที่ช่างติ๊กตอนปิดงาน">
+          meta="ผลรายเครื่องที่เจ้าหน้าที่ติ๊กตอนปิดงาน">
           {report.lines.length === 0 ? (
             <p className={styles.muted}>นัดนี้ไม่ได้ผูกกับอุปกรณ์รายตัว</p>
           ) : report.lines.map((line) => (
@@ -190,10 +190,10 @@ export default function VisitReportPage({ params }) {
           </DetailCard>
         )}
 
-        {/* ⭐ ส่วนเดียวของใบที่ช่างพิมพ์เอง — แยกให้เห็นชัดว่านี่คือคำพูดของคน
+        {/* ⭐ ส่วนเดียวของใบที่เจ้าหน้าที่พิมพ์เอง — แยกให้เห็นชัดว่านี่คือคำพูดของคน
             ไม่ใช่ของที่ระบบประกอบ (หัวหน้าอ่านย้อนแล้วต้องแยกออก) */}
         {(report.summary || report.unableReason) && (
-          <DetailCard icon={PenLine} title="สรุปโดยช่าง" meta="ส่วนที่ช่างเขียนเอง">
+          <DetailCard icon={PenLine} title="สรุปโดยเจ้าหน้าที่" meta="ส่วนที่เจ้าหน้าที่เขียนเอง">
             {report.unableReason && <p className={styles.authored}>{report.unableReason}</p>}
             {report.summary && <p className={styles.authored}>{report.summary}</p>}
           </DetailCard>

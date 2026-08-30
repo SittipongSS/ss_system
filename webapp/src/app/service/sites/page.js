@@ -81,7 +81,7 @@ export default function ServiceSitesPage() {
          "สร้างที่คำร้องเท่านั้น ห้ามสร้างผ่านทะเบียนไซต์")
          ⭐ เหตุผลเชิงระบบ: ไซต์ต้องมี **ต้นเรื่อง** เสมอ — เกิดจากใบประเมินพื้นที่ที่
             ฝ่ายขายเปิดให้ลูกค้ารายนั้น · ทะเบียนเป็นที่ *ดู* ไม่ใช่ที่ *เริ่ม*
-            (กติกาเดียวกับที่หน้าจัดคิวช่างเป็นที่ "วาง" ไม่ใช่ "สร้าง")
+            (กติกาเดียวกับที่หน้าจัดคิวเจ้าหน้าที่เป็นที่ "วาง" ไม่ใช่ "สร้าง")
          ⚠️ ปุ่มแก้/ลบในแถวยังอยู่ตามเดิม (canEditService) — ที่ถอดคือทางเกิดใหม่เท่านั้น */
       headerRight={canImport ? (
         <Button tone="neutral" as={Link} href="/service/import"
@@ -144,7 +144,7 @@ export default function ServiceSitesPage() {
                     <td>{naText(site.customerName)}</td>
                     <td>{naText(site.routeZone)}</td>
                     <td className={styles.numCol}>
-                      {/* เครื่องที่ยังใช้งานคือตัวเลขที่ช่างสนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
+                      {/* เครื่องที่ยังใช้งานคือตัวเลขที่เจ้าหน้าที่สนใจ · รวมทั้งหมดไว้ในวงเล็บ */}
                       {site.activeAssetCount || 0}
                       {site.assetCount !== site.activeAssetCount ? ` / ${site.assetCount}` : ""}
                     </td>
