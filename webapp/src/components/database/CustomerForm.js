@@ -23,9 +23,9 @@ import BrandsEditor from "@/components/database/BrandsEditor";
 import ContactsEditor from "@/components/database/ContactsEditor";
 import NationalIdInput from "@/components/ui/NationalIdInput";
 import PhoneInput from "@/components/ui/PhoneInput";
-import { customerAddresses, legacyAddressMirror } from "@/lib/master/addresses";
+import { customerAddresses } from "@/lib/master/addresses";
 import {
-  isCompleteTaxId, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError, taxIdOtherBranchWarning,
+  isCompleteTaxId, isThaiTaxEntity, taxIdDuplicateError, taxIdFormatError, taxIdKey, taxIdMatches,
 } from "@/lib/master/customerTaxId";
 import {
   CUSTOMER_NAME_TITLES, composeCustomerName, customerNameBranchWarning, splitCustomerName,
@@ -133,31 +133,32 @@ export default function CustomerForm({
   // ── เช็คลูกค้าซ้ำจากเลขผู้เสียภาษี ตั้งแต่กรอกครบ 13 หลัก (มติผู้ใช้ 2026-08-12) ──
   // เตือน **ก่อน** กรอกทั้งใบเสร็จแล้วค่อยโดนตีกลับตอนกดบันทึก · ด่านจริงอยู่ที่ API
   // (ทั้ง POST/PATCH) ตัวนี้คือการเอาคำตอบเดียวกันมาวางตรงหน้าให้เร็วขึ้น
-  const [taxMatches, setTaxMatches] = useState([]);
-  const taxKey = taxIdDigits(form.taxId);
+  const [taxRows, setTaxRows] = useState([]);
+  const taxKey = taxIdKey(form.taxId);
   useEffect(() => {
-    if (!isCompleteTaxId(taxKey)) { setTaxMatches([]); return undefined; }
+    if (!isCompleteTaxId(taxKey)) { setTaxRows([]); return undefined; }
     // หน่วงไว้ก่อนยิง — เลขครบ 13 หลักเกิดระหว่างพิมพ์/แก้กลางเลขได้หลายครั้ง
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await apiFetch(`/api/master/customers/by-tax-id?taxId=${taxKey}`, { signal: controller.signal });
-        setTaxMatches(res.ok ? await res.json() : []);
+        const res = await apiFetch(`/api/master/customers/by-tax-id?taxId=${encodeURIComponent(taxKey)}`, { signal: controller.signal });
+        setTaxRows(res.ok ? await res.json() : []);
       } catch {
         // ถามไม่ได้ = ไม่เตือน (ไม่ใช่เตือนผิด) — ด่านจริงยังอยู่ที่ API ตอนบันทึก
-        setTaxMatches([]);
+        setTaxRows([]);
       }
     }, 350);
     return () => { controller.abort(); clearTimeout(timer); };
   }, [taxKey]);
 
-  // สาขาที่ใช้เทียบ = สาขาของที่อยู่ออกบิลหลักในฟอร์มนี้ (คีย์ซ้ำคือ เลขภาษี + สาขา)
-  const formBranchCode = legacyAddressMirror(form.addresses || []).branchCode;
-  const { sameBranch, otherBranch } = splitTaxIdMatches(taxMatches, {
-    taxId: taxKey, branchCode: formBranchCode, excludeId: selfId,
-  });
-  const taxDupError = taxIdDuplicateError(sameBranch, { branchCode: formBranchCode });
-  const taxWarning = taxIdOtherBranchWarning(otherBranch);
+  // เลขซ้ำ = ซ้ำทันทีไม่ว่าสาขาไหน (มติผู้ใช้ 2026-08-30) · ลูกค้าไทย = ที่อยู่ออกบิล
+  // หลักเลือกจังหวัดจากทะเบียนไทย ⇒ บังคับ 13 หลัก · ต่างประเทศกรอกอิสระ
+  const taxDupError = taxIdDuplicateError(taxIdMatches(taxRows, { taxId: taxKey, excludeId: selfId }));
+  const thaiTaxEntity = isThaiTaxEntity(form.addresses || []);
+  // เลขที่มีตัวอักษรอยู่แล้ว (แถวนำเข้ายุคเก่า) ต้องแก้/เก็บกลับได้เหมือนเดิม —
+  // ช่อง 13 หลักจะกินตัวอักษรทิ้งเงียบ ๆ แล้วกลายเป็นเลขคนละตัวตอนกดบันทึก
+  const freeFormTaxId = !thaiTaxEntity || /[A-Za-z]/.test(String(form.taxId || ""));
+  const taxFormatError = freeFormTaxId ? null : taxIdFormatError(form.taxId, { thaiEntity: true });
   // เตือนอย่างเดียว ไม่บล็อก — เหตุผลอยู่ที่ lib/master/customerName.js
   const nameBranchWarning = customerNameBranchWarning(form);
 
@@ -363,14 +364,24 @@ export default function CustomerForm({
           </div>
           <div className="form-group">
             <label>{isCompany ? "เลขประจำตัวผู้เสียภาษี" : "เลขประจำตัวประชาชน"}</label>
-            <NationalIdInput name="taxId" value={form.taxId} onChange={(v) => onForm({ taxId: v })} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full" />
-            {/* ซ้ำจริง (เลขเดียวกัน + สาขาเดียวกัน) = บันทึกไม่ผ่านแน่นอน — บอกตั้งแต่ตรงนี้
-                ว่าไปชนกับรายไหน · คนละสาขา = เตือนเฉย ๆ เพราะเปิดสาขาเป็นงานปกติ */}
+            {/* ที่อยู่ออกบิลเป็นต่างประเทศ (ไม่มีจังหวัดจากทะเบียนไทย) = เลขไม่ใช่ 13 หลัก
+                ของกรมสรรพากร ⇒ ช่องข้อความธรรมดา ไม่ใช่ช่องมาสก์ 13 หลัก */}
+            {freeFormTaxId ? (
+              <Input
+                type="text" name="taxId" value={form.taxId || ""} onChange={set("taxId")}
+                placeholder="เลขประจำตัวผู้เสียภาษี/หมายเลขประจำตัวของประเทศนั้น"
+                autoComplete="off"
+              />
+            ) : (
+              <NationalIdInput name="taxId" value={form.taxId} onChange={(v) => onForm({ taxId: v })} placeholder="เลข 13 หลัก (ถ้ามี)" className="w-full" />
+            )}
+            {/* เลขซ้ำ = บันทึกไม่ผ่านแน่นอนไม่ว่าสาขาไหน — บอกตั้งแต่ตรงนี้ว่าไปชนกับรายไหน
+                (สาขาของบริษัทเดิมเป็น "ที่อยู่" อีกรายการในใบเดิม ไม่ใช่ลูกค้าใบใหม่) */}
             {taxDupError && (
               <span className="text-[11px] text-[var(--red)] mt-1">{taxDupError}</span>
             )}
-            {!taxDupError && taxWarning && (
-              <span className="text-[11px] text-[var(--amber)] mt-1">{taxWarning}</span>
+            {!taxDupError && taxFormatError && (
+              <span className="text-[11px] text-[var(--amber)] mt-1">{taxFormatError}</span>
             )}
           </div>
           <div className="form-group">

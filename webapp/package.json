@@ -21,7 +21,8 @@
     "check:apifetch": "node scripts/check-api-fetch.mjs",
     "check:refs": "node scripts/check-reference-tables.mjs",
     "deploy:status": "node scripts/deploy-status.mjs",
-    "check:teams": "node scripts/check-team-registry.mjs"
+    "check:teams": "node scripts/check-team-registry.mjs",
+    "check:taxid": "node --import ./scripts/test-loader.mjs scripts/check-customer-tax-id.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^149.0.0",

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { isCompleteTaxId, taxIdDigits } from '@/lib/master/customerTaxId';
+import { isCompleteTaxId, taxIdMatchFilter, taxIdMatches } from '@/lib/master/customerTaxId';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +18,13 @@ const FIELDS = 'id, arCode, name, taxId, branchCode, isActive, approvalStatus';
 
 export async function GET(request) {
   const supabase = getSupabaseAdmin();
-  const taxId = taxIdDigits(new URL(request.url).searchParams.get('taxId'));
+  const taxId = new URL(request.url).searchParams.get('taxId') || '';
   // เลขไม่ครบ = ยังไม่ถามฐานข้อมูล (คนกำลังพิมพ์อยู่) — คืนว่างไม่ใช่ error
   if (!isCompleteTaxId(taxId)) return Response.json([]);
 
-  const { data, error } = await supabase.from('customers').select(FIELDS).eq('taxId', taxId);
+  // ⚠️ ดึงหลวมแล้วกรองด้วยคีย์ — ในฐานมีเลขเดียวกันที่เก็บคนละรูป (มีขีด/ศูนย์นำหน้าหาย)
+  // ซึ่ง `.eq` มองไม่เห็น · กรองซ้ำที่นี่ ฟอร์มจึงได้เฉพาะรายที่ซ้ำจริง
+  const { data, error } = await supabase.from('customers').select(FIELDS).or(taxIdMatchFilter(taxId));
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json(data || []);
+  return Response.json(taxIdMatches(data, { taxId }));
 }
