@@ -15,6 +15,7 @@ import EditProductModal from "@/components/EditProductModal";
 import CostVatLines from "@/components/database/CostVatLines";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
+import ReadableText from "@/components/ui/ReadableText";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { customerDocTypes, productDocTypes } from "@/lib/master/attachmentTypes";
@@ -486,6 +487,22 @@ export default function ProductDetails() {
                   <CostVatLines costPrice={product.costPrice} />
                 </div>
               )}
+              {/* หมายเหตุบนเอกสารขาย (mig 0317) — ตั้งไว้ที่นี่ ระบบเติมลงรายการใน
+                  ใบเสนอราคา/ใบสั่งขายตอนเลือกสินค้า · เหตุผลเดียวกับหน่วยขาย/ราคาผลิต
+                  ที่ยกมาโชว์: ตั้งได้ในฟอร์มแต่ไม่มีที่ไหนให้ดู ต้องเปิดโมดัลแก้ถึงจะรู้
+                  ⚠️ สองภาษาแยกกล่อง — ใบภาษาอังกฤษพิมพ์ช่อง EN ไม่ใช่คำแปลอัตโนมัติ */}
+              <div className="md:col-span-2">
+                <span className="text-[var(--text-3)] block mb-1">หมายเหตุบนเอกสารขาย (ไทย)</span>
+                <div className="readable-field is-compact text-sm">
+                  <ReadableText text={product.docNote} lines={3} />
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <span className="text-[var(--text-3)] block mb-1">หมายเหตุบนเอกสารขาย (อังกฤษ)</span>
+                <div className="readable-field is-compact text-sm">
+                  <ReadableText text={product.docNoteEn} lines={3} />
+                </div>
+              </div>
             </div>
           </DetailCard>
 
