@@ -189,6 +189,15 @@ export default function ContractCreateModal({
 
   const dealKinds = options?.kinds || [];
   const blocked = !dealPicker && !!options && !options.ok;
+  /* ── ยุบขั้นที่ตัดสินใจไปแล้ว (docs/form-design-rules §5) ────────────────────
+     ⭐ **เกณฑ์คือ "ไปถึงโซนถัดไปแล้ว" ไม่ใช่ "ช่องนี้มีค่าแล้ว"** — ยุบทันทีที่จิ้ม
+       จะหุบของที่เพิ่งกดใต้มือคนกด และ "ที่มาของสัญญา" มีค่าตั้งต้นอยู่แล้ว
+       (generated) ⇒ ถ้าใช้เกณฑ์ "มีค่า" มันจะยุบตั้งแต่ยังไม่มีใครเลือกอะไรเลย
+     ⇒ ยุบเมื่อคำถามของ **ทั้งสองโซนแรก** ตอบครบ = คนกำลังอยู่ที่โซน "อ้างอิงจากงานไหน"
+     ⚠️ ปุ่ม "แก้" กางกลับอย่างเดียว **ห้ามล้างค่า** — คนกดเพราะอยากดู/เปลี่ยน
+       ไม่ใช่อยากเริ่มใหม่ (บทเรียนจากปุ่มเปลี่ยนหัวข้อในฟอร์มคำร้องที่ล้างช่องทิ้ง
+       ซึ่งที่นั่นถูกเพราะชุดช่องเปลี่ยนทั้งชุด แต่ที่นี่ไม่เปลี่ยน) */
+  const [reopened, setReopened] = useState(null); // 'who' | 'what' | null
   const external = source === "external";
   /* ⭐ **สาย external ไม่ผ่านด่านแม่แบบ** — เหตุผลทั้งหมดที่มันมีอยู่คือใบที่ไม่มีแม่แบบ
      ให้เจน (สัญญาบริการยังไม่มีต้นฉบับ) ถ้ายังบังคับ `hasContractTemplate` ทางนี้ก็ตัน
@@ -239,6 +248,27 @@ export default function ContractCreateModal({
       disabled: external ? false : !item.ready,
     }));
 
+  const stepsAnswered = !!kind && (!dealPicker || !!customerId) && (!external || !!externalDocKind);
+  const foldWho = dealPicker && stepsAnswered && reopened !== "who";
+  const foldWhat = stepsAnswered && reopened !== "what";
+  const customerLabel = customers.find((c) => c.value === customerId)?.label || "";
+  /* ค่าที่โชว์บนแถบยุบต้องเป็น **คำเดียวกับที่อยู่บนแผ่นที่เลือก** ไม่ใช่คำย่อของตัวเอง
+     ไม่งั้นคนกดเปิดมาเทียบแล้วไม่แน่ใจว่าใช่อันเดิมไหม */
+  const whatLabel = [
+    CONTRACT_KIND_LABELS[kind],
+    external ? EXTERNAL_DOC_KIND_LABELS[externalDocKind] : "ระบบเจนจากแม่แบบ",
+  ].filter(Boolean).join(" · ");
+
+  const StepSummary = ({ label, value, onEdit }) => (
+    <div className="form-step-summary">
+      <span className="form-step-summary-label">{label}</span>
+      <span className="form-step-summary-value">{value}</span>
+      <Button variant="quiet" size="sm" className="form-step-summary-edit" onClick={onEdit} disabled={busy}>
+        แก้
+      </Button>
+    </div>
+  );
+
   return (
     <Modal
       open={open}
@@ -277,8 +307,11 @@ export default function ContractCreateModal({
              เพราะป้ายตัวเลือกยาวจริง: วัดแล้วป้ายดีลต้องการ 450px · ใบเสนอราคา 289px
              ขณะที่ครึ่งกริดให้ที่ข้อความแค่ 243px ⇒ จับคู่เมื่อไรตัดกลางทั้งสองช่อง */}
       <div className="form-grid cols-2">
-        {dealPicker && <FormZone title="ออกสัญญาให้ใคร" className="col-span-2" />}
-        {dealPicker && (
+        {foldWho && (
+          <StepSummary label="ออกให้" value={customerLabel} onEdit={() => setReopened("who")} />
+        )}
+        {dealPicker && !foldWho && <FormZone title="ออกสัญญาให้ใคร" className="col-span-2" />}
+        {dealPicker && !foldWho && (
           <label className="form-field span-2">
             <span className="form-field-label">ลูกค้า <span className="required-mark">*</span></span>
             {/* ลูกค้ามีเป็นร้อยราย ⇒ ช่องค้นหา ไม่ใช่ดรอปดาวน์ยาว */}
@@ -300,13 +333,17 @@ export default function ContractCreateModal({
           </label>
         )}
 
-        {dealPicker && <FormZone title="สัญญาอะไร มาจากไหน" className="col-span-2" />}
+        {foldWhat && (
+          <StepSummary label="สัญญา" value={whatLabel} onEdit={() => setReopened("what")} />
+        )}
+        {dealPicker && !foldWhat && <FormZone title="สัญญาอะไร มาจากไหน" className="col-span-2" />}
 
         {/* ── ที่มาของสัญญา — ถามก่อนชนิด (มติผู้ใช้ 2026-08-30) ────────────────
             ⭐ เป็น "ตัวกำหนดบริบท" ตาม docs/form-design-rules §1 ข้อ 1: คำตอบ
               เปลี่ยน **ชุดตัวเลือก** ของชนิดสัญญาข้างล่าง (เจนต้องมีแม่แบบ ·
               เอกสารภายนอกไม่ต้อง) ⇒ ต้องถามก่อน ไม่ใช่ถามทีหลังแล้วชนิดเด้ง
             ⚠️ สองตัวเลือก = ป้ายกด ไม่ใช่ดรอปดาวน์ */}
+        {!foldWhat && (
         <div className="form-field span-2">
           <span className="form-field-label">ที่มาของสัญญา <span className="required-mark">*</span></span>
           <OptionTiles
@@ -330,7 +367,9 @@ export default function ContractCreateModal({
             ]}
           />
         </div>
+        )}
 
+        {!foldWhat && (
         <div className="form-field span-2">
           <span className="form-field-label">ชนิดสัญญา <span className="required-mark">*</span></span>
           <OptionTiles
@@ -344,13 +383,14 @@ export default function ContractCreateModal({
             ? <span className="hint">ดีลนี้ยังไม่มีชนิดสัญญาที่ออกได้</span>
             : null}
         </div>
+        )}
 
         {/* ⚠️ **บล็อกนี้อยู่ใต้ "ชนิดสัญญา" โดยตั้งใจ ไม่ใช่ใต้ "ที่มา" ทันที** —
             กติกาคือช่องที่โผล่ตามเงื่อนไขต้องอยู่ใต้ตัวที่ทำให้มันโผล่ (§1 ข้อ 3)
             ซึ่งยังจริงอยู่ · แต่ถ้าแทรกคั่นกลางระหว่างสองคำถามที่คนอ่านคู่กัน
             (ที่มา ↔ ชนิด) การกดสลับที่มาจะดันแผ่นชนิดสัญญาลงไป ~200px ใต้มือ
             คนที่กำลังจะจิ้มต่อ — อาการ "ฟอร์มเปลี่ยนรูปใต้มือ" ที่หัวไฟล์เตือนไว้เอง */}
-        {external && (
+        {external && !foldWhat && (
           <>
             <div className="form-field span-2">
               <span className="form-field-label">ใช้เอกสารอะไรแทน <span className="required-mark">*</span></span>
