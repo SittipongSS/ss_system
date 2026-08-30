@@ -42,7 +42,7 @@ function submitScope(ask) {
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
 // ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
 export function askActionUpdate(action, ask, {
-  reason = null, previousDueDate = null, assigneeName = null, pdrChanges = null,
+  reason = null, previousDueDate = null, assigneeName = null, pdrChanges = null, requeue = false,
 } = {}) {
   if (!ask) return null;
   const dept = ask.dept || '';
@@ -79,6 +79,18 @@ export function askActionUpdate(action, ask, {
        แจ้งของรอบแก้มีวันของรอบก่อนค้างอยู่เสมอ (ด่าน `commitDueRequestError` ปล่อยผ่าน
        เฉพาะสองกรณีนี้ — ไม่มีวัน หรือวันที่มีเป็นของรอบที่ส่งไปแล้ว) */
     const prev = previousDueDate ? fmtDate(previousDueDate) : null;
+    /* 🐞 **"ลงคิวใหม่" ไม่ใช่ "รอบแก้"** (เจอตอนซ้อม UAT 2026-08-30) — ใบที่นัดก่อนหน้า
+       ปิดไปแล้ว (ไปแล้วเข้าไม่ได้ · ยกเลิก) หรือนัดหาย ลงคิวได้อีกครั้ง **ด้วยวันเดิม**
+       ⇒ เธรดเคยขึ้นว่า "แจ้งกำหนดส่งรอบแก้ 14/10/2026 (รอบก่อน 14/10/2026)" ซึ่งอ่านแล้ว
+       งงสองชั้น: วันซ้ำกันเป๊ะ และคำว่า "รอบแก้" หมายถึงผู้ขอขอแก้งาน ซึ่งไม่ได้เกิดขึ้นเลย */
+    if (requeue) {
+      return {
+        kind: 'commitDue',
+        body: `${dept} ลงคิวใหม่ ${due} — นัดก่อนหน้าไม่มีอยู่บนตารางแล้ว`
+          + (clip(reason) ? ` · ${clip(reason)}` : ''),
+        meta: { dept, due: ask.committedDueDate || null, previousDue: previousDueDate || null, requeue: true },
+      };
+    }
     return {
       kind: 'commitDue',
       body: (prev

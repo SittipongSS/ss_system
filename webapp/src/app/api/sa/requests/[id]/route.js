@@ -192,6 +192,9 @@ export async function PATCH(request, { params }) {
   const action = body.action;
   const nowIso = new Date().toISOString();
   const patch = { updatedAt: nowIso };
+  /* ลงคิวซ้ำเพราะนัดหาย/ปิดไปแล้ว — ประกาศชั้นนอกเพราะ **เธรด** ที่เขียนตอนท้าย route
+     ต้องรู้ด้วย ไม่ใช่รู้แค่ตอนตรวจสิทธิ์ในบล็อก commit-due */
+  let requeue = false;
   // กดส่ง = ต้องออกเลขที่คำร้องพร้อมบันทึกในทรานแซกชันเดียว (mig 0243) ไม่ใช่ใส่ลง patch
   let issueDocNo = false;
   /* รับเรื่อง = ออก **เลขที่เอกสาร PDR** (DDMMYY-XXX · mig 0271) พร้อมบันทึก
@@ -316,7 +319,7 @@ export async function PATCH(request, { params }) {
          แล้วเข้าไม่ได้ (`unable`) หรือยกเลิกนัดไป ต้องลงคิวใหม่ได้ทันที รวมถึงวันเดิม
          (ไปเช้าเข้าไม่ได้ แล้วนัดใหม่บ่ายวันเดียวกันเป็นเรื่องปกติของงานจริง) ·
          ชุดที่ตัดสินคือชุดเดียวกับ index ของ mig 0316 */
-      const requeue = requestNeedsRef(before.kind, 'site')
+      requeue = requestNeedsRef(before.kind, 'site')
         && !!String(before.committedDueDate ?? '').trim()
         && !(await findSurveyVisit(supabase, id, { openOnly: true }));
       // รอบแก้ ≠ ลงคิวซ้ำเพราะนัดไม่เกิด — ไม่งั้นเธรดขึ้น "แจ้งกำหนดส่งรอบแก้" ทั้งที่ไม่ใช่
@@ -1006,6 +1009,8 @@ export async function PATCH(request, { params }) {
         pdrChanges,
         // วันเดิมก่อนเลื่อน — อ่านจาก `before` เพราะ `after` ถูกทับไปแล้ว
         previousDueDate: before.committedDueDate ?? null,
+        // ลงคิวซ้ำเพราะนัดหาย/ปิดไปแล้ว ≠ รอบแก้ของผู้ขอ — เธรดต้องเล่าคนละเรื่อง
+        requeue,
         // ⚠️ อ่านจาก `patch` ไม่ใช่ `body` — ตอนถอนมอบหมาย `patch` เป็น null ชัดเจน
         // ส่วน body อาจไม่ส่งคีย์มาเลย แล้วเธรดจะเขียนว่า "มอบหมายให้ undefined"
         assigneeName: patch.assigneeName ?? null,
