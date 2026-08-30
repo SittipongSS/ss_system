@@ -38,6 +38,7 @@ const TAB_BLURB = {
 };
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor } from "@/lib/permissions";
+import { REQUEST_DEPT_LABELS } from "@/lib/master/requestTypes";
 import { deptsInSharedQueue } from "@/lib/requests/modules";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
@@ -148,12 +149,31 @@ export default function RequestsPage() {
 
   useEffect(() => { reload(); }, [reload]);
   useRevalidateOnFocus(reload);
-  /* ⚠️ ทุกอย่างท้ายน้ำต้องอ่านจาก `requests` ตัวนี้ตัวเดียว — ตัวเลขบนแท็บกับตาราง
-     ข้างล่างขัดกันไม่ได้ (กติกาเดิมของหน้านี้) ⇒ กรองทีมที่นี่ที่เดียว ไม่ใช่ที่ตาราง
+  /* ⚠️ ทุกอย่างท้ายน้ำต้องอ่านจาก `requests` ตัวเดียว — ตัวเลขบนแท็บกับตารางข้างล่าง
+     ขัดกันไม่ได้ (กติกาเดิมของหน้านี้) ⇒ ตัวกรองทั้งสองชั้น (ทีม แล้วฝ่าย) อยู่ที่นี่
+     ไม่ใช่ที่ตาราง · `scopedRequests` = ผ่านตัวกรองทีมแล้ว แต่ยังทุกฝ่าย — มีไว้ให้
+     ตัวสลับฝ่ายนับตัวเลือกของตัวเองได้ (ไม่งั้นเลือก RD แล้วปุ่ม FN หายไปเอง)
      คนอยู่ทีมเดียว: `matches` คืน true เสมอ = ชุดเดิมทั้งก้อน ไม่มีอะไรเปลี่ยน */
-  const requests = useMemo(
+  const scopedRequests = useMemo(
     () => (activeScope === "team" ? rawRequests.filter((r) => myTeams.matches(r.team)) : rawRequests),
     [rawRequests, activeScope, myTeams],
+  );
+  /* ⭐ **ตัวสลับ "ถึงฝ่ายไหน"** (มติผู้ใช้ 2026-08-30) — คิวรวมทุกฝ่ายไว้กองเดียว
+     ⇒ ใบที่ส่งไป RD/PC/FN/TS ปนกันทั้งตาราง และการแยกดูทีละฝ่ายต้องเปิดแผงกรอง
+     แล้วติ๊กเอา ซึ่งเป็นของที่ซ่อนอยู่หลังปุ่มสำหรับคำถามที่ถามทุกวัน
+     ⚠️ **ตัวเลือกสั้น = ปุ่มที่เห็นทั้งชุด ไม่ใช่ดรอปดาวน์** (กติกาคอนโทรล v2) ·
+     ฝ่ายมีอย่างมาก 4 ตัว ⇒ วางเป็นแถบเดียวคู่กับขอบเขต/แท็บ
+     ⚠️ กรองที่นี่ **ชั้นเดียว** เหมือนตัวกรองทีม — ทุกอย่างท้ายน้ำ (เลขบนแท็บ ·
+     แถบตัวเลข · การ์ดเริ่มที่นี่ · แบนเนอร์ใบตีกลับ) อ่านจาก `requests` ตัวเดียว
+     ⇒ เลือก RD แล้วทั้งหน้าเป็นของ RD ไม่ใช่ตารางอย่างเดียวที่แคบลงแล้วตัวเลข
+     ข้างบนยังพูดถึงทุกฝ่าย
+     ⚠️ **ไม่ใช่ตัวกรองใน `RequestQueuePanel`** — แผงกรองของพาเนลถอดหมวด "ฝ่าย"
+     ออกแล้ว (ดูไฟล์นั้น) · ตัวคุมมิติเดียวกันสองที่ = ติ๊ก RD ที่หนึ่ง PC ที่หนึ่ง
+     แล้วได้ตารางว่างโดยไม่มีอะไรบอกว่าใครตัดทิ้ง */
+  const [deptFilter, setDeptFilter] = useState("all");
+  const requests = useMemo(
+    () => (deptFilter === "all" ? scopedRequests : scopedRequests.filter((r) => r.dept === deptFilter)),
+    [scopedRequests, deptFilter],
   );
   const mine = useMemo(() => requests.filter((r) => r._mine), [requests]);
   // 🐞 subtitle ของหน้านี้บอกไว้ตั้งแต่ต้นว่า "เรื่องที่ยังไม่มีใครรับขึ้นก่อนเสมอ"
@@ -230,6 +250,55 @@ export default function RequestsPage() {
   /* ⚠️ แท็บ "ที่ฉันเปิด" มีเส้นทางของตัวเอง (กรองด้วย `?dealId=` ตอนมาจากหน้าดีล)
      — ใช้ได้เฉพาะขอบเขต "ของฉัน" · ขอบเขตทีม/ทั้งหมดต้องผ่าน `tabRows` เสมอ ไม่งั้น
      ใบของเพื่อนร่วมทีมโดนกรองทิ้งอีกชั้นแล้วหน้าว่างเหมือนเดิม */
+  /* ── ตัวเลือกของตัวสลับฝ่าย ────────────────────────────────────────────
+     ⚠️ **นับจากชุดที่มุมมองนี้จะแสดงจริง (ก่อนกรองฝ่าย)** — เลขข้างชิปต้องทำนาย
+     ได้ว่ากดแล้วจะเห็นกี่ใบ · นับจากทั้งขอบเขตจะได้ "RD 12" แล้วกดไปเจอ 3 ใบ
+     เพราะแท็บตัดที่เหลือทิ้งไปแล้ว
+     ⚠️ **ตัวเลือกสร้างจากแถวที่มีจริง ไม่ใช่จากทะเบียนฝ่าย** (กติกาเดียวกับ
+     `requestFacetOptions`) — ฝ่ายที่ไม่มีใบเลยคือปุ่มที่กดแล้วได้ตารางว่างเสมอ
+     ⚠️ **ฝ่ายที่เลือกอยู่ต้องอยู่ในลิสต์เสมอ แม้เหลือศูนย์ใบ** — ไม่งั้นสลับแท็บแล้ว
+     ปุ่มที่กดค้างไว้หายไปจากจอ พร้อมกับตารางที่ว่างโดยไม่มีอะไรบอกว่ายังกรองอยู่ */
+  const deptCountBase = useMemo(() => {
+    const base = visibleQueueRows(scopedRequests, { scope: activeScope, tab, myDepts });
+    return (roleTabsApply && tab === "mine" && dealIdParam)
+      ? base.filter((r) => r.dealId === dealIdParam)
+      : base;
+  }, [scopedRequests, activeScope, tab, myDepts, roleTabsApply, dealIdParam]);
+  const deptOptions = useMemo(() => {
+    /* ⭐ **ทุกฝ่ายในทะเบียนขึ้นครบเสมอ แม้เหลือศูนย์ใบ** (มติผู้ใช้ 2026-08-30) —
+       ของเดิมสร้างจากแถวล้วนตามกติกา `requestFacetOptions` ⇒ วันที่ TS ไม่มีใบค้าง
+       ปุ่ม TS หายไปจากแถบ แล้วคนอ่านว่า "ระบบไม่มีฝ่ายนี้" ไม่ใช่ "ฝ่ายนี้ไม่มีงาน"
+       ⭐ **รวมฝ่ายที่ยังปิดรับใบใหม่ด้วย** (PC) — ที่นี่เป็น *ตัวกรอง* ไม่ใช่ฟอร์ม
+       เปิดใบ · PC มีใบเก่าค้างได้ และคำถาม "PC มีอะไรบ้าง" ต้องตอบได้แม้คำตอบคือ
+       ไม่มี ⇒ กดแล้วตารางบอกว่าไม่มี ดีกว่าปุ่มที่หายไปโดยไม่มีคำอธิบาย
+       ⚠️ ลิสต์มาจากทะเบียน (`REQUEST_DEPT_LABELS`) ไม่ใช่สะกดชื่อฝ่ายที่นี่ —
+       ฝ่ายที่ห้าเข้ามาเมื่อไร ปุ่มมาเองโดยไม่ต้องแก้หน้านี้ */
+    const found = new Map(Object.keys(REQUEST_DEPT_LABELS).map((d) => [d, 0]));
+    for (const r of deptCountBase) {
+      const d = String(r.dept || "").trim();
+      if (d) found.set(d, (found.get(d) || 0) + 1);
+    }
+    if (deptFilter !== "all" && !found.has(deptFilter)) found.set(deptFilter, 0);
+    // ลำดับตามทะเบียน (RD · PC · FN · TS) — ฝ่ายที่ไม่รู้จักไปท้าย ไม่ใช่หายไป
+    const order = Object.keys(REQUEST_DEPT_LABELS);
+    const rank = (d) => (order.indexOf(d) < 0 ? order.length : order.indexOf(d));
+    return [...found.entries()]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+      // ป้าย = **รหัสฝ่าย** ตัวเดียวกับที่ตารางเขียน (`→ RD`) ⇒ ปุ่มกับแถวพูดคำเดียวกัน
+      // · ชื่อเต็มจากทะเบียนอยู่ใน tooltip ไม่ใช่บนปุ่ม (แถวนี้มีตัวสลับสามชุดแล้ว)
+      .map(([d, count]) => ({
+        value: d, label: d, count, title: REQUEST_DEPT_LABELS[d]?.name || d,
+      }));
+  }, [deptCountBase, deptFilter]);
+
+  /* ป้ายฝ่ายที่กำลังกรองอยู่ — "รหัส · ชื่อ" ตามกติกาหน้ารายละเอียดของทั้งระบบ
+     ⚠️ ใช้ในข้อความ **ตอนตารางว่าง** เท่านั้น: ฝ่ายที่ไม่มีใบสักใบต้องอ่านได้ว่า
+     "กรองอยู่แล้วไม่เจอ" ไม่ใช่ "ยังไม่มีคำร้องของคุณ" ซึ่งเป็นคำตั้งต้นของพาเนล
+     และจะกลายเป็นคำโกหกทันทีที่มีตัวกรองค้างอยู่ */
+  const deptLabel = deptFilter === "all"
+    ? null
+    : `${deptFilter}${REQUEST_DEPT_LABELS[deptFilter]?.name ? ` · ${REQUEST_DEPT_LABELS[deptFilter].name}` : ""}`;
+
   const rows = (roleTabsApply && tab === "mine") ? visibleMine : tabRows;
   const counts = queueCounts(rows, { todayIso: today });
 
@@ -312,6 +381,25 @@ export default function RequestsPage() {
             count: queueTabRows(requests, { tab: t.key, myDepts }).length,
           }))}
         />}
+        {/* ⭐ ฝ่ายปลายทาง — ชั้นที่สามของ "คัดชุดข้อมูลให้แคบลง" ต่อจากขอบเขตกับแท็บ
+            ⚠️ อยู่ **หลัง** แท็บ: แท็บตอบว่า "ใบไหนเป็นงานของฉัน" ส่วนฝ่ายตอบว่า
+            "ใบพวกนั้นส่งไปที่ไหน" ⇒ สลับที่กันแล้วอ่านเหมือนฝ่ายคุมแท็บ
+            ⚠️ มีฝ่ายเดียว = ไม่มีคำตอบอื่นให้เลือก ⇒ ซ่อนทั้งแถบ (แบบเดียวกับ
+            `MyTeamsFilter` ของคนที่อยู่ทีมเดียว) · แต่ถ้ากรองค้างอยู่ต้องโชว์เสมอ */}
+        {/* เหลือฝ่ายเดียวทั้งระบบเมื่อไร แถบนี้ไม่มีคำตอบอื่นให้เลือก ⇒ ซ่อน
+            (เงื่อนไขเดียวกับ `MyTeamsFilter` ของคนที่อยู่ทีมเดียว) */}
+        {(deptOptions.length > 1 || deptFilter !== "all") && (
+          <Segmented
+            ariaLabel="ฝ่ายปลายทางของคำร้อง"
+            className="scope-toggle"
+            value={deptFilter}
+            onChange={setDeptFilter}
+            options={[
+              { value: "all", label: "ทุกฝ่าย", count: deptCountBase.length },
+              ...deptOptions,
+            ]}
+          />
+        )}
         {activeScope === "team" && (
           <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
         )}
@@ -343,7 +431,12 @@ export default function RequestsPage() {
       {/* ⭐ **อยู่ใต้แถวตัวกรอง** — มันเป็นคำตอบของทั้งหน้า ไม่ใช่ของแท็บใดแท็บหนึ่ง
           🪤 เคยแทรกอยู่ **ระหว่าง** ขอบเขตกับแท็บ ⇒ ผ่ากลุ่มตัวเลือกขาดสองท่อน */}
       {!loading && !loadError && tab !== "history" && (
-        <StartHereCard pick={startHere} clearText="ไม่มีเรื่องรอคุณอยู่ตอนนี้" />
+        <StartHereCard
+          pick={startHere}
+          clearText={deptLabel
+            ? `ไม่มีเรื่องของฝ่าย ${deptFilter} รอคุณอยู่ตอนนี้`
+            : "ไม่มีเรื่องรอคุณอยู่ตอนนี้"}
+        />
       )}
 
       {/* แถบตัวเลข — component เดียวกับภาพรวมฝ่าย · ที่นี่กดแล้ว **กรองในที่** */}
@@ -362,6 +455,11 @@ export default function RequestsPage() {
       <RequestQueuePanel
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
         rows={rows} board={board}
+        /* กรองฝ่ายอยู่แล้วไม่เจอ = บอกว่าไม่มี **และบอกทางออก** — ข้อความตั้งต้นของ
+           พาเนลพูดถึงคิวทั้งก้อน ซึ่งอ่านเหมือนระบบว่างทั้งที่แค่กรองอยู่ */
+        emptyText={deptLabel
+          ? `ไม่มีคำร้องถึงฝ่าย ${deptLabel} ในมุมมองนี้ — กด "ทุกฝ่าย" เพื่อดูทั้งหมด`
+          : null}
         loading={loading} loadError={loadError} reload={reload}
       />
       </div>
