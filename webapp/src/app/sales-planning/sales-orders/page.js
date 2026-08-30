@@ -229,7 +229,7 @@ export default function SalesOrdersPage() {
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
      และหน้าเดียวกันสวมเปลือกคนละอันตามคนดู ⇒ การ์ดต้องพูดงานของคนที่ยืนอยู่
-       เปลือกบัญชี  → ใบที่ผ่าน AE Sup แล้วและรอบัญชีตรวจ (แกน `financeStatus`)
+       เปลือกบัญชี  → ใบที่เก็บเงินครบทุกงวดแล้วและรอบัญชีปิด (แกน `financeStatus`)
        เปลือกอื่น   → ใบที่รอคนดูอนุมัติ (แกน `status`)
      ⚠️ ตัดสินด้วย `useShellSystem(pathname)` ซึ่งถาม **ทั้งบ้านของคนดูและลิสต์
      เส้นทางที่บ้านนั้นรับไป** (`ADOPTED_SHARED_PATHS`) — ชุดเดียวกับที่เมนูใช้
@@ -338,7 +338,7 @@ export default function SalesOrdersPage() {
         <ApprovalQueue
           items={approvalQueue}
           unit="ใบ"
-          title={financeShell ? "ต้องทำตอนนี้ — ใบที่รอบัญชีตรวจ" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
+          title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
           primary={(o) => o.orderNumber}
           secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
           onOpen={(o) => router.push(`/sa/sales-orders/${o.id}`)}
