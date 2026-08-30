@@ -700,10 +700,15 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   assert.equal(can('pc', 'requests:answer'), true);
   // ⭐ ฝ่ายโรงงานที่ไม่รับคำร้อง ไม่มี cap นี้แล้วตั้งแต่ชั้น role (เดิมถือผ่าน `staff`)
   for (const role of ['pd', 'wh', 'qc']) assert.equal(can(role, 'requests:answer'), false, role);
-  // ⭐ TS ถือ cap ตั้งแต่หัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านจริงยังเป็น **ฝ่าย**
-  //   เหมือน RD/PC/FN ทุกประการ ⇒ ถือ cap แต่เข้าโมดูล RD ไม่ได้
-  assert.equal(can('ts', 'requests:answer'), true);
+  /* ⭐ TS ถือ cap ตั้งแต่หัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านจริงยังเป็น **ฝ่าย**
+     เหมือน RD/PC/FN ทุกประการ ⇒ ถือ cap แต่เข้าโมดูล RD ไม่ได้
+     ⚠️ ตั้งแต่แยกตำแหน่ง (2026-08-30) **คนรับเรื่องคือ Planner/หัวหน้า** ไม่ใช่ทุกคนในฝ่าย —
+        ช่างหน้างานไม่ต้องรับใบคำร้อง เขารับงานจากนัดที่ถูกลงคิวให้แล้ว */
+  assert.equal(can('ts_planner', 'requests:answer'), true);
+  assert.equal(can('ts_manager', 'requests:answer'), true);
+  assert.equal(can('ts', 'requests:answer'), false);
   assert.equal(canAccessRd({ role: 'ts', department: 'TS' }), false);
+  assert.equal(canAccessRd({ role: 'ts_manager', department: 'TS' }), false);
   assert.equal(canAccessRd({ role: 'rd', department: 'RD' }), true);
   assert.equal(canAccessRd({ role: 'pc', department: 'PC' }), false);
   assert.equal(canAccessRd(null), false);
@@ -864,8 +869,11 @@ test('🔴 ฝ่ายขายสร้างไซต์ได้ แต่�
   // ⚠️ ต้องไม่พลอยได้สิทธิ์แก้ทั้งโมดูล (นัด/รอบ/เครื่อง/การผูกโซน)
   assert.equal(canEditService(ae), false);
 
-  // ช่าง TS และทีมขาย SV ยังสร้างได้เหมือนเดิมผ่านทางเดิม
-  assert.equal(canCreateServiceSite({ role: 'ts', department: 'TS' }), true);
+  /* ฝ่าย TS ที่จัดงานได้ (Planner/หัวหน้า) และทีมขาย SV ยังสร้างได้เหมือนเดิม
+     ⚠️ **ช่างหน้างานสร้างไม่ได้** ตั้งแต่แยกตำแหน่ง (2026-08-30) — ไซต์เกิดจากใบคำร้อง
+        ของฝ่ายขายเป็นหลัก และช่างไม่ได้เป็นคนตอบว่าลูกค้าจะติดตั้งที่ไหน */
+  assert.equal(canCreateServiceSite({ role: 'ts_planner', department: 'TS' }), true);
+  assert.equal(canCreateServiceSite({ role: 'ts', department: 'TS' }), false);
   assert.equal(canCreateServiceSite({ role: 'ae', department: 'SA', team: 'SV', teams: ['SV'] }), true);
 });
 
@@ -890,6 +898,6 @@ test('🔴 คนที่ไม่ใช่ฝ่ายขายและไม
 test('🔴 ชุด role ที่สร้างไซต์บริการได้ — เปลี่ยนเมื่อไรต้องตั้งใจ', () => {
   assert.deepEqual(
     ROLES.filter((role) => canCreateServiceSite({ role })),
-    ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ts'],
+    ['admin', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
   );
 })

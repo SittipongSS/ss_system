@@ -353,10 +353,15 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   if (path.startsWith('/api/production')) {
     return canUser({ role, extraCaps }, 'production:edit');
   }
-  // ธุรกิจบริการ (ฝ่าย TS) — รูปเดียวกัน: ด่านหยาบที่นี่ ตัวกั้นจริงคือ canEditService()
-  // ใน handler ซึ่งเห็นทั้ง department (TS) และ team (SV)
+  /* ธุรกิจบริการ (ฝ่าย TS) — รูปเดียวกัน: ด่านหยาบที่นี่ ตัวกั้นจริงคือ canEditService()
+     ใน handler ซึ่งเห็นทั้ง department (TS) และ team (SV)
+     ⚠️ **ต้องปล่อย `service:work` ผ่านด้วย** (มติ 2026-08-30) — ช่างหน้างานไม่ถือ
+        `service:edit` แต่ต้องกดเริ่ม/ปิดงานของตัวเองได้ · ถ้าด่านนี้ตัดเขาทิ้ง handler
+        จะไม่มีโอกาสได้ตัดสินเลย แล้วปุ่มปิดงานจะตายทั้งใบโดยขึ้นแค่ 403 เปล่า ๆ
+        ตัวกั้นจริงของเส้นนั้นคือ `canWorkOwnVisit` ที่เทียบ assigneeId รายใบใน handler */
   if (path.startsWith('/api/service')) {
-    return canUser({ role, extraCaps }, 'service:edit');
+    const me = { role, extraCaps };
+    return canUser(me, 'service:edit') || canUser(me, 'service:work');
   }
   if (path.startsWith('/api/pm')) {
     if (can(role, 'pm:edit')) return true;

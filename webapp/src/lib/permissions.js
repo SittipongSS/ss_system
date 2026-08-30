@@ -167,7 +167,12 @@ const DEPARTMENT_ROLES = {
   // ดังนั้นถ้าจับช่างไปเป็นทีม ช่างต้องถือ role `ae` แล้วจะได้ cap ขายมาทั้งชุด
   // (เห็นดีล/ใบเสนอราคา/มูลค่าทั้งทีม) ซึ่งไม่ใช่สิ่งที่ตั้งใจ.
   // ทีม SV (Services) ยังเป็นทีม**ขาย**ธุรกิจบริการเหมือนเดิม — TS คือฝ่ายที่รับงานต่อ.
-  TS: ['ts'],
+  /* ⭐ **ห้าตำแหน่งจริงของฝ่าย** (มติผู้ใช้ 2026-08-30) — เดิมมี role เดียว (`ts`)
+     ทำให้หัวหน้ากับช่างหน้างานถือสิทธิ์ชุดเดียวกันเป๊ะ · ผู้ใช้สั่งว่า "ต้องมี role
+     ตามที่ส่ง เพื่อกำหนดสิทธิ" ⇒ ตำแหน่งเป็นตัวกำหนดสิทธิ์ ส่วน *ทีมช่าง* จัดนอกระบบ role
+     ⚠️ **ลำดับมีความหมาย** — ตัวแรกคือค่าที่ฟอร์มเลือกให้อัตโนมัติเมื่อสลับฝ่ายเป็น TS
+        (users/page.js) ⇒ วางช่างหน้างานไว้ก่อน เพราะเป็นตำแหน่งที่รับเข้าบ่อยที่สุด */
+  TS: ['ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
   // FN = ฝ่ายบัญชีและการเงิน — รับคำร้องขอเอกสารการเงิน (P7) + คอนเฟิร์มงวดชำระของ SO (mig 0245)
   // ⚠️ **ไม่ได้อยู่ใน COSTING_SOURCE_DEPARTMENTS โดยตั้งใจ** — บัญชีไม่ใช่แหล่งราคา
   // ⭐ `finance` เป็น role ของฝ่ายนี้เอง (มติผู้ใช้ 2026-08-13: *"ไม่อยากใช้คำว่า Staff"*)
@@ -186,7 +191,8 @@ const ROLE_DEFAULT_DEPARTMENT = {
   ra: 'RA', executive: 'EX', viewer: 'Viewer',
   rd: 'RD',
   finance: 'FN',
-  pc: 'PC', pd: 'PD', wh: 'WH', qc: 'QC', ts: 'TS',
+  pc: 'PC', pd: 'PD', wh: 'WH', qc: 'QC',
+  ts: 'TS', ts_planner: 'TS', ts_senior: 'TS', ts_audit: 'TS', ts_manager: 'TS',
 };
 
 export function departmentFor(role) {
@@ -208,13 +214,22 @@ export const TEAMS = ['KA', 'ODM', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'executive', 'viewer'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
 
 /* ── role ของฝ่ายปฏิบัติการ (ไม่ใช่ฝ่ายขาย ไม่ใช่ผู้สังเกตการณ์) ──────────────
    ⭐ แทน role `staff` ตัวเดียวที่ห้าฝ่ายเคยใช้ร่วมกัน (มติผู้ใช้ 2026-08-28)
    ⚠️ ที่เดียวที่ประกาศ — helper ที่เคยถาม `role === 'staff'` ต้องถามลิสต์นี้แทน
    ไม่ใช่ไล่เขียนชื่อ role ห้าตัวซ้ำทุกจุด (จุดที่ตกหล่นจะเงียบ ไม่ error) */
-export const OPS_ROLES = ['pc', 'pd', 'wh', 'qc', 'ts'];
+/* ⚠️ **role ของฝ่าย TS ต้องอยู่ครบทุกตัว** — ลิสต์นี้เป็นตัวให้ขอบเขตข้อมูล `all`
+   (`viewScope`) · ตกหล่นตัวไหน คนนั้นจะได้ขอบเขต `team` ทั้งที่ฝ่ายนี้ไม่มีทีม
+   ⇒ **ทุกตารางว่างเปล่าโดยไม่มี error** และอัปเดตขั้นงานของฝ่ายตัวเองไม่ได้
+   (`pmTaskEditTier` ตกเป็น 'none') */
+export const OPS_ROLES = ['pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'];
+
+/* หัวหน้าของฝ่าย TS — ผู้ช่วยผู้จัดการ · ตรวจสอบงาน · ช่างอาวุโส (มติ 2026-08-30:
+   "Audit เหมือนหัวหน้าทุกอย่าง") · ต่างจาก `ts_planner` ตรงที่จัดทีมช่างได้
+   ⚠️ **ไม่ใช่ `isSuperuser`** — นั่นคือขอบเขตข้อมูลของทั้งบริษัทฝั่งขาย ไม่ใช่หัวหน้าฝ่าย */
+export const SERVICE_HEAD_ROLES = ['ts_manager', 'ts_audit', 'ts_senior'];
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',
@@ -232,7 +247,13 @@ export const ROLE_LABELS = {
   pd: 'ผลิต (PD)',
   wh: 'คลังสินค้า (WH)',
   qc: 'ควบคุมคุณภาพ (QC)',
-  ts: 'เทคนิคบริการ (TS)',
+  /* ⚠️ ป้ายต้องมีครบทุก role — ดรอปดาวน์ตำแหน่งใน /users อ่านจากที่นี่ตรง ๆ
+     ไม่มี fallback ⇒ role ที่ลืมใส่ป้ายจะกลายเป็นตัวเลือกว่างเปล่าให้แอดมินเลือก */
+  ts: 'ช่างเทคนิคบริการ (Operation)',
+  ts_planner: 'วางแผนงานบริการ (Planner)',
+  ts_senior: 'ช่างอาวุโส (Senior)',
+  ts_audit: 'ตรวจสอบงานบริการ (Audit)',
+  ts_manager: 'ผู้ช่วยผู้จัดการเทคนิคบริการ',
 };
 
 // Roles that operate inside a team (at least one team is required for them).
@@ -355,7 +376,9 @@ const SUPERUSER_CAPS = [
   'sahamit:view', 'sahamit:edit',
   'costing:view', 'costing:edit', 'costing:quote', 'costing:approve',
   'production:view', 'production:edit',   // ตารางผลิต — วางคิวจริงคือ PC/PD (แคบด้วยฝ่าย)
-  'service:view', 'service:edit',         // ตารางเข้า service — ช่างฝ่าย TS + ทีมขาย SV
+  // ตารางเข้า service — ช่างฝ่าย TS + ทีมขาย SV · `service:work` = ปิดงานของตัวเอง
+  // (ช่างหน้างานถือตัวนี้แทน service:edit — ดู ROLE_CAPS.ts)
+  'service:view', 'service:edit', 'service:work',
   'payments:confirm',                     // คอนเฟิร์มงวดชำระ SO — ของจริงคือฝ่าย FN (แคบด้วยฝ่าย)
   'mgmt:view', 'mgmt:edit',   // งานบริหาร (Management/Executive Office) — admin + secretary only
   // จัดทีมของฝ่าย — หัวหน้าฝ่ายขายได้ตาม role · ฝ่ายอื่นได้ด้วย grant รายคน
@@ -505,16 +528,33 @@ const ROLE_CAPS = {
   // เพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31) แต่ไม่ใช่คนวางคิว ⇒ ไม่มี production:edit
   wh: ['pm:view', 'products:view', 'customers:view', 'production:view'],
   qc: ['pm:view', 'products:view', 'customers:view', 'production:view'],
-  // TS = ฝ่ายเทคนิคบริการ — ช่างที่เข้าไซต์ · **ไม่อยู่ในสายโรงงาน** จึงไม่เห็นตารางผลิต
-  // (มติผู้ใช้ 2026-07-31 · เดิมต้องเขียนด่านแคบ TS ทิ้งไว้ใน canViewProduction)
+  /* ── ฝ่ายเทคนิคบริการ (TS) — ห้าตำแหน่ง สามระดับสิทธิ์ (มติผู้ใช้ 2026-08-30) ──
+     **ไม่อยู่ในสายโรงงาน** จึงไม่เห็นตารางผลิตทุกตำแหน่ง (มติ 2026-07-31)
+
+     🔴 **ช่างหน้างานไม่ถือ `service:edit`** — cap นั้นเปิดทั้งโมดูลพร้อมกัน (จัดคิวให้คนอื่น ·
+        แก้ทะเบียนไซต์/โซน/เครื่อง · ผูกใบสั่งขายเข้าโซน · ลบนัด) ซึ่งเกินกว่า "ปิดงานของ
+        ตัวเอง" ที่ผู้ใช้สั่งไว้มาก ⇒ ช่างได้ `service:work` แทน ซึ่งเปิดเฉพาะ *งานที่ตัวเอง
+        ถูกมอบหมาย* (ด่านจริงคือ `canWorkOwnVisit` ที่เทียบ assigneeId รายใบ) */
   ts: [
     'pm:view', 'products:view', 'customers:view',
-    'service:view', 'service:edit',
-    // รับ/ตอบคำร้องหัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านฝ่ายอยู่ที่
-    // canAnswerRequestsFor ซึ่งบังคับ department === 'TS' อีกชั้น
+    // อ่านทะเบียนได้ทั้งฝ่าย (ไซต์ · โซน · เครื่อง · ตารางของทีม) แต่แก้ไม่ได้
+    'service:view', 'service:work',
+  ],
+  /* Planner — คนจัดตารางช่างและเป็นคนรับเรื่อง/ลงคิวใบคำร้องประเมินพื้นที่
+     (มติ 2026-08-30: "ลงคิว/มอบหมายช่างได้ = Planner + หัวหน้าเท่านั้น") */
+  ts_planner: [
+    'pm:view', 'products:view', 'customers:view',
+    'service:view', 'service:work', 'service:edit',
+    // ด่านฝ่ายอยู่ที่ canAnswerRequestsFor ซึ่งบังคับ department === 'TS' อีกชั้น
     'requests:answer',
   ],
 };
+
+/* หัวหน้าฝ่าย TS = สิทธิ์ของ Planner + **จัดทีมช่างของฝ่ายตัวเอง**
+   ⚠️ `team:manage` ยังแคบด้วยฝ่ายอีกชั้นใน `canManageTeams` ⇒ จัดได้เฉพาะทีมของ TS
+   ⭐ ประกอบจากชุดของ Planner ไม่ใช่พิมพ์ซ้ำ — สองชุดนี้ต้องขยับตามกันเสมอ */
+const SERVICE_HEAD_CAPS = [...ROLE_CAPS.ts_planner, 'team:manage'];
+for (const role of SERVICE_HEAD_ROLES) ROLE_CAPS[role] = SERVICE_HEAD_CAPS;
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
 const DEFAULT_CAPS = ['customers:view', 'products:view', 'history:view'];
@@ -779,6 +819,32 @@ export function canEditService(user) {
   if (isSuperuser(user?.role)) return true;
   if (departmentOf(user) === SERVICE_DEPARTMENT) return true;
   return TEAM_ROLES.includes(user?.role) && hasTeam(user, SERVICE_SALES_TEAM);
+}
+
+/* ── ช่างหน้างานทำงานของ *ตัวเอง* ได้ (มติผู้ใช้ 2026-08-30) ───────────────
+   ⭐ ตำแหน่ง Operation ของฝ่าย TS ถือ `service:work` ไม่ใช่ `service:edit` ⇒ อ่าน
+      ทะเบียนได้ทั้งฝ่าย แต่ *เขียน* ได้เฉพาะนัดที่ตัวเองถูกมอบหมาย (กดเริ่มงาน ·
+      ปิดงาน · แจ้งเข้าไม่ได้ · บันทึกผลหน้างาน)
+   🔴 **เทียบรายใบเสมอ ไม่ใช่เทียบแค่ cap** — ถ้าเช็คแค่ cap ช่างจะแก้ใบของเพื่อนได้
+      ซึ่งพังทั้งความรับผิดชอบ (ใครไปจริง) และประวัติที่ต้องตอบลูกค้า
+   ⚠️ `assistantIds` นับด้วย — งานที่ไปกันสองคนต้องปิดได้ทั้งคู่ ไม่ใช่รอหัวหน้าทีม
+   ⚠️ คนที่ถือ `service:edit` อยู่แล้ว (Planner/หัวหน้า/ทีมขาย SV) ไม่ต้องผ่านตัวนี้
+   ⭐ `canDoFieldWork` = "มีงานหน้างานเป็นของตัวเองไหม" ใช้ตัดสิน **เมนู/หน้าจอ**
+      (เช่น "งานวันนี้") ส่วน `canWorkOwnVisit` ตัดสิน **การเขียนรายใบ** */
+export function canDoFieldWork(user) {
+  if (canEditService(user)) return true;
+  return canUser(user, 'service:work') && departmentOf(user) === SERVICE_DEPARTMENT;
+}
+
+/** ทำงานบนนัดใบนี้ได้ไหม — ใช้ตัวนี้ที่ handler ทุกจุดที่ *เขียน* นัด */
+export function canWorkOwnVisit(user, visit) {
+  if (!user?.id || !visit) return false;
+  if (!canUser(user, 'service:work')) return false;
+  if (departmentOf(user) !== SERVICE_DEPARTMENT) return false;
+  const me = String(user.id);
+  if (String(visit.assigneeId ?? '') === me) return true;
+  const helpers = Array.isArray(visit.assistantIds) ? visit.assistantIds : [];
+  return helpers.map((v) => String(v)).includes(me);
 }
 
 /* ── สร้างไซต์บริการ (มติผู้ใช้ 2026-08-29) ────────────────────────────────

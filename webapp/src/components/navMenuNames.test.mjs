@@ -52,9 +52,11 @@ test('⭐ ทุกเมนูของธุรกิจบริการต�
   for (const line of lines) {
     // `canAnswerServiceRequests` = แคบกว่าอีกขั้น (ฝ่าย TS เท่านั้น ไม่รวมทีมขาย SV)
     // — คิวคำร้องเป็นที่ *ตอบ* ใบ ไม่ใช่ที่อ่านข้อมูลบริการ
+    /* ⚠️ `canDoFieldWork` = ช่างหน้างาน (ฝ่าย TS ที่ถือ service:work) + ทุกคนที่แก้ได้
+       — แคบด้วยฝ่ายเหมือนกัน เพิ่มเข้ามาเมื่อแยกตำแหน่งของฝ่าย TS (2026-08-30) */
     assert.match(
       line,
-      /visible: canViewService|visible: canEditService|visible: canAnswerServiceRequests/,
+      /visible: canViewService|visible: canEditService|visible: canDoFieldWork|visible: canAnswerServiceRequests/,
       line.trim(),
     );
   }

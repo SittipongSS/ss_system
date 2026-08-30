@@ -49,7 +49,10 @@ test('⭐ ฝ่ายเทคนิคบริการ (TS) เห็นแ�
   assert.equal(canViewProduction(at('TS')), false);
   assert.equal(canEditProduction(at('TS')), false);
   assert.equal(canViewService(at('TS')), true);
-  assert.equal(canEditService(at('TS')), true);
+  /* ⚠️ `at('TS')` = **ช่างหน้างาน** (role `ts`) ซึ่งตั้งแต่ 2026-08-30 ไม่ถือ service:edit
+     แล้ว — เขาปิดงานของตัวเองผ่าน service:work · คนแก้ตารางคือ Planner/หัวหน้า */
+  assert.equal(canEditService(at('TS')), false);
+  assert.equal(canEditService({ role: 'ts_planner', department: 'TS', extraCaps: [] }), true);
   assert.deepEqual(keys(at('TS')).filter((k) => k === 'production'), []);
   assert.ok(keys(at('TS')).includes('service'));
 });

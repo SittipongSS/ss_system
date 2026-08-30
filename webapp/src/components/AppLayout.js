@@ -7,7 +7,8 @@ import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, Clipbo
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
 import { devBypassUser } from '@/lib/devBypass';
-import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
+import { canUser, canAccessFinance, canAccessRd, worksInSalesPipeline, canManageProductCategories, canEditProduction, canViewProduction, canDoFieldWork,
+  canEditService, canViewService, canAnswerRequestsFor, canAnswerServiceRequests, canViewCosting, canViewRequests, departmentFor, normalizeDepartment, normalizeRole, userTeams, ROLE_LABELS, TEAM_LABELS } from '@/lib/permissions';
 import { fmtName } from '@/lib/format';
 import { RoleContext, TeamContext, TeamsContext, ExtraCapsContext, DepartmentContext } from '@/lib/roleContext';
 import BrandMark from '@/components/BrandMark';
@@ -550,7 +551,9 @@ export default function AppLayout({ children }) {
         // ทีมขาย SV · admin/หัวหน้าฝ่ายขาย · กว้างกว่า "คนที่รับงานได้" หนึ่งขั้นเพื่อให้
         // หัวหน้าเปิดดูรูปหน้าจอของช่างได้ โดยไม่เปิดให้ฝ่ายขายทีมอื่นที่ไม่เกี่ยวเลย
         // 🐞 เดิมเปิดด้วย service:view = ฝ่ายขายทุกคนเห็นเมนูที่กดเข้าไปแล้วว่างเสมอ
-        { href: '/service/today', name: 'งานวันนี้', icon: Wrench, cap: 'service:view', visible: canEditService, match: (p) => p.startsWith('/service/today') },
+        /* ⚠️ ช่างหน้างานต้องเห็นเมนูนี้ — เขาไม่ถือ `service:edit` (แก้ตารางไม่ได้)
+           แต่ "งานวันนี้" คือหน้าที่เขาใช้ทำงานทั้งวัน ⇒ ใช้ `canDoFieldWork` */
+        { href: '/service/today', name: 'งานวันนี้', icon: Wrench, cap: 'service:view', visible: canDoFieldWork, match: (p) => p.startsWith('/service/today') },
         // จัดคิวช่าง = เครื่องมือวางแผนของ TS (F-1: เดิมชื่อ "ตารางเข้าบริการ") —
         // แคบเป็น canEditService เพราะเป็นหน้าลงมือจัดคิว ไม่ใช่หน้าอ่าน · ฝ่ายขายที่
         // อยากรู้ว่า "ช่างเข้าเมื่อไหร่" ดูจากหน้าไซต์บริการซึ่งยังเปิดตามสิทธิ์อ่านเดิม

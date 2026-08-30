@@ -1,5 +1,7 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
-import { notFound } from '@/lib/http';
+import { forbidden, notFound } from '@/lib/http';
+import { canDoFieldWork } from '@/lib/permissions';
+import { visitWriteAccess } from './visitAccess';
 import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
 /* ⚠️ PostgREST ต้องการ **ลิสต์ค่า** ไม่ใช่ฟังก์ชัน — ประกอบจากนิยามกลางที่
@@ -42,12 +44,27 @@ export async function findVisit(supabase, id) {
   return data || null;
 }
 
+/**
+ * ด่านของ "นัดใบนี้" — คืน `{ visit, ownWorkOnly }` หรือ `{ response }`
+ *
+ * ⭐ **ช่างหน้างานเขียนได้เฉพาะใบของตัวเอง** (มติผู้ใช้ 2026-08-30) — ตำแหน่ง Operation
+ *    ถือ `service:work` ไม่ใช่ `service:edit` ⇒ ตกด่านฝ่ายชั้นนอก แต่ต้องไปต่อได้ถ้า
+ *    นัดใบนี้เป็นของเขา · `ownWorkOnly: true` บอกผู้เรียกว่า **ต้องจำกัดช่องที่แก้ได้**
+ *    (ดู `FIELD_WORK_FIELDS` ใน route ของนัด) เพราะคนกลุ่มนี้ไม่ได้แก้ตาราง
+ * 🔴 อ่านแถวก่อนตัดสิน — ด่านนี้เป็นด่าน *รายใบ* ไม่ใช่ด่าน cap ล้วน
+ */
 export async function requireVisit({ user, supabase, id, edit = false }) {
   const access = requireService({ user, edit });
-  if (access.response) return access;
+  const blocked = !!access.response;
+  // ตกด่านชั้นนอกด้วยเหตุอื่นที่ไม่ใช่ "แก้ไม่ได้" (ไม่ล็อกอิน · อ่านไม่ได้) = จบตรงนี้
+  if (blocked && (!edit || !canDoFieldWork(user))) return access;
+
   const visit = await findVisit(supabase, id);
   if (!visit) return { response: notFound('ไม่พบนัดเข้าบริการ') };
-  return { visit };
+
+  const decision = visitWriteAccess({ user, visit, canEditAll: !blocked });
+  if (!decision.ok) return decision.error ? { response: forbidden(decision.error) } : access;
+  return { visit, ownWorkOnly: decision.ownWorkOnly };
 }
 
 // ── รอบบริการ ────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 // PATCH  : แก้นัด · ปิดงาน (status=done) จะ **เสนอ** นัดรอบถัดไปกลับไปให้ผู้ใช้ยืนยัน
 // DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
 import {
@@ -13,6 +13,7 @@ import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
 import { isSuperuser } from '@/lib/permissions';
+import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
 import { businessDate } from '@/lib/businessDate';
 import { fmtDate } from '@/lib/format';
@@ -50,6 +51,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const before = access.visit;
 
     const body = await req.json().catch(() => ({}));
+
+    /* ── ช่างหน้างานแก้ได้เฉพาะ "ผลของการไป" ไม่ใช่ "แผนว่าจะไปเมื่อไร/ใครไป" ────
+       ⭐ มติผู้ใช้ 2026-08-30: Operation = *ปิดงานของตัวเอง* · การจัดคิวเป็นของ
+          Planner/หัวหน้า ⇒ ด่านรายใบปล่อยเขาเข้ามาแล้ว (`ownWorkOnly`) แต่ต้องกันช่อง
+          ที่เป็นเรื่องของ **แผน**: วัน · เวลานัด · ผู้รับผิดชอบ · ไซต์ · ชนิดงาน
+       🐞 ไม่กัน = ช่างเลื่อนนัดตัวเองหนีงานได้ และย้ายงานไปให้คนอื่นได้เงียบ ๆ
+          ซึ่งทั้งสองอย่างต้องผ่านคนจัดคิวเสมอ (ลูกค้าถูกแจ้งวันไปแล้ว) */
+    if (access.ownWorkOnly && planningFieldsIn(body).length) {
+      return forbidden(PLANNING_FIELD_ERROR);
+    }
 
     /* ⭐ **สถานะของใบสรุปจากลูก ไม่ใช่จากปุ่มที่ช่างเลือก** (มติ 2026-08-02 ข้อ 6)
        ถ้าให้เลือกเอง คนจะกด "เสร็จ" เพราะเป็นปุ่มที่จบงานเร็วที่สุดเสมอ แล้ว "ทำไม่ครบ"

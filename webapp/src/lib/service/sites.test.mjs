@@ -158,11 +158,14 @@ test('สรุปเครื่องแยกตามสถานะ', () =>
 });
 
 // ── สิทธิ์ (แผน §6) ──────────────────────────────────────────────────────
-test('⭐ ช่างฝ่าย TS แก้ธุรกิจบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
+test('⭐ Planner/หัวหน้า TS แก้ธุรกิจบริการได้ · ทีมขาย SV ได้ · ทีมขายอื่นอ่านได้อย่างเดียว', () => {
   const ts = { role: 'ts', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   const aeKa = { role: 'ae', team: 'KA' };
-  assert.equal(canEditService(ts), true);
+  // ช่างหน้างานอ่านได้ แต่แก้ทะเบียน/ตารางไม่ได้ (มติ 2026-08-30) — เขาปิดงานของตัวเอง
+  assert.equal(canViewService(ts), true);
+  assert.equal(canEditService(ts), false);
+  assert.equal(canEditService({ role: 'ts_planner', department: 'TS' }), true);
   assert.equal(canEditService(aeSv), true);
   assert.equal(canEditService(aeKa), false);
   assert.equal(canViewService(aeKa), true);
