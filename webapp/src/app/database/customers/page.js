@@ -26,6 +26,7 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerNameIn } from "@/lib/master/customerName";
+import { branchValue } from "@/lib/master/thaiAddress";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Management view sees every status (pending/approved/rejected); the default
@@ -231,6 +232,9 @@ export default function CustomerDirectory() {
   const sort = useSortableTable(filteredCustomers, {
     arCode: (c) => c.arCode || "",
     name: (c) => customerNameIn(c),
+    // เรียงด้วยค่าที่ normalize แล้ว — ในฐานมีทั้ง '00000', ค่าว่าง และ 'สำนักงานใหญ่'
+    // ซึ่งเป็นสาขาเดียวกัน ถ้าเรียงด้วยค่าดิบจะกระจายอยู่คนละที่ในลิสต์
+    branchCode: (c) => branchValue(c.branchCode),
     brands: (c) => c.brands?.length || 0,
     address: (c) => c.address || "",
   });
@@ -346,7 +350,7 @@ export default function CustomerDirectory() {
                   </div>
                 </div>
                 <div className="text-[11px] text-[var(--text-3)] font-mono">
-                  Tax {c.taxId ? fmtNationalId(c.taxId) : NA}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
+                  Tax {c.taxId ? fmtNationalId(c.taxId) : NA} · สาขา {branchValue(c.branchCode)}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
                 </div>
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -380,6 +384,10 @@ export default function CustomerDirectory() {
                   {/* รหัส+ชื่อรวมเซลล์เดียว 2 บรรทัด (มติผู้ใช้ 2026-08-12) —
                       เรียงด้วยรหัสเหมือนเดิม */}
                   <SortTh label={`${CUSTOMER_NAME_LABEL} (AR)`} sortKey="arCode" sort={sort} />
+                  {/* สาขาเป็นครึ่งหนึ่งของ "ใบนี้คือสถานประกอบการไหน" คู่กับเลขผู้เสียภาษี
+                      (คีย์กันซ้ำคือ เลข + สาขา) — บริษัทเดียวมีได้หลายใบ ต่างกันแค่ช่องนี้
+                      จึงต้องอ่านออกจากตารางโดยไม่ต้องเปิดใบ (มติผู้ใช้ 2026-08-30) */}
+                  <SortTh label="สาขา" sortKey="branchCode" sort={sort} />
                   <SortTh label="แบรนด์ (EN/TH)" sortKey="brands" sort={sort} />
                   <SortTh label="ที่อยู่" sortKey="address" sort={sort} />
                   <th>สถานะ</th>
@@ -394,6 +402,11 @@ export default function CustomerDirectory() {
                       <div className="font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</div>
                       <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</div>
                       {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
+                    </td>
+                    {/* ผ่าน branchValue (เลขเปล่า) ไม่ใช่ branchLabel — หัวคอลัมน์เป็นป้าย
+                        "สาขา" อยู่แล้ว และ '00000' คือรูปที่ใช้เทียบใบต่อใบได้ (มติ 27/08) */}
+                    <td className="text-[var(--text-2)] font-mono text-[12px] whitespace-nowrap">
+                      {branchValue(c.branchCode)}
                     </td>
                     <td className="text-[var(--text-2)]">
                       <div className="flex flex-wrap gap-1.5">

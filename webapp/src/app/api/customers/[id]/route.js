@@ -15,7 +15,8 @@ import {
 } from '@/lib/master/masterCodes';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 import {
-  branchKeyOf, splitTaxIdMatches, taxIdDigits, taxIdDuplicateError,
+  branchKeyOf, isThaiTaxEntity, splitTaxIdMatches, taxIdDuplicateError, taxIdFormatError, taxIdKey,
+  taxIdMatchFilter, taxIdStore,
 } from '@/lib/master/customerTaxId';
 import { listForCustomer } from '@/lib/excise/registrations';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
@@ -375,18 +376,38 @@ export async function PATCH(request, { params }) {
     updates.addresses = addresses;
     Object.assign(updates, mirror);
   }
-  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12) ────────────────
+  // ── เช็คซ้ำจากเลขประจำตัวผู้เสียภาษี (มติผู้ใช้ 2026-08-12 · ยืนยัน 2026-08-30) ──
   // ต้องอยู่ **หลัง** บล็อกที่อยู่ เพราะสาขาที่ใช้เทียบอาจเพิ่งเปลี่ยนในใบแก้นี้เอง
-  // (แก้ที่อยู่ออกบิลจาก สนญ. ไปสาขา = ย้ายไปชนกับลูกค้าอีกรายได้) · เช็คเมื่อฝั่งใด
-  // ฝั่งหนึ่งของคีย์ขยับเท่านั้น — ใบที่แก้แค่ชื่อ/เบอร์ ไม่ต้องแตะฐานข้อมูลเพิ่ม
-  const nextTaxId = updates.taxId !== undefined ? taxIdDigits(updates.taxId) : taxIdDigits(customer.taxId);
+  // (แก้ที่อยู่ออกบิลจาก สนญ. ไปสาขา = ย้ายไปชนกับลูกค้าอีกรายได้) และที่อยู่ยังเป็น
+  // ตัวบอกด่านรูปแบบว่าเป็นลูกค้าไทยไหม
+  //
+  // ⚠️ **เช็คเมื่อคีย์ขยับเท่านั้น** และคีย์ทั้งสองครึ่งต้องเทียบแบบ normalize แล้ว
+  // (`taxIdKey` / `branchKeyOf` ไม่ใช่สตริงดิบ) ด้วยสองเหตุผล:
+  //   1. ใบที่แก้แค่ชื่อ/เบอร์ ไม่ต้องแตะฐานข้อมูลเพิ่ม
+  //   2. แถวยุคเก่าที่เก็บคนละรูป ('0-1055-…' / ศูนย์นำหน้าหาย / สาขา 'สำนักงานใหญ่')
+  //      ต้อง **แก้ต่อได้** — ฟอร์มส่งค่าที่ normalize แล้วกลับมาเสมอ ถ้าเทียบสตริงดิบ
+  //      จะนับเป็น "เปลี่ยนเลข" ทุกครั้งแล้วไปติดด่านซ้ำ/ด่านรูปแบบของตัวเอง จนใบนั้น
+  //      บันทึกไม่ได้อีกเลย (คีย์เท่าเดิม = ปล่อยผ่าน แต่ค่าที่เขียนลงเป็นรูปที่สะอาดแล้ว)
+  //
+  // ⚠️ **เปิดใช้ใบที่พักไว้กลับ ก็ต้องเช็คด้วย** — ใบที่พักใช้ไม่ถูกนับว่าซ้ำ (ทั้งด่านนี้
+  // และ unique partial ของ mig 0318) ⇒ ถ้าไม่เช็คตอนเปิดกลับ ใบที่ถูกพักเพราะยุบซ้ำ
+  // จะเด้งกลับมาชนใบหลักได้เงียบ ๆ ด้วยการกดสวิตช์เดียว
+  if (updates.taxId !== undefined) updates.taxId = taxIdStore(updates.taxId);
+  const nextTaxId = updates.taxId !== undefined ? updates.taxId : customer.taxId;
   const nextBranch = updates.branchCode !== undefined ? updates.branchCode : customer.branchCode;
-  const taxKeyChanged = (updates.taxId !== undefined && nextTaxId !== taxIdDigits(customer.taxId))
-    || (updates.branchCode !== undefined && branchKeyOf(nextBranch) !== branchKeyOf(customer.branchCode));
-  if (nextTaxId && taxKeyChanged) {
-    if (updates.taxId !== undefined) updates.taxId = nextTaxId; // เก็บตัวเลขล้วนเสมอ
+  const reactivating = updates.isActive === true && customer.isActive === false;
+  const taxKeyChanged = taxIdKey(nextTaxId) !== taxIdKey(customer.taxId)
+    || branchKeyOf(nextBranch) !== branchKeyOf(customer.branchCode);
+  if (nextTaxId && (taxKeyChanged || reactivating)) {
+    // ด่านรูปแบบผูกกับ "แก้เลข" เท่านั้น — การเปิดใช้ใบเก่ากลับต้องไม่ถูกบล็อกเพราะ
+    // เลขในใบนั้นเป็นรูปยุคเก่า (ยังไม่ได้แตะเลย ก็ไม่ควรถูกบังคับให้แก้ตรงนี้)
+    if (taxKeyChanged) {
+      const thaiEntity = isThaiTaxEntity(updates.addresses ?? customer.addresses);
+      const taxFormatError = taxIdFormatError(nextTaxId, { thaiEntity });
+      if (taxFormatError) return Response.json({ error: taxFormatError }, { status: 400 });
+    }
     const { data: sameTax, error: taxError } = await supabase
-      .from('customers').select('id, arCode, name, taxId, branchCode').eq('taxId', nextTaxId);
+      .from('customers').select('id, arCode, name, taxId, branchCode, isActive').or(taxIdMatchFilter(nextTaxId));
     if (taxError) return Response.json({ error: taxError.message }, { status: 500 });
     const { sameBranch } = splitTaxIdMatches(sameTax, {
       taxId: nextTaxId, branchCode: nextBranch, excludeId: customer.id,
