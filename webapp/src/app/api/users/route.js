@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, userTeams, resolveTeamAssignment } from '@/lib/permissions';
+import {
+  LOGIN_PHONE_DOMAIN, isPhoneLogin, loginLabel, loginPhoneOf, normalizeLoginPhone, phoneLoginEmail,
+} from '@/lib/auth/loginIdentity';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
 
@@ -38,7 +41,9 @@ export async function GET() {
     for (const u of users) {
       rows.push({
         id: u.id,
-        email: u.email,
+        email: isPhoneLogin(u.email) ? '' : u.email,
+    // เบอร์ที่ใช้ **เข้าระบบ** (ต่างจาก `phone` ข้างล่างซึ่งเป็นเบอร์บนเอกสาร)
+    loginPhone: loginPhoneOf(u.email) || '',
         name: u.user_metadata?.name || '',
         firstName: u.user_metadata?.firstName || (u.user_metadata?.name ? u.user_metadata.name.split(' ')[0] : ''),
         lastName: u.user_metadata?.lastName || (u.user_metadata?.name ? u.user_metadata.name.substring(u.user_metadata.name.indexOf(' ') + 1) : ''),
@@ -70,7 +75,7 @@ export async function POST(request) {
   const supabase = getSupabaseAdmin();
   const body = await request.json();
 
-  const email = (body.email || '').trim();
+  const typedEmail = (body.email || '').trim();
   const password = body.password || '';
   const firstName = (body.firstName || '').trim();
   const lastName = (body.lastName || '').trim();
@@ -80,7 +85,24 @@ export async function POST(request) {
   // อยู่ได้หลายทีม — teams คือสังกัดทั้งหมด, team คือทีมหลักที่ใช้ stamp ของใหม่
   const { team, teams } = resolveTeamAssignment(role, { team: body.team || null, teams: body.teams });
 
-  if (!email || !password) return Response.json({ error: 'ต้องระบุอีเมลและรหัสผ่าน' }, { status: 400 });
+  /* ── ช่องทางเข้าระบบ: อีเมล **หรือ** เบอร์โทร (มติผู้ใช้ 2026-08-30) ─────────
+     ⭐ เจ้าหน้าที่หน้างานไม่มีอีเมลบริษัท ⇒ เบอร์ถูกมัดเป็นที่อยู่ล็อกอินภายใน
+        (lib/auth/loginIdentity.js) · ที่อยู่นั้นไม่มีกล่องจดหมายและไม่ควรโผล่บนจอ
+     ⚠️ **ห้ามพิมพ์โดเมนภายในลงช่องอีเมลเอง** — จะได้บัญชีที่ดูเหมือนล็อกอินด้วยเบอร์
+        แต่เบอร์อาจไม่ตรงรูปมาตรฐาน แล้วคนกรอกเบอร์จริงจะล็อกอินไม่ได้ทั้งที่พิมพ์ถูก */
+  if (typedEmail && isPhoneLogin(typedEmail)) {
+    return Response.json({
+      error: `อีเมลโดเมน ${LOGIN_PHONE_DOMAIN} เป็นที่อยู่ภายในของระบบ — ถ้าจะให้เข้าด้วยเบอร์ ให้กรอกที่ช่องเบอร์เข้าระบบแทน`,
+    }, { status: 400 });
+  }
+  const loginPhone = normalizeLoginPhone(body.loginPhone);
+  if (!typedEmail && String(body.loginPhone ?? '').trim() && !loginPhone) {
+    return Response.json({ error: 'เบอร์เข้าระบบไม่ถูกต้อง — ใช้เบอร์ไทย เช่น 081-234-5678' }, { status: 400 });
+  }
+  const email = typedEmail || phoneLoginEmail(loginPhone) || '';
+  if (!email || !password) {
+    return Response.json({ error: 'ต้องระบุอีเมลหรือเบอร์เข้าระบบ และรหัสผ่าน' }, { status: 400 });
+  }
   if (password.length < 6) return Response.json({ error: 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
   const invalid = validateIdentity(role, teams, body.department);
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
@@ -93,7 +115,10 @@ export async function POST(request) {
     email,
     password,
     email_confirm: true, // no email verification step for internal accounts
-    user_metadata: { name, firstName, lastName, phone },
+    /* ⚠️ `phone` ในนี้คือ **เบอร์สำหรับเอกสาร** ไม่ใช่ช่องทางเข้าระบบ — คนละค่ากัน
+       โดยเจตนา (เบอร์บนใบเสนอราคาเปลี่ยนได้โดยไม่กระทบการล็อกอิน) · ถ้าไม่ได้กรอก
+       เบอร์เอกสารไว้ ใช้เบอร์ที่ใช้เข้าระบบเป็นค่าตั้งต้นให้ จะได้ไม่ต้องพิมพ์สองรอบ */
+    user_metadata: { name, firstName, lastName, phone: phone || (loginPhone ? `0${loginPhone.slice(2)}` : '') },
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
@@ -103,7 +128,7 @@ export async function POST(request) {
   invalidateCache('assignable-users'); // dropdown ผู้รับผิดชอบเห็นคนใหม่ทันที
   await recordAudit({
     user: me, action: 'create', entityType: 'user', entityId: data.user.id,
-    after: userAuditSnapshot(data.user), summary: `สร้างผู้ใช้ ${email} (${role})`, request,
+    after: userAuditSnapshot(data.user), summary: `สร้างผู้ใช้ ${loginLabel(data.user)} (${role})`, request,
   });
   return Response.json({ id: data.user.id }, { status: 201 });
 }

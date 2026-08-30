@@ -36,10 +36,17 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // team = ทีมหลัก (ยอด/เจ้าของงานที่สร้างใหม่เข้าทีมนี้) · teams = ทุกทีมที่สังกัด
 // (ขอบเขตการเห็น/แก้) — คนเดียวอยู่ได้หลายทีม เช่น AE ที่อยู่ทั้ง ODM และ Services
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", teams: ["ODM"], extraCaps: [] };
+const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", team: "ODM", teams: ["ODM"], extraCaps: [] };
 
 // ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
 const teamLabelsOf = (u) => userTeams(u).map((t) => TEAM_LABELS[t] || t);
+
+/* ป้ายเรียกคนในข้อความยืนยัน — **ชื่อคน** ไม่ใช่ที่อยู่ล็อกอิน
+   🐞 ของเดิมใช้ `u.email` ⇒ บัญชีที่เข้าด้วยเบอร์จะขึ้นกล่องยืนยันว่า
+      "ลบผู้ใช้ 66812345678@phone.scentandsense.co.th?" ซึ่งอ่านไม่ออกว่าคือใคร
+      และเป็นกล่องของงานที่ย้อนกลับไม่ได้ */
+const personLabel = (u) => [u.firstName, u.lastName].filter(Boolean).join(" ")
+  || (u.loginPhone ? `เบอร์ ${u.loginPhone}` : u.email);
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
@@ -62,7 +69,7 @@ export default function UserManagement() {
     firstName: (u) => u.firstName || "",
     lastName: (u) => u.lastName || "",
     phone: (u) => u.phone || "",
-    email: (u) => u.email || "",
+    email: (u) => u.loginPhone || u.email || "",
     role: (u) => ROLE_LABELS[u.role] || u.role || "",
     department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
     team: (u) => teamLabelsOf(u).join(", "),
@@ -97,9 +104,14 @@ export default function UserManagement() {
   const handleCreate = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    /* ⚠️ ส่ง **ช่องเดียว** ตามที่เลือกไว้ — ส่งทั้งอีเมลและเบอร์มาพร้อมกัน route จะยึด
+       อีเมลเงียบ ๆ แล้วคนที่ตั้งใจให้เข้าด้วยเบอร์จะล็อกอินไม่ได้โดยไม่มีใครรู้ */
+    const byPhone = createForm.loginKind === "phone";
     const payload = {
       ...createForm,
       ...teamPayload(createForm),
+      email: byPhone ? "" : createForm.email,
+      loginPhone: byPhone ? createForm.loginPhone : "",
     };
     try {
       const res = await apiFetch("/api/users", {
@@ -132,6 +144,8 @@ export default function UserManagement() {
       team: u.team || userTeams(u)[0] || TEAMS[0],
       teams: userTeams(u).length ? userTeams(u) : [u.team || TEAMS[0]],
       extraCaps: Array.isArray(u.extraCaps) ? u.extraCaps : [],
+      // เบอร์เข้าระบบ — มีเฉพาะบัญชีที่ล็อกอินด้วยเบอร์ (เปลี่ยนซิมแล้วต้องแก้ได้)
+      loginPhone: (u.loginPhone || "").replace(/\D/g, ""),
       password: "",
     });
   };
@@ -148,6 +162,11 @@ export default function UserManagement() {
       ...teamPayload(editForm),
       extraCaps: editForm.extraCaps || [],
     };
+    /* ส่งเบอร์เข้าระบบเฉพาะตอนที่ *เปลี่ยนจริง* — ส่งทุกครั้งจะเขียนอีเมลของบัญชีซ้ำ
+       โดยไม่จำเป็น และ route จะตีกลับบัญชีที่ล็อกอินด้วยอีเมล */
+    const nextLoginPhone = (editForm.loginPhone || "").replace(/\D/g, "");
+    const currentLoginPhone = (editUser?.loginPhone || "").replace(/\D/g, "");
+    if (nextLoginPhone && nextLoginPhone !== currentLoginPhone) payload.loginPhone = nextLoginPhone;
     if (editForm.password) payload.password = editForm.password;
     try {
       const res = await apiFetch(`/api/users/${editUser.id}`, {
@@ -169,7 +188,7 @@ export default function UserManagement() {
   };
 
   const handleDelete = async (u) => {
-    if (!(await confirmAction(`ลบผู้ใช้ ${u.email}?\nการกระทำนี้ย้อนกลับไม่ได้`))) return;
+    if (!(await confirmAction(`ลบผู้ใช้ ${personLabel(u)}?\nการกระทำนี้ย้อนกลับไม่ได้`))) return;
     try {
       const res = await apiFetch(`/api/users/${u.id}`, { method: "DELETE" });
       const data = await res.json();
@@ -184,7 +203,7 @@ export default function UserManagement() {
   // (ระบบให้คืนเองตอนเขาเปิดเอกสารที่ยังมีสิทธิ์เห็น จึงไม่ใช่ของที่พังถาวร)
   const handleRevokeDocAccess = async (u) => {
     if (!(await confirmAction(
-      `ถอนสิทธิ์เอกสารร่วมทั้งหมดของ ${u.email}?\n\nเขาจะเปิดเอกสาร Google ที่เคยเข้าถึงไม่ได้อีก จนกว่าจะเปิดจากในระบบใหม่ (ถ้ายังมีสิทธิ์เห็นใบนั้นอยู่)`,
+      `ถอนสิทธิ์เอกสารร่วมทั้งหมดของ ${personLabel(u)}?\n\nเขาจะเปิดเอกสาร Google ที่เคยเข้าถึงไม่ได้อีก จนกว่าจะเปิดจากในระบบใหม่ (ถ้ายังมีสิทธิ์เห็นใบนั้นอยู่)`,
     ))) return;
     try {
       const res = await apiFetch(`/api/users/${u.id}/revoke-doc-access`, { method: "POST" });
@@ -194,7 +213,7 @@ export default function UserManagement() {
       // ⚠️ บอกตัวเลขจริงเสมอ — "สำเร็จ" ลอย ๆ ปิดบังกรณีที่ยังค้างบางใบ
       // ⭐ `alreadyGone` = ไม่มีอะไรให้ถอน (ถอนไปแล้ว หรือแชร์มาจากทางอื่น) — ต้องแยก
       // จาก `revoked` ไม่งั้นแอดมินอ่านว่า "ถอนไป 5 ใบ" ทั้งที่แตะจริงใบเดียว (ค-3)
-      if (!data.files) notifyToast.success(`${u.email} ไม่มีสิทธิ์เอกสารร่วมค้างอยู่`);
+      if (!data.files) notifyToast.success(`${personLabel(u)} ไม่มีสิทธิ์เอกสารร่วมค้างอยู่`);
       else if (data.failed) notifyToast.error(`ถอนได้ ${data.revoked}/${data.files} เอกสาร — ยังค้าง ${data.failed} ใบ กดซ้ำอีกครั้ง`);
       else if (data.alreadyGone) {
         notifyToast.success(`ถอนสิทธิ์แล้ว ${data.revoked} เอกสาร · อีก ${data.alreadyGone} ใบไม่มีสิทธิ์ค้างอยู่แล้ว`);
@@ -209,8 +228,8 @@ export default function UserManagement() {
   const handleToggleDisabled = async (u) => {
     const next = !u.disabled;
     const msg = next
-      ? `ปิดบัญชี ${u.email}?\nผู้ใช้จะถูกบังคับออกจากระบบและเข้าสู่ระบบไม่ได้จนกว่าจะเปิดใช้อีกครั้ง`
-      : `เปิดใช้บัญชี ${u.email} อีกครั้ง?`;
+      ? `ปิดบัญชี ${personLabel(u)}?\nผู้ใช้จะถูกบังคับออกจากระบบและเข้าสู่ระบบไม่ได้จนกว่าจะเปิดใช้อีกครั้ง`
+      : `เปิดใช้บัญชี ${personLabel(u)} อีกครั้ง?`;
     if (!(await confirmAction(msg))) return;
     try {
       const res = await apiFetch(`/api/users/${u.id}`, {
@@ -315,8 +334,10 @@ export default function UserManagement() {
                       <td className="font-medium text-[var(--text)]">{naText(u.firstName)}</td>
                       <td className="font-medium text-[var(--text)]">{naText(u.lastName)}</td>
                       <td className="text-[var(--text-2)] text-xs whitespace-nowrap">{u.phone ? fmtPhone(u.phone) : NA}</td>
+                      {/* ⚠️ บัญชีที่เข้าระบบด้วยเบอร์ต้องโชว์ **เบอร์** ไม่ใช่ที่อยู่ภายใน
+                          (`66…@phone.scentandsense.co.th`) ที่ไม่มีกล่องจดหมายจริง */}
                       <td className="text-[var(--text-2)] font-mono text-xs">
-                        {u.email}
+                        {u.loginPhone ? `เบอร์ ${u.loginPhone}` : naText(u.email)}
                         {u.disabled && (
                           <span className="status-pill danger ml-2" style={{ height: "auto", padding: "1px 7px", fontSize: "var(--fs-2)", fontWeight: "var(--fw-semibold)" }}>
                             ปิดบัญชี
@@ -442,12 +463,12 @@ export default function UserManagement() {
       <Modal
         open={!!editUser}
         onClose={() => setEditUser(null)}
-        title={`แก้ไขผู้ใช้: ${editUser?.email || ""}`}
+        title={`แก้ไขผู้ใช้: ${[editUser?.firstName, editUser?.lastName].filter(Boolean).join(" ") || editUser?.email || ""}`}
         size="md"
       >
         {editForm && (
           <form onSubmit={handleEdit}>
-            <UserFields form={editForm} setForm={setEditForm} edit />
+            <UserFields form={editForm} setForm={setEditForm} edit user={editUser} />
             <div className="form-action-bar">
               <button type="button" onClick={() => setEditUser(null)} className="btn">
                 ยกเลิก
@@ -541,7 +562,7 @@ function SectionHeading({ children }) {
 
 // Shared form fields for create + edit. `edit` hides email; password optional.
 // Grouped into three sections: personal info, login credentials, role & team.
-function UserFields({ form, setForm, requirePassword, edit }) {
+function UserFields({ form, setForm, requirePassword, edit, user = null }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isTeamRole = TEAM_ROLES.includes(form.role);
   const teams = userTeams(form);
@@ -599,7 +620,25 @@ function UserFields({ form, setForm, requirePassword, edit }) {
 
       {/* —— บัญชีเข้าระบบ —— */}
       <SectionHeading>บัญชีเข้าระบบ</SectionHeading>
+      {/* ⭐ **เข้าระบบด้วยอีเมล หรือเบอร์โทร — อย่างใดอย่างหนึ่ง** (มติผู้ใช้ 2026-08-30)
+          เจ้าหน้าที่หน้างานไม่มีอีเมลบริษัท · เบอร์ถูกมัดเป็นที่อยู่ภายในให้เอง
+          ⚠️ **คนละช่องกับ "เบอร์โทรศัพท์" ข้างบน** ซึ่งเป็นเบอร์ที่ขึ้นบนเอกสาร —
+             แก้เบอร์เอกสารไม่กระทบการล็อกอิน และกลับกัน */}
       {!edit && (
+        <div className="form-group col-span-2">
+          <label>ช่องทางเข้าระบบ <span className="text-[var(--red)]">*</span></label>
+          <OptionTiles
+            value={form.loginKind || "email"}
+            onChange={(v) => set("loginKind", v)}
+            ariaLabel="ช่องทางเข้าระบบ"
+            options={[
+              { value: "email", label: "อีเมลบริษัท", description: "พนักงานที่มีอีเมล — ใช้อีเมลเข้าระบบตามปกติ" },
+              { value: "phone", label: "เบอร์โทรศัพท์", description: "คนหน้างานที่ไม่มีอีเมล — ใช้เบอร์มือถือเข้าระบบแทน" },
+            ]}
+          />
+        </div>
+      )}
+      {!edit && (form.loginKind || "email") === "email" && (
         <div className="form-group col-span-2">
           <label>
             อีเมล <span className="text-[var(--red)]">*</span>
@@ -612,6 +651,21 @@ function UserFields({ form, setForm, requirePassword, edit }) {
             placeholder="user@company.com"
             className="premium-input w-full font-mono"
           />
+        </div>
+      )}
+      {(edit ? !!user?.loginPhone : (form.loginKind || "email") === "phone") && (
+        <div className="form-group col-span-2">
+          <label>
+            เบอร์ที่ใช้เข้าระบบ {!edit && <span className="text-[var(--red)]">*</span>}
+          </label>
+          <PhoneInput
+            value={form.loginPhone || ""}
+            onChange={(v) => set("loginPhone", v)}
+            className="w-full"
+          />
+          <p className="text-[11px] text-[var(--text-3)] mt-1">
+            เข้าระบบด้วยเบอร์นี้ + รหัสผ่าน — ไม่ต้องมีอีเมล · เปลี่ยนเบอร์ทีหลังได้ที่นี่
+          </p>
         </div>
       )}
       <div className="form-group col-span-2">

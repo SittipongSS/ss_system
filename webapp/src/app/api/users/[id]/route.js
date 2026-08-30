@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamAssignment } from '@/lib/permissions';
+import { isPhoneLogin, normalizeLoginPhone, phoneLoginEmail } from '@/lib/auth/loginIdentity';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
 import { syncPersonName } from '@/lib/personNameFanOut';
@@ -71,6 +72,28 @@ export async function PATCH(request, { params }) {
       ...(existing.user.user_metadata || {}),
       name: (body.name || '').trim(),
     };
+  }
+
+  /* ── เปลี่ยน "เบอร์ที่ใช้เข้าระบบ" ของบัญชีที่ล็อกอินด้วยเบอร์ ────────────────
+     🔴 **ต้องมีทางแก้ ไม่งั้นเปลี่ยนซิมทีเดียว = บัญชีตาย** — คนหน้างานเปลี่ยนเบอร์
+        เป็นเรื่องปกติ · ของเดิม route นี้ไม่เคยเขียน `email` เลย ⇒ ไม่มีใครแก้ได้
+        ทั้งแอดมินและเจ้าตัว (หน้าบัญชีตัวเองก็บอกให้ "ติดต่อผู้ดูแลระบบ")
+     ⚠️ **เฉพาะบัญชีที่ล็อกอินด้วยเบอร์อยู่แล้ว** — บัญชีอีเมลจริงห้ามถูกเปลี่ยนเป็น
+        เบอร์ทางนี้ (อีเมลคือ identity ที่ผูกกับ Google Drive/เอกสารร่วมอยู่ด้วย) */
+  if (body.loginPhone !== undefined) {
+    const current = existing?.user?.email || '';
+    if (!isPhoneLogin(current)) {
+      return Response.json({
+        error: 'บัญชีนี้เข้าระบบด้วยอีเมล — เปลี่ยนเป็นเบอร์โทรทางนี้ไม่ได้',
+      }, { status: 400 });
+    }
+    const nextPhone = normalizeLoginPhone(body.loginPhone);
+    if (!nextPhone) {
+      return Response.json({ error: 'เบอร์เข้าระบบไม่ถูกต้อง — ใช้เบอร์ไทย เช่น 081-234-5678' }, { status: 400 });
+    }
+    updates.email = phoneLoginEmail(nextPhone);
+    // ยืนยันให้เลย — ที่อยู่ภายในไม่มีกล่องจดหมายให้กดยืนยัน
+    updates.email_confirm = true;
   }
 
   if (body.password) {
