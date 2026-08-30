@@ -6,7 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { canApproveMasterData, isSuperuser, TEAMS } from "@/lib/permissions";
+import { isSuperuser, TEAMS } from "@/lib/permissions";
+import { canApproveMasterRecord } from "@/lib/master/approvalControl";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
@@ -35,6 +36,7 @@ const MANAGE_KEY = "/api/master/customers?manage=1";
 
 // Caretaker teams of a customer (migration 0037). Falls back to the single
 // `team` for rows not yet migrated.
+// ทีมของระเบียน — นิยามเดียวกับ masterRecordTeams (ใช้ที่นี่เพื่อกรอง/แสดงผล)
 const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -50,8 +52,8 @@ export default function CustomerDirectory() {
   // May this user approve THIS record? Senior AE only own team; supervisor/admin
   // any team. Customers are a central registry (all teams shown in manage view),
   // so the team check matters here — hide the buttons for other teams' records.
-  const canApproveRow = (rec) =>
-    canApproveMasterData(role) && (isSuperuser(role) || teamsOf(rec).some((t) => myTeams.includes(t)));
+  // กฎเดียวกับหน้าสินค้าและหน้ารายละเอียด — อยู่ที่ lib/master/approvalControl ที่เดียว
+  const canApproveRow = (rec) => canApproveMasterRecord(role, myTeams, rec);
   const [customers, setCustomers] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,13 +106,8 @@ export default function CustomerDirectory() {
 
   // รับ "ทั้งระเบียน" ไม่ใช่แค่ id — โมดัลยืนยันต้องเอ่ยชื่อลูกค้าที่กำลังอนุมัติ
   const decide = async (customer, status) => {
-    let rejectionReason = null;
-    if (status === "rejected") {
-      rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
-      if (rejectionReason === null) return; // ยกเลิก
-    }
+    // เหตุผลที่ไม่อนุมัติถามในโมดัลของฮุค (2026-08-30) — เดิมเป็น window.prompt ที่นี่
     await sendDecision(customer.id, status, {
-      rejectionReason,
       subject: [customer.arCode, customer.name].filter(Boolean).join(" · "),
     });
   };
