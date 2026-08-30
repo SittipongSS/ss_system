@@ -52,9 +52,12 @@ console.log(`ลูกค้าทั้งหมด ${rows.length} ราย ·
 const line = (row) => `     · ${label(row)} · สาขา ${branchKeyOf(row.branchCode)}`
   + ` · เก็บไว้เป็น "${row.taxId}" / "${row.branchCode ?? ''}"${row.isActive === false ? ' · พักใช้' : ''}`;
 
+// ⚠️ นับเฉพาะใบที่ยังใช้งาน — unique ของ mig 0318 เป็น partial
+// (`where "isActive" is distinct from false`) เพราะการยุบใบซ้ำทำด้วยการ "พักใช้"
+// ไม่ใช่ลบ ⇒ ใบที่พักไว้ต้องไม่ถูกนับว่าซ้ำ ไม่งั้นรายงานนี้จะบอกว่ายังบล็อกอยู่ตลอดไป
 const byPair = new Map();
 const byTax = new Map();
-for (const row of withTax) {
+for (const row of withTax.filter((r) => r.isActive !== false)) {
   const pair = `${taxIdKey(row.taxId)}|${branchKeyOf(row.branchCode)}`;
   byPair.set(pair, [...(byPair.get(pair) || []), row]);
   const tax = taxIdKey(row.taxId);
@@ -76,6 +79,13 @@ for (const [k, list] of spread) {
   console.log(`  ${k}`);
   for (const row of list) console.log(line(row));
 }
+
+// ใบที่พักใช้แล้วแต่เลข+สาขาไปตรงกับใบที่ยังใช้งาน = ใบที่ถูกยุบไปแล้ว (metadata.mergedInto)
+// ไม่บล็อกอะไร แต่รายงานไว้ให้เห็นว่าคู่ไหนถูกยุบไปแล้วบ้าง
+const mergedAway = withTax.filter((r) => r.isActive === false
+  && byPair.has(`${taxIdKey(r.taxId)}|${branchKeyOf(r.branchCode)}`));
+console.log(`\n── ใบที่พักใช้เพราะถูกยุบเข้าใบอื่น ${mergedAway.length} ใบ (ไม่บล็อก)`);
+for (const row of mergedAway) console.log(line(row));
 
 // ── รูปแบบที่ต้องไล่แก้ ───────────────────────────────────────────────────
 const messy = withTax.filter((r) => !new RegExp(`^\\d{${TAX_ID_LENGTH}}$`).test(String(r.taxId)));

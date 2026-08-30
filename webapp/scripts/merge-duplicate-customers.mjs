@@ -184,11 +184,9 @@ writeFileSync(backupPath, JSON.stringify(backup, null, 2));
 console.log(`\nสำรองแถวที่จะถูกแตะไว้ที่ ${backupPath} (${backup.length} แถว)`);
 
 for (const plan of plans) {
-  if (Object.keys(plan.patch).length) {
-    const { error } = await supabase.from('customers').update(plan.patch).eq('id', plan.keeper.id);
-    if (error) { console.error(`✗ ${plan.keeper.arCode}:`, error.message); process.exit(1); }
-    console.log(`✓ ${plan.keeper.arCode} อัปเดตแล้ว`);
-  }
+  // ⚠️ **พักใบส่วนเกินก่อน แล้วค่อยแก้ใบหลัก** — ระหว่างที่ unique เดิมของ mig 0039
+  // (`customers_taxid_branch_key`, เทียบสตริงดิบ ไม่ใช่ partial) ยังอยู่ ลำดับนี้คือ
+  // ลำดับเดียวที่ทำให้ทั้งคู่ไม่ชนกันกลางทาง
   for (const row of plan.surplus) {
     const metadata = {
       ...(row.metadata && typeof row.metadata === 'object' ? row.metadata : {}),
@@ -199,6 +197,24 @@ for (const plan of plans) {
     const { error } = await supabase.from('customers').update({ isActive: false, metadata }).eq('id', row.id);
     if (error) { console.error(`✗ ${row.arCode}:`, error.message); process.exit(1); }
     console.log(`✓ ${row.arCode} พักใช้แล้ว (ยุบเข้า ${plan.keeper.arCode})`);
+  }
+
+  // เลขของใบหลักแยกเป็นคำสั่งของตัวเอง — ระหว่างที่ unique เดิมยังอยู่ การเปลี่ยน
+  // '0-1055-…' ให้เป็นตัวเลขล้วนคือการไปชนสตริงของใบที่เพิ่งพักไป (index เดิมไม่ได้
+  // มองข้ามใบที่พักใช้) ⇒ ล้มได้อย่างเดียวคือตรงนี้ ไม่ใช่ทั้งก้อน
+  const { taxId, ...rest } = plan.patch;
+  if (Object.keys(rest).length) {
+    const { error } = await supabase.from('customers').update(rest).eq('id', plan.keeper.id);
+    if (error) { console.error(`✗ ${plan.keeper.arCode}:`, error.message); process.exit(1); }
+    console.log(`✓ ${plan.keeper.arCode} อัปเดตแล้ว (${Object.keys(rest).join(', ')})`);
+  }
+  if (taxId) {
+    const { error } = await supabase.from('customers').update({ taxId }).eq('id', plan.keeper.id);
+    if (!error) console.log(`✓ ${plan.keeper.arCode} เลขผู้เสียภาษีเก็บเป็นตัวเลขล้วนแล้ว`);
+    else if (error.code === '23505') {
+      console.log(`ℹ ${plan.keeper.arCode} ยังเก็บเลขเป็น "${plan.keeper.taxId}" — unique เดิมของ mig 0039`);
+      console.log('   เทียบสตริงดิบและไม่ข้ามใบที่พักใช้ ⇒ แก้ได้หลังรัน mig 0318 (เปิดใบแล้วกดบันทึกก็พอ)');
+    } else { console.error(`✗ ${plan.keeper.arCode}:`, error.message); process.exit(1); }
   }
 }
 console.log('\nเสร็จ — รัน npm run check:taxid ซ้ำเพื่อยืนยันว่าเหลือ 0 คู่');
