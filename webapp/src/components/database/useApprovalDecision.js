@@ -20,6 +20,12 @@ export default function useApprovalDecision({ endpoint, onDone }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /* ⭐ **เหตุผลที่ไม่อนุมัติถามในโมดัล ไม่ใช่ `window.prompt`** (2026-08-30) — เดิม
+     หน้าทะเบียนทั้งสองหน้าเรียก window.prompt เองก่อนเข้าฮุค ⇒ กล่องของเบราว์เซอร์
+     ที่ก๊อปข้อความไม่ได้ ธีมไม่ตรง และบนมือถือบางตัวถูกบล็อกเงียบ ๆ · ย้ายเข้าฮุค
+     เพื่อให้หน้ารายละเอียดที่เพิ่งมีปุ่มอนุมัติได้ของชุดเดียวกัน ไม่ใช่พฤติกรรมที่สาม */
+  const [rejecting, setRejecting] = useState(null); // { id, subject }
+  const [rejectReason, setRejectReason] = useState("");
 
   const patch = async (id, payload) => {
     const res = await apiFetch(`${endpoint}/${id}`, {
@@ -36,6 +42,13 @@ export default function useApprovalDecision({ endpoint, onDone }) {
      คนละชุดอยู่แล้ว (ดูกฎ "ฟอร์มเดียวสองทางเรียก" ใน AGENTS.md) วางไว้ในหน้าเมื่อไร
      อีกหน้าจะลืมทันที · การอนุมัติทุกจุดต้องถามก่อน (มติผู้ใช้ 2026-08-13) */
   const decide = async (id, status, { rejectionReason = null, subject = null } = {}) => {
+    // ตีกลับ = ต้องมีเหตุผลให้คนที่ต้องแก้ต่ออ่าน ⇒ เปิดโมดัลก่อน แล้วค่อยยิงจริง
+    if (status === "rejected" && rejectionReason === null) {
+      setRejectReason("");
+      setError("");
+      setRejecting({ id, subject });
+      return;
+    }
     if (status === "approved") {
       const ok = await confirmAction(approvalPrompt({
         subject,
@@ -84,7 +97,44 @@ export default function useApprovalDecision({ endpoint, onDone }) {
     }
   };
 
+  const submitRejection = async () => {
+    if (!rejecting) return;
+    setBusy(true);
+    setError("");
+    try {
+      const { ok, data } = await patch(rejecting.id, {
+        approvalStatus: "rejected",
+        rejectionReason: rejectReason,
+      });
+      if (!ok) { setError(data.error || "ดำเนินการไม่สำเร็จ"); return; }
+      setRejecting(null);
+      notifyToast.success("ตีกลับให้แก้ไขแล้ว — เหตุผลถูกบันทึกไว้ในความเคลื่อนไหวของระเบียนนี้");
+      onDone?.();
+    } catch {
+      setError("เกิดข้อผิดพลาดในการตีกลับ");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const dialog = (
+    <>
+    <ReasonDialog
+      open={!!rejecting}
+      title="ไม่อนุมัติระเบียนนี้"
+      description={rejecting?.subject || undefined}
+      detail="ระเบียนจะกลับไปให้เจ้าของแก้ไข — เหตุผลนี้คือสิ่งเดียวที่เขาเห็นว่าต้องแก้อะไร"
+      label="เหตุผลที่ไม่อนุมัติ"
+      placeholder="เช่น ราคาผลิตยังไม่ตรงกับที่ตกลงกับลูกค้า"
+      value={rejectReason}
+      onChange={setRejectReason}
+      minLength={1}
+      confirmLabel="ตีกลับให้แก้ไข"
+      error={error}
+      busy={busy}
+      onConfirm={submitRejection}
+      onClose={() => setRejecting(null)}
+    />
     <ReasonDialog
       open={!!blocked}
       title="เอกสารบังคับยังไม่ครบ"
@@ -101,6 +151,7 @@ export default function useApprovalDecision({ endpoint, onDone }) {
       onConfirm={confirmOverride}
       onClose={() => setBlocked(null)}
     />
+    </>
   );
 
   return { decide, overrideDialog: dialog };

@@ -27,7 +27,9 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
-import { approvalControlView } from "@/lib/master/approvalControl";
+import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
+import useApprovalDecision from "@/components/database/useApprovalDecision";
+import { useTeams } from "@/lib/roleContext";
 import { categoryOf, categoryFlags, showsRetailPrice } from "@/lib/master/categoryOf";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
@@ -83,6 +85,11 @@ export default function ProductDetails() {
   // the tax workflow — shown only to roles that can see the tax system
   // (SA/RA/admin via history:view). Other depts (staff/viewer) never see it.
   const canViewTax = useCan("history:view");
+  /* ⭐ ผู้อนุมัติกดตัดสินจากหน้านี้ได้ (มติผู้ใช้ 2026-08-30) — เดิมเห็น "รออนุมัติ"
+     แล้วต้องถอยไปคิวหน้าทะเบียน ทั้งที่ของที่ต้องอ่านก่อนตัดสิน (สเปค · ราคา ·
+     เอกสารแนบ) อยู่บนหน้านี้หน้าเดียว
+     ⚠️ ตรรกะ/โมดัลอยู่ในฮุคชุดเดียวกับหน้าทะเบียน ห้ามเขียนซ้ำ */
+  const myTeams = useTeams();
 
   const [product, setProduct] = useState(null);
   // แถวหมวดสินค้า — ใช้ตัดสินธงสรรพสามิต/จดแจ้ง อย. ของหมวด (mig 0131)
@@ -144,6 +151,11 @@ export default function ProductDetails() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const { decide: sendDecision, overrideDialog } = useApprovalDecision({
+    endpoint: "/api/master/products",
+    onDone: fetchProduct,
+  });
 
   // Retire / reactivate a product (parity with customers). Retired products drop
   // out of registration/order pickers but keep history; used when a product is
@@ -312,16 +324,38 @@ export default function ProductDetails() {
   /* ⚠️ **แก้ของที่อนุมัติแล้วแม้ช่องเดียว = หลุดกลับไปรออนุมัติ** (resetApprovalOnEdit)
      ⇒ สินค้าหายจาก picker ทุกหน้าทันที · บอกไว้ใต้ปุ่มแก้ไข ไม่ใช่ให้คนไปเจอเอง
      ยกเว้นหมายเหตุบนเอกสารขาย (mig 0317 · PRODUCT_DOC_NOTE_FIELDS) */
+  const canDecide = approvalView.status === "pending" && canApproveMasterRecord(role, myTeams, product);
+  const decideSubject = [product.fgCode, product.productDescription].filter(Boolean).join(" · ");
+  const editAction = canEditProducts && {
+    id: "edit",
+    kind: "edit",
+    label: "แก้ไขข้อมูลสินค้า",
+    variant: canDecide ? "outline" : "filled",
+    onClick: () => setShowEdit(true),
+    disabled: isUpdating,
+  };
   const productActions = {
-    primaryAction: canEditProducts && {
-      id: "edit",
-      kind: "edit",
-      label: "แก้ไขข้อมูลสินค้า",
-      variant: "filled",
-      onClick: () => setShowEdit(true),
-      disabled: isUpdating,
-    },
+    /* ปุ่มหลัก = ก้าวถัดไปของระเบียน — ใบที่รออนุมัติและคนดูอนุมัติได้ ก้าวถัดไปคือ
+       "อนุมัติ" ไม่ใช่ "แก้ไข" (ผังเดียวกับการ์ด control ของหน้าเอกสาร) */
+    primaryAction: canDecide
+      ? {
+        id: "approve",
+        kind: "approve",
+        label: "อนุมัติสินค้านี้",
+        variant: "filled",
+        onClick: () => sendDecision(product.id, "approved", { subject: decideSubject }),
+        disabled: isUpdating,
+      }
+      : editAction,
     secondaryActions: [
+      canDecide && {
+        id: "reject",
+        kind: "reject",
+        label: "ไม่อนุมัติ — ตีกลับให้แก้ไข",
+        onClick: () => sendDecision(product.id, "rejected", { subject: decideSubject }),
+        disabled: isUpdating,
+      },
+      canDecide && editAction,
       canEditProducts && exciseRec?.kind === "unregistered" && {
         id: "excise",
         kind: "submit",
@@ -821,6 +855,7 @@ export default function ProductDetails() {
       </DetailPageLayout>
       </div>
 
+      {overrideDialog}
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
       <ConfirmDialog
         open={!!confirmBox}

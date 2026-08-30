@@ -7,7 +7,9 @@
 //   3. รางมีสามขั้นเสมอ ไม่ว่าสถานะไหน (ตำแหน่งคงที่ สแกนข้ามหน้าได้)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APPROVAL_CONTROL_META, approvalControlView } from './approvalControl.js';
+import {
+  APPROVAL_CONTROL_META, approvalControlView, canApproveMasterRecord, masterRecordTeams,
+} from './approvalControl.js';
 
 test('อนุมัติแล้ว: ยืนขั้นสุดท้าย ป้ายเขียว', () => {
   const view = approvalControlView({ approvalStatus: 'approved' }, { noun: 'สินค้า' });
@@ -44,4 +46,24 @@ test('คำเรียกของเดินตามหน้าที่�
   // ประโยคของแต่ละหน้าส่งเข้ามาได้ ไม่ใช่ประโยคกลางที่ไม่ตรงกับของจริง
   const view = approvalControlView({ approvalStatus: 'approved' }, { doneHint: 'พร้อมออกเอกสาร' });
   assert.equal(view.steps[2].hint, 'พร้อมออกเอกสาร');
+});
+
+test('ใครอนุมัติระเบียนนี้ได้ — กฎเดียวทั้งหน้าทะเบียนและหน้ารายละเอียด', () => {
+  /* ⚠️ วันนี้ `canApproveMasterData` = superuser เท่านั้น (admin · ae_supervisor)
+     ⇒ ด่านทีมยังไม่มีผลกับใครเลย · เก็บด่านทีมไว้เพราะเป็นกฎที่หน้าทะเบียนเขียนไว้
+     ตั้งแต่ต้นและจะมีผลทันทีที่สิทธิ์อนุมัติขยายลงไปถึง senior AE */
+  assert.equal(canApproveMasterRecord('admin', [], { team: 'ODM' }), true);
+  assert.equal(canApproveMasterRecord('ae_supervisor', [], { teams: ['KA'] }), true);
+  // คนที่ไม่มีสิทธิ์อนุมัติ master data — อยู่ทีมเดียวกับระเบียนก็อนุมัติไม่ได้
+  assert.equal(canApproveMasterRecord('senior_ae', ['KA'], { team: 'KA' }), false);
+  assert.equal(canApproveMasterRecord('ae', ['KA'], { team: 'KA' }), false);
+  assert.equal(canApproveMasterRecord('rd', ['RD'], { team: 'RD' }), false);
+});
+
+test('ทีมของระเบียน: ลูกค้าอยู่หลายทีม (teams[]) · สินค้ามีทีมเดียว (team)', () => {
+  assert.deepEqual(masterRecordTeams({ teams: ['ODM', 'KA'] }), ['ODM', 'KA']);
+  assert.deepEqual(masterRecordTeams({ team: 'KA' }), ['KA']);
+  assert.deepEqual(masterRecordTeams({ teams: [], team: 'KA' }), ['KA']);
+  assert.deepEqual(masterRecordTeams({}), []);
+  assert.deepEqual(masterRecordTeams(null), []);
 });

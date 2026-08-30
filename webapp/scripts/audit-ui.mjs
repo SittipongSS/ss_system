@@ -54,8 +54,10 @@ const colorAllowList = [
    ⚠️ ห้ามเติมไฟล์ใหม่เข้าลิสต์นี้เพื่อให้ audit ผ่าน — ของใหม่ใช้ ReasonDialog
    (ขอเหตุผล) หรือ ConfirmDialog (ยืนยัน) ดูตัวอย่างที่ /settings/design-preview */
 const nativeFeedbackDebt = {
-  "src/app/database/customers/page.js": 1, // เหตุผลไม่อนุมัติลูกค้า (ยังไม่บังคับกรอก)
-  "src/app/database/products/page.js": 1, // เหตุผลไม่อนุมัติสินค้า (ยังไม่บังคับกรอก)
+  // ⭐ **หนี้หมดแล้ว** (2026-08-30) — สองจุดสุดท้ายคือ "เหตุผลที่ไม่อนุมัติ" ของหน้า
+  // ทะเบียนลูกค้า/สินค้า · ย้ายเข้า ReasonDialog ในฮุค `useApprovalDecision` ตอนเพิ่ม
+  // ปุ่มอนุมัติบนหน้ารายละเอียด ⇒ ทั้งสี่จุดที่ตัดสินอนุมัติได้ (ทะเบียน ×2 ·
+  // รายละเอียด ×2) ใช้กล่องเดียวกัน และเหตุผลกลายเป็นช่องบังคับกรอก
   // (ลบ src/components/mgmt/DocsPanel.js ออกแล้ว — แผงนั้นถูกยุบเข้า AttachmentsPanel
   //  ซึ่งใช้ ReasonDialog อยู่แล้ว จึงไม่เหลือ prompt() ให้ยกเว้น)
 };

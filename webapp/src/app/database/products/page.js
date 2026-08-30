@@ -34,6 +34,7 @@ import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/format";
 import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
+import { canApproveMasterRecord } from "@/lib/master/approvalControl";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -64,8 +65,8 @@ export default function ProductRegistry() {
   const canSeeCost = canEdit || canMargin || canCost;
   // Senior AE approves only own team; supervisor/admin any team. (Products GET is
   // already team-scoped, but the explicit check keeps the rule consistent.)
-  const canApproveRow = (rec) =>
-    canApproveMasterData(role) && (isSuperuser(role) || myTeams.includes(rec?.team));
+  // กฎเดียวกับหน้าลูกค้าและหน้ารายละเอียด — อยู่ที่ lib/master/approvalControl ที่เดียว
+  const canApproveRow = (rec) => canApproveMasterRecord(role, myTeams, rec);
   const [products, setProducts] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
@@ -122,13 +123,8 @@ export default function ProductRegistry() {
 
   // รับ "ทั้งระเบียน" ไม่ใช่แค่ id — โมดัลยืนยันต้องเอ่ยรหัส FG ที่กำลังอนุมัติ
   const decide = async (product, status) => {
-    let rejectionReason = null;
-    if (status === "rejected") {
-      rejectionReason = window.prompt("เหตุผลที่ไม่อนุมัติ (ใส่หรือเว้นว่างก็ได้):", "");
-      if (rejectionReason === null) return; // ยกเลิก
-    }
+    // เหตุผลที่ไม่อนุมัติถามในโมดัลของฮุค (2026-08-30) — เดิมเป็น window.prompt ที่นี่
     await sendDecision(product.id, status, {
-      rejectionReason,
       subject: [product.fgCode, product.productDescription].filter(Boolean).join(" · "),
     });
   };

@@ -11,6 +11,7 @@
 // ⚠️ แถวเก่าก่อน mig 0027 มี approvalStatus = NULL ⇒ นับเป็น "อนุมัติแล้ว" เสมอ
 // (approvalStatusOf) · ห้ามอ่าน record.approvalStatus ตรง ๆ ที่นี่
 import { approvalStatusOf } from "./approvalStatus";
+import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
 
 export const APPROVAL_CONTROL_META = {
   pending: { label: "รออนุมัติ", color: "var(--amber)" },
@@ -38,4 +39,23 @@ export function approvalControlView(record, { noun = "ข้อมูล", saved
     { id: "approved", label: "อนุมัติแล้ว", hint: doneHint },
   ];
   return { status, rejected, label: meta.label, color: meta.color, currentIndex, steps };
+}
+
+
+/* ทีมที่ดูแลระเบียนนี้ — ลูกค้าอยู่หลายทีมได้ (`teams[]` · mig หลายทีม) ส่วนสินค้ามี
+   ทีมเดียว (`team` = ทีมของคนที่สร้าง) · เขียนรวมกันเพราะกฎ "ใครอนุมัติได้" อ่านค่านี้
+   ชุดเดียวกันทั้งสองหน้า */
+export function masterRecordTeams(record) {
+  if (record?.teams?.length) return record.teams;
+  return record?.team ? [record.team] : [];
+}
+
+/* ⭐ **กฎเดียวกับที่หน้าทะเบียนใช้** — Senior AE อนุมัติได้เฉพาะทีมตัวเอง ·
+   หัวหน้า/แอดมินอนุมัติข้ามทีมได้ (server บังคับซ้ำอีกชั้นเสมอ)
+   ⚠️ เดิมเขียนไว้คนละชุดสองหน้า: หน้าสินค้าอ่าน `rec.team` ตรง ๆ ส่วนหน้าลูกค้าอ่าน
+   `teams[]` ⇒ กฎเดียวกันแต่คนละสายตา · รวมมาที่นี่ก่อนจะมีหน้าที่สามมาก๊อปต่อ */
+export function canApproveMasterRecord(role, myTeams = [], record = null) {
+  if (!canApproveMasterData(role)) return false;
+  if (isSuperuser(role)) return true;
+  return masterRecordTeams(record).some((team) => myTeams.includes(team));
 }

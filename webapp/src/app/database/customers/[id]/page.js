@@ -8,7 +8,7 @@ import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
-import { useCan, useRole } from "@/lib/roleContext";
+import { useCan, useRole, useTeams } from "@/lib/roleContext";
 import { canEditIssuedMasterCode, isSuperuser, TEAM_LABELS } from "@/lib/permissions";
 import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
@@ -44,7 +44,8 @@ import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/comp
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
-import { approvalControlView } from "@/lib/master/approvalControl";
+import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
+import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { apiFetch } from "@/lib/apiFetch";
 
 // หน้า detail ลูกค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
@@ -100,10 +101,17 @@ export default function CustomerDetails() {
   const id = params.id;
   const canEdit = useCan("customers:edit");
   const canDelete = useCan("customers:delete");
+  /* ⭐ ผู้อนุมัติกดตัดสินจากหน้านี้ได้ (มติผู้ใช้ 2026-08-30) — ตรรกะ/โมดัลอยู่ในฮุค
+     ชุดเดียวกับหน้าทะเบียน ห้ามเขียนซ้ำ */
+  const { decide: sendDecision, overrideDialog } = useApprovalDecision({
+    endpoint: "/api/master/customers",
+    onDone: () => fetchCustomerData(),
+  });
   // Excise tax data (rollups, orders/filings, per-item tax) is confidential to
   // the tax workflow — shown only to roles allowed to see the tax system.
   const canViewTax = useCan("history:view");
   const role = useRole();
+  const myTeams = useTeams();
   const superuser = isSuperuser(role);
   // แอดมินแก้เลข AR ได้ทุกใบ รวมใบที่ระบบออกเลขให้ (มติ 2026-08-24) — ด่านจริงอยู่ที่ PATCH
   const canFixArCode = canEditIssuedMasterCode(role);
@@ -405,15 +413,34 @@ export default function CustomerDetails() {
   });
   const workflowSteps = workflowStepsFromIndex(approvalView.steps, approvalView.currentIndex);
 
+  const canDecide = approvalView.status === "pending" && canApproveMasterRecord(role, myTeams, customer);
+  const decideSubject = [customer.arCode, customerNameIn(customer)].filter(Boolean).join(" · ");
+  const editAction = canEdit && {
+    id: "edit",
+    kind: "edit",
+    label: "แก้ไขข้อมูลลูกค้า",
+    variant: canDecide ? "outline" : "filled",
+    onClick: () => setIsEditing(true),
+  };
   const customerActions = {
-    primaryAction: canEdit && {
-      id: "edit",
-      kind: "edit",
-      label: "แก้ไขข้อมูลลูกค้า",
-      variant: "filled",
-      onClick: () => setIsEditing(true),
-    },
+    /* ปุ่มหลัก = ก้าวถัดไปของระเบียน (ผังเดียวกับหน้าสินค้า/หน้าเอกสาร) */
+    primaryAction: canDecide
+      ? {
+        id: "approve",
+        kind: "approve",
+        label: "อนุมัติลูกค้ารายนี้",
+        variant: "filled",
+        onClick: () => sendDecision(customer.id, "approved", { subject: decideSubject }),
+      }
+      : editAction,
     secondaryActions: [
+      canDecide && {
+        id: "reject",
+        kind: "reject",
+        label: "ไม่อนุมัติ — ตีกลับให้แก้ไข",
+        onClick: () => sendDecision(customer.id, "rejected", { subject: decideSubject }),
+      },
+      canDecide && editAction,
       canEdit && (customer.isActive === false
         ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive }
         : { id: "pause", kind: "pause", icon: Archive, label: "พักใช้งานลูกค้า", onClick: handleToggleActive }),
@@ -963,6 +990,8 @@ export default function CustomerDetails() {
           </DetailCard>
       </DetailPageLayout>
       </div>
+
+      {overrideDialog}
 
       {/* Edit modal */}
       <Modal open={isEditing} onClose={() => setIsEditing(false)} title="แก้ไขข้อมูลลูกค้า (Edit Customer)" size="lg">
