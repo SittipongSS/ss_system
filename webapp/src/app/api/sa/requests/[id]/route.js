@@ -212,7 +212,7 @@ export async function PATCH(request, { params }) {
   let eventReason = null;
   /* ⚠️ **ครึ่งหลังของ "ลงคิว" ล้มได้โดยที่ใบบันทึกไปแล้ว** — ใบกับนัดอยู่คนละคำสั่ง
      (PostgREST ไม่มีทรานแซกชันครอบ) ⇒ ต้อง **บอกผู้ใช้** ไม่ใช่ log เงียบ ๆ
-     แล้วปล่อยให้คนคิดว่าช่างเห็นงานแล้วทั้งที่ตารางว่าง */
+     แล้วปล่อยให้คนคิดว่าเจ้าหน้าที่เห็นงานแล้วทั้งที่ตารางว่าง */
   let visitWarning = null;
 
   try {
@@ -327,23 +327,23 @@ export async function PATCH(request, { params }) {
       if (err) return Response.json({ error: err }, { status: /ระบุวัน/.test(err) ? 400 : 409 });
 
       /* ── ประเมินพื้นที่: ก้าวนี้คือ **"ลงคิว"** ไม่ใช่แค่แจ้งวัน (แผน เฟส 2) ─────
-         ⭐ วัน + เวลา + ช่าง + นัดบนตาราง เกิดพร้อมกันในจังหวะเดียว — แยกเป็นสองปุ่ม
-            เมื่อไรจะมีใบที่แจ้งวันแล้วแต่ไม่มีนัด (ช่างไม่เห็นงาน) หรือมีนัดที่ใบไม่รู้
+         ⭐ วัน + เวลา + เจ้าหน้าที่ + นัดบนตาราง เกิดพร้อมกันในจังหวะเดียว — แยกเป็นสองปุ่ม
+            เมื่อไรจะมีใบที่แจ้งวันแล้วแต่ไม่มีนัด (เจ้าหน้าที่ไม่เห็นงาน) หรือมีนัดที่ใบไม่รู้
          ⚠️ ตรวจให้ครบ **ก่อน** เขียนอะไรลงใบ — ตกด่านกลางทางแล้วใบจะถือวันของนัดที่
             ไม่มีอยู่จริง */
       let technician = null;
       if (requestNeedsRef(before.kind, 'site')) {
         const scheduleError = surveyScheduleError(body, before);
         if (scheduleError) return Response.json({ error: scheduleError }, { status: 400 });
-        /* 🔴 **ช่างต้องมีจริงและรับงานเข้าไซต์ได้** — ของเดิมตรวจแค่ว่า `assigneeId`
+        /* 🔴 **เจ้าหน้าที่ต้องมีจริงและรับงานเข้าไซต์ได้** — ของเดิมตรวจแค่ว่า `assigneeId`
            ไม่ว่าง และเชื่อ `assigneeName` ที่ client ส่งมาตรง ๆ ⇒ ยิง API เองใส่ id
-           อะไรก็ได้ แล้วนัดจะถือชื่อที่ไม่ตรงกับใคร (ตารางช่างชี้คนที่ไม่มีอยู่)
+           อะไรก็ได้ แล้วนัดจะถือชื่อที่ไม่ตรงกับใคร (ตารางเจ้าหน้าที่ชี้คนที่ไม่มีอยู่)
            ⚠️ ชื่อเอาจากทะเบียนเสมอ ไม่ใช่จาก body — แพตเทิร์นเดียวกับ customerName
               ที่ทุก route ในรีโปนี้อ่านจากทะเบียนแทนค่าที่จอส่งมา */
         const directory = await loadUserDirectory(supabase);
         technician = directory.get(String(body.assigneeId).trim()) || null;
         if (!technician || technician.disabled) {
-          return Response.json({ error: 'ไม่พบบัญชีช่างที่เลือก' }, { status: 400 });
+          return Response.json({ error: 'ไม่พบบัญชีเจ้าหน้าที่บริการที่เลือก' }, { status: 400 });
         }
         if (!canBeServiceAssignee(technician)) {
           return Response.json({
@@ -358,9 +358,9 @@ export async function PATCH(request, { params }) {
          เกิดหลัง `dueCommittedAt` ที่ยังเป็น NULL ไม่ได้ (NULL = ไม่ค้าง) แต่ใบที่เคย
          มีค่าแล้วจะไม่มีอะไรมาขยับให้ */
       patch.dueCommittedAt = nowIso;
-      /* เวลานัด + ช่าง ของใบประเมิน — เก็บบนใบด้วย ไม่ใช่เฉพาะบนนัด
+      /* เวลานัด + เจ้าหน้าที่ ของใบประเมิน — เก็บบนใบด้วย ไม่ใช่เฉพาะบนนัด
          ⚠️ คิว/หน้ารายละเอียดอ่านจากใบ ไม่ได้ join นัดทุกแถว ⇒ ค่าที่ใบไม่มี = ค่าที่
-            ไม่มีใครเห็นจนกว่าจะเปิดหน้าตารางช่าง */
+            ไม่มีใครเห็นจนกว่าจะเปิดหน้าตารางเจ้าหน้าที่ */
       if (requestNeedsRef(before.kind, 'site')) {
         patch.committedDueTime = String(body.committedDueTime ?? '').trim() || null;
         patch.assigneeId = technician.id;
@@ -623,7 +623,7 @@ export async function PATCH(request, { params }) {
       // ต้องเห็นว่าเลื่อนไปกี่ครั้งและครั้งละกี่วัน โดยไม่ต้องไปขุด audit log
       summary = `เลื่อนวันกำหนดส่ง ${before.committedDueDate || '(ไม่เคยระบุ)'} → ${next}`
         + (reason ? ` — ${reason}` : '');
-      /* ⭐ ใบประเมิน: เลื่อนวันบนใบ = **เลื่อนนัดของช่างด้วย** (แผน เฟส 2)
+      /* ⭐ ใบประเมิน: เลื่อนวันบนใบ = **เลื่อนนัดของเจ้าหน้าที่ด้วย** (แผน เฟส 2)
          ⚠️ เวลาแก้ได้พร้อมกัน — ไม่ส่งมา = ไม่แตะเวลาเดิม (ต่างจากส่งค่าว่างที่แปลว่า
             "เอาเวลาออก ไปทั้งวัน") */
       if (requestNeedsRef(before.kind, 'site')) {
@@ -893,18 +893,18 @@ export async function PATCH(request, { params }) {
       if (ackError) console.error('[requests] ประทับวันรับเรื่องลงแถวไม่สำเร็จ:', ackError.message);
     }
 
-    /* ── นัดของช่าง: เกิด/ขยับตามวันบนใบ (แผน เฟส 2) ─────────────────────
-       ⭐ **ลงคิว = ใบได้วัน + ช่างได้นัด** ⇒ เขียนนัดหลังหัวใบผ่าน ด้วยเหตุผลเดียวกับ
+    /* ── นัดของเจ้าหน้าที่: เกิด/ขยับตามวันบนใบ (แผน เฟส 2) ─────────────────────
+       ⭐ **ลงคิว = ใบได้วัน + เจ้าหน้าที่ได้นัด** ⇒ เขียนนัดหลังหัวใบผ่าน ด้วยเหตุผลเดียวกับ
           `ackFanOut`: ใบถูกบันทึกไปแล้วจริง ย้อนไม่ได้
-       ⚠️ ล้มแล้ว **ไม่ throw** — แต่ต้อง **ไม่เงียบ**: ใบที่มีวันแต่ไม่มีนัด = ช่างไม่เห็น
+       ⚠️ ล้มแล้ว **ไม่ throw** — แต่ต้อง **ไม่เงียบ**: ใบที่มีวันแต่ไม่มีนัด = เจ้าหน้าที่ไม่เห็น
           งานบนตาราง · เขียน error ลง log แล้วให้ audit summary บอกว่านัดยังไม่เกิด
        ⚠️ `commit-due` รอบสอง (รอบแก้) ไม่สร้างนัดซ้ำ — มีนัดอยู่แล้วก็ขยับตัวเดิม
           ("หนึ่งใบ = หนึ่งนัด") */
-    /* ⭐ **เปลี่ยนช่างบนใบ = เปลี่ยนช่างบนนัดด้วย** — ใบกับตารางช่างชี้คนละคนไม่ได้
+    /* ⭐ **เปลี่ยนเจ้าหน้าที่บนใบ = เปลี่ยนเจ้าหน้าที่บนนัดด้วย** — ใบกับตารางเจ้าหน้าที่ชี้คนละคนไม่ได้
        ⚠️ ทำก่อนบล็อกวัน/นัดข้างล่าง เพราะเป็นคนละ action กัน (ไม่มีทางเข้าพร้อมกัน) */
     if (requestNeedsRef(before.kind, 'site') && action === 'assign') {
       try {
-        // ⚠️ ถามหานัดที่ยังเปิดโดยตรง — ของที่ปิดจบแล้วห้ามถูกเขียนชื่อช่างใหม่ทับ
+        // ⚠️ ถามหานัดที่ยังเปิดโดยตรง — ของที่ปิดจบแล้วห้ามถูกเขียนชื่อเจ้าหน้าที่ใหม่ทับ
         const visit = await findSurveyVisit(supabase, id, { openOnly: true });
         if (visit) {
           const { error: assignError } = await supabase.from('service_visits').update({
@@ -925,9 +925,9 @@ export async function PATCH(request, { params }) {
     if (requestNeedsRef(before.kind, 'site') && (action === 'commit-due' || action === 'reschedule')) {
       try {
         /* ⚠️ ค่าที่นัดต้องใช้ หยิบจาก **ใบหลังแก้** เสมอ — `reschedule` เลื่อนวันอย่างเดียว
-           ไม่ได้ส่งช่างมาด้วย ⇒ อ่านจากค่าที่ใบถือไว้ตั้งแต่ลงคิว
+           ไม่ได้ส่งเจ้าหน้าที่มาด้วย ⇒ อ่านจากค่าที่ใบถือไว้ตั้งแต่ลงคิว
            🐞 ของเดิมอ่านจาก `patch` ล้วน ⇒ เส้นที่ต้องสร้างนัดใหม่ตอน reschedule จะได้
-              นัดไม่มีช่าง แล้วตกด่านเข้าไซต์กลายเป็นร่างที่ไม่ขึ้นตารางใคร */
+              นัดไม่มีเจ้าหน้าที่ แล้วตกด่านเข้าไซต์กลายเป็นร่างที่ไม่ขึ้นตารางใคร */
         const date = patch.committedDueDate;
         const time = 'committedDueTime' in patch ? patch.committedDueTime : before.committedDueTime;
         const assigneeId = patch.assigneeId ?? before.assigneeId ?? null;
@@ -939,7 +939,7 @@ export async function PATCH(request, { params }) {
           time: 'committedDueTime' in patch ? patch.committedDueTime : undefined,
         });
         if (moved.error) {
-          visitWarning = `ใบลงวันแล้ว แต่ขยับนัดของช่างไม่สำเร็จ: ${moved.error}`;
+          visitWarning = `ใบลงวันแล้ว แต่ขยับนัดของเจ้าหน้าที่ไม่สำเร็จ: ${moved.error}`;
         } else if (moved.needsNew) {
           /* ⭐ **เส้นกู้** — ไม่มีนัด (สร้างไม่สำเร็จรอบก่อน · ถูกลบ) หรือนัดเดิมจบไปแล้ว
              (ไปแล้วเข้าไม่ได้ · ยกเลิก) ⇒ สร้างใบใหม่ตรงนี้
@@ -947,7 +947,7 @@ export async function PATCH(request, { params }) {
                 `commit-due` กดซ้ำไม่ได้อีกแล้วเมื่อใบมีวันอยู่ */
           const { site, error: siteError } = await loadSurveySite(supabase, before.siteId, null);
           if (siteError || !site) {
-            visitWarning = 'ใบลงวันแล้ว แต่หาสถานที่ของใบไม่เจอ — นัดยังไม่ขึ้นตารางช่าง';
+            visitWarning = 'ใบลงวันแล้ว แต่หาสถานที่ของใบไม่เจอ — นัดยังไม่ขึ้นตารางเจ้าหน้าที่';
           } else {
             const { visit, error: visitError } = await createSurveyVisit(supabase, {
               request: { ...before, ...patch },
@@ -962,10 +962,10 @@ export async function PATCH(request, { params }) {
             else if (visit?.code) {
               summary += ` · นัด ${visit.code}`;
               /* ⚠️ นัดที่ไม่ผ่านด่านเข้าไซต์จอดเป็น **ร่าง** — ไม่ขึ้นตารางใคร
-                 ⇒ ต้องบอกตรงนั้น ไม่ใช่ให้คนไปค้นเองว่าทำไมช่างไม่เห็นงาน */
+                 ⇒ ต้องบอกตรงนั้น ไม่ใช่ให้คนไปค้นเองว่าทำไมเจ้าหน้าที่ไม่เห็นงาน */
               if (visit.status === 'draft') {
-                visitWarning = `นัด ${visit.code} ยังเป็นร่าง — ยังไม่ขึ้นตารางช่าง `
-                  + '(ตรวจช่วงเวลาที่ไซต์ให้เข้า หรือช่างที่เลือก) แก้ได้ที่หน้าจัดคิวช่าง';
+                visitWarning = `นัด ${visit.code} ยังเป็นร่าง — ยังไม่ขึ้นตารางเจ้าหน้าที่ `
+                  + '(ตรวจช่วงเวลาที่ไซต์ให้เข้า หรือเจ้าหน้าที่ที่เลือก) แก้ได้ที่หน้าจัดคิวเจ้าหน้าที่';
               }
             }
           }

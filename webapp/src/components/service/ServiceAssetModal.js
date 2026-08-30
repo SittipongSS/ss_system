@@ -199,7 +199,7 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], onCl
         </label>
 
         {/* ค่าตั้งเฉพาะชนิด (settings jsonb — มติข้อ 14) · เดิมอยู่ในรูปถ่ายหน้าจอ
-            เครื่องที่ช่างส่งใน LINE ทุกเดือนแต่ไม่มีที่เก็บ */}
+            เครื่องที่เจ้าหน้าที่ส่งใน LINE ทุกเดือนแต่ไม่มีที่เก็บ */}
         {(SETTING_INPUTS[form.kind] || []).map((field) => (
           <label key={field.key} className={styles.field}>
             <span>{field.label}</span>

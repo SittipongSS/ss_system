@@ -220,7 +220,7 @@ test('ทะเบียนวัสดุ: RD/PC เขียนได้ทั
      ประเมินพื้นที่ (mig 0314) โดยไม่มี costing:* เลย ⇒ ทะเบียนวัสดุจะเปิดให้เขียนทั้งทะเบียน
      ⚠️ ถ้าเทสต์นี้แดง แปลว่ามีคนรวมสองเส้นกลับเข้าด้วยกัน — อย่าแก้เทสต์ ให้แก้ proxy */
   /* ⚠️ ตั้งแต่แยกตำแหน่งของฝ่าย TS (2026-08-30) คนรับคำร้องคือ **Planner/หัวหน้า**
-     ช่างหน้างาน (`ts`) ไม่ถือ requests:answer แล้ว — แต่ประเด็นของเทสต์นี้ไม่เปลี่ยน:
+     เจ้าหน้าที่หน้างาน (`ts`) ไม่ถือ requests:answer แล้ว — แต่ประเด็นของเทสต์นี้ไม่เปลี่ยน:
      คนที่รับคำร้องได้ต้องไม่พลอยได้สิทธิ์เขียนทะเบียนวัสดุ */
   assert.equal(apiWriteAllowed('POST', '/api/sa/requests', 'ts_planner', []), true, 'TS ต้องรับคำร้องได้');
   assert.equal(apiWriteAllowed('POST', '/api/sa/materials', 'ts_planner', []), false, 'แต่ต้องไม่เขียนทะเบียนวัสดุ');
@@ -470,7 +470,7 @@ test('ฝ่ายขายต้องผ่านด่าน proxy ของ 
   for (const role of ['ae', 'senior_ae', 'ac']) {
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), true, `${role} ต้องสร้างไซต์ได้`);
   }
-  assert.equal(apiWriteAllowed('POST', '/api/service/sites', 'ts', []), true, 'ฝ่ายช่างเหมือนเดิม');
+  assert.equal(apiWriteAllowed('POST', '/api/service/sites', 'ts', []), true, 'ฝ่ายบริการเหมือนเดิม');
   // ⚠️ ฝ่ายที่ไม่เกี่ยวกับงานบริการยังต้องถูกกั้นตั้งแต่ชั้นนี้
   for (const role of ['wh', 'qc', 'pc', 'rd', 'finance', 'secretary', 'viewer']) {
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), false, `${role} ต้องไม่ผ่าน`);

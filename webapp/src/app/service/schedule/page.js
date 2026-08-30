@@ -1,7 +1,7 @@
 "use client";
-// ── ตารางเข้าบริการ: ปฏิทินสัปดาห์ ช่าง × วัน (mig 0188 · S-2) ────────────
+// ── ตารางเข้าบริการ: ปฏิทินสัปดาห์ เจ้าหน้าที่ × วัน (mig 0188 · S-2) ────────────
 //
-// ⭐ นี่คือ "ตาราง" ที่ผู้ใช้ขอตั้งแต่ต้น · แกนตั้ง = ช่าง · แกนนอน = วัน
+// ⭐ นี่คือ "ตาราง" ที่ผู้ใช้ขอตั้งแต่ต้น · แกนตั้ง = เจ้าหน้าที่ · แกนนอน = วัน
 // ⚠️ รอบแรก **ยังไม่ทำ time-grid พิกเซลต่อชั่วโมง** — งานวิ่งไซต์ 3–5 นัดต่อวัน
 //    ไม่ต้องการความละเอียดระดับนั้น · ชิปเรียงตามเวลาในช่องวันพอแล้ว
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -74,7 +74,7 @@ export default function ServiceSchedulePage() {
   const [formVisit, setFormVisit] = useState(undefined); // undefined = ปิด · null = สร้าง
   const [formDefaults, setFormDefaults] = useState(null);
   const [toast, setToast] = useState(null);
-  /* ⭐ ทีมช่าง (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
+  /* ⭐ ทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
      ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
   const [crew, setCrew] = useState({ teams: [], members: [] });
   const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
@@ -109,7 +109,7 @@ export default function ServiceSchedulePage() {
       setWorkload(data?.workload && typeof data.workload === "object" ? data.workload : {});
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ตารางเปล่า — "โหลดพัง" กับ "สัปดาห์นี้ไม่มีนัด"
-      // หน้าตาเหมือนกันจนแยกไม่ออก แล้วช่างจะเชื่อว่าตัวเองว่าง
+      // หน้าตาเหมือนกันจนแยกไม่ออก แล้วเจ้าหน้าที่จะเชื่อว่าตัวเองว่าง
       if (isLatest() && !opts?.background) setLoadError(e.message || "โหลดตารางไม่สำเร็จ");
     } finally {
       if (isLatest()) setLoading(false);
@@ -118,7 +118,7 @@ export default function ServiceSchedulePage() {
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
 
-  /* ทะเบียนทีมช่างโหลดครั้งเดียว — ไม่ผูกกับสัปดาห์ที่เลื่อนไปมา
+  /* ทะเบียนทีมเจ้าหน้าที่บริการโหลดครั้งเดียว — ไม่ผูกกับสัปดาห์ที่เลื่อนไปมา
      ⚠️ โหลดไม่ได้ = ไม่มีตัวกรองทีม ไม่ใช่หน้าพัง (ทีมเป็นมุมมอง ไม่ใช่ด่าน) */
   useEffect(() => {
     (async () => {
@@ -130,7 +130,7 @@ export default function ServiceSchedulePage() {
     })();
   }, []);
 
-  // รายชื่อช่าง + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น
+  // รายชื่อเจ้าหน้าที่บริการ + ไซต์ทั้งหมด โหลดเมื่อจะ "เลือก" เท่านั้น
   useEffect(() => {
     if (formVisit === undefined) return;
     if (!technicians.length) {
@@ -138,10 +138,10 @@ export default function ServiceSchedulePage() {
         try {
           const res = await apiFetch("/api/pm/assignable-users");
           const data = await res.json().catch(() => null);
-          if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อช่างไม่สำเร็จ");
-          // คนที่รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV (ดู canBeServiceAssignee)
+          if (!res.ok) throw new Error(data?.error || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
+          // คนที่รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS หรือทีมขาย SV (ดู canBeServiceAssignee)
           // 🐞 เดิมกรองเฉพาะ TS แต่ prod ยังไม่มีบัญชี TS สักคน → ช่องนี้ว่างเปล่า
-          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของช่างก็ว่างตลอดกาล
+          // ทุกนัดเลยไม่มีผู้รับผิดชอบ แล้ว "งานวันนี้" ของเจ้าหน้าที่ก็ว่างตลอดกาล
           setTechnicians((Array.isArray(data) ? data : []).filter(canBeServiceAssignee));
         } catch (e) {
           setToast({ kind: "error", msg: e.message });
@@ -166,7 +166,7 @@ export default function ServiceSchedulePage() {
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
 
-  /* ⭐ ร่างไม่ขึ้นกริดและ **ไม่นับภาระของช่าง** (มติผู้ใช้ 2026-08-28) — ถ้านับ
+  /* ⭐ ร่างไม่ขึ้นกริดและ **ไม่นับภาระของเจ้าหน้าที่** (มติผู้ใช้ 2026-08-28) — ถ้านับ
      ตัวเลข "เกินภาระ" จะเตือนจากงานที่ยังไม่แน่ว่าจะได้ไป และหัวหน้าจะเลิกเชื่อคำเตือน
      ⚠️ ตัวตัดสินคือ `isDraftVisit` ตัวเดียวกับที่ server ใช้ ห้ามเทียบสตริงตรงนี้ */
   const drafts = useMemo(() => visits.filter(isDraftVisit), [visits]);
@@ -174,7 +174,7 @@ export default function ServiceSchedulePage() {
 
   const overlapIds = useMemo(() => overlappingVisitIds(boardVisits), [boardVisits]);
 
-  // แถวของปฏิทิน = ช่างที่มีนัดในสัปดาห์นี้ + แถว "ยังไม่มอบหมาย" (ถ้ามี)
+  // แถวของปฏิทิน = เจ้าหน้าที่ที่มีนัดในสัปดาห์นี้ + แถว "ยังไม่มอบหมาย" (ถ้ามี)
   const rows = useMemo(() => {
     const map = new Map();
     for (const visit of boardVisits) {
@@ -207,7 +207,7 @@ export default function ServiceSchedulePage() {
   );
 
   /* ⭐ ภาระนับเป็น **เครื่อง + แพ็ค** ไม่ใช่จำนวนนัด (F-6) — ไซต์หนึ่งมีเครื่องตัวเดียว
-     อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้เลยว่าช่างคนนั้นทำไหวไหม
+     อีกไซต์มี 12 ตัว "วันนี้ 5 นัด" จึงบอกไม่ได้เลยว่าเจ้าหน้าที่คนนั้นทำไหวไหม
      ⚠️ `dayLoad` เดิม (นับนัด/คน/วัน) ยังใช้อยู่ที่อื่น — ที่นี่เปลี่ยนมาใช้ตัวที่
      รู้จักของหน้างาน แล้วเตือน "เกินภาระ" จากจำนวนเครื่อง */
   const loads = useMemo(
@@ -266,8 +266,8 @@ export default function ServiceSchedulePage() {
   return (
     <Workspace
       icon={<CalendarDays size={20} aria-hidden="true" />}
-      title="จัดคิวช่าง"
-      subtitle="นัดของช่างรายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
+      title="จัดคิวเจ้าหน้าที่"
+      subtitle="นัดของเจ้าหน้าที่รายสัปดาห์ · เตือนเวลาทับกัน วิ่งข้ามเขต และนัดนอกช่วงที่ไซต์ให้เข้า"
       headerRight={canEdit ? (
         <Button tone="neutral" onClick={() => openNew({ scheduledDate: todayIso })} icon={<Plus size={15} aria-hidden="true" />}>
           งานนอกรอบ
@@ -280,7 +280,7 @@ export default function ServiceSchedulePage() {
           <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
           <Button tone="neutral" variant="quiet" size="sm" onClick={() => setWeekStart(mondayOf(new Date()))}>สัปดาห์นี้</Button>
           <span className={styles.count}>{boardVisits.length} นัด</span>
-          {/* ⭐ ตัวกรองทีมช่าง — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
+          {/* ⭐ ตัวกรองทีมเจ้าหน้าที่บริการ — โผล่เฉพาะเมื่อฝ่ายมีทีมจริง (มากกว่า "ทุกทีม" อย่างเดียว)
               ตัวกรองที่มีตัวเลือกเดียวคือของประดับ */}
           <Segmented
             value={view}
@@ -296,7 +296,7 @@ export default function ServiceSchedulePage() {
               value={teamFilter}
               onChange={setTeamFilter}
               options={teamOptions}
-              ariaLabel="กรองตามทีมช่าง"
+              ariaLabel="กรองตามทีมเจ้าหน้าที่บริการ"
             />
           )}
         </div>
@@ -326,13 +326,13 @@ export default function ServiceSchedulePage() {
       )}
 
       {/* ⭐ คิวรอจัด — ร่างที่ยังไม่ผ่านด่าน อยู่ **ข้างกริด ไม่ใช่ในกริด**
-          ถ้าวางปนกับนัดจริง ช่างจะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
+          ถ้าวางปนกับนัดจริง เจ้าหน้าที่จะอ่านว่าเป็นงานของตัวเองแล้วออกไปทำ ทั้งที่ยังไม่ผ่านด่าน
           แยกสองกลุ่ม (ผ่านแล้ว / ติดอะไรอยู่) เพราะสองกลุ่มนี้ต้องการคนละการกระทำ */}
       {!loading && !loadError && drafts.length > 0 && (
         <section className={styles.queue} aria-label="คิวรอจัด">
           <h2 className={styles.queueTitle}>
             คิวรอจัด {drafts.length} ใบ
-            <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้</span>
+            <span>ร่างยังไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้</span>
           </h2>
           {/* ⭐ แยกสองกลุ่ม (F-6) — "ผ่านด่านแล้ว" กับ "ติดด่าน" ต้องการคนละการกระทำ:
               กลุ่มแรกแค่กดปล่อย · กลุ่มหลังต้องไปแก้อะไรบางอย่างก่อน
@@ -375,14 +375,14 @@ export default function ServiceSchedulePage() {
       {loading ? <SkeletonRows rows={4} /> : loadError || view !== "week" ? null : (
         /* 🐞 เดิมส่งตระกูล grid ซึ่ง **ไม่มีอยู่จริง** ในระบบตาราง (Table.module.css
            ไม่มีกฎของมันเลย และทั้งเว็บใช้ที่นี่ที่เดียว) ⇒ ได้กฎกลางของ [data-family]
-           มาครึ่งเดียว: คอลัมน์ชื่อช่างไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
-           ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อช่างเหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
+           มาครึ่งเดียว: คอลัมน์ชื่อเจ้าหน้าที่ไม่ตรึง · vertical-align: top ที่ไฟล์นี้เขียนไว้
+           ถูกกฎกลาง (0,2,1) ทับ · หัววัน/ชื่อเจ้าหน้าที่เหลือ 9.5px จนเลขวันที่เป็นตัวเล็กสุด
            ในหน้า · ตัวที่ตรึงคอลัมน์แรกคือ matrix · ชิดบนทั้งแถวคือ cells stacked */
         <TableScroll family="matrix" cells="stacked" minWidth={900}>
           <table className={styles.board}>
             <thead>
               <tr>
-                <th scope="col" className={styles.techCol}>ช่าง</th>
+                <th scope="col" className={styles.techCol}>เจ้าหน้าที่</th>
                 {days.map((day) => (
                   <th key={day.iso} scope="col" className={day.weekend ? styles.weekend : undefined}>
                     <span className={styles.dayName}>{DAY_LABELS[day.date.getDay()]}</span>
@@ -400,8 +400,8 @@ export default function ServiceSchedulePage() {
                 </tr>
               ) : teamRows.map((row) => (
                 <tr key={row.key}>
-                  {/* ชื่อช่างกดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
-                      มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าช่าง (มติ 2026-08-02 ข้อ 2)
+                  {/* ชื่อเจ้าหน้าที่กดได้ → หน้า "งานวันนี้" ของคนนั้น (?user=) — ทางเข้า
+                      มุมมอง "ไปแทนกัน" หลังตัดปุ่มทั้งทีมออกจากหน้าเจ้าหน้าที่ (มติ 2026-08-02 ข้อ 2)
                       แถว "ยังไม่มอบหมาย" ไม่มีเจ้าของ จึงไม่มีลิงก์ */}
                   <th scope="row" className={styles.techCol}>
                     {row.key === UNASSIGNED ? row.name : (
@@ -449,7 +449,7 @@ export default function ServiceSchedulePage() {
                               >
                                 <span className={styles.visitTime}>{visitTimeText(visit)}</span>
                                 <span className={styles.visitSite}>{site?.name || visit.siteId}</span>
-                                {/* งานที่ไปกันหลายคน — คนจัดคิวต้องเห็นว่านัดนี้กินช่างไปกี่คน
+                                {/* งานที่ไปกันหลายคน — คนจัดคิวต้องเห็นว่านัดนี้กินเจ้าหน้าที่ไปกี่คน
                                     ก่อนจะแจกงานอื่นให้คนที่ถูกดึงไปช่วยแล้ว */}
                                 {visit.assistantIds?.length > 0 && (
                                   <span className={styles.visitCrew}>+{visit.assistantIds.length}</span>

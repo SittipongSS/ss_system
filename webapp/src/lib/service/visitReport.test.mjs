@@ -50,14 +50,14 @@ test('⭐ ใบเอาเฉพาะเครื่องที่นัด�
   assert.ok(!r.lines.some((l) => l.assetId === 'X9'));
 });
 
-test('⭐ ทุกบรรทัดที่ระบบดึงเองต้องมาครบ — นี่คือ 90% ที่ช่างเคยพิมพ์ซ้ำทุกใบ', () => {
+test('⭐ ทุกบรรทัดที่ระบบดึงเองต้องมาครบ — นี่คือ 90% ที่เจ้าหน้าที่เคยพิมพ์ซ้ำทุกใบ', () => {
   const head = Object.fromEntries(build().head.map((h) => [h.label, h.value]));
   assert.equal(head['วันที่'], '2026-08-27');
   assert.equal(head['เวลา'], '09:12 – 10:41');
   assert.equal(head['ไซต์'], 'Jim Thompson Outlet 93 · BKK-S');
   assert.equal(head['ลูกค้า'], 'บริษัท จิม ทอมป์สัน จำกัด');
   assert.equal(head['งาน'], 'เติมน้ำหอม');
-  assert.equal(head['ช่าง'], 'ต้า');
+  assert.equal(head['เจ้าหน้าที่'], 'ต้า');
   assert.ok(head['ช่วงเวลาที่เข้าได้']);
 });
 

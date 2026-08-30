@@ -16,7 +16,7 @@ import { isOpenVisit } from './visitStatus';
 
 /* 🐞 เดิมประกาศ `OPEN_STATUSES = ['scheduled']` ที่นี่เอง = นิยาม "งานที่ยังรอลงมือ"
    ชุดที่สองของโมดูล (อีกชุดคือ isLive ใน rounds.js) ⇒ พอเพิ่ม in_progress เข้ามา
-   นัดที่ช่างกำลังทำอยู่จะหายจากตัวเลขหัวจอ ตาราง "วันนี้ใครไปไหน" และคิว
+   นัดที่เจ้าหน้าที่กำลังทำอยู่จะหายจากตัวเลขหัวจอ ตาราง "วันนี้ใครไปไหน" และคิว
    "ต้องจัดการก่อน" ทั้งหมด · ตอนนี้ใช้ชุดเดียวจาก visitStatus.js */
 const isOpen = isOpenVisit;
 
@@ -45,8 +45,8 @@ export function serviceCounts(visits = [], todayIso = businessDate()) {
     else if (date === todayIso) today += 1;
     if (date >= todayIso && date <= weekEnd) {
       week += 1;
-      // ไม่มีช่าง = ยังไม่มีใครรับผิดชอบ · นับเฉพาะในสัปดาห์นี้เพราะนัดไกล ๆ
-      // ยังไม่ต้องมอบหมายก็ปกติ (ตารางช่างยังไม่นิ่ง)
+      // ไม่มีเจ้าหน้าที่ = ยังไม่มีใครรับผิดชอบ · นับเฉพาะในสัปดาห์นี้เพราะนัดไกล ๆ
+      // ยังไม่ต้องมอบหมายก็ปกติ (ตารางเจ้าหน้าที่ยังไม่นิ่ง)
       if (!visit.assigneeId) unassigned += 1;
     }
   }
@@ -55,7 +55,7 @@ export function serviceCounts(visits = [], todayIso = businessDate()) {
 
 // ── สิ่งที่ต้องจัดการก่อน — เรียงตามความเจ็บ ไม่ใช่ตามวันที่ ──────────────
 //
-// ลำดับ: นัดค้าง → เวลาทับกัน → ชนช่วงเข้าไซต์ → ยังไม่มอบหมายช่าง
+// ลำดับ: นัดค้าง → เวลาทับกัน → ชนช่วงเข้าไซต์ → ยังไม่มอบหมายเจ้าหน้าที่
 // ⚠️ **เตือน ไม่บล็อก** ทุกข้อ (กติกาเดียวกับทั้งโมดูล) — รายการนี้คือรายการที่
 //    ให้คนไปตัดสินใจ ไม่ใช่รายการความผิด
 export function serviceAttention(visits = [], sitesById = new Map(), todayIso = businessDate()) {
@@ -80,7 +80,7 @@ export function serviceAttention(visits = [], sitesById = new Map(), todayIso = 
     }
 
     if (overlapIds.has(visit.id)) {
-      reasons.push({ kind: 'overlap', message: 'เวลาทับกับนัดอื่นของช่างคนเดียวกัน' });
+      reasons.push({ kind: 'overlap', message: 'เวลาทับกับนัดอื่นของเจ้าหน้าที่คนเดียวกัน' });
     }
 
     const site = sitesById.get(visit.siteId) || null;
@@ -93,7 +93,7 @@ export function serviceAttention(visits = [], sitesById = new Map(), todayIso = 
 
     // ยังไม่มอบหมาย: ฟ้องเฉพาะนัดที่ถึงคิวภายในสัปดาห์นี้ (รวมที่ค้างมาแล้ว)
     if (!visit.assigneeId && date && date <= soonEnd) {
-      reasons.push({ kind: 'unassigned', message: 'ยังไม่ได้มอบหมายช่าง' });
+      reasons.push({ kind: 'unassigned', message: 'ยังไม่ได้มอบหมายเจ้าหน้าที่' });
     }
 
     if (reasons.length) rows.push({ visit, site, reasons });

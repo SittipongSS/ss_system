@@ -10,13 +10,13 @@
 // ที่ตัวเลขบนจอกับของจริงไม่ตรงกัน (กติกาเดิมของรีโปเรื่องค่าที่คำนวณได้)
 //
 // ⚠️ พื้นที่ที่ถูก **ตัด** (`status='cut'`) ยังอยู่ในตาราง แต่ไม่เข้ายอดรวม — หายไป
-// เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วช่างตัดทิ้งเพราะอะไร
+// เฉย ๆ แปลว่าคนอ่านไม่มีทางรู้ว่าเคยขอให้วัดแล้วเจ้าหน้าที่ตัดทิ้งเพราะอะไร
 import { TableScroll } from "@/components/ui/Table";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { surveyTotals, surveyZoneSummary } from "@/lib/service/survey";
 import styles from "./details.module.css";
 
-const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "ช่างเพิ่มหน้างาน" };
+const STATUS_LABEL = { ok: "", cut: "ตัดออก", added: "เจ้าหน้าที่เพิ่มหน้างาน" };
 
 // ตัวเลขที่ยังไม่ได้วัดต้องเป็น **ขีด** ไม่ใช่ 0 — 0 อ่านว่า "วัดแล้วได้ศูนย์"
 const num = (value) => (value
@@ -25,8 +25,8 @@ const num = (value) => (value
 
 const VISIT_STATE = {
   draft: { label: 'ยังไม่ขึ้นตาราง', tone: 'warning' },
-  scheduled: { label: 'อยู่บนตารางช่าง', tone: 'info' },
-  in_progress: { label: 'ช่างกำลังเข้าพื้นที่', tone: 'info' },
+  scheduled: { label: 'อยู่บนตารางเจ้าหน้าที่', tone: 'info' },
+  in_progress: { label: 'เจ้าหน้าที่กำลังเข้าพื้นที่', tone: 'info' },
   done: { label: 'เข้าพื้นที่แล้ว', tone: 'success' },
   partial: { label: 'เข้าแล้วบางส่วน', tone: 'warning' },
   unable: { label: 'เข้าไม่ได้', tone: 'danger' },
@@ -55,9 +55,9 @@ export default function SurveyDetail({ request }) {
         </p>
       )}
 
-      {/* ── นัดของช่าง (เฟส 2) ────────────────────────────────────────────
+      {/* ── นัดของเจ้าหน้าที่ (เฟส 2) ────────────────────────────────────────────
           ⭐ ใบต้องตอบเองได้ว่า **ลงคิวไปแล้วหรือยัง และนัดขึ้นตารางจริงไหม** —
-             ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวช่างอีกแท็บเพื่อตอบคำถามเดียว
+             ไม่งั้นคนเปิดใบต้องไปเปิดหน้าจัดคิวเจ้าหน้าที่อีกแท็บเพื่อตอบคำถามเดียว
           ⚠️ สถานะ `draft` = นัดยังไม่ขึ้นตารางใคร ⇒ ต้องเห็นชัดว่าไม่ใช่ "ลงคิวแล้วจบ" */}
       {visit && (
         <p className={styles.surveyVisit}>

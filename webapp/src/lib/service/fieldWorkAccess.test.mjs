@@ -1,7 +1,7 @@
-// ── ช่างหน้างานทำงานของตัวเองได้ แต่ไม่ใช่ของคนอื่น (มติผู้ใช้ 2026-08-30) ──
+// ── เจ้าหน้าที่หน้างานทำงานของตัวเองได้ แต่ไม่ใช่ของคนอื่น (มติผู้ใช้ 2026-08-30) ──
 //
-// ⭐ ฝ่าย TS มีห้าตำแหน่ง: ช่างหน้างาน (`ts`) · Planner · Senior · Audit · ผู้ช่วยผู้จัดการ
-//    "ลงคิว/มอบหมายช่าง" = Planner + หัวหน้า · ช่างหน้างาน = **ปิดงานของตัวเอง + อ่านทะเบียน**
+// ⭐ ฝ่าย TS มีห้าตำแหน่ง: เจ้าหน้าที่หน้างาน (`ts`) · Planner · Senior · Audit · ผู้ช่วยผู้จัดการ
+//    "ลงคิว/มอบหมายเจ้าหน้าที่" = Planner + หัวหน้า · เจ้าหน้าที่หน้างาน = **ปิดงานของตัวเอง + อ่านทะเบียน**
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,13 +20,13 @@ const aeSv = { id: 'U-SV', role: 'ae', department: 'SA', team: 'SV', teams: ['SV
 
 const visitOf = (over = {}) => ({ id: 'SVV-1', assigneeId: 'U-TECH', ...over });
 
-test('🔴 ช่างหน้างานไม่ถือ service:edit — cap นั้นเปิดทั้งโมดูล', () => {
-  /* 🐞 ถ้าช่างถือ service:edit เขาจะแก้คิวของเพื่อน · แก้ทะเบียนไซต์/โซน/เครื่อง ·
+test('🔴 เจ้าหน้าที่หน้างานไม่ถือ service:edit — cap นั้นเปิดทั้งโมดูล', () => {
+  /* 🐞 ถ้าเจ้าหน้าที่ถือ service:edit เขาจะแก้คิวของเพื่อน · แก้ทะเบียนไซต์/โซน/เครื่อง ·
      ผูกใบสั่งขายเข้าโซน · ลบนัด ได้ทั้งชุด ซึ่งเกินคำว่า "ปิดงานของตัวเอง" ไปไกล */
   assert.equal(canUser(tech, 'service:edit'), false);
   assert.equal(canUser(tech, 'service:work'), true);
   assert.equal(canEditService(tech), false);
-  // แต่ยังอ่านทะเบียนได้ทั้งฝ่าย — ช่างต้องเปิดดูไซต์/โซน/เครื่องก่อนออกไปหน้างาน
+  // แต่ยังอ่านทะเบียนได้ทั้งฝ่าย — เจ้าหน้าที่ต้องเปิดดูไซต์/โซน/เครื่องก่อนออกไปหน้างาน
   assert.equal(canViewService(tech), true);
 });
 
@@ -53,7 +53,7 @@ test('🔴 นัดของคนอื่น = แก้ไม่ได้ �
 });
 
 test('คนนอกฝ่ายที่บังเอิญถือ cap ไม่ผ่านด่านรายใบ', () => {
-  // ทีมขาย SV แก้ได้อยู่แล้วผ่าน service:edit — ไม่ต้องผ่านเส้นของช่าง
+  // ทีมขาย SV แก้ได้อยู่แล้วผ่าน service:edit — ไม่ต้องผ่านเส้นของเจ้าหน้าที่
   assert.equal(canEditService(aeSv), true);
   assert.equal(canWorkOwnVisit({ ...aeSv, id: 'U-TECH' }, visitOf()), false);
 });
@@ -69,10 +69,10 @@ test('canDoFieldWork = "มีงานหน้างานของตัว�
 /* ── ด่านรายใบที่ requireVisit ใช้จริง ─────────────────────────────────── */
 const decide = (user, visit, canEditAll = false) => visitWriteAccess({ user, visit, canEditAll });
 
-test('🔴 ช่างเขียนใบของตัวเองได้ พร้อมธง ownWorkOnly', () => {
+test('🔴 เจ้าหน้าที่เขียนใบของตัวเองได้ พร้อมธง ownWorkOnly', () => {
   const access = decide(tech, visitOf());
   assert.equal(access.ok, true);
-  /* ⚠️ ธงนี้คือสิ่งที่บอก route ว่าต้อง **จำกัดช่องที่แก้ได้** — ถ้าลืมส่งต่อ ช่างจะ
+  /* ⚠️ ธงนี้คือสิ่งที่บอก route ว่าต้อง **จำกัดช่องที่แก้ได้** — ถ้าลืมส่งต่อ เจ้าหน้าที่จะ
      เลื่อนวันนัดตัวเองและย้ายงานให้คนอื่นได้ ทั้งที่ลูกค้าถูกแจ้งวันไปแล้ว */
   assert.equal(access.ownWorkOnly, true);
 });
@@ -89,7 +89,7 @@ test('คนที่แก้ได้ทั้งตาราง (Planner/ห�
   assert.equal(access.ownWorkOnly, false);
 });
 
-test('คนนอกที่ไม่มีสิทธิ์อะไรเลย = ปล่อยให้ด่านชั้นนอกตอบ ไม่ใช่ทับด้วยข้อความของช่าง', () => {
+test('คนนอกที่ไม่มีสิทธิ์อะไรเลย = ปล่อยให้ด่านชั้นนอกตอบ ไม่ใช่ทับด้วยข้อความของเจ้าหน้าที่', () => {
   const access = decide({ id: 'U-WH', role: 'wh', department: 'WH' }, visitOf());
   assert.equal(access.ok, false);
   assert.equal(access.error, null);
@@ -98,13 +98,13 @@ test('คนนอกที่ไม่มีสิทธิ์อะไรเ�
 test('🔴 ช่องของ "แผน" ต้องถูกจับได้ทุกตัว — ช่องผลงานหน้างานต้องไม่โดนจับ', () => {
   assert.deepEqual(planningFieldsIn({ scheduledDate: '2026-09-01' }), ['scheduledDate']);
   assert.deepEqual(planningFieldsIn({ assigneeId: 'U-X', status: 'done' }), ['assigneeId']);
-  // ผลของการไป: สถานะ · เวลาเข้าจริง · เหตุผล · โน้ต — ช่างต้องกรอกได้
+  // ผลของการไป: สถานะ · เวลาเข้าจริง · เหตุผล · โน้ต — เจ้าหน้าที่ต้องกรอกได้
   assert.deepEqual(planningFieldsIn({
     status: 'unable', actualDate: '2026-09-01', actualStartTime: '09:00',
     unableReason: 'เข้าไม่ได้', note: 'ล็อบบี้ปิด', closeFromAssets: true,
   }), []);
   assert.deepEqual(planningFieldsIn(), []);
-  // ⚠️ เพิ่มช่องแผนใหม่แล้วลืมเติมลิสต์ = ช่างแก้ได้เงียบ ๆ
+  // ⚠️ เพิ่มช่องแผนใหม่แล้วลืมเติมลิสต์ = เจ้าหน้าที่แก้ได้เงียบ ๆ
   for (const field of ['scheduledDate', 'assigneeId', 'assistantIds', 'siteId', 'kind']) {
     assert.ok(VISIT_PLANNING_FIELDS.includes(field), field);
   }

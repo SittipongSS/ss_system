@@ -71,7 +71,7 @@ export default function ServiceVisitModal({
         rescheduleReason: "",   // ไม่ค้างจากรอบก่อน — เหตุผลผูกกับการเลื่อนครั้งนี้เท่านั้น
       });
     } else {
-      // คลิกช่องว่างบนปฏิทิน = รู้วันและช่างอยู่แล้ว — เติมให้เลย
+      // คลิกช่องว่างบนปฏิทิน = รู้วันและเจ้าหน้าที่อยู่แล้ว — เติมให้เลย
       setForm({ ...EMPTY, ...(defaults || {}) });
     }
   }, [open, visit, defaults]);
@@ -94,7 +94,7 @@ export default function ServiceVisitModal({
     [visit, form],
   );
 
-  // ⭐ ด่านคำนวณจาก **ค่าที่กำลังกรอก** ไม่ใช่ค่าที่บันทึกไว้ — เลือกช่างในฟอร์มแล้ว
+  // ⭐ ด่านคำนวณจาก **ค่าที่กำลังกรอก** ไม่ใช่ค่าที่บันทึกไว้ — เลือกเจ้าหน้าที่บริการในฟอร์มแล้ว
   // ข้อ 3 ต้องติ๊กทันที ไม่ต้องกดบันทึกก่อนถึงจะรู้ว่าผ่านหรือยัง
   // ⚠️ ตัวเดียวกับที่ server ใช้ปฏิเสธ (visitGate.js) — ห้ามคิดเงื่อนไขซ้ำตรงนี้
   const gate = useMemo(
@@ -172,7 +172,7 @@ export default function ServiceVisitModal({
           ) : (
             <>
               <p className={styles.readonlyValue}>{VISIT_KIND_LABELS[form.kind] || form.kind}</p>
-              <small>ชนิดนี้เกิดจากใบคำร้อง เปลี่ยนที่นี่ไม่ได้ — วัน/เวลา/ช่าง ยังแก้ได้ตามปกติ</small>
+              <small>ชนิดนี้เกิดจากใบคำร้อง เปลี่ยนที่นี่ไม่ได้ — วัน/เวลา/เจ้าหน้าที่ ยังแก้ได้ตามปกติ</small>
             </>
           )}
         </label>
@@ -183,7 +183,7 @@ export default function ServiceVisitModal({
         </label>
 
         {/* ⭐ ช่องนี้โผล่เฉพาะตอนเลื่อนวันจริง — บังคับกรอกเพราะลูกค้าถามทีหลังว่า
-            "ทำไมช่างไม่มาสักที" ต้องตอบได้ว่าเลื่อนกี่ครั้งเพราะอะไร · เหตุผลลงเธรด
+            "ทำไมเจ้าหน้าที่ไม่มาสักที" ต้องตอบได้ว่าเลื่อนกี่ครั้งเพราะอะไร · เหตุผลลงเธรด
             ไม่ใช่คอลัมน์ เพราะคอลัมน์เดียวถูกเขียนทับทุกครั้งที่เลื่อน */}
         {rescheduling && (
           <label className={`${styles.field} ${styles.wide}`}>
@@ -191,7 +191,7 @@ export default function ServiceVisitModal({
             <Input
               value={form.rescheduleReason}
               onChange={change("rescheduleReason")}
-              placeholder="เช่น ลูกค้าขอเลื่อน · ห้างปิดปรับปรุง · ช่างติดงานด่วน"
+              placeholder="เช่น ลูกค้าขอเลื่อน · ห้างปิดปรับปรุง · เจ้าหน้าที่ติดงานด่วน"
               maxLength={500}
             />
             <small>เลื่อนจาก {visit.scheduledDate} → {form.scheduledDate} · เหตุผลจะถูกบันทึกลงความเคลื่อนไหวของนัดนี้</small>
@@ -226,28 +226,28 @@ export default function ServiceVisitModal({
         </fieldset>
 
         <label className={styles.field}>
-          <span>ช่างผู้รับผิดชอบ</span>
+          <span>เจ้าหน้าที่ผู้รับผิดชอบ</span>
           <SearchableSelect
             value={form.assigneeId}
             onChange={pickTechnician}
             options={technicians.map((t) => ({ value: t.id, label: t.name }))}
             placeholder="ยังไม่มอบหมาย"
-            ariaLabel="ช่างผู้รับผิดชอบ"
+            ariaLabel="เจ้าหน้าที่ผู้รับผิดชอบ"
           />
           <small>คนนี้คือเจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้</small>
         </label>
 
-        {/* ⭐ ช่างที่ไปด้วย (F-6) — คอลัมน์ `assistantIds` มีมาตั้งแต่ mig 0188
+        {/* ⭐ เจ้าหน้าที่ที่ไปด้วย (F-6) — คอลัมน์ `assistantIds` มีมาตั้งแต่ mig 0188
             แต่ไม่เคยมีจอไหนให้กรอก ⇒ งานสองคนถูกบันทึกเป็นงานคนเดียวมาตลอด
             ⚠️ ไม่ใช่ "เจ้าของงานคนที่สอง" — ใบส่งงานและรอบถัดไปยังนับจากคนแรกคนเดียว
             สิ่งที่เปลี่ยนคือคนที่ไปด้วย **เห็นงานนี้ในงานวันนี้ของตัวเอง** */}
         <label className={`${styles.field} ${styles.wide}`}>
-          <span>ช่างที่ไปด้วย</span>
+          <span>เจ้าหน้าที่ที่ไปด้วย</span>
           <OptionTiles
             multiple
             value={form.assistantIds}
             onChange={(ids) => setForm((prev) => ({ ...prev, assistantIds: ids }))}
-            ariaLabel="ช่างที่ไปด้วย"
+            ariaLabel="เจ้าหน้าที่ที่ไปด้วย"
             options={technicians
               .filter((tech) => tech.id !== form.assigneeId)
               .map((tech) => ({ value: tech.id, label: tech.name }))}
@@ -273,7 +273,7 @@ export default function ServiceVisitModal({
                 ))}
               </Select>
               {!VISIT_STATUSES_MANUAL.includes(form.status) && (
-                <small className={styles.hint}>สถานะนี้มาจากปุ่มเริ่มงาน/ปิดงานของช่าง แก้จากที่นี่ไม่ได้</small>
+                <small className={styles.hint}>สถานะนี้มาจากปุ่มเริ่มงาน/ปิดงานของเจ้าหน้าที่ แก้จากที่นี่ไม่ได้</small>
               )}
             </label>
 
@@ -291,7 +291,7 @@ export default function ServiceVisitModal({
                   {gateCount.parked > 0 && ` · ${gateCount.parked} ข้อรอระบบสัญญา (ไม่บล็อก)`}
                 </p>
                 <p className={styles.hint}>
-                  ร่างไม่ขึ้นตาราง ไม่นับภาระของช่าง และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยเข้าคิว”
+                  ร่างไม่ขึ้นตาราง ไม่นับภาระของเจ้าหน้าที่ และไม่โผล่ในงานวันนี้ — ผ่านครบแล้วกด “ปล่อยเข้าคิว”
                 </p>
                 <ul className={styles.gate}>
                   {gate.map((item) => (

@@ -1,4 +1,4 @@
-// คิวงานของช่าง (S-3) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
+// คิวงานของเจ้าหน้าที่ (S-3) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { closeFormDefaults, groupVisits, missingEvidence, openCount } from './myVisits.js';
@@ -27,7 +27,7 @@ test('นัดที่เลยวันแล้วแต่ปิดไป�
   assert.deepEqual(groups.overdue, []);
 });
 
-test('⭐ นัดที่เพิ่งปิดวันนี้ยังอยู่ในกลุ่มวันนี้ — ช่างต้องเห็นว่าทำอะไรไปแล้วและกดกลับไปแก้ได้', () => {
+test('⭐ นัดที่เพิ่งปิดวันนี้ยังอยู่ในกลุ่มวันนี้ — เจ้าหน้าที่ต้องเห็นว่าทำอะไรไปแล้วและกดกลับไปแก้ได้', () => {
   const groups = groupVisits([v({ id: 'C', status: 'done', actualDate: TODAY })], TODAY);
   assert.deepEqual(groups.today.map((r) => r.id), ['C']);
   assert.equal(openCount(groups).today, 0);
@@ -43,7 +43,7 @@ test('แยกวันนี้ / พรุ่งนี้ / ถัดไป',
   assert.deepEqual(groups.later.map((r) => r.id), ['E']);
 });
 
-test('นัดที่ยกเลิก/เลื่อนแล้วไม่โผล่ในคิวช่างเลย', () => {
+test('นัดที่ยกเลิก/เลื่อนแล้วไม่โผล่ในคิวเจ้าหน้าที่เลย', () => {
   const groups = groupVisits([
     v({ id: 'X', status: 'cancelled' }),
     v({ id: 'Y', status: 'rescheduled' }),
@@ -81,7 +81,7 @@ test('⭐ รูปและลายเซ็นไม่บังคับ แ
   );
 });
 
-test('⭐ ปิดงานได้โดยไม่มีรูป/ลายเซ็น — ถ้าบล็อก ช่างจะไปบันทึกย้อนหลังแล้วเวลาผิดทั้งชุด', () => {
+test('⭐ ปิดงานได้โดยไม่มีรูป/ลายเซ็น — ถ้าบล็อก เจ้าหน้าที่จะไปบันทึกย้อนหลังแล้วเวลาผิดทั้งชุด', () => {
   const { value, error } = normalizeVisitInput({
     siteId: 'S1', kind: 'refill', scheduledDate: TODAY,
     status: 'done', actualDate: TODAY, actualStartTime: '10:05', actualEndTime: '10:50',

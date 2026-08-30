@@ -703,7 +703,7 @@ test('canAccessRd: ฝ่าย RD จริง + admin — ไม่ใช่�
   /* ⭐ TS ถือ cap ตั้งแต่หัวข้อ "ประเมินพื้นที่" (mig 0314) — ด่านจริงยังเป็น **ฝ่าย**
      เหมือน RD/PC/FN ทุกประการ ⇒ ถือ cap แต่เข้าโมดูล RD ไม่ได้
      ⚠️ ตั้งแต่แยกตำแหน่ง (2026-08-30) **คนรับเรื่องคือ Planner/หัวหน้า** ไม่ใช่ทุกคนในฝ่าย —
-        ช่างหน้างานไม่ต้องรับใบคำร้อง เขารับงานจากนัดที่ถูกลงคิวให้แล้ว */
+        เจ้าหน้าที่หน้างานไม่ต้องรับใบคำร้อง เขารับงานจากนัดที่ถูกลงคิวให้แล้ว */
   assert.equal(can('ts_planner', 'requests:answer'), true);
   assert.equal(can('ts_manager', 'requests:answer'), true);
   assert.equal(can('ts', 'requests:answer'), false);
@@ -870,8 +870,8 @@ test('🔴 ฝ่ายขายสร้างไซต์ได้ แต่�
   assert.equal(canEditService(ae), false);
 
   /* ฝ่าย TS ที่จัดงานได้ (Planner/หัวหน้า) และทีมขาย SV ยังสร้างได้เหมือนเดิม
-     ⚠️ **ช่างหน้างานสร้างไม่ได้** ตั้งแต่แยกตำแหน่ง (2026-08-30) — ไซต์เกิดจากใบคำร้อง
-        ของฝ่ายขายเป็นหลัก และช่างไม่ได้เป็นคนตอบว่าลูกค้าจะติดตั้งที่ไหน */
+     ⚠️ **เจ้าหน้าที่หน้างานสร้างไม่ได้** ตั้งแต่แยกตำแหน่ง (2026-08-30) — ไซต์เกิดจากใบคำร้อง
+        ของฝ่ายขายเป็นหลัก และเจ้าหน้าที่ไม่ได้เป็นคนตอบว่าลูกค้าจะติดตั้งที่ไหน */
   assert.equal(canCreateServiceSite({ role: 'ts_planner', department: 'TS' }), true);
   assert.equal(canCreateServiceSite({ role: 'ts', department: 'TS' }), false);
   assert.equal(canCreateServiceSite({ role: 'ae', department: 'SA', team: 'SV', teams: ['SV'] }), true);

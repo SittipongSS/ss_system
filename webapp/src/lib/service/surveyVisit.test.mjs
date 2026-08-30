@@ -1,4 +1,4 @@
-// ── ลงคิวใบประเมิน = ใบได้วัน + ช่างได้นัด (เฟส 2) ─────────────────────────
+// ── ลงคิวใบประเมิน = ใบได้วัน + เจ้าหน้าที่ได้นัด (เฟส 2) ─────────────────────────
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,9 +12,9 @@ import { VISIT_KINDS, VISIT_KINDS_MANUAL, VISIT_KIND_LABELS, normalizeVisitInput
 const request = { id: 'DR-1', docNo: 'AS-26080002', siteId: 'SVS-1' };
 const site = { id: 'SVS-1', name: 'สาขาสีลม', accessDays: [], accessFrom: null, accessTo: null };
 
-test('🔴 ลงคิวต้องมีวันและช่าง — นัดที่ไม่มีช่างจะจอดเป็นร่างที่ไม่มีใครเห็น', () => {
+test('🔴 ลงคิวต้องมีวันและเจ้าหน้าที่ — นัดที่ไม่มีเจ้าหน้าที่จะจอดเป็นร่างที่ไม่มีใครเห็น', () => {
   assert.match(surveyScheduleError({}, request), /วันนัด/);
-  assert.match(surveyScheduleError({ committedDueDate: '2026-09-08' }, request), /ช่าง/);
+  assert.match(surveyScheduleError({ committedDueDate: '2026-09-08' }, request), /เจ้าหน้าที่/);
   assert.equal(
     surveyScheduleError({ committedDueDate: '2026-09-08', assigneeId: 'U1' }, request),
     null,
@@ -56,7 +56,7 @@ test('สร้างนัด: ชนิด survey · ผูกกลับใ�
   const calls = [];
   const fake = fakeCreateDb({ calls, rpcResult: { data: [{ id: 'SVV-1', code: 'SV-26090001' }], error: null } });
   const { visit, error } = await createSurveyVisit(fake, {
-    request, site, date: '2026-09-08', time: '', assigneeId: 'U1', assigneeName: 'ช่างเอ',
+    request, site, date: '2026-09-08', time: '', assigneeId: 'U1', assigneeName: 'เจ้าหน้าที่เอ',
     user: { id: 'U9', name: 'หัวหน้า' },
   });
   assert.equal(error, null);
@@ -69,7 +69,7 @@ test('สร้างนัด: ชนิด survey · ผูกกลับใ�
   assert.equal(row.scheduledDate, '2026-09-08');
   assert.equal(row.startTime, null);
   assert.equal(row.assigneeId, 'U1');
-  // ⭐ โน้ตชี้กลับใบ — ช่างที่เปิดจากตารางต้องรู้ว่ามาจากเรื่องอะไร
+  // ⭐ โน้ตชี้กลับใบ — เจ้าหน้าที่ที่เปิดจากตารางต้องรู้ว่ามาจากเรื่องอะไร
   assert.match(row.note, /AS-26080002/);
   // สถานะมาจากด่าน ไม่ใช่จากผู้เรียก
   assert.ok(['scheduled', 'draft'].includes(row.status));
@@ -107,7 +107,7 @@ function fakeVisitDb(visit) {
   return api;
 }
 
-test('เลื่อนวันบนใบ = ขยับนัดของช่างด้วย (หนึ่งใบ = หนึ่งนัด)', async () => {
+test('เลื่อนวันบนใบ = ขยับนัดของเจ้าหน้าที่ด้วย (หนึ่งใบ = หนึ่งนัด)', async () => {
   const db = fakeVisitDb({ id: 'SVV-1', status: 'scheduled', scheduledDate: '2026-09-08' });
   const { visit, error } = await moveSurveyVisit(db, { requestId: 'DR-1', date: '2026-09-12', time: '09:00' });
   assert.equal(error, null);
@@ -134,7 +134,7 @@ test('🔴 นัดที่ปิดจบแล้วไม่ถูกวั
     // ถามหาแถวที่ยังกินสิทธิ์ตรง ๆ — ไม่ใช่หยิบแถวล่าสุดมาแล้วค่อยดูสถานะ
     assert.deepEqual(db._state.statuses, REQUEST_SLOT_VISIT_STATES, status);
     assert.equal(error, null, status);
-    /* 🐞 ของเดิมคืน error:null แล้วจบ ⇒ ใบบอกว่าเลื่อนแล้วทั้งที่ตารางช่างไม่ขยับ
+    /* 🐞 ของเดิมคืน error:null แล้วจบ ⇒ ใบบอกว่าเลื่อนแล้วทั้งที่ตารางเจ้าหน้าที่ไม่ขยับ
        (เคส "ไปแล้วเข้าไม่ได้" คือคำตอบของงานจริง ไม่ใช่เคสสมมติ) */
     assert.equal(needsNew, true, status);
   }
@@ -161,7 +161,7 @@ test('🐞 ด่าน "สร้างมือไม่ได้" ต้อ�
   // สร้าง = ตีกลับ
   assert.match(normalizeVisitInput(row).error, /สร้างที่นี่ไม่ได้/);
   /* แก้ = ผ่าน — PATCH ส่ง {...before, ...body} ⇒ kind มาจากแถวเดิมเสมอ
-     ถ้าด่านยิงตรงนี้ด้วย ช่างจะเลื่อนนัดประเมินจากตารางไม่ได้เลย */
+     ถ้าด่านยิงตรงนี้ด้วย เจ้าหน้าที่จะเลื่อนนัดประเมินจากตารางไม่ได้เลย */
   const edit = normalizeVisitInput({ ...row, scheduledDate: '2026-09-17' }, { existingKind: 'survey' });
   assert.equal(edit.error, null);
   assert.equal(edit.value.scheduledDate, '2026-09-17');

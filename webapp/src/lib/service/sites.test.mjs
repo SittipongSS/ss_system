@@ -70,7 +70,7 @@ const registryAddress = {
   mapUrl: '', contactName: 'คุณสมชาย', contactPhone: '021234567',
 };
 
-test('⭐ ทะเบียนว่าง ห้ามล้างค่าที่กรอกเอง — หมุดแผนที่ของช่างต้องอยู่', () => {
+test('⭐ ทะเบียนว่าง ห้ามล้างค่าที่กรอกเอง — หมุดแผนที่ของเจ้าหน้าที่ต้องอยู่', () => {
   const carried = siteAddressCarry({ mapUrl: 'https://maps.app.goo.gl/x', address: '' }, registryAddress);
   assert.equal(carried.mapUrl, 'https://maps.app.goo.gl/x');
   assert.equal(carried.address, registryAddress.address);
@@ -162,7 +162,7 @@ test('⭐ Planner/หัวหน้า TS แก้ธุรกิจบริ�
   const ts = { role: 'ts', department: 'TS' };
   const aeSv = { role: 'ae', team: 'SV' };
   const aeKa = { role: 'ae', team: 'KA' };
-  // ช่างหน้างานอ่านได้ แต่แก้ทะเบียน/ตารางไม่ได้ (มติ 2026-08-30) — เขาปิดงานของตัวเอง
+  // เจ้าหน้าที่หน้างานอ่านได้ แต่แก้ทะเบียน/ตารางไม่ได้ (มติ 2026-08-30) — เขาปิดงานของตัวเอง
   assert.equal(canViewService(ts), true);
   assert.equal(canEditService(ts), false);
   assert.equal(canEditService({ role: 'ts_planner', department: 'TS' }), true);
@@ -171,7 +171,7 @@ test('⭐ Planner/หัวหน้า TS แก้ธุรกิจบริ�
   assert.equal(canViewService(aeKa), true);
 });
 
-test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายช่าง TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
+test('⭐ รับงานเข้าไซต์ได้ = ฝ่ายบริการ TS หรือทีมขาย SV — ไม่ใช่ทุกคนที่อ่านระบบได้', () => {
   // 🐞 บั๊กจริงบน prod 2026-07-31: กรองเฉพาะ TS แต่ยังไม่มีบัญชี TS สักคน →
   // dropdown ว่าง → ทุกนัด assigneeId = null → "นัดของฉัน" ว่างตลอดกาล
   assert.equal(canBeServiceAssignee({ role: 'ts', department: 'TS' }), true);

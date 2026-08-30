@@ -75,7 +75,7 @@ export default function ServiceZonePage({ params }) {
   );
 
   /* ประวัติการเข้าของโซน = นัดที่ปิดแล้วซึ่ง "แตะเครื่องในโซนนี้"
-     ⚠️ ไม่ใช่ทุกนัดของไซต์ — ไซต์เดียวมีหลายโซน ช่างเข้าทีเดียวแต่ทำไม่ครบทุกโซน */
+     ⚠️ ไม่ใช่ทุกนัดของไซต์ — ไซต์เดียวมีหลายโซน เจ้าหน้าที่เข้าทีเดียวแต่ทำไม่ครบทุกโซน */
   const zoneVisits = useMemo(() => {
     const assetIds = new Set(zoneAssets.map((a) => a.id));
     const touched = new Set(
@@ -211,7 +211,7 @@ export default function ServiceZonePage({ params }) {
 
         {/* ⭐ คำถามที่ทั้งบริษัทตอบไม่ได้มาตลอด — เดือนไหนใช้เกิน/ขาดเทียบที่ขายไว้ */}
         <DetailCard icon={Package} title="ใช้จริง เทียบ มาตรฐาน"
-          meta="ยอดมาจากของที่ช่างบันทึกตอนปิดงาน ผูกกับเครื่องในโซนนี้เท่านั้น">
+          meta="ยอดมาจากของที่เจ้าหน้าที่บันทึกตอนปิดงาน ผูกกับเครื่องในโซนนี้เท่านั้น">
           {badge && <p className={styles.badgeLine} data-tone={badge.tone}>{badge.text}</p>}
           {summary.unconverted > 0 && (
             <p className={styles.warn}>

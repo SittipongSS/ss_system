@@ -52,7 +52,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const before = access.plan;
 
     // FK ของนัดเป็น SET NULL — นัดที่ gen ไว้แล้วอยู่ต่อในฐานะงานนอกรอบ
-    // (ตั้งใจ: นัดที่ลูกค้ารู้แล้วว่าช่างจะมา ห้ามหายไปเพราะแอดมินลบรอบ)
+    // (ตั้งใจ: นัดที่ลูกค้ารู้แล้วว่าเจ้าหน้าที่จะมา ห้ามหายไปเพราะแอดมินลบรอบ)
     const { error } = await supabase.from('service_plans').delete().eq('id', id);
     if (error) return fail(error.message, 500);
 

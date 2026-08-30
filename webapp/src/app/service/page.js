@@ -145,7 +145,7 @@ export default function ServiceOverviewPage() {
             </Button>
           )}
           <Button tone="primary" onClick={() => router.push("/service/schedule")} icon={<CalendarDays size={15} aria-hidden="true" />}>
-            จัดคิวช่าง
+            จัดคิวเจ้าหน้าที่
           </Button>
         </div>
       )}
@@ -176,7 +176,7 @@ export default function ServiceOverviewPage() {
               value={counts.week}
               icon={CalendarDays}
               tone="info"
-              hint={counts.unassigned > 0 ? `ยังไม่มอบหมายช่าง ${counts.unassigned} นัด` : "มอบหมายช่างครบแล้ว"}
+              hint={counts.unassigned > 0 ? `ยังไม่มอบหมายเจ้าหน้าที่ ${counts.unassigned} นัด` : "มอบหมายเจ้าหน้าที่ครบแล้ว"}
               onClick={() => router.push("/service/schedule")}
             />
             <KpiCard
@@ -198,7 +198,7 @@ export default function ServiceOverviewPage() {
             title="ต้องจัดการก่อน"
             subtitle={attention.length > ATTENTION_LIMIT
               ? `แสดง ${ATTENTION_LIMIT} จาก ${attention.length} รายการ — ที่เหลืออยู่ในตารางเข้าบริการ`
-              : "นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายช่าง"}
+              : "นัดที่ค้าง เวลาทับกัน ชนช่วงเข้าไซต์ หรือยังไม่มอบหมายเจ้าหน้าที่"}
           >
             <ActionQueue items={queueItems} empty="ไม่มีนัดที่ติดปัญหาตอนนี้ 🎉" />
           </WorkspaceSection>
@@ -215,7 +215,7 @@ export default function ServiceOverviewPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col">ช่าง</th>
+                      <th scope="col">เจ้าหน้าที่</th>
                       <th scope="col" className="num">จำนวนนัด</th>
                       <th scope="col">ไซต์ที่ต้องเข้า</th>
                     </tr>
@@ -225,7 +225,7 @@ export default function ServiceOverviewPage() {
                       <tr key={`${row.assigneeId || "unassigned"}|${row.date}`}>
                         <th scope="row">
                           {/* ⚠️ นัดที่ไม่มีเจ้าของต้องเห็นชัดที่สุด ไม่ใช่ซ่อน */}
-                          {row.assigneeName || <span className={styles.unassigned}>ยังไม่มอบหมายช่าง</span>}
+                          {row.assigneeName || <span className={styles.unassigned}>ยังไม่มอบหมายเจ้าหน้าที่</span>}
                         </th>
                         <td className="num">
                           {row.count}

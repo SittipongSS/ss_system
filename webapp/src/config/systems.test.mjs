@@ -72,7 +72,7 @@ test('system visibility covers every supported role and sales team', () => {
   }
 });
 
-test('⭐ ฝ่ายโรงงานกับฝ่ายช่างไม่เห็นระบบของกันและกัน', () => {
+test('⭐ ฝ่ายโรงงานกับฝ่ายเจ้าหน้าที่ไม่เห็นระบบของกันและกัน', () => {
   /* 🐞 ที่ต้องมีเทสต์นี้: เดิม PC/PD/WH/QC/TS ใช้ role `staff` ร่วมกัน ⇒ ถือ
      production:* / service:* ทั้งก้อน แล้วต้องหวังให้ด่าน **ฝ่าย** กันถูกทุกจุด ·
      หลุดที่ไหนที่หนึ่ง คลัง/QC จะได้ระบบโรงงาน + ธุรกิจบริการมาโดยไม่มีใครสังเกต
@@ -103,7 +103,7 @@ test('specialized users land on the one workspace they can use', () => {
   assert.deepEqual(keysFor(warehouse), ['salesplan', 'production', 'master', 'support']);
   assert.equal(systemLandingForUser('salesplan', warehouse), '/sa/tasks');
 
-  // ช่างฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
+  // เจ้าหน้าที่ฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
   const tech = { role: 'ts', team: null, department: 'TS', extraCaps: [] };
   assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master', 'support']);
   assert.equal(systemLandingForUser('service', tech), '/service');
@@ -161,7 +161,7 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
   const disabledKeys = SYSTEM_CATALOG.filter((system) => system.disabled).map((system) => system.key);
 
   // `service` ถูกปลดออกจากลิสต์นี้ 2026-08-27 (แผนระบบธุรกิจบริการ เฟส 1 — มติผู้ใช้):
-  // ฝ่าย TS เริ่มใช้เมนู "งานวันนี้ / จัดคิวช่าง" จริงแล้ว การ์ดจึงต้องกดได้
+  // ฝ่าย TS เริ่มใช้เมนู "งานวันนี้ / จัดคิวเจ้าหน้าที่" จริงแล้ว การ์ดจึงต้องกดได้
   assert.deepEqual(disabledKeys, ['production', 'mgmt']);
 
   for (const key of disabledKeys) {

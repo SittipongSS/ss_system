@@ -358,7 +358,7 @@ export default function SurveySiteFields({
               <Input
                 value={draft.note}
                 disabled={disabled}
-                placeholder="สิ่งที่อยากให้ช่างรู้ก่อนไป (ไม่บังคับ)"
+                placeholder="สิ่งที่อยากให้เจ้าหน้าที่รู้ก่อนไป (ไม่บังคับ)"
                 aria-label="หมายเหตุของพื้นที่"
                 onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
               />

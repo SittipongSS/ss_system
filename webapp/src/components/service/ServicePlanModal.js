@@ -105,7 +105,7 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
         </label>
 
         <label className={`${styles.field} ${styles.wide}`}>
-          <span>ช่างประจำรอบ</span>
+          <span>เจ้าหน้าที่ประจำรอบ</span>
           <SearchableSelect
             value={form.assigneeId}
             onChange={(id) => {
@@ -114,7 +114,7 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
             }}
             options={technicians.map((t) => ({ value: t.id, label: t.name }))}
             placeholder="ยังไม่กำหนด"
-            ariaLabel="ช่างประจำรอบ"
+            ariaLabel="เจ้าหน้าที่ประจำรอบ"
           />
           <small>เป็นค่าตั้งต้นของนัดที่ระบบสร้างให้ · ย้ายคนรายนัดได้ที่ตาราง</small>
         </label>

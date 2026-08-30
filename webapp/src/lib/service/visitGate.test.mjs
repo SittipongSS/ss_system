@@ -31,7 +31,7 @@ test('ครบทุกข้อที่ตรวจได้ = ขึ้น�
   assert.equal(gateBlocker(items), '');
 });
 
-test('ไม่มีช่าง = จอดเป็นร่าง และบอกว่าเป็นงานของ TS', () => {
+test('ไม่มีเจ้าหน้าที่ = จอดเป็นร่าง และบอกว่าเป็นงานของ TS', () => {
   const items = evaluateVisitGate({ ...ok, assigneeId: '' }, { site });
   assert.equal(initialVisitStatus({ ...ok, assigneeId: '' }, { site }), 'draft');
   const assignee = items.find((i) => i.key === 'assignee');
@@ -92,7 +92,7 @@ test('นับผลรวมได้ครบ 4 ข้อเสมอ — จ
 
 test('รายการเหตุแยกจากประโยคเต็ม — จอที่บอกบริบทอยู่แล้วไม่ต้องอ่านขีดซ้อนสามชั้น', () => {
   const items = evaluateVisitGate({ ...ok, assigneeId: '' }, { site });
-  assert.deepEqual(gateReasons(items), ['ยังไม่มอบหมาย — เลือกช่างก่อนปล่อยเข้าคิว']);
-  assert.equal(gateBlocker(items), 'ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกช่างก่อนปล่อยเข้าคิว');
+  assert.deepEqual(gateReasons(items), ['ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยเข้าคิว']);
+  assert.equal(gateBlocker(items), 'ยังเข้าคิวไม่ได้ — ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยเข้าคิว');
   assert.deepEqual(gateReasons(evaluateVisitGate(ok, { site })), []);
 });

@@ -91,7 +91,7 @@ test('ไม่มีมาตรฐาน = ไม่มีตัวเที�
   assert.equal(rows[1].usedMl, 700);
 });
 
-test('⭐ ค่าเฉลี่ยไม่หารด้วยเดือนที่ช่างไม่ได้ไป — ไม่งั้นอ่านเป็น "ลูกค้าใช้น้อยลง"', () => {
+test('⭐ ค่าเฉลี่ยไม่หารด้วยเดือนที่เจ้าหน้าที่ไม่ได้ไป — ไม่งั้นอ่านเป็น "ลูกค้าใช้น้อยลง"', () => {
   const rows = usageVsStandard({
     zoneId: 'Z1', items, assets, visits, standardMlPerMonth: 600,
     months: 3, todayMonth: '2026-08',
