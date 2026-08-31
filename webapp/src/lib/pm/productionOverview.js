@@ -90,7 +90,10 @@ export function capacityGlance(jobs = [], lines = [], { from, to, holidays, over
   return {
     planned,
     capacity,
-    pct: capacity > 0 ? Math.round((planned / capacity) * 100) : null,
+    // ⚠️ ค่าดิบ ไม่ปัด — จอจัดรูปแบบเองด้วย `fmtPercent` (ทศนิยม 2 ตำแหน่ง)
+    // ปัดที่นี่ = ทศนิยมหายตั้งแต่ต้นทาง จอได้แค่ ".00" หลอก ๆ
+    // `null` (ไม่รู้กำลังเลย) ต้องคงเป็น null ไม่ใช่ 0 — จอแปลงเป็น "—" เอง
+    pct: capacity > 0 ? (planned / capacity) * 100 : null,
     overloadedCells,
     unknownCells,
   };

@@ -7,6 +7,7 @@
 // ⚠️ **ไม่มีตาราง event ของอุปกรณ์** โดยเจตนา — ประวัติประกอบจากของที่มีอยู่แล้ว
 //   (visit_assets + visit_items + คอลัมน์ installedAt/removedAt) ตารางที่สี่ที่ต้อง
 //   เขียนคู่ขนานกับสามตารางนั้นคือตารางที่จะไม่ตรงกับความจริงภายในเดือนเดียว
+import { fmtPercent } from '@/lib/format';
 import { ASSET_OUTCOME_LABELS } from './visitAssets';
 
 /* เหตุการณ์ของเครื่อง เรียงใหม่สุดก่อน
@@ -83,14 +84,16 @@ export function settingOutlier(asset, zoneAssets = []) {
 
   const avg = peers.reduce((sum, p) => sum + p.duty, 0) / peers.length;
   if (avg <= 0) return null;
-  const pct = Math.round((duty / avg - 1) * 100);
+  // เก็บ **ค่าดิบไม่ปัด** — ด่าน 20% ข้างล่างเป็นตรรกะ ต้องเทียบตัวเลข ไม่ใช่สตริง
+  // ที่จัดรูปแล้ว · ตัวเลขบนจอจึงจัดรูปตอนพิมพ์ด้วย fmtPercent (2 ตำแหน่ง) แทน
+  const pct = (duty / avg - 1) * 100;
   if (Math.abs(pct) < 20) return null;         // ต่างน้อยกว่า 20% = ยังอยู่ในช่วงปกติ
   return {
     pct,
     peers: peers.length,
     text: pct > 0
-      ? `เครื่องนี้พ่นถี่กว่าเครื่องอื่นในโซนเดียวกัน ${pct}%`
-      : `เครื่องนี้พ่นน้อยกว่าเครื่องอื่นในโซนเดียวกัน ${Math.abs(pct)}%`,
+      ? `เครื่องนี้พ่นถี่กว่าเครื่องอื่นในโซนเดียวกัน ${fmtPercent(pct)}`
+      : `เครื่องนี้พ่นน้อยกว่าเครื่องอื่นในโซนเดียวกัน ${fmtPercent(Math.abs(pct))}`,
   };
 }
 

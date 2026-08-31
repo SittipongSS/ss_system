@@ -4,8 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import { BarChart3, TrendingUp, Sigma } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { yoySeries, cumulativeSeries } from "@/lib/sales/performanceMath";
-import { fmtMoney, fmtMoneyCompact } from "@/lib/format";
-import { SeriesLegend } from "./shared";
+import { fmtMoney } from "@/lib/format";
+import { pctFmt, SeriesLegend } from "./shared";
 import ChartCard from "@/components/ui/ChartCard";
 import { CHART_SERIES } from "@/lib/chartTheme";
 
@@ -49,7 +49,7 @@ function labelsFor(period, year) {
 
 // กราฟแท่งกลุ่ม T/F/A + เส้นประปีก่อนซ้อนทับ. data = [{label, target, forecast, actual, lastYear}]
 function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
-  const W = 960, H = height, padL = 58, padR = 16, padT = 16, padB = 40;
+  const W = 960, H = height, padL = 110, padR = 16, padT = 16, padB = 40;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const rawMax = Math.max(1, ...data.flatMap((d) => [...SERIES.map((s) => Number(d[s.key] || 0)), Number(d.lastYear || 0)]));
   const max = niceMax(rawMax);
@@ -72,7 +72,7 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i === 0 ? "0" : "3 3"} />
-            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{fmtMoneyCompact(t)}</text>
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{fmtMoney(t)}</text>
           </g>
         ))}
         {data.map((d, gi) => {
@@ -109,7 +109,7 @@ function GroupedBarsWithLine({ data, height = 320, onHover, onLeave }) {
 
 // กราฟแท่งมีเครื่องหมาย (YoY %) — แกนศูนย์กลาง เขียวบวก/แดงลบ, เดือนไม่มีฐาน = เว้น
 function SignedBarChart({ data, height = 260, onHover, onLeave }) {
-  const W = 960, H = height, padL = 50, padR = 16, padT = 14, padB = 36;
+  const W = 960, H = height, padL = 64, padR = 16, padT = 14, padB = 36;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const rawMax = Math.max(10, ...data.map((d) => Math.abs(d.value ?? 0)));
   const max = niceMax(rawMax);
@@ -125,7 +125,7 @@ function SignedBarChart({ data, height = 260, onHover, onLeave }) {
         {[max, max / 2, 0, -max / 2, -max].map((t, i) => (
           <g key={i}>
             <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray={t === 0 ? "0" : "3 3"} />
-            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{t > 0 ? "+" : ""}{Math.round(t)}%</text>
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{t > 0 ? "+" : ""}{pctFmt(t)}</text>
           </g>
         ))}
         {data.map((d, gi) => {
@@ -156,7 +156,7 @@ function SignedBarChart({ data, height = 260, onHover, onLeave }) {
 
 // กราฟเส้นสะสม: Actual สะสม (เขียวทึบ) vs เส้นทาง Target (น้ำเงินประ) vs Actual ปีก่อน (เทาประ)
 function CumulativeChart({ cum, height = 280, onHover, onLeave }) {
-  const W = 960, H = height, padL = 58, padR = 16, padT = 14, padB = 36;
+  const W = 960, H = height, padL = 110, padR = 16, padT = 14, padB = 36;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const all = [...cum.targetCum, ...cum.actualCum, ...(cum.lastYearCum || [])].filter((v) => v != null);
   const max = niceMax(Math.max(1, ...all));
@@ -176,7 +176,7 @@ function CumulativeChart({ cum, height = 280, onHover, onLeave }) {
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="var(--border)" strokeWidth="1" strokeDasharray={i === 0 ? "0" : "3 3"} />
-            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{fmtMoneyCompact(t)}</text>
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">{fmtMoney(t)}</text>
           </g>
         ))}
         {MONTH_LABELS.map((m, i) => (
@@ -264,7 +264,7 @@ export default function PerformanceCharts({ row, lastYear, label, year, closedCo
           <div className="chart-tooltip-row">
             <span><span className="chart-tooltip-color" style={{ background: tooltip.color }} />{tooltip.series}</span>
             <span className="font-mono" style={{ fontWeight: "var(--fw-bold)" }}>
-              {tooltip.isPct ? `${tooltip.value >= 0 ? "+" : ""}${tooltip.value.toFixed(1)}%` : fmtMoney(tooltip.value)}
+              {tooltip.isPct ? `${tooltip.value >= 0 ? "+" : ""}${pctFmt(tooltip.value)}` : fmtMoney(tooltip.value)}
             </span>
           </div>
         </div>

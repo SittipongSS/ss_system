@@ -12,7 +12,7 @@ import ProductDevLines from "@/components/requests/ProductDevLines";
 import { BILLING_DOC_VOCABULARY } from "@/lib/requests/kinds/fn/billingDocTypes";
 import { lineShapeForKind, requestHasPdr, requestKindMeta } from "@/lib/master/requestTypes";
 import { billAmountFor, billFieldInit } from "@/lib/requests/billingQuotations";
-import { fmtNumber } from "@/lib/format";
+import { fmtNumber, fmtPercent } from "@/lib/format";
 import styles from "./requestForm.module.css";
 
 /* ── ช่องที่ "แก้ได้" ของคำร้อง — เขียนที่เดียว สองทางเรียกใช้ ──────────────
@@ -248,7 +248,9 @@ export function RequestBillAmountFields({
     baseAmount: base,
   });
   /* ⚠️ ทศนิยม 3 ตำแหน่ง ไม่ใช่ 2 — ยอดจริงที่ทีมส่งกันคือ 90,508.125
-     ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า */
+     ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
+     ⚠️ ใช้กับ **ยอดบาท** เท่านั้น — เปอร์เซ็นต์เดินคนละตัวจัดรูปแบบ (`fmtPercent`
+     = 2 ตำแหน่งตามกติกากลาง) เอา fmtPercent มาครอบ money เมื่อไร ยอดบาทพังไปด้วย */
   const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
 
   /* เขียนค่าคู่เสมอ — ช่องที่ผู้ใช้ไม่ได้พิมพ์ก็ต้องมีค่า ไม่งั้น payload ส่งไป
@@ -303,7 +305,7 @@ export function RequestBillAmountFields({
       {ready && (
         <small className={styles.hint}>
           ยอดเต็มตามใบ {money(base)} บาท
-          {bill.amount != null && ` · ขอ ${money(bill.percent)}% = ${money(bill.amount)} บาท`}
+          {bill.amount != null && ` · ขอ ${fmtPercent(bill.percent)} = ${money(bill.amount)} บาท`}
         </small>
       )}
       {/* 🐞 **เงียบจนกว่าจะเลือกใบ** — ฐานเป็น 0 ตอนยังไม่เลือก ⇒ ตัวคำนวณคืน

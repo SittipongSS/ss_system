@@ -9,8 +9,11 @@ import {
   paymentScheduleRows,
 } from "@/lib/sales/paymentPlan";
 import ReadableText from "@/components/ui/ReadableText";
-import { fmtMoney, NA } from "@/lib/format";
+import { fmtMoney, fmtNumber, fmtPercent, NA } from "@/lib/format";
 import styles from "./QuotationPaymentTerms.module.css";
+
+// คอลัมน์ "%" มีสัญลักษณ์อยู่ที่หัวตารางแล้ว ⇒ ในเซลล์พิมพ์ตัวเลขเปล่า 2 ตำแหน่ง
+const pctText = (value) => fmtNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
   label: index === 0 ? "มัดจำ" : "งวดสุดท้าย",
@@ -33,6 +36,8 @@ export default function QuotationInstallments({
   };
   const split = payment.type === "installment";
   const rows = paymentScheduleRows(payment);
+  // ⚠️ เก็บเป็น "ตัวเลขดิบ" — ตัวนี้เป็นตัวตัดสินสี/ข้อความเตือนด้านล่าง (Math.abs(pctSum - 100))
+  // การปัดตรงนี้คือกันขยะทศนิยมของ float ไม่ใช่การจัดรูปแบบ · จัดรูปแบบเฉพาะตอนพิมพ์
   const pctSum = split
     ? Math.round(rows.reduce((sum, row) => sum + (Number(row.percent) || 0), 0) * 100) / 100
     : 100;
@@ -100,7 +105,7 @@ export default function QuotationInstallments({
           )}
           <div className="spacer" />
           <span className="ui-badge" style={{ color: Math.abs(pctSum - 100) < 0.01 ? "var(--green)" : "var(--red)" }}>
-            รวม {pctSum}%{Math.abs(pctSum - 100) < 0.01 ? "" : " (ต้อง 100%)"}
+            รวม {fmtPercent(pctSum)}{Math.abs(pctSum - 100) < 0.01 ? "" : " (ต้อง 100%)"}
           </span>
         </div>
         <div className="premium-glass-table table-responsive">
@@ -126,9 +131,10 @@ export default function QuotationInstallments({
                     : <span className={styles.readonlyValue}>{row.label}</span>}</td>
                   <td>{split
                     ? disabled
-                      ? <span className={`${styles.readonlyValue} mono`}>{Number(row.percent) || 0}</span>
+                      ? <span className={`${styles.readonlyValue} mono`}>{pctText(row.percent)}</span>
+                      /* ⚠️ ช่องกรอกต้องได้ค่าดิบ — จัดรูปแบบใน value แล้วผู้ใช้พิมพ์ต่อไม่ได้ */
                       : <input type="number" min="0" max="100" step="0.01" className="premium-input mono" value={row.percent} onChange={(event) => updateInstallment(index, { percent: event.target.value })} />
-                    : <span className={`${styles.readonlyValue} mono`}>100</span>}</td>
+                    : <span className={`${styles.readonlyValue} mono`}>{pctText(100)}</span>}</td>
                   <td className="num mono">{fmtMoney(amounts[index]?.amount || 0)}</td>
                   <td>{split
                     ? disabled

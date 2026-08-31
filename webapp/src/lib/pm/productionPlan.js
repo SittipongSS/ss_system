@@ -231,9 +231,11 @@ export function lineLoad(jobs = [], lines = [], { from, to, holidays, overridesB
   for (const cell of map.values()) {
     // ⚠️ กำลังที่ไม่รู้ (null) → pct = null ไม่ใช่ Infinity — ช่องที่ยังไม่กรอกกำลัง
     // ต้องไม่ขึ้นแดงว่าเกิน (ดู capacityOn)
+    // ไม่ปัดที่นี่ — จอเป็นคนจัดรูป (`fmtPercent` 2 ตำแหน่ง) ถ้าปัดตรงนี้
+    // ทศนิยมบนจอจะเป็น ".00" ทุกใบทั้งที่ 18/23 = 78.26%
     cell.pct = cell.capacity == null || cell.capacity === 0
       ? null
-      : Math.round((cell.planned / cell.capacity) * 100);
+      : (cell.planned / cell.capacity) * 100;
   }
   return map;
 }

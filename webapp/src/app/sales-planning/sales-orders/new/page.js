@@ -30,7 +30,7 @@ import PendingFiles from "@/components/ui/PendingFiles";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableScroll } from "@/components/ui/Table";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
@@ -411,7 +411,9 @@ function NewSalesOrderInner() {
                       <tr key={row.seq}>
                         <td>{row.seq}</td>
                         <td>{row.label}</td>
-                        <td className="num">{row.percent}</td>
+                        {/* หัวคอลัมน์เป็น "%" อยู่แล้ว ⇒ เซลล์เป็นตัวเลขเปล่า 2 ตำแหน่ง ·
+                            ⚠️ จัดรูปแบบเฉพาะใน JSX — `plannedInstallments` ตัวเดียวกันถูกส่งขึ้น API */}
+                        <td className="num">{fmtNumber(row.percent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         <td className="num">{fmtMoney(row.amount)}</td>
                         <td>
                           <DateInput

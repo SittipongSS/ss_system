@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { Layers } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 import { carryTable } from "@/lib/sales/performanceMath";
-import { money, moneyCompact } from "./shared";
+import { money } from "./shared";
 import { NA } from "@/lib/format";
 
 // แผงทบยอดย้อนหลัง (Carry-over) — โชว์เมื่อเปิดโหมดทบยอดเท่านั้น.
@@ -13,7 +13,7 @@ import { NA } from "@/lib/format";
 // ในเดือนนั้นถ้าจะล้างยอดทบให้หมด. กราฟแท่ง = ±รายเดือน, เส้น = ทบสะสม.
 
 function CarryChart({ rows, height = 240 }) {
-  const W = 960, H = height, padL = 58, padR = 16, padT = 14, padB = 34;
+  const W = 960, H = height, padL = 110, padR = 16, padT = 14, padB = 34;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const vals = rows.flatMap((r) => [r.diff, r.cumAfter]).filter((v) => v != null).map(Math.abs);
   const max = Math.max(1, ...vals);
@@ -27,8 +27,8 @@ function CarryChart({ rows, height = 240 }) {
     <div style={{ width: "100%", overflowX: "auto" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="กราฟทบยอดรายเดือน" style={{ display: "block", minWidth: 420 }}>
         <line x1={padL} x2={W - padR} y1={zeroY} y2={zeroY} stroke="var(--border)" strokeWidth="1" />
-        <text x={padL - 8} y={y(max) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">+{moneyCompact(max)}</text>
-        <text x={padL - 8} y={y(-max) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">-{moneyCompact(max)}</text>
+        <text x={padL - 8} y={y(max) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">+{money(max)}</text>
+        <text x={padL - 8} y={y(-max) + 4} textAnchor="end" fontSize="11" fill="var(--text-3)" className="mono">-{money(max)}</text>
         {rows.map((r, i) => {
           const x = padL + i * groupW + (groupW - barW) / 2;
           return (

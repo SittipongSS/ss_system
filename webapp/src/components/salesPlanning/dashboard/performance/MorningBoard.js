@@ -144,7 +144,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
           <div className="flex items-center gap-2">
             <ProgressBar stat={s} />
             <span className="mono" style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: "var(--text-2)" }}>
-              {s.pct == null ? "–" : `${Math.round(s.pct)}%`}
+              {pctFmt(s.pct)}
             </span>
           </div>
         </td>
@@ -154,7 +154,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, closedCount, yt
             className={cellClass("num mono")}
             style={{ color: y.yoy == null ? "var(--text-3)" : y.yoy >= 0 ? "var(--green)" : "var(--red)", fontWeight: "var(--fw-semibold)" }}
           >
-            {y.yoy == null ? "–" : `${y.yoy >= 0 ? "+" : ""}${y.yoy.toFixed(1)}%`}
+            {y.yoy == null ? "–" : `${y.yoy >= 0 ? "+" : ""}${pctFmt(y.yoy)}`}
           </td>
         )}
         {y && (

@@ -31,12 +31,16 @@ export const isMyOpenTask = (task, userId) => Boolean(userId)
   && isOpenStatus(task?.status)
   && task?.assigneeId === userId;
 
-// %เสร็จ (live badge) = สัดส่วนงานที่ done จากงานที่ไม่ถูกยกเลิก.
+/* %เสร็จ (live badge) = สัดส่วนงานที่ done จากงานที่ไม่ถูกยกเลิก.
+   ⚠️ **คืนค่าดิบ ไม่ปัด** — จอเป็นคนจัดรูปแบบด้วย `fmtPercent` (ทศนิยม 2 ตำแหน่ง
+   ตามมติ "เปอร์เซ็นต์บนจอทุกตัว = ทศนิยม 2 ตำแหน่ง") · ถ้าปัดที่นี่ ทศนิยมหายไป
+   ตั้งแต่ต้นทาง แล้วจอจะได้แค่ ".00" หลอก ๆ ที่ไม่ใช่ตัวเลขจริง
+   (ผู้เรียกมีที่เดียว: /api/mgmt/overview → หน้า /mgmt ซึ่งจัดรูปแบบก่อนพิมพ์ทั้งสองจุด) */
 export function completionPercent(tasks) {
   const counted = (tasks || []).filter((t) => t.status !== 'cancelled');
   if (!counted.length) return 0;
   const done = counted.filter((t) => isDoneStatus(t.status)).length;
-  return Math.round((done / counted.length) * 100);
+  return (done / counted.length) * 100;
 }
 
 // นับจำนวนงานตามสถานะ (ใช้โดนัท/KPI หน้า Overview).

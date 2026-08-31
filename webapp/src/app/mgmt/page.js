@@ -8,7 +8,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
-import { naText } from "@/lib/format";
+import { fmtPercent, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 const nowYear = new Date().getFullYear();
@@ -69,7 +69,7 @@ export default function MgmtOverviewPage() {
           <Select value={year} onChange={(e) => setYear(Number(e.target.value))} className="premium-input" style={{ width: 120 }}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
           </Select>
-          <div className="pill ok">{percent}% เสร็จ</div>
+          <div className="pill ok">{fmtPercent(percent)} เสร็จ</div>
         </div>
       )}
     >
@@ -79,7 +79,7 @@ export default function MgmtOverviewPage() {
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
             <KpiCard label="ทั้งหมด" value={data?.total || 0} tone="neutral" icon={ListTodo} />
-            <KpiCard label="เสร็จสมบูรณ์" value={counts.done} hint={`${percent}%`} tone="success" icon={CheckCircle2} />
+            <KpiCard label="เสร็จสมบูรณ์" value={counts.done} hint={fmtPercent(percent)} tone="success" icon={CheckCircle2} />
             <KpiCard label="กำลังดำเนิน" value={counts.in_progress} tone="info" icon={Clock3} />
             <KpiCard label="รอเริ่ม" value={counts.todo} tone="neutral" icon={Circle} />
             <KpiCard label="งานด่วน" value={(data?.urgent || []).length} tone="danger" icon={AlertTriangle} />
@@ -93,6 +93,8 @@ export default function MgmtOverviewPage() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {data.progressByDept.map((d) => {
+                    // ⚠️ ตัวเลขดิบสำหรับ CSS width ของแถบเท่านั้น — ไม่ได้พิมพ์ให้คนอ่าน
+                    // (ตัวเลขที่คนอ่านคือ {d.done}/{d.total} ข้าง ๆ) จึงไม่ต้องผ่าน fmtPercent
                     const pct = d.total ? Math.round((d.done / d.total) * 100) : 0;
                     return (
                       <div key={d.code} style={{ display: "flex", alignItems: "center", gap: 10 }}>
