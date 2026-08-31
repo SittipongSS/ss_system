@@ -602,3 +602,69 @@ test('ล้างช่วงครอบ หรือกรอกมาข้�
   assert.equal(installmentActionError(row, 'coverage', SA, { coversFrom: '2026-09-01' }), null);
   assert.equal(installmentActionError(row, 'coverage', SA, { coversTo: '2026-11-30' }), null);
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ใบงานบริการ: ไม่มีช่วงครอบ = รับรองไม่ได้ (มติผู้ใช้ 2026-08-31)
+   ═══════════════════════════════════════════════════════════════════════ */
+// `FN_USER` ประกาศไว้ข้างบนแล้ว — ใช้ตัวเดิม
+const svcReported = (extra = {}) => ({ status: 'reported', frozenAt: 'x', amount: 100, ...extra });
+
+/* 🔴 **ปิดกับดัก ไม่ใช่เพิ่มขั้นตอน** — เจ้าของช่องช่วงครอบเปลี่ยนมือเป็นบัญชีทันทีที่
+   รับรอง ⇒ ของเดิมรับรองงวดที่ช่วงครอบว่างได้ แล้วฝ่ายขายที่รู้ข้อมูลกรอกไม่ได้อีกเลย
+   วัดบนฐานจริง 31/08: SO บริการ 8 ใบตกร่องนี้กันหมด */
+test('⭐ ใบงานบริการ: งวดที่ยังไม่มีช่วงครอบ บัญชีรับรองไม่ได้', () => {
+  const err = installmentActionError(svcReported(), 'confirm', FN_USER, { serviceRounds: true });
+  assert.match(err, /ต้องระบุช่วงครอบบริการของงวดก่อน/);
+  // ครบทั้งสองด้านถึงผ่าน
+  assert.match(
+    installmentActionError(svcReported({ coversFrom: '2026-09-01' }), 'confirm', FN_USER, { serviceRounds: true }),
+    /ช่วงครอบ/,
+  );
+  assert.equal(
+    installmentActionError(
+      svcReported({ coversFrom: '2026-09-01', coversTo: '2026-09-30' }), 'confirm', FN_USER, { serviceRounds: true },
+    ),
+    null,
+  );
+});
+
+/* ⚠️ ค่าที่กำลังกรอกในคำขอเดียวกันต้องนับด้วย — บัญชีกรอกช่วงครอบพร้อมกดรับรองได้ */
+test('ส่งช่วงครอบมาในคำขอเดียวกับที่กดรับรอง = ผ่าน', () => {
+  assert.equal(
+    installmentActionError(svcReported(), 'confirm', FN_USER, {
+      serviceRounds: true, coversFrom: '2026-09-01', coversTo: '2026-09-30',
+    }),
+    null,
+  );
+});
+
+/* ⚠️ ใบสายสินค้าไม่มีช่วงครอบให้กรอก — ห้ามพลอยโดนบล็อก */
+test('ใบที่ไม่ใช่งานบริการ รับรองได้ตามเดิม', () => {
+  assert.equal(installmentActionError(svcReported(), 'confirm', FN_USER, { serviceRounds: false }), null);
+});
+
+/* 🪤 **ไม่ส่ง `serviceRounds` = ไม่บล็อก** (fail-open โดยตั้งใจ) — ต่างจากด่านอื่นใน
+   ระบบที่ fail-closed เพราะบล็อกทุกใบเมื่อผู้เรียกลืมส่ง = หยุดการรับเงินทั้งบริษัท */
+test('🪤 ผู้เรียกที่ไม่ส่งบริบทใบ ต้องไม่ทำให้ทั้งระบบรับเงินไม่ได้', () => {
+  assert.equal(installmentActionError(svcReported(), 'confirm', FN_USER, {}), null);
+});
+
+/* ⚠️ ตีกลับไม่ติดข้อนี้ — งวดที่ข้อมูลไม่ครบยิ่งต้องตีกลับได้ */
+test('ตีกลับยังทำได้แม้ยังไม่มีช่วงครอบ', () => {
+  assert.equal(
+    installmentActionError(svcReported(), 'reject', FN_USER, { serviceRounds: true, reason: 'x'.repeat(12) }),
+    null,
+  );
+});
+
+/* ทางออกของใบที่ตกร่องไปแล้ว — บัญชีถอนคำรับรอง แล้วฝ่ายขายกรอกช่วงครอบได้อีกครั้ง */
+test('⭐ ถอนคำรับรองแล้วฝ่ายขายกลับมากรอกช่วงครอบได้', () => {
+  const SA = { id: 'U-AC', role: 'ac', department: 'SA' };
+  const confirmed = { status: 'confirmed', frozenAt: 'x', amount: 100 };
+  // ตอนยังรับรองอยู่ — ฝ่ายขายแตะไม่ได้
+  assert.match(installmentActionError(confirmed, 'coverage', SA, {}), /เฉพาะฝ่ายบัญชี/);
+  // บัญชีถอนได้ (ต้องมีเหตุผล)
+  assert.equal(installmentActionError(confirmed, 'unconfirm', FN_USER, { reason: 'x'.repeat(12) }), null);
+  // ถอยเป็น reported แล้วฝ่ายขายกรอกได้
+  assert.equal(installmentActionError(svcReported(), 'coverage', SA, { coversFrom: '2026-09-01', coversTo: '2026-09-30' }), null);
+});

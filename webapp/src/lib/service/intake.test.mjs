@@ -4,7 +4,7 @@
 // ใบสั่งขายมาถึงฝ่าย TS · และรูที่สอง 25 จุดที่ยังวิ่งอยู่ทั้งที่รอบจบไปแล้ว
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindQueue, intakeCounts, orderBusinessLine, orderReceivable, planQueue, visitQueue } from './intake.js';
+import { bindQueue, intakeCounts, orderBusinessLine, orderReadiness, orderReceivable, planQueue, visitQueue } from './intake.js';
 import { isLiveVisit } from './visitStatus.js';
 
 const projects = new Map([
@@ -159,4 +159,44 @@ test('ตัวนับบนแท็บนับถังที่ตอบ�
     visit: [],
   });
   assert.deepEqual(counts, { bind: 2, plan: 1, visit: 0, unknownLine: 1 });
+});
+
+/* ── ชิปความพร้อมของใบ (PR-C · 2026-08-31) ──────────────────────────────────
+   TS ต้องรู้ตั้งแต่ตอนรับงานว่าใบนี้พอจัดสรรแล้วจะเดินต่อได้ไหม
+   ⚠️ **ไม่ใช่ด่าน** — ด่านจริงคือ `visitGate` ตอนนัดจะขึ้นตาราง */
+test('ความพร้อมของใบ: สัญญาที่มีผล + จ่ายถึง', () => {
+  const order = { id: 'SO1', serviceContractId: 'CT1' };
+  const ctx = {
+    contractsById: new Map([['CT1', { id: 'CT1', contractNo: 'CT-SR-26080001-0', status: 'signed' }]]),
+    installmentsByOrderId: new Map([['SO1', [
+      { status: 'confirmed', coversFrom: '2026-08-01', coversTo: '2026-09-30', dueDate: '2026-08-01' },
+    ]]]),
+    todayIso: '2026-09-10',
+  };
+  const r = orderReadiness(order, ctx);
+  assert.equal(r.hasContract, true);
+  assert.equal(r.contractNo, 'CT-SR-26080001-0');
+  assert.equal(r.paidThrough, '2026-09-30');
+  assert.equal(r.coveredToday, true);
+});
+
+/* ⚠️ สัญญาที่ยังไม่ผ่านการรับรอง **ไม่นับว่ามี** — ป้ายที่บอกว่ามีสัญญาทั้งที่ยังใช้ไม่ได้
+   จะทำให้ TS วางแผนบนของที่ยังไม่ผูกพัน */
+test('สัญญาที่ยังไม่ signed ไม่นับว่ามี · ไม่มีงวดรับรอง = ยังไม่จ่ายถึงไหน', () => {
+  const ctx = {
+    contractsById: new Map([['CT1', { id: 'CT1', contractNo: 'X', status: 'awaiting_approval' }]]),
+    installmentsByOrderId: new Map([['SO1', [{ status: 'reported', coversTo: '2026-12-31' }]]]),
+    todayIso: '2026-09-10',
+  };
+  const r = orderReadiness({ id: 'SO1', serviceContractId: 'CT1' }, ctx);
+  assert.equal(r.hasContract, false);
+  assert.equal(r.contractNo, null);
+  assert.equal(r.paidThrough, null, '"แจ้งแล้ว" ไม่นับ — ต้องบัญชีรับรอง');
+  assert.equal(r.coveredToday, false);
+});
+
+test('ใบที่ไม่ผูกสัญญาเลย = ยังไม่พร้อม แต่ไม่ระเบิด', () => {
+  const r = orderReadiness({ id: 'SO1' }, {});
+  assert.equal(r.hasContract, false);
+  assert.equal(r.paidThrough, null);
 });

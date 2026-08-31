@@ -29,7 +29,8 @@ import {
   visitWarnings,
   routeZoneSplit,
 } from "@/lib/service/rounds";
-import { evaluateVisitGate, gatePassed, gateReasons } from "@/lib/service/visitGate";
+import { evaluateVisitGate, gateBlockedItems, gatePassed } from "@/lib/service/visitGate";
+import { gateContextForSite } from "@/lib/service/gateContext";
 import { isDraftVisit } from "@/lib/service/visitStatus";
 import {
   ALL_TEAMS,
@@ -68,6 +69,7 @@ export default function ServiceSchedulePage() {
   const [visits, setVisits] = useState([]);
   const [sites, setSites] = useState([]);
   const [workload, setWorkload] = useState({});
+  const [gateContext, setGateContext] = useState({});
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -107,6 +109,9 @@ export default function ServiceSchedulePage() {
       setSites(Array.isArray(data?.sites) ? data.sites : []);
       // ภาระรายไซต์ (เครื่อง/แพ็ค) — server นับมาให้แล้ว ไม่ต้องไล่ยิงรายไซต์
       setWorkload(data?.workload && typeof data.workload === "object" ? data.workload : {});
+      /* ⚠️ บริบทด่านต้องมาคู่กับนัดเสมอ — ไม่มี = ทุกนัดขึ้นว่าติด ซึ่งดังพอให้รู้ตัว
+         (ดีกว่าปล่อยผ่านเงียบ ๆ แล้วส่งคนไปที่ที่ยังไม่จ่าย) */
+      setGateContext(data?.gateContext && typeof data.gateContext === "object" ? data.gateContext : {});
     } catch (e) {
       // ⚠️ ห้ามกลืน error แล้วโชว์ตารางเปล่า — "โหลดพัง" กับ "สัปดาห์นี้ไม่มีนัด"
       // หน้าตาเหมือนกันจนแยกไม่ออก แล้วเจ้าหน้าที่จะเชื่อว่าตัวเองว่าง
@@ -341,7 +346,9 @@ export default function ServiceSchedulePage() {
             const rows = drafts
               .map((visit) => {
                 const site = sitesById.get(visit.siteId);
-                const gate = evaluateVisitGate(visit, { site });
+                /* ⭐ บริบทด่านมาจาก API (PR-C) — จอไม่คิดเงื่อนไขเอง ใช้ตัวประเมิน
+                   ตัวเดียวกับ server · ไม่มีบริบท = ด่านตอบว่าติด ซึ่งถูกแล้ว */
+                const gate = evaluateVisitGate(visit, gateContextForSite(gateContext, visit.siteId, { site }));
                 return { visit, site, gate, ready: gatePassed(gate) };
               })
               .filter((row) => (bucket === "ready" ? row.ready : !row.ready));
@@ -359,8 +366,15 @@ export default function ServiceSchedulePage() {
                       <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
                         <b>{site?.name || visit.siteId}</b>
                         <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
+                        {/* ⭐ บอก **เจ้าของ** ของแต่ละเหตุด้วย (PR-C) — คนจัดคิวไม่ใช่คนแก้
+                            เกือบทุกข้อ (สัญญา = SA · เงิน = SA→FN) ⇒ ไม่บอกว่าใครต้องแก้
+                            เท่ากับโยนงานให้คนที่ทำอะไรไม่ได้ แล้วใบค้างในคิวเงียบ ๆ */}
                         <span className={styles.queueReason}>
-                          {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
+                          {ready
+                            ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว"
+                            : gateBlockedItems(gate)
+                              .map((i) => (i.owner ? `${i.owner}: ${i.reason}` : i.reason))
+                              .join(" · ")}
                         </span>
                       </button>
                     </li>
@@ -545,6 +559,9 @@ export default function ServiceSchedulePage() {
         sites={sites}
         technicians={technicians}
         defaults={formDefaults}
+        /* ⭐ บริบทด่าน ①② หั่นตามไซต์ของนัดที่กำลังแก้ — โมดัลประเมินสดตอนคนเปลี่ยน
+           วัน/ผู้รับผิดชอบ ด้วยตัวประเมินตัวเดียวกับ server */
+        gateContext={gateContextForSite(gateContext, formVisit?.siteId || formDefaults?.siteId)}
         onClose={() => { setFormVisit(undefined); setFormDefaults(null); }}
         onSave={saveVisit}
       />

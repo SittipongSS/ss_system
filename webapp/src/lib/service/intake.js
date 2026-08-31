@@ -14,6 +14,7 @@
 import { businessDate } from '@/lib/businessDate';
 import { isBusinessLine } from '@/lib/master/businessLines';
 import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
+import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
 
@@ -57,7 +58,27 @@ export const orderReceivable = (order) => order?.status === 'approved' && !order
 
    ⚠️ "ยังไม่ผูก" เปลี่ยนนิยามจาก **"บรรทัดไม่มี term"** เป็น **"จัดสรรยังไม่ครบจำนวน"**
       (mig 0312 ปลด UNIQUE ของบรรทัดแล้ว — บรรทัดเดียวลงได้หลายโซน) */
-export function bindQueue({ orders = [], lines = [], terms = [], projectsById, dealsById } = {}) {
+/* ความพร้อมของใบสำหรับงานบริการ — ตอบสองคำถามที่ TS ถามบ่อยที่สุดตอนรับงาน:
+   "ใบนี้มีสัญญายัง" กับ "จ่ายถึงเมื่อไร"
+   ⚠️ **ไม่ใช่ด่าน** — ด่านจริงคือ `visitGate` ตอนนัดจะขึ้นตาราง · ที่นี่แค่บอกล่วงหน้า
+      ให้ TS ทวงได้ตั้งแต่ยังไม่เสียเวลาจัดสรร */
+export function orderReadiness(order, { contractsById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate() } = {}) {
+  const pick = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
+  const contract = order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
+  const rows = pick(installmentsByOrderId, order?.id) || [];
+  return {
+    contractNo: contract && contract.status === 'signed' ? (contract.contractNo || null) : null,
+    hasContract: !!(contract && contract.status === 'signed'),
+    paidThrough: paidThrough(rows),
+    coveredToday: coversDate(rows, todayIso),
+  };
+}
+
+export function bindQueue({
+  orders = [], lines = [], terms = [], projectsById, dealsById,
+  // ⭐ บริบทสัญญา/เงินของใบ (PR-C) — ใช้ทำชิปบอกความพร้อมบนการ์ด
+  contractsById = new Map(), installmentsByOrderId = new Map(), todayIso = businessDate(),
+} = {}) {
   const allocated = allocatedByLine(terms);
   const linesByOrder = new Map();
   for (const line of lines) {
@@ -92,6 +113,11 @@ export function bindQueue({ orders = [], lines = [], terms = [], projectsById, d
       remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
       fg,
       lines: pending,
+      /* ⭐ ชิปความพร้อมของใบ (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้พอจัดสรร
+         แล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอด่านตอนจัดคิวทีหลัง
+         ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ด่านจริงอยู่ที่ `visitGate` ตอนขึ้นตาราง
+            ⇒ ใบที่ยังไม่พร้อมก็ยัง **จัดสรรลงโซนได้** (งานคนละขั้นกัน) */
+      readiness: orderReadiness(order, { contractsById, installmentsByOrderId, todayIso }),
     };
     if (line === 'SERVICE') rows.push(row);
     else if (!line) unknownLine.push(row);

@@ -7,6 +7,7 @@ import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
+import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
 import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 import { siteWorkload } from '@/lib/service/visitLoad';
@@ -70,7 +71,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       });
     }
 
-    return ok({ visits, sites: [...sites.values()], workload });
+    /* ⭐ บริบทของด่าน ①② (PR-C) — ส่งไปให้จอคำนวณด่านด้วย **ตัวประเมินตัวเดียวกับ
+       server** แทนที่จะให้จอเดาเงื่อนไขเอง · จอจัดคิวต้องประเมินสดตอนคนเปลี่ยนวัน/
+       ผู้รับผิดชอบในโมดัล จึงส่งข้อมูลไป ไม่ใช่ส่งผลสำเร็จรูปมาก้อนเดียว
+       🪤 **ซ้อนกับการโหลด zones/terms/orders ข้างบนที่ใช้คำนวณภาระ** — ของข้างบน
+          เลือกมาไม่ครบสำหรับด่าน (ไม่มีวันของ term · ไม่มี serviceContractId)
+          ⇒ รอบนี้ยอมยิงซ้ำเพื่อให้ด่านถูกก่อน · ยุบเป็นก้อนเดียวได้ถ้าเจอว่าหน้านี้หนัก */
+    const gateContext = await loadVisitGateContext(supabase, siteIds);
+
+    return ok({ visits, sites: [...sites.values()], workload, gateContext });
   } catch (e) {
     return fail(e.message, 500);
   }
@@ -102,10 +111,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
        ⚠️ ไม่ใช่ "สร้างเป็นร่างเสมอแล้วให้คนมากดปล่อยทีละใบ" — รอบบริการที่มีเจ้าหน้าที่ประจำ
        และวันอยู่ในช่วงเข้าได้ ต้องไหลผ่านเอง ไม่งั้นกติกานี้กลายเป็นแรงเสียดทานรายวัน
        ⚠️ ผู้เรียกกำหนดสถานะเองไม่ได้ — ด่านเป็นคนตัดสิน (client ส่ง status มาก็ถูกทับ) */
+    const gateCtx = await loadVisitGateContext(supabase, [value.siteId]);
     const row = {
       id: genId('SVV'),
       ...value,
-      status: initialVisitStatus(value, { site }),
+      /* ⭐ ด่าน ①② ตรวจจริงตั้งแต่ PR-C ⇒ ต้องป้อนบริบท ไม่งั้นทุกใบเกิดเป็นร่าง */
+      status: initialVisitStatus(value, gateContextForSite(gateCtx, value.siteId, { site })),
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
