@@ -21,7 +21,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { apiCache } from "@/lib/apiCache";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
 import { productMetaText, indexProducts } from "@/lib/sahamit/productMeta";
-import { fmtDate, fmtMoneyCompact, fmtNumber, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
@@ -940,7 +940,8 @@ export default function PoDetailPage() {
                       {settleData.quotations.map((q) => (
                         <a key={q.id} href={`/sa/quotations/${q.id}`} style={{ color: "var(--accent)", fontSize: "var(--fs-5)" }}>
                           <span className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{q.quoteNumber}</span>
-                          {" · "}{fmtMoneyCompact(q.totalAmount)}
+                          {/* ยอดเต็มหลัก — คนเอาไปเทียบกับใบเสนอราคาจริง ย่อแล้วเทียบไม่ได้ */}
+                          {" · "}{fmtMoney(q.totalAmount)}
                           {" · "}{q.approvalStatus === "approved" ? "เจ้าของดีลเซ็นแล้ว" : "รอเจ้าของดีลเซ็น"}
                           {" →"}
                         </a>
@@ -998,7 +999,7 @@ export default function PoDetailPage() {
                                 >
                                   {ln.candidates.map((c) => (
                                     <option key={c.id} value={c.id}>
-                                      {c.title} · คาดปิด {naText(c.forecastMonth)} · {fmtMoneyCompact(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
+                                      {c.title} · คาดปิด {naText(c.forecastMonth)} · {fmtMoney(c.projectValue)}{c.id === ln.suggestedDealId ? " (แนะนำ)" : !c.match ? " · ไม่ตรงสินค้า" : ""}
                                     </option>
                                   ))}
                                   <option value="new">— ไม่มีดีล FC (สินค้านอก forecast — เข้าดีลรวมเลย) —</option>

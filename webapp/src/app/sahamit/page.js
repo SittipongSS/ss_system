@@ -9,7 +9,7 @@ import Tabs from "@/components/ui/Tabs";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
-import { fmtNumber, fmtMoneyCompact, naText } from "@/lib/format";
+import { fmtNumber, fmtMoney, fmtPercent, naText } from "@/lib/format";
 import { dashboardKpis, categoryOptions, volumeOptions, yearOptions, fgCodeFilterSet, filterRoundsByFg, filterPosByFg } from "@/lib/sahamit/dashboard";
 import DashboardCharts from "@/components/sahamit/DashboardCharts";
 import FcRoundsView from "@/components/sahamit/FcRoundsView";
@@ -97,7 +97,8 @@ export default function SahamitOverview() {
     [rounds, pos, coverages, products, unit, cats, vols, skus, years]);
 
   const latestRound = rounds.reduce((m, r) => Math.max(m, r.roundNo || 0), 0);
-  const fmtTotal = (n) => (unit === "value" ? fmtMoneyCompact(n) : fmtNumber(n));
+  // มูลค่าโชว์เต็มหลักเสมอ (ไม่ย่อ M/K) — การ์ด KPI ย่อฟอนต์ให้เองตามความยาว
+  const fmtTotal = (n) => (unit === "value" ? fmtMoney(n) : fmtNumber(n));
 
   // PO follow-up (ยึด pos ทั้งหมด — งานติดตามไม่ผูกกับตัวกรองมุมมอง)
   const followUp = pos.filter((p) => ["open", "partial"].includes(poRollupStatus(p)));
@@ -123,7 +124,8 @@ export default function SahamitOverview() {
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
             <KpiCard label={`FC ตามแผน (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.fcTotal)} tone="info" icon={LineChart} hint={latestRound ? `ล่าสุดรอบ #${latestRound}` : "ยังไม่มีรอบ"} onClick={() => router.push("/sahamit/forecast")} />
             <KpiCard label={`PO สั่งจริง (${unit === "value" ? "฿" : "ชิ้น"})`} value={fmtTotal(kpi.poTotal)} tone="accent" icon={ShoppingCart} onClick={() => router.push("/sahamit/po")} />
-            <KpiCard label="ครอบคลุม (PO ÷ FC)" value={`${kpi.coveragePct}%`} tone={kpi.coveragePct >= 90 ? "success" : "warning"} icon={Target} />
+            {/* kpi.coveragePct = ค่าดิบไม่ปัดจาก lib — จัดรูปแบบตอนพิมพ์, ส่วนสีการ์ดยังเทียบตัวเลขดิบกับ 90 */}
+            <KpiCard label="ครอบคลุม (PO ÷ FC)" value={fmtPercent(kpi.coveragePct)} tone={kpi.coveragePct >= 90 ? "success" : "warning"} icon={Target} />
             <KpiCard label="จุดที่ต้องตาม" value={kpi.alertCount} tone={kpi.alertCount ? "danger" : "success"} icon={AlertCircle} hint="รอ PO + PO ไม่ครบ + นอกแผน" onClick={() => router.push("/sahamit/reconcile")} />
           </div>
           {/* Status badges */}

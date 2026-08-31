@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import InstallmentConfirmDialog from "./InstallmentConfirmDialog";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
@@ -417,7 +417,7 @@ export default function SalesOrderPaymentPanel({
                     {single ? null : <td className={styles.seqCol}>{row.seq}</td>}
                     <td>
                       <strong>{row.label}</strong>
-                      {single ? null : <small>{row.percent}%</small>}
+                      {single ? null : <small>{fmtPercent(row.percent)}</small>}
                       {/* ⭐ คำร้องขอเอกสารที่ครอบงวดนี้ (B-5) — โชว์ **เลขที่เอกสารที่บัญชี
                           ออกให้จริง** ไม่ใช่แค่เลขคำร้อง เพราะสิ่งที่ SA เอาไปคุยกับลูกค้า
                           คือเลขใบวางบิล · ตามกลับไม่เจอ = คำร้องถูกลบ ต้องบอกตรง ๆ */}

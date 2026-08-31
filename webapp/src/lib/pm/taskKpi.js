@@ -30,8 +30,12 @@ export function inPeriod(task, from, to) {
   return dates.some((d) => d >= from && d <= to);
 }
 
+/* คืน **ค่าดิบ ไม่ปัด** — จอเป็นคนจัดรูปแบบ (fmtPercent = 2 ตำแหน่ง)
+   ⚠️ ปัดที่นี่แล้วจอเติม ".00" กลับเข้าไป จะได้ "67.00%" จาก 8/12 ซึ่งอ้างความ
+   ละเอียดที่ไม่มีอยู่จริง — ของจริงคือ 66.67% · `score` ด้านล่างยังเป็นจำนวนเต็ม
+   เพราะ Math.round ครอบผลรวมอยู่แล้ว */
 export function pct(n, d) {
-  return d > 0 ? Math.round((n / d) * 100) : 0;
+  return d > 0 ? (n / d) * 100 : 0;
 }
 
 export function emptyPerson(user) {

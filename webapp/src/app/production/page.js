@@ -32,7 +32,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtDayMonth, fmtNumber, naText, NA } from "@/lib/format";
+import { fmtDayMonth, fmtNumber, fmtPercent, naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 const OPEN_STATUSES = "draft,planned,in_progress";
@@ -190,8 +190,10 @@ export default function ProductionOverviewPage() {
             />
             <KpiCard
               label="กำลังผลิตสัปดาห์นี้"
-              /* ⚠️ ไม่รู้ ≠ 0 — ไลน์ที่ยังไม่กรอกกำลังต้องขึ้น "—" ไม่ใช่ 0% */
-              value={glance.pct == null ? "—" : `${glance.pct}%`}
+              /* ⚠️ ไม่รู้ ≠ 0 — ไลน์ที่ยังไม่กรอกกำลังต้องขึ้น "—" ไม่ใช่ 0%
+                 ⇒ ต้องเช็ก null ก่อนเสมอ ห้ามส่งเข้า fmtPercent ตรง ๆ เพราะข้างในมี
+                 `Number(x) || 0` ที่จะกลืน null เป็น "0.00%" */
+              value={glance.pct == null ? "—" : fmtPercent(glance.pct)}
               icon={Gauge}
               tone={glance.overloadedCells > 0 ? "danger" : "success"}
               hint={glance.overloadedCells > 0
@@ -248,7 +250,8 @@ export default function ProductionOverviewPage() {
                         <td className="num">
                           {/* ยังไม่กรอกกำลัง = "—" ไม่ใช่ 0 (ดู capacityOn) */}
                           {row.capacity == null ? "—" : fmtNumber(row.capacity)}
-                          {row.pct != null && <span className={styles.sub}>{row.pct}%</span>}
+                          {/* คงเงื่อนไข `!= null` ไว้ — ไลน์ที่ยังไม่กรอกกำลังต้องไม่มีบรรทัด % โผล่มาเป็น "0.00%" */}
+                          {row.pct != null && <span className={styles.sub}>{fmtPercent(row.pct)}</span>}
                         </td>
                         <td>
                           {row.jobs.length === 0 ? (

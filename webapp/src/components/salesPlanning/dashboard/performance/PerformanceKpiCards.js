@@ -58,7 +58,7 @@ export default function PerformanceKpiCards({ row, lastYear, label, year, closed
     {
       icon: <ArrowUpRight size={18} />,
       label: `การเติบโต YoY (${through})`,
-      value: yoy == null ? "–" : `${yoy >= 0 ? "+" : ""}${yoy.toFixed(1)}%`,
+      value: yoy == null ? "–" : `${yoy >= 0 ? "+" : ""}${pctFmt(yoy)}`,
       hint: yoy == null ? `ไม่มียอดปี ${year - 1} ช่วงเดียวกัน` : `เทียบปี ${year - 1} เดือนเดียวกัน`,
       color: yoy == null ? undefined : yoy >= 0 ? "var(--green)" : "var(--red)",
     },

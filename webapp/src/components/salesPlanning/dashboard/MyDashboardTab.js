@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import {
   Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
 } from "lucide-react";
-import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyCompact, fmtPercent, NA } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
 import { businessDate } from "@/lib/businessDate";
 import Button from "@/components/ui/Button";
@@ -149,11 +149,11 @@ export default function MyDashboardTab({ month, allMonths = false }) {
               ช่อง % อีกใบจึงต้องย้ายให้ช่องเป้ากลับไปโชว์ "ยอดเป้า" ไม่งั้นเลขซ้ำกันสองที่ */}
           <Metric
             icon={<Target />} label={allMonths ? `เป้า${scopeShort}` : `เป้า ${scopeShort}`}
-            value={hasTarget ? fmtMoneyCompact(target) : NA}
+            value={hasTarget ? fmtMoney(target) : NA}
             note={hasTarget ? `เป้าของ${scopeLabel}` : "ยังไม่ตั้งเป้างวดนี้"}
           />
           <Metric
-            icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoneyCompact(actual)}
+            icon={<CheckCircle2 />} label="ยอดปิดได้" value={fmtMoney(actual)}
             /* ⚠️ ไม่มีเป้า = ไม่มีอะไรให้เทียบ ⇒ บอกงวดแทน ห้ามเขียน "ขาดอีก" จากเป้า 0
                (เป้า 0 กับ "ยังไม่ตั้งเป้า" คนละเรื่อง — ดู empty-value-rule) */
             note={!hasTarget ? `ปิดได้ใน${scopeLabel}`
@@ -162,14 +162,14 @@ export default function MyDashboardTab({ month, allMonths = false }) {
           />
           <Metric
             icon={<Percent />} label="% ที่ปิดได้"
-            value={hasTarget ? fmtPercent(targetPct, 0) : NA}
+            value={hasTarget ? fmtPercent(targetPct) : NA}
             note={hasTarget ? "ยอดปิดได้ ÷ เป้า" : "ยังไม่ตั้งเป้า — ไม่มีตัวหาร"}
             tone={hasTarget && targetPct >= 100 ? "good" : undefined}
           />
           {/* ⭐ ยุบ "ดีลที่เปิดอยู่" กับ "Pipeline" เป็นใบเดียว — สองใบนั้นพูดถึงกองเดียวกัน
               (จำนวนใบ กับ มูลค่าของใบชุดนั้น) การแยกเป็นสองช่องกินที่โดยไม่เพิ่มคำตอบ */}
           <Metric
-            icon={<Handshake />} label="ดีลที่เปิด" value={fmtMoneyCompact(data?.pipelineValue || 0)}
+            icon={<Handshake />} label="ดีลที่เปิด" value={fmtMoney(data?.pipelineValue || 0)}
             note={`${data?.openDealsCount || 0} ดีลที่ยังไม่ปิด — ทุกงวด ไม่ใช่เฉพาะ${scopeLabel}`}
           />
         </MetricStrip>

@@ -10,7 +10,7 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { buildReconMatrix, posByRound } from "@/lib/sahamit/reconcileClient";
 import { ppcOf, displayQty, counterpartText } from "@/lib/sahamit/units";
 import { deliveryMonthOf } from "@/lib/sahamit/po";
-import { fmtDate, fmtMoneyCompact, fmtNumber } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber } from "@/lib/format";
 import { useCan } from "@/lib/roleContext";
 
 // token → CSS var
@@ -34,7 +34,8 @@ const VIEWS = [
 ];
 
 const nf = (n) => fmtNumber(n || 0);
-const nfBaht = (n) => fmtMoneyCompact(n);
+// ยอดเงินเต็มหลักเสมอ (ไม่ย่อ M/K) — แถวรวมมูลค่าท้ายกริดคือตัวเลขที่เอาไปกระทบยอดจริง
+const nfBaht = (n) => fmtMoney(n);
 const volLabel = (p) => (p?.volume ? `${p.volume}${p?.volumeUnit || ""}` : "");
 
 export default function ReconcilePage() {

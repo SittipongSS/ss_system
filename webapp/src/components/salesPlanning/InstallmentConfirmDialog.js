@@ -17,7 +17,7 @@ import { Paperclip } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { paymentConfirmPrompt } from "@/lib/approvalPrompt";
 import styles from "./InstallmentConfirmDialog.module.css";
 
@@ -51,7 +51,8 @@ export default function InstallmentConfirmDialog({
         <dl className={styles.facts}>
           {order?.orderNumber ? <><dt>ใบสั่งขาย</dt><dd className="mono">{order.orderNumber}</dd></> : null}
           {order?.customerName ? <><dt>ลูกค้า</dt><dd>{order.customerName}</dd></> : null}
-          <dt>งวด</dt><dd>{naText(row.label)}{row.percent ? ` · ${row.percent}%` : ""}</dd>
+          {/* ⚠️ คงเงื่อนไข falsy ของ `row.percent` ไว้ — งวดที่ไม่มีสัดส่วนต้องไม่โผล่ " · 0.00%" */}
+          <dt>งวด</dt><dd>{naText(row.label)}{row.percent ? ` · ${fmtPercent(row.percent)}` : ""}</dd>
           <dt>ยอด</dt><dd className="mono">{fmtMoney(row.amount)}</dd>
           {/* ⭐ ช่วงบริการที่งวดนี้ครอบ (mig 0320) — **ต้องอยู่ในโมดัลนี้**
               เพราะลายเซ็นของบัญชีคือสิ่งที่ทำให้ค่านี้กลายเป็น "จ่ายถึง" ที่ปล่อยให้ TS
