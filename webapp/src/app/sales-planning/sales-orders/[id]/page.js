@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
   ExternalLink, FileCheck2, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
@@ -89,6 +89,8 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
+import Tabs from "@/components/ui/Tabs";
+import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
 import { orderHasServiceRounds } from "@/lib/sales/serviceOrders";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
@@ -131,6 +133,7 @@ const ACTION_MESSAGE = {
 export default function SalesOrderDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const canEdit = useCan("salesplan:edit");
   const canCreateFiling = useCan("sales:act");
   // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
@@ -694,6 +697,46 @@ export default function SalesOrderDetailPage() {
     [installments, todayIso],
   );
 
+  /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับทุกที่ในระบบ (ดีลสาย SERVICE + บรรทัด 02-001) */
+  const hasServiceRounds = orderHasServiceRounds(order, order?.lines, { project: order?.project });
+
+  /* ── แท็บของหน้าใบ (PR-F · มติผู้ใช้ 2026-08-31 "ทาง ก") ──────────────────
+     ⭐ **ไม่มีแถบสถานะเส้นที่สอง** — แผนเดิมให้เพิ่มเส้น 4 ช่อง (ยืนยัน SO · สัญญา ·
+     จ่ายถึง · งานบริการ) เหนือเส้นเดินงาน · ผู้ใช้เลือกทาง ก จากม็อกเทียบสามทรง:
+     ป้ายบนหัวแท็บบอกสถานะครบอยู่แล้ว และกดครั้งเดียวเจอเหตุเต็มในแท็บนั้น
+     ⇒ ไม่ต้องมีที่ที่สองมาเขียนเรื่องเดียวกันแล้วคอยดูแลให้ตรงกัน
+     ⚠️ **เส้นเดินงานเดิมอยู่ครบ** (บรีฟกลิ่น/ขึ้นทะเบียน/ของเข้า/ผลิต/ยื่นภาษี) —
+     ใบส่วนใหญ่ในระบบเป็นสายสินค้า ถอดเส้นนั้นคือเสียมากกว่าได้
+
+     ⚠️ แท็บ "สัญญา" กับ "งานบริการ" ขึ้นเฉพาะใบที่มีรอบบริการ — เกณฑ์เดียวกับการ์ด
+     สัญญาเดิมเป๊ะ ๆ (ไม่ได้เปลี่ยนพฤติกรรม แค่ย้ายที่อยู่) */
+  const tabKeys = ["overview", ...(hasServiceRounds ? ["contract"] : []), "payment",
+    ...(hasServiceRounds ? ["service"] : []), "history"];
+  const urlTab = searchParams.get("tab");
+  /* 🪤 `#payment` จากทะเบียนการชำระของฝ่ายบัญชี — ของเดิมเป็น anchor ไปการ์ดกลางหน้า
+     พอการ์ดย้ายเข้าแท็บ ลิงก์เดิมจะพาไปหน้าที่ไม่มีการ์ดนั้นอยู่เลย ⇒ ต้องแปลเป็นแท็บ
+     (ลิงก์ที่ส่งไปแล้วในอีเมล/แชตแก้ย้อนหลังไม่ได้) */
+  const [tab, setTab] = useState("overview");
+  useEffect(() => {
+    const asked = urlTab || (typeof window !== "undefined" && window.location.hash === "#payment" ? "payment" : null);
+    if (asked && tabKeys.includes(asked)) setTab(asked);
+    /* 🐞 **ต้องผูก `order?.id` ไว้ในรายการพึ่งพาด้วย** — เอฟเฟกต์รอบแรกเกิดตอนใบยัง
+       โหลดไม่เสร็จ ซึ่งเป็นจังหวะที่ `window.location.hash` ยังอ่านไม่ได้จริง (วัดเอง
+       บนพรีวิว: `?tab=payment` เข้าแท็บถูก แต่ `#payment` ไม่เข้า ทั้งที่ hash อยู่ครบ
+       ตอนตรวจทีหลัง) ⇒ ถามซ้ำอีกครั้งเมื่อใบมาถึง
+       ⚠️ ห้ามตัด `urlTab` ออก — ลิงก์ `?tab=` ต้องยังทำงานตอนสลับใบไปมาด้วย */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlTab, hasServiceRounds, order?.id]);
+  // ใบเปลี่ยนสายกลางคัน (Rev./แก้บรรทัด) แล้วแท็บที่เลือกอยู่หายไป = จอว่างเปล่า
+  const activeTab = tabKeys.includes(tab) ? tab : "overview";
+  const selectTab = (next) => {
+    setTab(next);
+    /* เขียนลง URL ให้คิว FN/TS และกระดิ่งลิงก์ตรงแท็บได้ — replace ไม่ push
+       (สลับแท็บไม่ใช่การเดินทาง ปุ่ม back ต้องกลับไปหน้าก่อนหน้า ไม่ใช่แท็บก่อนหน้า) */
+    router.replace(next === "overview" ? `/sa/sales-orders/${order.id}` : `/sa/sales-orders/${order.id}?tab=${next}`, { scroll: false });
+  };
+
+
   if (!order) {
     return <Workspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย" back={{ href: "/sa/sales-orders", label: "กลับหน้ารายการ SO" }} loading={!error}>{error && <div className="glass-panel" style={{ padding: 14, color: "var(--red)" }}>{error}</div>}</Workspace>;
   }
@@ -750,8 +793,6 @@ export default function SalesOrderDetailPage() {
     : null;
   /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
      "เก็บครบทุกงวดหรือยัง" ไม่ส่ง = ด่านปฏิเสธ ⇒ ปุ่มบนจอกับ API พูดตรงกันเสมอ */
-  /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับทุกที่ในระบบ (ดีลสาย SERVICE + บรรทัด 02-001) */
-  const hasServiceRounds = orderHasServiceRounds(order, order.lines, { project: order.project });
 
   const setServiceContract = async (contractId) => {
     await requestAction("set_service_contract", { contractId: contractId || null });
@@ -998,6 +1039,23 @@ export default function SalesOrderDetailPage() {
                 ⚠️ อย่าเอากลับมา จะกลายเป็นสองที่ที่ตอบคำถามเดียวกันแล้วเพี้ยนหากัน */}
           </>}
         >
+          {/* ป้ายบนหัวแท็บ = สถานะย่อของเรื่องนั้น (มติ "ทาง ก") — ห้ามคิดเลขใหม่ที่นี่
+              ทุกตัวมาจากของที่หน้านี้คำนวณไว้แล้วด้วยตัวตัดสินกลาง */}
+          <Tabs
+            value={activeTab}
+            onChange={selectTab}
+            ariaLabel="ส่วนต่าง ๆ ของใบสั่งขาย"
+            tabs={tabKeys.map((key) => ({
+              key,
+              label: key === "overview" ? "ภาพรวม"
+                : key === "contract" ? (order.serviceContract ? "สัญญา" : "สัญญา · ยังไม่ผูก")
+                  : key === "payment" ? (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ")
+                    : key === "service" ? "งานบริการ"
+                      : "ประวัติ",
+            }))}
+          />
+
+          {activeTab === "overview" && <>
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
@@ -1127,7 +1185,9 @@ export default function SalesOrderDetailPage() {
               (ดีลสาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อย 1 รายการ ⇒ ทั้งใบ)
               ⚠️ วางเหนือการ์ดการชำระโดยตั้งใจ — สัญญามาก่อนเงิน ทั้งในลำดับงานจริง
                  และในด่าน "จ่ายก่อนบริการ" ที่อ่านทั้งสองอย่างประกอบกัน */}
-          {hasServiceRounds && (
+          </>}
+
+          {activeTab === "contract" && (
             <ServiceContractCard
               order={order}
               canEdit={canEdit}
@@ -1137,9 +1197,14 @@ export default function SalesOrderDetailPage() {
             />
           )}
 
+          {activeTab === "service" && (
+            <SalesOrderServiceTab orderId={order.id} />
+          )}
+
           {/* ⭐ การ์ด "การชำระ" (mig 0245/0246) — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง
               ⚠️ **ยอด Actual ไม่เกี่ยวกับการ์ดนี้** — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
               ต่อให้แบ่งจ่ายกี่งวด (ยืนยันกับผู้ใช้ 2026-08-13) */}
+          {activeTab === "payment" && (
           <SalesOrderPaymentPanel
             order={order}
             installments={installments}
@@ -1156,9 +1221,11 @@ export default function SalesOrderDetailPage() {
             error={error}
             onClearError={() => setError("")}
           />
+          )}
 
           {/* ข้อมูลควบคุม + ประวัติฉบับแก้ไข — ข้อมูล "เย็น" ที่ไม่ใช่คำถามแรกของใคร
               จึงอยู่ท้ายคอลัมน์ ของเดิมอยู่กลางรางขวาที่ระยะ 2537px */}
+  {activeTab === "history" && <>
   <DetailCard icon={History} eyebrow="AUDIT TRAIL" title="ใครทำอะไรกับใบนี้">
                 <dl className={styles.auditList}>
                   <div><dt>ผู้จัดทำ</dt><dd>{naText(order.createdByName)}</dd></div>
@@ -1189,6 +1256,7 @@ export default function SalesOrderDetailPage() {
                   </div>
                 </DetailCard>
               ) : null}
+  </>}
 
           {/* ใบไม่มีเธรดของตัวเองแล้ว (มติผู้ใช้ 2026-08-04) — ความเคลื่อนไหวของใบ
               ทุกอย่างไปอยู่ในเธรดของ **ดีลแม่** ที่เดียว (และไหลต่อขึ้นหน้าโครงการ)
