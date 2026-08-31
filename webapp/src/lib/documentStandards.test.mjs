@@ -18,6 +18,7 @@ import {
   resolveDocumentForm,
   resolveDocumentTitleTh,
   validateNumberingPattern,
+  documentNumberCycle,
 } from './documentStandards.js';
 import { DOCUMENT_FORMS } from './documentBrand.js';
 import { DOCUMENT_ACCENT_THEMES } from './sales/quotationMasterDocument.js';
@@ -67,10 +68,33 @@ test('numbering patterns must end with {REVISION} so the base number stays separ
   assert.match(validateNumberingPattern('QT-{YY}{MM}{RUNNING:4}').error, /ปิดท้ายด้วย/);
 });
 
-test('numbering patterns must carry month and year because the counter resets monthly', () => {
-  assert.match(validateNumberingPattern('QT-{YY}{RUNNING:4}-{REVISION}').error, /ตัวนับเลขรันรีเซ็ตทุกเดือน/);
-  assert.match(validateNumberingPattern('QT-{MM}{RUNNING:4}-{REVISION}').error, /ตัวนับเลขรันรีเซ็ตทุกเดือน/);
+test('numbering patterns must carry a year — every counter resets at least yearly', () => {
+  assert.match(validateNumberingPattern('QT-{MM}{RUNNING:4}-{REVISION}').error, /ตัวนับเลขรันรีเซ็ตทุกปี/);
   assert.equal(validateNumberingPattern('QT-{YYYY}{MM}{RUNNING:5}.{REVISION}').ok, true);
+});
+
+/* mig 0328 — รอบตัดไม่เท่ากันทุกชนิด: ใบเสนอราคา/ใบสั่งขายตัดรายปี ⇒ {MM} เป็นของ
+   ประดับให้คนอ่านรู้เดือนที่ออกใบ ไม่ใช่ตัวบังคับ · ใบแจ้งภาษี/ไทม์ไลน์ยังรายเดือน
+   ⇒ ไม่มี {MM} เมื่อไร เลขวนซ้ำข้ามเดือนแล้วชน UNIQUE */
+test('รอบตัดรายปี (QT/SO) ไม่บังคับ {MM} — รายเดือน (ET/PT) ยังบังคับ', () => {
+  assert.equal(validateNumberingPattern('QT-{YY}{RUNNING:4}-{REVISION}', 'quotation').ok, true);
+  assert.equal(validateNumberingPattern('SO-{YY}{RUNNING:4}-{REVISION}', 'salesOrder').ok, true);
+  assert.equal(validateNumberingPattern('QT-{YY}{MM}{RUNNING:4}-{REVISION}', 'quotation').ok, true);
+  assert.match(
+    validateNumberingPattern('ET-{YY}{RUNNING:4}-{REVISION}', 'exciseTaxNotice').error,
+    /ต้องมี \{MM\}/,
+  );
+  assert.match(
+    validateNumberingPattern('PT-{YY}{RUNNING:4}-{REVISION}', 'projectTimeline').error,
+    /ต้องมี \{MM\}/,
+  );
+  // ไม่ส่งชนิดมา = ตรวจได้แค่กติกาที่จริงกับทุกชนิด (ปี) — ด่านจริงอยู่ที่
+  // updateDocumentStandardDraft ซึ่งอ่าน documentKey จากแถวในฐาน
+  assert.equal(validateNumberingPattern('ET-{YY}{RUNNING:4}-{REVISION}').ok, true);
+  assert.equal(documentNumberCycle('quotation'), 'year');
+  assert.equal(documentNumberCycle('exciseTaxNotice'), 'month');
+  // ชนิดที่ไม่รู้จัก = เข้มไว้ก่อน (รายเดือน)
+  assert.equal(documentNumberCycle('somethingNew'), 'month');
 });
 
 test('builds stable preview and controlled form line', () => {

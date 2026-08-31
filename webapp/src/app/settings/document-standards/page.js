@@ -24,6 +24,7 @@ import {
   DOCUMENT_ACCENT_LABELS,
   DOCUMENT_STANDARD_KEYS,
   DOCUMENT_STANDARD_LABELS,
+  documentNumberCycle,
   documentStandardStatusLabel,
   formatDocumentStandardEffectiveDate,
   hasDocumentStandardChangeNote,
@@ -116,7 +117,7 @@ function LiveDocumentPreview({ documentKey, standard, className = "" }) {
   );
 }
 
-function DocumentStandardFields({ form, setForm }) {
+function DocumentStandardFields({ form, setForm, documentKey }) {
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   return (
     <>
@@ -165,7 +166,14 @@ function DocumentStandardFields({ form, setForm }) {
         </div>
         <ul className={styles.patternRules}>
           <li>{"{REVISION}"} ต้องปิดท้ายเสมอ — เป็นฉบับแก้ไขของ <strong>เลขที่เอกสาร</strong> คนละตัวกับ Revision ของรหัสแบบฟอร์ม</li>
-          <li>ต้องมี {"{MM}"} และ {"{YY}"} หรือ {"{YYYY}"} เพราะตัวนับเลขรันรีเซ็ตทุกเดือน</li>
+          {/* กติกาไม่เท่ากันทุกชนิด — ใบเสนอราคา/ใบสั่งขายตัดรอบเลขรันรายปี (mig 0328)
+              ส่วนใบแจ้งภาษี/ไทม์ไลน์ยังรายเดือน ⇒ ข้อความต้องตรงกับด่านจริงใน
+              validateNumberingPattern ไม่งั้นผู้ใช้พิมพ์ตามที่อ่านแล้วโดนตีกลับ */}
+          {documentNumberCycle(documentKey) === "year" ? (
+            <li>ต้องมี {"{YY}"} หรือ {"{YYYY}"} เพราะตัวนับเลขรัน<strong>ตัดรอบทุกปี</strong> — {"{MM}"} ใส่ได้ แต่เป็นแค่เดือนที่ออกใบ ไม่ได้ทำให้เลขเริ่มใหม่ทุกเดือน</li>
+          ) : (
+            <li>ต้องมี {"{MM}"} และ {"{YY}"} หรือ {"{YYYY}"} เพราะตัวนับเลขรันรีเซ็ตทุกเดือน</li>
+          )}
           <li><strong>เผยแพร่แล้วมีผลกับใบที่ออกใหม่เท่านั้น</strong> เลขของใบเดิมไม่ถูกเขียนทับ</li>
         </ul>
         <div className={styles.numberExample}><span>ตัวอย่าง</span><strong className="mono">{naText(numberingPatternExample(form.numberingPattern, "0"))}</strong></div>
@@ -455,7 +463,7 @@ export default function DocumentStandardsPage() {
                 </header>
                 <div className={styles.form}>
                   <p className={styles.note}>การบันทึกเปลี่ยนเฉพาะฉบับร่าง — ค่าจะมีผลกับเอกสารที่ออกใหม่เมื่อกดเผยแพร่ ส่วนใบที่ออกไปแล้วคงรหัสแบบฟอร์มเดิม</p>
-                  <DocumentStandardFields form={form} setForm={setForm} />
+                  <DocumentStandardFields form={form} setForm={setForm} documentKey={selectedKey} />
                 </div>
               </form>
 
