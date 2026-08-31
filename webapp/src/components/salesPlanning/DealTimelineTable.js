@@ -19,7 +19,7 @@ import StepFormFields, { EMPTY_STEP_FORM, stepToForm } from "@/components/pm/Ste
 import ProjectDocumentView from "@/components/pm/ProjectDocumentView";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import StatusSelect from "@/components/pm/StatusSelect";
-import { fmtDate, naText, NA } from "@/lib/format";
+import { fmtDate, fmtNumber, naText, NA } from "@/lib/format";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { compactPersonName } from "@/lib/personName";
 import { useDepartment } from "@/lib/roleContext";
@@ -340,7 +340,10 @@ export default function TimelineWorkspace({
   const assigneeOptions = users.map((u) => ({ id: u.id, name: u.name }));
   const done = tasks.filter((task) => task.status === "Completed").length;
   const inProgress = tasks.filter((task) => task.status === "In Progress").length;
-  const progressPct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  /* ⚠️ **เก็บค่าดิบไม่ปัด** — ตัวเดียวกันนี้ถูกใช้สองงาน: เลขใหญ่ที่คนอ่าน (จัดรูปเป็น
+     2 ตำแหน่งตอนพิมพ์) กับ `width` ของแถบความคืบหน้าซึ่งเป็นหน่วย CSS ต้องเป็นตัวเลขดิบ
+     ⇒ ห้ามแปลงตัวแปรนี้เป็นสตริงที่จัดรูปแล้ว · ของเดิมปัดตรงนี้ (8 จาก 12 = 66.67 → 67) */
+  const progressPct = tasks.length ? (done / tasks.length) * 100 : 0;
   const milestones = tasks.filter((task) => task.isMilestone);
   const today = businessDate();
   const overdue = tasks.filter((task) => task.status !== "Completed" && task.finishDate && task.finishDate < today).length;
@@ -445,7 +448,7 @@ export default function TimelineWorkspace({
           <div className="glass-panel" style={{ padding: "20px 22px", background: "var(--panel-2)", borderRadius: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: "var(--accent)", letterSpacing: -1 }}>{progressPct}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
+                <span className="mono tabular-nums" style={{ fontSize: "var(--fs-17)", fontWeight: "var(--fw-bold)", lineHeight: "var(--lh-flat)", color: "var(--accent)", letterSpacing: -1 }}>{fmtNumber(progressPct, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span style={{ fontSize: "var(--fs-11)" }}>%</span></span>
                 <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>

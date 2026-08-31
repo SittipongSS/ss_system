@@ -183,7 +183,9 @@ export function matchReport(rounds, pos, coverages, products, { years = [] } = {
     fcQty: t.fcQty + r.fcQty, poQty: t.poQty + r.poQty, fcValue: t.fcValue + r.fcValue, poValue: t.poValue + r.poValue,
   }), { fcQty: 0, poQty: 0, fcValue: 0, poValue: 0 });
   const unpricedCount = rows.filter((r) => r.price == null).length;
-  const coveragePct = totals.fcValue > 0 ? Math.round((totals.poValue / totals.fcValue) * 100) : (totals.poValue > 0 ? 100 : 0);
+  // ★ คืน "ค่าดิบ" ไม่ปัด — จอเป็นคนจัดรูปแบบด้วย fmtPercent (2 ทศนิยม). ถ้าปัดตรงนี้
+  // จอกู้ทศนิยมคืนไม่ได้ (92.37% → 92%) และตัวเลขกระทบยอดกับบัญชีจะเพี้ยน.
+  const coveragePct = totals.fcValue > 0 ? (totals.poValue / totals.fcValue) * 100 : (totals.poValue > 0 ? 100 : 0);
 
   // PO ที่ยังแบ่งส่งได้ / ค้างส่ง (ตัดยกเลิก/ส่งแล้ว) — กรองปีตามเดือนส่ง.
   const splittable = [];
@@ -278,7 +280,9 @@ export function dashboardKpis(rounds, pos, coverages, products, { unit = 'qty', 
     }
     if (unit === 'value' && price == null && rowHasQty) unpricedCount += 1;
   }
-  const coveragePct = fcTotal > 0 ? Math.round((poTotal / fcTotal) * 100) : (poTotal > 0 ? 100 : 0);
+  // ★ ค่าดิบไม่ปัด (เหมือน matchReport) — จอจัดรูปแบบด้วย fmtPercent · ตัวเลขนี้ยัง
+  // ถูกเอาไปเทียบ `>= 90` เลือกสีการ์ด KPI ได้เหมือนเดิม เพราะยังเป็น number
+  const coveragePct = fcTotal > 0 ? (poTotal / fcTotal) * 100 : (poTotal > 0 ? 100 : 0);
   const pendingCount = statusCounts.pending || 0;
   const discrepancyCount = statusCounts.discrepancy || 0;
   const unforecastedCount = statusCounts.unforecasted || 0;

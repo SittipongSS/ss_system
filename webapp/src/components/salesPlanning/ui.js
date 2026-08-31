@@ -3,7 +3,7 @@
 import { Trophy } from "lucide-react";
 import { DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, normalizeDealType, STAGE_LABELS } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, snapForecastLevel } from "@/lib/sales/forecastLevels";
-import { fmtMoneyCompact } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
 import { contractKindLabel, contractStatusLabel, contractStatusTone } from "@/lib/sales/contracts";
 import UiKpiCard from "@/components/ui/KpiCard";
 
@@ -123,8 +123,14 @@ export const SALES_TEAMS = TEAMS;
    (ตัวเลือกที่แต่ละ role ได้มาจาก leadScopes/salesDealScopes ใน permissions.js) */
 export const SCOPE_LABELS = { mine: "ของฉัน", team: "ทีม", all: "ทั้งหมด" };
 
-// เงินในแดชบอร์ด/ตารางสรุปแผนขาย — ใช้รูปแบบย่อกลาง (฿x.xxM / ฿x.xxK).
-export const money = (value) => fmtMoneyCompact(value);
+/* เงินในแดชบอร์ด/ตารางสรุปแผนขาย — **เต็มหลักเสมอ** (มติเจ้าของระบบ 2026-08-31)
+   เดิมเป็นรูปแบบย่อ (฿x.xxM / ฿x.xxK) ⇒ ยอดเป้า/ยอด Won ที่คนกดเข้ามาอ่านเอาไป
+   ตรวจกับเอกสารไม่ได้ · ผู้ใช้ helper นี้คือหน้าวางเป้า (คอลัมน์รวมทั้งปี + แถวรวม
+   ท้ายตาราง + บรรทัด "เหลืออีก/เกินเป้า") และลิ้นชักเจาะดีล — ทั้งสองตารางกว้างตาม
+   เนื้อหาและเลื่อนแนวนอนอยู่แล้ว ความกว้างขั้นต่ำในโมดูล CSS เป็นพื้นล่าง ไม่ใช่เพดาน
+   ⚠️ จุดที่คับที่สุดคือ `GapNote` ของหน้าวางเป้า (`.gapNote` ไม่ตัดบรรทัด และอยู่ใน
+   คอลัมน์ชื่อที่ตรึงไว้) — เต็มหลักทำให้คอลัมน์ชื่อกว้างขึ้น ไม่ได้ตัดคำหรือทับของข้าง ๆ */
+export const money = (value) => fmtMoney(value);
 
 export function coveragePct(won, target) {
   if (!target || target <= 0) return null;

@@ -78,7 +78,7 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import { STATUS_TONES, toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
-import { fmtNumber } from "@/lib/format";
+import { fmtMoney, fmtNumber } from "@/lib/format";
 
 const SURFACES = [
   { cls: styles.bg, token: "--bg", use: "พื้นหน้า" },
@@ -138,11 +138,14 @@ const DEMO_TODAY = (() => {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 })();
 
+/* ⚠️ ค่าเป็น **บาทเต็มจำนวน** ไม่ใช่หน่วยล้าน — กราฟจัดรูปแบบด้วย `fmtMoney` ตัวกลาง
+   ตัวเดียวกับทั้งระบบ (เงินโชว์เต็มหลัก ห้ามย่อ M/K) · เดิมชุดนี้เก็บเป็น 4.82 = ฿4.82M
+   แล้วเติม "M" ต่อท้ายเองใน tooltip ⇒ ใส่ formatter กลางเฉย ๆ จะอ่านว่า "฿4.82" ผิดไป 10⁶ */
 const CHART_DATA = [
-  { month: "เม.ย.", actual: 3.8, target: 4.2 },
-  { month: "พ.ค.", actual: 4.4, target: 4.6 },
-  { month: "มิ.ย.", actual: 5.1, target: 5.0 },
-  { month: "ก.ค.", actual: 4.82, target: 6.5 },
+  { month: "เม.ย.", actual: 3800000, target: 4200000 },
+  { month: "พ.ค.", actual: 4400000, target: 4600000 },
+  { month: "มิ.ย.", actual: 5100000, target: 5000000 },
+  { month: "ก.ค.", actual: 4820000, target: 6500000 },
 ];
 
 function Swatches({ items }) {
@@ -980,8 +983,8 @@ export default function DesignPreviewPage() {
                 <ComposedChart data={CHART_DATA}>
                   <CartesianGrid {...CHART_GRID_PROPS} />
                   <XAxis dataKey="month" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-                  <Tooltip content={<ChartTooltip valueFormatter={(value) => `฿${value}M`} />} />
+                  <YAxis width={110} tickFormatter={fmtMoney} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip valueFormatter={(value) => fmtMoney(value)} />} />
                   <Bar dataKey="target" name="เป้าหมาย" fill={CHART_COLORS.target} radius={[4, 4, 0, 0]} maxBarSize={38} />
                   <Line
                     dataKey="actual"
@@ -1002,6 +1005,11 @@ export default function DesignPreviewPage() {
             ]}
           />
           <p className={styles.note}>
+            เงินบนแกนและใน tooltip เดินผ่าน <code>fmtMoney</code> เสมอ — <strong>เต็มหลัก ไม่ย่อ</strong>
+            {" "}(ห้ามต่อ <code>฿{"{value}"}M</code> เอง) · ป้ายเต็มยาวกว่า <code>width</code> ตั้งต้น 60px
+            {" "}ของ <code>&lt;YAxis&gt;</code> จึงต้องกาง <code>{"width={110}"}</code> คู่กันเสมอ ไม่งั้นเลขโดนตัด
+          </p>
+          <p className={styles.note}>
             ⛔ ห้ามใส่ <code>max-width</code> ให้ <code>.recharts-wrapper</code> — Recharts วางกราฟไว้ใน
             กล่องวัดขนาดที่กว้าง 0 ทำให้ <code>100%</code> คิดออกมาเป็น 0 แล้วกราฟหายทั้งอัน
             เหลือแต่คำอธิบายสี (เคยหลุด prod มาแล้ว)
@@ -1019,8 +1027,8 @@ export default function DesignPreviewPage() {
                 <ComposedChart data={CHART_DATA}>
                   <CartesianGrid {...CHART_GRID_PROPS} />
                   <XAxis dataKey="month" tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-                  <YAxis tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
-                  <Tooltip content={<ChartTooltip valueFormatter={(value) => `฿${value}M`} />} />
+                  <YAxis width={110} tickFormatter={fmtMoney} tick={CHART_AXIS_TICK} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip valueFormatter={(value) => fmtMoney(value)} />} />
                   <Bar dataKey="target" name="เป้าหมาย" fill={CHART_COLORS.target} radius={[4, 4, 0, 0]} maxBarSize={38} />
                 </ComposedChart>
               </ResponsiveContainer>

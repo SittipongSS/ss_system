@@ -1,5 +1,6 @@
 // งวดการชำระใบเสนอราคา: เต็มจำนวน / แบ่งงวด.
 // pure ทั้งหมด (แถวแสดงผล + คำนวณ + validate) ใช้ทั้ง client และ server.
+import { fmtPercent } from '@/lib/format';
 
 // เพดานงวด 12 (มติผู้ใช้ 2026-08-17 — เดิม 6) · ค่าเดียวคุมทั้งปุ่ม "เพิ่มงวด" ฝั่งฟอร์ม
 // และด่าน validate ฝั่ง server ห้ามสะกดเลขนี้ซ้ำที่อื่น
@@ -64,7 +65,9 @@ export function validatePaymentPlan(plan) {
   if (rows.length > MAX_INSTALLMENTS) return { ok: false, error: `แบ่งงวดได้ไม่เกิน ${MAX_INSTALLMENTS} งวด` };
   const sum = rows.reduce((s, r) => s + pct(r.percent), 0);
   if (rows.some((r) => pct(r.percent) < 0)) return { ok: false, error: 'เปอร์เซ็นต์ต้องไม่ติดลบ' };
-  if (Math.abs(sum - 100) > EPS) return { ok: false, error: `เปอร์เซ็นต์รวมต้องเท่ากับ 100% (ตอนนี้ ${Math.round(sum * 100) / 100}%)` };
+  // ข้อความนี้ขึ้นจอตรง ๆ (แถบเตือนของฟอร์มใบเสนอราคา ทั้งฝั่ง client และ server)
+  // ⇒ จัดรูปแบบผ่าน fmtPercent ให้ได้ 2 ตำแหน่งเสมอ · `sum` ที่ใช้เทียบกับ EPS ยังเป็นตัวเลขดิบ
+  if (Math.abs(sum - 100) > EPS) return { ok: false, error: `เปอร์เซ็นต์รวมต้องเท่ากับ 100% (ตอนนี้ ${fmtPercent(sum)})` };
   return { ok: true, error: null };
 }
 

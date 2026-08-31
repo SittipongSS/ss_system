@@ -7,7 +7,7 @@ import { matchReport } from "@/lib/sahamit/dashboard";
 import { cellDetail } from "@/lib/sahamit/reconcileClient";
 import { indexProducts, productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
-import { fmtNumber, fmtMoney, fmtDate, NA } from "@/lib/format";
+import { fmtNumber, fmtMoney, fmtPercent, fmtDate, NA } from "@/lib/format";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 
 // แท็บ "PO เทียบ FC" — ยุบงานจากหน้า /report เดิมเข้ามา: ตารางมูลค่า/จำนวนต่อสินค้า
@@ -120,7 +120,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
             {isValue && (
               <tfoot>
                 <tr style={{ fontWeight: "var(--fw-bold)", borderTop: "2px solid var(--border)" }}>
-                  <td></td><td colSpan={2}>รวม (ครอบคลุม {rep.coveragePct}%)</td>
+                  <td></td><td colSpan={2}>รวม (ครอบคลุม {fmtPercent(rep.coveragePct)})</td>
                   <td style={{ textAlign: "right" }}>{fmtNumber(rep.totals.fcQty)}</td>
                   <td style={{ textAlign: "right" }}>{fmtNumber(rep.totals.poQty)}</td>
                   <td></td>

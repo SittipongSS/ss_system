@@ -5,7 +5,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer, Cell,
 } from "recharts";
 import { fcVsPoByMonth, unitMultiplier } from "@/lib/sahamit/dashboard";
-import { fmtNumber, fmtMoneyCompact } from "@/lib/format";
+import { fmtNumber, fmtMoney } from "@/lib/format";
 import { CHART_LINE_TYPE, CHART_CATEGORICAL, CHART_SERIES } from "@/lib/chartTheme";
 
 // แท็บ "FC ซ้อน PO รายเดือน" — กราฟซ้อน: แท่ง PO ที่มาแล้ว + แท่ง FC ที่ยังรอ PO
@@ -21,8 +21,9 @@ const shortMonth = (ym) => {
 
 export default function FcVsPoView({ rounds, pos, coverages = [], products, unit = "qty", years = [] }) {
   const isValue = unit === "value";
-  const fmtVal = (n) => (isValue ? fmtMoneyCompact(n) : fmtNumber(n));
-  const axisFmt = (v) => (isValue ? (Math.abs(v) >= 1000 ? `฿${(v / 1000).toFixed(0)}k` : `฿${v}`) : (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v));
+  const fmtVal = (n) => (isValue ? fmtMoney(n) : fmtNumber(n));
+  /* แกน Y อ่านเต็มหลักเท่ากับทูลทิป ⇒ <YAxis width> ต้องเป็น 110 */
+  const axisFmt = (v) => (isValue ? fmtMoney(v) : fmtNumber(v));
   const unitLbl = isValue ? "฿" : "ชิ้น";
 
   const mult = useMemo(() => unitMultiplier(products, unit), [products, unit]);
@@ -58,7 +59,7 @@ export default function FcVsPoView({ rounds, pos, coverages = [], products, unit
         <ComposedChart data={data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-          <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+          <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={110} />
           <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" }} labelFormatter={shortMonth} formatter={tipFormatter} />
           <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
           {/* แท่งซ้อน: PO ที่มาแล้ว + FC ที่ยังรอ = ความสูง FC ที่ commit (peak) */}

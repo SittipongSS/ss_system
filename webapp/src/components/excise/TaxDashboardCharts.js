@@ -106,16 +106,16 @@ export function OrdersComposedChart({ orders = [] }) {
           tickLine={false} 
           tick={{ fill: "var(--text-3)", fontSize: "var(--fs-5)" }} 
         />
-        <YAxis 
-          yAxisId="right" 
-          orientation="right" 
-          axisLine={false} 
-          tickLine={false} 
-          tickFormatter={(val) => {
-            if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
-            if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
-            return val;
-          }}
+        {/* ⚠️ ยอดเงินบนแกนโชว์เต็มหลัก ห้ามย่อ — เดิมพิมพ์ "250k"/"1.2M" เอง
+            ป้ายเต็ม "฿250,000.00" ยาวเกิน width ตั้งต้น 60px ของ YAxis จึงต้องกางเป็น 110
+            พร้อมกัน ไม่งั้นตัวเลขโดนตัด (ยอมเสียพื้นที่วาดกราฟไป ~50px) */}
+        <YAxis
+          yAxisId="right"
+          orientation="right"
+          width={110}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(val) => fmtMoney(val)}
           tick={{ fill: "var(--text-3)", fontSize: "var(--fs-5)" }}
         />
         <RechartsTooltip

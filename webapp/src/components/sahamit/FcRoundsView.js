@@ -5,7 +5,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer, Cell,
 } from "recharts";
 import { fcEvolution, roundTotals, unitMultiplier } from "@/lib/sahamit/dashboard";
-import { fmtNumber, fmtMoneyCompact, fmtDate, NA } from "@/lib/format";
+import { fmtNumber, fmtMoney, fmtPercent, fmtDate, NA } from "@/lib/format";
 import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 
 // แท็บ "FC แต่ละรอบ" — วิวัฒนาการ FC (เส้นละรอบ) + ยอดรวมต่อรอบ + %เปลี่ยนรอบต่อรอบ.
@@ -24,8 +24,10 @@ const shortMonth = (ym) => {
 
 export default function FcRoundsView({ rounds, products, unit = "qty", years = [] }) {
   const isValue = unit === "value";
-  const fmtVal = (n) => (isValue ? fmtMoneyCompact(n) : fmtNumber(n));
-  const axisFmt = (v) => (isValue ? (Math.abs(v) >= 1000 ? `฿${(v / 1000).toFixed(0)}k` : `฿${v}`) : (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v));
+  const fmtVal = (n) => (isValue ? fmtMoney(n) : fmtNumber(n));
+  /* แกน Y อ่านเต็มหลักเท่ากับตัวเลขในทูลทิป/การ์ด (มติเจ้าของระบบ: ยอมเสียพื้นที่
+     วาดกราฟ ดีกว่าอ่านตัวย่อผิดหลัก) ⇒ <YAxis width> ของทั้งสองกราฟต้องเป็น 110 */
+  const axisFmt = (v) => (isValue ? fmtMoney(v) : fmtNumber(v));
 
   const mult = useMemo(() => unitMultiplier(products, unit), [products, unit]);
   const evo = useMemo(() => fcEvolution(rounds, { mult, years }), [rounds, mult, years]);
@@ -53,7 +55,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
           <LineChart data={evo.data} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="month" tickFormatter={shortMonth} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-            <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+            <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={110} />
             <RTooltip {...tip(true)} labelFormatter={shortMonth} formatter={(v, n) => [v == null ? "—" : fmtVal(v), n]} />
             <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
             {evo.rounds.map((r, i) => (
@@ -71,7 +73,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
             <BarChart data={totals} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="roundNo" tickFormatter={(n) => `#${n}`} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-              <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
+              <YAxis tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={110} />
               <RTooltip {...tip(true)} labelFormatter={(n) => `รอบ #${n}`} formatter={(v) => [fmtVal(v), `ยอดรวม (${unitLbl})`]} />
               <Bar dataKey="total" radius={[6, 6, 0, 0]} maxBarSize={54}>
                 {totals.map((_, i) => <Cell key={i} fill={roundColor(i)} />)}
@@ -94,7 +96,7 @@ export default function FcRoundsView({ rounds, products, unit = "qty", years = [
                   <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)", fontVariantNumeric: "tabular-nums" }}>{fmtVal(r.total)}</div>
                   {r.prevPct != null && (
                     <div style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-bold)", color: r.prevPct >= 0 ? "var(--green)" : "var(--red)" }}>
-                      {r.prevPct > 0 ? "+" : ""}{r.prevPct.toFixed(1)}% vs รอบก่อน
+                      {r.prevPct > 0 ? "+" : ""}{fmtPercent(r.prevPct)} vs รอบก่อน
                     </div>
                   )}
                 </div>

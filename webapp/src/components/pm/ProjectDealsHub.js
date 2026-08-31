@@ -18,7 +18,7 @@ import { updateKindMeta } from "@/lib/master/updateTypes";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf, isWonStage } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
-import { fmtDate, fmtMoney, fmtMoneyCompact, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
 import { isDealAvailableForProject, isDealMovableToProject } from "@/lib/sales/projectLink";
@@ -577,10 +577,10 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
           เรื่องเดียวกับหัวตารางด้านล่าง "ดีลในโครงการ (N)" ที่อยู่ห่างกันไม่ถึงหนึ่งจอ */}
       {r && (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-          <Kpi label="FC Total" value={fmtMoneyCompact(r.fcTotal)} />
-          <Kpi label="Actual" value={fmtMoneyCompact(r.actual)} color="var(--green)" />
-          <Kpi label="FC คงเหลือ" value={fmtMoneyCompact(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
-          <Kpi label="ใบเสนอที่รับแล้ว" value={fmtMoneyCompact(acceptedTotal)} hint={`ทั้งหมด ${(p.quotations || []).length} ใบ`} />
+          <Kpi label="FC Total" value={fmtMoney(r.fcTotal)} />
+          <Kpi label="Actual" value={fmtMoney(r.actual)} color="var(--green)" />
+          <Kpi label="FC คงเหลือ" value={fmtMoney(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
+          <Kpi label="ใบเสนอที่รับแล้ว" value={fmtMoney(acceptedTotal)} hint={`ทั้งหมด ${(p.quotations || []).length} ใบ`} />
         </div>
       )}
 

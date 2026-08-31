@@ -23,7 +23,7 @@ import { canEditProduction } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
-import { fmtMonthShort, fmtNumber } from "@/lib/format";
+import { fmtMonthShort, fmtNumber, fmtPercent } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -193,7 +193,9 @@ export default function ProductionBoardPage() {
                         {cell ? (
                           <div className={styles.cell}>
                             <span className={styles.pct}>
-                              {cell.pct == null ? "—" : `${cell.pct}%`}
+                              {/* null = ยังไม่กรอกกำลัง — ต้องเช็กก่อนเข้า fmtPercent
+                                  ไม่งั้น `Number(x) || 0` ข้างในจะกลืนเป็น "0.00%" */}
+                              {cell.pct == null ? "—" : fmtPercent(cell.pct)}
                               {over && <AlertTriangle size={11} aria-hidden="true" />}
                             </span>
                             {cell.jobs.map((chip) => {

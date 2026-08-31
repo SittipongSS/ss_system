@@ -8,7 +8,7 @@ import {
 import { BarChart3, CalendarRange, History, Info, TrendingUp } from "lucide-react";
 import UiKpiCard from "@/components/ui/KpiCard";
 import { poGrowth, unitMultiplier } from "@/lib/sahamit/dashboard";
-import { fmtNumber, fmtMoneyCompact, naText } from "@/lib/format";
+import { fmtNumber, fmtMoney, fmtPercent, naText } from "@/lib/format";
 import { CHART_LINE_TYPE } from "@/lib/chartTheme";
 
 // แท็บ "การเติบโต" — ยอด PO จริงต่อช่วง (เดือน/ไตรมาส/ปี) + %เติบโต. YoY เปิดเมื่อมี
@@ -26,9 +26,10 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
   const [level, setLevel] = useState("month");
   const isValue = unit === "value";
   const unitLbl = isValue ? "฿" : "ชิ้น";
-  const fmtVal = (n) => (isValue ? fmtMoneyCompact(n) : fmtNumber(n));
-  const axisFmt = (v) => (isValue ? (Math.abs(v) >= 1000 ? `฿${(v / 1000).toFixed(0)}k` : `฿${v}`) : (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v));
-  const pct = (n) => (n == null ? "—" : `${n > 0 ? "+" : ""}${n.toFixed(1)}%`);
+  const fmtVal = (n) => (isValue ? fmtMoney(n) : fmtNumber(n));
+  /* แกนซ้ายอ่านเต็มหลักเท่ากับตัวเลขในตาราง/ทูลทิป ⇒ <YAxis yAxisId="l" width> = 110 */
+  const axisFmt = (v) => (isValue ? fmtMoney(v) : fmtNumber(v));
+  const pct = (n) => (n == null ? "—" : `${n > 0 ? "+" : ""}${fmtPercent(n)}`);
 
   const mult = useMemo(() => unitMultiplier(products, unit), [products, unit]);
   const { rows, years: dataYears } = useMemo(() => poGrowth(pos, { level, mult, years }), [pos, level, mult, years]);
@@ -76,10 +77,11 @@ export default function GrowthView({ pos, products, unit = "qty", years = [] }) 
               <ComposedChart data={chartData} margin={{ top: 10, right: 16, left: 4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} dy={8} />
-                <YAxis yAxisId="l" tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={54} />
-                <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => `${v}%`} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={46} />
+                <YAxis yAxisId="l" tickFormatter={axisFmt} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={110} />
+                {/* แกนขวาเป็น % 2 ตำแหน่ง ("-25.00%") จึงขยายจาก 46 เป็น 64 ไม่ให้ป้ายถูกตัด */}
+                <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => fmtPercent(v)} tick={{ fontSize: "var(--fs-5)", fill: "var(--text-3)" }} axisLine={false} tickLine={false} width={64} />
                 <RTooltip contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", fontSize: "var(--fs-7)" }}
-                  formatter={(v, n) => (n === "total" ? [fmtVal(v), `ยอด (${unitLbl})`] : [v == null ? "—" : `${v.toFixed(1)}%`, n])} />
+                  formatter={(v, n) => (n === "total" ? [fmtVal(v), `ยอด (${unitLbl})`] : [v == null ? "—" : fmtPercent(v), n])} />
                 <Legend wrapperStyle={{ fontSize: "var(--fs-7)" }} />
                 <Bar yAxisId="l" dataKey="total" name={`ยอด (${unitLbl})`} fill="var(--accent)" radius={[5, 5, 0, 0]} maxBarSize={46} />
                 <Line yAxisId="r" type={CHART_LINE_TYPE} dataKey="seqGrowth" name={`%เติบโต ${seqLabel}`} stroke="var(--green)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />

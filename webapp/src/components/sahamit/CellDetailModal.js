@@ -5,7 +5,7 @@ import { Lock } from "lucide-react";
 import Modal from "@/components/Modal";
 import Tabs from "@/components/ui/Tabs";
 import CoveragePanel from "@/components/sahamit/CoveragePanel";
-import { fmtDate, fmtNumber, NA } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtPercent, NA } from "@/lib/format";
 import { cellDetail, RECON_STATUS_COLOR } from "@/lib/sahamit/reconcileClient";
 import { PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { productMetaText } from "@/lib/sahamit/productMeta";
@@ -35,7 +35,11 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
   const fcQty = cell?.fcQty || 0;
   const poQty = cell?.poQty || 0;
   const diff = poQty - fcQty;
-  const pct = fcQty > 0 ? Math.min(100, Math.round((poQty / fcQty) * 100)) : poQty > 0 ? 100 : 0;
+  /* เพดาน 100 คงไว้ตามเดิม — งานรอบนี้เปลี่ยนแค่ *รูปแบบ* ตัวเลข ไม่ใช่กติกาว่า
+     ช่องที่ PO เกิน FC ควรอ่านว่าเท่าไร (ถ้าจะให้ทะลุ 100 ต้องเป็นมติแยก)
+     `barPct` แยกไว้เพราะ CSS width ต้องได้ตัวเลขดิบ ไม่ใช่สตริงที่จัดรูปแล้ว */
+  const pct = Math.min(100, fcQty > 0 ? (poQty / fcQty) * 100 : poQty > 0 ? 100 : 0);
+  const barPct = pct;
   // ชิ้นต่อลังของสินค้านี้ — ต่อท้ายจำนวนชิ้นด้วย "(x ลัง)" ถ้ารู้ค่า
   const ppc = ppcOf(product);
   const withCase = (n) => { const c = casesText(n, ppc); return c ? ` (${c})` : ""; };
@@ -89,8 +93,8 @@ export default function CellDetailModal({ open, onClose, fgCode, month, matrix, 
                   </div>
                 </div>
                 <div style={{ fontSize: "var(--fs-7)", color }}>{diffMsg}</div>
-                <div className="progress"><span style={{ width: `${pct}%`, background: color }} /></div>
-                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", textAlign: "right" }}>ครอบคลุม {pct}%</div>
+                <div className="progress"><span style={{ width: `${barPct}%`, background: color }} /></div>
+                <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", textAlign: "right" }}>ครอบคลุม {fmtPercent(pct)}</div>
                 {(cell.coverageIn > 0 || cell.coverageOut > 0) && (
                   <div style={{ fontSize: "var(--fs-5)", color: "var(--blue)" }}>
                     ⇄ ชดเชย FC ข้ามเดือน (รับ FC เข้า {nf(cell.coverageIn)} / ส่ง FC ออก {nf(cell.coverageOut)}) — PO อยู่กับที่ · ดูแท็บ “ชดเชยยอดข้ามเดือน”

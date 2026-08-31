@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import { useApiList } from "@/lib/excise/useApiList";
 import { userTeams } from "@/lib/permissions";
 import { sahamitFetch } from "@/lib/sahamit/apiClient";
-import { fmtDate, fmtMoneyCompact, fmtNumber, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, NA } from "@/lib/format";
 import { roundTotal, roundSkuCount, roundMatrix, compareRounds } from "@/lib/sahamit/forecastClient";
 import { productMetaText } from "@/lib/sahamit/productMeta";
 import { ppcOf, casesText, displayQty, counterpartText } from "@/lib/sahamit/units";
@@ -28,7 +28,8 @@ const TABS = [
   { key: "history", label: "ประวัติ / เทียบรอบ" },
 ];
 const nf = (n) => fmtNumber(n || 0);
-const nfBaht = (n) => fmtMoneyCompact(n);
+// ยอดเงินเต็มหลักเสมอ (ไม่ย่อ M/K) — ตัวเลขพวกนี้เอาไปกระทบยอดกับ PO/บัญชีจริง
+const nfBaht = (n) => fmtMoney(n);
 /* 🐞 เดิม `toISOString().slice(0,7)` = **เดือนแบบ UTC** — วันที่ 1 ตี 2 เวลาไทยยังเป็น
    สิ้นเดือนก่อนใน UTC ⇒ หน้าเปิดมาเลือกเดือนที่แล้วให้เอง โดยไม่มีอะไรบอก */
 const thisMonth = () => businessDate().slice(0, 7);
