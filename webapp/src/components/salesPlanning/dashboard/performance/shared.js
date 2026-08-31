@@ -1,13 +1,15 @@
 "use client";
 
-import { fmtMoney, fmtMoneyCompact, fmtNumber } from "@/lib/format";
+import { fmtMoney, fmtNumber } from "@/lib/format";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
 
 // ชิ้นส่วนเล็กที่ใช้ร่วมกันในแท็บผลงานขาย — เก็บที่เดียวให้แถบคุมงวด/แถบความคืบหน้า/
 // ตารางติดตาม/แผงทบยอด พูดถึงงวดเดียวกันด้วยคำเดียวกันและฟอร์แมตตัวเลขเหมือนกัน
 
+/* ⭐ เงินในแท็บนี้ **เต็มหลักอย่างเดียว** — `moneyCompact` ถูกถอดทิ้งแล้ว
+   (ผู้ใช้รายสุดท้ายคือแผนที่ความร้อนรายปี · มติเจ้าของระบบ 2026-09-01)
+   ถ้าจะย่อ M/K ที่ไหนอีกต้องเป็นมติใหม่ ไม่ใช่เติม helper กลับเงียบ ๆ */
 export const money = (v) => fmtMoney(v);
-export const moneyCompact = (v) => fmtMoneyCompact(v);
 export const pctFmt = (v) =>
   v == null ? "–" : `${fmtNumber(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 

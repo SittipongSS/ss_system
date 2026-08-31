@@ -3,7 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 
 import { CalendarRange } from "lucide-react";
 import { MONTH_LABELS } from "@/components/salesPlanning/ui";
-import { moneyCompact } from "./shared";
+import { money } from "./shared";
 import { NA } from "@/lib/format";
 
 // ภาพรวมทั้งปี — ± เทียบเป้ารายเดือน ทุกคนพร้อมกัน (heatmap).
@@ -34,8 +34,12 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         เขียว = เกินเป้าเดือนนั้น · แดง = ขาด · คลิกชื่อเพื่อเจาะรายคน
       </p>
+      {/* ตัวเลขเต็มหลัก ("+฿1,234,567.89" ≈ 100px ที่ fs-6) × 12 เดือน + คอลัมน์ชื่อ 150px
+          ⇒ ต้องกว้างอย่างน้อย ~1,560px · ตารางนี้เลื่อนแนวนอนใน TableScroll อยู่แล้ว
+          และคอลัมน์ชื่อตรึงซ้าย (fz-c1) จึงยังอ่านออกว่าแถวไหนของใครตอนเลื่อน
+          ⚠️ ถ้าลด minWidth ลง คอลัมน์จะบีบจนเลขตัดบรรทัดกลางเซลล์ (fz-table ไม่ได้ตั้ง nowrap ให้) */}
       <div className="fz-box premium-glass-table" style={{ "--fz-c1w": "150px" }}>
-        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full" style={{ minWidth: 900, fontSize: "var(--fs-6)" }}>
+        <TableScroll surface="embedded" family="matrix"><table className="fz-table w-full" style={{ minWidth: 1560, fontSize: "var(--fs-6)" }}>
           <thead>
             <tr>
               <th className="fz-c1">พนักงาน</th>
@@ -54,9 +58,9 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
                   const hasTarget = Number(p.target[i] || 0) > 0;
                   const isClosed = i < closedCount;
                   return (
-                    <td key={i} className="num mono" style={{ padding: "6px 8px" }}>
+                    <td key={i} className="num mono" style={{ padding: "6px 8px", whiteSpace: "nowrap" }}>
                       <span style={{ display: "inline-block", padding: "2px 6px", ...cellStyle(diff, hasTarget, isClosed) }}>
-                        {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${moneyCompact(diff)}` : NA}
+                        {!isClosed ? "–" : hasTarget || Number(p.actual[i] || 0) > 0 ? `${diff >= 0 ? "+" : ""}${money(diff)}` : NA}
                       </span>
                     </td>
                   );
