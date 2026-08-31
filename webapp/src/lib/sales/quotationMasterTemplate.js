@@ -359,10 +359,15 @@ export function allocateInstallmentAmounts(total, installments = []) {
   });
 }
 
+// 🐞 IS-QT-26080226-0 (2026-08-31): ตัดหน้าเกินจริงจนเหลือที่ว่างท้ายหน้าเยอะ — ต้นเหตุคือ
+// นับ "ความยาวรวมช่องว่างท้ายบรรทัด" ตรง ๆ ทั้งที่ CSS ของทุกบล็อกที่เรียกฟังก์ชันนี้เป็น
+// white-space:pre-wrap ซึ่ง "แขวน" (hang) ช่องว่างท้ายบรรทัดทิ้ง ไม่กินความกว้างจริงและไม่
+// บังคับตัดบรรทัดเพิ่ม ข้อความที่ก๊อปมาจากไฟล์อื่น (มักมีช่องว่างเติมท้ายบรรทัดให้ตรงคอลัมน์)
+// จึงเคยถูกนับสูงเกินจริงหลายเท่า ⇒ ตัดหน้าเร็วเกินจำเป็น
 function estimatedTextLines(value, charsPerLine) {
   return String(value || '')
     .split(/\r?\n/)
-    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / charsPerLine)), 0);
+    .reduce((sum, line) => sum + Math.max(1, Math.ceil(line.trimEnd().length / charsPerLine)), 0);
 }
 
 function rowUnits(line) {
