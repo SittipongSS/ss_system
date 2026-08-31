@@ -668,3 +668,36 @@ test('⭐ ถอนคำรับรองแล้วฝ่ายขายก�
   // ถอยเป็น reported แล้วฝ่ายขายกรอกได้
   assert.equal(installmentActionError(svcReported(), 'coverage', SA, { coversFrom: '2026-09-01', coversTo: '2026-09-30' }), null);
 });
+
+/* ── 🐞 UAT 2026-09-01: ด่านช่วงครอบเคยข้ามได้ทั้งเส้น ────────────────────────
+   เดิมด่านเช็กเฉพาะ `action === 'confirm'` แต่ `report` ของคนที่รับรองได้
+   (บัญชี/แอดมิน) ลง `confirmed` ตั้งแต่ก้าวแรก ⇒ ผู้ใช้ที่กรอกเงินบ่อยที่สุด
+   ข้ามด่านได้ทุกครั้ง และ "จ่ายถึง" ยังว่าง = กับดักเดิมที่ mig 0325 เพิ่งตามเก็บ กลับมาทันที
+   เจอตอน UAT เส้นเต็ม: SO-26090001-0 งวดเดียวกลายเป็น confirmed โดย coversFrom/To เป็น null */
+test('ใบงานบริการ: บัญชีแจ้งชำระเอง (ลง confirmed ตั้งแต่ก้าวแรก) ก็ต้องติดด่านช่วงครอบ', () => {
+  const frozenPending = { id: 'i-1', seq: 1, status: 'pending', amount: 1000, frozenAt: '2026-09-01T00:00:00Z' };
+  const opts = { paidOn: '2026-09-01', evidence: [{}], serviceRounds: true };
+  // บัญชี = ปลายทาง confirmed ⇒ ต้องติด
+  assert.match(
+    installmentActionError(frozenPending, 'report', FN_USER, opts) || '',
+    /ช่วงครอบบริการ/,
+  );
+  // ส่งช่วงครอบมาด้วย = ผ่าน
+  assert.equal(
+    installmentActionError(frozenPending, 'report', FN_USER, {
+      ...opts, coversFrom: '2026-09-01', coversTo: '2026-09-30',
+    }),
+    null,
+  );
+});
+
+test('ฝ่ายขายแจ้งชำระ (ปลายทาง reported) ไม่ติดด่านช่วงครอบ — ยังไม่ใช่จังหวะที่เงินนับ', () => {
+  /* ⚠️ ด่านอยู่ที่ "เงินถูกนับเมื่อไร" ไม่ใช่ "ใครกด" — ของที่ยังรอบัญชีตรวจ
+     ฝ่ายขายกรอกช่วงครอบทีหลังได้ และบัญชีจะติดด่านเองตอนกดรับรอง */
+  const sales = { id: 'u-ae', role: 'ae', department: 'SALES' };
+  const frozenPending = { id: 'i-1', seq: 1, status: 'pending', amount: 1000, frozenAt: '2026-09-01T00:00:00Z' };
+  assert.equal(
+    installmentActionError(frozenPending, 'report', sales, { paidOn: '2026-09-01', evidence: [{}], serviceRounds: true }),
+    null,
+  );
+});

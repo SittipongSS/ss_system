@@ -28,7 +28,10 @@ export const GET = withUser(async ({ user, supabase }) => {
        ทั้งที่ขาด (check:rowcap คุมจุดนี้ไว้) · เรียงพ่วง id ให้ลำดับนิ่ง */
     const { data: orders, error: orderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt')
+      /* 🐞 **UAT 2026-09-01: `serviceContractId` เคยตกจาก select ตัวนี้** — `contractIds`
+         ข้างล่างอ่านจากคอลัมน์นี้ ⇒ ไม่ดึงมา = ลิสต์ว่างเสมอ = ชิปบนคิวขึ้น
+         "ยังไม่ผูกสัญญา" ทุกใบตลอดกาล แม้ฝ่ายขายจะผูกไปแล้ว (ไม่มี error ให้เห็น) */
+      .select('id, "orderNumber", status, supersededById, customerId, customerName, projectId, dealId, orderDate, approvedAt, "serviceContractId"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('approvedAt', { ascending: false })

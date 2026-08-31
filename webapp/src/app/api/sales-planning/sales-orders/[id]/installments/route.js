@@ -182,10 +182,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          อนุมัติใบแล้วเท่านั้น · `freezeInstallments` เลื่อนให้เป็น `reported` ตอนอนุมัติ
          ⇒ ไม่มีใครต้องถือสลิปไว้เองอีก และกติกาของบัญชีไม่ถูกแตะ */
       const outcome = installmentReportOutcome(user, row);
+      /* 🐞 **UAT 2026-09-01: ช่วงครอบที่ส่งมากับการแจ้งชำระเคยหายเงียบ** — ด่านยอมให้ผ่าน
+         เพราะเห็นค่าใน payload แต่ patch ไม่เคยเก็บมันลงแถว ⇒ งวดกลายเป็น `confirmed`
+         โดย `coversFrom/To` ยังว่าง = "จ่ายถึง" ไม่ขยับ ซึ่งเป็นอาการเดียวกับกับดักที่
+         ด่านนี้เกิดมาปิดพอดี · บัญชีที่แจ้งเองจบในก้าวเดียว จึงไม่มีจังหวะไหนให้กรอกอีก
+         ⚠️ รับเฉพาะตอนส่งมาจริง — ไม่ส่ง = ไม่แตะค่าเดิม (ฝ่ายขายอาจกรอกไว้ก่อนแล้ว) */
+      if (coversFrom && !isDate(coversFrom)) return badRequest('รูปแบบวันเริ่มช่วงครอบไม่ถูกต้อง');
+      if (coversTo && !isDate(coversTo)) return badRequest('รูปแบบวันสิ้นสุดช่วงครอบไม่ถูกต้อง');
       patch = {
         status: outcome,
         paidOn,
         evidence,
+        ...(coversFrom || coversTo ? { coversFrom, coversTo } : {}),
         reportedById: user.id,
         reportedByName: actorName,
         reportedAt: now,
