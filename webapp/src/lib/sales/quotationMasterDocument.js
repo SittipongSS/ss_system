@@ -16,7 +16,7 @@ import {
 } from '@/lib/sales/quotationMasterTemplate';
 import { amountInWords } from '@/lib/documents/amountInWords';
 import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
-import { fmtNumber, fmtPhone } from '@/lib/format';
+import { fmtNumber, fmtPercent, fmtPhone } from '@/lib/format';
 import { apiFetch } from "@/lib/apiFetch";
 import {
   DOCUMENT_ACCENT_THEMES,
@@ -150,7 +150,7 @@ function totalsSection(model, L) {
     <section class="totals" aria-label="${esc(L.t('totalsAria'))}">
       <div><span>${esc(L.t('subtotal'))}</span><strong>${money(totals.subtotal)}</strong></div>
       ${hasDiscount ? `
-      <div><span>${esc(L.t('discountLine'))}${model.discount.type === 'percent' ? ` ${Number(model.discount.value)}%` : ''}</span><strong>-${money(totals.discountAmount)}</strong></div>
+      <div><span>${esc(L.t('discountLine'))}${model.discount.type === 'percent' ? ` ${fmtPercent(Number(model.discount.value))}` : ''}</span><strong>-${money(totals.discountAmount)}</strong></div>
       <div class="afterDiscount"><span>${esc(L.t('afterDiscount'))}</span><strong>${money(totals.afterDiscount)}</strong></div>` : ''}
       <div><span>${esc(L.t('vat'))} ${Number(model.vatRate)}%</span><strong>${money(totals.vatAmount)}</strong></div>
       <div class="grandTotal"><span>${esc(L.t('grandTotal'))}</span><strong>${money(totals.totalAmount)} ${esc(L.t('currency'))}</strong></div>
@@ -168,7 +168,7 @@ function installmentSection(model, L) {
   const rows = model.installments.map((row, index) => `
           <tr>
             <td><strong>${index + 1}. ${esc(row.label || '')}</strong>${row.note ? `<span>${esc(row.note)}</span>` : ''}</td>
-            <td class="number">${Number(row.percent || 0)}%</td>
+            <td class="number">${fmtPercent(Number(row.percent || 0))}</td>
             <td class="number">${money(row.amount)}</td>
           </tr>`).join('');
   return `

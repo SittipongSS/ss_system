@@ -17,6 +17,7 @@ import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesVi
 import { loadSites } from '@/lib/service/sitesRepo';
 import { loadAllZones, loadTerms } from '@/lib/service/termsRepo';
 import { followupPatch, followupSaveError, renewalCounts, renewalRows } from '@/lib/service/renewals';
+import { ensureRetrieveVisit } from '@/lib/service/renewalRetrieveVisit';
 import { sweepRenewalNotices } from '@/lib/service/renewalNotify';
 import { businessDate } from '@/lib/businessDate';
 
@@ -147,6 +148,21 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
     const patch = followupPatch(body, todayIso);
     const now = new Date().toISOString();
+
+    /* ⭐ ปิดเรื่อง "ไม่ต่อ" ต้องสร้างนัดถอนเครื่องให้ TS จริง (มติผู้ใช้ 2026-09-01)
+       ⚠️ **สร้างนัดก่อนเขียนสถานะ declined ลงแถว ไม่ใช่หลัง** — ถ้าสร้างนัดพลาดแล้ว
+       ยังปิดเรื่องต่อ จะกลับไปเป็นบั๊กเดิมที่ฟังก์ชันนี้เกิดมาแก้ (ปิดเรื่องไปแล้วแต่
+       TS ไม่รู้ตัว) ⇒ ล้มตรงนี้แล้วผู้ใช้เห็น error ยังดีกว่าปิดเรื่องแบบเงียบ ๆ
+       ⚠️ ไม่สร้างซ้ำถ้าไซต์นี้มีนัดถอนค้างอยู่แล้ว (`visit: null, error: null`) */
+    let retrieveVisit = null;
+    if (patch.status === 'declined') {
+      const { visit, error: visitError } = await ensureRetrieveVisit(supabase, {
+        site: row.site, followup: patch, user, todayIso,
+      });
+      if (visitError) return fail(`สร้างนัดถอนเครื่องให้ฝ่ายบริการไม่สำเร็จ — ${visitError}`, 500);
+      retrieveVisit = visit;
+    }
+
     if (open) {
       const { data, error } = await supabase.from('service_renewal_followups')
         .update({
@@ -163,10 +179,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       await recordAudit({
         user, action: 'update', entityType: 'service_renewal_followup', entityId: open.id,
         before: open, after: data,
-        summary: `อัปเดตการติดตามต่อสัญญา ${row.site?.name || siteId} — ${patch.status}`,
+        summary: `อัปเดตการติดตามต่อสัญญา ${row.site?.name || siteId} — ${patch.status}`
+          + (retrieveVisit ? ` · สร้างนัดถอนเครื่อง ${retrieveVisit.code || retrieveVisit.id}` : ''),
         request: req,
       });
-      return ok(data);
+      return ok({ ...data, retrieveVisit });
     }
 
     const insert = {
@@ -192,10 +209,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     await recordAudit({
       user, action: 'create', entityType: 'service_renewal_followup', entityId: data.id,
       before: null, after: data,
-      summary: `เปิดเรื่องติดตามต่อสัญญา ${row.site?.name || siteId} (หมด ${row.endDate})`,
+      summary: `เปิดเรื่องติดตามต่อสัญญา ${row.site?.name || siteId} (หมด ${row.endDate})`
+        + (retrieveVisit ? ` · สร้างนัดถอนเครื่อง ${retrieveVisit.code || retrieveVisit.id}` : ''),
       request: req,
     });
-    return ok(data);
+    return ok({ ...data, retrieveVisit });
   } catch (e) {
     return fail(e.message, 500);
   }
