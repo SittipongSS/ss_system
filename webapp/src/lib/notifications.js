@@ -99,10 +99,23 @@ export const EXCISE_BELL_KINDS = Object.freeze([
   'excise_revoke',   // ปลดอนุมัติ → เจ้าของใบ (ทะเบียนหลุดจากตัวเลือกใบยื่นทันที)
 ]);
 
+/* ⭐ **รอบบริการใกล้หมดเข้ากระดิ่ง** (แผน §PR-E · mig 0327) — เหตุผลเดียวกับลีดและ
+ * สรรพสามิต: เอา **เหตุการณ์ที่ต้องลงมือ** ไม่เอาทั้ง entity
+ *
+ * ทำไมต้องเข้า: ระบบไม่มี cron ⇒ ถ้าไม่เตือน ไซต์ที่รอบหมดจะรู้ตอนลูกค้าโทรมาถาม
+ * ว่าทำไมไม่มีคนมาเติมกลิ่น (ของจริงคือเครื่องยังอยู่หน้างานโดยไม่มีสัญญาครอบ)
+ *
+ * ⚠️ ยิงครั้งเดียวต่อ (ไซต์ × วันหมด) ด้วย dedupeKey — ดู lib/service/renewalNotify.js
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง (`RENEWAL_BELL_KIND`) · notifications.test.mjs
+ *    อ่านซอร์สจริงมาเทียบ ดริฟต์แล้วแดง */
+export const SERVICE_BELL_KINDS = Object.freeze([
+  'service_renewal_due',   // รอบบริการใกล้หมด/หมดแล้ว → เจ้าของดีลที่ขายรอบนั้น
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
-    kinds: ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS],
+    kinds: ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS],
   },
 };
 

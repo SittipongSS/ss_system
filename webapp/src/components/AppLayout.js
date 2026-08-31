@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu, RefreshCw } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -376,6 +376,13 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.quotations,
         SHARED_DOC_ITEMS.salesOrders,
         SHARED_DOC_ITEMS.contracts,
+        /* ต่อสัญญาบริการ (mig 0327) — ไซต์ที่รอบบริการใกล้หมด/หมดแล้ว
+           ⚠️ **อยู่กลุ่มงานขายเท่านั้น ไม่ใช่ SHARED_DOC_ITEMS** — การต่อสัญญาคืองานขาย
+              (เปิดดีล RE-ORDER ต่อ) ส่วนฝ่ายบริการมีคิวของตัวเองที่ /service/intake
+              ⇒ ใส่ในชุดร่วมเมื่อไร ฝ่ายบัญชีจะได้เมนูที่ไม่ใช่งานตัวเองไปด้วย
+           ⚠️ ไม่มี `visible: worksInSalesPipeline` — ผู้บริหาร/แอดมินต้องเห็นทะเบียนนี้ได้
+              เหมือนเอกสารร่วมชุดบน (ด่านจริงคือ cap + ขอบเขตดีลที่ API) */
+        { href: '/sa/renewals', name: 'ต่อสัญญาบริการ', icon: RefreshCw, cap: 'salesplan:view', match: (p) => p.startsWith('/sa/renewals') || p.startsWith('/sales-planning/renewals') },
         // (เมนู "สอบถาม RD" ถูกถอดใน mig 0174 — งานย้ายไปเมนู "คำร้อง" ข้างล่าง
         //  ซึ่งรับได้ทุกชนิดรวมสอบถาม/ขอเอกสาร ไม่ใช่แค่ถาม RD อย่างเดียว)
         // ใบขอราคาผลิต (mig 0141) — ฝ่ายขาย/RD/PC/ผู้บริหารใช้หน้าเดียวกัน

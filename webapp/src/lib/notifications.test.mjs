@@ -22,7 +22,7 @@ function* walk(dir) {
 }
 
 import {
-  EXCISE_BELL_KINDS, LEAD_BELL_KINDS,
+  EXCISE_BELL_KINDS, LEAD_BELL_KINDS, SERVICE_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -262,7 +262,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
-    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS].map((k) => `kind.eq.${k}`).join(','),
+    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS].map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
 
@@ -271,7 +271,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
-    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS]);
+    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
