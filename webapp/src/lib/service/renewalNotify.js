@@ -61,7 +61,7 @@ export function sweepRenewalNotices(supabase, rows = [], { actorName = null } = 
   if (!notices.length) return 0;
   after(async () => {
     for (const notice of notices) {
-      await notifyUsers(supabase, { ...notice, actorName, href: '/sa/renewals' });
+      await notifyUsers(supabase, { ...notice, actorName, href: '/sa/contracts?tab=renewals' });
     }
   });
   return notices.length;

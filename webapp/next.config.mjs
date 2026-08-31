@@ -73,11 +73,6 @@ const nextConfig = {
       { source: '/sa/sales-orders/:path*', destination: '/sales-planning/sales-orders/:path*' },
       { source: '/sa/deals', destination: '/sales-planning/deals' },
       { source: '/sa/deals/:path*', destination: '/sales-planning/deals/:path*' },
-      /* ทะเบียนต่อสัญญาบริการ (mig 0327) — เส้นทางสั้น /sa/renewals เหมือนทะเบียนขายอื่น
-         🪤 **ลืมบรรทัดนี้ = หน้า 404 ทั้งที่ไฟล์อยู่ครบ** และเมนูก็ยังชี้ /sa/renewals อยู่
-            (เมนู · proxy · rewrite เป็นสามที่ที่ต้องรู้จักหน้าใหม่พร้อมกัน) */
-      { source: '/sa/renewals', destination: '/sales-planning/renewals' },
-      { source: '/sa/renewals/:path*', destination: '/sales-planning/renewals/:path*' },
       { source: '/sa/targets', destination: '/sales-planning/targets' },
       { source: '/sa/targets/:path*', destination: '/sales-planning/targets/:path*' },
       // /sa/projects is now a native App Router route. Do not rewrite it back
@@ -88,6 +83,10 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      /* /sa/renewals ถูกยุบเป็น **แท็บ** ของทะเบียนสัญญา (มติผู้ใช้ 2026-08-31)
+         ⚠️ ต้องมี redirect ไว้: แจ้งเตือนใบที่ยิงไปก่อนหน้านี้ยังชี้เส้นทางเก่าอยู่
+            (แถวในตาราง notifications เก็บ href เป็นข้อความตายตัว แก้ย้อนหลังไม่ได้) */
+      { source: '/sa/renewals', destination: '/sa/contracts?tab=renewals', permanent: false },
       { source: '/sales-planning', destination: '/sa/dashboard', permanent: false },
       { source: '/sales-planning/deals', destination: '/sa/deals', permanent: false },
       { source: '/sales-planning/deals/:path*', destination: '/sa/deals/:path*', permanent: false },

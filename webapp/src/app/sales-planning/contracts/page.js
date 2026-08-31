@@ -33,6 +33,8 @@ import { fmtDate, naText } from "@/lib/format";
 import { usePagination } from "@/lib/usePagination";
 import StepTrack from "@/components/ui/StepTrack";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
+import Tabs from "@/components/ui/Tabs";
+import RenewalsPanel, { EMPTY_RENEWAL_COUNTS } from "@/components/salesPlanning/RenewalsPanel";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { contractListTrack } from "@/lib/sales/contractListTrack";
 import { apiFetch } from "@/lib/apiFetch";
@@ -103,6 +105,40 @@ export default function ContractsPage() {
     overdue: rows.filter((row) => (daysAwaitingSignature(row) ?? 0) > 14).length,
   }), [rows]);
 
+  /* ── แท็บ: ทะเบียนเอกสาร | ต่อสัญญา (มติผู้ใช้ 2026-08-31) ────────────────
+     ⭐ **สองแท็บคนละ entity โดยตั้งใจ** — ทะเบียนคือ *เอกสารสัญญา* (`sales_contracts`)
+     ส่วนต่อสัญญาคือ *ไซต์* ที่คำนวณจากวันหมดของรอบขาย (`service_zone_terms`)
+     ⇒ ยุบเป็นตารางเดียวไม่ได้: ไซต์ที่ยังไม่เคยผูกสัญญาก็ต้องขึ้นแท็บต่อสัญญา
+     ⚠️ กติกา UI: สลับ "หน้า/มุมมองคนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented
+     ⚠️ แท็บอยู่ใน URL (?tab=) เพื่อให้กระดิ่งลิงก์ตรงเข้าแท็บได้ และปุ่ม back ทำงาน */
+  const urlTab = params.get("tab") === "renewals" ? "renewals" : "contracts";
+  const [tab, setTab] = useState(urlTab);
+  useEffect(() => { setTab(urlTab); }, [urlTab]);
+  /* ⭐ โหลดข้อมูลต่อสัญญาที่หน้านี้ **ตั้งแต่เปิดทะเบียน** ไม่ใช่ตอนกดเข้าแท็บ:
+       1. เลขบนหัวแท็บ ("ต่อสัญญา 3") ต้องรู้ก่อนกด ไม่งั้นไม่มีใครรู้ว่ามีงานค้าง
+       2. การกวาดกระดิ่งอยู่ใน GET ตัวนี้ (ระบบไม่มี cron) ⇒ ยิ่งกวาดบ่อย คนยิ่งรู้ตัวทัน
+     ⚠️ ผิดพลาดที่แท็บนี้ต้องไม่ทำให้ทะเบียนสัญญาพัง — เก็บ error แยกคนละตัว */
+  const [renewals, setRenewals] = useState({ rows: [], counts: EMPTY_RENEWAL_COUNTS });
+  const [renewalsLoading, setRenewalsLoading] = useState(true);
+  const [renewalsError, setRenewalsError] = useState("");
+  const loadRenewals = useCallback(async () => {
+    setRenewalsLoading(true);
+    setRenewalsError("");
+    try {
+      const res = await apiFetch("/api/sales-planning/renewals");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "โหลดทะเบียนต่อสัญญาไม่สำเร็จ");
+      setRenewals({ rows: body.rows || [], counts: body.counts || EMPTY_RENEWAL_COUNTS });
+    } catch (e) {
+      setRenewalsError(e.message || "โหลดทะเบียนต่อสัญญาไม่สำเร็จ");
+    } finally {
+      setRenewalsLoading(false);
+    }
+  }, []);
+  useEffect(() => { loadRenewals(); }, [loadRenewals]);
+  // ป้ายบนแท็บนับเฉพาะ **ของด่วน** (หมดแล้ว + หมดใน 30 วัน) ไม่ใช่ทั้งหน้าต่าง 90 วัน
+  const renewalBadge = renewals.counts.expired + renewals.counts.dueIn30;
+
   if (!canView) {
     return <AccessDenied icon={<FileSignature size={22} />} title="สัญญา" message="บัญชีนี้ยังไม่มีสิทธิ์อ่านเอกสารของสายขาย" back="/home" />;
   }
@@ -116,13 +152,32 @@ export default function ContractsPage() {
       subtitle="ออกได้หลังใบเสนอราคาอนุมัติ · พิมพ์ไปเซ็นแล้วอัปโหลดฉบับลงนามกลับเข้าใบ"
       /* ⭐ ปุ่มสร้างบนหัวทะเบียน (มติผู้ใช้ 2026-08-22) — เดิมสร้างได้จากในดีล/ใบเสนอราคา
          เท่านั้น คนที่เริ่มจากเมนูสัญญาไม่มีทางเริ่มงาน · โมดัลตัวเดียวกัน แค่มีช่องเลือกดีล */
-      headerRight={canEdit && (
+      headerRight={canEdit && tab === "contracts" && (
         <Button variant="accent" onClick={() => setCreateOpen(true)}>
           <Plus size={15} aria-hidden="true" /> สร้างสัญญา
         </Button>
       )}
     >
       <div className="flex flex-col gap-4">
+        <Tabs
+          value={tab}
+          onChange={(next) => {
+            setTab(next);
+            // เขียนลง URL ด้วย (ไม่ push history ทุกครั้ง — สลับแท็บไม่ใช่การเดินทาง)
+            router.replace(next === "renewals" ? "/sa/contracts?tab=renewals" : "/sa/contracts", { scroll: false });
+          }}
+          ariaLabel="มุมมองของงานสัญญา"
+          tabs={[
+            { key: "contracts", label: "ทะเบียนสัญญา" },
+            { key: "renewals", label: renewalBadge ? `ต่อสัญญา ${renewalBadge}` : "ต่อสัญญา" },
+          ]}
+        />
+
+        {tab === "renewals" && (
+          <RenewalsPanel data={renewals} loading={renewalsLoading} error={renewalsError} reload={loadRenewals} />
+        )}
+
+        {tab === "contracts" && <>
         {error && <StatusNotice tone="error" title="โหลดทะเบียนสัญญาไม่สำเร็จ">{error}</StatusNotice>}
 
         <SaMetricStrip>
@@ -241,6 +296,7 @@ export default function ContractsPage() {
             <Pager page={page} pageCount={pageCount} total={total} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} />
           )}
         </SaSection>
+        </>}
       </div>
 
       {/* โมดัลตัวเดียวกับที่หน้าดีล/ใบเสนอราคาใช้ — ไม่ระบุดีลมา = โมดัลมีช่องเลือกดีลให้ */}
