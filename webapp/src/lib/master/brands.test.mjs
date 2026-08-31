@@ -48,3 +48,30 @@ test('ล้างชื่อแบรนด์เฉพาะกลุ่ม�
   assert.deepEqual(clearedBrandFields('01-002'), {});
   assert.deepEqual(clearedBrandFields({}), {});
 });
+
+// ── กลุ่ม 02 มีสวิตช์มี/ไม่มีแบรนด์ต่อสินค้า (มติผู้ใช้ 2026-08-31, mig 0325) ─────
+test('กลุ่ม 02 ปิดสวิตช์ (hasBrand:false) = ไม่มีช่องแบรนด์', () => {
+  assert.equal(hasBrandField({ categoryCode: '02-001', hasBrand: false }), false);
+  assert.equal(hasBrandField({ categoryCode: '02-020', hasBrand: false }), false);
+});
+
+test('กลุ่ม 02 ไม่ได้ปิดสวิตช์ (true/ไม่ระบุ) = มีช่องแบรนด์เหมือนเดิม', () => {
+  assert.equal(hasBrandField({ categoryCode: '02-001', hasBrand: true }), true);
+  assert.equal(hasBrandField({ categoryCode: '02-001' }), true);
+});
+
+test('กลุ่ม 01 ไม่มีสวิตช์ — hasBrand:false ไม่มีผล ยังบังคับมีแบรนด์เสมอ', () => {
+  assert.equal(hasBrandField({ categoryCode: '01-002', hasBrand: false }), true);
+});
+
+test('รับแค่รหัสหมวดเป็นสตริง (ไม่รู้ hasBrand) = ถือว่ามีแบรนด์เสมอ', () => {
+  assert.equal(hasBrandField('02-001'), true);
+});
+
+test('ปิดสวิตช์กลุ่ม 02 แล้ว server ล้างชื่อแบรนด์เหมือนกลุ่ม 03/04', () => {
+  assert.deepEqual(
+    clearedBrandFields({ categoryCode: '02-001', hasBrand: false }),
+    { brandName: null, brandNameEn: null },
+  );
+  assert.deepEqual(clearedBrandFields({ categoryCode: '02-001', hasBrand: true }), {});
+});
