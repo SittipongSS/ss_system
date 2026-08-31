@@ -212,7 +212,9 @@ export default function ProductRegistry() {
     // แบรนด์บังคับเฉพาะกลุ่มที่มีช่องแบรนด์ — กลุ่ม 03/04 ฟอร์มไม่มีช่องนี้เลย (brands.js)
     // หมวดอ่านทางเดียวกับฟอร์ม: โหมดระบบใหม่จากตัวเลือกหมวด · โหมดกรอกเองจากรหัสที่พิมพ์
     const brandCategory = codeMode === CODE_MODE_AUTO ? formData.categoryCode : categoryOf(formData.fgCode);
-    if (hasBrandField(brandCategory) && !formData.brandName?.trim() && !formData.brandNameEn?.trim()) { notifyToast.error("กรุณาระบุชื่อแบรนด์"); return; }
+    // ⚠️ ส่ง hasBrand ไปด้วย — กลุ่ม 02 ปิดสวิตช์แล้วไม่บังคับกรอก (มติ 2026-08-31)
+    if (hasBrandField({ categoryCode: brandCategory, hasBrand: formData.hasBrand })
+      && !formData.brandName?.trim() && !formData.brandNameEn?.trim()) { notifyToast.error("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!formData.productDescription?.trim() && !formData.productDescriptionEn?.trim()) {
       notifyToast.error("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;

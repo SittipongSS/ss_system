@@ -83,7 +83,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     if (!form.customerId) { setError("กรุณาเลือกลูกค้าเจ้าของสินค้า"); return; }
     // แบรนด์บังคับเฉพาะกลุ่มที่มีช่องแบรนด์ (brands.js) — โมดัลแก้ไม่มีสวิตช์โหมดรหัส
     // หมวดจึงอ่านจากช่องหมวดก่อน แล้วค่อยถอยไปอ่านจากรหัส FG เหมือนที่ ProductForm ทำ
-    if (hasBrandField({ categoryCode: form.categoryCode, fgCode: form.fgCode })
+    // ⚠️ ส่ง hasBrand ไปด้วย — กลุ่ม 02 ปิดสวิตช์แล้วไม่บังคับกรอก (มติ 2026-08-31)
+    if (hasBrandField({ categoryCode: form.categoryCode, fgCode: form.fgCode, hasBrand: form.hasBrand })
       && !form.brandName?.trim() && !form.brandNameEn?.trim()) { setError("กรุณาระบุชื่อแบรนด์"); return; }
     // ชื่อสินค้าไม่บังคับภาษาไทย แต่ต้องมีอย่างน้อย 1 ภาษา
     if (!form.productDescription?.trim() && !form.productDescriptionEn?.trim()) {

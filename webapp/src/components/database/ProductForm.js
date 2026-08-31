@@ -51,7 +51,8 @@ export const EMPTY_PRODUCT = {
   // หมวดสินค้า (mig 0230): โหมดระบบใหม่เลือกจากตัวเลือกหมวดแล้วรหัสประกอบตาม ·
   // โหมดกรอกเองอ่านย้อนจากรหัสที่พิมพ์ — ทั้งสองทางเขียนลงช่องนี้ช่องเดียว
   categoryCode: "",
-  brandName: "", brandNameEn: "",
+  // มีแบรนด์หรือไม่ (mig 0325) — สวิตช์เฉพาะกลุ่ม 02 · กลุ่ม 01 บังคับมีเสมอไม่ใช้ช่องนี้
+  brandName: "", brandNameEn: "", hasBrand: true,
   // สูตรมาจากทะเบียน (mig 0171) — formulaName/Code/Date เป็น snapshot ที่ server
   // เติมให้จาก formulaId ฟอร์มไม่ต้องส่ง (เก็บไว้ใน state เพื่อโชว์ค่าเดิมของ
   // สินค้าที่ยังไม่ผูกทะเบียนเท่านั้น)
@@ -64,7 +65,7 @@ export const EMPTY_PRODUCT = {
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
 export const PRODUCT_EDIT_FIELDS = [
   "customerId", "fgCode", "categoryCode", "productDescription", "productDescriptionEn",
-  "brandName", "brandNameEn", "formulaId", "formulaName", "formulaCode", "formulaDate",
+  "brandName", "brandNameEn", "hasBrand", "formulaId", "formulaName", "formulaCode", "formulaDate",
   "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
   "docNote", "docNoteEn",
 ];
@@ -189,7 +190,13 @@ export default function ProductForm({
   const showPackaging = hasPackagingFields(categoryCode);
   // กลุ่ม 03/04 ไม่ได้ขายใต้แบรนด์ของลูกค้า ⇒ ไม่มีช่องแบรนด์เลย (ดู brands.js)
   // อ่านจาก categoryCode ตัวเดียวกับช่องอื่น ไม่ใช่ form.categoryCode ดิบ ๆ
+  // ⚠️ ส่งแค่รหัสหมวด (สตริง) ไม่ใช่ทั้ง form — ตัดสินแค่ "หมวดนี้มีบล็อกแบรนด์ไหม"
+  // ยังไม่เกี่ยวกับสวิตช์มี/ไม่มีแบรนด์ของกลุ่ม 02 (เงื่อนไขนั้นอยู่ในบล็อกเอง ด้านล่าง)
   const showBrand = hasBrandField(categoryCode);
+  // กลุ่ม 02 ธุรกิจบริการ: แบรนด์เลือกได้ว่ามีหรือไม่มี ต่อสินค้าหนึ่งตัว (มติผู้ใช้
+  // 2026-08-31, mig 0325) — กลุ่ม 01 ยังบังคับมีเสมอ ไม่มีสวิตช์นี้
+  const brandToggleable = String(categoryCode || "").slice(0, 2) === "02";
+  const brandOn = form.hasBrand !== false;
   const packaging = showPackaging ? packagingSummary(form) : "";
 
   const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
@@ -323,23 +330,46 @@ export default function ProductForm({
             </span>
           </div>
           {/* แบรนด์: กลุ่ม 03 ค่าออกแบบ / 04 รายได้อื่นๆ ไม่มีช่องนี้ (มติ 2026-08-21 ·
-              ดู brands.js) — ช่องหายพร้อมกับค่าที่ server ล้างให้ ไม่ใช่ซ่อนทับค่าเดิม */}
+              ดู brands.js) — ช่องหายพร้อมกับค่าที่ server ล้างให้ ไม่ใช่ซ่อนทับค่าเดิม
+              กลุ่ม 02 มีสวิตช์มี/ไม่มีแบรนด์ (มติ 2026-08-31, mig 0325) — ปิดสวิตช์แล้ว
+              ช่องกรอกหายเหมือนกลุ่ม 03/04 แต่ยังเปิดกลับมาได้เพราะบล็อกไม่ได้หายทั้งก้อน */}
           {showBrand && (
           <div className="form-group">
-            <label>ชื่อแบรนด์ <span className="text-[var(--red)]">*</span></label>
-            <SearchableSelect
-              entity="brand"
-              disabled={!form.customerId}
-              options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
-              value={form.brandName || form.brandNameEn || ""}
-              onChange={(v) => {
-                const hit = brandOptions.find((b) => (b.th || b.en) === v || b.en === v);
-                onForm({ brandName: hit ? hit.th || "" : v, brandNameEn: hit ? hit.en || "" : "" });
-              }}
-              placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
-              emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
-            />
-            <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
+            <label className="flex items-center gap-2 flex-wrap">
+              <span>ชื่อแบรนด์ {(!brandToggleable || brandOn) && <span className="text-[var(--red)]">*</span>}</span>
+              {brandToggleable && (
+                <button
+                  type="button"
+                  className="ui-switch ml-auto"
+                  data-on={brandOn ? "1" : undefined}
+                  aria-pressed={brandOn}
+                  onClick={() => onForm(brandOn
+                    ? { hasBrand: false, brandName: "", brandNameEn: "" }
+                    : { hasBrand: true })}
+                >
+                  <i aria-hidden="true" />มีแบรนด์
+                </button>
+              )}
+            </label>
+            {(!brandToggleable || brandOn) ? (
+              <>
+                <SearchableSelect
+                  entity="brand"
+                  disabled={!form.customerId}
+                  options={brandOptions.map((b) => ({ value: b.th || b.en, label: brandBoth(b.th, b.en), search: `${b.th} ${b.en}` }))}
+                  value={form.brandName || form.brandNameEn || ""}
+                  onChange={(v) => {
+                    const hit = brandOptions.find((b) => (b.th || b.en) === v || b.en === v);
+                    onForm({ brandName: hit ? hit.th || "" : v, brandNameEn: hit ? hit.en || "" : "" });
+                  }}
+                  placeholder={form.customerId ? "เลือกแบรนด์ของลูกค้า..." : "เลือกลูกค้าก่อน"}
+                  emptyText="ยังไม่มีแบรนด์ของลูกค้านี้ — เพิ่มที่หน้าข้อมูลลูกค้า"
+                />
+                <span className="text-xs text-[var(--text-3)] mt-1">แบรนด์มาจากข้อมูลลูกค้า (โชว์ EN · TH) — เพิ่ม/แก้ชื่อได้ที่หน้าลูกค้า</span>
+              </>
+            ) : (
+              <span className="text-xs text-[var(--text-3)] mt-1 italic">สินค้านี้ไม่มีแบรนด์ — ชื่อแบรนด์เดิม (ถ้ามี) จะถูกล้างตอนบันทึก</span>
+            )}
           </div>
           )}
           {/* หมวดสินค้า: ตัวเลือกหมวดกลางตัวเดียวกับฟอร์มดีล/โครงการ (TwoPanePicker
