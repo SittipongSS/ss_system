@@ -57,6 +57,8 @@ import {
 } from '@/lib/forceDelete';
 import { fmtMoney } from '@/lib/format';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
+import { loadScoped } from '@/lib/scopedRow';
+import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
 
@@ -130,9 +132,27 @@ async function loadOrder(supabase, id) {
     billingRequests = reqRows || [];
   }
 
+  /* ── สัญญาบริการของใบ + ตัวเลือกของดีลเดียวกัน (mig 0324) ─────────────────
+     ⭐ โหลดมากับใบเลย ไม่ให้การ์ดต้องยิงรอบสอง (แพตเทิร์นเดียวกับงวดชำระ)
+     ⚠️ ตัวเลือกดึง **ทั้งดีล** แล้วให้ `serviceContractOptions` กรองเอง — ด่านว่าใบไหน
+       ผูกได้อยู่ที่ lib ตัวเดียว ไม่ใช่เขียนเงื่อนไขซ้ำใน query
+     ⚠️ ไม่บล็อกถ้าโหลดไม่ได้ — ใบสั่งขายต้องเปิดดูได้เสมอ สัญญาเป็นข้อมูลประกอบ */
+  let serviceContract = null;
+  let contractChoices = [];
+  try {
+    const { data: rows } = await supabase.from('sales_contracts')
+      .select('id, "contractNo", kind, status, "dealId", "effectiveDate", "expiryDate", source')
+      .eq('dealId', order.dealId)
+      .order('createdAt', { ascending: false });
+    contractChoices = rows || [];
+    serviceContract = contractChoices.find((c) => c.id === order.serviceContractId) || null;
+  } catch { contractChoices = []; }
+
   return {
     ...order,
     billingRequests,
+    serviceContract,
+    contractChoices,
     deal: deal || null,
     customer: customer || null,
     quotation: quotation || null,
@@ -312,6 +332,45 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ **ต้องตรึงเอกสารฉบับใหม่ด้วย** ไม่ใช่แค่เปลี่ยนค่าในตาราง — ใบที่อนุมัติแล้วพิมพ์
      จากฉบับตรึงเสมอ (openSalesOrderPrintWindowPreferIssued) ⇒ ไม่ตรึงใหม่ = จอบอกอังกฤษ
      แต่ไฟล์ที่ส่งลูกค้ายังเป็นไทย */
+  /* ── ผูก/ถอดสัญญาบริการของใบ (mig 0324 · มติผู้ใช้ 2026-08-31) ────────────
+     ⭐ **แหล่งความจริงอยู่ที่ใบ** — แผนเดิมให้เขียนลง `service_zone_terms` แต่ term
+       เกิดตอน TS จัดสรรลงโซนเท่านั้น ⇒ SA ผูกก่อนจัดสรรไม่ได้เลย ซึ่งเป็นลำดับที่
+       ของจริงเดินกัน (สัญญามาก่อนงาน) · term อ่านผ่านใบแม่ ไม่ก๊อป
+     ⚠️ ด่านอยู่ที่ `serviceContractLinkError` ตัวเดียวกับที่การ์ดบนจอถาม */
+  if (action === 'set_service_contract') {
+    const contractId = body.contractId ? String(body.contractId).trim() : null;
+    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+
+    /* โหลดสัญญาจริงมาตรวจ ไม่ใช่เชื่อ id ที่ยิงมา — ด่านต้องรู้ว่ามันเป็นของดีลไหน
+       และมีผลแล้วหรือยัง (จอส่ง id อะไรมาก็ได้) */
+    let contract = null;
+    if (contractId) {
+      /* ⚠️ `loadScoped` ไม่ใช่แค่ "โหลดแถว" — มันตรวจขอบเขตของผู้ใช้ให้ด้วย
+         (ด่าน ratchet ในเทสต์บังคับไว้ว่าตารางที่มีทะเบียนขอบเขตห้ามโหลดเอง) */
+      const { row, response } = await loadScoped(supabase, 'sales_contracts', contractId, user, 'view');
+      if (response) return response;
+      contract = row;
+    }
+
+    const gate = serviceContractLinkError(before, contract, { canEdit });
+    if (gate) return fail(gate, 409);
+    if ((before.serviceContractId || null) === (contractId || null)) return ok(before);
+
+    const { data, error } = await supabase.from('sales_orders')
+      .update({ serviceContractId: contractId, updatedAt: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (error) return fail(error.message, 500);
+
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data,
+      summary: contract
+        ? `ผูกสัญญา ${contract.contractNo} เข้ากับใบสั่งขาย ${before.orderNumber}`
+        : `ถอดสัญญาออกจากใบสั่งขาย ${before.orderNumber}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
   if (action === 'set-doc-language') {
     const language = body.language === 'en' ? 'en' : (body.language === 'th' ? 'th' : null);
     if (!language) return badRequest('ภาษาเอกสารต้องเป็น "th" หรือ "en" เท่านั้น');

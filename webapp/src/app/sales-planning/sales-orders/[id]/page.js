@@ -88,6 +88,8 @@ import { businessDate } from "@/lib/businessDate";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
+import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
+import { orderHasServiceRounds } from "@/lib/sales/serviceOrders";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt } from "@/lib/approvalPrompt";
@@ -121,6 +123,8 @@ const ACTION_MESSAGE = {
   /* ขั้นบัญชี (mig 0250) — ไม่มีข้อความไหนพูดถึง Actual เพราะบัญชีไม่แตะยอด
      ⚠️ `finance_reject`/`finance_resubmit` ถอดออกแล้ว (มติ 2026-08-30: ไม่มีตีกลับทั้งใบ) */
   finance_approve: "ปิดใบสั่งขายแล้ว",
+  // ⚠️ ข้อความเดียวใช้ได้ทั้งผูกและถอด — ตัวการ์ดโชว์ผลลัพธ์จริงอยู่แล้วหลังโหลดใหม่
+  set_service_contract: "อัปเดตสัญญาของใบแล้ว",
 };
 
 export default function SalesOrderDetailPage() {
@@ -745,6 +749,13 @@ export default function SalesOrderDetailPage() {
     : null;
   /* ⚠️ ต้องส่ง `installments` เข้าด่านเสมอ (มติ 2026-08-30) — ด่านปิดใบตัดสินจาก
      "เก็บครบทุกงวดหรือยัง" ไม่ส่ง = ด่านปฏิเสธ ⇒ ปุ่มบนจอกับ API พูดตรงกันเสมอ */
+  /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับทุกที่ในระบบ (ดีลสาย SERVICE + บรรทัด 02-001) */
+  const hasServiceRounds = orderHasServiceRounds(order, order.lines, { project: order.project });
+
+  const setServiceContract = async (contractId) => {
+    await requestAction("set_service_contract", { contractId: contractId || null });
+  };
+
   const financeGate = (action, options) => financeActionError(
     order, action, { id: order.meId, role, department: order.meDepartment },
     { ...options, installments },
@@ -1103,6 +1114,19 @@ export default function SalesOrderDetailPage() {
               <p className="form-note" role="status" style={{ marginTop: 12 }}>{confirmationGate}</p>
             )}
           </DetailCard>
+
+          {/* ⭐ การ์ดสัญญาบริการ (mig 0324) — ขึ้นเฉพาะใบที่มีรอบบริการ
+              (ดีลสาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อย 1 รายการ ⇒ ทั้งใบ)
+              ⚠️ วางเหนือการ์ดการชำระโดยตั้งใจ — สัญญามาก่อนเงิน ทั้งในลำดับงานจริง
+                 และในด่าน "จ่ายก่อนบริการ" ที่อ่านทั้งสองอย่างประกอบกัน */}
+          {hasServiceRounds && (
+            <ServiceContractCard
+              order={order}
+              canEdit={canEdit}
+              busy={!!busy}
+              onLink={setServiceContract}
+            />
+          )}
 
           {/* ⭐ การ์ด "การชำระ" (mig 0245/0246) — หลักฐานปิดการขายอยู่หัว งวดอยู่ล่าง
               ⚠️ **ยอด Actual ไม่เกี่ยวกับการ์ดนี้** — SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ
