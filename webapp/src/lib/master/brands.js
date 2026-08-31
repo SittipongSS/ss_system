@@ -114,16 +114,23 @@ export function brandEnFor(brands, th) {
 export const BRAND_MAIN_CATEGORIES = Object.freeze(["01", "02"]);
 
 /**
- * สินค้าตัวนี้มีช่องแบรนด์ไหม — รับได้ทั้ง record ({ categoryCode, fgCode })
+ * สินค้าตัวนี้มีช่องแบรนด์ไหม — รับได้ทั้ง record ({ categoryCode, fgCode, hasBrand })
  * และรหัสหมวดตรง ๆ ('03-001' หรือ '03')
+ *
+ * ⭐ กลุ่ม 02 ธุรกิจบริการ: แบรนด์เลือกได้ว่ามีหรือไม่มี **ต่อสินค้าหนึ่งตัว** ผ่านสวิตช์
+ * บนฟอร์ม (record.hasBrand, mig 0325) — กลุ่ม 01 ยังบังคับเหมือนเดิม ไม่มีสวิตช์
+ * รับแค่รหัสหมวดเป็นสตริง (ไม่รู้ hasBrand) = ถือว่ามี เหมือนกฎ "ไม่รู้ = มี" เดิม
  */
 export function hasBrandField(recordOrCode) {
-  const raw = typeof recordOrCode === "string"
-    ? recordOrCode
-    : (recordOrCode?.categoryCode || categoryOf(recordOrCode?.fgCode));
+  const isRecord = recordOrCode !== null && typeof recordOrCode === "object";
+  const raw = isRecord
+    ? (recordOrCode.categoryCode || categoryOf(recordOrCode.fgCode))
+    : recordOrCode;
   const mainCode = String(raw || "").slice(0, 2);
   if (!mainCode) return true;
-  return BRAND_MAIN_CATEGORIES.includes(mainCode);
+  if (!BRAND_MAIN_CATEGORIES.includes(mainCode)) return false;
+  if (mainCode === "02" && isRecord && recordOrCode.hasBrand === false) return false;
+  return true;
 }
 
 // ช่องแบรนด์ที่ต้องล้างเมื่อสินค้าอยู่กลุ่มที่ไม่มีแบรนด์ — ใช้ทั้งตอนสร้างและตอนแก้

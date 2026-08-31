@@ -214,7 +214,7 @@ export async function PATCH(request, { params }) {
   // here too (was previously only changeable via the excise registration step);
   // excise APPROVAL still lives on the registration.
   const catalogEditable = [
-    'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
+    'fgCode', 'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn', 'hasBrand',
     'volume', 'volumeUnit', 'saleUnit', 'costPrice', 'retailPriceIncVat', 'assignee',
     'categoryCode', 'metadata',
     'docNote', 'docNoteEn', // หมายเหตุประจำสินค้า (mig 0317) — ยกเว้นจากด่านอนุมัติด้านล่าง

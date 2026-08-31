@@ -44,7 +44,7 @@ export const dynamic = 'force-dynamic';
    error · `?manage=1` (หน้าทะเบียนสินค้า) ยังได้ทั้งแถวเสมอ */
 const PRODUCT_PICKER_COLUMNS = [
   'id', 'fgCode', 'categoryCode', 'customerId', 'customerName', 'taxId',
-  'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn',
+  'productDescription', 'productDescriptionEn', 'brandName', 'brandNameEn', 'hasBrand',
   'volume', 'volumeUnit', 'saleUnit',
   // หมายเหตุประจำสินค้า (mig 0317) — ฟอร์มใบเสนอราคาอ่านจากลิสต์นี้ตอนเลือกสินค้า
   'docNote', 'docNoteEn',
@@ -261,6 +261,8 @@ export async function POST(request) {
     productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,
     brandNameEn: body.brandNameEn ?? null, // snapshot EN ของแบรนด์ (0059)
+    // มี/ไม่มีแบรนด์ (mig 0325) — สวิตช์เฉพาะกลุ่ม 02 · ไม่ส่งมา = มีแบรนด์ (ค่าเดิม)
+    hasBrand: body.hasBrand !== false,
     // ข้อมูลสูตร (0112 → ทะเบียน 0171) — optional: FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
     // ก็สร้างได้ · ทั้งชุดมาจาก formulaId ไม่รับข้อความที่พิมพ์เอง
     ...formulaSnapshot,
@@ -278,8 +280,9 @@ export async function POST(request) {
     // กลุ่ม 03/04 ไม่มีสามช่องนี้บนฟอร์ม — ล้างที่ server ด้วย ไม่ใช่หวังพึ่งจอ เพราะ
     // POST ยิงตรงได้ และช่องที่ซ่อนอยู่ยังส่งค่าว่างติดมาในบอดี้ (volume: '' ลง numeric ไม่ได้)
     ...clearedPackagingFields(categoryCode),
-    // กลุ่ม 03/04 ไม่มีช่องแบรนด์บนฟอร์ม — ล้างที่ server ด้วยเหตุผลเดียวกัน
-    ...clearedBrandFields(categoryCode),
+    // กลุ่ม 03/04 ไม่มีช่องแบรนด์บนฟอร์ม / กลุ่ม 02 ปิดสวิตช์ "มีแบรนด์" — ล้างที่ server
+    // ด้วยเหตุผลเดียวกัน (mig 0325) — ต้องส่ง hasBrand ไปด้วย ไม่ใช่แค่รหัสหมวด
+    ...clearedBrandFields({ categoryCode, hasBrand: body.hasBrand }),
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
     retailPriceIncVat:
       retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
