@@ -2,6 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
+import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
   installmentActionError, installmentReportOutcome, withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
@@ -38,7 +39,15 @@ async function loadOrderForUser(supabase, user, id) {
     .maybeSingle();
   if (quoteError) throw quoteError;
 
-  return { order: { ...order, quotation: quotation || null } };
+  /* ⭐ บรรทัดของใบ + ดีล — ด่านรับรองงวดต้องรู้ว่า **ใบนี้เป็นงานบริการไหม**
+     (ดีลสาย SERVICE + บรรทัดหมวด 02-001 ≥1 ⇒ ทั้งใบ) เพราะใบบริการต้องมีช่วงครอบ
+     ก่อนบัญชีจะรับรองได้ (มติผู้ใช้ 2026-08-31)
+     ⚠️ เอาเฉพาะ `fgCode` — เกณฑ์อ่านแค่หมวดของรหัส ไม่ต้องลากราคามาทั้งแถว */
+  const { data: lines, error: lineError } = await supabase
+    .from('sales_order_lines').select('id, fgCode').eq('salesOrderId', order.id);
+  if (lineError) throw lineError;
+
+  return { order: { ...order, quotation: quotation || null, deal, lines: lines || [] } };
 }
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
@@ -134,9 +143,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* ช่วงบริการที่งวดนี้ครอบ (mig 0320) — อ่านก่อนด่าน เพราะด่านต้องตรวจว่าช่วงกลับหัวไหม */
     const coversFrom = body.coversFrom || null;
     const coversTo = body.coversTo || null;
+    /* ⚠️ ต้องส่ง `serviceRounds` เสมอ — ด่านรับรองงวดใช้ตัดสินว่าต้องมีช่วงครอบก่อนไหม
+       (ไม่ส่ง = ไม่บล็อก ⇒ ใบบริการรับรองได้ทั้งที่ช่วงครอบว่าง ซึ่งคือกับดักเดิม) */
     const gate = installmentActionError(row, action, user, {
       paidOn, reason, billingRequestId, coversFrom, coversTo,
       rows: siblings, orderTotal: order.totalAmount,
+      serviceRounds: orderHasServiceRounds(order, order.lines, { project: order.project }),
     });
     if (gate) return badRequest(gate);
 

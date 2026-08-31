@@ -61,6 +61,8 @@ export default function VisitReportPage({ params }) {
   const report = useMemo(() => (data ? buildVisitReport({
     visit: data.visit, site, zones: data.zones, assets: data.assets,
     results: data.results, items: data.items,
+    // ผลด่านรายโซนจาก server — ใบส่งงานตัดโซนที่งดบริการพร้อมเหตุ
+    zoneGates: data.zoneGates,
   }) : null), [data, site]);
 
   const back = { href: "/service/schedule", label: "จัดคิวเจ้าหน้าที่" };
@@ -160,11 +162,16 @@ export default function VisitReportPage({ params }) {
             <div key={line.assetId} className={styles.line} data-outcome={line.outcome}>
               <div className={styles.lineHead}>
                 <b>{line.label}</b>
+                {/* ⭐ โซนที่ไม่ผ่านด่าน = "งดบริการ" (PR-C) — แถวยังอยู่บนใบเพราะ
+                    เจ้าหน้าที่ต้องรู้ว่ามีเครื่องอยู่ตรงนั้น แต่ต้องเห็นชัดว่าห้ามทำ
+                    ⚠️ ซ่อนแถวทิ้งไม่ได้ — จะอ่านเหมือนไซต์นี้ไม่มีเครื่องตัวนั้น */}
+                {line.suspended && <span className="ui-badge danger">งดบริการ</span>}
                 <span className={`ui-badge ${line.outcome === "done" ? "success" : line.outcome === "unable" ? "danger" : "violet"}`}>
                   {line.outcomeLabel}
                 </span>
               </div>
               <p className={styles.lineMeta}>{naText([line.where, line.spec].filter(Boolean).join(" · "))}</p>
+              {line.suspendedReason && <p className={styles.lineNote}>{line.suspendedReason}</p>}
               {line.replacedBy && <p className={styles.lineNote}>เปลี่ยนเป็น <b>{line.replacedBy}</b></p>}
               {line.reason && <p className={styles.lineNote}>{line.reason}</p>}
               {line.used.length > 0 && (

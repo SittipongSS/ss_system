@@ -75,7 +75,34 @@ export const GET = withUser(async ({ user, supabase }) => {
     const ordersById = new Map((orders || []).map((o) => [o.id, o]));
     const todayIso = businessDate();
 
-    const bind = bindQueue({ orders: orders || [], lines, terms, projectsById, dealsById });
+    /* ⭐ ชิปความพร้อม (PR-C) — ต้องรู้สัญญากับ "จ่ายถึง" ของแต่ละใบ
+       ⚠️ ยิงเป็นก้อนเดียว ห้ามยิงรายใบในลูป (N+1) · `orderIds` ประกาศไว้ข้างบนแล้ว */
+    const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
+    const [instRows, contractRows] = await Promise.all([
+      orderIds.length
+        ? fetchAllResult(() => supabase.from('sales_order_installments')
+          .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')
+          .in('salesOrderId', orderIds)
+          .order('salesOrderId', { ascending: true }).order('id', { ascending: true }))
+          .then(({ data }) => data || [])
+        : Promise.resolve([]),
+      contractIds.length
+        ? supabase.from('sales_contracts').select('id, "contractNo", status').in('id', contractIds)
+          .then(({ data }) => data || [])
+        : Promise.resolve([]),
+    ]);
+    const installmentsByOrderId = new Map();
+    for (const r of instRows) {
+      const list = installmentsByOrderId.get(r.salesOrderId) || [];
+      list.push(r);
+      installmentsByOrderId.set(r.salesOrderId, list);
+    }
+    const contractsById = new Map(contractRows.map((c) => [c.id, c]));
+
+    const bind = bindQueue({
+      orders: orders || [], lines, terms, projectsById, dealsById,
+      contractsById, installmentsByOrderId, todayIso,
+    });
     const plan = planQueue({ zones, terms, plans, sites, ordersById, todayIso });
     const visit = visitQueue({ plans, visits, sites, isLive: isLiveVisit, todayIso });
 
