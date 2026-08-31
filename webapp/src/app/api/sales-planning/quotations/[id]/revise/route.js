@@ -201,9 +201,6 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     source: l.source,
     sortOrder: l.sortOrder ?? i,
     metadata: l.metadata || {},
-    // จำนวนรอบบริการต้องข้ามมาที่ Rev. ด้วย (mig 0326) — ทอดนี้ก๊อปด้วย JS ไม่ใช่ RPC
-    // ⇒ ลืมบรรทัดนี้แล้วตัวเลขหายเงียบเฉพาะตอนออก Rev. ซึ่งจับได้ยากที่สุดในสี่ทอด
-    serviceRounds: l.serviceRounds ?? null,
   }));
   if (lineRows.length) {
     const { error: lineErr } = await supabase.from('quotation_lines').insert(lineRows);

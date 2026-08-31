@@ -22,7 +22,6 @@ import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
-import Input from "@/components/ui/Input";
 import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 
 export const newProductLine = () => ({
@@ -36,6 +35,11 @@ export const newManualLine = () => ({
 
 export function QuotationReadOnlyLineItems({
   lines = [],
+  /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
+     ⚠️ ปิดไว้เป็นค่าตั้งต้นโดยตั้งใจ: คอมโพเนนต์นี้ใช้ทั้งใบเสนอราคาและใบสั่งขาย
+     แต่จำนวนรอบเป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31 รอบสอง)
+     ⇒ เปิดทั่วไป = ใบเสนอราคาโชว์ขีดค้างไว้ทุกใบตลอดกาล */
+  showServiceRounds = false,
   summaryRows = [],
   grandTotal,
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
@@ -65,7 +69,7 @@ export function QuotationReadOnlyLineItems({
                   <div className={styles.readOnlyDescription}>
                     {line.fgCode ? <small>{line.fgCode}</small> : null}
                     <ReadableText text={line.description} lines={3} />
-                    {lineIsServicePackage(line) ? (
+                    {showServiceRounds && lineIsServicePackage(line) ? (
                       <span className={styles.serviceRoundsTag}>
                         รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
                       </span>
@@ -303,25 +307,7 @@ export default function QuotationLineItems({
                         </Select>
                       )
                       : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
-                  {/* จำนวนรอบบริการ (mig 0326) — โชว์เฉพาะบรรทัดหมวดบริการ 02-001
-                      ⭐ อยู่ในช่อง "จำนวน" ไม่ใช่คอลัมน์ใหม่: มันคือจำนวนอีกมิติของบรรทัด
-                      เดียวกัน ("1 แพ็คเกจ = 12 รอบ") และคอลัมน์ที่ 8 จะดันตารางเกินพื้น
-                      900px จนทุกจอกลายเป็นการ์ด
-                      ⚠️ ตัวเลขนี้ไม่เข้าสูตรยอดเงิน — เป็นข้อผูกพันจำนวนครั้งที่ต้องไปหน้างาน */}
-                  {lineIsServicePackage(line) && (
-                    <label className={styles.serviceRounds}>
-                      <span>รอบบริการ</span>
-                      {editable ? (
-                        <Input
-                          type="number" min="1" step="1" inputMode="numeric" placeholder="เช่น 12"
-                          value={line.serviceRounds ?? ""}
-                          aria-label={`จำนวนรอบบริการ รายการ ${index + 1}`}
-                          onChange={(event) => setLine(index, { serviceRounds: event.target.value })}
-                        />
-                      ) : <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>}
-                    </label>
-                  )}
-                </td>
+</td>
                 <td data-label="ราคา/หน่วย">
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
                   {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ
