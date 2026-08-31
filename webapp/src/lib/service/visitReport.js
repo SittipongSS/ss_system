@@ -79,11 +79,18 @@ export function reportHeadline({ visit, site, flags = [] } = {}) {
 /* ⭐ ประกอบเนื้อใบจากทะเบียน — ทุกบรรทัดที่คืนจากที่นี่คือบรรทัดที่เจ้าหน้าที่ **ไม่ต้องพิมพ์**
    คืนเป็นโครงสร้าง ไม่ใช่ข้อความ เพื่อให้จอกับ PDF ใช้ชุดเดียวกันโดยจัดหน้าคนละแบบได้ */
 export function buildVisitReport({
-  visit, site, zones = [], assets = [], results = [], items = [],
+  visit, site, zones = [], assets = [], results = [], items = [], zoneGates = [],
 } = {}) {
   if (!visit) return null;
   const assetsById = new Map(assets.map((a) => [a.id, a]));
   const zonesById = new Map(zones.map((z) => [z.id, z]));
+  /* ⭐ โซนที่ไม่ผ่านด่าน = **"งดบริการ"** บนใบส่งงาน (PR-C · มติผู้ใช้ 2026-08-27:
+     *"จ่ายมา บาง SO ก็ไปเฉพาะที่ครอบคลุม SO นั้น"*)
+     ⚠️ ผลด่านมาจาก server (`zoneGates`) ไม่ได้คิดที่นี่ — ตัวประเมินตัวเดียวกับที่
+     ปฏิเสธจริง · ไม่ส่งมา = ไม่มีโซนไหนถูกงด (ใบเก่า/จอที่ยังไม่ส่งบริบท) */
+  const blockedZone = new Map(
+    (zoneGates || []).filter((z) => z.state === 'blocked').map((z) => [z.zoneId, z.reason || null]),
+  );
   const resultByAsset = new Map(results.map((r) => [r.assetId, r]));
 
   const timeText = [visit.actualStartTime, visit.actualEndTime]
@@ -118,10 +125,15 @@ export function buildVisitReport({
         settings.workSec && settings.pauseSec ? `${settings.workSec}/${settings.pauseSec}` : null,
         settings.grade || null,
       ].filter(Boolean).join(' · ');
+      const suspended = asset.zoneId && blockedZone.has(asset.zoneId);
       return {
         assetId: asset.id,
         label: asset.label,
         where: [zone?.name, asset.floor, asset.spot].filter(Boolean).join(' · ') || null,
+        /* งดบริการ — แถวยังอยู่บนใบ (เจ้าหน้าที่ต้องรู้ว่ามีเครื่องอยู่) แต่บอกว่าห้ามทำ
+           และบอกเหตุ ไม่ใช่ซ่อนแถวทิ้งจนเหมือนไม่มีเครื่องตัวนั้น */
+        suspended: !!suspended,
+        suspendedReason: suspended ? (blockedZone.get(asset.zoneId) || 'โซนนี้ยังไม่ผ่านด่านสัญญา/การชำระ') : null,
         spec,
         outcome: result.outcome,
         outcomeLabel: ASSET_OUTCOME_LABELS[result.outcome] || result.outcome,

@@ -29,7 +29,7 @@ import {
   visitWarnings,
   routeZoneSplit,
 } from "@/lib/service/rounds";
-import { evaluateVisitGate, gatePassed, gateReasons } from "@/lib/service/visitGate";
+import { evaluateVisitGate, gateBlockedItems, gatePassed } from "@/lib/service/visitGate";
 import { gateContextForSite } from "@/lib/service/gateContext";
 import { isDraftVisit } from "@/lib/service/visitStatus";
 import {
@@ -366,8 +366,15 @@ export default function ServiceSchedulePage() {
                       <button type="button" className={styles.queueRow} onClick={() => setFormVisit(visit)}>
                         <b>{site?.name || visit.siteId}</b>
                         <span>{visit.scheduledDate} · {VISIT_KIND_LABELS[visit.kind]}</span>
+                        {/* ⭐ บอก **เจ้าของ** ของแต่ละเหตุด้วย (PR-C) — คนจัดคิวไม่ใช่คนแก้
+                            เกือบทุกข้อ (สัญญา = SA · เงิน = SA→FN) ⇒ ไม่บอกว่าใครต้องแก้
+                            เท่ากับโยนงานให้คนที่ทำอะไรไม่ได้ แล้วใบค้างในคิวเงียบ ๆ */}
                         <span className={styles.queueReason}>
-                          {ready ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว" : gateReasons(gate).join(" · ")}
+                          {ready
+                            ? "ผ่านด่านแล้ว — เปิดเพื่อปล่อยเข้าคิว"
+                            : gateBlockedItems(gate)
+                              .map((i) => (i.owner ? `${i.owner}: ${i.reason}` : i.reason))
+                              .join(" · ")}
                         </span>
                       </button>
                     </li>

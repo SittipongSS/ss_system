@@ -27,7 +27,7 @@ import IntakeWizard from "@/components/service/IntakeWizard";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
-import { fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -206,6 +206,7 @@ export default function ServiceIntakePage() {
                       <th scope="col">ลูกค้า</th>
                       <th scope="col">อนุมัติเมื่อ</th>
                       <th scope="col">ของที่ต้องจัดสรร</th>
+                      <th scope="col">สัญญา · จ่ายถึง</th>
                       <th scope="col" aria-label="การกระทำ" />
                     </tr>
                   </thead>
@@ -222,6 +223,22 @@ export default function ServiceIntakePage() {
                           {row.fgKinds
                             ? `${fmtNumber(row.fgKinds)} ชนิด · ${fmtNumber(row.remainingQty)} หน่วย`
                             : naText(null)}
+                        </td>
+                        {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
+                            พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
+                            ด่านตอนจัดคิวทีหลัง ซึ่งเป็นตอนที่เสียเวลาไปแล้ว
+                            ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ใบที่ยังไม่พร้อมก็ยัง
+                               รับเข้าไซต์/จัดสรรลงโซนได้ (คนละขั้นกัน) */}
+                        <td>
+                          <span className={`ui-badge ${row.readiness?.hasContract ? "success" : "warning"}`}>
+                            {row.readiness?.hasContract ? row.readiness.contractNo : "ยังไม่ผูกสัญญา"}
+                          </span>
+                          {" "}
+                          <span className={`ui-badge ${row.readiness?.coveredToday ? "success" : "warning"}`}>
+                            {row.readiness?.paidThrough
+                              ? `จ่ายถึง ${fmtDate(row.readiness.paidThrough)}`
+                              : "ยังไม่มีงวดที่รับรอง"}
+                          </span>
                         </td>
                         <td>
                           {canEdit && (

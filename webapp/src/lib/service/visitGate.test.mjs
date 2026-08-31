@@ -126,8 +126,9 @@ test('⭐ ติดบางโซน = ใบยังผ่าน แต่แ
 
 /* ⭐ สำรวจพื้นที่เกิด **ก่อนขาย** · ถอนเครื่องเกิด **ตอนสัญญาหมด** ⇒ สองชนิดนี้
    ไม่มีทางผ่านด่าน ①② ได้เลย · ไม่ข้าม = เครื่องของบริษัทค้างที่ลูกค้าตลอดกาล */
+/* ⚠️ ใช้ชนิด `remove` ที่มีอยู่ ไม่เพิ่มชนิดใหม่ — "ถอด" กับ "ถอน" ต่างกันตัวเดียว */
 test('⭐ สำรวจพื้นที่กับถอนเครื่องข้ามด่านสัญญา/เงิน แต่ยังต้องผ่าน ③④', () => {
-  assert.deepEqual([...GATE_EXEMPT_KINDS], ['survey', 'retrieve']);
+  assert.deepEqual([...GATE_EXEMPT_KINDS], ['survey', 'remove']);
   for (const kind of GATE_EXEMPT_KINDS) {
     const bare = evaluateVisitGate({ ...ok, kind }, { site });
     assert.equal(gatePassed(bare), true, `${kind}: ข้ามด่านสัญญา/เงินได้`);

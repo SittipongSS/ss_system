@@ -32,11 +32,13 @@ export const GATE_STATES = ['ok', 'blocked', 'parked'];
 
    ⚠️ **นัดที่ข้ามด่าน ①② ได้** (มติผู้ใช้ 2026-08-31):
    · `survey` (สำรวจพื้นที่) — เกิด **ก่อนขาย** จึงยังไม่มีสัญญาและยังไม่มีเงินให้ตรวจ
-   · `retrieve` (ถอนเครื่อง) — เกิด **ตอนสัญญาหมดหรือลูกค้าเลิก** จึงไม่มีทางผ่านด่านได้เลย
+   · `remove` (ถอนเครื่อง) — เกิด **ตอนสัญญาหมดหรือลูกค้าเลิก** จึงไม่มีทางผ่านด่านได้เลย
+     ⚠️ ใช้ชนิด `remove` ที่มีอยู่ ไม่เพิ่ม `retrieve` ใหม่ (มติผู้ใช้ 2026-08-31) —
+     "ถอด" กับ "ถอน" ต่างกันตัวเดียวจนคนเลือกผิดแน่ · เปลี่ยนแค่ป้ายเป็น "ถอนเครื่อง"
      🔴 ไม่ข้าม = เครื่องของบริษัทค้างอยู่ที่ลูกค้าตลอดกาล เพราะด่านที่ออกแบบมากันการ
      *ให้บริการฟรี* จะไปกันการ *เอาของกลับ* ด้วย
    ⇒ สองชนิดนี้ยังต้องผ่าน ③④ (มีคนรับผิดชอบ · เข้าไซต์ได้) ตามปกติ */
-export const GATE_EXEMPT_KINDS = Object.freeze(['survey', 'retrieve']);
+export const GATE_EXEMPT_KINDS = Object.freeze(['survey', 'remove']);
 
 export const visitSkipsContractGates = (visit) => GATE_EXEMPT_KINDS.includes(visit?.kind);
 
@@ -194,6 +196,14 @@ export const gatePassed = (items = []) => !items.some((i) => i.state === 'blocke
    ที่มีขีดคั่นซ้อนกันสามชั้น */
 export const gateReasons = (items = []) =>
   items.filter((i) => i.state === 'blocked').map((i) => i.detail || i.label);
+
+/* เหตุพร้อม **เจ้าของ** — คิวรอจัดต้องบอกว่าใครต้องไปแก้ ไม่ใช่แค่ว่าติดอะไร
+   ⭐ คนจัดคิวไม่ใช่คนแก้เกือบทุกข้อ (สัญญา=SA · เงิน=SA→FN) ⇒ ไม่บอกเจ้าของ
+      เท่ากับโยนงานให้คนที่ทำอะไรไม่ได้ แล้วใบจะค้างอยู่ในคิวเงียบ ๆ */
+export const gateBlockedItems = (items = []) =>
+  items.filter((i) => i.state === 'blocked').map((i) => ({
+    key: i.key, owner: i.owner || null, reason: i.detail || i.label,
+  }));
 
 /* ข้อความบอกเหตุสำหรับปุ่มที่กดไม่ได้ (GatedAction) — ต้องบอก**ทุกข้อที่ขาดในครั้งเดียว**
    ไม่ใช่ทีละข้อให้แก้แล้วเจอข้อถัดไป (กฎฟอร์มของ repo) */

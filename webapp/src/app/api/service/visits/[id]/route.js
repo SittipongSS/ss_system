@@ -38,7 +38,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       supabase.from('service_visit_assets').select('*').eq('visitId', id)
         .then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]);
-    return ok({ visit: access.visit, items, assets, zones, results });
+    /* ⭐ ผลด่านราย **โซน** (PR-C) — ใบส่งงาน/ปิดงานต้องตัดโซนที่ไม่ได้รับอนุญาต
+       เป็น "งดบริการ" พร้อมเหตุ · ไซต์เดียวโดนหลาย SO ครอบ จ่ายใบเดียวไปได้เฉพาะ
+       โซนที่ใบนั้นครอบ (มติผู้ใช้ 2026-08-27)
+       ⚠️ คำนวณจากด่านตัวเดียวกับที่ปฏิเสธจริง — จอห้ามคิดเงื่อนไขเอง */
+    const gateCtx = await loadVisitGateContext(supabase, [access.visit.siteId]);
+    const gate = evaluateVisitGate(
+      access.visit,
+      gateContextForSite(gateCtx, access.visit.siteId, { site: null }),
+    );
+    return ok({
+      visit: access.visit, items, assets, zones, results,
+      zoneGates: gate.zoneGates || [],
+    });
   } catch (e) {
     return fail(e.message, 500);
   }
