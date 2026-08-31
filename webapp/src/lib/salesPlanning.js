@@ -350,9 +350,26 @@ export function dealAuditLabel(deal) {
   return `${deal?.title || 'deal'}${deal?.customerName ? ` · ${deal.customerName}` : ''}`;
 }
 
+/* ── รอบตัดเลขรันของใบเสนอราคา (มติผู้ใช้ 2026-09-01 · mig 0328) ────────────
+   *"ใบเสนอราคา ใบสั่งขาย รันไปเรื่อยๆ ตัดทุกปี"*
+
+   ⭐ เลขรัน **เดินต่อข้ามเดือน ตัดรอบทุกปี** — `QT-26080241` → (เดือนถัดไป)
+   `QT-26090242` ไม่ใช่ย้อนกลับเป็น `QT-26090001` · ปีใหม่เริ่ม `QT-27010001`
+
+   🔴 **`YYMM` ในเลข ≠ ตัวตัดรอบของเลขรัน** (กับดักเดียวกับเลขคำร้อง `requests/docNo.js`
+   และเลขสัญญา `sales/contracts.js` — เขียนเตือนไว้ทั้งสองที่แล้ว)
+   · `YYMM` ที่คนเห็นในเลข มาจาก **รูปแบบเลขที่** ของมาตรฐานเอกสาร = เดือนที่ออกใบ
+   · ตัวตัดรอบคือ **คีย์ `month` ของ `quote_number_counters`** ซึ่งเก็บ `'YY'` ตั้งแต่ 0328
+   ⇒ ตารางตัวนับมีทั้งแถวยุคเดือน (`'2608'`) และแถวยุคปี (`'26'`) อยู่ด้วยกัน
+     **ห้ามลบแถวยุคเดือน** — trigger `doc_number_counter_guard` (0242) กันไว้แล้ว
+
+   ⚠️ ชื่อพารามิเตอร์ฝั่ง SQL ยังเป็น `p_month` (เปลี่ยนชื่อ = ต้อง DROP ฟังก์ชันที่
+   ใบเสนอราคาทุกใบเรียกใช้) — ความหมายจริงคือ "คีย์ถังนับ" ตามคอมเมนต์นี้ */
+export const quoteCounterYear = (now = new Date()) => businessMonthKey(now).slice(0, 2);
+
 // เลขใบเสนอราคา: รูปแบบมาจาก "มาตรฐานเอกสารที่เผยแพร่" (หน้าตั้งค่า → mig 0123)
-// ค่าตั้งต้น QT-{YY}{MM}{RUNNING:4}-{REVISION} = QT-YYMMXXXX-R เท่าเดิมทุกตัวอักษร.
-// เลขรันยังออกจาก quote_number_counters ตัวเดิม (mig 0092) และยังรีเซ็ตต่อเดือน
+// ค่าตั้งต้น QT-{YY}{MM}{RUNNING:4}-{REVISION} = QT-YYMMXXXX-R เท่าเดิมทุกตัวอักษร
+// (รูปแบบไม่เปลี่ยนตอน 0328 — เปลี่ยนแค่รอบตัดของเลขรัน)
 //
 // ⚠️ **ออกเลขพร้อม insert ในทรานแซกชันเดียว** (mig 0242) — ห้ามกลับไปจองเลขแล้วค่อย
 // insert แยก: RPC เดิมคืนเลขที่ commit ไปแล้ว ⇒ insert ล้มเมื่อไรเลขใบเสนอราคาหายถาวร
@@ -362,7 +379,7 @@ export async function insertQuotationWithNumber(supabase, row, now = new Date())
   const pattern = await publishedNumberingPattern(supabase, 'quotation');
   const { prefix, width, tail, separator } = documentNumberSlots(pattern, { date: now });
   return supabase.rpc('create_quotation_with_number', {
-    p_month: businessMonthKey(now),
+    p_month: quoteCounterYear(now),
     p_prefix: prefix,
     p_width: width,
     p_tail: tail,

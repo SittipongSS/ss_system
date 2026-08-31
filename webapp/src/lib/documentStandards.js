@@ -58,7 +58,25 @@ function normalizeText(value, max, field, errors, { required = false, upper = fa
   return text || null;
 }
 
-export function validateNumberingPattern(pattern) {
+/* ── รอบตัดเลขรันของแต่ละชนิดเอกสาร (มติผู้ใช้ 2026-09-01 · mig 0328) ───────
+   ⭐ ใบเสนอราคา/ใบสั่งขาย **ตัดรอบทุกปี** ส่วนใบแจ้งภาษี/ไทม์ไลน์ยัง **ตัดทุกเดือน**
+   ⚠️ นี่ไม่ใช่ค่าตกแต่ง — มันคือกติกาว่ารูปแบบเลขต้องมี token อะไรบ้างถึงจะไม่ออกเลขซ้ำ
+      · ตัดรายเดือน ⇒ เลขต้องมีทั้ง {MM} และปี ไม่งั้นเลขวนซ้ำข้ามเดือน
+      · ตัดรายปี   ⇒ เลขต้องมีปี ({MM} มีก็ได้ ไม่มีก็ได้ — เดือนเป็นแค่ข้อมูลให้คนอ่าน)
+   🪤 เปลี่ยนค่าที่นี่ไม่ได้เปลี่ยนรอบตัดจริง — รอบตัดจริงอยู่ที่ **คีย์ถังนับ** ฝั่ง
+      SQL/แอป (`quoteCounterYear` ใน lib/salesPlanning.js · `v_year` ใน
+      create_sales_order_draft) ⇒ แก้ที่นี่ที่เดียว = ด่านตรวจหลวมกว่าของจริง */
+export const DOCUMENT_NUMBER_CYCLES = Object.freeze({
+  quotation: 'year',
+  salesOrder: 'year',
+  exciseTaxNotice: 'month',
+  projectTimeline: 'month',
+  pdr: 'month',
+});
+
+export const documentNumberCycle = (documentKey) => DOCUMENT_NUMBER_CYCLES[documentKey] || 'month';
+
+export function validateNumberingPattern(pattern, documentKey) {
   const text = String(pattern ?? '').trim().toUpperCase();
   if (!text) return { ok: false, error: 'กรุณาระบุรูปแบบเลขที่เอกสาร' };
   if (text.length > DOCUMENT_STANDARD_LIMITS.numberingPattern) {
@@ -82,10 +100,17 @@ export function validateNumberingPattern(pattern) {
   if (!text.endsWith('{REVISION}')) {
     return { ok: false, error: 'รูปแบบเลขที่ต้องปิดท้ายด้วย {REVISION} — ระบบใช้ส่วนหน้าเป็นเลขฐานของฉบับแก้ไข' };
   }
-  // ตัวนับเลขรันใน DB รีเซ็ตทุกเดือน (quote_number_counters.month = 'YYMM') — ถ้ารูปแบบ
-  // ไม่มีเดือน+ปี เลขจะวนซ้ำข้ามเดือน/ข้ามปีแล้วไปชน UNIQUE ตอนบันทึกใบ
-  if (!tokens.includes('MM') || !tokens.some((token) => token === 'YY' || token === 'YYYY')) {
-    return { ok: false, error: 'รูปแบบเลขที่ต้องมี {MM} และ {YY} หรือ {YYYY} — ตัวนับเลขรันรีเซ็ตทุกเดือน ถ้าไม่มีเดือน/ปีเลขจะซ้ำ' };
+  // ตัวนับเลขรันใน DB รีเซ็ตตามรอบของเอกสารชนิดนั้น (DOCUMENT_NUMBER_CYCLES) — ถ้ารูปแบบ
+  // ไม่มี token ของรอบ เลขจะวนซ้ำเมื่อขึ้นรอบใหม่แล้วไปชน UNIQUE ตอนบันทึกใบ
+  //
+  // ⚠️ **ไม่ส่ง documentKey มา = ข้ามด่านรายเดือน** (ตรวจแค่ปี) — ไม่ใช่ช่องโหว่:
+  // ทางเขียนจริงมีทางเดียวคือ updateDocumentStandardDraft ซึ่งเรียกซ้ำอีกรอบด้วย
+  // `documentKey` ที่อ่านจากแถวในฐาน (ไม่ใช่จาก body ที่ผู้ใช้ส่งมา) ⇒ ปลอมไม่ได้
+  if (!tokens.some((token) => token === 'YY' || token === 'YYYY')) {
+    return { ok: false, error: 'รูปแบบเลขที่ต้องมี {YY} หรือ {YYYY} — ตัวนับเลขรันรีเซ็ตทุกปี ถ้าไม่มีปีเลขจะซ้ำข้ามปี' };
+  }
+  if (documentKey && documentNumberCycle(documentKey) === 'month' && !tokens.includes('MM')) {
+    return { ok: false, error: 'รูปแบบเลขที่ของเอกสารชนิดนี้ต้องมี {MM} — ตัวนับเลขรันรีเซ็ตทุกเดือน ถ้าไม่มีเดือนเลขจะซ้ำ' };
   }
   return { ok: true, value: text };
 }

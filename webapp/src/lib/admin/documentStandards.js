@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { DOCUMENT_STANDARD_KEYS } from '@/lib/documentStandards';
+import { DOCUMENT_STANDARD_KEYS, validateNumberingPattern } from '@/lib/documentStandards';
 
 export class DocumentStandardError extends Error {
   constructor(message, status = 500, code = 'document_standard_error') {
@@ -81,6 +81,16 @@ export async function updateDocumentStandardDraft(supabase, id, input, expectedU
   if (beforeError) throw mappedError(beforeError);
   if (!before) throw new DocumentStandardError('ไม่พบเวอร์ชันมาตรฐานเอกสาร', 404, 'version_not_found');
   if (before.status !== 'draft') throw new DocumentStandardError('เวอร์ชันนี้ไม่ใช่ฉบับร่างแล้ว', 409, 'version_not_draft');
+
+  /* ⚠️ ตรวจรูปแบบเลขที่ซ้ำอีกรอบ **ด้วยชนิดเอกสารจากแถวในฐาน** (mig 0328) — ด่านแรก
+     (normalizeDocumentStandardInput ในเราต์) ไม่รู้ว่ากำลังแก้มาตรฐานของเอกสารชนิดไหน
+     จึงตรวจได้แค่กติกาที่จริงกับทุกชนิด · กติกาที่ต่างกันคือรอบตัดเลขรัน: ใบเสนอราคา/
+     ใบสั่งขายตัดรายปี ส่วนใบแจ้งภาษี/ไทม์ไลน์ยังตัดรายเดือน ⇒ ชนิดหลังต้องมี {MM}
+     🪤 ห้ามย้ายด่านนี้ไปเชื่อ `input.documentKey` — ค่านั้นมาจาก body ที่ผู้ใช้ส่งมา */
+  if (input?.numberingPattern) {
+    const numbering = validateNumberingPattern(input.numberingPattern, before.documentKey);
+    if (!numbering.ok) throw new DocumentStandardError(numbering.error, 400, 'numbering_pattern_invalid');
+  }
 
   const now = new Date().toISOString();
   const { data: after, error } = await supabase
