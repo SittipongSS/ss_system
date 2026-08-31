@@ -39,6 +39,7 @@ const EMPTY = {
 };
 
 export default function ServiceVisitModal({
+  gateContext = null,   // บริบทด่าน ①② (โซน · รอบขาย · ใบ · งวด · สัญญา) จากจอแม่
   open, visit = null, sites = [], technicians = [], defaults = null, onClose, onSave,
 }) {
   const editing = !!visit;
@@ -97,9 +98,11 @@ export default function ServiceVisitModal({
   // ⭐ ด่านคำนวณจาก **ค่าที่กำลังกรอก** ไม่ใช่ค่าที่บันทึกไว้ — เลือกเจ้าหน้าที่บริการในฟอร์มแล้ว
   // ข้อ 3 ต้องติ๊กทันที ไม่ต้องกดบันทึกก่อนถึงจะรู้ว่าผ่านหรือยัง
   // ⚠️ ตัวเดียวกับที่ server ใช้ปฏิเสธ (visitGate.js) — ห้ามคิดเงื่อนไขซ้ำตรงนี้
+  /* ⚠️ **บริบทด่าน ①② มาจากผู้เรียก** (PR-C) — โมดัลไม่ยิงโหลดเอง เพราะจอแม่
+     โหลดมาทั้งสัปดาห์แล้ว · ไม่ส่งมา = ด่านตอบว่าติด ซึ่งถูกกว่าเดาว่าผ่าน */
   const gate = useMemo(
-    () => evaluateVisitGate({ ...form, id: visit?.id }, { site }),
-    [form, site, visit?.id],
+    () => evaluateVisitGate({ ...form, id: visit?.id }, { ...(gateContext || {}), site }),
+    [form, site, visit?.id, gateContext],
   );
   const canQueue = gatePassed(gate);
   const gateCount = useMemo(() => gateSummary(gate), [gate]);

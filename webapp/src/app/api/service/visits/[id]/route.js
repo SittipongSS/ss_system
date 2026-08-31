@@ -12,6 +12,7 @@ import { SURVEY_VISIT_KIND, findSurveyVisit } from '@/lib/service/surveyVisit';
 import { findPlan, loadVisitItems, requireVisit } from '@/lib/service/visitsRepo';
 import { findSite, loadAssets, loadZones } from '@/lib/service/sitesRepo';
 import { evaluateVisitGate, gateBlocker, gatePassed } from '@/lib/service/visitGate';
+import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { isSuperuser } from '@/lib/permissions';
 import { PLANNING_FIELD_ERROR, planningFieldsIn } from '@/lib/service/visitAccess';
 import { deriveVisitStatus } from '@/lib/service/visitAssets';
@@ -111,7 +112,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let gateTrail = null;
     if (before.status === 'draft' && isLiveVisit(value)) {
       const site = await findSite(supabase, before.siteId);
-      const gate = evaluateVisitGate({ ...before, ...value }, { site });
+      /* ⭐ ด่าน ①② ตรวจจริงตั้งแต่ PR-C ⇒ ต้องป้อนบริบท (โซน · รอบขาย · ใบ · งวด · สัญญา)
+         ⚠️ โหลดผ่าน `loadVisitGateContext` ตัวเดียวกับที่จอใช้ — ประกอบเองแยกกันเมื่อไร
+            ปุ่มกับด่านจะพูดคนละเรื่อง */
+      const gateCtx = await loadVisitGateContext(supabase, [before.siteId]);
+      const gate = evaluateVisitGate(
+        { ...before, ...value },
+        gateContextForSite(gateCtx, before.siteId, { site }),
+      );
       const override = String(body.gateOverrideReason ?? '').trim();
 
       if (!gatePassed(gate)) {
