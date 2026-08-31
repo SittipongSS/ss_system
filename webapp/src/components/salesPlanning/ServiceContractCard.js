@@ -33,6 +33,7 @@ import { contractKindLabel, contractStatusLabel } from "@/lib/sales/contracts";
 import { serviceContractLinkError, serviceContractOptions } from "@/lib/sales/serviceContractLink";
 import { normalizeServiceRounds, serviceRoundLines, serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
 import { fmtDate, naText } from "@/lib/format";
+import styles from "./ServiceContractCard.module.css";
 
 export default function ServiceContractCard({
   order,
@@ -151,52 +152,59 @@ export default function ServiceContractCard({
         ⚠️ เป็นตัวเลขอ้างอิง ไม่ได้บังคับจำนวนนัดที่ระบบสร้าง — รอบจริงเลื่อน/งดได้ */}
     {roundLines.length > 0 && (
       <DetailCard icon={Repeat} title="จำนวนรอบบริการที่ขายไว้">
-        <div className="form-grid cols-2">
-          <div className="form-field span-2">
-            <span className="hint">
-              ฝ่ายบริการเห็นตัวเลขนี้ตอนรับงานและตอนวางรอบ — เป็นข้อผูกพันอ้างอิง
-              ไม่ได้บังคับจำนวนนัดที่ระบบสร้างให้
-            </span>
-          </div>
-          {/* ⚠️ คนที่แก้ไม่ได้ (ฝ่ายบริการ/บัญชี) เห็น **ตัวเลข** ไม่ใช่ช่องกรอกที่กดไม่ได้ —
-              กติกาเปลือก: ไม่มีสิทธิ์ = ไม่โชว์ตัวควบคุม · ติดด่าน = โชว์แล้วบอกเหตุ
-              (ตัวเลขเองยังต้องเห็น เพราะฝ่ายบริการใช้มันวางรอบ) */}
-          {roundLines.map((line) => (canEdit ? (
-            <label className="form-field span-2" key={line.id}>
-              <span className="form-field-label">
-                {line.fgCode ? `${line.fgCode} · ` : ""}{naText(line.description)}
+        <p className={styles.roundsHint}>
+          ฝ่ายบริการเห็นตัวเลขนี้ตอนรับงานและตอนวางรอบ — เป็นข้อผูกพันอ้างอิง
+          ไม่ได้บังคับจำนวนนัดที่ระบบสร้างให้
+        </p>
+
+        <div className={styles.roundsList}>
+          {roundLines.map((line) => (
+            <div className={styles.roundsRow} key={line.id}>
+              <span className={styles.roundsName}>
+                {line.fgCode ? <span className={styles.roundsCode}>{line.fgCode}</span> : null}
+                {/* ชื่อสินค้ายาวกว่าช่องได้เสมอ — ตัดบนจอ เก็บเต็มไว้ใน title */}
+                <span className={styles.roundsDesc} title={line.description || undefined}>
+                  {naText(line.description)}
+                </span>
               </span>
-              <Input
-                type="number" min="1" step="1" inputMode="numeric" placeholder="เช่น 12"
-                value={rounds[line.id] ?? ""}
-                disabled={busy || !!roundsGate}
-                title={roundsGate || undefined}
-                aria-label={`จำนวนรอบบริการของ ${line.fgCode || line.description || "รายการนี้"}`}
-                onChange={(e) => setRounds((prev) => ({ ...prev, [line.id]: e.target.value }))}
-              />
-            </label>
-          ) : (
-            <div className="form-field span-2" key={line.id}>
-              <span className="form-field-label">
-                {line.fgCode ? `${line.fgCode} · ` : ""}{naText(line.description)}
-              </span>
-              <span>{line.serviceRounds ? `${line.serviceRounds} รอบ` : naText(null)}</span>
+              {/* ⚠️ คนที่แก้ไม่ได้ (ฝ่ายบริการ/บัญชี) เห็น **ตัวเลข** ไม่ใช่ช่องกรอกที่กดไม่ได้ —
+                  กติกาเปลือก: ไม่มีสิทธิ์ = ไม่โชว์ตัวควบคุม · ติดด่าน = โชว์แล้วบอกเหตุ
+                  (ตัวเลขเองยังต้องเห็น เพราะฝ่ายบริการใช้มันวางรอบ) */}
+              {canEdit ? (
+                <span className={styles.roundsField}>
+                  <Input
+                    type="number" min="1" step="1" inputMode="numeric" placeholder="—"
+                    value={rounds[line.id] ?? ""}
+                    disabled={busy || !!roundsGate}
+                    title={roundsGate || undefined}
+                    aria-label={`จำนวนรอบบริการของ ${line.fgCode || line.description || "รายการนี้"}`}
+                    onChange={(e) => setRounds((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                  />
+                  <span className={styles.roundsUnit}>รอบ</span>
+                </span>
+              ) : (
+                <span className={styles.roundsField}>
+                  <span className={styles.roundsValue}>{line.serviceRounds || naText(null)}</span>
+                  <span className={styles.roundsUnit}>รอบ</span>
+                </span>
+              )}
             </div>
-          )))}
-          {canEdit && (
-            <div className="form-actions-buttons span-2">
-              <Button
-                variant="accent"
-                size="sm"
-                disabled={busy || !roundsDirty || !!roundsGate}
-                title={roundsGate || (roundsDirty ? undefined : "ยังไม่มีตัวเลขที่เปลี่ยนแปลง")}
-                onClick={saveRounds}
-              >
-                บันทึกจำนวนรอบ
-              </Button>
-            </div>
-          )}
+          ))}
         </div>
+
+        {canEdit && (
+          <div className={styles.roundsActions}>
+            <Button
+              variant="accent"
+              size="sm"
+              disabled={busy || !roundsDirty || !!roundsGate}
+              title={roundsGate || (roundsDirty ? undefined : "ยังไม่มีตัวเลขที่เปลี่ยนแปลง")}
+              onClick={saveRounds}
+            >
+              บันทึกจำนวนรอบ
+            </Button>
+          </div>
+        )}
       </DetailCard>
     )}
     </>
