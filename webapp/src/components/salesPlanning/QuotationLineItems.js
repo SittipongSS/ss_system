@@ -22,6 +22,7 @@ import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
 import { productSelectOptions } from "@/components/master/productOption";
 import styles from "./QuotationLineItems.module.css";
 import Textarea from "@/components/ui/Textarea";
+import { lineIsServicePackage } from "@/lib/sales/serviceOrders";
 
 export const newProductLine = () => ({
   _lineKind: "product", productId: null, fgCode: null, description: "", qty: 1, unit: DEFAULT_SALE_UNIT, unitPrice: 0,
@@ -34,6 +35,11 @@ export const newManualLine = () => ({
 
 export function QuotationReadOnlyLineItems({
   lines = [],
+  /* ⭐ `showServiceRounds` — โชว์ "รอบบริการที่ขายไว้" ใต้คำอธิบายของบรรทัดหมวด 02-001
+     ⚠️ ปิดไว้เป็นค่าตั้งต้นโดยตั้งใจ: คอมโพเนนต์นี้ใช้ทั้งใบเสนอราคาและใบสั่งขาย
+     แต่จำนวนรอบเป็นของ **ใบสั่งขาย** ที่เดียว (มติผู้ใช้ 2026-08-31 รอบสอง)
+     ⇒ เปิดทั่วไป = ใบเสนอราคาโชว์ขีดค้างไว้ทุกใบตลอดกาล */
+  showServiceRounds = false,
   summaryRows = [],
   grandTotal,
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
@@ -63,6 +69,11 @@ export function QuotationReadOnlyLineItems({
                   <div className={styles.readOnlyDescription}>
                     {line.fgCode ? <small>{line.fgCode}</small> : null}
                     <ReadableText text={line.description} lines={3} />
+                    {showServiceRounds && lineIsServicePackage(line) ? (
+                      <span className={styles.serviceRoundsTag}>
+                        รอบบริการที่ขายไว้: <strong>{line.serviceRounds ? `${line.serviceRounds} รอบ` : NA}</strong>
+                      </span>
+                    ) : null}
                     {line.metadata?.note ? (
                       <span className={styles.noteReadonly}>
                         <strong>หมายเหตุ:</strong>
@@ -296,7 +307,7 @@ export default function QuotationLineItems({
                         </Select>
                       )
                       : (line.unit && <span className={styles.fgCode} style={{ color: "var(--text-3)" }}>หน่วย: {line.unit}</span>))}
-                </td>
+</td>
                 <td data-label="ราคา/หน่วย">
                   <MoneyInput min="0" value={line.unitPrice} disabled={!editable || !!(line.productId || line.fgCode)} title={(line.productId || line.fgCode) ? "ราคาจากฐานข้อมูลสินค้า — แก้ราคาต้องแก้ที่ฐานข้อมูล" : undefined} onChange={(value) => setLine(index, { unitPrice: value ?? "" })} aria-label={`ราคาต่อหน่วย รายการ ${index + 1}`} />
                   {/* เตือนเฉพาะตอนรู้แน่ว่า master ยังไม่ตั้งราคา (ห้ามกรอกราคาในใบ) — กรณีปกติ

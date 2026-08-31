@@ -59,6 +59,7 @@ import { fmtMoney } from '@/lib/format';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { loadScoped } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
+import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 
 const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
 
@@ -369,6 +370,51 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     return ok(data);
+  }
+
+  /* ── กรอกจำนวนรอบบริการรายบรรทัด (mig 0326 · มติผู้ใช้ 2026-08-31 รอบสอง) ──
+     ⭐ **ช่องเดียวบนบรรทัดใบสั่งขายที่แก้ได้** — ที่เหลือเป็น snapshot จากใบเสนอราคา
+       เหตุผลอยู่ที่ `lib/sales/serviceRoundsEntry.js` (ไม่กระทบยอดเงิน/เอกสารที่ออกแล้ว)
+     ⚠️ ด่านสองชั้นคนละคำถาม: `serviceRoundsEditError` = "ใบนี้/คนนี้แก้ได้ไหม" ·
+       `validateServiceRoundsPatch` = "บรรทัดที่ส่งมาเป็นของใบนี้และเป็นหมวดบริการจริงไหม"
+     ⚠️ **แก้ได้แม้ใบอนุมัติแล้ว** โดยตั้งใจ — ไม่ต้องออก Rev. เพื่อแก้เลขตัวเดียว */
+  if (action === 'set_service_rounds') {
+    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const gate = serviceRoundsEditError(before, { canEdit });
+    if (gate) return fail(gate, 409);
+
+    const { data: lines, error: lineError } = await supabase
+      .from('sales_order_lines').select('id, "fgCode", description, "serviceRounds"')
+      .eq('salesOrderId', id);
+    if (lineError) return fail(lineError.message, 500);
+
+    const { value, error: invalid } = validateServiceRoundsPatch(body.serviceRounds, lines || []);
+    if (invalid) return badRequest(invalid);
+
+    /* เขียนเฉพาะบรรทัดที่ค่าเปลี่ยนจริง — ไม่งั้นกดบันทึกโดยไม่แก้อะไรก็ยัง
+       ประทับ audit log ไปหนึ่งแถวทุกครั้ง */
+    const byId = new Map((lines || []).map((l) => [l.id, l]));
+    const changed = [...value.entries()].filter(([lineId, rounds]) => (byId.get(lineId)?.serviceRounds ?? null) !== rounds);
+    if (!changed.length) return ok(before);
+
+    for (const [lineId, rounds] of changed) {
+      const { error: updateError } = await supabase.from('sales_order_lines')
+        .update({ serviceRounds: rounds }).eq('id', lineId).eq('salesOrderId', id);
+      if (updateError) return fail(updateError.message, 500);
+    }
+
+    const summary = changed
+      .map(([lineId, rounds]) => `${byId.get(lineId)?.fgCode || lineId}: ${rounds === null ? 'ยังไม่ระบุ' : `${rounds} รอบ`}`)
+      .join(' · ');
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: { lines: (lines || []).map(({ id: lineId, fgCode, serviceRounds }) => ({ id: lineId, fgCode, serviceRounds })) },
+      after: { lines: changed.map(([lineId, rounds]) => ({ id: lineId, fgCode: byId.get(lineId)?.fgCode || null, serviceRounds: rounds })) },
+      summary: `แก้จำนวนรอบบริการของใบสั่งขาย ${before.orderNumber} — ${summary}`,
+      request: req,
+    });
+    // จอโหลดใบใหม่ทั้งก้อนหลังบันทึก (บรรทัดอยู่ในนั้น) — ตอบแถวใบพอ
+    return ok(before);
   }
 
   if (action === 'set-doc-language') {

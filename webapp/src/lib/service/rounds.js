@@ -5,6 +5,7 @@
 //
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ปฏิทิน/ฟอร์ม) และ server (validate + gen)
 import { isBusinessDay, toLocalISODate } from '@/lib/pm/dateHelpers';
+import { daysBetween } from '@/lib/sales/paymentCoverage';
 import { accessConflict, minutesOf, toHHMM } from './sites';
 import { businessDate } from '@/lib/businessDate';
 import { VISIT_STATUSES, canRescheduleVisit, isClosedVisit, isLiveVisit } from './visitStatus';
@@ -115,6 +116,23 @@ export function normalizePlanInput(body = {}) {
 //
 // ⭐ "เลื่อน" = เปลี่ยน **วันที่นัด** ของนัดที่ยังไม่ปิด · เปลี่ยนเวลาในวันเดิมไม่นับ
 // (ขยับ 30 นาทีเพราะรถติดไม่ใช่เรื่องที่ต้องอธิบายให้ลูกค้าฟัง)
+/* ── "ความถี่นี้จะได้กี่นัด" (PR-D · mig 0326) ────────────────────────────
+   ⭐ **ตัวประมาณ ไม่ใช่ตัวบังคับ** (มติผู้ใช้) — จำนวนรอบที่ขายเป็นข้อผูกพันอ้างอิง
+   ระบบไม่บล็อกถ้าไม่ตรง · ตัวเลขนี้มีไว้ให้คนตั้งความถี่เห็นทันทีว่าที่ตั้งไว้จะได้
+   นัดใกล้เคียงกับที่ขายไหม (เดิมต้องคิดเลขในหัวหรือรู้ตัวตอนสิ้นปี)
+
+   ⚠️ ไม่มีวันสิ้นสุด = ตอบ null ไม่ใช่เดาว่าหนึ่งปี — รอบเปิดปลายเปิดคือรอบที่ยัง
+   ไม่มีข้อผูกพันปลายทาง การเดาให้เลขจะกลายเป็น "ตัวเลขที่ดูเหมือนจริง" ทันที
+   ⚠️ นับแบบรวมวันเริ่ม: เริ่ม 1 ม.ค. จบ 31 ธ.ค. ทุก 30 วัน = 13 นัด (ไม่ใช่ 12)
+   เพราะนัดแรกเกิดวันเริ่มรอบเสมอ */
+export function estimateVisitCount({ startDate, endDate, everyDays } = {}) {
+  const every = Number(everyDays);
+  if (!startDate || !endDate || !Number.isFinite(every) || every < 1) return null;
+  const span = daysBetween(startDate, endDate);   // ตัวนับวันกลางของระบบ (paymentCoverage)
+  if (span == null || span < 0) return null;
+  return Math.floor(span / every) + 1;
+}
+
 export function isReschedule(before, after) {
   if (!before || !after) return false;
   /* 🐞 ของเดิมกันแค่ done/cancelled ⇒ แก้วันย้อนหลังของใบ partial/unable จะถูกบังคับ

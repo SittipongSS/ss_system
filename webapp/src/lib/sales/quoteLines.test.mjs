@@ -233,3 +233,4 @@ test('เคสที่ตัดสินไม่ได้ปล่อยผ�
   const manual = normalizeManualLines([{ description: 'ค่าบริการ', qty: 1, unitPrice: 500 }]);
   assert.deepEqual(await customerMismatchedLines(null, manual, { customerId: 'C-เรา' }), []);
 });
+

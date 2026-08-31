@@ -125,6 +125,7 @@ const ACTION_MESSAGE = {
   finance_approve: "ปิดใบสั่งขายแล้ว",
   // ⚠️ ข้อความเดียวใช้ได้ทั้งผูกและถอด — ตัวการ์ดโชว์ผลลัพธ์จริงอยู่แล้วหลังโหลดใหม่
   set_service_contract: "อัปเดตสัญญาของใบแล้ว",
+  set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
 };
 
 export default function SalesOrderDetailPage() {
@@ -756,6 +757,12 @@ export default function SalesOrderDetailPage() {
     await requestAction("set_service_contract", { contractId: contractId || null });
   };
 
+  /* จำนวนรอบบริการรายบรรทัด (mig 0326) — ด่านอยู่ที่ serviceRoundsEditError ฝั่ง API
+     ⚠️ requestAction โหลดใบใหม่ให้เองเมื่อสำเร็จ ⇒ ค่าบนการ์ดกลับมาจากบรรทัดจริงเสมอ */
+  const setServiceRounds = async (map) => {
+    await requestAction("set_service_rounds", { serviceRounds: map });
+  };
+
   const financeGate = (action, options) => financeActionError(
     order, action, { id: order.meId, role, department: order.meDepartment },
     { ...options, installments },
@@ -994,6 +1001,7 @@ export default function SalesOrderDetailPage() {
           <DetailCard icon={Package} eyebrow="ORDER LINES" title="รายการสินค้าและบริการ" meta={`${sortedLines.length} รายการ · snapshot จาก QT Won`} actions={<Link href={`/sa/quotations/${order.quotationId}`} className="btn ghost sm"><ExternalLink size={13} /> เปิด QT ต้นทาง</Link>}>
             <QuotationReadOnlyLineItems
               lines={sortedLines}
+              showServiceRounds
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
                 discountRow,
@@ -1125,6 +1133,7 @@ export default function SalesOrderDetailPage() {
               canEdit={canEdit}
               busy={!!busy}
               onLink={setServiceContract}
+              onSaveRounds={setServiceRounds}
             />
           )}
 

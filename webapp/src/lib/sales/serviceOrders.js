@@ -56,6 +56,24 @@ export function orderBusinessLineOf(order, ctx = {}) {
    (`bindQueue` ใน lib/service/intake.js) ⇒ ใบสาย SERVICE ที่ไม่มีบรรทัดหมวด 02-001
    จะขึ้นคิว TS แต่ไม่นับเป็น "ใบมีรอบบริการ" ที่ฝั่งเงิน · ถ้าจะยุบให้เหลือเกณฑ์เดียว
    ต้องทำพร้อมกับตอนที่ intake รับชิปสัญญา/จ่ายถึงใน PR-C ไม่ใช่แอบเปลี่ยนที่นี่ */
+/* ⭐ **จำนวนรอบที่ขายไว้ของชุดบรรทัด** (mig 0326) — ตัวรวมเดียวของคำถามนี้
+   ใช้ทั้งฝั่งขาย (คอลัมน์ "รอบที่เดิน" บนทะเบียน) และฝั่ง TS (คิวรับงาน · ฟอร์มวางรอบ)
+
+   ⚠️ **null ไม่ใช่ 0** — บรรทัดที่ยังไม่กรอกรอบคือ "ยังไม่ระบุ" ⇒ ถ้าไม่มีบรรทัดไหน
+   กรอกเลย ตอบ null เพื่อให้จอโชว์ขีด · ตอบ 0 จะอ่านเป็น "ขายไว้ศูนย์รอบ" ซึ่งผิด
+   ⚠️ รวมทุกบรรทัดในชุดที่ส่งมา ไม่กรองหมวดซ้ำ — บรรทัดที่ไม่ใช่งานบริการถูกล้างค่า
+   ตั้งแต่ตอนบันทึกแล้ว (normalizeServiceRounds) ⇒ กรองซ้ำที่นี่ = สองที่ที่เพี้ยนหากันได้ */
+export function serviceRoundsSold(lines = []) {
+  const rows = Array.isArray(lines) ? lines : [];
+  let total = 0;
+  let seen = false;
+  for (const line of rows) {
+    const rounds = Number(line?.serviceRounds);
+    if (Number.isFinite(rounds) && rounds > 0) { total += rounds; seen = true; }
+  }
+  return seen ? total : null;
+}
+
 export function orderHasServiceRounds(order, lines, ctx = {}) {
   const rows = Array.isArray(lines) ? lines : order?.lines;
   if (!hasServicePackageLine(rows)) return false;

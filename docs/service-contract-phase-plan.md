@@ -87,10 +87,21 @@ CHECK (source <> 'external' OR "externalDocKind" IS NOT NULL)
 - external บังคับ `effectiveDate`+`expiryDate` ตอนอนุมัติ (ด่านที่ API ไม่ใช่ CHECK — ใบ generated กรอกทีหลังได้)
 - ไฟล์แนบใช้สายอัปโหลดฉบับลงนามเดิมของสัญญา (ดู route `/api/sales-planning/contracts/[id]/document`)
 
-**M3 — จำนวนรอบขาย** (`ALTER sales_order_lines`)
+**M3 — จำนวนรอบขาย** (`ALTER quotation_lines` **และ** `ALTER sales_order_lines`) — mig 0326
 ```sql
 ADD COLUMN "serviceRounds" integer CHECK ("serviceRounds" IS NULL OR "serviceRounds" > 0);
 ```
+🛠 **แก้จากแผนเดิมสองรอบ (2026-08-31)**
+1. เดิมเขียนไว้ตารางเดียว แต่บรรทัดใบสั่งขาย **แก้ไม่ได้ทั้งระบบ** (เป็น snapshot ที่ RPC
+   ก๊อปจาก `quotation_lines`) ⇒ รอบแรกย้ายทางเข้าไปที่ใบเสนอราคา และ mig 0326 แก้ทั้งสาม
+   นิยามที่ก๊อปบรรทัด: `save_quotation_content` · `create_sales_order_draft` ·
+   `revise_approved_sales_order_atomic`
+2. **มติสุดท้าย: กรอกที่ใบสั่งขาย** (ผู้ใช้ขอเปลี่ยนหลัง mig รันแล้ว) ⇒ ช่องที่ใบเสนอราคา
+   ถูกถอดออก · คอลัมน์ที่ `quotation_lines` ค้างไว้โดยไม่มีใครเขียน (จะเก็บกวาดด้วย
+   migration ใหม่ทีหลังก็ได้) · ทอดที่ยังสำคัญเหลือทอดเดียวคือ SO → SO Rev.
+   · **ช่องนี้เป็นช่องแรกบนบรรทัด SO ที่แก้ได้** จึงมีด่านของตัวเองที่
+   `src/lib/sales/serviceRoundsEntry.js` — แก้ได้แม้ใบอนุมัติแล้ว (ไม่ต้องออก Rev.)
+   เพราะไม่กระทบยอดเงินและไม่อยู่บนเอกสารที่ออกไปแล้ว
 
 **M4 — ทะเบียนติดตามต่อสัญญา** (ตารางใหม่ `service_renewal_followups`)
 ```sql
@@ -272,11 +283,19 @@ term ทุกแถวได้ serviceContractId
 FN รับรองงวดถัดไปแล้วนัดกลับมาลากได้ · ไซต์สอง SO จ่ายใบเดียว = อีกโซน "งดบริการ" บนใบส่งงาน
 
 ### PR-D — จำนวนรอบขาย + toggle สายทะเบียน (mig M3 · อิสระ)
-**แตะ:** ฟอร์มสร้าง SO `src/app/sales-planning/sales-orders/new/page.js` — คอลัมน์ "รอบบริการ" ต่อบรรทัด
-โชว์เมื่อ `orderHasServiceRounds` (คำนวณสดจากบรรทัดที่กำลังกรอก + สายดีล) · แก้ผ่าน Rev. ใช้ฟอร์มเดียวกัน
-(กฎ repo: ฟอร์มสร้าง = ฟอร์มแก้) · API SO create/update รับ `serviceRounds` รายบรรทัด ·
-ทะเบียน `src/app/sales-planning/sales-orders/page.js` — segmented ทุกสาย/SCENT/PRODUCT/SERVICE ·
-เลือก SERVICE → คอลัมน์ สัญญา · จ่ายถึง · รอบ n/N (API list ต้องคืน line + สรุปย่อ — ระวัง `check:rowcap`/`check:columns`)
+**แตะ:** 🛠 **แผนเดิมผิด (แก้ 2026-08-31 · มติผู้ใช้)** — เขียนไว้ว่ากรอกที่ฟอร์มสร้าง SO
+"คำนวณสดจากบรรทัดที่กำลังกรอก" แต่ **ฟอร์มนั้นไม่มีบรรทัดให้กรอก**: บรรทัดถูกก๊อปจาก
+ใบเสนอราคาตอนสร้าง และแก้ไม่ได้ทุกที่ (ฟอร์มเขียนไว้เองว่า "คัดลอกจาก QT ตอนสร้าง แก้ที่นี่ไม่ได้"
+· หน้ารายละเอียดใช้ `QuotationReadOnlyLineItems`)
+⇒ **ที่กรอกจริงคือการ์ดงานบริการบนหน้าใบสั่งขาย** `components/salesPlanning/ServiceContractCard.js`
+(ช่องรายบรรทัดของหมวด 02-001 · อยู่ในการ์ด ไม่ใช่ในตารางรายการ เพราะตารางเป็น snapshot
+อ่านอย่างเดียวทั้งแผง การแทรกช่องกรอกช่องเดียวจะอ่านเป็น "แก้บรรทัดได้" ซึ่งไม่จริง)
+· ด่าน + ตัวตรวจอยู่ที่ `lib/sales/serviceRoundsEntry.js` ตัวเดียวที่ทั้งจอและ API ใช้
+· API: action `set_service_rounds` บน PATCH ของใบ (ตรวจว่าบรรทัดเป็นของใบนี้และเป็นหมวดบริการจริง) ·
+ทะเบียน `src/app/sales-planning/sales-orders/page.js` — segmented **ทุกสาย/สายสินค้า/สายบริการ**
+(สายมีสองค่าใน DB คือ PRODUCT/SERVICE + null "ยังไม่ระบุ" ซึ่งอยู่ใน "ทุกสาย" — ไม่มีค่า SCENT)
+เลือกสายบริการ → คอลัมน์ สัญญา · จ่ายถึง · รอบ n/N โดย n = **นัดที่ปิดงานแล้ว** นับผ่าน
+`service_plans."salesOrderId"` (นัดนอกรอบไม่นับ) และ N = ผลรวม `serviceRounds` ของบรรทัด
 · ฝั่ง TS: intake + ฟอร์มวางรอบ โชว์ "ขายไว้ N รอบ" + คำนวณ "ความถี่นี้จะได้ ~n นัด"
 **กติกา:** ตัวเลขเป็นข้อผูกพันอ้างอิง/กระทบยอด — **ไม่บังคับ** planGen (รอบจริงเลื่อน/งดได้)
 · **สิทธิ์ TS (มติ 2026-08-30):** `src/lib/permissions.js` — เพิ่ม `salesplan:view` ให้ role ฝ่าย TS

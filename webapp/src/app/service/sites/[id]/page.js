@@ -49,6 +49,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const [assets, setAssets] = useState([]);
   // เข้าเติมล่าสุด + นัดครั้งหน้า — ตัวตั้งของการประเมินว่าน้ำหอมจะหมดวันไหน (S-4)
   const [schedule, setSchedule] = useState({ lastRefillDate: null, nextVisitDate: null });
+  // ข้อผูกพันจำนวนรอบจากใบเสนอราคา (mig 0326) — ฟอร์มวางรอบเทียบกับความถี่ที่กำลังตั้ง
+  const [roundsSold, setRoundsSold] = useState(null);
   const [plans, setPlans] = useState([]);
   const [visits, setVisits] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -78,6 +80,7 @@ export default function ServiceSiteDetailPage({ params }) {
       setZones(Array.isArray(siteData?.zones) ? siteData.zones : []);
       setAssets(Array.isArray(siteData?.assets) ? siteData.assets : []);
       setSchedule(siteData?.schedule || { lastRefillDate: null, nextVisitDate: null });
+      setRoundsSold(siteData?.roundsSold ?? null);
 
       const planData = await planRes.json().catch(() => null);
       if (!planRes.ok) throw new Error(planData?.error || "โหลดรอบบริการไม่สำเร็จ");
@@ -575,6 +578,7 @@ export default function ServiceSiteDetailPage({ params }) {
         siteId={id}
         plan={formPlan}
         technicians={technicians}
+        roundsSold={roundsSold}
         onClose={() => setFormPlan(undefined)}
         onSave={savePlan}
       />

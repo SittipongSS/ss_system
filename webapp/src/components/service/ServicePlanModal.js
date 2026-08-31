@@ -8,7 +8,7 @@ import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
-import { PLAN_KINDS, VISIT_KIND_LABELS, normalizePlanInput } from "@/lib/service/rounds";
+import { PLAN_KINDS, VISIT_KIND_LABELS, estimateVisitCount, normalizePlanInput } from "@/lib/service/rounds";
 import styles from "./ServiceSiteModal.module.css";
 
 // ตัวเลือกรอบที่ใช้จริง — พิมพ์เองก็ยังได้ แต่ 4 ค่านี้ครอบเกือบทุกสัญญา
@@ -24,7 +24,9 @@ const EMPTY = {
   assigneeId: "", assigneeName: "", isActive: true, note: "",
 };
 
-export default function ServicePlanModal({ open, siteId, plan = null, technicians = [], onClose, onSave }) {
+/* `roundsSold` = จำนวนรอบที่ฝ่ายขายระบุไว้ในใบเสนอราคา (mig 0326) — null/ไม่ส่ง
+   = ยังไม่ระบุ ⇒ กล่องเทียบไม่ขึ้นเลย ไม่ใช่ขึ้นแล้วบอก 0 */
+export default function ServicePlanModal({ open, siteId, plan = null, technicians = [], roundsSold = null, onClose, onSave }) {
   const editing = !!plan;
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
@@ -51,6 +53,13 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  /* ⭐ **ตัวประมาณ ไม่ใช่ตัวบังคับ** (มติผู้ใช้) — ระบบไม่บล็อกเมื่อจำนวนไม่ตรงกับที่ขาย
+     รอบจริงเลื่อน/งด/แถมได้ตามหน้างาน · กล่องนี้มีไว้ให้คนตั้งความถี่เห็นผลทันที
+     ⚠️ ไม่มีวันสิ้นสุด = ประมาณไม่ได้ ⇒ บอกตรง ๆ ว่าต้องใส่วันสิ้นสุดก่อน */
+  const estimate = estimateVisitCount({
+    startDate: form.startDate, endDate: form.endDate, everyDays: Number(form.everyDays),
+  });
 
   const submit = async () => {
     const payload = { ...form, siteId, everyDays: Number(form.everyDays) };
@@ -133,6 +142,18 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
           </label>
         )}
       </div>
+
+      {(roundsSold || estimate) && (
+        <p className={styles.hint}>
+          {roundsSold ? <>ฝ่ายขายระบุไว้ <strong>{roundsSold} รอบ</strong>{" · "}</> : null}
+          {estimate
+            ? <>ความถี่นี้จะได้ราว <strong>{estimate} นัด</strong> ในช่วงที่ตั้งไว้</>
+            : <>ใส่วันสิ้นสุดรอบด้วย จึงจะประมาณจำนวนนัดให้ได้</>}
+          {roundsSold && estimate && estimate !== roundsSold
+            ? <> — ต่างจากที่ขายไว้ {Math.abs(estimate - roundsSold)} นัด (ตั้งต่อได้ ไม่ใช่ข้อห้าม)</>
+            : null}
+        </p>
+      )}
 
       <p className={styles.hint}>
         ระบบสร้างนัดล่วงหน้า <strong>90 วัน</strong> เท่านั้น แล้วต่อรอบให้เมื่อปิดงานจริง —
