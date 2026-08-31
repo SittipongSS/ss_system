@@ -9,9 +9,45 @@ import { normalizeSiteInput } from '@/lib/service/sites';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
 import { findCustomer, loadAssets, loadZones, requireSite } from '@/lib/service/sitesRepo';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
+import { loadTerms } from '@/lib/service/termsRepo';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { termOrderActive } from '@/lib/service/terms';
+import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
+
+/* ── ขายไว้กี่รอบของไซต์นี้ (mig 0326) ────────────────────────────────────
+   ⭐ นับจาก **รอบขายที่ใบแม่ยังมีผล** เท่านั้น — ใบที่ถูก Rev. ทับแล้วมี term ค้างอยู่
+   ในฐานตลอดไป (term ไม่มีคอลัมน์สถานะโดยเจตนา · ตัวตัดสินคือ termOrderActive)
+   ⇒ ไม่กรอง = ไซต์ที่เคยต่อสัญญาสองรอบจะบวกรอบซ้ำเป็นสองเท่า
+   ⚠️ ใช้ termOrderActive (ชั้นใบแม่) ไม่ใช่ termIsActive (ที่บวกชั้น "วันนี้อยู่ในช่วง")
+   — คนตั้งรอบมักตั้งก่อนหรือหลังช่วงของ term เล็กน้อย ถ้ากรองด้วยวันจะได้ 0 บ่อยจนไร้ประโยชน์
+   ⚠️ อ่านสดจากบรรทัด ไม่ก๊อป snapshot ที่ term — แก้จำนวนรอบได้ทางเดียวคือ Rev. ที่ QT
+   ซึ่งได้ใบใหม่ + term ชุดใหม่อยู่แล้ว */
+async function siteRoundsSold(supabase, zones = []) {
+  const zoneIds = zones.map((z) => z.id);
+  if (!zoneIds.length) return null;
+  const terms = await loadTerms(supabase, { zoneIds });
+  if (!terms.length) return null;
+  const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+  if (!orderIds.length) return null;
+  /* ⚠️ ไล่ทีละหน้าแม้จะกรองด้วย id ชุดเดียว — ไซต์ที่ต่อสัญญามาหลายปีสะสม term ได้เกิน
+     พันแถว และเพดาน PostgREST ตัดเงียบ ๆ ⇒ ใบที่หลุดจะถูกนับเป็น "ไม่มีผล" แล้ว
+     จำนวนรอบที่ขายหายไปดื้อ ๆ (ด่าน check:rowcap ใน CI คุมไว้) */
+  const { data: orders, error: orderError } = await fetchAllResult(() => supabase.from('sales_orders')
+    .select('id, status, "supersededById"').in('id', orderIds).order('id', { ascending: true }));
+  if (orderError) throw orderError;
+  const activeIds = new Set((orders || []).filter(termOrderActive).map((o) => o.id));
+  const lineIds = terms
+    .filter((t) => activeIds.has(t.salesOrderId))
+    .map((t) => t.salesOrderLineId).filter(Boolean);
+  if (!lineIds.length) return null;
+  const { data: lines, error: lineError } = await fetchAllResult(() => supabase.from('sales_order_lines')
+    .select('id, "serviceRounds"').in('id', lineIds).order('id', { ascending: true }));
+  if (lineError) throw lineError;
+  return serviceRoundsSold(lines || []);
+}
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
@@ -22,11 +58,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // จะหมดวันไหน และมีนัดครอบแล้วหรือยัง (S-4)
     const todayIso = businessDate();
     const schedule = await siteScheduleContext(supabase, [id], todayIso);
+    const zones = await loadZones(supabase, id);
     return ok({
       site: access.site,
-      zones: await loadZones(supabase, id),
+      zones,
       assets: await loadAssets(supabase, id),
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
+      // ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ — ฟอร์มวางรอบเอาไปเทียบกับความถี่ที่กำลังตั้ง
+      roundsSold: await siteRoundsSold(supabase, zones),
     });
   } catch (e) {
     return fail(e.message, 500);

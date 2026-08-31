@@ -53,8 +53,14 @@ test('system visibility covers every supported role and sales team', () => {
     // WH/QC อ่านบอร์ดผลิตเพื่อวางแผนงานตัวเอง (มติผู้ใช้ 2026-07-31) แต่แก้ไม่ได้
     ['wh', null, ['salesplan', 'production', 'master', 'support']],
     ['qc', null, ['salesplan', 'production', 'master', 'support']],
-    // ⭐ TS เป็นฝ่ายเดียวที่ไม่อยู่สายโรงงาน — ได้ธุรกิจบริการแทนวางแผนผลิต
-    ['ts', null, ['salesplan', 'service', 'master', 'support']],
+    /* ⭐ TS เป็นฝ่ายเดียวที่ไม่อยู่สายโรงงาน — ได้ธุรกิจบริการแทนวางแผนผลิต
+       ⭐ **ไม่มีการ์ด "บริหารงานขาย" แล้ว (มติผู้ใช้ 2026-08-31)** — ฝ่ายที่มีบ้านของ
+          ตัวเองไม่เห็นการ์ดนั้น เข้าเงื่อนไขเดียวกับ FN (22/08) และ RD (29/08)
+          · ใบสั่งขายกับสัญญาที่ TS ต้องดู ย้ายเข้าเมนูของโมดูลบริการแล้ว
+          · `salesplan:view` ยังอยู่ครบ ⇒ กดลิงก์จากงานเข้าใหม่ไปใบสั่งขายยังเข้าได้
+       🪤 ก่อนหน้านี้ TS ไม่มีบ้านในสายตา `homeSystemForUser` ทั้งที่โมดูลบริการเป็น
+          บ้านเขาตั้งแต่ 28/08 — ไม่มีใครเห็นเพราะ TS ยังไม่มี `salesplan:view` */
+    ['ts', null, ['service', 'master', 'support']],
     /* ⭐ ฝ่ายบัญชี (มติผู้ใช้ 2026-08-13): *"เปิดระบบให้บัญชีเห็นแค่ฐานข้อมูลกับ
        บริหารงานขาย"* + บ้านของตัวเอง · **ห้ามมี `tax`** — เคยมีเพราะ role ถือ
        `history:view` ซึ่งเป็นตัวเปิดโมดูลภาษีทั้งโมดูล ไม่ใช่งานของฝ่ายนี้ */
@@ -110,7 +116,7 @@ test('specialized users land on the one workspace they can use', () => {
 
   // เจ้าหน้าที่ฝ่าย TS ลงที่ **ภาพรวมของธุรกิจบริการ** (X-1) — ไม่ใช่ปฏิทินรวมสองระบบ
   const tech = { role: 'ts', team: null, department: 'TS', extraCaps: [] };
-  assert.deepEqual(keysFor(tech), ['salesplan', 'service', 'master', 'support']);
+  assert.deepEqual(keysFor(tech), ['service', 'master', 'support']);
   assert.equal(systemLandingForUser('service', tech), '/service');
 });
 

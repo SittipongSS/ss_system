@@ -59,3 +59,12 @@
 .rowLink:hover {
   text-decoration: underline;
 }
+
+/* บรรทัดรองในเซลล์ "ของที่ต้องจัดสรร" — ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326)
+   เล็กและจางกว่าตัวเลขหลัก: ขนาดงานคือพระเอกของช่อง ส่วนรอบเป็นบริบท */
+.rowNote {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}

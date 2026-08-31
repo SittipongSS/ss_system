@@ -49,6 +49,21 @@ export const ADOPTED_SHARED_PATHS = {
     '/sa/contracts', '/sales-planning/contracts',
     '/requests',
   ],
+  /* ⭐ ฝ่ายบริการ TS (มติผู้ใช้ 2026-08-31) — รับ **ใบสั่งขาย · สัญญา · คำร้อง**
+     เข้าเปลือกของตัวเอง
+     ⚠️ **ต้องรับพร้อมกับที่ TS ได้บ้านของตัวเอง** (`homeSystemForUser`) — ไม่งั้นกด
+        ใบสั่งขายจากคิว "งานเข้าใหม่" แล้วเปลือกสลับไป "บริหารงานขาย" ซึ่งเป็นระบบที่
+        เขาไม่มีกลุ่มเมนูอีกแล้ว = แถบว่าง (อาการเดียวกับที่ RD เจอตอน UAT)
+     ⚠️ **ไม่รับใบเสนอราคา** ต่างจาก FN — งานบริการอ้างใบสั่งขายกับสัญญา ไม่ได้อ้าง
+        ใบเสนอราคา · เมนูที่กดเข้าไปแล้วไม่ได้ใช้คือเมนูที่ทำให้แถบยาวขึ้นเปล่า ๆ
+     ⚠️ `/requests` รับไว้เพราะหน้ารายละเอียดคำร้องอยู่ที่นั่น (เมนูของ TS ชื่อ
+        "คิวคำร้อง" ชี้ `/service/requests` แต่กดเข้าใบแล้วเด้งไป `/requests/<id>`) */
+  service: [
+    '/sa/sales-orders', '/sales-planning/sales-orders',
+    '/sa/contracts', '/sales-planning/contracts',
+    '/requests',
+  ],
+
 };
 
 export function adoptsPathname(system, pathname) {

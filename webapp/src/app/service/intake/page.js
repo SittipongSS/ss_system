@@ -223,6 +223,12 @@ export default function ServiceIntakePage() {
                           {row.fgKinds
                             ? `${fmtNumber(row.fgKinds)} ชนิด · ${fmtNumber(row.remainingQty)} หน่วย`
                             : naText(null)}
+                          {/* ⭐ ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ (mig 0326) — TS ต้องเห็น
+                              ตั้งแต่ตอนรับงาน จะได้ตั้งความถี่ให้ได้จำนวนนัดตรงกับที่ขาย
+                              ⚠️ ไม่ขึ้นเลยเมื่อยังไม่กรอก — "ยังไม่ระบุ" ไม่ใช่ "ขายศูนย์รอบ" */}
+                          {row.roundsSold
+                            ? <span className={styles.rowNote}>ขายไว้ {fmtNumber(row.roundsSold)} รอบ</span>
+                            : null}
                         </td>
                         {/* ⭐ ชิปความพร้อม (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้
                             พอจัดสรรแล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอ
@@ -269,6 +275,7 @@ export default function ServiceIntakePage() {
                       <th scope="col">ไซต์</th>
                       <th scope="col">ลูกค้า</th>
                       <th scope="col">โซนที่ขายแล้ว</th>
+                      <th scope="col">ขายไว้</th>
                       <th scope="col" aria-label="การกระทำ" />
                     </tr>
                   </thead>
@@ -278,6 +285,7 @@ export default function ServiceIntakePage() {
                         <th scope="row">{naText(row.site?.name)}</th>
                         <td>{naText(row.site?.customerName)}</td>
                         <td>{row.zones.map((z) => z.name).join(" · ")}</td>
+                        <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
                         <td>
                           <Link href={`/service/sites/${row.siteId}`} className={styles.rowLink}>
                             ตั้งรอบที่หน้าไซต์

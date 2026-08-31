@@ -233,3 +233,43 @@ test('เคสที่ตัดสินไม่ได้ปล่อยผ�
   const manual = normalizeManualLines([{ description: 'ค่าบริการ', qty: 1, unitPrice: 500 }]);
   assert.deepEqual(await customerMismatchedLines(null, manual, { customerId: 'C-เรา' }), []);
 });
+
+// ── จำนวนรอบบริการต่อบรรทัด (mig 0326 · มติผู้ใช้ 2026-08-27) ────────────────
+// ต้นทางที่คนพิมพ์คือใบเสนอราคา (บรรทัด SO เป็น snapshot ที่แก้ไม่ได้ทั้งระบบ)
+const svcLine = (over = {}) => normalizeManualLines([{
+  productId: 'P9', fgCode: 'FG-374-02-001-1418', description: 'แพ็คเกจบริการ',
+  qty: 1, unitPrice: 4900, ...over,
+}])[0];
+
+test('รอบบริการรับเฉพาะจำนวนเต็มบวก — ค่าที่เหลือกลายเป็น "ยังไม่ระบุ"', () => {
+  assert.equal(svcLine({ serviceRounds: 12 }).serviceRounds, 12);
+  assert.equal(svcLine({ serviceRounds: '12' }).serviceRounds, 12);
+  assert.equal(svcLine({ serviceRounds: '' }).serviceRounds, null);
+  assert.equal(svcLine({ serviceRounds: null }).serviceRounds, null);
+  assert.equal(svcLine({}).serviceRounds, null);
+  // DB มี CHECK ห้าม <= 0 — ปล่อยผ่านมาถึงจะกลายเป็น 500 ดิบแทนช่องว่างที่คนแก้เองได้
+  assert.equal(svcLine({ serviceRounds: 0 }).serviceRounds, null);
+  assert.equal(svcLine({ serviceRounds: -3 }).serviceRounds, null);
+  assert.equal(svcLine({ serviceRounds: 1.5 }).serviceRounds, null);
+});
+
+test('บรรทัดที่ไม่ใช่หมวดบริการถูกล้างรอบทิ้ง ไม่ใช่เก็บค่าที่ client ส่งมา', () => {
+  // เปลี่ยนสินค้าบนบรรทัดเดิมจากแพ็คเกจบริการเป็นขวดน้ำหอม = ตัวเลขรอบต้องไม่ค้าง
+  assert.equal(svcLine({ fgCode: 'FG-374-01-002-1418', serviceRounds: 12 }).serviceRounds, null);
+  assert.equal(normalizeManualLines([{ description: 'ค่าขนส่ง', qty: 1, unitPrice: 500, serviceRounds: 6 }])[0].serviceRounds, null);
+});
+
+test('enforceMasterPrices: สินค้าถูกย้ายออกจากหมวดบริการ รอบหลุดตาม fgCode ใหม่', async () => {
+  const line = svcLine({ serviceRounds: 12 });
+  const moved = await enforceMasterPrices(
+    fakeSupabase([{ id: 'P9', fgCode: 'FG-374-01-002-1418', costPrice: 4900, productDescription: 'น้ำหอม' }]),
+    [line],
+  );
+  assert.equal(moved[0].serviceRounds, null);
+  // ยังอยู่ในหมวดเดิม = ตัวเลขต้องรอด (กันเขียนกฎแรงเกินจนล้างทุกกรณี)
+  const kept = await enforceMasterPrices(
+    fakeSupabase([{ id: 'P9', fgCode: 'FG-374-02-001-1418', costPrice: 5900, productDescription: 'แพ็คเกจ' }]),
+    [svcLine({ serviceRounds: 12 })],
+  );
+  assert.equal(kept[0].serviceRounds, 12);
+});

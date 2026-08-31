@@ -13,6 +13,8 @@ import { ensureInstallments, loadInstallments, updateInstallment } from '@/lib/s
 import { validateOrderConfirmation, sanitizeEvidenceAttachments, DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
 import { missingStoredEvidence } from '@/lib/upload/privateEvidence';
 import { businessDate } from '@/lib/businessDate';
+import { orderBusinessLineOf, orderHasServiceRounds } from '@/lib/sales/serviceOrders';
+import { paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +45,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   const orderIds = (orders || []).map((row) => row.id);
   const { data: lines, error: lineError } = orderIds.length
     ? await supabase.from('sales_order_lines')
-      .select('id, salesOrderId, qty, fgCode, description, sortOrder')
+      .select('id, salesOrderId, qty, fgCode, description, sortOrder, "serviceRounds"')
       .in('salesOrderId', orderIds)
       .order('sortOrder', { ascending: true })
     : { data: [], error: null };
@@ -89,7 +91,10 @@ export const GET = withUser(async ({ user, supabase }) => {
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
     dealIds.length
-      ? supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId').in('id', dealIds)
+      /* 🪤 คอลัมน์สายธุรกิจชื่อ `line` ทั้งที่ `sales_deals` และ `projects` — `businessLine`
+         เป็นชื่อในโค้ด JS เท่านั้น ไม่มีคอลัมน์นั้นจริง · ไม่ดึงมา = ทุกใบตอบสาย null
+         ⇒ ตัวกรองสายบริการว่างเปล่าทั้งที่ข้อมูลมีอยู่ */
+      ? supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId, line').in('id', dealIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length
       // paymentPlan มาด้วยเพื่อบอกจำนวนงวด **ตามแผน** ของใบที่ยังไม่เริ่มติดตาม
@@ -107,7 +112,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (orderIds.length) {
     const { data: rows, error: installmentError } = await supabase
       .from('sales_order_installments')
-      .select('salesOrderId, status, "dueDate"')
+      .select('salesOrderId, status, "dueDate", "coversFrom", "coversTo"')
       .in('salesOrderId', orderIds);
     // ตารางยังไม่ถูกสร้าง (ยังไม่รัน mig 0245) ต้องไม่ทำให้ทั้งหน้าพัง — คอลัมน์ว่างแทน
     if (installmentError) console.error('[sales-orders] โหลดงวดชำระไม่สำเร็จ:', installmentError.message);
@@ -120,6 +125,58 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   const dealById = new Map((deals || []).map((row) => [row.id, row]));
   const quoteById = new Map((quotes || []).map((row) => [row.id, row]));
+
+  /* ── สายธุรกิจของใบ + สรุปงานบริการ (PR-D · มติผู้ใช้ 2026-08-27) ─────────
+     ⚠️ สายธุรกิจอ่าน **โครงการก่อน แล้วดีล** (orderBusinessLine) ⇒ ต้องมีโครงการด้วย
+     ไม่งั้นใบที่อยู่ใต้โครงการสายบริการจะตอบสายตามดีลซึ่งอาจว่าง = หลุดจากตัวกรอง */
+  const projectIds = [...new Set((deals || []).map((row) => row.projectId).filter(Boolean))];
+  // ⚠️ ไล่ทีละหน้า — ทะเบียนโครงการโตเกิน 1,000 ได้ และ id ที่ส่งเข้ามาเป็นชุดใหญ่
+  // ตามจำนวนดีลของทั้งทะเบียน (เพดานตัดเงียบ = ใบบางใบตอบสายผิดโดยไม่มีใครรู้)
+  const { data: projects, error: projectError } = projectIds.length
+    ? await fetchAllResult(() => supabase.from('projects').select('id, line')
+      .in('id', projectIds).order('id', { ascending: true }))
+    : { data: [], error: null };
+  if (projectError) return fail(projectError.message, 500);
+  const projectsById = new Map((projects || []).map((row) => [row.id, row]));
+
+  /* ใบสาย SERVICE ที่มีแพ็คเกจบริการ — ของพ่วงข้างล่างยิงเฉพาะใบกลุ่มนี้
+     (ทั้งทะเบียนมีหลายพันใบ แต่ใบบริการมีหลักสิบ ⇒ กรองก่อนค่อยยิง) */
+  const serviceOrders = (orders || []).filter((row) => orderHasServiceRounds(
+    { ...row, deal: dealById.get(row.dealId) || null },
+    linesByOrder.get(row.id) || [],
+    { projectsById, dealsById: dealById },
+  ));
+  const serviceOrderIds = serviceOrders.map((row) => row.id);
+
+  // สัญญาที่ผูกกับใบ (mig 0324) — คอลัมน์ "สัญญา" ของมุมมองสายบริการ
+  const contractIds = [...new Set(serviceOrders.map((row) => row.serviceContractId).filter(Boolean))];
+  const { data: contracts, error: contractError } = contractIds.length
+    ? await supabase.from('sales_contracts').select('id, "contractNo", status, kind').in('id', contractIds)
+    : { data: [], error: null };
+  if (contractError) return fail(contractError.message, 500);
+  const contractById = new Map((contracts || []).map((row) => [row.id, row]));
+
+  /* รอบที่ทำไปแล้วของใบ — นัดที่ปิดงานแล้ว นับผ่าน service_plans."salesOrderId"
+     ⚠️ **นัดนอกรอบ (planId ว่าง) ไม่ถูกนับ** โดยเจตนา — นัดที่ไม่ได้เกิดจากรอบขาย
+     ของใบนี้ (งานซ่อมฉุกเฉิน ฯลฯ) ไม่ใช่รอบตามข้อผูกพัน
+     ⚠️ ทั้งสองคิวรีกรองด้วย in(...) ของใบบริการเท่านั้น ไม่ใช่กวาดทั้งตาราง */
+  const roundsDoneByOrder = new Map();
+  if (serviceOrderIds.length) {
+    const { data: plans, error: planError } = await supabase
+      .from('service_plans').select('id, "salesOrderId"').in('salesOrderId', serviceOrderIds);
+    if (planError) return fail(planError.message, 500);
+    const orderByPlan = new Map((plans || []).map((row) => [row.id, row.salesOrderId]));
+    if (orderByPlan.size) {
+      const { data: visits, error: visitError } = await supabase
+        .from('service_visits').select('"planId"').eq('status', 'done').in('planId', [...orderByPlan.keys()]);
+      if (visitError) return fail(visitError.message, 500);
+      for (const visit of visits || []) {
+        const orderId = orderByPlan.get(visit.planId);
+        if (orderId) roundsDoneByOrder.set(orderId, (roundsDoneByOrder.get(orderId) || 0) + 1);
+      }
+    }
+  }
+  const serviceIdSet = new Set(serviceOrderIds);
   const visible = (orders || [])
     .map((row) => ({
       ...row,
@@ -151,6 +208,22 @@ export const GET = withUser(async ({ user, supabase }) => {
          รอปิด" ไม่ใช่ทุกใบที่อนุมัติ · ไม่ส่งงวด = ด่านตอบ false ⇒ คิวจะว่างเงียบ ๆ */
       _awaitingFinanceReview: canConfirmPayment(user)
         && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || []),
+      /* ⭐ สายธุรกิจของใบ — ตัวกรอง segmented บนทะเบียน (PR-D)
+         สามค่า: 'PRODUCT' · 'SERVICE' · null (ยังไม่ระบุ ซึ่งมีจริงเยอะ) */
+      businessLine: orderBusinessLineOf(
+        { ...row, deal: dealById.get(row.dealId) || null },
+        { projectsById, dealsById: dealById },
+      ),
+      /* สรุปงานบริการ — มีเฉพาะใบที่เข้าเกณฑ์ "ใบมีรอบบริการ" (orderHasServiceRounds)
+         ใบสายบริการที่ไม่มีบรรทัดแพ็คเกจได้ null ⇒ คอลัมน์โชว์ขีด ไม่ใช่ 0/0 */
+      service: serviceIdSet.has(row.id) ? {
+        contract: row.serviceContractId ? (contractById.get(row.serviceContractId) || null) : null,
+        // จ่ายถึง = ปลายช่วงครอบของงวดที่บัญชีรับรองแล้ว (ตัวตัดสินเดียว: paidThrough)
+        paidThrough: paidThrough(installmentsByOrder.get(row.id) || []),
+        roundsSold: (linesByOrder.get(row.id) || [])
+          .reduce((sum, line) => sum + (Number(line.serviceRounds) || 0), 0) || null,
+        roundsDone: roundsDoneByOrder.get(row.id) || 0,
+      } : null,
     }))
     .filter((row) => row.deal && inSalesViewScope(user, row.deal));
 

@@ -44,7 +44,8 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? fetchAllResult(() => supabase.from('sales_order_lines')
           // ⚠️ ไม่ดึงราคา/ส่วนลด — ฝ่ายบริการไม่ต้องใช้ และยิ่งดึงมามาก
           //    ยิ่งมีของหลุดออกทาง response โดยไม่ตั้งใจ
-          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder')
+          // "serviceRounds" = ข้อผูกพันจำนวนรอบที่ขายไว้ (mig 0326) — TS ใช้ตอนวางรอบ
+          .select('id, salesOrderId, quotationLineId, productId, fgCode, description, qty, unit, sortOrder, "serviceRounds"')
           .in('salesOrderId', orderIds)
           .order('salesOrderId', { ascending: true })
           .order('sortOrder', { ascending: true })
@@ -103,7 +104,10 @@ export const GET = withUser(async ({ user, supabase }) => {
       orders: orders || [], lines, terms, projectsById, dealsById,
       contractsById, installmentsByOrderId, todayIso,
     });
-    const plan = planQueue({ zones, terms, plans, sites, ordersById, todayIso });
+    // ⚠️ term ชี้บรรทัดด้วย salesOrderLineId — ส่ง Map เข้าไปเพื่อให้คิววางรอบตอบ
+    // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)
+    const linesById = new Map((lines || []).map((row) => [row.id, row]));
+    const plan = planQueue({ zones, terms, plans, sites, ordersById, linesById, todayIso });
     const visit = visitQueue({ plans, visits, sites, isLive: isLiveVisit, todayIso });
 
     return ok({

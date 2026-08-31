@@ -14,6 +14,7 @@
 import { businessDate } from '@/lib/businessDate';
 import { isBusinessLine } from '@/lib/master/businessLines';
 import { allocatedByLine, fgSummary, lineNeedsAllocation, termIsActive } from './terms';
+import { serviceRoundsSold } from '@/lib/sales/serviceOrders';
 import { coversDate, paidThrough } from '@/lib/sales/paymentCoverage';
 
 export const INTAKE_TABS = ['bind', 'plan', 'visit'];
@@ -113,6 +114,12 @@ export function bindQueue({
       remainingQty: fg.reduce((sum, g) => sum + g.remaining, 0),
       fg,
       lines: pending,
+      /* ⭐ ขายไว้กี่รอบ (mig 0326) — TS ต้องเห็นข้อผูกพันตั้งแต่ตอนรับงาน ไม่ใช่ไปรู้
+         ตอนวางรอบแล้วพบว่าความถี่ที่ตั้งไว้ให้จำนวนนัดไม่ตรงกับที่ขาย
+         ⚠️ นับจาก **ทุกบรรทัดของใบ** ไม่ใช่เฉพาะบรรทัดที่ยังไม่จัดสรร — ข้อผูกพัน
+         เป็นของทั้งใบ ส่วน pending เป็นแค่ "เหลืออีกเท่าไรที่ต้องลงโซน"
+         ⚠️ null = ยังไม่กรอกที่ใบเสนอราคา ≠ ขายศูนย์รอบ */
+      roundsSold: serviceRoundsSold(linesByOrder.get(order.id) || []),
       /* ⭐ ชิปความพร้อมของใบ (PR-C) — TS ต้องรู้ **ตั้งแต่ตอนรับงาน** ว่าใบนี้พอจัดสรร
          แล้วจะเดินต่อได้ไหม · ของเดิมเห็นแต่ขนาดงาน แล้วไปเจอด่านตอนจัดคิวทีหลัง
          ⚠️ นี่คือ *ป้ายบอกสถานะ* ไม่ใช่ด่าน — ด่านจริงอยู่ที่ `visitGate` ตอนขึ้นตาราง
@@ -131,7 +138,9 @@ export function bindQueue({
 /* ── ถังที่ 2: โซนที่ขายแล้วแต่ไซต์ยังไม่มีรอบ ──────────────────────────
    ⚠️ รอบ (service_plans) ผูกกับ **ไซต์** ไม่ใช่โซน (mig 0188) — เจ้าหน้าที่เข้าไซต์ทีเดียว
    ทำทุกโซน · คิวนี้จึงเป็น "ไซต์ที่มีโซนขายแล้วแต่ไม่มีรอบ" ไม่ใช่รายโซน */
-export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), todayIso = businessDate() } = {}) {
+/* ⚠️ `linesById` ไม่บังคับ — ไม่ส่งมา = แถวตอบ roundsSold: null (ยังไม่ระบุ)
+   ไม่ใช่ 0 · ผู้เรียกที่มีบรรทัดอยู่แล้วส่งเข้ามาเพื่อให้จอบอก "ขายไว้กี่รอบ" ได้ */
+export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), linesById = new Map(), todayIso = businessDate() } = {}) {
   const activePlanSites = new Set(plans.filter((p) => p.isActive !== false).map((p) => p.siteId));
   const sitesById = new Map(sites.map((s) => [s.id, s]));
   const zonesById = new Map(zones.map((z) => [z.id, z]));
@@ -151,6 +160,14 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
     if (!row.zones.some((z) => z.id === zone.id)) row.zones.push(zone);
     row.terms.push(term);
     bySite.set(zone.siteId, row);
+  }
+  /* ขายไว้กี่รอบของไซต์ = ผลรวมของบรรทัดที่ term ของไซต์นั้นชี้อยู่
+     ⚠️ อ่านสดจากบรรทัด ไม่ก๊อปเป็น snapshot ที่ term — จำนวนรอบแก้ได้ทางเดียวคือ
+     ออก Rev. ที่ใบเสนอราคา ซึ่งได้ใบสั่งขายใบใหม่ + term ชุดใหม่อยู่แล้ว */
+  for (const row of bySite.values()) {
+    row.roundsSold = serviceRoundsSold(
+      row.terms.map((t) => linesById.get(t.salesOrderLineId)).filter(Boolean),
+    );
   }
   return [...bySite.values()].sort((a, b) =>
     String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th'));

@@ -3,6 +3,7 @@
 import { genId } from '@/lib/id';
 import { normalizeDiscountValue, quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import { DEFAULT_SALE_UNIT, saleUnitOf } from '@/lib/master/units';
+import { lineIsServicePackage } from '@/lib/sales/serviceOrders';
 import {
   productBrandName,
   productDisplayName,
@@ -250,6 +251,9 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
       fgCode,
       unit,
       metadata,
+      /* fgCode เพิ่งถูกทับด้วยของ master ⇒ ถ้าสินค้าถูกย้ายออกจากหมวดบริการ
+         จำนวนรอบที่ติดมากับบรรทัดต้องหลุดตามไปด้วย (เกณฑ์เดียวกับ normalizeServiceRounds) */
+      serviceRounds: lineIsServicePackage({ fgCode }) ? (line.serviceRounds ?? null) : null,
       discountAmount: net.discountAmount,
       lineTotal: net.lineTotal,
     };
@@ -286,6 +290,22 @@ export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   return quotes;
 }
 
+/* จำนวนรอบบริการที่ขายไว้ในบรรทัด (mig 0326 · มติผู้ใช้ 2026-08-27)
+
+   ⭐ **ยอมรับค่าเฉพาะบรรทัดหมวดบริการ** — บรรทัดอื่นบังคับเป็น null ไม่ใช่เก็บค่าที่ส่งมา
+   เพราะคนเปลี่ยนสินค้าบนบรรทัดเดิมจากแพ็คเกจบริการไปเป็นขวดน้ำหอมได้ ⇒ ถ้าไม่ล้าง
+   ตัวเลขรอบจะค้างอยู่กับบรรทัดที่ไม่ใช่งานบริการแล้ว แล้วไปโผล่ที่คิว TS
+   ⚠️ เกณฑ์ "บรรทัดไหนเป็นบริการ" อ่านจากตัวตัดสินกลาง ไม่เขียน startsWith เองที่นี่
+   ⚠️ 0 / ติดลบ / ทศนิยม = ไม่ระบุ (null) — DB มี CHECK ห้าม <= 0 อยู่แล้ว ถ้าปล่อยผ่าน
+   มาถึงจะกลายเป็น 500 ดิบตอนบันทึกแทนที่จะเป็นช่องว่างที่คนแก้เองได้ */
+export function normalizeServiceRounds(line) {
+  if (!lineIsServicePackage(line)) return null;
+  const raw = line?.serviceRounds;
+  if (raw === '' || raw == null) return null;
+  const rounds = Number(raw);
+  return Number.isInteger(rounds) && rounds > 0 ? rounds : null;
+}
+
 // normalize บรรทัดจาก client (สร้าง/แก้): คิดส่วนลดรายบรรทัด + ยอดสุทธิที่ server เสมอ
 export function normalizeManualLines(lines = []) {
   return lines
@@ -314,6 +334,7 @@ export function normalizeManualLines(lines = []) {
         source: line.source === 'project_products' ? 'project_products' : 'manual',
         sortOrder: index,
         metadata: line.metadata || {},
+        serviceRounds: normalizeServiceRounds(line),
       };
     })
     .filter((line) => line.description && line.qty > 0);

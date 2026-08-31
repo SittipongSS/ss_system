@@ -114,6 +114,23 @@
   font-size: var(--fs-6);
 }
 
+/* จำนวนรอบบริการต่อบรรทัด (mig 0326) — ป้าย+ช่องกรอกที่ซ้อนอยู่ในช่อง "จำนวน"
+   ช่องแคบ 120px จึงวางเป็นสองบรรทัด ไม่ใช่ป้ายซ้ายช่องขวา */
+.serviceRounds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  margin-top: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+/* ฝั่งอ่านอย่างเดียว (หน้าใบสั่งขาย) — บรรทัดเล็กใต้คำอธิบาย */
+.serviceRoundsTag {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
 .noteReadonly strong {
   font-weight: var(--fw-bold);
 }

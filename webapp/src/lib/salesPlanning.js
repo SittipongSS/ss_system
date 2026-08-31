@@ -101,6 +101,10 @@ export const DEFAULT_PROBABILITY_BY_STAGE = {
   lost: 0,
 };
 
+/* role ของฝ่ายบริการ — ประกาศไว้ที่เดียว ไม่ไล่พิมพ์ชื่อซ้ำในเงื่อนไข
+   (เพิ่ม role ใหม่ของฝ่ายวันไหน จะได้ไม่ตกหล่นเงียบ ๆ แบบที่เคยเกิดกับ `!== 'FN'`) */
+const SERVICE_VIEW_ROLES = new Set(['ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager']);
+
 export function salesPlanningViewScope(role) {
   if (isSuperuser(role)) return 'all';
   // viewer = whole-system read-only observer → sees every team's deals/pipeline,
@@ -113,6 +117,14 @@ export function salesPlanningViewScope(role) {
   // อ่านอย่างเดียวเหมือน rd/viewer (edit ยัง 'none' เพราะไม่มี salesplan:edit)
   // ⚠️ ไม่มีทีม: บัญชีไม่ได้อยู่ใต้ SA ⇒ scope 'team'/'own' จะแปลว่าเห็นศูนย์ใบ
   if (role === 'finance') return 'all';
+  /* ⭐ ฝ่าย TS (บริการ) ต้องเห็นใบสั่งขายทุกทีม (มติผู้ใช้ 2026-08-30) — งานบริการ
+     อ้างใบสั่งขายเป็นต้นเรื่องทุกชิ้น (จัดสรรลงโซน · ด่านเข้าไซต์ · รอบที่ขายไว้)
+     ⚠️ **เปิด cap อย่างเดียวไม่พอ** — ฝ่าย TS ไม่ได้อยู่ใต้ SA จึงไม่มีทีมให้ scope
+     `'team'`/`'own'` เกาะ ⇒ ตกมาถึงบรรทัดท้ายเป็น `'none'` แล้วเห็น **ศูนย์ใบ**
+     ทั้งที่เมนูขึ้น (กับดักเดียวกับที่ `finance` ต้องมีบรรทัดของตัวเองข้างบน)
+     ⚠️ อ่านอย่างเดียวเหมือน rd/viewer/finance — `salesPlanningEditScope` ยัง `'none'`
+     เพราะไม่มี `salesplan:edit` */
+  if (SERVICE_VIEW_ROLES.has(role)) return 'all';
   if (role === 'senior_ae' || role === 'ac') return 'team';
   if (role === 'ae') return 'own';
   return 'none';

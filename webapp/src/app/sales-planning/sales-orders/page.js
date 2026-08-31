@@ -21,6 +21,8 @@ import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote } from "@/lib/sales/salesOrderPayments";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import StepTrack from "@/components/ui/StepTrack";
+import Segmented from "@/components/ui/Segmented";
+import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS = { draft: "ฉบับร่าง", pending_approval: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ตีกลับ", cancelled: "ยกเลิก" };
@@ -59,6 +61,47 @@ function paymentCell(payment) {
   );
 }
 
+/* ── เซลล์ของมุมมอง "สายบริการ" (PR-D) ────────────────────────────────────
+   ⚠️ ทั้งสามช่องต้องแยก "ไม่มีข้อมูล" ออกจาก "มีข้อมูลว่าไม่มี" ให้ได้:
+     สัญญา     — ยังไม่ผูก ≠ ใบนี้ไม่ต้องมีสัญญา ⇒ บอกตรง ๆ ว่า "ยังไม่ผูก"
+     จ่ายถึง    — ยังไม่มีงวดที่รับรอง = ขีด ไม่ใช่วันที่ว่าง ๆ
+     รอบ n/N   — N ว่าง (ยังไม่กรอกที่ใบเสนอราคา) = ขีด ไม่ใช่ n/0 ที่อ่านเหมือนขายศูนย์รอบ */
+function serviceContractCell(service) {
+  if (!service) return <span className="cell-num-idle">{NA}</span>;
+  if (!service.contract) return <span className="cell-num-idle">ยังไม่ผูกสัญญา</span>;
+  return (
+    <>
+      <span className="mono">{service.contract.contractNo || NA}</span>
+      {service.contract.status !== "signed"
+        ? <span className="cell-sub">{CONTRACT_STATUS_NOTE[service.contract.status] || service.contract.status}</span>
+        : null}
+    </>
+  );
+}
+
+/* ป้ายสถานะสัญญาที่ยังไม่มีผล — ใบที่ผูกสัญญาซึ่งยังไม่ลงนามคือ "ผูกแล้วแต่ยังใช้ไม่ได้"
+   ซึ่งต่างจากทั้งสองขั้วข้างบน · ชื่อขั้นอ่านจากทะเบียนสัญญา ไม่ตั้งคำใหม่ที่นี่ */
+const CONTRACT_STATUS_NOTE = {
+  draft: "ยังเป็นฉบับร่าง",
+  awaiting_signature: "รอลงนาม",
+  awaiting_approval: "รอหัวหน้ารับรอง",
+  cancelled: "ยกเลิกแล้ว",
+};
+
+function roundsCell(service) {
+  if (!service || !service.roundsSold) return <span className="cell-num-idle">{NA}</span>;
+  const done = service.roundsDone || 0;
+  const complete = done >= service.roundsSold;
+  return (
+    <span
+      className={complete ? "cell-num-ok" : undefined}
+      title={`เดินไปแล้ว ${done} รอบ จากที่ขายไว้ ${service.roundsSold} รอบ (นับเฉพาะนัดที่ปิดงานแล้ว)`}
+    >
+      {done}/{service.roundsSold}
+    </span>
+  );
+}
+
 // โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
 const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
@@ -74,6 +117,18 @@ const SORT_OPTIONS = [
 ];
 const SORT_DEFAULT = "recent";
 const sortDirOf = (key) => SORT_OPTIONS.find((option) => option.value === key)?.dir || "asc";
+
+/* ── มุมมองตามสายธุรกิจ (PR-D · มติผู้ใช้ 2026-08-27) ───────────────────────
+   ⭐ **ไม่ใช่ตัวกรองในกล่องกรอง แต่เป็นตัวสลับ "มุมมอง"** — สายบริการตอบคำถามคนละชุด
+   กับสายสินค้า (สัญญาผูกหรือยัง · จ่ายครอบถึงเมื่อไร · เดินไปกี่รอบแล้ว) ⇒ เลือกสาย
+   แล้วคอลัมน์ท้ายตารางเปลี่ยนตาม ไม่ใช่แค่แถวหายไป
+   ⚠️ "ยังไม่ระบุสาย" เป็นสถานะที่ถูกต้องและมีจริงเยอะ ⇒ ต้องอยู่ใน "ทุกสาย" เสมอ
+   ไม่ใช่ถูกกลืนหายไปกับ SCENT/SERVICE (เจอมาแล้วกับตัวกรองปีที่กลืนแถวไม่มีวันที่) */
+const LINE_VIEWS = [
+  { value: "all", label: "ทุกสาย" },
+  { value: "PRODUCT", label: BUSINESS_LINE_LABELS.PRODUCT },
+  { value: "SERVICE", label: BUSINESS_LINE_LABELS.SERVICE },
+];
 
 const GROUP_OPTIONS = [
   { value: "none", label: "ไม่จัดกลุ่ม" },
@@ -126,6 +181,7 @@ export default function SalesOrdersPage() {
   /* ตัวกรองรวมในปุ่มเดียว (FilterPopover) — เลือกได้หลายค่าต่อหมวด ต่างจาก
      dropdown เดิมที่เลือกสถานะได้ทีละค่า ("รออนุมัติ + ตีกลับ" คือคำถามจริงของ AE Sup) */
   const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  const [lineView, setLineView] = useStickyState("lineView", "all");
   const [paymentFilter, setPaymentFilter] = useStickyState("paymentFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
@@ -173,6 +229,7 @@ export default function SalesOrdersPage() {
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (waitingOnMeOnly && !row._waitingOnMe) return false;
+      if (lineView !== "all" && row.businessLine !== lineView) return false;
       if (statusFilter.length && !statusFilter.includes(row.status)) return false;
       // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
       if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
@@ -181,7 +238,7 @@ export default function SalesOrdersPage() {
       return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
-  }, [query, rows, statusFilter, paymentFilter, waitingOnMeOnly]);
+  }, [query, rows, statusFilter, paymentFilter, waitingOnMeOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -219,12 +276,17 @@ export default function SalesOrdersPage() {
     });
   }, [sorted, groupBy]);
 
+  /* ⚠️ colSpan ต้องเดินตามจำนวนคอลัมน์จริง ไม่ใช่เลข 4 ที่พิมพ์ค้างไว้ — หัวกลุ่ม/แถวว่าง
+     ที่ colSpan สั้นกว่าตารางจะเปิดช่องว่างท้ายแถวให้เห็นเลย */
+  const serviceView = lineView === "SERVICE";
+  const columnCount = serviceView ? 7 : 4;
+
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
   const filterCount = statusFilter.length + paymentFilter.length + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${sortKey}|${sortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${waitingOnMeOnly}|${lineView}|${sortKey}|${sortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -305,6 +367,17 @@ export default function SalesOrdersPage() {
                       กำหนด {fmtDate(row.paymentDueDate)}
                     </span>
                   </td>
+                  {/* ⭐ สามคอลัมน์ท้ายขึ้นเฉพาะมุมมองสายบริการ — คำถามที่คอลัมน์ชุดเดิม
+                      ตอบไม่ได้: สัญญาผูกหรือยัง · เงินครอบบริการถึงเมื่อไร · เดินไปกี่รอบ */}
+                  {serviceView && <td>{serviceContractCell(row.service)}</td>}
+                  {serviceView && (
+                    <td className="num mono">
+                      {row.service?.paidThrough
+                        ? fmtDate(row.service.paidThrough)
+                        : <span className="cell-num-idle">{NA}</span>}
+                    </td>
+                  )}
+                  {serviceView && <td className="num mono">{roundsCell(row.service)}</td>}
                 </DetailRow>
     );
   };
@@ -352,6 +425,12 @@ export default function SalesOrdersPage() {
         <SaSection icon={<ClipboardList size={17} />} title="รายการใบสั่งขาย" subtitle="ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว" actions={<span className="ui-badge">{filtered.length} ใบ</span>}>
           {/* แถบควบคุมทรงเดียวกับทุกตารางในระบบ: ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
           <div className="toolbar">
+            <Segmented
+              ariaLabel="มุมมองตามสายธุรกิจ"
+              options={LINE_VIEWS}
+              value={lineView}
+              onChange={setLineView}
+            />
             <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
             <FilterPopover
               count={filterCount}
@@ -406,12 +485,18 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={820} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1060 : 820} aria-busy={loading}>
             <table className="w-full text-sm">
               {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
                   ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
                   ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
-              <thead><tr><th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th><th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th></tr></thead>
+              <thead><tr>
+                <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
+                <th className="num">Actual ก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th>
+                {serviceView && <th>สัญญา</th>}
+                {serviceView && <th className="num">จ่ายถึง</th>}
+                {serviceView && <th className="num">รอบที่เดิน</th>}
+              </tr></thead>
               <tbody>
                 {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `orderRow` ตัวเดียว
                     กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
@@ -420,7 +505,7 @@ export default function SalesOrdersPage() {
                   return (
                     <Fragment key={bucket.key}>
                       <TableGroupRow
-                        colSpan={4}
+                        colSpan={columnCount}
                         label={bucket.label}
                         sub={bucket.sub}
                         badge={`${bucket.count} ใบ`}
@@ -435,9 +520,11 @@ export default function SalesOrdersPage() {
                 }) : pageRows.map(orderRow)}
                 {!filtered.length && !loading && (
                   <TableEmpty
-                    colSpan={4}
-                    title="ยังไม่มีใบสั่งขาย"
-                    description="เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"
+                    colSpan={columnCount}
+                    title={serviceView ? "ยังไม่มีใบสั่งขายสายบริการ" : "ยังไม่มีใบสั่งขาย"}
+                    description={serviceView
+                      ? "ใบจะขึ้นที่นี่เมื่อดีล/โครงการต้นทางเป็นสายบริการ"
+                      : "เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"}
                   />
                 )}
               </tbody>

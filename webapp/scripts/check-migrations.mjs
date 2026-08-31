@@ -20,6 +20,13 @@ const LEGACY_DUPLICATES = new Map([
   ['0087', ['0087_personal_tasks_proxy_worker.sql', '0087_sales_history.sql']],
   ['0099', ['0099_chat_webhooks.sql', '0099_quotation_concurrent_create_guard.sql']],
   ['0230', ['0230_master_code_counters.sql', '0230_request_assignee.sql']],
+  /* 2026-08-31 — สองสายงานทำพร้อมกันในวันเดียวกัน แล้วจองเลขเดียวกันคนละแบรนช์
+     **ทั้งคู่รันบน production ไปแล้ว** จึงเปลี่ยนชื่อไม่ได้ (git จะไม่ตรงกับฐานจริง)
+     หลักฐานที่ตรวจ:
+       · `0325_product_brand_optional`      → `products."hasBrand"` มีอยู่จริงบนฐาน
+       · `0325_unconfirm_service_...`       → `audit_logs` มี 4 แถวของ actorId
+         `migration-0325` (งวด 2 · ใบ 2) และงวดเป้าหมายกลับเป็น `reported` ครบ */
+  ['0325', ['0325_product_brand_optional.sql', '0325_unconfirm_service_installments_missing_coverage.sql']],
 ]);
 
 const files = (await readdir(migrationsDir))
