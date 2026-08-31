@@ -268,8 +268,8 @@ test('V4 doc: ส่วนลดท้ายใบที่เก็บ % เก
   };
   const html = buildQuotationMasterHTML(q, {});
   // เทียบเฉพาะจุดที่พิมพ์อัตรา — เลข 150/250 โผล่ในพาธของโลโก้ SVG ได้ ไม่เกี่ยวกัน
-  assert.match(html, /หัก ส่วนลด 100%/, 'ป้ายส่วนลดท้ายใบตัดที่ 100%');
-  assert.doesNotMatch(html, /หัก ส่วนลด 250%/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
+  assert.match(html, /หัก ส่วนลด 100\.00%/, 'ป้ายส่วนลดท้ายใบตัดที่ 100%');
+  assert.doesNotMatch(html, /หัก ส่วนลด 250/, 'ไม่พิมพ์ค่าดิบของส่วนลดท้ายใบ');
   assert.doesNotMatch(html, /class="itemDiscountRate"/, 'บรรทัดไม่พิมพ์อัตราเลย');
 });
 
@@ -295,7 +295,7 @@ test('V4 doc: ส่วนลดท้ายใบตั้งเป็น % →
     discountType: 'percent', discountValue: 5, discountAmount: 50,
   };
   const html = buildQuotationMasterHTML(q, {});
-  assert.match(html, /<span>หัก ส่วนลด 5%<\/span><strong>-50\.00<\/strong>/, 'ท้ายใบมีอัตรา + ยอดเงิน');
+  assert.match(html, /<span>หัก ส่วนลด 5\.00%<\/span><strong>-50\.00<\/strong>/, 'ท้ายใบมีอัตรา + ยอดเงิน');
 });
 
 test('V4 doc: ส่วนลดท้ายใบตั้งเป็นจำนวนเงิน → ป้ายไม่มีอัตราให้กำกับ', () => {
