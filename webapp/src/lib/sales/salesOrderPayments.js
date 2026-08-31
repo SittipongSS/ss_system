@@ -379,6 +379,28 @@ export function installmentActionError(row, action, user, options = {}) {
     return null;
   }
 
+  /* ── ใบงานบริการ: ไม่มีช่วงครอบ = เงินนับไม่ได้ (มติผู้ใช้ 2026-08-31) ────────
+     🐞 **UAT 2026-09-01: ด่านนี้เคยข้ามได้ทั้งเส้น** — เดิมเช็กเฉพาะ `action === 'confirm'`
+     และวางไว้ **ใต้** สาขา `report` ซึ่ง `return` ก่อนเสมอ ⇒ สองชั้นพร้อมกัน:
+     บัญชี/แอดมินที่ "แจ้งชำระ" เองลง `confirmed` ตั้งแต่ก้าวแรก (`installmentReportOutcome`)
+     แล้วไม่เคยเจอด่านเลย · "จ่ายถึง" ยังว่าง = กับดักที่ mig 0325 เพิ่งตามเก็บ กลับมาทันที
+     ⇒ ตัดสินจาก **ปลายทางของคำสั่ง** ไม่ใช่ชื่อคำสั่ง และวางไว้เหนือทุกสาขา
+
+     ⚠️ ตรวจเฉพาะใบที่มีรอบบริการ · ไม่ส่ง `serviceRounds` มา = ไม่บล็อก (fail-open
+     โดยตั้งใจ — บล็อกทุกใบเมื่อผู้เรียกลืมส่ง = หยุดรับเงินทั้งบริษัท)
+     ⚠️ ฝ่ายขายแจ้ง (ปลายทาง `reported`/`pending`) ไม่ติด — ยังไม่ใช่จังหวะที่เงินนับ
+     ⚠️ ตีกลับ/ดึงกลับไม่ติด — งวดที่ข้อมูลไม่ครบยิ่งต้องถอยได้ */
+  const landsConfirmed = action === 'confirm'
+    || (action === 'report' && installmentReportOutcome(user, row) === 'confirmed');
+  if (landsConfirmed && options.serviceRounds) {
+    const coversFrom = options.coversFrom ?? row.coversFrom;
+    const coversTo = options.coversTo ?? row.coversTo;
+    if (!coversFrom || !coversTo) {
+      return 'ใบนี้เป็นงานบริการ — ต้องระบุช่วงครอบบริการของงวดก่อน จึงจะรับรองได้'
+        + ' (ฝ่ายขายกรอกที่คอลัมน์ “ครอบคลุมบริการ” บนแผงงวด)';
+    }
+  }
+
   if (action === 'report') {
     // ฝ่ายขายแจ้งเพื่อให้บัญชีตรวจ · **บัญชีแจ้งเองก็ได้** แล้วจบในก้าวเดียว
     // (มติผู้ใช้ 2026-08-18 — ดู installmentReportOutcome)
@@ -475,14 +497,6 @@ export function installmentActionError(row, action, user, options = {}) {
           เพราะบล็อกทุกใบเมื่อผู้เรียกลืมส่ง = หยุดการรับเงินทั้งบริษัท ซึ่งแย่กว่ามาก
           ⇒ มีเทสต์ยามบังคับให้ทั้ง route และแผงบนจอส่งค่านี้เสมอ
        ⚠️ ตีกลับ (`reject`) ไม่ติดข้อนี้ — งวดที่ข้อมูลไม่ครบยิ่งต้องตีกลับได้ */
-    if (action === 'confirm' && options.serviceRounds) {
-      const from = options.coversFrom ?? row.coversFrom;
-      const to = options.coversTo ?? row.coversTo;
-      if (!from || !to) {
-        return 'ใบนี้เป็นงานบริการ — ต้องระบุช่วงครอบบริการของงวดก่อน จึงจะรับรองได้'
-          + ' (ฝ่ายขายกรอกที่คอลัมน์ “ครอบคลุมบริการ” บนแผงงวด)';
-      }
-    }
     if (action === 'reject') {
       const reason = String(options.reason || '').trim();
       if (reason.length < MIN_REJECT_REASON) {
