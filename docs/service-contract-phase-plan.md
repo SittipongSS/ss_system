@@ -103,7 +103,9 @@ ADD COLUMN "serviceRounds" integer CHECK ("serviceRounds" IS NULL OR "serviceRou
    `src/lib/sales/serviceRoundsEntry.js` — แก้ได้แม้ใบอนุมัติแล้ว (ไม่ต้องออก Rev.)
    เพราะไม่กระทบยอดเงินและไม่อยู่บนเอกสารที่ออกไปแล้ว
 
-**M4 — ทะเบียนติดตามต่อสัญญา** (ตารางใหม่ `service_renewal_followups`)
+**M4 — ทะเบียนติดตามต่อสัญญา** (ตารางใหม่ `service_renewal_followups`) — mig 0327
+🛠 เพิ่มจากแผนเดิม: คอลัมน์ `"coveredEndDate" date NOT NULL` — ถ้าไม่มี ระบบตอบไม่ได้ว่า
+"ปิดเรื่องไปแล้ว" หมายถึงรอบไหน ⇒ ปีหน้ารอบใหม่หมดอีกครั้งไซต์จะเงียบหายตลอดกาล
 ```sql
 id text PRIMARY KEY,
 "siteId" text NOT NULL REFERENCES service_sites(id) ON DELETE RESTRICT,
@@ -305,14 +307,27 @@ FN รับรองงวดถัดไปแล้วนัดกลับ�
 · สวมบท `ts_planner` แล้วเปิด `/sa/sales-orders` เห็นใบครบทุกทีม และเปิดใบรายใบได้
 
 ### PR-E — ทะเบียนต่อสัญญา + กระดิ่ง (mig M4 · อิสระ)
-**แตะ:** หน้าใหม่ `/sa/renewals` (`src/app/sales-planning/renewals/` — ตาม match pattern ของเมนู /sa/*) ·
-เมนู `src/components/AppLayout.js` วางถัดจาก contracts (แถว ~57) · **ratchet หน้าที่ใหม่:**
-`OPEN_PAGES` ใน `src/proxy.js` + `src/proxy.test.mjs` · `navMenuNames.test.mjs` · `SELF_LOAD_CAP` ใน `systemRules.test.mjs`
+**แตะ:** 🛠 **มติผู้ใช้ 2026-08-31: ไม่มีเมนูของตัวเอง — เป็น "แท็บ" ของทะเบียนสัญญา**
+`/sa/contracts?tab=renewals` · แผงอยู่ที่ `components/salesPlanning/RenewalsPanel.js`
+· หน้าแม่โหลดข้อมูลเอง (เลขบนหัวแท็บต้องรู้ก่อนกด + กระดิ่งถูกกวาดทุกครั้งที่เปิดทะเบียนสัญญา)
+· `/sa/renewals` เหลือเป็น **redirect** ใน `next.config.mjs` เพราะแจ้งเตือนใบเก่าเก็บ href ตายตัว
+· **สองแท็บคนละ entity โดยตั้งใจ** — ทะเบียน = เอกสาร `sales_contracts` · ต่อสัญญา = ไซต์
+ที่คำนวณจาก `service_zone_terms."endDate"` ⇒ ยุบเป็นตารางเดียวไม่ได้ ·
+🛠 **แก้จากแผนเดิม (2026-08-31)** — ratchet ที่แผนสั่งไว้ไม่ตรงของจริง:
+`OPEN_PAGES` มี `/sa` + `/sales-planning` อยู่แล้ว (หน้าใหม่ใต้สองเส้นนี้ไม่ต้องลงทะเบียน) ·
+ไม่มีไฟล์ `navMenuNames.test.mjs` ในรีโป · `SELF_LOAD_CAP` นับเฉพาะตารางใน `SCOPED_TABLES`
+⇒ ที่ต้องแตะจริงคือ **`next.config.mjs` rewrites** (ลืมแล้วหน้า 404 ทั้งที่ไฟล์ครบ)
+และเพดานป้ายใน `settings/design-preview/page.js`
 **เนื้อ:** แถว = ไซต์ที่ active term จบใน ≤90 วัน หรือจบแล้วยังไม่ปิดเรื่อง (**คำนวณสดจาก term.endDate — ห้ามเก็บสถานะ**)
 join `service_renewal_followups` · metric strip 4 ช่อง · โมดัลบันทึกผล (OptionTiles: ตามต่อ/ต่อ/ไม่ต่อ) ·
-ต่อ → เปิดดีล RE-ORDER สาย SERVICE ผูกลูกค้า/ไซต์เดิม + เก็บ `renewedSalesOrderId` ตอน SO ใหม่เกิด ·
+ต่อ → **เปิดฟอร์มสร้างดีลตัวเดิมของระบบ** (`DealCreateModal` prop `defaults`) พร้อมลูกค้าเดิม +
+สาย SERVICE + ชนิด RE-ORDER — ไม่สร้างดีลให้เองที่ server เพราะดีลต้องมีเจ้าของ/มูลค่า/หมวด
+ซึ่งเป็นการตัดสินใจของคน และตรรกะสร้างดีลอยู่ใน route ไม่ใช่ lib (ก๊อปมา = ฟอร์มชุดที่สอง) ·
+`renewedSalesOrderId` เก็บตอน SO ใหม่เกิด ·
 ไม่ต่อ → declineReason บังคับ ≥10 + แจ้ง TS (งานถอน — นัด `retrieve` จาก PR-C)
-**กระดิ่ง:** kind ใหม่ `service_renewal_due` — ลง `NOTIFICATION_BOXES` ใน `src/lib/notifications.js` (+เทสต์)
+**กระดิ่ง:** kind ใหม่ `service_renewal_due` (`SERVICE_BELL_KINDS`) — ลง `NOTIFICATION_BOXES`
+ใน `src/lib/notifications.js` (+เทสต์) · ปลายทาง/ป้ายลง `notificationTargets.js` ด้วย
+(entity `service_renewal` → `/sa/renewals`)
 · ระบบไม่มี cron → sweep ตอนเปิดทะเบียน/แดชบอร์ด SA (แพตเทิร์น `contractQuotationSync` เรียกสองจังหวะ)
 · กันยิงซ้ำด้วยกุญแจ (siteId × endDate) เช็คกับ notifications เดิมก่อน insert
 **ตรวจรับ:** ไซต์เข้าเขต 90 วันโผล่ + กระดิ่งถึงเจ้าของครั้งเดียว · ปิดเรื่องแล้วหลุดจากแท็บใกล้หมด
