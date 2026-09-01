@@ -188,6 +188,13 @@ export default function RequestForm({
      มองหาอยู่ไหน · และห้ามปล่อยให้พิมพ์ได้ทั้งที่บันทึกไม่ผ่าน (พิมพ์แล้วหายเงียบ)
      ค่าตั้งต้น = ตามทั้งฟอร์ม ⇒ ฝั่งสร้างไม่ต้องรู้จักพร็อพนี้ */
   pdrDisabled = null,
+  /* ⭐ **บรรทัดมีขั้นของตัวเอง** (มติผู้ใช้ 2026-09-01) — หัวใบแก้ได้ถึงขั้นดำเนินการ
+     แต่บรรทัดหยุดที่ "รับเรื่อง" เพราะทุกแถวถูกประทับ `ackAt` ตอนนั้น (ดู
+     `REQUEST_LINE_EDITABLE_STATUSES`) ⇒ มีขั้นที่คนคนเดียวแก้ได้แค่หัวใบ
+     ⚠️ เทาพร้อมเหตุผล ไม่ซ่อน — ซ่อนแล้วคนจะคิดว่าบรรทัดหายไปจากใบ
+     ค่าตั้งต้น = ตามทั้งฟอร์ม ⇒ ฝั่งสร้างไม่ต้องรู้จักพร็อพนี้ */
+  linesDisabled = null,
+  linesNote = null,
 }) {
   const isEdit = mode === "edit";
   const set = (patch) => onChange({ ...value, ...patch });
@@ -1028,6 +1035,8 @@ export default function RequestForm({
         scents={scents}
         customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
         disabled={disabled}
+        linesDisabled={linesDisabled}
+        linesNote={linesNote}
         /* ⭐ ยอดที่ขอวางบิลไปอยู่ในเนื้อของบรรทัด (มติผู้ใช้ 2026-08-24) — ส่งเป็น
            node ทึบ ๆ ลงไป ตารางบรรทัดไม่ต้องรู้ว่ามันคือยอดหรืออะไร ⇒ หัวข้ออื่น
            ที่ใช้ตารางเดียวกัน (ขอเอกสารของ RD) ไม่ได้อะไรเพิ่มมา */

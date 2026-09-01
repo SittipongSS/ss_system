@@ -20,3 +20,17 @@ test('workflow states are derived without document-specific branching', () => {
   assert.deepEqual(steps.map((step) => step.state), ['done', 'current', 'pending']);
   assert.deepEqual(workflowStepsFromIndex(steps, 0, true).map((step) => step.state), ['cancelled', 'cancelled', 'cancelled']);
 });
+
+/* ⭐ **ขั้นที่ค้างได้โดยไม่กั้นขั้นถัดไป** (มติผู้ใช้ 2026-09-01) — คำร้อง: แจ้งกำหนดส่ง
+   กับลงมือทำงานเกิดพร้อมกันได้ ⇒ ขั้นแจ้งวันอยู่ก่อน index แต่ยังไม่ถูกทำ
+   ⚠️ ปล่อยให้นับจาก index อย่างเดียวเมื่อไร รางจะติ๊กว่า "ผ่านแล้ว" ให้ขั้นที่ยังไม่เกิด */
+test('ขั้นที่ประกาศ state มาเอง ชนะการนับจาก index — และ cancelled ยังทับทุกขั้น', () => {
+  const steps = workflowStepsFromIndex(
+    [{ label: 'ร่าง' }, { label: 'กำหนดส่ง', state: 'pending' }, { label: 'ทำงาน' }, { label: 'ปิด' }],
+    2,
+  );
+  assert.deepEqual(steps.map((step) => step.state), ['done', 'pending', 'current', 'pending']);
+
+  const dead = workflowStepsFromIndex([{ label: 'ก', state: 'pending' }, { label: 'ข' }], 1, true);
+  assert.deepEqual(dead.map((step) => step.state), ['cancelled', 'cancelled']);
+});

@@ -23,7 +23,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import RichText from "@/components/ui/RichText";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { REQUEST_EDITABLE_STATUSES } from "@/lib/requests/requestEdit";
-import { lineFormRows } from "@/lib/requests/requestLineEdit";
+import { lineFormRows, requestLineEditError } from "@/lib/requests/requestLineEdit";
 import { cachedFetchJson } from "@/lib/apiCache";
 import UpdateThread from "@/components/updates/UpdateThread";
 import {
@@ -882,7 +882,12 @@ export default function RequestDetailPage() {
      · `canEditInfo`   = ผู้ขอแก้หัวใบได้ (ถึงก่อนรับเรื่องเท่านั้น — requestEdit.js)
      · `canEditPdrNow` = สิทธิ์แก้ PDR ซึ่ง **สลับมือ** ไปฝ่ายปลายทางตอนรับเรื่อง
        (pdrEdit.js) ⇒ RD หลังรับเรื่องกด "แก้ไข" แล้วได้เฉพาะแบบฟอร์ม ไม่ได้หัวใบ */
-  const canEditInfo = (req._mine || isAdmin) && REQUEST_EDITABLE_STATUSES.includes(req.status);
+  /* ⭐ **สองฝั่งแก้ได้ในขั้นดำเนินการ** (มติผู้ใช้ 2026-09-01) — `owner` = ฝ่ายที่
+     รับเรื่องไปทำ · ขั้นที่แก้ได้คุมด้วยลิสต์เดียวกับ server (`requestEditError`) */
+  const canEditInfo = (req._mine || isAdmin || owner)
+    && REQUEST_EDITABLE_STATUSES.includes(req.status);
+  /* บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น — เทาไว้พร้อมเหตุผล ไม่ใช่ปล่อยให้พิมพ์แล้วโดน 409 */
+  const lineEditBlocker = hasItems ? requestLineEditError(req) : null;
   const canEditPdrNow = requestHasPdr(req.kind) && !!req._canEditPdr;
   // ⭐ ประโยค "ทำไมแก้ไม่ได้ตอนนี้" — server ตัดสินมาให้แล้ว (`editPdrError`) หน้าจอ
   /* เหตุผลที่แก้ไม่ได้ — **มาจาก server ทั้งสองฝั่ง ไม่คิดเอง**
@@ -919,6 +924,22 @@ export default function RequestDetailPage() {
         onClick: cancelEdit,
       },
     ] : [
+      {
+        /* ⭐ **แจ้งกำหนดส่งต้องไม่กั้นการตอบ** (มติผู้ใช้ 2026-09-01: "กำหนดการ ได้
+           พร้อมกันในสเตจนี้") — ใบที่รับเรื่องแล้วแต่ยังไม่แจ้งวัน เอาปุ่มหลักไปเป็น
+           "แจ้งกำหนดส่ง"
+           🐞 ⇒ หัวข้อที่ไม่มีบรรทัด (สอบถาม/บรีฟ) **ไม่มีปุ่ม "ตอบแล้ว" เลยทั้งใบ**
+              จนกว่าฝ่ายจะยอมรับปากวันก่อน ทั้งที่ตอบในเธรดจบไปแล้ว ⇒ ฝ่ายที่ตอบเสร็จ
+              ต้องกรอกวันปลอมเพื่อจะปิดงานของตัวเอง
+           ⚠️ **ปุ่มเดียวกับปุ่มหลัก ไม่ใช่ก้าวใหม่** — `setConfirm({ kind: "answer" })`
+              ตัวเดิม ต่างแค่ที่วาง · หัวข้อที่มีบรรทัดไม่ต้องใช้ทางนี้ (ปุ่มส่งงานอยู่ในแถว) */
+        id: "answer",
+        label: closure.requesterDone ? "ปิดเรื่อง" : "ตอบแล้ว",
+        kind: "approve",
+        icon: CheckCheck,
+        onClick: () => setConfirm({ kind: "answer" }),
+        visible: canMarkAnswered && primaryAction?.id === "commit-due",
+      },
       /* ⚠️ **"ส่งงานหลายรายการ" ย้ายไปหัวการ์ดตารางสรุปทั้งใบแล้ว** (มติผู้ใช้
          2026-08-18) — ปุ่มส่งงานทุกแบบอยู่กับตาราง Control Panel เหลือปุ่มปลายทาง */
       {
@@ -1022,7 +1043,7 @@ export default function RequestDetailPage() {
            (มติ GatedAction) · ใบที่มี PDR โชว์เสมอเพราะสิทธิ์สลับมือไปอีกฝั่ง
            คนที่เห็นปุ่มหายจะไม่รู้ว่าต้องไปบอกใคร */
         visible: (canEditInfo || canEditPdrNow
-          || (!!editBlocker && (requestHasPdr(req.kind) || req._mine)))
+          || (!!editBlocker && (requestHasPdr(req.kind) || req._mine || owner)))
           && !editing,
         disabled: !canEditInfo && !canEditPdrNow,
         disabledReason: editBlocker,
@@ -1312,6 +1333,8 @@ export default function RequestDetailPage() {
                (และกลับกัน) ⇒ เทาส่วนที่ไม่ใช่ของตัวเอง ไม่ใช่ซ่อน · server ตัดสิน */
             disabled={saving || !canEditInfo}
             pdrDisabled={saving || !canEditPdrNow}
+            linesDisabled={saving || !canEditInfo || !!lineEditBlocker}
+            linesNote={lineEditBlocker}
             lockKind
             deferMentions
             showBlocker={false}

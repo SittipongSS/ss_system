@@ -36,6 +36,24 @@ export function lineShapeEditable(lineShape) {
   return Boolean(WRITABLE_BY_SHAPE[lineShape]);
 }
 
+/* ── ขั้นที่ยังแก้ "บรรทัด" ได้ (มติผู้ใช้ 2026-09-01) ──────────────────────
+   ⚠️ **แคบกว่าหัวใบหนึ่งขั้น** — หัวใบแก้ได้ถึง `acknowledged` (`REQUEST_EDITABLE_STATUSES`)
+   แต่บรรทัดไม่ได้ เพราะการกดรับเรื่องประทับ `ackAt` ลงทุกแถวในใบ (`ackFanOut` ที่
+   API) ⇒ ทุกแถวเดินก้าวไปแล้ว และ `requestLineDiff` ปฏิเสธการแก้/ลบแถวที่เดินแล้ว
+   อยู่แล้วรายแถว
+   ⭐ ที่ด่านนี้เพิ่มขึ้นมาคือ **แถวใหม่** — `insert` ไม่เคยผ่าน `isRowUntouched`
+   (แถวใหม่ไม่มีอดีตให้ตรวจ) ⇒ ถ้าไม่กั้นตรงนี้ ฝ่ายที่รับเรื่องไปแล้วจะเพิ่มงานเข้าใบ
+   กลางคันได้เงียบ ๆ แล้วใบตอบไม่ครบตลอดไปจนกว่าจะมีคนไปรับแถวใหม่นั้น
+   ⚠️ เปลี่ยนบรรทัดของใบที่รับเรื่องแล้ว = คุยในเธรด หรือใช้ก้าวของแถว ไม่ใช่ฟอร์มแก้ */
+export const REQUEST_LINE_EDITABLE_STATUSES = Object.freeze(['draft', 'pending']);
+
+/** แก้บรรทัดของใบนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน */
+export function requestLineEditError(request) {
+  if (!request) return 'ไม่พบคำร้อง';
+  if (REQUEST_LINE_EDITABLE_STATUSES.includes(request.status)) return null;
+  return 'รับเรื่องไปแล้ว — แก้รายการทางฟอร์มไม่ได้ ให้ใช้ก้าวของแถวหรือคุยต่อในเธรด';
+}
+
 /**
  * แถวที่ "ยังไม่มีใครแตะ" — แก้/ลบได้
  *

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  isRowUntouched, lineDiffIsEmpty, lineFormRows, lineShapeEditable, requestLineDiff,
+  REQUEST_LINE_EDITABLE_STATUSES, isRowUntouched, lineDiffIsEmpty, lineFormRows,
+  lineShapeEditable, requestLineDiff, requestLineEditError,
 } from './requestLineEdit.js';
 
 const docRow = (over = {}) => ({
@@ -132,4 +133,31 @@ test('lineFormRows — ทุกช่องเป็นสตริง แล�
   assert.deepEqual(dev, {
     id: 'DRI-2', categoryCode: '01-001', scentId: 'SC-1', qty: '12', unit: '', spec: '',
   });
+});
+
+/* ── ขั้นที่แก้บรรทัดได้ (มติผู้ใช้ 2026-09-01) ────────────────────────────
+   ⚠️ **แคบกว่าหัวใบหนึ่งขั้น** — หัวใบแก้ได้ถึง `acknowledged` แต่บรรทัดไม่ได้
+   เพราะการรับเรื่องประทับ `ackAt` ลงทุกแถว ⇒ แถวเดินก้าวไปแล้วทั้งใบ
+   ⭐ ด่านนี้มีไว้กัน **แถวใหม่** เป็นหลัก — `insert` ไม่เคยผ่าน `isRowUntouched` */
+test('บรรทัดแก้ได้ถึงก่อนรับเรื่องเท่านั้น — รับแล้วต้องบอกทางออกที่มีจริง', () => {
+  assert.deepEqual([...REQUEST_LINE_EDITABLE_STATUSES], ['draft', 'pending']);
+  assert.equal(requestLineEditError({ status: 'draft' }), null);
+  assert.equal(requestLineEditError({ status: 'pending' }), null);
+  for (const status of ['acknowledged', 'answered', 'closed', 'cancelled']) {
+    assert.match(requestLineEditError({ status }), /ก้าวของแถวหรือคุยต่อในเธรด/, status);
+  }
+  assert.equal(requestLineEditError(null), 'ไม่พบคำร้อง');
+});
+
+/* 🐞 **แถวใหม่ไม่มีอดีตให้ตรวจ** — `requestLineDiff` กันการแก้/ลบแถวที่เดินแล้ว
+   รายแถว แต่ `insert` ผ่านตลอด ⇒ ถ้าไม่มีด่านขั้นของใบ ฝ่ายที่รับเรื่องไปแล้วจะเพิ่ม
+   งานเข้าใบกลางคันได้เงียบ ๆ แล้วใบตอบไม่ครบจนกว่าจะมีคนไปรับแถวใหม่นั้น */
+test('แถวใหม่ผ่าน diff ได้เสมอ — ด่านที่กันไว้คือขั้นของใบ ไม่ใช่ตัว diff', () => {
+  const acked = [docRow({ ackAt: '2026-08-06' })];
+  const plan = requestLineDiff(acked, [...acked, { ...docRow({ id: null }), id: undefined }], {
+    lineShape: 'document',
+  });
+  assert.equal(plan.error, null);
+  assert.equal(plan.insert.length, 1, 'diff ไม่ได้กันแถวใหม่ — ด่านอยู่ที่ requestLineEditError');
+  assert.match(requestLineEditError({ status: 'acknowledged' }), /แก้รายการทางฟอร์มไม่ได้/);
 });

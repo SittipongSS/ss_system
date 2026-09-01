@@ -9,14 +9,30 @@ const owner = { id: 'U1', role: 'ae' };
 const other = { id: 'U2', role: 'ae' };
 const draft = { id: 'DR-1', status: 'draft', requestedById: 'U1' };
 
-test('เจ้าของแก้ร่างและใบที่ส่งแล้วแต่ยังไม่รับเรื่องได้', () => {
+test('เจ้าของแก้ได้ตั้งแต่ร่างจนถึงขั้นดำเนินการ', () => {
   assert.equal(requestEditError(draft, owner), null);
   assert.equal(requestEditError({ ...draft, status: 'pending' }, owner), null);
+  /* ⭐ มติผู้ใช้ 2026-09-01: "อีกฝ่าย แก้ไขได้ / กำหนดการ ได้พร้อมกันในสเตจนี้" —
+     ขั้นดำเนินการเปิดให้แก้ ไม่ใช่ช่วงที่ใบถูกแช่แข็ง */
+  assert.equal(requestEditError({ ...draft, status: 'acknowledged' }, owner), null);
 });
 
-test('รับเรื่องแล้ว/ปิด/ยกเลิก แก้ไม่ได้ — และบอกเหตุผลคนละแบบ', () => {
-  assert.match(requestEditError({ ...draft, status: 'acknowledged' }, owner), /รับเรื่อง/);
-  assert.match(requestEditError({ ...draft, status: 'closed' }, owner), /รับเรื่อง/);
+/* ⭐ **ฝ่ายที่รับเรื่องไปทำก็แก้ได้** (มติเดียวกัน) — ทั้งสองฝั่งอยู่ในสเตจเดียวกัน
+   ใครแก้อะไรลงเธรด/audit อยู่แล้ว (เหตุผลเดียวกับที่เพื่อนร่วมทีมทำแทนกันได้) */
+test('ฝ่ายผู้รับเรื่องแก้ได้ทุกขั้นที่เปิดให้แก้ — ไม่ใช่แค่ผู้ขอ', () => {
+  const rd = { id: 'U7', role: 'rd', department: 'RD' };
+  const toRd = { ...draft, dept: 'RD' };
+  assert.equal(requestEditError({ ...toRd, status: 'acknowledged' }, rd), null);
+  assert.equal(requestEditError({ ...toRd, status: 'pending' }, rd), null);
+  // ฝ่ายอื่นที่ไม่ได้ถือใบนี้ยังแก้ไม่ได้ — สิทธิ์ผูกกับฝ่ายบนใบ ไม่ใช่ "เป็นฝ่ายอะไรก็ได้"
+  const pc = { id: 'U8', role: 'rd', department: 'PC' };
+  assert.match(requestEditError({ ...toRd, status: 'acknowledged' }, pc), /เฉพาะผู้เปิดคำร้อง/);
+});
+
+test('จบแล้วแก้ไม่ได้ — และบอกเหตุผลคนละแบบ', () => {
+  // ⚠️ ตอบแล้วยังไม่ถาวร — ต้องชี้ทางออกที่มีจริง (ปุ่ม "ยังไม่จบ")
+  assert.match(requestEditError({ ...draft, status: 'answered' }, owner), /ยังไม่จบ/);
+  assert.match(requestEditError({ ...draft, status: 'closed' }, owner), /ปิดแล้ว/);
   assert.match(requestEditError({ ...draft, status: 'cancelled' }, owner), /ยกเลิก/);
 });
 
