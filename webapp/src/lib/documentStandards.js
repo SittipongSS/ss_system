@@ -69,7 +69,11 @@ function normalizeText(value, max, field, errors, { required = false, upper = fa
 export const DOCUMENT_NUMBER_CYCLES = Object.freeze({
   quotation: 'year',
   salesOrder: 'year',
-  exciseTaxNotice: 'month',
+  // ใบแจ้งภาษีตามใบเสนอราคา/ใบสั่งขาย (มติผู้ใช้ 2026-09-01 "ET เอาแบบ QT" · mig 0329)
+  exciseTaxNotice: 'year',
+  /* ไทม์ไลน์โครงการยัง **รายเดือน** โดยตั้งใจ — มติผู้ใช้ให้ยกไปทำพร้อมรหัสดีล (DL)
+     และโครงการ (PJ) ซึ่งอยู่คนละเครื่องยนต์ (entity_number_counters) และเกิดคู่กัน
+     ⇒ เปลี่ยนแยกกันจะได้ระบบที่โครงการหนึ่งใบมีเลขสองรอบตัดคาบเกี่ยวกันเอง */
   projectTimeline: 'month',
   pdr: 'month',
 });
