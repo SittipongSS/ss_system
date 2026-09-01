@@ -56,7 +56,7 @@ export function scentToForm(scent) {
     producedAt: scent.producedAt || "",
     sentAt: scent.sentAt || "",
     status: scent.status || "developing",
-    // ผู้ปรุงกลิ่น (mig 0332) — พา id ไปด้วยเพื่อไม่ให้ค่าที่เคยเลือกกลายเป็น "ชื่อลอย"
+    // ผู้ปรุงกลิ่น (mig 0333) — พา id ไปด้วยเพื่อไม่ให้ค่าที่เคยเลือกกลายเป็น "ชื่อลอย"
     perfumerId: scent.perfumerId || "",
     perfumerName: scent.perfumerName || "",
   };

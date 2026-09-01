@@ -394,7 +394,7 @@ export function scentFormPayload(value = {}, {
     customerTradeName: value.customerTradeName,
     derivedFromScentId: value.derivedFromScentId,
     note: value.note,
-    /* ผู้ปรุงกลิ่น (mig 0332) — ส่งทั้งสองโหมด (สร้าง/แก้) เพราะกลิ่นเก่าที่กรอก
+    /* ผู้ปรุงกลิ่น (mig 0333) — ส่งทั้งสองโหมด (สร้าง/แก้) เพราะกลิ่นเก่าที่กรอก
        ย้อนหลังคือเหตุผลหลักที่ช่องนี้มี ⇒ ต้องแก้ของที่ลงไปแล้วได้ด้วย
        ⚠️ ส่งค่าว่างไป = ล้างผู้ปรุง (คนกรอกผิดคนต้องถอนได้) ไม่ใช่ "ไม่แตะ" */
     perfumerId: value.perfumerId ?? null,
