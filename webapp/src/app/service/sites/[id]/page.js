@@ -2,17 +2,21 @@
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
-import { Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Boxes, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace from "@/components/ui/Workspace";
+import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
@@ -38,6 +42,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
+  const router = useRouter();
   const role = useRole();
   const team = useTeam();
   const teams = useTeams();
@@ -221,6 +226,22 @@ export default function ServiceSiteDetailPage({ params }) {
     await load();
   };
 
+  const removeSite = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/service/sites/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      setPendingDelete(null);
+      // toast ของหน้าที่กำลังจะออกจากมันไม่มีความหมาย — บอกที่ทะเบียนแทนหลังย้ายหน้า
+      router.push("/service/sites?deleted=" + encodeURIComponent(site?.name || id));
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removePlan = async () => {
     setBusy(true);
     try {
@@ -270,19 +291,56 @@ export default function ServiceSiteDetailPage({ params }) {
     );
   }
 
+  /* ── Control Panel ของไซต์ ────────────────────────────────────────────────
+     ไซต์ไม่มีแกนอนุมัติแบบลูกค้า/สินค้า — มีแกนเดียวคือใช้งาน/ปิดใช้งาน จึงให้แกนนั้น
+     เป็น status ของการ์ด control ไปเลย (ไม่มี workflowSteps ให้ส่ง)
+     ⚠️ ปุ่มระดับไซต์ (แก้ไข/ลบ) ย้ายเข้า Control Panel ทั้งชุด — ห้ามวางแยกไว้ในแถวหัว
+     อีก เหมือนที่หน้าลูกค้า/สินค้าห้ามไว้ (ม-49/ม-57) */
+  const siteAside = (
+    <>
+      <DocumentSummaryCard
+        title="สรุปไซต์"
+        rows={[
+          { id: "contact", label: "ผู้ติดต่อ", value: site.contactName ? `${site.contactName}${site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}` : "" },
+          { id: "routeZone", label: "เขตวิ่งงาน", value: site.routeZone },
+          { id: "access", label: "ช่วงเวลาที่เข้าได้", value: accessText || "ไม่จำกัด" },
+        ]}
+      />
+
+      <DocumentControlCard
+        eyebrow="SITE CONTROL"
+        title="จัดการไซต์"
+        status={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}
+        statusColor={site.isActive === false ? "var(--text-3)" : "var(--green)"}
+        statusDescription={site.isActive === false
+          ? "ไซต์นี้ถูกปิดใช้งาน — ไม่ขึ้นในรายการเลือกของระบบอื่น"
+          : "ไซต์พร้อมใช้งาน — รับรอบบริการและนัดใหม่ได้"}
+        primaryAction={canEdit ? { id: "edit", kind: "edit", label: "แก้ไขไซต์", onClick: () => setEditingSite(true) } : null}
+        /* API มีด่านครบอยู่แล้ว (เครื่อง/โซน/ประวัตินัด บล็อกการลบ) — ปุ่มโชว์เสมอ
+           ติดด่านค่อยบอกเหตุตอนกด ไม่ซ่อนปุ่มไว้ล่วงหน้า (เหตุผลเดียวกับทีม) */
+        dangerActions={canEdit ? [{ id: "delete", kind: "delete", label: "ลบไซต์", onClick: () => setPendingDelete({ type: "site", row: site }) }] : []}
+      />
+    </>
+  );
+
   return (
-    <Workspace
-      icon={<MapPin size={20} aria-hidden="true" />}
-      title={site.name}
-      subtitle={`${naText(site.customerName)}${site.code ? ` · ${site.code}` : ""}`}
-      back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}
-      headerRight={canEdit ? (
-        <Button tone="neutral" onClick={() => setEditingSite(true)} icon={<Pencil size={15} aria-hidden="true" />}>
-          แก้ไขไซต์
-        </Button>
-      ) : null}
-    >
-      <WorkspaceSection title="ข้อมูลไซต์">
+    <Workspace hideHeader back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
+      <DetailOverview
+        eyebrow="SERVICE SITE"
+        title={`${site.code ? `${site.code} · ` : ""}${site.name}`}
+        description={<><span>{naText(site.customerName)}</span><span>{naText(site.province)}</span></>}
+        badges={<DetailStateBadge label={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"} color={site.isActive === false ? "var(--text-3)" : "var(--green)"} />}
+        facts={[
+          { key: "zones", icon: Layers, label: "โซน", value: `${zones.length} โซน` },
+          { key: "assets", icon: Boxes, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
+          { key: "plans", icon: RefreshCw, label: "รอบบริการ", value: `${plans.length} รอบ` },
+          { key: "upcoming", icon: CalendarClock, label: "นัดที่จะถึง", value: `${upcoming.length} นัด` },
+        ]}
+      />
+
+      <div className="mt-[18px]">
+      <DetailPageLayout asideLabel="สรุปไซต์และการดำเนินการ" aside={siteAside}>
+      <DetailCard icon={MapPin} eyebrow="Site profile" title="ข้อมูลไซต์">
         <dl className={styles.info}>
           <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
           {/* จังหวัด (mig 0315) — ตัวตนถาวรของไซต์ ตรึงอยู่ในรหัส · คนละช่องกับที่อยู่
@@ -295,7 +353,6 @@ export default function ServiceSiteDetailPage({ params }) {
             <dd>{accessText || <span className={styles.muted}>ไม่จำกัด</span>}</dd>
           </div>
           <div><dt>เงื่อนไขการเข้า</dt><dd>{naText(site.accessNote)}</dd></div>
-          <div><dt>สถานะ</dt><dd><span className="ui-badge">{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></dd></div>
           {site.mapUrl && (
             <div>
               <dt>แผนที่</dt>
@@ -305,11 +362,13 @@ export default function ServiceSiteDetailPage({ params }) {
           )}
           {site.note && <div className={styles.wide}><dt>หมายเหตุ</dt><dd>{site.note}</dd></div>}
         </dl>
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={Layers}
+        eyebrow="Zones"
         title="โซนในไซต์"
-        subtitle="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
+        meta="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มโซน
@@ -367,11 +426,13 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={Boxes}
+        eyebrow="Assets"
         title="อุปกรณ์ในไซต์"
-        subtitle={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
+        meta={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์
@@ -456,11 +517,13 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={RefreshCw}
+        eyebrow="Service rounds"
         title="รอบบริการ"
-        subtitle="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
+        meta="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
             สร้างรอบ
@@ -508,9 +571,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection title="นัดที่จะถึง" subtitle={`${upcoming.length} นัด`}>
+      <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
         {upcoming.length === 0 ? (
           <EmptyState icon={MapPin} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
@@ -533,9 +596,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection title="ประวัติการเข้า" subtitle="20 ครั้งล่าสุด">
+      <DetailCard icon={History} eyebrow="Visit history" title="ประวัติการเข้า" meta="20 ครั้งล่าสุด">
         {history.length === 0 ? (
           <EmptyState icon={MapPin} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
@@ -563,7 +626,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
+      </DetailPageLayout>
+      </div>
 
       <ServiceSiteModal
         open={editingSite}
@@ -603,22 +668,27 @@ export default function ServiceSiteDetailPage({ params }) {
         danger
         title={pendingDelete?.type === "plan" ? "ลบรอบบริการ"
           : pendingDelete?.type === "zone" ? "ลบโซนออกจากไซต์"
-            : "ลบอุปกรณ์ออกจากไซต์"}
+            : pendingDelete?.type === "site" ? "ลบไซต์บริการ"
+              : "ลบอุปกรณ์ออกจากไซต์"}
         message={pendingDelete
           ? (pendingDelete.type === "plan"
             ? `ลบรอบทุก ${pendingDelete.row.everyDays} วัน?`
             : pendingDelete.type === "zone"
               ? `ลบโซน ${pendingDelete.row.name}?`
-              : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
+              : pendingDelete.type === "site"
+                ? `ลบไซต์ ${pendingDelete.row?.name}?`
+                : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
           : ""}
         detail={pendingDelete?.type === "plan"
           ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ"
           : pendingDelete?.type === "zone"
             ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
-            : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
-        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : "ลบอุปกรณ์"}
+            : pendingDelete?.type === "site"
+              ? "ลบได้เฉพาะไซต์ที่ยังไม่มีเครื่อง/โซน/ประวัตินัด — มีของค้างอยู่จะลบไม่ผ่านพร้อมบอกว่าติดอะไร ถ้าไซต์นี้เลิกใช้แล้วให้ปิดใช้งานแทน (แก้ไขไซต์ → สถานะ)"
+              : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
+        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : pendingDelete?.type === "site" ? "ลบไซต์" : "ลบอุปกรณ์"}
         busy={busy}
-        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : removeAsset}
+        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : pendingDelete?.type === "site" ? removeSite : removeAsset}
         onClose={() => setPendingDelete(null)}
       />
 

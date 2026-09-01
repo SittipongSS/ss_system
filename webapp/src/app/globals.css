@@ -4149,6 +4149,12 @@ button.ui-kpi-card { cursor: pointer; }
 .btn.action-ghost.btn-success, .btn-icon.action-ghost.btn-success { color: var(--green); }
 .btn.action-ghost.btn-warning, .btn-icon.action-ghost.btn-warning { color: var(--amber); }
 .btn.action-ghost.btn-danger, .btn-icon.action-ghost.btn-danger { color: var(--red); }
+/* .btn.ghost (variant="quiet") ไม่มีสีตาม tone เลยตั้งใจ (ดูโน้ตที่ .btn.ghost ด้านบน) —
+   แต่ปุ่มลบเกือบทุกจุดในระบบใช้ tone="danger" variant="quiet" (คัดลอกกันมา ไม่รู้ว่า quiet
+   ตัดสีทิ้ง) ผลคือปุ่มลบกลายเป็นตัวหนังสือขาวเฉย ๆ แยกจากปุ่มข้างเคียงไม่ออก
+   แก้เฉพาะ danger ตามมติผู้ใช้ 2026-09-01 — ไม่แตะ warning/primary/accent/success
+   ที่ยังรอควบรวม quiet/ghost เป็นตัวเดียวตามโน้ตในหน้า /settings/design-preview */
+.btn.ghost.btn-danger, .btn-icon.ghost.btn-danger { color: var(--red); }
 .btn.action-ghost.btn-primary, .btn-icon.action-ghost.btn-primary { color: var(--navy-ink); }
 .btn.action-ghost.btn-accent, .btn-icon.action-ghost.btn-accent { color: var(--accent-ink); }
 .btn.action-outline:hover, .btn.action-ghost:hover,
