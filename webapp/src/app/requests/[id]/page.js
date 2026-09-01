@@ -49,8 +49,8 @@ import {
 import { pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import {
-  canEditPdrRefManual, issuesPdrRefNoOnAcknowledge, pdrRefManualError, pdrRefMode,
-  pdrRefNoError,
+  canEditPdrRefManual, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
+  pdrRefMode, pdrRefNoError,
 } from "@/lib/requests/pdrRefNo";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import {
@@ -84,6 +84,7 @@ import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
 import { normalizeDocumentControlActions, workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { resolveDocumentForm } from "@/lib/documentStandards";
 import Textarea from "@/components/ui/Textarea";
 import { requestDueCell } from "@/lib/requests/dueCell";
 import { apiFetch } from "@/lib/apiFetch";
@@ -1799,26 +1800,53 @@ export default function RequestDetailPage() {
         open={refDraft !== null} onClose={() => setRefDraft(null)} size="sm" dismissible={!saving}
         title={req.pdrRefNo ? "แก้เลขที่เอกสาร" : "กรอกเลขที่เอกสาร"}
       >
-        {refDraft !== null && (
+        {refDraft !== null && (() => {
+          /* ⭐ **ปุ่มจางต้องบอกเหตุ** (RD แจ้ง 2026-09-01 · กติกา GatedAction) — เดิม
+             ปุ่ม "บันทึกเลข" จางเงียบเมื่อเลขผิดรูปแบบ ทั้งที่ `pdrRefManualError`
+             เขียนประโยคไทยรออยู่แล้ว ⇒ คนกรอกเห็นแค่ปุ่มกดไม่ได้ และไม่มีอะไรบอกว่า
+             ต้องตัด `FM-RD-01-` ออก (ตัวอย่างในคำอธิบายก็มีรหัสแบบฟอร์มอยู่ในนั้นพอดี)
+             ⚠️ **ไม่โชว์ตอนช่องยังว่าง** — ยังไม่พิมพ์ไม่ใช่ความผิด · ด่านตัวเดียวกับ
+             ที่ปุ่มใช้ ⇒ ข้อความกับปุ่มขัดกันไม่ได้ */
+          const refError = refDraft.trim() ? pdrRefManualError(req, refDraft) : null;
+          // เลขที่จะถูกบันทึกจริง — ต่างจากที่พิมพ์เมื่อระบบตัดรหัสแบบฟอร์ม/แปลงเลขไทยให้
+          const refSaved = normalizePdrRefNo(refDraft);
+          /* ⭐ **รหัสแบบฟอร์มติดหน้าช่อง** (RD ขอ 2026-09-01: "หน้าช่องกรอก ใส่เลขฟอร์ม
+             ไปได้มั้ย จะได้ไม่สับสน") — คนกรอกลอกจากกระดาษที่ขึ้นต้นด้วยรหัสนี้ ⇒ เห็น
+             หน้าช่องแล้วรู้ทันทีว่าพิมพ์แค่ส่วนที่เหลือ ไม่ต้องอ่านคำอธิบายก่อนถึงจะกรอกถูก
+             ⚠️ **ป้ายอ่านอย่างเดียว ไม่ใช่ค่าในช่อง** — ระบบเก็บแค่ส่วนต่อท้าย (รหัส
+             แบบฟอร์มพิมพ์อยู่บนหัวเอกสารแล้ว) · วางทั้งบรรทัดมาก็ยังได้ `normalizePdrRefNo`
+             ตัดให้เหมือนเดิม
+             ⚠️ อ่านจาก `DOCUMENT_FORMS` ที่เดียวของระบบ ไม่ใช่พิมพ์ `FM-RD-01` ทับที่นี่ ·
+             จอไม่ได้โหลดมาตรฐานที่เผยแพร่ (query เพิ่มทุกครั้งที่เปิดใบเพื่อป้ายเดียว
+             ไม่คุ้ม) ⇒ ใช้ค่าสำรองตัวเดียวกับที่เอกสารตกไปใช้เวลาตารางตั้งค่าล่ม */
+          const pdrFormCode = resolveDocumentForm(null, "pdr").code;
+          return (
           <>
             <div className="form-group">
               <label htmlFor="pdr-ref-input">เลขที่เอกสารบนกระดาษ</label>
-              <Input
-                id="pdr-ref-input" value={refDraft} disabled={saving}
-                placeholder="200869-016" inputMode="numeric" autoComplete="off"
-                onChange={(e) => setRefDraft(e.target.value)}
-              />
+              <div className={styles.refInputRow}>
+                <span className={styles.refFormCode} aria-hidden="true">{pdrFormCode}-</span>
+                <Input
+                  id="pdr-ref-input" value={refDraft} disabled={saving}
+                  placeholder="200869-016" autoComplete="off"
+                  onChange={(e) => setRefDraft(e.target.value)}
+                />
+              </div>
               <small className={styles.hint}>
-                รูปแบบ DDMMYY-XXX (พ.ศ.) — ส่วนที่ต่อท้ายรหัสแบบฟอร์มบนกระดาษ
-                เช่น FM-RD-01-<b>200869-016</b> · ใส่เลขตามที่ออกไปจริง ไม่ต้องตรงกับ
-                วันที่รับเรื่องในระบบ
+                พิมพ์เฉพาะส่วนต่อท้าย DDMMYY-XXX (พ.ศ.) เช่น <b>200869-016</b> ·
+                วางทั้งบรรทัดจากกระดาษมาก็ได้ ระบบตัด {pdrFormCode}- ให้เอง ·
+                ใส่เลขตามที่ออกไปจริง ไม่ต้องตรงกับวันที่รับเรื่องในระบบ
               </small>
+              {refError && <p className={styles.error}>{refError}</p>}
+              {!refError && refSaved && refSaved !== refDraft.trim() && (
+                <small className={styles.hint}>บันทึกเป็น <b>{refSaved}</b></small>
+              )}
             </div>
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" disabled={saving} onClick={() => setRefDraft(null)}>ยกเลิก</Button>
               <Button
                 tone="primary"
-                disabled={saving || !!pdrRefManualError(req, refDraft) || refDraft === req.pdrRefNo}
+                disabled={saving || !!pdrRefManualError(req, refDraft) || refSaved === req.pdrRefNo}
                 onClick={() => call("", {
                   method: "PATCH",
                   body: JSON.stringify({ action: "pdr-ref-manual", pdrRefNo: refDraft }),
@@ -1828,7 +1856,8 @@ export default function RequestDetailPage() {
               </Button>
             </div>
           </>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* มอบหมายผู้รับผิดชอบ — ช่องเลือกคนตัวกลางของระบบ (`PersonSelect`)
