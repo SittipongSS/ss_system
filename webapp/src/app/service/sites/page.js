@@ -177,14 +177,19 @@ export default function ServiceSitesPage() {
 
   const toolbar = (
     <div className="toolbar">
-      <Search size={15} aria-hidden="true" />
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
-        aria-label="ค้นหาไซต์บริการ"
-        className={styles.searchInput}
-      />
+      {/* กล่องครอบ `.search-glass` ถือขอบ/พื้น/ไอคอน — ใส่ icon+input แยกกันดิบ ๆ
+         (ไม่มีกล่องครอบ) ไอคอนจะลอยแยกจากกล่องข้อความ (แพตเทิร์นเดียวกับหน้าสินค้า/
+         ลูกค้า ดูโน้ตที่ Input.js: เคยพังกลับด้าน — ใส่คลาสกล่องครอบไว้ที่ <input>
+         ตรง ๆ จนไอคอนหาย) */}
+      <div className={`search-glass ${styles.searchInput}`.trim()}>
+        <Search size={15} aria-hidden="true" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ค้นหาชื่อไซต์ ลูกค้า จังหวัด เขตวิ่งงาน หรือรหัส"
+          aria-label="ค้นหาไซต์บริการ"
+        />
+      </div>
       <FilterPopover
         count={filterCount}
         onClear={() => { setProvinceFilter([]); setCustomerFilter([]); setZoneFilter([]); setShowInactive(false); }}

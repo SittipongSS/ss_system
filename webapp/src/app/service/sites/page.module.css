@@ -5,7 +5,7 @@
    gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมทุกตัวบนแถบให้สูงเท่ากัน
    (เหตุผลเต็มอยู่ที่ service/schedule/page.module.css) */
 
-.searchInput { max-width: 320px; }
+.searchInput { width: 240px; max-width: 320px; }
 
 .numCol { text-align: right; white-space: nowrap; }
 .muted { color: var(--text-3); }
