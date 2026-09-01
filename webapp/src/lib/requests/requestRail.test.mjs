@@ -63,8 +63,9 @@ test('⭐ รางชุดเดียว 6 ขั้นทุกหัวข�
 });
 
 /* ⚠️ **index ต้องนับขั้นที่เรนเดอร์จริง ไม่ใช่ลำดับของสถานะ** — ขั้น "กำหนดส่ง"
-   (2026-08-19) แทรกที่ตำแหน่ง 2 ⇒ ใบ `acknowledged` หยุดที่ 2 ตราบใดที่ยังไม่แจ้งวัน
-   แล้วค่อยเดินต่อไปขั้นกลางที่ 3 · นี่คือจุดที่เคยเกิดบั๊ก "ไฮไลต์ชี้ผิดช่อง" มาแล้ว */
+   (2026-08-19) แทรกที่ตำแหน่ง 2 · นี่คือจุดที่เคยเกิดบั๊ก "ไฮไลต์ชี้ผิดช่อง" มาแล้ว
+   ⭐ **ใบที่รับเรื่องแล้วเดินถึงขั้นกลางเสมอ** (มติผู้ใช้ 2026-09-01) — แจ้งกำหนดส่ง
+   กับลงมือทำงานเกิดพร้อมกันได้ ⇒ ขั้นแจ้งวันไม่ใช่ด่านของขั้นทำงาน */
 test('index ชี้ขั้นที่เรนเดอร์จริงทุกหัวข้อ — ไม่มี offset ให้พลาด', () => {
   const withDue = (over) => ({ committedDueDate: '2026-08-25', ...over });
   for (const status of STATUSES) {
@@ -75,8 +76,8 @@ test('index ชี้ขั้นที่เรนเดอร์จริง�
   }
   assert.equal(requestRailSteps(scent({ status: 'draft' })).index, 0);
   assert.equal(requestRailSteps(scent({ status: 'pending' })).index, 1);
-  // รับเรื่องแล้วแต่ยังไม่แจ้งวัน = ค้างที่ขั้น "กำหนดส่ง"
-  assert.equal(requestRailSteps(scent({ status: 'acknowledged' })).index, 2);
+  // รับเรื่องแล้ว = ขั้นกลางเสมอ ไม่ว่าจะแจ้งวันแล้วหรือยัง
+  assert.equal(requestRailSteps(scent({ status: 'acknowledged' })).index, 3);
   assert.equal(requestRailSteps(scent(withDue({ status: 'acknowledged' }))).index, 3);
   assert.equal(requestRailSteps(scent(withDue({ status: 'answered' }))).index, 4);
   assert.equal(requestRailSteps(scent(withDue({ status: 'closed' }))).index, 5);
@@ -119,21 +120,39 @@ test('⭐ ขั้นกลางสรุปจากแถว — "รอใ�
 /* ⭐ **รับเรื่องแล้วแต่ยังไม่แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — รับเรื่องคือการ
    ตัดรอบเข้าฝ่าย ส่วนวันที่รับปากเป็นก้าวของตัวเอง ⇒ ตราบใดที่ยังไม่แจ้ง ใบนี้ยังไม่มี
    คำสัญญาให้ใครนับ · ขั้นกลางต้องพูดเรื่องนั้นก่อนเรื่องงาน */
-test('⭐ ขั้น "กำหนดส่ง" — ยังไม่แจ้ง = ไฮไลต์ค้างที่ขั้นนี้ · แจ้งแล้ว = พกวันจริง', () => {
+test('⭐ ขั้น "กำหนดส่ง" — ยังไม่แจ้ง = ค้างแต่ไม่กั้น · แจ้งแล้ว = พกวันจริง', () => {
   const at = '2026-08-06';
   const undated = scent({
     status: 'acknowledged', acknowledgedAt: '2026-08-05T00:00:00Z', items: [{ ackAt: at }],
   });
   const before = requestRailSteps(undated);
   assert.equal(before.steps[2].id, 'commitDue');
-  assert.equal(before.index, 2, 'ยังไม่แจ้งวัน = ไฮไลต์ต้องค้างที่ขั้นกำหนดส่ง');
+  /* ⭐ มติผู้ใช้ 2026-09-01: "อีกฝ่าย แก้ไขได้ / กำหนดการ ได้พร้อมกันในสเตจนี้" ⇒
+     ไฮไลต์เดินไปขั้นกลาง (งานเดินอยู่จริง) ส่วนขั้นแจ้งวันค้างเป็นหมุดกลวง
+     ⚠️ ถ้าปล่อยให้นับจาก index อย่างเดียว ขั้นนี้จะถูกติ๊กว่า "ผ่านแล้ว" ทั้งที่ไม่มีวัน */
+  assert.equal(before.index, 3, 'แจ้งวันไม่ใช่ด่าน — ไฮไลต์ต้องอยู่ที่ขั้นที่งานเดินอยู่');
+  assert.equal(before.steps[2].state, 'pending');
   assert.match(before.steps[2].hint, /รอ RD แจ้งวัน/);
+  assert.match(before.steps[3].label, /^RD กำลังทำ$/);
 
-  // แจ้งวันแล้ว — ขั้นนี้พกวันจริง แล้วไฮไลต์เดินต่อไปขั้นกลางที่เล่าเรื่องงาน
+  // แจ้งวันแล้ว — ขั้นนี้พกวันจริงและปล่อยให้ราง map นับสถานะเองตามปกติ
   const after = requestRailSteps(scent({ ...undated, committedDueDate: '2026-08-25' }));
   assert.equal(after.steps[2].hint, '25/08/2026');
+  assert.equal(after.steps[2].state, undefined);
   assert.equal(after.index, 3);
   assert.match(after.steps[3].label, /^RD กำลังทำ$/);
+});
+
+/* ⭐ **ใบที่จบไปโดยไม่เคยแจ้งกำหนดส่ง** — หมุดกลวงพร้อมคำว่าไม่เคยเดินผ่าน
+   (คำเดียวกับรางบนตาราง `queueTrack`) · ค้างเป็น "รอ RD แจ้งวัน" ในใบที่ปิดแล้ว
+   = คิวชี้ไปหาคนที่ไม่มีงานเหลือ */
+test('ใบที่ปิดแล้วแต่ไม่เคยแจ้งกำหนดส่ง — ขั้นนี้บอกว่าไม่ได้เดินผ่าน ไม่ใช่รอใคร', () => {
+  const closed = requestRailSteps(scent({
+    status: 'closed', acknowledgedAt: '2026-08-05T00:00:00Z',
+    answeredAt: '2026-08-20T00:00:00Z', closedAt: '2026-08-21T00:00:00Z',
+  }));
+  assert.equal(closed.steps[2].state, 'pending');
+  assert.match(closed.steps[2].hint, /ไม่เคยแจ้งกำหนดส่ง/);
 });
 
 // ── บรรทัดใต้ชื่อขั้น = หลักฐานของใบนี้ ไม่ใช่นิยามของกระบวนการ ──────────

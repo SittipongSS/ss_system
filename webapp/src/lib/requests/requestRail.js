@@ -8,7 +8,6 @@
 // ราคา อยู่ที่ก้าวถัดไปท้ายเธรด (NextStepBar) เพราะ direction A คอนเฟิร์ม B ขอแก้ C ไม่เอา
 // ได้พร้อมกัน ⇒ ใบทั้งใบบอกไม่ได้ (กติกา "สถานะอยู่ที่แถว ไม่ใช่ที่ใบ")
 import { requestDeliversRows, requestKindMeta } from '@/lib/master/requestTypes';
-import { requestAwaitingDue } from '@/lib/requests/statuses';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { requestReplyTurn, requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { requestClosure } from '@/lib/requests/closure';
@@ -108,6 +107,22 @@ function middleStep(request) {
 export function requestRailSteps(request, { hasItems = false } = {}) {
   // ชื่อขั้น "กำหนดส่ง" ต่างตามหัวข้อ (ประเมินพื้นที่ = "ลงคิว") — อ่านจากทะเบียน
   const commitStepLabel = requestKindMeta(request.kind)?.form?.commitStepLabel || 'กำหนดส่ง';
+
+  /* ⭐ **แจ้งกำหนดส่งไม่กั้นการลงมือทำงาน** (มติผู้ใช้ 2026-09-01) — หลังรับเรื่อง
+     ฝ่ายผู้รับ *แจ้งวัน* กับ *ทำงาน/แก้ใบ* ได้พร้อมกัน ไม่ใช่เรียงกัน ⇒ ไฮไลต์ต้อง
+     เดินไปขั้นที่งานเดินอยู่จริง ส่วนขั้นนี้ **ยังอยู่บนราง** และค้างอยู่จนกว่าจะมีวัน
+     🐞 ของเดิมไฮไลต์ค้างที่ขั้นนี้ ⇒ ใบที่ RD ลงมือทำไปแล้ว (แถวเดินไปครึ่งใบ) ยังอ่าน
+        เหมือน "ยังไม่เริ่มทำอะไรเลย" และขั้นกลางที่เล่าคืบหน้าจริงกลายเป็นขั้นอนาคต
+     ⚠️ ขั้นนี้จึงประกาศ `state` ของตัวเอง — ปล่อยให้ `workflowStepsFromIndex` นับจาก
+        index อย่างเดียวเมื่อไร มันจะติ๊กว่า "ผ่านแล้ว" ทั้งที่ไม่มีใครแจ้งวันสักคน */
+  const dueCommitted = String(request.committedDueDate ?? '').trim();
+  // ⚠️ ใบที่จบแล้วไม่ค้าง — เหตุผลเดียวกับ `queueTrack` (หมุดที่ค้างในใบที่ไม่มีใคร
+  // ทำอะไรแล้ว = คิวชี้ไปหาคนที่ไม่มีงาน)
+  const railFinished = ['answered', 'closed'].includes(request.status)
+    || !!request.answeredAt || !!request.closedAt;
+  const dueOutstanding = !railFinished && (!dueCommitted || dueIsStale(request, request.items));
+  // ใบเก่าที่เดินจบโดยไม่เคยผ่านขั้นนี้ — บอกตรง ๆ ว่าไม่ได้เดินผ่าน (คำเดียวกับคิว)
+  const dueSkipped = railFinished && !dueCommitted;
   const steps = [
     {
       id: 'draft',
@@ -141,12 +156,17 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
          งานที่ส่งไปแล้ว ⇒ โชว์เป็นหลักฐานเฉย ๆ ไม่ได้ ต้องบอกว่ารออะไรอยู่ตอนนี้
          ⚠️ ยังโชว์วันเดิมต่อท้าย — คนอ่านต้องรู้ว่ารอบก่อนตกลงวันไหนไว้ ไม่ใช่ให้
          ตัวเลขหายไปเฉย ๆ ราวกับไม่เคยมีใครรับปากอะไร */
-      hint: (dueIsStale(request, request.items) && request.committedDueDate)
+      hint: dueSkipped
+        ? `ไม่เคย${commitStepLabel === 'ลงคิว' ? 'ลงคิว' : 'แจ้งกำหนดส่ง'}`
+        : (dueIsStale(request, request.items) && request.committedDueDate)
         ? `${requestWaitLabel(request, 'dept', 'แจ้งวันของรอบแก้')} · รอบก่อน ${fmtDate(request.committedDueDate)}`
         : evidence(request.committedDueDate && fmtDate(request.committedDueDate))
         || (request.acknowledgedAt
           ? requestWaitLabel(request, 'dept', commitStepLabel === 'ลงคิว' ? 'ลงคิว' : 'แจ้งวัน')
           : `${request.dept} ${commitStepLabel === 'ลงคิว' ? 'ลงคิวหลังรับเรื่อง' : 'แจ้งวันส่งหลังรับเรื่อง'}`),
+      /* ⚠️ **ค้าง = ยังไม่ทำ ไม่ใช่ยังไม่ถึง** — `pending` คือหมุดกลวงเดียวกับขั้น
+         อนาคต แต่บรรทัดใต้ขั้นบอกว่ารอใคร ⇒ อ่านออกว่าใบเดินข้ามไปแล้วแต่ยังไม่มีวัน */
+      state: (dueOutstanding || dueSkipped) ? 'pending' : undefined,
     },
     // ⚠️ ขั้นกลางเป็น **สถานะงานที่กำลังเดินอยู่** ไม่ใช่หลักฐานของอดีต ("เสร็จแล้ว 2/5"
     // · "รอใส่ราคา 3 รายการ") ⇒ ปล่อยให้ `middleStep` เล่าตามเดิม
@@ -172,14 +192,17 @@ export function requestRailSteps(request, { hasItems = false } = {}) {
 
   /* ⚠️ **index ต้องนับขั้นที่เรนเดอร์จริง ไม่ใช่ลำดับของสถานะ** — บั๊ก "จุดไฮไลต์ชี้ผิด
      ขั้น" ที่ผู้ใช้เคยเจอเกิดจากตรงนี้พอดี ตอนที่รางมีขั้นแทรกแต่ map ยังนับจากสถานะดิบ
-     ⇒ ขั้น "กำหนดส่ง" (2026-08-19) แทรกที่ตำแหน่ง 2 ⇒ ใบที่รับเรื่องแล้วแต่ยังไม่แจ้งวัน
-     หยุดที่ 2 · แจ้งแล้วถึงเดินต่อไปขั้นกลางที่ 3 */
+     ⇒ ขั้น "กำหนดส่ง" (2026-08-19) แทรกที่ตำแหน่ง 2 · ใบที่รับเรื่องแล้วเดินถึงขั้นกลาง
+     ที่ 3 เสมอ
+     ⭐ **ไม่หยุดรอวันแล้ว** (มติผู้ใช้ 2026-09-01) — ของเดิมค้างที่ 2 จนกว่าจะแจ้ง
+     กำหนดส่ง ⇒ ขั้นแจ้งวันกลายเป็นด่านของขั้นทำงาน ทั้งที่สองอย่างเกิดพร้อมกันได้ ·
+     ขั้นที่ยังไม่มีวันบอกตัวเองด้วย `state: 'pending'` (ดูขั้น `commitDue` ข้างบน) */
   const index = request.status === 'draft'
     ? 0
     : request.status === 'pending'
       ? 1
       : request.status === 'acknowledged'
-        ? (requestAwaitingDue(request) ? 2 : 3)
+        ? 3
         : request.status === 'answered'
           ? 4
           : 5;

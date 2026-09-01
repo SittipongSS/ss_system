@@ -40,7 +40,9 @@ import {
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { requestEditError, requestEditPatch } from '@/lib/requests/requestEdit';
-import { lineDiffIsEmpty, lineShapeEditable, requestLineDiff } from '@/lib/requests/requestLineEdit';
+import {
+  lineDiffIsEmpty, lineShapeEditable, requestLineDiff, requestLineEditError,
+} from '@/lib/requests/requestLineEdit';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
@@ -442,6 +444,13 @@ export async function PATCH(request, { params }) {
 
         const plan = requestLineDiff(before.items, resolvedLines.items, { lineShape });
         if (plan.error) return Response.json({ error: plan.error }, { status: 409 });
+        /* ⭐ **บรรทัดหยุดแก้ตอนรับเรื่อง** (มติผู้ใช้ 2026-09-01) — หัวใบยังแก้ได้ในขั้น
+           ดำเนินการ แต่บรรทัดไม่ · แถวเดิมถูก `requestLineDiff` กันรายแถวอยู่แล้ว
+           (ทุกแถวมี `ackAt` หลังรับเรื่อง) แต่ **แถวใหม่ไม่มีด่านนั้น** ⇒ ต้องกันที่ขั้นของใบ
+           ⚠️ ตรวจ **หลัง** diff โดยตั้งใจ — ฟอร์มแก้ส่ง `items` มาทุกครั้งแม้ไม่ได้แตะ
+           บรรทัดเลย ⇒ กั้นก่อน diff = คนที่แก้แค่ชื่อเรื่องหลังรับเรื่องโดนปฏิเสธทั้งใบ */
+        const lineDenied = lineDiffIsEmpty(plan) ? null : requestLineEditError(before);
+        if (lineDenied) return Response.json({ error: lineDenied }, { status: 409 });
         lineWrites = lineDiffIsEmpty(plan) ? null : plan;
         nextItems = resolvedLines.items;
       }

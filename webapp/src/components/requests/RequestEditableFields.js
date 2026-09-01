@@ -173,6 +173,12 @@ export function RequestDueUrgentFields({
 export function RequestLineFields({
   kind, value = [], onChange, disabled = false,
   categories = [], scents = [], customerId = null,
+  /* ⭐ **บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น** (มติผู้ใช้ 2026-09-01) — ใบที่รับเรื่องแล้ว
+     ยังแก้หัวใบได้ แต่แถวเดินก้าวไปแล้วทั้งใบ ⇒ ตารางต้อง **เทาพร้อมบอกเหตุ**
+     ไม่ใช่ปล่อยให้พิมพ์แล้วโดน 409 ตอนกดบันทึก (กฎเดียวกับ `pdrDisabled` ของฟอร์ม)
+     ⚠️ ค่าตั้งต้น `null` = ตามทั้งฟอร์ม ⇒ ฝั่งสร้างไม่ต้องรู้จักพร็อพนี้ */
+  linesDisabled = null,
+  linesNote = null,
   /* ⭐ เนื้อเพิ่มในแผงรายละเอียดของบรรทัด (มติผู้ใช้ 2026-08-24) — ตอนนี้มีผู้ใช้
      รายเดียวคือ "ยอดที่ขอวางบิล" ของ FN ที่ย้ายมาจากแท็บ "งาน"
      ⚠️ รับเป็น **node ทึบ** ไม่ใช่ธง `showBillAmount` — ตารางบรรทัดไม่ควรรู้ว่ามัน
@@ -183,9 +189,12 @@ export function RequestLineFields({
   const copy = requestKindMeta(kind)?.form || {};
   if (!lineShape || lineShape === "scent_dev") return null;
 
+  const lock = linesDisabled == null ? disabled : linesDisabled;
+
   return (
     <div className="form-group col-span-2">
       <span className={styles.fieldLabel}>{copy.itemsLabel}</span>
+      {lock && linesNote ? <small className={styles.hint}>{linesNote}</small> : null}
       {lineShape === "product_dev" ? (
         <ProductDevLines
           rows={value}
@@ -193,7 +202,7 @@ export function RequestLineFields({
           categories={categories}
           scents={scents}
           customerId={customerId}
-          disabled={disabled}
+          disabled={lock}
         />
       ) : (
         /* ⚠️ ตารางตัวเดียวกัน **คนละชุดคำศัพท์** — เอาสองชุดมารวมลิสต์เดียวเมื่อไร
@@ -202,7 +211,7 @@ export function RequestLineFields({
           rows={value}
           onChange={onChange}
           vocabulary={lineShape === "billing_doc" ? BILLING_DOC_VOCABULARY : undefined}
-          disabled={disabled}
+          disabled={lock}
           detailExtra={detailExtra}
         />
       )}
