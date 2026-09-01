@@ -378,6 +378,11 @@ export const PDR_SECTIONS = [
 
 // ทุกช่องที่มีคอลัมน์จริง — ใช้ตรวจว่าไม่มีคอลัมน์ไหนหลุดจากจอ
 export const PDR_FIELDS = PDR_SECTIONS.flatMap((s) => s.fields);
+
+/* ช่องผู้เซ็นบนเอกสาร — **ที่เดียว** ที่ทั้งฟอร์ม PDR และกล่องรับเรื่องอ่านว่ามีช่องอะไร
+   ⚠️ อ่านจากทะเบียนเดียวกัน ไม่ใช่ไล่เขียนชื่อช่องซ้ำ — สองที่จะเพี้ยนหากันทันทีที่
+   เพิ่ม/ตัดช่อง (โรคเดิมของฟอร์มนี้ที่ ม-45 เพิ่งแก้ไป) */
+export const PDR_SIGNER_FIELDS = PDR_SECTIONS.find((s) => s.key === 'signers')?.fields || [];
 export const PDR_COLUMNS = PDR_FIELDS.map((f) => f.column).filter(Boolean);
 
 const money = (v) => (v == null || v === '' ? null : fmtNumber(v));

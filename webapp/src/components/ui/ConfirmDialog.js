@@ -82,6 +82,13 @@ export default function ConfirmDialog({
   onError,
   onConfirm,
   onClose,
+  /* ⭐ **ของที่ต้องเลือกก่อนกดยืนยัน** (มติผู้ใช้ 2026-09-02) — กล่องยืนยันส่วนใหญ่
+     ถามแค่ "แน่ใจไหม" แต่บางก้าวมีของ *ไม่บังคับ* ที่กรอกตรงนั้นได้พอดี (รับเรื่อง
+     คำร้อง → เลือกผู้เซ็นบนเอกสาร PDR)
+     ⚠️ **ไม่ใช่ทางลัดของฟอร์ม** — อะไรที่ *บังคับ* หรือมีด่านของตัวเอง ต้องเป็นโมดัล
+     ฟอร์มจริง (เช่น "แจ้งกำหนดส่ง") ไม่ใช่ยัดลงกล่องยืนยันจนกลายเป็นฟอร์มปลอมที่
+     ไม่มีใครตรวจค่า · ผู้เรียกที่ไม่ส่ง `children` ได้กล่องเดิมทุก px */
+  children,
 }) {
   const [internalBusy, setInternalBusy] = useState(false);
   const [internalError, setInternalError] = useState("");
@@ -144,6 +151,7 @@ export default function ConfirmDialog({
           {resolvedDescription && <p>{resolvedDescription}</p>}
           {detail && <p className="confirm-dialog-detail">{detail}</p>}
         </div>
+        {children ? <div className="confirm-dialog-extra">{children}</div> : null}
         {resolvedError ? (
           <StatusNotice tone="error" role="alert">{resolvedError}</StatusNotice>
         ) : null}

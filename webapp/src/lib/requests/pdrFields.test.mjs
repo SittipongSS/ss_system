@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PDR_COLUMNS, PDR_FIELDS, PDR_FRAGRANCE_OIL_CODE, PDR_SECTIONS,
+  PDR_COLUMNS, PDR_FIELDS, PDR_FRAGRANCE_OIL_CODE, PDR_SECTIONS, PDR_SIGNER_FIELDS,
   pdrArtworkError, pdrContext, pdrFieldText, pdrFieldVisible, pdrIsArrayField,
   pdrRailSections, pdrRailSectionsFromRequest,
   pdrSectionGroups, pdrSectionRows, pdrValuesFrom,
@@ -624,4 +624,22 @@ test('ช่องผู้เซ็น: สี่ตำแหน่งของ
   /* ⚠️ Sale & Marketing Manager **ไม่มี role ในระบบ** — ต้องไม่ผูกมั่ว ๆ กับตำแหน่ง
      ใกล้เคียง ไม่งั้นช่องจะเสนอชื่อคนผิดตำแหน่งให้เซ็น */
   assert.equal(byKey.signSalesManager.roles, undefined);
+});
+
+/* ── ทะเบียนช่องผู้เซ็นใช้ร่วมสองที่ (มติผู้ใช้ 2026-09-02) ─────────────────
+   ⭐ ฟอร์ม PDR (แท็บที่ห้า) กับกล่อง "รับเรื่อง" อ่านลิสต์เดียวกัน
+   🐞 ถ้าไล่เขียนชื่อช่องซ้ำสองที่ พอเพิ่ม/ตัดช่องเมื่อไร กล่องรับเรื่องจะเขียนคอลัมน์ที่
+      ฟอร์มไม่รู้จัก (หรือหายไปเงียบ ๆ) — โรคเดิมของฟอร์มนี้ที่ ม-45 เพิ่งแก้ไป */
+test('PDR_SIGNER_FIELDS = ช่องของหมวด signers ตัวเดียวกัน ครบทุกคีย์ที่ผู้เรียกใช้', () => {
+  const fromSection = PDR_SECTIONS.find((s) => s.key === 'signers').fields;
+  assert.deepEqual(PDR_SIGNER_FIELDS.map((f) => f.key), fromSection.map((f) => f.key));
+  assert.equal(PDR_SIGNER_FIELDS.length, 6);
+  for (const f of PDR_SIGNER_FIELDS) {
+    // `column` = ที่เขียนลง DB (ฝั่ง API วนจากลิสต์นี้) · `max` = ตัดความยาว
+    assert.ok(f.column?.startsWith('pdrSign'), `${f.key}: column ผิดรูป`);
+    assert.equal(typeof f.max, 'number', `${f.key}: ไม่มี max`);
+    assert.ok(f.label, `${f.key}: ไม่มีป้าย`);
+    // ทุกช่องต้องอยู่ใน PDR_COLUMNS ด้วย ไม่งั้นด่าน "คอลัมน์หลุดจากจอ" มองไม่เห็น
+    assert.ok(PDR_COLUMNS.includes(f.column), `${f.key}: ไม่อยู่ใน PDR_COLUMNS`);
+  }
 });
