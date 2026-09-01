@@ -336,6 +336,12 @@ export default function PdrForm({
   // โหมดราง (มติผู้ใช้ 2026-08-09 "แบบ A") — ผู้เรียกวางรางเลือกส่วนเอง แล้วบอกว่า
   // ตอนนี้อยู่ส่วนไหน · ไม่ส่ง = ลิ้นชักครบทุกส่วนเหมือนเดิม (ฝั่งอ่านยังใช้แบบนั้น)
   section = null,
+  /* ⭐ **รายชื่อผู้ใช้สำหรับช่องผู้เซ็น** (มติผู้ใช้ 2026-09-01) — `[{ name, role }]`
+     จาก `/api/pm/assignable-users` · ช่องไหนคู่กับตำแหน่งไหนอ่านจากทะเบียน
+     (`roles` ของช่องใน `pdrFields.js`) ไม่ตัดสินที่นี่
+     ⚠️ ไม่ส่งมา = ช่องยังพิมพ์เองได้เหมือนเดิมทุกประการ — คนที่ไม่มีสิทธิ์เรียก API
+     รายชื่อ (ไม่มี `pm:view`) ต้องกรอกฟอร์มได้ปกติ ไม่ใช่เจอช่องที่ใช้ไม่ได้ */
+  people = [],
 }) {
   // ⚠️ อ่านจาก `context` ก้อนเดียว — ชื่อคีย์ตรงกับที่ `pdrContext()` คืนมาเป๊ะ
   // ห้ามรับเป็นพร็อพแยกอีก (ดูเหตุผลที่หัวพร็อพ)
@@ -883,16 +889,31 @@ export default function PdrForm({
           ไล่เขียนมือเมื่อไรก็เพี้ยนจากกระดาษเมื่อนั้น */}
       {show("signers") && (
       <Section flat={rail} title={SECTION.signers.title} note={SECTION.signers.note} progress={pdrFormProgress(SECTION.signers, value)}>
-        {SECTION.signers.fields.map((f) => (
-          <div className="form-group" key={f.key}>
-            <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
-            <Input
-              id={`pdr-${f.key}`} value={value[f.key] || ""} disabled={disabled}
-              placeholder="ชื่อผู้เซ็น (เว้นว่างได้)" maxLength={f.max}
-              onChange={(e) => set({ [f.key]: e.target.value })}
-            />
-          </div>
-        ))}
+        {SECTION.signers.fields.map((f) => {
+          /* ⭐ **เสนอชื่อคนที่ถือตำแหน่งนั้น แต่ไม่บังคับ** — `combo` + `<datalist>`
+             ⇒ เลือกจากรายชื่อก็ได้ พิมพ์เองก็ได้ (คนเซ็นที่ไม่มีบัญชีต้องไม่ถูกกั้น)
+             ⚠️ กรองด้วย `f.roles` จากทะเบียน ไม่ใช่เทียบชื่อช่องที่นี่ */
+          const picks = f.roles?.length
+            ? people.filter((p) => f.roles.includes(p.role)).map((p) => p.name).filter(Boolean)
+            : [];
+          const listId = picks.length ? `pdr-${f.key}-list` : undefined;
+          return (
+            <div className="form-group" key={f.key}>
+              <label htmlFor={`pdr-${f.key}`}>{f.label}</label>
+              <Input
+                id={`pdr-${f.key}`} value={value[f.key] || ""} disabled={disabled}
+                placeholder="ชื่อผู้เซ็น (เว้นว่างได้)" maxLength={f.max}
+                combo={!!listId} list={listId} autoComplete="off"
+                onChange={(e) => set({ [f.key]: e.target.value })}
+              />
+              {listId && (
+                <datalist id={listId}>
+                  {picks.map((name) => <option key={name} value={name} />)}
+                </datalist>
+              )}
+            </div>
+          );
+        })}
       </Section>
       )}
     </div>

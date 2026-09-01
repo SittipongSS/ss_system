@@ -86,6 +86,9 @@ export default function NewRequestPage() {
   const [scents, setScents] = useState([]);
   const [formulas, setFormulas] = useState([]);
   const [mentionPeople, setMentionPeople] = useState([]);
+  /* รายชื่อผู้ใช้ตามตำแหน่ง — ช่องผู้เซ็นของแบบฟอร์ม PDR เสนอชื่อคนที่ถือตำแหน่งนั้น
+     ⚠️ ล้มแล้วต้องเงียบ (ว่าง) — คนที่ไม่มี `pm:view` ยังต้องเปิดคำร้องได้ตามปกติ */
+  const [people, setPeople] = useState([]);
   // ⭐ ทะเบียนลูกค้า — ฟอร์ม PDR เติม "ชื่อผู้ติดต่อ / Phone-Line" จากที่นี่ (มติผู้ใช้)
   const [customers, setCustomers] = useState([]);
   /* ⭐ **ตัวตนของคนที่กำลังเปิดใบ** (มติผู้ใช้ 2026-08-09: "เติมพรีวิวให้เห็นตั้งแต่
@@ -107,6 +110,7 @@ export default function NewRequestPage() {
     // รายชื่อกรองด้วยด่านของเธรดคำร้องมาจาก server แล้ว (ห้ามกรองเองที่ client —
     // @คนที่เปิดคำร้องไม่ได้ = เขาได้แจ้งเตือนที่กดแล้วเจอ 404)
     grab("/api/sa/requests/mentionable", setMentionPeople);
+    cachedFetchJson("/api/pm/assignable-users").then((d) => setPeople(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
     apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).then(setMe).catch(() => {});
@@ -232,7 +236,7 @@ export default function NewRequestPage() {
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           quotations={quotations} products={products} me={me}
           scents={scents} formulas={formulas} productTypes={productTypes}
-          mentionPeople={mentionPeople}
+          mentionPeople={mentionPeople} people={people}
           // @ อยู่ที่หน้ารายละเอียด (แจ้งเตือนออกตอนกดส่ง) · ช่องไฟล์อยู่ในฟอร์มแล้ว
           // — saveDraft อัปให้หลังได้ id (มติผู้ใช้ 2026-08-08)
           deferMentions

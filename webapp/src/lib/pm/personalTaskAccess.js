@@ -1,4 +1,4 @@
-import { can, hasTeam, isReadOnlyObserver, isSuperuser, normalizeDepartment, userTeams, TEAM_ROLES } from '@/lib/permissions';
+import { can, hasTeam, isReadOnlyObserver, isRdRole, isSuperuser, normalizeDepartment, userTeams, TEAM_ROLES } from '@/lib/permissions';
 
 // `team` = ทุกทีมของคนคนนั้น (อาร์เรย์) — คนที่รับผิดชอบงานก็อยู่หลายทีมได้ ผู้เรียก
 // ทุกรายส่งค่านี้เข้า hasTeam ซึ่งรับทั้งค่าเดียวและอาร์เรย์
@@ -53,7 +53,7 @@ export async function canViewPersonalTask(supabase, task, user) {
   // เดิมไม่มีเงื่อนไขนี้ → กดเปิด detail แล้ว 403.
   if (task.ownerId === user.id || task.assigneeId === user.id
     || task.proxyBy === user.id || task.assignedBy === user.id) return true;
-  if (user.role === 'rd') {
+  if (isRdRole(user.role)) {
     const responsible = await personalTaskResponsibleIdentity(supabase, task);
     return !!normalizeDepartment(user.department)
       && normalizeDepartment(user.department) === normalizeDepartment(responsible.department);

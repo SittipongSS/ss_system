@@ -597,3 +597,31 @@ test('เลขนำหน้าหมวดมาจากลำดับใ�
   assert.equal(rail[2].label, 'บรีฟกลิ่น');
   assert.equal(rail[5].label, `5 ${PDR_SECTIONS[4].title}`);
 });
+
+/* ── ช่องผู้เซ็นผูกกับตำแหน่งในระบบ (มติผู้ใช้ 2026-09-01) ──────────────────
+   ⭐ ช่องเสนอรายชื่อคนที่ถือตำแหน่งนั้นให้เลือก แทนพิมพ์ชื่อมือทุกใบ
+   🐞 กับดัก: `roles` พิมพ์ผิดหนึ่งตัวอักษร = ช่องนั้น **ไม่เสนอใครเลย** เงียบ ๆ
+      (ไม่มี error · ดูเหมือนแค่ยังไม่มีคนถือตำแหน่ง) ⇒ ผูกกับทะเบียน role จริง */
+test('ช่องผู้เซ็น: roles ต้องเป็น role ที่มีอยู่จริงในทะเบียน', async () => {
+  const { ROLES } = await import('@/lib/permissions');
+  const signers = PDR_SECTIONS.find((s) => s.key === 'signers').fields;
+  for (const f of signers) {
+    for (const role of f.roles || []) {
+      assert.ok(ROLES.includes(role), `${f.key}: role "${role}" ไม่มีในทะเบียน`);
+    }
+  }
+});
+
+test('ช่องผู้เซ็น: สี่ตำแหน่งของ RD ผูกครบ · ช่องที่ไม่มี role ในระบบต้องพิมพ์เอง', () => {
+  const byKey = Object.fromEntries(
+    PDR_SECTIONS.find((s) => s.key === 'signers').fields.map((f) => [f.key, f]),
+  );
+  assert.deepEqual(byKey.signPerfumer.roles, ['rd_perfumer']);
+  assert.deepEqual(byKey.signChemist.roles, ['rd_chemist']);
+  assert.deepEqual(byKey.signCoordinator.roles, ['rd_coordinator']);
+  assert.deepEqual(byKey.signFinalApprover.roles, ['rd_supervisor']);
+  assert.deepEqual(byKey.signAeSupervisor.roles, ['ae_supervisor']);
+  /* ⚠️ Sale & Marketing Manager **ไม่มี role ในระบบ** — ต้องไม่ผูกมั่ว ๆ กับตำแหน่ง
+     ใกล้เคียง ไม่งั้นช่องจะเสนอชื่อคนผิดตำแหน่งให้เซ็น */
+  assert.equal(byKey.signSalesManager.roles, undefined);
+});

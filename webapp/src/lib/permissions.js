@@ -161,7 +161,17 @@ const DEPARTMENT_ROLES = {
      ⇒ แยกเป็น role รายฝ่าย แล้ว **ให้ cap ตรงกับงานจริงของฝ่ายนั้นตั้งแต่แรก**
      ⚠️ RD ได้ role เฉพาะ (rd) มาก่อนแล้ว — คู่คิดหลักของฝ่ายขาย เห็นดีล/โครงการทุกทีม
      เพื่อตอบข้อสอบถาม จึงมี cap มากกว่าฝ่ายโรงงานอื่น */
-  PC: ['pc'], PD: ['pd'], WH: ['wh'], RD: ['rd'], QC: ['qc'],
+  PC: ['pc'], PD: ['pd'], WH: ['wh'], QC: ['qc'],
+  /* ⭐ **สี่ตำแหน่งจริงของฝ่าย RD** (มติผู้ใช้ 2026-09-01) — แพตเทิร์นเดียวกับที่ฝ่าย TS
+     แตกเป็นห้าตำแหน่ง (2026-08-30) · ป้ายตรงกับตารางลายเซ็นบนกระดาษ FM-RD-01
+     (Perfumer · Product Development Chemist · Project Coordinator · Final Approval)
+     ⚠️ **สิทธิ์เท่ากันหมดในรอบนี้ ต่างแค่ป้าย** (มติเดียวกัน: "ทุกตำแหน่งสิทธิ์เท่า rd
+     เดิมไปก่อน") — cap ของทุกตัวชี้ไปที่ชุดเดียวกับ `rd` ⇒ จะรัดสิทธิ์ทีหลังค่อยแยก
+     ที่ `ROLE_CAPS` ทีละตัว โดยไม่ต้องไล่แก้ helper อีก
+     ⚠️ `rd` ตัวเดิม **อยู่ต่อ** — บัญชีที่มีอยู่ยังทำงานได้เหมือนเดิม ไม่ต้อง migrate
+     (เหมือนที่ `ts` อยู่ต่อหลังแตก role) · ตัวแรกของลิสต์คือค่าที่ฟอร์ม /users เลือกให้
+     อัตโนมัติเมื่อสลับฝ่ายเป็น RD */
+  RD: ['rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor'],
   // TS = ฝ่ายเทคนิคบริการ — เจ้าหน้าที่ที่เข้าไซต์ลูกค้า (แผน service-production-scheduling §6).
   // ⚠️ เป็น **ฝ่าย** ไม่ใช่ทีมใต้ SA โดยเจตนา: ทีมมีได้เฉพาะ role ฝ่ายขาย (TEAM_ROLES)
   // ดังนั้นถ้าจับเจ้าหน้าที่ไปเป็นทีม เจ้าหน้าที่ต้องถือ role `ae` แล้วจะได้ cap ขายมาทั้งชุด
@@ -189,7 +199,7 @@ const ROLE_DEFAULT_DEPARTMENT = {
   ae_supervisor: 'SA', senior_ae: 'SA', ac: 'SA', ae: 'SA',
   marketing: 'MK',
   ra: 'RA', executive: 'EX', viewer: 'Viewer',
-  rd: 'RD',
+  rd: 'RD', rd_perfumer: 'RD', rd_chemist: 'RD', rd_coordinator: 'RD', rd_supervisor: 'RD',
   finance: 'FN',
   pc: 'PC', pd: 'PD', wh: 'WH', qc: 'QC',
   ts: 'TS', ts_planner: 'TS', ts_senior: 'TS', ts_audit: 'TS', ts_manager: 'TS',
@@ -214,7 +224,7 @@ export const TEAMS = ['KA', 'ODM', 'SV'];
 export const TEAM_LABELS = { ODM: 'New ODM', KA: 'Key Account', SV: 'Services' };
 
 // Assignable roles (for the user-management UI), with Thai labels.
-export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
+export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 'ae', 'marketing', 'ra', 'rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor', 'finance', 'pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager', 'executive', 'viewer'];
 
 /* ── role ของฝ่ายปฏิบัติการ (ไม่ใช่ฝ่ายขาย ไม่ใช่ผู้สังเกตการณ์) ──────────────
    ⭐ แทน role `staff` ตัวเดียวที่ห้าฝ่ายเคยใช้ร่วมกัน (มติผู้ใช้ 2026-08-28)
@@ -225,6 +235,18 @@ export const ROLES = ['admin', 'secretary', 'ae_supervisor', 'senior_ae', 'ac', 
    ⇒ **ทุกตารางว่างเปล่าโดยไม่มี error** และอัปเดตขั้นงานของฝ่ายตัวเองไม่ได้
    (`pmTaskEditTier` ตกเป็น 'none') */
 export const OPS_ROLES = ['pc', 'pd', 'wh', 'qc', 'ts', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'];
+
+/* ── ทุกตำแหน่งของฝ่าย RD (มติผู้ใช้ 2026-09-01) ────────────────────────────
+   ⭐ **ที่เดียวที่ประกาศ** — helper ที่เคยถาม `role === 'rd'` ต้องถาม `isRdRole()` แทน
+   🐞 ถ้าไม่มีลิสต์นี้: เพิ่มตำแหน่งใหม่แล้วคนตำแหน่งนั้น **เสียสิทธิ์เงียบ ๆ** 16 จุด —
+      แก้สูตร/กลิ่นในทะเบียนไม่ได้ · ขอบเขตข้อมูลตกจาก 'all' เหลือ 'team' (ตารางว่าง
+      ทั้งหน้าโดยไม่มี error) · แท็บ "งานของฉัน" หาย · มอบหมายงานให้กันในฝ่ายไม่ได้
+      — อาการเดียวกับที่คอมเมนต์ของ OPS_ROLES เตือนไว้ตอนเลิกใช้ role `staff`
+   ⚠️ ลำดับต้องตรงกับ `DEPARTMENT_ROLES.RD` (มีเทสต์คุม) */
+export const RD_ROLES = ['rd', 'rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor'];
+
+/** อยู่ฝ่าย RD ไหม — ถามจากลิสต์กลาง ไม่ใช่เทียบ `role === 'rd'` */
+export const isRdRole = (role) => RD_ROLES.includes(normalizeRole(role));
 
 /* หัวหน้าของฝ่าย TS — ผู้ช่วยผู้จัดการ · ตรวจสอบงาน · เจ้าหน้าที่อาวุโส (มติ 2026-08-30:
    "Audit เหมือนหัวหน้าทุกอย่าง") · ต่างจาก `ts_planner` ตรงที่จัดทีมเจ้าหน้าที่บริการได้
@@ -240,6 +262,12 @@ export const ROLE_LABELS = {
   marketing: 'การตลาด (Marketing)',
   ra: 'เจ้าหน้าที่ฝ่ายกฎระเบียบและขึ้นทะเบียนผลิตภัณฑ์ (RA)',
   rd: 'วิจัยและพัฒนา (RD)',
+  /* ⚠️ ป้ายคือ **ตำแหน่งบนกระดาษ FM-RD-01** ไม่ใช่คำแปลอิสระ — ตารางลายเซ็นของ PDR
+     พิมพ์คำพวกนี้อยู่ · เขียนคนละคำเมื่อไร คนกรอกจะไม่รู้ว่าช่องไหนคู่กับตำแหน่งไหน */
+  rd_perfumer: 'นักปรุงน้ำหอม (Perfumer)',
+  rd_chemist: 'นักพัฒนาผลิตภัณฑ์ (Product Development Chemist)',
+  rd_coordinator: 'ประสานงานโครงการ (Project Coordinator)',
+  rd_supervisor: 'หัวหน้าฝ่ายวิจัยและพัฒนา (RD Supervisor)',
   finance: 'บัญชีและการเงิน (Finance)',
   executive: 'ผู้บริหาร (Executive)',
   viewer: 'ผู้ดูข้อมูล (Viewer)',
@@ -502,6 +530,11 @@ const ROLE_CAPS = {
     // เพื่อไม่ให้ใครเสียสิทธิ์ตอนแยก · ฝ่ายที่ใช้จริงถูกแคบด้วย department อีกชั้น
     'requests:answer',
   ],
+  /* ── สี่ตำแหน่งของฝ่าย RD: **สิทธิ์เท่ากับ `rd` เป๊ะ ต่างแค่ป้าย** ──────────────
+     มติผู้ใช้ 2026-09-01: *"ทุกตำแหน่งสิทธิ์เท่า rd เดิมไปก่อน ต่างแค่ป้าย"*
+     ⚠️ **ชี้ไปที่ชุดเดียวกัน ไม่ก๊อปสี่รอบ** — ก๊อปเมื่อไร วันที่แก้ cap ของ `rd`
+     ตำแหน่งที่ลืมแก้จะเดินออกจากกันเงียบ ๆ (โรคเดิมของรีโปนี้) · วันที่จะรัดสิทธิ์
+     รายตำแหน่งจริง ค่อยเขียนอาเรย์ของตัวเองแทนบรรทัดนั้น ๆ ทีละตัว */
   /* ── ฝ่ายปฏิบัติการ: หนึ่งฝ่าย หนึ่ง role (มติผู้ใช้ 2026-08-28) ──────────────
      เดิมห้าฝ่ายใช้ role `staff` ตัวเดียว ⇒ ต้องถือ cap กว้าง (costing:* · production:* ·
      service:* · payments:confirm) แล้วไปแคบด้วยฝ่ายที่ helper ปลายทาง · แปลว่า **ทุก
@@ -569,6 +602,13 @@ const ROLE_CAPS = {
    ⭐ ประกอบจากชุดของ Planner ไม่ใช่พิมพ์ซ้ำ — สองชุดนี้ต้องขยับตามกันเสมอ */
 const SERVICE_HEAD_CAPS = [...ROLE_CAPS.ts_planner, 'team:manage'];
 for (const role of SERVICE_HEAD_ROLES) ROLE_CAPS[role] = SERVICE_HEAD_CAPS;
+
+/* ⭐ **ตำแหน่งของฝ่าย RD ใช้ cap ชุดเดียวกับ `rd`** (มติผู้ใช้ 2026-09-01: "ทุกตำแหน่ง
+   สิทธิ์เท่า rd เดิมไปก่อน ต่างแค่ป้าย") — ท่าเดียวกับหัวหน้าฝ่าย TS ข้างบน
+   ⚠️ **ชี้ไปที่ชุดเดียวกัน ไม่ก๊อปสี่รอบ** — วันที่แก้ cap ของ `rd` ตำแหน่งที่ลืมแก้
+   จะเดินออกจากกันเงียบ ๆ · วันที่จะรัดสิทธิ์รายตำแหน่งจริง ค่อยเขียนอาเรย์ของตัวเอง
+   ให้ตำแหน่งนั้นใน `ROLE_CAPS` แล้วบรรทัดนี้จะไม่ทับ (เช็ค `ROLE_CAPS[role] ||`) */
+for (const role of RD_ROLES) ROLE_CAPS[role] = ROLE_CAPS[role] || ROLE_CAPS.rd;
 
 // Unknown role: read-only viewer (sees registries + history, no actions).
 const DEFAULT_CAPS = ['customers:view', 'products:view', 'history:view'];
@@ -1122,7 +1162,7 @@ export function homeSystemForUser(user) {
 // 'none' = may not write at all
 
 export function viewScope(role) {
-  if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || OPS_ROLES.includes(role) || role === 'rd') return 'all';
+  if (isSuperuser(role) || role === 'ra' || isReadOnlyObserver(role) || OPS_ROLES.includes(role) || isRdRole(role)) return 'all';
   return 'team'; // senior_ae, ac, ae, and unknown viewer
 }
 
@@ -1334,7 +1374,7 @@ export function pmTaskScopes(role) {
   // tasks of its own and no team, so 'all' is the only meaningful scope (giving
   // just this also keeps the My Work scope tabs clean — no empty 'mine'/'team').
   if (isReadOnlyObserver(role)) return ['all'];
-  if (role === 'rd') return ['mine', 'team'];
+  if (isRdRole(role)) return ['mine', 'team'];
   // AE manages the whole team's projects in PM (see pmEditScope) → may also
   // browse the team's tasks in My Work, alongside Senior AE / AC.
   if (role === 'senior_ae' || role === 'ac' || role === 'ae') return ['mine', 'team'];
@@ -1373,7 +1413,7 @@ export function canAssignTask(assigner, assignee) {
   if (TEAM_ROLES.includes(assigner.role)) {
     return shareTeam(assigner, userTeams(assignee));
   }
-  if (assigner.role === 'rd') return true; // ผ่านด่านฝ่ายมาแล้ว = RD ด้วยกัน
+  if (isRdRole(assigner.role)) return true; // ผ่านด่านฝ่ายมาแล้ว = RD ด้วยกัน
   return false;
 }
 
@@ -1420,7 +1460,7 @@ export function canPullTask(user, task, respTeam, respDept) {
   // within their own team.
   if (TEAM_ROLES.includes(user.role)) return hasTeam(user, respTeam);
   // rd: ช่วยกันภายในฝ่ายเดียวกัน (mirror กติกามอบหมาย canAssignTask ของ rd)
-  if (user.role === 'rd') {
+  if (isRdRole(user.role)) {
     const dept = normalizeDepartment(user.department);
     return !!dept && dept === normalizeDepartment(respDept);
   }
@@ -1459,7 +1499,7 @@ export function pmTaskEditTier(user, task, project) {
   const ownsTask = !!user?.id && task?.assigneeId === user.id;
   // ฝ่ายปฏิบัติการ + rd: ขั้นตอนที่มอบให้ "ฝ่าย" ของเขา (task.role === department)
   // นับเป็นงานของเขา — rd คือฝ่ายที่ได้สิทธิ์อ่านระบบขายเพิ่ม จึงได้ tier เดียวกัน
-  const workflowRole = OPS_ROLES.includes(user?.role) || user?.role === 'rd';
+  const workflowRole = OPS_ROLES.includes(user?.role) || isRdRole(user?.role);
   const sameDept = workflowRole && !!user?.department
     && normalizeDepartment(user.department) === task?.role;
   if (can(user?.role, 'pm:view') && (ownsTask || sameDept)) return 'workflow';

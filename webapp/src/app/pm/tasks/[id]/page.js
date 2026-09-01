@@ -16,7 +16,7 @@ import { DIFFICULTY_LABELS, TASK_STATUS_TH, isWaitingStatus } from "@/lib/pm/tas
 import { taskUrgency } from "@/lib/pm/derived";
 import { daysWaiting } from "@/lib/pm/taskChain";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { assignableUsersFor } from "@/lib/permissions";
+import { assignableUsersFor, isRdRole } from "@/lib/permissions";
 import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDateNumeric, fmtDateTime, naText } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -68,7 +68,7 @@ export default function TaskDetailPage() {
   const [followUp, setFollowUp] = useState(null); // ค่าตั้งต้นของงานต่อเนื่อง (null = ไม่ได้เปิด)
   // สร้างงานได้ = pm:edit (rd จัดการงานของฝ่ายตัวเองได้ — กติกาเดียวกับหน้ารายการ)
   const role = useRole();
-  const canCreateTasks = useCan("pm:edit") || role === "rd";
+  const canCreateTasks = useCan("pm:edit") || isRdRole(role);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");

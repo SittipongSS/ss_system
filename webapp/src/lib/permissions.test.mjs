@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -904,3 +904,49 @@ test('🔴 ชุด role ที่สร้างไซต์บริการ
     ['admin', 'senior_ae', 'ac', 'ae', 'ts_planner', 'ts_senior', 'ts_audit', 'ts_manager'],
   );
 })
+
+// ── สี่ตำแหน่งของฝ่าย RD (มติผู้ใช้ 2026-09-01) ────────────────────────────
+//
+// ⭐ **สิทธิ์เท่า `rd` เป๊ะ ต่างแค่ป้าย** — รอบนี้แตกตำแหน่งเพื่อให้ตรงกับตารางลายเซ็น
+// บนกระดาษ FM-RD-01 · การรัดสิทธิ์รายตำแหน่งเป็นงานรอบหน้า
+//
+// 🐞 กับดักที่เทสต์ชุดนี้กันไว้: role ใหม่ที่ไม่มีใน helper ตัวใดตัวหนึ่งจะ **เสียสิทธิ์
+// เงียบ ๆ** ไม่ใช่ error — ขอบเขตข้อมูลตกจาก 'all' เหลือ 'team' แล้วทุกตารางว่างเปล่า
+// (บทเรียนเดียวกับตอนเลิกใช้ role `staff`)
+const NEW_RD_ROLES = ['rd_perfumer', 'rd_chemist', 'rd_coordinator', 'rd_supervisor'];
+
+test('RD: ทะเบียนตำแหน่งครบทุกชั้น — ลิสต์ · ป้าย · ฝ่ายตั้งต้น', () => {
+  assert.deepEqual([...RD_ROLES], ['rd', ...NEW_RD_ROLES]);
+  // ลิสต์กลางต้องตรงกับดรอปดาวน์ตำแหน่งของฝ่าย ไม่งั้นแอดมินเลือกตำแหน่งใหม่ไม่ได้
+  assert.deepEqual(rolesForDepartment('RD'), [...RD_ROLES]);
+  for (const role of RD_ROLES) {
+    assert.ok(ROLES.includes(role), `${role} ไม่อยู่ใน ROLES`);
+    // ป้ายว่าง = ตัวเลือกว่างเปล่าในดรอปดาวน์ (ไม่มี fallback)
+    assert.ok(ROLE_LABELS[role], `${role} ไม่มีป้าย`);
+    assert.equal(departmentFor(role), 'RD', role);
+    assert.equal(isRdRole(role), true, role);
+  }
+  assert.equal(isRdRole('ts'), false);
+  assert.equal(isRdRole(null), false);
+});
+
+test('RD: ทุกตำแหน่งถือ cap ชุดเดียวกับ rd เป๊ะ', () => {
+  const base = [...capsForRole('rd')].sort();
+  for (const role of NEW_RD_ROLES) {
+    assert.deepEqual([...capsForRole(role)].sort(), base, role);
+  }
+});
+
+test('RD: ตำแหน่งใหม่ต้องไม่เสียสิทธิ์ที่ helper ตัวไหน', () => {
+  for (const role of NEW_RD_ROLES) {
+    const user = { id: `U-${role}`, role, department: 'RD' };
+    // ขอบเขตข้อมูล — ตกเป็น 'team' เมื่อไร ทุกตารางว่างเปล่าโดยไม่มี error
+    assert.equal(viewScope(role), 'all', `viewScope ${role}`);
+    assert.deepEqual(pmTaskScopes(role), ['mine', 'team'], `pmTaskScopes ${role}`);
+    // งานที่มอบให้ "ฝ่าย RD" ต้องนับเป็นงานของเขา (tier workflow)
+    assert.equal(pmTaskEditTier(user, { role: 'RD' }), 'workflow', `pmTaskEditTier ${role}`);
+    // มอบหมายงานให้กันเองในฝ่ายได้ (กติกาเดียวกับ rd เดิม)
+    assert.equal(canAssignTask(user, { id: 'U2', role: 'rd', department: 'RD' }), true, `canAssignTask ${role}`);
+    assert.equal(canAccessRd(user), true, `canAccessRd ${role}`);
+  }
+});

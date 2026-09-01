@@ -10,7 +10,7 @@ import PredecessorPicker from "@/components/pm/PredecessorPicker";
 import PersonSelect from "@/components/ui/PersonSelect";
 import { syncStepForm } from "@/lib/pm/stepSchedule";
 import Textarea from "@/components/ui/Textarea";
-import { OPS_ROLES } from "@/lib/permissions";
+import { OPS_ROLES, RD_ROLES } from "@/lib/permissions";
 
 export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "RA", "WH", "ALL"];
 
@@ -21,7 +21,7 @@ export const STEP_ROLES = ["SA", "RD", "PC", "PD", "QC", "RA", "WH", "ALL"];
 // ตอนที่ห้าฝ่ายใช้ role เดียวกัน · ตั้งแต่แยก role รายฝ่าย (2026-08-28) คนฝ่าย PC ถือ
 // role `pc` ⇒ เงื่อนไขเดิมจะหาไม่เจอสักคน แล้วขั้นตอนของฝ่ายจะไม่ถูกมอบหมายเงียบ ๆ
 const STAFF_DEPTS = ["PC", "PD", "WH", "RD", "QC"];
-const DEPT_REP_ROLES = [...OPS_ROLES, "rd"];
+const DEPT_REP_ROLES = [...OPS_ROLES, ...RD_ROLES];
 const deptRep = (users, dept) => users.find(
   (u) => DEPT_REP_ROLES.includes(u.role) && u.department === dept,
 ) || null;

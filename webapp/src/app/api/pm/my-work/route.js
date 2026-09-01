@@ -1,4 +1,4 @@
-import { normalizeDepartment, pmTaskScopes, can } from '@/lib/permissions';
+import { normalizeDepartment, pmTaskScopes, can, isRdRole } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
@@ -66,7 +66,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     extraPersonal = data || [];
   } else if (scope === 'team') {
     const dept = normalizeDepartment(user.department);
-    if (user.role === 'rd' && dept) {
+    if (isRdRole(user.role) && dept) {
       const deptIds = await departmentUserIds(supabase, dept);
       const queries = deptIds.length ? [
         (q) => q.in('ownerId', deptIds),

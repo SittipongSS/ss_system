@@ -195,6 +195,9 @@ export default function RequestForm({
      ค่าตั้งต้น = ตามทั้งฟอร์ม ⇒ ฝั่งสร้างไม่ต้องรู้จักพร็อพนี้ */
   linesDisabled = null,
   linesNote = null,
+  /* รายชื่อผู้ใช้ — ตอนนี้มีผู้ใช้รายเดียวคือช่องผู้เซ็นของแบบฟอร์ม PDR
+     (ส่งต่อทั้งก้อน ฟอร์มนี้ไม่ตัดสินว่าใครคู่กับช่องไหน) */
+  people = [],
 }) {
   const isEdit = mode === "edit";
   const set = (patch) => onChange({ ...value, ...patch });
@@ -1092,6 +1095,7 @@ export default function RequestForm({
             targets={value.pdrTargets || []}
             onTargetsChange={(pdrTargets) => set({ pdrTargets })}
             disabled={pdrDisabled == null ? disabled : pdrDisabled}
+            people={people}
             /* ⚠️ ส่ง `pdrContext()` ทั้งก้อน ไม่แตกเป็นพร็อพรายตัว — ฝั่งหน้าแก้ PDR
                เคยลืมไป 8 ตัวแล้วช่องเติมเองกลายเป็นเส้นประทั้งแผง (ดูหัวพร็อพของ PdrForm)
                ⚠️ `scentCount` ของหน้านี้คำนวณสด ๆ จากใบสั่งขายที่เพิ่งเลือก จึงทับของใน

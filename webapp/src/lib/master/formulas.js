@@ -6,7 +6,7 @@
 //
 // ⚠️ รหัสสูตรเป็นของจริงจาก RD ไม่ใช่เลขรันของระบบ (มติ 8) — ร่างยังไม่มีรหัสได้
 // เพราะของจริงบน prod มี 10 แถวที่มีแต่ชื่อไม่มีรหัส (ดูหัว migration 0171)
-import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const FORMULA_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -106,7 +106,7 @@ export function canViewFormulas(user) {
 }
 
 export function isFormulaRegistrar(user) {
-  return user?.role === 'rd' || isSuperuser(user?.role);
+  return isRdRole(user?.role) || isSuperuser(user?.role);
 }
 
 export function canProposeFormula(user) {

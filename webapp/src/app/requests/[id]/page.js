@@ -145,9 +145,13 @@ export default function RequestDetailPage() {
   /* ทะเบียนหมวดสินค้า — ฟอร์ม PDR (โหมดแก้) ใช้เลือก "ประเภทสินค้า" หลายรายการ (0227)
      ⚠️ โหลดเสมอ ไม่รอให้กดแก้ — โหลดตอนกดจะได้ดรอปดาวน์ว่างในวินาทีแรก */
   const [productTypes, setProductTypes] = useState([]);
+  /* รายชื่อผู้ใช้ตามตำแหน่ง — ช่องผู้เซ็นของแบบฟอร์ม PDR เสนอชื่อคนที่ถือตำแหน่งนั้น
+     ⚠️ ล้มแล้วต้องเงียบ (ว่าง) — คนที่ไม่มี `pm:view` ยังต้องเปิด/แก้ใบได้ตามปกติ */
+  const [signerPeople, setSignerPeople] = useState([]);
 
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users").then((d) => setSignerPeople(d || [])).catch(() => {});
   }, []);
   /* ⭐ **แจ้งกำหนดส่ง — ก้าวของตัวเอง** (มติผู้ใช้ 2026-08-19) · `null` = ปิดโมดัล
      ⚠️ ไม่ใช่ช่องในโมดัลรับเรื่องอีกแล้ว — รับเรื่องคือการตัดรอบ ส่วนวันที่รับปาก
@@ -1335,6 +1339,7 @@ export default function RequestDetailPage() {
             pdrDisabled={saving || !canEditPdrNow}
             linesDisabled={saving || !canEditInfo || !!lineEditBlocker}
             linesNote={lineEditBlocker}
+            people={signerPeople}
             lockKind
             deferMentions
             showBlocker={false}
