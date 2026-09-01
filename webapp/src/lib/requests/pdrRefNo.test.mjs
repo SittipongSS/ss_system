@@ -103,7 +103,10 @@ test('กรอกเอง: บังคับรูปแบบ DDMMYY-XXX แ
   // ลอกเลขจากกระดาษที่ลงวันคนละวันกับที่ระบบบันทึก — ต้องผ่าน
   assert.equal(pdrRefManualError(AUG, '170869-016'), null);
   assert.match(pdrRefManualError(AUG, ''), /กรุณากรอก/);
-  assert.match(pdrRefManualError(AUG, 'FM-RD-01-170869-016'), /DDMMYY-XXX/);
+  /* ⭐ **กลับมติเดิม 2026-09-01 (RD แจ้งเอง)** — รหัสแบบฟอร์มนำหน้าเคยถูกตีกลับ
+     ตรงนี้ · ของจริงคนลอกทั้งบรรทัดจากกระดาษ แล้วเจอปุ่มจางเงียบ ⇒ ตัดให้แทน
+     (ดูเทสต์ "วางทั้งบรรทัดจากกระดาษได้" ท้ายไฟล์) */
+  assert.equal(pdrRefManualError(AUG, 'FM-RD-01-170869-016'), null);
   assert.match(pdrRefManualError(AUG, '170869-16'), /DDMMYY-XXX/);
   assert.match(pdrRefManualError(SEP, '020969-001'), /ระบบออกเลขให้เอง/);
   assert.match(pdrRefManualError({ kind: 'scent_dev' }, '170869-016'), /ยังไม่ได้รับเรื่อง/);
@@ -128,4 +131,23 @@ test('ปุ่มเขียนว่า "แก้" เฉพาะเลข�
   // เลขที่ระบบออกให้ล็อกทันที ไม่ว่าใบจะเดินไปถึงไหน
   assert.equal(canEditPdrRefManual({ pdrRefManual: false, status: 'acknowledged' }), false);
   assert.equal(canEditPdrRefManual({ status: 'acknowledged' }), false);
+});
+
+/* 🐞 **ของจริงที่ RD แจ้ง 2026-09-01** — ลอกทั้งบรรทัดจากกระดาษมาวาง
+   (`FM-RD-01-190869-018`) ⇒ ตกด่านรูปแบบ ⇒ ปุ่ม "บันทึกเลข" จางโดยไม่มีอะไรบอก
+   ว่าต้องตัดรหัสแบบฟอร์มออก · ระบบเก็บแค่ส่วนต่อท้ายเพราะรหัสแบบฟอร์มพิมพ์อยู่ใน
+   หัวเอกสารแล้ว ⇒ ตัดให้ ไม่ใช่ตีกลับ */
+test('วางทั้งบรรทัดจากกระดาษได้ — รหัสแบบฟอร์มนำหน้าถูกตัดให้', () => {
+  assert.equal(normalizePdrRefNo('FM-RD-01-190869-018'), '190869-018');
+  assert.equal(normalizePdrRefNo(' FM-RD-01-๑๙๐๘๖๙-๐๑๘ '), '190869-018');
+  assert.equal(pdrRefManualError(AUG, 'FM-RD-01-190869-018'), null);
+  // เลขล้วนยังผ่านเหมือนเดิม — ไม่ได้บังคับให้ต้องมีรหัสแบบฟอร์ม
+  assert.equal(normalizePdrRefNo('190869-018'), '190869-018');
+});
+
+test('ตัดเฉพาะที่ท้ายเป็นรูปแบบเต็มพอดี — ข้อความที่ผิดจริงยังตกด่านตามเดิม', () => {
+  for (const bad of ['FM-RD-01-19086-18', '19/08/69-018', 'FM-RD-01', '190869018']) {
+    assert.equal(normalizePdrRefNo(bad), bad.trim(), bad);
+    assert.match(pdrRefManualError(AUG, bad), /รูปแบบต้องเป็น/, bad);
+  }
 });
