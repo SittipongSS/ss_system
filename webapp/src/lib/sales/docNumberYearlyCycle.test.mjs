@@ -122,3 +122,35 @@ test('ET: คัดนิยามล่าสุดมาครบ — ท่�
   assert.match(excise, /excise_tax_notice_standard_missing/);
   assert.match(excise, /NEW\."taxNoticeStandardSnapshot" := to_jsonb\(v_standard\)/);
 });
+
+/* ── PT ขยายเลขรันเป็น 5 หลัก (มติผู้ใช้ 2026-09-01 · mig 0331) ──────────────
+   ⭐ ความกว้างของ PT อยู่ใน **มาตรฐานเอกสารที่เผยแพร่** ไม่ใช่ในโค้ด ⇒ ใบนี้ต้อง
+   "เผยแพร่เวอร์ชันใหม่" แทนคนกดจากหน้าตั้งค่า ไม่ใช่ UPDATE ทับแถวที่เผยแพร่อยู่
+   (trigger document_standard_versions_guard บล็อกอยู่แล้ว และประวัติเวอร์ชันคือหลักฐาน) */
+const ptWidth = readFileSync(
+  new URL('../../../supabase/migrations/0331_project_timeline_running_width_5.sql', import.meta.url),
+  'utf8',
+);
+
+test('PT: เผยแพร่มาตรฐานเวอร์ชันใหม่ผ่าน RPC ชุดเดียวกับหน้าตั้งค่า', () => {
+  assert.match(ptWidth, /public\.create_document_standard_draft\(/);
+  assert.match(ptWidth, /public\.publish_document_standard_draft_atomic\(/);
+  assert.match(ptWidth, /'PT-\{YY\}\{MM\}\{RUNNING:5\}-\{REVISION\}'/);
+  // ห้ามแก้ payload ของแถวที่เผยแพร่อยู่ — แก้ได้เฉพาะแถวร่างที่เพิ่งสร้าง
+  assert.doesNotMatch(ptWidth, /UPDATE public\.document_standards\b/);
+  assert.match(ptWidth, /UPDATE public\.document_standard_versions[\s\S]{0,400}WHERE id = v_id/);
+});
+
+test('PT: รันซ้ำได้ และไม่ยัดทับร่างที่คนอื่นกำลังแก้', () => {
+  assert.match(ptWidth, /IF v_current = v_pattern THEN[\s\S]{0,200}RETURN;/);
+  assert.match(ptWidth, /project_timeline_draft_exists/);
+  // changeNote เป็นของบังคับตอนเผยแพร่ — ไม่ใส่ = RPC โยน change_note_required
+  assert.match(ptWidth, /"changeNote" = '[^']+'/);
+});
+
+test('PT: ไม่แตะเลขที่ออกไปแล้ว และไม่ตั้ง Rev. ของแบบฟอร์มให้เอง', () => {
+  const statements = ptWidth.split('\n').filter((line) => !/^\s*--/.test(line)).join('\n');
+  assert.doesNotMatch(statements, /\b(TRUNCATE|DELETE FROM)\b/);
+  assert.doesNotMatch(statements, /UPDATE public\.projects\b/);
+  assert.doesNotMatch(statements, /"revision" =/);
+});
