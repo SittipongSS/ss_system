@@ -9,12 +9,14 @@
 //   แต่ของอีกไซต์ = 1 เครื่อง (มติสี่หน่วย) · ยุบเหลือตัวเดียวเมื่อไรก็เดาผิดทันที
 //   สำหรับไซต์อีกแบบหนึ่ง
 //
-// ⚠️ นับจาก **เครื่องที่ยังอยู่หน้างาน** เท่านั้น — เครื่องที่ถอดออกแล้วไม่ใช่ภาระ
+// ⚠️ นับจาก **เครื่องที่ยังอยู่หน้างาน** เท่านั้น — เครื่องที่ปลดระวางหรืออยู่ในคลังไม่ใช่ภาระ
+import { isAssetOnSite } from './sites';
 
 /* ภาระของไซต์หนึ่ง = เครื่องที่ยังใช้งาน + แพ็คตามรอบขายที่ยังมีผลของโซนในไซต์นั้น
    คืน { assets, packs } · ไซต์ที่ยังไม่มีข้อมูลคืน 0 ทั้งคู่ (ไม่ใช่เดา) */
 export function siteWorkload({ siteId, assets = [], zones = [], terms = [], activeTermIds = null } = {}) {
-  const liveAssets = assets.filter((a) => a.siteId === siteId && a.status !== 'removed');
+  // mig 0332: ตัด `in_stock` ออกด้วย ไม่งั้นภาระคิวช่างบวมตามจำนวนเครื่องในสต๊อก
+  const liveAssets = assets.filter((a) => a.siteId === siteId && isAssetOnSite(a));
   const zoneIds = new Set(zones.filter((z) => z.siteId === siteId).map((z) => z.id));
 
   let packs = 0;

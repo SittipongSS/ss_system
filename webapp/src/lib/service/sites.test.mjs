@@ -2,12 +2,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ASSET_CONDITIONS,
+  ASSET_CONDITION_LABELS,
+  ASSET_STATUSES,
+  ASSET_STATUS_LABELS,
   accessConflict,
   accessWindowText,
   assetRollup,
   minutesOf,
   normalizeAssetInput,
   normalizeSiteInput,
+  isAssetOnSite,
+  isWarehouseSite,
   refillDueDate,
   siteAddressCarry,
   siteAddressDrift,
@@ -154,7 +160,7 @@ test('⭐ ข้อมูลไม่พอ = ไม่เดา — ป้า�
 
 test('สรุปเครื่องแยกตามสถานะ', () => {
   const rollup = assetRollup([{ status: 'active' }, { status: 'active' }, { status: 'repair' }, { status: 'removed' }]);
-  assert.deepEqual(rollup, { total: 4, active: 2, repair: 1, removed: 1 });
+  assert.deepEqual(rollup, { total: 4, active: 2, inStock: 0, repair: 1, removed: 1, broken: 0 });
 });
 
 // ── สิทธิ์ (แผน §6) ──────────────────────────────────────────────────────
@@ -209,4 +215,95 @@ test('ฝ่ายโรงงานอื่นแตะธุรกิจบ�
   for (const [role, department] of [['pc', 'PC'], ['pd', 'PD'], ['wh', 'WH'], ['qc', 'QC']]) {
     assert.equal(canEditService({ role, department }), false, department);
   }
+});
+
+// ── ทะเบียนเครื่อง เฟส A: คลังเป็นไซต์จริง + สองแกน (mig 0332) ────────────
+
+test('isAssetOnSite: เครื่องในคลังกับที่ปลดระวางแล้ว ไม่นับว่าอยู่หน้างาน', () => {
+  assert.equal(isAssetOnSite({ status: 'active' }), true);
+  assert.equal(isAssetOnSite({ status: 'repair' }), true, 'ส่งซ่อมยังผูกกับไซต์อยู่');
+  assert.equal(isAssetOnSite({ status: 'in_stock' }), false);
+  assert.equal(isAssetOnSite({ status: 'removed' }), false);
+});
+
+/* 🔴 เทสต์ตัวนี้คือด่านที่กันไม่ให้ `in_stock` หายไปเงียบ ๆ ตอนมีคนเพิ่มสถานะใหม่
+   ถ้าลืมนับกองใดกองหนึ่ง ผลรวมจะไม่เท่า total แล้วหน้าไซต์จะโชว์เลขที่บวกไม่ลง */
+test('assetRollup: ทุกกองรวมกันแล้วต้องเท่า total', () => {
+  const rollup = assetRollup([
+    { status: 'active', condition: 'ok' },
+    { status: 'active', condition: 'broken' },
+    { status: 'in_stock', condition: 'ok' },
+    { status: 'in_stock', condition: 'broken' },
+    { status: 'repair', condition: 'broken' },
+    { status: 'removed', condition: 'ok' },
+  ]);
+  assert.equal(rollup.total, 6);
+  assert.equal(rollup.active + rollup.inStock + rollup.repair + rollup.removed, rollup.total);
+  assert.equal(rollup.inStock, 2);
+  // สภาพเป็นแกนที่สอง — นับข้ามสถานะ ไม่ใช่กองที่ห้าที่แยกออกมา
+  assert.equal(rollup.broken, 3);
+});
+
+test('normalizeAssetInput: รับสถานะ in_stock และสภาพ broken', () => {
+  const { value, error } = normalizeAssetInput({ label: 'เครื่อง A', status: 'in_stock', condition: 'broken' });
+  assert.equal(error, null);
+  assert.equal(value.status, 'in_stock');
+  assert.equal(value.condition, 'broken');
+});
+
+test('normalizeAssetInput: สภาพเครื่องนอกทะเบียนถูกตีกลับ', () => {
+  const { value, error } = normalizeAssetInput({ label: 'เครื่อง A', condition: 'พัง' });
+  assert.equal(value, null);
+  assert.match(error, /สภาพเครื่อง/);
+});
+
+test('normalizeAssetInput: ไม่ส่งสภาพมา = ปกติ (ตรงกับ DEFAULT ใน DB)', () => {
+  const { value } = normalizeAssetInput({ label: 'เครื่อง A' });
+  assert.equal(value.condition, 'ok');
+});
+
+/* วันรับเข้าคลังต้องเป็นคนละช่องกับวันติดตั้ง — ชีตเก่ามีทั้งสองและต่างกันเป็นปี
+   ยัดรวมช่องเดียวเมื่อไร อายุใช้งานที่คำนวณออกมาจะโกหกทันที */
+test('normalizeAssetInput: receivedAt แยกจาก installedAt และตรวจรูปแบบวัน', () => {
+  const ok = normalizeAssetInput({ label: 'A', receivedAt: '2025-01-08', installedAt: '2026-03-14' });
+  assert.equal(ok.error, null);
+  assert.equal(ok.value.receivedAt, '2025-01-08');
+  assert.equal(ok.value.installedAt, '2026-03-14');
+
+  const bad = normalizeAssetInput({ label: 'A', receivedAt: '08/01/2025' });
+  assert.equal(bad.value, null);
+  assert.match(bad.error, /วันที่รับเข้าคลัง/);
+});
+
+test('normalizeSiteInput: รับ kind ของไซต์ · ตั้งต้นเป็นไซต์ลูกค้า', () => {
+  const plain = normalizeSiteInput({ customerId: 'C1', name: 'สาขาเอ' });
+  assert.equal(plain.value.kind, 'customer');
+
+  const wh = normalizeSiteInput({ customerId: 'C1', name: 'คลังเครื่อง', kind: 'warehouse' });
+  assert.equal(wh.error, null);
+  assert.equal(wh.value.kind, 'warehouse');
+
+  const bad = normalizeSiteInput({ customerId: 'C1', name: 'x', kind: 'โกดัง' });
+  assert.equal(bad.value, null);
+  assert.match(bad.error, /ประเภทไซต์/);
+});
+
+/* 🔴 กันไม่ให้ใครกลับไปแยกคลังด้วยเจ้าของ — บริษัทตัวเอง (AR-000) มีไซต์ลูกค้าจริงด้วย
+   (Scent and Sense Office ที่มีเครื่องตั้งใช้งานอยู่) แยกด้วย customerId เมื่อไร
+   เครื่องที่ออฟฟิศตัวเองจะถูกนับเป็นสต๊อกทันที */
+test('isWarehouseSite: ตัดสินจาก kind เท่านั้น ไม่ใช่จากเจ้าของไซต์', () => {
+  const own = { customerId: 'CUS-SS', arCode: 'AR-000', kind: 'customer' };
+  const warehouse = { customerId: 'CUS-SS', arCode: 'AR-000', kind: 'warehouse' };
+  assert.equal(isWarehouseSite(own), false, 'ออฟฟิศตัวเองเป็นไซต์ลูกค้า ไม่ใช่คลัง');
+  assert.equal(isWarehouseSite(warehouse), true);
+});
+
+test('ป้ายไทยครบทุกค่าที่ CHECK ใน DB ยอมรับ', () => {
+  for (const status of ASSET_STATUSES) {
+    assert.ok(ASSET_STATUS_LABELS[status], `ขาดป้ายของ ${status}`);
+  }
+  for (const condition of ASSET_CONDITIONS) {
+    assert.ok(ASSET_CONDITION_LABELS[condition], `ขาดป้ายของ ${condition}`);
+  }
+  assert.equal(ASSET_STATUS_LABELS.removed, 'ปลดระวาง', 'mig 0332 เปลี่ยนความหมายจาก "ถอดออกแล้ว"');
 });

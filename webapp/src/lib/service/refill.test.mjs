@@ -18,10 +18,19 @@ test('⭐ ข้อมูลไม่พอ = ไม่เดา — ป้า�
   assert.equal(refillStatus(asset({ installedAt: null }), { todayIso: TODAY }).state, 'unknown');
 });
 
-test('เครื่องที่ถอดออกแล้วไม่เตือน — ของไม่ได้อยู่หน้างานแล้ว', () => {
+test('เครื่องที่ปลดระวางแล้วไม่เตือน — ของไม่ได้อยู่หน้างานแล้ว', () => {
   const status = refillStatus(asset({ status: 'removed', installedAt: '2026-01-01' }), { todayIso: TODAY });
   assert.equal(status.state, 'unknown');
-  assert.equal(status.label, 'ถอดออกแล้ว');
+  assert.equal(status.label, 'ปลดระวาง');  // mig 0332 เปลี่ยนความหมายจาก "ถอดออกแล้ว"
+});
+
+/* 🔴 ด่านที่กันบั๊กใหญ่ที่สุดของ mig 0332 — ก่อนหน้านี้ตัวกรองเช็คแค่ `=== 'removed'`
+   ⇒ เครื่องในคลัง 343 ตัวจะถูกคำนวณวันน้ำหอมหมดและขึ้นป้าย "ใกล้หมด" ทั้งกอง
+   ป้ายที่มั่วทั้งกระดานทำให้ป้ายจริงถูกเมินไปด้วย */
+test('🔴 เครื่องในคลังไม่เตือนน้ำหอมใกล้หมด — ยังไม่ได้ติดตั้งที่ไหน', () => {
+  const status = refillStatus(asset({ status: 'in_stock', installedAt: '2026-01-01' }), { todayIso: TODAY });
+  assert.equal(status.state, 'unknown');
+  assert.equal(status.label, 'อยู่ในคลัง');
 });
 
 test('ยังอีกนาน = ok', () => {

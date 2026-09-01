@@ -57,6 +57,11 @@ const CAPS = {
   dept_requests: 14,            // 74
   sales_orders: 12,             // 74
   sales_leads: 6,               // 181
+  /* ⚠️ 0 แถววันนี้ แต่ชีต Stock-Machine.xlsx ที่รอนำเข้ามี **1,239 เครื่อง** ⇒ เกิน
+     เพดาน 1,000 ตั้งแต่แถวแรกที่ลง · ขึ้นทะเบียนไว้ตั้งแต่ยังว่างเพื่อให้ทุกจุดอ่าน
+     ใหม่ถูกบังคับให้ห่อ fetchAll ตั้งแต่ต้น ไม่ใช่ไปไล่ตามหลังตอนตัวเลขเพี้ยนแล้ว
+     (mig 0332 · เฟส A ของทะเบียนเครื่อง) */
+  service_assets: 0,
   attachments: 4,
   sahamit_po_lines: 11,
   sahamit_forecast_lines: 10,

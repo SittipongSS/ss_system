@@ -9,6 +9,7 @@
 //   เขียนคู่ขนานกับสามตารางนั้นคือตารางที่จะไม่ตรงกับความจริงภายในเดือนเดียว
 import { fmtPercent } from '@/lib/format';
 import { ASSET_OUTCOME_LABELS } from './visitAssets';
+import { isAssetOnSite } from './sites';
 
 /* เหตุการณ์ของเครื่อง เรียงใหม่สุดก่อน
    รับ: asset · results (แถวผลรายเครื่องที่แตะเครื่องนี้ ทั้งเป็นตัวหลักและตัวแทน)
@@ -72,7 +73,8 @@ export function settingOutlier(asset, zoneAssets = []) {
   const duty = work / (work + pause);          // สัดส่วนเวลาที่เครื่องพ่นจริง
 
   const peers = zoneAssets
-    .filter((a) => a.id !== asset.id && a.status !== 'removed')
+    // mig 0332: ไม่เอาเครื่องในคลัง (ค่าตั้งค้างจากไซต์เก่า) มาเฉลี่ยเทียบเพื่อนโซน
+    .filter((a) => a.id !== asset.id && isAssetOnSite(a))
     .map((a) => {
       const w = Number(a?.settings?.workSec);
       const p = Number(a?.settings?.pauseSec);

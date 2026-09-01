@@ -4,6 +4,7 @@ import { canDoFieldWork } from '@/lib/permissions';
 import { visitWriteAccess } from './visitAccess';
 import { VISIT_STATUSES, isClosedVisit, isOpenVisit } from './visitStatus';
 import { requireService } from './sitesRepo';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 /* ⚠️ PostgREST ต้องการ **ลิสต์ค่า** ไม่ใช่ฟังก์ชัน — ประกอบจากนิยามกลางที่
    visitStatus.js เพื่อไม่ให้มีชุดสถานะชุดที่หกในระบบ */
 const CLOSED_VISITED = VISIT_STATUSES.filter((s) => isClosedVisit({ status: s }));
@@ -161,14 +162,15 @@ export async function assetsForSites(supabase, siteIds = []) {
   const out = new Map();
   const ids = [...new Set((siteIds || []).filter(Boolean))];
   if (!ids.length) return out;
-  const { data, error } = await supabase
+  /* 🔴 ห่อ fetchAll ด้วยเหตุผลเดียวกับ assetCountsBySite — เครื่อง 1,239 ตัวเกิน
+     เพดาน 1,000 แถว และตัวเรียกส่ง siteId ของทุกไซต์เข้ามา */
+  const data = await fetchAll(() => supabase
     .from('service_assets')
     /* ⚠️ ต้องมี `qty` ด้วย — ภาระของเจ้าหน้าที่นับเป็น **จุด** ไม่ใช่แถว (visitLoad.js)
        ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด) · ไม่ดึงมา = ตารางจัดคิวประเมินงานต่ำ
        โดยไม่มีอะไรฟ้อง (พบตอน UAT 2026-08-28: ไซต์ 14 จุด ขึ้นเป็น "3 จุด") */
-    .select('id, siteId, label, status, qty, bottleMl, mlPerDay, installedAt, productName')
-    .in('siteId', ids);
-  if (error) throw error;
+    .select('id, siteId, label, status, condition, qty, bottleMl, mlPerDay, installedAt, productName')
+    .in('siteId', ids).order('id', { ascending: true }));
   for (const row of data || []) {
     if (!out.has(row.siteId)) out.set(row.siteId, []);
     out.get(row.siteId).push(row);

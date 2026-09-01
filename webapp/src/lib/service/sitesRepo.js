@@ -1,6 +1,7 @@
 // ── Data access + ด่านสิทธิ์ของทะเบียนไซต์บริการ (mig 0187) ───────────────
 // แยกจาก route.js เพราะไฟล์ route ของ Next ส่งออกได้เฉพาะ HTTP method
 import { forbidden, notFound, unauthorized } from '@/lib/http';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { canEditService, canPickServiceSite, canViewService } from '@/lib/permissions';
 
 // ⚠️ ด่านจริงของโมดูลบริการอยู่ตรงนี้ — proxy เห็นแค่ role จึงปล่อย `staff` ทุกฝ่าย
@@ -23,10 +24,15 @@ export function requireService({ user, edit = false, forRequestForm = false }) {
   return {};
 }
 
-export async function loadSites(supabase, { customerId = null, includeInactive = true } = {}) {
+/* `kind` — 'customer' (ค่าตั้งต้น) = ทะเบียนไซต์ลูกค้า · 'warehouse' = คลัง · null = ทั้งหมด
+   ⭐ **คลังไม่ใช่แถวในทะเบียนไซต์** (mig 0332) — มันไม่มีลูกค้าให้ไปหา ไม่มีรอบบริการ
+   และเรียง/กรองตามคอลัมน์ของทะเบียนไม่ได้เลย · ปล่อยให้ปนเข้ามาคือแถวปลอมที่กดแล้ว
+   พาไปเจอหน้าที่ไม่มีอะไรตรงกับหัวตาราง ⇒ ตัดออกเป็นค่าตั้งต้น ให้คนที่อยากได้ขอเอง */
+export async function loadSites(supabase, { customerId = null, includeInactive = true, kind = 'customer' } = {}) {
   let query = supabase.from('service_sites').select('*');
   if (customerId) query = query.eq('customerId', customerId);
   if (!includeInactive) query = query.eq('isActive', true);
+  if (kind) query = query.eq('kind', kind);
   const { data, error } = await query
     .order('customerName', { ascending: true })
     .order('name', { ascending: true });
@@ -51,12 +57,14 @@ export async function requireSite({ user, supabase, id, edit = false, forRequest
 }
 
 export async function loadAssets(supabase, siteId) {
-  const { data, error } = await supabase
+  /* ⚠️ ไซต์เดียวไม่น่าถึงพัน — **ยกเว้นไซต์คลัง** ที่ถือเครื่องทั้งสต๊อก (343 ตัววันนี้
+     และโตขึ้นทุกล็อตที่รับเข้า) ⇒ ต้องห่อ fetchAll เหมือนกัน (mig 0332)
+     ⚠️ `id` ปิดท้ายเสมอ — status/label ไม่ unique พอจะไล่หน้า */
+  return fetchAll(() => supabase
     .from('service_assets').select('*').eq('siteId', siteId)
     .order('status', { ascending: true })
-    .order('label', { ascending: true });
-  if (error) throw error;
-  return data || [];
+    .order('label', { ascending: true })
+    .order('id', { ascending: true }));
 }
 
 // นับเครื่องของหลายไซต์ในคำสั่งเดียว — หน้าทะเบียนต้องโชว์จำนวนเครื่องต่อแถว
@@ -64,13 +72,21 @@ export async function loadAssets(supabase, siteId) {
 export async function assetCountsBySite(supabase, siteIds = []) {
   const counts = new Map();
   if (!siteIds.length) return counts;
-  const { data, error } = await supabase
-    .from('service_assets').select('siteId, status').in('siteId', siteIds);
-  if (error) throw error;
+  /* 🔴 ต้องห่อ fetchAll — เครื่องทั้งระบบมี 1,239 ตัว เกินเพดาน 1,000 แถวของ
+     PostgREST ตั้งแต่วันแรก · หน้านี้ส่ง siteId ของ **ทุกไซต์** เข้ามา ⇒ ถ้าไม่ห่อ
+     ตัวเลข "จำนวนเครื่อง" จะต่ำกว่าจริงโดยไม่มี error ให้เห็นเลย
+     ⚠️ ต้อง order ด้วยคีย์ที่ unique (`id`) — เรียงด้วย status/siteId ไล่หน้าแล้ว
+        ได้แถวซ้ำและแถวหายพร้อมกัน */
+  const data = await fetchAll(() => supabase
+    .from('service_assets').select('id, siteId, status, condition')
+    .in('siteId', siteIds).order('id', { ascending: true }));
   for (const row of data || []) {
-    const entry = counts.get(row.siteId) || { total: 0, active: 0 };
+    const entry = counts.get(row.siteId) || { total: 0, active: 0, inStock: 0, broken: 0 };
     entry.total += 1;
     if (row.status === 'active') entry.active += 1;
+    // mig 0332: นับสองกองใหม่แยก — คลังกับของเสียไม่ใช่ "เครื่องที่ใช้งานอยู่"
+    if (row.status === 'in_stock') entry.inStock += 1;
+    if (row.condition === 'broken') entry.broken += 1;
     counts.set(row.siteId, entry);
   }
   return counts;
