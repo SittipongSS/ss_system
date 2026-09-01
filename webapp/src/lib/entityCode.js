@@ -15,8 +15,41 @@ export function ymKey(now = new Date()) {
   return businessMonthKey(now);
 }
 
-// เลขรัน 4 หลักต่อเดือน — ฟังก์ชัน SQL ที่ออกรหัส (mig 0240) รับค่านี้ไปเติมศูนย์ให้
+// เลขรันตั้งต้น 4 หลักต่อเดือน — ฟังก์ชัน SQL ที่ออกรหัส (mig 0240) รับค่านี้ไปเติมศูนย์ให้
 export const ENTITY_RUNNING_WIDTH = 4;
+
+/* ── รอบตัด + ความกว้างของเลขรัน รายสโคป (มติผู้ใช้ 2026-09-01 · mig 0330) ──
+   *"PT ขอทำพร้อม DL PJ"* + เลือกความกว้าง **5 หลัก**
+
+   ⭐ **ดีล (DL) กับโครงการ (PJ) ตัดรอบทุกปี ส่วน PB/SV/IS ยังรายเดือน** — สาม scope หลัง
+   ไม่ได้อยู่ในมติรอบนี้ และเลขรายเดือนของมันช่วยให้เดาอายุงานจากเลขได้อยู่
+
+   🔴 **`YYMM` ในรหัส ≠ ตัวตัดรอบ** (กับดักเดิมของทั้งระบบ — ดู requests/docNo.js ·
+   sales/contracts.js · mig 0328) · `YYMM` มาจาก **prefix** = เดือนที่สร้างแถว
+   ส่วนตัวตัดรอบคือ **คีย์ `month` ของ `entity_number_counters`** ซึ่ง DL/PJ เป็น `'YY'`
+
+   ⭐ **ความกว้าง 5 หลักสำหรับ DL/PJ** เพราะเพดานเปลี่ยนหน่วยจาก "ต่อเดือน" เป็น "ต่อปี":
+   ดีลออก ~415 ใบ/เดือน ≈ 5,000 ใบ/ปี ⇒ 4 หลัก (9,999) เหลือหัวไม่ถึงเท่าตัว โตอีกนิด
+   เดียวก็ชนเพดานกลางปีแล้ว **สร้างดีลไม่ได้ทั้งระบบ** (RPC โยน sequence_exhausted)
+
+   ⚠️ **รหัสชุด 5 หลักไม่ชนกับชุด 4 หลักเดิมโดยโครงสร้าง** — คนละความยาว = คนละสตริง
+   (`DL-26090001` กับ `DL-260900568`) ⇒ ไม่ต้อง backfill และของเก่าคงเดิมทุกใบ
+   🪤 แต่มันเรียงสตริงสลับกัน (ชุด 5 หลักมาก่อนชุด 4 หลักในการ sort แบบตัวอักษร) —
+   หน้าจอที่เรียงด้วย `code` ดิบจะเห็นสองกองคั่นกัน ให้เรียงด้วยวันที่แทนถ้าสำคัญ */
+const ENTITY_YEARLY_SCOPES = Object.freeze(['DL', 'PJ']);
+const ENTITY_WIDE_SCOPES = Object.freeze(['DL', 'PJ']);
+export const ENTITY_WIDE_RUNNING_WIDTH = 5;
+
+/** คีย์ถังนับของ scope นั้น — ปี (`'26'`) สำหรับ DL/PJ · เดือน (`'2609'`) สำหรับที่เหลือ
+ *  ⚠️ นี่คือ **ตัวตัดรอบจริง** ไม่ใช่ `YYMM` ที่โผล่ในรหัส */
+export const entityCounterKey = (scope, now = new Date()) => (
+  ENTITY_YEARLY_SCOPES.includes(scope) ? ymKey(now).slice(0, 2) : ymKey(now)
+);
+
+/** ความกว้างเลขรันของ scope นั้น */
+export const entityRunningWidth = (scope) => (
+  ENTITY_WIDE_SCOPES.includes(scope) ? ENTITY_WIDE_RUNNING_WIDTH : ENTITY_RUNNING_WIDTH
+);
 
 // ── สร้างแถวพร้อมออกรหัส (mig 0240) ───────────────────────────────────────
 // ⚠️ **ห้ามกลับไปจองเลขเองแล้วค่อย insert แยก** — นั่นคือสองทรานแซกชัน เลขถูก commit
@@ -26,12 +59,13 @@ export const ENTITY_RUNNING_WIDTH = 4;
 // รับหลายแถวเสมอ: ที่ gen ทีละชุด (ใบผลิตอัตโนมัติ · นัดบริการตามรอบ) ต้องได้พฤติกรรม
 // เดิมคือล้มใบไหนก็ล้มทั้งชุด ไม่ค้างครึ่งทาง · คืน { data, error } ดิบตามเดิม
 export function insertRowsWithEntityCode(supabase, scope, rows, now = new Date()) {
-  const month = ymKey(now);
+  // ⚠️ สองค่านี้ **คนละเรื่องกันโดยตั้งใจ**: `p_month` = คีย์ถังนับ (รอบตัด) ·
+  // `p_prefix` = สิ่งที่โผล่ในรหัสจริง ซึ่งมี YYMM เสมอไม่ว่ารอบตัดจะเป็นอะไร
   return supabase.rpc('create_entity_rows_with_code', {
     p_scope: scope,
-    p_month: month,
-    p_prefix: `${scope}-${month}`,
-    p_width: ENTITY_RUNNING_WIDTH,
+    p_month: entityCounterKey(scope, now),
+    p_prefix: `${scope}-${ymKey(now)}`,
+    p_width: entityRunningWidth(scope),
     p_rows: rows,
   });
 }
@@ -73,11 +107,13 @@ export async function insertRowWithEntityCode(supabase, scope, row, now = new Da
 // เพราะไม่ atomic และเลขที่โชว์อาจถูกคนอื่นเอาไปก่อน)
 // ตัวจริงตอนสร้างคือ insertRowWithEntityCode / insertRowsWithEntityCode ข้างบน
 export async function peekNextEntityCode(supabase, scope, now = new Date()) {
-  const month = ymKey(now);
+  // ⚠️ อ่านถังนับด้วย **คีย์รอบตัด** (ปีสำหรับ DL/PJ) แต่ประกอบรหัสด้วย **YYMM** —
+  // เผลอใช้ค่าเดียวกันทั้งสองที่เมื่อไร ตัวอย่างที่โชว์จะเป็นคนละเลขกับที่ออกจริง
   const { data } = await supabase
-    .from('entity_number_counters').select('lastNo').eq('scope', scope).eq('month', month).maybeSingle();
+    .from('entity_number_counters').select('lastNo')
+    .eq('scope', scope).eq('month', entityCounterKey(scope, now)).maybeSingle();
   const next = (data?.lastNo || 0) + 1;
-  return `${scope}-${month}${String(next).padStart(4, '0')}`;
+  return `${scope}-${ymKey(now)}${String(next).padStart(entityRunningWidth(scope), '0')}`;
 }
 
 // แสดงรหัสเต็ม = ฐาน + '-' + revision (revise เริ่ม 0). ไม่มีรหัส → '-'.

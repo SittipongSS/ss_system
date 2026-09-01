@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import {
   ymKey,
+  entityCounterKey,
+  entityRunningWidth,
   entityCodeDisplay,
   insertRowWithComposedCode,
   insertRowWithEntityCode,
@@ -32,9 +34,12 @@ test('สร้างแถวพร้อมออกรหัส: ส่ง sc
   const when = new Date('2026-08-12T09:00:00+07:00');
 
   const single = await insertRowWithEntityCode(fake, 'DL', { id: 'DEAL-1' }, when);
+  /* ⚠️ `p_month` (คีย์ถังนับ) กับ `p_prefix` (สิ่งที่โผล่ในรหัส) เป็นคนละค่ากันตั้งแต่
+     mig 0330 — ดีลตัดรอบรายปี แต่รหัสยังมีเดือนอยู่ · เผลอส่งค่าเดียวกันสองช่องเมื่อไร
+     เลขจะรีเซ็ตทุกเดือนเงียบ ๆ แล้วชนรหัสของเดือนก่อนทันที */
   assert.deepEqual(calls[0], [
     'create_entity_rows_with_code',
-    { p_scope: 'DL', p_month: '2608', p_prefix: 'DL-2608', p_width: 4, p_rows: [{ id: 'DEAL-1' }] },
+    { p_scope: 'DL', p_month: '26', p_prefix: 'DL-2608', p_width: 5, p_rows: [{ id: 'DEAL-1' }] },
   ]);
   // ใบเดี่ยวคืนแถวเดียว ไม่ใช่ array — ผู้เรียกใช้แทน .insert().select().single() ได้ตรง ๆ
   assert.deepEqual(single, { data: { code: 'DL-26080001' }, error: null });
@@ -94,4 +99,26 @@ test('รหัสประกอบเอง: error ส่งกลับตา
   );
   assert.equal(data, null);
   assert.equal(error.code, '23505');
+});
+
+/* ── รอบตัด/ความกว้างรายสโคป (มติผู้ใช้ 2026-09-01 · mig 0330) ────────────── */
+test('DL/PJ ตัดรอบรายปี 5 หลัก · PB/SV/IS ยังรายเดือน 4 หลัก', () => {
+  const when = new Date('2026-09-01T09:00:00+07:00');
+  for (const scope of ['DL', 'PJ']) {
+    assert.equal(entityCounterKey(scope, when), '26', scope);
+    assert.equal(entityRunningWidth(scope), 5, scope);
+  }
+  for (const scope of ['PB', 'SV', 'IS', 'SS', 'ZN']) {
+    assert.equal(entityCounterKey(scope, when), '2609', scope);
+    assert.equal(entityRunningWidth(scope), 4, scope);
+  }
+});
+
+test('รหัสที่ออกจริงยังมีเดือนอยู่ ทั้งที่ตัดรอบรายปี', async () => {
+  const calls = [];
+  const fake = { rpc: async (fn, args) => { calls.push(args); return { data: [{ code: 'PJ-260900191' }], error: null }; } };
+  await insertRowsWithEntityCode(fake, 'PJ', [{ id: 'PRJ-1' }], new Date('2026-09-01T09:00:00+07:00'));
+  assert.equal(calls[0].p_prefix, 'PJ-2609');   // เดือนอยู่ในรหัส
+  assert.equal(calls[0].p_month, '26');         // แต่ถังนับเป็นปี
+  assert.equal(calls[0].p_width, 5);
 });
