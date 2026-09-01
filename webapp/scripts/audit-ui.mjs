@@ -32,6 +32,124 @@ function withoutBlockComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+/* ── ตัดคอมเมนต์บล็อกแบบ **คงเลขบรรทัด** (2026-09-02) ────────────────────────
+   `withoutBlockComments()` ข้างบน *ลบ* คอมเมนต์ทิ้ง ⇒ บรรทัดหลังคอมเมนต์เลื่อนขึ้น
+   ทุกครั้งที่มีคอมเมนต์บล็อกคร่อมหลายบรรทัดอยู่ข้างบน · ด่านเดิมที่พิมพ์เลขบรรทัดจึงชี้
+   ผิดจุดมาตลอด (วัด 2026-09-02: `fontWeight` ของ sales-planning/deals/[id]/page.js
+   อยู่บรรทัด 151 ในไฟล์จริง แต่ผลตรวจพิมพ์ 150)
+   ตัวนี้แทนคอมเมนต์ด้วยช่องว่าง **แต่เก็บ `\n` ไว้ครบ** ⇒ เนื้อหาที่ถูกตัดเท่ากันเป๊ะ
+   แต่เลขบรรทัดตรงกับไฟล์จริง ⇒ ด่านใหม่ทุกตัวในรอบนี้ใช้ตัวนี้ ไม่ใช่ตัวข้างบน
+   ⚠️ ห้ามเปลี่ยน `withoutBlockComments()` เดิมให้เป็นแบบนี้ — ของเดิม *เชื่อม*
+   บรรทัดรอบคอมเมนต์เข้าหากัน (โค้ดก่อนคอมเมนต์กับโค้ดหลังคอมเมนต์มาอยู่บรรทัดเดียวกัน)
+   ซึ่ง regex ข้ามบรรทัดของกฎเก่า
+   บางตัวพึ่งอยู่ เปลี่ยนแล้วตัวเลขเดิมขยับโดยไม่มีใครตั้งใจ */
+function blankBlockComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ""));
+}
+
+/* ⭐ **คอมเมนต์บรรทัด `//` ต้องถูกล้างด้วย ไม่ใช่แค่บล็อก** (2026-09-02)
+   🐞 เจอตอนยิงทดสอบด่านผิว className: เขียน `// rounded-[8px] ห้ามเขียนแบบนี้` ไว้สอนคน
+   แล้ว audit ตกทันที เพราะด่านพวกนั้นเป็น hard-zero ⇒ **ห้ามอธิบายกฎด้วยคอมเมนต์บรรทัด**
+   ซึ่งกลับหัวกลับหางกับสิ่งที่รีโปนี้ทำอยู่ (คอมเมนต์คือบันทึกความจำ ต้องยกตัวอย่างของผิดได้)
+   ฝั่งเพดานก็เพี้ยนเหมือนกัน: คอมเมนต์หนึ่งบรรทัดดันตัวเลขขึ้นจนตกด่าน "เพิ่มขึ้น"
+
+   ⚠️ `(?<![:\w])` กัน `https://…` ไว้ — อักขระหน้า `//` ของ URL เป็น `:` เสมอ
+   จึงตัดเฉพาะคอมเมนต์จริง · แทนที่ด้วยช่องว่างเท่าความยาวเพื่อคงเลขคอลัมน์/บรรทัด
+   🪤 ไม่ได้พาร์สสตริง — `const s = "//rounded-[8px]"` จะถูกล้างไปด้วย ยอมรับได้เพราะ
+   ทางฝั่งที่ผิดคือ "ไม่นับของที่ควรนับ" ซึ่งเป็นสตริงที่ไม่มีใครเขียนจริง ต่างจากทางกลับ
+   ที่ทำให้คนเขียนคอมเมนต์อธิบายกฎไม่ได้ */
+function blankLineComments(source) {
+  return source.replace(/(?<![:\w])\/\/[^\n]*/g, (text) => " ".repeat(text.length));
+}
+
+/* ── ตัวอ่านค่าของ style object (2026-09-02) ─────────────────────────────────
+   ผิวที่สองของระบบเขียนสไตล์เป็น `style={{ borderRadius: 8 }}` ซึ่ง regex บรรทัดเดียว
+   อ่านได้แค่ "ค่าที่เป็นลิเทอรัลตรง ๆ" · ของจริงจำนวนไม่น้อยเป็น **กิ่งของ ternary**
+   (`cond ? "50%" : "4px"`) แล้วหลุดทุกด่าน — วัด 2026-09-02: borderRadius 3 จาก 73 ·
+   boxShadow 2 จาก 6 · fontWeight **8 จาก 8** อยู่ในกิ่งทั้งหมด
+   ⇒ เขียนตัวแตกกิ่งครั้งเดียวแล้วใช้ซ้ำทุกพร็อพ ไม่ใช่ต่อ regex ให้ยาวขึ้นทีละตัว */
+
+/* อ่านค่าตั้งแต่หลัง `:` จนจบ — หยุดที่ `,` หรือวงเล็บปิดที่ระดับนอกสุด
+   (นับ ( [ { และข้ามสตริง/เทมเพลตให้ครบ ไม่งั้น `rgba(0,0,0,.2)` ตัดกลางค่า) */
+function readStyleValue(source, start) {
+  let depth = 0;
+  let quote = null;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+    if ("([{".includes(ch)) { depth += 1; continue; }
+    if (")]}".includes(ch)) {
+      if (depth === 0) return source.slice(start, i);
+      depth -= 1;
+      continue;
+    }
+    if (ch === "," && depth === 0) return source.slice(start, i);
+  }
+  return source.slice(start);
+}
+
+/* แตกค่าออกเป็น "ตำแหน่งที่เป็นค่าจริง" — ternary ซ้อนกี่ชั้นก็ได้
+   `a ? b : c ? d : e` → b, d, e (ส่วนที่ **ตามด้วย `?`** คือเงื่อนไข ไม่ใช่ค่า)
+   🪤 ต้องแยกเงื่อนไขออกให้ได้ ไม่งั้นเลขในเงื่อนไข (`w > 2 ? …`) ถูกนับเป็นค่าดิบ
+   คืน kind = string (ลิเทอรัลสตริงล้วน) · number (ตัวเลขเปล่า) · other (นิพจน์/ตัวแปร
+   ที่ไม่มีลิเทอรัลให้อ่าน เช่น `height / 2` — ด่านไหนก็อ่านไม่ได้ ต้องปล่อยผ่าน) */
+function styleValueBranches(value) {
+  const segments = [];
+  const separators = [];
+  let depth = 0;
+  let quote = null;
+  let last = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const ch = value[i];
+    if (quote) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+    if ("([{".includes(ch)) { depth += 1; continue; }
+    if (")]}".includes(ch)) { depth -= 1; continue; }
+    if (depth === 0 && (ch === "?" || ch === ":")) {
+      if (ch === "?" && value[i + 1] === "?") { i += 1; continue; } // `??` ไม่ใช่ ternary
+      segments.push(value.slice(last, i));
+      separators.push(ch);
+      last = i + 1;
+    }
+  }
+  segments.push(value.slice(last));
+  const branches = [];
+  segments.forEach((segment, index) => {
+    if (separators[index] === "?") return; // เงื่อนไข ไม่ใช่ค่า
+    const text = segment.trim();
+    const asString = text.match(/^(["'])((?:\\.|(?!\1)[^\\])*)\1$/);
+    if (asString) branches.push({ kind: "string", text: asString[2] });
+    else if (/^-?\d+(?:\.\d+)?$/.test(text)) branches.push({ kind: "number", text });
+    else branches.push({ kind: "other", text });
+  });
+  return branches;
+}
+
+/* หาทุก declaration ของพร็อพหนึ่งตัวใน style object พร้อมเลขบรรทัด (ของไฟล์จริง)
+   `(?<![\w$.])` กัน `entry.transition` และ `myBorderRadius` ไม่ให้นับเป็นพร็อพ */
+function styleDeclarations(source, prop) {
+  const found = [];
+  const pattern = new RegExp(`(?<![\\w$.])${prop}\\s*:\\s*`, "g");
+  for (const match of source.matchAll(pattern)) {
+    const value = readStyleValue(source, match.index + match[0].length);
+    found.push({
+      line: source.slice(0, match.index).split(/\r?\n/).length,
+      value: value.trim(),
+      branches: styleValueBranches(value),
+    });
+  }
+  return found;
+}
+
 const files = walk(srcRoot);
 const runtimeJsFiles = files.filter((file) => /\.(?:js|jsx|mjs)$/.test(file) && !/\.test\.mjs$/.test(file));
 const pageFiles = files.filter((file) => path.basename(file) === "page.js");
@@ -101,6 +219,91 @@ const nativeFeedbackDebt = {
    แล้วพบว่า sink ทำให้ป้ายลอยสูง 4.2px ⇒ คืนค่า `3px` เท่ากันสองด้านตามเดิม
    ⇒ เลขดิบสองจุดนั้นกลับมาพร้อมกัน · ห้ามใช้ช่องนี้เป็นข้ออ้างเพิ่มเลขดิบใหม่ */
 const RAW_SPACING_CAP = 155;
+
+/* ── ระยะห่างที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ────────────────────
+   ฝาแฝดฝั่ง Tailwind ของ RAW_SPACING_CAP ข้างบน — ชื่อจงใจล้อ RAW_TAILWIND_TYPE_CAP
+   ให้อ่านชื่อแล้วรู้ทันทีว่าเป็น "เรื่องเดียวกัน คนละผิว"
+
+   ⚠️ **ทำไมด่านเดิมมองไม่เห็น**: RAW_SPACING_CAP ถูกครอบด้วย `if (rel.endsWith(".css"))`
+   ตรง ๆ ⇒ ผิว className ไม่เคยถูกนับเลยสักครั้ง และบรรทัดรายงานก็เขียนว่า "ใน CSS"
+   จึงไม่ได้โกหก แต่ไม่มีใครรู้ว่ายังมีอีกผิวอยู่
+
+   นับ (วัด 2026-09-02 · 32 จุด 14 ไฟล์): `gap-[14px]` `mb-[22px]` `-mt-[18px]`
+   `md:p-[20px]` — utility ระยะห่างทุกตัว (p/m 9 ตัวต่อฝั่ง · gap 3 · space 2 ·
+   inset/ตำแหน่ง 9 · scroll-* ) ในรูป `-[…]` ที่ **ไม่ใช่การอ้างโทเคน**
+   กระจาย 11 ค่า: mb-[22px] ×9 · gap-[14px] ×7 · my-[18px] ×4 · mt-[18px] ×3 ·
+   gap-[18px] ×3 · gap-[12px] · pt-[14px] · p-[20px] · gap-[6px] · mt-[6px] · pl-[2px]
+   ⇒ **23 จาก 32 (72%) ตรงขั้น --space-* เป๊ะ** ยกได้โดยพิกเซลไม่ขยับ
+   เหลือ 9 จุดคือ mb-[22px] ทั้งหมด (ฟอร์มลูกค้า/สินค้า) ที่ 22px ไม่มีขั้นรองรับ
+   (--space-5 = 20 กับ --space-6 = 24 ขนาบอยู่) ⇒ ต้องมีคนเปิดหน้าดูแล้วตัดสิน
+
+   ไม่นับ: `gap-[var(--space-3)]` · `gap-(--space-3)` (รูปวงเล็บกลมของ v4) — ทั้งคู่
+   คือการอ้างโทเคนที่ถูกต้อง วันนี้โค้ดจริงมี 0 จุดทั้งสองรูป
+
+   🚫 **ไม่มี hard-zero คู่แฝดแบบชั้นพิมพ์** — ชั้นพิมพ์ต้องมี เพราะ `text-[var(--fs-7)]`
+   คอมไพล์เป็น *สี* แล้วขนาดหายเงียบ ๆ · ผิวนี้ไม่มีกับดักนั้น วัดด้วย compile() ของ
+   tailwindcss 4.3.0 (node_modules ของ webapp) 2026-09-02:
+     gap-[var(--space-3-5)] -> gap: var(--space-3-5)          ✓
+     mb-[var(--space-5)]    -> margin-bottom: var(--space-5)  ✓
+     p-[var(--space-5)]     -> padding: var(--space-5)        ✓
+     top-[var(--topbar-h)]  -> top: var(--topbar-h)           ✓
+   utility กลุ่มนี้รับ **ความยาวอย่างเดียว** ไม่มีชนิดอื่นให้ Tailwind เดา ⇒ `length:`
+   ไม่จำเป็น และรูป `-[var(--…)]` ปลอดภัยทันที · ตั้ง hard-zero ตรงนี้ = ห้ามของถูก
+
+   🚫 และห้าม hard-zero utility ที่วันนี้อ่านได้ 0 (px py pb pr m mx ml mr gap-x gap-y
+   space-* inset* top bottom left right scroll-*) — `top-[var(--topbar-h)]` คือ *รูปที่ถูก
+   ที่ยังไม่มีใครใช้* ไม่ใช่รูปที่ผิด ⇒ ห้ามแปลว่า "ห้ามใช้ utility นั้น"
+
+   ⚠️ **ผิวที่สี่ที่ยังไม่มี cap และรอบนี้จงใจไม่ตั้ง**: utility สเกลในตัวของ Tailwind
+   (`gap-2` `p-2.5` `mt-1.5` …) อีก ~604 จุด เดินผ่าน `--spacing: 0.25rem` ของธีมตั้งต้น
+   (node_modules/tailwindcss/theme.css) **ไม่ใช่ `--space-*` ของระบบ** — บล็อก @theme ใน
+   globals.css override แค่ line-height ไม่ได้แตะ --spacing เลย · วันนี้บังเอิญตรงกัน
+   ทุกค่าที่ใช้จริง (gap-2 = 8px = --space-2) ยกเว้น `-12` (48px ×3) ที่ไม่มีขั้นรองรับ
+   เพราะ --space-9 = 40px คือขั้นสูงสุด ⇒ **เลข 32 ต่ำไม่ใช่เพราะระบบสะอาด แต่เพราะ
+   ระยะห่างส่วนใหญ่ไปเดินบนสเกลที่ระบบไม่ได้เป็นเจ้าของ** · ตั้ง cap ทับผิวนั้นรอบนี้
+   = เพดาน 604 บนสำนวนที่คนส่วนใหญ่ใช้ จึงเว้นไว้เป็นงานของมันเอง (แต่ต้องรู้ว่ามีอยู่)
+
+   ⚠️ **ผิว style object ยังไม่ถูกนับเลย** — วัด 2026-09-02: padding/margin/gap ที่เป็น
+   เลขดิบใน `style={{…}}` มี **1,135 จุด** (8px ×193 · 12px ×163 · 10px ×118 · 6px ×116 ·
+   16px ×111 · …) = 35 เท่าของเพดานนี้ · เป็นงานรอบของมันเอง ไม่ใช่ของที่ลืม */
+const RAW_TAILWIND_SPACING_CAP = 32;
+
+/* ── ขนาด (width/height) ที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ──────
+   🔴 **"ขนาด" ไม่เคยมี cap ใดในระบบเลยทั้งสามผิว** — นี่คือด่านแรกของสเกลนี้
+
+   นับ (วัด 2026-09-02 · 13 จุด 6 ไฟล์): w h size min-w min-h max-w max-h basis
+   ในรูป `-[…]` ที่ไม่ใช่การอ้างโทเคน
+     max-w-[200px] ×2 · h-[60px] ×2 · max-w-[70%] · max-w-[250px] · h-[220px] ·
+     h-[260px] · h-[32px] · h-[30px] · w-[150px] · basis-[150px] · min-w-[120px]
+   ไม่นับ: `min-h-[var(--ctl-h)]` (5 จุด) · `w-(--w-panel)` · `w-full` · `w-4`
+
+   🪤 **ข้อความตอนตกต้องไม่พูดเรื่องโทเคน** เพราะสเกลนี้ไม่มีปลายทางให้ไป —
+   โทเคนขนาดใน globals.css ไม่มีบันไดเลย มีแต่ชื่อตามบทบาท (--ctl-h 40 ·
+   --topbar-h 52 · --icon-box-md 32 · --sidenav-w-expanded 240 · --dayrange-panel-w 560)
+   **ไม่มี --size-1..9 และไม่ควรมี** · กฎที่เขียนไว้ในรีโปบอกคนละเรื่องกับชั้นพิมพ์:
+   design-preview/page.js «.premium-input ตั้งความกว้าง 100% ความสูง --ctl-h ไว้แล้ว
+   — บางจุดเขียน h-[30px] ทับความสูงมาตรฐาน ทำให้ช่องกรอกในฟอร์มเดียวกันสูงไม่เท่ากัน»
+   ⇒ วิธีแก้คือ **ลบทิ้ง** ไม่ใช่ **แปลงเป็นโทเคน** ⇒ cap ตัวนี้เป็น **สายสะดุด**
+   (ห้ามงอกเพิ่มโดยไม่มีคนเถียง) ไม่ใช่ "หนี้รอแปลง" แบบ RAW_TAILWIND_TYPE_CAP
+
+   ⚠️ **2 จาก 13 ไม่ใช่ utility จริง** — settings/design-preview/page.js:690 คือ *ข้อความ*
+   ในหัว StatusNotice («อย่าเติม w-full / text-xs / h-[32px] ที่ปลายทาง») และ :693 คือ
+   `<code>h-[30px]</code>` บนหน้าเดียวกัน · ด่านนี้สแกนซอร์ซทั้งไฟล์เหมือนด่านอื่นในไฟล์นี้
+   (RAW_TAILWIND_TYPE_CAP ก็บันทึกเคส Input.js ไว้แบบเดียวกัน) จึงนับติดมาด้วย
+   **ห้ามใครไป "แก้" สองจุดนี้เพื่อลดเลข** — ถ้าวันหน้ามีคนเขียนข้อความนั้นใหม่จนเหลือ 11
+   ให้รูดเพดานลงตามปกติ · ทางเลือกที่ *ไม่* เลือกคือใส่ path ยกเว้นหน้า design-preview
+   ซึ่งเป็นทรงเดียวกับยามกรองพาธที่เพิ่งลบไปในคอมมิต 98dee306
+
+   ⚠️ AddressesEditor.js:275,283 (`h-[60px] resize-none` บน `<Textarea rows={2}>`) คือ
+   ของที่กฎในรีโปตัดสินไปแล้วว่าผิด — Textarea.js แปลง rows เป็น min-height จริงผ่าน
+   --ta-rows ตั้งแต่ตอนแก้บั๊ก "rows ไม่มีผลเลย" และ h-[60px] ตรึงกลับ + resize-none
+   ยังขัดกติกา "ช่องยาวมีทรงเดียว" ด้วย · รอบนี้ไม่แตะโค้ดแอปจึงนับรวมไว้ที่ 13 —
+   ใครแตะไฟล์นั้นคราวหน้าให้ถอนทิ้งแล้วรูดเพดานลงเป็น 11
+
+   ⚠️ ผิว style object ของสเกลนี้ยังไม่ถูกนับ — วัด 2026-09-02: width/height/minWidth/
+   minHeight/maxWidth/maxHeight/flexBasis ใน `style={{…}}` มี **326 จุด** รวมกับ 13 จุดนี้ = 339
+   ⇒ งานรอบของมันเอง ตั้งใจไม่ยัดรวมรอบนี้ */
+const RAW_TAILWIND_SIZE_CAP = 13;
 
 /* จำนวน **ค่าจุดตัดจอที่ต่างกัน** ในไฟล์ CSS — เพดาน ขึ้นไม่ได้ ลงได้อย่างเดียว
 
@@ -176,6 +379,43 @@ const RAW_LINE_HEIGHT_CAP = 9;
    (เคยเจอทางกลับมาแล้ว: ลบ --radius-xl ที่ "ไม่มีใครใช้" แล้วมุมหด 16→12px) */
 const RAW_RADIUS_CAP = 21;
 
+/* ── ความมนมุมเลขดิบใน **style object** (2026-09-02) ─────────────────────────
+   เพดานคนละตัวกับ RAW_RADIUS_CAP ข้างบนโดยเจตนา ไม่ยุบรวม
+
+   ⚠️ **ทำไมด่านเดิมมองไม่เห็น**: regex ข้างบนเขียนเป็น kebab-case (`border-radius:`)
+   ซึ่งไม่มีวันแมตช์ `borderRadius:` ของ JS ⇒ เลข 21 เป็นของฝั่ง CSS ล้วนมาตลอด
+   ทั้งที่วัด 2026-09-02 ได้อีก **73 จุด 28 ไฟล์** ในผิว style object (รวมสองผิว = 94)
+
+   🪤 **ทำไมไม่ยุบรวมเป็น 94**: คุณค่าทั้งหมดของเพดานพวกนี้อยู่ที่ ledger เหนือมัน —
+   ข้างบนเขียนไว้ว่าเหลืออะไรบ้าง (9px ×5 · 2px ×5 · 7px ×3 …) ยุบแล้ว ledger นั้น
+   อธิบายตัวเลขที่มันอยู่ข้างบนไม่ได้อีกต่อไป = ตัวเลขในคอมเมนต์ผิด ซึ่งรีโปนี้นับเป็นบั๊ก
+   และทางแก้คนละเรื่องกันจริง ๆ: ฝั่ง CSS = หยิบขั้นจาก --radius-* · ฝั่ง style object
+   เลขดิบมักเป็นอาการของ "อันนี้ไม่ควรเป็น inline style ตั้งแต่แรก" ซึ่งเป็นงานคนละขนาด
+   (กฎที่ได้จากชั้นพิมพ์: **hard-zero รวมได้ · ratchet ที่พิมพ์แค่ตัวเลขต้องแยก**)
+
+   นับ 73 จุด = 70 ลิเทอรัลตรง + **3 กิ่งของ ternary** (sahamit/po/[id]/page.js:612 ·
+   ui/FilterPopover.js:190 · ui/MultiSelectFilter.js:82) ซึ่ง regex บรรทัดเดียวอ่านไม่เจอ
+   กระจาย 12 ค่า: 8px ×23 · 10px ×14 · 3px ×11 · 6px ×5 · 9px ×5 · 2px ×5 · 4px ×4 ·
+   12px ×2 · 5px · 14px · 999px · 1px
+   ⇒ **38 จาก 73 ยกเข้าโทเคนได้โดยไม่ขยับพิกเซล** (8px → --radius 23 จุด ·
+   10px → --radius-md 14 · 999px → --radius-full 1) อีก 35 อยู่ระหว่างขั้น
+   🪤 และห้ามตั้งชื่อ `--radius-*` ใหม่มารองรับ — ดูเหตุผลที่ RAW_RADIUS_CAP ข้างบน
+
+   ใช้กติกา "อะไรคือดิบ" ชุดเดียวกับฝั่ง CSS เป๊ะ: ข้าม `50%` (13 จุด = ค่าเดียวล้วน 11 +
+   กิ่งของ ternary 2 — เปอร์เซ็นต์กับ
+   ความยาวไม่เท่ากันบน element ที่ไม่จัตุรัส) · ข้าม 0 / inherit · ข้ามค่าราย 4 มุม
+   (`"10px 10px 0 0"`) · ข้ามค่าที่มี var()
+   ⚠️ **ตัวเลขเปล่าคือ px** — ยืนยันกับ react-dom 19.2.4 ที่ติดตั้งจริง: unitlessNumbers
+   ไม่มี borderRadius ⇒ `borderRadius: 8` เรนเดอร์เป็น `8px` จึงเป็นเลขดิบเต็มตัว
+   (ที่อยู่ในลิสต์ unitless คือ lineHeight · opacity · fontWeight · zIndex)
+
+   ⚠️ **2 จุดที่ regex ใดก็นับไม่ได้ — เขียนไว้ตรงนี้เพราะ "มีของนับไม่ได้แล้วไม่บอก"
+   คือวิธีที่ 0 กลายเป็นคำโกหกรอบที่แล้ว**:
+     src/components/salesPlanning/dashboard/performance/shared.js:71 → `height / 2`
+     src/components/ui/Skeleton.js:5 → `radius` (มาจาก prop ค่าตั้งต้น 6)
+   ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่ */
+const RAW_RADIUS_JSX_CAP = 73;
+
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
    2026-07-30: ยกเงาของ "แผงลอย" ขึ้นเป็น --shadow-float (รู้จักธีมเอง) แล้ว 3 จุด
@@ -190,6 +430,33 @@ const RAW_RADIUS_CAP = 21;
    `shadow-*` (ในโค้ดใช้ shadow-lg / shadow-sm อยู่) เพิ่ม/ลบชื่อต้องวัดผลของ
    utility ด้วย ดู radiusScale.test.mjs / shadowScale.test.mjs */
 const RAW_SHADOW_CAP = 7;
+
+/* ── เงาที่เขียนเองใน **style object** (2026-09-02) ──────────────────────────
+   เพดานคนละตัวกับ RAW_SHADOW_CAP ข้างบน ด้วยเหตุผลเดียวกับความมนมุม (ดูที่นั่น)
+   ⚠️ ด่านเดิมเขียน `box-shadow:` แบบ kebab-case ⇒ `boxShadow:` ของ JS ไม่เคยถูกนับ
+   วัด 2026-09-02: **6 จุด 4 ไฟล์** (รวมสองผิว = 13)
+
+   ที่นี่ความต่างเห็นชัดที่สุดว่าทำไมห้ามยุบรวม: 6 จุดฝั่ง JSX เป็น **เงายกระดับของ
+   แผงลอย/การ์ด มีปลายทางให้ย้ายทันที** (--shadow-float / --shadow-md) ส่วน 7 จุดฝั่ง
+   CSS ledger ข้างบนระบุไว้ว่า **จงใจย้ายไม่ได้** (keyframes pulse 3 · เงาขอบคอลัมน์ตรึง 2
+   · .premium-row:hover · tooltip กราฟ) ⇒ เลข 13 จะกลบข้อเท็จจริงว่า "6 ทำได้เลย ·
+   7 พักไว้" ทิ้งทั้งดุ้น
+
+   6 จุดคือ: master/AddBrandButton.js:116 · pm/PredecessorPicker.js:71 ·
+   pm/SalesKpiDashboard.js:140,182 · pm/ProjectDocumentView.js:840,884
+   สองจุดหลังเป็น **กิ่งของ ternary** (`dragging ? "0 2px 8px …" : "none"`) ซึ่ง regex
+   บรรทัดเดียวอ่านไม่เจอ · ค่าที่พบ: 0 4px 12px rgba(0,0,0,0.1) ×2 · 0 8px 24px rgba(0,0,0,.14)
+   · 0 8px 28px rgba(0,0,0,0.28) · 0 2px 8px rgba(0,0,0,0.25) · 0 3px 10px rgba(0,0,0,0.25)
+
+   `none` ไม่นับ ทั้งเดี่ยว ๆ และตอนเป็นกิ่งของ ternary — ตรงกับกติกาฝั่ง CSS
+   (การ *ปิด* เงาไม่ต้องมีชื่อ)
+
+   ⚠️ **ค่าที่มี var() อยู่ข้างในถูกข้าม ทั้งที่เรขาคณิตเป็นเลขดิบ** — 2 จุดของ
+   DealTimelineTable.js:510,512 (`0 6px 20px -8px color-mix(… var(--accent) 45% …)`)
+   นี่คือกติกาเดียวกับฝั่ง CSS เป๊ะ ๆ ซึ่งก็ปล่อย globals.css แบบเดียวกัน (`0 24px 64px
+   rgba(15,15,20,.18), var(--shadow-md)`) ⇒ ถ้าจะอุดรูนี้ **ต้องอุดพร้อมกันสองผิว**
+   ห้ามเข้มกับ JSX ผิวเดียว ไม่งั้นสองผิวนิยามคำว่า "ดิบ" ไม่ตรงกันอีกรอบ */
+const RAW_SHADOW_JSX_CAP = 6;
 
 /* ความจางที่ยังเป็นเลขดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    ไม่นับ `0` / `1` (โปร่งสุด/ทึบสุด ไม่ใช่ขั้นของดีไซน์ — ส่วนใหญ่เป็นปลายทางของ
@@ -229,6 +496,31 @@ const RAW_OPACITY_CAP = 15;
      ตั้งใจให้เงียบกว่าชื่อ การคลี่ตัวอักษรจะสวนเจตนา
    - `.totalAmount` (-0.04em) — ตัวเลขใหญ่พิเศษ คนละบทบาทกับ --ls-tabular */
 const RAW_LETTER_SPACING_CAP = 4;
+
+/* ── ระยะห่างตัวอักษรค่าดิบใน **style object** (2026-09-02) ──────────────────
+   ⚠️ ด่านเดิมเขียน `letter-spacing:` แบบ kebab-case ⇒ `letterSpacing:` ไม่เคยถูกนับ
+   วัด 2026-09-02: มี **1 จุดเดียวทั้งระบบ**
+     src/components/salesPlanning/DealTimelineTable.js:451 → `letterSpacing: -1`
+   (ตัวเลขความคืบหน้า mono/tabular ที่ fontSize var(--fs-17) fontWeight var(--fw-bold))
+
+   🪤 **จุดนี้ไม่ใช่ "ค่าดิบธรรมดา" แต่เป็นความผิดชนิดที่ระบบตั้งใจห้าม** —
+   react-dom 19.2.4 unitlessNumbers **ไม่มี letterSpacing** ⇒ `-1` เรนเดอร์ออกมาเป็น
+   `letter-spacing: -1px` ไม่ใช่ค่า em ⇒ ตามกติกาฝั่ง CSS นี่คือ letterSpacingUnitViolations
+   (hard-zero: px ไม่ขยับตามขนาดตัวอักษร ป้ายเดียวกันที่ใช้ --fs-1 กับ --fs-5 จะห่างไม่เท่ากัน)
+
+   🪤 **กับดักของคนเขียนด่านรอบหน้า**: ถ้ายก regex หน่วยของฝั่ง CSS มาเปลี่ยนเป็น
+   camelCase ตรง ๆ (`/[0-9.]\s*(?:px|pt|rem|cm|mm|in|pc)\b/`) มันจะ **มองไม่เห็นหน่วยใน
+   `-1`** แล้วโยนจุดนี้ไปเข้า *เพดาน* แทน *ข้อห้าม* = ได้ตัวเลขที่ผ่านด่านทั้งที่เป็น
+   ความผิดที่ระบบห้ามไว้ ⇒ กฎของผิว style object ต้องรู้เองว่า "ตัวเลขเปล่า = px"
+
+   ทำไมรอบนี้เป็น **เพดาน 1** ไม่ใช่ hard-zero: ทางเดียวที่จะเป็น 0 วันนี้คือแก้โค้ดแอป
+   ซึ่งกติกาของรอบนี้ห้ามไว้ (ห้ามแก้โค้ดแอปเพื่อลดตัวเลขของด่านใหม่)
+   ⭐ **ทางแก้ที่วัดไว้ให้แล้ว**: --fs-17 = 36px (globals.css) ⇒ -1px = **-0.028em พอดี**
+   เขียน `letterSpacing: "-0.028em"` แล้วหน้าตาไม่ขยับแม้แต่พิกเซลเดียว
+   (อย่าใช้ -0.04em ของ `.totalAmount` ซึ่งเป็นพี่น้องฝั่ง CSS — ที่ 36px จะกลายเป็น
+   -1.44px = ขยับจริง 0.44px) · แก้แล้วจุดนี้ยังเป็น "ค่าดิบ" อยู่ (ยังไม่ใช่ --ls-*)
+   เพดานจึงยังเป็น 1 · จะรูดลงเป็น 0 ได้ต่อเมื่อยกเข้า --ls-tabular / --ls-heading จริง */
+const RAW_LETTER_SPACING_JSX_CAP = 1;
 
 /* ขนาดตัวอักษรที่ยังเป็นเลขดิบใน `className` — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    คือ `text-[13px]` / `md:text-[0.8rem]` / `hover:text-[11px]` (Tailwind arbitrary value)
@@ -281,6 +573,37 @@ const RAW_LETTER_SPACING_CAP = 4;
    เพราะ `src/components/ui/Input.js` มีคอมเมนต์อธิบายรูนี้ไว้ล่วงหน้าแล้วหนึ่งจุด */
 const RAW_TAILWIND_TYPE_CAP = 152;
 
+/* ── น้ำหนักตัวอักษรที่ซ่อนอยู่ในกิ่งของ ternary (style object · 2026-09-02) ──
+   `fontWeightViolations` ข้างล่างเป็น **hard-zero ที่พิมพ์ 0 มาตลอด ทั้งที่มีของจริง**
+   เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
+   ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
+   `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
+     src/app/pm/tasks/page.js:1042                     isToday ? 700 : 500
+     src/app/sales-planning/deals/[id]/page.js:151     s.state === "current" ? 800 : 650
+     src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
+     src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
+     src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
+     src/components/ui/FilterPopover.js:137            isActive ? 600 : 500
+     src/components/ui/FilterPopover.js:187            checked ? 600 : 400
+     src/components/ui/MultiSelectFilter.js:79         checked ? 600 : 400
+   (เลขบรรทัดข้างบนคือของ **ไฟล์จริง** — ด่านใหม่ใช้ blankBlockComments() จึงไม่เพี้ยน
+   เหมือนผลตรวจเก่าที่ตัดคอมเมนต์ทิ้งแล้วบรรทัดเลื่อน)
+
+   🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:151 =
+   `s.state === "current" ? 800 : 650` แต่ globals.css โหลด @font-face มาแค่ 400/500/600/700
+   (ตรงกับ --fw-normal/medium/semibold/bold) ⇒ ตามกฎ font matching ของ CSS ทั้ง 650 และ
+   800 ตกลงมาที่ 700 เท่ากัน = **ขั้นตอน "ปัจจุบัน" กับขั้นอื่นหนาเท่ากันบนจอ**
+   เจตนาที่คนเขียนตั้งใจไม่ปรากฏเลย และไม่มีอะไรฟ้องเพราะเบราว์เซอร์ปัดให้เงียบ ๆ
+
+   ทำไมเป็น **เพดาน** ไม่ใช่ผนวกเข้า hard-zero เดิม: ผนวกเมื่อไหร่ audit แดงทันที
+   8 ใบ และทางเดียวที่จะเขียวคือแก้โค้ดแอป ซึ่งกติกาของรอบนี้ห้ามไว้
+   ⇒ ปลายทางที่ถูกคือ **ยกทั้ง 8 จุดเข้า var(--fw-…) แล้วลบเพดานตัวนี้ทิ้ง**
+   ไม่ใช่ปล่อยให้มันค้างเป็นตัวเลขสวย ๆ (จะแก้ก็แก้บั๊ก 650/800 ไปพร้อมกัน)
+
+   นับ = **จำนวน declaration** ที่มีอย่างน้อยหนึ่งกิ่งเป็นตัวเลขเปล่า (ไม่ใช่จำนวนกิ่ง
+   ซึ่งวันนี้ = 16) เพื่อให้เลขตรงกับรายชื่อบรรทัดข้างบนแบบหนึ่งต่อหนึ่ง */
+const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
+
 /* ⭐ **ค่าว่างต้องพูดคำเดียวกันทั้งระบบ: ขีด `—`** (มติผู้ใช้ 2026-08-17
    กลับคำจากมติ 14/08 ที่เคยให้ขึ้น `N/A` — ด่านนี้ยังทำงานเหมือนเดิม เปลี่ยนแค่คำปลายทาง)
 
@@ -315,6 +638,167 @@ const smoothedLineViolations = [];
 const nativeFeedbackViolations = [];
 const tableContractViolations = [];
 const chartContractViolations = [];
+
+/* ══ ผิวที่สาม: สไตล์ที่เขียนลง `className` ด้วย Tailwind (2026-09-02) ═══════════
+   ระบบมีสไตล์อยู่ **สามผิว**: (1) ไฟล์ .css (2) `style={{…}}` (3) `className`
+   ด่านสเกลทุกตัวในไฟล์นี้เกิดมาจากผิวที่ 1 แล้วค่อย ๆ ขยาย ⇒ ก่อนรอบนี้ยังไม่มีสเกลไหน
+   เห็นครบสามผิวเลย และผลตรวจก็พิมพ์เลขสวย ๆ ให้อ่านทุกวัน
+   บทเรียนสด (2026-09-01): "Type-scale violations: 0" ยืนพื้นมาตลอดทั้งที่ผิวที่ 3 มี
+   152 จุด ⇒ **ศูนย์ปลอมอันตรายกว่าไม่มีด่าน** เพราะคนอ่านผลแล้วเลิกระวัง
+
+   ── กติกาเดียวที่ใช้ร่วมกันทุกด่านข้างล่าง ───────────────────────────────────
+   ข้ามเฉพาะรูปที่ **ค่าทั้งก้อนเป็นการอ้างโทเคน** `-[var(--x)]` (มี type hint นำหน้าได้)
+   นอกนั้นจับหมด · รูปวงเล็บกลมของ v4 `-(--x)` ไม่เข้าเงื่อนไข `-[` อยู่แล้วจึงรอดเอง
+   (ทั้งสองรูปคือรูปที่ถูก — วัดด้วย compile() ของ tailwindcss 4.3.0 ใน node_modules
+   ของ webapp เอง 2026-09-02: `rounded-(--radius-lg)` และ `rounded-[var(--radius-lg)]`
+   คาย `border-radius: var(--radius-lg)` เหมือนกันเป๊ะ)
+
+   🪤 **type hint ไม่ถูกตรวจสอบเลย — นี่คือประตูหลังที่ใหญ่ที่สุด** วัดจริงแล้ว
+   `rounded-[bogus:8px]` · `gap-[any:14px]` · `z-[any:999]` · `duration-[any:150ms]` ·
+   `leading-[any:1.4]` · `tracking-[any:.02em]` · `shadow-[any:0_1px_2px_#000]`
+   คอมไพล์ออกมา **เหมือนรูปเลขดิบเป๊ะ** ⇒ ด่านที่รับแค่ `(?:length:)?` จะโดนคนที่ถูก
+   ตีกลับพิมพ์คำมั่ว ๆ คำเดียวแล้วผ่าน ⇒ ทุก regex ที่นี่จึงรับค่าอะไรก็ได้ แล้วไป
+   *ยกเว้น* เฉพาะรูปโทเคน ไม่ใช่ไล่จับทีละหน่วย
+
+   🪤 **ตัวพิมพ์ใหญ่ของหน่วยไม่ใช่ยาม** — ต่างจาก `text-[13PX]` (ตกเป็น *สี* จึงไม่ต้อง
+   ใส่ flag i ให้ด่านชั้นพิมพ์) หมวดอื่นวัดแล้วผ่านหมดและได้ property ถูกต้อง:
+   `rounded-[8PX]` · `gap-[14PX]` · `h-[220PX]` · `duration-[150MS]`
+   ⇒ regex ที่นี่ไม่ผูกหน่วย จึงกินตัวใหญ่ได้เองโดยไม่ต้องพึ่ง flag
+
+   🪤 **ห้ามตัดหางเอาพยางค์สุดท้าย** ทุกตัวจึงขึ้นต้นด้วย `(?<![\w-])` ไม่ใช่ `\b` —
+   `\b` จับ `h` ใน `min-h-[…]` และ `w` ใน `max-w-[…]` ได้ (นี่คือกลไกที่ทำให้เคยนับ
+   ระยะห่าง+ขนาดได้ 60 ทั้งที่ของจริง 45) และ lookbehind ยังปล่อยให้ตัวห่อผ่านครบ:
+   `!` นำหน้า/ต่อท้าย · variant ซ้อน (`sm:max-md:` `md:hover:`) · variant ที่มี `[` และ
+   `:` อยู่ข้างใน (`data-[open=true]:` `supports-[display:grid]:` `[&>*]:` `max-[600px]:`)
+   ⇒ ห้ามตัดสินด้วยการ split ที่ `:` และห้ามใช้ `^`/`\s` เป็นขอบซ้าย
+
+   🪤 **`min-[600px]:` และ `max-[600px]:` เป็น _variant_ ไม่ใช่ขนาด** (คอมไพล์เป็น media
+   query — วัดแล้วทั้งคู่) ⇒ ด่านขนาดต้องเขียน `min-w-`/`min-h-`/`max-w-`/`max-h-`
+   ห้ามเขียน `min-\[` / `max-\[` เปล่า
+
+   ⚠️ **ผิวที่สี่ที่ทุกด่านตรงนี้จงใจไม่แตะ**: utility สเกลในตัวของ Tailwind
+   (`gap-2` 604 จุด · `duration-300` · `z-50` · `leading-4`) เดินผ่านสเกลของ Tailwind เอง
+   (`--spacing`, ขั้น duration/z ในตัว) ไม่ใช่โทเคนของระบบ · วัด 2026-09-02: ในโค้ดจริงมี
+   `duration-300` (layout.js) กับ `duration-500` (tax/page.js) อย่างละ 1 ส่วน `z-<เลข>`
+   และ `leading-<เลข>` มี 0 · ตั้ง hard-zero ทับผิวนั้นไม่ได้ (duration-300 จะแดงทันที
+   และ 604 จุดของ gap-* คือสำนวนที่คนส่วนใหญ่ใช้) ⇒ เป็นเรื่อง *นโยบาย* ไม่ใช่รูเชิงรูปเขียน
+   บันทึกไว้ตรงนี้เพื่อไม่ให้ใครอ่านเลข 0 ข้างล่างแล้วเข้าใจว่าครอบทุกอย่าง */
+
+/* ความมนมุม — 15 prefix (มุมเชิงตรรกะ ss/se/es/ee ใช้งานได้จริง วัดแล้ว)
+   จับ `rounded-[--radius-lg]` ด้วย: คอมไพล์เป็น `border-radius: --radius-lg` = CSS
+   ไม่ถูกต้อง เบราว์เซอร์ทิ้งทั้งบรรทัดเงียบ ๆ (ท่า v3 ที่ v4 ไม่รับแล้ว) */
+const TW_RAW_RADIUS = /(?<![\w-])rounded(?:-(?:t|b|l|r|s|e|tl|tr|bl|br|ss|se|es|ee))?-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[border-radius:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* เงา — 7 ชื่อที่แปลว่าสเกลเดียวกัน (shadow · inset-shadow · drop-shadow · text-shadow ·
+   ring · inset-ring · ring-offset) · ต้องมีตัวเลขในค่าถึงจะนับ และตัด hint `color:`
+   กับค่าที่ขึ้นต้นด้วย `#` ทิ้ง เพราะ 🪤 **prefix เดียวกันแปลคนละ property**:
+     shadow-[0_8px_24px_#000] -> box-shadow          (เงา)
+     shadow-[red] · shadow-[#123456] · shadow-[color:red] -> --tw-shadow-color (สีของเงา)
+     ring-[3px] -> box-shadow (ความหนา)  แต่  ring-(--x) -> --tw-ring-COLOR
+   ⚠️ `shadow-[--shadow-card]` (ท่า v3 ที่คาย `--tw-shadow: --shadow-card` แล้วตายเงียบ)
+   **ไม่ถูกจับที่ด่านนี้** เพราะไม่มีตัวเลขให้แยกออกจากสี — ไปถูกจับที่ TW_DEAD_TOKEN_FORM
+   ซึ่งกวาดรูปนั้นให้ทุกหมวดพร้อมกัน */
+const TW_RAW_SHADOW = /(?<![\w-])(?:(?:inset-|drop-|text-)?shadow|inset-ring|ring(?:-offset)?)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])(?![a-z-]*color:)(?!#)[^\]\s]*\d[^\]\s]*\]|(?<![\w-])\[box-shadow:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ความสูงบรรทัด — 🪤 **มีรูปที่ไม่มีคำว่า leading อยู่เลย**: modifier ทับหลังขนาด
+   ตัวอักษร `text-base/7` · `text-[13px]/[1.4]` คาย line-height ออกมาจริง (วัดแล้ว)
+   ⇒ ด่านที่จับแค่ `leading-\[` มองไม่เห็น · ฐานที่รับเป็น modifier ต้องเป็น *ขนาด*
+   เท่านั้น (`text-[…]` หรือชื่อขั้น xs/sm/base/lg/xl) ไม่ใช่สี ไม่งั้น `text-white/50`
+   (ความทึบของสี) จะโดนตีเป็นความสูงบรรทัด
+   ไม่มีกับดัก color แบบ text-[…] ที่นี่: `leading-[var(--fs-3)]` ก็ยังได้ line-height
+
+   ⚠️ **ฐานของ modifier ต้องขึ้นต้นด้วยตัวเลข** (`[0-9.]` หรือมี `length:` นำ) ไม่ใช่
+   `\[[^\]\s]*\]` เปล่า ๆ — ไม่งั้น `text-[var(--red)]/50` และ `text-[#fff]/50` ซึ่งคอมไพล์
+   ออกมาเป็น `color: color-mix(…)` **ล้วน ไม่มี line-height สักบรรทัด** จะโดนตีเป็น
+   ความสูงบรรทัด · รูป `text-[var(--…)]` เป็นสำนวนที่รีโปนี้ใช้จริง 421 จุด และด่านนี้เป็น
+   hard-zero ⇒ วันแรกที่มีคนเขียนความทึบของสี CI จะแดงโดยหาสาเหตุไม่เจอ (แก้ 2026-09-02) */
+const TW_RAW_LEADING = /(?<![\w-])leading-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[line-height:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])text-(?:\[(?:length:)?[0-9.][^\]\s]*\]|xs|sm|base|lg|[2-9]?xl)\/(?:\[(?!\s*var\()[^\]\s]*\]|\d)/g;
+
+/* ระยะห่างตัวอักษร — ตัวเดียวไม่มีญาติ และรับชนิดเดียว จึงไม่มีกับดักชนิดผิด
+   ⚠️ ค่าติดลบเขียนได้ **สองรูป** ไม่ใช่รูปเดียว — วัดด้วย compile() ของ tailwind 4.3.0:
+     tracking-[-0.01em]  -> letter-spacing: -0.01em
+     -tracking-[0.01em]  -> letter-spacing: calc(0.01em * -1)   ← สำนวนที่ Tailwind สอนเอง
+   ถ้าไม่รับ `-?` ไว้ ด่านจะข้ามได้ด้วยการย้ายเครื่องหมายลบมาไว้หน้าคลาส และรีโปนี้ใช้ค่าลบ
+   จริงทุกตัว (--ls-heading -0.02em · --ls-tabular -0.01em · .totalAmount -0.04em)
+   ⇒ เป็นประตูหลังที่คนจะเดินเข้าโดยไม่ได้ตั้งใจด้วยซ้ำ (แก้ 2026-09-02) */
+const TW_RAW_TRACKING = /(?<![\w-])-?tracking-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[letter-spacing:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ⭐ **ชื่อขั้นในตัวของ Tailwind ก็เป็นค่าดิบ** — ด่านข้างบนจับแต่รูปวงเล็บ `[…]` จึงพิมพ์ 0
+   ทั้งที่มีของจริงอยู่วันนี้ 10 จุด นี่คือ "ศูนย์ปลอม" รูปเดียวกับที่ชั้นพิมพ์เคยเป็น (2026-09-02)
+
+   ค่าจริงที่คอมไพล์ออกมา (node_modules/tailwindcss/theme.css) เทียบกับขั้นของระบบ:
+     leading-tight 1.25 · snug 1.375 · normal 1.5 · relaxed 1.625 · loose 2
+       ⇒ สามตัวแรก **ต่ำกว่า --lh-thai (1.65)** ซึ่งเป็นขั้นต่ำของกล่องที่ห่อข้อความไทย
+         (ต่ำกว่านั้นสระบน/ล่างโดนกล่องบรรทัดตัด — ดู --lh-* ที่ globals.css:541-545)
+       ⚠️ ของจริง 6 จุดที่ยังค้าง **สามจุดเป็นข้อความไทยล้วน**:
+         database/customers/[id]:596,599 · database/customers:402 (leading-relaxed 1.625)
+         database/products:555 · database/CostVatLines:16 (leading-tight 1.25)
+         AttachmentsPanel:830 (leading-snug 1.375)
+     tracking-wider 0.05em ⇒ ป้าย uppercase ของระบบใช้ --ls-label (0.08em) ไม่ใช่ค่านี้
+       ของจริง 4 จุด: database/customers/[id]:73 · database/products/[id]:59,445,723
+
+   ตั้งเป็น **เพดาน** ไม่ใช่ hard-zero เพราะรอบนี้ห้ามแก้โค้ดแอปเพื่อลดตัวเลข
+   ⚠️ ห้ามขยับขึ้น · ยกเข้าโทเคนแล้วต้องรูดลง (แก้ leading ต้องเปิดหน้าดูจริง — ข้อความไทย
+   ที่บรรทัดชิดกว่า 1.65 จะเห็นสระขาดทันที ส่วน tracking เปลี่ยนความกว้างป้าย) */
+const TW_NAMED_LEADING = /(?<![\w-])leading-(?:none|tight|snug|normal|relaxed|loose)(?![\w-])/g;
+const TW_NAMED_TRACKING = /(?<![\w-])-?tracking-(?:tighter|tight|normal|wide|wider|widest)(?![\w-])/g;
+const TW_NAMED_LEADING_CAP = 6;
+const TW_NAMED_TRACKING_CAP = 4;
+
+/* น้ำหนักตัวอักษร — 🪤 **prefix `font-` พ้องกับตระกูลฟอนต์เต็ม ๆ** วัดแล้ว:
+     font-[600] · font-[number:600] · font-[any:600] -> font-weight
+     font-[Arial] · font-[family-name:Arial] · font-(family-name:--x) -> font-family
+     font-(--x) -> **weight** ไม่ใช่ family
+   กติกาที่ Tailwind ใช้แยกคือ "ตัวแรกของค่าเป็นเลข/var() = น้ำหนัก · ตัวอักษรล้วน =
+   ตระกูล" ⇒ regex ตัดสินจาก **ตัวแรกในวงเล็บเป็นเลข** ไม่ใช่จาก "มี font- นำหน้า"
+   (ตระกูลฟอนต์มีด่านของตัวเองอยู่แล้ว: fontFamilyViolations)
+   ⚠️ ที่ยังไม่จับโดยรู้ตัว: `font-[bogus:Arial]` ซึ่ง Tailwind ตีเป็น *น้ำหนัก* แล้วคาย
+   `font-weight: Arial` = CSS ไม่ถูกต้อง ตายเงียบ — ยังไม่มีของจริงสักจุด และการเปิด
+   regex ให้กว้างถึงตรงนั้นจะไปกิน font-[Arial] ที่ถูกต้องด้วย */
+const TW_RAW_FONT_WEIGHT = /(?<![\w-])font-\[(?!family-name:)(?:[a-z-]+:\s*)?[0-9][^\]\s]*\]|(?<![\w-])\[font-weight:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ชั้นซ้อน — `order-*` เป็นคนละ property แต่แปลว่า "ลำดับ" เหมือนกัน จึงกวาดคู่กัน
+   `-z-[999]` (คาย calc(999*-1)) ต้องผ่าน regex ให้ได้ด้วย */
+const TW_RAW_Z_INDEX = /(?<![\w-])-?(?:z|order)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[z-index:(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* จังหวะ — 🪤 สาม prefix ที่หน้าตาใกล้กันแต่คนละ property (วัดแล้วทั้งสาม):
+     duration-[150ms] -> transition-duration · delay-[150ms] -> transition-**delay**
+     transition-[opacity] · transition-(--x) -> transition-**property** (ไม่ใช่เวลา)
+   ⇒ `transition-[…]` ห้ามนับเป็นเวลาดิบ จึงไม่อยู่ในลิสต์ */
+const TW_RAW_MOTION = /(?<![\w-])(?:duration|delay|ease|animate)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[(?:transition-duration|transition-delay|transition-timing-function|animation):(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ระยะห่าง (เพดาน ดู RAW_TAILWIND_SPACING_CAP) — alternation เรียงยาวก่อนสั้น ไม่งั้น
+   `p` กิน `pt/pl` และ `m` กิน `mb` · ต้องยอมให้มี `-` นำหน้า (`-mt-[…]` · `-space-y-[…]`) */
+const TW_RAW_SPACING = /(?<![\w-])-?(?:scroll-[mp][tblrxyse]?|space-[xy]|inset-[xy]|inset|gap-[xy]|gap|top|bottom|left|right|start|end|[pm][xytblrse]?)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ขนาด (เพดาน ดู RAW_TAILWIND_SIZE_CAP) — `size-[…]` ตั้งทั้งกว้างและสูงพร้อมกัน */
+const TW_RAW_SIZE = /(?<![\w-])-?(?:min-[wh]|max-[wh]|size|basis|[wh])-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+
+/* ⭐ รูป `-[--token]` (ท่า v3) — **ตายเงียบทุกหมวด** วัดด้วย compile() 2026-09-02:
+     rounded-[--radius-lg] -> border-radius: --radius-lg   (ค่าไม่ใช่ CSS ที่ถูกต้อง)
+     shadow-[--shadow-card] -> --tw-shadow: --shadow-card  (ไม่ได้ตั้ง box-shadow เลย)
+   เบราว์เซอร์ทิ้งประกาศทั้งบรรทัดโดยไม่มี error ⇒ สไตล์หายไปเฉย ๆ แบบเดียวกับ
+   `text-[var(--fs-7)]` ที่กลายเป็นสี · ต้องเป็น `-[var(--x)]` หรือ `-(--x)` เท่านั้น
+   วันนี้ 0 จุดทั้งเว็บ จึงตั้ง hard-zero ได้ฟรี และควรตั้งก่อนที่จะมีคนเขียนจุดแรก */
+const TW_DEAD_TOKEN_FORM = /(?<![\w-])[a-z][\w-]*-\[--[\w-]+\]/g;
+
+const tailwindRadiusViolations = [];
+const tailwindShadowViolations = [];
+const tailwindLeadingViolations = [];
+const tailwindTrackingViolations = [];
+let twNamedLeadingCount = 0;
+let twNamedTrackingCount = 0;
+const tailwindFontWeightViolations = [];
+const tailwindZIndexViolations = [];
+const deadTokenFormViolations = [];
+const motionSurfaceViolations = [];
+let rawTailwindSpacingCount = 0;
+let rawTailwindSizeCount = 0;
+let rawRadiusJsxCount = 0;
+let rawShadowJsxCount = 0;
+let rawLetterSpacingJsxCount = 0;
+let jsxFontWeightBranchCount = 0;
+const jsxFontWeightBranchList = [];
 
 /* ไฟล์ที่ได้รับอนุญาตให้ใช้ `family="matrix"` (คอลัมน์แรกแช่แข็ง) — 9 ไฟล์ 15 จุด
    ณ 2026-07-31 · ดูเหตุผลและข้อควรระวังที่จุดตรวจด้านล่าง */
@@ -371,7 +855,14 @@ const matrixFamilyViolations = [];
    documents/documentShell.js · printTheme.js · sales/quotationDocumentFonts.js) */
 for (const file of uiFiles) {
   const rel = relative(file);
-  const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
+  const raw = fs.readFileSync(file, "utf8");
+  const source = withoutBlockComments(raw);
+  /* กฎที่เพิ่มตั้งแต่ 2026-09-02 ใช้ `lined` — เลขบรรทัดตรงกับไฟล์จริง (ดู blankBlockComments)
+     และล้างคอมเมนต์บรรทัด `//` ด้วย (ดู blankLineComments) ⇒ **กว้างกว่า `source` หนึ่งชั้น**
+     ตั้งใจให้ต่าง: กฎเก่านับคอมเมนต์บรรทัดเป็นของจริงมาตลอด เลขเพดานทุกตัวคาลิเบรตบนนั้น
+     เปลี่ยน `source` ตามจะทำให้เลขเดิมขยับทั้งแผง — ของใหม่จึงเริ่มจากฐานที่ถูกตั้งแต่วันแรก
+     แทนที่จะไปรื้อของเก่า (ถ้าวันหน้าจะยกกฎเก่ามาใช้ฐานนี้ ต้องรูดเพดานพร้อมกันทุกตัว) */
+  const lined = blankLineComments(blankBlockComments(raw));
   if (/\btype\s*=\s*["'](?:monotone|basis|natural)["']/.test(source)) {
     smoothedLineViolations.push(rel);
   }
@@ -482,6 +973,55 @@ for (const file of uiFiles) {
         `${rel}:${index + 1} text-[var(${hit[1]})] → text-[length:var(${hit[1]})]`,
       );
     }
+  });
+
+  /* ── ผิวที่สาม: สเกลอื่น ๆ ที่เขียนลง `className` (2026-09-02) ────────────
+     ทุกหมวดข้างล่างวัด 2026-09-02 แล้วได้ **0 จุด** ⇒ ตั้งเป็น hard-zero ได้ทันที
+     โดยไม่ต้องแก้โค้ดแอปสักบรรทัด และควรตั้งตอนที่ยังเป็น 0 — ไม่ใช่รอให้มีจุดแรก
+     แล้วค่อยตั้งเป็นเพดาน (เพดานแปลว่า "ยอมให้ค้าง" ซึ่งที่นี่ไม่มีอะไรให้ค้าง)
+     คำอธิบายรายหมวด + หลักฐาน compile อยู่ที่บล็อก TW_RAW_* ด้านบนไฟล์ */
+  lined.split(/\r?\n/).forEach((line, index) => {
+    const at = `${rel}:${index + 1}`;
+    for (const hit of line.matchAll(TW_RAW_RADIUS)) {
+      tailwindRadiusViolations.push(`${at} ${hit[0]} → rounded-(--radius-md) หรือ rounded-md`);
+    }
+    for (const hit of line.matchAll(TW_RAW_SHADOW)) {
+      /* 🪤 หางข้อความนี้เคยเขียนว่า `shadow-md` — **ผิด** วัดด้วย compile() ของ tailwind 4.3.0
+         พร้อม globals.css จริง (2026-09-02): เงากับความมนมุมทำงานคนละแบบ
+           rounded-md -> `border-radius: var(--radius-md)`  ⇒ ค่าใน :root ของเราชนะ = ใช้ได้
+           shadow-md  -> `--tw-shadow: 0 4px 6px -1px rgb(0 0 0/.1), …` = **ฝังเลขของ Tailwind
+                         ตรง ๆ ไม่แตะ var(--shadow-md) ของเราเลย**
+         เพราะ `--shadow-*` ของระบบประกาศใน `:root` ไม่ใช่ `@theme` (บล็อก @theme ที่
+         globals.css:149-158 มีแค่ line-height ของขั้นตัวอักษร) ⇒ ต้องแนะนำรูปวงเล็บกลม
+         ที่อ้างโทเคนตรง ๆ เท่านั้น ห้ามแนะนำชื่อขั้นเปล่า ๆ */
+      tailwindShadowViolations.push(`${at} ${hit[0]} → shadow-(--shadow-float) / shadow-(--shadow-md)`);
+    }
+    for (const hit of line.matchAll(TW_RAW_LEADING)) {
+      tailwindLeadingViolations.push(`${at} ${hit[0]} → leading-(--lh-thai) (ข้อความไทยต้อง ≥ 1.65)`);
+    }
+    for (const hit of line.matchAll(TW_RAW_TRACKING)) {
+      tailwindTrackingViolations.push(`${at} ${hit[0]} → tracking-(--ls-heading / --ls-tabular / --ls-label)`);
+    }
+    for (const _ of line.matchAll(TW_NAMED_LEADING)) {
+      twNamedLeadingCount += 1;
+    }
+    for (const _ of line.matchAll(TW_NAMED_TRACKING)) {
+      twNamedTrackingCount += 1;
+    }
+    for (const hit of line.matchAll(TW_RAW_FONT_WEIGHT)) {
+      tailwindFontWeightViolations.push(`${at} ${hit[0]} → font-(--fw-semibold)`);
+    }
+    for (const hit of line.matchAll(TW_RAW_Z_INDEX)) {
+      tailwindZIndexViolations.push(`${at} ${hit[0]} → z-(--z-…)`);
+    }
+    for (const hit of line.matchAll(TW_RAW_MOTION)) {
+      motionSurfaceViolations.push(`${at} ${hit[0]} → duration-(--motion-…)`);
+    }
+    for (const hit of line.matchAll(TW_DEAD_TOKEN_FORM)) {
+      deadTokenFormViolations.push(`${at} ${hit[0]} → ${hit[0].replace(/\[(--[\w-]+)\]/, "($1)")} (ท่า v3 คายค่าที่ไม่ใช่ CSS แล้วตายเงียบ)`);
+    }
+    for (const _ of line.matchAll(TW_RAW_SPACING)) rawTailwindSpacingCount += 1;
+    for (const _ of line.matchAll(TW_RAW_SIZE)) rawTailwindSizeCount += 1;
   });
 
   /* น้ำหนักตัวอักษรต้องมาจาก --fw-* — ชั้นพิมพ์คุมแต่ *ขนาด* มาตลอด ส่วน *น้ำหนัก*
@@ -630,12 +1170,23 @@ for (const file of uiFiles) {
 
      ⚠️ **ห้าเพดานนี้ไม่ได้กวาดฝั่ง JSX เท่ากันทุกตัว** — อย่าอ่านรวมเป็น "ทั้ง CSS และ JSX":
        · ความสูงบรรทัด — นับสองรูป `line-height:` และ `lineHeight:` ⇒ ครอบ JSX จริง
-       · ความจาง — regex เขียนเป็น `opacity:` ซึ่งเป็นคำเดียวกันทั้งสองภาษา ⇒ ครอบ JSX
-         โดยบังเอิญ ไม่ใช่โดยตั้งใจ
-       · ความมนมุม · เงา · ระยะห่างตัวอักษร — มีแต่รูป kebab-case ของ CSS
-         `borderRadius:` / `boxShadow:` / `letterSpacing:` ใน style object **ไม่มีด่านไหนเห็นเลย**
-     วัด 2026-09-02 ในไฟล์ที่ลูปนี้กวาด: borderRadius 94 · boxShadow 9 · letterSpacing 1 จุด
-     ที่ไม่ถูกนับ ⇒ เลข 21/21 ของความมนมุมเป็นของฝั่ง CSS ล้วน ไม่ใช่ยอดรวมทั้งระบบ
+         (วัด 2026-09-02: ผิว style object มี lineHeight 11 จุด — เลขดิบ 4 นับครบ ·
+         โทเคน 5 · template literal 2 จุดของแถบ Gantt ที่ regex ใดก็อ่านไม่ได้)
+       · ความมนมุม · เงา · ระยะห่างตัวอักษร — มีแต่รูป kebab-case ของ CSS ⇒ ผิว
+         style object ไม่เคยถูกนับ · **แก้แล้วในรอบ 2026-09-02** ด้วยเพดานแยกสามตัว
+         ข้างล่าง (RAW_RADIUS_JSX_CAP 73 · RAW_SHADOW_JSX_CAP 6 · RAW_LETTER_SPACING_JSX_CAP 1)
+         ⇒ เลข 21/7/4 ของสามตัวข้างบนเป็นของ **ฝั่ง CSS ล้วน** ไม่ใช่ยอดรวมทั้งระบบ
+         (บรรทัดรายงานเปลี่ยนคำเป็น "ใน CSS" ให้ตรงกับความจริงแล้ว)
+       · 🔴 ความจาง — **คอมเมนต์เดิมตรงนี้เขียนผิด** เคยบอกว่า regex `opacity:`
+         "ครอบ JSX โดยบังเอิญ" · วัดจริง 2026-09-02: ผิว style object มีค่าดิบ **27 จุด**
+         แต่ regex นี้จับได้แค่ **6** (22%) เพราะหลุดสองชั้น — (ก) prefix `(?:^|[;{])\s*`
+         บังคับให้อักขระก่อนหน้าเป็น `;` หรือ `{` ⇒ ทุกจุดที่ตามหลังคอมมาหายหมด
+         (ข) ตัวจับค่า `[^;}]+` กินคอมมาท้ายกับพร็อพถัดไปเข้าไปด้วย ⇒ `Number()` = NaN
+         แล้วถูกข้าม แม้จุดที่ prefix ผ่านแล้วก็ตาม · ที่หลุด 21 จุดครึ่งหนึ่งเป็น ternary
+         (`blocked ? 0.4 : 1` · `r.cancelled ? 0.55 : 1` · `complete || active ? 1 : 0.62`)
+         ⇒ เลข 15 คือ CSS 9 + JSX 6 ไม่ใช่ยอดรวม · **รอบ 2026-09-02 ไม่ตั้งเพดานใหม่ให้
+         หมวดนี้** เพราะเพดานเดิมคาบสองผิวอยู่แล้ว การเติมตัวที่สองจะนับ 6 จุดซ้ำสองที่
+         ⇒ ต้องแก้ที่ regex เดิม (แล้ว 15 จะขยับ) ซึ่งเป็นงานของรอบมันเอง
      (รูเดียวกับที่ชั้นพิมพ์เคยเจอตอนขยายจาก CSS ไป className — ดู RAW_TAILWIND_TYPE_CAP) */
   for (const _ of source.matchAll(/line-height:\s*[0-9.]+\s*[;}]/g)) rawLineHeightCount += 1;
   for (const _ of source.matchAll(/lineHeight:\s*(?:"[0-9.]+"|'[0-9.]+'|[0-9.]+)\s*[,}]/g)) rawLineHeightCount += 1;
@@ -679,6 +1230,83 @@ for (const file of uiFiles) {
     if (value.includes("var(") || value === "0") return;
     rawLetterSpacingCount += 1;
   });
+
+  /* ── ผิวที่สอง: เลขดิบใน `style={{…}}` ที่ไม่มีด่านไหนเห็น (2026-09-02) ────
+     สามพร็อพนี้เขียนแบบ camelCase ⇒ regex kebab-case ข้างบนไม่มีวันแมตช์ · และของจริง
+     ส่วนหนึ่งเป็น **กิ่งของ ternary** ซึ่ง regex บรรทัดเดียวอ่านไม่เจอด้วยซ้ำ จึงต้องใช้
+     styleDeclarations() ที่แตกกิ่งให้ (ดูคำอธิบายที่หัวไฟล์)
+     กติกา "อะไรคือดิบ" ลอกจากฝั่ง CSS ข้างบนมาให้ตรงกันทุกข้อ **รวมทั้งข้อที่รู้ว่าหลวม**
+     (ค่าที่มี var() อยู่ข้างในถูกข้ามทั้งสองผิวเท่ากัน) — จะอุดต้องอุดพร้อมกัน
+     ⚠️ ตัวเลขเปล่าใน style object = px (react-dom ไม่มี borderRadius/letterSpacing
+     ในลิสต์ unitlessNumbers) ⇒ `borderRadius: 8` และ `letterSpacing: -1` เป็นเลขดิบเต็มตัว */
+  for (const { branches } of styleDeclarations(lined, "borderRadius")) {
+    for (const branch of branches) {
+      if (branch.kind === "number") {
+        if (Number(branch.text) !== 0) rawRadiusJsxCount += 1;
+        continue;
+      }
+      if (branch.kind !== "string") continue; // นิพจน์ (`height / 2` · prop) — ไม่มีลิเทอรัลให้อ่าน
+      const value = branch.text.trim();
+      if (/\s/.test(value) || value.includes("var(") || value.endsWith("%")) continue;
+      if (/^0[a-z]*$/.test(value) || value === "inherit") continue;
+      if (/^[0-9.]+(?:px|rem|em)$/.test(value)) rawRadiusJsxCount += 1;
+    }
+  }
+
+  for (const { branches } of styleDeclarations(lined, "boxShadow")) {
+    for (const branch of branches) {
+      if (branch.kind !== "string") continue;
+      const value = branch.text.trim();
+      if (!value || value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
+      rawShadowJsxCount += 1;
+    }
+  }
+
+  for (const { branches } of styleDeclarations(lined, "letterSpacing")) {
+    for (const branch of branches) {
+      if (branch.kind === "number") {
+        if (Number(branch.text) !== 0) rawLetterSpacingJsxCount += 1;
+        continue;
+      }
+      if (branch.kind !== "string") continue;
+      const value = branch.text.trim();
+      if (value.includes("var(") || value === "0" || value === "normal") continue;
+      rawLetterSpacingJsxCount += 1;
+    }
+  }
+
+  /* น้ำหนักตัวอักษรที่ซ่อนในกิ่ง ternary (ดู JSX_FONT_WEIGHT_BRANCH_CAP)
+     นับเป็น *declaration* ไม่ใช่จำนวนกิ่ง เพื่อให้เลขตรงกับรายชื่อบรรทัดใน ledger */
+  for (const { line, value, branches } of styleDeclarations(lined, "fontWeight")) {
+    if (!branches.some((branch) => branch.kind === "number")) continue;
+    jsxFontWeightBranchCount += 1;
+    jsxFontWeightBranchList.push(`${rel}:${line} fontWeight: ${value}`);
+  }
+
+  /* จังหวะในผิว style object — `motionViolations` ข้างบนต้องการ `;` ปิด declaration
+     ซึ่ง style object ปิดด้วย `,` หรือ `}` ⇒ ไม่เคยแมตช์เลย
+     วัด 2026-09-02: เจอ 4 จุด (AttachmentsPanel ×3 · ProjectDocumentView ×1) แต่ทั้งหมด
+     เป็น `spin 0.7s linear infinite` = 700ms ≥ 500ms ซึ่งกติกาเดิมยกเว้นให้อยู่แล้ว
+     ⇒ **หนี้จริง 0** ตั้ง hard-zero ได้ทันทีโดยไม่ต้องแตะโค้ดแอป
+     ⚠️ บล็อกนี้ต้องกันไฟล์ .css ออก — ต่างจาก borderRadius/boxShadow/letterSpacing ที่
+     สะกดคนละแบบสองภาษา คำว่า `transition`/`animation` สะกด**เหมือนกันเป๊ะ**ทั้งสองภาษา
+     ถ้าปล่อยให้ตัวอ่านค่าแบบ JS ไปกิน declaration ของ CSS จะได้ทั้งค่าซ้ำกับด่านข้างบน
+     และค่าที่อ่านผิด (CSS ปิดด้วย `;` ซึ่งตัวอ่านนี้ไม่รู้จัก) */
+  if (rel.endsWith(".js")) {
+    for (const prop of ["transition", "transitionDuration", "transitionDelay", "animation", "animationDuration"]) {
+      for (const { line, branches } of styleDeclarations(lined, prop)) {
+        for (const branch of branches) {
+          if (branch.kind !== "string") continue;
+          if (/prefers-reduced-motion|0\.01ms/.test(branch.text)) continue;
+          for (const hit of branch.text.matchAll(/(?<![\w-])(\d*\.?\d+)(ms|s)(?![\w-])/g)) {
+            const ms = hit[2] === "ms" ? Number(hit[1]) : Number(hit[1]) * 1000;
+            if (ms >= 500) continue;
+            motionSurfaceViolations.push(`${rel}:${line} ${prop}: ${hit[0]} → var(--motion-…)`);
+          }
+        }
+      }
+    }
+  }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
@@ -931,6 +1559,65 @@ const failures = [
   ...(rawTailwindTypeCount < RAW_TAILWIND_TYPE_CAP
     ? [`ขนาดตัวอักษรดิบใน className ลดได้แล้ว: เหลือ ${rawTailwindTypeCount} แต่ RAW_TAILWIND_TYPE_CAP ยังเขียน ${RAW_TAILWIND_TYPE_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
     : []),
+  /* ── ด่านผิว className + style object ที่เพิ่ม 2026-09-02 ────────────────── */
+  ...tailwindRadiusViolations.map((item) => `ความมนมุมเลขดิบใน className (หยิบขั้นจาก --radius-*): ${item}`),
+  ...tailwindShadowViolations.map((item) => `เงาที่เขียนเองใน className (แผงลอยใช้ --shadow-float, การ์ดใช้ --shadow-sm/md/lg): ${item}`),
+  ...tailwindLeadingViolations.map((item) => `ความสูงบรรทัดเลขดิบใน className (หยิบขั้นจาก --lh-*): ${item}`),
+  ...tailwindTrackingViolations.map((item) => `ระยะห่างตัวอักษรค่าดิบใน className (หยิบจาก --ls-*): ${item}`),
+  ...(twNamedLeadingCount > TW_NAMED_LEADING_CAP
+    ? [`ความสูงบรรทัดชื่อขั้นของ Tailwind ใน className เพิ่มขึ้น: ${twNamedLeadingCount} > เพดาน ${TW_NAMED_LEADING_CAP} — tight/snug/relaxed ต่ำกว่า --lh-thai (1.65) ข้อความไทยสระขาด ใช้ leading-(--lh-thai / --lh-text / --lh-relaxed)`]
+    : []),
+  ...(twNamedLeadingCount < TW_NAMED_LEADING_CAP
+    ? [`ความสูงบรรทัดชื่อขั้นลดได้แล้ว: เหลือ ${twNamedLeadingCount} แต่ TW_NAMED_LEADING_CAP ยังเขียน ${TW_NAMED_LEADING_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(twNamedTrackingCount > TW_NAMED_TRACKING_CAP
+    ? [`ระยะห่างตัวอักษรชื่อขั้นของ Tailwind ใน className เพิ่มขึ้น: ${twNamedTrackingCount} > เพดาน ${TW_NAMED_TRACKING_CAP} — ป้ายของระบบใช้ tracking-(--ls-label) (0.08em) ไม่ใช่ wider (0.05em)`]
+    : []),
+  ...(twNamedTrackingCount < TW_NAMED_TRACKING_CAP
+    ? [`ระยะห่างตัวอักษรชื่อขั้นลดได้แล้ว: เหลือ ${twNamedTrackingCount} แต่ TW_NAMED_TRACKING_CAP ยังเขียน ${TW_NAMED_TRACKING_CAP} (รูดเพดานลง)`]
+    : []),
+  ...tailwindFontWeightViolations.map((item) => `น้ำหนักตัวอักษรเลขดิบใน className (หยิบจาก --fw-*): ${item}`),
+  ...tailwindZIndexViolations.map((item) => `z-index เลขดิบใน className (หยิบจาก --z-*): ${item}`),
+  ...motionSurfaceViolations.map((item) => `เวลา/จังหวะนอกชั้นกลางในผิว className หรือ style object: ${item}`),
+  ...deadTokenFormViolations.map(
+    (item) => `รูป -[--token] ของ Tailwind v3 คายค่าที่ไม่ใช่ CSS แล้วเบราว์เซอร์ทิ้งเงียบ ๆ (ต้องเป็น -(--token) หรือ -[var(--token)]): ${item}`,
+  ),
+  ...(rawTailwindSpacingCount > RAW_TAILWIND_SPACING_CAP
+    ? [`ระยะห่างเลขดิบใน className เพิ่มขึ้น: ${rawTailwindSpacingCount} > เพดาน ${RAW_TAILWIND_SPACING_CAP} — หยิบขั้นจาก --space-* แล้วเขียน gap-[var(--space-3-5)] แทน gap-[14px]`]
+    : []),
+  ...(rawTailwindSpacingCount < RAW_TAILWIND_SPACING_CAP
+    ? [`ระยะห่างเลขดิบใน className ลดได้แล้ว: เหลือ ${rawTailwindSpacingCount} แต่ RAW_TAILWIND_SPACING_CAP ยังเขียน ${RAW_TAILWIND_SPACING_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(rawTailwindSizeCount > RAW_TAILWIND_SIZE_CAP
+    ? [`ขนาดเลขดิบใน className เพิ่มขึ้น: ${rawTailwindSizeCount} > เพดาน ${RAW_TAILWIND_SIZE_CAP} — ขนาดของ control มาจาก primitive (.premium-input / --ctl-h) แล้ว อย่าทับที่ปลายทาง · ถ้าเป็นเรขาคณิตเฉพาะจุดจริง ให้อธิบายเหตุผลไว้ก่อนเพิ่ม`]
+    : []),
+  ...(rawTailwindSizeCount < RAW_TAILWIND_SIZE_CAP
+    ? [`ขนาดเลขดิบใน className ลดได้แล้ว: เหลือ ${rawTailwindSizeCount} แต่ RAW_TAILWIND_SIZE_CAP ยังเขียน ${RAW_TAILWIND_SIZE_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(rawRadiusJsxCount > RAW_RADIUS_JSX_CAP
+    ? [`ความมนมุมเลขดิบใน style object เพิ่มขึ้น: ${rawRadiusJsxCount} > เพดาน ${RAW_RADIUS_JSX_CAP} — หยิบขั้นจาก --radius-* (8px → --radius · 10px → --radius-md)`]
+    : []),
+  ...(rawRadiusJsxCount < RAW_RADIUS_JSX_CAP
+    ? [`ความมนมุมเลขดิบใน style object ลดได้แล้ว: เหลือ ${rawRadiusJsxCount} แต่ RAW_RADIUS_JSX_CAP ยังเขียน ${RAW_RADIUS_JSX_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(rawShadowJsxCount > RAW_SHADOW_JSX_CAP
+    ? [`เงาที่เขียนเองใน style object เพิ่มขึ้น: ${rawShadowJsxCount} > เพดาน ${RAW_SHADOW_JSX_CAP} — แผงลอยใช้ var(--shadow-float), การ์ดใช้ --shadow-sm/md/lg`]
+    : []),
+  ...(rawShadowJsxCount < RAW_SHADOW_JSX_CAP
+    ? [`เงาที่เขียนเองใน style object ลดได้แล้ว: เหลือ ${rawShadowJsxCount} แต่ RAW_SHADOW_JSX_CAP ยังเขียน ${RAW_SHADOW_JSX_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(rawLetterSpacingJsxCount > RAW_LETTER_SPACING_JSX_CAP
+    ? [`ระยะห่างตัวอักษรค่าดิบใน style object เพิ่มขึ้น: ${rawLetterSpacingJsxCount} > เพดาน ${RAW_LETTER_SPACING_JSX_CAP} — ตัวเลขเปล่าในผิวนี้คือ px ซึ่งไม่ขยับตามขนาดตัวอักษร ต้องเป็น em แล้วหยิบจาก --ls-*`]
+    : []),
+  ...(rawLetterSpacingJsxCount < RAW_LETTER_SPACING_JSX_CAP
+    ? [`ระยะห่างตัวอักษรค่าดิบใน style object ลดได้แล้ว: เหลือ ${rawLetterSpacingJsxCount} แต่ RAW_LETTER_SPACING_JSX_CAP ยังเขียน ${RAW_LETTER_SPACING_JSX_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(jsxFontWeightBranchCount > JSX_FONT_WEIGHT_BRANCH_CAP
+    ? [`น้ำหนักตัวอักษรในกิ่ง ternary เพิ่มขึ้น: ${jsxFontWeightBranchCount} > เพดาน ${JSX_FONT_WEIGHT_BRANCH_CAP} — หยิบจาก --fw-* ทั้งสองกิ่ง (${jsxFontWeightBranchList.join(" · ")})`]
+    : []),
+  ...(jsxFontWeightBranchCount < JSX_FONT_WEIGHT_BRANCH_CAP
+    ? [`น้ำหนักตัวอักษรในกิ่ง ternary ลดได้แล้ว: เหลือ ${jsxFontWeightBranchCount} แต่ JSX_FONT_WEIGHT_BRANCH_CAP ยังเขียน ${JSX_FONT_WEIGHT_BRANCH_CAP} (รูดเพดานลง)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -976,16 +1663,37 @@ console.log(`Type-scale violations (font-size นอกโทเคน): ${typeS
    แค่ด่านนั้นมองไม่เห็น className · ย้ายลงไปรวมกับ ratchet ตัวอื่นเมื่อไหร่ เจตนาหายทันที */
 console.log(`Tailwind text-[…] ขนาดดิบใน className: ${rawTailwindTypeCount}/${RAW_TAILWIND_TYPE_CAP} (เพดาน ขึ้นไม่ได้ — ตัวเลขบรรทัดบนไม่ครอบคลุมชั้นนี้)`);
 console.log(`text-[var(--fs-…)] ที่ลืมใส่ length: (คอมไพล์เป็นสี ขนาดหาย): ${tailwindTypeFormViolations.length} (ต้องเป็น 0)`);
+/* ⚠️ วางติดบรรทัดบนโดยเจตนา — เป็นความผิดสายพันธุ์เดียวกัน: รูปที่คอมไพล์ผ่านแต่คาย
+   ค่าที่เบราว์เซอร์ทิ้งเงียบ ๆ ต่างกันแค่บรรทัดบนคือ text-[var(--fs-…)] เฉพาะชั้นพิมพ์
+   ส่วนบรรทัดนี้คือรูป -[--token] ของทุกหมวด (ดู TW_DEAD_TOKEN_FORM) */
+console.log(`รูป -[--token] ของ Tailwind v3 (คายค่าที่ไม่ใช่ CSS แล้วตายเงียบ): ${deadTokenFormViolations.length} (ต้องเป็น 0)`);
 console.log(`Font-weight violations (นอกโทเคน --fw-*): ${fontWeightViolations.length}`);
+console.log(`  ↳ น้ำหนักดิบใน className (font-[600]): ${tailwindFontWeightViolations.length} (ต้องเป็น 0)`);
+console.log(`  ↳ น้ำหนักในกิ่ง ternary ของ style object: ${jsxFontWeightBranchCount}/${JSX_FONT_WEIGHT_BRANCH_CAP} (เพดาน ขึ้นไม่ได้ — บรรทัดบนมองรูปนี้ไม่เห็น)`);
 console.log(`Font-family violations (นอกโทเคน --font-*): ${fontFamilyViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);
+console.log(`  ↳ z-index ดิบใน className (z-[999] · order-[5]): ${tailwindZIndexViolations.length} (ต้องเป็น 0)`);
 console.log(`Motion violations (นอกโทเคน --motion-*): ${motionViolations.length}`);
+console.log(`  ↳ จังหวะดิบใน className + style object: ${motionSurfaceViolations.length} (ต้องเป็น 0)`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`ความสูงบรรทัดเลขดิบ: ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`ความมนมุมเลขดิบ: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`เงาที่เขียนเอง: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`ความจางเลขดิบ: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`ระยะห่างตัวอักษรค่าดิบ: ${rawLetterSpacingCount}/${RAW_LETTER_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ระยะห่างเลขดิบใน className: ${rawTailwindSpacingCount}/${RAW_TAILWIND_SPACING_CAP} (เพดาน ขึ้นไม่ได้ — บรรทัดบนกรองเฉพาะไฟล์ .css)`);
+/* ⚠️ "ขนาด" ไม่มีบรรทัดพี่น้องให้ไปเกาะ เพราะไม่เคยมี cap ใดในระบบเลยทั้งสามผิว —
+   วางไว้ติดระยะห่างเพราะเป็นเรขาคณิตของกล่องเหมือนกันและมาจากการวัดรอบเดียวกัน */
+console.log(`  ↳ ขนาดเลขดิบใน className: ${rawTailwindSizeCount}/${RAW_TAILWIND_SIZE_CAP} (เพดาน ขึ้นไม่ได้ — สเกลนี้ไม่เคยมี cap มาก่อนเลย)`);
+console.log(`ความสูงบรรทัดเลขดิบ (CSS + style object): ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ความสูงบรรทัดดิบใน className (leading-[…] · text-…/…): ${tailwindLeadingViolations.length} (ต้องเป็น 0)`);
+console.log(`  ↳ ความสูงบรรทัดชื่อขั้นของ Tailwind (leading-tight/snug/relaxed…): ${twNamedLeadingCount}/${TW_NAMED_LEADING_CAP} (เพดาน ขึ้นไม่ได้ — ต่ำกว่า --lh-thai 1.65)`);
+console.log(`ความมนมุมเลขดิบใน CSS: ${rawRadiusCount}/${RAW_RADIUS_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ความมนมุมเลขดิบใน style object: ${rawRadiusJsxCount}/${RAW_RADIUS_JSX_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ความมนมุมเลขดิบใน className: ${tailwindRadiusViolations.length} (ต้องเป็น 0)`);
+console.log(`เงาที่เขียนเองใน CSS: ${rawShadowCount}/${RAW_SHADOW_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ เงาที่เขียนเองใน style object: ${rawShadowJsxCount}/${RAW_SHADOW_JSX_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ เงาที่เขียนเองใน className: ${tailwindShadowViolations.length} (ต้องเป็น 0)`);
+console.log(`ความจางเลขดิบ: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้ — CSS 9 + style object 6; อีก 21 จุดของ style object ยังหลุด ดูคอมเมนต์ในลูป)`);
+console.log(`ระยะห่างตัวอักษรค่าดิบใน CSS: ${rawLetterSpacingCount}/${RAW_LETTER_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน style object: ${rawLetterSpacingJsxCount}/${RAW_LETTER_SPACING_JSX_CAP} (เพดาน ขึ้นไม่ได้ — จุดเดียวที่มีคือ px ที่ต้องกลายเป็น em)`);
+console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน className: ${tailwindTrackingViolations.length} (ต้องเป็น 0)`);
+console.log(`  ↳ ระยะห่างตัวอักษรชื่อขั้นของ Tailwind (tracking-wider…): ${twNamedTrackingCount}/${TW_NAMED_TRACKING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`ระยะห่างตัวอักษรที่ใช้หน่วยคงที่ (ต้องเป็น em): ${letterSpacingUnitViolations.length}`);
 console.log(`ค่าจุดตัดจอที่ต่างกัน: ${breakpointValues.size}/${BREAKPOINT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`Dead CSS class usages: ${deadClassViolations.length}`);
