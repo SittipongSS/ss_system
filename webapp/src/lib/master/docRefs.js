@@ -11,33 +11,96 @@
 // ตอนกด ซึ่งเป็นจังหวะที่ถูกต้องอยู่แล้ว
 //
 // ไฟล์นี้ไม่มี I/O เพื่อให้ทั้งฝั่ง client (RichText) และ server (/go) ใช้ร่วมกันได้
+//
+/* ── รอบขยายทะเบียน 2026-09-01 ────────────────────────────────────────────
+   🐞 ที่มา: ทะเบียนเดิมรู้จัก 6 คำนำหน้า และ **ตัวเลขล้วนหลังขีดเท่านั้น** ⇒ เลขที่
+   ใช้จริงส่วนใหญ่กดไม่ได้เลย
+   · คำร้องยุคใหม่เป็น `RQ-SB-26080008` (มีตัวอักษรกลาง) — ไม่เข้าแพตเทิร์น
+   · คำร้องยุคเก่าเป็น `SB-…` `DF-…` `DC-…` `FD-…` — ไม่มีในทะเบียน
+   · `DR-` ที่ทะเบียนเดิมประกาศไว้ **ไม่เคยมีเอกสารใบไหนใช้จริงสักใบ** (ตรวจ prod
+     2026-09-01: 106 ใบ ไม่มี `DR-` เลย) ⇒ ถอดออก ไม่ใช่ของที่หายไปแล้วต้องกู้
+   · สัญญา `CT-SD-26080001-0` · แจ้งปัญหา `IS-…` · นัดบริการ `SV-…` · ไซต์ `ST-…` ·
+     ลูกค้า `AR-…` · สินค้า `FG-…` — ไม่มีในทะเบียนทั้งหมด
+
+   ⭐ **ทุกคำนำหน้าถือรูปแบบของตัวเอง (`body`)** แทนกติกากลาง "ตัวเลขล้วน" อันเดียว
+   เพราะรหัสในระบบนี้หน้าตาไม่เหมือนกันเลย (`FG-0109-01-006-10031` กับ `AR-109` กับ
+   `CT-SD-26080001-0`) · การใช้กติกาหลวมตัวเดียวครอบทั้งหมดแปลว่าคำอย่าง `ST-1` ใน
+   ข้อความธรรมดากลายเป็นลิงก์ที่กดแล้วเจอ "ไม่พบเอกสาร"
+   ⚠️ `body` เป็น **สตริง regex** เพราะถูกเอาไปประกอบเป็นแพตเทิร์นก้อนใหญ่ที่ตัวไล่
+      ข้อความใช้ (`DOC_REF_PATTERN`) — เขียนเป็น RegExp object แล้วประกอบต่อไม่ได้
+   ⚠️ ห้ามใส่ capture group ใน `body` (ใช้ `(?:…)`) — `parseRichText` อ่านผลด้วย
+      `m[0]` ก็จริง แต่กลุ่มที่ไม่ได้ตั้งใจทำให้ index ของกลุ่มอื่นเลื่อนเมื่อมีคนมาใช้ต่อ */
+
+// รูปแบบซ้ำ ๆ ที่ใช้หลายที่
+const RUN = '\\d{6,}';          // เลขรันพร้อมปี/เดือนนำหน้า เช่น 26080001 (6+ กันรูปแบบที่ตั้งค่าใหม่)
+const REV = '(?:-\\d+)?';       // ท้ายฉบับแก้ไข `-0` `-1` (ใบเสนอราคา/ใบสั่งขาย/สัญญา)
+const KIND = '(?:[A-Z]{2}-)?';  // ตัวย่อชนิด/หัวข้อที่แทรกกลาง เช่น CT-**SD**-… · RQ-**SB**-…
+
+// คำร้องข้ามฝ่าย — ใบเดียวกันมีเลขได้หลายยุค (ดูหัวไฟล์) ทุกยุคชี้ตารางเดียวกัน
+const REQUEST = { label: 'คำร้อง', table: 'dept_requests', column: 'docNo', path: (id) => `/requests/${id}` };
+const requestKind = (body, example) => ({ ...REQUEST, body, example });
 
 // คำนำหน้า → ตารางและวิธีเปิด
 // ⚠️ QT/SO/ET ตั้งรูปแบบเลขได้เองในหน้าตั้งค่า (documentStandards) — คำนำหน้าที่นี่
 // คือค่าตั้งต้นของระบบ ถ้าองค์กรเปลี่ยนรูปแบบ รหัสแบบใหม่จะไม่กลายเป็นลิงก์
 // (ข้อความยังอ่านได้ปกติ) ไม่ใช่พังหรือลิงก์ผิดที่
 export const DOC_REF_TYPES = {
-  QT: { label: 'ใบเสนอราคา', table: 'quotations', column: 'quoteNumber', path: (id) => `/sa/quotations/${id}` },
-  SO: { label: 'ใบสั่งขาย', table: 'sales_orders', column: 'orderNumber', path: (id) => `/sa/sales-orders/${id}` },
-  PJ: { label: 'โครงการ', table: 'projects', column: 'code', path: (id) => `/sa/projects/${id}` },
-  DL: { label: 'ดีล', table: 'sales_deals', column: 'code', path: (id) => `/sa/deals/${id}` },
+  QT: { label: 'ใบเสนอราคา', table: 'quotations', column: 'quoteNumber', body: `${RUN}${REV}`, example: 'QT-26090242-0', path: (id) => `/sa/quotations/${id}` },
+  SO: { label: 'ใบสั่งขาย', table: 'sales_orders', column: 'orderNumber', body: `${RUN}${REV}`, example: 'SO-26090144-0', path: (id) => `/sa/sales-orders/${id}` },
+  // สัญญามีสองยุคในฐานเดียวกัน: `CT-26080001-0` (ก่อนมติ 2026-08-31) และ
+  // `CT-SD-26080001-0` (หลัง) ⇒ ตัวย่อชนิดต้องเป็นของเลือกได้ ไม่ใช่บังคับ
+  CT: { label: 'สัญญา', table: 'sales_contracts', column: 'contractNo', body: `${KIND}${RUN}${REV}`, example: 'CT-SD-26080001-0', path: (id) => `/sa/contracts/${id}` },
+  PJ: { label: 'โครงการ', table: 'projects', column: 'code', body: RUN, example: 'PJ-26090001', path: (id) => `/sa/projects/${id}` },
+  DL: { label: 'ดีล', table: 'sales_deals', column: 'code', body: RUN, example: 'DL-26090001', path: (id) => `/sa/deals/${id}` },
+  IS: { label: 'เรื่องแจ้งปัญหา', table: 'system_issues', column: 'code', body: RUN, example: 'IS-26080037', path: (id) => `/support/${id}` },
+  SV: { label: 'นัดบริการ', table: 'service_visits', column: 'code', body: RUN, example: 'SV-26090003', path: (id) => `/service/visits/${id}` },
+  // รหัสไซต์ `ST-0032-01-BKK-1005` (mig 0315) — ท่อนหน้าเป็นข้อมูลของแถว เลขรันอยู่ท้าย
+  // 🪤 รูปเดิม `SS-26080001` ไม่รับที่นี่: `SS` ยังไม่ใช่คำนำหน้าที่จองไว้ และไซต์ยุคนั้น
+  //    เหลือน้อยมาก — เพิ่มเมื่อไรต้องเช็คก่อนว่าไม่ชนกับอักษรย่ออื่นในข้อความ
+  ST: { label: 'ไซต์บริการ', table: 'service_sites', column: 'code', body: '\\d{4}-\\d{2}-[A-Z]{3}-\\d{4}', example: 'ST-0032-01-BKK-1005', path: (id) => `/service/sites/${id}` },
   // ⚠️ **สองตารางนี้เก็บเลขที่ไว้ที่ `docNo` ไม่ใช่ `code`** — ต่างจาก PJ/DL ที่ใช้ `code` จริง
   // เดิมเขียน 'code' ตามเพื่อนบ้าน ทำให้ `/go/CR-…` ยิง `.eq('code', …)` แล้ว PostgREST
   // คืน 42703 ⇒ ผู้ใช้เห็น "เปิดทะเบียนไม่สำเร็จ: column … does not exist" **ทุกครั้ง**
-  // ที่กดเลขที่ CR-/DR- ในเธรด · ยืนยันจาก 0141_costing_requests.sql:25 และ
+  // ที่กดเลขที่ CR-/คำร้องในเธรด · ยืนยันจาก 0141_costing_requests.sql:25 และ
   // 0173_dept_requests.sql — ไม่มีคอลัมน์ชื่อ `code` ในสองตารางนี้เลย
-  CR: { label: 'ใบขอราคาผลิต', table: 'costing_requests', column: 'docNo', path: (id) => `/sa/costing/${id}` },
-  DR: { label: 'คำร้อง', table: 'dept_requests', column: 'docNo', path: (id) => `/requests/${id}` },
+  CR: { label: 'ใบขอราคาผลิต', table: 'costing_requests', column: 'docNo', body: RUN, example: 'CR-26070001', path: (id) => `/sa/costing/${id}` },
+  // คำร้อง — `RQ-26080001` (ยุคแรก) · `RQ-SB-26080008` (ยุคปัจจุบัน) · และยุคกลางที่
+  // ตัวย่อหัวข้อ *แทนที่* RQ ทั้งตัว (`SB-` `FD-` `DC-` `DF-` `AS-` `IQ-`) ซึ่งยังมีอยู่บน
+  // prod จริง (2026-09-01: SB 14 · DF 9 · DC 2 · FD 2 ใบ) และถูกอ้างในเธรดเหมือนกัน
+  RQ: requestKind(`${KIND}${RUN}`, 'RQ-SB-26080008'),
+  SB: requestKind(RUN, 'SB-26080001'),
+  FD: requestKind(RUN, 'FD-26080001'),
+  DC: requestKind(RUN, 'DC-26080001'),
+  DF: requestKind(RUN, 'DF-26080001'),
+  AS: requestKind(RUN, 'AS-26080001'),
+  IQ: requestKind(RUN, 'IQ-26080001'),
+  // ทะเบียนกลาง — รหัสลูกค้า/สินค้าถูกพิมพ์ในเธรดพอ ๆ กับเลขที่เอกสาร
+  // AR มี 5 ทรงบน prod: `AR-109` (488) · `AR-1022` (20) · `A-109` (3 — คำนำหน้าตัวเดียว
+  // จึงไม่เข้าทะเบียนนี้โดยปริยาย) · `AR-K0005` · `AR-M001`
+  AR: { label: 'ลูกค้า', table: 'customers', column: 'arCode', body: '[A-Z]?\\d{3,4}', example: 'AR-1022', path: (id) => `/database/customers/${id}` },
+  // FG มี 4 ทรง: กรอกเอง `FG-109-01-006-2049` / `FG-109-03-002` · ระบบออก
+  // `FG-0109-01-006-10031` / `FG-0109-03-002` (หมวด 03/04 ไม่มีเลขรัน — mig 0230)
+  FG: { label: 'สินค้า', table: 'products', column: 'fgCode', body: '\\d{3,4}-\\d{2}-\\d{3}(?:-\\d{4,5})?', example: 'FG-0109-01-006-10031', path: (id) => `/database/products/${id}` },
 };
 
-// รูปแบบที่ยอมรับ: คำนำหน้า 2 ตัวอักษร + ขีด + ตัวเลข/ขีด (เช่น QT-26070028-0, PJ-26070027)
+/* 🪤 **รหัสที่จงใจไม่อยู่ในทะเบียน** — เพิ่มเข้ามาแล้วลิงก์จะตาย ไม่ใช่ลืม:
+   · `PB-` ใบผลิต และ `ZN-` โซน — **ไม่มีหน้ารายละเอียดของตัวเอง** (ใบผลิตอยู่ในตาราง
+     ของหน้า /production/jobs · โซนอยู่ในหน้าไซต์) ⇒ ไม่มี path ให้ redirect ไป
+     วันไหนมีหน้าเดี่ยวค่อยเพิ่มพร้อม path จริง
+   · กลิ่น `PF6380103` และสูตร `PF6380103-P2` — ไม่มีขีดหลังคำนำหน้า 2 ตัว จึงไม่เข้า
+     รูปทรงของทะเบียนนี้เลย (และ `PF` ก็ไม่ได้แปลว่า "กลิ่น" เสมอไปในข้อความ)
+   · `ET-` ใบแจ้งภาษี · `PT-` ไทม์ไลน์ — เปิดจากหน้าของใบ/โครงการ ไม่มีเส้นทางตรง */
+
+// รูปแบบที่ยอมรับ: คำนำหน้า 2 ตัวอักษร + ขีด + **ทรงของคำนำหน้านั้น**
 // ⚠️ ต้องไม่จับคำที่มีตัวอักษรติดหน้า/หลัง ("ไม่ใช่XQT-1" หรือ "QT-1ต่อ") — ใช้ขอบเขต
 // แบบเขียนเองเพราะ `\b` ของ JS ไม่รู้จักพยัญชนะไทย (ทุกตัวนับเป็น non-word)
-const CODE_BODY = '[0-9][0-9-]*[0-9]|[0-9]';
-export const DOC_REF_PATTERN = new RegExp(
-  `(?<![\\w\\u0E00-\\u0E7F-])(${Object.keys(DOC_REF_TYPES).join('|')})-(${CODE_BODY})(?![\\w\\u0E00-\\u0E7F-])`,
-  'g',
-);
+const BOUNDARY_BEFORE = '(?<![\\w\\u0E00-\\u0E7F-])';
+const BOUNDARY_AFTER = '(?![\\w\\u0E00-\\u0E7F-])';
+const ALTERNATIVES = Object.entries(DOC_REF_TYPES)
+  .map(([prefix, ref]) => `${prefix}-(?:${ref.body})`)
+  .join('|');
+
+export const DOC_REF_PATTERN = new RegExp(`${BOUNDARY_BEFORE}(?:${ALTERNATIVES})${BOUNDARY_AFTER}`, 'g');
 
 // แยกคำนำหน้าออกจากรหัส — คืน null ถ้าไม่ใช่รหัสที่ระบบรู้จัก
 export function parseDocRef(code) {
@@ -45,7 +108,7 @@ export function parseDocRef(code) {
   const prefix = text.slice(0, 2);
   const conf = DOC_REF_TYPES[prefix];
   if (!conf) return null;
-  const single = new RegExp(`^(${prefix})-(${CODE_BODY})$`);
+  const single = new RegExp(`^${prefix}-(?:${conf.body})$`);
   if (!single.test(text)) return null;
   return { prefix, code: text, ...conf };
 }

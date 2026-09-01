@@ -26,9 +26,13 @@ test('รหัสเอกสารกลายเป็นลิงก์ผ�
   const parts = parseRichText('อ้างตาม QT-26070028-0 นะ');
   assert.deepEqual(parts.map((p) => p.type), ['text', 'doc', 'text']);
   assert.equal(parts[1].href, '/go/QT-26070028-0');
-  // ทุกชนิดในทะเบียนต้องจับได้จริง ไม่ใช่ประกาศไว้เฉย ๆ
-  for (const prefix of Object.keys(DOC_REF_TYPES)) {
-    assert.equal(kinds(`ดู ${prefix}-26070001 ต่อ`), 'text|doc|text', prefix);
+  /* ทุกชนิดในทะเบียนต้องจับได้จริง ไม่ใช่ประกาศไว้เฉย ๆ
+     ⚠️ ใช้ `example` ของแต่ละชนิด ไม่ใช่เลข 8 หลักชุดเดียวครอบทุกคำนำหน้า — ตั้งแต่
+     ทะเบียนถือรูปแบบรายชนิด (2026-09-01) `ST-26070001` ไม่ใช่รหัสไซต์ที่ถูกต้องแล้ว
+     การทดสอบด้วยเลขที่ผิดรูปจึงเป็นการยืนยันสิ่งที่ระบบไม่ควรทำตั้งแต่แรก */
+  for (const [prefix, ref] of Object.entries(DOC_REF_TYPES)) {
+    assert.ok(ref.example, `${prefix}: ต้องมี example ให้เทสต์/เอกสารอ้างได้`);
+    assert.equal(kinds(`ดู ${ref.example} ต่อ`), 'text|doc|text', `${prefix} (${ref.example})`);
   }
 });
 

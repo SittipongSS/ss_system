@@ -77,6 +77,17 @@ function buildSchema() {
       }
     }
 
+    // 2.5) CREATE [UNIQUE] INDEX … ON public.<t> ("col", …)
+    //    ⚠️ ตารางที่ **เกิดก่อนยุค migration** (customers · products) ไม่มี CREATE TABLE
+    //    ในรีโปเลย ⇒ ถ้าอ่านแต่ CREATE TABLE/ALTER จะสรุปผิดว่า `customers."arCode"`
+    //    ไม่มีจริง ทั้งที่ 0031 สร้าง unique index คร่อมคอลัมน์นั้นอยู่ (คำสั่งที่รันผ่าน
+    //    บน prod = หลักฐานว่าคอลัมน์มีจริง)
+    const indexRe = /create\s+(?:unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?[a-z_0-9"]+\s+on\s+(?:public\.)?"?([a-z_0-9]+)"?\s*\(([^;]*?)\)\s*(?:where[^;]*)?;/gi;
+    while ((m = indexRe.exec(sql))) {
+      const [, table, cols] = m;
+      for (const c of cols.matchAll(/"([A-Za-z_0-9]+)"/g)) colsOf(table).add(c[1]);
+    }
+
     const alterRe = /alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?"?([a-z_0-9]+)"?([\s\S]*?);/gi;
     while ((m = alterRe.exec(sql))) {
       const [, table, body] = m;
@@ -121,13 +132,84 @@ test('⭐ ทุกคำนำหน้าใน DOC_REF_TYPES ต้องช�
   }
 });
 
-test('CR/DR ใช้ docNo ไม่ใช่ code — ตรึงบั๊กที่เคยเกิด', () => {
+test('CR/คำร้อง ใช้ docNo ไม่ใช่ code — ตรึงบั๊กที่เคยเกิด', () => {
   assert.equal(DOC_REF_TYPES.CR.column, 'docNo');
-  assert.equal(DOC_REF_TYPES.DR.column, 'docNo');
+  assert.equal(DOC_REF_TYPES.RQ.column, 'docNo');
+  assert.equal(DOC_REF_TYPES.SB.column, 'docNo');
+  // `DR-` ถูกถอดออก (2026-09-01) — ไม่เคยมีเอกสารใบไหนใช้เลขที่ขึ้นต้นแบบนั้นจริง
+  assert.equal(DOC_REF_TYPES.DR, undefined);
 });
 
 test('parseDocRef ยังจับรหัสของสองคำนำหน้านี้ได้ (ไม่ได้พังตั้งแต่ก่อนถึง DB)', () => {
   assert.deepEqual(parseDocRef('CR-26070001')?.table, 'costing_requests');
   assert.deepEqual(parseDocRef('CR-26070001')?.column, 'docNo');
-  assert.deepEqual(parseDocRef('DR-26080012')?.column, 'docNo');
+  assert.deepEqual(parseDocRef('RQ-SB-26080008')?.column, 'docNo');
+});
+
+/* ⭐ เลขที่ใช้จริงทุกยุคต้องกดได้ — ชุดนี้คัดจากของจริงบน prod (2026-09-01)
+   ไม่ใช่ตัวอย่างที่แต่งขึ้น: คำร้องมีสามยุคอยู่ในตารางเดียวกัน และสัญญามีสองยุค */
+test('รหัสจริงบน prod ทุกยุค parse ได้และชี้ตารางถูก', () => {
+  const cases = [
+    ['QT-26090242-0', 'quotations'], ['SO-26090144-0', 'sales_orders'],
+    ['CT-26080001-0', 'sales_contracts'], ['CT-SD-26080001-0', 'sales_contracts'],
+    ['RQ-26080064', 'dept_requests'], ['RQ-SB-26080008', 'dept_requests'],
+    ['SB-26080014', 'dept_requests'], ['DF-26080009', 'dept_requests'],
+    ['PJ-26090001', 'projects'], ['DL-26090001', 'sales_deals'],
+    ['IS-26080037', 'system_issues'], ['SV-26090003', 'service_visits'],
+    ['ST-0032-01-BKK-1005', 'service_sites'],
+    ['AR-109', 'customers'], ['AR-1022', 'customers'], ['AR-K0005', 'customers'],
+    ['FG-109-01-006-2049', 'products'], ['FG-0109-01-006-10031', 'products'],
+    ['FG-109-03-002', 'products'], ['FG-0109-03-002', 'products'],
+  ];
+  for (const [code, table] of cases) {
+    assert.equal(parseDocRef(code)?.table, table, code);
+  }
+});
+
+/* 🪤 ทะเบียนที่รับ "ตัวเลขอะไรก็ได้" ทำให้คำธรรมดาในข้อความกลายเป็นลิงก์ที่กดแล้วเจอ
+   "ไม่พบเอกสาร" — รูปทรงรายชนิดคือสิ่งที่กันไว้ ต้องมีเทสต์ ไม่งั้นใครมาแก้ให้หลวมก็ได้ */
+test('รูปที่ผิดทรงของคำนำหน้านั้น ต้องไม่ถูกจับ', () => {
+  for (const bad of ['ST-1', 'ST-26070001', 'AR-12', 'AR-12345', 'FG-1', 'FG-109-01', 'QT-123', 'ZZ-26070001', 'QT-']) {
+    assert.equal(parseDocRef(bad), null, bad);
+  }
+});
+
+/* ⭐ path ที่ประกาศไว้ต้องมีหน้าจริงรองรับ — ไม่งั้น `/go/…` redirect ไป 404
+   ตรวจทั้งเส้นทางตรงใน src/app และเส้นทางที่ next.config.mjs rewrite ให้ (`/sa/*`) */
+test('ทุกคำนำหน้าต้อง redirect ไปเส้นทางที่มีอยู่จริง', () => {
+  const APP = new URL('../../app/', import.meta.url);
+  const routeExists = (segments) => {
+    let dir = APP;
+    for (const seg of segments) {
+      const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
+      const hit = entries.find((e) => e.name === seg)
+        // กลุ่มจัดระเบียบ (folder) ไม่นับเป็นส่วนหนึ่งของ URL
+        || entries.find((e) => e.name.startsWith('(') && readdirSync(new URL(`${e.name}/`, dir), { withFileTypes: true }).some((x) => x.isDirectory() && x.name === seg));
+      if (!hit) return false;
+      dir = new URL(`${hit.name === seg ? seg : `${hit.name}/${seg}`}/`, dir);
+    }
+    /* ปลายทางคือหน้า **รายละเอียดที่เปิดด้วย id** ⇒ ต้องมีโฟลเดอร์ dynamic (`[id]`)
+       ที่มี page.js อยู่ข้างใน · เช็ค page.js ของตัวโฟลเดอร์แม่ไม่ได้ — บางระบบ
+       (เช่น /service/visits) มีแต่หน้ารายละเอียด ไม่มีหน้ารายการที่ path นั้น */
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^\[.+\]$/.test(e.name))
+      .some((e) => readdirSync(new URL(`${e.name}/`, dir)).some((f) => /^page\.(js|jsx|tsx)$/.test(f)));
+  };
+
+  const config = readFileSync(new URL('../../../next.config.mjs', import.meta.url), 'utf8');
+  const rewrites = [...config.matchAll(/source:\s*'([^']+)'\s*,\s*destination:\s*'([^']+)'/g)]
+    .map(([, source, destination]) => ({ source, destination }));
+  const applyRewrite = (path) => {
+    const hit = rewrites.find((r) => r.source.endsWith('/:path*') && path.startsWith(`${r.source.slice(0, -7)}/`));
+    return hit ? path.replace(hit.source.slice(0, -7), hit.destination.slice(0, -7)) : path;
+  };
+
+  for (const [prefix, ref] of Object.entries(DOC_REF_TYPES)) {
+    const path = applyRewrite(ref.path('ID'));
+    const segments = path.split('/').filter(Boolean).slice(0, -1); // ตัด [id] ท้ายออก
+    assert.ok(
+      routeExists(segments),
+      `${prefix} (${ref.label}) ชี้ ${ref.path('<id>')} ซึ่งไม่มีหน้ารองรับ — /go/${prefix}-… จะเด้ง 404`,
+    );
+  }
 });
