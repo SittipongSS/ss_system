@@ -133,6 +133,40 @@ export async function findAsset(supabase, siteId, assetId) {
   return data || null;
 }
 
+/* หาเครื่องด้วย id อย่างเดียว — ทะเบียนเครื่องรวม (เฟส B) เปิดหน้ารายละเอียดจาก
+   `/service/assets/[id]` ซึ่งไม่มี siteId ใน URL ให้ใช้
+   ⚠️ **ไม่ใช่ตัวแทนของ `findAsset`** — เส้นที่ยังอยู่ใต้ไซต์ต้องกรอง siteId ต่อไป
+   เพราะการที่ id เดาไม่ได้ ไม่ได้แปลว่าให้ข้ามการตรวจว่าเครื่องอยู่ไซต์ที่กำลังเปิด */
+export async function findAssetById(supabase, assetId) {
+  const { data, error } = await supabase
+    .from('service_assets').select('*').eq('id', assetId).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/* ทะเบียนเครื่องรวมทุกไซต์ (เฟส B) — เครื่องทุกตัว + ชื่อไซต์/ลูกค้าที่มันอยู่
+   ⚠️ **สองรอบแล้ว map ไม่ใช้ PostgREST embed** — embed ลากคอลัมน์ของไซต์ไปกับทุกแถว
+      ทำให้ egress บวม (79% ของ egress ทั้งระบบเป็น PostgREST อยู่แล้ว) และ order
+      ที่นิ่งพอจะไล่หน้าต้องอยู่บนตารางแม่อยู่ดี
+   ⚠️ ต้องห่อ fetchAll — เครื่อง 1,239 ตัวเกินเพดาน 1,000 แถวตั้งแต่แถวแรกที่ลง
+      และ PostgREST **ตัดเงียบ ๆ ไม่มี error** */
+export async function loadAllAssets(supabase) {
+  const assets = await fetchAll(() => supabase
+    .from('service_assets').select('*').order('id', { ascending: true }));
+
+  const siteIds = [...new Set((assets || []).map((a) => a.siteId).filter(Boolean))];
+  if (!siteIds.length) return { assets: assets || [], sites: [] };
+
+  /* ไซต์มีไม่กี่ร้อยใบและ `.in()` ก้อนเดียวพอ — แต่ห่อไว้ด้วยเพื่อไม่ให้เป็นหนี้
+     ก้อนใหม่ตอนไซต์โตข้ามพัน (ทะเบียนไซต์ยังไม่อยู่ในเพดาน rowcap) */
+  const sites = await fetchAll(() => supabase
+    .from('service_sites')
+    .select('id, code, name, kind, customerId, customerName, routeZone, province')
+    .in('id', siteIds).order('id', { ascending: true }));
+
+  return { assets: assets || [], sites: sites || [] };
+}
+
 // ลูกค้าที่ไซต์ผูกอยู่ต้องมีจริง — ผูกไปยัง id มั่วแล้วไซต์จะกลายเป็นเด็กกำพร้า
 // ที่ไม่โผล่ในแท็บของลูกค้ารายไหนเลย (คืน { name } หรือ null)
 // ⭐ ดึง `addresses` มาด้วย — ใช้ตรวจว่า customerAddressId ที่ส่งมาเป็นแถวของลูกค้า

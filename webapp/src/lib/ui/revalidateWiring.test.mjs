@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
  * ⚠️ **ลิสต์นี้เพิ่มได้อย่างเดียว** — หน้าที่หลุดออกไปแปลว่ามีคนถอดสัญญาณทิ้ง
  */
 const WIRED = [
+  "app/service/assets/page.js",
   "app/requests/page.js",
   "app/notifications/page.js",
   "app/finance/payments/page.js",

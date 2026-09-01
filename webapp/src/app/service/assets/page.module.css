@@ -1,0 +1,83 @@
+/* ทะเบียนเครื่องรวมทุกไซต์ (เฟส B · mig 0332)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
+   ⚠️ ห้ามประกาศ `.toolbar` ของตัวเองที่นี่ — ใช้คลาสกลางใน globals.css ที่ถือ
+      gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมบนแถบให้สูงเท่ากัน */
+
+.searchInput { width: 260px; max-width: 340px; }
+
+.assetLink {
+  font-weight: var(--fw-semibold);
+  color: var(--accent);
+}
+
+.siteLink { color: var(--text); }
+.siteLink:hover { text-decoration: underline; }
+
+/* บรรทัดรองใต้ค่าหลัก — ทรงเดียวกับ `cell-sub` ของตารางอื่นในระบบ */
+.sub {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+/* ⭐ เครื่องในคลังต้องแยกออกจากเครื่องหน้างาน**ตั้งแต่ยังไม่อ่านตัวหนังสือ** —
+   ไม่งั้นสองกองที่มีความหมายต่างกันสิ้นเชิงอ่านเหมือนกันหมด */
+.stockLoc {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--blue);
+  font-weight: var(--fw-semibold);
+}
+
+/* สถานะ (อยู่ขั้นไหน) กับ สภาพ (ok/broken) เป็นคนละแกน — วางคู่กันแต่ให้
+   สภาพเบากว่า ไม่งั้นตาอ่านว่าเป็นสถานะสองอันที่ขัดกันเอง */
+.statePair {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+}
+
+.broken {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: var(--fs-2);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+/* การ์ดมุมมองการ์ด — ทรงเดียวกับ DetailCard (พื้น/ขอบ/มุม/เงาชุดเดียวกัน)
+   ⚠️ ห้ามใช้ `glass-panel` — ratchet legacySurface ของบัคเก็ตส่วนกลางเต็มเพดานแล้ว */
+.card {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+.cardCode {
+  font-size: var(--fs-7);
+  font-weight: var(--fw-bold);
+  color: var(--accent);
+}
+
+.cardLoc { font-size: var(--fs-5); color: var(--text-2); }
+
+.cardFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
