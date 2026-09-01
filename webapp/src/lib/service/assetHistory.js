@@ -4,17 +4,23 @@
 //   F-4 ทำให้มันเข้าทะเบียนจริงแล้ว (ตัวเก่า removed · ตัวใหม่ installed) — ที่ยังขาด
 //   คือจอที่เอาร่องรอยพวกนั้นมาเรียงให้อ่านเป็นเรื่องเดียว
 //
-// ⚠️ **ไม่มีตาราง event ของอุปกรณ์** โดยเจตนา — ประวัติประกอบจากของที่มีอยู่แล้ว
-//   (visit_assets + visit_items + คอลัมน์ installedAt/removedAt) ตารางที่สี่ที่ต้อง
-//   เขียนคู่ขนานกับสามตารางนั้นคือตารางที่จะไม่ตรงกับความจริงภายในเดือนเดียว
+// ⚠️ **ไม่มีตาราง event ที่เขียนคู่ขนาน** โดยเจตนา — ประวัติประกอบจากของที่มีอยู่แล้ว
+//   (visit_assets + visit_items) ตารางที่ต้องเขียนคู่ขนานกับตารางพวกนั้นคือตาราง
+//   ที่จะไม่ตรงกับความจริงภายในเดือนเดียว
+//
+// ⭐ `service_asset_moves` (mig 0335) **ไม่ใช่ของคู่ขนาน** — มันเป็น *ทางเขียนเดียว*
+//   ของคำสั่งย้าย/เปลี่ยนสถานะ แล้ว `siteId`/`status` บนตัวเครื่องกลายเป็นภาพสรุป
+//   ของแถวล่าสุด ⇒ เดินหนีกันไม่ได้ · ก่อนมีมันประวัติการย้ายไม่มีที่เก็บเลย
+//   (`installedAt`/`removedAt` มีคู่เดียวต่อเครื่อง ⇒ ย้ายรอบสองทับรอบแรกทิ้ง)
 import { fmtPercent } from '@/lib/format';
 import { ASSET_OUTCOME_LABELS } from './visitAssets';
 import { isAssetOnSite } from './sites';
+import { MOVE_LABELS } from './assetMoves';
 
 /* เหตุการณ์ของเครื่อง เรียงใหม่สุดก่อน
    รับ: asset · results (แถวผลรายเครื่องที่แตะเครื่องนี้ ทั้งเป็นตัวหลักและตัวแทน)
         · items (ของที่ใช้กับเครื่องนี้) · visits · assetsById (ไว้แปลง id เป็นชื่อ) */
-export function assetTimeline({ asset, results = [], items = [], visits = [], assetsById = new Map() } = {}) {
+export function assetTimeline({ asset, results = [], items = [], visits = [], moves = [], assetsById = new Map() } = {}) {
   if (!asset) return [];
   const visitById = new Map(visits.map((v) => [v.id, v]));
   const itemsByVisit = new Map();
@@ -52,11 +58,35 @@ export function assetTimeline({ asset, results = [], items = [], visits = [], as
     });
   }
 
-  if (asset.installedAt) {
-    rows.push({ key: `installed-${asset.id}`, date: asset.installedAt, kind: 'installed', label: 'ติดตั้งที่หน้างาน', detail: null, used: null });
+  /* คำสั่งย้าย/เปลี่ยนสถานะ (mig 0335) — เก็บได้หลายรอบ ต่างจาก installedAt/removedAt
+     ที่มีคู่เดียวต่อเครื่อง ⇒ เครื่องที่ย้ายสามไซต์เล่าครบทั้งสามรอบ */
+  for (const move of moves) {
+    const to = move.toSiteName || null;
+    const from = move.fromSiteName || null;
+    rows.push({
+      key: `move-${move.id}`,
+      date: move.movedAt,
+      kind: `move_${move.kind}`,
+      label: MOVE_LABELS[move.kind] || move.kind,
+      // เล่าเป็น "จากไหนไปไหน" ไม่ใช่แค่ปลายทาง — ไม่งั้นอ่านไม่ออกว่าย้ายมาจากที่ใด
+      detail: [
+        move.kind === 'transfer' && from && to ? `${from} → ${to}` : (to || from),
+        move.reason,
+      ].filter(Boolean).join(' · ') || null,
+      used: null,
+      by: move.createdByName || null,
+    });
   }
-  if (asset.removedAt) {
-    rows.push({ key: `removed-${asset.id}`, date: asset.removedAt, kind: 'removed', label: 'ถอดออกจากหน้างาน', detail: null, used: null });
+
+  /* ⚠️ สองแถวนี้เหลือไว้สำหรับเครื่องที่ **เกิดก่อน mig 0335** (ไม่มีแถว move เลย)
+     ⇒ ประวัติเก่ายังอ่านได้ · เครื่องที่มี move แล้วไม่ต้องขึ้นซ้ำ */
+  if (!moves.length) {
+    if (asset.installedAt) {
+      rows.push({ key: `installed-${asset.id}`, date: asset.installedAt, kind: 'installed', label: 'ติดตั้งที่หน้างาน', detail: null, used: null });
+    }
+    if (asset.removedAt) {
+      rows.push({ key: `removed-${asset.id}`, date: asset.removedAt, kind: 'removed', label: 'ถอดออกจากหน้างาน', detail: null, used: null });
+    }
   }
 
   return rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));

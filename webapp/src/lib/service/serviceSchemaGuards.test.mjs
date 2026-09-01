@@ -22,13 +22,22 @@ import { dirname, join } from 'node:path';
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'supabase', 'migrations');
 
+/* 🐞 **ต้องตัดคอมเมนต์ทิ้งก่อนตรวจ** — ยามนี้อ่าน DDL เป็นข้อความ ⇒ migration ที่
+   *เอ่ยชื่อ* ตารางต้องห้ามในคอมเมนต์เพื่ออธิบายว่า "ทำไมถึงต่างจากตารางนั้น"
+   จะถูกนับเป็นการละเมิดทันที (เจอจริงตอน mig 0335: คอมเมนต์อธิบายว่าทำไม CASCADE
+   ต่างจาก service_visit_assets อยู่ในตารางที่มี zoneId ⇒ ยามฟ้องผิดตัว)
+   ⚠️ ตัดทั้งคอมเมนต์บรรทัดเดียวและคอมเมนต์เป็นก้อน — ไม่งั้นยามวัดสิ่งที่ไม่ได้อ้างว่าวัด */
+const stripSqlComments = (sql) => sql
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/--[^\n]*/g, ' ');
+
 // คำสั่ง SQL ทั้งหมดที่แตะตารางหนึ่ง — ตัดเป็น statement ด้วย ';' แบบหยาบ
 // (พอสำหรับไฟล์ migration ของ repo นี้ที่ไม่มี ';' ในสตริง DDL ของตารางบริการ)
 function statementsTouching(table) {
   const out = [];
   for (const file of readdirSync(MIGRATIONS_DIR)) {
     if (!file.endsWith('.sql')) continue;
-    const text = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
+    const text = stripSqlComments(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'));
     if (!text.includes(table)) continue;
     for (const statement of text.split(';')) {
       if (new RegExp(`(CREATE\\s+TABLE|ALTER\\s+TABLE)[^;]*\\b${table}\\b`, 'i').test(statement)) {

@@ -23,7 +23,11 @@ export async function buildAssetDetail(supabase, { site, asset }) {
   const visitIds = visits.map((v) => v.id);
   /* ของที่ใช้กับเครื่องนี้ + ผลรายเครื่องของทุกนัด — สองตารางคนละหน้าที่:
      items = ใช้อะไรไปเท่าไร · visit_assets = จบยังไง (ทำได้/ทำไม่ได้/เปลี่ยนเครื่อง) */
-  const [{ data: items, error: itemError }, { data: results, error: resultError }] = await Promise.all([
+  const [
+    { data: items, error: itemError },
+    { data: results, error: resultError },
+    { data: moves, error: moveError },
+  ] = await Promise.all([
     visitIds.length
       ? fetchAllResult(() => supabase.from('service_visit_items')
         .select('id, visitId, assetId, label, qty, unit')
@@ -38,9 +42,17 @@ export async function buildAssetDetail(supabase, { site, asset }) {
         .or(`assetId.eq.${asset.id},replacedByAssetId.eq.${asset.id}`)
         .order('createdAt', { ascending: false }))
       : Promise.resolve({ data: [], error: null }),
+    /* ประวัติการย้าย/เปลี่ยนสถานะ (mig 0335) — ไม่ผูกกับนัด จึงดึงเสมอ ไม่ใช่
+       เฉพาะตอนมีนัด · เรียงใหม่สุดก่อน แล้วปิดท้ายด้วย id เพราะย้ายสองครั้ง
+       ในวันเดียวกันมีจริง (ถอนตอนเช้า ติดตั้งตอนบ่าย) */
+    fetchAllResult(() => supabase.from('service_asset_moves')
+      .select('*').eq('assetId', asset.id)
+      .order('movedAt', { ascending: false })
+      .order('id', { ascending: false })),
   ]);
   if (itemError) return { error: itemError.message };
   if (resultError) return { error: resultError.message };
+  if (moveError) return { error: moveError.message };
 
   return {
     data: {
@@ -52,6 +64,7 @@ export async function buildAssetDetail(supabase, { site, asset }) {
       visits,
       items: items || [],
       results: results || [],
+      moves: moves || [],
     },
   };
 }

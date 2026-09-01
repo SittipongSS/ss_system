@@ -1,0 +1,90 @@
+/* โมดัลคำสั่งย้าย/เปลี่ยนสถานะเครื่อง (เฟส C · mig 0335)
+   ⚠️ ห้าม style={{…}} · ห้ามเขียนคลาส btn เอง (ใช้ <Button> กลาง) — ratchet
+   ⚠️ `.form-hint` / `.form-error` / `.req` ที่หลายจอเขียนไว้ **ไม่มี selector จริง
+      ใน globals.css** ⇒ ข้อความจะออกมาเป็นตัวธรรมดาขนาดเท่าเนื้อความ
+      ที่นี่จึงประกาศเองแทนการยืมชื่อคลาสผี */
+
+.hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+/* ── ก่อน → หลัง ────────────────────────────────────────────
+   บอกผลลัพธ์ก่อนกด ไม่ใช่ถามว่าแน่ใจไหม (กติกาโมดัลอนุมัติของระบบ) */
+.change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.side b {
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+
+.side small {
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+.to b { color: var(--accent-ink); }
+
+.arrow {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* ── ปุ่มตัวเลือก (สภาพ · เหตุผลสำเร็จรูป) ──────────────────
+   ตัวเลือกน้อย = เรียงให้เห็นทั้งหมด ไม่ใช่ดรอปดาวน์ (กติกาของระบบ) */
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+  margin-bottom: var(--space-2);
+}
+
+.req {
+  font-style: normal;
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  color: var(--red);
+  background: var(--red-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  margin-inline-start: var(--space-1);
+}
+
+.hintSm {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* ⭐ เหตุผลที่ปุ่มกดไม่ได้ต้องเป็น **ตัวหนังสือ** ไม่ใช่ tooltip —
+   บนจอสัมผัสไม่มีทางเอาเมาส์ไปค้างเพื่ออ่าน */
+.gate {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
