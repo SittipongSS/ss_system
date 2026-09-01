@@ -90,6 +90,11 @@ export async function uploadFileBytes({ file, entityType, entityId, onProgress =
 
   const res = await apiFetch('/api/upload/session', {
     method: 'POST',
+    // ⭐ POST ที่ **ลองใหม่ได้ปลอดภัย** — ขั้นนี้ไม่เขียนอะไรลงระบบ แค่ขอ signed URL
+    // หนึ่งอัน · ยิงซ้ำได้ URL ที่ไม่มีใครใช้เพิ่มมาหนึ่งอันแล้วหมดอายุไปเอง
+    // 🐞 01/09/69 ขานี้คือขาที่ล้ม (staging ไม่มีไบต์เข้าเลย) — คอนเนกชันสะดุดครั้งเดียว
+    // ทำให้แนบไฟล์ไม่ได้ทั้งใบ ทั้งที่ลองใหม่ครั้งเดียวก็พอ
+    retry: true,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       entityType,
