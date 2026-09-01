@@ -19,6 +19,14 @@ const previousOrder = readFileSync(
   new URL('../../../supabase/migrations/0285_sales_order_confirmation.sql', import.meta.url),
   'utf8',
 );
+const excise = readFileSync(
+  new URL('../../../supabase/migrations/0329_excise_tax_notice_yearly_running.sql', import.meta.url),
+  'utf8',
+);
+const previousExcise = readFileSync(
+  new URL('../../../supabase/migrations/0162_excise_tax_notice_document_standard.sql', import.meta.url),
+  'utf8',
+);
 
 test('คีย์ถังนับของใบเสนอราคาเป็น "ปี" 2 หลัก และอ่านจากนาฬิกาไทย', () => {
   assert.equal(quoteCounterYear(new Date('2026-08-31T10:00:00Z')), '26');
@@ -87,4 +95,30 @@ test('มิเกรชันไม่แตะข้อมูลเอกส�
   assert.doesNotMatch(statements, /ALTER TABLE public\.(quotations|sales_orders)\b/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.create_quotation_with_number[\s\S]{0,80}TO service_role/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.create_sales_order_draft[\s\S]{0,80}TO service_role/);
+});
+
+/* ── ใบแจ้งชำระค่าภาษีสรรพสามิต (ET) — มติ 2026-09-01 "ET เอาแบบ QT" · mig 0329 ──
+   🔴 ของจริงตอนทำ: ตาราง `orders` ไม่เหลือแถวเลย แต่ตัวนับรายเดือนยังจำเลขที่ออกไปแล้ว
+   (2607=1 · 2608=3) ⇒ seed ที่นับแต่แถวจริงจะได้ 0 แล้วออกเลขซ้ำของเก่า */
+test('ET: seed จากตัวนับเดือนด้วย ไม่ใช่จากแถวอย่างเดียว (ตารางว่างแต่เลขออกไปแล้ว)', () => {
+  assert.match(excise, /GREATEST\([\s\S]{0,500}excise_tax_notice_number_counters/);
+  assert.match(excise, /ON CONFLICT \(month\) DO UPDATE SET "lastNo" = GREATEST\(c\."lastNo", EXCLUDED\."lastNo"\)/);
+  const seedAt = excise.indexOf('VALUES (v_year, v_no)');
+  const fnAt = excise.indexOf('CREATE OR REPLACE FUNCTION public.assign_excise_tax_notice_identity');
+  assert.ok(seedAt > 0 && fnAt > seedAt, 'ท่อน seed ต้องมาก่อนนิยาม trigger');
+});
+
+test('ET: คีย์ถังนับเป็นปี แต่เลขบนใบยังมีเดือน', () => {
+  assert.match(excise, /v_year := to_char\(v_local_time, 'YY'\)/);
+  assert.doesNotMatch(excise, /to_char\(v_local_time, 'YYMM'\)/);
+  assert.match(excise, /replace\(NEW\."taxNoticeNumber", '\{MM\}', to_char\(v_local_time, 'MM'\)\)/);
+  // นิยามเดิม (0162) คือแบบรายเดือน — ยืนยันว่าเทสต์จับของจริง
+  assert.match(previousExcise, /v_month := to_char\(v_local_time, 'YYMM'\)/);
+});
+
+test('ET: คัดนิยามล่าสุดมาครบ — ท่อนที่ 0162 ทำไว้ต้องไม่หาย', () => {
+  // ใบที่มีเลขแล้วต้องไม่ถูกออกเลขใหม่ · มาตรฐานที่เผยแพร่ต้องถูกตรึงลงใบ
+  assert.match(excise, /IF NEW\."taxNoticeNumber" IS NOT NULL THEN\s+RETURN NEW;/);
+  assert.match(excise, /excise_tax_notice_standard_missing/);
+  assert.match(excise, /NEW\."taxNoticeStandardSnapshot" := to_jsonb\(v_standard\)/);
 });
