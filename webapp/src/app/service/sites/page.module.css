@@ -5,13 +5,7 @@
    gap · margin-bottom · และกฎ `--ctl-h` ที่ตรึงตัวควบคุมทุกตัวบนแถบให้สูงเท่ากัน
    (เหตุผลเต็มอยู่ที่ service/schedule/page.module.css) */
 
-.searchInput { max-width: 320px; }
-
-.count {
-  color: var(--text-3);
-  font-size: var(--fs-label);
-  margin-inline-start: auto;
-}
+.searchInput { width: 240px; max-width: 320px; }
 
 .numCol { text-align: right; white-space: nowrap; }
 .muted { color: var(--text-3); }
@@ -20,4 +14,15 @@
 .siteLink {
   font-weight: var(--fw-semibold);
   color: var(--accent);
+}
+
+/* การ์ดมุมมองการ์ด — ทรงเดียวกับ DetailCard (border/radius/พื้น/เงาชุดเดียวกัน)
+   ⚠️ ห้ามใช้ `glass-panel` — ratchet legacySurface ของบัคเก็ต "ส่วนกลาง" เต็มเพดานแล้ว */
+.card {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--glass-shadow);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
