@@ -23,6 +23,7 @@
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
+import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import FormZone from "@/components/ui/FormZone";
 import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
@@ -55,6 +56,9 @@ export function scentToForm(scent) {
     producedAt: scent.producedAt || "",
     sentAt: scent.sentAt || "",
     status: scent.status || "developing",
+    // ผู้ปรุงกลิ่น (mig 0332) — พา id ไปด้วยเพื่อไม่ให้ค่าที่เคยเลือกกลายเป็น "ชื่อลอย"
+    perfumerId: scent.perfumerId || "",
+    perfumerName: scent.perfumerName || "",
   };
 }
 
@@ -73,6 +77,10 @@ export default function ScentForm({
   codeRequired = false, codeIssue = null, idPrefix = "scent",
   historyTitle = "ของเดิมก่อนมีระบบ",
   historyNote = "กลิ่นเก่าที่ลงย้อนหลัง — เว้นว่างได้ทั้งโซน",
+  /* ⭐ **รายชื่อผู้ปรุงกลิ่น** (มติผู้ใช้ 2026-09-02) — `[{ id, name }]` ของคนที่ถือ
+     ตำแหน่ง Perfumer · ไม่ส่งมา = ไม่มีช่องนี้ในฟอร์ม (ผู้เรียกที่ยังไม่ได้ต่อรายชื่อ
+     ได้ฟอร์มเดิมทุก px) */
+  perfumers = [],
 }) {
   const set = (patch) => onChange({ ...value, ...patch });
   const isLocked = (field) => locked.includes(field);
@@ -244,6 +252,41 @@ export default function ScentForm({
           ใช้ค้นหาได้ และแสดงคู่กับรหัส/ชื่อของเราเสมอ — ไม่ได้ใช้แทนกัน
         </small>
       </div>
+
+      {/* ⭐ **ผู้ปรุงกลิ่น (Perfumer)** (มติผู้ใช้ 2026-09-02) — คนละคนกับ "เจ้าของกลิ่น (RD)"
+          ที่ระบบเซ็ตให้เองเป็นคนกดรับเข้าทะเบียน · คนนี้คือคนเดียวกับผู้เซ็น Perfumer
+          บนกระดาษ PDR
+          ⚠️ **มีช่องนี้เพราะต้องกรอกกลิ่นเก่าย้อนหลัง** — กลิ่นที่เกิดจากคำร้องเติมชื่อ
+          จากใบให้เองอยู่แล้ว แต่ 115 กลิ่นที่มีอยู่ไม่มีใบให้ดึง
+          ⚠️ เก็บ **ชื่อ** เป็นหลัก (id ติดไปด้วยถ้าเลือกจากรายชื่อ) — ชื่อแช่แข็ง
+          ไม่ซิงก์ตามบัญชี เพราะเป็นข้อเท็จจริงว่าใครปรุงกลิ่นนี้ตอนนั้น */}
+      {!!perfumers.length && shows("perfumer") && (
+      <div className="form-group col-span-2">
+        <label htmlFor={fid("perfumer")}>
+          ผู้ปรุงกลิ่น (Perfumer) <span className={styles.hint}>(ไม่บังคับ)</span>
+        </label>
+        <Select
+          id={fid("perfumer")} fullWidth disabled={disabled || isLocked("perfumer")}
+          value={value.perfumerName || ""}
+          onChange={(e) => {
+            const name = e.target.value;
+            const hit = perfumers.find((p) => p.name === name);
+            // id ติดไปด้วยเมื่อเลือกจากรายชื่อ — ชื่อที่ค้างมาจากของเดิมไม่มี id ให้
+            set({ perfumerName: name || null, perfumerId: hit?.id || null });
+          }}
+          options={[
+            { value: "", label: "— ยังไม่ระบุ —" },
+            /* ชื่อเดิมของกลิ่นที่ไม่อยู่ในรายชื่อ (คนลาออก · ย้ายตำแหน่ง) ต้องยังอยู่
+               ไม่งั้นเปิดมาแก้เรื่องอื่นแล้วผู้ปรุงเดิมหายไปเงียบ ๆ */
+            ...(value.perfumerName && !perfumers.some((p) => p.name === value.perfumerName)
+              ? [{ value: value.perfumerName, label: `${value.perfumerName} (ของเดิม)` }]
+              : []),
+            ...perfumers.map((p) => ({ value: p.name, label: p.name })),
+          ]}
+        />
+        {lockHint("perfumer")}
+      </div>
+      )}
 
       {/* สายพันธุ์ — มาแทน Rev. เพราะ Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ */}
       <div className="form-group">

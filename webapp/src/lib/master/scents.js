@@ -288,6 +288,12 @@ export function normalizeScentInput(body = {}) {
       dealId: String(body.dealId ?? '').trim() || null,
       ownerId: String(body.ownerId ?? '').trim() || null,
       ownerName: String(body.ownerName ?? '').trim() || null,
+      /* ⭐ **ผู้ปรุงกลิ่น** (มติผู้ใช้ 2026-09-02) — คนละคนกับ `ownerId` ที่ระบบเซ็ตให้เอง
+         เป็นคนกดรับกลิ่นเข้าทะเบียน (ของจริง 115 กลิ่น: ล้วนเป็นผู้ประสานงาน/แอดมิน)
+         ⚠️ **ชื่อแช่แข็ง ไม่ซิงก์ตามบัญชี** — เป็นข้อเท็จจริงว่าใครปรุงกลิ่นนี้ตอนนั้น
+         ⚠️ `perfumerId` ว่างได้แม้มีชื่อ — กลิ่นเก่าที่กรอกย้อนหลังอาจเป็นคนที่ไม่มีบัญชี */
+      perfumerId: String(body.perfumerId ?? '').trim() || null,
+      perfumerName: String(body.perfumerName ?? '').trim().slice(0, 200) || null,
       note: note || null,
     },
     error: null,
@@ -388,6 +394,11 @@ export function scentFormPayload(value = {}, {
     customerTradeName: value.customerTradeName,
     derivedFromScentId: value.derivedFromScentId,
     note: value.note,
+    /* ผู้ปรุงกลิ่น (mig 0332) — ส่งทั้งสองโหมด (สร้าง/แก้) เพราะกลิ่นเก่าที่กรอก
+       ย้อนหลังคือเหตุผลหลักที่ช่องนี้มี ⇒ ต้องแก้ของที่ลงไปแล้วได้ด้วย
+       ⚠️ ส่งค่าว่างไป = ล้างผู้ปรุง (คนกรอกผิดคนต้องถอนได้) ไม่ใช่ "ไม่แตะ" */
+    perfumerId: value.perfumerId ?? null,
+    perfumerName: value.perfumerName ?? null,
   };
   if (canSetCode) payload.code = String(value.code ?? '').trim();
   if (mode === 'create') {

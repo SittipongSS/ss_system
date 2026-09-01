@@ -49,17 +49,21 @@ export default function ScentDetailPage() {
   const [saving, setSaving] = useState(false);
   /* ฟอร์มต้องมีทะเบียนลูกค้า (ชื่อลูกค้าเจ้าของ) และกลิ่นทั้งก้อน (ตัวเลือก "แก้มาจาก
      กลิ่นไหน" ของลูกค้ารายเดียวกัน) — ชุดข้อมูลเล็ก โหลดตอนกดแก้ครั้งแรกพอ */
-  const [registryData, setRegistryData] = useState({ customers: [], scents: [] });
+  const [registryData, setRegistryData] = useState({ customers: [], scents: [], perfumers: [] });
   const openEdit = async () => {
     setForm({ mode: "edit", scent, value: scentToForm(scent) });
     const get = (url) => apiFetch(url, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => (Array.isArray(d) ? d : []))
       .catch(() => []);
-    const [customers, scents] = await Promise.all([
-      get("/api/customers"), get("/api/master/scents"),
+    /* ⭐ รายชื่อผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — โหลดพร้อมทะเบียนตอนกดแก้
+       ⚠️ ล้มแล้วเงียบ (ว่าง) เหมือนสองเส้นข้างบน — ฟอร์มซ่อนช่องเองเมื่อรายชื่อว่าง */
+    const [customers, scents, people] = await Promise.all([
+      get("/api/customers"), get("/api/master/scents"), get("/api/pm/assignable-users"),
     ]);
-    setRegistryData({ customers, scents });
+    setRegistryData({
+      customers, scents, perfumers: people.filter((u) => u.role === "rd_perfumer"),
+    });
   };
   const submitEdit = async () => {
     setSaving(true);
@@ -189,6 +193,9 @@ export default function ScentDetailPage() {
           { label: "ชื่อกลิ่น", value: scent.name },
           { label: "ชื่อที่ลูกค้าเรียก", value: scent.customerTradeName },
           { label: "แก้มาจากกลิ่น", value: scent.derivedFromScentId },
+          /* ⭐ ผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — **คนละคนกับเจ้าของกลิ่น** ซึ่งระบบ
+             เซ็ตให้เองเป็นคนกดรับเข้าทะเบียน · วางคู่กันเพื่อให้อ่านออกว่าคนละบทบาท */
+          { label: "ผู้ปรุงกลิ่น (Perfumer)", value: scent.perfumerName },
           { label: "เจ้าของกลิ่น (RD)", value: scent.ownerName },
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: scent.note, wide: true },
@@ -199,6 +206,7 @@ export default function ScentDetailPage() {
       <ScentFormModal
         form={form} saving={saving}
         customers={registryData.customers} scents={registryData.scents}
+        perfumers={registryData.perfumers}
         canSetCode={isScentRegistrar(me) || scent.status === "draft"}
         proposal={!isScentRegistrar(me)}
         onChange={(value) => setForm({ ...form, value })}

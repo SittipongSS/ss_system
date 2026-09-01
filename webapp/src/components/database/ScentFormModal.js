@@ -8,7 +8,7 @@ import ScentForm from "@/components/database/ScentForm";
 
 export default function ScentFormModal({
   form, onChange, onClose, onSubmit, saving = false,
-  customers = [], scents = [],
+  customers = [], scents = [], perfumers = [],
   canSetCode = false, canSetLegacy = false, proposal = false,
 }) {
   return (
@@ -28,6 +28,7 @@ export default function ScentFormModal({
     >
       {form && (
         <ScentForm
+          perfumers={perfumers}
           mode={form.mode} value={form.value}
           customers={customers} scents={scents}
           editingId={form.scent?.id || null}

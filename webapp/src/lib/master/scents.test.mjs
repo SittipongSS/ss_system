@@ -316,3 +316,45 @@ test('payload ของฟอร์มกลิ่น: วัน/สถานะ
   // คนที่แตะรหัสไม่ได้ (ร่างของคนอื่น / ของที่เข้าทะเบียนแล้ว) ไม่ส่งช่องรหัสเลย
   assert.equal('code' in scentFormPayload(value, { canSetCode: false }), false);
 });
+
+/* ── ผู้ปรุงกลิ่น (mig 0332 · มติผู้ใช้ 2026-09-02) ─────────────────────────
+   ⭐ **คนละคนกับ `ownerId`** ซึ่งระบบเซ็ตเองเป็นคนกดรับกลิ่นเข้าทะเบียน
+      (ของจริง 115 กลิ่น: ล้วนเป็นผู้ประสานงาน/แอดมิน ไม่ใช่คนปรุง)
+   ⚠️ ชื่อแช่แข็ง ไม่ซิงก์ตามบัญชี · `perfumerId` ว่างได้แม้มีชื่อ (กลิ่นเก่าที่กรอก
+      ย้อนหลังอาจเป็นคนที่ไม่มีบัญชีในระบบ) */
+test('ผู้ปรุงกลิ่น: รับทั้งชื่อและ id · ชื่ออย่างเดียวก็ได้ · ว่าง = null', () => {
+  const base = { name: 'Citrus Dawn', customerId: 'AR-1' };
+  const withBoth = normalizeScentInput({ ...base, perfumerId: 'U7', perfumerName: ' Marisa Jehsani ' });
+  assert.equal(withBoth.error, null);
+  assert.equal(withBoth.value.perfumerId, 'U7');
+  assert.equal(withBoth.value.perfumerName, 'Marisa Jehsani');
+
+  // กลิ่นเก่าที่กรอกย้อนหลัง — คนปรุงอาจไม่มีบัญชี ⇒ มีแต่ชื่อ
+  const nameOnly = normalizeScentInput({ ...base, perfumerName: 'คนปรุงที่ลาออกไปแล้ว' });
+  assert.equal(nameOnly.value.perfumerId, null);
+  assert.equal(nameOnly.value.perfumerName, 'คนปรุงที่ลาออกไปแล้ว');
+
+  const blank = normalizeScentInput({ ...base });
+  assert.equal(blank.value.perfumerId, null);
+  assert.equal(blank.value.perfumerName, null);
+});
+
+test('ผู้ปรุงกลิ่น: ตัดความยาวที่ 200 เท่ากับ CHECK ของคอลัมน์', () => {
+  const long = normalizeScentInput({
+    name: 'x', customerId: 'AR-1', perfumerName: 'ก'.repeat(300),
+  });
+  assert.equal(long.value.perfumerName.length, 200);
+});
+
+/* 🐞 ถ้า `scentFormPayload` ไม่ส่งสองช่องนี้ ฟอร์มจะกรอกแล้ว "หายเงียบ" — อาการ
+   เดียวกับที่ `requestEditPatch` เคยเป็นกับช่องเวลาของใบประเมิน
+   ⚠️ ต้องส่งทั้งโหมดสร้างและแก้ — กลิ่นเก่าที่ลงไปแล้วคือเหตุผลหลักที่ช่องนี้มี */
+test('ฟอร์มกลิ่นส่งผู้ปรุงไปทั้งโหมดสร้างและแก้ · ว่าง = สั่งล้าง', () => {
+  const create = scentFormPayload({ name: 'x', perfumerId: 'U7', perfumerName: 'Marisa Jehsani' });
+  assert.equal(create.perfumerId, 'U7');
+  assert.equal(create.perfumerName, 'Marisa Jehsani');
+
+  const edit = scentFormPayload({ name: 'x', perfumerName: '' }, { mode: 'edit' });
+  assert.equal(edit.perfumerName, '');
+  assert.equal('perfumerName' in edit, true, 'ต้องส่งคีย์ไปเสมอ ไม่งั้นล้างค่าไม่ได้');
+});
