@@ -69,8 +69,11 @@ function normalizeText(value, max, field, errors, { required = false, upper = fa
 export const DOCUMENT_NUMBER_CYCLES = Object.freeze({
   quotation: 'year',
   salesOrder: 'year',
-  exciseTaxNotice: 'month',
-  projectTimeline: 'month',
+  // ใบแจ้งภาษีตามใบเสนอราคา/ใบสั่งขาย (มติผู้ใช้ 2026-09-01 "ET เอาแบบ QT" · mig 0329)
+  exciseTaxNotice: 'year',
+  // ไทม์ไลน์โครงการย้ายมารายปีพร้อมรหัสดีล/โครงการ (มติ 2026-09-01 · mig 0330) —
+  // สามอย่างนี้เกิดคู่กัน ถ้ารอบตัดไม่ตรงกันโครงการหนึ่งใบจะถือเลขสองรอบคาบเกี่ยว
+  projectTimeline: 'year',
   pdr: 'month',
 });
 
