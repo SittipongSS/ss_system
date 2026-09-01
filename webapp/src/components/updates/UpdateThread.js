@@ -390,7 +390,13 @@ export default function UpdateThread({
       // อัปไฟล์ก่อน แล้วค่อยส่ง ref ไปกับข้อความ (แพตเทิร์นเดียวกับเธรดสอบถาม)
       // ⭐ ตัวส่งอยู่ที่ `lib/master/updatePost` — โมดัลรับลีดใหม่ใช้ตัวเดียวกัน
       await postUpdateWithFiles({
-        entityType, entityId, body: text, files: pending.map((p) => p.file), kind,
+        entityType, entityId, body: text, kind,
+        /* ⭐ ส่ง `ref` ของใบที่อัปสำเร็จไปแล้วกลับเข้าไปด้วย — กดส่งซ้ำหลังส่งไม่สำเร็จ
+           จะไม่อัปไฟล์เดิมขึ้น Drive ใหม่ (ไม่งั้นได้ไฟล์กำพร้าทุกครั้งที่กด · ดู updatePost) */
+        files: pending.map((p) => ({ file: p.file, ref: p.ref })),
+        onUploaded: (file, attachment) => setPending(
+          (list) => list.map((p) => (p.file === file ? { ...p, ref: attachment } : p)),
+        ),
         dueDate: showDueDate ? dueDate : "",
         quotedId: replyTo?.id || "",
         // ⚠️ ส่งเฉพาะคนที่ชื่อ **ยังอยู่ในข้อความจริง** — เลือกไปแล้วลบชื่อออก
