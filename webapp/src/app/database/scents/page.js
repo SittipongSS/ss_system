@@ -97,9 +97,13 @@ export default function ScentsPage() {
      "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
      ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
   const fromNavCount = useSearchParams().get("count") === "scents";
-  const [statusFilter, setStatusFilter] = useState(
-    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
-  );
+  /* ⭐ **เปิดมาเห็นของทั้งหมดที่มี** (มติผู้ใช้ 2026-09-02) — ของเดิมตั้งต้นที่
+     "เปิดอยู่" ซึ่ง **ซ่อนของที่เก็บเข้ากรุตั้งแต่วินาทีแรก** ⇒ คนเปิดทะเบียนมาหา
+     กลิ่นตัวหนึ่งแล้วไม่เจอ ทั้งที่มันอยู่ในฐาน · ทะเบียนคือของกลางที่คนมา **ค้น**
+     ไม่ใช่คิวงานที่ต้องกรองของที่จบแล้วทิ้ง
+     ⚠️ ยังเคารพ `?count=` (ป้ายตัวเลขบนเมนู) และคำค้นจากลิงก์เหมือนเดิม — สองทางนั้น
+     ผู้ใช้ *ขอ* ตัวกรองมาเอง ต่างจากการเปิดหน้าเปล่า ๆ */
+  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "draft" : "");
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", "");
@@ -179,6 +183,16 @@ export default function ScentsPage() {
     });
   }, [scents, statusFilter, sourceFilter, perfumerFilter, search, arIndex]);
 
+  /* ⭐ **ใหม่สุดขึ้นก่อน** (มติผู้ใช้ 2026-09-02) — API เรียงตาม **ชื่อ ก→ฮ** เพราะ
+     ชุดเดียวกันไปเป็นตัวเลือกในดรอปดาวน์ (เลือกกลิ่นในคำร้อง/สูตร) ซึ่งต้องเรียงชื่อ
+     🐞 ผลข้างเคียงบนหน้าทะเบียน: กลิ่นที่เพิ่งเพิ่มไป **จมอยู่กลางตาราง** ตามตัวอักษร
+     ⇒ คนที่เพิ่งบันทึกไม่เห็นผลงานตัวเอง และคนไล่กรอกย้อนหลังไม่รู้ว่าค้างตรงไหน
+     ⚠️ เรียงที่จอ ไม่แก้ที่ API — แก้ที่นั่นดรอปดาวน์ทั้งระบบจะเรียงมั่วตามวันที่ */
+  const sorted = useMemo(
+    () => [...visible].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
+    [visible],
+  );
+
   // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
   const scentLabelById = useMemo(
     () => new Map(scents.map((s) => [s.id, s.code || s.name])),
@@ -188,7 +202,7 @@ export default function ScentsPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     // ⚠️ ตัวกรองทุกตัวต้องอยู่ใน resetKey — ตกตัวไหนไป เปลี่ยนตัวกรองนั้นแล้วยังค้าง
     // อยู่หน้าเดิมซึ่งอาจไม่มีแถวเหลือแล้ว ⇒ ตารางว่างทั้งที่ผลลัพธ์มีจริง
-    usePagination(visible, { resetKey: `${search}|${statusFilter}|${sourceFilter}|${perfumerFilter}` });
+    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${sourceFilter}|${perfumerFilter}` });
 
   const draftCount = useMemo(() => scents.filter((s) => s.status === "draft").length, [scents]);
 
