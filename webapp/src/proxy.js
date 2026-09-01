@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver } from '@/lib/permissions';
+import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, isRdRole } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -439,7 +439,7 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
   // วัสดุเคยพลาดแล้วทำให้ RD/PC โดน 403 ทุกครั้งที่กดแก้ราคา
   // ด่านจริงอยู่ใน handler ซึ่งรู้ว่าแถวนั้นเป็นร่างของใครและใครเป็นเจ้าของทะเบียน
   if (path.startsWith('/api/scents') || path.startsWith('/api/formulas')) {
-    return can(role, 'products:edit') || role === 'rd';
+    return can(role, 'products:edit') || isRdRole(role);
   }
   // แม่แบบต้นทุนต่อประเภทสินค้า — ข้อมูลหลักของระบบ ผู้ดูแลระบบเท่านั้น
   // (มติ 2026-07-22: ผู้บริหารมีหน้าที่อนุมัติ ไม่ได้ดูแล master data)

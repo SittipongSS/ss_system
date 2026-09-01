@@ -357,13 +357,21 @@ export const PDR_SECTIONS = [
     // หนี้ค้างที่ไม่มีวันเคลียร์ และจุดสีไม่มีวันเขียว
     optional: true,
     note: 'ชื่อที่จะพิมพ์ในตารางลายเซ็นของ PDR — เป็นชื่อบนกระดาษ ไม่ใช่สิทธิ์ในระบบ · เว้นว่างได้',
+    /* ⭐ **`roles` = ตำแหน่งในระบบที่คู่กับช่องนี้** (มติผู้ใช้ 2026-09-01) — ช่องจะได้
+       เสนอรายชื่อคนที่ถือตำแหน่งนั้นให้เลือก แทนพิมพ์ชื่อมือทุกใบ
+       ⚠️ **ยังเก็บเป็น "ชื่อ" ไม่ใช่ id** — นี่คือชื่อที่จะถูก *พิมพ์ลงกระดาษ* ตอนที่ใบ
+       นั้นออก ⇒ คนลาออก/เปลี่ยนชื่อทีหลัง เอกสารเก่าต้องไม่เปลี่ยนตาม (กติกาเดียวกับ
+       ชื่อบนเอกสารทั้งระบบ) · และเลือกจากรายชื่อไม่ได้ก็ยังพิมพ์เองได้ ⇒ คนเซ็นที่
+       ไม่มีบัญชี (Sale & Marketing Manager) ไม่ถูกกั้น
+       ⚠️ ชื่อ role ต้องมีจริงในทะเบียน — มีเทสต์คุม (`pdrFields.test.mjs`) */
     fields: [
-      { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', type: 'text' },
+      { key: 'signAeSupervisor', column: 'pdrSignAeSupervisor', max: 200, label: 'Account Executive Supervisor', type: 'text', roles: ['ae_supervisor'] },
+      // ไม่มี role นี้ในระบบ — ตำแหน่งบนกระดาษล้วน ⇒ พิมพ์เองอย่างเดียว
       { key: 'signSalesManager', column: 'pdrSignSalesManager', max: 200, label: 'Sale & Marketing Manager', type: 'text' },
-      { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', type: 'text' },
-      { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', type: 'text' },
-      { key: 'signCoordinator', column: 'pdrSignCoordinator', max: 200, label: 'Project Coordinator', type: 'text' },
-      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', max: 200, label: 'Final Approval (RD Supervisor)', type: 'text' },
+      { key: 'signPerfumer', column: 'pdrSignPerfumer', max: 200, label: 'Perfumer', type: 'text', roles: ['rd_perfumer'] },
+      { key: 'signChemist', column: 'pdrSignChemist', max: 200, label: 'Product Development Chemist', type: 'text', roles: ['rd_chemist'] },
+      { key: 'signCoordinator', column: 'pdrSignCoordinator', max: 200, label: 'Project Coordinator', type: 'text', roles: ['rd_coordinator'] },
+      { key: 'signFinalApprover', column: 'pdrSignFinalApprover', max: 200, label: 'Final Approval (RD Supervisor)', type: 'text', roles: ['rd_supervisor'] },
     ],
   },
 ];

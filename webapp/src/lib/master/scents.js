@@ -10,7 +10,7 @@
 //
 // ทำไมสายพันธุ์ดีกว่า Rev.: Rev. บังคับให้เป็นเส้นตรง แต่งานจริงแตกกิ่งได้ —
 // ลูกค้าให้แก้ทั้ง A และ C พร้อมกัน แล้วเลือกตัวที่แตกจาก A
-import { canUser, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
+import { canUser, isRdRole, isReadOnlyObserver, isSuperuser } from '@/lib/permissions';
 
 export const SCENT_STATUSES = ['draft', 'developing', 'active', 'archived'];
 
@@ -75,7 +75,7 @@ export function canViewScents(user) {
 // เจ้าของทะเบียน = RD (+ admin break-glass): รับร่างเข้าทะเบียน, ใส่รหัส,
 // เปลี่ยนสถานะ, ส่ง Rev. ฝ่ายขายทำสามอย่างนี้ไม่ได้แม้จะเปิดร่างเอง
 export function isScentRegistrar(user) {
-  return user?.role === 'rd' || isSuperuser(user?.role);
+  return isRdRole(user?.role) || isSuperuser(user?.role);
 }
 
 // เสนอกลิ่นใหม่เป็น "ร่าง" — ฝ่ายขายทำได้ (มติ 10 แพตเทิร์นเดียวกับทะเบียนวัสดุ)

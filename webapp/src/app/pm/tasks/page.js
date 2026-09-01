@@ -26,7 +26,7 @@ import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import { isSuperuser, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
+import { isSuperuser, isRdRole, assignableUsersFor, canPullTask, canReleaseTask, canChangeTaskStatus, taskCreditId, hasTeam, userTeams } from "@/lib/permissions";
 import { useRole, useCan } from "@/lib/roleContext";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { fmtDateNumeric as fmtDate, naText, NA } from "@/lib/format";
@@ -273,7 +273,7 @@ export default function TasksPage() {
   // ใครจัดการงานได้ (mirror server canManage): เจ้าของ/ผู้รับมอบ/superuser/หัวหน้าทีม
   const canManageTask = (t) => {
     if (!me) return false;
-    if (!canEdit && me.role !== "rd") return false; // rd manages its own operational tasks
+    if (!canEdit && !isRdRole(me.role)) return false; // rd manages its own operational tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
     if (me.role === "senior_ae" && userTeams(me).length) {
@@ -633,7 +633,7 @@ export default function TasksPage() {
 
   /* ปุ่มสร้างงานต่อเนื่อง — เงื่อนไขเดียวกับปุ่ม "เพิ่มงาน" (สร้างงานใหม่ ไม่ใช่แก้ใบนี้)
      จึงไม่ผูกกับ canManageTask: คนที่เห็นงานของทีมและมีสิทธิ์สร้างงาน ต่องานจากมันได้ */
-  const canWriteTasks = canEdit || role === "rd";
+  const canWriteTasks = canEdit || isRdRole(role);
   const followUpButton = (t) => canWriteTasks ? (
     <Button iconOnly onClick={(e) => { e.stopPropagation(); openFollowUp(t); }} aria-label="สร้างงานต่อเนื่อง" title="สร้างงานต่อเนื่องจากงานนี้" icon={<CornerDownRight size={14} />} />
   ) : null;
@@ -836,7 +836,7 @@ export default function TasksPage() {
       headerRight={
         <div className="flex gap-3 items-center flex-wrap">
           <ViewSwitcher value={view} onChange={setView} modes={["list", "table", "calendar", "matrix"]} />
-          {(canEdit || role === "rd") && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
+          {(canEdit || isRdRole(role)) && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
         </div>
       }
     >
@@ -857,7 +857,7 @@ export default function TasksPage() {
             onChange={(next) => { setScope(next); setAssigneeFilter([]); }}
             options={allowedScopes.map((s) => ({
               value: s,
-              label: role === "rd" && s === "team" ? "ทีม RD" : SCOPE_TH[s],
+              label: isRdRole(role) && s === "team" ? "ทีม RD" : SCOPE_TH[s],
             }))}
           />
         )}
