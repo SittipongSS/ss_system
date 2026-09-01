@@ -79,6 +79,7 @@ export default function ScentsPage() {
 
   const [scents, setScents] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [perfumers, setPerfumers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   // ?q= = ลิงก์เข้ามาจากที่อื่น (แท็บกลิ่นบนหน้าลูกค้า) — ทะเบียนไม่มีหน้ารายละเอียด
@@ -102,6 +103,8 @@ export default function ScentsPage() {
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", "");
+  // "" = ทุกแถว · "none" = เฉพาะที่ยังไม่ระบุผู้ปรุง (ใช้ไล่กรอกย้อนหลัง)
+  const [perfumerFilter, setPerfumerFilter] = useStickyState("scentPerfumerFilter", "");
 
   const [form, setForm] = useState(null);       // { mode, scent?, value }
   const [accept, setAccept] = useState(null);   // { scent, code, status }
@@ -134,8 +137,14 @@ export default function ScentsPage() {
     setOpenedFromLink(true);
     if (row) setForm({ mode: "edit", scent: row, value: scentToForm(row) });
   }, [linkedEditId, openedFromLink, scents]);
+  /* ⭐ รายชื่อผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — คนที่ถือตำแหน่ง Perfumer ของฝ่าย RD
+     ⚠️ ล้มแล้วเงียบ (ว่าง) — คนที่ไม่มี `pm:view` ยังต้องเปิดทะเบียนกลิ่นได้ตามปกติ
+     แค่ไม่มีช่องผู้ปรุงให้เลือก (ฟอร์มซ่อนช่องเองเมื่อรายชื่อว่าง) */
   useEffect(() => {
     cachedFetchJson("/api/customers").then((d) => setCustomers(d || [])).catch(() => {});
+    cachedFetchJson("/api/pm/assignable-users")
+      .then((d) => setPerfumers((d || []).filter((u) => u.role === "rd_perfumer")))
+      .catch(() => {});
   }, []);
 
   /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003) — ผู้ใช้ทำงานกับรหัสลูกค้า
@@ -155,6 +164,9 @@ export default function ScentsPage() {
       if (statusFilter === "open" && s.status === "archived") return false;
       if (statusFilter && statusFilter !== "open" && s.status !== statusFilter) return false;
       if (!matchesScentSource(s, sourceFilter)) return false;
+      /* ⭐ ตัวกรอง "ยังไม่ระบุผู้ปรุง" (มติผู้ใช้ 2026-09-02) — ช่องผู้ปรุงมีไว้กรอก
+         กลิ่นเก่าย้อนหลัง 115 แถว ⇒ ต้องมีทางเห็นว่าเหลือแถวไหนบ้าง ไม่ใช่ไล่เปิดทีละใบ */
+      if (perfumerFilter === "none" && String(s.perfumerName || "").trim()) return false;
       if (!q) return true;
       // ⭐ ค้นด้วย "ชื่อที่ลูกค้าเรียก" ได้ด้วย — เป็นชื่อที่ลูกค้าโทรมาถามจริง
       // ("ขอตัว Summer Breeze") ซึ่งไม่ตรงกับชื่อหรือรหัสของเราเลย
@@ -165,7 +177,7 @@ export default function ScentsPage() {
         s.customerTradeName, s.note, s.sourceRequest?.docNo,
       ].filter(Boolean).join(" ").toLowerCase().includes(q);
     });
-  }, [scents, statusFilter, sourceFilter, search, arIndex]);
+  }, [scents, statusFilter, sourceFilter, perfumerFilter, search, arIndex]);
 
   // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
   const scentLabelById = useMemo(
@@ -176,7 +188,7 @@ export default function ScentsPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     // ⚠️ ตัวกรองทุกตัวต้องอยู่ใน resetKey — ตกตัวไหนไป เปลี่ยนตัวกรองนั้นแล้วยังค้าง
     // อยู่หน้าเดิมซึ่งอาจไม่มีแถวเหลือแล้ว ⇒ ตารางว่างทั้งที่ผลลัพธ์มีจริง
-    usePagination(visible, { resetKey: `${search}|${statusFilter}|${sourceFilter}` });
+    usePagination(visible, { resetKey: `${search}|${statusFilter}|${sourceFilter}|${perfumerFilter}` });
 
   const draftCount = useMemo(() => scents.filter((s) => s.status === "draft").length, [scents]);
 
@@ -427,6 +439,17 @@ export default function ScentsPage() {
           options={[{ value: "", label: "ทุกที่มา" }, ...SCENT_SOURCES]}
           aria-label="กรองที่มาของกลิ่น"
         />
+        {/* ⭐ ผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — ตัวกรองมีสองค่าพอ: ทุกแถว กับ
+            "ยังไม่ระบุ" · เหตุผลที่ไม่ทำเป็นตัวกรองรายคน: ช่องนี้เพิ่งมี ของเก่ายังว่าง
+            เกือบทั้งทะเบียน ⇒ คำถามที่คนถามจริงตอนนี้คือ "เหลือใบไหนต้องกรอก" */}
+        <Select
+          value={perfumerFilter} onChange={(e) => setPerfumerFilter(e.target.value)}
+          options={[
+            { value: "", label: "ผู้ปรุง: ทั้งหมด" },
+            { value: "none", label: "ยังไม่ระบุผู้ปรุง" },
+          ]}
+          aria-label="กรองผู้ปรุงกลิ่น"
+        />
         <span className="spacer" />
         <ViewSwitcher value={view} onChange={setView} modes={["table", "list"]} ariaLabel="มุมมองทะเบียนกลิ่น" />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
@@ -556,13 +579,19 @@ export default function ScentsPage() {
                           <span className="mono block text-[12px] text-[var(--accent)]">{s.code || "ไม่มี PF"}</span>
                           <span className="block">{s.name}</span>
                         </Link>
-                        {(s.customerTradeName || s.derivedFromScentId) && (
+                        {(s.customerTradeName || s.derivedFromScentId || s.perfumerName) && (
                           <div className={styles.sub}>
                             {[
                               s.customerTradeName ? `ลูกค้าเรียก “${s.customerTradeName}”` : null,
                               s.derivedFromScentId
                                 ? `แก้จาก ${scentLabelById.get(s.derivedFromScentId) || "กลิ่นที่ถูกลบไปแล้ว"}`
                                 : null,
+                              /* ⭐ ผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — **บรรทัดรอง ไม่ใช่
+                                 คอลัมน์ที่ 7** · ตารางนี้ถูกยุบเหลือ 5 คอลัมน์โดยเจตนา
+                                 (มติ 2026-08-08) ⇒ ของใหม่ไปอยู่กับก้อนที่คนอ่านคู่กันอยู่แล้ว
+                                 · คนไล่กรอกย้อนหลังใช้ตัวกรอง "ยังไม่ระบุผู้ปรุง" แทนการ
+                                 กวาดตาทั้งคอลัมน์ */
+                              s.perfumerName ? `ผู้ปรุง ${s.perfumerName}` : null,
                             ].filter(Boolean).join(" · ")}
                           </div>
                         )}
@@ -681,7 +710,7 @@ export default function ScentsPage() {
           กับหน้ารายละเอียด */}
       <ScentFormModal
         form={form} saving={saving}
-        customers={customers} scents={scents}
+        customers={customers} scents={scents} perfumers={perfumers}
         canSetCode={formCanSetCode(form)} canSetLegacy={canPropose} proposal={!registrar}
         onChange={(value) => setForm({ ...form, value })}
         onClose={() => setForm(null)}
