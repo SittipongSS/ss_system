@@ -9,6 +9,7 @@ import { normalizeVisitInput } from '@/lib/service/rounds';
 import { initialVisitStatus } from '@/lib/service/visitGate';
 import { gateContextForSite, loadVisitGateContext } from '@/lib/service/gateContext';
 import { findSite, requireService } from '@/lib/service/sitesRepo';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { findPlan, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 import { siteWorkload } from '@/lib/service/visitLoad';
 import { termIsActive } from '@/lib/service/terms';
@@ -38,8 +39,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        ⚠️ **ต้องเลือก `qty` มาด้วย** — ชุดอุปกรณ์ 1 แถวมีได้หลายจุด (สบู่ 242 จุด)
           ไม่ดึงมา = ประเมินงานต่ำเงียบ ๆ (พบตอน UAT 2026-08-28) */
     const [assets, zones] = siteIds.length ? await Promise.all([
-      supabase.from('service_assets').select('id, siteId, status, qty').in('siteId', siteIds)
-        .then(({ data, error }) => { if (error) throw error; return data || []; }),
+      // 🔴 ห่อ fetchAll (mig 0332) — เครื่องทั้งระบบเกินเพดาน 1,000 แถว และช่วงวันที่
+      //    กว้าง ๆ ก็แตะไซต์ได้เกือบทั้งหมด ⇒ ภาระคิวช่างจะต่ำกว่าจริงโดยไม่มี error
+      fetchAll(() => supabase.from('service_assets').select('id, siteId, status, qty')
+        .in('siteId', siteIds).order('id', { ascending: true })),
       supabase.from('service_zones').select('id, siteId').in('siteId', siteIds)
         .then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]) : [[], []];

@@ -8,12 +8,37 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { addressText } from '@/lib/master/addresses';
 import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow, normalizeAssetSettings } from './assetKinds';
 
-export const ASSET_STATUSES = ['active', 'repair', 'removed'];
+/* ── สถานะเครื่อง = "อยู่ขั้นไหนของวงจร" (mig 0332) ────────────────────────
+   ⭐ `in_stock` เพิ่มพร้อมกับการทำคลังเป็น **ไซต์จริง** ⇒ "ถอดจากหน้างาน" ไม่ใช่
+   สถานะอีกต่อไป มันคือการย้ายไซต์ (ลูกค้า → คลัง) · `removed` จึงเหลือความหมายเดียว
+   คือ **ปลดระวาง** ไม่ใช่ "ถอดออกแล้ว" แบบเดิม
+   ⚠️ คุมด้วย CHECK ใน DB ด้วย — เพิ่มค่าที่นี่อย่างเดียวไม่พอ ต้องมี migration เสมอ */
+export const ASSET_STATUSES = ['active', 'in_stock', 'repair', 'removed'];
 export const ASSET_STATUS_LABELS = {
   active: 'ใช้งาน',
+  in_stock: 'อยู่ในคลัง',
   repair: 'ส่งซ่อม',
-  removed: 'ถอดออกแล้ว',
+  removed: 'ปลดระวาง',
 };
+
+/* ── สภาพเครื่อง = แกนที่สอง แยกจาก "อยู่ขั้นไหน" (mig 0332) ──────────────
+   ⭐ เครื่องเสียขณะยังตั้งอยู่หน้างานคือเรื่องที่แกนเดียวเล่าไม่ได้ — ต้องเลือก
+   ระหว่าง active กับ broken แล้วอีกความจริงหายไป และตัวนับ "เครื่องที่ใช้งานอยู่"
+   ของไซต์จะกระโดดทันทีที่มีคนแจ้งว่าเสีย ทั้งที่เครื่องยังอยู่ที่เดิม */
+export const ASSET_CONDITIONS = ['ok', 'broken'];
+export const ASSET_CONDITION_LABELS = {
+  ok: 'ปกติ',
+  broken: 'ชำรุด',
+};
+
+/* 🔑 **ตัวตัดสินตัวเดียวของทั้งระบบ**: เครื่องตัวนี้ "อยู่หน้างานลูกค้า" หรือเปล่า
+   ⚠️ ก่อน 0332 โค้ดที่ถามคำถามนี้เขียนเป็น `status !== 'removed'` กระจาย 5 จุด
+   ซึ่งพอมี `in_stock` เข้ามาจะกลายเป็น "เครื่องในคลังนับเป็นของหน้างาน" ทันที —
+   ผลคือเตือนน้ำหอมใกล้หมดให้เครื่องบนชั้นวาง และภาระคิวช่างบวมตามสต๊อก
+   ⇒ ทุกจุดต้องถามผ่านตัวนี้ ห้ามเทียบสตริงเอง */
+export function isAssetOnSite(asset) {
+  return asset?.status !== 'removed' && asset?.status !== 'in_stock';
+}
 
 // 0 = อาทิตย์ … 6 = เสาร์ (ตรงกับ Date.getDay() — ห้ามใช้ระบบเลขของตัวเอง
 // เพราะทุกที่ในโค้ดที่คำนวณวันใช้ getDay() อยู่แล้ว)
@@ -100,6 +125,19 @@ export function siteAddressDrift(site = {}, row) {
     .map(([field, label]) => ({ field, label }));
 }
 
+/* ── ประเภทไซต์ (mig 0332) ────────────────────────────────────────────────
+   ⭐ คลังเป็น **ไซต์จริงหนึ่งใบ** เจ้าของคือบริษัทตัวเอง (AR-000) ⇒ ทุกเครื่อง
+   ตอบ "อยู่ไหน" ด้วยชื่อสถานที่เสมอ ไม่มีคำตอบที่แปลว่า "ไม่มีข้อมูล"
+   🔴 **ห้ามแยกคลังด้วย `customerId`/`arCode`** — บริษัทตัวเองมีไซต์ลูกค้าจริงด้วย
+   (`ST-0000-01-BKK-1001` Scent and Sense Office ที่มีเครื่องตั้งใช้งานอยู่)
+   แยกด้วยเจ้าของเมื่อไร เครื่องที่ออฟฟิศตัวเองจะถูกนับเป็นสต๊อกทันที */
+export const SITE_KINDS = ['customer', 'warehouse'];
+export const SITE_KIND_LABELS = {
+  customer: 'ไซต์ลูกค้า',
+  warehouse: 'คลังเครื่อง',
+};
+export const isWarehouseSite = (site) => site?.kind === 'warehouse';
+
 // ── ตรวจข้อมูลไซต์ก่อนแตะ DB — คืนข้อความไทย หรือ null ถ้าผ่าน ────────────
 export function normalizeSiteInput(body = {}) {
   const customerId = String(body.customerId ?? '').trim();
@@ -152,6 +190,10 @@ export function normalizeSiteInput(body = {}) {
     return { value: null, error: 'รหัสจังหวัดไม่ถูกต้อง' };
   }
 
+  // ประเภทไซต์ (mig 0332) — ตั้งต้น 'customer' เหมือน DEFAULT ใน DB
+  const kind = body.kind ?? 'customer';
+  if (!SITE_KINDS.includes(kind)) return { value: null, error: 'ประเภทไซต์ไม่ถูกต้อง' };
+
   /* ── สองช่องที่ "ระบบรู้เอง" ไม่ใช่ช่องให้คนกรอก ──────────────────────
      customerAddressId = แถวที่อยู่ในทะเบียนลูกค้าที่ใช้ตั้งต้นไซต์ (mig 0313) —
        บอกที่มาอย่างเดียว ไม่ผูกให้เปลี่ยนตามกัน · ฟอร์มใช้เทียบค่าแล้วเสนอ "ดึงใหม่"
@@ -183,6 +225,7 @@ export function normalizeSiteInput(body = {}) {
       // ชื่อจังหวัดเก็บคู่รหัสเสมอ — จอ/รายงานประกอบข้อความได้โดยไม่ต้องเปิดทะเบียน
       // 650KB ฝั่ง client (แพตเทิร์นเดียวกับที่อยู่ลูกค้า mig 0217)
       province: String(body.province ?? '').trim().slice(0, 100) || null,
+      kind,
       isActive: body.isActive === undefined ? true : !!body.isActive,
       ownerId: body.ownerId || null,
       ownerName: body.ownerName || null,
@@ -199,6 +242,10 @@ export function normalizeAssetInput(body = {}) {
 
   const status = body.status ?? 'active';
   if (!ASSET_STATUSES.includes(status)) return { value: null, error: 'สถานะเครื่องไม่ถูกต้อง' };
+
+  // สภาพเครื่อง (mig 0332) — แกนที่สอง ตั้งต้น 'ok' เหมือน DEFAULT ใน DB
+  const condition = body.condition ?? 'ok';
+  if (!ASSET_CONDITIONS.includes(condition)) return { value: null, error: 'สภาพเครื่องไม่ถูกต้อง' };
 
   // ชนิดอุปกรณ์ (mig 0298) — ทะเบียนอยู่ assetKinds.js ไม่ใช่ CHECK ใน DB
   const kind = body.kind ?? 'diffuser';
@@ -236,7 +283,11 @@ export function normalizeAssetInput(body = {}) {
   const { value: settings, error: settingsError } = normalizeAssetSettings(kind, body.settings);
   if (settingsError) return { value: null, error: settingsError };
 
-  for (const [field, label2] of [['installedAt', 'วันที่ติดตั้ง'], ['removedAt', 'วันที่ถอด']]) {
+  for (const [field, label2] of [
+    ['installedAt', 'วันที่ติดตั้ง'], ['removedAt', 'วันที่ถอด'],
+    // วันรับเข้าคลัง (mig 0332) — **คนละช่องกับวันติดตั้ง** ชีตเก่ามีทั้งสองและต่างกันเป็นปี
+    ['receivedAt', 'วันที่รับเข้าคลัง'],
+  ]) {
     const err = dateError(body[field], label2);
     if (err) return { value: null, error: err };
   }
@@ -267,7 +318,9 @@ export function normalizeAssetInput(body = {}) {
       mlPerDay: numbers.mlPerDay,
       installedAt: body.installedAt || null,
       removedAt: body.removedAt || null,
+      receivedAt: body.receivedAt || null,
       status,
+      condition,
       note: note || null,
     },
     error: null,
@@ -351,5 +404,10 @@ export function assetRollup(assets = []) {
   const active = assets.filter((a) => a.status === 'active').length;
   const repair = assets.filter((a) => a.status === 'repair').length;
   const removed = assets.filter((a) => a.status === 'removed').length;
-  return { total: assets.length, active, repair, removed };
+  // ⚠️ `inStock` ต้องอยู่ในสรุปด้วย ไม่งั้น active+repair+removed ≠ total
+  //    แล้วคนอ่านหน้าไซต์จะเห็นเป็นบั๊ก (ตัวเลขไม่รวมกัน)
+  const inStock = assets.filter((a) => a.status === 'in_stock').length;
+  // สภาพเป็นแกนที่สอง — นับแยกจากสถานะ ไม่ใช่แทนกัน
+  const broken = assets.filter((a) => a.condition === 'broken').length;
+  return { total: assets.length, active, inStock, repair, removed, broken };
 }

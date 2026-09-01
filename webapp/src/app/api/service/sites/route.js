@@ -27,9 +27,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (access.response) return access.response;
   const url = new URL(req.url);
   try {
+    /* `?kind=` — ตั้งต้น 'customer' (ทะเบียนไซต์ลูกค้า · คลังไม่ปนเข้ามา)
+       ส่ง `warehouse` เพื่อขอเฉพาะคลัง · `all` เพื่อขอทั้งหมด (mig 0332) */
+    const kindParam = url.searchParams.get('kind');
     const sites = await loadSites(supabase, {
       customerId: url.searchParams.get('customerId'),
       includeInactive: url.searchParams.get('includeInactive') !== '0',
+      kind: kindParam === 'all' ? null : (kindParam || 'customer'),
     });
     const siteIds = sites.map((s) => s.id);
     // นับเครื่อง+โซนรวดเดียว ไม่ยิงรายไซต์ (ไซต์ 200 แห่ง = 200 คำขอ)

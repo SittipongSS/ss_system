@@ -432,7 +432,15 @@ export default function ServiceSiteDetailPage({ params }) {
         icon={Boxes}
         eyebrow="Assets"
         title="อุปกรณ์ในไซต์"
-        meta={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
+        /* ⚠️ ต้องครบทุกกอง ไม่งั้นตัวเลขไม่รวมกันเป็น total แล้วคนอ่านเห็นเป็นบั๊ก
+           (mig 0332 เพิ่ม in_stock เข้ามา) · กองที่เป็นศูนย์ตัดทิ้งเพื่อไม่ให้แถวยาวเปล่า ๆ */
+        meta={[
+          `ใช้งาน ${rollup.active}`,
+          rollup.inStock ? `อยู่ในคลัง ${rollup.inStock}` : null,
+          `ส่งซ่อม ${rollup.repair}`,
+          rollup.removed ? `ปลดระวาง ${rollup.removed}` : null,
+          rollup.broken ? `ชำรุด ${rollup.broken}` : null,
+        ].filter(Boolean).join(" · ")}
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์

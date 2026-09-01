@@ -6,7 +6,7 @@
 // ⚠️ **ประเมิน ไม่ใช่ความจริง** — อัตราใช้จริงขึ้นกับการตั้งเครื่องและขนาดห้อง
 // ทุกป้ายจึงต้องอ่านออกว่าเป็นการคาดการณ์ ไม่ใช่ค่าที่วัดมา
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
-import { refillDueDate } from './sites';
+import { refillDueDate, isAssetOnSite, ASSET_STATUS_LABELS } from './sites';
 import { businessDate } from '@/lib/businessDate';
 
 // ใกล้หมดภายในกี่วันถึงเรียกว่า "ต้องรีบ" — 14 วันคือเวลาที่ยังจัดรอบวิ่งทันโดยไม่ต้องแทรกคิว
@@ -45,9 +45,15 @@ export function refillStatus(asset, {
   todayIso = businessDate(),
   soonDays = REFILL_SOON_DAYS,
 } = {}) {
-  // เครื่องที่ถอดออกแล้วไม่ต้องเตือน — ของไม่ได้อยู่หน้างานแล้ว
-  if (asset?.status === 'removed') {
-    return { state: 'unknown', dueDate: null, daysLeft: null, label: 'ถอดออกแล้ว', tone: 'neutral' };
+  /* เครื่องที่ไม่ได้อยู่หน้างานไม่ต้องเตือน — ทั้งที่ปลดระวางแล้วและที่อยู่ในคลัง
+     ⚠️ ก่อน mig 0332 บรรทัดนี้เช็คแค่ `=== 'removed'` ⇒ พอมี `in_stock` เข้ามา
+        เครื่องบนชั้นวาง 343 ตัวจะถูกคำนวณวันน้ำหอมหมดและขึ้นป้าย "ใกล้หมด" ทั้งกอง
+        ป้ายที่มั่วทั้งกระดานทำให้ป้ายจริงถูกเมินไปด้วย */
+  if (!isAssetOnSite(asset)) {
+    return {
+      state: 'unknown', dueDate: null, daysLeft: null,
+      label: ASSET_STATUS_LABELS[asset?.status] || 'ไม่ได้อยู่หน้างาน', tone: 'neutral',
+    };
   }
 
   const dueDate = refillDueDate(asset, refillAnchor(asset, lastSiteRefillDate));
@@ -79,7 +85,8 @@ export const NEEDS_ATTENTION = ['overdue', 'soon'];
 // ── สรุประดับไซต์ — ตัวเลขที่แท็บบนหน้าลูกค้าต้องตอบได้ทันที ──────────────
 export function siteRefillSummary(assets = [], context = {}) {
   const rows = assets
-    .filter((a) => a.status !== 'removed')
+    // mig 0332: เครื่องในคลังไม่ใช่ภาระของไซต์ — ใช้ตัวตัดสินกลางแทนการเทียบสตริง
+    .filter(isAssetOnSite)
     .map((asset) => ({ asset, status: refillStatus(asset, context) }));
 
   const overdue = rows.filter((r) => r.status.state === 'overdue').length;

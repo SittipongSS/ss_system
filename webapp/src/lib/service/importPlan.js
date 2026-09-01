@@ -10,6 +10,7 @@
 // Excel งอกลูกค้าได้ = สร้างลูกค้าซ้ำที่ไม่มีใครตามลบ ⇒ ชื่อที่ไม่ตรงทะเบียน
 // ตกรายงานให้คนไปสร้าง/แก้ชื่อในทะเบียนก่อน
 import { nameKey } from './importValues';
+import { isAssetOnSite } from './sites';
 
 export const ROW_OK = 'ok';        // มีของให้สร้าง
 export const ROW_SKIP = 'skip';    // ตรงกับของที่มีอยู่แล้วทั้งแถว
@@ -48,7 +49,9 @@ export function indexZones(zones = []) {
 export function indexAssetCounts(assets = []) {
   const index = new Map();
   for (const asset of assets) {
-    if (asset.status === 'removed') continue;
+    /* mig 0332: เครื่องในคลังไม่นับเป็น "มีอยู่แล้วที่จุดนี้" — ไม่งั้นกติกากันซ้ำ
+       จะข้ามการสร้างเครื่องที่ติดตั้งจริง เพราะเห็นของในสต๊อกที่ siteId เดียวกัน */
+    if (!isAssetOnSite(asset)) continue;
     const key = `${asset.siteId}|${asset.zoneId || ''}|${asset.kind || 'diffuser'}`;
     index.set(key, (index.get(key) || 0) + 1);
   }
