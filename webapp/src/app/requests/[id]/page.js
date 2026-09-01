@@ -46,7 +46,7 @@ import { documentBoard } from "@/lib/requests/documentBoard";
 import {
   requestHasPdr, requestKindMeta, requestLineNoun, requestNeedsRef,
 } from "@/lib/master/requestTypes";
-import { pdrValuesFrom } from "@/lib/requests/pdrFields";
+import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
 import {
   canEditPdrRefManual, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
@@ -148,6 +148,11 @@ export default function RequestDetailPage() {
   /* รายชื่อผู้ใช้ตามตำแหน่ง — ช่องผู้เซ็นของแบบฟอร์ม PDR เสนอชื่อคนที่ถือตำแหน่งนั้น
      ⚠️ ล้มแล้วต้องเงียบ (ว่าง) — คนที่ไม่มี `pm:view` ยังต้องเปิด/แก้ใบได้ตามปกติ */
   const [signerPeople, setSignerPeople] = useState([]);
+  /* ⭐ **เลือกผู้เซ็นตอนกดรับเรื่อง** (มติผู้ใช้ 2026-09-02) — `{ [key]: ชื่อ }` ของช่อง
+     ที่เลือกไว้ในกล่องยืนยัน · `null` = ยังไม่ได้เปิดกล่อง (เปิดแล้วเติมค่าเดิมของใบ)
+     ⚠️ **ไม่บังคับ** — เว้นว่างแล้วกดรับเรื่องได้ตามเดิม (มติ 2026-08-19: รับเรื่อง =
+     ตัดรอบ ต้องกดได้เร็วโดยไม่ต้องรู้อะไรก่อน) */
+  const [ackSigners, setAckSigners] = useState(null);
 
   useEffect(() => {
     cachedFetchJson("/api/product-types").then((d) => setProductTypes(d || [])).catch(() => {});
@@ -709,9 +714,15 @@ export default function RequestDetailPage() {
       "pdr-ref": "ออกเลขที่เอกสารแล้ว",
     };
     const ok = await call("", {
-      method: "PATCH", body: JSON.stringify({ action: confirm.kind }),
+      method: "PATCH",
+      body: JSON.stringify({
+        action: confirm.kind,
+        // ⚠️ ส่งเฉพาะก้าวรับเรื่อง และเฉพาะที่มีอะไรให้ส่งจริง — action อื่นไม่ควรมี
+        // คีย์นี้ติดไปด้วย (server จะเมินอยู่แล้ว แต่ payload ที่พูดเกินจริงอ่านยาก)
+        ...(confirm.kind === "acknowledge" && ackSigners ? { pdrSigners: ackSigners } : {}),
+      }),
     }, labels[confirm.kind]);
-    if (ok) setConfirm(null);
+    if (ok) { setConfirm(null); setAckSigners(null); }
   };
 
   // ⭐ ตรรกะการประกอบรางอยู่ที่ lib — เทสต์ครอบได้ (บั๊กป้ายซ้ำ/ไฮไลต์ผิดขั้นเกิดตอน
@@ -775,8 +786,16 @@ export default function RequestDetailPage() {
         label: "รับเรื่อง",
         kind: "approve",
         icon: Check,
-        // ⚠️ ไม่ถามวันแล้ว (มติผู้ใช้ 2026-08-19) — รับเรื่อง = ตัดรอบเข้าฝ่าย
-        onClick: () => setConfirm({ kind: "acknowledge" }),
+        /* ⚠️ ไม่ถามวันแล้ว (มติผู้ใช้ 2026-08-19) — รับเรื่อง = ตัดรอบเข้าฝ่าย
+           ⭐ แต่ **ถามผู้เซ็นได้** (มติผู้ใช้ 2026-09-02) — เป็นของไม่บังคับที่ฝ่ายรู้
+              คำตอบตั้งแต่จังหวะนี้พอดี · เติมค่าเดิมของใบไว้ก่อน คนกดจะได้เห็นว่ามี
+              อะไรกรอกไว้แล้วบ้าง ไม่ใช่ช่องว่างที่กดยืนยันแล้วลบของเดิมทิ้ง */
+        onClick: () => {
+          setAckSigners(Object.fromEntries(
+            PDR_SIGNER_FIELDS.map((f) => [f.key, req[f.column] || ""]),
+          ));
+          setConfirm({ kind: "acknowledge" });
+        },
       }
       /* ⭐ **แจ้งกำหนดส่ง = ก้าวถัดไปของฝ่าย** (มติผู้ใช้ 2026-08-19) — ต้องเป็น
          *ปุ่มหลัก* ไม่ใช่เมนูรอง: ตราบใดที่ยังไม่กด ผู้ขอไม่มีวันให้ยึด และไม่มี
@@ -2513,8 +2532,45 @@ export default function RequestDetailPage() {
         busy={saving}
         tone={confirm?.kind === "delete" ? "danger" : "default"}
         onConfirm={runConfirm}
-        onClose={() => setConfirm(null)}
-      />
+        onClose={() => { setConfirm(null); setAckSigners(null); }}
+      >
+        {/* ⭐ **เลือกผู้เซ็นบนเอกสารตั้งแต่รับเรื่อง** (มติผู้ใช้ 2026-09-02) —
+            ของเดิมช่องพวกนี้อยู่ในแท็บที่ห้าของแบบฟอร์ม PDR ⇒ **16 จาก 18 ใบไม่เคย
+            ถูกกรอกเลย** (วัดจากใบจริง) แล้วเอกสารที่พิมพ์ออกไปเป็นเส้นว่างทั้งตาราง
+            ⚠️ **ไม่บังคับ** — เว้นว่างแล้วกดรับเรื่องได้ตามเดิม · ก้าวนี้ต้องกดได้เร็ว
+            ⚠️ โชว์เฉพาะช่องที่ **มีคนถือตำแหน่งนั้นจริง** — ช่องที่ไม่มีใครเลือกได้
+            (Sale & Marketing Manager ที่ยังไม่มี role ในระบบ) เป็นช่องเปล่าที่กินที่
+            เฉย ๆ · ยังพิมพ์เองได้ที่ฟอร์ม PDR เหมือนเดิม */}
+        {confirm?.kind === "acknowledge" && ackSigners && requestHasPdr(req.kind)
+          ? PDR_SIGNER_FIELDS.map((f) => {
+            const picks = f.roles?.length
+              ? signerPeople.filter((p) => f.roles.includes(p.role))
+              : [];
+            if (!picks.length) return null;
+            return (
+              <div className="form-group" key={f.key}>
+                <label htmlFor={`ack-${f.key}`}>{f.label}</label>
+                <Select
+                  id={`ack-${f.key}`} fullWidth disabled={saving}
+                  value={ackSigners[f.key] || ""}
+                  onChange={(e) => setAckSigners({ ...ackSigners, [f.key]: e.target.value })}
+                  options={[
+                    { value: "", label: "— ยังไม่ระบุ —" },
+                    /* ⚠️ ค่าที่เก็บคือ **ชื่อ** ไม่ใช่ id — เป็นชื่อที่ถูกพิมพ์ลงกระดาษ
+                       ตอนใบออก ⇒ คนลาออก/เปลี่ยนชื่อทีหลัง เอกสารเก่าต้องไม่เปลี่ยนตาม
+                       ⭐ ชื่อเดิมของใบที่ไม่มีในรายชื่อ (พิมพ์มือไว้ก่อน · คนย้าย
+                       ตำแหน่งไปแล้ว) ต้องยังอยู่ในลิสต์ ไม่งั้นกดยืนยันแล้วของเดิมหาย */
+                    ...(ackSigners[f.key] && !picks.some((p) => p.name === ackSigners[f.key])
+                      ? [{ value: ackSigners[f.key], label: `${ackSigners[f.key]} (ของเดิมบนใบ)` }]
+                      : []),
+                    ...picks.map((p) => ({ value: p.name, label: p.name })),
+                  ]}
+                />
+              </div>
+            );
+          })
+          : null}
+      </ConfirmDialog>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

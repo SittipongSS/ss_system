@@ -21,7 +21,7 @@ import { canEditPdr, editPdrError } from '@/lib/requests/pdrEdit';
 import { normalizePdr } from '@/lib/requests/pdr';
 import { pdrChangeSummary } from '@/lib/requests/pdrChanges';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
-import { pdrArtworkError } from '@/lib/requests/pdrFields';
+import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
   assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
   pdrRefNoError,
@@ -35,7 +35,8 @@ import {
   assignRequestDocNo, deleteRequestError, requestGuardMessage, submitRequestError,
 } from '@/lib/deptRequests';
 import {
-  lineShapeForKind, requestHasItems, requestKindLabel, requestNeedsRef, requestShapeError,
+  lineShapeForKind, requestHasItems, requestHasPdr, requestKindLabel, requestNeedsRef,
+  requestShapeError,
 } from '@/lib/master/requestTypes';
 import { closureStatus, reopenRequestError, requestClosure } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
@@ -297,6 +298,23 @@ export async function PATCH(request, { params }) {
          ⚠️ ทำ **หลัง** หัวใบเขียนสำเร็จ (ดูท้าย handler) ไม่ใช่ตรงนี้ — หัวใบล้มแล้ว
          แถวต้องไม่ถูกแตะ · แค่ติดธงไว้ก่อน */
       ackFanOut = true;
+      /* ⭐ **เลือกผู้เซ็นบนเอกสารได้ตั้งแต่รับเรื่อง** (มติผู้ใช้ 2026-09-02) — ช่องพวกนี้
+         อยู่ในแท็บที่ห้าของแบบฟอร์ม PDR ⇒ วัดจากใบจริง **16 จาก 18 ใบไม่เคยถูกกรอก**
+         แล้วเอกสารที่พิมพ์ออกไปเป็นเส้นว่างทั้งตาราง · จังหวะรับเรื่องคือจังหวะที่ฝ่าย
+         รู้คำตอบพอดี และเป็นจังหวะที่สิทธิ์แก้ PDR ย้ายมาอยู่ที่ฝ่ายอยู่แล้ว (`pdrEdit.js`)
+         ⚠️ **ไม่บังคับ** — ไม่ส่งมา/ส่งว่าง = ไม่แตะของเดิม · ก้าวนี้ต้องกดผ่านได้เสมอ
+         ⚠️ **เขียนได้เฉพาะช่องผู้เซ็น** — วนจากทะเบียน (`PDR_SIGNER_FIELDS`) ไม่ใช่รับ
+         คีย์อะไรก็ได้จาก body ไปยัด patch (นั่นคือทางเปิดให้เขียนคอลัมน์อื่นทั้งตาราง)
+         ⚠️ **ไม่ตรวจว่าเป็นชื่อคนที่ถือตำแหน่งนั้นจริง** โดยตั้งใจ — ค่านี้คือ "ชื่อบน
+         กระดาษ" ซึ่งฟอร์ม PDR ให้พิมพ์อิสระอยู่แล้ว (คนเซ็นที่ไม่มีบัญชีมีจริง) */
+      if (requestHasPdr(before.kind) && body.pdrSigners && typeof body.pdrSigners === 'object') {
+        for (const f of PDR_SIGNER_FIELDS) {
+          const raw = body.pdrSigners[f.key];
+          if (raw === undefined) continue;
+          const name = String(raw ?? '').trim().slice(0, f.max);
+          if (name !== (before[f.column] || '')) patch[f.column] = name || null;
+        }
+      }
       summary = `รับเรื่อง ${before.docNo || id}`;
     } else if (action === 'commit-due') {
       /* ⭐ **แจ้งกำหนดส่ง** (มติผู้ใช้ 2026-08-19) — ก้าวที่สองของฝ่ายผู้รับ · แยกจาก

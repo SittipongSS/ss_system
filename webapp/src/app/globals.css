@@ -1125,6 +1125,14 @@ button, select, input, textarea {
 /* pre-line: ช่อง detail ใช้บอก "สิ่งที่จะเกิดขึ้น" เป็นรายการบรรทัดละข้อ (ดู lib/approvalPrompt.js)
    ถ้าไม่ตั้งไว้ ทุกข้อจะไหลต่อกันเป็นพืดจนอ่านไม่ออกว่ามีกี่ข้อ */
 .confirm-dialog-detail { margin-top: var(--space-1-5) !important; color: var(--text-3) !important; font-size: var(--fs-6); white-space: pre-line; }
+/* ⭐ ของที่เลือกได้ในกล่องยืนยัน (มติผู้ใช้ 2026-09-02) — กินเต็มความกว้างเหมือน
+   แถบ error และปุ่ม เพราะไอคอนกินคอลัมน์ซ้ายอยู่ · ดู `children` ของ ConfirmDialog */
+.confirm-dialog-extra {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
 .confirm-dialog > [role="alert"] { grid-column: 1 / -1; }
 .confirm-dialog-actions {
   grid-column: 1 / -1;
