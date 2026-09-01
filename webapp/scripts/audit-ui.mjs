@@ -228,6 +228,56 @@ const RAW_OPACITY_CAP = 15;
    - `.totalAmount` (-0.04em) — ตัวเลขใหญ่พิเศษ คนละบทบาทกับ --ls-tabular */
 const RAW_LETTER_SPACING_CAP = 4;
 
+/* ขนาดตัวอักษรที่ยังเป็นเลขดิบใน `className` — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
+   คือ `text-[13px]` / `md:text-[0.8rem]` / `hover:text-[11px]` (Tailwind arbitrary value)
+
+   ไม่นับ `text-[var(--…)]` — อีก 422 จุดในระบบเป็นการอ้างโทเคน และเกือบทั้งหมดเป็น *สี*
+   (--text-3 / --red) ไม่ใช่ขนาด · ไม่นับ `text-[#hex]` / `text-[rgb(…)]` ด้วยเหตุผลเดียวกัน
+
+   ⚠️ **ด่านชั้นพิมพ์เดิมมองรูนี้ไม่เห็นเลย** — typeScaleViolations จับสองรูปเท่านั้น:
+   `font-size:` ในไฟล์ CSS และ `fontSize:` ใน `style={{…}}`/prop ของกราฟ ⇒ คลาสที่เขียน
+   ขนาดลง className ไม่เคยผ่านสายตาใคร และ `npm run audit:ui` พิมพ์
+   "Type-scale violations: 0" มาตลอดทั้งที่มีของจริงอยู่ 152 จุด = อ่านผลแล้วเข้าใจผิดว่า
+   ชั้นพิมพ์สะอาด (บรรทัดรายงานของด่านนี้จึงวางติดกับบรรทัดนั้นโดยเจตนา)
+
+   ตรวจ 2026-09-01: **152 จุด · 27 ไฟล์** อยู่ในไฟล์ .js ทั้งหมด (.css 0 จุด) และไม่มี
+   จุดไหนอยู่ใต้ `src/components/documents/` เลย · กระจาย 5 ค่า:
+   11px ×92 · 10px ×42 · 12px ×10 · 13px ×7 · 22px ×1
+   กระจุกอยู่ 5 ไฟล์เป็นหลัก (96 จาก 152): AttachmentsPanel 28 ·
+   database/customers/[id] 26 · database/CustomerForm 17 · database/customers 13 ·
+   database/products 12 — และ `text-[var(--fs-N)]` วันนี้ยังเป็น **0 จุด** คือชั้นพิมพ์
+   ไม่เคยถูกอ้างจากฝั่ง className เลยสักครั้ง
+
+   🪤 **รูปที่ยกเข้าโทเคนต้องมีคำว่า `length:` ไม่งั้นได้สีแทนขนาด** — วัดด้วย
+   `compile()` ของ tailwindcss 4.3.0 ตรง ๆ 2026-09-01:
+     text-[13px]                -> font-size: 13px        ✓ (แต่เป็นเลขดิบ = ตกด่านนี้)
+     text-[var(--fs-7)]         -> **color: var(--fs-7)** ✗ ขนาดหายทั้งบรรทัด
+     text-[length:var(--fs-7)]  -> font-size: var(--fs-7) ✓ รูปที่ถูก
+     text-(length:--fs-7)       -> font-size: var(--fs-7) ✓ รูปย่อของ v4
+   `text-[var(--…)]` ไม่มีคำใบ้ว่าเป็นความยาว Tailwind จึงเดาว่าเป็นสี แล้วเบราว์เซอร์
+   ทิ้ง `color: 13px` เงียบ ๆ ⇒ ตัวอักษรตกไปสืบทอดขนาดจากแม่ ไม่มี error ไม่มีอะไรฟ้อง
+   นี่คือเหตุผลที่ tailwindTypeFormViolations ข้างล่างเป็น hard-zero ไม่ใช่เพดาน
+
+   🪤 ปลายทางไม่ได้ว่างเท่ากันทุกค่า — อย่าเหมาว่าเป็นงานเก็บกวาด:
+   11px = --fs-3 · 12px = --fs-5 · 13px = --fs-7 · 22px = --fs-13 ⇒ **110 จุดยกเข้าโทเคน
+   ได้โดยขนาดไม่ขยับแม้แต่พิกเซลเดียว** (เขียนเป็น `text-[length:var(--fs-3)]`) แต่
+   **10px ×42 ไม่มีขั้นตรง** (ใกล้สุดคือ --fs-1 = 9.5px กับ --fs-2 = 10.5px)
+   ⇒ ยกเมื่อไหร่ = ตัดสินใจว่าจะขึ้นหรือลง = เปลี่ยนขนาดจริงบนจอ
+   ต้องมีคนเปิดดูทีละหน้า ไม่ใช่ find-replace
+
+   🪤 ชื่อชนกันแบบเงียบ ๆ: โทเคนสีของระบบชื่อ `--text-2/--text-3` ขณะที่ Tailwind v4
+   อ่าน namespace `--text-*` เป็น **ขนาด** วันนี้ยังไม่ชนเพราะสองตัวนั้นประกาศใน `:root`
+   ไม่ใช่ใน `@theme` — ถ้ามีใครย้ายเข้า `@theme` จะได้ utility `text-2`/`text-3`
+   ที่แปลว่าขนาดโผล่มาทันที และ `text-[var(--text-3)]` จะยิ่งอ่านผิดง่ายกว่าเดิม
+
+   ⚠️ ห้ามขยับเลขนี้ขึ้นเพื่อให้ audit ผ่าน — ทางเดียวที่ควรขยับคือลง
+   (เขียน text-[…] เลขดิบเพิ่ม = ตก · ยกเข้าโทเคนแล้วลืมลดเลข = ตกเหมือนกัน)
+   ⚠️ เลข "151" ที่เคยพูดกันตอนตั้งด่านคือการนับเฉพาะ 10–13px ตกตัว `text-[22px]`
+   ของ StatCards ไป (ตัวเลขใหญ่บนการ์ดสถิติ — คนละบทบาทกับอีก 151 จุดที่กดตัวอักษรลง
+   แต่ก็ยังเป็นขนาดดิบเหมือนกัน จึงนับ) · ถ้านับโดยไม่ตัดคอมเมนต์บล็อกจะได้ 153
+   เพราะ `src/components/ui/Input.js` มีคอมเมนต์อธิบายรูนี้ไว้ล่วงหน้าแล้วหนึ่งจุด */
+const RAW_TAILWIND_TYPE_CAP = 152;
+
 /* ⭐ **ค่าว่างต้องพูดคำเดียวกันทั้งระบบ: ขีด `—`** (มติผู้ใช้ 2026-08-17
    กลับคำจากมติ 14/08 ที่เคยให้ขึ้น `N/A` — ด่านนี้ยังทำงานเหมือนเดิม เปลี่ยนแค่คำปลายทาง)
 
@@ -244,6 +294,8 @@ const naFallbackViolations = [];
 
 const rawColorViolations = [];
 const typeScaleViolations = [];
+let rawTailwindTypeCount = 0;
+const tailwindTypeFormViolations = [];
 const fontWeightViolations = [];
 const fontFamilyViolations = [];
 let rawLineHeightCount = 0;
@@ -347,6 +399,64 @@ for (const file of uiFiles) {
     source.split(/\r?\n/).forEach((line, index) => {
       for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
         typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
+      }
+    });
+  }
+
+  /* รูที่สามของชั้นพิมพ์: `className="text-[13px]"` — Tailwind arbitrary value
+     สองก้อนบนจับแค่ `font-size:` ในชีตกับ `fontSize:` ใน style/prop ⇒ className
+     ไม่เคยมีใครดู และ audit พิมพ์ "Type-scale violations: 0" มาตลอดทั้งที่มี 152 จุด
+     (ดู RAW_TAILWIND_TYPE_CAP)
+
+     ไม่นับ `text-[var(--…)]` — 422 จุดที่เหลือเป็นการอ้างโทเคน และเกือบทั้งหมดเป็น
+     *สี* (--text-3 / --red) ไม่ใช่ขนาด ⇒ regex ต้องบังคับให้ตัวแรกในวงเล็บเป็นตัวเลข
+     ไม่ใช่ `[^\]]+` และตัดสินจาก "ตัวเลข + หน่วยความยาว" ไม่ใช่จาก "ไม่มี var("
+     (วันหน้ามี text-[clamp(…)] หรือ text-[color:…] ก็จะไม่ตกด่านขนาดโดยไม่ตั้งใจ)
+
+     ⚠️ **ต้องยอมให้มี `length:` นำหน้าตัวเลขด้วย** — `text-[length:13px]` คอมไพล์เป็น
+     `font-size: 13px` เหมือนกันเป๊ะ (วัดด้วย compile() ของ tailwind 4.3.0 · 2026-09-01)
+     และ `length:` คือ type hint ที่เอกสาร Tailwind สอนเอง ⇒ ถ้า regex บังคับให้ตัวแรก
+     ในวงเล็บเป็นตัวเลขล้วน คนที่โดนด่านตีกลับเติมคำเดียวก็ผ่าน = ด่านมีประตูหลัง
+     ที่หาเจอง่ายกว่าทางที่ถูกเสียอีก (เติม `(?:length:\s*)?` แล้วเลขยังได้ 152 เท่าเดิม)
+
+     🚫 **ไม่ต้องใส่ flag `i`** — วัดแล้ว `text-[13PX]` คอมไพล์เป็น `color: 13PX`
+     ไม่ใช่ font-size (Tailwind อ่านหน่วยแบบ case-sensitive แม้ CSS จะไม่) ⇒ ใส่ `i`
+     = ตีของที่ไม่ใช่ขนาดว่าเป็นขนาด
+
+     ชุดหน่วยลอกจาก `fixedUnit` ของก้อนแรก **แล้วเติม `%`** เพราะ `text-[90%]` เป็น
+     font-size จริง ต่างจากฝั่ง CSS ที่ % ไม่เคยโผล่ใน font-size · `vw/vh` จงใจไม่จับ
+     ตามก้อนแรก และ `text-[clamp(…)]` / `text-[calc(…)]` ก็ไม่จับด้วยเหตุผลเดียวกัน:
+     ทรงที่ถูกคือ `clamp(var(--fs-6), 2vw, var(--fs-8))` ซึ่งมีตัวเลขอยู่ข้างในแต่ไม่ใช่
+     ขนาดดิบ — regex ที่เห็นเลขในวงเล็บแล้วตกจะตีของถูกเป็นของผิด
+
+     `\b` นำหน้ากันตัวอักษรมาติด (subtext-[ / context-[) แต่ยังปล่อย variant prefix
+     ผ่าน (hover: · md: · group-hover: · data-[state=open]:) เพราะ `:` เป็นขอบคำ
+     ⚠️ matchAll ไม่ใช่ match — วันนี้ยังไม่มีบรรทัดไหนที่มีขนาดดิบซ้อนกันเลย (สูงสุด 1)
+     ที่เคยนับได้ "129 บรรทัด สูงสุด 3" เป็นของ `text-[…]` ทุกแบบรวมสี คนละ scope กับ
+     regex ตัวนี้ · hover: 5 จุดที่มีก็เป็นสีทั้งหมด (hover:text-[var(--accent)])
+     ⇒ matchAll ใส่ไว้กันวันหน้า ไม่ใช่เพราะวันนี้จำเป็น
+
+     ℹ️ ยาม `src/components/documents/` ลอกมาจากก้อนข้างบนเพื่อความสม่ำเสมอ แต่วันนี้
+     **ไม่ได้ป้องอะไรเลย** — โฟลเดอร์นั้นปลดระวางไปแล้ว และเอกสารพิมพ์ย้ายไปอยู่
+     `src/lib/documents/` ซึ่ง uiFiles (src/app + src/components) ไม่เคยกวาดถึงอยู่แล้ว */
+  if (!rel.startsWith("src/components/documents/")) {
+    for (const _ of source.matchAll(/\btext-\[\s*(?:length:\s*)?[0-9.]+\s*(?:px|pt|rem|em|ch|ex|cm|mm|in|pc|%)\s*\]/g)) {
+      rawTailwindTypeCount += 1;
+    }
+
+    /* ⭐ hard-zero คู่แฝดของเพดานข้างบน — กันคนยกเข้าโทเคน "ผิดรูป"
+       `text-[var(--fs-7)]` คอมไพล์เป็น `color: var(--fs-7)` ไม่ใช่ font-size
+       (ดู 🪤 ที่ RAW_TAILWIND_TYPE_CAP — วัดด้วย compile() ของ tailwind 4.3.0)
+       ⇒ ขนาดหายเงียบ ๆ ตกไปสืบทอดจากแม่ ไม่มี error ให้จับเลย และ audit ก็จะเห็นว่า
+       เลขดิบลดลงด้วย = "ยกเข้าโทเคนสำเร็จ" ทั้งที่จอเสีย นี่คือทางที่ด่านนี้จะกลาย
+       เป็นตัวสั่งให้พังเอง จึงต้องเป็น 0 ตลอด ไม่ใช่เพดานที่ค่อย ๆ ไล่ลง
+       ตรวจ 2026-09-01: 0 จุด — ตั้งเป็น hard-zero ได้ทันทีโดยไม่ต้องแก้โค้ดแอป
+       (`--fs-` เท่านั้น ไม่ครอบ `text-[var(--text-3)]` ซึ่งเป็นสีและถูกต้องอยู่แล้ว) */
+    source.split(/\r?\n/).forEach((line, index) => {
+      for (const hit of line.matchAll(/\btext-\[\s*var\(\s*(--fs-[\w-]+)/g)) {
+        tailwindTypeFormViolations.push(
+          `${rel}:${index + 1} text-[var(${hit[1]})] → text-[length:var(${hit[1]})]`,
+        );
       }
     });
   }
@@ -788,6 +898,15 @@ const failures = [
   ...(rawLetterSpacingCount < RAW_LETTER_SPACING_CAP
     ? [`ระยะห่างตัวอักษรค่าดิบลดได้แล้ว: เหลือ ${rawLetterSpacingCount} แต่ RAW_LETTER_SPACING_CAP ยังเขียน ${RAW_LETTER_SPACING_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawTailwindTypeCount > RAW_TAILWIND_TYPE_CAP
+    ? [`ขนาดตัวอักษรดิบใน className เพิ่มขึ้น: ${rawTailwindTypeCount} > เพดาน ${RAW_TAILWIND_TYPE_CAP} — หยิบขั้นจาก --fs-* แล้วเขียน text-[length:var(--fs-3)] แทน text-[11px] (ต้องมีคำว่า length: ไม่งั้น Tailwind ตีเป็นสีแล้วขนาดหาย)`]
+    : []),
+  ...tailwindTypeFormViolations.map(
+    (item) => `text-[var(--fs-…)] คอมไพล์เป็น color ไม่ใช่ font-size ⇒ ขนาดหายเงียบ ๆ ต้องใส่ length:: ${item}`,
+  ),
+  ...(rawTailwindTypeCount < RAW_TAILWIND_TYPE_CAP
+    ? [`ขนาดตัวอักษรดิบใน className ลดได้แล้ว: เหลือ ${rawTailwindTypeCount} แต่ RAW_TAILWIND_TYPE_CAP ยังเขียน ${RAW_TAILWIND_TYPE_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
+    : []),
   ...deadClassViolations.map((item) => `dead CSS class (no selector in globals.css): ${item}`),
   ...(orphanCss.globals.length > ORPHAN_GLOBALS_CAP
     ? orphanCss.globals.map((item) => `CSS ที่ไม่มีใครเรียกใน globals.css (ลบทิ้ง อย่าปล่อยไว้): ${item}`)
@@ -828,6 +947,11 @@ console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} vis
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
+/* ⚠️ บรรทัดนี้เป็น ratchet ที่จงใจมานั่งกลางกลุ่ม hard-zero — ไม่ใช่ลืมจัดกลุ่ม
+   คุณค่าของมันคือการอยู่ *ติด* เลข 0 ข้างบนที่หลอกตา: ชั้นพิมพ์ไม่ได้สะอาด
+   แค่ด่านนั้นมองไม่เห็น className · ย้ายลงไปรวมกับ ratchet ตัวอื่นเมื่อไหร่ เจตนาหายทันที */
+console.log(`Tailwind text-[…] ขนาดดิบใน className: ${rawTailwindTypeCount}/${RAW_TAILWIND_TYPE_CAP} (เพดาน ขึ้นไม่ได้ — ตัวเลขบรรทัดบนไม่ครอบคลุมชั้นนี้)`);
+console.log(`text-[var(--fs-…)] ที่ลืมใส่ length: (คอมไพล์เป็นสี ขนาดหาย): ${tailwindTypeFormViolations.length} (ต้องเป็น 0)`);
 console.log(`Font-weight violations (นอกโทเคน --fw-*): ${fontWeightViolations.length}`);
 console.log(`Font-family violations (นอกโทเคน --font-*): ${fontFamilyViolations.length}`);
 console.log(`Z-index violations (นอกโทเคน --z-*): ${zIndexViolations.length}`);

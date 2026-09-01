@@ -163,7 +163,7 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | ชั้น | โทเคน | ตัวตรวจ | เทสต์ |
 |---|---|---|---|
 | สี | `--bg` `--panel*` `--text*` `--accent*` `--navy*` + `*-soft` | raw color = 0 | `systemFoundation` |
-| ขนาดตัวอักษร | `--fs-1..17` + ชื่อตามหน้าที่ | font-size/`fontSize` นอกโทเคน = 0 | `typeScale` · `inlineTypeScale` |
+| ขนาดตัวอักษร | `--fs-1..17` + ชื่อตามหน้าที่ | font-size/`fontSize` นอกโทเคน = 0 · ฝั่ง `className` เป็น**เพดาน** `RAW_TAILWIND_TYPE_CAP` ยังไม่ใช่ 0 | `typeScale` · `inlineTypeScale` · `utilityTypeScale` |
 | **ตัวพิมพ์** | `--font-sans` = **Sarabun ตัวเดียวทั้งระบบ** · `--font-mono` / `--font-numeric` ชี้ตัวเดียวกัน | `font-family`/`fontFamily` นอกโทเคน = 0 | ตัวตรวจ `audit:ui` |
 | ความหนาตัวอักษร | `--fw-normal/medium/semibold/bold` | font-weight นอกโทเคน = 0 | `fontWeightScale` |
 | ความสูงบรรทัด | `--lh-none/flat/tight/thai/text/relaxed` | เพดาน `RAW_LINE_HEIGHT_CAP` | `lineHeightScale` |
@@ -205,6 +205,7 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | `RAW_OPACITY_CAP` | 15 | ความจางเชิงข้อมูล/ของประดับ ไม่ใช่สถานะ "กดไม่ได้" · `0`/`1` ไม่นับ |
 | `RAW_LETTER_SPACING_CAP` | 4 | 4 จุดที่คนละบทบาทกันจริง — `.brand-logo` · `th` · `.dept` · `.totalAmount` **อย่าเหมารวมทีหลัง** |
 | `BREAKPOINT_CAP` | 13 | 5 ค่าที่ยังไม่ยุบ: **800 · 820 · 1050 · 1100 · 1120** — ช่วงที่เปลี่ยนชนความกว้างอุปกรณ์จริง (iPad Air แนวตั้ง ฯลฯ) |
+| `RAW_TAILWIND_TYPE_CAP` | 152 | ขนาดดิบใน `className` (11px ×92 · 10px ×42 · 12px ×10 · 13px ×7 · 22px ×1 · 27 ไฟล์) — **110 จุดยกเข้าโทเคนได้โดยขนาดไม่ขยับ** แต่ **10px ×42 ไม่มีขั้นตรง** (--fs-1 9.5px / --fs-2 10.5px) ต้องเปิดหน้าดูก่อนตัดสินว่าขึ้นหรือลง · ยกแล้วต้องเขียน `text-[length:var(--fs-3)]` — ลืม `length:` = Tailwind ตีเป็นสี ขนาดหายเงียบ ๆ (มี hard-zero จับไว้) |
 
 ชุดจุดตัดจอที่ให้ของใหม่ใช้ (เขียนไว้ใน `globals.css` แล้ว):
 **480 · 560 · 640 · 680 · 768 · 900 · 1000 · 1200**
