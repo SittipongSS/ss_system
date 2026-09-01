@@ -1,7 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canManageProductCategories } from '@/lib/permissions';
-import { normalizeProductCategoryInput, productCategoryCode } from '@/lib/master/productCategory';
+import {
+  normalizeProductCategoryInput, productCategoryCode,
+  PROTECTED_PRODUCT_CATEGORY_CODES, productCategoryDeleteBlocker,
+} from '@/lib/master/productCategory';
+import { loadProductCategoryManagement } from '@/lib/master/productCategoryAdmin';
 import { invalidateCache } from '@/lib/serverCache';
 import { recordAudit } from '@/lib/audit';
 
@@ -79,4 +83,46 @@ export async function PATCH(request, { params }) {
       ...complianceNotes].join(' — '), request,
   });
   return Response.json(updated);
+}
+
+// DELETE — ลบหมวดสินค้า (มติผู้ใช้ 2026-09-01)
+//
+// ⚠️ **ไม่มี FK ห้ามลบ** — สินค้าอ่านหมวดจากรหัสที่ฝังอยู่ใน fgCode เอง ไม่ใช่
+//   join ตาราง product_types ⇒ ด่านของเราต้องตรวจเอง (ตัวเดียวกับที่หน้าจอใช้
+//   คำนวณ `usage` อยู่แล้ว — ห้ามเขียนตัวนับซ้ำที่นี่ ไม่งั้นสองที่ตอบไม่ตรงกัน)
+export async function DELETE(request, { params }) {
+  const { id } = await params;
+  const user = await getCurrentUser();
+  if (!canManageProductCategories(user?.role)) {
+    return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: current, error: findError } = await supabase
+    .from('product_types').select('*').eq('id', id).maybeSingle();
+  if (findError) return Response.json({ error: findError.message }, { status: 500 });
+  if (!current) return Response.json({ error: 'ไม่พบหมวดสินค้านี้' }, { status: 404 });
+
+  /* ⭐ ใช้ตัวคำนวณ usage เดียวกับที่หน้าจัดการหมวดโชว์ให้คนดูอยู่แล้ว — เรียกทั้งชุด
+     แม้จะลบแค่หมวดเดียว เพราะรับประกันว่าด่านลบกับตัวเลขบนจอเป็นตัวเดียวกันเป๊ะ ๆ
+     ไม่ใช่คนละสูตรที่วันหนึ่งจะตอบไม่ตรงกัน (โรคที่คอมเมนต์เดิมในไฟล์นี้เตือนไว้แล้ว:
+     "ด่านลบอ่านเลขนี้") */
+  const { items } = await loadProductCategoryManagement(supabase);
+  const row = items.find((item) => item.id === current.id) || { ...current, usage: {} };
+  const code = productCategoryCode(current);
+  const blocker = productCategoryDeleteBlocker(current, {
+    usage: row.usage,
+    protectedCode: PROTECTED_PRODUCT_CATEGORY_CODES.includes(code),
+  });
+  if (blocker) return Response.json({ error: blocker }, { status: 409 });
+
+  const { error } = await supabase.from('product_types').delete().eq('id', id);
+  if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  invalidateCache('product-types');
+  await recordAudit({
+    user, action: 'delete', entityType: 'product_category', entityId: current.id, before: current,
+    summary: `ลบหมวดสินค้า ${code} ${current.nameTh || current.nameEn || ''}`.trim(), request,
+  });
+  return Response.json({ ok: true });
 }

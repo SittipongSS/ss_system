@@ -64,3 +64,45 @@ export function normalizeProductCategoryInput(input = {}, { partial = false } = 
 export function isProductCategorySelectable(row, currentCode = '') {
   return row?.isActive !== false || productCategoryCode(row) === currentCode;
 }
+
+// ── ลบหมวดสินค้า (มติผู้ใช้ 2026-09-01) ──────────────────────────────────
+//
+// ⭐ **รหัสหมวดที่โค้ดอ้างตรง ๆ ลบไม่ได้เลย แม้ยังไม่มีสินค้าสักตัว** — ต่างจากทีม
+//   ตรงที่นี่ไม่มี FK ห้ามลบ (`categoryOf(fgCode)` อ่านจากตัวรหัสในสตริง fgCode เอง
+//   ไม่ใช่ join ตาราง `product_types`) ⇒ ลบแถวไปก็ไม่มี error จาก Postgres แต่จะเสีย
+//   สองอย่างเงียบ ๆ: (1) เลือกหมวดนี้ตอนสร้างสินค้าใหม่ไม่ได้อีกเลย — ปิดทางสร้าง
+//   ของใหม่ทั้งหมวดโดยไม่มีใครตั้งใจ (2) สินค้าเดิมที่ยังใช้รหัสนี้อยู่จะหาชื่อ/ธง
+//   ภาษี/อย. ของหมวดตัวเองไม่เจอ (`categoryInfoOf` คืน null)
+//   ⚠️ ทุกโค้ดที่เทียบรหัสตรง ๆ ต้องมาต่อท้ายลิสต์นี้ — ลืมอันไหน = ลบหมวดนั้นได้
+//   ทั้งที่ไม่ควร (โรคเดียวกับ `LEAD_BELL_KINDS` ที่ต้องตรงกับ kind ที่ยิงจริงเสมอ)
+export const PROTECTED_PRODUCT_CATEGORY_CODES = Object.freeze([
+  '02-001', // SERVICE_ROUND_CATEGORY — lib/sales/serviceOrders.js (แพ็คเกจบริการ SDS)
+  '02-020', // PDR_FRAGRANCE_OIL_CODE — lib/requests/pdrFields.js
+  '03-001', '03-002', '03-005', '03-008', '03-009', '03-010', // SCENT_DESIGN_CATEGORIES — lib/requests/scentDesignOrders.js
+  '01-001', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
+  '02-010', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
+]);
+
+/**
+ * เหตุผลที่ลบหมวดสินค้านี้ไม่ได้ — คืนข้อความไทย หรือ `''` ถ้าลบได้
+ *
+ * @param row            แถวทะเบียนหมวด
+ * @param usage.total    จำนวนที่ใช้งานอยู่รวมสินค้า/ดีล/โครงการ (คำนวณจากฐานจริง)
+ * @param protectedCode  รหัสนี้ถูกโค้ดอ้างตรง ๆ ไหม (PROTECTED_PRODUCT_CATEGORY_CODES)
+ */
+export function productCategoryDeleteBlocker(row, { usage = {}, protectedCode = false } = {}) {
+  if (!row) return 'ไม่พบหมวดสินค้านี้';
+  if (protectedCode) {
+    return `หมวดนี้เป็นหมวดที่ระบบอ้างตรง ๆ ในโค้ด (เช่น งานบริการ/PDR/ออกแบบกลิ่น) — ลบไม่ได้ ใช้ "พักใช้" แทน`;
+  }
+  const total = Number(usage.total) || 0;
+  if (total > 0) {
+    const detail = [
+      usage.products ? `${usage.products} สินค้า` : null,
+      usage.deals ? `${usage.deals} ดีล` : null,
+      usage.projects ? `${usage.projects} โครงการ` : null,
+    ].filter(Boolean).join(' · ');
+    return `หมวดนี้ถูกใช้ไปแล้ว (${detail}) — ลบไม่ได้เพราะของเดิมจะหาชื่อ/ธงภาษีของหมวดไม่เจอ · ใช้ "พักใช้" แทน`;
+  }
+  return '';
+}

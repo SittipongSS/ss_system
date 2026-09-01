@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
+import { PROTECTED_PRODUCT_CATEGORY_CODES, productCategoryDeleteBlocker } from "@/lib/master/productCategory";
 import Link from "next/link";
-import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Upload } from "lucide-react";
+import { Download, Edit3, Plus, Power, PowerOff, Search, Tags, Trash2, Upload } from "lucide-react";
 import RecordDrawer from "@/components/excise/RecordDrawer";
+import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
@@ -32,6 +34,12 @@ const EMPTY_FORM = {
   requiresFdaNotice: false,
 };
 
+// เหตุที่ลบไม่ได้ (ถ้ามี) — เดียวกับ API ใช้ตัดสิน ⇒ ปุ่มบนจอกับด่านจริงพูดตรงกันเสมอ
+const deleteBlockerOf = (row) => productCategoryDeleteBlocker(row, {
+  usage: row?.usage,
+  protectedCode: PROTECTED_PRODUCT_CATEGORY_CODES.includes(row?.code),
+});
+
 const usageText = (usage = {}) => [
   usage.products ? `${usage.products} สินค้า` : null,
   usage.deals ? `${usage.deals} ดีล` : null,
@@ -50,6 +58,7 @@ export default function ProductCategoriesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [confirmRow, setConfirmRow] = useState(null);
+  const [deleteRow, setDeleteRow] = useState(null);
   // ยืนยันก่อนบันทึกเมื่อธง "เสียภาษีสรรพสามิต" ถูกพลิก — กระทบตรรกะภาษี/ไทม์ไลน์ทั้งระบบ
   const [exciseConfirm, setExciseConfirm] = useState(false);
   const [toast, setToast] = useState(null);
@@ -195,6 +204,23 @@ export default function ProductCategoriesPage() {
     await submitSave();
   };
 
+  const removeCategory = async () => {
+    if (!deleteRow) return;
+    setSaving(true);
+    try {
+      const response = await apiFetch(`/api/product-types/${deleteRow.id}`, { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "ลบหมวดสินค้าไม่สำเร็จ");
+      setDeleteRow(null);
+      setToast({ kind: "success", msg: `ลบหมวด ${deleteRow.code} แล้ว` });
+      await load();
+    } catch (error) {
+      setToast({ kind: "error", msg: error.message || "ลบหมวดสินค้าไม่สำเร็จ" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleStatus = async () => {
     if (!confirmRow) return;
     setSaving(true);
@@ -279,7 +305,7 @@ export default function ProductCategoriesPage() {
                 </thead>
                 <tbody>
                   {groupedRows.map((group) => (
-                    <CategoryGroupRows key={group.code} group={group} onEdit={openEdit} onToggle={setConfirmRow} />
+                    <CategoryGroupRows key={group.code} group={group} onEdit={openEdit} onToggle={setConfirmRow} onDelete={setDeleteRow} />
                   ))}
                 </tbody>
               </table>
@@ -304,6 +330,17 @@ export default function ProductCategoriesPage() {
                           {row.isActive === false ? <Power size={15} /> : <PowerOff size={15} />}
                           {row.isActive === false ? "เปิดใช้" : "พักใช้"}
                         </button>
+                        {/* ⭐ ปุ่มลบ (ผู้ใช้ขอ 2026-09-01) — ติดด่านค่อยบอกเหตุตอนกด
+                            ไม่ซ่อนปุ่ม เพราะเหตุที่ลบไม่ได้เองก็เป็นข้อมูลที่มีประโยชน์
+                            (เช่น "หมวดนี้โค้ดอ้างตรง ๆ" ที่คนดูควรรู้แม้ยังไม่ได้ใช้งาน) */}
+                        <Button
+                          tone="danger" variant="quiet" size="sm"
+                          disabled={!!deleteBlockerOf(row)} title={deleteBlockerOf(row) || undefined}
+                          onClick={() => setDeleteRow(row)}
+                          icon={<Trash2 size={15} aria-hidden="true" />}
+                        >
+                          ลบ
+                        </Button>
                       </div>
                     </article>
                   ))}
@@ -441,12 +478,27 @@ export default function ProductCategoriesPage() {
         onConfirm={toggleStatus}
         onClose={() => !saving && setConfirmRow(null)}
       />
+
+      {/* ⭐ ลบหมวดสินค้า (ผู้ใช้ขอ 2026-09-01) — ปุ่มที่เรียกโมดัลนี้ปิดไว้แล้วเมื่อ
+          ลบไม่ได้ (ดู deleteBlockerOf) แต่ยังกันซ้ำอีกชั้นที่ API เผื่อข้อมูลเปลี่ยน
+          ระหว่างที่จอเปิดค้างไว้ (สินค้าใหม่เพิ่งถูกสร้างเข้าหมวดนี้ระหว่างนั้น) */}
+      <ConfirmDialog
+        open={!!deleteRow}
+        title="ลบหมวดสินค้า"
+        description={deleteRow ? `${deleteRow.code} — ${categoryNameBoth(deleteRow) || "ไม่ระบุชื่อ"}` : ""}
+        detail="ลบได้เฉพาะหมวดที่ยังไม่มีสินค้า/ดีล/โครงการผูกอยู่ และไม่ใช่หมวดที่ระบบอ้างตรง ๆ ในโค้ด — ถ้าเคยใช้งานแล้วให้ 'พักใช้' แทน"
+        confirmLabel="ลบหมวด"
+        tone="danger"
+        busy={saving}
+        onConfirm={removeCategory}
+        onClose={() => !saving && setDeleteRow(null)}
+      />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }
 
-function CategoryGroupRows({ group, onEdit, onToggle }) {
+function CategoryGroupRows({ group, onEdit, onToggle, onDelete }) {
   return (
     <>
       <tr className={styles.groupRow}>
@@ -469,6 +521,15 @@ function CategoryGroupRows({ group, onEdit, onToggle }) {
               <button type="button" className="btn-icon" onClick={() => onToggle(row)} aria-label={`${row.isActive === false ? "เปิดใช้งาน" : "พักใช้งาน"} ${row.code}`} title={row.isActive === false ? "เปิดใช้งาน" : "พักใช้งาน"}>
                 {row.isActive === false ? <Power size={15} /> : <PowerOff size={15} />}
               </button>
+              {/* ⭐ ปุ่มลบ (ผู้ใช้ขอ 2026-09-01) — เดิมหน้านี้มีแต่ "พักใช้" อย่างเดียว
+                  ⚠️ ปุ่มโชว์เสมอ ติดด่านค่อยบอกเหตุตอน hover/กด — ไม่ซ่อนปุ่มไว้ล่วงหน้า */}
+              <Button
+                iconOnly tone="danger" variant="quiet"
+                disabled={!!deleteBlockerOf(row)} title={deleteBlockerOf(row) || `ลบ ${row.code}`}
+                aria-label={`ลบ ${row.code}`}
+                onClick={() => onDelete(row)}
+                icon={<Trash2 size={15} aria-hidden="true" />}
+              />
             </div>
           </td>
         </tr>

@@ -2,6 +2,7 @@
 // ── รายละเอียดไซต์: เครื่อง + รอบบริการ + ประวัติการเข้า (mig 0187/0188) ──
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
@@ -38,6 +39,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
+  const router = useRouter();
   const role = useRole();
   const team = useTeam();
   const teams = useTeams();
@@ -221,6 +223,22 @@ export default function ServiceSiteDetailPage({ params }) {
     await load();
   };
 
+  const removeSite = async () => {
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/service/sites/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      setPendingDelete(null);
+      // toast ของหน้าที่กำลังจะออกจากมันไม่มีความหมาย — บอกที่ทะเบียนแทนหลังย้ายหน้า
+      router.push("/service/sites?deleted=" + encodeURIComponent(site?.name || id));
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removePlan = async () => {
     setBusy(true);
     try {
@@ -277,9 +295,18 @@ export default function ServiceSiteDetailPage({ params }) {
       subtitle={`${naText(site.customerName)}${site.code ? ` · ${site.code}` : ""}`}
       back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}
       headerRight={canEdit ? (
-        <Button tone="neutral" onClick={() => setEditingSite(true)} icon={<Pencil size={15} aria-hidden="true" />}>
-          แก้ไขไซต์
-        </Button>
+        <div className="flex gap-2">
+          <Button tone="neutral" onClick={() => setEditingSite(true)} icon={<Pencil size={15} aria-hidden="true" />}>
+            แก้ไขไซต์
+          </Button>
+          {/* ⭐ ปุ่ม "ลบไซต์" (ผู้ใช้ขอ 2026-09-01) — API มีด่านครบอยู่แล้ว (เครื่อง/โซน/
+              ประวัตินัด บล็อกการลบ) แต่ก่อนหน้านี้ไม่มีปุ่มเรียกมันเลยสักที่ในหน้าจอ
+              ⚠️ กติกาเปลือก: ปุ่มโชว์เสมอ ติดด่านค่อยบอกเหตุตอนกด — ไม่ซ่อนปุ่มไว้ล่วงหน้า
+              เพราะยังไม่รู้ว่าไซต์นี้มีของค้างอยู่ไหมจนกว่าจะกด (เหตุผลเดียวกับทีม) */}
+          <Button tone="danger" variant="quiet" onClick={() => setPendingDelete({ type: "site", row: site })} icon={<Trash2 size={15} aria-hidden="true" />}>
+            ลบไซต์
+          </Button>
+        </div>
       ) : null}
     >
       <WorkspaceSection title="ข้อมูลไซต์">
@@ -603,22 +630,27 @@ export default function ServiceSiteDetailPage({ params }) {
         danger
         title={pendingDelete?.type === "plan" ? "ลบรอบบริการ"
           : pendingDelete?.type === "zone" ? "ลบโซนออกจากไซต์"
-            : "ลบอุปกรณ์ออกจากไซต์"}
+            : pendingDelete?.type === "site" ? "ลบไซต์บริการ"
+              : "ลบอุปกรณ์ออกจากไซต์"}
         message={pendingDelete
           ? (pendingDelete.type === "plan"
             ? `ลบรอบทุก ${pendingDelete.row.everyDays} วัน?`
             : pendingDelete.type === "zone"
               ? `ลบโซน ${pendingDelete.row.name}?`
-              : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
+              : pendingDelete.type === "site"
+                ? `ลบไซต์ ${pendingDelete.row?.name}?`
+                : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
           : ""}
         detail={pendingDelete?.type === "plan"
           ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ"
           : pendingDelete?.type === "zone"
             ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
-            : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
-        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : "ลบอุปกรณ์"}
+            : pendingDelete?.type === "site"
+              ? "ลบได้เฉพาะไซต์ที่ยังไม่มีเครื่อง/โซน/ประวัตินัด — มีของค้างอยู่จะลบไม่ผ่านพร้อมบอกว่าติดอะไร ถ้าไซต์นี้เลิกใช้แล้วให้ปิดใช้งานแทน (แก้ไขไซต์ → สถานะ)"
+              : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
+        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : pendingDelete?.type === "site" ? "ลบไซต์" : "ลบอุปกรณ์"}
         busy={busy}
-        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : removeAsset}
+        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : pendingDelete?.type === "site" ? removeSite : removeAsset}
         onClose={() => setPendingDelete(null)}
       />
 

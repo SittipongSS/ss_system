@@ -6,6 +6,7 @@
 // 12 สาขาเก็บไม่ได้ตั้งแต่ต้น
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Search, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -22,6 +23,8 @@ import { naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceSitesPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const role = useRole();
   const team = useTeam();
   const teams = useTeams();
@@ -38,8 +41,18 @@ export default function ServiceSitesPage() {
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [search, setSearch] = useState("");
   const [toast, setToast] = useState(null);
+  /* toast "ลบไซต์แล้ว" ข้ามหน้ามาจากหน้ารายละเอียด (ลบสำเร็จแล้วไม่มีข้อมูลเหลือให้
+     อยู่หน้านั้นต่อ) — อ่านครั้งเดียวตอน mount แล้วเคลียร์ query ทิ้ง ไม่งั้น refresh
+     หน้านี้ซ้ำจะเห็น toast เดิมค้าง */
+  useEffect(() => {
+    const deleted = searchParams.get("deleted");
+    if (!deleted) return;
+    setToast({ kind: "success", msg: `ลบไซต์ ${deleted} แล้ว` });
+    router.replace("/service/sites", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
