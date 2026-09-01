@@ -6,14 +6,17 @@ import { useRouter } from "next/navigation";
 import { fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
 import { floorLabel } from "@/lib/service/zoneCode";
 import { use } from "react";
-import { Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Boxes, CalendarClock, History, Layers, MapPin, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
-import Workspace, { WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace from "@/components/ui/Workspace";
+import DetailOverview, { DetailStateBadge } from "@/components/ui/DetailOverview";
+import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import ServiceAssetModal from "@/components/service/ServiceAssetModal";
 import ServicePlanModal from "@/components/service/ServicePlanModal";
@@ -288,28 +291,56 @@ export default function ServiceSiteDetailPage({ params }) {
     );
   }
 
+  /* ── Control Panel ของไซต์ ────────────────────────────────────────────────
+     ไซต์ไม่มีแกนอนุมัติแบบลูกค้า/สินค้า — มีแกนเดียวคือใช้งาน/ปิดใช้งาน จึงให้แกนนั้น
+     เป็น status ของการ์ด control ไปเลย (ไม่มี workflowSteps ให้ส่ง)
+     ⚠️ ปุ่มระดับไซต์ (แก้ไข/ลบ) ย้ายเข้า Control Panel ทั้งชุด — ห้ามวางแยกไว้ในแถวหัว
+     อีก เหมือนที่หน้าลูกค้า/สินค้าห้ามไว้ (ม-49/ม-57) */
+  const siteAside = (
+    <>
+      <DocumentSummaryCard
+        title="สรุปไซต์"
+        rows={[
+          { id: "contact", label: "ผู้ติดต่อ", value: site.contactName ? `${site.contactName}${site.contactPhone ? ` · ${fmtPhone(site.contactPhone)}` : ""}` : "" },
+          { id: "routeZone", label: "เขตวิ่งงาน", value: site.routeZone },
+          { id: "access", label: "ช่วงเวลาที่เข้าได้", value: accessText || "ไม่จำกัด" },
+        ]}
+      />
+
+      <DocumentControlCard
+        eyebrow="SITE CONTROL"
+        title="จัดการไซต์"
+        status={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}
+        statusColor={site.isActive === false ? "var(--text-3)" : "var(--green)"}
+        statusDescription={site.isActive === false
+          ? "ไซต์นี้ถูกปิดใช้งาน — ไม่ขึ้นในรายการเลือกของระบบอื่น"
+          : "ไซต์พร้อมใช้งาน — รับรอบบริการและนัดใหม่ได้"}
+        primaryAction={canEdit ? { id: "edit", kind: "edit", label: "แก้ไขไซต์", onClick: () => setEditingSite(true) } : null}
+        /* API มีด่านครบอยู่แล้ว (เครื่อง/โซน/ประวัตินัด บล็อกการลบ) — ปุ่มโชว์เสมอ
+           ติดด่านค่อยบอกเหตุตอนกด ไม่ซ่อนปุ่มไว้ล่วงหน้า (เหตุผลเดียวกับทีม) */
+        dangerActions={canEdit ? [{ id: "delete", kind: "delete", label: "ลบไซต์", onClick: () => setPendingDelete({ type: "site", row: site }) }] : []}
+      />
+    </>
+  );
+
   return (
-    <Workspace
-      icon={<MapPin size={20} aria-hidden="true" />}
-      title={site.name}
-      subtitle={`${naText(site.customerName)}${site.code ? ` · ${site.code}` : ""}`}
-      back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}
-      headerRight={canEdit ? (
-        <div className="flex gap-2">
-          <Button tone="neutral" onClick={() => setEditingSite(true)} icon={<Pencil size={15} aria-hidden="true" />}>
-            แก้ไขไซต์
-          </Button>
-          {/* ⭐ ปุ่ม "ลบไซต์" (ผู้ใช้ขอ 2026-09-01) — API มีด่านครบอยู่แล้ว (เครื่อง/โซน/
-              ประวัตินัด บล็อกการลบ) แต่ก่อนหน้านี้ไม่มีปุ่มเรียกมันเลยสักที่ในหน้าจอ
-              ⚠️ กติกาเปลือก: ปุ่มโชว์เสมอ ติดด่านค่อยบอกเหตุตอนกด — ไม่ซ่อนปุ่มไว้ล่วงหน้า
-              เพราะยังไม่รู้ว่าไซต์นี้มีของค้างอยู่ไหมจนกว่าจะกด (เหตุผลเดียวกับทีม) */}
-          <Button tone="danger" variant="quiet" onClick={() => setPendingDelete({ type: "site", row: site })} icon={<Trash2 size={15} aria-hidden="true" />}>
-            ลบไซต์
-          </Button>
-        </div>
-      ) : null}
-    >
-      <WorkspaceSection title="ข้อมูลไซต์">
+    <Workspace hideHeader back={{ href: "/service/sites", label: "ทะเบียนไซต์" }}>
+      <DetailOverview
+        eyebrow="SERVICE SITE"
+        title={`${site.code ? `${site.code} · ` : ""}${site.name}`}
+        description={<><span>{naText(site.customerName)}</span><span>{naText(site.province)}</span></>}
+        badges={<DetailStateBadge label={site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"} color={site.isActive === false ? "var(--text-3)" : "var(--green)"} />}
+        facts={[
+          { key: "zones", icon: Layers, label: "โซน", value: `${zones.length} โซน` },
+          { key: "assets", icon: Boxes, label: "อุปกรณ์", value: `${rollup.active} ใช้งาน${assets.length !== rollup.active ? ` / ${assets.length}` : ""}` },
+          { key: "plans", icon: RefreshCw, label: "รอบบริการ", value: `${plans.length} รอบ` },
+          { key: "upcoming", icon: CalendarClock, label: "นัดที่จะถึง", value: `${upcoming.length} นัด` },
+        ]}
+      />
+
+      <div className="mt-[18px]">
+      <DetailPageLayout asideLabel="สรุปไซต์และการดำเนินการ" aside={siteAside}>
+      <DetailCard icon={MapPin} eyebrow="Site profile" title="ข้อมูลไซต์">
         <dl className={styles.info}>
           <div><dt>เขตวิ่งงาน</dt><dd>{naText(site.routeZone)}</dd></div>
           {/* จังหวัด (mig 0315) — ตัวตนถาวรของไซต์ ตรึงอยู่ในรหัส · คนละช่องกับที่อยู่
@@ -322,7 +353,6 @@ export default function ServiceSiteDetailPage({ params }) {
             <dd>{accessText || <span className={styles.muted}>ไม่จำกัด</span>}</dd>
           </div>
           <div><dt>เงื่อนไขการเข้า</dt><dd>{naText(site.accessNote)}</dd></div>
-          <div><dt>สถานะ</dt><dd><span className="ui-badge">{site.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span></dd></div>
           {site.mapUrl && (
             <div>
               <dt>แผนที่</dt>
@@ -332,11 +362,13 @@ export default function ServiceSiteDetailPage({ params }) {
           )}
           {site.note && <div className={styles.wide}><dt>หมายเหตุ</dt><dd>{site.note}</dd></div>}
         </dl>
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={Layers}
+        eyebrow="Zones"
         title="โซนในไซต์"
-        subtitle="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
+        meta="พื้นที่ย่อยที่ติดตามการใช้/รอบบริการแยกกัน — โซนอยู่ถาวร ใบสั่งขายใหม่มาผูกโซนเดิมได้"
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormZone(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มโซน
@@ -394,11 +426,13 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={Boxes}
+        eyebrow="Assets"
         title="อุปกรณ์ในไซต์"
-        subtitle={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
+        meta={`ใช้งาน ${rollup.active} · ส่งซ่อม ${rollup.repair} · ถอดออกแล้ว ${rollup.removed}`}
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormAsset(null)} icon={<Plus size={15} aria-hidden="true" />}>
             เพิ่มอุปกรณ์
@@ -483,11 +517,13 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection
+      <DetailCard
+        icon={RefreshCw}
+        eyebrow="Service rounds"
         title="รอบบริการ"
-        subtitle="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
+        meta="ระบบสร้างนัดล่วงหน้า 90 วันตามรอบ แล้วต่อรอบให้เมื่อปิดงานจริง"
         actions={canEdit ? (
           <Button tone="primary" onClick={() => setFormPlan(null)} icon={<Plus size={15} aria-hidden="true" />}>
             สร้างรอบ
@@ -535,9 +571,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection title="นัดที่จะถึง" subtitle={`${upcoming.length} นัด`}>
+      <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
         {upcoming.length === 0 ? (
           <EmptyState icon={MapPin} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
@@ -560,9 +596,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
 
-      <WorkspaceSection title="ประวัติการเข้า" subtitle="20 ครั้งล่าสุด">
+      <DetailCard icon={History} eyebrow="Visit history" title="ประวัติการเข้า" meta="20 ครั้งล่าสุด">
         {history.length === 0 ? (
           <EmptyState icon={MapPin} plain>ยังไม่มีประวัติการเข้าไซต์นี้</EmptyState>
         ) : (
@@ -590,7 +626,9 @@ export default function ServiceSiteDetailPage({ params }) {
             </table>
           </TableShell>
         )}
-      </WorkspaceSection>
+      </DetailCard>
+      </DetailPageLayout>
+      </div>
 
       <ServiceSiteModal
         open={editingSite}
