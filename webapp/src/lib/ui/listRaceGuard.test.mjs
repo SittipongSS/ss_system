@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
  * (เพิ่มหน้าใหม่เข้าลิสต์เมื่อทำหน้ารายการที่มีตัวกรองเพิ่ม)
  */
 const GUARDED = [
+  "app/service/assets/page.js",
   "app/requests/page.js",
   "app/notifications/page.js",
   "app/finance/payments/page.js",

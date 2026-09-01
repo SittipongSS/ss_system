@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
+import { Home, AirVent, ArrowDownToLine, Building2, Package, Tags, ClipboardCheck, ClipboardList, ReceiptText, FileText, FileSignature, Inbox, LifeBuoy, LogOut, Moon, Sun, ChevronDown, ChevronRight, Users, KeyRound, FolderKanban, Handshake, Hammer, ListTodo, ShoppingCart, LayoutDashboard, BarChart3, LineChart, Boxes, Target, Trash2, MessageCircleQuestion, MoreHorizontal, X, Settings as SettingsIcon, UserRound, Calculator, FlaskConical, Beaker, Factory, MapPin, CalendarDays, CalendarRange, Wallet, Wrench, Menu } from 'lucide-react';
 
 import { createClient } from '@/lib/supabaseBrowser';
 import { apiCache } from '@/lib/apiCache';
@@ -588,6 +588,11 @@ export default function AppLayout({ children }) {
         SHARED_DOC_ITEMS.salesOrders,
         SHARED_DOC_ITEMS.contracts,
         { href: '/service/sites', name: 'ไซต์บริการ', icon: MapPin, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/sites') },
+        /* ⭐ ทะเบียนเครื่อง (เฟส B · mig 0332) — คู่กับไซต์บริการ วางติดกันเพราะคน
+           ที่เปิดหาไซต์กับคนที่เปิดหาเครื่องคือคนเดียวกัน และสองหน้านี้ลิงก์หากันตลอด
+           ⚠️ `match` ต้องครอบหน้าเครื่องรายตัวด้วย — URL ย้ายออกมาจากใต้ไซต์แล้ว
+              ถ้าไม่ครอบ เปิดหน้าเครื่องแล้วจะไม่มีเมนูไหนไฮไลต์เลย */
+        { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') },
         // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
         { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/teams') },

@@ -114,6 +114,9 @@ const nextConfig = {
       // F-1 2026-08-27: "นัดของฉัน" เปลี่ยนชื่อ+เส้นทางเป็น "งานวันนี้" — ลิงก์เก่า
       // ใน toast/แจ้งเตือน/bookmark ของช่างต้องไม่ตายกลางอากาศ
       { source: '/service/my-visits', destination: '/service/today', permanent: false },
+      /* เฟส B 2026-09-02: หน้าอุปกรณ์ย้ายออกจากใต้ไซต์มาเป็นทะเบียนเครื่องรวม
+         — เครื่องในคลังไม่มีไซต์ลูกค้าให้ซ่อนอยู่ใต้ · bookmark เดิมของช่างต้องไม่ตาย */
+      { source: '/service/sites/:siteId/assets/:assetId', destination: '/service/assets/:assetId', permanent: false },
     ];
   },
 };

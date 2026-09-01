@@ -26,7 +26,7 @@ import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function ServiceAssetPage({ params }) {
-  const { id, assetId } = use(params);
+  const { id } = use(params);   // = assetId · เฟส B ย้าย route ออกจากใต้ไซต์
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -37,7 +37,7 @@ export default function ServiceAssetPage({ params }) {
     if (!opts?.background) setLoading(true);
     setLoadError("");
     try {
-      const res = await apiFetch(`/api/service/sites/${id}/assets/${assetId}/detail`);
+      const res = await apiFetch(`/api/service/assets/${id}/detail`);
       const body = await res.json().catch(() => null);
       if (!isLatest()) return;
       if (!res.ok) throw new Error(body?.error || "โหลดข้อมูลอุปกรณ์ไม่สำเร็จ");
@@ -47,7 +47,7 @@ export default function ServiceAssetPage({ params }) {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [id, assetId, startRun]);
+  }, [id, startRun]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
 
@@ -82,7 +82,12 @@ export default function ServiceAssetPage({ params }) {
     });
   }, [asset, data?.visits]);
 
-  const back = { href: `/service/sites/${id}`, label: naText(data?.site?.name) };
+  /* ⚠️ ปุ่มย้อนกลับต้องอ่านไซต์จาก **ข้อมูลที่โหลดมา** ไม่ใช่จาก route param อีกแล้ว
+     (URL ใหม่ไม่มี siteId) · ตอนยังโหลดไม่เสร็จยังไม่รู้ไซต์ ⇒ ถอยไปทะเบียนเครื่อง
+     ซึ่งเป็นที่ที่คนกดเข้ามาจริง ไม่ใช่ลิงก์เปล่าที่กดแล้วไม่ไปไหน */
+  const back = data?.site
+    ? { href: `/service/sites/${data.site.id}`, label: naText(data.site.name) }
+    : { href: '/service/assets', label: 'ทะเบียนเครื่อง' };
 
   if (loading) {
     return <Workspace icon={<Wrench size={20} aria-hidden="true" />} title="อุปกรณ์" back={back}><SkeletonRows rows={5} /></Workspace>;
@@ -160,7 +165,7 @@ export default function ServiceAssetPage({ params }) {
                 ไปหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */}
             {zone && (
               <ContextCard
-                href={`/service/sites/${id}/zones/${zone.id}`}
+                href={`/service/sites/${data.site.id}/zones/${zone.id}`}
                 icon={Layers} eyebrow="โซน" title={zone.name}
                 subtitle="ดูรอบขายและยอดใช้จริงของโซนนี้"
                 facts={[{ label: "เครื่องในโซน", value: `${fmtNumber((data.zoneAssets || []).length)} ตัว` }]}

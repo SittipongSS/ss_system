@@ -487,7 +487,7 @@ export default function ServiceSiteDetailPage({ params }) {
                       <td>
                         {/* ชื่อเครื่องกดเข้าหน้าอุปกรณ์ — ค่าตั้งเครื่องกับประวัติรายตัว
                             (ติดตั้ง · ถูกเปลี่ยน · เอาไปแทนตัวอื่น) อยู่ที่นั่น */}
-                        <Link href={`/service/sites/${site.id}/assets/${asset.id}`} className={styles.zoneLink}>
+                        <Link href={`/service/assets/${asset.id}`} className={styles.zoneLink}>
                           {asset.label}
                         </Link>
                         {kindText ? <div className={styles.muted}>{kindText}</div> : null}
