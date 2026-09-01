@@ -69,8 +69,11 @@ test("ไม่มีค่าที่ตรงขั้นเป๊ะหล�
       const full = path.join(dir, name);
       if (statSync(full).isDirectory()) { walk(full); continue; }
       if (!full.endsWith(".css")) continue;
+      /* เดินทั้ง src แต่กรองเฉพาะ .css — CSS ของเอกสารพิมพ์อยู่ใน *สตริง JS* ใต้
+         src/lib/documents/ จึงไม่เคยผ่านสายตาด่านนี้อยู่แล้ว (ไม่ใช่เพราะยกเว้นให้)
+         ยาม `components/documents/` เดิมยกเว้นศูนย์ไฟล์ตั้งแต่โฟลเดอร์ปลดระวาง
+         (2a2eed0b) — ลบทิ้ง 2026-09-02 */
       const rel = path.relative(srcRoot, full).replaceAll("\\", "/");
-      if (rel.startsWith("components/documents/")) continue;
       const css = readFileSync(full, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
       for (const hit of css.matchAll(/border-radius:\s*([^;{}]+)/g)) {
         const value = hit[1].trim();

@@ -52,7 +52,8 @@ function offenders() {
   const found = [];
   for (const file of uiFiles()) {
     const name = rel(file);
-    if (name.startsWith("src/components/documents/")) continue;
+    /* ไม่มียามกรองพาธ — audit-ui.mjs ก็ไม่มีแล้วเหมือนกัน (ลบ 2026-09-02) และเลขต้อง
+       ตรงเพดานเป๊ะ ๆ ⇒ ที่นี่ห้ามกรองอะไรที่ที่นั่นไม่กรอง */
     withoutBlockComments(fs.readFileSync(file, "utf8")).split(/\r?\n/).forEach((line, index) => {
       for (const hit of line.matchAll(RAW_UNIT)) found.push(`${name}:${index + 1} → ${hit[0]}`);
     });

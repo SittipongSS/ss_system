@@ -39,9 +39,11 @@ const uiFiles = files.filter((file) => /\.(?:js|css)$/.test(file) && (
   file.startsWith(appRoot) || file.startsWith(path.join(srcRoot, "components"))
 ));
 
+/* สีดิบอนุญาตเฉพาะที่ประกาศสีเอง (globals.css) กับสีกระดาษของหน้าพรีวิว —
+   เอกสารพิมพ์จริงอยู่นอกลูปนี้อยู่แล้ว ดูคอมเมนต์หัวลูป
+   (เดิมมี `src/components/documents/` อยู่ด้วย ลบออก 2026-09-02 เพราะยกเว้นศูนย์ไฟล์) */
 const colorAllowList = [
   "src/app/globals.css",
-  "src/components/documents/",
   // หน้าพรีวิวเต็มจอของมาตรฐานเอกสาร — เดิมชื่อ `quotation-preview` เปลี่ยนเป็น
   // `preview` ตอนทำให้รองรับเอกสารครบทุกชนิด (สีดิบในนี้เป็นสีกระดาษ ไม่ใช่สีของแอป)
   "src/app/settings/document-standards/preview/page.module.css",
@@ -240,8 +242,9 @@ const RAW_LETTER_SPACING_CAP = 4;
    "Type-scale violations: 0" มาตลอดทั้งที่มีของจริงอยู่ 152 จุด = อ่านผลแล้วเข้าใจผิดว่า
    ชั้นพิมพ์สะอาด (บรรทัดรายงานของด่านนี้จึงวางติดกับบรรทัดนั้นโดยเจตนา)
 
-   ตรวจ 2026-09-01: **152 จุด · 27 ไฟล์** อยู่ในไฟล์ .js ทั้งหมด (.css 0 จุด) และไม่มี
-   จุดไหนอยู่ใต้ `src/components/documents/` เลย · กระจาย 5 ค่า:
+   ตรวจ 2026-09-01: **152 จุด · 27 ไฟล์** อยู่ในไฟล์ .js ทั้งหมด (.css 0 จุด) · ทั้ง 152
+   จุดอยู่ใต้ `src/app` + `src/components` ซึ่งเป็นขอบเขตทั้งหมดของด่านนี้ (เอกสารพิมพ์
+   อยู่นอกขอบเขต ดูคอมเมนต์หัวลูป) · กระจาย 5 ค่า:
    11px ×92 · 10px ×42 · 12px ×10 · 13px ×7 · 22px ×1
    กระจุกอยู่ 5 ไฟล์เป็นหลัก (96 จาก 152): AttachmentsPanel 28 ·
    database/customers/[id] 26 · database/CustomerForm 17 · database/customers 13 ·
@@ -336,6 +339,36 @@ const MATRIX_FAMILY_ALLOWLIST = new Set([
 ]);
 const matrixFamilyViolations = [];
 
+/* ── ขอบเขตของลูปนี้ อ่านก่อนเขียนกฎใหม่ ─────────────────────────────────
+   `uiFiles` (บรรทัด 38–40) = ไฟล์ .js/.css ที่อยู่ใต้ `src/app` หรือ `src/components`
+   **เท่านั้น** ⇒ ทุกกฎในลูปนี้มีขอบเขตเท่ากันหมดโดยอัตโนมัติ ไม่ต้องเขียนยามกรองพาธ
+   ซ้ำในแต่ละข้อ
+
+   🖨️ **เอกสารพิมพ์อยู่นอกลูปนี้โดยโครงสร้าง — ไม่ใช่โดยการยกเว้น**
+   `src/components/documents/` ปลดระวางไปแล้ว (2a2eed0b — เหลือ builder เป็นแหล่งเดียว)
+   ตัวประกอบเอกสารวันนี้อยู่ที่ `src/lib/documents/` · `src/lib/printTheme.js` ·
+   `src/lib/sales/quotation*` ซึ่ง uiFiles ไม่มีวันกวาดถึง
+   วัด 2026-09-02: uiFiles 792 ไฟล์ · ตรงกับ `src/components/documents/` = 0 ·
+   ขึ้นต้นด้วย `src/lib/` = 0 (ชุด prefix ที่เป็นไปได้มีสองค่าคือ src/app กับ src/components)
+
+   เหตุผลที่หน้าต่างพิมพ์ต้องเขียน px / ชื่อฟอนต์ตรง ๆ ยังจริงอยู่ (ประกอบ HTML เองและ
+   ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น) — แต่ที่นี่ไม่ต้องยกเว้นให้ เพราะไม่เคยตรวจ
+
+   ⚠️ เคยมียาม `if (!rel.startsWith("src/components/documents/"))` (และ `!rel.startsWith("src/lib/")`)
+   กระจายอยู่ 8 จุดในลูปนี้ ลบออกครบแล้ว (2026-09-02) — ตัดออกแล้ววัดจริง: ผลของ
+   `npm run audit:ui` เหมือนเดิม **ทุกตัวอักษร** (diff กับผลก่อนแก้ว่างเปล่า · exit 0)
+   ⇒ ยามทุกตัวเป็น true ทุกรอบอยู่แล้ว
+   โทษของมันไม่ใช่ CPU แต่คือ **มันบอกคนอ่านว่า "เอกสารพิมพ์ถูกตรวจแล้วยกเว้นให้"
+   ทั้งที่ความจริงคือไม่เคยถูกตรวจเลย** ⇒ ห้ามเติมกลับ และห้ามลอกทรงนี้ไปใส่กฎใหม่
+
+   ผลของการลบที่ต้องรู้: ถ้าวันหน้ามีคนสร้าง `src/components/documents/` ขึ้นมาใหม่
+   ไฟล์ในนั้นจะ **ถูกตรวจทุกกฎ** (เดิมยามจะเงียบให้) — ซึ่งถูกแล้ว เพราะของที่อยู่ใต้
+   `src/components/` คือ UI ของแอปที่โหลด globals.css ไม่ใช่เอกสารพิมพ์
+
+   🪤 ถ้าวันหนึ่งอยากตรวจเอกสารพิมพ์จริง ๆ: ทำ **ลูปแยกที่มีชุดกฎของตัวเอง** อย่าชี้ยามเก่า
+   ไปที่ `src/lib/documents/` เพราะลูปนี้ก็ยังมองไม่เห็นอยู่ดี = ได้คำโกหกอันใหม่แทนอันเก่า
+   (ตั้งต้นจากของจริง: ไฟล์ใน src/lib ที่ประกาศ font-family มี 3 ตัว —
+   documents/documentShell.js · printTheme.js · sales/quotationDocumentFonts.js) */
 for (const file of uiFiles) {
   const rel = relative(file);
   const source = withoutBlockComments(fs.readFileSync(file, "utf8"));
@@ -391,17 +424,13 @@ for (const file of uiFiles) {
      (รวมค่าที่ไม่มีในชั้นเลย: 9 · 10 · 13.5 · 17 · 19) = ต่อให้ไฟล์ CSS สะอาดหมด
      ก็ยังแก้ขนาดตัวอักษรทีเดียวทั้งระบบไม่ได้อยู่ดี
 
-     ⚠️ เอกสารพิมพ์ยกเว้น — หน้าต่างพิมพ์ประกอบ HTML ของตัวเองและไม่ได้โหลด
-     globals.css โทเคนจึงไม่มีค่าที่นั่น (ต้องเขียน px ตรง ๆ)
      ✅ ใช้ได้ทั้งใน `style` และ prop ของกราฟ (Recharts ส่งลง SVG เป็น attribute
      ซึ่ง `var()` ก็ resolve — วัดจริงในเบราว์เซอร์แล้ว ไม่ได้เดา) */
-  if (!rel.startsWith("src/components/documents/")) {
-    source.split(/\r?\n/).forEach((line, index) => {
-      for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
-        typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
-      }
-    });
-  }
+  source.split(/\r?\n/).forEach((line, index) => {
+    for (const hit of line.matchAll(/fontSize:\s*(?:"(\d[\d.]*)px"|'(\d[\d.]*)px'|(\d[\d.]*))(?=\s*[,}])/g)) {
+      typeScaleViolations.push(`${rel}:${index + 1} fontSize: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fs-…)`);
+    }
+  });
 
   /* รูที่สามของชั้นพิมพ์: `className="text-[13px]"` — Tailwind arbitrary value
      สองก้อนบนจับแค่ `font-size:` ในชีตกับ `fontSize:` ใน style/prop ⇒ className
@@ -434,32 +463,26 @@ for (const file of uiFiles) {
      ⚠️ matchAll ไม่ใช่ match — วันนี้ยังไม่มีบรรทัดไหนที่มีขนาดดิบซ้อนกันเลย (สูงสุด 1)
      ที่เคยนับได้ "129 บรรทัด สูงสุด 3" เป็นของ `text-[…]` ทุกแบบรวมสี คนละ scope กับ
      regex ตัวนี้ · hover: 5 จุดที่มีก็เป็นสีทั้งหมด (hover:text-[var(--accent)])
-     ⇒ matchAll ใส่ไว้กันวันหน้า ไม่ใช่เพราะวันนี้จำเป็น
-
-     ℹ️ ยาม `src/components/documents/` ลอกมาจากก้อนข้างบนเพื่อความสม่ำเสมอ แต่วันนี้
-     **ไม่ได้ป้องอะไรเลย** — โฟลเดอร์นั้นปลดระวางไปแล้ว และเอกสารพิมพ์ย้ายไปอยู่
-     `src/lib/documents/` ซึ่ง uiFiles (src/app + src/components) ไม่เคยกวาดถึงอยู่แล้ว */
-  if (!rel.startsWith("src/components/documents/")) {
-    for (const _ of source.matchAll(/\btext-\[\s*(?:length:\s*)?[0-9.]+\s*(?:px|pt|rem|em|ch|ex|cm|mm|in|pc|%)\s*\]/g)) {
-      rawTailwindTypeCount += 1;
-    }
-
-    /* ⭐ hard-zero คู่แฝดของเพดานข้างบน — กันคนยกเข้าโทเคน "ผิดรูป"
-       `text-[var(--fs-7)]` คอมไพล์เป็น `color: var(--fs-7)` ไม่ใช่ font-size
-       (ดู 🪤 ที่ RAW_TAILWIND_TYPE_CAP — วัดด้วย compile() ของ tailwind 4.3.0)
-       ⇒ ขนาดหายเงียบ ๆ ตกไปสืบทอดจากแม่ ไม่มี error ให้จับเลย และ audit ก็จะเห็นว่า
-       เลขดิบลดลงด้วย = "ยกเข้าโทเคนสำเร็จ" ทั้งที่จอเสีย นี่คือทางที่ด่านนี้จะกลาย
-       เป็นตัวสั่งให้พังเอง จึงต้องเป็น 0 ตลอด ไม่ใช่เพดานที่ค่อย ๆ ไล่ลง
-       ตรวจ 2026-09-01: 0 จุด — ตั้งเป็น hard-zero ได้ทันทีโดยไม่ต้องแก้โค้ดแอป
-       (`--fs-` เท่านั้น ไม่ครอบ `text-[var(--text-3)]` ซึ่งเป็นสีและถูกต้องอยู่แล้ว) */
-    source.split(/\r?\n/).forEach((line, index) => {
-      for (const hit of line.matchAll(/\btext-\[\s*var\(\s*(--fs-[\w-]+)/g)) {
-        tailwindTypeFormViolations.push(
-          `${rel}:${index + 1} text-[var(${hit[1]})] → text-[length:var(${hit[1]})]`,
-        );
-      }
-    });
+     ⇒ matchAll ใส่ไว้กันวันหน้า ไม่ใช่เพราะวันนี้จำเป็น */
+  for (const _ of source.matchAll(/\btext-\[\s*(?:length:\s*)?[0-9.]+\s*(?:px|pt|rem|em|ch|ex|cm|mm|in|pc|%)\s*\]/g)) {
+    rawTailwindTypeCount += 1;
   }
+
+  /* ⭐ hard-zero คู่แฝดของเพดานข้างบน — กันคนยกเข้าโทเคน "ผิดรูป"
+     `text-[var(--fs-7)]` คอมไพล์เป็น `color: var(--fs-7)` ไม่ใช่ font-size
+     (ดู 🪤 ที่ RAW_TAILWIND_TYPE_CAP — วัดด้วย compile() ของ tailwind 4.3.0)
+     ⇒ ขนาดหายเงียบ ๆ ตกไปสืบทอดจากแม่ ไม่มี error ให้จับเลย และ audit ก็จะเห็นว่า
+     เลขดิบลดลงด้วย = "ยกเข้าโทเคนสำเร็จ" ทั้งที่จอเสีย นี่คือทางที่ด่านนี้จะกลาย
+     เป็นตัวสั่งให้พังเอง จึงต้องเป็น 0 ตลอด ไม่ใช่เพดานที่ค่อย ๆ ไล่ลง
+     ตรวจ 2026-09-01: 0 จุด — ตั้งเป็น hard-zero ได้ทันทีโดยไม่ต้องแก้โค้ดแอป
+     (`--fs-` เท่านั้น ไม่ครอบ `text-[var(--text-3)]` ซึ่งเป็นสีและถูกต้องอยู่แล้ว) */
+  source.split(/\r?\n/).forEach((line, index) => {
+    for (const hit of line.matchAll(/\btext-\[\s*var\(\s*(--fs-[\w-]+)/g)) {
+      tailwindTypeFormViolations.push(
+        `${rel}:${index + 1} text-[var(${hit[1]})] → text-[length:var(${hit[1]})]`,
+      );
+    }
+  });
 
   /* น้ำหนักตัวอักษรต้องมาจาก --fw-* — ชั้นพิมพ์คุมแต่ *ขนาด* มาตลอด ส่วน *น้ำหนัก*
      ไม่เคยมีกฎเลย ตรวจ 2026-07-30 พบ 558 จุด ใช้โทเคน 0 และกระจาย 8 ค่า ทั้งที่
@@ -467,27 +490,23 @@ for (const file of uiFiles) {
      เบราว์เซอร์ปัดให้เงียบ ๆ = ไล่ระดับความหนา 3 ขั้นแล้วได้หน้าตาขั้นเดียว
      (วัดความกว้างข้อความจริงแล้ว ไม่ได้อนุมานจากสเปก)
 
-     ⚠️ เอกสารพิมพ์ (`components/documents/`, `lib/`) ยกเว้น — ประกอบ HTML เองและ
-     ไม่โหลด globals.css โทเคนจึงไม่มีค่าที่นั่น */
-  if (!rel.startsWith("src/components/documents/")) {
-    /* ⚠️ ข้ามบล็อก `@font-face` — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
-       เขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
-       นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ fontWeightScale.test.mjs อ่านจากตรงนั้น
-       เพื่อเช็คว่าโทเคน --fw-* ทุกตัวมีน้ำหนักที่โหลดมาจริงรองรับ */
-    let inFontFace = false;
-    source.split(/\r?\n/).forEach((line, index) => {
-      if (/@font-face\s*\{/.test(line)) inFontFace = true;
-      else if (inFontFace && line.trim() === "}") inFontFace = false;
-      if (inFontFace) return;
-      const cssHit = line.match(/font-weight:\s*(\d+)/);
-      if (cssHit) {
-        fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
-      }
-      for (const hit of line.matchAll(/fontWeight:\s*(?:"(\d+)"|'(\d+)'|(\d+))(?=\s*[,}])/g)) {
-        fontWeightViolations.push(`${rel}:${index + 1} fontWeight: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fw-…)`);
-      }
-    });
-  }
+     ⚠️ ข้ามบล็อก `@font-face` — descriptor ของ `@font-face` **ต้องเป็นเลขจริง**
+     เขียน `var(--fw-…)` ไม่ได้ตามสเปก (custom property ใช้ใน @font-face ไม่ได้)
+     นี่คือที่เดียวที่เลขน้ำหนักดิบถูกต้อง และ fontWeightScale.test.mjs อ่านจากตรงนั้น
+     เพื่อเช็คว่าโทเคน --fw-* ทุกตัวมีน้ำหนักที่โหลดมาจริงรองรับ */
+  let inFontFace = false;
+  source.split(/\r?\n/).forEach((line, index) => {
+    if (/@font-face\s*\{/.test(line)) inFontFace = true;
+    else if (inFontFace && line.trim() === "}") inFontFace = false;
+    if (inFontFace) return;
+    const cssHit = line.match(/font-weight:\s*(\d+)/);
+    if (cssHit) {
+      fontWeightViolations.push(`${rel}:${index + 1} font-weight: ${cssHit[1]} → var(--fw-…)`);
+    }
+    for (const hit of line.matchAll(/fontWeight:\s*(?:"(\d+)"|'(\d+)'|(\d+))(?=\s*[,}])/g)) {
+      fontWeightViolations.push(`${rel}:${index + 1} fontWeight: ${hit[1] ?? hit[2] ?? hit[3]} → var(--fw-…)`);
+    }
+  });
 
   /* ── ตัวพิมพ์ต้องมาจากโทเคน — ระบบมี **ฟอนต์เดียว** (มติผู้ใช้ 2026-08-09) ──
      ชั้นพิมพ์เคยคุมแค่ *ขนาด* กับ *น้ำหนัก* ไม่เคยแตะ `font-family` เลย ผลคือ
@@ -496,38 +515,38 @@ for (const file of uiFiles) {
      ถ้าไม่มีกฎนี้ มันจะงอกกลับมาแน่นอนทุกฟีเจอร์ใหม่
 
      ที่อนุญาต: `var(--font-…)` · `inherit` · `initial` · `unset` · `revert`
-     ยกเว้นทั้งไฟล์:
-       · `src/components/documents/` + `src/lib/print*` `src/lib/sales/*Document*`
-         `src/lib/sales/*Template*` — หน้าต่างพิมพ์ประกอบ HTML เองและไม่โหลด
-         globals.css โทเคนจึงไม่มีค่าที่นั่น
      ยกเว้นรายบรรทัด: `.textarea-premium` ใน globals.css — กล่องวางข้อมูลดิบ
-       (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์ */
-  const FONT_FAMILY_PRINT_EXEMPT = /^src\/(components\/documents\/|lib\/(printTheme|sales\/quotation(Document|Master)))/;
-  if (!FONT_FAMILY_PRINT_EXEMPT.test(rel)) {
-    /* ⚠️ ข้ามบล็อก `@font-face` — เป็นที่ **ประกาศ** ชื่อฟอนต์ ไม่ใช่ที่ *ใช้*
-       ต้องเขียนชื่อจริงตามสเปก (`var()` ใน @font-face ไม่ทำงาน)
-       ที่ใช้จริงยังต้องผ่าน `var(--font-sans)` เหมือนเดิมทุกจุด */
-    let inFace = false;
-    source.split(/\r?\n/).forEach((line, index) => {
-      if (/@font-face\s*\{/.test(line)) inFace = true;
-      else if (inFace && line.trim() === "}") inFace = false;
-      if (inFace) return;
-      for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
-        const value = hit[1].trim();
-        if (/^var\(--font-/.test(value)) continue;
-        if (/^(inherit|initial|unset|revert)\b/.test(value)) continue;
-        // ข้อยกเว้นเดียวของระบบ — ประกาศไว้ที่ globals.css พร้อมเหตุผลเต็ม
-        if (rel === "src/app/globals.css" && /ui-monospace/.test(value)) continue;
-        fontFamilyViolations.push(`${rel}:${index + 1} font-family: ${value} → var(--font-…)`);
-      }
-      for (const hit of line.matchAll(/fontFamily:\s*["']([^"']*)["']/g)) {
-        const value = hit[1].trim();
-        if (/var\(--font-/.test(value)) continue;
-        if (/^(inherit|initial|unset|revert)$/.test(value)) continue;
-        fontFamilyViolations.push(`${rel}:${index + 1} fontFamily: "${value}" → var(--font-…)`);
-      }
-    });
-  }
+       (JSON/ล็อก) ที่ความกว้างเท่ากันมีหน้าที่จริง · ใช้สแตกของ OS ไม่ใช่เว็บฟอนต์
+
+     วัด 2026-09-02: ไฟล์ใน src/lib ที่ประกาศ font-family จริงมี 3 ไฟล์ (ไม่นับเทสต์) —
+     documents/documentShell.js · printTheme.js · sales/quotationDocumentFonts.js
+     (ถ้าวันหน้าทำด่านของเอกสารพิมพ์ ให้ตั้งต้นจากสามตัวนี้ ไม่ใช่จากลิสต์เดิมที่เคย
+     เขียนยกเว้นไว้ตรงนี้ — ลิสต์นั้นล้าและกว้างกว่า regex ที่มันคุมอยู่จริง และตัวที่
+     ประกอบเอกสารวันนี้จริง ๆ คือ documentShell.js ซึ่งไม่เคยอยู่ในลิสต์นั้นเลย)
+
+     ⚠️ ข้ามบล็อก `@font-face` — เป็นที่ **ประกาศ** ชื่อฟอนต์ ไม่ใช่ที่ *ใช้*
+     ต้องเขียนชื่อจริงตามสเปก (`var()` ใน @font-face ไม่ทำงาน)
+     ที่ใช้จริงยังต้องผ่าน `var(--font-sans)` เหมือนเดิมทุกจุด */
+  let inFace = false;
+  source.split(/\r?\n/).forEach((line, index) => {
+    if (/@font-face\s*\{/.test(line)) inFace = true;
+    else if (inFace && line.trim() === "}") inFace = false;
+    if (inFace) return;
+    for (const hit of line.matchAll(/font-family:\s*([^;}]+)/g)) {
+      const value = hit[1].trim();
+      if (/^var\(--font-/.test(value)) continue;
+      if (/^(inherit|initial|unset|revert)\b/.test(value)) continue;
+      // ข้อยกเว้นเดียวของระบบ — ประกาศไว้ที่ globals.css พร้อมเหตุผลเต็ม
+      if (rel === "src/app/globals.css" && /ui-monospace/.test(value)) continue;
+      fontFamilyViolations.push(`${rel}:${index + 1} font-family: ${value} → var(--font-…)`);
+    }
+    for (const hit of line.matchAll(/fontFamily:\s*["']([^"']*)["']/g)) {
+      const value = hit[1].trim();
+      if (/var\(--font-/.test(value)) continue;
+      if (/^(inherit|initial|unset|revert)$/.test(value)) continue;
+      fontFamilyViolations.push(`${rel}:${index + 1} fontFamily: "${value}" → var(--font-…)`);
+    }
+  });
 
   /* ชั้นซ้อนระดับหน้าต้องมาจากโทเคน `--z-*` — ตรวจ 2026-07-29 พบ 82 จุดกระจายเป็น
      22 ค่า ตั้งแต่ 1 ถึง 10050 โดยไม่มีที่ไหนบอกว่าอะไรควรอยู่เหนืออะไร คนเขียน
@@ -539,15 +558,13 @@ for (const file of uiFiles) {
      วงโฟกัส — พวกนั้นไม่ได้แข่งกับแผงลอยระดับหน้า และการบังคับให้ไปใช้โทเคนกลาง
      จะทำให้ชั้นกลางเต็มไปด้วยชื่อที่ไม่มีความหมายข้ามหน้า
      globals.css ยกเว้นเฉพาะบรรทัดที่ *ประกาศ* โทเคน (`--z-…: 1100;`) */
-  if (!rel.startsWith("src/components/documents/")) {
-    source.split(/\r?\n/).forEach((line, index) => {
-      if (/^\s*--z-[\w-]+:/.test(line)) return;
-      for (const hit of line.matchAll(/z-?[Ii]ndex:\s*"?(\d+)"?/g)) {
-        if (Number(hit[1]) < 30) continue;
-        zIndexViolations.push(`${rel}:${index + 1} ${hit[0]} → var(--z-…)`);
-      }
-    });
-  }
+  source.split(/\r?\n/).forEach((line, index) => {
+    if (/^\s*--z-[\w-]+:/.test(line)) return;
+    for (const hit of line.matchAll(/z-?[Ii]ndex:\s*"?(\d+)"?/g)) {
+      if (Number(hit[1]) < 30) continue;
+      zIndexViolations.push(`${rel}:${index + 1} ${hit[0]} → var(--z-…)`);
+    }
+  });
 
   /* จังหวะต้องมาจากโทเคน `--motion-*` — ตรวจ 2026-07-29 พบเวลาดิบ 136 จุดใน 15 ค่า
      (.06 .08 .1 .12 120ms .14 .15 .16 .18 .2 200ms .22 220ms .24 .3) ขณะที่โทเคน
@@ -560,15 +577,13 @@ for (const file of uiFiles) {
   /* ⚠️ ต้องอ่านทั้ง declaration ไม่ใช่ทีละบรรทัด — `transition:` ยาว ๆ ใน globals.css
      ตัดขึ้นบรรทัดใหม่ (`.btn` / `.metric-card`) บรรทัดต่อจึงไม่มีคำว่า transition
      แล้วรอดกฎแบบทีละบรรทัดไป 5 จุด (เจอตอนเทสต์เส้นโค้งฟ้อง ไม่ใช่ตอนกฎนี้ฟ้อง) */
-  if (!rel.startsWith("src/components/documents/")) {
-    for (const decl of source.matchAll(/(?:transition|animation)[^;{}]*;/g)) {
-      if (/prefers-reduced-motion|0\.01ms/.test(decl[0])) continue;
-      for (const hit of decl[0].matchAll(/(?<![\w-])(\d*\.?\d+)(ms|s)(?![\w-])/g)) {
-        const ms = hit[2] === "ms" ? Number(hit[1]) : Number(hit[1]) * 1000;
-        if (ms >= 500) continue;
-        const line = source.slice(0, decl.index + hit.index).split(/\r?\n/).length;
-        motionViolations.push(`${rel}:${line} ${hit[0]} → var(--motion-…)`);
-      }
+  for (const decl of source.matchAll(/(?:transition|animation)[^;{}]*;/g)) {
+    if (/prefers-reduced-motion|0\.01ms/.test(decl[0])) continue;
+    for (const hit of decl[0].matchAll(/(?<![\w-])(\d*\.?\d+)(ms|s)(?![\w-])/g)) {
+      const ms = hit[2] === "ms" ? Number(hit[1]) : Number(hit[1]) * 1000;
+      if (ms >= 500) continue;
+      const line = source.slice(0, decl.index + hit.index).split(/\r?\n/).length;
+      motionViolations.push(`${rel}:${line} ${hit[0]} → var(--motion-…)`);
     }
   }
 
@@ -609,52 +624,61 @@ for (const file of uiFiles) {
     });
   }
 
-  /* นับความสูงบรรทัดที่ยังเป็นเลขดิบ (ดู RAW_LINE_HEIGHT_CAP) — ทั้ง CSS และ JSX
-     เอกสารพิมพ์ยกเว้น: ประกอบ HTML เองและไม่โหลด globals.css โทเคนไม่มีค่าที่นั่น */
-  if (!rel.startsWith("src/components/documents/") && !rel.startsWith("src/lib/")) {
-    for (const _ of source.matchAll(/line-height:\s*[0-9.]+\s*[;}]/g)) rawLineHeightCount += 1;
-    for (const _ of source.matchAll(/lineHeight:\s*(?:"[0-9.]+"|'[0-9.]+'|[0-9.]+)\s*[,}]/g)) rawLineHeightCount += 1;
+  /* เลขดิบของชั้นสไตล์ที่นับรวมเป็นเพดาน — ความสูงบรรทัด · ความมนมุม · เงา ·
+     ความจาง · ระยะห่างตัวอักษร (ดู RAW_LINE_HEIGHT_CAP / RAW_RADIUS_CAP /
+     RAW_SHADOW_CAP / RAW_OPACITY_CAP / RAW_LETTER_SPACING_CAP)
 
-    /* ความมนมุมเลขดิบ (ดู RAW_RADIUS_CAP) — เฉพาะ **ค่าเดียวที่เป็นความยาว**
-       ข้าม % (คนละความหมาย) · 0 / inherit · และค่าราย 4 มุมที่ต้องดูทีละมุม */
-    for (const hit of source.matchAll(/border-radius:\s*([^;{}]+)/g)) {
-      const value = hit[1].trim();
-      if (/\s/.test(value) || value.includes("var(") || value.endsWith("%")) continue;
-      if (/^0[a-z]*$/.test(value) || value === "inherit") continue;
-      if (/^[0-9.]+(?:px|rem|em)$/.test(value)) rawRadiusCount += 1;
-    }
+     ⚠️ **ห้าเพดานนี้ไม่ได้กวาดฝั่ง JSX เท่ากันทุกตัว** — อย่าอ่านรวมเป็น "ทั้ง CSS และ JSX":
+       · ความสูงบรรทัด — นับสองรูป `line-height:` และ `lineHeight:` ⇒ ครอบ JSX จริง
+       · ความจาง — regex เขียนเป็น `opacity:` ซึ่งเป็นคำเดียวกันทั้งสองภาษา ⇒ ครอบ JSX
+         โดยบังเอิญ ไม่ใช่โดยตั้งใจ
+       · ความมนมุม · เงา · ระยะห่างตัวอักษร — มีแต่รูป kebab-case ของ CSS
+         `borderRadius:` / `boxShadow:` / `letterSpacing:` ใน style object **ไม่มีด่านไหนเห็นเลย**
+     วัด 2026-09-02 ในไฟล์ที่ลูปนี้กวาด: borderRadius 94 · boxShadow 9 · letterSpacing 1 จุด
+     ที่ไม่ถูกนับ ⇒ เลข 21/21 ของความมนมุมเป็นของฝั่ง CSS ล้วน ไม่ใช่ยอดรวมทั้งระบบ
+     (รูเดียวกับที่ชั้นพิมพ์เคยเจอตอนขยายจาก CSS ไป className — ดู RAW_TAILWIND_TYPE_CAP) */
+  for (const _ of source.matchAll(/line-height:\s*[0-9.]+\s*[;}]/g)) rawLineHeightCount += 1;
+  for (const _ of source.matchAll(/lineHeight:\s*(?:"[0-9.]+"|'[0-9.]+'|[0-9.]+)\s*[,}]/g)) rawLineHeightCount += 1;
 
-    /* เงาเลขดิบ (ดู RAW_SHADOW_CAP) — `none` ไม่นับ การปิดเงาไม่ต้องมีชื่อ */
-    for (const hit of source.matchAll(/box-shadow:\s*([^;{}]+)/g)) {
-      const value = hit[1].trim();
-      if (value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
-      rawShadowCount += 1;
-    }
-
-    /* ความจางเลขดิบ (ดู RAW_OPACITY_CAP) — 0 กับ 1 ไม่นับ */
-    for (const hit of source.matchAll(/(?:^|[;{])\s*opacity:\s*([^;}]+)/g)) {
-      const value = hit[1].trim();
-      if (value.includes("var(")) continue;
-      const number = Number(value);
-      if (!Number.isFinite(number) || number === 0 || number === 1) continue;
-      rawOpacityCount += 1;
-    }
-
-    /* ระยะห่างตัวอักษร (ดู RAW_LETTER_SPACING_CAP)
-       หน่วยความยาวคงที่เป็น **ข้อห้าม ไม่ใช่เพดาน** — px ไม่ขยับตามขนาดตัวอักษร
-       ป้ายเดียวกันที่ใช้ --fs-1 กับ --fs-5 จะได้ระยะห่างต่างกันทันที */
-    source.split(/\r?\n/).forEach((line, index) => {
-      const hit = line.match(/letter-spacing:\s*([^;}]+)/);
-      if (!hit) return;
-      const value = hit[1].trim();
-      if (/[0-9.]\s*(?:px|pt|rem|cm|mm|in|pc)\b/.test(value)) {
-        letterSpacingUnitViolations.push(`${rel}:${index + 1} letter-spacing: ${value} → ใช้หน่วย em`);
-        return;
-      }
-      if (value.includes("var(") || value === "0") return;
-      rawLetterSpacingCount += 1;
-    });
+  /* ความมนมุมเลขดิบ (ดู RAW_RADIUS_CAP) — เฉพาะ **ค่าเดียวที่เป็นความยาว**
+     ข้าม % (คนละความหมาย) · 0 / inherit · และค่าราย 4 มุมที่ต้องดูทีละมุม */
+  for (const hit of source.matchAll(/border-radius:\s*([^;{}]+)/g)) {
+    const value = hit[1].trim();
+    if (/\s/.test(value) || value.includes("var(") || value.endsWith("%")) continue;
+    if (/^0[a-z]*$/.test(value) || value === "inherit") continue;
+    if (/^[0-9.]+(?:px|rem|em)$/.test(value)) rawRadiusCount += 1;
   }
+
+  /* เงาเลขดิบ (ดู RAW_SHADOW_CAP) — `none` ไม่นับ การปิดเงาไม่ต้องมีชื่อ */
+  for (const hit of source.matchAll(/box-shadow:\s*([^;{}]+)/g)) {
+    const value = hit[1].trim();
+    if (value.includes("var(") || /^none$/i.test(value) || value === "inherit") continue;
+    rawShadowCount += 1;
+  }
+
+  /* ความจางเลขดิบ (ดู RAW_OPACITY_CAP) — 0 กับ 1 ไม่นับ */
+  for (const hit of source.matchAll(/(?:^|[;{])\s*opacity:\s*([^;}]+)/g)) {
+    const value = hit[1].trim();
+    if (value.includes("var(")) continue;
+    const number = Number(value);
+    if (!Number.isFinite(number) || number === 0 || number === 1) continue;
+    rawOpacityCount += 1;
+  }
+
+  /* ระยะห่างตัวอักษร (ดู RAW_LETTER_SPACING_CAP)
+     หน่วยความยาวคงที่เป็น **ข้อห้าม ไม่ใช่เพดาน** — px ไม่ขยับตามขนาดตัวอักษร
+     ป้ายเดียวกันที่ใช้ --fs-1 กับ --fs-5 จะได้ระยะห่างต่างกันทันที */
+  source.split(/\r?\n/).forEach((line, index) => {
+    const hit = line.match(/letter-spacing:\s*([^;}]+)/);
+    if (!hit) return;
+    const value = hit[1].trim();
+    if (/[0-9.]\s*(?:px|pt|rem|cm|mm|in|pc)\b/.test(value)) {
+      letterSpacingUnitViolations.push(`${rel}:${index + 1} letter-spacing: ${value} → ใช้หน่วย em`);
+      return;
+    }
+    if (value.includes("var(") || value === "0") return;
+    rawLetterSpacingCount += 1;
+  });
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
