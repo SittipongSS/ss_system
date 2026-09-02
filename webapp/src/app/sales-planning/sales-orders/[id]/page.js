@@ -93,6 +93,7 @@ import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
 import { orderHasServiceRounds, serviceRoundsSold } from "@/lib/sales/serviceOrders";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
+import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt } from "@/lib/approvalPrompt";
@@ -136,6 +137,7 @@ export default function SalesOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canEditCap = useCan("salesplan:edit");
+  const [contractOpen, setContractOpen] = useState(false);
   const canCreateFiling = useCan("sales:act");
   // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
@@ -873,6 +875,25 @@ export default function SalesOrderDetailPage() {
     // ขั้นที่ 1 — ยอด Actual หลุดที่ปุ่มนี้ จึงต้องกรอกเหตุผล (ใช้ต่อในขั้นออก Rev.)
     { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => setWorkflowForm({ action: "revoke", reason: "" }) },
     { id: "override", kind: "approve", label: "อนุมัติแบบ Admin Override", variant: "outline", visible: canAdminOverride, onClick: () => setOverrideForm({ reason: "" }) },
+    {
+      /* ⭐ **ออกสัญญาจากใบนี้** — เดิมทางออกสัญญามีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา ·
+         ทะเบียนสัญญา) แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนี้เองเป็นคนบอกว่า
+         *"ออกสัญญาที่เมนู สัญญา"* ⇒ ไล่คนออกจากงานที่กำลังทำอยู่แล้วหวังว่าจะเดินกลับมาถูกที่
+         ⚠️ **อยู่บนการ์ดจัดการ ไม่ใช่ในแท็บสัญญา** — แท็บนั้นขึ้นเฉพาะใบที่มีรอบบริการ
+            (ดีลสาย SERVICE + บรรทัดหมวด 02-001) ⇒ ใบสายสินค้าที่ต้องออก "สัญญาจ้างผลิต"
+            จะไม่มีปุ่มเลยและไม่มีทางรู้ว่ามันมีอยู่ · แพตเทิร์นเดียวกับหน้าใบเสนอราคา
+         ⚠️ **ไม่ตรวจชนิด/ความพร้อมที่นี่** — โมดัลถามด่านตัวเดียวกับ API แล้วบอกเหตุ
+            ถ้าออกไม่ได้ (ดีลไม่มีใบเสนอราคาที่อนุมัติ ฯลฯ) · ซ่อนเงียบ = คนถามว่าปุ่มอยู่ไหน
+         ⚠️ **สัญญาที่เพิ่งสร้างผูกเข้าใบนี้ไม่ได้ทันที** — ร่างใหม่เป็น `draft` ส่วนการ์ด
+            ผูกสัญญารับเฉพาะใบที่ `signed` แล้ว ⇒ เส้นทางจริงคือ ออกสัญญา → ออกเลข →
+            ลงนาม → AE Sup รับรอง → กลับมาผูก · โมดัลพาไปหน้าสัญญาให้เองหลังสร้าง */
+      id: "contract",
+      kind: "goto",
+      label: "ออกสัญญาจากใบนี้",
+      variant: "outline",
+      visible: canEdit && !editMode && !["cancelled", "revised"].includes(order.status),
+      onClick: () => setContractOpen(true),
+    },
     // label ชัดเจนว่าเป็นการกู้ SO ที่ "ยกเลิก" แล้ว — เดิมใช้ default "คืนเป็นฉบับร่าง"
     // ซึ่งความหมายชนกับ "ดึงกลับ" ที่เคยยืม kind:"restore" ตัวเดียวกัน (B8)
     { id: "restore", kind: "restore", label: "กู้คืนจากการยกเลิก", visible: order.status === "cancelled" && role === "admin", onClick: () => requestAction("restore") },
@@ -1393,6 +1414,17 @@ export default function SalesOrderDetailPage() {
         busy={confirmBusy}
         onConfirm={runConfirmed}
         onClose={() => { if (!confirmBusy) setConfirmState(null); }}
+      />
+      {/* ⭐ **โมดัลตัวเดียวกับที่หน้าดีล/โครงการ/ใบเสนอราคาใช้** — ห้ามเขียนฟอร์มที่สอง
+          (กติกา "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md)
+          ส่ง `dealId`+`quotationId` ของใบมาให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีลไปเลย
+          ⚠️ ไม่ต้องส่ง `onCreated` ที่โหลดใบใหม่ — โมดัลพาไปหน้าสัญญาที่เพิ่งสร้างเอง
+             การรีเฟรชใบจะแข่งกับการเปลี่ยนหน้าแล้วไม่มีใครได้เห็นผล */}
+      <ContractCreateModal
+        open={contractOpen}
+        dealId={order.dealId}
+        quotationId={order.quotationId}
+        onClose={() => setContractOpen(false)}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

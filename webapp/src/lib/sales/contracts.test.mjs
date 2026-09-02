@@ -584,6 +584,31 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
   assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
 });
 
+/* ⭐ **ทางออกสัญญาจากใบสั่งขาย** — เดิมมีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา · ทะเบียน)
+   แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนั้นเองบอกให้ *"ออกสัญญาที่เมนู สัญญา"*
+   🪤 **ต้องอยู่บนการ์ดจัดการ ไม่ใช่ในแท็บสัญญา** — แท็บนั้นขึ้นเฉพาะใบที่มีรอบบริการ
+      ⇒ ใบสายสินค้าที่ต้องออก "สัญญาจ้างผลิต" จะไม่มีปุ่มเลยและไม่มีทางรู้ว่ามันมีอยู่
+   🪤 **ต้องเป็นโมดัลตัวเดิม** — ก๊อปฟอร์มที่สองเมื่อไร สองฝั่งจะขาดคนละอย่างโดยไม่มีใครรู้
+      (กฎ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md) */
+test('⭐ หน้าใบสั่งขายออกสัญญาได้ ด้วยโมดัลตัวเดียวกับหน้าอื่น', () => {
+  const page = readFileSync(
+    new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /import ContractCreateModal from "@\/components\/salesPlanning\/ContractCreateModal";/);
+  // ส่งดีล+ใบเสนอราคาของใบไปให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีล
+  assert.match(page, /dealId=\{order\.dealId\}/);
+  assert.match(page, /quotationId=\{order\.quotationId\}/);
+  // ปุ่มอยู่ใน secondaryActions ของการ์ดจัดการ ไม่ใช่ในบล็อกของแท็บ
+  assert.match(page, /id: "contract",[\s\S]{0,200}?label: "ออกสัญญาจากใบนี้"/);
+  assert.ok(
+    page.indexOf('label: "ออกสัญญาจากใบนี้"') < page.indexOf('activeTab === "contract"'),
+    'ปุ่มต้องประกาศในชุด action ของการ์ดจัดการ ไม่ใช่ในเนื้อแท็บสัญญา',
+  );
+  // ใบที่ตายแล้วไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
+  assert.match(page, /visible: canEdit && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\)/);
+});
+
 /* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────
    `CT-YYMMXXXX-R` → `CT-AA-YYMMXXXX-R` — อ่านเลขแล้วรู้ว่าสัญญาอะไรโดยไม่ต้องเปิดใบ */
 test('⭐ เลขที่สัญญา CT-BB-YYMMXXXX — อักษรย่อชนิดสัญญาอยู่กลาง', () => {
