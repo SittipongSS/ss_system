@@ -326,7 +326,12 @@ export default function ContractDetailPage() {
                   icon: Printer,
                   slot: "secondary",
                   disabled: external && !externalFileHref,
-                  disabledReason: "ยังไม่ได้แนบเอกสารที่ใช้แทนสัญญา — แนบที่การ์ดไฟล์ของสัญญาก่อน",
+                  /* ⚠️ ผูกกับเงื่อนไขเดียวกับ `disabled` — `disabledReason` ถูกยัดเป็น `title`
+                     ของปุ่มเสมอ ไม่ได้ดูว่าปุ่มปิดอยู่ไหม ⇒ ตั้งลอย ๆ แล้วใบที่ระบบเจนจะได้
+                     ทูลทิปเรื่องเอกสารภายนอกติดมาด้วย (เจอตอนไล่ดูจอจริง) */
+                  disabledReason: external && !externalFileHref
+                    ? "ยังไม่ได้แนบเอกสารที่ใช้แทนสัญญา — แนบที่การ์ดไฟล์ของสัญญาก่อน"
+                    : undefined,
                   onClick: openDocument,
                 },
                 {

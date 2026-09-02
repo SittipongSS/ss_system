@@ -72,9 +72,11 @@ export default function ContractFormFields({
   return (
     <div className="form-grid">
       <FormZone
-        title="คู่สัญญา"
+        title={party.length ? "คู่สัญญา" : "ข้อมูลของใบ"}
         className="col-span-2"
-        note={party.length ? "ชื่อและที่อยู่ที่จะพิมพ์ลงบนสัญญา" : "วันที่ที่ใช้อ้างถึงใบนี้"}
+        note={party.length
+          ? "ชื่อและที่อยู่ที่จะพิมพ์ลงบนสัญญา"
+          : "ใบนี้ไม่มีช่องของแม่แบบให้กรอก — เนื้อของสัญญาอยู่ในไฟล์ที่แนบไว้"}
       />
       <label className="form-field">
         <span className="form-field-label">วันที่สัญญา <span className="required-mark">*</span></span>
