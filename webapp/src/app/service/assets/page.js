@@ -9,14 +9,19 @@
 //   ให้กันจึงพาไปที่เดิมเสมอ และคนที่ไล่หาเครื่องไม่ต้องเดาว่าต้องเปิดเมนูไหน
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Search, Table2, Wrench } from "lucide-react";
+import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Table2, Wrench } from "lucide-react";
+import AssetReceiveModal from "@/components/service/AssetReceiveModal";
+import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
 import Input from "@/components/ui/Input";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatCards from "@/components/database/StatCards";
 import { TableShell } from "@/components/ui/Table";
+import Toast from "@/components/ui/Toast";
 import Workspace from "@/components/ui/Workspace";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { canEditService } from "@/lib/permissions";
 import Pager from "@/components/ui/Pager";
 import useStickyState from "@/lib/ui/useStickyState";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -40,6 +45,20 @@ export default function ServiceAssetsPage() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+
+  const [receiving, setReceiving] = useState(false);
+  const [receiveBusy, setReceiveBusy] = useState(false);
+  const [warehouses, setWarehouses] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canEdit = useMemo(
+    () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
 
   const [search, setSearch] = useStickyState("search", "");
   const [locationFilter, setLocationFilter] = useStickyState("locationFilter", EMPTY);
@@ -72,6 +91,44 @@ export default function ServiceAssetsPage() {
   }, [startRun]);
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
+
+  /* คลังโหลดตอนจะรับเครื่องเท่านั้น — ทะเบียนเครื่องไม่ต้องรู้จักคลังจนกว่าจะมีคนกด
+     ⚠️ ต้องขอ `kind=warehouse` เพราะค่าตั้งต้นของ API ตัดคลังออกจากทะเบียนไซต์ */
+  useEffect(() => {
+    if (!receiving || warehouses.length) return;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/service/sites?kind=warehouse");
+        const rows = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(rows?.error || "โหลดรายการคลังไม่สำเร็จ");
+        setWarehouses(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setToast({ kind: "error", msg: e.message });
+      }
+    })();
+  }, [receiving, warehouses.length]);
+
+  const runReceive = async (input) => {
+    setReceiveBusy(true);
+    try {
+      const res = await apiFetch(`/api/service/sites/${input.siteId}/assets/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || "รับเครื่องเข้าคลังไม่สำเร็จ");
+      setReceiving(false);
+      setToast({ kind: "success", msg: `รับเครื่องเข้าคลัง ${body.created} ตัวแล้ว` });
+      await load({ background: true });
+    } finally {
+      setReceiveBusy(false);
+    }
+  };
+
+  /* รหัสที่ถูกใช้ไปแล้ว — โมดัลใช้เดาเลขถัดไปและกันรหัสซ้ำตั้งแต่ก่อนกด
+     ⚠️ เป็นชุดเดียวกับที่ API เอาไปตรวจซ้ำ — จอเดาไว้ก่อนเพื่อบอกเร็ว ไม่ใช่แทนด่าน */
+  const knownSerials = useMemo(() => assets.map((a) => a.serial).filter(Boolean), [assets]);
 
   // ── ตัวเลขสรุป ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -210,7 +267,18 @@ export default function ServiceAssetsPage() {
       icon={<AirVent size={20} aria-hidden="true" />}
       title="ทะเบียนเครื่อง"
       subtitle="เครื่องทุกตัวของฝ่ายบริการ — ที่หน้างานลูกค้าและที่อยู่ในคลัง"
-      headerRight={<span className="ui-badge">{assets.length} เครื่อง</span>}
+      headerRight={(
+        <>
+          <span className="ui-badge">{assets.length} เครื่อง</span>
+          {/* ⭐ จุดเกิดของเครื่อง — ไม่มีสิทธิ์แก้ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไม่ได้) */}
+          {canEdit && (
+            <Button tone="accent" onClick={() => setReceiving(true)}
+              icon={<Plus size={15} aria-hidden="true" />}>
+              รับเครื่องเข้าคลัง
+            </Button>
+          )}
+        </>
+      )}
       loading={loading}
       rail={(
         <StatCards
@@ -295,6 +363,16 @@ export default function ServiceAssetsPage() {
           </table>
         </TableShell>
       )}
+
+      <AssetReceiveModal
+        open={receiving}
+        warehouses={warehouses}
+        existingSerials={knownSerials}
+        busy={receiveBusy}
+        onClose={() => !receiveBusy && setReceiving(false)}
+        onSubmit={runReceive}
+      />
+      <Toast toast={toast} onClose={() => setToast(null)} />
 
       {sort.sorted.length > 0 && (
         <Pager

@@ -2,6 +2,7 @@
 // PATCH  : แก้นัด · ปิดงาน (status=done) จะ **เสนอ** นัดรอบถัดไปกลับไปให้ผู้ใช้ยืนยัน
 // DELETE : ลบนัด — ใช้ได้เฉพาะนัดที่ยังไม่เกิดขึ้น (ปิดงานแล้วคือประวัติ ห้ามลบ)
 import { recordAudit } from '@/lib/audit';
+import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { withUser, ok, fail, badRequest, conflict, forbidden } from '@/lib/http';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { isReschedule, nextAfterDone, normalizeVisitInput, rescheduleSummary } from '@/lib/service/rounds';
@@ -338,7 +339,15 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     // ยกเลิกได้ (status) แต่ลบทิ้งไม่ได้
     /* 🐞 ของเดิมบล็อกเฉพาะ `done` ⇒ `partial`/`unable`/`in_progress` ลบทิ้งได้
        = ประวัติการเข้าไซต์หาย ซึ่งคอมเมนต์บรรทัดบนบอกเองว่ามีค่าที่สุดของโมดูล */
-    if (!canDeleteVisit(before)) {
+    /* ⭐ **ยกเว้นผู้ดูแลระบบที่กด ?force=1** (มติผู้ใช้ 2026-08-28 "ขอสิทธิ์ทุกอย่าง
+       ให้แอดมิน รวมลบด้วย" · PR #1501) — นัดเป็นเส้นเดียวในระบบที่ตกหล่นจากมตินั้น
+       ⚠️ ด่านนี้เป็น **โค้ดล้วน** ไม่ใช่ FK: ตารางลูกของนัดทั้งสองตัวเป็น CASCADE
+          (`service_visit_items` 0188:118 · `service_visit_assets` 0301:31) ⇒ ลบแล้ว
+          ลูกหายตามเอง · แอดมินที่ต้องล้างนัดทดสอบ/นัดที่บันทึกผิดจึงติดอยู่ตรงนี้ที่เดียว
+       ⚠️ ยังไม่ใช่การเปิดฟรี — ต้องเป็น admin **และ** ส่ง ?force=1 มาโดยตั้งใจ
+          (จอถามยืนยันก่อนเสมอ · ปุ่มปกติไม่ส่งธงนี้) */
+    const force = isForceRequest(req) && canForceDelete(user);
+    if (!canDeleteVisit(before) && !force) {
       return conflict('นัดที่เจ้าหน้าที่ไปถึงไซต์แล้วลบไม่ได้ — เป็นประวัติการเข้าไซต์ · ถ้าบันทึกผิดให้แก้ข้อมูลแทน');
     }
 
@@ -351,7 +360,10 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
     await recordAudit({
       user, action: 'delete', entityType: 'service_visit', entityId: id, before,
-      summary: `ลบนัดเข้าบริการ ${before.code || id} · ${before.scheduledDate}`, request: req,
+      // ⚠️ ต้องอ่านออกจาก audit ว่าใบไหนถูกลบด้วยสิทธิ์พิเศษ — ไม่งั้นประวัติที่หายไป
+      //    จะดูเหมือนการลบตามปกติทั้งที่ข้ามด่านมา
+      summary: `ลบนัดเข้าบริการ ${before.code || id} · ${before.scheduledDate}${force && !canDeleteVisit(before) ? ' (แอดมินข้ามด่านประวัติ)' : ''}`,
+      request: req,
     });
     return ok({ ok: true });
   } catch (e) {
