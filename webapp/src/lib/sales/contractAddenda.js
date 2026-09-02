@@ -6,6 +6,8 @@
 //
 // ⚠️ import ได้ทั้งจอและ API — ห้าม import อะไรที่เป็น server-only (ด่านเดียวสองที่)
 
+import { isExternalContract } from '@/lib/sales/contracts';
+
 export const ADDENDUM_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'signed', 'cancelled']);
 
 export const ADDENDUM_STATUS_LABELS = Object.freeze({
@@ -49,6 +51,14 @@ export function sameCustomer(contract, request) {
 
 export function addendumEligibility({ contract, request = null, takenByDocNo = null } = {}) {
   if (!contract) return { ok: false, reason: 'ไม่พบสัญญาแม่' };
+  /* 🔴 **ใบที่ใช้เอกสารภายนอกแทนสัญญาทำบันทึกเพิ่มเติมไม่ได้** — แม่แบบบันทึกเพิ่มเติม
+     เขียนขึ้นเป็น *ภาคผนวกของสัญญาจ้างออกแบบกลิ่นฉบับของเรา* และดึงสถานที่/ผู้ลงนามจาก
+     `contract.fields` ของสัญญาแม่ · ใบ external ไม่มีข้อความนั้น (fields ว่างโดยตั้งใจ)
+     ⇒ ปล่อยผ่านแล้วจะได้เอกสารที่อ้างข้อสัญญาซึ่งไม่มีอยู่ในกระดาษที่ทั้งสองฝ่ายถืออยู่
+     เป็นรูเดียวกับที่ปิดไปในเส้นพิมพ์สัญญา แค่ย้ายบ้านมาอยู่เอกสารลูก */
+  if (isExternalContract(contract)) {
+    return { ok: false, reason: 'ใบนี้ใช้เอกสารภายนอกแทนสัญญา — แก้ไขข้อตกลงต้องทำกับคู่สัญญาบนเอกสารฉบับนั้นโดยตรง' };
+  }
   if (contract.kind !== 'scent_design') {
     return { ok: false, reason: 'ตอนนี้มีแม่แบบบันทึกเพิ่มเติมเฉพาะสัญญาจ้างออกแบบกลิ่น' };
   }
