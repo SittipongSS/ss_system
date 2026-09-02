@@ -107,26 +107,51 @@ test('🔴 GET ของใบสั่งขายต้องส่ง canEdit
 
 /* ── หัวใบบอกสถานะสัญญาได้โดยไม่ต้องสลับแท็บ ───────────────────────────── */
 
+const TODAY = '2026-09-02';
+
 test('หัวใบ: ยังไม่ผูก = บอกว่างานบริการยังเริ่มไม่ได้', () => {
-  const head = serviceContractHeadline(null);
+  const head = serviceContractHeadline(null, { today: TODAY });
   assert.match(head.value, /ยังไม่ผูก/);
   assert.equal(head.tone, 'wait');
 });
 
+/* 🔴 **"โหลดไม่ขึ้น" ไม่ใช่ "ยังไม่ผูก"** — GET ของใบกลืน error ของคิวรีสัญญาแล้วคืน
+   `null` ซึ่งหน้าตาเหมือนใบที่ไม่เคยผูกเป๊ะ ⇒ หัวใบจะสั่งงานผิดว่า "งานบริการเริ่มไม่ได้"
+   ให้ใบที่ผูกสัญญาไว้เรียบร้อยแล้ว · ต้องดู `serviceContractId` ของใบประกอบด้วย */
+test('🔴 หัวใบ: ผูกไว้แล้วแต่โหลดไม่ขึ้น ต้องไม่อ่านว่ายังไม่ผูก', () => {
+  const head = serviceContractHeadline(null, { linkedId: 'CTR-1', today: TODAY });
+  assert.doesNotMatch(head.value, /ยังไม่ผูก/);
+  assert.match(head.sub, /ผูกสัญญาไว้แล้ว/);
+  assert.equal(head.tone, 'late');
+});
+
 /* ⚠️ สัญญาที่ยังไม่ผ่านการรับรองเป็นสีแดง ไม่ใช่เขียว — ผูกไว้แล้วแต่ยังเดินงานไม่ได้
-   คือสภาพที่ต้องเห็นชัดที่สุด (ผูกแล้วนึกว่าจบ เป็นความเข้าใจผิดที่แพงที่สุดของเส้นนี้) */
+   คือสภาพที่ต้องเห็นชัดที่สุด ("ผูกแล้วนึกว่าจบ" คือความเข้าใจผิดที่แพงที่สุดของเส้นนี้) */
 test('หัวใบ: ผูกแล้วแต่ยังไม่มีผล = ธงแดงพร้อมบอกสถานะ', () => {
-  const head = serviceContractHeadline(signed({ status: 'awaiting_approval' }));
+  const head = serviceContractHeadline(signed({ status: 'awaiting_approval' }), { today: TODAY });
   assert.equal(head.tone, 'late');
   assert.match(head.sub, /ยังใช้เดินงานไม่ได้/);
 });
 
-/* ⚠️ สัญญาที่หมดอายุแล้วยังเป็น `signed` ⇒ สถานะไม่ได้ตอบเรื่องเวลา ต้องโชว์ช่วงคู่กัน */
-test('หัวใบ: มีผลแล้วต้องโชว์ช่วงเวลาคู่กับเลขที่เสมอ', () => {
-  const head = serviceContractHeadline(signed());
+/* 🪤 **วันที่ต้องเป็น DD/MM/YYYY เหมือนทั้งใบ** — ปล่อย ISO ดิบจะได้ค่าเดียวกันอ่าน
+   สองรูปบนใบเดียวกัน (การ์ดสัญญาที่อยู่ห่างกันคลิกเดียวใช้ fmtDate อยู่แล้ว) */
+test('หัวใบ: มีผลแล้วต้องโชว์ช่วงเวลาคู่กับเลขที่ ในรูปแบบเดียวกับทั้งใบ', () => {
+  const head = serviceContractHeadline(signed(), { today: TODAY });
   assert.equal(head.value, 'CT-SR-26080001-0');
-  assert.equal(head.sub, '2026-09-01 — 2027-08-31');
+  assert.equal(head.sub, '01/09/2026 — 31/08/2027');
   assert.equal(head.tone, 'ok');
+  assert.doesNotMatch(head.sub, /2026-09-01/, 'ห้ามปล่อย ISO ดิบขึ้นจอ');
   // ใบที่ไม่ระบุวันสิ้นสุดต้องพูด ไม่ใช่ปล่อยว่างให้เดา
-  assert.match(serviceContractHeadline(signed({ effectiveDate: null, expiryDate: null })).sub, /ไม่ระบุ/);
+  assert.match(serviceContractHeadline(signed({ effectiveDate: null, expiryDate: null }), { today: TODAY }).sub, /ไม่ระบุ/);
+});
+
+/* 🔴 **สัญญาที่หมดอายุแล้วยังเป็น `signed`** — `contractInForce` ดูแค่สถานะ ไม่ดูวันที่
+   ⇒ ปล่อยไว้หัวใบจะขึ้นเขียวว่าใช้ได้ ทั้งที่งานหน้างานเดินต่อไม่ได้จริง
+   ⚠️ วันหมดอายุนับรวมทั้งวัน — หมดจริงเมื่อ *เลย* วันนั้นไปแล้ว */
+test('🔴 หัวใบ: สัญญาที่หมดอายุแล้วต้องไม่เขียว', () => {
+  const expired = serviceContractHeadline(signed({ expiryDate: '2026-09-01' }), { today: TODAY });
+  assert.equal(expired.tone, 'late');
+  assert.match(expired.sub, /หมดอายุแล้ว/);
+  // วันสุดท้ายยังใช้ได้อยู่
+  assert.equal(serviceContractHeadline(signed({ expiryDate: TODAY }), { today: TODAY }).tone, 'ok');
 });

@@ -8,6 +8,8 @@
 // ⚠️ ไฟล์นี้ถูก import ทั้งฝั่งจอและฝั่ง API — ห้าม import อะไรที่เป็น server-only
 //   **ด่านต้องเป็นตัวเดียวกันสองที่** (กติกาเดียวกับ `contracts.js`)
 import { contractInForce, contractKindLabel, contractStatusLabel } from '@/lib/sales/contracts';
+import { businessDate } from '@/lib/businessDate';
+import { fmtDate } from '@/lib/format';
 
 /* สัญญาที่เอามาผูกกับใบนี้ได้ — เงื่อนไขสองข้อเท่านั้น
    ⭐ **ต้องเป็นสัญญาของดีลเดียวกัน** — สัญญาผูกกับดีล (mig 0278 `dealId` NOT NULL)
@@ -62,24 +64,35 @@ export function serviceContractLinkError(order, contract, { canEdit = false } = 
    ⭐ **คำถามแรกของคนเปิดใบบริการคือ "ใบนี้มีสัญญาแล้วหรือยัง"** — ของเดิมตอบได้แค่
      บนหัวแท็บ (`สัญญา · ยังไม่ผูก`) ซึ่งต้องเลื่อนไปอ่าน · ข้อมูลมากับ GET ของใบ
      อยู่แล้ว ไม่ต้องยิงเพิ่ม
-   ⚠️ **สัญญาที่หมดอายุแล้วยังเป็น `signed`** — สถานะไม่ได้ตอบเรื่องเวลา ⇒ ต้องโชว์
-     ช่วงมีผลคู่กันเสมอ ไม่งั้นคนอ่าน "มีผล" แล้วเข้าใจว่าใช้ได้อยู่วันนี้
+   🔴 **สามสภาพที่หน้าตาคล้ายกันแต่ต้องบอกคนละเรื่อง**
+     1. ยังไม่เคยผูก           → งานบริการยังเริ่มไม่ได้
+     2. ผูกไว้แล้วแต่โหลดไม่ขึ้น → GET กลืน error ของคิวรีสัญญาแล้วคืน `null` ซึ่งหน้าตา
+        เหมือนข้อ 1 เป๊ะ ⇒ ต้องดู `serviceContractId` ของใบประกอบ ไม่ใช่ดูสัญญาอย่างเดียว
+     3. ผูกแล้วแต่หมดอายุ      → `contractInForce` ดูแค่ `status === 'signed'` ไม่ดูวันที่
+        ⇒ สัญญาที่หมดอายุไปแล้วยังเขียวอยู่ ทั้งที่งานหน้างานเดินต่อไม่ได้จริง
+   ⚠️ **วันที่ต้องผ่าน `fmtDate`** — ทั้งใบใช้ DD/MM/YYYY · ปล่อย ISO ดิบจะได้ค่าเดียวกัน
+      อ่านสองรูปบนใบเดียวกัน (การ์ดสัญญาที่อยู่ห่างกันคลิกเดียวใช้ fmtDate อยู่แล้ว)
    คืน `{ value, sub, tone }` — ไม่มีไอคอน/JSX เพราะเป็นตรรกะล้วน จอเป็นคนใส่ไอคอน */
-export function serviceContractHeadline(contract) {
+export function serviceContractHeadline(contract, { linkedId = null, today = businessDate() } = {}) {
   if (!contract) {
+    if (linkedId) {
+      return {
+        value: 'โหลดสัญญาไม่ขึ้น',
+        sub: 'ใบนี้ผูกสัญญาไว้แล้ว แต่ดึงรายละเอียดไม่สำเร็จ — เปิดแท็บสัญญาอีกครั้ง',
+        tone: 'late',
+      };
+    }
     return { value: 'ยังไม่ผูกสัญญา', sub: 'งานบริการเริ่มไม่ได้จนกว่าจะมีสัญญาที่มีผล', tone: 'wait' };
   }
-  const span = [contract.effectiveDate, contract.expiryDate].filter(Boolean).join(' — ');
+  const number = contract.contractNo || 'ฉบับร่าง';
   if (!contractInForce(contract)) {
-    return {
-      value: contract.contractNo || 'ฉบับร่าง',
-      sub: `${contractStatusLabel(contract.status)} — ยังใช้เดินงานไม่ได้`,
-      tone: 'late',
-    };
+    return { value: number, sub: `${contractStatusLabel(contract.status)} — ยังใช้เดินงานไม่ได้`, tone: 'late' };
   }
-  return {
-    value: contract.contractNo || 'ฉบับร่าง',
-    sub: span || 'ไม่ระบุช่วงมีผล',
-    tone: 'ok',
-  };
+  const span = [contract.effectiveDate, contract.expiryDate].filter(Boolean).map(fmtDate).join(' — ');
+  /* เทียบวันด้วยนาฬิกาไทย (`businessDate`) — เทียบสตริง ISO ตรง ๆ ได้เพราะทั้งคู่เป็น
+     `YYYY-MM-DD` · วันหมดอายุนับรวมทั้งวัน ⇒ หมดจริงเมื่อ **เลย** วันนั้นไปแล้ว */
+  if (contract.expiryDate && String(contract.expiryDate) < String(today)) {
+    return { value: number, sub: `${span} — หมดอายุแล้ว`, tone: 'late' };
+  }
+  return { value: number, sub: span || 'ไม่ระบุช่วงมีผล', tone: 'ok' };
 }

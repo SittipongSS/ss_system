@@ -967,7 +967,7 @@ export default function SalesOrderDetailPage() {
                เมื่อใบนี้มีสัญญาที่มีผล ⇒ เป็นคำถามแรกของคนเปิดใบ ไม่ใช่ของที่ต้องไปตาม
                ข้อมูลมากับ GET ของใบอยู่แล้ว (`order.serviceContract`) ไม่ต้องยิงเพิ่ม
                ⚠️ ขึ้นเฉพาะใบที่มีรอบบริการ — ใบสายสินค้าไม่มีสัญญาบริการให้พูดถึง */
-            ...(hasServiceRounds ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract) }, {
+            ...(hasServiceRounds ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract, { linkedId: order.serviceContractId }) }, {
               icon: Repeat,
               label: "รอบบริการที่ขาย",
               value: roundsSold == null ? NA : `${roundsSold} รอบ`,
