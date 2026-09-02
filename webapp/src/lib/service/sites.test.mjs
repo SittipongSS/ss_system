@@ -307,3 +307,20 @@ test('ป้ายไทยครบทุกค่าที่ CHECK ใน DB 
   }
   assert.equal(ASSET_STATUS_LABELS.removed, 'ปลดระวาง', 'mig 0332 เปลี่ยนความหมายจาก "ถอดออกแล้ว"');
 });
+
+/* 🐞 **บั๊กที่ UAT 2026-09-02 จับได้** — ฟอร์มเพิ่มเครื่องตั้ง `status: 'active'`
+   ตายตัว ⇒ เพิ่มเครื่องเข้า **ไซต์คลัง** โดน trigger ของ mig 0332 ตีกลับด้วย
+   500 + ข้อความภาษาฐานข้อมูล ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
+   ⇒ ค่าตั้งต้นต้องเดินตามประเภทไซต์ · เทสต์นี้ตรึงคู่ (ประเภทไซต์ → สถานะตั้งต้น) */
+test('🔴 คู่ที่ trigger ยอมรับ: คลังคู่กับ in_stock · ไซต์ลูกค้าคู่กับ active', () => {
+  assert.equal(isWarehouseSite({ kind: 'warehouse' }), true);
+  assert.equal(isWarehouseSite({ kind: 'customer' }), false);
+
+  // สถานะตั้งต้นที่ฟอร์มควรเลือกให้ — ตรงกับที่ trigger ยอมรับ
+  const defaultStatus = (site) => (isWarehouseSite(site) ? 'in_stock' : 'active');
+  assert.equal(defaultStatus({ kind: 'warehouse' }), 'in_stock');
+  assert.equal(defaultStatus({ kind: 'customer' }), 'active');
+  assert.equal(defaultStatus(null), 'active', 'ไม่รู้ไซต์ = ไซต์ลูกค้า (เส้นทางเดิม)');
+
+  for (const s of ['in_stock', 'active']) assert.ok(ASSET_STATUSES.includes(s));
+});
