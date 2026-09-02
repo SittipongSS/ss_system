@@ -2,7 +2,7 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
-import { normalizeAssetInput } from '@/lib/service/sites';
+import { isWarehouseSite, normalizeAssetInput } from '@/lib/service/sites';
 import { findZone, loadAssets, requireSite } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +27,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (access.response) return access.response;
 
     const body = await req.json().catch(() => ({}));
-    const { value, error } = normalizeAssetInput(body);
+    /* 🐞 **สถานะตั้งต้นต้องเดินตามประเภทไซต์** (UAT 2026-09-02) — `normalizeAssetInput`
+       ตั้ง `active` เมื่อไม่ได้ส่งมา ⇒ สร้างเครื่องใน **ไซต์คลัง** โดนตีกลับด้วย
+       500 + ข้อความของ trigger (mig 0332) ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิด
+       ⚠️ ต้องอยู่ที่ **server** ไม่ใช่แค่ค่าตั้งต้นในฟอร์ม — เส้นที่ยิง API ตรง
+          (ตัวนำเข้า · สคริปต์ · เครื่องมือภายนอก) ไม่ได้เดินผ่านฟอร์ม */
+    const withDefaults = body.status
+      ? body
+      : { ...body, status: isWarehouseSite(access.site) ? 'in_stock' : 'active' };
+    const { value, error } = normalizeAssetInput(withDefaults);
     if (error) return badRequest(error);
 
     // ⚠️ โซนต้องเป็นของไซต์เดียวกัน — เชื่อ id จาก client ตรง ๆ ไม่ได้

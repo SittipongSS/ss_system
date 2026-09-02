@@ -324,3 +324,17 @@ test('🔴 คู่ที่ trigger ยอมรับ: คลังคู่�
 
   for (const s of ['in_stock', 'active']) assert.ok(ASSET_STATUSES.includes(s));
 });
+
+/* 🐞 **บั๊กรอบสอง (UAT 2026-09-02)** — รอบแรกแก้แค่ค่าตั้งต้นในฟอร์ม แต่ `normalizeAssetInput`
+   ยังตั้ง `active` เองเมื่อไม่ได้ส่ง status มา ⇒ เส้นที่ยิง API ตรง (ตัวนำเข้า · สคริปต์)
+   ยังโดน trigger ตีกลับด้วย 500 เหมือนเดิม
+   ⇒ ค่าตั้งต้นต้องตัดสินที่ **server** โดยดูประเภทไซต์ ไม่ใช่หวังว่าทุกคนจะส่ง status มา */
+test('🔴 ไม่ส่ง status มา = normalizeAssetInput ตั้ง active เสมอ (route ต้องเป็นคนเติมให้)', () => {
+  const { value } = normalizeAssetInput({ label: 'เครื่อง A' });
+  assert.equal(value.status, 'active', 'ตัวนี้ไม่รู้จักไซต์ ⇒ route ต้องเติม in_stock ให้เองเมื่อเป็นคลัง');
+
+  // เมื่อ route เติมมาให้แล้ว ต้องผ่านและคงค่าไว้
+  const stocked = normalizeAssetInput({ label: 'เครื่อง A', status: 'in_stock' });
+  assert.equal(stocked.error, null);
+  assert.equal(stocked.value.status, 'in_stock');
+});
