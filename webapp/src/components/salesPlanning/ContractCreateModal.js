@@ -279,7 +279,7 @@ export default function ContractCreateModal({
         <div className="form-actions-buttons">
           <Button onClick={onClose} disabled={busy}>ปิด</Button>
           <Button
-            variant="accent"
+            tone="primary"
             onClick={create}
             disabled={busy || loading || blocked || !activeDeal || !kind || !chosenReady || !quoteId}
           >

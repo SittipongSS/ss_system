@@ -2003,7 +2003,7 @@ export default function RequestDetailPage() {
             {bulkReadyBlocker && <p className={styles.fieldHint}>{bulkReadyBlocker}</p>}
             <div className="form-actions-buttons">
               <Button variant="quiet" disabled={saving} onClick={() => setBulkReady(null)}>ยกเลิก</Button>
-              <Button tone="accent" disabled={saving || !!bulkReadyBlocker} onClick={submitBulkReady}>
+              <Button tone="primary" disabled={saving || !!bulkReadyBlocker} onClick={submitBulkReady}>
                 {saving ? "กำลังส่ง…" : `ส่งงาน ${bulkReady.rows.length} รายการ`}
               </Button>
             </div>
@@ -2296,7 +2296,7 @@ export default function RequestDetailPage() {
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" onClick={() => setOutcome(null)} disabled={saving}>ยกเลิก</Button>
               <Button
-                tone="accent" disabled={saving || !!outcomeError}
+                tone="primary" disabled={saving || !!outcomeError}
                 onClick={async () => {
                   const ok = await call("", {
                     method: "PATCH", body: JSON.stringify({ action: "close", outcome }),

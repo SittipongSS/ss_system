@@ -516,7 +516,7 @@ export default function SalesOrderPaymentPanel({
                     </td>
                     <td className={styles.actionCell}>
                       {primary ? (
-                        <Button tone="accent" size="sm" disabled={!!busy} onClick={primary.onClick}>
+                        <Button tone="primary" size="sm" disabled={!!busy} onClick={primary.onClick}>
                           {primary.label}
                         </Button>
                       ) : null}
@@ -560,7 +560,7 @@ export default function SalesOrderPaymentPanel({
           </span>
           <Button variant="ghost" size="sm" disabled={savingCover || !!busy}
             onClick={() => setCoverDrafts({})}>ยกเลิกที่แก้</Button>
-          <Button tone="accent" size="sm" disabled={savingCover || !!busy || coverInvalid}
+          <Button tone="primary" size="sm" disabled={savingCover || !!busy || coverInvalid}
             onClick={saveCoverDrafts}>
             {savingCover ? "กำลังบันทึก…" : "บันทึกช่วงครอบ"}
           </Button>
@@ -614,7 +614,7 @@ export default function SalesOrderPaymentPanel({
             </div>
             <div className="action-bar">
               <Button variant="ghost" onClick={() => setReportFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="accent" disabled={!!busy || !reportFor.paidOn || !reportFor.files.length}
+              <Button tone="primary" disabled={!!busy || !reportFor.paidOn || !reportFor.files.length}
                 onClick={async () => {
                   const done = await onAction(reportFor.row, "report", { paidOn: reportFor.paidOn, files: reportFor.files });
                   if (done) setReportFor(null);
@@ -638,7 +638,7 @@ export default function SalesOrderPaymentPanel({
             </label>
             <div className="action-bar">
               <Button variant="ghost" onClick={() => setScheduleFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="accent" disabled={!!busy}
+              <Button tone="primary" disabled={!!busy}
                 onClick={async () => {
                   const done = await onAction(scheduleFor.row, "schedule", { dueDate: scheduleFor.dueDate || null });
                   if (done) setScheduleFor(null);
@@ -677,7 +677,7 @@ export default function SalesOrderPaymentPanel({
             </label>
             <div className="action-bar">
               <Button variant="ghost" onClick={() => setLinkFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="accent" disabled={!!busy || !linkFor.billingRequestId}
+              <Button tone="primary" disabled={!!busy || !linkFor.billingRequestId}
                 onClick={async () => {
                   const done = await onAction(linkFor.row, "link", { billingRequestId: linkFor.billingRequestId });
                   if (done) setLinkFor(null);

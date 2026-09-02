@@ -41,7 +41,7 @@ export default function DealContractsCard({ dealId, canEdit = false, quotationId
         title="สัญญา"
         description="ออกได้หลังใบเสนอราคาอนุมัติ · พิมพ์ไปเซ็นแล้วอัปโหลดฉบับลงนามกลับ"
         actions={canEdit ? (
-          <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+          <Button size="sm" tone="accent" onClick={() => setOpen(true)}>
             <Plus size={13} aria-hidden="true" /> ออกสัญญา
           </Button>
         ) : null}

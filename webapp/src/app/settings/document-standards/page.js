@@ -405,7 +405,7 @@ export default function DocumentStandardsPage() {
                   <>
                     <Button variant="quiet" onClick={() => setEditRow(null)} disabled={busy}>ยกเลิก</Button>
                     {/* form= ชี้ไปที่ฟอร์มด้านล่าง ปุ่มจึงอยู่นอกฟอร์มได้โดยยังยิง onSubmit ตัวเดิม */}
-                    <Button tone="accent" type="submit" form="document-standard-form" icon={<Save size={15} />} disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</Button>
+                    <Button tone="primary" type="submit" form="document-standard-form" icon={<Save size={15} />} disabled={busy}>{busy ? "กำลังบันทึก…" : "บันทึก"}</Button>
                     <Button icon={<Send size={15} />} disabled title="บันทึกฉบับร่างก่อนจึงเผยแพร่ได้">เผยแพร่</Button>
                   </>
                 ) : (
@@ -416,7 +416,7 @@ export default function DocumentStandardsPage() {
                     <Button tone={draft ? undefined : "accent"} icon={<Edit3 size={15} />} onClick={() => draft ? openEdit(draft) : createDraft()} disabled={busy}>แก้ไข</Button>
                     {draft ? (
                       <Button
-                        tone="accent"
+                        tone="primary"
                         icon={<Send size={15} />}
                         onClick={() => setConfirm({ action: "publish" })}
                         disabled={busy || !hasDocumentStandardChangeNote(draft)}

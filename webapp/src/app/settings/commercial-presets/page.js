@@ -339,7 +339,7 @@ export default function CommercialPresetsPage() {
         title={drawer?.mode === "create" ? `สร้าง${COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}` : drawerRow ? `${drawerRow.title} · Version ${drawerRow.versionNumber}` : COMMERCIAL_PRESET_KIND_LABELS[drawerKind]}
         badge={drawerRow ? <StatusBadge status={drawerRow.status} /> : null}
         footer={editing
-          ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="commercial-preset-form" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : drawer?.mode === "create" ? "สร้างฉบับร่าง" : "บันทึกฉบับร่าง"}</button></>
+          ? <><button type="button" className="btn ghost" onClick={() => setDrawer(null)} disabled={busy}>ยกเลิก</button><button type="submit" form="commercial-preset-form" className="btn btn-primary" disabled={busy}>{busy ? "กำลังบันทึก…" : drawer?.mode === "create" ? "สร้างฉบับร่าง" : "บันทึกฉบับร่าง"}</button></>
           : <><button type="button" className="btn" onClick={() => setDrawer(null)}>ปิด</button>{drawerPreset?.draft?.id === drawerRow?.id && <button type="button" className="btn" onClick={() => openEdit(drawerPreset, drawerRow)}><Edit3 size={15} /> แก้ไข</button>}</>}
       >
         {editing ? (

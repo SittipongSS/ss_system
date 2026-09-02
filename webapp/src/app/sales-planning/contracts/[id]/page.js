@@ -462,7 +462,7 @@ export default function ContractDetailPage() {
                   >
                     ยกเลิก
                   </Button>
-                  <Button variant="accent" onClick={save} disabled={busy}>บันทึกร่าง</Button>
+                  <Button tone="primary" onClick={save} disabled={busy}>บันทึกร่าง</Button>
                 </div>
               </div>
             </>
@@ -523,7 +523,7 @@ export default function ContractDetailPage() {
         footer={(
           <div className="form-actions-buttons">
             <Button onClick={() => setApproveOpen(false)} disabled={busy}>ปิด</Button>
-            <Button variant="accent" onClick={submitApprove} disabled={busy || !!approveGate}>
+            <Button tone="primary" onClick={submitApprove} disabled={busy || !!approveGate}>
               ยืนยันอนุมัติ
             </Button>
           </div>
@@ -576,7 +576,7 @@ export default function ContractDetailPage() {
         footer={(
           <div className="form-actions-buttons">
             <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
-            <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
+            <Button tone="primary" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
               บันทึกการลงนาม
             </Button>
           </div>

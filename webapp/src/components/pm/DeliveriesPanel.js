@@ -335,7 +335,7 @@ export default function DeliveriesPanel({
         </div>
         <div className={`action-bar ${styles.formActions}`}>
           <Button variant="quiet" onClick={() => setAddOpen(false)} disabled={!!busy}>ยกเลิก</Button>
-          <Button tone="accent" onClick={submitAdd} disabled={!!busy || !form.label.trim()}>
+          <Button tone="primary" onClick={submitAdd} disabled={!!busy || !form.label.trim()}>
             เพิ่มรายการ
           </Button>
         </div>
