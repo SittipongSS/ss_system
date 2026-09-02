@@ -126,6 +126,8 @@ export async function POST(request, { params }) {
       title,
       stage: 'qualified',
       projectValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
+      // mig 0337 — ดีลสหมิตรเกิดจาก FC ที่สหมิตรส่งมา = ยอดที่คนกรอก (manual)
+      forecastManualValue: toMoney(qty * (Number.isFinite(price) ? price : 0)),
       probability: 80,
       forecastMonth,
       expectedCloseDate: closeDate,

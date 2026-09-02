@@ -11,6 +11,7 @@ import {
 import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
+import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,7 +122,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     summary: `อนุมัติใบเสนอราคา ${quote.quoteNumber} (${dealAuditLabel(quote.deal)})`,
     request: req,
   });
+  /* FC ของดีลเดินตามใบที่อนุมัติแล้ว (mig 0337 — มติผู้ใช้ 2026-09-02)
+     นี่คือ **เหตุเดียว** ที่ FC ขึ้นบันไดจาก "ยอดที่ AE กรอก" เป็น "ยอดบนเอกสาร" ได้เอง
+     best-effort: การอนุมัติ commit ไปแล้ว ห้ามพังเพราะยอด FC เขียนไม่ผ่าน แต่ก็ห้าม
+     เงียบ — ส่ง forecast กลับไปให้จอบอกผู้ใช้ว่ายอดขยับเป็นเท่าไร (หรือยังไม่ขยับ) */
+  let forecast = null;
+  try {
+    forecast = await applyForecastSource(supabase, quote.dealId, { cause: 'quotation_approved' });
+  } catch (forecastError) {
+    console.error('forecast source apply failed', id, forecastError);
+    forecast = { changed: false, warning: forecastError.message };
+  }
+
   // แจ้งทีมขาย: ใบผ่านแล้ว = ถือว่าส่งลูกค้าแล้ว (mig 0165) → ขั้นถัดไปคือปิด Won
   // เดิมเงียบทั้งขา ผู้จัดทำที่ไม่ใช่เจ้าของดีลจึงไม่รู้ว่าใบตัวเองผ่านหรือยัง
-  return ok(data);
+  return ok({ ...data, forecast });
 });

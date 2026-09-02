@@ -2,7 +2,9 @@ import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
-import { canDeleteContract, contractKindLabel, isContractEditable } from '@/lib/sales/contracts';
+import {
+  EXTERNAL_DOC_KINDS, canDeleteContract, contractKindLabel, isContractEditable, isExternalContract,
+} from '@/lib/sales/contracts';
 import { contractQuotationNotice, newerApprovedQuotation } from '@/lib/sales/contractQuotationState';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import { purgeAttachments } from '@/lib/master/attachments';
@@ -12,7 +14,14 @@ export const dynamic = 'force-dynamic';
 // ช่องที่แก้ได้ตอนเป็นร่าง — ทุกอย่างที่เหลือ (สถานะ เลขที่ ฉบับตรึง ผู้ออก) ขยับได้
 // เฉพาะผ่าน action ของตัวเอง (issue / sign / cancel)
 // ⚠️ allowlist ไม่ใช่ blocklist: ช่องใหม่ที่เพิ่มทีหลังต้องมาเปิดที่นี่โดยตั้งใจ
-const EDITABLE_KEYS = new Set(['contractDate', 'fields', 'notes', 'customerName', 'quotationId', 'effectiveDate', 'expiryDate']);
+const EDITABLE_KEYS = new Set([
+  'contractDate', 'fields', 'notes', 'customerName', 'quotationId', 'effectiveDate', 'expiryDate',
+  /* ⭐ ข้อมูลของเอกสารที่ใช้แทนสัญญา (mig 0322) — โมดัลสร้างมีสองช่องนี้มาตั้งแต่แรก
+     แต่ฟอร์มแก้ไม่มี ⇒ พิมพ์เลข PO ผิดตัวเดียวต้องลบร่างแล้วสร้างใหม่
+     ⚠️ CHECK `sales_contracts_external_kind` บังคับว่า external ต้องมี `externalDocKind`
+        และ generated ต้องเป็น NULL ⇒ ต้องกรองตามที่มาของใบก่อนเขียน (ดูข้างล่าง) */
+  'externalDocKind', 'externalRef',
+]);
 
 export const GET = withUser(async ({ user, supabase, ctx }) => {
   if (!user) return unauthorized();
@@ -84,6 +93,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = {};
   for (const [key, value] of Object.entries(body || {})) {
     if (EDITABLE_KEYS.has(key)) patch[key] = value;
+  }
+  /* 🪤 **ประตูหลังของ `fields`** — route สร้างกันใบ external ไม่ให้ได้ช่องของแม่แบบแล้ว
+     แต่ถ้าไม่กันที่นี่ด้วย ค่าเดิมเดินกลับเข้ามาทาง PATCH ได้ (จอไม่มีช่องให้กรอก แต่
+     ยิงตรงได้) แล้วเส้นเอกสารก็มีของให้เรนเดอร์อีกครั้ง · เงียบ ๆ ไม่ตีกลับ เพราะจอส่ง
+     `fields: {}` มาด้วยทุกครั้งที่กดบันทึกร่าง — ตีกลับจะกลายเป็นแก้วันที่สัญญาไม่ได้ */
+  if (isExternalContract(before)) {
+    delete patch.fields;
+    /* ที่มาของใบเปลี่ยนไม่ได้ ⇒ ช่องบังคับของสายนี้ต้องยังมีค่าที่รู้จักเสมอ
+       ปล่อยค่าว่าง/ค่ามั่วผ่าน = ฐานตีกลับ 23514 พร้อมข้อความที่คนอ่านไม่ออก */
+    if ('externalDocKind' in patch && !EXTERNAL_DOC_KINDS.includes(patch.externalDocKind)) {
+      return badRequest('ต้องระบุว่าใช้เอกสารชนิดไหนแทนสัญญา');
+    }
+    if ('externalRef' in patch) {
+      patch.externalRef = String(patch.externalRef ?? '').trim().slice(0, 200) || null;
+    }
+  } else {
+    // ใบที่ระบบเจนต้องไม่มีค่าสองช่องนี้เลย (CHECK เดียวกันบังคับให้เป็น NULL)
+    delete patch.externalDocKind;
+    delete patch.externalRef;
   }
   if (!Object.keys(patch).length) return badRequest('ไม่มีช่องที่แก้ได้ในคำขอนี้');
   if (patch.fields && typeof patch.fields !== 'object') return badRequest('ค่าที่กรอกต้องเป็นอ็อบเจกต์');

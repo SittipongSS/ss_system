@@ -409,6 +409,12 @@ export default function AppLayout({ children }) {
            แถวบนเงียบ ๆ** ทั้งที่ยังอยู่ในลิ้นชักและแผ่นมือถือ (ผู้ใช้เจอเองบนจอ 26/08) */
         { href: '/sa/calendar', name: 'ปฏิทินนัด', icon: CalendarDays, cap: 'salesplan:lead', utility: true, match: (p) => p.startsWith('/sa/calendar') },
         { href: '/sa/targets', name: 'วางเป้า', icon: Target, cap: 'salesplan:target', utility: true, match: (p) => p.startsWith('/sa/targets') || p.startsWith('/sales-planning/targets') },
+        /* ตรวจที่มาของ FC (mig 0337 · มติผู้ใช้ 2026-09-02) — ดีลที่มีใบเสนอราคา
+           อนุมัติแล้วแต่ FC ยังไม่เดินตามใบ · เป็น utility เพราะไม่ใช่งานรายวัน และ
+           ป้ายจะหดลงเรื่อย ๆ ตามที่ AE กดรับ เหลือเฉพาะดีลที่มีใบหลายฉบับจริง ๆ
+           ⚠️ utility ต้องอยู่ท้ายอาเรย์เสมอ และห้ามแทรกก่อน "ปฏิทินนัด → วางเป้า"
+              ซึ่งเป็นคู่ลำดับที่ผู้ใช้เคาะไว้ (26/08) */
+        { href: '/sa/forecast-review', name: 'ตรวจที่มา FC', countHref: '/sa/forecast-review', icon: ClipboardCheck, cap: 'salesplan:view', visible: worksInSalesPipeline, utility: true, match: (p) => p.startsWith('/sa/forecast-review') },
         // จัดทีม (mig 0310 · มติผู้ใช้ 2026-08-28) — หัวหน้าฝ่ายขายกับผู้ช่วยที่ถูก
         // grant จัดทีมเองได้ ไม่ต้องรอแอดมิน · เป็น utility เพราะไม่ใช่งานรายวัน
         /* 🐞 **ต้องแคบด้วยฝ่ายด้วย ไม่ใช่ cap ล้วน** — ตั้งแต่หัวหน้าฝ่าย TS ได้

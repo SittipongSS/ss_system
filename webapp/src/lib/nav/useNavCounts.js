@@ -30,6 +30,9 @@ export const NAV_COUNT_KEYS = {
   "/sa/sales-orders": "salesOrders",
   "/sa/contracts": "contracts",
   "/sa/projects": "projectCloses",
+  /* คิวตรวจที่มาของ FC (mig 0337) — ดีลที่มีใบอนุมัติแล้วแต่ FC ยังไม่เดินตามใบ
+     ป้ายนี้จะหดลงเรื่อย ๆ ตามที่ AE กดรับ แล้วเหลือเฉพาะดีลที่มีใบหลายฉบับจริง ๆ */
+  "/sa/forecast-review": "forecastReview",
   // เฟส 1 — ฐานข้อมูล
   "/database/scents": "scents",
   "/database/formulas": "formulas",
@@ -60,6 +63,7 @@ export const SYSTEM_COUNT_HREFS = {
   salesplan: [
     "/sa/leads", "/sa/tasks", "/requests",
     "/sa/quotations", "/sa/sales-orders", "/sa/contracts", "/sa/projects",
+    "/sa/forecast-review",
   ],
   rd: ["/rd/requests"],
   /* ⚠️ เอกสารร่วม (ใบเสนอราคา · ใบสั่งขาย · สัญญา) นับที่ `salesplan` ที่เดียว

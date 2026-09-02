@@ -14,7 +14,7 @@
 import { defineLifecycle } from "@/lib/recordLifecycle";
 import {
   CONTRACT_STATUS_LABELS, canCancelContract, canIssueContract, canReviseContract,
-  contractReviseBlockReason,
+  contractReviseBlockReason, isExternalContract,
 } from "@/lib/sales/contracts";
 
 const STATUS_TONE = {
@@ -44,7 +44,18 @@ const STEPS = [
   { id: "done", label: "ลงนามแล้ว", statuses: ["signed"] },
 ];
 
-export function buildContractLifecycle({ canEdit = false } = {}) {
+/* ⭐ **รางของใบที่ใช้เอกสารภายนอกแทนสัญญาเป็นคนละเส้น** — สายนี้เดิน `draft → signed`
+   ทีเดียว (AE Sup อนุมัติเอกสารเป็นด่านเดียวจบ) ⇒ ใช้รางสี่ขั้นร่วมกันแล้วใบ external
+   จะโชว์ "รอลงนาม" กับ "รอหัวหน้ารับรอง" เป็นขั้นที่ไม่มีวันเดินผ่าน และหมุดแรกยังสั่ง
+   "กรอกข้อมูลคู่สัญญาและเงื่อนไข" ซึ่งเป็นช่องของแม่แบบที่ใบนี้ตั้งใจไม่มี
+   ⚠️ ทะเบียนสัญญาวาดรางของตัวเองที่ `contractListTrack.js` — ยังไม่ได้แยกสาย ⇒ หน้า
+      รายละเอียดกับทะเบียนยังเล่าคนละเรื่องอยู่ (งานต่อ ไม่ได้อยู่ในรอบนี้) */
+const EXTERNAL_STEPS = [
+  { id: "draft", label: "ร่าง", hint: "แนบเอกสารที่ใช้แทนสัญญา", statuses: ["draft"] },
+  { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "AE Supervisor รับรองเอกสาร", statuses: ["signed"] },
+];
+
+export function buildContractLifecycle({ canEdit = false, external = false } = {}) {
   return defineLifecycle({
     entity: "contract",
     noun: "สัญญา",
@@ -52,7 +63,7 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
       key,
       { label, tone: STATUS_TONE[key], description: STATUS_DESCRIPTION[key] },
     ])),
-    steps: STEPS,
+    steps: external ? EXTERNAL_STEPS : STEPS,
     cancelledStatuses: ["cancelled", "revised"],
     transitions: [
       {
@@ -64,7 +75,13 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
         slot: "primary",
         from: ["draft"],
         to: "awaiting_signature",
-        visible: () => canEdit,
+        /* 🔴 **ซ่อน ไม่ใช่บอกเหตุ** — ใบ external ไม่ได้ "ยังออกไม่ได้" แต่ *ไม่มีขั้นนี้เลย*
+           (draft → signed ทีเดียวผ่านการอนุมัติของ AE Sup) ⇒ เป็นเรื่องของเส้นทาง
+           ไม่ใช่จังหวะเวลา ตรงตามกติกา visible/allow ที่ recordLifecycle เขียนไว้
+           🪤 ตกไปแล้วไม่ใช่แค่ปุ่มเทาเกินมา — `issue` ถือ `slot: "primary"` และ
+              transition ถูกจัดก่อน extraActions ⇒ มันแย่งช่องปุ่มหลักไปจาก
+              "อนุมัติเอกสารแทนสัญญา" แล้วพิมพ์เหตุผลผิดเป็นข้อความเด่นบนการ์ด */
+        visible: (contract) => canEdit && !isExternalContract(contract),
         allow: (contract) => (canIssueContract(contract) ? true : "ออกได้เฉพาะใบที่ยังเป็นร่าง"),
         // ⚠️ กล่องยืนยันต้องบอก **ผลที่ตามมา** ไม่ใช่ถามว่าแน่ใจไหม — หลังกดแล้ว
         //    เนื้อแก้ไม่ได้อีก ซึ่งเป็นข้อมูลที่คนกดต้องรู้ *ก่อน* กด

@@ -28,6 +28,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
+  CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
   externalApproveError, externalDocKindLabel, isExternalContract, showExternalApprove,
   showSignedApprove, signedApproveError,
@@ -35,6 +36,7 @@ import {
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
 import styles from "./page.module.css";
+import { attachmentHref } from "@/lib/master/attachmentStorage";
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function ContractDetailPage() {
@@ -69,6 +71,7 @@ export default function ContractDetailPage() {
   const [apExpiry, setApExpiry] = useState("");
   const [apDocDate, setApDocDate] = useState("");
   const [externalFileId, setExternalFileId] = useState("");
+  const [externalDocs, setExternalDocs] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,7 +80,12 @@ export default function ContractDetailPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "โหลดสัญญาไม่สำเร็จ");
       setContract(data);
-      setForm({ fields: { ...(data.fields || {}) }, contractDate: data.contractDate || "" });
+      setForm({
+        fields: { ...(data.fields || {}) },
+        contractDate: data.contractDate || "",
+        externalDocKind: data.externalDocKind || "",
+        externalRef: data.externalRef || "",
+      });
       setError("");
     } catch (err) {
       setError(err.message);
@@ -89,13 +97,25 @@ export default function ContractDetailPage() {
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
   const canEdit = !!contract?.canEdit && canEditCap;
-  const templateFields = useMemo(() => contractTemplateFields(contract?.kind), [contract?.kind]);
-  const lifecycle = useMemo(() => buildContractLifecycle({ canEdit }), [canEdit]);
+  /* ที่มาของใบตัดสินหลายอย่างบนหน้านี้ (ปุ่มพิมพ์ · การ์ดข้อมูล · ขั้นที่ใบเดินผ่าน) —
+     อ่านครั้งเดียวจากตัวตัดสินกลาง ไม่ใช่เทียบ `contract.source === "external"` กระจาย */
+  const external = isExternalContract(contract);
+  /* 🪤 **ต้องผูกกับ `source` ไม่ใช่ `kind`** — ใบ external ชนิดที่มีแม่แบบ (`scent_design`)
+     ยังคืนช่องมาครบ 13 ช่อง ⇒ โหมดแก้กางฟอร์มของแม่แบบให้กรอก แล้ว PATCH ก็เขียนกลับได้
+     = `fields` ที่ route สร้างเพิ่งกันออกไปเดินกลับเข้ามาทางประตูหลัง (และค่าที่กรอก
+     ก็ไม่มีที่แสดง เพราะโหมดอ่านสลับไปโชว้บล็อกของใบ external แทนแล้ว) */
+  const templateFields = useMemo(
+    () => (external ? [] : contractTemplateFields(contract?.kind)),
+    [external, contract?.kind],
+  );
+  const lifecycle = useMemo(() => buildContractLifecycle({ canEdit, external }), [canEdit, external]);
 
   // ช่องบังคับที่ยังว่าง — บอกตั้งแต่ก่อนกดออกสัญญา ไม่ใช่ให้ API ตอบ 400 ทีหลัง
   const missing = useMemo(
-    () => (contract ? missingContractFields(contract.kind, contract.fields) : []),
-    [contract],
+    /* ใบ external ไม่มีช่องบังคับของแม่แบบ (ตั้งใจ) — ทวงต่อไปคือส่งคนไปกรอกของที่
+       ระบบเพิ่งถอดออกเอง แล้วค่าที่กรอกก็ไม่ถูกใช้ที่ไหน */
+    () => (contract && !external ? missingContractFields(contract.kind, contract.fields) : []),
+    [contract, external],
   );
 
   const act = async (path, body, okMessage) => {
@@ -151,7 +171,15 @@ export default function ContractDetailPage() {
       const res = await apiFetch(`/api/sales-planning/contracts/${id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fields: form.fields, contractDate: form.contractDate }),
+        /* ใบ external ไม่มี `fields` ให้ส่ง (server ก็ทิ้งอยู่แล้ว) — ที่ต้องส่งคือ
+           ข้อมูลของเอกสารที่ใช้แทนสัญญา ซึ่งเป็น "ข้อมูลที่ระบบต้องการ" ของสายนี้ */
+        body: JSON.stringify(external
+          ? {
+            contractDate: form.contractDate,
+            externalDocKind: form.externalDocKind,
+            externalRef: form.externalRef,
+          }
+          : { fields: form.fields, contractDate: form.contractDate }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "บันทึกไม่สำเร็จ");
@@ -212,13 +240,35 @@ export default function ContractDetailPage() {
     const signed = (items || []).find((item) => item.docType === "signed_contract");
     setSignFileId(signed?.id || "");
     // เอกสารที่ใช้แทนสัญญาเป็นคีย์คนละตัว — ใบ external ไม่มี "สัญญาที่ลงนามแล้ว"
-    const external = (items || []).find((item) => item.docType === "external_doc");
-    setExternalFileId(external?.id || "");
+    const externalDocs = (items || []).filter((item) => item.docType === "external_doc");
+    setExternalFileId(externalDocs[0]?.id || "");
+    /* ปุ่มบนการ์ดจัดการของใบ external พาไปที่ **ไฟล์ตัวจริง** ⇒ ต้องรู้ที่อยู่ ไม่ใช่แค่ id
+       · ใช้ตัวหาที่อยู่ตัวเดียวกับที่การ์ดไฟล์ใช้ ไม่ประกอบ URL เอง
+       ⚠️ เก็บทั้งชุด ไม่ใช่ใบแรกใบเดียว — แนบ PO ได้หลายใบ และหลังอนุมัติแล้ว
+          "ใบที่ใช้แทนสัญญา" คือใบที่ AE Sup กดอนุมัติ (`signedFileId`) ซึ่งอาจไม่ใช่ใบแรก */
+    setExternalDocs(externalDocs.map((item) => ({ id: item.id, href: attachmentHref(item) })));
   }, []);
 
+  /* ไฟล์ที่ปุ่มจะพาไป: หลังอนุมัติแล้วคือใบที่ AE Sup กดอนุมัติจริง (`signedFileId`)
+     ก่อนหน้านั้นคือใบแรกที่แนบไว้ — ร่างที่แนบแล้วต้องเปิดดูได้ก่อนกดอนุมัติ */
+  const externalFileHref = useMemo(() => {
+    if (!externalDocs.length) return "";
+    const approved = externalDocs.find((doc) => doc.id === contract?.signedFileId);
+    return (approved || externalDocs[0]).href || "";
+  }, [externalDocs, contract?.signedFileId]);
+
+  /* ⭐ **ปุ่มเดียว สองความหมาย ตามที่มาของใบ** — ใบที่ระบบเจนมีเอกสารของตัวเองให้พิมพ์
+     ส่วนใบ external เอกสารคือไฟล์ที่แนบไว้ · route `/document` ปฏิเสธใบ external แล้ว
+     (409) ⇒ ถ้าไม่แยกตรงนี้ ปุ่มจะเปิดแท็บใหม่มาโชว์ JSON error ให้คนอ่าน */
   const openDocument = () => {
+    if (external) {
+      if (externalFileHref) window.open(externalFileHref, "_blank", "noopener");
+      return;
+    }
     window.open(`/api/sales-planning/contracts/${id}/document`, "_blank", "noopener");
   };
+
+
 
   const removeDraft = async () => {
     setBusy(true);
@@ -296,12 +346,26 @@ export default function ContractDetailPage() {
               busy={busy}
               onTransition={onTransition}
               extraActions={[
+                /* 🔴 ใบ external เคยได้ปุ่มพิมพ์ตัวเดียวกับใบที่ระบบเจน — ชนิดที่มีแม่แบบจึง
+                   เปิดออกมาเป็น "สัญญา" ที่ระบบแต่งเองครบทุกช่อง ส่วนชนิดที่ไม่มีแม่แบบได้
+                   409 ที่แนะนำผิดทาง ("ส่งต้นฉบับให้ผู้ดูแลเพิ่ม") ทั้งที่สายนี้ไม่ใช้แม่แบบ
+                   ⇒ ปุ่มเดียวกันแต่พาไปคนละที่ตามที่มา · **ไม่ซ่อน** เมื่อยังไม่มีไฟล์ —
+                     คนกดปุ่มนี้อยากเห็นเอกสาร ต้องบอกว่าทำไมยังไม่มีให้ดู (กติกา GatedAction) */
                 {
                   id: "print",
-                  label: contract.contractNo ? "เปิดเอกสารเพื่อพิมพ์" : "ดูตัวอย่างฉบับร่าง",
+                  label: external
+                    ? "เปิดเอกสารแทนสัญญา"
+                    : (contract.contractNo ? "เปิดเอกสารเพื่อพิมพ์" : "ดูตัวอย่างฉบับร่าง"),
                   kind: "print",
                   icon: Printer,
                   slot: "secondary",
+                  disabled: external && !externalFileHref,
+                  /* ⚠️ ผูกกับเงื่อนไขเดียวกับ `disabled` — `disabledReason` ถูกยัดเป็น `title`
+                     ของปุ่มเสมอ ไม่ได้ดูว่าปุ่มปิดอยู่ไหม ⇒ ตั้งลอย ๆ แล้วใบที่ระบบเจนจะได้
+                     ทูลทิปเรื่องเอกสารภายนอกติดมาด้วย (เจอตอนไล่ดูจอจริง) */
+                  disabledReason: external && !externalFileHref
+                    ? "ยังไม่ได้แนบเอกสารที่ใช้แทนสัญญา — แนบที่การ์ดไฟล์ของสัญญาก่อน"
+                    : undefined,
                   onClick: openDocument,
                 },
                 {
@@ -450,13 +514,23 @@ export default function ContractDetailPage() {
                 disabled={busy}
                 onPatch={(patch) => setForm((current) => ({ ...current, fields: { ...current.fields, ...patch } }))}
                 onContractDate={(value) => setForm((current) => ({ ...current, contractDate: value }))}
+                external={external ? { docKind: form.externalDocKind, ref: form.externalRef } : null}
+                externalDocKinds={EXTERNAL_DOC_KINDS.map((item) => ({
+                  value: item, label: EXTERNAL_DOC_KIND_LABELS[item],
+                }))}
+                onExternalPatch={(patch) => setForm((current) => ({ ...current, ...patch }))}
               />
               <div className="form-actions">
                 <div className="form-actions-buttons">
                   <Button
                     onClick={() => {
                       setEditing(false);
-                      setForm({ fields: { ...(contract.fields || {}) }, contractDate: contract.contractDate || "" });
+                      setForm({
+                        fields: { ...(contract.fields || {}) },
+                        contractDate: contract.contractDate || "",
+                        externalDocKind: contract.externalDocKind || "",
+                        externalRef: contract.externalRef || "",
+                      });
                     }}
                     disabled={busy}
                   >
@@ -469,7 +543,19 @@ export default function ContractDetailPage() {
           ) : (
             <dl className={styles.factList}>
               <div><dt>วันที่สัญญา</dt><dd>{fmtDate(contract.contractDate)}</dd></div>
-              {templateFields.map((field) => (
+              {/* ⭐ ใบ external ไม่มีช่องของแม่แบบให้แสดง (และไม่ควรมี — ดู route สร้าง)
+                  ⇒ การ์ดนี้ต้องตอบแทนว่า *เอกสารไหนคือตัวสัญญา* ไม่ใช่เหลือแค่วันที่ใบเดียว
+                  ค่าพวกนี้ถูกกรอกตอนสร้าง/ตอนอนุมัติอยู่แล้ว แต่ก่อนหน้านี้ไม่มีที่แสดงเลย
+                  ทั้งหน้า — โผล่ที่เดียวคือหัวโมดัลตอนกดอนุมัติซึ่งปิดไปแล้วก็หายไปด้วย */}
+              {external ? (
+                <>
+                  <div><dt>ที่มาของใบ</dt><dd>{CONTRACT_SOURCE_LABELS.external}</dd></div>
+                  <div><dt>ชนิดเอกสาร</dt><dd>{externalDocKindLabel(contract.externalDocKind)}</dd></div>
+                  <div><dt>เลขที่อ้างอิงของเอกสาร</dt><dd>{naText(contract.externalRef)}</dd></div>
+                  <div><dt>ผู้อนุมัติให้ใช้แทนสัญญา</dt><dd>{naText(contract.approvedByName)}</dd></div>
+                  <div><dt>วันที่อนุมัติ</dt><dd>{contract.approvedAt ? fmtDate(contract.approvedAt) : NA}</dd></div>
+                </>
+              ) : templateFields.map((field) => (
                 <div key={field.key}>
                   <dt>{field.label}</dt>
                   <dd>{naText(contract.fields?.[field.key])}</dd>
