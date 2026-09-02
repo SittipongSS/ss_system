@@ -30,6 +30,9 @@ import styles from "./page.module.css";
 
 /* สามกอง ไม่ใช่สอง — 27 ใน 50 ดีลของกองแรกตอนวัดจริงคือ "ยอดตรงอยู่แล้ว ต่างแค่ที่มา"
    ถ้าเหมารวมกัน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่ ทั้งที่จริงมี 23 */
+/* สองกอง — ต่างกันที่ "กดแล้วตัวเลขขยับมั้ย" ห้ามยุบรวม (ของจริงตอนวัด 23 vs 27)
+   ⚠️ กอง "มีหลายฉบับ" ถูกถอดออกแล้ว (มติผู้ใช้ 2026-09-02 รอบสาม) — ระบบเดินตาม
+      ใบยอดต่ำสุดให้เอง ไม่มีอะไรรอคนตัดสิน · ดีลพวกนั้นติดป้าย `multiple` ในแถวแทน */
 const KINDS = [
   { key: "mismatch", label: "ยอดต่างจากใบ", icon: ClipboardCheck,
     lead: "ยอดบนใบที่อนุมัติแล้วต่างจากยอด FC ที่กรอกไว้ — กดแล้วตัวเลข FC จะขยับจริง ระบบไม่เปลี่ยนให้เอง เพราะบางดีล FC จะลดลง",
@@ -37,15 +40,12 @@ const KINDS = [
   { key: "sync", label: "ยอดตรงแล้ว", icon: Link2,
     lead: "ยอดตรงกันอยู่แล้ว — กดแล้ว FC ไม่ขยับสักบาท เปลี่ยนแค่ให้ดีลเดินตามใบ ฉบับแก้ครั้งหน้าจะตามเองโดยไม่ต้องมากดอีก",
     empty: "ไม่มีดีลที่รอผูกกับใบแล้ว 🎉" },
-  { key: "ambiguous", label: "มีหลายฉบับ", icon: Layers,
-    lead: "ดีลเหล่านี้มีใบเสนอราคาอนุมัติแล้วมากกว่าหนึ่งเลขที่ ระบบแยกไม่ออกว่าเป็นทางเลือกแทนกันหรือส่วนที่บวกกัน — เลือกเองว่าใบไหนคือ FC",
-    empty: "ไม่มีดีลที่ต้องเลือกใบ 🎉" },
 ];
 
 export default function ForecastReviewPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
-  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
+  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0 });
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,7 +57,7 @@ export default function ForecastReviewPage() {
     try {
       const data = await apiJson("/api/sales-planning/forecast-review");
       setRows(data?.rows || []);
-      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
+      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, multiple: 0 });
       setError("");
     } catch (loadError) {
       setError(loadError.message || "โหลดคิวไม่สำเร็จ");
@@ -173,7 +173,7 @@ export default function ForecastReviewPage() {
                 <th>ดีล</th>
                 <th>ผู้รับผิดชอบ</th>
                 <th className="num">FC ตอนนี้</th>
-                <th>{kind === "ambiguous" ? "ใบที่อนุมัติแล้ว" : "ยอดตามใบ"}</th>
+                <th>ยอดตามใบ</th>
                 <th aria-label="การทำงาน" />
               </tr>
             </thead>
@@ -184,6 +184,11 @@ export default function ForecastReviewPage() {
                     <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
                     <small className={styles.sub}>{naText(row.title)}</small>
                     <small className={styles.sub}>{naText(row.customerName)}</small>
+                    {row.multiple ? (
+                      <small className={styles.multi}>
+                        <Layers size={11} aria-hidden="true" /> มี {row.candidates.length} ใบ — ระบบใช้ใบยอดต่ำสุด
+                      </small>
+                    ) : null}
                   </td>
                   <td>
                     {naText(row.ownerName)}
