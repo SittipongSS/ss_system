@@ -17,7 +17,7 @@ import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
-import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
+import { canBeServiceAssignee, canEditService, isFieldCrewRole } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import {
   VISIT_KINDS,
@@ -78,7 +78,7 @@ export default function ServiceSchedulePage() {
   const [toast, setToast] = useState(null);
   /* ⭐ ทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
      ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
-  const [crew, setCrew] = useState({ teams: [], members: [] });
+  const [crew, setCrew] = useState({ teams: [], members: [], people: [] });
   const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
   /* ⭐ มุมมอง (F-6) — กริดสัปดาห์อ่านภาพรวมได้ดี แต่ **บนมือถือกับตอนแจกงานรายวัน
      มันคือตารางที่ต้องเลื่อนสองแกน** · "รายการ" คือมุมมองเดียวที่ใช้ได้จริงบนจอแคบ */
@@ -130,7 +130,14 @@ export default function ServiceSchedulePage() {
       try {
         const res = await apiFetch("/api/teams?department=TS");
         const body = await res.json().catch(() => null);
-        if (res.ok) setCrew({ teams: body?.teams || [], members: body?.members || [] });
+        if (res.ok) {
+          setCrew({
+            teams: body?.teams || [],
+            members: body?.members || [],
+            // `people` = คนของฝ่ายพร้อม role (บัญชีที่ปิดแล้วถูกกรองออกที่ API)
+            people: body?.people || [],
+          });
+        }
       } catch { /* เงียบได้ — ตารางยังใช้งานได้เต็มที่โดยไม่มีทีม */ }
     })();
   }, []);
@@ -179,9 +186,21 @@ export default function ServiceSchedulePage() {
 
   const overlapIds = useMemo(() => overlappingVisitIds(boardVisits), [boardVisits]);
 
-  // แถวของปฏิทิน = เจ้าหน้าที่ที่มีนัดในสัปดาห์นี้ + แถว "ยังไม่มอบหมาย" (ถ้ามี)
+  /* แถวของปฏิทิน = **เจ้าหน้าที่หน้างานทุกคน** + คนอื่นที่มีนัดในสัปดาห์นี้
+     + แถว "ยังไม่มอบหมาย" (ถ้ามี)
+
+     ⭐ **แถวของ Operation/Senior ขึ้นเสมอ แม้สัปดาห์นั้นยังไม่มีนัดสักใบ**
+        (มติผู้ใช้ 2026-09-02) — ของเดิมสร้างแถวจาก *นัดที่มีอยู่* อย่างเดียว ⇒ คนที่ว่าง
+        ทั้งสัปดาห์ **หายไปจากตารางทั้งคน** ซึ่งเป็นข้อมูลที่คนจัดคิวต้องการมากที่สุด:
+        ตารางบอกได้แค่ "ใครยุ่ง" แต่ตอบไม่ได้ว่า "เหลือใครว่าง"
+     ⚠️ ตำแหน่งอื่นของฝ่าย (Planner · Audit · ผู้ช่วยผู้จัดการ) ยังโผล่ได้ตามปกติเมื่อมี
+        นัดจริง — แค่ไม่ถูกจองแถวไว้ล่วงหน้า (ดู `FIELD_CREW_ROLES`) */
   const rows = useMemo(() => {
     const map = new Map();
+    for (const person of crew.people) {
+      if (!isFieldCrewRole(person.role) || !person.id) continue;
+      map.set(person.id, { key: person.id, name: person.name || person.id, visits: [] });
+    }
     for (const visit of boardVisits) {
       const key = visit.assigneeId || UNASSIGNED;
       if (!map.has(key)) {
@@ -195,7 +214,7 @@ export default function ServiceSchedulePage() {
       return a.name.localeCompare(b.name, "th");
     });
     return list;
-  }, [boardVisits]);
+  }, [boardVisits, crew.people]);
 
   const crewByUser = useMemo(() => teamByUser(crew.members), [crew.members]);
   const teamOptions = useMemo(
@@ -206,6 +225,14 @@ export default function ServiceSchedulePage() {
     () => filterRowsByTeam(rows, teamFilter, crewByUser),
     [rows, teamFilter, crewByUser],
   );
+  /* 🪤 **"ว่าง" ต้องวัดจากจำนวนนัด ไม่ใช่จำนวนแถว** — พอแถวของเจ้าหน้าที่หน้างานขึ้น
+     เสมอแล้ว `teamRows.length` แทบไม่มีวันเป็นศูนย์ ⇒ ใช้ตัวเดิมต่อ ข้อความ
+     "สัปดาห์นี้ยังไม่มีนัด" จะไม่มีวันโผล่อีกเลย ทั้งที่สัปดาห์นั้นว่างจริง */
+  const visibleVisitCount = useMemo(
+    () => teamRows.reduce((sum, row) => sum + row.visits.length, 0),
+    [teamRows],
+  );
+
   const crewLoad = useMemo(
     () => teamLoad({ teams: crew.teams, rows, members: crew.members, byUser: crewByUser }),
     [crew.teams, crew.members, rows, crewByUser],
@@ -409,7 +436,9 @@ export default function ServiceSchedulePage() {
               {teamRows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className={styles.emptyRow}>
-                    สัปดาห์นี้ยังไม่มีนัดเข้าบริการ
+                    {/* ไม่มีแถวเลย = ไม่มีทั้งเจ้าหน้าที่หน้างานและนัด — คนละเรื่องกับ
+                        "สัปดาห์นี้ว่าง" ซึ่งตอนนี้เห็นได้จากแถวที่ว่างเปล่าอยู่แล้ว */}
+                    ยังไม่มีเจ้าหน้าที่หน้างานในทะเบียน และสัปดาห์นี้ยังไม่มีนัดเข้าบริการ
                   </td>
                 </tr>
               ) : teamRows.map((row) => (
@@ -491,7 +520,7 @@ export default function ServiceSchedulePage() {
           สัปดาห์ทำไม่ได้ (ต้องเลื่อนสองแกน) · ข้อมูลชุดเดียวกับกริดทุกอย่าง
           รวมทั้งตัวกรองทีมและการซ่อนร่าง */}
       {!loading && !loadError && view === "list" && (
-        teamRows.length === 0 ? (
+        visibleVisitCount === 0 ? (
           <EmptyState icon={CalendarDays}>สัปดาห์นี้ยังไม่มีนัดเข้าบริการ</EmptyState>
         ) : (
           <ul className={styles.listView}>
