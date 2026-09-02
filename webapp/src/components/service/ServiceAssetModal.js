@@ -7,13 +7,13 @@
 // ชนิดอุปกรณ์ (มติ 2026-08-02 ข้อ 12-14): ไม่ใช่ทุกตัวเป็นเครื่องกระจายกลิ่น —
 //   diffuser = แถวละเครื่อง (serial · ค่าตั้ง work/pause) · reed/soap/alcohol =
 //   แถวเดียวทั้งชุด + จำนวนจุด · ช่องบนฟอร์มจึงเปลี่ยนตามชนิด
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
-import { ASSET_STATUSES, ASSET_STATUS_LABELS, normalizeAssetInput } from "@/lib/service/sites";
+import { ASSET_STATUSES, ASSET_STATUS_LABELS, isWarehouseSite, normalizeAssetInput } from "@/lib/service/sites";
 import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
 import styles from "./ServiceSiteModal.module.css";
 
@@ -46,9 +46,17 @@ const SETTING_INPUTS = {
   ],
 };
 
-export default function ServiceAssetModal({ open, asset = null, zones = [], onClose, onSave }) {
+export default function ServiceAssetModal({ open, asset = null, zones = [], site = null, onClose, onSave }) {
   const editing = !!asset;
-  const [form, setForm] = useState(EMPTY);
+  /* 🐞 **ค่าตั้งต้นของสถานะต้องเดินตามประเภทไซต์** (UAT 2026-09-02) — เดิมตั้ง
+     `active` ตายตัว ⇒ เพิ่มเครื่องเข้า **ไซต์คลัง** แล้วโดน trigger ของ mig 0332
+     ตีกลับด้วย 500 + ข้อความภาษาฐานข้อมูล ทั้งที่ผู้ใช้ไม่ได้ทำอะไรผิดเลย
+     (เครื่องในคลังต้องเป็น `in_stock` โดยนิยาม) */
+  const defaultForm = useMemo(
+    () => ({ ...EMPTY, status: isWarehouseSite(site) ? 'in_stock' : 'active' }),
+    [site],
+  );
+  const [form, setForm] = useState(defaultForm);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -76,8 +84,8 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], onCl
         note: asset.note || "",
         settings: (asset.settings && typeof asset.settings === "object") ? asset.settings : {},
       }
-      : EMPTY);
-  }, [open, asset]);
+      : defaultForm);
+  }, [open, asset, defaultForm]);
 
   const change = (field) => (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   const changeSetting = (key) => (event) =>
