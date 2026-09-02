@@ -192,7 +192,10 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
   /* ⭐ ประทับยอดรวมไว้บนหัวไฟล์ — ไฟล์ Excel เดินทางไกลกว่าหน้าจอมาก คนรับต้องเทียบ
      กับแดชบอร์ดได้ทันทีโดยไม่ต้องเปิดระบบ · ถ้าสองเลขไม่ตรงกันจะได้รู้ตั้งแต่วินาทีแรก
      ⚠️ ยอดนี้เป็น **ก่อน VAT** เหมือน FC ทุกที่ในระบบ ต้องเขียนกำกับไว้เสมอ */
+  /* ⭐ ขอบเขตต้องอยู่บนหัวไฟล์เสมอ — หัวหน้าทีมโหลดได้เฉพาะทีมตัวเอง ถ้าไฟล์ไม่บอก
+     แล้วถูกส่งต่อ คนรับจะอ่านยอดของทีมเดียวเป็นยอดทั้งบริษัท */
   const stamp = `รายงาน FC ตามเดือนที่ลูกค้ารับของ · ปี ${meta.year || 'ทั้งหมด'}`
+    + ` · ขอบเขต ${meta.scopeLabel || 'ทั้งบริษัท'}`
     + ` · ${lines.length} บรรทัด · รวม ${fmtNumber(total, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท (ก่อน VAT)`
     + `${meta.by ? ` · ดาวน์โหลดโดย ${meta.by}` : ''}`
     + `${meta.generatedAt ? ` · ${meta.generatedAt}` : ''}`;
@@ -221,5 +224,12 @@ export async function buildForecastReportBuffer(lines = [], meta = {}) {
   return book.xlsx.writeBuffer();
 }
 
-/** ชื่อไฟล์ — ปีอยู่ในชื่อเพราะไฟล์พวกนี้ถูกเก็บต่อในโฟลเดอร์ของฝ่ายวางแผน */
-export const forecastReportFilename = (year, stampDay) => `FC-by-category-${year || 'all'}-${stampDay}.xlsx`;
+/** ชื่อไฟล์ — ปีอยู่ในชื่อเพราะไฟล์พวกนี้ถูกเก็บต่อในโฟลเดอร์ของฝ่ายวางแผน
+ *  ⚠️ **ทีมต้องอยู่ในชื่อด้วยเมื่อเป็นไฟล์ของทีมเดียว** — หัวหน้าสามทีมโหลดวันเดียวกัน
+ *     แล้วส่งเข้าโฟลเดอร์เดียวกัน ชื่อซ้ำจะทับกันเงียบ ๆ และไม่มีใครรู้ว่าเหลือของทีมไหน */
+export function forecastReportFilename(year, stampDay, scopeLabel) {
+  const team = scopeLabel && scopeLabel !== 'ทั้งบริษัท'
+    ? `-${String(scopeLabel).replace(/\s+/g, '')}`
+    : '';
+  return `FC-by-category-${year || 'all'}${team}-${stampDay}.xlsx`;
+}

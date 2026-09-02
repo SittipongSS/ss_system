@@ -14,6 +14,7 @@ import {
   monthsOfYear,
   summarizeForecastLines,
 } from './forecastBreakdown.js';
+import { forecastReportFilename } from './forecastReportWorkbook.js';
 
 const product = (over = {}) => ({
   id: 'P1', fgCode: 'FG-001', productDescription: 'EDP 30 ml',
@@ -26,13 +27,24 @@ const line = (over = {}) => ({
 
 /* ⚠️ ไฟล์นี้มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้าและราคาต่อหน่วยเป็นแถว ๆ
    "ดูตัวเลขรวมบนจอได้" กับ "โหลดรายการทั้งบริษัทออกไปได้" เป็นคนละสิทธิ์ */
-test('โหลดรายงาน FC ได้เฉพาะ AE Supervisor ขึ้นไป', () => {
-  for (const role of ['admin', 'ae_supervisor']) {
+test('โหลดรายงาน FC ได้เฉพาะ AE Sup ขึ้นไป และหัวหน้าทีม (เฉพาะทีมตัวเอง)', () => {
+  for (const role of ['admin', 'ae_supervisor', 'senior_ae']) {
     assert.equal(canExportForecastReport(role), true, role);
   }
-  for (const role of ['ae', 'ac', 'senior_ae', 'marketing', 'rd', 'finance', 'ts_manager', '', null]) {
+  /* `ac` เห็นดีลทั้งทีมบนจอเหมือน senior_ae แต่ **ไม่ได้ไฟล์** — เป็น back-office
+     ไม่ใช่หัวหน้า · `viewer`/`rd`/`finance` เห็นทุกทีมบนจอด้วยซ้ำ ก็ยังไม่ได้ */
+  for (const role of ['ae', 'ac', 'marketing', 'rd', 'finance', 'viewer', 'ts_manager', '', null]) {
     assert.equal(canExportForecastReport(role), false, String(role));
   }
+});
+
+test('ชื่อไฟล์ของหัวหน้าทีมมีชื่อทีม — สามทีมโหลดวันเดียวกันต้องไม่ทับกัน', () => {
+  assert.equal(forecastReportFilename('2026', '2026-09-02', 'ทั้งบริษัท'), 'FC-by-category-2026-2026-09-02.xlsx');
+  assert.equal(forecastReportFilename('2026', '2026-09-02', 'ทีม ODM'), 'FC-by-category-2026-ทีมODM-2026-09-02.xlsx');
+  assert.notEqual(
+    forecastReportFilename('2026', '2026-09-02', 'ทีม ODM'),
+    forecastReportFilename('2026', '2026-09-02', 'ทีม KA'),
+  );
 });
 
 /* กติกาเดือนของรายงาน — ข้อเดียวที่ผู้ใช้ขอจริง ๆ จึงต้องมีเทสต์ล็อกไว้

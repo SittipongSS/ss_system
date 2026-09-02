@@ -1,6 +1,8 @@
 import { withUser, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { canViewSalesPlanning, inSalesViewScope, monthKey } from '@/lib/salesPlanning';
+import {
+  canViewSalesPlanning, inSalesViewScope, monthKey, salesPlanningViewScope,
+} from '@/lib/salesPlanning';
 import {
   canExportForecastReport, forecastBreakdownOfDeal, forecastMonthOfDeal,
   monthsInRows, monthsOfYear,
@@ -134,8 +136,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const today = businessDate();
   /* ระบุปี = กริดมี 12 คอลัมน์เสมอ แม้บางเดือนยังไม่มียอด — ไฟล์ของแต่ละรอบจะได้มี
      คอลัมน์เท่ากัน เอาไปวางทับกันเทียบเดือนต่อเดือนได้ · ไม่ระบุปีค่อยใช้เดือนที่มีจริง */
+  /* ขอบเขตของไฟล์ = ขอบเขตที่ระบบให้คนนี้เห็น ไม่ได้คิดใหม่ที่นี่
+     (superuser = ทุกทีม · senior_ae = ทีมตัวเอง ตาม salesPlanningViewScope) */
+  const scopeLabel = salesPlanningViewScope(user.role) === 'all'
+    ? 'ทั้งบริษัท'
+    // ไม่มีทีม = ขอบเขตพิสูจน์ไม่ได้ ⇒ เขียนตรง ๆ ดีกว่าโชว์ "ทีม —" ที่อ่านเหมือนทีมชื่อขีด
+    : (user.team ? `ทีม ${user.team}` : 'เฉพาะที่มองเห็น (ไม่ระบุทีม)');
   const buffer = await buildForecastReportBuffer(rows, {
     year,
+    scopeLabel,
     months: year ? monthsOfYear(year) : monthsInRows(rows),
     categoryNames,
     generatedAt: today,
@@ -144,7 +153,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   return new Response(buffer, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${forecastReportFilename(year, today)}"`,
+      'Content-Disposition': `attachment; filename="${forecastReportFilename(year, today, scopeLabel)}"`,
       'Cache-Control': 'no-store',
     },
   });
