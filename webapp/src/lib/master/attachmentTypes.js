@@ -176,6 +176,11 @@ const customerDocTypesUnion = (() => {
   return [...seen.values()];
 })();
 
+/* ⭐ คีย์ของ "เอกสารที่ใช้แทนสัญญา" — ยกออกมาเป็นค่าคงที่เพราะฝั่ง server ต้องใช้
+   คีย์เดียวกันตอนถามว่าใบ external ใบไหนแนบไฟล์แล้ว (`contractExternalDocs.js`)
+   ⚠️ พิมพ์สตริงซ้ำเมื่อไร วันหนึ่งจะพิมพ์ต่างกันแล้วคิวเงียบไปโดยไม่มีอะไรฟ้อง */
+export const EXTERNAL_DOC_TYPE = 'external_doc';
+
 export const ATTACHMENT_TYPES = {
   // ⭐ เอกสารของดีล (P5c) — PO · หลักฐานมัดจำ · บรีฟลูกค้า · อื่น ๆ
   // ชุดนี้ตรงกับ `sales_deal_documents.kind` ที่ 0069 ใช้อยู่แล้ว ⇒ รายการ checklist
@@ -204,7 +209,7 @@ export const ATTACHMENT_TYPES = {
   //    ยอมรับแทน* ⇒ ป้ายเดียวกันเมื่อไร คนอ่านทะเบียนแยกไม่ออกว่าใบไหนมีสัญญาจริง
   contract: [
     { key: 'signed_contract', label: 'สัญญาที่ลงนามแล้ว' },
-    { key: 'external_doc', label: 'เอกสารที่ใช้แทนสัญญา' },
+    { key: EXTERNAL_DOC_TYPE, label: 'เอกสารที่ใช้แทนสัญญา' },
     { key: 'other', label: 'เอกสารแนบอื่นๆ' },
   ],
   // บันทึกเพิ่มเติมสัญญา (mig 0282) — ฉบับที่ลูกค้าเซ็นแล้วสแกนกลับ (กติกาเดียวกับสัญญา)
