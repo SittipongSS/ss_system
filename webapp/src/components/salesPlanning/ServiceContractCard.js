@@ -49,6 +49,10 @@ export default function ServiceContractCard({
 
   const target = choices.find((c) => c.id === picked) || null;
   const gate = serviceContractLinkError(order, target, { canEdit });
+  /* 🪤 **ถอดก็ต้องผ่านด่าน** — ของเดิมปุ่มถอดมีแค่ `disabled={busy}` ⇒ ใบที่ยกเลิก/ถูก
+     แทนด้วย Rev. แล้วยังกดได้ แล้ว API ตอบ 409 · ด่านตัวเดียวกัน แค่ถามด้วยปลายทาง
+     `null` (= ถอด) แทนสัญญาที่เลือกไว้ */
+  const unlinkGate = serviceContractLinkError(order, null, { canEdit });
 
   /* ── จำนวนรอบบริการรายบรรทัด (mig 0326 · มติผู้ใช้ 2026-08-31 รอบสอง) ──────
      ⭐ อยู่ในการ์ดนี้ ไม่ใช่ในตารางรายการ — ตารางรายการเป็น snapshot อ่านอย่างเดียว
@@ -96,9 +100,17 @@ export default function ServiceContractCard({
           </div>
           {canEdit && (
             <div className="form-actions-buttons">
-              <Button variant="quiet" size="sm" disabled={busy} onClick={() => onLink?.(null)}>
+              <Button
+                variant="quiet"
+                size="sm"
+                disabled={busy || !!unlinkGate}
+                title={unlinkGate || undefined}
+                onClick={() => onLink?.(null)}
+              >
                 ถอดสัญญาออกจากใบ
               </Button>
+              {/* เหตุผลต้องเป็นตัวหนังสือด้วย ไม่ใช่ tooltip อย่างเดียว — จอสัมผัสไม่มีทางเห็น */}
+              {unlinkGate ? <span className={styles.gate} role="status">{unlinkGate}</span> : null}
             </div>
           )}
         </>

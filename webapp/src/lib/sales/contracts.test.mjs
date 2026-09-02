@@ -231,6 +231,34 @@ test('ทะเบียนสัญญา: รางสามขั้น ร�
   assert.match(stale.steps[1].note, /ใบเสนอราคา/);
 });
 
+/* 🪤 **ทะเบียนกับหน้ารายละเอียดต้องเล่าเรื่องเดียวกัน** — #1570 แยกรางของสาย external
+   บนหน้ารายละเอียดไปแล้ว ถ้าทะเบียนยังใช้รางสามขั้น ใบ external ที่ signed จะโชว้
+   "รอลงนาม" เป็นขั้นที่ผ่านมาแล้ว ทั้งที่ไม่เคยผ่าน · คนคนเดียวกันเปิดสองหน้านี้
+   ห่างกันคลิกเดียว */
+test('🪤 ทะเบียนสัญญา: ใบ external เดินรางสองขั้น คำเดียวกับหน้ารายละเอียด', async () => {
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const { EXTERNAL_STEPS } = await import('./contractLifecycle.js');
+  const ext2 = (status) => contractListTrack({ status, source: 'external' });
+
+  assert.deepEqual(ext2('draft').steps.map((s) => s.state), ['now', 'todo']);
+  assert.deepEqual(ext2('signed').steps.map((s) => s.state), ['done', 'done']);
+  assert.ok(!ext2('signed').steps.some((s) => s.label === 'รอลงนาม'), 'ขั้นที่ไม่มีวันเดินผ่านต้องไม่โผล่');
+
+  // คำบนรางสองหน้าต้องตรงกันเป๊ะ — ล็อกไว้เพราะอยู่คนละไฟล์
+  assert.deepEqual(
+    ext2('draft').steps.map((s) => s.label),
+    EXTERNAL_STEPS.map((s) => s.label),
+    'คำบนรางทะเบียนต้องตรงกับ EXTERNAL_STEPS ของหน้ารายละเอียด',
+  );
+
+  // ใบที่ระบบเจนยังเดินรางสามขั้นเหมือนเดิม
+  assert.equal(contractListTrack({ status: 'draft' }).steps.length, 3);
+  // ใบเก่าที่ไม่มีช่อง source = ใบที่ระบบเจน
+  assert.equal(contractListTrack({ status: 'draft', source: null }).steps.length, 3);
+  // ใบที่ตายแล้วยังไม่มีรางเหมือนเดิม ไม่ว่าสายไหน
+  assert.equal(contractListTrack({ status: 'cancelled', source: 'external' }).closed, true);
+});
+
 test('ใบเสนอราคาถูกปิด: ร่างปิดตาม · ใบที่ออกเลขแล้วแค่เตือน', async () => {
   const {
     quotationClosure, contractFollowsQuotationClosure, contractQuotationNotice,
@@ -554,6 +582,31 @@ test('โมดัลสร้างสัญญากันแม่แบบ�
   assert.match(modal, /disabled: [^\n]*needsTemplate/, 'ต้องกันที่ disabled ไม่ใช่แค่คำอธิบาย');
   // สาย external ต้องไม่ถูกด่านแม่แบบแตะเลย
   assert.match(modal, /const chosenReady = external\s*\n\s*\? !!kind && EXTERNAL_DOC_KINDS\.includes\(externalDocKind\)/);
+});
+
+/* ⭐ **ทางออกสัญญาจากใบสั่งขาย** — เดิมมีสี่ทาง (ดีล · โครงการ · ใบเสนอราคา · ทะเบียน)
+   แต่ไม่มีทางจาก SO ทั้งที่การ์ดสัญญาบนใบนั้นเองบอกให้ *"ออกสัญญาที่เมนู สัญญา"*
+   🪤 **ต้องอยู่บนการ์ดจัดการ ไม่ใช่ในแท็บสัญญา** — แท็บนั้นขึ้นเฉพาะใบที่มีรอบบริการ
+      ⇒ ใบสายสินค้าที่ต้องออก "สัญญาจ้างผลิต" จะไม่มีปุ่มเลยและไม่มีทางรู้ว่ามันมีอยู่
+   🪤 **ต้องเป็นโมดัลตัวเดิม** — ก๊อปฟอร์มที่สองเมื่อไร สองฝั่งจะขาดคนละอย่างโดยไม่มีใครรู้
+      (กฎ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ของ AGENTS.md) */
+test('⭐ หน้าใบสั่งขายออกสัญญาได้ ด้วยโมดัลตัวเดียวกับหน้าอื่น', () => {
+  const page = readFileSync(
+    new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /import ContractCreateModal from "@\/components\/salesPlanning\/ContractCreateModal";/);
+  // ส่งดีล+ใบเสนอราคาของใบไปให้ ⇒ ข้ามขั้นเลือกลูกค้า/ดีล
+  assert.match(page, /dealId=\{order\.dealId\}/);
+  assert.match(page, /quotationId=\{order\.quotationId\}/);
+  // ปุ่มอยู่ใน secondaryActions ของการ์ดจัดการ ไม่ใช่ในบล็อกของแท็บ
+  assert.match(page, /id: "contract",[\s\S]{0,200}?label: "ออกสัญญาจากใบนี้"/);
+  assert.ok(
+    page.indexOf('label: "ออกสัญญาจากใบนี้"') < page.indexOf('activeTab === "contract"'),
+    'ปุ่มต้องประกาศในชุด action ของการ์ดจัดการ ไม่ใช่ในเนื้อแท็บสัญญา',
+  );
+  // ใบที่ตายแล้วไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
+  assert.match(page, /visible: canEdit && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\)/);
 });
 
 /* ── เลขที่สัญญามีอักษรย่อชนิด (มติผู้ใช้ 2026-08-31) ─────────────────────────

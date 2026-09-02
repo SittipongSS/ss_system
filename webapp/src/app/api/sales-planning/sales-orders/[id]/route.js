@@ -281,6 +281,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     ...order,
     meId: user.id || null,
     meDepartment: departmentOf(user),
+    /* ⭐ **สิทธิ์แก้ต้องมาจาก server** — จอเคยคิดเองด้วย `useCan("salesplan:edit")` ล้วน
+       ซึ่งตอบแค่ "มี cap ไหม" ไม่ได้ตอบ "ใบนี้อยู่ในขอบเขตที่แก้ได้ไหม" ส่วน action
+       ทุกตัวใน PATCH ตรวจ `canEditSalesPlanning(user) && inSalesEditScope(user, deal)`
+       ⇒ วันไหนขอบเขตแก้แคบกว่าขอบเขตอ่าน (role ใหม่) ปุ่มจะโผล่แล้วเด้ง 409 เงียบ ๆ
+       · แพตเทิร์นเดียวกับ `/contracts/[id]` และ `/addenda/[id]` ที่ส่งค่านี้มาให้อยู่แล้ว */
+    canEdit: canEditSalesPlanning(user) && inSalesEditScope(user, order.deal),
     approverSignature,
     proposerSignature,
     deliveries,

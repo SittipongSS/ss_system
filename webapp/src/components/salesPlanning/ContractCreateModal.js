@@ -120,7 +120,13 @@ export default function ContractCreateModal({
           const ready = (data.kinds || []).filter((item) => item.ready);
           setKind(ready.length === 1 ? ready[0].kind : "");
         }
-        setQuoteId(quotationId || data.quotations?.[0]?.id || "");
+        /* 🪤 **ใบที่ผู้เรียกส่งมาอาจไม่อยู่ในลิสต์ที่ออกสัญญาได้** — หน้าใบสั่งขายส่ง
+           `quotationId` ของใบมาเสมอ แต่ใบนั้นอาจถูกยกเลิก/ออก Rev. ไปแล้ว ⇒ ตั้งค่า
+           ดิบ ๆ จะได้ Select ที่โชว์ "— เลือก —" (เหมือนยังไม่ได้เลือก) แต่ปุ่มสร้างกดได้
+           แล้วเด้ง 409 พูดถึงใบเสนอราคา ทั้งที่คนกดไม่ได้เป็นคนเลือกใบนั้น */
+        const usable = (data.quotations || []).map((q) => q.id);
+        const preferred = quotationId && usable.includes(quotationId) ? quotationId : "";
+        setQuoteId(preferred || data.quotations?.[0]?.id || "");
       } catch (err) {
         if (alive) setError(err.message);
       } finally {
