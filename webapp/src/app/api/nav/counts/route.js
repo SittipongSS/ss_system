@@ -174,7 +174,23 @@ export const GET = withUser(async ({ user, supabase }) => {
         .in('approvalStatus', FORECAST_ELIGIBLE_APPROVALS)
         .limit(5000);
       const dealIds = [...new Set((quotations || []).map((row) => row.dealId).filter(Boolean))];
-      if (!dealIds.length) return 0;
+
+      /* กองที่สองของหน้าเดียวกัน: ดีลที่ยังไม่มีวันเริ่ม/วันรับของ — ป้ายต้องนับด้วย
+         ไม่งั้นกดเข้าไปเจอเลขไม่ตรงกับที่เมนูบอก (กฎหัวไฟล์ navCounts)
+         ⭐ วันสิ้นสุด = วันที่ลูกค้ารับของ ซึ่งรายงาน FC วางแผนผลิตใช้เป็นแกนเดือน
+         ⚠️ คนละ query กับกองใบเสนอราคา เพราะไม่เกี่ยวกับใบเลย */
+      const { data: undated } = await supabase
+        .from('sales_deals')
+        .select('id, stage, "ownerId", "ownerName", team, "startDate", "endDate", "projectValue"')
+        .or('startDate.is.null,endDate.is.null')
+        .limit(5000);
+      const needsDates = (undated || []).filter((deal) => {
+        if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
+        if (!Number(deal.projectValue)) return false;
+        return inSalesViewScope(user, deal);
+      }).length;
+
+      if (!dealIds.length) return needsDates;
       const { data: deals } = await supabase
         .from('sales_deals')
         .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
@@ -185,11 +201,12 @@ export const GET = withUser(async ({ user, supabase }) => {
         if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
         byDeal.get(quotation.dealId).push(quotation);
       }
-      return (deals || []).filter((deal) => {
+      const needsSource = (deals || []).filter((deal) => {
         if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
         if (!inSalesViewScope(user, deal)) return false;
         return forecastSourceView(deal, byDeal.get(deal.id) || []).needsDecision;
       }).length;
+      return needsSource + needsDates;
     }));
 
     /* ── สัญญา: สองเลนของใบเดียวกัน (เจ้าของใบ / AE Sup ผู้รับรอง) ────────────

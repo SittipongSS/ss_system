@@ -15,9 +15,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Download, Layers, Link2, Pencil } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
+import Select from "@/components/ui/Select";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
@@ -30,6 +31,12 @@ import styles from "./page.module.css";
 
 /* สามกอง ไม่ใช่สอง — 27 ใน 50 ดีลของกองแรกตอนวัดจริงคือ "ยอดตรงอยู่แล้ว ต่างแค่ที่มา"
    ถ้าเหมารวมกัน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่ ทั้งที่จริงมี 23 */
+/* ปีที่เลือกได้ในรายงาน — ปีนี้ย้อนหลัง 2 ปีและปีหน้า (แผนผลิตมองข้ามปีเสมอ)
+   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูลจาก
+      เวลาไทย แล้วใช้ค่าเดิมทั้งเซสชัน · หน้านี้ไม่ได้เปิดค้างข้ามปี */
+const THIS_YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric' }).format(new Date()));
+const YEARS = [THIS_YEAR + 1, THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map(String);
+
 const KINDS = [
   { key: "mismatch", label: "ยอดต่างจากใบ", icon: ClipboardCheck,
     lead: "ยอดบนใบที่อนุมัติแล้วต่างจากยอด FC ที่กรอกไว้ — กดแล้วตัวเลข FC จะขยับจริง ระบบไม่เปลี่ยนให้เอง เพราะบางดีล FC จะลดลง",
@@ -45,12 +52,15 @@ const KINDS = [
 export default function ForecastReviewPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
+  const [missingDates, setMissingDates] = useState([]);
   const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [year, setYear] = useState(String(THIS_YEAR));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,7 +78,10 @@ export default function ForecastReviewPage() {
 
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
-  const shown = useMemo(() => rows.filter((row) => row.kind === kind), [rows, kind]);
+  const shown = useMemo(
+    () => (kind === "missingDates" ? missingDates : rows.filter((row) => row.kind === kind)),
+    [rows, missingDates, kind],
+  );
   const active = KINDS.find((item) => item.key === kind) || KINDS[0];
 
   /* ⚠️ ทุกการกดต้องบอกตัวเลข **ก่อน → หลัง** ในโมดัล (กฎ approvalPrompt ของระบบ:
@@ -125,6 +138,30 @@ export default function ForecastReviewPage() {
     }
   }, [load]);
 
+  /* ⚠️ ต้องผ่าน `apiFetch` แล้วสร้าง blob เอง — เปิดแท็บใหม่ไปที่ URL ตรง ๆ ไม่ได้
+     เพราะเส้นนี้ต้องมีเซสชัน แท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง
+     (แพตเทิร์นเดียวกับปุ่มดาวน์โหลดของทะเบียนชำระ) */
+  const downloadReport = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const res = await apiFetch(`/api/sales-planning/forecast-report?year=${year}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("ดาวน์โหลดรายงานไม่สำเร็จ");
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1]
+        || "FC-by-category.xlsx";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = name;
+      document.body.appendChild(link); link.click(); link.remove();
+      URL.revokeObjectURL(url);
+      setError("");
+    } catch (downloadError) {
+      setError(downloadError.message || "ดาวน์โหลดรายงานไม่สำเร็จ");
+    } finally {
+      setDownloading(false);
+    }
+  }, [year]);
+
   if (!canView) return <AccessDenied />;
 
   return (
@@ -132,6 +169,16 @@ export default function ForecastReviewPage() {
       icon={<ClipboardCheck size={22} />}
       title="ตรวจที่มาของ FC"
       subtitle="ดีลที่มีใบเสนอราคาอนุมัติแล้ว แต่ยอด FC ยังไม่ได้เดินตามใบ — กดรับทีละดีล"
+      headerRight={(
+        <div className={styles.reportBar}>
+          <Select value={year} onChange={(e) => setYear(e.target.value)} aria-label="ปีของรายงาน">
+            {YEARS.map((option) => <option key={option} value={option}>ปี {option}</option>)}
+          </Select>
+          <Button variant="ghost" size="sm" disabled={downloading} onClick={downloadReport}>
+            <Download size={14} aria-hidden="true" /> {downloading ? "กำลังสร้างไฟล์…" : "รายงาน FC รายหมวด (Excel)"}
+          </Button>
+        </div>
+      )}
       loading={loading}
       toolbar={(
         <div className={styles.tabs} role="tablist">
@@ -165,7 +212,60 @@ export default function ForecastReviewPage() {
         <EmptyState icon={CheckCircle2}>{active.empty}</EmptyState>
       ) : null}
 
-      {shown.length ? (
+      {/* กองวันที่ขาด = ตารางคนละทรง (ไม่มีใบให้เลือก มีแต่ปุ่มไปกรอก) ⇒ แยกตาราง
+          ไม่ยัดเป็นคอลัมน์ว่างในตารางเดิม ซึ่งจะอ่านเหมือนข้อมูลหาย */}
+      {kind === "missingDates" && shown.length ? (
+        <TableScroll family="list" cells="stacked" minWidth={780}>
+          <table>
+            <thead>
+              <tr>
+                <th>ดีล</th>
+                <th>ผู้รับผิดชอบ</th>
+                <th className="num">FC</th>
+                <th>ช่องที่ขาด</th>
+                <th aria-label="การทำงาน" />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
+                    <small className={styles.sub}>{naText(row.title)}</small>
+                    <small className={styles.sub}>{naText(row.customerName)}</small>
+                  </td>
+                  <td>
+                    {naText(row.ownerName)}
+                    <small className={styles.sub}>{naText(row.team)}</small>
+                  </td>
+                  <td className="num">
+                    {fmtMoney(row.currentValue)}
+                    <small className={styles.sub}>{naText(row.stage)}</small>
+                  </td>
+                  <td>
+                    <div className={styles.choices}>
+                      {row.gaps.includes("startDate") ? <span className={styles.multi}>วันที่เริ่ม</span> : null}
+                      {row.gaps.includes("endDate") ? <span className={styles.multi}>วันที่สิ้นสุด (ลูกค้ารับ)</span> : null}
+                    </div>
+                    <small className={styles.sub}>
+                      วันปิดการขาย {naText(row.expectedCloseDate)}
+                    </small>
+                  </td>
+                  <td>
+                    <div className={styles.actions}>
+                      <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
+                        เปิดดีลไปกรอก <ArrowRight size={13} aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      ) : null}
+
+      {kind !== "missingDates" && shown.length ? (
         <TableScroll family="list" cells="stacked" minWidth={880}>
           <table>
             <thead>

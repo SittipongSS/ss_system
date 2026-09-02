@@ -771,7 +771,7 @@ const RAW_TAILWIND_TYPE_CAP = 152;
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
      src/app/pm/tasks/page.js:1045                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:152     s.state === "current" ? 800 : 650
+     src/app/sales-planning/deals/[id]/page.js:153     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
@@ -781,7 +781,7 @@ const RAW_TAILWIND_TYPE_CAP = 152;
    (เลขบรรทัดข้างบนคือของ **ไฟล์จริง** — ด่านใหม่ใช้ blankBlockComments() จึงไม่เพี้ยน
    เหมือนผลตรวจเก่าที่ตัดคอมเมนต์ทิ้งแล้วบรรทัดเลื่อน)
 
-   🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:152 =
+   🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:153 =
    `s.state === "current" ? 800 : 650` แต่ globals.css โหลด @font-face มาแค่ 400/500/600/700
    (ตรงกับ --fw-normal/medium/semibold/bold) ⇒ ตามกฎ font matching ของ CSS ทั้ง 650 และ
    800 ตกลงมาที่ 700 เท่ากัน = **ขั้นตอน "ปัจจุบัน" กับขั้นอื่นหนาเท่ากันบนจอ**

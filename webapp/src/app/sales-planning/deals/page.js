@@ -49,6 +49,7 @@ import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
 import { apiFetch } from "@/lib/apiFetch";
+import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
    (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
@@ -401,6 +402,14 @@ export default function SalesPlanningPipelinePage() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+    /* ⭐ ฟอร์มแก้ต้องบังคับช่องเดียวกับตอนสร้าง (มติผู้ใช้ 2026-09-02) — เดิมตรวจแค่
+       ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
+       สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
+    const missingFields = missingDealFieldsMessage(dealForm, {
+      legacyWon: dealForm.legacy && dealForm.stage === "won",
+      title: dealForm.title,
+    });
+    if (missingFields) { setError(missingFields); setSubmitting(false); return; }
     const selectedCustomer = customers.find((c) => c.id === dealForm.customerId);
     const payload = { ...dealForm, customerName: selectedCustomer?.name || dealForm.customerName || null };
     try {

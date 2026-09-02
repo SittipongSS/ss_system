@@ -60,6 +60,7 @@ import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
+import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 
 // ข้อความอธิบาย drift แต่ละรายการ (FC รอบล่าสุดต่างจากตอน map)
 function driftText(it) {
@@ -589,6 +590,14 @@ export default function DealOverviewPage() {
     e.preventDefault();
     setSavingDeal(true);
     setError("");
+    /* ⭐ ฟอร์มแก้ต้องบังคับช่องเดียวกับตอนสร้าง (มติผู้ใช้ 2026-09-02) — เดิมตรวจแค่
+       ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
+       สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
+    const missingFields = missingDealFieldsMessage(dealForm, {
+      legacyWon: dealForm.legacy && dealForm.stage === "won",
+      title: dealForm.title,
+    });
+    if (missingFields) { setError(missingFields); setSavingDeal(false); return; }
     try {
       const selected = customers.find((c) => c.id === dealForm.customerId);
       // อย่าให้ชื่อลูกค้าหายเมื่อ dropdown โหลดไม่ครบ/ลูกค้า pending ถูกซ่อน — fallback

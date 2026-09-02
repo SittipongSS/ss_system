@@ -433,10 +433,19 @@ export default function DealFormFields({
     </label>
   );
 
+  /* ⭐ มติผู้ใช้ 2026-09-02: ช่องนี้คือ **วันที่ลูกค้าต้องการรับของ** ไม่ใช่ "วันปิดการขาย"
+     (นั่นคือช่องคาดปิดด้านบน ซึ่งเป็นตัวกำหนดเดือน FC) · ต้องเขียนไว้ให้ชัดเพราะรายงาน
+     FC รายหมวดที่ฝ่ายวางแผนผลิต/จัดซื้อใช้ **กระจายยอดตามเดือนของวันนี้**
+     ⇒ กรอกผิดวัน = ฝ่ายผลิตเตรียมของผิดเดือน ไม่ใช่แค่ตัวเลขพยากรณ์คลาดเคลื่อน */
   const endField = (
     <label className="deal-field" key="end">
-      <span className="deal-field-label">วันที่สิ้นสุด <span className="required-mark">*</span></span>
+      <span className="deal-field-label">วันที่สิ้นสุด (ลูกค้าต้องการรับ) <span className="required-mark">*</span></span>
       <DateInput value={form.endDate || ""} onChange={set("endDate")} />
+      <small>
+        {form.endDate
+          ? `วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตนับยอดดีลนี้ที่เดือน ${naText(monthKey(form.endDate))}`
+          : "วันที่ลูกค้าต้องการรับของ — รายงานวางแผนผลิตใช้เดือนของวันนี้"}
+      </small>
     </label>
   );
 
