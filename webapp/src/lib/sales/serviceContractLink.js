@@ -20,6 +20,26 @@ import { fmtDate } from '@/lib/format';
      "สัญญาจ้างผลิต" ก็มีจริง · ชนิดโชว์บนตัวเลือกให้คนตัดสินเอง */
 export const contractLinkable = (contract) => contractInForce(contract);
 
+/** ช่วงมีผลของสัญญาเทียบกับวันหนึ่ง — `'before' | 'in' | 'after' | null`
+ *
+ * ⭐ **"ผูกได้" กับ "ใช้เดินงานได้วันนี้" เป็นคนละคำถาม และต้องไม่ยุบเป็นตัวเดียว**
+ *   `contractLinkable` ถามว่าเอกสารผูกพันแล้วหรือยัง (`signed`) — สัญญาที่เซ็นวันนี้
+ *   แต่เริ่มมีผลเดือนหน้า **ต้องผูกกับใบล่วงหน้าได้** ไม่งั้น SA ต้องรอถึงวันเริ่ม
+ *   ⇒ ฟังก์ชันนี้ตอบอีกคำถามหนึ่ง: ณ วันนี้ เอกสารนั้นครอบงานอยู่ไหม
+ * ⚠️ เทียบสตริง `YYYY-MM-DD` ตรง ๆ ได้เพราะทั้งคู่รูปเดียวกัน · วันหมดอายุนับรวมทั้งวัน
+ * ⚠️ ไม่ระบุวันเลย = `null` ("ไม่รู้") ไม่ใช่ `'in'` — สัญญาที่ไม่มีช่วงมีผลตอบไม่ได้ว่า
+ *   ครอบวันไหน ผู้เรียกเป็นคนเลือกว่าจะถือว่าอย่างไร
+ */
+export function contractSpanAt(contract, today = businessDate()) {
+  if (!contract) return null;
+  const from = String(contract.effectiveDate || '');
+  const to = String(contract.expiryDate || '');
+  if (!from && !to) return null;
+  if (from && String(today) < from) return 'before';
+  if (to && String(today) > to) return 'after';
+  return 'in';
+}
+
 export function serviceContractOptions(contracts = []) {
   return (contracts || [])
     .filter(contractLinkable)
@@ -64,12 +84,16 @@ export function serviceContractLinkError(order, contract, { canEdit = false } = 
    ⭐ **คำถามแรกของคนเปิดใบบริการคือ "ใบนี้มีสัญญาแล้วหรือยัง"** — ของเดิมตอบได้แค่
      บนหัวแท็บ (`สัญญา · ยังไม่ผูก`) ซึ่งต้องเลื่อนไปอ่าน · ข้อมูลมากับ GET ของใบ
      อยู่แล้ว ไม่ต้องยิงเพิ่ม
-   🔴 **สามสภาพที่หน้าตาคล้ายกันแต่ต้องบอกคนละเรื่อง**
+   🔴 **สี่สภาพที่หน้าตาคล้ายกันแต่ต้องบอกคนละเรื่อง**
      1. ยังไม่เคยผูก           → งานบริการยังเริ่มไม่ได้
      2. ผูกไว้แล้วแต่โหลดไม่ขึ้น → GET กลืน error ของคิวรีสัญญาแล้วคืน `null` ซึ่งหน้าตา
         เหมือนข้อ 1 เป๊ะ ⇒ ต้องดู `serviceContractId` ของใบประกอบ ไม่ใช่ดูสัญญาอย่างเดียว
      3. ผูกแล้วแต่หมดอายุ      → `contractInForce` ดูแค่ `status === 'signed'` ไม่ดูวันที่
         ⇒ สัญญาที่หมดอายุไปแล้วยังเขียวอยู่ ทั้งที่งานหน้างานเดินต่อไม่ได้จริง
+     4. ผูกแล้วแต่ยังไม่เริ่ม   → เหตุเดียวกับข้อ 3 แต่เป็นขอบ *หน้า* ของช่วงมีผล
+        ⇒ สัญญาที่เซ็นล่วงหน้าขึ้นเขียวตั้งแต่วันเซ็น ทั้งที่ยังสั่งงานไม่ได้
+        ⚠️ ข้อนี้ **ห้ามแก้ด้วยการปิดไม่ให้ผูก** — ผูกล่วงหน้าเป็นลำดับที่ถูกต้อง
+          ที่ผิดคือหัวใบที่บอกสีเขียวเฉย ๆ โดยไม่บอกว่ายังไม่ถึงเวลา
    ⚠️ **วันที่ต้องผ่าน `fmtDate`** — ทั้งใบใช้ DD/MM/YYYY · ปล่อย ISO ดิบจะได้ค่าเดียวกัน
       อ่านสองรูปบนใบเดียวกัน (การ์ดสัญญาที่อยู่ห่างกันคลิกเดียวใช้ fmtDate อยู่แล้ว)
    คืน `{ value, sub, tone }` — ไม่มีไอคอน/JSX เพราะเป็นตรรกะล้วน จอเป็นคนใส่ไอคอน */
@@ -89,10 +113,16 @@ export function serviceContractHeadline(contract, { linkedId = null, today = bus
     return { value: number, sub: `${contractStatusLabel(contract.status)} — ยังใช้เดินงานไม่ได้`, tone: 'late' };
   }
   const span = [contract.effectiveDate, contract.expiryDate].filter(Boolean).map(fmtDate).join(' — ');
-  /* เทียบวันด้วยนาฬิกาไทย (`businessDate`) — เทียบสตริง ISO ตรง ๆ ได้เพราะทั้งคู่เป็น
-     `YYYY-MM-DD` · วันหมดอายุนับรวมทั้งวัน ⇒ หมดจริงเมื่อ **เลย** วันนั้นไปแล้ว */
-  if (contract.expiryDate && String(contract.expiryDate) < String(today)) {
-    return { value: number, sub: `${span} — หมดอายุแล้ว`, tone: 'late' };
+  /* เทียบวันด้วยนาฬิกาไทย (`businessDate`) ผ่านตัวตัดสินเดียว `contractSpanAt`
+     ⚠️ **สภาพที่สี่ที่คอมเมนต์ข้างบนลืมไป: "ยังไม่ถึงวันเริ่มมีผล"** — ของเดิมตรวจแต่
+       ขอบท้าย (หมดอายุ) ⇒ สัญญาที่เซ็นแล้วแต่เริ่มเดือนหน้าขึ้น **เขียว** พร้อมช่วงวันที่
+       ที่ยังมาไม่ถึง · คนอ่านหัวใบเห็นเขียวแล้วเข้าใจว่าสั่งงานได้เลย
+     ⚠️ โทนของสภาพนี้คือ `wait` ไม่ใช่ `late` — ไม่มีอะไรผิดพลาด แค่ยังไม่ถึงเวลา
+       (`late` สงวนไว้ให้สภาพที่ต้องมีคนไปทำอะไรสักอย่าง) */
+  const span_ = contractSpanAt(contract, today);
+  if (span_ === 'after') return { value: number, sub: `${span} — หมดอายุแล้ว`, tone: 'late' };
+  if (span_ === 'before') {
+    return { value: number, sub: `${span} — ยังไม่ถึงวันเริ่มมีผล`, tone: 'wait' };
   }
   return { value: number, sub: span || 'ไม่ระบุช่วงมีผล', tone: 'ok' };
 }
