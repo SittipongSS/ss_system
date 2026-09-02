@@ -233,7 +233,7 @@ export default function ProjectsIndexPage() {
                   <DetailRow key={p.id} href={`/sa/projects/${p.code || p.id}`} className="premium-row">
                     <td>
                       {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
-                      <Link prefetch={false} href={`/sa/projects/${p.code || p.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้าโครงการ">
+                      <Link prefetch={false} href={`/sa/projects/${p.code || p.id}`} className="linklike linklike-block" title="เปิดหน้าโครงการ">
                         {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
                         <span className="mono block text-[12px] text-[var(--accent)]">
                           {p.code || p.id}

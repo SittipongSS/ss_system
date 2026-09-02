@@ -644,7 +644,7 @@ export default function SalesPlanningPipelinePage() {
       <td>
         {/* prefetch={false} ทั้งลิงก์ในแถว: ลิสต์ยาว ๆ เคยยิง RSC prefetch
             ของ /sa/deals/[id] เป็นพันครั้ง/วัน (แถวละ 3 ลิงก์ × ทุกแถวที่เห็น) */}
-        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดดีล">
+        <Link prefetch={false} href={`/sa/deals/${deal.id}`} className="linklike linklike-block" title="เปิดหน้ารายละเอียดดีล">
           <strong>
             {deal.title}
             {deal.forecastDrift?.hasDrift && (

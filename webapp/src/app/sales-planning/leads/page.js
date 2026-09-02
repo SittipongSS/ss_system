@@ -715,9 +715,11 @@ export default function LeadsPage() {
                     <td>
                       {/* ชื่อเป็นลิงก์จริง ไม่ใช่ข้อความในแถวที่กดได้ — คลิกทั้งแถวใช้ได้เฉพาะ
                           เมาส์ ส่วนลิงก์ได้ทั้งคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
-                          ท่าเดียวกับหน้าดีลและหน้าโครงการ (`linklike` = ลิงก์ที่ไม่ทำสีทับข้อความ)
+                          ท่าเดียวกับหน้าดีลและหน้าโครงการ (`linklike` = ลิงก์ที่มี URL ปลายทาง —
+                          ตั้งแต่ 2026-09-02 มีสี `--accent-ink` + เส้นใต้ในสถานะปกติ ไม่ใช่
+                          `color: inherit` แบบเดิมที่มองไม่ออกว่ากดได้)
                           prefetch={false}: ลิสต์ยาว ๆ เคยยิง RSC prefetch เป็นพันครั้ง/วัน */}
-                      <Link prefetch={false} href={`/sa/leads/${lead.id}`} className="linklike text-left" style={{ display: "block" }} title="เปิดหน้ารายละเอียดลีด">
+                      <Link prefetch={false} href={`/sa/leads/${lead.id}`} className="linklike linklike-block" title="เปิดหน้ารายละเอียดลีด">
                         <strong>{lead.contactName}</strong>
                         <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
                           {naText([lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · "))}

@@ -25,7 +25,7 @@ export default function RichText({ text, lines = 6, className = "", style, menti
           return (
             // rel ครบชุด: ลิงก์ภายนอกที่ผู้ใช้พิมพ์เอง ห้ามให้หน้าปลายทางเข้าถึง
             // window.opener ได้ และไม่ส่ง referrer ของระบบภายในออกไป
-            <a key={i} href={part.href} target="_blank" rel="noopener noreferrer nofollow" className="rich-link">
+            <a key={i} href={part.href} target="_blank" rel="noopener noreferrer nofollow" className="linklike">
               {part.text}
             </a>
           );
@@ -38,7 +38,7 @@ export default function RichText({ text, lines = 6, className = "", style, menti
         if (part.type === "doc") {
           // เส้นทางกลาง /go/<รหัส> — resolve เป็นหน้าจริงตอนกด (ดู lib/master/docRefs)
           return (
-            <Link key={i} href={part.href} prefetch={false} className="rich-link mono">
+            <Link key={i} href={part.href} prefetch={false} className="linklike mono">
               {part.text}
             </Link>
           );

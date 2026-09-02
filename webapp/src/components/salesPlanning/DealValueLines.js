@@ -130,7 +130,10 @@ export default function DealValueLines({
                             />
                           )
                           : (
-                            <button type="button" className="linklike" onClick={() => setRow(index, { _noteOpen: true })}>
+                            /* คลี่ <Textarea> ออกมาแทนที่ตัวเอง — ไม่มี URL ปลายทาง
+                               จึงเป็น `.text-action` (เส้นประ) ไม่ใช่ `.linklike`
+                               · `.btn.sm` สูง 30px จะดันทุกแถวของตารางสูงขึ้น */
+                            <button type="button" className="text-action" onClick={() => setRow(index, { _noteOpen: true })}>
                               + แทรกหมายเหตุ
                             </button>
                           ))}

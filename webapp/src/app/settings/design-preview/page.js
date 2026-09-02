@@ -101,6 +101,20 @@ const COLORS = [
 ];
 
 const BUTTON_TONES = ["neutral", "primary", "accent", "danger", "warning"]; // คนละชุดกับ STATUS_TONES (ดู lib/ui/tone.js)
+
+/* ความหมายของแต่ละโทน — **ก๊อปคำมาจากคอมเมนต์ของ `TONES` ใน components/ui/Button.js**
+   ซึ่งเป็นเจ้าของกฎ · `buttonPrimitive.test.mjs` บังคับให้สองที่พูดตรงกัน
+   🐞 ก่อน 2026-09-02 หน้านี้พิมพ์แค่ *ชื่อ* tone เป็นป้ายปุ่ม ส่วนความหมายไปโผล่คนละ
+   section บนช่องสี `--accent` / `--navy` (ผูกกับชื่อ *โทเคน* ไม่ใช่ชื่อ *tone*)
+   ⇒ คนที่เปิดพรีวิวเพื่อหาคำตอบว่า "ปุ่มนี้ควร accent หรือ primary" หาไม่เจอ
+   แล้วไปเดาจากเอกสารที่เขียนผิดแทน */
+const TONE_MEANING = {
+  neutral: "การกระทำรอง — พื้นเดียวกับ panel",
+  primary: "navy = ยืนยันสิ่งที่ทำอยู่ (บันทึก/ยืนยัน/อนุมัติ/พิมพ์)",
+  accent: "terracotta = เริ่มของใหม่ — จอละ 1 ปุ่มเท่านั้น",
+  danger: "ทำลาย/ปิดเส้นทาง (ลบ · ยกเลิก · ตีกลับ)",
+  warning: "ยังกู้ได้แต่มีของหลุด (ย้อนการอนุมัติ · พัก)",
+};
 /* tone ที่โชว์ = ลิสต์กลางจาก lib/ui/tone.js — เพิ่ม tone ใหม่แล้วหน้านี้ขึ้นเอง
    (เดิมหน้านี้ถือลิสต์ของตัวเอง แล้วตกหล่นได้เงียบ ๆ) */
 const BADGE_TONES = STATUS_TONES;
@@ -474,6 +488,18 @@ export default function DesignPreviewPage() {
               <Button iconOnly aria-label="ค้นหา" icon={<Search size={15} />} />
               <Button disabled>ปิดใช้งาน</Button>
             </div>
+            <ul className={styles.note}>
+              {BUTTON_TONES.map((tone) => (
+                <li key={tone}><code>{tone}</code> — {TONE_MEANING[tone]}</li>
+              ))}
+            </ul>
+            <p className={styles.note}>
+              <strong>โทนบอก “ความหมาย” ไม่ใช่ “อันดับ” —</strong> <code>accent</code> กับ <code>primary</code>
+              {" "}ไม่ได้แข่งกันว่าใครสำคัญกว่า ⇒ ปุ่มยืนยันเป็น <code>primary</code> เสมอ
+              {" "}<em>แม้เป็นปุ่มทึบตัวเดียวบนจอนั้น</em> · “จอ” = เปลือกหน้า หรือโมดัล/ลิ้นชักที่เปิดอยู่
+              {" "}นับแยกใบ (แถวตารางที่ซ้ำกัน N แถว = N ปุ่ม ไม่ใช่ 1)
+              {" "}เจ้าของกฎคือ <code>TONES</code> ใน <code>components/ui/Button.js</code>
+            </p>
             <div className={styles.row}>
               <span className={styles.caption}>quiet vs ghost</span>
               <Button variant="quiet">quiet (ข้อความสีปกติ)</Button>
@@ -496,6 +522,45 @@ export default function DesignPreviewPage() {
             <p className={styles.note}>
               ปุ่มที่มีความหมายตาม workflow ให้ใช้ <code>ActionButton kind=&quot;…&quot;</code> เสมอ —
               สี ไอคอน และคำเรียกผูกไว้ที่เดียว ส่ง kind ที่ไม่มีจริงจะตกเป็นปุ่มเทาเงียบ ๆ
+            </p>
+          </div>
+        </Section>
+
+        {/* ── ลิงก์ vs ข้อความที่กดได้ vs ปุ่ม (2026-09-02) ─────────────────────────
+            เพิ่มเพราะหน้านี้ไม่เคยมีตัวอย่างของสามทรงนี้เลย ทั้งที่มันเป็นชั้นกลางที่
+            ใช้กันเยอะที่สุดรองจากปุ่ม — คลาสจึงงอกกันเองแล้วแปลว่าคนละอย่างในแต่ละหน้า */}
+        <Section group="controls" active={group}
+          title="ลิงก์ · ข้อความที่กดได้ · ปุ่ม"
+          subtitle="เลือกจาก “กดแล้วเกิดอะไร” ไม่ใช่จาก “มีที่ว่างแค่ไหน”"
+        >
+          <div className={styles.stack}>
+            <div className={styles.row}>
+              <span className={styles.caption}>มี URL ปลายทาง</span>
+              <a className="linklike" href="/home">.linklike — เส้นใต้ทึบ + accent-ink</a>
+              <a className="linklike mono" href="/home">SO-26090001</a>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>ทำงานในหน้านี้</span>
+              <button type="button" className="text-action">.text-action — เส้นประ + --text-2</button>
+              <button type="button" className="text-action" disabled>กดไม่ได้</button>
+            </div>
+            <div className={styles.row}>
+              <span className={styles.caption}>ปุ่มเต็มตัว</span>
+              <Button size="sm" variant="ghost">Button — มีพื้นที่ให้เป้าสัมผัส</Button>
+            </div>
+            <p className={styles.note}>
+              <strong>เส้นใต้ทึบ + <code>--accent-ink</code> = “กดแล้วไปที่อื่น”</strong> ⇒
+              {" "}ปุ่มที่ทำงานอยู่ในหน้าเดิม <em>ห้าม</em> ใช้ทรงนี้ ·
+              {" "}<strong>เส้นประ + <code>--text-2</code> = “เกิดอะไรขึ้นตรงนี้”</strong>
+              {" "}(ท่าเดียวกับ <code>.table-metric-button</code>) ·
+              {" "}ทั้งเซลล์/ทั้งแถวเป็นเป้าเดียวใช้ <code>.table-row-link</code> (สีสืบทอด ·
+              {" "}ทาพื้นตอนชี้) ไม่ใช่ <code>.linklike</code> ไม่งั้นคอลัมน์แรกกลายเป็นทะเลตัวหนังสือสีลิงก์
+            </p>
+            <p className={styles.note}>
+              🐞 ก่อน 2026-09-02 <code>.linklike</code> เป็น <code>color: inherit</code> +
+              {" "}เปลี่ยนสีเฉพาะตอน hover ⇒ ลิงก์ 52 จุดดูเหมือนข้อความธรรมดา
+              {" "}คนใช้คีย์บอร์ด/จอสัมผัสไม่มีทางรู้ว่ากดได้ (WCAG §1.4.1 · §2.4.7)
+              {" "}· <code>.rich-link</code> ยุบรวมเข้า <code>.linklike</code> แล้ว
             </p>
           </div>
         </Section>
