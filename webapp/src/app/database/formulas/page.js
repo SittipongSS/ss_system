@@ -574,7 +574,7 @@ export default function FormulasPage() {
                         return src.requestId ? (
                           <Link
                             href={`/requests/${src.requestId}`}
-                            className="ui-badge ui-badge-cell ui-badge-w-source rich-link"
+                            className="ui-badge ui-badge-cell ui-badge-w-source linklike"
                           >
                             {src.label}
                           </Link>

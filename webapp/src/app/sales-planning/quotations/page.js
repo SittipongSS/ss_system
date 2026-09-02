@@ -341,9 +341,13 @@ export default function QuotationsPage() {
             tone="warning"
             title={`ใบเสนอราคา Won ${awaitingSalesOrderIds.size} ใบยังไม่ได้ออก ใบสั่งขาย`}
             action={(
-              <button type="button" className="linklike" onClick={() => setPendingSoOnly((on) => !on)}>
+              /* ตัวสลับตัวกรอง — ไม่ได้พาไปไหน จึงไม่ใช่ลิงก์ · สล็อต `action` ของ
+                 StatusNotice ออกแบบมารับ `.btn` โดยตรง (`.action :global(.btn)`
+                 แจก width:100% + --ctl-h-touch บนจอแคบ) และเพื่อนบ้านทุกจุด
+                 ในสล็อตนี้เป็น <Button size="sm"> อยู่แล้ว */
+              <Button size="sm" variant="ghost" onClick={() => setPendingSoOnly((on) => !on)}>
                 {pendingSoOnly ? "แสดงทุกใบ" : "ดูเฉพาะใบที่ค้าง"}
-              </button>
+              </Button>
             )}
           >
             ดีลปิดได้แล้วแต่เอกสารยังไม่เดินต่อ — เปิดใบแล้วกดสร้างใบสั่งขายเพื่อให้ยอดเข้าเป็น Actual

@@ -917,14 +917,19 @@ export default function PoDetailPage() {
                     </div>
                   )}
                   {canCreateProject && (
+                    /* เปิดโมดัลยืนยัน ไม่ได้พาไปหน้าอื่น จึงเป็นปุ่ม ไม่ใช่ลิงก์
+                       ⚠️ ปุ่มลงบรรทัดใหม่ ไม่ยัดกลางประโยคเหมือนเดิม — `.btn` เป็น
+                       inline-flex สูง 40px วางกลางบรรทัดแล้วดันกล่องบรรทัดพัง
+                       ⚠️ ไม่ใช้ tone="accent" แม้จะ "เริ่มของใหม่" จริง เพราะจอ PO
+                       มีโควตา accent (จอละ 1 ตัว) ไปแล้ว */
                     <div className={styles.needProjectNote}>
-                      เป็นสินค้าใหม่ที่ยังไม่มีโครงการ?{" "}
-                      <button
-                        type="button" className="linklike"
+                      <div>เป็นสินค้าใหม่ที่ยังไม่มีโครงการ?</div>
+                      <Button
+                        size="sm" variant="ghost"
                         onClick={() => { setSettleOpen(false); setProjectConfirmOpen(true); }}
                       >
                         สร้างโครงการใหม่จาก PO นี้
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>

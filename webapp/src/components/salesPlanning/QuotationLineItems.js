@@ -276,7 +276,11 @@ export default function QuotationLineItems({
                             )}
                           </>
                         )
-                        : <button type="button" className="linklike" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
+                        /* คู่แฝดของ DealValueLines — คลี่ <Textarea> ในเซลล์เดิม
+                           ไม่มีปลายทางให้ไป จึงเป็น `.text-action` ไม่ใช่ `.linklike`
+                           ⚠️ สองไฟล์นี้คือคอนโทรลตัวเดียวกันที่ก๊อปกันมา ควรยกเป็น
+                           component ร่วมรอบหน้า (AGENTS.md §"ฟอร์มแก้ = ฟอร์มสร้าง") */
+                        : <button type="button" className="text-action" style={{ alignSelf: "flex-start", fontSize: "var(--fs-5)" }} onClick={() => setLine(index, { _noteOpen: true })}>+ แทรกหมายเหตุ</button>)
                       : (line.metadata?.note && (
                         <div className={styles.noteReadonly}>
                           <strong>หมายเหตุ:</strong>

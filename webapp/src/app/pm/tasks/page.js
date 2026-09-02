@@ -1010,9 +1010,12 @@ export default function TasksPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", minHeight: "60px" }}>
                   {items.length === 0 ? <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", textAlign: "center", padding: "12px 0" }}>{NA}</div> : items.slice(0, MATRIX_MAX).map(miniCard)}
                   {items.length > MATRIX_MAX && (
-                    <button type="button" className="linklike" style={{ alignSelf: "center", fontSize: "var(--fs-5)" }} onClick={() => setView("table")}>
+                    /* เปลี่ยนมุมมองในหน้าเดียวกัน ไม่ได้พาไปหน้าอื่น จึงไม่ใช่ลิงก์ —
+                       ท้ายการ์ดมีที่ว่างเต็ม ปุ่มจริงอ่านง่ายกว่าข้อความ
+                       (`alignSelf` ยังต้องอยู่: การ์ดเป็น flex column) */
+                    <Button size="sm" variant="ghost" style={{ alignSelf: "center" }} onClick={() => setView("table")}>
                       +{items.length - MATRIX_MAX} งาน — ดูทั้งหมดในตาราง
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>

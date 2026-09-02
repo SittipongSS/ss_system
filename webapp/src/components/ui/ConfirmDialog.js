@@ -161,9 +161,15 @@ export default function ConfirmDialog({
               {cancelLabel}
             </Button>
           ) : null}
+          {/* 🔴 2026-09-02 เดิมเป็น `accent` — โมดัลยืนยันทุกใบในระบบ (confirmAction ถูก
+              เรียกหลายสิบจุด) จึงได้ปุ่มยืนยันสี terracotta ที่ระบบใช้แปลว่า "เริ่มของใหม่"
+              ทั้งที่มันคือ "ยืนยันสิ่งที่ทำอยู่" เป๊ะตามนิยามของ `TONES` ใน Button.js
+              ⇒ `primary` · ฝั่งทำลายยังเป็น `danger` เหมือนเดิม
+              จุดเดียวนี้ผิดมากกว่าหน้าที่ทา accent เองรวมกัน และ grep `tone="accent"`
+              มองไม่เห็นเลยเพราะมันนับไฟล์ที่เรียกใช้ ไม่ได้นับจอที่เรนเดอร์ */}
           <Button
             ref={confirmRef}
-            tone={destructive ? "danger" : "accent"}
+            tone={destructive ? "danger" : "primary"}
             onClick={confirm}
             disabled={pending}
             aria-busy={pending || undefined}

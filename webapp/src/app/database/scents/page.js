@@ -502,7 +502,7 @@ export default function ScentsPage() {
                     <div className={styles.cardMeta}>
                       {src.requestId
                         ? (
-                          <Link href={`/requests/${src.requestId}`} className="ui-badge rich-link">
+                          <Link href={`/requests/${src.requestId}`} className="ui-badge linklike">
                             {src.label}
                           </Link>
                         )
@@ -614,7 +614,7 @@ export default function ScentsPage() {
                           ? (
                             <Link
                               href={`/requests/${src.requestId}`}
-                              className="ui-badge ui-badge-cell ui-badge-w-source rich-link"
+                              className="ui-badge ui-badge-cell ui-badge-w-source linklike"
                             >
                               {src.label}
                             </Link>
