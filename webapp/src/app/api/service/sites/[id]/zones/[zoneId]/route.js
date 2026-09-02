@@ -1,5 +1,7 @@
 // ── API โซนรายตัว (mig 0297) ──────────────────────────────────────────────
 import { recordAudit } from '@/lib/audit';
+import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
+import { deleteZoneDeep, zoneForceManifest } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeZoneInput } from '@/lib/service/zones';
 import { findZone, requireSite } from '@/lib/service/sitesRepo';
@@ -46,6 +48,19 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
 
     const before = await findZone(supabase, id, zoneId);
     if (!before) return notFound('ไม่พบโซนในไซต์นี้');
+
+    // ⭐ ทางลัดผู้ดูแลระบบ — ดูเหตุผลเต็มที่ lib/service/forceDeleteService.js
+    const admin = canForceDelete(user);
+    if (isDryRun(req) && admin) return ok(await zoneForceManifest(supabase, zoneId));
+    if (isForceRequest(req) && admin) {
+      await deleteZoneDeep(supabase, zoneId);
+      await recordAudit({
+        user, action: 'delete', entityType: 'service_zone', entityId: zoneId, before,
+        summary: `ลบโซน ${before.name} ออกจากไซต์ ${access.site.name} (แอดมินบังคับลบทั้งสาย)`,
+        request: req,
+      });
+      return ok({ ok: true, forced: true });
+    }
 
     const { error } = await supabase.from('service_zones').delete().eq('id', zoneId);
     if (error) {

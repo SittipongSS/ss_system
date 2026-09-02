@@ -121,6 +121,25 @@ test('🔴 route ของนัดต้องเรียกด่านนี
   assert.match(src, /PLANNING_FIELD_ERROR/);
 });
 
+/* 🔴 **ด่านลบนัดของแอดมิน** (ผู้ใช้แจ้ง 2026-09-02 "แอดมินลบแล้วติดนู่นนี่")
+   นัดที่ปิดงานแล้วคือประวัติการเข้าไซต์ ⇒ ห้ามลบเป็นค่าตั้งต้น · แต่มติ #1501
+   ("ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย") ให้แอดมินข้ามได้ด้วย `?force=1`
+   ⚠️ เทสต์นี้ปักไว้ว่า **ต้องมีทั้งสองเงื่อนไขคู่กัน** — เหลือแค่ `isForceRequest`
+      อย่างเดียวเมื่อไร ใครก็ตามที่แก้นัดได้จะลบประวัติทิ้งได้ด้วยการต่อ ?force=1
+      ท้าย URL เอง ซึ่งเป็นช่องที่ไม่มีอะไรฟ้องเลย */
+test('🔴 ลบนัดที่ปิดงานแล้วต้องเป็นแอดมิน **และ** ส่ง ?force=1 มาคู่กัน', () => {
+  const src = readFileSync(new URL('../../app/api/service/visits/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(src, /isForceRequest\(req\)\s*&&\s*canForceDelete\(user\)/,
+    'ต้องเช็คทั้งธงและสิทธิ์ในนิพจน์เดียว');
+  assert.match(src, /!canDeleteVisit\(before\)\s*&&\s*!force/,
+    'ด่านสถานะต้องยอมให้ force ข้ามได้ ไม่ใช่บล็อกตายตัว');
+  // ด่านสิทธิ์รายใบต้องยังอยู่ **ก่อน** force — force ข้ามได้แค่ด่านสถานะ
+  assert.ok(src.indexOf('requireVisit(') < src.indexOf('isForceRequest('),
+    'requireVisit ต้องมาก่อน — ไม่งั้น ?force=1 กลายเป็นทางข้ามสิทธิ์');
+  assert.match(src, /แอดมินข้ามด่านประวัติ/,
+    'audit ต้องอ่านออกว่าใบไหนถูกลบด้วยสิทธิ์พิเศษ');
+});
+
 /* ── สองจุดที่เจอตอนซ้อม UAT (2026-08-30) ────────────────────────────────── */
 test('🔴 หน้า "งานวันนี้" ต้องเปิดปุ่มเริ่ม/ปิดงานให้เจ้าหน้าที่หน้างาน', () => {
   /* 🐞 หน้านี้เคยเช็ค `canEditService` ⇒ ตำแหน่ง Operation เห็นเมนู (เปิดด้วย
@@ -159,4 +178,43 @@ test('🔴 ด่านอ่านของฟอร์มใบคำร้อ
     new URL('../../app/api/service/sites/[id]/zones/route.js', import.meta.url), 'utf8',
   );
   assert.match(zones, /forRequestForm: true/);
+});
+
+/* 🔴 **ทุกเส้นลบของโมดูลบริการต้องมีทางลัดผู้ดูแลระบบ** (ผู้ใช้แจ้ง 2026-09-02)
+   มติ #1501 ให้แอดมินลบได้ทุกอย่าง และ 9 route ทั่วระบบต่อ ?force=1 ไปแล้ว
+   แต่โมดูลบริการไม่เคยต่อสักเส้น ⇒ แอดมินชนกำแพงทุกครั้งที่จะเก็บกวาด
+   ⚠️ เทสต์นี้ปักไว้ทั้งชุด — เพิ่ม route ลบใหม่แล้วลืมต่อ จะรู้ตัวตรงนี้
+      ไม่ใช่ตอนแอดมินไปกดแล้วติด */
+test('🔴 route ลบของโมดูลบริการต้องรับ ?force=1 ของแอดมินครบทุกเส้น', () => {
+  const ROUTES = [
+    ['visits/[id]', 'นัด'],
+    ['sites/[id]', 'ไซต์'],
+    ['sites/[id]/zones/[zoneId]', 'โซน'],
+    ['sites/[id]/assets/[assetId]', 'เครื่อง'],
+  ];
+  for (const [route, label] of ROUTES) {
+    const src = readFileSync(new URL(`../../app/api/service/${route}/route.js`, import.meta.url), 'utf8');
+    assert.match(src, /canForceDelete\(user\)/, `${label}: ต้องเช็คสิทธิ์แอดมิน`);
+    assert.match(src, /isForceRequest\(req\)/, `${label}: ต้องรับธง ?force=1`);
+    /* 🔴 ด่านสิทธิ์ต้องมาก่อน force เสมอ — force ข้ามได้แค่กฎธุรกิจ ไม่ใช่สิทธิ์
+       สลับลำดับเมื่อไร ?force=1 กลายเป็นทางข้ามสิทธิ์ให้ใครก็ได้ */
+    const guard = Math.min(
+      ...['requireSite(', 'requireVisit('].map((fn) => {
+        const i = src.indexOf(fn);
+        return i === -1 ? Infinity : i;
+      }),
+    );
+    assert.ok(guard < src.indexOf('isForceRequest('),
+      `${label}: ด่านสิทธิ์ต้องมาก่อน force`);
+  }
+});
+
+/* ทางลัดต้องมีพรีวิวคู่เสมอ — บังคับลบที่ไม่บอกว่าจะลบอะไรพ่วง คือการลบข้อมูล
+   ของคนอื่นโดยที่คนกดไม่รู้ตัว (สามเส้นที่มี cascade จริง · นัดไม่มีลูกที่ RESTRICT) */
+test('🔴 เส้นที่ลบพ่วงลูก ต้องมี ?dryRun=1 ให้พรีวิวก่อน', () => {
+  for (const route of ['sites/[id]', 'sites/[id]/zones/[zoneId]', 'sites/[id]/assets/[assetId]']) {
+    const src = readFileSync(new URL(`../../app/api/service/${route}/route.js`, import.meta.url), 'utf8');
+    assert.match(src, /isDryRun\(req\)/, `${route}: ต้องรองรับพรีวิว`);
+    assert.match(src, /Manifest\(supabase/, `${route}: พรีวิวต้องเดินเส้นเดียวกับตัวลบจริง`);
+  }
 });

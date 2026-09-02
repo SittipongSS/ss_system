@@ -3,6 +3,8 @@
 // PATCH  : แก้ข้อมูลไซต์
 // DELETE : ลบไซต์ — บล็อกถ้ายังมีเครื่องอยู่ (ให้ปิดใช้งานแทน)
 import { recordAudit } from '@/lib/audit';
+import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
+import { deleteSiteDeep, siteForceManifest } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict } from '@/lib/http';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
@@ -123,7 +125,30 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (access.response) return access.response;
     const before = access.site;
 
-    // ⚠️ FK ของเครื่องเป็น CASCADE — ลบไซต์ = เครื่องหายทั้งชุดพร้อมประวัติ
+    /* ⭐ **ทางลัดผู้ดูแลระบบ** (ผู้ใช้แจ้ง 2026-09-02 "แอดมินลบแล้วติดนู่นนี่")
+       มติ #1501 ให้แอดมินลบได้ทุกอย่าง และ 9 route ทั่วระบบต่อ ?force=1 ไปแล้ว
+       แต่โมดูลบริการไม่เคยต่อสักเส้น ⇒ แอดมินชนกำแพงทุกครั้งที่จะเก็บกวาด
+       ⚠️ ปลดด่านเฉย ๆ ไม่พอ — ลูกเป็น FK RESTRICT หลายชั้น ต้องเก็บกวาดตามลำดับ
+          (ดู lib/service/forceDeleteService.js) */
+    const admin = canForceDelete(user);
+    const force = isForceRequest(req) && admin;
+
+    // ?dryRun=1 — พรีวิวว่าจะลบอะไรพ่วง เดินเส้นเดียวกับตัวลบจริง
+    if (isDryRun(req) && admin) {
+      return ok(await siteForceManifest(supabase, id));
+    }
+
+    if (force) {
+      await deleteSiteDeep(supabase, id);
+      await recordAudit({
+        user, action: 'delete', entityType: 'service_site', entityId: id, before,
+        summary: `ลบไซต์บริการ ${before.code || id} · ${before.name} (แอดมินบังคับลบทั้งสาย)`,
+        request: req,
+      });
+      return ok({ ok: true, forced: true });
+    }
+
+    // ⚠️ FK ของเครื่องเป็น RESTRICT (mig 0332) — ลบไซต์ที่ยังมีเครื่องไม่ได้
     // ปิดใช้งานคือสิ่งที่ผู้ใช้ต้องการจริงเกือบทุกครั้ง (ของจริงยังอยู่หน้างาน)
     const assets = await loadAssets(supabase, id);
     if (assets.length) {

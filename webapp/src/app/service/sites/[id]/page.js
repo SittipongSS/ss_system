@@ -39,6 +39,7 @@ import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -48,6 +49,9 @@ export default function ServiceSiteDetailPage({ params }) {
   const teams = useTeams();
   const department = useDepartment();
   const canEdit = useMemo(() => canEditService({ role, team, teams, department }), [role, team, teams, department]);
+  /* ⚠️ ตรงกับ `canForceDelete` ที่ server (role === 'admin') เป๊ะ — สองฝั่งไม่ตรงกัน
+     เมื่อไร จอจะโชว์ปุ่มที่กดแล้วเด้ง หรือซ่อนปุ่มที่จริง ๆ กดได้ */
+  const isAdmin = role === "admin";
 
   const [site, setSite] = useState(null);
   const [zones, setZones] = useState([]);
@@ -178,9 +182,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeZone = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      const result = await deleteWithForce(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { isAdmin });
+      if (result.cancelled) return;
       setToast({ kind: "success", msg: `ลบโซน ${pendingDelete.row.name} แล้ว` });
       setPendingDelete(null);
       await load();
@@ -194,9 +197,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeAsset = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      const result = await deleteWithForce(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { isAdmin });
+      if (result.cancelled) return;
       setToast({ kind: "success", msg: `ลบเครื่อง ${pendingDelete.row.label} แล้ว` });
       setPendingDelete(null);
       await load();
@@ -226,12 +228,36 @@ export default function ServiceSiteDetailPage({ params }) {
     await load();
   };
 
+  /* ลบนัด — เส้นนี้มี route มาตลอดแต่ **ไม่เคยมีปุ่มไหนเรียกเลย** (ผู้ใช้แจ้ง 2026-09-02
+     "แอดมินลบแล้วติดนู่นนี่") · นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ ส่วนนัดที่ปิดงานแล้ว
+     เป็นประวัติการเข้าไซต์ ⇒ ต้องเป็นแอดมินและส่ง ?force=1 มาโดยตั้งใจ
+     ⚠️ ตารางลูกของนัดเป็น CASCADE ทั้งคู่ ⇒ ลบแล้วผลรายเครื่อง/ของที่ใช้หายตามเอง */
+  const removeVisit = async () => {
+    setBusy(true);
+    try {
+      const visit = pendingDelete.row;
+      const url = `/api/service/visits/${visit.id}${pendingDelete.force ? "?force=1" : ""}`;
+      const res = await apiFetch(url, { method: "DELETE" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      setToast({ kind: "success", msg: `ลบนัด ${visit.code || visit.scheduledDate} แล้ว` });
+      setPendingDelete(null);
+      await load();
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removeSite = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      /* ⭐ `deleteWithForce` ลบตามปกติก่อน · ถูกบล็อกด้วยกฎธุรกิจแล้วเป็นแอดมิน
+         จะดึงพรีวิว (?dryRun=1) มาบอกว่าจะลบอะไรพ่วง แล้วถามยืนยันก่อนยิง ?force=1
+         ⚠️ คนที่ไม่ใช่แอดมินยังเจอข้อความเดิม ("ปิดใช้งานแทนการลบ") ไม่เปลี่ยน */
+      const result = await deleteWithForce(`/api/service/sites/${id}`, { isAdmin });
+      if (result.cancelled) return;
       setPendingDelete(null);
       // toast ของหน้าที่กำลังจะออกจากมันไม่มีความหมาย — บอกที่ทะเบียนแทนหลังย้ายหน้า
       router.push("/service/sites?deleted=" + encodeURIComponent(site?.name || id));
@@ -290,6 +316,63 @@ export default function ServiceSiteDetailPage({ params }) {
       </Workspace>
     );
   }
+
+  /* ข้อความของกล่องยืนยันลบ — **ตารางเดียว ไม่ใช่ ternary ซ้อน**
+     ⚠️ ของเดิมเป็น ternary ซ้อน 4 ชั้นคูณ 4 prop ⇒ เพิ่มชนิดที่ห้า (นัด) แล้วอ่านไม่ออก
+        และแก้ข้อความผิดช่องได้ง่ายมาก เพราะสี่ชั้นนั้นต้องเรียงตรงกันเป๊ะทุกอัน */
+  const DELETE_COPY = {
+    plan: {
+      title: "ลบรอบบริการ",
+      message: (row) => `ลบรอบทุก ${row.everyDays} วัน?`,
+      detail: "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ",
+      confirmLabel: "ลบรอบ",
+      onConfirm: removePlan,
+    },
+    zone: {
+      title: "ลบโซนออกจากไซต์",
+      message: (row) => `ลบโซน ${row.name}?`,
+      detail: "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'",
+      confirmLabel: "ลบโซน",
+      onConfirm: removeZone,
+    },
+    site: {
+      title: "ลบไซต์บริการ",
+      message: (row) => `ลบไซต์ ${row?.name}?`,
+      detail: "ลบได้เฉพาะไซต์ที่ยังไม่มีเครื่อง/โซน/ประวัตินัด — มีของค้างอยู่จะลบไม่ผ่านพร้อมบอกว่าติดอะไร ถ้าไซต์นี้เลิกใช้แล้วให้ปิดใช้งานแทน (แก้ไขไซต์ → สถานะ)",
+      confirmLabel: "ลบไซต์",
+      onConfirm: removeSite,
+    },
+    asset: {
+      title: "ลบอุปกรณ์ออกจากไซต์",
+      message: (row) => `ลบ ${row.label} ออกจากไซต์นี้?`,
+      detail: "ถ้าอุปกรณ์ถูกถอดออกจริง ให้ใช้คำสั่ง 'ถอนกลับคลัง' หรือ 'ปลดระวาง' บนหน้าเครื่องแทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย",
+      confirmLabel: "ลบอุปกรณ์",
+      onConfirm: removeAsset,
+    },
+    visit: {
+      title: "ลบนัดเข้าบริการ",
+      message: (row) => `ลบนัด ${row.code || row.scheduledDate}?`,
+      /* ⚠️ ข้อความเปลี่ยนตามว่าเป็นการลบธรรมดา หรือแอดมินข้ามด่านประวัติ —
+         สองอย่างนี้มีน้ำหนักต่างกันมาก คนกดต้องรู้ว่ากำลังทำอันไหน */
+      detail: "นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ · ผลรายเครื่องและของที่ใช้ในนัดนี้จะหายไปด้วย",
+      confirmLabel: "ลบนัด",
+      onConfirm: removeVisit,
+    },
+    visitForce: {
+      title: "ลบนัดที่ปิดงานแล้ว",
+      message: (row) => `ลบนัด ${row.code || row.scheduledDate} ที่ปิดงานไปแล้ว?`,
+      detail: "🔴 นัดนี้เป็นประวัติการเข้าไซต์ — ลบแล้วผลรายเครื่อง ของที่ใช้ และร่องรอยว่าเจ้าหน้าที่เคยมา จะหายถาวร · ใช้สิทธิ์ผู้ดูแลระบบ และจะถูกบันทึกไว้ว่าข้ามด่าน",
+      confirmLabel: "ลบถาวร",
+      onConfirm: removeVisit,
+    },
+  };
+  const deleteCopy = pendingDelete
+    ? (() => {
+      const key = pendingDelete.type === "visit" && pendingDelete.force ? "visitForce" : pendingDelete.type;
+      const copy = DELETE_COPY[key];
+      return copy ? { ...copy, message: copy.message(pendingDelete.row) } : null;
+    })()
+    : null;
 
   /* ── Control Panel ของไซต์ ────────────────────────────────────────────────
      ไซต์ไม่มีแกนอนุมัติแบบลูกค้า/สินค้า — มีแกนเดียวคือใช้งาน/ปิดใช้งาน จึงให้แกนนั้น
@@ -588,7 +671,8 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th><th>เจ้าหน้าที่</th><th>รหัส</th></tr>
+                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th><th>เจ้าหน้าที่</th><th>รหัส</th>
+                  {canEdit && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
                 {upcoming.map((visit) => (
@@ -598,6 +682,18 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
                     <td>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
                     <td className="mono">{naText(visit.code)}</td>
+                    {/* นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ — route รองรับมาตลอด
+                        แต่ไม่เคยมีปุ่มไหนเรียก (ผู้ใช้แจ้ง 2026-09-02) */}
+                    {canEdit && (
+                      <td>
+                        <div className={styles.rowActions}>
+                          <Button iconOnly tone="danger" variant="quiet"
+                            aria-label={`ลบนัด ${visit.code || visit.scheduledDate}`}
+                            onClick={() => setPendingDelete({ type: "visit", row: visit })}
+                            icon={<Trash2 size={14} aria-hidden="true" />} />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -613,7 +709,8 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" /></tr>
+                <tr><th>วันที่นัด</th><th>เข้าจริง</th><th>งาน</th><th>เจ้าหน้าที่</th><th>สถานะ</th><th>สรุปงาน</th><th aria-label="ใบส่งงาน" />
+                  {isAdmin && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
                 {history.map((visit) => (
@@ -628,6 +725,22 @@ export default function ServiceSiteDetailPage({ params }) {
                     {/* ประวัติต้องกดเข้าใบได้ — ไม่งั้นคอลัมน์ "สรุปงาน" ที่ตัดสั้น
                         คือทั้งหมดที่คนอ่านย้อนหลังได้ */}
                     <td><a className="linklike" href={`/service/visits/${visit.id}`}>ใบส่งงาน</a></td>
+                    {/* ⭐ **เฉพาะแอดมิน** — นัดที่ปิดงานแล้วคือประวัติการเข้าไซต์
+                        กติกาปกติห้ามลบ · แอดมินข้ามได้ด้วย ?force=1 ตามมติ #1501
+                        ("ขอสิทธิ์ทุกอย่างให้แอดมิน รวมลบด้วย") ซึ่งเส้นนัดตกหล่นมาตลอด
+                        ⚠️ ไม่มีสิทธิ์ = ไม่โชว์ (ไม่ใช่โชว์แล้วกดไม่ได้) เพราะมันไม่ใช่
+                           ด่านที่คนธรรมดาแก้ได้ */}
+                    {isAdmin && (
+                      <td>
+                        <div className={styles.rowActions}>
+                          <Button iconOnly tone="danger" variant="quiet"
+                            aria-label={`ลบนัด ${visit.code || visit.scheduledDate} ถาวร`}
+                            title="ลบถาวร — สิทธิ์ผู้ดูแลระบบ"
+                            onClick={() => setPendingDelete({ type: "visit", row: visit, force: true })}
+                            icon={<Trash2 size={14} aria-hidden="true" />} />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -675,29 +788,12 @@ export default function ServiceSiteDetailPage({ params }) {
       <ConfirmDialog
         open={!!pendingDelete}
         danger
-        title={pendingDelete?.type === "plan" ? "ลบรอบบริการ"
-          : pendingDelete?.type === "zone" ? "ลบโซนออกจากไซต์"
-            : pendingDelete?.type === "site" ? "ลบไซต์บริการ"
-              : "ลบอุปกรณ์ออกจากไซต์"}
-        message={pendingDelete
-          ? (pendingDelete.type === "plan"
-            ? `ลบรอบทุก ${pendingDelete.row.everyDays} วัน?`
-            : pendingDelete.type === "zone"
-              ? `ลบโซน ${pendingDelete.row.name}?`
-              : pendingDelete.type === "site"
-                ? `ลบไซต์ ${pendingDelete.row?.name}?`
-                : `ลบ ${pendingDelete.row.label} ออกจากไซต์นี้?`)
-          : ""}
-        detail={pendingDelete?.type === "plan"
-          ? "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ"
-          : pendingDelete?.type === "zone"
-            ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
-            : pendingDelete?.type === "site"
-              ? "ลบได้เฉพาะไซต์ที่ยังไม่มีเครื่อง/โซน/ประวัตินัด — มีของค้างอยู่จะลบไม่ผ่านพร้อมบอกว่าติดอะไร ถ้าไซต์นี้เลิกใช้แล้วให้ปิดใช้งานแทน (แก้ไขไซต์ → สถานะ)"
-              : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้ใช้คำสั่ง 'ถอนกลับคลัง' หรือ 'ปลดระวาง' บนหน้าเครื่องแทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
-        confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : pendingDelete?.type === "site" ? "ลบไซต์" : "ลบอุปกรณ์"}
+        title={deleteCopy?.title}
+        message={deleteCopy?.message || ""}
+        detail={deleteCopy?.detail}
+        confirmLabel={deleteCopy?.confirmLabel}
         busy={busy}
-        onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : pendingDelete?.type === "site" ? removeSite : removeAsset}
+        onConfirm={deleteCopy?.onConfirm}
         onClose={() => setPendingDelete(null)}
       />
 
