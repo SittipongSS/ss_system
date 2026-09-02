@@ -526,6 +526,85 @@ test('ใบเก่าที่ไม่มีช่อง source = ใบท�
   assert.equal(isExternalContract({}), false);
 });
 
+/* ═══════════════════════════════════════════════════════════════════════
+   🐞 **สายเอกสารภายนอกไม่มีคิวเลยทั้งเส้น** (เจอ 2026-09-02)
+   สายนี้เดิน `draft → signed` ทีเดียว ไม่เคยแตะ `awaiting_approval` ⇒ เลนผู้รับรอง
+   ที่เพิ่งเติมไปตอน mig 0323 ไม่เคยยิงกับมัน · ส่วนเลนเจ้าของถือใบไว้ตลอด แม้หลัง
+   แนบไฟล์ครบแล้ว ⇒ **AE Supervisor ไม่มีทางรู้ว่ามีใบรออยู่** นอกจากมีคนไปบอก
+   ═══════════════════════════════════════════════════════════════════════ */
+const OWNER = { id: 'U-OWN', role: 'ae' };
+const mineExt = (extra = {}) => ext({ ownerId: OWNER.id, createdBy: OWNER.id, ...extra });
+
+test('🐞 ใบ external ร่างที่แนบเอกสารแล้ว = งานของ AE Sup ไม่ใช่ของเจ้าของใบ', () => {
+  const ready = { externalDocReady: true };
+  assert.equal(isContractWaitingOnMe(mineExt(), { user: AE_SUP, ...ready }), true);
+  assert.equal(isContractWaitingOnMe(mineExt(), { userId: OWNER.id, user: OWNER, ...ready }), false,
+    'แนบแล้ว = พ้นมือเจ้าของ ไปรอคนกดอนุมัติ');
+  // AE ธรรมดาไม่ใช่ผู้อนุมัติ ⇒ ไม่เข้าเลนนี้
+  assert.equal(isContractWaitingOnMe(mineExt(), { user: AE, ...ready }), false);
+});
+
+/* ⚠️ **ยังไม่แนบไฟล์ = ยังเป็นงานของเจ้าของ** — เติม AE Sup เข้าคิวตั้งแต่ใบยังว่าง
+   จะทำให้ป้ายของเขาบวมด้วยใบที่กดไม่ได้ (ปุ่มอนุมัติต้องมีไฟล์ก่อน) */
+test('ใบ external ร่างที่ยังไม่แนบเอกสาร ยังอยู่เลนเจ้าของ', () => {
+  assert.equal(isContractWaitingOnMe(mineExt(), { userId: OWNER.id, user: OWNER }), true);
+  assert.equal(isContractWaitingOnMe(mineExt(), { user: AE_SUP }), false);
+});
+
+/* 🪤 ไม่ส่งธงมา = ถือว่ายังไม่แนบ — ผู้เรียกที่ลืมต้องได้พฤติกรรมเดิม ไม่ใช่ป้ายบวม */
+test('ไม่ส่ง externalDocReady = ตกเลนเจ้าของตามเดิม', () => {
+  assert.equal(isContractWaitingOnMe(mineExt(), { user: AE_SUP }), false);
+});
+
+/* ใบที่ระบบเจนต้องไม่ถูกธงนี้แตะเลย — สายนั้นมีขั้น awaiting_approval ของตัวเองอยู่แล้ว */
+test('ธงเอกสารภายนอกไม่กระทบใบที่ระบบเจน', () => {
+  const gen = { status: 'draft', source: 'generated', ownerId: OWNER.id };
+  assert.equal(isContractWaitingOnMe(gen, { user: AE_SUP, externalDocReady: true }), false);
+  assert.equal(isContractWaitingOnMe(gen, { userId: OWNER.id, user: OWNER, externalDocReady: true }), true);
+});
+
+/* 🔴 คิวรีหาไฟล์แนบต้องไม่ยิงในกรณีปกติ — ตัวนับป้ายบนเมนูยิงทุก 2 นาทีทุกคน */
+test('🔴 ตัวหาใบที่แนบเอกสารแล้วต้องแคบเสมอ ไม่ยิงฐานถ้าไม่จำเป็น', async () => {
+  const { externalDocReadyIds } = await import('./contractExternalDocs.js');
+  /* 🪤 นับ **การแตะฐาน** ไม่ใช่ผลลัพธ์ — ตัวห่อ `fetchAllResult` กลืน error ที่โยน
+     ในคิวรีแล้วคืนชุดว่างเหมือนกัน ⇒ stub ที่ throw พิสูจน์อะไรไม่ได้เลย */
+  const touched = [];
+  const spy = { from(table) { touched.push(table); throw new Error('ห้ามแตะฐาน'); } };
+
+  // คนที่ไม่ใช่ผู้อนุมัติ — ไม่ยิงเลย
+  assert.equal((await externalDocReadyIds(spy, [ext({ id: 'C0' })], AE)).size, 0);
+  assert.deepEqual(touched, [], 'คนที่กดอนุมัติไม่ได้ ต้องไม่ทำให้เกิดคิวรีเลย');
+  // ไม่มีใบ external ร่างในชุด — ไม่ยิงเลย
+  assert.equal((await externalDocReadyIds(spy, [{ id: 'C1', status: 'draft' }], AE_SUP)).size, 0);
+  assert.equal((await externalDocReadyIds(spy, [ext({ id: 'C2', status: 'signed' })], AE_SUP)).size, 0);
+  assert.deepEqual(touched, [], 'ไม่มีใบที่ต้องถาม ต้องไม่ทำให้เกิดคิวรีเลย');
+
+  // มีใบที่ต้องถามจริง ⇒ ถามด้วยคีย์ชนิดเอกสารที่ถูก และคืนเฉพาะใบที่เจอไฟล์
+  /* ⚠️ คิวรีถูกห่อด้วย `fetchAllResult` (กติกา check:rowcap) ⇒ ตัวปลอมต้องเป็น
+     thenable ที่ตอบ `{ data, error }` และรับ `.range()` ที่ตัวไล่หน้าเรียก */
+  const calls = [];
+  const stub = {
+    from(table) {
+      calls.push(table);
+      const q = {
+        select: () => q,
+        eq: (col, val) => { calls.push(`${col}=${val}`); return q; },
+        in: (col, ids) => { calls.push(`${col} in ${ids.join(',')}`); return q; },
+        order: () => q,
+        range: () => q,
+        limit: () => q,
+        then: (resolve) => resolve({ data: [{ entityId: 'C3' }], error: null }),
+      };
+      return q;
+    },
+  };
+  const found = await externalDocReadyIds(stub, [ext({ id: 'C3' }), ext({ id: 'C4' })], AE_SUP);
+  assert.deepEqual([...found], ['C3']);
+  assert.ok(calls.includes('attachments'));
+  assert.ok(calls.includes('docType=external_doc'), `ถามด้วยคีย์ผิด: ${calls.join(' | ')}`);
+  assert.ok(calls.some((c) => c.startsWith('entityId in ')));
+});
+
 /* กติกา GatedAction — เจ้าของขั้นเห็นปุ่มเสมอ คนอื่นไม่เห็น */
 test('ปุ่มโผล่เฉพาะ AE Sup บนใบ external ที่ยังเป็นร่าง', () => {
   assert.equal(showExternalApprove(ext(), AE_SUP), true);
