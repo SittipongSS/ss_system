@@ -901,3 +901,27 @@ test('🪤 อนุมัติเอกสารแทนสัญญาต้
   // ใช้ค่าคงที่กลาง ไม่พิมพ์สตริงซ้ำ (พิมพ์ต่างกันเมื่อไร ด่านเงียบไปโดยไม่มีอะไรฟ้อง)
   assert.doesNotMatch(route, /docType !== 'external_doc'/);
 });
+
+/* 🪤 **ทุกเส้นที่ผูก "ไฟล์ที่เซ็นแล้ว" เข้ากับใบ ต้องตรวจชนิดไฟล์ด้วย**
+   ด่านเดิมของทั้งสามเส้นถามแค่ "เป็นไฟล์แนบของใบนี้ไหม" ⇒ คำขอที่ยิงตรงส่งไฟล์ชนิด
+   ไหนก็ได้ แล้วช่อง "ฉบับที่ลงนาม" ชี้ไปที่ของอย่างอื่น · โมดัลบนจอเสนอชนิดเดียวอยู่แล้ว
+   แต่ **จอไม่ใช่ด่าน**
+   ⚠️ วัดก่อนรัด (2026-09-02): ทั้งฐานยังไม่มีสัญญาหรือบันทึกที่มี `signedFileId` สักใบ
+      ⇒ ด่านชุดนี้ไม่ตีกลับของเก่าที่ทำไปแล้วเลย */
+test('🪤 ทุกเส้นที่ผูกไฟล์ลงนามต้องตรวจ docType ไม่ใช่แค่ว่าเป็นไฟล์ของใบนี้', () => {
+  const cases = [
+    ['contracts/[id]/sign', 'SIGNED_CONTRACT_DOC_TYPE'],
+    ['contracts/[id]/approve-external', 'EXTERNAL_DOC_TYPE'],
+    ['addenda/[id]/sign', 'SIGNED_ADDENDUM_DOC_TYPE'],
+  ];
+  for (const [rel, constant] of cases) {
+    const route = readFileSync(
+      new URL(`../../app/api/sales-planning/${rel}/route.js`, import.meta.url),
+      'utf8',
+    );
+    assert.match(route, /"docType"/, `${rel}: ต้อง select docType มาด้วย`);
+    assert.match(route, new RegExp(`file\\.docType !== ${constant}`), rel);
+    /* ใช้ค่าคงที่กลาง ไม่พิมพ์สตริงซ้ำ — พิมพ์ต่างกันเมื่อไร ด่านเงียบไปโดยไม่มีอะไรฟ้อง */
+    assert.doesNotMatch(route, /docType !== '[a-z_]+'/, `${rel}: ห้ามฝังสตริงชนิดเอกสาร`);
+  }
+});
