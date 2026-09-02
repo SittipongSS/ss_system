@@ -138,14 +138,17 @@ const CSS_FILES = (function collect(dir, out = []) {
   return out;
 })(path.join(process.cwd(), "src"));
 
-/* เอกสารพิมพ์ประกอบ CSS ของตัวเองและไม่โหลด globals.css โทเคนไม่มีค่าที่นั่น */
-const EXEMPT = ["src\\components\\documents\\", "src/components/documents/"];
-
+/* เดิมมี EXEMPT = ["src\\components\\documents\\", "src/components/documents/"] พร้อม
+   คอมเมนต์ว่า "เอกสารพิมพ์ประกอบ CSS ของตัวเองและไม่โหลด globals.css" — ลบทิ้ง 2026-09-02
+   เพราะยกเว้นศูนย์ไฟล์: โฟลเดอร์นั้นปลดระวางไปแล้ว (2a2eed0b) และสองสมาชิกนั้นเป็น
+   พาธเดียวกันด้วยซ้ำ (ตัวแรกรูป Windows ถูก .replaceAll("\\","/") แปลงให้เท่ากับตัวที่สอง)
+   เอกสารพิมพ์วันนี้อยู่ src/lib/ ซึ่งไม่มีไฟล์ .css เลย จึงไม่เคยเข้ามาถึงด่านนี้อยู่แล้ว
+   ⚠️ ถ้าวันหน้าเอกสารพิมพ์กลับมามีชีตของตัวเอง ต้องยกเว้นด้วยพาธที่มีอยู่จริง
+   และวัดก่อนว่ายกเว้นกี่ไฟล์ อย่าเขียนยามที่ยกเว้นศูนย์ไฟล์ทิ้งไว้อีก */
 test("ไม่มีบริบทไหนเขียนความสูงปุ่มทับด้วยเลขดิบ (ทุกไฟล์ CSS)", () => {
   const offenders = [];
   for (const file of CSS_FILES) {
     const rel = path.relative(process.cwd(), file).replaceAll("\\", "/");
-    if (EXEMPT.some((p) => rel.startsWith(p.replaceAll("\\", "/")))) continue;
     for (const block of stripComments(fs.readFileSync(file, "utf8")).split("}")) {
       const brace = block.indexOf("{");
       if (brace === -1) continue;

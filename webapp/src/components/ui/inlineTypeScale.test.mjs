@@ -29,7 +29,10 @@ function jsFiles() {
       }
     })(path.join(root, dir));
   }
-  return out.filter((file) => !file.replaceAll("\\", "/").includes("src/components/documents/"));
+  /* เดินไฟล์ชุดเดียวกับ `uiFiles` ของ audit-ui.mjs (src/app + src/components) — เอกสาร
+     พิมพ์อยู่ใต้ src/lib จึงอยู่นอกขอบเขตโดยโครงสร้าง ไม่ต้องมียามกรองพาธ
+     (ลบยามที่ยกเว้น `src/components/documents/` ออก 2026-09-02 · ดูคอมเมนต์หัวลูปที่นั่น) */
+  return out;
 }
 
 const inlineTokens = () => {
