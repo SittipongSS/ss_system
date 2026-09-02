@@ -5121,13 +5121,18 @@ button.empty-state { width: 100%; font: inherit; }
    ⚠️ ลิงก์ดันไปขวาด้วย margin-left ไม่ใช่ justify-content: space-between ที่แถว —
    บางสิทธิ์เห็นเฉพาะลิงก์ (ไม่มีตัวสลับ) ถ้าใช้ space-between ลิงก์เดี่ยวจะไปเกาะซ้าย */
 .scope-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+/* 🔴 เคยมี `color: var(--blue)` อยู่บรรทัดสุดท้ายของบล็อกนี้ และ **ไม่เคยมีผลเลย** —
+   ทั้งสองจุดที่ใช้เขียน `className="linklike kpi-full-link"` ส่วน `.linklike` อยู่
+   ล่างกว่าในไฟล์เดียวกันและ specificity เท่ากัน (0-1-0) ⇒ ตัวหลังชนะมาตลอด
+   ลบทิ้ง 2026-09-02 แทนที่จะดันด้วย `.linklike.kpi-full-link`: ลิงก์ทั้งระบบมีสีเดียว
+   คือสีของ `.linklike` การให้ลิงก์ตัวนี้เป็นน้ำเงินเดี่ยว ๆ คือข้อยกเว้นที่ไม่มีใครสั่ง
+   ⚠️ ห้ามเติมสีกลับโดยไม่ไล่ดูว่ากฎไหนชนะจริงบนหน้า — กฎซากไม่มีอะไรฟ้อง */
 .kpi-full-link {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   font-size: var(--fs-7);
   font-weight: var(--fw-medium);
-  color: var(--blue);
 }
 .project-detail-actions {
   display: flex;
@@ -6618,7 +6623,26 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 /* ── คอลัมน์ "ขั้นตอนตามไทม์ไลน์" ในตารางรายการดีล ─────────────────────────
    สองบรรทัด: เลขขั้น n/รวม (บน) + ชื่อขั้นตอน (ล่าง) · .step-cell-done = เสร็จครบ */
 .step-cell { white-space: nowrap; }
+/* 🐞 2026-09-02: คลาสนี้ห่อสองบรรทัด (เลขขั้น + ชื่อขั้น) ด้วย `display: block` พอ
+   `.linklike` ได้เส้นใต้ เส้นจะถูกวาดใต้ **บรรทัดล่าง** ซึ่งคือ `.step-cell-name`
+   ที่มี `overflow: clip` + clip-margin จูนไว้พอดีกับหมึกไทยที่ล้น 0.44px (ดูคอมเมนต์
+   ข้างล่าง) ⇒ `text-underline-offset: 3px` ดันเส้นลงไปในเขต clip จนขาด/ทับสระล่าง
+   ทั้งก้อนนี้คือ "ทั้งเซลล์เป็นเป้าเดียว" ไม่ใช่ลิงก์ชิ้นในข้อความ จึงถอดเส้นใต้แล้ว
+   ใช้ท่าเดียวกับ `.table-row-link` (ทาพื้นตอนชี้ · วงโฟกัสตอนโฟกัส) แทน */
 .step-cell-link { display: block; }
+/* ⚠️ ต้องเขียนคู่กับ `.linklike` ให้ specificity สูงกว่า — `.linklike` อยู่ **ล่างกว่า**
+   ในไฟล์เดียวกันและมีน้ำหนักเท่ากัน (0-1-0) เขียน `.step-cell-link` เดี่ยว ๆ จะแพ้เงียบ ๆ
+   (โรคเดียวกับ `.kpi-full-link` ที่กฎซากอยู่มาเป็นเดือนโดยไม่มีใครรู้) */
+.linklike.step-cell-link {
+  color: inherit;
+  text-decoration: none;
+}
+.linklike.step-cell-link:hover,
+.linklike.step-cell-link:focus-visible {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: var(--radius);
+}
 .step-cell-num {
   display: block;
   font-weight: var(--fw-semibold);
@@ -6833,21 +6857,40 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   padding: 0 var(--space-1);
   border-radius: var(--radius);
   background: var(--accent-soft);
-  /* เหตุผลเดียวกับ `.rich-link` ข้างล่าง — `--accent` บนพื้น `--accent-soft`
-     ได้คอนทราสต์แค่ 2.78:1 ในธีมสว่าง ต้องใช้ตัว ink */
+  /* เหตุผลเดียวกับ `.linklike` ข้างล่าง — `--accent` บนพื้น `--accent-soft`
+     ได้คอนทราสต์แค่ 2.78:1 ในธีมสว่าง ต้องใช้ตัว ink
+     (เดิมชี้ไป `.rich-link` ซึ่งยุบรวมเข้า `.linklike` แล้ว 2026-09-02) */
   color: var(--accent-ink);
   font-weight: var(--fw-semibold);
 }
 
-/* ── ลิงก์ที่ฝังอยู่ในเนื้อความ (เธรด: รหัสเอกสาร · URL · รายการที่กดเข้าไปดูได้) ──
-   ⚠️ ต่างจาก `.linklike` ตรงที่ **ต้องเห็นว่ากดได้ตั้งแต่ยังไม่เอาเมาส์ไปชี้** —
-   `.linklike` เป็น `color: inherit` ซึ่งเหมาะกับปุ่มที่อยู่ในบริบทของตัวเอง แต่พอ
-   เอามาใช้กลางย่อหน้าแล้วมันกลมกลืนกับข้อความธรรมดาจนไม่มีใครรู้ว่ากดได้
-   ⚠️ `text-underline-offset` เผื่อสระล่างของไทย (ุ ู ฺ) ไม่ให้เส้นทับ
+/* ── ลิงก์ที่พาไปหน้าอื่น — "มี URL ปลายทาง" (มติผู้ใช้ 2026-09-02) ──────────────
+   🔴 ของเดิมคือ `color: inherit` + เปลี่ยนสีเฉพาะตอน `:hover` ⇒ **ลิงก์ 52 จุด
+   ดูเหมือนข้อความธรรมดา** อ่านออกว่ากดได้เฉพาะคนที่ใช้เมาส์และเอาเมาส์ไปวางแล้ว ·
+   คนใช้คีย์บอร์ด จอสัมผัส และคนที่แยกสีไม่ออก ไม่มีทางรู้เลย
+   (WCAG 2.2 §1.4.1 ห้ามใช้สีเป็นตัวบอกความหมายตัวเดียว · §2.4.7 ต้องเห็นโฟกัส)
+
+   **เส้นใต้ + `--accent-ink` = "กดแล้วไปที่อื่น"** ⇒ ปุ่มที่ทำงานอยู่ในหน้าเดิม
+   **ห้ามใช้ทรงนี้** ให้ไป `.text-action` (เส้นประ) หรือ `Button` แทน
+
+   ⚠️ คงชุด reset ของ <button> ไว้ แม้ 7 จุดที่เป็นปุ่มย้ายออกไปหมดแล้ว — ชื่อนี้คือ
+   ชื่อที่คนนึกออกก่อนเพื่อน ถอด reset ทิ้งแล้ววันหนึ่งมีคนแปะบน <button> จะได้ปุ่มเทา
+   ขอบเทาโดยไม่มีอะไรฟ้อง (เคสเดียวกับ `btn danger`, PR #699)
+
+   🪤 **ห้ามใส่ `font: inherit`** แม้จะเป็น reset ที่ถูกต้องของปุ่ม — `.mono` อยู่
+   บรรทัด ~5550 คลาสนี้อยู่ล่างกว่า · specificity เท่ากัน ตัวหลังชนะ ⇒ shorthand
+   `font` จะล้าง `font-family: var(--font-mono)` และ `font-variant-numeric` ทิ้ง
+   ทั้งคู่ที่ **11 จุดของ `linklike mono`** (เลขที่ SO/QT/สัญญาทั้งระบบ) โดยไม่มี
+   error อะไรฟ้อง · ปุ่มได้ font-family/size จากกฎรวม `button, select, input,
+   textarea` อยู่แล้ว
+
+   ⚠️ `text-underline-offset` เผื่อสระล่างของไทย (ุ ู ฺ) ไม่ให้เส้นทับหมึก
    🔴 สีต้องเป็น `--accent-ink` ไม่ใช่ `--accent` — วัดบนพื้นจริงแล้ว `--accent`
    ได้คอนทราสต์แค่ 2.75:1 ในธีมสว่าง (ตก AA) ส่วน `--accent-ink` ได้ 4.76:1
-   ธีมมืดสองตัวนี้เป็นสีเดียวกัน (6.44:1) จึงไม่เสียอะไร */
-.rich-link {
+   ธีมมืดสองตัวนี้เป็นสีเดียวกัน (6.44:1) จึงไม่เสียอะไร
+   (บันทึกนี้ย้ายมาจาก `.rich-link` ที่ยุบรวมเข้าคลาสนี้แล้ว — ห้ามลบทิ้ง · สองคลาส
+   ประกาศเหมือนกันทุกบรรทัดหลังแก้ และปนกันอยู่ในสถานการณ์เดียวกันมาตั้งแต่ต้น) */
+.linklike {
   color: var(--accent-ink);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
@@ -6855,26 +6898,123 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   text-underline-offset: 3px;
   cursor: pointer;
 }
-/* ชี้แล้วเส้นทึบขึ้น — ยืนยันว่าเล็งถูกชิ้น โดยตัวอักษรไม่ขยับ (ห้ามเปลี่ยนความหนา
-   ตัวอักษรหรือ padding ตรงนี้ ข้อความรอบข้างจะไหลตาม) */
-.rich-link:hover,
-.rich-link:focus-visible {
+
+/* ชี้/โฟกัสแล้วเส้นทึบขึ้น — ยืนยันว่าเล็งถูกชิ้นโดย **ตัวอักษรไม่ขยับ**
+   (ห้ามเปลี่ยนน้ำหนักตัวอักษรหรือ padding ตรงนี้ ข้อความรอบข้างจะไหลตาม
+   เหตุผลเดียวกับที่ `.rich-link` เคยเขียนไว้) */
+.linklike:hover:not(:disabled),
+.linklike:focus-visible {
   text-decoration-color: currentColor;
   text-decoration-thickness: 2px;
 }
 
-.linklike {
+/* 🪤 วงโฟกัสเป็น `outline` ไม่ใช่ `box-shadow: var(--focus-ring)` ด้วยเหตุผล 3 ข้อ
+   1) ลิงก์เป็น inline ที่ตัดข้ามบรรทัดได้ — box-shadow วาดกรอบก้อนเดียวคร่อม
+      ทั้งสองบรรทัด ส่วน outline เดินตามชิ้นของ inline fragment เอง
+   2) ครึ่งหนึ่งของ 52 จุดอยู่ในเซลล์ตาราง/กล่อง ellipsis ที่มี `overflow: hidden`
+      — เงาถูกกินหายทั้งวง
+   3) `--focus-ring` คือ `--accent` ที่ 20% ⇒ ไม่ผ่าน 3:1 ของ §1.4.11 บนพื้นการ์ด
+   `outline` 2px + offset 2px คือรูปที่ globals.css ใช้อยู่แล้วเป็นหมู่ · ตามของหมู่
+   ⚠️ ถ้าอยากให้ `--focus-ring` เป็นมาตรฐานจริง ต้องเป็นงานแยกที่ไล่ทุกจุดพร้อมกัน
+
+   🔴 **สีวงเป็น `--accent-ink` ไม่ใช่ `--accent`** — ร่างแรกของบล็อกนี้เขียน `--accent`
+   ตาม "ของหมู่" ทั้งที่คอมเมนต์เหนือ `.linklike` เองยกเลข 2.75:1 มาเป็นเหตุผลว่า
+   `--accent` ใช้เป็นสีไม่ได้ · วัดซ้ำ 2026-09-02: `--accent` #c9794d บน `--bg`
+   #efe9dd = **2.75:1 ตก §1.4.11 (ต้อง 3:1)** ส่วน `--accent-ink` #9c5228 = 4.76:1
+   `outline-offset: 2px` ดันวงออกไปนั่งบนพื้นหน้าพอดี ⇒ พื้นที่ต้องเทียบคือ `--bg`
+   ไม่ใช่ `--panel` · ธีมมืดทั้งสองโทเคนเป็น #d38a61 ตัวเดียวกัน จึงไม่เสียอะไรเลย
+   ⚠️ อีก 9 กฎในไฟล์ยังใช้ `var(--accent)` อยู่ — เป็นหนี้ที่รู้ตัว ไล่ทีเดียวรอบหน้า
+   ห้ามลอกรูปนั้นมาใช้กับกฎใหม่ */
+.linklike:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* กดไม่ได้ = ห้ามหน้าตาเป็นลิงก์ ไม่งั้นได้ "ลิงก์ที่กดแล้วไม่ไปไหน" ซึ่งแย่กว่า
+   ข้อความธรรมดา · ไม่ลด opacity เพราะจุดที่เคยใช้จริงคือค่าในตารางที่ยังต้องอ่านออก */
+/* 🐞 **ห้ามใส่ชุด reset ของ <button> (`border`/`background`/`padding`) ที่นี่** (2026-09-02)
+   ร่างแรกยกมาจาก `.linklike` เดิมซึ่งเคยใช้บน <button> จริง · แต่ 7 จุดนั้นย้ายไป
+   `.text-action` หมดแล้ว วัดซ้ำ: `.linklike` เหลือใช้บน `<Link>` 44 · `<a>` 8 ·
+   `<span>` 2 · `<div>` 1 = **<button> 0 จุด** ⇒ reset เป็นน้ำหนักตายที่ไม่มีใครใช้
+   และมันไปล้าง `.ui-badge` (globals.css:2582) แบบเงียบ ๆ — น้ำหนักเท่ากัน 0-1-0
+   แต่คลาสนี้อยู่ล่างกว่า 4,000 บรรทัด ⇒ ตัวหลังชนะเสมอ ป้าย 3 จุดเหลือแค่ข้อความ
+   ขีดเส้นใต้ลอย ๆ (database/scents:505 · :617 · database/formulas:577)
+   ทางแก้ที่เลือกคือ **ถอด reset ทิ้ง** ไม่ใช่เขียนกฎชดเชย `.ui-badge.linklike`
+   เพราะกฎชดเชยต้องก๊อป `padding: 3px …` มาเขียนซ้ำ = เลขดิบเพิ่ม 1 จุด
+   (`RAW_SPACING_CAP` จับได้ทันที 156 > 155) และสร้างข้อยกเว้นที่ต้องดูแลตลอดไป
+   ⚠️ ถ้าวันหน้ามีคนเอา `.linklike` ไปใส่ <button> อีก ให้เขียน `button.linklike`
+   แยกต่างหาก อย่าเติมกลับเข้ากฎรวม */
+
+/* ── ลิงก์ที่กินทั้งเซลล์และมีสองบรรทัด (รหัสบน · ชื่อล่าง) ─────────────────────
+   🐞 `text-decoration` ส่งต่อไปยัง block descendant ทุกตัว และวาดด้วย **สีของ
+   บรรพบุรุษ** ลูกยกเลิกเองไม่ได้ ⇒ ลิงก์ที่ครอบ `<strong>` + `<span display:block>`
+   ได้ก้อนขีดเส้นใต้ทุกบรรทัด รวมบรรทัดล่างที่เป็น `--text-3` แต่เส้นเป็น terracotta
+   ใช้ที่ 3 จุด: sales-planning/deals:647 · sales-planning/leads:722 · sa/projects:236
+   ⇒ ถอดเส้นออกจากตัวลิงก์ แล้วขีดเฉพาะบรรทัดแรกซึ่งเป็นชื่อจริงของแถว */
+.linklike-block {
+  display: block;
+  text-align: left;
+  text-decoration: none;
+}
+.linklike-block > strong {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.linklike-block:hover:not(:disabled) > strong,
+.linklike-block:focus-visible > strong {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+}
+
+.linklike:disabled {
+  color: inherit;
+  text-decoration: none;
+  cursor: default;
+}
+
+/* ── ข้อความที่ "ทำงานในหน้านี้" — คู่ตรงข้ามของ `.linklike` (2026-09-02) ─────────
+   ⚠️ ต่างจาก `.linklike` ตรงที่ **ไม่มีปลายทางให้ไป** จึงห้ามใช้เส้นใต้ทึบ + สี
+   accent ซึ่งระบบใช้แปลว่า "มี URL" — แต่ก็ต้องไม่กลับไปเป็นข้อความธรรมดาอีก
+   (นั่นคือบั๊กที่รอบนี้กำลังแก้)
+   เส้นประ = ยืมสำนวนจาก `.table-metric-button` ที่ตัดสินเรื่องเดียวกันไปแล้ว:
+   **เส้นทึบ = ไปที่อื่น · เส้นประ = เกิดอะไรขึ้นตรงนี้**
+   🪤 ไม่ใช้ `font: inherit` ด้วยเหตุผลเดียวกับ `.linklike` (ล้าง `.mono`) แต่ต้อง
+   สั่ง `line-height` เอง — UA ให้ <button> เป็น `normal` (~1.2) ซึ่งต่ำกว่า
+   `--lh-thai` 1.65 ⇒ หัวสระบนของไทยถูกกล่องบรรทัดตัด (ดู docs/typography-system.md
+   · นี่คือบั๊กที่ 7 จุดเดิมมีอยู่แล้วแต่ไม่มีใครเห็น) */
+.text-action {
   border: 0;
   background: transparent;
-  color: inherit;
   padding: 0;
+  color: var(--text-2);
+  line-height: var(--lh-text);
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
   cursor: pointer;
 }
-.linklike:hover:not(:disabled) {
-  color: var(--accent-ink);
+.text-action:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration-color: currentColor;
 }
-.linklike:disabled {
-  cursor: default;
+/* สีวงเดียวกับ `.linklike` — `--accent` ตก 3:1 ในธีมสว่าง (ดูเหตุผลเต็มที่นั่น) */
+.text-action:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.text-action:disabled {
+  opacity: var(--op-disabled);
+  text-decoration: none;
+  cursor: not-allowed;
+}
+/* แถวหัวกลุ่มที่กดพับได้ — ทั้งแถวคือเป้าเดียว (รายงานวางเป้า) */
+.text-action-block {
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 
 /* รายการงานค้างในคำเตือนก่อนปิดโครงการ (StatusNotice) — เตือนอย่างเดียว ไม่บล็อก */

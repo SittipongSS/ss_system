@@ -41,3 +41,17 @@ export function attachmentUrlError(fileUrl) {
 
 // ชื่อเดิมที่ผู้เรียกฝั่ง server ใช้อยู่ — ไม่ต้องอ่าน env อีกแล้วเพราะเหลือที่เก็บเดียว
 export const attachmentUrlErrorForEnv = attachmentUrlError;
+
+/* ที่อยู่ที่ **เบราว์เซอร์** ใช้เปิดไฟล์แนบหนึ่งแถว
+   ⭐ ยกออกมาจาก `AttachmentsPanel` ตอนหน้าสัญญาต้องเปิดไฟล์เองด้วย — กติกา "ไฟล์บน
+      Drive ต้องผ่าน proxy ของเรา" ต้องมีที่เดียว ก๊อปไปวางเมื่อไรก็มีวันที่จอหนึ่งเปิด
+      ผ่าน proxy อีกจอเปิด URL ดิบ แล้วสิทธิ์คนละชั้นกัน
+   ⚠️ **ไม่ตรวจ `restricted` ที่นี่** โดยเจตนา — ตัวนี้ตอบแค่ "ไฟล์อยู่ไหน" ส่วน
+      "เปิดได้ไหม" เป็นเรื่องของจอ (AttachmentsPanel แสดงเป็นข้อความมีแม่กุญแจแทนลิงก์)
+      และของ proxy ที่ตรวจสิทธิ์จริง · ยัดด่านสิทธิ์มาไว้ในตัวหาที่อยู่ = ด่านที่สองที่
+      เพี้ยนจากด่านจริงได้เงียบ ๆ */
+export function attachmentHref(row) {
+  if (!row) return null;
+  if (row.driveFileId) return `/api/master/attachments/${row.id}/file`;
+  return row.fileUrl || null;
+}

@@ -542,11 +542,16 @@ function NumCell({ editing, canEdit, dirty, draft, setDraft, onStart, onCommit, 
       />
     );
   }
+  /* ⚠️ ไม่ใช้ `.linklike` — เซลล์นี้ไม่มี URL ปลายทาง (กดแล้วกลายเป็น <input>)
+     และเมทริกซ์ทั้งตารางกดได้ทุกช่อง เส้นประใต้ตัวเลข tabular ทุกช่องจะรกที่สุด
+     ⇒ ไม่ใช้ `.text-action` ด้วย · affordance มาจาก title="คลิกเพื่อแก้ไข"
+     + สถานะ dirty (amber + outline) ที่ `.numBtn` มีอยู่แล้ว
+     reset ของปุ่ม (border/cursor) กับวงโฟกัส ย้ายเข้า `.numBtn` ในโมดูลของมันเอง */
   return (
     <button
       type="button"
       className={[
-        "linklike mono tabular-nums",
+        "mono tabular-nums",
         styles.numBtn,
         bold ? styles.numBtnBold : "",
         dirty ? styles.numBtnDirty : "",

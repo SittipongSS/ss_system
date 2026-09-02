@@ -18,9 +18,17 @@
   gap: var(--space-1-5);
 }
 
+/* 🪤 คลาสนี้แปะทั้ง <a> ที่มีไฟล์ให้เปิด และ <span> ของไฟล์ที่ยังไม่มีลิงก์ —
+   ตัว <a> ได้ `.linklike` มาด้วย · **ห้ามตั้ง `color` ที่คลาสเปล่า**: ทั้งคู่
+   specificity 0-1-0 เท่ากัน ใครชนะขึ้นกับว่า Next แทรก CSS module ก่อนหรือหลัง
+   globals.css ⇒ สีลิงก์อาจต่างกันระหว่าง dev กับ production (2026-09-02 ตอน
+   `.linklike` ได้สีจริง ความต่างกลายเป็น terracotta vs เทา = มองออกทันที)
+   ⇒ สีเทาผูกไว้กับ `span` อย่างเดียว (0-1-1) ส่วน <a> ปล่อยให้ `.linklike` ตัดสิน */
 .fileItem {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1-5);
+}
+span.fileItem {
   color: var(--text-2);
 }

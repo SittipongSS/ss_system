@@ -60,6 +60,13 @@ export const contractSourceOf = (contract) =>
 export const isExternalContract = (contract) => contractSourceOf(contract) === 'external';
 export const externalDocKindLabel = (kind) => EXTERNAL_DOC_KIND_LABELS[kind] || '—';
 
+/* 🔴 **ใบ external ไม่มีเอกสารของระบบให้พิมพ์** — เนื้อของมันคือไฟล์ที่แนบไว้
+   ปล่อยให้เส้นพิมพ์ทำงานเมื่อไร ระบบจะเรนเดอร์ "สัญญา" จากแม่แบบด้วยช่องที่ไม่มีใคร
+   ตกลงด้วย แล้ว **ตรึงลง `issuedHtml` ถาวร** (ใบ external ได้ `contractNo` จาก RPC
+   ตอนอนุมัติ ⇒ ผ่านเงื่อนไขเก็บเนื้อของ route พิมพ์) — ตรงข้ามกับเหตุผลที่ mig 0322
+   มีอยู่: *"ไม่ต้องกุสัญญาปลอมขึ้นมาในระบบ"* */
+export const EXTERNAL_NO_DOCUMENT_NOTE = 'ใบนี้ใช้เอกสารภายนอกแทนสัญญา — ตัวเอกสารคือไฟล์ที่แนบไว้ ไม่ใช่ฉบับที่ระบบเจนจากแม่แบบ';
+
 /* ⭐ `awaiting_approval` เพิ่ม 2026-08-31 (mig 0323) — ขั้น "รอหัวหน้ารับรอง" ของ
    สาย generated · ของเดิม SA กดบันทึกลงนามแล้วจบเลย = ไม่มีด่านที่สอง ทั้งที่
    `signed` เป็นตัวปลดล็อกของจริงหลายอย่าง
