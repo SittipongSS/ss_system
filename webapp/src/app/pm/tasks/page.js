@@ -4,9 +4,10 @@ import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "rea
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
+import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
+import { ListTodo, Search, CheckCircle2, Clock, AlertTriangle, User, Plus, Trash2, CircleDashed, Flame, Calendar, Handshake, Tag, Star, UserPlus, ChevronLeft, ChevronRight, Pencil, BarChart3, HandHelping, MessageCircleQuestion, PauseCircle, CornerDownRight, Undo2, X } from "lucide-react";
 import Modal from "@/components/Modal";
 import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskNoteLine from "@/components/pm/TaskNoteLine";
@@ -436,9 +437,10 @@ export default function TasksPage() {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("asc"); }
   };
-  const sortArrow = (key) => sortKey === key
-    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+  /* หน้านี้ถือ state การเรียงเอง (useStickyState) ไม่ได้ใช้ useSortableTable —
+     ห่อให้ตรงรูป { sortKey, sortDir, sortBy } ที่ <SortTh> ขอ แล้วใช้ปุ่ม/aria-sort
+     ตัวเดียวกับทั้งระบบ (ไอคอนลูกศรอยู่ใน SortTh แล้ว ไม่ต้องมี sortArrow ประจำหน้า) */
+  const sort = { sortKey, sortDir, sortBy: handleSort };
 
   // ── CRUD ──
   const openAdd = () => { setEditingId(null); setInquirySource(null); setChainSource(null); setForm(TASK_BLANK); setShowModal(true); };
@@ -1076,13 +1078,13 @@ export default function TasksPage() {
           <TableScroll surface="embedded"><table className="premium-table">
             <thead>
               <tr>
-                <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>สถานะ {sortArrow("status")}</span></th>
-                <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>ชื่องาน {sortArrow("name")}</span></th>
+                <SortTh label="สถานะ" sortKey="status" sort={sort} />
+                <SortTh label="ชื่องาน" sortKey="name" sort={sort} />
                 {scope === "mine" && <th>บทบาทของฉัน</th>}
                 <th>หมวด</th>
                 {scope !== "mine" && <th>ผู้รับมอบหมาย</th>}
                 <th>ความยาก</th>
-                <th onClick={() => handleSort("due")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>กำหนดเสร็จ {sortArrow("due")}</span></th>
+                <SortTh label="กำหนดเสร็จ" sortKey="due" sort={sort} />
                 <th>เชื่อมโยง</th>
                 <th style={{ width: "70px", textAlign: "right" }}>จัดการ</th>
               </tr>

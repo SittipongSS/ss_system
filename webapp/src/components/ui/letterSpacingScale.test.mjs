@@ -11,8 +11,12 @@ const tokens = Object.fromEntries(
   [...CSS.matchAll(/--ls-([\w-]+):\s*(-?[0-9.]+)em;/g)].map((m) => [m[1], Number(m[2])]),
 );
 
+/* 📅 2026-09-02 เพิ่ม `table-head` — ยกมาจาก `.025em` ที่ Table.module.css ตอนทำ
+   หัวตารางเรียงลำดับ (SortTh) เพราะปุ่มในเซลล์ต้อง `letter-spacing: inherit` รับช่วง
+   ค่านั้นลงไป (UA ตั้ง `normal` ทับให้ควบคุมฟอร์มทุกตัว สายสืบทอดจึงขาดตรงปุ่ม)
+   ⇒ ค่ามีชื่อแล้ว อ่านออกว่าปุ่มกำลังรับอะไรมา ไม่ใช่เลขลอยที่แก้ฝั่งเดียวแล้วอีกฝั่งไม่รู้ */
 test("มีขั้นระยะห่างตัวอักษรครบ", () => {
-  assert.deepEqual(Object.keys(tokens).sort(), ["heading", "label", "tabular"]);
+  assert.deepEqual(Object.keys(tokens).sort(), ["heading", "label", "table-head", "tabular"]);
 });
 
 /* ⭐ กฎที่สำคัญที่สุดของชั้นนี้ — หน่วยต้องเป็น em
@@ -43,6 +47,10 @@ test("ทิศทางของแต่ละขั้นถูกต้อ�
   assert.ok(tokens.tabular < 0, "ตัวเลขคอลัมน์ตรงต้องบีบเข้าเล็กน้อย");
   assert.ok(tokens.heading < tokens.tabular, "หัวเรื่องบีบแน่นกว่าตัวเลข");
   assert.ok(tokens.label > 0, "ป้ายตัวเล็กพิมพ์ใหญ่ต้องคลี่ออก (ค่าบวก)");
+  assert.ok(tokens["table-head"] > 0, "หัวคอลัมน์ต้องคลี่ออก (ตัวหนาตัวเล็ก เกยกันง่าย)");
+  assert.ok(tokens["table-head"] < tokens.label,
+    "หัวคอลัมน์คลี่ *น้อยกว่า* ป้ายพิมพ์ใหญ่มาก — หัวตารางเป็นตัวพิมพ์ปกติ ไม่ใช่ eyebrow\n"
+    + "สลับสองค่านี้เมื่อไหร่ หัวตารางทั้งระบบจะกางออกจนอ่านเป็นป้ายแทนที่จะเป็นหัวคอลัมน์");
 });
 
 test("audit:ui บังคับทั้งเพดานและหน่วย", () => {

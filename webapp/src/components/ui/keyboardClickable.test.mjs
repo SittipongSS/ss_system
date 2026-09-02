@@ -299,8 +299,10 @@ function uiJsFiles() {
   const out = [];
   /* ⚠️ ต้องตรงกับขอบเขตของ scanA11y() ใน audit-ui.mjs เป๊ะ ๆ — **รวม src/lib ด้วย**
      ด่านนี้กว้างกว่า uiFiles หนึ่งชั้นโดยเจตนา เพราะ SortTh (หัวตารางเรียงลำดับที่
-     7 ไฟล์เรียกใช้) อยู่ที่ src/lib/useSortableTable.js ถ้าเทสต์เดินแคบกว่าด่าน
-     เลขจะไม่มีวันตรงเพดาน แล้วข้อความจะสั่งให้ "รูดเพดานลง" ซึ่งชี้ผิดที่ */
+     12 ไฟล์ · 68 จุดเรียกใช้ · วัด 2026-09-02) อยู่ที่ src/lib/useSortableTable.js ถ้าเทสต์เดินแคบกว่าด่าน
+     เลขจะไม่มีวันตรงเพดาน แล้วข้อความจะสั่งให้ "รูดเพดานลง" ซึ่งชี้ผิดที่
+     📅 2026-09-02 SortTh ย้าย onClick ลง <button> ในเซลล์แล้ว ⇒ กลุ่ม `th` หายทั้งกลุ่ม
+     (19 จุด · เพดาน 58 → 39) · ทรงของ primitive ถูกล็อกที่ src/lib/sortableHeader.test.mjs */
   for (const dir of ["app", "components", "lib"]) {
     (function walk(current) {
       for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
