@@ -1,5 +1,7 @@
 // ── API เครื่องรายตัว (mig 0187) ─────────────────────────────────────────
 import { recordAudit } from '@/lib/audit';
+import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
+import { assetForceManifest, deleteAssetDeep } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
 import { normalizeAssetInput } from '@/lib/service/sites';
 import { findAsset, findZone, requireSite } from '@/lib/service/sitesRepo';
@@ -65,6 +67,19 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
        ที่ FK SET NULL ของ 0301 ซึ่งดัน CHECK swap_needs_target ให้ล้ม ⇒ ผู้ใช้เห็น
        ข้อความ Postgres ดิบ ๆ (เจอตอนเก็บกวาดข้อมูลทดสอบ 2026-08-28 · mig 0303 ปิด
        รูฝั่ง DB ให้เป็น RESTRICT ตรงกับ assetId แล้ว ที่นี่คือชั้นที่พูดกับคน) */
+    // ⭐ ทางลัดผู้ดูแลระบบ — ดูเหตุผลเต็มที่ lib/service/forceDeleteService.js
+    const admin = canForceDelete(user);
+    if (isDryRun(req) && admin) return ok(await assetForceManifest(supabase, assetId));
+    if (isForceRequest(req) && admin) {
+      await deleteAssetDeep(supabase, assetId);
+      await recordAudit({
+        user, action: 'delete', entityType: 'service_asset', entityId: assetId, before,
+        summary: `ลบเครื่อง ${before.serial || before.label} ออกจากไซต์ ${access.site.name} (แอดมินบังคับลบทั้งสาย)`,
+        request: req,
+      });
+      return ok({ ok: true, forced: true });
+    }
+
     const [{ count: resultCount }, { count: itemCount }, { count: swapCount }] = await Promise.all([
       supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
       supabase.from('service_visit_items').select('id', { count: 'exact', head: true }).eq('assetId', assetId),

@@ -39,6 +39,7 @@ import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
 import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
+import { deleteWithForce } from "@/lib/forceDeleteClient";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -181,9 +182,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeZone = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      const result = await deleteWithForce(`/api/service/sites/${id}/zones/${pendingDelete.row.id}`, { isAdmin });
+      if (result.cancelled) return;
       setToast({ kind: "success", msg: `ลบโซน ${pendingDelete.row.name} แล้ว` });
       setPendingDelete(null);
       await load();
@@ -197,9 +197,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeAsset = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      const result = await deleteWithForce(`/api/service/sites/${id}/assets/${pendingDelete.row.id}`, { isAdmin });
+      if (result.cancelled) return;
       setToast({ kind: "success", msg: `ลบเครื่อง ${pendingDelete.row.label} แล้ว` });
       setPendingDelete(null);
       await load();
@@ -254,9 +253,11 @@ export default function ServiceSiteDetailPage({ params }) {
   const removeSite = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/sites/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
+      /* ⭐ `deleteWithForce` ลบตามปกติก่อน · ถูกบล็อกด้วยกฎธุรกิจแล้วเป็นแอดมิน
+         จะดึงพรีวิว (?dryRun=1) มาบอกว่าจะลบอะไรพ่วง แล้วถามยืนยันก่อนยิง ?force=1
+         ⚠️ คนที่ไม่ใช่แอดมินยังเจอข้อความเดิม ("ปิดใช้งานแทนการลบ") ไม่เปลี่ยน */
+      const result = await deleteWithForce(`/api/service/sites/${id}`, { isAdmin });
+      if (result.cancelled) return;
       setPendingDelete(null);
       // toast ของหน้าที่กำลังจะออกจากมันไม่มีความหมาย — บอกที่ทะเบียนแทนหลังย้ายหน้า
       router.push("/service/sites?deleted=" + encodeURIComponent(site?.name || id));
