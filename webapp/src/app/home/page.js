@@ -222,7 +222,7 @@ export default function HomeHubPage() {
                 </div>
                 <Link
                   href={recentLanding}
-                  className="btn btn-accent"
+                  className="btn btn-primary"
                   onClick={() => rememberSystem(recentSystem.key)}
                 >
                   กลับไปทำงานต่อ <ArrowRight size={16} />

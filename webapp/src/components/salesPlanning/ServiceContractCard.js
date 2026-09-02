@@ -135,7 +135,7 @@ export default function ServiceContractCard({
               </label>
               <div className="form-actions-buttons span-2">
                 <Button
-                  variant="accent"
+                  tone="primary"
                   size="sm"
                   disabled={busy || !picked || !!gate}
                   title={gate || undefined}
@@ -207,7 +207,7 @@ export default function ServiceContractCard({
         {canEdit && (
           <div className={styles.roundsActions}>
             <Button
-              variant="accent"
+              tone="primary"
               size="sm"
               disabled={busy || !roundsDirty || !!roundsGate}
               title={roundsGate || (roundsDirty ? undefined : "ยังไม่มีตัวเลขที่เปลี่ยนแปลง")}

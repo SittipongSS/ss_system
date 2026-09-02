@@ -187,7 +187,7 @@ export default function ReportIssueModal({ open, onClose, onCreated, errorStack 
       <div className={styles.footer}>
         <span className={styles.footNote}>กรอกแค่รายละเอียดก็ส่งได้</span>
         <Button variant="quiet" onClick={close} disabled={busy}>ยกเลิก</Button>
-        <Button tone="accent" onClick={submit} disabled={busy || !detail.trim()}>
+        <Button tone="primary" onClick={submit} disabled={busy || !detail.trim()}>
           {busy ? "กำลังส่ง…" : "ส่งเรื่อง"}
         </Button>
       </div>

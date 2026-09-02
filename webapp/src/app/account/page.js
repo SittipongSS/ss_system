@@ -178,7 +178,7 @@ export default function AccountPage() {
 
             <div className={styles.formActions}>
               <button type="button" className="btn ghost" onClick={resetForm} disabled={!dirty || saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={() => setConfirmOpen(true)} disabled={!dirty || saving}>บันทึกข้อมูล</button>
+              <button type="button" className="btn btn-primary" onClick={() => setConfirmOpen(true)} disabled={!dirty || saving}>บันทึกข้อมูล</button>
             </div>
           </section>
 

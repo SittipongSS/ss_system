@@ -159,7 +159,7 @@ export default function ContractsPage() {
       /* ⭐ ปุ่มสร้างบนหัวทะเบียน (มติผู้ใช้ 2026-08-22) — เดิมสร้างได้จากในดีล/ใบเสนอราคา
          เท่านั้น คนที่เริ่มจากเมนูสัญญาไม่มีทางเริ่มงาน · โมดัลตัวเดียวกัน แค่มีช่องเลือกดีล */
       headerRight={canEdit && tab === "contracts" && (
-        <Button variant="accent" onClick={() => setCreateOpen(true)}>
+        <Button tone="accent" onClick={() => setCreateOpen(true)}>
           <Plus size={15} aria-hidden="true" /> สร้างสัญญา
         </Button>
       )}

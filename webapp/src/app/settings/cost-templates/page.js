@@ -474,7 +474,7 @@ export default function CostTemplatesPage() {
             />
             <div className="action-bar" style={{ marginTop: 20 }}>
               <button type="button" className="btn ghost" onClick={closeForm} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={requestSave} disabled={saving}>บันทึก</button>
+              <button type="button" className="btn btn-primary" onClick={requestSave} disabled={saving}>บันทึก</button>
             </div>
           </>
         )}

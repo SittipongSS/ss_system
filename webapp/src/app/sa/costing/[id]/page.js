@@ -785,7 +785,7 @@ export default function CostingDetailPage() {
                     || `จะเขียนราคาผลิต ${money(feedCostValue(item, request.moq))} ฿/ชิ้น ลงสินค้าที่ผูกไว้`}
                 </span>
                 <button
-                  type="button" className="btn btn-accent" disabled={saving || !!feedCostError(item, request.moq)}
+                  type="button" className="btn btn-primary" disabled={saving || !!feedCostError(item, request.moq)}
                   onClick={() => setPendingFeed(item)}
                 >
                   <ArrowDownToLine size={14} /> ป้อนราคาผลิตเข้า FG
@@ -846,7 +846,7 @@ export default function CostingDetailPage() {
             />
             <div className="action-bar" style={{ marginTop: 20 }}>
               <button type="button" className="btn ghost" onClick={closeEdit} disabled={saving}>ยกเลิก</button>
-              <button type="button" className="btn btn-accent" onClick={() => setPendingSave(true)} disabled={saving}>
+              <button type="button" className="btn btn-primary" onClick={() => setPendingSave(true)} disabled={saving}>
                 บันทึก
               </button>
             </div>

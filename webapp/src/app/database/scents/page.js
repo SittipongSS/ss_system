@@ -726,7 +726,7 @@ export default function ScentsPage() {
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+            <Button tone="primary" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
               รับเข้าทะเบียน
             </Button>
           </>
@@ -807,7 +807,7 @@ export default function ScentsPage() {
         footer={sending && (
           <>
             <Button variant="quiet" onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitSend} disabled={saving || !sending.sentAt}>
+            <Button tone="primary" onClick={submitSend} disabled={saving || !sending.sentAt}>
               บันทึก
             </Button>
           </>

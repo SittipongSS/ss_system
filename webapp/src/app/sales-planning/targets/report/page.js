@@ -496,7 +496,7 @@ function OrderSearchCard({ orders, people }) {
               { key: "finance", label: "ขั้นบัญชี", options: FINANCE_STATE_OPTIONS, selected: draft.finance, onChange: (v) => setDraftField("finance", v) },
             ]}
           />
-          <Button tone="accent" onClick={() => setApplied({ ...draft })}>
+          <Button tone="primary" onClick={() => setApplied({ ...draft })}>
             <Search size={15} aria-hidden="true" /> ค้นหา
           </Button>
           {applied && (

@@ -218,7 +218,7 @@ export default function SupportPage() {
                       {admin && (
                         <td>
                           {row.status === "pending" && (
-                            <Button tone="accent" size="sm" disabled={busyId === row.id} onClick={() => acknowledge(row.id)}>
+                            <Button tone="primary" size="sm" disabled={busyId === row.id} onClick={() => acknowledge(row.id)}>
                               รับเรื่อง
                             </Button>
                           )}

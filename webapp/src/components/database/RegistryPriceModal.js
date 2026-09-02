@@ -70,7 +70,7 @@ export default function RegistryPriceModal({
       footer={(
         <>
           <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
-          <Button tone="accent" onClick={submit} disabled={saving || priceMissing}>
+          <Button tone="primary" onClick={submit} disabled={saving || priceMissing}>
             บันทึกราคาใหม่
           </Button>
         </>

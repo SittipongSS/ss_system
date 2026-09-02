@@ -25,7 +25,7 @@ export default function FormulaFormModal({
       footer={form && (
         <>
           <Button variant="quiet" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-          <Button tone="accent" onClick={onSubmit} disabled={saving}>บันทึก</Button>
+          <Button tone="primary" onClick={onSubmit} disabled={saving}>บันทึก</Button>
         </>
       )}
     >

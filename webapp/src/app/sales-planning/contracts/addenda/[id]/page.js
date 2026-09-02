@@ -262,7 +262,7 @@ export default function AddendumDetailPage() {
         footer={(
           <div className="form-actions-buttons">
             <Button onClick={() => setSignOpen(false)} disabled={busy}>ปิด</Button>
-            <Button variant="accent" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
+            <Button tone="primary" onClick={submitSign} disabled={busy || !signFileId || !signDate}>
               บันทึกการลงนาม
             </Button>
           </div>

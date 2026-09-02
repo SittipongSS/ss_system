@@ -411,7 +411,7 @@ export default function MaterialRegistryPanel({
             <div className="action-bar" style={{ marginTop: 16 }}>
               <button type="button" className="btn ghost" onClick={() => setForm(null)} disabled={saving}>ยกเลิก</button>
               <button
-                type="button" className="btn btn-accent" disabled={saving || !form.value.label.trim()}
+                type="button" className="btn btn-primary" disabled={saving || !form.value.label.trim()}
                 onClick={submitForm}
               >
                 {form.mode === "edit" ? "บันทึก" : "เพิ่มวัสดุ"}
@@ -444,7 +444,7 @@ export default function MaterialRegistryPanel({
             <div className="action-bar" style={{ marginTop: 16 }}>
               <button type="button" className="btn ghost" onClick={() => setPricing(null)} disabled={saving}>ยกเลิก</button>
               <button
-                type="button" className="btn btn-accent" disabled={saving || !tiers.some((t) => String(t.price ?? "") !== "")}
+                type="button" className="btn btn-primary" disabled={saving || !tiers.some((t) => String(t.price ?? "") !== "")}
                 onClick={() => setConfirm({ kind: "price", material: pricing })}
               >
                 ออกราคารุ่นใหม่

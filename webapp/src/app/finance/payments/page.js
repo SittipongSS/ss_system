@@ -410,7 +410,7 @@ export default function FinancePaymentsPage() {
                     </span>
                   </div>
                   <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  <Button size="sm" tone="accent" disabled={acting} onClick={() => setConfirmFor(row)}>
+                  <Button size="sm" tone="primary" disabled={acting} onClick={() => setConfirmFor(row)}>
                     ยืนยันว่าเงินเข้า
                   </Button>
                   {/* ตีกลับเป็นการถอย ไม่ใช่ก้าวถัดไป ⇒ ปุ่มรอง ไม่ใช่ปุ่มเด่น */}

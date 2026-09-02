@@ -379,7 +379,7 @@ export default function HolidaysPage() {
           </p>
           <div className={styles.addActions}>
             <button type="button" className="btn ghost" onClick={() => setAddForm(null)} disabled={busy}>ปิด</button>
-            <button type="submit" className="btn btn-accent" disabled={busy}>{busy ? "กำลังบันทึก…" : "เพิ่มวันหยุด"}</button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "กำลังบันทึก…" : "เพิ่มวันหยุด"}</button>
           </div>
         </form>
       </Modal>
