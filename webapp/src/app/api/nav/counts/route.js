@@ -36,6 +36,7 @@ import {
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { isContractWaitingOnMe, latestContractRevisions } from '@/lib/sales/contracts';
+import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
@@ -227,11 +228,19 @@ export const GET = withUser(async ({ user, supabase }) => {
         /* ⚠️ ไม่ต้องกรอง scope ตามดีลเหมือน route ของทะเบียน — สองเลนนี้แคบตัวเอง
            อยู่แล้ว: เลนเจ้าของเทียบ `ownerId`/`createdBy` เป็นรายใบ ส่วนเลนผู้รับรอง
            เปิดให้ AE Supervisor/admin ซึ่ง scope เป็น 'all' อยู่แล้วทั้งคู่ */
-        .select('id, status, "ownerId", "createdBy", "contractNo", "baseNumber", "revisionNo", "createdAt"')
+        /* `source` ต้องมาด้วย — ใบ external ร่างที่แนบเอกสารแล้วเป็นงานของ AE Sup
+           ไม่ใช่ของเจ้าของใบ · ขาดคอลัมน์นี้เมื่อไร ทุกใบตกเป็น generated แล้วเลนนั้นเงียบ */
+        .select('id, status, source, "ownerId", "createdBy", "contractNo", "baseNumber", "revisionNo", "createdAt"')
         .in('status', ['draft', 'awaiting_signature', 'awaiting_approval'])
         .limit(5000);
-      return latestContractRevisions(data || [])
-        .filter((row) => isContractWaitingOnMe(row, { userId: user.id, user })).length;
+      const latest = latestContractRevisions(data || []);
+      /* ⚠️ ตัวนับนี้ยิงทุก 2 นาทีทุกคน ⇒ คิวรีเพิ่มต้องไม่เกิดเลยในกรณีปกติ
+         `externalDocReadyIds` คืนชุดว่างโดยไม่แตะฐาน ถ้าคนดูไม่ใช่ผู้อนุมัติ
+         หรือไม่มีใบ external ร่างอยู่ในชุดนี้ */
+      const docReady = await externalDocReadyIds(supabase, latest, user);
+      return latest.filter((row) => isContractWaitingOnMe(row, {
+        userId: user.id, user, externalDocReady: docReady.has(row.id),
+      })).length;
     }));
   }
 

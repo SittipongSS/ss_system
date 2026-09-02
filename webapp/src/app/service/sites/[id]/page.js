@@ -268,13 +268,20 @@ export default function ServiceSiteDetailPage({ params }) {
     }
   };
 
+  /* ⭐ รอบที่มีนัดปิดงานแล้วถูกด่านกันไว้ (ดู `planDeleteBlocker`) — แอดมินยังบังคับ
+     ลบได้ผ่านเส้น `?force=1` เดียวกับโซน/เครื่อง/ไซต์ · `deleteWithForce` จะดึงพรีวิว
+     มาบอกก่อนว่าบังคับลบแล้วจะเกิดอะไร แล้วค่อยถามยืนยัน */
   const removePlan = async () => {
     setBusy(true);
     try {
-      const res = await apiFetch(`/api/service/plans/${pendingDelete.row.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "ลบไม่สำเร็จ");
-      setToast({ kind: "success", msg: "ลบรอบแล้ว — นัดที่สร้างไว้ยังอยู่ในฐานะงานนอกรอบ" });
+      const result = await deleteWithForce(`/api/service/plans/${pendingDelete.row.id}`, { isAdmin });
+      if (result.cancelled) return;
+      setToast({
+        kind: "success",
+        msg: result.forced || result.data?.forced
+          ? "ลบรอบแล้ว (บังคับลบ) — นัดที่ปิดงานแล้วขาดจากรอบ ไม่ถูกนับเป็นรอบตามข้อผูกพันอีก"
+          : "ลบรอบแล้ว — นัดที่สร้างไว้ยังอยู่ในฐานะงานนอกรอบ",
+      });
       setPendingDelete(null);
       await load();
     } catch (e) {
@@ -324,7 +331,10 @@ export default function ServiceSiteDetailPage({ params }) {
     plan: {
       title: "ลบรอบบริการ",
       message: (row) => `ลบรอบทุก ${row.everyDays} วัน?`,
-      detail: "นัดที่สร้างไว้แล้วยังอยู่บนตารางในฐานะงานนอกรอบ — ลูกค้าที่รู้แล้วว่าเจ้าหน้าที่จะมา จะไม่ถูกยกเลิกเงียบ ๆ",
+      /* ⚠️ ข้อความเดิมบอกครึ่งเดียว — นัดอยู่ต่อจริง แต่มัน **ขาดจากรอบ** ซึ่งทำให้
+         จำนวนรอบที่เดินตามข้อผูกพันของใบสั่งขายกลายเป็นศูนย์ · ตอนนี้รอบที่มีนัด
+         ปิดงานแล้วถูกกันไว้ ⇒ คำต้องบอกทางออกที่ถูก ไม่ใช่แค่ผลข้างเคียง */
+      detail: "รอบที่มีนัดปิดงานแล้วจะลบไม่ได้ — ใช้ “ปิดใช้งานรอบ” แทน (หยุดสร้างนัดใหม่เหมือนกัน แต่ประวัติไม่ขาด) · รอบที่ยังไม่มีประวัติลบได้ตามปกติ และนัดที่สร้างไว้จะอยู่ต่อในฐานะงานนอกรอบ",
       confirmLabel: "ลบรอบ",
       onConfirm: removePlan,
     },

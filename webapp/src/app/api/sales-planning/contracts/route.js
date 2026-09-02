@@ -17,6 +17,7 @@ import {
 } from '@/lib/sales/contracts';
 import { contractFieldDefaults, hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
 import { quotationClosure } from '@/lib/sales/contractQuotationState';
+import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { syncContractsAgainstQuotations } from '@/lib/sales/contractQuotationSync';
 
 export const dynamic = 'force-dynamic';
@@ -51,15 +52,22 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ⚠️ ทำก่อนคัดฉบับล่าสุด/กรองสถานะ เพราะแถวที่เพิ่งถูกยกเลิกต้องโชว์สถานะใหม่ทันที */
   const { quotationById, cancelledIds } = await syncContractsAgainstQuotations(supabase, visible, { actor: user });
 
-  const rows = latestContractRevisions(visible)
+  const latest = latestContractRevisions(visible)
     .map((row) => (cancelledIds.has(row.id) ? { ...row, status: 'cancelled' } : row))
-    .filter((row) => !status || status === 'all' || row.status === status)
+    .filter((row) => !status || status === 'all' || row.status === status);
+  /* ใบ external ร่างที่แนบเอกสารแล้ว = งานของ AE Sup ไม่ใช่ของเจ้าของใบอีกต่อไป
+     ⚠️ คิวรีนี้ไม่ยิงเลยถ้าคนดูไม่ใช่ผู้อนุมัติ หรือไม่มีใบ external ร่างในชุดนี้ */
+  const docReady = await externalDocReadyIds(supabase, latest, user);
+
+  const rows = latest
     // เนื้อเอกสารที่ตรึงไว้หนักและไม่มีใครใช้ในลิสต์ — ตัดออกก่อนส่ง
     .map(({ issuedHtml, ...row }) => ({
       ...row,
       hasIssuedDocument: !!issuedHtml,
       // ⚠️ ส่ง `user` ทั้งก้อน ไม่ใช่แค่ id — เลนผู้รับรอง (AE Sup) อ่านบทบาท
-      _waitingOnMe: isContractWaitingOnMe(row, { userId: user.id, user }),
+      _waitingOnMe: isContractWaitingOnMe(row, {
+        userId: user.id, user, externalDocReady: docReady.has(row.id),
+      }),
       // ป้าย "ใบเสนอราคาถูกปิด" บนทะเบียน — ใบที่ออกเลขแล้วไม่ถูกแตะ แต่ต้องเห็นว่ามีเรื่อง
       _quotationClosure: quotationClosure(quotationById.get(row.quotationId)) || null,
     }));

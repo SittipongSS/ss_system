@@ -12,6 +12,7 @@
 // ⚠️ ทุกตัวพรีวิว (`*Manifest`) เป็น query ล้วน ไม่ลบอะไร — `?dryRun=1` กับตัวลบจริง
 //   เดินเส้นเดียวกัน ⇒ สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { isClosedVisit } from '@/lib/service/visitStatus';
 
 const line = (label, count) => ({ label, count: count || 0 });
 
@@ -177,4 +178,30 @@ export async function deleteSiteDeep(supabase, siteId) {
 
   const { error } = await supabase.from('service_sites').delete().eq('id', siteId);
   if (error) throw error;
+}
+
+/* ── รอบบริการหนึ่งรอบ (break-glass) ────────────────────────────────────────
+   ⭐ **ไม่ลบนัดพ่วง** — FK ของนัดเป็น `ON DELETE SET NULL` โดยเจตนา (mig 0188:57):
+     "นัดที่ลูกค้ารู้แล้วว่าเจ้าหน้าที่จะมา ห้ามหายไปเพราะแอดมินลบรอบ"
+     ⇒ ตัวนี้จึงเป็นพรีวิวของ **สิ่งที่จะขาดจากรอบ** ไม่ใช่สิ่งที่จะถูกลบ
+   ⚠️ ผลจริงของการบังคับลบคือ "นัดอยู่ต่อแต่ไม่นับเป็นรอบตามข้อผูกพันอีกแล้ว"
+      ⇒ ข้อความต้องพูดเรื่องนั้นตรง ๆ ไม่ใช่ปล่อยให้เข้าใจว่าไม่มีอะไรเกิดขึ้น */
+export async function planForceManifest(supabase, planId) {
+  const rows = await fetchAll(() => supabase
+    .from('service_visits').select('id, status')
+    .eq('planId', planId).order('id', { ascending: true }));
+  const visits = rows || [];
+  const closed = visits.filter(isClosedVisit).length;
+  const open = visits.length - closed;
+  return {
+    /* ⚠️ ไม่มีอะไรถูก *ลบ* พ่วง ⇒ ช่อง cascade ว่างโดยตั้งใจ — เอาไปใส่จะโกหกว่าจะลบ */
+    cascade: [],
+    notes: [
+      closed
+        ? `นัดที่ปิดงานแล้ว ${closed} ครั้งจะยังอยู่บนตาราง แต่จะไม่ถูกนับเป็นรอบตามข้อผูกพันของใบสั่งขายอีก (คอลัมน์ "รอบที่เดิน" จะลดลง)`
+        : null,
+      open ? `นัดที่ยังไม่ปิด ${open} ครั้งจะกลายเป็นงานนอกรอบ — ปิดงานแล้วระบบจะไม่เสนอรอบถัดไปให้` : null,
+      'ถ้าแค่อยากหยุดสร้างนัดใหม่ ให้ "ปิดใช้งานรอบ" แทน — ได้ผลเท่ากันโดยประวัติไม่ขาด',
+    ].filter(Boolean),
+  };
 }
