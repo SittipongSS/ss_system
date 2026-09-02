@@ -398,6 +398,16 @@ test('ค้นด้วยรหัส AR เจอใบของลูกค�
   assert.equal(matchesQueueSearch({ ...row, customerArCode: null }, 'ลอรีอัล'), true);
 });
 
+// ── ค้นหาในคิว: ดีล ────────────────────────────────────────────────────────
+// กฎเดียวกับ AR ข้างบน — คอลัมน์ "ดีล" โชว์รหัสบนชื่อล่างอยู่แล้ว จึงต้องค้นเจอทั้งคู่
+test('ค้นด้วยรหัสดีลและชื่อดีลเจอใบของดีลนั้น', async () => {
+  const { matchesQueueSearch } = await import('./useQueueBoard.js');
+  const row = { docNo: 'RQ-26080001', title: 'ขอราคาขวด', dealCode: 'D-26080012', dealName: 'ชุดของขวัญปีใหม่' };
+  assert.equal(matchesQueueSearch(row, 'D-26080012'), true);
+  assert.equal(matchesQueueSearch(row, 'ของขวัญ'), true);
+  assert.equal(matchesQueueSearch(row, 'D-99999999'), false);
+});
+
 // ── สถานะช่องเดียวของคิว (มติผู้ใช้ 2026-08-15) ──────────────────────────
 /* 🔴 คอลัมน์ "ต้องทำอะไร" กับ "สถานะ" เคยพูดเรื่องเดียวกันคนละคำคนละสี ⇒ ยุบเหลือ
    ช่องเดียวที่มีทั้งคำและโทน · โทนบอก **ใครค้าง** ไม่ใช่ระดับความรุนแรง */
