@@ -48,6 +48,22 @@ test('ไซต์ที่ลงของแล้วแต่ยังไม�
   assert.equal(out.plans.sitesWithoutPlan, 1);   // ST2 มีแต่รอบที่ปิดไปแล้ว
 });
 
+/* 🪤 **ยอดรวมอย่างเดียวตอบไม่ได้ว่าไซต์ไหนคือไซต์ที่ค้าง** — `planSites` คำนวณอยู่แล้ว
+   แต่เดิมถูกใช้ครั้งเดียวเพื่อนับ ⇒ คนอ่านตารางต้องไล่เปิดทีละไซต์เอง
+   ⚠️ รอบที่ปิดใช้งาน (`isActive: false`) ไม่นับว่าวางแล้ว — ไซต์นั้นยังไม่มีนัดเกิด */
+test('แต่ละแถวไซต์ต้องบอกเองว่าวางรอบแล้วหรือยัง', () => {
+  const out = salesOrderServiceSummary({
+    order: live, lines: [line()], zonesById, sitesById, todayIso: TODAY,
+    terms: [term(), term({ id: 'T2', zoneId: 'Z2', salesOrderLineId: 'L1' })],
+    plans: [{ id: 'P1', siteId: 'ST1', isActive: true }, { id: 'P0', siteId: 'ST2', isActive: false }],
+  });
+  const byId = new Map(out.allocation.sites.map((row) => [row.siteId, row]));
+  assert.equal(byId.get('ST1').hasPlan, true);
+  assert.equal(byId.get('ST2').hasPlan, false, 'รอบที่ปิดใช้งานไม่นับว่าวางแล้ว');
+  // ยอดรวมกับธงรายแถวต้องมาจากชุดเดียวกัน ไม่ใช่นับคนละรอบ
+  assert.equal(out.plans.sitesWithoutPlan, out.allocation.sites.filter((r) => !r.hasPlan).length);
+});
+
 test('นัดข้างหน้า: นับผ่าน/ติด และเหตุที่พบบ่อยที่สุด', () => {
   const visits = [
     { id: 'V1', siteId: 'ST1', scheduledDate: '2026-09-01', status: 'scheduled' },

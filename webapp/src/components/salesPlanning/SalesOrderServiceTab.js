@@ -9,14 +9,19 @@
 //
 // ⚠️ เหตุที่นัดติดด่านมาจาก `evaluateVisitGate` ตัวเดียวกับที่ตารางจัดคิวของ TS ใช้ —
 //   ห้ามเขียนคำอธิบายเองที่นี่ ไม่งั้นสองจอบอกคนละเรื่อง (โรคเดิมของโมดูลนี้)
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CalendarCheck2, MapPin, PackageCheck, Repeat } from "lucide-react";
 import { DetailCard } from "@/components/ui/DetailPage";
 import Button from "@/components/ui/Button";
+import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableScroll } from "@/components/ui/Table";
+import ServicePlanModal from "@/components/service/ServicePlanModal";
+import { canBeServiceAssignee, canEditService } from "@/lib/permissions";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { notifyToast } from "@/lib/feedback";
 import { fmtNumber, naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -24,6 +29,23 @@ export default function SalesOrderServiceTab({ orderId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  /* ⭐ **ปุ่มวางรอบเป็นของฝ่ายบริการ ไม่ใช่ของฝ่ายขาย** — มติผู้ใช้ 2026-08-30
+     ("ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS") ยังยืนอยู่ และ `POST /api/service/plans`
+     บังคับ `canEditService` อยู่แล้ว ⇒ ถามด่านตัวเดียวกันที่จอ: ฝ่ายขายเห็นตารางสรุป
+     เหมือนเดิมแต่ไม่มีปุ่ม (กติกา "ไม่มีสิทธิ์ = ไม่โชว์") ส่วน TS/แอดมินที่เปิดใบนี้อยู่
+     วางรอบได้เลยไม่ต้องเด้งไปหน้าไซต์แล้วเดินกลับมา
+     ⚠️ ประกอบ user จากสี่ context ให้ครบ — `canEditService` อ่าน department ซึ่ง
+        `useRole()` ตัวเดียวตอบไม่ได้ (ท่าเดียวกับหน้าไซต์) */
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canPlan = useMemo(
+    () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
+  const [planSite, setPlanSite] = useState(null);   // ไซต์ที่กำลังวางรอบ · null = ปิด
+  const [technicians, setTechnicians] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +62,37 @@ export default function SalesOrderServiceTab({ orderId }) {
     }
   }, [orderId]);
   useEffect(() => { load(); }, [load]);
+
+  // รายชื่อเจ้าหน้าที่โหลดเมื่อจะ "เลือก" เท่านั้น (ท่าเดียวกับหน้าไซต์)
+  useEffect(() => {
+    if (!planSite || technicians.length) return;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/pm/assignable-users");
+        const rows = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(rows?.error || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
+        setTechnicians((Array.isArray(rows) ? rows : []).filter(canBeServiceAssignee));
+      } catch (e) {
+        notifyToast.error(e.message);
+      }
+    })();
+  }, [planSite, technicians.length]);
+
+  /* วางรอบใหม่เท่านั้น — การ *แก้* รอบเดิมยังอยู่ที่หน้าไซต์ ซึ่งเป็นที่ที่เห็นรอบทั้งหมด
+     ของไซต์นั้นพร้อมกัน · ที่นี่เห็นแค่ไซต์ที่ใบนี้ลงไป จะแก้ของที่มองไม่เห็นไม่ได้
+     ⚠️ กด **สร้างนัดทันที** (route gen ให้เอง) ⇒ กล่องยืนยันของโมดัลต้องบอกไว้แล้ว */
+  const savePlan = async (form) => {
+    const res = await apiFetch("/api/service/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
+    const count = Array.isArray(body?.generated) ? body.generated.length : 0;
+    notifyToast.success(count ? `วางรอบแล้ว · สร้างนัดให้ ${count} ครั้ง` : "วางรอบแล้ว · ยังไม่มีนัดที่ต้องสร้าง");
+    await load();
+  };
 
   if (loading) return <DetailCard icon={MapPin} title="งานบริการของใบนี้"><SkeletonRows rows={4} /></DetailCard>;
   if (error) return <StatusNotice tone="error" title="โหลดสรุปงานบริการไม่สำเร็จ">{error}</StatusNotice>;
@@ -103,6 +156,7 @@ export default function SalesOrderServiceTab({ orderId }) {
               <th>ไซต์ / ลูกค้า</th>
               <th>โซนที่ผูก</th>
               <th className="num">จำนวนที่ลง</th>
+              <th>รอบบริการ</th>
               <th aria-label="การกระทำ" />
             </tr></thead>
             <tbody>
@@ -114,7 +168,21 @@ export default function SalesOrderServiceTab({ orderId }) {
                   </td>
                   <td className="cell-ellipsis">{row.zones.map((z) => z.name).join(" · ") || NA}</td>
                   <td className="num mono">{row.packageQty ? fmtNumber(row.packageQty) : NA}</td>
+                  {/* ⭐ **ยอดรวมบนหัวการ์ดตอบไม่ได้ว่าไซต์ไหนคือไซต์ที่ค้าง** — เดิมบอกแค่
+                      "N ไซต์ยังไม่มีรอบ" แล้วปล่อยให้ไล่เปิดทีละไซต์เอง */}
                   <td>
+                    <StatusBadge
+                      size="sm"
+                      tone={row.hasPlan ? "success" : "warning"}
+                      label={row.hasPlan ? "วางแล้ว" : "ยังไม่วาง"}
+                    />
+                  </td>
+                  <td>
+                    {canPlan && !row.hasPlan && (
+                      <Button tone="accent" size="sm" onClick={() => setPlanSite(row)}>
+                        วางรอบ
+                      </Button>
+                    )}
                     <Button as={Link} prefetch={false} href={`/service/sites/${row.siteId}`} tone="neutral" size="sm">
                       เปิดหน้าไซต์
                     </Button>
@@ -123,7 +191,7 @@ export default function SalesOrderServiceTab({ orderId }) {
               ))}
               {!allocation.sites.length && (
                 <tr>
-                  <td colSpan={4} className="cell-num-idle">
+                  <td colSpan={5} className="cell-num-idle">
                     ยังไม่มีไซต์ — ฝ่ายบริการต้องรับใบนี้เข้าไซต์แล้วจัดสรรลงโซนก่อน
                   </td>
                 </tr>
@@ -168,6 +236,21 @@ export default function SalesOrderServiceTab({ orderId }) {
           </Button>
         </div>
       </DetailCard>
+
+      {/* ⭐ **โมดัลตัวเดียวกับหน้าไซต์** — ห้ามก๊อปฟอร์มที่สอง (AGENTS.md)
+          ส่ง `salesOrderId` ของใบไปด้วย ⇒ รอบที่วางจากที่นี่ผูกกับใบจริง ๆ ซึ่งเป็นสิ่งที่
+          คอลัมน์ "รอบที่เดิน n/N" บนทะเบียนใบสั่งขายอ่านมาตลอดแต่ไม่เคยมีใครเขียนให้
+          ⚠️ `roundsSold` ที่ส่งไปคือของ **ใบนี้** ไม่ใช่ของทั้งไซต์ — โมดัลเปลี่ยนคำ
+             ให้ตามที่มา ("ใบนี้ระบุไว้" vs "ฝ่ายขายระบุไว้") */}
+      <ServicePlanModal
+        open={!!planSite}
+        siteId={planSite?.siteId}
+        technicians={technicians}
+        roundsSold={rounds?.sold ?? null}
+        salesOrderId={orderId}
+        onClose={() => setPlanSite(null)}
+        onSave={savePlan}
+      />
     </>
   );
 }

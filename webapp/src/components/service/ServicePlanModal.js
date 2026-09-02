@@ -26,7 +26,16 @@ const EMPTY = {
 
 /* `roundsSold` = จำนวนรอบที่ฝ่ายขายระบุไว้ในใบเสนอราคา (mig 0326) — null/ไม่ส่ง
    = ยังไม่ระบุ ⇒ กล่องเทียบไม่ขึ้นเลย ไม่ใช่ขึ้นแล้วบอก 0 */
-export default function ServicePlanModal({ open, siteId, plan = null, technicians = [], roundsSold = null, onClose, onSave }) {
+/* `salesOrderId` = ใบสั่งขายที่ครอบรอบนี้ (mig 0188 มีคอลัมน์นี้มาตั้งแต่แรก)
+   🔴 **ก่อนหน้านี้ไม่มีใครส่งค่านี้เลยทั้งระบบ** ⇒ คอลัมน์ "รอบที่เดิน n/N" บนทะเบียน
+      ใบสั่งขายซึ่งนับผ่าน `service_plans."salesOrderId"` ตอบ 0 ให้ทุกใบมาตลอด
+   ⚠️ **ส่งเฉพาะตอนสร้าง ไม่ส่งตอนแก้** — PATCH ผสม `{...before, ...body}` และ
+      `undefined` ใน object spread **ทับค่าเดิม** ⇒ ส่งทุกครั้งจะได้สองอาการ:
+      แก้จากหน้าไซต์ (ไม่รู้จักใบ) จะล้างค่าเดิมทิ้ง · แก้จากหน้าใบ A จะแย่งรอบของใบ B
+      มาเป็นของตัวเองเงียบ ๆ */
+export default function ServicePlanModal({
+  open, siteId, plan = null, technicians = [], roundsSold = null, salesOrderId = null, onClose, onSave,
+}) {
   const editing = !!plan;
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState("");
@@ -62,7 +71,12 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
   });
 
   const submit = async () => {
-    const payload = { ...form, siteId, everyDays: Number(form.everyDays) };
+    const payload = {
+      ...form,
+      siteId,
+      everyDays: Number(form.everyDays),
+      ...(!editing && salesOrderId ? { salesOrderId } : {}),
+    };
     const { error: invalid } = normalizePlanInput(payload);
     if (invalid) { setError(invalid); return; }
     setSaving(true);
@@ -145,7 +159,11 @@ export default function ServicePlanModal({ open, siteId, plan = null, technician
 
       {(roundsSold || estimate) && (
         <p className={styles.hint}>
-          {roundsSold ? <>ฝ่ายขายระบุไว้ <strong>{roundsSold} รอบ</strong>{" · "}</> : null}
+          {/* เปิดจากหน้าใบสั่งขาย = ตัวเลขของ *ใบนั้น* · เปิดจากหน้าไซต์ = ของทั้งไซต์
+              ⇒ ต้องบอกให้ตรง ไม่งั้นฟอร์มหน้าตาเดียวกันโชว์ N คนละตัวโดยไม่มีใครรู้ */}
+          {roundsSold
+            ? <>{salesOrderId ? "ใบนี้ระบุไว้ " : "ฝ่ายขายระบุไว้ "}<strong>{roundsSold} รอบ</strong>{" · "}</>
+            : null}
           {estimate
             ? <>ความถี่นี้จะได้ราว <strong>{estimate} นัด</strong> ในช่วงที่ตั้งไว้</>
             : <>ใส่วันสิ้นสุดรอบด้วย จึงจะประมาณจำนวนนัดให้ได้</>}
