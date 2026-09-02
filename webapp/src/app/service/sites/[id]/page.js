@@ -660,6 +660,7 @@ export default function ServiceSiteDetailPage({ params }) {
         open={formAsset !== undefined}
         asset={formAsset}
         zones={zones}
+        site={site}
         onClose={() => setFormAsset(undefined)}
         onSave={saveAsset}
       />
