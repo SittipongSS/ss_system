@@ -4,7 +4,7 @@ import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, Flag, Search, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
@@ -187,7 +187,6 @@ export default function SalesOrdersPage() {
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
      (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
   const navCountParam = useSearchParams().get("count") || "";
-  const router = useRouter();
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
 
   const load = useCallback(async () => {
@@ -420,7 +419,7 @@ export default function SalesOrdersPage() {
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
           primary={(o) => o.orderNumber}
           secondary={(o) => `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`}
-          onOpen={(o) => router.push(`/sa/sales-orders/${o.id}`)}
+          rowHref={(o) => `/sa/sales-orders/${o.id}`}
           renderAction={(o) => (
             <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
               {financeShell ? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"}

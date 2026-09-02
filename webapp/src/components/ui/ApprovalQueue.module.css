@@ -30,7 +30,11 @@
 }
 
 .rowText { flex: 1; min-width: 180px; line-height: var(--lh-thai); }
-.rowText .code { color: var(--accent-ink); font-family: var(--font-numeric); font-size: var(--fs-5); }
+/* 🪤 `font-weight: inherit` คือ **reset ของ UA ไม่ใช่การตัดสินใจด้านสไตล์** — บรรทัดหลัก
+   เป็น `<strong>` เพราะ `.linklike-block` ขีดเส้นใต้ให้เฉพาะ `> strong` (ตัว `<strong>`
+   มีไว้เป็นหมุดของเส้นใต้ ไม่ได้แปลว่า "เน้น") · ปล่อยไว้เฉย ๆ เบราว์เซอร์ให้ 700
+   ⇒ เลขที่เอกสารหนาขึ้นทั้งคิวโดยไม่มีใครสั่ง · ของเดิมเป็น `<span>` ที่น้ำหนักปกติ */
+.rowText .code { color: var(--accent-ink); font-family: var(--font-numeric); font-size: var(--fs-5); font-weight: inherit; }
 .rowText .name { color: var(--text); font-size: var(--fs-6); }
 
 /* ปุ่มกาง/ย่อคิว — ทรงเดียวกับคิวของทะเบียนการชำระ (แถวกลาง ใต้รายการ) */

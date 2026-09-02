@@ -208,7 +208,7 @@ export default function ContractsPage() {
           title="ต้องทำตอนนี้ — สัญญาที่ค้างอยู่กับคุณ"
           primary={(row) => row.contractNo || "ฉบับร่าง"}
           secondary={(row) => `${naText(row.customerName)} · ${contractStatusLabel(row.status)}`}
-          onOpen={(row) => router.push(`/sa/contracts/${row.id}`)}
+          rowHref={(row) => `/sa/contracts/${row.id}`}
           renderAction={(row) => (
             <Button as={Link} href={`/sa/contracts/${row.id}`} tone="primary" size="sm">เปิดสัญญา</Button>
           )}

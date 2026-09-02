@@ -145,39 +145,47 @@ function classifyClickable(tag, attrs) {
   return "violation";
 }
 
-/* สำเนาของ ROW_MIRROR — เงื่อนไขที่ทำให้ `<tr onClick>` ของ DetailRow ถูกหักออกจาก
-   เพดานคีย์บอร์ดได้ · ทะเบียนการยกเว้นเต็ม ๆ (พร้อม 5 ข้อที่ตรวจไม่ได้) อยู่เหนือ
-   `const ROW_PRIMITIVE` ใน scripts/audit-ui.mjs — ที่นี่เก็บแค่ตัวจับ เพราะต้องเทียบ
-   ตัวอักษรต่อตัวอักษรกับฝั่งโน้น (ดูเทสต์ "ตัวแยกแท็ก JSX + ตัวตัดสิน …") */
+/* สำเนาของ ROW_MIRROR / CARD_MIRROR — เงื่อนไขที่ทำให้ `<tr onClick>` ของ DetailRow และ
+   `<div onClick>` ของ ClickableCard ถูกหักออกจากเพดานคีย์บอร์ดได้ · ทะเบียนการยกเว้น
+   เต็ม ๆ (พร้อม 5 ข้อที่ตรวจไม่ได้) อยู่เหนือ `const ROW_PRIMITIVE` ใน scripts/audit-ui.mjs
+   — ที่นี่เก็บแค่ตัวจับ เพราะต้องเทียบตัวอักษรต่อตัวอักษรกับฝั่งโน้น
+   (ดูเทสต์ "ตัวแยกแท็ก JSX + ตัวตัดสิน …")
+   ⭐ **ตัวจับมีชุดเดียวรับ `tag` เป็นพารามิเตอร์** ไม่ใช่สองก๊อป — ก๊อปที่สองคือก๊อปที่
+   ไม่มีใครล็อกไว้กับใคร แล้วมันจะเดินหนีตัวแรกภายในไม่กี่คอมมิต */
 const ROW_PRIMITIVE = "src/components/ui/DetailRow.js";
+const CARD_PRIMITIVE = "src/components/ui/ClickableCard.js";
 
-function rowMirrorMisses(rel, lined) {
+function mirrorMisses(rel, lined, tag) {
   const misses = [];
-  for (let at = lined.indexOf("<DetailRow"); at !== -1; at = lined.indexOf("<DetailRow", at + 10)) {
+  const words = tag === "DetailRow"
+    ? { unit: "แถว", where: "ในเซลล์", plain: "<tr className=\"premium-row\"> ธรรมดา" }
+    : { unit: "การ์ด", where: "ในการ์ด", plain: "<div> ธรรมดา" };
+  const opener = `<${tag}`;
+  for (let at = lined.indexOf(opener); at !== -1; at = lined.indexOf(opener, at + opener.length)) {
     const line = lined.slice(0, at).split(/\r?\n/).length;
     const [open] = jsxOpeningTags(lined.slice(at));
-    if (open?.tag !== "DetailRow") {
-      misses.push(`${rel}:${line} อ่านแท็ก <DetailRow> ไม่ออก — ด่านตรวจแถวนี้ไม่ได้ ต้องจัดรูปให้อ่านออกก่อน`);
+    if (open?.tag !== tag) {
+      misses.push(`${rel}:${line} อ่านแท็ก <${tag}> ไม่ออก — ด่านตรวจ${words.unit}นี้ไม่ได้ ต้องจัดรูปให้อ่านออกก่อน`);
       continue;
     }
     const href = jsxAttributes(open.attrText).get("href");
     if (!href) {
-      misses.push(`${rel}:${line} <DetailRow> ไม่มี href — แถวที่ไม่พาไปไหนต้องเป็น <tr> ธรรมดา`);
+      misses.push(`${rel}:${line} <${tag}> ไม่มี href — ${words.unit}ที่ไม่พาไปไหนต้องเป็น ${words.plain}`);
       continue;
     }
-    const close = lined.indexOf("</DetailRow>", at);
+    const close = lined.indexOf(`</${tag}>`, at);
     const body = close === -1 ? "" : lined.slice(at, close);
-    const mirrored = jsxOpeningTags(body).some(({ tag, attrText }) =>
-      (tag === "a" || tag === "Link") && jsxAttributes(attrText).get("href") === href);
+    const mirrored = jsxOpeningTags(body).some(({ tag: inner, attrText }) =>
+      (inner === "a" || inner === "Link") && jsxAttributes(attrText).get("href") === href);
     if (!mirrored) {
-      misses.push(`${rel}:${line} <DetailRow href=${href}> ไม่มี <Link href=…> ปลายทางเดียวกันในเซลล์`);
+      misses.push(`${rel}:${line} <${tag} href=${href}> ไม่มี <Link href=…> ปลายทางเดียวกัน${words.where}`);
     }
   }
   return misses;
 }
 /* ── ตัวจับสองฝั่งต้องเป็นตัวเดียวกัน ─────────────────────────────────────── */
 test("ตัวแยกแท็ก JSX + ตัวตัดสิน ต้องเหมือน audit-ui.mjs ทุกตัวอักษร", () => {
-  for (const name of ["jsxTagEnd", "jsxOpeningTags", "jsxAttributes", "jsxBalancedEnd", "classifyClickable", "rowMirrorMisses"]) {
+  for (const name of ["jsxTagEnd", "jsxOpeningTags", "jsxAttributes", "jsxBalancedEnd", "classifyClickable", "mirrorMisses"]) {
     assert.equal(topLevelFunction(SELF, name), topLevelFunction(AUDIT, name),
       `${name}() ในเทสต์กับใน audit-ui.mjs ไม่เหมือนกันแล้ว — ก๊อปฝั่งที่แก้ไปทับอีกฝั่ง`);
   }
@@ -191,6 +199,7 @@ test("ค่าคงที่ของด่านต้องเป็นช�
     'const NATIVELY_CLICKABLE = new Set(["button", "input", "select", "textarea", "summary", "option", "label"]);',
     `const CLICK_STOPPER = /${CLICK_STOPPER.source}/;`,
     `const ROW_PRIMITIVE = "${ROW_PRIMITIVE}";`,
+    `const CARD_PRIMITIVE = "${CARD_PRIMITIVE}";`,
   ]) {
     assert.ok(AUDIT.includes(line), `audit-ui.mjs ไม่มีบรรทัด: ${line}`);
   }
@@ -351,10 +360,19 @@ function scan() {
   const counts = { native: 0, stopper: 0, compliant: 0, violation: 0 };
   const hits = new Map();
   const rowMirror = [];
+  const cardMirror = [];
+  /* จำนวน **ที่เรียก** ของ primitive สองตัว — ไม่ได้ใช้ตัดสินความผิด แต่ใช้กัน
+     "ด่านกลวงเพราะไม่มีใครเรียก": ด่าน MIRROR ทั้งคู่ผ่านฉลุยเมื่อ callers = 0
+     (ลิสต์ misses ว่างเปล่าเท่ากันทั้งกรณีถูกและกรณีไม่มีของ) — ดู test ข้างล่าง */
+  const primitiveUses = { DetailRow: 0, ClickableCard: 0 };
   for (const file of uiJsFiles()) {
     const rel = path.relative(process.cwd(), file).replaceAll("\\", "/");
     const lined = blankLineComments(blankBlockComments(fs.readFileSync(file, "utf8")));
-    rowMirror.push(...rowMirrorMisses(rel, lined));
+    rowMirror.push(...mirrorMisses(rel, lined, "DetailRow"));
+    cardMirror.push(...mirrorMisses(rel, lined, "ClickableCard"));
+    for (const name of ["DetailRow", "ClickableCard"]) {
+      primitiveUses[name] += (lined.match(new RegExp(`<${name}[\\s>]`, "g")) || []).length;
+    }
     for (const { tag, line, attrText } of jsxOpeningTags(lined)) {
       if (!HOST_TAG.test(tag)) continue;
       const verdict = classifyClickable(tag, jsxAttributes(attrText));
@@ -378,8 +396,11 @@ function scan() {
      ROW_MIRROR ว่างทั้งระบบ และไฟล์ primitive เหลือจุดที่ต้องตัดสิน 1 จุดพอดี
      (จุดที่สองในไฟล์นั้นต้องถูกนับตามปกติ ไม่ใช่ยกทั้งไฟล์แบบ dismissScrimExempt) */
   const rowShortcutExempt = rowMirror.length === 0 && (hits.get(ROW_PRIMITIVE) || []).length === 1 ? 1 : 0;
-  const violations = scrimmed.filter((item) => !(rowShortcutExempt && item.startsWith(`${ROW_PRIMITIVE}:`)));
-  return { counts, violations, scrim, rowMirror, rowShortcutExempt };
+  const cardShortcutExempt = cardMirror.length === 0 && (hits.get(CARD_PRIMITIVE) || []).length === 1 ? 1 : 0;
+  const violations = scrimmed.filter((item) =>
+    !(rowShortcutExempt && item.startsWith(`${ROW_PRIMITIVE}:`))
+    && !(cardShortcutExempt && item.startsWith(`${CARD_PRIMITIVE}:`)));
+  return { counts, violations, scrim, rowMirror, cardMirror, rowShortcutExempt, cardShortcutExempt, primitiveUses };
 }
 
 test("เพดาน A11Y_KEYBOARD_CAP ยังผูกกับของจริง", () => {
@@ -400,8 +421,23 @@ test("เพดาน A11Y_KEYBOARD_CAP ยังผูกกับของจ�
    ⚠️ เป็น ratchet สองทางเหมือนยอดรวม: **เกินตก · ต่ำกว่าก็ตก** (แก้จริงแล้วต้องรูดลง
    พร้อมกับ A11Y_KEYBOARD_CAP ในคอมมิตเดียวกัน) · ห้ามเติมแท็กใหม่เข้าตารางนี้เพื่อให้
    ผ่าน — แท็กใหม่ที่โผล่มาแปลว่ามีคนเปิดกลุ่มใหม่ ต้องมีคนอ่านก่อน
-   📉 tr 17 → 7 รอบแถวตาราง 2026-09-02 (DetailRow + ROW_MIRROR) · อีก 3 กลุ่มไม่ขยับ */
-const A11Y_TAG_CAPS = { div: 17, tr: 7, span: 4, td: 1 };
+   📉 tr 17 → 7 รอบแถวตาราง 2026-09-02 (DetailRow + ROW_MIRROR) · อีก 3 กลุ่มไม่ขยับ
+   📉 div 17 → 14 รอบการ์ด **เฟสที่ 1: คอมโพเนนต์ร่วม** 2026-09-02 — สามจุดที่ปิดเป็น
+      คอมโพเนนต์ที่ใช้ร่วมทั้งหมด (excise/DataList · ui/ApprovalQueue · RelationRow ของ
+      หน้ารายละเอียดลูกค้า) · อีก 14 จุดที่เหลือเป็นการ์ด **รายหน้า** ซึ่งเป็นงานเฟสถัดไป
+      ⚖️ ClickableCard.js ที่เพิ่มเข้ามาในรอบเดียวกันไม่ทำให้เลขขยับ — `<div onClick>`
+         ของมันถูกหักคืนด้วย cardShortcutExempt พอดี (รูปเดียวกับ DetailRow ในรอบแถว)
+   📉 div 14 → **0 ปิดจบ** รอบการ์ด **เฟสที่ 2: หน้ารายหน้า** 2026-09-02 — 14 จุดใน 7 ไฟล์
+      แยกเป็นสามท่าตามเนื้อในของการ์ด (ห่อทั้งใบด้วย <Link> / `<button>` / ClickableCard)
+      รายละเอียดเต็มอยู่เหนือ A11Y_KEYBOARD_CAP ใน scripts/audit-ui.mjs
+   ⭐ **`div` ถูก *ถอดออกจากตาราง* ไม่ใช่เขียน `div: 0`** — byTag สร้างจาก violations จริง
+      แท็กที่ไม่มีความผิดเลยจึงไม่โผล่เป็นคีย์ ⇒ เขียน `div: 0` ค้างไว้ทำให้ deepEqual ตก
+      ⚠️ อ่านตารางนี้ให้ถูก: มันไม่ใช่ "รายชื่อแท็กที่ห้ามผิด" แต่เป็น **รายชื่อแท็กที่ยัง
+      ผิดอยู่** · วันที่ `<div onClick>` กลับมา มันจะโผล่เป็นคีย์ใหม่แล้ว deepEqual ตกทันที
+      ซึ่งคือเจตนา — ไม่ต้องมีคีย์ค้างไว้เฝ้ากลุ่มที่ปิดไปแล้ว
+   ⚠️ **ห้ามลบแท็กออกจากตารางนี้เพื่อให้ผ่าน** — ลบได้เฉพาะตอนกลุ่มนั้นเหลือ 0 *จริง*
+      ซึ่งบังคับให้รูด A11Y_KEYBOARD_CAP ลงในคอมมิตเดียวกันอยู่แล้ว (assert ผลรวมข้างล่าง) */
+const A11Y_TAG_CAPS = { tr: 7, span: 4, td: 1 };
 
 test("เพดานรายแท็กยังผูกกับของจริง (กันการสลับกลุ่มใต้ยอดรวม)", () => {
   const { violations } = scan();
@@ -441,8 +477,12 @@ test("เพดานรายแท็กยังผูกกับของ�
 const NATIVE_BUTTON_FLOOR = 550;
 
 test("ทางยกเว้นยังกว้างเท่าเดิม (กันด่านกลวง)", () => {
-  const { counts, rowShortcutExempt } = scan();
-  assert.equal(counts.stopper, 22, "ตัวกันคลิกทะลุที่ยกเว้นไป");
+  const { counts, rowShortcutExempt, cardShortcutExempt } = scan();
+  /* ⬇️ 2026-09-02 ลด 22 → 21: `<div onClick={(e) => e.stopPropagation()}>` ที่ห่อปุ่มท้ายแถว
+     ของ ui/ApprovalQueue.js **กลายเป็นโค้ดตาย** พอแถวไม่มี onClick ให้ต้องกันคลิกทะลุแล้ว
+     ⇒ ถอดออกในคอมมิตเดียวกัน · ไม่ใช่ "ทางยกเว้นแคบลง" แต่เป็นของที่ไม่มีงานทำแล้วจริง ๆ
+     (ตัวกันของ `ApprovalActions` เองยังอยู่ครบ — มันห่อปุ่มของตัวเองในไฟล์ ApprovalStatus.js) */
+  assert.equal(counts.stopper, 21, "ตัวกันคลิกทะลุที่ยกเว้นไป");
   /* ⬇️ 2026-09-02 ลด 2 → 1: DetailRow.js **ออกจากช่องนี้** เพราะถอด role/tabIndex/onKeyDown
      ออกจาก <tr> แล้ว (`role="link"` ทับ `role="row"` ทิ้ง = ตก 1.3.1 · ROLE_ON_TABLE_TAG_CAP
      จึงรูดจาก 1 เหลือ 0 ได้ในคอมมิตเดียวกัน) · มันไม่ได้หายไปเฉย ๆ แต่ย้ายไปอยู่ช่องใหม่
@@ -454,6 +494,10 @@ test("ทางยกเว้นยังกว้างเท่าเดิ�
   assert.equal(rowShortcutExempt, 1,
     "ทางลัดเมาส์บนแถวต้องถูกยกเว้น 1 จุดพอดี — 0 แปลว่า ROW_MIRROR ไม่ว่าง หรือ DetailRow.js "
     + "มีจุดที่ต้องตัดสินมากกว่า 1 (ทั้งสองกรณีต้องมีคนเปิดดู ไม่ใช่แก้เลขให้ผ่าน)");
+  /* 🔒 ฝาแฝดฝั่งการ์ด — เงื่อนไขเดียวกันเป๊ะ ผูกกับ CARD_MIRROR แทน ROW_MIRROR */
+  assert.equal(cardShortcutExempt, 1,
+    "ทางลัดเมาส์บนการ์ดต้องถูกยกเว้น 1 จุดพอดี — 0 แปลว่า CARD_MIRROR ไม่ว่าง หรือ ClickableCard.js "
+    + "มีจุดที่ต้องตัดสินมากกว่า 1");
   assert.ok(counts.native >= NATIVE_BUTTON_FLOOR,
     `<button> ทั้งระบบเหลือ ${counts.native} ต่ำกว่าพื้น ${NATIVE_BUTTON_FLOOR} — `
     + "ปุ่มจริงหายเป็นกลุ่ม แปลว่ามีคนแปลง <button> เป็นแท็กที่กดด้วยคีย์บอร์ดไม่ได้");
@@ -503,6 +547,15 @@ const SWALLOWED_ONCLICK = [
   "src/components/service/CloseVisitSheet.js:382",
   // JSDoc ที่เขียนว่า "href แทน onClick = รายการที่พาไปหน้าอื่น" — คอมเมนต์จริง ล้างถูกแล้ว
   "src/components/ui/RowActionMenu.js:25",
+  /* คอมเมนต์ไทยของรอบการ์ด 2026-09-02 ที่ **ยกโค้ดเก่ามาอ้าง** ว่าเดิมเขียนอะไรไว้
+     (`เดิมทุกแถวเป็น <div onClick={() => router.push("/mgmt/tasks")}>`) — เป็นคอมเมนต์จริง
+     ล้างถูกแล้ว · ของจริงบนหน้านั้นตอนนี้เป็น <Link> ที่หัวกล่อง + แถวเป็นข้อความล้วน
+     🪤 บทเรียนของรายการนี้: **การอธิบายของเก่าด้วยการก๊อปโค้ดมาแปะ ทำให้ชื่อ prop
+        โผล่ในสายตาของด่านทุกตัวที่อ่านไฟล์ดิบ** — ไม่ใช่แค่รายการนี้ อีกจุดในรอบเดียวกัน
+        เขียน `className="ui-badge"` ในคอมเมนต์แล้วไปบวกตัวนับ .ui-badge ของหน้าต้นแบบ
+        (badgeFamilies.test.mjs) จน "จำนวนจุดที่ใช้งานจริง" เพี้ยนไป 1 ⇒ เขียนอ้างของเก่า
+        ให้เลี่ยงรูปที่เป็นโค้ดจริง เช่น `<div>` ที่แขวน onClick ไว้ (ไม่มีเครื่องหมาย =) */
+  "src/app/mgmt/page.js:132",
 ];
 
 test("รายการ onClick ที่การล้างคอมเมนต์กลืนไป ต้องเท่าที่ตรวจด้วยมือไว้แล้ว", () => {
@@ -586,7 +639,46 @@ const ROW_MIRROR_FIXTURES = [
 
 for (const [label, code, expected] of ROW_MIRROR_FIXTURES) {
   test(`ROW_MIRROR: ${label}`, () => {
-    assert.equal(rowMirrorMisses("fixture.js", code).length, expected, code);
+    assert.equal(mirrorMisses("fixture.js", code, "DetailRow").length, expected, code);
+  });
+}
+
+/* ── CARD_MIRROR: ชุดเดียวกันทุกข้อ แค่เปลี่ยนแท็ก (2026-09-02) ──────────────────
+   ⭐ เก็บครบทั้งชุดโดยเจตนา **ไม่ใช่ก๊อปมาเผื่อสวย** — นี่คือข้อพิสูจน์ว่าด่านฝั่งการ์ด
+   เข้มเท่าฝั่งแถวจริง ไม่ได้หลวมลงเพราะเป็นของใหม่ · โดยเฉพาะสองข้อ "การ์ดที่มีแค่ปุ่มลบ"
+   กับ "ลิงก์ดินสอ ?edit=1" ซึ่งเป็นสองรูปที่ด่านหลวมกว่านี้จะปล่อยผ่านเงียบ ๆ
+   🪤 ข้อ self-closing มีเพิ่มมาจากฝั่งแถว: ClickableCard รับเนื้อผ่าน children (ต่างจาก
+   RelationRow เดิมที่รับผ่าน props) ⇒ ต้องยืนยันว่าท่าที่ซ่อนลิงก์ไว้ใน props ตกจริง */
+const CARD_MIRROR_FIXTURES = [
+  ["ลิงก์ที่หัวการ์ด href เหมือนกันเป๊ะ = ผ่าน (ทรงของท่า C)",
+    "<ClickableCard href={`/sa/tasks/${t.id}`} className=\"glass-panel\">"
+    + "<Link href={`/sa/tasks/${t.id}`} className=\"linklike-block\"><strong>{t.title}</strong></Link>"
+    + "<button type=\"button\" onClick={done}>เสร็จ</button>"
+    + "</ClickableCard>", 0],
+  ["<a href> ธรรมดาก็นับ ไม่ได้บังคับว่าต้องเป็น <Link>",
+    '<ClickableCard href="/x/1"><a href="/x/1">x</a></ClickableCard>', 0],
+  ["🪤 การ์ดที่มีแค่ปุ่มลบ = ตก (มีของโฟกัสได้ แต่ 'เปิดรายละเอียด' ยังเข้าไม่ถึง)",
+    "<ClickableCard href={`/sa/tasks/${t.id}`}>"
+    + "<div>{t.title}</div><button type=\"button\" onClick={del}>ลบ</button>"
+    + "</ClickableCard>", 1],
+  ["🪤 ลิงก์ดินสอ 'แก้ไข' ไม่ใช่ทางเข้าของการเปิดรายละเอียด — คนละปลายทาง",
+    "<ClickableCard href={`/sa/tasks/${t.id}`}>"
+    + "<Link href={`/sa/tasks/${t.id}?edit=1`}>แก้</Link>"
+    + "</ClickableCard>", 1],
+  ["<ClickableCard> ที่ไม่ส่ง href เลย = ตก (การ์ดที่ไม่พาไปไหนต้องเป็น <div> ธรรมดา)",
+    '<ClickableCard className="glass-panel"><Link href="/x/1">x</Link></ClickableCard>', 1],
+  ["เขียน href คนละข้อความแต่ปลายทางเดียวกัน = ตก (ตั้งใจให้เข้ม — ยกเป็น detailHref)",
+    "<ClickableCard href={`/x/${row.id}`}><Link href={\"/x/\" + row.id}>x</Link></ClickableCard>", 1],
+  ["🪤 self-closing (ซ่อนลิงก์ไว้ใน props) = ตกเสมอ — หาแท็กปิดไม่เจอ body เลยว่าง",
+    '<ClickableCard href="/x/1" title={<Link href="/x/1">x</Link>} />', 1],
+  ["สองใบในไฟล์เดียว ตรวจแยกกันคนละใบ",
+    '<ClickableCard href="/a"><Link href="/a">a</Link></ClickableCard>'
+    + '<ClickableCard href="/b">b</ClickableCard>', 1],
+];
+
+for (const [label, code, expected] of CARD_MIRROR_FIXTURES) {
+  test(`CARD_MIRROR: ${label}`, () => {
+    assert.equal(mirrorMisses("fixture.js", code, "ClickableCard").length, expected, code);
   });
 }
 
@@ -599,11 +691,48 @@ test("ROW_MIRROR เป็น hard-zero และผูกกับการย�
     "สูตร rowShortcutExempt เปลี่ยนไป — ต้องยกเว้นเมื่อ ROW_MIRROR ว่าง **และ** DetailRow.js เหลือ 1 จุดพอดี");
 });
 
+test("CARD_MIRROR เป็น hard-zero และผูกกับการยกเว้นทางลัดเมาส์บนการ์ด", () => {
+  assert.match(AUDIT, /cardMirrorMissViolations\.length\s*\n?\s*\?/,
+    "audit-ui.mjs ต้องฟ้องทันทีที่ CARD_MIRROR ไม่เป็น 0 (ไม่มีเพดานให้ไต่)");
+  assert.match(AUDIT, /cardMirrorMissViolations\.length === 0 && \(a11yKeyboardHits\.get\(CARD_PRIMITIVE\) \|\| \[\]\)\.length === 1 \? 1 : 0/,
+    "สูตร cardShortcutExempt เปลี่ยนไป — ต้องยกเว้นเมื่อ CARD_MIRROR ว่าง **และ** ClickableCard.js เหลือ 1 จุดพอดี");
+  /* หักจาก **รายการ** ไม่ใช่หักแต่ตัวเลข (เหตุผลเดียวกับฝั่งแถว: รายงานต้องไม่ขัดกันเอง) */
+  assert.match(AUDIT, /!\(cardShortcutExempt && rel === CARD_PRIMITIVE\)/,
+    "ต้องกรอง CARD_PRIMITIVE ออกจาก **รายการ** ความผิด ไม่ใช่หักแต่ยอดรวม");
+});
+
+test("CARD_MIRROR ยังผูกกับของจริง (ทุกที่เรียก ClickableCard ต้องผ่าน)", () => {
+  const { cardMirror } = scan();
+  assert.deepEqual(cardMirror, [],
+    "มีที่เรียก ClickableCard ที่ไม่มี <Link> ปลายทางเดียวกันในการ์ด — ยกเป็น const detailHref "
+    + "ตัวเดียวแล้วส่งให้ทั้งสองที่ · การ์ดที่ข้างในไม่มีปุ่ม/ลิงก์เลย ไม่ต้องใช้ ClickableCard "
+    + "ตั้งแต่ต้น ให้ห่อทั้งใบด้วย <Link> แล้วเติมคลาส card-link แทน");
+});
+
 test("ROW_MIRROR ยังผูกกับของจริง (ทุกที่เรียก DetailRow ต้องผ่าน)", () => {
   const { rowMirror } = scan();
   assert.deepEqual(rowMirror, [],
     "มีที่เรียก DetailRow ที่ไม่มี <Link> ปลายทางเดียวกันในเซลล์ — ยกเป็น const detailHref "
     + "ตัวเดียวแล้วส่งให้ทั้งสองที่ (แถวที่ไม่พาไปไหนใช้ <tr className=\"premium-row\"> ธรรมดา)");
+});
+
+/* 🪤 **สองเทสต์ MIRROR ข้างบนผ่านฉลุยตอนไม่มีใครเรียก primitive เลย** — ลิสต์ misses
+   ว่างเปล่าเหมือนกันทั้งกรณี "ทุกที่เรียกถูกต้อง" และกรณี "ไม่มีที่เรียกให้ตรวจ"
+   ⇒ ของจริงที่เพิ่งเกิด: ตอนตั้งด่าน CARD_MIRROR (เฟสที่ 1 · 2026-09-02) `ClickableCard`
+   **ยังไม่มีใครเรียกสักจุด** เทสต์จึงเขียวมาทั้งวันโดยไม่ได้ตรวจอะไรเลย และเพิ่งมามีของ
+   จริงให้ตรวจตอนเฟสที่ 2 · ถ้าวันหน้ามี redesign ถอดที่เรียกออกจนหมด ด่านจะกลับไปกลวง
+   แบบเดิมเงียบ ๆ พร้อมกับที่ `cardShortcutExempt` ร่วงเป็น 0 (ซึ่งฟ้องคนละเรื่อง)
+
+   ⚖️ **เป็นพื้น ไม่ใช่ค่าตายตัว** — ตั้งไว้ที่ 1 เพราะบทเรียนของ NATIVE_BUTTON_FLOOR
+   ข้างบน: ล็อกเลขที่โตตามงานปกติ (จำนวนที่เรียก) = เทสต์ที่ตกประจำจนคนชินกับการแก้เลข
+   ให้ผ่าน · ที่นี่ต้องการแค่คำตอบว่า "ยังมีของจริงให้ตรวจอยู่ไหม" */
+test("ด่าน MIRROR ทั้งคู่ยังมีของจริงให้ตรวจ (กันด่านกลวงเพราะไม่มีที่เรียก)", () => {
+  const { primitiveUses } = scan();
+  assert.ok(primitiveUses.DetailRow >= 1,
+    "ไม่มีที่เรียก DetailRow เหลือแล้ว — ROW_MIRROR กลายเป็นด่านกลวง (ผ่านเพราะไม่มีอะไรให้ตรวจ) "
+    + "ถ้าตั้งใจเลิกใช้ primitive ตัวนี้จริง ต้องถอดด่านกับทางยกเว้นของมันออกในคอมมิตเดียวกัน");
+  assert.ok(primitiveUses.ClickableCard >= 1,
+    "ไม่มีที่เรียก ClickableCard เหลือแล้ว — CARD_MIRROR กลายเป็นด่านกลวง (เหตุผลเดียวกับบรรทัดบน)");
 });
 
 /* 🪤 สายสะดุดของการยกเว้น: ถ้าวันหน้า DetailRow.js มี `<div onClick>` ตัวที่สองโผล่มา
@@ -618,4 +747,22 @@ test("การยกเว้นเป็นของ <tr> ของ DetailRow 
   assert.ok(!/\brole=|\btabIndex=|\bonKeyDown=/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")),
     "DetailRow คืน role/tabIndex/onKeyDown ขึ้น <tr> แล้ว — ทับ role=\"row\" ทิ้ง (ตก 1.3.1) "
     + "และการยกเว้นนี้ตั้งอยู่บนสมมติฐานว่าแถว **ไม่ใช่** control");
+});
+
+/* 🪤 สายสะดุดเดียวกันของฝั่งการ์ด · มีข้อที่แถวไม่ต้องมีเพิ่มมาหนึ่งข้อ: **ต้องส่ง
+   currentTarget เป็นขอบเขตให้ isInteractiveTarget** — ลืมแล้วคลิกการ์ดจะไม่ทำงานเลยสักใบ
+   (บั๊กเดียวกับที่ DetailRow เคยเจอ · คอมเมนต์ของ isInteractiveTarget ใน lib/uiRules.js) */
+test("การยกเว้นเป็นของ <div> ของ ClickableCard จุดเดียว ไม่ใช่ทั้งไฟล์", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), CARD_PRIMITIVE), "utf8");
+  const clicks = (src.match(/onClick=/g) || []).length;
+  assert.equal(clicks, 1,
+    `${CARD_PRIMITIVE} มี onClick ${clicks} ที่ — โควตาที่ยกเว้นให้คือ **การ์ดเดียว** `
+    + "ถ้ามีตัวที่สองต้องแยกให้ชัดก่อน ห้ามให้มันแอบใช้โควตาเดียวกัน");
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.ok(!/\brole=|\btabIndex=|\bonKeyDown=/.test(code),
+    "ClickableCard ใส่ role/tabIndex/onKeyDown บน <div> แล้ว — ได้ tab stop เกินมาการ์ดละ 1 จุด "
+    + "ที่กด Enter แล้วผลเหมือนลิงก์ถัดไป 1 tab พอดี (เหตุผลเดียวกับที่ถอดออกจาก <tr>)");
+  assert.match(code, /isInteractiveTarget\(event\.target, event\.currentTarget\)/,
+    "ต้องส่ง currentTarget เป็นขอบเขต ไม่งั้น closest() ไล่ขึ้นไปเจอการ์ดเองแล้วคืน true ทุกครั้ง "
+    + "⇒ คลิกการ์ดไม่ทำงานเลยสักใบ (บั๊กที่เคยทำให้คลิกแถวตายทั้งระบบ)");
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { parse as babelParse } from "@babel/parser";
 import {
   MODULES,
   METRICS,
@@ -787,7 +788,7 @@ const RAW_TAILWIND_TYPE_CAP = 152;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1061                     isToday ? 700 : 500
+     src/app/pm/tasks/page.js:1072                     isToday ? 700 : 500
      src/app/sales-planning/deals/[id]/page.js:153     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:215   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:218   … ? 700 : 400
@@ -883,14 +884,8 @@ const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
    · `onClick` บนคอมโพเนนต์ตัวใหญ่ (<Toast onClose> ฯลฯ) — **นอกขอบเขต** ปลายทางจริง
      อยู่ใน host element ข้างในตัวมันเอง ซึ่งด่านนี้กวาดถึงอยู่แล้ว นับซ้ำได้ noise เปล่า
 
-   ── เหลือเป็นความผิด 29 จุด · แยกกลุ่มตาม *ทางแก้* ไม่ใช่ตามไฟล์ ────────────
-   1) **การ์ด/เซลล์กริดที่ทั้งใบกดได้ `<div onClick>` = 17** (พาไปหน้าอื่น 9 ⇒ <Link>
-      · สั่งงานในหน้า 8 ⇒ <button>) · 2 ใน 17 อยู่ในคอมโพเนนต์ร่วม
-      (customers/[id] RelationRow · ApprovalQueue.js) และ 1 คือ **การ์ดจอแนวตั้งของ
-      DataList.js** ซึ่งเป็นฝาแฝดของตารางที่เพิ่งแก้ไป — ตัวหลังนี้ต้องไล่ดูก่อนว่า
-      `card(row)` ของผู้เรียกมีปุ่ม/ลิงก์ซ้อนข้างในไหม ก่อนห่อทั้งใบด้วย <Link>
-      ⚠️ กลุ่มนี้ **ไม่ขยับเลยทั้งรอบ** (17 → 17) — รอบนี้แตะเฉพาะแถวตาราง
-   2) **แถวที่ยังเป็น `<tr onClick>` ดิบ = 7** — ⚠️ อ่านให้ดี: **ทั้ง 7 มีทางเข้าของ
+   ── เหลือเป็นความผิด 12 จุด · แยกกลุ่มตาม *ทางแก้* ไม่ใช่ตามไฟล์ ────────────
+   1) **แถวที่ยังเป็น `<tr onClick>` ดิบ = 7** — ⚠️ อ่านให้ดี: **ทั้ง 7 มีทางเข้าของ
       คีย์บอร์ดอยู่ในเซลล์แล้ว** (customers/[id] ปุ่มเปิดโมดัล · pm/tasks ·
       sahamit/page · tax/registrations/[id] · RequestQueuePanel · MyDashboardTab
       เป็น <Link> href เดียวกับแถว · ProjectDocumentView เป็น <button aria-expanded>)
@@ -902,17 +897,38 @@ const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
          DetailRow** ให้ ROW_MIRROR ตรวจได้จริง (6 ใน 7 พาไปหน้าอื่น จึงย้ายได้)
          ส่วน ProjectDocumentView เป็นสวิตช์พับ — DetailRow ยังไม่มีโหมดนั้น
          ห้ามยัด href ปลอมเพื่อให้ย้ายได้
-   3) **ข้อความในบรรทัดที่กดได้ `<span onClick>` = 4** — ทั้งสี่เป็นการเปลี่ยนหน้า
+   2) **ข้อความในบรรทัดที่กดได้ `<span onClick>` = 4** — ทั้งสี่เป็นการเปลี่ยนหน้า
       ⇒ <Link> · 3 ใน 4 เขียน e.stopPropagation() นำหน้าเพราะซ้อนในแถวที่กดได้
       เปลี่ยนเป็น <Link> แก้พร้อมกันสองเรื่อง (isInteractiveTarget รู้จัก <a> เอง)
-   4) **เซลล์เจาะข้อมูล `<td onClick>` = 1** (YearHeatmap.js) ⇒ <button> ในเซลล์
+   3) **เซลล์เจาะข้อมูล `<td onClick>` = 1** (YearHeatmap.js) ⇒ <button> ในเซลล์
 
-   ── ✅ กลุ่มที่ *ยุบลงทั้งกลุ่ม* รอบนี้: แถวตาราง `<tr>` 17 → 7 (2026-09-02) ──
+   ── ✅ กลุ่มที่ *หายไปทั้งกลุ่ม* แล้ว: การ์ด `<div>` 17 → 0 (2026-09-02) ──────────
+   กลุ่มที่ใหญ่ที่สุดที่เหลืออยู่ และเป็นกลุ่มเดียวที่ **ไม่มี primitive ตัวเดียวปิดจบให้ได้**
+   ต่างจากรอบ `<th>` (SortTh) และรอบ `<tr>` (DetailRow) — เพราะการ์ดแต่ละใบมีเนื้อในไม่เหมือน
+   กัน ทางแก้จึงเลือกจาก **"ข้างในมี interactive ไหม"** ทีละใบ ไม่ใช่ท่าเดียวใช้ทั้งกลุ่ม:
+     · **ท่า A — ห่อทั้งใบด้วย `<Link>`** (การ์ดที่ข้างในไม่มีปุ่ม/ลิงก์เลย) + คลาส `card-link`
+       ⇒ ไม่ต้องพึ่งด่านอะไรเลย เพราะไม่มี `onClick` เหลืออยู่ให้ต้องตรวจ
+     · **ท่า B — `<button type="button">`** (การ์ดที่ทำงานในหน้าเดิม ไม่มี URL ปลายทาง)
+       + คลาส `card-button` · 🪤 ต้องแปลง `<div>` ข้างในเป็น `<span>` ก่อน เพราะ `<button>`
+       รับได้แค่ phrasing content (ต่างจาก `<a>` ที่เป็น transparent content model)
+     · **ท่า C — `<ClickableCard href>` + `<Link>` ที่หัวการ์ด** (การ์ดที่ข้างในมีปุ่มของ
+       ตัวเอง ⇒ ห่อทั้งใบไม่ได้ เพราะ `<a>` ห้ามมี interactive descendant) · onClick บน
+       `<div>` เหลือเป็น **ทางลัดของเมาส์** และ CARD_MIRROR บังคับให้ href ตรงกันเป๊ะ
+   🪤 กับดักที่เจอจริงตอนไล่ทีละใบ: **การ์ดที่ปุ่มโผล่แบบมีเงื่อนไข** (`pending &&
+      canApproveRow`) อ่านผ่าน ๆ เหมือนไม่มีปุ่ม ⇒ ครอบไปแล้วจะได้ `<a>` ที่มี `<button>`
+      อยู่ข้างในเฉพาะบัญชีผู้อนุมัติ ซึ่งคนเขียนไม่มีวันเห็นบนเครื่องตัวเอง
+      ⇒ ต้องอ่าน **ทุกกิ่ง ternary** ในการ์ดก่อนตัดสิน ไม่ใช่ดูที่เรนเดอร์อยู่ตรงหน้า
+   🪤 อีกกับดัก: **การ์ดที่ทุกใบชี้ปลายทางเดียวกัน** (mgmt/page.js — ทุกแถวไป /mgmt/tasks
+      ไม่ได้เปิดงานใบนั้น) ห้ามห่อด้วย <Link> ⇒ ได้ลิงก์ N ตัวชื่อต่างกันปลายทางเดียว
+      = ตก 2.4.4 Link Purpose และหลอกคนอ่านว่ากดแล้วเปิดใบที่เห็น · ท่าที่ถูกคือลิงก์เดียว
+      ที่ **หัวกล่อง** แล้วถอด onClick ของแถวทิ้ง (แถวกลับเป็นข้อความ)
+
+   ── ✅ กลุ่มที่ *ยุบลงทั้งกลุ่ม* รอบก่อน: แถวตาราง `<tr>` 17 → 7 (2026-09-02) ──
    ทางแก้อยู่ที่ **primitive ตัวเดียวเหมือนรอบ `<th>`**: DetailRow.js ถอด role/tabIndex/
    onKeyDown ออกจาก `<tr>` แล้วให้ `<Link>` ในเซลล์เป็นทางเข้าจริง ⇒ 10 จุดเรียกผ่าน
    พร้อมกัน · ต่างจากรอบ `<th>` ตรงที่ **ไม่พอแค่นั้น**: ต้องมีด่าน ROW_MIRROR คู่มาด้วย
    ไม่งั้น "ย้ายมาใช้ DetailRow" กลายเป็นการเปลี่ยนแท็กที่ทำให้ด่านเงียบโดยที่คีย์บอร์ด
-   ยังกดไม่ได้ · ที่เหลือ 7 จุดคือแถวที่ยังไม่ได้ย้ายเข้า primitive (ดูข้อ 2)
+   ยังกดไม่ได้ · ที่เหลือ 7 จุดคือแถวที่ยังไม่ได้ย้ายเข้า primitive (ดูข้อ 1)
 
    ── ✅ กลุ่มที่ *หายไปทั้งกลุ่ม* แล้ว: หัวตารางเรียงลำดับ `<th>` (2026-09-02) ──
    เคยเป็นกลุ่มใหญ่ที่สุด **19 จุด** และเป็นกลุ่มเดียวที่ปิดจบได้ในรอบเดียว เพราะ
@@ -932,8 +948,9 @@ const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
    ── กติกาของเพดาน ──────────────────────────────────────────────────────────
    ratchet สองทางแบบเดียวกับ RAW_SPACING_CAP: **เกินตก · ต่ำกว่าก็ตก**
    ⚠️ ห้ามขยับขึ้นเพื่อให้ audit ผ่าน · และห้ามกดลงด้วยการ **เติมทางยกเว้น** —
-   ทางยกเว้นทั้งสี่แบบถูกล็อกจำนวนไว้ใน keyboardClickable.test.mjs แล้ว
-   (กันคลิกทะลุ 22 · ฉากหลังปิดกล่อง 4 · ทางลัดเมาส์บนแถว 1 · ครบเกณฑ์อยู่แล้ว 1)
+   ทางยกเว้นทั้งห้าแบบถูกล็อกจำนวนไว้ใน keyboardClickable.test.mjs แล้ว
+   (กันคลิกทะลุ 21 · ฉากหลังปิดกล่อง 4 · ทางลัดเมาส์บนแถว 1 · ทางลัดเมาส์บนการ์ด 1 ·
+   ครบเกณฑ์อยู่แล้ว 1)
    ทางเดียวที่เลขนี้ลงได้คือแก้โค้ดจริงให้ element กดด้วยคีย์บอร์ดได้
    📉 58 → 39 (2026-09-02 รอบ `<th>`): กลุ่มหัวตารางเรียงลำดับ 19 จุดปิดจบ
    📉 39 → 29 (2026-09-02 รอบแถวตาราง): กลุ่ม `<tr>` 17 → 7 · ดูบล็อกข้างบน
@@ -945,8 +962,42 @@ const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
       ที่ได้ `<Link>`/`<button>` ในเซลล์จริง ๆ ในคอมมิตเดียวกัน
    ⚠️ 7 ที่เหลือ **ไม่ใช่แถวที่คีย์บอร์ดกดไม่ได้** — ทุกตัวมีทางเข้าในเซลล์แล้ว แต่เป็น
       `<tr>` ดิบที่ ROW_MIRROR ตรวจไม่ถึง ⇒ ปิดเลขด้วยการย้ายเข้า DetailRow เท่านั้น
-      ห้ามปิดด้วยการขยายทางยกเว้นเป็น "มีอะไรโฟกัสได้ข้างในก็พอ" (เหตุผลที่ข้อ 2) */
-const A11Y_KEYBOARD_CAP = 29;
+      ห้ามปิดด้วยการขยายทางยกเว้นเป็น "มีอะไรโฟกัสได้ข้างในก็พอ" (เหตุผลที่ข้อ 1)
+   📉 29 → 26 (2026-09-02 รอบการ์ด **เฟสที่ 1: คอมโพเนนต์ร่วม**): กลุ่ม `div` 17 → 14
+      สามจุดที่ปิดคือ *คอมโพเนนต์ที่ใช้ร่วม* ทั้งหมด ⇒ แก้ที่เดียวได้หลายหน้าเหมือนสองรอบก่อน
+        · components/excise/DataList.js — การ์ดจอแนวตั้งห่อทั้งใบด้วย <Link> (ท่า A)
+          ผู้เรียกไม่ต้องแก้สักบรรทัด · ปลอดภัยเพราะ `card(row)` ของทั้งสองรายไม่มี
+          interactive เลย ซึ่งล็อกไว้ที่ excise/dataListCardCallers.test.mjs
+        · components/ui/ApprovalQueue.js — แถวคิวห่อทั้งใบไม่ได้ (มีปุ่มท้ายแถวทุกโหมด)
+          ⇒ ย้ายทางเข้าไปเป็น <Link> ที่บล็อกข้อความ แล้ว **ถอด onClick ของแถวทิ้ง**
+          (สัญญาเปลี่ยนจาก `onOpen` เป็น `rowHref` · ผู้เรียก 5 หน้าแก้บรรทัดละหนึ่ง)
+          🪤 ตัวห่อ stopPropagation ของแถวกลายเป็นโค้ดตาย ⇒ ถอดออก · counts.stopper 22 → 21
+        · database/customers/[id] RelationRow — เปลี่ยนสัญญาเป็น `href` แล้วห่อด้วย <Link>
+          (4 ที่เรียกในไฟล์เดียวกัน · ข้างในเป็นป้ายสถานะล้วน)
+   ⚖️ **ClickableCard.js ไม่ได้ทำให้เลขนี้เพิ่มหรือลด** — มันเพิ่ม `<div onClick>` ดิบมา 1
+      แล้วถูกหักคืนด้วย cardShortcutExempt พอดี (รูปเดียวกับที่ DetailRow ทำในรอบแถว)
+   📉 26 → 12 (2026-09-02 รอบการ์ด **เฟสที่ 2: หน้ารายหน้า**): กลุ่ม `div` 14 → **0 ปิดจบ**
+      14 จุดที่เหลือกระจายอยู่ 7 ไฟล์ แยกท่าตามเนื้อในของการ์ดจริง ๆ (ดูบล็อก ✅ ข้างบน):
+        · **ท่า A (ห่อทั้งใบ)** — customers/[id] การ์ดสินค้า/ทะเบียนภาษี · products/[id]
+          สามบล็อก (ทะเบียน/ใบแจ้ง/โครงการ) · pm/tasks ชิปในปฏิทิน ⇒ ไม่เหลือ onClick
+        · **ท่า B (`<button>`)** — customers/[id] การ์ดใบสั่งซื้อ (เปิดโมดัลในหน้าเดิม
+          ไม่มี URL) · sahamit/reconcile ช่องกริดสองมุมมอง (เปิดโมดัลเซลล์)
+          🪤 ทั้งสามจุดต้องแปลง `<div>` ข้างในเป็น `<span>` ก่อน · ตัวที่ **ไม่ใช่**
+             flex item ต้องเติม utility `block` เอง ไม่งั้น truncate/mt-* เงียบไปเฉย ๆ
+        · **ท่า C (ClickableCard)** — ทะเบียนลูกค้า · ทะเบียนสินค้า · pm/tasks การ์ดคิว
+          (**4 ที่เรียกใน 3 ไฟล์** — pm/tasks เรียกสองที่คือ miniCard กับ taskRow)
+          ทุกใบมีปุ่ม/`<select>`/เมนูอยู่ข้างใน ⇒ ห่อทั้งใบไม่ได้ · ของทะเบียนสองใบนั้น
+          ปุ่มโผล่ **แบบมีเงื่อนไข** ซึ่งเป็นกับดักที่เขียนไว้ในบล็อก ✅ ข้างบน
+        · **ไม่ใช่ทั้งสามท่า** — mgmt/page.js ที่ทุกแถวชี้ /mgmt/tasks เหมือนกันหมด
+          ⇒ ลิงก์เดียวที่หัวกล่อง แถวกลับเป็นข้อความ (เหตุผล 2.4.4 อยู่ในบล็อก ✅)
+      ⚖️ **ClickableCard เพิ่งได้ที่เรียกจริงรอบนี้** (4 จุด) — ตอนตั้งด่านเมื่อเฟสที่ 1
+         มันยังไม่มีใครเรียก · cardShortcutExempt ยังเป็น 1 เท่าเดิมเพราะยกเว้นให้
+         `<div onClick>` **ในตัว primitive** ไม่ใช่ให้ที่เรียก (ที่เรียกไม่มี onClick ของ
+         ตัวเองเลยสักจุด — ถ้ามี ต้องนับเป็นความผิดตามปกติ)
+   ⏭️ **ที่เหลือ 12 จุดไม่มีกลุ่มไหนปิดได้ด้วย primitive ตัวเดียวอีกแล้ว** — `tr` 7 ต้อง
+      ย้ายเข้า DetailRow ทีละแถว (ดูข้อ 1) · `span` 4 เปลี่ยนเป็น <Link> ได้ตรง ๆ ·
+      `td` 1 ของ YearHeatmap ต้องมี <button> ในเซลล์ */
+const A11Y_KEYBOARD_CAP = 12;
 
 /* แท็ก HTML แท้ ๆ — `<Card>` `<g.icon>` เป็นคอมโพเนนต์ ปลายทางจริงอยู่ในตัวมันเอง
    ซึ่งด่านนี้เดินไปถึงอยู่แล้วผ่าน host element ข้างใน */
@@ -983,7 +1034,7 @@ const NATIVELY_CLICKABLE = new Set(["button", "input", "select", "textarea", "su
 /* รูปของ "ตัวกันคลิกทะลุ" — arrow ที่ในตัวมีแต่ stopPropagation/preventDefault
    ตั้งใจเขียนเป็นรูปตายตัวแคบ ๆ ไม่ใช่ "มีคำว่า stopPropagation อยู่ที่ไหนสักแห่ง"
    เพราะ handler ที่ทำงานจริงก็เรียก stopPropagation นำหน้าได้เหมือนกัน
-   (ของจริง: pm/tasks/page.js:672 `e.stopPropagation(); router.push(…)` = ความผิดเต็ม) */
+   (ของจริง: pm/tasks/page.js:676 `e.stopPropagation(); router.push(…)` = ความผิดเต็ม) */
 const CLICK_STOPPER = /^\{\s*\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*\{?\s*(?:[A-Za-z_$][\w$]*\.(?:stopPropagation|preventDefault)\(\)\s*;?\s*)+\}?\s*\}$/;
 
 /* ฉากหลังกดเพื่อปิด — **ยกเว้นรายไฟล์ ไม่ใช่รายบรรทัด** (เลขบรรทัดเลื่อนทุกครั้งที่มี
@@ -1041,29 +1092,71 @@ const dismissScrimExempt = {
 const ROW_PRIMITIVE = "src/components/ui/DetailRow.js";
 const rowMirrorMissViolations = [];
 
+/* ── ฝาแฝดฝั่งการ์ด: CARD_MIRROR (2026-09-02) ─────────────────────────────────
+   ทุกอย่างข้างบนใช้กับการ์ดได้คำต่อคำ ต่างแค่แท็ก ⇒ **ขยายฟังก์ชันเดิมให้รับ `tag`
+   ไม่ใช่ก๊อปตัวที่สอง** — ตรรกะการเทียบมีชุดเดียวทั้งระบบ แก้ที่เดียวได้ทั้งสองด่าน
+   (ตัวจับถูกล็อกให้เหมือนกันตัวอักษรต่อตัวอักษรกับ keyboardClickable.test.mjs อยู่แล้ว
+   ถ้ามีตัวที่สอง ตัวที่สองจะไม่มีใครล็อกและเดินหนีกันเงียบ ๆ)
+
+   ทำไมการ์ดถึงต้องมีด่านของตัวเอง ทั้งที่ 13 จุดของ "ห่อทั้งใบ" ไม่ต้องมี: การ์ดที่
+   **มีปุ่มอยู่ข้างในแล้ว** ห่อทั้งใบไม่ได้ (`<a>` ห้ามมี interactive descendant) ⇒ ต้อง
+   วางลิงก์ที่หัวการ์ดแล้วเหลือ onClick บน <div> เป็นทางลัดของเมาส์ ซึ่งเป็นรูปเดียว
+   กับแถวตารางทุกประการ และต้องการหลักประกันตัวเดียวกันว่าลิงก์นั้น **ยังตรงปลายทาง** */
+const CARD_PRIMITIVE = "src/components/ui/ClickableCard.js";
+/* ⭐ **ตัวกดซ้อนตัวกด — HTML ไม่ถูกต้อง และเบราว์เซอร์แยกเป้าไม่ออก** (2026-09-03)
+   สเปกห้าม `<a href>` และ `<button>` มี interactive descendant · ถ้าซ้อนจริง:
+   · โปรแกรมอ่านหน้าจอประกาศเป้าเดียวแต่มีสองการกระทำอยู่ข้างใน
+   · กด Tab ได้ทั้งสองชั้น แต่ Enter บนชั้นนอกอาจยิงทั้งคู่ (ต่างกันตามเบราว์เซอร์)
+   · การ์ดที่ครอบทั้งใบด้วย <Link> แล้วข้างในมีปุ่ม "อนุมัติ" = กดอนุมัติแล้วเปลี่ยนหน้าไปด้วย
+
+   🐞 ที่มา: รอบการ์ด (2026-09-03) มีสามท่าให้เลือก — ครอบทั้งใบ / วางลิงก์ที่หัวการ์ด /
+   ทำเป็นปุ่ม · ท่า "ครอบทั้งใบ" ปลอดภัยเฉพาะเมื่อข้างในไม่มีตัวกด และรีวิว**พิสูจน์ด้วย
+   การฉีดจริง**ว่าถ้าเขียนผิดท่า (ครอบการ์ดที่มีปุ่มอนุมัติอยู่ข้างใน) ไม่มีด่านไหนจับได้เลย
+   ⇒ ปิดด้วย hard-zero ตรงนี้ ไม่ใช่พึ่งให้คนจำกติกาสามข้อได้
+
+   วัด 2026-09-03: **0 จุด** ทั้งระบบ ⇒ ตั้ง 0 ได้ทันทีโดยไม่ต้องแก้โค้ดแอปสักบรรทัด
+   🪤 นับคอมโพเนนต์ตัวใหญ่ที่รู้ว่าเรนเดอร์ตัวกด (Button/ActionButton/Link/StatusSelect/
+   RowActionMenu) ด้วย ไม่ใช่แค่แท็กเล็ก — เพราะการ์ดในรีโปนี้ใช้ตัวพวกนั้นเป็นหลัก */
+const NESTED_INTERACTIVE_OUTER = /^(?:a|button|Link|Button|ActionButton)$/;
+const NESTED_INTERACTIVE_INNER = /^(?:a|button|input|select|textarea|Link|Button|ActionButton|StatusSelect|RowActionMenu)$/;
+const nestedInteractiveViolations = [];
+const parseFailures = [];
+const cardMirrorMissViolations = [];
+
 /* เทียบ **ข้อความนิพจน์ตรงตัว** — ตั้งใจให้เข้ม ต่างกันแม้ช่องว่างก็ถือว่าไม่ตรง
    (ฟ้องผิดปลอดภัยกว่าปล่อยผ่านผิด) · โดนฟ้องผิดให้ยกเป็นตัวแปรเดียว
-   `const detailHref = ...;` แล้วส่งให้ทั้งแถวและลิงก์ ซึ่งอ่านง่ายกว่าอยู่แล้ว */
-function rowMirrorMisses(rel, lined) {
+   `const detailHref = ...;` แล้วส่งให้ทั้งแถวและลิงก์ ซึ่งอ่านง่ายกว่าอยู่แล้ว
+
+   🪤 `<Primitive …/>` แบบ self-closing (ส่งเนื้อผ่าน props) **ตกเสมอ** เพราะหาแท็กปิด
+      ไม่เจอ → body ว่าง → ไม่มีลิงก์ · นั่นคือเจตนา ไม่ใช่ผลข้างเคียง: ท่าที่ซ่อนลิงก์
+      ไว้ใน props ทำให้ด่านมองไม่เห็น จึงถูกปิดไปโดยอัตโนมัติ ไม่ต้องเขียนกฎเพิ่ม
+   🪤 หาแท็กปิดด้วย `indexOf` ⇒ **ไม่รู้จักการซ้อน** — วันนี้ไม่มีแถวซ้อนแถว/การ์ดซ้อน
+      การ์ดสักจุด แต่วันที่มีคนซ้อน ด่านจะตัด body ของใบนอกสั้นเกินจริงแล้วเงียบไปเลย
+      (ฟ้องผิดฝั่งปลอดภัย แต่ต้องรู้ตัวว่ามันเกิดจากอะไร) */
+function mirrorMisses(rel, lined, tag) {
   const misses = [];
-  for (let at = lined.indexOf("<DetailRow"); at !== -1; at = lined.indexOf("<DetailRow", at + 10)) {
+  const words = tag === "DetailRow"
+    ? { unit: "แถว", where: "ในเซลล์", plain: "<tr className=\"premium-row\"> ธรรมดา" }
+    : { unit: "การ์ด", where: "ในการ์ด", plain: "<div> ธรรมดา" };
+  const opener = `<${tag}`;
+  for (let at = lined.indexOf(opener); at !== -1; at = lined.indexOf(opener, at + opener.length)) {
     const line = lined.slice(0, at).split(/\r?\n/).length;
     const [open] = jsxOpeningTags(lined.slice(at));
-    if (open?.tag !== "DetailRow") {
-      misses.push(`${rel}:${line} อ่านแท็ก <DetailRow> ไม่ออก — ด่านตรวจแถวนี้ไม่ได้ ต้องจัดรูปให้อ่านออกก่อน`);
+    if (open?.tag !== tag) {
+      misses.push(`${rel}:${line} อ่านแท็ก <${tag}> ไม่ออก — ด่านตรวจ${words.unit}นี้ไม่ได้ ต้องจัดรูปให้อ่านออกก่อน`);
       continue;
     }
     const href = jsxAttributes(open.attrText).get("href");
     if (!href) {
-      misses.push(`${rel}:${line} <DetailRow> ไม่มี href — แถวที่ไม่พาไปไหนต้องเป็น <tr> ธรรมดา`);
+      misses.push(`${rel}:${line} <${tag}> ไม่มี href — ${words.unit}ที่ไม่พาไปไหนต้องเป็น ${words.plain}`);
       continue;
     }
-    const close = lined.indexOf("</DetailRow>", at);
+    const close = lined.indexOf(`</${tag}>`, at);
     const body = close === -1 ? "" : lined.slice(at, close);
-    const mirrored = jsxOpeningTags(body).some(({ tag, attrText }) =>
-      (tag === "a" || tag === "Link") && jsxAttributes(attrText).get("href") === href);
+    const mirrored = jsxOpeningTags(body).some(({ tag: inner, attrText }) =>
+      (inner === "a" || inner === "Link") && jsxAttributes(attrText).get("href") === href);
     if (!mirrored) {
-      misses.push(`${rel}:${line} <DetailRow href=${href}> ไม่มี <Link href=…> ปลายทางเดียวกันในเซลล์`);
+      misses.push(`${rel}:${line} <${tag} href=${href}> ไม่มี <Link href=…> ปลายทางเดียวกัน${words.where}`);
     }
   }
   return misses;
@@ -1845,7 +1938,8 @@ for (const file of uiFiles) {
 
   if (rel.endsWith(".js")) {
     scanA11y(rel, lined);
-    rowMirrorMissViolations.push(...rowMirrorMisses(rel, lined));
+    rowMirrorMissViolations.push(...mirrorMisses(rel, lined, "DetailRow"));
+    cardMirrorMissViolations.push(...mirrorMisses(rel, lined, "ClickableCard"));
   }
 
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
@@ -1863,9 +1957,11 @@ for (const file of files) {
   if (!rel.startsWith("src/lib/") || !rel.endsWith(".js")) continue;
   const lined = blankLineComments(blankBlockComments(fs.readFileSync(file, "utf8")));
   scanA11y(rel, lined);
-  /* ROW_MIRROR ต้องเดินชุดไฟล์เดียวกับ scanA11y เป๊ะ ๆ — ถ้าด่านแคบกว่า วันที่มีคน
-     ย้ายตารางไป src/lib การยกเว้นทางลัดเมาส์จะยังติดอยู่โดยไม่มีใครตรวจที่เรียกนั้น */
-  rowMirrorMissViolations.push(...rowMirrorMisses(rel, lined));
+  /* ROW_MIRROR / CARD_MIRROR ต้องเดินชุดไฟล์เดียวกับ scanA11y เป๊ะ ๆ — ถ้าด่านแคบกว่า
+     วันที่มีคนย้ายตาราง/การ์ดไป src/lib การยกเว้นทางลัดเมาส์จะยังติดอยู่โดยไม่มีใคร
+     ตรวจที่เรียกนั้น */
+  rowMirrorMissViolations.push(...mirrorMisses(rel, lined, "DetailRow"));
+  cardMirrorMissViolations.push(...mirrorMisses(rel, lined, "ClickableCard"));
 }
 
 /* ── หักโควตาฉากหลังปิดกล่อง แล้วจัดกลุ่มตาม *ทางแก้* (ดู A11Y_KEYBOARD_CAP) ──
@@ -1894,10 +1990,16 @@ for (const [rel, allowed] of Object.entries(dismissScrimExempt)) {
    ออก การยกเว้นหายไปเองพร้อมกับด่านแดง ไม่ต้องรอให้คนมาลบบรรทัดในทะเบียน */
 const rowShortcutExempt =
   rowMirrorMissViolations.length === 0 && (a11yKeyboardHits.get(ROW_PRIMITIVE) || []).length === 1 ? 1 : 0;
+/* ฝาแฝดฝั่งการ์ด — **สูตรเดียวกันเป๊ะ** (ดู CARD_PRIMITIVE): ยกเว้นได้ 1 จุดพอดี และ
+   ยกเว้นได้ก็ต่อเมื่อ CARD_MIRROR ว่างทั้งระบบ ⇒ `<div onClick>` ตัวที่สองที่โผล่ใน
+   ClickableCard.js วันหน้าถูกนับตามปกติ ไม่ใช่ยกทั้งไฟล์ */
+const cardShortcutExempt =
+  cardMirrorMissViolations.length === 0 && (a11yKeyboardHits.get(CARD_PRIMITIVE) || []).length === 1 ? 1 : 0;
 /* หักออกจาก **รายการ** ไม่ใช่หักแค่ตัวเลข — ถ้าหักแต่ตัวเลข วันที่ด่านแดง รายการจะยัง
    พิมพ์ DetailRow.js เป็น ❌ และบรรทัด "แยกตามแท็ก" จะรวมได้มากกว่าหัวเรื่องอยู่ 1
    = รายงานที่ขัดกันเอง · ผลลัพธ์เชิงเลขเท่ากันทั้งสองท่า ต่างกันแค่ความซื่อของรายงาน */
-const a11yKeyboardViolations = rawKeyboardViolations.filter(({ rel }) => !(rowShortcutExempt && rel === ROW_PRIMITIVE));
+const a11yKeyboardViolations = rawKeyboardViolations.filter(({ rel }) =>
+  !(rowShortcutExempt && rel === ROW_PRIMITIVE) && !(cardShortcutExempt && rel === CARD_PRIMITIVE));
 const a11yKeyboardCount = a11yKeyboardViolations.length;
 
 /* ทางแก้รายแท็ก — ทุกกลุ่มที่เป็นเซลล์/แถวของตารางมีบรรทัด ⚠️ ห้าม ต่อท้าย เพราะ
@@ -1964,6 +2066,8 @@ const A11Y_EXEMPT_NOTE = [
   `  · ทางลัดเมาส์บนแถวของ ${ROW_PRIMITIVE} — วันนี้ ${rowShortcutExempt} จุด`,
   "    (ยกเว้นได้เพราะ ROW_MIRROR ยืนยันว่าทุกที่เรียกมี <Link> ปลายทางเดียวกันในเซลล์ —",
   "     ไม่ใช่เพราะ \"แถวมีอะไรโฟกัสได้ข้างใน\" · แถวที่มีแต่ปุ่มลบยังตกเหมือนเดิม)",
+  `  · ทางลัดเมาส์บนการ์ดของ ${CARD_PRIMITIVE} — วันนี้ ${cardShortcutExempt} จุด`,
+  "    (เงื่อนไขเดียวกันเป๊ะ แต่ผูกกับ CARD_MIRROR — การ์ดที่มีแต่ปุ่มลบยังตกเหมือนกัน)",
   "  · แท็กที่คีย์บอร์ดกดได้เอง — <button> · <a href> · <input> · <select> · <textarea> · <summary> · <label> · <option>",
   "ยังไม่แก้รอบนี้ก็ปล่อยไว้ได้ แต่ **ห้ามเพิ่มจุดใหม่** — เพดานเป็น ratchet ขึ้นไม่ได้",
 ].join("\n");
@@ -2161,7 +2265,63 @@ for (const file of runtimeJsFiles) {
   }
 }
 
+/* ตัวกดซ้อนตัวกด (ดู nestedInteractiveViolations) — เดินทั้ง src เพราะการ์ด/ปุ่ม
+   อยู่ได้ทั้ง app · components · lib */
+for (const file of files) {
+  const rel = relative(file);
+  if (!rel.endsWith(".js") || /\.test\.mjs$/.test(rel)) continue;
+  let ast;
+  try {
+    ast = babelParse(fs.readFileSync(file, "utf8"), { sourceType: "module", plugins: ["jsx"], errorRecovery: true });
+  } catch (error) {
+    /* 🐞 ห้ามกลืนเงียบ — รุ่นแรกของด่านนี้เขียน `catch { continue; }` แล้วลืม import
+       babelParse ⇒ ทุกไฟล์โยน ReferenceError แล้วถูก continue ทิ้ง ด่านจึงพิมพ์ 0
+       ทั้งที่ยิงทดสอบเข้าไปแล้ว = ศูนย์ปลอมชนิดเดียวกับที่งานชุดนี้ตั้งมาแก้
+       ⇒ นับไฟล์ที่พาร์สไม่ผ่านแยกไว้ และให้ตกถ้าเกินศูนย์ */
+    parseFailures.push(`${rel}: ${error.message.split("\n")[0].slice(0, 80)}`);
+    continue;
+  }
+  const walkNode = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "JSXElement") {
+      const outer = node.openingElement?.name?.name;
+      const hasHref = node.openingElement?.attributes?.some((a) => a.name?.name === "href");
+      if (outer && NESTED_INTERACTIVE_OUTER.test(outer) && (outer !== "a" || hasHref)) {
+        let inner = null;
+        const seek = (n) => {
+          if (!n || typeof n !== "object" || inner) return;
+          if (n !== node && n.type === "JSXElement") {
+            const name = n.openingElement?.name?.name;
+            if (name && NESTED_INTERACTIVE_INNER.test(name)) inner = name;
+          }
+          for (const key of Object.keys(n)) {
+            const value = n[key];
+            if (Array.isArray(value)) value.forEach(seek);
+            else if (value && typeof value === "object" && value.type) seek(value);
+          }
+        };
+        seek(node);
+        if (inner) {
+          nestedInteractiveViolations.push(`${rel}:${node.loc.start.line} <${outer}> มี <${inner}> ซ้อนอยู่ข้างใน`);
+        }
+      }
+    }
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (Array.isArray(value)) value.forEach(walkNode);
+      else if (value && typeof value === "object" && value.type) walkNode(value);
+    }
+  };
+  walkNode(ast.program);
+}
+
 const failures = [
+  ...parseFailures.map(
+    (item) => `พาร์ส JSX ไม่ผ่าน — ด่านที่ใช้ AST จะมองไม่เห็นไฟล์นี้ทั้งไฟล์: ${item}`,
+  ),
+  ...nestedInteractiveViolations.map(
+    (item) => `ตัวกดซ้อนตัวกด — <a>/<button> ห้ามมี interactive อยู่ข้างใน (ครอบการ์ดทั้งใบได้เฉพาะเมื่อข้างในไม่มีตัวกด · ถ้ามี ให้วางลิงก์ไว้ที่หัวการ์ดแทน): ${item}`,
+  ),
   ...focusRingViolations.map(
     (item) => `วงโฟกัสใช้ var(--accent) ซึ่งได้ 2.75:1 บนพื้นหน้า ตก WCAG 1.4.11: ${item}`,
   ),
@@ -2228,6 +2388,24 @@ const failures = [
       "   ถูกหักออกจากเพดานคีย์บอร์ดได้ · ผ่อนมันเมื่อไหร่ ต้องบวก A11Y_KEYBOARD_CAP คืน 1",
       "🪤 \"แถวมีปุ่มอยู่ข้างในแล้ว\" ไม่นับ — ปุ่มลบทำคนละงานกับการเปิดรายละเอียด",
       ...rowMirrorMissViolations.map((item) => `    ❌ ${item}`),
+    ].join("\n")]
+    : []),
+  /* CARD_MIRROR — hard-zero เหมือน ROW_MIRROR และด้วยเหตุผลเดียวกันทุกข้อ
+     (เป็น **เงื่อนไข** ของการยกเว้นทางลัดเมาส์บนการ์ด ไม่ใช่ด่านสวยงามแยกต่างหาก) */
+  ...(cardMirrorMissViolations.length
+    ? [[
+      `การ์ดกดได้ที่ไม่มีลิงก์ปลายทางเดียวกันในการ์ด: ${cardMirrorMissViolations.length} (ต้องเป็น 0)`,
+      "<ClickableCard href={X}> ต้องมี <Link href={X}> **ตัวเดียวกันเป๊ะ** อยู่ในการ์ด (ปกติที่หัวการ์ด)",
+      "— นั่นคือทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/คลิกขวาเปิดแท็บใหม่ ส่วน onClick บนการ์ดเป็นแค่ทางลัดของเมาส์",
+      "แก้: ยกขึ้นเป็น `const detailHref = …;` ตัวเดียว แล้วส่งให้ทั้ง <ClickableCard> และ <Link>",
+      "     (ด่านเทียบ *ข้อความนิพจน์ตรงตัว* ⇒ เขียนคนละรูปแต่ปลายทางเดียวกันก็ถือว่าไม่ตรง)",
+      "     การ์ดที่ไม่พาไปไหน = ไม่ใช่งานของ ClickableCard ⇒ ใช้ <div> ธรรมดา",
+      "🪤 การ์ดที่ข้างใน **ไม่มี** ปุ่ม/ลิงก์เลย ไม่ต้องใช้ ClickableCard ตั้งแต่ต้น — ห่อทั้งใบด้วย",
+      "   <Link> แล้วเติมคลาส `card-link` (ย้าย className/style ของ <div> เดิมขึ้นไปทั้งชุด) จบในตัว",
+      "🚫 ห้ามแก้ด้วยการเติมทางยกเว้น — ด่านนี้คือเงื่อนไขที่ทำให้ <div onClick> ของ ClickableCard",
+      "   ถูกหักออกจากเพดานคีย์บอร์ดได้ · ผ่อนมันเมื่อไหร่ ต้องบวก A11Y_KEYBOARD_CAP คืน 1",
+      "🪤 \"การ์ดมีปุ่มอยู่ข้างในแล้ว\" ไม่นับ — ปุ่มลบทำคนละงานกับการเปิดรายละเอียด",
+      ...cardMirrorMissViolations.map((item) => `    ❌ ${item}`),
     ].join("\n")]
     : []),
   ...(roleOnTableTagCount > ROLE_ON_TABLE_TAG_CAP
@@ -2365,6 +2543,7 @@ const failures = [
 console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} visual, ${pageFiles.length - visualPageFiles.length} redirect)`);
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
 console.log(`วงโฟกัสที่ยังใช้ var(--accent) (ตก 3:1 บนพื้นหน้า): ${focusRingViolations.length} (ต้องเป็น 0)`);
+console.log(`ตัวกดซ้อนตัวกด (<a>/<button> มี interactive ข้างใน): ${nestedInteractiveViolations.length} (ต้องเป็น 0) · ไฟล์ที่พาร์สไม่ผ่าน ${parseFailures.length}`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 /* ⚠️ บรรทัดนี้เป็น ratchet ที่จงใจมานั่งกลางกลุ่ม hard-zero — ไม่ใช่ลืมจัดกลุ่ม
@@ -2434,13 +2613,14 @@ const a11yByTag = a11yKeyboardViolations.reduce((acc, { tag }) => acc.set(tag, (
 console.log(`\nคีย์บอร์ดกดไม่ได้ (WCAG 2.1.1 Keyboard ระดับ A): ${a11yKeyboardCount}/${A11Y_KEYBOARD_CAP} (เพดาน ขึ้นไม่ได้ — ด่านการเข้าถึงตัวแรกของ CI)`);
 console.log(`  ↳ แยกตามแท็ก (ทางแก้คนละท่า): ${[...a11yByTag].sort((a, b) => b[1] - a[1]).map(([tag, n]) => `${tag} ${n}`).join(" · ") || "ไม่มี"}`);
 console.log(`  ↳ role ทับบทบาทของตาราง (WCAG 1.3.1 — คนละข้อกับบรรทัดบน): ${roleOnTableTagCount}/${ROLE_ON_TABLE_TAG_CAP} (เพดาน ขึ้นไม่ได้)`);
-console.log(`  ↳ ยกเว้นแล้ว: ตัวกันคลิกทะลุ ${a11yClickStopperCount} · ฉากหลังปิดกล่อง ${a11yScrimExemptCount} · ทางลัดเมาส์บนแถว ${rowShortcutExempt} · ครบเกณฑ์อยู่แล้ว ${a11yCompliantCount} จุด`);
+console.log(`  ↳ ยกเว้นแล้ว: ตัวกันคลิกทะลุ ${a11yClickStopperCount} · ฉากหลังปิดกล่อง ${a11yScrimExemptCount} · ทางลัดเมาส์บนแถว ${rowShortcutExempt} · ทางลัดเมาส์บนการ์ด ${cardShortcutExempt} · ครบเกณฑ์อยู่แล้ว ${a11yCompliantCount} จุด`);
 /* 🪤 อ่านสี่บรรทัดนี้ให้ครบก่อนสรุปว่ารอบไหน "ทำอะไรไปบ้าง" — ตัวเลขย้ายช่องกันได้
    รอบแถวตาราง 2026-09-02: DetailRow ย้ายจาก "ครบเกณฑ์อยู่แล้ว" ไป "ทางลัดเมาส์บนแถว"
    ⇒ ดิบขึ้น 1 หักคืน 1 (**ตัวมันเองไม่ได้ทำให้เพดานลด**) · ที่ทำให้ 39 → 29 คือ
    *ผู้เรียกและแถวอื่น* 10 จุดที่ได้ <Link>/<button> ในเซลล์จริง · ส่วน
    ROLE_ON_TABLE_TAG_CAP 1 → 0 กับ ROW_MIRROR บรรทัดล่างนี้เป็นของแถมในคอมมิตเดียวกัน */
 console.log(`  ↳ แถวกดได้ที่ลิงก์ในเซลล์ไม่ตรงปลายทาง (ROW_MIRROR — ต้องเป็น 0): ${rowMirrorMissViolations.length}`);
+console.log(`  ↳ การ์ดกดได้ที่ลิงก์ในการ์ดไม่ตรงปลายทาง (CARD_MIRROR — ต้องเป็น 0): ${cardMirrorMissViolations.length}`);
 
 console.log("\nชั้นสไตล์เก่าที่เหลือ (เพดาน = ขึ้นไม่ได้ ลงได้อย่างเดียว):");
 console.log(`  ${"โมดูล".padEnd(16)}${METRICS.map((metric) => metric.padStart(15)).join("")}`);

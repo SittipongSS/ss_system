@@ -79,11 +79,26 @@ function ProfileGroup({ label, hint = null }) {
   );
 }
 
-function RelationRow({ title, subtitle, right, onClick }) {
+/* ── การ์ดความสัมพันธ์เป็นลิงก์ทั้งใบ — `href` ไม่ใช่ `onClick` (2026-09-02) ────────
+   เดิมเป็น `<div onClick>` ที่เรียก `router.push(X)` ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึง
+   (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา/สถานะเยี่ยมชม
+   ⇒ ห่อทั้งใบด้วย <Link> ได้ **เพราะข้างในไม่มี interactive เลย**: รับแค่ title/subtitle
+   (สตริง) กับ right ซึ่งทั้งสี่ที่เรียกส่งป้ายสถานะล้วน — span ที่ใส่คลาส ui-badge
+   หรือ RegistryBadge (= ui/StatusBadge.js ที่ไม่มี onClick/button/a เลย)
+   🪤 `<a>` เป็น transparent content model จึงครอบ <div> ได้ถูกสเปก — แต่ห้ามมี
+      interactive descendant ⇒ วันที่ใครส่งปุ่มมาทาง `right` ต้องเลิกห่อทั้งใบก่อน
+
+   🪤 **ถอด `clickable-row cursor-pointer` ออกได้** — `.clickable-row` ให้แค่
+      `cursor: pointer` (ลิงก์แจกให้ฟรี) กับกฎ `:hover td` ที่ไม่มีวันยิงบนการ์ดนี้
+      และ globals.css เขียนห้ามเติม `.clickable-row:focus-visible` ไว้ชัดเจน
+      ⇒ วงโฟกัสมาจาก `.card-link` ซึ่งเป็นคลาสร่วมกับการ์ดของ excise/DataList
+   🪤 `.card-link` จงใจ **ไม่** ประกาศ `display` — ถ้าประกาศ (กฎนอก @layer ชนะ utility
+      ของ Tailwind ทุกตัว) `flex` ของการ์ดใบนี้จะโดนล้างทิ้ง */
+function RelationRow({ title, subtitle, right, href }) {
   return (
-    <div
-      onClick={onClick}
-      className="glass-panel clickable-row cursor-pointer p-3 flex items-center justify-between gap-3"
+    <Link
+      href={href}
+      className="glass-panel card-link p-3 flex items-center justify-between gap-3"
     >
       <div className="min-w-0">
         <div className="font-semibold text-sm text-[var(--text)] truncate">{title}</div>
@@ -92,7 +107,7 @@ function RelationRow({ title, subtitle, right, onClick }) {
         ) : null}
       </div>
       {right}
-    </div>
+    </Link>
   );
 }
 
@@ -698,7 +713,11 @@ export default function CustomerDetails() {
                     const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
                     const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
                     return (
-                      <div key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
+                      /* การ์ดทั้งใบเป็น <Link> ได้เพราะข้างในไม่มี interactive เลย —
+                         `<ProductStatusPill>` คืน <span> ล้วน ที่เหลือเป็น div/span ข้อความ
+                         (ท่าเดียวกับ `RelationRow` ข้างบน · เหตุผลเต็มอยู่ที่นั่น)
+                         prefetch={false}: ลูกค้ารายเดียวมีสินค้าได้หลายสิบใบ — กัน RSC prefetch ต่อการ์ด */
+                      <Link key={p.id} prefetch={false} href={`/database/products/${p.id}`} className="glass-panel card-link p-4 flex flex-col gap-2">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
@@ -717,7 +736,7 @@ export default function CustomerDetails() {
                             </span>
                           )}
                         </div>
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>
@@ -784,7 +803,9 @@ export default function CustomerDetails() {
               ) : (
                 <div className="grid grid-cols-1 gap-3">
                   {regs.map((r) => (
-                    <div key={r.id} onClick={() => router.push(`/tax/registrations/${r.id}`)} className="glass-panel clickable-row cursor-pointer p-4 flex items-center justify-between gap-3">
+                    /* การ์ดทั้งใบเป็น <Link> ได้ — `<StatusBadge>` (excise) คืน <span> ล้วน
+                       ที่เหลือเป็นข้อความ ⇒ ไม่มี interactive descendant ให้ <a> ผิดสเปก */
+                    <Link key={r.id} prefetch={false} href={`/tax/registrations/${r.id}`} className="glass-panel card-link p-4 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
                         <div className="text-[11px] text-[var(--text-3)] truncate">{productDisplayName(r)} · {brandBoth(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName)}</div>
@@ -793,7 +814,7 @@ export default function CustomerDetails() {
                         {r.approvalNumber && <span className="font-mono text-[11px] text-[var(--text-3)]">{r.approvalNumber}</span>}
                         <StatusBadge status={r.status} />
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )
@@ -809,21 +830,29 @@ export default function CustomerDetails() {
                     const isExempt = (o.totalTax || 0) === 0;
                     const itemCount = o.items?.length || 0;
                     return (
-                      <div key={o.id} onClick={() => setSelectedOrder(o)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-[var(--text)] font-mono text-sm">{o.quotationRef}</div>
-                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {naText(o.poReference)} · {itemCount} รายการ</div>
-                          </div>
+                      /* ── การ์ดนี้เป็น <button> ไม่ใช่ <Link> — ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง ──
+                         กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม (setSelectedOrder) ⇒ ไม่มี URL
+                         ปลายทางให้ลิงก์ · ท่าและเหตุผลเต็มอยู่เหนือ `.card-button` ใน globals.css
+                         🪤 `<div>` ข้างในกลายเป็น `<span>` ทั้งหมด — `<button>` รับได้แค่ phrasing
+                            content · ตัวที่เป็น flex item ถูก blockify ให้เองอยู่แล้ว แต่สองบรรทัด
+                            ข้างใน `min-w-0` **ไม่ใช่** flex item จึงต้องเติม utility `block` เอง
+                            ไม่งั้นมันไหลไปอยู่บรรทัดเดียวกัน (เลขที่ QT ต่อท้ายด้วย "PO: …")
+                            และ `mt-0.5` หายเงียบ ๆ เพราะ margin แนวตั้งไม่มีผลกับ inline */
+                      <button key={o.id} type="button" onClick={() => setSelectedOrder(o)} className="glass-panel card-button p-4 flex flex-col gap-2">
+                        <span className="flex items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-[var(--text)] font-mono text-sm">{o.quotationRef}</span>
+                            <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {naText(o.poReference)} · {itemCount} รายการ</span>
+                          </span>
                           <OrderStatusPill status={o.status} />
-                        </div>
-                        <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
+                        </span>
+                        <span className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                           <span className="text-[var(--text-3)]">กำหนดส่ง: {naText(o.deliveryDate)}</span>
                           <span className="font-mono font-bold text-[var(--text)]">
                             {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
                           </span>
-                        </div>
-                      </div>
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
@@ -886,7 +915,7 @@ export default function CustomerDetails() {
                   {projects.map((p) => (
                     <RelationRow
                       key={p.id}
-                      onClick={() => router.push(`/sa/projects/${p.id}`)}
+                      href={`/sa/projects/${p.id}`}
                       title={p.name || p.code}
                       subtitle={p.code}
                       right={p.status ? <span className="ui-badge shrink-0">{p.status}</span> : null}
@@ -906,7 +935,7 @@ export default function CustomerDetails() {
                   return (
                     <RelationRow
                       key={site.id}
-                      onClick={() => router.push(`/service/sites/${site.id}`)}
+                      href={`/service/sites/${site.id}`}
                       title={site.name}
                       subtitle={[
                         site.routeZone,
@@ -936,7 +965,7 @@ export default function CustomerDetails() {
                     {scents.map((s) => (
                       <RelationRow
                         key={s.id}
-                        onClick={() => router.push(`/database/scents?q=${encodeURIComponent(s.code || s.name)}`)}
+                        href={`/database/scents?q=${encodeURIComponent(s.code || s.name)}`}
                         title={s.name}
                         subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}`}
                         right={(
@@ -962,7 +991,7 @@ export default function CustomerDetails() {
                       return (
                         <RelationRow
                           key={f.id}
-                          onClick={() => router.push(`/database/formulas?q=${encodeURIComponent(f.code || f.name)}`)}
+                          href={`/database/formulas?q=${encodeURIComponent(f.code || f.name)}`}
                           title={f.name}
                           subtitle={[
                             f.code || "ยังไม่มีรหัส",
