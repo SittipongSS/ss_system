@@ -55,11 +55,21 @@
   ⭐ คอลัมน์นี้คือหัวใจ: ถ้าไม่มี ระบบจะถอยกลับไม่ได้เมื่อใบถูกลบ และตอบคำถาม
   "AE เดาแม่นแค่ไหน" ไม่ได้อีกเลย
 - `forecastSource` — `'manual' | 'quotation'`
-- `forecastQuotationId` — FK ไป `quotations` · `ON DELETE SET NULL`
+- `forecastQuotationId` — **ไม่มี FK โดยเจตนา** (mig 0339 ถอนออก)
 - `forecastPinnedAt` / `forecastPinnedBy` — คนเลือกที่มาเอง = ปัก ระบบไม่เลื่อนทับ
 
 `projectValue` **ยังเป็นยอด FC ที่ทั้งระบบอ่านเหมือนเดิม** (dashboard · perf · projectRollup)
 — ห้ามย้าย ตัว resolver เขียนทับให้ตามที่มาที่ตัดสินได้
+
+🔥 **ห้ามใส่ FK จาก `sales_deals` ไป `quotations` เด็ดขาด** — 0337 เคยใส่ (ON DELETE SET NULL)
+แล้ว **production พังทันทีที่ขึ้น**: สองตารางมี FK หากันสองเส้น ⇒ PostgREST เลือกทาง
+เชื่อมไม่ได้ ทุก `select('*, deal:sales_deals(*)')` ตอบ *"Could not embed because more
+than one relationship was found"* ⇒ ทะเบียนใบเสนอราคาว่างเปล่า · `loadScoped` ล้ม ·
+ป้ายตัวเลขบนเมนูหาย · ถอนด้วย **mig 0339** · เทสต์ `forecastSource.test.mjs` ล็อกไว้แล้ว
+
+⭐ **กติกาทั่วไปที่ได้จากเรื่องนี้**: ก่อนเพิ่ม FK ระหว่างสองตารางที่ embed หากันอยู่
+(`x:table(...)`) ต้องเลือก — ไม่ใส่ FK เลย หรือใส่แล้วไปเติมชื่อ constraint ให้ทุก embed
+(`sales_deals!quotations_dealId_fkey(...)`) **ครบทุกจุด ตกจุดเดียวหน้านั้น 500**
 
 ด่านที่ฐาน:
 - `CHECK (("forecastSource" = 'quotation') = ("forecastQuotationId" IS NOT NULL))` —
