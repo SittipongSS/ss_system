@@ -100,7 +100,7 @@ export default function InstallmentConfirmDialog({
 
         <div className={styles.actions}>
           <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button tone="accent" onClick={() => onConfirm(row)} disabled={busy} aria-busy={busy || undefined}>
+          <Button tone="primary" onClick={() => onConfirm(row)} disabled={busy} aria-busy={busy || undefined}>
             {busy ? "กำลังบันทึก…" : prompt.confirmLabel}
           </Button>
         </div>

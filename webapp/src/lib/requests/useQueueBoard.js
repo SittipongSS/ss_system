@@ -79,6 +79,10 @@ export function matchesQueueSearch(request, term, { kindLabel = () => '' } = {})
     // รหัสลูกค้า (AR) — ตาเห็นบนแถวแล้ว จึงต้องค้นเจอด้วย (กฎของฟังก์ชันนี้)
     request?.customerArCode,
     request?.formulaCode,
+    /* ดีลเป็นคอลัมน์บนคิว (รหัสบน ชื่อล่าง — ดู RequestQueuePanel) และ API ส่งมาครบ
+       ⇒ กติกาของฟังก์ชันนี้เอง ("ตาเห็นบนแถว = ต้องค้นเจอ") บังคับให้มีสองคีย์นี้ */
+    request?.dealCode,
+    request?.dealName,
     kindLabel(request?.kind),
     request?.dept,
   ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q));

@@ -97,7 +97,7 @@ export default function DocumentStandardPreviewPage() {
         <Workspace
           hideHeader
           back={{ href: "/settings/document-standards", label: "กลับหน้ามาตรฐานเอกสาร" }}
-          backActions={<button type="button" className="btn btn-accent" onClick={printPreview}><Printer size={16} /> พิมพ์ / Save PDF</button>}
+          backActions={<button type="button" className="btn btn-primary" onClick={printPreview}><Printer size={16} /> พิมพ์ / Save PDF</button>}
         />
       </div>
       <div className={`premium-header ${styles.screenOnly}`}>

@@ -283,7 +283,7 @@ export default function CompanySettingsPage() {
             <button type="button" className="btn" onClick={saveDraft} disabled={busy}>
               {busy ? "กำลังบันทึก…" : "เก็บร่างไว้ก่อน"}
             </button>
-            <button type="submit" form="company-settings-form" className="btn btn-accent" disabled={busy}>
+            <button type="submit" form="company-settings-form" className="btn btn-primary" disabled={busy}>
               {busy ? "กำลังดำเนินการ…" : "เผยแพร่การเปลี่ยนแปลง"}
             </button>
           </>

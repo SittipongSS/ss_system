@@ -173,8 +173,11 @@ export default function QuotationsPage() {
       if (typeFilter.length && !typeFilter.includes(dealTypeOf(r.deal))) return false;
       if (ownerFilter.length && !ownerFilter.includes(r.deal?.ownerId || "")) return false;
       if (!q) return true;
-      // ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
-      return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r)]
+      /* ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
+         ⭐ ข้อยกเว้นเดียว: `referenceNote` (เอกสารอ้างอิง · mig 0267) ไม่ได้อยู่บนแถว
+         แต่ต้องค้นเจอ — มันคือที่ที่เลข PO ของลูกค้าถูกพิมพ์ลงไป และคำถามที่เข้ามาจริง
+         คือ "อ้างถึง PO นี้ ใบไหน" (กติกาเดียวกับตารางรายการ SO · IS-26080017) */
+      return [r.quoteNumber, r.customerName, r.customerArCode, r.deal?.title, ownerNameOf(r), r.referenceNote]
         .some((v) => (v || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter, typeFilter, ownerFilter, pendingSoOnly, waitingOnMeOnly, awaitingSalesOrderIds, ownerNameOf]);
@@ -380,7 +383,7 @@ export default function QuotationsPage() {
           <div className="toolbar">
             <div className="search-glass" style={{ width: 300 }}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข QT / เอกสารอ้างอิง / ลูกค้า / ดีล" aria-label="ค้นหาใบเสนอราคา" />
             </div>
             {waitingOnMeOnly && (
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง

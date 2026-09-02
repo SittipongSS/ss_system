@@ -247,7 +247,7 @@ export default function TodayPage() {
                           · กำลังทำอยู่ = "ปิดงาน" · ปิดแล้ว = "แก้ผลการเข้า"
                           ไม่มีปุ่มไหนให้พิมพ์เวลาเอง — นั่นคือทั้งเหตุผลของการมีปุ่มเริ่มงาน */}
                       {canEdit && !done && !running && (
-                        <Button tone="accent" size="sm" disabled={starting === visit.id}
+                        <Button tone="primary" size="sm" disabled={starting === visit.id}
                           icon={<Play size={14} aria-hidden="true" />}
                           onClick={() => startVisit(visit)}>
                           {starting === visit.id ? "กำลังเริ่ม…" : "เริ่มงาน"}

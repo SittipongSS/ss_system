@@ -87,8 +87,13 @@ export function salesOrderServiceSummary({
       remaining,
       // ⚠️ "จัดสรรครบ" = ไม่เหลือของค้าง **และ** มีอย่างน้อยหนึ่งโซนจริง
       complete: remaining === 0 && bySite.size > 0,
-      sites: [...bySite.values()].sort((a, b) =>
-        String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th')),
+      /* ⭐ **ธง `hasPlan` รายแถว** — `planSites` คำนวณอยู่แล้วสองบรรทัดข้างบน แต่ถูกใช้
+         ครั้งเดียวเพื่อ *นับ* ไซต์ที่ยังไม่วางรอบ ⇒ ตารางบอกได้แค่ยอดรวม คนอ่านต้อง
+         ไล่เปิดทีละไซต์เพื่อหาว่าไซต์ไหนคือไซต์ที่ค้าง · ผูกกลับเข้าแถวได้ฟรี ไม่มีคิวรีเพิ่ม */
+      sites: [...bySite.values()]
+        .map((row) => ({ ...row, hasPlan: planSites.has(row.siteId) }))
+        .sort((a, b) =>
+          String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th')),
     },
     plans: {
       total: activePlans.length,

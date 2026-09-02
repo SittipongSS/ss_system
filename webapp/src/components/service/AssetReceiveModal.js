@@ -195,7 +195,7 @@ export default function AssetReceiveModal({
 
       <div className="form-action-bar">
         <Button onClick={onClose} disabled={busy}>ยกเลิก</Button>
-        <Button tone="accent" onClick={submit} disabled={busy || !!gate || !warehouses.length}>
+        <Button tone="primary" onClick={submit} disabled={busy || !!gate || !warehouses.length}>
           {busy ? "กำลังบันทึก…" : `รับเข้าคลัง ${serials.length || ""} ตัว`.trim()}
         </Button>
       </div>

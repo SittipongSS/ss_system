@@ -218,7 +218,9 @@ export default function CustomerDirectory() {
     if (!q) return true;
     // ⚠️ ชื่ออังกฤษต้องค้นเจอด้วย (กติกา entity: ค้นหาต้องเจอทุกภาษาที่มี) — ลูกค้าที่
     // มีแต่ชื่ออังกฤษจะหาไม่เจอเลยถ้าลืมคีย์นี้
-    return [c.arCode, c.name, c.nameEn, c.taxId, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
+    // รหัสสาขาเป็นคอลัมน์บนตารางและเป็นครึ่งหนึ่งของคีย์ซ้ำ (เลขผู้เสียภาษี + สาขา)
+    // ⇒ คนที่ถือเลขสาขาจากเอกสารต้องค้นเจอใบที่ถูกต้องได้
+    return [c.arCode, c.name, c.nameEn, c.taxId, c.branchCode, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
       .some((v) => (v || "").toLowerCase().includes(q));
   });
 
@@ -259,7 +261,7 @@ export default function CustomerDirectory() {
     <div className="toolbar">
       <div className="search-glass" style={{ width: "240px" }}>
         <Search size={18} color="var(--text-3)" />
-        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / แบรนด์..." />
+        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาลูกค้า / AR / เลขผู้เสียภาษี / สาขา / แบรนด์..." />
       </div>
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}

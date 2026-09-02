@@ -94,7 +94,10 @@ export default function ContractsPage() {
       if (kindFilter.length && !kindFilter.includes(row.kind)) return false;
       if (sourceFilter.length && !sourceFilter.includes(contractSourceOf(row))) return false;
       if (!q) return true;
-      return [row.contractNo, row.customerName, row.deal?.title, row.ownerName]
+      /* ⭐ `externalRef` = เลขที่อ้างอิงของเอกสารภายนอกที่ใช้แทนสัญญา (mig 0322 ·
+         PO / อีเมล / สัญญาเก่า) — ใบพวกนี้ **ไม่มีเลขที่สัญญาของเรา** ให้ค้น
+         ⇒ ไม่ใส่ในชุดค้น = ใบภายนอกทั้งกองหาไม่เจอด้วยเลขเดียวที่มันมี */
+      return [row.contractNo, row.customerName, row.deal?.title, row.ownerName, row.externalRef]
         .some((value) => (value || "").toLowerCase().includes(q));
     });
   }, [rows, query, statusFilter, kindFilter, sourceFilter, waitingOnMeOnly]);
@@ -159,7 +162,7 @@ export default function ContractsPage() {
       /* ⭐ ปุ่มสร้างบนหัวทะเบียน (มติผู้ใช้ 2026-08-22) — เดิมสร้างได้จากในดีล/ใบเสนอราคา
          เท่านั้น คนที่เริ่มจากเมนูสัญญาไม่มีทางเริ่มงาน · โมดัลตัวเดียวกัน แค่มีช่องเลือกดีล */
       headerRight={canEdit && tab === "contracts" && (
-        <Button variant="accent" onClick={() => setCreateOpen(true)}>
+        <Button tone="accent" onClick={() => setCreateOpen(true)}>
           <Plus size={15} aria-hidden="true" /> สร้างสัญญา
         </Button>
       )}
@@ -220,7 +223,7 @@ export default function ContractsPage() {
           <div className="toolbar">
             <div className={`search-glass ${styles.search}`}>
               <Search size={16} color="var(--text-3)" aria-hidden="true" />
-              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
+              <input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลขที่สัญญา / เลขอ้างอิง / ลูกค้า / ดีล" aria-label="ค้นหาสัญญา" />
             </div>
             {waitingOnMeOnly && (
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>

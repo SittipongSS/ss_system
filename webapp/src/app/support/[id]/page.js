@@ -139,15 +139,16 @@ export default function IssueDetailPage() {
           </header>
 
           {/* แถบจัดการของผู้ดูแลระบบ — ปุ่มไหนโผล่ขึ้นกับสถานะ (ตาราง ACTIONS
-              ที่ฝั่ง server เป็นตัวตัดสินจริง) · หนึ่งบริบทมี filled action เดียว
-              ปุ่มที่เหลือจึงเป็น Button เปล่า/quiet ตามกฎ UI */}
+              ที่ฝั่ง server เป็นตัวตัดสินจริง) · ปุ่มเลื่อนสถานะของใบนี้ = primary
+              (ยืนยันสิ่งที่ทำอยู่) ปุ่มที่เหลือเป็น Button เปล่า/quiet · accent สงวนไว้ให้
+              ปุ่ม "เริ่มของใหม่" ซึ่งหน้านี้ไม่มี */}
           {admin && ["pending", "acknowledged", "resolved"].includes(issue.status) && (
             <div className={styles.adminBar}>
               {issue.status === "pending" && (
-                <Button tone="accent" disabled={busy} onClick={() => act("acknowledge")}>รับเรื่อง</Button>
+                <Button tone="primary" disabled={busy} onClick={() => act("acknowledge")}>รับเรื่อง</Button>
               )}
               {issue.status === "acknowledged" && (
-                <Button tone="accent" disabled={busy} onClick={() => act("resolve")}>แจ้งว่าแก้แล้ว</Button>
+                <Button tone="primary" disabled={busy} onClick={() => act("resolve")}>แจ้งว่าแก้แล้ว</Button>
               )}
               <Button disabled={busy} onClick={openAssign}>
                 {issue.assigneeId ? "เปลี่ยนผู้รับผิดชอบ" : "มอบหมายให้…"}
@@ -173,7 +174,7 @@ export default function IssueDetailPage() {
                 </p>
               </div>
               <div className={styles.resolvedActions}>
-                <Button tone="accent" onClick={() => act("confirm")} disabled={busy}>ยืนยันว่าหายแล้ว</Button>
+                <Button tone="primary" onClick={() => act("confirm")} disabled={busy}>ยืนยันว่าหายแล้ว</Button>
                 <Button onClick={() => act("reopen")} disabled={busy}>ยังไม่หาย</Button>
               </div>
             </div>
@@ -264,7 +265,7 @@ export default function IssueDetailPage() {
             <div className={styles.modalFoot}>
               <Button variant="quiet" onClick={() => setAssigning(false)} disabled={busy}>ยกเลิก</Button>
               <Button
-                tone="accent"
+                tone="primary"
                 disabled={busy || !assignee}
                 onClick={async () => {
                   const picked = admins.find((u) => u.id === assignee);

@@ -238,6 +238,9 @@ export default function FormulasPage() {
         // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)
         categoryNameBoth(findCategoryByCode(categories, f.categoryCode)),
         scentName(f.scentId),
+        // เลขที่คำร้องที่เป็นที่มาของสูตร — ขึ้นในคอลัมน์ "ที่มา" อยู่แล้ว และทะเบียน
+        // กลิ่นค้นเจอตั้งแต่แรก · ขาดที่นี่ = คนถือเลขคำร้องหาสูตรที่มันผลิตไม่เจอ
+        f.sourceRequest?.docNo,
       ]
         .filter(Boolean).join(" ").toLowerCase().includes(q);
     });
@@ -453,7 +456,7 @@ export default function FormulasPage() {
         <div className="search-glass">
           <Search size={18} color="var(--text-3)" aria-hidden="true" />
           <input autoComplete="off"
-            type="text" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า"
+            type="text" placeholder="ค้นชื่อสูตร · รหัส · กลิ่น · ลูกค้า · เลขคำร้อง"
             value={search} onChange={(e) => setSearch(e.target.value)} aria-label="ค้นหาสูตร"
           />
         </div>
@@ -656,7 +659,7 @@ export default function FormulasPage() {
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+            <Button tone="primary" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
               รับเข้าทะเบียน
             </Button>
           </>
@@ -683,7 +686,7 @@ export default function FormulasPage() {
           <>
             <Button variant="quiet" onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
             <Button
-              tone="accent" onClick={submitSorting}
+              tone="primary" onClick={submitSorting}
               disabled={saving
                 || (sorting.as === "scent" && !sorting.row.customerId)
                 || (sorting.as === "formula" && !sorting.categoryCode)}
