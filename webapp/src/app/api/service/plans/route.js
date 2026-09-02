@@ -2,6 +2,7 @@
 // GET  ?siteId= : รอบของไซต์
 // POST : สร้างรอบ + gen นัดล่วงหน้าตาม horizon (ค่าตั้งต้น 90 วัน)
 import { genId } from '@/lib/id';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest } from '@/lib/http';
 import { generateVisitsForPlan } from '@/lib/service/planGen';
@@ -16,10 +17,24 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (access.response) return access.response;
   try {
     const url = new URL(req.url);
-    return ok(await loadPlans(supabase, {
+    const plans = await loadPlans(supabase, {
       siteId: url.searchParams.get('siteId'),
       activeOnly: url.searchParams.get('activeOnly') === '1',
-    }));
+    });
+    /* ⭐ **แนบเลขที่ใบมาด้วย** — รอบเป็นข้อผูกพันของใบสั่งขาย และไซต์เดียวถือรอบของ
+       หลายใบพร้อมกันได้ (ขายเพิ่ม · ออก Rev.) ⇒ ตารางรอบที่บอกแค่ "ทุก N วัน"
+       แยกไม่ออกว่าแถวไหนของใบไหน · id ดิบอ่านไม่รู้เรื่อง ต้องเป็นเลขที่
+       ⚠️ ห่อ `fetchAllResult` ตามกติกา check:rowcap และเรียงด้วยคีย์ที่ไม่ซ้ำ
+       ⚠️ อ่านไม่ได้ = ปล่อยช่องว่าง ไม่ใช่ล้มทั้งคำขอ (ตารางรอบยังต้องขึ้น) */
+    const orderIds = [...new Set(plans.map((p) => p.salesOrderId).filter(Boolean))];
+    if (!orderIds.length) return ok(plans);
+    const { data: orders } = await fetchAllResult(() => supabase.from('sales_orders')
+      .select('id, "orderNumber"').in('id', orderIds).order('id', { ascending: true }));
+    const numberById = new Map((orders || []).map((o) => [o.id, o.orderNumber]));
+    return ok(plans.map((plan) => ({
+      ...plan,
+      salesOrderNumber: numberById.get(plan.salesOrderId) || null,
+    })));
   } catch (e) {
     return fail(e.message, 500);
   }

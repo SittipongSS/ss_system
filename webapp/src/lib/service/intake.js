@@ -141,7 +141,27 @@ export function bindQueue({
 /* ⚠️ `linesById` ไม่บังคับ — ไม่ส่งมา = แถวตอบ roundsSold: null (ยังไม่ระบุ)
    ไม่ใช่ 0 · ผู้เรียกที่มีบรรทัดอยู่แล้วส่งเข้ามาเพื่อให้จอบอก "ขายไว้กี่รอบ" ได้ */
 export function planQueue({ zones = [], terms = [], plans = [], sites = [], ordersById = new Map(), linesById = new Map(), todayIso = businessDate() } = {}) {
-  const activePlanSites = new Set(plans.filter((p) => p.isActive !== false).map((p) => p.siteId));
+  /* ── หน่วยของคิวนี้คือ (ไซต์, ใบสั่งขาย) ไม่ใช่ "ไซต์" ────────────────────
+     🔴 **ของเดิมเป็น Set ของ `siteId`** ⇒ ไซต์ที่มีรอบของใบ A อยู่แล้ว **หลุดจากคิว
+       ตลอดกาล** แม้ใบ B จะขายรอบใหม่ที่ไซต์เดิม · TS ไม่มีทางรู้ว่ามีงานใหม่เข้ามา
+       เพราะคิวคือช่องทางเดียวที่บอก
+     ⭐ เคสที่เจอบ่อยที่สุดไม่ใช่ "ขายเพิ่ม" แต่คือ **ออก Rev.** — ใบเก่าได้
+       `supersededById` ใบใหม่ได้ id ใหม่ แต่ **ไม่มีโค้ดไหนย้าย `service_plans.
+       salesOrderId` ไปใบใหม่เลยทั้งระบบ** ⇒ รอบชี้ใบที่ตายแล้วตลอดไป
+       ⇒ พอคีย์เป็นคู่ (ไซต์, ใบ) เคสนี้แก้ตัวเอง: term ของใบเก่าตกไปด้วย
+         `termIsActive` อยู่แล้ว ส่วนใบใหม่ไม่มีรอบของตัวเอง ⇒ เข้าคิวตามที่ควร
+     ⚠️ **รอบที่ `salesOrderId` เป็น null ไม่ครอบใบไหนเลย** — แต่มันเดินอยู่จริงที่
+       ไซต์นั้น ⇒ ถ้าเงียบไว้ TS จะกดสร้างรอบใบที่สองทับของเดิม · แถวจึงพก
+       `unboundPlans` ไปบอกเอง (กติกาเดียวกับ `hasForeignPlan` ของ #1594) */
+  const livePlans = plans.filter((p) => p.isActive !== false);
+  const coveredPairs = new Set(
+    livePlans.filter((p) => p.salesOrderId).map((p) => `${p.siteId}\u0000${p.salesOrderId}`),
+  );
+  const unboundBySite = new Map();
+  for (const plan of livePlans) {
+    if (plan.salesOrderId) continue;
+    unboundBySite.set(plan.siteId, (unboundBySite.get(plan.siteId) || 0) + 1);
+  }
   const sitesById = new Map(sites.map((s) => [s.id, s]));
   const zonesById = new Map(zones.map((z) => [z.id, z]));
 
@@ -150,16 +170,24 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
     if (!termIsActive(term, ordersById.get(term.salesOrderId), todayIso)) continue;
     const zone = zonesById.get(term.zoneId);
     if (!zone) continue;
-    if (activePlanSites.has(zone.siteId)) continue;
-    const row = bySite.get(zone.siteId) || {
+    if (coveredPairs.has(`${zone.siteId}\u0000${term.salesOrderId}`)) continue;
+    const key = `${zone.siteId}\u0000${term.salesOrderId}`;
+    const order = ordersById.get(term.salesOrderId) || null;
+    const row = bySite.get(key) || {
+      /* ⚠️ `key` ต้องมาด้วย — จอใช้ `row.siteId` เป็น React key มาตลอด ซึ่งซ้ำทันที
+         ที่ไซต์เดียวมีสองใบ (แถวจะกระพริบ/สลับค่ากันเวลา re-render) */
+      key,
       siteId: zone.siteId,
       site: sitesById.get(zone.siteId) || null,
+      salesOrderId: term.salesOrderId || null,
+      orderNumber: order?.orderNumber || null,
+      unboundPlans: unboundBySite.get(zone.siteId) || 0,
       zones: [],
       terms: [],
     };
     if (!row.zones.some((z) => z.id === zone.id)) row.zones.push(zone);
     row.terms.push(term);
-    bySite.set(zone.siteId, row);
+    bySite.set(key, row);
   }
   /* ขายไว้กี่รอบของไซต์ = ผลรวมของบรรทัดที่ term ของไซต์นั้นชี้อยู่
      ⚠️ อ่านสดจากบรรทัด ไม่ก๊อปเป็น snapshot ที่ term — จำนวนรอบแก้ได้ทางเดียวคือ
@@ -169,8 +197,11 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
       row.terms.map((t) => linesById.get(t.salesOrderLineId)).filter(Boolean),
     );
   }
+  /* ⚠️ เรียงด้วยชื่อไซต์อย่างเดียวไม่พออีกแล้ว — ไซต์เดียวหลายใบจะสลับที่กันทุกครั้ง
+     ที่โหลดใหม่ (ลำดับของ Map ตามลำดับที่ term เข้ามา) ⇒ ต่อท้ายด้วยเลขที่ใบ */
   return [...bySite.values()].sort((a, b) =>
-    String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th'));
+    String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th')
+    || String(a.orderNumber || a.salesOrderId || '').localeCompare(String(b.orderNumber || b.salesOrderId || '')));
 }
 
 /* ── ถังที่ 3: รอบที่เดินอยู่แต่ไม่มีนัดข้างหน้า ────────────────────────
@@ -178,21 +209,27 @@ export function planQueue({ zones = [], terms = [], plans = [], sites = [], orde
    `isLive` ตัวเดียวกับที่ทั้งระบบใช้ (visitStatus.isLiveVisit) เข้ามา
    เข้มกว่าด่านจริง = ซ่อนงานที่ทำได้ · หลวมกว่า = ชวนกดแล้วเด้ง
    (docs/business-line-level-and-handoff.md:173-174) */
-export function visitQueue({ plans = [], visits = [], sites = [], isLive, todayIso = businessDate() } = {}) {
+export function visitQueue({ plans = [], visits = [], sites = [], ordersById = new Map(), isLive, todayIso = businessDate() } = {}) {
   if (typeof isLive !== 'function') throw new Error('visitQueue ต้องรับ isLive จากตัวตัดสินกลาง');
   const sitesById = new Map(sites.map((s) => [s.id, s]));
-  const aheadBySite = new Map();
+  /* ── "มีนัดข้างหน้าแล้ว" ต้องถามราย **รอบ** ไม่ใช่ราย **ไซต์** ─────────────
+     🔴 ของเดิมนับเป็น `aheadBySite` ⇒ นัดของรอบ A ทำให้รอบ B ที่ไซต์เดียวกัน
+       ถูกถือว่า "มีนัดครอบแล้ว" ทั้งที่ยังไม่มีใครนัดให้เลย · รอบ B เงียบหายจากคิว
+     ⚠️ นัดที่ `planId` ว่าง (งานซ่อมนอกรอบ) ไม่ครอบรอบไหนทั้งนั้น — มันไม่ได้เกิด
+       จากรอบ และไม่นับเป็นรอบตามข้อผูกพันด้วย (เกณฑ์เดียวกับตัวนับ n/N) */
+  const aheadByPlan = new Map();
   for (const visit of visits) {
     if (!isLive(visit)) continue;
+    if (!visit.planId) continue;
     if (String(visit.scheduledDate || '') < todayIso) continue;
-    aheadBySite.set(visit.siteId, (aheadBySite.get(visit.siteId) || 0) + 1);
+    aheadByPlan.set(visit.planId, (aheadByPlan.get(visit.planId) || 0) + 1);
   }
 
   const rows = [];
   for (const plan of plans) {
     if (plan.isActive === false) continue;
     if (plan.endDate && plan.endDate < todayIso) continue;
-    if (aheadBySite.get(plan.siteId)) continue;
+    if (aheadByPlan.get(plan.id)) continue;
     rows.push({
       planId: plan.id,
       siteId: plan.siteId,
@@ -201,6 +238,10 @@ export function visitQueue({ plans = [], visits = [], sites = [], isLive, todayI
       everyDays: plan.everyDays,
       assigneeName: plan.assigneeName || null,
       startDate: plan.startDate || null,
+      /* ⚠️ ไซต์เดียวโผล่ได้หลายแถวแล้ว ⇒ จอต้องมีอะไรแยกแถวออกจากกัน
+         (ชนิดงาน · ใบสั่งขาย) ไม่งั้นสองแถวพิมพ์ข้อความเหมือนกันเป๊ะ */
+      salesOrderId: plan.salesOrderId || null,
+      salesOrderNumber: ordersById.get(plan.salesOrderId)?.orderNumber || null,
     });
   }
   return rows.sort((a, b) => String(a.site?.name || '').localeCompare(String(b.site?.name || ''), 'th'));

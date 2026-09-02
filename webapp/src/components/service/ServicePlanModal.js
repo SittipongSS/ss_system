@@ -22,6 +22,7 @@ const EVERY_PRESETS = [
 const EMPTY = {
   kind: "refill", everyDays: 30, startDate: "", endDate: "",
   assigneeId: "", assigneeName: "", isActive: true, note: "",
+  salesOrderId: "",
 };
 
 /* `roundsSold` = จำนวนรอบที่ฝ่ายขายระบุไว้ในใบเสนอราคา (mig 0326) — null/ไม่ส่ง
@@ -29,12 +30,15 @@ const EMPTY = {
 /* `salesOrderId` = ใบสั่งขายที่ครอบรอบนี้ (mig 0188 มีคอลัมน์นี้มาตั้งแต่แรก)
    🔴 **ก่อนหน้านี้ไม่มีใครส่งค่านี้เลยทั้งระบบ** ⇒ คอลัมน์ "รอบที่เดิน n/N" บนทะเบียน
       ใบสั่งขายซึ่งนับผ่าน `service_plans."salesOrderId"` ตอบ 0 ให้ทุกใบมาตลอด
-   ⚠️ **ส่งเฉพาะตอนสร้าง ไม่ส่งตอนแก้** — PATCH ผสม `{...before, ...body}` และ
-      `undefined` ใน object spread **ทับค่าเดิม** ⇒ ส่งทุกครั้งจะได้สองอาการ:
-      แก้จากหน้าไซต์ (ไม่รู้จักใบ) จะล้างค่าเดิมทิ้ง · แก้จากหน้าใบ A จะแย่งรอบของใบ B
-      มาเป็นของตัวเองเงียบ ๆ */
+   ⭐ **ตอนนี้เป็นช่องจริงในฟอร์ม ส่งทั้งตอนสร้างและตอนแก้** (2026-09-02)
+      เดิมส่งเฉพาะตอนสร้าง เพราะ PATCH ผสม `{...before, ...body}` แล้ว `undefined`
+      ใน spread ทับค่าเดิม ⇒ ส่งทุกครั้งตอนที่ยังไม่มีช่อง = ล้างค่าเดิมทิ้ง
+      พอมีช่องแล้ว ค่าที่ส่งคือสิ่งที่คนเลือกไว้เสมอ จึงส่งได้ทุกครั้งอย่างปลอดภัย
+   🪤 เคสที่ต้องใช้ช่องนี้บ่อยที่สุดคือ **ออก Rev.** — ไม่มีโค้ดไหนย้าย `salesOrderId`
+      ไปใบใหม่ให้ ⇒ รอบชี้ใบที่ตายแล้วจนกว่าจะมีคนย้ายเอง */
 export default function ServicePlanModal({
-  open, siteId, plan = null, technicians = [], roundsSold = null, salesOrderId = null, onClose, onSave,
+  open, siteId, plan = null, technicians = [], roundsSold = null, salesOrderId = null,
+  salesOrders = null, onClose, onSave,
 }) {
   const editing = !!plan;
   const [form, setForm] = useState(EMPTY);
@@ -54,9 +58,10 @@ export default function ServicePlanModal({
         assigneeName: plan.assigneeName || "",
         isActive: plan.isActive !== false,
         note: plan.note || "",
+        salesOrderId: plan.salesOrderId || "",
       }
-      : EMPTY);
-  }, [open, plan]);
+      : { ...EMPTY, salesOrderId: salesOrderId || "" });
+  }, [open, plan, salesOrderId]);
 
   const change = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -71,11 +76,16 @@ export default function ServicePlanModal({
   });
 
   const submit = async () => {
+    /* 🔴 **ส่ง `salesOrderId` ทั้งตอนสร้างและตอนแก้** (เปลี่ยนจากเดิมที่ส่งเฉพาะตอนสร้าง)
+       ของเดิมกันไว้เพราะยังไม่มีช่องให้แก้ ⇒ ส่งทุกครั้งจะล้างค่าเดิมทิ้งเมื่อแก้จาก
+       หน้าไซต์ · ตอนนี้มีช่องจริงแล้ว ค่าที่ส่งจึงเป็นสิ่งที่คนเลือกไว้เสมอ
+       ⚠️ ค่าว่าง = "ไม่ผูกใบ" ซึ่งเป็นคำตอบที่ถูกต้องคำตอบหนึ่ง ไม่ใช่ "ไม่ได้กรอก"
+          ⇒ ส่ง null ไปตรง ๆ ไม่ใช่ตัดคีย์ทิ้ง (ตัดทิ้ง = ค่าเดิมค้างเพราะ PATCH ผสม) */
     const payload = {
       ...form,
       siteId,
       everyDays: Number(form.everyDays),
-      ...(!editing && salesOrderId ? { salesOrderId } : {}),
+      salesOrderId: form.salesOrderId || null,
     };
     const { error: invalid } = normalizePlanInput(payload);
     if (invalid) { setError(invalid); return; }
@@ -102,6 +112,34 @@ export default function ServicePlanModal({
             ))}
           </Select>
         </label>
+
+        {/* ⭐ **รอบเป็นข้อผูกพันของใบสั่งขาย ไม่ใช่ของไซต์** — ช่องนี้คือทางเดียวที่
+            ผูก/ย้ายใบให้รอบที่มีอยู่แล้วได้ · ก่อนหน้านี้ไม่มีเลย ⇒ รอบที่สร้างจาก
+            หน้าไซต์ได้ `salesOrderId = null` ถาวร แล้วคอลัมน์ "รอบที่เดิน n/N"
+            ของทุกใบไม่นับมันเลยตลอดกาล
+            🪤 เคสที่ต้องใช้บ่อยที่สุดคือ **ออก Rev.** — ไม่มีโค้ดไหนย้าย salesOrderId
+               ไปใบใหม่ให้ ⇒ ต้องมีคนย้ายเอง ที่นี่
+            ⚠️ ขึ้นเฉพาะเมื่อผู้เรียกส่งตัวเลือกมา — หน้าที่ไม่รู้จักใบ (ถ้ามีในอนาคต)
+               ต้องไม่ได้ช่องเปล่าที่เลือกอะไรไม่ได้ */}
+        {Array.isArray(salesOrders) && (
+          <label className={styles.field}>
+            <span>ใบสั่งขายที่ครอบรอบนี้</span>
+            <Select
+              value={form.salesOrderId || ""}
+              onChange={change("salesOrderId")}
+            >
+              <option value="">ไม่ผูกใบ</option>
+              {salesOrders.map((o) => (
+                <option key={o.id} value={o.id}>{o.orderNumber || o.id}</option>
+              ))}
+            </Select>
+            <small className={styles.hint}>
+              {form.salesOrderId
+                ? "รอบนี้จะถูกนับเป็น “รอบที่เดิน” ของใบนี้"
+                : "ไม่ผูกใบ = ไม่ถูกนับเป็นรอบตามข้อผูกพันของใบไหนเลย"}
+            </small>
+          </label>
+        )}
 
         <label className={styles.field}>
           <span>รอบ (วัน) *</span>

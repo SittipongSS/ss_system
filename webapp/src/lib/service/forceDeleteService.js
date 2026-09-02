@@ -117,14 +117,31 @@ export async function siteForceManifest(supabase, siteId) {
   const zoneIds = idsOf(zones);
   const assetIds = idsOf(assets);
 
-  const [visits, plans, followups, terms, surveys, moves] = await Promise.all([
+  const [visits, planRows, followups, terms, surveys, moves] = await Promise.all([
     countBy(supabase, 'service_visits', 'siteId', siteId),
-    countBy(supabase, 'service_plans', 'siteId', siteId),
+    /* ⚠️ **ต้องได้แถวจริง ไม่ใช่แค่ตัวเลข** — ดูเหตุผลที่ `orderNote` ข้างล่าง */
+    fetchAll(() => supabase.from('service_plans')
+      .select('id, "salesOrderId"').eq('siteId', siteId).order('id', { ascending: true })),
     countBy(supabase, 'service_renewal_followups', 'siteId', siteId),
     countIn(supabase, 'service_zone_terms', 'zoneId', zoneIds),
     countIn(supabase, 'service_survey_zones', 'zoneId', zoneIds),
     countIn(supabase, 'service_asset_moves', 'assetId', assetIds),
   ]);
+  const plans = (planRows || []).length;
+
+  /* 🔴 **"รอบบริการ: 3" ไม่ได้บอกสิ่งที่คนกดต้องรู้** — รอบเป็นข้อผูกพัน *ของใบสั่งขาย*
+     (`service_plans."salesOrderId"`) และไซต์เดียวถือรอบของหลายใบพร้อมกันได้
+     (ขายเพิ่ม · ออก Rev.) ⇒ แอดมินที่เห็นแค่ตัวเลขรวมจะไม่รู้เลยว่ากำลังทำลาย
+     ข้อผูกพันของกี่ใบ และคอลัมน์ "รอบที่เดิน n/N" ของใบไหนจะกลายเป็นศูนย์
+     ⚠️ **ไม่ใช่เรื่อง "ลบเฉพาะรอบของใบนี้"** — FK เป็น `ON DELETE CASCADE` (mig 0188:24)
+        รอบอยู่ต่อโดยไม่มีไซต์ไม่ได้ ⇒ ที่ทำได้คือ *บอกให้ครบก่อนกด* ไม่ใช่เลือกลบ */
+  const orderIds = [...new Set((planRows || []).map((r) => r.salesOrderId).filter(Boolean))];
+  const unbound = (planRows || []).filter((r) => !r.salesOrderId).length;
+  const orderNote = plans
+    ? `ในนั้นเป็นข้อผูกพันของใบสั่งขาย ${orderIds.length} ใบ`
+      + (unbound ? ` และรอบที่ยังไม่ผูกใบอีก ${unbound} รอบ` : '')
+      + ' — คอลัมน์ "รอบที่เดิน n/N" ของใบเหล่านั้นจะกลายเป็นศูนย์'
+    : null;
 
   return {
     cascade: [
@@ -139,7 +156,8 @@ export async function siteForceManifest(supabase, siteId) {
     ].filter((l) => l.count > 0),
     notes: [
       'ประวัติการเข้าไซต์ทั้งหมดจะหายถาวร — ถ้าแค่เลิกใช้ไซต์นี้ ให้ปิดใช้งานแทน',
-    ],
+      orderNote,
+    ].filter(Boolean),
   };
 }
 

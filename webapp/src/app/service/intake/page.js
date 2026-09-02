@@ -24,6 +24,7 @@ import Workspace from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import IntakeWizard from "@/components/service/IntakeWizard";
+import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS } from "@/lib/service/intake";
 import { canEditService } from "@/lib/permissions";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -268,12 +269,17 @@ export default function ServiceIntakePage() {
                 ทุกไซต์ที่ขายแล้วมีรอบครบ — โซนที่ผูกใบสั่งขายแล้วแต่ยังไม่มีรอบจะมาอยู่ที่นี่
               </EmptyState>
             ) : (
-              <TableScroll family="list" minWidth={720}>
+              /* 🔴 **หนึ่งแถว = (ไซต์, ใบสั่งขาย)** ไม่ใช่หนึ่งไซต์ — ไซต์เดียวโผล่ได้
+                  หลายแถวเมื่อมีหลายใบ (ขายเพิ่ม/ออก Rev.) ⇒ ต้องมีคอลัมน์ใบ ไม่งั้น
+                  สองแถวพิมพ์ข้อความเหมือนกันเป๊ะ · และคีย์ต้องเป็น `row.key`
+                  (เดิมเป็น `row.siteId` ซึ่งซ้ำทันทีที่มีสองใบ) */
+              <TableScroll family="list" minWidth={860}>
                 <table>
                   <thead>
                     <tr>
                       <th scope="col">ไซต์</th>
                       <th scope="col">ลูกค้า</th>
+                      <th scope="col">ใบสั่งขาย</th>
                       <th scope="col">โซนที่ขายแล้ว</th>
                       <th scope="col">ขายไว้</th>
                       <th scope="col" aria-label="การกระทำ" />
@@ -281,9 +287,19 @@ export default function ServiceIntakePage() {
                   </thead>
                   <tbody>
                     {(data?.plan || []).map((row) => (
-                      <tr key={row.siteId}>
-                        <th scope="row">{naText(row.site?.name)}</th>
+                      <tr key={row.key || row.siteId}>
+                        <th scope="row">
+                          {naText(row.site?.name)}
+                          {/* ⚠️ คำเตือนพิมพ์ทุกแถวที่เข้าเงื่อนไข ไม่ใช่แถวแรกแถวเดียว —
+                              รอบที่ยังไม่ผูกใบเดินอยู่จริงที่ไซต์นี้ กดสร้างทับ = นัดซ้อน */}
+                          {row.unboundPlans > 0 && (
+                            <span className="cell-sub">
+                              มีรอบที่ยังไม่ผูกใบ {fmtNumber(row.unboundPlans)} รอบ — ผูกใบให้รอบเดิมก่อนสร้างใหม่
+                            </span>
+                          )}
+                        </th>
                         <td>{naText(row.site?.customerName)}</td>
+                        <td className="mono">{naText(row.orderNumber)}</td>
                         <td>{row.zones.map((z) => z.name).join(" · ")}</td>
                         <td>{row.roundsSold ? `${fmtNumber(row.roundsSold)} รอบ` : naText(null)}</td>
                         <td>
@@ -305,12 +321,17 @@ export default function ServiceIntakePage() {
                 ทุกรอบมีนัดข้างหน้าแล้ว — รอบที่เดินอยู่แต่ไม่มีนัดล่วงหน้าเลยจะมาอยู่ที่นี่
               </EmptyState>
             ) : (
-              <TableScroll family="list" minWidth={720}>
+              <TableScroll family="list" minWidth={900}>
                 <table>
                   <thead>
                     <tr>
                       <th scope="col">ไซต์</th>
+                      {/* ⚠️ ไซต์เดียวมีได้หลายรอบ (คนละใบ/คนละชนิดงาน) ⇒ "ทุก N วัน"
+                          อย่างเดียวแยกแถวไม่ออก · ค่าพวกนี้ `visitQueue` คืนมาอยู่แล้ว
+                          แต่จอไม่เคยวาด */}
+                      <th scope="col">ชนิดงาน</th>
                       <th scope="col">รอบ</th>
+                      <th scope="col">ใบสั่งขาย</th>
                       <th scope="col">เจ้าหน้าที่ประจำ</th>
                       <th scope="col" aria-label="การกระทำ" />
                     </tr>
@@ -319,7 +340,9 @@ export default function ServiceIntakePage() {
                     {(data?.visit || []).map((row) => (
                       <tr key={row.planId}>
                         <th scope="row">{naText(row.site?.name)}</th>
+                        <td>{VISIT_KIND_LABELS[row.kind] || row.kind}</td>
                         <td>ทุก {fmtNumber(row.everyDays)} วัน</td>
+                        <td className="mono">{naText(row.salesOrderNumber)}</td>
                         <td>{naText(row.assigneeName)}</td>
                         <td>
                           <Link href={`/service/sites/${row.siteId}`} className={styles.rowLink}>

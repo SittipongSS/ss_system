@@ -60,6 +60,8 @@ export default function ServiceSiteDetailPage({ params }) {
   const [schedule, setSchedule] = useState({ lastRefillDate: null, nextVisitDate: null });
   // ข้อผูกพันจำนวนรอบจากใบเสนอราคา (mig 0326) — ฟอร์มวางรอบเทียบกับความถี่ที่กำลังตั้ง
   const [roundsSold, setRoundsSold] = useState(null);
+  // ใบสั่งขายที่ลงของไว้ที่ไซต์นี้ — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้" ในโมดัลรอบ
+  const [siteOrders, setSiteOrders] = useState([]);
   const [plans, setPlans] = useState([]);
   const [visits, setVisits] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -90,6 +92,7 @@ export default function ServiceSiteDetailPage({ params }) {
       setAssets(Array.isArray(siteData?.assets) ? siteData.assets : []);
       setSchedule(siteData?.schedule || { lastRefillDate: null, nextVisitDate: null });
       setRoundsSold(siteData?.roundsSold ?? null);
+      setSiteOrders(siteData?.salesOrders || []);
 
       const planData = await planRes.json().catch(() => null);
       if (!planRes.ok) throw new Error(planData?.error || "โหลดรอบบริการไม่สำเร็จ");
@@ -644,6 +647,10 @@ export default function ServiceSiteDetailPage({ params }) {
                 <tr>
                   <th>ชนิดงาน</th>
                   <th>รอบ</th>
+                  {/* ⭐ รอบเป็นข้อผูกพันของ *ใบสั่งขาย* และไซต์เดียวถือรอบของหลายใบ
+                      พร้อมกันได้ (ขายเพิ่ม · ออก Rev.) ⇒ ไม่มีคอลัมน์นี้ = แยกไม่ออกว่า
+                      แถวไหนของใบไหน แล้วแก้/ลบผิดแถวได้ง่ายมาก */}
+                  <th>ใบสั่งขาย</th>
                   <th>ช่วงเวลา</th>
                   <th>เจ้าหน้าที่ประจำ</th>
                   <th>สถานะ</th>
@@ -655,6 +662,11 @@ export default function ServiceSiteDetailPage({ params }) {
                   <tr key={plan.id} className={plan.isActive === false ? styles.inactive : undefined}>
                     <td>{VISIT_KIND_LABELS[plan.kind] || plan.kind}</td>
                     <td>ทุก {plan.everyDays} วัน</td>
+                    <td className="mono">
+                      {plan.salesOrderNumber || (
+                        <span className={styles.muted}>ไม่ผูกใบ</span>
+                      )}
+                    </td>
                     <td>{plan.startDate}{plan.endDate ? ` – ${plan.endDate}` : " – ไม่มีกำหนดสิ้นสุด"}</td>
                     <td>{plan.assigneeName || <span className={styles.muted}>ยังไม่กำหนด</span>}</td>
                     <td><span className="ui-badge">{plan.isActive === false ? "ปิดรอบ" : "ใช้งาน"}</span></td>
@@ -775,6 +787,7 @@ export default function ServiceSiteDetailPage({ params }) {
         plan={formPlan}
         technicians={technicians}
         roundsSold={roundsSold}
+        salesOrders={siteOrders}
         onClose={() => setFormPlan(undefined)}
         onSave={savePlan}
       />
