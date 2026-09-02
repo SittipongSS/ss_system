@@ -11,6 +11,7 @@
    หน้านี้ห้ามผูกกับข้อมูลจริงหรือ API ใด ๆ — ต้องเปิดได้เสมอแม้ระบบหลังบ้านล่ม */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Palette,
   Pencil, Plus, Search, Inbox, Trash2, Check, Info, Undo2, Users,
@@ -1415,16 +1416,36 @@ export default function DesignPreviewPage() {
                       <tr><th>รหัส</th><th>รายการ</th><th className={styles.numeric}>จำนวน</th><th className={styles.numeric}>รวม</th></tr>
                     </thead>
                     <tbody>
-                      {/* DetailRow = แถวที่ทั้งแถวคลิกไปหน้ารายละเอียดได้ (ไม่ใช่แค่ลิงก์ในเซลล์)
-                          แต่ยังกดปุ่ม/ลิงก์ข้างในได้ตามปกติ */}
-                      {DEMO_LINE_ITEMS.map((row) => (
-                        <DetailRow key={row.code} href="#">
-                          <td className="mono">{row.code}</td>
-                          <td>{row.name}</td>
-                          <td className="num">{fmtNumber(row.qty)}</td>
-                          <td className="num">{money(row.total)}</td>
-                        </DetailRow>
-                      ))}
+                      {/* DetailRow = แถวที่ทั้งแถวคลิกได้ **ด้วยเมาส์** — ทางเข้าจริงคือ <Link>
+                          ในเซลล์แรก (คีย์บอร์ด · โปรแกรมอ่านหน้าจอ · คลิกขวาเปิดแท็บใหม่) และปุ่ม/
+                          ลิงก์อื่นในแถวยังทำงานของตัวเองตามเดิม · href ของแถวกับของลิงก์ต้องเป็น
+                          **ตัวเดียวกัน** ⇒ ด่าน ROW_MIRROR ใน `npm run audit:ui` บังคับไว้
+                          ที่นี่จึงยกเป็น detailHref ตัวเดียวให้เห็นท่าที่ควรลอก
+                          🐞 แก้ 2026-09-02: ของเดิมเป็น `href="#"` โดย **ไม่มีลิงก์ในเซลล์เลย** —
+                          หน้าต้นแบบสาธิตท่าที่ผิดอยู่ ซึ่งอันตรายกว่าด่านแดง เพราะคนก๊อปไปทั้งบล็อก */}
+                      {DEMO_LINE_ITEMS.map((row) => {
+                        /* หน้าสาธิตไม่มีปลายทางจริง จึงใช้แองเคอร์ **รายแถว** ไม่ใช่ `#` เปล่า:
+                           `#` เท่ากันทุกแถว (สาธิต "แต่ละแถวมีปลายทางของตัวเอง" ไม่ได้) และกดแล้ว
+                           เด้งขึ้นหัวหน้า ส่วนแองเคอร์รายแถวไม่ขยับหน้าไปไหนเพราะไม่มี id นั้นจริง
+                           🪤 ไม่ใส่ prefetch={false} เหมือน 8 หน้าจริง — หน้าจริงใส่เพราะลิสต์ยาว
+                           ยิง RSC prefetch เป็นพันครั้ง/วัน · ที่นี่ 3 แถวและ href เป็นแองเคอร์
+                           ใส่แล้วจะสอนผิดว่า "ต้องใส่เสมอ" */
+                        const detailHref = `#${row.code}`;
+                        return (
+                          <DetailRow key={row.code} href={detailHref}>
+                            <td>
+                              {/* `linklike mono` = ทรงเดียวกับเลขที่เอกสารในหน้า SO/QT/finance
+                                  และเป็นที่มาของวงโฟกัส (`.linklike:focus-visible`) — หลังถอด
+                                  `.detail-row:focus-visible` ทิ้ง วงโฟกัสอยู่รอบ *ลิงก์* ไม่ใช่รอบแถว
+                                  คนที่เปิดหน้านี้ต้องเห็นความต่างนั้นด้วยตา */}
+                              <Link href={detailHref} className="linklike mono">{row.code}</Link>
+                            </td>
+                            <td>{row.name}</td>
+                            <td className="num">{fmtNumber(row.qty)}</td>
+                            <td className="num">{money(row.total)}</td>
+                          </DetailRow>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </TableScroll>

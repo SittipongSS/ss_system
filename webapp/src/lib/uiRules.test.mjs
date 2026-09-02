@@ -57,13 +57,35 @@ test("ปุ่ม/ลิงก์ข้างในแถวยังกัน�
   assert.equal(isInteractiveTarget(optOut, row), true);
 });
 
-test("DetailRow ต้องส่ง currentTarget เป็นขอบเขตทั้งคลิกและคีย์บอร์ด", () => {
+/* 📅 2026-09-02 เหลือที่เรียกที่เดียว (เดิม 2): DetailRow ถอด `onKeyDown` ออกจาก <tr>
+   พร้อม `role`/`tabIndex` เพราะ `role="link"` ทับ `role="row"` ทิ้ง (ตก 1.3.1) และ
+   ทางเข้าของคีย์บอร์ดอยู่ที่ <Link> ในเซลล์อยู่แล้วทุกที่เรียก — วัดเอง 2026-09-02:
+   ผู้เรียก 10 จุด · 8 จุดที่เป็นแถวพาไปหน้าอื่นจริงมี <Link> ที่ href เหมือนกันเป๊ะ
+   ทุกตัวอักษรในเซลล์แรกครบทั้ง 8 (อีก 2 จุดไม่ใช่แถวพาไปไหน แก้ในคอมมิตเดียวกัน)
+   ⇒ เลข 1 ตรงนี้ไม่ใช่ "ลดลงเพราะเลิกสนใจ" · ด่าน ROW_MIRROR ใน scripts/audit-ui.mjs
+   บังคับลิงก์ในเซลล์กับทุกที่เรียกแบบ hard-zero แทนแล้ว
+   🔒 เทสต์ข้างล่างที่ยืนยันว่า role='link' บน <tr> เองต้องไม่บล็อกการกดแถว **เก็บไว้**
+      แม้วันนี้ <tr> ไม่มี role แล้ว — มันกันบั๊กเดิมไหลกลับถ้าใครเผลอใส่ role คืน */
+test("DetailRow ต้องส่ง currentTarget เป็นขอบเขตของทางลัดเมาส์", () => {
   const SRC = readFileSync(path.join(process.cwd(), "src", "components", "ui", "DetailRow.js"), "utf8");
   const calls = SRC.match(/isInteractiveTarget\([^)]*\)/g) || [];
-  assert.equal(calls.length, 2, "DetailRow ควรเรียก 2 ที่ (onClick + onKeyDown)");
+  assert.equal(calls.length, 1, "DetailRow ควรเรียกที่เดียว (onClick — ทางลัดของเมาส์)");
   for (const call of calls) {
     assert.match(call, /event\.currentTarget/,
       `${call} ไม่ได้ส่งขอบเขต — แถวจะกดไม่ได้อีกรอบ`);
+  }
+});
+
+/* 🚫 กันการไหลกลับของท่าที่ถอดไปแล้ว — ไม่ใช่เรื่องรสนิยม: `role`/`tabIndex` บน <tr>
+   ทับ `role="row"` ทิ้ง (ตก 1.3.1) และเพิ่ม tab stop แถวละ 1 จุดที่ทำงานซ้ำกับลิงก์
+   ที่อยู่ถัดไปแค่ 1 tab · ROLE_ON_TABLE_TAG_CAP เป็น 0 แล้ว เทสต์นี้ฟ้องเร็วกว่า
+   และบอกเหตุผลตรงจุดที่คนกำลังแก้ */
+test("DetailRow ห้ามคืน role/tabIndex/onKeyDown ขึ้นมาบน <tr>", () => {
+  const SRC = readFileSync(path.join(process.cwd(), "src", "components", "ui", "DetailRow.js"), "utf8");
+  const code = SRC.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const banned of ["role=", "tabIndex=", "onKeyDown=", "onKeyUp=", "onKeyPress="]) {
+    assert.ok(!code.includes(banned),
+      `DetailRow มี ${banned} กลับมาแล้ว — ทางเข้าของคีย์บอร์ดต้องเป็น <Link> ในเซลล์ ไม่ใช่ตัวแถว`);
   }
 });
 

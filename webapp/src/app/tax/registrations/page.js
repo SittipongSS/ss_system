@@ -211,12 +211,15 @@ export default function RegistrationsPage() {
   const columns = [
     selectColumn,
     {
-      key: "fgCode", label: "รหัสสินค้า (FG)",
+      /* `link: true` = เซลล์ทางเข้าของคีย์บอร์ด — DataList ห่อด้วย <Link href เดียวกับ
+         แถว> ให้เอง ⇒ บรรทัดแรกต้องเป็น <strong> ที่เป็นลูก **ตรง** ของลิงก์
+         ไม่งั้น `.linklike-block` ไม่ขีดเส้นใต้ให้ (ดูหัวไฟล์ components/excise/DataList.js) */
+      key: "fgCode", label: "รหัสสินค้า (FG)", link: true,
       render: (r) => (
-        <div>
-          <div className="font-semibold font-mono">{r.fgCode}</div>
+        <>
+          <strong className="font-semibold font-mono">{r.fgCode}</strong>
           <div className="cell-sub">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
-        </div>
+        </>
       ),
     },
     { key: "size", label: "ขนาด", sortValue: (r) => r.volume ?? -1, render: (r) => naText(sizeText(r)) },
@@ -401,7 +404,7 @@ export default function RegistrationsPage() {
         columns={columns}
         rows={rows}
         rowKey={(r) => r.id}
-        onRowClick={(r) => router.push(`/tax/registrations/${r.id}`)}
+        rowHref={(r) => `/tax/registrations/${r.id}`}
         card={card}
         /* เรียงเก่าสุดขึ้นก่อน — คิวงานที่เรียงตามรหัสสินค้าไม่ได้ตอบว่า "ทำอันไหนก่อน" */
         initialSort={{ key: "age", dir: "desc" }}

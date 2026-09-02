@@ -5015,8 +5015,14 @@ button.empty-state { width: 100%; font: inherit; }
 .date-presets { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
 .date-presets .choice-chip { min-height: 24px; padding: 0 var(--space-2); font-size: var(--fs-4); }
 
+/* แถวของ `components/ui/DetailRow.js` — `pointer` อยู่ต่อได้เพราะ **ทางลัดของเมาส์
+   ยังทำงาน** (คลิกที่ว่างในแถวแล้วไปหน้ารายละเอียด) · แต่แถวไม่ใช่ control อีกต่อไป
+   ⇒ ถ้ามีคนถามว่า "ทำไมแถวเป็นมือแต่กด Tab ไปไม่ถึง" คำตอบอยู่ตรงนี้: ทางเข้าจริง
+   ของคีย์บอร์ดคือ <Link> ในเซลล์แรก ซึ่งมีวงโฟกัสของมันเองที่ `.linklike:focus-visible`
+   🚫 **ห้ามเติม `.detail-row:focus-visible` กลับมา** (ลบทิ้ง 2026-09-02) — วันที่ถอด
+   role/tabIndex ออกจาก <tr> แถวก็โฟกัสไม่ได้อีกแล้ว กฎนั้นจึงเป็น CSS ตายทันที
+   รูปเดียวกับที่คอมเมนต์ของ `.clickable-row` ข้างล่างเตือนไว้เอง */
 .detail-row { cursor: pointer; }
-.detail-row:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
 /* ปุ่มตัวกรองเป็น control บนแถบเครื่องมือ จึงสูงเท่าช่องค้นหา/ดรอปดาวน์ (--ctl-h)
    ไม่ใช่ 32px ของ .btn ทั่วไป — เดิมความสูงนี้เขียน inline อยู่ใน FilterPopover.js */
@@ -5913,8 +5919,10 @@ button.empty-state { width: 100%; font: inherit; }
    ตรวจ 2026-09-02: `.clickable-row` ถูกใช้ 23 จุด และ **ทั้ง 23 จุดเป็น `<tr onClick>`
    ที่เขียนมือโดยไม่มี `tabIndex`** ⇒ ไม่มีอะไรโฟกัสมันได้ กฎ `:focus-visible` ที่เติม
    ตรงนี้จะเป็น CSS ตายที่ไม่มีวันทำงาน และหลอกคนอ่านว่าเรื่องนี้ปิดแล้ว
-   (`.detail-row` เป็นคนละคลาส — ตัวนั้นได้ `role`/`tabIndex`/`onKeyDown` จาก
-   `components/ui/DetailRow.js` และมีวงโฟกัสของตัวเองอยู่แล้วที่บรรทัด ~5011)
+   (`.detail-row` เป็นคนละคลาส และ **ไม่ใช่ตัวอย่างของ "แถวที่โฟกัสได้" อีกแล้ว** —
+   ปรับ 2026-09-02: `components/ui/DetailRow.js` ถอด `role`/`tabIndex`/`onKeyDown`
+   ออกจาก `<tr>` และย้ายทางเข้าไปไว้ที่ `<Link>` ในเซลล์แรก ⇒ วงโฟกัสของมันคือ
+   `.linklike:focus-visible` ไม่ใช่กฎบนแถว · นั่นคือทางที่ 23 จุดนี้ต้องเดินตามด้วย)
 
    ทางแก้จริงคือทำให้แถวโฟกัสได้ก่อน ซึ่งเป็นงานของด่าน A11Y_KEYBOARD_CAP
    (23 จุดนี้เป็นส่วนหนึ่งของ 58 จุดที่ค้างอยู่) · พอแถวโฟกัสได้เมื่อไหร่

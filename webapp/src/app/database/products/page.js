@@ -22,6 +22,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
@@ -565,12 +566,22 @@ export default function ProductRegistry() {
                   const flags = categoryFlags(p.categoryCode || categoryOf(p.fgCode), productTypes);
                   const isExciseCat = flags.isExcise;
                   const cat = categoryLabelOf(p);
+                  /* href ตัวเดียวส่งให้ทั้งแถวและลิงก์ในเซลล์ — ด่าน ROW_MIRROR เทียบ *ข้อความนิพจน์*
+                     ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที) */
+                  const detailHref = `/database/products/${p.id}`;
                   return (
-                    <tr key={p.id} onClick={() => open(p)} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                    /* แถวเป็น DetailRow: onClick ของ <tr> เหลือเป็น **ทางลัดของเมาส์** ส่วนทางเข้าจริง
+                       ของคีย์บอร์ด/โปรแกรมอ่านหน้าจอคือ <Link> ในเซลล์แรก (ท่าเดียวกับหน้าดีล/ลีด/โครงการ)
+                       ⚠️ ทางลัดเปลี่ยนจาก `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) มาเป็น
+                       router.push ของ DetailRow — `open()` ยังอยู่เพราะการ์ดจอแนวตั้งยังใช้ */
+                    <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
-                        {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
-                        <div className="mono text-[12px] text-[var(--accent)]">{p.fgCode}</div>
-                        <div className="font-semibold text-[var(--text)] mt-0.5">{productNameBoth(p)}</div>
+                        {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว)
+                            prefetch={false}: ทะเบียนสินค้ายาว — กัน RSC prefetch ต่อแถว */}
+                        <Link prefetch={false} href={detailHref} className="linklike linklike-block" title="เปิดหน้าสินค้า">
+                          <span className="mono block text-[12px] text-[var(--accent)]">{p.fgCode}</span>
+                          <strong className="block font-semibold mt-0.5">{productNameBoth(p)}</strong>
+                        </Link>
                       </td>
                       <td>
                         {cat ? (
@@ -612,7 +623,7 @@ export default function ProductRegistry() {
                           </div>
                         )}
                       </td>
-                    </tr>
+                    </DetailRow>
                   );
                 })}
               </tbody>

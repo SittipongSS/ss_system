@@ -248,8 +248,19 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                           </div>
                         </td>
                         <td>
+                          {/* ชื่อเรื่องเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/
+                              เปิดแท็บใหม่ · onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์
+                              `item.href` คือ URL ตัวเดียวกับที่แถวใช้ (มากับข้อมูลของคิวอยู่แล้ว)
+                              stopPropagation กันแถวยิง router.push ซ้ำจนได้ history ซ้อนสองชั้น */}
                           <div className={styles.rowTitle}>
-                            {item.title}
+                            <Link
+                              prefetch={false}
+                              href={item.href}
+                              className="linklike"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {item.title}
+                            </Link>
                             {item.urgent && <span className={`ui-badge ${styles.rowUrgent}`}>ด่วน</span>}
                           </div>
                           <div className={styles.rowMeta}>{item.sub}</div>
