@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { missingRequiredByTab, requestFormTabs } from './formTabs.js';
 import { requestFormBlocker } from '../master/requestCreate.js';
@@ -102,4 +103,48 @@ test('มีภาพประกอบแต่ยังไม่แนบไ�
   // แนบแล้วผ่าน · ไม่ได้ติ๊กก็ไม่ถาม
   assert.equal(missingRequiredByTab({ ...ticked, files: [{ name: 'art.png' }] }).length, 0);
   assert.equal(missingRequiredByTab({ ...scent, pdr: { packagingArtwork: 'none' } }).length, 0);
+});
+
+/* 🪤 **เกจต้องชี้แท็บที่ช่องอยู่จริง** — ปุ่ม "ยังขาด: …" พาไปเปิดแท็บตามค่า `tab`
+   ตรงนี้ · ชี้ผิดแท็บ = คนกดแล้วเจอหน้าที่ไม่มีช่องนั้น แล้วไม่รู้จะกรอกที่ไหน
+   (กับดักเดิมของ "ยอดที่ขอวางบิล" ตอนย้ายช่องเข้าเนื้อบรรทัด)
+   ⭐ ไซต์/พื้นที่ของ "ประเมินพื้นที่" อยู่แท็บ "รายละเอียด" (มติผู้ใช้ 2026-09-02) —
+   มันคือ "ขออะไร" (ไปวัดที่นี่ พื้นที่เหล่านี้) ไม่ใช่ "งานไหน" · ผูกกับซอร์สของฟอร์ม
+   ด้วย เพราะสองที่นี้ต้องย้ายพร้อมกันเสมอ */
+test('🪤 ประเมินพื้นที่: ไซต์กับพื้นที่ต้องอยู่แท็บ "รายละเอียด" ทั้งเกจและฟอร์ม', () => {
+  const survey = {
+    dept: 'TS', kind: 'site_survey', dealId: 'DEAL-1',
+    title: 'ประเมินพื้นที่สาขา A', requestedDueDate: '2026-09-20',
+  };
+  const missing = missingRequiredByTab(survey);
+  const site = missing.find((m) => m.label.includes('สถานที่'));
+  assert.ok(site, 'ยังไม่เลือกสถานที่ = ต้องขึ้นว่าขาด');
+  assert.equal(site.tab, 'subject');
+
+  const withSite = { ...survey, siteId: 'SVS-1' };
+  const zones = missingRequiredByTab(withSite).find((m) => m.label.includes('พื้นที่'));
+  assert.ok(zones, 'เลือกสถานที่แล้วแต่ยังไม่มีพื้นที่ = ต้องขึ้นว่าขาด');
+  assert.equal(zones.tab, 'subject');
+
+  // ครบแล้วต้องไม่เหลือของขาด และด่านส่งต้องเห็นตรงกัน
+  const full = { ...withSite, zones: [{ name: 'โซน 1' }] };
+  assert.equal(missingRequiredByTab(full).length, 0);
+  assert.equal(requestFormBlocker(full), null);
+
+  // แท็บ "งาน" ยังต้องมีของ (ดีล) — ไม่ใช่ย้ายจนแท็บว่าง
+  const tabs = requestFormTabs(survey);
+  assert.ok(tabs.find((t) => t.key === 'work').required.total > 0,
+    'ย้ายไซต์ออกแล้วแท็บงานต้องยังมีช่องบังคับเหลืออยู่ ไม่งั้นได้แท็บว่าง');
+});
+
+test('🪤 บล็อกไซต์ในฟอร์มต้องอยู่ใต้แท็บ subject จริง ไม่ใช่แค่เกจชี้', () => {
+  const form = readFileSync(
+    new URL('../../components/requests/RequestForm.js', import.meta.url), 'utf8',
+  );
+  const subjectAt = form.indexOf('activeTab === "subject"');
+  const siteAt = form.indexOf('<SurveySiteFields');
+  const workAt = form.indexOf('activeTab === "work"');
+  assert.ok(workAt > -1 && subjectAt > -1 && siteAt > -1);
+  assert.ok(siteAt > subjectAt, 'SurveySiteFields ต้องอยู่หลังหัวแท็บ subject');
+  assert.ok(subjectAt > workAt, 'ลำดับแท็บในไฟล์: work มาก่อน subject');
 });
