@@ -154,7 +154,7 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 **สหมิตร 4 จุด** (`create-sales-deal` · `sync-sales-planning` ×2 · `settle-deal` ที่หักยอดออกจาก
 `projectValue` ตรง ๆ — เส้นเดียวในระบบที่ทำแบบนั้น)
 
-## คิว `/sa/forecast-review` — สามกอง ไม่ใช่สอง
+## คิว `/sa/forecast-review` — สองกอง
 
 | กอง | ความหมาย | กดแล้ว |
 |---|---|---|
