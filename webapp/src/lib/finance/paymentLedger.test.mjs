@@ -15,7 +15,11 @@ const make = (extra = {}, orderExtra = {}) => ledgerRow({
     id: `SOI-${extra.seq || 1}`, seq: 1, label: 'มัดจำ', percent: 50, amount: 15000,
     status: 'pending', evidence: [], ...extra,
   },
-  order: { id: 'SOR-1', orderNumber: 'SO-26080008-0', quotationId: 'QT-1', team: 'SV', ...orderExtra },
+  order: {
+    id: 'SOR-1', orderNumber: 'SO-26080008-0', quotationId: 'QT-1', team: 'SV',
+    // เอกสารอ้างอิง = PO ของลูกค้า — เลขคนละระบบกับเลขของเรา จึงต้องมีในฟิกซ์เจอร์
+    referenceDoc: 'PO-2026-8811', ...orderExtra,
+  },
   quotation: { id: 'QT-1', quoteNumber: 'QT-26080042-0' },
   customer: { name: 'บริษัท วี.เอ็น.อลูมิเนียม จำกัด', arCode: 'AR-0001' },
   todayIso: TODAY,
@@ -28,6 +32,11 @@ test('ทุกแถวมีเลขที่ SO และเลข QT กำ
   const r = make();
   assert.equal(r.orderNumber, 'SO-26080008-0');
   assert.equal(r.quoteNumber, 'QT-26080042-0');
+  // เอกสารอ้างอิง (PO ลูกค้า) — `ledgerRow` เป็น whitelist ⇒ ลืมเติมแล้วหายเงียบ
+  assert.equal(r.referenceDoc, 'PO-2026-8811');
+  assert.equal(ledgerRow({
+    installment: { id: 'i', seq: 1 }, order: { id: 'SOR-9', orderNumber: 'SO-9' },
+  }).referenceDoc, ''); // ใบที่ลูกค้าไม่ได้ออก PO ต้องได้ค่าว่าง ไม่ใช่ undefined
   assert.equal(r.amount, 15000);
   // id ติดมาด้วยเพื่อทำลิงก์ได้ ไม่ต้องค้นจากเลขที่
   assert.equal(r.orderId, 'SOR-1');
@@ -37,6 +46,8 @@ test('ทุกแถวมีเลขที่ SO และเลข QT กำ
 test('คอลัมน์ที่ส่งออกมีทั้ง SO และ QT และยอดเป็นคอลัมน์เงิน', () => {
   const keys = LEDGER_COLUMNS.map((c) => c.key);
   assert.ok(keys.includes('orderNumber') && keys.includes('quoteNumber'));
+  // ไฟล์ที่บัญชีเอาไปกระทบยอดต้องมีเลข PO ของลูกค้าด้วย ไม่ใช่มีแต่เลขของเรา
+  assert.ok(keys.includes('referenceDoc'));
   assert.equal(LEDGER_COLUMNS.find((c) => c.key === 'amount').money, true);
 });
 
@@ -67,9 +78,12 @@ test('เงินที่ SA แจ้งแล้วแต่บัญชี�
 });
 
 // ── ตัวกรอง ──────────────────────────────────────────────────────────────
-test('ค้นหาเจอทั้งจากเลข SO เลข QT ชื่อลูกค้า และรหัสลูกค้า', () => {
+/* 🔴 เลข PO ของลูกค้าอยู่ในชุดค้นด้วย — คำถามที่เข้าฝ่ายบัญชีจริงคือ "PO เลขนี้
+   เก็บเงินถึงไหนแล้ว" ไม่ใช่ "SO เลขนี้" · ตารางรายการ SO ค้นได้ตั้งแต่ IS-26080017
+   แล้วทะเบียนนี้ยังค้นไม่ได้ = ฝ่ายบัญชีเป็นฝ่ายเดียวที่ตอบลูกค้าไม่ได้ */
+test('ค้นหาเจอทั้งจากเลข SO เลข QT เอกสารอ้างอิง ชื่อลูกค้า และรหัสลูกค้า', () => {
   const rows = [make()];
-  for (const q of ['SO-26080008', 'qt-26080042', 'อลูมิเนียม', 'ar-0001']) {
+  for (const q of ['SO-26080008', 'qt-26080042', 'po-2026-8811', 'อลูมิเนียม', 'ar-0001']) {
     assert.equal(filterLedger(rows, { q }).length, 1, `หาไม่เจอด้วย "${q}"`);
   }
   assert.equal(filterLedger(rows, { q: 'ไม่มีจริง' }).length, 0);
@@ -608,6 +622,14 @@ test('ใบที่ไม่มีงวดรับรองเลย ปร�
   const all = [svc({ seq: 1, status: 'reported', coversTo: '2026-11-30' })];
   stampOrderPaidThrough(all);
   assert.equal(groupLedgerByOrder(all)[0].paidThrough, null);
+});
+
+/* ก้อนของใบก็เป็น whitelist เหมือน `ledgerRow` — ลืมเติมแล้วค้นเจอแต่มองไม่เห็น
+   ว่าแถวไหนคือเลขที่ค้น ซึ่งแย่กว่าค้นไม่เจอ เพราะดูเหมือนระบบตอบผิด */
+test('ก้อนของใบพกเอกสารอ้างอิงไปถึงจอด้วย', () => {
+  const groups = groupLedgerByOrder([make({ seq: 1 }), make({ seq: 2 })]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].referenceDoc, 'PO-2026-8811');
 });
 
 test('ไฟล์ที่บัญชีดาวน์โหลดมีช่วงครอบบริการด้วย ไม่ใช่เห็นแต่บนจอ', () => {
