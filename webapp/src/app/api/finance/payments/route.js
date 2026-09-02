@@ -43,7 +43,10 @@ async function loadLedger(supabase, todayIso) {
        ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
     /* `projectId` เพิ่มมาเพื่อถามสายธุรกิจ — โครงการเป็นเจ้าของค่าสายจริง ดีลเป็นสำเนา
        (ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง "สายบริการ" ของฝ่ายบัญชี) */
-    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
+    /* `referenceDoc` = เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลข PO
+       บ่อยกว่าเลข SO เสียอีก ("PO ใบนี้เก็บเงินถึงไหนแล้ว") · หน้ารายการ SO ของ
+       ฝ่ายขายค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017 แต่ทะเบียนนี้ยังไม่มีให้ค้น */
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount"')
     .in('id', orderIds);
   if (orderError) throw orderError;
   const orderById = new Map((orders || []).map((o) => [o.id, o]));

@@ -177,6 +177,14 @@ join ที่ API ของหน้านั้น (เช่นที่ท�
 - Loading content ใช้ skeleton; ข้อมูลว่างใช้ `EmptyState`; async result ใช้ `Toast`
 - Desktop และ mobile ใช้ top navigation ชุดเดียวกัน; mobile เปิด menu sheet จาก top bar
 - ทุก interactive element ต้องมี hover, `:focus-visible` และ disabled state
+  - **วงโฟกัสใช้ `var(--accent-ink)` เสมอ ไม่ใช่ `var(--accent)`** — วัดบนพื้นจริง
+    ธีมสว่าง `--accent` ได้ **2.75:1 บน `--bg` ตก WCAG 1.4.11 (ต้อง 3:1)** ส่วน
+    `--accent-ink` ได้ 4.76:1 · 17 จาก 26 กฎใช้ `outline-offset` บวก วงจึงไปนั่งบน
+    พื้นแม่ซึ่งมักเป็น `--bg` · ธีมมืดสองโทเคนเป็นสีเดียวกัน เปลี่ยนแล้วไม่ขยับเลย
+    `audit:ui` มีด่าน hard-zero คุมไว้ (บรรทัด "วงโฟกัสที่ยังใช้ var(--accent)")
+  - 🪤 **ก่อนเติม `:focus-visible` ให้คลาสไหน เช็กก่อนว่ามันโฟกัสได้จริง** —
+    `.clickable-row` ใช้ 23 จุดและ **ไม่มีจุดไหนโฟกัสได้เลย** (เป็น `<tr onClick>`
+    เขียนมือไม่มี `tabIndex`) กฎที่เติมไปจะเป็น CSS ตายที่หลอกว่าเรื่องนี้ปิดแล้ว
 
 ## อะไรที่มี `onClick` ต้องกดด้วยคีย์บอร์ดได้ (2026-09-02)
 

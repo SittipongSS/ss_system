@@ -257,8 +257,15 @@ export default function FinancePaymentsPage() {
               "เปิดใบ" ท้ายแถว · สองทางไปที่เดียวกันในแถวเดียวกดพลาดกันเอง */}
           <span className="mono"><strong>{naText(group.orderNumber)}</strong></span>
           {/* อ้างอิง QT เป็นบรรทัดรอง — เป็นที่มาของใบ ไม่ใช่ตัวใบเอง
-              (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6) */}
-          <span className="cell-sub mono">{naText(group.quoteNumber)}</span>
+              (เลิกเป็นคอลัมน์ของตัวเองตอนยุบ 9 → 6)
+              ⭐ เอกสารอ้างอิง (PO ลูกค้า) ต่อท้ายบรรทัดเดียวกัน ทรงเดียวกับตาราง
+              รายการ SO — บัญชีค้นด้วยเลข PO ได้แล้ว ก็ต้องเห็นว่าแถวไหนคือเลขนั้น
+              ⚠️ ไม่มี PO = ไม่ขึ้นทั้งจุดคั่นและช่องว่าง ไม่ใช่ขีด — ขีดตรงนี้จะอ่าน
+              เหมือนเลข QT มีสองท่อน (กติกา N/A → ขีด ใช้กับ **ช่องของตัวเอง**) */}
+          <span className="cell-sub mono" title={group.referenceDoc || undefined}>
+            {naText(group.quoteNumber)}
+            {group.referenceDoc ? ` · ${group.referenceDoc}` : ""}
+          </span>
           {/* ⭐ รางสามขั้นชุดเดียวกับตารางรายการ SO (`salesOrderListTrack`)
               — สองหน้านี้ตอบคำถามเดียวกัน จึงต้องใช้ตรรกะตัวเดียวกัน */}
           {track ? <StepTrack steps={track.steps} /> : null}
@@ -446,7 +453,7 @@ export default function FinancePaymentsPage() {
               <input autoComplete="off"
                 defaultValue={q}
                 onChange={(e) => setFilter("q", e.target.value)}
-                placeholder="ค้นหาเลข SO / QT / ลูกค้า / ชื่องวด"
+                placeholder="ค้นหาเลข SO / QT / เอกสารอ้างอิง / ลูกค้า / ชื่องวด"
               />
             </div>
             <FilterPopover

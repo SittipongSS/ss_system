@@ -861,7 +861,7 @@ button, select, input, textarea {
 }
 
 .readable-text-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -1482,7 +1482,7 @@ a.topnav-here-sys:focus-visible {
   transition: color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast);
 }
 .topnav-sys-expand:hover { color: var(--text); background: var(--panel-2); }
-.topnav-sys-expand:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.topnav-sys-expand:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
 .topnav-sys-sub {
   position: absolute;
@@ -1667,7 +1667,7 @@ a.topnav-here-sys:focus-visible {
   text-overflow: ellipsis;
 }
 .topnav-item:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.topnav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.topnav-item:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 .topnav-item.active {
   color: var(--accent-ink);
   font-weight: var(--fw-semibold);
@@ -2280,7 +2280,7 @@ h1, h2, h3, h4, h5, h6 {
 .home-hub-brand-link:focus-visible,
 .home-system-card:focus-visible,
 .home-hub-footer a:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 3px;
 }
 .home-hub-brand { display: block; }
@@ -3221,7 +3221,7 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(255, 255, 255, 0.12);
 }
 .account-menu-trigger:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 .account-menu-trigger .user-avatar {
@@ -3305,7 +3305,7 @@ h1, h2, h3, h4, h5, h6 {
   cursor: pointer;
 }
 .account-menu-item:hover { background: var(--panel-2); color: var(--text); }
-.account-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.account-menu-item:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -1px; }
 .account-menu-item.danger { color: var(--red); }
 .account-menu-item.danger:hover { background: var(--red-soft); }
 .account-menu-divider { height: 1px; margin: 5px var(--space-1); background: var(--border); }
@@ -3392,7 +3392,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: color var(--motion-fast) ease, background var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 .fc-detail-close:hover { color: var(--text); background: var(--panel-2); border-color: var(--border-strong); }
-.fc-detail-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fc-detail-close:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
 
 .fc-detail-summary {
   display: grid;
@@ -3464,7 +3464,7 @@ h1, h2, h3, h4, h5, h6 {
   overflow-wrap: anywhere;
 }
 .fc-detail-project-link:hover { color: var(--accent-ink); text-decoration: underline; }
-.fc-detail-project-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.fc-detail-project-link:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: 2px; }
 .fc-detail-meta { margin-top: 3px; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
 .fc-detail-badges { display: flex; flex-wrap: wrap; gap: var(--space-1-5); }
 .fc-detail-amount { color: var(--text); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
@@ -4280,7 +4280,7 @@ button.empty-state { width: 100%; font: inherit; }
 .btn-icon.danger { color: var(--red); }
 .btn-icon.danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
 .btn-icon:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
-.btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn-icon:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
 
 /* Toolbar row — filter / sort / search controls live here. */
 /* แถบเครื่องมือเหนือตาราง (ช่องค้นหา + ตัวกรอง + เรียง)
@@ -4488,7 +4488,7 @@ button.empty-state { width: 100%; font: inherit; }
   cursor: pointer;
 }
 .pending-files-add:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
-.pending-files-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pending-files-add:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .pending-files-add:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .pending-files-add small { color: var(--text-3); font-size: var(--fs-3); }
 
@@ -4541,7 +4541,7 @@ button.empty-state { width: 100%; font: inherit; }
   min-width: 0;
 }
 .line-summary:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text); }
-.line-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.line-summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .line-summary:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 /* จุดสถานะหน้าแถว — เขียว = ครบ · เหลือง = ยังขาดของบังคับในแถวนั้น */
 .line-summary-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--amber); flex: none; }
@@ -4593,7 +4593,7 @@ button.empty-state { width: 100%; font: inherit; }
   min-width: 0;
 }
 .section-rail-item:hover:not([data-on]) { color: var(--text-2); background: var(--panel-3); }
-.section-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-rail-item:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .section-rail-item[data-on] {
   background: var(--panel);
   border-color: var(--border);
@@ -4641,7 +4641,7 @@ button.empty-state { width: 100%; font: inherit; }
 /* ⚠️ แดงตอนชี้เท่านั้น — ถังขยะแดงตลอดเวลาบนทุกแถว ทำให้รางอ่านเหมือนรายการที่มี
    ปัญหา ทั้งที่มันเป็นแค่ปุ่มที่มีอยู่ตามปกติ */
 .section-rail-action:hover:not(:disabled) { color: var(--red); background: var(--panel-3); }
-.section-rail-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.section-rail-action:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .section-rail-action:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .section-rail-body { padding: var(--space-4); min-width: 0; }
 @media (max-width: 768px) {
@@ -4794,7 +4794,7 @@ button.empty-state { width: 100%; font: inherit; }
 .ui-switch[data-on] { color: var(--accent-ink); font-weight: var(--fw-semibold); }
 .ui-switch[data-on] i { background: var(--accent); border-color: var(--accent); }
 .ui-switch[data-on] i::after { left: 12px; background: var(--accent-fg); }
-.ui-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-switch:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 /* ช่องที่ระบบเติมให้ในฟอร์มดีล — เส้นประ อ่านอย่างเดียว (ภาษาเดียวกับช่อง
    "เติมจาก SO" ของฟอร์มคำร้อง): ผู้รับผิดชอบที่ล็อกเป็นตัวเองของ ae/senior_ae
@@ -4900,7 +4900,7 @@ button.empty-state { width: 100%; font: inherit; }
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
 .option-tile:hover:not(:disabled) { border-color: var(--accent-ink); }
-.option-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.option-tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .option-tile:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .option-tile-title { font-size: var(--fs-7); font-weight: var(--fw-bold); line-height: var(--lh-thai); }
 .option-tile-sub { font-size: var(--fs-4); color: var(--text-3); line-height: var(--lh-thai); }
@@ -4950,7 +4950,7 @@ button.empty-state { width: 100%; font: inherit; }
 .stage-step:first-child { border-left: 0; }
 .stage-step[data-cut] { border-left: 2px solid var(--border-strong); }
 .stage-step:hover:not(:disabled):not([data-on]) { background: var(--panel-2); }
-.stage-step:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stage-step:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 .stage-step:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .stage-step-label { font-size: var(--fs-4); line-height: var(--lh-thai); }
 .stage-step-sub { font-size: var(--fs-2); color: var(--text-3); line-height: var(--lh-thai); font-variant-numeric: tabular-nums; }
@@ -4993,7 +4993,7 @@ button.empty-state { width: 100%; font: inherit; }
   transition: border-color var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
 }
 .choice-chip:hover:not(:disabled) { border-color: var(--accent-ink); }
-.choice-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.choice-chip:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .choice-chip:disabled { opacity: var(--op-disabled); cursor: not-allowed; }
 .choice-chip[data-on] {
   border-color: var(--accent);
@@ -5009,7 +5009,7 @@ button.empty-state { width: 100%; font: inherit; }
 .date-presets .choice-chip { min-height: 24px; padding: 0 var(--space-2); font-size: var(--fs-4); }
 
 .detail-row { cursor: pointer; }
-.detail-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.detail-row:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
 /* ปุ่มตัวกรองเป็น control บนแถบเครื่องมือ จึงสูงเท่าช่องค้นหา/ดรอปดาวน์ (--ctl-h)
    ไม่ใช่ 32px ของ .btn ทั่วไป — เดิมความสูงนี้เขียน inline อยู่ใน FilterPopover.js */
@@ -5082,7 +5082,7 @@ button.empty-state { width: 100%; font: inherit; }
 .segmented > button:hover { color: var(--text); }
 .segmented > button.active,
 .segmented > button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
-.segmented > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.segmented > button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
 .segmented > button:disabled { opacity: var(--op-disabled); cursor: default; }
 .segmented > button.icon { width: 28px; height: 28px; padding: 0; }
 .segmented > .divider { width: 1px; height: 18px; background: var(--border); margin: 0 var(--space-0-5); }
@@ -5314,7 +5314,7 @@ button.empty-state { width: 100%; font: inherit; }
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
-.tab-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tab-btn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 
 .tab-btn.active {
   color: var(--accent-ink);
@@ -5805,6 +5805,16 @@ button.empty-state { width: 100%; font: inherit; }
 
 
 
+/* 🔴 **แถวพวกนี้โฟกัสด้วยคีย์บอร์ดไม่ได้เลยสักจุด** — อย่าเติม `:focus-visible` ที่นี่
+   ตรวจ 2026-09-02: `.clickable-row` ถูกใช้ 23 จุด และ **ทั้ง 23 จุดเป็น `<tr onClick>`
+   ที่เขียนมือโดยไม่มี `tabIndex`** ⇒ ไม่มีอะไรโฟกัสมันได้ กฎ `:focus-visible` ที่เติม
+   ตรงนี้จะเป็น CSS ตายที่ไม่มีวันทำงาน และหลอกคนอ่านว่าเรื่องนี้ปิดแล้ว
+   (`.detail-row` เป็นคนละคลาส — ตัวนั้นได้ `role`/`tabIndex`/`onKeyDown` จาก
+   `components/ui/DetailRow.js` และมีวงโฟกัสของตัวเองอยู่แล้วที่บรรทัด ~5011)
+
+   ทางแก้จริงคือทำให้แถวโฟกัสได้ก่อน ซึ่งเป็นงานของด่าน A11Y_KEYBOARD_CAP
+   (23 จุดนี้เป็นส่วนหนึ่งของ 58 จุดที่ค้างอยู่) · พอแถวโฟกัสได้เมื่อไหร่
+   ค่อยเติมวงโฟกัสพร้อมกัน — ทำสลับลำดับแล้วได้กฎที่ไม่มีใครเห็น */
 .clickable-row {
   cursor: pointer;
 }
@@ -6077,7 +6087,7 @@ button.empty-state { width: 100%; font: inherit; }
   text-decoration: none;
 }
 .ui-workspace-back:hover { color: var(--accent-ink); }
-.ui-workspace-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-workspace-back:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .ui-workspace-back-actions,
 .ui-workspace-header-actions {
   min-width: 0;
@@ -6215,7 +6225,7 @@ button.ui-metric { width: 100%; cursor: pointer; appearance: none; }
 /* ผสมบน panel-solid ไม่ใช่ transparent — ไม่งั้นตอน hover พื้นสีเส้นของแถบจะทะลุขึ้นมา */
 button.ui-metric:hover,
 .ui-metric.is-active { background: color-mix(in srgb, var(--accent) 5%, var(--panel-solid)); }
-button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--accent-ink); outline-offset: -2px; }
 .ui-metric-icon {
   width: var(--icon-box-md);
   height: var(--icon-box-md);
@@ -6576,7 +6586,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 
 .ui-group-row .ui-group-toggle:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: -2px;
 }
 
@@ -6611,7 +6621,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 .premium-glass-table tr.group-row button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: -2px;
 }
 .premium-glass-table tr.group-row .group-total {
@@ -6787,7 +6797,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
 }
 .table-row-link:focus-visible,
 .table-metric-button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 1px;
 }
 .performance-tracking-table .fz-c1 { min-width: 150px; }
@@ -7409,5 +7419,5 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   cursor: pointer;
 }
 .tab-missing-jump:hover { background: color-mix(in srgb, var(--amber) 26%, transparent); }
-.tab-missing-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab-missing-jump:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .tab-missing-where { color: var(--text-3); }

@@ -46,6 +46,10 @@ export function ledgerRow({
     orderNumber: order.orderNumber || '',
     quotationId: order.quotationId || quotation?.id || null,
     quoteNumber: quotation?.quoteNumber || '',
+    /* ⭐ เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลขนี้เป็นหลัก ("PO ใบนี้
+       เก็บถึงไหนแล้ว") · ตารางรายการ SO ค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017
+       แล้ว ทะเบียนนี้เพิ่งมี ⇒ ฝ่ายบัญชีเคยเป็นฝ่ายเดียวที่ค้นด้วยเลข PO ไม่ได้ */
+    referenceDoc: order.referenceDoc || '',
     customerName: customer?.name || order.customerName || '',
     customerCode: customer?.arCode || '',
     /* สองขั้นแรกของราง — พกมากับแถวเพื่อให้ก้อน (`groupLedgerByOrder`) ประกอบราง
@@ -123,6 +127,9 @@ export function pendingConfirmations(rows = []) {
 export const LEDGER_COLUMNS = [
   { key: 'orderNumber', label: 'เลขที่ SO' },
   { key: 'quoteNumber', label: 'อ้างอิง QT' },
+  /* เอกสารอ้างอิง (PO ลูกค้า) — อยู่ในไฟล์ด้วยเพราะบัญชีกระทบยอดกับ PO ของลูกค้า
+     ไม่ใช่กับเลข SO ของเรา · ใบที่ลูกค้าไม่ได้ออก PO ได้ช่องว่าง ซึ่งถูกแล้ว */
+  { key: 'referenceDoc', label: 'เอกสารอ้างอิง' },
   { key: 'customerName', label: 'ลูกค้า' },
   { key: 'seq', label: 'งวดที่', num: true },
   { key: 'label', label: 'รายละเอียดงวด' },
@@ -262,7 +269,9 @@ export function filterLedger(rows = [], {
     if (from && (!r.dueDate || String(r.dueDate) < String(from))) return false;
     if (to && (!r.dueDate || String(r.dueDate) > String(to))) return false;
     if (needle) {
-      const hay = [r.orderNumber, r.quoteNumber, r.customerName, r.customerCode, r.label]
+      /* ⚠️ `referenceDoc` อยู่ในชุดค้นด้วย — เหตุผลเดียวกับตารางรายการ SO
+         (IS-26080017): คำถามที่เข้ามาจริงคือ "PO เลขนี้ใบไหน เก็บถึงไหนแล้ว" */
+      const hay = [r.orderNumber, r.quoteNumber, r.referenceDoc, r.customerName, r.customerCode, r.label]
         .join(' ').toLowerCase();
       if (!hay.includes(needle)) return false;
     }
@@ -353,6 +362,8 @@ export function groupLedgerByOrder(rows = []) {
         orderNumber: row.orderNumber,
         quotationId: row.quotationId,
         quoteNumber: row.quoteNumber,
+        // เอกสารอ้างอิง (PO ลูกค้า) — ค่าระดับ **ใบ** ทุกงวดพกค่าเดียวกันมา
+        referenceDoc: row.referenceDoc || '',
         customerName: row.customerName,
         customerCode: row.customerCode,
         orderStatus: row.orderStatus,
