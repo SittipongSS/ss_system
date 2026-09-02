@@ -83,8 +83,13 @@ const REVISION_RESETS = new Set([
   'cancelledAt', 'cancelledBy', 'cancelReason', 'cancelReasonCode',
   // ลายเซ็นของใบเดิม
   'signatureEvidenceId', 'proposerSignatureEvidenceId',
-  /* เจ้าของใบ — ไม่มีจอไหนอ่าน `sales_orders.ownerId` เลย (เจ้าของงานอ่านจากดีล:
-     `order.deal?.ownerId`) ⇒ ก๊อปไปก็เป็นค่าที่ไม่มีใครใช้ */
+  /* 🔴 **เจ้าของยอด — มีคนอ่านจริง แต่ห้ามก๊อป** (แก้เหตุผลที่เขียนผิดไว้รอบแรก)
+     รายงานยอดขายจัดกลุ่มด้วย `sales_orders."ownerId"` ตรง ๆ (`api/sales-planning/report`)
+     แต่ค่านั้นถูก **trigger `snapshot_sales_order_owner` แช่ให้ตอนหัวหน้าฝ่ายขายอนุมัติ**
+     (mig 0294) ไม่ใช่ตอนสร้าง — เพราะยอดของใบต้องเป็นของคนที่ถือดีล *ณ วินาทีที่ใบ
+     กลายเป็นยอดขาย* ไม่ใช่ของเจ้าของดีลวันนี้
+     ⇒ ก๊อปมาตั้งแต่ร่างจะได้เจ้าของของ **รอบก่อน** ติดมากับใบที่ยังไม่นับเป็นยอด
+       แล้ว trigger ก็ไม่ได้ทับให้ (มันเซ็ตตอนสถานะเปลี่ยนเป็น approved) */
   'ownerId', 'ownerName',
 ]);
 
@@ -128,4 +133,88 @@ test('🪤 Rev. ของใบสั่งขายต้องพาทุก�
     `${file}: คอลัมน์เหล่านี้ไม่ถูกก๊อปไปใบ Rev. และไม่ได้ประกาศว่าตั้งใจรีเซ็ต\n`
     + `  → ถ้าตั้งใจไม่ก๊อป ให้เติมชื่อเข้า REVISION_RESETS พร้อมเหตุผล\n`
     + `  → ถ้าต้องก๊อป ให้เติมเข้า INSERT ของฟังก์ชันใน migration ใบใหม่`);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   🪤 **ทอด QT → SO ป่วยโรคเดียวกัน** (mig 0341)
+
+   `create_sales_order_draft` ก๊อปหัวใบด้วยรายการคอลัมน์ตายตัวเหมือนกัน ⇒ 0295 เพิ่ม
+   `docLanguage` แล้วไม่ได้มาแตะฟังก์ชันนี้ · 0328 คัดลอกนิยามเดิมไปแก้เรื่องเลขรัน
+   จึงพารายการที่ขาดอยู่แล้วต่อไปอีกทอด
+   ⇒ ใบสั่งขาย **134 ใบบน production เป็นภาษาไทยทั้งหมด** ทั้งที่มีใบเสนอราคาอังกฤษ
+     15 ใบ — ซึ่งคือ *อาการที่ 0295 สร้างขึ้นมาเพื่อแก้* งอกกลับมาทางเส้นสร้างใบ
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ของที่ใบใหม่ต้องเริ่มเอง — ตั้งใจไม่ก๊อปจากใบเสนอราคา */
+const DRAFT_OWNED = new Set([
+  // ฟังก์ชันเซ็ตเอง / เป็นของใบใหม่โดยนิยาม
+  'id', 'orderNumber', 'status', 'orderDate', 'createdBy', 'createdByName',
+  'createdAt', 'updatedAt', 'approvalMode',
+  // ยังไม่มีสายฉบับ — ใบแรกของสายเสมอ
+  'baseNumber', 'revisionNo', 'revisionSeparator', 'revisedFromId', 'supersededById',
+  'revisedAt', 'revisedBy', 'revisedByName', 'revisionReason',
+  // workflow ยังไม่เริ่ม
+  'submittedAt', 'submittedBy', 'submittedByName',
+  'approvedAt', 'approvedBy', 'approvedByName', 'approvalNote',
+  'approvalFingerprint', 'approvalOverrideReason',
+  'rejectedAt', 'rejectedBy', 'rejectedByName', 'rejectionReason',
+  'financeStatus', 'financeNote', 'financeApprovedAt', 'financeApprovedBy',
+  'financeApprovedByName', 'financeRejectedAt', 'financeRejectedBy',
+  'financeRejectedByName', 'financeRejectReason', 'financeSignatureEvidenceId',
+  'cancelledAt', 'cancelledBy', 'cancelReason', 'cancelReasonCode',
+  'signatureEvidenceId', 'proposerSignatureEvidenceId',
+  // เจ้าของยอด — trigger แช่ให้ตอนอนุมัติ (mig 0294) เหตุผลเดียวกับ REVISION_RESETS
+  'ownerId', 'ownerName',
+  // ใบใหม่ยังไม่ผูกสัญญาบริการโดยนิยาม
+  'serviceContractId',
+  /* ทีมของใบ — ไม่เคยถูกเซ็ตโดยเส้นไหนเลย (grep ทั้ง migrations + src) · รายงานยอดขาย
+     อ่าน `order.team` จริง แต่ค่ามาจากที่อื่น ⇒ เป็นหนี้เก่า ไม่ใช่ของที่ใบนี้เพิ่งทำหาย */
+  'team',
+]);
+
+test('🪤 ใบสั่งขายที่ออกจากใบเสนอราคาต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
+  const files = readdirSync(MIGRATIONS).filter((name) => name.endsWith('.sql')).sort();
+  const columns = new Set();
+  for (const name of files) {
+    const sql = readFileSync(new URL(name, MIGRATIONS), 'utf8').replace(/--[^\n]*/g, '');
+    for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?public\.sales_orders\s*\(([\s\S]*?)\n\);/g)) {
+      for (const line of m[1].split('\n')) {
+        const col = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\s+[a-zA-Z]/.exec(line);
+        if (col && !['CONSTRAINT', 'PRIMARY', 'UNIQUE', 'CHECK', 'FOREIGN'].includes(col[1].toUpperCase())) {
+          columns.add(col[1]);
+        }
+      }
+    }
+    for (const m of sql.matchAll(/ALTER TABLE (?:ONLY )?public\.sales_orders([\s\S]*?);/g)) {
+      for (const c of m[1].matchAll(/ADD COLUMN (?:IF NOT EXISTS )?"?([A-Za-z_][A-Za-z0-9_]*)"?/g)) {
+        columns.add(c[1]);
+      }
+    }
+  }
+
+  const { file, body } = latestDefinitionOf('create_sales_order_draft');
+  const insert = body
+    .slice(body.indexOf('INSERT INTO public.sales_orders'), body.indexOf('RETURNING * INTO v_order'))
+    .replace(/--[^\n]*/g, '');
+
+  /* ⚠️ ฝั่งค่าของเส้นนี้ไม่ได้อ่านจาก `v_source.` ตัวเดียวเหมือนเส้น Rev. — มันผสม
+     `v_quote.` · ตัวแปร `v_*` ของฟังก์ชัน · และค่าที่คำนวณสด ⇒ ตรวจได้แค่ว่า
+     **ชื่อคอลัมน์อยู่ในลิสต์** ส่วนค่าที่ใส่ถูกไหมเป็นเรื่องของคนอ่าน SQL */
+  const missing = [...columns]
+    .filter((col) => !DRAFT_OWNED.has(col))
+    .filter((col) => !new RegExp(`[(,]\\s*"?${col}"?[\\s,)]`).test(insert))
+    .sort();
+
+  assert.deepEqual(missing, [],
+    `${file}: คอลัมน์เหล่านี้ไม่ถูกก๊อปจากใบเสนอราคา และไม่ได้ประกาศว่าใบใหม่เริ่มเอง\n`
+    + `  → ถ้าใบใหม่ต้องเริ่มเอง ให้เติมชื่อเข้า DRAFT_OWNED พร้อมเหตุผล\n`
+    + `  → ถ้าต้องก๊อป ให้เติมเข้า INSERT ของฟังก์ชันใน migration ใบใหม่`);
+});
+
+/* ⭐ ภาษาเอกสารต้องสืบจากใบเสนอราคา ไม่ใช่ตกเป็น DEFAULT 'th'
+   (ตัวคอลัมน์ผ่านยามข้างบนแล้ว — ตัวนี้ล็อก **ค่า** ที่ใส่ ซึ่งยามข้างบนตรวจไม่ได้) */
+test('⭐ ใบสั่งขายสืบภาษาเอกสารจากใบเสนอราคาต้นทาง', () => {
+  const { file, body } = latestDefinitionOf('create_sales_order_draft');
+  assert.match(body, /v_quote\."docLanguage" IN \('th', 'en'\)/,
+    `${file}: ต้องอ่านภาษาจากใบเสนอราคา และกันค่าที่ CHECK ไม่ยอมรับไว้เอง`);
 });
