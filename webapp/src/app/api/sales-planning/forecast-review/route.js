@@ -13,9 +13,14 @@ const QUOTATION_COLUMNS = 'id,"dealId","quoteNumber","baseNumber","revisionNo",s
 /* GET /api/sales-planning/forecast-review — คิว "FC ยังไม่ตรงใบเสนอราคา"
  *
  * ตอบสองกองที่ต้องใช้คนตัดสิน (mig 0337 · มติผู้ใช้ 2026-09-02 — ไม่ backfill):
- *   mismatch  ดีลที่มีใบอนุมัติฉบับเดียว แต่ FC ยังเป็นยอดที่กรอกไว้ (ของเก่าก่อน
- *             ไมเกรชัน — ของใหม่ขึ้นบันไดเองตอนอนุมัติ) ⇒ กดรับทีละใบ
- *   ambiguous ดีลที่มีใบอนุมัติหลายเลขที่ ⇒ ระบบไม่เดา ให้เลือกว่าใบไหนคือ FC
+ *   mismatch  ใบอนุมัติฉบับเดียว และ **ยอดต่างจาก FC ที่กรอกไว้** ⇒ กดแล้วตัวเลขขยับ
+ *   sync      ใบอนุมัติฉบับเดียว และ **ยอดตรงกันอยู่แล้ว** ⇒ กดแล้วตัวเลขไม่ขยับ
+ *             เปลี่ยนแค่ "ที่มา" ให้เดินตามใบ (Rev. ถัดไปจะตามเอง ไม่ต้องมากดอีก)
+ *   ambiguous ใบอนุมัติหลายเลขที่ ⇒ ระบบไม่เดา ให้เลือกว่าใบไหนคือ FC
+ *
+ * ⚠️ **สามกองนี้ต้องแยกกันบนจอ** — ตอนวัดของจริง 2026-09-02 กอง sync มี 27 ดีลจาก 50
+ *    ถ้าเหมารวมเป็น "FC ไม่ตรงใบ" ทั้งก้อน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่
+ *    ทั้งที่จริงมีแค่ 23
  *
  * ⚠️ ตัวนี้ **อ่านอย่างเดียว** — ไม่เขียน projectValue ให้ใครทั้งนั้น การเปิดหน้านี้
  *    ต้องไม่ขยับตัวเลข FC ของบริษัทแม้แต่บาทเดียว (นั่นคือทั้งหมดของคำว่า "ไม่ backfill")
@@ -57,7 +62,9 @@ export const GET = withUser(async ({ user, supabase }) => {
       ownerName: deal.ownerName,
       team: deal.team,
       forecastMonth: deal.forecastMonth,
-      kind: view.ambiguous ? 'ambiguous' : 'mismatch',
+      kind: view.ambiguous
+        ? 'ambiguous'
+        : (Math.abs(view.pendingValue - view.value) < 0.005 ? 'sync' : 'mismatch'),
       canEdit: inSalesEditScope(user, deal),
       source: view.source,
       currentValue: view.value,
@@ -83,6 +90,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     counts: {
       total: rows.length,
       mismatch: rows.filter((row) => row.kind === 'mismatch').length,
+      sync: rows.filter((row) => row.kind === 'sync').length,
       ambiguous: rows.filter((row) => row.kind === 'ambiguous').length,
     },
   });

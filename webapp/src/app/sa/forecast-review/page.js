@@ -4,7 +4,7 @@
  *
  * ⭐ เหตุผลที่หน้านี้มีอยู่ = **มติว่าจะไม่ backfill** · ตอนตัดสินใจวัดของจริงแล้ว:
  *    ถ้าย้าย FC ตามใบให้เองทั้งหมด ยอดรวมดีลเปิดจะกระโดด 11,787,687 → 18,562,464
- *    (+6,774,777) โดยไม่มีใครกด และ 5 ดีลใน 23 ดีลนั้น FC จะ **ลดลง** — เคสจริงที่
+ *    (+6,774,777) โดยไม่มีใครกด และ 6 ดีลใน 23 ดีลนั้น FC จะ **ลดลง** — เคสจริงที่
  *    แย่ที่สุดคือ ODM_NOURA FC 250,000 แต่ใบเดียวที่อนุมัติคือใบตัวอย่าง 500 บาท
  *    ⇒ ตัวเลขระดับนี้ต้องมีคนรับผิดชอบต่อใบ ไม่ใช่ผลข้างเคียงของการ deploy
  *
@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, ClipboardCheck, Layers, Pencil } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -28,15 +28,24 @@ import { fmtMoney, naText } from "@/lib/format";
 import AccessDenied from "@/components/ui/AccessDenied";
 import styles from "./page.module.css";
 
+/* สามกอง ไม่ใช่สอง — 27 ใน 50 ดีลของกองแรกตอนวัดจริงคือ "ยอดตรงอยู่แล้ว ต่างแค่ที่มา"
+   ถ้าเหมารวมกัน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่ ทั้งที่จริงมี 23 */
 const KINDS = [
-  { key: "mismatch", label: "FC ไม่ตรงใบ", icon: ClipboardCheck },
-  { key: "ambiguous", label: "มีหลายฉบับ", icon: Layers },
+  { key: "mismatch", label: "ยอดต่างจากใบ", icon: ClipboardCheck,
+    lead: "ยอดบนใบที่อนุมัติแล้วต่างจากยอด FC ที่กรอกไว้ — กดแล้วตัวเลข FC จะขยับจริง ระบบไม่เปลี่ยนให้เอง เพราะบางดีล FC จะลดลง",
+    empty: "ไม่มีดีลที่ยอด FC ต่างจากใบแล้ว 🎉" },
+  { key: "sync", label: "ยอดตรงแล้ว", icon: Link2,
+    lead: "ยอดตรงกันอยู่แล้ว — กดแล้ว FC ไม่ขยับสักบาท เปลี่ยนแค่ให้ดีลเดินตามใบ ฉบับแก้ครั้งหน้าจะตามเองโดยไม่ต้องมากดอีก",
+    empty: "ไม่มีดีลที่รอผูกกับใบแล้ว 🎉" },
+  { key: "ambiguous", label: "มีหลายฉบับ", icon: Layers,
+    lead: "ดีลเหล่านี้มีใบเสนอราคาอนุมัติแล้วมากกว่าหนึ่งเลขที่ ระบบแยกไม่ออกว่าเป็นทางเลือกแทนกันหรือส่วนที่บวกกัน — เลือกเองว่าใบไหนคือ FC",
+    empty: "ไม่มีดีลที่ต้องเลือกใบ 🎉" },
 ];
 
 export default function ForecastReviewPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
-  const [counts, setCounts] = useState({ total: 0, mismatch: 0, ambiguous: 0 });
+  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,7 +57,7 @@ export default function ForecastReviewPage() {
     try {
       const data = await apiJson("/api/sales-planning/forecast-review");
       setRows(data?.rows || []);
-      setCounts(data?.counts || { total: 0, mismatch: 0, ambiguous: 0 });
+      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
       setError("");
     } catch (loadError) {
       setError(loadError.message || "โหลดคิวไม่สำเร็จ");
@@ -60,14 +69,20 @@ export default function ForecastReviewPage() {
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
   const shown = useMemo(() => rows.filter((row) => row.kind === kind), [rows, kind]);
+  const active = KINDS.find((item) => item.key === kind) || KINDS[0];
 
   /* ⚠️ ทุกการกดต้องบอกตัวเลข **ก่อน → หลัง** ในโมดัล (กฎ approvalPrompt ของระบบ:
      การอนุมัติทุกชนิดต้องบอกผลลัพธ์ก่อนกด) · ที่นี่สำคัญเป็นพิเศษเพราะบางแถว FC ลดลง */
   const choose = useCallback(async (row, quotation) => {
-    const direction = quotation.value >= row.currentValue ? "เพิ่มขึ้น" : "ลดลง";
+    const delta = quotation.value - row.currentValue;
+    /* ⚠️ กอง sync ส่วนต่างเป็นศูนย์ — เขียนว่า "เพิ่มขึ้น ฿0.00" คนอ่านจะสะดุด
+       และเข้าใจผิดว่ากำลังจะมีตัวเลขขยับ ทั้งที่ไม่มี */
+    const effect = Math.abs(delta) < 0.005
+      ? `FC คงที่ ${fmtMoney(row.currentValue)} บาท — เปลี่ยนแค่ที่มาให้เดินตามใบ ฉบับแก้ครั้งหน้าจะตามเอง`
+      : `FC ${fmtMoney(row.currentValue)} → ${fmtMoney(quotation.value)} บาท (${delta >= 0 ? "เพิ่มขึ้น" : "ลดลง"} ${fmtMoney(Math.abs(delta))})`;
     const okToGo = await confirmAction({
       title: "เปลี่ยนที่มาของ FC",
-      description: `ดีล "${row.title}" จะให้ FC เดินตามใบ ${quotation.quoteNumber}\n\nFC ${fmtMoney(row.currentValue)} → ${fmtMoney(quotation.value)} บาท (${direction} ${fmtMoney(Math.abs(quotation.value - row.currentValue))})\n\nยอดที่กรอกไว้เดิม ${fmtMoney(row.manualValue)} บาท ยังถูกเก็บไว้ กลับไปใช้ได้ตลอด`,
+      description: `ดีล "${row.title}" จะให้ FC เดินตามใบ ${quotation.quoteNumber}\n\n${effect}\n\nยอดที่กรอกไว้เดิม ${fmtMoney(row.manualValue)} บาท ยังถูกเก็บไว้ กลับไปใช้ได้ตลอด`,
       confirmLabel: "ใช้ยอดใบนี้",
     });
     if (!okToGo) return;
@@ -144,16 +159,10 @@ export default function ForecastReviewPage() {
       {error ? <StatusNotice tone="danger" onDismiss={() => setError("")}>{error}</StatusNotice> : null}
       {info ? <StatusNotice tone="success" onDismiss={() => setInfo("")}>{info}</StatusNotice> : null}
 
-      <p className={styles.lead}>
-        {kind === "mismatch"
-          ? "ยอดบนใบที่อนุมัติแล้วต่างจากยอด FC ที่กรอกไว้ — ระบบไม่เปลี่ยนให้เอง เพราะบางดีล FC จะลดลง"
-          : "ดีลเหล่านี้มีใบเสนอราคาอนุมัติแล้วมากกว่าหนึ่งเลขที่ ระบบแยกไม่ออกว่าเป็นทางเลือกแทนกันหรือส่วนที่บวกกัน — เลือกเองว่าใบไหนคือ FC"}
-      </p>
+      <p className={styles.lead}>{active.lead}</p>
 
       {!loading && !shown.length ? (
-        <EmptyState icon={CheckCircle2}>
-          {kind === "mismatch" ? "ไม่มีดีลที่ FC ไม่ตรงใบแล้ว 🎉" : "ไม่มีดีลที่ต้องเลือกใบ 🎉"}
-        </EmptyState>
+        <EmptyState icon={CheckCircle2}>{active.empty}</EmptyState>
       ) : null}
 
       {shown.length ? (
@@ -164,7 +173,7 @@ export default function ForecastReviewPage() {
                 <th>ดีล</th>
                 <th>ผู้รับผิดชอบ</th>
                 <th className="num">FC ตอนนี้</th>
-                <th>{kind === "mismatch" ? "ยอดตามใบ" : "ใบที่อนุมัติแล้ว"}</th>
+                <th>{kind === "ambiguous" ? "ใบที่อนุมัติแล้ว" : "ยอดตามใบ"}</th>
                 <th aria-label="การทำงาน" />
               </tr>
             </thead>
@@ -198,9 +207,13 @@ export default function ForecastReviewPage() {
                           >
                             <span className="mono">{quotation.quoteNumber}</span>
                             <strong>{fmtMoney(quotation.value)}</strong>
-                            <small data-dir={delta >= 0 ? "up" : "down"}>
-                              {delta >= 0 ? "+" : "−"}{fmtMoney(Math.abs(delta))}
-                            </small>
+                            {Math.abs(delta) < 0.005
+                              ? <small data-dir="same">ยอดเท่าเดิม</small>
+                              : (
+                                <small data-dir={delta >= 0 ? "up" : "down"}>
+                                  {delta >= 0 ? "+" : "−"}{fmtMoney(Math.abs(delta))}
+                                </small>
+                              )}
                           </button>
                         );
                       })}
