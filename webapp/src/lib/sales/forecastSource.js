@@ -80,6 +80,16 @@ export function eligibleForecastQuotations(quotations = []) {
 const manualValueOf = (deal) => {
   const manual = Number(deal?.forecastManualValue ?? 0);
   if (Number.isFinite(manual) && manual > 0) return manual;
+  /* 🐞 ค่าถอยกลับใช้ได้เฉพาะดีลที่ยัง **อยู่ที่ manual** — พอเดินตามใบแล้ว
+     `projectValue` คือยอดบนเอกสาร ไม่ใช่ยอดที่ AE กรอก · ถ้าถอยกลับมาที่นี่ ปุ่ม
+     "กลับไปใช้ยอดที่กรอกเอง (800,000)" จะโชว์ยอดใบ แล้วโมดัลบอกว่า "800,000 → 800,000"
+     ทั้งที่ `chooseForecastSource` เขียน `forecastManualValue` จริงซึ่งเป็น 0
+     ⇒ กด "ไม่มีอะไรเปลี่ยน" แล้ว FC ของดีลกลายเป็น 0 เงียบ ๆ
+     เกิดได้กับดีลที่ `projectValue` เป็น 0 ตอนใบถูกอนุมัติ (เช่นดีลจาก
+     backfill-projects — mig 0337 backfill ข้ามแถวที่ projectValue = 0)
+     ⇒ ตรงนี้ต้องตอบเท่ากับ `COALESCE(forecastManualValue, 0)` ซึ่งเป็นสิ่งที่ทั้ง
+     forecastSourceRepo และ trigger ของ mig 0337 ใช้ */
+  if (deal?.forecastSource === 'quotation') return 0;
   // ดีลก่อน mig 0337 ที่ backfill ยังไม่ถึง — ยอดเดิมบนแถวคือยอดที่ AE กรอกอยู่แล้ว
   const current = Number(deal?.projectValue ?? 0);
   return Number.isFinite(current) && current > 0 ? current : 0;
@@ -173,7 +183,17 @@ export function resolveForecastSource(deal, quotations = []) {
     return follow(candidates[0], candidates.length === 1 ? 'single' : 'lowest', { pinCleared: true });
   }
 
-  if (sameBase) return follow(sameBase, sameBase.id === current.quotationId ? 'single' : 'revision');
+  /* 🐞 **ทางลัดนี้ต้องยิงเฉพาะตอนที่ใบเดิมยังเป็นผู้ชนะ** — ของเดิมคืนทันทีที่ตัวชี้
+     ยังอยู่บนเลขที่ที่มีสิทธิ์ ⇒ กติกา "ต่ำสุด" ข้างล่างไม่เคยถูกเรียกเลยเมื่อดีลเดินตาม
+     ใบใดใบหนึ่งอยู่แล้ว · ผลคือใบใหม่ที่อนุมัติทีหลังไม่ขยับ FC และไม่ขึ้นคิวด้วย
+     (`changed=false` ⇒ applyForecastSource ไม่เขียน · needsDecision=false ⇒ ไม่มีแถว)
+     ⇒ เงียบสนิททั้งสองทาง ซึ่งแย่ที่สุดในบรรดาความผิดพลาดที่เป็นไปได้ */
+  const winner = candidates[0];
+  if (sameBase && quotationBaseKey(winner) === pointedBase) {
+    const stillSame = sameBase.id === current.quotationId;
+    if (!stillSame) return follow(sameBase, 'revision');
+    return follow(sameBase, candidates.length === 1 ? 'single' : 'lowest');
+  }
 
   if (candidates.length === 1) return follow(candidates[0], 'single');
 

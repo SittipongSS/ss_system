@@ -172,6 +172,54 @@ test('ใบยอด 0 บาทที่อนุมัติแล้วจ�
   assert.equal(resolved.value, 0, 'ใบ 0 บาทเป็นสถานะที่ระบบยอมรับ (mig 0196) จึงชนะตามกติกา');
 });
 
+/* 🐞 พบจากรีวิวเชิงโจมตี 2026-09-02 — ของเดิมทางลัด `sameBase` คืนก่อนถึงกติกา
+   "ต่ำสุด" ⇒ ดีลที่เดินตามใบใดใบหนึ่งอยู่แล้ว **ไม่เคยขยับตามใบใหม่เลย** และไม่ขึ้นคิวด้วย
+   (changed=false ⇒ ไม่เขียน · needsDecision=false ⇒ ไม่มีแถว) = เงียบสนิททั้งสองทาง */
+test('ใบใหม่ที่ถูกกว่าอนุมัติทีหลัง = ตัวชี้ต้องย้ายตาม แม้ดีลจะเดินตามใบเดิมอยู่', () => {
+  const a = quote({ id: 'A', quoteNumber: 'QT-26080095-0', baseNumber: 'QT-26080095', totalAmount: 818550, vatAmount: 53550, createdAt: '2026-08-17T11:47:00.000Z' });
+  const c = quote({ id: 'C', quoteNumber: 'QT-26080097-0', baseNumber: 'QT-26080097', totalAmount: 327420, vatAmount: 21420, createdAt: '2026-08-17T12:12:00.000Z' });
+  const following = deal({ projectValue: 765000, forecastSource: 'quotation', forecastQuotationId: 'A' });
+  const resolved = resolveForecastSource(following, [a, c]);
+  assert.equal(resolved.quotationId, 'C');
+  assert.equal(resolved.value, 306000);
+  assert.equal(resolved.reason, 'lowest');
+  assert.equal(resolved.changed, true, 'ต้องเขียนจริง ไม่ใช่เงียบ');
+});
+
+test('ใบเดิมยังต่ำสุดอยู่ = ไม่ขยับ แต่บอกเหตุผลว่ามีหลายใบ', () => {
+  const low = quote({ id: 'LOW', quoteNumber: 'QT-1-0', baseNumber: 'QT-1', totalAmount: 327420, vatAmount: 21420, createdAt: '2026-08-17T11:00:00.000Z' });
+  const high = quote({ id: 'HIGH', quoteNumber: 'QT-2-0', baseNumber: 'QT-2', totalAmount: 818550, vatAmount: 53550, createdAt: '2026-08-17T12:00:00.000Z' });
+  const following = deal({ projectValue: 306000, forecastSource: 'quotation', forecastQuotationId: 'LOW' });
+  const resolved = resolveForecastSource(following, [low, high]);
+  assert.equal(resolved.quotationId, 'LOW');
+  assert.equal(resolved.changed, false);
+  assert.equal(resolved.reason, 'lowest', 'มีหลายใบ ⇒ เหตุผลต้องไม่ใช่ "มีใบเดียว"');
+});
+
+test('Rev. ของใบที่ชนะยังตามเอง แม้จะมีใบอื่นในดีล', () => {
+  const rev1 = quote({ id: 'R1', quoteNumber: 'QT-1-1', baseNumber: 'QT-1', revisionNo: 1, totalAmount: 214000, vatAmount: 14000, createdAt: '2026-08-20T00:00:00.000Z' });
+  const old = quote({ id: 'R0', quoteNumber: 'QT-1-0', baseNumber: 'QT-1', status: 'revised', totalAmount: 327420, vatAmount: 21420 });
+  const high = quote({ id: 'HIGH', quoteNumber: 'QT-2-0', baseNumber: 'QT-2', totalAmount: 818550, vatAmount: 53550 });
+  const following = deal({ projectValue: 306000, forecastSource: 'quotation', forecastQuotationId: 'R0' });
+  const resolved = resolveForecastSource(following, [old, rev1, high]);
+  assert.equal(resolved.quotationId, 'R1');
+  assert.equal(resolved.value, 200000);
+  assert.equal(resolved.reason, 'revision');
+});
+
+/* 🐞 พบจากรีวิวเชิงโจมตี 2026-09-02 — ปุ่ม "กลับไปใช้ยอดที่กรอกเอง (800,000)" เคยโชว์
+   ยอด **ใบ** แล้วโมดัลบอก "800,000 → 800,000" ทั้งที่กดแล้ว FC กลายเป็น 0 จริง
+   เพราะฝั่ง server เขียน `COALESCE(forecastManualValue, 0)` ไม่มี fallback ตัวนี้ */
+test('ดีลที่เดินตามใบโดยไม่เคยมียอดกรอกเอง — ค่าถอยกลับต้องเป็น 0 ไม่ใช่ยอดใบ', () => {
+  const q = quote({ totalAmount: 856000, vatAmount: 56000 });
+  const view = forecastSourceView(
+    { id: 'D', stage: 'quotation', projectValue: 800000, forecastManualValue: 0, forecastSource: 'quotation', forecastQuotationId: 'QT1' },
+    [q],
+  );
+  assert.equal(view.value, 800000);
+  assert.equal(view.manualValue, 0, 'ต้องตรงกับที่ chooseForecastSource + trigger 0337 เขียนจริง');
+});
+
 test('ปักแล้วระบบไม่เลื่อนที่มาให้ แต่ยังเดินตาม Rev. ของใบที่ปัก', () => {
   const pinned = deal({
     forecastSource: 'quotation',

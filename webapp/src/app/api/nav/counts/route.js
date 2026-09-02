@@ -164,22 +164,41 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* ── ที่มาของ FC: ดีลที่มีใบอนุมัติแล้วแต่ FC ยังไม่เดินตามใบ (mig 0337) ────
        ⚠️ ต้องนับด้วย `forecastSourceView` + `inSalesViewScope` **ชุดเดียวกับหน้า**
           /sa/forecast-review ไม่งั้นป้ายกับหน้าปลายทางบอกคนละจำนวน (กฎหัวไฟล์ navCounts)
-       ⚠️ แคบชุดข้อมูลก่อน: ดึงเฉพาะใบที่ยังมีสิทธิ์เป็นแหล่ง FC แล้วค่อยดึงดีล
-          เฉพาะที่มีใบพวกนั้น — ป้ายนี้ยิงทุก 2 นาทีทุกคน จะดึงดีลทั้งตารางไม่ได้ */
+
+       🐞 **สองรอบ ไม่ใช่รอบเดียว** (พบจากรีวิว 2026-09-02): รอบแรกใช้ใบที่ "มีสิทธิ์"
+          หา *ว่าดีลไหนน่าสนใจ* · รอบสองดึงใบของดีลชุดนั้น **ทั้งหมดไม่กรองสถานะ**
+          เพราะ resolver ต้องเห็นแถวที่ตัวชี้เดิมชี้อยู่ด้วย (ซึ่งมักเป็น 'revised')
+          ถึงจะรู้ว่า "รอฉบับแก้อนุมัติอยู่" — เหตุผลเดียวกับ `forecastSourceRepo`
+          ⇒ ถ้ากรองรอบเดียวแบบเดิม ป้ายกับหน้าจะไม่ตรงกันสองทาง: ดีลที่รอฉบับแก้
+          จะถูกนับทั้งที่หน้าไม่แสดง และดีลที่ตัวชี้หลุดสิทธิ์จะไม่ถูกนับทั้งที่หน้าแสดง
+
+       ⚠️ ดีลที่ `forecastSource='quotation'` ต้องเข้ากองด้วย แม้ตอนนี้จะไม่มีใบที่
+          มีสิทธิ์เหลือแล้ว — นั่นคือเคส 'pointer_gone' ที่หน้าแสดงแต่เดิมป้ายมองไม่เห็น
+       ⚠️ ป้ายนี้ยิงทุก 2 นาททุกคน จึงแคบด้วย dealIds เสมอ ไม่ดึงทั้งตาราง */
     jobs.push(attempt('forecastReview', async () => {
-      const { data: quotations } = await supabase
-        .from('quotations')
-        .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
-        .in('status', FORECAST_ELIGIBLE_STATUSES)
-        .in('approvalStatus', FORECAST_ELIGIBLE_APPROVALS)
-        .limit(5000);
-      const dealIds = [...new Set((quotations || []).map((row) => row.dealId).filter(Boolean))];
+      const [{ data: seedQuotes }, { data: followingDeals }] = await Promise.all([
+        supabase.from('quotations').select('"dealId"')
+          .in('status', FORECAST_ELIGIBLE_STATUSES)
+          .in('approvalStatus', FORECAST_ELIGIBLE_APPROVALS)
+          .limit(5000),
+        supabase.from('sales_deals').select('id')
+          .eq('forecastSource', 'quotation')
+          .limit(5000),
+      ]);
+      const dealIds = [...new Set([
+        ...(seedQuotes || []).map((row) => row.dealId),
+        ...(followingDeals || []).map((row) => row.id),
+      ].filter(Boolean))];
       if (!dealIds.length) return 0;
-      const { data: deals } = await supabase
-        .from('sales_deals')
-        .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
-        .in('id', dealIds)
-        .limit(5000);
+
+      const [{ data: deals }, { data: quotations }] = await Promise.all([
+        supabase.from('sales_deals')
+          .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
+          .in('id', dealIds).limit(5000),
+        supabase.from('quotations')
+          .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
+          .in('dealId', dealIds).limit(5000),
+      ]);
       const byDeal = new Map();
       for (const quotation of quotations || []) {
         if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
@@ -188,7 +207,9 @@ export const GET = withUser(async ({ user, supabase }) => {
       return (deals || []).filter((deal) => {
         if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
         if (!inSalesViewScope(user, deal)) return false;
-        return forecastSourceView(deal, byDeal.get(deal.id) || []).needsDecision;
+        const dealQuotations = byDeal.get(deal.id) || [];
+        if (!dealQuotations.length) return false;
+        return forecastSourceView(deal, dealQuotations).needsDecision;
       }).length;
     }));
 
