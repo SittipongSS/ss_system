@@ -20,6 +20,7 @@ import Modal from "@/components/Modal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { TableScroll } from "@/components/ui/Table";
 import { useCan, useRole } from "@/lib/roleContext";
+import { SIGNED_ADDENDUM_DOC_TYPE } from "@/lib/master/attachmentTypes";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { ADDENDUM_DOC_TITLE, canDeleteAddendum, canSignAddendum } from "@/lib/sales/contractAddenda";
@@ -98,7 +99,7 @@ export default function AddendumDetailPage() {
   };
 
   const handleAttachments = useCallback((items) => {
-    const signed = (items || []).find((item) => item.docType === "signed_addendum");
+    const signed = (items || []).find((item) => item.docType === SIGNED_ADDENDUM_DOC_TYPE);
     setSignFileId(signed?.id || "");
   }, []);
 

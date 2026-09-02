@@ -181,6 +181,12 @@ const customerDocTypesUnion = (() => {
    ⚠️ พิมพ์สตริงซ้ำเมื่อไร วันหนึ่งจะพิมพ์ต่างกันแล้วคิวเงียบไปโดยไม่มีอะไรฟ้อง */
 export const EXTERNAL_DOC_TYPE = 'external_doc';
 
+/* คู่ของ `EXTERNAL_DOC_TYPE` ในสายที่ระบบเจน — ไฟล์ที่ลูกค้าเซ็นกลับมาจริง
+   ⚠️ ยกออกมาด้วยเหตุผลเดียวกัน: ด่านฝั่ง server ต้องใช้คีย์ตัวเดียวกับที่จอเสนอ
+      พิมพ์สตริงซ้ำเมื่อไร วันหนึ่งจะพิมพ์ต่างกันแล้วด่านเงียบไปโดยไม่มีอะไรฟ้อง */
+export const SIGNED_CONTRACT_DOC_TYPE = 'signed_contract';
+export const SIGNED_ADDENDUM_DOC_TYPE = 'signed_addendum';
+
 export const ATTACHMENT_TYPES = {
   // ⭐ เอกสารของดีล (P5c) — PO · หลักฐานมัดจำ · บรีฟลูกค้า · อื่น ๆ
   // ชุดนี้ตรงกับ `sales_deal_documents.kind` ที่ 0069 ใช้อยู่แล้ว ⇒ รายการ checklist
@@ -208,13 +214,13 @@ export const ATTACHMENT_TYPES = {
   //    โดยเจตนา: อันนั้นคือ *สัญญาของเราที่ลูกค้าเซ็น* อันนี้คือ *เอกสารของอีกฝ่ายที่เรา
   //    ยอมรับแทน* ⇒ ป้ายเดียวกันเมื่อไร คนอ่านทะเบียนแยกไม่ออกว่าใบไหนมีสัญญาจริง
   contract: [
-    { key: 'signed_contract', label: 'สัญญาที่ลงนามแล้ว' },
+    { key: SIGNED_CONTRACT_DOC_TYPE, label: 'สัญญาที่ลงนามแล้ว' },
     { key: EXTERNAL_DOC_TYPE, label: 'เอกสารที่ใช้แทนสัญญา' },
     { key: 'other', label: 'เอกสารแนบอื่นๆ' },
   ],
   // บันทึกเพิ่มเติมสัญญา (mig 0282) — ฉบับที่ลูกค้าเซ็นแล้วสแกนกลับ (กติกาเดียวกับสัญญา)
   contract_addendum: [
-    { key: 'signed_addendum', label: 'บันทึกที่ลงนามแล้ว' },
+    { key: SIGNED_ADDENDUM_DOC_TYPE, label: 'บันทึกที่ลงนามแล้ว' },
     { key: 'other', label: 'เอกสารแนบอื่นๆ' },
   ],
   // customer = union ของทุกคีย์ (ทั้ง 2 ประเภท) — ใช้ validate ฝั่ง API
