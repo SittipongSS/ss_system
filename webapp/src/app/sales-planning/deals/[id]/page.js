@@ -51,6 +51,7 @@ import UiStatusBadge from "@/components/ui/StatusBadge";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import DealForecastSourceCard from "@/components/salesPlanning/DealForecastSourceCard";
 import { detailTabFromSearch } from "@/lib/salesDetailTabs";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -909,7 +910,15 @@ export default function DealOverviewPage() {
                   : `ตรงกับคาดการณ์`}
               />
             ) : (
-              <Stat label="มูลค่าคาดการณ์" value={money(deal.projectValue)} hint={deal.forecastMonth ? `เดือนพยากรณ์ ${deal.forecastMonth}` : "ไม่มีเดือนพยากรณ์"} />
+              /* ⭐ mig 0337: บอก **ที่มา** มาด้วยเสมอ — ตัวเลขเดียวกันอ่านคนละความหมาย
+                 ถ้าไม่รู้ว่ามาจากใบเสนอราคา (ยอดก่อน VAT ของเอกสารจริง) หรือจากที่ AE เดา */
+              <Stat
+                label="มูลค่าคาดการณ์"
+                value={money(deal.projectValue)}
+                hint={data.forecastSource?.source === "quotation"
+                  ? `ตามใบ ${data.forecastSource.quotation?.quoteNumber || ""} (ก่อน VAT)`.trim()
+                  : (deal.forecastMonth ? `กรอกเอง · เดือนพยากรณ์ ${deal.forecastMonth}` : "กรอกเอง · ไม่มีเดือนพยากรณ์")}
+              />
             )}
             <Stat
               label="คาดปิด"
@@ -933,6 +942,17 @@ export default function DealOverviewPage() {
               <Stat label="เอกสารค้าง" value={pendingDocs.length} hint={`${data.documents?.length || 0} รายการ`} />
             )}
           </section>
+
+          {/* ที่มาของยอด FC (mig 0337) — ยอดบน KPI ข้างบนมาจาก manual หรือใบเสนอราคา
+              การ์ดโผล่เองเฉพาะดีลที่มีเรื่องให้ตัดสิน (ตัวคอมโพเนนต์คืน null เอง) */}
+          {!alreadyWon && (
+            <DealForecastSourceCard
+              dealId={deal.id}
+              view={data.forecastSource}
+              canEdit={canEdit}
+              onChanged={() => load()}
+            />
+          )}
 
           {/* ที่มาของมูลค่าคาดการณ์ (mig 0264) — ยอดบน KPI คือผลบวกของตารางนี้
               ดีลเก่าที่ยังไม่แตกหมวดไม่มีแถว ⇒ ไม่ต้องขึ้นการ์ดเปล่าให้รก */}

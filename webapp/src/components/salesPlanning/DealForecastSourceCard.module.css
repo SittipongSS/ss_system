@@ -1,0 +1,73 @@
+/* ที่มาของยอด FC บนหน้าดีล (mig 0337)
+   แผ่นเลือกใบใช้ทรงเดียวกับคิว /sa/forecast-review โดยตั้งใจ — คนเดียวกันทำงานสองที่
+   ถ้าปุ่มคนละหน้าตาจะต้องเรียนรู้ใหม่ทั้งที่เป็นการตัดสินใจเดียวกัน */
+
+.state {
+  margin: 0 0 var(--space-1-5);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.pin {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.reason {
+  margin: 0 0 var(--space-2-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+.reason[data-tone="warn"] {
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.choices {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2-5);
+}
+
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  min-width: 132px;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+}
+.choice:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.choice:disabled { cursor: default; }
+.choice:disabled:not([data-active]) { opacity: var(--op-disabled); }
+.choice[data-active] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.choice span { color: var(--text-3); font-size: var(--fs-4); }
+.choice strong {
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-variant-numeric: tabular-nums;
+}
+.choice small { font-size: var(--fs-4); font-variant-numeric: tabular-nums; }
+.choice small[data-dir="up"] { color: var(--green); }
+.choice small[data-dir="down"] { color: var(--red); }
+.choice small[data-dir="now"] { color: var(--accent-ink); font-weight: var(--fw-semibold); }
