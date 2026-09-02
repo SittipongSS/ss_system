@@ -9,6 +9,31 @@ const src = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const BUTTON = src("./Button.js");
 const ACTION_BUTTONS = src("./ActionButtons.js");
 const PREVIEW = src("../../app/settings/design-preview/page.js");
+const CONFIRM_DIALOG = src("./ConfirmDialog.js");
+const FORM_ACTIONS = src("./FormActions.js");
+
+/* ── โทนปุ่มบอก "ความหมาย" ไม่ใช่ "อันดับ" (มติผู้ใช้ 2026-07-17 · ด่านนี้ 2026-09-02) ──
+   `accent` (terracotta) = เริ่มของใหม่ · `primary` (navy) = ยืนยันสิ่งที่ทำอยู่
+   สองตัวนี้ไม่ได้แข่งกันว่าใครสำคัญกว่า ⇒ ปุ่มยืนยันเป็น `primary` เสมอ **แม้เป็น
+   ปุ่มทึบตัวเดียวบนจอนั้น**
+
+   🔴 เหตุที่ต้องมีด่าน: `UI_DESIGN_SYSTEM.md` เคยเขียนกฎ "จอละ 1 accent" ผิดเป็น
+   "ปุ่มทึบตัวเดียวคือ accent" แล้วคนเขียนหน้าก็ทำตามเอกสาร (เช่น `app/support/[id]`
+   ที่อ้างเอกสารในคอมเมนต์ตรง ๆ แล้วทา accent ให้ปุ่ม "รับเรื่อง") ⇒ ดริฟต์มาจาก
+   **สำเนาที่ผิด** ไม่ใช่ความเผลอของแต่ละหน้า
+   🔴 และตัวที่ผิดหนักที่สุดคือ primitive กลาง: `ConfirmDialog` ตั้งปุ่มยืนยันเป็น
+   `accent` ⇒ โมดัลยืนยัน **ทุกใบในระบบ** ได้สีที่แปลว่า "เริ่มของใหม่" ทั้งที่มันคือ
+   "ยืนยันสิ่งที่ทำอยู่" เป๊ะ ๆ · grep `tone="accent"` มองไม่เห็นเลยเพราะมันนับไฟล์ที่
+   เรียกใช้ ไม่ได้นับจอที่เรนเดอร์
+
+   ⚠️ ห้ามทำด่าน "นับ accent ต่อไฟล์ ≤1" — กฎความถี่ตัดสินด้วยสิ่งที่ *เรนเดอร์พร้อมกัน*
+   (โมดัลนับแยกใบ · กิ่ง ternary ที่ไม่มีทางเกิดพร้อมกันนับเป็น 1 · แถวตารางนับเป็น N)
+   ซึ่ง static analysis ไม่รู้ ⇒ ได้ด่านที่ต้องใส่ข้อยกเว้นทุกอาทิตย์แล้วก็ตาย
+   ด่านที่ยิงได้จริงคือ **กฎความหมาย** ที่ผูกกับ primitive กลางแบบข้างล่างนี้ */
+const TONE_MEANINGS = {
+  primary: "ยืนยันสิ่งที่ทำอยู่",
+  accent: "เริ่มของใหม่",
+};
 
 test("Button เป็นที่เดียวที่ประกอบคลาสตระกูล btn", () => {
   assert.match(BUTTON, /iconOnly \? "btn-icon" : "btn"/);
@@ -129,4 +154,48 @@ test("หน้าต้นแบบไม่ส่ง premium-input ซ้ำ�
       assert.doesNotMatch(tag, /premium-input/, `${primitive} ไม่ต้องรับ className="premium-input"`);
     }
   }
+});
+
+test("TONES เป็นเจ้าของความหมายของโทน — เขียนกำกับไว้ที่ค่าเลย", () => {
+  const tones = BUTTON.match(/const TONES = \{([\s\S]*?)\n\};/);
+  assert.ok(tones, "ต้องมี TONES ประกาศไว้ใน Button.js");
+  for (const [tone, meaning] of Object.entries(TONE_MEANINGS)) {
+    const line = tones[1].split("\n").find((row) => row.trim().startsWith(`${tone}:`));
+    assert.ok(line, `TONES ต้องมี ${tone}`);
+    assert.ok(line.includes(meaning),
+      `คอมเมนต์ของ ${tone} ต้องบอกความหมาย "${meaning}" — ไฟล์นี้คือเจ้าของกฎ ไม่ใช่เอกสาร`);
+  }
+});
+
+/* หน้าต้นแบบเคยพิมพ์แค่ *ชื่อ* tone เป็นป้ายปุ่ม ส่วนความหมายไปอยู่คนละ section
+   บนช่องสี `--accent`/`--navy` (ผูกกับชื่อ *โทเคน* ไม่ใช่ชื่อ *tone*) ⇒ คนที่เปิด
+   พรีวิวเพื่อหาคำตอบว่า "ปุ่มนี้ควร accent หรือ primary" หาไม่เจอ */
+test("หน้าต้นแบบพูดความหมายของโทนตรงกับ TONES", () => {
+  assert.match(PREVIEW, /const TONE_MEANING = \{/, "หน้าต้นแบบต้องประกาศความหมายของโทน");
+  for (const meaning of Object.values(TONE_MEANINGS)) {
+    assert.ok(PREVIEW.includes(meaning),
+      `หน้าต้นแบบต้องเขียนความหมาย "${meaning}" ให้ตรงกับคอมเมนต์ใน TONES`);
+  }
+});
+
+/* ⭐ จุดเดียวนี้คุมโมดัลยืนยันทั้งระบบ — `confirmAction` ถูกเรียกจากหลายสิบไฟล์
+   และทุกใบได้ปุ่มยืนยันจากบรรทัดนี้บรรทัดเดียว */
+test("ปุ่มยืนยันของ ConfirmDialog เป็น primary (ฝั่งทำลายยังเป็น danger)", () => {
+  assert.match(CONFIRM_DIALOG, /tone=\{destructive \? "danger" : "primary"\}/,
+    'ยืนยัน = "ยืนยันสิ่งที่ทำอยู่" ⇒ primary · accent แปลว่า "เริ่มของใหม่" คนละเรื่อง');
+});
+
+test("ปุ่มบันทึกของ FormActions เป็น primary", () => {
+  assert.match(FORM_ACTIONS, /<Button tone="primary"[^>]*onClick=\{onSave\}/,
+    "แถบท้ายฟอร์มคือปุ่มยืนยันของทั้งฟอร์ม — primitive กลางสองตัวต้องไม่ขัดกันเอง");
+});
+
+/* ปุ่มตาม workflow ผูกโทนไว้ที่ KINDS แล้ว หน้าไหนใช้ `kind=` จึงไม่ต้องรู้เรื่องโทน
+   — และไม่มี kind ไหนที่แปลว่า "เริ่มของใหม่" เลยสักตัว (อนุมัติ/ยื่น/บันทึก/ตีกลับ/ลบ
+   ล้วนกระทำกับของที่มีอยู่แล้ว) ⇒ accent ไม่ควรโผล่ในตารางนี้ */
+test("KINDS ไม่มี tone accent", () => {
+  const kinds = ACTION_BUTTONS.match(/const KINDS = \{([\s\S]*?)\n\};/);
+  assert.ok(kinds, "ต้องมี KINDS ประกาศไว้");
+  assert.doesNotMatch(kinds[1], /tone:\s*"accent"/,
+    'ปุ่ม workflow กระทำกับของที่มีอยู่แล้วทั้งหมด — ไม่มีตัวไหนแปลว่า "เริ่มของใหม่"');
 });

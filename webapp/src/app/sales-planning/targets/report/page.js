@@ -573,9 +573,15 @@ function OrderSearchCard({ orders, people }) {
                       {group.label && (
                         <tr className="group-row">
                           <td colSpan={10}>
+                            {/* พับ/กางกลุ่มในหน้าเดิม = disclosure ไม่ใช่ navigation
+                                ⇒ `.text-action` (เส้นประ) + `.text-action-block`
+                                ให้ทั้งแถวเป็นเป้าเดียว ไม่ใช่ปุ่มลอยกลางแถว
+                                🐞 `aria-expanded` เดิมไม่มีเลย — โปรแกรมอ่านหน้าจอ
+                                จึงไม่รู้ว่ากลุ่มพับอยู่หรือกางอยู่ (WCAG §4.1.2) */}
                             <button
                               type="button"
-                              className="linklike"
+                              className="text-action text-action-block"
+                              aria-expanded={!isCollapsed}
                               onClick={() => setCollapsed((prev) => {
                                 const next = new Set(prev);
                                 if (next.has(group.key)) next.delete(group.key); else next.add(group.key);

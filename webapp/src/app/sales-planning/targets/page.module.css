@@ -91,14 +91,30 @@
 .footZero { color: var(--text-3); }
 
 /* ── ช่องตัวเลขที่กดแก้ได้ ───────────────────────────────────────────── */
+/* เซลล์ตัวเลขที่กดแล้วกลายเป็น <input> — เดิมยืม `.linklike` มาแค่ชุด reset ของปุ่ม
+   (2026-09-02 `.linklike` กลายเป็น "ลิงก์ที่มี URL ปลายทาง" เต็มตัว ยืมต่อไม่ได้แล้ว
+   เมทริกซ์กดได้ทุกช่อง เส้นใต้/เส้นประทุกช่องจะรกที่สุดในสามทางเลือก)
+   ⇒ reset + วงโฟกัสย้ายมาอยู่ที่นี่ · affordance มาจาก title + สถานะ dirty ข้างล่าง
+   ⚠️ `padding` ที่นี่เคยชนกับ `padding: 0` ของ `.linklike` แบบ specificity เท่ากัน
+   (ใครชนะขึ้นกับลำดับ chunk ของ Next) — ถอด `.linklike` ออกแล้วจึงไม่ต้องเดาอีก */
 .numBtn {
   width: 100%;
   text-align: right;
   font-weight: var(--fw-medium);
   color: var(--text-2);
   background: transparent;
+  border: 0;
   border-radius: var(--radius);
   padding: var(--space-0-5) var(--space-1);
+  cursor: pointer;
+}
+.numBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* ไม่มีสิทธิ์แก้ = ยังต้องอ่านเลขออก จึงไม่ลดความจาง แค่บอกว่ากดไม่ได้ */
+.numBtn:disabled {
+  cursor: default;
 }
 
 .numBtnBold { font-weight: var(--fw-bold); color: var(--text); }
