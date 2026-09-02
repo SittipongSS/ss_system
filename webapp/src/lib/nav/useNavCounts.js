@@ -18,18 +18,26 @@ const MIN_GAP_MS = 10_000;
 export const NAV_COUNT_KEYS = {
   "/requests": "requests",
   "/sa/tasks": "tasks",
-  "/rd/requests": "rdRequests",
   "/sa/leads": "leads",
+  /* คิวคำร้องของฝ่ายที่มีบ้านของตัวเอง — **หนึ่งฝ่ายหนึ่งคีย์** และต้องขยับพร้อม
+     `DEPT_MODULE_QUEUE` เสมอ (ฝ่ายที่มีหน้าคิวแต่ไม่มีคีย์ = คิวที่ไม่มีป้ายตลอดกาล
+     ซึ่งเคยเกิดจริงกับ FN/TS · เทสต์ `navCounts.test.mjs` ล็อกคู่นี้ไว้แล้ว) */
+  "/rd/requests": "rdRequests",
+  "/finance/requests": "financeRequests",
+  "/service/requests": "serviceRequests",
   // เฟส 1 — ขาย
   "/sa/quotations": "quotations",
   "/sa/sales-orders": "salesOrders",
+  "/sa/contracts": "contracts",
   "/sa/projects": "projectCloses",
   // เฟส 1 — ฐานข้อมูล
   "/database/scents": "scents",
   "/database/formulas": "formulas",
   "/database/customers": "customers",
+  "/database/products": "products",
   // เฟส 2 — บริการ + งานบริหาร (F-1: /service/my-visits เปลี่ยนเส้นทางเป็น /service/today)
   "/service/today": "visits",
+  "/service/intake": "serviceIntake",
   "/mgmt/tasks": "mgmtTasks",
   // เฟส 3 — ภาษีสรรพสามิต
   "/tax/registrations": "taxRegistrations",
@@ -37,6 +45,8 @@ export const NAV_COUNT_KEYS = {
   // เฟส 4 — แจ้งปัญหาระบบ + วางแผนผลิต
   "/support": "issues",
   "/production/jobs": "productionJobs",
+  // เฟส 5 — บัญชีและการเงิน (งวดที่ฝ่ายขายแจ้งแล้ว รอบัญชีตรวจหลักฐาน)
+  "/finance/payments": "payments",
 };
 
 /* เมนูของแต่ละระบบ (คีย์เดียวกับ `SYSTEM_CATALOG`) — ยอดรวมของระบบใช้บน **การ์ด
@@ -49,11 +59,17 @@ export const NAV_COUNT_KEYS = {
 export const SYSTEM_COUNT_HREFS = {
   salesplan: [
     "/sa/leads", "/sa/tasks", "/requests",
-    "/sa/quotations", "/sa/sales-orders", "/sa/projects",
+    "/sa/quotations", "/sa/sales-orders", "/sa/contracts", "/sa/projects",
   ],
   rd: ["/rd/requests"],
-  master: ["/database/scents", "/database/formulas", "/database/customers"],
-  service: ["/service/today"],
+  /* ⚠️ เอกสารร่วม (ใบเสนอราคา · ใบสั่งขาย · สัญญา) นับที่ `salesplan` ที่เดียว
+     แม้เมนูจะไปโผล่ในเปลือกของ FN/RD/TS ด้วย — ยอดรวมของระบบเป็นของ **กลุ่มเมนู**
+     ไม่ใช่ของคนดู · ระบบบัญชีนับเฉพาะของที่เป็นของบ้านตัวเองจริง ๆ */
+  finance: ["/finance/requests", "/finance/payments"],
+  master: [
+    "/database/scents", "/database/formulas", "/database/customers", "/database/products",
+  ],
+  service: ["/service/today", "/service/intake", "/service/requests"],
   mgmt: ["/mgmt/tasks"],
   tax: ["/tax/registrations", "/tax/filings"],
   support: ["/support"],

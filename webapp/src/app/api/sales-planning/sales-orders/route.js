@@ -192,9 +192,15 @@ export const GET = withUser(async ({ user, supabase }) => {
         todayIso,
         row.totalAmount,
       ),
-      // ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
-      // ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
-      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) }),
+      /* ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
+         ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
+
+         🐞 **เลนบัญชีเคยตกจากธงนี้** (ตรวจ 2026-09-02) — ใบที่เก็บครบรอบัญชีปิดอยู่
+         บนแกน `financeStatus` ไม่ใช่ `status` ⇒ ฝ่ายบัญชีได้ธง false ทุกใบ:
+         เมนูใบสั่งขายไม่มีป้าย และถ้ากดลิงก์ `?count=salesOrders` มาก็ได้ลิสต์ว่าง
+         ทั้งที่การ์ด "รอบัญชีตรวจ" บนหัวหน้าเดียวกันมีของอยู่ */
+      _waitingOnMe: isSalesOrderWaitingOnMe(row, { userId: user.id, reviewer: isSalesOrderReviewer(user.role) })
+        || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
          (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
       _awaitingMyApproval: isSalesOrderReviewer(user.role)

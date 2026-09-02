@@ -58,7 +58,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .map(({ issuedHtml, ...row }) => ({
       ...row,
       hasIssuedDocument: !!issuedHtml,
-      _waitingOnMe: isContractWaitingOnMe(row, { userId: user.id }),
+      // ⚠️ ส่ง `user` ทั้งก้อน ไม่ใช่แค่ id — เลนผู้รับรอง (AE Sup) อ่านบทบาท
+      _waitingOnMe: isContractWaitingOnMe(row, { userId: user.id, user }),
       // ป้าย "ใบเสนอราคาถูกปิด" บนทะเบียน — ใบที่ออกเลขแล้วไม่ถูกแตะ แต่ต้องเห็นว่ามีเรื่อง
       _quotationClosure: quotationClosure(quotationById.get(row.quotationId)) || null,
     }));

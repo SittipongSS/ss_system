@@ -87,3 +87,58 @@ test('งานของฉัน = ยังไม่เสร็จ + ฉั�
 test('ค่าศูนย์ถูกตัดทิ้ง — เมนูที่ไม่มีอะไรค้างต้องไม่มีป้าย', () => {
   assert.deepEqual(pruneZeroCounts({ requests: 3, tasks: 0, leads: 0 }), { requests: 3 });
 });
+
+/* ── ด่านที่รอบตรวจ 2026-09-02 เปิดโปง: เมนูมีอยู่ แต่ตัวเลขไม่มี ─────────────
+   สามช่องที่ทำให้ป้าย "หายเงียบ" ซึ่งไม่มีเทสต์ไหนจับมาก่อน — ทั้งสามเคยเกิดจริง */
+
+test('⭐ ฝ่ายที่มีคิวของตัวเอง ต้องมีคีย์ตัวเลขครบทุกฝ่าย (สามแผนที่ต้องตรงกัน)', async () => {
+  const { DEPT_MODULE_QUEUE } = await import('../requests/modules.js');
+  const { NAV_COUNT_KEYS } = await import('./useNavCounts.js');
+  const { DEPT_QUEUE_COUNT_KEYS } = await import('./navCounts.js');
+
+  assert.deepEqual(
+    Object.keys(DEPT_MODULE_QUEUE).sort(), Object.keys(DEPT_QUEUE_COUNT_KEYS).sort(),
+    'ฝ่ายที่ได้บ้านของตัวเองแล้วต้องมีคีย์ตัวเลขด้วย — ไม่งั้นเงียบสองชั้น '
+    + '(หลุดจากป้ายคิวรวมเพราะ deptsInSharedQueue + ไม่มีป้ายของตัวเอง)',
+  );
+  for (const [dept, href] of Object.entries(DEPT_MODULE_QUEUE)) {
+    assert.equal(
+      DEPT_QUEUE_COUNT_KEYS[dept], NAV_COUNT_KEYS[href],
+      `คีย์ของฝ่าย ${dept} ต้องเป็นตัวเดียวกับที่เมนู ${href} อ่าน`,
+    );
+  }
+});
+
+test('⭐ ทุก countHref บนเมนู ต้องเป็นของ href ที่มีคีย์จริง', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { NAV_COUNT_KEYS } = await import('./useNavCounts.js');
+
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'components', 'AppLayout.js'),
+    'utf8',
+  );
+  /* `countHref` คือลิงก์ที่ใช้ **เฉพาะตอนมีป้าย** ⇒ รายการที่มีมันแต่ไม่มีคีย์
+     = โค้ดที่ไม่มีวันทำงาน และคนอ่านจะเข้าใจผิดว่าเมนูนั้นมีป้ายแล้ว */
+  const withCountHref = [...src.matchAll(/href: '([^']+)',[^\n]*countHref:/g)].map((m) => m[1]);
+  assert.ok(withCountHref.length >= 8, 'อ่าน countHref จาก AppLayout ไม่เจอ — regex ล้าไปแล้ว');
+  assert.deepEqual(
+    withCountHref.filter((href) => !NAV_COUNT_KEYS[href]), [],
+    'มีเมนูที่ผูก countHref ไว้แต่ไม่มีคีย์ใน NAV_COUNT_KEYS',
+  );
+});
+
+test('🔴 ด่านของตัวนับต้องไม่แคบกว่าด่านของเมนู (งานวันนี้ = canDoFieldWork)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const route = readFileSync(join(SRC, 'app', 'api', 'nav', 'counts', 'route.js'), 'utf8');
+  const layout = readFileSync(join(SRC, 'components', 'AppLayout.js'), 'utf8');
+
+  /* 🐞 เมนู "งานวันนี้" กั้นด้วย `canDoFieldWork` แต่ตัวนับเคยกั้นด้วย `canEditService`
+     ⇒ เจ้าหน้าที่หน้างานเห็นเมนูที่ไม่มีวันขึ้นป้าย ทั้งที่เลขนั้นคือนัดของตัวเขาเอง */
+  assert.match(layout, /href: '\/service\/today'[^\n]*visible: canDoFieldWork/);
+  assert.match(route, /if \(canDoFieldWork\(user\)\) \{\n\s*jobs\.push\(attempt\('visits'/);
+});

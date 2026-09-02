@@ -14,7 +14,11 @@
 /* ⭐ **แผนที่เดียว: ฝ่าย → คิวในบ้านของตัวเอง** — ลิสต์ `DEPTS_WITH_OWN_MODULE`
    งอกมาจากตรงนี้ ไม่ได้สะกดแยก · เพิ่มฝ่ายที่นี่ที่เดียวแล้วทั้งคิวรวม ป้ายตัวเลข
    และปุ่มย้อนกลับบนใบคำร้องตามเอง (วันที่ PC ได้โมดูล เติมบรรทัดเดียว) */
-export const DEPT_MODULE_QUEUE = { RD: '/rd/requests', FN: '/finance/requests' };
+export const DEPT_MODULE_QUEUE = {
+  RD: '/rd/requests',
+  FN: '/finance/requests',
+  TS: '/service/requests',
+};
 
 // ปลายทางของ "กลับรายการคำร้อง" สำหรับคนที่ฝ่ายของเขามีบ้านแล้ว — null = ใช้คิวรวม
 export function deptQueueHref(dept) {
@@ -27,6 +31,11 @@ export function deptQueueHref(dept) {
 // คือจังหวะที่ไม่มีใครมีงานค้างให้หาย
 // ⚠️ ผลข้างเคียงที่ตั้งใจ: FN เปิด `/requests` แล้วแท็บตั้งต้นเป็น "ที่ฉันเปิด"
 // ไม่ใช่ "รอฉันตอบ" — `defaultTab` อ่านลิสต์นี้ตัวเดียวกัน (app/requests/page.js)
+//
+// ⚠️ **TS เข้าลิสต์แล้ว 2026-09-02** — `/service/requests` มีอยู่ตั้งแต่ mig 0314
+// (ฝาแฝดของอีกสองคิว) แต่ฝ่ายไม่เคยถูกลงทะเบียนที่นี่ ⇒ อาการกลับด้านกับ FN:
+// ใบของ TS ยังถูกนับในป้ายคิวรวมทั้งที่หน้าคิวจริงของฝ่ายอยู่คนละที่ และปุ่ม
+// "กลับรายการคำร้อง" บนใบพากลับไปคิวรวมแทนบ้านของเขาเอง
 export const DEPTS_WITH_OWN_MODULE = Object.keys(DEPT_MODULE_QUEUE);
 
 export function deptHasOwnModule(dept) {

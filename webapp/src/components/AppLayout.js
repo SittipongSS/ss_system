@@ -54,7 +54,7 @@ const SHARED_DOC_ITEMS = {
   // เฟส D: ใบเสนอราคา FM-SA-01 (มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
   quotations: { href: '/sa/quotations', name: 'ใบเสนอราคา', countHref: '/sa/quotations?count=quotations', icon: FileText, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/quotations') || p.startsWith('/sales-planning/quotations') },
   salesOrders: { href: '/sa/sales-orders', name: 'ใบสั่งขาย', countHref: '/sa/sales-orders?count=salesOrders', icon: ClipboardList, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/sales-orders') || p.startsWith('/sales-planning/sales-orders') },
-  contracts: { href: '/sa/contracts', name: 'สัญญา', icon: FileSignature, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
+  contracts: { href: '/sa/contracts', name: 'สัญญา', countHref: '/sa/contracts?waiting=1', icon: FileSignature, cap: 'salesplan:view', shared: true, match: (p) => p.startsWith('/sa/contracts') || p.startsWith('/sales-planning/contracts') },
   // คำร้องข้ามฝ่าย (mig 0173) — สอบถาม/พัฒนากลิ่น/พัฒนาสูตร/ขอเอกสาร/ติดตามของเข้า
   // อยู่กลไกเดียว · เป็น "งาน" ไม่ใช่ข้อมูลหลัก
   // ⭐ **ด่านของเมนูนี้ไม่ใช่ `canViewCosting` อีกแล้ว** (R-1 · ม-42) — คำร้องยืมด่าน
@@ -331,7 +331,7 @@ export default function AppLayout({ children }) {
       items: [
         { href: '/database', name: 'ภาพรวม', icon: LayoutDashboard, cap: 'customers:view', match: (p) => p === '/database' },
         { href: '/database/customers', name: 'ข้อมูลลูกค้า', countHref: '/database/customers?count=customers', icon: Building2, cap: 'customers:view', match: (p) => p === '/database/customers' || p.startsWith('/database/customers/') },
-        { href: '/database/products', name: 'ข้อมูลสินค้า', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
+        { href: '/database/products', name: 'ข้อมูลสินค้า', countHref: '/database/products?count=products', icon: Package, cap: 'products:view', match: (p) => p === '/database/products' || p.startsWith('/database/products/') },
         // ทะเบียนกลิ่น + สูตร (mig 0171) — ข้อมูลหลักของ RD ที่คำร้องขอราคา F/FB
         // อ้างถึง · อยู่ใต้ "ฐานข้อมูล" เพราะเป็น master data ไม่ใช่เอกสารงาน
         { href: '/database/scents', name: 'ทะเบียนกลิ่น', countHref: '/database/scents?count=scents', icon: FlaskConical, cap: 'products:view', match: (p) => p.startsWith('/database/scents') },
@@ -498,7 +498,7 @@ export default function AppLayout({ children }) {
         // ชื่อ "ทะเบียนการชำระ" ไม่ใช่ "การชำระ" — ฝั่ง SO มีการ์ด "การชำระ" ของใบ
         // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
         // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)
-        { href: '/finance/payments', name: 'ทะเบียนการชำระ', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
+        { href: '/finance/payments', name: 'ทะเบียนการชำระ', countHref: '/finance/payments?status=reported', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
         /* คิวคำร้องที่ส่งถึงฝ่ายบัญชี (B-1 · ม-ก) — ชื่อ "คิวคำร้อง" ตรงกับของ RD
            โดยตั้งใจ: เป็นของอย่างเดียวกันคนละฝ่าย · ต้องไม่ชนกับ "คำร้อง" ของฝ่ายขาย
            ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
