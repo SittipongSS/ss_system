@@ -121,18 +121,55 @@ test('ใบที่ชี้อยู่ถูกยกเลิกทิ้�
   assert.equal(resolved.reason, 'pointer_gone');
 });
 
-test('หลายเลขที่ = ไม่เดา ไม่รวม ไม่เลือกใบใหม่สุด', () => {
-  const a = quote({ id: 'A', quoteNumber: 'QT-26080095-0', baseNumber: 'QT-26080095', totalAmount: 818550, vatAmount: 53550, createdAt: '2026-08-01T00:00:00.000Z' });
-  const b = quote({ id: 'B', quoteNumber: 'QT-26080096-0', baseNumber: 'QT-26080096', totalAmount: 497550, vatAmount: 32550, createdAt: '2026-08-02T00:00:00.000Z' });
-  const c = quote({ id: 'C', quoteNumber: 'QT-26080097-0', baseNumber: 'QT-26080097', totalAmount: 327420, vatAmount: 21420, createdAt: '2026-08-03T00:00:00.000Z' });
-  const resolved = resolveForecastSource(deal(), [a, b, c]);
-  assert.equal(resolved.reason, 'ambiguous');
-  assert.equal(resolved.ambiguous, true);
-  assert.equal(resolved.source, 'manual');
-  assert.equal(resolved.value, 500000, 'ค้างที่ค่าเดิม');
-  assert.equal(resolved.changed, false);
-  assert.equal(resolved.candidates.length, 3);
-  assert.equal(resolved.candidates[0].id, 'C', 'เรียงใหม่ก่อน แต่ไม่ได้แปลว่าชนะ');
+/* มติผู้ใช้ 2026-09-02 **รอบสอง** — กลับมติเดิมของวันเดียวกันที่ให้ "ไม่เดา รอ AE ปัก"
+   เหตุผล: คิวที่รอคนกดคือภาระที่ไม่มีใครกด ดีลจะนอนอยู่กับยอดเก่าไปเรื่อย ๆ
+   ⚠️ ตัวเลขในเทสต์นี้คือของจริง KA_Jim Thompson — เสนอสามขนาดวันเดียวกัน ใบล่าสุด
+      คือใบที่ **เล็กที่สุด** ⇒ เทสต์นี้จึงเป็นทั้งข้อกำหนดและบันทึกข้อจำกัดที่ยอมรับแล้ว */
+/* มติผู้ใช้ 2026-09-02 **รอบสาม** — ประมาณการแบบระมัดระวัง
+   (รอบแรก "ไม่เดา รอ AE ปัก" → รอบสอง "ใบล่าสุด" → รอบสาม "ใบต่ำสุด")
+   ⚠️ ตัวเลขในเทสต์คือของจริง KA_Jim Thompson — เสนอสามขนาดวันเดียวกัน */
+test('หลายเลขที่ = เดินตามใบที่ยอดต่ำที่สุด', () => {
+  const a = quote({ id: 'A', quoteNumber: 'QT-26080095-0', baseNumber: 'QT-26080095', totalAmount: 818550, vatAmount: 53550, createdAt: '2026-08-17T11:47:17.048Z' });
+  const b = quote({ id: 'B', quoteNumber: 'QT-26080096-0', baseNumber: 'QT-26080096', totalAmount: 497550, vatAmount: 32550, createdAt: '2026-08-17T12:08:30.420Z' });
+  const c = quote({ id: 'C', quoteNumber: 'QT-26080097-0', baseNumber: 'QT-26080097', totalAmount: 327420, vatAmount: 21420, createdAt: '2026-08-17T12:12:04.477Z' });
+  const resolved = resolveForecastSource(deal({ projectValue: 700000, forecastManualValue: 700000 }), [a, b, c]);
+  assert.equal(resolved.reason, 'lowest');
+  assert.equal(resolved.quotationId, 'C');
+  assert.equal(resolved.value, 306000, 'ต่ำสุดใน 765,000 / 465,000 / 306,000');
+  assert.equal(resolved.candidates[0].id, 'C', 'ตัวแรกของลิสต์ต้องเป็นใบที่ชนะเสมอ');
+});
+
+test('ต่ำสุดชนะแม้จะเป็นใบที่ออกก่อน', () => {
+  // ของจริง SHM_Hanasol: ใบล่าสุด 1,250,000 · ใบก่อนหน้า 1,150,000 → ต้องได้ 1,150,000
+  const older = quote({ id: 'LOW', quoteNumber: 'QT-26080106-0', baseNumber: 'QT-26080106', totalAmount: 1230500, vatAmount: 80500, createdAt: '2026-08-19T03:00:00.000Z' });
+  const newer = quote({ id: 'HIGH', quoteNumber: 'QT-26080108-0', baseNumber: 'QT-26080108', totalAmount: 1337500, vatAmount: 87500, createdAt: '2026-08-19T08:00:00.000Z' });
+  const resolved = resolveForecastSource(deal(), [newer, older]);
+  assert.equal(resolved.quotationId, 'LOW');
+  assert.equal(resolved.value, 1150000);
+});
+
+test('ยอดเท่ากัน → เอาใบที่สร้างทีหลัง และลำดับต้องนิ่ง', () => {
+  // ของจริง SV_อาซัน: สองใบ 84,000 เท่ากัน
+  const old = quote({ id: 'OLD', quoteNumber: 'QT-26080223-0', baseNumber: 'QT-26080223', totalAmount: 89880, vatAmount: 5880, createdAt: '2026-08-31T02:00:00.000Z' });
+  const nw = quote({ id: 'NEW', quoteNumber: 'QT-26080226-1', baseNumber: 'QT-26080226', revisionNo: 1, totalAmount: 89880, vatAmount: 5880, createdAt: '2026-08-31T09:00:00.000Z' });
+  assert.equal(resolveForecastSource(deal(), [old, nw]).quotationId, 'NEW');
+  assert.equal(resolveForecastSource(deal(), [nw, old]).quotationId, 'NEW', 'ลำดับที่ฐานคืนมาต้องไม่มีผล');
+});
+
+test('เวลาสร้างและยอดชนกันเป๊ะ ตัดสินด้วยเลขที่ ลำดับยังนิ่ง', () => {
+  const same = '2026-08-17T12:00:00.000Z';
+  const a = quote({ id: 'A', quoteNumber: 'QT-26080095-0', baseNumber: 'QT-26080095', totalAmount: 107000, vatAmount: 7000, createdAt: same });
+  const b = quote({ id: 'B', quoteNumber: 'QT-26080096-0', baseNumber: 'QT-26080096', totalAmount: 107000, vatAmount: 7000, createdAt: same });
+  assert.equal(resolveForecastSource(deal(), [a, b]).quotationId, 'B');
+  assert.equal(resolveForecastSource(deal(), [b, a]).quotationId, 'B');
+});
+
+test('ใบยอด 0 บาทที่อนุมัติแล้วจะชนะเสมอ — พฤติกรรมที่ตั้งใจของกติกา "ต่ำสุด"', () => {
+  const real = quote({ id: 'REAL', quoteNumber: 'QT-1-0', baseNumber: 'QT-1', totalAmount: 1070000, vatAmount: 70000 });
+  const zero = quote({ id: 'ZERO', quoteNumber: 'QT-2-0', baseNumber: 'QT-2', totalAmount: 0, vatAmount: 0, createdAt: '2026-09-01T00:00:00.000Z' });
+  const resolved = resolveForecastSource(deal(), [real, zero]);
+  assert.equal(resolved.quotationId, 'ZERO');
+  assert.equal(resolved.value, 0, 'ใบ 0 บาทเป็นสถานะที่ระบบยอมรับ (mig 0196) จึงชนะตามกติกา');
 });
 
 test('ปักแล้วระบบไม่เลื่อนที่มาให้ แต่ยังเดินตาม Rev. ของใบที่ปัก', () => {
@@ -202,7 +239,7 @@ test('มุมมองหน้าจอบอกทั้งค่าปั�
   assert.equal(view.value, 250000);
   assert.equal(view.pendingValue, 500);
   assert.equal(view.needsDecision, true, 'ต้องขึ้นคิวให้คนกด ไม่ใช่ทุบเงียบ ๆ');
-  assert.equal(view.ambiguous, false);
+  assert.equal(view.multiple, false);
 });
 
 /* 🔥 production พังจริง 2026-09-02: 0337 ใส่ FK `forecastQuotationId` → quotations

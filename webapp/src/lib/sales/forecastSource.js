@@ -48,7 +48,7 @@ export const forecastValueOfQuotation = (quotation) => quotationWonAmount(quotat
 export const isForecastPinned = (deal) => Boolean(deal?.forecastPinnedAt);
 
 /* ใบที่แข่งกันเป็นแหล่ง FC — หนึ่งรายการต่อหนึ่งเลขที่ฐาน เอาฉบับแก้ล่าสุดเสมอ
- * เรียงจากใหม่ไปเก่าเพื่อให้หน้าจอโชว์ใบล่าสุดก่อน (ไม่ได้แปลว่าใบแรกชนะ) */
+ * (ลำดับที่แท้จริงอยู่ในตัวฟังก์ชันข้างล่าง — ยอดน้อยมาก่อน) */
 export function eligibleForecastQuotations(quotations = []) {
   const latestOfBase = new Map();
   for (const quotation of quotations) {
@@ -60,9 +60,21 @@ export function eligibleForecastQuotations(quotations = []) {
       latestOfBase.set(key, quotation);
     }
   }
-  return [...latestOfBase.values()].sort(
-    (a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')),
-  );
+  /* ⭐ เรียง **ยอดน้อย → ยอดมาก** · ตัวแรกคือใบที่ FC เดินตาม
+     (มติผู้ใช้ 2026-09-02 รอบสาม — ประมาณการแบบระมัดระวัง ไม่ให้ท่อขายพองจากใบที่
+      เสนอทางเลือกแพงสุดไว้)
+
+     ตัวตัดสินสำรองสองชั้น เพื่อให้ลำดับ **นิ่งเสมอ** ไม่ใช่แล้วแต่ลำดับที่ฐานคืนมา
+     (ถ้าไม่นิ่ง FC จะสลับไปมาเองระหว่างใบยอดเท่ากัน โดยไม่มีใครแตะอะไรเลย):
+       ยอดเท่ากัน → เอาใบที่ **สร้างทีหลัง** (ของจริง: SV_อาซัน มีสองใบ 84,000 เท่ากัน)
+       เวลาชนกันเป๊ะ → เอาเลขที่มากกว่า
+     ⚠️ ห้ามใช้ `quoteNumber` เป็นตัวตัดสินเวลา — ของจริง 36/292 ใบมีเลขที่ย้อนหลังกว่า
+        ใบที่สร้างก่อนหน้า เพราะ Rev. เก็บเลขฐานเดิมไว้แล้วสร้างแถวใหม่ทีหลัง */
+  return [...latestOfBase.values()].sort((a, b) => (
+    forecastValueOfQuotation(a) - forecastValueOfQuotation(b)
+    || String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+    || String(b.quoteNumber || '').localeCompare(String(a.quoteNumber || ''))
+  ));
 }
 
 const manualValueOf = (deal) => {
@@ -103,12 +115,12 @@ const result = (deal, next, reason, extra = {}) => ({
  *   single            มีใบเดียว → เดินตามใบนั้น
  *   revision          เดินตามฉบับแก้ล่าสุดของเลขที่เดิม (ตัวชี้ขยับ ยอดตามใบใหม่)
  *   pinned            คนปักไว้ ระบบไม่เลื่อนที่มาให้
- *   ambiguous         หลายเลขที่ ระบบไม่เดา ค้างที่เดิมจนกว่าคนจะเลือก
+ *   lowest            หลายเลขที่ → เดินตามใบที่ยอดต่ำที่สุด (มติผู้ใช้ 2026-09-02 รอบสาม)
  *   pointer_gone      ใบที่ชี้อยู่หลุดสิทธิ์ (ถูกยกเลิก/ตีกลับ/แทนที่) → ถอย manual
  */
 export function resolveForecastSource(deal, quotations = []) {
   if (isWonStage(deal?.stage)) {
-    return result(deal, stateOf(deal), 'won_frozen', { ambiguous: false, candidates: [] });
+    return result(deal, stateOf(deal), 'won_frozen', { candidates: [] });
   }
 
   const candidates = eligibleForecastQuotations(quotations);
@@ -135,46 +147,47 @@ export function resolveForecastSource(deal, quotations = []) {
     : null;
 
   if (!sameBase && awaitingRevision) {
-    return result(deal, current, 'awaiting_revision', { ambiguous: false, candidates });
+    return result(deal, current, 'awaiting_revision', { candidates });
   }
 
   if (!candidates.length) {
     const reason = current.source === 'quotation' ? 'pointer_gone' : 'no_eligible';
-    return result(deal, manual, reason, { ambiguous: false, candidates });
+    return result(deal, manual, reason, { candidates });
   }
 
   const follow = (quotation, reason, extra) => result(deal, {
     source: 'quotation',
     quotationId: quotation.id,
     value: forecastValueOfQuotation(quotation),
-  }, reason, { ambiguous: false, candidates, ...extra });
+  }, reason, { candidates, ...extra });
 
   /* ปักไว้ = ปัก "ฉบับนี้" ไม่ใช่ปัก "revisionNo นี้" — ออก Rev. ใหม่แล้วอนุมัติ FC
      ต้องตามไป ไม่งั้นการปักกลายเป็นการแช่แข็งยอดที่ล้าสมัยไปเรื่อย ๆ */
 
   if (isForecastPinned(deal)) {
     if (current.source === 'manual') {
-      return result(deal, manual, 'pinned', { ambiguous: false, candidates });
+      return result(deal, manual, 'pinned', { candidates });
     }
     if (sameBase) return follow(sameBase, sameBase.id === current.quotationId ? 'pinned' : 'revision');
     // ใบที่ปักไว้หลุดสิทธิ์ไปแล้ว — การปักหมดความหมาย ถอยลงมาให้กติกาปกติตัดสินต่อ
-    return candidates.length === 1
-      ? follow(candidates[0], 'single', { pinCleared: true })
-      : result(deal, manual, 'pointer_gone', { ambiguous: true, candidates, pinCleared: true });
+    return follow(candidates[0], candidates.length === 1 ? 'single' : 'lowest', { pinCleared: true });
   }
 
   if (sameBase) return follow(sameBase, sameBase.id === current.quotationId ? 'single' : 'revision');
 
   if (candidates.length === 1) return follow(candidates[0], 'single');
 
-  /* หลายเลขที่ = ระบบแยกไม่ออกว่า "ทางเลือกแทนกัน" (เสนอ 3 ขนาด ลูกค้าเลือกอันเดียว
-     → รวมกัน FC พองสามเท่า) หรือ "ส่วนที่บวกกัน" (ใบออกแบบกลิ่น + ใบผลิต — ดู
-     lib/sales/contractQuotationState.js) ⇒ ไม่เดา ไม่รวม ไม่เลือกใบใหม่สุด
-     ค้างที่ค่าเดิมแล้วให้คนตัดสิน (มติผู้ใช้ 2026-09-02) */
-  return result(deal, current.source === 'quotation' ? current : manual, 'ambiguous', {
-    ambiguous: true,
-    candidates,
-  });
+  /* ⭐ **หลายเลขที่ = เดินตามใบที่ยอดต่ำที่สุด** (มติผู้ใช้ 2026-09-02 รอบสาม)
+     เป็นการประมาณการแบบระมัดระวัง — ดีลที่เสนอหลายทางเลือกจะไม่ดันท่อขายด้วยยอดของ
+     ทางเลือกที่แพงที่สุดซึ่งลูกค้าอาจไม่เลือก · ยอดที่ต่ำกว่าความจริงแก้ทีหลังได้
+     ด้วยตัวเลข Actual ส่วนยอดที่สูงเกินจริงทำให้ทั้งบริษัทวางแผนผิด
+
+     ⚠️ **ใบต่ำสุด ≠ ใบที่ลูกค้าจะซื้อเสมอ** — ทางออกคือ AE **ปัก** ใบที่ถูกไว้เอง
+        (การ์ดบนหน้าดีล) แล้วระบบจะไม่เลื่อนทับอีก ⇒ การปักยังต้องมีอยู่ ห้ามถอดทิ้ง
+     ⚠️ ใบยอด 0 บาทเป็นสถานะที่ระบบยอมรับ (มติ 2026-08-03 · mig 0196) ⇒ ถ้าดีลไหนมี
+        ใบ 0 บาทที่อนุมัติแล้วปนอยู่ **ใบนั้นจะชนะ** และ FC กลายเป็น 0 · วัดของจริง
+        2026-09-02: ไม่มีดีลเปิดใบไหนเข้าเคสนี้ (0 ดีล) แต่เกิดได้ในอนาคต */
+  return follow(candidates[0], 'lowest');
 }
 
 /* มุมมองสำหรับหน้าจอ — บอกทั้ง "ตอนนี้เป็นอะไร" และ "ถ้าเดินตามกติกาจะเป็นอะไร"
@@ -192,9 +205,11 @@ export function forecastSourceView(deal, quotations = []) {
     manualValue: manualValueOf(deal),
     pinned: isForecastPinned(deal),
     pinnedBy: deal?.forecastPinnedBy || null,
-    ambiguous: resolved.ambiguous,
+    /* `multiple` = ดีลนี้มีใบอนุมัติมากกว่าหนึ่งเลขที่ — **ไม่ใช่งานที่รอคนตัดสิน**
+       (ระบบเลือกใบยอดต่ำสุดให้แล้ว) แต่หน้าจอควรบอก เพราะเป็นจุดที่ AE อาจอยากปักเอง */
+    multiple: resolved.candidates.length > 1,
     candidates: resolved.candidates,
-    needsDecision: resolved.changed || resolved.ambiguous,
+    needsDecision: resolved.changed,
     pendingSource: resolved.source,
     pendingQuotationId: resolved.quotationId,
     pendingValue: resolved.value,
