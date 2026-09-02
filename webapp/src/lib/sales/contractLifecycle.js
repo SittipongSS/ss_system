@@ -44,7 +44,18 @@ const STEPS = [
   { id: "done", label: "ลงนามแล้ว", statuses: ["signed"] },
 ];
 
-export function buildContractLifecycle({ canEdit = false } = {}) {
+/* ⭐ **รางของใบที่ใช้เอกสารภายนอกแทนสัญญาเป็นคนละเส้น** — สายนี้เดิน `draft → signed`
+   ทีเดียว (AE Sup อนุมัติเอกสารเป็นด่านเดียวจบ) ⇒ ใช้รางสี่ขั้นร่วมกันแล้วใบ external
+   จะโชว์ "รอลงนาม" กับ "รอหัวหน้ารับรอง" เป็นขั้นที่ไม่มีวันเดินผ่าน และหมุดแรกยังสั่ง
+   "กรอกข้อมูลคู่สัญญาและเงื่อนไข" ซึ่งเป็นช่องของแม่แบบที่ใบนี้ตั้งใจไม่มี
+   ⚠️ ทะเบียนสัญญาวาดรางของตัวเองที่ `contractListTrack.js` — ยังไม่ได้แยกสาย ⇒ หน้า
+      รายละเอียดกับทะเบียนยังเล่าคนละเรื่องอยู่ (งานต่อ ไม่ได้อยู่ในรอบนี้) */
+const EXTERNAL_STEPS = [
+  { id: "draft", label: "ร่าง", hint: "แนบเอกสารที่ใช้แทนสัญญา", statuses: ["draft"] },
+  { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "AE Supervisor รับรองเอกสาร", statuses: ["signed"] },
+];
+
+export function buildContractLifecycle({ canEdit = false, external = false } = {}) {
   return defineLifecycle({
     entity: "contract",
     noun: "สัญญา",
@@ -52,7 +63,7 @@ export function buildContractLifecycle({ canEdit = false } = {}) {
       key,
       { label, tone: STATUS_TONE[key], description: STATUS_DESCRIPTION[key] },
     ])),
-    steps: STEPS,
+    steps: external ? EXTERNAL_STEPS : STEPS,
     cancelledStatuses: ["cancelled", "revised"],
     transitions: [
       {
