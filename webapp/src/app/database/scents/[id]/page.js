@@ -156,7 +156,12 @@ export default function ScentDetailPage() {
       facts={[
         { label: "ลูกค้า", value: scent.customerName || naText(scent.customerId) },
         { label: "วันที่ส่งลูกค้า", value: scent.sentAt ? fmtDate(scent.sentAt) : "ยังไม่ส่ง" },
-        { label: "เพิ่มเข้าทะเบียน", value: fmtDate(scent.createdAt) },
+        /* ⭐ **วันที่ของกลิ่น ไม่ใช่วันที่ของแถว** (มติผู้ใช้ 2026-09-02) — ของเดิมโชว์
+           `createdAt` (วันที่ *เพิ่มเข้าทะเบียน*) ซึ่งเป็นเวลาที่ระบบบันทึก ไม่ใช่เวลา
+           ที่กลิ่นเกิด · กลิ่นเก่าที่ย้ายเข้ามาทีหลังจะขึ้นวันที่ย้าย ทำให้อ่านเหมือน
+           กลิ่นเพิ่งทำเมื่อวาน · ตารางหน้ารายการโชว์ "ผลิต …" อยู่แล้ว สองจอจึงเคย
+           พูดคนละวันสำหรับกลิ่นเดียวกัน */
+        { label: "วันที่ผลิตกลิ่น", value: scent.producedAt ? fmtDate(scent.producedAt) : "ยังไม่ระบุ" },
       ]}
       price={scent.price}
       priceLabel="ราคา F (บาท/Kg)"
@@ -193,10 +198,12 @@ export default function ScentDetailPage() {
           { label: "ชื่อกลิ่น", value: scent.name },
           { label: "ชื่อที่ลูกค้าเรียก", value: scent.customerTradeName },
           { label: "แก้มาจากกลิ่น", value: scent.derivedFromScentId },
-          /* ⭐ ผู้ปรุงกลิ่น (มติผู้ใช้ 2026-09-02) — **คนละคนกับเจ้าของกลิ่น** ซึ่งระบบ
-             เซ็ตให้เองเป็นคนกดรับเข้าทะเบียน · วางคู่กันเพื่อให้อ่านออกว่าคนละบทบาท */
+          /* ⭐ **ผู้ปรุงแทนที่เจ้าของกลิ่น** (มติผู้ใช้ 2026-09-02) — แถว "เจ้าของกลิ่น (RD)"
+             ถูกถอดออก · ค่าในนั้นคือ **คนที่กดรับกลิ่นเข้าทะเบียน** ที่ระบบเซ็ตให้เอง
+             (วัดจริง 115 กลิ่น: ผู้ประสานงาน/แอดมินล้วน) ⇒ คนอ่านเข้าใจผิดว่าเป็น
+             คนทำกลิ่นมาตลอด · คอลัมน์ `ownerId`/`ownerName` **ยังอยู่ในฐาน** (ระบบ
+             ยังเขียนตอนรับเข้าทะเบียน) แค่ไม่โชว์บนหน้านี้ */
           { label: "ผู้ปรุงกลิ่น (Perfumer)", value: scent.perfumerName },
-          { label: "เจ้าของกลิ่น (RD)", value: scent.ownerName },
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
