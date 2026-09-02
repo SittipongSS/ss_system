@@ -13,14 +13,16 @@ const QUOTATION_COLUMNS = 'id,"dealId","quoteNumber","baseNumber","revisionNo",s
 /* GET /api/sales-planning/forecast-review — คิว "FC ยังไม่ตรงใบเสนอราคา"
  *
  * ตอบสองกองที่ต้องใช้คนตัดสิน (mig 0337 · มติผู้ใช้ 2026-09-02 — ไม่ backfill):
- *   mismatch  ใบอนุมัติฉบับเดียว และ **ยอดต่างจาก FC ที่กรอกไว้** ⇒ กดแล้วตัวเลขขยับ
- *   sync      ใบอนุมัติฉบับเดียว และ **ยอดตรงกันอยู่แล้ว** ⇒ กดแล้วตัวเลขไม่ขยับ
- *             เปลี่ยนแค่ "ที่มา" ให้เดินตามใบ (Rev. ถัดไปจะตามเอง ไม่ต้องมากดอีก)
- *   ambiguous ใบอนุมัติหลายเลขที่ ⇒ ระบบไม่เดา ให้เลือกว่าใบไหนคือ FC
+ *   mismatch  **ยอดต่างจาก FC ที่กรอกไว้** ⇒ กดแล้วตัวเลขขยับ
+ *   sync      **ยอดตรงกันอยู่แล้ว** ⇒ กดแล้วตัวเลขไม่ขยับ เปลี่ยนแค่ "ที่มา" ให้เดินตามใบ
+ *             (Rev. ถัดไปจะตามเอง ไม่ต้องมากดอีก)
  *
- * ⚠️ **สามกองนี้ต้องแยกกันบนจอ** — ตอนวัดของจริง 2026-09-02 กอง sync มี 27 ดีลจาก 50
+ * ⚠️ **สองกองนี้ต้องแยกกันบนจอ** — ตอนวัดของจริง 2026-09-02 กอง sync มี 27 ดีลจาก 50
  *    ถ้าเหมารวมเป็น "FC ไม่ตรงใบ" ทั้งก้อน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่
  *    ทั้งที่จริงมีแค่ 23
+ *
+ * ⚠️ **ไม่มีกอง "มีหลายฉบับ" แล้ว** (มติผู้ใช้ 2026-09-02 รอบสาม) — ดีลที่มีใบอนุมัติ
+ *    หลายเลขที่ ระบบเดินตามใบยอดต่ำสุดให้เอง จึงตกอยู่ในสองกองข้างบนตามส่วนต่างของมัน
  *
  * ⚠️ ตัวนี้ **อ่านอย่างเดียว** — ไม่เขียน projectValue ให้ใครทั้งนั้น การเปิดหน้านี้
  *    ต้องไม่ขยับตัวเลข FC ของบริษัทแม้แต่บาทเดียว (นั่นคือทั้งหมดของคำว่า "ไม่ backfill")
@@ -97,9 +99,9 @@ export const GET = withUser(async ({ user, supabase }) => {
       ownerName: deal.ownerName,
       team: deal.team,
       forecastMonth: deal.forecastMonth,
-      kind: view.ambiguous
-        ? 'ambiguous'
-        : (Math.abs(view.pendingValue - view.value) < 0.005 ? 'sync' : 'mismatch'),
+      kind: Math.abs(view.pendingValue - view.value) < 0.005 ? 'sync' : 'mismatch',
+      // ดีลที่มีใบหลายเลขที่ — ไม่ใช่งานที่รอตัดสิน แต่หน้าจอควรเตือนว่าระบบเลือกใบต่ำสุดให้
+      multiple: view.multiple,
       canEdit: inSalesEditScope(user, deal),
       source: view.source,
       currentValue: view.value,
@@ -128,7 +130,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       total: rows.length,
       mismatch: rows.filter((row) => row.kind === 'mismatch').length,
       sync: rows.filter((row) => row.kind === 'sync').length,
-      ambiguous: rows.filter((row) => row.kind === 'ambiguous').length,
+      multiple: rows.filter((row) => row.multiple).length,
     },
   });
 });

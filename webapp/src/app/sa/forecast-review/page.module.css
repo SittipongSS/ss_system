@@ -110,6 +110,21 @@
 }
 .choice small[data-dir="same"] { color: var(--text-3); }
 
+/* ป้ายบอกว่าดีลนี้มีใบอนุมัติหลายเลขที่ — ระบบเลือกใบยอดต่ำสุดให้แล้ว ไม่ใช่งานค้าง
+   แต่เป็นจุดที่ AE อาจอยากปักใบเองที่หน้าดีล (ใบต่ำสุด ≠ ใบที่ลูกค้าจะซื้อเสมอ) */
+.multi {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
+
 /* แถบรายงานบนหัวหน้า — ปี + ปุ่มโหลด อยู่คู่กันเสมอ เพราะไฟล์ที่โหลดมาคือของปีนั้น
    ถ้าแยกกันคนจะกดโหลดโดยไม่ได้ดูว่าปีไหน แล้วได้ไฟล์ผิดปีโดยไม่รู้ตัว */
 .reportBar {
@@ -117,18 +132,4 @@
   align-items: center;
   gap: var(--space-1-5);
   flex-wrap: wrap;
-}
-
-/* ป้ายบอกช่องที่ยังไม่ได้กรอกในกอง "ยังไม่มีวันรับของ" — สีเตือน ไม่ใช่สีปกติ
-   เพราะมันคือช่องว่างที่ทำให้รายงานวางแผนผลิตต้องเดาเดือน */
-.multi {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1-5);
-  border-radius: var(--radius-full);
-  background: var(--amber-soft);
-  color: var(--amber);
-  font-size: var(--fs-4);
-  line-height: var(--lh-thai);
 }

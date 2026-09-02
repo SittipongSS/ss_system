@@ -31,12 +31,15 @@ import styles from "./page.module.css";
 
 /* สามกอง ไม่ใช่สอง — 27 ใน 50 ดีลของกองแรกตอนวัดจริงคือ "ยอดตรงอยู่แล้ว ต่างแค่ที่มา"
    ถ้าเหมารวมกัน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่ ทั้งที่จริงมี 23 */
-/* ปีที่เลือกได้ในรายงาน — ปีนี้ย้อนหลัง 2 ปีและปีหน้า (แผนผลิตมองข้ามปีเสมอ)
-   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูลจาก
-      เวลาไทย แล้วใช้ค่าเดิมทั้งเซสชัน · หน้านี้ไม่ได้เปิดค้างข้ามปี */
-const THIS_YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric' }).format(new Date()));
+/* ปีที่เลือกได้ในรายงาน — ปีนี้ ย้อนหลัง 2 ปี และปีหน้า (แผนผลิตมองข้ามปีเสมอ ·
+   ของจริง: ดีลที่ปิดปีนี้แต่ส่งของปี 2027 มี 8,176,500 บาท)
+   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูล */
+const THIS_YEAR = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric" }).format(new Date()));
 const YEARS = [THIS_YEAR + 1, THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map(String);
 
+/* สองกอง — ต่างกันที่ "กดแล้วตัวเลขขยับมั้ย" ห้ามยุบรวม (ของจริงตอนวัด 23 vs 27)
+   ⚠️ กอง "มีหลายฉบับ" ถูกถอดออกแล้ว (มติผู้ใช้ 2026-09-02 รอบสาม) — ระบบเดินตาม
+      ใบยอดต่ำสุดให้เอง ไม่มีอะไรรอคนตัดสิน · ดีลพวกนั้นติดป้าย `multiple` ในแถวแทน */
 const KINDS = [
   { key: "mismatch", label: "ยอดต่างจากใบ", icon: ClipboardCheck,
     lead: "ยอดบนใบที่อนุมัติแล้วต่างจากยอด FC ที่กรอกไว้ — กดแล้วตัวเลข FC จะขยับจริง ระบบไม่เปลี่ยนให้เอง เพราะบางดีล FC จะลดลง",
@@ -44,30 +47,34 @@ const KINDS = [
   { key: "sync", label: "ยอดตรงแล้ว", icon: Link2,
     lead: "ยอดตรงกันอยู่แล้ว — กดแล้ว FC ไม่ขยับสักบาท เปลี่ยนแค่ให้ดีลเดินตามใบ ฉบับแก้ครั้งหน้าจะตามเองโดยไม่ต้องมากดอีก",
     empty: "ไม่มีดีลที่รอผูกกับใบแล้ว 🎉" },
-  { key: "ambiguous", label: "มีหลายฉบับ", icon: Layers,
-    lead: "ดีลเหล่านี้มีใบเสนอราคาอนุมัติแล้วมากกว่าหนึ่งเลขที่ ระบบแยกไม่ออกว่าเป็นทางเลือกแทนกันหรือส่วนที่บวกกัน — เลือกเองว่าใบไหนคือ FC",
-    empty: "ไม่มีดีลที่ต้องเลือกใบ 🎉" },
+  /* กองที่สาม: ของที่ต้องไปกรอกเอง ไม่ใช่ของที่กดรับได้ตรงนี้ — ปุ่มจึงเป็น "เปิดดีล"
+     อย่างเดียว · รายงาน FC วางแผนผลิตอ่านเดือนจาก "วันที่สิ้นสุด" ⇒ ดีลที่ไม่มีวันนี้
+     ทำให้ทั้งไฟล์ต้องเดาเดือนจากวันปิดการขายแทน */
+  { key: "missingDates", label: "ยังไม่มีวันรับของ", icon: CalendarClock,
+    lead: "รายงาน FC วางแผนผลิตอ่านเดือนจาก \"วันที่สิ้นสุด\" (วันที่ลูกค้าต้องการรับของ) — ดีลพวกนี้ยังไม่ได้กรอก รายงานจึงต้องเดาเดือนจากวันปิดการขายแทน · เปิดดีลแล้วกรอกให้ครบ",
+    empty: "ทุกดีลมีวันเริ่มและวันรับของครบแล้ว 🎉" },
 ];
 
 export default function ForecastReviewPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
+  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
   const [missingDates, setMissingDates] = useState([]);
-  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
+  const [downloading, setDownloading] = useState(false);
+  const [year, setYear] = useState(String(THIS_YEAR));
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busyId, setBusyId] = useState("");
-  const [downloading, setDownloading] = useState(false);
-  const [year, setYear] = useState(String(THIS_YEAR));
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiJson("/api/sales-planning/forecast-review");
       setRows(data?.rows || []);
-      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, ambiguous: 0 });
+      setMissingDates(data?.missingDates || []);
+      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
       setError("");
     } catch (loadError) {
       setError(loadError.message || "โหลดคิวไม่สำเร็จ");
@@ -141,7 +148,7 @@ export default function ForecastReviewPage() {
   /* ⚠️ ต้องผ่าน `apiFetch` แล้วสร้าง blob เอง — เปิดแท็บใหม่ไปที่ URL ตรง ๆ ไม่ได้
      เพราะเส้นนี้ต้องมีเซสชัน แท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง
      (แพตเทิร์นเดียวกับปุ่มดาวน์โหลดของทะเบียนชำระ) */
-  const downloadReport = useCallback(async () => {
+  const downloadReport = async () => {
     setDownloading(true);
     try {
       const res = await apiFetch(`/api/sales-planning/forecast-report?year=${year}`, { cache: "no-store" });
@@ -160,7 +167,7 @@ export default function ForecastReviewPage() {
     } finally {
       setDownloading(false);
     }
-  }, [year]);
+  };
 
   if (!canView) return <AccessDenied />;
 
@@ -247,9 +254,7 @@ export default function ForecastReviewPage() {
                       {row.gaps.includes("startDate") ? <span className={styles.multi}>วันที่เริ่ม</span> : null}
                       {row.gaps.includes("endDate") ? <span className={styles.multi}>วันที่สิ้นสุด (ลูกค้ารับ)</span> : null}
                     </div>
-                    <small className={styles.sub}>
-                      วันปิดการขาย {naText(row.expectedCloseDate)}
-                    </small>
+                    <small className={styles.sub}>วันปิดการขาย {naText(row.expectedCloseDate)}</small>
                   </td>
                   <td>
                     <div className={styles.actions}>
@@ -273,7 +278,7 @@ export default function ForecastReviewPage() {
                 <th>ดีล</th>
                 <th>ผู้รับผิดชอบ</th>
                 <th className="num">FC ตอนนี้</th>
-                <th>{kind === "ambiguous" ? "ใบที่อนุมัติแล้ว" : "ยอดตามใบ"}</th>
+                <th>ยอดตามใบ</th>
                 <th aria-label="การทำงาน" />
               </tr>
             </thead>
@@ -284,6 +289,11 @@ export default function ForecastReviewPage() {
                     <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
                     <small className={styles.sub}>{naText(row.title)}</small>
                     <small className={styles.sub}>{naText(row.customerName)}</small>
+                    {row.multiple ? (
+                      <small className={styles.multi}>
+                        <Layers size={11} aria-hidden="true" /> มี {row.candidates.length} ใบ — ระบบใช้ใบยอดต่ำสุด
+                      </small>
+                    ) : null}
                   </td>
                   <td>
                     {naText(row.ownerName)}
