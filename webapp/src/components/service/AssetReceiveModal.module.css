@@ -1,0 +1,88 @@
+/* โมดัลรับเครื่องเข้าคลัง (เฟส C ต่อ)
+   ⚠️ `.form-hint` / `.form-error` / `.req` ที่หลายจอเขียนไว้ไม่มี selector จริง
+      ใน globals.css ⇒ ประกาศเองแทนการยืมชื่อคลาสผี (เหมือน AssetMoveModal) */
+
+.hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.req {
+  font-style: normal;
+  font-size: var(--fs-2);
+  font-weight: var(--fw-bold);
+  color: var(--red);
+  background: var(--red-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  margin-inline-start: var(--space-1);
+}
+
+.hintSm {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+/* ⭐ พรีวิวรหัส — คนกดต้องเห็นว่าจะได้อะไรก่อนยืนยัน ไม่ใช่รู้ตอนบันทึกไปแล้ว */
+.preview {
+  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-3);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.previewHead {
+  font-size: var(--fs-3);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: var(--space-2);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1-5);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-3);
+  color: var(--text-2);
+}
+
+.more {
+  align-self: center;
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+/* เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip — จอสัมผัสไม่มีทางเห็น */
+.gate {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-radius: var(--radius);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
