@@ -334,10 +334,24 @@ export function latestContractRevisions(contracts = []) {
  *     ทั้งเส้น เพราะสัญญาต้อง `signed` ก่อนถึงจะปลดด่าน "จ่ายก่อนบริการ" ได้
  *  ⚠️ ต้องส่ง `user` เข้ามา ไม่ใช่แค่ `userId` — เลนผู้รับรองเป็นเรื่องของ **บทบาท**
  *     ไม่ใช่ความเป็นเจ้าของใบ (ด่านเดียวกับปุ่ม: `canApproveExternalContract`)
+ *
+ *  🐞 **สายเอกสารภายนอกไม่มีคิวเลยทั้งเส้น** (แก้ 2026-09-02) — สายนั้นเดิน
+ *     `draft → signed` ทีเดียว ไม่เคยแตะ `awaiting_approval` ⇒ เลนผู้รับรองด้านบน
+ *     ไม่เคยยิงกับมัน · ส่วนเลนเจ้าของก็ถือใบไว้ตลอด แม้หลังแนบไฟล์ครบแล้ว
+ *     ⇒ คนที่กดอนุมัติได้จริง (AE Supervisor) ไม่มีทางรู้ว่ามีใบรออยู่ นอกจากมีคนไปบอก
+ *
+ *  ⭐ **ใบ external ร่างสลับเลนตอนแนบไฟล์** — ก่อนแนบเป็นงานของเจ้าของ (ไปเอาเอกสาร
+ *     จากลูกค้ามาแนบ) หลังแนบเป็นงานของ AE Sup (อ่านแล้วอนุมัติ) · ผู้เรียกต้องบอกมา
+ *     ผ่าน `externalDocReady` เพราะแถวในฐานไม่มีคอลัมน์ที่ตอบได้ (ดู `markExternalDocReady`)
+ *     ⚠️ ไม่ส่งมา = ถือว่า **ยังไม่แนบ** ⇒ ใบตกอยู่เลนเจ้าของเหมือนเดิม ไม่ใช่ไปโผล่
+ *        ในป้ายของ AE Sup ด้วยใบที่เขายังกดไม่ได้
  */
-export function isContractWaitingOnMe(contract, { userId = '', user = null } = {}) {
+export function isContractWaitingOnMe(contract, { userId = '', user = null, externalDocReady = false } = {}) {
   if (!contract) return false;
   if (contract.status === 'awaiting_approval') return canApproveExternalContract(user);
+  if (isExternalContract(contract) && contract.status === 'draft' && externalDocReady) {
+    return canApproveExternalContract(user);
+  }
   const me = userId || user?.id || '';
   if (!me) return false;
   const mine = contract.ownerId === me || contract.createdBy === me;

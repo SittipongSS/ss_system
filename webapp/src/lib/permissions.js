@@ -252,6 +252,19 @@ export const isRdRole = (role) => RD_ROLES.includes(normalizeRole(role));
    "Audit เหมือนหัวหน้าทุกอย่าง") · ต่างจาก `ts_planner` ตรงที่จัดทีมเจ้าหน้าที่บริการได้
    ⚠️ **ไม่ใช่ `isSuperuser`** — นั่นคือขอบเขตข้อมูลของทั้งบริษัทฝั่งขาย ไม่ใช่หัวหน้าฝ่าย */
 export const SERVICE_HEAD_ROLES = ['ts_manager', 'ts_audit', 'ts_senior'];
+
+/* ⭐ **คนที่ออกหน้างานเป็นงานประจำ** — Operation กับ Senior (มติผู้ใช้ 2026-09-02:
+   *"หน้าจัดคิว โชว์รายชื่อ ตำแหน่ง operate / Senior Operate ไว้เลย"*)
+   ⚠️ **แคบกว่า `canBeServiceAssignee` โดยตั้งใจ** — ตัวนั้นยอมทั้งฝ่าย TS (Planner ·
+      Audit · ผู้ช่วยผู้จัดการก็ถูกมอบหมายได้ถ้าจำเป็น) ส่วนตัวนี้ตอบคนละคำถาม:
+      "แถวไหนควรมีอยู่บนตารางจัดคิว **ตลอดเวลา** แม้สัปดาห์นั้นยังไม่มีนัดสักใบ"
+   ⇒ ตำแหน่งอื่นยังโผล่บนตารางได้ตามปกติเมื่อมีนัดจริง แค่ไม่ถูกจองแถวไว้ล่วงหน้า
+   ⚠️ `ts_senior` อยู่ใน `SERVICE_HEAD_ROLES` ด้วย — เป็นทั้งหัวหน้าและคนออกหน้างาน
+      สองลิสต์นี้จึงซ้อนกันได้โดยตั้งใจ ไม่ใช่ความพลาด */
+export const FIELD_CREW_ROLES = ['ts', 'ts_senior'];
+
+/** เป็นตำแหน่งที่ออกหน้างานประจำไหม — ถามจากลิสต์กลาง ไม่ใช่เทียบ `role === 'ts'` */
+export const isFieldCrewRole = (role) => FIELD_CREW_ROLES.includes(normalizeRole(role));
 export const ROLE_LABELS = {
   admin: 'ผู้ดูแลระบบ (Admin)',
   secretary: 'เลขานุการ (Secretary)',

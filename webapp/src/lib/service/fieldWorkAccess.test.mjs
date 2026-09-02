@@ -218,3 +218,58 @@ test('🔴 เส้นที่ลบพ่วงลูก ต้องมี ?
     assert.match(src, /Manifest\(supabase/, `${route}: พรีวิวต้องเดินเส้นเดียวกับตัวลบจริง`);
   }
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   🔴 **ลบรอบเคยเป็นประตูหลังของด่านลบนัด** (ผู้ใช้แจ้ง 2026-09-02)
+
+   ระบบห้ามลบนัดที่ปิดงานแล้ว โดยเขียนเหตุผลไว้เองว่า "ประวัติการเข้าไซต์คือของ
+   มีค่าที่สุดของโมดูล" — แต่ด่านลบ *รอบ* ซึ่งเป็นแม่ของนัดพวกนั้นเป็น role ล้วน
+   ⇒ ลบรอบได้ผลเสียแบบเดียวกัน เพราะ FK เป็น `ON DELETE SET NULL`:
+   นัดยังอยู่ แต่ **ขาดจากรอบ** ⇒ คอลัมน์ "รอบที่เดิน n/N" กลายเป็น 0 ·
+   โซ่ต่อรอบขาด · ตั้งรอบใหม่แล้วได้นัดซ้อนวันเดิม
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('🔴 รอบที่มีนัดปิดงานแล้วลบไม่ได้ — และคำต้องชี้ทางออกที่ถูก', async () => {
+  const { planDeleteBlocker } = await import('./visitStatus.js');
+  const open = [{ status: 'scheduled' }, { status: 'in_progress' }, { status: 'cancelled' }];
+  assert.equal(planDeleteBlocker(open), null, 'รอบที่ยังไม่มีประวัติลบได้ตามปกติ');
+  assert.equal(planDeleteBlocker([]), null);
+
+  /* `partial`/`unable` = ไปถึงไซต์แล้วและได้ข้อสรุป ⇒ เป็นประวัติเท่ากับ `done`
+     (ชุดเดียวกับที่ `canDeleteVisit` ใช้ — ตกไปตัวใดตัวหนึ่งคือรูรั่ว) */
+  for (const status of ['done', 'partial', 'unable']) {
+    const blocked = planDeleteBlocker([{ status: 'scheduled' }, { status }]);
+    assert.ok(blocked, status);
+    assert.match(blocked, /1 ครั้ง/, `${status}: ต้องบอกจำนวน ไม่ใช่ปฏิเสธลอย ๆ`);
+    assert.match(blocked, /ปิดใช้งานรอบ/, `${status}: ต้องชี้ทางออกที่ได้ผลเท่ากันโดยประวัติไม่ขาด`);
+  }
+});
+
+test('🔴 ลบรอบที่มีประวัติต้องเป็นแอดมิน **และ** ส่ง ?force=1 มาคู่กัน', () => {
+  const src = readFileSync(new URL('../../app/api/service/plans/[id]/route.js', import.meta.url), 'utf8');
+  assert.match(src, /planDeleteBlocker\(visits \|\| \[\]\)/, 'ต้องถามตัวตัดสินตัวเดียวกับที่จอถาม');
+  assert.match(src, /if \(blocked && !\(isForceRequest\(req\) && admin\)\) return conflict\(blocked\)/,
+    'ด่านต้องยอมให้ force ข้ามได้ ไม่ใช่บล็อกตายตัว');
+  // ด่านสิทธิ์ต้องมาก่อน force — ไม่งั้น ?force=1 กลายเป็นทางข้ามสิทธิ์
+  assert.ok(src.indexOf('requirePlan(') < src.indexOf('isForceRequest('),
+    'requirePlan ต้องมาก่อน');
+  assert.match(src, /แอดมินข้ามด่านประวัติ/, 'audit ต้องอ่านออกว่ารอบไหนถูกลบด้วยสิทธิ์พิเศษ');
+});
+
+/* 🪤 จอเคยสัญญากับผู้ใช้ไว้สามจุดว่า "ลบได้ นัดจะอยู่ต่อ" — แก้ด่านแล้วไม่แก้คำ
+   = จอโกหก · และปุ่มต้องเดินเส้น force เดียวกับโซน/เครื่อง/ไซต์ ไม่ใช่ยิง DELETE ดิบ */
+test('หน้าไซต์: ปุ่มลบรอบเดินเส้นบังคับลบเดียวกับของอื่น และคำไม่โกหก', () => {
+  const page = readFileSync(new URL('../../app/service/sites/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /deleteWithForce\(`\/api\/service\/plans\/\$\{pendingDelete\.row\.id\}`, \{ isAdmin \}\)/);
+  assert.match(page, /detail: "รอบที่มีนัดปิดงานแล้วจะลบไม่ได้/, 'กล่องยืนยันต้องบอกด่านใหม่');
+  assert.match(page, /ปิดใช้งานรอบ/, 'ต้องชี้ทางออกที่ถูกในกล่องยืนยัน');
+});
+
+/* ⚠️ พรีวิวของแอดมินต้องไม่บอกว่า "จะลบนัด N ใบ" — FK เป็น SET NULL นัดไม่ถูกลบ
+   สิ่งที่เกิดคือมันขาดจากรอบ ซึ่งเป็นคนละเรื่องและต้องพูดให้ตรง */
+test('พรีวิวบังคับลบรอบต้องพูดเรื่อง "ขาดจากรอบ" ไม่ใช่ "ถูกลบ"', () => {
+  const src = readFileSync(new URL('./forceDeleteService.js', import.meta.url), 'utf8');
+  assert.match(src, /export async function planForceManifest/);
+  assert.match(src, /cascade: \[\]/, 'ไม่มีอะไรถูกลบพ่วง — ใส่รายการจะโกหก');
+  assert.match(src, /ไม่ถูกนับเป็นรอบตามข้อผูกพัน/);
+});

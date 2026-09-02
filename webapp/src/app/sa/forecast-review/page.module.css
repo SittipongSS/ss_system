@@ -109,3 +109,18 @@
   white-space: nowrap;
 }
 .choice small[data-dir="same"] { color: var(--text-3); }
+
+/* ป้ายบอกว่าดีลนี้มีใบอนุมัติหลายเลขที่ — ระบบเลือกใบยอดต่ำสุดให้แล้ว ไม่ใช่งานค้าง
+   แต่เป็นจุดที่ AE อาจอยากปักใบเองที่หน้าดีล (ใบต่ำสุด ≠ ใบที่ลูกค้าจะซื้อเสมอ) */
+.multi {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-0-5);
+  padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}

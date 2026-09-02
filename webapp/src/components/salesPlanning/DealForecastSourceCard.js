@@ -23,7 +23,7 @@ import { fmtMoney } from "@/lib/format";
 import styles from "./DealForecastSourceCard.module.css";
 
 const REASON_TEXT = {
-  ambiguous: "ดีลนี้มีใบเสนอราคาอนุมัติแล้วมากกว่าหนึ่งเลขที่ — ระบบไม่เดาว่าใบไหนคือ FC เพราะแยกไม่ออกว่าเป็นทางเลือกแทนกันหรือส่วนที่บวกกัน",
+  lowest: "ดีลนี้มีใบเสนอราคาอนุมัติแล้วหลายเลขที่ — ระบบใช้ยอดของใบที่ต่ำที่สุดไว้ก่อน (ประมาณการแบบระมัดระวัง) · ถ้าใบที่ลูกค้าจะซื้อไม่ใช่ใบนั้น กดเลือกใบที่ถูกไว้เอง แล้วระบบจะไม่เลื่อนทับอีก",
   awaiting_revision: "กำลังรอฉบับแก้อนุมัติ — FC ค้างที่ยอดของฉบับก่อนหน้าไว้ก่อน ไม่ตกกลับ",
   single: "มีใบอนุมัติฉบับเดียว — กดรับเพื่อให้ FC เดินตามยอดบนใบ",
   revision: "มีฉบับแก้ที่อนุมัติแล้ว — กดรับเพื่อให้ FC เดินตามยอดใหม่",
@@ -117,7 +117,7 @@ export default function DealForecastSourceCard({ dealId, view, canEdit, onChange
       </p>
 
       {REASON_TEXT[view.reason] ? (
-        <p className={styles.reason} data-tone={view.ambiguous ? "warn" : undefined}>{REASON_TEXT[view.reason]}</p>
+        <p className={styles.reason} data-tone={view.multiple && !view.pinned ? "warn" : undefined}>{REASON_TEXT[view.reason]}</p>
       ) : null}
 
       {hasCandidates ? (
