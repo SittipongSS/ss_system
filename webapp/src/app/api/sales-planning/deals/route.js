@@ -192,6 +192,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     title: body.title.trim(),
     stage,
     projectValue,
+    // mig 0337: ยอดที่คนกรอกอยู่ในช่องของมันเอง — projectValue เป็นแค่ "ยอดที่ใช้จริง"
+    // ซึ่งดีลใหม่เริ่มที่ manual เสมอ (ยังไม่มีใบเสนอราคาให้เดินตาม)
+    forecastManualValue: projectValue,
     // ดีลเก่าที่สร้างเป็น Won (ผ่านธง legacy เท่านั้น — ด่านข้างบน): ฟอร์มส่งช่อง
     // "มูลค่าที่ปิด" มาเป็นแถวมูลค่ารายหมวดชุดเดียวกัน → ยอดรวมเข้า wonValue เป็น
     // ยอดจริงทันที (metadata.actualSource = 'legacy' ข้างล่างคือตัวปลดให้ dashboard อ่าน)
