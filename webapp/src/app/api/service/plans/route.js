@@ -37,6 +37,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const site = await findSite(supabase, value.siteId);
     if (!site) return badRequest('ไม่พบไซต์ที่ระบุ');
 
+    /* 🪤 **คอลัมน์ `salesOrderId` ไม่มี FK** (mig 0188:20) และ `normalizePlanInput`
+       ปล่อยผ่านทุกค่า ⇒ id มั่วเข้าฐานได้เงียบ ๆ แล้วคอลัมน์ "รอบที่เดิน" บนทะเบียน
+       ใบสั่งขายจะนับรอบนี้ให้ใบที่ไม่มีอยู่จริง (หรือไม่นับให้ใครเลย) */
+    if (value.salesOrderId) {
+      const { data: order, error: orderError } = await supabase
+        .from('sales_orders').select('id').eq('id', value.salesOrderId).maybeSingle();
+      if (orderError) return fail(orderError.message, 500);
+      if (!order) return badRequest('ไม่พบใบสั่งขายที่อ้างถึง');
+    }
+
     const row = {
       id: genId('SVP'),
       ...value,

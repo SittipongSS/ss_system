@@ -1,6 +1,7 @@
 // รอบบริการ + ตารางนัด (mig 0188) — logic ล้วน ทดสอบได้โดยไม่แตะ DB
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   dayLoad,
   ensureVisits,
@@ -227,4 +228,51 @@ test('ข้อความเวลาบนชิปอ่านรู้เ�
   assert.equal(visitTimeText(visit({ startTime: '10:00:00', endTime: '11:00:00' })), '10:00–11:00');
   assert.equal(visitTimeText(visit({ startTime: '10:00' })), '10:00');
   assert.equal(visitTimeText(visit()), 'ทั้งวัน');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   รอบบริการผูกกับใบสั่งขาย (mig 0188 มีคอลัมน์ `salesOrderId` มาตั้งแต่แรก)
+
+   🔴 **ก่อนหน้านี้ไม่มีโค้ดไหนในระบบเขียนค่านี้เลย** — ทั้งโมดัลและ route ปล่อยว่างเสมอ
+      แต่ทะเบียนใบสั่งขายอ่านคอลัมน์นี้มาทำคอลัมน์ "รอบที่เดิน n/N"
+      ⇒ ทุกใบบริการตอบ 0 มาตลอด (วันนี้ยังไม่มีใครเจอเพราะ service_plans ว่างเปล่า)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('🪤 โมดัลรอบบริการส่ง salesOrderId เฉพาะตอนสร้าง ไม่ใช่ตอนแก้', () => {
+  const modal = readFileSync(
+    new URL('../../components/service/ServicePlanModal.js', import.meta.url),
+    'utf8',
+  );
+  /* PATCH ผสม `{...before, ...body}` และ `undefined` ใน object spread **ทับค่าเดิม**
+     ⇒ ส่งทุกครั้งจะได้สองอาการ: แก้จากหน้าไซต์ (ไม่รู้จักใบ) ล้างค่าเดิมทิ้ง ·
+       แก้จากหน้าใบ A แย่งรอบของใบ B มาเป็นของตัวเอง */
+  assert.match(modal, /\.\.\.\(!editing && salesOrderId \? \{ salesOrderId \} : \{\}\)/);
+});
+
+test('🔴 route สร้างรอบต้องตรวจว่าใบสั่งขายที่อ้างถึงมีจริง', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/plans/route.js', import.meta.url),
+    'utf8',
+  );
+  // คอลัมน์ไม่มี FK และ normalizePlanInput ปล่อยผ่านทุกค่า ⇒ ด่านต้องอยู่ที่ route
+  assert.match(route, /if \(value\.salesOrderId\) \{/);
+  assert.match(route, /ไม่พบใบสั่งขายที่อ้างถึง/);
+  // ห้ามกลืน error ของคิวรีแล้วเอา !order ไปตัดสิน (กฎเดียวกับทั้งระบบ)
+  assert.match(route, /if \(orderError\) return fail\(orderError\.message, 500\)/);
+});
+
+/* ⭐ **ปุ่มวางรอบบนหน้าใบสั่งขายเป็นของฝ่ายบริการ ไม่ใช่ของฝ่ายขาย**
+   มติผู้ใช้ 2026-08-30 ("ระบบธุรกิจบริการ เข้าใช้ได้เฉพาะ TS") ยังยืนอยู่ และ
+   `POST /api/service/plans` บังคับ `canEditService` อยู่แล้ว ⇒ จอต้องถามด่านตัวเดียวกัน
+   ไม่ใช่โชว์ปุ่มให้ทุกคนที่เปิดใบได้แล้วปล่อยให้ไปเจอ 403 */
+test('แท็บงานบริการถามด่านตัวเดียวกับ API ก่อนโชว์ปุ่มวางรอบ', () => {
+  const tab = readFileSync(
+    new URL('../../components/salesPlanning/SalesOrderServiceTab.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(tab, /canEditService\(\{ role, team, teams, department \}\)/);
+  assert.match(tab, /\{canPlan && !row\.hasPlan &&/, 'ไม่มีสิทธิ์ = ไม่โชว์ปุ่ม (ไม่ใช่ปุ่มเทา)');
+  // ต้องเป็นโมดัลตัวเดิมของหน้าไซต์ ไม่ใช่ฟอร์มที่สอง
+  assert.match(tab, /import ServicePlanModal from "@\/components\/service\/ServicePlanModal"/);
+  assert.match(tab, /salesOrderId=\{orderId\}/);
 });
