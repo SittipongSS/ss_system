@@ -210,6 +210,27 @@ join ที่ API ของหน้านั้น (เช่นที่ท�
 - **หัวตารางเรียงลำดับ** → `<button>` ข้างใน `<th>` + `aria-sort` บน `<th>` เอง
   (ตารางหนึ่งตัวมีคอลัมน์ที่ไม่ใช่ `none` ได้ตัวเดียว) · primitive กลางคือ `SortTh`
   ใน `src/lib/useSortableTable.js`
+  ✅ **ปิดจบทั้งกลุ่ม 2026-09-02** — `<th onClick>` ทั้งระบบเหลือ **0 จุด**
+  (กลุ่มนี้เคยเป็นกลุ่มใหญ่ที่สุดของด่านคีย์บอร์ด 19 จุด ⇒ `A11Y_KEYBOARD_CAP` 58 → 39)
+  `SortTh` เป็นทรงนี้จริงแล้ว: ปุ่มอยู่ในเซลล์ · `<th>` ถือ
+  `aria-sort="ascending"|"descending"|"none"` · สไตล์อยู่ที่ `.th-sort` / `.th-sort-label`
+  ใน `globals.css` (แผ่นคลุม `::after` ทำให้กดได้ทั้งช่องเหมือนตอนเป็น `<th onClick>`
+  ตามเป้า 24×24px ของ 2.5.8 · วงโฟกัสล้อมทั้งช่อง ไม่ใช่แค่ตัวหนังสือ)
+  ⇒ **68 จุดเรียกใน 12 ไฟล์** (วัด 2026-09-02) ผ่านเกณฑ์พร้อมกัน · 8 ไฟล์ที่ใช้ `SortTh` อยู่แล้ว
+  **ไม่ต้องแก้อะไรเลยแม้แต่บรรทัดเดียว** (แก้ที่ primitive ตัวเดียวจบ) ·
+  อีก 4 ไฟล์ที่เคยเขียน `<th onClick>` อินไลน์เองย้ายมาใช้ `SortTh`
+  (`sahamit/po` · `pm/tasks` · `sales-planning/deals` · `sales-planning/leads`)
+  และนี่คือ **`aria-sort` ชุดแรกของทั้งรีโป** (ก่อนหน้านี้วัดได้ 0 จุด — เกณฑ์ 1.3.1 / 4.1.2)
+  🪤 หัวที่เรียงไม่ได้ต้อง **ไม่มี** `aria-sort` เลย — ประกาศไว้ที่ `SortTh` ที่เดียวจึงเผลอ
+  ใส่ผิดที่ไม่ได้ · และห้ามใส่ `role`/`tabIndex` บน `<th>` ตามตารางข้างบน
+  🪤 **หน้าที่ถือ state การเรียงเอง ก็ใช้ `SortTh` ได้** — ห่อเป็น
+  `{ sortKey, sortDir, sortBy }` แล้วส่งเข้า prop `sort` (ไม่ต้องย้ายไปใช้
+  `useSortableTable` ทั้งฮุค) · สี่ไฟล์ข้างบนทำแบบนี้ทั้งหมด เพราะคอมพาเรเตอร์ของมัน
+  เรียงจากค่าที่ *คำนวณ* หรือมีทิศตั้งต้นรายคีย์ ซึ่ง `accessors` ของฮุครับไม่ได้ตรง ๆ
+  ⚠️ เขียนตารางเรียงใหม่ **ต้องเรียก `SortTh`** — ก๊อป `.th-sort` ไปแปะเองไม่นับ
+  เพราะ `onClick` ยังอยู่บน `<th>` เหมือนเดิม กลุ่มนี้ก็ฟื้นคืนชีพทันที
+  🔒 ล็อกด้วย `src/lib/sortableHeader.test.mjs` (ปุ่มอยู่ใน `<th>` · มี `aria-sort` ครบ
+  สามค่า · ห้าม `role`/`tabIndex` บน `<th>` · ผู้เรียกส่งสี่พร็อพนั้นทะลุ `{...rest}` ไม่ได้)
 - **แถวเปิดรายละเอียด** → `<Link>` / `<button>` ในเซลล์แรก แล้วปล่อย `onClick` ของ
   `<tr>` ไว้เป็นทางลัดของเมาส์
   🪤 **`src/components/ui/DetailRow.js` ยังไม่ได้ทำแบบนี้ — อย่าลอกไปใช้เป็นต้นแบบ**
@@ -301,7 +322,7 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | **ตัวพิมพ์** | `--font-sans` = **Sarabun ตัวเดียวทั้งระบบ** · `--font-mono` / `--font-numeric` ชี้ตัวเดียวกัน | `font-family`/`fontFamily` นอกโทเคน = 0 | ตัวตรวจ `audit:ui` |
 | ความหนาตัวอักษร | `--fw-normal/medium/semibold/bold` | CSS + `fontWeight` ตรง ๆ + `font-[600]` ใน `className` = 0 · **กิ่ง ternary ใน `style` เป็นเพดาน** `JSX_FONT_WEIGHT_BRANCH_CAP` | `fontWeightScale` · `inlineScaleSurface` · `utilityScaleSurface` |
 | ความสูงบรรทัด | บล็อก `--lh-*` ใน `globals.css` (ขั้นต่ำของกล่องที่ห่อไทยคือ `--lh-thai`) | เพดาน `RAW_LINE_HEIGHT_CAP` (CSS + `style`) · `className` = 0 (รวมรูป `text-base/7` ที่ไม่มีคำว่า leading) | `lineHeightScale` · `utilityScaleSurface` |
-| ระยะห่างตัวอักษร | `--ls-heading/tabular/label` | เพดาน `RAW_LETTER_SPACING_CAP` (CSS) + `RAW_LETTER_SPACING_JSX_CAP` (`style`) · `className` = 0 · หน่วยต้องเป็น `em` = บังคับ | `letterSpacingScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| ระยะห่างตัวอักษร | `--ls-heading/tabular/label/table-head` | เพดาน `RAW_LETTER_SPACING_CAP` (CSS) + `RAW_LETTER_SPACING_JSX_CAP` (`style`) · `className` = 0 · หน่วยต้องเป็น `em` = บังคับ | `letterSpacingScale` · `inlineScaleSurface` · `utilityScaleSurface` |
 | ชั้นซ้อน | `--z-sticky` (30) → `--z-portal-menu` (10050) — เรียงตามค่าใน `:root` | z-index ≥30 นอกโทเคน = 0 (CSS + `style`) · `z-[…]`/`order-[…]` ใน `className` = 0 | `zIndexScale` · `utilityScaleSurface` |
 | จังหวะ | `--motion-fast/medium/standard/slow` · `--ease-out/standard` | เวลาดิบใน transition/animation = 0 **ครบสามผิว** (CSS · `style` · `duration-[…]`/`delay-[…]`/`ease-[…]`/`animate-[…]`) | `motionScale` · `inlineScaleSurface` · `utilityScaleSurface` |
 | ระยะห่าง | `--space-0-5..9` (กริด 4px + ครึ่งขั้น) | เพดาน `RAW_SPACING_CAP` (**CSS เท่านั้น**) + `RAW_TAILWIND_SPACING_CAP` (`className`) · ผิว `style` ยังไม่มีด่าน (1,135 จุด) | `spacingScale` · `utilityScaleSurface` |
@@ -337,8 +358,8 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | `RAW_LINE_HEIGHT_CAP` | 9 | ค่าระหว่างขั้น `--lh-*` ที่ ≥1.65 + `lineHeight` ใน `style` — คูณจำนวนบรรทัด ยิ่งกล่องยาวยิ่งขยับ |
 | `RAW_RADIUS_CAP` | 21 | ค่าระหว่างขั้น (9 · 2 · 7 · 6 · 14px) · ไม่นับ `50%`, `0`, ค่าราย 4 มุม |
 | `RAW_SHADOW_CAP` | 7 | เงาที่ **ไม่ใช่เงายกระดับ** (keyframes pulse · ขอบคอลัมน์ตรึง · tooltip กราฟ) จึงไม่มีปลายทาง |
-| `RAW_OPACITY_CAP` | 15 | ความจางเชิงข้อมูล/ของประดับ ไม่ใช่สถานะ "กดไม่ได้" · `0`/`1` ไม่นับ |
-| `RAW_LETTER_SPACING_CAP` | 4 | 4 จุดที่คนละบทบาทกันจริง — `.brand-logo` · `th` · `.dept` · `.totalAmount` **อย่าเหมารวมทีหลัง** |
+| `RAW_OPACITY_CAP` | 12 | ความจางเชิงข้อมูล/ของประดับ ไม่ใช่สถานะ "กดไม่ได้" · `0`/`1` ไม่นับ · 📉 **15 → 12 (2026-09-02)** เป็น *ผลพลอยได้* ของงานหัวตารางเรียงลำดับ ไม่ใช่รอบล้าง opacity: สามหน้าเคยก๊อป `sortArrow()` ของตัวเองที่มี `opacity: 0.35` คำต่อคำ พอย้ายไปใช้ `SortTh` ลูกศรก็มาจาก primitive ที่เดียว ⇒ **จุดก๊อปหายไป 3 หน้าตาไม่ขยับสักพิกเซล** |
+| `RAW_LETTER_SPACING_CAP` | 4 | 4 จุดที่คนละบทบาทกันจริง — `.brand-logo` · `.dept` · `.totalAmount` · `.th-sort` **อย่าเหมารวมทีหลัง** · 📅 2026-09-02 `th` ของ `Table.module.css` **ออกจากลิสต์** (ยกเข้าโทเคนใหม่ `--ls-table-head`) แล้ว `.th-sort` เข้ามาแทนด้วย `letter-spacing: inherit` — ด่านนับคำว่า `inherit` ด้วย (นับทุกค่าที่ไม่ใช่ `var(...)` และไม่ใช่ `0`) ⇒ **เพดานไม่ขยับ** · 🚫 บรรทัด `inherit` นั้น **ตัดทิ้งเพื่อกดเลขไม่ได้ และยกเข้าโทเคนก็ไม่ได้**: UA ตั้ง `letter-spacing: normal` ทับให้ควบคุมฟอร์มทุกตัว สายสืบทอดจึงขาดตรง `<button>` (วัดจริง: `.scroll[data-family] th` = 0.35px แต่ปุ่มข้างในได้ `normal`) และค่าจริงมาจากหัวตารางที่ปุ่มอยู่ข้างใน ซึ่งต่างกันสองตระกูล (`.premium-table` = 0 · TableShell = 0.025em) จึงไม่มีค่าเดียวให้ตั้งชื่อ |
 | `BREAKPOINT_CAP` | 13 | 5 ค่าที่ยังไม่ยุบ: **800 · 820 · 1050 · 1100 · 1120** — ช่วงที่เปลี่ยนชนความกว้างอุปกรณ์จริง (iPad Air แนวตั้ง ฯลฯ) |
 | `RAW_TAILWIND_SPACING_CAP` | 32 | ระยะห่างดิบใน `className` — **23 จาก 32 (72%) ตรงขั้น `--space-*` เป๊ะ** ยกได้โดยพิกเซลไม่ขยับ · เหลือ `mb-[22px]` ×9 (ฟอร์มลูกค้า/สินค้า) ที่ 22px ไม่มีขั้นรองรับ ต้องมีคนเปิดหน้าดู |
 | `RAW_TAILWIND_SIZE_CAP` | 13 | **สเกลนี้ไม่เคยมี cap มาก่อนเลยทั้งสามผิว** · ไม่ใช่หนี้รอแปลงเป็นโทเคน — เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว (`--ctl-h`) เขียนที่ปลายทาง = ทับของที่ตัดสินแล้ว · 2 ใน 13 เป็น *ข้อความอธิบายกฎ* บนหน้า design-preview (ห้ามแก้เพื่อลดเลข) |
@@ -346,7 +367,8 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 | `RAW_SHADOW_JSX_CAP` | 6 | เงาที่เขียนเองใน `style={{…}}` — ต่างจากฝั่ง CSS ตรงที่ **ทั้ง 6 เป็นเงายกระดับที่มีปลายทางให้ย้ายทันที** (`--shadow-float` / `--shadow-md`) |
 | `RAW_LETTER_SPACING_JSX_CAP` | 1 | จุดเดียว: `letterSpacing: -1` (DealTimelineTable) ซึ่ง react-dom เรนเดอร์เป็น **-1px** = ชนิดที่ระบบตั้งเป็นข้อห้าม · แก้เป็น `"-0.028em"` แล้วหน้าตาไม่ขยับ (`--fs-17` = 36px) |
 | `JSX_FONT_WEIGHT_BRANCH_CAP` | 8 | น้ำหนักที่ซ่อนในกิ่ง ternary — **hard-zero เดิมพิมพ์ 0 มาตลอดทั้งที่มี 8 จุด** · 🐞 หนึ่งในนั้นเป็นบั๊กจริง (`? 800 : 650` แต่ระบบโหลดมาแค่ 400/500/600/700 ⇒ ทั้งคู่ตกลงมาที่ 700 = หนาเท่ากันบนจอ) |
-| `A11Y_KEYBOARD_CAP` | 57 | **ด่าน accessibility ตัวแรกของ CI** (WCAG 2.1.1 Keyboard ระดับ A) — `onClick` ที่ทำงานจริงบนแท็กที่คีย์บอร์ดเข้าไม่ถึง · แยกตามแท็กเพราะ **ทางแก้คนละท่า**: `th` 18 (หัวตารางเรียงลำดับ → `SortTh` + `aria-sort`) · `div` 17 (การ์ด → `<Link>`/`<button>`) · `tr` 17 (14 เปิดรายละเอียด → `DetailRow` · 3 เป็นสวิตช์ → `aria-expanded`/`aria-pressed`) · `span` 4 (ทั้งหมดเปลี่ยนหน้า → `<Link>`) · `td` 1 · ยกเว้นอัตโนมัติแล้ว 26 จุด (กันคลิกทะลุ 22 · ฉากหลังปิดกล่อง 4) และผ่านอยู่แล้ว 2 · ⚠️ ห้ามลดเลขด้วย `role="button"` บน `tr`/`th`/`td` — ทับ role ของตารางทิ้ง (ตก 1.3.1) |
+| `A11Y_KEYBOARD_CAP` | 39 | **ด่าน accessibility ตัวแรกของ CI** (WCAG 2.1.1 Keyboard ระดับ A) — `onClick` ที่ทำงานจริงบนแท็กที่คีย์บอร์ดเข้าไม่ถึง · แยกตามแท็กเพราะ **ทางแก้คนละท่า**: `div` 17 (การ์ด → `<Link>`/`<button>`) · `tr` 17 (14 เปิดรายละเอียด → `DetailRow` · 3 เป็นสวิตช์ → `aria-expanded`/`aria-pressed`) · `span` 4 (ทั้งหมดเปลี่ยนหน้า → `<Link>`) · `td` 1 (`YearHeatmap` → `<button>` ในเซลล์) · ยกเว้นอัตโนมัติแล้ว 26 จุด (กันคลิกทะลุ 22 · ฉากหลังปิดกล่อง 4) และผ่านอยู่แล้ว 2 · ⚠️ ห้ามลดเลขด้วย `role="button"` บน `tr`/`th`/`td` — ทับ role ของตารางทิ้ง (ตก 1.3.1) และห้ามลดด้วยการ **เติมทางยกเว้น** (จำนวนทั้งสามแบบถูกล็อกไว้ใน `keyboardClickable.test.mjs`) · 📉 **58 → 39 (2026-09-02)**: กลุ่ม `th` 19 จุดปิดจบทั้งกลุ่มด้วยการแก้ `SortTh` ตัวเดียว — เป็นกลุ่มเดียวที่จบได้ในรอบเดียวเพราะทางแก้รวมอยู่ที่ primitive · อีก 4 กลุ่มที่เหลือต้องแก้ทีละจุดในหน้าจริง |
+| `ROLE_ON_TABLE_TAG_CAP` | 1 | **เกณฑ์ 1.3.1 ไม่ใช่ 2.1.1 — นับแยกโดยเจตนา** · `role` ที่เขียนทับบทบาทตามธรรมชาติของ `tr`/`th`/`td` · จุดเดียวที่เหลือคือ `src/components/ui/DetailRow.js` ซึ่งเป็น **หนี้ที่รู้ตัว ไม่ใช่ต้นแบบ** · 🔒 **สองเพดานนี้ล็อกกันเอง**: ใครพยายามลด `A11Y_KEYBOARD_CAP` ด้วยการเติม `role`+`tabIndex` บนแท็กตาราง จะไปชนเพดานนี้แทนทันที ⇒ ทางออกเดียวคือวาง `<a>`/`<button>` จริงไว้ *ในเซลล์* · 🪤 ด่านนี้สแกนเฉพาะ **แท็กตัวพิมพ์เล็ก** ⇒ `<SortTh role="button">` (คอมโพเนนต์) รอดสายตามันทั้งที่ปลายทางไปโผล่บน `<th>` จริง ผ่าน `{...rest}` — รูนั้นปิดด้วย `sortableHeader.test.mjs` |
 | `RAW_TAILWIND_TYPE_CAP` | 152 | ขนาดดิบใน `className` (11px ×92 · 10px ×42 · 12px ×10 · 13px ×7 · 22px ×1 · 27 ไฟล์) — **110 จุดยกเข้าโทเคนได้โดยขนาดไม่ขยับ** แต่ **10px ×42 ไม่มีขั้นตรง** (--fs-1 9.5px / --fs-2 10.5px) ต้องเปิดหน้าดูก่อนตัดสินว่าขึ้นหรือลง · ยกแล้วต้องเขียน `text-[length:var(--fs-3)]` — ลืม `length:` = Tailwind ตีเป็นสี ขนาดหายเงียบ ๆ (มี hard-zero จับไว้) |
 
 ชุดจุดตัดจอที่ให้ของใหม่ใช้ (เขียนไว้ใน `globals.css` แล้ว):

@@ -9,7 +9,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Download, Filter, Users, UserRound, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Handshake, Inbox, Plus, Search, PhoneCall, CalendarClock, Download, Filter, Users, UserRound } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -45,6 +45,7 @@ import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, naText, NA } from "@/lib/fo
 import { cachedFetchJson } from "@/lib/apiCache";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { usePagination } from "@/lib/usePagination";
+import { SortTh } from "@/lib/useSortableTable";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Pager from "@/components/ui/Pager";
@@ -172,9 +173,12 @@ export default function LeadsPage() {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir(defaultDir(key)); }
   };
-  const sortArrow = (key) => sortKey === key
-    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />; // open = ยังไม่ปิด
+  /* ทรงที่ <SortTh> ต้องการ ({ sortKey, sortDir, sortBy }) — คีย์/ทิศเก็บใน useStickyState
+     ของหน้านี้เหมือนเดิม (จำค่าข้ามการเปิดหน้า) ส่วน sortBy คือ handleSort ตัวเดิม
+     จึงยังได้ "ทิศตั้งต้นต่อคีย์" ตาม defaultDir ที่ hook กลางไม่มีให้
+     ⇒ หัวตารางกดด้วยคีย์บอร์ดได้ + มี aria-sort (WCAG 2.1.1 · 1.3.1 · 4.1.2)
+     🪤 ลูกศรมาจาก SortTh แล้ว ห้ามวาดเองซ้ำ — ไม่งั้นคอลัมน์เดียวมีสองตัวบอกทิศ */
+  const sort = { sortKey, sortDir, sortBy: handleSort };
   const [month, setMonth] = useStickyState("month", thisMonth());
   const [allMonths, setAllMonths] = useStickyState("allMonths", false);
   /* โหมดช่วงเวลา (IS-26080023) — Marketing นับลีดรายวัน/สัปดาห์เทียบยอด Spending Ads
@@ -692,17 +696,17 @@ export default function LeadsPage() {
             <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ลูกค้า/ผู้ติดต่อ {sortArrow("name")}</span></th>
+                  <SortTh label="ลูกค้า/ผู้ติดต่อ" sortKey="name" sort={sort} />
                   <th>ช่องทาง</th>
                   <th>บริการที่สนใจ</th>
-                  <th className="num" onClick={() => handleSort("budget")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>Budget {sortArrow("budget")}</span></th>
+                  <SortTh label="Budget" sortKey="budget" sort={sort} className="num" />
                   <th>ทีม / ผู้รับผิดชอบ</th>
-                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none", textAlign: "center" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "center" }}>สถานะ {sortArrow("status")}</span></th>
+                  <SortTh label="สถานะ" sortKey="status" sort={sort} style={{ textAlign: "center" }} />
                   {/* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้** ต้องอ่านได้จาก
                       ตารางโดยไม่ต้องเปิดใบ · รวมช่องเดียวกับ "รับเมื่อ" เพราะตารางนี้มี 8
                       คอลัมน์อยู่แล้ว เพิ่มช่องใหม่จะดันให้เลื่อนแนวนอนบนจอ 1280
                       ใบที่ยังไม่มีวันติดตามยังโชว์ "รับเมื่อ" เหมือนเดิมทุกประการ */}
-                  <th onClick={() => handleSort("created")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ติดตามต่อ / รับเมื่อ {sortArrow("created")}</span></th>
+                  <SortTh label="ติดตามต่อ / รับเมื่อ" sortKey="created" sort={sort} />
                   <th></th>
                 </tr>
               </thead>

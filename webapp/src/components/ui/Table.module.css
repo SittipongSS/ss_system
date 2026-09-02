@@ -179,7 +179,10 @@
   background: var(--panel-2);
   font-size: var(--fs-table-head);
   font-weight: var(--fw-bold);
-  letter-spacing: .025em;
+  /* ⚠️ ปุ่มเรียง (.th-sort) สืบทอดค่านี้ลงไปด้วย `letter-spacing: inherit` — เพราะ UA
+     ตั้ง `normal` ทับให้ควบคุมฟอร์มทุกตัว สายสืบทอดจึงขาดตรงปุ่มถ้าไม่เขียนคืน
+     ⇒ เปลี่ยนค่าตรงนี้ = เปลี่ยนทั้งหัวที่เรียงได้และเรียงไม่ได้พร้อมกัน (ตั้งใจให้เป็นแบบนั้น) */
+  letter-spacing: var(--ls-table-head);
   white-space: nowrap;
 }
 

@@ -18,6 +18,7 @@ import { destinationLabel, DESTINATIONS } from "@/components/sahamit/destination
 import { useCan } from "@/lib/roleContext";
 import Pager from "@/components/ui/Pager";
 import { usePagination } from "@/lib/usePagination";
+import { SortTh } from "@/lib/useSortableTable";
 import { businessDate } from "@/lib/businessDate";
 
 const nf = (n) => fmtNumber(n || 0);
@@ -104,11 +105,19 @@ export default function PoPage() {
   const [destSel, setDestSel] = useState([]);       // destination keys
   const canEdit = useCan("sahamit:edit");
   const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
-  const [sort, setSort] = useState({ col: null, dir: "asc" });
-  const onSort = (col) => setSort((s) => (s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" })); // กดหัวตาราง
-  const pickSort = (col) => setSort((s) => ({ col: col || null, dir: s.dir })); // เลือกจาก dropdown
-  const toggleDir = () => setSort((s) => ({ ...s, dir: s.dir === "asc" ? "desc" : "asc" }));
-  const gArrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
+  /* เรียงตาราง — คอมพาเรเตอร์ยังทำเองในหน้านี้ (เรียงจากค่าที่ *คำนวณ* เช่น มูลค่าก่อน VAT
+     กับสถานะรวมของใบ ซึ่ง accessors ของ useSortableTable รับไม่ได้ตรง ๆ) แต่ **ทรงของ state
+     ทำให้ตรงกับที่ useSortableTable คืน** = { sortKey, sortDir, sortBy } เพื่อส่งเข้า
+     <SortTh> ได้ตรง ๆ ⇒ หัวตารางกดด้วยคีย์บอร์ดได้และมี aria-sort เหมือนทั้งระบบ
+     (WCAG 2.1.1 Keyboard · 1.3.1 · 4.1.2) โดยไม่ต้องยกคอมพาเรเตอร์ออกไปที่ hook */
+  const [sortState, setSortState] = useState({ sortKey: null, sortDir: "asc" });
+  const { sortKey, sortDir } = sortState;
+  const sortBy = (key) => setSortState((s) => (s.sortKey === key
+    ? { sortKey: key, sortDir: s.sortDir === "asc" ? "desc" : "asc" }
+    : { sortKey: key, sortDir: "asc" })); // กดหัวตาราง
+  const sort = { sortKey, sortDir, sortBy };
+  const pickSort = (key) => setSortState((s) => ({ sortKey: key || null, sortDir: s.sortDir })); // เลือกจาก dropdown
+  const toggleDir = () => setSortState((s) => ({ ...s, sortDir: s.sortDir === "asc" ? "desc" : "asc" }));
   const q = search.trim().toLowerCase();
 
   // ราคาผลิต (costPrice, ก่อน VAT) ต่อ fgCode — สำหรับยอดรวมมูลค่า PO
@@ -153,15 +162,15 @@ export default function PoPage() {
   // แบ่งหน้ามุมมอง "รายใบ" (รีเซ็ตกลับหน้า 1 เมื่อค้น/กรองเปลี่ยน)
   // เรียงมุมมองรายใบก่อนแบ่งหน้า (sort เดียวกับปุ่ม/หัวตาราง)
   const sortedGroupedPos = useMemo(() => {
-    if (!sort.col) return filteredPos;
-    const s = sort.dir === "asc" ? 1 : -1;
+    if (!sortKey) return filteredPos;
+    const s = sortDir === "asc" ? 1 : -1;
     const key = (po) => ({
       po: po.poNumber || "", doc: po.docDate || "", recv: po.receivedDate || "", due: po.dueDate || "",
       qty: poTotalQty(po), value: poExVat(po, priceByFg), status: poRollupStatus(po),
-    }[sort.col]);
+    }[sortKey]);
     return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
-  }, [filteredPos, sort, priceByFg]);
-  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sort.col}|${sort.dir}` });
+  }, [filteredPos, sortKey, sortDir, priceByFg]);
+  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}` });
 
   // material lines grouped by PO number (คัดเฉพาะบรรทัด active แล้วจาก API)
   const matByPo = useMemo(() => {
@@ -235,19 +244,19 @@ export default function PoPage() {
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>เรียงตาม</span>
-                  <Select className="premium-select" value={sort.col || ""} onChange={(e) => pickSort(e.target.value)}>
+                  <Select className="premium-select" value={sortKey || ""} onChange={(e) => pickSort(e.target.value)}>
                     <option value="">— ไม่เรียง —</option>
                     {fields.map(([col, label]) => <option key={col} value={col}>{label}</option>)}
                   </Select>
-                  <button type="button" className="btn-icon" title="สลับทิศเรียง (น้อย→มาก / มาก→น้อย)" disabled={!sort.col} onClick={toggleDir}>
-                    {sort.dir === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+                  <button type="button" className="btn-icon" title="สลับทิศเรียง (น้อย→มาก / มาก→น้อย)" disabled={!sortKey} onClick={toggleDir}>
+                    {sortDir === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
                   </button>
                 </div>
               );
             })()}
             <div className="segmented" style={{ marginLeft: "auto" }} title="สลับมุมมอง">
-              <button className={view === "grouped" ? "active" : ""} onClick={() => { setView("grouped"); setSort({ col: null, dir: "asc" }); }}>รายใบ</button>
-              <button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setSort({ col: null, dir: "asc" }); }}>ตาราง</button>
+              <button className={view === "grouped" ? "active" : ""} onClick={() => { setView("grouped"); setSortState({ sortKey: null, sortDir: "asc" }); }}>รายใบ</button>
+              <button className={view === "table" ? "active" : ""} onClick={() => { setView("table"); setSortState({ sortKey: null, sortDir: "asc" }); }}>ตาราง</button>
             </div>
           </div>
 
@@ -257,15 +266,15 @@ export default function PoPage() {
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}></th>
-                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("po")}>เลขที่ PO{gArrow("po")}</th>
-                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("doc")}>วันที่เอกสาร{gArrow("doc")}</th>
-                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("recv")}>วันรับ PO{gArrow("recv")}</th>
-                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("due")}>กำหนดส่ง{gArrow("due")}</th>
+                    <SortTh label="เลขที่ PO" sortKey="po" sort={sort} />
+                    <SortTh label="วันที่เอกสาร" sortKey="doc" sort={sort} />
+                    <SortTh label="วันรับ PO" sortKey="recv" sort={sort} />
+                    <SortTh label="กำหนดส่ง" sortKey="due" sort={sort} />
                     <th>สถานที่ส่ง</th>
                     <th style={{ textAlign: "right" }}>รายการ</th>
-                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("qty")}>จำนวนรวม{gArrow("qty")}</th>
-                    <th style={{ textAlign: "right", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("value")}>มูลค่า PO{gArrow("value")}</th>
-                    <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSort("status")}>สถานะ{gArrow("status")}</th>
+                    <SortTh label="จำนวนรวม" sortKey="qty" sort={sort} style={{ textAlign: "right" }} />
+                    <SortTh label="มูลค่า PO" sortKey="value" sort={sort} style={{ textAlign: "right" }} />
+                    <SortTh label="สถานะ" sortKey="status" sort={sort} />
                     <th></th>
                   </tr>
                 </thead>
@@ -281,7 +290,7 @@ export default function PoPage() {
               </table>
             </TableScroll>
           ) : (
-            <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} onSort={onSort} />
+            <PoLinesTable pos={filteredPos} priceByFg={priceByFg} prodIdx={prodIdx} q={q} sort={sort} />
           )}
           {view === "grouped" && (
             <Pager page={grouped.page} pageCount={grouped.pageCount} total={grouped.total} onPage={grouped.setPage} pageSize={grouped.pageSize} onPageSize={grouped.setPageSize} />
@@ -384,7 +393,8 @@ const lineStatusColor = (s) => C[STAGE_COLOR[s]] || (s === "cancelled" ? C["text
 
 // มุมมอง "ตาราง (รายบรรทัด)": ทุกบรรทัดสินค้าในทุก PO = 1 แถว (สเปรดชีต) เรียง/รวมมูลค่าได้.
 // ราคา/มูลค่าอ่านอย่างเดียวจากราคาผลิต master (เหมือนหน้ารายละเอียด/รายการ).
-function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
+function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
+  const { sortKey, sortDir } = sort;   // sort = { sortKey, sortDir, sortBy } ทรงเดียวกับ useSortableTable
   const router = useRouter();
   const rows = useMemo(() => {
     const out = [];
@@ -401,23 +411,23 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
         out.push({ po, l, price, value, cancelled });
       }
     }
-    if (sort.col) {
-      const s = sort.dir === "asc" ? 1 : -1;
+    if (sortKey) {
+      const s = sortDir === "asc" ? 1 : -1;
       const key = (r) => ({
         po: r.po.poNumber || "", fg: r.l.fgCode || "", qty: Number(r.l.qty || 0),
         value: Number(r.value || 0), month: r.l.deliveryMonth || "", status: r.l.status || "",
-      }[sort.col]);
+      }[sortKey]);
       out.sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
     }
     return out;
-  }, [pos, q, priceByFg, prodIdx, sort]);
+  }, [pos, q, priceByFg, prodIdx, sortKey, sortDir]);
 
   const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0); // รวมทุกหน้า (ไม่ใช่เฉพาะหน้าปัจจุบัน)
-  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${q}|${sort.col}|${sort.dir}` });
-  const arrow = (col) => (sort.col === col ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
-  const Th = ({ col, children, align = "left" }) => (
-    <th style={{ textAlign: align, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => onSort(col)}>{children}{arrow(col)}</th>
-  );
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${q}|${sortKey}|${sortDir}` });
+  /* 🪤 เดิมมีคอมโพเนนต์ `Th` ประกาศ **ซ้อนอยู่ตรงนี้** — ห้ามเอากลับมา: React เห็นเป็น
+     type ใหม่ทุกเรนเดอร์ ⇒ remount <th> ทั้งช่องทุกครั้งที่ state ขยับ ซึ่งแปลว่า
+     **โฟกัสบนปุ่มเรียงหลุดทันทีที่กด** = คีย์บอร์ดยังใช้งานจริงไม่ได้ทั้งที่มีปุ่มแล้ว
+     (ตอนเป็น <th onClick> ไม่มีใครเห็นอาการ เพราะในหัวตารางไม่มีอะไรโฟกัสได้เลย) */
 
   return (
     <>
@@ -425,13 +435,13 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort, onSort }) {
       <table className="premium-table">
         <thead>
           <tr>
-            <Th col="po">เลขที่ PO</Th>
-            <Th col="month">กำหนดส่ง</Th>
-            <Th col="fg">สินค้า</Th>
-            <Th col="qty" align="right">จำนวน</Th>
+            <SortTh label="เลขที่ PO" sortKey="po" sort={sort} style={{ whiteSpace: "nowrap" }} />
+            <SortTh label="กำหนดส่ง" sortKey="month" sort={sort} style={{ whiteSpace: "nowrap" }} />
+            <SortTh label="สินค้า" sortKey="fg" sort={sort} style={{ whiteSpace: "nowrap" }} />
+            <SortTh label="จำนวน" sortKey="qty" sort={sort} style={{ textAlign: "right", whiteSpace: "nowrap" }} />
             <th style={{ textAlign: "right", whiteSpace: "nowrap" }}>ราคา/ชิ้น</th>
-            <Th col="value" align="right">มูลค่า</Th>
-            <Th col="status">สถานะ</Th>
+            <SortTh label="มูลค่า" sortKey="value" sort={sort} style={{ textAlign: "right", whiteSpace: "nowrap" }} />
+            <SortTh label="สถานะ" sortKey="status" sort={sort} style={{ whiteSpace: "nowrap" }} />
           </tr>
         </thead>
         <tbody>
