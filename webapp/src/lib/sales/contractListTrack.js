@@ -77,13 +77,21 @@ export function contractListTrack(contract = {}) {
         closure ? `ใบเสนอราคา${closure.label}` : late ? `รอมา ${waiting} วัน` : 'พิมพ์ส่งลูกค้าเซ็น')
       : step('issue', 'รอลงนาม', 'todo');
 
+  /* ⭐ **ขั้นรับรองของ AE Sup เป็นหมุดของตัวเอง** (mig 0323 · แก้ให้ตรงกัน 2026-09-02)
+     ของเดิมทะเบียนยุบขั้นนี้เป็น *โน้ต* บนหมุด "ลงนามแล้ว" ⇒ ทะเบียนมีสามหมุด
+     หน้ารายละเอียดมีสี่ · คนคนเดียวกันเปิดสองหน้านี้ห่างกันคลิกเดียวแล้วนับขั้นไม่ตรงกัน
+     ⚠️ เหตุผลที่หน้ารายละเอียดเขียนไว้เองใช้ได้กับทะเบียนยิ่งกว่า: "ต้องเป็นหมุดของ
+        ตัวเอง ไม่งั้นคนที่รอจะไม่รู้ว่ารออะไรอยู่" — ทะเบียนคือที่ที่คนกวาดตาหาว่า
+        ใบไหนค้าง ⇒ ขั้นที่มองไม่เห็นคือขั้นที่ไม่มีใครไปตาม */
+  const approveStep = signed
+    ? step('approve', 'รอหัวหน้ารับรอง', 'done')
+    : awaitingApproval
+      ? step('approve', 'รอหัวหน้ารับรอง', 'now', 'รอ AE Supervisor รับรอง')
+      : step('approve', 'รอหัวหน้ารับรอง', 'todo');
+
   const signStep = signed
     ? step('sign', 'ลงนามแล้ว', 'done', contract?.signedDate ? null : 'ยังไม่มีวันที่ลงนาม')
-    : awaitingApproval
-      /* ⭐ ขั้นนี้ **รอคนอื่น** ไม่ใช่รอฝ่ายขาย ⇒ ต้องบอกว่ารอใคร ไม่ใช่หมุดเหลืองเปล่า ๆ
-         (กติกาเดียวกับรางใบสั่งขายที่โน้ตบอกว่าติดอยู่ที่ขั้นไหนของใคร) */
-      ? step('sign', 'ลงนามแล้ว', 'now', 'รอ AE Supervisor รับรอง')
-      : step('sign', 'ลงนามแล้ว', 'todo');
+    : step('sign', 'ลงนามแล้ว', 'todo');
 
-  return { closed: false, steps: [draftStep, issueStep, signStep] };
+  return { closed: false, steps: [draftStep, issueStep, approveStep, signStep] };
 }
