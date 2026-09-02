@@ -90,8 +90,9 @@ test("ไม่มีใครเขียนเลขชั้นซ้อน�
 
   const offenders = [];
   for (const file of files) {
+    // เดินไฟล์ชุดเดียวกับ `uiFiles` ของ audit-ui.mjs — เอกสารพิมพ์อยู่ใต้ src/lib จึงอยู่
+    // นอกขอบเขตโดยโครงสร้าง (ลบยาม `src/components/documents/` ออก 2026-09-02)
     const rel = path.relative(process.cwd(), file).replaceAll("\\", "/");
-    if (rel.includes("src/components/documents/")) continue; // เอกสารพิมพ์ไม่โหลด globals.css
     fs.readFileSync(file, "utf8").split(/\r?\n/).forEach((line, index) => {
       if (/^\s*--z-[\w-]+:/.test(line)) return;
       for (const hit of line.matchAll(/z-?[Ii]ndex:\s*"?(\d+)"?/g)) {

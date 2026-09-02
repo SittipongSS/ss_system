@@ -115,6 +115,48 @@ join ที่ API ของหน้านั้น (เช่นที่ท�
 - Desktop และ mobile ใช้ top navigation ชุดเดียวกัน; mobile เปิด menu sheet จาก top bar
 - ทุก interactive element ต้องมี hover, `:focus-visible` และ disabled state
 
+## อะไรที่มี `onClick` ต้องกดด้วยคีย์บอร์ดได้ (2026-09-02)
+
+เกณฑ์: **WCAG 2.1.1 Keyboard (ระดับ A)** — *"ทุกฟังก์ชันสั่งงานด้วยคีย์บอร์ดได้"*
+สรุปเกณฑ์ฉบับไทยครบทุกข้ออยู่ที่ [`docs/wcag-2.2-reference.md`](../docs/wcag-2.2-reference.md)
+ด่าน `A11Y_KEYBOARD_CAP` ใน `npm run audit:ui` คือ **ด่าน accessibility ตัวแรกของ CI**
+(ก่อนหน้านี้ CI มีด่าน 9 ตัวและเทสต์ 4,769 ตัว โดยไม่มีตัวไหนตรวจการเข้าถึงเลยสักตัว)
+
+**กฎข้อเดียว: ของที่กดได้ต้องเป็น element ที่กดได้จริง** — `<button type="button">`
+สำหรับสั่งงานในหน้า · `<Link>` / `<a href>` สำหรับพาไปหน้าอื่น
+เบราว์เซอร์ให้ทั้งลำดับ Tab, Enter/Space, เมนูคลิกขวา, เปิดแท็บใหม่ มาฟรีทั้งชุด
+`className` เดิม (`.glass-panel` ฯลฯ) ย้ายไปไว้บน element ใหม่ได้ตรง ๆ
+
+🪤 **`role="button"` + `tabIndex={0}` คือคำตอบแรกที่ทุกคนนึกออก และมันผิดสำหรับตาราง**
+
+| เขียนแบบนี้ | ทับอะไรทิ้ง | ผลจริง |
+|---|---|---|
+| `<tr role="button">` | `role="row"` | เดินตารางด้วยคีย์ลูกศรไม่ได้ทั้งตาราง |
+| `<th role="button">` | `role="columnheader"` | screen reader ไม่รู้ว่าเซลล์นี้เป็นหัวคอลัมน์ |
+| `<td role="button">` | `role="cell"` | หลุดความสัมพันธ์แถว↔คอลัมน์ |
+
+ทางที่ถูกของแต่ละทรง — **ตัวที่โฟกัสได้อยู่ *ในเซลล์* ไม่ใช่ที่แถว/หัวตาราง**
+- **หัวตารางเรียงลำดับ** → `<button>` ข้างใน `<th>` + `aria-sort` บน `<th>` เอง
+  (ตารางหนึ่งตัวมีคอลัมน์ที่ไม่ใช่ `none` ได้ตัวเดียว) · primitive กลางคือ `SortTh`
+  ใน `src/lib/useSortableTable.js`
+- **แถวเปิดรายละเอียด** → `<Link>` / `<button>` ในเซลล์แรก แล้วปล่อย `onClick` ของ
+  `<tr>` ไว้เป็นทางลัดของเมาส์
+  🪤 **`src/components/ui/DetailRow.js` ยังไม่ได้ทำแบบนี้ — อย่าลอกไปใช้เป็นต้นแบบ**
+  ของจริงวันนี้คือ `role={href ? "link" : undefined}` + `tabIndex` วางบน `<tr>` เอง
+  ซึ่ง **ผ่านเกณฑ์คีย์บอร์ด (2.1.1) จริง** แต่ทับ `role="row"` ทิ้ง = **ตก 1.3.1**
+  ตามตารางข้างบนทุกประการ · ใช้อยู่ 9 หน้า จึงเป็นหนี้ที่รู้ตัว ไม่ใช่มติ
+  `audit:ui` นับไว้แยกต่างหากที่บรรทัด "role ทับบทบาทของตาราง" (เพดาน 1 ขึ้นไม่ได้)
+  ⇒ เติม `role` บนแถวใหม่ไม่ได้แล้ว แม้จะทำให้เลขด่านคีย์บอร์ดลดลงก็ตาม
+- **แถว/การ์ดที่เป็นสวิตช์** → `<button aria-expanded>` / `<button aria-pressed>`
+  เพราะ *สถานะ* ต้องประกาศได้ ไม่ใช่แค่กดได้
+
+**ไม่นับเป็นทางแก้:** `cursor: pointer` · `.clickable-row` · `title="คลิกเพื่อ…"`
+ทั้งสามเป็นสัญญาณสายตาล้วน — tooltip ไม่ขึ้นตอนโฟกัสด้วยคีย์บอร์ดด้วยซ้ำ
+
+**ด่านยกเว้นให้เองอยู่แล้ว ไม่ต้องแก้:** `onClick` ที่มีแค่ `e.stopPropagation()`
+(กันคลิกทะลุ ไม่มีฟังก์ชันให้เข้าถึง — ยัด `tabIndex` เข้าไปคือสร้าง tab stop ว่างเปล่า
+*แย่กว่าเดิม*) · ฉากหลังปิดกล่องที่ปิดด้วย Esc/ปุ่มปิดได้ (ทะเบียน `dismissScrimExempt`)
+
 ## ไอคอนของ entity — หนึ่ง entity หนึ่งไอคอน ทั้งระบบ (มติผู้ใช้ 2026-08-14)
 
 ไอคอนคือชื่อเรียกอย่างหนึ่ง คนจำรูปก่อนอ่านตัวอักษร ถ้าสองสิ่งใช้รูปเดียวกัน คนจะอ่าน
@@ -151,30 +193,37 @@ join ที่ API ของหน้านั้น (เช่นที่ท�
 ไฟล์แนบ และมุมมอง Gantt พร้อมกัน (หน้าใบสั่งขายใบเดียวเคยมี `FileText` สามความหมายซ้อนกัน:
 fact "อ้างอิง QT" · การ์ดใบเสนอราคา · การ์ดประวัติฉบับแก้ไข) อีกต่อ
 
-## ชั้นกลาง 13 ชั้น — ของใหม่หยิบชื่อ ห้ามคิดค่าเอง
+## ชั้นกลาง 14 ชั้น — ของใหม่หยิบชื่อ ห้ามคิดค่าเอง
 
 ทุกชั้นประกาศใน `src/app/globals.css` (`:root`) และมี **ตัวตรวจใน `audit:ui` + เทสต์**
-กันไหลกลับ · ตรวจล่าสุด 2026-08-12
+กันไหลกลับ · ตรวจล่าสุด 2026-09-02 (เพิ่มชั้น "ขนาด" และไล่ด่านให้เห็นครบสามผิว)
 
 ⚠️ **เลขเพดานของจริงอ่านจาก `npm run audit:ui` ไม่ใช่จากเอกสารนี้** — ตัวเลขในไฟล์นี้
 เคยค้างหลังของจริงทั้งชุด (เขียน 793 ตอนที่ของจริงลงมา 242 แล้ว) เอกสารบอกว่า
 *ชั้นไหนมีเจ้าของ* · สคริปต์บอกว่า *เหลือเท่าไร*
 
-| ชั้น | โทเคน | ตัวตรวจ | เทสต์ |
+⚠️ **หนึ่งชั้นมีสามผิว** (2026-09-02) — ระบบเขียนสไตล์ได้สามที่: ไฟล์ `.css` ·
+`style={{…}}` · `className` ของ Tailwind · ด่านทุกตัวเกิดจากผิวแรกแล้วค่อยขยาย จึงต้อง
+อ่านคอลัมน์ "ตัวตรวจ" ว่า **ครอบผิวไหนบ้าง** ไม่ใช่แค่ "มีด่านแล้ว"
+(บทเรียนสด: ชั้นพิมพ์พิมพ์ `Type-scale violations: 0` มาตลอดทั้งที่ผิว `className`
+มี 152 จุด — **ศูนย์ปลอมอันตรายกว่าไม่มีด่าน**)
+
+| ชั้น | โทเคน | ตัวตรวจ (ครอบผิวไหน) | เทสต์ |
 |---|---|---|---|
 | สี | `--bg` `--panel*` `--text*` `--accent*` `--navy*` + `*-soft` | raw color = 0 | `systemFoundation` |
-| ขนาดตัวอักษร | `--fs-1..17` + ชื่อตามหน้าที่ | font-size/`fontSize` นอกโทเคน = 0 | `typeScale` · `inlineTypeScale` |
+| ขนาดตัวอักษร | `--fs-1..17` + ชื่อตามหน้าที่ | font-size/`fontSize` นอกโทเคน = 0 · ฝั่ง `className` เป็น**เพดาน** `RAW_TAILWIND_TYPE_CAP` ยังไม่ใช่ 0 | `typeScale` · `inlineTypeScale` · `utilityTypeScale` |
 | **ตัวพิมพ์** | `--font-sans` = **Sarabun ตัวเดียวทั้งระบบ** · `--font-mono` / `--font-numeric` ชี้ตัวเดียวกัน | `font-family`/`fontFamily` นอกโทเคน = 0 | ตัวตรวจ `audit:ui` |
-| ความหนาตัวอักษร | `--fw-normal/medium/semibold/bold` | font-weight นอกโทเคน = 0 | `fontWeightScale` |
-| ความสูงบรรทัด | `--lh-none/flat/tight/thai/text/relaxed` | เพดาน `RAW_LINE_HEIGHT_CAP` | `lineHeightScale` |
-| ระยะห่างตัวอักษร | `--ls-heading/tabular/label` | เพดาน `RAW_LETTER_SPACING_CAP` · หน่วยต้องเป็น `em` = บังคับ | `letterSpacingScale` |
-| ชั้นซ้อน | `--z-sticky` (30) → `--z-portal-menu` (10050) — เรียงตามค่าใน `:root` | z-index ≥30 นอกโทเคน = 0 | `zIndexScale` |
-| จังหวะ | `--motion-fast/medium/standard/slow` · `--ease-out/standard` | เวลาดิบใน transition/animation = 0 | `motionScale` |
-| ระยะห่าง | `--space-0-5..9` (กริด 4px + ครึ่งขั้น) | เพดาน `RAW_SPACING_CAP` | `spacingScale` |
-| ความมนมุม | `--radius` `--radius-md/lg/xl/full` | เพดาน `RAW_RADIUS_CAP` | `radiusScale` |
-| เงา | `--shadow-sm/md/lg` · `--shadow-float` (รู้จักธีมเอง) | เพดาน `RAW_SHADOW_CAP` | `shadowScale` |
-| ความจาง | `--op-disabled` 0.45 · `--op-muted` 0.55 | เพดาน `RAW_OPACITY_CAP` | `opacityScale` |
-| ความสูงตัวควบคุม | `--ctl-h` 36px · `--ctl-h-touch` 44px | — | `controlHeight` |
+| ความหนาตัวอักษร | `--fw-normal/medium/semibold/bold` | CSS + `fontWeight` ตรง ๆ + `font-[600]` ใน `className` = 0 · **กิ่ง ternary ใน `style` เป็นเพดาน** `JSX_FONT_WEIGHT_BRANCH_CAP` | `fontWeightScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| ความสูงบรรทัด | `--lh-none/flat/tight/thai/text/relaxed` | เพดาน `RAW_LINE_HEIGHT_CAP` (CSS + `style`) · `className` = 0 (รวมรูป `text-base/7` ที่ไม่มีคำว่า leading) | `lineHeightScale` · `utilityScaleSurface` |
+| ระยะห่างตัวอักษร | `--ls-heading/tabular/label` | เพดาน `RAW_LETTER_SPACING_CAP` (CSS) + `RAW_LETTER_SPACING_JSX_CAP` (`style`) · `className` = 0 · หน่วยต้องเป็น `em` = บังคับ | `letterSpacingScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| ชั้นซ้อน | `--z-sticky` (30) → `--z-portal-menu` (10050) — เรียงตามค่าใน `:root` | z-index ≥30 นอกโทเคน = 0 (CSS + `style`) · `z-[…]`/`order-[…]` ใน `className` = 0 | `zIndexScale` · `utilityScaleSurface` |
+| จังหวะ | `--motion-fast/medium/standard/slow` · `--ease-out/standard` | เวลาดิบใน transition/animation = 0 **ครบสามผิว** (CSS · `style` · `duration-[…]`/`delay-[…]`/`ease-[…]`/`animate-[…]`) | `motionScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| ระยะห่าง | `--space-0-5..9` (กริด 4px + ครึ่งขั้น) | เพดาน `RAW_SPACING_CAP` (**CSS เท่านั้น**) + `RAW_TAILWIND_SPACING_CAP` (`className`) · ผิว `style` ยังไม่มีด่าน (1,135 จุด) | `spacingScale` · `utilityScaleSurface` |
+| ความมนมุม | `--radius` `--radius-md/lg/xl/full` | เพดาน `RAW_RADIUS_CAP` (CSS) + `RAW_RADIUS_JSX_CAP` (`style`) · `className` = 0 | `radiusScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| เงา | `--shadow-sm/md/lg` · `--shadow-float` (รู้จักธีมเอง) | เพดาน `RAW_SHADOW_CAP` (CSS) + `RAW_SHADOW_JSX_CAP` (`style`) · `className` = 0 (รวม ring/inset-ring/drop-shadow/text-shadow) | `shadowScale` · `inlineScaleSurface` · `utilityScaleSurface` |
+| ความจาง | `--op-disabled` 0.45 · `--op-muted` 0.55 | เพดาน `RAW_OPACITY_CAP` — 🔴 ครอบ CSS 9 + `style` 6 แต่ **อีก 21 จุดของ `style` ยังหลุด** (regex ต้องการอักขระ `;`/`{` นำหน้า) | `opacityScale` |
+| ความสูงตัวควบคุม | `--ctl-h` 40px · `--ctl-h-touch` 44px | — | `controlHeight` |
+| **ขนาด (กว้าง/สูง)** | *ไม่มีบันไดตัวเลข — มีแต่ชื่อตามบทบาท* (`--ctl-h` · `--topbar-h` · `--sidenav-w-expanded` …) | เพดาน `RAW_TAILWIND_SIZE_CAP` (`className`) · ผิว `style` ยังไม่มีด่าน (326 จุด) | `utilityScaleSurface` |
 | จุดตัดจอ | *ไม่มีโทเคน* (ดูกับดัก) | เพดาน `BREAKPOINT_CAP` | `breakpointScale` |
 
 🪤 **`--radius-*` และ `--shadow-*` เป็น namespace ของ Tailwind v4** — เพิ่มชื่อใหม่
@@ -194,20 +243,56 @@ fact "อ้างอิง QT" · การ์ดใบเสนอราคา
 
 ทุกตัว **มีเพดานรองรับแล้ว ของใหม่งอกเพิ่มไม่ได้** · เหตุผลรายตัวและประวัติการรูดเพดาน
 เขียนกำกับไว้เหนือค่าคงที่แต่ละตัวใน `scripts/audit-ui.mjs` — **อ่านที่นั่นก่อนคิดจะแตะ**
-ตัวเลขข้างล่างคือสถานะ 2026-08-12 ไว้ให้เห็นภาพ ไม่ใช่แหล่งอ้างอิง
+ตัวเลขข้างล่างคือสถานะ 2026-09-02 ไว้ให้เห็นภาพ ไม่ใช่แหล่งอ้างอิง
 
 | เพดาน | ตอนนี้ | ที่เหลือคืออะไร |
 |---|---|---|
-| `RAW_SPACING_CAP` | 242 | เลขคี่ (5 · 3 · 9 · 7 · 11px) — จังหวะ 2px ที่เหลือถูกตั้งชื่อเป็น `--space-*-5` ไปแล้ว |
-| `RAW_LINE_HEIGHT_CAP` | 17 | ค่าระหว่างขั้น `--lh-*` (1.55 · 1.4 · 1.35 …) — คูณจำนวนบรรทัด ยิ่งกล่องยาวยิ่งขยับ |
+| `RAW_SPACING_CAP` | 155 | เลขคี่ (5 · 3 · 9 · 7 · 11px) — จังหวะ 2px ที่เหลือถูกตั้งชื่อเป็น `--space-*-5` ไปแล้ว · ⚠️ **นับเฉพาะไฟล์ `.css`** |
+| `RAW_LINE_HEIGHT_CAP` | 9 | ค่าระหว่างขั้น `--lh-*` ที่ ≥1.65 + `lineHeight` ใน `style` — คูณจำนวนบรรทัด ยิ่งกล่องยาวยิ่งขยับ |
 | `RAW_RADIUS_CAP` | 21 | ค่าระหว่างขั้น (9 · 2 · 7 · 6 · 14px) · ไม่นับ `50%`, `0`, ค่าราย 4 มุม |
 | `RAW_SHADOW_CAP` | 7 | เงาที่ **ไม่ใช่เงายกระดับ** (keyframes pulse · ขอบคอลัมน์ตรึง · tooltip กราฟ) จึงไม่มีปลายทาง |
 | `RAW_OPACITY_CAP` | 15 | ความจางเชิงข้อมูล/ของประดับ ไม่ใช่สถานะ "กดไม่ได้" · `0`/`1` ไม่นับ |
 | `RAW_LETTER_SPACING_CAP` | 4 | 4 จุดที่คนละบทบาทกันจริง — `.brand-logo` · `th` · `.dept` · `.totalAmount` **อย่าเหมารวมทีหลัง** |
 | `BREAKPOINT_CAP` | 13 | 5 ค่าที่ยังไม่ยุบ: **800 · 820 · 1050 · 1100 · 1120** — ช่วงที่เปลี่ยนชนความกว้างอุปกรณ์จริง (iPad Air แนวตั้ง ฯลฯ) |
+| `RAW_TAILWIND_SPACING_CAP` | 32 | ระยะห่างดิบใน `className` — **23 จาก 32 (72%) ตรงขั้น `--space-*` เป๊ะ** ยกได้โดยพิกเซลไม่ขยับ · เหลือ `mb-[22px]` ×9 (ฟอร์มลูกค้า/สินค้า) ที่ 22px ไม่มีขั้นรองรับ ต้องมีคนเปิดหน้าดู |
+| `RAW_TAILWIND_SIZE_CAP` | 13 | **สเกลนี้ไม่เคยมี cap มาก่อนเลยทั้งสามผิว** · ไม่ใช่หนี้รอแปลงเป็นโทเคน — เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว (`--ctl-h`) เขียนที่ปลายทาง = ทับของที่ตัดสินแล้ว · 2 ใน 13 เป็น *ข้อความอธิบายกฎ* บนหน้า design-preview (ห้ามแก้เพื่อลดเลข) |
+| `RAW_RADIUS_JSX_CAP` | 73 | ความมนมุมดิบใน `style={{…}}` 28 ไฟล์ — **38 จาก 73 ยกเข้าโทเคนได้โดยไม่ขยับพิกเซล** (8px → `--radius` ×23 · 10px → `--radius-md` ×14 · 999px → `--radius-full`) อีก 35 อยู่ระหว่างขั้น |
+| `RAW_SHADOW_JSX_CAP` | 6 | เงาที่เขียนเองใน `style={{…}}` — ต่างจากฝั่ง CSS ตรงที่ **ทั้ง 6 เป็นเงายกระดับที่มีปลายทางให้ย้ายทันที** (`--shadow-float` / `--shadow-md`) |
+| `RAW_LETTER_SPACING_JSX_CAP` | 1 | จุดเดียว: `letterSpacing: -1` (DealTimelineTable) ซึ่ง react-dom เรนเดอร์เป็น **-1px** = ชนิดที่ระบบตั้งเป็นข้อห้าม · แก้เป็น `"-0.028em"` แล้วหน้าตาไม่ขยับ (`--fs-17` = 36px) |
+| `JSX_FONT_WEIGHT_BRANCH_CAP` | 8 | น้ำหนักที่ซ่อนในกิ่ง ternary — **hard-zero เดิมพิมพ์ 0 มาตลอดทั้งที่มี 8 จุด** · 🐞 หนึ่งในนั้นเป็นบั๊กจริง (`? 800 : 650` แต่ระบบโหลดมาแค่ 400/500/600/700 ⇒ ทั้งคู่ตกลงมาที่ 700 = หนาเท่ากันบนจอ) |
+| `A11Y_KEYBOARD_CAP` | 57 | **ด่าน accessibility ตัวแรกของ CI** (WCAG 2.1.1 Keyboard ระดับ A) — `onClick` ที่ทำงานจริงบนแท็กที่คีย์บอร์ดเข้าไม่ถึง · แยกตามแท็กเพราะ **ทางแก้คนละท่า**: `th` 18 (หัวตารางเรียงลำดับ → `SortTh` + `aria-sort`) · `div` 17 (การ์ด → `<Link>`/`<button>`) · `tr` 17 (14 เปิดรายละเอียด → `DetailRow` · 3 เป็นสวิตช์ → `aria-expanded`/`aria-pressed`) · `span` 4 (ทั้งหมดเปลี่ยนหน้า → `<Link>`) · `td` 1 · ยกเว้นอัตโนมัติแล้ว 26 จุด (กันคลิกทะลุ 22 · ฉากหลังปิดกล่อง 4) และผ่านอยู่แล้ว 2 · ⚠️ ห้ามลดเลขด้วย `role="button"` บน `tr`/`th`/`td` — ทับ role ของตารางทิ้ง (ตก 1.3.1) |
+| `RAW_TAILWIND_TYPE_CAP` | 152 | ขนาดดิบใน `className` (11px ×92 · 10px ×42 · 12px ×10 · 13px ×7 · 22px ×1 · 27 ไฟล์) — **110 จุดยกเข้าโทเคนได้โดยขนาดไม่ขยับ** แต่ **10px ×42 ไม่มีขั้นตรง** (--fs-1 9.5px / --fs-2 10.5px) ต้องเปิดหน้าดูก่อนตัดสินว่าขึ้นหรือลง · ยกแล้วต้องเขียน `text-[length:var(--fs-3)]` — ลืม `length:` = Tailwind ตีเป็นสี ขนาดหายเงียบ ๆ (มี hard-zero จับไว้) |
 
 ชุดจุดตัดจอที่ให้ของใหม่ใช้ (เขียนไว้ใน `globals.css` แล้ว):
 **480 · 560 · 640 · 680 · 768 · 900 · 1000 · 1200**
+
+### เขียนโทเคนลง `className` ยังไง (2026-09-02)
+
+รูปที่ถูกมีสองรูป และ **สั้นกว่ารูปที่ผิด** — `rounded-(--radius-md)` หรือ
+`rounded-[var(--radius-md)]` · ใช้ได้เหมือนกันทุกหมวด (gap · p/m · w/h · leading ·
+tracking · shadow · z · duration)
+
+🪤 **สองรูปที่คอมไพล์ผ่านแล้วตายเงียบ ๆ — ไม่มี error ให้จับ**
+| เขียนแบบนี้ | ได้อะไรจริง | ผล |
+|---|---|---|
+| `text-[var(--fs-7)]` | `color: var(--fs-7)` | ขนาดหาย ตกไปสืบทอดจากแม่ |
+| `rounded-[--radius-lg]` | `border-radius: --radius-lg` | เบราว์เซอร์ทิ้งทั้งบรรทัด |
+| `shadow-[--shadow-card]` | `--tw-shadow: --shadow-card` | ไม่ได้ตั้ง `box-shadow` เลย |
+
+ทั้งสามรูปมี **hard-zero** ใน `audit:ui` จับไว้แล้ว (`text-[var(--fs-…)]` ต้องใส่
+`length:` · รูป `-[--token]` ห้ามใช้ทุกหมวด)
+
+🪤 **prefix เดียวกันแปลคนละ property** — วัดด้วย `compile()` ของ tailwindcss 4.3.0 แล้ว
+ไม่ได้อ่านจากเอกสาร: `shadow-[red]` / `shadow-[#123]` = **สีของเงา** ไม่ใช่เงา ·
+`font-[600]` = น้ำหนัก แต่ `font-[Arial]` = ตระกูล · `ring-[3px]` = ความหนา แต่
+`ring-(--x)` = **สี** (ต้องเขียน `ring-(length:--x)`) · `transition-[…]` = *property*
+ไม่ใช่เวลา · และ **type hint อะไรก็ได้คอมไพล์เหมือนเลขดิบเป๊ะ** (`gap-[any:14px]`)
+จึงห้ามใช้ hint เป็นเครื่องหมายว่า "ยกเข้าโทเคนแล้ว"
+
+⚠️ **`gap-2` · `duration-300` · `z-50` ไม่ใช่โทเคนของเรา** — พวกนี้เดินบนสเกลของ
+Tailwind เอง (`--spacing: 0.25rem` ของธีมตั้งต้น) ไม่ใช่ `--space-*` · วันนี้บังเอิญ
+ตรงกันทุกค่าที่ใช้จริง (604 จุด) ยกเว้น `-12` (48px) ที่ไม่มีขั้นรองรับ · **ยังไม่มีด่าน
+ทับผิวนี้โดยเจตนา** — ถ้าใครขยับ `--space-*` โดยไม่ขยับ `--spacing` 604 จุดจะไม่ตามไปด้วย
 
 🔴 **บทเรียนที่ต้องใช้ทุกครั้งที่คิดจะรูดเพดานลง** (2026-07-30) — เคยดูดเฉพาะระยะห่างที่
 ห่างขั้น **1px** (236 จุด) โดยคิดว่า "1px มองไม่เห็น" · วัดจริงบนหน้าต้นแบบได้ **113 จาก
