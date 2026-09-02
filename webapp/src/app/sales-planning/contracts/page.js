@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Clock3, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Clock3, FileInput, FileSignature, Flag, Plus, Search, ShieldCheck } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -39,8 +39,9 @@ import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanni
 import { contractListTrack } from "@/lib/sales/contractListTrack";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
-  daysAwaitingSignature, contractStatusLabel,
+  CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
+  CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
+  contractSourceOf, daysAwaitingSignature, contractStatusLabel, isExternalContract,
 } from "@/lib/sales/contracts";
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -58,6 +59,10 @@ export default function ContractsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
   const [kindFilter, setKindFilter] = useStickyState("kindFilter", EMPTY);
+  /* ⭐ **ที่มาของใบเป็นคนละคำถามกับชนิดสัญญา** — ใบที่ระบบเจนกับใบที่ใช้ PO/อีเมล
+     แทนสัญญา เดินคนละเส้น มีเอกสารคนละแบบ และตอบคำถาม "ใบไหนมีสัญญาจริง" ต่างกัน
+     · ของเดิมสองแบบนี้หน้าตาเหมือนกันทั้งตาราง แยกไม่ออกจนต้องเปิดทีละใบ */
+  const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", EMPTY);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
   const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(params.get("waiting") === "1");
   const router = useRouter();
@@ -87,14 +92,15 @@ export default function ContractsPage() {
       if (waitingOnMeOnly && !row._waitingOnMe) return false;
       if (statusFilter.length && !statusFilter.includes(row.status)) return false;
       if (kindFilter.length && !kindFilter.includes(row.kind)) return false;
+      if (sourceFilter.length && !sourceFilter.includes(contractSourceOf(row))) return false;
       if (!q) return true;
       return [row.contractNo, row.customerName, row.deal?.title, row.ownerName]
         .some((value) => (value || "").toLowerCase().includes(q));
     });
-  }, [rows, query, statusFilter, kindFilter, waitingOnMeOnly]);
+  }, [rows, query, statusFilter, kindFilter, sourceFilter, waitingOnMeOnly]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(filtered, {
-    resetKey: `${query}|${statusFilter.join()}|${kindFilter.join()}|${waitingOnMeOnly}`,
+    resetKey: `${query}|${statusFilter.join()}|${kindFilter.join()}|${sourceFilter.join()}|${waitingOnMeOnly}`,
   });
 
   const summary = useMemo(() => ({
@@ -220,8 +226,8 @@ export default function ContractsPage() {
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันลงมือ ×</Button>
             )}
             <FilterPopover
-              count={statusFilter.length + kindFilter.length}
-              onClear={() => { setStatusFilter([]); setKindFilter([]); }}
+              count={statusFilter.length + kindFilter.length + sourceFilter.length}
+              onClear={() => { setStatusFilter([]); setKindFilter([]); setSourceFilter([]); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Flag,
@@ -232,6 +238,11 @@ export default function ContractsPage() {
                   key: "kind", label: "ชนิดสัญญา", icon: FileSignature,
                   options: CONTRACT_KINDS.map((value) => ({ value, label: CONTRACT_KIND_LABELS[value] })),
                   selected: kindFilter, onChange: setKindFilter,
+                },
+                {
+                  key: "source", label: "ที่มา", icon: FileInput,
+                  options: CONTRACT_SOURCES.map((value) => ({ value, label: CONTRACT_SOURCE_LABELS[value] })),
+                  selected: sourceFilter, onChange: setSourceFilter,
                 },
               ]}
             />
@@ -264,7 +275,14 @@ export default function ContractsPage() {
                         {naText(row.customerName)}
                         <span className={styles.subLine}>{naText(row.deal?.title)}</span>
                       </td>
-                      <td>{contractKindBadge(row.kind, "ui-badge-cell ui-badge-w-contract")}</td>
+                      <td>
+                        {contractKindBadge(row.kind, "ui-badge-cell ui-badge-w-contract")}
+                        {/* ที่มาอยู่ใต้ชนิด ไม่ใช่คอลัมน์ของตัวเอง — ตารางนี้กว้างเต็มแล้ว
+                            และสองค่านี้อ่านคู่กันเสมอ ("สัญญาอะไร · เนื้อมาจากไหน") */}
+                        {isExternalContract(row)
+                          ? <span className={styles.subLine}>{CONTRACT_SOURCE_LABELS.external}</span>
+                          : null}
+                      </td>
                       <td className={styles.numberCell}>{fmtDate(row.contractDate)}</td>
                       <td>{contractStatusBadge(row.status, "ui-badge-cell ui-badge-w-doc")}</td>
                       <td className={styles.track}>

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileCheck2, FileClock, FileText, FolderKanban, Handshake, History, MapPin, Pencil, ShieldAlert,
-  Trash2, Undo2, XCircle,
+  ExternalLink, FileCheck2, FileClock, FileSignature, FileText, FolderKanban, Handshake, History, MapPin,
+  Pencil, Repeat, ShieldAlert, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Workspace from "@/components/ui/Workspace";
@@ -91,7 +91,8 @@ import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPayment
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
 import Tabs from "@/components/ui/Tabs";
 import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTab";
-import { orderHasServiceRounds } from "@/lib/sales/serviceOrders";
+import { orderHasServiceRounds, serviceRoundsSold } from "@/lib/sales/serviceOrders";
+import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import { paymentRollup } from "@/lib/sales/salesOrderPayments";
 import { approvalPrompt } from "@/lib/approvalPrompt";
@@ -134,7 +135,7 @@ export default function SalesOrderDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const canEdit = useCan("salesplan:edit");
+  const canEditCap = useCan("salesplan:edit");
   const canCreateFiling = useCan("sales:act");
   // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
@@ -699,6 +700,9 @@ export default function SalesOrderDetailPage() {
 
   /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับทุกที่ในระบบ (ดีลสาย SERVICE + บรรทัด 02-001) */
   const hasServiceRounds = orderHasServiceRounds(order, order?.lines, { project: order?.project });
+  // รวมรอบทั้งใบ — คำนวณจากบรรทัดที่มีอยู่แล้ว ไม่ยิง API (ตัวเลขรายบรรทัดอยู่ในตาราง
+  // แต่ยอดรวมทั้งใบไม่เคยมีที่ไหนบอก)
+  const roundsSold = serviceRoundsSold(order?.lines);
 
   /* ── แท็บของหน้าใบ (PR-F · มติผู้ใช้ 2026-08-31 "ทาง ก") ──────────────────
      ⭐ **ไม่มีแถบสถานะเส้นที่สอง** — แผนเดิมให้เพิ่มเส้น 4 ช่อง (ยืนยัน SO · สัญญา ·
@@ -742,6 +746,11 @@ export default function SalesOrderDetailPage() {
   }
 
   const approved = order.status === "approved";
+  /* ⭐ **สิทธิ์แก้ = cap ของคน × ขอบเขตของใบ** — `canEdit` ที่ server ส่งมาคิด
+     `canEditSalesPlanning(user) && inSalesEditScope(user, deal)` ตัวเดียวกับที่ทุก action
+     ใน PATCH ใช้ปฏิเสธ ⇒ ปุ่มกับหลังบ้านขัดกันไม่ได้ (แพตเทิร์นเดียวกับหน้าสัญญา)
+     ⚠️ ยังคูณ cap ฝั่งจอด้วย — คนที่ถูกถอด cap ระหว่างเปิดหน้าค้างไว้ต้องไม่เห็นปุ่ม */
+  const canEdit = !!order.canEdit && canEditCap;
   // แบ่งแยกหน้าที่: ผู้ตรวจสอบที่เป็นผู้สร้าง/ผู้ยื่น SO เอง อนุมัติ/ตีกลับใบนี้ไม่ได้
   const ownSalesOrder = isSalesOrderSelfApproval(order, order.meId);
   const canReviewThis = reviewer && !ownSalesOrder;
@@ -933,6 +942,16 @@ export default function SalesOrderDetailPage() {
             { icon: CalendarDays, label: "กำหนดชำระ", value: fmtDate(order.paymentDueDate) },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
+            /* ⭐ **สัญญาบริการอยู่บนหัวใบ ไม่ใช่หลังแท็บ** — งานบริการทั้งเส้นเดินได้ก็ต่อ
+               เมื่อใบนี้มีสัญญาที่มีผล ⇒ เป็นคำถามแรกของคนเปิดใบ ไม่ใช่ของที่ต้องไปตาม
+               ข้อมูลมากับ GET ของใบอยู่แล้ว (`order.serviceContract`) ไม่ต้องยิงเพิ่ม
+               ⚠️ ขึ้นเฉพาะใบที่มีรอบบริการ — ใบสายสินค้าไม่มีสัญญาบริการให้พูดถึง */
+            ...(hasServiceRounds ? [{ icon: FileSignature, label: "สัญญาบริการ", ...serviceContractHeadline(order.serviceContract) }, {
+              icon: Repeat,
+              label: "รอบบริการที่ขาย",
+              value: roundsSold == null ? NA : `${roundsSold} รอบ`,
+              tone: roundsSold == null ? "muted" : undefined,
+            }] : []),
           ]}
         >
           <p className={styles.statusDescription}>{status.description}</p>

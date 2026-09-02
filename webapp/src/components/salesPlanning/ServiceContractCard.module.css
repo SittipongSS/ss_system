@@ -75,3 +75,11 @@
   justify-content: flex-end;
   margin-top: var(--space-4);
 }
+
+/* เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip — จอสัมผัสไม่มีทางเห็น title */
+.gate {
+  align-self: center;
+  font-size: var(--fs-4);
+  color: var(--amber);
+  line-height: var(--lh-thai);
+}

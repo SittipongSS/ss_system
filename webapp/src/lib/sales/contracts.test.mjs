@@ -231,6 +231,34 @@ test('ทะเบียนสัญญา: รางสามขั้น ร�
   assert.match(stale.steps[1].note, /ใบเสนอราคา/);
 });
 
+/* 🪤 **ทะเบียนกับหน้ารายละเอียดต้องเล่าเรื่องเดียวกัน** — #1570 แยกรางของสาย external
+   บนหน้ารายละเอียดไปแล้ว ถ้าทะเบียนยังใช้รางสามขั้น ใบ external ที่ signed จะโชว้
+   "รอลงนาม" เป็นขั้นที่ผ่านมาแล้ว ทั้งที่ไม่เคยผ่าน · คนคนเดียวกันเปิดสองหน้านี้
+   ห่างกันคลิกเดียว */
+test('🪤 ทะเบียนสัญญา: ใบ external เดินรางสองขั้น คำเดียวกับหน้ารายละเอียด', async () => {
+  const { contractListTrack } = await import('./contractListTrack.js');
+  const { EXTERNAL_STEPS } = await import('./contractLifecycle.js');
+  const ext2 = (status) => contractListTrack({ status, source: 'external' });
+
+  assert.deepEqual(ext2('draft').steps.map((s) => s.state), ['now', 'todo']);
+  assert.deepEqual(ext2('signed').steps.map((s) => s.state), ['done', 'done']);
+  assert.ok(!ext2('signed').steps.some((s) => s.label === 'รอลงนาม'), 'ขั้นที่ไม่มีวันเดินผ่านต้องไม่โผล่');
+
+  // คำบนรางสองหน้าต้องตรงกันเป๊ะ — ล็อกไว้เพราะอยู่คนละไฟล์
+  assert.deepEqual(
+    ext2('draft').steps.map((s) => s.label),
+    EXTERNAL_STEPS.map((s) => s.label),
+    'คำบนรางทะเบียนต้องตรงกับ EXTERNAL_STEPS ของหน้ารายละเอียด',
+  );
+
+  // ใบที่ระบบเจนยังเดินรางสามขั้นเหมือนเดิม
+  assert.equal(contractListTrack({ status: 'draft' }).steps.length, 3);
+  // ใบเก่าที่ไม่มีช่อง source = ใบที่ระบบเจน
+  assert.equal(contractListTrack({ status: 'draft', source: null }).steps.length, 3);
+  // ใบที่ตายแล้วยังไม่มีรางเหมือนเดิม ไม่ว่าสายไหน
+  assert.equal(contractListTrack({ status: 'cancelled', source: 'external' }).closed, true);
+});
+
 test('ใบเสนอราคาถูกปิด: ร่างปิดตาม · ใบที่ออกเลขแล้วแค่เตือน', async () => {
   const {
     quotationClosure, contractFollowsQuotationClosure, contractQuotationNotice,

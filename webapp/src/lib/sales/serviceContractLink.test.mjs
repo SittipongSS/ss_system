@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
-  contractLinkable, serviceContractLinkError, serviceContractOptions,
+  contractLinkable, serviceContractHeadline, serviceContractLinkError, serviceContractOptions,
 } from './serviceContractLink';
 
 const order = (extra = {}) => ({ id: 'SOR-1', status: 'approved', dealId: 'DL-1', ...extra });
@@ -59,4 +60,73 @@ test('ตัวเลือกโชว์เลขที่ + ชนิด + �
   assert.equal(opts[0].label, 'CT-SR-26080001-0 · สัญญาบริการ');
   assert.equal(opts[0].hint, '2026-09-01 — 2027-08-31');
   assert.match(opts[1].label, /สัญญาจ้างผลิต/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ถอดสัญญา · หัวใบสั่งขาย (#1570 ตามด้วยรอบเก็บงาน)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* 🪤 **ด่านตัวเดียวคุมทั้งผูกและถอด** — ของเดิมตอบ "ผูกสัญญาไม่ได้" ให้คนที่กดปุ่ม
+   *ถอด* ซึ่งอ่านแล้วไม่รู้ว่าเกิดอะไรขึ้น (และปุ่มถอดก็ไม่ได้ถามด่านนี้เลย) */
+test('🪤 ข้อความตีกลับต้องพูดถึงสิ่งที่คนกดจริง — ถอด ไม่ใช่ผูก', () => {
+  const dead = order({ status: 'cancelled' });
+  assert.match(serviceContractLinkError(dead, null, ok), /ถอดสัญญาไม่ได้/);
+  assert.match(serviceContractLinkError(dead, signed(), ok), /ผูกสัญญาไม่ได้/);
+  assert.match(serviceContractLinkError(order(), null, { canEdit: false }), /ถอดสัญญาได้เฉพาะ/);
+  // ใบที่ยังเปิดอยู่ ถอดได้เสมอ
+  assert.equal(serviceContractLinkError(order(), null, ok), null);
+});
+
+/* ปุ่มถอดต้องถามด่านตัวเดียวกับ API — ของเดิมมีแค่ `disabled={busy}` ⇒ ใบที่ปิดไปแล้ว
+   ยังกดได้ แล้วเด้ง 409 · เทสต์นี้จับที่ **การเรียกใช้** เพราะตรรกะอยู่ในไฟล์อื่น */
+test('การ์ดสัญญาบนหน้า SO ต้องถามด่านก่อนเปิดปุ่มถอด', () => {
+  const card = readFileSync(
+    new URL('../../components/salesPlanning/ServiceContractCard.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(card, /serviceContractLinkError\(order, null, \{ canEdit \}\)/);
+  assert.match(card, /disabled=\{busy \|\| !!unlinkGate\}/);
+});
+
+/* 🔴 สิทธิ์แก้ต้องมาจาก server — จอเคยคิดเองด้วย cap ล้วน ซึ่งไม่ได้ตอบเรื่องขอบเขต
+   ส่วน action ทุกตัวใน PATCH ตรวจ cap **และ** ขอบเขต ⇒ วันไหนสองอย่างต่างกัน
+   ปุ่มจะโผล่แล้วเด้ง 409 เงียบ ๆ (แพตเทิร์นเดียวกับ /contracts/[id]) */
+test('🔴 GET ของใบสั่งขายต้องส่ง canEdit ที่คิดขอบเขตมาแล้ว', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/sales-orders/[id]/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /canEdit: canEditSalesPlanning\(user\) && inSalesEditScope\(user, order\.deal\)/);
+  const page = readFileSync(
+    new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /const canEdit = !!order\.canEdit && canEditCap;/);
+  assert.doesNotMatch(page, /const canEdit = useCan\(/, 'จอต้องไม่คิดสิทธิ์แก้เองจาก cap ล้วน');
+});
+
+/* ── หัวใบบอกสถานะสัญญาได้โดยไม่ต้องสลับแท็บ ───────────────────────────── */
+
+test('หัวใบ: ยังไม่ผูก = บอกว่างานบริการยังเริ่มไม่ได้', () => {
+  const head = serviceContractHeadline(null);
+  assert.match(head.value, /ยังไม่ผูก/);
+  assert.equal(head.tone, 'wait');
+});
+
+/* ⚠️ สัญญาที่ยังไม่ผ่านการรับรองเป็นสีแดง ไม่ใช่เขียว — ผูกไว้แล้วแต่ยังเดินงานไม่ได้
+   คือสภาพที่ต้องเห็นชัดที่สุด (ผูกแล้วนึกว่าจบ เป็นความเข้าใจผิดที่แพงที่สุดของเส้นนี้) */
+test('หัวใบ: ผูกแล้วแต่ยังไม่มีผล = ธงแดงพร้อมบอกสถานะ', () => {
+  const head = serviceContractHeadline(signed({ status: 'awaiting_approval' }));
+  assert.equal(head.tone, 'late');
+  assert.match(head.sub, /ยังใช้เดินงานไม่ได้/);
+});
+
+/* ⚠️ สัญญาที่หมดอายุแล้วยังเป็น `signed` ⇒ สถานะไม่ได้ตอบเรื่องเวลา ต้องโชว์ช่วงคู่กัน */
+test('หัวใบ: มีผลแล้วต้องโชว์ช่วงเวลาคู่กับเลขที่เสมอ', () => {
+  const head = serviceContractHeadline(signed());
+  assert.equal(head.value, 'CT-SR-26080001-0');
+  assert.equal(head.sub, '2026-09-01 — 2027-08-31');
+  assert.equal(head.tone, 'ok');
+  // ใบที่ไม่ระบุวันสิ้นสุดต้องพูด ไม่ใช่ปล่อยว่างให้เดา
+  assert.match(serviceContractHeadline(signed({ effectiveDate: null, expiryDate: null })).sub, /ไม่ระบุ/);
 });

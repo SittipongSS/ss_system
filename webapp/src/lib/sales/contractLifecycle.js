@@ -50,7 +50,7 @@ const STEPS = [
    "กรอกข้อมูลคู่สัญญาและเงื่อนไข" ซึ่งเป็นช่องของแม่แบบที่ใบนี้ตั้งใจไม่มี
    ⚠️ ทะเบียนสัญญาวาดรางของตัวเองที่ `contractListTrack.js` — ยังไม่ได้แยกสาย ⇒ หน้า
       รายละเอียดกับทะเบียนยังเล่าคนละเรื่องอยู่ (งานต่อ ไม่ได้อยู่ในรอบนี้) */
-const EXTERNAL_STEPS = [
+export const EXTERNAL_STEPS = [
   { id: "draft", label: "ร่าง", hint: "แนบเอกสารที่ใช้แทนสัญญา", statuses: ["draft"] },
   { id: "done", label: "อนุมัติใช้แทนสัญญาแล้ว", hint: "AE Supervisor รับรองเอกสาร", statuses: ["signed"] },
 ];
