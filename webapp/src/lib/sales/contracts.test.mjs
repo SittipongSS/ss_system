@@ -860,3 +860,44 @@ test('🪤 การ์ดสัญญาบนหน้าดีลต้อง
   assert.match(card, /CONTRACT_SOURCE_LABELS\.external/,
     'ต้องใช้ทะเบียนคำกลาง ไม่ใช่พิมพ์ "เอกสารภายนอกใช้แทนสัญญา" ซ้ำในจอ');
 });
+
+/* 🪤 **ตัวเลือกตัวกรองต้องเป็นของที่หน้านี้แสดงได้จริง** — ทะเบียนคัดเหลือฉบับล่าสุด
+   ของแต่ละสาย (mig 0280) และใบสถานะ `revised` ถูกแทนด้วยฉบับที่ revisionNo สูงกว่า
+   เสมอโดยนิยาม ⇒ ถูกคัดทิ้งทุกครั้ง · เอาไปเป็นตัวเลือก = ตัวเลือกที่กดแล้วได้ศูนย์แถว
+   ตลอดกาล ซึ่งอ่านเหมือน "ไม่มีข้อมูล" ทั้งที่คือ "หน้านี้แสดงของแบบนั้นไม่ได้" */
+test('🪤 ตัวกรองสถานะบนทะเบียนต้องไม่เสนอสถานะที่หน้านี้ไม่มีวันแสดง', async () => {
+  const { CONTRACT_LIST_STATUSES, CONTRACT_STATUSES, latestContractRevisions } = await import('./contracts.js');
+  assert.ok(!CONTRACT_LIST_STATUSES.includes('revised'));
+  // ที่เหลือต้องครบ — ตัดเกินคือซ่อนของที่หาเจอได้จริง
+  assert.deepEqual(CONTRACT_LIST_STATUSES, CONTRACT_STATUSES.filter((s) => s !== 'revised'));
+
+  /* พิสูจน์ข้ออ้าง ไม่ใช่เชื่อคอมเมนต์: ใบ `revised` มีสายที่ revisionNo สูงกว่าเสมอ
+     ⇒ `latestContractRevisions` ทิ้งมันทุกครั้ง */
+  const chain = [
+    { id: 'C1', baseNumber: 'CT-1', revisionNo: 0, status: 'revised', createdAt: '2026-08-01' },
+    { id: 'C2', baseNumber: 'CT-1', revisionNo: 1, status: 'awaiting_signature', createdAt: '2026-08-02' },
+  ];
+  assert.deepEqual(latestContractRevisions(chain).map((c) => c.id), ['C2']);
+
+  const page = readFileSync(
+    new URL('../../app/sales-planning/contracts/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /options: CONTRACT_LIST_STATUSES\.map/);
+});
+
+/* 🪤 **ชนิดของไฟล์ที่อนุมัติต้องถูกด้วย ไม่ใช่แค่เป็นไฟล์ของใบนี้**
+   จอเสนอเฉพาะ `external_doc` ในโมดัลอนุมัติ แต่คำขอที่ยิงตรงส่งไฟล์ชนิดไหนก็ได้
+   ⇒ ใบกลายเป็น `signed` โดยที่ "เอกสารที่ใช้แทนสัญญา" เป็นของอย่างอื่น
+   ⚠️ ไม่ใช่เรื่องสมมุติ — ไฟล์แนบของใบ external ใบเดียวบน production เคยถูกตั้งเป็น
+      `signed_contract` มาแล้ว เพราะคำแนะนำบนการ์ดพาไปผิดทาง (แก้ที่จอไปแล้ว #1581) */
+test('🪤 อนุมัติเอกสารแทนสัญญาต้องรับเฉพาะไฟล์ชนิด external_doc', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/approve-external/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /"docType"/, 'ต้อง select docType มาด้วย ไม่งั้นเช็คอะไรไม่ได้');
+  assert.match(route, /file\.docType !== EXTERNAL_DOC_TYPE/);
+  // ใช้ค่าคงที่กลาง ไม่พิมพ์สตริงซ้ำ (พิมพ์ต่างกันเมื่อไร ด่านเงียบไปโดยไม่มีอะไรฟ้อง)
+  assert.doesNotMatch(route, /docType !== 'external_doc'/);
+});

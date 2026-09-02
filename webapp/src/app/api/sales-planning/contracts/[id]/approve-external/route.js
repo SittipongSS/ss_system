@@ -1,5 +1,6 @@
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
+import { EXTERNAL_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import {
@@ -69,10 +70,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   /* ไฟล์ต้องเป็นไฟล์แนบของสัญญาใบนี้จริง ไม่ใช่ id ไฟล์ใบอื่นที่ยิงมาตรง ๆ
      (ด่านเดียวกับ `/sign` — คนละคำถามกับ "มีไฟล์ไหม" ที่ `externalApproveError` ถาม) */
   const { data: file, error: fileError } = await supabase
-    .from('attachments').select('id, "entityType", "entityId"').eq('id', signedFileId).maybeSingle();
+    .from('attachments').select('id, "entityType", "entityId", "docType"').eq('id', signedFileId).maybeSingle();
   if (fileError) return fail(fileError.message, 500);
   if (!file || file.entityType !== 'contract' || file.entityId !== id) {
     return badRequest('ไฟล์ที่อ้างถึงไม่ใช่ไฟล์แนบของสัญญาใบนี้');
+  }
+  /* 🪤 **ชนิดของไฟล์ก็ต้องถูกด้วย** — จอเสนอเฉพาะ `external_doc` ในโมดัลอนุมัติ แต่
+     คำขอที่ยิงตรงส่งไฟล์ชนิดไหนก็ได้ที่แนบอยู่กับใบนี้ ⇒ ใบกลายเป็น `signed` โดยที่
+     "เอกสารที่ใช้แทนสัญญา" เป็นไฟล์ที่ระบบจัดว่าเป็นของอย่างอื่น
+     ⚠️ ไม่ใช่เรื่องสมมุติ — ไฟล์แนบของสัญญาภายนอกใบเดียวบน production เคยถูกตั้งเป็น
+        `signed_contract` มาแล้ว (คำแนะนำบนการ์ดพาไปผิดทาง · แก้ที่จอไปแล้วใน #1581)
+        ⇒ ปิดที่ด่านด้วย ไม่ใช่หวังว่าจอจะพาถูกทางเสมอ */
+  if (file.docType !== EXTERNAL_DOC_TYPE) {
+    return badRequest('ไฟล์ที่เลือกไม่ได้ถูกแนบเป็น “เอกสารที่ใช้แทนสัญญา” — แนบใหม่ด้วยชนิดนั้นก่อน');
   }
 
   const now = new Date();
