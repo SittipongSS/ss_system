@@ -15,10 +15,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Download, Layers, Link2, Pencil } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
@@ -31,12 +30,6 @@ import styles from "./page.module.css";
 
 /* สามกอง ไม่ใช่สอง — 27 ใน 50 ดีลของกองแรกตอนวัดจริงคือ "ยอดตรงอยู่แล้ว ต่างแค่ที่มา"
    ถ้าเหมารวมกัน คนอ่านจะนึกว่ามีตัวเลขต้องแก้ 50 ที่ ทั้งที่จริงมี 23 */
-/* ปีที่เลือกได้ในรายงาน — ปีนี้ ย้อนหลัง 2 ปี และปีหน้า (แผนผลิตมองข้ามปีเสมอ ·
-   ของจริง: ดีลที่ปิดปีนี้แต่ส่งของปี 2027 มี 8,176,500 บาท)
-   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูล */
-const THIS_YEAR = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric" }).format(new Date()));
-const YEARS = [THIS_YEAR + 1, THIS_YEAR, THIS_YEAR - 1, THIS_YEAR - 2].map(String);
-
 /* สองกอง — ต่างกันที่ "กดแล้วตัวเลขขยับมั้ย" ห้ามยุบรวม (ของจริงตอนวัด 23 vs 27)
    ⚠️ กอง "มีหลายฉบับ" ถูกถอดออกแล้ว (มติผู้ใช้ 2026-09-02 รอบสาม) — ระบบเดินตาม
       ใบยอดต่ำสุดให้เอง ไม่มีอะไรรอคนตัดสิน · ดีลพวกนั้นติดป้าย `multiple` ในแถวแทน */
@@ -60,8 +53,6 @@ export default function ForecastReviewPage() {
   const [rows, setRows] = useState([]);
   const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
   const [missingDates, setMissingDates] = useState([]);
-  const [downloading, setDownloading] = useState(false);
-  const [year, setYear] = useState(String(THIS_YEAR));
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -145,30 +136,6 @@ export default function ForecastReviewPage() {
     }
   }, [load]);
 
-  /* ⚠️ ต้องผ่าน `apiFetch` แล้วสร้าง blob เอง — เปิดแท็บใหม่ไปที่ URL ตรง ๆ ไม่ได้
-     เพราะเส้นนี้ต้องมีเซสชัน แท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง
-     (แพตเทิร์นเดียวกับปุ่มดาวน์โหลดของทะเบียนชำระ) */
-  const downloadReport = async () => {
-    setDownloading(true);
-    try {
-      const res = await apiFetch(`/api/sales-planning/forecast-report?year=${year}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("ดาวน์โหลดรายงานไม่สำเร็จ");
-      const blob = await res.blob();
-      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1]
-        || "FC-by-category.xlsx";
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url; link.download = name;
-      document.body.appendChild(link); link.click(); link.remove();
-      URL.revokeObjectURL(url);
-      setError("");
-    } catch (downloadError) {
-      setError(downloadError.message || "ดาวน์โหลดรายงานไม่สำเร็จ");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
   if (!canView) return <AccessDenied />;
 
   return (
@@ -176,16 +143,6 @@ export default function ForecastReviewPage() {
       icon={<ClipboardCheck size={22} />}
       title="ตรวจที่มาของ FC"
       subtitle="ดีลที่มีใบเสนอราคาอนุมัติแล้ว แต่ยอด FC ยังไม่ได้เดินตามใบ — กดรับทีละดีล"
-      headerRight={(
-        <div className={styles.reportBar}>
-          <Select value={year} onChange={(e) => setYear(e.target.value)} aria-label="ปีของรายงาน">
-            {YEARS.map((option) => <option key={option} value={option}>ปี {option}</option>)}
-          </Select>
-          <Button variant="ghost" size="sm" disabled={downloading} onClick={downloadReport}>
-            <Download size={14} aria-hidden="true" /> {downloading ? "กำลังสร้างไฟล์…" : "รายงาน FC รายหมวด (Excel)"}
-          </Button>
-        </div>
-      )}
       loading={loading}
       toolbar={(
         <div className={styles.tabs} role="tablist">

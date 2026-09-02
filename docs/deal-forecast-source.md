@@ -197,7 +197,12 @@ than one relationship was found"* ⇒ ทะเบียนใบเสนอร
 
 ## รายงาน FC รายหมวด (Excel) — มติผู้ใช้ 2026-09-02
 
-ดาวน์โหลดจากหัวหน้า `/sa/forecast-review` (เลือกปี) → `GET /api/sales-planning/forecast-report`
+ปุ่มอยู่บนหัว **หน้ารายการดีล** `/sa/deals` (เลือกปีได้) → `GET /api/sales-planning/forecast-report`
+
+🔒 **เฉพาะ AE Supervisor ขึ้นไป** (`canExportForecastReport` = `isSuperuser`) — ไฟล์มียอด FC
+ของทุกทีมทุกคนพร้อมชื่อลูกค้าและราคาต่อหน่วย ⇒ "ดูตัวเลขรวมบนจอได้" กับ "โหลดรายการทั้ง
+บริษัทออกไปได้" เป็นคนละสิทธิ์ (บทเรียนเดียวกับ `canExportLeadReport`)
+⚠️ ปุ่มที่ซ่อนไม่ใช่ด่าน — server ตรวจซ้ำที่ route เสมอ
 
 **สองชีต กริดรายเดือน** (เดือนเป็นคอลัมน์ ม.ค.–ธ.ค. + รวมทั้งปี):
 

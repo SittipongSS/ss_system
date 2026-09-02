@@ -2,7 +2,8 @@ import { withUser, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { canViewSalesPlanning, inSalesViewScope, monthKey } from '@/lib/salesPlanning';
 import {
-  forecastBreakdownOfDeal, forecastMonthOfDeal, monthsInRows, monthsOfYear,
+  canExportForecastReport, forecastBreakdownOfDeal, forecastMonthOfDeal,
+  monthsInRows, monthsOfYear,
 } from '@/lib/sales/forecastBreakdown';
 import { buildForecastReportBuffer, forecastReportFilename } from '@/lib/sales/forecastReportWorkbook';
 import { businessDate } from '@/lib/businessDate';
@@ -36,7 +37,11 @@ export const dynamic = 'force-dynamic';
  */
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!canViewSalesPlanning(user)) return forbidden();
+  /* ⚠️ ด่านคือ `canExportForecastReport` **ไม่ใช่ `canViewSalesPlanning`** —
+     ไฟล์นี้มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้าและราคาต่อหน่วยเป็นแถว ๆ
+     AE ที่เห็นแค่ดีลของตัวเองบนจอ ต้องไม่ได้ไฟล์ที่เห็นทั้งบริษัท
+     (มติผู้ใช้ 2026-09-02: AE Supervisor ขึ้นไป) */
+  if (!canExportForecastReport(user.role)) return forbidden();
 
   const params = new URL(req.url).searchParams;
   const rawYear = params.get('year');

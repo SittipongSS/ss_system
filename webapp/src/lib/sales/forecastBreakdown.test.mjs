@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   UNCATEGORIZED,
+  canExportForecastReport,
   allocateToLines,
   forecastBreakdownOfDeal,
   forecastMonthOfDeal,
@@ -21,6 +22,17 @@ const product = (over = {}) => ({
 const line = (over = {}) => ({
   id: 'L1', productId: 'P1', fgCode: null, description: null,
   qty: 100, unit: 'ชิ้น', unitPrice: 500, lineTotal: 50000, sortOrder: 0, ...over,
+});
+
+/* ⚠️ ไฟล์นี้มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้าและราคาต่อหน่วยเป็นแถว ๆ
+   "ดูตัวเลขรวมบนจอได้" กับ "โหลดรายการทั้งบริษัทออกไปได้" เป็นคนละสิทธิ์ */
+test('โหลดรายงาน FC ได้เฉพาะ AE Supervisor ขึ้นไป', () => {
+  for (const role of ['admin', 'ae_supervisor']) {
+    assert.equal(canExportForecastReport(role), true, role);
+  }
+  for (const role of ['ae', 'ac', 'senior_ae', 'marketing', 'rd', 'finance', 'ts_manager', '', null]) {
+    assert.equal(canExportForecastReport(role), false, String(role));
+  }
 });
 
 /* กติกาเดือนของรายงาน — ข้อเดียวที่ผู้ใช้ขอจริง ๆ จึงต้องมีเทสต์ล็อกไว้

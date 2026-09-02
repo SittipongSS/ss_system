@@ -124,12 +124,3 @@
   font-size: var(--fs-4);
   line-height: var(--lh-thai);
 }
-
-/* แถบรายงานบนหัวหน้า — ปี + ปุ่มโหลด อยู่คู่กันเสมอ เพราะไฟล์ที่โหลดมาคือของปีนั้น
-   ถ้าแยกกันคนจะกดโหลดโดยไม่ได้ดูว่าปีไหน แล้วได้ไฟล์ผิดปีโดยไม่รู้ตัว */
-.reportBar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  flex-wrap: wrap;
-}
