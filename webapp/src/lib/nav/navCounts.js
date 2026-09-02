@@ -19,11 +19,27 @@ export function requestsTodoCount(rows = [], myDepts = []) {
   return waitingOnMeRows(rows, { myDepts }).length;
 }
 
-/** เมนู "คิวคำร้อง" ของฝ่าย (RD) — ชุดเดียวกับแท็บ "รอฝ่ายตอบ" ที่ /rd/requests */
+/** เมนู "คิวคำร้อง" ของฝ่าย — ชุดเดียวกับแท็บ "รอฝ่ายตอบ" ของหน้าคิวฝ่ายนั้น */
 export function deptRequestsTodoCount(rows = [], dept) {
   if (!dept) return 0;
   return deptQueueRows(rows, { dept, tab: 'todo' }).length;
 }
+
+/* ฝ่ายที่มีหน้าคิวของตัวเอง → คีย์ตัวเลขของฝ่ายนั้น
+ *
+ * 🐞 **ที่มา (ตรวจ 2026-09-02)**: มีแต่ `rdRequests` มาตลอด · FN กับ TS มีหน้าคิว
+ *   ครบแต่ไม่มีคีย์ ⇒ ฝ่ายบัญชี **ไม่มีเลขที่ไหนเลย** เพราะ `deptsInSharedQueue`
+ *   ตัด FN ออกจากป้าย "คำร้อง" ไปแล้วตั้งแต่วันที่ FN ได้บ้านของตัวเอง (ม-ก)
+ *   ส่วน TS กลับด้าน — ใบยังถูกนับในป้ายคิวรวมทั้งที่หน้าคิวจริงอยู่คนละที่
+ *
+ * ⚠️ **ต้องมีครบทุกฝ่ายใน `DEPT_MODULE_QUEUE` เสมอ** — ฝ่ายที่ได้บ้านใหม่แล้วลืม
+ *   เติมที่นี่จะเงียบสองชั้น (หลุดจากคิวรวม + ไม่มีป้ายของตัวเอง) · เทสต์ในไฟล์
+ *   `navCounts.test.mjs` ล็อกไว้ว่าสองแผนที่นี้กับ `NAV_COUNT_KEYS` ต้องตรงกันสามทาง */
+export const DEPT_QUEUE_COUNT_KEYS = {
+  RD: 'rdRequests',
+  FN: 'financeRequests',
+  TS: 'serviceRequests',
+};
 
 /** เมนู "งานของฉัน" — งานที่ยังไม่เสร็จและฉันเป็นผู้รับผิดชอบ
  *  ชุดเดียวกับตัวเลขบนแท็บ "ต้องทำ" ที่ /sa/tasks */

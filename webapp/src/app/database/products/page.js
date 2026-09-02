@@ -3,6 +3,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import useStickyState from "@/lib/ui/useStickyState";
 import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download } from "lucide-react";
@@ -49,6 +50,8 @@ const FORMULA_KEY = "/api/master/formulas";
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
+/* ค่าตั้งต้นของตัวกรองต้องเป็น array ตัวเดิมทุกเรนเดอร์ (เหตุผลเดียวกับ EMPTY) */
+const PENDING_ONLY = ["pending"];
 
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
@@ -76,7 +79,15 @@ export default function ProductRegistry() {
   const [showForm, setShowForm] = useState(false);
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด
-  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", EMPTY);
+  /* ⭐ `?count=products` — ลิงก์จากป้ายตัวเลขบนเมนู · ป้ายนับใบที่รออนุมัติ ⇒ กดแล้ว
+     ต้องเจอเท่านั้น ไม่ใช่ทะเบียนสินค้าทั้งกองให้ไล่หาเอง (ทรงเดียวกับทะเบียนลูกค้า)
+     ⚠️ ตั้งเป็น **ค่าตั้งต้นของตัวกรองจริง** ไม่ใช่ตัวกรองซ่อน — FilterPopover ขึ้นเลข 1
+     และล้างได้จากที่เดิม · `useStickyState` คืนค่าที่จำไว้เฉพาะตอนกดย้อนกลับ ⇒ เข้าจาก
+     เมนูได้ค่านี้เสมอ ไม่ถูกตัวกรองเก่าของ session ทับ */
+  const fromNavCount = useSearchParams().get("count") === "products";
+  const [statusFilter, setStatusFilter] = useStickyState(
+    "statusFilter", fromNavCount ? PENDING_ONLY : EMPTY,
+  );
   // การขึ้นทะเบียนสรรพสามิต ('none'|'in_progress'|'approved') — มีความหมายเฉพาะ
   // หมวดสรรพสามิต: เลือกแล้วสินค้าหมวดอื่นถูกตัดออกทั้งหมด
   const [regFilter, setRegFilter] = useStickyState("regFilter", EMPTY);

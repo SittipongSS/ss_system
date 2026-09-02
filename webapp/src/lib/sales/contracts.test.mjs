@@ -93,6 +93,19 @@ test('ใบที่รอมือฉัน = ร่างหรือรอ�
   assert.equal(isContractWaitingOnMe({ status: 'draft', ownerId: 'u2' }, { userId: 'u1' }), false);
 });
 
+/* 🐞 ตรวจ 2026-09-02: เลนผู้รับรองเคยตกทั้งเลน ⇒ ขั้น "รอหัวหน้ารับรอง" ไม่โผล่ใน
+   ตัวกรอง "ที่ต้องทำ" และเมนูสัญญาไม่มีป้ายเลย ทั้งที่ใบที่ค้างตรงนั้นบล็อกงานทั้งเส้น */
+test('⭐ ขั้นรอหัวหน้ารับรองเป็นของ AE Supervisor — ไม่ใช่ของเจ้าของใบ', () => {
+  const row = { status: 'awaiting_approval', ownerId: 'u1', createdBy: 'u1' };
+  const sup = { id: 'u9', role: 'ae_supervisor' };
+  assert.equal(isContractWaitingOnMe(row, { userId: sup.id, user: sup }), true);
+  assert.equal(isContractWaitingOnMe(row, { userId: 'u1', user: { id: 'u1', role: 'ae' } }), false,
+    'เจ้าของใบกดรับรองเองไม่ได้ ⇒ ใบนี้ไม่ใช่ของค้างของเขา');
+  // admin ใช้สิทธิ์ได้ (break-glass เดียวกับปุ่ม) · คนที่ไม่ส่ง user มาต้องไม่ผ่าน
+  assert.equal(isContractWaitingOnMe(row, { user: { id: 'a1', role: 'admin' } }), true);
+  assert.equal(isContractWaitingOnMe(row, { userId: 'u9' }), false);
+});
+
 test('นับวันค้างเฉพาะใบที่รอลงนาม', () => {
   const now = new Date('2026-08-20T00:00:00Z');
   assert.equal(daysAwaitingSignature({ status: 'awaiting_signature', issuedAt: '2026-08-10T00:00:00Z' }, now), 10);

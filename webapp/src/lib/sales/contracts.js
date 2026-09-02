@@ -316,10 +316,24 @@ export function latestContractRevisions(contracts = []) {
   return [...latest.values()].sort((a, b) => revisionTime(b) - revisionTime(a));
 }
 
-// ใบที่รอมือใคร — ใช้ทั้งป้ายตัวเลขบนเมนูและตัวกรอง "ที่ต้องทำ" ในลิสต์
-export function isContractWaitingOnMe(contract, { userId } = {}) {
-  if (!contract || !userId) return false;
-  const mine = contract.ownerId === userId || contract.createdBy === userId;
+/** ใบที่รอมือใคร — ใช้ทั้งป้ายตัวเลขบนเมนูและตัวกรอง "ที่ต้องทำ" ในลิสต์
+ *
+ *  **สองเลนของใบเดียวกัน** เหมือนใบสั่งขาย:
+ *    เลนเจ้าของ   → ร่างที่ยังไม่ออกเลข · ใบที่ออกแล้วรอเก็บฉบับลงนามกลับมา
+ *    เลนผู้รับรอง → `awaiting_approval` ซึ่งรอ **AE Supervisor** เท่านั้น (mig 0323)
+ *
+ *  🐞 เดิมมีแต่เลนเจ้าของ ⇒ ขั้น "รอหัวหน้ารับรอง" ไม่เคยโผล่ในตัวกรอง "ที่ต้องทำ"
+ *     และเมนูสัญญาก็ไม่เคยมีป้ายเลย (ตรวจ 2026-09-02) · ใบที่ค้างตรงนั้นบล็อกงาน
+ *     ทั้งเส้น เพราะสัญญาต้อง `signed` ก่อนถึงจะปลดด่าน "จ่ายก่อนบริการ" ได้
+ *  ⚠️ ต้องส่ง `user` เข้ามา ไม่ใช่แค่ `userId` — เลนผู้รับรองเป็นเรื่องของ **บทบาท**
+ *     ไม่ใช่ความเป็นเจ้าของใบ (ด่านเดียวกับปุ่ม: `canApproveExternalContract`)
+ */
+export function isContractWaitingOnMe(contract, { userId = '', user = null } = {}) {
+  if (!contract) return false;
+  if (contract.status === 'awaiting_approval') return canApproveExternalContract(user);
+  const me = userId || user?.id || '';
+  if (!me) return false;
+  const mine = contract.ownerId === me || contract.createdBy === me;
   if (!mine) return false;
   return contract.status === 'draft' || contract.status === 'awaiting_signature';
 }
