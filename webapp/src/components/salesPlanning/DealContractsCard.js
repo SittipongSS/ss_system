@@ -14,6 +14,7 @@ import Button from "@/components/ui/Button";
 import { TableEmpty, TableShell } from "@/components/ui/Table";
 import ContractCreateModal from "@/components/salesPlanning/ContractCreateModal";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
+import { CONTRACT_SOURCE_LABELS, isExternalContract } from "@/lib/sales/contracts";
 import { fmtDate } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -58,7 +59,15 @@ export default function DealContractsCard({ dealId, canEdit = false, quotationId
                     {row.contractNo || "ฉบับร่าง"}
                   </Link>
                 </td>
-                <td>{contractKindBadge(row.kind)}</td>
+                <td>
+                  {contractKindBadge(row.kind)}
+                  {/* ⭐ ที่มาอยู่ใต้ชนิด ไม่ใช่คอลัมน์ของตัวเอง (ท่าเดียวกับทะเบียนสัญญา)
+                      — ใบที่ใช้ PO/อีเมลแทนสัญญา เดินคนละเส้นและมีเอกสารคนละแบบ
+                      ⇒ ไม่บอกที่มา = การ์ดนี้อ่านเหมือนทุกใบมีสัญญาจริงของเราเหมือนกันหมด */}
+                  {isExternalContract(row)
+                    ? <span className="cell-sub">{CONTRACT_SOURCE_LABELS.external}</span>
+                    : null}
+                </td>
                 <td className="mono">{fmtDate(row.contractDate)}</td>
                 <td>{contractStatusBadge(row.status)}</td>
               </tr>

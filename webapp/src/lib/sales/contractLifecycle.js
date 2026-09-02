@@ -35,7 +35,7 @@ const STATUS_DESCRIPTION = {
   cancelled: "ยกเลิกแล้ว — เหตุผลอยู่ในใบและในประวัติ",
 };
 
-const STEPS = [
+export const STEPS = [
   { id: "draft", label: "ร่าง", hint: "กรอกข้อมูลคู่สัญญาและเงื่อนไข", statuses: ["draft"] },
   { id: "sign", label: "รอลงนาม", hint: "พิมพ์ส่งลูกค้าเซ็น", statuses: ["awaiting_signature"] },
   // ⭐ ขั้นรับรองของ AE Sup (mig 0323) — ต้องเป็นหมุดของตัวเองบนราง ไม่ใช่ซ่อนอยู่ใน

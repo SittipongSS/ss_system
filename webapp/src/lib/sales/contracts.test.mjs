@@ -203,13 +203,29 @@ test('บันทึกเพิ่มเติม: ออกได้เฉพ
   assert.equal(addendumDocNo(null, 1), null);
 });
 
-test('ทะเบียนสัญญา: รางสามขั้น ร่าง → รอลงนาม → ลงนามแล้ว', async () => {
+/* 🪤 **ทะเบียนกับหน้ารายละเอียดต้องนับขั้นเท่ากัน** — ของเดิมทะเบียนยุบขั้น
+   "รอหัวหน้ารับรอง" (mig 0323) เป็นโน้ตบนหมุดสุดท้าย ⇒ ทะเบียน 3 หมุด หน้าใบ 4 หมุด
+   คนคนเดียวกันเปิดสองหน้านี้ห่างกันคลิกเดียวแล้วนับไม่ตรง · เหตุผลที่หน้ารายละเอียด
+   เขียนไว้เองใช้ได้กับทะเบียนยิ่งกว่า: ทะเบียนคือที่ที่คนกวาดตาหาว่าใบไหนค้าง */
+test('ทะเบียนสัญญา: รางสี่ขั้น ร่าง → รอลงนาม → รอหัวหน้ารับรอง → ลงนามแล้ว', async () => {
   const { contractListTrack } = await import('./contractListTrack.js');
+  const { STEPS } = await import('./contractLifecycle.js');
   const state = (row) => contractListTrack(row).steps.map((s) => s.state);
 
-  assert.deepEqual(state({ status: 'draft' }), ['now', 'todo', 'todo']);
-  assert.deepEqual(state({ status: 'awaiting_signature', contractNo: 'CT-1', issuedAt: new Date().toISOString() }), ['done', 'now', 'todo']);
-  assert.deepEqual(state({ status: 'signed', contractNo: 'CT-1', signedDate: '2026-08-20' }), ['done', 'done', 'done']);
+  assert.deepEqual(state({ status: 'draft' }), ['now', 'todo', 'todo', 'todo']);
+  assert.deepEqual(state({ status: 'awaiting_signature', contractNo: 'CT-1', issuedAt: new Date().toISOString() }), ['done', 'now', 'todo', 'todo']);
+  assert.deepEqual(state({ status: 'awaiting_approval', contractNo: 'CT-1' }), ['done', 'done', 'now', 'todo']);
+  assert.deepEqual(state({ status: 'signed', contractNo: 'CT-1', signedDate: '2026-08-20' }), ['done', 'done', 'done', 'done']);
+
+  // ขั้นที่รอคนอื่นต้องบอกว่ารอใคร ไม่ใช่หมุดเหลืองเปล่า ๆ
+  const waiting = contractListTrack({ status: 'awaiting_approval', contractNo: 'CT-1' });
+  assert.match(waiting.steps[2].note, /AE Supervisor/);
+
+  // คำบนหมุดต้องตรงกับรางของหน้ารายละเอียดทุกตัว (อยู่คนละไฟล์)
+  assert.deepEqual(
+    contractListTrack({ status: 'draft' }).steps.map((s) => s.label),
+    STEPS.map((s) => s.label),
+  );
 
   // ใบที่ตายแล้วไม่มีรางให้เดิน — หน้าเว็บโชว์เหตุผลแทน
   assert.equal(contractListTrack({ status: 'cancelled' }).closed, true);
@@ -251,10 +267,10 @@ test('🪤 ทะเบียนสัญญา: ใบ external เดินร
     'คำบนรางทะเบียนต้องตรงกับ EXTERNAL_STEPS ของหน้ารายละเอียด',
   );
 
-  // ใบที่ระบบเจนยังเดินรางสามขั้นเหมือนเดิม
-  assert.equal(contractListTrack({ status: 'draft' }).steps.length, 3);
+  // ใบที่ระบบเจนเดินรางสี่ขั้น (คนละชุดกับ external)
+  assert.equal(contractListTrack({ status: 'draft' }).steps.length, 4);
   // ใบเก่าที่ไม่มีช่อง source = ใบที่ระบบเจน
-  assert.equal(contractListTrack({ status: 'draft', source: null }).steps.length, 3);
+  assert.equal(contractListTrack({ status: 'draft', source: null }).steps.length, 4);
   // ใบที่ตายแล้วยังไม่มีรางเหมือนเดิม ไม่ว่าสายไหน
   assert.equal(contractListTrack({ status: 'cancelled', source: 'external' }).closed, true);
 });
@@ -830,4 +846,17 @@ test('🪤 การ์ดไฟล์แนบต้องแนะนำชน
   assert.match(page, /เอกสารที่ใช้แทนสัญญา”\s*— AE Supervisor จะเห็นใบนี้ในคิว/);
   // สายที่ระบบเจนต้องยังได้คำเดิม
   assert.match(page, /ฉบับที่ลงนามแล้วให้เลือกชนิด “สัญญาที่ลงนามแล้ว”/);
+});
+
+/* 🪤 **การ์ดสัญญาบนหน้าดีลเป็นจอที่สองที่วาดใบเดียวกัน** — #1573 เติม "ที่มา" ให้
+   ทะเบียนสัญญาไปแล้ว แต่การ์ดนี้ยังไม่บอก ⇒ เอกสารภายนอกที่ใช้แทนสัญญา (PO/อีเมล)
+   อ่านเหมือนสัญญาจริงของเราทุกที่ยกเว้นทะเบียน */
+test('🪤 การ์ดสัญญาบนหน้าดีลต้องบอกที่มาของใบด้วย', () => {
+  const card = readFileSync(
+    new URL('../../components/salesPlanning/DealContractsCard.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(card, /isExternalContract\(row\)/);
+  assert.match(card, /CONTRACT_SOURCE_LABELS\.external/,
+    'ต้องใช้ทะเบียนคำกลาง ไม่ใช่พิมพ์ "เอกสารภายนอกใช้แทนสัญญา" ซ้ำในจอ');
 });
