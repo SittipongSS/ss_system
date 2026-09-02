@@ -206,9 +206,22 @@ export const CONTRACT_CSS = `
   /* ชื่อเอกสารอยู่กลางหน้าเนื้อหาแทน — ซ่อนของเปลือกทิ้ง (เปลือกพิมพ์ช่องนี้เสมอ) */
   .contract .identityBlock h1, .contract .englishTitle { display: none; }
   /* ป้ายในหัวใบยาวกว่าคอลัมน์ 22mm ของเปลือก ("อ้างอิงใบเสนอราคา") ⇒ ล้นไปดันค่า
-     ให้เยื้องกันคนละแถว · กว้างพอให้ป้ายอยู่บรรทัดเดียว แล้วค่าชิดขวาตรงกันทุกแถว */
-  .contract .identityBlock dl div { grid-template-columns: 36mm minmax(0, 1fr); }
-  .contract .identityBlock dd { text-align: right; }
+     ให้เยื้องกันคนละแถว · กว้างพอให้ป้ายอยู่บรรทัดเดียว แล้วค่าชิดขวาตรงกันทุกแถว
+     🐞 **เคยตั้งตายเป็น 36mm แล้วเลขที่สัญญาตกบรรทัด** (ผู้ใช้ส่งภาพมา 2026-09-03:
+        "CT-SD-" ค้างบรรทัดบน "26090003-0" ตกลงไปบรรทัดล่าง) — เลขยาวขึ้นตอนแทรก
+        อักษรย่อชนิดสัญญา (CT-YYMMXXXX-R → CT-SD-YYMMXXXX-R) แต่คอลัมน์ป้ายยัง
+        กินที่ 36mm ทั้งที่ป้ายที่ยาวที่สุดใช้จริงแค่ 19.3mm ⇒ เหลือให้ค่า 21mm
+        ซึ่งไม่พอกับเลข 26mm
+     ⇒ ป้ายกินเท่าที่ใช้จริง (max-content) แล้วที่เหลือเป็นของค่าเสมอ
+     ⚠️ nowrap ทั้งสองฝั่ง — เลขที่เอกสารที่ถูกตัดกลางคืออ่านผิดได้ (คนละใบ) */
+  /* ⚠️ กริดต้องอยู่ที่ dl ไม่ใช่รายแถว — รายแถวต่างคนต่างวัด ป้ายจะกว้างไม่เท่ากัน
+     แล้วขอบขวาของป้ายเป็นขั้นบันได · display: contents ยกให้ dt/dd เป็นลูกของ dl ตรง ๆ
+     ⇒ คอลัมน์ป้ายเป็นตัวเดียวกันทุกแถว กว้างเท่าป้ายที่ยาวที่สุด */
+  .contract .identityBlock dl { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+    gap: .8mm 2mm; }
+  .contract .identityBlock dl div { display: contents; }
+  .contract .identityBlock dt { white-space: nowrap; }
+  .contract .identityBlock dd { text-align: right; white-space: nowrap; }
   /* เลขที่สัญญา = ตัวชี้ใบนี้ ⇒ ใช้สี accent ให้กวาดตาเจอก่อนอย่างอื่นบนหัวใบ
      (แถวแรกเสมอ — ลำดับแถวประกาศอยู่ที่ rows ของ documentHeader ด้านล่าง) */
   .contract .identityBlock dl div:first-child dd { color: var(--doc-accent); }
@@ -218,7 +231,10 @@ export const CONTRACT_CSS = `
   /* ฝั่งขวาเหลือแค่ 3 แถวสั้น ⇒ คืนความกว้างให้บล็อกบริษัท ที่อยู่จะได้ไม่ตกบรรทัด
      เหลือ "10160" ห้อยอยู่บรรทัดเดียว (เปลือกตั้ง 1.35fr / 72mm ไว้ให้เอกสารที่หัวใบ
      ฝั่งขวามีหลายแถว เช่น ใบเสนอราคา) */
-  .contract .documentHeader { grid-template-columns: minmax(0, 1.55fr) minmax(62mm, .8fr); }
+  /* ⚠️ 66mm ไม่ใช่ 62mm — เลขที่สัญญาทรงใหม่ (มีอักษรย่อชนิด) ยาว 26mm และเลขที่
+     บันทึกเพิ่มเติมยาวกว่านั้นอีก (ต่อท้าย -A1) · ฝั่งซ้ายยังเหลือที่: ที่อยู่บริษัทใช้ 79.6mm
+     จากช่อง 100mm ⇒ ยืมมา 4mm แล้วที่อยู่ยังจบบรรทัดเดียวเหมือนเดิม */
+  .contract .documentHeader { grid-template-columns: minmax(0, 1.5fr) minmax(66mm, .85fr); }
   .contract .brandBlock p { line-height: 1.6; }
 
   .contract .identityBlock { display: flex; flex-direction: column; }
