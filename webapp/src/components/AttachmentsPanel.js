@@ -28,6 +28,7 @@ import {
 import GoogleDocViewer from "@/components/GoogleDocViewer";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { googleDocKindLabel, googleDocPreviewUrl, isGoogleDoc } from "@/lib/master/googleDocView";
+import { attachmentHref } from "@/lib/master/attachmentStorage";
 import Modal from "@/components/Modal";
 import {
   ATTACHMENT_TYPES,
@@ -337,7 +338,8 @@ export default function AttachmentsPanel({
 
   // ไฟล์ Drive (private) เปิดผ่าน proxy ที่เช็กสิทธิ์ + stream; ไฟล์เก่าบน Supabase
   // (driveFileId ว่าง) ใช้ public URL ตรงเหมือนเดิม.
-  const fileHref = (it) => (it.driveFileId ? `/api/master/attachments/${it.id}/file` : it.fileUrl);
+  // กติกาอยู่ที่ `attachmentStorage` ที่เดียว — หน้าสัญญาเปิดไฟล์เองด้วยตัวเดียวกันนี้
+  const fileHref = (it) => attachmentHref(it);
 
   const FileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">

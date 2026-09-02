@@ -25,6 +25,7 @@ import {
   showSignedApprove,
   signedApproveError,
 } from './contracts';
+import { buildContractLifecycle } from './contractLifecycle';
 
 const approvedQuote = { id: 'Q1', approvalStatus: 'approved', status: 'sent' };
 
@@ -373,6 +374,64 @@ test('🪤 ใบ external ไม่มีขั้นออกสัญญา/�
   // ใบปกติยังเดินเส้นเดิมครบ
   assert.equal(canIssueContract({ status: 'draft' }), true);
   assert.equal(canSignContract({ status: 'awaiting_signature' }), true);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   🔴 ใบ external ต้องไม่มีเอกสารที่ระบบเจนออกมาได้เลย
+   เจอบนโค้ดจริง 2026-09-02: ปุ่มพิมพ์บนการ์ดจัดการไม่มี `visible` และ route `/document`
+   ไม่รู้จักคำว่า `source` ⇒ ใบ external ชนิดที่ *มีแม่แบบ* (`scent_design`) เรนเดอร์
+   "สัญญา" ที่ระบบแต่งเองครบทุกช่องออกมา แล้วเขียนกลับลง `issuedHtml` ถาวร
+   (ใบ external ได้ `contractNo` จาก RPC ตอนอนุมัติ ⇒ ผ่านเงื่อนไขเก็บเนื้อ)
+   ตรงข้ามกับเหตุผลที่ mig 0322 มีอยู่: "ไม่ต้องกุสัญญาปลอมขึ้นมาในระบบ"
+   ═══════════════════════════════════════════════════════════════════════ */
+test('🔴 route พิมพ์เอกสารต้องปฏิเสธใบ external ก่อนถามเรื่องแม่แบบ', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/document/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /isExternalContract\(contract\)/, 'ต้องถามที่มาของใบ');
+  /* 🪤 **ลำดับสำคัญ** — ถ้าด่านแม่แบบมาก่อน ใบ external ชนิด service/manufacturing จะได้
+     ข้อความผิดทาง ("ส่งต้นฉบับให้ผู้ดูแลเพิ่มก่อน") ทั้งที่สายนี้ไม่ต้องใช้แม่แบบเลย */
+  assert.ok(
+    route.indexOf('isExternalContract(contract)') < route.indexOf('hasContractTemplate(contract.kind)'),
+    'ด่าน external ต้องอยู่ก่อนด่านแม่แบบ',
+  );
+});
+
+/* 🪤 ด่านที่เทสต์ตรรกะเดิมจับไม่ได้ — `canIssueContract(ext())` เป็น false อยู่แล้ว
+   แต่ปุ่มยังโผล่ เพราะ `visible` ของ transition มองแค่ `canEdit`
+   ⇒ ไม่ใช่แค่ปุ่มเทาเกินมา: `issue` ถือ `slot: "primary"` และ transition ถูกจัดก่อน
+     extraActions ⇒ มันแย่งช่องปุ่มหลักไปจาก "อนุมัติเอกสารแทนสัญญา" แล้วพิมพ์เหตุผลผิด
+     ("ออกได้เฉพาะใบที่ยังเป็นร่าง") เป็นข้อความเด่นที่สุดบนการ์ด */
+test('🪤 การ์ดจัดการต้องไม่โชว์ปุ่ม "ออกสัญญา" บนใบ external', () => {
+  const lifecycle = buildContractLifecycle({ canEdit: true });
+  const ids = (record) => lifecycle.available(record, AE_SUP).map((entry) => entry.id);
+
+  assert.ok(!ids(ext()).includes('issue'), 'ใบ external ต้องไม่มีปุ่มออกสัญญา');
+  assert.ok(ids({ status: 'draft', source: 'generated' }).includes('issue'), 'ใบที่ระบบเจนยังต้องมี');
+  // ยกเลิกร่างยังต้องทำได้ทั้งสองสาย — ซ่อนเกินคือคนละบั๊กที่แย่พอกัน
+  assert.ok(ids(ext()).includes('cancel'), 'ร่าง external ยังต้องยกเลิกได้');
+});
+
+/* คนไม่มีสิทธิ์แก้ยังต้องไม่เห็นปุ่มไหนเลย — เงื่อนไข external ต้อง **เพิ่ม** ไม่ใช่แทนที่ */
+test('ไม่มีสิทธิ์แก้ = ไม่มีปุ่มออกสัญญาทั้งสองสาย', () => {
+  const locked = buildContractLifecycle({ canEdit: false });
+  for (const record of [ext(), { status: 'draft', source: 'generated' }]) {
+    assert.ok(!locked.available(record, AE_SUP).map((e) => e.id).includes('issue'));
+  }
+});
+
+/* 🔴 ต้นตอของเอกสารปลอม — `fields` ของแม่แบบถูกเติมให้ใบ external ตั้งแต่วันสร้าง
+   เพราะ route เรียก `contractFieldDefaults(body.kind, ...)` โดยไม่ดู `source`
+   ⇒ ใบ external ชนิด `scent_design` มีชื่อ/เลขทะเบียน/ที่อยู่ + ค่าตั้งต้นครบทุกช่อง
+   ⚠️ ทางแก้ **ไม่ใช่** ห้าม external เลือกชนิดที่มีแม่แบบ — PO ครอบงานออกแบบกลิ่นได้จริง */
+test('🔴 route สร้างต้องไม่เติม fields ของแม่แบบให้ใบ external', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/route.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(route, /fields: external\s*\n\s*\? \{\}/, 'external ต้องได้ fields ว่าง');
+  assert.match(route, /templateKey: external \? null :/, 'ใบ external ไม่ได้อ้างแม่แบบใบไหน');
 });
 
 test('ใบเก่าที่ไม่มีช่อง source = ใบที่ระบบเจน ไม่ใช่ external', () => {

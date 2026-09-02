@@ -28,6 +28,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
+  CONTRACT_SOURCE_LABELS,
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
   externalApproveError, externalDocKindLabel, isExternalContract, showExternalApprove,
   showSignedApprove, signedApproveError,
@@ -35,6 +36,7 @@ import {
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
 import styles from "./page.module.css";
+import { attachmentHref } from "@/lib/master/attachmentStorage";
 import { apiFetch } from "@/lib/apiFetch";
 
 export default function ContractDetailPage() {
@@ -69,6 +71,7 @@ export default function ContractDetailPage() {
   const [apExpiry, setApExpiry] = useState("");
   const [apDocDate, setApDocDate] = useState("");
   const [externalFileId, setExternalFileId] = useState("");
+  const [externalFileHref, setExternalFileHref] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +92,9 @@ export default function ContractDetailPage() {
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
   const canEdit = !!contract?.canEdit && canEditCap;
+  /* ที่มาของใบตัดสินหลายอย่างบนหน้านี้ (ปุ่มพิมพ์ · การ์ดข้อมูล · ขั้นที่ใบเดินผ่าน) —
+     อ่านครั้งเดียวจากตัวตัดสินกลาง ไม่ใช่เทียบ `contract.source === "external"` กระจาย */
+  const external = isExternalContract(contract);
   const templateFields = useMemo(() => contractTemplateFields(contract?.kind), [contract?.kind]);
   const lifecycle = useMemo(() => buildContractLifecycle({ canEdit }), [canEdit]);
 
@@ -214,9 +220,19 @@ export default function ContractDetailPage() {
     // เอกสารที่ใช้แทนสัญญาเป็นคีย์คนละตัว — ใบ external ไม่มี "สัญญาที่ลงนามแล้ว"
     const external = (items || []).find((item) => item.docType === "external_doc");
     setExternalFileId(external?.id || "");
+    /* ปุ่มบนการ์ดจัดการของใบ external พาไปที่ **ไฟล์ตัวจริง** ⇒ ต้องรู้ที่อยู่ ไม่ใช่แค่ id
+       · ใช้ตัวหาที่อยู่ตัวเดียวกับที่การ์ดไฟล์ใช้ ไม่ประกอบ URL เอง */
+    setExternalFileHref(external ? attachmentHref(external) : "");
   }, []);
 
+  /* ⭐ **ปุ่มเดียว สองความหมาย ตามที่มาของใบ** — ใบที่ระบบเจนมีเอกสารของตัวเองให้พิมพ์
+     ส่วนใบ external เอกสารคือไฟล์ที่แนบไว้ · route `/document` ปฏิเสธใบ external แล้ว
+     (409) ⇒ ถ้าไม่แยกตรงนี้ ปุ่มจะเปิดแท็บใหม่มาโชว์ JSON error ให้คนอ่าน */
   const openDocument = () => {
+    if (external) {
+      if (externalFileHref) window.open(externalFileHref, "_blank", "noopener");
+      return;
+    }
     window.open(`/api/sales-planning/contracts/${id}/document`, "_blank", "noopener");
   };
 
@@ -296,12 +312,21 @@ export default function ContractDetailPage() {
               busy={busy}
               onTransition={onTransition}
               extraActions={[
+                /* 🔴 ใบ external เคยได้ปุ่มพิมพ์ตัวเดียวกับใบที่ระบบเจน — ชนิดที่มีแม่แบบจึง
+                   เปิดออกมาเป็น "สัญญา" ที่ระบบแต่งเองครบทุกช่อง ส่วนชนิดที่ไม่มีแม่แบบได้
+                   409 ที่แนะนำผิดทาง ("ส่งต้นฉบับให้ผู้ดูแลเพิ่ม") ทั้งที่สายนี้ไม่ใช้แม่แบบ
+                   ⇒ ปุ่มเดียวกันแต่พาไปคนละที่ตามที่มา · **ไม่ซ่อน** เมื่อยังไม่มีไฟล์ —
+                     คนกดปุ่มนี้อยากเห็นเอกสาร ต้องบอกว่าทำไมยังไม่มีให้ดู (กติกา GatedAction) */
                 {
                   id: "print",
-                  label: contract.contractNo ? "เปิดเอกสารเพื่อพิมพ์" : "ดูตัวอย่างฉบับร่าง",
+                  label: external
+                    ? "เปิดเอกสารแทนสัญญา"
+                    : (contract.contractNo ? "เปิดเอกสารเพื่อพิมพ์" : "ดูตัวอย่างฉบับร่าง"),
                   kind: "print",
                   icon: Printer,
                   slot: "secondary",
+                  disabled: external && !externalFileHref,
+                  disabledReason: "ยังไม่ได้แนบเอกสารที่ใช้แทนสัญญา — แนบที่การ์ดไฟล์ของสัญญาก่อน",
                   onClick: openDocument,
                 },
                 {
@@ -469,7 +494,19 @@ export default function ContractDetailPage() {
           ) : (
             <dl className={styles.factList}>
               <div><dt>วันที่สัญญา</dt><dd>{fmtDate(contract.contractDate)}</dd></div>
-              {templateFields.map((field) => (
+              {/* ⭐ ใบ external ไม่มีช่องของแม่แบบให้แสดง (และไม่ควรมี — ดู route สร้าง)
+                  ⇒ การ์ดนี้ต้องตอบแทนว่า *เอกสารไหนคือตัวสัญญา* ไม่ใช่เหลือแค่วันที่ใบเดียว
+                  ค่าพวกนี้ถูกกรอกตอนสร้าง/ตอนอนุมัติอยู่แล้ว แต่ก่อนหน้านี้ไม่มีที่แสดงเลย
+                  ทั้งหน้า — โผล่ที่เดียวคือหัวโมดัลตอนกดอนุมัติซึ่งปิดไปแล้วก็หายไปด้วย */}
+              {external ? (
+                <>
+                  <div><dt>ที่มาของใบ</dt><dd>{CONTRACT_SOURCE_LABELS.external}</dd></div>
+                  <div><dt>ชนิดเอกสาร</dt><dd>{externalDocKindLabel(contract.externalDocKind)}</dd></div>
+                  <div><dt>เลขที่อ้างอิงของเอกสาร</dt><dd>{naText(contract.externalRef)}</dd></div>
+                  <div><dt>ผู้อนุมัติให้ใช้แทนสัญญา</dt><dd>{naText(contract.approvedByName)}</dd></div>
+                  <div><dt>วันที่อนุมัติ</dt><dd>{contract.approvedAt ? fmtDate(contract.approvedAt) : NA}</dd></div>
+                </>
+              ) : templateFields.map((field) => (
                 <div key={field.key}>
                   <dt>{field.label}</dt>
                   <dd>{naText(contract.fields?.[field.key])}</dd>

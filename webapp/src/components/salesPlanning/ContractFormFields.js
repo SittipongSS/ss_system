@@ -65,16 +65,26 @@ export default function ContractFormFields({
     </label>
   );
 
+  /* ⚠️ **หัวโซนที่ไม่มีช่องอยู่ข้างใต้ต้องไม่ขึ้น** — ใบที่ใช้เอกสารภายนอกแทนสัญญาไม่มี
+     ช่องของแม่แบบเลย (ตั้งใจ: เนื้อของมันคือไฟล์ที่แนบ ไม่ใช่ข้อความที่ระบบเติม) ⇒ ของเดิม
+     ได้หัวโซนเปล่าสองอันคร่อม "วันที่สัญญา" ใบเดียว ซึ่งอ่านเหมือนฟอร์มโหลดไม่ครบ
+     · ชนิดที่ยังไม่มีต้นฉบับ (สัญญาบริการ/จ้างผลิต) ก็ตกอยู่ในสภาพเดียวกัน */
   return (
     <div className="form-grid">
-      <FormZone title="คู่สัญญา" className="col-span-2" note="ชื่อและที่อยู่ที่จะพิมพ์ลงบนสัญญา" />
+      <FormZone
+        title="คู่สัญญา"
+        className="col-span-2"
+        note={party.length ? "ชื่อและที่อยู่ที่จะพิมพ์ลงบนสัญญา" : "วันที่ที่ใช้อ้างถึงใบนี้"}
+      />
       <label className="form-field">
         <span className="form-field-label">วันที่สัญญา <span className="required-mark">*</span></span>
         <DateInput value={contractDate || ""} disabled={disabled} onChange={onContractDate} />
       </label>
       {party.map(control)}
 
-      <FormZone title="เงื่อนไขตามสัญญา" className="col-span-2" note="ตัวเลขที่จะถูกเติมลงในข้อสัญญา" />
+      {terms.length > 0 && (
+        <FormZone title="เงื่อนไขตามสัญญา" className="col-span-2" note="ตัวเลขที่จะถูกเติมลงในข้อสัญญา" />
+      )}
       {terms.map(control)}
     </div>
   );

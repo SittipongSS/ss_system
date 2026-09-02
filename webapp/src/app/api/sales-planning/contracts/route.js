@@ -148,8 +148,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ชื่อลูกค้าบนสัญญา = สำเนา ณ วันที่ทำ ไม่ซิงก์ตามทะเบียนภายหลัง
     customerName: customer?.name || quotation.customerName || deal.customerName || null,
     contractDate: body.contractDate || businessDate(),
-    fields: contractFieldDefaults(body.kind, { customer: contractCustomer, quotation, current: body.fields || {} }),
-    templateKey: body.kind,
+    /* 🔴 **ใบ external ไม่กิน `fields` ของแม่แบบ** — ช่องพวกนี้คือ *ช่องเติมของเอกสารที่
+       ระบบเจน* ไม่ใช่ข้อมูลของสัญญา · ของเดิมเรียกโดยไม่ดู `source` ⇒ ใบ external ชนิด
+       `scent_design` ได้ค่าชื่อ/เลขทะเบียน/ที่อยู่ + ค่าตั้งต้นครบทุกช่องตั้งแต่วันสร้าง
+       แล้วเส้นพิมพ์ก็เรนเดอร์ "สัญญา" ที่ดูสมบูรณ์ออกมาโดยไม่มีใครตกลงด้วยสักบรรทัด
+       · `templateKey` ก็ต้องว่าง — ใบนี้ไม่ได้อ้างแม่แบบใบไหน เอกสารของมันคือไฟล์ที่แนบ
+       ⚠️ **ไม่ได้ปิดไม่ให้ external เลือกชนิดที่มีแม่แบบ** โดยเจตนา — PO ของลูกค้าครอบงาน
+          ออกแบบกลิ่นได้จริง · ชนิดบอกว่า *สัญญาครอบงานอะไร* ไม่ได้บอกว่าเนื้อมาจากไหน */
+    fields: external
+      ? {}
+      : contractFieldDefaults(body.kind, { customer: contractCustomer, quotation, current: body.fields || {} }),
+    templateKey: external ? null : body.kind,
     team: deal.team || null,
     ownerId: deal.ownerId || user.id || null,
     ownerName: deal.ownerName || user.name || null,
