@@ -402,7 +402,16 @@ export const canApproveExternalContract = (user) =>
  *   ตอบไม่ได้ว่าปลดถึงเมื่อไร
  * ⭐ **บังคับไฟล์แนบ** — "เอกสารภายนอกใช้แทนสัญญา" โดยไม่มีเอกสารแนบ คือคำพูดลอย ๆ
  */
-export function externalApproveError(contract, user, payload = {}) {
+/* 🔴 **ด่านของ "เปิดขั้น" แยกจากด่านของ "กดยืนยัน"** (แก้ 2026-09-02)
+   🐞 ของเดิมมีด่านเดียว แล้วปุ่มบนการ์ดจัดการเอาด่านนั้นมาปิดตัวเอง ⇒ **เดดล็อก**:
+      ปุ่มถูกปิดเพราะ "ยังไม่ระบุวันที่เริ่มมีผล" แต่ช่องกรอกวันอยู่ใน **โมดัลที่ปุ่มนั้น
+      เป็นคนเปิด** ⇒ AE Supervisor กดอนุมัติเอกสารแทนสัญญาไม่ได้เลยสักใบ ตั้งแต่ #1529
+      (ยืนยันกับฐาน: ไม่มีใบ external ที่ status = 'signed' สักใบ)
+   ⇒ ตัวนี้ตอบ "เปิดฟอร์มได้ไหม" — เฉพาะสิ่งที่รู้ได้ **ก่อน** กรอกฟอร์ม
+     (สิทธิ์ · ที่มาของใบ · สถานะ · ชนิดเอกสาร · มีไฟล์แนบแล้วหรือยัง)
+   ⚠️ ต้องเป็น **คำนำหน้าแท้** ของด่านกดยืนยัน — `externalApproveError` เรียกตัวนี้ก่อน
+      เสมอ ⇒ ปุ่มเปิดได้ = ผ่านด่านชั้นแรกครบแล้วจริง ไม่ใช่ด่านคนละชุดที่ขัดกันได้ */
+export function externalApproveOpenError(contract, user, payload = {}) {
   if (!contract) return 'ไม่พบสัญญา';
   if (!canApproveExternalContract(user)) {
     return 'อนุมัติเอกสารแทนสัญญาได้เฉพาะ AE Supervisor';
@@ -414,7 +423,14 @@ export function externalApproveError(contract, user, payload = {}) {
   if (contract.status === 'cancelled') return 'ใบนี้ถูกยกเลิกแล้ว';
   if (contract.status !== 'draft') return 'อนุมัติได้เฉพาะใบที่ยังเป็นร่าง';
   if (!contract.externalDocKind) return 'ยังไม่ได้ระบุว่าใช้เอกสารชนิดไหนแทนสัญญา';
-  if (!payload.signedFileId) return 'แนบไฟล์เอกสารก่อนอนุมัติ';
+  if (!payload.signedFileId) return 'แนบไฟล์เอกสารที่ใช้แทนสัญญาก่อน แล้วจึงกดอนุมัติได้';
+  return null;
+}
+
+export function externalApproveError(contract, user, payload = {}) {
+  const openError = externalApproveOpenError(contract, user, payload);
+  if (openError) return openError;
+  /* ── ต่อจากนี้คือค่าที่กรอกใน **โมดัล** — ปุ่มที่เปิดโมดัลห้ามเอาด่านชุดนี้มาปิดตัวเอง ── */
   if (!payload.effectiveDate) return 'ระบุวันที่เริ่มมีผลก่อนอนุมัติ';
   if (!payload.expiryDate) return 'ระบุวันที่สิ้นสุดก่อนอนุมัติ';
   if (payload.effectiveDate > payload.expiryDate) {

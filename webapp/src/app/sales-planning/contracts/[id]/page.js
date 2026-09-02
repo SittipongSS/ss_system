@@ -30,12 +30,14 @@ import { notifyToast } from "@/lib/feedback";
 import {
   CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
   canDeleteContract, canSignContract, contractKindLabel, daysAwaitingSignature, isContractEditable,
-  externalApproveError, externalDocKindLabel, isExternalContract, showExternalApprove,
+  externalApproveError, externalApproveOpenError, externalDocKindLabel, isExternalContract,
+  showExternalApprove,
   showSignedApprove, signedApproveError,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
 import styles from "./page.module.css";
+import { ATTACHMENT_TYPES, EXTERNAL_DOC_TYPE, SIGNED_CONTRACT_DOC_TYPE } from "@/lib/master/attachmentTypes";
 import { attachmentHref } from "@/lib/master/attachmentStorage";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -199,8 +201,14 @@ export default function ContractDetailPage() {
     expiryDate: apExpiry,
     signedDate: apDocDate || apEffective,
   };
-  /* ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ */
+  /* ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ (ใช้กับปุ่ม *ยืนยัน* ในโมดัล) */
   const approveGate = contract ? externalApproveError(contract, user, approvePayload) : "ไม่พบสัญญา";
+  /* 🔴 **ปุ่มบนการ์ดจัดการต้องใช้ด่านชั้น "เปิดฟอร์ม" เท่านั้น** — ของเดิมใช้ `approveGate`
+     ซึ่งอ่านวันที่จาก state ของโมดัล ⇒ ปุ่มถูกปิดด้วยเหตุ "ยังไม่ระบุวันที่เริ่มมีผล"
+     แต่ช่องกรอกวันอยู่ในโมดัลที่ปุ่มนั้นเป็นคนเปิด = **เดดล็อก** กดอนุมัติไม่ได้เลยสักใบ */
+  const approveOpenGate = contract
+    ? externalApproveOpenError(contract, user, { signedFileId: externalFileId })
+    : "ไม่พบสัญญา";
 
   /* ── AE Sup รับรองการลงนาม (mig 0323 · มติผู้ใช้ 2026-08-31) ────────────────
      ด่านตัวเดียวกับที่ API ใช้ปฏิเสธ — ปุ่มกับหลังบ้านขัดกันไม่ได้ */
@@ -237,10 +245,10 @@ export default function ContractDetailPage() {
      ใน effect ที่มี dependency เป็นตัวฟังก์ชัน ถ้าสร้างใหม่ทุกเรนเดอร์ effect จะยิงซ้ำ
      ทุกรอบ (รอดมาได้เพราะ setState ค่าเดิมไม่ทำให้เรนเดอร์ใหม่ — พึ่งความบังเอิญนั้นไม่ได้) */
   const handleAttachments = useCallback((items) => {
-    const signed = (items || []).find((item) => item.docType === "signed_contract");
+    const signed = (items || []).find((item) => item.docType === SIGNED_CONTRACT_DOC_TYPE);
     setSignFileId(signed?.id || "");
     // เอกสารที่ใช้แทนสัญญาเป็นคีย์คนละตัว — ใบ external ไม่มี "สัญญาที่ลงนามแล้ว"
-    const externalDocs = (items || []).filter((item) => item.docType === "external_doc");
+    const externalDocs = (items || []).filter((item) => item.docType === EXTERNAL_DOC_TYPE);
     setExternalFileId(externalDocs[0]?.id || "");
     /* ปุ่มบนการ์ดจัดการของใบ external พาไปที่ **ไฟล์ตัวจริง** ⇒ ต้องรู้ที่อยู่ ไม่ใช่แค่ id
        · ใช้ตัวหาที่อยู่ตัวเดียวกับที่การ์ดไฟล์ใช้ ไม่ประกอบ URL เอง
@@ -416,8 +424,8 @@ export default function ContractDetailPage() {
                   icon: ShieldCheck,
                   slot: "primary",
                   visible: showExternalApprove(contract, user),
-                  disabled: !!approveGate,
-                  disabledReason: approveGate || undefined,
+                  disabled: !!approveOpenGate,
+                  disabledReason: approveOpenGate || undefined,
                   onClick: () => { setApDocDate(""); setApproveOpen(true); },
                 },
                 {
@@ -589,6 +597,14 @@ export default function ContractDetailPage() {
             note={external
               ? "เอกสารที่ลูกค้าส่งมา (PO · อีเมล · สัญญากระดาษ) ให้เลือกชนิด “เอกสารที่ใช้แทนสัญญา” — AE Supervisor จะเห็นใบนี้ในคิวเมื่อแนบชนิดนี้แล้ว"
               : "ฉบับที่ลงนามแล้วให้เลือกชนิด “สัญญาที่ลงนามแล้ว”"}
+            /* 🔴 **แคบตัวเลือกด้วย ไม่ใช่แก้แต่คำแนะนำ** — #1581 แก้ข้อความอย่างเดียว
+               แล้วปล่อยชนิด "สัญญาที่ลงนามแล้ว" ให้เลือกได้ต่อบนใบ external ทั้งที่ใบแบบนี้
+               **ไม่มีสัญญาของระบบให้ลงนาม** ⇒ คำแนะนำที่ถูกกับตัวเลือกที่ผิดอยู่ในการ์ด
+               เดียวกัน · ตัวเลือกที่ไม่ควรมีคือของที่คนจะเลือกจนได้ (เกิดมาแล้วบน production)
+               ⚠️ ปล่อย `other` ไว้ — ใบ external ก็มีเอกสารประกอบอื่นได้ตามปกติ */
+            docTypes={external
+              ? ATTACHMENT_TYPES.contract.filter((t) => t.key !== SIGNED_CONTRACT_DOC_TYPE)
+              : undefined}
             onItemsChange={handleAttachments}
           />
         </DetailCard>
@@ -640,7 +656,7 @@ export default function ContractDetailPage() {
               entityId={contract.id}
               canEdit={canEdit}
               title="แนบเอกสารที่ใช้แทนสัญญา"
-              docTypes={[{ key: "external_doc", label: "เอกสารที่ใช้แทนสัญญา" }]}
+              docTypes={[{ key: EXTERNAL_DOC_TYPE, label: "เอกสารที่ใช้แทนสัญญา" }]}
               cardColumns={1}
               onItemsChange={handleAttachments}
             />
@@ -700,7 +716,7 @@ export default function ContractDetailPage() {
               entityId={contract.id}
               canEdit={canEdit}
               title="แนบฉบับที่ลูกค้าเซ็นกลับมา"
-              docTypes={[{ key: "signed_contract", label: "สัญญาที่ลงนามแล้ว" }]}
+              docTypes={[{ key: SIGNED_CONTRACT_DOC_TYPE, label: "สัญญาที่ลงนามแล้ว" }]}
               cardColumns={1}
               onItemsChange={handleAttachments}
             />
