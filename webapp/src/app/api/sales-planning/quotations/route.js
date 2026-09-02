@@ -27,6 +27,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     'subtotal', 'vatRate', 'vatAmount', 'totalAmount',
     'discountType', 'discountValue', 'discountAmount',
     'baseNumber', 'revisionNo', 'revisedFromId', 'docLanguage',
+    /* เอกสารอ้างอิง (mig 0267) — ข้อความอิสระที่คนพิมพ์เลข PO ของลูกค้าลงไป
+       ทะเบียนใช้ **ค้นอย่างเดียว** ไม่ได้โชว์เป็นคอลัมน์ · ฝ่ายบัญชีถามด้วยเลขนี้ */
+    'referenceNote',
     'createdBy', 'createdByName', 'createdAt', 'updatedAt',
     'approvalStatus', 'approvalRequestedBy', 'approvalRequestedByName', 'approvalRequestedAt',
     'approvedBy', 'approvedByName', 'approvedAt',

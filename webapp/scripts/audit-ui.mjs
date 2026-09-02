@@ -992,6 +992,19 @@ function scanA11y(rel, lined) {
   }
 }
 
+/* ⭐ **วงโฟกัสห้ามใช้ `--accent` — ต้องเป็น `--accent-ink`** (2026-09-02)
+   วัดคอนทราสต์บนพื้นจริง ธีมสว่าง (`--accent` #c9794d · `--accent-ink` #9c5228):
+     บน --bg #efe9dd      accent **2.75:1 ตก §1.4.11 (ต้อง 3:1)** · accent-ink 4.76:1
+     บน --panel-2 #f7f4ee accent 3.02:1 (ผ่านเฉียด 0.02) · accent-ink 5.24:1
+   17 จาก 26 กฎใช้ `outline-offset` บวก ⇒ วงไปนั่งบน **พื้นแม่** ซึ่งมักเป็น --bg
+   ธีมมืดสองโทเคนเป็น #d38a61 ตัวเดียวกัน ⇒ เปลี่ยนแล้วธีมมืดไม่ขยับเลยแม้แต่พิกเซลเดียว
+
+   ตรวจ 2026-09-02: กฎ :focus-visible ทั้งไฟล์มี 36 ตัว · ใช้ --accent อยู่ **26 ตัว**
+   ยกเข้า --accent-ink ครบแล้วในคอมมิตเดียวกัน ⇒ ตั้ง hard-zero ได้ทันที
+   🪤 ไม่นับ `outline` ที่ไม่ได้อยู่ในบล็อก :focus-visible — `[data-file-intake]`
+   ใช้ `outline: 2px dashed var(--accent)` เป็นกรอบตอน **ลากไฟล์มาวาง** ซึ่งเป็น
+   สถานะชั่วคราวระหว่างที่ผู้ใช้กำลังลากอยู่ คนละเรื่องกับวงโฟกัสของคีย์บอร์ด */
+const focusRingViolations = [];
 const rawColorViolations = [];
 const typeScaleViolations = [];
 let rawTailwindTypeCount = 0;
@@ -1958,7 +1971,22 @@ for (const file of runtimeJsFiles) {
     legacyCompatibilityImports.push(rel);
   }
 }
+/* วงโฟกัสทั้งไฟล์ต้องใช้ --accent-ink (ดู focusRingViolations) */
+{
+  const globals = fs.readFileSync(path.join(srcRoot, "app", "globals.css"), "utf8");
+  const lines = globals.split(/\r?\n/);
+  for (const match of globals.matchAll(/([^{}\n][^{}]*?):focus-visible([^{}]*?)\{([^}]*)\}/g)) {
+    if (!/outline:[^;]*var\(--accent\)(?!-)/.test(match[3])) continue;
+    const line = globals.slice(0, match.index).split("\n").length;
+    const selector = (lines[line - 1] || match[1]).trim().slice(0, 60);
+    focusRingViolations.push(`src/app/globals.css:${line} ${selector} → var(--accent-ink)`);
+  }
+}
+
 const failures = [
+  ...focusRingViolations.map(
+    (item) => `วงโฟกัสใช้ var(--accent) ซึ่งได้ 2.75:1 บนพื้นหน้า ตก WCAG 1.4.11: ${item}`,
+  ),
   ...(shellPages.length !== visualPageFiles.length
     ? [`design-shell coverage incomplete: ${shellPages.length}/${visualPageFiles.length} visual routes`]
     : []),
@@ -2141,6 +2169,7 @@ const failures = [
 
 console.log(`UI audit: ${pageFiles.length} routes (${visualPageFiles.length} visual, ${pageFiles.length - visualPageFiles.length} redirect)`);
 console.log(`Design-shell coverage: ${shellPages.length}/${visualPageFiles.length} visual routes`);
+console.log(`วงโฟกัสที่ยังใช้ var(--accent) (ตก 3:1 บนพื้นหน้า): ${focusRingViolations.length} (ต้องเป็น 0)`);
 console.log(`Runtime raw-color violations: ${rawColorViolations.length}`);
 console.log(`Type-scale violations (font-size นอกโทเคน): ${typeScaleViolations.length}`);
 /* ⚠️ บรรทัดนี้เป็น ratchet ที่จงใจมานั่งกลางกลุ่ม hard-zero — ไม่ใช่ลืมจัดกลุ่ม
