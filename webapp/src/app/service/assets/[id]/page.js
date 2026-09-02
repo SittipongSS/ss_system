@@ -16,6 +16,15 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
 import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
+import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
+import AssetMoveModal from "@/components/service/AssetMoveModal";
+import Toast from "@/components/ui/Toast";
+import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
+import { canEditService } from "@/lib/permissions";
+import {
+  ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
+} from "@/lib/service/sites";
+import { MOVE_LABELS, assetMoveOwnerError } from "@/lib/service/assetMoves";
 import { assetTimeline, settingOutlier, settingText } from "@/lib/service/assetHistory";
 import { ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
@@ -30,6 +39,21 @@ export default function ServiceAssetPage({ params }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [moveKind, setMoveKind] = useState(null);   // null = ปิด · 'transfer' ฯลฯ = เปิด
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  // ตัวเลือกปลายทางโหลดตอนเปิดโมดัลเท่านั้น — ไซต์ทั้งระบบไม่ควรถูกดึงทุกครั้งที่เปิดหน้าเครื่อง
+  const [pickerSites, setPickerSites] = useState([]);
+  const [pickerZones, setPickerZones] = useState([]);
+
+  const role = useRole();
+  const team = useTeam();
+  const teams = useTeams();
+  const department = useDepartment();
+  const canEdit = useMemo(
+    () => canEditService({ role, team, teams, department }),
+    [role, team, teams, department],
+  );
 
   const startRun = useLatestRun();
   const load = useCallback(async (opts) => {
@@ -62,6 +86,7 @@ export default function ServiceAssetPage({ params }) {
     results: data?.results || [],
     items: data?.items || [],
     visits: data?.visits || [],
+    moves: data?.moves || [],
     assetsById,
   }), [asset, data, assetsById]);
 
@@ -85,6 +110,76 @@ export default function ServiceAssetPage({ params }) {
   /* ⚠️ ปุ่มย้อนกลับต้องอ่านไซต์จาก **ข้อมูลที่โหลดมา** ไม่ใช่จาก route param อีกแล้ว
      (URL ใหม่ไม่มี siteId) · ตอนยังโหลดไม่เสร็จยังไม่รู้ไซต์ ⇒ ถอยไปทะเบียนเครื่อง
      ซึ่งเป็นที่ที่คนกดเข้ามาจริง ไม่ใช่ลิงก์เปล่าที่กดแล้วไม่ไปไหน */
+  /* โหลดตัวเลือกปลายทางตอนเปิดโมดัลเท่านั้น (lazy) — ไซต์ทั้งระบบ 200+ ใบ
+     ไม่ควรถูกดึงทุกครั้งที่มีคนเปิดหน้าเครื่องเฉย ๆ
+     ⚠️ ขอ `kind=all` เพราะคำสั่ง "ถอนกลับคลัง" ต้องเห็นไซต์คลังด้วย ซึ่งค่าตั้งต้น
+        ของ API ตัดออก (คลังไม่ใช่แถวในทะเบียนไซต์) */
+  useEffect(() => {
+    if (!moveKind || pickerSites.length) return;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/service/sites?kind=all");
+        const rows = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(rows?.error || "โหลดรายการไซต์ไม่สำเร็จ");
+        setPickerSites(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setToast({ kind: "error", msg: e.message });
+      }
+    })();
+  }, [moveKind, pickerSites.length]);
+
+  /* โซนของไซต์ปลายทาง — โหลด **รายไซต์ตอนเลือกปลายทางแล้ว** ไม่ใช่ทั้งระบบ
+     ⚠️ ไม่มีเส้น `/api/service/zones` ระดับบน (โซนอยู่ใต้ไซต์เสมอ) ⇒ ต้องยิง
+        `/api/service/sites/[id]` ซึ่งคืนโซนของไซต์นั้นมาด้วย
+     ⚠️ โซนไม่บังคับ — โหลดพลาดก็ปล่อยว่างไว้ ไม่ต้องขัดจังหวะคนที่กำลังกรอก */
+  const loadZonesOf = useCallback(async (siteId) => {
+    if (!siteId) { setPickerZones([]); return; }
+    try {
+      const res = await apiFetch(`/api/service/sites/${siteId}`);
+      const body = await res.json().catch(() => null);
+      setPickerZones(res.ok && Array.isArray(body?.zones) ? body.zones : []);
+    } catch {
+      setPickerZones([]);
+    }
+  }, []);
+
+  const runMove = async (payload) => {
+    setMoveBusy(true);
+    try {
+      const res = await apiFetch(`/api/service/assets/${id}/moves`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error || "บันทึกคำสั่งไม่สำเร็จ");
+      setMoveKind(null);
+      setToast({ kind: "success", msg: `${MOVE_LABELS[payload.kind]} เรียบร้อย` });
+      await load({ background: true });
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  /* ปุ่มที่โชว์ = คำสั่งที่ผ่านด่าน "เป็นเจ้าของคำสั่งนี้ไหม" เท่านั้น
+     ⚠️ ตัวตัดสินตัวเดียวกับที่ API ใช้ — ถ้าสองฝั่งไม่ตรงกัน จอจะโชว์ปุ่มที่กดแล้วเด้ง */
+  const moveAction = (kind, label) => (asset && !assetMoveOwnerError(asset, kind, { canEdit })
+    ? { id: kind, kind: "edit", label: label || MOVE_LABELS[kind], onClick: () => setMoveKind(kind) }
+    : null);
+
+  const controlActions = asset ? [
+    moveAction("install"),
+    moveAction("transfer"),
+    moveAction("return"),
+    moveAction("repair"),
+    moveAction("repair_done"),
+    moveAction("condition", asset.condition === "broken" ? "แจ้งว่าซ่อมแล้ว" : "แจ้งว่าชำรุด"),
+  ].filter(Boolean) : [];
+
+  const dangerActions = asset && !assetMoveOwnerError(asset, "retire", { canEdit })
+    ? [{ id: "retire", kind: "delete", label: MOVE_LABELS.retire, onClick: () => setMoveKind("retire") }]
+    : [];
+
   const back = data?.site
     ? { href: `/service/sites/${data.site.id}`, label: naText(data.site.name) }
     : { href: '/service/assets', label: 'ทะเบียนเครื่อง' };
@@ -111,9 +206,18 @@ export default function ServiceAssetPage({ params }) {
         description={[site?.name, zone ? `โซน ${zone.name}` : null, asset.floor, asset.spot].filter(Boolean).join(" · ")}
         badges={(
           <>
-            <span className={`ui-badge ${asset.status === "removed" ? "" : "success"}`.trim()}>
-              {asset.status === "removed" ? "ถอดออกแล้ว" : asset.status === "repair" ? "ส่งซ่อม" : "ใช้งาน"}
+            {/* 🪤 เคยเขียนสตริงสดสามทาง (`removed` → "ถอดออกแล้ว" ที่เหลือ → "ใช้งาน")
+                ⇒ พอ mig 0332 เพิ่ม `in_stock` เครื่องในคลังขึ้นป้าย "ใช้งาน"
+                และ mig 0335 เปลี่ยนความหมาย `removed` เป็น "ปลดระวาง" ป้ายก็ยังพูดคำเก่า
+                ⇒ อ่านจากทะเบียนตัวเดียวเสมอ ห้ามเทียบสตริงเอง */}
+            <span className={`ui-badge ${asset.status === "active" ? "success"
+              : asset.status === "repair" ? "warning" : ""}`.trim()}>
+              {ASSET_STATUS_LABELS[asset.status] || asset.status}
             </span>
+            {/* สภาพเป็นแกนที่สอง — ขึ้นเฉพาะตอนชำรุด (ปกติไม่ต้องประกาศ) */}
+            {asset.condition === "broken" && (
+              <span className="ui-badge danger">{ASSET_CONDITION_LABELS.broken}</span>
+            )}
             {asset.settings?.grade && <span className="ui-badge violet">{asset.settings.grade}</span>}
           </>
         )}
@@ -140,6 +244,29 @@ export default function ServiceAssetPage({ params }) {
       <DetailPageLayout
         aside={(
           <>
+            {/* ⭐ ปุ่มระดับเครื่องทั้งชุดอยู่ที่เดียว (ม-49/ม-57) — ห้ามวางแยกในแถวหัว
+                ⚠️ **ไม่มีสิทธิ์ = ไม่โชว์การ์ดทั้งใบ** · คำสั่งที่ไม่เข้ากับสถานะปัจจุบัน
+                   ก็ไม่โชว์ (assetMoveOwnerError) เพราะมันไม่ใช่ "ติดด่านชั่วคราว"
+                   แต่คือคำสั่งที่ไม่มีความหมายในสถานะนี้ · ส่วนด่านที่ผู้ใช้แก้ได้
+                   (เหตุผล/ปลายทาง) ไปบอกในโมดัลตอนกด */}
+            {canEdit && (
+              <DocumentControlCard
+                eyebrow="ASSET CONTROL"
+                title="จัดการเครื่อง"
+                status={ASSET_STATUS_LABELS[asset.status] || asset.status}
+                statusColor={asset.status === "active" ? "var(--green)"
+                  : asset.status === "in_stock" ? "var(--blue)"
+                    : asset.status === "repair" ? "var(--amber)" : "var(--text-3)"}
+                statusDescription={[
+                  isWarehouseSite(site) ? "อยู่ในคลัง" : (site?.name ? `ติดตั้งที่ ${site.name}` : null),
+                  asset.condition === "broken" ? `สภาพ${ASSET_CONDITION_LABELS.broken}` : null,
+                ].filter(Boolean).join(" · ")}
+                primaryAction={controlActions[0] || null}
+                secondaryActions={controlActions.slice(1)}
+                dangerActions={dangerActions}
+                busy={moveBusy}
+              />
+            )}
             <ContextCard
               icon={MapPin} eyebrow="ที่ติดตั้ง" title={naText(site?.name)}
               subtitle={site?.customerName || undefined}
@@ -215,6 +342,20 @@ export default function ServiceAssetPage({ params }) {
           {asset.note && <p className={styles.note}>{asset.note}</p>}
         </DetailCard>
       </DetailPageLayout>
+
+      <AssetMoveModal
+        open={!!moveKind}
+        kind={moveKind}
+        asset={asset}
+        fromSite={site}
+        sites={pickerSites}
+        zones={pickerZones}
+        busy={moveBusy}
+        onClose={() => !moveBusy && setMoveKind(null)}
+        onToSite={loadZonesOf}
+        onSubmit={runMove}
+      />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>
   );
 }
