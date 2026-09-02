@@ -1,4 +1,5 @@
 import { recordAudit } from '@/lib/audit';
+import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 import { purgeUpdates } from '@/lib/master/updates';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isSuperuser } from '@/lib/permissions';
@@ -577,5 +578,19 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
   }
-  return ok({ ok: true, forced: force, dealReverted: Boolean(forceResult?.dealReverted) });
+  /* trigger 0337 ถอย FC กลับเป็น "ยอดที่ AE กรอก" ให้แล้วในทรานแซกชันเดียวกับการลบ
+     ตรงนี้เรียก resolver ต่อเพื่อไต่ขึ้นใบอื่นที่ยังอนุมัติอยู่ (ถ้าเหลือใบเดียว) —
+     ทำได้เพราะดีลนั้น "เคย" อยู่ขั้น quotation แล้ว ไม่ใช่การลากดีล manual ขึ้นบันได
+     (cause นี้ไม่อยู่ใน CLAIMING_CAUSES จึงไม่แตะดีลที่ยังกรอกยอดเอง) */
+  let forecast = null;
+  if (before.dealId) {
+    try {
+      forecast = await applyForecastSource(supabase, before.dealId, { cause: 'quotation_deleted' });
+    } catch (forecastError) {
+      console.error('forecast source apply failed after delete', id, forecastError);
+    }
+  }
+  return ok({
+    ok: true, forced: force, dealReverted: Boolean(forceResult?.dealReverted), forecast,
+  });
 });

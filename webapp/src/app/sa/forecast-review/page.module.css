@@ -1,0 +1,110 @@
+/* คิวตรวจที่มาของ FC (mig 0337) — ตารางตัดสินใจ ไม่ใช่ตารางอ่าน
+   ตัวเลือกใบเสนอราคาจึงเป็น "แผ่นกดได้" ที่โชว์ยอดกับส่วนต่างมาด้วย ไม่ใช่ dropdown
+   (กติกาของระบบ: ตัวเลือกจำนวนน้อย = ปุ่มที่มองเห็นทั้งหมด) */
+
+.tabs {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+.tab[data-active] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-1);
+}
+
+.count {
+  min-width: 1.5em;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-4);
+  text-align: center;
+}
+.tab[data-active] .count {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.lead {
+  margin: var(--space-2) 0 var(--space-3);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+.sub {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-normal);
+  line-height: var(--lh-thai);
+}
+
+.choices {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+}
+
+/* แผ่นเลือกใบ — สามชั้นในปุ่มเดียว: เลขที่ · ยอด · ส่วนต่างจาก FC ปัจจุบัน
+   ส่วนต่างสำคัญที่สุดสำหรับคนกด (บางดีล FC ลดลง) จึงต้องอ่านได้โดยไม่ต้องคิดเลขเอง */
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  min-width: 132px;
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  text-align: left;
+  cursor: pointer;
+}
+.choice:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.choice:disabled {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+}
+.choice span {
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+.choice strong {
+  color: var(--text-1);
+  font-size: var(--fs-6);
+  font-variant-numeric: tabular-nums;
+}
+.choice small {
+  font-size: var(--fs-4);
+  font-variant-numeric: tabular-nums;
+}
+.choice small[data-dir="up"] { color: var(--green); }
+.choice small[data-dir="down"] { color: var(--red); }
+
+.actions {
+  display: flex;
+  gap: var(--space-1-5);
+  align-items: flex-start;
+  flex-wrap: wrap;
+  white-space: nowrap;
+}

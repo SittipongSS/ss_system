@@ -39,7 +39,10 @@ import { isContractWaitingOnMe, latestContractRevisions } from '@/lib/sales/cont
 import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
-import { isClosedStage } from '@/lib/salesPlanning';
+import { inSalesViewScope, isClosedStage, isWonStage } from '@/lib/salesPlanning';
+import {
+  FORECAST_ELIGIBLE_APPROVALS, FORECAST_ELIGIBLE_STATUSES, forecastSourceView,
+} from '@/lib/sales/forecastSource';
 import { loadVisits } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { bindQueue } from '@/lib/service/intake';
@@ -156,6 +159,37 @@ export const GET = withUser(async ({ user, supabase }) => {
         dealOwnerId: row.deal?.ownerId ?? null,
         dealClosed: isClosedStage(row.deal?.stage),
       })).length;
+    }));
+
+    /* ── ที่มาของ FC: ดีลที่มีใบอนุมัติแล้วแต่ FC ยังไม่เดินตามใบ (mig 0337) ────
+       ⚠️ ต้องนับด้วย `forecastSourceView` + `inSalesViewScope` **ชุดเดียวกับหน้า**
+          /sa/forecast-review ไม่งั้นป้ายกับหน้าปลายทางบอกคนละจำนวน (กฎหัวไฟล์ navCounts)
+       ⚠️ แคบชุดข้อมูลก่อน: ดึงเฉพาะใบที่ยังมีสิทธิ์เป็นแหล่ง FC แล้วค่อยดึงดีล
+          เฉพาะที่มีใบพวกนั้น — ป้ายนี้ยิงทุก 2 นาทีทุกคน จะดึงดีลทั้งตารางไม่ได้ */
+    jobs.push(attempt('forecastReview', async () => {
+      const { data: quotations } = await supabase
+        .from('quotations')
+        .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
+        .in('status', FORECAST_ELIGIBLE_STATUSES)
+        .in('approvalStatus', FORECAST_ELIGIBLE_APPROVALS)
+        .limit(5000);
+      const dealIds = [...new Set((quotations || []).map((row) => row.dealId).filter(Boolean))];
+      if (!dealIds.length) return 0;
+      const { data: deals } = await supabase
+        .from('sales_deals')
+        .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
+        .in('id', dealIds)
+        .limit(5000);
+      const byDeal = new Map();
+      for (const quotation of quotations || []) {
+        if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
+        byDeal.get(quotation.dealId).push(quotation);
+      }
+      return (deals || []).filter((deal) => {
+        if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
+        if (!inSalesViewScope(user, deal)) return false;
+        return forecastSourceView(deal, byDeal.get(deal.id) || []).needsDecision;
+      }).length;
     }));
 
     /* ── สัญญา: สองเลนของใบเดียวกัน (เจ้าของใบ / AE Sup ผู้รับรอง) ────────────

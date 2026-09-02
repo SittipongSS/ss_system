@@ -154,6 +154,8 @@ export async function POST(request, { params }) {
         .from('sales_deals')
         .update({
           projectValue: toMoney(bucket.value),
+          // mig 0337 — FC สหมิตรคือ "ยอดที่คนกรอก" ของสายนั้น เขียนคู่กันเสมอ
+          forecastManualValue: toMoney(bucket.value),
           ownerId: existing.ownerId || bucket.ownerId || user.id || null,
           ownerName: existing.ownerName || bucket.ownerName || user.name || null,
           team: existing.team || bucket.team,
@@ -185,6 +187,7 @@ export async function POST(request, { params }) {
       title: `Sahamit FC ${bucket.demandMonth}${bucket.ownerName ? ` · ${bucket.ownerName}` : ''}`,
       stage: 'qualified',
       projectValue: toMoney(bucket.value),
+      forecastManualValue: toMoney(bucket.value),   // mig 0337
       // อ่านจาก map กลาง — เดิมฮาร์ดโค้ด 30 ซึ่งไม่ใช่ระดับที่เลือกได้ (ถูก snap เป็น 20
       // ตอนแสดงผล = ค่าที่เก็บกับค่าที่เห็นคนละตัว) เหมือนที่ backfill-projects ทำ
       probability: DEFAULT_PROBABILITY_BY_STAGE.qualified,

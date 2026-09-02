@@ -174,17 +174,27 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      คิดจากแถวเท่านั้น (ช่องยอดรวมล็อก) · ผู้เรียกเก่าที่ยังส่ง projectValue ดิบ ๆ
      ยังใช้ได้ แต่ถ้าส่ง valueItems มาด้วย แถวชนะเสมอ ไม่งั้นจะมียอดสองความจริง
      freeze เมื่อปิด Won แล้ว เหมือนเดิม (ยอดของดีล Won คือ Actual ไม่ใช่ประมาณการ) */
+  /* ⭐ mig 0337: ยอดที่คนกรอกลง `forecastManualValue` **เสมอ** ส่วน `projectValue`
+     (ยอดที่ทั้งระบบอ่านเป็น FC) เขียนต่อเฉพาะตอนที่ดีลยังอยู่ที่ที่มา 'manual'
+     ดีลที่เดินตามใบเสนอราคาอยู่แล้ว การแก้แถวมูลค่าคือการแก้ "ยอดที่เคยเดาไว้"
+     ซึ่งเก็บไว้เทียบความแม่น ไม่ใช่การเปลี่ยน FC — ถ้าเขียนทับ FC ที่นี่ ยอดบนจอ
+     จะไม่ตรงกับใบที่การ์ดบอกว่ากำลังเดินตามอยู่ */
+  const followsQuotation = before.forecastSource === 'quotation';
+  const setManualValue = (value) => {
+    patch.forecastManualValue = value;
+    if (!followsQuotation) patch.projectValue = value;
+  };
   const wantsValueItems = 'valueItems' in body && !alreadyWon;
   let preparedItems = null;
   if (wantsValueItems) {
     const prepared = await prepareDealValueItems(body.valueItems);
     if (prepared.error) return badRequest(prepared.error);
     preparedItems = prepared.items;
-    patch.projectValue = prepared.projectValue;
+    setManualValue(prepared.projectValue);
     // แถวแรก = หมวดของดีล (ตัวกรองขั้นตอนไทม์ไลน์) · ไม่มีแถว = ไม่มีหมวด
     patch.categoryCode = prepared.categoryCode;
   } else if ('projectValue' in body && !alreadyWon) {
-    patch.projectValue = toMoney(body.projectValue);
+    setManualValue(toMoney(body.projectValue));
   }
   // FC% — freeze เมื่อปิด Won แล้ว เหมือน projectValue บรรทัดบน: 100 ของดีล Won คือ
   // "ยอดจริง (Actual)" ไม่ใช่ FC (มติผู้ใช้ 2026-07-29) และ 100 ไม่ใช่ตัวเลือกในฟอร์มแล้ว

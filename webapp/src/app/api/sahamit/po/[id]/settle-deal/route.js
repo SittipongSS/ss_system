@@ -265,6 +265,7 @@ export async function POST(request, { params }) {
     title: `SHM_PO ${po.poNumber}`,
     stage: 'qualified',
     projectValue: toMoney(totalValue),
+    forecastManualValue: toMoney(totalValue),   // mig 0337 — ดีลรวมของ PO เริ่มที่ manual
     probability: 80,
     forecastMonth: monthKey(po.receivedDate || po.dueDate || now),
     expectedCloseDate: po.dueDate || null,
@@ -419,8 +420,16 @@ export async function POST(request, { params }) {
            คำเตือนจะไม่รู้ว่าต้องกดยืนยันซ้ำ */
         if (!allMoved) writeWarnings.push(`ดีล "${d.title}" ยังเปิดอยู่ (ย้ายพยากรณ์ไม่ครบ) — กดยืนยันซ้ำอีกครั้ง`);
         const newValue = Math.max(0, toMoney(Number(d.projectValue || 0) - movedValue));
+        /* ⚠️ mig 0337: เส้นนี้ **หักยอดออกจาก projectValue ตรง ๆ** ซึ่งเป็นเส้นเดียวในระบบ
+           ที่ทำแบบนั้น — ต้องหักออกจาก forecastManualValue ด้วย ไม่งั้นดีลที่ถอยกลับเป็น
+           manual ภายหลัง (ใบเสนอราคาถูกลบ) จะเด้งกลับไปยอดก่อนหักเงียบ ๆ
+           ดีลที่กำลังเดินตามใบเสนอราคาอยู่ไม่ควรมาถึงจุดนี้ (สายสหมิตรไม่ออกใบ) ถ้ามาถึง
+           การหักจะลงที่ยอด manual อย่างเดียว แล้ว resolver จะเขียน projectValue ทับตอน
+           เหตุการณ์ถัดไป — ยอมรับได้เพราะยอดของใบเป็นความจริงที่หนักกว่า */
+        const newManual = Math.max(0, toMoney(Number(d.forecastManualValue ?? d.projectValue ?? 0) - movedValue));
         chk(await supabase.from('sales_deals').update({
           projectValue: newValue,
+          forecastManualValue: newManual,
           metadata: {
             ...(d.metadata || {}),
             sahamitPartialMergedToDealId: merged.id,

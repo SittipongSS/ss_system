@@ -1,5 +1,6 @@
 import { withUser, ok, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
+import { forecastSourceView } from '@/lib/sales/forecastSource';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -198,6 +199,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     canEdit,
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),
+    /* ที่มาของยอด FC (mig 0337) — คิดที่ server เพราะ resolver ต้องเห็นใบ **ทุกแถว**
+       รวมฉบับที่พลิกเป็น 'revised' ไปแล้ว ถึงจะรู้ว่า "กำลังรอฉบับแก้อนุมัติ" อยู่
+       ส่วน `quotations` ข้างบนถูกกรองเหลือฉบับล่าสุดต่อเลขที่ไปแล้ว (ของหน้าจอ) */
+    forecastSource: forecastSourceView(deal, quotations.data || []),
     salesOrders: salesOrders.data,
     taxFilings: taxFilings.data,
     awaitingFilingIds,
