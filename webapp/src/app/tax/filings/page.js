@@ -113,12 +113,15 @@ export default function FilingsPage() {
       ),
     },
     {
-      key: "quotationRef", label: "เลขที่ใบเสนอราคา",
+      /* `link: true` = เซลล์ทางเข้าของคีย์บอร์ด — DataList ห่อด้วย <Link href เดียวกับ
+         แถว> ให้เอง ⇒ บรรทัดแรกต้องเป็น <strong> ที่เป็นลูก **ตรง** ของลิงก์
+         ไม่งั้น `.linklike-block` ไม่ขีดเส้นใต้ให้ (ดูหัวไฟล์ components/excise/DataList.js) */
+      key: "quotationRef", label: "เลขที่ใบเสนอราคา", link: true,
       render: (o) => (
-        <div>
-          <div className="font-semibold">{o.quotationRef}</div>
+        <>
+          <strong className="font-semibold">{o.quotationRef}</strong>
           {o.poReference && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="font-mono">PO: {o.poReference}</div>}
-        </div>
+        </>
       ),
     },
     { key: "customerName", label: "ลูกค้า", render: (o) => <span style={{ color: "var(--accent)" }}>{naText(o.customerName)}</span> },
@@ -207,7 +210,7 @@ export default function FilingsPage() {
         columns={columns}
         rows={rows}
         rowKey={(o) => o.id}
-        onRowClick={(o) => router.push(`/tax/filings/${o.id}`)}
+        rowHref={(o) => `/tax/filings/${o.id}`}
         card={card}
         initialSort={{ key: "quotationRef", dir: "asc" }}
         /* 🐞 RA ตกลงมาที่ชิป "รอยื่น" เป็นค่าตั้งต้น ⇒ เห็น "ไม่พบรายการ" เสมอ แม้ทั้ง

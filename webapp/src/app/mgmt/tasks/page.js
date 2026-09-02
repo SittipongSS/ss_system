@@ -175,9 +175,18 @@ export default function MgmtTasksPage() {
             </thead>
             <tbody>
               {rows.map((t, i) => (
-                <tr key={t.id} onClick={() => setSelected(t)} style={{ borderTop: "1px solid var(--border)", cursor: "pointer" }}>
+                /* ⚠️ ทั้งแถวเคยเป็น `onClick` ซึ่งเมาส์กดได้แต่คีย์บอร์ดเข้าไม่ถึงเลย
+                   (WCAG 2.1.1 — 7 เซลล์เป็นข้อความกับ pill ล้วน ไม่มีอะไรโฟกัสได้)
+                   ⇒ ย้ายตัวสั่งงานมาไว้ที่ชื่อเรื่องเป็น <button> จริง · ลิ้นชักเปิด
+                   ในหน้าเดิม ไม่ได้พาไปไหน จึงเป็น `.text-action` (เส้นประ)
+                   ไม่ใช่ `.linklike` (เส้นทึบ = มี URL) */
+                <tr key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: "10px 8px", color: "var(--text-3)" }}>{i + 1}</td>
-                  <td style={{ padding: "10px 8px" }}>{t.title}</td>
+                  <td style={{ padding: "10px 8px" }}>
+                    {/* `.text-action-block` = ทั้งเซลล์เป็นเป้าเดียว + ชิดซ้าย —
+                        ปุ่มเปล่าจัดข้อความกึ่งกลางตาม UA ซึ่งเห็นทันทีที่ชื่องานตัดบรรทัด */}
+                    <button type="button" className="text-action text-action-block" onClick={() => setSelected(t)}>{t.title}</button>
+                  </td>
                   <td style={{ padding: "10px 8px" }}>{t.deptCode ? <span className="pill">{t.deptCode}</span> : NA}</td>
                   <td style={{ padding: "10px 8px", color: "var(--text-2)" }}>{naText(t.assigneeName)}</td>
                   <td style={{ padding: "10px 8px", color: "var(--text-2)" }}>{fmt(t.dueDate)}</td>

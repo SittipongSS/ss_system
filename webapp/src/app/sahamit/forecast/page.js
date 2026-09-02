@@ -555,13 +555,28 @@ function ForecastPageInner() {
                   </thead>
                   <tbody>
                     {[...rounds].reverse().map((r) => (
+                      /* ⚠️ เดิมเป็น `<tr onClick>` — เมาส์กดได้ คีย์บอร์ดเข้าไม่ถึง
+                         (WCAG 2.1.1) · ปุ่มดินสอ/ถังขยะในเซลล์ท้ายเป็นคนละปลายทาง
+                         และขึ้นเฉพาะคนที่แก้ได้ จึงยกเว้นให้แถวไม่ได้
+                         ⇒ ตัวเลือกรอบย้ายมาอยู่ที่เลขรอบเป็น <button> จริง
+                         "รอบที่กำลังดูอยู่" เป็น **สถานะ** ไม่ใช่แค่การกด ⇒ aria-pressed */
                       <tr
                         key={r.id}
-                        onClick={() => setSelectedNo(r.roundNo)}
-                        className="clickable-row"
-                        style={{ background: r.roundNo === selectedNo ? "var(--panel-2)" : undefined, cursor: "pointer" }}
+                        style={{ background: r.roundNo === selectedNo ? "var(--panel-2)" : undefined }}
                       >
-                        <td style={{ fontWeight: "var(--fw-semibold)" }}>#{r.roundNo}</td>
+                        <td>
+                          <button
+                            type="button"
+                            /* `font-semibold` (=600 ตรงกับ --fw-semibold) แทน style อินไลน์ —
+                               <button> ไม่รับน้ำหนักจากเซลล์แม่ และ `.text-action`
+                               จงใจไม่ประกาศน้ำหนักไว้ (ท่าเดียวกับ pm/ProjectDocumentView) */
+                            className="text-action font-semibold"
+                            aria-pressed={r.roundNo === selectedNo}
+                            onClick={() => setSelectedNo(r.roundNo)}
+                          >
+                            #{r.roundNo}
+                          </button>
+                        </td>
                         <td>{fmtDate(r.receivedDate)}</td>
                         <td style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                           {(r.coverMonths || []).length ? `${r.coverMonths[0]} – ${r.coverMonths[r.coverMonths.length - 1]} (${r.coverMonths.length})` : NA}

@@ -596,9 +596,27 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
       <tr style={{ background: phaseBg, cursor: "pointer" }} onClick={onToggleCollapse} title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}>
         <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>{group.phaseNum}</td>
         <td style={{ ...freezeTd(freezeLeft[1], { fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>
+          {/* ชื่อเฟสเป็น <button aria-expanded> จริง — สวิตช์พับต้อง **ประกาศสถานะได้**
+              ไม่ใช่แค่กดได้ · onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ (กดที่ไหนของแถบก็ย่อ/ขยาย)
+              stopPropagation กันแถวสลับซ้ำอีกรอบตอนกดที่ปุ่มตรง ๆ ⇒ ไม่งั้นได้ผลลัพธ์เดิมเหมือนไม่ได้กด
+              `.text-action` (เส้นประ) = คู่ตรงข้ามของ `.linklike` — ทำงานในหน้านี้ ไม่ได้พาไปไหน
+              ลูกศรอยู่นอกปุ่มและเป็น aria-hidden: สถานะย่อ/ขยายมาจาก aria-expanded แล้ว
+              พูดซ้ำสองทางจะได้เสียงซ้ำในโปรแกรมอ่านหน้าจอ */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {collapsed ? <ChevronRight size={16} color="var(--text-2)" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="var(--text-2)" style={{ flexShrink: 0 }} />}
-            {group.phase}
+            {collapsed ? <ChevronRight size={16} color="var(--text-2)" aria-hidden="true" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="var(--text-2)" aria-hidden="true" style={{ flexShrink: 0 }} />}
+            <button
+              type="button"
+              /* `font-semibold` (=600 ตรงกับ --fw-semibold) ไม่ใช่ style อินไลน์ —
+                 <button> ไม่ได้รับน้ำหนักจาก <td> แม่ (UA ตั้ง font-weight ของตัวเอง)
+                 และ `.text-action` จงใจไม่ประกาศน้ำหนักไว้ ⇒ ต้องสั่งที่ตัวปุ่ม
+                 ท่าเดียวกับ database/customers/[id] ที่ใช้ `text-action font-semibold` */
+              className="text-action font-semibold"
+              aria-expanded={!collapsed}
+              onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+              title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}
+            >
+              {group.phase}
+            </button>
             {collapsed && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>({group.tasks.length} รายการ)</span>}
           </div>
         </td>

@@ -144,9 +144,40 @@ function classifyClickable(tag, attrs) {
   if (attrs.has("role") && tabbable && takesKeys) return "compliant";
   return "violation";
 }
+
+/* สำเนาของ ROW_MIRROR — เงื่อนไขที่ทำให้ `<tr onClick>` ของ DetailRow ถูกหักออกจาก
+   เพดานคีย์บอร์ดได้ · ทะเบียนการยกเว้นเต็ม ๆ (พร้อม 5 ข้อที่ตรวจไม่ได้) อยู่เหนือ
+   `const ROW_PRIMITIVE` ใน scripts/audit-ui.mjs — ที่นี่เก็บแค่ตัวจับ เพราะต้องเทียบ
+   ตัวอักษรต่อตัวอักษรกับฝั่งโน้น (ดูเทสต์ "ตัวแยกแท็ก JSX + ตัวตัดสิน …") */
+const ROW_PRIMITIVE = "src/components/ui/DetailRow.js";
+
+function rowMirrorMisses(rel, lined) {
+  const misses = [];
+  for (let at = lined.indexOf("<DetailRow"); at !== -1; at = lined.indexOf("<DetailRow", at + 10)) {
+    const line = lined.slice(0, at).split(/\r?\n/).length;
+    const [open] = jsxOpeningTags(lined.slice(at));
+    if (open?.tag !== "DetailRow") {
+      misses.push(`${rel}:${line} อ่านแท็ก <DetailRow> ไม่ออก — ด่านตรวจแถวนี้ไม่ได้ ต้องจัดรูปให้อ่านออกก่อน`);
+      continue;
+    }
+    const href = jsxAttributes(open.attrText).get("href");
+    if (!href) {
+      misses.push(`${rel}:${line} <DetailRow> ไม่มี href — แถวที่ไม่พาไปไหนต้องเป็น <tr> ธรรมดา`);
+      continue;
+    }
+    const close = lined.indexOf("</DetailRow>", at);
+    const body = close === -1 ? "" : lined.slice(at, close);
+    const mirrored = jsxOpeningTags(body).some(({ tag, attrText }) =>
+      (tag === "a" || tag === "Link") && jsxAttributes(attrText).get("href") === href);
+    if (!mirrored) {
+      misses.push(`${rel}:${line} <DetailRow href=${href}> ไม่มี <Link href=…> ปลายทางเดียวกันในเซลล์`);
+    }
+  }
+  return misses;
+}
 /* ── ตัวจับสองฝั่งต้องเป็นตัวเดียวกัน ─────────────────────────────────────── */
 test("ตัวแยกแท็ก JSX + ตัวตัดสิน ต้องเหมือน audit-ui.mjs ทุกตัวอักษร", () => {
-  for (const name of ["jsxTagEnd", "jsxOpeningTags", "jsxAttributes", "jsxBalancedEnd", "classifyClickable"]) {
+  for (const name of ["jsxTagEnd", "jsxOpeningTags", "jsxAttributes", "jsxBalancedEnd", "classifyClickable", "rowMirrorMisses"]) {
     assert.equal(topLevelFunction(SELF, name), topLevelFunction(AUDIT, name),
       `${name}() ในเทสต์กับใน audit-ui.mjs ไม่เหมือนกันแล้ว — ก๊อปฝั่งที่แก้ไปทับอีกฝั่ง`);
   }
@@ -159,6 +190,7 @@ test("ค่าคงที่ของด่านต้องเป็นช�
     "const HOST_TAG = /^[a-z][a-z0-9-]*$/;",
     'const NATIVELY_CLICKABLE = new Set(["button", "input", "select", "textarea", "summary", "option", "label"]);',
     `const CLICK_STOPPER = /${CLICK_STOPPER.source}/;`,
+    `const ROW_PRIMITIVE = "${ROW_PRIMITIVE}";`,
   ]) {
     assert.ok(AUDIT.includes(line), `audit-ui.mjs ไม่มีบรรทัด: ${line}`);
   }
@@ -318,9 +350,11 @@ function uiJsFiles() {
 function scan() {
   const counts = { native: 0, stopper: 0, compliant: 0, violation: 0 };
   const hits = new Map();
+  const rowMirror = [];
   for (const file of uiJsFiles()) {
     const rel = path.relative(process.cwd(), file).replaceAll("\\", "/");
     const lined = blankLineComments(blankBlockComments(fs.readFileSync(file, "utf8")));
+    rowMirror.push(...rowMirrorMisses(rel, lined));
     for (const { tag, line, attrText } of jsxOpeningTags(lined)) {
       if (!HOST_TAG.test(tag)) continue;
       const verdict = classifyClickable(tag, jsxAttributes(attrText));
@@ -339,8 +373,13 @@ function scan() {
     [...block.slice(0, block.indexOf("\n};")).matchAll(/^\s*"(src\/[^"]+)":\s*(\d+),$/gm)]
       .map((m) => [m[1], Number(m[2])]),
   );
-  const violations = [...hits].flatMap(([rel, list]) => list.slice(scrim[rel] || 0));
-  return { counts, violations, scrim };
+  const scrimmed = [...hits].flatMap(([rel, list]) => list.slice(scrim[rel] || 0));
+  /* ยกเว้นทางลัดเมาส์บนแถว — **สูตรเดียวกับ audit-ui.mjs เป๊ะ**: ยกเว้นได้ก็ต่อเมื่อ
+     ROW_MIRROR ว่างทั้งระบบ และไฟล์ primitive เหลือจุดที่ต้องตัดสิน 1 จุดพอดี
+     (จุดที่สองในไฟล์นั้นต้องถูกนับตามปกติ ไม่ใช่ยกทั้งไฟล์แบบ dismissScrimExempt) */
+  const rowShortcutExempt = rowMirror.length === 0 && (hits.get(ROW_PRIMITIVE) || []).length === 1 ? 1 : 0;
+  const violations = scrimmed.filter((item) => !(rowShortcutExempt && item.startsWith(`${ROW_PRIMITIVE}:`)));
+  return { counts, violations, scrim, rowMirror, rowShortcutExempt };
 }
 
 test("เพดาน A11Y_KEYBOARD_CAP ยังผูกกับของจริง", () => {
@@ -349,6 +388,37 @@ test("เพดาน A11Y_KEYBOARD_CAP ยังผูกกับของจ�
   const { violations } = scan();
   assert.equal(violations.length, cap,
     `ของจริงเหลือ ${violations.length} จุด แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});
+
+/* ── เพดานรายแท็ก: ยอดรวมอย่างเดียว **ปิดช่องสลับตัวไม่ได้** (2026-09-02) ─────────
+   🪤 ยอดรวมเป็น ratchet สองทางก็จริง แต่มันมองไม่เห็น *การแลกที่* — แก้ `<div>` ไป 1
+   แล้วเขียน `<tr onClick>` ดิบขึ้นมาใหม่ 1 ยอดยังเท่าเดิม ⇒ ผ่านฉลุย ทั้งที่แถวดิบ
+   ตัวใหม่คือของที่รอบนี้เพิ่งกวาดออกไป 10 จุด (17 → 7) และเป็นกลุ่มที่ **ย้อนกลับ
+   ง่ายที่สุด** เพราะ `<tr onClick={() => router.push(…)}>` คือท่าที่นึกออกก่อนเพื่อน
+   ⇒ ล็อกแยกรายแท็กด้วย เพื่อให้การไหลกลับของกลุ่มที่ปิดไปแล้วฟ้องทันทีในบรรทัดที่
+   บอกได้ว่ากลุ่มไหน ไม่ใช่รอให้ยอดรวมบวมขึ้นสักวัน
+   ⚠️ เป็น ratchet สองทางเหมือนยอดรวม: **เกินตก · ต่ำกว่าก็ตก** (แก้จริงแล้วต้องรูดลง
+   พร้อมกับ A11Y_KEYBOARD_CAP ในคอมมิตเดียวกัน) · ห้ามเติมแท็กใหม่เข้าตารางนี้เพื่อให้
+   ผ่าน — แท็กใหม่ที่โผล่มาแปลว่ามีคนเปิดกลุ่มใหม่ ต้องมีคนอ่านก่อน
+   📉 tr 17 → 7 รอบแถวตาราง 2026-09-02 (DetailRow + ROW_MIRROR) · อีก 3 กลุ่มไม่ขยับ */
+const A11Y_TAG_CAPS = { div: 17, tr: 7, span: 4, td: 1 };
+
+test("เพดานรายแท็กยังผูกกับของจริง (กันการสลับกลุ่มใต้ยอดรวม)", () => {
+  const { violations } = scan();
+  const byTag = {};
+  for (const spot of violations) {
+    const tag = (spot.match(/<([a-z][\w-]*)>$/) || [])[1];
+    assert.ok(tag, `อ่านแท็กจาก "${spot}" ไม่ออก — รูปของ hits เปลี่ยนไป`);
+    byTag[tag] = (byTag[tag] || 0) + 1;
+  }
+  assert.deepEqual(byTag, A11Y_TAG_CAPS,
+    "กลุ่มความผิดรายแท็กไม่ตรงกับที่ล็อกไว้ — แท็กที่ **เพิ่ม** คือการไหลกลับ "
+    + "(ห้ามแก้เลขให้ผ่าน ต้องแก้โค้ด) · แท็กที่ **ลด** คือแก้ได้จริง ให้รูดทั้งตารางนี้ "
+    + "และ A11Y_KEYBOARD_CAP ลงพร้อมกัน");
+  const cap = Number((AUDIT.match(/const A11Y_KEYBOARD_CAP = (\d+);/) || [])[1]);
+  assert.equal(Object.values(A11Y_TAG_CAPS).reduce((sum, n) => sum + n, 0), cap,
+    "ผลรวมเพดานรายแท็กต้องเท่ากับ A11Y_KEYBOARD_CAP — สองที่นี้เป็นเลขชุดเดียวกัน "
+    + "ปล่อยให้ต่างกันเมื่อไหร่ อันหนึ่งจะกลายเป็นของตกยุคที่ไม่มีใครเชื่อ");
 });
 
 /* 🪤 เทสต์นี้คือตัวกัน "ด่านกลวง" — ด่านที่ยกเว้นทุกอย่างจนเหลือ 0 ก็ผ่านเพดานได้
@@ -371,9 +441,19 @@ test("เพดาน A11Y_KEYBOARD_CAP ยังผูกกับของจ�
 const NATIVE_BUTTON_FLOOR = 550;
 
 test("ทางยกเว้นยังกว้างเท่าเดิม (กันด่านกลวง)", () => {
-  const { counts } = scan();
+  const { counts, rowShortcutExempt } = scan();
   assert.equal(counts.stopper, 22, "ตัวกันคลิกทะลุที่ยกเว้นไป");
-  assert.equal(counts.compliant, 2, "จุดที่ประกอบครบชุดอยู่แล้ว (DetailRow.js + deals/[id])");
+  /* ⬇️ 2026-09-02 ลด 2 → 1: DetailRow.js **ออกจากช่องนี้** เพราะถอด role/tabIndex/onKeyDown
+     ออกจาก <tr> แล้ว (`role="link"` ทับ `role="row"` ทิ้ง = ตก 1.3.1 · ROLE_ON_TABLE_TAG_CAP
+     จึงรูดจาก 1 เหลือ 0 ได้ในคอมมิตเดียวกัน) · มันไม่ได้หายไปเฉย ๆ แต่ย้ายไปอยู่ช่องใหม่
+     "ทางลัดเมาส์บนแถว" ซึ่งถูกล็อกด้วย rowShortcutExempt ข้างล่างและด่าน ROW_MIRROR
+     ⇒ เพดานคีย์บอร์ดจึงไม่ขยับ (39 → 39): ดิบขึ้น 1 แล้วหักคืน 1
+     เหลือ 1 คือ sales-planning/deals/[id] ที่เป็น <div role="button"> — คนละเรื่องกับตาราง */
+  assert.equal(counts.compliant, 1, "จุดที่ประกอบครบชุดอยู่แล้ว (deals/[id] — <div role=\"button\")");
+  /* 🔒 ทะเบียนการยกเว้นตัวใหม่ต้องไม่บวมเงียบ ๆ: ยกเว้นได้ **1 จุด** เท่านั้นทั้งระบบ */
+  assert.equal(rowShortcutExempt, 1,
+    "ทางลัดเมาส์บนแถวต้องถูกยกเว้น 1 จุดพอดี — 0 แปลว่า ROW_MIRROR ไม่ว่าง หรือ DetailRow.js "
+    + "มีจุดที่ต้องตัดสินมากกว่า 1 (ทั้งสองกรณีต้องมีคนเปิดดู ไม่ใช่แก้เลขให้ผ่าน)");
   assert.ok(counts.native >= NATIVE_BUTTON_FLOOR,
     `<button> ทั้งระบบเหลือ ${counts.native} ต่ำกว่าพื้น ${NATIVE_BUTTON_FLOOR} — `
     + "ปุ่มจริงหายเป็นกลุ่ม แปลว่ามีคนแปลง <button> เป็นแท็กที่กดด้วยคีย์บอร์ดไม่ได้");
@@ -465,4 +545,77 @@ test("เพดาน ROLE_ON_TABLE_TAG_CAP ยังผูกกับของ
     }
   }
   assert.equal(found, cap, `ของจริงเหลือ ${found} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});
+
+/* ── ROW_MIRROR: ทางเข้าของคีย์บอร์ดต้องอยู่ในเซลล์ (2026-09-02) ────────────────
+   ⭐ นี่คือ **เงื่อนไขของการยกเว้น** ไม่ใช่ด่านสวยงามแยกต่างหาก · `<tr onClick>` ของ
+   DetailRow ถูกหักออกจากเพดานคีย์บอร์ดได้ก็เพราะด่านนี้ยืนยันว่าทุกที่เรียกมี <Link>
+   ปลายทางเดียวกันอยู่ในเซลล์ ⇒ ผ่อนด่านนี้เมื่อไหร่ ต้องบวก A11Y_KEYBOARD_CAP คืน 1
+
+   🪤 **กับดักที่ชุดฟิกซ์เจอร์นี้มีไว้กัน**: เขียนเงื่อนไขเป็น "แถวมีอะไรโฟกัสได้ข้างในก็พอ"
+   แล้วมันจะดูเหมือนทำงาน — แต่แถวที่มีแค่ปุ่ม "ลบ" ก็ผ่าน ทั้งที่ *การเปิดรายละเอียด*
+   ยังเข้าไม่ถึงด้วยคีย์บอร์ด · ด่านที่ปล่อยของผิดผ่านเงียบ ๆ แย่กว่าไม่มีด่าน
+   ⇒ ทุกบรรทัดข้างล่างเทียบ **ปลายทาง** ไม่ใช่ "ความมีอยู่ของสิ่งที่โฟกัสได้" */
+const ROW_MIRROR_FIXTURES = [
+  ["ลิงก์ในเซลล์ href เหมือนกันเป๊ะ = ผ่าน (ทรงของ 8 หน้าจริง)",
+    "<DetailRow href={`/sa/deals/${deal.id}`}>"
+    + "<td><Link prefetch={false} href={`/sa/deals/${deal.id}`} className=\"linklike\">x</Link></td>"
+    + "</DetailRow>", 0],
+  ["<a href> ธรรมดาก็นับ ไม่ได้บังคับว่าต้องเป็น <Link>",
+    '<DetailRow href="/x/1"><td><a href="/x/1">x</a></td></DetailRow>', 0],
+  ["🪤 แถวที่มีแค่ปุ่มลบ = ตก (มีของโฟกัสได้ แต่ 'เปิดรายละเอียด' ยังเข้าไม่ถึง)",
+    "<DetailRow href={`/sa/deals/${deal.id}`}>"
+    + "<td>{deal.title}</td><td><button type=\"button\" onClick={del}>ลบ</button></td>"
+    + "</DetailRow>", 1],
+  ["🪤 ลิงก์ดินสอ 'แก้ไข' ไม่ใช่ทางเข้าของการเปิดรายละเอียด — คนละปลายทาง",
+    "<DetailRow href={`/sa/quotations/${r.id}`}>"
+    + "<td><Link href={`/sa/quotations/${r.id}?edit=1`}>แก้</Link></td>"
+    + "</DetailRow>", 1],
+  ["🪤 ทรงของ RenewalsPanel เดิม: ลิงก์ไป SO แต่แถวหมายถึงไซต์ = ตก",
+    "<DetailRow href={`/sa/service-sites/${row.siteId}`}>"
+    + "<td><Link href={`/sa/sales-orders/${row.order.id}`}>x</Link></td>"
+    + "</DetailRow>", 1],
+  ["<DetailRow> ที่ไม่ส่ง href เลย = ตก (แถวที่ไม่พาไปไหนต้องเป็น <tr> ธรรมดา)",
+    '<DetailRow className="premium-row"><td><Link href="/x/1">x</Link></td></DetailRow>', 1],
+  ["เขียน href คนละข้อความแต่ปลายทางเดียวกัน = ตก (ตั้งใจให้เข้ม — ยกเป็น detailHref)",
+    "<DetailRow href={`/x/${row.id}`}><td><Link href={\"/x/\" + row.id}>x</Link></td></DetailRow>", 1],
+  ["สองแถวในไฟล์เดียว ตรวจแยกกันคนละใบ",
+    '<DetailRow href="/a"><td><Link href="/a">a</Link></td></DetailRow>'
+    + '<DetailRow href="/b"><td>b</td></DetailRow>', 1],
+];
+
+for (const [label, code, expected] of ROW_MIRROR_FIXTURES) {
+  test(`ROW_MIRROR: ${label}`, () => {
+    assert.equal(rowMirrorMisses("fixture.js", code).length, expected, code);
+  });
+}
+
+test("ROW_MIRROR เป็น hard-zero และผูกกับการยกเว้นทางลัดเมาส์บนแถว", () => {
+  assert.match(AUDIT, /rowMirrorMissViolations\.length\s*\n?\s*\?/,
+    "audit-ui.mjs ต้องฟ้องทันทีที่ ROW_MIRROR ไม่เป็น 0 (ไม่มีเพดานให้ไต่)");
+  /* สูตรการยกเว้นต้องอ่านออกว่าผูกกับ **สองเงื่อนไข**: ROW_MIRROR ว่าง + จุดเดียวพอดี
+     ถ้าใครตัดเงื่อนไขใดออก ด่านจะกลายเป็น "ยกเว้นเพราะประกาศไว้" ซึ่งคือสิ่งที่ตั้งใจเลี่ยง */
+  assert.match(AUDIT, /rowMirrorMissViolations\.length === 0 && \(a11yKeyboardHits\.get\(ROW_PRIMITIVE\) \|\| \[\]\)\.length === 1 \? 1 : 0/,
+    "สูตร rowShortcutExempt เปลี่ยนไป — ต้องยกเว้นเมื่อ ROW_MIRROR ว่าง **และ** DetailRow.js เหลือ 1 จุดพอดี");
+});
+
+test("ROW_MIRROR ยังผูกกับของจริง (ทุกที่เรียก DetailRow ต้องผ่าน)", () => {
+  const { rowMirror } = scan();
+  assert.deepEqual(rowMirror, [],
+    "มีที่เรียก DetailRow ที่ไม่มี <Link> ปลายทางเดียวกันในเซลล์ — ยกเป็น const detailHref "
+    + "ตัวเดียวแล้วส่งให้ทั้งสองที่ (แถวที่ไม่พาไปไหนใช้ <tr className=\"premium-row\"> ธรรมดา)");
+});
+
+/* 🪤 สายสะดุดของการยกเว้น: ถ้าวันหน้า DetailRow.js มี `<div onClick>` ตัวที่สองโผล่มา
+   `rowShortcutExempt` จะกลายเป็น 0 เอง (เงื่อนไข `=== 1`) แล้วเพดานคีย์บอร์ดจะแดง
+   ⇒ ต้องมีคนมาดูว่าจุดใหม่นั้นคืออะไร ไม่ใช่ให้มันไหลเข้าไปในโควตาของแถวเงียบ ๆ */
+test("การยกเว้นเป็นของ <tr> ของ DetailRow จุดเดียว ไม่ใช่ทั้งไฟล์", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), ROW_PRIMITIVE), "utf8");
+  const clicks = (src.match(/onClick=/g) || []).length;
+  assert.equal(clicks, 1,
+    `${ROW_PRIMITIVE} มี onClick ${clicks} ที่ — โควตาที่ยกเว้นให้คือ **แถวเดียว** `
+    + "ถ้ามีตัวที่สองต้องแยกให้ชัดก่อน ห้ามให้มันแอบใช้โควตาเดียวกัน");
+  assert.ok(!/\brole=|\btabIndex=|\bonKeyDown=/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")),
+    "DetailRow คืน role/tabIndex/onKeyDown ขึ้น <tr> แล้ว — ทับ role=\"row\" ทิ้ง (ตก 1.3.1) "
+    + "และการยกเว้นนี้ตั้งอยู่บนสมมติฐานว่าแถว **ไม่ใช่** control");
 });

@@ -11,7 +11,7 @@
     "sahamit": {
       "legacyTable": 21,
       "legacySurface": 34,
-      "inlineStyle": 670,
+      "inlineStyle": 667,
       "rawButtonClass": 67,
       "rawInputClass": 25
     },
@@ -25,7 +25,7 @@
     "tax": {
       "legacyTable": 1,
       "legacySurface": 12,
-      "inlineStyle": 118,
+      "inlineStyle": 117,
       "rawButtonClass": 22,
       "rawInputClass": 9
     },

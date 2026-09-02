@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { LayoutDashboard, LineChart, ShoppingCart, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
@@ -177,7 +178,19 @@ export default function SahamitOverview() {
                     <tbody>
                       {recentFollowUps.map((p) => (
                         <tr key={p.id} onClick={() => router.push(`/sahamit/po?q=${p.poNumber}`)} style={{ cursor: "pointer" }} className="hover-row">
-                          <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)", color: "var(--accent)" }}>{p.poNumber}</td>
+                          {/* เลขที่ PO เป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
+                              onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ · stopPropagation กันแถวยิง
+                              router.push ซ้ำจนได้ history ซ้อนสองชั้น (Back ต้องกดสองครั้ง) */}
+                          <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)" }}>
+                            <Link
+                              href={`/sahamit/po?q=${p.poNumber}`}
+                              className="linklike"
+                              onClick={(e) => e.stopPropagation()}
+                              title="เปิดรายการ PO ที่กรองด้วยเลขที่นี้"
+                            >
+                              {p.poNumber}
+                            </Link>
+                          </td>
                           <td>{naText(p.receivedDate)}</td>
                           <td><span className={`status-pill ${poRollupStatus(p) === "open" ? "warning" : "info"}`}>{poRollupStatus(p) === "open" ? "รอผลิต" : "ทยอยส่ง"}</span></td>
                         </tr>
