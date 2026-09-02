@@ -534,6 +534,13 @@
   --ls-heading: -0.02em; /* หัวเรื่องใหญ่ — บีบเข้าให้ดูแน่น */
   --ls-tabular: -0.01em; /* ตัวเลขคอลัมน์ตรง (tabular-nums / mono) */
   --ls-label: 0.08em;    /* ป้ายตัวเล็กพิมพ์ใหญ่ (eyebrow / หัวข้อย่อย) */
+  /* หัวคอลัมน์ของตาราง — คลายออกนิดเดียวเพราะหัวเป็นตัวหนาตัวเล็ก (--fs-table-head)
+     ที่ตัวอักษรเกยกันง่ายกว่าเนื้อแถว · ต่างจาก --ls-label ตรงที่หัวตารางเป็น
+     ตัวพิมพ์ปกติ ไม่ใช่ป้ายพิมพ์ใหญ่ จึงคลายน้อยกว่ากันมาก (0.025 vs 0.08em)
+     📅 2026-09-02 ยกมาจาก `.025em` ที่ Table.module.css เพราะ `.th-sort` ต้อง
+     สืบทอดค่านี้ลงปุ่มในเซลล์ (ดูคอมเมนต์ที่ .th-sort) ⇒ ค่ามีชื่อแล้วอ่านออกว่า
+     ปุ่มกำลังรับช่วงอะไรมา ไม่ใช่เลขลอยที่แก้ฝั่งเดียวแล้วอีกฝั่งไม่รู้ */
+  --ls-table-head: 0.025em;
 
   --op-disabled: 0.45; /* ตัวควบคุมที่กดไม่ได้ (ปุ่ม/แท็บ/ตัวเลือก) */
   --op-muted: 0.55;    /* ลดความเด่นแต่ยังต้องอ่านออก (แถวปิด/ยกเลิก/ช่องที่ล็อก) */
@@ -5266,6 +5273,103 @@ button.empty-state { width: 100%; font: inherit; }
 }
 .premium-table.sticky-col1 tr:hover td:first-child {
   background: var(--panel-2);
+}
+
+/* ── หัวตารางที่กดเรียงได้ (SortTh · src/lib/useSortableTable.js) ────────────────
+   2026-09-02 — ตัวกดเป็น <button> ข้างใน <th> ไม่ใช่ onClick บน <th> (WCAG 2.1.1)
+   และ <th> ถือ aria-sort เอง (1.3.1 / 4.1.2) · <th> ต้องเก็บ role="columnheader"
+   ตามธรรมชาติไว้ ⇒ **ห้ามใส่ role/tabIndex ทับ** (ทับแล้ว screen reader ไม่รู้ว่า
+   เซลล์นี้เป็นหัวคอลัมน์ · ด่าน ROLE_ON_TABLE_TAG_CAP ดักไว้อีกชั้น)
+
+   🪤 **ห้ามใช้ `font: inherit`** — shorthand รีเซ็ต font-variant-numeric เป็น normal
+   ⇒ `.premium-table { font-variant-numeric: tabular-nums }` กับกฎ `.premium-table .num`
+   (--font-numeric + tnum/lnum ท้ายไฟล์) หลุดจากหัวคอลัมน์ตัวเลขเงียบ ๆ
+   บทเรียนเดิม: `.linklike` เคยล้าง `.mono` ทิ้ง 11 จุดด้วยกลไกเดียวกันเป๊ะ
+   ⇒ คืนทีละพร็อพเท่านั้น · (font-family/font-size มีกฎกลางที่บรรทัด 812 ให้อยู่แล้ว
+   เขียนซ้ำที่นี่เพื่อให้ primitive ยืนได้เองถ้ากฎกลางถูกรื้อ) */
+.th-sort {
+  /* 🐞 **ต้องเป็น inline-flex ไม่ใช่ block** (แก้ 2026-09-02 ก่อน merge)
+     ร่างแรกใช้ `display: block` ⇒ ปุ่มกลายเป็นกล่องระดับบล็อกที่ Blink ยังคิดความกว้าง
+     แบบ shrink-to-fit (วัดได้ 30–59px ในช่องกว้าง 224–403px) และ **`text-align` ไม่จัด
+     ตำแหน่งกล่องระดับบล็อก** ⇒ `text-align: inherit` ที่ใส่ไว้ไปจัดข้อความ *ภายใน* ปุ่ม
+     ที่กว้างเท่าตัวหนังสือพอดี = ไม่มีผลอะไรเลย หัวคอลัมน์ตัวเลขที่จัดชิดขวาทุกใบ
+     เด้งมาชิดซ้าย (products 3 · signature-coverage 3 · sahamit/po 2 · sites 1)
+     inline-flex ทำให้ปุ่มเป็นกล่องระดับ inline ⇒ `text-align` ของ <th> จัดให้เหมือนเดิมเป๊ะ
+     ⚠️ แผ่นคลุมไม่กระทบ เพราะ `::after` ยึดกับ <th> (position: relative) ไม่ใช่กับปุ่ม
+     — ปุ่มต้องไม่มี `position` ของตัวเอง ห้ามเติม */
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  appearance: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  font-variant-numeric: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  /* ⚠️ **จำเป็นจริง ห้ามตัดทิ้งเพื่อกดเลขด่าน** — letter-spacing เป็นพร็อพที่สืบทอด
+     ตามปกติก็จริง แต่ UA ของเบราว์เซอร์ **ตั้ง `letter-spacing: normal` ทับให้ควบคุม
+     ฟอร์มทุกตัว** (input/textarea/select/button) สายการสืบทอดจึงขาดตรงปุ่มพอดี
+     วัดจริง 2026-09-02 (Chrome headless · getComputedStyle): `.scroll[data-family] th`
+     ของ TableShell = 0.35px (`.025em` ที่ Table.module.css:182) แต่ปุ่มข้างในได้
+     `normal` ⇒ ตัดบรรทัดนี้ออกเมื่อไหร่ หัวตารางที่เรียงได้ของ sites/assets (11 จุด)
+     จะแน่นกว่าหัวที่เรียงไม่ได้ในแถวเดียวกัน · ฝั่ง `.premium-table` ไม่ต่าง เพราะ
+     ค่าที่สืบทอดมาคือ 0 ซึ่งเท่ากับ normal อยู่แล้ว
+     🪤 ด่าน RAW_LETTER_SPACING_CAP นับ `letter-spacing:` ทุกค่าที่ไม่ใช่ var(...)
+     และไม่ใช่ 0 ⇒ **คำว่า `inherit` ก็โดนนับ** บรรทัดนี้จึงดันเลขจาก 4 เป็น 5
+     ✅ แก้แล้วโดยไม่ขยับเพดาน: ยก `.025em` ของ Table.module.css เข้าโทเคน
+     `--ls-table-head` ⇒ ของจริงลดเป็น 3 แล้วบรรทัดนี้เติมกลับเป็น 4 พอดี
+     ⚠️ ใครยกอีกสามจุดที่เหลือ (.brand-logo · .dept · .totalAmount) เข้าโทเคนต่อ
+     ต้องรูดเพดานลงตาม **แต่ห้ามนับบรรทัดนี้เป็นจุดที่ยกได้** — `inherit` ไม่มีค่า
+     ให้ตั้งชื่อ มันคือการต่อสายสืบทอดที่ UA ตัด ไม่ใช่การเขียนค่าดิบ */
+  letter-spacing: inherit;
+  /* UA ของ <button> คือ text-align: center — ไม่คืนค่านี้ คอลัมน์ตัวเลขที่ชิดขวา
+     (.num · styles.numCol · style={{textAlign:"right"}}) จะเด้งมากลางทันที 7 จุด */
+  text-align: inherit;
+  cursor: pointer;
+  user-select: none;
+}
+
+.th-sort-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);   /* = 4px เดิมของ inline style · ห้ามเขียน 4px (RAW_SPACING_CAP) */
+}
+
+/* ปุ่มต้องกดได้ทั้งช่อง ไม่ใช่แค่ตรงตัวหนังสือ — ตัวหนังสือหัวตารางสูงราว 18px
+   ต่ำกว่าเป้า 24×24px ของ WCAG 2.5.8 · ใช้ "แผ่นคลุม" แทนการย้าย padding ออกจาก <th>
+   เพราะระบบมีตารางสองชั้นที่ padding ไม่เท่ากัน (`.premium-table th` = --space-2-5/--space-3
+   · `.scroll[data-family] th` ใน Table.module.css = padding-inline 13px + height 42px)
+   ย้าย padding ทีเดียวจึงครอบไม่ครบ และการก๊อป 13px มาเขียนซ้ำ = เพิ่มเลขดิบ (ตก ratchet) */
+:where(th):has(> .th-sort) {
+  /* 🪤 **`:where()` เป็นตัวรับน้ำหนักทั้งกฎ ห้ามถอด** — ต้องได้ specificity (0,1,0)
+     เพื่อให้ **แพ้** `.premium-table th` (0,1,1) ที่เป็น `position: sticky; top: 0`
+     ถ้าเขียน `th:has(> .th-sort)` จะได้ (0,1,1) เสมอกันแล้วชนะด้วยลำดับในไฟล์
+     ⇒ หัวตารางทั้งระบบเลิกลอยตามการเลื่อน โดยไม่มีอะไรฟ้อง
+     ที่นี่ต้องการแค่ "ตัวยึด" ให้แผ่นคลุม ซึ่ง sticky ก็เป็นให้อยู่แล้วในตัว */
+  position: relative;
+}
+
+.th-sort::after {
+  content: "";
+  position: absolute;
+  inset: 0;   /* = padding box ของ <th> ⇒ กดตรงไหนในหัวก็ได้เหมือนตอนเป็น <th onClick> */
+}
+
+/* วงโฟกัสวาดบนแผ่นคลุม ⇒ ล้อมทั้งช่องหัว ไม่ใช่ล้อมแค่ตัวหนังสือ
+   ⚠️ ต้องเป็น var(--accent-ink) ไม่ใช่ var(--accent) — มี hard-zero คุมอยู่
+      (--accent ได้ 2.75:1 บน --bg ตก §1.4.11 ที่ต้องการ 3:1 · ธีมมืดสองโทเคนค่าเดียวกัน)
+   offset ติดลบเพราะหัวตารางเป็น sticky อยู่ในกล่อง overflow ของ TableScroll
+      วงที่ยื่นออกนอกช่องจะโดนคลิปหาย (ท่าเดียวกับ .tab-btn / .stage-step) */
+.th-sort:focus-visible { outline: none; }
+.th-sort:focus-visible::after {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: -2px;
 }
 
 /* Tabs */

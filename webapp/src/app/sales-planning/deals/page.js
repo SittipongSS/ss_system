@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
+import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
@@ -156,9 +157,10 @@ export default function SalesPlanningPipelinePage() {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir(defaultDir(key)); }
   };
-  const sortArrow = (key) => sortKey === key
-    ? (sortDir === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
-    : <ArrowUpDown size={11} style={{ opacity: 0.35 }} />;
+  /* หน้านี้ถือ state การเรียงเอง (useStickyState) ไม่ได้ใช้ useSortableTable —
+     ห่อให้ตรงรูป { sortKey, sortDir, sortBy } ที่ <SortTh> ขอ · sortBy ยังเป็น handleSort
+     ตัวเดิม ทิศตั้งต้นรายคีย์ (defaultDir) จึงไม่เปลี่ยน */
+  const sort = { sortKey, sortDir, sortBy: handleSort };
 
   const [dealModal, setDealModal] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
@@ -977,14 +979,14 @@ export default function SalesPlanningPipelinePage() {
             <TableScroll surface="embedded"><table className="w-full text-sm">
               <thead>
                 <tr>
-                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>ดีล {sortArrow("name")}</span></th>
-                  <th onClick={() => handleSort("status")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>สถานะ {sortArrow("status")}</span></th>
+                  <SortTh label="ดีล" sortKey="name" sort={sort} />
+                  <SortTh label="สถานะ" sortKey="status" sort={sort} />
                   <th>ขั้นตอน</th>
                   <th style={{ textAlign: "center" }}>FC%</th>
                   <th style={{ textAlign: "center" }}>ประเภท</th>
                   <th>ผู้ดูแล (AE)</th>
                   <th>เดือน FC</th>
-                  <th className="num" onClick={() => handleSort("amount")} style={{ cursor: "pointer", userSelect: "none" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>มูลค่า {sortArrow("amount")}</span></th>
+                  <SortTh className="num" label="มูลค่า" sortKey="amount" sort={sort} />
                   {/* 4 คอลัมน์เดิม (ไทม์ไลน์/ใบเสนอ/เอกสาร/ส่ง) ยุบเข้าเมนู "…" ในคอลัมน์นี้ */}
                   <th style={{ textAlign: "right" }}>จัดการ</th>
                 </tr>
