@@ -20,7 +20,7 @@ import {
   ASSET_CONDITIONS, ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
 } from "@/lib/service/sites";
 import {
-  MOVE_CHANGES_SITE, MOVE_LABELS, MOVE_NEEDS_REASON, MOVE_RESULT, assetMoveError,
+  MOVE_CHANGES_SITE, MOVE_LABELS, MOVE_NEEDS_REASON, MOVE_RESULT, MOVE_TO_WAREHOUSE, assetMoveError,
 } from "@/lib/service/assetMoves";
 import { businessDate } from "@/lib/businessDate";
 import { naText } from "@/lib/format";
@@ -32,7 +32,7 @@ const MOVE_HINTS = {
   transfer: "เครื่องจะถูกถอดจากที่เดิมไปติดตั้งที่ใหม่ — ประวัติเก็บทั้งสองฝั่ง",
   return: "เครื่องจะกลับเข้าคลัง ไม่ถูกนับเป็นเครื่องของไซต์นั้นอีก",
   repair: "เครื่องจะไม่ถูกนับในคลังพร้อมใช้ระหว่างที่ส่งซ่อม",
-  repair_done: "เครื่องกลับเข้าคลังในสภาพปกติ พร้อมนำไปติดตั้งใหม่",
+  repair_done: "เลือกคลังที่จะรับเครื่องกลับเข้า — สภาพกลับเป็นปกติ พร้อมนำไปติดตั้งใหม่",
   condition: "เปลี่ยนแค่สภาพเครื่อง — ที่อยู่และสถานะไม่เปลี่ยน",
   retire: "ย้อนกลับไม่ได้ — แต่ระเบียนไม่ถูกลบ ประวัติทั้งหมดยังอ่านได้",
 };
@@ -62,8 +62,9 @@ export default function AssetMoveModal({ open, kind, asset, fromSite, sites = []
   /* ไซต์ปลายทางที่เลือกได้ — คัดตามชนิดคำสั่งตั้งแต่ในลิสต์ ไม่ใช่ให้เลือกผิดแล้วค่อยเด้ง
      ⚠️ ตัดไซต์ปัจจุบันออกด้วย: "ย้ายไปที่เดิม" ไม่ใช่การย้าย */
   const siteOptions = useMemo(() => sites
-    .filter((s) => s.id !== asset?.siteId && s.isActive !== false)
-    .filter((s) => (kind === "return" ? isWarehouseSite(s) : !isWarehouseSite(s)))
+    // ⚠️ `repair_done` กลับเข้าคลังใบเดิมได้ ⇒ ตัดไซต์ปัจจุบันออกเฉพาะคำสั่งที่ต้องย้ายจริง
+    .filter((s) => (kind === "repair_done" || s.id !== asset?.siteId) && s.isActive !== false)
+    .filter((s) => (MOVE_TO_WAREHOUSE.includes(kind) ? isWarehouseSite(s) : !isWarehouseSite(s)))
     .map((s) => ({ value: s.id, label: s.name, search: `${s.name} ${s.code || ""} ${s.customerName || ""}` })),
   [sites, asset?.siteId, kind]);
 
@@ -121,12 +122,12 @@ export default function AssetMoveModal({ open, kind, asset, fromSite, sites = []
             value={form.toSiteId}
             onChange={(v) => { patch({ toSiteId: v, toZoneId: "" }); onToSite?.(v); }}
             options={siteOptions}
-            placeholder={kind === "return" ? "เลือกคลัง" : "เลือกไซต์ลูกค้า"}
+            placeholder={MOVE_TO_WAREHOUSE.includes(kind) ? "เลือกคลัง" : "เลือกไซต์ลูกค้า"}
           />
         </label>
       )}
 
-      {needsSite && kind !== "return" && (
+      {needsSite && !MOVE_TO_WAREHOUSE.includes(kind) && (
         <label className="form-field">
           <span>โซน</span>
           <SearchableSelect

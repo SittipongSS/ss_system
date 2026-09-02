@@ -693,7 +693,7 @@ export default function ServiceSiteDetailPage({ params }) {
             ? "โซนที่มีรอบขายผูกอยู่จะลบไม่ได้ (ปิดใช้งานแทนเพื่อเก็บประวัติ) · อุปกรณ์ในโซนไม่หาย แต่จะกลับไปกอง 'ยังไม่ระบุโซน'"
             : pendingDelete?.type === "site"
               ? "ลบได้เฉพาะไซต์ที่ยังไม่มีเครื่อง/โซน/ประวัตินัด — มีของค้างอยู่จะลบไม่ผ่านพร้อมบอกว่าติดอะไร ถ้าไซต์นี้เลิกใช้แล้วให้ปิดใช้งานแทน (แก้ไขไซต์ → สถานะ)"
-              : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้เปลี่ยนสถานะเป็น 'ถอดออกแล้ว' แทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
+              : "ถ้าอุปกรณ์ถูกถอดออกจริง ให้ใช้คำสั่ง 'ถอนกลับคลัง' หรือ 'ปลดระวาง' บนหน้าเครื่องแทนการลบ เพื่อไม่ให้ประวัติการเข้าบริการหาย"}
         confirmLabel={pendingDelete?.type === "plan" ? "ลบรอบ" : pendingDelete?.type === "zone" ? "ลบโซน" : pendingDelete?.type === "site" ? "ลบไซต์" : "ลบอุปกรณ์"}
         busy={busy}
         onConfirm={pendingDelete?.type === "plan" ? removePlan : pendingDelete?.type === "zone" ? removeZone : pendingDelete?.type === "site" ? removeSite : removeAsset}

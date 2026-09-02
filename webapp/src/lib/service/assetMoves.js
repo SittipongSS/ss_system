@@ -31,8 +31,20 @@ export const MOVE_LABELS = {
 // คำสั่งที่ CHECK ใน DB บังคับเหตุผล — จอต้องบังคับด้วย ไม่งั้นผู้ใช้เจอ error ดิบของ Postgres
 export const MOVE_NEEDS_REASON = ['transfer', 'return', 'retire'];
 
-// คำสั่งที่ย้ายที่จริง ๆ (ต้องมีไซต์ปลายทาง) — ที่เหลือเปลี่ยนแค่สถานะ/สภาพ
-export const MOVE_CHANGES_SITE = ['install', 'transfer', 'return'];
+/* คำสั่งที่ต้องเลือกไซต์ปลายทาง — ที่เหลือเปลี่ยนแค่สถานะ/สภาพโดยอยู่ที่เดิม
+   🐞 `repair_done` เคยไม่อยู่ในลิสต์นี้ (UAT 2026-09-02): เครื่องที่ส่งซ่อม**จากไซต์
+      ลูกค้า** ยังมี `siteId` ชี้ไซต์นั้นอยู่ ⇒ พอสั่งรับคืนแล้วตั้ง `in_stock`
+      เครื่องกลายเป็น "อยู่ในคลัง" ทั้งที่ siteId เป็นไซต์ลูกค้า ⇒ **trigger ของ DB
+      เป็นคนตีกลับ (500 + ข้อความภาษาฐานข้อมูล)** ซึ่งเป็นสิ่งที่ไฟล์นี้มีไว้เพื่อกัน */
+export const MOVE_CHANGES_SITE = ['install', 'transfer', 'return', 'repair_done'];
+
+/* ปลายทางต้องเป็น **คลัง** — เครื่องที่ไม่ได้ติดตั้งต้องมีคลังรองรับเสมอ */
+export const MOVE_TO_WAREHOUSE = ['return', 'repair_done'];
+
+/* ต้องเป็นไซต์ **คนละใบ** กับที่อยู่ตอนนี้ — "ย้ายไปที่เดิม" ไม่ใช่การย้าย
+   ⚠️ `repair_done` ไม่อยู่ในลิสต์นี้โดยตั้งใจ: เครื่องที่ส่งซ่อมจากคลัง กลับเข้า
+      คลังใบเดิมเป็นเรื่องปกติที่สุด */
+export const MOVE_REQUIRES_NEW_SITE = ['install', 'transfer', 'return'];
 
 /* สถานะปลายทางของแต่ละคำสั่ง — **ตารางเดียว** ไม่ให้ route กับจอเดาเอง
    ⚠️ `null` = ไม่แตะแกนนั้น (เช่น `condition` ไม่เปลี่ยน status) */
@@ -95,13 +107,19 @@ export function assetMoveError(asset, kind, input = {}, ctx = {}) {
     const { toSite } = ctx;
     if (!input.toSiteId) return 'ต้องเลือกไซต์ปลายทาง';
     if (!toSite) return 'ไม่พบไซต์ปลายทาง';
-    if (toSite.id === asset.siteId) return 'ไซต์ปลายทางเป็นที่เดิม';
+    if (MOVE_REQUIRES_NEW_SITE.includes(kind) && toSite.id === asset.siteId) {
+      return 'ไซต์ปลายทางเป็นที่เดิม';
+    }
     if (toSite.isActive === false) return 'ไซต์ปลายทางถูกปิดใช้งานอยู่';
 
     /* 🔴 ปลายทางต้องเป็นไซต์ **ประเภทที่ถูก** — trigger ใน DB (mig 0332) จะตีกลับอยู่แล้ว
        แต่ข้อความของ trigger เป็นภาษาของฐานข้อมูล ⇒ ต้องดักที่นี่ให้ได้ข้อความที่คนอ่านรู้เรื่อง */
-    if (kind === 'return' && !isWarehouseSite(toSite)) return 'ถอนกลับคลังต้องเลือกไซต์ประเภทคลัง';
-    if (kind !== 'return' && isWarehouseSite(toSite)) return 'ติดตั้ง/ย้ายต้องเลือกไซต์ลูกค้า ไม่ใช่คลัง';
+    if (MOVE_TO_WAREHOUSE.includes(kind) && !isWarehouseSite(toSite)) {
+      return kind === 'return' ? 'ถอนกลับคลังต้องเลือกไซต์ประเภทคลัง' : 'รับคืนจากซ่อมต้องเลือกคลังปลายทาง';
+    }
+    if (!MOVE_TO_WAREHOUSE.includes(kind) && isWarehouseSite(toSite)) {
+      return 'ติดตั้ง/ย้ายต้องเลือกไซต์ลูกค้า ไม่ใช่คลัง';
+    }
   }
 
   if (kind === 'condition') {

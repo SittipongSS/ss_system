@@ -206,9 +206,18 @@ export default function ServiceAssetPage({ params }) {
         description={[site?.name, zone ? `โซน ${zone.name}` : null, asset.floor, asset.spot].filter(Boolean).join(" · ")}
         badges={(
           <>
-            <span className={`ui-badge ${asset.status === "removed" ? "" : "success"}`.trim()}>
-              {asset.status === "removed" ? "ถอดออกแล้ว" : asset.status === "repair" ? "ส่งซ่อม" : "ใช้งาน"}
+            {/* 🪤 เคยเขียนสตริงสดสามทาง (`removed` → "ถอดออกแล้ว" ที่เหลือ → "ใช้งาน")
+                ⇒ พอ mig 0332 เพิ่ม `in_stock` เครื่องในคลังขึ้นป้าย "ใช้งาน"
+                และ mig 0335 เปลี่ยนความหมาย `removed` เป็น "ปลดระวาง" ป้ายก็ยังพูดคำเก่า
+                ⇒ อ่านจากทะเบียนตัวเดียวเสมอ ห้ามเทียบสตริงเอง */}
+            <span className={`ui-badge ${asset.status === "active" ? "success"
+              : asset.status === "repair" ? "warning" : ""}`.trim()}>
+              {ASSET_STATUS_LABELS[asset.status] || asset.status}
             </span>
+            {/* สภาพเป็นแกนที่สอง — ขึ้นเฉพาะตอนชำรุด (ปกติไม่ต้องประกาศ) */}
+            {asset.condition === "broken" && (
+              <span className="ui-badge danger">{ASSET_CONDITION_LABELS.broken}</span>
+            )}
             {asset.settings?.grade && <span className="ui-badge violet">{asset.settings.grade}</span>}
           </>
         )}
