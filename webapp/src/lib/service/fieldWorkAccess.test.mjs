@@ -179,3 +179,42 @@ test('🔴 ด่านอ่านของฟอร์มใบคำร้อ
   );
   assert.match(zones, /forRequestForm: true/);
 });
+
+/* 🔴 **ทุกเส้นลบของโมดูลบริการต้องมีทางลัดผู้ดูแลระบบ** (ผู้ใช้แจ้ง 2026-09-02)
+   มติ #1501 ให้แอดมินลบได้ทุกอย่าง และ 9 route ทั่วระบบต่อ ?force=1 ไปแล้ว
+   แต่โมดูลบริการไม่เคยต่อสักเส้น ⇒ แอดมินชนกำแพงทุกครั้งที่จะเก็บกวาด
+   ⚠️ เทสต์นี้ปักไว้ทั้งชุด — เพิ่ม route ลบใหม่แล้วลืมต่อ จะรู้ตัวตรงนี้
+      ไม่ใช่ตอนแอดมินไปกดแล้วติด */
+test('🔴 route ลบของโมดูลบริการต้องรับ ?force=1 ของแอดมินครบทุกเส้น', () => {
+  const ROUTES = [
+    ['visits/[id]', 'นัด'],
+    ['sites/[id]', 'ไซต์'],
+    ['sites/[id]/zones/[zoneId]', 'โซน'],
+    ['sites/[id]/assets/[assetId]', 'เครื่อง'],
+  ];
+  for (const [route, label] of ROUTES) {
+    const src = readFileSync(new URL(`../../app/api/service/${route}/route.js`, import.meta.url), 'utf8');
+    assert.match(src, /canForceDelete\(user\)/, `${label}: ต้องเช็คสิทธิ์แอดมิน`);
+    assert.match(src, /isForceRequest\(req\)/, `${label}: ต้องรับธง ?force=1`);
+    /* 🔴 ด่านสิทธิ์ต้องมาก่อน force เสมอ — force ข้ามได้แค่กฎธุรกิจ ไม่ใช่สิทธิ์
+       สลับลำดับเมื่อไร ?force=1 กลายเป็นทางข้ามสิทธิ์ให้ใครก็ได้ */
+    const guard = Math.min(
+      ...['requireSite(', 'requireVisit('].map((fn) => {
+        const i = src.indexOf(fn);
+        return i === -1 ? Infinity : i;
+      }),
+    );
+    assert.ok(guard < src.indexOf('isForceRequest('),
+      `${label}: ด่านสิทธิ์ต้องมาก่อน force`);
+  }
+});
+
+/* ทางลัดต้องมีพรีวิวคู่เสมอ — บังคับลบที่ไม่บอกว่าจะลบอะไรพ่วง คือการลบข้อมูล
+   ของคนอื่นโดยที่คนกดไม่รู้ตัว (สามเส้นที่มี cascade จริง · นัดไม่มีลูกที่ RESTRICT) */
+test('🔴 เส้นที่ลบพ่วงลูก ต้องมี ?dryRun=1 ให้พรีวิวก่อน', () => {
+  for (const route of ['sites/[id]', 'sites/[id]/zones/[zoneId]', 'sites/[id]/assets/[assetId]']) {
+    const src = readFileSync(new URL(`../../app/api/service/${route}/route.js`, import.meta.url), 'utf8');
+    assert.match(src, /isDryRun\(req\)/, `${route}: ต้องรองรับพรีวิว`);
+    assert.match(src, /Manifest\(supabase/, `${route}: พรีวิวต้องเดินเส้นเดียวกับตัวลบจริง`);
+  }
+});
