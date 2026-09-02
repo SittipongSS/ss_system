@@ -59,7 +59,199 @@ function blankBlockComments(source) {
    ทางฝั่งที่ผิดคือ "ไม่นับของที่ควรนับ" ซึ่งเป็นสตริงที่ไม่มีใครเขียนจริง ต่างจากทางกลับ
    ที่ทำให้คนเขียนคอมเมนต์อธิบายกฎไม่ได้ */
 function blankLineComments(source) {
-  return source.replace(/(?<![:\w])\/\/[^\n]*/g, (text) => " ".repeat(text.length));
+  /* ต้องเดินทีละอักขระเพื่อรู้ว่าอยู่ในสตริงหรือเปล่า — regex เปล่า ๆ ไม่พอ
+     🐞 2026-09-02 รุ่นแรกใช้ regex ตัวเดียวจับ // ไปจนจบบรรทัด แล้วกิน `//` ที่อยู่ใน *ค่าสตริง*
+     ของแอตทริบิวต์ด้วย พร้อมกลืน `>` ที่ปิดแท็กไปทั้งบรรทัด ⇒ แท็กทั้งอันหายจากสายตาด่าน
+     แบบเงียบสนิท (ด่านผิว className เป็น hard-zero ⇒ ของผิดในแท็กนั้นจะไม่มีวันถูกจับ)
+       <tr onClick={go} title="ก่อน // หลัง">  →  <tr onClick={go} title="ก่อน
+       <a href="//cdn.example/x">              →  <a href="
+     lookbehind `(?<![:\w])` กัน `https://` ได้ก็จริง แต่กัน URL แบบไม่ระบุโพรโทคอล
+     (`//cdn…`) กับข้อความไทยที่มี `//` คั่นไม่ได้เลย
+     วัด 2026-09-02: วันนี้ยังไม่มีของจริงติดรู (0 ไฟล์) แต่เป็นรูที่โผล่ตอนมีคนเขียน
+     placeholder/title ที่มี `//` ซึ่งไม่มีอะไรห้าม และจะไม่มีใครรู้ว่าด่านตาบอดไปแล้ว */
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      out += ch;
+      if (ch === "\\") {
+        out += source[i + 1] ?? "";
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      } else if (ch === "\n" && quote !== "`") {
+        /* สตริงเดี่ยว/คู่ปิดที่ท้ายบรรทัดเสมอ — กันสถานะค้างข้ามบรรทัดเวลาเจอโค้ดที่พังอยู่ */
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && source[i + 1] === "/") {
+      let end = source.indexOf("\n", i);
+      if (end === -1) end = source.length;
+      out += " ".repeat(end - i);
+      i = end - 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+
+/* ── ตัวแยกแท็กเปิดของ JSX ที่ทน `>` ในนิพจน์ (2026-09-02) ────────────────────
+   กฎทุกตัวข้างบนอ่านสไตล์ **ทีละบรรทัด** ได้ เพราะค่าที่มันตามหา (`gap: 14px`,
+   `text-[13px]`) จบในบรรทัดเดียวเสมอ · ด่านคีย์บอร์ดข้างล่างต่างออกไปโดยธรรมชาติ:
+   มันต้องรู้ว่า **แอตทริบิวต์ชุดไหนอยู่บนแท็กเดียวกัน** (มี `onClick` แต่ไม่มี
+   `tabIndex` = ความผิด · มีครบ = ผ่าน) ⇒ ต้องรู้ขอบเขตของแท็ก ไม่ใช่ของบรรทัด
+
+   ⚠️ **ทำไมไม่ใช้ regex** — รูป `<div\b([^>]*?)>` ที่เขียนกันติดมือ *ตัดผิดตำแหน่ง*
+   ทุกครั้งที่ในแท็กมี `>` อยู่ในนิพจน์ · ตัวการหลักไม่ใช่ `count > 1` อย่างที่คิดกัน
+   แต่เป็นลูกศรของ arrow function เอง — `ref={(node) => {…}}` ตัดที่ `=>` ทันที
+   (ของจริง: src/components/ui/Tabs.js:57 · Select.js:226 · DateInput.js:153)
+
+   วัด 2026-09-02 บนไฟล์ .js ใต้ src/app + src/components (661 ไฟล์):
+   แท็กเปิด JSX 16,428 อัน · เป็นแท็ก HTML ตัวพิมพ์เล็ก 11,522 อัน ·
+   `[^>]*?` **ตัดก่อนจบแท็กจริง 700 อัน = 6.1%** และใน 8 อันนั้น `onClick` อยู่
+   *หลัง* รอยตัด ⇒ regex มองไม่เห็น · วันนี้ทั้ง 8 เป็น `<button>` ซึ่งด่านยกเว้น
+   อยู่แล้ว แต่รูมีจริงและมันนับ **ขาด** ซึ่งอันตรายกว่านับเกิน: เพดาน ratchet ที่ตั้ง
+   จากเลขที่ขาด จะเปิดช่องให้ของใหม่ไหลเข้ามาฟรีโดยไม่มีอะไรฟ้อง
+
+   ตัวข้างล่างเดินทีละอักขระ นับวงเล็บทุกชนิดและข้ามสตริง/เทมเพลต แล้วหยุดที่ `>`
+   **ตัวแรกที่อยู่นอกวงเล็บและนอกสตริง** เท่านั้น
+   ✅ ยืนยันด้วยการเทียบกับ AST ของ @babel/parser 7.29.7 ทั้ง 661 ไฟล์ (babel พาร์สผ่าน
+   ครบทุกไฟล์) แล้วจับคู่ด้วย (ชื่อแท็ก, เลขบรรทัด): **จุดที่มี `onClick` บน host element
+   ตรงกันเป๊ะ 638/638 ไม่ขาดไม่เกิน** ⇒ ไม่ต้องผูก audit เข้ากับ dependency ที่
+   package.json ไม่ได้ประกาศ (babel เป็นแค่ของที่ next ลากมา ถอนเมื่อไหร่ก็ได้)
+
+   🪤 **จุดบอดสองอันที่รู้ตัว — วัดแล้วทั้งคู่ ไม่ได้เดา**
+   1) ตัวนี้ไม่แยก "สตริงของ JS" ออกจากโค้ด ⇒ `"<input …>"` ที่เขียนอยู่ในข้อความอธิบาย
+      (มีจริงที่ settings/design-preview) ถูกมองเป็นแท็กด้วย · เทียบกับ AST แล้วส่วนเกิน
+      แบบนี้มี 2 จุด และ **ไม่มีจุดไหนมี `onClick`** จึงไม่กระทบเลขเพดาน
+   2) ⚠️ อันนี้ไม่ใช่ความผิดของตัวแยกแท็ก แต่ของ `blankBlockComments()` ที่รับมาก่อนหน้า:
+      สตริง `"image/*"` **เปิดคอมเมนต์บล็อกปลอม** แล้วกลืนโค้ดจริงไปจนถึงตัวปิดคอมเมนต์ตัวถัดไป
+      วัด 2026-09-02: เกิดที่ไฟล์เดียวคือ src/components/service/CloseVisitSheet.js
+      (12 แท็กหายไปจากสายตาด่าน) และ `onClick` ที่ถูกกลืนไปด้วยมี 2 จุด **ทั้งคู่อยู่บน
+      `<Button>` ซึ่งเป็นคอมโพเนนต์ ไม่ใช่ host element ⇒ นอกขอบเขตด่านนี้อยู่แล้ว**
+      🪤 ทำไมไม่แก้ตัวล้างคอมเมนต์ให้รู้จักสตริง: ลองแล้ว วัดแล้ว — ตัวล้างที่รู้จักสตริง
+      ไปพังกับ *regex literal ที่มีเครื่องหมายคำพูดอยู่ข้างใน* (`/filename="([^"]+)"/`
+      ที่ finance/payments/page.js:199) แล้วสถานะเพี้ยนยาวทั้งไฟล์จนคอมเมนต์ไม่ถูกล้าง
+      ⇒ ได้ false positive จากตัวอย่างในคอมเมนต์แทน ซึ่ง **แย่กว่า** (ของจริงที่รออยู่:
+      sales-planning/leads/page.js:710 เขียนคำว่า `<tr onClick>` ไว้ในคอมเมนต์เพื่อสอนคน)
+      การจะแยกให้ถูกต้องจริงต้องพาร์สทั้งภาษา ซึ่งเป็นราคาที่ยังไม่คุ้มกับจุดบอด 1 ไฟล์
+      ⇒ เลือกอยู่กับ `lined` ชุดเดียวกับกฎอื่นทั้งรอบ แล้ววาง **สายสะดุด** ไว้แทน:
+      keyboardClickable.test.mjs ล็อกรายการ `onClick` ที่ถูกกลืนไว้ทั้ง 3 บรรทัด
+      มีรายการใหม่โผล่เมื่อไหร่เทสต์แดง แล้วต้องมีคนเปิดดูว่ามันเกาะอยู่บนแท็กอะไร */
+
+const JSX_TAG_START = /[A-Za-z]/;
+const JSX_NAME_CHAR = /[\w$:.-]/;
+
+/* หาตำแหน่ง `>` ที่ปิดแท็กจริง — คืน -1 ถ้าที่เจอไม่ใช่แท็ก (วงเล็บปิดเกิน = อยู่ใน
+   นิพจน์ JS ธรรมดา เช่น `arr.filter(x => x<y)` ที่ `<y` หน้าตาเหมือนแท็ก) */
+function jsxTagEnd(source, from) {
+  let depth = 0;
+  let quote = null;
+  for (let i = from; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+    if (ch === "{" || ch === "(" || ch === "[") { depth += 1; continue; }
+    if (ch === "}" || ch === ")" || ch === "]") { depth -= 1; if (depth < 0) return -1; continue; }
+    if (ch === ">" && depth === 0) return i;
+    if (ch === "<" && depth === 0) return -1;
+  }
+  return -1;
+}
+
+/* คืนแท็กเปิดทุกอันพร้อมเลขบรรทัด (ของไฟล์จริง ถ้าป้อน `lined` เข้ามา)
+   `attrText` = ทุกอย่างหลังชื่อแท็กจนถึงก่อน `>` (ตัด `/` ของแท็กปิดตัวเองออกแล้ว)
+   ⚠️ เดินต่อจาก *หลังชื่อแท็ก* ไม่ใช่หลัง `>` โดยเจตนา — JSX ที่ซ้อนอยู่ในแอตทริบิวต์
+   (`renderCell={(x) => <div onClick={…} />}`) ต้องถูกนับด้วย ไม่งั้นด่านมองไม่เห็น */
+function jsxOpeningTags(source) {
+  const tags = [];
+  for (let i = 0; i < source.length; i += 1) {
+    if (source[i] !== "<") continue;
+    if (!JSX_TAG_START.test(source[i + 1] || "")) continue;
+    let j = i + 1;
+    while (j < source.length && JSX_NAME_CHAR.test(source[j])) j += 1;
+    const end = jsxTagEnd(source, j);
+    if (end === -1) continue;
+    tags.push({
+      tag: source.slice(i + 1, j),
+      line: source.slice(0, i).split(/\r?\n/).length,
+      attrText: source.slice(j, source[end - 1] === "/" ? end - 1 : end),
+    });
+    i = j - 1;
+  }
+  return tags;
+}
+
+/* แตก `attrText` เป็นแมป ชื่อ → ซอร์สของค่า (`{…}` หรือ `"…"` ทั้งก้อน)
+   เดินทีละแอตทริบิวต์แทนการยิง regex หาชื่อ เพราะชื่อที่ต้องการอาจไปโผล่ *ข้างใน*
+   ค่าของแอตทริบิวต์อื่น (`title={<Row onClick={f} />}`) แล้วนับผิดตัว */
+function jsxAttributes(attrText) {
+  const attrs = new Map();
+  let i = 0;
+  while (i < attrText.length) {
+    const ch = attrText[i];
+    if (/\s/.test(ch)) { i += 1; continue; }
+    if (ch === "{") { // {...spread}
+      const close = jsxBalancedEnd(attrText, i);
+      if (close === -1) break;
+      i = close + 1;
+      continue;
+    }
+    if (!/[A-Za-z_$]/.test(ch)) { i += 1; continue; }
+    let j = i;
+    while (j < attrText.length && /[\w$:.-]/.test(attrText[j])) j += 1;
+    const name = attrText.slice(i, j);
+    let k = j;
+    while (k < attrText.length && /\s/.test(attrText[k])) k += 1;
+    if (attrText[k] !== "=") { attrs.set(name, ""); i = j; continue; } // แอตทริบิวต์เปล่า
+    k += 1;
+    while (k < attrText.length && /\s/.test(attrText[k])) k += 1;
+    if (attrText[k] === "{") {
+      const close = jsxBalancedEnd(attrText, k);
+      if (close === -1) break;
+      attrs.set(name, attrText.slice(k, close + 1));
+      i = close + 1;
+    } else if (attrText[k] === '"' || attrText[k] === "'") {
+      const quote = attrText[k];
+      let m = k + 1;
+      while (m < attrText.length && attrText[m] !== quote) m += 1;
+      attrs.set(name, attrText.slice(k, m + 1));
+      i = m + 1;
+    } else {
+      i = k;
+    }
+  }
+  return attrs;
+}
+
+function jsxBalancedEnd(text, open) {
+  let depth = 0;
+  let quote = null;
+  for (let i = open; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === "\\") { i += 1; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+    if (ch === "{" || ch === "(" || ch === "[") depth += 1;
+    else if (ch === "}" || ch === ")" || ch === "]") { depth -= 1; if (depth === 0) return i; }
+  }
+  return -1;
 }
 
 /* ── ตัวอ่านค่าของ style object (2026-09-02) ─────────────────────────────────
@@ -604,6 +796,156 @@ const RAW_TAILWIND_TYPE_CAP = 152;
    ซึ่งวันนี้ = 16) เพื่อให้เลขตรงกับรายชื่อบรรทัดข้างบนแบบหนึ่งต่อหนึ่ง */
 const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
 
+/* ══ ด่านการเข้าถึงตัวแรกของ CI: onClick ที่คีย์บอร์ดกดไม่ได้ (2026-09-02) ══════
+   ⭐ **นี่คือด่าน accessibility ตัวแรกของระบบนี้** · ก่อนวันนี้ CI มีด่าน 9 ตัวและ
+   เทสต์ 4,769 ตัว แล้ว **ไม่มีตัวไหนตรวจการเข้าถึงเลยสักตัว** — ทุกด่านข้างบนวัด
+   "สไตล์ตรงโทเคนไหม" ซึ่งเป็นเรื่องความสม่ำเสมอของหน้าตา · ด่านนี้วัดคนละแกน:
+   **ใช้งานได้ไหมถ้าไม่มีเมาส์** ซึ่งไม่ใช่ความสวย แต่คือใช้ไม่ได้จริง
+
+   ── เกณฑ์ที่อ้าง ────────────────────────────────────────────────────────────
+   WCAG 2.1.1 Keyboard (ระดับ A) — "ทุกฟังก์ชันสั่งงานด้วยคีย์บอร์ดได้"
+   (สรุปไทยครบทุกเกณฑ์อยู่ที่ docs/wcag-2.2-reference.md · เช็กลิสต์ของเราเองเขียน
+   ไว้แล้วว่า "ทุกอย่างที่คลิกได้ต้องเป็น <button>/<a> จริง ไม่ใช่ <div onclick>")
+   Failure technique ที่ตรงกับของเราคือ **F42** — ทำลิงก์ปลอมด้วย onclick บน <div>
+
+   ⚠️ เกณฑ์พูดถึง **"ฟังก์ชัน"** ไม่ใช่ "element" และไม่ได้เขียนคำว่า `role`
+   `tabIndex` `onKeyDown` ไว้เลยสักคำ · สูตร "role+tabIndex+onKeyDown" เป็นแค่
+   *ทางหนึ่ง* ที่ทำให้ผ่าน 2.1.1 + 4.1.2 + 2.4.3 พร้อมกัน **เมื่อยืนกรานจะเก็บ
+   `<div>` ไว้** — element จริงให้ครบทุกเกณฑ์มาฟรี จึงเป็นคำตอบแรกเสมอ
+   (`role` เป็นข้อบังคับของ 4.1.2 · ลำดับ Tab เป็นของ 2.4.3 · วงโฟกัสเป็นของ 2.4.7
+    ทั้งสามตัวไม่ใช่ด่านนี้ ห้ามเอามาปนกันในข้อความ error)
+
+   ── นับอะไร (วัดเอง 2026-09-02 · ไฟล์ .js ใต้ src/app + src/components) ──────
+   แท็ก HTML ตัวพิมพ์เล็กที่มี `onClick` = 638 จุด · ตัดตัวที่คีย์บอร์ดกดได้เองตาม
+   ธรรมชาติออก (button 553 จุด) เหลือ **85 จุด**:
+     div 30 · tr 18 · th 18 · td 12 · span 6 · aside 1
+   ⚠️ กวาด **ทุกแท็กตัวพิมพ์เล็ก** ไม่ใช่ลิสต์ที่เขียนตายไว้ — รอบวัดด้วยลิสต์ตายเคย
+   ตกหล่น `<aside>` ทั้งแท็กแล้วได้ 84 · ลิสต์ที่เขียนเองจะล้าทุกครั้งที่มีแท็กใหม่
+
+   ── ไม่นับอะไร (28 จาก 85 · ทุกข้อพิสูจน์ด้วยการอ่านโค้ดจริง) ─────────────────
+   ก. **ตัวกันคลิกทะลุ 22 จุด** (td 11 · div 8 · span 2 · aside 1) — handler ที่มีแต่
+      `e.stopPropagation()` ไม่เรียกอะไรเลย มันมีอยู่เพื่อ *หยุด* handler ของแถวแม่
+      ตอนคนกดปุ่มที่อยู่ข้างใน ⇒ **ไม่มีฟังก์ชันให้เข้าถึงตั้งแต่ต้น** จึงไม่มีอะไรให้ผิด
+      🪤 ยัด `tabIndex` ลงไป = สร้าง tab stop ว่างเปล่า **แย่กว่าเดิม**
+      (จับด้วยรูปตายตัว CLICK_STOPPER ข้างล่าง ไม่ได้เลือกด้วยตา)
+   ข. **ฉากหลังปิดกล่อง 4 จุด** (ดู dismissScrimExempt) — ฟังก์ชันคือ "ปิด" ซึ่งมี
+      Esc / ปุ่มปิด รับไว้แล้ว ⇒ ผ่าน 2.1.1 เพราะเกณฑ์ขอ *ฟังก์ชัน* ไม่ใช่ element
+   ค. **ครบเกณฑ์อยู่แล้ว 2 จุด** — src/components/ui/DetailRow.js:10 (role="link" +
+      tabIndex=0 + onKeyDown รับ Enter/Space) และ sales-planning/deals/[id]:1068
+      🪤 tabIndex={-1} **ไม่นับว่าผ่าน** — โฟกัสด้วยโปรแกรมเท่านั้น ไม่อยู่ในลำดับ Tab
+      ⇒ ด่านต้องอ่าน *ค่า* ไม่ใช่เช็กว่ามี attribute (Modal.js / RecordDrawer.js
+      เป็น role="dialog" tabIndex={-1} ซึ่งเป็น APG Dialog Pattern ที่ถูก ห้ามฟ้อง)
+
+   **สิ่งที่จงใจ *ไม่* ยกเว้น ทั้งที่มีข้ออ้าง — กันด่านกลวง**
+   · "มี <button> จริงซ้อนอยู่ข้างในแล้ว" — ไม่ยกเว้น · ปุ่มข้างในทำคนละงานกับแถว
+     (อนุมัติ/แก้ไข ≠ เปิดรายละเอียด) งานหลักของแถวยังเข้าไม่ถึงด้วยคีย์บอร์ด
+   · "มี title= อธิบายว่ากดได้" — ไม่ยกเว้น · tooltip ไม่ขึ้นตอนโฟกัสด้วยคีย์บอร์ด
+   · "มี cursor:pointer / .clickable-row" — ไม่ยกเว้น · เป็นสัญญาณสายตาล้วน
+   · `onClick` บนคอมโพเนนต์ตัวใหญ่ (<Toast onClose> ฯลฯ) — **นอกขอบเขต** ปลายทางจริง
+     อยู่ใน host element ข้างในตัวมันเอง ซึ่งด่านนี้กวาดถึงอยู่แล้ว นับซ้ำได้ noise เปล่า
+
+   ── เหลือเป็นความผิด 57 จุด · แยกกลุ่มตาม *ทางแก้* ไม่ใช่ตามไฟล์ ────────────
+   1) **หัวตารางเรียงลำดับ `<th onClick>` = 18** (aria-sort ทั้งรีโป = 0 ครั้ง)
+      ⇒ ปุ่มจริงข้างใน <th> + aria-sort บน <th> · รีโปมี SortTh อยู่แล้วที่
+      src/lib/useSortableTable.js (7 ไฟล์ใช้อยู่) แก้ที่ primitive ทีเดียวคุ้มที่สุด
+      🎯 sahamit/po เขียน <th onClick> อินไลน์ซ้ำ 7 จุดติดกัน (บรรทัด 260–268)
+      ทั้งที่ไฟล์เดียวกันมี SortTh ของตัวเองอยู่ที่บรรทัด 419
+   2) **แถวเปิดรายละเอียด `<tr onClick>` = 14** (พาไปหน้าอื่น 8 · เปิดลิ้นชัก 6)
+      ⇒ วาง <Link>/<button> ในเซลล์แรก · ต้นแบบที่ถูกมีแล้วคือ DetailRow.js
+      🪤 DetailRow วันนี้ผูกกับ href อย่างเดียว — 6 จุดที่เปิดลิ้นชักต้องเติมโหมด
+      ให้มันก่อน ไม่ใช่ยัด href ปลอม
+   3) **แถวสวิตช์พับ/กรอง `<tr onClick>` = 3** (ProjectDocumentView:596 ·
+      SalesKpiDashboard:156 · PoVsFcView:87) ⇒ ต่างจากข้อ 2 ตรงที่ *สถานะ* ต้อง
+      ประกาศได้ ใช้ <button aria-expanded> / <button aria-pressed> ห้ามใช้ DetailRow
+   4) **การ์ด/เซลล์กริดที่ทั้งใบกดได้ `<div onClick>` = 17** (พาไปหน้าอื่น 9 ⇒ <Link>
+      · สั่งงานในหน้า 8 ⇒ <button>) · 3 ใน 17 อยู่ในคอมโพเนนต์ร่วม
+      (customers/[id]:83 RelationRow · ApprovalQueue.js:47 · DataList.js:91)
+   5) **ข้อความในบรรทัดที่กดได้ `<span onClick>` = 4** — ทั้งสี่เป็นการเปลี่ยนหน้า
+      ⇒ <Link> · 3 ใน 4 เขียน e.stopPropagation() นำหน้าเพราะซ้อนในแถวที่กดได้
+      เปลี่ยนเป็น <Link> แก้พร้อมกันสองเรื่อง (isInteractiveTarget รู้จัก <a> เอง)
+   6) **เซลล์เจาะข้อมูล `<td onClick>` = 1** (YearHeatmap.js:52) ⇒ <button> ในเซลล์
+
+   ── กติกาของเพดาน ──────────────────────────────────────────────────────────
+   ratchet สองทางแบบเดียวกับ RAW_SPACING_CAP: **เกินตก · ต่ำกว่าก็ตก**
+   ⚠️ รอบนี้ตั้งใจ *หยุดเลือด* อย่างเดียว ไม่แตะโค้ดแอปเลยแม้แต่ไฟล์เดียว —
+   57 คือหนี้ที่มีอยู่จริงวันตั้งด่าน ห้ามขยับขึ้นเพื่อให้ audit ผ่าน */
+const A11Y_KEYBOARD_CAP = 58;
+
+/* แท็ก HTML แท้ ๆ — `<Card>` `<g.icon>` เป็นคอมโพเนนต์ ปลายทางจริงอยู่ในตัวมันเอง
+   ซึ่งด่านนี้เดินไปถึงอยู่แล้วผ่าน host element ข้างใน */
+const HOST_TAG = /^[a-z][a-z0-9-]*$/;
+const TABLE_TAG = /^(?:table|thead|tbody|tfoot|tr|th|td)$/;
+
+/* **role ที่ทับบทบาทตามธรรมชาติของตาราง — เกณฑ์ 1.3.1 ไม่ใช่ 2.1.1** (2026-09-02)
+   ⚠️ ตั้งเป็นตัวนับแยก เพราะสองเกณฑ์นี้ตัดสินคนละเรื่อง และเคยขัดกันเองในไฟล์นี้:
+   ตัวจัดกลุ่มของด่านคีย์บอร์ดถือว่า role + tabIndex + ตัวรับคีย์ = ผ่าน (ซึ่ง **ถูกแล้ว**
+   ตามเกณฑ์ 2.1.1 — กดด้วยคีย์บอร์ดได้จริง) แต่ข้อความ error กับ UI_DESIGN_SYSTEM.md
+   กลับเขียนว่า "ห้ามใส่ role บน tr/th" ⇒ เครื่องบอกว่าผ่าน เอกสารบอกว่าห้าม
+   ทั้งที่ตัวที่ได้รับพรคือ DetailRow.js ซึ่ง 9 หน้าใช้อยู่ = กฎเดียวกันมีสองคำตอบ
+
+   ความจริงที่ทำให้ทั้งสองฝ่ายถูกคนละข้อ: `role="link"` บน <tr> **ผ่าน 2.1.1**
+   (โฟกัสได้ กด Enter/Space ได้) แต่มันไปแทน role="row" ⇒ แถวหลุดจากโครงตาราง
+   ใน accessibility tree ⇒ **ตก 1.3.1** (โปรแกรมอ่านหน้าจอเสียบริบทแถว/คอลัมน์)
+   ท่าที่ไม่ต้องแลกอะไรเลยคือวาง <a>/<button> จริงไว้ในเซลล์ ไม่ใช่ยัด role ขึ้นแถว
+
+   วัด 2026-09-02: 1 จุด — src/components/ui/DetailRow.js:10
+   ⇒ DetailRow เป็น **หนี้ที่รู้ตัว** ไม่ใช่ต้นแบบ · ห้ามลอกท่านี้ไปหน้าใหม่
+   ⚠️ ขึ้นไม่ได้ · แก้แล้วต้องรูดลง */
+const ROLE_ON_TABLE_TAG_CAP = 1;
+
+/* แท็กที่เบราว์เซอร์ให้คีย์บอร์ดมาเอง — `<a>` ต้อง **มี href** ถึงจะนับ
+   (a ที่ไม่มี href ไม่อยู่ในลำดับ Tab เลย เป็นกับดักคลาสสิกของ 2.1.1) */
+const NATIVELY_CLICKABLE = new Set(["button", "input", "select", "textarea", "summary", "option", "label"]);
+
+/* รูปของ "ตัวกันคลิกทะลุ" — arrow ที่ในตัวมีแต่ stopPropagation/preventDefault
+   ตั้งใจเขียนเป็นรูปตายตัวแคบ ๆ ไม่ใช่ "มีคำว่า stopPropagation อยู่ที่ไหนสักแห่ง"
+   เพราะ handler ที่ทำงานจริงก็เรียก stopPropagation นำหน้าได้เหมือนกัน
+   (ของจริง: pm/tasks/page.js:672 `e.stopPropagation(); router.push(…)` = ความผิดเต็ม) */
+const CLICK_STOPPER = /^\{\s*\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*\{?\s*(?:[A-Za-z_$][\w$]*\.(?:stopPropagation|preventDefault)\(\)\s*;?\s*)+\}?\s*\}$/;
+
+/* ฉากหลังกดเพื่อปิด — **ยกเว้นรายไฟล์ ไม่ใช่รายบรรทัด** (เลขบรรทัดเลื่อนทุกครั้งที่มี
+   คนแก้ไฟล์ ตารางที่ผูกเลขบรรทัดจะเน่าภายในสัปดาห์เดียว) กติกาเดียวกับ nativeFeedbackDebt:
+   เกินโควตา = จุดใหม่ที่ยังไม่มีใครดู · ต่ำกว่าโควตา = ยกเว้นไว้เกิน ต้องรูดลง
+   ⚠️ วันนี้ทั้งสี่ไฟล์เหลือจุดที่ต้องตัดสิน **ไฟล์ละ 1 จุดพอดี** จึงไม่กำกวมว่าโควตา
+   หมายถึงจุดไหน · ถ้าวันหน้าไฟล์ใดมีจุดที่สอง ต้องมาแยกให้ชัด ห้ามบวกเลขในตารางนี้ */
+const dismissScrimExempt = {
+  // Escape ที่บรรทัด 76 + ปุ่ม .drawer-close aria-label="ปิด" + focus trap + คืนโฟกัสตอนปิด
+  "src/components/Modal.js": 1,
+  // Escape ที่บรรทัด 36 + ปุ่มปิด + focus trap (ฝาแฝดของ Modal ฝั่งสรรพสามิต)
+  "src/components/excise/RecordDrawer.js": 1,
+  // Escape ที่บรรทัด 307 + ปุ่มแฮมเบอร์เกอร์สลับเป็น ✕ · ตัวฉากหลังประกาศ aria-hidden="true"
+  "src/components/AppLayout.js": 1,
+  /* ⚠️ ตัวที่อ่อนที่สุด — **ไม่มี Escape** (ป็อปโอเวอร์ตัวเดียวในระบบที่ไม่มี)
+     ยกเว้นได้เพราะ `onClose` ตัวเดียวกันผูกอยู่กับ <button>ยกเลิก</button> ที่บรรทัด 77
+     ⇒ ฟังก์ชัน "ปิด" เข้าถึงด้วยคีย์บอร์ดได้จริง ผ่าน 2.1.1 · แต่ควรเติม Escape ในรอบเก็บกวาด */
+  "src/components/pm/PredecessorPicker.js": 1,
+};
+
+/* ตัดสินทีละแท็ก — แยกเป็นฟังก์ชันชื่อ ๆ ไม่ใช่เขียนแทรกในลูป เพื่อให้เทสต์คู่ยิง
+   ตัวอย่าง "ต้องจับ / ห้ามจับ" ใส่ตัวเดียวกันนี้ได้ตรง ๆ (ดู keyboardClickable.test.mjs)
+   คืน: none · native · stopper · compliant · violation
+
+   🪤 `tabIndex` ต้องอ่าน **ค่า** ไม่ใช่แค่ว่ามี — `{-1}` = โฟกัสด้วยโปรแกรมเท่านั้น
+   ไม่อยู่ในลำดับ Tab (Modal.js / RecordDrawer.js เป็น role="dialog" tabIndex={-1}
+   ซึ่งเป็น APG Dialog Pattern ที่ถูกต้อง) · และต้องรับค่าที่เป็นกิ่งได้ด้วย เพราะ
+   DetailRow เขียน `{href ? 0 : undefined}`
+
+   ⚠️ เกณฑ์ที่ใช้ตรงนี้คือ "ผ่านเมื่อประกอบครบชุด" = role + อยู่ในลำดับ Tab + มีตัวรับปุ่ม
+   ซึ่ง **เข้มกว่า 2.1.1 อยู่หนึ่งขั้น**: div ที่มี tabIndex+ตัวรับปุ่มแต่ไม่มี role
+   *ผ่าน 2.1.1 แต่ตก 4.1.2* (คนละเกณฑ์กัน) · วันนี้รูปนั้นมี **0 จุด** ในรีโปจึงยังไม่
+   กระทบเลขเพดาน — ถ้าวันหน้าโผล่มา ต้องแยกข้อความให้มันเพราะเหตุผลที่ฟ้องคนละข้อ */
+function classifyClickable(tag, attrs) {
+  if (!attrs.has("onClick")) return "none";
+  if (NATIVELY_CLICKABLE.has(tag)) return "native";
+  if (tag === "a" && attrs.has("href")) return "native";
+  if (CLICK_STOPPER.test((attrs.get("onClick") || "").replace(/\s+/g, " "))) return "stopper";
+  const tabIndex = attrs.get("tabIndex") ?? "";
+  const tabbable = /(?<![\w.-])0(?![\w.])/.test(tabIndex) && !/-\s*1(?![\d.])/.test(tabIndex);
+  const takesKeys = attrs.has("onKeyDown") || attrs.has("onKeyUp") || attrs.has("onKeyPress");
+  if (attrs.has("role") && tabbable && takesKeys) return "compliant";
+  return "violation";
+}
+
 /* ⭐ **ค่าว่างต้องพูดคำเดียวกันทั้งระบบ: ขีด `—`** (มติผู้ใช้ 2026-08-17
    กลับคำจากมติ 14/08 ที่เคยให้ขึ้น `N/A` — ด่านนี้ยังทำงานเหมือนเดิม เปลี่ยนแค่คำปลายทาง)
 
@@ -617,6 +959,38 @@ const JSX_FONT_WEIGHT_BRANCH_CAP = 8;
    การแสดงผล (เช่น `scope.js` คืน id, `quotationMasterTemplate` แตะแล้วกระทบ
    ลายเซ็นอนุมัติของใบเสนอราคา) ⇒ ที่นั่นตัดสินทีละจุดด้วยมือเท่านั้น */
 const naFallbackViolations = [];
+
+/* ด่านคีย์บอร์ด (ดู A11Y_KEYBOARD_CAP) — เก็บเป็นแมปรายไฟล์เพราะโควตาฉากหลัง
+   ปิดกล่องหักกันรายไฟล์ · ตัวเลขสามตัวที่ยกเว้นไปเก็บไว้พิมพ์ในรายงาน ไม่ใช่ทิ้งเงียบ
+   (เลข "ยกเว้นแล้วเท่าไร" คือสิ่งที่ทำให้คนอ่านรู้ว่าด่านไม่ได้หลับ) */
+const a11yKeyboardHits = new Map(); // rel -> [{ line, tag }]
+let a11yClickStopperCount = 0;
+let a11yCompliantCount = 0;
+let roleOnTableTagCount = 0;
+
+/* ⭐ **ขอบเขตของด่านนี้กว้างกว่า uiFiles หนึ่งชั้น: กิน src/lib ด้วย** (2026-09-02)
+   🐞 เจอตอนยิงทดสอบ: `SortTh` ซึ่งเป็นหัวตารางเรียงลำดับที่ 7 ไฟล์เรียกใช้ อยู่ที่
+   src/lib/useSortableTable.js เป็น <th onClick> เต็ม ๆ และ uiFiles (app + components)
+   มองไม่เห็น ⇒ จุดที่กระทบผู้ใช้มากที่สุดคือจุดที่ด่านตาบอด
+   ที่ร้ายกว่านั้น: ข้อความ error ของกลุ่ม th แนะนำให้ยุบท่าเข้า SortTh
+   ⇒ ใครทำตาม เลขจะร่วงลงทันทีโดยที่คีย์บอร์ดยังกดไม่ได้เท่าเดิม แล้ว ratchet
+   จะบังคับให้ "รูดเพดานลง" = ฟอกหนี้เข้าไปในจุดบอด ซึ่งคือ "ศูนย์ปลอม" อีกรูปหนึ่ง
+   ⚠️ ไม่แตะ uiFiles เพราะเพดานของกฎเก่าทุกตัวคาลิเบรตบนชุดไฟล์นั้น — ด่านนี้ใช้ชุดของตัวเอง */
+function scanA11y(rel, lined) {
+  for (const { tag, line, attrText } of jsxOpeningTags(lined)) {
+    if (!HOST_TAG.test(tag)) continue;
+    const attrs = jsxAttributes(attrText);
+    /* 1.3.1 คนละข้อกับ 2.1.1 — นับแยก ห้ามยัดรวม (ดู ROLE_ON_TABLE_TAG_CAP) */
+    if (TABLE_TAG.test(tag) && attrs.has("role")) roleOnTableTagCount += 1;
+    const verdict = classifyClickable(tag, attrs);
+    if (verdict === "stopper") a11yClickStopperCount += 1;
+    else if (verdict === "compliant") a11yCompliantCount += 1;
+    else if (verdict === "violation") {
+      if (!a11yKeyboardHits.has(rel)) a11yKeyboardHits.set(rel, []);
+      a11yKeyboardHits.get(rel).push({ line, tag });
+    }
+  }
+}
 
 const rawColorViolations = [];
 const typeScaleViolations = [];
@@ -1308,6 +1682,8 @@ for (const file of uiFiles) {
     }
   }
 
+  if (rel.endsWith(".js")) scanA11y(rel, lined);
+
   if (colorAllowList.some((allowed) => rel === allowed || rel.startsWith(allowed))) continue;
   source.split(/\r?\n/).forEach((line, index) => {
     if (line.trimStart().startsWith("//")) return;
@@ -1315,6 +1691,91 @@ for (const file of uiFiles) {
     if (colors) rawColorViolations.push(`${rel}:${index + 1} ${colors.join(", ")}`);
   });
 }
+
+/* ด่านการเข้าถึงกวาด src/lib ต่ออีกชั้น — ดูเหตุผลเต็มที่ scanA11y()
+   กฎอื่นทั้งหมดยังอยู่บน uiFiles เหมือนเดิม ไม่ถูกกระทบ */
+for (const file of files) {
+  const rel = relative(file);
+  if (!rel.startsWith("src/lib/") || !rel.endsWith(".js")) continue;
+  scanA11y(rel, blankLineComments(blankBlockComments(fs.readFileSync(file, "utf8"))));
+}
+
+/* ── หักโควตาฉากหลังปิดกล่อง แล้วจัดกลุ่มตาม *ทางแก้* (ดู A11Y_KEYBOARD_CAP) ──
+   จัดกลุ่มตามแท็ก **บังคับ** ไม่ใช่ความสวยงาม: ข้อความเดียวใช้หมดจะไปแนะนำให้ใส่
+   role="button" ลงบน <tr>/<th> ซึ่งทับ role="row"/role="columnheader" ทิ้ง = ตก
+   1.3.1 ทั้งตาราง ⇒ ด่านที่สอนให้เขียนโค้ดแย่ลงกว่าตอนไม่มีด่าน */
+const a11yKeyboardViolations = [];
+const staleDismissScrim = [];
+let a11yScrimExemptCount = 0;
+for (const [rel, hits] of [...a11yKeyboardHits].sort(([a], [b]) => a.localeCompare(b))) {
+  const allowed = dismissScrimExempt[rel] || 0;
+  a11yScrimExemptCount += Math.min(allowed, hits.length);
+  hits.slice(allowed).forEach(({ line, tag }) => a11yKeyboardViolations.push({ rel, line, tag }));
+}
+for (const [rel, allowed] of Object.entries(dismissScrimExempt)) {
+  const found = a11yKeyboardHits.get(rel)?.length || 0;
+  if (found < allowed) {
+    staleDismissScrim.push(`${rel} — เหลือจริง ${found} จุด แต่ dismissScrimExempt ยังเขียน ${allowed} (ลดเลขลงใน scripts/audit-ui.mjs)`);
+  }
+}
+const a11yKeyboardCount = a11yKeyboardViolations.length;
+
+/* ทางแก้รายแท็ก — ทุกกลุ่มที่เป็นเซลล์/แถวของตารางมีบรรทัด ⚠️ ห้าม ต่อท้าย เพราะ
+   `role="button"` คือคำตอบแรกที่ทุกคนนึกออก และมันผิดสำหรับสามแท็กนั้น
+   🪤 จงใจไม่พูดคำว่า `onKeyDown` เลยสักที่ — ถ้าใช้ element จริงก็ไม่ต้องเขียน
+   การเอ่ยถึงมันคือการชวนให้เก็บ <div> ไว้แล้วต่อสูตร ARIA ทับลงไป */
+const A11Y_FIX_BY_TAG = {
+  th: [
+    "แก้: ย้ายตัวกดเป็น <button type=\"button\"> ที่อยู่ *ข้างใน* <th> แล้วให้ <th> ถือ",
+    "     aria-sort=\"ascending|descending|none\" (ตารางหนึ่งตัวมีคอลัมน์ที่ไม่ใช่ none ได้ตัวเดียว)",
+    "     รีโปมี SortTh อยู่แล้วที่ src/lib/useSortableTable.js (7 ไฟล์ใช้อยู่) — แก้ที่นั่นทีเดียวคุ้มกว่า",
+    "     🔒 ด่านนี้กวาด src/lib ด้วย ⇒ ย้ายโค้ดไปซ่อนที่นั่นไม่ทำให้เลขลด ต้องแก้จริงเท่านั้น",
+    "⚠️ ห้ามใส่ role=\"button\"/tabIndex บน <th> เอง — ทับ role=\"columnheader\" ทิ้ง",
+    "   screen reader จะไม่รู้อีกต่อไปว่าเซลล์นี้เป็นหัวคอลัมน์ (ตก 1.3.1)",
+    "   🔒 ลดเลขบรรทัดนี้ด้วยการเติม role ไม่ได้ — ROLE_ON_TABLE_TAG_CAP ดักไว้อีกชั้น",
+  ],
+  tr: [
+    "แก้: พาไปหน้าอื่น → วาง <Link> ในเซลล์แรก · เปิดลิ้นชัก → <button type=\"button\">",
+    "     สวิตช์พับ/กรอง → <button aria-expanded> / <button aria-pressed> (สถานะต้องประกาศได้ ไม่ใช่แค่กดได้)",
+    "     onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ได้",
+    "🪤 DetailRow.js ไม่ใช่ต้นแบบของท่านี้ — มันวาง role/tabIndex บน <tr> เอง ผ่าน 2.1.1 แต่ตก 1.3.1",
+    "⚠️ ห้ามใส่ role=\"button\"/tabIndex บน <tr> — ทับ role=\"row\" ทิ้ง",
+    "   คนที่เดินตารางด้วยคีย์ลูกศรจะหลุดโครงสร้างทั้งตาราง (ตก 1.3.1)",
+    "   🔒 ลดเลขบรรทัดนี้ด้วยการเติม role ไม่ได้ — ROLE_ON_TABLE_TAG_CAP ดักไว้อีกชั้น",
+  ],
+  td: [
+    "แก้: ห่อเนื้อในเซลล์ด้วย <button type=\"button\"> แล้วย้าย onClick ไปไว้ที่ปุ่ม",
+    "⚠️ ห้ามใส่ role/tabIndex บน <td> — ทับ role=\"cell\" ทิ้ง (ตก 1.3.1)",
+    "   🔒 ลดเลขบรรทัดนี้ด้วยการเติม role ไม่ได้ — ROLE_ON_TABLE_TAG_CAP ดักไว้อีกชั้น",
+    "🪤 title=\"คลิกเพื่อ…\" ไม่ใช่ทางแก้ — tooltip ไม่ขึ้นตอนโฟกัสด้วยคีย์บอร์ด",
+  ],
+};
+const A11Y_FIX_DEFAULT = [
+  "แก้: พาไปหน้าอื่น → <Link href> (ได้คลิกกลาง เปิดแท็บใหม่ เมนูคลิกขวา สถานะเยี่ยมชม มาฟรีทั้งชุด)",
+  "     สั่งงานในหน้า → <button type=\"button\"> · className เดิม (.glass-panel ฯลฯ) ย้ายไปไว้บน element ใหม่ได้เลย",
+  "🪤 cursor:pointer · .clickable-row · title= ไม่นับเป็นทางแก้ — ทั้งสามเป็นสัญญาณสายตาล้วน",
+];
+function a11yFailureGroups() {
+  const byTag = new Map();
+  for (const { rel, line, tag } of a11yKeyboardViolations) {
+    if (!byTag.has(tag)) byTag.set(tag, []);
+    byTag.get(tag).push(`${rel}:${line}`);
+  }
+  return [...byTag]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([tag, spots]) => [
+      `<${tag} onClick> กดด้วยเมาส์ได้ แต่คีย์บอร์ดเข้าไม่ถึง — ${spots.length} จุด${tag === "div" || tag === "span" ? " (F42)" : ""}`,
+      ...(A11Y_FIX_BY_TAG[tag] || A11Y_FIX_DEFAULT).map((help) => `  ${help}`),
+      ...spots.map((spot) => `    ❌ ${spot}`),
+    ].join("\n"));
+}
+const A11Y_EXEMPT_NOTE = [
+  "ด่านนี้ยกเว้นให้เองอยู่แล้ว 3 แบบ — ไม่ต้องแก้ ไม่ต้องขึ้นทะเบียนอะไร:",
+  `  · onClick ที่มีแค่ e.stopPropagation() (กันคลิกทะลุ ไม่ใช่ control) — วันนี้ ${a11yClickStopperCount} จุด`,
+  `  · ฉากหลังปิดกล่องที่ปิดด้วย Esc/ปุ่มปิดได้ (ทะเบียน dismissScrimExempt) — วันนี้ ${a11yScrimExemptCount} จุด`,
+  "  · แท็กที่คีย์บอร์ดกดได้เอง — <button> · <a href> · <input> · <select> · <textarea> · <summary> · <label> · <option>",
+  "ยังไม่แก้รอบนี้ก็ปล่อยไว้ได้ แต่ **ห้ามเพิ่มจุดใหม่** — เพดานเป็น ratchet ขึ้นไม่ได้",
+].join("\n");
 
 const staleNativeFeedbackDebt = [];
 const nativeFeedbackHits = new Map(); // rel -> ["rel:line", ...]
@@ -1543,6 +2004,30 @@ const failures = [
   ...(rawOpacityCount < RAW_OPACITY_CAP
     ? [`ความจางเลขดิบลดได้แล้ว: เหลือ ${rawOpacityCount} แต่ RAW_OPACITY_CAP ยังเขียน ${RAW_OPACITY_CAP} (รูดเพดานลง)`]
     : []),
+  /* ── ด่านการเข้าถึงตัวแรกของ CI (ดู A11Y_KEYBOARD_CAP) ─────────────────────
+     หัวเรื่องต้องบอก *เกณฑ์* ไม่ใช่แค่ "audit ตก" — คนที่เพิ่งโดนด่านนี้ครั้งแรกต้อง
+     ค้นต่อได้ว่ามันคืออะไรและทำไมถึงเป็นกฎ ไม่ใช่คิดว่าเป็นรสนิยมของคนตั้งด่าน */
+  ...(roleOnTableTagCount > ROLE_ON_TABLE_TAG_CAP
+    ? [`role ทับบทบาทของตารางเพิ่มขึ้น: ${roleOnTableTagCount} > เพดาน ${ROLE_ON_TABLE_TAG_CAP} — role บน tr/th/td แทน role="row"/"columnheader" ทิ้ง แถวหลุดจากโครงตาราง (WCAG 1.3.1) · วาง <a>/<button> จริงไว้ในเซลล์แทน`]
+    : []),
+  ...(roleOnTableTagCount < ROLE_ON_TABLE_TAG_CAP
+    ? [`role ทับบทบาทของตารางลดได้แล้ว: เหลือ ${roleOnTableTagCount} แต่ ROLE_ON_TABLE_TAG_CAP ยังเขียน ${ROLE_ON_TABLE_TAG_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(a11yKeyboardCount > A11Y_KEYBOARD_CAP
+    ? [
+      [
+        `คีย์บอร์ดกดไม่ได้เพิ่มขึ้น: ${a11yKeyboardCount} > เพดาน ${A11Y_KEYBOARD_CAP} — WCAG 2.1.1 Keyboard (ระดับ A)`,
+        "ทุกฟังก์ชันที่สั่งงานด้วยเมาส์ได้ ต้องสั่งงานด้วยคีย์บอร์ดได้ด้วย",
+        "(เกณฑ์ฉบับไทยครบทุกข้อ: docs/wcag-2.2-reference.md)",
+      ].join("\n"),
+      ...a11yFailureGroups(),
+      A11Y_EXEMPT_NOTE,
+    ]
+    : []),
+  ...(a11yKeyboardCount < A11Y_KEYBOARD_CAP
+    ? [`คีย์บอร์ดกดไม่ได้ลดลงแล้ว: เหลือ ${a11yKeyboardCount} แต่ A11Y_KEYBOARD_CAP ยังเขียน ${A11Y_KEYBOARD_CAP} (รูดเพดานลงใน scripts/audit-ui.mjs)`]
+    : []),
+  ...staleDismissScrim.map((item) => `โควตาฉากหลังปิดกล่องยกเว้นไว้เกินของจริง: ${item}`),
   ...letterSpacingUnitViolations.map((item) => `ระยะห่างตัวอักษรต้องเป็นหน่วย em (px ไม่ขยับตามขนาดตัวอักษร): ${item}`),
   ...(rawLetterSpacingCount > RAW_LETTER_SPACING_CAP
     ? [`ระยะห่างตัวอักษรค่าดิบเพิ่มขึ้น: ${rawLetterSpacingCount} > เพดาน ${RAW_LETTER_SPACING_CAP} — หยิบจาก --ls-heading / --ls-tabular / --ls-label`]
@@ -1715,6 +2200,18 @@ console.log(`family="matrix" นอกลิสต์: ${matrixFamilyViolations.
 console.log(`Chart contract violations: ${chartContractViolations.length}`);
 console.log(`Floating surface violations: ${floatingSurfaceViolations.length}`);
 console.log(`Cross-layer :global() overrides: ${crossLayerOverrideViolations.length}`);
+/* ── ด่านการเข้าถึงตัวแรกของ CI (2026-09-02 · ดู A11Y_KEYBOARD_CAP) ──────────
+   วางแยกเป็นบล็อกของตัวเองโดยเจตนา ไม่แทรกกลางแผงข้างบน — ทุกบรรทัดข้างบนวัด
+   "สไตล์ตรงโทเคนไหม" (ความสม่ำเสมอ) ส่วนบรรทัดนี้วัด "ใช้งานได้ไหมถ้าไม่มีเมาส์"
+   (ใช้ไม่ได้จริง) · คนละแกน อ่านปนกันเมื่อไหร่น้ำหนักหายทันที
+   พิมพ์ทั้งเลขที่ตกและเลขที่ยกเว้น เพราะเลข "ยกเว้นไปเท่าไร" คือสิ่งเดียวที่บอกคนอ่าน
+   ว่าด่านยังมองเห็นอยู่ ไม่ได้เงียบเพราะกวาดไม่เจอ (บทเรียนศูนย์ปลอมของชั้นพิมพ์) */
+const a11yByTag = a11yKeyboardViolations.reduce((acc, { tag }) => acc.set(tag, (acc.get(tag) || 0) + 1), new Map());
+console.log(`\nคีย์บอร์ดกดไม่ได้ (WCAG 2.1.1 Keyboard ระดับ A): ${a11yKeyboardCount}/${A11Y_KEYBOARD_CAP} (เพดาน ขึ้นไม่ได้ — ด่านการเข้าถึงตัวแรกของ CI)`);
+console.log(`  ↳ แยกตามแท็ก (ทางแก้คนละท่า): ${[...a11yByTag].sort((a, b) => b[1] - a[1]).map(([tag, n]) => `${tag} ${n}`).join(" · ") || "ไม่มี"}`);
+console.log(`  ↳ role ทับบทบาทของตาราง (WCAG 1.3.1 — คนละข้อกับบรรทัดบน): ${roleOnTableTagCount}/${ROLE_ON_TABLE_TAG_CAP} (เพดาน ขึ้นไม่ได้)`);
+console.log(`  ↳ ยกเว้นแล้ว: ตัวกันคลิกทะลุ ${a11yClickStopperCount} · ฉากหลังปิดกล่อง ${a11yScrimExemptCount} · ครบเกณฑ์อยู่แล้ว ${a11yCompliantCount} จุด`);
+
 console.log("\nชั้นสไตล์เก่าที่เหลือ (เพดาน = ขึ้นไม่ได้ ลงได้อย่างเดียว):");
 console.log(`  ${"โมดูล".padEnd(16)}${METRICS.map((metric) => metric.padStart(15)).join("")}`);
 for (const { key, label } of MODULES) {
