@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import Button from "@/components/ui/Button";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, TriangleAlert } from "lucide-react";
@@ -59,7 +60,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
       {/* ตารางต่อสินค้า + เจาะลึกรายเดือน */}
       <div>
         <h3 style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", marginBottom: 10 }}>
-          PO เทียบ FC ต่อสินค้า {isValue ? "(มูลค่า)" : "(ชิ้น)"} — คลิกแถวเพื่อดูรายเดือน
+          PO เทียบ FC ต่อสินค้า {isValue ? "(มูลค่า)" : "(ชิ้น)"} — กดลูกศรหน้าแถวเพื่อดูรายเดือน
         </h3>
         <TableScroll family="matrix" style={{ overflowX: "auto" }}>
           <table className="premium-table">
@@ -84,9 +85,22 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
                 const colSpan = isValue ? 9 : 6;
                 return (
                   <>
-                    <tr key={s.fgCode} onClick={() => setOpen(isOpen ? null : s.fgCode)} style={{ cursor: "pointer" }} className="hover-row">
-                      <td style={{ textAlign: "center", color: "var(--text-3)" }}>
-                        <ChevronRight size={14} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform var(--motion-medium)" }} />
+                    {/* ⚠️ เดิมทั้งแถวเป็น `onClick` ที่เมาส์กดได้แต่คีย์บอร์ดเข้าไม่ถึงเลย
+                        (WCAG 2.1.1 — เซลล์แรกเป็นไอคอนที่หมุนเอา ไม่ใช่ปุ่ม) ⇒ ทำลูกศร
+                        เป็น <button> จริง และประกาศสถานะกาง/พับด้วย aria-expanded
+                        ไม่ใช่ให้รู้ได้จากมุมที่ไอคอนหมุนอย่างเดียว */}
+                    <tr key={s.fgCode} className="hover-row">
+                      <td style={{ textAlign: "center" }}>
+                        {/* ปุ่มใหม่ต้องมาจาก <Button> — `components/ui/Button.js` คือที่เดียว
+                            ที่ได้รับอนุญาตให้เขียนคลาส `btn-*` เอง (ratchet rawButtonClass) */}
+                        <Button
+                          iconOnly
+                          aria-expanded={isOpen}
+                          aria-label={isOpen ? `ย่อรายเดือนของ ${s.fgCode}` : `ดูรายเดือนของ ${s.fgCode}`}
+                          title={isOpen ? "ย่อรายเดือน" : "ดูรายเดือน"}
+                          onClick={() => setOpen(isOpen ? null : s.fgCode)}
+                          icon={<ChevronRight size={14} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform var(--motion-medium)" }} />}
+                        />
                       </td>
                       <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{s.fgCode}</td>
                       <td style={{ color: s.productName ? "inherit" : "var(--amber)" }}>

@@ -410,7 +410,19 @@ export default function RegistrationDetailPage() {
                   <tbody>
                     {s.filings.map((f) => (
                       <tr key={f.id} className="clickable-row" onClick={() => router.push(`/tax/filings/${f.id}`)}>
-                        <td className="font-semibold">{naText(f.quotationRef)}</td>
+                        {/* เลขที่ใบเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
+                            onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ · stopPropagation กันแถวยิง
+                            router.push ซ้ำจนได้ history ซ้อนสองชั้น (Back ต้องกดสองครั้ง) */}
+                        <td className="font-semibold">
+                          <Link
+                            href={`/tax/filings/${f.id}`}
+                            className="linklike"
+                            onClick={(e) => e.stopPropagation()}
+                            title="เปิดใบยื่นชำระภาษี"
+                          >
+                            {naText(f.quotationRef)}
+                          </Link>
+                        </td>
                         <td className={styles.numeric}>{fmtNumber(f.quantity)}</td>
                         <td className={styles.numeric}>{fmtMoney(f.totalTax)}</td>
                         <td><StatusBadge status={f.status} /></td>

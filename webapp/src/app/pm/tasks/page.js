@@ -791,7 +791,21 @@ export default function TasksPage() {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", flexWrap: "wrap" }}>
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                       {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
-                      <span style={{ flex: 1 }}>{t.title}</span>
+                      {/* ชื่องานเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
+                          ส่วน onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ (ท่าเดียวกับหน้าดีล/ลีด)
+                          stopPropagation กันแถวยิง router.push ซ้ำ ⇒ ไม่งั้นได้ history ซ้อนสองชั้น
+                          แล้วปุ่ม Back ต้องกดสองครั้ง */}
+                      <span style={{ flex: 1 }}>
+                        <Link
+                          prefetch={false}
+                          href={`/sa/tasks/${t.id}`}
+                          className="linklike"
+                          onClick={(e) => e.stopPropagation()}
+                          title="เปิดหน้ารายละเอียดงาน"
+                        >
+                          {t.title}
+                        </Link>
+                      </span>
                     </div>
                     {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", marginTop: "4px" }} />}
                     {(isWaitingStatus(t.status) || t.predecessorId) && (

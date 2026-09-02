@@ -17,6 +17,7 @@ import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
 import OrderDetailModal from "@/components/OrderDetailModal";
+import DetailRow from "@/components/ui/DetailRow";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import StatusBadge from "@/components/excise/StatusBadge";
@@ -738,9 +739,15 @@ export default function CustomerDetails() {
                         {products.map((p) => {
                           const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
                           const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                          const detailHref = `/database/products/${p.id}`;
                           return (
-                            <tr key={p.id} onClick={() => router.push(`/database/products/${p.id}`)} className="clickable-row">
-                              <td className="font-semibold font-mono text-[var(--text)]">{p.fgCode}</td>
+                            /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก ส่วน onClick ของแถวเป็นทางลัดของเมาส์
+                               — href ต้องเป็น **ตัวแปรเดียวกัน** ทั้งสองที่ (ด่าน ROW_MIRROR เทียบข้อความนิพจน์ตรงตัว) */
+                            <DetailRow key={p.id} href={detailHref} className="clickable-row">
+                              <td className="font-semibold font-mono text-[var(--text)]">
+                                {/* prefetch={false}: ลูกค้าหนึ่งรายมีสินค้าได้หลายสิบรายการ — กัน RSC prefetch ต่อแถว */}
+                                <Link prefetch={false} href={detailHref} className="linklike">{p.fgCode}</Link>
+                              </td>
                               <td>
                                 <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
                                 {hasBrandField(p) && (
@@ -760,7 +767,7 @@ export default function CustomerDetails() {
                                 </td>
                               )}
                               <td className="text-center"><ProductStatusPill status={p.status} /></td>
-                            </tr>
+                            </DetailRow>
                           );
                         })}
                       </tbody>
@@ -840,7 +847,19 @@ export default function CustomerDetails() {
                           const itemCount = o.items?.length || 0;
                           return (
                             <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
-                              <td className="font-semibold font-mono text-[var(--text)]">{o.quotationRef}</td>
+                              <td className="font-semibold font-mono text-[var(--text)]">
+                                {/* ปุ่มในเซลล์ = ทางเข้าของคีย์บอร์ด · onClick ของแถวเหลือไว้เป็นทางลัดของเมาส์
+                                    แถวนี้เปิด **โมดัลในหน้าเดิม** ไม่มี URL ปลายทาง ⇒ ใช้ `.text-action`
+                                    (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น"
+                                    stopPropagation กัน onClick ของแถวยิงซ้ำอีกรอบตอนกดที่ปุ่มตรง ๆ */}
+                                <button
+                                  type="button"
+                                  className="text-action font-semibold"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedOrder(o); }}
+                                >
+                                  {o.quotationRef}
+                                </button>
+                              </td>
                               <td className="font-mono text-xs text-[var(--text-2)]">{naText(o.poReference)}</td>
                               <td className="text-center font-mono font-semibold">{itemCount}</td>
                               <td className="num font-mono font-bold text-[var(--text)]">

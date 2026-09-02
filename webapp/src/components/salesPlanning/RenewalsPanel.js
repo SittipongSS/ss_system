@@ -18,7 +18,6 @@ import useStickyState from "@/lib/ui/useStickyState";
 import { CalendarClock, CircleAlert, PhoneCall, RefreshCw, Search } from "lucide-react";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
-import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
 import Pager from "@/components/ui/Pager";
 import { TableEmpty, TableScroll } from "@/components/ui/Table";
@@ -144,8 +143,14 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
               <th aria-label="การกระทำ" />
             </tr></thead>
             <tbody>
+              {/* ⚠️ แถวนี้ **ไม่ใช่** DetailRow (เปลี่ยน 2026-09-02) — DetailRow คือแถวที่พาไป
+                  ปลายทางเดียว และทางเข้าจริงของมันคือลิงก์ในเซลล์ที่ href ตรงกับของแถว
+                  แถวนี้ไม่มีปลายทางแบบนั้น: **แถวหมายถึงไซต์** ส่วนลิงก์ข้างในไปที่ *ใบ SO*
+                  ซึ่งคนละของกัน · ของเดิมเรียก DetailRow โดยไม่ส่ง href เลย ⇒ ได้
+                  `cursor: pointer` ที่โกหก (ชี้แล้วเป็นมือ กดแล้วไม่ไปไหน) และตั้งแต่มีด่าน
+                  ROW_MIRROR ก็ถูกฟ้องทันที · `.premium-row` มีสไตล์ครบของตัวเอง หน้าตาไม่ขยับ */}
               {pageRows.map((row) => (
-                <DetailRow key={row.siteId} className="premium-row">
+                <tr key={row.siteId} className="premium-row">
                   <td>
                     {naText(row.site?.name)}
                     <span className="cell-sub">{naText(row.site?.customerName)}</span>
@@ -183,7 +188,7 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
                       บันทึกผล
                     </Button>
                   </td>
-                </DetailRow>
+                </tr>
               ))}
               {!filtered.length && !loading && (
                 <TableEmpty

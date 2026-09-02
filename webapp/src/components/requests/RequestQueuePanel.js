@@ -8,6 +8,7 @@ import { TableScroll } from "@/components/ui/Table";
 // เป็น "แท็บหนึ่ง" ของหน้า /sa/requests (คิวของฝ่ายตน / คำร้องของฉัน) — หน้าแม่
 // เป็นเจ้าของข้อมูลและตัวนับบนแท็บ พาเนลนี้เลือกแสดงตาม scope ที่ส่งมา
 import { Fragment, useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown, ChevronRight,
@@ -300,8 +301,21 @@ export default function RequestQueuePanel({
                 <span className={`ui-badge ${styles.urgentTag}`}>ด่วน</span>
               )}
             </div>
+            {/* ⭐ **ชื่อเรื่องเป็น <Link> จริง** — ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/
+                เปิดแท็บใหม่ ส่วน onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์เหมือนเดิม
+                วางที่บรรทัดนี้เพราะ **มีเนื้อหาเสมอ** (ชื่อเรื่อง → ชื่อลูกค้า → "ราคากลาง")
+                ต่างจากเลขที่ใบซึ่งใบร่างยังไม่มี ⇒ ลิงก์ที่หายไปบางแถวคือทางเข้าที่หายไปด้วย
+                stopPropagation กันแถวยิง router.push ซ้ำจนได้ history ซ้อนสองชั้น */}
             <div className={styles.docCell}>
-              {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
+              <Link
+                prefetch={false}
+                href={`/requests/${ask.id}`}
+                className="linklike"
+                onClick={(e) => e.stopPropagation()}
+                title="เปิดหน้าคำร้อง"
+              >
+                {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
+              </Link>
             </div>
             <div className={styles.subText}>
               {[

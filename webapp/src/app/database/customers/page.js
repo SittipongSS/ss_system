@@ -3,6 +3,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Building2, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Users, Archive } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
@@ -23,6 +24,7 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -395,13 +397,19 @@ export default function CustomerDirectory() {
               </thead>
               <tbody>
                 {pageRows.map((c) => (
-                  <tr key={c.id} onClick={() => open(c)} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                  /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก — onClick บนแถวเป็นทางลัด
+                     ของเมาส์เท่านั้น (ดูคอมเมนต์หัวไฟล์ ui/DetailRow.js) · ปุ่มอนุมัติ/
+                     ตีกลับในเซลล์สถานะเป็นคนละปลายทาง จึงยกเว้นให้แถวนี้ไม่ได้ */
+                  <DetailRow key={c.id} href={`/database/customers/${c.id}`} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                     <td>
-                      {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว) */}
-                      <div className="font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</div>
-                      <div className="font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</div>
-                      <div className="text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</div>
-                      {c.phone && <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</div>}
+                      {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว)
+                          prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
+                      <Link prefetch={false} href={`/database/customers/${c.id}`} className="linklike linklike-block" title="เปิดหน้าลูกค้า">
+                        <span className="block font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</span>
+                        <strong className="block font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</strong>
+                        <span className="block text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</span>
+                        {c.phone && <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</span>}
+                      </Link>
                     </td>
                     {/* ผ่าน branchValue (เลขเปล่า) ไม่ใช่ branchLabel — หัวคอลัมน์เป็นป้าย
                         "สาขา" อยู่แล้ว และ '00000' คือรูปที่ใช้เทียบใบต่อใบได้ (มติ 27/08) */}
@@ -431,7 +439,7 @@ export default function CustomerDirectory() {
                         </div>
                       )}
                     </td>
-                  </tr>
+                  </DetailRow>
                 ))}
               </tbody>
             </table>

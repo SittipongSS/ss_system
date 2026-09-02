@@ -1,9 +1,9 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ShoppingCart, Plus, AlertCircle, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import Select from "@/components/ui/Select";
@@ -302,7 +302,6 @@ export default function PoPage() {
 }
 
 function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, canEdit }) {
-  const router = useRouter();
   let unpriced = 0;
   const exVat = (po.lines || []).reduce((s, l) => {
     if (l.status === "cancelled") return s;
@@ -325,10 +324,15 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
 
   return (
     <>
-      {/* กดที่แถว = เข้าหน้ารายละเอียด; ปุ่มลูกศร = ขยายดูรายการในแถว (ไม่เข้าหน้า) */}
-      <tr className="clickable-row" style={{ cursor: "pointer" }} onClick={() => router.push(`/sahamit/po/${po.id}`)}>
-        <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
-        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>{po.poNumber}</td>
+      {/* กดที่แถว = เข้าหน้ารายละเอียด (ทางลัดของเมาส์); ปุ่มลูกศร = ขยายดูรายการในแถว
+          ⚠️ ทางเข้าของคีย์บอร์ดคือ <Link> บนเลขที่ PO — ปุ่มขยายกับปุ่มแก้ไขในเซลล์
+          เป็นคนละปลายทาง จึงยกเว้นให้แถวไม่ได้ (ดูหัวไฟล์ ui/DetailRow.js) */}
+      <DetailRow href={`/sahamit/po/${po.id}`} className="clickable-row">
+        <td onClick={(e) => e.stopPropagation()}><button className="btn-icon" title={isOpen ? "ย่อ" : "ขยาย"} aria-expanded={isOpen} onClick={onToggle}>{isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
+        <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)" }}>
+          {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
+          <Link prefetch={false} href={`/sahamit/po/${po.id}`} className="linklike" title="เปิดหน้า PO">{po.poNumber}</Link>
+        </td>
         <td>{po.docDate ? fmtDate(po.docDate) : NA}</td>
         <td>{po.receivedDate ? fmtDate(po.receivedDate) : NA}</td>
         <td>{po.dueDate ? fmtDate(po.dueDate) : NA}</td>
@@ -352,7 +356,7 @@ function PoGroup({ po, lines, priceByFg, prodIdx, isOpen, onToggle, onSaved, can
         <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
           {canEdit && <Link href={`/sahamit/po/${po.id}/edit`} className="btn-icon" title="แก้ไข PO"><Pencil size={15} /></Link>}
         </td>
-      </tr>
+      </DetailRow>
       {isOpen && (
         <tr>
           <td colSpan={11} style={{ background: "var(--panel-2)", padding: "8px 12px" }}>
@@ -395,7 +399,6 @@ const lineStatusColor = (s) => C[STAGE_COLOR[s]] || (s === "cancelled" ? C["text
 // ราคา/มูลค่าอ่านอย่างเดียวจากราคาผลิต master (เหมือนหน้ารายละเอียด/รายการ).
 function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
   const { sortKey, sortDir } = sort;   // sort = { sortKey, sortDir, sortBy } ทรงเดียวกับ useSortableTable
-  const router = useRouter();
   const rows = useMemo(() => {
     const out = [];
     for (const po of pos) {
@@ -450,8 +453,13 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
           ) : pageRows.map((r, i) => {
             const product = prodIdx.get(String(r.l.fgCode).trim().toLowerCase());
             return (
-              <tr key={`${r.po.id}-${r.l.id || i}`} className="clickable-row" style={{ cursor: "pointer", opacity: r.cancelled ? 0.55 : 1 }} onClick={() => router.push(`/sahamit/po/${r.po.id}`)}>
-                <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)", color: "var(--accent)", whiteSpace: "nowrap" }}>{r.po.poNumber}</td>
+              /* ทางเข้าของคีย์บอร์ดคือ <Link> บนเลขที่ PO — เดิมทั้งแถวเป็น onClick
+                 ที่ไม่มีอะไรโฟกัสได้เลยสักเซลล์ (WCAG 2.1.1) */
+              <DetailRow key={`${r.po.id}-${r.l.id || i}`} href={`/sahamit/po/${r.po.id}`} className="clickable-row" style={{ opacity: r.cancelled ? 0.55 : 1 }}>
+                <td className="font-mono" style={{ fontWeight: "var(--fw-semibold)", color: "var(--accent)", whiteSpace: "nowrap" }}>
+                  {/* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
+                  <Link prefetch={false} href={`/sahamit/po/${r.po.id}`} className="linklike" title="เปิดหน้า PO">{r.po.poNumber}</Link>
+                </td>
                 <td style={{ whiteSpace: "nowrap" }}>
                   {r.l.dueDate ? fmtDate(r.l.dueDate) : (r.po.dueDate ? fmtDate(r.po.dueDate) : NA)}
                   <div style={{ fontSize: "var(--fs-2)", color: "var(--text-3)" }}>{naText(r.l.deliveryMonth)}</div>
@@ -468,7 +476,7 @@ function PoLinesTable({ pos, priceByFg, prodIdx, q, sort }) {
                 <td style={{ textAlign: "right", color: r.price != null ? "var(--text-2)" : "var(--text-3)", whiteSpace: "nowrap" }}>{r.price != null ? baht(r.price) : NA}</td>
                 <td style={{ textAlign: "right", fontWeight: "var(--fw-semibold)", whiteSpace: "nowrap" }}>{r.cancelled ? "ยกเลิก" : (r.value != null ? baht(r.value) : NA)}</td>
                 <td><span className="ui-badge" style={{ color: lineStatusColor(r.l.status), borderColor: lineStatusColor(r.l.status) }}>{lineStatusLabel(r.l.status)}</span></td>
-              </tr>
+              </DetailRow>
             );
           })}
         </tbody>

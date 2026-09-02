@@ -122,7 +122,7 @@ export default function SalesKpiDashboard() {
           </SaMetricStrip>
 
           {teams.length > 1 && (
-            <SaSection icon={<Users size={17} />} title="สรุปรายทีม" subtitle="คลิกกราฟหรือแถวเพื่อกรองรายบุคคล" actions={chartTeamFilter && (
+            <SaSection icon={<Users size={17} />} title="สรุปรายทีม" subtitle="คลิกกราฟหรือชื่อทีมเพื่อกรองรายบุคคล" actions={chartTeamFilter && (
                   <span className="ui-badge flex items-center gap-1" style={{ background: "var(--accent)", color: "white" }}>
                     กำลังกรอง: {chartTeamFilter}
                     <X size={12} style={{ cursor: "pointer" }} onClick={() => setChartTeamFilter("")} />
@@ -153,8 +153,23 @@ export default function SalesKpiDashboard() {
                   <thead><tr><th>ทีม</th><th className="num">คน</th><th className="num">งาน</th><th className="num">เสร็จ</th><th className="num">% เสร็จ</th><th className="num">% ตรงเวลา</th><th className="num">คะแนน</th></tr></thead>
                   <tbody>
                     {teams.map((t) => (
-                      <tr key={t.team} className={`premium-row ${chartTeamFilter === t.team ? "active" : ""}`} onClick={() => setChartTeamFilter(prev => prev === t.team ? "" : t.team)} style={{ cursor: "pointer", backgroundColor: chartTeamFilter === t.team ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}>
-                        <td style={{ fontWeight: "var(--fw-bold)" }}>{t.team}</td>
+                      /* ⚠️ เดิมทั้งแถวเป็น `onClick` ที่เมาส์กดได้แต่คีย์บอร์ดเข้าไม่ถึงเลย
+                         (WCAG 2.1.1 — 7 เซลล์เป็นตัวเลขกับ ScoreBadge ล้วน) ⇒ ย้ายตัวสลับ
+                         มาไว้ที่ชื่อทีมเป็น <button> จริง · "กำลังกรองทีมนี้อยู่" เป็น
+                         **สถานะ** ไม่ใช่แค่การกด ⇒ aria-pressed (ไม่งั้นโปรแกรมอ่านหน้าจอ
+                         เห็นแค่พื้นหลังจาง ๆ ที่มันอ่านไม่ออก) */
+                      <tr key={t.team} className={`premium-row ${chartTeamFilter === t.team ? "active" : ""}`} style={{ backgroundColor: chartTeamFilter === t.team ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}>
+                        <td>
+                          <button
+                            type="button"
+                            className="text-action"
+                            aria-pressed={chartTeamFilter === t.team}
+                            onClick={() => setChartTeamFilter(prev => prev === t.team ? "" : t.team)}
+                            style={{ fontWeight: "var(--fw-bold)" }}
+                          >
+                            {t.team}
+                          </button>
+                        </td>
                         <td className="num">{t.people}</td>
                         <td className="num">{t.total}</td>
                         <td className="num">{t.completed}</td>
