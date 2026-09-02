@@ -319,7 +319,7 @@ export default function CostingListPage() {
                 ยกเลิก
               </button>
               <button
-                type="button" className="btn btn-accent" disabled={saving}
+                type="button" className="btn btn-primary" disabled={saving}
                 onClick={() => {
                   // ดีลไม่บังคับแล้ว (PR-C) — ไม่มีดีล = ใบสำรวจ. ต้องมีสินค้าอย่างน้อย 1
                   // รายการที่กรอกชื่อ + เลือกประเภท (server ตรวจซ้ำอีกชั้น)

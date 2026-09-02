@@ -75,7 +75,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
       title="บันทึกเพิ่มเติมสัญญา"
       description="เอกสารแนบท้ายที่ระบุสูตรกลิ่นจากคำร้องพัฒนากลิ่นในดีลเดียวกัน — ถือเป็นส่วนหนึ่งของสัญญา"
       actions={canEdit && signed ? (
-        <Button size="sm" variant="primary" onClick={() => { setCreating(true); loadSource(); }}>
+        <Button size="sm" tone="accent" onClick={() => { setCreating(true); loadSource(); }}>
           <Plus size={13} aria-hidden="true" /> ทำบันทึกเพิ่มเติม
         </Button>
       ) : null}
@@ -106,7 +106,7 @@ export default function ContractAddendaCard({ contract, canEdit = false }) {
           <div className="form-actions span-2">
             <div className="form-actions-buttons">
               <Button onClick={() => setCreating(false)} disabled={busy}>ยกเลิก</Button>
-              <Button variant="accent" onClick={create} disabled={busy || !source?.next}>สร้างร่างบันทึก</Button>
+              <Button tone="primary" onClick={create} disabled={busy || !source?.next}>สร้างร่างบันทึก</Button>
             </div>
           </div>
         </div>

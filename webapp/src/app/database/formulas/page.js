@@ -656,7 +656,7 @@ export default function FormulasPage() {
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
-            <Button tone="accent" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
+            <Button tone="primary" onClick={submitAccept} disabled={saving || !accept.code.trim()}>
               รับเข้าทะเบียน
             </Button>
           </>
@@ -683,7 +683,7 @@ export default function FormulasPage() {
           <>
             <Button variant="quiet" onClick={() => setSorting(null)} disabled={saving}>ยกเลิก</Button>
             <Button
-              tone="accent" onClick={submitSorting}
+              tone="primary" onClick={submitSorting}
               disabled={saving
                 || (sorting.as === "scent" && !sorting.row.customerId)
                 || (sorting.as === "formula" && !sorting.categoryCode)}

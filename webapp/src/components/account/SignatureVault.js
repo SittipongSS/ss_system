@@ -231,6 +231,10 @@ export default function SignatureVault() {
   }
 
   const active = data?.active;
+  /* ⚠️ ป้ายปุ่มอยู่ในตัวแปร ⇒ ด่าน accent ใน audit-ui.mjs อ่านไม่เห็น (มันอ่านป้ายจาก
+     ตัวแท็ก) · ปุ่มที่ใช้ป้ายนี้จึงต้องเป็น `btn-primary` ด้วยมือ ไม่มีอะไรฟ้องให้
+     — ทั้งสามปุ่มในท้ายลิ้นชักข้างล่างคือ "ยืนยันสิ่งที่ทำอยู่" ไม่ใช่ "เริ่มของใหม่"
+     (ลายเซ็นมีอยู่แล้ว ไฟล์ก็เลือกมาแล้ว) ⇒ navy ทั้งหมด ยกเว้นฝั่งถอนคืนที่เป็น danger */
   const uploadLabel = active ? "บันทึกเป็นเวอร์ชันใหม่" : "บันทึกลายเซ็น";
 
   return (
@@ -259,14 +263,14 @@ export default function SignatureVault() {
             {cropSource ? (
               <>
                 <button type="button" className="btn ghost" onClick={() => { setCropSource(null); setCropReady(false); }} disabled={!!busy}>ยกเลิกการครอป</button>
-                <button type="button" className="btn btn-accent" onClick={applyCrop} disabled={!cropReady || !!busy}>{busy === "crop" ? "กำลังสร้างภาพ…" : "ใช้ภาพที่ครอป"}</button>
+                <button type="button" className="btn btn-primary" onClick={applyCrop} disabled={!cropReady || !!busy}>{busy === "crop" ? "กำลังสร้างภาพ…" : "ใช้ภาพที่ครอป"}</button>
               </>
             ) : confirmAction ? (
               <>
                 <button type="button" className="btn ghost" onClick={() => setConfirmAction("")} disabled={!!busy}>ย้อนกลับ</button>
                 <button
                   type="button"
-                  className={confirmAction === "revoke" ? "btn btn-danger" : "btn btn-accent"}
+                  className={confirmAction === "revoke" ? "btn btn-danger" : "btn btn-primary"}
                   onClick={confirmAction === "revoke" ? revoke : upload}
                   disabled={!!busy}
                 >
@@ -276,7 +280,7 @@ export default function SignatureVault() {
             ) : candidate ? (
               <>
                 <button type="button" className="btn ghost" onClick={() => setCandidate(null)} disabled={!!busy}>ยกเลิกไฟล์</button>
-                <button type="button" className="btn btn-accent" onClick={() => setConfirmAction("upload")} disabled={!!busy}>{uploadLabel}</button>
+                <button type="button" className="btn btn-primary" onClick={() => setConfirmAction("upload")} disabled={!!busy}>{uploadLabel}</button>
               </>
             ) : revokeMode ? (
               <>
