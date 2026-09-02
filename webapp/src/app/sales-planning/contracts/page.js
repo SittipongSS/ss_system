@@ -39,8 +39,8 @@ import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanni
 import { contractListTrack } from "@/lib/sales/contractListTrack";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
-  CONTRACT_STATUSES, CONTRACT_STATUS_LABELS,
+  CONTRACT_KINDS, CONTRACT_KIND_LABELS, CONTRACT_LIST_STATUSES, CONTRACT_SOURCES, CONTRACT_SOURCE_LABELS,
+  CONTRACT_STATUS_LABELS,
   contractSourceOf, daysAwaitingSignature, contractStatusLabel, isExternalContract,
 } from "@/lib/sales/contracts";
 
@@ -234,7 +234,8 @@ export default function ContractsPage() {
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Flag,
-                  options: CONTRACT_STATUSES.map((value) => ({ value, label: CONTRACT_STATUS_LABELS[value] })),
+                  /* ⚠️ ใช้ชุดของ *ทะเบียน* ไม่ใช่ชุดสถานะทั้งหมด — ดูเหตุผลที่ contracts.js */
+                  options: CONTRACT_LIST_STATUSES.map((value) => ({ value, label: CONTRACT_STATUS_LABELS[value] })),
                   selected: statusFilter, onChange: setStatusFilter,
                 },
                 {

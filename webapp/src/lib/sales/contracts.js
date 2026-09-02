@@ -75,6 +75,16 @@ export const EXTERNAL_NO_DOCUMENT_NOTE = 'ใบนี้ใช้เอกส�
    ⇒ **สองสายจบที่ "signed + มีคนรับรอง" เหมือนกัน** ต่างแค่จำนวนคลิก */
 export const CONTRACT_STATUSES = Object.freeze(['draft', 'awaiting_signature', 'awaiting_approval', 'signed', 'revised', 'cancelled']);
 
+/* 🪤 **สถานะที่ทะเบียนไม่มีวันแสดง** — ทะเบียนคัดเหลือ *ฉบับล่าสุดของแต่ละสาย* เท่านั้น
+   (`latestContractRevisions` · mig 0280) และใบที่สถานะ `revised` ถูกแทนที่ด้วยฉบับที่
+   `revisionNo` สูงกว่าในสายเดียวกัน **เสมอโดยนิยาม** ⇒ มันถูกคัดทิ้งทุกครั้ง
+   ⇒ เอา `revised` ไปเป็นตัวเลือกตัวกรอง = ตัวเลือกที่กดแล้วได้ศูนย์แถวตลอดกาล
+     ซึ่งอ่านเหมือน "ไม่มีข้อมูล" ทั้งที่คือ "หน้านี้แสดงของแบบนั้นไม่ได้"
+   ⚠️ ฉบับเก่ายัง **เปิดดูได้** จากลิงก์สายฉบับบนหน้ารายละเอียด — ไม่ได้หายไปจากระบบ */
+export const CONTRACT_LIST_STATUSES = Object.freeze(
+  CONTRACT_STATUSES.filter((status) => status !== 'revised'),
+);
+
 export const CONTRACT_STATUS_LABELS = Object.freeze({
   draft: 'ร่าง',
   awaiting_signature: 'รอลงนาม',
