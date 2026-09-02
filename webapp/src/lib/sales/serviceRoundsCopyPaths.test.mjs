@@ -113,6 +113,7 @@ test('🪤 Rev. ของใบสั่งขายต้องพาทุก�
     }
   }
   assert.ok(columns.size > 50, `อ่านคอลัมน์ของ sales_orders ได้แค่ ${columns.size} ตัว — ตัวอ่านน่าจะพัง`);
+  assertNoGhosts(REVISION_RESETS, columns, 'REVISION_RESETS');
 
   const { file, body } = latestDefinitionOf('revise_approved_sales_order_atomic');
   /* ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์คั่นกลางลิสต์คอลัมน์ทำให้ตัวเทียบพลาด
@@ -167,10 +168,17 @@ const DRAFT_OWNED = new Set([
   'ownerId', 'ownerName',
   // ใบใหม่ยังไม่ผูกสัญญาบริการโดยนิยาม
   'serviceContractId',
-  /* ทีมของใบ — ไม่เคยถูกเซ็ตโดยเส้นไหนเลย (grep ทั้ง migrations + src) · รายงานยอดขาย
-     อ่าน `order.team` จริง แต่ค่ามาจากที่อื่น ⇒ เป็นหนี้เก่า ไม่ใช่ของที่ใบนี้เพิ่งทำหาย */
-  'team',
 ]);
+
+/* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง
+   (ตัวกรองแค่ข้ามมันไป) ⇒ มันอยู่ต่อได้เงียบ ๆ พร้อมเหตุผลที่อาจผิด แล้วคนอ่านรอบหน้า
+   ก็เชื่อ · เคยเกิดจริงกับ `team` ซึ่งถูกใส่ไว้พร้อมคำอธิบายว่า "ไม่มีใครเซ็ต" ทั้งที่
+   `sales_orders` **ไม่มีคอลัมน์นี้เลย** (รายงานยอดขายประกอบ `order.team` จากทีมปัจจุบัน
+   ของเจ้าของยอดที่ชั้น API — ไม่ได้อ่านจากตาราง) */
+function assertNoGhosts(list, columns, label) {
+  const ghosts = [...list].filter((col) => !columns.has(col)).sort();
+  assert.deepEqual(ghosts, [], `${label}: ประกาศชื่อที่ไม่ใช่คอลัมน์จริงของ sales_orders`);
+}
 
 test('🪤 ใบสั่งขายที่ออกจากใบเสนอราคาต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
   const files = readdirSync(MIGRATIONS).filter((name) => name.endsWith('.sql')).sort();
@@ -191,6 +199,8 @@ test('🪤 ใบสั่งขายที่ออกจากใบเสน
       }
     }
   }
+
+  assertNoGhosts(DRAFT_OWNED, columns, 'DRAFT_OWNED');
 
   const { file, body } = latestDefinitionOf('create_sales_order_draft');
   const insert = body
