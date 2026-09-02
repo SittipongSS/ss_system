@@ -208,7 +208,12 @@ export default function SurveySiteFields({
       <div className="form-group col-span-2">
         <span className={styles.fieldLabel}>สถานที่ที่จะให้เข้าไปประเมิน</span>
         {!customerId ? (
-          <small className={styles.hint}>เลือกดีลก่อน — รายการสถานที่มาจากลูกค้าของดีลนั้น</small>
+          /* ⚠️ **ต้องบอกว่าดีลอยู่ที่ไหน ไม่ใช่แค่ว่าต้องมีดีล** — บล็อกนี้ย้ายมาอยู่แท็บ
+             "รายละเอียด" แล้ว (มติ 2026-09-02) ส่วนช่องดีลอยู่แท็บ "งาน" ⇒ ข้อความเดิม
+             ("เลือกดีลก่อน") อ่านบนแท็บนี้แล้วไม่รู้ว่าต้องไปเลือกที่ไหน */
+          <small className={styles.hint}>
+            เลือกดีลในแท็บ “งาน” ก่อน — รายการสถานที่มาจากลูกค้าของดีลนั้น
+          </small>
         ) : loading ? (
           <small className={styles.hint}>กำลังโหลดทะเบียนไซต์ของ {customerName || "ลูกค้ารายนี้"}…</small>
         ) : !sites.length ? (
