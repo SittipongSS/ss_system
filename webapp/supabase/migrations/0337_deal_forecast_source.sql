@@ -48,16 +48,16 @@ ALTER TABLE public.sales_deals
   ADD COLUMN IF NOT EXISTS "forecastPinnedAt" timestamptz,
   ADD COLUMN IF NOT EXISTS "forecastPinnedBy" text;
 
--- FK แยกคำสั่งเพราะ ADD COLUMN IF NOT EXISTS พา REFERENCES มาด้วยไม่ได้เมื่อรันซ้ำ
+-- ด่านแยกคำสั่งเพราะ ADD COLUMN IF NOT EXISTS พา CONSTRAINT มาด้วยไม่ได้เมื่อรันซ้ำ
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'sales_deals_forecast_quotation_fkey'
-  ) THEN
-    ALTER TABLE public.sales_deals
-      ADD CONSTRAINT sales_deals_forecast_quotation_fkey
-      FOREIGN KEY ("forecastQuotationId") REFERENCES public.quotations(id) ON DELETE SET NULL;
-  END IF;
+  /* 🔥 เดิมตรงนี้ผูก FK `forecastQuotationId` → quotations(id) ON DELETE SET NULL
+     **ถอดออกแล้ว** เพราะทำ production พังทันทีที่ขึ้น (2026-09-02): sales_deals กับ
+     quotations กลายเป็นมี FK หากันสองเส้น ⇒ PostgREST เลือกทางเชื่อมไม่ได้ ทุก
+     `select('*, deal:sales_deals(*)')` ตอบ "Could not embed because more than one
+     relationship was found" ⇒ ทะเบียนใบเสนอราคาว่าง · loadScoped ล้ม · ป้ายเมนูหาย
+     ฐานที่รัน 0337 ไปแล้วถอน FK ด้วย **mig 0339** · เหตุผลเต็มอยู่ในไฟล์นั้น
+     ความสอดคล้องของตัวชี้ดูแลด้วย trigger ข้างล่าง + CHECK คู่กัน ซึ่งครอบเส้นลบอยู่แล้ว */
 
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'sales_deals_forecast_source_check'

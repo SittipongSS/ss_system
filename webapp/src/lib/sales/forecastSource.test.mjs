@@ -7,7 +7,7 @@
 //   · เลือกใบใหม่สุด → ดีล Jim Thompson เสนอ 3 ขนาด ใบใหม่สุดคือขนาดเล็กสุด
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -203,6 +203,39 @@ test('มุมมองหน้าจอบอกทั้งค่าปั�
   assert.equal(view.pendingValue, 500);
   assert.equal(view.needsDecision, true, 'ต้องขึ้นคิวให้คนกด ไม่ใช่ทุบเงียบ ๆ');
   assert.equal(view.ambiguous, false);
+});
+
+/* 🔥 production พังจริง 2026-09-02: 0337 ใส่ FK `forecastQuotationId` → quotations
+   ทำให้ sales_deals ↔ quotations มี FK หากันสองเส้น · PostgREST เลยเลือกทางเชื่อมไม่ได้
+   แล้วทุก `select('*, deal:sales_deals(*)')` ตอบ
+   "Could not embed because more than one relationship was found" ⇒ ทะเบียนใบเสนอราคา
+   ว่างเปล่า · ด่าน loadScoped ล้ม · ป้ายตัวเลขบนเมนูหาย
+   ⇒ ถอน FK ใน 0339 (trigger + CHECK ดูแลความสอดคล้องแทน) และล็อกไว้ไม่ให้ใครใส่คืน */
+test('ห้ามมี FK จาก sales_deals ไป quotations (PostgREST embed กำกวมทั้งระบบ)', () => {
+  const dir = join(ROOT, 'supabase/migrations');
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.sql'))) {
+    const sql = read(`supabase/migrations/${file}`).replace(/--[^\n]*/g, '');
+    /* ตัดเป็นคำสั่ง ๆ แล้วดูเฉพาะคำสั่งที่ทำกับ sales_deals — ตารางอื่นชี้ไป quotations
+       ได้ตามปกติ (quotation_lines · sales_orders · revisedFromId ของใบเอง) */
+    for (const statement of sql.split(';')) {
+      if (!/ALTER\s+TABLE\s+(?:ONLY\s+)?public\.sales_deals/i.test(statement)) continue;
+      if (!/REFERENCES\s+public\.quotations/i.test(statement)) continue;
+      if (/DROP\s+CONSTRAINT/i.test(statement)) continue;
+      offenders.push(file);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'sales_deals ห้ามมี FK ไป quotations — จะทำให้ embed quotations↔sales_deals กำกวมทั้งระบบ (ดู 0339)');
+});
+
+test('0339 ถอน FK ที่ทำให้ embed กำกวม แต่ไม่ถอน trigger/CHECK ที่ดูแลตัวชี้', () => {
+  const sql = read('supabase/migrations/0339_drop_deal_forecast_quotation_fkey.sql');
+  assert.ok(sql.includes('DROP CONSTRAINT IF EXISTS sales_deals_forecast_quotation_fkey'));
+  const body = sql.replace(/--[^\n]*/g, '');
+  assert.ok(!/DROP\s+TRIGGER/i.test(body), 'trigger ตอนลบใบต้องอยู่ต่อ — มันคือตัวแทน ON DELETE SET NULL');
+  assert.ok(!/DROP\s+CONSTRAINT[^;]*pointer_check/i.test(body), 'CHECK ตัวชี้ต้องอยู่ต่อ');
+  assert.ok(!/DROP\s+INDEX/i.test(body), 'ดัชนีที่ trigger ใช้หาแถวดีลต้องอยู่ต่อ');
 });
 
 test('ไมเกรชัน 0337 ไม่แตะ metadata/stage/wonValue (กับดัก trigger 0110)', () => {
