@@ -9,7 +9,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, Paperclip, PackageCheck, Plus, Save, Search, Trash2, Truck, Trophy } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
@@ -50,6 +50,8 @@ import Textarea from "@/components/ui/Textarea";
 import { businessDate } from "@/lib/businessDate";
 import { customerArIndex, customerSearchText } from "@/lib/master/customerAr";
 import { apiFetch } from "@/lib/apiFetch";
+import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
 
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอดปิดจริง นอกนั้นใช้ยอดคาดการณ์
    (กติกาเดียวกับคอลัมน์มูลค่าและ KPI — ยอดรวมหัวกลุ่มต้องบวกจากเลขเดียวกับในแถว) */
@@ -60,6 +62,12 @@ const dealValue = (deal) => Number((isWonStage(deal.stage) ? deal.wonValue ?? de
    "เปลี่ยนแล้ว" ตลอดเวลา */
 const EMPTY = [];
 
+/* ปีที่เลือกได้ในรายงาน FC — ปีนี้ ย้อนหลัง 2 ปี และปีหน้า (แผนผลิตมองข้ามปีเสมอ ·
+   ของจริง 2026-09-02: ดีลที่ปิดปีนี้แต่ลูกค้ารับของปี 2027 มี 8,176,500 บาท)
+   ⚠️ ห้ามอ่านนาฬิกาตอนเรนเดอร์ (กติกา thai-time) — คิดครั้งเดียวตอนโหลดโมดูล */
+const REPORT_THIS_YEAR = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric" }).format(new Date()));
+const REPORT_YEARS = [REPORT_THIS_YEAR + 1, REPORT_THIS_YEAR, REPORT_THIS_YEAR - 1, REPORT_THIS_YEAR - 2].map(String);
+
 export default function SalesPlanningPipelinePage() {
   const canEdit = useCan("salesplan:edit");
   const role = useRole();
@@ -68,6 +76,8 @@ export default function SalesPlanningPipelinePage() {
   /* ⚠️ ใช้ตัวเดียวกับที่ API บังคับ ห้ามคำนวณเอง — ของเดิมเขียนรายชื่อ role ซ้ำไว้ที่นี่
      แล้วตกรุ่นทันทีที่กติกาเปลี่ยน (AC ถูกเพิ่มเข้ามา 2026-08-05 แต่ปุ่มยังไม่โผล่) */
   const canCreateDeals = canCreateDeal({ role });
+  // เห็นปุ่มโหลดรายงานเฉพาะ AE Supervisor ขึ้นไป (server บังคับซ้ำ — ปุ่มที่ซ่อนไม่ใช่ด่าน)
+  const canExportReport = canExportForecastReport(role);
   // ตัวกรองทั้งหมดอยู่ใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด. "รอเติมข้อมูล" เดิมมี state แต่ไม่มีปุ่มให้กด
   // (กรองไม่ได้จริง) — ย้ายมาเป็นหมวดหนึ่งในแผงนี้
@@ -153,6 +163,8 @@ export default function SalesPlanningPipelinePage() {
   const sort = { sortKey, sortDir, sortBy: handleSort };
 
   const [dealModal, setDealModal] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [reportYear, setReportYear] = useState(String(REPORT_THIS_YEAR));
   const [dealForm, setDealForm] = useState({ ...initialDealForm });
   const [createModal, setCreateModal] = useState(false); // โมดัลสร้างดีล (ตัวกลาง ใช้ร่วมกับฝั่งลีด)
   const [submitting, setSubmitting] = useState(false);
@@ -403,6 +415,14 @@ export default function SalesPlanningPipelinePage() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
+    /* ⭐ ฟอร์มแก้ต้องบังคับช่องเดียวกับตอนสร้าง (มติผู้ใช้ 2026-09-02) — เดิมตรวจแค่
+       ในโมดัลสร้าง ⇒ แก้ดีลเก่าแล้วบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้ตลอด
+       สูตรอยู่ที่ lib/sales/dealRequiredFields ที่เดียว (server ตรวจซ้ำด้วยตัวเดียวกัน) */
+    const missingFields = missingDealFieldsMessage(dealForm, {
+      legacyWon: dealForm.legacy && dealForm.stage === "won",
+      title: dealForm.title,
+    });
+    if (missingFields) { setError(missingFields); setSubmitting(false); return; }
     const selectedCustomer = customers.find((c) => c.id === dealForm.customerId);
     const payload = { ...dealForm, customerName: selectedCustomer?.name || dealForm.customerName || null };
     try {
@@ -742,9 +762,49 @@ export default function SalesPlanningPipelinePage() {
     </DetailRow>
   );
 
+  /* ⭐ รายงาน FC รายหมวด (Excel) — อยู่ที่หน้านี้เพราะเป็นหน้าที่หัวหน้าฝ่ายขายเปิดอยู่แล้ว
+     (มติผู้ใช้ 2026-09-02) · เลือกปีได้เพราะแผนผลิตมองข้ามปีเสมอ
+     ⚠️ **เห็นเฉพาะ AE Supervisor ขึ้นไป** — ไฟล์มียอด FC ของทุกทีมทุกคนพร้อมชื่อลูกค้า
+        และราคาต่อหน่วย · server บังคับซ้ำด้วย `canExportForecastReport` (ปุ่มที่ซ่อน
+        ไม่ใช่ด่าน — คนพิมพ์ URL เองยังยิงได้)
+     ⚠️ ต้องผ่าน `apiFetch` แล้วสร้าง blob เอง ไม่ใช่เปิดแท็บใหม่ไป URL ตรง ๆ —
+        เส้นนี้ต้องมีเซสชัน แท็บใหม่ที่ถูกเด้งไปหน้า login จะดูเหมือนปุ่มพัง */
+  const downloadForecastReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const res = await apiFetch(`/api/sales-planning/forecast-report?year=${reportYear}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("ดาวน์โหลดรายงานไม่สำเร็จ");
+      const blob = await res.blob();
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1]
+        || "FC-by-category.xlsx";
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = name;
+      document.body.appendChild(link); link.click(); link.remove();
+      URL.revokeObjectURL(url);
+      setError("");
+    } catch (downloadError) {
+      setError(downloadError.message || "ดาวน์โหลดรายงานไม่สำเร็จ");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   const headerRight = (
     <>
       <MonthPicker value={month} onChange={setMonth} allMonths={allMonths} onAllMonths={setAllMonths} />
+
+      {canExportReport && (
+        <>
+          <Select value={reportYear} onChange={(e) => setReportYear(e.target.value)} aria-label="ปีของรายงาน FC">
+            {REPORT_YEARS.map((option) => <option key={option} value={option}>ปี {option}</option>)}
+          </Select>
+          <Button variant="ghost" size="sm" disabled={downloadingReport} onClick={downloadForecastReport}>
+            <Download size={14} aria-hidden="true" />
+            {downloadingReport ? "กำลังสร้างไฟล์…" : "รายงาน FC รายหมวด"}
+          </Button>
+        </>
+      )}
 
       {canCreateDeals && (
         <button type="button" className="btn btn-accent" onClick={openNewDeal}>

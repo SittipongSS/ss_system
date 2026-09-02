@@ -190,28 +190,47 @@ export const GET = withUser(async ({ user, supabase }) => {
         ...(seedQuotes || []).map((row) => row.dealId),
         ...(followingDeals || []).map((row) => row.id),
       ].filter(Boolean))];
-      if (!dealIds.length) return 0;
-
-      const [{ data: deals }, { data: quotations }] = await Promise.all([
+      /* ⚠️ ไม่มีดีลที่ต้องดูที่มา ก็ยังต้องนับกองวันที่ขาดต่อ — early return ตรงนี้เมื่อไร
+         ป้ายจะหายทั้งที่หน้ายังมีของ (เคสนี้เกิดจริงตอนรวมสองสายเข้าด้วยกัน) */
+      const [{ data: deals }, { data: quotations }] = dealIds.length
+        ? await Promise.all([
         supabase.from('sales_deals')
           .select('id, stage, "ownerId", "ownerName", team, "projectValue", "forecastManualValue", "forecastSource", "forecastQuotationId", "forecastPinnedAt"')
           .in('id', dealIds).limit(5000),
         supabase.from('quotations')
           .select('id, "dealId", "quoteNumber", "baseNumber", "revisionNo", status, "approvalStatus", "totalAmount", "vatAmount", "createdAt"')
           .in('dealId', dealIds).limit(5000),
-      ]);
+        ])
+        : [{ data: [] }, { data: [] }];
+
+      /* กองที่สองของหน้าเดียวกัน: ดีลที่ยังไม่มีวันเริ่ม/วันรับของ — ป้ายต้องนับด้วย
+         ไม่งั้นกดเข้าไปเจอเลขไม่ตรงกับที่เมนูบอก (กฎหัวไฟล์ navCounts)
+         ⭐ "วันที่สิ้นสุด" = วันที่ลูกค้ารับของ ซึ่งรายงาน FC วางแผนผลิตใช้เป็นแกนเดือน
+         ⚠️ คนละ query กับกองใบเสนอราคาข้างบน เพราะกองนี้ไม่เกี่ยวกับใบเลย และดีลที่
+            ไม่มีใบก็ต้องถูกนับ ⇒ รวม dealIds ไม่ได้ */
+      const { data: undated } = await supabase
+        .from('sales_deals')
+        .select('id, stage, "ownerId", "ownerName", team, "startDate", "endDate", "projectValue"')
+        .or('startDate.is.null,endDate.is.null')
+        .limit(5000);
+      const needsDates = (undated || []).filter((deal) => {
+        if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
+        if (!Number(deal.projectValue)) return false;
+        return inSalesViewScope(user, deal);
+      }).length;
       const byDeal = new Map();
       for (const quotation of quotations || []) {
         if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
         byDeal.get(quotation.dealId).push(quotation);
       }
-      return (deals || []).filter((deal) => {
+      const needsSource = (deals || []).filter((deal) => {
         if (isWonStage(deal.stage) || deal.stage === 'lost') return false;
         if (!inSalesViewScope(user, deal)) return false;
         const dealQuotations = byDeal.get(deal.id) || [];
         if (!dealQuotations.length) return false;
         return forecastSourceView(deal, dealQuotations).needsDecision;
       }).length;
+      return needsSource + needsDates;
     }));
 
     /* ── สัญญา: สองเลนของใบเดียวกัน (เจ้าของใบ / AE Sup ผู้รับรอง) ────────────

@@ -7,7 +7,7 @@ import { forecastSourceView } from '@/lib/sales/forecastSource';
 
 export const dynamic = 'force-dynamic';
 
-const DEAL_COLUMNS = 'id,code,title,stage,"customerName","ownerId","ownerName",team,"forecastMonth","projectValue","forecastManualValue","forecastSource","forecastQuotationId","forecastPinnedAt","forecastPinnedBy"';
+const DEAL_COLUMNS = 'id,code,title,stage,"customerName","ownerId","ownerName",team,"startDate","endDate","expectedCloseDate","forecastMonth","projectValue","forecastManualValue","forecastSource","forecastQuotationId","forecastPinnedAt","forecastPinnedBy"';
 const QUOTATION_COLUMNS = 'id,"dealId","quoteNumber","baseNumber","revisionNo",status,"approvalStatus","totalAmount","vatAmount","createdAt"';
 
 /* GET /api/sales-planning/forecast-review — คิว "FC ยังไม่ตรงใบเสนอราคา"
@@ -46,6 +46,41 @@ export const GET = withUser(async ({ user, supabase }) => {
     if (!byDeal.has(quotation.dealId)) byDeal.set(quotation.dealId, []);
     byDeal.get(quotation.dealId).push(quotation);
   }
+
+  /* ── กองที่สาม: ดีลที่ยังไม่มีวันเริ่ม/วันรับของ ─────────────────────────────
+     ⭐ **วันสิ้นสุด = วันที่ลูกค้ารับของ** ซึ่งรายงาน FC วางแผนผลิตใช้เป็นแกนเดือน
+        ปล่อยว่าง = รายงานเดาเดือนจากวันปิดการขายแทน · ของจริง 2026-09-02: 70 ดีล
+        (26,534,973 บาท = 42% ของยอด) ⇒ ต้องมีที่ให้ AE เห็นและไล่กรอก ไม่ใช่รอให้
+        บังเอิญเปิดดีลนั้น · ด่านบังคับกรอกกันของใหม่ กองนี้เก็บของเก่า
+     ⚠️ นับ **ดีลที่มียอด** เท่านั้น — ดีลยอด 0 ไม่มีผลกับรายงานวางแผนผลิต
+        (ดีลแพ้/ปิดแล้วก็ไม่นับ: ของส่งไปแล้วหรือไม่ต้องส่ง) */
+  const missingDates = [];
+  for (const deal of deals || []) {
+    if (isWonStage(deal.stage) || deal.stage === 'lost') continue;
+    if (!inSalesViewScope(user, deal)) continue;
+    if (!Number(deal.projectValue)) continue;
+    const gaps = [
+      !String(deal.startDate ?? '').trim() ? 'startDate' : null,
+      !String(deal.endDate ?? '').trim() ? 'endDate' : null,
+    ].filter(Boolean);
+    if (!gaps.length) continue;
+    missingDates.push({
+      id: deal.id,
+      code: deal.code,
+      title: deal.title,
+      stage: deal.stage,
+      customerName: deal.customerName,
+      ownerName: deal.ownerName,
+      team: deal.team,
+      canEdit: inSalesEditScope(user, deal),
+      currentValue: Number(deal.projectValue || 0),
+      startDate: deal.startDate || null,
+      endDate: deal.endDate || null,
+      expectedCloseDate: deal.expectedCloseDate || null,
+      gaps,
+    });
+  }
+  missingDates.sort((a, b) => b.currentValue - a.currentValue);
 
   const rows = [];
   for (const deal of deals || []) {
@@ -89,7 +124,9 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   return ok({
     rows,
+    missingDates,
     counts: {
+      missingDates: missingDates.length,
       total: rows.length,
       mismatch: rows.filter((row) => row.kind === 'mismatch').length,
       sync: rows.filter((row) => row.kind === 'sync').length,

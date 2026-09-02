@@ -41,8 +41,12 @@ import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 
 export const dynamic = 'force-dynamic';
+
+// ป้ายต้องตรงกับที่ตาเห็นบนฟอร์ม (ดู lib/sales/dealRequiredFields)
+const DEAL_DATE_LABEL = { startDate: 'วันที่เริ่ม', endDate: 'วันที่สิ้นสุด (ลูกค้าต้องการรับ)' };
 
 const selectDeal = `
   *,
@@ -167,6 +171,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // (null/'') ไม่รับ: endpoint นี้ไม่มีเส้นทางล้าง metadata ทั้งก้อน
   if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) {
     patch.metadata = { ...(before.metadata || {}), ...body.metadata };
+  }
+  /* ⭐ บันทึกจากฟอร์มดีล ต้องมีวันเริ่ม + วันสิ้นสุดเสมอ (มติผู้ใช้ 2026-09-02)
+     ⚠️ ตรวจจาก **ดีลหลังบันทึก** ไม่ใช่จาก body — PATCH เส้นนี้มีผู้เรียกแบบ action
+        (เปลี่ยนขั้น · ผูก/ปลดโครงการ) ที่ส่งมาไม่กี่ช่อง · ถ้าตรวจ body ตรง ๆ ปุ่มพวกนั้น
+        จะถูกบล็อกบนดีลเก่าที่ยังไม่มีวัน ทั้งที่ไม่ได้แตะวันเลย
+     ⚠️ `isDealFormSave` แยกสองเส้นด้วย `title` ซึ่งฟอร์มส่งมาทุกครั้ง ส่วน action ไม่เคยส่ง */
+  if (isDealFormSave(body)) {
+    const missingDates = missingDealDatesAfterWrite(before, body);
+    if (missingDates.length) {
+      return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
+    }
   }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;

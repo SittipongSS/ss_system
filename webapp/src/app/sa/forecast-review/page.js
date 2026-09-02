@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
+import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -40,12 +40,19 @@ const KINDS = [
   { key: "sync", label: "ยอดตรงแล้ว", icon: Link2,
     lead: "ยอดตรงกันอยู่แล้ว — กดแล้ว FC ไม่ขยับสักบาท เปลี่ยนแค่ให้ดีลเดินตามใบ ฉบับแก้ครั้งหน้าจะตามเองโดยไม่ต้องมากดอีก",
     empty: "ไม่มีดีลที่รอผูกกับใบแล้ว 🎉" },
+  /* กองที่สาม: ของที่ต้องไปกรอกเอง ไม่ใช่ของที่กดรับได้ตรงนี้ — ปุ่มจึงเป็น "เปิดดีล"
+     อย่างเดียว · รายงาน FC วางแผนผลิตอ่านเดือนจาก "วันที่สิ้นสุด" ⇒ ดีลที่ไม่มีวันนี้
+     ทำให้ทั้งไฟล์ต้องเดาเดือนจากวันปิดการขายแทน */
+  { key: "missingDates", label: "ยังไม่มีวันรับของ", icon: CalendarClock,
+    lead: "รายงาน FC วางแผนผลิตอ่านเดือนจาก \"วันที่สิ้นสุด\" (วันที่ลูกค้าต้องการรับของ) — ดีลพวกนี้ยังไม่ได้กรอก รายงานจึงต้องเดาเดือนจากวันปิดการขายแทน · เปิดดีลแล้วกรอกให้ครบ",
+    empty: "ทุกดีลมีวันเริ่มและวันรับของครบแล้ว 🎉" },
 ];
 
 export default function ForecastReviewPage() {
   const canView = useCan("salesplan:view");
   const [rows, setRows] = useState([]);
-  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0 });
+  const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
+  const [missingDates, setMissingDates] = useState([]);
   const [kind, setKind] = useState("mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,7 +64,8 @@ export default function ForecastReviewPage() {
     try {
       const data = await apiJson("/api/sales-planning/forecast-review");
       setRows(data?.rows || []);
-      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, multiple: 0 });
+      setMissingDates(data?.missingDates || []);
+      setCounts(data?.counts || { total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
       setError("");
     } catch (loadError) {
       setError(loadError.message || "โหลดคิวไม่สำเร็จ");
@@ -68,7 +76,10 @@ export default function ForecastReviewPage() {
 
   useEffect(() => { if (canView) load(); }, [canView, load]);
 
-  const shown = useMemo(() => rows.filter((row) => row.kind === kind), [rows, kind]);
+  const shown = useMemo(
+    () => (kind === "missingDates" ? missingDates : rows.filter((row) => row.kind === kind)),
+    [rows, missingDates, kind],
+  );
   const active = KINDS.find((item) => item.key === kind) || KINDS[0];
 
   /* ⚠️ ทุกการกดต้องบอกตัวเลข **ก่อน → หลัง** ในโมดัล (กฎ approvalPrompt ของระบบ:
@@ -165,7 +176,58 @@ export default function ForecastReviewPage() {
         <EmptyState icon={CheckCircle2}>{active.empty}</EmptyState>
       ) : null}
 
-      {shown.length ? (
+      {/* กองวันที่ขาด = ตารางคนละทรง (ไม่มีใบให้เลือก มีแต่ปุ่มไปกรอก) ⇒ แยกตาราง
+          ไม่ยัดเป็นคอลัมน์ว่างในตารางเดิม ซึ่งจะอ่านเหมือนข้อมูลหาย */}
+      {kind === "missingDates" && shown.length ? (
+        <TableScroll family="list" cells="stacked" minWidth={780}>
+          <table>
+            <thead>
+              <tr>
+                <th>ดีล</th>
+                <th>ผู้รับผิดชอบ</th>
+                <th className="num">FC</th>
+                <th>ช่องที่ขาด</th>
+                <th aria-label="การทำงาน" />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <Link href={`/sa/deals/${row.id}`} className="linklike mono">{naText(row.code)}</Link>
+                    <small className={styles.sub}>{naText(row.title)}</small>
+                    <small className={styles.sub}>{naText(row.customerName)}</small>
+                  </td>
+                  <td>
+                    {naText(row.ownerName)}
+                    <small className={styles.sub}>{naText(row.team)}</small>
+                  </td>
+                  <td className="num">
+                    {fmtMoney(row.currentValue)}
+                    <small className={styles.sub}>{naText(row.stage)}</small>
+                  </td>
+                  <td>
+                    <div className={styles.choices}>
+                      {row.gaps.includes("startDate") ? <span className={styles.multi}>วันที่เริ่ม</span> : null}
+                      {row.gaps.includes("endDate") ? <span className={styles.multi}>วันที่สิ้นสุด (ลูกค้ารับ)</span> : null}
+                    </div>
+                    <small className={styles.sub}>วันปิดการขาย {naText(row.expectedCloseDate)}</small>
+                  </td>
+                  <td>
+                    <div className={styles.actions}>
+                      <Button as={Link} href={`/sa/deals/${row.id}`} variant="ghost" size="sm">
+                        เปิดดีลไปกรอก <ArrowRight size={13} aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      ) : null}
+
+      {kind !== "missingDates" && shown.length ? (
         <TableScroll family="list" cells="stacked" minWidth={880}>
           <table>
             <thead>

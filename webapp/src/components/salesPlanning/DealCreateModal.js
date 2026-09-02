@@ -31,6 +31,7 @@ import { CREATABLE_STAGES } from "@/lib/salesPlanning";
 import { TEAM_LABELS } from "@/lib/permissions";
 import styles from "./DealCreateModal.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
@@ -154,19 +155,11 @@ export default function DealCreateModal({
         // ดีลเก่าที่สร้างเป็น Won: ช่องเดียวกันเปลี่ยนป้ายเป็นของจริง (มูลค่าที่ปิด/
         // วันที่ปิด) — ข้อความ error ต้องเรียกชื่อเดียวกับที่ตาเห็นบนฟอร์ม
         const legacyWon = draft.legacy && draft.stage === "won";
+        // สูตรเดียวกับฟอร์มแก้และ server (lib/sales/dealRequiredFields) — เดิมกติกา
+        // อยู่ที่โมดัลนี้ที่เดียว ฟอร์มแก้จึงบันทึกโดยไม่มีวันเริ่ม/วันสิ้นสุดได้
         const valueLabel = legacyWon ? "มูลค่าที่ปิด" : "มูลค่าคาดการณ์";
-        const missing = [
-          // สถานะไม่มี default แล้ว (มติ 2026-08-08 "สถานะต้องบังคับเลือก") — ต้องจิ้มเอง
-          [!draft.stage, "สถานะ"],
-          // มูลค่ามาจากแถวรายหมวด (mig 0264) — "ยังไม่มีแถว" คือช่องที่ขาด ไม่ใช่ยอดว่าง
-          [!(draft.valueItems || []).length, `${valueLabel} (อย่างน้อย 1 หมวดสินค้า)`],
-          [!draft.expectedCloseDate, legacyWon ? "วันที่ปิด" : "วันที่คาดการณ์ปิด"],
-          [!draft.startDate, "วันที่เริ่ม"],
-          [!draft.endDate, "วันที่สิ้นสุด"],
-        ].filter(([absent]) => absent).map(([, name]) => name);
-        if (missing.length) {
-          throw new Error(`กรุณากรอก ${missing.join(" · ")} ให้ครบทุกใบ${draft.title ? ` — "${draft.title}"` : ""}`);
-        }
+        const missing = missingDealFieldsMessage(draft, { legacyWon, title: draft.title });
+        if (missing) throw new Error(missing);
         /* แถวที่กรอกไม่ครบ — บอกตั้งแต่ฝั่งจอว่าแถวไหน (server ตรวจซ้ำด้วยสูตรเดียวกัน
            ที่ lib/sales/dealValueItems.js แต่เสียเที่ยวยิงก่อนไม่มีประโยชน์) */
         const badRow = (draft.valueItems || []).findIndex(

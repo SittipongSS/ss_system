@@ -28,8 +28,12 @@ import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } fro
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
+import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 
 export const dynamic = 'force-dynamic';
+
+// ป้ายของสองช่องนี้ต้องตรงกับที่ตาเห็นบนฟอร์ม (ดู lib/sales/dealRequiredFields)
+const DEAL_DATE_LABEL = { startDate: 'วันที่เริ่ม', endDate: 'วันที่สิ้นสุด (ลูกค้าต้องการรับ)' };
 
 const selectDeal = `
   *,
@@ -185,6 +189,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // รหัสดีลฐาน DL-YYMMXXXX (atomic ต่อเดือน — mig 0096). แสดง DL-YYMMXXXX-0 ที่ UI/เอกสาร.
   // ⚠️ ไม่ใส่ code ตรงนี้ — ออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) ไม่งั้นทุก
   // ครั้งที่ insert ล้ม รหัสดีลจะหายไปหนึ่งเลขโดยไม่มีใครรู้
+  /* ⭐ วันเริ่ม/วันสิ้นสุดบังคับกรอก (มติผู้ใช้ 2026-09-02) — สูตรเดียวกับฟอร์ม
+     ⚠️ **วันสิ้นสุด = วันที่ลูกค้ารับของ** ซึ่งรายงาน FC วางแผนผลิตใช้เป็นแกนเดือน
+        ปล่อยว่างเมื่อไร รายงานต้องเดาเดือนจากวันปิดการขายแทน (ของจริงก่อนมีด่านนี้:
+        70 ดีล = 26,534,973 บาท ไม่มีวันสิ้นสุด)
+     ⚠️ ด่านอยู่ที่ **route ของฟอร์ม** ไม่ใช่ที่ฐาน — สายสหมิตรเขียน sales_deals ตรง ๆ
+        ด้วย service-role และไม่มีวันพวกนี้โดยธรรมชาติ (FC มาจากรอบพยากรณ์) */
+  const missingDates = missingDealDatesAfterWrite(null, body);
+  if (missingDates.length) {
+    return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
+  }
+
   const row = {
     id: genId('DEAL'),
     customerId: body.customerId || null,
