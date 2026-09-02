@@ -141,3 +141,84 @@ COMMIT;
 -- PostgREST แคช schema ไว้ในหน่วยความจำ — ต้องบอกให้โหลดใหม่ ไม่งั้นสิทธิ์ชุดใหม่
 -- ยังไม่มีผลจนกว่าจะ restart
 NOTIFY pgrst, 'reload schema';
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ตรวจผลหลังรัน (คัดลอกส่วนใน comment ไปรันใน SQL Editor)
+-- คาดหวัง: anon_fns=0 · anon_secdef=0 · authed_fns=0 · svc_fns=98 ·
+--          anon_tables=0 · svc_tables=110 · fns_no_search_path=0 · dup_idx=0
+-- ═══════════════════════════════════════════════════════════════════════════
+-- -- ตรวจผลหลังรัน 0336 — รันใน SQL Editor ได้เลย อ่านอย่างเดียว
+-- -- คาดหวัง: anon_fns = 0, anon_secdef = 0, authed_fns = 0, svc_fns = 98,
+-- --          anon_tables = 0, svc_tables = 110, fns_no_search_path = 0, dup_idx = 0
+-- select
+--   (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--      where n.nspname='public' and has_function_privilege('anon', p.oid,'EXECUTE'))          as anon_fns,
+--   (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--      where n.nspname='public' and p.prosecdef
+--        and has_function_privilege('anon', p.oid,'EXECUTE'))                                  as anon_secdef,
+--   (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--      where n.nspname='public' and has_function_privilege('authenticated', p.oid,'EXECUTE'))  as authed_fns,
+--   (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--      where n.nspname='public' and has_function_privilege('service_role', p.oid,'EXECUTE'))   as svc_fns,
+--   (select count(*) from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='r'
+--      and has_table_privilege('anon', c.oid,'SELECT'))                                        as anon_tables,
+--   (select count(*) from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='r'
+--      and has_table_privilege('service_role', c.oid,'SELECT'))                                as svc_tables,
+--   (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+--      where n.nspname='public' and p.prokind='f' and p.proconfig is null)                     as fns_no_search_path,
+--   (select count(*) from pg_class where relname in ('customers_id_key','products_id_key'))    as dup_idx;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ถอยกลับ — ใช้เฉพาะกรณีมีจอพังหลังรัน
+-- ═══════════════════════════════════════════════════════════════════════════
+-- -- ถอย 0336 กลับสู่สภาพเดิม — ใช้เฉพาะกรณีมีจอพังหลังรัน
+-- --
+-- -- ⚠️ นี่คือการเปิดสิทธิ์คืนให้ anon/authenticated ตามค่าเริ่มต้นของ Supabase
+-- --    ซึ่งคือสภาพที่ไม่ปลอดภัยเดิม · ใช้ประคองแล้วรีบหาสาเหตุ อย่าปล่อยค้าง
+-- --
+-- -- 🪤 ไม่คืน customers_id_key / products_id_key ให้ เพราะเป็นดัชนีซ้ำกับ pkey
+-- --    ถ้าจำเป็นจริง ๆ ต่อท้ายเอง:
+-- --      ALTER TABLE public.customers ADD CONSTRAINT customers_id_key UNIQUE (id);
+-- --      ALTER TABLE public.products  ADD CONSTRAINT products_id_key  UNIQUE (id);
+-- 
+-- BEGIN;
+-- 
+-- GRANT USAGE ON SCHEMA public TO anon, authenticated;
+-- 
+-- DO $$
+-- DECLARE r record;
+-- BEGIN
+--   FOR r IN
+--     SELECT p.oid::regprocedure AS sig
+--     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--     WHERE n.nspname = 'public'
+--   LOOP
+--     EXECUTE format('GRANT EXECUTE ON ROUTINE %s TO anon, authenticated', r.sig);
+--   END LOOP;
+-- 
+--   FOR r IN
+--     SELECT c.oid::regclass AS rel FROM pg_class c
+--     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r','p','v','m','f')
+--   LOOP
+--     EXECUTE format('GRANT ALL ON %s TO anon, authenticated', r.rel);
+--   END LOOP;
+-- 
+--   FOR r IN
+--     SELECT c.oid::regclass AS rel FROM pg_class c
+--     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'S'
+--   LOOP
+--     EXECUTE format('GRANT USAGE, SELECT, UPDATE ON SEQUENCE %s TO anon, authenticated', r.rel);
+--   END LOOP;
+-- END $$;
+-- 
+-- ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+--   GRANT EXECUTE ON FUNCTIONS TO PUBLIC, anon, authenticated;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+--   GRANT ALL ON TABLES TO anon, authenticated;
+-- ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+--   GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO anon, authenticated;
+-- 
+-- COMMIT;
+-- 
+-- NOTIFY pgrst, 'reload schema';
