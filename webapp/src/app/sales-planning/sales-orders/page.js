@@ -235,7 +235,9 @@ export default function SalesOrdersPage() {
       if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
-      return !q || [row.orderNumber, row.customerName, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
+      // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
+      //    — กติกาเดียวกับทะเบียนใบเสนอราคาที่ใส่ไว้ตั้งแต่แรก
+      return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.quotation?.quoteNumber, row.referenceDoc]
         .some((value) => String(value || "").toLowerCase().includes(q));
     });
   }, [query, rows, statusFilter, paymentFilter, waitingOnMeOnly, lineView]);
@@ -435,7 +437,7 @@ export default function SalesOrdersPage() {
               value={lineView}
               onChange={setLineView}
             />
-            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / ดีล / เอกสารอ้างอิง" /></div>
+            <div className="search-glass" style={{ width: 330 }}><Search size={16} color="var(--text-3)" /><input autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาเลข SO / QT / ลูกค้า / AR / ดีล / เอกสารอ้างอิง" /></div>
             <FilterPopover
               count={filterCount}
               onClear={() => { setStatusFilter([]); setPaymentFilter([]); setWaitingOnMeOnly(false); }}

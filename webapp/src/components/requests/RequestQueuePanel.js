@@ -517,7 +517,7 @@ export default function RequestQueuePanel({
         <div className={`search-glass ${styles.searchBox}`}>
           <Search size={18} color="var(--text-3)" />
           <input autoComplete="off"
-            type="text" value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า…"
+            type="text" value={search} placeholder="ค้นหาเลขที่ / เรื่อง / ลูกค้า / ดีล…"
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
