@@ -4,6 +4,7 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
+import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
 import { revisionSeparatorOf } from '@/lib/documentStandards';
 import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
@@ -108,13 +109,24 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
-  // จะได้ค่าใหม่ ใบเก่าคงเดิม; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม.
+  // จะได้ค่าใหม่ ใบเก่าคงเดิม; งวดชำระสืบทอดจากใบเดิม (ผู้ติดต่อดูบล็อกถัดไป).
   // ⭐ "สดใหม่ของที่อยู่ **ตัวเดิม**" — ใบเดิมเลือกสาขา/คลังไหนไว้ ฉบับ Rev. ต้องอยู่
   // ที่นั่น (0203) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
   const { data: cust } = quote.customerId
-    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId').eq('id', quote.customerId).maybeSingle()
+    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId, contacts, contactPerson, contactPhone').eq('id', quote.customerId).maybeSingle()
     : { data: null };
   const revAddresses = pickDocumentAddresses(cust, quote);
+
+  /* ผู้ติดต่อของฉบับ Rev.: จอส่ง contactIndex มากับ payload เดียวกับตอนแก้ใบ (page.js
+     quotationPayload) — เดิมที่นี่ไม่อ่านคีย์นี้เลย ⇒ เลือกผู้ติดต่อคนใหม่แล้วกด "ออก Rev."
+     การเลือกหายทั้งดุ้นโดยไม่มีอะไรฟ้อง 🐞 (ใบ QT-26080174 ยิง Rev. สองรอบใน 7 นาที
+     เพราะเหตุนี้) · ไม่ส่งมา = สืบทอดผู้ติดต่อของใบเดิมเหมือนเดิม */
+  let revContact = null;
+  if ('contactIndex' in body) {
+    const picked = pickQuotationContact(cust, body.contactIndex);
+    if (!picked.ok) return badRequest(picked.error);
+    revContact = picked.snapshot;
+  }
   const { data: revised, error: insertErr } = await supabase
     .from('quotations')
     .insert({
@@ -129,16 +141,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       validUntil,
       customerId: quote.customerId,
       customerName: quote.customerName,
-      // snapshot: ที่อยู่ refresh สดจาก master; ผู้ติดต่อ + งวดชำระ สืบทอดจากใบเดิม
+      // snapshot: ที่อยู่ refresh สดจาก master; งวดชำระสืบทอดจากใบเดิม · ผู้ติดต่อ =
+      // ที่จอเลือกไว้ตอนออก Rev. ถ้าไม่ได้เลือกก็สืบทอดของใบเดิม
       billingAddress: revAddresses.snapshot.billingAddress ?? quote.billingAddress ?? null,
       shippingAddress: revAddresses.snapshot.shippingAddress || quote.shippingAddress || null,
       branchCode: revAddresses.snapshot.branchCode ?? quote.branchCode ?? null,
       billingAddressId: revAddresses.snapshot.billingAddressId ?? quote.billingAddressId ?? null,
       shippingAddressId: revAddresses.snapshot.shippingAddressId ?? quote.shippingAddressId ?? null,
       customerTaxId: cust?.taxId ?? quote.customerTaxId ?? null,
-      contactName: quote.contactName,
-      contactPhone: quote.contactPhone,
-      contactEmail: quote.contactEmail,
+      contactName: revContact ? revContact.contactName : quote.contactName,
+      contactPhone: revContact ? revContact.contactPhone : quote.contactPhone,
+      contactEmail: revContact ? revContact.contactEmail : quote.contactEmail,
       paymentPlan,
       ...totals,
       discountType,

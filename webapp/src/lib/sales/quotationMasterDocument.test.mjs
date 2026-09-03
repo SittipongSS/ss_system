@@ -513,6 +513,19 @@ test('พรีวิว: ใบที่ยังแก้ได้มีสว
   assert.match(html, /บันทึกไม่สำเร็จ/);
 });
 
+/* 🐞 2026-08-28–09-03: codemod #1503 (fetch→apiFetch ทั้งเว็บ) แก้ `fetch(` ที่อยู่
+   **ข้างในสตริงสคริปต์นี้** ด้วย ⇒ หน้าต่างพิมพ์ (document.write, ไม่มี bundle) โยน
+   ReferenceError แบบ synchronous ⇒ .then/.catch ไม่ถูกผูก ⇒ ค้าง "กำลังบันทึก…"
+   ปุ่มดับถาวร และไม่มีใบไหนบันทึกภาษาเอกสารได้เลยตลอด 6 วัน
+   เทสต์เดิมยืนยันแค่ url/method/body จึงเขียวตลอด — ต้องยืนยัน **ตัวที่ถูกเรียก** ด้วย */
+test('พรีวิว: สคริปต์ในหน้าต่างพิมพ์ต้องเรียก fetch ดิบ ห้าม apiFetch (ไม่มี bundle ให้เรียก)', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableQuote(), { editable: true });
+  assert.doesNotMatch(html, /[^.\w]apiFetch\s*\(/, 'apiFetch ไม่มีอยู่ในหน้าต่างที่ document.write');
+  assert.match(html, /[^.\w]fetch\(url,/);
+  // throw แบบ synchronous ต้องไม่ทำให้แถบเครื่องมือแช่แข็ง — ต้องมีทางคืนปุ่มเสมอ
+  assert.match(html, /catch \(err\) \{/);
+});
+
 test('พรีวิว: ใบที่ยื่น/อนุมัติแล้วไม่มีสวิตช์และไม่มีสคริปต์ — ภาษาถูกตรึงไปกับเอกสารแล้ว', () => {
   const html = buildQuotationMasterSwitchableHTML(
     switchableQuote({ docLanguage: 'en', approvalStatus: 'approved' }),

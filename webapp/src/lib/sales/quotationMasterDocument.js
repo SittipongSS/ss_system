@@ -17,7 +17,6 @@ import {
 import { amountInWords } from '@/lib/documents/amountInWords';
 import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
 import { fmtNumber, fmtPercent, fmtPhone } from '@/lib/format';
-import { apiFetch } from "@/lib/apiFetch";
 import {
   DOCUMENT_ACCENT_THEMES,
   documentFileName,
@@ -378,7 +377,16 @@ function langConfirmOverlay(messages) {
 /* `save` = ปลายทางที่บันทึกภาษา — ต่างกันตามชนิดเอกสาร
      ใบเสนอราคา  PATCH /api/sales-planning/quotations/{id}   body {"docLanguage":"__LANG__"}
      ใบสั่งขาย   PATCH /api/sales-planning/sales-orders/{id}  body {"action":"set-doc-language","language":"__LANG__"}
-   ⚠️ เดิมฝังพาธของใบเสนอราคาไว้ตายตัว — ใบสั่งขายจึงใช้สวิตช์ตัวนี้ไม่ได้เลย */
+   ⚠️ เดิมฝังพาธของใบเสนอราคาไว้ตายตัว — ใบสั่งขายจึงใช้สวิตช์ตัวนี้ไม่ได้เลย
+
+   ⛔ **ในสตริงนี้ใช้ `fetch` ดิบเท่านั้น ห้ามเป็น `apiFetch`** — กฎ "จอเรียก API ผ่าน
+   apiFetch" (AGENTS.md) ใช้กับโค้ดที่อยู่ใน bundle เท่านั้น สตริงก้อนนี้ถูกฝังเป็น
+   `<script>` ของ **เอกสารเดี่ยวที่ document.write ลงหน้าต่างใหม่** (quotePrint.js /
+   salesOrderPrint.js) หน้าต่างนั้นไม่มี module scope ⇒ ชื่อ apiFetch ไม่มีอยู่จริง
+   🐞 เกิดมาแล้ว 2026-08-28: codemod #1503 ไล่แก้ `fetch(` ที่อยู่ข้างในสตริงนี้ด้วย
+   ⇒ ReferenceError แบบ synchronous ตั้งแต่ยังไม่เกิด Promise ⇒ .then/.catch ไม่ถูกผูก
+   ⇒ paint(lang, false) ไม่มีวันรัน = แถบค้าง "กำลังบันทึก…" ปุ่มภาษาดับถาวร ไม่มี error
+   ให้เห็นเลย (ทางแจ้งเตือนอยู่ใน .catch) และไม่มีใบไหนบันทึกภาษาเอกสารได้อีก 6 วัน */
 function langSwitchScript(save, hasConfirm) {
   return `
 (function () {
@@ -403,20 +411,28 @@ function langSwitchScript(save, hasConfirm) {
     if (doc.getAttribute('data-active-lang') === lang) return;
     paint(lang, true);
     say('กำลังบันทึก…');
-    apiFetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: bodyTpl.replace(/__LANG__/g, lang),
-    }).then(function (res) {
-      if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) {
-        throw new Error(d.error || ('บันทึกไม่สำเร็จ (' + res.status + ')'));
+    // fetch ดิบเท่านั้น — ดูเหตุผลเต็มเหนือ langSwitchScript (ห้ามเป็น apiFetch)
+    try {
+      fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: bodyTpl.replace(/__LANG__/g, lang),
+      }).then(function (res) {
+        if (!res.ok) return res.json().catch(function () { return {}; }).then(function (d) {
+          throw new Error(d.error || ('บันทึกไม่สำเร็จ (' + res.status + ')'));
+        });
+        paint(lang, false);
+        say('บันทึกแล้ว — ใบนี้จะพิมพ์เป็นภาษานี้ทุกครั้ง');
+      }).catch(function (err) {
+        paint(lang, false);
+        say('เปลี่ยนมุมมองแล้วแต่บันทึกไม่สำเร็จ: ' + (err.message || 'ไม่ทราบสาเหตุ') + ' — พิมพ์ครั้งหน้าจะกลับเป็นภาษาเดิม', 'error');
       });
-      paint(lang, false);
-      say('บันทึกแล้ว — ใบนี้จะพิมพ์เป็นภาษานี้ทุกครั้ง');
-    }).catch(function (err) {
+    } catch (err) {
+      // throw แบบ synchronous (ชื่อที่ไม่มีจริง, CSP บล็อก fetch ฯลฯ) ต้องลงช่อง
+      // error ช่องเดียวกับ rejection ไม่งั้นแถบเครื่องมือแช่แข็งทั้งหน้าต่าง
       paint(lang, false);
       say('เปลี่ยนมุมมองแล้วแต่บันทึกไม่สำเร็จ: ' + (err.message || 'ไม่ทราบสาเหตุ') + ' — พิมพ์ครั้งหน้าจะกลับเป็นภาษาเดิม', 'error');
-    });
+    }
   }
   ${hasConfirm ? `
   // ถามก่อนเฉพาะขาไป "อังกฤษ" — ขากลับเป็นไทยไม่มีอะไรตกหล่น จึงไม่ต้องถาม
