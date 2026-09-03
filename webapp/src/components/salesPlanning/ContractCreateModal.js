@@ -89,7 +89,13 @@ export default function ContractCreateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, dealPicker, dealIds?.join(",")]);
 
-  // ปิดโมดัลแล้วต้องกลับไปเริ่มใหม่ — ไม่งั้นเปิดรอบหน้าได้ค่าค้างของรอบก่อน
+  /* ปิดโมดัลแล้วต้องกลับไปเริ่มใหม่ — ไม่งั้นเปิดรอบหน้าได้ค่าค้างของรอบก่อน
+     🐞 **สามช่องของสาย external ถูกลืมไว้** (แก้ 2026-09-03) — เลือก "ใช้เอกสารอื่น
+        แทนสัญญา" + ชนิดเอกสาร + เลขอ้างอิง แล้วปิดโดยไม่สร้าง · เปิดใหม่ให้ดีล **คนละใบ**
+        ค่าเดิมยังค้างครบ ⇒ กดสร้างต่อได้เลยโดยไม่มีอะไรบอกว่าค่านี้มาจากรอบก่อน
+        ⇒ ได้สัญญา external ที่อ้างเลขเอกสารของดีลอื่นเงียบ ๆ
+     ⚠️ ค่าตั้งต้นของ `source` คือ 'generated' เสมอ ไม่ใช่ '' — "ใช้เอกสารอื่นแทนสัญญา"
+        ต้องเป็นการตัดสินใจของคนทุกครั้ง ไม่ใช่สถานะที่ระบบจำไว้ให้ */
   useEffect(() => {
     if (open) return;
     setCustomerId("");
@@ -98,6 +104,9 @@ export default function ContractCreateModal({
     setQuoteId(quotationId);
     setOptions(null);
     setError("");
+    setSource("generated");
+    setExternalDocKind("");
+    setExternalRef("");
   }, [open, dealId, quotationId]);
 
   /* ตัวเลือกของดีลที่เลือกอยู่ — ใช้ทั้งสองโหมด

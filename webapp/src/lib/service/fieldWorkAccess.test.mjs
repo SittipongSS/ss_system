@@ -241,7 +241,8 @@ test('🔴 รอบที่มีนัดปิดงานแล้วลบ
     const blocked = planDeleteBlocker([{ status: 'scheduled' }, { status }]);
     assert.ok(blocked, status);
     assert.match(blocked, /1 ครั้ง/, `${status}: ต้องบอกจำนวน ไม่ใช่ปฏิเสธลอย ๆ`);
-    assert.match(blocked, /ปิดใช้งานรอบ/, `${status}: ต้องชี้ทางออกที่ได้ผลเท่ากันโดยประวัติไม่ขาด`);
+    // ⚠️ ต้องชี้ **ตัวคุมที่มีอยู่จริง** — เคยบอกให้ใช้ปุ่ม "ปิดใช้งานรอบ" ซึ่งไม่มีอยู่
+    assert.match(blocked, /เปิดใช้งาน/, `${status}: ต้องชี้ทางออกที่ได้ผลเท่ากันโดยประวัติไม่ขาด`);
   }
 });
 
@@ -262,7 +263,7 @@ test('หน้าไซต์: ปุ่มลบรอบเดินเส้
   const page = readFileSync(new URL('../../app/service/sites/[id]/page.js', import.meta.url), 'utf8');
   assert.match(page, /deleteWithForce\(`\/api\/service\/plans\/\$\{pendingDelete\.row\.id\}`, \{ isAdmin \}\)/);
   assert.match(page, /detail: "รอบที่มีนัดปิดงานแล้วจะลบไม่ได้/, 'กล่องยืนยันต้องบอกด่านใหม่');
-  assert.match(page, /ปิดใช้งานรอบ/, 'ต้องชี้ทางออกที่ถูกในกล่องยืนยัน');
+  assert.match(page, /เปิดใช้งาน/, 'ต้องชี้ตัวคุมที่มีอยู่จริงในกล่องยืนยัน');
 });
 
 /* ⚠️ พรีวิวของแอดมินต้องไม่บอกว่า "จะลบนัด N ใบ" — FK เป็น SET NULL นัดไม่ถูกลบ
