@@ -142,6 +142,24 @@ export function masterPriceState(product) {
   return toMoney(product[QUOTE_PRICE_FIELD]) > 0 ? 'priced' : 'unpriced';
 }
 
+/* ราคาใน master เดินหน้าไปแล้ว แต่บรรทัดในใบยังเป็นราคาเดิม — คืนราคาปัจจุบันของ master
+   (ไม่ใช่ true/false เพราะจอต้องเอาตัวเลขไปโชว์ให้ผู้ใช้เห็นว่าจะกลายเป็นเท่าไร)
+
+   ราคาบรรทัดเป็น snapshot ที่ sync จาก master **ตอนบันทึกเท่านั้น** (enforceMasterPrices)
+   ทาง GET ตั้งใจไม่เติมราคาสด เพราะยอดหัวใบเก็บใน DB ⇒ เติมราคาอย่างเดียวแถวกับยอดรวม
+   จะไม่ตรงกัน (ดู refreshFgLinesForDisplay) ⇒ ผู้ใช้ที่เพิ่งไปแก้ราคาในทะเบียนสินค้า
+   กลับมาเปิดใบแล้วเห็นราคาเดิม จึงคิดว่าระบบไม่อัปเดต (ผู้ใช้แจ้งเข้ามา 2026-09-03)
+   ⇒ โชว์ราคาใหม่กำกับไว้ข้างช่อง แล้วให้กดบันทึกเป็นคนสั่งเปลี่ยนจริง
+
+   คืน null เมื่อ: บรรทัดไม่ผูกสินค้า · ไม่รู้ราคา master ('unknown' — สินค้าหลุดจากลิสต์
+   เพราะรออนุมัติ/พักใช้ หรือบทบาทนี้ถูกตัดคอลัมน์ทิ้ง) · master ยังไม่ตั้งราคา
+   ('unpriced' — มีคำเตือนของตัวเองอยู่แล้ว) · ราคาตรงกันอยู่แล้ว */
+export function masterPriceDrift(product, line) {
+  if (!line?.productId || masterPriceState(product) !== 'priced') return null;
+  const masterPrice = toMoney(product[QUOTE_PRICE_FIELD]);
+  return masterPrice === toMoney(line.unitPrice) ? null : masterPrice;
+}
+
 // ── FG ต้องเป็นของลูกค้าที่ออกใบให้ (มติผู้ใช้ 2026-08-17) ──────────────────────
 //
 // FG ผูกกับลูกค้าเสมอ (`products.customerId` — POST /api/products บังคับ) แต่ตัวเลือก
