@@ -1,7 +1,6 @@
 "use client";
 import { useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import DetailRow from "@/components/ui/DetailRow";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
@@ -11,9 +10,10 @@ import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import { naText } from "@/lib/format";
 
-// Core responsive list used by both excise tracks AND the reports page.
+// Core responsive list used by both excise tracks (tax/filings · tax/registrations).
 //   • landscape → sortable .premium-table
 //   • portrait  → card grid (caller-supplied `card(row)`; falls back to columns)
+//                มี rowHref+card ⇒ การ์ดทั้งใบเป็น <Link> (ดูบล็อก `linkedCard` ข้างล่าง)
 //   • client-side pagination (pageSize) so big datasets don't bloat the DOM
 //
 // columns: [{ key, label, align?, render?(row), sortValue?(row), thStyle?, tdStyle?, link? }]
@@ -45,7 +45,6 @@ export default function DataList({
   emptyIcon,
 }) {
   const [view] = useResponsiveView({ portrait: "card", landscape: "table" });
-  const router = useRouter();
 
   const accessors = useMemo(() => {
     const acc = {};
@@ -76,6 +75,29 @@ export default function DataList({
      ⇒ ยกออกได้แค่ *ค่าสไตล์* ไม่ใช่ตัว JSX — ซึ่งก็ทำให้ไม่ต้องก๊อป `style={{…}}`
      ขึ้นมาอีกจุดด้วย (ratchet inlineStyle) */
   const tdStyleOf = (c) => ({ textAlign: c.align, ...c.tdStyle });
+
+  /* ── การ์ด (จอแนวตั้ง) เป็นลิงก์ทั้งใบ ไม่ใช่ `<div onClick>` (2026-09-02) ────────
+     เดิมการ์ดแขวน `router.push(rowHref(r))` ไว้บน <div> ⇒ เมาส์กดได้ แต่คีย์บอร์ด
+     เข้าไม่ถึงเลย (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา
+     ⇒ ห่อทั้งใบด้วย <Link> ได้ **เพราะไล่ดูแล้วว่าไม่มี interactive ข้างในการ์ด**:
+     ผู้เรียกทั้งสองราย (tax/filings · tax/registrations) ส่ง `card` ที่เป็น div/span
+     + ป้ายสถานะล้วน (StatusBadge/RegistryBadge ไม่มี onClick/button/a เลย)
+     ล็อกไว้ด้วย src/components/excise/dataListCardCallers.test.mjs — ผู้เรียกรายที่สาม
+     ที่ส่ง `card` มีปุ่ม/ลิงก์จะแดงทันที (<a> ห้ามมี interactive descendant)
+
+     🪤 **ห่อเฉพาะสาขาที่มี `card`** — สาขาสำรอง (ไม่มี `card`) เรนเดอร์ *ทุกคอลัมน์*
+        รวมคอลัมน์เลือกใบ `_sel` ซึ่งคาย `<input type="checkbox">` ⇒ ห่อเมื่อไหร่ได้
+        <a> ที่มี <input> อยู่ข้างใน = HTML ผิด · วันนี้ไม่มีใครเดินสาขานั้น แต่มันคือ
+        กับดักที่รอผู้เรียกรายถัดไปอยู่
+     🪤 **แท็กเป็นตัวแปร ไม่ใช่เขียนสอง <div>/<Link> คนละก้อน** — โมดูลภาษีสรรพสามิต
+        เต็มเพดาน legacySurface (12/12) และ inlineStyle (117/117) ทั้งคู่นับ *จำนวน
+        สตริง* ⇒ ก๊อป `glass-panel` กับ `style={{…}}` ลงสองสาขาเมื่อไหร่ ชนเพดานทันที
+        (ต่างจากฝั่งตารางที่ ROW_MIRROR บังคับให้เขียนซ้ำ — ด่านนั้นอ่านเฉพาะ JSX
+        ระหว่าง <DetailRow>…</DetailRow> การ์ดจึงยกเป็นตัวแปรได้เต็มที่)
+     🪤 **ไม่ต้องสั่ง `display` ให้ <a>** — การ์ดเป็นลูกของ flex container จึงถูก
+        blockify ให้อยู่แล้ว · `.card-link` จงใจไม่ประกาศ display ด้วยเหตุผลเดียวกัน */
+  const linkedCard = Boolean(rowHref && card);
+  const CardTag = linkedCard ? Link : "div";
 
   return (
     <div>
@@ -122,15 +144,12 @@ export default function DataList({
       ) : (
         <div className="flex flex-col gap-3">
           {pageRows.map((r, i) => (
-            /* 🪤 การ์ด (จอแนวตั้ง) ยังเป็น `<div onClick>` ที่คีย์บอร์ดเข้าไม่ถึง —
-               อยู่ในกลุ่ม <div> ของด่าน A11Y_KEYBOARD_CAP ที่ยังไม่ถึงคิว รอบนี้แก้
-               เฉพาะฝั่งตาราง · ทางแก้ของมันคือห่อการ์ดด้วย <Link> ทั้งใบ ซึ่งต้องไล่ดู
-               ก่อนว่า `card(row)` ของผู้เรียกมีปุ่ม/ลิงก์ซ้อนอยู่ข้างในไหม */
-            <div
+            /* prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อการ์ด (เหตุผลเดียวกับลิงก์ในเซลล์) */
+            <CardTag
               key={key(r, i)}
-              className="glass-panel"
-              style={{ padding: 14, cursor: rowHref ? "pointer" : undefined }}
-              onClick={rowHref ? () => router.push(rowHref(r)) : undefined}
+              {...(linkedCard ? { href: rowHref(r), prefetch: false } : null)}
+              className={`glass-panel${linkedCard ? " card-link" : ""}`}
+              style={{ padding: 14 }}
             >
               {card ? card(r) : (
                 <div className="flex flex-col gap-1">
@@ -142,7 +161,7 @@ export default function DataList({
                   ))}
                 </div>
               )}
-            </div>
+            </CardTag>
           ))}
         </div>
       )}

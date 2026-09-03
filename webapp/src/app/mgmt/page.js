@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -127,8 +128,15 @@ export default function MgmtOverviewPage() {
           </div>
 
           <div className="glass-panel" style={{ padding: "16px 18px" }}>
+            {/* ── ทางเข้าอยู่ที่ "หัวกล่อง" ไม่ใช่รายแถว (2026-09-02) ────────────────────
+                เดิมทุกแถวเป็น `<div onClick={() => router.push("/mgmt/tasks")}>` ⇒ คีย์บอร์ด
+                เข้าไม่ถึงเลย (WCAG 2.1.1) · แต่ทางแก้ **ห้าม** เป็น "ห่อแต่ละแถวด้วย <Link>"
+                เหมือนการ์ดใบอื่นในรอบนี้ เพราะทุกแถวชี้ `/mgmt/tasks` ปลายทางเดียวกันหมด
+                (ไม่ได้เปิดงานใบนั้น) ⇒ จะได้ลิงก์ N ตัวที่ชื่อต่างกันแต่ไปที่เดียวกัน =
+                ตก 2.4.4 Link Purpose และหลอกคนอ่านว่ากดแล้วเปิดงานใบที่เห็น
+                ⇒ ลิงก์ตัวเดียวที่หัวกล่อง (ชื่อกล่อง = ชื่อลิงก์) และแถวกลับเป็นข้อความ */}
             <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-              <AlertTriangle size={16} color="var(--red)" /> งานด่วน — ยังไม่เสร็จ
+              <AlertTriangle size={16} color="var(--red)" /> <Link href="/mgmt/tasks" className="linklike">งานด่วน — ยังไม่เสร็จ</Link>
             </div>
             {(data?.urgent || []).length === 0 ? (
               <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", textAlign: "center", padding: "18px 0" }}>ไม่มีงานด่วนที่ค้างอยู่ 🎉</div>
@@ -138,7 +146,7 @@ export default function MgmtOverviewPage() {
                   <span>รายการ</span><span>แผนก</span><span>ผู้รับผิดชอบ</span><span style={{ textAlign: "right" }}>กำหนดส่ง</span>
                 </div>
                 {data.urgent.map((t) => (
-                  <div key={t.id} onClick={() => router.push("/mgmt/tasks")} style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: "var(--fs-7)", padding: "9px 0", borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
+                  <div key={t.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 90px 110px", gap: 8, fontSize: "var(--fs-7)", padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
                     <span style={{ color: "var(--text-2)" }}>{naText(t.deptCode)}</span>
                     <span style={{ color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{naText(t.assigneeName)}</span>

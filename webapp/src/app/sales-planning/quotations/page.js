@@ -7,7 +7,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
 import SaWorkspace, { Metric as SaMetric, MetricStrip as SaMetricStrip, WorkspaceSection as SaSection } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
@@ -102,7 +102,6 @@ export default function QuotationsPage() {
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
   const [salesOrders, setSalesOrders] = useState([]);
   const navCountParam = useSearchParams().get("count") || "";
-  const router = useRouter();
   const [pendingSoOnly, setPendingSoOnly] = useState(false);
   /* ⭐ `?count=quotations` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบที่รอฉันลงมือ"
      (รอฉันอนุมัติ + ใบของฉันที่ถูกตีกลับ) ⇒ กดแล้วต้องเจอเท่านั้น
@@ -373,7 +372,7 @@ export default function QuotationsPage() {
           unit="ใบ"
           primary={(q) => q.quoteNumber}
           secondary={(q) => `${naText(q.customerName)} · ${fmtMoney(q.totalAmount)}`}
-          onOpen={(q) => router.push(`/sa/quotations/${q.id}`)}
+          rowHref={(q) => `/sa/quotations/${q.id}`}
           renderAction={(q) => (
             <Button as={Link} href={`/sa/quotations/${q.id}`} tone="primary" size="sm">เปิดใบเพื่ออนุมัติ</Button>
           )}

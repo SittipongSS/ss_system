@@ -25,6 +25,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
+import ClickableCard from "@/components/ui/ClickableCard";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
@@ -246,7 +247,14 @@ export default function CustomerDirectory() {
       resetKey: `${q}|${statusFilter.join(",")}|${teamFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
     });
 
-  const open = (c) => (window.location.href = `/database/customers/${c.id}`);
+  /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────
+     ใช้ครบทั้งสามที่ที่พาไปหน้าลูกค้า: คิว "ต้องทำตอนนี้" (`rowHref`) · การ์ดจอแนวตั้ง
+     (`<ClickableCard href>` + `<Link href>` ที่หัวการ์ด) · ทางลัดของเมาส์บนการ์ด
+     ⇒ ด่าน CARD_MIRROR เทียบ *ข้อความนิพจน์ตรงตัว* จึงต้องเป็นตัวนี้ทั้งคู่ ห้ามเขียน
+     `/database/customers/${c.id}` ซ้ำในที่ใดที่หนึ่ง
+     🗑️ `open()` (`window.location.href = …`) ถูกลบทิ้งในรอบการ์ด 2026-09-02 — มันโหลด
+     หน้าใหม่ทั้งใบ ช้ากว่าการเดินด้วยลิงก์ และเป็นทางเข้าที่คีย์บอร์ดไปไม่ถึง */
+  const detailHref = (c) => `/database/customers/${c.id}`;
 
   const headerRight = (
     <>
@@ -323,7 +331,7 @@ export default function CustomerDirectory() {
             onDecide={decide}
             primary={(c) => c.arCode}
             secondary={(c) => `${customerNameIn(c)}${teamsOf(c).length ? ` · ทีม ${teamsOf(c).join("/")}` : ""}`}
-            onOpen={open}
+            rowHref={detailHref}
           />
         </>
       }
@@ -340,12 +348,22 @@ export default function CustomerDirectory() {
             const showActions = status === "pending" && canApproveRow(c);
             const inactive = c.isActive === false;
             return (
-              <div key={c.id} onClick={() => open(c)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+              /* การ์ดใบนี้ห่อทั้งใบด้วย <Link> ไม่ได้ — มี <ApprovalActions> (สองปุ่ม) โผล่มา
+                 ตอน pending && canApproveRow และ `<a>` ห้ามมี interactive descendant
+                 ⇒ ท่า C: ทางเข้าจริงคือ <Link> ที่บล็อก "รหัสบน · ชื่อล่าง" ส่วน onClick
+                 ของ <ClickableCard> เป็น **ทางลัดของเมาส์** (ดูหัวไฟล์ ui/ClickableCard.js) */
+              <ClickableCard key={c.id} href={detailHref(c)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  {/* ทรงเดียวกับเซลล์แรกของมุมมองตาราง · prefetch={false}: ทะเบียนยาว — กัน RSC prefetch ต่อการ์ด
+                      🪤 **ไม่แปลงบรรทัดชื่อเป็น `<strong>`** ต่างจากมุมมองตาราง — `.linklike-block > strong`
+                         จะเติมเส้นใต้จาง ๆ เข้ามา = หน้าตาการ์ดเปลี่ยน · ทั้งใบกดได้และมี `clickable-row`
+                         บอกอยู่แล้วว่าเป็นของกด ส่วนวงโฟกัสของ `.linklike` ยังมาครบสำหรับคีย์บอร์ด
+                      🪤 สองบรรทัดข้างในกำหนดสีเองทั้งคู่ ⇒ `color: var(--accent-ink)` ของ `.linklike`
+                         ไม่ตกถึงข้อความ (การประกาศบนตัวลูกชนะการสืบทอดเสมอ) */}
+                  <Link prefetch={false} href={detailHref(c)} className="min-w-0 linklike linklike-block" title="เปิดหน้าลูกค้า">
                     <div className="font-semibold text-[var(--accent)] font-mono text-sm">{c.arCode}</div>
                     <div className="text-[13px] font-medium text-[var(--text)] mt-0.5 truncate">{customerNameIn(c)}</div>
-                  </div>
+                  </Link>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
                     {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
@@ -373,7 +391,7 @@ export default function CustomerDirectory() {
                 {status === "rejected" && c.rejectionReason && (
                   <div className="text-[11px] text-[var(--text-3)] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
                 )}
-              </div>
+              </ClickableCard>
             );
           })}
         </div>
