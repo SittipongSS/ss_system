@@ -111,7 +111,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     // "ขายไว้กี่รอบ" ได้ (ไม่ส่ง = ตอบ null ซึ่งอ่านว่า "ยังไม่ระบุ" ไม่ใช่ศูนย์)
     const linesById = new Map((lines || []).map((row) => [row.id, row]));
     const plan = planQueue({ zones, terms, plans, sites, ordersById, linesById, todayIso });
-    const visit = visitQueue({ plans, visits, sites, isLive: isLiveVisit, todayIso });
+    const visit = visitQueue({ plans, visits, sites, ordersById, isLive: isLiveVisit, todayIso });
 
     return ok({
       bind: bind.rows,
