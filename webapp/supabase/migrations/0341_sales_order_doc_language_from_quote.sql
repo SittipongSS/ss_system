@@ -193,11 +193,23 @@ GRANT EXECUTE ON FUNCTION public.create_sales_order_draft(text, text, text, text
 
 -- ② ตามคืนใบที่ออกไปแล้วซึ่งภาษาไม่ตรงกับใบเสนอราคาต้นทาง
 --    (คำสั่งเดียวกับที่ 0295 ใช้ · กรองเฉพาะแถวที่ยังไม่ตรง ⇒ รันซ้ำแตะ 0 แถว)
+--
+-- 🔴 **ต้องเคารพด่านเดียวกับที่จอ/API ใช้** (`canSwitchSalesOrderDocLanguage`) —
+--    เดิมไม่มีเงื่อนไขสองบรรทัดล่าง ⇒ backfill เปลี่ยนภาษาใบที่ระบบห้ามเปลี่ยนได้
+--    ⚠️ ของจริงโดนไปแล้วหนึ่งใบตอนรันครั้งแรก 2/09: **SO-26090144-0**
+--       (`pending_approval` · AMAL DEVELOPMENT ⇒ th→en ตามใบเสนอราคา QT-26080167-0)
+--       เนื้อหาถูกต้อง (ใบเสนอราคาเป็น en จริง) แต่เอกสารเปลี่ยนใต้มือผู้อนุมัติที่
+--       กำลังเปิดใบนั้นอยู่ ซึ่งคือสิ่งที่ด่านมีไว้กัน — บันทึกไว้ ไม่ย้อนกลับอัตโนมัติ
+--    ⚠️ ใบที่ตกด่านไม่ได้ถูกทิ้ง — มันจะเข้าเงื่อนไขอีกครั้งเองเมื่อสถานะกลับมาแก้ได้
+--       (`approved`/`approval_revoked`) แล้วรันซ้ำ · หรือให้คนกดเปลี่ยนภาษาเองที่หน้าใบ
 UPDATE public.sales_orders so
 SET "docLanguage" = q."docLanguage"
 FROM public.quotations q
 WHERE q.id = so."quotationId"
   AND q."docLanguage" IN ('th', 'en')
-  AND so."docLanguage" IS DISTINCT FROM q."docLanguage";
+  AND so."docLanguage" IS DISTINCT FROM q."docLanguage"
+  -- ชุดสถานะต้องตรงกับ SWITCHABLE_SO_STATUSES ใน lib/sales/salesOrderWorkflow.js
+  AND so.status IN ('draft', 'rejected', 'approved', 'approval_revoked')
+  AND so."supersededById" IS NULL;
 
 COMMIT;

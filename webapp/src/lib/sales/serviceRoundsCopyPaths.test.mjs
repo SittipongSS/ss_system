@@ -219,12 +219,64 @@ test('🪤 ใบสั่งขายที่ออกจากใบเสน
     `${file}: คอลัมน์เหล่านี้ไม่ถูกก๊อปจากใบเสนอราคา และไม่ได้ประกาศว่าใบใหม่เริ่มเอง\n`
     + `  → ถ้าใบใหม่ต้องเริ่มเอง ให้เติมชื่อเข้า DRAFT_OWNED พร้อมเหตุผล\n`
     + `  → ถ้าต้องก๊อป ให้เติมเข้า INSERT ของฟังก์ชันใน migration ใบใหม่`);
+
+  /* 🪤 **ยามข้างบนนับแค่ว่าชื่อคอลัมน์ "โผล่ที่ไหนสักแห่ง" ในก้อน INSERT**
+     ⇒ เติมชื่อเข้าลิสต์แล้วลืมเติมค่า มันก็ยังผ่าน · SQL จะพังตอนรัน migration
+       ซึ่งคือตอนที่แพงที่สุด (ต้องรอผู้ใช้รันมือแล้วเจอ error กลางทาง)
+     ⇒ นับจำนวน "ชื่อ" เทียบจำนวน "ค่า" ที่ระดับคอมมาชั้นนอกสุด ให้เท่ากันเสมอ */
+  const cols = topLevelItems(insert.slice(insert.indexOf('('), insert.indexOf(')') + 1));
+  const valuesStart = insert.search(/\)\s*(VALUES\s*\(|SELECT\b)/);
+  assert.ok(valuesStart > 0, `${file}: หาฝั่งค่าของ INSERT ไม่เจอ`);
+  const rest = insert.slice(valuesStart + 1).replace(/^\s*VALUES\s*/i, '');
+  const vals = topLevelItems(
+    rest.trim().startsWith('(') ? rest.slice(rest.indexOf('('), matchingParen(rest, rest.indexOf('(')) + 1)
+      : `(${rest.replace(/\bFROM\b[\s\S]*$/i, '')})`,
+  );
+  assert.equal(vals.length, cols.length,
+    `${file}: INSERT มีชื่อคอลัมน์ ${cols.length} ตัว แต่ฝั่งค่ามี ${vals.length} ตัว\n`
+    + '  → เติมชื่อแล้วต้องเติมค่าคู่กันเสมอ ไม่งั้น migration พังตอนผู้ใช้รันมือ');
 });
 
+/* แยกรายการที่คั่นด้วยคอมมา **ชั้นนอกสุด** — วงเล็บซ้อน (CAST · COALESCE · jsonb_build_object)
+   มีคอมมาข้างในเต็มไปหมด ⇒ split(',') ตรง ๆ นับผิดทันที */
+function topLevelItems(block) {
+  const inner = block.trim().replace(/^\(/, '').replace(/\)$/, '');
+  const out = [];
+  let depth = 0; let quote = null; let cur = '';
+  for (const ch of inner) {
+    if (quote) { cur += ch; if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; cur += ch; continue; }
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out.filter(Boolean);
+}
+
+function matchingParen(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === '(') depth += 1;
+    if (text[i] === ')') { depth -= 1; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
 /* ⭐ ภาษาเอกสารต้องสืบจากใบเสนอราคา ไม่ใช่ตกเป็น DEFAULT 'th'
-   (ตัวคอลัมน์ผ่านยามข้างบนแล้ว — ตัวนี้ล็อก **ค่า** ที่ใส่ ซึ่งยามข้างบนตรวจไม่ได้) */
+   (ตัวคอลัมน์ผ่านยามข้างบนแล้ว — ตัวนี้ล็อก **ค่า** ที่ใส่ ซึ่งยามข้างบนตรวจไม่ได้)
+   🪤 **จับเจตนา ไม่ใช่รูปประโยค** — ของเดิมจับสตริงตรง ๆ ว่า
+      `v_quote."docLanguage" IN ('th', 'en')` ⇒ จัดบรรทัดใหม่ · เปลี่ยนเป็น `= ANY`
+      · แทรกช่องว่างเพิ่ม แล้วเทสต์แดงทั้งที่พฤติกรรมไม่ขยับเลย
+      ⇒ ยืนยันสองอย่างที่เป็นเจตนาจริง แทนการล็อกตัวอักษร */
 test('⭐ ใบสั่งขายสืบภาษาเอกสารจากใบเสนอราคาต้นทาง', () => {
   const { file, body } = latestDefinitionOf('create_sales_order_draft');
-  assert.match(body, /v_quote\."docLanguage" IN \('th', 'en'\)/,
-    `${file}: ต้องอ่านภาษาจากใบเสนอราคา และกันค่าที่ CHECK ไม่ยอมรับไว้เอง`);
+  const langExpr = body.slice(Math.max(0, body.indexOf('docLanguage') - 400));
+  // ① ค่าที่ใส่ต้องอ้างใบเสนอราคา ไม่ใช่ค่าคงที่
+  assert.match(langExpr, /v_quote\s*\.\s*"?docLanguage"?/,
+    `${file}: ค่าภาษาต้องอ่านจากใบเสนอราคา ไม่ใช่ค่าคงที่/ค่า DEFAULT`);
+  // ② ต้องกันค่าที่ CHECK ของตารางไม่ยอมรับไว้เอง — พูดถึงทั้ง th และ en ในนิพจน์เดียวกัน
+  assert.ok(/'th'/.test(langExpr) && /'en'/.test(langExpr),
+    `${file}: ต้องจำกัดค่าไว้ที่ th/en ก่อนใส่ ไม่งั้น CHECK ของตารางเตะตอนสร้างใบ`);
 });

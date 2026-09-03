@@ -159,3 +159,56 @@ test('รายการเหตุแยกจากประโยคเต�
   // นัดที่ผ่านครบ = ไม่มีเหตุเลย (บริบทครบต้องส่งมาด้วย ไม่งั้นติดที่ข้อสัญญา)
   assert.deepEqual(gateReasons(evaluateVisitGate(ok, full)), []);
 });
+
+/* ── ข้อ① ต้องแปลว่า "มีผล **ณ วันนัด**" จริง ๆ ────────────────────────────
+   🔴 ป้ายของข้อนี้เขียนว่า "ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด" มาตลอด แต่ตรรกะเดิม
+   เป็น `contractInForce` ซึ่งดูแค่ `status === 'signed'` **ไม่เทียบวันเลย**
+   ⇒ นัดที่อยู่ก่อนวันเริ่ม หรือหลังวันหมดอายุ ผ่านด่านไปได้ทั้งคู่ — ตรงกับตัวเลข
+   ที่ทำให้ด่านนี้เกิด (ส่งเจ้าหน้าที่ไปที่ที่หมดสัญญา 25 จุด) · วันนัดคือ 2026-08-27 */
+const withContract = (extra) => ({ ...full, contractsById: { CT1: { id: 'CT1', status: 'signed', ...extra } } });
+const contractItem = (visit, ctx) => evaluateVisitGate(visit, ctx).find((i) => i.key === 'contract');
+
+test('🔴 สัญญาหมดอายุก่อนวันนัด = ติด และเหตุต้องพูดเรื่องต่อสัญญา', () => {
+  const c = contractItem(ok, withContract({ effectiveDate: '2026-01-01', expiryDate: '2026-08-01' }));
+  assert.equal(c.state, 'blocked');
+  assert.equal(c.owner, 'SA');
+  assert.match(c.detail, /หมดอายุก่อนวันนัด/);
+});
+
+test('🔴 สัญญายังไม่ถึงวันเริ่มมีผล = ติด และเหตุต้องต่างจาก "หมดอายุ"', () => {
+  const c = contractItem(ok, withContract({ effectiveDate: '2026-09-01', expiryDate: '2027-08-31' }));
+  assert.equal(c.state, 'blocked');
+  assert.match(c.detail, /ยังไม่ถึงวันเริ่มมีผล/);
+  // คนละทางแก้กัน — เลื่อนนัด ไม่ใช่ต่อสัญญา
+  assert.doesNotMatch(c.detail, /ต่อสัญญา/);
+});
+
+test('สัญญาที่ครอบวันนัดอยู่ = ผ่านตามปกติ · ขอบทั้งสองข้างนับรวมทั้งวัน', () => {
+  assert.equal(contractItem(ok, withContract({ effectiveDate: '2026-01-01', expiryDate: '2027-12-31' })).state, 'ok');
+  // วันแรกที่มีผล และวันสุดท้ายก่อนหมด ยังใช้ได้
+  assert.equal(contractItem(ok, withContract({ effectiveDate: '2026-08-27' })).state, 'ok');
+  assert.equal(contractItem(ok, withContract({ expiryDate: '2026-08-27' })).state, 'ok');
+});
+
+/* ⚠️ **ไม่ระบุช่วงวัน = ไม่บล็อก** — กติกาเดียวกับ `termInWindow` ("ไม่ระบุวัน =
+   ยังไม่รู้ ไม่ใช่หมดอายุ") · ของจริงกรอกวันทีหลังเสมอ ⇒ บล็อกไว้ก่อนคือหยุดงานที่ทำได้
+   🪤 ถ้าวันหนึ่งเปลี่ยนเป็น fail-closed ต้องเป็นมติ ไม่ใช่ผลข้างเคียงของการรีแฟกเตอร์ */
+test('สัญญาที่ยังไม่กรอกช่วงวัน ไม่ถูกบล็อกด้วยข้อนี้', () => {
+  assert.equal(contractItem(ok, withContract({})).state, 'ok');
+  assert.equal(contractItem(ok, withContract({ effectiveDate: null, expiryDate: null })).state, 'ok');
+});
+
+test('งานที่ยกเว้นด่านสัญญา ไม่ติดเพราะวันของสัญญา', () => {
+  for (const kind of ['survey', 'remove']) {
+    const c = contractItem({ ...ok, kind },
+      withContract({ effectiveDate: '2026-01-01', expiryDate: '2026-08-01' }));
+    assert.notEqual(c.state, 'blocked', kind);
+  }
+});
+
+/* เหตุต้องไม่ลามข้ามข้อ — นัดที่ติดเพราะวันของสัญญา ต้องไม่ขึ้นว่าติดเรื่องเงิน */
+test('⭐ สัญญาหมดอายุ = ติดข้อสัญญาข้อเดียว ไม่ลามไปข้อเงิน', () => {
+  const items = evaluateVisitGate(ok, withContract({ effectiveDate: '2026-01-01', expiryDate: '2026-08-01' }));
+  assert.equal(items.find((i) => i.key === 'contract').state, 'blocked');
+  assert.notEqual(items.find((i) => i.key === 'payment')?.state, 'blocked');
+});

@@ -27,6 +27,24 @@ export const dynamic = 'force-dynamic';
    — คนตั้งรอบมักตั้งก่อนหรือหลังช่วงของ term เล็กน้อย ถ้ากรองด้วยวันจะได้ 0 บ่อยจนไร้ประโยชน์
    ⚠️ อ่านสดจากบรรทัด ไม่ก๊อป snapshot ที่ term — แก้จำนวนรอบได้ทางเดียวคือ Rev. ที่ QT
    ซึ่งได้ใบใหม่ + term ชุดใหม่อยู่แล้ว */
+/* ใบสั่งขายที่ยังมีผลและลงของไว้ที่ไซต์นี้ — ใช้เป็นตัวเลือกตอนผูก/ย้ายรอบ
+   ⚠️ อ่านสดทุกครั้ง ไม่แคช: ใบถูก Rev. ระหว่างวันได้ และตัวเลือกที่ล้าจะพาคนไปผูก
+   รอบกับใบที่ตายแล้ว */
+async function siteSalesOrders(supabase, zones = []) {
+  const zoneIds = zones.map((z) => z.id);
+  if (!zoneIds.length) return [];
+  const terms = await loadTerms(supabase, { zoneIds });
+  const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+  if (!orderIds.length) return [];
+  const { data: orders, error } = await fetchAllResult(() => supabase.from('sales_orders')
+    .select('id, "orderNumber", status, "supersededById"')
+    .in('id', orderIds).order('id', { ascending: true }));
+  if (error) throw error;
+  return (orders || []).filter(termOrderActive)
+    .map((o) => ({ id: o.id, orderNumber: o.orderNumber }))
+    .sort((a, b) => String(a.orderNumber || '').localeCompare(String(b.orderNumber || '')));
+}
+
 async function siteRoundsSold(supabase, zones = []) {
   const zoneIds = zones.map((z) => z.id);
   if (!zoneIds.length) return null;
@@ -68,6 +86,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       schedule: schedule.get(id) || { lastRefillDate: null, nextVisitDate: null },
       // ข้อผูกพันจำนวนรอบที่ฝ่ายขายระบุไว้ — ฟอร์มวางรอบเอาไปเทียบกับความถี่ที่กำลังตั้ง
       roundsSold: await siteRoundsSold(supabase, zones),
+      /* ⭐ **ใบสั่งขายที่ลงของไว้ที่ไซต์นี้** — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้"
+         ⚠️ รายการต้องมาจาก term ของไซต์นี้เท่านั้น ไม่ใช่ทะเบียนใบทั้งระบบ:
+            รอบที่ผูกใบที่ไม่เคยลงของที่ไซต์นี้คือข้อผูกพันที่อ้างไม่ได้
+         ⚠️ กรองด้วย `termOrderActive` — ใบที่ถูก Rev./ยกเลิกแล้วต้องไม่อยู่ในตัวเลือก
+            (ย้ายรอบไปใบที่ตายแล้ว = รอบกำพร้าอีกใบ) */
+      salesOrders: await siteSalesOrders(supabase, zones),
     });
   } catch (e) {
     return fail(e.message, 500);

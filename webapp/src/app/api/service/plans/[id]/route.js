@@ -25,6 +25,19 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { value, error } = normalizePlanInput({ ...before, ...body });
     if (error) return badRequest(error);
 
+    /* 🪤 **ด่านเดียวกับ POST ต้องมีที่นี่ด้วย** — `salesOrderId` ไม่มี FK (mig 0188:20)
+       และ `normalizePlanInput` ปล่อยผ่านทุกค่า · เดิม PATCH ไม่เคยตรวจเพราะไม่มีจอไหน
+       ส่งค่านี้มาเลย · ตอนนี้ย้ายใบได้แล้ว ⇒ id มั่วเข้าฐานได้ทางนี้
+       ⚠️ ตรวจเฉพาะตอนค่า **เปลี่ยน** — PATCH ผสม `{...before, ...body}` ⇒ ค่าเดิม
+          ติดมาทุกครั้งที่แก้อะไรก็ตาม ยิงถามฐานทุกครั้งคือคิวรีที่ไม่ได้ตอบอะไรใหม่ */
+    const movedOrder = (value.salesOrderId || null) !== (before.salesOrderId || null);
+    if (movedOrder && value.salesOrderId) {
+      const { data: order, error: orderError } = await supabase
+        .from('sales_orders').select('id').eq('id', value.salesOrderId).maybeSingle();
+      if (orderError) return fail(orderError.message, 500);
+      if (!order) return badRequest('ไม่พบใบสั่งขายที่อ้างถึง');
+    }
+
     const { data, error: updateError } = await supabase
       .from('service_plans')
       .update({ ...value, updatedAt: new Date().toISOString() })
@@ -40,7 +53,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     await recordAudit({
       user, action: 'update', entityType: 'service_plan', entityId: id, before, after: data,
-      summary: `แก้รอบบริการทุก ${data.everyDays} วัน${generated.length ? ` · เติมนัด ${generated.length} ครั้ง` : ''}`,
+      /* ⚠️ **ย้ายใบต้องอ่านออกจากบรรทัดสรุป** — มันขยับคอลัมน์ "รอบที่เดิน n/N"
+         ของสองใบพร้อมกัน (ใบเก่าลด ใบใหม่เพิ่ม) ⇒ เป็นการเปลี่ยนตัวเลขบนเอกสาร
+         ของคนอื่น ไม่ใช่การแก้ความถี่เฉย ๆ */
+      summary: `แก้รอบบริการทุก ${data.everyDays} วัน`
+        + (movedOrder ? ` · ย้ายข้อผูกพันไปใบ ${data.salesOrderId || '(ไม่ผูกใบ)'}` : '')
+        + (generated.length ? ` · เติมนัด ${generated.length} ครั้ง` : ''),
       request: req,
     });
     return ok({ plan: data, generated });
@@ -63,7 +81,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     /* 🔴 **ด่านที่หายไป** — การลบ *นัด* ห้ามแตะนัดที่ปิดงานแล้ว ("ประวัติการเข้าไซต์
        คือของมีค่าที่สุดของโมดูล") แต่การลบ *รอบ* ซึ่งเป็นแม่ของนัดพวกนั้นกลับไม่มี
        ด่านอะไรเลย ⇒ ได้ผลเสียแบบเดียวกันผ่านประตูหลัง เพราะ FK เป็น SET NULL
-       ⚠️ ตัวตัดสินอยู่ที่ `planDeleteBlocker` ตัวเดียว — จอถามตัวเดียวกันก่อนเปิดปุ่ม */
+       ⚠️ **ไม่มีจอไหนถามด่านนี้ก่อนเปิดปุ่ม และไม่ควรถามด้วย** (แก้คอมเมนต์ที่เคย
+          เขียนว่าจอถาม — ไม่จริงมาตลอด) · ตามกติกา "ติดด่าน = โชว์แล้วบอกเหตุ"
+          ปุ่มลบต้องขึ้นเสมอ แล้วเหตุมาตอนกด: route ตอบ 409 พร้อมข้อความจาก
+          `planDeleteBlocker` และ `deleteWithForce` เอาไปแสดง (แอดมินได้พรีวิว
+          บังคับลบต่อ) ⇒ ตัวตัดสินยังเป็นตัวเดียว แต่ **จอไม่ต้องถามซ้ำ**
+          🪤 ถ้าวันหนึ่งย้ายไปซ่อนปุ่มที่จอ จะได้ปุ่มหายโดยไม่บอกเหตุ ซึ่งผิดกติกา */
     const visits = await fetchAll(() => supabase
       .from('service_visits').select('id, status')
       .eq('planId', id).order('id', { ascending: true }));

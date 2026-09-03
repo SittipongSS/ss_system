@@ -19,6 +19,7 @@ import { accessConflict } from './sites';
 import { termIsActive } from './terms';
 import { coversDate, hasOverdueUnconfirmed } from '@/lib/sales/paymentCoverage';
 import { contractInForce } from '@/lib/sales/contracts';
+import { contractSpanAt } from '@/lib/sales/serviceContractLink';
 
 /* สถานะของแต่ละข้อ
    · ok      — ผ่าน
@@ -92,15 +93,39 @@ export function evaluateVisitGate(visit, {
        ⚠️ **อ่านสัญญาจากใบ ไม่ใช่จาก term** (mig 0324) — แผนเดิมเขียนว่า
        `term.serviceContractId` แต่แหล่งความจริงย้ายมาอยู่ที่ `sales_orders`
        เพราะ term เกิดตอน TS จัดสรรเท่านั้น ⇒ ผูกสัญญาก่อนจัดสรรไม่ได้ */
-    const covered = live.filter((t) => {
+    const contractOf = (t) => {
       const order = pick(ordersById, t.salesOrderId);
-      const contract = order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
-      return contractInForce(contract);
-    });
-    if (!covered.length) {
+      return order?.serviceContractId ? pick(contractsById, order.serviceContractId) : null;
+    };
+    const linked = live.filter((t) => contractInForce(contractOf(t)));
+    if (!linked.length) {
       return {
         zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA',
         reason: 'ใบสั่งขายที่ครอบโซนนี้ยังไม่ผูกสัญญาที่มีผล — ผูกที่หน้าใบสั่งขาย',
+      };
+    }
+
+    /* 🔴 **"มีผล" ต้องหมายถึง "มีผล ณ วันนัด" จริง ๆ** (แก้ 2026-09-03) —
+       ป้ายของข้อนี้เขียนว่า *"ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด"* มาตลอด แต่ตรรกะเป็น
+       `contractInForce` ซึ่งดูแค่ `status === 'signed'` **ไม่เทียบวันเลย**
+       ⇒ นัดที่อยู่ก่อนวันเริ่มมีผล หรือหลังวันหมดอายุ ผ่านด่านไปได้ทั้งคู่
+       ⇒ ตรงกับตัวเลขที่ทำให้ด่านนี้เกิด: ส่งเจ้าหน้าที่ไปที่ที่ **หมดสัญญา 25 จุด**
+     ⚠️ **`contractInForce` ยังต้องอยู่ และห้ามยุบรวมกับตัวนี้** — มันตอบคนละคำถาม:
+        "เอกสารผูกพันแล้วหรือยัง" (ผูกกับใบล่วงหน้าได้) vs "ครอบวันนัดไหม"
+     ⚠️ **ไม่ระบุช่วงวัน = ไม่บล็อก** — `contractSpanAt` คืน `null` แปลว่า "ไม่รู้"
+        กติกาเดียวกับ `termInWindow` ("ไม่ระบุวัน = ยังไม่รู้ ไม่ใช่หมดอายุ") ·
+        ของจริงกรอกวันทีหลังเสมอ ⇒ บล็อกไว้ก่อนคือหยุดงานที่ทำได้
+     ⚠️ เหตุต้องแยก **ยังไม่เริ่ม** ออกจาก **หมดอายุ** — คนละทางแก้กันคนละเรื่อง
+        (เลื่อนนัด vs ต่อสัญญา) และไฟล์นี้เขียนกฎไว้เองว่าเหตุที่บอกผิดแย่กว่าไม่บอก */
+    const spans = linked.map((t) => contractSpanAt(contractOf(t), visitDate));
+    const covered = linked.filter((t, i) => spans[i] !== 'before' && spans[i] !== 'after');
+    if (!covered.length) {
+      const notYet = spans.includes('before');
+      return {
+        zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', owner: 'SA',
+        reason: notYet
+          ? 'สัญญาที่ครอบโซนนี้ยังไม่ถึงวันเริ่มมีผล ณ วันนัด — เลื่อนนัด หรือแก้วันเริ่มที่หน้าสัญญา'
+          : 'สัญญาที่ครอบโซนนี้หมดอายุก่อนวันนัด — ต่อสัญญาก่อนจึงจะส่งเจ้าหน้าที่ไปได้',
       };
     }
 

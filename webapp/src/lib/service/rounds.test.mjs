@@ -238,15 +238,36 @@ test('ข้อความเวลาบนชิปอ่านรู้เ�
       ⇒ ทุกใบบริการตอบ 0 มาตลอด (วันนี้ยังไม่มีใครเจอเพราะ service_plans ว่างเปล่า)
    ═══════════════════════════════════════════════════════════════════════ */
 
-test('🪤 โมดัลรอบบริการส่ง salesOrderId เฉพาะตอนสร้าง ไม่ใช่ตอนแก้', () => {
+/* 🪤 **กฎนี้กลับด้านแล้ว (2026-09-02)** — ของเดิมบังคับว่า "ส่งเฉพาะตอนสร้าง"
+   เพราะยังไม่มีช่องให้แก้: PATCH ผสม `{...before, ...body}` ⇒ ส่งค่าว่างทุกครั้ง
+   จะล้างค่าเดิมทิ้ง · ตอนนี้มีช่องจริงในฟอร์มแล้ว ค่าที่ส่งคือสิ่งที่คนเลือกเสมอ
+   ⇒ ต้องส่ง **ทุกครั้ง** ไม่งั้นย้ายใบไม่ได้ ซึ่งเป็นทางเดียวที่รอบของใบที่ถูก Rev.
+     จะตามไปใบใหม่ได้ (ไม่มีโค้ดไหนย้ายให้อัตโนมัติ) */
+test('🪤 โมดัลรอบบริการต้องมีช่องเลือกใบ และส่งค่าทุกครั้ง ไม่ใช่เฉพาะตอนสร้าง', () => {
   const modal = readFileSync(
     new URL('../../components/service/ServicePlanModal.js', import.meta.url),
     'utf8',
   );
-  /* PATCH ผสม `{...before, ...body}` และ `undefined` ใน object spread **ทับค่าเดิม**
-     ⇒ ส่งทุกครั้งจะได้สองอาการ: แก้จากหน้าไซต์ (ไม่รู้จักใบ) ล้างค่าเดิมทิ้ง ·
-       แก้จากหน้าใบ A แย่งรอบของใบ B มาเป็นของตัวเอง */
-  assert.match(modal, /\.\.\.\(!editing && salesOrderId \? \{ salesOrderId \} : \{\}\)/);
+  assert.match(modal, /salesOrderId: form\.salesOrderId \|\| null/,
+    'payload ต้องส่งค่าจากฟอร์มเสมอ — ค่าว่างคือ "ไม่ผูกใบ" ไม่ใช่ "ไม่ได้กรอก"');
+  assert.doesNotMatch(modal, /!editing && salesOrderId/,
+    'ท่าเดิมที่ส่งเฉพาะตอนสร้าง ทำให้ย้ายใบไม่ได้');
+  assert.match(modal, /ใบสั่งขายที่ครอบรอบนี้/, 'ต้องมีช่องจริงให้เลือก ไม่ใช่ค่าที่แอบยัด');
+  assert.match(modal, /ไม่ผูกใบ/, 'ต้องเลือก "ไม่ผูกใบ" ได้ — เป็นคำตอบที่ถูกต้องคำตอบหนึ่ง');
+});
+
+/* 🔴 ด่านของ POST ต้องมีที่ PATCH ด้วย เมื่อ PATCH ย้ายใบได้แล้ว —
+   คอลัมน์ไม่มี FK ⇒ id มั่วเข้าฐานได้ทางที่เพิ่งเปิด */
+test('🔴 PATCH ที่ย้ายใบต้องตรวจว่าใบมีจริง และเขียน audit ว่าย้าย', () => {
+  const route = readFileSync(
+    new URL('../../app/api/service/plans/[id]/route.js', import.meta.url), 'utf8',
+  );
+  assert.match(route, /const movedOrder = /);
+  assert.match(route, /if \(movedOrder && value\.salesOrderId\)/,
+    'ตรวจเฉพาะตอนค่าเปลี่ยน — PATCH ผสมค่าเดิมมาทุกครั้ง');
+  assert.match(route, /ไม่พบใบสั่งขายที่อ้างถึง/);
+  assert.match(route, /if \(orderError\) return fail\(orderError\.message, 500\)/);
+  assert.match(route, /ย้ายข้อผูกพันไปใบ/, 'บรรทัดสรุปต้องบอกว่าย้ายใบ — มันขยับ n/N ของสองใบ');
 });
 
 test('🔴 route สร้างรอบต้องตรวจว่าใบสั่งขายที่อ้างถึงมีจริง', () => {
@@ -275,4 +296,35 @@ test('แท็บงานบริการถามด่านตัวเ�
   // ต้องเป็นโมดัลตัวเดิมของหน้าไซต์ ไม่ใช่ฟอร์มที่สอง
   assert.match(tab, /import ServicePlanModal from "@\/components\/service\/ServicePlanModal"/);
   assert.match(tab, /salesOrderId=\{orderId\}/);
+});
+
+/* ⭐ **มติผู้ใช้ 2026-09-02: "2 SO ก็ต้อง 2 รอบ"** — ตรึงไว้เป็นเทสต์ เพราะมันดู
+   เหมือนบั๊ก ("ทำไม gen นัดซ้อนวันเดียวกัน") จนมีคนอยากไป dedup ข้ามรอบ
+   🔴 ยุบเป็นนัดเดียวเมื่อไร ใบที่สองนับรอบขาดเงียบ ๆ ตลอดสัญญา — `planId` เก็บได้
+      ค่าเดียว ⇒ นัดหนึ่งใบนับ n/N ให้ได้ใบเดียว */
+test('⭐ สองใบสั่งขายที่ไซต์เดียวกัน = สองนัด แม้ตรงวันกันเป๊ะ', () => {
+  const base = {
+    siteId: 'S1', kind: 'refill', everyDays: 30, isActive: true, startDate: '2026-09-10',
+  };
+  const planA = { ...base, id: 'PL-A', salesOrderId: 'SO1' };
+  const planB = { ...base, id: 'PL-B', salesOrderId: 'SO2' };
+  const opts = { from: '2026-09-01', horizonDays: 40 };
+
+  const madeA = ensureVisits(planA, [], opts);
+  assert.ok(madeA.length > 0);
+  // นัดของ A มีอยู่แล้ว แต่ต้องไม่ปิดกั้นการ gen ของ B
+  const madeB = ensureVisits(planB, madeA.map((v) => ({ ...v, id: 'x' })), opts);
+  assert.deepEqual(
+    madeB.map((v) => v.scheduledDate), madeA.map((v) => v.scheduledDate),
+    'รอบของอีกใบต้องได้วันชุดเดียวกัน ไม่ใช่ถูกข้ามเพราะไซต์นั้นมีนัดแล้ว',
+  );
+  assert.ok(madeB.every((v) => v.planId === 'PL-B'), 'นัดต้องผูกรอบของตัวเอง');
+});
+
+test('รอบเดิมยัง idempotent — gen ซ้ำไม่ได้นัดซ้ำของรอบเดียวกัน', () => {
+  const plan = { id: 'PL-A', siteId: 'S1', kind: 'refill', everyDays: 30, isActive: true, startDate: '2026-09-10' };
+  const opts = { from: '2026-09-01', horizonDays: 40 };
+  const first = ensureVisits(plan, [], opts);
+  const again = ensureVisits(plan, first.map((v) => ({ ...v, id: 'x' })), opts);
+  assert.deepEqual(again, [], 'นัดของรอบเดียวกันที่มีอยู่แล้วต้องไม่ถูก gen ซ้ำ');
 });
