@@ -62,8 +62,19 @@ export default function ServiceSiteDetailPage({ params }) {
   const [roundsSold, setRoundsSold] = useState(null);
   // ใบสั่งขายที่ลงของไว้ที่ไซต์นี้ — ตัวเลือกของช่อง "ใบที่ครอบรอบนี้" ในโมดัลรอบ
   const [siteOrders, setSiteOrders] = useState([]);
+
   const [plans, setPlans] = useState([]);
   const [visits, setVisits] = useState([]);
+  /* นัด → เลขที่ใบสั่งขาย ผ่านรอบที่โหลดมาแล้ว — ไม่ต้องยิง API เพิ่ม
+     ⚠️ `service_visits` ไม่มีคอลัมน์ `salesOrderId` (mig 0188) · ข้อผูกพันของนัด
+     อ่านผ่าน `planId → service_plans."salesOrderId"` เสมอ
+     ⚠️ นัดที่ไม่มี `planId` (งานซ่อมนอกรอบ) ไม่ใช่รอบตามข้อผูกพันของใบไหน */
+  const orderByPlanId = useMemo(
+    () => new Map(plans.map((p) => [p.id, p.salesOrderNumber || null])),
+    [plans],
+  );
+  const orderOfVisit = (visit) => (visit?.planId ? orderByPlanId.get(visit.planId) : null) || null;
+
   const [customers, setCustomers] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -693,7 +704,13 @@ export default function ServiceSiteDetailPage({ params }) {
           <TableShell>
             <table>
               <thead>
-                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th><th>เจ้าหน้าที่</th><th>รหัส</th>
+                <tr><th>วันที่</th><th>เวลา</th><th>งาน</th>
+                  {/* 🔴 **สองนัดวันเดียวกันที่ไซต์เดียวกันเป็นเรื่องปกติ** (มติผู้ใช้
+                      2026-09-02: "2 SO ก็ต้อง 2 รอบ") — รอบเป็นข้อผูกพันของใบสั่งขาย
+                      ⇒ ไซต์ที่ขายไว้สองใบเดินสองรอบ · ไม่มีคอลัมน์นี้ = สองแถวพิมพ์
+                      เหมือนกันทุกช่อง แล้วคนอ่านนึกว่าระบบสร้างซ้ำ แล้วไปลบทิ้งใบหนึ่ง
+                      ⇒ ใบนั้นนับรอบขาดตลอดสัญญา */}
+                  <th>ใบสั่งขาย</th><th>เจ้าหน้าที่</th><th>รหัส</th>
                   {canEdit && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
@@ -702,6 +719,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     <td>{visit.scheduledDate}</td>
                     <td>{visitTimeText(visit)}</td>
                     <td>{VISIT_KIND_LABELS[visit.kind] || visit.kind}</td>
+                    <td className="mono">
+                      {orderOfVisit(visit) || <span className={styles.muted}>นอกรอบ</span>}
+                    </td>
                     <td>{visit.assigneeName || <span className={styles.muted}>ยังไม่มอบหมาย</span>}</td>
                     <td className="mono">{naText(visit.code)}</td>
                     {/* นัดที่ยังไม่เกิดขึ้นลบได้ตามปกติ — route รองรับมาตลอด

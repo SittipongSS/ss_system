@@ -297,3 +297,34 @@ test('แท็บงานบริการถามด่านตัวเ�
   assert.match(tab, /import ServicePlanModal from "@\/components\/service\/ServicePlanModal"/);
   assert.match(tab, /salesOrderId=\{orderId\}/);
 });
+
+/* ⭐ **มติผู้ใช้ 2026-09-02: "2 SO ก็ต้อง 2 รอบ"** — ตรึงไว้เป็นเทสต์ เพราะมันดู
+   เหมือนบั๊ก ("ทำไม gen นัดซ้อนวันเดียวกัน") จนมีคนอยากไป dedup ข้ามรอบ
+   🔴 ยุบเป็นนัดเดียวเมื่อไร ใบที่สองนับรอบขาดเงียบ ๆ ตลอดสัญญา — `planId` เก็บได้
+      ค่าเดียว ⇒ นัดหนึ่งใบนับ n/N ให้ได้ใบเดียว */
+test('⭐ สองใบสั่งขายที่ไซต์เดียวกัน = สองนัด แม้ตรงวันกันเป๊ะ', () => {
+  const base = {
+    siteId: 'S1', kind: 'refill', everyDays: 30, isActive: true, startDate: '2026-09-10',
+  };
+  const planA = { ...base, id: 'PL-A', salesOrderId: 'SO1' };
+  const planB = { ...base, id: 'PL-B', salesOrderId: 'SO2' };
+  const opts = { from: '2026-09-01', horizonDays: 40 };
+
+  const madeA = ensureVisits(planA, [], opts);
+  assert.ok(madeA.length > 0);
+  // นัดของ A มีอยู่แล้ว แต่ต้องไม่ปิดกั้นการ gen ของ B
+  const madeB = ensureVisits(planB, madeA.map((v) => ({ ...v, id: 'x' })), opts);
+  assert.deepEqual(
+    madeB.map((v) => v.scheduledDate), madeA.map((v) => v.scheduledDate),
+    'รอบของอีกใบต้องได้วันชุดเดียวกัน ไม่ใช่ถูกข้ามเพราะไซต์นั้นมีนัดแล้ว',
+  );
+  assert.ok(madeB.every((v) => v.planId === 'PL-B'), 'นัดต้องผูกรอบของตัวเอง');
+});
+
+test('รอบเดิมยัง idempotent — gen ซ้ำไม่ได้นัดซ้ำของรอบเดียวกัน', () => {
+  const plan = { id: 'PL-A', siteId: 'S1', kind: 'refill', everyDays: 30, isActive: true, startDate: '2026-09-10' };
+  const opts = { from: '2026-09-01', horizonDays: 40 };
+  const first = ensureVisits(plan, [], opts);
+  const again = ensureVisits(plan, first.map((v) => ({ ...v, id: 'x' })), opts);
+  assert.deepEqual(again, [], 'นัดของรอบเดียวกันที่มีอยู่แล้วต้องไม่ถูก gen ซ้ำ');
+});
