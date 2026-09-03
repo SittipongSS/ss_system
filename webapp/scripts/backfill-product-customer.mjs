@@ -32,7 +32,9 @@ const norm = (s) => (s == null ? '' : String(s).trim());
 async function main() {
   const { data: customers, error: custErr } = await supabase
     .from('customers')
-    .select('id, name, taxId');
+    // quote ตามคอนเวนชันของคอลัมน์ camelCase (ไม่ใช่ข้อบังคับของ PostgREST — ลิสต์ที่ไม่ quote
+    // อย่าง CUSTOMER_PICKER_COLUMNS ก็ใช้งานบน production อยู่)
+    .select('id, name, "nameEn", taxId');
   if (custErr) { console.error('✗ load customers:', custErr.message); process.exit(1); }
 
   const byTax = new Map();
@@ -40,6 +42,14 @@ async function main() {
   for (const c of customers || []) {
     if (norm(c.taxId)) byTax.set(norm(c.taxId), c.id);
     if (norm(c.name)) byName.set(norm(c.name), c.id);
+  }
+  /* ชื่ออังกฤษต้องจับคู่ได้ด้วย — สแนปช็อต `products.customerName` ของลูกค้าที่มีแต่
+     ชื่ออังกฤษเก็บชื่ออังกฤษไว้ ถ้าแมปมีแต่ชื่อไทยก็ไม่มีวันจับคู่ได้เลย
+     ⚠️ ลงทะเบียน **หลัง** ชื่อไทยครบทั้งกอง และเติมเฉพาะคีย์ที่ยังว่าง — ไม่งั้นชื่อ
+     อังกฤษของรายหนึ่งไปทับชื่อไทยของอีกราย แล้วผูกสินค้าผิดคนแบบเงียบ ๆ
+     (จับคู่ไม่ได้แล้วนับเป็น unmatched ยังปลอดภัยกว่าผูกผิดราย) */
+  for (const c of customers || []) {
+    if (norm(c.nameEn) && !byName.has(norm(c.nameEn))) byName.set(norm(c.nameEn), c.id);
   }
 
   const { data: products, error: prodErr } = await supabase

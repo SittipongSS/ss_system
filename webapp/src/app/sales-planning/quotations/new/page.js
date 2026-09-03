@@ -24,6 +24,7 @@ import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTe
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems, { newManualLine, newProductLine } from "@/components/salesPlanning/QuotationLineItems";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { customerNameIn } from "@/lib/master/customerName";
 import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, dealTypeOf, quoteTotals } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
@@ -164,7 +165,7 @@ function NewQuotationInner() {
       seen.set(deal.customerId, {
         id: deal.customerId,
         arCode: master?.arCode || "",
-        name: master?.name || deal.customerName || "ไม่มีชื่อลูกค้า",
+        name: customerNameIn(master) || deal.customerName || "ไม่มีชื่อลูกค้า",
       });
     });
     /* ⭐ **มีดีลที่ยังไม่มีลูกค้าอยู่ = ลูกค้าทุกรายที่มองเห็นเลือกได้** — ไม่งั้นดีลกลุ่มนั้น
@@ -175,7 +176,7 @@ function NewQuotationInner() {
     if (unassigned.length) {
       (Array.isArray(customers) ? customers : []).forEach((c) => {
         if (!c?.id || seen.has(c.id) || !isQuotableCustomer(c)) return;
-        seen.set(c.id, { id: c.id, arCode: c.arCode || "", name: c.name || "ไม่มีชื่อลูกค้า" });
+        seen.set(c.id, { id: c.id, arCode: c.arCode || "", name: customerNameIn(c) || "ไม่มีชื่อลูกค้า" });
       });
     }
     return customerSelectOptions([...seen.values()]);

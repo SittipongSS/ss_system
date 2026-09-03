@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
+import { customerSnapshotName } from '../src/lib/master/customerName.js';
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -95,7 +96,7 @@ async function repair() {
           updates.customerId = product.customerId;
           const customer = customerMap.get(product.customerId);
           if (customer) {
-            updates.customerName = customer.name;
+            updates.customerName = customerSnapshotName(customer);
             updates.customerTaxId = customer.taxId;
           }
         } else {

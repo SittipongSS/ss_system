@@ -14,6 +14,10 @@ const snapshot = {
     { id: 'C2', name: 'CP LAND' },
     { id: 'C3', name: 'ซ้ำ จำกัด' },
     { id: 'C4', name: 'ซ้ำ จำกัด' },
+    // ลูกค้าที่มีแต่ชื่ออังกฤษ (ไทยว่าง) — เคยไม่เข้าดัชนีเลย
+    { id: 'C5', name: null, nameEn: 'Aroma Global' },
+    // สองภาษาย่อยเป็นคีย์เดียวกัน — ต้องไม่ถูกนับสองรอบ
+    { id: 'C6', name: 'DUFRY', nameEn: 'Dufry' },
   ],
   sites: [{ id: 'S1', customerId: 'C1', code: 'SS-26080001', name: 'Outlet 93' }],
   zones: [{ id: 'Z1', siteId: 'S1', code: 'ZN-26080001', name: 'ชั้น 2' }],
@@ -37,6 +41,18 @@ test('ชื่อลูกค้าเทียบข้ามวงเล็�
   const { rows } = planImport(sheet([{ 'ลูกค้า': ' jim  thompson ', 'ชื่อไซต์': 'สาขาใหม่' }]), snapshot);
   assert.equal(rows[0].status, ROW_OK);
   assert.equal(rows[0].site.customerId, 'C1');
+});
+
+test('🔴 ลูกค้าที่มีแต่ชื่ออังกฤษต้องค้นเจอ — ไม่ใช่ตก “ไม่พบลูกค้า”', () => {
+  const { rows } = planImport(sheet([{ 'ลูกค้า': 'Aroma Global', 'ชื่อไซต์': 'สาขาใหม่' }]), snapshot);
+  assert.equal(rows[0].status, ROW_OK);
+  assert.equal(rows[0].site.customerId, 'C5');
+});
+
+test('🪤 ชื่อสองภาษาย่อยเป็นคีย์เดียวกัน ต้องไม่ขึ้น “ตรงกับทะเบียน 2 ราย” หลอก', () => {
+  const { rows } = planImport(sheet([{ 'ลูกค้า': 'Dufry', 'ชื่อไซต์': 'สาขาใหม่' }]), snapshot);
+  assert.equal(rows[0].status, ROW_OK);
+  assert.equal(rows[0].site.customerId, 'C6');
 });
 
 // ── ไม่สร้างซ้ำ (รันซ้ำได้) ───────────────────────────────────────────────

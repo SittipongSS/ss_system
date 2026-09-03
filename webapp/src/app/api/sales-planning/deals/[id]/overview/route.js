@@ -7,6 +7,7 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
 import { canViewUpdates } from '@/lib/master/updateAccess';
+import { customerNameIn } from '@/lib/master/customerName';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,9 +64,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
      ไม่เคยเดินทางมาถึงหน้าจอ · อ่านสดจากทะเบียน ไม่ประทับลงแถวดีล (ชื่อบนดีลเป็น
      หลักฐาน ณ วันผูก ส่วนรหัสเป็นตัวชี้กลับทะเบียนที่ต้องเป็นค่าปัจจุบัน) */
   const customer = deal.customerId
-    ? await safe('customer', supabase.from('customers').select('id, name, arCode')
+    ? await safe('customer', supabase.from('customers').select('id, name, "nameEn", arCode')
       .eq('id', deal.customerId).maybeSingle(), null)
     : { data: null, warning: null };
+  // ชื่อที่ส่งให้จอวาดต้องตกไปอังกฤษได้ — ลูกค้าที่มีแต่ชื่ออังกฤษเคยขึ้นเป็นขีดบนหัวหน้านี้
+  const customerCard = customer.data ? { ...customer.data, name: customerNameIn(customer.data) } : null;
 
   // ── สายภาษี: ปลายทางของ SO ที่เดิมหน้าดีลมองไม่เห็น ────────────────────────
   // ใบยื่นชำระสรรพสามิตผูก SO ตัวต่อตัว (unique 1 SO = 1 ใบยื่น — mig 0160) แต่หน้าดีล
@@ -195,7 +198,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* แถวมูลค่ารายหมวดไปกับดีลเลย — หน้าเดียวใช้ทั้งโชว์และเปิดฟอร์มแก้
        ⚠️ อ่านไม่สำเร็จ = `null` ไม่ใช่ `[]` — ฟอร์มแก้ส่งรายการกลับไปทั้งชุดตอนบันทึก
        ลิสต์ว่างจึงแปลว่า "ลบทุกแถว" หน้าเว็บต้องแยกสองกรณีนี้ออกจากกันได้ */
-    deal: { ...deal, customer: customer.data || null, valueItems: valueItems.warning ? null : (valueItems.data || []) },
+    deal: { ...deal, customer: customerCard, valueItems: valueItems.warning ? null : (valueItems.data || []) },
     canEdit,
     forecastDrift,
     quotations: latestQuotationRevisions(quotations.data),

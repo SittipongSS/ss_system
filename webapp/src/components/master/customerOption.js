@@ -1,4 +1,5 @@
 import { naText } from "@/lib/format";
+import { customerNameIn, customerNameSearchText } from "@/lib/master/customerName";
 
 // มาตรฐาน dropdown ลูกค้าทั้งระบบ: **"รหัส · ชื่อ"** และค้นหาเจอทั้งรหัสและชื่อ
 // (มติผู้ใช้ 2026-08-12 — ผู้ใช้กวาดตาหารหัสก่อนชื่อ ดู entity display convention)
@@ -14,13 +15,17 @@ import { naText } from "@/lib/format";
 // พิมพ์ `undefined : ชื่อ` ถ้าลูกค้ายังไม่มีรหัส และทุกจุดเรียงตามลำดับที่ API ส่งมา
 // (createdAt) ไม่ใช่ตามรหัส
 
+// 🐞 2026-09-03: อ่าน `customer.name` ดิบ ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษได้ป้าย `AR-630 · —`
+// และพิมพ์ชื่ออังกฤษหาไม่เจอ · ชื่อต้องผ่านกติกาสองภาษา และ **ชุดค้นต้องมีทั้งสองภาษา**
+// เสมอ แม้ป้ายจะโชว์ภาษาเดียว (คนพิมพ์หาลูกค้าต่างชาติด้วยชื่ออังกฤษ)
+// ⚠️ ผู้เรียกต้อง select `nameEn` มาด้วย — CUSTOMER_PICKER_COLUMNS มีให้แล้ว
 export function customerOptionDisplay(customer) {
   const code = String(customer?.arCode || "").trim();
-  const name = String(customer?.name || "").trim();
+  const name = customerNameIn(customer);
   return {
     // ไม่มีรหัส (ลูกค้าที่ยังไม่ออกรหัส) = โชว์ชื่อเปล่า ไม่ใช่ "— ชื่อ" ที่อ่านเหมือนรหัสหาย
     text: code ? `${code} · ${naText(name)}` : naText(name),
-    search: `${code} ${name}`.trim(),
+    search: `${code} ${customerNameSearchText(customer)}`.trim(),
   };
 }
 

@@ -5,6 +5,7 @@ import { teamInClause } from '@/lib/teamScope';
 import { ORDER_SELECT, attachRegistrations, insertOrder, insertOrderItems } from '@/lib/tax/orders';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { recordAudit } from '@/lib/audit';
+import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { naText } from "@/lib/format";
 
 export const dynamic = 'force-dynamic';
@@ -99,7 +100,8 @@ export async function POST(request) {
   // Every line's registration must be APPROVED and belong to this customer.
   for (const r of regMap.values()) {
     if (r.customerId !== customer.id) {
-      return Response.json({ error: `ทะเบียน ${r.fgCode} ไม่ใช่ของลูกค้า ${customer.name}` }, { status: 400 });
+      // จุดวาด ไม่ใช่จุดเขียน — ลูกค้าที่ไม่มีชื่อไทยต้องไม่ขึ้นคำว่า null ในข้อความเตือน
+      return Response.json({ error: `ทะเบียน ${r.fgCode} ไม่ใช่ของลูกค้า ${customerNameIn(customer)}` }, { status: 400 });
     }
     if (r.status !== 'approved') {
       return Response.json({ error: `ทะเบียน ${r.fgCode} ยังไม่ได้รับการอนุมัติ` }, { status: 400 });
@@ -157,7 +159,8 @@ export async function POST(request) {
   const newOrder = {
     id: orderId,
     customerId: customer.id,
-    customerName: customer.name,
+    // สำเนาชื่อลงใบยื่น — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ null ประทับตั้งแต่วันสร้าง
+    customerName: customerSnapshotName(customer),
     customerTaxId: customer.taxId,
     // ตรึงที่อยู่ลงใบ (mig 0167) — เอกสารต้องพิมพ์เหมือนกันไม่ว่าใครกด
     customerAddress: customer.address || null,

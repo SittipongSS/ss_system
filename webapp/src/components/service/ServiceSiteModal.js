@@ -10,6 +10,7 @@ import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import TimeInput from "@/components/ui/TimeInput";
+import { customerSelectOptions } from "@/components/master/customerOption";
 import { RefreshCw } from "lucide-react";
 import {
   WEEKDAY_LABELS, WEEKDAYS, normalizeSiteInput, siteAddressCarry, siteAddressDrift, toHHMM,
@@ -211,10 +212,9 @@ export default function ServiceSiteModal({
     });
   };
 
-  const customerOptions = useMemo(
-    () => customers.map((c) => ({ value: c.id, label: c.arCode ? `${c.name} (${c.arCode})` : c.name })),
-    [customers],
-  );
+  /* ป้าย/ลำดับ/ชุดค้นของ dropdown ลูกค้ามาจากที่เดียวทั้งระบบ — ประกอบเองแล้วลูกค้าที่มี
+     แต่ชื่ออังกฤษได้ป้าย " (AR-630)" ชื่อหาย และพิมพ์ชื่ออังกฤษหาไม่เจอ */
+  const customerOptions = useMemo(() => customerSelectOptions(customers), [customers]);
 
   const submit = async () => {
     /* ⚠️ **จังหวัดบังคับเฉพาะตอนสร้าง** — `normalizeSiteInput` จงใจไม่บังคับ (ไซต์ยุค

@@ -14,6 +14,7 @@ import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { naText } from "@/lib/format";
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
@@ -256,7 +257,8 @@ export async function POST(request) {
     // ส่วนหมวด 03/04 ไม่มีเลขให้จอง รหัสประกอบเสร็จตั้งแต่ด้านบน จึงส่งมาตรง ๆ
     ...(fgPrefix ? {} : { fgCode }),
     customerId: customer.id,
-    customerName: customer.name,
+    // ลูกค้าที่มีแต่ชื่ออังกฤษจะได้ null ถ้าอ่าน `name` ตรง ๆ — ทุกจอที่กินลิสต์นี้เห็นขีด
+    customerName: customerSnapshotName(customer),
     productDescription: body.productDescription ?? null,
     productDescriptionEn: body.productDescriptionEn ?? null, // ชื่อสินค้า EN (0059)
     brandName: body.brandName ?? null,

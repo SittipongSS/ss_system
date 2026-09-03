@@ -32,6 +32,7 @@ import {
   revisionTiers, revisionValidUntil, tierUnitPrice,
 } from "@/lib/materialPrices";
 import { pmTypeLabel } from "@/lib/master/materialTypes";
+import { customerSnapshotName } from "@/lib/master/customerName";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -113,8 +114,10 @@ export default function MaterialRegistryPanel({
       label: v.label,
       pmType: v.pmType,
       customerId: v.scope === "customer" ? v.customerId : null,
+      // 🐞 จุดเขียนสำเนา — normalizeMaterialInput เขียนค่านี้ลงคอลัมน์ตรง ๆ ไม่ derive ใหม่
+      // อ่าน `.name` ดิบ = ลูกค้าที่มีแต่ชื่ออังกฤษได้ customerName = null ตั้งแต่วันสร้าง
       customerName: v.scope === "customer"
-        ? (customers.find((c) => c.id === v.customerId)?.name || null) : null,
+        ? customerSnapshotName(customers.find((c) => c.id === v.customerId)) : null,
       supplierNote: v.supplierNote,
     };
     if (form.mode === "create") {

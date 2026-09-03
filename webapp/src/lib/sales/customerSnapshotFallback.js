@@ -72,6 +72,7 @@ export async function fillCustomerSnapshotFromMaster(supabase, record) {
 // เหมือนเดิม (quotations ประกาศเป็น 'frozen' ใน customerNameMirrors.js) · ค่าที่ตรึง
 // จริงจะถูกเขียนตอนกดยื่นอนุมัติ ซึ่งเป็นจังหวะที่เนื้อใบกลายเป็นหลักฐาน
 import { isEditableQuotation } from '@/lib/sales/quotationWorkflow';
+import { customerNameIn, CUSTOMER_NAME_SELECT } from '@/lib/master/customerName';
 
 export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
   const targets = quotes.filter((q) => q?.customerId && isEditableQuotation(q));
@@ -82,10 +83,11 @@ export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
      ที่ไม่ซ้ำ ซึ่งมักเป็น 1) · เขียนให้ชัดเพราะ check:rowcap อ่านจากคำสั่ง ไม่ได้รู้ว่า
      `in()` มีขอบเขตในตัว และ `customers` เป็นตารางที่โตได้ */
   const { data, error } = await supabase
-    .from('customers').select('id, name').in('id', ids).limit(ids.length);
+    .from('customers').select(CUSTOMER_NAME_SELECT).in('id', ids).limit(ids.length);
   // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้ (กติกาเดียวกับ refreshFgLinesForDisplay)
   if (error) return quotes;
-  const byId = new Map((data || []).map((c) => [c.id, c.name]));
+  // ลูกค้าที่มีแต่ชื่ออังกฤษต้องได้ชื่อจริง ไม่ใช่ค่าว่างทับชื่อบนร่าง
+  const byId = new Map((data || []).map((c) => [c.id, customerNameIn(c)]));
   for (const q of targets) {
     const live = byId.get(q.customerId);
     if (live) q.customerName = live;

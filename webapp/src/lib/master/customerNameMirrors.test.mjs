@@ -13,7 +13,9 @@ import {
    cascade ให้ตารางเดียวแบบ hard-code ⇒ เปลี่ยนชื่อลูกค้าแล้วโครงการ/ดีลค้างชื่อเก่า
    ถาวร (วัดจริง 2026-08-27: projects 3 แถว · sales_deals 4 แถว) */
 
-const SOURCE_FIELDS = new Set(['name', 'nameEn', 'taxId', 'arCode']);
+// 'displayName' ไม่ใช่คอลัมน์จริง — เป็นตัวบอกว่าให้คิดจากกติกาสองภาษา
+// (customerSnapshotName: ไทยก่อน ไม่มีค่อยตกไปอังกฤษ) ดูหัวไฟล์ customerNameMirrors.js
+const SOURCE_FIELDS = new Set(['displayName', 'name', 'nameEn', 'taxId', 'arCode']);
 
 test('ทุกตารางในทะเบียนต้องประกาศโหมดชัดเจน — frozen ต้องบอกเหตุผลด้วย', () => {
   assert.ok(CUSTOMER_NAME_MIRRORS.length >= 5, 'ทะเบียนต้องครอบตารางที่ถือสำเนาจริง');

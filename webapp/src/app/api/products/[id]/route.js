@@ -23,6 +23,7 @@ import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { customerSnapshotName } from '@/lib/master/customerName';
 
 export const dynamic = 'force-dynamic';
 // GET /api/products/[id]
@@ -266,7 +267,8 @@ export async function PATCH(request, { params }) {
     if (custError) return Response.json({ error: custError.message }, { status: 500 });
     if (!cust) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
     updated.customerId = cust.id;
-    updated.customerName = cust.name;
+    // ย้ายเจ้าของไปลูกค้าที่มีแต่ชื่ออังกฤษ ต้องไม่ประทับ null ทับชื่อเดิม
+    updated.customerName = customerSnapshotName(cust);
   }
 
   // Re-derive categoryCode from fgCode when fgCode changed and it wasn't given.

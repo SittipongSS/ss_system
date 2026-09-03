@@ -33,6 +33,7 @@ import { loadForecastDrift } from '@/lib/salesPlanningForecast';
 import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { loadDealValueItems, prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
@@ -50,7 +51,7 @@ const DEAL_DATE_LABEL = { startDate: 'วันที่เริ่ม', endDat
 
 const selectDeal = `
   *,
-  customer:customers(id, name, arCode)
+  customer:customers(id, name, "nameEn", arCode)
 `;
 
 async function loadDeal(supabase, id) {
@@ -119,7 +120,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       let customer = null;
       if (nextCustomerId) {
         const { data } = await supabase
-          .from('customers').select('id, name, team, teams, "approvalStatus", "isActive"')
+          .from('customers').select('id, name, "nameEn", team, teams, "approvalStatus", "isActive"')
           .eq('id', nextCustomerId).maybeSingle();
         customer = data || null;
         // ขอบเขตทีมตรวจที่นี่ (ต้องใช้ user) — ที่เหลือเป็นกติกาบริสุทธิ์ใน lib
@@ -150,7 +151,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       });
       if (gateError) return badRequest(gateError);
       patch.customerId = nextCustomerId;
-      patch.customerName = customer?.name || null;
+      // ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่ถูกประทับเป็น null ลงคอลัมน์สำเนา
+      patch.customerName = customerSnapshotName(customer);
     }
   }
   /* เปลี่ยนผู้รับผิดชอบ — ด่านเดียวกับตอนสร้าง (lib/sales/dealOwner.js)

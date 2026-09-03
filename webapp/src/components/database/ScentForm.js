@@ -26,6 +26,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import Select from "@/components/ui/Select";
 import DateInput from "@/components/ui/DateInput";
 import FormZone from "@/components/ui/FormZone";
+import { customerSelectOptions } from "@/components/master/customerOption";
 import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
 import Textarea from "@/components/ui/Textarea";
@@ -115,7 +116,7 @@ export default function ScentForm({
           value={value.customerId}
           disabled={disabled || mode === "edit" || isLocked("customerId")}
           onChange={(v) => set({ customerId: v })}
-          options={customers.map((c) => ({ value: c.id, label: c.name || c.id }))}
+          options={customerSelectOptions(customers)}
           placeholder="เลือกลูกค้า"
         />
         {isLocked("customerId") ? lockHint("customerId") : (

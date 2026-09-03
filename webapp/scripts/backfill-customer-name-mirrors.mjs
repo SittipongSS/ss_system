@@ -13,7 +13,7 @@
 //   node --import ./scripts/test-loader.mjs scripts/backfill-customer-name-mirrors.mjs --commit
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
-import { CUSTOMER_NAME_MIRRORS, liveCustomerNameMirrors } from '../src/lib/master/customerNameMirrors.js';
+import { CUSTOMER_NAME_MIRRORS, customerMirrorValue, liveCustomerNameMirrors } from '../src/lib/master/customerNameMirrors.js';
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -34,7 +34,14 @@ const commit = process.argv.includes('--commit');
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 const short = (v) => String(v ?? '(ว่าง)').replace(/\s+/g, ' ').slice(0, 46);
 
-const { data: customers, error: custError } = await supabase.from('customers').select('id, name, taxId');
+/* 'displayName' ในทะเบียน mirror ไม่ใช่คอลัมน์จริงของ customers — เป็นตัวบอกว่าให้คิด
+   จากกติกาสองภาษา · อ่าน customer['displayName'] ตรง ๆ จะได้ null แล้วสคริปต์นี้จะ
+   ไล่ "ซ่อม" ลูกค้าที่มีแต่ชื่ออังกฤษให้เป็นค่าว่างทั้งกอง (บั๊กที่รอบนี้มาแก้พอดี)
+   ⇒ จึงเรียก `customerMirrorValue` ของทะเบียนกลางตัวเดียวกับที่ cascade ใช้
+      ไม่ก๊อปตรรกะมาไว้ที่นี่ ไม่งั้นสองฝั่งเพี้ยนหากันตอนทะเบียนเพิ่ม source ใหม่
+   ⚠️ select ต้องหยิบทุกคอลัมน์ที่ resolver ต้องใช้ (`"nameEn"` สำหรับ displayName)
+      ไม่งั้น fallback ไม่มีข้อมูลให้ตก แล้วสคริปต์เขียน null ทับของจริง */
+const { data: customers, error: custError } = await supabase.from('customers').select('id, name, "nameEn", taxId');
 if (custError) { console.error('✗ load customers:', custError.message); process.exit(1); }
 const byId = new Map((customers || []).map((c) => [c.id, c]));
 console.log(`ลูกค้าในทะเบียน ${byId.size} ราย`);
@@ -57,7 +64,7 @@ for (const mirror of liveCustomerNameMirrors()) {
     if (!customer) continue; // ไม่ผูกลูกค้า / ลูกค้าถูกลบ — ไม่ใช่หน้าที่สคริปต์นี้
     const patch = {};
     for (const [column, source] of Object.entries(mirror.fields)) {
-      const want = customer[source] ?? null;
+      const want = customerMirrorValue(customer, source);
       const have = row[column] ?? null;
       if (String(want ?? '').trim() !== String(have ?? '').trim()) patch[column] = want;
     }

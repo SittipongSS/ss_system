@@ -9,6 +9,7 @@
 // สองภาษา · และมี 5 ตารางที่ก๊อปชื่อไปเก็บ (customer-name-mirrors) การให้ไฟล์
 // Excel งอกลูกค้าได้ = สร้างลูกค้าซ้ำที่ไม่มีใครตามลบ ⇒ ชื่อที่ไม่ตรงทะเบียน
 // ตกรายงานให้คนไปสร้าง/แก้ชื่อในทะเบียนก่อน
+import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { nameKey } from './importValues';
 import { isAssetOnSite } from './sites';
 
@@ -21,11 +22,17 @@ export const ROW_ERROR = 'error';  // นำเข้าไม่ได้ ต�
 export function indexCustomers(customers = []) {
   const index = new Map();
   for (const customer of customers) {
-    const key = nameKey(customer.name);
-    if (!key) continue;
-    const list = index.get(key) || [];
-    list.push(customer);
-    index.set(key, list);
+    /* ทำดัชนี **ทั้งสองภาษา** — ลูกค้าที่มีแต่ชื่ออังกฤษเคยไม่เข้าดัชนีเลย
+       (คีย์มาจาก `name` อย่างเดียว) แถวที่พิมพ์ชื่ออังกฤษจึงตก "ไม่พบลูกค้า"
+       ทุกครั้ง · คนกรอกชีตพิมพ์ชื่อที่ตัวเองใช้ ไม่ได้เลือกภาษาตามทะเบียน
+       🪤 Set กันลูกค้ารายเดียวถูกใส่สองรอบในคีย์เดียวกัน (สองภาษาย่อยแล้วเท่ากัน)
+          ไม่งั้นผู้เรียกเห็น 2 รายการแล้วขึ้น "ตรงกับทะเบียน 2 ราย" หลอก */
+    const keys = new Set([nameKey(customer.name), nameKey(customer.nameEn)].filter(Boolean));
+    for (const key of keys) {
+      const list = index.get(key) || [];
+      list.push(customer);
+      index.set(key, list);
+    }
   }
   return index;
 }
@@ -114,7 +121,7 @@ export function planImport(drafts = [], snapshot = {}) {
       plannedSites.set(sKey, { ref: siteRef, name: draft.site.name, customerId: customer.id });
       sitePlan = {
         action: 'create', ref: siteRef, name: draft.site.name,
-        customerId: customer.id, customerName: customer.name,
+        customerId: customer.id, customerName: customerSnapshotName(customer),
         routeZone: draft.site.routeZone, address: draft.site.address,
         province: draft.site.province || null,
         contactName: draft.site.contactName, contactPhone: draft.site.contactPhone,
@@ -175,7 +182,7 @@ export function planImport(drafts = [], snapshot = {}) {
       status: creates > 0 ? ROW_OK : ROW_SKIP,
       issues,
       blocking: [],
-      customerName: customer.name,
+      customerName: customerNameIn(customer),
       siteName: draft.site.name,
       site: sitePlan,
       zone: zonePlan,

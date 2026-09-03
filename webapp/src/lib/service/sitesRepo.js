@@ -175,7 +175,9 @@ export async function findCustomer(supabase, customerId) {
   const { data, error } = await supabase
     // ⚠️ `team`/`teams` ต้องมาด้วย — ด่าน "ไซต์ของลูกค้าที่ฉันดูแล" อ่านจากสองช่องนี้
     //    ไม่มีมาแล้ว `caretakerTeamsOf` คืน [] ซึ่งแปลว่า "ของกลาง ใครก็แก้ได้"
-    .from('customers').select('id, name, arCode, addresses, team, teams')
+    // ⚠️ `nameEn` ก็ต้องมา — ไซต์ประทับชื่อลูกค้าลงคอลัมน์สำเนา ไม่มีตัวนี้แล้วลูกค้า
+    //    ที่มีแต่ชื่ออังกฤษจะไม่มีอะไรให้ตกไปหา (customerSnapshotName)
+    .from('customers').select('id, name, "nameEn", arCode, addresses, team, teams')
     .eq('id', customerId).maybeSingle();
   if (error) throw error;
   return data || null;

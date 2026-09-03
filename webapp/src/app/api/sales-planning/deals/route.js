@@ -25,6 +25,7 @@ import { buildDealTimelineRows, summarizeTimelineStep } from '@/lib/sales/dealTi
 import { isYearValue, monthRangeOfYear } from '@/lib/datePeriods';
 import { attributionTeam, isSuperuser } from '@/lib/permissions';
 import { LEAD_TRANSITIONS, LEAD_STATUS_LABELS, sourceLeadIdOf, inLeadScope } from '@/lib/sales/leads';
+import { CUSTOMER_NAME_SELECT, customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
@@ -37,7 +38,7 @@ const DEAL_DATE_LABEL = { startDate: 'วันที่เริ่ม', endDat
 
 const selectDeal = `
   *,
-  customer:customers(id, name, arCode)
+  customer:customers(id, name, "nameEn", arCode)
 `;
 
 export const GET = withUser(async ({ user, supabase, req }) => {
@@ -106,6 +107,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     canEdit: editor && inSalesEditScope(user, d),
     forecastDrift: driftMap.get(d.id) || null,
     timelineStep: summarizeTimelineStep(stepMap.get(d.id)),
+    /* ชื่อลูกค้าที่ฝังมากับแถวต้องตกไปอังกฤษได้ (แพตเทิร์นเดียวกับ deals/[id]/overview)
+       — โมดัลเจาะดีลอ่าน `customer.name` ดิบ **ก่อน** `customerName` ⇒ ลูกค้าที่มีแต่
+       ชื่ออังกฤษเคยขึ้นเป็น "ไม่ระบุลูกค้า" ทั้งที่สำเนาบนดีลมีชื่ออยู่
+       ⚠️ จุดวาด ไม่ใช่จุดเขียน — ไม่ประทับกลับลงคอลัมน์ `customerName` ของดีล */
+    customer: d.customer ? { ...d.customer, name: customerNameIn(d.customer) } : d.customer,
   }));
   return ok(rows);
 });
@@ -162,10 +168,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (body.customerId) {
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, name')
+      .select(CUSTOMER_NAME_SELECT)
       .eq('id', body.customerId)
       .maybeSingle();
-    customerName = customer?.name || customerName;
+    // ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ null ทับชื่อที่ฟอร์มส่งมา — ดีลจึงเกิดมาพร้อมชื่อว่าง
+    customerName = customerSnapshotName(customer) || customerName;
   }
 
   // ลีดต้นทาง: ตัดสินครั้งเดียวจากทั้งสองช่อง แล้วใช้ค่านี้ทั้งด่านตรวจสิทธิ์และคอลัมน์
