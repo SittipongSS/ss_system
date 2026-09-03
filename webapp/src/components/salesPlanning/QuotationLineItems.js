@@ -15,7 +15,8 @@ import ReadableText from "@/components/ui/ReadableText";
 import { quoteLineNet, quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, naText, NA } from "@/lib/format";
 import {
-  fgLineBrand, fgLineDescription, fgLineLanguageMeta, fgLineNoteMeta, lineNoteEdit, masterPriceState,
+  fgLineBrand, fgLineDescription, fgLineLanguageMeta, fgLineNoteMeta, lineNoteEdit,
+  masterPriceDrift, masterPriceState,
 } from "@/lib/sales/quoteLines";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { DEFAULT_SALE_UNIT, SALE_UNITS, unitOptions } from "@/lib/master/units";
@@ -163,6 +164,10 @@ export default function QuotationLineItems({
   // "ไม่เจอในลิสต์" ≠ "ยังไม่ตั้งราคา" — เหตุผลเต็มอยู่ที่ masterPriceState ใน lib
   const masterPriceStateFor = (productId) =>
     masterPriceState(products.find((item) => item.id === productId));
+  // ราคาใน master ขยับหลังใบนี้ถูกบันทึกครั้งล่าสุด → โชว์ราคาใหม่กำกับไว้
+  // (ราคาบนบรรทัดเปลี่ยนจริงตอนกดบันทึกเท่านั้น — server sync ให้พร้อมยอดรวมทั้งใบ)
+  const masterPriceDriftFor = (line) =>
+    masterPriceDrift(products.find((item) => item.id === line.productId), line);
 
   const selectLineProduct = (index, productId) => {
     const product = products.find((item) => item.id === productId);
@@ -321,6 +326,14 @@ export default function QuotationLineItems({
                     <Link prefetch={false} href={`/database/products/${line.productId}`} target="_blank" className={styles.fgCode} style={{ color: "var(--amber)" }}>
                       ยังไม่ตั้งราคาในฐานข้อมูล — ไปตั้งราคา →
                     </Link>
+                  )}
+                  {/* ราคาในทะเบียนสินค้าถูกแก้หลังใบนี้บันทึกครั้งล่าสุด — บอกตัวเลขที่จะได้
+                      และบอกว่าต้องกดอะไรถึงจะเปลี่ยน (ห้ามเปลี่ยนให้เองบนจอ: ยอดรวมทั้งใบ
+                      คิดที่ server ตอนบันทึก ⇒ แถวกับยอดจะไม่ตรงกันจนกว่าจะบันทึก) */}
+                  {editable && masterPriceDriftFor(line) !== null && (
+                    <span className={styles.priceHint}>
+                      ราคาในฐานข้อมูลตอนนี้ {fmtMoney(masterPriceDriftFor(line))} — กดบันทึกเพื่ออัปเดต
+                    </span>
                   )}
                 </td>
                 <td data-label="ส่วนลดรายการ">
