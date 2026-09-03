@@ -6,6 +6,7 @@ import {
   enforceMasterPrices,
   fgLineBrand,
   fgLineDescription,
+  masterPriceDrift,
   masterPriceState,
   normalizeManualLines,
   refreshFgLinesForDisplay,
@@ -234,3 +235,27 @@ test('เคสที่ตัดสินไม่ได้ปล่อยผ�
   assert.deepEqual(await customerMismatchedLines(null, manual, { customerId: 'C-เรา' }), []);
 });
 
+
+/* ราคาใน master ขยับหลังบันทึกใบครั้งล่าสุด — จอต้องบอกว่าราคาใหม่คือเท่าไร
+   (บรรทัดเปลี่ยนจริงตอนกดบันทึก ไม่ใช่ตอนเปิดหน้า — ดู refreshFgLinesForDisplay) */
+test('masterPriceDrift reports the new master price when the line is stale', () => {
+  assert.equal(masterPriceDrift({ id: 'P1', costPrice: 195 }, { productId: 'P1', unitPrice: 215 }), 195);
+});
+
+test('masterPriceDrift stays quiet when the line already matches master', () => {
+  assert.equal(masterPriceDrift({ id: 'P1', costPrice: 195 }, { productId: 'P1', unitPrice: 195 }), null);
+  // ราคาที่ยังเป็นสตริงจากช่องกรอก (MoneyInput) ต้องนับว่าตรง ไม่ใช่ขึ้นเตือนค้าง
+  assert.equal(masterPriceDrift({ id: 'P1', costPrice: 195 }, { productId: 'P1', unitPrice: '195' }), null);
+});
+
+// สินค้าหลุดจากลิสต์ (รออนุมัติ/พักใช้) หรือบทบาทถูกตัด costPrice ทิ้ง = ไม่รู้ราคา
+// ห้ามเดาว่าเป็น 0 แล้วขึ้นเตือน (เหตุผลเต็มที่ masterPriceState)
+test('masterPriceDrift stays quiet when the master price is unknown or unset', () => {
+  assert.equal(masterPriceDrift(undefined, { productId: 'P1', unitPrice: 215 }), null);
+  assert.equal(masterPriceDrift({ id: 'P1' }, { productId: 'P1', unitPrice: 215 }), null);
+  assert.equal(masterPriceDrift({ id: 'P1', costPrice: 0 }, { productId: 'P1', unitPrice: 215 }), null);
+});
+
+test('masterPriceDrift ignores manual lines that are not bound to a product', () => {
+  assert.equal(masterPriceDrift({ id: 'P1', costPrice: 195 }, { productId: null, unitPrice: 1000 }), null);
+});
