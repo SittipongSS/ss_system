@@ -113,7 +113,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ⭐ "สดใหม่ของที่อยู่ **ตัวเดิม**" — ใบเดิมเลือกสาขา/คลังไหนไว้ ฉบับ Rev. ต้องอยู่
   // ที่นั่น (0203) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
   const { data: cust } = quote.customerId
-    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId, contacts, contactPerson, contactPhone').eq('id', quote.customerId).maybeSingle()
+    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId, "nameEn", contacts, contactPerson, contactPhone').eq('id', quote.customerId).maybeSingle()
     : { data: null };
   const revAddresses = pickDocumentAddresses(cust, quote);
 
@@ -141,10 +141,26 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       validUntil,
       customerId: quote.customerId,
       customerName: quote.customerName,
+      /* ชื่อกิจการอังกฤษอ่านสดจากทะเบียนเหมือน taxId/ที่อยู่ (มติผู้ใช้ 2026-09-03)
+         ⚠️ ไม่สืบทอดอย่างเดียว เพราะคอลัมน์นี้เพิ่งมี — ใบเก่าทุกใบเป็น null (ไม่ backfill)
+         ⇒ ถ้ารอสืบทอด ฉบับ Rev. ของใบอังกฤษจะพิมพ์ชื่อไทยต่อไปไม่จบสักที
+         ทะเบียนไม่มีอังกฤษ = สืบของใบเดิม · ไม่มีทั้งคู่ก็ปล่อย null (หน้าต่างพิมพ์เตือน
+         แล้วถอยไปไทยเอง ไม่ใช่ถอยให้เงียบ ๆ ตรงนี้) */
+      customerNameEn: (cust?.nameEn || '').trim() || quote.customerNameEn || null,
       // snapshot: ที่อยู่ refresh สดจาก master; งวดชำระสืบทอดจากใบเดิม · ผู้ติดต่อ =
       // ที่จอเลือกไว้ตอนออก Rev. ถ้าไม่ได้เลือกก็สืบทอดของใบเดิม
       billingAddress: revAddresses.snapshot.billingAddress ?? quote.billingAddress ?? null,
       shippingAddress: revAddresses.snapshot.shippingAddress || quote.shippingAddress || null,
+      /* ข้อความอังกฤษของที่อยู่คู่เดียวกัน — ⚠️ **เงื่อนไขถอยต้องเป็นตัวเดียวกับคีย์ไทย**
+         คือ "หาแถวที่อยู่เจอไหม" ไม่ใช่ "ช่องอังกฤษว่างไหม" · ใช้ `?? quote.xxxEn` ตรง ๆ
+         จะได้ที่อยู่อังกฤษของ **ที่อยู่คนละแถว** ติดมาเมื่อแถวใหม่ยังไม่ได้กรอกอังกฤษ
+         (ไทยของแถวใหม่ + อังกฤษของแถวเก่า อยู่บนใบเดียวกันแล้วขัดกันเอง) */
+      billingAddressEn: revAddresses.snapshot.billingAddress
+        ? (revAddresses.snapshot.billingAddressEn ?? null)
+        : (quote.billingAddressEn ?? null),
+      shippingAddressEn: revAddresses.snapshot.shippingAddress
+        ? (revAddresses.snapshot.shippingAddressEn ?? null)
+        : (quote.shippingAddressEn ?? null),
       branchCode: revAddresses.snapshot.branchCode ?? quote.branchCode ?? null,
       billingAddressId: revAddresses.snapshot.billingAddressId ?? quote.billingAddressId ?? null,
       shippingAddressId: revAddresses.snapshot.shippingAddressId ?? quote.shippingAddressId ?? null,

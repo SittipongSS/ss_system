@@ -87,10 +87,16 @@ export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
   // เสริมการแสดงผลเท่านั้น — อย่าให้ GET ล้มเพราะ join นี้ (กติกาเดียวกับ refreshFgLinesForDisplay)
   if (error) return quotes;
   // ลูกค้าที่มีแต่ชื่ออังกฤษต้องได้ชื่อจริง ไม่ใช่ค่าว่างทับชื่อบนร่าง
-  const byId = new Map((data || []).map((c) => [c.id, customerNameIn(c)]));
+  const byId = new Map((data || []).map((c) => [c.id, c]));
   for (const q of targets) {
     const live = byId.get(q.customerId);
-    if (live) q.customerName = live;
+    if (!live) continue;
+    q.customerName = customerNameIn(live) || q.customerName;
+    /* ⚠️ ต้องรีเฟรช**คู่ภาษา**พร้อมกัน — รีเฟรชแต่ไทย แล้วร่างภาษาอังกฤษจะโชว์ชื่อไทยสด
+       คู่กับชื่ออังกฤษที่ค้างจากวันสร้างใบ (หรือว่างเปล่าสำหรับใบก่อน mig 0343)
+       ทั้งที่คนเพิ่งกรอก nameEn ลงทะเบียนไป · แสดงผลอย่างเดียว ไม่เขียนกลับฐาน */
+    const liveEn = String(live.nameEn || '').trim();
+    if (liveEn) q.customerNameEn = liveEn;
   }
   return quotes;
 }
