@@ -58,6 +58,8 @@ export function thaiShortDate(value) {
 }
 
 export const BLANK = '____________________';
+// เส้นประในเซลล์ตาราง — สั้นกว่าเส้นประในย่อหน้า เพราะช่องแคบกว่ามาก
+export const BLANK_CELL = '__________';
 
 // แทนค่า {{token}} — ค่าที่ยังไม่กรอกกลายเป็น "เส้นให้เขียนมือ" ไม่ใช่ช่องว่างเงียบ ๆ
 // (สัญญาที่พิมพ์ออกไปแล้วมีที่ว่างลอย = ไม่มีใครรู้ว่าตั้งใจเว้นหรือลืมกรอก)
@@ -87,6 +89,8 @@ export function contractTokenValues(contract, { company = {}, template = null } 
     contractorRegNo: company.taxId || '',
     contractorAddress: company.address || '',
     contractorSignerName: company.authorizedSignerName || raw.contractorSignerName || '',
+    // เลขที่ใบเสนอราคาที่สัญญาอ้างถึง — สัญญาทุกฉบับออกจากใบเสนอราคา (มติ 2026-09-03)
+    quotationNo: raw.quotationNo || '',
   };
 }
 
@@ -131,15 +135,55 @@ function definitionsBlock(template, values) {
         ${def.terms.map((t) => `<div class="blk defs"><p class="clauseText"><strong>${esc(t.term)}</strong> ${fillTokensHtml(t.text, values)}</p></div>`).join('')}`;
 }
 
-function sectionBlock(section, values) {
+/* ── ตารางในข้อสัญญา (สัญญาบริการ ข้อ 2) ────────────────────────────────
+   ⚠️ **ไม่มีข้อมูล = พิมพ์แถวเส้นประ ไม่ใช่ซ่อนตาราง** — ต้นฉบับมีตารางเสมอ
+      ซ่อนทั้งอันแล้วเอกสารที่พิมพ์ออกไปจะไม่ตรงกับต้นฉบับที่ตกลงกันไว้
+   ⚠️ ทุกเซลล์ผ่าน `fillTokensHtml` เหมือนย่อหน้า — แถวที่ผู้เรียกเติมมาอาจมี token ได้ */
+function tableBlock(table, rows, values) {
+  const cols = table.columns || [];
+  const body = (rows && rows.length ? rows : [null]).map((row) => `
+          <tr>${cols.map((c) => {
+    const raw = row ? row[c.key] : '';
+    const cell = raw === undefined || raw === null || String(raw).trim() === ''
+      ? BLANK_CELL
+      : fillTokensHtml(String(raw), values);
+    return `<td${c.align ? ` class="a-${esc(c.align)}"` : ''}>${cell}</td>`;
+  }).join('')}</tr>`).join('');
   return `
-        <h2 class="blk sectionHead" data-keep-next="1">หมวด ${esc(section.no)} ${esc(section.heading)}</h2>
+        <table class="blk clauseTable">
+          <thead><tr>${cols.map((c) => `<th${c.align ? ` class="a-${esc(c.align)}"` : ''}>${esc(c.label)}</th>`).join('')}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>`;
+}
+
+/* ── รายการย่อยในข้อสัญญา (สัญญาบริการ ข้อ 3 — งวดชำระ) ──────────────────
+   ⚠️ **ไม่มีงวด = ไม่มีบรรทัดเลย** ต่างจากตารางข้างบนโดยเจตนา — ใบที่ชำระเต็มจำนวน
+      (`paymentPlan.type = 'full'`) ไม่มีงวดจริง ๆ การพิมพ์เส้นประจะชวนให้เขียนของที่ไม่มี */
+function linesBlock(lines, values) {
+  if (!lines || !lines.length) return '';
+  return `
+        <ul class="blk clauseLines">${lines
+    .map((line) => `<li>${fillTokensHtml(String(line ?? ''), values)}</li>`).join('')}</ul>`;
+}
+
+function sectionBlock(section, values, blocks = {}) {
+  /* ⚠️ **หมวดไม่มีหัวข้อก็มีจริง** — สัญญาบริการเรียงข้อ 1–10 ไปเลยไม่แบ่งหมวด
+     ⇒ ไม่มี `no`/`heading` = ไม่พิมพ์บรรทัดหัวหมวด · ของเดิมพิมพ์คำว่า "หมวด" เสมอ
+        ซึ่งจะเติมคำที่ต้นฉบับไม่มีลงในเอกสารที่ผูกพันตามกฎหมาย */
+  const head = section.no || section.heading
+    ? `
+        <h2 class="blk sectionHead" data-keep-next="1">หมวด ${esc(section.no)} ${esc(section.heading)}</h2>`
+    : '';
+  return `${head}
         ${section.clauses.map((clause) => `
         <div class="blk clause">
           <span class="clauseNo">${esc(clause.no)}</span>
           <div>
             ${clause.title ? `<strong class="clauseTitle">${esc(clause.title)}</strong>` : ''}
             ${paragraph(clause.text, values)}
+            ${clause.table ? tableBlock(clause.table, blocks[clause.table.source], values) : ''}
+            ${clause.lines ? linesBlock(blocks[clause.lines.source], values) : ''}
+            ${clause.after ? paragraph(clause.after, values) : ''}
           </div>
         </div>`).join('')}`;
 }
@@ -272,6 +316,28 @@ export const CONTRACT_CSS = `
   .contract .intro .clauseText,
   .contract .defs .clauseText,
   .contract .closing .clauseText { text-indent: 12mm; }
+
+  /* ── ตารางในข้อสัญญา (สัญญาบริการ ข้อ 2) ────────────────────────────
+     ⚠️ ตารางในเอกสารพิมพ์ห้ามเลื่อนแนวนอน — ต้องพอดีหน้ากระดาษเสมอ
+        table-layout: fixed + word-break ให้ข้อความยาวตัดบรรทัดแทนที่จะดันตารางล้น */
+  .contract .clauseTable {
+    width: 100%; margin: 2.5mm 0 1.5mm; border-collapse: collapse;
+    table-layout: fixed; font-size: 9.5pt;
+  }
+  .contract .clauseTable th,
+  .contract .clauseTable td {
+    border: 0.2mm solid #000; padding: 1.2mm 1.6mm;
+    vertical-align: top; text-align: left; line-height: 1.5;
+    word-break: break-word; white-space: pre-line;
+  }
+  .contract .clauseTable th { font-weight: 600; }
+  .contract .clauseTable .a-center { text-align: center; }
+  .contract .clauseTable .a-right { text-align: right; }
+
+  /* ── รายการงวดชำระ (ข้อ 3) — ต้นฉบับใช้ขีดนำหน้า ไม่ใช่จุด ────────── */
+  .contract .clauseLines { margin: 1.5mm 0 1.5mm 12mm; padding: 0; list-style: none; }
+  .contract .clauseLines > li { line-height: 1.65; }
+  .contract .clauseLines > li::before { content: '- '; }
 
   .contract h2.blk { margin: 7mm 0 0; color: var(--doc-navy); font-size: 11pt; }
   /* เส้นใต้หัวหมวดต้องมีที่หายใจทั้งบนและล่าง — ตัวหนังสือชนเส้นอ่านแล้วอึดอัด
@@ -416,11 +482,53 @@ export function contractToolbarControls() {
 // options.toolbar = false → ไม่ใส่แถบปุ่มพิมพ์ (ตอนฝังเป็นพรีวิวใน iframe/ตรึงเป็น snapshot)
 // ⚠️ ตอน "ออกสัญญา" ต้องเรียกด้วย toolbar: false เสมอ — HTML ที่ตรึงไว้คือกระดาษ
 //    ไม่ใช่หน้าจอ (แถบปุ่มเป็น no-print ก็จริง แต่มันไม่ควรอยู่ในหลักฐาน)
+
+/* ── บล็อกที่เติมจากใบเสนอราคา ─────────────────────────────────────────────
+   ⭐ **สัญญาทุกฉบับออกจากใบเสนอราคา** (มติผู้ใช้ 2026-09-03) ⇒ ตารางและงวดชำระ
+     ในสัญญาบริการอ่านจากใบที่ผูกไว้ ไม่ใช่ให้คนพิมพ์มือซ้ำกับที่เสนอราคาไปแล้ว
+   🪤 **วันที่ของงวดอยู่ในช่อง `note` เป็นข้อความอิสระ** — `paymentPlan.installments`
+      มีแค่ `no · label · percent · amount · note` (ตรวจแล้วทั้ง 312 ใบบน production)
+      ⇒ พิมพ์ `note` ตามที่กรอกไว้ ห้ามแปลง/จัดรูปแบบใหม่ · ที่ต้นฉบับเขียนว่า
+        "ชำระงวดที่ 1 วันที่ 17 สิงหาคม 2569 จำนวน 7,639.80 บาท (ก่อนการติดตั้ง)"
+        คือ label + note ของงวดนั้นประกอบกัน ไม่ใช่ฟิลด์วันที่ที่ไหน
+   ⚠️ ใบที่ชำระเต็มจำนวน (`type: 'full'`) ไม่มีงวด ⇒ คืนอาเรย์ว่าง ไม่ใช่แถวเปล่า */
+export function contractQuotationBlocks(quotation, contract = null) {
+  const plan = quotation?.paymentPlan || null;
+  const rows = plan?.type === 'installment' ? (plan.installments || []) : [];
+  const money = (n) => fmtNumber(Number(n) || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const quotationInstallments = rows.map((row) => [
+    row?.label || `ชำระงวดที่ ${row?.no ?? ''}`.trim(),
+    /* note เป็นได้ทั้งวันที่ ("วันที่ 17 กันยายน 2569") และเงื่อนไข ("ก่อนการติดตั้ง")
+       ⇒ วางตามต้นฉบับ: วันที่ต่อท้ายป้าย · เงื่อนไขอยู่ในวงเล็บท้ายบรรทัด */
+    /^\s*วันที่/.test(String(row?.note || '')) ? String(row.note).trim() : '',
+    `จำนวน ${money(row?.amount)} บาท`,
+    /^\s*วันที่/.test(String(row?.note || '')) || !String(row?.note || '').trim()
+      ? '' : `(${String(row.note).trim()})`,
+  ].filter(Boolean).join(' '));
+
+  /* ตารางข้อ 2 — หนึ่งแถวต่อหนึ่งใบเสนอราคาที่สัญญาอ้างถึง
+     ⚠️ ระบบผูกสัญญากับใบเดียว ⇒ แถวเดียวเสมอในวันนี้ · โครงรองรับหลายแถวไว้แล้ว
+        เพราะต้นฉบับมีคอลัมน์ "ลำดับ" ซึ่งมีความหมายก็ต่อเมื่อมีได้หลายแถว */
+  const quotationLines = quotation ? [{
+    no: '1',
+    quoteNumber: quotation.quoteNumber || '',
+    period: '{{serviceStartTh}} - {{serviceEndTh}}',
+    detail: '{{serviceKind}}\n{{clientBranch}}',
+    term: '{{termMonths}} เดือน',
+    amount: quotation.subtotal != null ? money(quotation.subtotal) : '',
+    machines: '{{machineCount}}',
+  }] : [];
+
+  return { quotationInstallments, quotationLines, quotationNo: quotation?.quoteNumber || contract?.quotationId || '' };
+}
+
 export function buildContractHTML(contract, { company = {}, quotation = null, options = {} } = {}) {
   const template = contractTemplate(contract?.kind);
   if (!template) throw new Error(`buildContractHTML: ไม่มีแม่แบบของสัญญาชนิด ${contract?.kind}`);
 
   const values = contractTokenValues(contract, { company, template });
+  const blocks = contractQuotationBlocks(quotation, contract);
+  values.quotationNo = blocks.quotationNo || values.quotationNo || '';
   const titleTh = CONTRACT_KIND_DOC_TITLES[contract.kind] || template.titleTh;
 
   const header = documentHeader({
@@ -467,7 +575,7 @@ export function buildContractHTML(contract, { company = {}, quotation = null, op
           <h1 class="blk docTitle" data-keep-next="1">${esc(titleTh)}</h1>
           ${template.intro.map((text) => `<div class="blk intro">${paragraph(text, values)}</div>`).join('')}
           ${definitionsBlock(template, values)}
-          ${template.sections.map((section) => sectionBlock(section, values)).join('')}
+          ${template.sections.map((section) => sectionBlock(section, values, blocks)).join('')}
           ${closingWithSignatures(template, values)}
         </div>
       </div>
