@@ -5,6 +5,7 @@
 //   คนแก้ต้องมีต้นฉบับใหม่และ bump version ด้วยเสมอ
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { SERVICE_TEMPLATE } from './contractTemplateService.js';
 import { contractTemplate, hasContractTemplate, missingContractFields } from './contractTemplates.js';
 import { contractQuotationBlocks, buildContractHTML } from './contractDocument.js';
@@ -102,7 +103,7 @@ test('ไม่มีใบเสนอราคา = ไม่มีแถว�
   const { quotationLines } = contractQuotationBlocks({ quoteNumber: 'QT-26080037-5', subtotal: 35700 });
   assert.equal(quotationLines.length, 1);
   assert.equal(quotationLines[0].quoteNumber, 'QT-26080037-5');
-  assert.equal(quotationLines[0].amount, '35,700.00');
+  assert.equal(quotationLines[0].amount, '35,700', 'ตารางเป็นจำนวนเต็มตามต้นฉบับ ไม่ใช่ทศนิยมสองตำแหน่ง');
   // จำนวนเครื่องเป็น token ของใบ ไม่ใช่ค่าจากใบเสนอราคา — ระบบยังไม่มีที่เก็บ
   assert.equal(quotationLines[0].machines, '{{machineCount}}');
 });
@@ -149,4 +150,32 @@ test('ด่านช่องบังคับใช้ตัวเดีย�
     visitFrequency: 'x', fixWorkingDays: 3, lateWorkingDays: 7, bankName: 'x',
     bankAccountNo: 'x', latePaymentDays: 15, copyCount: 'สองฉบับ',
   }).length, 0);
+});
+
+/* 🐞 **รูที่เทสต์ชุดแรกมองไม่เห็น** (เจอ 2026-09-03 ตอนผู้ใช้ทักให้เช็คตาราง) —
+   ฟังก์ชันประกอบตารางถูกต้อง แต่ route ที่ออกสัญญา `select` ใบเสนอราคามาแค่ 4 ช่อง
+   ที่ด่านตัวเองใช้ แล้วส่งต่อเฉพาะ `quoteNumber` ⇒ **บนกระดาษจริงช่องค่าบริการว่าง
+   และไม่มีบรรทัดงวดเลย** ทั้งที่เทสต์เขียวหมด เพราะเทสต์ป้อนใบเต็มเข้าไปเอง
+   ⇒ ยามนี้ผูกกับ **ซอร์สของ route** ไม่ใช่กับฟังก์ชัน — เป็นที่เดียวที่รูนี้มองเห็นได้ */
+test('🐞 เส้นออกสัญญาต้องดึงของที่แม่แบบใช้จริงมาด้วย ไม่ใช่แค่ช่องที่ด่านตรวจ', () => {
+  const route = readFileSync(
+    new URL('../../app/api/sales-planning/contracts/[id]/issue/route.js', import.meta.url), 'utf8',
+  );
+  for (const col of ['subtotal', '"paymentPlan"']) {
+    assert.ok(route.includes(col), `select ของใบเสนอราคาต้องมี ${col} — แม่แบบสัญญาบริการใช้ทำตารางข้อ 2 / งวดข้อ 3`);
+  }
+  // จับเจตนา ไม่ใช่รูปประโยค — ขอแค่ "กระจายแถวจริงเข้าไป" ไม่ล็อกการจัดบรรทัด
+  const block = route.slice(route.indexOf('quotation: contract.quotationId'));
+  assert.match(block.slice(0, 220), /\.\.\.\(?\s*quote/,
+    'ต้องส่งแถวจริงเข้า buildContractHTML ไม่ใช่ประกอบออบเจ็กต์ที่มีแต่เลขที่');
+});
+
+/* ⚠️ ตัวเลขสองที่จัดรูปคนละแบบ **ตามต้นฉบับ** — ยัดให้เหมือนกันเมื่อไรผิดข้างใดข้างหนึ่ง */
+test('รูปแบบตัวเลข: ตารางเป็นจำนวนเต็ม · งวดเป็นสองตำแหน่ง', () => {
+  const { quotationLines, quotationInstallments } = contractQuotationBlocks({
+    quoteNumber: 'QT-1', subtotal: 35700,
+    paymentPlan: { type: 'installment', installments: [{ no: 1, label: 'ชำระงวดที่ 1', amount: 7639.8 }] },
+  });
+  assert.equal(quotationLines[0].amount, '35,700');
+  assert.match(quotationInstallments[0], /7,639\.80 บาท/);
 });

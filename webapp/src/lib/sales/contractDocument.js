@@ -495,6 +495,11 @@ export function contractToolbarControls() {
 export function contractQuotationBlocks(quotation, contract = null) {
   const plan = quotation?.paymentPlan || null;
   const rows = plan?.type === 'installment' ? (plan.installments || []) : [];
+  /* ⚠️ **สองที่นี้จัดรูปเลขคนละแบบ และต้นฉบับก็เป็นแบบนั้น**
+       ตารางข้อ 2 เขียน `35,700` (ไม่มีทศนิยม — เป็นมูลค่าสัญญา อ่านเป็นจำนวนเต็ม)
+       งวดข้อ 3 เขียน `7,639.80` (สองตำแหน่ง — เป็นยอดที่ต้องโอนจริง สตางค์มีความหมาย)
+     🪤 ยัดให้เหมือนกันเมื่อไร เอกสารจะไม่ตรงต้นฉบับทันทีข้างใดข้างหนึ่ง */
+  const contractValue = (n) => fmtNumber(Number(n) || 0, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const money = (n) => fmtNumber(Number(n) || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const quotationInstallments = rows.map((row) => [
     row?.label || `ชำระงวดที่ ${row?.no ?? ''}`.trim(),
@@ -515,7 +520,7 @@ export function contractQuotationBlocks(quotation, contract = null) {
     period: '{{serviceStartTh}} - {{serviceEndTh}}',
     detail: '{{serviceKind}}\n{{clientBranch}}',
     term: '{{termMonths}} เดือน',
-    amount: quotation.subtotal != null ? money(quotation.subtotal) : '',
+    amount: quotation.subtotal != null ? contractValue(quotation.subtotal) : '',
     machines: '{{machineCount}}',
   }] : [];
 
