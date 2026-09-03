@@ -368,8 +368,11 @@ export default function CustomerForm({
               required={!String(form.name || "").trim()}
               placeholder="เช่น ABC International Co., Ltd."
             />
+            {/* ⚠️ ข้อความนี้เคยบอกแค่ IFRA/MSDS ซึ่ง **ระบบไม่ได้เป็นคนออก** (RD แนบไฟล์เอง)
+                ตั้งแต่ mig 0343 ชื่อนี้ขึ้นบนใบเสนอราคา/ใบสั่งขายภาษาอังกฤษที่ระบบพิมพ์เองด้วย
+                ⇒ ต้องบอกให้ครบ ไม่งั้นคนอ่านแล้วคิดว่าไม่เกี่ยวกับใบที่ตัวเองออก */}
             <span className="text-[11px] text-[var(--text-3)] mt-1">
-              ใช้บนเอกสารภาษาอังกฤษ (IFRA · MSDS) — กรอกอย่างน้อยหนึ่งภาษา
+              ขึ้นบนใบเสนอราคา/ใบสั่งขายภาษาอังกฤษ และเอกสาร IFRA · MSDS — กรอกอย่างน้อยหนึ่งภาษา
             </span>
           </div>
           <div className="form-group">

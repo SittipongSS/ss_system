@@ -281,9 +281,15 @@ export default function AddressesEditor({ value = [], onChange }) {
                 value={typing ? a.addressEn : a.line1En}
                 onChange={(e) => update(i, typing ? { addressEn: e.target.value } : { line1En: e.target.value })}
                 className="w-full text-xs h-[60px] resize-none"
-                aria-label="ที่อยู่ภาษาอังกฤษ (สำหรับเอกสาร IFRA / MSDS)"
+                aria-label="ที่อยู่ภาษาอังกฤษ (ขึ้นบนเอกสารภาษาอังกฤษ)"
               />
             </div>
+            {/* ช่องอังกฤษไม่เคยมีคำอธิบายที่ "ตาเห็น" เลย มีแต่ aria-label ⇒ คนกรอกไม่รู้ว่า
+                ว่างได้ และไม่รู้ว่ามันไปโผล่ที่ไหน · ฝั่งชื่อมี hint มาตั้งแต่ mig 0283 แล้ว */}
+            <span className="text-[length:var(--fs-3)] text-[var(--text-3)]">
+              ช่องขวาขึ้นบนเอกสารภาษาอังกฤษ — ว่างได้ ถ้าลูกค้ารายนี้ไม่ต้องใช้เอกสารอังกฤษ
+              (ว่างแล้วใบอังกฤษจะพิมพ์ที่อยู่ไทยแทน)
+            </span>
 
             {/* จังหวัด → อำเภอ → ตำบล → รหัสไปรษณีย์ */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

@@ -104,5 +104,32 @@ test('capture ไม่ล้มเมื่อ SO ไม่มีใบเส�
 });
 
 test('layout version ถูก tag ไว้สำหรับติดตาม generator', () => {
-  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.2');
+  assert.equal(ISSUED_SALES_ORDER_LAYOUT_VERSION, 'so-master-v4.3');
+});
+
+test('payload ตรึงชื่อ/ที่อยู่อังกฤษ — ค่าบนใบมาก่อน แล้วถอยไปใบเสนอราคาที่ผูก', () => {
+  const fromQuote = buildIssuedSalesOrderPayload({
+    ...baseOrder,
+    customerNameEn: 'Customer A Co., Ltd.',
+    quotation: { ...baseOrder.quotation, billingAddressEn: '123 Test Road', shippingAddressEn: '   ' },
+  });
+  assert.equal(fromQuote.customer.customerNameEn, 'Customer A Co., Ltd.');
+  assert.equal(fromQuote.customer.billingAddressEn, '123 Test Road');
+  // เว้นวรรคล้วน = ว่าง — ปล่อย null ให้ชั้นเรนเดอร์ถอยไปไทยเอง
+  assert.equal(fromQuote.customer.shippingAddressEn, null);
+  // ค่าบนใบสั่งขายเองมาก่อน snapshot ของใบเสนอราคา
+  const own = buildIssuedSalesOrderPayload({
+    ...baseOrder,
+    billingAddressEn: 'SO Road',
+    quotation: { ...baseOrder.quotation, billingAddressEn: 'QT Road' },
+  });
+  assert.equal(own.customer.billingAddressEn, 'SO Road');
+  // ช่องไทยไม่ขยับ
+  assert.equal(own.customer.customerName, 'ลูกค้า ก');
+  assert.equal(own.customer.billingAddress, '123 ถนนทดสอบ');
+  // ใบเก่าที่ยังไม่มีคอลัมน์ = null ทั้งชุด (ไม่ backfill ตามมติผู้ใช้)
+  const old = buildIssuedSalesOrderPayload(baseOrder);
+  assert.equal(old.customer.customerNameEn, null);
+  assert.equal(old.customer.billingAddressEn, null);
+  assert.equal(old.customer.shippingAddressEn, null);
 });

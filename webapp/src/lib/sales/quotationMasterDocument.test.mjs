@@ -413,6 +413,73 @@ test('V4 doc: ใบอังกฤษที่ข้อมูลยังเป
   assert.match(html, /<span>Grand Total<\/span>/);
 });
 
+/* ── ชื่อ/ที่อยู่ "ลูกค้า" ตามภาษาของใบ (มติผู้ใช้ 2026-09-03) ──────────────
+   ก่อนหน้านี้บล็อกผู้ซื้อพิมพ์ไทยเสมอแม้ใบเป็นอังกฤษ เพราะใบไม่เคยเก็บคู่ภาษาของ
+   ลูกค้าเลย · เทสต์ฝั่ง "ไม่มีอังกฤษ = ถอยไปไทย" อยู่ในเทสต์ก่อนหน้านี้แล้ว */
+test('V4 doc: ใบอังกฤษพิมพ์ชื่อ/ที่อยู่ลูกค้าเป็นอังกฤษ ไม่เหลือไทยในบล็อกผู้ซื้อ', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    docLanguage: 'en',
+    customerNameEn: 'TEST CO., LTD.',
+    billingAddressEn: '1 Test Road, Bangkok',
+    shippingAddress: '2 ถนนจัดส่ง',
+    shippingAddressEn: '2 Delivery Road, Samut Prakan',
+  };
+  const html = printedMarkup(buildQuotationMasterHTML(q, {}));
+  assert.ok(html.includes('TEST CO., LTD.'), 'ชื่อลูกค้าภาษาอังกฤษ');
+  assert.ok(html.includes('1 Test Road, Bangkok'), 'ที่อยู่ผู้ซื้อภาษาอังกฤษ');
+  assert.ok(html.includes('2 Delivery Road, Samut Prakan'), 'ที่อยู่จัดส่งภาษาอังกฤษ');
+  for (const thai of ['ลูกค้าทดสอบ', '1 ถนนทดสอบ', '2 ถนนจัดส่ง']) {
+    assert.ok(!html.includes(thai), `ใบอังกฤษต้องไม่เหลือข้อความไทย "${thai}"`);
+  }
+});
+
+// ใบที่ไม่ได้แยกที่อยู่จัดส่ง: แถวจัดส่งซ้ำที่อยู่ออกบิล — ต้องซ้ำ "ภาษาเดียวกับใบ"
+// ไม่ใช่หล่นกลับไปที่อยู่ไทยเฉพาะแถวนั้น
+test('V4 doc: ใบอังกฤษที่ไม่แยกที่อยู่จัดส่ง — แถวจัดส่งใช้ที่อยู่ออกบิลภาษาอังกฤษ', () => {
+  const q = {
+    ...baseQuote([lineOf('1')]),
+    docLanguage: 'en',
+    customerNameEn: 'TEST CO., LTD.',
+    billingAddressEn: '1 Test Road, Bangkok',
+  };
+  const html = printedMarkup(buildQuotationMasterHTML(q, {}));
+  assert.ok(!html.includes('1 ถนนทดสอบ'), 'ที่อยู่ไทยต้องไม่หลุดมาในแถวจัดส่ง');
+  assert.equal((html.match(/1 Test Road, Bangkok/g) || []).length, 2, 'ทั้งช่องที่อยู่และแถวจัดส่ง');
+});
+
+// ⚠️ ยามของมติ "ห้ามทำให้ใบไทยเปลี่ยนหน้าตาแม้แต่พิกเซลเดียว" — ใบไทยที่กรอกอังกฤษ
+// ครบต้องได้ HTML เดิมทุกตัวอักษร ไม่ใช่แค่ "ดูเหมือนเดิม"
+// (เทียบด้วย === ไม่ใช่ assert.equal เพราะเอกสารเต็มไฟล์มีฟอนต์ base64 — ต่างกันเมื่อไร
+//  ตัวรายงานผลจะพ่นทั้งไฟล์ออกมาจนอ่านไม่ออก)
+test('V4 doc: ใบไทยไม่ขยับแม้ใบจะมีชื่อ/ที่อยู่อังกฤษครบ', () => {
+  const th = {
+    ...baseQuote([lineOf('1')]),
+    shippingAddress: '2 ถนนจัดส่ง',
+  };
+  const withEn = buildQuotationMasterHTML({
+    ...th,
+    customerNameEn: 'TEST CO., LTD.',
+    billingAddressEn: '1 Test Road, Bangkok',
+    shippingAddressEn: '2 Delivery Road, Samut Prakan',
+  }, {});
+  assert.ok(withEn === buildQuotationMasterHTML(th, {}), 'ใบไทยต้องออก HTML เดิมทุกตัวอักษร');
+});
+
+/* ⚠️ ข้อยกเว้นเดียวของ "ใบไทยไม่แตะภาษาอังกฤษ": ช่องที่ **ไม่มีไทยเลย** ยังพิมพ์อังกฤษ
+   ต่อ — เป็นมติ "อย่างน้อยหนึ่งภาษา" (2026-08-22) ที่ pickDocumentAddresses ทำอยู่แล้ว
+   ตั้งแต่ตอนแช่แข็งที่อยู่ลงใบ (billing.address || billing.addressEn) · ที่นี่แค่เดินกติกา
+   เดียวกันต่อ ดีกว่าพิมพ์ขีดบนเอกสารที่ส่งลูกค้า */
+test('V4 doc: ใบไทยที่ช่องนั้นมีแต่ภาษาอังกฤษ — พิมพ์อังกฤษ ไม่ใช่ขีด', () => {
+  const html = printedMarkup(buildQuotationMasterHTML({
+    ...baseQuote([lineOf('1')]),
+    customerName: '',
+    customerNameEn: 'TEST CO., LTD.',
+  }, {}));
+  assert.ok(html.includes('TEST CO., LTD.'));
+  assert.ok(html.includes('1 ถนนทดสอบ'), 'ช่องที่มีไทยยังพิมพ์ไทยตามเดิม');
+});
+
 test('V4 doc: ใบอังกฤษได้ชื่อ/ที่อยู่บริษัทอังกฤษล้วน — ไม่มีชื่อไทยเป็นบรรทัดรอง', () => {
   const company = {
     legalNameTh: 'บริษัท เซนท์ แอนด์ เซนส์ จำกัด',
@@ -629,8 +696,22 @@ test('กล่องยืนยันขึ้นเมื่อบรรท�
   const html = buildQuotationMasterSwitchableHTML(switchableApproved(), { editable: true });
   assert.match(html, /id="langConfirm"/);
   assert.match(html, /ชื่อสินค้าทั้ง 1 บรรทัด ยังไม่มีชื่ออังกฤษ/);
-  // ข้อจำกัดเรื่องลูกค้าต้องขึ้นเสมอ — เอกสารไม่มีทางเดินภาษาอังกฤษของลูกค้าเลย
-  assert.match(html, /ชื่อและที่อยู่ลูกค้าพิมพ์เป็นภาษาไทยเสมอ/);
+  /* ⭐ ชื่อ/ที่อยู่ลูกค้าเป็นช่องที่ **กรอกให้ครบได้** แล้ว (มติผู้ใช้ 2026-09-03)
+     ใบตัวอย่างนี้มีแต่ภาษาไทย ⇒ ต้องบอกว่าจะพิมพ์ไทย ไม่ใช่บอกว่า "พิมพ์ไทยเสมอ" */
+  assert.match(html, /ชื่อลูกค้ายังไม่มีภาษาอังกฤษ/);
+  assert.match(html, /ที่อยู่ลูกค้ายังไม่มีภาษาอังกฤษ/);
+});
+
+// อีกด้านของกติกาเดียวกัน: ไม่มีอะไรตกหล่น = ไม่ต้องถามก่อนสลับภาษา
+test('กล่องยืนยันหายไปเมื่อกรอกคู่ภาษาครบทั้งใบ', () => {
+  const html = buildQuotationMasterSwitchableHTML(switchableApproved({
+    lines: [lineOf('a', { metadata: { descriptionEn: 'Reed Diffuser' } })],
+    customerNameEn: 'Test Co., Ltd.',
+    billingAddressEn: '1 Test Road',
+  }), { editable: true });
+  assert.doesNotMatch(html, /id="langConfirm"/);
+  // สวิตช์ยังทำงาน แค่ไม่ต้องถามก่อน
+  assert.match(html, /window\.ssSetDocLanguage = apply;/);
 });
 
 // ขากลับเป็นไทยไม่มีอะไรตกหล่น จึงต้องไม่ถาม

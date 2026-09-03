@@ -235,7 +235,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (contactPicked || addressPicked) {
     const { data: cust } = before.customerId
       ? await supabase.from('customers')
-        .select('addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
+        .select('addresses, address, shippingAddress, branchCode, "nameEn", contacts, contactPerson, contactPhone')
         .eq('id', before.customerId).maybeSingle()
       : { data: null };
     if (contactPicked) {
@@ -251,8 +251,18 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!picked.snapshot.billingAddress) {
       return badRequest('ลูกค้ารายนี้ยังไม่มีที่อยู่สำหรับออกเอกสาร — เพิ่มที่ฐานข้อมูลลูกค้าก่อน');
     }
+    /* ⚠️ ก้อนนี้พ่วงข้อความอังกฤษ (billingAddressEn/shippingAddressEn) มาด้วยตั้งแต่
+       2026-09-03 — `save_quotation_content` เป็น **whitelist คอลัมน์**: คีย์ที่ไม่มีชื่อ
+       ในลิสต์ถูกทิ้งเงียบ ไม่ error (โรคเดิมของ mig 0124/0244) ⇒ เพิ่มคีย์ใน
+       pickDocumentAddresses เมื่อไร ต้องขยายลิสต์ของ RPC ในคอมมิตเดียวกันเสมอ
+       ยาม: saveQuotationContentColumns.test.mjs */
     Object.assign(patch, picked.snapshot);
     }
+    /* ชื่ออังกฤษรีเฟรชคู่กับที่อยู่ — ไม่งั้นใบที่มีอยู่แล้ววันนี้ไม่มีเส้นไหนเขียนคีย์นี้เลย
+       (เขียนแค่ตอนสร้างใบใหม่กับตอนออก Rev.) แล้วใบอังกฤษพิมพ์ชื่อไทยตลอดไป
+       ⚠️ ทะเบียนว่าง = คงค่าเดิมของใบ ไม่ล้างทิ้ง (กติกาเดียวกับ revise/route.js) */
+    const nextNameEn = String(cust?.nameEn || '').trim();
+    if (nextNameEn) patch.customerNameEn = nextNameEn;
   }
 
   // บรรทัด + ส่วนลด + VAT → คิดยอดใหม่

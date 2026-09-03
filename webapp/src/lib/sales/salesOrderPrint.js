@@ -116,9 +116,15 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
   // แมป order → รูป quote ที่ model builder V4 รับ (ข้อมูลลูกค้ามาจาก snapshot ในใบเสนอราคาที่ผูก)
   const printable = {
     customerName: order.customerName,
+    /* คู่ภาษาอังกฤษของชื่อ/ที่อยู่ลูกค้า (มติผู้ใช้ 2026-09-03) — แม่แบบเลือกภาษาเอง
+       แล้วถอยไปไทยเมื่อว่าง · ลำดับที่มาต้องตรงกับ buildIssuedSalesOrderPayload เป๊ะ
+       (ใบสั่งขายก่อน ถอยไปใบเสนอราคาที่ผูก) ไม่งั้นพิมพ์สดกับฉบับตรึงพิมพ์คนละภาษา */
+    customerNameEn: order.customerNameEn || quotation.customerNameEn,
     customerTaxId: quotation.customerTaxId,
     billingAddress: quotation.billingAddress,
+    billingAddressEn: order.billingAddressEn || quotation.billingAddressEn,
     shippingAddress: quotation.shippingAddress,
+    shippingAddressEn: order.shippingAddressEn || quotation.shippingAddressEn,
     branchCode: quotation.branchCode,
     contactName: quotation.contactName,
     contactPhone: quotation.contactPhone,

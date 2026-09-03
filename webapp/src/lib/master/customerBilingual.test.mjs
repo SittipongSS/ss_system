@@ -141,12 +141,39 @@ test('กระจกช่องเดี่ยว/เอกสาร: ที�
 });
 
 test('snapshot ของเอกสารไม่มีคีย์ใหม่งอก (ยาม save_quotation_content)', () => {
-  // ⚠️ เพิ่มคีย์ที่นี่เมื่อไร ต้องขยาย whitelist ของ RPC ในคอมมิตเดียวกัน —
-  // saveQuotationContentColumns.test.mjs อ่านชุดคีย์นี้ไปเทียบกับ migration ล่าสุด
+  /* ⚠️ เพิ่มคีย์ที่นี่เมื่อไร ต้อง **ขยาย whitelist ของ RPC ในคอมมิตเดียวกัน** —
+     saveQuotationContentColumns.test.mjs อ่านชุดคีย์นี้ไปเทียบกับ migration ล่าสุด
+     คีย์ที่ไม่มีชื่อในลิสต์คอลัมน์ของ save_quotation_content ถูกทิ้งเงียบ ไม่ error
+     (โรคเดิมของ mig 0124/0244) · รอบ 2026-09-03 คีย์อังกฤษสองตัวเข้ามาพร้อมกติกา
+     "ใบอังกฤษพิมพ์ที่อยู่อังกฤษ" ⇒ ต้องมีทั้ง ALTER TABLE เพิ่มคอลัมน์ให้
+     quotations/sales_orders และลิสต์คอลัมน์ของ RPC ที่ยาวขึ้นตาม */
   assert.deepEqual(
     Object.keys(pickDocumentAddresses(null, {}).snapshot).sort(),
-    ['billingAddress', 'billingAddressId', 'branchCode', 'shippingAddress', 'shippingAddressId'],
+    ['billingAddress', 'billingAddressEn', 'billingAddressId', 'branchCode',
+      'shippingAddress', 'shippingAddressEn', 'shippingAddressId'],
   );
+});
+
+test('snapshot เอกสาร: คีย์อังกฤษเก็บอังกฤษล้วน — ไม่มีคือ null ไม่ใช่ถอยไปไทย', () => {
+  const thaiOnly = normalizeAddresses([{ id: 'ADR-th', address: '1 ถนนสีลม', useFor: 'both' }]);
+  const snap = pickDocumentAddresses({ addresses: thaiOnly }, {}).snapshot;
+  assert.equal(snap.billingAddress, '1 ถนนสีลม');
+  // null = "ยังไม่มีอังกฤษ" ⇒ หน้าต่างพิมพ์เตือนแล้วถอยไปไทยเอง (มติผู้ใช้ 2026-09-03)
+  // ถ้าถอยให้ตรงนี้ ปลายทางจะแยกไม่ออกว่าใบนั้นพิมพ์ไทยเพราะอะไร แล้วคำเตือนก็ไม่ขึ้น
+  assert.equal(snap.billingAddressEn, null);
+  assert.equal(snap.shippingAddressEn, null);
+});
+
+test('snapshot เอกสาร: ที่อยู่จัดส่งอังกฤษต้องไม่ถอยไปที่อยู่ออกบิล', () => {
+  const list = normalizeAddresses([
+    { id: 'ADR-bill', address: '1 ถนนสีลม', addressEn: '1 Silom Rd.', useFor: 'billing' },
+    { id: 'ADR-ship', address: '9 คลังบางนา', useFor: 'shipping' },
+  ]);
+  const snap = pickDocumentAddresses({ addresses: list }, {}).snapshot;
+  assert.equal(snap.shippingAddress, '9 คลังบางนา');
+  assert.equal(snap.billingAddressEn, '1 Silom Rd.');
+  // 🐞 ถอยไปบิล = ใบอังกฤษพิมพ์ที่อยู่ออกบิลเป็นที่อยู่จัดส่ง ซึ่งเป็นคนละที่กันจริง ๆ
+  assert.equal(snap.shippingAddressEn, null);
 });
 
 /* ── คำเตือน "สำนักงานใหญ่/สาขา" ในชื่อกิจการ ──────────────────────────────

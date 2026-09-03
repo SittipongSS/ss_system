@@ -238,6 +238,48 @@ test('SO: docLanguage=en → ป้ายบนกระดาษเป็นอ
   assert.match(html, /Grand Total/);
 });
 
+/* ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษบนใบสั่งขาย (มติผู้ใช้ 2026-09-03) — ลำดับที่มาต้องตรงกับ
+   buildIssuedSalesOrderPayload เป๊ะ (ใบสั่งขายก่อน ถอยไปใบเสนอราคาที่ผูก) ไม่งั้นพิมพ์สด
+   กับฉบับตรึงพิมพ์คนละภาษาบนใบเดียวกัน */
+test('SO ภาษาอังกฤษ: ใช้ชื่อ/ที่อยู่อังกฤษของใบสั่งขายก่อน แล้วถอยไปใบเสนอราคาที่ผูก', () => {
+  const own = buildSalesOrderPrintHTML({
+    ...order,
+    docLanguage: 'en',
+    customerNameEn: 'ORDER CO., LTD.',
+    billingAddressEn: '1 Order Road',
+    quotation: { ...order.quotation, customerNameEn: 'QUOTE CO., LTD.', billingAddressEn: '9 Quote Road' },
+  });
+  assert.ok(own.includes('ORDER CO., LTD.') && own.includes('1 Order Road'), 'ค่าของใบสั่งขายชนะ');
+  assert.ok(!own.includes('QUOTE CO., LTD.') && !own.includes('9 Quote Road'));
+
+  const inherited = buildSalesOrderPrintHTML({
+    ...order,
+    docLanguage: 'en',
+    quotation: { ...order.quotation, customerNameEn: 'QUOTE CO., LTD.', billingAddressEn: '9 Quote Road' },
+  });
+  assert.ok(inherited.includes('QUOTE CO., LTD.') && inherited.includes('9 Quote Road'), 'ถอยไปใบที่ผูก');
+});
+
+// ไม่มีคู่อังกฤษเลย = พิมพ์ไทยต่อ (ใบเก่าทุกใบ ซึ่งไม่ถูก backfill ตามมติ "ใบเก่าปล่อยไว้")
+test('SO ภาษาอังกฤษที่ยังไม่มีคู่อังกฤษ — ถอยไปชื่อ/ที่อยู่ไทย ไม่ปล่อยช่องว่าง', () => {
+  const html = buildSalesOrderPrintHTML({ ...order, docLanguage: 'en' });
+  assert.ok(html.includes('ลูกค้าทดสอบ'), 'ชื่อลูกค้าไทยยังต้องขึ้นเอกสาร');
+  assert.ok(html.includes('กรุงเทพฯ'), 'ที่อยู่ไทยยังต้องขึ้นเอกสาร');
+});
+
+/* ยามของมติ "ใบไทยต้องไม่ขยับ" ฝั่งใบสั่งขาย — เทียบด้วย === ไม่ใช่ assert.equal
+   เพราะเอกสารเต็มไฟล์มีฟอนต์ base64 ต่างกันเมื่อไรจะพ่นทั้งไฟล์ออกมาจนอ่านไม่ออก */
+test('SO ภาษาไทยไม่ขยับแม้ใบจะมีชื่อ/ที่อยู่อังกฤษครบ', () => {
+  const th = { ...order, quotation: { ...order.quotation, shippingAddress: 'สมุทรปราการ' } };
+  const withEn = buildSalesOrderPrintHTML({
+    ...th,
+    customerNameEn: 'ORDER CO., LTD.',
+    billingAddressEn: '1 Order Road',
+    shippingAddressEn: '2 Delivery Road',
+  });
+  assert.ok(withEn === buildSalesOrderPrintHTML(th), 'ใบไทยต้องออก HTML เดิมทุกตัวอักษร');
+});
+
 test('SO: โหมดสวิตช์ยิง PATCH ไปที่ route ของใบสั่งขาย ไม่ใช่ของใบเสนอราคา', () => {
   const html = buildSalesOrderPrintHTML(
     { ...order, id: 'SO-abc' }, null, null, { switchable: true, editable: true },
