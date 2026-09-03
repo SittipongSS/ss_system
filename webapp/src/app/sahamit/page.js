@@ -7,6 +7,7 @@ import { LayoutDashboard, LineChart, ShoppingCart, AlertCircle, Clock, TrendingU
 import Workspace from "@/components/ui/Workspace";
 import KpiCard from "@/components/ui/KpiCard";
 import Tabs from "@/components/ui/Tabs";
+import DetailRow from "@/components/ui/DetailRow";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { useApiList } from "@/lib/excise/useApiList";
 import { poRollupStatus } from "@/lib/sahamit/po";
@@ -177,15 +178,24 @@ export default function SahamitOverview() {
                     <thead><tr><th style={{ paddingLeft: "20px" }}>เลขที่ PO</th><th>วันที่รับ PO</th><th>สถานะ</th></tr></thead>
                     <tbody>
                       {recentFollowUps.map((p) => (
-                        <tr key={p.id} onClick={() => router.push(`/sahamit/po?q=${p.poNumber}`)} style={{ cursor: "pointer" }} className="hover-row">
+                        /* ── แถวเป็น `DetailRow` ไม่ใช่ `<tr onClick>` ดิบ (2026-09-03) ────────────
+                            ของเดิมแขวน `onClick` + `cursor: pointer` ไว้บน `<tr>` เอง ⇒ เมาส์กดได้
+                            แต่คีย์บอร์ดเข้าไม่ถึง (WCAG 2.1.1) และ **ทางลัดเมาส์บนแถวได้รับยกเว้น
+                            ที่ `ui/DetailRow.js` จุดเดียวในระบบ** ⇒ ต้องย้ายมาใช้ primitive ตัวนั้น
+                            เงื่อนไขของการยกเว้นคือด่าน ROW_MIRROR: ต้องมี `<Link>` ที่ href
+                            **ตรงตัวอักษรต่อตัวอักษร** กับของแถวอยู่ในเซลล์ — ซึ่งเซลล์แรกมีอยู่แล้ว
+                            จึงเปลี่ยนแค่แท็ก · `className` ของผู้เรียกถูกต่อท้าย `detail-row` ไม่ทับกัน
+                            🪤 `cursor: pointer` มาจาก `.detail-row` แล้ว ไม่ต้องเขียน inline อีก */
+                        <DetailRow key={p.id} href={`/sahamit/po?q=${p.poNumber}`} className="hover-row">
                           {/* เลขที่ PO เป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
-                              onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ · stopPropagation กันแถวยิง
-                              router.push ซ้ำจนได้ history ซ้อนสองชั้น (Back ต้องกดสองครั้ง) */}
+                              onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์
+                              🪤 ถอด stopPropagation ทิ้งแล้ว — DetailRow ถาม `isInteractiveTarget`
+                                 ก่อนยิง router.push จึงเห็น <a> ตัวนี้เอง ไม่มี history ซ้อนสองชั้น
+                                 (ท่าเดียวกับที่เรียกอื่น ๆ ของ DetailRow ใช้อยู่) */}
                           <td style={{ paddingLeft: "20px", fontWeight: "var(--fw-medium)" }}>
                             <Link
                               href={`/sahamit/po?q=${p.poNumber}`}
                               className="linklike"
-                              onClick={(e) => e.stopPropagation()}
                               title="เปิดรายการ PO ที่กรองด้วยเลขที่นี้"
                             >
                               {p.poNumber}
@@ -193,7 +203,7 @@ export default function SahamitOverview() {
                           </td>
                           <td>{naText(p.receivedDate)}</td>
                           <td><span className={`status-pill ${poRollupStatus(p) === "open" ? "warning" : "info"}`}>{poRollupStatus(p) === "open" ? "รอผลิต" : "ทยอยส่ง"}</span></td>
-                        </tr>
+                        </DetailRow>
                       ))}
                     </tbody>
                   </table></TableScroll>
@@ -212,7 +222,17 @@ export default function SahamitOverview() {
                   {recentFCs.map((fc) => (
                     <div key={fc.id} style={{ display: "flex", flexDirection: "column", gap: "4px", paddingBottom: "12px", borderBottom: "1px dashed var(--border)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontWeight: "var(--fw-medium)", fontSize: "var(--fs-7)", color: "var(--text)", cursor: "pointer" }} onClick={() => router.push("/sahamit/forecast")}>นำเข้ารอบ FC ที่ #{fc.roundNo}</span>
+                        {/* ── หัวข้อรอบ FC เป็น <Link> ไม่ใช่ <span onClick> (2026-09-03) ──────────
+                            เดิมเป็น `<span>` ที่แขวนตัวรับคลิกยิง router.push เอง ⇒ เมาส์กดได้ แต่คีย์บอร์ด
+                            เข้าไม่ถึงเลย (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา
+                            ⇒ ห่อด้วย <Link> ตรง ๆ ได้ **เพราะไม่มีตัวกดครอบอยู่**: แม่เป็น <div>
+                            ธรรมดาสองชั้นที่ไม่มี onClick ⇒ ไม่กลายเป็นตัวกดซ้อนตัวกด
+                            🪤 ใช้ `.card-link` ไม่ใช่ `.linklike` — `.linklike` เป็น **ลิงก์ข้อความ**
+                               (สี accent + เส้นใต้) ซึ่งจะเปลี่ยนหน้าตาหัวข้อนี้ทั้งบรรทัด
+                               `.card-link` ให้ `color: inherit` + วงโฟกัส `--accent-ink` เฉย ๆ
+                               ⇒ inline style เดิม (สี/น้ำหนัก/ขนาด) ยังคุมหน้าตาเหมือนเดิมทุกพิกเซล
+                            🪤 ถอด `cursor: pointer` ออก — <a> ที่มี href แจกให้เองอยู่แล้ว */}
+                        <Link href="/sahamit/forecast" className="card-link" style={{ fontWeight: "var(--fw-medium)", fontSize: "var(--fs-7)", color: "var(--text)" }}>นำเข้ารอบ FC ที่ #{fc.roundNo}</Link>
                         <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>{naText(fc.receivedDate)}</span>
                       </div>
                       <span style={{ fontSize: "var(--fs-5)", color: "var(--text-2)" }}>ครอบคลุม {fc.coverMonths?.length || 0} เดือน</span>

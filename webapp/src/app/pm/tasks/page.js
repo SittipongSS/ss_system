@@ -14,6 +14,7 @@ import TaskNoteLine from "@/components/pm/TaskNoteLine";
 import Button from "@/components/ui/Button";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import ClickableCard from "@/components/ui/ClickableCard";
+import DetailRow from "@/components/ui/DetailRow";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -584,18 +585,39 @@ export default function TasksPage() {
       </span>
     );
   };
+  /* ⭐ มีชื่องานก่อนหน้า = **ลิงก์แท้ ๆ ที่มี URL ปลายทาง** ⇒ ต้องเป็น <Link>
+     ไม่ใช่ <span onClick> — คีย์บอร์ด/โปรแกรมอ่านหน้าจอ/คลิกขวาเปิดแท็บใหม่ อยู่ที่นั่น (WCAG 2.1.1)
+     🪤 ต้องแยกเป็น **สองกิ่ง** ไม่ใช่ <Link> ที่ href เป็น undefined — งานก่อนหน้าที่อยู่
+        นอกรายการที่โหลดมาไม่มีปลายทางให้ไป · และตัวรับคลิกที่เป็นกิ่ง ternary ปลาย `undefined`
+        ก็ยังนับเป็นความผิด
+        เพราะ attribute มีอยู่จริง ⇒ สาขาที่ไม่มีปลายทางเป็น <span> เปล่า ไม่มี onClick เลย
+     🪤 ใช้ `.card-link` ไม่ใช่ `.linklike` — ชิปมีพื้น/สีของตัวเองอยู่แล้ว
+        `.linklike` จะบังคับสี accent + เส้นใต้ทับทิ้ง · `.card-link` ให้ `color: inherit` +
+        `text-decoration: none` + วงโฟกัส `--accent-ink` ⇒ หน้าตาเท่าเดิมทุกพิกเซล
+     🪤 ถอด stopPropagation ออกได้: ชิปเป็น <a> จริงแล้ว ⇒ isInteractiveTarget ของ
+        ClickableCard/DetailRow เห็นมันเองผ่าน closest("a,…") จึงไม่ยิง router.push ซ้ำ */
   const chainBadge = (t) => {
     if (!t.predecessorId) return null;
     const prev = taskById.get(t.predecessorId);
+    if (!prev) {
+      return (
+        <span title="ต่อจากงานก่อนหน้า (อยู่นอกรายการที่กำลังดู)" style={CHIP_CHAIN}>
+          <CornerDownRight size={10} style={CHIP_ICON} />
+          <span style={CHIP_TEXT}>ต่อจาก งานก่อนหน้า</span>
+        </span>
+      );
+    }
     return (
-      <span
-        title={prev ? `ต่อจากงาน “${prev.title}”` : "ต่อจากงานก่อนหน้า (อยู่นอกรายการที่กำลังดู)"}
-        onClick={prev ? (e) => { e.stopPropagation(); router.push(`/sa/tasks/${prev.id}`); } : undefined}
-        style={prev ? CHIP_CHAIN_LINK : CHIP_CHAIN}
+      <Link
+        prefetch={false}
+        href={`/sa/tasks/${prev.id}`}
+        className="card-link"
+        title={`ต่อจากงาน “${prev.title}”`}
+        style={CHIP_CHAIN_LINK}
       >
         <CornerDownRight size={10} style={CHIP_ICON} />
-        <span style={CHIP_TEXT}>ต่อจาก {prev ? prev.title : "งานก่อนหน้า"}</span>
-      </span>
+        <span style={CHIP_TEXT}>ต่อจาก {prev.title}</span>
+      </Link>
     );
   };
 
@@ -670,26 +692,34 @@ export default function TasksPage() {
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
     if (!proj && !deal) return null;
     return (
+      /* ⭐ ชิปทั้งสองใบพาไปคนละหน้า = **ลิงก์แท้** ⇒ <Link> ไม่ใช่ <span onClick>
+         (เหตุผลเต็มอยู่เหนือ chainBadge — ท่าเดียวกันทุกข้อ รวมทั้งการถอด stopPropagation)
+         🪤 `card-link` เป็นของบังคับ ไม่ใช่ของแถม: LINK_PROJECT **ไม่ประกาศ color**
+            ⇒ ถ้าไม่ล้าง ชิปจะได้สีลิงก์ของเบราว์เซอร์ + เส้นใต้ · ส่วน LINK_DEAL ประกาศ
+            color เองแล้วแต่ยังต้องล้าง text-decoration ของ <a> และรับวงโฟกัส --accent-ink */
       <span style={LINK_STACK}>
         {proj && (
-          <span
-            onClick={(e) => { e.stopPropagation(); router.push(`/sa/projects/${proj.code || t.projectId}`); }}
+          <Link
+            prefetch={false}
+            href={`/sa/projects/${proj.code || t.projectId}`}
             title={`โครงการ ${proj.code || ""}${proj.name ? ` · ${proj.name}` : ""}`.trim()}
-            className="font-mono"
+            className="font-mono card-link"
             style={LINK_PROJECT}
           >
             {proj.code}
-          </span>
+          </Link>
         )}
         {deal && (
-          <span
-            onClick={(e) => { e.stopPropagation(); router.push(`/sa/deals/${deal.id}`); }}
+          <Link
+            prefetch={false}
+            href={`/sa/deals/${deal.id}`}
             title={`ดีล ${deal.title}`}
+            className="card-link"
             style={LINK_DEAL}
           >
             <Handshake size={10} style={CHIP_ICON} />
             <span style={CHIP_TEXT}>{deal.title}</span>
-          </span>
+          </Link>
         )}
       </span>
     );
@@ -795,7 +825,12 @@ export default function TasksPage() {
   const taskRow = (t) => {
             const u = getUrgencyInfo(t);
             return (
-              <tr key={t.id} className="premium-row" onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" style={{ cursor: "pointer" }}>
+              /* ⭐ ทั้งแถวกดได้ผ่าน DetailRow ไม่ใช่ <tr onClick> ดิบ — onClick บน <tr> คือ
+                 **ทางลัดของเมาส์** ส่วนทางเข้าจริงคือ <Link href={ตัวเดียวกัน}> ที่ชื่องานในเซลล์ถัดไป
+                 (ด่าน ROW_MIRROR บังคับให้ข้อความนิพจน์ href ตรงกันเป๊ะ) · ห้ามเติม
+                 role/tabIndex บน <tr>/<td> แทน มันจะทับ role="row" ทิ้ง (WCAG 1.3.1)
+                 🪤 ถอด style cursor ออกได้ — `.detail-row` ให้ cursor: pointer มาแล้ว */
+              <DetailRow key={t.id} className="premium-row" href={`/sa/tasks/${t.id}`} title="คลิกเพื่อดูรายละเอียดงาน">
                 <td onClick={(e) => e.stopPropagation()}>{statusCell(t)}</td>
                 <td style={{ fontWeight: "var(--fw-medium)", minWidth: "220px" }}>
                   <div style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: "450px", lineHeight: 1.4 }}>
@@ -803,15 +838,14 @@ export default function TasksPage() {
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                       {t.urgent && <Flame size={13} color="var(--red)" style={{ flexShrink: 0, marginTop: "2px" }} />}
                       {/* ชื่องานเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
-                          ส่วน onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ (ท่าเดียวกับหน้าดีล/ลีด)
-                          stopPropagation กันแถวยิง router.push ซ้ำ ⇒ ไม่งั้นได้ history ซ้อนสองชั้น
-                          แล้วปุ่ม Back ต้องกดสองครั้ง */}
+                          ส่วน onClick ของแถวเหลือไว้เป็นทางลัดของเมาส์ (ท่าเดียวกับหน้าดีล/ลีด)
+                          ไม่ต้อง stopPropagation: DetailRow ถาม isInteractiveTarget ก่อนเสมอ
+                          จึงไม่ยิง router.push ซ้อน ⇒ ไม่มี history สองชั้นให้ Back ต้องกดสองครั้ง */}
                       <span style={{ flex: 1 }}>
                         <Link
                           prefetch={false}
                           href={`/sa/tasks/${t.id}`}
                           className="linklike"
-                          onClick={(e) => e.stopPropagation()}
                           title="เปิดหน้ารายละเอียดงาน"
                         >
                           {t.title}
@@ -851,7 +885,7 @@ export default function TasksPage() {
                     <RowActionMenu label={`การจัดการของงาน ${t.title}`} items={rowMenu(t)} />
                   </div>
                 </td>
-              </tr>
+              </DetailRow>
             );
   };
 

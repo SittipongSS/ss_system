@@ -1,5 +1,6 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 // คำร้องข้ามฝ่าย (mig 0173) — คำร้องของฉัน / คิวของฝ่ายตน
 //
 // เซลเปิดเคสถามราคาไป PC (บรรจุภัณฑ์) หรือ RD (หัวน้ำหอม/เนื้อสาร)
@@ -225,7 +226,11 @@ export default function RequestQueuePanel({
     );
   };
 
-  const cell = (key, ask) => {
+  /* 🪤 `titleLink` ส่งเข้ามาจาก **ตัวแถว** ไม่ได้ประกอบที่นี่ — ด่าน ROW_MIRROR อ่านเฉพาะ
+     ข้อความที่อยู่ระหว่าง <DetailRow> กับ </DetailRow> ⇒ ลิงก์ที่เขียนไว้ในฟังก์ชันนี้
+     (คนละที่ในไฟล์) ถูกนับว่า "แถวไม่มีลิงก์ปลายทางเดียวกันในเซลล์" ซึ่งเป็น hard-zero
+     ⚠️ มุมมองการ์ดไม่ได้เรียก cell() (เป็น <button> ครอบทั้งใบอยู่แล้ว) จึงมีผู้เรียกเดียว */
+  const cell = (key, ask, titleLink = null) => {
     const due = requestDueText(ask, { todayIso: today });
     // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
     const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -302,21 +307,11 @@ export default function RequestQueuePanel({
               )}
             </div>
             {/* ⭐ **ชื่อเรื่องเป็น <Link> จริง** — ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/
-                เปิดแท็บใหม่ ส่วน onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์เหมือนเดิม
+                เปิดแท็บใหม่ ส่วน onClick ของแถวเหลือไว้เป็นทางลัดของเมาส์เหมือนเดิม
                 วางที่บรรทัดนี้เพราะ **มีเนื้อหาเสมอ** (ชื่อเรื่อง → ชื่อลูกค้า → "ราคากลาง")
                 ต่างจากเลขที่ใบซึ่งใบร่างยังไม่มี ⇒ ลิงก์ที่หายไปบางแถวคือทางเข้าที่หายไปด้วย
-                stopPropagation กันแถวยิง router.push ซ้ำจนได้ history ซ้อนสองชั้น */}
-            <div className={styles.docCell}>
-              <Link
-                prefetch={false}
-                href={`/requests/${ask.id}`}
-                className="linklike"
-                onClick={(e) => e.stopPropagation()}
-                title="เปิดหน้าคำร้อง"
-              >
-                {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
-              </Link>
-            </div>
+                ⚠️ ตัวลิงก์เขียนอยู่ที่ตัวแถว แล้วส่งเข้ามาเป็น `titleLink` (ดูเหตุผลเหนือ cell) */}
+            <div className={styles.docCell}>{titleLink}</div>
             <div className={styles.subText}>
               {[
                 cols.includes("kind") ? null : requestKindLabel(ask.kind),
@@ -717,19 +712,29 @@ export default function RequestQueuePanel({
                   </tr>
                   )}
                   {!isCollapsed(g.key) && g.rows.map((ask) => (
-                    <tr
-                      key={ask.id} className={styles.rowLink}
-                      onClick={() => router.push(`/requests/${ask.id}`)}
-                    >
+                    /* ⭐ ทั้งแถวกดได้ผ่าน DetailRow ไม่ใช่ <tr onClick> ดิบ — onClick บนแถวคือ
+                       **ทางลัดของเมาส์** ทางเข้าจริงคือ <Link href={ตัวเดียวกัน}> ที่ชื่อเรื่อง
+                       ในเซลล์ "คำร้อง" · ห้ามเติม role/tabIndex บน <tr>/<td> แทน (WCAG 1.3.1)
+                       ✅ ทั้งสองพรีเซ็ต (queue/linked) มีคอลัมน์ "doc" เสมอ ⇒ ลิงก์ไม่หายตอนรันไทม์ */
+                    <DetailRow key={ask.id} className={styles.rowLink} href={`/requests/${ask.id}`}>
                       {cols.map((key) => (
                         <td
                           key={key}
                           className={REQUEST_COLUMNS[key].num ? "num" : undefined}
                         >
-                          {cell(key, ask)}
+                          {key === "doc" ? cell(key, ask, (
+                            <Link
+                              prefetch={false}
+                              href={`/requests/${ask.id}`}
+                              className="linklike"
+                              title="เปิดหน้าคำร้อง"
+                            >
+                              {ask.title || ask.customerName || <span className={styles.muted}>ราคากลาง</span>}
+                            </Link>
+                          )) : cell(key, ask)}
                         </td>
                       ))}
-                    </tr>
+                    </DetailRow>
                   ))}
                 </Fragment>
               ))}

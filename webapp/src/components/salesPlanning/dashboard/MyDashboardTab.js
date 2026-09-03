@@ -13,7 +13,6 @@
 // คนละที่กัน แล้วเลขไม่ตรงกันได้โดยไม่มีใครรู้)
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
 } from "lucide-react";
@@ -26,6 +25,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 import { Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
 import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
@@ -45,7 +45,6 @@ const ACTIVITY_KIND_LABEL = {
 const FEED_PAGE = 8;
 
 export default function MyDashboardTab({ month, allMonths = false }) {
-  const router = useRouter();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -237,10 +236,15 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                       <td colSpan={3}>{group.label} · {group.items.length}</td>
                     </tr>
                     {group.items.map((item) => (
-                      <tr
-                        key={item.key} className={styles.queueRow}
-                        onClick={() => router.push(item.href)}
-                      >
+                      /* ── แถวเป็น `DetailRow` ไม่ใช่ `<tr onClick>` ดิบ (2026-09-03) ────────
+                         ของเดิมแขวนตัวรับคลิกที่ยิง `router.push(item.href)` ไว้บน `<tr>` เอง
+                         ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึง (WCAG 2.1.1) · ทางลัดเมาส์บนแถว
+                         ได้รับยกเว้นที่ `ui/DetailRow.js` จุดเดียวในระบบ ⇒ ต้องย้ายมาใช้ primitive
+                         เงื่อนไขของการยกเว้นคือด่าน ROW_MIRROR: ต้องมี `<Link>` ที่ href
+                         **ตรงตัวอักษรต่อตัวอักษร** กับของแถวอยู่ในเซลล์ — ที่นี่เป็น `{item.href}`
+                         ทั้งคู่ (URL มากับข้อมูลของคิวอยู่แล้ว) จึงเปลี่ยนแค่แท็ก
+                         🪤 `className` ของผู้เรียกถูกต่อท้าย `detail-row` ไม่ทับกัน */
+                      <DetailRow key={item.key} className={styles.queueRow} href={item.href}>
                         <td>
                           <span className="ui-badge ui-badge-cell ui-badge-w-nextstep">{item.step}</span>
                           <div className={styles.rowMeta}>
@@ -251,13 +255,13 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                           {/* ชื่อเรื่องเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/
                               เปิดแท็บใหม่ · onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์
                               `item.href` คือ URL ตัวเดียวกับที่แถวใช้ (มากับข้อมูลของคิวอยู่แล้ว)
-                              stopPropagation กันแถวยิง router.push ซ้ำจนได้ history ซ้อนสองชั้น */}
+                              🪤 ถอด stopPropagation ทิ้งแล้ว — DetailRow ถาม `isInteractiveTarget`
+                                 ก่อนยิง router.push จึงเห็น <a> ตัวนี้เอง ไม่มี history ซ้อนสองชั้น */}
                           <div className={styles.rowTitle}>
                             <Link
                               prefetch={false}
                               href={item.href}
                               className="linklike"
-                              onClick={(e) => e.stopPropagation()}
                             >
                               {item.title}
                             </Link>
@@ -269,7 +273,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                           <div className={item.overdue ? styles.rowOverdue : undefined}>{item.dueText}</div>
                           {item.due && <div className={styles.rowMeta}>{fmtDate(item.due)}</div>}
                         </td>
-                      </tr>
+                      </DetailRow>
                     ))}
                   </Fragment>
                 ))}
