@@ -13,6 +13,7 @@ import TaskFormModal, { TASK_BLANK } from "@/components/pm/TaskFormModal";
 import TaskNoteLine from "@/components/pm/TaskNoteLine";
 import Button from "@/components/ui/Button";
 import RowActionMenu from "@/components/ui/RowActionMenu";
+import ClickableCard from "@/components/ui/ClickableCard";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import StatusSelect from "@/components/pm/StatusSelect";
@@ -719,13 +720,23 @@ export default function TasksPage() {
     const activeAssignee = t.assigneeId || t.ownerId;
     const assigneeName = activeAssignee ? (naText(usersMap[activeAssignee])) : null;
     const showFooter = canSetStatus(t) || canWriteTasks || rowMenu(t).length > 0;
+    /* href ตัวเดียวส่งให้ทั้งการ์ดและลิงก์ที่ชื่องาน — ด่าน CARD_MIRROR เทียบ *ข้อความ
+       นิพจน์* ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที) */
+    const detailHref = `/sa/tasks/${t.id}`;
     return (
-      <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
-        <div style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+      /* ท่า C — ห่อทั้งใบด้วย <Link> ไม่ได้: ท้ายการ์ด (showFooter) มี <StatusSelect> (<select>
+         จริง) · ปุ่มติดตาม · <RowActionMenu> และแถวป้ายมี chainBadge ที่กดได้
+         ⇒ ทางเข้าของคีย์บอร์ดคือ <Link> ที่ชื่องาน ส่วน onClick ของ <ClickableCard> เป็น
+         **ทางลัดของเมาส์** ที่ isInteractiveTarget กันไม่ให้ยิงซ้อนตัวควบคุมข้างใน */
+      <ClickableCard key={t.id} href={detailHref} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "6px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
+        {/* `.linklike` เข้ามาเพื่อ **วงโฟกัส** อย่างเดียว — สี/เส้นใต้ของมันถูก style ที่อยู่
+            บรรทัดเดียวกันนี้ทับหมด (inline ชนะ class เสมอ) ⇒ หน้าตาไม่ขยับจาก <div> เดิม
+            ไม่ใช้ `linklike-block` เพราะบล็อกนี้เป็น flex บรรทัดเดียว ไม่ใช่ทรง "รหัสบน·ชื่อล่าง" */}
+        <Link prefetch={false} href={detailHref} className="linklike" style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
           {t.important && <Star size={12} color="var(--amber)" fill="var(--amber)" />}
           {t.urgent && <Flame size={12} color="var(--red)" />}
           {t.title}
-        </div>
+        </Link>
         <TaskNoteLine text={t.note} />
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", fontSize: "var(--fs-2)" }}>
           {t.category && <span style={{ background: "var(--panel-2)", padding: "1px 6px", borderRadius: "9px", color: "var(--text-2)" }}>{t.category}</span>}
@@ -747,7 +758,7 @@ export default function TasksPage() {
             </div>
           </div>
         )}
-      </div>
+      </ClickableCard>
     );
   };
 
@@ -1062,10 +1073,15 @@ export default function TasksPage() {
                     {items.slice(0, 3).map((t) => {
                       const u = getUrgencyInfo(t);
                       return (
-                        <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} style={{ fontSize: "var(--fs-2)", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
+                        /* ท่า A — ชิปนี้ข้างในมีแค่ไอคอน + <span> ชื่องาน **ไม่มีปุ่ม/ลิงก์เลย**
+                           ⇒ ห่อทั้งใบด้วย <Link> ได้ตรง ๆ ไม่ต้องใช้ ClickableCard และไม่ต้อง
+                           พึ่งด่านอะไร · `.card-link` เข้ามาเพื่อวงโฟกัสอย่างเดียว — `color: inherit`
+                           กับ `text-decoration: none` ของมันถูก style บรรทัดนี้ทับ (`color: u.color`)
+                           ⇒ หน้าตาไม่ขยับจาก <div> เดิม */
+                        <Link key={t.id} prefetch={false} href={`/sa/tasks/${t.id}`} title={`${t.title}${scope === "mine" && me?.id ? ` · ${taskRelationship(t, me.id, (id) => usersMap[id] || "").label}` : ""}`} className="card-link" style={{ fontSize: "var(--fs-2)", padding: "2px 5px", borderRadius: "5px", background: `color-mix(in srgb, ${u.color} 15%, transparent)`, color: u.color, cursor: "pointer", overflow: "hidden", display: "flex", alignItems: "center", gap: "3px" }}>
                           {t.status === "Completed" ? <CheckCircle2 size={9} /> : t.important ? <Star size={9} /> : null}
                           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
-                        </div>
+                        </Link>
                       );
                     })}
                     {items.length > 3 && <div style={{ fontSize: "var(--fs-1)", color: "var(--text-3)", paddingLeft: "3px" }}>+{items.length - 3}</div>}
@@ -1131,16 +1147,22 @@ export default function TasksPage() {
             const u = getUrgencyInfo(t);
             const done = t.status === "Completed";
             const assigneeName = t.assigneeId ? (naText(usersMap[t.assigneeId])) : null;
+            /* href ตัวเดียวส่งให้ทั้งการ์ดและลิงก์ที่ชื่องาน (เหตุผลเดียวกับ miniCard) */
+            const detailHref = `/sa/tasks/${t.id}`;
             return (
-              <div key={t.id} onClick={() => router.push(`/sa/tasks/${t.id}`)} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
+              /* ท่า C — การ์ดใบนี้มีตัวควบคุมของตัวเองมากกว่า miniCard เสียอีก: ปุ่มติดตาม +
+                 <RowActionMenu> ที่หัวการ์ด · statusCell (<select> เมื่อแก้ได้) + linkChip
+                 (ไปโครงการ/ดีล = คนละปลายทาง) ที่ท้ายการ์ด ⇒ ห่อทั้งใบด้วย <Link> ไม่ได้ */
+              <ClickableCard key={t.id} href={detailHref} title="คลิกเพื่อดูรายละเอียดงาน" className="glass-panel" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px", borderLeft: `3px solid ${statusDot(t.status)}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <span title={TASK_STATUS_TH[t.status]} style={{ padding: "2px", flexShrink: 0, color: statusDot(t.status), display: "flex" }}>{statusIcon(t.status)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    {/* `.linklike` = วงโฟกัสอย่างเดียว (สี/เส้นใต้โดน inline style ทับ) — ดู miniCard */}
+                    <Link prefetch={false} href={detailHref} className="linklike" style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)", textDecoration: done ? "line-through" : "none", color: done ? "var(--text-3)" : "var(--text)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       {t.important && <Star size={13} color="var(--amber)" fill="var(--amber)" />}
                       {t.urgent && <Flame size={13} color="var(--red)" />}
                       {t.title}
-                    </div>
+                    </Link>
                     {t.note && <ReadableText text={t.note} lines={2} style={{ fontSize: "var(--fs-5)", color: "var(--text-2)", marginTop: "2px" }} />}
                   </div>
                   <div onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
@@ -1164,7 +1186,7 @@ export default function TasksPage() {
                   {t.dueDate && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: u.color }}>{u.icon} {fmtDate(t.dueDate)}</span>}
                   {linkChip(t)}
                 </div>
-              </div>
+              </ClickableCard>
             );
           })}
         </div>

@@ -78,8 +78,9 @@ const ADDENDUM_CSS = `
   .contract .formulaTable th:first-child, .contract .formulaTable td:first-child { width: 14mm; }
   .contract .formulaTable th:nth-child(3), .contract .formulaTable td:nth-child(3) { width: 42mm; }
   .contract .formulaTable th:last-child, .contract .formulaTable td:last-child { width: 26mm; }
-  /* เลขที่บันทึกยาวกว่าเลขสัญญา (ต่อท้ายด้วย -A1) ⇒ คืนที่จากคอลัมน์ป้าย ไม่งั้นเลขตกบรรทัด */
-  .contract .identityBlock dl div { grid-template-columns: 28mm minmax(0, 1fr); }
+  /* เลขที่บันทึกยาวกว่าเลขสัญญา (ต่อท้ายด้วย -A1) ⇒ คืนที่จากคอลัมน์ป้าย ไม่งั้นเลขตกบรรทัด
+     ⚠️ ตัวสัญญาเปลี่ยนไปใช้ max-content แล้ว (ดูเหตุผลใน contractDocument.js) —
+        ค่าตายตัว 28mm ที่นี่จะทับของดีกว่าให้กลับไปแคบเหมือนเดิม จึงไม่ต้องมีอีก */
   /* หัวเรื่องของบันทึกอยู่กลางหน้าเหมือนชื่อสัญญา แต่มีบรรทัดวันที่ต่อท้าย */
 `;
 

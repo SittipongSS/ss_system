@@ -479,17 +479,25 @@ export default function ProductDetails() {
             ) : (
               <div className="space-y-2">
                 {regs.map((r) => (
-                  <div
+                  /* ── แถวทั้งแถวเป็น <Link> ไม่ใช่ `<div onClick>` (2026-09-02) ──────────
+                     เดิมแขวน `router.push(X)` ไว้บน <div> ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึง
+                     (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา
+                     ห่อทั้งแถวได้เพราะข้างในไม่มี interactive: `<ProductStatusPill>` คืน <span>
+                     ที่เหลือเป็น span ข้อความ · `clickable-row`/`cursor-pointer` ถอดได้ทั้งคู่
+                     (คลาสแรกให้แค่ cursor + กฎ `:hover td` ที่ไม่มีวันยิงบนแถวที่ไม่ใช่ตาราง
+                     ส่วน cursor เป็นของแถมของลิงก์อยู่แล้ว) · วงโฟกัสมาจาก `.card-link` */
+                  <Link
                     key={r.id}
-                    onClick={() => router.push(`/tax/registrations?open=${r.id}`)}
-                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                    prefetch={false}
+                    href={`/tax/registrations?open=${r.id}`}
+                    className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
                   >
                     <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
                     <div className="flex items-center gap-3">
                       {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
                       <ProductStatusPill status={r.status} />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -778,10 +786,13 @@ export default function ProductDetails() {
             ) : (
               <div className="space-y-2">
                 {orders.map((o) => (
-                  <div
+                  /* ห่อทั้งแถวด้วย <Link> ได้ — `<OrderStatusPill>` คืน <span> ที่เหลือเป็น
+                     ข้อความล้วน ⇒ ไม่มี interactive descendant (เหตุผลเต็มอยู่ที่การ์ด EXCISE) */
+                  <Link
                     key={o.id}
-                    onClick={() => router.push(`/tax/filings/${o.id}`)}
-                    className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                    prefetch={false}
+                    href={`/tax/filings/${o.id}`}
+                    className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
                   >
                     <div className="min-w-0">
                       <span className="font-semibold font-mono text-[var(--text)]">{o.quotationRef || o.id}</span>
@@ -791,7 +802,7 @@ export default function ProductDetails() {
                       <span className="font-mono text-[var(--text-3)]">x{o.productQuantity}</span>
                       <OrderStatusPill status={o.status} />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -803,17 +814,23 @@ export default function ProductDetails() {
           <DetailCard icon={FolderKanban} eyebrow="Projects" title={`โครงการที่เกี่ยวข้อง (${projects.length})`}>
             <div className="space-y-2">
               {projects.map((p) => (
-                <div
+                /* ห่อทั้งแถวด้วย <Link> ได้ — ป้ายสถานะเป็น span ที่ใส่คลาส ui-badge
+                   ที่เหลือเป็นข้อความล้วน ⇒ ไม่มี interactive descendant
+                   🪤 จงใจไม่เขียนชื่อคลาสในรูป `className="…"` ตรงนี้ — badgeFamilies.test.mjs
+                      นับ *สตริงที่มีชื่อคลาส* จากไฟล์ดิบ (ไม่ล้างคอมเมนต์) ⇒ คอมเมนต์ที่ยกโค้ด
+                      มาแปะจะไปบวกตัวเลข "จุดที่ใช้งานจริง" บนหน้าต้นแบบให้เพี้ยน */
+                <Link
                   key={p.id}
-                  onClick={() => router.push(`/sa/projects/${p.id}`)}
-                  className="clickable-row flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2 cursor-pointer"
+                  prefetch={false}
+                  href={`/sa/projects/${p.id}`}
+                  className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
                 >
                   <div className="min-w-0">
                     <span className="font-semibold text-[var(--text)]">{p.name || p.code}</span>
                     <span className="text-[var(--text-3)] font-mono ml-2">{p.code}</span>
                   </div>
                   {p.status && <span className="ui-badge shrink-0">{p.status}</span>}
-                </div>
+                </Link>
               ))}
             </div>
           </DetailCard>

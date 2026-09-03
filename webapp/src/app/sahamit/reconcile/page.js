@@ -199,26 +199,42 @@ export default function ReconcilePage() {
     if (view === "fc" || view === "po") {
       const val = view === "fc" ? cell.fcQty : cell.poQty;
       return (
+        /* ── ช่องกริดเป็น <button> ไม่ใช่ `<div onClick>` (2026-09-02) ────────────────
+           เดิมแขวน `openCell(fg, m)` ไว้บน <div> ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึงเลย
+           (WCAG 2.1.1) · กดแล้ว **เปิดโมดัลในหน้าเดิม** ไม่ได้เปลี่ยนหน้า ⇒ ไม่มี URL
+           ปลายทางให้ทำเป็นลิงก์ ต้องเป็นปุ่ม (ท่าเดียวกับที่ด่านคีย์บอร์ดแนะนำสำหรับเซลล์
+           ตาราง: ห่อเนื้อในเซลล์ด้วย <button> ไม่ใช่แขวน role/tabIndex บน <td>)
+           เนื้อในเป็น <span> ล้วนอยู่แล้วทั้งสามชิ้น จึงเปลี่ยนแท็กได้ตรง ๆ
+           หน้าตาไม่ขยับ: `.grid-cell-box` เป็นคนสั่ง display/พื้น/ขอบ ส่วน `.card-button`
+           คืนสี่อย่างที่ <button> ต่างจาก <div> (width · text-align · appearance · cursor)
+           🪤 ช่องที่ **ถูกไฮไลต์** ตั้ง `outline` ผ่าน `style={{…}}` (hlStyle) ซึ่งชนะกฎ
+              `:focus-visible` ของ `.card-button` เสมอ ⇒ โฟกัสช่องนั้นแล้วเห็นวงไฮไลต์เดิม
+              ไม่ใช่วง `--accent-ink` · แก้จริงต้องย้ายไฮไลต์ออกจาก inline style (งานคนละใบ) */
         <td key={m} style={{ padding: "5px 5px" }}>
-          <div className={`grid-cell-box ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
+          <button type="button" className={`grid-cell-box card-button ${dispStatus}`} onClick={() => openCell(fg, m)} title={dispLabel} style={{ position: "relative", alignItems: "center", minWidth: 84, ...hlStyle }}>
             {badges}{hlBadge}
             <span className="cell-val fc" style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-semibold)" }}>{displayQty(val, ppc, unit, { dot: true })}</span>
             <span className="cell-status-tag">{dispLabel}</span>
-          </div>
+          </button>
         </td>
       );
     }
     // FC vs PO view: status-colored box with FC/PO lines + status tag.
     return (
+      /* ปุ่มด้วยเหตุผลเดียวกับมุมมองค่าเดียวข้างบน (เปิดโมดัลตัวเดียวกัน)
+         🪤 `<div className="cell-value-line">` ต้องกลายเป็น `<span>` ก่อน — `<button>`
+            รับได้แค่ phrasing content จะมี <div> อยู่ข้างในไม่ได้ · หน้าตาไม่ขยับเลย
+            เพราะคลาสนั้นสั่ง `display: flex` ของตัวเองอยู่แล้ว (globals.css) */
       <td key={m} style={{ padding: "5px 5px" }}>
-        <div
-          className={`grid-cell-box ${dispStatus}`}
+        <button
+          type="button"
+          className={`grid-cell-box card-button ${dispStatus}`}
           onClick={() => openCell(fg, m)}
           title={dispLabel}
           style={{ position: "relative", ...hlStyle }}
         >
           {badges}{hlBadge}
-          <div className="cell-value-line">
+          <span className="cell-value-line">
             <span className="cell-lbl">FC</span>
             <span className="cell-val fc">
               {displayQty(cell.fcQty, ppc, unit)}
@@ -226,10 +242,10 @@ export default function ReconcilePage() {
                 <span style={{ textDecoration: "line-through", color: "var(--text-3)", fontWeight: "var(--fw-normal)", fontSize: "var(--fs-2)", marginLeft: 3 }}>{displayQty(cell.originalFc, ppc, unit)}</span>
               )}
             </span>
-          </div>
-          <div className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></div>
+          </span>
+          <span className="cell-value-line"><span className="cell-lbl">PO</span><span className="cell-val po">{displayQty(cell.poQty, ppc, unit)}</span></span>
           <span className="cell-status-tag">{dispLabel}</span>
-        </div>
+        </button>
       </td>
     );
   };

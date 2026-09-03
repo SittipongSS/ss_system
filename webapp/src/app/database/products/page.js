@@ -23,6 +23,7 @@ import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
+import ClickableCard from "@/components/ui/ClickableCard";
 import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/ApprovalStatus";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
@@ -352,7 +353,15 @@ export default function ProductRegistry() {
       resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
     });
 
-  const open = (p) => (window.location.href = `/database/products/${p.id}`);
+  /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────
+     เหตุผลเดียวกับทะเบียนลูกค้า: คิว "ต้องทำตอนนี้" รับ `rowHref` แล้วเรนเดอร์ <Link>
+     เอง แทน `onOpen` ที่เคยแขวนบน `<div onClick>` (คีย์บอร์ดเข้าไม่ถึง · WCAG 2.1.1)
+     รอบการ์ด (2026-09-02) เพิ่มผู้ใช้อีกสองราย: `<ClickableCard href>` กับ `<Link href>`
+     ที่หัวการ์ดจอแนวตั้ง — ด่าน CARD_MIRROR เทียบ *ข้อความนิพจน์ตรงตัว* จึงต้องเป็น
+     ตัวนี้ทั้งคู่ · 🗑️ `open()` (`window.location.href`) ลบทิ้งแล้วในรอบเดียวกัน
+     ⚠️ มุมมองตารางข้างล่างประกาศ `const detailHref` (สตริง) ของตัวเองในลูป **บังชื่อนี้**
+        อยู่ — ตั้งใจให้อ่านเหมือนกันทั้งสองมุมมอง แต่คนละชนิด (ที่นี่เป็นฟังก์ชัน) */
+  const detailHref = (p) => `/database/products/${p.id}`;
   const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
 
   /* ปุ่มส่งออกพกตัวกรองปัจจุบันไปด้วย — server กรองซ้ำด้วย filterProducts ตัวเดียวกัน
@@ -471,7 +480,7 @@ export default function ProductRegistry() {
             onDecide={decide}
             primary={(p) => p.fgCode}
             secondary={(p) => { const b = brandBoth(p.brandName, p.brandNameEn); return `${productNameBoth(p)}${b ? ` · ${b}` : ""}`; }}
-            onOpen={open}
+            rowHref={detailHref}
           />
         </>
       }
@@ -491,13 +500,20 @@ export default function ProductRegistry() {
             const inactive = p.isActive === false;
             const cat = categoryLabelOf(p);
             return (
-              <div key={p.id} onClick={() => open(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+              /* ท่า C เหมือนทะเบียนลูกค้า — ห่อทั้งใบด้วย <Link> ไม่ได้เพราะมี
+                 <ApprovalActions> (สองปุ่ม) ตอน pending && canApproveRow และ `<a>` ห้ามมี
+                 interactive descendant · <CostVatLines> ข้างล่างเป็น div/ข้อความล้วน จึงไม่นับ
+                 ⇒ ทางเข้าจริงคือ <Link> ที่บล็อกรหัส+ชื่อ ส่วน onClick ของการ์ดเป็นทางลัดเมาส์ */
+              <ClickableCard key={p.id} href={detailHref(p)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  {/* 🪤 ชื่อสินค้ายังเป็น <div> ไม่ใช่ <strong> ต่างจากมุมมองตาราง — `.linklike-block > strong`
+                         จะเติมเส้นใต้จาง ๆ เข้ามา = หน้าตาการ์ดเปลี่ยน (เหตุผลเต็มอยู่ที่ทะเบียนลูกค้า)
+                      🪤 ทั้งสามบรรทัดกำหนดสีเอง ⇒ `color: var(--accent-ink)` ของ `.linklike` ไม่ตกถึงข้อความ */}
+                  <Link prefetch={false} href={detailHref(p)} className="min-w-0 linklike linklike-block" title="เปิดหน้าสินค้า">
                     <div className="text-[11px] text-[var(--accent)] font-mono">{p.fgCode}</div>
                     <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{productNameBoth(p)}</div>
                     {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
-                  </div>
+                  </Link>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
                     {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
@@ -541,7 +557,7 @@ export default function ProductRegistry() {
                 {status === "rejected" && p.rejectionReason && (
                   <div className="text-[11px] text-[var(--text-3)] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
                 )}
-              </div>
+              </ClickableCard>
             );
           })}
         </div>
@@ -567,13 +583,16 @@ export default function ProductRegistry() {
                   const isExciseCat = flags.isExcise;
                   const cat = categoryLabelOf(p);
                   /* href ตัวเดียวส่งให้ทั้งแถวและลิงก์ในเซลล์ — ด่าน ROW_MIRROR เทียบ *ข้อความนิพจน์*
-                     ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที) */
+                     ตรงตัว ไม่ใช่แค่ "ไปหน้าเดียวกัน" (เขียนคนละรูปเมื่อไหร่โดนฟ้องทันที)
+                     ⚠️ ตัวนี้เป็น **สตริง** และ **บังชื่อ** `detailHref` ระดับคอมโพเนนต์ซึ่งเป็น
+                        *ฟังก์ชัน* (คนละมุมมองใช้คนละตัว · ฝั่งการ์ดเรียก `detailHref(p)`) */
                   const detailHref = `/database/products/${p.id}`;
                   return (
                     /* แถวเป็น DetailRow: onClick ของ <tr> เหลือเป็น **ทางลัดของเมาส์** ส่วนทางเข้าจริง
                        ของคีย์บอร์ด/โปรแกรมอ่านหน้าจอคือ <Link> ในเซลล์แรก (ท่าเดียวกับหน้าดีล/ลีด/โครงการ)
-                       ⚠️ ทางลัดเปลี่ยนจาก `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) มาเป็น
-                       router.push ของ DetailRow — `open()` ยังอยู่เพราะการ์ดจอแนวตั้งยังใช้ */
+                       🗑️ ทางลัดเคยเป็น `open(p)` (window.location = โหลดหน้าใหม่ทั้งใบ) — ย้ายมาเป็น
+                       router.push ของ DetailRow แล้ว และ `open()` ถูกลบทิ้งในรอบการ์ด 2026-09-02
+                       (การ์ดจอแนวตั้งเป็นที่เรียกสุดท้ายของมัน) */
                     <DetailRow key={p.id} href={detailHref} className="clickable-row" style={p.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
                       <td>
                         {/* รหัสบน · ชื่อ EN·TH ล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว)

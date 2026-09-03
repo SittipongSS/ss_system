@@ -7091,6 +7091,76 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   text-decoration-thickness: 2px;
 }
 
+/* ── การ์ดทั้งใบเป็นลิงก์ — "ห่อ ไม่ใช่แขวน onClick" (2026-09-02) ─────────────────
+   ⭐ คู่ขนานของ `.linklike` แต่คนละงานคนละหน้าตา: `.linklike` คือ **ลิงก์ข้อความ**
+   (สี accent + เส้นใต้) ส่วนคลาสนี้คือ **การ์ดที่ทั้งใบพาไปหน้าอื่น** ⇒ ต้องดูเหมือน
+   การ์ดเดิมทุกพิกเซล ไม่ใช่ดูเหมือนลิงก์
+   🚫 **ห้ามยืม `.linklike` / `.linklike-block` มาห่อการ์ดทั้งใบ** — มันตั้ง
+      `color: var(--accent-ink)` ⇒ ข้อความในการ์ดที่ไม่ได้กำหนดสีเองจะกลายเป็นสีลิงก์
+      ทั้งใบ (ป้าย ตัวเลข บรรทัดรอง) ซึ่งไม่ใช่เจตนาของใครเลย
+
+   ท่าที่ใช้: ย้าย `className`/`style` ของ `<div>` เดิม **ขึ้นไปทั้งชุด** บน `<Link>`
+   แล้วเติมชื่อนี้ต่อท้าย ⇒ display/padding/gap/ขอบ/`glass-panel` ติดไปด้วย และการ์ด
+   ยังเป็น grid/flex item ตัวเดิม (ไม่มี element เพิ่มมาแทรกกริด)
+   🪤 **จงใจไม่ประกาศ `display`** — ถ้าประกาศ กฎนี้อยู่ **นอก @layer** จึงชนะ utility
+      ของ Tailwind ทุกตัว (ดูคำเตือนเรื่อง unlayered ที่ `* { box-sizing }` ข้างบน)
+      ⇒ `display: block` ที่นี่จะล้าง `flex` ของการ์ดที่ต้องเรียงเป็นแถวทิ้งเงียบ ๆ
+      ของจริงไม่ต้องมี: การ์ดทุกใบเป็นลูกของ flex/grid (ถูก blockify ให้อยู่แล้ว)
+      หรือมี utility `flex` ของตัวเองติดมากับ className ที่ยกขึ้นมา
+   🪤 **วงโฟกัสไม่ต้องสั่ง `border-radius`** — `outline` เดินตามความมนของ element เอง
+      (การ์ดมี `--radius-lg` จาก `.glass-panel` อยู่แล้ว) · เขียน `border-radius: inherit`
+      ตรงนี้จะไป *เปลี่ยนความมนของการ์ดตอนโฟกัส* เพราะกฎนี้เกาะบน element ตัวเดียวกัน
+   🔴 สีวงเป็น `--accent-ink` ไม่ใช่ `--accent` (2.75:1 ตก §1.4.11) — เหตุผลเต็มอยู่
+      เหนือ `.linklike:focus-visible` · ทรงเดียวกับ `.home-system-card:focus-visible` */
+.card-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
+/* ── การ์ด/ช่องที่ "ทำงานอยู่ในหน้าเดิม" — <button> ไม่ใช่ <Link> (2026-09-02) ─────
+   ⭐ ฝาแฝดของ `.card-link` คนละงาน: `.card-link` = การ์ดที่ **พาไปหน้าอื่น** (มี URL)
+   ส่วนคลาสนี้ = การ์ดที่ **เปิดโมดัล/สลับสถานะในหน้าเดิม** ซึ่งไม่มี URL ให้ลิงก์
+   ⇒ ต้องเป็น `<button type="button">` และดูเหมือนการ์ดเดิมทุกพิกเซล
+   🪤 เนื้อในต้องเป็น **phrasing content ล้วน** — `<button>` รับ `<div>` ไม่ได้ตามสเปก
+      ⇒ ก่อนเปลี่ยนแท็ก ต้องไล่เปลี่ยน `<div>` ข้างในเป็น `<span>` ให้หมดก่อน
+      (`<span>` ที่เป็น flex item ถูก blockify อยู่แล้ว · ตัวที่ **ไม่ใช่** flex item
+      ต้องเติม utility `block` ไม่งั้น `truncate`/`mt-*` เงียบไปทั้งคู่)
+
+   ── ทำไมต้องเขียนสี่บรรทัดนี้ ทั้งที่ preflight ล้าง <button> ให้แล้ว ─────────────
+   preflight (อยู่ใน `@layer base`) ให้ `font: inherit` · `color: inherit` ·
+   `background: transparent` · `border: 0` มาแล้ว แต่ **ไม่แตะสามตัวนี้**:
+   · `width` — <button> ยัง shrink-to-fit แม้สั่ง `display: flex/block` (พฤติกรรมของ
+     form control ไม่ใช่ของ block box) ⇒ การ์ดจะหดเหลือเท่าข้อความถ้าไม่สั่ง 100%
+     รูปเดียวกับที่ `button.ui-metric` กับ `button.empty-state` ต้องเขียนมาก่อนแล้ว
+   · `text-align: center` — ของ UA · ปล่อยไว้แล้วข้อความในการ์ดเด้งไปกลางกล่อง
+   · `appearance: button` — preflight ตั้งไว้เอง (แก้บั๊ก radius ของ iOS Safari)
+     การ์ดกำหนดพื้น/ขอบของตัวเองแล้ว จึงต้องปิด native chrome ทิ้ง
+   `cursor: pointer` ต้องเขียนเองด้วย เพราะ Tailwind v4 ถอด default ของ <button> ออก
+   🪤 **จงใจไม่ประกาศ `display`** — เหตุผลเดียวกับ `.card-link` เป๊ะ: กฎนี้อยู่นอก
+      @layer จึงชนะ utility ของ Tailwind ทุกตัว ⇒ จะล้าง `flex` ของการ์ดทิ้งเงียบ ๆ
+
+   🪤 **วงโฟกัสแพ้ `style={{ outline }}` ที่เขียนแบบ inline** — ช่องไฮไลต์ของหน้ากระทบ
+      ยอด (sahamit/reconcile) ตั้ง `outline: 2px solid var(--accent)` เป็น inline style
+      ⇒ ตอนโฟกัสช่องนั้นจะเห็นวงไฮไลต์เดิม ไม่ใช่วง `--accent-ink` ของกฎนี้
+      (ยังมีวงให้เห็น แต่แยกไม่ออกว่า "โฟกัสอยู่" กับ "ถูกไฮไลต์") · แก้ที่ต้นทางคือ
+      ย้ายไฮไลต์ออกจาก inline style ซึ่งเป็นงานคนละใบ — บันทึกไว้ไม่ให้หายเงียบ */
+.card-button {
+  width: 100%;
+  text-align: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+
+.card-button:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
 .linklike:disabled {
   color: inherit;
   text-decoration: none;
