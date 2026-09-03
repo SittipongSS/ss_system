@@ -41,10 +41,12 @@ import { canAnswerRequestsFor, canBeServiceAssignee } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
+import submitScope from "@/lib/requests/submitScope";
+import { scentBriefNameError } from "@/lib/requests/scentBriefs";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
-  requestHasPdr, requestKindMeta, requestLineNoun, requestNeedsRef,
+  requestHasPdr, requestKindMeta, requestNeedsRef,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -584,11 +586,13 @@ export default function RequestDetailPage() {
     if (confirm.kind === "submit") {
       return {
         title: "ส่งคำร้อง",
-        /* หน่วยของใบมาจากทะเบียนหัวข้อ (`lineNoun`) — ประเมินพื้นที่ไม่มีบรรทัด
-           `dept_request_items` เลย เนื้ออยู่ที่พื้นที่ ⇒ นับพื้นที่แทน ไม่งั้นโมดัลยืนยัน
-           ขึ้น "0 รายการ" ทุกใบ ซึ่งอ่านเหมือนข้อมูลหาย (โรคเดียวกับที่ `submitScope` แก้) */
-        description: `${(req.surveyZones || []).length || (req.items || []).length} `
-          + `${requestLineNoun(req.kind)} → ${req.dept}`,
+        /* ⭐ **ถามตัวเดียวกับที่เธรดใช้เล่า** (`submitScope`) — ของเดิมนับเองตรงนี้เป็น
+           `surveyZones || items` แล้วต่อหน่วยจากทะเบียน (`lineNoun`) ⇒ ใบพัฒนากลิ่น
+           ซึ่ง `hasItems: false` (RD สร้างแถวเองตอนส่งงาน) ขึ้น **"0 กลิ่น → RD"
+           ทุกใบ** ทั้งที่บรีฟกรอกครบแล้ว ซึ่งอ่านเหมือนข้อมูลหาย · เธรดของใบเดียวกัน
+           พูดถูกมาตลอด เพราะมันถามฟังก์ชันนี้ (ผู้ใช้เจอเอง 2026-09-03)
+           ⚠️ หน่วยอยู่ในประโยคที่ได้มาแล้ว อย่าต่อ `requestLineNoun` ท้ายอีก */
+        description: `${submitScope(req)} → ${req.dept}`,
         detail: "ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้",
         confirmLabel: "ส่งคำร้อง",
       };
@@ -778,7 +782,22 @@ export default function RequestDetailPage() {
       label: "ส่งคำร้อง",
       kind: "submit",
       icon: Send,
-      onClick: () => setConfirm({ kind: "submit" }),
+      /* ⭐ **ด่านที่ server จะปฏิเสธ ต้องถามก่อนเปิดโมดัล** (กติกา `GatedAction`:
+         ปุ่มโชว์เสมอ บอกเหตุตอนกด) — ของเดิมเปิดโมดัลยืนยันไปก่อน แล้วค่อยโดน 409
+         กลับมาเป็น toast **ใต้โมดัลที่ยังค้างอยู่** ⇒ คนกดอ่านไม่เจอ และโมดัลก็ยัง
+         เชิญให้กดยืนยันซ้ำอยู่อย่างนั้น (ผู้ใช้เจอเอง 2026-09-03)
+         ⚠️ ถามด้วย **ฟังก์ชันตัวเดียวกับ route** (`scentBriefNameError`) ไม่ใช่
+         เงื่อนไขที่คิดขึ้นเองตรงนี้ — คอมเมนต์ใน `PdrForm` เขียนไว้ตั้งแต่แรกแล้วว่า
+         "ด่านจริงอยู่ที่ API ตัวเดียวกับที่หน้าจอถาม" แต่หน้าจอไม่เคยถาม
+         ⚠️ ด่านฝั่ง server ยังอยู่ครบ — อันนี้เป็นชั้นบอกทาง ไม่ใช่ชั้นกัน */
+      onClick: () => {
+        const briefNameError = scentBriefNameError(req.briefs || [], { stage: "submit" });
+        if (briefNameError) {
+          setToast({ kind: "error", msg: briefNameError });
+          return;
+        }
+        setConfirm({ kind: "submit" });
+      },
     }
     : owner && req.status === "pending"
       ? {
