@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
 
 /* ── หน้าสร้างใบเสนอราคา: ไม่เลือกที่อยู่ให้ล่วงหน้า (มติผู้ใช้ 2026-08-27) ──
    เดิมตั้งต้นเป็น "ที่อยู่หลัก" ให้เลย ⇒ คนทำใบเห็นช่องที่กรอกไว้แล้วก็ผ่านไปโดยไม่ได้อ่าน
@@ -95,12 +96,42 @@ test('ยังไม่แตะช่องผู้ติดต่อ = ไ�
 
 test('PATCH รับ contactIndex แล้วอ่านชื่อ/เบอร์สดจากทะเบียน ไม่เชื่อ client', () => {
   assert.match(routeSrc, /const contactPicked = 'contactIndex' in body;/);
-  // ต้องเขียนจาก contact ที่อ่านมาจากตาราง customers เท่านั้น
-  assert.match(routeSrc, /patch\.contactName = contact\.name \|\| null;/);
-  assert.match(routeSrc, /patch\.contactPhone = contact\.phone \|\| null;/);
+  // ต้องผ่านตัวกลางที่อ่านจากตาราง customers เท่านั้น (ตัวเดียวกับที่ /revise ใช้)
+  assert.match(routeSrc, /pickQuotationContact\(cust, body\.contactIndex\)/);
   // ⚠️ ห้ามรับชื่อ/เบอร์ที่ client ส่งมาตรง ๆ
   assert.doesNotMatch(routeSrc, /patch\.contactName = body\./);
   assert.doesNotMatch(routeSrc, /patch\.contactPhone = body\./);
-  // index นอกลิสต์ต้องถูกปฏิเสธ ไม่ใช่เขียน undefined ลงใบ
-  assert.match(routeSrc, /ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้/);
+  // ต้อง select ช่องผู้ติดต่อมาจริง ไม่งั้นตัวกลางได้ของว่างแล้วปฏิเสธทุก index
+  assert.match(routeSrc, /contacts, contactPerson, contactPhone/);
+});
+
+/* 🐞 2026-09-03: จอส่ง contactIndex ไปกับ payload ของ "ออก Rev." ด้วย (quotationPayload
+   ตัวเดียวกัน) แต่ route ของ /revise ไม่เคยอ่านคีย์นี้เลย ⇒ เลือกผู้ติดต่อคนใหม่แล้วออก
+   Rev. การเลือกหายทั้งดุ้น ไม่มีอะไรฟ้อง — ฉบับใหม่สืบทอดผู้ติดต่อคนเดิมมาเงียบ ๆ */
+test('ออก Rev. ก็รับ contactIndex ด้วยตัวกลางตัวเดียวกัน', () => {
+  const reviseSrc = readFileSync(new URL('../../app/api/sales-planning/quotations/[id]/revise/route.js', import.meta.url), 'utf8');
+  assert.match(reviseSrc, /pickQuotationContact\(cust, body\.contactIndex\)/);
+  assert.match(reviseSrc, /contacts, contactPerson, contactPhone/);
+  // ไม่ได้เลือก = สืบทอดของใบเดิม (พฤติกรรมเดิมต้องไม่เปลี่ยน)
+  assert.match(reviseSrc, /revContact \? revContact\.contactName : quote\.contactName/);
+});
+
+/* ตัวกลางเป็นของจริงที่ทั้งสอง route เรียก — ทดสอบพฤติกรรม ไม่ใช่ grep ซอร์ส */
+test('pickQuotationContact: เลือกตามลำดับในทะเบียน · นอกลิสต์ถูกปฏิเสธ · ลูกค้ายุคเก่าถอยไปช่องเดี่ยว', () => {
+  const customer = {
+    contacts: [{ name: 'คุณอั้ม', phone: '0959487073' }, { name: 'Spa Manager', phone: '0842976555', email: 's@x.co' }],
+    contactPerson: 'ช่องเดี่ยวเก่า', contactPhone: '021112222',
+  };
+  assert.deepEqual(pickQuotationContact(customer, 1).snapshot, {
+    contactName: 'Spa Manager', contactPhone: '0842976555', contactEmail: 's@x.co',
+  });
+  // ช่องที่ทะเบียนไม่มี = null ไม่ใช่ undefined (undefined หายไปทั้งคีย์ตอนส่งเข้า RPC)
+  assert.equal(pickQuotationContact(customer, 0).snapshot.contactEmail, null);
+  for (const bad of [2, -1, 1.5, 'abc', null, undefined]) {
+    assert.equal(pickQuotationContact(customer, bad).ok, false, `index ${bad} ต้องถูกปฏิเสธ`);
+  }
+  // ลูกค้ายุคเก่าที่ยังไม่มีลิสต์ contacts — index 0 ต้องได้ช่องเดี่ยวเดิม ไม่ใช่ถูกปฏิเสธ
+  const legacy = pickQuotationContact({ contactPerson: 'คุณเก่า', contactPhone: '0811111111' }, 0);
+  assert.equal(legacy.snapshot.contactName, 'คุณเก่า');
+  assert.equal(legacy.snapshot.contactPhone, '0811111111');
 });

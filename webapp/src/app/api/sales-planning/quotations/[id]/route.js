@@ -28,6 +28,7 @@ import { stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from '@/lib/sales/customerSnapshotFallback';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
+import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
 import { loadSignatureImageDataUri, reissueQuotationDocumentForLanguage } from '@/lib/sales/issuedQuotationSnapshot';
 import { captureIssuedQuotationPdf } from '@/lib/sales/issuedQuotationPdf';
 import { purgePrivateEvidence, removeEvidenceRefs } from '@/lib/upload/privateEvidence';
@@ -238,20 +239,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         .eq('id', before.customerId).maybeSingle()
       : { data: null };
     if (contactPicked) {
-      const contacts = Array.isArray(cust?.contacts) ? cust.contacts : [];
-      const index = Number(body.contactIndex);
-      if (!Number.isInteger(index) || index < 0 || (contacts.length && index >= contacts.length)) {
-        return badRequest('ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้');
-      }
-      // ลูกค้าที่ยังไม่มีลิสต์ contacts (แถวยุคเก่า) ถอยไปช่องเดี่ยวเดิม — กติกาเดียว
-      // กับ createQuotationDraft ไม่งั้นใบของลูกค้าเก่าจะเลือกผู้ติดต่อไม่ได้เลย
-      const contact = contacts[index] || (contacts.length ? null : {
-        name: cust?.contactPerson || '', phone: cust?.contactPhone || '', email: '',
-      });
-      if (!contact) return badRequest('ผู้ติดต่อที่เลือกไม่อยู่ในทะเบียนลูกค้ารายนี้');
-      patch.contactName = contact.name || null;
-      patch.contactPhone = contact.phone || null;
-      patch.contactEmail = contact.email || null;
+      const contact = pickQuotationContact(cust, body.contactIndex);
+      if (!contact.ok) return badRequest(contact.error);
+      Object.assign(patch, contact.snapshot);
     }
     if (!addressPicked) { /* เลือกแต่ผู้ติดต่อ — ไม่ต้องแตะที่อยู่ */ } else {
     const picked = pickDocumentAddresses(cust, {

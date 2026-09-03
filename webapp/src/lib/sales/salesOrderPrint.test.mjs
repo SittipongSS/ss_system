@@ -247,6 +247,10 @@ test('SO: โหมดสวิตช์ยิง PATCH ไปที่ route �
   assert.match(html, /\\"action\\":\\"set-doc-language\\"/);
   assert.match(html, /\\"language\\":\\"__LANG__\\"/);
   assert.doesNotMatch(html, /sales-planning\/quotations\//);
+  // ใบสั่งขายใช้สคริปต์ก้อนเดียวกับใบเสนอราคา — พังพร้อมกันเสมอ จึงต้องมียามฝั่งนี้ด้วย
+  // (🐞 codemod #1503 เปลี่ยนเป็น apiFetch ⇒ ReferenceError ในหน้าต่างที่ document.write)
+  assert.doesNotMatch(html, /[^.\w]apiFetch\s*\(/);
+  assert.match(html, /[^.\w]fetch\(url,/);
 });
 
 test('SO: สวิตช์ปิด = เป็นป้ายอ่านอย่างเดียว ไม่มีสคริปต์', () => {

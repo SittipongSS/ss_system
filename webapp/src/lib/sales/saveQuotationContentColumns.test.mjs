@@ -13,6 +13,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
+import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
 const FN = 'FUNCTION public.save_quotation_content';
@@ -47,6 +48,38 @@ test('save_quotation_content บันทึกช่องที่อยู่
   }
 });
 
+/* 🐞 รอบที่ 3 (2026-09-03): ผู้ติดต่อบนใบ (#1467) — route เขียน patch.contactName/
+   contactPhone/contactEmail ถูกต้องตั้งแต่วันแรก แต่ RPC ไม่เคยมีคอลัมน์ contact* อยู่ใน
+   ลิสต์ ⇒ ทิ้งเงียบทุกใบตั้งแต่ 2026-08-27 · เทสต์สองตัวข้างบนเขียวตลอด เพราะตัวแรกดู
+   เฉพาะช่องที่อยู่ และตัวที่สองเป็น "ลิสต์พิมพ์ค้าง" ที่คนเพิ่มช่องใหม่ก็ลืมเติมเหมือนกัน
+   ⇒ ยามตัวจริงต้อง **อ่านจากซอร์สของ route** ว่ามันยิงคีย์อะไรเข้า p_content บ้าง */
+test('ทุกคีย์ที่ route ยิงเข้า p_content ต้องมีคอลัมน์รองรับใน RPC', () => {
+  const { file, setList } = latestDefinition();
+  const columns = columnsOf(setList);
+  const routeUrl = new URL('../../app/api/sales-planning/quotations/[id]/route.js', import.meta.url);
+  const route = readFileSync(routeUrl, 'utf8');
+  const keys = new Set([...route.matchAll(/\bpatch\.([A-Za-z][A-Za-z0-9]*)\s*=/g)].map((m) => m[1]));
+  assert.ok(keys.size >= 12, `อ่านคีย์จาก route ไม่ได้ (เจอ ${keys.size} ตัว) — regex ล้าหรือไฟล์ย้าย`);
+  // updatedAt ไม่ได้อยู่ในรูป CASE WHEN แต่เขียนตรงท้ายลิสต์เสมอ จึงยกเว้นให้ตัวเดียว
+  for (const key of keys) {
+    if (key === 'updatedAt') continue;
+    assert.ok(columns.has(key), `${file} ไม่มีคอลัมน์ "${key}" ⇒ PATCH ช่องนั้นถูกทิ้งเงียบ`);
+  }
+});
+
+/* ช่องที่ route เขียนด้วย Object.assign(patch, <snapshot>) ไม่โผล่ในรูป `patch.x =`
+   ⇒ ยามตัวบนมองไม่เห็น · ชุดคีย์จึงต้องดึงจากตัวที่ผลิต snapshot เองเหมือนที่อยู่ */
+test('save_quotation_content บันทึกช่องผู้ติดต่อบนใบครบทุกช่องที่ pickQuotationContact ผลิต', () => {
+  const { file, setList } = latestDefinition();
+  const columns = columnsOf(setList);
+  // ลูกค้าไม่มีลิสต์ contacts = เส้นทางถอยไปช่องเดี่ยว — ต้องการแค่ "รายชื่อคีย์"
+  const picked = pickQuotationContact(null, 0);
+  assert.ok(picked.ok, 'ลูกค้ายุคเก่า (ไม่มี contacts[]) ต้องยังเลือก index 0 ได้');
+  for (const key of Object.keys(picked.snapshot)) {
+    assert.ok(columns.has(key), `${file} ไม่มีคอลัมน์ "${key}" ⇒ PATCH ผู้ติดต่อจะถูกทิ้งเงียบ`);
+  }
+});
+
 test('save_quotation_content ไม่ทำคอลัมน์เดิมหายตอนมีคนคัดลอกนิยามไปแก้', () => {
   const { file, setList } = latestDefinition();
   const columns = columnsOf(setList);
@@ -54,7 +87,8 @@ test('save_quotation_content ไม่ทำคอลัมน์เดิมห
   for (const key of [
     'quoteDate', 'validUntil', 'paymentTerms', 'notes', 'status',
     'subtotal', 'vatAmount', 'totalAmount', 'discountType', 'discountValue', 'discountAmount',
-    'vatRate', 'paymentPlan', 'metadata', 'docLanguage',
+    'vatRate', 'paymentPlan', 'metadata', 'docLanguage', 'referenceNote',
+    'contactName', 'contactPhone', 'contactEmail',
     'approvalStatus', 'approvalReason', 'approvalRequestedAt', 'approvalRequestedBy',
     'approvalRequestedByName', 'approvalFingerprint', 'approvedAt', 'approvedBy', 'approvedByName',
   ]) {
