@@ -1,5 +1,6 @@
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
+import { SIGNED_CONTRACT_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
 import { canSignContract, contractKindLabel } from '@/lib/sales/contracts';
@@ -29,10 +30,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ไฟล์ต้องเป็นไฟล์แนบของสัญญาใบนี้จริง — ไม่ใช่ id ไฟล์ใบอื่นที่ยิงมาตรง ๆ
   const { data: file, error: fileError } = await supabase
-    .from('attachments').select('id, "entityType", "entityId"').eq('id', body.signedFileId).maybeSingle();
+    .from('attachments').select('id, "entityType", "entityId", "docType"').eq('id', body.signedFileId).maybeSingle();
   if (fileError) return fail(fileError.message, 500);
   if (!file || file.entityType !== 'contract' || file.entityId !== id) {
     return badRequest('ไฟล์ที่อ้างถึงไม่ใช่ไฟล์แนบของสัญญาใบนี้');
+  }
+  /* 🪤 **ชนิดของไฟล์ก็ต้องถูก** (คู่กับด่านเดียวกันที่ `/approve-external`) — โมดัลลงนาม
+     เสนอเฉพาะ `signed_contract` อยู่แล้ว แต่จอไม่ใช่ด่าน · คำขอที่ยิงตรงส่งไฟล์ชนิดไหน
+     ก็ได้ที่แนบอยู่กับใบนี้ แล้ว "ฉบับที่ลูกค้าเซ็น" ก็ชี้ไปที่ของอย่างอื่น
+     ⚠️ วัดก่อนรัด (2026-09-02): ทั้งฐานยังไม่มีสัญญาที่มี `signedFileId` สักใบ
+        ⇒ ด่านนี้ไม่ตีกลับของเก่าที่ทำไปแล้วเลย */
+  if (file.docType !== SIGNED_CONTRACT_DOC_TYPE) {
+    return badRequest('ไฟล์ที่เลือกไม่ได้ถูกแนบเป็น “สัญญาที่ลงนามแล้ว” — แนบใหม่ด้วยชนิดนั้นก่อน');
   }
 
   if (body.effectiveDate && !isDate(body.effectiveDate)) return badRequest('วันที่เริ่มมีผลไม่ถูกต้อง');

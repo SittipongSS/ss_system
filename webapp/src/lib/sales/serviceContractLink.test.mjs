@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  contractLinkable, serviceContractHeadline, serviceContractLinkError, serviceContractOptions,
+  contractLinkable, contractSpanAt, serviceContractHeadline, serviceContractLinkError,
+  serviceContractOptions,
 } from './serviceContractLink';
 
 const order = (extra = {}) => ({ id: 'SOR-1', status: 'approved', dealId: 'DL-1', ...extra });
@@ -154,4 +155,39 @@ test('🔴 หัวใบ: สัญญาที่หมดอายุแล�
   assert.match(expired.sub, /หมดอายุแล้ว/);
   // วันสุดท้ายยังใช้ได้อยู่
   assert.equal(serviceContractHeadline(signed({ expiryDate: TODAY }), { today: TODAY }).tone, 'ok');
+});
+
+/* 🔴 **ขอบหน้าของช่วงมีผล** — ของเดิมตรวจแต่ขอบท้าย (หมดอายุ) ⇒ สัญญาที่เซ็นแล้ว
+   แต่เริ่มมีผลเดือนหน้าขึ้น **เขียว** พร้อมช่วงวันที่ที่ยังมาไม่ถึง
+   ⚠️ ห้ามแก้ด้วยการปิดไม่ให้ผูก — ผูกล่วงหน้าเป็นลำดับที่ถูกต้องของงานจริง */
+test('🔴 สัญญาที่ยังไม่ถึงวันเริ่มมีผล ต้องไม่ขึ้นเขียว', () => {
+  const soon = serviceContractHeadline(
+    signed({ effectiveDate: '2026-10-01', expiryDate: '2027-09-30' }), { today: TODAY },
+  );
+  assert.equal(soon.tone, 'wait', 'ยังไม่ถึงเวลา ≠ ใช้ได้แล้ว');
+  assert.match(soon.sub, /ยังไม่ถึงวันเริ่มมีผล/);
+  assert.notEqual(soon.tone, 'late', 'ไม่มีอะไรผิดพลาด แค่ยังไม่ถึงเวลา — โทนต้องไม่ใช่ late');
+
+  // วันแรกที่มีผลนับรวมทั้งวัน
+  assert.equal(
+    serviceContractHeadline(signed({ effectiveDate: TODAY }), { today: TODAY }).tone, 'ok',
+  );
+  // ผูกได้ตามเดิม — ด่านผูกไม่ได้ถูกทำให้แคบลงเพราะเรื่องนี้
+  assert.equal(
+    serviceContractLinkError(order(), signed({ effectiveDate: '2026-10-01' }), ok), null,
+  );
+});
+
+/* ตัวตัดสินช่วงมีผลต้องแยกออกมาเป็นของตัวเอง — จอ/ด่านอื่นจะได้ถามตัวเดียวกัน
+   ⚠️ ไม่ระบุวันเลย = null ("ไม่รู้") ไม่ใช่ 'in' — ผู้เรียกเลือกเองว่าจะถือว่าอย่างไร */
+test('contractSpanAt: ก่อน / ระหว่าง / หลัง / ไม่รู้', () => {
+  const c = (e, x) => ({ effectiveDate: e, expiryDate: x });
+  assert.equal(contractSpanAt(c('2026-10-01', '2027-09-30'), TODAY), 'before');
+  assert.equal(contractSpanAt(c('2026-01-01', '2027-09-30'), TODAY), 'in');
+  assert.equal(contractSpanAt(c('2026-01-01', '2026-02-01'), TODAY), 'after');
+  assert.equal(contractSpanAt(c(null, null), TODAY), null);
+  assert.equal(contractSpanAt(null, TODAY), null);
+  // ขอบทั้งสองข้างนับรวมทั้งวัน
+  assert.equal(contractSpanAt(c(TODAY, null), TODAY), 'in');
+  assert.equal(contractSpanAt(c(null, TODAY), TODAY), 'in');
 });

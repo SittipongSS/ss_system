@@ -131,9 +131,11 @@ export default function FormulasPage() {
      "รอเข้าทะเบียน" อยู่ ผู้ใช้เห็นว่ากรองอยู่และเปลี่ยนเองได้ทันที ไม่ต้องมีชิปซ้ำ
      ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
   const fromNavCount = useSearchParams().get("count") === "formulas";
-  const [statusFilter, setStatusFilter] = useState(
-    fromNavCount ? "draft" : (linkedQuery ? "" : "open"),
-  );
+  /* ⭐ **เปิดมาเห็นของทั้งหมดที่มี** (มติผู้ใช้ 2026-09-02 · เหมือนทะเบียนกลิ่น) —
+     ของเดิมตั้งต้น "เปิดอยู่" ซึ่งซ่อนของที่เก็บเข้ากรุตั้งแต่วินาทีแรก ⇒ คนมาค้นสูตร
+     แล้วไม่เจอ ทั้งที่มันอยู่ในฐาน · ทะเบียนคือของกลางไว้ **ค้น** ไม่ใช่คิวงาน
+     ⚠️ ยังเคารพ `?count=` (ป้ายตัวเลขบนเมนู) เหมือนเดิม — ทางนั้นผู้ใช้ขอตัวกรองมาเอง */
+  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "draft" : "");
   // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
   // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
   // ทะเบียนมีหน้าละหลายสิบแถวและแถวคั่นจะกระจายข้ามหน้า
@@ -259,8 +261,16 @@ export default function FormulasPage() {
     return name ? `${code} ${name}` : code;
   }, [categories]);
 
+  /* ⭐ **ใหม่สุดขึ้นก่อน** (มติผู้ใช้ 2026-09-02 · เหมือนทะเบียนกลิ่น) — API เรียงตาม
+     ชื่อ ก→ฮ เพราะชุดเดียวกันไปเป็นตัวเลือกในดรอปดาวน์เลือกสูตร ⇒ สูตรที่เพิ่งเพิ่ม
+     จมอยู่กลางตารางตามตัวอักษร · เรียงที่จอ ไม่แก้ที่ API */
+  const sorted = useMemo(
+    () => [...visible].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
+    [visible],
+  );
+
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(visible, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}` });
+    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}` });
 
   // ── actions ──────────────────────────────────────────────────────────
   const call = async (url, options, okMsg) => {

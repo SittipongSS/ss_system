@@ -19,6 +19,7 @@ import {
   contractSourceOf,
   daysAwaitingSignature,
   externalApproveError,
+  externalApproveOpenError,
   isContractWaitingOnMe,
   isExternalContract,
   showExternalApprove,
@@ -900,4 +901,111 @@ test('🪤 อนุมัติเอกสารแทนสัญญาต้
   assert.match(route, /file\.docType !== EXTERNAL_DOC_TYPE/);
   // ใช้ค่าคงที่กลาง ไม่พิมพ์สตริงซ้ำ (พิมพ์ต่างกันเมื่อไร ด่านเงียบไปโดยไม่มีอะไรฟ้อง)
   assert.doesNotMatch(route, /docType !== 'external_doc'/);
+});
+
+/* 🪤 **ทุกเส้นที่ผูก "ไฟล์ที่เซ็นแล้ว" เข้ากับใบ ต้องตรวจชนิดไฟล์ด้วย**
+   ด่านเดิมของทั้งสามเส้นถามแค่ "เป็นไฟล์แนบของใบนี้ไหม" ⇒ คำขอที่ยิงตรงส่งไฟล์ชนิด
+   ไหนก็ได้ แล้วช่อง "ฉบับที่ลงนาม" ชี้ไปที่ของอย่างอื่น · โมดัลบนจอเสนอชนิดเดียวอยู่แล้ว
+   แต่ **จอไม่ใช่ด่าน**
+   ⚠️ วัดก่อนรัด (2026-09-02): ทั้งฐานยังไม่มีสัญญาหรือบันทึกที่มี `signedFileId` สักใบ
+      ⇒ ด่านชุดนี้ไม่ตีกลับของเก่าที่ทำไปแล้วเลย */
+test('🪤 ทุกเส้นที่ผูกไฟล์ลงนามต้องตรวจ docType ไม่ใช่แค่ว่าเป็นไฟล์ของใบนี้', () => {
+  const cases = [
+    ['contracts/[id]/sign', 'SIGNED_CONTRACT_DOC_TYPE'],
+    ['contracts/[id]/approve-external', 'EXTERNAL_DOC_TYPE'],
+    ['addenda/[id]/sign', 'SIGNED_ADDENDUM_DOC_TYPE'],
+  ];
+  for (const [rel, constant] of cases) {
+    const route = readFileSync(
+      new URL(`../../app/api/sales-planning/${rel}/route.js`, import.meta.url),
+      'utf8',
+    );
+    assert.match(route, /"docType"/, `${rel}: ต้อง select docType มาด้วย`);
+    assert.match(route, new RegExp(`file\\.docType !== ${constant}`), rel);
+    /* ใช้ค่าคงที่กลาง ไม่พิมพ์สตริงซ้ำ — พิมพ์ต่างกันเมื่อไร ด่านเงียบไปโดยไม่มีอะไรฟ้อง */
+    assert.doesNotMatch(route, /docType !== '[a-z_]+'/, `${rel}: ห้ามฝังสตริงชนิดเอกสาร`);
+  }
+});
+
+/* 🔴 **สองปลายของด่านต้องอ่านคีย์จากที่เดียวกัน** — #1589 ยกคีย์ชนิดเอกสารเป็นค่าคงที่
+   ที่ฝั่ง API แต่ **จอยังฝังสตริงไว้** ⇒ ถ้าวันหนึ่งค่าคงที่ถูกแก้ จอจะยังอัปด้วยคีย์เก่า
+   แล้วด่านจะปฏิเสธ *ทุกไฟล์ที่จอเพิ่งอัปเอง* — เส้นลงนามตายทั้งเส้นพร้อมข้อความที่
+   อ่านแล้วงง ("แนบใหม่ด้วยชนิดนั้นก่อน" ทั้งที่เพิ่งแนบมา)
+   ⚠️ นี่คือครึ่งที่ขาดของ #1589 เอง — ยกค่าคงที่มาแล้วแต่ใช้ข้างเดียว */
+test('🔴 จอกับด่านต้องใช้ค่าคงที่ชนิดเอกสารตัวเดียวกัน ไม่มีสตริงฝังบนจอ', () => {
+  const screens = [
+    '../../app/sales-planning/contracts/[id]/page.js',
+    '../../app/sales-planning/contracts/addenda/[id]/page.js',
+  ];
+  for (const rel of screens) {
+    const src = readFileSync(new URL(rel, import.meta.url), 'utf8')
+      // คอมเมนต์อ้างชื่อคีย์ได้ — ห้ามเฉพาะโค้ดที่ *ใช้* สตริงนั้นจริง
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    assert.doesNotMatch(src, /["']signed_contract["']/, `${rel}: ฝังสตริง signed_contract`);
+    assert.doesNotMatch(src, /["']external_doc["']/, `${rel}: ฝังสตริง external_doc`);
+    assert.doesNotMatch(src, /["']signed_addendum["']/, `${rel}: ฝังสตริง signed_addendum`);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   🔴 **เดดล็อกของขั้นอนุมัติเอกสารแทนสัญญา** (เจอตอนรีเช็ค 2026-09-02)
+
+   ปุ่มบนการ์ดจัดการเอา `externalApproveError` มาปิดตัวเอง แต่ด่านนั้นอ่าน
+   **วันที่ที่กรอกในโมดัล** ⇒ ปุ่มถูกปิดเพราะ "ยังไม่ระบุวันที่เริ่มมีผล" ทั้งที่ช่องกรอก
+   วันอยู่ใน **โมดัลที่ปุ่มนั้นเป็นคนเปิด** ⇒ AE Supervisor กดอนุมัติไม่ได้เลยสักใบ
+   ตั้งแต่ #1529 (2026-08-31) · ยืนยันกับฐาน: ไม่มีใบ external ที่ signed สักใบ
+   ═══════════════════════════════════════════════════════════════════════ */
+
+test('🔴 ปุ่มเปิดฟอร์มอนุมัติต้องไม่ถูกปิดด้วยค่าที่กรอกในฟอร์มนั้นเอง', () => {
+  const ready = ext({ externalDocKind: 'customer_po' });
+  const withFile = { signedFileId: 'ATT-1' };
+
+  // ยังไม่กรอกวันเลย — ปุ่ม *เปิดฟอร์ม* ต้องกดได้
+  assert.equal(externalApproveOpenError(ready, AE_SUP, withFile), null);
+  // แต่ปุ่ม *ยืนยัน* ในฟอร์มยังต้องบังคับวันเหมือนเดิม
+  assert.match(externalApproveError(ready, AE_SUP, withFile), /วันที่เริ่มมีผล/);
+});
+
+/* ⚠️ ด่านเปิดฟอร์มต้องเป็น **คำนำหน้าแท้** ของด่านยืนยัน — ไม่ใช่ด่านคนละชุดที่ขัดกันได้
+   ทุกเหตุที่ทำให้เปิดไม่ได้ ต้องทำให้ยืนยันไม่ได้ด้วยข้อความเดียวกัน */
+test('ด่านเปิดฟอร์มเป็นคำนำหน้าของด่านยืนยันทุกเคส', () => {
+  const cases = [
+    [null, AE_SUP, {}],
+    [ext(), AE, { signedFileId: 'A' }],
+    [ext(), AC, { signedFileId: 'A' }],
+    [{ status: 'draft', source: 'generated' }, AE_SUP, { signedFileId: 'A' }],
+    [ext({ status: 'signed' }), AE_SUP, { signedFileId: 'A' }],
+    [ext({ status: 'cancelled' }), AE_SUP, { signedFileId: 'A' }],
+    [ext({ externalDocKind: null }), AE_SUP, { signedFileId: 'A' }],
+    [ext(), AE_SUP, {}],
+  ];
+  for (const [contract, user, payload] of cases) {
+    const open = externalApproveOpenError(contract, user, payload);
+    if (!open) continue;
+    assert.equal(externalApproveError(contract, user, payload), open,
+      `เหตุที่เปิดฟอร์มไม่ได้ ต้องเป็นเหตุเดียวกับที่ยืนยันไม่ได้: ${open}`);
+  }
+});
+
+test('🔴 การ์ดจัดการต้องใช้ด่านเปิดฟอร์ม ไม่ใช่ด่านยืนยัน', () => {
+  const page = readFileSync(
+    new URL('../../app/sales-planning/contracts/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /disabled: !!approveOpenGate/);
+  assert.doesNotMatch(page, /disabled: !!approveGate/,
+    'ปุ่มบนการ์ดห้ามใช้ด่านที่อ่านค่าจาก state ของโมดัล');
+  // ปุ่มยืนยันในโมดัลยังต้องใช้ด่านเต็ม
+  assert.match(page, /onClick=\{submitApprove\} disabled=\{busy \|\| !!approveGate\}/);
+});
+
+/* 🪤 **คำแนะนำที่ถูก กับตัวเลือกที่ผิด อยู่ในการ์ดเดียวกัน** — #1581 แก้แต่ข้อความโน้ต
+   แล้วปล่อยชนิด "สัญญาที่ลงนามแล้ว" ให้เลือกได้ต่อบนใบ external ทั้งที่ใบแบบนี้ไม่มี
+   สัญญาของระบบให้ลงนาม ⇒ ตัวเลือกที่ไม่ควรมีคือของที่คนจะเลือกจนได้ (เกิดแล้วจริง) */
+test('🪤 การ์ดไฟล์ของใบ external ต้องไม่เสนอชนิด "สัญญาที่ลงนามแล้ว"', () => {
+  const page = readFileSync(
+    new URL('../../app/sales-planning/contracts/[id]/page.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /docTypes=\{external[\s\S]{0,160}?filter\(\(t\) => t\.key !== SIGNED_CONTRACT_DOC_TYPE\)/);
 });

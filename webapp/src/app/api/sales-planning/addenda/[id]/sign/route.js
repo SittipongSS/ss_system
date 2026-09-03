@@ -1,5 +1,6 @@
 import { loadScoped } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
+import { SIGNED_ADDENDUM_DOC_TYPE } from '@/lib/master/attachmentTypes';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
 import { ADDENDUM_DOC_TITLE, canSignAddendum } from '@/lib/sales/contractAddenda';
@@ -26,10 +27,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!body?.signedFileId) return badRequest('แนบไฟล์บันทึกที่ลงนามแล้วก่อนบันทึก');
 
   const { data: file, error: fileError } = await supabase
-    .from('attachments').select('id, "entityType", "entityId"').eq('id', body.signedFileId).maybeSingle();
+    .from('attachments').select('id, "entityType", "entityId", "docType"').eq('id', body.signedFileId).maybeSingle();
   if (fileError) return fail(fileError.message, 500);
   if (!file || file.entityType !== 'contract_addendum' || file.entityId !== id) {
     return badRequest('ไฟล์ที่อ้างถึงไม่ใช่ไฟล์แนบของบันทึกฉบับนี้');
+  }
+  // เหตุผลเดียวกับด่านของสัญญา — จอเสนอชนิดเดียว แต่จอไม่ใช่ด่าน
+  if (file.docType !== SIGNED_ADDENDUM_DOC_TYPE) {
+    return badRequest('ไฟล์ที่เลือกไม่ได้ถูกแนบเป็น “บันทึกที่ลงนามแล้ว” — แนบใหม่ด้วยชนิดนั้นก่อน');
   }
 
   const { data, error } = await supabase.from('sales_contract_addenda').update({

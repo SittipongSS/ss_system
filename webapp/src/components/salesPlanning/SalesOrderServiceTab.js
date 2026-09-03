@@ -170,16 +170,31 @@ export default function SalesOrderServiceTab({ orderId }) {
                   <td className="num mono">{row.packageQty ? fmtNumber(row.packageQty) : NA}</td>
                   {/* ⭐ **ยอดรวมบนหัวการ์ดตอบไม่ได้ว่าไซต์ไหนคือไซต์ที่ค้าง** — เดิมบอกแค่
                       "N ไซต์ยังไม่มีรอบ" แล้วปล่อยให้ไล่เปิดทีละไซต์เอง */}
+                  {/* 🔴 **สามสภาพ ไม่ใช่สอง** — ไซต์ที่มีรอบของ *ใบอื่น* อยู่ ไม่ใช่
+                      "วางแล้ว" (ใบนี้ยังไม่มีรอบของตัวเอง เลข n/N จึงยังเป็น 0) และไม่ใช่
+                      "ยังไม่วาง" เฉย ๆ ด้วย (มีนัดเดินอยู่จริงที่ไซต์นั้น กดสร้างซ้ำโดยไม่รู้
+                      = นัดซ้อนวันเดียวกันสองชุด · `ensureVisits` กันซ้ำแค่ภายในรอบเดียวกัน)
+                      ⇒ ของเดิมกลืนสภาพนี้เข้ากับ "วางแล้ว" แล้วซ่อนปุ่ม ⇒ ใบที่สอง
+                      (ต่อสัญญา/ขายเพิ่มที่ไซต์เดิม) วางรอบของตัวเองจากหน้าใบไม่ได้เลย */}
                   <td>
                     <StatusBadge
                       size="sm"
-                      tone={row.hasPlan ? "success" : "warning"}
-                      label={row.hasPlan ? "วางแล้ว" : "ยังไม่วาง"}
+                      tone={row.hasPlan ? "success" : row.hasForeignPlan ? "info" : "warning"}
+                      label={row.hasPlan ? "วางแล้ว" : row.hasForeignPlan ? "มีรอบของใบอื่น" : "ยังไม่วาง"}
                     />
                   </td>
                   <td>
+                    {/* กติกา "ติดด่าน = โชว์แล้วบอกเหตุ" — ปุ่มไม่หายเพราะไซต์มีรอบของใบอื่น
+                        แต่ต้องบอกก่อนกดว่ากำลังจะสร้างรอบซ้อนของที่มีอยู่ */}
                     {canPlan && !row.hasPlan && (
-                      <Button tone="accent" size="sm" onClick={() => setPlanSite(row)}>
+                      <Button
+                        tone="accent"
+                        size="sm"
+                        title={row.hasForeignPlan
+                          ? "ไซต์นี้มีรอบบริการเดินอยู่แล้วแต่เป็นของใบอื่น — รอบที่สร้างจากที่นี่จะผูกกับใบนี้ ตรวจที่หน้าไซต์ก่อนว่าไม่ซ้อนกัน"
+                          : undefined}
+                        onClick={() => setPlanSite(row)}
+                      >
                         วางรอบ
                       </Button>
                     )}

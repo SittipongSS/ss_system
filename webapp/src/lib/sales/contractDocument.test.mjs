@@ -137,8 +137,17 @@ test('ข้อมูลคู่สัญญาและวันที่พ�
 
 test('ป้ายกับค่าในหัวใบเรียงตรงกัน — ป้ายยาวต้องไม่ดันค่าเยื้อง', () => {
   const html = buildContractHTML(CONTRACT, { company: COMPANY });
-  assert.match(html, /\.contract \.identityBlock dl div \{ grid-template-columns: 36mm/);
-  assert.match(html, /\.contract \.identityBlock dd \{ text-align: right/);
+  /* 🐞 เคยตั้งคอลัมน์ป้ายตายตัว 36mm แล้ว **เลขที่สัญญาตกบรรทัด** ตอนเลขยาวขึ้น
+     (CT-SD-26090003-0 = 26mm แต่ช่องค่าเหลือ 21mm — ผู้ใช้ส่งภาพมา 2026-09-03)
+     ⇒ กริดต้องอยู่ที่ dl (คอลัมน์เดียวกันทุกแถว) และป้ายกินเท่าที่ใช้จริง */
+  assert.match(html, /\.contract \.identityBlock dl \{ display: grid; grid-template-columns: max-content/);
+  assert.match(html, /\.contract \.identityBlock dl div \{ display: contents/);
+  assert.doesNotMatch(html, /\.contract \.identityBlock dl div \{ grid-template-columns: \d/);
+  // เลขที่เอกสารที่ถูกตัดกลางอ่านเป็นคนละใบได้ ⇒ ห้ามตัดบรรทัดทั้งป้ายและค่า
+  assert.match(html, /\.contract \.identityBlock dt \{ white-space: nowrap/);
+  assert.match(html, /\.contract \.identityBlock dd \{ text-align: right; white-space: nowrap/);
+  // ฝั่งขวาต้องกว้างพอสำหรับเลขทรงใหม่ (ยืมจากฝั่งซ้ายที่ยังเหลือที่)
+  assert.match(html, /\.contract \.documentHeader \{ grid-template-columns: minmax\(0, 1\.5fr\) minmax\(66mm/);
   // ชื่อเอกสารถูกย้ายไปกลางหน้า ⇒ ฝั่งขวาต้องถูกดันลงไปจบระดับเดียวกับบล็อกบริษัท
   assert.match(html, /\.contract \.identityBlock dl \{ margin-top: auto/);
 });
