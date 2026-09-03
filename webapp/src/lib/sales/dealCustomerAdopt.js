@@ -14,6 +14,8 @@
 // ⚠️ กติกา "ลูกค้าใช้ออกเอกสารได้ไหม" ต้องตรงกับตัวกรองของ `GET /api/customers`
 //    (อนุมัติแล้ว + ไม่ถูกพักใช้) — ที่นั่นกรองให้ตัวเลือกบนจอ ที่นี่กันคนยิงตรงเข้า API
 
+import { customerNameIn } from '@/lib/master/customerName';
+
 /** ลูกค้ารายนี้ใช้ออกเอกสารได้ไหม — legacy NULL ถือว่าอนุมัติ/ใช้งานอยู่ (ก่อน mig 0027/0030) */
 export function isQuotableCustomer(customer) {
   if (!customer?.id) return false;
@@ -46,7 +48,8 @@ export function dealCustomerAdoptError(deal, customer) {
 /** ข้อความบอกผลลัพธ์ล่วงหน้า — ฟอร์มขึ้นก่อนกดบันทึก, audit ใช้ตอนบันทึกแล้ว */
 export function dealCustomerAdoptNote(deal, customer) {
   if (!dealAwaitsCustomer(deal) || !customer?.id) return '';
-  const who = customer.name || customer.id;
+  // จุดวาด ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษต้องได้ชื่อ ไม่ใช่ UUID กลางประโยค
+  const who = customerNameIn(customer) || customer.id;
   return `ดีลนี้ยังไม่มีลูกค้า — บันทึกใบนี้จะตั้งลูกค้าเป็น ${who} ให้ดีลด้วย`;
 }
 

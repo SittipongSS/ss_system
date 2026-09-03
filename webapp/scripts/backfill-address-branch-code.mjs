@@ -20,6 +20,7 @@
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 import { normalizeAddresses } from '../src/lib/master/addresses.js';
+import { customerNameIn } from '../src/lib/master/customerName.js';
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -39,7 +40,9 @@ if (!url || !key) {
 const commit = process.argv.includes('--commit');
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
-const { data, error } = await supabase.from('customers').select('id, name, addresses');
+// ต้องหยิบชื่ออังกฤษด้วย — ตั้งแต่ mig 0283 `name` ว่างได้ (บังคับแค่ "อย่างน้อยหนึ่งภาษา")
+// ถ้าเอาแต่ `name` มา บรรทัด log ข้างล่างจะ throw TypeError กลางลูปแล้วสคริปต์ตายทั้งใบ
+const { data, error } = await supabase.from('customers').select('id, name, "nameEn", addresses');
 if (error) { console.error('✗ load customers:', error.message); process.exit(1); }
 
 /* ⚠️ เทียบด้วย JSON.stringify ตรง ๆ ไม่ได้ — มัน **ไวต่อลำดับคีย์** ส่วน jsonb ที่เก็บไว้
@@ -97,9 +100,9 @@ for (const customer of data || []) {
     // ค่าเลขสาขาเท่าเดิม แต่แถวขยับเพราะ normalize ล้างคีย์ที่เก็บสตริงว่างไว้
     // (เนื้อเท่ากัน — รูปแถวเท่ากับที่ผู้ใช้กดบันทึกเองครั้งถัดไปอยู่แล้ว)
     else tidied += 1;
-    console.log(`  · ${customer.name.slice(0, 40)} — ${had || '(ไม่มีคีย์)'} → ${row.branchCode}`);
+    console.log(`  · ${customerNameIn(customer).slice(0, 40)} — ${had || '(ไม่มีคีย์)'} → ${row.branchCode}`);
   });
-  if (bad) { skipped.push(`${customer.name} (normalize ขยับฟิลด์อื่นด้วย)`); continue; }
+  if (bad) { skipped.push(`${customerNameIn(customer)} (normalize ขยับฟิลด์อื่นด้วย)`); continue; }
   if (!touched || !commit) continue;
 
   const { error: updateError } = await supabase

@@ -7,6 +7,7 @@ import {
 } from '@/lib/materialPrices';
 import { normalizePmType } from '@/lib/master/materialTypes';
 import { brandDisplayFromList } from '@/lib/master/brands';
+import { customerNameIn } from '@/lib/master/customerName';
 
 // โหลดวัสดุในทะเบียนพร้อมรุ่นราคา + ชั้นราคาของแต่ละรุ่น (ก้อนเดียว กัน N+1)
 // status: undefined = ที่ใช้งานได้จริง (active) · null = ทุกสถานะ · array = ตามที่ระบุ
@@ -384,7 +385,7 @@ export async function findRequest(supabase, id) {
     withBriefs.customerId
       // ⚠️ `arCode` เพิ่มมาเพื่อหัวใบ (ม-98) — ใบเก็บแค่ `customerName` ตอนเปิด
       // รหัสลูกค้าอยู่ที่ทะเบียนที่เดียว ไม่ประทับลงใบ (ดูเหตุผลใน headerFacts.js)
-      ? supabase.from('customers').select('id, name, "arCode", contacts, "contactPerson", "contactPhone"')
+      ? supabase.from('customers').select('id, name, "nameEn", "arCode", contacts, "contactPerson", "contactPhone"')
         .eq('id', withBriefs.customerId).maybeSingle().then((r) => r.data)
       : null,
     withBriefs.dealId
@@ -469,7 +470,8 @@ export async function findRequest(supabase, id) {
       ? {
         id: customer.id,
         arCode: customer.arCode || null,
-        name: customer.name || null,
+        // ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่กลายเป็นการ์ดไร้ชื่อบน panel
+        name: customerNameIn(customer) || null,
         contactPerson: customer.contactPerson || null,
         contactPhone: customer.contactPhone || null,
       }

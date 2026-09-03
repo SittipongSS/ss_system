@@ -262,6 +262,6 @@ test('PATCH ดีลต้องเรียกด่านกลาง ไม�
     /for \(const key of \['customerId', 'customerName'/,
     'customerId/customerName ต้องไม่อยู่ในลูปที่ก๊อป body เข้า patch ตรง ๆ',
   );
-  assert.match(route, /patch\.customerName = customer\?\.name \|\| null;/,
-    'ชื่อลูกค้าต้องอ่านจากทะเบียน ไม่ใช่รับจาก body');
+  assert.match(route, /patch\.customerName = customerSnapshotName\(customer\);/,
+    'ชื่อลูกค้าต้องอ่านจากทะเบียนผ่านกติกาสองภาษา ไม่ใช่รับจาก body และไม่ใช่ `.name` ดิบ');
 });

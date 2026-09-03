@@ -4,6 +4,7 @@ import { attributionTeam, canDeleteRecord, redactProductMargin, userTeams, viewS
 import { teamInClause } from '@/lib/teamScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { registrationRequirementsBatch } from '@/lib/tax/requirements';
 import { EXCISE_VAT_RATE, exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
@@ -122,7 +123,8 @@ export async function POST(request) {
     fgCode: product.fgCode,
     productName: productDisplayName(product),
     brandName: productBrandName(product),
-    customerName: customer.name,
+    // ชื่อลูกค้ามีสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่ถูกประทับเป็น null
+    customerName: customerSnapshotName(customer),
     taxId: customer.taxId,
     isExciseTaxable,
     taxableOverride: null,

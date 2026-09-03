@@ -8,6 +8,7 @@ import { productSelectOptions } from "@/components/master/productOption";
 import TeamPickerField from "@/components/ui/TeamPickerField";
 import { useTeam, useTeams } from "@/lib/roleContext";
 import { customerSelectOptions } from "@/components/master/customerOption";
+import { customerNameIn } from "@/lib/master/customerName";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Create or edit an excise registration (master FG product × customer).
@@ -157,9 +158,11 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                     ซ่อน {hiddenCount} FG ที่ขึ้นทะเบียนกับลูกค้ารายนี้แล้ว (1 FG ขึ้นทะเบียนต่อลูกค้าได้ครั้งเดียว)
                   </div>
                 )}
+                {/* จุดวาดชื่อลูกค้า — ผ่านกติกาสองภาษา ไม่งั้นรายที่มีแต่ชื่ออังกฤษ
+                    ตกไปเป็นคำแทน "ลูกค้ารายนี้" ทั้งที่เลือกลูกค้าไว้แล้ว */}
                 {isOrphanPick && (
                   <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--amber)" }}>
-                    FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — จะผูกกับ{customer?.name || "ลูกค้ารายนี้"} ควรไปกำหนดเจ้าของที่ข้อมูลสินค้าให้เรียบร้อย
+                    FG นี้ยังไม่มีลูกค้าเจ้าของในฐานข้อมูล — จะผูกกับ{customerNameIn(customer) || "ลูกค้ารายนี้"} ควรไปกำหนดเจ้าของที่ข้อมูลสินค้าให้เรียบร้อย
                   </div>
                 )}
                 {selected && (

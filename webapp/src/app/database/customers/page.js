@@ -111,7 +111,9 @@ export default function CustomerDirectory() {
   const decide = async (customer, status) => {
     // เหตุผลที่ไม่อนุมัติถามในโมดัลของฮุค (2026-08-30) — เดิมเป็น window.prompt ที่นี่
     await sendDecision(customer.id, status, {
-      subject: [customer.arCode, customer.name].filter(Boolean).join(" · "),
+      // ผ่าน customerNameIn เหมือนทุกจุดที่วาดชื่อในหน้านี้ — อ่าน `.name` ดิบแล้วลูกค้า
+      // ที่มีแต่ชื่ออังกฤษจะเหลือแต่รหัสเปล่าในโมดัล (คนกดอนุมัติไม่รู้ว่ากำลังอนุมัติใบไหน)
+      subject: [customer.arCode, customerNameIn(customer)].filter(Boolean).join(" · "),
     });
   };
 

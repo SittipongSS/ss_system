@@ -8,7 +8,8 @@ import {
   normalizeScentInput, scentTransitionError, sendScentError,
 } from '@/lib/master/scents';
 import {
-  assertDerivedFromScent, countRegistryRefs, findScent, findScentDetail, updateScent,
+  assertDerivedFromScent, countRegistryRefs, findScent, findScentDetail,
+  scentCustomerName, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, unlinkRegistryRefs, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
@@ -68,6 +69,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          (ใบขอราคา · สินค้า · เอกสาร) ไม่ใช่ข้อความทั่วไปที่ใครก็แก้ได้
          ⚠️ สถานะยังเปลี่ยนผ่าน action เฉพาะทางเหมือนเดิม — กันหน้าจอส่งมาเงียบ ๆ */
       const { code, ...editable } = value;
+      /* ⚠️ **ชื่อลูกค้า derive จากทะเบียนเสมอ ไม่รับจาก client** — จอส่ง
+         `customers.find(...)?.name` มา ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ null ทับ
+         ทุกครั้งที่กดบันทึก (แก้ที่จอแล้ว แต่ทางยิง API ตรงยังเหลือ)
+         · fallback = ชื่อเดิมบนแถว เพราะ `customerId` ของกลิ่นไม่มี FK — ชี้ลูกค้าที่
+         ถูกลบไปแล้วได้ และล้างชื่อทิ้งเมื่อไรจอปลายทางวาดขีดแทนของที่เคยมี */
+      editable.customerName = await scentCustomerName(
+        supabase, editable.customerId, scent.customerName ?? null,
+      );
       if (code !== undefined && code !== (scent.code ?? null)) {
         /* ⭐ **เจ้าของร่างแก้รหัสของตัวเองได้** (มติผู้ใช้ 2026-08-19) — ฝ่ายขายกรอก
            รหัสจากระบบเก่ามาตั้งแต่ตอนเสนอแล้ว พิมพ์ผิดต้องแก้ได้ก่อนส่งให้ RD ตรวจ

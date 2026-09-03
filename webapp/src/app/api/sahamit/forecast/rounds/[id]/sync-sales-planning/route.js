@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { DEFAULT_PROBABILITY_BY_STAGE, canEditSalesPlanning, forecastAmount, isClosedStage, monthKey, toMoney } from '@/lib/salesPlanning';
 import { getSahamitContext, sahamitError, indexByFgCode, loadSahamitProducts } from '@/lib/sahamit/server';
+import { customerSnapshotName } from '@/lib/master/customerName';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,7 +184,8 @@ export async function POST(request, { params }) {
     const row = {
       id: genId('DEAL'),
       customerId: customer.id,
-      customerName: customer.name || null,
+      // สำเนาชื่อ = กติกาสองภาษา (ไทยก่อน ไม่มีค่อยตกอังกฤษ) — อ่าน .name ตรง ๆ เคยประทับ null
+      customerName: customerSnapshotName(customer),
       title: `Sahamit FC ${bucket.demandMonth}${bucket.ownerName ? ` · ${bucket.ownerName}` : ''}`,
       stage: 'qualified',
       projectValue: toMoney(bucket.value),

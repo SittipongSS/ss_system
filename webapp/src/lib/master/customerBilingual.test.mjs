@@ -17,7 +17,10 @@ import {
   normalizeAddresses,
   pickDocumentAddresses,
 } from './addresses.js';
-import { customerNameBranchWarning, customerNameError, customerNameIn, hasCustomerName } from './customerName.js';
+import {
+  CUSTOMER_NAME_SELECT, customerNameBranchWarning, customerNameError, customerNameIn,
+  customerNameSearchText, customerSnapshotName, hasCustomerName,
+} from './customerName.js';
 import { composeEnglishAddress } from './thaiAddress.js';
 
 // ที่อยู่ที่เลือกจากทะเบียนครบทุกชั้น — ชื่ออังกฤษติดมากับตัวเลือกตอนผู้ใช้เลือก
@@ -41,6 +44,31 @@ test('ชื่อ: ภาษาหลักก่อน ไม่มีค่�
   // มีภาษาเดียว = ได้ภาษานั้นทั้งสองบริบท
   assert.equal(customerNameIn({ nameEn: 'ABC Co., Ltd.' }), 'ABC Co., Ltd.');
   assert.equal(customerNameIn({ name: 'บริษัท เอบีซี จำกัด' }, 'en'), 'บริษัท เอบีซี จำกัด');
+});
+
+/* ── ฝั่งเขียนสำเนา (2026-09-03) ────────────────────────────────────────
+   🐞 ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ `customerName = null` ลงดีล/โครงการ/สินค้า
+   ตั้งแต่วันสร้าง เพราะจุดเขียนอ่านคอลัมน์ `name` ดิบ ⇒ จอปลายทางมีแต่ null ให้วาด
+   วัดจริงตอนพบ: AR-630 มีดีล/โครงการ/สินค้าอย่างละใบที่ค้าง null */
+test('สำเนาชื่อ: ไทยก่อน ไม่มีค่อยตกไปอังกฤษ — ไม่มีสักภาษาได้ null', () => {
+  assert.equal(customerSnapshotName({ name: 'บริษัท เอบีซี จำกัด', nameEn: 'ABC Co., Ltd.' }), 'บริษัท เอบีซี จำกัด');
+  assert.equal(customerSnapshotName({ nameEn: 'ABC Co., Ltd.' }), 'ABC Co., Ltd.');
+  assert.equal(customerSnapshotName({ name: '  ', nameEn: 'ABC Co., Ltd.' }), 'ABC Co., Ltd.');
+  // ⚠️ ต้องเป็น null ไม่ใช่ '' — คอลัมน์สำเนาเป็น nullable และจอวาดขีดจากค่าว่าง
+  assert.equal(customerSnapshotName({ name: '  ', nameEn: '' }), null);
+  assert.equal(customerSnapshotName(null), null);
+});
+
+test('ชุดค้นหา: มีทั้งสองภาษาเสมอ แม้ป้ายจะโชว์ภาษาเดียว', () => {
+  // คนพิมพ์หาลูกค้าต่างชาติด้วยชื่ออังกฤษ ต่อให้แถวโชว์ชื่อไทย (กติกา search haystack)
+  assert.equal(customerNameSearchText({ name: 'บริษัท เอบีซี จำกัด', nameEn: 'ABC Co., Ltd.' }), 'บริษัท เอบีซี จำกัด ABC Co., Ltd.');
+  assert.equal(customerNameSearchText({ nameEn: 'ABC Co., Ltd.' }), 'ABC Co., Ltd.');
+  assert.equal(customerNameSearchText({}), '');
+});
+
+test('CUSTOMER_NAME_SELECT หยิบทั้งสองภาษา (quote ตามคอนเวนชันคอลัมน์ camelCase)', () => {
+  assert.match(CUSTOMER_NAME_SELECT, /"nameEn"/);
+  assert.match(CUSTOMER_NAME_SELECT, /\bname\b/);
 });
 
 test('ชื่อ: ด่านตรวจผ่านเมื่อมีอย่างน้อยหนึ่งภาษา', () => {

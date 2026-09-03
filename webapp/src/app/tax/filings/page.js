@@ -8,6 +8,7 @@ import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
 import { useApiList } from "@/lib/excise/useApiList";
 import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
+import { customerNameIn } from "@/lib/master/customerName";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
 import ReportExportActions from "@/components/excise/ReportExportActions";
 import DateInput from "@/components/ui/DateInput";
@@ -147,7 +148,7 @@ export default function FilingsPage() {
   );
 
   const customerName = customerIds.length === 1
-    ? customers.find((c) => c.id === customerIds[0])?.name
+    ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
 
   const headerRight = (
@@ -192,7 +193,9 @@ export default function FilingsPage() {
             onClear={() => setCustomerIds([])}
             groups={[{
               key: "customer", label: "ลูกค้า", icon: Building2,
-              options: customers.map((c) => ({ value: c.id, label: c.name })),
+              /* ป้ายต้องผ่านกติกาสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ตัวเลือกว่างเปล่า
+                 (ป้ายที่นี่เป็นชื่อเปล่า ไม่ใช่ "รหัส · ชื่อ" แบบ dropdown เลือกลูกค้า) */
+              options: customers.map((c) => ({ value: c.id, label: customerNameIn(c) })),
               selected: customerIds,
               onChange: setCustomerIds,
             }]}

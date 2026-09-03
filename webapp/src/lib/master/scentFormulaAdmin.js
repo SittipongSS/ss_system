@@ -13,6 +13,7 @@ import {
   derivedFromError, newScentStatus, normalizeScentInput, proposedScentStatus,
 } from '@/lib/master/scents';
 import { formulaScentCustomerError, derivedFromFormulaError, normalizeFormulaInput } from '@/lib/master/formulas';
+import { customerSnapshotName, CUSTOMER_NAME_SELECT } from '@/lib/master/customerName';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -117,6 +118,24 @@ export async function assertDerivedFromScent(supabase, { derivedFromScentId, cus
   if (error) throw new Error(error);
 }
 
+/* ── ชื่อลูกค้าที่ประทับลงแถวกลิ่น — อ่านจากทะเบียนเสมอ ไม่เชื่อค่าที่ผู้เรียกส่งมา ──
+   🐞 2026-09-03: `customerName` ของกลิ่นมาจาก client ล้วน (`normalizeScentInput` รับ
+   `body.customerName` ตรง ๆ) และทุกจอส่ง `customers.find(...)?.name` มา ⇒ ลูกค้าที่มี
+   แต่ชื่ออังกฤษถูกประทับ null ทับทุกครั้งที่กดบันทึก · แก้ที่จอแล้วยังเหลือทางอื่นอีกสาม
+   (คำร้อง SA · ส่งงานรายบรรทัด · จัดระเบียบ) ที่ส่งสำเนาของสำเนาต่อกันมา
+   ⇒ derive ที่นี่ = ปิดรูให้ทุกทางเรียกพร้อมกัน รวมคนยิง API ตรง
+   (แพตเทิร์นเดียวกับ `customerForFormula` ของสูตร)
+   ⚠️ **หาไม่เจอ = คงค่าที่ส่งมา ไม่ล้างทิ้ง** — `scents.customerId` ไม่มี FK (mig 0171)
+   แถวเก่าชี้ลูกค้าที่ถูกลบไปแล้วได้ · ล้างชื่อทิ้งเมื่อไรจอปลายทางวาดขีดแทนของที่เคยมี */
+export async function scentCustomerName(supabase, customerId, fallback = null) {
+  if (!customerId) return null;
+  // ⚠️ ต้องอ่าน error (กติกาหัวไฟล์) — ทิ้งแล้ว schema error จะกลายเป็น "ไม่พบลูกค้า"
+  const { data, error } = await supabase
+    .from('customers').select(CUSTOMER_NAME_SELECT).eq('id', customerId).maybeSingle();
+  if (error) throw error;
+  return data ? customerSnapshotName(data) : fallback;
+}
+
 export async function createScent(supabase, input, user, { accepted = false } = {}) {
   const { value, error } = normalizeScentInput(input);
   if (error) throw new Error(error);
@@ -128,6 +147,8 @@ export async function createScent(supabase, input, user, { accepted = false } = 
   const row = {
     id: genId('SCT'),
     ...value,
+    // ชื่อลูกค้าเป็นค่าที่ derive ได้ — ทับค่าที่ผู้เรียกส่งมาเสมอ (ดู scentCustomerName)
+    customerName: await scentCustomerName(supabase, value.customerId, value.customerName),
     // ⭐ **เลือกสถานะได้ตอนสร้าง** (มติผู้ใช้ 2026-08-08) — ทางเพิ่มตรงมีไว้ลงกลิ่นเดิม
     // ที่ลูกค้าอนุมัติไปแล้ว ⇒ ควรเป็น `active` ตั้งแต่แรก ไม่ใช่บังคับ `developing`
     // แล้วให้ RD กดเปลี่ยนอีกรอบทุกใบ
@@ -309,10 +330,11 @@ async function customerForFormula(supabase, { customerId, scentId }) {
   // ⚠️ ต้องแยก error ออกจาก "ไม่เจอ" — ทิ้ง error แล้วเช็ค `!data` ทำให้ปัญหาการอ่าน
   // กลายเป็น "ไม่พบลูกค้า" แล้วไล่ผิดทางยาว (มี ratchet test คุมทั้งรีโป)
   const { data, error } = await supabase
-    .from('customers').select('id, name').eq('id', customerId).maybeSingle();
+    .from('customers').select(CUSTOMER_NAME_SELECT).eq('id', customerId).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('ไม่พบลูกค้าที่เลือก');
-  return { customerId: data.id, customerName: data.name ?? null };
+  // ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่โดนประทับ null ลงสูตร แล้วจอปลายทางวาดขีด
+  return { customerId: data.id, customerName: customerSnapshotName(data) };
 }
 
 export async function assertDerivedFromFormula(supabase, { derivedFromFormulaId, customerId, id }) {
@@ -333,8 +355,17 @@ export async function createFormula(supabase, input, user, {
   if (accepted && !value.code) throw new Error('ต้องระบุรหัสสูตร');
 
   // fallbackCustomer ยังใช้ได้เฉพาะทาง "จัดระเบียบ" ที่ไม่ได้ส่งลูกค้ามา (ดูหัวข้อบน)
+  // ⚠️ ชื่อที่ติดมากับ fallbackCustomer เป็น **สำเนาของสำเนา** (body → สแนปช็อตของสินค้า)
+  // ลูกค้าที่มีแต่ชื่ออังกฤษจึงเป็น null มาแต่ต้นทาง ⇒ derive จากทะเบียนเหมือนทางอื่น
   const picked = await customerForFormula(supabase, value);
-  const customer = picked.customerId ? picked : (fallbackCustomer || picked);
+  const customer = picked.customerId ? picked : (fallbackCustomer
+    ? {
+      customerId: fallbackCustomer.customerId ?? null,
+      customerName: await scentCustomerName(
+        supabase, fallbackCustomer.customerId, fallbackCustomer.customerName,
+      ),
+    }
+    : picked);
   await assertDerivedFromFormula(supabase, { ...value, ...customer });
 
   const nowIso = new Date().toISOString();

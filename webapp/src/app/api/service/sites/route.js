@@ -6,6 +6,7 @@ import { recordAudit } from '@/lib/audit';
 import { insertRowWithComposedCode } from '@/lib/entityCode';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canCreateServiceSite } from '@/lib/permissions';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { SITE_RUN_BUCKET, SITE_RUN_WIDTH, siteCodePrefix } from '@/lib/service/siteCode';
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
@@ -115,10 +116,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (codeError) return badRequest(codeError);
 
     // รหัสออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — insert ล้ม = เลขคืน
+    // ชื่อสำเนา: ไทยก่อน ตกไปอังกฤษ — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้ null ทั้งคอลัมน์
+    const customerName = customerSnapshotName(customer);
     const row = {
       id: genId('SVS'),
       ...value,
-      customerName: customer.name || null,
+      customerName,
       createdById: user.id ? String(user.id) : null,
       createdByName: user.name || null,
     };
@@ -131,7 +134,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
     await recordAudit({
       user, action: 'create', entityType: 'service_site', entityId: data.id, after: data,
-      summary: `เพิ่มไซต์บริการ ${data.code || data.id} · ${data.name} (${customer.name})`,
+      summary: `เพิ่มไซต์บริการ ${data.code || data.id} · ${data.name} (${customerName})`,
       request: req,
     });
     return ok(data, 201);

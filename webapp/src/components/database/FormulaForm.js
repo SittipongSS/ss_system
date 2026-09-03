@@ -13,6 +13,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import FormZone from "@/components/ui/FormZone";
+import { customerSelectOptions } from "@/components/master/customerOption";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
 import styles from "./registryForm.module.css";
@@ -74,11 +75,7 @@ export default function FormulaForm({
       || scents.find((x) => x.id === value.scentId)?.customerId === customerId;
     set({ customerId, ...(keep ? {} : { scentId: "" }) });
   };
-  const customerOptions = customers.map((c) => ({
-    value: c.id,
-    label: c.name || c.id,
-    search: [c.name, c.code, c.id].filter(Boolean).join(" "),
-  }));
+  const customerOptions = customerSelectOptions(customers);
 
   // สายพันธุ์: สูตรของลูกค้ารายเดียวกัน + สูตรฐาน (ไม่ผูกลูกค้า) ซึ่งเป็นต้นทางได้จริง
   const lineageOptions = formulas

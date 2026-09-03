@@ -10,6 +10,7 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { normalizeSiteInput } from '@/lib/service/sites';
 import { checkSiteReferences } from '@/lib/service/siteReferences';
 import { findCustomer, loadAssets, loadZones, requireSite } from '@/lib/service/sitesRepo';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadVisits, siteScheduleContext } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -116,7 +117,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     let customerName = before.customerName;
     const customer = await findCustomer(supabase, value.customerId);
     if (!customer) return badRequest('ไม่พบลูกค้าที่ระบุ');
-    if (moved) customerName = customer.name || null;
+    if (moved) customerName = customerSnapshotName(customer);
 
     /* ⚠️ **ย้ายลูกค้า = ล้างที่อยู่ต้นทาง** (mig 0313) — `customerAddressId` ชี้เข้า
        `addresses[]` ของลูกค้าคนเดิม · ปล่อยไว้แล้วปุ่ม "ดึงใหม่" จะเทียบกับที่อยู่

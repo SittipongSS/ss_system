@@ -13,7 +13,8 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 export async function loadImportSnapshot(supabase) {
   const [customers, sites, zones, assets] = await Promise.all([
     // `arCode` มาด้วย (mig 0315) — รหัสไซต์ประกอบจากรหัสลูกค้า ⇒ ไม่ต้องยิงรายแถว
-    fetchAll(() => supabase.from('customers').select('id, name, "arCode"').order('id')),
+    // `nameEn` ด้วย — แผนนำเข้าประทับชื่อลูกค้าลงไซต์ (customerSnapshotName)
+    fetchAll(() => supabase.from('customers').select('id, name, "nameEn", "arCode"').order('id')),
     fetchAll(() => supabase.from('service_sites').select('id, code, "customerId", name').order('id')),
     fetchAll(() => supabase.from('service_zones').select('id, code, "siteId", name').order('id')),
     fetchAll(() => supabase.from('service_assets').select('id, "siteId", "zoneId", kind, status').order('id')),
