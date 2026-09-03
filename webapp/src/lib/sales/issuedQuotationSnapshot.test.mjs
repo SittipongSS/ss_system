@@ -180,7 +180,28 @@ test('capture ไม่ทับค่าที่ตรึงไว้แล้
 });
 
 test('layout version is tagged for regeneration tracking', () => {
-  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.3');
+  assert.equal(ISSUED_QUOTATION_LAYOUT_VERSION, 'quote-master-v4.4');
+});
+
+test('payload ตรึงชื่อ/ที่อยู่อังกฤษคู่กับไทย — ว่าง = null ไม่ใช่ค่าไทยซ้ำ', () => {
+  const payload = buildIssuedQuotationPayload({
+    ...baseQuote,
+    customerNameEn: 'Customer A Co., Ltd.',
+    billingAddressEn: '123 Test Road',
+    shippingAddressEn: '   ',
+  }, evidence);
+  assert.equal(payload.customer.customerNameEn, 'Customer A Co., Ltd.');
+  assert.equal(payload.customer.billingAddressEn, '123 Test Road');
+  // เว้นวรรคล้วน = ว่าง — ปล่อย null ให้ชั้นเรนเดอร์ถอยไปไทยเอง ห้ามก๊อปไทยมาใส่ช่องอังกฤษ
+  assert.equal(payload.customer.shippingAddressEn, null);
+  // ช่องไทยต้องไม่ขยับแม้แต่ตัวอักษรเดียว
+  assert.equal(payload.customer.customerName, 'ลูกค้า ก');
+  assert.equal(payload.customer.billingAddress, '123 ถนนทดสอบ');
+  // ใบเก่าที่ยังไม่มีคอลัมน์ = null ทั้งชุด (ไม่ backfill ตามมติผู้ใช้)
+  const old = buildIssuedQuotationPayload(baseQuote, evidence);
+  assert.equal(old.customer.customerNameEn, null);
+  assert.equal(old.customer.billingAddressEn, null);
+  assert.equal(old.customer.shippingAddressEn, null);
 });
 
 test('artifact embeds approver signature image when provided', () => {

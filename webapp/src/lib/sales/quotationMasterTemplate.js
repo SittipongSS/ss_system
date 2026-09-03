@@ -2,6 +2,7 @@ import { fmtDate } from '@/lib/format';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
+import { headerText } from '@/lib/documents/documentShell';
 import { resolveCompanyBlock } from '@/lib/companyProfile';
 import { paymentScheduleRows } from '@/lib/sales/paymentPlan';
 import { lineNoteFor } from '@/lib/sales/quoteLines';
@@ -1029,10 +1030,29 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
         : Number(quote.totalAmount || 0),
     }));
 
+  /* ⭐ ชื่อ/ที่อยู่ลูกค้าเดินตามภาษาของใบ (มติผู้ใช้ 2026-09-03) — ช่องอังกฤษว่างให้
+     **ถอยไปไทย** กติกาเดียวกับชื่อสินค้าด้านบน (ไม่เว้นว่าง ไม่กั้นการสลับภาษา ปล่อยให้
+     หน้าต่างพิมพ์เตือนแทน ดู docLanguageGaps)
+     ⚠️ อ่านอย่างเดียว — คอลัมน์ไทยของใบยังเป็นค่าเดิมทุกตัวอักษร (approval fingerprint
+     ของใบสั่งขายกิน customerName อยู่) และคีย์อังกฤษไม่เคยเข้า fingerprint
+     ⚠️ เลือกภาษา **ที่นี่ที่เดียว** ไม่ใช่ตอนวาด เพราะ v4FirstCapacity วัดความยาว
+     ชื่อ+ที่อยู่ไว้จองที่หน้าแรก — ถ้าโมเดลถือไทยแต่กระดาษพิมพ์อังกฤษ หน้าจะถูกตัดตาม
+     ความยาวของอีกภาษา
+     ⚠️ ใช้ headerText ตัวเดียวกับหัวเอกสาร (เว้นวรรคล้วน = ว่าง) — ค่าที่มันคืนถูก trim
+     แล้ว ซึ่งไม่ขยับใบไทยเพราะทั้งชื่อและที่อยู่ถูก trim ตั้งแต่ตอนบันทึกทะเบียนลูกค้า
+     (normalizeAddresses)
+     ⚠️ headerText ถอยกลับ **สองทิศ** ⇒ ใบไทยที่ช่องนั้นไม่มีไทยเลยจะพิมพ์อังกฤษ ซึ่งคือ
+     มติ "อย่างน้อยหนึ่งภาษา" (2026-08-22) ที่ pickDocumentAddresses ทำอยู่แล้วตั้งแต่ตอน
+     แช่แข็งที่อยู่ลงใบ (billing.address || billing.addressEn) — ดีกว่าพิมพ์ขีดให้ลูกค้า */
+  const customerText = (thai, english) => headerText(language, thai, english) || '-';
+  const billingAddress = customerText(quote.billingAddress, quote.billingAddressEn);
   const customer = {
-    name: quote.customerName || '-',
-    address: quote.billingAddress || '-',
-    shippingAddress: quote.shippingAddress || quote.billingAddress || '-',
+    name: customerText(quote.customerName, quote.customerNameEn),
+    address: billingAddress,
+    // ไม่มีที่อยู่จัดส่งของตัวเองเลย (ทั้งสองภาษา) = ส่งตามที่อยู่ออกบิล — ความหมายเดิม
+    // ของช่องนี้บนเอกสาร ต่างกันแค่ตอนนี้ที่อยู่ออกบิลเป็นภาษาของใบแล้ว
+    shippingAddress: headerText(language, quote.shippingAddress, quote.shippingAddressEn)
+      || billingAddress,
     taxId: quote.customerTaxId || '-',
     branch: quotationBranchText(quote.branchCode),
     contactName: quote.contactName || '-',

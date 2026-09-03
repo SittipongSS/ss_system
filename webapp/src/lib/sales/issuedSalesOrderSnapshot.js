@@ -19,7 +19,9 @@ import {
 
 // bump เมื่อ payload/artifact เปลี่ยนโครง เพื่อให้ระบุ generator ที่สร้าง snapshot เดิมได้
 // v4.2 = ช่องผู้จัดทำเป็น evidence-backed (วันที่ลงนาม + Evidence id ฝังในใบตรึง, mig 0153)
-export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.2';
+// v4.3 = ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษเข้า payload — payload เปลี่ยนรูป ⇒ capture ใบเดิม
+//        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
+export const ISSUED_SALES_ORDER_LAYOUT_VERSION = 'so-master-v4.3';
 export const ISSUED_SALES_ORDER_LOCALE = 'th-TH';
 
 const trimOrNull = (value) => {
@@ -63,10 +65,20 @@ export function buildIssuedSalesOrderPayload(order = {}, company) {
     },
     customer: {
       customerName: trimOrNull(order.customerName),
+      /* ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษ — ใบอังกฤษพิมพ์ช่องนี้ ว่างเมื่อไหร่ถอยไปช่องไทย
+         (กติกาเดียวกับชื่อสินค้า) จึงตรึง **ทั้งสองภาษาคู่กัน** ช่องไทยคงค่าเดิมทุกตัวอักษร
+         · ถอยไปใบเสนอราคาที่ผูกเมื่อใบสั่งขายยังไม่มีค่า — ที่อยู่ไทยก็อ่านจากที่นั่นอยู่แล้ว
+         และใบที่สร้างก่อนมีคอลัมน์นี้จะไม่ถูก backfill (มติผู้ใช้ "ใบเก่าปล่อยไว้")
+         ⚠️ คีย์ใหม่กระทบ contentFingerprint ของ **ฉบับที่จะตรึงต่อจากนี้** เท่านั้น
+         (เหตุผลเดียวกับ docLanguage ด้านบน) — คนละตัวกับ approvalFingerprint ที่กิน
+         customerName อยู่ ห้ามเอาเข้าไปเด็ดขาด */
+      customerNameEn: trimOrNull(order.customerNameEn || q.customerNameEn),
       customerTaxId: trimOrNull(q.customerTaxId),
       branchCode: trimOrNull(q.branchCode),
       billingAddress: trimOrNull(q.billingAddress),
+      billingAddressEn: trimOrNull(order.billingAddressEn || q.billingAddressEn),
       shippingAddress: trimOrNull(q.shippingAddress),
+      shippingAddressEn: trimOrNull(order.shippingAddressEn || q.shippingAddressEn),
       contactName: trimOrNull(q.contactName),
       contactPhone: trimOrNull(q.contactPhone),
     },

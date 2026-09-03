@@ -81,7 +81,10 @@ async function loadOrder(supabase, id) {
        ⚠️ เพิ่มชื่อคอลัมน์ที่นี่ปลอดภัยกับฉบับตรึง: `buildIssuedSalesOrderPayload` หยิบจาก
        deal/project แค่ `title`/`name` แบบระบุชื่อฟิลด์ ⇒ fingerprint ไม่ขยับ */
     supabase.from('sales_deals').select('id, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
-    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, billingAddress, shippingAddress, branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
+    /* 🪤 คู่ภาษาต้องมาด้วยกันเสมอ — `salesOrderPrint`/`issuedSalesOrderSnapshot` เขียน
+       ทางถอย `order.xxxEn || quotation.xxxEn` ไว้ ลืมชื่อคอลัมน์ที่นี่ = ฝั่งขวาเป็น
+       undefined เสมอ แล้วใบอังกฤษพิมพ์ชื่อ/ที่อยู่ไทยเงียบ ๆ โดยไม่มีอะไรฟ้อง */
+    supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, "customerNameEn", billingAddress, "billingAddressEn", shippingAddress, "shippingAddressEn", branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
       // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย)
       // line: สายธุรกิจตัวจริง (โครงการเป็นเจ้าของค่า ดีลเป็นสำเนา) — ดู `orderBusinessLineOf`

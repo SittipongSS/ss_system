@@ -55,7 +55,7 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
   // แก้ข้อมูลลูกค้าต้องไปแก้ที่ฐานข้อมูลลูกค้า). เลือก "คน" ผู้ติดต่อได้ผ่าน contactIndex.
   const { data: customer } = await supabase
     .from('customers')
-    .select('taxId, addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
+    .select('taxId, "nameEn", addresses, address, shippingAddress, branchCode, contacts, contactPerson, contactPhone')
     .eq('id', deal.customerId)
     .maybeSingle();
   // ที่อยู่ที่ใบนี้เลือก (0202/0203) — คนทำใบเลือกได้ว่าออกบิล/ส่งที่ไหน ไม่ส่งมา
@@ -99,6 +99,12 @@ export async function createQuotationDraft({ supabase, user, deal, body = {}, re
       validUntil: body.validUntil || null,
       customerId: deal.customerId || null,
       customerName: deal.customerName || null,
+      /* ชื่อกิจการภาษาอังกฤษ ณ วันออกใบ (มติผู้ใช้ 2026-09-03) — ใบภาษาอังกฤษต้องพิมพ์
+         ชื่ออังกฤษ ไม่ใช่ชื่อไทย · ดีลไม่มีช่องนี้ (กระจกชื่อของดีลเป็นไทยตัวเดียว)
+         จึงอ่านจากทะเบียนลูกค้าตรง ๆ เหมือน taxId
+         ⚠️ **ไม่ถอยไปไทย** — ว่างคือ null ให้หน้าต่างพิมพ์เตือนแล้วถอยเอง (กติกาเดียว
+         กับที่อยู่อังกฤษ ดู pickDocumentAddresses) */
+      customerNameEn: (customer?.nameEn || '').trim() || null,
       // snapshot ลูกค้า (read-only ในใบ)
       customerTaxId: customer?.taxId || null,
       // ข้อความ = snapshot ณ วันออกใบ · id = ที่อยู่ตัวไหน (ฉบับ Rev. ใช้ดึงสดใหม่)

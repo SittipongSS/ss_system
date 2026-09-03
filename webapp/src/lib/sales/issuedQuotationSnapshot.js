@@ -27,7 +27,9 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 //        + ข้อมูลลูกค้าที่ว่างถูกเติมจากทะเบียนก่อนตรึง (#710)
 // v4.3 = ใบเลือกภาษาเอกสารได้ (quotations.docLanguage, mig 0238 · IS-26080005) — artifact
 //        ที่ตรึงเป็นภาษาที่ใบเลือกไว้ ณ เวลาอนุมัติ และ locale บันทึกภาษานั้นจริง ๆ
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.3';
+// v4.4 = ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษเข้า payload — payload เปลี่ยนรูป ⇒ capture ใบเดิม
+//        ครั้งถัดไปต้องได้ฉบับใหม่ ไม่ reuse ฉบับที่ยังไม่มีช่องอังกฤษ
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.4';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 /* ── docLanguage กับฉบับตรึง: ตัดสินแล้ว (2026-08-12) ────────────────────────
@@ -80,10 +82,19 @@ export function buildIssuedQuotationPayload(quote = {}, evidence = {}, company) 
     content: quotationApprovalContent(quote, lines),
     customer: {
       customerName: trimOrNull(quote.customerName),
+      /* ชื่อ/ที่อยู่ลูกค้าภาษาอังกฤษ — ใบอังกฤษพิมพ์ช่องนี้ ว่างเมื่อไหร่ถอยไปช่องไทย
+         (กติกาเดียวกับชื่อสินค้า) จึงต้องตรึง **ทั้งสองภาษาคู่กัน** ไม่ใช่เฉพาะภาษาของใบ
+         — ช่องไทยด้านล่างคงค่าเดิมทุกตัวอักษร ใบไทยจึงไม่ขยับแม้แต่พิกเซลเดียว
+         ⚠️ คีย์ใหม่กระทบ contentFingerprint ของ **ฉบับที่จะตรึงต่อจากนี้** เท่านั้น
+         (เหตุผลเดียวกับ docLanguage ด้านบน) และ **ห้ามเอาเข้า quotationApprovalContent**
+         ซึ่งเป็นลายนิ้วมือการอนุมัติที่เก็บไว้ในใบทุกใบบน prod แล้ว */
+      customerNameEn: trimOrNull(quote.customerNameEn),
       customerTaxId: trimOrNull(quote.customerTaxId),
       branchCode: trimOrNull(quote.branchCode),
       billingAddress: trimOrNull(quote.billingAddress),
+      billingAddressEn: trimOrNull(quote.billingAddressEn),
       shippingAddress: trimOrNull(quote.shippingAddress),
+      shippingAddressEn: trimOrNull(quote.shippingAddressEn),
       contactName: trimOrNull(quote.contactName),
       contactPhone: trimOrNull(quote.contactPhone),
     },

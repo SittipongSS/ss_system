@@ -65,6 +65,10 @@ function documentHeader(model, L) {
 function partyGrid(model, L) {
   // ประกอบเองเพื่อคงพฤติกรรมเดิมเป๊ะ: ไม่มีชื่อผู้ติดต่อแต่มีเบอร์ → "- · 08x…"
   // (ถ้าปล่อยให้เปลือกเติม "-" ให้ทั้งช่อง เบอร์จะหายไป)
+  /* ⚠️ ชื่อ/ที่อยู่ลูกค้า **ไม่สลับภาษาที่นี่** ต่างจากที่อยู่บริษัทในหัวเอกสารข้างบน —
+     model.customer เป็นภาษาของใบมาตั้งแต่ buildQuotationMasterModelFromQuote แล้ว
+     (มติผู้ใช้ 2026-09-03) เพราะ v4FirstCapacity จองที่หน้าแรกจากความยาวของข้อความชุดนี้
+     ถ้ามาเลือกภาษาซ้ำตอนวาด ที่ที่จองไว้กับที่พิมพ์จริงจะหลุดจากกันแล้วตารางโดนตัด */
   const contactName = model.customer.contactName;
   const contact = `${contactName === null || contactName === undefined || contactName === '' ? '-' : contactName}`
     // เบอร์บนกระดาษต้องอ่านเป็นรูปเดียวกับบนจอ — จัดรูปแบบผ่านตัวกลางเสมอ
@@ -477,7 +481,10 @@ export function buildQuotationMasterSwitchableHTML(quote, options = {}) {
   const editable = options.editable === true;
   return renderDocumentHTML({
     lang: active,
-    // ชื่อไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" — ประกอบจากรหัส/ลูกค้า/ดีล จึงเท่ากันทั้งสองภาษา
+    // ชื่อไฟล์ตอน "พิมพ์ → บันทึกเป็น PDF" — ประกอบจากรหัส/ลูกค้า/ดีล
+    // ⚠️ ตั้งแต่ชื่อลูกค้าเดินตามภาษาของใบ (มติผู้ใช้ 2026-09-03) ชื่อไฟล์จึง **ไม่เท่ากัน
+    // ทั้งสองภาษา** อีกแล้ว และ document.title ถูกตั้งครั้งเดียวตอนเปิด ⇒ ใบที่เปิดมาเป็น
+    // ไทยแล้วสลับเป็นอังกฤษก่อนสั่งพิมพ์ ยังได้ชื่อไฟล์ของภาษาที่เปิดมา (ตัวเอกสารถูกภาษา)
     title: documentFileName(number, shown.customer?.name, shown.dealTitle),
     accentKey: shown.accentKey,
     grayscale: options.grayscale === true,
