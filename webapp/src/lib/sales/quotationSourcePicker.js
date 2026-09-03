@@ -9,6 +9,7 @@
 // ตัวบอกเหตุยังอยู่ครบสำหรับเงื่อนไขที่เหลือ (ปิดแล้ว · ทีมอื่น · ยังไม่มีลูกค้า)
 
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
+import { customerNameIn, customerNameSearchText } from '@/lib/master/customerName';
 
 // = ดีลที่ปิดแล้วทุกแบบ (นิยามกลางที่ lib/salesPlanning) — คงชื่อเดิมไว้เพราะสื่อ
 // เจตนาเฉพาะที่ของลิสต์นี้ ("ออกใบไม่ได้แล้ว") และมีเทสต์อ้างชื่อนี้อยู่
@@ -149,7 +150,9 @@ export function blockedQuotationCustomers({
 } = {}) {
   const needle = norm(search);
   if (needle.length < 2) return [];
-  const matchesNeedle = (customer) => `${norm(customer.name)} ${norm(customer.arCode)}`.includes(needle);
+  // ชุดค้นต้องมีทั้งสองภาษา — ลูกค้าต่างชาติที่ไม่มีชื่อไทยเคยพิมพ์ชื่อจริงแล้วไม่เจอ
+  // แม้แต่ข้อความบอกเหตุ (ตาเห็นบนแถว = ต้องค้นเจอ)
+  const matchesNeedle = (customer) => `${norm(customerNameSearchText(customer))} ${norm(customer.arCode)}`.includes(needle);
 
   const eligibleIds = new Set(eligibleQuotationDeals(deals).map((deal) => deal.customerId));
   const dealsByCustomer = new Map();
@@ -170,7 +173,7 @@ export function blockedQuotationCustomers({
       const deal = pickDeal(own, reason.code);
       return {
         customerId: customer.id,
-        customerName: customer.name || customer.id,
+        customerName: customerNameIn(customer) || customer.id,
         reasonCode: reason.code,
         reason: reason.label,
         actionLabel: reason.action,
@@ -187,7 +190,7 @@ export function blockedQuotationCustomers({
       const reason = registryReasonFor(customer);
       return {
         customerId: customer.id,
-        customerName: customer.name || customer.id,
+        customerName: customerNameIn(customer) || customer.id,
         reasonCode: reason.code,
         reason: reason.label,
         actionLabel: reason.action,

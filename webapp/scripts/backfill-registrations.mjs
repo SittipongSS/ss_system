@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
+import { customerSnapshotName } from '../src/lib/master/customerName.js';
 
 try {
   const env = readFileSync(new URL('../.env.local', import.meta.url), 'utf8');
@@ -28,6 +29,7 @@ async function backfillRegs() {
 
   // Load products and customers
   const { data: products } = await supabase.from('products').select('*');
+  // `*` หยิบ `nameEn` มาด้วยอยู่แล้ว — customerSnapshotName ต้องมีทั้งสองภาษาถึงจะ fallback ได้
   const { data: customers } = await supabase.from('customers').select('*');
   const { data: existingRegs } = await supabase.from('excise_registrations').select('*');
 
@@ -42,7 +44,11 @@ async function backfillRegs() {
       const key = `${p.id}_${p.customerId}`;
       if (!existingRegKeys.has(key)) {
         const customer = customerMap.get(p.customerId);
-        console.log(`· Creating registration for Product [${p.id}] (${p.fgCode}) and Customer [${p.customerId}] ("${customer?.name || p.customerName}")`);
+        /* สำเนาชื่อต้องผ่านกติกาสองภาษา — `customer.name` ดิบประทับ null ทับลูกค้า
+           ที่มีแต่ชื่ออังกฤษ · คำนวณครั้งเดียวแล้วใช้ทั้ง log และค่าที่เขียนจริง
+           ไม่งั้นบรรทัดที่พิมพ์ออกจอเป็นคนละค่ากับที่ลงฐาน */
+        const customerName = customerSnapshotName(customer) || p.customerName;
+        console.log(`· Creating registration for Product [${p.id}] (${p.fgCode}) and Customer [${p.customerId}] ("${customerName}")`);
         
         const regId = `REG-${p.id.substring(4)}`;
         regsToInsert.push({
@@ -52,7 +58,7 @@ async function backfillRegs() {
           fgCode: p.fgCode,
           productName: p.productDescription,
           brandName: p.brandName,
-          customerName: customer?.name || p.customerName,
+          customerName,
           taxId: customer?.taxId || p.taxId,
           isExciseTaxable: p.isExciseTaxable,
           taxableOverride: p.taxableOverride,

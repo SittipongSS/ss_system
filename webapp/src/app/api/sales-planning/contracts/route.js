@@ -1,5 +1,6 @@
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { loadScoped } from '@/lib/scopedRow';
@@ -128,7 +129,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const customerId = quotation.customerId || deal.customerId || null;
   const { data: customer } = customerId
     ? await supabase.from('customers')
-      .select('id, name, "taxId", address, addresses, "shippingAddress", "branchCode"')
+      .select('id, name, "nameEn", "taxId", address, addresses, "shippingAddress", "branchCode"')
       .eq('id', customerId).maybeSingle()
     : { data: null };
 
@@ -154,7 +155,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     quotationId: quotation.id,
     customerId,
     // ชื่อลูกค้าบนสัญญา = สำเนา ณ วันที่ทำ ไม่ซิงก์ตามทะเบียนภายหลัง
-    customerName: customer?.name || quotation.customerName || deal.customerName || null,
+    customerName: customerSnapshotName(customer) || quotation.customerName || deal.customerName || null,
     contractDate: body.contractDate || businessDate(),
     /* 🔴 **ใบ external ไม่กิน `fields` ของแม่แบบ** — ช่องพวกนี้คือ *ช่องเติมของเอกสารที่
        ระบบเจน* ไม่ใช่ข้อมูลของสัญญา · ของเดิมเรียกโดยไม่ดู `source` ⇒ ใบ external ชนิด

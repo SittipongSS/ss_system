@@ -22,14 +22,31 @@
 // 'live'   = สำเนาต้องเดินตามทะเบียนเสมอ — cascade ให้ตอนแก้ลูกค้า
 // 'frozen' = **เอกสาร** ชื่อบนใบคือชื่อ ณ วันออกใบ ห้ามขยับ (มติผู้ใช้ 2026-08-27:
 //            อยากได้ข้อมูลใหม่ต้องออก Rev.) — ต้องมี `reason` กำกับเสมอ
+//
+// ── แหล่งที่มาของค่า ('displayName') ────────────────────────────────────
+// 🐞 2026-09-03: `fields: { customerName: 'name' }` แบบเดิมประทับ null ให้ลูกค้าที่มี
+// แต่ชื่ออังกฤษ ⇒ สำเนาชื่อต้องผ่าน `customerSnapshotName` (ไทยก่อน ตกไปอังกฤษ)
+// ไม่ใช่หยิบคอลัมน์ `name` ดิบ · คีย์ 'displayName' ไม่ใช่คอลัมน์จริงในตาราง customers
+// เป็นตัวบอกว่า "ให้คิดจากกติกาสองภาษา" — ตัวอื่น (taxId) ยังหยิบคอลัมน์ตรง ๆ เหมือนเดิม
+import { customerSnapshotName } from './customerName.js';
+
+const SOURCE_RESOLVERS = Object.freeze({ displayName: customerSnapshotName });
+
+/* แปลง source ของทะเบียน → ค่าที่ประทับจริง
+   export ออกไปเพราะสคริปต์ backfill ต้องใช้ **ตัวเดียวกับ cascade** — ก่อนหน้านี้
+   สคริปต์ก๊อปตรรกะไปเขียนซ้ำ (hard-code เช็ค 'displayName') แล้วพอทะเบียนเพิ่ม
+   resolver ใหม่ สคริปต์ตามไม่ทันแบบเงียบ ๆ จนเขียนค่าคนละตัวกับที่ระบบเขียน */
+export const customerMirrorValue = (customer, sourceField) => (SOURCE_RESOLVERS[sourceField]
+  ? SOURCE_RESOLVERS[sourceField](customer)
+  : customer[sourceField] ?? null);
 export const CUSTOMER_NAME_MIRRORS = Object.freeze([
   // ทะเบียนสรรพสามิต: snapshot ไว้โชว์/ดูประวัติ ไม่ใช่เอกสารที่ส่งลูกค้า
-  { table: 'excise_registrations', mode: 'live', fields: { customerName: 'name', taxId: 'taxId' } },
+  { table: 'excise_registrations', mode: 'live', fields: { customerName: 'displayName', taxId: 'taxId' } },
   // โครงการ: ภาชนะของงาน ไม่ใช่เอกสาร — ชื่อลูกค้าควรเป็นชื่อปัจจุบันเสมอ
-  { table: 'projects', mode: 'live', fields: { customerName: 'name' } },
+  { table: 'projects', mode: 'live', fields: { customerName: 'displayName' } },
   // ดีล: API รายการ join ทะเบียนสดอยู่แล้ว แต่คอลัมน์นี้ยังถูกอ่านตอนจัดกลุ่ม/ค้นหา
   // ⇒ ต้อง cascade ด้วย ไม่งั้นชื่อบนแถวกับชื่อที่ใช้จัดกลุ่มเป็นคนละตัว
-  { table: 'sales_deals', mode: 'live', fields: { customerName: 'name' } },
+  { table: 'sales_deals', mode: 'live', fields: { customerName: 'displayName' } },
   {
     table: 'sales_orders',
     mode: 'frozen',
@@ -59,7 +76,7 @@ export async function cascadeCustomerName(supabase, customerId, customer) {
   for (const mirror of liveCustomerNameMirrors()) {
     const patch = {};
     for (const [column, sourceField] of Object.entries(mirror.fields)) {
-      patch[column] = customer[sourceField] ?? null;
+      patch[column] = customerMirrorValue(customer, sourceField);
     }
     const { error } = await supabase.from(mirror.table).update(patch).eq('customerId', customerId);
     if (error) {

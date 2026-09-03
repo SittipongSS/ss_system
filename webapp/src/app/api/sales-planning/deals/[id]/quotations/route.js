@@ -6,6 +6,7 @@ import { refreshFgLinesForDisplay } from '@/lib/sales/quoteLines';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 import { refreshCustomerNameForDisplay } from '@/lib/sales/customerSnapshotFallback';
+import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { dealAwaitsCustomer, dealCustomerAdoptError } from '@/lib/sales/dealCustomerAdopt';
 import { caretakerTeamsOf, hasTeam, userTeams, viewScopeUser } from '@/lib/permissions';
@@ -76,7 +77,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest('ดีลนี้ยังไม่ระบุลูกค้า — เลือกลูกค้าบนฟอร์ม แล้วระบบจะตั้งให้ดีลด้วย');
     }
     const { data: customer } = await supabase
-      .from('customers').select('id, name, "arCode", team, teams, "approvalStatus", "isActive"')
+      .from('customers').select('id, name, "nameEn", "arCode", team, teams, "approvalStatus", "isActive"')
       .eq('id', body.customerId).maybeSingle();
     const adoptError = dealCustomerAdoptError(deal, customer);
     if (adoptError) return badRequest(adoptError);
@@ -92,7 +93,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        ไม่ใช่เขียนทับกันเงียบ ๆ (ท่าเดียวกับ guard `projectId` ของ link-project) */
     const { data: linked, error: linkError } = await supabase
       .from('sales_deals')
-      .update({ customerId: customer.id, customerName: customer.name || null, updatedAt: new Date().toISOString() })
+      // ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่ถูกประทับเป็น null ลงคอลัมน์สำเนาของดีล
+      .update({ customerId: customer.id, customerName: customerSnapshotName(customer), updatedAt: new Date().toISOString() })
       .eq('id', deal.id).is('customerId', null)
       .select().single();
     if (linkError) {
@@ -107,7 +109,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({
       user, action: 'update', entityType: 'sales_deal', entityId: workingDeal.id,
       before: deal, after: workingDeal,
-      summary: `ตั้งลูกค้า ${customer.arCode ? `${customer.arCode} · ` : ''}${customer.name || customer.id} ให้ดีล ${dealAuditLabel(deal)} ตอนออกใบเสนอราคา`,
+      summary: `ตั้งลูกค้า ${customer.arCode ? `${customer.arCode} · ` : ''}${customerNameIn(customer) || customer.id} ให้ดีล ${dealAuditLabel(deal)} ตอนออกใบเสนอราคา`,
       request: req,
     });
     /* ⚠️ **ตั้งลูกค้าก่อน แล้วค่อยสร้างใบ — ไม่ย้อนคืนถ้าสร้างใบล้ม** โดยเจตนา:
@@ -126,7 +128,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return ok({
       ...quote,
       deal: updatedDeal,
-      ...(adoptedCustomer ? { adoptedCustomer: { id: adoptedCustomer.id, name: adoptedCustomer.name || null } } : {}),
+      ...(adoptedCustomer ? { adoptedCustomer: { id: adoptedCustomer.id, name: customerNameIn(adoptedCustomer) || null } } : {}),
     }, 201);
   } catch (e) {
     if (e instanceof QuotationDraftError) return fail(e.message, e.status);

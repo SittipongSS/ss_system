@@ -42,6 +42,7 @@ import styles from "./page.module.css";
 import { usePagination } from "@/lib/usePagination";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
+import { customerSnapshotName } from "@/lib/master/customerName";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, NA } from "@/lib/format";
@@ -298,7 +299,10 @@ export default function ScentsPage() {
     const payload = scentFormPayload(v, {
       canSetCode: formCanSetCode(form),
       mode: form.mode,
-      customerName: customers.find((c) => c.id === v.customerId)?.name || null,
+      /* 🐞 เดิมอ่าน `.name` ดิบ ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ null ทับทุกครั้ง
+         ที่กดบันทึก (ชื่อกลิ่นมาจาก client ล้วน) · `customerSnapshotName` ตกไป
+         `nameEn` ให้เอง และคืน null เองเมื่อไม่มีสักภาษา ⇒ ไม่ต้องมี `|| null` */
+      customerName: customerSnapshotName(customers.find((c) => c.id === v.customerId)),
     });
     if (form.mode === "create") {
       const done = await call("/api/master/scents", {

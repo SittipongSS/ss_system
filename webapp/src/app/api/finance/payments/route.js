@@ -16,6 +16,7 @@ import { businessDate } from '@/lib/businessDate';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { customerNameIn } from '@/lib/master/customerName';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -111,9 +112,11 @@ async function loadLedger(supabase, todayIso) {
   const customerById = new Map();
   if (customerIds.length) {
     const { data: customers, error: customerError } = await supabase
-      .from('customers').select('id, name, "arCode"').in('id', customerIds);
+      .from('customers').select('id, name, "nameEn", "arCode"').in('id', customerIds);
     if (customerError) throw customerError;
-    (customers || []).forEach((c) => customerById.set(c.id, c));
+    /* 🐞 ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้แถวไร้ชื่อทั้งบนจอและในไฟล์ Excel ที่บัญชีโหลดไป
+       ⇒ ตัดสินชื่อที่จะวาดตั้งแต่ตรงนี้ ทางเดียวกันทั้งสองปลายทาง */
+    (customers || []).forEach((c) => customerById.set(c.id, { ...c, name: customerNameIn(c) }));
   }
 
   return rows

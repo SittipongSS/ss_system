@@ -3,6 +3,7 @@ import { canAccessSahamit, userTeams } from '@/lib/permissions';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { buildSahamitReverseRiskRows } from '@/lib/salesPlanningReverse';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
+import { CUSTOMER_NAME_SELECT, customerNameIn } from '@/lib/master/customerName';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const { data: customer, error: customerError } = await supabase
     .from('customers')
-    .select('id, name')
+    .select(CUSTOMER_NAME_SELECT)
     .eq('arCode', SAHAMIT_AR_CODE)
     .maybeSingle();
   if (customerError) return fail(customerError.message, 500);
@@ -58,5 +59,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     dueThisMonth: rows.filter((row) => row.requiredConfirmMonth === month).length,
   };
 
-  return ok({ enabled: true, customer, leadTimeDays, month: month || null, rows, summary });
+  // ชื่อที่ส่งไปวาด — ไทยว่างต้องตกไปชื่ออังกฤษ ไม่ใช่ปล่อยจอขึ้นขีด
+  return ok({
+    enabled: true, customer: { ...customer, name: customerNameIn(customer) },
+    leadTimeDays, month: month || null, rows, summary,
+  });
 });

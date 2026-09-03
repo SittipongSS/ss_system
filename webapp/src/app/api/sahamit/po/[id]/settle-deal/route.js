@@ -18,6 +18,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/master/updates';
 import { sahamitPoSettleUpdate } from '@/lib/master/recordUpdates';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
@@ -261,7 +262,8 @@ export async function POST(request, { params }) {
   const mergedRow = {
     id: genId('DEAL'),
     customerId: customer.id,
-    customerName: customer.name || null,
+    // สำเนาชื่อ = กติกาสองภาษา (ไทยก่อน ไม่มีค่อยตกอังกฤษ) — อ่าน .name ตรง ๆ เคยประทับ null
+    customerName: customerSnapshotName(customer),
     title: `SHM_PO ${po.poNumber}`,
     stage: 'qualified',
     projectValue: toMoney(totalValue),

@@ -12,6 +12,7 @@
 import Select from "@/components/ui/Select";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import PriceTierFields from "@/components/materials/PriceTierFields";
+import { customerSelectOptions } from "@/components/master/customerOption";
 import { pmTypeOptions } from "@/lib/master/materialTypes";
 
 export const emptyMaterialForm = () => ({
@@ -81,7 +82,7 @@ export default function MaterialForm({
             <SearchableSelect
               value={value.customerId} disabled={disabled} entity="customer"
               onChange={(v) => set({ customerId: v })}
-              options={customers.map((c) => ({ value: c.id, label: c.name, search: `${c.name} ${c.id}` }))}
+              options={customerSelectOptions(customers)}
               placeholder="เลือกลูกค้า"
               ariaLabel="ลูกค้าที่ใช้ราคานี้"
             />

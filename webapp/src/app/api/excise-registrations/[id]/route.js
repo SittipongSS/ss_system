@@ -7,6 +7,7 @@ import { registrationRevokeUpdate, registrationStatusUpdate } from '@/lib/master
 import { registrationDeleteBlock } from '@/lib/deletion';
 import { registrationRequirements } from '@/lib/tax/requirements';
 import { recordAudit } from '@/lib/audit';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { normalizeRejectionReason, rejectionReasonError } from '@/lib/master/approval';
 import { loadUserDirectory } from '@/lib/usersRepo';
@@ -65,7 +66,7 @@ async function withRegistrationContext(supabase, reg) {
       : { data: null },
     reg.customerId
       ? supabase.from('customers')
-        .select('id, name, "taxId", "branchCode", "customerType", email, phone, "contactPhone"')
+        .select('id, name, "nameEn", "taxId", "branchCode", "customerType", email, phone, "contactPhone"')
         .eq('id', reg.customerId).maybeSingle()
       : { data: null },
     reg.projectId
@@ -214,7 +215,8 @@ export async function PATCH(request, { params }) {
     updated.fgCode = product.fgCode;
     updated.productName = productDisplayName(product);
     updated.brandName = productBrandName(product);
-    updated.customerName = customer.name;
+    // ชื่อลูกค้ามีสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่ถูกประทับเป็น null
+    updated.customerName = customerSnapshotName(customer);
     updated.taxId = customer.taxId;
     // Keep the both-language snapshot in metadata in sync with the newly selected
     // FG so the registrations list search stays bilingual after a product swap.

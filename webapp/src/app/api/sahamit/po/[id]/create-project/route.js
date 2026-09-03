@@ -12,6 +12,7 @@ import { applyAutoStatuses } from '@/lib/pm/status';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { categoryFlagsOf } from '@/lib/master/productTypes';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadWorkflowTemplateForGeneration, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 
 export const dynamic = 'force-dynamic';
@@ -122,7 +123,8 @@ export async function POST(request, { params }) {
   const baseRow = {
     name: body.name || `RE-ORDER Sahamit PO ${po.poNumber}`,
     customerId: customer.id,
-    customerName: customer.name || null,
+    // สำเนาชื่อ = กติกาสองภาษา (ไทยก่อน ไม่มีค่อยตกอังกฤษ) — อ่าน .name ตรง ๆ เคยประทับ null
+    customerName: customerSnapshotName(customer),
     type: 'RE-ORDER',
     // สายธุรกิจ (mig 0191): PO สหมิตรเป็นงานสั่งผลิตซ้ำส่งของ **ไม่มีของค้างหน้างาน
     // ให้กลับไปดูแล** ⇒ PRODUCT เสมอ · ระบุตรงนี้เพราะรู้จริง ไม่ใช่ค่าตั้งต้นของคอลัมน์

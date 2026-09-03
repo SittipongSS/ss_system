@@ -31,6 +31,7 @@ import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { brandLabel } from "@/lib/master/brands";
+import { customerNameIn } from "@/lib/master/customerName";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { statusMeta } from "@/lib/excise/workflow";
 import {
@@ -87,6 +88,8 @@ export default function RegistrationDetailPage() {
 
   const taxProduct = s?.product || null;
   const customer = s?.customer || null;
+  // ชื่อบนจอต้องผ่านกติกาสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษเคยได้หัวการ์ดเปล่าเหมือนไม่มีชื่อ
+  const customerLabel = customerNameIn(customer);
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกาไทย — ห้ามอ่านนาฬิกาตอนเรนเดอร์ */
   const todayIso = useMemo(() => businessDate(), []);
@@ -201,7 +204,9 @@ export default function RegistrationDetailPage() {
                 total={exempt ? "ยกเว้นภาษี" : fmtMoney(perUnit)}
                 rows={[
                   { id: "fg", label: "รหัสสินค้า", value: naText(s.fgCode) },
-                  { id: "customer", label: "ลูกค้า", value: naText(s.customerName) },
+                  // ใบยุคก่อนแก้จุดเขียนมีสำเนาเป็น null (ลูกค้าที่มีแต่ชื่ออังกฤษ) — ถอยไปชื่อสด
+                  // ไม่งั้นจอเดียวกันขัดกันเอง: หัวการ์ดเอกสารมีชื่อ แต่ช่อง "ลูกค้า" เป็นขีด
+                  { id: "customer", label: "ลูกค้า", value: naText(s.customerName || customerLabel) },
                   { id: "approval", label: "เลขที่อนุมัติ", value: naText(s.approvalNumber) },
                   { id: "documents", label: "เอกสารบังคับ", value: req ? (req.ready ? "ครบ" : `ขาด ${missingDocs.length}`) : "กำลังตรวจ" },
                   // อายุงาน: ใบที่ค้างมานานต้องเห็นจากหน้าแรกของใบ ไม่ใช่ต้องไปเทียบวันที่เอง
@@ -291,7 +296,7 @@ export default function RegistrationDetailPage() {
 
           <div className={`glass-panel ${styles.panel}`}>
             <div className={styles.fieldGrid}>
-              <Field label="ลูกค้า" full>{s.customerName}</Field>
+              <Field label="ลูกค้า" full>{s.customerName || customerLabel}</Field>
               <Field label="เลขผู้เสียภาษี">{s.taxId}</Field>
               <Field label="รหัสสาขา">{customer?.branchCode}</Field>
               <Field label="ผู้ยื่น">{s.assignee}</Field>
@@ -386,7 +391,7 @@ export default function RegistrationDetailPage() {
                 entityId={s.customerId}
                 canEdit={canEdit}
                 docTypes={customerDocTypes(customer?.customerType)}
-                title={`เอกสารลูกค้า${customer?.name ? ` — ${customer.name}` : ""} (ฐานข้อมูลเดียวกับหน้าลูกค้า)`}
+                title={`เอกสารลูกค้า${customerLabel ? ` — ${customerLabel}` : ""} (ฐานข้อมูลเดียวกับหน้าลูกค้า)`}
                 onItemsChange={setCustItems}
                 cardColumns={1}
               />

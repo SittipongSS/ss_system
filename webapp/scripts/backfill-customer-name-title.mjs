@@ -48,8 +48,14 @@ const commit = process.argv.includes('--commit');
 const TITLE_REWRITE_APPROVED = new Set(['AR-165', 'AR-616', 'AR-681', 'AR-880', 'AR-886']);
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
+/* 🔴 payload ที่ส่งเข้า `cascadeCustomerName` (`{ ...row, ...patch }` ด้านล่าง) ต้องมี
+   **ทุก source ที่ทะเบียน customerNameMirrors ประกาศไว้** — คอลัมน์ที่ไม่ได้ select
+   จะเป็น undefined แล้ว cascade ประทับ null ทับของจริงในตารางปลายทาง
+   ของจริงที่เคยพลาด: ไม่ได้หยิบ `"taxId"` ⇒ excise_registrations.taxId โดนล้างเป็น null
+   และไม่ได้หยิบ `"nameEn"` ⇒ resolver 'displayName' ไม่มีชื่ออังกฤษให้ตก
+   ⇒ เพิ่ม source ใหม่ในทะเบียนเมื่อไร ต้องมาเติม select บรรทัดนี้ด้วยเสมอ */
 const { data: rows, error } = await supabase
-  .from('customers').select('id,arCode,name,customerType,nameTitle,namePerson').limit(2000);
+  .from('customers').select('id,arCode,name,"nameEn",customerType,nameTitle,namePerson,"taxId"').limit(2000);
 if (error) { console.error(error.message); process.exit(1); }
 
 const bare = (value) => String(value ?? '').replace(/\s+/g, '');

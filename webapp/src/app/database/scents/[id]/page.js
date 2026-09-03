@@ -18,6 +18,7 @@ import Toast from "@/components/ui/Toast";
 import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
+import { customerSnapshotName } from "@/lib/master/customerName";
 import { apiFetch } from "@/lib/apiFetch";
 import {
   SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable,
@@ -73,7 +74,12 @@ export default function ScentDetailPage() {
         // แล้วเป็นของ RD · ด่านจริงอยู่ที่ API ทุกเส้นอยู่แล้ว
         canSetCode: isScentRegistrar(me) || scent.status === "draft",
         mode: "edit",
-        customerName: registryData.customers.find((c) => c.id === form.value.customerId)?.name || null,
+        /* 🐞 เดิมอ่าน `.name` ดิบ ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษถูกประทับ null ทับทุกครั้ง
+           ที่กดบันทึก · `customerSnapshotName` ตกไป `nameEn` ให้เอง และคืน null เอง
+           เมื่อไม่มีสักภาษา ⇒ ไม่ต้องมี `|| null` (ต้องตรงกับหน้ารายการเป๊ะ) */
+        customerName: customerSnapshotName(
+          registryData.customers.find((c) => c.id === form.value.customerId),
+        ),
       });
       const res = await apiFetch(`/api/master/scents/${scent.id}`, {
         method: "PATCH",

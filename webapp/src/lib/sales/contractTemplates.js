@@ -11,6 +11,7 @@
 //    ⇒ ระบบต้องบอกตรง ๆ ว่ายังไม่มีแม่แบบ ไม่ใช่แต่งข้อสัญญาขึ้นเอง
 //    (เอกสารผูกพันตามกฎหมาย — ข้อความที่ไม่มีใครอนุมัติคือความเสียหาย ไม่ใช่ช่องว่าง)
 
+import { customerNameIn } from '@/lib/master/customerName';
 import { SCENT_DESIGN_TEMPLATE } from './contractTemplateScentDesign';
 
 const TEMPLATES = Object.freeze({
@@ -33,7 +34,8 @@ export function contractFieldDefaults(kind, { customer = null, quotation = null,
   for (const field of fields) {
     if (filled[field.key] !== undefined && filled[field.key] !== null && filled[field.key] !== '') continue;
     if (field.source === 'customer' && customer) {
-      if (field.key === 'clientName') { filled[field.key] = customer.name || ''; continue; }
+      // สัญญาเป็นเอกสารไทย ⇒ ชื่อไทยก่อน · อ่าน `.name` ดิบทำให้ลูกค้าที่มีแต่ชื่ออังกฤษได้ช่องว่าง
+      if (field.key === 'clientName') { filled[field.key] = customerNameIn(customer, 'th') || ''; continue; }
       if (field.key === 'clientRegNo') { filled[field.key] = customer.taxId || ''; continue; }
       if (field.key === 'clientAddress') { filled[field.key] = customer.address || ''; continue; }
     }

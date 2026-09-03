@@ -84,11 +84,14 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
     return () => controller.abort();
   }, [open, salesOrderId]);
 
+  /* ⚠️ ชื่อในลิสต์นี้คือ **สำเนาบนใบสั่งขาย** (คอลัมน์เดียว) ไม่ใช่แถวทะเบียนลูกค้า —
+     กติกาสองภาษาจึงถูกใช้ตั้งแต่จุดเขียนสำเนา ตรงนี้เหลือแค่ไม่วาดค่าว่าง
+     ถอยไป id เมื่อสำเนาว่าง (ใบยุคก่อนแก้จุดเขียน) ดีกว่าได้บรรทัดเปล่าที่เลือกไม่ถูก */
   const customers = useMemo(() => {
     const unique = new Map();
     salesOrders.forEach((order) => {
       if (order.customerId && !unique.has(order.customerId)) {
-        unique.set(order.customerId, order.customerName || order.customerId);
+        unique.set(order.customerId, order.customerName);
       }
     });
     return [...unique.entries()].map(([id, name]) => ({ id, name }));
@@ -136,7 +139,12 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved }) {
             }}
           >
             <option value="">{loading ? "กำลังโหลด…" : "เลือกลูกค้า"}</option>
-            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+            {/* `customer.name` ที่นี่คือสำเนาบนใบสั่งขาย ไม่ใช่แถวทะเบียน (ไม่มี nameEn ให้ตก)
+                กติกาสองภาษาทำงานตั้งแต่จุดเขียนสำเนาแล้ว — เรียก customerNameIn ตรงนี้จะอ่าน
+                เหมือนมีผล ทั้งที่ได้ค่าเท่าเดิมเป๊ะ */}
+            {customers.map((customer) => (
+              <option key={customer.id} value={customer.id}>{customer.name || customer.id}</option>
+            ))}
           </Select>
         </label>
 

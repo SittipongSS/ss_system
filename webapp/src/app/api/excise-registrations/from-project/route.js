@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, inScope, viewScope } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     fgCode: product.fgCode,
     productName: productName(product),
     brandName: brandName(product),
-    customerName: customer.name,
+    // ชื่อลูกค้ามีสองภาษา — ลูกค้าที่มีแต่ชื่ออังกฤษต้องไม่ถูกประทับเป็น null
+    customerName: customerSnapshotName(customer),
     taxId: customer.taxId,
     isExciseTaxable,
     taxableOverride: null,
