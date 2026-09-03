@@ -73,12 +73,19 @@ export function fillTokens(text, values = {}) {
 
 // ค่าที่แม่แบบเรียกใช้ = ช่องกรอกของใบ + ข้อมูลบริษัทเรา + วันที่แบบไทย
 // ⚠️ ตัวเลขเงินถูกจัดรูปแบบที่นี่ที่เดียว — แม่แบบเก็บ token เปล่า ๆ ไม่รู้จักหน่วย
+/* ⭐ **เอกสารสัญญาเป็นทศนิยม 2 ตำแหน่งทั้งหมด** (มติผู้ใช้ 2026-09-03)
+   ⚠️ **ต่างจากกติกาของจอโดยตั้งใจ** — บนหน้าจอทั้งระบบเงินแสดง "เต็มหลัก"
+      (#1540/#1541/#1543) แต่เอกสารที่พิมพ์ออกไปให้ลูกค้าเซ็นเป็นทศนิยมเสมอ
+      เพราะยอดที่ต้องโอนจริงมีสตางค์ (งวดละ 7,639.80) ⇒ เอกสารฉบับเดียวมีสองรูปแบบ
+      ปนกันไม่ได้ · อย่า "แก้ให้ตรงกับจอ" — คนละบริบทกัน
+   🪤 ต้นฉบับ .docx ที่พิมพ์มือไว้เขียนบางที่ไม่มีทศนิยม (35,700 · 38,199)
+      **ไม่ใช่มาตรฐานที่ต้องลอก** — เคยแก้ตามแล้วโดนตีกลับ */
 export function contractTokenValues(contract, { company = {}, template = null } = {}) {
   const tpl = template || contractTemplate(contract?.kind);
   const raw = { ...(contract?.fields || {}) };
   for (const field of tpl?.fields || []) {
     if (field.type === 'money' && raw[field.key] !== undefined && raw[field.key] !== null && raw[field.key] !== '') {
-      raw[field.key] = fmtNumber(Number(raw[field.key]) || 0, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      raw[field.key] = fmtNumber(Number(raw[field.key]) || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
   }
   return {
