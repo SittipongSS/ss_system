@@ -217,3 +217,70 @@
 }
 
 .navItemActive { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* ── โครงของฟอร์มยาว ────────────────────────────────────────────────────
+   `ui/SectionRail` สูงตามเนื้อฝั่งขวา — ในหน้าต้นแบบเนื้อเป็นข้อความสั้น ๆ ไม่กี่บรรทัด
+   กล่องจึงเตี้ยจนอ่านไม่ออกว่ามันคือ "สองชั้นข้าง ๆ กัน" (หน้าจริงเนื้อเป็นฟอร์มเต็ม
+   จึงสูงพออยู่แล้ว) ⇒ ตั้งพื้นขั้นต่ำไว้เฉพาะหน้านี้ ห้ามไปเติมที่ตัว primitive */
+.railDemo :global(.section-rail-body) { min-height: 168px; }
+
+/* ── ปฏิทินทั้งเดือน ────────────────────────────────────────────────────
+   ชิปนัดปลอมในช่อง — `ui/MonthGrid` ถือแค่ **โครงกับสถานะของช่อง** ส่วนของที่อยู่
+   ในช่องเป็นของหน้าเรียกเสมอ ⇒ คลาสนี้อยู่ที่หน้าเรียก ไม่ใช่ใน MonthGrid.module.css */
+.calendarChip {
+  display: block;
+  margin-top: var(--space-1);
+  padding: var(--space-0-5) var(--space-1-5);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-3);
+  text-align: left;
+}
+
+/* ── เซลล์ที่ถูกตัด (ตัวอย่างของ TooltipHost) ─────────────────────────────
+   `TableScroll` ชั้นใหม่ตั้งให้เซลล์แค่ **เพดาน --cell-text-max + ellipsis** ส่วน
+   `white-space: nowrap` ยังมาจากคลาสชั้นเก่า `.premium-table` เท่านั้น ⇒ ตารางที่ห่อ
+   ด้วย TableScroll เปล่า ๆ ข้อความยาวจะขึ้นบรรทัดใหม่แทนที่จะถูกตัด แล้วกล่องลอย
+   ไม่มีวันขึ้นให้ดู (ตัวดักอ่านจาก scrollWidth > clientWidth)
+   ⇒ บังคับเฉพาะตารางตัวอย่างนี้ ห้ามไปเติมที่ Table.module.css */
+.tipCellDemo :global(td) { white-space: nowrap; }
+
+/* ── ตัวคั่นบนแถบเครื่องมือจำลอง ────────────────────────────────────────
+   ของจริงบน toolbar ดันคู่ "จัดกลุ่ม" กับคู่ "เรียง" ให้อยู่คนละฝั่ง
+   (ลำดับที่ยึดกัน — ดูหัว components/ui/ViewMenus.js) */
+.spacer { flex: 1; min-width: var(--space-3); }
+
+/* ── กรอบภาพย่อ ─────────────────────────────────────────────────────────
+   PhotoThumb ตอนรูปพังคืน <span> ที่กิน h-full/w-full ของกล่องแม่ ⇒ **กล่องแม่
+   ต้องมีความสูงจริง** ไม่งั้นสถานะ "เปิดรูปไม่ได้" จะสูง 0 แล้วกลายเป็นล่องหน
+   ซึ่งคือบั๊กเดิมเป๊ะ ๆ ที่ primitive ตัวนี้เกิดมาแก้ */
+/* พื้นผิวของการ์ดสาธิตในบล็อก ClickableCard — **ห้ามใช้ `glass-panel`**
+   คลาสนั้นถูกนับเป็นชั้นเก่า (legacySurface) ใน uiLegacyBudget ซึ่งเป็น ratchet
+   ที่ขึ้นไม่ได้ ⇒ ใส่สองจุดในหน้านี้แล้วโมดูล "ตั้งค่า/ผู้ใช้" ชน 29 → 31 ทันที
+   บทเรียนของบล็อกนั้นคือ **โครงการเข้าถึง** (ครอบทั้งใบ vs ลิงก์ที่หัวการ์ด)
+   ไม่ใช่ชื่อคลาสพื้นผิว จึงไม่เสียอะไรที่จะใช้พื้นผิวของหน้านี้เอง */
+.demoCard {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.photoBox {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.photoImg { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── กรอบราง (StepTrack) ────────────────────────────────────────────────
+   เส้นเชื่อมของรางเป็น flex: 1 ⇒ รางกว้างเท่ากล่องแม่เสมอ · ในหน้าจริงกล่องแม่คือ
+   คอลัมน์ของตาราง ที่นี่จึงต้องจำกัดความกว้างเอง ไม่งั้นรางยืดเต็มจอกว้าง
+   แล้วระยะห่างหมุดไม่เหมือนที่เห็นจริงในตาราง */
+.trackBox { max-width: 460px; }
