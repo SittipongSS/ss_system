@@ -103,7 +103,7 @@ test('ไม่มีใบเสนอราคา = ไม่มีแถว�
   const { quotationLines } = contractQuotationBlocks({ quoteNumber: 'QT-26080037-5', subtotal: 35700 });
   assert.equal(quotationLines.length, 1);
   assert.equal(quotationLines[0].quoteNumber, 'QT-26080037-5');
-  assert.equal(quotationLines[0].amount, '35,700', 'ตารางเป็นจำนวนเต็มตามต้นฉบับ ไม่ใช่ทศนิยมสองตำแหน่ง');
+  assert.equal(quotationLines[0].amount, '35,700.00');
   // จำนวนเครื่องเป็น token ของใบ ไม่ใช่ค่าจากใบเสนอราคา — ระบบยังไม่มีที่เก็บ
   assert.equal(quotationLines[0].machines, '{{machineCount}}');
 });
@@ -170,12 +170,13 @@ test('🐞 เส้นออกสัญญาต้องดึงของท
     'ต้องส่งแถวจริงเข้า buildContractHTML ไม่ใช่ประกอบออบเจ็กต์ที่มีแต่เลขที่');
 });
 
-/* ⚠️ ตัวเลขสองที่จัดรูปคนละแบบ **ตามต้นฉบับ** — ยัดให้เหมือนกันเมื่อไรผิดข้างใดข้างหนึ่ง */
-test('รูปแบบตัวเลข: ตารางเป็นจำนวนเต็ม · งวดเป็นสองตำแหน่ง', () => {
+/* ⚠️ **มูลค่าเป็นทศนิยม 2 ตำแหน่งเสมอ** (มติผู้ใช้ 2026-09-03)
+   🪤 ต้นฉบับ .docx เขียน `35,700` ไม่มีทศนิยม — ห้ามแก้ตาม เคยแก้แล้วโดนตีกลับ */
+test('รูปแบบตัวเลข: มูลค่าเป็นทศนิยม 2 ตำแหน่งทั้งตารางและงวด', () => {
   const { quotationLines, quotationInstallments } = contractQuotationBlocks({
     quoteNumber: 'QT-1', subtotal: 35700,
     paymentPlan: { type: 'installment', installments: [{ no: 1, label: 'ชำระงวดที่ 1', amount: 7639.8 }] },
   });
-  assert.equal(quotationLines[0].amount, '35,700');
+  assert.equal(quotationLines[0].amount, '35,700.00');
   assert.match(quotationInstallments[0], /7,639\.80 บาท/);
 });
