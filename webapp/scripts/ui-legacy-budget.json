@@ -11,7 +11,7 @@
     "sahamit": {
       "legacyTable": 21,
       "legacySurface": 34,
-      "inlineStyle": 667,
+      "inlineStyle": 666,
       "rawButtonClass": 67,
       "rawInputClass": 25
     },
@@ -46,7 +46,7 @@
     "shared": {
       "legacyTable": 3,
       "legacySurface": 19,
-      "inlineStyle": 174,
+      "inlineStyle": 173,
       "rawButtonClass": 40,
       "rawInputClass": 15
     }

@@ -593,28 +593,50 @@ function PhaseBlock({ group, rangeStartMs, totalDays, pxPerDay, timelineWidth, g
           </td>
         </tr>
       )}
-      <tr style={{ background: phaseBg, cursor: "pointer" }} onClick={onToggleCollapse} title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}>
+      {/* ── แถบหัวเฟส **ไม่มี** ทางลัดเมาส์บน <tr> แล้ว (2026-09-03) ────────────────────
+          ของเดิมแขวนตัวรับคลิกที่เรียก `onToggleCollapse` + `cursor: pointer` ไว้บน `<tr>` เอง
+          ⇒ เมาส์กดได้ทั้งแถบ แต่คีย์บอร์ดเข้าไม่ถึงแถบ (WCAG 2.1.1) · แถบนี้ **ไม่พาไปไหน**
+          (ย่อ/ขยายในหน้าเดิม) จึงใช้ `ui/DetailRow` ไม่ได้ — `href` เป็น prop บังคับ และด่าน
+          ROW_MIRROR เทียบ *ปลายทาง* ของแถวกับลิงก์ในเซลล์ · และทางลัดเมาส์บน `<tr>` ดิบ
+          ได้รับยกเว้นที่ `ui/DetailRow.js` จุดเดียวในระบบ ⇒ ไม่มีทางยกเว้นให้แถบนี้
+          ⇒ ถอด `onClick`/`cursor`/`title` ออกจากแถว เหลือ <button aria-expanded> ในเซลล์ชื่อ
+          เป็นทางเข้าเดียว (มีอยู่แล้ว ทำงานเดียวกันเป๊ะ)
+          ⚠️ ผลข้างเคียงที่ยอมรับแล้ว: เมาส์กดย่อ/ขยายได้เฉพาะ **ชื่อเฟส** ไม่ใช่ทั้งแถบ
+             (ไม่เติม `.text-action-block` ให้ปุ่มกินทั้งเซลล์ เพราะปุ่มอยู่ใน flex row ร่วมกับ
+             ลูกศรและป้าย "(N รายการ)" — `width: 100%` จะไปบีบป้ายนั้น = หน้าตาเปลี่ยน) */}
+      <tr style={{ background: phaseBg }}>
         <td style={{ ...freezeTd(freezeLeft[0], { textAlign: "center", fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>{group.phaseNum}</td>
         <td style={{ ...freezeTd(freezeLeft[1], { fontWeight: "var(--fw-semibold)", background: phaseBg }) }}>
           {/* ชื่อเฟสเป็น <button aria-expanded> จริง — สวิตช์พับต้อง **ประกาศสถานะได้**
-              ไม่ใช่แค่กดได้ · onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ (กดที่ไหนของแถบก็ย่อ/ขยาย)
-              stopPropagation กันแถวสลับซ้ำอีกรอบตอนกดที่ปุ่มตรง ๆ ⇒ ไม่งั้นได้ผลลัพธ์เดิมเหมือนไม่ได้กด
+              ไม่ใช่แค่กดได้ · `aria-expanded` ผูกกับ state จริง (`collapsed` ส่งมาจากแม่)
+              ไม่ใช่ค่าคงที่ ⇒ โปรแกรมอ่านหน้าจอพูดสถานะปัจจุบันได้ทุกครั้งที่สลับ
+              🪤 ไม่ต้อง stopPropagation แล้ว — แถวไม่มี onClick ให้ต้องกันคลิกทะลุอีก
               `.text-action` (เส้นประ) = คู่ตรงข้ามของ `.linklike` — ทำงานในหน้านี้ ไม่ได้พาไปไหน
               ลูกศรอยู่นอกปุ่มและเป็น aria-hidden: สถานะย่อ/ขยายมาจาก aria-expanded แล้ว
               พูดซ้ำสองทางจะได้เสียงซ้ำในโปรแกรมอ่านหน้าจอ */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {collapsed ? <ChevronRight size={16} color="var(--text-2)" aria-hidden="true" style={{ flexShrink: 0 }} /> : <ChevronDown size={16} color="var(--text-2)" aria-hidden="true" style={{ flexShrink: 0 }} />}
             <button
               type="button"
               /* `font-semibold` (=600 ตรงกับ --fw-semibold) ไม่ใช่ style อินไลน์ —
                  <button> ไม่ได้รับน้ำหนักจาก <td> แม่ (UA ตั้ง font-weight ของตัวเอง)
                  และ `.text-action` จงใจไม่ประกาศน้ำหนักไว้ ⇒ ต้องสั่งที่ตัวปุ่ม
-                 ท่าเดียวกับ database/customers/[id] ที่ใช้ `text-action font-semibold` */
+                 ท่าเดียวกับปุ่มเปิดใบสั่งซื้อของ database/customers/[id] (ฝั่งนั้นเติม
+                 `.text-action-block` ด้วยเพราะปุ่มอยู่ตัวเดียวในเซลล์ — ที่นี่เติมไม่ได้) */
               className="text-action font-semibold"
               aria-expanded={!collapsed}
-              onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+              onClick={onToggleCollapse}
               title={collapsed ? "ขยายรายการ" : "ย่อรายการ"}
             >
+              {/* 🐞 ลูกศรต้องอยู่ **ในปุ่ม** (ย้ายเข้ามา 2026-09-03 ก่อน merge)
+                  ร่างแรกวางไว้นอกปุ่มเป็นพี่น้องกันใน flex row เดิมมันกดได้เพราะ
+                  `onClick` อยู่บน `<tr>` ทั้งแถว · พอถอด onClick ของแถวออกตามท่ามาตรฐาน
+                  ลูกศรกลายเป็นภาพนิ่งที่กดแล้วไม่มีอะไรเกิดขึ้น ทั้งที่มันคือเป้าที่คน
+                  เล็งกดมากที่สุดของสวิตช์พับ = ถอยหลังจากของเดิม ไม่ใช่แค่ "เป้าเล็กลง"
+                  ⚠️ คง aria-hidden ไว้ — สถานะย่อ/ขยายมาจาก aria-expanded บนปุ่มแล้ว
+                  ถ้าปล่อยให้ไอคอนพูดด้วยจะได้เสียงซ้ำในโปรแกรมอ่านหน้าจอ */}
+              {collapsed
+                ? <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, marginInlineEnd: "var(--space-2)", verticalAlign: "text-bottom" }} />
+                : <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, marginInlineEnd: "var(--space-2)", verticalAlign: "text-bottom" }} />}
               {group.phase}
             </button>
             {collapsed && <span style={{ fontSize: "var(--fs-3)", color: "var(--text-3)", fontWeight: "var(--fw-normal)" }}>({group.tasks.length} รายการ)</span>}

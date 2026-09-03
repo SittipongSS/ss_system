@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 /* ── หัวตารางเรียงลำดับ: ทรงบังคับของ SortTh (2026-09-02) ──────────────────────
-   คู่กับกลุ่ม `<th>` ที่ปิดจบไปแล้วใน A11Y_KEYBOARD_CAP (scripts/audit-ui.mjs)
+   คู่กับกลุ่ม `<th>` ที่ปิดจบไปแล้วในด่านคีย์บอร์ด (scripts/audit-ui.mjs — บล็อกเต็ม
+   อยู่เหนือ `const HOST_TAG` · ด่านนั้นเป็น hard-zero ตั้งแต่ 2026-09-03 ไม่มีเพดานแล้ว)
    และกับหัวข้อ "หัวตารางเรียงลำดับ" ใน UI_DESIGN_SYSTEM.md
 
    ทรงที่ WCAG กำหนด (2.1.1 Keyboard A · 1.3.1 Info and Relationships A ·
@@ -15,8 +16,8 @@ import path from "node:path";
      · 🚫 ห้าม role/tabIndex บน <th> — ทับ role="columnheader" ทิ้ง
 
    ⚠️ **ทำไมด่านใน audit-ui.mjs ไม่พอ และต้องมีไฟล์นี้** — สามข้อที่ด่านนั้นมองไม่เห็น:
-   1) A11Y_KEYBOARD_CAP นับแค่ "มี onClick บน <th> ไหม" ⇒ วันที่ใครถอด aria-sort ทิ้ง
-      หรือย้ายปุ่มออกไปไว้ *ข้าง* <th> แทนที่จะอยู่ข้างใน เลขเพดานไม่ขยับเลยสักหน่วย
+   1) ด่านคีย์บอร์ดนับแค่ "มี onClick บน <th> ไหม" ⇒ วันที่ใครถอด aria-sort ทิ้ง
+      หรือย้ายปุ่มออกไปไว้ *ข้าง* <th> แทนที่จะอยู่ข้างใน ด่านนั้นไม่ขยับเลยสักหน่วย
    2) ROLE_ON_TABLE_TAG_CAP สแกนเฉพาะ **แท็กตัวพิมพ์เล็ก** ⇒ `<SortTh role="button">`
       เป็นคอมโพเนนต์ ด่านมองไม่เห็น แต่ปลายทางมันไปโผล่บน <th> จริงผ่าน `{...rest}`
    3) ไม่มีด่านไหนในระบบรู้จักคำว่า aria-sort เลย (ก่อนวันนี้ทั้งรีโปมี 0 จุด)
@@ -80,8 +81,9 @@ test("SortTh: onClick อยู่บน <button> เท่านั้น ห�
   const thOpenEnd = jsx.indexOf("<button");
   const thOpen = jsx.slice(jsx.indexOf("<th"), thOpenEnd);
   assert.ok(!/onClick/.test(thOpen),
-    "onClick กลับขึ้นไปอยู่บน <th> แล้ว = กลุ่ม `th` ของ A11Y_KEYBOARD_CAP ฟื้นคืนชีพ\n"
-    + "(เพดานนั้นรูดลง 58 → 39 เพราะกลุ่มนี้หายทั้งกลุ่ม — ดูคอมเมนต์ที่ A11Y_KEYBOARD_CAP)");
+    "onClick กลับขึ้นไปอยู่บน <th> แล้ว = กลุ่ม `th` ของด่านคีย์บอร์ดฟื้นคืนชีพ\n"
+    + "(ด่านนั้นรูดลง 58 → 39 เพราะกลุ่มนี้หายทั้งกลุ่ม แล้วลงถึง 0 เป็น hard-zero —\n"
+    + " ⇒ วันนี้จุดเดียวก็ทำ CI แดง ไม่มีเพดานรองรับอีกแล้ว · ดูบล็อกเหนือ `const HOST_TAG`)");
   assert.match(jsx.slice(thOpenEnd), /<button[^]*?onClick=\{[^]*?sortBy\(/,
     "ปุ่มต้องเป็นตัวเรียก sort.sortBy() เอง");
 });
@@ -157,7 +159,7 @@ test("ผู้เรียก SortTh ห้ามส่ง role/tabIndex/onClic
   }
   assert.deepEqual(offenders, [],
     "พร็อพพวกนี้ทะลุ {...rest} ไปเกาะ <th> จริง — role/tabIndex ทับ columnheader (ตก 1.3.1)\n"
-    + "· onClick ทำให้กลุ่ม `th` ของ A11Y_KEYBOARD_CAP กลับมา\n"
+    + "· onClick ทำให้กลุ่ม `th` ของด่านคีย์บอร์ด (hard-zero) กลับมา\n"
     + "· aria-sort ทับสัญญาของ primitive (วันนี้ spread อยู่ก่อน aria-sort จึงทับไม่ได้ แต่ก็ไม่ควรส่ง)\n"
     + "ทั้งสี่ตัวนี้ ROLE_ON_TABLE_TAG_CAP มองไม่เห็น เพราะ <SortTh> เป็นคอมโพเนนต์ ไม่ใช่แท็ก th");
 });

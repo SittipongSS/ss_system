@@ -14,6 +14,7 @@ import {
   DocumentControlCard, DocumentReadinessList, DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
 import { TableShell } from "@/components/ui/Table";
+import DetailRow from "@/components/ui/DetailRow";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
@@ -409,15 +410,18 @@ export default function RegistrationDetailPage() {
                   </thead>
                   <tbody>
                     {s.filings.map((f) => (
-                      <tr key={f.id} className="clickable-row" onClick={() => router.push(`/tax/filings/${f.id}`)}>
+                      /* ⭐ ทั้งแถวกดได้ผ่าน DetailRow ไม่ใช่ <tr onClick> ดิบ — onClick บน <tr> คือ
+                         **ทางลัดของเมาส์** ทางเข้าจริงคือ <Link href={ตัวเดียวกัน}> ที่เลขที่ใบในเซลล์แรก
+                         (ด่าน ROW_MIRROR บังคับให้ข้อความนิพจน์ href ตรงกันเป๊ะ) · ห้ามเติม
+                         role/tabIndex บน <tr>/<td> แทน มันจะทับ role="row" ทิ้ง (WCAG 1.3.1) */
+                      <DetailRow key={f.id} className="clickable-row" href={`/tax/filings/${f.id}`}>
                         {/* เลขที่ใบเป็น <Link> จริง = ทางเข้าของคีย์บอร์ด/โปรแกรมอ่านหน้าจอ/เปิดแท็บใหม่
-                            onClick ของ <tr> เหลือไว้เป็นทางลัดของเมาส์ · stopPropagation กันแถวยิง
-                            router.push ซ้ำจนได้ history ซ้อนสองชั้น (Back ต้องกดสองครั้ง) */}
+                            ไม่ต้อง stopPropagation: DetailRow ถาม isInteractiveTarget ก่อนเสมอ จึงไม่ยิง
+                            router.push ซ้อนจนได้ history สองชั้น (Back ต้องกดสองครั้ง) */}
                         <td className="font-semibold">
                           <Link
                             href={`/tax/filings/${f.id}`}
                             className="linklike"
-                            onClick={(e) => e.stopPropagation()}
                             title="เปิดใบยื่นชำระภาษี"
                           >
                             {naText(f.quotationRef)}
@@ -426,7 +430,7 @@ export default function RegistrationDetailPage() {
                         <td className={styles.numeric}>{fmtNumber(f.quantity)}</td>
                         <td className={styles.numeric}>{fmtMoney(f.totalTax)}</td>
                         <td><StatusBadge status={f.status} /></td>
-                      </tr>
+                      </DetailRow>
                     ))}
                   </tbody>
                 </table>

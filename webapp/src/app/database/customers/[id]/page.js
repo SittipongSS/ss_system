@@ -875,16 +875,24 @@ export default function CustomerDetails() {
                           const isExempt = (o.totalTax || 0) === 0;
                           const itemCount = o.items?.length || 0;
                           return (
-                            <tr key={o.id} className="clickable-row" onClick={() => setSelectedOrder(o)}>
+                            /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────
+                                ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง — กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม
+                                ⇒ ไม่มี URL ปลายทาง จึงใช้ `DetailRow` ไม่ได้ (href เป็น prop บังคับ และด่าน
+                                ROW_MIRROR เทียบ *ปลายทาง* ของแถวกับลิงก์ในเซลล์) · ทางลัดเมาส์บน <tr> ดิบ
+                                ได้รับยกเว้นที่ `DetailRow` จุดเดียวในระบบ ⇒ แถวนี้ต้องถอด `onClick` ทิ้ง
+                                ไม่งั้นเหลือทางเข้าให้เมาส์อย่างเดียว (ด่าน A11Y_KEYBOARD)
+                                ⇒ ทางเข้าเดียวคือ <button> ในเซลล์แรก · `.text-action-block` ให้ปุ่มกิน
+                                ทั้งเซลล์คืนเป้าเมาส์ที่กว้างขึ้น · `.premium-row` แทน `.clickable-row`
+                                เพราะแถวไม่ใช่ตัวกดแล้ว (ไม่ต้องมี cursor: pointer หลอกตา)
+                                การ์ดจอตั้งของแท็บเดียวกันเป็น <button> ครอบทั้งใบอยู่แล้ว = ท่าเดียวกัน */
+                            <tr key={o.id} className="premium-row">
                               <td className="font-semibold font-mono text-[var(--text)]">
-                                {/* ปุ่มในเซลล์ = ทางเข้าของคีย์บอร์ด · onClick ของแถวเหลือไว้เป็นทางลัดของเมาส์
-                                    แถวนี้เปิด **โมดัลในหน้าเดิม** ไม่มี URL ปลายทาง ⇒ ใช้ `.text-action`
-                                    (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น"
-                                    stopPropagation กัน onClick ของแถวยิงซ้ำอีกรอบตอนกดที่ปุ่มตรง ๆ */}
+                                {/* ไม่มี onClick บนแถวแล้ว ⇒ ไม่ต้อง stopPropagation
+                                    `.text-action` (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น" */}
                                 <button
                                   type="button"
-                                  className="text-action font-semibold"
-                                  onClick={(e) => { e.stopPropagation(); setSelectedOrder(o); }}
+                                  className="text-action text-action-block font-semibold"
+                                  onClick={() => setSelectedOrder(o)}
                                 >
                                   {o.quotationRef}
                                 </button>

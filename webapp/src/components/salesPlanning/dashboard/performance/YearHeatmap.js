@@ -49,8 +49,19 @@ export default function YearHeatmap({ matrix, year, closedCount, onDrill }) {
           <tbody>
             {matrix.people.map((p) => (
               <tr key={p.id} className="premium-row">
-                <td className="fz-c1" style={{ cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
-                  <strong>{p.name}</strong>
+                {/* ⭐ ตัวกดอยู่ **ในเซลล์** ไม่ใช่ onClick บน <td> — คีย์บอร์ดกดไม่ถึง <td>
+                    และเติม role/tabIndex ให้มันจะทับ role="cell" ทิ้ง (WCAG 1.3.1 · 2.1.1)
+                    🪤 เป็น <button> ไม่ใช่ <Link>: การเจาะรายคน **ไม่มี URL ปลายทาง**
+                       (onDrill สลับมุมมองในหน้าเดิม) ⇒ `.text-action` เส้นประ = "เกิดอะไรขึ้นตรงนี้"
+                       ส่วนเส้นทึบ + accent ของ `.linklike` สงวนไว้ให้ลิงก์ที่พาไปหน้าอื่น
+                    🪤 ครอบเฉพาะ <strong> ชื่อคน ไม่ครอบบรรทัดทีม — `text-decoration` ไหลลงไปยัง
+                       block descendant และวาดด้วยสีของบรรพบุรุษ (ลูกยกเลิกเองไม่ได้) ⇒ บรรทัดทีม
+                       จะได้เส้นประไปด้วย · โรคเดียวกับที่ `.linklike-block > strong` ต้องแก้
+                       และตรงกับคำอธิบายบนหัวตารางที่เขียนว่า "คลิกชื่อเพื่อเจาะรายคน" */}
+                <td className="fz-c1" style={{ whiteSpace: "nowrap" }}>
+                  <button type="button" className="text-action" onClick={() => onDrill({ scope: "person", person: p.id })} title="คลิกเพื่อเจาะรายคน">
+                    <strong>{p.name}</strong>
+                  </button>
                   {p.team && <span style={{ display: "block", color: "var(--text-3)", fontSize: "var(--fs-3)", fontWeight: "var(--fw-normal)" }}>{p.team}</span>}
                 </td>
                 {MONTH_LABELS.map((_, i) => {
