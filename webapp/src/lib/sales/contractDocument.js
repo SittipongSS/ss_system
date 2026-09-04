@@ -520,11 +520,24 @@ export function contractQuotationBlocks(quotation, contract = null) {
   /* ตารางข้อ 2 — หนึ่งแถวต่อหนึ่งใบเสนอราคาที่สัญญาอ้างถึง
      ⚠️ ระบบผูกสัญญากับใบเดียว ⇒ แถวเดียวเสมอในวันนี้ · โครงรองรับหลายแถวไว้แล้ว
         เพราะต้นฉบับมีคอลัมน์ "ลำดับ" ซึ่งมีความหมายก็ต่อเมื่อมีได้หลายแถว */
+  /* ⭐ **ช่อง "รายละเอียด" ดึงจากบรรทัดใบเสนอราคา** (มติผู้ใช้ 2026-09-04)
+     ต้นฉบับ .docx เขียน `ระบบกระจายกลิ่น 1 Package` ซึ่งเป็นคำบรรยายบรรทัดที่ SA
+     พิมพ์ไว้บนใบ (`quotation_lines.description` ของจริงมีรูป `... · 1 package`)
+     ⇒ ไม่ใช่ช่องกรอก `{{serviceKind}}` ซึ่งเป็นคำกว้าง ๆ ของสัญญาทั้งฉบับ
+     ⚠️ **ตกกลับไปที่ `{{serviceKind}}` เมื่อใบไม่มีบรรทัด** — ใบเก่า/ใบที่โหลดบรรทัด
+        ไม่ได้ต้องไม่ทำให้ช่องนี้กลายเป็นเส้นว่างบนสัญญาที่ลูกค้าเซ็น
+     ⚠️ บรรทัดหลายรายการซ้อนกันในเซลล์เดียว (ตัดบรรทัดด้วย `white-space: pre-line`)
+        ไม่ใช่แถวละบรรทัด — คอลัมน์ที่เหลือของตารางเป็นค่าระดับ *ใบ* ทั้งหมด
+        (เลขที่ใบ · ระยะเวลา · ค่าบริการรวม) แตกเป็นหลายแถวแล้วต้องซ้ำค่าเดิมทุกแถว */
+  const lineDetail = (quotation?.lines || [])
+    .map((line) => String(line?.description || '').trim())
+    .filter(Boolean)
+    .join('\n');
   const quotationLines = quotation ? [{
     no: '1',
     quoteNumber: quotation.quoteNumber || '',
     period: '{{serviceStartTh}} - {{serviceEndTh}}',
-    detail: '{{serviceKind}}\n{{clientBranch}}',
+    detail: `${lineDetail || '{{serviceKind}}'}\n{{clientBranch}}`,
     term: '{{termMonths}} เดือน',
     amount: quotation.subtotal != null ? money(quotation.subtotal) : '',
     machines: '{{machineCount}}',

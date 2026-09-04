@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { CONTRACT_QUOTATION_COLUMNS, CONTRACT_QUOTATION_LINE_COLUMNS } from './contractQuotationSource.js';
 import { SERVICE_TEMPLATE } from './contractTemplateService.js';
 import { contractTemplate, hasContractTemplate, missingContractFields } from './contractTemplates.js';
 import { contractQuotationBlocks, buildContractHTML } from './contractDocument.js';
@@ -157,17 +158,40 @@ test('ด่านช่องบังคับใช้ตัวเดีย�
    ที่ด่านตัวเองใช้ แล้วส่งต่อเฉพาะ `quoteNumber` ⇒ **บนกระดาษจริงช่องค่าบริการว่าง
    และไม่มีบรรทัดงวดเลย** ทั้งที่เทสต์เขียวหมด เพราะเทสต์ป้อนใบเต็มเข้าไปเอง
    ⇒ ยามนี้ผูกกับ **ซอร์สของ route** ไม่ใช่กับฟังก์ชัน — เป็นที่เดียวที่รูนี้มองเห็นได้ */
-test('🐞 เส้นออกสัญญาต้องดึงของที่แม่แบบใช้จริงมาด้วย ไม่ใช่แค่ช่องที่ด่านตรวจ', () => {
-  const route = readFileSync(
-    new URL('../../app/api/sales-planning/contracts/[id]/issue/route.js', import.meta.url), 'utf8',
-  );
+test('🐞 ทุกเส้นที่เรนเดอร์สัญญาต้องดึงของที่แม่แบบใช้จริง ไม่ใช่แค่ช่องที่ด่านตรวจ', () => {
   for (const col of ['subtotal', '"paymentPlan"']) {
-    assert.ok(route.includes(col), `select ของใบเสนอราคาต้องมี ${col} — แม่แบบสัญญาบริการใช้ทำตารางข้อ 2 / งวดข้อ 3`);
+    assert.ok(CONTRACT_QUOTATION_COLUMNS.includes(col),
+      `select ของใบเสนอราคาต้องมี ${col} — แม่แบบสัญญาบริการใช้ทำตารางข้อ 2 / งวดข้อ 3`);
   }
-  // จับเจตนา ไม่ใช่รูปประโยค — ขอแค่ "กระจายแถวจริงเข้าไป" ไม่ล็อกการจัดบรรทัด
-  const block = route.slice(route.indexOf('quotation: contract.quotationId'));
-  assert.match(block.slice(0, 220), /\.\.\.\(?\s*quote/,
-    'ต้องส่งแถวจริงเข้า buildContractHTML ไม่ใช่ประกอบออบเจ็กต์ที่มีแต่เลขที่');
+  assert.ok(CONTRACT_QUOTATION_LINE_COLUMNS.includes('description'),
+    'ต้องดึง description ของบรรทัด — ช่อง "รายละเอียด" ในตารางข้อ 2 มาจากบรรทัดใบเสนอราคา');
+
+  /* ⚠️ **สองเส้นทาง ไม่ใช่เส้นเดียว** — "ออกสัญญา" ตรึงเนื้อ · "เปิดเอกสาร" เรนเดอร์ร่างสด
+     เส้นที่สองเคยตกหล่นและพิมพ์ร่างที่ไม่ตรงกับฉบับจริงอยู่หนึ่งรอบ */
+  for (const file of ['issue', 'document']) {
+    const route = readFileSync(
+      new URL(`../../app/api/sales-planning/contracts/[id]/${file}/route.js`, import.meta.url), 'utf8',
+    );
+    assert.match(route, /loadContractQuotation\(/,
+      `route ${file} ต้องโหลดใบผ่านตัวโหลดตัวเดียวกัน ไม่ใช่ select เอง`);
+    // จับเจตนา ไม่ใช่รูปประโยค — ขอแค่ "กระจายแถวจริงเข้าไป" ไม่ล็อกการจัดบรรทัด
+    const block = route.slice(route.indexOf('quotation: contract.quotationId'));
+    assert.match(block.slice(0, 260), /\.\.\.\(?\s*quot/,
+      `route ${file} ต้องส่งแถวจริงเข้า buildContractHTML ไม่ใช่ออบเจ็กต์ที่มีแต่เลขที่`);
+  }
+});
+
+/* ⭐ ช่อง "รายละเอียด" มาจากบรรทัดใบเสนอราคา (มติผู้ใช้ 2026-09-04) */
+test('ตารางข้อ 2: รายละเอียดมาจากบรรทัดใบเสนอราคา · ไม่มีบรรทัดจึงตกไปที่ช่องกรอก', () => {
+  const withLines = contractQuotationBlocks({
+    quoteNumber: 'QT-1', subtotal: 100,
+    lines: [{ description: 'ระบบกระจายกลิ่น · 1 package' }, { description: '  ' }, { description: 'ออกแบบกลิ่น' }],
+  });
+  assert.equal(withLines.quotationLines[0].detail, 'ระบบกระจายกลิ่น · 1 package\nออกแบบกลิ่น\n{{clientBranch}}');
+
+  const noLines = contractQuotationBlocks({ quoteNumber: 'QT-1', subtotal: 100, lines: [] });
+  assert.equal(noLines.quotationLines[0].detail, '{{serviceKind}}\n{{clientBranch}}',
+    'ใบที่ไม่มีบรรทัดต้องไม่ได้เส้นว่างบนสัญญาที่ลูกค้าเซ็น');
 });
 
 /* ⚠️ **มูลค่าเป็นทศนิยม 2 ตำแหน่งเสมอ** (มติผู้ใช้ 2026-09-03)

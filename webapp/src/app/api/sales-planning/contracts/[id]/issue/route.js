@@ -9,6 +9,7 @@ import {
 } from '@/lib/sales/contracts';
 import { buildContractHTML } from '@/lib/sales/contractDocument';
 import { contractTemplate, hasContractTemplate, missingContractFields, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
+import { loadContractQuotation } from '@/lib/sales/contractQuotationSource';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,11 +41,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        พิมพ์ตารางใบเสนอราคา (ข้อ 2) และงวดชำระ (ข้อ 3) จากใบนี้โดยตรง
        🐞 เดิม select แค่ 4 ช่องที่ด่านใช้ แล้วส่งต่อให้ `buildContractHTML` เฉพาะ
           `quoteNumber` ⇒ บนกระดาษจริง **ช่องค่าบริการว่างและไม่มีบรรทัดงวดเลย**
-          ทั้งที่ฟังก์ชันประกอบถูกต้อง — เทสต์ที่ป้อนใบเต็มเข้าไปเองมองไม่เห็นรูนี้ */
-    const { data: row, error: quoteError } = await supabase
-      .from('quotations')
-      .select('id, "quoteNumber", status, "approvalStatus", subtotal, "paymentPlan"')
-      .eq('id', contract.quotationId).maybeSingle();
+          ทั้งที่ฟังก์ชันประกอบถูกต้อง — เทสต์ที่ป้อนใบเต็มเข้าไปเองมองไม่เห็นรูนี้
+       ⇒ ตัวโหลดอยู่ที่ `contractQuotationSource` ตัวเดียว ใช้ร่วมกับเส้นทางเปิดเอกสาร
+          ร่าง ไม่งั้นร่างกับฉบับจริงพิมพ์คนละเนื้อ */
+    const { quotation: row, error: quoteError } = await loadContractQuotation(supabase, contract.quotationId);
     if (quoteError) return fail(quoteError.message, 500);
     quote = row;
     if (!quote || quote.approvalStatus !== 'approved' || ['cancelled', 'rejected'].includes(quote.status)) {
