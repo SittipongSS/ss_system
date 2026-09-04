@@ -601,7 +601,11 @@ export default function AppLayout({ children }) {
         { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') },
         // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
-        { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/teams') },
+        /* ⚠️ แคบด้วย `canManageTeams(u,'TS')` เหมือนฝาแฝดที่ /sa/teams ไม่ใช่ `canEditService` —
+           ของเดิมเปิดให้ทุกคนที่แก้งานบริการได้ ⇒ `ts_planner` (ไม่มี `team:manage`) เห็นเมนู
+           ชื่อ "จัดทีม" แล้วเข้าไปเจอรายชื่อเปล่า ๆ ที่กดอะไรไม่ได้สักปุ่มและไม่มีอะไรบอกเหตุ
+           — ผิดกฎ "ไม่มีสิทธิ์ = ไม่โชว์" ของระบบ */
+        { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'TS'), utility: true, match: (p) => p.startsWith('/service/teams') },
       ],
     },
     {

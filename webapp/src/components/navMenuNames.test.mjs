@@ -53,10 +53,15 @@ test('⭐ ทุกเมนูของธุรกิจบริการต�
     // `canAnswerServiceRequests` = แคบกว่าอีกขั้น (ฝ่าย TS เท่านั้น ไม่รวมทีมขาย SV)
     // — คิวคำร้องเป็นที่ *ตอบ* ใบ ไม่ใช่ที่อ่านข้อมูลบริการ
     /* ⚠️ `canDoFieldWork` = เจ้าหน้าที่หน้างาน (ฝ่าย TS ที่ถือ service:work) + ทุกคนที่แก้ได้
-       — แคบด้วยฝ่ายเหมือนกัน เพิ่มเข้ามาเมื่อแยกตำแหน่งของฝ่าย TS (2026-08-30) */
+       — แคบด้วยฝ่ายเหมือนกัน เพิ่มเข้ามาเมื่อแยกตำแหน่งของฝ่าย TS (2026-08-30)
+       ⚠️ `canManageTeams(u, 'TS')` = เมนูจัดทีม — แคบด้วยฝ่ายเหมือนกัน (ฟังก์ชันเทียบ
+       `departmentOf(user)` กับ 'TS' ตรง ๆ) แต่รับฝ่ายเป็นอาร์กิวเมนต์จึงเขียนแบบ inline
+       ได้ทางเดียว · **ต้องมี `'TS'` อยู่ในบรรทัด** ไม่งั้นเมนูของธุรกิจบริการจะไปโผล่
+       ให้หัวหน้าฝ่ายขาย (ซึ่งถือ `team:manage` เหมือนกัน) — รูปเดียวกับที่ /sa/teams
+       ต้องระบุ 'SA' */
     assert.match(
       line,
-      /visible: canViewService|visible: canEditService|visible: canDoFieldWork|visible: canAnswerServiceRequests/,
+      /visible: canViewService|visible: canEditService|visible: canDoFieldWork|visible: canAnswerServiceRequests|visible: \(u\) => canManageTeams\(u, 'TS'\)/,
       line.trim(),
     );
   }
