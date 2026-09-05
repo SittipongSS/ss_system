@@ -52,6 +52,7 @@ const TW_RAW_Z_INDEX = /(?<![\w-])-?(?:z|order)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[
 const TW_RAW_MOTION = /(?<![\w-])(?:duration|delay|ease|animate)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]|(?<![\w-])\[(?:transition-duration|transition-delay|transition-timing-function|animation):(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
 const TW_RAW_SPACING = /(?<![\w-])-?(?:scroll-[mp][tblrxyse]?|space-[xy]|inset-[xy]|inset|gap-[xy]|gap|top|bottom|left|right|start|end|[pm][xytblrse]?)-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
 const TW_RAW_SIZE = /(?<![\w-])-?(?:min-[wh]|max-[wh]|size|basis|[wh])-\[(?!\s*(?:[a-z-]+:\s*)?var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+const TW_RAW_OPACITY = /(?<![\w-])opacity-\[(?!\s*var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
 const TW_DEAD_TOKEN_FORM = /(?<![\w-])[a-z][\w-]*-\[--[\w-]+\]/g;
 
 const PATTERNS = {
@@ -64,6 +65,7 @@ const PATTERNS = {
   TW_RAW_MOTION,
   TW_RAW_SPACING,
   TW_RAW_SIZE,
+  TW_RAW_OPACITY,
   TW_DEAD_TOKEN_FORM,
 };
 
@@ -96,6 +98,7 @@ const HARD_ZERO = {
   TW_RAW_FONT_WEIGHT: "น้ำหนักตัวอักษร",
   TW_RAW_Z_INDEX: "ชั้นซ้อน",
   TW_RAW_MOTION: "จังหวะ",
+  TW_RAW_OPACITY: "ความจาง",
   TW_DEAD_TOKEN_FORM: "รูป -[--token] ที่ตายเงียบ",
 };
 
@@ -110,7 +113,7 @@ test("audit:ui มีด่าน hard-zero ของผิว className คร�
   for (const list of [
     "tailwindRadiusViolations", "tailwindShadowViolations", "tailwindLeadingViolations",
     "tailwindTrackingViolations", "tailwindFontWeightViolations", "tailwindZIndexViolations",
-    "motionSurfaceViolations", "deadTokenFormViolations",
+    "motionSurfaceViolations", "deadTokenFormViolations", "tailwindOpacityViolations",
   ]) {
     assert.match(AUDIT, new RegExp(`\\.\\.\\.${list}\\.map`), `${list} ไม่ได้ต่อเข้า failures`);
   }
@@ -125,6 +128,40 @@ test("audit:ui มีเพดานระยะห่าง/ขนาดใน�
     assert.match(AUDIT, new RegExp(`${counter} > ${cap}`), `${cap} ต้องฟ้องตอนเพิ่ม`);
     assert.match(AUDIT, new RegExp(`${counter} < ${cap}`), `${cap} ต้องฟ้องตอนลืมรูดเพดานลง`);
   }
+});
+
+/* ── ความจาง: ชื่อขั้นของ Tailwind เป็น *เพดาน* ไม่ใช่ hard-zero ─────────────
+   ผิว className ของสเกลอื่นเป็น 0 หมด แต่ของสเกลนี้ยกไม่ได้แบบตาบอด:
+   `opacity-70` = 70% ส่วนบันไดของระบบมีสองขั้น (--op-disabled 0.45 · --op-muted 0.55)
+   ⇒ ยกเข้าโทเคนแล้ว **หน้าตาเปลี่ยนจริง** ต้องมีคนเปิดหน้าดูก่อน
+   (วัดด้วย compile() ของ tailwindcss 4.3.0: `opacity-70` → `opacity: 70%` ·
+    `opacity-[var(--op-disabled)]` → `opacity: var(--op-disabled)` = รูปที่ถูก) */
+const TW_NAMED_OPACITY = /(?<![\w-])opacity-\d+(?![\w-])/g;
+
+test("regex ความจางชื่อขั้นต้องเป็นตัวเดียวกับใน audit-ui.mjs", () => {
+  assert.ok(AUDIT.includes(TW_NAMED_OPACITY.source),
+    `audit-ui.mjs ไม่มี regex ตัวนี้แล้ว: ${TW_NAMED_OPACITY.source}`);
+  assert.match(AUDIT, /twNamedOpacityCount > TW_NAMED_OPACITY_CAP/, "ต้องฟ้องตอนเพิ่ม");
+  assert.match(AUDIT, /twNamedOpacityCount < TW_NAMED_OPACITY_CAP/, "ต้องฟ้องตอนลืมรูดเพดานลง");
+});
+
+test("เพดาน TW_NAMED_OPACITY_CAP ยังผูกกับของจริง", () => {
+  const cap = Number((AUDIT.match(/const TW_NAMED_OPACITY_CAP = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(cap), "หา TW_NAMED_OPACITY_CAP ไม่เจอ");
+  const found = offenders(TW_NAMED_OPACITY);
+  assert.equal(found.length, cap,
+    `ของจริงเหลือ ${found.length} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)\n${found.join("\n")}`);
+});
+
+/* 🪤 รูปที่ถูกต้องต้องไม่ถูกนับเป็นทั้งสองด่าน ไม่งั้นคนที่ยกเข้าโทเคน *ถูกวิธี*
+   จะโดนด่านตัวเองฟ้อง แล้วเพดานจะไม่มีวันรูดลงได้ */
+test("opacity-[var(--op-…)] ต้องรอดทั้งสองด่าน", () => {
+  assert.equal("opacity-[var(--op-disabled)]".match(TW_RAW_OPACITY), null,
+    "รูปโทเคนต้องไม่ติด hard-zero");
+  assert.equal("opacity-[var(--op-disabled)]".match(TW_NAMED_OPACITY), null,
+    "รูปโทเคนต้องไม่ถูกนับเป็นชื่อขั้น");
+  assert.ok("opacity-[0.62]".match(TW_RAW_OPACITY), "ค่าดิบในวงเล็บต้องติด hard-zero");
+  assert.deepEqual("opacity-70".match(TW_NAMED_OPACITY), ["opacity-70"], "ชื่อขั้นต้องถูกนับ");
 });
 
 test("เพดาน RAW_TAILWIND_SPACING_CAP ยังผูกกับของจริง", () => {
@@ -229,6 +266,12 @@ const FIXTURES = {
       "basis-(--w-panel)", "min-h-[var(--ctl-h)]", "w-full", "w-4", "min-[600px]:flex", "max-[600px]:hidden",
       "gap-[14px]", "mb-[22px]"],
   },
+  TW_RAW_OPACITY: {
+    yes: ["opacity-[0.62]", "opacity-[.62]", "opacity-[62%]", "hover:opacity-[0.62]"],
+    /* `opacity-70` ไม่อยู่ในลิสต์นี้โดยเจตนา — ชื่อขั้นเป็น *เพดาน* คนละด่านกับ hard-zero
+       (ดูเทสต์ TW_NAMED_OPACITY_CAP ข้างบน) */
+    no: ["opacity-[var(--op-disabled)]", "opacity-[var(--op-muted)]", "opacity-70", "opacity-0"],
+  },
   TW_DEAD_TOKEN_FORM: {
     /* รูปนี้คายค่าที่ไม่ใช่ CSS ออกมาแล้วเบราว์เซอร์ทิ้งทั้งบรรทัดเงียบ ๆ —
        `shadow-[--shadow-card]` ไม่ถูกจับที่ด่านเงา (ไม่มีตัวเลขให้แยกจากสี) จึงต้องมี
@@ -239,6 +282,14 @@ const FIXTURES = {
       "data-[open=true]:flex", "max-[600px]:hidden"],
   },
 };
+
+/* 🪤 ไม่มีอะไรบังคับให้ regex ตัวใหม่ต้องมี fixture — เติม PATTERNS แล้วลืม FIXTURES
+   จะได้ด่านที่ไม่มีใครพิสูจน์ว่าจับถูกและปล่อยรูปโทเคนถูก ซึ่งเป็นทรงเดียวกับ
+   "ข้อยกเว้นที่กลายเป็นสวิตช์ปิด" ที่รีโปนี้เจอมาแล้วสี่รอบ */
+test("regex ทุกตัวใน PATTERNS ต้องมี fixture พิสูจน์", () => {
+  assert.deepEqual(Object.keys(PATTERNS).sort(), Object.keys(FIXTURES).sort(),
+    "PATTERNS กับ FIXTURES ไม่ตรงกัน — regex ที่ไม่มี fixture คือด่านที่ไม่มีใครตรวจ");
+});
 
 for (const [name, { yes, no }] of Object.entries(FIXTURES)) {
   test(`${name} จับรูปที่ต้องจับ และปล่อยรูปโทเคน`, () => {
@@ -258,8 +309,12 @@ for (const [name, { yes, no }] of Object.entries(FIXTURES)) {
    (604 จุดของ gap-* คือสำนวนที่คนส่วนใหญ่ใช้ และ `duration-300` ของ layout.js จะแดงทันที)
    เทสต์นี้ไม่ได้ห้ามอะไร — มันล็อกไว้ว่า **ด่านข้างบนไม่ได้ครอบผิวนั้น** เพื่อไม่ให้ใคร
    อ่านเลข 0 แล้วเข้าใจว่าครบ ถ้าวันหนึ่งจะตั้งด่านผิวนั้นจริง ต้องมาลบเทสต์นี้ทิ้งก่อน */
-test("ด่านผิว className ยังไม่ครอบ utility สเกลในตัวของ Tailwind (จงใจ)", () => {
-  for (const sample of ["gap-2", "p-2.5", "duration-300", "z-50", "leading-4", "w-4"]) {
+/* ⚠️ ชื่อเทสต์นี้เคยพูดคลุมทั้งหมด แต่ตั้งแต่ 2026-09-05 **ไม่จริงทั้งหมดแล้ว** —
+   สามหมวดถูกครอบด้วย *เพดานชื่อขั้น* แยกต่างหาก (TW_NAMED_LEADING · TW_NAMED_TRACKING ·
+   TW_NAMED_OPACITY) เพราะขั้นของ Tailwind ไม่ใช่ขั้นของเรา · ที่นี่คุมเฉพาะกลุ่ม
+   hard-zero ใน PATTERNS ว่ายังไม่ลามไปจับ utility ในตัวของ Tailwind */
+test("ด่าน hard-zero ของผิว className ยังไม่ครอบ utility สเกลในตัวของ Tailwind (จงใจ)", () => {
+  for (const sample of ["gap-2", "p-2.5", "duration-300", "z-50", "leading-4", "w-4", "opacity-70"]) {
     for (const pattern of Object.values(PATTERNS)) {
       pattern.lastIndex = 0;
       assert.ok(!pattern.test(sample), `"${sample}" เป็นสเกลของ Tailwind เอง ยังไม่อยู่ในขอบเขตรอบนี้`);
