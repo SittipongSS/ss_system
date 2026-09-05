@@ -139,6 +139,8 @@ export default function AddendumDetailPage() {
       icon={<FileStack size={22} />}
       title={`${ADDENDUM_DOC_TITLE} ครั้งที่ ${addendum.addendumNo}`}
       subtitle={naText(addendum.contract?.customerName)}
+      /* เหตุผลเดียวกับหน้าสัญญา — ลิงก์ย้อนกลับเคยอยู่ท้ายคอลัมน์เนื้อ (2026-09-06) */
+      back={{ href: `/sa/contracts/${addendum.contractId}`, label: "สัญญา" }}
     >
       <DetailPageLayout
         controlFirst
@@ -247,10 +249,6 @@ export default function AddendumDetailPage() {
             onItemsChange={handleAttachments}
           />
         </DetailCard>
-
-        <div className={styles.backLink}>
-          <Link href={`/sa/contracts/${addendum.contractId}`} className="linklike">← กลับไปที่สัญญา</Link>
-        </div>
       </DetailPageLayout>
 
       {/* ขั้นลงนามเป็นโมดัลเหมือนหน้าสัญญา (มติผู้ใช้ 2026-08-28) — การ์ดที่แทรกท้าย

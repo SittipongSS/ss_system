@@ -49,7 +49,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-4-5);
+  /* ⭐ ขอบในแนวนอนต้องเป็น --panel-inset ตามมติผู้ใช้ 2026-08-20 ("หัวการ์ด เนื้อการ์ด
+     ตารางที่ฝังในการ์ด และแถบแบ่งหน้า เริ่มที่เส้นเดียวกันทุกใบ") — ไฟล์นี้เคย **ไม่เคย
+     อ่านโทเคนนั้นเลยสักครั้ง** แล้วใช้ --space-4-5 (18px) แทน ⇒ ต่างจาก .ui-section
+     ที่ 39 ไฟล์ใช้อยู่ 2px · วัดจริง 2026-09-06: บนหน้าเดียวกันข้อความเริ่มที่ 3 เส้น */
+  padding: var(--space-4) var(--panel-inset);
   border-bottom: 1px solid var(--border);
 }
 .heading {
@@ -89,7 +93,8 @@
   flex-wrap: wrap;
 }
 .cardBody {
-  padding: var(--space-4) var(--space-4-5);
+  /* ต้องเท่ากับ .cardHeader ทุกด้าน (ดูเหตุผลที่นั่น) */
+  padding: var(--space-4) var(--panel-inset);
 }
 .contextCard {
   display: block;

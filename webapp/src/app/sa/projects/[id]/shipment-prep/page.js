@@ -85,9 +85,9 @@ export default function ShipmentPrepPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="no-print">
-        <Link href={`/sa/projects/${project.code || project.id}`} className="linklike" style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "var(--fs-7)" }}>
-          <ArrowLeft size={16} /> กลับไปโครงการ
+      <div className="no-print ui-workspace-back-row">
+        <Link href={`/sa/projects/${project.code || project.id}`} className="ui-workspace-back">
+          <ArrowLeft size={16} aria-hidden="true" /> กลับไปโครงการ
         </Link>
         <DetailPageLayout
           asideLabel="สรุปและจัดการเอกสารเตรียมส่งของ"

@@ -567,7 +567,6 @@ export default function CustomerDetails() {
       {/* ผังเดียวกับหน้าสินค้า/ใบเสนอราคา/ใบสั่งขาย: เนื้อซ้าย + รางขวาปักหมุด
           ⚠️ ไม่เปิด `controlFirst` — คนเปิดหน้าลูกค้ามาอ่านข้อมูลลูกค้าก่อน ไม่ได้มา
           เพื่อกดก้าวถัดไปเหมือนหน้าเอกสาร (เหตุผลเต็มอยู่ที่ DetailPageLayout) */}
-      <div className="mt-[18px]">
       <DetailPageLayout asideLabel="สรุปลูกค้าและการดำเนินการ" aside={customerAside}>
           {/* ⭐ การ์ดนี้เรียงตาม **ลำดับเดียวกับฟอร์มลูกค้า** (CustomerForm section 1-3)
               — คนกรอกกับคนอ่านเดินสายตาชุดเดียวกัน · แบรนด์กับผู้ติดต่อเคยอยู่ในราง
@@ -1048,7 +1047,6 @@ export default function CustomerDetails() {
             />
           </DetailCard>
       </DetailPageLayout>
-      </div>
 
       {overrideDialog}
 

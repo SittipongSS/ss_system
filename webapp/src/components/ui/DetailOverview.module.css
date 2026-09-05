@@ -13,7 +13,12 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-5);
-  padding: var(--space-5) 22px var(--space-4-5);
+  /* 🐞 เดิม `var(--space-5) 22px var(--space-4-5)` = บน 20 · ข้าง 22 ดิบ · ล่าง 18
+     เป็นหัวการ์ดเดียวในระบบที่บน-ล่างไม่เท่ากัน และเป็นเส้นที่สามของขอบในแนวนอน
+     (22 ที่นี่ · 18 ที่ .cardHeader · 16 ที่ .ui-section-header) วัดจริง 2026-09-06
+     บนหน้า /service/assets/[id] ใบเดียว ข้อความเริ่มที่ 23 / 17 / 19px จากขอบการ์ด
+     ⇒ ยกมาที่ --panel-inset เส้นเดียวตามมติผู้ใช้ 2026-08-20 และทำบน-ล่างให้สมมาตร */
+  padding: var(--space-5) var(--panel-inset);
 }
 
 .titleBlock { min-width: 0; }
@@ -113,7 +118,8 @@
   align-items: center;
   gap: 9px;
   min-width: 0;
-  padding: 13px var(--space-4);
+  /* ข้างต้องตรงกับหัวใบข้างบน (--panel-inset) ไม่งั้นป้ายในแถบสถิติเยื้องจากหัวเรื่อง */
+  padding: 13px var(--panel-inset);
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   color: var(--text-2);
