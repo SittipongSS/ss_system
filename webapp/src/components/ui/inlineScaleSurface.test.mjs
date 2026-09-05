@@ -156,6 +156,8 @@ test("audit:ui มีเพดานของผิว style object ครบแ
     ["RAW_LETTER_SPACING_JSX_CAP", "rawLetterSpacingJsxCount"],
     ["JSX_FONT_WEIGHT_BRANCH_CAP", "jsxFontWeightBranchCount"],
     ["RAW_OPACITY_JSX_CAP", "rawOpacityJsxCount"],
+    ["RAW_SPACING_JSX_CAP", "rawSpacingJsxCount"],
+    ["RAW_SIZE_JSX_CAP", "rawSizeJsxCount"],
   ]) {
     assert.match(AUDIT, new RegExp(`const ${cap} = \\d+;`), `หา ${cap} ไม่เจอ`);
     assert.match(AUDIT, new RegExp(`${counter} > ${cap}`), `${cap} ต้องฟ้องตอนเพิ่ม`);
@@ -207,15 +209,15 @@ function collectJs(prop, keep) {
    ให้เท่ากันตัวอักษรต่อตัวอักษรแล้ว · สำเนาที่สามจะดริฟต์เงียบ) แทนที่จะลอก ก็พิสูจน์
    ว่าฐานสองอันเท่ากันไปเลย: ถ้าไม่มี `opacity:` ตัวไหนอยู่หลัง `//` ผลย่อมตรงกันแน่นอน
    วันที่มีคนเขียนขึ้นมา เทสต์นี้จะฟ้องให้ตัดสินใจ ไม่ใช่ปล่อยให้เลขสองฝั่งเพี้ยนเงียบ */
-test("ไม่มี opacity ที่ถูกคอมเมนต์ด้วย // ⇒ ฐานของสองฝั่งเท่ากัน", () => {
+test("ไม่มีพร็อพที่ถูกคอมเมนต์ด้วย // ⇒ ฐานของสองฝั่งเท่ากัน", () => {
+  const props = ["opacity", ...SPACING_PROPS, ...SIZE_PROPS];
+  const pattern = new RegExp(`(?<![\\w$.])(?:${props.join("|")})\\s*:`);
   const offenders = [];
   for (const file of uiFiles()) {
     if (!file.endsWith(".js")) continue;
     blankBlockComments(fs.readFileSync(file, "utf8")).split(/\r?\n/).forEach((line, index) => {
       const at = line.indexOf("//");
-      if (at >= 0 && /(?<![\w$.])opacity\s*:/.test(line.slice(at))) {
-        offenders.push(`${rel(file)}:${index + 1}`);
-      }
+      if (at >= 0 && pattern.test(line.slice(at))) offenders.push(`${rel(file)}:${index + 1}`);
     });
   }
   assert.deepEqual(offenders, [],
@@ -237,6 +239,76 @@ test("นับกิ่ง ternary ของความจาง ไม่ใ�
   assert.ok(rawOpacity({ kind: "number", text: "0.62" }), "เลขเปล่าในกิ่งต้องถูกนับ");
   assert.ok(!rawOpacity({ kind: "number", text: "1" }), "กิ่งที่คืนค่าเต็ม (1) ไม่ใช่หนี้");
   assert.ok(!rawOpacity({ kind: "other", text: "row.dim" }), "นิพจน์ที่ไม่มีลิเทอรัลอ่านไม่ได้ ต้องปล่อยผ่าน");
+});
+
+/* ── ระยะห่าง/ขนาดในผิว style object (2026-09-05) ────────────────────────────
+   สองสเกลที่ใหญ่ที่สุดของระบบ และเป็นสองตัวสุดท้ายที่เอกสารยังเขียนว่า
+   "ผิว `style` ยังไม่มีด่าน" · ลิสต์พร็อพต้องตรงกับใน audit-ui.mjs เป๊ะ ไม่งั้นเลขไม่ตรง
+   (เทสต์ข้างล่างเทียบลิสต์ทั้งสองฝั่งตรง ๆ ไม่ใช่แค่เทียบยอดรวม — ยอดรวมที่บังเอิญ
+    เท่ากันทั้งที่ลิสต์ต่างกันคือกับดักที่หาสาเหตุยากที่สุด) */
+const SPACING_PROPS = [
+  "gap", "rowGap", "columnGap",
+  "padding", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight",
+  "paddingInline", "paddingBlock",
+  "margin", "marginTop", "marginBottom", "marginLeft", "marginRight",
+  "marginInline", "marginBlock",
+];
+const SIZE_PROPS = ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"];
+
+/* ตัวเลขเปล่าในผิวนี้คือ px — react-dom ไม่มีพร็อพกลุ่มนี้ในลิสต์ unitlessNumbers
+   ข้าม % และ calc() (ค่าเชิงสัมพันธ์/คำนวณ ไม่ใช่ขั้นของบันได) และข้ามนิพจน์ */
+const rawLength = (branch) => {
+  if (branch.kind === "number") return Number(branch.text) !== 0;
+  if (branch.kind !== "string") return false;
+  const value = branch.text.trim();
+  if (!value || value.includes("var(") || value.includes("calc(") || value.includes("%")) return false;
+  if (/^0[a-z]*$/.test(value)) return false;
+  return /^-?[0-9.]+(?:px|rem|em)$/.test(value);
+};
+
+const countProps = (props) => props.reduce((sum, prop) => sum + collectJs(prop, rawLength).length, 0);
+
+test("ลิสต์พร็อพของสองสเกลต้องตรงกับใน audit-ui.mjs", () => {
+  for (const [name, list] of [["JSX_SPACING_PROPS", SPACING_PROPS], ["JSX_SIZE_PROPS", SIZE_PROPS]]) {
+    const declared = AUDIT.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`));
+    assert.ok(declared, `หา ${name} ใน audit-ui.mjs ไม่เจอ`);
+    const there = [...declared[1].matchAll(/"([\w]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(there, list, `${name} สองฝั่งไม่ตรงกัน — เลขที่นับได้จะไม่มีวันตรงเพดาน`);
+  }
+});
+
+/* ยามนามสกุลไฟล์สำคัญกว่าที่นี่มากกว่ากรณี opacity เสียอีก — ชื่ออย่าง `padding`
+   `margin` `gap` `width` `height` สะกดเหมือน CSS ทุกตัว และ lookbehind `(?<![\w$.])`
+   ไม่กัน `-` ⇒ ในไฟล์ .css คำว่า `width` ใน `min-width:` ก็ถูกจับด้วย */
+test("ตัวนับสองสเกลนี้ต้องถูกกันไว้ให้เห็นเฉพาะไฟล์ .js", () => {
+  const at = AUDIT.indexOf("rawSpacingJsxCount += 1;");
+  assert.ok(at > 0, "หาตัวนับ rawSpacingJsxCount ไม่เจอ");
+  assert.match(AUDIT.slice(Math.max(0, at - 800), at), /if \(rel\.endsWith\("\.js"\)\) \{/,
+    "ตัวนับผิว style object หลุดยาม .js แล้ว — จะกวาดไฟล์ .css มานับด้วย");
+});
+
+test("เพดาน RAW_SPACING_JSX_CAP ยังผูกกับของจริง", () => {
+  const cap = Number((AUDIT.match(/const RAW_SPACING_JSX_CAP = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(cap), "หา RAW_SPACING_JSX_CAP ไม่เจอ");
+  assert.equal(countProps(SPACING_PROPS), cap,
+    `ของจริงเหลือ ${countProps(SPACING_PROPS)} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});
+
+test("เพดาน RAW_SIZE_JSX_CAP ยังผูกกับของจริง", () => {
+  const cap = Number((AUDIT.match(/const RAW_SIZE_JSX_CAP = (\d+);/) || [])[1]);
+  assert.ok(Number.isFinite(cap), "หา RAW_SIZE_JSX_CAP ไม่เจอ");
+  assert.equal(countProps(SIZE_PROPS), cap,
+    `ของจริงเหลือ ${countProps(SIZE_PROPS)} แต่เพดานเขียน ${cap} — รูดเพดานลง (ขึ้นไม่ได้)`);
+});
+
+/* 🪤 `%` กับ calc() ถูกข้ามโดยเจตนา — แถบ Gantt/กราฟกว้างตามข้อมูล ไม่มีปลายทาง
+   เป็นโทเคน · ถ้าวันหนึ่งมีคนขยายให้นับ % ด้วย เพดานจะกระโดดโดยของจริงไม่ขยับ */
+test("ค่าเชิงสัมพันธ์และค่าคำนวณต้องไม่ถูกนับเป็นขั้นดิบ", () => {
+  assert.ok(!rawLength({ kind: "string", text: "50%" }), "% เป็นค่าเชิงสัมพันธ์");
+  assert.ok(!rawLength({ kind: "string", text: "calc(100% - 12px)" }), "calc() ไม่ใช่ขั้น");
+  assert.ok(!rawLength({ kind: "other", text: "row.width * 2" }), "นิพจน์ไม่มีลิเทอรัลให้อ่าน");
+  assert.ok(rawLength({ kind: "number", text: "12" }), "ตัวเลขเปล่าในผิวนี้คือ px ต้องถูกนับ");
+  assert.ok(!rawLength({ kind: "number", text: "0" }), "0 ไม่ใช่ขั้นของดีไซน์");
 });
 
 test("เพดาน RAW_RADIUS_JSX_CAP ยังผูกกับของจริง", () => {

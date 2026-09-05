@@ -343,6 +343,30 @@ function styleDeclarations(source, prop) {
   return found;
 }
 
+/* พร็อพของสองสเกลในผิว style object — ชุดนี้ต้องตรงกับฝั่ง CSS ของ RAW_SPACING_CAP
+   (`gap|row-gap|column-gap|padding|margin` + ทิศทาง) แปลงเป็น camelCase
+   ⚠️ `paddingInline`/`marginBlock` ฯลฯ ไม่มีในฝั่ง CSS ของด่านเดิม แต่ใส่ไว้ที่นี่
+   เพราะผิวนี้เขียนได้และไม่มีอะไรห้าม — ถ้าไม่ใส่ ก็เป็นประตูหลังที่เปลี่ยนชื่อพร็อพก็ผ่าน */
+const JSX_SPACING_PROPS = [
+  "gap", "rowGap", "columnGap",
+  "padding", "paddingTop", "paddingBottom", "paddingLeft", "paddingRight",
+  "paddingInline", "paddingBlock",
+  "margin", "marginTop", "marginBottom", "marginLeft", "marginRight",
+  "marginInline", "marginBlock",
+];
+const JSX_SIZE_PROPS = ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"];
+
+/* ค่าความยาวที่เป็น "ขั้นดิบ" ในผิว style object — ใช้ร่วมกันสองสเกล
+   ตัวเลขเปล่า = px (react-dom ไม่มีพร็อพกลุ่มนี้ในลิสต์ unitlessNumbers) */
+function rawJsxLength(branch) {
+  if (branch.kind === "number") return Number(branch.text) !== 0;
+  if (branch.kind !== "string") return false;
+  const value = branch.text.trim();
+  if (!value || value.includes("var(") || value.includes("calc(") || value.includes("%")) return false;
+  if (/^0[a-z]*$/.test(value)) return false;
+  return /^-?[0-9.]+(?:px|rem|em)$/.test(value);
+}
+
 const files = walk(srcRoot);
 const runtimeJsFiles = files.filter((file) => /\.(?:js|jsx|mjs)$/.test(file) && !/\.test\.mjs$/.test(file));
 const pageFiles = files.filter((file) => path.basename(file) === "page.js");
@@ -708,6 +732,34 @@ const RAW_OPACITY_CAP = 9;
    ⚠️ กิ่ง ternary นับทีละกิ่ง ⇒ ยกจุดเดียวอาจทำเลขลง 1 หรือ 2 แล้วแต่ว่ากิ่งอีกข้าง
    เป็น 1 (ไม่นับ) หรือเลขดิบอีกตัว — ดูข้อความฟ้องแล้วรูดตามของจริง อย่าเดา */
 const RAW_OPACITY_JSX_CAP = 24;
+
+/* ── ผิวที่สาม/สี่ของสองสเกลที่ใหญ่ที่สุด: ระยะห่าง กับ ขนาด ใน `style={{…}}` ──
+   (ตั้ง 2026-09-05 · ก่อนหน้านี้ทั้งสองสเกลมีด่านเฉพาะฝั่ง CSS กับ className
+    เอกสารเขียนไว้ตรง ๆ ว่า "ผิว `style` ยังไม่มีด่าน" มาตลอด)
+
+   ⚠️ **ตัวเลขเปล่าในผิวนี้คือ px** — react-dom ไม่มี padding/margin/gap/width/height
+   อยู่ในลิสต์ unitlessNumbers ⇒ `padding: 12` เรนเดอร์เป็น `padding: 12px` เต็มตัว
+   ไม่ใช่ "ค่าที่ยังไม่มีหน่วยเลยไม่นับ"
+
+   ⚠️ **ต้องกันด้วย `rel.endsWith(".js")`** เหมือน opacity — ชื่อพร็อพกลุ่มนี้สะกด
+   เหมือน CSS เป๊ะ (`padding` `margin` `gap` `width` `height`) ต่างจาก borderRadius/
+   boxShadow ที่ camelCase แยกให้เอง · ซ้ำร้ายกว่านั้น lookbehind `(?<![\w$.])` ไม่กัน
+   `-` ⇒ ในไฟล์ .css คำว่า `width` ใน `min-width:` จะถูกจับเป็น `width` ด้วย
+
+   📌 ขอบเขต "อะไรคือดิบ" แคบกว่าที่ตาเห็น และตั้งใจให้แคบ:
+     · ข้าม `%` และ `calc()` — เป็นค่าเชิงสัมพันธ์/คำนวณ ไม่ใช่ขั้นของบันได
+     · ข้ามกิ่งที่เป็นนิพจน์ (`row.width * 2`) — ไม่มีลิเทอรัลให้อ่าน ด่านไหนก็อ่านไม่ได้
+     · นับ px/rem/em และตัวเลขเปล่า · ข้าม 0 ทุกรูป
+   ⇒ แถบ Gantt/กราฟที่กว้างตามข้อมูลจึงไม่เข้าเพดาน ซึ่งถูกแล้ว — ของพวกนั้นไม่มี
+   ปลายทางเป็นโทเคน */
+const RAW_SPACING_JSX_CAP = 757;
+
+/* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
+   🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
+   ตามบทบาท (`--ctl-h` · `--topbar-h` · `--sidenav-w-*`) ⇒ เพดานนี้ไม่ใช่ "หนี้รอแปลง"
+   แต่เป็น **สายสะดุด**: ขนาดของ control ถูกตัดสินที่ primitive แล้ว เขียนซ้ำที่ปลายทาง
+   คือทับของที่ตัดสินไปแล้ว · ที่เหลือส่วนใหญ่เป็นขนาดของภาพ/ไอคอน/แผงที่ยังไม่มีชื่อ */
+const RAW_SIZE_JSX_CAP = 322;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -1481,6 +1533,8 @@ let rawRadiusJsxCount = 0;
 let rawShadowJsxCount = 0;
 let rawLetterSpacingJsxCount = 0;
 let rawOpacityJsxCount = 0;
+let rawSpacingJsxCount = 0;
+let rawSizeJsxCount = 0;
 let jsxFontWeightBranchCount = 0;
 const jsxFontWeightBranchList = [];
 
@@ -1999,6 +2053,22 @@ for (const file of uiFiles) {
     }
   }
 
+  /* ระยะห่าง/ขนาดในผิว style object (ดู RAW_SPACING_JSX_CAP · RAW_SIZE_JSX_CAP)
+     ยาม `.js` จำเป็นเหมือน opacity — เหตุผลเต็มอยู่ที่คอมเมนต์ของเพดานทั้งสองตัว */
+  if (rel.endsWith(".js")) {
+    for (const [props, bump] of [[JSX_SPACING_PROPS, "spacing"], [JSX_SIZE_PROPS, "size"]]) {
+      for (const prop of props) {
+        for (const { branches } of styleDeclarations(lined, prop)) {
+          for (const branch of branches) {
+            if (!rawJsxLength(branch)) continue;
+            if (bump === "spacing") rawSpacingJsxCount += 1;
+            else rawSizeJsxCount += 1;
+          }
+        }
+      }
+    }
+  }
+
   /* น้ำหนักตัวอักษรที่ซ่อนในกิ่ง ternary (ดู JSX_FONT_WEIGHT_BRANCH_CAP)
      นับเป็น *declaration* ไม่ใช่จำนวนกิ่ง เพื่อให้เลขตรงกับรายชื่อบรรทัดใน ledger */
   for (const { line, value, branches } of styleDeclarations(lined, "fontWeight")) {
@@ -2488,6 +2558,18 @@ const failures = [
   ...(rawOpacityJsxCount < RAW_OPACITY_JSX_CAP
     ? [`ความจางเลขดิบในผิว style object ลดได้แล้ว: เหลือ ${rawOpacityJsxCount} แต่ RAW_OPACITY_JSX_CAP ยังเขียน ${RAW_OPACITY_JSX_CAP} (รูดเพดานลง)`]
     : []),
+  ...(rawSpacingJsxCount > RAW_SPACING_JSX_CAP
+    ? [`ระยะห่างเลขดิบในผิว style object เพิ่มขึ้น: ${rawSpacingJsxCount} > เพดาน ${RAW_SPACING_JSX_CAP} — หยิบขั้นจาก --space-* (ตัวเลขเปล่าในผิวนี้คือ px)`]
+    : []),
+  ...(rawSpacingJsxCount < RAW_SPACING_JSX_CAP
+    ? [`ระยะห่างเลขดิบในผิว style object ลดได้แล้ว: เหลือ ${rawSpacingJsxCount} แต่ RAW_SPACING_JSX_CAP ยังเขียน ${RAW_SPACING_JSX_CAP} (รูดเพดานลง)`]
+    : []),
+  ...(rawSizeJsxCount > RAW_SIZE_JSX_CAP
+    ? [`ขนาดเลขดิบในผิว style object เพิ่มขึ้น: ${rawSizeJsxCount} > เพดาน ${RAW_SIZE_JSX_CAP} — ขนาดของ control ตัดสินที่ primitive แล้ว (--ctl-h) เขียนที่ปลายทางคือทับของที่ตัดสินไปแล้ว`]
+    : []),
+  ...(rawSizeJsxCount < RAW_SIZE_JSX_CAP
+    ? [`ขนาดเลขดิบในผิว style object ลดได้แล้ว: เหลือ ${rawSizeJsxCount} แต่ RAW_SIZE_JSX_CAP ยังเขียน ${RAW_SIZE_JSX_CAP} (รูดเพดานลง)`]
+    : []),
   /* ── ด่านการเข้าถึงตัวแรกของ CI (บล็อกเต็มเหนือ `const HOST_TAG`) ──────────
      หัวเรื่องต้องบอก *เกณฑ์* ไม่ใช่แค่ "audit ตก" — คนที่เพิ่งโดนด่านนี้ครั้งแรกต้อง
      ค้นต่อได้ว่ามันคืออะไรและทำไมถึงเป็นกฎ ไม่ใช่คิดว่าเป็นรสนิยมของคนตั้งด่าน */
@@ -2676,9 +2758,11 @@ console.log(`Motion violations (นอกโทเคน --motion-*): ${motionVi
 console.log(`  ↳ จังหวะดิบใน className + style object: ${motionSurfaceViolations.length} (ต้องเป็น 0)`);
 console.log(`ระยะห่างเลขดิบใน CSS: ${rawSpacingCount}/${RAW_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ ระยะห่างเลขดิบใน className: ${rawTailwindSpacingCount}/${RAW_TAILWIND_SPACING_CAP} (เพดาน ขึ้นไม่ได้ — บรรทัดบนกรองเฉพาะไฟล์ .css)`);
+console.log(`  ↳ ระยะห่างเลขดิบในผิว style object: ${rawSpacingJsxCount}/${RAW_SPACING_JSX_CAP} (เพดาน ขึ้นไม่ได้ — ผิวนี้เพิ่งมีตัวนับ 2026-09-05)`);
 /* ⚠️ "ขนาด" ไม่มีบรรทัดพี่น้องให้ไปเกาะ เพราะไม่เคยมี cap ใดในระบบเลยทั้งสามผิว —
    วางไว้ติดระยะห่างเพราะเป็นเรขาคณิตของกล่องเหมือนกันและมาจากการวัดรอบเดียวกัน */
 console.log(`  ↳ ขนาดเลขดิบใน className: ${rawTailwindSizeCount}/${RAW_TAILWIND_SIZE_CAP} (เพดาน ขึ้นไม่ได้ — สเกลนี้ไม่เคยมี cap มาก่อนเลย)`);
+console.log(`  ↳ ขนาดเลขดิบในผิว style object: ${rawSizeJsxCount}/${RAW_SIZE_JSX_CAP} (เพดาน ขึ้นไม่ได้ — ผิวนี้เพิ่งมีตัวนับ 2026-09-05)`);
 console.log(`ความสูงบรรทัดเลขดิบ (CSS + style object): ${rawLineHeightCount}/${RAW_LINE_HEIGHT_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ ความสูงบรรทัดดิบใน className (leading-[…] · text-…/…): ${tailwindLeadingViolations.length} (ต้องเป็น 0)`);
 console.log(`  ↳ ความสูงบรรทัดชื่อขั้นของ Tailwind (leading-tight/snug/relaxed…): ${twNamedLeadingCount}/${TW_NAMED_LEADING_CAP} (เพดาน ขึ้นไม่ได้ — ต่ำกว่า --lh-thai 1.65)`);
