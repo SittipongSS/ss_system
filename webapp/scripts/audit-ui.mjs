@@ -1480,6 +1480,26 @@ const TW_NAMED_TRACKING = /(?<![\w-])-?tracking-(?:tighter|tight|normal|wide|wid
 const TW_NAMED_LEADING_CAP = 6;
 const TW_NAMED_TRACKING_CAP = 4;
 
+/* ── ความจางฝั่ง className: ผิวสุดท้ายของสเกลนี้ที่ยังไม่มีใครนับ (2026-09-05) ──
+   วัดด้วย compile() ของ tailwindcss 4.3.0:
+     opacity-70                    -> opacity: 70%              ✗ ชื่อขั้นของ Tailwind
+     opacity-[0.62]                -> opacity: 0.62             ✗ ค่าดิบ
+     opacity-[var(--op-disabled)]  -> opacity: var(--op-disabled)  ✓ รูปที่ถูก
+
+   ⚠️ ชื่อขั้นของ Tailwind **ไม่ใช่ชื่อขั้นของเรา** — บันไดของระบบมีสองขั้น
+   (`--op-disabled` 0.45 · `--op-muted` 0.55) ส่วน Tailwind ให้ 0-100 ทีละ 5
+   ⇒ `opacity-70` ไม่ได้แปลว่า "หยิบขั้นมาใช้" แต่แปลว่า "ตั้งค่าเองที่ 70%"
+   จึงเป็นเพดาน ไม่ใช่ของที่ผ่านได้
+
+   🪤 ทำไมชื่อขั้นเป็น *เพดาน* ไม่ใช่ hard-zero ทั้งที่ผิว className ตัวอื่นเป็น 0 หมด:
+   10 จุดที่มีอยู่จริง (opacity-70 ×7 · opacity-50 ×2 · opacity-80 ×1) **ยกเข้าโทเคน
+   แล้วหน้าตาเปลี่ยน** — 70% ≠ 0.55 และ 50% ≠ 0.45 ⇒ ต้องมีคนเปิดหน้าดูก่อนตัดสินว่า
+   จะขยับขึ้นหรือลง ไม่ใช่งานเก็บกวาดที่ทำแบบตาบอดได้
+   ส่วนค่าดิบในวงเล็บเหลี่ยมเป็น hard-zero เพราะวันนี้มีศูนย์จุด — ไม่มีหนี้ให้ปีน */
+const TW_NAMED_OPACITY = /(?<![\w-])opacity-\d+(?![\w-])/g;
+const TW_RAW_OPACITY = /(?<![\w-])opacity-\[(?!\s*var\(--[\w-]+\)\s*\])[^\]\s]*\]/g;
+const TW_NAMED_OPACITY_CAP = 10;
+
 /* น้ำหนักตัวอักษร — 🪤 **prefix `font-` พ้องกับตระกูลฟอนต์เต็ม ๆ** วัดแล้ว:
      font-[600] · font-[number:600] · font-[any:600] -> font-weight
      font-[Arial] · font-[family-name:Arial] · font-(family-name:--x) -> font-family
@@ -1522,8 +1542,10 @@ const tailwindShadowViolations = [];
 const tailwindLeadingViolations = [];
 const tailwindTrackingViolations = [];
 let twNamedLeadingCount = 0;
+let twNamedOpacityCount = 0;
 let twNamedTrackingCount = 0;
 const tailwindFontWeightViolations = [];
+const tailwindOpacityViolations = [];
 const tailwindZIndexViolations = [];
 const deadTokenFormViolations = [];
 const motionSurfaceViolations = [];
@@ -1745,6 +1767,12 @@ for (const file of uiFiles) {
     }
     for (const _ of line.matchAll(TW_NAMED_TRACKING)) {
       twNamedTrackingCount += 1;
+    }
+    for (const _ of line.matchAll(TW_NAMED_OPACITY)) {
+      twNamedOpacityCount += 1;
+    }
+    for (const hit of line.matchAll(TW_RAW_OPACITY)) {
+      tailwindOpacityViolations.push(`${at} ${hit[0]} → opacity-[var(--op-disabled)] / opacity-[var(--op-muted)]`);
     }
     for (const hit of line.matchAll(TW_RAW_FONT_WEIGHT)) {
       tailwindFontWeightViolations.push(`${at} ${hit[0]} → font-(--fw-semibold)`);
@@ -2655,6 +2683,13 @@ const failures = [
   ...(twNamedTrackingCount < TW_NAMED_TRACKING_CAP
     ? [`ระยะห่างตัวอักษรชื่อขั้นลดได้แล้ว: เหลือ ${twNamedTrackingCount} แต่ TW_NAMED_TRACKING_CAP ยังเขียน ${TW_NAMED_TRACKING_CAP} (รูดเพดานลง)`]
     : []),
+  ...tailwindOpacityViolations.map((item) => `ความจางค่าดิบใน className (หยิบจาก --op-*): ${item}`),
+  ...(twNamedOpacityCount > TW_NAMED_OPACITY_CAP
+    ? [`ความจางชื่อขั้นของ Tailwind ใน className เพิ่มขึ้น: ${twNamedOpacityCount} > เพดาน ${TW_NAMED_OPACITY_CAP} — บันไดของระบบมีสองขั้น (--op-disabled 0.45 · --op-muted 0.55) ใช้ opacity-[var(--op-…)]`]
+    : []),
+  ...(twNamedOpacityCount < TW_NAMED_OPACITY_CAP
+    ? [`ความจางชื่อขั้นลดได้แล้ว: เหลือ ${twNamedOpacityCount} แต่ TW_NAMED_OPACITY_CAP ยังเขียน ${TW_NAMED_OPACITY_CAP} (รูดเพดานลง)`]
+    : []),
   ...tailwindFontWeightViolations.map((item) => `น้ำหนักตัวอักษรเลขดิบใน className (หยิบจาก --fw-*): ${item}`),
   ...tailwindZIndexViolations.map((item) => `z-index เลขดิบใน className (หยิบจาก --z-*): ${item}`),
   ...motionSurfaceViolations.map((item) => `เวลา/จังหวะนอกชั้นกลางในผิว className หรือ style object: ${item}`),
@@ -2774,6 +2809,8 @@ console.log(`  ↳ เงาที่เขียนเองใน style object
 console.log(`  ↳ เงาที่เขียนเองใน className: ${tailwindShadowViolations.length} (ต้องเป็น 0)`);
 console.log(`ความจางเลขดิบใน CSS: ${rawOpacityCount}/${RAW_OPACITY_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  \u21b3 ความจางเลขดิบในผิว style object: ${rawOpacityJsxCount}/${RAW_OPACITY_JSX_CAP} (เพดาน ขึ้นไม่ได้ \u2014 นับกิ่ง ternary ด้วย ผิวนี้เพิ่งมีตัวนับ 2026-09-05)`);
+console.log(`  ↳ ความจางชื่อขั้นของ Tailwind (opacity-70…): ${twNamedOpacityCount}/${TW_NAMED_OPACITY_CAP} (เพดาน ขึ้นไม่ได้ — ชื่อขั้นของ Tailwind ไม่ใช่บันไดของเรา)`);
+console.log(`  ↳ ความจางค่าดิบใน className (opacity-[0.62]): ${tailwindOpacityViolations.length} (ต้องเป็น 0)`);
 console.log(`ระยะห่างตัวอักษรค่าดิบใน CSS: ${rawLetterSpacingCount}/${RAW_LETTER_SPACING_CAP} (เพดาน ขึ้นไม่ได้)`);
 console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน style object: ${rawLetterSpacingJsxCount}/${RAW_LETTER_SPACING_JSX_CAP} (เพดาน ขึ้นไม่ได้ — จุดเดียวที่มีคือ px ที่ต้องกลายเป็น em)`);
 console.log(`  ↳ ระยะห่างตัวอักษรค่าดิบใน className: ${tailwindTrackingViolations.length} (ต้องเป็น 0)`);
