@@ -445,7 +445,6 @@ export default function ServiceSiteDetailPage({ params }) {
         ]}
       />
 
-      <div className="mt-[18px]">
       <DetailPageLayout asideLabel="สรุปไซต์และการดำเนินการ" aside={siteAside}>
       <DetailCard icon={MapPin} eyebrow="Site profile" title="ข้อมูลไซต์">
         <dl className={styles.info}>
@@ -792,7 +791,6 @@ export default function ServiceSiteDetailPage({ params }) {
         )}
       </DetailCard>
       </DetailPageLayout>
-      </div>
 
       <ServiceSiteModal
         open={editingSite}

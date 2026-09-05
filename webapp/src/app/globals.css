@@ -1772,7 +1772,6 @@ a.topnav-here-sys:focus-visible {
 .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
 .btn.ghost:hover { background: var(--panel-2); }
 .btn.icon-only { width: 32px; padding: 0; justify-content: center; }
-.topbar-back-btn { gap: var(--space-1); font-size: var(--fs-7); color: var(--text-2); padding: var(--space-1) var(--space-2-5); height: 32px; }
 
 @media (max-width: 1000px) {
   .topnav-system { padding: 0 var(--space-3); gap: var(--space-2-5); }
@@ -6189,6 +6188,58 @@ button.empty-state { width: 100%; font: inherit; }
   max-width: var(--content-max);
   min-width: 0;
   margin: 0 auto;
+  /* ⭐ จังหวะแนวตั้งของหน้าเป็นของ **เปลือก** ไม่ใช่ของลูกแต่ละตัว (2026-09-06)
+
+     🐞 เดิมเปลือกนี้เป็น block เปล่า ไม่มี gap ⇒ ลูกแต่ละตัวต้องพกระยะล่างมาเอง
+     ซึ่งได้ผลเฉพาะลูกที่ *เปลือกรู้จัก* (back-row 14px · premium-header 18px ·
+     rail 18px · toolbar 16px) ส่วน **เนื้อหาของหน้า** เป็นอะไรก็ได้ จึงไม่มีใคร
+     ออกระยะให้ ⇒ แต่ละหน้าไปเว้นเอง วัดจริง 2026-09-06 ได้ 4 ค่าใน 13 หน้า:
+       0px  ×5 หน้า (service/assets/[id] · service/visits/[id] · sa/costing/[id] ฯลฯ)
+            = การ์ดหัวใบชนบล็อกสองคอลัมน์พอดี (ผู้ใช้ส่งภาพมา)
+       16px ×2 · 18px ×4 (สองท่า: โทเคน กับ `mt-[18px]` ดิบ) · 20px ×2 (`gap-5`)
+     อาการเดียวกันโผล่ที่ `.ui-section` สองใบต่อกัน และ `.ui-metric-strip`
+     ชนการ์ดถัดไป — ทั้งคู่วัดได้ 0px
+
+     ⚠️ **ต้องเป็น gap ไม่ใช่การไล่เติม margin ให้ลูกทีละชนิด** — รายชื่อ "ชนิดของ
+     ก้อนที่วางในหน้าได้" เป็นรายการเปิด ไล่เติมเมื่อไรก็ลืมตัวถัดไปเมื่อนั้น
+     ซึ่งคือกลไกที่ทำให้เกิดบั๊กนี้ตั้งแต่แรก */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4-5);
+}
+
+/* 🔴 ต้องเป็น `> *` ไม่ใช่การไล่ชื่อลูกทีละตัว — ไล่ชื่อคือกลไกเดิมที่พังมาแล้ว
+   ลองไล่ชื่อดูรอบหนึ่ง (back-row · premium-header · rail · toolbar) แล้ววัดจริงบน
+   /service/assets ยังเจอ `tabs-header → glass-panel = 36px` เพราะ `.tabs-header`
+   พก margin ของตัวเองมาด้วยและไม่มีใครนึกถึง ⇒ ปิดที่ชั้นเดียวให้ครบทุกลูกไปเลย
+   ⚠️ ล้าง margin **แนวตั้ง** เท่านั้น — แนวนอนเป็นเรื่องของการจัดตำแหน่ง (เช่น
+   `margin: 0 auto`) ซึ่งไม่เกี่ยวกับจังหวะของหน้า
+   🪤 ความจำเพาะของกฎนี้คือ (0,1,0) เท่ากับคลาสเปล่า ⇒ **มันชนะเฉพาะคลาสที่ประกาศ
+   ก่อนหน้าในไฟล์** · คลาสที่ประกาศทีหลังจะชนะกลับ (วัดจริง: `.ui-workspace-rail`
+   กับ `-toolbar` อยู่ใต้กฎนี้ ทำให้ได้ 36px กับ 34px) ⇒ สองตัวนั้นถูกถอด margin
+   ของตัวเองทิ้งแทน เพราะใช้ *เฉพาะ* ในเปลือกนี้อยู่แล้ว ไม่มีที่อื่นต้องพึ่ง
+   ส่วน `.premium-header` (บรรทัด ~6123 = ก่อนกฎนี้) เก็บ margin ไว้ได้ตามเดิม
+   เพราะอีก 6 หน้าใช้มันนอกเปลือกและยังต้องการระยะนั้นจริง
+
+   🔴 **ชื่อคลาสถูกเขียนซ้ำโดยเจตนา** (`.ui-workspace.ui-workspace`) เพื่อดัน
+   ความจำเพาะเป็น (0,2,0) — ไม่ใช่การพิมพ์ผิด · ลูกบางตัวมาจาก **CSS Module**
+   (เช่น `Pager.module.css`) ซึ่งบันเดิลใส่สไตล์ชีตไว้ *หลัง* globals.css ⇒ ที่
+   (0,1,0) เท่ากันมันชนะด้วยลำดับ วัดจริงบน /database/customers ได้ `grid → Pager`
+   = 30px (18 gap + 12 margin ของ Pager) ทั้งที่กฎนี้สั่ง 0 ไปแล้ว
+   ⚠️ ห้ามใช้ `!important` แทน — ที่นี่เป็นกฎเลย์เอาต์ของเปลือก ไม่ใช่ของฉุกเฉิน
+   และ `!important` จะทำให้หน้าที่จำเป็นต้องเว้นต่างจริง ๆ แก้ทางไม่ได้เลย */
+.ui-workspace.ui-workspace > * { margin-block: 0; }
+
+/* 🪤 แถวย้อนกลับเป็นข้อยกเว้นเดียว และเป็นข้อยกเว้นที่ **ต้องมี** — มันแคบกว่าจังหวะ
+   ของก้อนเนื้อหาโดยเจตนา (14px ไม่ใช่ 18px) เพราะเป็นบรรทัดนำทางบาง ๆ ไม่ใช่ก้อนข้อมูล
+   และวัดจริง 2026-09-06 พบว่า **14px คือค่าเดียวในเรื่องนี้ที่สม่ำเสมอทั้งระบบอยู่แล้ว**
+   (ไม่มี override ที่ความกว้างไหนเลย) ⇒ ถ้าปล่อยให้ gap กลืนเป็น 18px จะเป็นการทำลาย
+   สิ่งเดียวที่ไม่พัง เพื่อแลกกับความสม่ำเสมอที่ไม่มีใครขอ
+   ยิ่งกว่านั้น 19 หน้าจาก 109 อยู่ **นอก** เปลือก `.ui-workspace` (คืนเป็น Fragment เอง)
+   แถวย้อนกลับของหน้าพวกนั้นยังได้ 14px อยู่ดี ⇒ ปล่อยให้ในเปลือกเป็น 18 = สร้างรอยแยก
+   ใหม่ 4px ระหว่างสองกลุ่มหน้า ซึ่งเป็นบั๊กชนิดเดียวกับที่กำลังแก้อยู่นี่เอง */
+.ui-workspace.ui-workspace > .ui-workspace-back-row {
+  margin-bottom: calc(var(--space-3-5) - var(--space-4-5));
 }
 .ui-workspace-back-row {
   display: flex;
@@ -6207,6 +6258,23 @@ button.empty-state { width: 100%; font: inherit; }
   font-weight: var(--fw-semibold);
   text-decoration: none;
 }
+/* ⭐ ตัวย้อนกลับบางหน้าต้องเป็น <button> ไม่ใช่ <Link> — หน้าที่เข้าได้จากหลายทาง
+   ใช้ `router.back()` ซึ่งไม่มี href ให้ใส่ (เช่น /database/products/[id])
+   ⚠️ ต้องคืนค่า UA ของปุ่มทีละพร็อพ ห้ามใช้ shorthand `font:` — `font:` ล้าง
+   `font-variant-numeric` ทิ้งด้วย ซึ่งเป็นกับดักที่ `.linklike` เคยกัดมาแล้ว 11 จุด
+   🐞 ก่อนหน้านี้หน้าสินค้าเขียน `className="btn ghost topbar-back-btn"` แทน โดยหวังว่า
+   `.topbar-back-btn` จะกดขนาดลง แต่กฎนั้น **เป็นโค้ดตาย**: อยู่บรรทัด 1775 ส่วน `.btn`
+   อยู่ 4033 และ 6089 ความจำเพาะเท่ากัน (0,1,0) ตัวหลังจึงชนะทุกพร็อพที่ชนกัน
+   ⇒ ปุ่มจริงสูง 40px ตัวอักษร 12px (ของกลาง 32px/13px) และลูกศรเยื้องขวา 14px
+   จาก padding+border ของ `.btn` · ลบกฎตายตัวนั้นทิ้งแล้ว */
+button.ui-workspace-back {
+  border: 0;
+  padding: 0;
+  background: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
 .ui-workspace-back:hover { color: var(--accent-ink); }
 .ui-workspace-back:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .ui-workspace-back-actions,
@@ -6223,9 +6291,10 @@ button.empty-state { width: 100%; font: inherit; }
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  margin-bottom: var(--space-4-5);
+  /* ระยะล่างเป็นของ gap ที่ .ui-workspace แล้ว — คลาสนี้ใช้เฉพาะในเปลือกนั้น */
 }
-.ui-workspace-toolbar { margin-bottom: var(--space-4); }
+/* ระยะล่างเป็นของ gap ที่ .ui-workspace แล้ว (เดิม 16px ที่นี่ ตอนนี้ 18px เท่าก้อนอื่น) */
+.ui-workspace-toolbar { min-width: 0; }
 
 .ui-section {
   min-width: 0;

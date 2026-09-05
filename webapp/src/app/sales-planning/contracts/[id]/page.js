@@ -341,6 +341,10 @@ export default function ContractDetailPage() {
       icon={<FileSignature size={22} />}
       title={`${contractKindLabel(contract.kind)} ${contract.contractNo || "(ฉบับร่าง)"}`}
       subtitle={naText(contract.customerName)}
+      /* ลิงก์ย้อนกลับเคยอยู่ **ท้าย** คอลัมน์เนื้อ (ต้องเลื่อนหาเอง) และเขียนด้วยอักษร
+         "←" กับ .linklike ⇒ เป็นเทอราคอตต้าขีดเส้นใต้ ต่างจากอีก 33 หน้าที่เป็นแถวบนสุด
+         สีเทา ไม่มีเส้นใต้ · ย้ายมาใช้ prop `back` ของเปลือกแล้ว (2026-09-06) */
+      back={{ href: "/sa/contracts", label: "ทะเบียนสัญญา" }}
     >
       <DetailPageLayout
         controlFirst
@@ -620,9 +624,6 @@ export default function ContractDetailPage() {
           </DetailCard>
         )}
 
-        <div className={styles.backLink}>
-          <Link href="/sa/contracts" className="linklike">← กลับไปทะเบียนสัญญา</Link>
-        </div>
       </DetailPageLayout>
 
       {/* ── อนุมัติเอกสารภายนอกใช้แทนสัญญา (mig 0322 · มติผู้ใช้ 2026-08-30) ──────

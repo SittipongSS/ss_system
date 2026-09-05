@@ -515,10 +515,10 @@ export default function ProductDetails() {
           ⚠️ **ปุ่มระดับสินค้าไม่อยู่ที่นี่แล้ว** (2026-08-30) — ย้ายเข้า Control Panel
           ที่รางขวาทั้งชุด · เดิมเป็นไอคอนเปล่าสามตัวที่ต้องเอาเมาส์ไปค้างถึงจะรู้ว่า
           ปุ่มไหนคืออะไร และบนจอสัมผัสไม่มีทางรู้เลย · ห้ามวางกลับ (ม-49/ม-57) */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "14px" }}>
+      <div className="ui-workspace-back-row">
         <button
           type="button"
-          className="btn ghost topbar-back-btn"
+          className="ui-workspace-back"
           onClick={() => (typeof window !== "undefined" && window.history.length > 1 ? router.back() : router.push("/database/products"))}
         >
           <ArrowLeft size={16} /> กลับ
@@ -600,7 +600,6 @@ export default function ProductDetails() {
       {/* ผังเดียวกับใบเสนอราคา/ใบสั่งขาย/คำร้อง: เนื้อซ้าย + รางขวาปักหมุด
           ⚠️ ไม่เปิด `controlFirst` — คนเปิดหน้าสินค้ามาอ่าน "สเปคคืออะไร" ก่อน
           ไม่ได้มาเพื่อกดก้าวถัดไปเหมือนหน้าเอกสาร (ดูเหตุผลเต็มที่ DetailPageLayout) */}
-      <div className="mt-[18px]">
       <DetailPageLayout
         asideLabel="สรุปสินค้าและการดำเนินการ"
         aside={productAside}
@@ -874,7 +873,6 @@ export default function ProductDetails() {
             />
           </DetailCard>
       </DetailPageLayout>
-      </div>
 
       {overrideDialog}
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />

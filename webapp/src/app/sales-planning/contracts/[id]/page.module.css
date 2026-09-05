@@ -53,9 +53,6 @@
   align-items: center;
 }
 
-.backLink {
-  margin-top: var(--space-2);
-}
 
 /* ตัวทวงบนการ์ดจัดการ — จำนวนวันที่ค้างเกินกำหนด */
 .late {
