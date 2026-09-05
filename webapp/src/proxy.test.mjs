@@ -476,3 +476,68 @@ test('ฝ่ายขายต้องผ่านด่าน proxy ของ 
     assert.equal(apiWriteAllowed('POST', '/api/service/sites', role, []), false, `${role} ต้องไม่ผ่าน`);
   }
 });
+
+/* ── จัดทีม (mig 0310) ต้องผ่าน **ทั้งสองด่าน** ไม่ใช่แค่ด่านหลัง ────────────────
+   🐞 บั๊กจริงที่ผู้ใช้แจ้ง 2026-09-04 ("ธุรกิจบริการ จัดทีมไม่ได้"): กด "สร้างทีม" ที่
+   /service/teams แล้วขึ้น toast คำว่า `forbidden` เปล่า ๆ · `apiWriteAllowed` มีกฎ
+   `team:manage` ให้ครบตั้งแต่วันแรก แต่ `lockedOut` ไม่มี `/api/teams` ใน
+   OPEN_WRITE_APIS ⇒ ตัดทิ้งก่อนถึงกฎนั้นเสมอ (เรียก lockedOut ก่อน apiWriteAllowed)
+   ⇒ กฎที่เขียนไว้เป็น **โค้ดตาย** และฟีเจอร์ใช้ไม่ได้เลยนอกจากแอดมิน
+   ⚠️ อาการซ้ำรอย /api/product-types (#587) · /api/tax/* · /api/nav/counts — ทดสอบด้วย
+   admin ไม่มีวันเห็น เพราะผ่านตั้งแต่บรรทัดแรกของ lockedOut ⇒ เทสต์นี้ไล่ role จริง
+   และเช็ค **สองด่านคู่กันเสมอ** ไม่ใช่ด่านใดด่านหนึ่ง */
+const TEAM_MANAGE_WRITES = [
+  ['POST', '/api/teams'],                       // สร้างทีม
+  ['PATCH', '/api/teams/TS-CREW-A'],            // เปลี่ยนชื่อ / ตั้งหัวหน้าทีม / ปิดทีม
+  ['DELETE', '/api/teams/TS-CREW-A'],           // ลบ (handler แคบต่อว่าแอดมินเท่านั้น)
+  ['PUT', '/api/teams/TS-CREW-A/members'],      // จัดสมาชิกทีมปฏิบัติงาน
+  ['PATCH', '/api/users/u-1/team'],             // ย้ายทีมของคนหนึ่งคน
+];
+
+test('⭐ คนถือ team:manage ต้องผ่านทั้ง lockedOut และ apiWriteAllowed ของเส้นจัดทีม', () => {
+  // ts_manager/ts_audit/ts_senior ได้ cap จาก SERVICE_HEAD_CAPS · ae_supervisor จาก SUPERUSER_CAPS
+  // · `ae` ที่ถูก grant รายคน (GRANTABLE_CAPS) ต้องเดินเส้นเดียวกันได้ด้วย
+  const holders = [
+    { role: 'ts_manager', extraCaps: [] },
+    { role: 'ts_audit', extraCaps: [] },
+    { role: 'ts_senior', extraCaps: [] },
+    { role: 'ae_supervisor', extraCaps: [] },
+    { role: 'ae', extraCaps: ['team:manage'] },
+  ];
+  for (const user of holders) {
+    assert.equal(can(user.role, 'team:manage') || user.extraCaps.includes('team:manage'), true, `${user.role} ต้องถือ cap`);
+    for (const [method, path] of TEAM_MANAGE_WRITES) {
+      assert.equal(lockedOut(user, path, method, true), false, `${user.role} ${method} ${path} โดน lockdown`);
+      assert.equal(apiWriteAllowed(method, path, user.role, user.extraCaps), true, `${user.role} ${method} ${path} โดน apiWriteAllowed`);
+    }
+    // อ่านทะเบียนทีมต้องกว้างกว่าเขียนเหมือนเดิม (หน้าจัดคิวเอาชื่อทีมไปแสดง)
+    assert.equal(lockedOut(user, '/api/teams', 'GET', true), false, `${user.role} อ่านทะเบียนทีมไม่ได้`);
+  }
+});
+
+test('เส้นจัดทีมยังปิดสำหรับคนที่ไม่ถือ team:manage — ด่านที่เปิดต้องผูกกับ cap ไม่ใช่ path', () => {
+  for (const role of ['ts', 'ts_planner', 'ae', 'ac', 'senior_ae', 'rd', 'pc', 'wh', 'qc', 'finance', 'marketing', 'viewer', 'executive']) {
+    const user = { role, extraCaps: [] };
+    for (const [method, path] of TEAM_MANAGE_WRITES) {
+      assert.equal(lockedOut(user, path, method, true), true, `${role} ต้องไม่ผ่าน lockdown: ${method} ${path}`);
+    }
+  }
+});
+
+/* ⚠️ ช่องที่เปิดให้ `team:manage` ต้องแคบเป๊ะ — ใต้ `/api/users` มีสร้าง/ลบบัญชี
+   รีเซ็ตรหัสผ่าน และเปลี่ยน role อยู่ด้วย ซึ่งเป็นงานของ `users:manage` เท่านั้น
+   (เหตุผลเดียวกับที่ `team:manage` ถูกแยกออกมาเป็น cap แคบตั้งแต่ต้น) */
+test('team:manage ต้องไม่ลามไปเส้นอื่นใต้ /api/users', () => {
+  const head = { role: 'ts_manager', extraCaps: [] };
+  for (const [method, path] of [
+    ['PATCH', '/api/users/u-1'],
+    ['POST', '/api/users'],
+    ['DELETE', '/api/users/u-1'],
+    ['POST', '/api/users/u-1/reset-password'],
+    ['PATCH', '/api/users/u-1/teamwork'],
+  ]) {
+    assert.equal(lockedOut(head, path, method, true), true, `${method} ${path} ต้องยังปิด`);
+  }
+  // และ apiWriteAllowed ยังถามหา users:manage ตามเดิมสำหรับเส้นเหล่านั้น
+  assert.equal(apiWriteAllowed('PATCH', '/api/users/u-1', 'ts_manager', []), false);
+});

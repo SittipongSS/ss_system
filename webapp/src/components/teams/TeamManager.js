@@ -143,7 +143,11 @@ export default function TeamManager({ department, title, subtitle }) {
         <>
           {teams.length === 0 ? (
             <EmptyState icon={Users}>
-              ฝ่ายนี้ยังไม่มีทีม — สร้างทีมแรกได้ที่ปุ่มมุมขวาบน
+              {/* ⚠️ ข้อความต้องเดินตาม `canManage` — ปุ่ม "สร้างทีม" ไม่ถูกวาดให้คนที่จัดไม่ได้
+                  บอกให้เขา "กดปุ่มมุมขวาบน" ที่ไม่มีอยู่จริงคือชี้ไปที่ว่าง */}
+              {canManage
+                ? "ฝ่ายนี้ยังไม่มีทีม — สร้างทีมแรกได้ที่ปุ่มมุมขวาบน"
+                : "ฝ่ายนี้ยังไม่มีทีม"}
             </EmptyState>
           ) : teams.map((team) => {
             const members = membersOf(team);

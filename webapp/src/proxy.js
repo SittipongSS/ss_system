@@ -268,6 +268,14 @@ const OPEN_WRITE_APIS = ['/api/account', '/api/pm', '/api/production', '/api/ser
    ขอบเขตด้วย `user.id` ในตัว handler อยู่แล้ว */
 const OPEN_READ_APIS = ['/api/customers', '/api/products', '/api/product-types', '/api/holidays', '/api/users', '/api/excise-registrations', '/api/orders', '/api/tax', '/api/sales-planning', '/api/sahamit', '/api/company-profile', '/api/thai-address', '/api/finance', '/api/nav', '/api/teams'];
 
+/* เส้นของ "จัดทีม" ที่คนถือ `team:manage` เขียนได้ — ทะเบียนทีมทั้งชุด + ย้ายทีมรายคน
+   (`/api/teams`, `/api/teams/<code>`, `/api/teams/<code>/members`, `/api/users/<id>/team`)
+   ⚠️ `/api/users/<id>/team` ต้องลงท้ายเป๊ะ — ห้ามให้ `/api/users/<id>` หรือเส้นอื่นใต้
+   บัญชีผู้ใช้หลุดตามไปด้วย (เส้นเหล่านั้นเป็นงานของ `users:manage`)
+   ⚠️ คู่กับกฎใน `apiWriteAllowed` (:332/:335) — สองที่นี้ต้องขยับพร้อมกันเสมอ เขียนที่เดียว
+   แล้วอีกที่กลายเป็นโค้ดตายทันที (ดูเหตุผลยาว ๆ ที่ `lockedOut`) */
+const TEAM_MANAGE_APIS = /^\/api\/(teams(\/|$)|users\/[^/]+\/team$)/;
+
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
 // `/` (login) is handled by the caller and never reaches here.
@@ -283,6 +291,27 @@ export function lockedOut(user, path, method, isApi) {
     if (method === 'GET' && path.startsWith('/api/audit') && canUser(user, 'audit:view')) return false;
     // เช่นเดียวกัน: รายงานความพร้อมลายเซ็น (Phase 5B) อ่านอย่างเดียว ใช้ cap เดิม users:view
     if (method === 'GET' && path.startsWith('/api/admin/signature-coverage') && canUser(user, 'users:view')) return false;
+    /* 🐞 **จัดทีม (mig 0310) โดนด่านนี้กลืนมาตั้งแต่วันแรก** (ผู้ใช้แจ้ง 2026-09-04:
+       "ธุรกิจบริการ จัดทีมไม่ได้" — กด "สร้างทีม" ที่ /service/teams แล้วขึ้น toast
+       คำว่า `forbidden` เปล่า ๆ)
+
+       `/api/teams` อยู่ใน OPEN_READ_APIS จึง **อ่านได้** (หน้าเรนเดอร์ครบ ปุ่มขึ้นตาม
+       `canManage` ที่ API ตอบมาว่า true) แต่ไม่เคยอยู่ใน OPEN_WRITE_APIS ⇒ POST/PATCH/
+       DELETE ตกลงมาที่ `return true` ข้างล่างสำหรับ **ทุกคนที่ไม่ใช่แอดมิน** — รวมคนที่
+       ฟีเจอร์นี้สร้างมาให้ (ts_manager/ts_audit/ts_senior · ae_supervisor)
+
+       ⇒ กฎที่ตั้งใจไว้ใน `apiWriteAllowed` (:332 ย้ายคน · :335 ทะเบียนทีม) **เป็นโค้ดตาย**
+       เพราะด่านนี้ตัดสินก่อนเสมอ (เรียกที่ :144 ก่อน :151) · มติ 2026-08-28 "จัดทีมเองได้
+       ไม่ต้องรอแอดมิน" จึงใช้ไม่ได้จริงเลยสักคน · ข้อความที่ผู้ใช้เห็นเป็นภาษาอังกฤษเปล่า ๆ
+       เพราะมาจาก :145 ไม่ใช่ข้อความไทยของ handler — **นั่นคือลายนิ้วมือว่าโดนตัดที่ proxy**
+
+       ⚠️ ที่นี่เปิดแค่ "ผ่านด่าน lockdown" ไม่ได้ให้สิทธิ์อะไร — ตัวตัดสินจริงยังเป็น
+       `apiWriteAllowed` (ถือ `team:manage` ไหม) แล้วจึงถึง handler (`canManageTeams`
+       = ฝ่ายเดียวกับทีมที่จะจัดไหม) ซึ่ง proxy มองไม่เห็น
+       ⚠️ ผูกกับ cap ไม่ใช่เติมลง OPEN_WRITE_APIS — ลิสต์นั้นเปิดทั้ง prefix ให้ทุก role
+       ที่ล็อกอิน ส่วนเส้นย้ายคนอยู่ใต้ `/api/users` ซึ่งเปิดทั้ง prefix ไม่ได้เด็ดขาด
+       (สร้าง/ลบบัญชี รีเซ็ตรหัส เปลี่ยน role อยู่ใต้ prefix เดียวกัน) */
+    if (TEAM_MANAGE_APIS.test(path) && canUser(user, 'team:manage')) return false;
     return true;
   }
   if (path === '/settings') return false;
