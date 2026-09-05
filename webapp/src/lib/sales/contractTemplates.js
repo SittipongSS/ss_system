@@ -6,18 +6,19 @@
 //    ทั้งที่แอปรันได้ (เจอมาแล้วรอบหนึ่งกับไฟล์นี้) · แม่แบบแต่ละฉบับอยู่ไฟล์ของตัวเอง
 //    ชื่อ `contractTemplate<ชนิด>.js`
 //
-// ⚠️ **มีแม่แบบจริงแค่ชนิดเดียวตอนนี้** — ต้นฉบับ "สัญญาจ้างออกแบบกลิ่น" (Ver.20260708)
-//    ผู้ใช้ส่งมาแล้ว ส่วนสัญญาจ้างผลิตกับสัญญาบริการ **ยังไม่มีต้นฉบับ**
+// ⚠️ **สัญญาจ้างผลิตยังไม่มีต้นฉบับ** — สัญญาจ้างออกแบบกลิ่น (Ver.20260708) และ
+//    สัญญาบริการ (Ver.20260701 · ผู้ใช้ส่งมา 2026-09-03) มีต้นฉบับแล้วทั้งคู่
 //    ⇒ ระบบต้องบอกตรง ๆ ว่ายังไม่มีแม่แบบ ไม่ใช่แต่งข้อสัญญาขึ้นเอง
 //    (เอกสารผูกพันตามกฎหมาย — ข้อความที่ไม่มีใครอนุมัติคือความเสียหาย ไม่ใช่ช่องว่าง)
 
 import { customerNameIn } from '@/lib/master/customerName';
 import { SCENT_DESIGN_TEMPLATE } from './contractTemplateScentDesign';
+import { SERVICE_TEMPLATE } from './contractTemplateService';
 
 const TEMPLATES = Object.freeze({
   scent_design: SCENT_DESIGN_TEMPLATE,
   manufacturing: null,
-  service: null,
+  service: SERVICE_TEMPLATE,
 });
 
 export const contractTemplate = (kind) => TEMPLATES[kind] || null;

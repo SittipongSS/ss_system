@@ -5,6 +5,7 @@ import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { buildContractHTML } from '@/lib/sales/contractDocument';
 import { EXTERNAL_NO_DOCUMENT_NOTE, isExternalContract } from '@/lib/sales/contracts';
 import { hasContractTemplate, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
+import { loadContractQuotation } from '@/lib/sales/contractQuotationSource';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,9 +35,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   let html = contract.issuedHtml || null;
   if (!html) {
     const company = await getPublishedCompanyProfile(supabase);
+    /* 🐞 **ร่างเคยพิมพ์คนละเนื้อกับฉบับจริง** — ที่นี่ส่งแค่ `{ quoteNumber }` ⇒ ตาราง
+       ข้อ 2 ไม่มีค่าบริการ/รายละเอียด และข้อ 3 ไม่มีบรรทัดงวดเลย ทั้งที่เส้นทาง
+       "ออกสัญญา" แก้ไปแล้ว · คนตรวจร่างจึงเห็นเอกสารที่ไม่ตรงกับของที่จะออกจริง
+       ⚠️ ไม่ตรวจสถานะใบที่นี่โดยตั้งใจ — ร่างต้องเปิดดูได้แม้ใบยังไม่อนุมัติ
+          ด่าน "ใบต้องอนุมัติอยู่" อยู่ที่ตอนกดออกสัญญาเท่านั้น
+       ⚠️ โหลดไม่สำเร็จ = เรนเดอร์ต่อด้วยเลขที่ใน metadata (พฤติกรรมเดิม) ไม่ใช่ 500 —
+          ร่างต้องเปิดดูได้เสมอ */
+    const { quotation } = await loadContractQuotation(supabase, contract.quotationId);
     html = buildContractHTML(contract, {
       company,
-      quotation: { quoteNumber: contract.metadata?.quoteNumber },
+      quotation: contract.quotationId
+        ? { ...(quotation || {}), quoteNumber: quotation?.quoteNumber || contract.metadata?.quoteNumber }
+        : { quoteNumber: contract.metadata?.quoteNumber },
     });
     // ใบที่ออกเลขแล้วเท่านั้นที่เก็บเนื้อไว้ — ร่างต้องเรนเดอร์สดทุกครั้ง ไม่งั้นจะ
     // พิมพ์ร่างเก่าออกมาหลังแก้ช่องกรอก
