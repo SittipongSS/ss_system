@@ -2,8 +2,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CBM_PER_PACKAGE, normalizeSurveyPart, spotCounts, suggestedPackages,
-  surveyTotals, surveyZoneSize, surveyZoneSummary,
+  CBM_PER_PACKAGE,
+  SURVEY_DOC_PLAN,
+  SURVEY_DOC_WIDE,
+  normalizeSurveyPart,
+  spotCounts,
+  suggestedPackages,
+  surveyFieldMissing,
+  surveyFieldProgress,
+  surveyResultMissing,
+  surveySendError,
+  surveyTotals,
+  surveyZoneSize,
+  surveyZoneSummary,
 } from './survey.js';
 
 const part = (w, l, h, label = null) => ({ widthM: w, lengthM: l, heightM: h, label });
@@ -121,4 +132,86 @@ test('ยอดรวมของตัวอย่างจริงในม�
   assert.equal(t.packageQty, 7);
   assert.equal(t.spotsTotal, 12);
   assert.equal(t.spotsSelected, 9);
+});
+
+/* ══ ด่านหกข้อ — บล็อกคนละที่ตามว่าใครแก้ได้ (มติผู้ใช้ 2026-08-29) ══════ */
+
+const wide = { docType: SURVEY_DOC_WIDE };
+const plan = { docType: SURVEY_DOC_PLAN };
+const goodParts = [{ widthM: 10, lengthM: 10, heightM: 3 }];
+const zone = (over = {}) => ({ id: 'SVZ1', zoneName: 'ล็อบบี้', parts: goodParts, spots: [{ id: 's1', label: 'เสากลาง' }], ...over });
+
+test('⭐ จอหน้างานบล็อกสามอย่าง: ขนาด · ภาพกว้าง · จุดที่ติดตั้งได้', () => {
+  assert.deepEqual(surveyFieldMissing(zone(), [wide]), [], 'ครบสามอย่าง = ผ่าน');
+
+  assert.match(surveyFieldMissing(zone({ parts: [] }), [wide])[0], /ยังไม่ได้วัดขนาด/);
+  assert.match(surveyFieldMissing(zone(), [])[0], /ยังไม่มีภาพกว้าง/);
+  assert.match(surveyFieldMissing(zone({ spots: [] }), [wide])[0], /จุดที่ติดตั้งได้/);
+});
+
+/* ⚠️ ส่วนที่กรอกไม่ครบสามช่อง = **แถวเสีย** ไม่ใช่แถวที่คิดเป็น 0 */
+test('ส่วนที่กรอกไม่ครบสามช่องต้องถูกฟ้อง ไม่ใช่บวกเป็นศูนย์', () => {
+  const half = [{ widthM: 10, lengthM: 10, heightM: 3 }, { widthM: 5, lengthM: 5 }];
+  assert.match(surveyFieldMissing(zone({ parts: half }), [wide])[0], /กรอกไม่ครบสามช่อง 1 ส่วน/);
+});
+
+/* ⭐ ผังไม่บังคับที่หน้างาน — ช่างไม่ได้ถือผังไปด้วย · ด่านผังอยู่ที่ปุ่มส่งผล */
+test('⭐ ผังไม่บล็อกที่หน้างาน แต่บล็อกที่ส่งผล', () => {
+  assert.deepEqual(surveyFieldMissing(zone(), [wide]), [], 'ไม่มีผังก็จบงานหน้างานได้');
+  const miss = surveyResultMissing(zone(), [wide]);
+  assert.deepEqual(miss.field, [], 'ฝั่งหน้างานครบแล้ว');
+  assert.match(miss.result.join(' '), /ภาพผัง/);
+});
+
+test('⭐ จอส่งผลบล็อกสามอย่าง: ผัง · จุดที่เลือก · แพ็คเกจ', () => {
+  const full = zone({ spots: [{ id: 's1', label: 'เสากลาง', selected: true }], packageQty: 2 });
+  assert.deepEqual(surveyResultMissing(full, [wide, plan]).result, []);
+
+  assert.match(surveyResultMissing(full, [wide]).result.join(' '), /ภาพผัง/);
+  assert.match(surveyResultMissing(zone({ packageQty: 2 }), [wide, plan]).result.join(' '), /เลือกจุด/);
+  assert.match(surveyResultMissing({ ...full, packageQty: null }, [wide, plan]).result.join(' '), /แพ็คเกจ/);
+});
+
+/* ⚠️ พื้นที่ที่ถูกตัดไม่ต้องผ่านด่านไหนเลย — บังคับให้วัดของที่จะไม่ขายคือบังคับงานเปล่า */
+test('⚠️ พื้นที่ที่ตัดออกไม่ติดด่านอะไรเลย', () => {
+  const cut = { id: 'SVZ9', zoneName: 'ห้องน้ำ', status: 'cut', cutReason: 'ลูกค้าไม่เอา', parts: [], spots: [] };
+  assert.deepEqual(surveyFieldMissing(cut, []), []);
+  assert.deepEqual(surveyResultMissing(cut, []), { field: [], result: [] });
+});
+
+test('fail-closed — ไม่ใช่หัวหน้า ส่งผลไม่ได้', () => {
+  assert.match(surveySendError([zone()], {}, {}), /หัวหน้าฝ่ายบริการ/);
+});
+
+/* ⚠️ ยังไม่โหลดไฟล์ = ยังไม่มีรูป ⇒ ด่านต้องปฏิเสธ ไม่ใช่ปล่อยผ่าน */
+test('⚠️ ไม่ส่งไฟล์มาให้ = ถือว่ายังไม่มีรูป (fail-closed)', () => {
+  const full = zone({ spots: [{ id: 's1', selected: true }], packageQty: 1 });
+  assert.match(surveySendError([full], {}, { canSend: true }), /ภาพ/);
+});
+
+/* ⚠️ ใบหนึ่งมีได้สิบพื้นที่ — ข้อความที่ไม่บอกว่าพื้นที่ไหน แปลว่าหัวหน้าต้องไล่เปิดเอง */
+test('ข้อความบอกชื่อพื้นที่ที่ติด ไม่ใช่แค่ "ยังไม่ครบ"', () => {
+  const ok = zone({ id: 'A', zoneName: 'ล็อบบี้', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const bad = zone({ id: 'B', zoneName: 'โถงลิฟต์', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  const err = surveySendError([ok, bad], { A: [wide, plan], B: [wide] }, { canSend: true });
+  assert.match(err, /โถงลิฟต์/);
+  assert.doesNotMatch(err, /ล็อบบี้/, 'พื้นที่ที่ครบแล้วต้องไม่ถูกเอ่ยถึง');
+});
+
+test('ครบทุกพื้นที่ = ส่งผลได้', () => {
+  const a = zone({ id: 'A', spots: [{ id: 's', selected: true }], packageQty: 1 });
+  assert.equal(surveySendError([a], { A: [wide, plan] }, { canSend: true }), null);
+});
+
+test('ใบที่ตัดพื้นที่ออกหมด ส่งผลไม่ได้ — ไม่มีอะไรให้ส่ง', () => {
+  const cut = { id: 'C', zoneName: 'x', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
+  assert.match(surveySendError([cut], {}, { canSend: true }), /ไม่มีพื้นที่/);
+});
+
+test('ความคืบหน้าหน้างานนับเฉพาะพื้นที่ที่ยังไม่ถูกตัด', () => {
+  const done = zone({ id: 'A' });
+  const todo = zone({ id: 'B', parts: [] });
+  const cut = { id: 'C', status: 'cut', cutReason: 'ลูกค้าไม่เอา' };
+  const p = surveyFieldProgress([done, todo, cut], { A: [wide], B: [wide] });
+  assert.deepEqual({ total: p.total, done: p.done, complete: p.complete }, { total: 2, done: 1, complete: false });
 });

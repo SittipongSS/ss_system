@@ -25,6 +25,12 @@ export const COSTING_ATTACHMENT_TABLE = {
   // ตารางนี้ จึงต่อครบด้วยการเพิ่มบรรทัดเดียว (จุด 4 อยู่ที่ driveEntityMap ซึ่งมี
   // `dept_request` อยู่แล้วตั้งแต่ mig 0173)
   dept_request: 'dept_requests',
+  /* ⭐ ผลวัดพื้นที่รายใบ × รายพื้นที่ (mig 0314) — **สิทธิ์ไหลตามใบคำร้องแม่**
+     ไม่ใช่ตามแถวผลวัด · แถวนี้ไม่รู้จักผู้ขอ/ฝ่าย รู้แค่ `requestId`
+     ⇒ รูปเดียวกับ `dept_request_item` เป๊ะ: โหลดหัวคำร้องมาตัดสิน
+     🔴 ต่อที่นี่ **ไม่ใช่** เขียนสาขาใหม่ในไฟล์ route — ไม่งั้นอ่านกับเขียนใช้คนละมาตรฐาน
+        ซึ่งเป็นบั๊กที่ไฟล์นี้เคยโดนมาแล้วสองรอบ (ดูคอมเมนต์ 🐞 ข้างล่าง) */
+  service_survey_zone: 'service_survey_zones',
 };
 
 export const isCostingAttachment = (entityType) => !!COSTING_ATTACHMENT_TABLE[entityType];
@@ -50,9 +56,9 @@ export async function canViewCostingAttachment(supabase, entityType, parent, use
   // canViewRequests = canViewCosting ∪ ฝ่ายที่รับคำร้องของตัวเอง ⇒ ไม่มีใครเสียสิทธิ์เดิม
   if (!canViewRequests(user)) return false;
   if (entityType === 'dept_request') return canReadRequestRow(user, parent);
-  if (entityType !== 'dept_request_item') return false;
+  // แถวลูกทั้งสองชนิดไม่รู้จักผู้ขอ/ฝ่าย — ต้องถามหัวคำร้อง (รูปเดียวกับ canAttachToCosting)
+  if (!['dept_request_item', 'service_survey_zone'].includes(entityType)) return false;
 
-  // บรรทัดไม่รู้จักผู้ขอ/ฝ่าย — ต้องถามหัวคำร้อง (รูปเดียวกับ canAttachToCosting)
   const requestId = parent?.requestId;
   if (!requestId) return false;
   const { data: req, error } = await supabase
@@ -75,7 +81,7 @@ export async function canAttachToCosting(supabase, entityType, parent, user) {
   // หัวคำร้อง = parent เป็นตัวคำร้องเอง ไม่ต้องไปโหลดแม่อีกชั้น
   if (entityType === 'dept_request') return canAttachToRequest(parent, user);
 
-  if (entityType !== 'dept_request_item') return false;
+  if (!['dept_request_item', 'service_survey_zone'].includes(entityType)) return false;
   // 🐞 เคยอ่าน `parent.askId` ซึ่ง **mig 0173 เปลี่ยนชื่อเป็น `requestId` ไปแล้ว** →
   // undefined ทุกครั้ง → ด่านนี้คืน false ทุกครั้ง = แนบไฟล์ในรายการคำร้องไม่ได้เลย
   // ตั้งแต่ 0173 (ยืนยันกับ schema จริง: `dept_request_items.askId does not exist`)

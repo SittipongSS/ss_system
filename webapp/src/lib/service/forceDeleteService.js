@@ -13,6 +13,7 @@
 //   เดินเส้นเดียวกัน ⇒ สิ่งที่โชว์ในพรีวิว = สิ่งที่จะโดนลบเป๊ะ
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { isClosedVisit } from '@/lib/service/visitStatus';
+import { purgeAttachments } from '@/lib/master/attachments';
 
 const line = (label, count) => ({ label, count: count || 0 });
 
@@ -96,8 +97,21 @@ export async function zoneForceManifest(supabase, zoneId) {
   };
 }
 
+/* กวาดไฟล์แนบของแถวผลวัดก่อนลบแถว — รับ `zoneId` เดี่ยวหรือ `zoneIds` เป็นชุด
+   ⚠️ ต้องอ่าน **id ของแถวผลวัด** มาก่อน เพราะไฟล์ผูกกับแถว ไม่ใช่ผูกกับโซน */
+async function purgeSurveyZoneFiles(supabase, { zoneId = null, zoneIds = null }) {
+  let query = supabase.from('service_survey_zones').select('id');
+  query = zoneIds ? query.in('zoneId', zoneIds) : query.eq('zoneId', zoneId);
+  const { data, error } = await query;
+  if (error) throw error;
+  for (const row of data || []) await purgeAttachments('service_survey_zone', row.id, supabase);
+}
+
 export async function deleteZoneDeep(supabase, zoneId) {
   await supabase.from('service_zone_terms').delete().eq('zoneId', zoneId);
+  /* ⚠️ **แถวผลวัดถือไฟล์แนบ** (mig 0314 + ชนิด `service_survey_zone`) — ลบแถวเฉย ๆ
+     จะเหลือไฟล์กำพร้าบน Drive ที่ไม่มีอะไรชี้ถึงอีก (โรคเดียวกับ bucket หลักฐานการชำระ) */
+  await purgeSurveyZoneFiles(supabase, { zoneId });
   await supabase.from('service_survey_zones').delete().eq('zoneId', zoneId);
   const { error } = await supabase.from('service_zones').delete().eq('id', zoneId);
   if (error) throw error;
@@ -186,6 +200,7 @@ export async function deleteSiteDeep(supabase, siteId) {
   // 4) ลูกของโซน แล้วค่อยโซน
   if (zoneIds.length) {
     await supabase.from('service_zone_terms').delete().in('zoneId', zoneIds);
+    await purgeSurveyZoneFiles(supabase, { zoneIds });
     await supabase.from('service_survey_zones').delete().in('zoneId', zoneIds);
   }
   await supabase.from('service_zones').delete().eq('siteId', siteId);
