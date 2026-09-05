@@ -1,18 +1,13 @@
 /* โมดัลเพิ่มเครื่อง (mig 0344)
    ⚠️ `.form-hint` / `.form-error` / `.req` ที่หลายจอเขียนไว้ไม่มี selector จริง
-      ใน globals.css ⇒ ประกาศเองแทนการยืมชื่อคลาสผี (เหมือน AssetReceiveModal) */
+      ใน globals.css ⇒ ประกาศเองแทนการยืมชื่อคลาสผี
+   ⚠️ ระยะ **ระหว่าง** ช่องมาจาก `.form-grid` ที่หุ้มอยู่ ไม่ใช่จากไฟล์นี้ */
 
 .hint {
   margin: 0 0 var(--space-3);
   font-size: var(--fs-5);
   color: var(--text-2);
   line-height: var(--lh-thai);
-}
-
-.picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1-5);
 }
 
 .req {
