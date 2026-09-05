@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CONTRACT_QUOTATION_COLUMNS, CONTRACT_QUOTATION_LINE_COLUMNS } from './contractQuotationSource.js';
 import { SERVICE_TEMPLATE } from './contractTemplateService.js';
+import { CONTRACT_KIND_DOC_TITLES } from './contracts.js';
 import { contractTemplate, hasContractTemplate, missingContractFields } from './contractTemplates.js';
 import { contractQuotationBlocks, buildContractHTML } from './contractDocument.js';
 
@@ -25,6 +26,16 @@ test('⭐ สัญญาบริการมีแม่แบบแล้ว 
   assert.equal(contractTemplate('service'), SERVICE_TEMPLATE);
   assert.equal(SERVICE_TEMPLATE.version, '20260903');
   assert.equal(SERVICE_TEMPLATE.titleTh, 'สัญญาบริการ');
+});
+
+/* 🐞 ชื่อบนกระดาษเคยเป็น "สัญญาให้บริการ" ขณะที่แม่แบบและต้นฉบับเขียน "สัญญาบริการ"
+   — ตัวเรนเดอร์อ่าน CONTRACT_KIND_DOC_TITLES ก่อนเสมอ ⇒ กระดาษพิมพ์คำที่ไม่มีใครตั้งใจ
+   มติผู้ใช้ 2026-09-06: ยึด "สัญญาบริการ" · ล็อกให้สองที่พูดคำเดียวกันตลอดไป */
+test('ชื่อเอกสารบนกระดาษต้องตรงกับ titleTh ของแม่แบบ', () => {
+  assert.equal(CONTRACT_KIND_DOC_TITLES.service, SERVICE_TEMPLATE.titleTh);
+  assert.equal(CONTRACT_KIND_DOC_TITLES.service, 'สัญญาบริการ');
+  const scent = contractTemplate('scent_design');
+  assert.equal(CONTRACT_KIND_DOC_TITLES.scent_design, scent.titleTh);
 });
 
 /* 🔴 มติผู้ใช้ 2026-09-03 ข้อ ② — ต้นฉบับรับปาก 30 วันทำการ แล้วปรับที่ 7 วันทำการ
