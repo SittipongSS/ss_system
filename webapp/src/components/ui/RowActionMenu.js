@@ -122,10 +122,18 @@ export default function RowActionMenu({ items = [], label = "การจัด�
       onKeyDown={onMenuKeyDown}
     >
       {visible.map((item) => {
+        /* ⭐ **เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip** (กติกาของระบบ) —
+           `title` เห็นได้เฉพาะเมาส์ที่ค้างไว้ ⇒ จอสัมผัสและคนที่ใช้คีย์บอร์ดไม่มีทางรู้
+           ว่าทำไมกดไม่ลง · 🐞 เจอตอนทำปุ่มลบรุ่นเครื่อง (2026-09-06)
+           ⚠️ โชว์เฉพาะตอน `disabled` — ปุ่มที่กดได้ไม่ต้องมีบรรทัดอธิบาย */
+        const reason = item.disabled && item.disabledReason ? item.disabledReason : null;
         const body = (
           <>
             {item.icon ? <item.icon size={15} aria-hidden="true" /> : <span className={styles.noIcon} />}
-            <span className={styles.itemLabel}>{item.label}</span>
+            <span className={styles.itemLabel}>
+              {item.label}
+              {reason ? <small className={styles.itemReason}>{reason}</small> : null}
+            </span>
           </>
         );
         const className = `${styles.item} ${styles[item.tone || "neutral"] || ""}`.trim();

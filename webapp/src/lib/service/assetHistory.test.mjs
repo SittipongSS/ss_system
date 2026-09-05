@@ -50,7 +50,8 @@ test('ไม่มีเครื่อง = ไม่มีประวัต�
   assert.deepEqual(assetTimeline({}), []);
 });
 
-const peer = (id, workSec, pauseSec, over = {}) => ({ id, zoneId: 'Z1', settings: { workSec, pauseSec }, ...over });
+// ⚠️ `siteId` ต้องมี (mig 0344) — `isAssetOnSite` ต้องการไซต์จริงตั้งแต่เครื่องไม่มีที่อยู่ได้
+const peer = (id, workSec, pauseSec, over = {}) => ({ id, siteId: 'S1', zoneId: 'Z1', status: 'active', settings: { workSec, pauseSec }, ...over });
 
 test('⭐ เตือนเมื่อเครื่องตั้งต่างจากเพื่อนในโซนเดียวกันมาก — บอกว่าต่าง ไม่บอกว่าผิด', () => {
   const target = peer('A1', 60, 180);            // duty 25%

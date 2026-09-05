@@ -28,6 +28,17 @@ test("แผงลอยต้องทึบ ใช้สูตรเดีย�
   assert.match(MENU_CSS, /box-shadow:\s*var\(--shadow-float\)/);
 });
 
+/* ⭐ **เหตุผลที่กดไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ tooltip** (กติกาของระบบ)
+   🐞 ของเดิมใส่ `disabledReason` ไว้ใน `title` อย่างเดียว ⇒ เห็นได้เฉพาะเมาส์ที่
+      ค้างไว้ · จอสัมผัสและคนที่ใช้คีย์บอร์ดไม่มีทางรู้ว่าทำไมกดไม่ลง
+      (เจอตอนทำปุ่มลบรุ่นเครื่อง 2026-09-06) */
+test("รายการที่กดไม่ได้ต้องบอกเหตุเป็นตัวหนังสือ ไม่ใช่แค่ tooltip", () => {
+  assert.match(MENU, /itemReason/, "ต้องเรนเดอร์ disabledReason ออกมาเป็นข้อความจริง");
+  assert.match(MENU, /item\.disabled && item\.disabledReason/,
+    "โชว์เฉพาะตอนกดไม่ได้ — ปุ่มที่กดได้ไม่ต้องมีบรรทัดอธิบาย");
+  assert.match(MENU_CSS, /\.itemReason\s*\{/, "ต้องมีคลาสจริงใน CSS module ไม่ใช่คลาสผี");
+});
+
 test("เมนูมี ARIA ครบและปิดด้วย Escape ได้", () => {
   assert.match(MENU, /role="menu"/);
   assert.match(MENU, /role="menuitem"/);

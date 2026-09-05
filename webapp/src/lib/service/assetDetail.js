@@ -12,13 +12,16 @@ import { loadVisits } from './visitsRepo';
 /* ประกอบข้อมูลหน้าอุปกรณ์ — คืน { data } หรือ { error } (ข้อความไทย + status)
    ผู้เรียกต้องหา `asset` กับ `site` มาก่อนแล้ว (คนละวิธีกันในสองเส้น) */
 export async function buildAssetDetail(supabase, { site, asset }) {
-  const siteId = asset.siteId;
+  const siteId = asset.siteId || null;
 
-  const [zones, siteAssets, visits] = await Promise.all([
+  /* 🪤 **ห้ามยิงสามตัวนี้เมื่อไม่มีไซต์** (mig 0344) — สองตัวแรกส่ง null แล้วได้ 0 แถว
+     ซึ่งไม่มีพิษ แต่ `loadVisits` เขียนเป็น `if (siteId)` ⇒ **ส่ง null = ไม่กรองเลย**
+     ได้นัดทั้งบริษัทมาแปะบนหน้าเครื่องตัวเดียว · ความไม่สมมาตรนี้มองไม่เห็นจากตรงนี้ */
+  const [zones, siteAssets, visits] = siteId ? await Promise.all([
     loadZones(supabase, siteId),
     loadAssets(supabase, siteId),
     loadVisits(supabase, { siteId }),
-  ]);
+  ]) : [[], [], []];
 
   const visitIds = visits.map((v) => v.id);
   /* ของที่ใช้กับเครื่องนี้ + ผลรายเครื่องของทุกนัด — สองตารางคนละหน้าที่:

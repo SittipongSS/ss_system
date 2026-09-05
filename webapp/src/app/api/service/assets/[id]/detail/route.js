@@ -22,8 +22,12 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const asset = await findAssetById(supabase, id);
     if (!asset) return notFound('ไม่พบอุปกรณ์');
 
-    const site = await findSite(supabase, asset.siteId);
-    if (!site) return notFound('ไม่พบไซต์ของอุปกรณ์นี้');
+    /* 🐞 **เครื่องที่ยังไม่ได้ติดตั้งไม่มีไซต์** (mig 0344) — ของเดิม 404 ทุกตัว
+       ⇒ เปิดหน้ารายละเอียดเครื่องที่เพิ่งขึ้นทะเบียนแล้วเจอ "ไม่พบไซต์ของอุปกรณ์นี้"
+       ⚠️ ยังต้อง 404 อยู่เมื่อ **มี `siteId` แต่หาไซต์ไม่เจอ** — นั่นคือข้อมูลเสียจริง
+          (FK เป็น RESTRICT ⇒ ไม่ควรเกิด แต่ถ้าเกิดต้องดังไม่ใช่เงียบ) */
+    const site = asset.siteId ? await findSite(supabase, asset.siteId) : null;
+    if (asset.siteId && !site) return notFound('ไม่พบไซต์ของอุปกรณ์นี้');
 
     const { data, error } = await buildAssetDetail(supabase, { site, asset });
     if (error) return fail(error, 500);

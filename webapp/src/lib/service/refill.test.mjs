@@ -11,7 +11,9 @@ import {
 
 const TODAY = '2026-07-31';
 // ขวด 300 ml ใช้วันละ 10 → อยู่ได้ 30 วัน
-const asset = (over = {}) => ({ id: 'A1', status: 'active', bottleMl: 300, mlPerDay: 10, ...over });
+/* ⚠️ `siteId` ต้องมีในของตั้งต้น (mig 0344) — `isAssetOnSite` ต้องการไซต์จริงด้วย
+   ตั้งแต่เครื่องไม่มีที่อยู่ได้ · ก่อนหน้านี้คอลัมน์เป็น NOT NULL ⇒ ละไว้ได้ */
+const asset = (over = {}) => ({ id: 'A1', siteId: 'S1', status: 'active', bottleMl: 300, mlPerDay: 10, ...over });
 
 test('⭐ ข้อมูลไม่พอ = ไม่เดา — ป้ายที่มั่วจะทำให้ป้ายจริงถูกเมินไปด้วย', () => {
   assert.equal(refillStatus(asset({ mlPerDay: null, installedAt: '2026-07-01' }), { todayIso: TODAY }).state, 'unknown');

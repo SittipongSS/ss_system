@@ -58,6 +58,22 @@
   cursor: not-allowed;
 }
 
+/* รายการที่กดไม่ได้ต้องสูงขึ้นได้ตามคำอธิบาย — ไม่ใช่บีบให้เท่าแถวเดียว */
+.item:has(.itemReason) {
+  align-items: flex-start;
+  padding-block: var(--space-2);
+}
+
+/* เหตุผลที่กดไม่ได้ — ตัวหนังสือจริง ไม่ใช่ tooltip (จอสัมผัสไม่มีทางเห็น tooltip) */
+.itemReason {
+  display: block;
+  margin-top: var(--space-0-5);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  opacity: 1;
+  white-space: normal;
+}
+
 .itemLabel {
   flex: 1;
   min-width: 0;

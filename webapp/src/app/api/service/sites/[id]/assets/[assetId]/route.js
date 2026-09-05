@@ -3,6 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { canForceDelete, isDryRun, isForceRequest } from '@/lib/forceDelete';
 import { assetForceManifest, deleteAssetDeep } from '@/lib/service/forceDeleteService';
 import { withUser, ok, fail, badRequest, conflict, notFound } from '@/lib/http';
+import { assetDeleteError, assetHistoryCount } from '@/lib/service/assetDelete';
 import { normalizeAssetInput } from '@/lib/service/sites';
 import { findAsset, findZone, requireSite } from '@/lib/service/sitesRepo';
 
@@ -80,19 +81,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       return ok({ ok: true, forced: true });
     }
 
-    const [{ count: resultCount }, { count: itemCount }, { count: swapCount }] = await Promise.all([
-      supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
-      supabase.from('service_visit_items').select('id', { count: 'exact', head: true }).eq('assetId', assetId),
-      supabase.from('service_visit_assets').select('id', { count: 'exact', head: true }).eq('replacedByAssetId', assetId),
-    ]);
-    const used = (resultCount || 0) + (itemCount || 0) + (swapCount || 0);
-    if (used > 0) {
-      return conflict(
-        `อุปกรณ์นี้มีประวัติการเข้าบริการอยู่ ${used} รายการ ลบไม่ได้ — `
-        + 'ถ้าถอดออกจากหน้างานจริงให้ใช้คำสั่ง “ถอนกลับคลัง” หรือ “ปลดระวาง” '
-        + 'เพื่อไม่ให้ประวัติและยอดการใช้ของโซนหายไปด้วย',
-      );
-    }
+    /* 🔑 ด่านเดียวกับเส้นทะเบียนรวมและกับปุ่มบนจอ (`lib/service/assetDelete.js`)
+       — ยกออกไปตอน mig 0344 เพราะมีสองทางเข้าหาเครื่องตัวเดียวกันแล้ว */
+    const { used } = await assetHistoryCount(supabase, assetId);
+    const gate = assetDeleteError(before, { canEdit: true, used });
+    if (gate) return conflict(gate);
 
     const { error } = await supabase.from('service_assets').delete().eq('id', assetId);
     if (error) return fail(error.message, 500);

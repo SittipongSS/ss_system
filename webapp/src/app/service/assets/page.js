@@ -9,8 +9,11 @@
 //   ให้กันจึงพาไปที่เดิมเสมอ และคนที่ไล่หาเครื่องไม่ต้องเดาว่าต้องเปิดเมนูไหน
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Table2, Wrench } from "lucide-react";
+import AssetModelsPanel from "@/components/service/AssetModelsPanel";
 import MachineAddModal from "@/components/service/MachineAddModal";
+import Tabs from "@/components/ui/Tabs";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -45,6 +48,22 @@ export default function ServiceAssetsPage() {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+
+  /* ── แท็บ: เครื่อง | รุ่นเครื่อง (มติผู้ใช้ 2026-09-06) ────────────────────
+     ⭐ **รวมเป็นเมนูเดียว** — รุ่นไม่ใช่งานรายวัน แต่คนที่เข้ามาหามันคือคนเดียวกับ
+       ที่เปิดทะเบียนเครื่อง และสองชุดนี้อ้างถึงกันตลอด (เพิ่มเครื่องต้องมีรุ่นก่อน ·
+       ลบรุ่นต้องรู้ว่ามีเครื่องใช้กี่ตัว) ⇒ เมนูสองบรรทัดที่ต้องสลับไปมาคือความหนืด
+     ⚠️ กติกา UI ของระบบ: สลับ "คนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented
+     ⚠️ แท็บอยู่ใน URL (?tab=) เพื่อให้ลิงก์ตรงเข้าแท็บได้และปุ่ม back ทำงาน
+        (ท่าเดียวกับทะเบียนสัญญา/ต่อสัญญา) */
+  const router = useRouter();
+  const params = useSearchParams();
+  const urlTab = params.get("tab") === "models" ? "models" : "machines";
+  const [tab, setTab] = useState(urlTab);
+  useEffect(() => { setTab(urlTab); }, [urlTab]);
+  const [modelCount, setModelCount] = useState(null);
+  // สัญญาณกดปุ่ม "เพิ่มรุ่น" บนหัวหน้า — ตัวนับ ไม่ใช่ boolean (กดซ้ำต้องเปิดใหม่ได้)
+  const [addModelTick, setAddModelTick] = useState(0);
 
   const [adding, setAdding] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -301,22 +320,26 @@ export default function ServiceAssetsPage() {
       icon={<AirVent size={20} aria-hidden="true" />}
       title="ทะเบียนเครื่อง"
       subtitle="เครื่องทุกตัวของฝ่ายบริการ — ที่หน้างานลูกค้าและที่ยังไม่ได้ติดตั้ง"
+      /* ปุ่มก้าวถัดไปเป็นของ **แท็บที่เปิดอยู่** — ท่าเดียวกับหน้าสัญญา */
       headerRight={(
         <>
-          <span className="ui-badge">{assets.length} เครื่อง</span>
+          <span className="ui-badge">
+            {tab === "models" ? `${modelCount ?? 0} รุ่น` : `${assets.length} เครื่อง`}
+          </span>
           {/* ⭐ จุดเกิดของเครื่อง — ไม่มีสิทธิ์แก้ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไม่ได้)
               🔄 เดิมเขียนว่า "รับเครื่องเข้าคลัง" ซึ่งผู้ใช้ทักว่าเข้าใจผิด — การขึ้นทะเบียน
                  คือการบอกว่าบริษัทได้เครื่องมา ไม่ใช่การย้ายของเข้าสถานที่ */}
           {canEdit && (
-            <Button tone="accent" onClick={() => setAdding(true)}
+            <Button tone="accent"
+              onClick={() => (tab === "models" ? setAddModelTick((n) => n + 1) : setAdding(true))}
               icon={<Plus size={15} aria-hidden="true" />}>
-              เพิ่มเครื่อง
+              {tab === "models" ? "เพิ่มรุ่น" : "เพิ่มเครื่อง"}
             </Button>
           )}
         </>
       )}
-      loading={loading}
-      rail={(
+      loading={tab === "machines" && loading}
+      rail={tab === "machines" && (
         <StatCards
           items={[
             { label: "ทั้งหมด", value: stats.total },
@@ -326,8 +349,27 @@ export default function ServiceAssetsPage() {
           ]}
         />
       )}
-      toolbar={toolbar}
+      toolbar={tab === "machines" ? toolbar : null}
     >
+      <Tabs
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
+          // เขียนลง URL ด้วย แต่ไม่ push history — สลับแท็บไม่ใช่การเดินทาง
+          router.replace(next === "models" ? "/service/assets?tab=models" : "/service/assets", { scroll: false });
+        }}
+        ariaLabel="มุมมองของทะเบียนเครื่อง"
+        tabs={[
+          { key: "machines", label: "เครื่อง" },
+          { key: "models", label: modelCount ? `รุ่นเครื่อง ${modelCount}` : "รุ่นเครื่อง" },
+        ]}
+      />
+
+      {tab === "models" && (
+        <AssetModelsPanel canEdit={canEdit} addSignal={addModelTick} onCount={setModelCount} />
+      )}
+
+      {tab === "machines" && <>
       {loadError && <p className="form-error" role="alert">{loadError}</p>}
 
       {loading || loadError ? (
@@ -390,7 +432,11 @@ export default function ServiceAssetsPage() {
                     <Link href={`/service/assets/${asset.id}`} className={`${styles.assetLink} mono`}>
                       {naText(asset.code || asset.serial || asset.label)}
                     </Link>
-                    {asset.label && asset.label !== (asset.code || asset.serial)
+                    {/* ⚠️ **ซ่อนบรรทัดล่างเมื่อมันซ้ำกับคอลัมน์อื่น** — เครื่องที่เพิ่งขึ้น
+                        ทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งคอลัมน์ "รุ่น" บอกอยู่แล้ว
+                        ⇒ บรรทัดนี้จะมีความหมายก็ต่อเมื่อ TS ตั้งชื่อตำแหน่งให้ตอนติดตั้ง
+                        ("เครื่องล็อบบี้ ซ้าย") ซึ่งเป็นข้อมูลที่ไม่มีที่อื่นบอก */}
+                    {asset.label && asset.label !== (asset.code || asset.serial) && asset.label !== asset.model
                       ? <span className={styles.sub}>{asset.label}</span> : null}
                   </td>
                   <td>{naText(asset.model)}</td>
@@ -407,6 +453,8 @@ export default function ServiceAssetsPage() {
         </TableShell>
       )}
 
+      </>}
+
       <MachineAddModal
         open={adding}
         models={models}
@@ -420,7 +468,7 @@ export default function ServiceAssetsPage() {
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {sort.sorted.length > 0 && (
+      {tab === "machines" && sort.sorted.length > 0 && (
         <Pager
           page={page}
           pageCount={pageCount}
