@@ -133,7 +133,9 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
           ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้
         </EmptyState>
       ) : (
-        <TableShell minWidth={760}>
+        /* ⚠️ ตารางนี้กว้างจริง ~550px — `minWidth` ที่ใหญ่กว่านั้นทำให้มันเลื่อนแนวนอน
+           เปล่า ๆ และ **เมนู "…" ท้ายแถวโดนตัดหายนอกขอบ** (เจอตอนตรวจ 2026-09-06) */
+        <TableShell minWidth={560}>
           <table>
             <thead>
               <tr>
@@ -155,7 +157,9 @@ export default function AssetModelsPanel({ canEdit = false, addSignal = 0, onCou
                     <td className="mono">{model.modelCode}</td>
                     <td>{ASSET_KIND_LABELS[model.kind] || model.kind}</td>
                     <td>{model.colours?.length ? model.colours.join(" · ") : naText(null)}</td>
-                    <td className="a-right">{used || naText(null)}</td>
+                    {/* ⚠️ **0 คือคำตอบ ไม่ใช่ค่าว่าง** — ขีดแปลว่า "ไม่มีข้อมูล" ซึ่งคนละเรื่อง
+                        กับ "ยังไม่มีเครื่องใช้รุ่นนี้" และเป็นตัวเลขที่ตัดสินว่าลบรุ่นได้ไหม */}
+                    <td className="a-right">{used}</td>
                     <td>
                       <span className="ui-badge">{model.isActive === false ? "ปิดใช้งาน" : "ใช้งาน"}</span>
                     </td>

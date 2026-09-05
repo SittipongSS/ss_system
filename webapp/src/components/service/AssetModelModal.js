@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/Modal";
 import Textarea from "@/components/ui/Textarea";
@@ -64,25 +65,22 @@ export default function AssetModelModal({
 
   return (
     <Modal open={open} onClose={onClose} title={model ? `แก้รุ่น ${model.name}` : "เพิ่มรุ่นเครื่อง"} size="md">
+      {/* ⚠️ `.form-grid` คือตัวจัดระยะระหว่างช่องของทั้งระบบ — ดูเหตุผลเต็มที่ MachineAddModal */}
+      <div className="form-grid">
       <label className="form-field">
         <span>ชนิด <em className={styles.req}>ต้องระบุ</em></span>
-        <div className={styles.picks}>
-          {assetKindOptions().map((k) => (
-            <Button
-              key={k.value} size="sm"
-              tone={form.kind === k.value ? "accent" : "neutral"}
-              variant={form.kind === k.value ? "filled" : "outline"}
-              disabled={locked}
-              onClick={() => patch({ kind: k.value })}
-            >
-              {k.label}
-            </Button>
-          ))}
-        </div>
+        {/* ⚠️ ใช้ชิปกลางของระบบ — `.btn-accent` มี min-width ของปุ่มหลักหน้า ชิปจะกระโดด */}
+        <ChoiceChips
+          value={form.kind}
+          onChange={(v) => patch({ kind: v })}
+          options={assetKindOptions()}
+          disabled={locked}
+          ariaLabel="ชนิดเครื่อง"
+        />
         {locked && <small className={styles.hintSm}>มีเครื่องใช้รุ่นนี้ {usedBy} ตัว — ย้ายชนิดไม่ได้</small>}
       </label>
 
-      <div className="two">
+      <div className="form-grid cols-2">
         <label className="form-field">
           <span>ชื่อรุ่น <em className={styles.req}>ต้องระบุ</em></span>
           <Input
@@ -173,6 +171,8 @@ export default function AssetModelModal({
         <span>หมายเหตุ</span>
         <Textarea value={form.note} onChange={(e) => patch({ note: e.target.value })} rows={2} />
       </label>
+
+      </div>
 
       {error && <AlertBanner tone="danger">{error}</AlertBanner>}
       {!error && gate && <p className={styles.gate} role="status">{gate}</p>}
