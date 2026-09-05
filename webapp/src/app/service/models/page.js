@@ -14,6 +14,7 @@ import AssetModelModal from "@/components/service/AssetModelModal";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import EmptyState from "@/components/ui/EmptyState";
+import RowActionMenu from "@/components/ui/RowActionMenu";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { TableShell } from "@/components/ui/Table";
 import Toast from "@/components/ui/Toast";
@@ -22,6 +23,7 @@ import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
+import { assetModelError } from "@/lib/service/assetModels";
 import { naText } from "@/lib/format";
 import { apiJson } from "@/lib/apiFetch";
 import styles from "./page.module.css";
@@ -111,6 +113,10 @@ export default function ServiceAssetModelsPage() {
     }
   };
 
+  const removeGate = removing
+    ? assetModelError('delete', {}, { canEdit, before: removing, usedBy: usage[removing.id] || 0 })
+    : null;
+
   const rows = useMemo(() => models.slice().sort((a, b) => (
     a.kind === b.kind
       ? String(a.name).localeCompare(String(b.name), "th")
@@ -144,7 +150,7 @@ export default function ServiceAssetModelsPage() {
           ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นก่อน แล้วจึงขึ้นทะเบียนเครื่องได้
         </EmptyState>
       ) : (
-        <TableShell minWidth={860}>
+        <TableShell minWidth={760}>
           <table>
             <thead>
               <tr>
@@ -172,20 +178,39 @@ export default function ServiceAssetModelsPage() {
                     </td>
                     {canEdit && (
                       <td className={styles.actions}>
+                        {/* ⭐ ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…" (มติผู้ใช้ 2026-08-01) —
+                            เรียงสามปุ่มกินความกว้างจนคอลัมน์อื่นถูกบีบและปุ่มลบหลุดขอบจอ */}
                         <Button size="sm" onClick={() => setEditing(model)} icon={<Pencil size={14} aria-hidden="true" />}>
                           แก้ไข
                         </Button>
-                        <Button size="sm" onClick={() => toggleActive(model)} icon={<Power size={14} aria-hidden="true" />}>
-                          {model.isActive === false ? "เปิดใช้งาน" : "ปิดใช้งาน"}
-                        </Button>
-                        {/* ⭐ รุ่นที่ใช้อยู่ลบไม่ได้ — ปุ่มหายไปเลย เพราะไม่มีทางกดสำเร็จ
-                            (เครื่องที่ออกรหัสไปแล้วถือรหัส 4 ตัวของรุ่นนี้ไว้ในรหัสตัวเอง) */}
-                        {used === 0 && (
-                          <Button size="sm" tone="danger" variant="outline"
-                            onClick={() => setRemoving(model)} icon={<Trash2 size={14} aria-hidden="true" />}>
-                            ลบ
-                          </Button>
-                        )}
+                        <RowActionMenu
+                          label={`การจัดการรุ่น ${model.name}`}
+                          items={[
+                            {
+                              id: "toggle",
+                              label: model.isActive === false ? "เปิดใช้งาน" : "ปิดใช้งาน",
+                              icon: Power,
+                              onClick: () => toggleActive(model),
+                            },
+                            {
+                              /* ⭐ **โชว์เสมอ แล้วบอกเหตุ** — กติกา GatedAction ของระบบ
+                                 🐞 ของเดิมซ่อนปุ่มเมื่อ `used > 0` ⇒ คนที่หาปุ่มลบไม่เจอ
+                                    และไม่มีอะไรบอกว่าทำไม
+                                 ⚠️ รุ่นที่ใช้อยู่ลบไม่ได้จริง — เครื่องที่ออกรหัสไปแล้ว
+                                    ถือรหัส 4 ตัวของรุ่นนี้ไว้ในรหัสตัวเอง */
+                              id: "delete",
+                              label: "ลบรุ่นนี้",
+                              icon: Trash2,
+                              tone: "danger",
+                              separatorBefore: true,
+                              disabled: used > 0,
+                              disabledReason: used > 0
+                                ? `มีเครื่องใช้รุ่นนี้ ${used} ตัว — ปิดใช้งานแทน`
+                                : undefined,
+                              onClick: () => setRemoving(model),
+                            },
+                          ]}
+                        />
                       </td>
                     )}
                   </tr>
@@ -206,13 +231,15 @@ export default function ServiceAssetModelsPage() {
         onSubmit={save}
       />
 
+      {/* 🔑 ด่านตัวเดียวกับที่ API ใช้ — กดไม่ได้ก็ยังเปิดกล่องมาอ่านเหตุผลได้ */}
       <ConfirmDialog
         open={!!removing}
         title="ลบรุ่นนี้ออกจากทะเบียน"
-        message={`ลบรุ่น ${removing?.name || ""} (${removing?.modelCode || ""}) — ยังไม่มีเครื่องใช้รุ่นนี้`}
+        message={removeGate || `ลบรุ่น ${removing?.name || ""} (${removing?.modelCode || ""}) — ยังไม่มีเครื่องใช้รุ่นนี้`}
+        detail={removeGate ? undefined : "รหัส 4 ตัวจะถูกปล่อยคืนให้รุ่นอื่นเอาไปใช้ได้"}
         confirmLabel="ลบ"
         tone="danger"
-        onConfirm={remove}
+        onConfirm={removeGate ? undefined : remove}
         onClose={() => setRemoving(null)}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />

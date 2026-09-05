@@ -66,20 +66,20 @@ test('ทุกคำสั่งต้องมีวันที่ และ�
    ผู้ใช้จะเจอ error ดิบภาษาอังกฤษของ Postgres แทนข้อความไทย */
 test('คำสั่งที่ต้องอธิบายได้ บังคับเหตุผลอย่างน้อย 3 ตัวอักษร', () => {
   for (const kind of MOVE_NEEDS_REASON) {
-    const asset = kind === 'return' || kind === 'transfer' ? onSite() : onSite();
-    const to = kind === 'return' ? warehouse : customerSite;
-    const base = { movedAt: today, toSiteId: to.id };
-    assert.match(assetMoveError(asset, kind, base, { ...ctx, toSite: to }), /เหตุผล/, `${kind} ต้องบังคับเหตุผล`);
-    assert.match(assetMoveError(asset, kind, { ...base, reason: 'ok' }, { ...ctx, toSite: to }), /เหตุผล/);
-    assert.equal(assetMoveError(asset, kind, { ...base, reason: 'ลูกค้าเลิกสัญญา' }, { ...ctx, toSite: to }), null);
+    /* ⚠️ `return`/`retire` ไม่มีปลายทางให้เลือกแล้ว (mig 0344) — เครื่องกลับไปเป็น "ว่าง" */
+    const clears = kind === 'return' || kind === 'retire';
+    const base = clears ? { movedAt: today } : { movedAt: today, toSiteId: customerSite.id };
+    const c = clears ? ctx : { ...ctx, toSite: customerSite };
+    assert.match(assetMoveError(onSite(), kind, base, c), /เหตุผล/, `${kind} ต้องบังคับเหตุผล`);
+    assert.match(assetMoveError(onSite(), kind, { ...base, reason: 'ok' }, c), /เหตุผล/);
+    assert.equal(assetMoveError(onSite(), kind, { ...base, reason: 'ลูกค้าเลิกสัญญา' }, c), null);
   }
 });
 
 test('ส่งซ่อม/รับคืน ไม่บังคับเหตุผล — บังคับกับของที่ไม่มีอะไรให้อธิบายจะได้ข้อความขยะ', () => {
   assert.equal(assetMoveError(onSite(), 'repair', { movedAt: today }, ctx), null);
-  // รับคืนไม่ต้องมีเหตุผล แต่ต้องมีคลังปลายทาง (ดูเทสต์บั๊ก UAT ด้านล่าง)
-  assert.equal(assetMoveError(onSite({ status: 'repair' }), 'repair_done',
-    { movedAt: today, toSiteId: 'WH' }, { ...ctx, toSite: warehouse }), null);
+  // รับคืนไม่ต้องมีเหตุผล และไม่มีปลายทางให้เลือกแล้ว (mig 0344 — กลับไปเป็น "ว่าง")
+  assert.equal(assetMoveError(onSite({ status: 'repair' }), 'repair_done', { movedAt: today }, ctx), null);
 });
 
 /* 🔴 ด่านที่กันไม่ให้ trigger ของ DB เป็นคนตีกลับ — ข้อความของ trigger เป็นภาษา
@@ -89,9 +89,11 @@ test('ปลายทางต้องเป็นไซต์ประเภ�
     { ...ctx, toSite: { id: 'WH2', name: 'คลัง 2', kind: 'warehouse' } });
   assert.match(bad, /คลัง/, 'ติดตั้งเข้าคลังไม่ได้');
 
+  /* 🔄 `return` ไม่มีปลายทางแล้ว (mig 0344) — ส่ง `toSiteId` มาแปลว่าจอกับ API
+     เข้าใจคำสั่งคนละอย่าง ⇒ ต้องตีกลับ ไม่ใช่เมินค่าที่ส่งมา */
   const bad2 = assetMoveError(onSite(), 'return', { movedAt: today, toSiteId: 'S2', reason: 'เลิกสัญญา' },
     { ...ctx, toSite: customerSite });
-  assert.match(bad2, /คลัง/, 'ถอนกลับคลังต้องเลือกคลัง');
+  assert.match(bad2, /ไม่ต้องเลือกไซต์ปลายทาง/);
 
   assert.equal(assetMoveError(stock(), 'install', { movedAt: today, toSiteId: 'S2' },
     { ...ctx, toSite: customerSite }), null);
@@ -133,10 +135,13 @@ test('ย้ายข้ามไซต์โดยไม่เลือกโ�
   assert.equal(patch.zoneId, null);
 });
 
-test('ถอนกลับคลัง: สถานะเป็น in_stock + บันทึกวันถอด', () => {
-  const patch = assetMovePatch(onSite(), 'return', { movedAt: today, toSiteId: 'WH' });
+/* 🔄 mig 0344: "ถอนกลับคลัง" → "ถอดออกจากไซต์" — เครื่องกลับไปเป็น "ว่าง" คือ
+   **ไม่มีที่อยู่** ไม่ใช่ย้ายไปจอดที่ไซต์ประเภทคลัง (CHECK ของ DB บังคับให้ต้อง null) */
+test('ถอดออกจากไซต์: สถานะเป็น in_stock · ล้างที่อยู่ · บันทึกวันถอด', () => {
+  const patch = assetMovePatch(onSite({ zoneId: 'Z1' }), 'return', { movedAt: today });
   assert.equal(patch.status, 'in_stock');
-  assert.equal(patch.siteId, 'WH');
+  assert.equal(patch.siteId, null);
+  assert.equal(patch.zoneId, null, 'ไม่มีไซต์แล้วต้องไม่มีโซนค้าง');
   assert.equal(patch.removedAt, today);
 });
 
@@ -217,44 +222,30 @@ test('คำสั่งที่บังคับเหตุผล/ย้า�
   }
 });
 
-/* 🐞 **บั๊กที่ UAT 2026-09-02 จับได้** — `repair_done` เคยไม่ต้องเลือกไซต์ปลายทาง
-   ⇒ เครื่องที่ส่งซ่อม *จากไซต์ลูกค้า* ยังมี siteId ชี้ไซต์นั้น พอสั่งรับคืนแล้ว
-   ตั้ง in_stock เครื่องกลายเป็น "อยู่ในคลัง" ทั้งที่อยู่ที่ไซต์ลูกค้า
-   ⇒ **trigger ของ DB เป็นคนตีกลับ (500 + ข้อความภาษาฐานข้อมูล)** ซึ่งเป็นสิ่งที่
-      ตัวตัดสินนี้มีไว้เพื่อกันตั้งแต่แรก */
-test('🔴 รับคืนจากซ่อมต้องเลือกคลังปลายทาง — ไม่งั้น trigger ของ DB เป็นคนตีกลับ', () => {
-  const atRepairFromSite = onSite({ status: 'repair', condition: 'broken', siteId: 'S1' });
+/* 🐞 **บั๊กที่ UAT 2026-09-02 จับได้** — `repair_done` เคยไม่แตะ `siteId` เลย
+   ⇒ เครื่องที่ส่งซ่อม *จากไซต์ลูกค้า* ยังมี siteId ชี้ไซต์นั้น พอตั้ง in_stock
+   เครื่องกลายเป็น "อยู่ในคลัง" ทั้งที่อยู่ที่ไซต์ลูกค้า ⇒ DB เป็นคนตีกลับ
+   🔄 ทางแก้เปลี่ยนไปตาม mig 0344: เดิมบังคับเลือก "คลังปลายทาง" ตอนนี้ **ล้างที่อยู่**
+      (ซึ่งตรงกับ CHECK ใหม่: in_stock ⇒ ต้องไม่มีไซต์) */
+test('🔴 รับคืนจากซ่อมต้องล้างที่อยู่ — ไม่งั้น CHECK ของ DB เป็นคนตีกลับ', () => {
+  const atRepairFromSite = onSite({ status: 'repair', condition: 'broken', siteId: 'S1', zoneId: 'Z1' });
 
-  // ไม่เลือกปลายทาง = ตกที่ด่านของเรา ไม่ใช่ที่ DB
-  assert.match(assetMoveError(atRepairFromSite, 'repair_done', { movedAt: today }, ctx), /ปลายทาง/);
-
-  // เลือกไซต์ลูกค้า = ตกเหมือนกัน พร้อมข้อความที่คนอ่านรู้เรื่อง
-  assert.match(
-    assetMoveError(atRepairFromSite, 'repair_done', { movedAt: today, toSiteId: 'S2' },
-      { ...ctx, toSite: customerSite }),
-    /คลัง/,
-  );
-
-  // เลือกคลัง = ผ่าน และเครื่องย้ายเข้าคลังจริง
-  assert.equal(assetMoveError(atRepairFromSite, 'repair_done', { movedAt: today, toSiteId: 'WH' },
-    { ...ctx, toSite: warehouse }), null);
-  const patch = assetMovePatch(atRepairFromSite, 'repair_done', { movedAt: today, toSiteId: 'WH' });
+  assert.equal(assetMoveError(atRepairFromSite, 'repair_done', { movedAt: today }, ctx), null);
+  const patch = assetMovePatch(atRepairFromSite, 'repair_done', { movedAt: today });
   assert.equal(patch.status, 'in_stock');
   assert.equal(patch.condition, 'ok');
-  assert.equal(patch.siteId, 'WH', 'ต้องย้ายเข้าคลังจริง ไม่ใช่ค้างที่ไซต์ลูกค้า');
+  assert.equal(patch.siteId, null, 'ต้องล้างที่อยู่ ไม่ใช่ค้างที่ไซต์ลูกค้า');
+  assert.equal(patch.zoneId, null);
 });
 
-/* เครื่องที่ส่งซ่อม **จากคลัง** ต้องกลับเข้าคลังใบเดิมได้ — ไม่ใช่ถูกด่าน
-   "ไซต์ปลายทางเป็นที่เดิม" ปิดไว้ (นี่คือเหตุผลที่ repair_done ไม่อยู่ใน
-   MOVE_REQUIRES_NEW_SITE) */
-test('ส่งซ่อมจากคลัง กลับเข้าคลังใบเดิมได้', () => {
-  const atRepairFromStock = stock({ status: 'repair', condition: 'broken', siteId: 'WH' });
-  assert.equal(assetMoveError(atRepairFromStock, 'repair_done', { movedAt: today, toSiteId: 'WH' },
-    { ...ctx, toSite: warehouse }), null);
+test('ส่งซ่อมจากของที่ว่างอยู่ รับคืนได้โดยไม่ต้องมีไซต์', () => {
+  const atRepairFromStock = stock({ status: 'repair', condition: 'broken', siteId: null });
+  assert.equal(assetMoveError(atRepairFromStock, 'repair_done', { movedAt: today }, ctx), null);
 });
 
-test('ถอนกลับคลังยังต้องเป็นคนละไซต์กับที่ติดตั้งอยู่', () => {
-  const err = assetMoveError(onSite({ siteId: 'WH' }), 'return',
-    { movedAt: today, toSiteId: 'WH', reason: 'เลิกสัญญา' }, { ...ctx, toSite: warehouse });
-  assert.match(err, /ที่เดิม/);
+test('ถอดออกจากไซต์: เครื่องที่ว่างอยู่แล้วถอดซ้ำไม่ได้', () => {
+  const err = assetMoveError(stock({ siteId: null }), 'return',
+    { movedAt: today, reason: 'เลิกสัญญา' }, ctx);
+  // ⚠️ ตกที่ด่านการมองเห็นก่อน (ถอดได้เฉพาะเครื่องที่ติดตั้งอยู่) — ปุ่มไม่ควรโชว์ด้วยซ้ำ
+  assert.match(err, /ติดตั้งอยู่/);
 });

@@ -390,7 +390,11 @@ export default function ServiceAssetsPage() {
                     <Link href={`/service/assets/${asset.id}`} className={`${styles.assetLink} mono`}>
                       {naText(asset.code || asset.serial || asset.label)}
                     </Link>
-                    {asset.label && asset.label !== (asset.code || asset.serial)
+                    {/* ⚠️ **ซ่อนบรรทัดล่างเมื่อมันซ้ำกับคอลัมน์อื่น** — เครื่องที่เพิ่งขึ้น
+                        ทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งคอลัมน์ "รุ่น" บอกอยู่แล้ว
+                        ⇒ บรรทัดนี้จะมีความหมายก็ต่อเมื่อ TS ตั้งชื่อตำแหน่งให้ตอนติดตั้ง
+                        ("เครื่องล็อบบี้ ซ้าย") ซึ่งเป็นข้อมูลที่ไม่มีที่อื่นบอก */}
+                    {asset.label && asset.label !== (asset.code || asset.serial) && asset.label !== asset.model
                       ? <span className={styles.sub}>{asset.label}</span> : null}
                   </td>
                   <td>{naText(asset.model)}</td>
