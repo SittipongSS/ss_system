@@ -14,7 +14,7 @@ import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import { ASSET_STATUSES, ASSET_STATUS_LABELS, isWarehouseSite, normalizeAssetInput } from "@/lib/service/sites";
-import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
+import { ASSET_KINDS, ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import styles from "./ServiceSiteModal.module.css";
 
 const EMPTY = {
@@ -91,7 +91,6 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], site
   const changeSetting = (key) => (event) =>
     setForm((prev) => ({ ...prev, settings: { ...prev.settings, [key]: event.target.value } }));
 
-  const perUnitRow = assetKindPerUnitRow(form.kind);
 
   const submit = async () => {
     const { error: invalid } = normalizeAssetInput(form);
@@ -146,16 +145,8 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], site
 
         <label className={styles.field}>
           <span>ชื่อ / ตำแหน่ง *</span>
-          <Input value={form.label} onChange={change("label")} placeholder={perUnitRow ? "เครื่องล็อบบี้ (ซ้าย)" : "เครื่องกดสบู่ทั้งตึก"} maxLength={150} />
+          <Input value={form.label} onChange={change("label")} placeholder="เครื่องล็อบบี้ (ซ้าย)" maxLength={150} />
         </label>
-
-        {!perUnitRow && (
-          <label className={styles.field}>
-            <span>จำนวนจุด *</span>
-            <Input type="number" min="1" step="1" value={form.qty} onChange={change("qty")} />
-            <small>{ASSET_KIND_LABELS[form.kind]}เก็บเป็นแถวเดียวทั้งชุด — ไม่ต้องสร้างทีละจุด</small>
-          </label>
-        )}
 
         <label className={styles.field}>
           <span>รุ่น</span>
@@ -167,13 +158,13 @@ export default function ServiceAssetModal({ open, asset = null, zones = [], site
           <Input value={form.colour} onChange={change("colour")} placeholder="ขาว / ดำ" maxLength={50} />
         </label>
 
-        {perUnitRow && (
-          <label className={styles.field}>
-            <span>Serial</span>
-            <Input value={form.serial} onChange={change("serial")} mono maxLength={100} />
-            <small>ห้ามซ้ำทั้งระบบ — ถ้าย้ายเครื่องไปไซต์ใหม่ ให้แก้ไซต์ของเครื่องเดิม ไม่ใช่สร้างใหม่</small>
-          </label>
-        )}
+        {/* 🔄 เคยซ่อน Serial สำหรับชนิด "แถวรวมทั้งชุด" — ถอดแล้ว (ทุกชนิดนับรายตัว)
+            ⚠️ นี่คือ **เบอร์จากโรงงาน** คนละช่องกับรหัสเครื่อง `code` ที่ระบบออกให้ */}
+        <label className={styles.field}>
+          <span>Serial (เบอร์จากโรงงาน)</span>
+          <Input value={form.serial} onChange={change("serial")} mono maxLength={100} />
+          <small>ห้ามซ้ำทั้งระบบ — เว้นว่างได้ถ้าเครื่องไม่มีเบอร์ติดมา</small>
+        </label>
 
         <label className={styles.field}>
           <span>ชั้น</span>

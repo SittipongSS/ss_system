@@ -30,7 +30,8 @@ test('เครื่องที่ปลดระวางแล้วไม�
 test('🔴 เครื่องในคลังไม่เตือนน้ำหอมใกล้หมด — ยังไม่ได้ติดตั้งที่ไหน', () => {
   const status = refillStatus(asset({ status: 'in_stock', installedAt: '2026-01-01' }), { todayIso: TODAY });
   assert.equal(status.state, 'unknown');
-  assert.equal(status.label, 'อยู่ในคลัง');
+  // ป้ายเปลี่ยนคำเป็น "ว่าง" (มติผู้ใช้ 2026-09-03) — ค่าในฐานยังเป็น in_stock เหมือนเดิม
+  assert.equal(status.label, 'ว่าง');
 });
 
 test('ยังอีกนาน = ok', () => {

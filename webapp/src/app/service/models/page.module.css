@@ -1,0 +1,13 @@
+/* ทะเบียนรุ่นเครื่อง (mig 0344) */
+
+/* รุ่นที่ปิดใช้งาน — จางลงแต่ยังอ่านได้ (ปิดใช้งาน ≠ ลบ) */
+.off {
+  opacity: var(--op-muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-1-5);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

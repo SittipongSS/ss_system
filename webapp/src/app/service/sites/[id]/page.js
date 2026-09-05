@@ -26,7 +26,7 @@ import {
   accessWindowText,
   assetRollup,
 } from "@/lib/service/sites";
-import { ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
+import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
 import {
   VISIT_KIND_LABELS,
@@ -587,8 +587,9 @@ export default function ServiceSiteDetailPage({ params }) {
                     lastSiteRefillDate: schedule.lastRefillDate,
                     nextVisitDate: schedule.nextVisitDate,
                   });
-                  // ชนิดแถวรวม (reed/สบู่/แอลกอฮอล์) โชว์จำนวนจุดคู่ชนิดเสมอ
-                  const kindText = `${ASSET_KIND_LABELS[asset.kind] || asset.kind || ""}${!assetKindPerUnitRow(asset.kind) && asset.qty ? ` · ${fmtNumber(asset.qty)} จุด` : ""}`;
+                  /* 🔄 เคยต่อท้ายด้วย "· N จุด" สำหรับชนิดแถวรวม — ถอดออกแล้ว
+                     (มติผู้ใช้ 2026-09-03: ทุกชนิดนับรายตัว ไม่มีแถวรวมทั้งชุด) */
+                  const kindText = ASSET_KIND_LABELS[asset.kind] || asset.kind || "";
                   return (
                     <tr key={asset.id} className={asset.status === "removed" ? styles.inactive : undefined}>
                       <td>
