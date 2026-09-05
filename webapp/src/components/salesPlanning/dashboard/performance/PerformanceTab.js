@@ -174,7 +174,8 @@ export default function PerformanceTab({ year }) {
 
       <YearHeatmap {...common} onDrill={drillTo} />
 
-      <div ref={drillRef}>
+      {/* .scroll-anchor — เป้าของ drillTo() ต้องเผื่อความสูงแถบเมนู ไม่งั้นจอดใต้แถบ */}
+      <div ref={drillRef} className="scroll-anchor">
         <DrillSection
           {...common}
           scope={view.scope}
