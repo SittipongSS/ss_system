@@ -165,7 +165,12 @@ export default function SahamitOverview() {
           <div className="flex flex-col gap-6">
             <DashboardCharts rounds={fRounds} pos={fPos} coverages={coverages} />
 
-            <section className="form-grid" style={{ gridTemplateColumns: "2fr 1fr", gap: "24px", alignItems: "start" }}>
+            {/* 🪤 ต้องเป็น minmax(0, …) ไม่ใช่ `2fr 1fr` — min track sizing function ของ `2fr`
+          คือ `auto` ⇒ automatic minimum size ของ grid item มีผล (CSS Grid §6.6)
+          ตารางข้างในมี `white-space: nowrap` จึงมี min-content กว้าง แล้วยกฐานราง
+          ซ้ายจนดันแผงขวาหลุดออกนอกกล่อง (วัดที่ vp 375: กริดล้น 96px · ที่ 347: 124px)
+          `.form-grid` เปล่า ๆ ไม่เข้า media query ที่จับเฉพาะ .cols-2/.cols-3 ⇒ ติดถึงมือถือ */}
+            <section className="form-grid" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: "24px", alignItems: "start" }}>
               {/* Follow-up POs */}
               <div className="glass-panel" style={{ padding: "0", display: "flex", flexDirection: "column" }}>
                 <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px" }}>
