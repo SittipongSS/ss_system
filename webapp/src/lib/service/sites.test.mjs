@@ -268,7 +268,7 @@ test('normalizeAssetInput: ไม่ส่งสภาพมา = ปกติ (
   assert.equal(value.condition, 'ok');
 });
 
-/* วันรับเข้าคลังต้องเป็นคนละช่องกับวันติดตั้ง — ชีตเก่ามีทั้งสองและต่างกันเป็นปี
+/* วันรับเข้าต้องเป็นคนละช่องกับวันติดตั้ง — ชีตเก่ามีทั้งสองและต่างกันเป็นปี
    ยัดรวมช่องเดียวเมื่อไร อายุใช้งานที่คำนวณออกมาจะโกหกทันที */
 test('normalizeAssetInput: receivedAt แยกจาก installedAt และตรวจรูปแบบวัน', () => {
   const ok = normalizeAssetInput({ label: 'A', receivedAt: '2025-01-08', installedAt: '2026-03-14' });
@@ -278,7 +278,7 @@ test('normalizeAssetInput: receivedAt แยกจาก installedAt และ�
 
   const bad = normalizeAssetInput({ label: 'A', receivedAt: '08/01/2025' });
   assert.equal(bad.value, null);
-  assert.match(bad.error, /วันที่รับเข้าคลัง/);
+  assert.match(bad.error, /วันที่รับเข้า/);
 });
 
 test('normalizeSiteInput: รับ kind ของไซต์ · ตั้งต้นเป็นไซต์ลูกค้า', () => {
