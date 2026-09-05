@@ -9,6 +9,7 @@
 //   ⚠️ ไม่มีตาราง event ของอุปกรณ์ โดยเจตนา (ดูเหตุผลใน lib/service/assetHistory.js)
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Clock, Layers, MapPin, Package, Wrench } from "lucide-react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -18,6 +19,7 @@ import DetailOverview from "@/components/ui/DetailOverview";
 import { ContextCard, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
 import AssetMoveModal from "@/components/service/AssetMoveModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import Toast from "@/components/ui/Toast";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canEditService } from "@/lib/permissions";
@@ -25,6 +27,7 @@ import {
   ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
 } from "@/lib/service/sites";
 import { MOVE_LABELS, assetMoveOwnerError } from "@/lib/service/assetMoves";
+import { assetDeleteError } from "@/lib/service/assetDelete";
 import { assetTimeline, settingOutlier, settingText } from "@/lib/service/assetHistory";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
@@ -32,7 +35,7 @@ import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 
 export default function ServiceAssetPage({ params }) {
   const { id } = use(params);   // = assetId · เฟส B ย้าย route ออกจากใต้ไซต์
@@ -40,6 +43,9 @@ export default function ServiceAssetPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [moveKind, setMoveKind] = useState(null);   // null = ปิด · 'transfer' ฯลฯ = เปิด
+  const router = useRouter();
+  const [removing, setRemoving] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [moveBusy, setMoveBusy] = useState(false);
   const [toast, setToast] = useState(null);
   // ตัวเลือกปลายทางโหลดตอนเปิดโมดัลเท่านั้น — ไซต์ทั้งระบบไม่ควรถูกดึงทุกครั้งที่เปิดหน้าเครื่อง
@@ -177,9 +183,40 @@ export default function ServiceAssetPage({ params }) {
     moveAction("condition", asset.condition === "broken" ? "แจ้งว่าซ่อมแล้ว" : "แจ้งว่าชำรุด"),
   ].filter(Boolean) : [];
 
-  const dangerActions = asset && !assetMoveOwnerError(asset, "retire", { canEdit })
-    ? [{ id: "retire", kind: "delete", label: MOVE_LABELS.retire, onClick: () => setMoveKind("retire") }]
-    : [];
+  /* ⭐ **ลบทิ้งจริง ๆ ต่างจากปลดระวาง** — ปลดระวางคือ "เลิกใช้แต่ยังอยู่ในทะเบียน"
+     (ประวัติยังอ่านได้) · ลบคือ "ไม่เคยมีเครื่องตัวนี้" ซึ่งถูกต้องเฉพาะกับของที่
+     ขึ้นทะเบียนผิด/ทดสอบ ⇒ ปุ่มอยู่คนละกลุ่ม และคำถามตอนยืนยันต่างกัน
+     🔴 **เลขรันไม่คืน** — ลบเครื่องแล้วรหัสที่ออกไปเป็นช่องว่างถาวร (mig 0241) */
+  const historyCount = (data?.results?.length || 0) + (data?.items?.length || 0);
+  const deleteGate = asset ? assetDeleteError(asset, { canEdit, used: historyCount }) : 'ไม่พบเครื่องนี้';
+
+  const dangerActions = asset ? [
+    !assetMoveOwnerError(asset, "retire", { canEdit })
+      ? { id: "retire", kind: "delete", label: MOVE_LABELS.retire, onClick: () => setMoveKind("retire") }
+      : null,
+    /* ไม่มีสิทธิ์ = ไม่โชว์ · ติดด่าน (มีประวัติ) = โชว์แล้วบอกเหตุตอนกด
+       — กติกา GatedAction ของระบบ */
+    canEdit
+      ? { id: "delete", kind: "delete", label: "ลบเครื่องนี้", onClick: () => setRemoving(true) }
+      : null,
+  ].filter(Boolean) : [];
+
+  const runDelete = async () => {
+    setRemoveBusy(true);
+    try {
+      await apiJson(`/api/service/assets/${id}`, {
+        method: "DELETE", fallbackError: "ลบเครื่องไม่สำเร็จ",
+      });
+      setRemoving(false);
+      // ลบแล้วหน้านี้ไม่มีของให้ดูอีก — กลับทะเบียน ไม่ใช่ค้างที่หน้าเปล่า
+      router.push("/service/assets");
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message });
+      setRemoving(false);
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
 
   const back = data?.site
     ? { href: `/service/sites/${data.site.id}`, label: naText(data.site.name) }
@@ -370,6 +407,20 @@ export default function ServiceAssetPage({ params }) {
         onClose={() => !moveBusy && setMoveKind(null)}
         onToSite={loadZonesOf}
         onSubmit={runMove}
+      />
+      <ConfirmDialog
+        open={removing}
+        title="ลบเครื่องนี้ออกจากทะเบียน"
+        message={deleteGate || `ลบ ${asset?.code || asset?.serial || asset?.label || ""} ออกจากทะเบียนถาวร`}
+        detail={deleteGate
+          ? undefined
+          : "รหัสเครื่องที่ออกไปแล้วจะไม่ถูกนำกลับมาใช้ซ้ำ — เลขนั้นกลายเป็นช่องว่างถาวร"}
+        confirmLabel="ลบ"
+        tone="danger"
+        busy={removeBusy}
+        hideCancel={false}
+        onConfirm={deleteGate ? undefined : runDelete}
+        onClose={() => !removeBusy && setRemoving(false)}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
     </Workspace>

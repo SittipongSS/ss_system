@@ -5,9 +5,11 @@
   opacity: var(--op-muted);
 }
 
+/* ปุ่มก้าวถัดไป + เมนู "…" — ไม่ห่อบรรทัด เพราะเมนูเป็น portal ที่ต้องอยู่ท้ายแถวเสมอ */
 .actions {
   display: flex;
   gap: var(--space-1-5);
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  white-space: nowrap;
 }
