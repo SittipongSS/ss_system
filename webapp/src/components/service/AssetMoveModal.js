@@ -1,7 +1,7 @@
 "use client";
 // ── โมดัลคำสั่งย้าย/เปลี่ยนสถานะเครื่อง (เฟส C · mig 0335) ───────────────
 //
-// ⭐ **โมดัลเดียวรับทุกคำสั่ง** — ติดตั้ง · ย้าย · ถอนกลับคลัง · ส่งซ่อม ·
+// ⭐ **โมดัลเดียวรับทุกคำสั่ง** — ติดตั้ง · ย้าย · ถอดออกจากไซต์ · ส่งซ่อม ·
 //   รับคืนจากซ่อม · แจ้งสภาพ · ปลดระวาง · ช่องที่โผล่เปลี่ยนตาม `kind`
 //   ⚠️ ไม่แยกเป็นเจ็ดไฟล์เพราะทุกใบถามเรื่องเดียวกัน (วันที่ · ปลายทาง · เหตุผล)
 //      แยกแล้วมันจะเพี้ยนหากันแน่ — โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์มสร้าง/แก้
@@ -20,7 +20,7 @@ import {
   ASSET_CONDITIONS, ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, isWarehouseSite,
 } from "@/lib/service/sites";
 import {
-  MOVE_CHANGES_SITE, MOVE_LABELS, MOVE_NEEDS_REASON, MOVE_RESULT, MOVE_TO_WAREHOUSE, assetMoveError,
+  MOVE_CHANGES_SITE, MOVE_CLEARS_SITE, MOVE_LABELS, MOVE_NEEDS_REASON, MOVE_RESULT, assetMoveError,
 } from "@/lib/service/assetMoves";
 import { businessDate } from "@/lib/businessDate";
 import { naText } from "@/lib/format";
@@ -28,11 +28,11 @@ import styles from "./AssetMoveModal.module.css";
 
 /* คำอธิบายใต้หัวโมดัล — บอกว่าคำสั่งนี้ทำอะไรกับเครื่อง ไม่ใช่แค่ชื่อคำสั่ง */
 const MOVE_HINTS = {
-  install: "เครื่องจะออกจากคลังไปอยู่ที่ไซต์ลูกค้า และเริ่มนับอายุใช้งาน",
+  install: "เครื่องจะไปอยู่ที่ไซต์ลูกค้า และเริ่มนับอายุใช้งาน",
   transfer: "เครื่องจะถูกถอดจากที่เดิมไปติดตั้งที่ใหม่ — ประวัติเก็บทั้งสองฝั่ง",
-  return: "เครื่องจะกลับเข้าคลัง ไม่ถูกนับเป็นเครื่องของไซต์นั้นอีก",
-  repair: "เครื่องจะไม่ถูกนับในคลังพร้อมใช้ระหว่างที่ส่งซ่อม",
-  repair_done: "เลือกคลังที่จะรับเครื่องกลับเข้า — สภาพกลับเป็นปกติ พร้อมนำไปติดตั้งใหม่",
+  return: "เครื่องจะกลับไปเป็นของว่าง ไม่ถูกนับเป็นเครื่องของไซต์นั้นอีก",
+  repair: "เครื่องจะไม่ถูกนับเป็นของพร้อมใช้ระหว่างที่ส่งซ่อม",
+  repair_done: "สภาพกลับเป็นปกติ พร้อมนำไปติดตั้งใหม่",
   condition: "เปลี่ยนแค่สภาพเครื่อง — ที่อยู่และสถานะไม่เปลี่ยน",
   retire: "ย้อนกลับไม่ได้ — แต่ระเบียนไม่ถูกลบ ประวัติทั้งหมดยังอ่านได้",
 };
@@ -56,17 +56,21 @@ export default function AssetMoveModal({ open, kind, asset, fromSite, sites = []
 
   const patch = (next) => setForm((f) => ({ ...f, ...next }));
 
-  const needsSite = MOVE_CHANGES_SITE.includes(kind);
+  /* 🔄 **คำสั่งที่ล้างที่อยู่ไม่มีปลายทางให้เลือก** (mig 0344) — `return`/`repair_done`
+     เดิมบังคับเลือกไซต์ประเภทคลัง · ตอนนี้เครื่องกลับไปเป็น "ว่าง" คือไม่มีที่อยู่เลย */
+  const clearsSite = MOVE_CLEARS_SITE.includes(kind);
+  const needsSite = MOVE_CHANGES_SITE.includes(kind) && !clearsSite;
   const needsReason = MOVE_NEEDS_REASON.includes(kind);
 
   /* ไซต์ปลายทางที่เลือกได้ — คัดตามชนิดคำสั่งตั้งแต่ในลิสต์ ไม่ใช่ให้เลือกผิดแล้วค่อยเด้ง
      ⚠️ ตัดไซต์ปัจจุบันออกด้วย: "ย้ายไปที่เดิม" ไม่ใช่การย้าย */
   const siteOptions = useMemo(() => sites
-    // ⚠️ `repair_done` กลับเข้าคลังใบเดิมได้ ⇒ ตัดไซต์ปัจจุบันออกเฉพาะคำสั่งที่ต้องย้ายจริง
-    .filter((s) => (kind === "repair_done" || s.id !== asset?.siteId) && s.isActive !== false)
-    .filter((s) => (MOVE_TO_WAREHOUSE.includes(kind) ? isWarehouseSite(s) : !isWarehouseSite(s)))
+    // "ย้ายไปที่เดิม" ไม่ใช่การย้าย ⇒ ตัดไซต์ปัจจุบันออก
+    .filter((s) => s.id !== asset?.siteId && s.isActive !== false)
+    // ติดตั้ง/ย้าย ต้องเป็นไซต์ลูกค้าเท่านั้น — คลังไม่ใช่ปลายทางของคำสั่งไหนแล้ว (mig 0344)
+    .filter((s) => !isWarehouseSite(s))
     .map((s) => ({ value: s.id, label: s.name, search: `${s.name} ${s.code || ""} ${s.customerName || ""}` })),
-  [sites, asset?.siteId, kind]);
+  [sites, asset?.siteId]);
 
   const toSite = useMemo(() => sites.find((s) => s.id === form.toSiteId) || null, [sites, form.toSiteId]);
   /* โซนที่หน้าโหลดมาให้เป็นของไซต์ปลายทางอยู่แล้ว (ยิงรายไซต์ตอนเลือก)
@@ -122,12 +126,19 @@ export default function AssetMoveModal({ open, kind, asset, fromSite, sites = []
             value={form.toSiteId}
             onChange={(v) => { patch({ toSiteId: v, toZoneId: "" }); onToSite?.(v); }}
             options={siteOptions}
-            placeholder={MOVE_TO_WAREHOUSE.includes(kind) ? "เลือกคลัง" : "เลือกไซต์ลูกค้า"}
+            placeholder="เลือกไซต์ลูกค้า"
           />
         </label>
       )}
 
-      {needsSite && !MOVE_TO_WAREHOUSE.includes(kind) && (
+      {/* คำสั่งที่ล้างที่อยู่ — บอกผลลัพธ์ไปเลย ไม่ใช่ปล่อยให้เดาว่าเครื่องจะไปอยู่ไหน */}
+      {clearsSite && (
+        <p className={styles.hint}>
+          เครื่องจะกลับไปเป็น <strong>ว่าง</strong> — ไม่ผูกกับไซต์ไหน พร้อมเอาไปติดตั้งที่ใหม่
+        </p>
+      )}
+
+      {needsSite && (
         <label className="form-field">
           <span>โซน</span>
           <SearchableSelect

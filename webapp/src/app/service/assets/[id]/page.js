@@ -30,7 +30,7 @@ import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
-import { fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -112,7 +112,8 @@ export default function ServiceAssetPage({ params }) {
      ซึ่งเป็นที่ที่คนกดเข้ามาจริง ไม่ใช่ลิงก์เปล่าที่กดแล้วไม่ไปไหน */
   /* โหลดตัวเลือกปลายทางตอนเปิดโมดัลเท่านั้น (lazy) — ไซต์ทั้งระบบ 200+ ใบ
      ไม่ควรถูกดึงทุกครั้งที่มีคนเปิดหน้าเครื่องเฉย ๆ
-     ⚠️ ขอ `kind=all` เพราะคำสั่ง "ถอนกลับคลัง" ต้องเห็นไซต์คลังด้วย ซึ่งค่าตั้งต้น
+     ⚠️ ยังขอ `kind=all` อยู่เพื่ออ่านไซต์คลังเก่าที่อาจมีค้าง — แต่ตั้งแต่ mig 0344
+        คลังไม่ใช่ปลายทางของคำสั่งไหนแล้ว (โมดัลกรองออกเอง) ซึ่งค่าตั้งต้น
         ของ API ตัดออก (คลังไม่ใช่แถวในทะเบียนไซต์) */
   useEffect(() => {
     if (!moveKind || pickerSites.length) return;
@@ -200,8 +201,10 @@ export default function ServiceAssetPage({ params }) {
   return (
     <Workspace hideHeader back={back}>
       <DetailOverview
-        eyebrow={`${ASSET_KIND_LABELS[asset.kind] || asset.kind}${asset.serial ? ` · ${asset.serial}` : ""}`}
-        title={asset.label}
+        /* ⭐ ตัวตนของเครื่องคือรหัสที่ระบบออกให้ (mig 0344) — `label` เป็นชื่อเรียก
+           ที่ TS ตั้งตอนติดตั้ง · ใบเก่าที่ยังไม่มีรหัสรูปใหม่ตกไปที่ serial แล้ว label */
+        eyebrow={ASSET_KIND_LABELS[asset.kind] || asset.kind}
+        title={asset.code || asset.serial || asset.label}
         description={[site?.name, zone ? `โซน ${zone.name}` : null, asset.floor, asset.spot].filter(Boolean).join(" · ")}
         badges={(
           <>
@@ -257,7 +260,10 @@ export default function ServiceAssetPage({ params }) {
                   : asset.status === "in_stock" ? "var(--blue)"
                     : asset.status === "repair" ? "var(--amber)" : "var(--text-3)"}
                 statusDescription={[
-                  isWarehouseSite(site) ? "อยู่ในคลัง" : (site?.name ? `ติดตั้งที่ ${site.name}` : null),
+                  /* ⚠️ สามสภาพ (mig 0344): ไม่มีไซต์เลย · อยู่คลัง · อยู่หน้างานลูกค้า
+                     ของเดิมมีสอง ⇒ เครื่องที่ยังไม่ติดตั้งได้บรรทัดว่างเปล่า */
+                  !site ? "ยังไม่ได้ติดตั้ง"
+                    : isWarehouseSite(site) ? "อยู่ในคลัง" : `ติดตั้งที่ ${site.name}`,
                   asset.condition === "broken" ? `สภาพ${ASSET_CONDITION_LABELS.broken}` : null,
                 ].filter(Boolean).join(" · ")}
                 primaryAction={controlActions[0] || null}
@@ -267,7 +273,8 @@ export default function ServiceAssetPage({ params }) {
               />
             )}
             <ContextCard
-              icon={MapPin} eyebrow="ที่ติดตั้ง" title={naText(site?.name)}
+              icon={MapPin} eyebrow="ที่ติดตั้ง"
+              title={site ? naText(site.name) : "ยังไม่ได้ติดตั้ง"}
               subtitle={site?.customerName || undefined}
               facts={[
                 { label: "โซน", value: zone?.name },
@@ -277,7 +284,11 @@ export default function ServiceAssetPage({ params }) {
               ]}
             />
             <ContextCard
-              icon={Wrench} eyebrow="ทะเบียน" title={naText(asset.serial || asset.label)}
+              /* ⚠️ หัวการ์ดเป็น **ชื่อเรียก** ไม่ใช่รหัส (หัวหน้าบอกรหัสไปแล้ว) —
+                 เครื่องที่เพิ่งขึ้นทะเบียนตั้ง `label` = ชื่อรุ่น ซึ่งซ้ำกับช่อง "รุ่น"
+                 ⇒ ซ่อนหัวไปเลยเมื่อซ้ำ ให้เหลือแต่รายการที่บอกอะไรใหม่จริง ๆ */
+              icon={Wrench} eyebrow="ทะเบียน"
+              title={asset.label && asset.label !== asset.model ? asset.label : (asset.model || asset.label)}
               facts={[
                 { label: "ชนิด", value: ASSET_KIND_LABELS[asset.kind] || asset.kind },
                 { label: "รุ่น", value: asset.model },
@@ -285,15 +296,19 @@ export default function ServiceAssetPage({ params }) {
                 /* 🔄 เคยสลับป้ายเป็น "จำนวนจุด" ให้ชนิดแถวรวม — ถอดแล้ว
                    (ทุกชนิดนับรายตัว) · Serial = เบอร์จากโรงงาน คนละช่องกับรหัสเครื่อง */
                 { label: "Serial (เบอร์จากโรงงาน)", value: asset.serial },
-                { label: "ติดตั้งเมื่อ", value: asset.installedAt },
-                { label: "ถอดออกเมื่อ", value: asset.removedAt },
+                /* ⚠️ **วันที่ต้องผ่าน `fmtDate`** — ทั้งระบบใช้ DD/MM/YYYY
+                   🐞 สามช่องนี้ปล่อย ISO ดิบออกจอมาตลอด (`2026-09-06`) เจอตอน UAT 2026-09-06
+                   · วันรับเข้า = วันที่บริษัทได้เครื่องมา คนละเรื่องกับวันติดตั้ง (mig 0332) */
+                { label: "รับเข้าเมื่อ", value: asset.receivedAt ? fmtDate(asset.receivedAt) : null },
+                { label: "ติดตั้งเมื่อ", value: asset.installedAt ? fmtDate(asset.installedAt) : null },
+                { label: "ถอดออกเมื่อ", value: asset.removedAt ? fmtDate(asset.removedAt) : null },
               ]}
             />
             {/* ⚠️ ContextCard รับ `href` ทั้งใบ ไม่มี footer — การ์ดทั้งใบเป็นลิงก์
                 ไปหน้าโซน (รอบขาย · ยอดใช้จริง · ประวัติของโซนนั้น) */}
             {zone && (
               <ContextCard
-                href={`/service/sites/${data.site.id}/zones/${zone.id}`}
+                href={`/service/sites/${data.site?.id}/zones/${zone.id}`}
                 icon={Layers} eyebrow="โซน" title={zone.name}
                 subtitle="ดูรอบขายและยอดใช้จริงของโซนนี้"
                 facts={[{ label: "เครื่องในโซน", value: `${fmtNumber((data.zoneAssets || []).length)} ตัว` }]}

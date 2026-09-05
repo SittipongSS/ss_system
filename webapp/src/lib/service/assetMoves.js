@@ -21,7 +21,10 @@ export const MOVE_LABELS = {
   receive: 'รับเข้าคลัง',
   install: 'ติดตั้งเข้าไซต์',
   transfer: 'ย้ายไปไซต์อื่น',
-  return: 'ถอนกลับคลัง',
+  /* 🔄 เดิมชื่อ "ถอนกลับคลัง" (mig 0332: คลังเป็นไซต์จริง) — mig 0344 ยกเลิกโมเดลนั้น
+     เครื่องที่ไม่ได้ติดตั้งคือเครื่องที่ **ไม่มีที่อยู่** ไม่ใช่เครื่องที่จอดอยู่ไซต์คลัง
+     ⇒ คำสั่งนี้คือ "ถอดออกจากไซต์" แล้วเครื่องกลับไปเป็น "ว่าง" */
+  return: 'ถอดออกจากไซต์',
   repair: 'ส่งซ่อม',
   repair_done: 'รับคืนจากซ่อม',
   condition: 'แจ้งเปลี่ยนสภาพ',
@@ -38,13 +41,18 @@ export const MOVE_NEEDS_REASON = ['transfer', 'return', 'retire'];
       เป็นคนตีกลับ (500 + ข้อความภาษาฐานข้อมูล)** ซึ่งเป็นสิ่งที่ไฟล์นี้มีไว้เพื่อกัน */
 export const MOVE_CHANGES_SITE = ['install', 'transfer', 'return', 'repair_done'];
 
-/* ปลายทางต้องเป็น **คลัง** — เครื่องที่ไม่ได้ติดตั้งต้องมีคลังรองรับเสมอ */
-export const MOVE_TO_WAREHOUSE = ['return', 'repair_done'];
+/* 🔄 **คำสั่งที่ทำให้เครื่องกลับไปเป็น "ว่าง"** (mig 0344 · เดิมชื่อ `MOVE_TO_WAREHOUSE`)
+   ของเดิมบังคับให้เลือก **ไซต์ประเภทคลัง** เป็นปลายทาง เพราะ `siteId` เป็น NOT NULL
+   ⇒ เครื่องที่ไม่ได้ติดตั้งต้องมีคลังรองรับเสมอ
+   พอ mig 0344 ให้เครื่องไม่มีไซต์ได้ กติกานั้นกลายเป็น **ทางตัน**: ระบบไม่มีไซต์คลัง
+   สักใบ (ตาราง `service_sites` ว่าง) ⇒ ถอดเครื่องออกจากไซต์ไม่ได้เลย
+   ⇒ คำสั่งสองตัวนี้ตอนนี้ **ล้างที่อยู่** ไม่ใช่ย้ายไปที่อื่น */
+export const MOVE_CLEARS_SITE = ['return', 'repair_done'];
 
 /* ต้องเป็นไซต์ **คนละใบ** กับที่อยู่ตอนนี้ — "ย้ายไปที่เดิม" ไม่ใช่การย้าย
    ⚠️ `repair_done` ไม่อยู่ในลิสต์นี้โดยตั้งใจ: เครื่องที่ส่งซ่อมจากคลัง กลับเข้า
       คลังใบเดิมเป็นเรื่องปกติที่สุด */
-export const MOVE_REQUIRES_NEW_SITE = ['install', 'transfer', 'return'];
+export const MOVE_REQUIRES_NEW_SITE = ['install', 'transfer'];
 
 /* สถานะปลายทางของแต่ละคำสั่ง — **ตารางเดียว** ไม่ให้ route กับจอเดาเอง
    ⚠️ `null` = ไม่แตะแกนนั้น (เช่น `condition` ไม่เปลี่ยน status) */
@@ -79,7 +87,7 @@ export function assetMoveOwnerError(asset, kind, { canEdit = false } = {}) {
   // กับด่านที่ผู้ใช้ "แก้ได้" ไม่ใช่กับคำสั่งที่ไม่มีความหมายในสถานะนี้
   if (kind === 'install' && !inStock) return 'ติดตั้งได้เฉพาะเครื่องที่อยู่ในคลัง';
   if (kind === 'transfer' && !onSite) return 'ย้ายได้เฉพาะเครื่องที่ติดตั้งอยู่';
-  if (kind === 'return' && !onSite) return 'ถอนกลับคลังได้เฉพาะเครื่องที่ติดตั้งอยู่';
+  if (kind === 'return' && !onSite) return 'ถอดออกจากไซต์ได้เฉพาะเครื่องที่ติดตั้งอยู่';
   if (kind === 'repair' && atRepair) return 'เครื่องนี้ส่งซ่อมอยู่แล้ว';
   if (kind === 'repair_done' && !atRepair) return 'ใช้ได้เฉพาะเครื่องที่ส่งซ่อมอยู่';
   if (kind === 'receive') return 'รับเข้าคลังใช้กับเครื่องที่ยังไม่มีในระบบ';
@@ -103,7 +111,12 @@ export function assetMoveError(asset, kind, input = {}, ctx = {}) {
     if (reason.length < 3) return 'ต้องระบุเหตุผล';
   }
 
-  if (MOVE_CHANGES_SITE.includes(kind)) {
+  /* คำสั่งที่ล้างที่อยู่ — ไม่มีปลายทางให้เลือก และ **ห้ามมี** (mig 0344)
+     ⚠️ ส่ง `toSiteId` มาแปลว่าจอกับ API เข้าใจคำสั่งคนละอย่าง ⇒ ตีกลับ ไม่ใช่เมิน */
+  if (MOVE_CLEARS_SITE.includes(kind)) {
+    if (input.toSiteId) return `${MOVE_LABELS[kind]}ไม่ต้องเลือกไซต์ปลายทาง — เครื่องจะกลับไปเป็น "ว่าง"`;
+    if (!asset.siteId && kind === 'return') return 'เครื่องนี้ไม่ได้อยู่ที่ไซต์ไหนอยู่แล้ว';
+  } else if (MOVE_CHANGES_SITE.includes(kind)) {
     const { toSite } = ctx;
     if (!input.toSiteId) return 'ต้องเลือกไซต์ปลายทาง';
     if (!toSite) return 'ไม่พบไซต์ปลายทาง';
@@ -114,10 +127,7 @@ export function assetMoveError(asset, kind, input = {}, ctx = {}) {
 
     /* 🔴 ปลายทางต้องเป็นไซต์ **ประเภทที่ถูก** — trigger ใน DB (mig 0332) จะตีกลับอยู่แล้ว
        แต่ข้อความของ trigger เป็นภาษาของฐานข้อมูล ⇒ ต้องดักที่นี่ให้ได้ข้อความที่คนอ่านรู้เรื่อง */
-    if (MOVE_TO_WAREHOUSE.includes(kind) && !isWarehouseSite(toSite)) {
-      return kind === 'return' ? 'ถอนกลับคลังต้องเลือกไซต์ประเภทคลัง' : 'รับคืนจากซ่อมต้องเลือกคลังปลายทาง';
-    }
-    if (!MOVE_TO_WAREHOUSE.includes(kind) && isWarehouseSite(toSite)) {
+    if (isWarehouseSite(toSite)) {
       return 'ติดตั้ง/ย้ายต้องเลือกไซต์ลูกค้า ไม่ใช่คลัง';
     }
   }
@@ -147,7 +157,11 @@ export function assetMovePatch(asset, kind, input = {}) {
   if (result.condition) patch.condition = result.condition;
   if (kind === 'condition') patch.condition = input.condition;
 
-  if (MOVE_CHANGES_SITE.includes(kind)) {
+  if (MOVE_CLEARS_SITE.includes(kind)) {
+    // เครื่องกลับไปเป็น "ว่าง" = ไม่มีที่อยู่ (mig 0344) — CHECK ของ DB บังคับให้ต้อง null
+    patch.siteId = null;
+    patch.zoneId = null;
+  } else if (MOVE_CHANGES_SITE.includes(kind)) {
     patch.siteId = input.toSiteId;
     /* ⚠️ **ล้างโซนเสมอเมื่อข้ามไซต์** — โซนอยู่ใต้ไซต์ ปล่อยค้างไว้เครื่องจะชี้โซน
        ของไซต์อื่น (trigger ใน mig 0332 ตีกลับให้ แต่ต้องล้างที่นี่ไม่ใช่ให้ล้ม) */
@@ -179,9 +193,13 @@ export function assetMoveRow(asset, kind, input = {}, ctx = {}) {
     fromSiteId: asset.siteId || null,
     fromSiteName: ctx.fromSite?.name || null,
     fromZoneId: asset.zoneId || null,
-    toSiteId: MOVE_CHANGES_SITE.includes(kind) ? (input.toSiteId || null) : (asset.siteId || null),
-    toSiteName: MOVE_CHANGES_SITE.includes(kind) ? (ctx.toSite?.name || null) : (ctx.fromSite?.name || null),
-    toZoneId: MOVE_CHANGES_SITE.includes(kind) ? (input.toZoneId || null) : (asset.zoneId || null),
+    // คำสั่งที่ล้างที่อยู่ ⇒ ปลายทางเป็น null จริง ๆ ไม่ใช่ค้างค่าเดิมไว้ (mig 0344)
+    toSiteId: MOVE_CLEARS_SITE.includes(kind) ? null
+      : MOVE_CHANGES_SITE.includes(kind) ? (input.toSiteId || null) : (asset.siteId || null),
+    toSiteName: MOVE_CLEARS_SITE.includes(kind) ? null
+      : MOVE_CHANGES_SITE.includes(kind) ? (ctx.toSite?.name || null) : (ctx.fromSite?.name || null),
+    toZoneId: MOVE_CLEARS_SITE.includes(kind) ? null
+      : MOVE_CHANGES_SITE.includes(kind) ? (input.toZoneId || null) : (asset.zoneId || null),
     statusBefore: asset.status || null,
     statusAfter: patch.status || asset.status || null,
     conditionBefore: asset.condition || null,

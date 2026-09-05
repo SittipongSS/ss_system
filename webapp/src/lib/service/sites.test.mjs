@@ -219,11 +219,17 @@ test('ฝ่ายโรงงานอื่นแตะธุรกิจบ�
 
 // ── ทะเบียนเครื่อง เฟส A: คลังเป็นไซต์จริง + สองแกน (mig 0332) ────────────
 
-test('isAssetOnSite: เครื่องในคลังกับที่ปลดระวางแล้ว ไม่นับว่าอยู่หน้างาน', () => {
-  assert.equal(isAssetOnSite({ status: 'active' }), true);
-  assert.equal(isAssetOnSite({ status: 'repair' }), true, 'ส่งซ่อมยังผูกกับไซต์อยู่');
+test('isAssetOnSite: ต้องอยู่ไซต์จริง และไม่ใช่ของว่าง/ปลดระวาง', () => {
+  assert.equal(isAssetOnSite({ status: 'active', siteId: 'S1' }), true);
+  assert.equal(isAssetOnSite({ status: 'repair', siteId: 'S1' }), true, 'ส่งซ่อมจากหน้างานยังผูกกับไซต์อยู่');
   assert.equal(isAssetOnSite({ status: 'in_stock' }), false);
-  assert.equal(isAssetOnSite({ status: 'removed' }), false);
+  assert.equal(isAssetOnSite({ status: 'removed', siteId: 'S1' }), false);
+  /* 🐞 UAT 2026-09-06: เครื่องสถานะ "ซ่อม" ที่ยังไม่เคยติดตั้ง (ส่งซ่อมจากของที่ว่างอยู่)
+     ไม่มีไซต์เลย แต่เดิมถูกนับเป็นของหน้างาน ⇒ การ์ดสรุปขึ้น "ที่ไซต์ลูกค้า 1"
+     ทั้งที่ไม่มีเครื่องตัวไหนอยู่ไซต์ · ก่อน mig 0344 `siteId` เป็น NOT NULL
+     จึงไม่มีสภาพนี้ให้เจอ */
+  assert.equal(isAssetOnSite({ status: 'repair' }), false, 'ซ่อมแต่ไม่มีไซต์ = ไม่ได้อยู่หน้างาน');
+  assert.equal(isAssetOnSite({ status: 'active', siteId: null }), false);
 });
 
 /* 🔴 เทสต์ตัวนี้คือด่านที่กันไม่ให้ `in_stock` หายไปเงียบ ๆ ตอนมีคนเพิ่มสถานะใหม่
