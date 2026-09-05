@@ -1,0 +1,19 @@
+/* จอบันทึกหน้างานของใบประเมิน (เฟส 3 · จอ 06)
+   ⚠️ มือถือก่อน — การ์ดเรียงลงล่างอย่างเดียว ไม่มีคอลัมน์ที่ต้องเลื่อนแนวนอน */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* เหตุผลที่เขียนไม่ได้ต้องเป็นตัวหนังสือ ไม่ใช่ช่องจางเงียบ ๆ ทั้งหน้า */
+.gate {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-4);
+  line-height: var(--lh-thai);
+}
