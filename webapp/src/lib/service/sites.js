@@ -6,7 +6,7 @@
 // ไฟล์นี้ไม่แตะ DB — ใช้ได้ทั้ง client (ฟอร์ม/ปฏิทิน) และ server (validate ก่อน insert)
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { addressText } from '@/lib/master/addresses';
-import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow, normalizeAssetSettings } from './assetKinds';
+import { ASSET_KINDS, normalizeAssetSettings } from './assetKinds';
 
 /* ── สถานะเครื่อง = "อยู่ขั้นไหนของวงจร" (mig 0332) ────────────────────────
    ⭐ `in_stock` เพิ่มพร้อมกับการทำคลังเป็น **ไซต์จริง** ⇒ "ถอดจากหน้างาน" ไม่ใช่
@@ -14,10 +14,16 @@ import { ASSET_KINDS, ASSET_KIND_LABELS, assetKindPerUnitRow, normalizeAssetSett
    คือ **ปลดระวาง** ไม่ใช่ "ถอดออกแล้ว" แบบเดิม
    ⚠️ คุมด้วย CHECK ใน DB ด้วย — เพิ่มค่าที่นี่อย่างเดียวไม่พอ ต้องมี migration เสมอ */
 export const ASSET_STATUSES = ['active', 'in_stock', 'repair', 'removed'];
+/* ⭐ **ป้ายสามคำเปลี่ยนตามที่ผู้ใช้เรียกจริง** (มติผู้ใช้ 2026-09-03 · ม็อก machine-add)
+   `อยู่ในคลัง → ว่าง` · `ใช้งาน → ใช้งานอยู่` · `ส่งซ่อม → ซ่อม`
+   ⚠️ เปลี่ยนแค่ **คำบนป้าย** ไม่ใช่ค่า — `status` ในฐานยังเป็น in_stock/active/repair
+     เหมือนเดิม (ค่าพวกนี้อยู่ใน CHECK ของ DB ⇒ เปลี่ยนค่าต้องมี migration)
+   ⚠️ `ว่าง` ไม่ได้แปลว่า "อยู่ในคลัง" อีกแล้ว — ตั้งแต่ mig 0344 มันแปลว่า
+     **ยังไม่มีที่อยู่** (`siteId` เป็น NULL) ไม่ใช่ "อยู่ที่ไซต์ประเภทคลัง" */
 export const ASSET_STATUS_LABELS = {
-  active: 'ใช้งาน',
-  in_stock: 'อยู่ในคลัง',
-  repair: 'ส่งซ่อม',
+  active: 'ใช้งานอยู่',
+  in_stock: 'ว่าง',
+  repair: 'ซ่อม',
   removed: 'ปลดระวาง',
 };
 
@@ -250,14 +256,11 @@ export function normalizeAssetInput(body = {}) {
   // ชนิดอุปกรณ์ (mig 0298) — ทะเบียนอยู่ assetKinds.js ไม่ใช่ CHECK ใน DB
   const kind = body.kind ?? 'diffuser';
   if (!ASSET_KINDS.includes(kind)) return { value: null, error: 'ชนิดอุปกรณ์ไม่ถูกต้อง' };
-  const perUnitRow = assetKindPerUnitRow(kind);
 
   const model = String(body.model ?? '').trim();
   if (model.length > 100) return { value: null, error: 'รุ่นยาวเกิน 100 ตัวอักษร' };
   const serial = String(body.serial ?? '').trim();
   if (serial.length > 100) return { value: null, error: 'Serial ยาวเกิน 100 ตัวอักษร' };
-  // serial เป็นของรายเครื่อง — ชนิดแถวรวม (reed/สบู่/แอลกอฮอล์) ไม่มี serial รายจุด
-  if (serial && !perUnitRow) return { value: null, error: `${ASSET_KIND_LABELS[kind]}เป็นแถวรวมทั้งชุด ไม่มี Serial รายจุด — ใส่รายละเอียดในหมายเหตุแทน` };
 
   const colour = String(body.colour ?? '').trim();
   if (colour.length > 50) return { value: null, error: 'สียาวเกิน 50 ตัวอักษร' };
@@ -276,9 +279,14 @@ export function normalizeAssetInput(body = {}) {
     if (!Number.isFinite(value) || value <= 0) return { value: null, error: `${label2}ต้องเป็นตัวเลขมากกว่า 0` };
     numbers[field] = value;
   }
-  // จำนวนจุดเป็นของชนิดแถวรวมเท่านั้น — diffuser หนึ่งแถวคือหนึ่งเครื่องเสมอ
-  if (perUnitRow && numbers.qty !== null) return { value: null, error: 'เครื่องกระจายกลิ่นนับแถวละเครื่อง — ไม่มีช่องจำนวนจุด' };
-  if (!perUnitRow && numbers.qty === null) return { value: null, error: `ต้องระบุจำนวนจุดของ${ASSET_KIND_LABELS[kind]} (ชนิดนี้เก็บเป็นแถวเดียวทั้งชุด)` };
+  /* 🔄 **"แถวรวมทั้งชุด" ถูกถอดทิ้งทั้งแนวคิด** (มติผู้ใช้ 2026-09-03 · ม็อก machine-add)
+     ของเดิมแยกชนิดเป็นสองหน่วย: diffuser = แถวละเครื่อง (มี serial ห้ามมี qty) ·
+     ที่เหลือ = แถวเดียวทั้งชุด (ต้องมี qty ห้ามมี serial)
+     ⇒ ตอนนี้ **ทุกชนิดนับรายตัวเหมือนกันหมด** หนึ่งแถวคือของจริงหนึ่งชิ้นเสมอ
+       และทุกชนิดได้รหัสของตัวเอง ⇒ ด่าน "ชนิดนี้ไม่มี Serial รายจุด" กับด่าน
+       "ต้องระบุจำนวนจุด" หายไปทั้งคู่
+     ⚠️ `qty` **ยังรับค่าอยู่** สำหรับแถวเก่าที่เคยเก็บเป็นชุด (วันนี้ตารางว่าง แต่
+       ตัวนำเข้าชีตยังส่งมาได้) — แค่ไม่บังคับและไม่ห้ามตามชนิดอีกแล้ว */
 
   const { value: settings, error: settingsError } = normalizeAssetSettings(kind, body.settings);
   if (settingsError) return { value: null, error: settingsError };
@@ -309,6 +317,10 @@ export function normalizeAssetInput(body = {}) {
       spot: spot || null,
       // ⚠️ โซนตรวจความเป็นเจ้าของ (อยู่ไซต์เดียวกัน) ที่ route — ที่นี่ส่งผ่านอย่างเดียว
       zoneId: body.zoneId || null,
+      // รุ่นที่อ้างทะเบียน (mig 0344) — `model` ข้างบนคือ **สำเนาชื่อ** ที่จอใช้อ่าน
+      // ⚠️ ส่งผ่านอย่างเดียวเหมือน zoneId · ด่าน "รุ่นมีอยู่จริงและเปิดใช้งาน" อยู่ที่
+      //    `machineAddError` ซึ่งมีทะเบียนรุ่นอยู่ในมือ
+      modelId: body.modelId || null,
       qty: numbers.qty,
       settings,
       productId: body.productId || null,

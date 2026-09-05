@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AirVent, Archive, Boxes, Building2, LayoutGrid, MapPin, Navigation, Plus, Search, Table2, Wrench } from "lucide-react";
-import AssetReceiveModal from "@/components/service/AssetReceiveModal";
+import MachineAddModal from "@/components/service/MachineAddModal";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -34,7 +34,7 @@ import {
 } from "@/lib/service/sites";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { fmtDate, naText } from "@/lib/format";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
 import styles from "./page.module.css";
 
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -46,9 +46,11 @@ export default function ServiceAssetsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const [receiving, setReceiving] = useState(false);
-  const [receiveBusy, setReceiveBusy] = useState(false);
-  const [warehouses, setWarehouses] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [models, setModels] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [zones, setZones] = useState([]);
   const [toast, setToast] = useState(null);
 
   const role = useRole();
@@ -92,43 +94,61 @@ export default function ServiceAssetsPage() {
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
 
-  /* คลังโหลดตอนจะรับเครื่องเท่านั้น — ทะเบียนเครื่องไม่ต้องรู้จักคลังจนกว่าจะมีคนกด
-     ⚠️ ต้องขอ `kind=warehouse` เพราะค่าตั้งต้นของ API ตัดคลังออกจากทะเบียนไซต์ */
+  /* ทะเบียนรุ่นกับรายการไซต์โหลดตอนจะเพิ่มเครื่องเท่านั้น — ทะเบียนเครื่องไม่ต้อง
+     รู้จักสองอย่างนี้จนกว่าจะมีคนกด
+     ⚠️ **ไม่ต้องขอ `kind=warehouse` อีกแล้ว** (mig 0344) — เครื่องที่ยังไม่ติดตั้ง
+        ไม่มีที่อยู่เลย ไม่ได้จอดไว้ที่คลัง ⇒ ไซต์ที่ต้องเลือกคือ **ไซต์ลูกค้า**
+        ซึ่งเป็นค่าตั้งต้นของ API อยู่แล้ว */
   useEffect(() => {
-    if (!receiving || warehouses.length) return;
+    if (!adding || models.length) return;
     (async () => {
       try {
-        const res = await apiFetch("/api/service/sites?kind=warehouse");
-        const rows = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(rows?.error || "โหลดรายการคลังไม่สำเร็จ");
-        setWarehouses(Array.isArray(rows) ? rows : []);
+        const [modelData, siteRows] = await Promise.all([
+          apiJson("/api/service/asset-models", { fallbackError: "โหลดทะเบียนรุ่นไม่สำเร็จ" }),
+          apiJson("/api/service/sites", { fallbackError: "โหลดรายการไซต์ไม่สำเร็จ" }),
+        ]);
+        setModels(Array.isArray(modelData?.models) ? modelData.models : []);
+        setSites(Array.isArray(siteRows) ? siteRows : []);
       } catch (e) {
         setToast({ kind: "error", msg: e.message });
       }
     })();
-  }, [receiving, warehouses.length]);
+  }, [adding, models.length]);
 
-  const runReceive = async (input) => {
-    setReceiveBusy(true);
+  /* โซนโหลดตามไซต์ที่เลือก — โหลดโซนของทุกไซต์ล่วงหน้าคือการอ่านทั้งตารางเพื่อใช้ชุดเดียว
+     ⚠️ ล้างเป็น [] ก่อนเสมอ ไม่งั้นโซนของไซต์ก่อนหน้าค้างอยู่ให้เลือกผิดไซต์ */
+  const loadZones = useCallback(async (siteId) => {
+    setZones([]);
+    if (!siteId) return;
     try {
-      const res = await apiFetch(`/api/service/sites/${input.siteId}/assets/bulk`, {
+      const rows = await apiJson(`/api/service/sites/${siteId}/zones`, {
+        fallbackError: "โหลดโซนไม่สำเร็จ",
+      });
+      setZones(Array.isArray(rows) ? rows.filter((z) => z.isActive !== false) : []);
+    } catch {
+      // โซนเป็นช่องไม่บังคับ — โหลดไม่ขึ้นก็ยังเพิ่มเครื่องได้ ไม่ต้องรบกวนด้วย toast
+    }
+  }, []);
+
+  const runAdd = async (input) => {
+    setAddBusy(true);
+    try {
+      const res = await apiFetch("/api/service/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "รับเครื่องเข้าคลังไม่สำเร็จ");
-      setReceiving(false);
-      setToast({ kind: "success", msg: `รับเครื่องเข้าคลัง ${body.created} ตัวแล้ว` });
+      if (!res.ok) throw new Error(body?.error || "เพิ่มเครื่องไม่สำเร็จ");
+      /* ⚠️ **ไม่ปิดโมดัล** — โมดัลต้องโชว์รหัสที่เพิ่งได้ แล้วให้กด "เพิ่มอีกตัว"
+         (ม็อก: กดรัวได้ตอนรับของมาล็อตเดียวกัน) */
+      setToast({ kind: "success", msg: `เพิ่มเครื่อง ${body.code} แล้ว` });
       await load({ background: true });
+      return body;
     } finally {
-      setReceiveBusy(false);
+      setAddBusy(false);
     }
   };
-
-  /* รหัสที่ถูกใช้ไปแล้ว — โมดัลใช้เดาเลขถัดไปและกันรหัสซ้ำตั้งแต่ก่อนกด
-     ⚠️ เป็นชุดเดียวกับที่ API เอาไปตรวจซ้ำ — จอเดาไว้ก่อนเพื่อบอกเร็ว ไม่ใช่แทนด่าน */
-  const knownSerials = useMemo(() => assets.map((a) => a.serial).filter(Boolean), [assets]);
 
   // ── ตัวเลขสรุป ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -157,7 +177,8 @@ export default function ServiceAssetsPage() {
     /* "อยู่ที่ไหน" อ่านจาก `siteKind` ของไซต์ที่เครื่องอยู่ ไม่ใช่เดาจากลูกค้า —
        บริษัทตัวเองมีทั้งไซต์ลูกค้าจริงและคลัง (mig 0332) */
     if (locationFilter.length) {
-      const loc = a.siteKind === "warehouse" ? "stock" : "site";
+      // ยังไม่ติดตั้ง = ไม่มีไซต์ (mig 0344) · คลังเก่ายังนับเป็น "ยังไม่ติดตั้ง" เหมือนกัน
+      const loc = (!a.siteId || a.siteKind === "warehouse") ? "stock" : "site";
       if (!locationFilter.includes(loc)) return false;
     }
     if (modelFilter.length && !modelFilter.includes(a.model)) return false;
@@ -166,7 +187,9 @@ export default function ServiceAssetsPage() {
     if (customerFilter.length && !customerFilter.includes(a.customerId)) return false;
     if (q) {
       // ⭐ รหัสเครื่องเป็นตัวค้นหลัก — ช่องค้นของทะเบียนไซต์ไม่กิน serial เลย
-      const hit = [a.serial, a.label, a.model, a.siteName, a.customerName, a.siteCode]
+      // ⭐ ตาเห็นบนแถว = ต้องค้นเจอ — `code` เป็นรหัสที่ระบบออกให้ (mig 0344)
+      //    `serial` ยังอยู่เพราะเป็นเบอร์จากโรงงานที่คนจดมาจากตัวเครื่อง
+      const hit = [a.code, a.serial, a.label, a.model, a.colour, a.siteName, a.customerName, a.siteCode]
         .filter(Boolean).some((f) => String(f).toLocaleLowerCase("th").includes(q));
       if (!hit) return false;
     }
@@ -174,7 +197,9 @@ export default function ServiceAssetsPage() {
   }), [assets, locationFilter, modelFilter, statusFilter, conditionFilter, customerFilter, q]);
 
   const sort = useSortableTable(filtered, {
-    serial: (a) => a.serial || a.label || "",
+    serial: (a) => a.code || a.serial || a.label || "",
+    colour: (a) => a.colour || "",
+    receivedAt: (a) => a.receivedAt || null,
     model: (a) => a.model || "",
     kind: (a) => ASSET_KIND_LABELS[a.kind] || a.kind || "",
     site: (a) => a.siteName || "",
@@ -195,14 +220,23 @@ export default function ServiceAssetsPage() {
     setConditionFilter([]); setCustomerFilter([]);
   };
 
-  const locationCell = (asset) => (asset.siteKind === "warehouse" ? (
-    <span className={styles.stockLoc}><Archive size={14} aria-hidden="true" />{naText(asset.siteName)}</span>
-  ) : (
-    <>
-      <Link href={`/service/sites/${asset.siteId}`} className={styles.siteLink}>{naText(asset.siteName)}</Link>
-      <span className={styles.sub}>{naText(asset.customerName)}</span>
-    </>
-  ));
+  /* ⚠️ **สามสภาพ ไม่ใช่สอง** (mig 0344) — เครื่องที่ยังไม่ได้ติดตั้ง **ไม่มีไซต์เลย**
+     ไม่ใช่ "อยู่ที่ไซต์ประเภทคลัง" ⇒ ปล่อยให้ตกไปกิ่งไซต์ลูกค้าจะได้ลิงก์ที่ชี้ไป
+     `/service/sites/null` และชื่อลูกค้าเป็นขีดสองบรรทัดซ้อนกัน */
+  const locationCell = (asset) => {
+    if (!asset.siteId) {
+      return <span className={styles.stockLoc}><Archive size={14} aria-hidden="true" />ยังไม่ได้ติดตั้ง</span>;
+    }
+    if (asset.siteKind === "warehouse") {
+      return <span className={styles.stockLoc}><Archive size={14} aria-hidden="true" />{naText(asset.siteName)}</span>;
+    }
+    return (
+      <>
+        <Link href={`/service/sites/${asset.siteId}`} className={styles.siteLink}>{naText(asset.siteName)}</Link>
+        <span className={styles.sub}>{naText(asset.customerName)}</span>
+      </>
+    );
+  };
 
   const statusCell = (asset) => (
     <span className={styles.statePair}>
@@ -230,7 +264,7 @@ export default function ServiceAssetsPage() {
             key: "location", label: "อยู่ที่ไหน", icon: MapPin,
             options: [
               { value: "site", label: "ที่ไซต์ลูกค้า" },
-              { value: "stock", label: "อยู่ในคลัง" },
+              { value: "stock", label: "ยังไม่ได้ติดตั้ง" },
             ],
             selected: locationFilter, onChange: setLocationFilter,
           },
@@ -266,15 +300,17 @@ export default function ServiceAssetsPage() {
     <Workspace
       icon={<AirVent size={20} aria-hidden="true" />}
       title="ทะเบียนเครื่อง"
-      subtitle="เครื่องทุกตัวของฝ่ายบริการ — ที่หน้างานลูกค้าและที่อยู่ในคลัง"
+      subtitle="เครื่องทุกตัวของฝ่ายบริการ — ที่หน้างานลูกค้าและที่ยังไม่ได้ติดตั้ง"
       headerRight={(
         <>
           <span className="ui-badge">{assets.length} เครื่อง</span>
-          {/* ⭐ จุดเกิดของเครื่อง — ไม่มีสิทธิ์แก้ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไม่ได้) */}
+          {/* ⭐ จุดเกิดของเครื่อง — ไม่มีสิทธิ์แก้ = ไม่โชว์ปุ่ม (ไม่ใช่โชว์แล้วกดไม่ได้)
+              🔄 เดิมเขียนว่า "รับเครื่องเข้าคลัง" ซึ่งผู้ใช้ทักว่าเข้าใจผิด — การขึ้นทะเบียน
+                 คือการบอกว่าบริษัทได้เครื่องมา ไม่ใช่การย้ายของเข้าสถานที่ */}
           {canEdit && (
-            <Button tone="accent" onClick={() => setReceiving(true)}
+            <Button tone="accent" onClick={() => setAdding(true)}
               icon={<Plus size={15} aria-hidden="true" />}>
-              รับเครื่องเข้าคลัง
+              เพิ่มเครื่อง
             </Button>
           )}
         </>
@@ -285,7 +321,7 @@ export default function ServiceAssetsPage() {
           items={[
             { label: "ทั้งหมด", value: stats.total },
             { label: "ที่ไซต์ลูกค้า", value: stats.onSite, tone: "success" },
-            { label: "อยู่ในคลัง", value: stats.inStock },
+            { label: "ว่าง", value: stats.inStock },
             { label: "สภาพชำรุด", value: stats.broken, tone: stats.broken ? "danger" : undefined },
           ]}
         />
@@ -298,7 +334,7 @@ export default function ServiceAssetsPage() {
         loading ? <SkeletonRows rows={6} /> : null
       ) : assets.length === 0 ? (
         <EmptyState icon={AirVent}>
-          ยังไม่มีเครื่องในระบบ — เครื่องเกิดจากการรับเข้าคลัง หรือนำเข้าทะเบียนเก่า
+          ยังไม่มีเครื่องในระบบ — กด “เพิ่มเครื่อง” เพื่อขึ้นทะเบียนเครื่องที่บริษัทได้รับมา
         </EmptyState>
       ) : sort.sorted.length === 0 ? (
         /* ⚠️ ค้นไม่เจอ ≠ ไม่มีเครื่อง — ตารางว่างโดยไม่มีคำอธิบายอ่านเหมือนข้อมูลหาย */
@@ -311,14 +347,14 @@ export default function ServiceAssetsPage() {
             <Link key={asset.id} href={`/service/assets/${asset.id}`} className={`${styles.card} clickable-row p-4 flex-col gap-2`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className={styles.cardCode}>{naText(asset.serial || asset.label)}</div>
+                  <div className={styles.cardCode}>{naText(asset.code || asset.serial || asset.label)}</div>
                   <div className={styles.sub}>{naText(asset.model)} · {ASSET_KIND_LABELS[asset.kind] || asset.kind}</div>
                 </div>
                 {statusCell(asset)}
               </div>
               <div className={styles.cardLoc}>{locationCell(asset)}</div>
               <div className={styles.cardFoot}>
-                <span>{asset.installedAt ? `ติดตั้ง ${fmtDate(asset.installedAt)}` : "ยังไม่ได้ติดตั้ง"}</span>
+                <span>{asset.receivedAt ? `รับเข้า ${fmtDate(asset.receivedAt)}` : "ไม่ระบุวันรับเข้า"}</span>
                 <span>{naText(asset.colour)}</span>
               </div>
             </Link>
@@ -332,12 +368,15 @@ export default function ServiceAssetsPage() {
             <thead>
               <tr>
                 <SortTh label="รหัสเครื่อง" sortKey="serial" sort={sort} />
-                <SortTh label="รุ่น / สี" sortKey="model" sort={sort} />
+                <SortTh label="รุ่น" sortKey="model" sort={sort} />
+                {/* ⭐ สี กับ วันที่รับเข้า มีคอลัมน์ในฐานมาตั้งแต่ mig 0332
+                    แต่ทะเบียนไม่เคยเอามาแสดง — เพิ่มสองคอลัมน์นี้ไม่ต้องมี migration */}
+                <SortTh label="สี" sortKey="colour" sort={sort} />
                 <SortTh label="ชนิด" sortKey="kind" sort={sort} />
+                <SortTh label="รับเข้าเมื่อ" sortKey="receivedAt" sort={sort} />
+                <SortTh label="สถานะ / สภาพ" sortKey="status" sort={sort} />
                 <SortTh label="อยู่ที่" sortKey="site" sort={sort} />
                 <th>โซน / จุดติดตั้ง</th>
-                <SortTh label="ติดตั้งเมื่อ" sortKey="installedAt" sort={sort} />
-                <SortTh label="สถานะ / สภาพ" sortKey="status" sort={sort} />
               </tr>
             </thead>
             <tbody>
@@ -345,18 +384,22 @@ export default function ServiceAssetsPage() {
                 <tr key={asset.id}>
                   <td>
                     {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ */}
+                    {/* รหัสบน · ชื่อล่าง — ทรงเดียวกับทุกตารางในระบบ
+                        ⚠️ ตัวตนของเครื่องคือ `code` ที่ระบบออกให้ · ใบเก่าที่ยังไม่มี
+                           รหัสรูปใหม่ตกไปที่ serial แล้ว label ตามลำดับ */}
                     <Link href={`/service/assets/${asset.id}`} className={`${styles.assetLink} mono`}>
-                      {naText(asset.serial || asset.label)}
+                      {naText(asset.code || asset.serial || asset.label)}
                     </Link>
-                    {asset.serial && asset.label !== asset.serial
+                    {asset.label && asset.label !== (asset.code || asset.serial)
                       ? <span className={styles.sub}>{asset.label}</span> : null}
                   </td>
-                  <td>{naText(asset.model)}<span className={styles.sub}>{naText(asset.colour)}</span></td>
+                  <td>{naText(asset.model)}</td>
+                  <td>{naText(asset.colour)}</td>
                   <td>{ASSET_KIND_LABELS[asset.kind] || naText(asset.kind)}</td>
+                  <td>{asset.receivedAt ? fmtDate(asset.receivedAt) : naText(null)}</td>
+                  <td>{statusCell(asset)}</td>
                   <td>{locationCell(asset)}</td>
                   <td>{naText(asset.spot)}</td>
-                  <td>{asset.installedAt ? fmtDate(asset.installedAt) : naText(null)}</td>
-                  <td>{statusCell(asset)}</td>
                 </tr>
               ))}
             </tbody>
@@ -364,13 +407,16 @@ export default function ServiceAssetsPage() {
         </TableShell>
       )}
 
-      <AssetReceiveModal
-        open={receiving}
-        warehouses={warehouses}
-        existingSerials={knownSerials}
-        busy={receiveBusy}
-        onClose={() => !receiveBusy && setReceiving(false)}
-        onSubmit={runReceive}
+      <MachineAddModal
+        open={adding}
+        models={models}
+        sites={sites}
+        zones={zones}
+        canEdit={canEdit}
+        busy={addBusy}
+        onClose={() => !addBusy && setAdding(false)}
+        onSiteChange={loadZones}
+        onSubmit={runAdd}
       />
       <Toast toast={toast} onClose={() => setToast(null)} />
 
