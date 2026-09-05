@@ -1085,9 +1085,12 @@ export default function DealOverviewPage() {
             />
           )}
 
+          {/* minmax(0, 1fr) ไม่ใช่ `1fr` เปล่า — min track ของ `1fr` คือ auto ⇒ ตาราง
+              ที่ nowrap ดันรางให้กว้างเกินกล่องได้ · วันนี้ลูกข้างล่างมี minWidth: 0
+              กันไว้อีกชั้นแล้ว แต่ชั้นนั้นเป็นของกล่องลูก ถอดเมื่อไรรางก็โล่ง */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "1fr",
+            gridTemplateColumns: "minmax(0, 1fr)",
             gap: 20,
             alignItems: "start",
           }}>
