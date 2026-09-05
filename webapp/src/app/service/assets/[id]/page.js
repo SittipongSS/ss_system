@@ -26,7 +26,7 @@ import {
 } from "@/lib/service/sites";
 import { MOVE_LABELS, assetMoveOwnerError } from "@/lib/service/assetMoves";
 import { assetTimeline, settingOutlier, settingText } from "@/lib/service/assetHistory";
-import { ASSET_KIND_LABELS, assetKindPerUnitRow } from "@/lib/service/assetKinds";
+import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { refillStatus } from "@/lib/service/refill";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
 import { isClosedVisit } from "@/lib/service/visitStatus";
@@ -196,7 +196,6 @@ export default function ServiceAssetPage({ params }) {
   }
 
   const { site, zone } = data;
-  const perUnit = assetKindPerUnitRow(asset.kind);
 
   return (
     <Workspace hideHeader back={back}>
@@ -283,7 +282,9 @@ export default function ServiceAssetPage({ params }) {
                 { label: "ชนิด", value: ASSET_KIND_LABELS[asset.kind] || asset.kind },
                 { label: "รุ่น", value: asset.model },
                 { label: "สี", value: asset.colour },
-                { label: perUnit ? "Serial" : "จำนวนจุด", value: perUnit ? asset.serial : (asset.qty != null ? fmtNumber(asset.qty) : null) },
+                /* 🔄 เคยสลับป้ายเป็น "จำนวนจุด" ให้ชนิดแถวรวม — ถอดแล้ว
+                   (ทุกชนิดนับรายตัว) · Serial = เบอร์จากโรงงาน คนละช่องกับรหัสเครื่อง */
+                { label: "Serial (เบอร์จากโรงงาน)", value: asset.serial },
                 { label: "ติดตั้งเมื่อ", value: asset.installedAt },
                 { label: "ถอดออกเมื่อ", value: asset.removedAt },
               ]}

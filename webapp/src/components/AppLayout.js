@@ -606,6 +606,14 @@ export default function AppLayout({ children }) {
            ชื่อ "จัดทีม" แล้วเข้าไปเจอรายชื่อเปล่า ๆ ที่กดอะไรไม่ได้สักปุ่มและไม่มีอะไรบอกเหตุ
            — ผิดกฎ "ไม่มีสิทธิ์ = ไม่โชว์" ของระบบ */
         { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'TS'), utility: true, match: (p) => p.startsWith('/service/teams') },
+        /* ⭐ ทะเบียนรุ่นเครื่อง (mig 0344) — **ตั้งค่าของโมดูลบริการ ไม่ใช่ /settings**
+           🔴 เหตุที่ไม่เอาไปไว้ใต้ `/settings`: รายการที่นั่นคุมด้วย `master:manage`
+             ซึ่ง **ให้เป็นสิทธิ์รายคนไม่ได้** ⇒ ฝ่าย TS ทั้งฝ่ายเข้าไม่ได้ ต้องรอแอดมิน
+             เพิ่มรุ่นให้ทุกครั้ง · และหน้าใหม่ใต้ /settings ต้องเติม lockedOut ของ proxy
+             ไม่งั้นทุกคนที่ไม่ใช่แอดมินโดนเด้งกลับเงียบ ๆ (ทดสอบด้วยบัญชีแอดมินไม่มีทางเห็น)
+           ⇒ วางใต้ `/service` ซึ่ง proxy เปิดอยู่แล้ว และด่านเป็น `canEditService` ตรง ๆ
+           ⚠️ `utility: true` เหมือน "จัดทีม" — ไม่ใช่งานรายวัน แต่ต้องหาเจอเมื่อต้องใช้ */
+        { href: '/service/models', name: 'ทะเบียนรุ่นเครื่อง', shortName: 'รุ่นเครื่อง', icon: Boxes, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/models') },
       ],
     },
     {

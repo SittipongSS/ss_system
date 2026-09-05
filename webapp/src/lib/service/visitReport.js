@@ -15,7 +15,7 @@
 import { VISIT_KIND_LABELS } from './rounds';
 import { VISIT_STATUS_LABELS } from './visitStatus';
 import { ASSET_OUTCOME_LABELS } from './visitAssets';
-import { assetKindPerUnitRow, ASSET_KIND_LABELS } from './assetKinds';
+import { ASSET_KIND_LABELS } from './assetKinds';
 import { accessWindowText } from './sites';
 
 /* ป้าย "ต้องดู" — เรียงตามที่หัวหน้าต้องรีบอ่านก่อน
@@ -121,7 +121,6 @@ export function buildVisitReport({
         asset.model,
         asset.colour ? `(${asset.colour})` : null,
         asset.serial,
-        !assetKindPerUnitRow(asset.kind) && asset.qty ? `${asset.qty} จุด` : null,
         settings.workSec && settings.pauseSec ? `${settings.workSec}/${settings.pauseSec}` : null,
         settings.grade || null,
       ].filter(Boolean).join(' · ');
