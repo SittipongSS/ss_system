@@ -9,6 +9,7 @@ import {
 } from '@/lib/sales/contracts';
 import { buildContractHTML } from '@/lib/sales/contractDocument';
 import { contractTemplate, hasContractTemplate, missingContractFields, MISSING_TEMPLATE_NOTE } from '@/lib/sales/contractTemplates';
+import { loadContractQuotation } from '@/lib/sales/contractQuotationSource';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,11 +35,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ⚠️ ใบเสนอราคาต้องยัง "อนุมัติอยู่" ณ วินาทีที่ออกสัญญา ไม่ใช่แค่ตอนสร้างร่าง —
   //    ใบที่ถูกถอนอนุมัติ/แก้หลังอนุมัติระหว่างนั้นต้องไม่กลายเป็นสัญญาเงียบ ๆ
+  let quote = null;
   if (contract.quotationId) {
-    const { data: quote, error: quoteError } = await supabase
-      .from('quotations').select('id, "quoteNumber", status, "approvalStatus"')
-      .eq('id', contract.quotationId).maybeSingle();
+    /* ⚠️ **ดึงของที่แม่แบบต้องใช้มาด้วย ไม่ใช่แค่ช่องที่ด่านนี้ตรวจ** — สัญญาบริการ
+       พิมพ์ตารางใบเสนอราคา (ข้อ 2) และงวดชำระ (ข้อ 3) จากใบนี้โดยตรง
+       🐞 เดิม select แค่ 4 ช่องที่ด่านใช้ แล้วส่งต่อให้ `buildContractHTML` เฉพาะ
+          `quoteNumber` ⇒ บนกระดาษจริง **ช่องค่าบริการว่างและไม่มีบรรทัดงวดเลย**
+          ทั้งที่ฟังก์ชันประกอบถูกต้อง — เทสต์ที่ป้อนใบเต็มเข้าไปเองมองไม่เห็นรูนี้
+       ⇒ ตัวโหลดอยู่ที่ `contractQuotationSource` ตัวเดียว ใช้ร่วมกับเส้นทางเปิดเอกสาร
+          ร่าง ไม่งั้นร่างกับฉบับจริงพิมพ์คนละเนื้อ */
+    const { quotation: row, error: quoteError } = await loadContractQuotation(supabase, contract.quotationId);
     if (quoteError) return fail(quoteError.message, 500);
+    quote = row;
     if (!quote || quote.approvalStatus !== 'approved' || ['cancelled', 'rejected'].includes(quote.status)) {
       return fail('ใบเสนอราคาที่อ้างถึงไม่ได้อยู่ในสถานะอนุมัติแล้ว — ตรวจใบเสนอราคาก่อนออกสัญญา', 409);
     }
@@ -85,7 +93,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      แพตเทิร์นเดียวกับฉบับตรึงของใบเสนอราคา */
   const html = buildContractHTML(issued, {
     company,
-    quotation: contract.quotationId ? { quoteNumber: issued.metadata?.quoteNumber } : null,
+    /* ⚠️ ส่ง **แถวจริง** ไม่ใช่แค่เลขที่ — แม่แบบสัญญาบริการอ่าน `subtotal` กับ
+       `paymentPlan` ไปทำตารางข้อ 2 และงวดข้อ 3 · เลขที่ยังเผื่อ metadata ไว้เหมือนเดิม
+       เพราะใบเก่าบางใบเก็บเลขที่ไว้ที่นั่นก่อนมีคอลัมน์ */
+    quotation: contract.quotationId
+      ? { ...(quote || {}), quoteNumber: quote?.quoteNumber || issued.metadata?.quoteNumber }
+      : null,
   });
 
   const { data, error } = await supabase

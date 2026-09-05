@@ -13,31 +13,9 @@
 // แล้ว การโยน error ตรงนั้นจะทำให้ action ที่สำเร็จแล้วตอบ 500
 
 import { fmtDate } from '@/lib/format';
-import { requestDeliversRows } from '@/lib/master/requestTypes';
+import submitScope from '@/lib/requests/submitScope';
 
 const clip = (s, n = 1000) => String(s ?? '').trim().slice(0, n) || null;
-
-/**
- * "ส่งอะไรไป" ของบรรทัดแรกในเธรด — **ไม่ใช่จำนวนบรรทัดเสมอไป**
- *
- * 🐞 เดิมเขียน `${items.length} รายการ` ตายตัว ⇒ หัวข้อที่ **ฝ่ายปลายทางเป็นคนสร้าง
- * แถวตอนส่งงาน** (พัฒนากลิ่น — ดู `requestDeliversRows`) ได้บรรทัดแรกของเธรดว่า
- * "ส่งเคสถึงฝ่าย RD — 0 รายการ" ทุกใบ ซึ่งอ่านเหมือนข้อมูลหาย ไม่ใช่ชนิดที่ยังไม่มีแถว
- * ตั้งแต่แรก (โรคเดียวกับ "รายการ 0 · ตอบแล้ว 0/0" ที่หัวใบเคยเป็น)
- *
- * ⇒ หัวข้อพวกนั้นเล่าด้วยของที่ผู้ขอส่งมาจริง คือ **ก้อนบรีฟ** · ไม่มีบรีฟก็ไม่ต้องมีเลข
- *
- * ⚠️ อาการเดียวกันกับ **ประเมินพื้นที่** (mig 0314) — ใบนั้นไม่มี `dept_request_items`
- * เลยตั้งแต่ออกแบบ เนื้ออยู่ที่ `service_survey_zones` ⇒ ต้องนับพื้นที่ ไม่ใช่ "รายการ"
- */
-function submitScope(ask) {
-  const zones = (ask?.surveyZones || []).length;
-  if (zones) return `${zones} พื้นที่`;
-  const items = (ask?.items || []).length;
-  if (!requestDeliversRows(ask?.kind)) return `${items} รายการ`;
-  const briefs = (ask?.briefs || []).length;
-  return briefs ? `บรีฟ ${briefs} ก้อน` : 'รายละเอียดอยู่ในใบ';
-}
 
 // ── เคสขอราคาวัสดุ (PM-/RM-) ─────────────────────────────────────────────
 // ชุด kind ต้องตรงกับ UPDATE_KINDS.dept_request ใน lib/master/updateTypes.js
