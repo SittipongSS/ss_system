@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Plus } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
+import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -116,27 +117,29 @@ export default function MachineAddModal({
           <p className={styles.hint}>ขึ้นทะเบียนเครื่องที่บริษัทได้รับมา — หนึ่งครั้งต่อหนึ่งเครื่อง</p>
 
           {models.length === 0 ? (
-            /* ⚠️ ทางตันต้องบอกทางออก ไม่ใช่แค่บอกว่าว่าง — ทะเบียนรุ่นอยู่คนละหน้า */
+            /* ⚠️ ทางตันต้องบอกทางออก ไม่ใช่แค่บอกว่าว่าง — ทะเบียนรุ่นอยู่คนละแท็บ */
             <AlertBanner tone="warning">
-              ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นและสีของแต่ละรุ่นที่หน้าตั้งค่าของระบบบริการก่อน
+              ยังไม่มีรุ่นในทะเบียน — เพิ่มรุ่นและสีของแต่ละรุ่นที่แท็บ “รุ่นเครื่อง” ก่อน
             </AlertBanner>
           ) : (
-            <>
+            /* ⚠️ **`.form-grid` คือตัวจัดระยะระหว่างช่องของทั้งระบบ** — `.form-field`
+               ไม่มี margin ของตัวเอง และ `.drawer-body` เป็น block ⇒ วางเรียงเปล่า ๆ
+               ช่องจะติดกันหมดจนอ่านไม่ออกว่าป้ายไหนคุมคอนโทรลไหน
+               🪤 `.two` ที่โมดัลเก่าใช้ **ไม่มี selector จริงใน globals.css** (คลาสผี
+                  โรคเดียวกับ `.form-hint`/`.req`) — อย่าลอกไปใช้ต่อ */
+            <div className="form-grid">
               <label className="form-field">
                 <span>ชนิด <em className={styles.req}>ต้องระบุ</em></span>
-                {/* ตัวเลือกน้อย = เรียงให้เห็นทั้งหมด ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรลของระบบ) */}
-                <div className={styles.picks}>
-                  {assetKindOptions().map((k) => (
-                    <Button
-                      key={k.value} size="sm"
-                      tone={form.kind === k.value ? "accent" : "neutral"}
-                      variant={form.kind === k.value ? "filled" : "outline"}
-                      onClick={() => pickKind(k.value)}
-                    >
-                      {k.label}
-                    </Button>
-                  ))}
-                </div>
+                {/* ⭐ ตัวเลือกน้อย = เรียงให้เห็นทั้งหมด ไม่ใช่ดรอปดาวน์ (กติกาคอนโทรลของระบบ)
+                    🐞 เคยประกอบเองด้วย `<Button tone="accent">` — `.btn-accent` มี
+                       `min-width: 104px` เพราะมันคือ **ปุ่มหลักของหน้า** ไม่ใช่ชิปเลือก
+                       ⇒ ชิปกระโดดกว้างตอนถูกเลือกและทั้งแถวขยับ (เจอตอนตรวจ 2026-09-06) */}
+                <ChoiceChips
+                  value={form.kind}
+                  onChange={pickKind}
+                  options={assetKindOptions()}
+                  ariaLabel="ชนิดเครื่อง"
+                />
               </label>
 
               <label className="form-field">
@@ -146,18 +149,12 @@ export default function MachineAddModal({
                     ยังไม่มีรุ่นของ{ASSET_KIND_LABELS[form.kind]}ในทะเบียน — เพิ่มที่หน้าตั้งค่าก่อน
                   </small>
                 ) : (
-                  <div className={styles.picks}>
-                    {kindModels.map((m) => (
-                      <Button
-                        key={m.value} size="sm"
-                        tone={form.modelId === m.value ? "accent" : "neutral"}
-                        variant={form.modelId === m.value ? "filled" : "outline"}
-                        onClick={() => pickModel(m.value)}
-                      >
-                        {m.label}
-                      </Button>
-                    ))}
-                  </div>
+                  <ChoiceChips
+                    value={form.modelId}
+                    onChange={pickModel}
+                    options={kindModels}
+                    ariaLabel="รุ่นเครื่อง"
+                  />
                 )}
                 <small className={styles.hintSm}>เฉพาะรุ่นของชนิดที่เลือก — มาจากทะเบียนรุ่น</small>
               </label>
@@ -166,18 +163,12 @@ export default function MachineAddModal({
               {colours.length > 0 && (
                 <label className="form-field">
                   <span>สี <em className={styles.req}>ต้องระบุ</em></span>
-                  <div className={styles.picks}>
-                    {colours.map((c) => (
-                      <Button
-                        key={c} size="sm"
-                        tone={form.colour === c ? "accent" : "neutral"}
-                        variant={form.colour === c ? "filled" : "outline"}
-                        onClick={() => patch({ colour: c })}
-                      >
-                        {c}
-                      </Button>
-                    ))}
-                  </div>
+                  <ChoiceChips
+                    value={form.colour}
+                    onChange={(v) => patch({ colour: v })}
+                    options={colours.map((c) => ({ value: c, label: c }))}
+                    ariaLabel="สีของเครื่อง"
+                  />
                 </label>
               )}
 
@@ -267,7 +258,7 @@ export default function MachineAddModal({
                 <span>หมายเหตุ</span>
                 <Textarea value={form.note || ""} onChange={(e) => patch({ note: e.target.value })} rows={2} />
               </label>
-            </>
+            </div>
           )}
 
           {error && <AlertBanner tone="danger">{error}</AlertBanner>}

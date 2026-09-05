@@ -32,7 +32,9 @@
   align-items: center;
 }
 
-.colourAdd > :first-child { flex: 1 1 auto; }
+.colourAdd > :first-child { flex: 1 1 auto; min-width: 0; }
+/* ⚠️ ปุ่มต้องไม่ถูกบีบจนคำตัดสองบรรทัด — ช่องพิมพ์เป็นตัวยืด ปุ่มเป็นตัวคงที่ */
+.colourAdd > :last-child { flex: none; white-space: nowrap; }
 
 .chips {
   display: flex;
