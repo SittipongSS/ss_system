@@ -598,7 +598,7 @@ export default function AppLayout({ children }) {
            ที่เปิดหาไซต์กับคนที่เปิดหาเครื่องคือคนเดียวกัน และสองหน้านี้ลิงก์หากันตลอด
            ⚠️ `match` ต้องครอบหน้าเครื่องรายตัวด้วย — URL ย้ายออกมาจากใต้ไซต์แล้ว
               ถ้าไม่ครอบ เปิดหน้าเครื่องแล้วจะไม่มีเมนูไหนไฮไลต์เลย */
-        { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') },
+        { href: '/service/assets', name: 'ทะเบียนเครื่อง', icon: AirVent, cap: 'service:view', visible: canViewService, match: (p) => p.startsWith('/service/assets') || p.startsWith('/service/models') },
         // จัดทีมเจ้าหน้าที่บริการ (mig 0310 · มติผู้ใช้ 2026-08-28 "TS ก็มีแยกทีม") — ทีมปฏิบัติงาน
         // จัดคนอย่างเดียว ไม่แตะสิทธิ์ · เป็น utility เพราะไม่ใช่งานรายวันของเจ้าหน้าที่
         /* ⚠️ แคบด้วย `canManageTeams(u,'TS')` เหมือนฝาแฝดที่ /sa/teams ไม่ใช่ `canEditService` —
@@ -606,14 +606,6 @@ export default function AppLayout({ children }) {
            ชื่อ "จัดทีม" แล้วเข้าไปเจอรายชื่อเปล่า ๆ ที่กดอะไรไม่ได้สักปุ่มและไม่มีอะไรบอกเหตุ
            — ผิดกฎ "ไม่มีสิทธิ์ = ไม่โชว์" ของระบบ */
         { href: '/service/teams', name: 'จัดทีม', icon: Users, cap: 'team:manage', visible: (u) => canManageTeams(u, 'TS'), utility: true, match: (p) => p.startsWith('/service/teams') },
-        /* ⭐ ทะเบียนรุ่นเครื่อง (mig 0344) — **ตั้งค่าของโมดูลบริการ ไม่ใช่ /settings**
-           🔴 เหตุที่ไม่เอาไปไว้ใต้ `/settings`: รายการที่นั่นคุมด้วย `master:manage`
-             ซึ่ง **ให้เป็นสิทธิ์รายคนไม่ได้** ⇒ ฝ่าย TS ทั้งฝ่ายเข้าไม่ได้ ต้องรอแอดมิน
-             เพิ่มรุ่นให้ทุกครั้ง · และหน้าใหม่ใต้ /settings ต้องเติม lockedOut ของ proxy
-             ไม่งั้นทุกคนที่ไม่ใช่แอดมินโดนเด้งกลับเงียบ ๆ (ทดสอบด้วยบัญชีแอดมินไม่มีทางเห็น)
-           ⇒ วางใต้ `/service` ซึ่ง proxy เปิดอยู่แล้ว และด่านเป็น `canEditService` ตรง ๆ
-           ⚠️ `utility: true` เหมือน "จัดทีม" — ไม่ใช่งานรายวัน แต่ต้องหาเจอเมื่อต้องใช้ */
-        { href: '/service/models', name: 'ทะเบียนรุ่นเครื่อง', shortName: 'รุ่นเครื่อง', icon: Boxes, cap: 'service:view', visible: canEditService, utility: true, match: (p) => p.startsWith('/service/models') },
       ],
     },
     {

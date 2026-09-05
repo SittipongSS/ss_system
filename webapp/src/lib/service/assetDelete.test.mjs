@@ -49,6 +49,13 @@ test('จอเครื่องและจอทะเบียนรุ่�
   assert.match(assetPage, /"\/api\/service\/assets\/\$\{id\}"|`\/api\/service\/assets\/\$\{id\}`/,
     'ต้องยิงเส้นทะเบียนรวม ไม่ใช่เส้นใต้ไซต์ (เครื่องอาจไม่มีไซต์)');
 
-  const modelPage = readFileSync(new URL('../../app/service/models/page.js', import.meta.url), 'utf8');
-  assert.match(modelPage, /assetModelError\(/);
+  /* ⚠️ ทะเบียนรุ่นย้ายไปเป็น **แท็บ** ใต้ทะเบียนเครื่อง (มติผู้ใช้ 2026-09-06)
+     — `/service/models` เหลือเป็นทางเปลี่ยนเส้นทางเพื่อไม่ให้ลิงก์เก่าตาย */
+  const modelPanel = readFileSync(
+    new URL('../../components/service/AssetModelsPanel.js', import.meta.url), 'utf8');
+  assert.match(modelPanel, /assetModelError\(/);
+
+  const legacy = readFileSync(new URL('../../app/service/models/page.js', import.meta.url), 'utf8');
+  assert.match(legacy, /redirect\('\/service\/assets\?tab=models'\)/,
+    'ลิงก์เก่าต้องยังไปถึงแท็บใหม่ ไม่ใช่ 404');
 });
